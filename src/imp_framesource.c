@@ -159,6 +159,28 @@ int IMP_FrameSource_CreateChn(int chnNum, IMPFSChnAttr *chn_attr) {
         return -1;
     }
 
+    /* Register FrameSource channel as module (DEV_ID_FS = 0) */
+    /* Allocate a proper Module structure for this channel */
+    extern void* IMP_System_AllocModule(const char *name, int groupID);
+    void *fs_module = IMP_System_AllocModule("FrameSource", chnNum);
+    if (fs_module == NULL) {
+        LOG_FS("CreateChn: Failed to allocate module");
+        pthread_mutex_unlock(&fs_mutex);
+        return -1;
+    }
+
+    /* Set output_count to 1 (FrameSource has 1 output per channel) */
+    /* Module structure has output_count at offset 0x134 */
+    uint32_t *output_count_ptr = (uint32_t*)((char*)fs_module + 0x134);
+    *output_count_ptr = 1;
+
+    /* Store module pointer in channel */
+    gFramesource->channels[chnNum].module_ptr = fs_module;
+
+    extern int IMP_System_RegisterModule(int deviceID, int groupID, void *module);
+    IMP_System_RegisterModule(0, chnNum, fs_module);  /* DEV_ID_FS = 0 */
+    LOG_FS("CreateChn: registered FrameSource module [0,%d] with 1 output", chnNum);
+
     pthread_mutex_unlock(&fs_mutex);
 
     LOG_FS("CreateChn: chn=%d, %dx%d, fmt=0x%x", chnNum,

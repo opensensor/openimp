@@ -183,6 +183,10 @@ static int BindObserverToSubject(Module *src, Module *dst, void *output_ptr) {
 /* system_bind - internal bind implementation
  * Based on decompilation at 0x1bfe0 */
 static int system_bind(IMPCell *srcCell, IMPCell *dstCell) {
+    fprintf(stderr, "[System] Bind request: [%d,%d,%d] -> [%d,%d,%d]\n",
+            srcCell->deviceID, srcCell->groupID, srcCell->outputID,
+            dstCell->deviceID, dstCell->groupID, dstCell->outputID);
+
     Module *src_module = get_module(srcCell->deviceID, srcCell->groupID);
     Module *dst_module = get_module(dstCell->deviceID, dstCell->groupID);
 
@@ -539,6 +543,14 @@ Module* IMP_System_GetModule(int deviceID, int groupID) {
     return get_module(deviceID, groupID);
 }
 
+Module* IMP_System_AllocModule(const char *name, int groupID) {
+    Module *mod = AllocModule(name, 0);
+    if (mod != NULL) {
+        mod->group_id = groupID;
+    }
+    return mod;
+}
+
 int IMP_System_RegisterModule(int deviceID, int groupID, Module *module) {
     if (deviceID < 0 || deviceID >= MAX_DEVICES ||
         groupID < 0 || groupID >= MAX_GROUPS) {
@@ -547,6 +559,12 @@ int IMP_System_RegisterModule(int deviceID, int groupID, Module *module) {
 
     pthread_mutex_lock(&system_mutex);
     g_modules[deviceID][groupID] = module;
+
+    /* Set output_count to 1 if not already set (offset 0x134) */
+    if (module && module->output_count == 0) {
+        module->output_count = 1;
+    }
+
     pthread_mutex_unlock(&system_mutex);
 
     fprintf(stderr, "[System] Registered module [%d,%d]: %s\n",

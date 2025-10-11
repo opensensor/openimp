@@ -127,12 +127,11 @@ int IMP_OSD_DestroyGroup(int grpNum);
 
 /**
  * Create OSD region
- * 
- * @param handle Region handle
- * @param prAttr Region attributes
- * @return 0 on success, negative on error
+ *
+ * @param prAttr Region attributes (can be NULL for empty region)
+ * @return Allocated region handle on success, negative on error
  */
-int IMP_OSD_CreateRgn(IMPRgnHandle handle, IMPOSDRgnAttr *prAttr);
+IMPRgnHandle IMP_OSD_CreateRgn(IMPOSDRgnAttr *prAttr);
 
 /**
  * Destroy OSD region

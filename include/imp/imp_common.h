@@ -32,8 +32,8 @@ typedef enum {
  */
 #define DEV_ID_FS       0   /**< Frame Source */
 #define DEV_ID_ENC      1   /**< Encoder */
-#define DEV_ID_OSD      2   /**< OSD */
 #define DEV_ID_IVS      3   /**< IVS */
+#define DEV_ID_OSD      4   /**< OSD */
 
 /**
  * Video input interface (T40/T41)

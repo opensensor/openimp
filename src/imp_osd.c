@@ -144,6 +144,25 @@ int IMP_OSD_CreateGroup(int grpNum) {
 
     LOG_OSD("CreateGroup: allocated group %d (%zu bytes)", grpNum, sizeof(OSDGroup));
 
+    /* Register OSD module with system (DEV_ID_OSD = 4) */
+    /* Allocate a proper Module structure for this OSD group */
+    extern void* IMP_System_AllocModule(const char *name, int groupID);
+    void *osd_module = IMP_System_AllocModule("OSD", grpNum);
+    if (osd_module == NULL) {
+        LOG_OSD("CreateGroup: Failed to allocate module");
+        pthread_mutex_unlock(&osd_mutex);
+        return -1;
+    }
+
+    /* Set output_count to 1 (OSD has 1 output per group) */
+    /* Module structure has output_count at offset 0x134 */
+    uint32_t *output_count_ptr = (uint32_t*)((char*)osd_module + 0x134);
+    *output_count_ptr = 1;
+
+    extern int IMP_System_RegisterModule(int deviceID, int groupID, void *module);
+    IMP_System_RegisterModule(4, grpNum, osd_module);  /* DEV_ID_OSD = 4 */
+    LOG_OSD("CreateGroup: registered OSD module [4,%d] with 1 output", grpNum);
+
     pthread_mutex_unlock(&osd_mutex);
 
     LOG_OSD("CreateGroup: grp=%d", grpNum);
@@ -195,8 +214,8 @@ int IMP_OSD_DestroyGroup(int grpNum) {
 }
 
 /* IMP_OSD_CreateRgn - based on decompilation at 0xc225c */
-int IMP_OSD_CreateRgn(IMPRgnHandle handle, IMPOSDRgnAttr *prAttr) {
-    LOG_OSD("CreateRgn: called with handle=%d, prAttr=%p", handle, prAttr);
+IMPRgnHandle IMP_OSD_CreateRgn(IMPOSDRgnAttr *prAttr) {
+    LOG_OSD("CreateRgn: called with prAttr=%p", prAttr);
 
     pthread_mutex_lock(&osd_mutex);
 
@@ -207,31 +226,33 @@ int IMP_OSD_CreateRgn(IMPRgnHandle handle, IMPOSDRgnAttr *prAttr) {
         return -1;
     }
 
-    if (handle < 0 || handle >= MAX_OSD_REGIONS) {
-        LOG_OSD("CreateRgn failed: invalid handle %d", handle);
+    sem_wait(&gosd->sem);
+
+    /* Find first free region (free-list model like OEM) */
+    OSDRegion *rgn = NULL;
+    int allocated_handle = -1;
+
+    for (int i = 0; i < MAX_OSD_REGIONS; i++) {
+        if (!gosd->regions[i].allocated) {
+            rgn = &gosd->regions[i];
+            allocated_handle = i;
+            break;
+        }
+    }
+
+    if (rgn == NULL) {
+        LOG_OSD("CreateRgn failed: no free regions");
+        sem_post(&gosd->sem);
         pthread_mutex_unlock(&osd_mutex);
         return -1;
     }
 
-    sem_wait(&gosd->sem);
-
-    OSDRegion *rgn = &gosd->regions[handle];
-
-    /* If already allocated, free existing data and re-initialize (based on OEM behavior) */
-    if (rgn->allocated) {
-        LOG_OSD("CreateRgn: handle %d already allocated, re-creating", handle);
-        if (rgn->data_ptr != NULL) {
-            free(rgn->data_ptr);
-            rgn->data_ptr = NULL;
-        }
-        /* Keep it allocated, just reset */
-    } else {
-        /* Mark as allocated */
-        rgn->allocated = 1;
-    }
-
-    rgn->handle = handle;
+    /* Mark as allocated */
+    rgn->handle = allocated_handle;
+    rgn->allocated = 1;
     rgn->registered = 0;
+
+    LOG_OSD("CreateRgn: allocated handle=%d from free list", allocated_handle);
 
     /* If prAttr is NULL or invalid, just create empty region (based on OEM decompilation) */
     if (prAttr == NULL) {
@@ -240,8 +261,8 @@ int IMP_OSD_CreateRgn(IMPRgnHandle handle, IMPOSDRgnAttr *prAttr) {
         rgn->data_ptr = NULL;
         sem_post(&gosd->sem);
         pthread_mutex_unlock(&osd_mutex);
-        LOG_OSD("CreateRgn: handle=%d created (empty)", handle);
-        return handle;
+        LOG_OSD("CreateRgn: handle=%d created (empty)", allocated_handle);
+        return allocated_handle;
     }
 
     /* Validate prAttr pointer before accessing */
@@ -252,12 +273,24 @@ int IMP_OSD_CreateRgn(IMPRgnHandle handle, IMPOSDRgnAttr *prAttr) {
         rgn->data_ptr = NULL;
         sem_post(&gosd->sem);
         pthread_mutex_unlock(&osd_mutex);
-        LOG_OSD("CreateRgn: handle=%d created (empty, invalid ptr)", handle);
-        return handle;
+        LOG_OSD("CreateRgn: handle=%d created (empty, invalid ptr)", allocated_handle);
+        return allocated_handle;
     }
 
-    /* Copy attributes */
-    memcpy(&rgn->attr, prAttr, sizeof(IMPOSDRgnAttr));
+    /* Copy attributes using safe struct member access (8 words = 32 bytes based on BN decompilation) */
+    /* The OEM code accesses arg1[0] through arg1[7], which is 8 x 4 bytes = 32 bytes */
+    LOG_OSD("CreateRgn: copying attributes from prAttr=%p", prAttr);
+    uint8_t *attr_bytes = (uint8_t*)prAttr;
+    uint8_t *rgn_attr_bytes = (uint8_t*)&rgn->attr;
+
+    /* Copy each word safely */
+    for (int i = 0; i < 8; i++) {
+        uint32_t word;
+        LOG_OSD("CreateRgn: copying word %d from offset 0x%x", i, i * 4);
+        memcpy(&word, attr_bytes + (i * 4), sizeof(uint32_t));
+        memcpy(rgn_attr_bytes + (i * 4), &word, sizeof(uint32_t));
+    }
+    LOG_OSD("CreateRgn: attribute copy complete");
 
     /* Allocate data buffer based on type and size using safe struct member access */
     /* Based on BN MCP decompilation of OEM IMP_OSD_CreateRgn:
@@ -271,7 +304,7 @@ int IMP_OSD_CreateRgn(IMPRgnHandle handle, IMPOSDRgnAttr *prAttr) {
      * arg1[7] = (offset 0x1c)
      */
     size_t data_size = 0;
-    uint8_t *attr_bytes = (uint8_t*)prAttr;
+    /* attr_bytes already declared above */
 
     uint32_t type, fmt;
     int32_t rect_p0_x, rect_p0_y, rect_p1_x, rect_p1_y;
@@ -345,10 +378,10 @@ int IMP_OSD_CreateRgn(IMPRgnHandle handle, IMPOSDRgnAttr *prAttr) {
     sem_post(&gosd->sem);
     pthread_mutex_unlock(&osd_mutex);
 
-    LOG_OSD("CreateRgn: handle=%d created successfully", handle);
+    LOG_OSD("CreateRgn: handle=%d created successfully", allocated_handle);
 
-    /* Return the handle value on success (based on BN decompilation: return *$s1) */
-    return handle;
+    /* Return the allocated handle value on success (based on BN decompilation: return *$s1) */
+    return allocated_handle;
 }
 
 /* IMP_OSD_DestroyRgn - based on decompilation at 0xc297c */
