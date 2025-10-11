@@ -10,12 +10,12 @@ OpenIMP is a reverse-engineered implementation of the Ingenic Media Platform (IM
 
 ## Build Statistics
 
-- **Library Size**: 125KB (libimp.a), 88KB (libimp.so)
-- **Total Lines**: 4,434 lines of C code
+- **Library Size**: 141KB (libimp.a), 93KB (libimp.so)
+- **Total Lines**: 5,377 lines of C code (including headers)
 - **Modules**: 11 modules (8 core + 3 infrastructure)
-- **Functions**: 105+ functions implemented
+- **Functions**: 125+ functions implemented
 - **Threads**: Up to 23 threads (5 frame capture + 9 encoder + 9 stream)
-- **Files**: 16 source/header files
+- **Files**: 24 source/header files
 - **Build Status**: ✅ Compiles cleanly with minor warnings
 
 ## Key Achievements

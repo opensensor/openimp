@@ -927,18 +927,38 @@ static void *stream_thread(void *arg) {
                 /* Create StreamBuffer structure */
                 StreamBuffer *stream_buf = (StreamBuffer*)calloc(1, sizeof(StreamBuffer));
                 if (stream_buf != NULL) {
+                    /* codec_stream is actually a HWStreamBuffer pointer */
+                    /* Extract metadata from HWStreamBuffer structure:
+                     * 0x00: phys_addr
+                     * 0x04: virt_addr
+                     * 0x08: length
+                     * 0x0c: timestamp (64-bit)
+                     * 0x14: frame_type
+                     * 0x18: slice_type
+                     */
+                    uint8_t *hw_stream = (uint8_t*)codec_stream;
+                    uint32_t phys_addr, virt_addr, length, frame_type, slice_type;
+                    uint64_t timestamp;
+
+                    memcpy(&phys_addr, hw_stream + 0x00, sizeof(uint32_t));
+                    memcpy(&virt_addr, hw_stream + 0x04, sizeof(uint32_t));
+                    memcpy(&length, hw_stream + 0x08, sizeof(uint32_t));
+                    memcpy(&timestamp, hw_stream + 0x0c, sizeof(uint64_t));
+                    memcpy(&frame_type, hw_stream + 0x14, sizeof(uint32_t));
+                    memcpy(&slice_type, hw_stream + 0x18, sizeof(uint32_t));
+
                     /* Initialize stream buffer */
                     stream_buf->codec_stream = codec_stream;
                     stream_buf->seq = chn->stream_seq++;
                     stream_buf->streamEnd = 0;
 
-                    /* Populate pack data (simulated for now) */
-                    stream_buf->pack.phyAddr = 0;
-                    stream_buf->pack.virAddr = (uint32_t)(uintptr_t)codec_stream;
-                    stream_buf->pack.length = 4096; /* TODO: Get actual length from codec */
-                    stream_buf->pack.timestamp = 0; /* TODO: Get actual timestamp */
-                    stream_buf->pack.h264RefType = 0;
-                    stream_buf->pack.sliceType = 0; /* I-frame */
+                    /* Populate pack data from hardware stream */
+                    stream_buf->pack.phyAddr = phys_addr;
+                    stream_buf->pack.virAddr = virt_addr;
+                    stream_buf->pack.length = length;
+                    stream_buf->pack.timestamp = timestamp;
+                    stream_buf->pack.h264RefType = (frame_type == 0) ? 1 : 0; /* I-frame = ref */
+                    stream_buf->pack.sliceType = slice_type;
 
                     /* Store in channel for GetStream */
                     pthread_mutex_lock(&chn->mutex_450);
@@ -952,7 +972,9 @@ static void *stream_thread(void *arg) {
                     /* Signal semaphore that stream is available */
                     sem_post(&chn->sem_408);
 
-                    LOG_ENC("stream_thread: stream buffer created, seq=%u", stream_buf->seq);
+                    LOG_ENC("stream_thread: stream seq=%u, length=%u, type=%s",
+                            stream_buf->seq, length,
+                            frame_type == 0 ? "I" : (frame_type == 1 ? "P" : "B"));
                 }
             }
         } else {

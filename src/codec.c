@@ -11,6 +11,7 @@
 #include <pthread.h>
 #include <unistd.h>
 #include <imp/imp_encoder.h>
+#include <imp/imp_system.h>
 #include "fifo.h"
 #include "hw_encoder.h"
 
@@ -343,20 +344,47 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
         return -1;
     }
 
+    /* Extract frame data from VBM frame structure */
+    /* VBMFrame structure layout (0x428 bytes):
+     * 0x00: index
+     * 0x04: chn
+     * 0x08: width
+     * 0x0c: height
+     * 0x10: pixfmt
+     * 0x14: size
+     * 0x18: phys_addr
+     * 0x1c: virt_addr
+     * 0x20-0x427: data
+     */
+    uint8_t *frame_bytes = (uint8_t*)frame;
+    uint32_t width, height, pixfmt, size, phys_addr, virt_addr;
+
+    memcpy(&width, frame_bytes + 0x08, sizeof(uint32_t));
+    memcpy(&height, frame_bytes + 0x0c, sizeof(uint32_t));
+    memcpy(&pixfmt, frame_bytes + 0x10, sizeof(uint32_t));
+    memcpy(&size, frame_bytes + 0x14, sizeof(uint32_t));
+    memcpy(&phys_addr, frame_bytes + 0x18, sizeof(uint32_t));
+    memcpy(&virt_addr, frame_bytes + 0x1c, sizeof(uint32_t));
+
+    /* Get current timestamp */
+    uint64_t timestamp = IMP_System_GetTimeStamp();
+
     if (enc->use_hardware && enc->hw_encoder_fd >= 0) {
         /* Use hardware encoder */
         HWFrameBuffer hw_frame;
         memset(&hw_frame, 0, sizeof(HWFrameBuffer));
 
-        /* TODO: Extract frame data from VBM frame structure */
-        /* For now, use dummy values */
-        hw_frame.phys_addr = 0;
-        hw_frame.virt_addr = (uint32_t)(uintptr_t)frame;
-        hw_frame.size = enc->frame_buf_size;
-        hw_frame.width = enc->hw_params.width;
-        hw_frame.height = enc->hw_params.height;
-        hw_frame.pixfmt = 0x3231564e; /* NV12 */
-        hw_frame.timestamp = 0; /* TODO: Get actual timestamp */
+        /* Use actual frame data from VBM */
+        hw_frame.phys_addr = phys_addr;
+        hw_frame.virt_addr = virt_addr;
+        hw_frame.size = size;
+        hw_frame.width = width;
+        hw_frame.height = height;
+        hw_frame.pixfmt = pixfmt;
+        hw_frame.timestamp = timestamp;
+
+        LOG_CODEC("Process: HW encode frame %ux%u, phys=0x%x, virt=0x%x, size=%u",
+                  width, height, phys_addr, virt_addr, size);
 
         /* Submit frame for encoding */
         if (HW_Encoder_Encode(enc->hw_encoder_fd, &hw_frame) < 0) {
@@ -375,10 +403,13 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
         /* Use software fallback */
         HWFrameBuffer hw_frame;
         memset(&hw_frame, 0, sizeof(HWFrameBuffer));
-        hw_frame.virt_addr = (uint32_t)(uintptr_t)frame;
-        hw_frame.width = enc->hw_params.width;
-        hw_frame.height = enc->hw_params.height;
-        hw_frame.timestamp = 0;
+        hw_frame.phys_addr = phys_addr;
+        hw_frame.virt_addr = virt_addr;
+        hw_frame.width = width;
+        hw_frame.height = height;
+        hw_frame.timestamp = timestamp;
+
+        LOG_CODEC("Process: SW encode frame %ux%u", width, height);
 
         if (HW_Encoder_Encode_Software(&hw_frame, hw_stream) < 0) {
             LOG_CODEC("Process: software encoding failed");
