@@ -1,45 +1,283 @@
 /**
- * IMP Audio Module Implementation (Stub)
+ * IMP Audio Module Implementation
+ * Based on reverse engineering of libimp.so v1.1.6
  */
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
+#include <pthread.h>
 #include <imp/imp_audio.h>
 
-#define LOG_AUD(fmt, ...) fprintf(stderr, "[IMP_Audio] " fmt "\n", ##__VA_ARGS__)
+#define LOG_AUD(fmt, ...) fprintf(stderr, "[Audio] " fmt "\n", ##__VA_ARGS__)
+
+/* Audio device structure - 0x260 bytes per device */
+#define MAX_AUDIO_DEVICES 2
+#define AUDIO_DEV_SIZE 0x260
+#define MAX_AUDIO_CHANNELS 1
+
+typedef struct {
+    uint8_t data_00[0x10];      /* 0x00-0x0f: Header */
+    IMPAudioIOAttr attr;        /* 0x10: Audio attributes (0x18 bytes) */
+    uint8_t data_28[0x4];       /* 0x28-0x2b: Padding */
+    uint8_t enabled;            /* 0x04 from base+0x228: Enable flag */
+    uint8_t data_2d[0x3];       /* Padding */
+    uint8_t data_30[0x4];       /* 0x30-0x33 */
+    pthread_t thread;           /* 0x0c from base+0x228: Thread */
+    uint8_t data_38[0x1f8];     /* Rest of device data */
+    pthread_mutex_t mutex;      /* 0x208 from base+0x228: Mutex */
+    pthread_cond_t cond;        /* 0x220 from base+0x228: Condition */
+} AudioDevice;
+
+typedef struct {
+    uint8_t data_00[0x38];      /* 0x00-0x37: Header */
+    uint8_t enabled;            /* 0x3c from base+0x260: Channel enable */
+    uint8_t data_39[0x1cf];     /* Rest of channel data */
+} AudioChannel;
+
+/* Global audio state - starts at 0x10b228 */
+typedef struct {
+    AudioDevice devices[MAX_AUDIO_DEVICES];     /* 0x00: 2 devices */
+    AudioChannel channels[MAX_AUDIO_DEVICES][MAX_AUDIO_CHANNELS]; /* Channels per device */
+} AudioState;
+
+/* Global variables */
+static AudioState *g_audio_state = NULL;
+static pthread_mutex_t audio_mutex = PTHREAD_MUTEX_INITIALIZER;
+static int audio_initialized = 0;
+
+/* Initialize audio module */
+static void audio_init(void) {
+    if (audio_initialized) return;
+
+    g_audio_state = (AudioState*)calloc(1, sizeof(AudioState));
+    if (g_audio_state == NULL) {
+        LOG_AUD("Failed to allocate audio state");
+        return;
+    }
+
+    /* Initialize all devices */
+    for (int i = 0; i < MAX_AUDIO_DEVICES; i++) {
+        g_audio_state->devices[i].enabled = 0;
+    }
+
+    audio_initialized = 1;
+}
 
 /* Audio Input (AI) Functions */
 
+/* IMP_AI_SetPubAttr - based on decompilation at 0xa8638 */
+int IMP_AI_SetPubAttr(int audioDevId, IMPAudioIOAttr *attr) {
+    if (attr == NULL) {
+        LOG_AUD("AI_SetPubAttr failed: NULL attr");
+        return -1;
+    }
+
+    if (audioDevId < 0 || audioDevId >= MAX_AUDIO_DEVICES) {
+        LOG_AUD("AI_SetPubAttr failed: invalid device %d", audioDevId);
+        return -1;
+    }
+
+    if (attr->soundmode < 0 || attr->soundmode >= 2) {
+        LOG_AUD("AI_SetPubAttr failed: invalid soundmode %d", attr->soundmode);
+        return -1;
+    }
+
+    pthread_mutex_lock(&audio_mutex);
+    audio_init();
+
+    if (g_audio_state == NULL) {
+        pthread_mutex_unlock(&audio_mutex);
+        return -1;
+    }
+
+    /* Validate frame time - must be divisible by 10ms */
+    uint32_t frame_time_ms = (attr->numPerFrm * 1000) / attr->samplerate;
+    if ((frame_time_ms % 10) != 0) {
+        LOG_AUD("AI_SetPubAttr failed: invalid frame time %u ms", frame_time_ms);
+        pthread_mutex_unlock(&audio_mutex);
+        return -1;
+    }
+
+    /* Copy attributes */
+    memcpy(&g_audio_state->devices[audioDevId].attr, attr, sizeof(IMPAudioIOAttr));
+
+    pthread_mutex_unlock(&audio_mutex);
+
+    LOG_AUD("AI_SetPubAttr: dev=%d, rate=%d, bits=%d, mode=%d",
+            audioDevId, attr->samplerate, attr->bitwidth, attr->soundmode);
+    return 0;
+}
+
+/* IMP_AI_GetPubAttr - based on decompilation at 0xa884c */
+int IMP_AI_GetPubAttr(int audioDevId, IMPAudioIOAttr *attr) {
+    if (attr == NULL) {
+        LOG_AUD("AI_GetPubAttr failed: NULL attr");
+        return -1;
+    }
+
+    if (audioDevId < 0 || audioDevId >= MAX_AUDIO_DEVICES) {
+        LOG_AUD("AI_GetPubAttr failed: invalid device %d", audioDevId);
+        return -1;
+    }
+
+    pthread_mutex_lock(&audio_mutex);
+
+    if (g_audio_state == NULL) {
+        pthread_mutex_unlock(&audio_mutex);
+        return -1;
+    }
+
+    memcpy(attr, &g_audio_state->devices[audioDevId].attr, sizeof(IMPAudioIOAttr));
+
+    pthread_mutex_unlock(&audio_mutex);
+
+    LOG_AUD("AI_GetPubAttr: dev=%d", audioDevId);
+    return 0;
+}
+
+/* IMP_AI_Enable - based on decompilation at 0xa895c */
 int IMP_AI_Enable(int audioDevId) {
+    if (audioDevId < 0 || audioDevId >= MAX_AUDIO_DEVICES) {
+        LOG_AUD("AI_Enable failed: invalid device %d", audioDevId);
+        return -1;
+    }
+
+    pthread_mutex_lock(&audio_mutex);
+
+    audio_init();
+
+    if (g_audio_state == NULL) {
+        pthread_mutex_unlock(&audio_mutex);
+        return -1;
+    }
+
+    if (g_audio_state->devices[audioDevId].enabled) {
+        LOG_AUD("AI_Enable: device %d already enabled", audioDevId);
+        pthread_mutex_unlock(&audio_mutex);
+        return 0;
+    }
+
+    /* Check sample rate if set - from decompilation, only 16kHz supported */
+    if (g_audio_state->devices[audioDevId].attr.samplerate != 0 &&
+        g_audio_state->devices[audioDevId].attr.samplerate != 16000) {
+        LOG_AUD("AI_Enable failed: only 16kHz supported, got %d",
+                g_audio_state->devices[audioDevId].attr.samplerate);
+        pthread_mutex_unlock(&audio_mutex);
+        return -1;
+    }
+
+    /* TODO: Call __ai_dev_init() */
+    /* TODO: Initialize mutex and cond */
+    /* TODO: Create thread */
+
+    g_audio_state->devices[audioDevId].enabled = 1;
+
+    pthread_mutex_unlock(&audio_mutex);
+
     LOG_AUD("AI_Enable: dev=%d", audioDevId);
     return 0;
 }
 
+/* IMP_AI_Disable - based on decompilation at 0xa8d04 */
 int IMP_AI_Disable(int audioDevId) {
+    if (audioDevId < 0 || audioDevId >= MAX_AUDIO_DEVICES) {
+        LOG_AUD("AI_Disable failed: invalid device %d", audioDevId);
+        return -1;
+    }
+
+    pthread_mutex_lock(&audio_mutex);
+
+    if (g_audio_state == NULL || !g_audio_state->devices[audioDevId].enabled) {
+        LOG_AUD("AI_Disable: device %d not enabled", audioDevId);
+        pthread_mutex_unlock(&audio_mutex);
+        return 0;
+    }
+
+    /* TODO: Stop thread */
+    /* TODO: Call __ai_dev_deinit() */
+    /* TODO: Destroy mutex and cond */
+
+    g_audio_state->devices[audioDevId].enabled = 0;
+
+    pthread_mutex_unlock(&audio_mutex);
+
     LOG_AUD("AI_Disable: dev=%d", audioDevId);
     return 0;
 }
 
-int IMP_AI_SetPubAttr(int audioDevId, IMPAudioIOAttr *attr) {
-    if (attr == NULL) return -1;
-    LOG_AUD("AI_SetPubAttr: dev=%d, rate=%d, bits=%d", 
-            audioDevId, attr->samplerate, attr->bitwidth);
-    return 0;
-}
-
-int IMP_AI_GetPubAttr(int audioDevId, IMPAudioIOAttr *attr) {
-    if (attr == NULL) return -1;
-    LOG_AUD("AI_GetPubAttr: dev=%d", audioDevId);
-    memset(attr, 0, sizeof(*attr));
-    return 0;
-}
-
+/* IMP_AI_EnableChn - based on decompilation at 0xad8c8 */
 int IMP_AI_EnableChn(int audioDevId, int aiChn) {
+    if (audioDevId < 0 || audioDevId >= MAX_AUDIO_DEVICES) {
+        LOG_AUD("AI_EnableChn failed: invalid device %d", audioDevId);
+        return -1;
+    }
+
+    if (aiChn != 0) {
+        LOG_AUD("AI_EnableChn failed: invalid channel %d (only 0 supported)", aiChn);
+        return -1;
+    }
+
+    pthread_mutex_lock(&audio_mutex);
+
+    if (g_audio_state == NULL || !g_audio_state->devices[audioDevId].enabled) {
+        LOG_AUD("AI_EnableChn failed: device %d not enabled", audioDevId);
+        pthread_mutex_unlock(&audio_mutex);
+        return -1;
+    }
+
+    if (g_audio_state->channels[audioDevId][aiChn].enabled) {
+        LOG_AUD("AI_EnableChn: channel already enabled");
+        pthread_mutex_unlock(&audio_mutex);
+        return 0;
+    }
+
+    /* TODO: Initialize channel mutexes and conditions */
+    /* TODO: Allocate audio buffers */
+    /* TODO: Set up temporary buffers if needed */
+
+    g_audio_state->channels[audioDevId][aiChn].enabled = 1;
+
+    pthread_mutex_unlock(&audio_mutex);
+
     LOG_AUD("AI_EnableChn: dev=%d, chn=%d", audioDevId, aiChn);
     return 0;
 }
 
+/* IMP_AI_DisableChn - based on decompilation at 0xa9024 */
 int IMP_AI_DisableChn(int audioDevId, int aiChn) {
+    if (audioDevId < 0 || audioDevId >= MAX_AUDIO_DEVICES) {
+        LOG_AUD("AI_DisableChn failed: invalid device %d", audioDevId);
+        return -1;
+    }
+
+    if (aiChn != 0) {
+        LOG_AUD("AI_DisableChn failed: invalid channel %d", aiChn);
+        return -1;
+    }
+
+    pthread_mutex_lock(&audio_mutex);
+
+    if (g_audio_state == NULL || !g_audio_state->devices[audioDevId].enabled) {
+        LOG_AUD("AI_DisableChn failed: device %d not enabled", audioDevId);
+        pthread_mutex_unlock(&audio_mutex);
+        return -1;
+    }
+
+    if (!g_audio_state->channels[audioDevId][aiChn].enabled) {
+        LOG_AUD("AI_DisableChn: channel not enabled");
+        pthread_mutex_unlock(&audio_mutex);
+        return 0;
+    }
+
+    /* TODO: Wait for channel to finish */
+    /* TODO: Free audio buffers */
+    /* TODO: Destroy mutexes and conditions */
+
+    g_audio_state->channels[audioDevId][aiChn].enabled = 0;
+
+    pthread_mutex_unlock(&audio_mutex);
+
     LOG_AUD("AI_DisableChn: dev=%d, chn=%d", audioDevId, aiChn);
     return 0;
 }
