@@ -217,16 +217,20 @@ int IMP_OSD_CreateRgn(IMPRgnHandle handle, IMPOSDRgnAttr *prAttr) {
 
     OSDRegion *rgn = &gosd->regions[handle];
 
+    /* If already allocated, free existing data and re-initialize (based on OEM behavior) */
     if (rgn->allocated) {
-        LOG_OSD("CreateRgn: handle %d already allocated", handle);
-        sem_post(&gosd->sem);
-        pthread_mutex_unlock(&osd_mutex);
-        return -1;
+        LOG_OSD("CreateRgn: handle %d already allocated, re-creating", handle);
+        if (rgn->data_ptr != NULL) {
+            free(rgn->data_ptr);
+            rgn->data_ptr = NULL;
+        }
+        /* Keep it allocated, just reset */
+    } else {
+        /* Mark as allocated */
+        rgn->allocated = 1;
     }
 
-    /* Mark as allocated */
     rgn->handle = handle;
-    rgn->allocated = 1;
     rgn->registered = 0;
 
     /* If prAttr is NULL or invalid, just create empty region (based on OEM decompilation) */
@@ -237,7 +241,7 @@ int IMP_OSD_CreateRgn(IMPRgnHandle handle, IMPOSDRgnAttr *prAttr) {
         sem_post(&gosd->sem);
         pthread_mutex_unlock(&osd_mutex);
         LOG_OSD("CreateRgn: handle=%d created (empty)", handle);
-        return 0;
+        return handle;
     }
 
     /* Validate prAttr pointer before accessing */
@@ -249,7 +253,7 @@ int IMP_OSD_CreateRgn(IMPRgnHandle handle, IMPOSDRgnAttr *prAttr) {
         sem_post(&gosd->sem);
         pthread_mutex_unlock(&osd_mutex);
         LOG_OSD("CreateRgn: handle=%d created (empty, invalid ptr)", handle);
-        return 0;
+        return handle;
     }
 
     /* Copy attributes */
@@ -343,8 +347,8 @@ int IMP_OSD_CreateRgn(IMPRgnHandle handle, IMPOSDRgnAttr *prAttr) {
 
     LOG_OSD("CreateRgn: handle=%d created successfully", handle);
 
-    LOG_OSD("CreateRgn: handle=%d, type=%d", handle, prAttr->type);
-    return 0;
+    /* Return the handle value on success (based on BN decompilation: return *$s1) */
+    return handle;
 }
 
 /* IMP_OSD_DestroyRgn - based on decompilation at 0xc297c */
