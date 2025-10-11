@@ -453,6 +453,7 @@ int IMP_FrameSource_GetChnAttr(int chnNum, IMPFSChnAttr *chn_attr) {
 
     pthread_mutex_lock(&fs_mutex);
 
+
     if (gFramesource == NULL) {
         LOG_FS("GetChnAttr failed: not initialized");
         pthread_mutex_unlock(&fs_mutex);
