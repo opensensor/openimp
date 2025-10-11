@@ -6,10 +6,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
+#include <sys/select.h>
+#include <sys/eventfd.h>
 #include <pthread.h>
 #include <semaphore.h>
-#include <sys/eventfd.h>
-#include <unistd.h>
 #include <imp/imp_encoder.h>
 #include "fifo.h"
 #include "codec.h"
@@ -729,21 +730,43 @@ static void *encoder_thread(void *arg) {
 
     /* Main encoding loop */
     while (1) {
+        /* Check for thread cancellation */
+        pthread_testcancel();
+
         /* Wait for recv_pic to be enabled */
         if (!chn->recv_pic_enabled) {
             usleep(10000); /* 10ms */
             continue;
         }
 
-        /* Check if we should stop */
-        pthread_testcancel();
+        /* Wait for recv_pic to be started */
+        if (!chn->recv_pic_started) {
+            usleep(10000); /* 10ms */
+            continue;
+        }
 
-        /* TODO: Get frame from FrameSource via binding */
-        /* For now, just simulate encoding delay */
-        usleep(33000); /* ~30fps */
+        /* TODO: Get frame from FrameSource via binding/observer pattern */
+        /* For now, we simulate frame arrival */
 
-        /* TODO: Process frame through codec */
-        /* AL_Codec_Encode_Process(chn->codec, frame, NULL); */
+        /* Simulate frame processing delay (~30fps) */
+        usleep(33000);
+
+        /* Create a dummy frame structure for testing */
+        /* In real implementation, this would come from FrameSource */
+        void *frame = NULL; /* Would be actual frame data */
+
+        if (frame != NULL && chn->codec != NULL) {
+            /* Process frame through codec */
+            if (AL_Codec_Encode_Process(chn->codec, frame, NULL) < 0) {
+                LOG_ENC("encoder_thread: AL_Codec_Encode_Process failed");
+            }
+        }
+
+        /* Signal eventfd to wake up stream thread */
+        if (chn->eventfd >= 0) {
+            uint64_t val = 1;
+            write(chn->eventfd, &val, sizeof(val));
+        }
     }
 
     return NULL;
@@ -757,18 +780,42 @@ static void *stream_thread(void *arg) {
 
     /* Main stream handling loop */
     while (1) {
-        /* Check if we should stop */
+        /* Check for thread cancellation */
         pthread_testcancel();
 
-        /* TODO: Get encoded stream from codec */
-        /* void *stream = NULL; */
-        /* if (AL_Codec_Encode_GetStream(chn->codec, &stream) == 0) { */
-        /*     // Stream is available for IMP_Encoder_GetStream */
-        /*     // Store in channel's stream queue */
-        /* } */
+        /* Wait for eventfd signal from encoder thread */
+        if (chn->eventfd >= 0) {
+            uint64_t val;
+            fd_set readfds;
+            struct timeval tv;
 
-        /* For now, just wait */
-        usleep(10000); /* 10ms */
+            FD_ZERO(&readfds);
+            FD_SET(chn->eventfd, &readfds);
+            tv.tv_sec = 0;
+            tv.tv_usec = 100000; /* 100ms timeout */
+
+            int ret = select(chn->eventfd + 1, &readfds, NULL, NULL, &tv);
+            if (ret > 0 && FD_ISSET(chn->eventfd, &readfds)) {
+                read(chn->eventfd, &val, sizeof(val));
+            }
+        }
+
+        /* Get encoded stream from codec */
+        if (chn->codec != NULL) {
+            void *stream = NULL;
+            if (AL_Codec_Encode_GetStream(chn->codec, &stream, 100) == 0 && stream != NULL) {
+                LOG_ENC("stream_thread: got stream %p", stream);
+
+                /* Stream is now available for IMP_Encoder_GetStream */
+                /* The stream is queued in the codec's stream FIFO */
+                /* User will call IMP_Encoder_GetStream to retrieve it */
+
+                /* Note: Stream will be released when user calls IMP_Encoder_ReleaseStream */
+            }
+        } else {
+            /* No codec yet, just wait */
+            usleep(10000); /* 10ms */
+        }
     }
 
     return NULL;
