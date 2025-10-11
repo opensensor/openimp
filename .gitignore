@@ -1,1 +1,4 @@
 prudynt-t
+*.o
+*.so
+*.a

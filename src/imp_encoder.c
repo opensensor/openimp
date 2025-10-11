@@ -795,22 +795,3 @@ int AL_Codec_Encode_SetDefaultParam(void *params) {
     return 0;
 }
 
-/* Fifo stub implementations */
-void Fifo_Init(void *fifo, int size) {
-    (void)fifo;
-    (void)size;
-    LOG_ENC("Fifo_Init: stub size=%d", size);
-}
-
-void Fifo_Deinit(void *fifo) {
-    (void)fifo;
-    LOG_ENC("Fifo_Deinit: stub");
-}
-
-int Fifo_Queue(void *fifo, void *item, int timeout) {
-    (void)fifo;
-    (void)item;
-    (void)timeout;
-    return 0;
-}
-
