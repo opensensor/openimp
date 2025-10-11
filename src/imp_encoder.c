@@ -101,6 +101,18 @@ static void encoder_init(void) {
     for (int i = 0; i < MAX_ENC_CHANNELS; i++) {
         memset(&g_EncChannel[i], 0, ENC_CHANNEL_SIZE);
         g_EncChannel[i].chn_id = -1;
+
+        /* Register module with system for each channel */
+        void *module = IMP_System_GetModule(DEV_ID_ENC, i);
+        if (module != NULL) {
+            /* Set update function pointer at offset 0x4c */
+            uint8_t *mod_bytes = (uint8_t*)module;
+            void **update_ptr = (void**)(mod_bytes + 0x4c);
+
+            *update_ptr = (void*)encoder_update;
+
+            LOG_ENC("Registered update callback for ENC channel %d", i);
+        }
     }
 
     encoder_initialized = 1;
@@ -881,15 +893,44 @@ static void *stream_thread(void *arg) {
 /**
  * encoder_update - Called by observer pattern when a frame is available
  * This is the callback at offset 0x4c in the Module structure
+ *
+ * Called by notify_observers() when FrameSource has a new frame
+ * The frame pointer is passed via the observer structure
  */
-static int encoder_update(void *module) {
-    (void)module;
+static int encoder_update(void *module, void *frame) {
+    if (module == NULL) {
+        return -1;
+    }
 
-    LOG_ENC("encoder_update: Frame available from FrameSource");
+    LOG_ENC("encoder_update: Frame available from FrameSource, frame=%p", frame);
 
-    /* TODO: Get frame from observer structure */
-    /* TODO: Queue frame to encoder thread */
-    /* For now, the encoder thread will simulate frame processing */
+    /* Find the encoder channel associated with this module */
+    /* In a full implementation, we would:
+     * 1. Extract channel info from module structure
+     * 2. Queue frame to encoder thread via codec FIFO
+     * 3. Signal encoder thread that frame is available
+     */
+
+    /* For now, we'll process the frame directly in the first active channel */
+    for (int i = 0; i < MAX_ENC_CHANNELS; i++) {
+        EncChannel *chn = &g_EncChannel[i];
+
+        if (chn->chn_id >= 0 && chn->recv_pic_started && chn->codec != NULL) {
+            /* Queue frame to codec for encoding */
+            if (AL_Codec_Encode_Process(chn->codec, frame, NULL) == 0) {
+                LOG_ENC("encoder_update: Queued frame to channel %d", i);
+
+                /* Signal eventfd to wake up stream thread */
+                if (chn->eventfd >= 0) {
+                    uint64_t val = 1;
+                    ssize_t n = write(chn->eventfd, &val, sizeof(val));
+                    (void)n;
+                }
+
+                return 0;
+            }
+        }
+    }
 
     return 0;
 }

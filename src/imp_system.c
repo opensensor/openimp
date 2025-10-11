@@ -374,6 +374,14 @@ static int add_observer(Module *module, Observer *observer) {
 }
 
 /**
+ * add_observer_to_module - Public wrapper for add_observer
+ * Used by other modules to add observers
+ */
+int add_observer_to_module(void *module, Observer *observer) {
+    return add_observer((Module*)module, observer);
+}
+
+/**
  * remove_observer - Remove observer from module's observer list
  * Based on decompilation at 0x1a890
  */
@@ -395,6 +403,14 @@ static int remove_observer(Module *module, Observer *observer) {
 }
 
 /**
+ * remove_observer_from_module - Public wrapper for remove_observer
+ * Used by other modules to remove observers
+ */
+int remove_observer_from_module(void *module, Observer *observer) {
+    return remove_observer((Module*)module, observer);
+}
+
+/**
  * notify_observers - Notify all observers with a frame
  * Based on decompilation at 0x1aa54
  */
@@ -406,18 +422,19 @@ int notify_observers(Module *module, void *frame) {
     Observer *obs = (Observer*)module->observer_list;
 
     while (obs != NULL) {
-        if (obs->module != NULL && obs->frame != NULL) {
+        if (obs->module != NULL) {
             Module *dst_module = (Module*)obs->module;
+
+            /* Store frame in observer */
+            obs->frame = frame;
 
             /* Call the update function at offset 0x4c */
             if (dst_module->func_4c != NULL) {
-                int (*update_fn)(Module*) = (int (*)(Module*))dst_module->func_4c;
+                /* Update function signature: int update(Module *module, void *frame) */
+                int (*update_fn)(Module*, void*) = (int (*)(Module*, void*))dst_module->func_4c;
 
-                /* Store frame in observer */
-                obs->frame = frame;
-
-                /* Call update function */
-                if (update_fn(dst_module) < 0) {
+                /* Call update function with module and frame */
+                if (update_fn(dst_module, frame) < 0) {
                     fprintf(stderr, "[System] Observer update failed for %s\n",
                             dst_module->name);
                     /* TODO: VBMUnLockFrame if needed */

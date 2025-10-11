@@ -1,0 +1,64 @@
+%% OpenIMP Module Architecture
+%% Shows the relationships between different modules
+
+graph TB
+    %% System Module
+    SYS[System Module<br/>imp_system.c<br/>- Module registry g_modules6x6<br/>- Observer pattern<br/>- Bind/Unbind<br/>- Timestamps]
+    
+    %% FrameSource Module
+    FS[FrameSource Module<br/>imp_framesource.c<br/>- FSChannel 0x2e8 bytes<br/>- Frame capture thread<br/>- Kernel driver /dev/framechan<br/>- Observer notifications]
+    
+    %% Encoder Module
+    ENC[Encoder Module<br/>imp_encoder.c<br/>- EncChannel 0x308 bytes<br/>- Encoder thread<br/>- Stream thread<br/>- Observer callbacks]
+    
+    %% Codec
+    COD[Codec<br/>codec.c<br/>- AL_CodecEncode 0x924 bytes<br/>- Dual FIFO frames+streams<br/>- Parameter management<br/>- Process/GetStream]
+    
+    %% VBM
+    VBM[VBM<br/>kernel_interface.c<br/>- VBMPool management<br/>- Frame buffers<br/>- 12+ pixel formats<br/>- Physical/virtual memory]
+    
+    %% DMA Allocator
+    DMA[DMA Allocator<br/>dma_alloc.c<br/>- IMP_Alloc/Free<br/>- Kernel driver /dev/mem<br/>- mmap physical memory<br/>- DMABuffer 0x94 bytes]
+    
+    %% Fifo
+    FIFO[Fifo<br/>fifo.c<br/>- Thread-safe queue<br/>- Mutex + CondVar + Sem<br/>- Timeout support<br/>- 64 bytes structure]
+    
+    %% Audio Module
+    AUD[Audio Module<br/>imp_audio.c<br/>- AudioDevice/Channel<br/>- Capture/Playback<br/>- Currently stub]
+    
+    %% OSD Module
+    OSD[OSD Module<br/>imp_osd.c<br/>- Region management<br/>- Overlay rendering<br/>- Currently stub]
+    
+    %% IVS Module
+    IVS[IVS Module<br/>imp_ivs.c<br/>- Motion detection<br/>- Analytics<br/>- Currently stub]
+    
+    %% Relationships
+    SYS -.->|registers| FS
+    SYS -.->|registers| ENC
+    SYS -.->|registers| AUD
+    SYS -.->|registers| OSD
+    SYS -.->|registers| IVS
+    
+    SYS -->|binds via observers| FS
+    SYS -->|binds via observers| ENC
+    
+    FS -->|uses| VBM
+    FS -->|uses| DMA
+    FS -->|notifies| SYS
+    
+    ENC -->|uses| COD
+    ENC -->|receives from| SYS
+    
+    COD -->|uses| FIFO
+    
+    VBM -->|uses| DMA
+    
+    %% Styling
+    classDef core fill:#bbf,stroke:#333,stroke-width:3px
+    classDef infra fill:#bfb,stroke:#333,stroke-width:2px
+    classDef stub fill:#ddd,stroke:#333,stroke-width:1px,stroke-dasharray: 5 5
+    
+    class SYS,FS,ENC core
+    class COD,VBM,DMA,FIFO infra
+    class AUD,OSD,IVS stub
+

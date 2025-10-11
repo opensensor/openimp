@@ -1,0 +1,73 @@
+%% OpenIMP Memory Management
+%% Shows DMA allocation and frame buffer management
+
+graph TD
+    %% User Request
+    USER[User Application<br/>Calls IMP_Alloc name, size, tag]
+    
+    %% DMA Allocator
+    DMA_INIT{DMA Initialized?}
+    DMA_OPEN[Open Kernel Device<br/>/dev/mem or /dev/jz-dma]
+    
+    %% Kernel Allocation
+    IOCTL_ALLOC[ioctl IOCTL_MEM_ALLOC<br/>Request physical memory<br/>size, align, flags]
+    
+    KERNEL_ALLOC{Kernel<br/>Allocates?}
+    
+    PHYS_ADDR[Get Physical Address<br/>phys_addr from kernel]
+    
+    %% Memory Mapping
+    MMAP[mmap<br/>Map physical to virtual<br/>PROT_READ | PROT_WRITE<br/>MAP_SHARED]
+    
+    VIRT_ADDR[Get Virtual Address<br/>virt_addr from mmap]
+    
+    %% DMA Buffer
+    DMA_BUF[Create DMABuffer<br/>0x94 bytes<br/>- name 96 bytes<br/>- tag 32 bytes<br/>- virt_addr 0x80<br/>- phys_addr 0x84<br/>- size 0x88]
+    
+    %% VBM Usage
+    VBM_CREATE[VBMCreatePool<br/>Uses IMP_Alloc<br/>Allocates frame buffers]
+    
+    VBM_POOL[VBMPool<br/>0x180 + bufcount*0x428<br/>- Physical base<br/>- Virtual base<br/>- Frame array]
+    
+    VBM_FRAMES[VBMFrame Array<br/>Each frame 0x428 bytes<br/>- index, chn<br/>- width, height, pixfmt<br/>- phys_addr, virt_addr<br/>- size, data]
+    
+    %% Fallback
+    FALLBACK[Fallback: posix_memalign<br/>Aligned malloc<br/>4096 byte alignment<br/>phys = virt no real DMA]
+    
+    %% Free
+    FREE[IMP_Free phys_addr<br/>munmap virt_addr<br/>ioctl IOCTL_MEM_FREE]
+    
+    %% Flow
+    USER --> DMA_INIT
+    DMA_INIT -->|No| DMA_OPEN
+    DMA_INIT -->|Yes| IOCTL_ALLOC
+    DMA_OPEN --> IOCTL_ALLOC
+    
+    IOCTL_ALLOC --> KERNEL_ALLOC
+    KERNEL_ALLOC -->|Success| PHYS_ADDR
+    KERNEL_ALLOC -->|Failure| FALLBACK
+    
+    PHYS_ADDR --> MMAP
+    MMAP --> VIRT_ADDR
+    VIRT_ADDR --> DMA_BUF
+    FALLBACK --> DMA_BUF
+    
+    DMA_BUF --> VBM_CREATE
+    VBM_CREATE --> VBM_POOL
+    VBM_POOL --> VBM_FRAMES
+    
+    VBM_FRAMES -.->|Eventually| FREE
+    
+    %% Styling
+    classDef user fill:#ffb,stroke:#333,stroke-width:2px
+    classDef kernel fill:#f9f,stroke:#333,stroke-width:2px
+    classDef memory fill:#bfb,stroke:#333,stroke-width:2px
+    classDef vbm fill:#bbf,stroke:#333,stroke-width:2px
+    classDef decision fill:#fbb,stroke:#333,stroke-width:2px
+    
+    class USER,FREE user
+    class DMA_OPEN,IOCTL_ALLOC,PHYS_ADDR,MMAP,VIRT_ADDR kernel
+    class DMA_BUF,FALLBACK memory
+    class VBM_CREATE,VBM_POOL,VBM_FRAMES vbm
+    class DMA_INIT,KERNEL_ALLOC decision
+

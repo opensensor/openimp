@@ -1,0 +1,54 @@
+%% OpenIMP Data Flow Diagram
+%% This diagram shows the complete end-to-end data flow from hardware to user application
+
+graph TD
+    %% Hardware Layer
+    HW[Hardware Layer<br/>Ingenic ISP → Kernel Driver<br/>/dev/framechan0-5]
+    
+    %% Frame Capture
+    FCT[Frame Capture Thread<br/>frame_capture_thread<br/>- Poll for frames<br/>- Get from VBM<br/>- Notify observers]
+    
+    %% VBM
+    VBM[VBM Frame Pool<br/>Physical/Virtual Memory DMA<br/>- IMP_Alloc via kernel<br/>- mmap physical→virtual<br/>- VBMPool: 0x180 + buffers<br/>- VBMFrame: 0x428 bytes]
+    
+    %% Observer Pattern
+    OBS[Observer Pattern<br/>System Module<br/>- Traverse observer list<br/>- Call update callbacks<br/>- Observer: next, module, frame]
+    
+    %% Encoder Thread
+    ENC[Encoder Thread<br/>encoder_thread<br/>- Receive frame notification<br/>- Process through codec<br/>- Signal stream thread]
+    
+    %% Codec Frame FIFO
+    CFF[Codec Frame FIFO<br/>Thread-safe Queue<br/>- Mutex + CondVar + Sem<br/>- Timeout support<br/>- Abort flag]
+    
+    %% Stream Thread
+    STR[Stream Thread<br/>stream_thread<br/>- Wait for eventfd<br/>- Get encoded stream<br/>- Queue for user]
+    
+    %% Codec Stream FIFO
+    CSF[Codec Stream FIFO<br/>Thread-safe Queue<br/>- H.264/H.265 streams<br/>- Same Fifo impl<br/>- Thread-safe dequeue]
+    
+    %% User Application
+    APP[User Application<br/>prudynt-t, custom apps<br/>- IMP_Encoder_GetStream<br/>- Process stream<br/>- IMP_Encoder_ReleaseStream]
+    
+    %% Connections
+    HW -->|ioctl VIDIOC_POLL_FRAME<br/>0x400456bf| FCT
+    FCT -->|VBMGetFrame chn, &frame| VBM
+    VBM -->|notify_observers module, frame| OBS
+    OBS -->|encoder_update module| ENC
+    ENC -->|AL_Codec_Encode_Process<br/>codec, frame, NULL| CFF
+    CFF -->|eventfd signal write| STR
+    STR -->|AL_Codec_Encode_GetStream<br/>codec, &stream| CSF
+    CSF -->|IMP_Encoder_GetStream<br/>chn, stream, block| APP
+    
+    %% Styling
+    classDef hardware fill:#f9f,stroke:#333,stroke-width:2px
+    classDef thread fill:#bbf,stroke:#333,stroke-width:2px
+    classDef queue fill:#bfb,stroke:#333,stroke-width:2px
+    classDef system fill:#fbb,stroke:#333,stroke-width:2px
+    classDef user fill:#ffb,stroke:#333,stroke-width:2px
+    
+    class HW hardware
+    class FCT,ENC,STR thread
+    class VBM,CFF,CSF queue
+    class OBS system
+    class APP user
+

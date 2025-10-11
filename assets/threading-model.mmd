@@ -1,0 +1,68 @@
+%% OpenIMP Threading Model
+%% Shows all threads and their synchronization
+
+graph TB
+    %% Main Thread
+    MAIN[Main Thread<br/>User Application<br/>- IMP_System_Init<br/>- IMP_FrameSource_EnableChn<br/>- IMP_Encoder_StartRecvPic<br/>- IMP_Encoder_GetStream]
+    
+    %% FrameSource Threads
+    subgraph FS_THREADS[FrameSource Threads]
+        FCT0[Frame Capture Thread 0<br/>frame_capture_thread<br/>- Created in EnableChn<br/>- Polls /dev/framechan0<br/>- Cancelled in DisableChn]
+        FCT1[Frame Capture Thread 1<br/>frame_capture_thread<br/>- Polls /dev/framechan1]
+        FCT2[Frame Capture Thread 2-4<br/>...]
+    end
+    
+    %% Encoder Threads
+    subgraph ENC_THREADS[Encoder Threads]
+        ENCT0[Encoder Thread 0<br/>encoder_thread<br/>- Created in CreateChn<br/>- Processes frames<br/>- Cancelled in DestroyChn]
+        STRT0[Stream Thread 0<br/>stream_thread<br/>- Waits on eventfd<br/>- Gets encoded streams]
+        
+        ENCT1[Encoder Thread 1<br/>encoder_thread]
+        STRT1[Stream Thread 1<br/>stream_thread]
+        
+        ENCT2[Encoder Threads 2-8<br/>...]
+        STRT2[Stream Threads 2-8<br/>...]
+    end
+    
+    %% Synchronization
+    subgraph SYNC[Synchronization Primitives]
+        MTX[Mutexes<br/>- Protect shared data<br/>- Regular + Recursive<br/>- Per channel/module]
+        SEM[Semaphores<br/>- Resource counting<br/>- Signaling<br/>- 3 per encoder channel]
+        CV[Condition Variables<br/>- Thread waiting<br/>- Notification<br/>- Used in Fifo]
+        EFD[eventfd<br/>- Inter-thread signaling<br/>- Encoder → Stream<br/>- Non-blocking + CLOEXEC]
+    end
+    
+    %% Connections
+    MAIN -->|creates| FCT0
+    MAIN -->|creates| FCT1
+    MAIN -->|creates| FCT2
+    MAIN -->|creates| ENCT0
+    MAIN -->|creates| STRT0
+    MAIN -->|creates| ENCT1
+    MAIN -->|creates| STRT1
+    
+    FCT0 -->|uses| MTX
+    FCT1 -->|uses| MTX
+    
+    ENCT0 -->|signals via| EFD
+    STRT0 -->|waits on| EFD
+    ENCT0 -->|uses| SEM
+    STRT0 -->|uses| SEM
+    
+    ENCT1 -->|signals via| EFD
+    STRT1 -->|waits on| EFD
+    
+    ENCT0 -->|queues to| CV
+    STRT0 -->|dequeues from| CV
+    
+    %% Styling
+    classDef main fill:#ffb,stroke:#333,stroke-width:3px
+    classDef fs fill:#bbf,stroke:#333,stroke-width:2px
+    classDef enc fill:#bfb,stroke:#333,stroke-width:2px
+    classDef sync fill:#fbb,stroke:#333,stroke-width:2px
+    
+    class MAIN main
+    class FCT0,FCT1,FCT2 fs
+    class ENCT0,STRT0,ENCT1,STRT1,ENCT2,STRT2 enc
+    class MTX,SEM,CV,EFD sync
+

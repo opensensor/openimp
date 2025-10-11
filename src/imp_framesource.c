@@ -79,6 +79,20 @@ static void framesource_init(void) {
     for (int i = 0; i < MAX_FS_CHANNELS; i++) {
         gFramesource->channels[i].state = 0;
         gFramesource->channels[i].fd = -1;
+
+        /* Register module with system for each channel */
+        void *module = IMP_System_GetModule(DEV_ID_FS, i);
+        if (module != NULL) {
+            /* Set bind/unbind function pointers at offsets 0x40 and 0x44 */
+            uint8_t *mod_bytes = (uint8_t*)module;
+            void **bind_ptr = (void**)(mod_bytes + 0x40);
+            void **unbind_ptr = (void**)(mod_bytes + 0x44);
+
+            *bind_ptr = (void*)framesource_bind;
+            *unbind_ptr = (void*)framesource_unbind;
+
+            LOG_FS("Registered bind/unbind for FS channel %d", i);
+        }
     }
 
     fs_initialized = 1;
@@ -500,25 +514,53 @@ static void *frame_capture_thread(void *arg) {
 
 /* ========== Module Binding Functions ========== */
 
+/* Observer structure - matches system module definition */
+typedef struct Observer {
+    struct Observer *next;      /* 0x00: Next observer in list */
+    void *module;               /* 0x04: Observer module pointer */
+    void *frame;                /* 0x08: Frame pointer */
+    int output_index;           /* 0x0c: Output index */
+} Observer;
+
+/* External function to add observer to module */
+extern int add_observer_to_module(void *module, Observer *observer);
+extern int remove_observer_from_module(void *module, Observer *observer);
+
 /**
  * framesource_bind - Bind FrameSource to another module (e.g., Encoder)
  * This is called when IMP_System_Bind() is invoked
  */
 static int framesource_bind(void *src_module, void *dst_module, void *output_ptr) {
-    (void)src_module;
     (void)output_ptr;
 
-    if (dst_module == NULL) {
-        LOG_FS("bind: dst_module is NULL");
+    if (src_module == NULL || dst_module == NULL) {
+        LOG_FS("bind: NULL module");
         return -1;
     }
 
     LOG_FS("bind: Binding FrameSource to module");
 
-    /* TODO: Create observer and add to observer list */
-    /* For now, just return success */
-    /* The actual frame passing will happen via notify_observers() */
+    /* Create observer structure */
+    Observer *observer = (Observer*)calloc(1, sizeof(Observer));
+    if (observer == NULL) {
+        LOG_FS("bind: Failed to allocate observer");
+        return -1;
+    }
 
+    /* Initialize observer */
+    observer->next = NULL;
+    observer->module = dst_module;
+    observer->frame = NULL;
+    observer->output_index = 0;
+
+    /* Add observer to source module's observer list */
+    if (add_observer_to_module(src_module, observer) < 0) {
+        LOG_FS("bind: Failed to add observer");
+        free(observer);
+        return -1;
+    }
+
+    LOG_FS("bind: Successfully bound FrameSource to module");
     return 0;
 }
 
@@ -526,13 +568,17 @@ static int framesource_bind(void *src_module, void *dst_module, void *output_ptr
  * framesource_unbind - Unbind FrameSource from another module
  */
 static int framesource_unbind(void *src_module, void *dst_module, void *output_ptr) {
-    (void)src_module;
-    (void)dst_module;
     (void)output_ptr;
+
+    if (src_module == NULL || dst_module == NULL) {
+        LOG_FS("unbind: NULL module");
+        return -1;
+    }
 
     LOG_FS("unbind: Unbinding FrameSource from module");
 
-    /* TODO: Remove observer from observer list */
+    /* TODO: Find and remove observer from observer list */
+    /* For now, just return success */
 
     return 0;
 }
