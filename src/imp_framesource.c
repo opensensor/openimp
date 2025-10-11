@@ -138,8 +138,8 @@ int IMP_FrameSource_CreateChn(int chnNum, IMPFSChnAttr *chn_attr) {
     }
 
     /* Create VBM pool for this channel */
-    if (VBMCreatePool(chnNum, chn_attr->picWidth, chn_attr->picHeight,
-                      chn_attr->pixFmt) < 0) {
+    /* VBMCreatePool expects (chn, fmt, ops, priv) */
+    if (VBMCreatePool(chnNum, (void*)chn_attr, NULL, NULL) < 0) {
         LOG_FS("CreateChn: Failed to create VBM pool");
         if (fd >= 0) {
             close(fd);
@@ -184,7 +184,7 @@ int IMP_FrameSource_DestroyChn(int chnNum) {
     }
 
     /* Destroy VBM pool */
-    if (VBM_DestroyPool(chnNum) < 0) {
+    if (VBMDestroyPool(chnNum) < 0) {
         LOG_FS("DestroyChn: Failed to destroy VBM pool");
     }
 

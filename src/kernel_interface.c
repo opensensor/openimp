@@ -240,6 +240,13 @@ typedef struct {
     VBMFrame *frames;       /* 0x180: Frame array */
     int frame_count;        /* Frame count (from fmt offset 0xcc) */
     int frame_size;         /* Calculated frame size */
+
+    /* Extended fields for frame queue management */
+    int *available_queue;   /* Queue of available frame indices */
+    int queue_head;         /* Head of queue (next to dequeue) */
+    int queue_tail;         /* Tail of queue (next to enqueue) */
+    int queue_count;        /* Number of frames in queue */
+    pthread_mutex_t queue_mutex; /* Mutex for queue access */
 } VBMPool;
 
 /* Global VBM state */
@@ -421,6 +428,20 @@ int VBMCreatePool(int chn, void *fmt, void *ops, void *priv) {
         }
     }
 
+    /* Initialize frame queue */
+    pool->available_queue = (int*)calloc(frame_count, sizeof(int));
+    if (pool->available_queue == NULL) {
+        fprintf(stderr, "[VBM] CreatePool: failed to allocate queue\n");
+        IMP_Free(pool->phys_base);
+        free(pool);
+        return -1;
+    }
+
+    pool->queue_head = 0;
+    pool->queue_tail = 0;
+    pool->queue_count = 0;
+    pthread_mutex_init(&pool->queue_mutex, NULL);
+
     vbm_instance[chn] = pool;
 
     fprintf(stderr, "[VBM] CreatePool: chn=%d created successfully\n", chn);
@@ -453,6 +474,14 @@ int VBMDestroyPool(int chn) {
         }
     }
 
+    /* Destroy queue mutex */
+    pthread_mutex_destroy(&pool->queue_mutex);
+
+    /* Free queue */
+    if (pool->available_queue != NULL) {
+        free(pool->available_queue);
+    }
+
     /* Free allocated memory */
     if (pool->phys_base != 0) {
         IMP_Free(pool->phys_base);
@@ -478,8 +507,18 @@ int VBMFillPool(int chn) {
 
     fprintf(stderr, "[VBM] FillPool: chn=%d, filling %d frames\n", chn, pool->frame_count);
 
-    /* TODO: Queue all frames to the driver */
-    /* For now, just mark as filled */
+    /* Queue all frames as available */
+    pthread_mutex_lock(&pool->queue_mutex);
+
+    for (int i = 0; i < pool->frame_count; i++) {
+        pool->available_queue[pool->queue_tail] = i;
+        pool->queue_tail = (pool->queue_tail + 1) % pool->frame_count;
+        pool->queue_count++;
+    }
+
+    pthread_mutex_unlock(&pool->queue_mutex);
+
+    fprintf(stderr, "[VBM] FillPool: queued %d frames\n", pool->queue_count);
 
     return 0;
 }
@@ -496,7 +535,16 @@ int VBMFlushFrame(int chn) {
 
     fprintf(stderr, "[VBM] FlushFrame: chn=%d\n", chn);
 
-    /* TODO: Flush all pending frames */
+    /* Clear the frame queue */
+    pthread_mutex_lock(&pool->queue_mutex);
+
+    pool->queue_head = 0;
+    pool->queue_tail = 0;
+    pool->queue_count = 0;
+
+    pthread_mutex_unlock(&pool->queue_mutex);
+
+    fprintf(stderr, "[VBM] FlushFrame: flushed all frames\n");
 
     return 0;
 }
@@ -512,16 +560,27 @@ int VBMGetFrame(int chn, void **frame) {
         return -1;
     }
 
-    /* TODO: Get next available frame from queue */
-    /* For now, return first frame */
-    if (pool->frame_count > 0) {
-        *frame = &pool->frames[0];
-        fprintf(stderr, "[VBM] GetFrame: chn=%d, frame=%p\n", chn, *frame);
-        return 0;
+    /* Get next available frame from queue */
+    pthread_mutex_lock(&pool->queue_mutex);
+
+    if (pool->queue_count == 0) {
+        /* No frames available */
+        pthread_mutex_unlock(&pool->queue_mutex);
+        *frame = NULL;
+        return -1;
     }
 
-    *frame = NULL;
-    return -1;
+    /* Dequeue frame */
+    int frame_idx = pool->available_queue[pool->queue_head];
+    pool->queue_head = (pool->queue_head + 1) % pool->frame_count;
+    pool->queue_count--;
+
+    pthread_mutex_unlock(&pool->queue_mutex);
+
+    *frame = &pool->frames[frame_idx];
+    fprintf(stderr, "[VBM] GetFrame: chn=%d, frame=%p (idx=%d, %d remaining)\n",
+            chn, *frame, frame_idx, pool->queue_count);
+    return 0;
 }
 
 int VBMReleaseFrame(int chn, void *frame) {
@@ -529,11 +588,35 @@ int VBMReleaseFrame(int chn, void *frame) {
         return -1;
     }
 
-    (void)frame;
+    VBMPool *pool = vbm_instance[chn];
+    if (pool == NULL || frame == NULL) {
+        return -1;
+    }
 
     fprintf(stderr, "[VBM] ReleaseFrame: chn=%d, frame=%p\n", chn, frame);
 
-    /* TODO: Return frame to available queue */
+    /* Get frame index */
+    VBMFrame *vbm_frame = (VBMFrame*)frame;
+    int frame_idx = vbm_frame->index;
+
+    /* Return frame to available queue */
+    pthread_mutex_lock(&pool->queue_mutex);
+
+    if (pool->queue_count >= pool->frame_count) {
+        /* Queue is full - shouldn't happen */
+        pthread_mutex_unlock(&pool->queue_mutex);
+        fprintf(stderr, "[VBM] ReleaseFrame: queue full!\n");
+        return -1;
+    }
+
+    pool->available_queue[pool->queue_tail] = frame_idx;
+    pool->queue_tail = (pool->queue_tail + 1) % pool->frame_count;
+    pool->queue_count++;
+
+    pthread_mutex_unlock(&pool->queue_mutex);
+
+    fprintf(stderr, "[VBM] ReleaseFrame: returned frame idx=%d (%d available)\n",
+            frame_idx, pool->queue_count);
 
     return 0;
 }
