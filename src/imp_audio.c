@@ -7,9 +7,19 @@
 #include <stdlib.h>
 #include <string.h>
 #include <pthread.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include <errno.h>
+#include <sys/ioctl.h>
 #include <imp/imp_audio.h>
 
 #define LOG_AUD(fmt, ...) fprintf(stderr, "[Audio] " fmt "\n", ##__VA_ARGS__)
+
+/* Audio device ioctls - from decompilation */
+#define AUDIO_SET_SAMPLERATE    0xc0045002
+#define AUDIO_SET_VOLUME        0xc0045006
+#define AUDIO_SET_GAIN          0xc0045005
+#define AUDIO_ENABLE_AEC        0x40045066
 
 /* Audio device structure - 0x260 bytes per device */
 #define MAX_AUDIO_DEVICES 2
@@ -17,16 +27,17 @@
 #define MAX_AUDIO_CHANNELS 1
 
 typedef struct {
-    uint8_t data_00[0x10];      /* 0x00-0x0f: Header */
+    int fd;                     /* 0x08: Device file descriptor (/dev/dsp) */
+    uint8_t data_0c[0x4];       /* 0x0c-0x0f: Padding */
     IMPAudioIOAttr attr;        /* 0x10: Audio attributes (0x18 bytes) */
     uint8_t data_28[0x4];       /* 0x28-0x2b: Padding */
-    uint8_t enabled;            /* 0x04 from base+0x228: Enable flag */
+    uint8_t enabled;            /* 0x2c: Enable flag */
     uint8_t data_2d[0x3];       /* Padding */
     uint8_t data_30[0x4];       /* 0x30-0x33 */
-    pthread_t thread;           /* 0x0c from base+0x228: Thread */
+    pthread_t thread;           /* 0x34: Thread */
     uint8_t data_38[0x1f8];     /* Rest of device data */
-    pthread_mutex_t mutex;      /* 0x208 from base+0x228: Mutex */
-    pthread_cond_t cond;        /* 0x220 from base+0x228: Condition */
+    pthread_mutex_t mutex;      /* 0x230: Mutex */
+    pthread_cond_t cond;        /* 0x248: Condition */
 } AudioDevice;
 
 typedef struct {
@@ -59,9 +70,110 @@ static void audio_init(void) {
     /* Initialize all devices */
     for (int i = 0; i < MAX_AUDIO_DEVICES; i++) {
         g_audio_state->devices[i].enabled = 0;
+        g_audio_state->devices[i].fd = -1;
     }
 
     audio_initialized = 1;
+}
+
+/* __ai_dev_init - Initialize audio input device
+ * Based on decompilation at 0xa63bc */
+static int __ai_dev_init(AudioDevice *dev) {
+    if (dev == NULL) {
+        return -1;
+    }
+
+    /* Open /dev/dsp device */
+    dev->fd = open("/dev/dsp", O_RDWR | O_NONBLOCK);
+    if (dev->fd < 0) {
+        LOG_AUD("__ai_dev_init: Failed to open /dev/dsp: %s", strerror(errno));
+        return -1;
+    }
+
+    /* Set sample rate via ioctl */
+    if (ioctl(dev->fd, AUDIO_SET_SAMPLERATE, &dev->attr) != 0) {
+        LOG_AUD("__ai_dev_init: Failed to set samplerate: %s", strerror(errno));
+        close(dev->fd);
+        dev->fd = -1;
+        return -1;
+    }
+
+    /* Set volume */
+    int volume = 1;
+    if (ioctl(dev->fd, AUDIO_SET_VOLUME, &volume) != 0) {
+        LOG_AUD("__ai_dev_init: Failed to set volume: %s", strerror(errno));
+        close(dev->fd);
+        dev->fd = -1;
+        return -1;
+    }
+
+    /* Set gain */
+    int gain = 0x10;
+    if (ioctl(dev->fd, AUDIO_SET_GAIN, &gain) != 0) {
+        LOG_AUD("__ai_dev_init: Failed to set gain: %s", strerror(errno));
+        close(dev->fd);
+        dev->fd = -1;
+        return -1;
+    }
+
+    /* Enable AEC (Acoustic Echo Cancellation) */
+    if (ioctl(dev->fd, AUDIO_ENABLE_AEC, 1) != 0) {
+        LOG_AUD("__ai_dev_init: Failed to enable AEC: %s", strerror(errno));
+        close(dev->fd);
+        dev->fd = -1;
+        return -1;
+    }
+
+    LOG_AUD("__ai_dev_init: Initialized device (fd=%d)", dev->fd);
+    return 0;
+}
+
+/* __ai_dev_deinit - Deinitialize audio input device
+ * Based on decompilation at 0xa6718 */
+static int __ai_dev_deinit(AudioDevice *dev) {
+    if (dev == NULL) {
+        return 0;
+    }
+
+    if (dev->fd > 0) {
+        close(dev->fd);
+        dev->fd = -1;
+        LOG_AUD("__ai_dev_deinit: Closed device");
+    }
+
+    return 0;
+}
+
+/* Audio thread - captures audio data
+ * Based on decompilation at 0xae220 */
+static void *audio_thread(void *arg) {
+    AudioDevice *dev = (AudioDevice*)arg;
+
+    LOG_AUD("audio_thread: started");
+
+    while (dev->enabled) {
+        /* Wait for condition signal or timeout */
+        pthread_mutex_lock(&dev->mutex);
+
+        struct timespec ts;
+        clock_gettime(CLOCK_REALTIME, &ts);
+        ts.tv_sec += 1; /* 1 second timeout */
+
+        pthread_cond_timedwait(&dev->cond, &dev->mutex, &ts);
+        pthread_mutex_unlock(&dev->mutex);
+
+        if (!dev->enabled) {
+            break;
+        }
+
+        /* Read audio data from device */
+        /* This would normally read from dev->fd and process the audio */
+        /* For now, just sleep to simulate work */
+        usleep(10000); /* 10ms */
+    }
+
+    LOG_AUD("audio_thread: stopped");
+    return NULL;
 }
 
 /* Audio Input (AI) Functions */
@@ -167,11 +279,32 @@ int IMP_AI_Enable(int audioDevId) {
         return -1;
     }
 
-    /* TODO: Call __ai_dev_init() */
-    /* TODO: Initialize mutex and cond */
-    /* TODO: Create thread */
+    /* Initialize audio device */
+    if (__ai_dev_init(&g_audio_state->devices[audioDevId]) != 0) {
+        LOG_AUD("AI_Enable: Failed to initialize device");
+        pthread_mutex_unlock(&audio_mutex);
+        return -1;
+    }
 
+    /* Initialize mutex and condition variable */
+    pthread_mutex_init(&g_audio_state->devices[audioDevId].mutex, NULL);
+    pthread_cond_init(&g_audio_state->devices[audioDevId].cond, NULL);
+
+    /* Mark as enabled before creating thread */
     g_audio_state->devices[audioDevId].enabled = 1;
+
+    /* Create audio capture thread */
+    int ret = pthread_create(&g_audio_state->devices[audioDevId].thread, NULL,
+                             audio_thread, &g_audio_state->devices[audioDevId]);
+    if (ret != 0) {
+        LOG_AUD("AI_Enable: Failed to create thread: %s", strerror(errno));
+        g_audio_state->devices[audioDevId].enabled = 0;
+        pthread_cond_destroy(&g_audio_state->devices[audioDevId].cond);
+        pthread_mutex_destroy(&g_audio_state->devices[audioDevId].mutex);
+        __ai_dev_deinit(&g_audio_state->devices[audioDevId]);
+        pthread_mutex_unlock(&audio_mutex);
+        return -1;
+    }
 
     pthread_mutex_unlock(&audio_mutex);
 
@@ -194,11 +327,25 @@ int IMP_AI_Disable(int audioDevId) {
         return 0;
     }
 
-    /* TODO: Stop thread */
-    /* TODO: Call __ai_dev_deinit() */
-    /* TODO: Destroy mutex and cond */
-
+    /* Signal thread to stop */
     g_audio_state->devices[audioDevId].enabled = 0;
+
+    /* Wake up thread if it's waiting */
+    pthread_cond_signal(&g_audio_state->devices[audioDevId].cond);
+
+    pthread_mutex_unlock(&audio_mutex);
+
+    /* Wait for thread to finish */
+    pthread_join(g_audio_state->devices[audioDevId].thread, NULL);
+
+    pthread_mutex_lock(&audio_mutex);
+
+    /* Deinitialize device */
+    __ai_dev_deinit(&g_audio_state->devices[audioDevId]);
+
+    /* Destroy mutex and condition variable */
+    pthread_cond_destroy(&g_audio_state->devices[audioDevId].cond);
+    pthread_mutex_destroy(&g_audio_state->devices[audioDevId].mutex);
 
     pthread_mutex_unlock(&audio_mutex);
 
