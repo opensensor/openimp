@@ -7,6 +7,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <time.h>
 #include <sys/select.h>
 #include <sys/eventfd.h>
 #include <pthread.h>
@@ -552,29 +553,48 @@ int IMP_Encoder_GetStream(int encChn, IMPEncoderStream *stream, int block) {
         return 2; /* No stream available */
     }
 
-    /* Get stream from codec */
-    if (chn->codec != NULL) {
-        void *codec_stream = NULL;
+    /* Wait for stream availability if blocking */
+    if (block) {
+        /* Wait on semaphore with timeout */
+        struct timespec ts;
+        clock_gettime(CLOCK_REALTIME, &ts);
+        ts.tv_sec += 1; /* 1 second timeout */
 
-        /* Try to get stream from codec FIFO */
-        if (AL_Codec_Encode_GetStream(chn->codec, &codec_stream) == 0 && codec_stream != NULL) {
-            LOG_ENC("GetStream: got stream %p from codec", codec_stream);
-
-            /* TODO: Copy stream data to IMPEncoderStream structure */
-            /* For now, just clear the structure */
-            memset(stream, 0, sizeof(IMPEncoderStream));
-
-            return 0;
+        if (sem_timedwait(&chn->sem_408, &ts) < 0) {
+            return -1; /* Timeout or error */
+        }
+    } else {
+        /* Try to get semaphore without blocking */
+        if (sem_trywait(&chn->sem_408) < 0) {
+            return -1; /* No stream available */
         }
     }
 
-    /* No stream available */
-    if (block) {
-        /* TODO: Block and wait for stream */
-        usleep(10000); /* 10ms */
+    /* Lock mutex to access current_stream */
+    pthread_mutex_lock(&chn->mutex_450);
+
+    if (chn->current_stream == NULL) {
+        pthread_mutex_unlock(&chn->mutex_450);
+        return -1;
     }
 
-    return -1;
+    StreamBuffer *stream_buf = chn->current_stream;
+
+    /* Populate IMPEncoderStream structure */
+    stream->pack = &stream_buf->pack;
+    stream->packCount = 1;
+    stream->seq = stream_buf->seq;
+    stream->streamEnd = stream_buf->streamEnd;
+
+    LOG_ENC("GetStream: returning stream seq=%u, length=%u",
+            stream->seq, stream->pack->length);
+
+    /* Keep stream_buf in current_stream until ReleaseStream is called */
+    /* Don't set current_stream to NULL here */
+
+    pthread_mutex_unlock(&chn->mutex_450);
+
+    return 0;
 }
 
 int IMP_Encoder_ReleaseStream(int encChn, IMPEncoderStream *stream) {
@@ -589,12 +609,27 @@ int IMP_Encoder_ReleaseStream(int encChn, IMPEncoderStream *stream) {
         return -1;
     }
 
-    LOG_ENC("ReleaseStream: chn=%d", encChn);
+    LOG_ENC("ReleaseStream: chn=%d, seq=%u", encChn, stream->seq);
 
-    /* Release stream back to codec */
-    if (chn->codec != NULL) {
-        /* TODO: AL_Codec_Encode_ReleaseStream(chn->codec, stream); */
+    /* Lock mutex to access current_stream */
+    pthread_mutex_lock(&chn->mutex_450);
+
+    if (chn->current_stream != NULL) {
+        StreamBuffer *stream_buf = chn->current_stream;
+
+        /* Release codec stream back to codec */
+        if (chn->codec != NULL && stream_buf->codec_stream != NULL) {
+            AL_Codec_Encode_ReleaseStream(chn->codec, stream_buf->codec_stream, NULL);
+        }
+
+        /* Free stream buffer */
+        free(stream_buf);
+        chn->current_stream = NULL;
+
+        LOG_ENC("ReleaseStream: freed stream buffer");
     }
+
+    pthread_mutex_unlock(&chn->mutex_450);
 
     return 0;
 }
@@ -885,15 +920,40 @@ static void *stream_thread(void *arg) {
 
         /* Get encoded stream from codec */
         if (chn->codec != NULL) {
-            void *stream = NULL;
-            if (AL_Codec_Encode_GetStream(chn->codec, &stream) == 0 && stream != NULL) {
-                LOG_ENC("stream_thread: got stream %p", stream);
+            void *codec_stream = NULL;
+            if (AL_Codec_Encode_GetStream(chn->codec, &codec_stream) == 0 && codec_stream != NULL) {
+                LOG_ENC("stream_thread: got stream %p", codec_stream);
 
-                /* Stream is now available for IMP_Encoder_GetStream */
-                /* The stream is queued in the codec's stream FIFO */
-                /* User will call IMP_Encoder_GetStream to retrieve it */
+                /* Create StreamBuffer structure */
+                StreamBuffer *stream_buf = (StreamBuffer*)calloc(1, sizeof(StreamBuffer));
+                if (stream_buf != NULL) {
+                    /* Initialize stream buffer */
+                    stream_buf->codec_stream = codec_stream;
+                    stream_buf->seq = chn->stream_seq++;
+                    stream_buf->streamEnd = 0;
 
-                /* Note: Stream will be released when user calls IMP_Encoder_ReleaseStream */
+                    /* Populate pack data (simulated for now) */
+                    stream_buf->pack.phyAddr = 0;
+                    stream_buf->pack.virAddr = (uint32_t)(uintptr_t)codec_stream;
+                    stream_buf->pack.length = 4096; /* TODO: Get actual length from codec */
+                    stream_buf->pack.timestamp = 0; /* TODO: Get actual timestamp */
+                    stream_buf->pack.h264RefType = 0;
+                    stream_buf->pack.sliceType = 0; /* I-frame */
+
+                    /* Store in channel for GetStream */
+                    pthread_mutex_lock(&chn->mutex_450);
+                    if (chn->current_stream != NULL) {
+                        /* Free old stream if not retrieved */
+                        free(chn->current_stream);
+                    }
+                    chn->current_stream = stream_buf;
+                    pthread_mutex_unlock(&chn->mutex_450);
+
+                    /* Signal semaphore that stream is available */
+                    sem_post(&chn->sem_408);
+
+                    LOG_ENC("stream_thread: stream buffer created, seq=%u", stream_buf->seq);
+                }
             }
         } else {
             /* No codec yet, just wait */
