@@ -1,10 +1,14 @@
 # OpenIMP Makefile
 # Build system for libimp and libsysutils stub implementation
 
+# Cross-compilation support
+CROSS_COMPILE ?=
+
 # Toolchain
-CC ?= gcc
-AR ?= ar
-RANLIB ?= ranlib
+CC = $(CROSS_COMPILE)gcc
+AR = $(CROSS_COMPILE)ar
+RANLIB = $(CROSS_COMPILE)ranlib
+STRIP = $(CROSS_COMPILE)strip
 
 # Directories
 SRC_DIR = src
@@ -56,9 +60,13 @@ LIBSU_SO = $(LIB_DIR)/libsysutils.so
 LIBSU_A = $(LIB_DIR)/libsysutils.a
 
 # Targets
-.PHONY: all clean install test
+.PHONY: all clean install test strip
 
 all: $(LIBIMP_SO) $(LIBIMP_A) $(LIBSU_SO) $(LIBSU_A)
+
+# Strip debug symbols for smaller binaries
+strip: all
+	$(STRIP) $(LIBIMP_SO) $(LIBSU_SO)
 
 # Create directories
 $(BUILD_DIR) $(LIB_DIR):
@@ -116,18 +124,21 @@ help:
 	@echo "Targets:"
 	@echo "  all      - Build all libraries (default)"
 	@echo "  clean    - Remove build artifacts"
+	@echo "  strip    - Strip debug symbols from shared libraries"
 	@echo "  install  - Install libraries and headers"
 	@echo "  test     - Build and run tests"
 	@echo "  help     - Show this help message"
 	@echo ""
 	@echo "Variables:"
-	@echo "  CC       - C compiler (default: gcc)"
-	@echo "  PREFIX   - Installation prefix (default: /usr/local)"
-	@echo "  PLATFORM - Target platform (default: T31)"
-	@echo "             Options: T21, T23, T31, C100, T40, T41"
+	@echo "  CROSS_COMPILE - Cross-compiler prefix (e.g., mipsel-linux-)"
+	@echo "  PREFIX        - Installation prefix (default: /usr/local)"
+	@echo "  PLATFORM      - Target platform (default: T31)"
+	@echo "                  Options: T21, T23, T31, C100, T40, T41"
 	@echo ""
 	@echo "Examples:"
-	@echo "  make                    # Build for T31"
-	@echo "  make PLATFORM=T23       # Build for T23"
-	@echo "  make install PREFIX=~/.local  # Install to home directory"
+	@echo "  make                                    # Build for host"
+	@echo "  make CROSS_COMPILE=mipsel-linux-        # Cross-compile for MIPS"
+	@echo "  make PLATFORM=T23                       # Build for T23"
+	@echo "  make strip                              # Strip debug symbols"
+	@echo "  make install PREFIX=~/.local            # Install to home directory"
 
