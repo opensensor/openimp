@@ -6,9 +6,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdint.h>
 #include <fcntl.h>
 #include <unistd.h>
 #include <sys/ioctl.h>
+#include <pthread.h>
 #include <errno.h>
 
 /* ioctl command definitions from decompilation */
@@ -372,11 +374,13 @@ int VBMCreatePool(int chn, void *fmt, void *ops, void *priv) {
     }
 
     /* Get physical and virtual addresses from format at offsets 0x158, 0x15c */
-    pool->phys_base = *(uint32_t*)((uint8_t*)fmt + 0x158);
-    pool->virt_base = *(uint32_t*)((uint8_t*)fmt + 0x15c);
+    uint8_t *fmt_bytes = (uint8_t*)fmt;
+    pool->phys_base = *(uint32_t*)(fmt_bytes + 0x158);
+    pool->virt_base = *(uint32_t*)(fmt_bytes + 0x15c);
 
     /* Initialize frames */
-    pool->frames = (VBMFrame*)((uint8_t*)pool + 0x180);
+    uint8_t *pool_bytes = (uint8_t*)pool;
+    pool->frames = (VBMFrame*)(pool_bytes + 0x180);
 
     for (int i = 0; i < frame_count; i++) {
         VBMFrame *frame = &pool->frames[i];
@@ -408,6 +412,146 @@ int VBMCreatePool(int chn, void *fmt, void *ops, void *priv) {
     vbm_instance[chn] = pool;
 
     fprintf(stderr, "[VBM] CreatePool: chn=%d created successfully\n", chn);
+    return 0;
+}
+
+int VBMDestroyPool(int chn) {
+    if (chn < 0 || chn >= MAX_VBM_POOLS) {
+        return -1;
+    }
+
+    VBMPool *pool = vbm_instance[chn];
+    if (pool == NULL) {
+        return -1;
+    }
+
+    fprintf(stderr, "[VBM] DestroyPool: chn=%d\n", chn);
+
+    /* Unregister frames from global volumes */
+    for (int i = 0; i < 30; i++) {
+        if (g_framevolumes[i].pool != NULL) {
+            VBMFrame *frame = (VBMFrame*)g_framevolumes[i].pool;
+            if (frame->chn == chn) {
+                pthread_mutex_destroy(&g_framevolumes[i].mutex);
+                g_framevolumes[i].pool = NULL;
+                g_framevolumes[i].phys_addr = 0;
+                g_framevolumes[i].virt_addr = 0;
+                g_framevolumes[i].ref_count = 0;
+            }
+        }
+    }
+
+    /* Free allocated memory */
+    if (pool->phys_base != 0) {
+        IMP_Free(pool->phys_base);
+    }
+
+    /* Free pool structure */
+    free(pool);
+    vbm_instance[chn] = NULL;
+
+    fprintf(stderr, "[VBM] DestroyPool: chn=%d destroyed\n", chn);
+    return 0;
+}
+
+int VBMFillPool(int chn) {
+    if (chn < 0 || chn >= MAX_VBM_POOLS) {
+        return -1;
+    }
+
+    VBMPool *pool = vbm_instance[chn];
+    if (pool == NULL) {
+        return -1;
+    }
+
+    fprintf(stderr, "[VBM] FillPool: chn=%d, filling %d frames\n", chn, pool->frame_count);
+
+    /* TODO: Queue all frames to the driver */
+    /* For now, just mark as filled */
+
+    return 0;
+}
+
+int VBMFlushFrame(int chn) {
+    if (chn < 0 || chn >= MAX_VBM_POOLS) {
+        return -1;
+    }
+
+    VBMPool *pool = vbm_instance[chn];
+    if (pool == NULL) {
+        return -1;
+    }
+
+    fprintf(stderr, "[VBM] FlushFrame: chn=%d\n", chn);
+
+    /* TODO: Flush all pending frames */
+
+    return 0;
+}
+
+int VBMGetFrame(int chn, void **frame) {
+    if (chn < 0 || chn >= MAX_VBM_POOLS) {
+        return -1;
+    }
+
+    VBMPool *pool = vbm_instance[chn];
+    if (pool == NULL) {
+        *frame = NULL;
+        return -1;
+    }
+
+    /* TODO: Get next available frame from queue */
+    /* For now, return first frame */
+    if (pool->frame_count > 0) {
+        *frame = &pool->frames[0];
+        fprintf(stderr, "[VBM] GetFrame: chn=%d, frame=%p\n", chn, *frame);
+        return 0;
+    }
+
+    *frame = NULL;
+    return -1;
+}
+
+int VBMReleaseFrame(int chn, void *frame) {
+    if (chn < 0 || chn >= MAX_VBM_POOLS) {
+        return -1;
+    }
+
+    (void)frame;
+
+    fprintf(stderr, "[VBM] ReleaseFrame: chn=%d, frame=%p\n", chn, frame);
+
+    /* TODO: Return frame to available queue */
+
+    return 0;
+}
+
+/* Stub implementations for IMP memory allocation */
+int IMP_FrameSource_GetPool(int chn) {
+    (void)chn;
+    /* Return -1 to indicate no pool available, will use IMP_Alloc instead */
+    return -1;
+}
+
+int IMP_Alloc(char *name, int size, char *tag) {
+    (void)tag;
+    fprintf(stderr, "[IMP] Alloc: name=%s, size=%d\n", name, size);
+    /* TODO: Implement actual memory allocation via kernel driver */
+    /* For now, just return success */
+    return 0;
+}
+
+int IMP_PoolAlloc(int pool_id, char *name, int size, char *tag) {
+    (void)pool_id;
+    (void)tag;
+    fprintf(stderr, "[IMP] PoolAlloc: pool=%d, name=%s, size=%d\n", pool_id, name, size);
+    /* TODO: Implement actual pool allocation */
+    return 0;
+}
+
+int IMP_Free(uint32_t phys_addr) {
+    fprintf(stderr, "[IMP] Free: phys=0x%x\n", phys_addr);
+    /* TODO: Implement actual memory free */
     return 0;
 }
 
