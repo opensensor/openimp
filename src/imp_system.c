@@ -13,6 +13,11 @@
 
 #define IMP_VERSION "1.1.6"
 
+/* Forward declarations for subsystem init (to match OEM SystemInit) */
+extern int FrameSourceInit(void);
+extern int EncoderInit(void);
+
+
 /* Observer structure for module binding */
 typedef struct Observer {
     struct Observer *next;      /* 0x00: Next observer in list */
@@ -241,14 +246,21 @@ int IMP_System_Init(void) {
     /* Get CPU ID */
     get_cpu_id();
 
-    /* Initialize subsystem modules
-     * The real implementation calls init functions for subsystems
-     * We initialize the ones we've implemented */
+    /* Initialize subsystem modules eagerly to match OEM behavior */
+    int ret_fs = FrameSourceInit();
+    if (ret_fs < 0) {
+        pthread_mutex_unlock(&system_mutex);
+        fprintf(stderr, "[System] FrameSourceInit failed\n");
+        return -1;
+    }
+    int ret_enc = EncoderInit();
+    if (ret_enc < 0) {
+        pthread_mutex_unlock(&system_mutex);
+        fprintf(stderr, "[System] EncoderInit failed\n");
+        return -1;
+    }
 
-    /* Note: Subsystem init functions are called from their respective modules
-     * when first used (lazy initialization). We just mark system as ready. */
-
-    fprintf(stderr, "[System] Subsystems ready for initialization\n");
+    fprintf(stderr, "[System] Subsystems initialized\n");
 
     system_initialized = 1;
     pthread_mutex_unlock(&system_mutex);
@@ -343,7 +355,7 @@ int IMP_System_GetVersion(IMPVersion *pstVersion) {
     if (pstVersion == NULL) {
         return -1;
     }
-    
+
     snprintf(pstVersion->aVersion, sizeof(pstVersion->aVersion), "IMP-%s", IMP_VERSION);
     return 0;
 }

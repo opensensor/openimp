@@ -463,12 +463,7 @@ int IMP_Encoder_RegisterChn(int encGroup, int encChn) {
         return -1;
     }
 
-    if (gEncoder == NULL || gEncoder->groups[encGroup].group_id < 0) {
-        LOG_ENC("RegisterChn failed: group %d not created", encGroup);
-        pthread_mutex_unlock(&encoder_mutex);
-        return -1;
-    }
-
+    /* OEM: RegisterChn does not require CreateGroup; proceed to use group slots */
     /* Find empty slot in group (max 3 channels per group) */
     EncGroup *grp = &gEncoder->groups[encGroup];
 
@@ -653,8 +648,9 @@ int IMP_Encoder_GetStream(int encChn, IMPEncoderStream *stream, int block) {
     stream->seq = stream_buf->seq;
     stream->streamEnd = stream_buf->streamEnd;
 
+    /* Log using internal buffer to avoid dereferencing app-provided pointer */
     LOG_ENC("GetStream: returning stream seq=%u, length=%u",
-            stream->seq, stream->pack->length);
+            stream_buf->seq, stream_buf->pack.length);
 
     /* Keep stream_buf in current_stream until ReleaseStream is called */
     /* Don't set current_stream to NULL here */

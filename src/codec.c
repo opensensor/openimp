@@ -33,9 +33,9 @@ typedef struct {
     int stream_buf_size;            /* 0x7b0: Stream buffer size */
     uint8_t stream_pool[0x44];      /* 0x7b4-0x7f7: Stream buffer pool */
 
-    /* FIFOs - offsets from decompilation at 0x79ab0 */
-    uint8_t fifo_frames[64];        /* 0x7f8: Frame FIFO */
-    uint8_t fifo_streams[64];       /* 0x81c: Stream FIFO (0x7f8 + 0x24 = 0x81c) */
+    /* FIFOs (control structures allocated dynamically to ensure proper size) */
+    void *fifo_frames;              /* Frame FIFO control block */
+    void *fifo_streams;             /* Stream FIFO control block */
 
     /* Frame buffer pool config */
     uint8_t frame_pool_config[0x60]; /* 0x840-0x89f: Frame pool config */
@@ -201,15 +201,15 @@ int AL_Codec_Encode_Create(void **codec, void *params) {
         return -1;
     }
     
-    /* Allocate codec structure (0x924 bytes from decompilation) */
-    AL_CodecEncode *enc = (AL_CodecEncode*)malloc(0x924);
+    /* Allocate codec structure using real size */
+    AL_CodecEncode *enc = (AL_CodecEncode*)malloc(sizeof(AL_CodecEncode));
     if (enc == NULL) {
         LOG_CODEC("Create: malloc failed");
         return -1;
     }
-    
-    memset(enc, 0, 0x924);
-    
+
+    memset(enc, 0, sizeof(AL_CodecEncode));
+
     /* Initialize from parameters */
     enc->g_pCodec = g_pCodec;
     memcpy(enc->codec_param, params, 0x794);
@@ -220,10 +220,20 @@ int AL_Codec_Encode_Create(void **codec, void *params) {
     enc->stream_buf_count = 7;          /* Default stream buffer count */
     enc->stream_buf_size = 0x38;        /* Stream buffer size */
     
-    /* Initialize FIFOs (from decompilation at 0x79ab0) */
+    /* Allocate and initialize FIFO control structures safely */
+    int fifo_size = Fifo_SizeOf();
+    enc->fifo_frames = malloc(fifo_size);
+    enc->fifo_streams = malloc(fifo_size);
+    if (enc->fifo_frames == NULL || enc->fifo_streams == NULL) {
+        LOG_CODEC("Create: FIFO alloc failed");
+        if (enc->fifo_frames) free(enc->fifo_frames);
+        if (enc->fifo_streams) free(enc->fifo_streams);
+        free(enc);
+        return -1;
+    }
     Fifo_Init(enc->fifo_frames, enc->frame_buf_count);
     Fifo_Init(enc->fifo_streams, enc->stream_buf_count);
-    
+
     /* Set source FourCC to NV12 */
     enc->src_fourcc = 0x3231564e;  /* 'NV12' */
     enc->metadata_type = -1;
@@ -274,6 +284,8 @@ int AL_Codec_Encode_Create(void **codec, void *params) {
     /* No free slots */
     Fifo_Deinit(enc->fifo_frames);
     Fifo_Deinit(enc->fifo_streams);
+    free(enc->fifo_frames);
+    free(enc->fifo_streams);
     free(enc);
     LOG_CODEC("Create: no free slots");
     return -1;
@@ -311,7 +323,11 @@ int AL_Codec_Encode_Destroy(void *codec) {
     /* Deinitialize FIFOs */
     Fifo_Deinit(enc->fifo_frames);
     Fifo_Deinit(enc->fifo_streams);
-    
+
+    /* Free FIFO control blocks */
+    free(enc->fifo_frames);
+    free(enc->fifo_streams);
+
     /* Free codec structure */
     free(enc);
 

@@ -28,6 +28,9 @@ typedef struct {
     sem_t semaphore;        /* 0x20: arg1[8] - semaphore */
 } Fifo;
 
+/* Public: report control structure size so callers can allocate correctly */
+int Fifo_SizeOf(void) { return (int)sizeof(Fifo); }
+
 /**
  * Fifo_Init - based on decompilation at 0x7af28
  * Initializes a FIFO queue with the specified capacity
@@ -37,28 +40,28 @@ void Fifo_Init(void *fifo_ptr, int size) {
         LOG_FIFO("Init failed: invalid parameters");
         return;
     }
-    
+
     Fifo *fifo = (Fifo*)fifo_ptr;
-    
+
     /* Initialize structure */
     fifo->max_elements = size + 1;  /* +1 for circular buffer */
     fifo->write_idx = 0;
     fifo->read_idx = 0;
     fifo->count = 0;
     fifo->abort_flag = 0;
-    
+
     /* Allocate buffer array */
     int buffer_size = (size + 1) * sizeof(void*);
     fifo->buffer = (void**)malloc(buffer_size);
-    
+
     if (fifo->buffer == NULL) {
         LOG_FIFO("Init failed: malloc failed");
         return;
     }
-    
+
     /* Initialize buffer with 0xcd pattern (from decompilation) */
     memset(fifo->buffer, 0xcd, buffer_size);
-    
+
     /* Create condition variable (event) */
     if (pthread_cond_init(&fifo->cond, NULL) != 0) {
         LOG_FIFO("Init failed: cond_init failed");
@@ -66,7 +69,7 @@ void Fifo_Init(void *fifo_ptr, int size) {
         fifo->buffer = NULL;
         return;
     }
-    
+
     /* Create semaphore with initial count = size */
     if (sem_init(&fifo->semaphore, 0, size) != 0) {
         LOG_FIFO("Init failed: sem_init failed");
@@ -75,7 +78,7 @@ void Fifo_Init(void *fifo_ptr, int size) {
         fifo->buffer = NULL;
         return;
     }
-    
+
     /* Create mutex */
     if (pthread_mutex_init(&fifo->mutex, NULL) != 0) {
         LOG_FIFO("Init failed: mutex_init failed");
@@ -85,7 +88,7 @@ void Fifo_Init(void *fifo_ptr, int size) {
         fifo->buffer = NULL;
         return;
     }
-    
+
     LOG_FIFO("Init: size=%d, max_elements=%d", size, fifo->max_elements);
 }
 
@@ -97,26 +100,26 @@ void Fifo_Deinit(void *fifo_ptr) {
     if (fifo_ptr == NULL) {
         return;
     }
-    
+
     Fifo *fifo = (Fifo*)fifo_ptr;
-    
+
     /* Set abort flag */
     fifo->abort_flag = 1;
-    
+
     /* Wake up any waiting threads */
     pthread_cond_broadcast(&fifo->cond);
-    
+
     /* Destroy synchronization primitives */
     pthread_mutex_destroy(&fifo->mutex);
     pthread_cond_destroy(&fifo->cond);
     sem_destroy(&fifo->semaphore);
-    
+
     /* Free buffer */
     if (fifo->buffer != NULL) {
         free(fifo->buffer);
         fifo->buffer = NULL;
     }
-    
+
     LOG_FIFO("Deinit: completed");
 }
 
@@ -129,9 +132,9 @@ int Fifo_Queue(void *fifo_ptr, void *item, int timeout_ms) {
     if (fifo_ptr == NULL) {
         return 0;
     }
-    
+
     Fifo *fifo = (Fifo*)fifo_ptr;
-    
+
     /* Wait for semaphore (space available) */
     int ret;
     if (timeout_ms < 0) {
@@ -152,27 +155,27 @@ int Fifo_Queue(void *fifo_ptr, void *item, int timeout_ms) {
         }
         ret = sem_timedwait(&fifo->semaphore, &ts);
     }
-    
+
     if (ret != 0) {
         return 0;  /* Timeout or error */
     }
-    
+
     /* Lock mutex */
     pthread_mutex_lock(&fifo->mutex);
-    
+
     /* Add item to buffer */
     fifo->buffer[fifo->write_idx] = item;
-    
+
     /* Update count and write index */
     fifo->count++;
     fifo->write_idx = (fifo->write_idx + 1) % fifo->max_elements;
-    
+
     /* Signal condition variable (item available) */
     pthread_cond_signal(&fifo->cond);
-    
+
     /* Unlock mutex */
     pthread_mutex_unlock(&fifo->mutex);
-    
+
     return 1;  /* Success */
 }
 
@@ -185,12 +188,12 @@ void *Fifo_Dequeue(void *fifo_ptr, int timeout_ms) {
     if (fifo_ptr == NULL) {
         return NULL;
     }
-    
+
     Fifo *fifo = (Fifo*)fifo_ptr;
-    
+
     /* Lock mutex */
     pthread_mutex_lock(&fifo->mutex);
-    
+
     /* Wait for item to be available */
     while (fifo->count <= 0) {
         /* Check abort flag */
@@ -198,7 +201,7 @@ void *Fifo_Dequeue(void *fifo_ptr, int timeout_ms) {
             pthread_mutex_unlock(&fifo->mutex);
             return NULL;
         }
-        
+
         /* Wait on condition variable */
         int ret;
         if (timeout_ms < 0) {
@@ -220,34 +223,34 @@ void *Fifo_Dequeue(void *fifo_ptr, int timeout_ms) {
             }
             ret = pthread_cond_timedwait(&fifo->cond, &fifo->mutex, &ts);
         }
-        
+
         if (ret != 0) {
             /* Timeout or error */
             pthread_mutex_unlock(&fifo->mutex);
             return NULL;
         }
-        
+
         /* Check count again after waking up */
         if (fifo->count <= 0) {
             continue;
         }
-        
+
         break;
     }
-    
+
     /* Get item from buffer */
     void *item = fifo->buffer[fifo->read_idx];
-    
+
     /* Update count and read index */
     fifo->count--;
     fifo->read_idx = (fifo->read_idx + 1) % fifo->max_elements;
-    
+
     /* Unlock mutex */
     pthread_mutex_unlock(&fifo->mutex);
-    
+
     /* Release semaphore (space now available) */
     sem_post(&fifo->semaphore);
-    
+
     return item;
 }
 
@@ -259,7 +262,7 @@ int Fifo_GetMaxElements(void *fifo_ptr) {
     if (fifo_ptr == NULL) {
         return 0;
     }
-    
+
     Fifo *fifo = (Fifo*)fifo_ptr;
     return fifo->max_elements - 1;  /* -1 because we store max+1 */
 }

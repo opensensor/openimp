@@ -173,7 +173,7 @@ int IMP_Alloc(char *name, int size, char *tag) {
     /* For fallback, physical address is same as virtual (not real DMA) */
     buf->phys_addr = (uint32_t)(uintptr_t)buf->virt_addr;
 
-    LOG_DMA("Alloc: %s size=%d virt=%p (fallback)", name, size, buf->virt_addr);
+    LOG_DMA("Alloc: %s size=%d virt=%p (fallback)", buf->name[0] ? buf->name : "(unnamed)", size, buf->virt_addr);
 
     /* Register buffer in global registry */
     if (register_buffer(buf) < 0) {
