@@ -132,6 +132,15 @@ int HW_Encoder_ReleaseStream(int fd, HWStreamBuffer *stream);
  */
 int HW_Encoder_SetParams(int fd, HWEncoderParams *params);
 
+/**
+ * Software fallback encoder (simple simulation)
+ * Used when hardware encoder is not available
+ * @param frame Frame buffer
+ * @param stream Stream buffer (output)
+ * @return 0 on success, -1 on failure
+ */
+int HW_Encoder_Encode_Software(HWFrameBuffer *frame, HWStreamBuffer *stream);
+
 #ifdef __cplusplus
 }
 #endif
