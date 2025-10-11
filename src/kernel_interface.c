@@ -174,8 +174,8 @@ int fs_set_format(int fd, fs_format_t *fmt) {
     kernel_fmt.buf_type = fmt->buf_type;
     kernel_fmt.buf_mode = fmt->buf_mode;
 
-    /* Colorspace - use SMPTE170M (1) for standard video */
-    kernel_fmt.colorspace = 1; /* V4L2_COLORSPACE_SMPTE170M */
+    /* Colorspace - try 0 (default/unspecified) since driver rejects other values */
+    kernel_fmt.colorspace = 0;
 
     int ret = ioctl(fd, VIDIOC_SET_FMT, &kernel_fmt);
     if (ret < 0) {
