@@ -340,6 +340,7 @@ int AL_Codec_Encode_Destroy(void *codec) {
  */
 int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
     if (codec == NULL) {
+        LOG_CODEC("Process: NULL codec pointer");
         return -1;
     }
 
@@ -349,7 +350,7 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
 
     if (frame == NULL) {
         /* NULL frame means flush */
-        LOG_CODEC("Process: flush requested");
+        LOG_CODEC("Process: flush requested (NULL frame)");
         return 0;
     }
 
@@ -374,6 +375,8 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
      */
     uint8_t *frame_bytes = (uint8_t*)frame;
     uint32_t width, height, pixfmt, size, phys_addr, virt_addr;
+
+    LOG_CODEC("Process: frame=%p, extracting metadata", frame);
 
     memcpy(&width, frame_bytes + 0x08, sizeof(uint32_t));
     memcpy(&height, frame_bytes + 0x0c, sizeof(uint32_t));

@@ -556,20 +556,42 @@ int VBMCreatePool(int chn, void *fmt, void *ops, void *priv) {
     uint8_t *pool_bytes = (uint8_t*)pool;
     pool->frames = (VBMFrame*)(pool_bytes + 0x180);
 
-    /* Initialize each frame */
+    /* Initialize each frame using safe member access */
     for (int i = 0; i < frame_count; i++) {
         VBMFrame *frame = &pool->frames[i];
-        frame->index = i;
-        frame->chn = chn;
-        frame->width = width;
-        frame->height = height;
-        frame->pixfmt = pixfmt;
-        frame->size = pool->frame_size;
-        frame->phys_addr = pool->phys_base + (i * pool->frame_size);
-        frame->virt_addr = pool->virt_base + (i * pool->frame_size);
+
+        /* Use safe struct member access pattern */
+        uint8_t *frame_bytes = (uint8_t*)frame;
+
+        /* Write index at offset 0x00 */
+        memcpy(frame_bytes + 0x00, &i, sizeof(int));
+
+        /* Write chn at offset 0x04 */
+        memcpy(frame_bytes + 0x04, &chn, sizeof(int));
+
+        /* Write width at offset 0x08 */
+        memcpy(frame_bytes + 0x08, &width, sizeof(int));
+
+        /* Write height at offset 0x0c */
+        memcpy(frame_bytes + 0x0c, &height, sizeof(int));
+
+        /* Write pixfmt at offset 0x10 */
+        memcpy(frame_bytes + 0x10, &pixfmt, sizeof(int));
+
+        /* Write size at offset 0x14 */
+        int frame_size = pool->frame_size;
+        memcpy(frame_bytes + 0x14, &frame_size, sizeof(int));
+
+        /* Write phys_addr at offset 0x18 */
+        uint32_t phys = pool->phys_base + (i * pool->frame_size);
+        memcpy(frame_bytes + 0x18, &phys, sizeof(uint32_t));
+
+        /* Write virt_addr at offset 0x1c */
+        uint32_t virt = pool->virt_base + (i * pool->frame_size);
+        memcpy(frame_bytes + 0x1c, &virt, sizeof(uint32_t));
 
         fprintf(stderr, "[VBM] Frame %d: phys=0x%x virt=0x%x\n",
-                i, frame->phys_addr, frame->virt_addr);
+                i, phys, virt);
 
         /* Register in global frame volumes */
         for (int j = 0; j < 30; j++) {
@@ -733,7 +755,30 @@ int VBMGetFrame(int chn, void **frame) {
 
     pthread_mutex_unlock(&pool->queue_mutex);
 
+    /* Validate frame index */
+    if (frame_idx < 0 || frame_idx >= pool->frame_count) {
+        fprintf(stderr, "[VBM] GetFrame: invalid frame index %d (max %d)\n",
+                frame_idx, pool->frame_count - 1);
+        *frame = NULL;
+        return -1;
+    }
+
     *frame = &pool->frames[frame_idx];
+
+    /* Validate frame pointer */
+    if (*frame == NULL) {
+        fprintf(stderr, "[VBM] GetFrame: NULL frame pointer for index %d\n", frame_idx);
+        return -1;
+    }
+
+    /* Additional validation: check if pointer is reasonable */
+    uintptr_t frame_addr = (uintptr_t)(*frame);
+    if (frame_addr < 0x10000) {
+        fprintf(stderr, "[VBM] GetFrame: invalid frame pointer %p (too small)\n", *frame);
+        *frame = NULL;
+        return -1;
+    }
+
     fprintf(stderr, "[VBM] GetFrame: chn=%d, frame=%p (idx=%d, %d remaining)\n",
             chn, *frame, frame_idx, pool->queue_count);
     return 0;

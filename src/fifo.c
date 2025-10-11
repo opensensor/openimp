@@ -59,8 +59,8 @@ void Fifo_Init(void *fifo_ptr, int size) {
         return;
     }
 
-    /* Initialize buffer with 0xcd pattern (from decompilation) */
-    memset(fifo->buffer, 0xcd, buffer_size);
+    /* Initialize buffer with NULL pointers (safer than 0xcd pattern) */
+    memset(fifo->buffer, 0, buffer_size);
 
     /* Create condition variable (event) */
     if (pthread_cond_init(&fifo->cond, NULL) != 0) {
@@ -250,6 +250,15 @@ void *Fifo_Dequeue(void *fifo_ptr, int timeout_ms) {
 
     /* Release semaphore (space now available) */
     sem_post(&fifo->semaphore);
+
+    /* Validate item pointer before returning */
+    if (item != NULL) {
+        uintptr_t item_addr = (uintptr_t)item;
+        if (item_addr < 0x10000) {
+            LOG_FIFO("Dequeue: invalid item pointer %p (too small), returning NULL", item);
+            return NULL;
+        }
+    }
 
     return item;
 }

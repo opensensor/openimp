@@ -959,6 +959,11 @@ static int channel_encoder_set_rc_param(void *dst, IMPEncoderRcAttr *src) {
 static void *encoder_thread(void *arg) {
     EncChannel *chn = (EncChannel*)arg;
 
+    if (chn == NULL) {
+        LOG_ENC("encoder_thread: NULL channel pointer!");
+        return NULL;
+    }
+
     LOG_ENC("encoder_thread: started for channel %d", chn->chn_id);
 
     /* Main encoding loop */
@@ -1007,6 +1012,11 @@ static void *encoder_thread(void *arg) {
 static void *stream_thread(void *arg) {
     EncChannel *chn = (EncChannel*)arg;
 
+    if (chn == NULL) {
+        LOG_ENC("stream_thread: NULL channel pointer!");
+        return NULL;
+    }
+
     LOG_ENC("stream_thread: started for channel %d", chn->chn_id);
 
     /* Main stream handling loop */
@@ -1036,6 +1046,13 @@ static void *stream_thread(void *arg) {
         if (chn->codec != NULL) {
             void *codec_stream = NULL;
             if (AL_Codec_Encode_GetStream(chn->codec, &codec_stream) == 0 && codec_stream != NULL) {
+                /* Validate stream pointer - must be a reasonable heap address */
+                uintptr_t stream_addr = (uintptr_t)codec_stream;
+                if (stream_addr < 0x10000) {
+                    LOG_ENC("stream_thread: invalid stream pointer %p (too small)", codec_stream);
+                    continue;
+                }
+
                 LOG_ENC("stream_thread: got stream %p", codec_stream);
 
                 /* Create StreamBuffer structure */
@@ -1111,6 +1128,12 @@ static void *stream_thread(void *arg) {
  */
 static int encoder_update(void *module, void *frame) {
     if (module == NULL) {
+        LOG_ENC("encoder_update: NULL module pointer!");
+        return -1;
+    }
+
+    if (frame == NULL) {
+        LOG_ENC("encoder_update: NULL frame pointer!");
         return -1;
     }
 
