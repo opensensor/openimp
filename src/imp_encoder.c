@@ -678,8 +678,9 @@ int IMP_Encoder_ReleaseStream(int encChn, IMPEncoderStream *stream) {
 }
 
 int IMP_Encoder_PollingStream(int encChn, uint32_t timeoutMsec) {
-    LOG_ENC("PollingStream: chn=%d, timeout=%u", encChn, timeoutMsec);
-    /* Return timeout */
+    /* Disabled noisy log - always returns timeout */
+    (void)encChn;
+    (void)timeoutMsec;
     return -1;
 }
 

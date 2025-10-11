@@ -122,6 +122,17 @@ static int dma_init(void) {
         return 0;
     }
 
+    /* Try rmem device first (reserved memory) */
+    g_mem_fd = open("/dev/rmem", O_RDWR | O_SYNC);
+    if (g_mem_fd >= 0) {
+        LOG_DMA("Opened /dev/rmem (fd=%d)", g_mem_fd);
+        g_dma_initialized = 1;
+        pthread_mutex_unlock(&g_dma_mutex);
+        return 0;
+    }
+
+    LOG_DMA("Failed to open /dev/rmem: %s", strerror(errno));
+
     /* Try to open /dev/mem for physical memory access */
     g_mem_fd = open("/dev/mem", O_RDWR | O_SYNC);
     if (g_mem_fd < 0) {

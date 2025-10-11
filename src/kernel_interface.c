@@ -94,6 +94,24 @@ int fs_get_format(int fd, fs_format_t *fmt) {
 }
 
 /**
+ * Convert IMPPixelFormat enum to fourcc code
+ */
+static uint32_t pixfmt_to_fourcc(int pixfmt) {
+    switch (pixfmt) {
+        case 0xa:  /* PIX_FMT_NV12 */
+            return 0x3231564e; /* 'NV12' */
+        case 0xb:  /* PIX_FMT_NV21 */
+            return 0x3132564e; /* 'NV21' */
+        case 0x1:  /* PIX_FMT_YUYV422 */
+            return 0x56595559; /* 'YUYV' */
+        case 0x2:  /* PIX_FMT_UYVY422 */
+            return 0x59565955; /* 'UYVY' */
+        default:
+            return pixfmt; /* Already fourcc or unknown */
+    }
+}
+
+/**
  * Set format on framechan device
  * ioctl: 0xc07056c3
  */
@@ -101,17 +119,23 @@ int fs_set_format(int fd, fs_format_t *fmt) {
     if (fd < 0 || fmt == NULL) {
         return -1;
     }
-    
-    int ret = ioctl(fd, VIDIOC_SET_FMT, fmt);
+
+    /* Convert enum pixfmt to fourcc if needed */
+    fs_format_t kernel_fmt = *fmt;
+    if (kernel_fmt.pixfmt < 0x100) {
+        kernel_fmt.pixfmt = pixfmt_to_fourcc(kernel_fmt.pixfmt);
+    }
+
+    int ret = ioctl(fd, VIDIOC_SET_FMT, &kernel_fmt);
     if (ret < 0) {
         fprintf(stderr, "[KernelIF] VIDIOC_SET_FMT failed: %s\n", strerror(errno));
-        fprintf(stderr, "[KernelIF]   Requested: %dx%d fmt=0x%x\n",
-                fmt->width, fmt->height, fmt->pixfmt);
+        fprintf(stderr, "[KernelIF]   Requested: %dx%d fmt=0x%x (fourcc=0x%x)\n",
+                fmt->width, fmt->height, fmt->pixfmt, kernel_fmt.pixfmt);
         return -1;
     }
-    
-    fprintf(stderr, "[KernelIF] Set format: %dx%d fmt=0x%x\n",
-            fmt->width, fmt->height, fmt->pixfmt);
+
+    fprintf(stderr, "[KernelIF] Set format: %dx%d fmt=0x%x (fourcc=0x%x)\n",
+            fmt->width, fmt->height, fmt->pixfmt, kernel_fmt.pixfmt);
     return 0;
 }
 
@@ -313,23 +337,55 @@ int VBMCreatePool(int chn, void *fmt, void *ops, void *priv) {
         return -1;
     }
 
-    if (fmt == NULL || ops == NULL) {
-        fprintf(stderr, "[VBM] CreatePool: NULL parameters\n");
+    if (fmt == NULL) {
+        fprintf(stderr, "[VBM] CreatePool: NULL format\n");
         return -1;
     }
 
+    /* ops can be NULL - we'll use default operations */
+    (void)ops;
+
     /* Safe struct member access using byte offsets */
     uint8_t *fmt_bytes = (uint8_t*)fmt;
+
+    /* Debug: dump first part of format structure */
+    fprintf(stderr, "[VBM] CreatePool: chn=%d, fmt structure dump:\n", chn);
+    fprintf(stderr, "[VBM]   Offset 0x00-0x0f: ");
+    for (int i = 0; i < 16; i++) {
+        fprintf(stderr, "%02x ", fmt_bytes[i]);
+    }
+    fprintf(stderr, "\n[VBM]   Offset 0xc0-0xcf: ");
+    for (int i = 0xc0; i < 0xd0; i++) {
+        fprintf(stderr, "%02x ", fmt_bytes[i]);
+    }
+    fprintf(stderr, "\n");
 
     /* Get frame count from format structure at offset 0xcc */
     int frame_count;
     memcpy(&frame_count, fmt_bytes + 0xcc, sizeof(int));
 
+    fprintf(stderr, "[VBM] CreatePool: raw frame_count at 0xcc = %d (0x%x)\n", frame_count, frame_count);
+
+    /* Also check offset 0xd4 which is used in the decompilation */
+    int frame_count_d4;
+    memcpy(&frame_count_d4, fmt_bytes + 0xd4, sizeof(int));
+    fprintf(stderr, "[VBM] CreatePool: value at 0xd4 = %d (0x%x)\n", frame_count_d4, frame_count_d4);
+
+    /* Sanity check frame count - default to 4 if invalid */
+    if (frame_count <= 0 || frame_count > 32) {
+        fprintf(stderr, "[VBM] CreatePool: invalid frame_count=%d, using default 4\n", frame_count);
+        frame_count = 4;
+    }
+
     /* Allocate pool structure */
     size_t pool_size = frame_count * VBM_FRAME_SIZE + 0x180;
+    fprintf(stderr, "[VBM] CreatePool: allocating pool_size=%zu (frame_count=%d * 0x%x + 0x180)\n",
+            pool_size, frame_count, VBM_FRAME_SIZE);
+
     VBMPool *pool = (VBMPool*)malloc(pool_size);
     if (pool == NULL) {
-        fprintf(stderr, "[VBM] CreatePool: malloc failed\n");
+        fprintf(stderr, "[VBM] CreatePool: malloc failed (size=%zu): %s\n",
+                pool_size, strerror(errno));
         return -1;
     }
 
@@ -343,22 +399,33 @@ int VBMCreatePool(int chn, void *fmt, void *ops, void *priv) {
     /* Copy format data (0xd0 bytes) */
     memcpy(pool->fmt, fmt, 0xd0);
 
-    /* Copy ops pointers */
-    void **ops_array = (void**)ops;
-    pool->ops[0] = ops_array[0];
-    pool->ops[1] = ops_array[1];
+    /* Copy ops pointers if provided */
+    if (ops != NULL) {
+        void **ops_array = (void**)ops;
+        pool->ops[0] = ops_array[0];
+        pool->ops[1] = ops_array[1];
+    } else {
+        pool->ops[0] = NULL;
+        pool->ops[1] = NULL;
+    }
 
     pool->pool_id = -1;
 
     /* Create pool name */
     snprintf(pool->name, sizeof(pool->name), "vbm_chn%d", chn);
 
-    /* Get format parameters with safe access */
+    /* Get format parameters with safe access
+     * Based on actual structure layout from prudynt:
+     * Offset 0x00: width
+     * Offset 0x04: height
+     * Offset 0x08: pixfmt
+     * The decompilation shows pool offsets, not format structure offsets
+     */
     int width, height, pixfmt, req_size;
-    memcpy(&width, fmt_bytes + 0xc, sizeof(int));
-    memcpy(&height, fmt_bytes + 0x10, sizeof(int));
-    memcpy(&pixfmt, fmt_bytes + 0x14, sizeof(int));
-    memcpy(&req_size, fmt_bytes + 0x20, sizeof(int));
+    memcpy(&width, fmt_bytes + 0x0, sizeof(int));
+    memcpy(&height, fmt_bytes + 0x4, sizeof(int));
+    memcpy(&pixfmt, fmt_bytes + 0x8, sizeof(int));
+    memcpy(&req_size, fmt_bytes + 0xc, sizeof(int));
 
     /* Calculate frame size */
     int calc_size = calculate_frame_size(width, height, pixfmt);
