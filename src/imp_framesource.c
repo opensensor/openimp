@@ -12,7 +12,13 @@
 #include <pthread.h>
 #include <semaphore.h>
 #include <imp/imp_framesource.h>
+#include <imp/imp_system.h>
 #include "kernel_interface.h"
+
+/* External system functions */
+extern void* IMP_System_GetModule(int deviceID, int groupID);
+extern int IMP_System_RegisterModule(int deviceID, int groupID, void *module);
+extern int notify_observers(void *module, void *frame);
 
 #define LOG_FS(fmt, ...) fprintf(stderr, "[FrameSource] " fmt "\n", ##__VA_ARGS__)
 
@@ -56,6 +62,8 @@ static int fs_initialized = 0;
 
 /* Forward declarations */
 static void *frame_capture_thread(void *arg);
+static int framesource_bind(void *src_module, void *dst_module, void *output_ptr);
+static int framesource_unbind(void *src_module, void *dst_module, void *output_ptr);
 
 /* Initialize framesource module */
 static void framesource_init(void) {
@@ -474,8 +482,11 @@ static void *frame_capture_thread(void *arg) {
         if (VBMGetFrame(chn_num, &frame) == 0 && frame != NULL) {
             LOG_FS("frame_capture_thread: got frame %p from VBM", frame);
 
-            /* TODO: Notify observers (bound modules) */
-            /* For now, frames will be retrieved via IMP_FrameSource_GetFrame */
+            /* Notify observers (bound modules like Encoder) */
+            void *module = IMP_System_GetModule(DEV_ID_FS, chn_num);
+            if (module != NULL) {
+                notify_observers(module, frame);
+            }
 
             /* Frame will be released when user calls IMP_FrameSource_ReleaseFrame */
         } else {
@@ -485,5 +496,44 @@ static void *frame_capture_thread(void *arg) {
     }
 
     return NULL;
+}
+
+/* ========== Module Binding Functions ========== */
+
+/**
+ * framesource_bind - Bind FrameSource to another module (e.g., Encoder)
+ * This is called when IMP_System_Bind() is invoked
+ */
+static int framesource_bind(void *src_module, void *dst_module, void *output_ptr) {
+    (void)src_module;
+    (void)output_ptr;
+
+    if (dst_module == NULL) {
+        LOG_FS("bind: dst_module is NULL");
+        return -1;
+    }
+
+    LOG_FS("bind: Binding FrameSource to module");
+
+    /* TODO: Create observer and add to observer list */
+    /* For now, just return success */
+    /* The actual frame passing will happen via notify_observers() */
+
+    return 0;
+}
+
+/**
+ * framesource_unbind - Unbind FrameSource from another module
+ */
+static int framesource_unbind(void *src_module, void *dst_module, void *output_ptr) {
+    (void)src_module;
+    (void)dst_module;
+    (void)output_ptr;
+
+    LOG_FS("unbind: Unbinding FrameSource from module");
+
+    /* TODO: Remove observer from observer list */
+
+    return 0;
 }
 

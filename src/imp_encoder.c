@@ -91,6 +91,7 @@ static int channel_encoder_exit(EncChannel *chn);
 static int channel_encoder_set_rc_param(void *dst, IMPEncoderRcAttr *src);
 static void *encoder_thread(void *arg);
 static void *stream_thread(void *arg);
+static int encoder_update(void *module);
 
 /* Initialize encoder module */
 static void encoder_init(void) {
@@ -506,15 +507,67 @@ int IMP_Encoder_StopRecvPic(int encChn) {
 }
 
 int IMP_Encoder_GetStream(int encChn, IMPEncoderStream *stream, int block) {
-    if (stream == NULL) return -1;
-    LOG_ENC("GetStream: chn=%d, block=%d", encChn, block);
-    /* Return no stream available */
+    if (encChn < 0 || encChn >= MAX_ENC_CHANNELS || stream == NULL) {
+        return -1;
+    }
+
+    EncChannel *chn = &g_EncChannel[encChn];
+
+    /* Check if channel is registered */
+    if (chn->chn_id < 0) {
+        LOG_ENC("GetStream: channel %d not registered", encChn);
+        return -1;
+    }
+
+    /* Check if recv_pic is started */
+    if (!chn->recv_pic_started) {
+        return 2; /* No stream available */
+    }
+
+    /* Get stream from codec */
+    if (chn->codec != NULL) {
+        void *codec_stream = NULL;
+
+        /* Try to get stream from codec FIFO */
+        if (AL_Codec_Encode_GetStream(chn->codec, &codec_stream) == 0 && codec_stream != NULL) {
+            LOG_ENC("GetStream: got stream %p from codec", codec_stream);
+
+            /* TODO: Copy stream data to IMPEncoderStream structure */
+            /* For now, just clear the structure */
+            memset(stream, 0, sizeof(IMPEncoderStream));
+
+            return 0;
+        }
+    }
+
+    /* No stream available */
+    if (block) {
+        /* TODO: Block and wait for stream */
+        usleep(10000); /* 10ms */
+    }
+
     return -1;
 }
 
 int IMP_Encoder_ReleaseStream(int encChn, IMPEncoderStream *stream) {
-    if (stream == NULL) return -1;
+    if (encChn < 0 || encChn >= MAX_ENC_CHANNELS || stream == NULL) {
+        return -1;
+    }
+
+    EncChannel *chn = &g_EncChannel[encChn];
+
+    /* Check if channel is registered */
+    if (chn->chn_id < 0) {
+        return -1;
+    }
+
     LOG_ENC("ReleaseStream: chn=%d", encChn);
+
+    /* Release stream back to codec */
+    if (chn->codec != NULL) {
+        /* TODO: AL_Codec_Encode_ReleaseStream(chn->codec, stream); */
+    }
+
     return 0;
 }
 
@@ -821,6 +874,24 @@ static void *stream_thread(void *arg) {
     }
 
     return NULL;
+}
+
+/* ========== Module Binding Functions ========== */
+
+/**
+ * encoder_update - Called by observer pattern when a frame is available
+ * This is the callback at offset 0x4c in the Module structure
+ */
+static int encoder_update(void *module) {
+    (void)module;
+
+    LOG_ENC("encoder_update: Frame available from FrameSource");
+
+    /* TODO: Get frame from observer structure */
+    /* TODO: Queue frame to encoder thread */
+    /* For now, the encoder thread will simulate frame processing */
+
+    return 0;
 }
 
 /* ========== Stub Implementations for External Functions ========== */
