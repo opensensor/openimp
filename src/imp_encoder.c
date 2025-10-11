@@ -12,8 +12,12 @@
 #include <pthread.h>
 #include <semaphore.h>
 #include <imp/imp_encoder.h>
+#include <imp/imp_system.h>
 #include "fifo.h"
 #include "codec.h"
+
+/* External system functions */
+extern void* IMP_System_GetModule(int deviceID, int groupID);
 
 #define LOG_ENC(fmt, ...) fprintf(stderr, "[Encoder] " fmt "\n", ##__VA_ARGS__)
 #define FIFO_SIZE 64  /* Size of Fifo structure */
@@ -22,6 +26,14 @@
 #define MAX_ENC_CHANNELS 9
 #define ENC_CHANNEL_SIZE 0x308
 #define MAX_ENC_GROUPS 3
+
+/* Internal stream buffer structure */
+typedef struct {
+    IMPEncoderPack pack;        /* Stream pack data */
+    uint32_t seq;               /* Sequence number */
+    int streamEnd;              /* Stream end flag */
+    void *codec_stream;         /* Pointer to codec stream data */
+} StreamBuffer;
 
 typedef struct {
     int chn_id;                 /* 0x00: Channel ID (-1 = unused) */
@@ -63,6 +75,10 @@ typedef struct {
     pthread_t thread_stream;    /* 0x46c: Stream thread (offset arg1[0xf]) */
     uint8_t data_470[0x98];     /* 0x470-0x507: Padding */
     /* Total: 0x308 bytes (776 bytes) */
+
+    /* Extended fields (not part of binary structure) */
+    StreamBuffer *current_stream;  /* Current stream buffer */
+    uint32_t stream_seq;           /* Stream sequence counter */
 } EncChannel;
 
 /* Encoder group structure */
@@ -91,7 +107,7 @@ static int channel_encoder_exit(EncChannel *chn);
 static int channel_encoder_set_rc_param(void *dst, IMPEncoderRcAttr *src);
 static void *encoder_thread(void *arg);
 static void *stream_thread(void *arg);
-static int encoder_update(void *module);
+static int encoder_update(void *module, void *frame);
 
 /* Initialize encoder module */
 static void encoder_init(void) {
