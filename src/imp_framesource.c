@@ -8,6 +8,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <errno.h>
+#include <fcntl.h>
 #include <sys/ioctl.h>
 #include <pthread.h>
 #include <semaphore.h>
@@ -124,10 +125,29 @@ int IMP_FrameSource_CreateChn(int chnNum, IMPFSChnAttr *chn_attr) {
     gFramesource->channels[chnNum].state = 0; /* Disabled */
     gFramesource->channels[chnNum].fd = -1;
 
-    /* TODO: Open /dev/framechanN device */
-    /* TODO: Configure via ioctl */
-    /* TODO: Create VBM pool */
-    /* TODO: Spawn thread */
+    /* Open /dev/framechanN device */
+    char dev_path[32];
+    snprintf(dev_path, sizeof(dev_path), "/dev/framechan%d", chnNum);
+    int fd = open(dev_path, O_RDWR);
+    if (fd < 0) {
+        LOG_FS("CreateChn: Failed to open %s: %s", dev_path, strerror(errno));
+        /* Continue anyway - device may not exist on all platforms */
+    } else {
+        gFramesource->channels[chnNum].fd = fd;
+        LOG_FS("CreateChn: Opened %s (fd=%d)", dev_path, fd);
+    }
+
+    /* Create VBM pool for this channel */
+    if (VBMCreatePool(chnNum, chn_attr->picWidth, chn_attr->picHeight,
+                      chn_attr->pixFmt) < 0) {
+        LOG_FS("CreateChn: Failed to create VBM pool");
+        if (fd >= 0) {
+            close(fd);
+            gFramesource->channels[chnNum].fd = -1;
+        }
+        pthread_mutex_unlock(&fs_mutex);
+        return -1;
+    }
 
     pthread_mutex_unlock(&fs_mutex);
 
@@ -157,9 +177,16 @@ int IMP_FrameSource_DestroyChn(int chnNum) {
         pthread_mutex_lock(&fs_mutex);
     }
 
-    /* TODO: Close device */
-    /* TODO: Destroy VBM pool */
-    /* TODO: Free resources */
+    /* Close device */
+    if (gFramesource->channels[chnNum].fd >= 0) {
+        close(gFramesource->channels[chnNum].fd);
+        LOG_FS("DestroyChn: Closed device fd=%d", gFramesource->channels[chnNum].fd);
+    }
+
+    /* Destroy VBM pool */
+    if (VBM_DestroyPool(chnNum) < 0) {
+        LOG_FS("DestroyChn: Failed to destroy VBM pool");
+    }
 
     memset(&gFramesource->channels[chnNum], 0, FS_CHANNEL_SIZE);
     gFramesource->channels[chnNum].fd = -1;
@@ -522,9 +549,9 @@ typedef struct Observer {
     int output_index;           /* 0x0c: Output index */
 } Observer;
 
-/* External function to add observer to module */
+/* External functions for observer management */
 extern int add_observer_to_module(void *module, Observer *observer);
-extern int remove_observer_from_module(void *module, Observer *observer);
+extern int remove_observer_from_module(void *src_module, void *dst_module);
 
 /**
  * framesource_bind - Bind FrameSource to another module (e.g., Encoder)
@@ -577,8 +604,11 @@ static int framesource_unbind(void *src_module, void *dst_module, void *output_p
 
     LOG_FS("unbind: Unbinding FrameSource from module");
 
-    /* TODO: Find and remove observer from observer list */
-    /* For now, just return success */
+    /* Remove observer from source module's observer list */
+    if (remove_observer_from_module(src_module, dst_module) < 0) {
+        LOG_FS("unbind: Failed to remove observer");
+        return -1;
+    }
 
     return 0;
 }

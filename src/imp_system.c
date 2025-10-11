@@ -405,9 +405,40 @@ static int remove_observer(Module *module, Observer *observer) {
 /**
  * remove_observer_from_module - Public wrapper for remove_observer
  * Used by other modules to remove observers
+ * Finds observer by destination module and removes it
  */
-int remove_observer_from_module(void *module, Observer *observer) {
-    return remove_observer((Module*)module, observer);
+int remove_observer_from_module(void *src_module, void *dst_module) {
+    if (src_module == NULL || dst_module == NULL) {
+        return -1;
+    }
+
+    Module *module = (Module*)src_module;
+    Observer *obs = (Observer*)module->observer_list;
+    Observer *prev = NULL;
+
+    /* Find observer with matching destination module */
+    while (obs != NULL) {
+        if (obs->module == dst_module) {
+            /* Found it - remove from list */
+            if (prev == NULL) {
+                /* First in list */
+                module->observer_list = obs->next;
+            } else {
+                /* Middle or end of list */
+                prev->next = obs->next;
+            }
+
+            /* Free observer */
+            free(obs);
+            return 0;
+        }
+
+        prev = obs;
+        obs = obs->next;
+    }
+
+    /* Observer not found */
+    return -1;
 }
 
 /**

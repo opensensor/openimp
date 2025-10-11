@@ -43,10 +43,69 @@ typedef struct {
     uint32_t flags;             /* Allocation flags */
 } mem_alloc_req_t;
 
+/* Global buffer registry */
+#define MAX_DMA_BUFFERS 128
+static DMABuffer *g_buffer_registry[MAX_DMA_BUFFERS] = {NULL};
+static pthread_mutex_t g_registry_mutex = PTHREAD_MUTEX_INITIALIZER;
+
 /* Global state */
 static int g_mem_fd = -1;
 static pthread_mutex_t g_dma_mutex = PTHREAD_MUTEX_INITIALIZER;
 static int g_dma_initialized = 0;
+
+/**
+ * Register buffer in global registry
+ */
+static int register_buffer(DMABuffer *buf) {
+    pthread_mutex_lock(&g_registry_mutex);
+
+    for (int i = 0; i < MAX_DMA_BUFFERS; i++) {
+        if (g_buffer_registry[i] == NULL) {
+            g_buffer_registry[i] = buf;
+            pthread_mutex_unlock(&g_registry_mutex);
+            return 0;
+        }
+    }
+
+    pthread_mutex_unlock(&g_registry_mutex);
+    LOG_DMA("register_buffer: registry full");
+    return -1;
+}
+
+/**
+ * Unregister buffer from global registry
+ */
+static void unregister_buffer(DMABuffer *buf) {
+    pthread_mutex_lock(&g_registry_mutex);
+
+    for (int i = 0; i < MAX_DMA_BUFFERS; i++) {
+        if (g_buffer_registry[i] == buf) {
+            g_buffer_registry[i] = NULL;
+            break;
+        }
+    }
+
+    pthread_mutex_unlock(&g_registry_mutex);
+}
+
+/**
+ * Lookup buffer by physical address
+ */
+static DMABuffer* lookup_buffer_by_phys(uint32_t phys_addr) {
+    pthread_mutex_lock(&g_registry_mutex);
+
+    for (int i = 0; i < MAX_DMA_BUFFERS; i++) {
+        if (g_buffer_registry[i] != NULL &&
+            g_buffer_registry[i]->phys_addr == phys_addr) {
+            DMABuffer *buf = g_buffer_registry[i];
+            pthread_mutex_unlock(&g_registry_mutex);
+            return buf;
+        }
+    }
+
+    pthread_mutex_unlock(&g_registry_mutex);
+    return NULL;
+}
 
 /**
  * Initialize DMA allocator
@@ -55,20 +114,20 @@ static int dma_init(void) {
     if (g_dma_initialized) {
         return 0;
     }
-    
+
     pthread_mutex_lock(&g_dma_mutex);
-    
+
     if (g_dma_initialized) {
         pthread_mutex_unlock(&g_dma_mutex);
         return 0;
     }
-    
+
     /* Try to open /dev/mem for physical memory access */
     g_mem_fd = open("/dev/mem", O_RDWR | O_SYNC);
     if (g_mem_fd < 0) {
         LOG_DMA("Failed to open /dev/mem: %s", strerror(errno));
         LOG_DMA("Trying /dev/jz-dma...");
-        
+
         /* Try Ingenic-specific DMA device */
         g_mem_fd = open("/dev/jz-dma", O_RDWR);
         if (g_mem_fd < 0) {
@@ -77,10 +136,10 @@ static int dma_init(void) {
             return -1;
         }
     }
-    
+
     g_dma_initialized = 1;
     pthread_mutex_unlock(&g_dma_mutex);
-    
+
     LOG_DMA("Initialized (fd=%d)", g_mem_fd);
     return 0;
 }
@@ -138,13 +197,21 @@ int IMP_Alloc(char *name, int size, char *tag) {
             return -1;
         }
         
-        LOG_DMA("Alloc: %s size=%d phys=0x%x virt=%p (via ioctl)", 
+        LOG_DMA("Alloc: %s size=%d phys=0x%x virt=%p (via ioctl)",
                 name, size, buf->phys_addr, buf->virt_addr);
-        
+
+        /* Register buffer in global registry */
+        if (register_buffer(buf) < 0) {
+            LOG_DMA("Alloc: failed to register buffer");
+            munmap(buf->virt_addr, size);
+            ioctl(g_mem_fd, IOCTL_MEM_FREE, &req);
+            free(buf);
+            return -1;
+        }
+
         /* Store buffer info in name for IMP_Get_Info */
-        /* This is a hack - in real implementation, we'd have a global registry */
         memcpy(name, buf, sizeof(DMABuffer));
-        
+
         return 0;
     }
     
@@ -160,12 +227,20 @@ int IMP_Alloc(char *name, int size, char *tag) {
     
     /* For fallback, physical address is same as virtual (not real DMA) */
     buf->phys_addr = (uint32_t)(uintptr_t)buf->virt_addr;
-    
+
     LOG_DMA("Alloc: %s size=%d virt=%p (fallback)", name, size, buf->virt_addr);
-    
+
+    /* Register buffer in global registry */
+    if (register_buffer(buf) < 0) {
+        LOG_DMA("Alloc: failed to register buffer");
+        free(buf->virt_addr);
+        free(buf);
+        return -1;
+    }
+
     /* Store buffer info */
     memcpy(name, buf, sizeof(DMABuffer));
-    
+
     return 0;
 }
 
@@ -201,21 +276,46 @@ int IMP_Free(uint32_t phys_addr) {
     if (phys_addr == 0) {
         return -1;
     }
-    
+
     LOG_DMA("Free: phys=0x%x", phys_addr);
-    
-    /* TODO: Look up buffer by physical address */
-    /* For now, we can't free without the buffer structure */
-    /* In real implementation, we'd have a global registry */
-    
+
+    /* Look up buffer by physical address */
+    DMABuffer *buf = lookup_buffer_by_phys(phys_addr);
+    if (buf == NULL) {
+        LOG_DMA("Free: buffer not found in registry");
+        /* Try to free anyway via ioctl */
+        mem_alloc_req_t req;
+        memset(&req, 0, sizeof(req));
+        req.phys_addr = phys_addr;
+
+        if (g_mem_fd >= 0) {
+            ioctl(g_mem_fd, IOCTL_MEM_FREE, &req);
+        }
+        return 0;
+    }
+
+    /* Unmap virtual memory if it was mapped */
+    if (buf->virt_addr != NULL && buf->virt_addr != (void*)(uintptr_t)phys_addr) {
+        munmap(buf->virt_addr, buf->size);
+    } else if (buf->virt_addr != NULL) {
+        /* Fallback allocation - just free */
+        free(buf->virt_addr);
+    }
+
+    /* Free physical memory via ioctl */
     mem_alloc_req_t req;
     memset(&req, 0, sizeof(req));
     req.phys_addr = phys_addr;
-    
+
     if (g_mem_fd >= 0) {
         ioctl(g_mem_fd, IOCTL_MEM_FREE, &req);
     }
-    
+
+    /* Unregister and free buffer structure */
+    unregister_buffer(buf);
+    free(buf);
+
+    LOG_DMA("Free: freed buffer phys=0x%x", phys_addr);
     return 0;
 }
 
@@ -227,13 +327,21 @@ int IMP_Get_Info(void *info_out, uint32_t phys_addr) {
     if (info_out == NULL || phys_addr == 0) {
         return -1;
     }
-    
-    /* TODO: Look up buffer by physical address */
-    /* For now, we can't retrieve info without a registry */
-    
-    LOG_DMA("Get_Info: phys=0x%x (not implemented)", phys_addr);
-    
-    return -1;
+
+    /* Look up buffer by physical address */
+    DMABuffer *buf = lookup_buffer_by_phys(phys_addr);
+    if (buf == NULL) {
+        LOG_DMA("Get_Info: buffer not found for phys=0x%x", phys_addr);
+        return -1;
+    }
+
+    /* Copy buffer info to output */
+    memcpy(info_out, buf, sizeof(DMABuffer));
+
+    LOG_DMA("Get_Info: phys=0x%x, virt=%p, size=%u",
+            phys_addr, buf->virt_addr, buf->size);
+
+    return 0;
 }
 
 /**
