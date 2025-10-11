@@ -6,6 +6,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
+#include <errno.h>
+#include <sys/ioctl.h>
 #include <pthread.h>
 #include <semaphore.h>
 #include <imp/imp_framesource.h>
@@ -47,6 +50,12 @@ typedef struct {
 static FrameSourceState *gFramesource = NULL;
 static pthread_mutex_t fs_mutex = PTHREAD_MUTEX_INITIALIZER;
 static int fs_initialized = 0;
+
+/* ioctl command for frame polling - from decompilation at 0x99acc */
+#define VIDIOC_POLL_FRAME   0x400456bf  /* Poll for frame availability */
+
+/* Forward declarations */
+static void *frame_capture_thread(void *arg);
 
 /* Initialize framesource module */
 static void framesource_init(void) {
@@ -219,8 +228,6 @@ int IMP_FrameSource_EnableChn(int chnNum) {
         return -1;
     }
 
-    /* TODO: Create thread for frame processing */
-
     /* Start streaming */
     if (fs_stream_on(chn->fd) < 0) {
         LOG_FS("EnableChn failed: cannot start streaming");
@@ -234,6 +241,20 @@ int IMP_FrameSource_EnableChn(int chnNum) {
 
     chn->state = 2; /* Running */
     gFramesource->active_count++;
+
+    /* Create frame capture thread */
+    if (pthread_create(&chn->thread, NULL, frame_capture_thread, chn) != 0) {
+        LOG_FS("EnableChn failed: cannot create capture thread");
+        chn->state = 0;
+        gFramesource->active_count--;
+        fs_stream_off(chn->fd);
+        VBMFlushFrame(chnNum);
+        VBMDestroyPool(chnNum);
+        fs_close_device(chn->fd);
+        chn->fd = -1;
+        pthread_mutex_unlock(&fs_mutex);
+        return -1;
+    }
 
     pthread_mutex_unlock(&fs_mutex);
 
@@ -264,13 +285,20 @@ int IMP_FrameSource_DisableChn(int chnNum) {
         return 0;
     }
 
+    /* Set state to stopping */
+    chn->state = 0;
+
+    /* Cancel and wait for capture thread */
+    if (chn->thread != 0) {
+        pthread_cancel(chn->thread);
+        pthread_join(chn->thread, NULL);
+        chn->thread = 0;
+    }
+
     /* Stop streaming */
     if (chn->fd >= 0) {
         fs_stream_off(chn->fd);
     }
-
-    /* TODO: Cancel thread and wait for it to finish */
-    /* TODO: Flush pipeline */
 
     /* Flush and destroy VBM pool */
     VBMFlushFrame(chnNum);
@@ -391,5 +419,71 @@ int IMP_FrameSource_SetFrameDepth(int chnNum, int depth) {
 int IMP_FrameSource_SetChnRotate(int chnNum, int rotation, int height, int width) {
     LOG_FS("SetChnRotate: chn=%d, rotation=%d, %dx%d", chnNum, rotation, width, height);
     return 0;
+}
+
+/**
+ * Frame capture thread - based on decompilation at 0x99acc
+ * Polls kernel driver for frames and queues them
+ */
+static void *frame_capture_thread(void *arg) {
+    FSChannel *chn = (FSChannel*)arg;
+    int chn_num = -1;
+
+    /* Find channel number */
+    for (int i = 0; i < MAX_FS_CHANNELS; i++) {
+        if (&gFramesource->channels[i] == chn) {
+            chn_num = i;
+            break;
+        }
+    }
+
+    if (chn_num < 0) {
+        LOG_FS("frame_capture_thread: invalid channel");
+        return NULL;
+    }
+
+    LOG_FS("frame_capture_thread: started for channel %d", chn_num);
+
+    /* Main capture loop */
+    while (1) {
+        /* Check for thread cancellation */
+        pthread_testcancel();
+
+        /* Check if channel is still running */
+        if (chn->state != 2) {
+            usleep(10000); /* 10ms */
+            continue;
+        }
+
+        /* Poll for frame availability using ioctl */
+        int frame_ready = -1;
+        if (ioctl(chn->fd, VIDIOC_POLL_FRAME, &frame_ready) < 0) {
+            LOG_FS("frame_capture_thread: ioctl POLL_FRAME failed: %s", strerror(errno));
+            usleep(10000); /* 10ms */
+            continue;
+        }
+
+        if (frame_ready <= 0) {
+            /* No frame available yet */
+            usleep(1000); /* 1ms */
+            continue;
+        }
+
+        /* Frame is available - get it from VBM */
+        void *frame = NULL;
+        if (VBMGetFrame(chn_num, &frame) == 0 && frame != NULL) {
+            LOG_FS("frame_capture_thread: got frame %p from VBM", frame);
+
+            /* TODO: Notify observers (bound modules) */
+            /* For now, frames will be retrieved via IMP_FrameSource_GetFrame */
+
+            /* Frame will be released when user calls IMP_FrameSource_ReleaseFrame */
+        } else {
+            LOG_FS("frame_capture_thread: VBMGetFrame failed");
+            usleep(10000); /* 10ms */
+        }
+    }
+
+    return NULL;
 }
 
