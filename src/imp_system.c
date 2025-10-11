@@ -159,6 +159,35 @@ static void FreeModule(Module *mod) {
     free(mod);
 }
 
+/* default_bind_func - Default bind implementation
+ * Creates an observer and adds it to the source module's observer list */
+static int default_bind_func(Module *src, Module *dst, void *output_ptr) {
+    (void)output_ptr;  /* Unused in default implementation */
+
+    /* Allocate observer */
+    Observer *obs = (Observer*)calloc(1, sizeof(Observer));
+    if (obs == NULL) {
+        fprintf(stderr, "[System] Failed to allocate observer\n");
+        return -1;
+    }
+
+    obs->module = dst;
+    obs->frame = NULL;
+    obs->output_index = 0;
+    obs->next = NULL;
+
+    /* Add to source module's observer list */
+    if (add_observer(src, obs) < 0) {
+        fprintf(stderr, "[System] Failed to add observer\n");
+        free(obs);
+        return -1;
+    }
+
+    fprintf(stderr, "[System] Bound %s -> %s (observer added)\n",
+            src->name, dst->name);
+    return 0;
+}
+
 /* BindObserverToSubject - binds two modules together
  * Based on decompilation at 0x1b388 */
 static int BindObserverToSubject(Module *src, Module *dst, void *output_ptr) {
@@ -177,7 +206,8 @@ static int BindObserverToSubject(Module *src, Module *dst, void *output_ptr) {
         return bind_fn(src, dst, output_ptr);
     }
 
-    return 0;
+    /* No bind function - use default */
+    return default_bind_func(src, dst, output_ptr);
 }
 
 /* system_bind - internal bind implementation

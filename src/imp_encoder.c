@@ -200,6 +200,29 @@ int IMP_Encoder_CreateGroup(int encGroup) {
     gEncoder->groups[encGroup].group_id = encGroup;
     gEncoder->groups[encGroup].chn_count = 0;
 
+    /* Register Encoder module with system (DEV_ID_ENC = 1) */
+    /* Allocate a proper Module structure for this encoder group */
+    extern void* IMP_System_AllocModule(const char *name, int groupID);
+    void *enc_module = IMP_System_AllocModule("Encoder", encGroup);
+    if (enc_module == NULL) {
+        LOG_ENC("CreateGroup: Failed to allocate module");
+        pthread_mutex_unlock(&encoder_mutex);
+        return -1;
+    }
+
+    /* Set output_count to 1 (Encoder has 1 output per group) */
+    /* Module structure has output_count at offset 0x134 */
+    uint32_t *output_count_ptr = (uint32_t*)((char*)enc_module + 0x134);
+    *output_count_ptr = 1;
+
+    /* Set update callback (func_4c at offset 0x4c) */
+    void **update_ptr = (void**)((char*)enc_module + 0x4c);
+    *update_ptr = (void*)encoder_update;
+
+    extern int IMP_System_RegisterModule(int deviceID, int groupID, void *module);
+    IMP_System_RegisterModule(1, encGroup, enc_module);  /* DEV_ID_ENC = 1 */
+    LOG_ENC("CreateGroup: registered Encoder module [1,%d] with 1 output and update callback", encGroup);
+
     pthread_mutex_unlock(&encoder_mutex);
 
     LOG_ENC("CreateGroup: grp=%d", encGroup);
