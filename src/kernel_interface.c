@@ -32,34 +32,48 @@
 #define ISP_INIT            0x50000000  /* Placeholder */
 #define ISP_SET_SENSOR      0x50000001  /* Placeholder */
 
-/* V4L2-compatible format structure for VIDIOC_SET_FMT ioctl
- * This is a 0x70 (112 byte) structure that gets passed to ioctl 0xc07056c3
- * Matches the standard v4l2_format structure layout with Ingenic extensions
+/* V4L2 format structure with Ingenic extensions for VIDIOC_SET_FMT ioctl
+ * This is a 0xc8 (200 byte) structure that gets passed to ioctl 0xc07056c3
+ * Based on kernel driver tx-isp-module.c line 3896
+ *
+ * The raw_data area contains a copy of imp_channel_attr starting at offset 0x24
+ * which the kernel extracts and passes to tisp_channel_attr_set
  */
 typedef struct {
-    int type;                   /* 0x00: Buffer type (V4L2_BUF_TYPE_VIDEO_CAPTURE) */
-    /* v4l2_pix_format starts here */
+    /* V4L2 standard header */
+    int type;                   /* 0x00: Buffer type (V4L2_BUF_TYPE_VIDEO_CAPTURE = 1) */
+    /* V4L2 pix format */
     int width;                  /* 0x04: Width */
     int height;                 /* 0x08: Height */
-    int pixfmt;                 /* 0x0c: Pixel format (fourcc) */
-    int field;                  /* 0x10: Field order (V4L2_FIELD_NONE) */
+    int pixelformat;            /* 0x0c: Pixel format (fourcc) */
+    int field;                  /* 0x10: Field order */
     int bytesperline;           /* 0x14: Bytes per line */
     int sizeimage;              /* 0x18: Image size in bytes */
-    int colorspace;             /* 0x1c: Colorspace (V4L2_COLORSPACE_*) */
+    int colorspace;             /* 0x1c: Colorspace (V4L2_COLORSPACE_SRGB = 8) */
     int priv;                   /* 0x20: Private data */
-    /* Extended fields for Ingenic driver */
-    int crop_enable;            /* 0x24: Crop enable */
-    int crop_top;               /* 0x28: Crop top */
-    int crop_left;              /* 0x2c: Crop left */
-    int crop_width;             /* 0x30: Crop width */
-    int crop_height;            /* 0x34: Crop height */
-    int scaler_enable;          /* 0x38: Scaler enable */
-    int scaler_out_width;       /* 0x3c: Scaler output width */
-    int scaler_out_height;      /* 0x40: Scaler output height */
-    int fps_num;                /* 0x44: FPS numerator */
-    int fps_den;                /* 0x48: FPS denominator */
-    int buf_mode;               /* 0x4c: Buffer mode */
-    char padding[0x24];         /* 0x50-0x70: Padding to 112 bytes */
+    /* Ingenic imp_channel_attr in raw_data area (starting at 0x24)
+     * Must match tisp_channel_attr_set indices:
+     *   [0]=enable, [1]=width, [2]=height,
+     *   [3]=crop_enable, [4]=crop_x, [5]=crop_y, [6]=crop_width, [7]=crop_height,
+     *   [8]=scaler_enable, [9]=scaler_outwidth, [10]=scaler_outheight,
+     *   [11]=picwidth, [12]=picheight, [13]=fps_num, [14]=fps_den
+     * Note: pixel format is conveyed via V4L2 pixelformat header field. */
+    int enable;                 /* 0x24: Enable (arg2[0]) */
+    int attr_width;             /* 0x28: Width (arg2[1]) */
+    int attr_height;            /* 0x2c: Height (arg2[2]) */
+    int crop_enable;            /* 0x30: Crop enable (arg2[3]) */
+    int crop_x;                 /* 0x34: Crop X (arg2[4]) */
+    int crop_y;                 /* 0x38: Crop Y (arg2[5]) */
+    int crop_width;             /* 0x3c: Crop width (arg2[6]) */
+    int crop_height;            /* 0x40: Crop height (arg2[7]) */
+    int scaler_enable;          /* 0x44: Scaler enable (arg2[8]) */
+    int scaler_outwidth;        /* 0x48: Scaler output width (arg2[9]) */
+    int scaler_outheight;       /* 0x4c: Scaler output height (arg2[10]) */
+    int picwidth;               /* 0x50: Picture width (arg2[11]) */
+    int picheight;              /* 0x54: Picture height (arg2[12]) */
+    int fps_num;                /* 0x58: FPS numerator (arg2[13]) */
+    int fps_den;                /* 0x5c: FPS denominator (arg2[14]) */
+    char padding[0x68];         /* 0x60-0xc7: Padding to 200 bytes */
 } fs_format_t;
 
 /* Buffer count structure */
@@ -116,7 +130,7 @@ int fs_get_format(int fd, fs_format_t *fmt) {
     }
 
     fprintf(stderr, "[KernelIF] Got format: %dx%d fmt=0x%x\n",
-            fmt->width, fmt->height, fmt->pixfmt);
+            fmt->width, fmt->height, fmt->pixelformat);
     return 0;
 }
 
@@ -160,41 +174,50 @@ int fs_set_format(int fd, fs_format_t *fmt) {
     kernel_fmt.height = fmt->height;
 
     /* Convert enum pixfmt to fourcc if needed */
-    if (fmt->pixfmt < 0x100) {
-        kernel_fmt.pixfmt = pixfmt_to_fourcc(fmt->pixfmt);
+    if (fmt->pixelformat < 0x100) {
+        kernel_fmt.pixelformat = pixfmt_to_fourcc(fmt->pixelformat);
     } else {
-        kernel_fmt.pixfmt = fmt->pixfmt;
+        kernel_fmt.pixelformat = fmt->pixelformat;
     }
 
-    kernel_fmt.field = 1; /* V4L2_FIELD_NONE */
+    kernel_fmt.field = 0; /* V4L2_FIELD_ANY - let driver choose */
     kernel_fmt.bytesperline = 0; /* Driver will calculate */
     kernel_fmt.sizeimage = 0; /* Driver will calculate */
     kernel_fmt.colorspace = 8; /* V4L2_COLORSPACE_SRGB */
     kernel_fmt.priv = 0;
 
-    /* Ingenic extended fields */
+    /* Ingenic imp_channel_attr fields in raw_data area
+     * Note: pixel format is provided via V4L2 header (pixelformat), not raw_data. */
+    kernel_fmt.enable = fmt->enable;
+    kernel_fmt.attr_width = fmt->attr_width ? fmt->attr_width : fmt->width;
+    kernel_fmt.attr_height = fmt->attr_height ? fmt->attr_height : fmt->height;
+
     kernel_fmt.crop_enable = fmt->crop_enable;
-    kernel_fmt.crop_top = fmt->crop_top;
-    kernel_fmt.crop_left = fmt->crop_left;
+    kernel_fmt.crop_x = fmt->crop_x;
+    kernel_fmt.crop_y = fmt->crop_y;
     kernel_fmt.crop_width = fmt->crop_width;
     kernel_fmt.crop_height = fmt->crop_height;
+
     kernel_fmt.scaler_enable = fmt->scaler_enable;
-    kernel_fmt.scaler_out_width = fmt->scaler_out_width;
-    kernel_fmt.scaler_out_height = fmt->scaler_out_height;
+    kernel_fmt.scaler_outwidth = fmt->scaler_outwidth;
+    kernel_fmt.scaler_outheight = fmt->scaler_outheight;
+
+    kernel_fmt.picwidth = fmt->picwidth ? fmt->picwidth : fmt->width;
+    kernel_fmt.picheight = fmt->picheight ? fmt->picheight : fmt->height;
+
     kernel_fmt.fps_num = fmt->fps_num;
     kernel_fmt.fps_den = fmt->fps_den;
-    kernel_fmt.buf_mode = fmt->buf_mode;
 
     int ret = ioctl(fd, VIDIOC_SET_FMT, &kernel_fmt);
     if (ret < 0) {
         fprintf(stderr, "[KernelIF] VIDIOC_SET_FMT failed: %s\n", strerror(errno));
         fprintf(stderr, "[KernelIF]   Requested: %dx%d fmt=0x%x (fourcc=0x%x) colorspace=%d\n",
-                fmt->width, fmt->height, fmt->pixfmt, kernel_fmt.pixfmt, kernel_fmt.colorspace);
+                fmt->width, fmt->height, fmt->pixelformat, kernel_fmt.pixelformat, kernel_fmt.colorspace);
         return -1;
     }
 
     fprintf(stderr, "[KernelIF] Set format: %dx%d fmt=0x%x (fourcc=0x%x) colorspace=%d\n",
-            fmt->width, fmt->height, fmt->pixfmt, kernel_fmt.pixfmt, kernel_fmt.colorspace);
+            fmt->width, fmt->height, fmt->pixelformat, kernel_fmt.pixelformat, kernel_fmt.colorspace);
     return 0;
 }
 
@@ -407,6 +430,12 @@ int VBMCreatePool(int chn, void *fmt, void *ops, void *priv) {
     if (fmt == NULL) {
         fprintf(stderr, "[VBM] CreatePool: NULL format\n");
         return -1;
+    }
+
+    /* Check if pool already exists - if so, return success */
+    if (vbm_instance[chn] != NULL) {
+        fprintf(stderr, "[VBM] CreatePool: pool for chn=%d already exists, skipping\n", chn);
+        return 0;
     }
 
     /* ops can be NULL - we'll use default operations */

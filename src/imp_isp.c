@@ -13,12 +13,13 @@
 
 #define LOG_ISP(fmt, ...) fprintf(stderr, "[IMP_ISP] " fmt "\n", ##__VA_ARGS__)
 
-/* ISP Device structure - 0xe0 bytes based on decompilation */
+/* ISP Device structure (userspace) */
 typedef struct {
-    char dev_name[32];      /* 0x00: Device name "/dev/tx-isp" */
-    int fd;                 /* 0x20: File descriptor */
-    int opened;             /* 0x24: Opened flag */
-    uint8_t data[0xb8];     /* 0x28-0xdf: Rest of data */
+    char dev_name[32];      /* Device name, e.g. "/dev/tx-isp" */
+    int fd;                 /* Main device fd */
+    int tisp_fd;            /* Optional tuning device fd ("/dev/tisp"), -1 if not open */
+    int opened;             /* Opened flag; +2 indicates sensor enabled */
+    uint8_t data[0xb8];     /* Scratch/device data area for mirroring sensor info, etc. */
 } ISPDevice;
 
 static ISPDevice *gISPdev = NULL;
@@ -34,8 +35,8 @@ int IMP_ISP_Open(void) {
         return 0;
     }
 
-    /* Allocate ISP device structure (0xe0 bytes) */
-    gISPdev = (ISPDevice*)calloc(0xe0, 1);
+    /* Allocate ISP device structure */
+    gISPdev = (ISPDevice*)calloc(1, sizeof(ISPDevice));
     if (gISPdev == NULL) {
         LOG_ISP("Open: failed to allocate ISP device");
         return -1;
@@ -51,6 +52,43 @@ int IMP_ISP_Open(void) {
         free(gISPdev);
         gISPdev = NULL;
         return -1;
+    }
+
+    /* Open tuning device /dev/tisp (optional) */
+    gISPdev->tisp_fd = open("/dev/tisp", O_RDWR);
+    if (gISPdev->tisp_fd < 0) {
+        LOG_ISP("Open: failed to open /dev/tisp: %s", strerror(errno));
+        /* Don't fail - tuning is optional */
+        gISPdev->tisp_fd = -1;
+    } else {
+        LOG_ISP("Open: opened /dev/tisp (fd=%d)", gISPdev->tisp_fd);
+
+        /* Disable front crop immediately to prevent validation errors
+         * Based on IMP_ISP_Tuning_SetFrontCrop at 0x955f4 */
+        struct {
+            int32_t op;      /* 0 = set, 1 = get */
+            int32_t ctrl_id; /* 0x80000e3 = front crop control */
+            void* data;      /* pointer to fcrop data */
+        } ctrl_param;
+
+        struct {
+            int32_t enable;  /* 0 = disable fcrop */
+            int32_t x;
+            int32_t y;
+            int32_t width;
+            int32_t height;
+        } fcrop_data = {0, 0, 0, 0, 0};
+
+        ctrl_param.op = 0;           /* Set operation */
+        ctrl_param.ctrl_id = 0x80000e3; /* Front crop control ID */
+        ctrl_param.data = &fcrop_data;
+
+        int ret = ioctl(gISPdev->tisp_fd, 0xc00c56c6, &ctrl_param);
+        if (ret < 0) {
+            LOG_ISP("Open: Warning: failed to disable fcrop: %s", strerror(errno));
+        } else {
+            LOG_ISP("Open: Front crop disabled");
+        }
     }
 
     /* Mark as opened */
@@ -73,9 +111,12 @@ int IMP_ISP_Close(void) {
         return -1;
     }
 
-    /* Close device */
+    /* Close devices */
     if (gISPdev->fd >= 0) {
         close(gISPdev->fd);
+    }
+    if (gISPdev->tisp_fd >= 0) {
+        close(gISPdev->tisp_fd);
     }
 
     /* Free device structure */
@@ -109,7 +150,7 @@ int IMP_ISP_AddSensor(IMPSensorInfo *pinfo) {
         return -1;
     }
 
-    /* Copy sensor info to device structure at offset 0x28 */
+    /* Copy sensor info into our scratch area */
     memcpy(&gISPdev->data[0], pinfo, sizeof(IMPSensorInfo));
 
     LOG_ISP("AddSensor: %s", pinfo->name);
@@ -157,24 +198,9 @@ int IMP_ISP_EnableSensor(void) {
         LOG_ISP("EnableSensor: using default sensor index 0");
     }
 
-    /* Start streaming via ioctl 0x80045612 (VIDIOC_STREAM_ON) */
-    if (ioctl(gISPdev->fd, 0x80045612, 0) != 0) {
-        LOG_ISP("EnableSensor: failed to start streaming: %s", strerror(errno));
-        /* Don't fail - this may not be critical */
-    }
-
-    /* Enable sensor via ioctl 0x800456d0 */
-    int enable = 0;
-    if (ioctl(gISPdev->fd, 0x800456d0, &enable) != 0) {
-        LOG_ISP("EnableSensor: failed to enable sensor: %s", strerror(errno));
-        /* Don't fail - this may not be critical */
-    }
-
-    /* Additional enable via ioctl 0x800456d2 */
-    if (ioctl(gISPdev->fd, 0x800456d2, 0) != 0) {
-        LOG_ISP("EnableSensor: failed final enable: %s", strerror(errno));
-        /* Don't fail - this may not be critical */
-    }
+    /* Defer stream-on and sensor enable to FrameSource path. The OEM starts streaming
+     * only after format and buffers are configured on the channel. */
+    (void)gISPdev; /* suppress unused warnings if builds differ */
 
     /* Increment opened flag by 2 to mark sensor as enabled */
     gISPdev->opened += 2;

@@ -52,6 +52,7 @@ static pthread_mutex_t g_registry_mutex = PTHREAD_MUTEX_INITIALIZER;
 static int g_mem_fd = -1;
 static pthread_mutex_t g_dma_mutex = PTHREAD_MUTEX_INITIALIZER;
 static int g_dma_initialized = 0;
+static int g_rmem_supported = 0;  /* set to 1 when /dev/rmem accepts our ioctls */
 
 /**
  * Register buffer in global registry
@@ -127,6 +128,7 @@ static int dma_init(void) {
     if (g_mem_fd >= 0) {
         LOG_DMA("Opened /dev/rmem (fd=%d)", g_mem_fd);
         g_dma_initialized = 1;
+        g_rmem_supported = 1; /* assume supported until an ioctl says otherwise */
         pthread_mutex_unlock(&g_dma_mutex);
         return 0;
     }
@@ -184,30 +186,35 @@ int IMP_Alloc(char *name, int size, char *tag) {
     }
     buf->size = size;
     
-    /* Try to allocate via ioctl first */
+    /* Try to allocate via ioctl first (if supported) */
     mem_alloc_req_t req;
     memset(&req, 0, sizeof(req));
     req.size = size;
     req.align = 4096;  /* Page alignment */
     req.flags = 0;
-    
-    if (ioctl(g_mem_fd, IOCTL_MEM_ALLOC, &req) == 0) {
+
+    int ioctl_rc = -1;
+    if (g_mem_fd >= 0 && g_rmem_supported) {
+        ioctl_rc = ioctl(g_mem_fd, IOCTL_MEM_ALLOC, &req);
+    }
+
+    if (ioctl_rc == 0) {
         /* Success - got physical address */
         buf->phys_addr = req.phys_addr;
-        
+
         /* Map physical memory to virtual address */
-        buf->virt_addr = mmap(NULL, size, PROT_READ | PROT_WRITE, 
-                             MAP_SHARED, g_mem_fd, buf->phys_addr);
-        
+        buf->virt_addr = mmap(NULL, size, PROT_READ | PROT_WRITE,
+                              MAP_SHARED, g_mem_fd, buf->phys_addr);
+
         if (buf->virt_addr == MAP_FAILED) {
             LOG_DMA("Alloc: mmap failed: %s", strerror(errno));
-            
+
             /* Free physical memory */
             ioctl(g_mem_fd, IOCTL_MEM_FREE, &req);
             free(buf);
             return -1;
         }
-        
+
         LOG_DMA("Alloc: %s size=%d phys=0x%x virt=%p (via ioctl)",
                 name, size, buf->phys_addr, buf->virt_addr);
 
@@ -224,18 +231,24 @@ int IMP_Alloc(char *name, int size, char *tag) {
         memcpy(name, buf, sizeof(DMABuffer));
 
         return 0;
+    } else if (g_mem_fd >= 0 && g_rmem_supported && (errno == ENOTTY || errno == EINVAL)) {
+        /* Device does not support our ioctls - disable rmem path to avoid kernel spam */
+        LOG_DMA("Alloc: /dev/rmem does not support expected ioctls (errno=%d), disabling rmem path", errno);
+        close(g_mem_fd);
+        g_mem_fd = -1;
+        g_rmem_supported = 0;
     }
-    
-    /* ioctl failed - fall back to regular allocation */
+
+    /* ioctl failed or not supported - fall back to regular allocation */
     LOG_DMA("Alloc: ioctl failed, using malloc fallback");
-    
+
     /* Allocate aligned memory */
     if (posix_memalign(&buf->virt_addr, 4096, size) != 0) {
         LOG_DMA("Alloc: posix_memalign failed");
         free(buf);
         return -1;
     }
-    
+
     /* For fallback, physical address is same as virtual (not real DMA) */
     buf->phys_addr = (uint32_t)(uintptr_t)buf->virt_addr;
 

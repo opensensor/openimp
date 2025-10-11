@@ -235,29 +235,35 @@ int IMP_FrameSource_EnableChn(int chnNum) {
     fs_format_t fmt;
     memset(&fmt, 0, sizeof(fmt));
 
-    /* V4L2 standard fields - will be set by fs_set_format() */
+    /* V4L2 fields (for validation) */
     fmt.width = chn->attr.picWidth;
     fmt.height = chn->attr.picHeight;
-    fmt.pixfmt = chn->attr.pixFmt;
+    fmt.pixelformat = chn->attr.pixFmt;
+
+    /* Ingenic imp_channel_attr fields (for tisp_channel_attr_set) */
+    fmt.enable = 0; /* 0 = use sensor dimensions, 1 = use custom dimensions */
+    fmt.attr_width = chn->attr.picWidth;
+    fmt.attr_height = chn->attr.picHeight;
 
     /* Copy crop settings */
     fmt.crop_enable = chn->attr.crop.enable;
-    fmt.crop_top = chn->attr.crop.top;
-    fmt.crop_left = chn->attr.crop.left;
+    fmt.crop_x = chn->attr.crop.left;
+    fmt.crop_y = chn->attr.crop.top;
     fmt.crop_width = chn->attr.crop.width;
     fmt.crop_height = chn->attr.crop.height;
 
     /* Copy scaler settings */
     fmt.scaler_enable = chn->attr.scaler.enable;
-    fmt.scaler_out_width = chn->attr.scaler.outwidth;
-    fmt.scaler_out_height = chn->attr.scaler.outheight;
+    fmt.scaler_outwidth = chn->attr.scaler.outwidth;
+    fmt.scaler_outheight = chn->attr.scaler.outheight;
+
+    /* Picture dimensions (same as channel dimensions) */
+    fmt.picwidth = chn->attr.picWidth;
+    fmt.picheight = chn->attr.picHeight;
 
     /* Copy FPS settings */
     fmt.fps_num = chn->attr.outFrmRateNum;
     fmt.fps_den = chn->attr.outFrmRateDen;
-
-    /* Buffer mode */
-    fmt.buf_mode = 1; /* Default mode */
 
     /* Set format via ioctl */
     if (fs_set_format(chn->fd, &fmt) < 0) {
@@ -402,8 +408,9 @@ int IMP_FrameSource_SetChnAttr(int chnNum, IMPFSChnAttr *chn_attr) {
     }
 
     /* Check format - must be aligned and valid */
-    if ((chn_attr->pixFmt & 0xf) != 0 && chn_attr->pixFmt != 0x22) {
-        LOG_FS("SetChnAttr failed: invalid format 0x%x", chn_attr->pixFmt);
+    /* Accept known IMPPixelFormat enum range; format conversion to fourcc occurs later */
+    if (chn_attr->pixFmt > PIX_FMT_RAW) {
+        LOG_FS("SetChnAttr failed: invalid pixFmt enum %d", chn_attr->pixFmt);
         return -1;
     }
 
