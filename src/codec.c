@@ -460,12 +460,30 @@ int AL_Codec_Encode_ReleaseStream(void *codec, void *stream, void *user_data) {
         return -1;
     }
 
-    (void)user_data;
+    AL_CodecEncode *enc = (AL_CodecEncode*)codec;
 
-    LOG_CODEC("ReleaseStream: released stream %p", stream);
+    /* Based on decompilation at 0x7a624:
+     * AL_Buffer_Unref(arg3)
+     * AL_Encoder_PutStreamBuffer(*(arg1 + 0x798), arg2)
+     * AL_Buffer_Unref(arg2)
+     */
 
-    /* Stream is released back to pool */
-    /* In real implementation, this would return buffer to pool */
+    /* Unref user_data buffer if provided */
+    if (user_data != NULL) {
+        /* AL_Buffer_Unref(user_data) - would decrement reference count */
+        (void)user_data;
+    }
+
+    /* Return stream buffer to pool via FIFO */
+    /* AL_Encoder_PutStreamBuffer at offset 0x798 */
+    if (enc->fifo_streams != NULL) {
+        Fifo_Queue(enc->fifo_streams, stream, 0);
+    }
+
+    /* Unref stream buffer */
+    /* AL_Buffer_Unref(stream) - would decrement reference count and free if 0 */
+
+    LOG_CODEC("ReleaseStream: returned stream %p to pool", stream);
 
     return 0;
 }

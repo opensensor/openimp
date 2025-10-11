@@ -957,22 +957,19 @@ static void *encoder_thread(void *arg) {
             continue;
         }
 
-        /* Frames are received via observer pattern in encoder_update() */
-        /* This thread just waits for the update callback to queue frames */
+        /* Frames are received via observer pattern in encoder_update()
+         * The update callback queues frames to the input FIFO
+         * This thread processes frames from the FIFO */
 
         /* Wait for frame arrival (~30fps) */
         usleep(33000);
 
-        /* Create a dummy frame structure for testing */
-        /* In real implementation, this would come from FrameSource */
-        void *frame = NULL; /* Would be actual frame data */
+        /* Frames come from FrameSource via observer pattern (encoder_update)
+         * They are queued to enc->fifo_input and processed here
+         * The actual frame processing happens in encoder_update() which calls
+         * AL_Codec_Encode_Process() with the real frame data */
 
-        if (frame != NULL && chn->codec != NULL) {
-            /* Process frame through codec */
-            if (AL_Codec_Encode_Process(chn->codec, frame, NULL) < 0) {
-                LOG_ENC("encoder_thread: AL_Codec_Encode_Process failed");
-            }
-        }
+        /* This thread primarily signals the stream thread via eventfd */
 
         /* Signal eventfd to wake up stream thread */
         if (chn->eventfd >= 0) {

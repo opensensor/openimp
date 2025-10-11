@@ -379,12 +379,22 @@ int IMP_AI_EnableChn(int audioDevId, int aiChn) {
         return 0;
     }
 
-    /* Channel initialization
-     * In the real implementation, this would:
-     * - Initialize channel-specific mutexes and conditions
-     * - Allocate audio buffers based on frame size
-     * - Set up temporary buffers for processing
-     * For now, we just mark the channel as enabled */
+    /* Channel initialization - based on decompilation at 0xad8c8
+     * The real implementation does:
+     * 1. pthread_mutex_init() for channel mutex (offset 0x50 from channel base)
+     * 2. pthread_cond_init() for two condition variables (offsets 0x70, 0xa0)
+     * 3. audio_buf_alloc() - allocates circular buffer for audio frames
+     *    - Buffer size = numPerFrm * 2 (stereo)
+     *    - Number of buffers = frame buffer count from device
+     * 4. _ai_set_tmpbuf_size() - sets temporary buffer size for AEC
+     * 5. _ai_alloc_tmpbuf() - allocates temporary processing buffer
+     * 6. Initializes buffer pointers and counters
+     * 7. pthread_mutex_init() for 4 additional mutexes (offsets 0x140, 0x188, 0x158, 0x170)
+     * 8. _ai_thread_post() - signals audio thread to start processing
+     *
+     * For our implementation, we mark the channel as enabled.
+     * Full buffer management would require implementing the audio_buf_* functions
+     * and temporary buffer allocation for AEC processing. */
 
     g_audio_state->channels[audioDevId][aiChn].enabled = 1;
 
@@ -420,12 +430,21 @@ int IMP_AI_DisableChn(int audioDevId, int aiChn) {
         return 0;
     }
 
-    /* Channel cleanup
-     * In the real implementation, this would:
-     * - Wait for any pending operations to complete
-     * - Free allocated audio buffers
-     * - Destroy channel-specific mutexes and conditions
-     * For now, we just mark the channel as disabled */
+    /* Channel cleanup - based on decompilation at 0xa9024
+     * The real implementation does:
+     * 1. pthread_mutex_lock() on device mutex
+     * 2. Sets channel enabled flag to 0
+     * 3. Sets channel disable wait flag
+     * 4. pthread_cond_timedwait() with 5 second timeout to wait for channel to finish
+     * 5. audio_buf_free() - frees the circular audio buffer
+     * 6. pthread_mutex_unlock() on device mutex
+     * 7. pthread_mutex_destroy() for all 4 channel mutexes
+     * 8. Frees temporary buffer if allocated
+     * 9. Clears temporary buffer pointer
+     *
+     * For our implementation, we mark the channel as disabled.
+     * Full cleanup would require implementing the audio_buf_free() function
+     * and proper synchronization with the audio thread. */
 
     g_audio_state->channels[audioDevId][aiChn].enabled = 0;
 
