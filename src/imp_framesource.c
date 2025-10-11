@@ -9,6 +9,7 @@
 #include <pthread.h>
 #include <semaphore.h>
 #include <imp/imp_framesource.h>
+#include "kernel_interface.h"
 
 #define LOG_FS(fmt, ...) fprintf(stderr, "[FrameSource] " fmt "\n", ##__VA_ARGS__)
 
@@ -159,16 +160,84 @@ int IMP_FrameSource_EnableChn(int chnNum) {
         return 0;
     }
 
-    /* TODO: Configure via ioctl */
-    /* TODO: Start thread */
-    /* TODO: Create VBM pool */
+    FSChannel *chn = &gFramesource->channels[chnNum];
 
-    gFramesource->channels[chnNum].state = 2; /* Running */
+    /* Open device if not already open */
+    if (chn->fd < 0) {
+        chn->fd = fs_open_device(chnNum);
+        if (chn->fd < 0) {
+            LOG_FS("EnableChn failed: cannot open device");
+            pthread_mutex_unlock(&fs_mutex);
+            return -1;
+        }
+    }
+
+    /* Prepare format structure */
+    fs_format_t fmt;
+    memset(&fmt, 0, sizeof(fmt));
+    fmt.enable = 1;
+    fmt.width = chn->attr.picWidth;
+    fmt.height = chn->attr.picHeight;
+    fmt.pixfmt = chn->attr.pixFmt;
+
+    /* Set format via ioctl */
+    if (fs_set_format(chn->fd, &fmt) < 0) {
+        LOG_FS("EnableChn failed: cannot set format");
+        fs_close_device(chn->fd);
+        chn->fd = -1;
+        pthread_mutex_unlock(&fs_mutex);
+        return -1;
+    }
+
+    /* Create VBM pool */
+    if (VBMCreatePool(chnNum, &fmt, NULL, gFramesource) < 0) {
+        LOG_FS("EnableChn failed: cannot create VBM pool");
+        fs_close_device(chn->fd);
+        chn->fd = -1;
+        pthread_mutex_unlock(&fs_mutex);
+        return -1;
+    }
+
+    /* Set buffer count */
+    int bufcnt = fs_set_buffer_count(chn->fd, 4); /* Default 4 buffers */
+    if (bufcnt < 0) {
+        LOG_FS("EnableChn failed: cannot set buffer count");
+        VBMDestroyPool(chnNum);
+        fs_close_device(chn->fd);
+        chn->fd = -1;
+        pthread_mutex_unlock(&fs_mutex);
+        return -1;
+    }
+
+    /* Fill VBM pool */
+    if (VBMFillPool(chnNum) < 0) {
+        LOG_FS("EnableChn failed: cannot fill VBM pool");
+        VBMDestroyPool(chnNum);
+        fs_close_device(chn->fd);
+        chn->fd = -1;
+        pthread_mutex_unlock(&fs_mutex);
+        return -1;
+    }
+
+    /* TODO: Create thread for frame processing */
+
+    /* Start streaming */
+    if (fs_stream_on(chn->fd) < 0) {
+        LOG_FS("EnableChn failed: cannot start streaming");
+        VBMFlushFrame(chnNum);
+        VBMDestroyPool(chnNum);
+        fs_close_device(chn->fd);
+        chn->fd = -1;
+        pthread_mutex_unlock(&fs_mutex);
+        return -1;
+    }
+
+    chn->state = 2; /* Running */
     gFramesource->active_count++;
 
     pthread_mutex_unlock(&fs_mutex);
 
-    LOG_FS("EnableChn: chn=%d", chnNum);
+    LOG_FS("EnableChn: chn=%d enabled successfully", chnNum);
     return 0;
 }
 
@@ -187,23 +256,38 @@ int IMP_FrameSource_DisableChn(int chnNum) {
         return -1;
     }
 
-    if (gFramesource->channels[chnNum].state != 2) {
+    FSChannel *chn = &gFramesource->channels[chnNum];
+
+    if (chn->state != 2) {
         LOG_FS("DisableChn: channel %d not enabled", chnNum);
         pthread_mutex_unlock(&fs_mutex);
         return 0;
     }
 
-    /* TODO: Cancel thread */
-    /* TODO: Flush pipeline */
-    /* TODO: Disable via ioctl */
-    /* TODO: Destroy VBM pool */
+    /* Stop streaming */
+    if (chn->fd >= 0) {
+        fs_stream_off(chn->fd);
+    }
 
-    gFramesource->channels[chnNum].state = 1; /* Disabled but created */
+    /* TODO: Cancel thread and wait for it to finish */
+    /* TODO: Flush pipeline */
+
+    /* Flush and destroy VBM pool */
+    VBMFlushFrame(chnNum);
+    VBMDestroyPool(chnNum);
+
+    /* Close device */
+    if (chn->fd >= 0) {
+        fs_close_device(chn->fd);
+        chn->fd = -1;
+    }
+
+    chn->state = 1; /* Disabled but created */
     gFramesource->active_count--;
 
     pthread_mutex_unlock(&fs_mutex);
 
-    LOG_FS("DisableChn: chn=%d", chnNum);
+    LOG_FS("DisableChn: chn=%d disabled successfully", chnNum);
     return 0;
 }
 

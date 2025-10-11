@@ -35,7 +35,8 @@ IMP_SOURCES = \
 	$(SRC_DIR)/imp_encoder.c \
 	$(SRC_DIR)/imp_audio.c \
 	$(SRC_DIR)/imp_osd.c \
-	$(SRC_DIR)/imp_ivs.c
+	$(SRC_DIR)/imp_ivs.c \
+	$(SRC_DIR)/kernel_interface.c
 
 SU_SOURCES = \
 	$(SRC_DIR)/su_base.c
