@@ -234,7 +234,8 @@ int IMP_FrameSource_EnableChn(int chnNum) {
      * Based on decompilation at 0x9ecf8, the entire structure is copied */
     fs_format_t fmt;
     memset(&fmt, 0, sizeof(fmt));
-    fmt.enable = 1;
+
+    /* V4L2 standard fields - will be set by fs_set_format() */
     fmt.width = chn->attr.picWidth;
     fmt.height = chn->attr.picHeight;
     fmt.pixfmt = chn->attr.pixFmt;
@@ -255,8 +256,7 @@ int IMP_FrameSource_EnableChn(int chnNum) {
     fmt.fps_num = chn->attr.outFrmRateNum;
     fmt.fps_den = chn->attr.outFrmRateDen;
 
-    /* Buffer type and mode */
-    fmt.buf_type = chn->attr.type;
+    /* Buffer mode */
     fmt.buf_mode = 1; /* Default mode */
 
     /* Set format via ioctl */

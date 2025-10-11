@@ -32,29 +32,34 @@
 #define ISP_INIT            0x50000000  /* Placeholder */
 #define ISP_SET_SENSOR      0x50000001  /* Placeholder */
 
-/* Format structure from decompilation at 0x9ecf8
+/* V4L2-compatible format structure for VIDIOC_SET_FMT ioctl
  * This is a 0x70 (112 byte) structure that gets passed to ioctl 0xc07056c3
- * It appears to be the full IMPFSChnAttr structure
+ * Matches the standard v4l2_format structure layout with Ingenic extensions
  */
 typedef struct {
-    int enable;                 /* 0x00: Enable flag */
+    int type;                   /* 0x00: Buffer type (V4L2_BUF_TYPE_VIDEO_CAPTURE) */
+    /* v4l2_pix_format starts here */
     int width;                  /* 0x04: Width */
     int height;                 /* 0x08: Height */
     int pixfmt;                 /* 0x0c: Pixel format (fourcc) */
-    int crop_enable;            /* 0x10: Crop enable */
-    int crop_top;               /* 0x14: Crop top */
-    int crop_left;              /* 0x18: Crop left */
-    int crop_width;             /* 0x1c: Crop width */
-    int crop_height;            /* 0x20: Crop height */
-    int scaler_enable;          /* 0x24: Scaler enable */
-    int scaler_out_width;       /* 0x28: Scaler output width */
-    int scaler_out_height;      /* 0x2c: Scaler output height */
-    int fps_num;                /* 0x30: FPS numerator */
-    int fps_den;                /* 0x34: FPS denominator */
-    int buf_type;               /* 0x38: Buffer type */
-    int buf_mode;               /* 0x3c: Buffer mode */
-    int colorspace;             /* 0x40: Colorspace (V4L2_COLORSPACE_*) */
-    char padding[0x30];         /* 0x44-0x70: Padding to 112 bytes */
+    int field;                  /* 0x10: Field order (V4L2_FIELD_NONE) */
+    int bytesperline;           /* 0x14: Bytes per line */
+    int sizeimage;              /* 0x18: Image size in bytes */
+    int colorspace;             /* 0x1c: Colorspace (V4L2_COLORSPACE_*) */
+    int priv;                   /* 0x20: Private data */
+    /* Extended fields for Ingenic driver */
+    int crop_enable;            /* 0x24: Crop enable */
+    int crop_top;               /* 0x28: Crop top */
+    int crop_left;              /* 0x2c: Crop left */
+    int crop_width;             /* 0x30: Crop width */
+    int crop_height;            /* 0x34: Crop height */
+    int scaler_enable;          /* 0x38: Scaler enable */
+    int scaler_out_width;       /* 0x3c: Scaler output width */
+    int scaler_out_height;      /* 0x40: Scaler output height */
+    int fps_num;                /* 0x44: FPS numerator */
+    int fps_den;                /* 0x48: FPS denominator */
+    int buf_mode;               /* 0x4c: Buffer mode */
+    char padding[0x24];         /* 0x50-0x70: Padding to 112 bytes */
 } fs_format_t;
 
 /* Buffer count structure */
@@ -149,7 +154,8 @@ int fs_set_format(int fd, fs_format_t *fmt) {
     fs_format_t kernel_fmt;
     memset(&kernel_fmt, 0, sizeof(kernel_fmt));
 
-    kernel_fmt.enable = fmt->enable;
+    /* V4L2 standard fields */
+    kernel_fmt.type = 1; /* V4L2_BUF_TYPE_VIDEO_CAPTURE */
     kernel_fmt.width = fmt->width;
     kernel_fmt.height = fmt->height;
 
@@ -160,7 +166,13 @@ int fs_set_format(int fd, fs_format_t *fmt) {
         kernel_fmt.pixfmt = fmt->pixfmt;
     }
 
-    /* Copy other fields */
+    kernel_fmt.field = 1; /* V4L2_FIELD_NONE */
+    kernel_fmt.bytesperline = 0; /* Driver will calculate */
+    kernel_fmt.sizeimage = 0; /* Driver will calculate */
+    kernel_fmt.colorspace = 8; /* V4L2_COLORSPACE_SRGB */
+    kernel_fmt.priv = 0;
+
+    /* Ingenic extended fields */
     kernel_fmt.crop_enable = fmt->crop_enable;
     kernel_fmt.crop_top = fmt->crop_top;
     kernel_fmt.crop_left = fmt->crop_left;
@@ -171,22 +183,18 @@ int fs_set_format(int fd, fs_format_t *fmt) {
     kernel_fmt.scaler_out_height = fmt->scaler_out_height;
     kernel_fmt.fps_num = fmt->fps_num;
     kernel_fmt.fps_den = fmt->fps_den;
-    kernel_fmt.buf_type = fmt->buf_type;
     kernel_fmt.buf_mode = fmt->buf_mode;
-
-    /* Colorspace - try 0 (default/unspecified) since driver rejects other values */
-    kernel_fmt.colorspace = 0;
 
     int ret = ioctl(fd, VIDIOC_SET_FMT, &kernel_fmt);
     if (ret < 0) {
         fprintf(stderr, "[KernelIF] VIDIOC_SET_FMT failed: %s\n", strerror(errno));
-        fprintf(stderr, "[KernelIF]   Requested: %dx%d fmt=0x%x (fourcc=0x%x)\n",
-                fmt->width, fmt->height, fmt->pixfmt, kernel_fmt.pixfmt);
+        fprintf(stderr, "[KernelIF]   Requested: %dx%d fmt=0x%x (fourcc=0x%x) colorspace=%d\n",
+                fmt->width, fmt->height, fmt->pixfmt, kernel_fmt.pixfmt, kernel_fmt.colorspace);
         return -1;
     }
 
-    fprintf(stderr, "[KernelIF] Set format: %dx%d fmt=0x%x (fourcc=0x%x)\n",
-            fmt->width, fmt->height, fmt->pixfmt, kernel_fmt.pixfmt);
+    fprintf(stderr, "[KernelIF] Set format: %dx%d fmt=0x%x (fourcc=0x%x) colorspace=%d\n",
+            fmt->width, fmt->height, fmt->pixfmt, kernel_fmt.pixfmt, kernel_fmt.colorspace);
     return 0;
 }
 
