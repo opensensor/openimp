@@ -53,7 +53,8 @@ typedef struct {
     int fps_den;                /* 0x34: FPS denominator */
     int buf_type;               /* 0x38: Buffer type */
     int buf_mode;               /* 0x3c: Buffer mode */
-    char padding[0x34];         /* 0x40-0x70: Padding to 112 bytes */
+    int colorspace;             /* 0x40: Colorspace (V4L2_COLORSPACE_*) */
+    char padding[0x30];         /* 0x44-0x70: Padding to 112 bytes */
 } fs_format_t;
 
 /* Buffer count structure */
@@ -172,6 +173,9 @@ int fs_set_format(int fd, fs_format_t *fmt) {
     kernel_fmt.fps_den = fmt->fps_den;
     kernel_fmt.buf_type = fmt->buf_type;
     kernel_fmt.buf_mode = fmt->buf_mode;
+
+    /* Colorspace - use SMPTE170M (1) for standard video */
+    kernel_fmt.colorspace = 1; /* V4L2_COLORSPACE_SMPTE170M */
 
     int ret = ioctl(fd, VIDIOC_SET_FMT, &kernel_fmt);
     if (ret < 0) {
