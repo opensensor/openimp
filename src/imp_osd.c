@@ -238,8 +238,8 @@ int IMP_OSD_CreateRgn(IMPRgnHandle handle, IMPOSDRgnAttr *prAttr) {
         case OSD_REG_BITMAP:
             /* Calculate bitmap size based on rect and pixel format */
             {
-                int width = prAttr->rect.p1.x - prAttr->rect.p0.x;
-                int height = prAttr->rect.p1.y - prAttr->rect.p0.y;
+                int width = prAttr->rect.width;
+                int height = prAttr->rect.height;
 
                 if (prAttr->fmt == PIX_FMT_BGRA) {
                     data_size = width * height * 4; /* 4 bytes per pixel */
@@ -252,8 +252,8 @@ int IMP_OSD_CreateRgn(IMPRgnHandle handle, IMPOSDRgnAttr *prAttr) {
         case OSD_REG_PIC:
             /* Picture data size from rect */
             {
-                int width = prAttr->rect.p1.x - prAttr->rect.p0.x;
-                int height = prAttr->rect.p1.y - prAttr->rect.p0.y;
+                int width = prAttr->rect.width;
+                int height = prAttr->rect.height;
                 data_size = width * height * 4; /* Assume BGRA */
             }
             break;
