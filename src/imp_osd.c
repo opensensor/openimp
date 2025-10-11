@@ -231,7 +231,61 @@ int IMP_OSD_CreateRgn(IMPRgnHandle handle, IMPOSDRgnAttr *prAttr) {
     rgn->registered = 0;
     memcpy(&rgn->attr, prAttr, sizeof(IMPOSDRgnAttr));
 
-    /* TODO: Allocate data buffer based on type and size */
+    /* Allocate data buffer based on type and size */
+    size_t data_size = 0;
+
+    switch (prAttr->type) {
+        case OSD_REG_BITMAP:
+            /* Calculate bitmap size based on rect and pixel format */
+            {
+                int width = prAttr->rect.p1.x - prAttr->rect.p0.x;
+                int height = prAttr->rect.p1.y - prAttr->rect.p0.y;
+
+                if (prAttr->fmt == PIX_FMT_BGRA) {
+                    data_size = width * height * 4; /* 4 bytes per pixel */
+                } else {
+                    data_size = width * height; /* 1 byte per pixel for mono */
+                }
+            }
+            break;
+
+        case OSD_REG_PIC:
+            /* Picture data size from rect */
+            {
+                int width = prAttr->rect.p1.x - prAttr->rect.p0.x;
+                int height = prAttr->rect.p1.y - prAttr->rect.p0.y;
+                data_size = width * height * 4; /* Assume BGRA */
+            }
+            break;
+
+        case OSD_REG_LINE:
+        case OSD_REG_RECT:
+        case OSD_REG_COVER:
+            /* These types don't need separate data buffers */
+            data_size = 0;
+            break;
+
+        default:
+            LOG_OSD("CreateRgn: unknown type %d", prAttr->type);
+            data_size = 0;
+            break;
+    }
+
+    /* Allocate data buffer if needed */
+    if (data_size > 0) {
+        rgn->data_ptr = malloc(data_size);
+        if (rgn->data_ptr == NULL) {
+            LOG_OSD("CreateRgn: failed to allocate %zu bytes", data_size);
+            rgn->allocated = 0;
+            sem_post(&gosd->sem);
+            pthread_mutex_unlock(&osd_mutex);
+            return -1;
+        }
+        memset(rgn->data_ptr, 0, data_size);
+        LOG_OSD("CreateRgn: allocated %zu bytes for data", data_size);
+    } else {
+        rgn->data_ptr = NULL;
+    }
 
     sem_post(&gosd->sem);
     pthread_mutex_unlock(&osd_mutex);
