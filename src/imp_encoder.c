@@ -12,16 +12,10 @@
 #include <unistd.h>
 #include <imp/imp_encoder.h>
 #include "fifo.h"
+#include "codec.h"
 
 #define LOG_ENC(fmt, ...) fprintf(stderr, "[Encoder] " fmt "\n", ##__VA_ARGS__)
 #define FIFO_SIZE 64  /* Size of Fifo structure */
-
-/* External codec functions (stubs implemented at end of file) */
-int AL_Codec_Encode_Create(void **codec, void *params);
-int AL_Codec_Encode_Destroy(void *codec);
-int AL_Codec_Encode_GetSrcFrameCntAndSize(void *codec, int *cnt, int *size);
-int AL_Codec_Encode_GetSrcStreamCntAndSize(void *codec, int *cnt, int *size);
-int AL_Codec_Encode_SetDefaultParam(void *params);
 
 /* Encoder channel structure - 0x308 bytes per channel */
 #define MAX_ENC_CHANNELS 9
@@ -733,9 +727,23 @@ static void *encoder_thread(void *arg) {
 
     LOG_ENC("encoder_thread: started for channel %d", chn->chn_id);
 
-    /* TODO: Implement actual encoding loop */
+    /* Main encoding loop */
     while (1) {
-        sleep(1);
+        /* Wait for recv_pic to be enabled */
+        if (!chn->recv_pic_enabled) {
+            usleep(10000); /* 10ms */
+            continue;
+        }
+
+        /* Check if we should stop */
+        pthread_testcancel();
+
+        /* TODO: Get frame from FrameSource via binding */
+        /* For now, just simulate encoding delay */
+        usleep(33000); /* ~30fps */
+
+        /* TODO: Process frame through codec */
+        /* AL_Codec_Encode_Process(chn->codec, frame, NULL); */
     }
 
     return NULL;
@@ -747,51 +755,24 @@ static void *stream_thread(void *arg) {
 
     LOG_ENC("stream_thread: started for channel %d", chn->chn_id);
 
-    /* TODO: Implement actual stream handling */
+    /* Main stream handling loop */
     while (1) {
-        sleep(1);
+        /* Check if we should stop */
+        pthread_testcancel();
+
+        /* TODO: Get encoded stream from codec */
+        /* void *stream = NULL; */
+        /* if (AL_Codec_Encode_GetStream(chn->codec, &stream) == 0) { */
+        /*     // Stream is available for IMP_Encoder_GetStream */
+        /*     // Store in channel's stream queue */
+        /* } */
+
+        /* For now, just wait */
+        usleep(10000); /* 10ms */
     }
 
     return NULL;
 }
 
 /* ========== Stub Implementations for External Functions ========== */
-
-/* Stub implementations for AL_Codec functions */
-int AL_Codec_Encode_Create(void **codec, void *params) {
-    (void)params;
-    *codec = malloc(1); /* Dummy codec handle */
-    LOG_ENC("AL_Codec_Encode_Create: stub");
-    return (*codec != NULL) ? 0 : -1;
-}
-
-int AL_Codec_Encode_Destroy(void *codec) {
-    if (codec) {
-        free(codec);
-    }
-    LOG_ENC("AL_Codec_Encode_Destroy: stub");
-    return 0;
-}
-
-int AL_Codec_Encode_GetSrcFrameCntAndSize(void *codec, int *cnt, int *size) {
-    (void)codec;
-    *cnt = 4;      /* Default 4 frames */
-    *size = 0x100000; /* 1MB per frame */
-    LOG_ENC("AL_Codec_Encode_GetSrcFrameCntAndSize: stub cnt=%d size=%d", *cnt, *size);
-    return 0;
-}
-
-int AL_Codec_Encode_GetSrcStreamCntAndSize(void *codec, int *cnt, int *size) {
-    (void)codec;
-    *cnt = 4;
-    *size = 0x10000; /* 64KB per stream */
-    LOG_ENC("AL_Codec_Encode_GetSrcStreamCntAndSize: stub");
-    return 0;
-}
-
-int AL_Codec_Encode_SetDefaultParam(void *params) {
-    memset(params, 0, 0x7c0);
-    LOG_ENC("AL_Codec_Encode_SetDefaultParam: stub");
-    return 0;
-}
 

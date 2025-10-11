@@ -12,6 +12,7 @@
 #include <sys/ioctl.h>
 #include <pthread.h>
 #include <errno.h>
+#include "dma_alloc.h"
 
 /* ioctl command definitions from decompilation */
 
@@ -310,8 +311,12 @@ int VBMCreatePool(int chn, void *fmt, void *ops, void *priv) {
         return -1;
     }
 
+    /* Safe struct member access using byte offsets */
+    uint8_t *fmt_bytes = (uint8_t*)fmt;
+
     /* Get frame count from format structure at offset 0xcc */
-    int frame_count = *(int*)((uint8_t*)fmt + 0xcc);
+    int frame_count;
+    memcpy(&frame_count, fmt_bytes + 0xcc, sizeof(int));
 
     /* Allocate pool structure */
     size_t pool_size = frame_count * VBM_FRAME_SIZE + 0x180;
@@ -323,7 +328,7 @@ int VBMCreatePool(int chn, void *fmt, void *ops, void *priv) {
 
     memset(pool, 0, pool_size);
 
-    /* Initialize pool */
+    /* Initialize pool with safe member access */
     pool->chn = chn;
     pool->priv = priv;
     pool->frame_count = frame_count;
@@ -332,23 +337,24 @@ int VBMCreatePool(int chn, void *fmt, void *ops, void *priv) {
     memcpy(pool->fmt, fmt, 0xd0);
 
     /* Copy ops pointers */
-    pool->ops[0] = ((void**)ops)[0];
-    pool->ops[1] = ((void**)ops)[1];
+    void **ops_array = (void**)ops;
+    pool->ops[0] = ops_array[0];
+    pool->ops[1] = ops_array[1];
 
     pool->pool_id = -1;
 
     /* Create pool name */
     snprintf(pool->name, sizeof(pool->name), "vbm_chn%d", chn);
 
-    /* Get format parameters */
-    int width = *(int*)((uint8_t*)fmt + 0xc);
-    int height = *(int*)((uint8_t*)fmt + 0x10);
-    int pixfmt = *(int*)((uint8_t*)fmt + 0x14);
+    /* Get format parameters with safe access */
+    int width, height, pixfmt, req_size;
+    memcpy(&width, fmt_bytes + 0xc, sizeof(int));
+    memcpy(&height, fmt_bytes + 0x10, sizeof(int));
+    memcpy(&pixfmt, fmt_bytes + 0x14, sizeof(int));
+    memcpy(&req_size, fmt_bytes + 0x20, sizeof(int));
 
     /* Calculate frame size */
     int calc_size = calculate_frame_size(width, height, pixfmt);
-    int req_size = *(int*)((uint8_t*)fmt + 0x20);
-
     pool->frame_size = (req_size >= calc_size) ? req_size : calc_size;
 
     fprintf(stderr, "[VBM] CreatePool: chn=%d, %dx%d fmt=0x%x, %d frames, size=%d\n",
@@ -357,14 +363,15 @@ int VBMCreatePool(int chn, void *fmt, void *ops, void *priv) {
     /* Try to get pool from FrameSource */
     pool->pool_id = IMP_FrameSource_GetPool(chn);
 
-    /* Allocate memory for frames */
+    /* Allocate memory for frames via DMA allocator */
     int total_size = pool->frame_size * frame_count;
+    char alloc_name[256];
     int ret;
 
     if (pool->pool_id < 0) {
-        ret = IMP_Alloc(pool->name, total_size, pool->name);
+        ret = IMP_Alloc(alloc_name, total_size, pool->name);
     } else {
-        ret = IMP_PoolAlloc(pool->pool_id, pool->name, total_size, pool->name);
+        ret = IMP_PoolAlloc(pool->pool_id, alloc_name, total_size, pool->name);
     }
 
     if (ret < 0) {
@@ -373,15 +380,20 @@ int VBMCreatePool(int chn, void *fmt, void *ops, void *priv) {
         return -1;
     }
 
-    /* Get physical and virtual addresses from format at offsets 0x158, 0x15c */
-    uint8_t *fmt_bytes = (uint8_t*)fmt;
-    pool->phys_base = *(uint32_t*)(fmt_bytes + 0x158);
-    pool->virt_base = *(uint32_t*)(fmt_bytes + 0x15c);
+    /* Get physical and virtual addresses from DMA buffer */
+    /* DMA buffer structure is returned in alloc_name */
+    uint32_t phys_base, virt_base;
+    memcpy(&virt_base, alloc_name + 0x80, sizeof(uint32_t));
+    memcpy(&phys_base, alloc_name + 0x84, sizeof(uint32_t));
 
-    /* Initialize frames */
+    pool->phys_base = phys_base;
+    pool->virt_base = virt_base;
+
+    /* Initialize frames array pointer */
     uint8_t *pool_bytes = (uint8_t*)pool;
     pool->frames = (VBMFrame*)(pool_bytes + 0x180);
 
+    /* Initialize each frame */
     for (int i = 0; i < frame_count; i++) {
         VBMFrame *frame = &pool->frames[i];
         frame->index = i;
@@ -523,35 +535,6 @@ int VBMReleaseFrame(int chn, void *frame) {
 
     /* TODO: Return frame to available queue */
 
-    return 0;
-}
-
-/* Stub implementations for IMP memory allocation */
-int IMP_FrameSource_GetPool(int chn) {
-    (void)chn;
-    /* Return -1 to indicate no pool available, will use IMP_Alloc instead */
-    return -1;
-}
-
-int IMP_Alloc(char *name, int size, char *tag) {
-    (void)tag;
-    fprintf(stderr, "[IMP] Alloc: name=%s, size=%d\n", name, size);
-    /* TODO: Implement actual memory allocation via kernel driver */
-    /* For now, just return success */
-    return 0;
-}
-
-int IMP_PoolAlloc(int pool_id, char *name, int size, char *tag) {
-    (void)pool_id;
-    (void)tag;
-    fprintf(stderr, "[IMP] PoolAlloc: pool=%d, name=%s, size=%d\n", pool_id, name, size);
-    /* TODO: Implement actual pool allocation */
-    return 0;
-}
-
-int IMP_Free(uint32_t phys_addr) {
-    fprintf(stderr, "[IMP] Free: phys=0x%x\n", phys_addr);
-    /* TODO: Implement actual memory free */
     return 0;
 }
 
