@@ -206,42 +206,208 @@ void fs_close_device(int fd) {
     }
 }
 
-/* VBM (Video Buffer Manager) stubs - to be implemented */
+/* VBM (Video Buffer Manager) implementation - based on decompilation at 0x1efe4 */
+
+#define MAX_VBM_POOLS 6
+#define VBM_FRAME_SIZE 0x428
+
+/* VBM Frame structure */
+typedef struct {
+    int index;              /* 0x00: Frame index */
+    int chn;                /* 0x04: Channel */
+    int width;              /* 0x08: Width */
+    int height;             /* 0x0c: Height */
+    int size;               /* 0x14: Frame size */
+    int pixfmt;             /* 0x10: Pixel format */
+    uint32_t phys_addr;     /* 0x18: Physical address */
+    uint32_t virt_addr;     /* 0x1c: Virtual address */
+    uint8_t data[0x408];    /* 0x20-0x427: Frame data */
+} VBMFrame;
+
+/* VBM Pool structure */
+typedef struct {
+    int chn;                /* 0x00: Channel ID */
+    void *priv;             /* 0x04: Private data */
+    uint8_t fmt[0xd0];      /* 0x08-0xd7: Format data */
+    char name[64];          /* 0xd8-0x117: Pool name */
+    uint32_t phys_base;     /* 0x16c: Physical base address */
+    uint32_t virt_base;     /* 0x170: Virtual base address */
+    void *ops[2];           /* 0x174-0x17b: Operations */
+    int pool_id;            /* 0x17c: Pool ID from IMP_FrameSource_GetPool */
+    VBMFrame *frames;       /* 0x180: Frame array */
+    int frame_count;        /* Frame count (from fmt offset 0xcc) */
+    int frame_size;         /* Calculated frame size */
+} VBMPool;
+
+/* Global VBM state */
+typedef struct {
+    VBMPool *pool;          /* 0x00: Pool pointer */
+    uint32_t phys_addr;     /* 0x04: Physical address */
+    uint32_t virt_addr;     /* 0x08: Virtual address */
+    int ref_count;          /* 0x0c: Reference count */
+    pthread_mutex_t mutex;  /* 0x10: Mutex */
+} VBMVolume;
+
+static VBMPool *vbm_instance[MAX_VBM_POOLS] = {NULL};
+static VBMVolume g_framevolumes[30]; /* Global frame volumes array */
+
+/* External functions */
+extern int IMP_FrameSource_GetPool(int chn);
+extern int IMP_Alloc(char *name, int size, char *tag);
+extern int IMP_PoolAlloc(int pool_id, char *name, int size, char *tag);
+extern int IMP_Free(uint32_t phys_addr);
+
+/* Calculate frame size based on pixel format */
+static int calculate_frame_size(int width, int height, int pixfmt) {
+    int size;
+
+    switch (pixfmt) {
+        case 0x23:      /* ARGB8888 */
+        case 0xf:       /* RGBA8888 */
+            size = ((width + 15) & 0xfffffff0) * (height << 2);
+            break;
+
+        case 0x3231564e: /* NV12 */
+        case 0x32315559: /* YU12 */
+            size = ((((height + 15) & 0xfffffff0) * 12) >> 3) * ((width + 15) & 0xfffffff0);
+            break;
+
+        case 0x32314742: /* BG12 */
+        case 0x32314142: /* AB12 */
+        case 0x32314247: /* GB12 */
+        case 0x32314752: /* RG12 */
+        case 0x50424752: /* RGBP */
+        case 0x56595559: /* YUYV */
+        case 0x59565955: /* UYVY */
+            size = (width * height * 16) >> 3;
+            break;
+
+        case 0x33524742: /* BGR3 */
+            size = (width * height * 24) >> 3;
+            break;
+
+        case 0x34524742: /* BGR4 */
+            size = (width * height * 32) >> 3;
+            break;
+
+        default:
+            size = -1;
+            break;
+    }
+
+    return size;
+}
 
 int VBMCreatePool(int chn, void *fmt, void *ops, void *priv) {
-    fprintf(stderr, "[VBM] CreatePool: chn=%d\n", chn);
-    /* TODO: Implement actual VBM pool creation */
-    return 0;
-}
+    if (chn < 0 || chn >= MAX_VBM_POOLS) {
+        return -1;
+    }
 
-int VBMDestroyPool(int chn) {
-    fprintf(stderr, "[VBM] DestroyPool: chn=%d\n", chn);
-    /* TODO: Implement actual VBM pool destruction */
-    return 0;
-}
+    if (fmt == NULL || ops == NULL) {
+        fprintf(stderr, "[VBM] CreatePool: NULL parameters\n");
+        return -1;
+    }
 
-int VBMFillPool(int chn) {
-    fprintf(stderr, "[VBM] FillPool: chn=%d\n", chn);
-    /* TODO: Implement actual VBM pool filling */
-    return 0;
-}
+    /* Get frame count from format structure at offset 0xcc */
+    int frame_count = *(int*)((uint8_t*)fmt + 0xcc);
 
-int VBMFlushFrame(int chn) {
-    fprintf(stderr, "[VBM] FlushFrame: chn=%d\n", chn);
-    /* TODO: Implement actual VBM frame flushing */
-    return 0;
-}
+    /* Allocate pool structure */
+    size_t pool_size = frame_count * VBM_FRAME_SIZE + 0x180;
+    VBMPool *pool = (VBMPool*)malloc(pool_size);
+    if (pool == NULL) {
+        fprintf(stderr, "[VBM] CreatePool: malloc failed\n");
+        return -1;
+    }
 
-int VBMGetFrame(int chn, void **frame) {
-    fprintf(stderr, "[VBM] GetFrame: chn=%d\n", chn);
-    /* TODO: Implement actual VBM frame retrieval */
-    *frame = NULL;
-    return -1;
-}
+    memset(pool, 0, pool_size);
 
-int VBMReleaseFrame(int chn, void *frame) {
-    fprintf(stderr, "[VBM] ReleaseFrame: chn=%d\n", chn);
-    /* TODO: Implement actual VBM frame release */
+    /* Initialize pool */
+    pool->chn = chn;
+    pool->priv = priv;
+    pool->frame_count = frame_count;
+
+    /* Copy format data (0xd0 bytes) */
+    memcpy(pool->fmt, fmt, 0xd0);
+
+    /* Copy ops pointers */
+    pool->ops[0] = ((void**)ops)[0];
+    pool->ops[1] = ((void**)ops)[1];
+
+    pool->pool_id = -1;
+
+    /* Create pool name */
+    snprintf(pool->name, sizeof(pool->name), "vbm_chn%d", chn);
+
+    /* Get format parameters */
+    int width = *(int*)((uint8_t*)fmt + 0xc);
+    int height = *(int*)((uint8_t*)fmt + 0x10);
+    int pixfmt = *(int*)((uint8_t*)fmt + 0x14);
+
+    /* Calculate frame size */
+    int calc_size = calculate_frame_size(width, height, pixfmt);
+    int req_size = *(int*)((uint8_t*)fmt + 0x20);
+
+    pool->frame_size = (req_size >= calc_size) ? req_size : calc_size;
+
+    fprintf(stderr, "[VBM] CreatePool: chn=%d, %dx%d fmt=0x%x, %d frames, size=%d\n",
+            chn, width, height, pixfmt, frame_count, pool->frame_size);
+
+    /* Try to get pool from FrameSource */
+    pool->pool_id = IMP_FrameSource_GetPool(chn);
+
+    /* Allocate memory for frames */
+    int total_size = pool->frame_size * frame_count;
+    int ret;
+
+    if (pool->pool_id < 0) {
+        ret = IMP_Alloc(pool->name, total_size, pool->name);
+    } else {
+        ret = IMP_PoolAlloc(pool->pool_id, pool->name, total_size, pool->name);
+    }
+
+    if (ret < 0) {
+        fprintf(stderr, "[VBM] CreatePool: allocation failed\n");
+        free(pool);
+        return -1;
+    }
+
+    /* Get physical and virtual addresses from format at offsets 0x158, 0x15c */
+    pool->phys_base = *(uint32_t*)((uint8_t*)fmt + 0x158);
+    pool->virt_base = *(uint32_t*)((uint8_t*)fmt + 0x15c);
+
+    /* Initialize frames */
+    pool->frames = (VBMFrame*)((uint8_t*)pool + 0x180);
+
+    for (int i = 0; i < frame_count; i++) {
+        VBMFrame *frame = &pool->frames[i];
+        frame->index = i;
+        frame->chn = chn;
+        frame->width = width;
+        frame->height = height;
+        frame->pixfmt = pixfmt;
+        frame->size = pool->frame_size;
+        frame->phys_addr = pool->phys_base + (i * pool->frame_size);
+        frame->virt_addr = pool->virt_base + (i * pool->frame_size);
+
+        fprintf(stderr, "[VBM] Frame %d: phys=0x%x virt=0x%x\n",
+                i, frame->phys_addr, frame->virt_addr);
+
+        /* Register in global frame volumes */
+        for (int j = 0; j < 30; j++) {
+            if (g_framevolumes[j].pool == NULL) {
+                g_framevolumes[j].pool = (VBMPool*)frame;
+                g_framevolumes[j].phys_addr = frame->phys_addr;
+                g_framevolumes[j].virt_addr = frame->virt_addr;
+                g_framevolumes[j].ref_count = 0;
+                pthread_mutex_init(&g_framevolumes[j].mutex, NULL);
+                break;
+            }
+        }
+    }
+
+    vbm_instance[chn] = pool;
+
+    fprintf(stderr, "[VBM] CreatePool: chn=%d created successfully\n", chn);
     return 0;
 }
 
