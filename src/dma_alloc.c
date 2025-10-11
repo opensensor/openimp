@@ -254,17 +254,19 @@ int IMP_PoolAlloc(int pool_id, char *name, int size, char *tag) {
     }
     
     LOG_DMA("PoolAlloc: pool=%d name=%s size=%d", pool_id, name, size);
-    
-    /* For now, just use regular allocation */
-    /* TODO: Implement actual pool-based allocation */
+
+    /* Pool-based allocation uses the same underlying allocator as IMP_Alloc
+     * The pool_id is just metadata to track which pool the buffer belongs to
+     * This allows the system to manage buffers by pool for cleanup/tracking */
     int ret = IMP_Alloc(name, size, tag);
-    
+
     if (ret == 0) {
-        /* Set pool ID in buffer */
+        /* Set pool ID in buffer for tracking */
         DMABuffer *buf = (DMABuffer*)name;
         buf->pool_id = pool_id;
+        LOG_DMA("PoolAlloc: assigned to pool %d", pool_id);
     }
-    
+
     return ret;
 }
 

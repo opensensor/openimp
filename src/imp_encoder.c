@@ -870,14 +870,67 @@ static int channel_encoder_exit(EncChannel *chn) {
     return 0;
 }
 
-/* channel_encoder_set_rc_param - stub */
+/* channel_encoder_set_rc_param - Convert rate control parameters */
 static int channel_encoder_set_rc_param(void *dst, IMPEncoderRcAttr *src) {
     if (dst == NULL || src == NULL) {
         return -1;
     }
 
-    /* TODO: Implement rate control parameter conversion */
-    memcpy(dst, src, sizeof(IMPEncoderRcAttr));
+    /* Convert IMPEncoderRcAttr to internal codec format
+     * The dst pointer points to codec_param structure
+     * We need to map the rate control parameters to the correct offsets */
+
+    uint8_t *codec_param = (uint8_t*)dst;
+
+    /* Set rate control mode at offset 0x2c */
+    uint32_t rc_mode = 0;
+    switch (src->attrRcMode.rcMode) {
+        case IMP_ENC_RC_MODE_FIXQP:
+            rc_mode = 0;
+            break;
+        case IMP_ENC_RC_MODE_CBR:
+            rc_mode = 1;
+            break;
+        case IMP_ENC_RC_MODE_VBR:
+            rc_mode = 2;
+            break;
+        case IMP_ENC_RC_MODE_CAPPED_VBR:
+            rc_mode = 3;
+            break;
+        case IMP_ENC_RC_MODE_CAPPED_QUALITY:
+            rc_mode = 4;
+            break;
+        default:
+            rc_mode = 1; /* Default to CBR */
+            break;
+    }
+    memcpy(codec_param + 0x2c, &rc_mode, sizeof(uint32_t));
+
+    /* Set QP values */
+    uint32_t max_qp = 51, min_qp = 0;
+    if (src->attrRcMode.rcMode == IMP_ENC_RC_MODE_CBR) {
+        max_qp = src->attrRcMode.attrH264Cbr.maxQp;
+        min_qp = src->attrRcMode.attrH264Cbr.minQp;
+    } else if (src->attrRcMode.rcMode == IMP_ENC_RC_MODE_VBR) {
+        max_qp = src->attrRcMode.attrH264Vbr.maxQp;
+        min_qp = src->attrRcMode.attrH264Vbr.minQp;
+    } else if (src->attrRcMode.rcMode == IMP_ENC_RC_MODE_FIXQP) {
+        uint32_t qp = src->attrRcMode.attrH264FixQp.qp;
+        memcpy(codec_param + 0x38, &qp, sizeof(uint32_t));
+        max_qp = qp;
+        min_qp = qp;
+    }
+
+    memcpy(codec_param + 0x3c, &max_qp, sizeof(uint32_t));
+    memcpy(codec_param + 0x40, &min_qp, sizeof(uint32_t));
+
+    /* Set GOP length */
+    uint32_t gop_len = src->attrGop.gopLength;
+    memcpy(codec_param + 0x44, &gop_len, sizeof(uint32_t));
+
+    LOG_ENC("set_rc_param: mode=%d, qp_range=[%u,%u], gop=%u",
+            rc_mode, min_qp, max_qp, gop_len);
+
     return 0;
 }
 
