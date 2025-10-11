@@ -12,6 +12,7 @@
 #include <unistd.h>
 #include <imp/imp_encoder.h>
 #include "fifo.h"
+#include "hw_encoder.h"
 
 #define LOG_CODEC(fmt, ...) fprintf(stderr, "[Codec] " fmt "\n", ##__VA_ARGS__)
 
@@ -25,27 +26,32 @@ typedef struct {
     void *callback;                 /* 0x7a0: Callback function */
     void *callback_arg;             /* 0x7a4: Callback argument */
     int channel_id;                 /* 0x7a8: Channel ID + 1 */
-    
+
     /* Stream buffer pool config - offsets from decompilation */
     int stream_buf_count;           /* 0x7ac: Stream buffer count */
     int stream_buf_size;            /* 0x7b0: Stream buffer size */
     uint8_t stream_pool[0x44];      /* 0x7b4-0x7f7: Stream buffer pool */
-    
+
     /* FIFOs - offsets from decompilation at 0x79ab0 */
     uint8_t fifo_frames[64];        /* 0x7f8: Frame FIFO */
     uint8_t fifo_streams[64];       /* 0x81c: Stream FIFO (0x7f8 + 0x24 = 0x81c) */
-    
+
     /* Frame buffer pool config */
     uint8_t frame_pool_config[0x60]; /* 0x840-0x89f: Frame pool config */
     int frame_buf_count;            /* 0x840: Frame buffer count (from GetSrcFrameCntAndSize) */
     uint8_t frame_pool_data[0x9c];  /* 0x8a0-0x8db: Frame pool data */
     int frame_buf_size;             /* 0x8dc: Frame buffer size (from GetSrcFrameCntAndSize) */
-    
+
     /* Pixel map buffer pool */
     uint8_t pixmap_pool[0x3c];      /* 0x8e0-0x91b: PixMap buffer pool */
     int frame_count;                /* 0x91c: Frame count */
     int src_fourcc;                 /* 0x918: Source FourCC */
     int metadata_type;              /* 0x920: Metadata type */
+
+    /* Extended fields (not part of binary structure) */
+    int hw_encoder_fd;              /* Hardware encoder file descriptor */
+    HWEncoderParams hw_params;      /* Hardware encoder parameters */
+    int use_hardware;               /* Flag: 1=hardware, 0=software */
 } AL_CodecEncode;
 
 /* Global codec state */
@@ -220,7 +226,35 @@ int AL_Codec_Encode_Create(void **codec, void *params) {
     /* Set source FourCC to NV12 */
     enc->src_fourcc = 0x3231564e;  /* 'NV12' */
     enc->metadata_type = -1;
-    
+
+    /* Initialize hardware encoder */
+    enc->hw_encoder_fd = -1;
+    enc->use_hardware = 0;
+
+    /* Extract encoder parameters from codec_param */
+    uint8_t *p = enc->codec_param;
+    enc->hw_params.codec_type = *(uint32_t*)(p + 0x1f);  /* Codec type at offset 0x1f */
+    enc->hw_params.width = *(uint32_t*)(p + 0x14);       /* Width */
+    enc->hw_params.height = *(uint32_t*)(p + 0x18);      /* Height */
+    enc->hw_params.fps_num = 30;                         /* Default FPS */
+    enc->hw_params.fps_den = 1;
+    enc->hw_params.gop_length = 30;                      /* Default GOP */
+    enc->hw_params.rc_mode = HW_RC_MODE_CBR;             /* Default RC mode */
+    enc->hw_params.bitrate = *(uint32_t*)(p + 0x30);     /* Bitrate */
+    enc->hw_params.profile = HW_PROFILE_MAIN;            /* Default profile */
+    enc->hw_params.qp = 25;                              /* Default QP */
+    enc->hw_params.max_qp = 51;
+    enc->hw_params.min_qp = 0;
+
+    /* Try to initialize hardware encoder */
+    if (HW_Encoder_Init(&enc->hw_encoder_fd, &enc->hw_params) == 0) {
+        enc->use_hardware = 1;
+        LOG_CODEC("Create: using hardware encoder");
+    } else {
+        enc->use_hardware = 0;
+        LOG_CODEC("Create: using software fallback");
+    }
+
     /* Register in global instances */
     pthread_mutex_lock(&g_codec_mutex);
     for (int i = 0; i < 6; i++) {
@@ -228,7 +262,7 @@ int AL_Codec_Encode_Create(void **codec, void *params) {
             g_codec_instances[i] = enc;
             enc->channel_id = i + 1;
             pthread_mutex_unlock(&g_codec_mutex);
-            
+
             *codec = enc;
             LOG_CODEC("Create: codec=%p, channel=%d", enc, i);
             return 0;
@@ -256,7 +290,13 @@ int AL_Codec_Encode_Destroy(void *codec) {
     AL_CodecEncode *enc = (AL_CodecEncode*)codec;
     
     LOG_CODEC("Destroy: codec=%p, channel=%d", codec, enc->channel_id - 1);
-    
+
+    /* Deinitialize hardware encoder */
+    if (enc->hw_encoder_fd >= 0) {
+        HW_Encoder_Deinit(enc->hw_encoder_fd);
+        enc->hw_encoder_fd = -1;
+    }
+
     /* Unregister from global instances */
     pthread_mutex_lock(&g_codec_mutex);
     for (int i = 0; i < 6; i++) {
@@ -266,7 +306,7 @@ int AL_Codec_Encode_Destroy(void *codec) {
         }
     }
     pthread_mutex_unlock(&g_codec_mutex);
-    
+
     /* Deinitialize FIFOs */
     Fifo_Deinit(enc->fifo_frames);
     Fifo_Deinit(enc->fifo_streams);
@@ -296,13 +336,65 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
         return 0;
     }
 
-    /* Queue frame to FIFO for processing */
-    if (Fifo_Queue(enc->fifo_frames, frame, -1) == 0) {
-        LOG_CODEC("Process: failed to queue frame");
+    /* Encode frame using hardware or software */
+    HWStreamBuffer *hw_stream = (HWStreamBuffer*)malloc(sizeof(HWStreamBuffer));
+    if (hw_stream == NULL) {
+        LOG_CODEC("Process: failed to allocate stream buffer");
         return -1;
     }
 
-    LOG_CODEC("Process: queued frame %p", frame);
+    if (enc->use_hardware && enc->hw_encoder_fd >= 0) {
+        /* Use hardware encoder */
+        HWFrameBuffer hw_frame;
+        memset(&hw_frame, 0, sizeof(HWFrameBuffer));
+
+        /* TODO: Extract frame data from VBM frame structure */
+        /* For now, use dummy values */
+        hw_frame.phys_addr = 0;
+        hw_frame.virt_addr = (uint32_t)(uintptr_t)frame;
+        hw_frame.size = enc->frame_buf_size;
+        hw_frame.width = enc->hw_params.width;
+        hw_frame.height = enc->hw_params.height;
+        hw_frame.pixfmt = 0x3231564e; /* NV12 */
+        hw_frame.timestamp = 0; /* TODO: Get actual timestamp */
+
+        /* Submit frame for encoding */
+        if (HW_Encoder_Encode(enc->hw_encoder_fd, &hw_frame) < 0) {
+            LOG_CODEC("Process: hardware encoding failed");
+            free(hw_stream);
+            return -1;
+        }
+
+        /* Get encoded stream */
+        if (HW_Encoder_GetStream(enc->hw_encoder_fd, hw_stream, 100) < 0) {
+            LOG_CODEC("Process: failed to get stream from hardware");
+            free(hw_stream);
+            return -1;
+        }
+    } else {
+        /* Use software fallback */
+        HWFrameBuffer hw_frame;
+        memset(&hw_frame, 0, sizeof(HWFrameBuffer));
+        hw_frame.virt_addr = (uint32_t)(uintptr_t)frame;
+        hw_frame.width = enc->hw_params.width;
+        hw_frame.height = enc->hw_params.height;
+        hw_frame.timestamp = 0;
+
+        if (HW_Encoder_Encode_Software(&hw_frame, hw_stream) < 0) {
+            LOG_CODEC("Process: software encoding failed");
+            free(hw_stream);
+            return -1;
+        }
+    }
+
+    /* Queue encoded stream to FIFO */
+    if (Fifo_Queue(enc->fifo_streams, hw_stream, -1) == 0) {
+        LOG_CODEC("Process: failed to queue stream");
+        free(hw_stream);
+        return -1;
+    }
+
+    LOG_CODEC("Process: encoded and queued stream, length=%u", hw_stream->length);
     return 0;
 }
 
