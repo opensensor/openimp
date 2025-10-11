@@ -348,28 +348,21 @@ int VBMCreatePool(int chn, void *fmt, void *ops, void *priv) {
     /* Safe struct member access using byte offsets */
     uint8_t *fmt_bytes = (uint8_t*)fmt;
 
-    /* Debug: dump first part of format structure */
-    fprintf(stderr, "[VBM] CreatePool: chn=%d, fmt structure dump:\n", chn);
-    fprintf(stderr, "[VBM]   Offset 0x00-0x0f: ");
-    for (int i = 0; i < 16; i++) {
-        fprintf(stderr, "%02x ", fmt_bytes[i]);
-    }
-    fprintf(stderr, "\n[VBM]   Offset 0xc0-0xcf: ");
-    for (int i = 0xc0; i < 0xd0; i++) {
-        fprintf(stderr, "%02x ", fmt_bytes[i]);
-    }
-    fprintf(stderr, "\n");
-
-    /* Get frame count from format structure at offset 0xcc */
+    /* Get frame count from IMPFSChnAttr structure
+     * IMPFSChnAttr layout:
+     *   0x00: picWidth
+     *   0x04: picHeight
+     *   0x08: pixFmt
+     *   0x0c: crop (20 bytes)
+     *   0x20: scaler (12 bytes)
+     *   0x2c: outFrmRateNum
+     *   0x30: outFrmRateDen
+     *   0x34: nrVBs (number of video buffers = frame count)
+     *   0x38: type
+     *   0x3c: fcrop (20 bytes, T31 only)
+     */
     int frame_count;
-    memcpy(&frame_count, fmt_bytes + 0xcc, sizeof(int));
-
-    fprintf(stderr, "[VBM] CreatePool: raw frame_count at 0xcc = %d (0x%x)\n", frame_count, frame_count);
-
-    /* Also check offset 0xd4 which is used in the decompilation */
-    int frame_count_d4;
-    memcpy(&frame_count_d4, fmt_bytes + 0xd4, sizeof(int));
-    fprintf(stderr, "[VBM] CreatePool: value at 0xd4 = %d (0x%x)\n", frame_count_d4, frame_count_d4);
+    memcpy(&frame_count, fmt_bytes + 0x34, sizeof(int));
 
     /* Sanity check frame count - default to 4 if invalid */
     if (frame_count <= 0 || frame_count > 32) {
