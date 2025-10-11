@@ -765,7 +765,8 @@ static void *encoder_thread(void *arg) {
         /* Signal eventfd to wake up stream thread */
         if (chn->eventfd >= 0) {
             uint64_t val = 1;
-            write(chn->eventfd, &val, sizeof(val));
+            ssize_t n = write(chn->eventfd, &val, sizeof(val));
+            (void)n; /* Suppress unused warning */
         }
     }
 
@@ -796,14 +797,15 @@ static void *stream_thread(void *arg) {
 
             int ret = select(chn->eventfd + 1, &readfds, NULL, NULL, &tv);
             if (ret > 0 && FD_ISSET(chn->eventfd, &readfds)) {
-                read(chn->eventfd, &val, sizeof(val));
+                ssize_t n = read(chn->eventfd, &val, sizeof(val));
+                (void)n; /* Suppress unused warning */
             }
         }
 
         /* Get encoded stream from codec */
         if (chn->codec != NULL) {
             void *stream = NULL;
-            if (AL_Codec_Encode_GetStream(chn->codec, &stream, 100) == 0 && stream != NULL) {
+            if (AL_Codec_Encode_GetStream(chn->codec, &stream) == 0 && stream != NULL) {
                 LOG_ENC("stream_thread: got stream %p", stream);
 
                 /* Stream is now available for IMP_Encoder_GetStream */
