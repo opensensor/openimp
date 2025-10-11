@@ -242,18 +242,25 @@ int AL_Codec_Encode_Create(void **codec, void *params) {
     enc->hw_encoder_fd = -1;
     enc->use_hardware = 0;
 
-    /* Extract encoder parameters from codec_param */
+    /* Extract encoder parameters from codec_param using safe access */
     uint8_t *p = enc->codec_param;
-    enc->hw_params.codec_type = *(uint32_t*)(p + 0x1f);  /* Codec type at offset 0x1f */
-    enc->hw_params.width = *(uint32_t*)(p + 0x14);       /* Width */
-    enc->hw_params.height = *(uint32_t*)(p + 0x18);      /* Height */
-    enc->hw_params.fps_num = 30;                         /* Default FPS */
+    uint32_t codec_type, width, height, bitrate;
+
+    memcpy(&codec_type, p + 0x1f, sizeof(uint32_t));  /* Codec type at offset 0x1f */
+    memcpy(&width, p + 0x14, sizeof(uint32_t));       /* Width */
+    memcpy(&height, p + 0x18, sizeof(uint32_t));      /* Height */
+    memcpy(&bitrate, p + 0x30, sizeof(uint32_t));     /* Bitrate */
+
+    enc->hw_params.codec_type = codec_type;
+    enc->hw_params.width = width;
+    enc->hw_params.height = height;
+    enc->hw_params.fps_num = 30;                      /* Default FPS */
     enc->hw_params.fps_den = 1;
-    enc->hw_params.gop_length = 30;                      /* Default GOP */
-    enc->hw_params.rc_mode = HW_RC_MODE_CBR;             /* Default RC mode */
-    enc->hw_params.bitrate = *(uint32_t*)(p + 0x30);     /* Bitrate */
-    enc->hw_params.profile = HW_PROFILE_MAIN;            /* Default profile */
-    enc->hw_params.qp = 25;                              /* Default QP */
+    enc->hw_params.gop_length = 30;                   /* Default GOP */
+    enc->hw_params.rc_mode = HW_RC_MODE_CBR;          /* Default RC mode */
+    enc->hw_params.bitrate = bitrate;
+    enc->hw_params.profile = HW_PROFILE_MAIN;         /* Default profile */
+    enc->hw_params.qp = 25;                           /* Default QP */
     enc->hw_params.max_qp = 51;
     enc->hw_params.min_qp = 0;
 
@@ -352,6 +359,13 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
         /* NULL frame means flush */
         LOG_CODEC("Process: flush requested (NULL frame)");
         return 0;
+    }
+
+    /* Validate frame pointer - must be a reasonable address */
+    uintptr_t frame_addr = (uintptr_t)frame;
+    if (frame_addr < 0x10000) {
+        LOG_CODEC("Process: invalid frame pointer %p (too small, likely corrupted)", frame);
+        return -1;
     }
 
     /* Encode frame using hardware or software */

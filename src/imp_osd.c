@@ -196,10 +196,7 @@ int IMP_OSD_DestroyGroup(int grpNum) {
 
 /* IMP_OSD_CreateRgn - based on decompilation at 0xc225c */
 int IMP_OSD_CreateRgn(IMPRgnHandle handle, IMPOSDRgnAttr *prAttr) {
-    if (prAttr == NULL) {
-        LOG_OSD("CreateRgn failed: NULL attr");
-        return -1;
-    }
+    LOG_OSD("CreateRgn: called with handle=%d, prAttr=%p", handle, prAttr);
 
     pthread_mutex_lock(&osd_mutex);
 
@@ -227,37 +224,89 @@ int IMP_OSD_CreateRgn(IMPRgnHandle handle, IMPOSDRgnAttr *prAttr) {
         return -1;
     }
 
-    /* Mark as allocated and copy attributes */
+    /* Mark as allocated */
     rgn->handle = handle;
     rgn->allocated = 1;
     rgn->registered = 0;
+
+    /* If prAttr is NULL or invalid, just create empty region (based on OEM decompilation) */
+    if (prAttr == NULL) {
+        LOG_OSD("CreateRgn: NULL prAttr, creating empty region");
+        memset(&rgn->attr, 0, sizeof(IMPOSDRgnAttr));
+        rgn->data_ptr = NULL;
+        sem_post(&gosd->sem);
+        pthread_mutex_unlock(&osd_mutex);
+        LOG_OSD("CreateRgn: handle=%d created (empty)", handle);
+        return 0;
+    }
+
+    /* Validate prAttr pointer before accessing */
+    uintptr_t attr_addr = (uintptr_t)prAttr;
+    if (attr_addr < 0x10000) {
+        LOG_OSD("CreateRgn: invalid prAttr pointer %p (too small), creating empty region", prAttr);
+        memset(&rgn->attr, 0, sizeof(IMPOSDRgnAttr));
+        rgn->data_ptr = NULL;
+        sem_post(&gosd->sem);
+        pthread_mutex_unlock(&osd_mutex);
+        LOG_OSD("CreateRgn: handle=%d created (empty, invalid ptr)", handle);
+        return 0;
+    }
+
+    /* Copy attributes */
     memcpy(&rgn->attr, prAttr, sizeof(IMPOSDRgnAttr));
 
-    /* Allocate data buffer based on type and size */
+    /* Allocate data buffer based on type and size using safe struct member access */
+    /* Based on BN MCP decompilation of OEM IMP_OSD_CreateRgn:
+     * arg1[0] = type (offset 0x00)
+     * arg1[1] = rect.p0.x (offset 0x04)
+     * arg1[2] = rect.p0.y (offset 0x08)
+     * arg1[3] = rect.p1.x (offset 0x0c)
+     * arg1[4] = rect.p1.y (offset 0x10)
+     * arg1[5] = fmt (offset 0x14)
+     * arg1[6] = data (offset 0x18)
+     * arg1[7] = (offset 0x1c)
+     */
     size_t data_size = 0;
+    uint8_t *attr_bytes = (uint8_t*)prAttr;
 
-    switch (prAttr->type) {
+    uint32_t type, fmt;
+    int32_t rect_p0_x, rect_p0_y, rect_p1_x, rect_p1_y;
+
+    memcpy(&type, attr_bytes + 0x00, sizeof(uint32_t));
+    memcpy(&rect_p0_x, attr_bytes + 0x04, sizeof(int32_t));
+    memcpy(&rect_p0_y, attr_bytes + 0x08, sizeof(int32_t));
+    memcpy(&rect_p1_x, attr_bytes + 0x0c, sizeof(int32_t));
+    memcpy(&rect_p1_y, attr_bytes + 0x10, sizeof(int32_t));
+    memcpy(&fmt, attr_bytes + 0x14, sizeof(uint32_t));
+
+    /* Calculate width and height from rect points */
+    int32_t width = rect_p1_x - rect_p0_x;
+    int32_t height = rect_p1_y - rect_p0_y;
+
+    /* Make absolute values */
+    if (width < 0) width = -width;
+    if (height < 0) height = -height;
+
+    /* Add 1 to include both endpoints */
+    width += 1;
+    height += 1;
+
+    LOG_OSD("CreateRgn: type=%d, rect=(%d,%d)-(%d,%d), size=%dx%d, fmt=%d",
+            type, rect_p0_x, rect_p0_y, rect_p1_x, rect_p1_y, width, height, fmt);
+
+    switch (type) {
         case OSD_REG_BITMAP:
             /* Calculate bitmap size based on rect and pixel format */
-            {
-                int width = prAttr->rect.width;
-                int height = prAttr->rect.height;
-
-                if (prAttr->fmt == PIX_FMT_BGRA) {
-                    data_size = width * height * 4; /* 4 bytes per pixel */
-                } else {
-                    data_size = width * height; /* 1 byte per pixel for mono */
-                }
+            if (fmt == PIX_FMT_BGRA) {
+                data_size = width * height * 4; /* 4 bytes per pixel */
+            } else {
+                data_size = width * height; /* 1 byte per pixel for mono */
             }
             break;
 
         case OSD_REG_PIC:
             /* Picture data size from rect */
-            {
-                int width = prAttr->rect.width;
-                int height = prAttr->rect.height;
-                data_size = width * height * 4; /* Assume BGRA */
-            }
+            data_size = width * height * 4; /* Assume BGRA */
             break;
 
         case OSD_REG_LINE:
@@ -268,7 +317,7 @@ int IMP_OSD_CreateRgn(IMPRgnHandle handle, IMPOSDRgnAttr *prAttr) {
             break;
 
         default:
-            LOG_OSD("CreateRgn: unknown type %d", prAttr->type);
+            LOG_OSD("CreateRgn: unknown type %d", type);
             data_size = 0;
             break;
     }
@@ -291,6 +340,8 @@ int IMP_OSD_CreateRgn(IMPRgnHandle handle, IMPOSDRgnAttr *prAttr) {
 
     sem_post(&gosd->sem);
     pthread_mutex_unlock(&osd_mutex);
+
+    LOG_OSD("CreateRgn: handle=%d created successfully", handle);
 
     LOG_OSD("CreateRgn: handle=%d, type=%d", handle, prAttr->type);
     return 0;
