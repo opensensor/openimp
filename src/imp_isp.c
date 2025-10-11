@@ -54,42 +54,9 @@ int IMP_ISP_Open(void) {
         return -1;
     }
 
-    /* Open tuning device /dev/tisp (optional) */
-    gISPdev->tisp_fd = open("/dev/tisp", O_RDWR);
-    if (gISPdev->tisp_fd < 0) {
-        LOG_ISP("Open: failed to open /dev/tisp: %s", strerror(errno));
-        /* Don't fail - tuning is optional */
-        gISPdev->tisp_fd = -1;
-    } else {
-        LOG_ISP("Open: opened /dev/tisp (fd=%d)", gISPdev->tisp_fd);
-
-        /* Disable front crop immediately to prevent validation errors
-         * Based on IMP_ISP_Tuning_SetFrontCrop at 0x955f4 */
-        struct {
-            int32_t op;      /* 0 = set, 1 = get */
-            int32_t ctrl_id; /* 0x80000e3 = front crop control */
-            void* data;      /* pointer to fcrop data */
-        } ctrl_param;
-
-        struct {
-            int32_t enable;  /* 0 = disable fcrop */
-            int32_t x;
-            int32_t y;
-            int32_t width;
-            int32_t height;
-        } fcrop_data = {0, 0, 0, 0, 0};
-
-        ctrl_param.op = 0;           /* Set operation */
-        ctrl_param.ctrl_id = 0x80000e3; /* Front crop control ID */
-        ctrl_param.data = &fcrop_data;
-
-        int ret = ioctl(gISPdev->tisp_fd, 0xc00c56c6, &ctrl_param);
-        if (ret < 0) {
-            LOG_ISP("Open: Warning: failed to disable fcrop: %s", strerror(errno));
-        } else {
-            LOG_ISP("Open: Front crop disabled");
-        }
-    }
+    /* Do not open /dev/tisp here; driver creates it later when streaming starts.
+     * We will lazily open it in IMP_ISP_EnableTuning if needed. */
+    gISPdev->tisp_fd = -1;
 
     /* Mark as opened */
     gISPdev->opened = 1;

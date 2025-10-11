@@ -161,63 +161,7 @@ int IMP_Alloc(char *name, int size, char *tag) {
     }
     buf->size = size;
     
-    /* Try to allocate via ioctl first (if supported) */
-    mem_alloc_req_t req;
-    memset(&req, 0, sizeof(req));
-    req.size = size;
-    req.align = 4096;  /* Page alignment */
-    req.flags = 0;
-
-    int ioctl_rc = -1;
-    if (g_mem_fd >= 0 && g_rmem_supported) {
-        ioctl_rc = ioctl(g_mem_fd, IOCTL_MEM_ALLOC, &req);
-    }
-
-    if (ioctl_rc == 0) {
-        /* Success - got physical address */
-        buf->phys_addr = req.phys_addr;
-
-        /* Map physical memory to virtual address */
-        buf->virt_addr = mmap(NULL, size, PROT_READ | PROT_WRITE,
-                              MAP_SHARED, g_mem_fd, buf->phys_addr);
-
-        if (buf->virt_addr == MAP_FAILED) {
-            LOG_DMA("Alloc: mmap failed: %s", strerror(errno));
-
-            /* Free physical memory */
-            ioctl(g_mem_fd, IOCTL_MEM_FREE, &req);
-            free(buf);
-            return -1;
-        }
-
-        LOG_DMA("Alloc: %s size=%d phys=0x%x virt=%p (via ioctl)",
-                name, size, buf->phys_addr, buf->virt_addr);
-
-        /* Register buffer in global registry */
-        if (register_buffer(buf) < 0) {
-            LOG_DMA("Alloc: failed to register buffer");
-            munmap(buf->virt_addr, size);
-            ioctl(g_mem_fd, IOCTL_MEM_FREE, &req);
-            free(buf);
-            return -1;
-        }
-
-        /* Store buffer info in name for IMP_Get_Info */
-        memcpy(name, buf, sizeof(DMABuffer));
-
-        return 0;
-    } else if (g_mem_fd >= 0 && g_rmem_supported) {
-        /* Any failure implies /dev/rmem does not support our ioctls on this platform.
-         * Disable rmem ioctls immediately to avoid repeated kernel 'Unknown ioctl' logs. */
-        LOG_DMA("Alloc: /dev/rmem ioctl 0x%lx failed (errno=%d), disabling rmem ioctls",
-                (unsigned long)IOCTL_MEM_ALLOC, errno);
-        close(g_mem_fd);
-        g_mem_fd = -1;
-        g_rmem_supported = 0;
-    }
-
-    /* ioctl failed or not supported - fall back to regular allocation */
-    LOG_DMA("Alloc: ioctl failed, using malloc fallback");
+    /* Kernel allocator/ioctl path removed: always use fallback allocation */
 
     /* Allocate aligned memory */
     if (posix_memalign(&buf->virt_addr, 4096, size) != 0) {
@@ -286,14 +230,6 @@ int IMP_Free(uint32_t phys_addr) {
     DMABuffer *buf = lookup_buffer_by_phys(phys_addr);
     if (buf == NULL) {
         LOG_DMA("Free: buffer not found in registry");
-        /* Try to free anyway via ioctl */
-        mem_alloc_req_t req;
-        memset(&req, 0, sizeof(req));
-        req.phys_addr = phys_addr;
-
-        if (g_mem_fd >= 0 && g_rmem_supported) {
-            ioctl(g_mem_fd, IOCTL_MEM_FREE, &req);
-        }
         return 0;
     }
 
@@ -305,14 +241,6 @@ int IMP_Free(uint32_t phys_addr) {
         free(buf->virt_addr);
     }
 
-    /* Free physical memory via ioctl */
-    mem_alloc_req_t req;
-    memset(&req, 0, sizeof(req));
-    req.phys_addr = phys_addr;
-
-    if (g_mem_fd >= 0 && g_rmem_supported) {
-        ioctl(g_mem_fd, IOCTL_MEM_FREE, &req);
-    }
 
     /* Unregister and free buffer structure */
     unregister_buffer(buf);
@@ -367,20 +295,7 @@ int IMP_Flush_Cache(uint32_t phys_addr, uint32_t size) {
         return -1;
     }
     
-    if (!g_rmem_supported || g_mem_fd < 0) {
-        return 0; /* no-op when kernel DMA path disabled */
-    }
-    
-    mem_alloc_req_t req;
-    memset(&req, 0, sizeof(req));
-    req.phys_addr = phys_addr;
-    req.size = size;
-    
-    if (ioctl(g_mem_fd, IOCTL_MEM_FLUSH, &req) < 0) {
-        LOG_DMA("Flush_Cache: ioctl failed: %s", strerror(errno));
-        return -1;
-    }
-    
+    /* No-op: kernel cache flush ioctl not used in fallback mode */
     return 0;
 }
 
