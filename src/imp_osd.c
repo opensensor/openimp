@@ -34,7 +34,8 @@ typedef struct OSDRegion {
 
 typedef struct {
     int group_id;               /* 0x00: Group ID */
-    uint8_t data_04[0x900c];    /* 0x04-0x900f: Group data */
+    int enabled;                /* 0x04: Enabled flag (set by Start/Stop) */
+    uint8_t data_08[0x9008];    /* 0x08-0x900f: Group data */
     uint8_t data_9010[0x4];     /* 0x9010-0x9013: More data */
 } OSDGroup;
 
@@ -138,6 +139,7 @@ int IMP_OSD_CreateGroup(int grpNum) {
     }
 
     group->group_id = grpNum;
+    group->enabled = 0;  /* Initially disabled */
     gosd->group_ptrs[grpNum] = group;
 
     LOG_OSD("CreateGroup: allocated group %d (%zu bytes)", grpNum, sizeof(OSDGroup));
@@ -348,12 +350,105 @@ int IMP_OSD_DestroyRgn(IMPRgnHandle handle) {
 }
 
 int IMP_OSD_RegisterRgn(IMPRgnHandle handle, int grpNum, IMPOSDGrpRgnAttr *pgrAttr) {
-    if (pgrAttr == NULL) return -1;
+    /* Based on decompilation at 0xc2bdc */
+    if (handle < 0 || handle >= MAX_OSD_REGIONS) {
+        LOG_OSD("RegisterRgn failed: invalid handle %d", handle);
+        return -1;
+    }
+
+    if (grpNum < 0 || grpNum >= MAX_OSD_GROUPS) {
+        LOG_OSD("RegisterRgn failed: invalid group %d", grpNum);
+        return -1;
+    }
+
+    pthread_mutex_lock(&osd_mutex);
+
+    if (gosd == NULL) {
+        pthread_mutex_unlock(&osd_mutex);
+        return -1;
+    }
+
+    OSDRegion *rgn = &gosd->regions[handle];
+
+    /* Wait on semaphore */
+    sem_wait(&gosd->sem);
+
+    /* Check if region is already registered to this group */
+    if (rgn->registered == 1) {
+        sem_post(&gosd->sem);
+        pthread_mutex_unlock(&osd_mutex);
+        LOG_OSD("RegisterRgn: region %d already registered to group %d", handle, grpNum);
+        return -1;
+    }
+
+    /* Add region to group's linked list
+     * The real implementation maintains a linked list of regions per group
+     * at offsets 0x24078 (head) and 0x2407c (tail) from gosd base
+     * Each region has next/prev pointers at offsets 0x44 and 0x48 */
+
+    /* Mark region as registered */
+    rgn->registered = 1;
+
+    /* Copy group region attributes if provided */
+    if (pgrAttr != NULL) {
+        /* Copy the 9 uint32_t values from pgrAttr to region offset 0xc
+         * This includes position, scaling, and other group-specific attributes */
+        /* Note: Would copy to region data area in full implementation */
+        (void)pgrAttr;  /* Suppress unused warning */
+    }
+
+    sem_post(&gosd->sem);
+    pthread_mutex_unlock(&osd_mutex);
+
     LOG_OSD("RegisterRgn: handle=%d, grp=%d", handle, grpNum);
     return 0;
 }
 
 int IMP_OSD_UnRegisterRgn(IMPRgnHandle handle, int grpNum) {
+    /* Based on decompilation at 0xc2f18 */
+    if (handle < 0 || handle >= MAX_OSD_REGIONS) {
+        LOG_OSD("UnRegisterRgn failed: invalid handle %d", handle);
+        return -1;
+    }
+
+    if (grpNum < 0 || grpNum >= MAX_OSD_GROUPS) {
+        LOG_OSD("UnRegisterRgn failed: invalid group %d", grpNum);
+        return -1;
+    }
+
+    pthread_mutex_lock(&osd_mutex);
+
+    if (gosd == NULL) {
+        pthread_mutex_unlock(&osd_mutex);
+        return -1;
+    }
+
+    OSDRegion *rgn = &gosd->regions[handle];
+
+    /* Wait on semaphore */
+    sem_wait(&gosd->sem);
+
+    /* Check if region is registered */
+    if (rgn->registered == 0) {
+        sem_post(&gosd->sem);
+        pthread_mutex_unlock(&osd_mutex);
+        LOG_OSD("UnRegisterRgn: region %d not registered to group %d", handle, grpNum);
+        return -1;
+    }
+
+    /* Remove region from group's linked list
+     * The real implementation removes the region from the linked list
+     * and updates head/tail pointers as needed */
+
+    /* Mark region as unregistered */
+    rgn->registered = 0;
+
+    /* Clear group region attributes (0x24 bytes at offset 0xc) */
+    /* Note: Would clear region data area in full implementation */
+
+    sem_post(&gosd->sem);
+    pthread_mutex_unlock(&osd_mutex);
+
     LOG_OSD("UnRegisterRgn: handle=%d, grp=%d", handle, grpNum);
     return 0;
 }
@@ -396,11 +491,41 @@ int IMP_OSD_ShowRgn(IMPRgnHandle handle, int grpNum, int showFlag) {
 }
 
 int IMP_OSD_Start(int grpNum) {
+    /* Based on decompilation at 0xc5c34 */
+    if (grpNum < 0 || grpNum >= MAX_OSD_GROUPS) {
+        LOG_OSD("Start failed: invalid group %d", grpNum);
+        return -1;
+    }
+
+    if (gosd == NULL || gosd->group_ptrs[grpNum] == NULL) {
+        LOG_OSD("Start failed: group %d not created", grpNum);
+        return -1;
+    }
+
+    /* Set group enabled flag at offset st_value from group base
+     * *(gosd + grpNum * 0x9014 + st_value) = 1 */
+    ((OSDGroup*)gosd->group_ptrs[grpNum])->enabled = 1;
+
     LOG_OSD("Start: grp=%d", grpNum);
     return 0;
 }
 
 int IMP_OSD_Stop(int grpNum) {
+    /* Based on decompilation at 0xc5d00 */
+    if (grpNum < 0 || grpNum >= MAX_OSD_GROUPS) {
+        LOG_OSD("Stop failed: invalid group %d", grpNum);
+        return -1;
+    }
+
+    if (gosd == NULL || gosd->group_ptrs[grpNum] == NULL) {
+        LOG_OSD("Stop failed: group %d not created", grpNum);
+        return -1;
+    }
+
+    /* Clear group enabled flag at offset st_value from group base
+     * *(gosd + grpNum * 0x9014 + st_value) = 0 */
+    gosd->group_ptrs[grpNum]->enabled = 0;
+
     LOG_OSD("Stop: grp=%d", grpNum);
     return 0;
 }
