@@ -524,7 +524,7 @@ int IMP_OSD_Stop(int grpNum) {
 
     /* Clear group enabled flag at offset st_value from group base
      * *(gosd + grpNum * 0x9014 + st_value) = 0 */
-    gosd->group_ptrs[grpNum]->enabled = 0;
+    ((OSDGroup*)gosd->group_ptrs[grpNum])->enabled = 0;
 
     LOG_OSD("Stop: grp=%d", grpNum);
     return 0;
