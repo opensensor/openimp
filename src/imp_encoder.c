@@ -135,6 +135,29 @@ static void encoder_init(void) {
     encoder_initialized = 1;
 }
 
+/* Public init to match OEM SystemInit calling pattern */
+int EncoderInit(void) {
+    pthread_mutex_lock(&encoder_mutex);
+    encoder_init();
+    if (gEncoder == NULL) {
+        gEncoder = (EncoderState*)calloc(1, sizeof(EncoderState));
+        if (gEncoder == NULL) {
+            pthread_mutex_unlock(&encoder_mutex);
+            return -1;
+        }
+        for (int i = 0; i < 6; i++) {
+            gEncoder->groups[i].group_id = -1;
+            gEncoder->groups[i].chn_count = 0;
+            gEncoder->groups[i].channels[0] = NULL;
+            gEncoder->groups[i].channels[1] = NULL;
+            gEncoder->groups[i].channels[2] = NULL;
+        }
+    }
+    pthread_mutex_unlock(&encoder_mutex);
+    return 0;
+}
+
+
 /* IMP_Encoder_CreateGroup - based on decompilation at 0x82658 */
 int IMP_Encoder_CreateGroup(int encGroup) {
     if (encGroup < 0 || encGroup >= 6) {
@@ -143,6 +166,7 @@ int IMP_Encoder_CreateGroup(int encGroup) {
     }
 
     pthread_mutex_lock(&encoder_mutex);
+
 
     /* Initialize encoder module */
     encoder_init();
@@ -706,12 +730,12 @@ int IMP_Encoder_SetDefaultParam(IMPEncoderChnAttr *attr, IMPEncoderProfile profi
                                  int fpsNum, int fpsDen, int gopLen, int gopMode,
                                  int quality, int bitrate) {
     if (attr == NULL) return -1;
-    LOG_ENC("SetDefaultParam: %dx%d, %d/%d fps, profile=%d, rc=%d", 
+    LOG_ENC("SetDefaultParam: %dx%d, %d/%d fps, profile=%d, rc=%d",
             width, height, fpsNum, fpsDen, profile, rcMode);
-    
+
     memset(attr, 0, sizeof(*attr));
     attr->encAttr.profile = profile;
-    
+
     /* Set basic parameters based on profile */
     if (profile == IMP_ENC_PROFILE_JPEG) {
         attr->encAttr.attrJpeg.maxPicWidth = width;
@@ -723,12 +747,12 @@ int IMP_Encoder_SetDefaultParam(IMPEncoderChnAttr *attr, IMPEncoderProfile profi
         attr->encAttr.attrH264.bufSize = width * height * 2;
         attr->encAttr.attrH264.profile = profile;
     }
-    
+
     attr->rcAttr.attrRcMode.rcMode = rcMode;
     attr->rcAttr.outFrmRate.frmRateNum = fpsNum;
     attr->rcAttr.outFrmRate.frmRateDen = fpsDen;
     attr->rcAttr.attrGop.gopLength = gopLen;
-    
+
     return 0;
 }
 

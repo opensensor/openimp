@@ -99,6 +99,16 @@ static void framesource_init(void) {
     fs_initialized = 1;
 }
 
+/* Public init to match OEM SystemInit calling pattern */
+int FrameSourceInit(void) {
+    pthread_mutex_lock(&fs_mutex);
+    framesource_init();
+    int ret = (gFramesource != NULL) ? 0 : -1;
+    pthread_mutex_unlock(&fs_mutex);
+    return ret;
+}
+
+
 /* IMP_FrameSource_CreateChn - based on decompilation at 0x9d5d4 */
 int IMP_FrameSource_CreateChn(int chnNum, IMPFSChnAttr *chn_attr) {
     if (chn_attr == NULL) {
