@@ -230,13 +230,34 @@ int IMP_FrameSource_EnableChn(int chnNum) {
         }
     }
 
-    /* Prepare format structure */
+    /* Prepare format structure - copy all fields from IMPFSChnAttr
+     * Based on decompilation at 0x9ecf8, the entire structure is copied */
     fs_format_t fmt;
     memset(&fmt, 0, sizeof(fmt));
     fmt.enable = 1;
     fmt.width = chn->attr.picWidth;
     fmt.height = chn->attr.picHeight;
     fmt.pixfmt = chn->attr.pixFmt;
+
+    /* Copy crop settings */
+    fmt.crop_enable = chn->attr.crop.enable;
+    fmt.crop_top = chn->attr.crop.top;
+    fmt.crop_left = chn->attr.crop.left;
+    fmt.crop_width = chn->attr.crop.width;
+    fmt.crop_height = chn->attr.crop.height;
+
+    /* Copy scaler settings */
+    fmt.scaler_enable = chn->attr.scaler.enable;
+    fmt.scaler_out_width = chn->attr.scaler.outwidth;
+    fmt.scaler_out_height = chn->attr.scaler.outheight;
+
+    /* Copy FPS settings */
+    fmt.fps_num = chn->attr.outFrmRateNum;
+    fmt.fps_den = chn->attr.outFrmRateDen;
+
+    /* Buffer type and mode */
+    fmt.buf_type = chn->attr.type;
+    fmt.buf_mode = 1; /* Default mode */
 
     /* Set format via ioctl */
     if (fs_set_format(chn->fd, &fmt) < 0) {

@@ -32,13 +32,28 @@
 #define ISP_INIT            0x50000000  /* Placeholder */
 #define ISP_SET_SENSOR      0x50000001  /* Placeholder */
 
-/* Format structure from decompilation */
+/* Format structure from decompilation at 0x9ecf8
+ * This is a 0x70 (112 byte) structure that gets passed to ioctl 0xc07056c3
+ * It appears to be the full IMPFSChnAttr structure
+ */
 typedef struct {
     int enable;                 /* 0x00: Enable flag */
     int width;                  /* 0x04: Width */
     int height;                 /* 0x08: Height */
-    int pixfmt;                 /* 0x0c: Pixel format */
-    /* More fields... */
+    int pixfmt;                 /* 0x0c: Pixel format (fourcc) */
+    int crop_enable;            /* 0x10: Crop enable */
+    int crop_top;               /* 0x14: Crop top */
+    int crop_left;              /* 0x18: Crop left */
+    int crop_width;             /* 0x1c: Crop width */
+    int crop_height;            /* 0x20: Crop height */
+    int scaler_enable;          /* 0x24: Scaler enable */
+    int scaler_out_width;       /* 0x28: Scaler output width */
+    int scaler_out_height;      /* 0x2c: Scaler output height */
+    int fps_num;                /* 0x30: FPS numerator */
+    int fps_den;                /* 0x34: FPS denominator */
+    int buf_type;               /* 0x38: Buffer type */
+    int buf_mode;               /* 0x3c: Buffer mode */
+    char padding[0x34];         /* 0x40-0x70: Padding to 112 bytes */
 } fs_format_t;
 
 /* Buffer count structure */
@@ -77,18 +92,24 @@ int fs_open_device(int chn) {
  * Get format from framechan device
  * ioctl: 0x407056c4
  */
+/**
+ * Get format from framechan device
+ * ioctl: 0x407056c4 (VIDIOC_GET_FMT)
+ * Based on decompilation at 0x9ecf8
+ */
 int fs_get_format(int fd, fs_format_t *fmt) {
     if (fd < 0 || fmt == NULL) {
         return -1;
     }
-    
-    int ret = ioctl(fd, VIDIOC_GET_FMT, fmt);
+
+    /* Use the correct ioctl code from the binary */
+    int ret = ioctl(fd, 0x407056c4, fmt);
     if (ret < 0) {
         fprintf(stderr, "[KernelIF] VIDIOC_GET_FMT failed: %s\n", strerror(errno));
         return -1;
     }
-    
-    fprintf(stderr, "[KernelIF] Got format: %dx%d fmt=0x%x\n", 
+
+    fprintf(stderr, "[KernelIF] Got format: %dx%d fmt=0x%x\n",
             fmt->width, fmt->height, fmt->pixfmt);
     return 0;
 }
@@ -114,17 +135,43 @@ static uint32_t pixfmt_to_fourcc(int pixfmt) {
 /**
  * Set format on framechan device
  * ioctl: 0xc07056c3
+ *
+ * Based on decompilation at 0x9ecf8:
+ * The format structure needs to be properly initialized with all fields
  */
 int fs_set_format(int fd, fs_format_t *fmt) {
     if (fd < 0 || fmt == NULL) {
         return -1;
     }
 
+    /* Make a copy and ensure all fields are properly initialized */
+    fs_format_t kernel_fmt;
+    memset(&kernel_fmt, 0, sizeof(kernel_fmt));
+
+    kernel_fmt.enable = fmt->enable;
+    kernel_fmt.width = fmt->width;
+    kernel_fmt.height = fmt->height;
+
     /* Convert enum pixfmt to fourcc if needed */
-    fs_format_t kernel_fmt = *fmt;
-    if (kernel_fmt.pixfmt < 0x100) {
-        kernel_fmt.pixfmt = pixfmt_to_fourcc(kernel_fmt.pixfmt);
+    if (fmt->pixfmt < 0x100) {
+        kernel_fmt.pixfmt = pixfmt_to_fourcc(fmt->pixfmt);
+    } else {
+        kernel_fmt.pixfmt = fmt->pixfmt;
     }
+
+    /* Copy other fields */
+    kernel_fmt.crop_enable = fmt->crop_enable;
+    kernel_fmt.crop_top = fmt->crop_top;
+    kernel_fmt.crop_left = fmt->crop_left;
+    kernel_fmt.crop_width = fmt->crop_width;
+    kernel_fmt.crop_height = fmt->crop_height;
+    kernel_fmt.scaler_enable = fmt->scaler_enable;
+    kernel_fmt.scaler_out_width = fmt->scaler_out_width;
+    kernel_fmt.scaler_out_height = fmt->scaler_out_height;
+    kernel_fmt.fps_num = fmt->fps_num;
+    kernel_fmt.fps_den = fmt->fps_den;
+    kernel_fmt.buf_type = fmt->buf_type;
+    kernel_fmt.buf_mode = fmt->buf_mode;
 
     int ret = ioctl(fd, VIDIOC_SET_FMT, &kernel_fmt);
     if (ret < 0) {
@@ -296,14 +343,19 @@ static int calculate_frame_size(int width, int height, int pixfmt) {
     int size;
 
     switch (pixfmt) {
+        /* Enum values (PIX_FMT_*) */
+        case 0xa:       /* PIX_FMT_NV12 (enum) */
+        case 0xb:       /* PIX_FMT_NV21 (enum) */
+        /* Fourcc values */
+        case 0x3231564e: /* 'NV12' (fourcc) */
+        case 0x3132564e: /* 'NV21' (fourcc) */
+        case 0x32315559: /* 'YU12' (fourcc) */
+            size = ((((height + 15) & 0xfffffff0) * 12) >> 3) * ((width + 15) & 0xfffffff0);
+            break;
+
         case 0x23:      /* ARGB8888 */
         case 0xf:       /* RGBA8888 */
             size = ((width + 15) & 0xfffffff0) * (height << 2);
-            break;
-
-        case 0x3231564e: /* NV12 */
-        case 0x32315559: /* YU12 */
-            size = ((((height + 15) & 0xfffffff0) * 12) >> 3) * ((width + 15) & 0xfffffff0);
             break;
 
         case 0x32314742: /* BG12 */
@@ -311,8 +363,10 @@ static int calculate_frame_size(int width, int height, int pixfmt) {
         case 0x32314247: /* GB12 */
         case 0x32314752: /* RG12 */
         case 0x50424752: /* RGBP */
-        case 0x56595559: /* YUYV */
-        case 0x59565955: /* UYVY */
+        case 0x1:       /* PIX_FMT_YUYV422 (enum) */
+        case 0x56595559: /* 'YUYV' (fourcc) */
+        case 0x2:       /* PIX_FMT_UYVY422 (enum) */
+        case 0x59565955: /* 'UYVY' (fourcc) */
             size = (width * height * 16) >> 3;
             break;
 
@@ -325,6 +379,7 @@ static int calculate_frame_size(int width, int height, int pixfmt) {
             break;
 
         default:
+            fprintf(stderr, "[VBM] calculate_frame_size: unknown pixfmt=0x%x\n", pixfmt);
             size = -1;
             break;
     }
