@@ -123,37 +123,12 @@ static int dma_init(void) {
         return 0;
     }
 
-    /* Try rmem device first (reserved memory) */
-    g_mem_fd = open("/dev/rmem", O_RDWR | O_SYNC);
-    if (g_mem_fd >= 0) {
-        LOG_DMA("Opened /dev/rmem (fd=%d)", g_mem_fd);
-        g_dma_initialized = 1;
-        g_rmem_supported = 1; /* assume supported until an ioctl says otherwise */
-        pthread_mutex_unlock(&g_dma_mutex);
-        return 0;
-    }
-
-    LOG_DMA("Failed to open /dev/rmem: %s", strerror(errno));
-
-    /* Try to open /dev/mem for physical memory access */
-    g_mem_fd = open("/dev/mem", O_RDWR | O_SYNC);
-    if (g_mem_fd < 0) {
-        LOG_DMA("Failed to open /dev/mem: %s", strerror(errno));
-        LOG_DMA("Trying /dev/jz-dma...");
-
-        /* Try Ingenic-specific DMA device */
-        g_mem_fd = open("/dev/jz-dma", O_RDWR);
-        if (g_mem_fd < 0) {
-            LOG_DMA("Failed to open /dev/jz-dma: %s", strerror(errno));
-            pthread_mutex_unlock(&g_dma_mutex);
-            return -1;
-        }
-    }
-
+    /* Temporarily disable kernel DMA allocation paths; use malloc fallback only */
+    g_mem_fd = -1;
+    g_rmem_supported = 0;
     g_dma_initialized = 1;
     pthread_mutex_unlock(&g_dma_mutex);
-
-    LOG_DMA("Initialized (fd=%d)", g_mem_fd);
+    LOG_DMA("DMA init: rmem/device allocation disabled; using malloc fallback only");
     return 0;
 }
 
@@ -231,9 +206,11 @@ int IMP_Alloc(char *name, int size, char *tag) {
         memcpy(name, buf, sizeof(DMABuffer));
 
         return 0;
-    } else if (g_mem_fd >= 0 && g_rmem_supported && (errno == ENOTTY || errno == EINVAL)) {
-        /* Device does not support our ioctls - disable rmem path to avoid kernel spam */
-        LOG_DMA("Alloc: /dev/rmem does not support expected ioctls (errno=%d), disabling rmem path", errno);
+    } else if (g_mem_fd >= 0 && g_rmem_supported) {
+        /* Any failure implies /dev/rmem does not support our ioctls on this platform.
+         * Disable rmem ioctls immediately to avoid repeated kernel 'Unknown ioctl' logs. */
+        LOG_DMA("Alloc: /dev/rmem ioctl 0x%lx failed (errno=%d), disabling rmem ioctls",
+                (unsigned long)IOCTL_MEM_ALLOC, errno);
         close(g_mem_fd);
         g_mem_fd = -1;
         g_rmem_supported = 0;
@@ -314,7 +291,7 @@ int IMP_Free(uint32_t phys_addr) {
         memset(&req, 0, sizeof(req));
         req.phys_addr = phys_addr;
 
-        if (g_mem_fd >= 0) {
+        if (g_mem_fd >= 0 && g_rmem_supported) {
             ioctl(g_mem_fd, IOCTL_MEM_FREE, &req);
         }
         return 0;
@@ -333,7 +310,7 @@ int IMP_Free(uint32_t phys_addr) {
     memset(&req, 0, sizeof(req));
     req.phys_addr = phys_addr;
 
-    if (g_mem_fd >= 0) {
+    if (g_mem_fd >= 0 && g_rmem_supported) {
         ioctl(g_mem_fd, IOCTL_MEM_FREE, &req);
     }
 
@@ -390,8 +367,8 @@ int IMP_Flush_Cache(uint32_t phys_addr, uint32_t size) {
         return -1;
     }
     
-    if (g_mem_fd < 0) {
-        return -1;
+    if (!g_rmem_supported || g_mem_fd < 0) {
+        return 0; /* no-op when kernel DMA path disabled */
     }
     
     mem_alloc_req_t req;
