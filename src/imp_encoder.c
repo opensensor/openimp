@@ -11,8 +11,10 @@
 #include <sys/eventfd.h>
 #include <unistd.h>
 #include <imp/imp_encoder.h>
+#include "fifo.h"
 
 #define LOG_ENC(fmt, ...) fprintf(stderr, "[Encoder] " fmt "\n", ##__VA_ARGS__)
+#define FIFO_SIZE 64  /* Size of Fifo structure */
 
 /* External codec functions (stubs implemented at end of file) */
 int AL_Codec_Encode_Create(void **codec, void *params);
@@ -20,11 +22,6 @@ int AL_Codec_Encode_Destroy(void *codec);
 int AL_Codec_Encode_GetSrcFrameCntAndSize(void *codec, int *cnt, int *size);
 int AL_Codec_Encode_GetSrcStreamCntAndSize(void *codec, int *cnt, int *size);
 int AL_Codec_Encode_SetDefaultParam(void *params);
-
-/* Fifo functions (stubs implemented at end of file) */
-void Fifo_Init(void *fifo, int size);
-void Fifo_Deinit(void *fifo);
-int Fifo_Queue(void *fifo, void *item, int timeout);
 
 /* Encoder channel structure - 0x308 bytes per channel */
 #define MAX_ENC_CHANNELS 9
@@ -38,8 +35,8 @@ typedef struct {
     int src_frame_cnt;          /* 0x0c: Source frame count (offset arg1[3]) */
     int src_frame_size;         /* 0x10: Source frame size (offset arg1[4]) */
     void *frame_buffers;        /* 0x14: Frame buffer array (offset arg1[5]) */
-    void *fifo;                 /* 0x18: Fifo structure (offset arg1[6]) */
-    uint8_t data_1c[0x7c];      /* 0x1c-0x97: Padding to 0x98 */
+    uint8_t fifo[FIFO_SIZE];    /* 0x18: Fifo structure (offset arg1[6]) */
+    uint8_t data_58[0x40];      /* 0x58-0x97: Padding to 0x98 */
     IMPEncoderCHNAttr attr;     /* 0x98: Channel attributes (0x70 bytes) */
     uint8_t data_108[0x8c];     /* 0x108-0x193: Padding */
     uint8_t data_194[0x44];     /* 0x194-0x1d7: Padding */
