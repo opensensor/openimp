@@ -13,6 +13,14 @@
 
 #define IMP_VERSION "1.1.6"
 
+/* Observer structure for module binding */
+typedef struct Observer {
+    struct Observer *next;      /* 0x00: Next observer in list */
+    void *module;               /* 0x04: Observer module pointer */
+    void *frame;                /* 0x08: Frame pointer */
+    int output_index;           /* 0x0c: Output index */
+} Observer;
+
 /* Module structure - based on AllocModule decompilation */
 typedef struct Module {
     char name[16];              /* 0x00: Module name */
@@ -341,9 +349,106 @@ int IMP_System_RebaseTimeStamp(uint64_t basets) {
     pthread_mutex_lock(&system_mutex);
     timestamp_base = basets;
     pthread_mutex_unlock(&system_mutex);
-    
-    fprintf(stderr, "[IMP_System] Timestamp rebased to %llu us\n", 
+
+    fprintf(stderr, "[IMP_System] Timestamp rebased to %llu us\n",
             (unsigned long long)basets);
+    return 0;
+}
+
+/* ========== Observer Pattern Implementation ========== */
+
+/**
+ * add_observer - Add observer to module's observer list
+ * Based on decompilation at 0x1a920
+ */
+static int add_observer(Module *module, Observer *observer) {
+    if (module == NULL || observer == NULL) {
+        return -1;
+    }
+
+    /* Add to head of list */
+    observer->next = (Observer*)module->observer_list;
+    module->observer_list = observer;
+
+    return 0;
+}
+
+/**
+ * remove_observer - Remove observer from module's observer list
+ * Based on decompilation at 0x1a890
+ */
+static int remove_observer(Module *module, Observer *observer) {
+    if (module == NULL || observer == NULL) {
+        return -1;
+    }
+
+    Observer **curr = (Observer**)&module->observer_list;
+    while (*curr != NULL) {
+        if (*curr == observer) {
+            *curr = observer->next;
+            return 0;
+        }
+        curr = &(*curr)->next;
+    }
+
+    return -1;
+}
+
+/**
+ * notify_observers - Notify all observers with a frame
+ * Based on decompilation at 0x1aa54
+ */
+int notify_observers(Module *module, void *frame) {
+    if (module == NULL) {
+        return -1;
+    }
+
+    Observer *obs = (Observer*)module->observer_list;
+
+    while (obs != NULL) {
+        if (obs->module != NULL && obs->frame != NULL) {
+            Module *dst_module = (Module*)obs->module;
+
+            /* Call the update function at offset 0x4c */
+            if (dst_module->func_4c != NULL) {
+                int (*update_fn)(Module*) = (int (*)(Module*))dst_module->func_4c;
+
+                /* Store frame in observer */
+                obs->frame = frame;
+
+                /* Call update function */
+                if (update_fn(dst_module) < 0) {
+                    fprintf(stderr, "[System] Observer update failed for %s\n",
+                            dst_module->name);
+                    /* TODO: VBMUnLockFrame if needed */
+                }
+            }
+        }
+
+        obs = obs->next;
+    }
+
+    return 0;
+}
+
+/* Export for use by other modules */
+Module* IMP_System_GetModule(int deviceID, int groupID) {
+    return get_module(deviceID, groupID);
+}
+
+int IMP_System_RegisterModule(int deviceID, int groupID, Module *module) {
+    if (deviceID < 0 || deviceID >= MAX_DEVICES ||
+        groupID < 0 || groupID >= MAX_GROUPS) {
+        return -1;
+    }
+
+    pthread_mutex_lock(&system_mutex);
+    g_modules[deviceID][groupID] = module;
+    pthread_mutex_unlock(&system_mutex);
+
+    fprintf(stderr, "[System] Registered module [%d,%d]: %s\n",
+            deviceID, groupID, module ? module->name : "NULL");
+
     return 0;
 }
 

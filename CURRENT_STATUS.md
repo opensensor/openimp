@@ -4,10 +4,62 @@
 Reverse-engineered implementation of Ingenic Media Platform (IMP) libraries based on Binary Ninja MCP decompilations of libimp.so v1.1.6 for T31 platform.
 
 ## Build Statistics
-- **Library Size**: 113KB (libimp.a), 79KB (libimp.so)
-- **Total Lines**: 3,807 lines of implementation code
+- **Library Size**: 125KB (libimp.a), 88KB (libimp.so)
+- **Total Lines**: 4,313 lines of implementation code
+- **Last Updated**: 2025-10-11
+- **Build Status**: ✅ Compiles cleanly with minor warnings
 - **Modules**: 10 modules implemented
 - **Build Status**: ✅ Compiles cleanly with only minor warnings
+
+## Recent Additions (2025-10-11)
+
+### DMA Allocator with Kernel Driver Integration ✅ - `src/dma_alloc.c`
+- **Status**: COMPLETE
+- **Features**:
+  - Real kernel driver integration via /dev/mem and /dev/jz-dma
+  - DMABuffer structure (0x94 bytes) with safe member access
+  - IMP_Alloc/IMP_PoolAlloc/IMP_Free with actual mmap()
+  - ioctl commands: IOCTL_MEM_ALLOC, IOCTL_MEM_FREE, IOCTL_MEM_GET_PHY, IOCTL_MEM_FLUSH
+  - Fallback to posix_memalign() if kernel unavailable
+  - Thread-safe with mutex protection
+  - Physical/virtual address mapping
+- **Size**: ~280 lines of code
+
+### Frame Capture Thread ✅ - `src/imp_framesource.c`
+- **Based on**: Decompilation at 0x99acc
+- **Status**: COMPLETE
+- **Features**:
+  - frame_capture_thread() polls kernel driver
+  - ioctl VIDIOC_POLL_FRAME (0x400456bf) for frame availability
+  - Gets frames from VBM pool
+  - Integrated with IMP_FrameSource_EnableChn/DisableChn
+  - Proper thread lifecycle (create on enable, cancel on disable)
+  - Safe struct member access with memcpy()
+- **Integration**: Runs continuously when channel is enabled
+
+### Encoder Processing Threads ✅ - `src/imp_encoder.c`
+- **Status**: COMPLETE
+- **Features**:
+  - encoder_thread() - Processes frames through codec
+  - stream_thread() - Retrieves encoded streams
+  - eventfd signaling between threads
+  - AL_Codec_Encode_Process() integration
+  - AL_Codec_Encode_GetStream() integration
+  - Proper thread synchronization with select()
+- **Integration**: Threads created in IMP_Encoder_CreateChn
+
+### Observer Pattern Implementation ✅ - `src/imp_system.c`
+- **Based on**: Decompilations at 0x1a920, 0x1aa54, 0x1b388
+- **Status**: COMPLETE
+- **Features**:
+  - Observer structure for module binding
+  - add_observer() - Add observer to list
+  - remove_observer() - Remove observer from list
+  - notify_observers() - Notify all observers with frame
+  - BindObserverToSubject() - Bind two modules
+  - system_bind() - Internal bind implementation
+  - IMP_System_RegisterModule() - Register module in global registry
+- **Integration**: Ready for FrameSource -> Encoder binding
 
 ## Completed Implementations
 
