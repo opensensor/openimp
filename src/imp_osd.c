@@ -129,9 +129,18 @@ int IMP_OSD_CreateGroup(int grpNum) {
         return 0;
     }
 
-    /* TODO: Call create_group(4, grpNum, name, 0xc1ae4) */
-    /* For now, just mark as created */
-    gosd->group_ptrs[grpNum] = (void*)1; /* Non-NULL to indicate created */
+    /* Allocate OSD group structure */
+    OSDGroup *group = (OSDGroup*)calloc(1, sizeof(OSDGroup));
+    if (group == NULL) {
+        LOG_OSD("CreateGroup: failed to allocate group");
+        pthread_mutex_unlock(&osd_mutex);
+        return -1;
+    }
+
+    group->group_id = grpNum;
+    gosd->group_ptrs[grpNum] = group;
+
+    LOG_OSD("CreateGroup: allocated group %d (%zu bytes)", grpNum, sizeof(OSDGroup));
 
     pthread_mutex_unlock(&osd_mutex);
 
@@ -154,8 +163,26 @@ int IMP_OSD_DestroyGroup(int grpNum) {
         return -1;
     }
 
-    /* TODO: Call destroy_group() */
-    /* TODO: Check if any regions are still registered */
+    /* Check if any regions are still registered to this group */
+    int regions_in_use = 0;
+    for (int i = 0; i < MAX_OSD_REGIONS; i++) {
+        if (gosd->regions[i].allocated && gosd->regions[i].registered) {
+            /* Check if this region belongs to this group */
+            /* For now, we just count registered regions */
+            regions_in_use++;
+        }
+    }
+
+    if (regions_in_use > 0) {
+        LOG_OSD("DestroyGroup: warning - %d regions still registered", regions_in_use);
+    }
+
+    /* Free the group structure */
+    OSDGroup *group = (OSDGroup*)gosd->group_ptrs[grpNum];
+    if (group != NULL) {
+        free(group);
+        LOG_OSD("DestroyGroup: freed group %d", grpNum);
+    }
 
     gosd->group_ptrs[grpNum] = NULL;
 
