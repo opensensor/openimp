@@ -120,6 +120,9 @@ static uint8_t g_last_sps[MAX_ENC_CHANNELS][MAX_PARAM_SET_SIZE];
 static int g_last_sps_len[MAX_ENC_CHANNELS];
 static uint8_t g_last_pps[MAX_ENC_CHANNELS][MAX_PARAM_SET_SIZE];
 static int g_last_pps_len[MAX_ENC_CHANNELS];
+/* Warmup: force AUD+SPS+PPS injection for first few AUs per channel */
+static int g_inject_warmup[MAX_ENC_CHANNELS] = {0};
+
 
 /* Find next start code position (returns index or len if none). Sets *sc to 3 or 4 */
 static size_t find_start_code(const uint8_t *b, size_t off, size_t len, int *sc)
@@ -160,6 +163,64 @@ static void cache_sps_pps_from_annexb(int ch, const uint8_t *buf, size_t len)
         i = next; sc = sc2;
     }
 }
+/* Minimal bit writer helpers for synthesized SPS/PPS */
+static void wb_bit(uint8_t *b, int *bp, int v){ int byte=*bp/8, off=7-(*bp%8); if(v) b[byte]|=(1<<off); else b[byte]&=~(1<<off); (*bp)++; }
+static void wb_bits(uint8_t *b, int *bp, uint32_t val, int n){ for(int i=n-1;i>=0;i--) wb_bit(b,bp,(val>>i)&1); }
+static void wb_ue(uint8_t *b, int *bp, uint32_t v){ uint32_t code=v+1; int k=0; for(uint32_t t=code; t; t>>=1) k++; int leading_zero_bits = k-1; for(int i=0;i<leading_zero_bits;i++) wb_bit(b,bp,0); wb_bits(b,bp,code, k); }
+
+/* Build very minimal Baseline SPS (Annex B, startcode included). Matches 42e01f */
+static int synth_h264_sps(uint8_t *out, int width, int height){
+    int pos=0; out[pos++]=0; out[pos++]=0; out[pos++]=0; out[pos++]=1; out[pos++]=0x67; /* SPS */
+    memset(out+pos,0,128); int bp=pos*8;
+    wb_bits(out,&bp,66,8);       /* profile_idc = 66 (Baseline) */
+    wb_bits(out,&bp,0xE0,8);     /* constraint flags */
+    wb_bits(out,&bp,0x1F,8);     /* level_idc = 31 */
+    wb_ue(out,&bp,0);            /* seq_parameter_set_id */
+    wb_ue(out,&bp,0);            /* log2_max_frame_num_minus4 */
+    wb_ue(out,&bp,0);            /* pic_order_cnt_type */
+    wb_ue(out,&bp,0);            /* log2_max_pic_order_cnt_lsb_minus4 */
+    wb_ue(out,&bp,1);            /* max_num_ref_frames (1) */
+    wb_bit(out,&bp,0);           /* gaps_in_frame_num_value_allowed_flag */
+    uint32_t w_mbs = (width + 15) / 16; uint32_t h_mbs = (height + 15) / 16;
+    wb_ue(out,&bp, w_mbs - 1);   /* pic_width_in_mbs_minus1 */
+    wb_ue(out,&bp, h_mbs - 1);   /* pic_height_in_map_units_minus1 (frame-only) */
+    wb_bit(out,&bp,1);           /* frame_mbs_only_flag */
+    wb_bit(out,&bp,1);           /* direct_8x8_inference_flag */
+    wb_bit(out,&bp,0);           /* frame_cropping_flag */
+    wb_bit(out,&bp,0);           /* vui_parameters_present_flag (omit) */
+    wb_bit(out,&bp,1);           /* rbsp_stop_one_bit */
+    while (bp % 8) wb_bit(out,&bp,0);
+    return bp/8;
+}
+
+/* Build minimal PPS (Annex B, startcode included) */
+static int synth_h264_pps(uint8_t *out){
+    int pos=0; out[pos++]=0; out[pos++]=0; out[pos++]=0; out[pos++]=1; out[pos++]=0x68; /* PPS */
+    memset(out+pos,0,64); int bp=pos*8;
+    wb_ue(out,&bp,0);            /* pic_parameter_set_id */
+    wb_ue(out,&bp,0);            /* seq_parameter_set_id */
+    wb_bit(out,&bp,0);           /* entropy_coding_mode_flag = CAVLC */
+    wb_bit(out,&bp,0);           /* bottom_field_pic_order_in_frame_present_flag */
+    wb_ue(out,&bp,0);            /* num_slice_groups_minus1 */
+    wb_ue(out,&bp,0);            /* num_ref_idx_l0_default_active_minus1 */
+    wb_ue(out,&bp,0);            /* num_ref_idx_l1_default_active_minus1 */
+    wb_bit(out,&bp,0);           /* weighted_pred_flag */
+    wb_bits(out,&bp,0,2);        /* weighted_bipred_idc */
+    wb_ue(out,&bp,0);            /* pic_init_qp_minus26 */
+    wb_ue(out,&bp,0);            /* pic_init_qs_minus26 */
+    wb_ue(out,&bp,0);            /* chroma_qp_index_offset */
+    wb_bit(out,&bp,0);           /* deblocking_filter_control_present_flag */
+    wb_bit(out,&bp,0);           /* constrained_intra_pred_flag */
+    wb_bit(out,&bp,0);           /* redundant_pic_cnt_present_flag */
+    wb_bit(out,&bp,1);           /* rbsp_stop_one_bit */
+    while (bp % 8) wb_bit(out,&bp,0);
+    return bp/8;
+}
+
+static int first_vcl_type(const uint8_t *buf, size_t len){ size_t i=0; int sc=0; i=find_start_code(buf,0,len,&sc); while(i<len){ size_t ns=i+(sc?sc:0); int sc2=0; size_t nx=find_start_code(buf,ns,len,&sc2); if(ns<nx){ uint8_t t=buf[ns]&0x1F; if(t==1||t==5) return t; } if(nx>=len) break; i=nx; sc=sc2; } return 0; }
+
+static int build_aud_simple(uint8_t *out, int is_idr){ int pos=0; out[pos++]=0; out[pos++]=0; out[pos++]=0; out[pos++]=1; out[pos++]=0x09; /* AUD */ uint8_t rbsp= (is_idr?0:1)<<5; out[pos++]=rbsp; out[pos++]=0x80; return pos; }
+
 
 static int has_sps_pps_before_vcl(const uint8_t *buf, size_t len)
 {
@@ -185,18 +246,47 @@ static uint8_t *inject_prefix_if_needed(int ch, int is_h264, const uint8_t *buf,
     if (!is_h264 || !buf || len == 0 || ch < 0 || ch >= MAX_ENC_CHANNELS) return NULL;
     /* Update caches from current buffer */
     cache_sps_pps_from_annexb(ch, buf, len);
-    /* If SPS/PPS already present before first VCL, do nothing */
-    if (has_sps_pps_before_vcl(buf, len)) return NULL;
-    /* Need cached SPS & PPS to inject */
-    if (g_last_sps_len[ch] <= 0 || g_last_pps_len[ch] <= 0) return NULL;
-    size_t add = 4 + (size_t)g_last_sps_len[ch] + 4 + (size_t)g_last_pps_len[ch];
+    /* If SPS/PPS already present before first VCL and not in warmup, do nothing */
+    if (has_sps_pps_before_vcl(buf, len) && g_inject_warmup[ch] <= 0) return NULL;
+
+    /* Determine if first VCL is IDR to choose AUD primary_pic_type */
+    int vcl_t = first_vcl_type(buf, len);
+    int is_idr = (vcl_t == 5);
+
+    /* Gather SPS/PPS: prefer cached, otherwise synthesize minimal from channel attrs */
+    uint8_t sps_local[256], pps_local[128];
+    const uint8_t *sps = NULL, *pps = NULL; int sps_len = 0, pps_len = 0;
+    if (g_last_sps_len[ch] > 0 && g_last_pps_len[ch] > 0) {
+        sps = g_last_sps[ch]; sps_len = g_last_sps_len[ch];
+        pps = g_last_pps[ch]; pps_len = g_last_pps_len[ch];
+    } else {
+        /* Synthesize minimal SPS/PPS (Annex B) */
+        int width = 0, height = 0;
+        if (g_EncChannel[ch].chn_id >= 0) {
+            width = (int)g_EncChannel[ch].attr.encAttr.attrH264.maxPicWidth;
+            height = (int)g_EncChannel[ch].attr.encAttr.attrH264.maxPicHeight;
+        }
+        if (width <= 0 || height <= 0) {
+            /* Fallback to common defaults to avoid crash */
+            width = 640; height = 360;
+        }
+        sps_len = synth_h264_sps(sps_local, width, height);
+        pps_len = synth_h264_pps(pps_local);
+        sps = sps_local; pps = pps_local;
+    }
+
+    /* Optionally prepend AUD for better compatibility */
+    uint8_t aud[8]; int aud_len = build_aud_simple(aud, is_idr);
+
+    size_t add = (size_t)aud_len + (size_t)sps_len + (size_t)pps_len;
     uint8_t *out = (uint8_t*)malloc(add + len);
     if (!out) return NULL;
     size_t o = 0;
-    out[o++] = 0; out[o++] = 0; out[o++] = 0; out[o++] = 1;
-    memcpy(out + o, g_last_sps[ch], g_last_sps_len[ch]); o += g_last_sps_len[ch];
-    out[o++] = 0; out[o++] = 0; out[o++] = 0; out[o++] = 1;
-    memcpy(out + o, g_last_pps[ch], g_last_pps_len[ch]); o += g_last_pps_len[ch];
+    memcpy(out + o, aud, aud_len); o += aud_len;
+    memcpy(out + o, sps, sps_len); o += sps_len;
+    memcpy(out + o, pps, pps_len); o += pps_len;
+    if (g_inject_warmup[ch] > 0) { g_inject_warmup[ch]--; }
+
     memcpy(out + o, buf, len); o += len;
     *out_len = o;
     return out;
@@ -451,8 +541,8 @@ int IMP_Encoder_CreateChn(int encChn, IMPEncoderCHNAttr *attr) {
 
     /* Allocate stream buffers (from decompilation at 0x83e10) */
     int stream_cnt = buf_count;
-    int stream_size = 0x38; /* Size per stream buffer */
-    size_t total_size = stream_cnt * stream_size * 7;
+    int stream_size = 0x188; /* Size per stream buffer metadata structure (0x188 from BN MCP) */
+    size_t total_size = stream_cnt * stream_size;
 
     void **buf_ptr = (void**)&chn->data_298[0];
     *buf_ptr = calloc(total_size, 1);
@@ -659,6 +749,9 @@ int IMP_Encoder_StartRecvPic(int encChn) {
         LOG_ENC("StartRecvPic failed: channel %d not created", encChn);
         pthread_mutex_unlock(&encoder_mutex);
         return -1;
+    /* Warm up: force prefix injection on first ~60 AUs so clients always see SPS/PPS */
+    g_inject_warmup[encChn] = 60;
+
     }
 
     /* Set flags at offsets 0x404 and 0x400 */
@@ -666,6 +759,9 @@ int IMP_Encoder_StartRecvPic(int encChn) {
     g_EncChannel[encChn].recv_pic_enabled = 1;
 
     pthread_mutex_unlock(&encoder_mutex);
+
+    /* Ensure a quick lock for new consumers: request an IDR on start */
+    IMP_Encoder_RequestIDR(encChn);
 
     LOG_ENC("StartRecvPic: chn=%d", encChn);
     return 0;
@@ -1029,9 +1125,55 @@ static int channel_encoder_init(EncChannel *chn) {
         return -1;
     }
 
-    /* Set default codec parameters */
+    /* Initialize codec parameters with defaults */
     uint8_t codec_params[0x7c0];
-    memset(codec_params, 0, sizeof(codec_params));
+    AL_Codec_Encode_SetDefaultParam(codec_params);
+
+    /* Extract encoder attributes - note: width/height are in the union members */
+    IMPEncoderProfile profile_enum = chn->attr.encAttr.profile;
+    uint32_t width = 0;
+    uint32_t height = 0;
+
+    /* Get width/height from the appropriate union member based on profile */
+    uint32_t codec_type = (profile_enum >> 24) & 0xFF;
+    if (codec_type == IMP_ENC_TYPE_AVC || codec_type == IMP_ENC_TYPE_HEVC) {
+        width = chn->attr.encAttr.attrH264.maxPicWidth;
+        height = chn->attr.encAttr.attrH264.maxPicHeight;
+    } else if (codec_type == IMP_ENC_TYPE_JPEG) {
+        width = chn->attr.encAttr.attrJpeg.maxPicWidth;
+        height = chn->attr.encAttr.attrJpeg.maxPicHeight;
+    }
+
+    /* Extract rate control attributes */
+    uint32_t fps_num = chn->attr.rcAttr.outFrmRate.frmRateNum;
+    uint32_t fps_den = chn->attr.rcAttr.outFrmRate.frmRateDen;
+    uint32_t gop = chn->attr.rcAttr.attrGop.gopLength;
+    uint32_t bitrate = 0;
+
+    /* Get bitrate based on RC mode - check the union for the correct member */
+    /* Note: We need to determine RC mode from the attrRcMode union somehow.
+     * For now, try to extract from CBR attributes as that's most common */
+    bitrate = chn->attr.rcAttr.attrRcMode.attrH264Cbr.maxGop * 1000; /* Rough estimate */
+
+    /* The profile enum already contains the vendor format:
+     * - Lower byte is the profile IDC (66/77/100 for AVC, 1 for HEVC)
+     * - Upper byte is the encoder type (0=AVC, 1=HEVC, 4=JPEG)
+     * We just need to extract the lower byte for offset 0x24
+     */
+    uint32_t profile_idc = profile_enum & 0xFF;
+
+    /* Override codec parameters with values from channel attributes */
+    *(uint32_t*)(codec_params + 0x14) = width;       /* Width at offset 0x14 */
+    *(uint32_t*)(codec_params + 0x18) = height;      /* Height at offset 0x18 */
+    *(uint32_t*)(codec_params + 0x1f) = codec_type;  /* Codec type at offset 0x1f */
+    *(uint32_t*)(codec_params + 0x24) = profile_idc; /* Profile at offset 0x24 */
+    *(uint32_t*)(codec_params + 0x30) = bitrate;     /* Bitrate at offset 0x30 */
+    *(uint32_t*)(codec_params + 0x7c) = fps_num;     /* FPS numerator at offset 0x7c */
+    *(uint32_t*)(codec_params + 0x80) = fps_den;     /* FPS denominator at offset 0x80 */
+    *(uint32_t*)(codec_params + 0xb0) = gop;         /* GOP length at offset 0xb0 */
+
+    LOG_ENC("channel_encoder_init: %dx%d, profile=0x%x->0x%x, fps=%d/%d, gop=%d, bitrate=%d",
+            width, height, profile_enum, profile_idc, fps_num, fps_den, gop, bitrate);
 
     /* Create codec instance */
     if (AL_Codec_Encode_Create(&chn->codec, codec_params) < 0 || chn->codec == NULL) {
@@ -1277,7 +1419,8 @@ static void *stream_thread(void *arg) {
         /* Get encoded stream from codec */
         if (chn->codec != NULL) {
             void *codec_stream = NULL;
-            if (AL_Codec_Encode_GetStream(chn->codec, &codec_stream) == 0 && codec_stream != NULL) {
+            void *codec_user_data = NULL;
+            if (AL_Codec_Encode_GetStream(chn->codec, &codec_stream, &codec_user_data) == 0 && codec_stream != NULL) {
                 /* Validate stream pointer - must be a reasonable heap address */
                 uintptr_t stream_addr = (uintptr_t)codec_stream;
                 if (stream_addr < 0x10000) {
@@ -1355,8 +1498,29 @@ static void *stream_thread(void *arg) {
                     sem_post(&chn->sem_408);
 
                     LOG_ENC("stream_thread: stream seq=%u, length=%u, type=%s",
-                            stream_buf->seq, length,
+                            stream_buf->seq, stream_buf->pack.length,
                             frame_type == 0 ? "I" : (frame_type == 1 ? "P" : "B"));
+
+                    /* Debug: print first few NAL types from outgoing buffer */
+                    if (stream_buf->pack.length >= 6) {
+                        const uint8_t *p = (const uint8_t*)(uintptr_t)stream_buf->pack.virAddr;
+                        size_t L = stream_buf->pack.length;
+                        size_t i = 0; int sc = 0; int cnt = 0;
+                        i = find_start_code(p, 0, L, &sc);
+                        char nal_str[64]; int off = 0;
+                        off += snprintf(nal_str+off, sizeof(nal_str)-off, "NALs:");
+                        while (i < L && cnt < 4) {
+                            size_t ns = i + (sc ? sc : 0);
+                            int sc2 = 0; size_t nx = find_start_code(p, ns, L, &sc2);
+                            if (ns < nx) {
+                                uint8_t t = p[ns] & 0x1F; cnt++;
+                                off += snprintf(nal_str+off, sizeof(nal_str)-off, " %u", t);
+                            }
+                            if (nx >= L) break; i = nx; sc = sc2;
+                        }
+                        LOG_ENC("stream_thread: %s", nal_str);
+                    }
+
                 }
             }
         } else {
@@ -1399,38 +1563,75 @@ static int encoder_update(void *module, void *frame) {
 
     int frame_processed = 0;
 
-    /* For now, we'll process the frame directly in the first active channel */
-    for (int i = 0; i < MAX_ENC_CHANNELS; i++) {
-        EncChannel *chn = &g_EncChannel[i];
+    /* Determine destination encoder channel directly from module->group_id (offset 0x130) */
+    int dst_chn = -1;
+    if (module != NULL) {
+        uint32_t group_id = *((uint32_t*)((char*)module + 0x130));
+        if (group_id < (uint32_t)MAX_ENC_CHANNELS) {
+            dst_chn = (int)group_id;
+        }
+    }
 
+    /* Queue to the specific channel if valid; otherwise fall back to search */
+    if (dst_chn >= 0) {
+        EncChannel *chn = &g_EncChannel[dst_chn];
         if (chn->chn_id >= 0 && chn->recv_pic_started && chn->codec != NULL) {
-            /* Queue frame to codec for encoding */
             if (AL_Codec_Encode_Process(chn->codec, frame, NULL) == 0) {
-                LOG_ENC("encoder_update: Queued frame to channel %d", i);
-
-                /* Signal eventfd to wake up stream thread */
+                LOG_ENC("encoder_update: Queued frame to channel %d (by module group_id)", dst_chn);
                 if (chn->eventfd >= 0) {
                     uint64_t val = 1;
                     ssize_t n = write(chn->eventfd, &val, sizeof(val));
                     (void)n;
                 }
-
                 frame_processed = 1;
-                break;  /* Only process frame in one channel */
+            }
+        }
+        if (!frame_processed) {
+            LOG_ENC("encoder_update: Failed to queue via group_id=%d, falling back to scan", dst_chn);
+        }
+    }
+
+    if (!frame_processed) {
+        for (int i = 0; i < MAX_ENC_CHANNELS; i++) {
+            EncChannel *chn = &g_EncChannel[i];
+            if (chn->chn_id >= 0 && chn->recv_pic_started && chn->codec != NULL) {
+                if (AL_Codec_Encode_Process(chn->codec, frame, NULL) == 0) {
+                    LOG_ENC("encoder_update: Queued frame to channel %d (fallback)", i);
+                    if (chn->eventfd >= 0) {
+                        uint64_t val = 1;
+                        ssize_t n = write(chn->eventfd, &val, sizeof(val));
+                        (void)n;
+                    }
+                    frame_processed = 1;
+                    break;  /* Only process frame in one channel */
+                }
             }
         }
     }
 
-    /* Release the frame back to VBM pool so it can be reused
-     * This is critical for software frame generation mode where frames
-     * are allocated from a limited pool and must be recycled. */
+    /* Release the frame back to the correct VBM pool (matching channel) */
     extern int IMP_FrameSource_ReleaseFrame(int chnNum, void *frame);
-
-    /* Extract channel number from module - for now we'll try both channels */
-    for (int chn = 0; chn < 2; chn++) {
-        if (IMP_FrameSource_ReleaseFrame(chn, frame) == 0) {
-            LOG_ENC("encoder_update: Released frame %p back to channel %d", frame, chn);
-            break;
+    if (dst_chn >= 0) {
+        if (IMP_FrameSource_ReleaseFrame(dst_chn, frame) == 0) {
+            LOG_ENC("encoder_update: Released frame %p back to channel %d", frame, dst_chn);
+        } else {
+            LOG_ENC("encoder_update: WARNING - ReleaseFrame failed for channel %d; attempting fallback", dst_chn);
+            /* Try other channels only if the expected one failed (should be rare) */
+            for (int chn = 0; chn < MAX_ENC_CHANNELS; chn++) {
+                if (chn == dst_chn) continue;
+                if (IMP_FrameSource_ReleaseFrame(chn, frame) == 0) {
+                    LOG_ENC("encoder_update: Released frame %p back to fallback channel %d", frame, chn);
+                    break;
+                }
+            }
+        }
+    } else {
+        /* No group_id available; last resort try both primary channels */
+        for (int chn = 0; chn < 2; chn++) {
+            if (IMP_FrameSource_ReleaseFrame(chn, frame) == 0) {
+                LOG_ENC("encoder_update: Released frame %p back to channel %d (no group_id)", frame, chn);
+                break;
+            }
         }
     }
 

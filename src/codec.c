@@ -218,7 +218,7 @@ int AL_Codec_Encode_Create(void **codec, void *params) {
     enc->frame_buf_count = 4;           /* Default frame buffer count */
     enc->frame_buf_size = 0x100000;     /* 1MB per frame */
     enc->stream_buf_count = 7;          /* Default stream buffer count */
-    enc->stream_buf_size = 0x38;        /* Stream buffer size */
+    enc->stream_buf_size = 0x20000;     /* 128KB stream buffer size (for encoded H.264 data) */
     
     /* Allocate and initialize FIFO control structures safely */
     int fifo_size = Fifo_SizeOf();
@@ -238,40 +238,12 @@ int AL_Codec_Encode_Create(void **codec, void *params) {
     enc->src_fourcc = 0x3231564e;  /* 'NV12' */
     enc->metadata_type = -1;
 
-    /* Initialize hardware encoder */
+    /* Hardware encoder is handled internally by vendor library via /dev/avpu */
+    /* We don't need to initialize a separate hardware encoder here */
     enc->hw_encoder_fd = -1;
     enc->use_hardware = 0;
 
-    /* Extract encoder parameters from codec_param using safe access */
-    uint8_t *p = enc->codec_param;
-    uint32_t codec_type, width, height, bitrate;
-
-    memcpy(&codec_type, p + 0x1f, sizeof(uint32_t));  /* Codec type at offset 0x1f */
-    memcpy(&width, p + 0x14, sizeof(uint32_t));       /* Width */
-    memcpy(&height, p + 0x18, sizeof(uint32_t));      /* Height */
-    memcpy(&bitrate, p + 0x30, sizeof(uint32_t));     /* Bitrate */
-
-    enc->hw_params.codec_type = codec_type;
-    enc->hw_params.width = width;
-    enc->hw_params.height = height;
-    enc->hw_params.fps_num = 30;                      /* Default FPS */
-    enc->hw_params.fps_den = 1;
-    enc->hw_params.gop_length = 30;                   /* Default GOP */
-    enc->hw_params.rc_mode = HW_RC_MODE_CBR;          /* Default RC mode */
-    enc->hw_params.bitrate = bitrate;
-    enc->hw_params.profile = HW_PROFILE_MAIN;         /* Default profile */
-    enc->hw_params.qp = 25;                           /* Default QP */
-    enc->hw_params.max_qp = 51;
-    enc->hw_params.min_qp = 0;
-
-    /* Try to initialize hardware encoder */
-    if (HW_Encoder_Init(&enc->hw_encoder_fd, &enc->hw_params) == 0) {
-        enc->use_hardware = 1;
-        LOG_CODEC("Create: using hardware encoder");
-    } else {
-        enc->use_hardware = 0;
-        LOG_CODEC("Create: using software fallback");
-    }
+    LOG_CODEC("Create: vendor library will handle hardware acceleration via /dev/avpu");
 
     /* Register in global instances */
     pthread_mutex_lock(&g_codec_mutex);
@@ -466,12 +438,15 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
  * AL_Codec_Encode_GetStream - based on decompilation at 0x7a548
  * Get an encoded stream
  */
-int AL_Codec_Encode_GetStream(void *codec, void **stream) {
-    if (codec == NULL || stream == NULL) {
+int AL_Codec_Encode_GetStream(void *codec, void **stream, void **user_data) {
+    if (codec == NULL || stream == NULL || user_data == NULL) {
         return -1;
     }
 
     AL_CodecEncode *enc = (AL_CodecEncode*)codec;
+
+    /* No metadata in openimp path; match libimp by providing a separate pointer */
+    *user_data = NULL;
 
     /* Dequeue stream from FIFO (wait indefinitely) */
     void *s = Fifo_Dequeue(enc->fifo_streams, -1);

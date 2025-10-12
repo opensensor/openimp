@@ -13,8 +13,11 @@
 extern "C" {
 #endif
 
-/* Encoder device path */
-#define HW_ENCODER_DEVICE "/dev/jz-venc"
+/* Encoder device path - try multiple possible device names */
+#define HW_ENCODER_DEVICE "/dev/avpu"
+#define HW_ENCODER_DEVICE_ALT1 "/dev/venc"
+#define HW_ENCODER_DEVICE_ALT2 "/dev/jz-venc"
+#define HW_ENCODER_DEVICE_ALT3 "/dev/h264enc"
 
 /* Encoder ioctl commands */
 #define VENC_IOCTL_INIT         0xc0104501

@@ -84,6 +84,12 @@ typedef struct {
     char aVersion[64];  /**< Version string */
 } IMPVersion;
 
+/** Frame info structure (width/height) */
+typedef struct {
+    int width;
+    int height;
+} IMPFrameInfo;
+
 /**
  * Rectangle structure
  */

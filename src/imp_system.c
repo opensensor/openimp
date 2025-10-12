@@ -246,6 +246,15 @@ static int system_bind(IMPCell *srcCell, IMPCell *dstCell) {
         return -1;
     }
 
+    /* Avoid duplicate observers: if already bound, no-op */
+    for (Observer *o = (Observer*)src_module->observer_list; o; o = o->next) {
+        if (o->module == (void*)dst_module) {
+            fprintf(stderr, "[System] Bind skipped: already bound %s -> %s\n",
+                    src_module->name, dst_module->name);
+            return 0;
+        }
+    }
+
     /* Calculate output pointer - from decompilation:
      * src_module + 0x128 + ((output_id + 4) << 2) */
     void *output_ptr = (void*)((char*)src_module + 0x128 + ((output_id + 4) << 2));
@@ -603,4 +612,45 @@ int IMP_System_RegisterModule(int deviceID, int groupID, Module *module) {
 
     return 0;
 }
+
+/* Safe accessors to avoid raw offset usage across modules */
+int IMP_System_ModuleSetOutputCount(void *module, unsigned int count) {
+    if (!module) return -1;
+    Module *m = (Module*)module;
+    m->output_count = count;
+    return 0;
+}
+
+int IMP_System_ModuleSetUpdateCallback(void *module, int (*update)(void *module, void *frame)) {
+    if (!module) return -1;
+    Module *m = (Module*)module;
+    m->func_4c = (void*)update;
+    return 0;
+}
+
+int IMP_System_ModuleGetGroupID(void *module) {
+    if (!module) return -1;
+    Module *m = (Module*)module;
+    return (int)m->group_id;
+}
+/* Safe bind helpers to avoid duplicate observers */
+int IMP_System_IsBound(IMPCell *srcCell, IMPCell *dstCell) {
+    if (!srcCell || !dstCell) return 0;
+    Module *src = IMP_System_GetModule(srcCell->deviceID, srcCell->groupID);
+    Module *dst = IMP_System_GetModule(dstCell->deviceID, dstCell->groupID);
+    if (!src || !dst) return 0;
+    Observer *obs = (Observer*)src->observer_list;
+    while (obs) {
+        if (obs->module == (void*)dst) return 1;
+        obs = obs->next;
+    }
+    return 0;
+}
+
+int IMP_System_BindIfNeeded(IMPCell *srcCell, IMPCell *dstCell) {
+    if (!srcCell || !dstCell) return -1;
+    if (IMP_System_IsBound(srcCell, dstCell)) return 0;
+    return IMP_System_Bind(srcCell, dstCell);
+}
+
 

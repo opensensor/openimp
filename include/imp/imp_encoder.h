@@ -14,14 +14,31 @@ extern "C" {
 #include "imp_common.h"
 
 /**
- * Encoder profile
+ * Encoder type
  */
 typedef enum {
-    IMP_ENC_PROFILE_AVC_BASELINE = 0,   /**< H.264 Baseline */
-    IMP_ENC_PROFILE_AVC_MAIN = 1,       /**< H.264 Main */
-    IMP_ENC_PROFILE_AVC_HIGH = 2,       /**< H.264 High */
-    IMP_ENC_PROFILE_HEVC_MAIN = 3,      /**< H.265 Main */
-    IMP_ENC_PROFILE_JPEG = 4            /**< JPEG */
+    IMP_ENC_TYPE_AVC      = 0,
+    IMP_ENC_TYPE_HEVC     = 1,
+    IMP_ENC_TYPE_JPEG     = 4,
+} IMPEncoderEncType;
+
+/**
+ * Profile IDC values (match H.264/H.265 spec)
+ */
+#define IMP_ENC_AVC_PROFILE_IDC_BASELINE      66
+#define IMP_ENC_AVC_PROFILE_IDC_MAIN          77
+#define IMP_ENC_AVC_PROFILE_IDC_HIGH          100
+#define IMP_ENC_HEVC_PROFILE_IDC_MAIN         1
+
+/**
+ * Encoder profile (matches vendor library format)
+ */
+typedef enum {
+    IMP_ENC_PROFILE_AVC_BASELINE  = ((IMP_ENC_TYPE_AVC << 24) | (IMP_ENC_AVC_PROFILE_IDC_BASELINE)),   /**< H.264 Baseline = 0x00000042 = 66 */
+    IMP_ENC_PROFILE_AVC_MAIN      = ((IMP_ENC_TYPE_AVC << 24) | (IMP_ENC_AVC_PROFILE_IDC_MAIN)),       /**< H.264 Main = 0x0000004D = 77 */
+    IMP_ENC_PROFILE_AVC_HIGH      = ((IMP_ENC_TYPE_AVC << 24) | (IMP_ENC_AVC_PROFILE_IDC_HIGH)),       /**< H.264 High = 0x00000064 = 100 */
+    IMP_ENC_PROFILE_HEVC_MAIN     = ((IMP_ENC_TYPE_HEVC << 24) | (IMP_ENC_HEVC_PROFILE_IDC_MAIN)),     /**< H.265 Main = 0x01000001 */
+    IMP_ENC_PROFILE_JPEG          = (IMP_ENC_TYPE_JPEG << 24),                                          /**< JPEG = 0x04000000 */
 } IMPEncoderProfile;
 
 /**

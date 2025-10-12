@@ -26,32 +26,59 @@ int HW_Encoder_Init(int *fd, HWEncoderParams *params) {
         return -1;
     }
 
-    /* Try to open hardware encoder device */
-    int dev_fd = open(HW_ENCODER_DEVICE, O_RDWR);
+    /* Try to open hardware encoder device - try multiple possible paths */
+    const char *device_paths[] = {
+        HW_ENCODER_DEVICE,
+        HW_ENCODER_DEVICE_ALT1,
+        HW_ENCODER_DEVICE_ALT2,
+        HW_ENCODER_DEVICE_ALT3,
+        NULL
+    };
+
+    int dev_fd = -1;
+    const char *opened_device = NULL;
+
+    for (int i = 0; device_paths[i] != NULL; i++) {
+        dev_fd = open(device_paths[i], O_RDWR);
+        if (dev_fd >= 0) {
+            opened_device = device_paths[i];
+            LOG_HW("Opened hardware encoder device: %s (fd=%d)", opened_device, dev_fd);
+            break;
+        }
+    }
+
     if (dev_fd < 0) {
-        LOG_HW("Failed to open %s: %s", HW_ENCODER_DEVICE, strerror(errno));
+        LOG_HW("Failed to open hardware encoder (tried /dev/venc, /dev/jz-venc, /dev/h264enc)");
         LOG_HW("Hardware encoder not available, using software fallback");
         *fd = -1;
         return -1;
     }
 
-    LOG_HW("Opened hardware encoder device: %s (fd=%d)", HW_ENCODER_DEVICE, dev_fd);
+    /* Log parameters before attempting initialization */
+    LOG_HW("Attempting to initialize hardware encoder:");
+    LOG_HW("  Codec: %s (type=%u)", params->codec_type == HW_CODEC_H264 ? "H.264" :
+                          params->codec_type == HW_CODEC_H265 ? "H.265" : "JPEG",
+                          params->codec_type);
+    LOG_HW("  Profile: %u (%s)", params->profile,
+                          params->profile == HW_PROFILE_BASELINE ? "Baseline" :
+                          params->profile == HW_PROFILE_MAIN ? "Main" :
+                          params->profile == HW_PROFILE_HIGH ? "High" : "Unknown");
+    LOG_HW("  Resolution: %ux%u", params->width, params->height);
+    LOG_HW("  FPS: %u/%u", params->fps_num, params->fps_den);
+    LOG_HW("  GOP: %u", params->gop_length);
+    LOG_HW("  RC Mode: %u", params->rc_mode);
+    LOG_HW("  Bitrate: %u bps", params->bitrate);
 
     /* Initialize encoder with parameters */
     if (ioctl(dev_fd, VENC_IOCTL_INIT, params) < 0) {
         LOG_HW("VENC_IOCTL_INIT failed: %s", strerror(errno));
+        LOG_HW("Hardware encoder initialization failed, falling back to software");
         close(dev_fd);
         *fd = -1;
         return -1;
     }
 
-    LOG_HW("Hardware encoder initialized:");
-    LOG_HW("  Codec: %s", params->codec_type == HW_CODEC_H264 ? "H.264" :
-                          params->codec_type == HW_CODEC_H265 ? "H.265" : "JPEG");
-    LOG_HW("  Resolution: %ux%u", params->width, params->height);
-    LOG_HW("  FPS: %u/%u", params->fps_num, params->fps_den);
-    LOG_HW("  GOP: %u", params->gop_length);
-    LOG_HW("  Bitrate: %u bps", params->bitrate);
+    LOG_HW("Hardware encoder initialized successfully on %s", opened_device);
 
     *fd = dev_fd;
     return 0;

@@ -23,6 +23,9 @@
 #define VIDIOC_SET_DEPTH    0x800456c5  /* Set frame depth */
 #define VIDIOC_STREAM_ON    0x80045612  /* Start streaming */
 #define VIDIOC_STREAM_OFF   0x80045613  /* Stop streaming */
+/* Buffer queue/dequeue ioctls (from decompilation notes) */
+#define VIDIOC_QBUF         0xc044560f  /* Queue buffer */
+#define VIDIOC_DQBUF        0xc0445611  /* Dequeue buffer */
 
 /* Encoder ioctl commands (to be discovered) */
 #define ENCODER_CREATE_CHN  0x40000000  /* Placeholder */
@@ -76,11 +79,12 @@ typedef struct {
     char padding[0x68];         /* 0x60-0xc7: Padding to 200 bytes */
 } fs_format_t;
 
-/* Buffer count structure */
+/* v4l2_requestbuffers (32-bit) */
 typedef struct {
-    int count;                  /* Buffer count */
-    int type;                   /* Buffer type */
-    int mode;                   /* Mode */
+    uint32_t count;      /* Buffer count */
+    uint32_t type;       /* Buffer type (V4L2_BUF_TYPE_VIDEO_CAPTURE=1) */
+    uint32_t memory;     /* Memory type (use 2 per driver expectation) */
+    uint32_t reserved;   /* Reserved */
 } fs_bufcnt_t;
 
 /**
@@ -90,7 +94,7 @@ typedef struct {
 int fs_open_device(int chn) {
     char devname[64];
     snprintf(devname, sizeof(devname), "/dev/framechan%d", chn);
-    
+
     /* Try to open with retries (from decompilation: 0x101 retries) */
     for (int i = 0; i < 257; i++) {
         int fd = open(devname, O_RDWR | O_NONBLOCK, 0);
@@ -98,12 +102,12 @@ int fs_open_device(int chn) {
             fprintf(stderr, "[KernelIF] Opened %s (fd=%d)\n", devname, fd);
             return fd;
         }
-        
+
         if (i < 256) {
             usleep(10000); /* 10ms delay between retries */
         }
     }
-    
+
     fprintf(stderr, "[KernelIF] Failed to open %s: %s\n", devname, strerror(errno));
     return -1;
 }
@@ -229,21 +233,20 @@ int fs_set_buffer_count(int fd, int count) {
     if (fd < 0) {
         return -1;
     }
-    
-    fs_bufcnt_t bufcnt = {
-        .count = count,
-        .type = 1,
-        .mode = 2
-    };
-    
-    int ret = ioctl(fd, VIDIOC_SET_BUFCNT, &bufcnt);
+
+    fs_bufcnt_t req = {0};
+    req.count = (uint32_t)count;
+    req.type = 1;     /* V4L2_BUF_TYPE_VIDEO_CAPTURE */
+    req.memory = 2;   /* Use memory type 2 (driver expects this) */
+
+    int ret = ioctl(fd, VIDIOC_SET_BUFCNT, &req);
     if (ret < 0) {
         fprintf(stderr, "[KernelIF] VIDIOC_SET_BUFCNT failed: %s\n", strerror(errno));
         return -1;
     }
-    
-    fprintf(stderr, "[KernelIF] Set buffer count: %d (actual: %d)\n", count, bufcnt.count);
-    return bufcnt.count;
+
+    fprintf(stderr, "[KernelIF] Set buffer count: %d (actual: %u)\n", count, req.count);
+    return (int)req.count;
 }
 
 /**
@@ -254,13 +257,13 @@ int fs_set_depth(int fd, int depth) {
     if (fd < 0) {
         return -1;
     }
-    
+
     int ret = ioctl(fd, VIDIOC_SET_DEPTH, &depth);
     if (ret < 0) {
         fprintf(stderr, "[KernelIF] VIDIOC_SET_DEPTH failed: %s\n", strerror(errno));
         return -1;
     }
-    
+
     fprintf(stderr, "[KernelIF] Set frame depth: %d\n", depth);
     return 0;
 }
@@ -273,14 +276,14 @@ int fs_stream_on(int fd) {
     if (fd < 0) {
         return -1;
     }
-    
+
     int enable = 1;
     int ret = ioctl(fd, VIDIOC_STREAM_ON, &enable);
     if (ret < 0) {
         fprintf(stderr, "[KernelIF] VIDIOC_STREAM_ON failed: %s\n", strerror(errno));
         return -1;
     }
-    
+
     fprintf(stderr, "[KernelIF] Stream started\n");
     return 0;
 }
@@ -293,17 +296,93 @@ int fs_stream_off(int fd) {
     if (fd < 0) {
         return -1;
     }
-    
+
     int enable = 1;
     int ret = ioctl(fd, VIDIOC_STREAM_OFF, &enable);
     if (ret < 0) {
         fprintf(stderr, "[KernelIF] VIDIOC_STREAM_OFF failed: %s\n", strerror(errno));
         return -1;
     }
-    
+
     fprintf(stderr, "[KernelIF] Stream stopped\n");
     return 0;
 }
+
+/* Queue a userspace buffer to the framechan driver
+ * Driver expects a 0x44-byte v4l2_buffer-like struct (32-bit layout).
+ */
+int fs_qbuf(int fd, int index, unsigned long phys, unsigned int length) {
+    if (fd < 0 || index < 0) return -1;
+
+    struct v4l2_buf32 {
+        uint32_t index;        /* 0x00 */
+        uint32_t type;         /* 0x04 */
+        uint32_t bytesused;    /* 0x08 */
+        uint32_t flags;        /* 0x0C */
+        uint32_t field;        /* 0x10 */
+        uint32_t ts_sec;       /* 0x14 */
+        uint32_t ts_usec;      /* 0x18 */
+        uint32_t timecode[4];  /* 0x1C..0x28 */
+        uint32_t sequence;     /* 0x2C */
+        uint32_t memory;       /* 0x30 */
+        uint32_t m;            /* 0x34: union userptr/offset/fd */
+        uint32_t length;       /* 0x38 */
+        uint32_t reserved2;    /* 0x3C */
+        uint32_t reserved;     /* 0x40 */
+    } __attribute__((packed));
+
+    struct v4l2_buf32 b;
+    memset(&b, 0, sizeof(b));
+    b.index = (uint32_t)index;
+    b.type = 1;            /* V4L2_BUF_TYPE_VIDEO_CAPTURE */
+    b.memory = 2;          /* Must match reqbufs memory type */
+    b.m = (uint32_t)phys;  /* Driver uses this as DMA phys */
+    b.length = length;     /* Must equal kernel sizeimage */
+
+    int ret = ioctl(fd, VIDIOC_QBUF, &b);
+    if (ret < 0) {
+        fprintf(stderr, "[KernelIF] QBUF failed: idx=%d phys=0x%lx len=%u err=%s\n", index, phys, length, strerror(errno));
+        return -1;
+    }
+    return 0;
+}
+
+/* Dequeue a filled buffer from the framechan driver */
+int fs_dqbuf(int fd, int *index_out) {
+    if (fd < 0 || !index_out) return -1;
+
+    struct v4l2_buf32 {
+        uint32_t index;        /* 0x00 */
+        uint32_t type;         /* 0x04 */
+        uint32_t bytesused;    /* 0x08 */
+        uint32_t flags;        /* 0x0C */
+        uint32_t field;        /* 0x10 */
+        uint32_t ts_sec;       /* 0x14 */
+        uint32_t ts_usec;      /* 0x18 */
+        uint32_t timecode[4];  /* 0x1C..0x28 */
+        uint32_t sequence;     /* 0x2C */
+        uint32_t memory;       /* 0x30 */
+        uint32_t m;            /* 0x34 */
+        uint32_t length;       /* 0x38 */
+        uint32_t reserved2;    /* 0x3C */
+        uint32_t reserved;     /* 0x40 */
+    } __attribute__((packed));
+
+    struct v4l2_buf32 b;
+    memset(&b, 0, sizeof(b));
+    b.type = 1;      /* Required for type check in driver */
+
+    int ret = ioctl(fd, VIDIOC_DQBUF, &b);
+    if (ret < 0) {
+        if (errno == EAGAIN) return -2; /* non-blocking */
+        fprintf(stderr, "[KernelIF] DQBUF failed: %s\n", strerror(errno));
+        return -1;
+    }
+    *index_out = (int)b.index;
+    return 0;
+}
+
+
 
 /**
  * Close device
@@ -326,8 +405,8 @@ typedef struct {
     int chn;                /* 0x04: Channel */
     int width;              /* 0x08: Width */
     int height;             /* 0x0c: Height */
-    int size;               /* 0x14: Frame size */
     int pixfmt;             /* 0x10: Pixel format */
+    int size;               /* 0x14: Frame size */
     uint32_t phys_addr;     /* 0x18: Physical address */
     uint32_t virt_addr;     /* 0x1c: Virtual address */
     uint8_t data[0x408];    /* 0x20-0x427: Frame data */
@@ -353,6 +432,7 @@ typedef struct {
     int queue_tail;         /* Tail of queue (next to enqueue) */
     int queue_count;        /* Number of frames in queue */
     pthread_mutex_t queue_mutex; /* Mutex for queue access */
+    int fd;                 /* Kernel framechan fd for qbuf/dqbuf (-1 if unused) */
 } VBMPool;
 
 /* Global VBM state */
@@ -399,6 +479,7 @@ static int calculate_frame_size(int width, int height, int pixfmt) {
         case 0x32314752: /* RG12 */
         case 0x50424752: /* RGBP */
         case 0x1:       /* PIX_FMT_YUYV422 (enum) */
+
         case 0x56595559: /* 'YUYV' (fourcc) */
         case 0x2:       /* PIX_FMT_UYVY422 (enum) */
         case 0x59565955: /* 'UYVY' (fourcc) */
@@ -455,8 +536,11 @@ int VBMCreatePool(int chn, void *fmt, void *ops, void *priv) {
      *   0x30: outFrmRateDen
      *   0x34: nrVBs (number of video buffers = frame count)
      *   0x38: type
-     *   0x3c: fcrop (20 bytes, T31 only)
+     *   0x3c: fcrop (T31)
      */
+
+
+
     int frame_count;
     memcpy(&frame_count, fmt_bytes + 0x34, sizeof(int));
 
@@ -484,6 +568,7 @@ int VBMCreatePool(int chn, void *fmt, void *ops, void *priv) {
     pool->chn = chn;
     pool->priv = priv;
     pool->frame_count = frame_count;
+    pool->fd = -1;
 
     /* Copy format data (0xd0 bytes) */
     memcpy(pool->fmt, fmt, 0xd0);
@@ -673,6 +758,39 @@ int VBMDestroyPool(int chn) {
     return 0;
 }
 
+/* Prime kernel queue with all VBM frames */
+int VBMPrimeKernelQueue(int chn, int fd) {
+    if (chn < 0 || chn >= MAX_VBM_POOLS) return -1;
+    VBMPool *pool = vbm_instance[chn];
+    if (!pool) return -1;
+    pool->fd = fd;
+    for (int i = 0; i < pool->frame_count; i++) {
+        VBMFrame *f = &pool->frames[i];
+        unsigned long phys = f->phys_addr;
+        unsigned int length = (unsigned int)f->size;
+        if (fs_qbuf(fd, i, phys, length) < 0) {
+            fprintf(stderr, "[VBM] PrimeKernelQueue: qbuf failed for idx=%d\n", i);
+            return -1;
+        }
+    }
+    fprintf(stderr, "[VBM] PrimeKernelQueue: queued %d frames to kernel for chn=%d\n", pool->frame_count, chn);
+    return 0;
+}
+
+/* Dequeue a kernel-filled frame and map to VBM frame pointer */
+int VBMKernelDequeue(int chn, int fd, void **frame_out) {
+    if (chn < 0 || chn >= MAX_VBM_POOLS || !frame_out) return -1;
+    VBMPool *pool = vbm_instance[chn];
+    if (!pool) return -1;
+    int idx = -1;
+    int ret = fs_dqbuf(fd, &idx);
+    if (ret != 0) return -1;
+    if (idx < 0 || idx >= pool->frame_count) return -1;
+    *frame_out = &pool->frames[idx];
+    return 0;
+}
+
+
 int VBMFillPool(int chn) {
     if (chn < 0 || chn >= MAX_VBM_POOLS) {
         return -1;
@@ -810,6 +928,15 @@ int VBMReleaseFrame(int chn, void *frame) {
         return -1;
     }
 
+    /* If kernel-backed, re-queue to kernel immediately (QBUF) */
+    if (pool->fd >= 0) {
+        unsigned long phys = vbm_frame->phys_addr;
+        unsigned int length = (unsigned int)vbm_frame->size;
+        if (fs_qbuf(pool->fd, frame_idx, phys, length) < 0) {
+            fprintf(stderr, "[VBM] ReleaseFrame: fs_qbuf failed for idx=%d\n", frame_idx);
+        }
+    }
+
     pool->available_queue[pool->queue_tail] = frame_idx;
     pool->queue_tail = (pool->queue_tail + 1) % pool->frame_count;
     pool->queue_count++;
@@ -822,3 +949,13 @@ int VBMReleaseFrame(int chn, void *frame) {
     return 0;
 }
 
+
+
+/* Expose frame backing buffer to higher layers (safe accessor) */
+int VBMFrame_GetBuffer(void *frame, void **virt, int *size) {
+    if (!frame || !virt || !size) return -1;
+    VBMFrame *f = (VBMFrame*)frame;
+    *virt = (void*)(uintptr_t)f->virt_addr;
+    *size = f->size;
+    return 0;
+}

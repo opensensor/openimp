@@ -13,33 +13,25 @@ extern "C" {
 
 #include "imp_ivs.h"
 
-/**
- * Motion detection parameters
- */
+#define IMP_IVS_MOVE_MAX_ROI_CNT 52
+
+/* Motion detection parameter structure (T31 1.1.5.2 parity) */
 typedef struct {
-    int sense;                          /**< Sensitivity */
-    int skipFrameCnt;                   /**< Skip frame count */
-    int frameInfo;                      /**< Frame info */
-    int roiRectCnt;                     /**< ROI rectangle count */
-    IMPRect *roiRect;                   /**< ROI rectangles */
+    int             sense[IMP_IVS_MOVE_MAX_ROI_CNT];
+    int             skipFrameCnt;
+    IMPFrameInfo    frameInfo;                     /* width/height only */
+    IMPRect         roiRect[IMP_IVS_MOVE_MAX_ROI_CNT];
+    int             roiRectCnt;
 } IMP_IVS_MoveParam;
 
-/**
- * Create motion detection interface
- * 
- * @param interface Pointer to interface pointer
- * @param param Motion detection parameters
- * @return 0 on success, negative on error
- */
-int IMP_IVS_CreateMoveInterface(IMPIVSInterface **interface, IMP_IVS_MoveParam *param);
+/* Motion detection output structure */
+typedef struct {
+    int retRoi[IMP_IVS_MOVE_MAX_ROI_CNT];
+} IMP_IVS_MoveOutput;
 
-/**
- * Destroy motion detection interface
- * 
- * @param interface Interface pointer
- * @return 0 on success, negative on error
- */
-int IMP_IVS_DestroyMoveInterface(IMPIVSInterface *interface);
+/* Create/Destroy interface (vendor signatures) */
+IMPIVSInterface *IMP_IVS_CreateMoveInterface(IMP_IVS_MoveParam *param);
+void IMP_IVS_DestroyMoveInterface(IMPIVSInterface *moveInterface);
 
 #ifdef __cplusplus
 }

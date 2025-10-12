@@ -59,6 +59,10 @@ typedef struct {
 static FrameSourceState *gFramesource = NULL;
 static pthread_mutex_t fs_mutex = PTHREAD_MUTEX_INITIALIZER;
 static int fs_initialized = 0;
+/* Per-channel FIFO attributes and frame depth (for API parity) */
+static IMPFSChnFifoAttr g_fifo_attrs[MAX_FS_CHANNELS];
+static int g_frame_depth[MAX_FS_CHANNELS];
+
 
 /* ioctl command for frame polling - from decompilation at 0x99acc */
 #define VIDIOC_POLL_FRAME   0x400456bf  /* Poll for frame availability */
@@ -149,17 +153,8 @@ int IMP_FrameSource_CreateChn(int chnNum, IMPFSChnAttr *chn_attr) {
         LOG_FS("CreateChn: Opened %s (fd=%d)", dev_path, fd);
     }
 
-    /* Create VBM pool for this channel */
-    /* VBMCreatePool expects (chn, fmt, ops, priv) */
-    if (VBMCreatePool(chnNum, (void*)chn_attr, NULL, NULL) < 0) {
-        LOG_FS("CreateChn: Failed to create VBM pool");
-        if (fd >= 0) {
-            close(fd);
-            gFramesource->channels[chnNum].fd = -1;
-        }
-        pthread_mutex_unlock(&fs_mutex);
-        return -1;
-    }
+    /* Do NOT create VBM pool here. The pool is created during EnableChn
+     * after the kernel format is negotiated, to match OEM behavior. */
 
     /* Register FrameSource channel as module (DEV_ID_FS = 0) */
     /* Allocate a proper Module structure for this channel */
@@ -308,8 +303,27 @@ int IMP_FrameSource_EnableChn(int chnNum) {
         return -1;
     }
 
-    /* Create VBM pool */
-    if (VBMCreatePool(chnNum, &fmt, NULL, gFramesource) < 0) {
+    /* Query kernel-computed sizeimage and bytesperline to size buffers correctly */
+    fs_format_t fmt_after;
+    memset(&fmt_after, 0, sizeof(fmt_after));
+    if (fs_get_format(chn->fd, &fmt_after) < 0) {
+        LOG_FS("EnableChn failed: cannot get format after set");
+        fs_close_device(chn->fd);
+        chn->fd = -1;
+        pthread_mutex_unlock(&fs_mutex);
+        return -1;
+    }
+
+    /* Build minimal VBM format info block expected by VBMCreatePool:
+       [0x00]=width, [0x04]=height, [0x08]=pixfmt(enum), [0x0c]=req_size(sizeimage) */
+    struct { int w; int h; int pixfmt; int size; } vbm_info;
+    vbm_info.w = chn->attr.picWidth;
+    vbm_info.h = chn->attr.picHeight;
+    vbm_info.pixfmt = chn->attr.pixFmt; /* enum like 0xa for NV12 */
+    vbm_info.size = fmt_after.sizeimage; /* kernel-computed size */
+
+    /* Create VBM pool using kernel-computed size */
+    if (VBMCreatePool(chnNum, &vbm_info, NULL, NULL) < 0) {
         LOG_FS("EnableChn failed: cannot create VBM pool");
         fs_close_device(chn->fd);
         chn->fd = -1;
@@ -328,9 +342,18 @@ int IMP_FrameSource_EnableChn(int chnNum) {
         return -1;
     }
 
-    /* Fill VBM pool */
+    /* Prime kernel with QBUF for all frames before streaming */
     if (VBMFillPool(chnNum) < 0) {
         LOG_FS("EnableChn failed: cannot fill VBM pool");
+        VBMDestroyPool(chnNum);
+        fs_close_device(chn->fd);
+        chn->fd = -1;
+        pthread_mutex_unlock(&fs_mutex);
+        return -1;
+    }
+    extern int VBMPrimeKernelQueue(int chn, int fd);
+    if (VBMPrimeKernelQueue(chnNum, chn->fd) < 0) {
+        LOG_FS("EnableChn failed: cannot prime kernel queue");
         VBMDestroyPool(chnNum);
         fs_close_device(chn->fd);
         chn->fd = -1;
@@ -512,18 +535,42 @@ int IMP_FrameSource_GetChnAttr(int chnNum, IMPFSChnAttr *chn_attr) {
 
 int IMP_FrameSource_SetChnFifoAttr(int chnNum, IMPFSChnFifoAttr *attr) {
     if (attr == NULL) return -1;
-    LOG_FS("SetChnFifoAttr: chn=%d", chnNum);
+    if (chnNum < 0 || chnNum >= MAX_FS_CHANNELS) return -1;
+    pthread_mutex_lock(&fs_mutex);
+    g_fifo_attrs[chnNum] = *attr;
+    pthread_mutex_unlock(&fs_mutex);
+    LOG_FS("SetChnFifoAttr: chn=%d, maxdepth=%d, depth=%d", chnNum, attr->maxdepth, attr->depth);
     return 0;
 }
 
 int IMP_FrameSource_GetChnFifoAttr(int chnNum, IMPFSChnFifoAttr *attr) {
     if (attr == NULL) return -1;
-    LOG_FS("GetChnFifoAttr: chn=%d", chnNum);
-    memset(attr, 0, sizeof(*attr));
+    if (chnNum < 0 || chnNum >= MAX_FS_CHANNELS) return -1;
+    pthread_mutex_lock(&fs_mutex);
+    *attr = g_fifo_attrs[chnNum];
+    /* If unset, derive a sane default from channel attr */
+    if (attr->maxdepth == 0) {
+        attr->maxdepth = gFramesource ? gFramesource->channels[chnNum].attr.nrVBs : 4;
+    }
+    if (attr->depth == 0) {
+        attr->depth = g_frame_depth[chnNum] > 0 ? g_frame_depth[chnNum] : attr->maxdepth;
+    }
+    pthread_mutex_unlock(&fs_mutex);
+    LOG_FS("GetChnFifoAttr: chn=%d -> maxdepth=%d, depth=%d", chnNum, attr->maxdepth, attr->depth);
     return 0;
 }
 
 int IMP_FrameSource_SetFrameDepth(int chnNum, int depth) {
+    if (chnNum < 0 || chnNum >= MAX_FS_CHANNELS) return -1;
+    pthread_mutex_lock(&fs_mutex);
+    g_frame_depth[chnNum] = depth;
+    int fd = (gFramesource) ? gFramesource->channels[chnNum].fd : -1;
+    pthread_mutex_unlock(&fs_mutex);
+    if (fd >= 0) {
+        extern int fs_set_depth(int fd, int depth);
+        int ret = fs_set_depth(fd, depth);
+        if (ret < 0) return ret;
+    }
     LOG_FS("SetFrameDepth: chn=%d, depth=%d", chnNum, depth);
     return 0;
 }
@@ -560,7 +607,12 @@ static void *frame_capture_thread(void *arg) {
     int frame_count = 0;
     int poll_count = 0;
     int state_wait_count = 0;
-    int software_mode = 0;  /* Flag for software frame generation */
+    int software_mode = 0;  /* Try hardware mode first; fallback to SOFTWARE MODE on errors */
+    int no_frame_cycles = 0;    /* Counts consecutive hardware waits with no frames */
+    int ioctl_fail_count = 0;    /* Counts consecutive ioctl failures */
+    const int NO_FRAME_THRESHOLD = 20;  /* ~2s: 20 x 100ms select timeouts */
+    const int IOCTL_FAIL_THRESHOLD = 5; /* switch after repeated ioctl errors */
+
 
     /* Main capture loop */
     while (1) {
@@ -587,8 +639,9 @@ static void *frame_capture_thread(void *arg) {
          * The hardware /dev/framechanX devices don't work properly without kernel modules,
          * so we skip hardware polling and go straight to software frame generation. */
 
-        if (!software_mode && poll_count == 0) {
-            LOG_FS("frame_capture_thread chn=%d: Kernel modules not available, using SOFTWARE FRAME GENERATION mode", chn_num);
+        /* Enter software mode only if device isn't open or hardware polling is unavailable */
+        if (!software_mode && chn->fd < 0) {
+            LOG_FS("frame_capture_thread chn=%d: no device open, using SOFTWARE FRAME GENERATION mode", chn_num);
             software_mode = 1;
         }
 
@@ -643,6 +696,17 @@ static void *frame_capture_thread(void *arg) {
         } else if (ret == 0) {
             /* Timeout - no frame ready yet */
             poll_count++;
+            /* If we have waited too long without frames, switch to software */
+            no_frame_cycles++;
+            if (no_frame_cycles >= NO_FRAME_THRESHOLD) {
+                LOG_FS("frame_capture_thread chn=%d: no hardware frames after %d cycles, switching to SOFTWARE MODE", chn_num, no_frame_cycles);
+                software_mode = 1;
+                no_frame_cycles = 0; /* reset to count only consecutive timeouts */
+
+                continue;
+            /* Continue main loop after timeout handling */
+
+            }
             if (poll_count % 10 == 0) {
                 LOG_FS("frame_capture_thread chn=%d: waiting for hardware frames (polled %d times)",
                        chn_num, poll_count);
@@ -655,6 +719,12 @@ static void *frame_capture_thread(void *arg) {
         if (ioctl(chn->fd, VIDIOC_POLL_FRAME, &frame_ready) < 0) {
             LOG_FS("frame_capture_thread chn=%d: ioctl POLL_FRAME failed: %s",
                    chn_num, strerror(errno));
+            ioctl_fail_count++;
+            if (ioctl_fail_count >= IOCTL_FAIL_THRESHOLD) {
+                LOG_FS("frame_capture_thread chn=%d: repeated ioctl failures (%d), switching to SOFTWARE MODE", chn_num, ioctl_fail_count);
+                software_mode = 1;
+                ioctl_fail_count = 0;
+            }
             usleep(10000); /* 10ms */
             continue;
         }
@@ -663,20 +733,36 @@ static void *frame_capture_thread(void *arg) {
         if (poll_count % 100 == 0) {
             LOG_FS("frame_capture_thread chn=%d: ioctl returned, frame_ready=%d (poll_count=%d)",
                    chn_num, frame_ready, poll_count);
+        /* Hardware signalled readiness: reset failure counters */
+        no_frame_cycles = 0;
+        ioctl_fail_count = 0;
+            /* Fall through to wait a bit and retry */
+
+
         }
 
         if (frame_ready <= 0) {
             /* No frame available yet */
+            no_frame_cycles++;
+            if (no_frame_cycles >= NO_FRAME_THRESHOLD) {
+                LOG_FS("frame_capture_thread chn=%d: no frames reported by ioctl after %d cycles, switching to SOFTWARE MODE", chn_num, no_frame_cycles);
+                software_mode = 1;
+                no_frame_cycles = 0;
+                continue;
+            }
             usleep(1000); /* 1ms */
             continue;
         }
 
-        /* Frame is available - get it from VBM */
+        /* Frame is available - dequeue from kernel (DQBUF) and map to VBM frame */
         void *frame = NULL;
-        if (VBMGetFrame(chn_num, &frame) == 0 && frame != NULL) {
+        extern int VBMKernelDequeue(int chn, int fd, void **frame_out);
+        if (VBMKernelDequeue(chn_num, chn->fd, &frame) == 0 && frame != NULL) {
             frame_count++;
+            no_frame_cycles = 0;
+            ioctl_fail_count = 0;
             if (frame_count <= 5 || frame_count % 100 == 0) {
-                LOG_FS("frame_capture_thread chn=%d: got frame #%d (%p) from VBM",
+                LOG_FS("frame_capture_thread chn=%d: got frame #%d (%p) from kernel",
                        chn_num, frame_count, frame);
             }
 
@@ -739,6 +825,72 @@ static int framesource_bind(void *src_module, void *dst_module, void *output_ptr
 
     /* Add observer to source module's observer list */
     if (add_observer_to_module(src_module, observer) < 0) {
+/* Minimal GetFrame/SnapFrame for thingino-streamer API parity */
+int IMP_FrameSource_GetFrame(int chnNum, void **frame) {
+    if (!frame) return -1;
+    return VBMGetFrame(chnNum, frame);
+}
+
+int IMP_FrameSource_SnapFrame(int chnNum, IMPPixelFormat fmt, int width, int height,
+                              void *out_buffer, IMPFrameInfo *info) {
+    if (!out_buffer || !info) return -1;
+    if (chnNum < 0 || chnNum >= MAX_FS_CHANNELS) return -1;
+
+    /* Only support direct copy when requested format/size matches channel output */
+    IMPFSChnAttr attr;
+    if (IMP_FrameSource_GetChnAttr(chnNum, &attr) < 0) return -1;
+    if (attr.picWidth != width || attr.picHeight != height || attr.pixFmt != fmt) {
+        LOG_FS("SnapFrame: unsupported conversion req %dx%d fmt=0x%x (chn %dx%d fmt=0x%x)",
+               width, height, fmt, attr.picWidth, attr.picHeight, attr.pixFmt);
+        return -1;
+    }
+
+    void *frame = NULL;
+    /* Try a few times to get a frame */
+    for (int i = 0; i < 5; i++) {
+        if (VBMGetFrame(chnNum, &frame) == 0 && frame) break;
+        usleep(5000);
+    }
+    if (!frame) {
+        LOG_FS("SnapFrame: no frame available");
+        return -1;
+    }
+
+    /* Get backing buffer */
+    extern int VBMFrame_GetBuffer(void *frame, void **virt, int *size);
+    void *src = NULL; int src_size = 0;
+    if (VBMFrame_GetBuffer(frame, &src, &src_size) < 0 || !src) {
+        LOG_FS("SnapFrame: VBMFrame_GetBuffer failed");
+        VBMReleaseFrame(chnNum, frame);
+        return -1;
+    }
+
+    /* Compute expected size for NV12/YUYV422 */
+    size_t expected = 0;
+    if (fmt == PIX_FMT_NV12 || fmt == PIX_FMT_NV21) {
+        expected = (size_t)width * height * 3 / 2;
+    } else if (fmt == PIX_FMT_YUYV422 || fmt == PIX_FMT_UYVY422) {
+        expected = (size_t)width * height * 2;
+    } else {
+        LOG_FS("SnapFrame: unsupported fmt=0x%x", fmt);
+        VBMReleaseFrame(chnNum, frame);
+        return -1;
+    }
+    if (src_size < (int)expected) {
+        LOG_FS("SnapFrame: src_size=%d smaller than expected=%zu", src_size, expected);
+        VBMReleaseFrame(chnNum, frame);
+        return -1;
+    }
+
+    memcpy(out_buffer, src, expected);
+
+    info->width = width;
+    info->height = height;
+
+    VBMReleaseFrame(chnNum, frame);
+    return 0;
+}
+
         LOG_FS("bind: Failed to add observer");
         free(observer);
         return -1;

@@ -145,6 +145,12 @@ int IMP_FrameSource_GetChnFifoAttr(int chnNum, IMPFSChnFifoAttr *attr);
  */
 int IMP_FrameSource_SetFrameDepth(int chnNum, int depth);
 
+/* Additional APIs used by some apps (vendor parity) */
+int IMP_FrameSource_GetFrame(int chnNum, void **frame);
+int IMP_FrameSource_ReleaseFrame(int chnNum, void *frame);
+int IMP_FrameSource_SnapFrame(int chnNum, IMPPixelFormat fmt, int width, int height,
+                              void *out_buffer, IMPFrameInfo *info);
+
 /**
  * Set channel rotation (T31 only)
  * 

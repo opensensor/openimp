@@ -71,6 +71,15 @@ int VBMFillPool(int chn);
 int VBMFlushFrame(int chn);
 int VBMGetFrame(int chn, void **frame);
 int VBMReleaseFrame(int chn, void *frame);
+int VBMFrame_GetBuffer(void *frame, void **virt, int *size);
+
+/* FS buffer queueing to kernel (V4L2-style) */
+int fs_qbuf(int fd, int index, unsigned long phys, unsigned int length);
+int fs_dqbuf(int fd, int *index_out);
+
+/* Bridge between VBM and kernel queue */
+int VBMPrimeKernelQueue(int chn, int fd);
+int VBMKernelDequeue(int chn, int fd, void **frame_out);
 
 #ifdef __cplusplus
 }

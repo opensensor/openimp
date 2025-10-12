@@ -65,7 +65,7 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data);
  * @param stream Output stream buffer
  * @return 0 on success, -1 on failure
  */
-int AL_Codec_Encode_GetStream(void *codec, void **stream);
+int AL_Codec_Encode_GetStream(void *codec, void **stream, void **user_data);
 
 /**
  * Release an encoded stream
