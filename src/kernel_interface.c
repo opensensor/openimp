@@ -124,14 +124,19 @@ int fs_open_device(int chn) {
  * Get format from framechan device
  * ioctl: 0x407056c4 (VIDIOC_GET_FMT)
  * Based on decompilation at 0x9ecf8
+ *
+ * CRITICAL: The OEM code uses the same structure for both SET_FMT and GET_FMT.
+ * The kernel modifies the structure in-place, updating computed fields like
+ * sizeimage and bytesperline. We must use the same 0x70-byte structure layout.
  */
 int fs_get_format(int fd, fs_format_t *fmt) {
     if (fd < 0 || fmt == NULL) {
         return -1;
     }
 
-    /* The driver returns a 0x70-byte v4l2-like structure; don't use our 0xc8 SET struct here. */
+    /* Use the same 0x70-byte structure as SET_FMT - the kernel expects this exact layout */
     struct __attribute__((packed)) fs_format70_t {
+        /* v4l2-like header (0x00..0x23) */
         uint32_t type;         /* 0x00 */
         uint32_t width;        /* 0x04 */
         uint32_t height;       /* 0x08 */
@@ -141,7 +146,23 @@ int fs_get_format(int fd, fs_format_t *fmt) {
         uint32_t sizeimage;    /* 0x18 */
         uint32_t colorspace;   /* 0x1c */
         uint32_t priv;         /* 0x20 */
-        uint8_t  reserved[0x70 - 0x24];
+        /* Ingenic IMPFSChnAttr slice (0x24..0x6F) - kernel may read/write these */
+        uint32_t enable;           /* 0x24 */
+        uint32_t attr_width;       /* 0x28 */
+        uint32_t attr_height;      /* 0x2c */
+        uint32_t crop_enable;      /* 0x30 */
+        uint32_t crop_x;           /* 0x34 */
+        uint32_t crop_y;           /* 0x38 */
+        uint32_t crop_width;       /* 0x3c */
+        uint32_t crop_height;      /* 0x40 */
+        uint32_t scaler_enable;    /* 0x44 */
+        uint32_t scaler_outwidth;  /* 0x48 */
+        uint32_t scaler_outheight; /* 0x4c */
+        uint32_t picwidth;         /* 0x50 */
+        uint32_t picheight;        /* 0x54 */
+        uint32_t fps_num;          /* 0x58 */
+        uint32_t fps_den;          /* 0x5c */
+        uint8_t  pad[0x70 - 0x24 - 15 * 4]; /* 16 bytes padding to 0x70 */
     } g = {0};
 
     g.type = 1; /* V4L2_BUF_TYPE_VIDEO_CAPTURE */
@@ -195,8 +216,14 @@ int fs_set_format(int fd, fs_format_t *fmt) {
         return -1;
     }
 
-    /* Use v4l2-like 0x70 struct for SET as well (matches driver expectations) */
+    /* Use v4l2-like 0x70 struct for SET as well (matches driver expectations)
+     * IMPORTANT: The driver expects Ingenic IMP channel attributes packed
+     * immediately after the 0x24-byte v4l2-like header. BN MCP shows the OEM lib
+     * fills these fields before issuing 0xc07056c3. If we leave them zero, the
+     * remote handler computes bogus sizeimage/stride, causing QBUF to fail.
+     */
     struct __attribute__((packed)) fs_format70_t {
+        /* v4l2-like header (0x00..0x23) */
         uint32_t type;         /* 0x00 */
         uint32_t width;        /* 0x04 */
         uint32_t height;       /* 0x08 */
@@ -206,9 +233,26 @@ int fs_set_format(int fd, fs_format_t *fmt) {
         uint32_t sizeimage;    /* 0x18 */
         uint32_t colorspace;   /* 0x1c */
         uint32_t priv;         /* 0x20 */
-        uint8_t  reserved[0x70 - 0x24];
+        /* Ingenic IMPFSChnAttr slice (0x24..0x6F) */
+        uint32_t enable;           /* 0x24 */
+        uint32_t attr_width;       /* 0x28 */
+        uint32_t attr_height;      /* 0x2c */
+        uint32_t crop_enable;      /* 0x30 */
+        uint32_t crop_x;           /* 0x34 */
+        uint32_t crop_y;           /* 0x38 */
+        uint32_t crop_width;       /* 0x3c */
+        uint32_t crop_height;      /* 0x40 */
+        uint32_t scaler_enable;    /* 0x44 */
+        uint32_t scaler_outwidth;  /* 0x48 */
+        uint32_t scaler_outheight; /* 0x4c */
+        uint32_t picwidth;         /* 0x50 */
+        uint32_t picheight;        /* 0x54 */
+        uint32_t fps_num;          /* 0x58 */
+        uint32_t fps_den;          /* 0x5c */
+        uint8_t  pad[0x70 - 0x24 - 15 * 4]; /* 16 bytes padding to 0x70 */
     } s = {0};
 
+    /* Header */
     s.type = 1; /* V4L2_BUF_TYPE_VIDEO_CAPTURE */
     s.width = (uint32_t)fmt->width;
     s.height = (uint32_t)fmt->height;
@@ -217,12 +261,43 @@ int fs_set_format(int fd, fs_format_t *fmt) {
     uint32_t fourcc = (fmt->pixelformat < 0x100) ? pixfmt_to_fourcc(fmt->pixelformat)
                                                  : (uint32_t)fmt->pixelformat;
     s.pixelformat = fourcc;
+    s.field = 0;         /* V4L2_FIELD_NONE (driver forces to 4) */
 
-    s.field = 0;         /* V4L2_FIELD_NONE */
+    /* CRITICAL: Driver does NOT compute sizeimage properly - we must set it explicitly
+     * For NV12/NV21: size = width * height * 3/2 (Y plane + UV plane)
+     * The driver stores this at offset 0x58 and validates QBUF length against it.
+     */
+    uint32_t calc_sizeimage = 0;
+    if (fourcc == 0x3231564e || fourcc == 0x3132564e) {  /* NV12 or NV21 */
+        calc_sizeimage = (uint32_t)fmt->width * (uint32_t)fmt->height * 3 / 2;
+    } else if (fourcc == 0x56595559 || fourcc == 0x59565955) {  /* YUYV or UYVY */
+        calc_sizeimage = (uint32_t)fmt->width * (uint32_t)fmt->height * 2;
+    } else {
+        /* Fallback: assume 3/2 for planar formats */
+        calc_sizeimage = (uint32_t)fmt->width * (uint32_t)fmt->height * 3 / 2;
+    }
+
     s.bytesperline = 0;  /* Let driver compute */
-    s.sizeimage = 0;     /* Let driver compute */
+    s.sizeimage = calc_sizeimage;  /* MUST set explicitly */
     s.colorspace = 8;    /* V4L2_COLORSPACE_SRGB */
     s.priv = 0;
+
+    /* Extended IMP attributes (match fs_format_t layout in kernel_interface.h) */
+    s.enable           = (uint32_t)fmt->enable;
+    s.attr_width       = (uint32_t)fmt->attr_width;
+    s.attr_height      = (uint32_t)fmt->attr_height;
+    s.crop_enable      = (uint32_t)fmt->crop_enable;
+    s.crop_x           = (uint32_t)fmt->crop_x;
+    s.crop_y           = (uint32_t)fmt->crop_y;
+    s.crop_width       = (uint32_t)fmt->crop_width;
+    s.crop_height      = (uint32_t)fmt->crop_height;
+    s.scaler_enable    = (uint32_t)fmt->scaler_enable;
+    s.scaler_outwidth  = (uint32_t)fmt->scaler_outwidth;
+    s.scaler_outheight = (uint32_t)fmt->scaler_outheight;
+    s.picwidth         = (uint32_t)fmt->picwidth;
+    s.picheight        = (uint32_t)fmt->picheight;
+    s.fps_num          = (uint32_t)fmt->fps_num;
+    s.fps_den          = (uint32_t)fmt->fps_den;
 
     int ret = ioctl(fd, VIDIOC_SET_FMT, &s);
     if (ret < 0) {
@@ -232,12 +307,20 @@ int fs_set_format(int fd, fs_format_t *fmt) {
         return -1;
     }
 
-    /* Immediately query back the format to confirm what kernel accepted */
-    fs_format_t after = {0};
-    (void)fs_get_format(fd, &after);
+    /* CRITICAL: The kernel modifies the structure in-place during SET_FMT and copies it back.
+     * The remote ISP core may update sizeimage, bytesperline, and other fields.
+     * We MUST read these modified values from 's' after the ioctl returns.
+     * DO NOT call GET_FMT here - it queries the remote ISP again and may return garbage.
+     */
+    fprintf(stderr, "[KernelIF] Set format: %dx%d fmt=0x%x (fourcc=0x%x) sizeimage=%u->%u bytesperline=%u colorspace=%d\n",
+            fmt->width, fmt->height, fmt->pixelformat, fourcc,
+            calc_sizeimage, s.sizeimage, s.bytesperline, s.colorspace);
 
-    fprintf(stderr, "[KernelIF] Set format: %dx%d fmt=0x%x (fourcc=0x%x) colorspace=%d\n",
-            fmt->width, fmt->height, fmt->pixelformat, fourcc, s.colorspace);
+    /* Update fmt with kernel-modified values */
+    fmt->sizeimage = (int)s.sizeimage;
+    fmt->bytesperline = (int)s.bytesperline;
+    fmt->field = (int)s.field;
+
     return 0;
 }
 
@@ -822,12 +905,12 @@ int VBMPrimeKernelQueue(int chn, int fd) {
             fprintf(stderr, "[VBM] PrimeKernelQueue: idx=%d driver_len=%u > our_len=%u -> clamping\n", i, klen, (unsigned int)f->size);
             klen = (unsigned int)f->size;
         }
-        if (fs_qbuf(fd, i, userptr, klen) < 0) {
+        if (fs_qbuf(fd, i, phys, klen) < 0) {
             /* Probe alternate length if NV12 vs stride mismatch: try other of {3110400, pool_size} */
             unsigned int alt = (klen == (unsigned int)f->size) ? ((unsigned int)f->width * (unsigned int)f->height * 3 / 2) : (unsigned int)f->size;
             if (alt != klen && alt > 0 && alt <= (unsigned int)f->size) {
                 fprintf(stderr, "[VBM] PrimeKernelQueue: idx=%d first qbuf len=%u failed, trying alt len=%u\n", i, klen, alt);
-                if (fs_qbuf(fd, i, userptr, alt) == 0) {
+                if (fs_qbuf(fd, i, phys, alt) == 0) {
                     klen = alt;
                 } else {
                     fprintf(stderr, "[VBM] PrimeKernelQueue: qbuf failed for idx=%d (len=%u)\n", i, alt);
