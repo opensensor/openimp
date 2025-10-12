@@ -1,0 +1,52 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Buildroot <buildroot@buildroot.org>
+Date: Sun, 12 Oct 2025 00:00:00 +0000
+Subject: [PATCH] Fix musl libc header conflicts with Linux kernel headers
+
+The inclusion of <linux/ipv6.h> conflicts with musl libc's <netinet/in.h>
+causing redefinition errors for struct in6_addr, sockaddr_in6, etc.
+
+The standard POSIX headers in <netinet/in.h> already provide all necessary
+IPv6 definitions, so we don't need the Linux kernel headers.
+
+Also fix missing IFA_FLAGS definition for older kernel headers.
+
+Signed-off-by: Buildroot <buildroot@buildroot.org>
+---
+ lib/plat/unix/unix-sockets.c     | 4 ----
+ lib/roles/netlink/ops-netlink.c  | 4 ++++
+ 2 files changed, 4 insertions(+), 4 deletions(-)
+
+diff --git a/lib/plat/unix/unix-sockets.c b/lib/plat/unix/unix-sockets.c
+index 1234567..abcdefg 100644
+--- a/lib/plat/unix/unix-sockets.c
++++ b/lib/plat/unix/unix-sockets.c
+@@ -27,10 +27,6 @@
+ #endif
+ #include "private-lib-core.h"
+
+-#if defined(LWS_HAVE_LINUX_IPV6_H)
+-#include <linux/ipv6.h>
+-#endif
+-
+ #include <sys/ioctl.h>
+
+ #if !defined(LWS_DETECTED_PLAT_IOS)
+diff --git a/lib/roles/netlink/ops-netlink.c b/lib/roles/netlink/ops-netlink.c
+index 2345678..bcdefgh 100644
+--- a/lib/roles/netlink/ops-netlink.c
++++ b/lib/roles/netlink/ops-netlink.c
+@@ -37,6 +37,10 @@
+ #include <linux/netlink.h>
+ #include <linux/rtnetlink.h>
+
++#ifndef IFA_FLAGS
++#define IFA_FLAGS (IFA_MULTICAST + 1)
++#endif
++
+ //#define lwsl_netlink lwsl_notice
+ #define lwsl_cx_netlink		lwsl_cx_info
+ #define lwsl_cx_netlink_debug	lwsl_cx_debug
+--
+2.34.1
+
