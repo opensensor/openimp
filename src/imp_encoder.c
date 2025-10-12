@@ -80,6 +80,10 @@ typedef struct {
     /* Extended fields (not part of binary structure) */
     StreamBuffer *current_stream;  /* Current stream buffer */
     uint32_t stream_seq;           /* Stream sequence counter */
+    int gop_length;                /* GOP length (offset 0x3d0) */
+    int entropy_mode;              /* Entropy mode (offset 0x3fc) */
+    int max_stream_cnt;            /* Max stream count (offset 0x4c0) */
+    int stream_buf_size;           /* Stream buffer size (offset 0x4c4) */
 } EncChannel;
 
 /* Encoder group structure */
@@ -736,6 +740,11 @@ int IMP_Encoder_Query(int encChn, IMPEncoderCHNStat *stat) {
 
 int IMP_Encoder_RequestIDR(int encChn) {
     LOG_ENC("RequestIDR: chn=%d", encChn);
+
+    /* Request IDR frame from software encoder */
+    extern void HW_Encoder_RequestIDR(void);
+    HW_Encoder_RequestIDR();
+
     return 0;
 }
 
@@ -810,6 +819,112 @@ int IMP_Encoder_GetFd(int encChn) {
 
     LOG_ENC("GetFd: chn=%d, fd=%d", encChn, chn->eventfd);
     return chn->eventfd;
+}
+
+/* Additional Encoder Functions - based on Binary Ninja decompilations */
+
+int IMP_Encoder_SetChnQp(int encChn, IMPEncoderQp *qp) {
+    if (encChn < 0 || encChn >= MAX_ENC_CHANNELS) {
+        LOG_ENC("SetChnQp failed: invalid channel %d", encChn);
+        return -1;
+    }
+
+    EncChannel *chn = &g_EncChannel[encChn];
+    if (chn->chn_id < 0) {
+        LOG_ENC("SetChnQp failed: channel %d not created", encChn);
+        return -1;
+    }
+
+    pthread_mutex_lock(&chn->mutex_450);
+
+    /* Call codec SetQp if codec is active */
+    int ret = 0;
+    if (chn->codec != NULL) {
+        ret = AL_Codec_Encode_SetQp(chn->codec, qp);
+    }
+
+    pthread_mutex_unlock(&chn->mutex_450);
+
+    LOG_ENC("SetChnQp: chn=%d, ret=%d", encChn, ret);
+    return ret;
+}
+
+int IMP_Encoder_SetChnGopLength(int encChn, int gopLength) {
+    if (encChn < 0 || encChn >= MAX_ENC_CHANNELS) {
+        LOG_ENC("SetChnGopLength failed: invalid channel %d", encChn);
+        return -1;
+    }
+
+    EncChannel *chn = &g_EncChannel[encChn];
+    if (chn->chn_id < 0) {
+        LOG_ENC("SetChnGopLength failed: channel %d not created", encChn);
+        return -1;
+    }
+
+    pthread_mutex_lock(&chn->mutex_450);
+    /* Store GOP length at offset 0x3d0 from channel base */
+    chn->gop_length = gopLength;
+    pthread_mutex_unlock(&chn->mutex_450);
+
+    LOG_ENC("SetChnGopLength: chn=%d, gop=%d", encChn, gopLength);
+    return 0;
+}
+
+int IMP_Encoder_SetChnEntropyMode(int encChn, int mode) {
+    if (encChn < 0 || encChn >= MAX_ENC_CHANNELS) {
+        LOG_ENC("SetChnEntropyMode failed: invalid channel %d", encChn);
+        return -1;
+    }
+
+    EncChannel *chn = &g_EncChannel[encChn];
+    if (chn->chn_id >= 0) {
+        LOG_ENC("SetChnEntropyMode failed: channel %d already created", encChn);
+        return -1;
+    }
+
+    /* Store entropy mode at offset 0x3fc from channel base */
+    chn->entropy_mode = mode;
+
+    LOG_ENC("SetChnEntropyMode: chn=%d, mode=%d", encChn, mode);
+    return 0;
+}
+
+int IMP_Encoder_SetMaxStreamCnt(int encChn, int cnt) {
+    if (encChn < 0 || encChn >= MAX_ENC_CHANNELS) {
+        LOG_ENC("SetMaxStreamCnt failed: invalid channel %d", encChn);
+        return -1;
+    }
+
+    EncChannel *chn = &g_EncChannel[encChn];
+    if (chn->chn_id >= 0) {
+        LOG_ENC("SetMaxStreamCnt failed: channel %d already created", encChn);
+        return -1;
+    }
+
+    /* Store max stream count at offset 0x4c0 from channel base */
+    chn->max_stream_cnt = cnt;
+
+    LOG_ENC("SetMaxStreamCnt: chn=%d, cnt=%d", encChn, cnt);
+    return 0;
+}
+
+int IMP_Encoder_SetStreamBufSize(int encChn, int size) {
+    if (encChn < 0 || encChn >= MAX_ENC_CHANNELS) {
+        LOG_ENC("SetStreamBufSize failed: invalid channel %d", encChn);
+        return -1;
+    }
+
+    EncChannel *chn = &g_EncChannel[encChn];
+    if (chn->chn_id >= 0) {
+        LOG_ENC("SetStreamBufSize failed: channel %d already created", encChn);
+        return -1;
+    }
+
+    /* Store stream buffer size at offset 0x4c4 from channel base */
+    chn->stream_buf_size = size;
+
+    LOG_ENC("SetStreamBufSize: chn=%d, size=%d", encChn, size);
+    return 0;
 }
 
 /* ========== Helper Functions ========== */
@@ -1169,6 +1284,8 @@ static int encoder_update(void *module, void *frame) {
      * 3. Signal encoder thread that frame is available
      */
 
+    int frame_processed = 0;
+
     /* For now, we'll process the frame directly in the first active channel */
     for (int i = 0; i < MAX_ENC_CHANNELS; i++) {
         EncChannel *chn = &g_EncChannel[i];
@@ -1185,12 +1302,26 @@ static int encoder_update(void *module, void *frame) {
                     (void)n;
                 }
 
-                return 0;
+                frame_processed = 1;
+                break;  /* Only process frame in one channel */
             }
         }
     }
 
-    return 0;
+    /* Release the frame back to VBM pool so it can be reused
+     * This is critical for software frame generation mode where frames
+     * are allocated from a limited pool and must be recycled. */
+    extern int IMP_FrameSource_ReleaseFrame(int chnNum, void *frame);
+
+    /* Extract channel number from module - for now we'll try both channels */
+    for (int chn = 0; chn < 2; chn++) {
+        if (IMP_FrameSource_ReleaseFrame(chn, frame) == 0) {
+            LOG_ENC("encoder_update: Released frame %p back to channel %d", frame, chn);
+            break;
+        }
+    }
+
+    return frame_processed ? 0 : -1;
 }
 
 /* ========== Stub Implementations for External Functions ========== */

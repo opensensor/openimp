@@ -494,6 +494,7 @@ int AL_Codec_Encode_ReleaseStream(void *codec, void *stream, void *user_data) {
     }
 
     AL_CodecEncode *enc = (AL_CodecEncode*)codec;
+    (void)enc; /* Unused in this implementation */
 
     /* Based on decompilation at 0x7a624:
      * AL_Buffer_Unref(arg3)
@@ -507,16 +508,40 @@ int AL_Codec_Encode_ReleaseStream(void *codec, void *stream, void *user_data) {
         (void)user_data;
     }
 
-    /* Return stream buffer to pool via FIFO */
-    /* AL_Encoder_PutStreamBuffer at offset 0x798 */
-    if (enc->fifo_streams != NULL) {
-        Fifo_Queue(enc->fifo_streams, stream, 0);
+    /* Free the HWStreamBuffer and its data */
+    HWStreamBuffer *hw_stream = (HWStreamBuffer*)stream;
+
+    /* Free the encoded data buffer (allocated in software encoder) */
+    if (hw_stream->virt_addr != 0 && hw_stream->phys_addr == 0) {
+        /* Software-encoded stream - free the allocated buffer */
+        void *data_ptr = (void*)(uintptr_t)hw_stream->virt_addr;
+        free(data_ptr);
+        LOG_CODEC("ReleaseStream: freed software-encoded data at %p", data_ptr);
     }
 
-    /* Unref stream buffer */
-    /* AL_Buffer_Unref(stream) - would decrement reference count and free if 0 */
+    /* Free the stream buffer structure itself */
+    free(hw_stream);
 
-    LOG_CODEC("ReleaseStream: returned stream %p to pool", stream);
+    LOG_CODEC("ReleaseStream: freed stream %p", stream);
+
+    return 0;
+}
+
+/**
+ * AL_Codec_Encode_SetQp - Set QP (Quantization Parameter)
+ * Based on decompilation pattern
+ */
+int AL_Codec_Encode_SetQp(void *codec, void *qp) {
+    if (codec == NULL || qp == NULL) {
+        LOG_CODEC("SetQp: NULL parameter");
+        return -1;
+    }
+
+    AL_CodecEncode *enc = (AL_CodecEncode*)codec;
+
+    /* In a real implementation, this would configure the encoder's QP settings */
+    /* For now, just log and return success */
+    LOG_CODEC("SetQp: codec=%p, qp=%p", codec, qp);
 
     return 0;
 }

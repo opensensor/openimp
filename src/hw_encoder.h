@@ -141,6 +141,11 @@ int HW_Encoder_SetParams(int fd, HWEncoderParams *params);
  */
 int HW_Encoder_Encode_Software(HWFrameBuffer *frame, HWStreamBuffer *stream);
 
+/**
+ * Request IDR frame on next encode (software encoder)
+ */
+void HW_Encoder_RequestIDR(void);
+
 #ifdef __cplusplus
 }
 #endif

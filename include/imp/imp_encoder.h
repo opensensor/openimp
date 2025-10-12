@@ -223,6 +223,15 @@ typedef struct {
 } IMPEncoderJpegeQl;
 
 /**
+ * Quantization Parameter (QP) structure
+ */
+typedef struct {
+    uint32_t qp_i;                      /**< I frame QP */
+    uint32_t qp_p;                      /**< P frame QP */
+    uint32_t qp_b;                      /**< B frame QP */
+} IMPEncoderQp;
+
+/**
  * Create encoder group
  * 
  * @param encGroup Encoder group number
@@ -397,6 +406,59 @@ int IMP_Encoder_SetbufshareChn(int srcChn, int dstChn);
  * @return 0 on success, negative on error
  */
 int IMP_Encoder_SetFisheyeEnableStatus(int encChn, int enable);
+
+/**
+ * Get encoder file descriptor
+ *
+ * @param encChn Encoder channel number
+ * @return File descriptor, or negative on error
+ */
+int IMP_Encoder_GetFd(int encChn);
+
+/**
+ * Set channel QP (Quantization Parameter)
+ *
+ * @param encChn Encoder channel number
+ * @param qp QP structure
+ * @return 0 on success, negative on error
+ */
+int IMP_Encoder_SetChnQp(int encChn, IMPEncoderQp *qp);
+
+/**
+ * Set channel GOP length
+ *
+ * @param encChn Encoder channel number
+ * @param gopLength GOP length
+ * @return 0 on success, negative on error
+ */
+int IMP_Encoder_SetChnGopLength(int encChn, int gopLength);
+
+/**
+ * Set channel entropy mode
+ *
+ * @param encChn Encoder channel number
+ * @param mode Entropy mode (0=CAVLC, 1=CABAC)
+ * @return 0 on success, negative on error
+ */
+int IMP_Encoder_SetChnEntropyMode(int encChn, int mode);
+
+/**
+ * Set maximum stream count
+ *
+ * @param encChn Encoder channel number
+ * @param cnt Maximum stream count
+ * @return 0 on success, negative on error
+ */
+int IMP_Encoder_SetMaxStreamCnt(int encChn, int cnt);
+
+/**
+ * Set stream buffer size
+ *
+ * @param encChn Encoder channel number
+ * @param size Stream buffer size
+ * @return 0 on success, negative on error
+ */
+int IMP_Encoder_SetStreamBufSize(int encChn, int size);
 
 #ifdef __cplusplus
 }

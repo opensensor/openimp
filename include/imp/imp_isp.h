@@ -56,6 +56,13 @@ typedef struct {
 } IMPISPWB;
 
 /**
+ * EV (Exposure Value) attributes
+ */
+typedef struct {
+    uint32_t ev[6];                     /**< EV values */
+} IMPISPEVAttr;
+
+/**
  * Open ISP module
  * 
  * @return 0 on success, negative on error
@@ -344,11 +351,99 @@ int IMP_ISP_Tuning_SetWB(IMPISPWB *wb);
 
 /**
  * Get white balance
- * 
+ *
  * @param wb Pointer to white balance structure
  * @return 0 on success, negative on error
  */
 int IMP_ISP_Tuning_GetWB(IMPISPWB *wb);
+
+/**
+ * Get brightness
+ *
+ * @param pbright Pointer to brightness value
+ * @return 0 on success, negative on error
+ */
+int IMP_ISP_Tuning_GetBrightness(unsigned char *pbright);
+
+/**
+ * Get contrast
+ *
+ * @param pcontrast Pointer to contrast value
+ * @return 0 on success, negative on error
+ */
+int IMP_ISP_Tuning_GetContrast(unsigned char *pcontrast);
+
+/**
+ * Get sharpness
+ *
+ * @param psharpness Pointer to sharpness value
+ * @return 0 on success, negative on error
+ */
+int IMP_ISP_Tuning_GetSharpness(unsigned char *psharpness);
+
+/**
+ * Get saturation
+ *
+ * @param psat Pointer to saturation value
+ * @return 0 on success, negative on error
+ */
+int IMP_ISP_Tuning_GetSaturation(unsigned char *psat);
+
+/**
+ * Get AE compensation
+ *
+ * @param pcomp Pointer to compensation value
+ * @return 0 on success, negative on error
+ */
+int IMP_ISP_Tuning_GetAeComp(int *pcomp);
+
+/**
+ * Get backlight compensation
+ *
+ * @param pstrength Pointer to backlight compensation strength
+ * @return 0 on success, negative on error
+ */
+int IMP_ISP_Tuning_GetBacklightComp(uint32_t *pstrength);
+
+/**
+ * Get highlight depress
+ *
+ * @param pstrength Pointer to highlight depress strength
+ * @return 0 on success, negative on error
+ */
+int IMP_ISP_Tuning_GetHiLightDepress(uint32_t *pstrength);
+
+/**
+ * Get hue
+ *
+ * @param phue Pointer to hue value
+ * @return 0 on success, negative on error
+ */
+int IMP_ISP_Tuning_GetBcshHue(unsigned char *phue);
+
+/**
+ * Get EV attributes
+ *
+ * @param attr Pointer to EV attributes structure
+ * @return 0 on success, negative on error
+ */
+int IMP_ISP_Tuning_GetEVAttr(IMPISPEVAttr *attr);
+
+/**
+ * Get white balance statistics
+ *
+ * @param wb Pointer to white balance structure
+ * @return 0 on success, negative on error
+ */
+int IMP_ISP_Tuning_GetWB_Statis(IMPISPWB *wb);
+
+/**
+ * Get white balance GOL statistics
+ *
+ * @param wb Pointer to white balance structure
+ * @return 0 on success, negative on error
+ */
+int IMP_ISP_Tuning_GetWB_GOL_Statis(IMPISPWB *wb);
 
 #ifdef __cplusplus
 }

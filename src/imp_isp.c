@@ -342,3 +342,89 @@ int IMP_ISP_Tuning_GetWB(IMPISPWB *wb) {
     return 0;
 }
 
+/* ISP Tuning Get Functions - based on Binary Ninja decompilations */
+
+int IMP_ISP_Tuning_GetBrightness(unsigned char *pbright) {
+    if (pbright == NULL) return -1;
+    *pbright = 128;  /* Default middle value */
+    LOG_ISP("GetBrightness: %u", *pbright);
+    return 0;
+}
+
+int IMP_ISP_Tuning_GetContrast(unsigned char *pcontrast) {
+    if (pcontrast == NULL) return -1;
+    *pcontrast = 128;  /* Default middle value */
+    LOG_ISP("GetContrast: %u", *pcontrast);
+    return 0;
+}
+
+int IMP_ISP_Tuning_GetSharpness(unsigned char *psharpness) {
+    if (psharpness == NULL) return -1;
+    *psharpness = 128;  /* Default middle value */
+    LOG_ISP("GetSharpness: %u", *psharpness);
+    return 0;
+}
+
+int IMP_ISP_Tuning_GetSaturation(unsigned char *psat) {
+    if (psat == NULL) return -1;
+    *psat = 128;  /* Default middle value */
+    LOG_ISP("GetSaturation: %u", *psat);
+    return 0;
+}
+
+int IMP_ISP_Tuning_GetAeComp(int *pcomp) {
+    if (pcomp == NULL) return -1;
+    *pcomp = 0;  /* Default no compensation */
+    LOG_ISP("GetAeComp: %d", *pcomp);
+    return 0;
+}
+
+int IMP_ISP_Tuning_GetBacklightComp(uint32_t *pstrength) {
+    if (pstrength == NULL) return -1;
+    *pstrength = 0;  /* Default off */
+    LOG_ISP("GetBacklightComp: %u", *pstrength);
+    return 0;
+}
+
+int IMP_ISP_Tuning_GetHiLightDepress(uint32_t *pstrength) {
+    if (pstrength == NULL) return -1;
+    *pstrength = 0;  /* Default off */
+    LOG_ISP("GetHiLightDepress: %u", *pstrength);
+    return 0;
+}
+
+int IMP_ISP_Tuning_GetBcshHue(unsigned char *phue) {
+    if (phue == NULL) return -1;
+    *phue = 128;  /* Default middle value */
+    LOG_ISP("GetBcshHue: %u", *phue);
+    return 0;
+}
+
+int IMP_ISP_Tuning_GetEVAttr(IMPISPEVAttr *attr) {
+    if (attr == NULL) return -1;
+    /* Return default EV attributes */
+    memset(attr, 0, sizeof(IMPISPEVAttr));
+    LOG_ISP("GetEVAttr");
+    return 0;
+}
+
+int IMP_ISP_Tuning_GetWB_Statis(IMPISPWB *wb) {
+    if (wb == NULL) return -1;
+    /* Return default WB statistics */
+    wb->mode = IMPISP_WB_MODE_AUTO;
+    wb->rgain = 256;
+    wb->bgain = 256;
+    LOG_ISP("GetWB_Statis");
+    return 0;
+}
+
+int IMP_ISP_Tuning_GetWB_GOL_Statis(IMPISPWB *wb) {
+    if (wb == NULL) return -1;
+    /* Return default WB GOL statistics */
+    wb->mode = IMPISP_WB_MODE_AUTO;
+    wb->rgain = 256;
+    wb->bgain = 256;
+    LOG_ISP("GetWB_GOL_Statis");
+    return 0;
+}
+

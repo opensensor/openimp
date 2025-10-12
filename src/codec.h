@@ -76,6 +76,14 @@ int AL_Codec_Encode_GetStream(void *codec, void **stream);
  */
 int AL_Codec_Encode_ReleaseStream(void *codec, void *stream, void *user_data);
 
+/**
+ * Set QP (Quantization Parameter) for encoder
+ * @param codec Codec instance
+ * @param qp QP structure pointer
+ * @return 0 on success, -1 on failure
+ */
+int AL_Codec_Encode_SetQp(void *codec, void *qp);
+
 #ifdef __cplusplus
 }
 #endif
