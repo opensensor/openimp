@@ -149,6 +149,25 @@ To use this library with prudynt-t:
 
 **Current Status**: Fully functional stub implementation. All API functions are present and callable, but hardware interaction is not implemented. Suitable for development and testing of applications that use the IMP API.
 
+
+## 24-hour milestone: End-to-end RTSP streaming on T31
+
+In under 24 hours we achieved a full bring-up of prudynt-t streaming on Ingenic T31 using this OpenIMP shim:
+- Cross-compiled prudynt-t against the Buildroot toolchain and staging IMP/Live555 libs
+- Fixed a startup crash by default-initializing config when no prudynt.json is present
+- Brought up RTSP server (Live555) and confirmed video streaming from ch0/ch1
+- Resolved a Live555 fast-profile/truncation issue that caused the stream to freeze after a few seconds
+  - Defensive measure: advertise a larger `maxFrameSize` from the source to prevent NAL truncation
+
+How to reproduce the milestone quickly:
+1. Build OpenIMP (this repo): `make`
+2. Build prudynt-t (see prudynt-t/README.md for exact env/toolchain notes); produce `prudynt-t/bin/prudynt`
+3. Deploy `prudynt` to the device (e.g., `/opt`) and run it; connect to `rtsp://<device-ip>/ch0`
+
+Notes:
+- If you see any freeze on large IDR frames, ensure your Live555 is patched (fast profile) and/or increase the source max frame size.
+- Optional: set a shared RTP timestamp base to keep sinks aligned.
+
 ## Contributing
 
 This is a reverse engineering project. Contributions should:

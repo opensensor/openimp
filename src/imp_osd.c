@@ -60,6 +60,33 @@ static pthread_mutex_t osd_mutex = PTHREAD_MUTEX_INITIALIZER;
 static int osd_initialized = 0;
 static int next_region_handle = 0;
 
+/* External system functions */
+extern int notify_observers(void *module, void *frame);
+
+/**
+ * osd_update - Called by observer pattern when a frame is available from FrameSource
+ * This is the callback at offset 0x4c in the Module structure
+ *
+ * OSD receives frames from FrameSource, applies overlays, and forwards to Encoder
+ */
+static int osd_update(void *module, void *frame) {
+    if (module == NULL || frame == NULL) {
+        return -1;
+    }
+
+    /* For now, OSD just passes frames through without modification
+     * In a full implementation, this would:
+     * 1. Apply OSD overlays to the frame
+     * 2. Render text, bitmaps, rectangles, etc.
+     * 3. Forward modified frame to next module (Encoder)
+     */
+
+    /* Forward frame to observers (Encoder) */
+    notify_observers(module, frame);
+
+    return 0;
+}
+
 /* Initialize OSD module */
 static void osd_init(void) {
     if (osd_initialized) return;
@@ -159,9 +186,13 @@ int IMP_OSD_CreateGroup(int grpNum) {
     uint32_t *output_count_ptr = (uint32_t*)((char*)osd_module + 0x134);
     *output_count_ptr = 1;
 
+    /* Set update callback (func_4c at offset 0x4c) */
+    void **update_ptr = (void**)((char*)osd_module + 0x4c);
+    *update_ptr = (void*)osd_update;
+
     extern int IMP_System_RegisterModule(int deviceID, int groupID, void *module);
     IMP_System_RegisterModule(4, grpNum, osd_module);  /* DEV_ID_OSD = 4 */
-    LOG_OSD("CreateGroup: registered OSD module [4,%d] with 1 output", grpNum);
+    LOG_OSD("CreateGroup: registered OSD module [4,%d] with 1 output and update callback", grpNum);
 
     pthread_mutex_unlock(&osd_mutex);
 
@@ -568,8 +599,50 @@ int IMP_OSD_GetGrpRgnAttr(IMPRgnHandle handle, int grpNum, IMPOSDGrpRgnAttr *pgr
 }
 
 int IMP_OSD_UpdateRgnAttrData(IMPRgnHandle handle, IMPOSDRgnAttrData *prAttrData) {
-    if (prAttrData == NULL) return -1;
-    LOG_OSD("UpdateRgnAttrData: handle=%d", handle);
+    if (handle < 0 || handle >= MAX_OSD_REGIONS) {
+        return -1;
+    }
+
+    if (prAttrData == NULL) {
+        return -1;
+    }
+
+    pthread_mutex_lock(&osd_mutex);
+    osd_init();
+
+    if (gosd == NULL) {
+        pthread_mutex_unlock(&osd_mutex);
+        return -1;
+    }
+
+    /* Check if region is allocated */
+    if (!gosd->regions[handle].allocated) {
+        pthread_mutex_unlock(&osd_mutex);
+        return -1;
+    }
+
+    /* Take semaphore - this is critical for proper synchronization */
+    sem_wait(&gosd->sem);
+
+    /* Update region data
+     * In a full implementation, this would:
+     * 1. Copy bitmap/picture data to region's data buffer
+     * 2. Update region's data pointer
+     * 3. Mark region as dirty for rendering
+     *
+     * For now, we just acknowledge the update */
+
+    /* Release semaphore */
+    sem_post(&gosd->sem);
+
+    pthread_mutex_unlock(&osd_mutex);
+
+    /* Only log occasionally to avoid spam */
+    static int update_count = 0;
+    if (update_count++ % 100 == 0) {
+        LOG_OSD("UpdateRgnAttrData: handle=%d (count=%d)", handle, update_count);
+    }
+
     return 0;
 }
 

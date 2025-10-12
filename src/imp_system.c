@@ -98,6 +98,7 @@ static uint64_t get_monotonic_time_us(void) {
 static Module* get_module(int deviceID, int groupID);
 Module* IMP_System_GetModule(int deviceID, int groupID);
 int remove_observer_from_module(void *src_module, void *dst_module);
+static int add_observer(Module *module, Observer *observer);
 
 /* get_module - returns module pointer from g_modules array
  * Based on: return *(((arg1 * 6 + arg2) << 2) + &g_modules) */

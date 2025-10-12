@@ -10,6 +10,8 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <sys/ioctl.h>
+#include <sys/select.h>
+#include <sys/time.h>
 #include <pthread.h>
 #include <semaphore.h>
 #include <imp/imp_framesource.h>
@@ -552,7 +554,12 @@ static void *frame_capture_thread(void *arg) {
         return NULL;
     }
 
-    LOG_FS("frame_capture_thread: started for channel %d", chn_num);
+    LOG_FS("frame_capture_thread: started for channel %d, state=%d, fd=%d",
+           chn_num, chn->state, chn->fd);
+
+    int frame_count = 0;
+    int poll_count = 0;
+    int state_wait_count = 0;
 
     /* Main capture loop */
     while (1) {
@@ -561,16 +568,61 @@ static void *frame_capture_thread(void *arg) {
 
         /* Check if channel is still running */
         if (chn->state != 2) {
+            state_wait_count++;
+            if (state_wait_count % 100 == 0) {
+                LOG_FS("frame_capture_thread chn=%d: waiting for state=2 (current state=%d, waited %d times)",
+                       chn_num, chn->state, state_wait_count);
+            }
             usleep(10000); /* 10ms */
             continue;
         }
 
-        /* Poll for frame availability using ioctl */
+        if (state_wait_count > 0) {
+            LOG_FS("frame_capture_thread chn=%d: state is now 2, starting capture", chn_num);
+            state_wait_count = 0;
+        }
+
+        /* Poll for frame availability using ioctl
+         * NOTE: This ioctl appears to BLOCK until a frame is ready!
+         * The OEM implementation likely uses this as a blocking wait.
+         * We'll use select() with timeout to avoid infinite blocking. */
+
+        /* Use select() with timeout to check if fd is ready */
+        fd_set readfds;
+        struct timeval tv;
+        FD_ZERO(&readfds);
+        FD_SET(chn->fd, &readfds);
+        tv.tv_sec = 0;
+        tv.tv_usec = 100000; /* 100ms timeout */
+
+        int ret = select(chn->fd + 1, &readfds, NULL, NULL, &tv);
+        if (ret < 0) {
+            LOG_FS("frame_capture_thread chn=%d: select failed: %s", chn_num, strerror(errno));
+            usleep(10000);
+            continue;
+        } else if (ret == 0) {
+            /* Timeout - no frame ready yet */
+            poll_count++;
+            if (poll_count % 10 == 0) {
+                LOG_FS("frame_capture_thread chn=%d: waiting for frames (polled %d times)",
+                       chn_num, poll_count);
+            }
+            continue;
+        }
+
+        /* fd is ready - now call the ioctl */
         int frame_ready = -1;
         if (ioctl(chn->fd, VIDIOC_POLL_FRAME, &frame_ready) < 0) {
-            LOG_FS("frame_capture_thread: ioctl POLL_FRAME failed: %s", strerror(errno));
+            LOG_FS("frame_capture_thread chn=%d: ioctl POLL_FRAME failed: %s",
+                   chn_num, strerror(errno));
             usleep(10000); /* 10ms */
             continue;
+        }
+
+        poll_count++;
+        if (poll_count % 100 == 0) {
+            LOG_FS("frame_capture_thread chn=%d: ioctl returned, frame_ready=%d (poll_count=%d)",
+                   chn_num, frame_ready, poll_count);
         }
 
         if (frame_ready <= 0) {
@@ -582,7 +634,11 @@ static void *frame_capture_thread(void *arg) {
         /* Frame is available - get it from VBM */
         void *frame = NULL;
         if (VBMGetFrame(chn_num, &frame) == 0 && frame != NULL) {
-            LOG_FS("frame_capture_thread: got frame %p from VBM", frame);
+            frame_count++;
+            if (frame_count <= 5 || frame_count % 100 == 0) {
+                LOG_FS("frame_capture_thread chn=%d: got frame #%d (%p) from VBM",
+                       chn_num, frame_count, frame);
+            }
 
             /* Notify observers (bound modules like Encoder) */
             void *module = IMP_System_GetModule(DEV_ID_FS, chn_num);
