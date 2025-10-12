@@ -34,6 +34,7 @@ typedef struct {
     uint32_t seq;               /* Sequence number */
     int streamEnd;              /* Stream end flag */
     void *codec_stream;         /* Pointer to codec stream data */
+    void *injected_buf;         /* If non-NULL, malloc'd buffer we must free */
 } StreamBuffer;
 
 typedef struct {
@@ -113,6 +114,94 @@ static int channel_encoder_set_rc_param(void *dst, IMPEncoderRcAttr *src);
 static void *encoder_thread(void *arg);
 static void *stream_thread(void *arg);
 static int encoder_update(void *module, void *frame);
+/* H.264 SPS/PPS caching and minimal Annex B parsing for prefix injection */
+#define MAX_PARAM_SET_SIZE 256
+static uint8_t g_last_sps[MAX_ENC_CHANNELS][MAX_PARAM_SET_SIZE];
+static int g_last_sps_len[MAX_ENC_CHANNELS];
+static uint8_t g_last_pps[MAX_ENC_CHANNELS][MAX_PARAM_SET_SIZE];
+static int g_last_pps_len[MAX_ENC_CHANNELS];
+
+/* Find next start code position (returns index or len if none). Sets *sc to 3 or 4 */
+static size_t find_start_code(const uint8_t *b, size_t off, size_t len, int *sc)
+{
+    for (size_t i = off; i + 3 < len; ++i) {
+        if (b[i] == 0x00 && b[i+1] == 0x00) {
+            if (b[i+2] == 0x01) { if (sc) *sc = 3; return i; }
+            if (i + 4 < len && b[i+2] == 0x00 && b[i+3] == 0x01) { if (sc) *sc = 4; return i; }
+        }
+    }
+    if (sc) *sc = 0; return len;
+}
+
+static void cache_sps_pps_from_annexb(int ch, const uint8_t *buf, size_t len)
+{
+    if (ch < 0 || ch >= MAX_ENC_CHANNELS || !buf || len < 4) return;
+    size_t i = 0; int sc = 0;
+    i = find_start_code(buf, 0, len, &sc);
+    while (i < len) {
+        size_t nal_start = i + (sc ? sc : 0);
+        int sc2 = 0; size_t next = find_start_code(buf, nal_start, len, &sc2);
+        if (nal_start < next) {
+            uint8_t nalh = buf[nal_start];
+            uint8_t nalt = nalh & 0x1F;
+            if (nalt == 7) { /* SPS */
+                size_t sz = next - nal_start;
+                if ((int)sz > MAX_PARAM_SET_SIZE) sz = MAX_PARAM_SET_SIZE;
+                memcpy(g_last_sps[ch], buf + nal_start, sz);
+                g_last_sps_len[ch] = (int)sz;
+            } else if (nalt == 8) { /* PPS */
+                size_t sz = next - nal_start;
+                if ((int)sz > MAX_PARAM_SET_SIZE) sz = MAX_PARAM_SET_SIZE;
+                memcpy(g_last_pps[ch], buf + nal_start, sz);
+                g_last_pps_len[ch] = (int)sz;
+            }
+        }
+        if (next >= len) break;
+        i = next; sc = sc2;
+    }
+}
+
+static int has_sps_pps_before_vcl(const uint8_t *buf, size_t len)
+{
+    size_t i = 0; int sc = 0; int seen_sps = 0, seen_pps = 0;
+    i = find_start_code(buf, 0, len, &sc);
+    while (i < len) {
+        size_t nal_start = i + (sc ? sc : 0);
+        int sc2 = 0; size_t next = find_start_code(buf, nal_start, len, &sc2);
+        if (nal_start < next) {
+            uint8_t nalt = buf[nal_start] & 0x1F;
+            if (nalt == 7) seen_sps = 1;
+            else if (nalt == 8) seen_pps = 1;
+            else if (nalt == 1 || nalt == 5) return (seen_sps && seen_pps);
+        }
+        if (next >= len) break;
+        i = next; sc = sc2;
+    }
+    return (seen_sps && seen_pps);
+}
+
+static uint8_t *inject_prefix_if_needed(int ch, int is_h264, const uint8_t *buf, size_t len, size_t *out_len)
+{
+    if (!is_h264 || !buf || len == 0 || ch < 0 || ch >= MAX_ENC_CHANNELS) return NULL;
+    /* Update caches from current buffer */
+    cache_sps_pps_from_annexb(ch, buf, len);
+    /* If SPS/PPS already present before first VCL, do nothing */
+    if (has_sps_pps_before_vcl(buf, len)) return NULL;
+    /* Need cached SPS & PPS to inject */
+    if (g_last_sps_len[ch] <= 0 || g_last_pps_len[ch] <= 0) return NULL;
+    size_t add = 4 + (size_t)g_last_sps_len[ch] + 4 + (size_t)g_last_pps_len[ch];
+    uint8_t *out = (uint8_t*)malloc(add + len);
+    if (!out) return NULL;
+    size_t o = 0;
+    out[o++] = 0; out[o++] = 0; out[o++] = 0; out[o++] = 1;
+    memcpy(out + o, g_last_sps[ch], g_last_sps_len[ch]); o += g_last_sps_len[ch];
+    out[o++] = 0; out[o++] = 0; out[o++] = 0; out[o++] = 1;
+    memcpy(out + o, g_last_pps[ch], g_last_pps_len[ch]); o += g_last_pps_len[ch];
+    memcpy(out + o, buf, len); o += len;
+    *out_len = o;
+    return out;
+}
+
 
 /* Initialize encoder module */
 static void encoder_init(void) {
@@ -712,6 +801,11 @@ int IMP_Encoder_ReleaseStream(int encChn, IMPEncoderStream *stream) {
             AL_Codec_Encode_ReleaseStream(chn->codec, stream_buf->codec_stream, NULL);
         }
 
+        /* Free injected buffer if we allocated one */
+        if (stream_buf->injected_buf) {
+            free(stream_buf->injected_buf);
+            stream_buf->injected_buf = NULL;
+        }
         /* Free stream buffer */
         free(stream_buf);
         chn->current_stream = NULL;
@@ -1216,15 +1310,34 @@ static void *stream_thread(void *arg) {
                     memcpy(&frame_type, hw_stream + 0x14, sizeof(uint32_t));
                     memcpy(&slice_type, hw_stream + 0x18, sizeof(uint32_t));
 
+
+                        /* Prepare for optional H.264 SPS/PPS prefix injection */
+                        uint32_t out_phy = phys_addr;
+                        uint32_t out_vir = virt_addr;
+                        uint32_t out_len = length;
+                        stream_buf->injected_buf = NULL;
+                        int is_h264 = (chn->attr.encAttr.profile <= IMP_ENC_PROFILE_AVC_HIGH);
+                        if (is_h264) {
+                            const uint8_t *orig_ptr = (const uint8_t*)(uintptr_t)virt_addr;
+                            size_t inj_len_sz = 0;
+                            uint8_t *inj = inject_prefix_if_needed(chn->chn_id, 1, orig_ptr, (size_t)length, &inj_len_sz);
+                            if (inj) {
+                                out_phy = 0;
+                                out_vir = (uint32_t)(uintptr_t)inj;
+                                out_len = (uint32_t)inj_len_sz;
+                                stream_buf->injected_buf = inj;
+                            }
+                        }
+
                     /* Initialize stream buffer */
                     stream_buf->codec_stream = codec_stream;
                     stream_buf->seq = chn->stream_seq++;
                     stream_buf->streamEnd = 0;
 
-                    /* Populate pack data from hardware stream */
-                    stream_buf->pack.phyAddr = phys_addr;
-                    stream_buf->pack.virAddr = virt_addr;
-                    stream_buf->pack.length = length;
+                    /* Populate pack data (possibly using injected buffer) */
+                    stream_buf->pack.phyAddr = out_phy;
+                    stream_buf->pack.virAddr = out_vir;
+                    stream_buf->pack.length = out_len;
                     stream_buf->pack.timestamp = timestamp;
                     stream_buf->pack.h264RefType = (frame_type == 0) ? 1 : 0; /* I-frame = ref */
                     stream_buf->pack.sliceType = slice_type;
