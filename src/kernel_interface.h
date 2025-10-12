@@ -74,6 +74,7 @@ int VBMReleaseFrame(int chn, void *frame);
 int VBMFrame_GetBuffer(void *frame, void **virt, int *size);
 
 /* FS buffer queueing to kernel (V4L2-style) */
+int fs_querybuf(int fd, int index, unsigned int *length_out);
 int fs_qbuf(int fd, int index, unsigned long phys, unsigned int length);
 int fs_dqbuf(int fd, int *index_out);
 

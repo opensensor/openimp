@@ -1,166 +1,166 @@
 root@ing-wyze-cam3-a000 opt# ./streamer
-[I 65470974] MODULE: Initializing module system
-[I 65471832] MODULE: Module system initialized successfully
-[I 65472613] MODULE: Registered module 'rtsp' v1.0.0 (RTSP streaming server module)
-[D 65473616] main: Starting streamer - PID: 2450
-[I 65474084] main: Channel metrics initialized (legacy mode)
-[D 65474543] CONFIG: Using config file /opt/streamer.json
-[I 65474950] CONFIG: Loading configuration from: /opt/streamer.json
-[I 65475941] CONFIG: JSON configuration loaded successfully
-[D 65476271] CONFIG: Parsing JSON configuration values...
-[D 65476775] CONFIG: Parsed JPEG config: enabled=true, quality=85, channel=2
-[D 65477043] CONFIG: Found streams array at root level
-[D 65477263] CONFIG: Found streams array with 2 elements
-[D 65477475] CONFIG: Allocated streams array for 2 streams
-[D 65477719] CONFIG: Parsed resolution '1920x1080' as 1920x1080
-[D 65477921] CONFIG: Parsed stream[0]: 1920x1080, endpoint=ch0
-[D 65478119] CONFIG: Parsed resolution '640x360' as 640x360
-[D 65478302] CONFIG: Parsed stream[1]: 640x360, endpoint=ch1
-[D 65478473] CONFIG: JSON configuration parsed successfully
-[D 65478700] CONFIG:   Stream[0]: 1920x1080, bitrate=2048kbps, endpoint='ch0'
-[D 65478928] CONFIG:   Stream[1]: 640x360, bitrate=512kbps, endpoint='ch1'
-[I 65479259] CONFIG: Configuration monitoring thread started
-[I 65479567] CONFIG: Configuration initialized successfully
-[D 65479786] main: Streamer configuration loaded successfully
-[W 65480047] MODULE: Module system already initialized
-[I 65480304] main: Module system initialized
-[I 65480534] MODULE: Initializing 1 registered modules
-[I 65480765] MODULE: Initializing module 'rtsp'
-[D 65481049] MODULE: Trying module config: /opt/rtsp.json
-[I 65481311] CONFIG: Configuration monitoring started for: /opt/streamer.json
-[I 65482256] MODULE: Loading config for module 'rtsp' from /opt/rtsp.json (binary dir)
-[I 65483001] RTSP_MODULE: RTSP config loaded - port: 554, enabled: true, TLS: disabled (port: 322)
-[I 65483038] RTSP_MODULE: RTSP auth config - enabled: false, username: 'admin', password: 'admin'
-[I 65483081] MODULE: Module 'rtsp' config loaded successfully
-[I 65483102] MODULE: Module 'rtsp' initialized successfully
-[I 65483702] MODULE: Module initialization complete: 1 success, 0 errors
-[I 65484943] main: Modules initialized
-[D 65485452] SENSOR: Getting sensor information from /proc/jz/sensor
-[D 65485688] SENSOR:   name: gc2053
-[D 65486426] SENSOR:   chip_id: 0x2053
-[D 65487119] SENSOR:   version: H20230726a
-[D 65488159] SENSOR:   i2c_addr: 0x37
-[D 65488658] SENSOR:   width: 1920
-[D 65489153] SENSOR:   height: 1080
-[D 65490237] SENSOR:   min_fps: 5
-[D 65491162] SENSOR:   max_fps: 40
-[E 65491593] SENSOR: File /proc/jz/sensor/i2c_bus not found
-[E 65491929] SENSOR: Using default value 0 for i2c_bus
-[E 65492034] SENSOR: File /proc/jz/sensor/boot not found
-[E 65492357] SENSOR: Using default value 0 for boot
-[E 65492460] SENSOR: File /proc/jz/sensor/mclk not found
-[E 65492777] SENSOR: Using default value 1 for mclk
-[E 65492881] SENSOR: File /proc/jz/sensor/video_interface not found
-[E 65493211] SENSOR: Using default value 0 for video_interface
-[E 65493318] SENSOR: File /proc/jz/sensor/reset_gpio not found
-[E 65493365] SENSOR: Using default value 91 for reset_gpio
-[D 65493563] SENSOR: Sensor info: gc2053 (1920x1080@40fps, i2c:0x37)
-[D 65493615] main: Sensor info read successfully
-[D 65493653] SENSOR: Validating configuration against sensor capabilities
-[I 65493757] SENSOR: Sensor configuration: 1920x1080@20fps
-[I 65493909] SENSOR: All streams will use sensor FPS: 20fps
-[D 65493953] main: Configuration validated and adjusted based on sensor capabilities
-[D 65493992] main: System init start
-[I 65494113] main: Opening ISP...
+[I 1824618639] MODULE: Initializing module system
+[I 1824619511] MODULE: Module system initialized successfully
+[I 1824620350] MODULE: Registered module 'rtsp' v1.0.0 (RTSP streaming server module)
+[D 1824621284] main: Starting streamer - PID: 3337
+[I 1824621728] main: Channel metrics initialized (legacy mode)
+[D 1824622094] CONFIG: Using config file /opt/streamer.json
+[I 1824622346] CONFIG: Loading configuration from: /opt/streamer.json
+[I 1824622955] CONFIG: JSON configuration loaded successfully
+[D 1824623272] CONFIG: Parsing JSON configuration values...
+[D 1824623787] CONFIG: Parsed JPEG config: enabled=true, quality=85, channel=2
+[D 1824624045] CONFIG: Found streams array at root level
+[D 1824624278] CONFIG: Found streams array with 2 elements
+[D 1824624503] CONFIG: Allocated streams array for 2 streams
+[D 1824624756] CONFIG: Parsed resolution '1920x1080' as 1920x1080
+[D 1824625011] CONFIG: Parsed stream[0]: 1920x1080, endpoint=ch0
+[D 1824625204] CONFIG: Parsed resolution '640x360' as 640x360
+[D 1824625382] CONFIG: Parsed stream[1]: 640x360, endpoint=ch1
+[D 1824625564] CONFIG: JSON configuration parsed successfully
+[D 1824625797] CONFIG:   Stream[0]: 1920x1080, bitrate=2048kbps, endpoint='ch0'
+[D 1824626024] CONFIG:   Stream[1]: 640x360, bitrate=512kbps, endpoint='ch1'
+[I 1824627303] CONFIG: Configuration monitoring thread started
+[I 1824628333] CONFIG: Configuration initialized successfully
+[D 1824629080] main: Streamer configuration loaded successfully
+[W 1824629574] MODULE: Module system already initialized
+[I 1824629624] main: Module system initialized
+[I 1824629918] MODULE: Initializing 1 registered modules
+[I 1824629970] MODULE: Initializing module 'rtsp'
+[D 1824630120] MODULE: Trying module config: /opt/rtsp.json
+[I 1824630640] MODULE: Loading config for module 'rtsp' from /opt/rtsp.json (binary dir)
+[I 1824631072] RTSP_MODULE: RTSP config loaded - port: 554, enabled: true, TLS: disabled (port: 322)
+[I 1824631366] RTSP_MODULE: RTSP auth config - enabled: false, username: 'admin', password: 'admin'
+[I 1824631587] MODULE: Module 'rtsp' config loaded successfully
+[I 1824631640] MODULE: Module 'rtsp' initialized successfully
+[I 1824631680] MODULE: Module initialization complete: 1 success, 0 errors
+[I 1824631818] main: Modules initialized
+[D 1824631860] SENSOR: Getting sensor information from /proc/jz/sensor
+[D 1824632080] SENSOR:   name: gc2053
+[D 1824632488] SENSOR:   chip_id: 0x2053
+[D 1824632863] SENSOR:   version: H20230726a
+[D 1824633237] SENSOR:   i2c_addr: 0x37
+[D 1824633887] SENSOR:   width: 1920
+[D 1824634282] SENSOR:   height: 1080
+[D 1824634655] SENSOR:   min_fps: 5
+[D 1824635030] SENSOR:   max_fps: 40
+[E 1824635321] SENSOR: File /proc/jz/sensor/i2c_bus not found
+[E 1824635590] SENSOR: Using default value 0 for i2c_bus
+[E 1824635811] SENSOR: File /proc/jz/sensor/boot not found
+[E 1824636028] SENSOR: Using default value 0 for boot
+[E 1824636186] SENSOR: File /proc/jz/sensor/mclk not found
+[E 1824636364] SENSOR: Using default value 1 for mclk
+[E 1824636453] SENSOR: File /proc/jz/sensor/video_interface not found
+[E 1824636634] SENSOR: Using default value 0 for video_interface
+[E 1824636812] SENSOR: File /proc/jz/sensor/reset_gpio not found
+[E 1824636984] SENSOR: Using default value 91 for reset_gpio
+[D 1824637032] SENSOR: Sensor info: gc2053 (1920x1080@40fps, i2c:0x37)
+[D 1824637178] main: Sensor info read successfully
+[D 1824637288] SENSOR: Validating configuration against sensor capabilities
+[I 1824637452] SENSOR: Sensor configuration: 1920x1080@20fps
+[I 1824637514] SENSOR: All streams will use sensor FPS: 20fps
+[D 1824637559] main: Configuration validated and adjusted based on sensor capabilities
+[D 1824637703] main: System init start
+[I 1824637753] main: Opening ISP...
 [IMP_ISP] Open: opened /dev/tx-isp (fd=4)
-[I 65494986] main: ISP opened successfully
-[I 65495506] main: Adding sensor...
+[I 1824636310] CONFIG: Configuration monitoring started for: /opt/streamer.json
+[I 1824638035] main: ISP opened successfully
+[I 1824638220] main: Adding sensor...
 [IMP_ISP] AddSensor: gc2053
-[I 65571072] main: Sensor added successfully
-[I 65571093] main: Enabling sensor...
+[I 1824721071] main: Sensor added successfully
+[I 1824721092] main: Enabling sensor...
 [IMP_ISP] EnableSensor: using default sensor index 0
 [IMP_ISP] EnableSensor: sensor enabled (idx=0)
-[I 65571133] main: Sensor enabled successfully
-[I 65571369] COMMON: System memory: 93 MB
-[I 65571401] COMMON: Detected low-memory device: 93 MB total RAM
-[I 65571421] COMMON: Skipping explicit memory pools - relying on reduced buffer counts
-[I 65571437] COMMON: Low-memory optimizations rely on:
-[I 65571452] COMMON:   - Reduced nrVBs (1 buffer per channel)
-[I 65571467] COMMON:   - Smaller OSD pool (512KB)
-[I 65571482] COMMON:   - Disabled unused channels
-[I 65571497] COMMON:   - Let IMP system manage RMEM automatically
-[I 65571511] main: Calling IMP_System_Init()...
+[I 1824721134] main: Sensor enabled successfully
+[I 1824721371] COMMON: System memory: 93 MB
+[I 1824721406] COMMON: Detected low-memory device: 93 MB total RAM
+[I 1824721425] COMMON: Skipping explicit memory pools - relying on reduced buffer counts
+[I 1824721442] COMMON: Low-memory optimizations rely on:
+[I 1824721456] COMMON:   - Reduced nrVBs (1 buffer per channel)
+[I 1824721472] COMMON:   - Smaller OSD pool (512KB)
+[I 1824721486] COMMON:   - Disabled unused channels
+[I 1824721501] COMMON:   - Let IMP system manage RMEM automatically
+[I 1824721516] main: Calling IMP_System_Init()...
 [System] Initializing...
 [System] Subsystems initialized
 [System] Initialized (IMP-1.1.6)
-[I 65571639] main: IMP_System_Init() returned: 0
-[I 65571659] main: System initialized successfully
+[I 1824721639] main: IMP_System_Init() returned: 0
+[I 1824721659] main: System initialized successfully
 [IMP_ISP] EnableTuning
-[D 65571690] main: ISP tuning enabled successfully
+[D 1824721686] main: ISP tuning enabled successfully
 [IMP_ISP] SetContrast: 128
-[D 65571717] main: ISP tuning contrast set to 128
+[D 1824721712] main: ISP tuning contrast set to 128
 [IMP_ISP] SetSharpness: 128
-[D 65571741] main: ISP tuning sharpness set to 128
+[D 1824721740] main: ISP tuning sharpness set to 128
 [IMP_ISP] SetSaturation: 128
-[D 65571769] main: ISP tuning saturation set to 128
+[D 1824721765] main: ISP tuning saturation set to 128
 [IMP_ISP] SetBrightness: 128
-[D 65571794] main: ISP tuning brightness set to 128
+[D 1824721789] main: ISP tuning brightness set to 128
 [IMP_ISP] SetISPRunningMode: 0
-[D 65571818] main: ISP running mode set to DAY
+[D 1824721813] main: ISP running mode set to DAY
 [IMP_ISP] SetSensorFPS: 20/1
-[I 65571842] main: Sensor FPS set to 20/1 (all channels use sensor FPS)
-[I 65571859] main: Verified sensor FPS: 25/1 (25.00 fps)
-[I 65571895] COMMON: Channel 0: enabled=1, format='H264' -> payloadType=0x1 (H264), 1920x1080@20/1fps
-[I 65571922] COMMON: Channel 1: enabled=1, format='H264' -> payloadType=0x1 (H264), 640x360@20/1fps, scaler=enabled
-[D 65571957] COMMON: Updated channel configuration from JSON config: ch0=1, ch1=1, ch2=0, ch3=0
-[D 65571980] main: Configuration applied to channels successfully
-[W 65571997] COMMON: Applying memory optimizations for low-memory device
-[I 65572013] COMMON: Low-memory optimizations applied:
-[I 65572027] COMMON:   - Buffer optimization: nrVBs=1, FIFO depth=0
-[I 65572043] COMMON:   - Channel enabling: Based on configuration
-[I 65572058] COMMON:   - Channels 2-3: Not used in current setup
-[I 65572073] COMMON:   - Output resolution: Handled by RTSP module
-[I 65572089] COMMON: SUCCESS: optimized with configuration-driven channel management
+[I 1824721838] main: Sensor FPS set to 20/1 (all channels use sensor FPS)
+[I 1824721855] main: Verified sensor FPS: 25/1 (25.00 fps)
+[I 1824721889] COMMON: Channel 0: enabled=1, format='H264' -> payloadType=0x1 (H264), 1920x1080@20/1fps
+[I 1824721916] COMMON: Channel 1: enabled=1, format='H264' -> payloadType=0x1 (H264), 640x360@20/1fps, scaler=enabled
+[D 1824721944] COMMON: Updated channel configuration from JSON config: ch0=1, ch1=1, ch2=0, ch3=0
+[D 1824721965] main: Configuration applied to channels successfully
+[W 1824721981] COMMON: Applying memory optimizations for low-memory device
+[I 1824721997] COMMON: Low-memory optimizations applied:
+[I 1824722012] COMMON:   - Buffer optimization: nrVBs=1, FIFO depth=0
+[I 1824722027] COMMON:   - Channel enabling: Based on configuration
+[I 1824722044] COMMON:   - Channels 2-3: Not used in current setup
+[I 1824722059] COMMON:   - Output resolution: Handled by RTSP module
+[I 1824722074] COMMON: SUCCESS: optimized with configuration-driven channel management
 [FrameSource] CreateChn: Opened /dev/framechan0 (fd=5)
 [System] Registered module [0,0]: FrameSource
 [FrameSource] CreateChn: registered FrameSource module [0,0] with 1 output
 [FrameSource] CreateChn: chn=0, 1920x1080, fmt=0xa
-[D 65572217] main: FrameSource channel 0 created
-[W 65572235] main: 64MB device: Setting FIFO depth to 0
-[D 65572251] main: Using buffer depth 1 for channel 0
+[D 1824722199] main: FrameSource channel 0 created
+[W 1824722219] main: 64MB device: Setting FIFO depth to 0
+[D 1824722235] main: Using buffer depth 1 for channel 0
 [FrameSource] SetChnFifoAttr: chn=0, maxdepth=0, depth=0
-[I 65572289] main: FrameSource channel 0: FIFO buffer depth set to 0 frames
+[I 1824722272] main: FrameSource channel 0: FIFO buffer depth set to 0 frames
 [FrameSource] SetChnAttr: chn=0, 1920x1080, fmt=0xa
-[D 65572323] main: FrameSource channel 0 attributes set
+[D 1824722305] main: FrameSource channel 0 attributes set
 [FrameSource] CreateChn: Opened /dev/framechan1 (fd=6)
 [System] Registered module [0,1]: FrameSource
 [FrameSource] CreateChn: registered FrameSource module [0,1] with 1 output
 [FrameSource] CreateChn: chn=1, 640x360, fmt=0xa
-[D 65572409] main: FrameSource channel 1 created
-[W 65572426] main: 64MB device: Setting FIFO depth to 0
-[D 65572441] main: Using buffer depth 1 for channel 1
+[D 1824722392] main: FrameSource channel 1 created
+[W 1824722410] main: 64MB device: Setting FIFO depth to 0
+[D 1824722425] main: Using buffer depth 1 for channel 1
 [FrameSource] SetChnFifoAttr: chn=1, maxdepth=0, depth=0
-[I 65572469] main: FrameSource channel 1: FIFO buffer depth set to 0 frames
+[I 1824722454] main: FrameSource channel 1: FIFO buffer depth set to 0 frames
 [FrameSource] SetChnAttr: chn=1, 640x360, fmt=0xa
-[D 65572507] main: FrameSource channel 1 attributes set
-[D 65572523] main: FrameSource channel 2 not enabled
-[D 65572539] main: FrameSource channel 3 not enabled
-[D 65572555] main: FrameSource initialized successfully
+[D 1824722485] main: FrameSource channel 1 attributes set
+[D 1824722501] main: FrameSource channel 2 not enabled
+[D 1824722517] main: FrameSource channel 3 not enabled
+[D 1824722534] main: FrameSource initialized successfully
 [System] Registered module [1,0]: Encoder
 [Encoder] CreateGroup: registered Encoder module [1,0] with 1 output and update callback
 [Encoder] CreateGroup: grp=0
-[I 65572615] main: Encoder group 0 created successfully
+[I 1824722593] main: Encoder group 0 created successfully
 [System] Registered module [1,1]: Encoder
 [Encoder] CreateGroup: registered Encoder module [1,1] with 1 output and update callback
 [Encoder] CreateGroup: grp=1
-[I 65572671] main: Encoder group 1 created successfully
-[I 65572687] main: Encoder group 2 not enabled
-[I 65572703] main: Encoder group 3 not enabled
+[I 1824722650] main: Encoder group 1 created successfully
+[I 1824722667] main: Encoder group 2 not enabled
+[I 1824722683] main: Encoder group 3 not enabled
 [Encoder] SetMaxStreamCnt: chn=0, cnt=2
-[I 65572734] main: Channel 0: Set 2 stream buffers for low-memory device
+[I 1824722718] main: Channel 0: Set 2 stream buffers for low-memory device
 [Encoder] SetStreamBufSize: chn=0, size=262144
-[I 65572765] main: Channel 0: Set 256KB stream buffer size for low-memory device
-[I 65572785] main: Channel 0: Set 2 stream buffers, 262144 bytes each
+[I 1824722750] main: Channel 0: Set 256KB stream buffer size for low-memory device
+[I 1824722769] main: Channel 0: Set 2 stream buffers, 262144 bytes each
 [Encoder] SetChnEntropyMode: chn=0, mode=2
-[I 65572819] main: Channel 0: payloadType=0x1, computed profile=0x42
+[I 1824722803] main: Channel 0: payloadType=0x1, computed profile=0x42
 [Encoder] SetDefaultParam: 1920x1080, 20/1 fps, profile=66, rc=1
-[I 65572857] main: Encoder channel 0 configured: 1920x1080@20/1fps, GOP=20, bitrate=2000kbps, mode=CBR
+[I 1824722841] main: Encoder channel 0 configured: 1920x1080@20/1fps, GOP=20, bitrate=2000kbps, mode=CBR
 [Codec] SetDefaultParam: initialized
 [Encoder] channel_encoder_init: 1920x1080, profile=0x42->0x42, fps=20/1, gop=20, bitrate=0
 [Fifo] Init: size=4, max_elements=5
 [Fifo] Init: size=7, max_elements=8
 [Codec] Create: vendor library will handle hardware acceleration via /dev/avpu
-[Codec] Create: codec=0x7791c0d0, channel=0
+[Codec] Create: codec=0x774ec0d0, channel=0
 [Encoder] channel_encoder_init: frame_cnt=4, frame_size=1048576
 [Fifo] Init: size=4, max_elements=5
 [Encoder] CreateChn: chn=0, profile=66 created successfully
@@ -169,20 +169,20 @@ root@ing-wyze-cam3-a000 opt# ./streamer
 [HW_Encoder] RequestIDR: next frame will be IDR
 [Encoder] RegisterChn: grp=0, chn=0
 [Encoder] SetMaxStreamCnt: chn=1, cnt=2
-[I 65573272] main: Channel 1: Set 2 stream buffers for low-memory device
+[I 1824723260] main: Channel 1: Set 2 stream buffers for low-memory device
 [Encoder] SetStreamBufSize: chn=1, size=262144
-[I 65573307] main: Channel 1: Set 256KB stream buffer size for low-memory device
-[I 65573327] main: Channel 1: Set 2 stream buffers, 262144 bytes each
+[I 1824723297] main: Channel 1: Set 256KB stream buffer size for low-memory device
+[I 1824723318] main: Channel 1: Set 2 stream buffers, 262144 bytes each
 [Encoder] SetChnEntropyMode: chn=1, mode=2
-[I 65573368] main: Channel 1: payloadType=0x1, computed profile=0x42
+[I 1824723353] main: Channel 1: payloadType=0x1, computed profile=0x42
 [Encoder] SetDefaultParam: 640x360, 20/1 fps, profile=66, rc=1
-[I 65573403] main: Encoder channel 1 configured: 640x360@20/1fps, GOP=20, bitrate=500kbps, mode=CBR
+[I 1824723388] main: Encoder channel 1 configured: 640x360@20/1fps, GOP=20, bitrate=500kbps, mode=CBR
 [Codec] SetDefaultParam: initialized
 [Encoder] channel_encoder_init: 640x360, profile=0x42->0x42, fps=20/1, gop=20, bitrate=0
 [Fifo] Init: size=4, max_elements=5
 [Fifo] Init: size=7, max_elements=8
 [Codec] Create: vendor library will handle hardware acceleration via /dev/avpu
-[Codec] Create: codec=0x7791cb80, channel=1
+[Codec] Create: codec=0x774ecb80, channel=1
 [Encoder] channel_encoder_init: frame_cnt=4, frame_size=1048576
 [Fifo] Init: size=4, max_elements=5
 [Encoder] CreateChn: chn=1, profile=66 created successfully
@@ -190,90 +190,98 @@ root@ing-wyze-cam3-a000 opt# ./streamer
 [Encoder] RequestIDR: chn=1
 [HW_Encoder] RequestIDR: next frame will be IDR
 [Encoder] RegisterChn: grp=1, chn=1
-[I 65573748] main: Encoder initialized successfully
-[I 65575332] main: Initializing JPEG encoder for channel 4 (stream 0)
+[I 1824723740] main: Encoder initialized successfully
+[I 1824725247] main: Initializing JPEG encoder for channel 4 (stream 0)
 [Encoder] SetDefaultParam: 1920x1080, 20/1 fps, profile=67108864, rc=0
-[D 65576652] main: Set default JPEG parameters for channel 4: 1920x1080
+[D 1824726579] main: Set default JPEG parameters for channel 4: 1920x1080
 [Codec] SetDefaultParam: initialized
 [Encoder] channel_encoder_init: 1920x1080, profile=0x4000000->0x0, fps=20/1, gop=0, bitrate=0
 [Fifo] Init: size=4, max_elements=5
 [Fifo] Init: size=7, max_elements=8
 [Codec] Create: vendor library will handle hardware acceleration via /dev/avpu
-[Codec] Create: codec=0x7791d620, channel=2
+[Codec] Create: codec=0x774ed620, channel=2
 [Encoder] channel_encoder_init: frame_cnt=4, frame_size=1048576
 [Fifo] Init: size=4, max_elements=5
 [Encoder] CreateChn: chn=4, profile=67108864 created successfully
-[D 65580425] main: Created JPEG channel 4
+[D 1824729470] main: Created JPEG channel 4
 [Encoder] RegisterChn: grp=0, chn=4
-[D 65580491] main: Registered JPEG channel 4 to group 0
-[I 65580523] main: JPEG encoder channel 4 initialized successfully
-[I 65580561] main: Initializing JPEG encoder for channel 5 (stream 1)
+[D 1824729538] main: Registered JPEG channel 4 to group 0
+[I 1824729571] main: JPEG encoder channel 4 initialized successfully
+[I 1824729610] main: Initializing JPEG encoder for channel 5 (stream 1)
 [Encoder] SetDefaultParam: 640x360, 20/1 fps, profile=67108864, rc=0
-[D 65580630] main: Set default JPEG parameters for channel 5: 640x360
+[D 1824729680] main: Set default JPEG parameters for channel 5: 640x360
 [Codec] SetDefaultParam: initialized
 [Encoder] channel_encoder_init: 640x360, profile=0x4000000->0x0, fps=20/1, gop=0, bitrate=0
-[Encoder] stream_thread: started for channel 1
-[Encoder] encoder_thread: started for channel 1
 [Fifo] Init: size=4, max_elements=5
 [Fifo] Init: size=7, max_elements=8
 [Codec] Create: vendor library will handle hardware acceleration via /dev/avpu
-[Codec] Create: codec=0x77844010, channel=3
+[Codec] Create: codec=0x77414010, channel=3
 [Encoder] channel_encoder_init: frame_cnt=4, frame_size=1048576
 [Fifo] Init: size=4, max_elements=5
 [Encoder] CreateChn: chn=5, profile=67108864 created successfully
-[D 65582725] main: Created JPEG channel 5
+[D 1824730504] main: Created JPEG channel 5
 [Encoder] RegisterChn: grp=1, chn=5
-[D 65583676] main: Registered JPEG channel 5 to group 1
-[I 65583725] main: JPEG encoder channel 5 initialized successfully
-[I 65583764] main: Binding FrameSource -> Encoder for channel 0 (OSD disabled)
+[D 1824730581] main: Registered JPEG channel 5 to group 1
+[I 1824730614] main: JPEG encoder channel 5 initialized successfully
+[I 1824730653] main: Binding FrameSource -> Encoder for channel 0 (OSD disabled)
 [System] Bind request: [0,0,0] -> [1,0,0]
 [System] Binding [0,0,0] -> [1,0,0]
 [System] Bound FrameSource -> Encoder (observer added)
-[I 65583893] main: Bound FrameSource -> Encoder for channel 0
-[I 65583925] main: Binding FrameSource -> Encoder for channel 1 (OSD disabled)
+[I 1824730781] main: Bound FrameSource -> Encoder for channel 0
+[I 1824730943] main: Binding FrameSource -> Encoder for channel 1 (OSD disabled)
 [System] Bind request: [0,1,0] -> [1,1,0]
 [System] Binding [0,1,0] -> [1,1,0]
 [System] Bound FrameSource -> Encoder (observer added)
-[I 65584049] main: Bound FrameSource -> Encoder for channel 1
-[I 65584079] main: Channel 2 not enabled, skipping bind
-[I 65584115] main: Channel 3 not enabled, skipping bind
-[I 65584153] main: Enabling FrameSource channel 0
-[I 65584183] main: Channel 0: nrVBs=1, resolution=1920x1080
-[FrameSource] GetChnFifoAttr: chn=0 -> maxdepth=1, depth=1
-[I 65584245] main: Channel 0: FIFO maxdepth=1, type=1
-[I 65584277] main: Channel 0: Expected VBM allocation ~3110400 bytes (3.0MB) for 1 buffers
-[KernelIF] Set format: 1920x1080 fmt=0xa (fourcc=0x3231564e) colorspace=8
-[VBM] CreatePool: allocating pool_size=1448 (frame_count=1 * 0x428 + 0x180)
-[VBM] CreatePool: chn=0, 1920x1080 fmt=0xa, 1 frames, size=3133440
-[DMA] DMA init: using /dev/rmem
-[DMA] DMA init: /dev/rmem mapped at 0x75afa000 size=30408704 base_phys=0x06300000
+[I 1824731168] main: Bound FrameSource -> Encoder for channel 1
+[I 1824731205] main: Channel 2 not enabled, skipping bind
+[I 1824731242] main: Channel 3 not enabled, skipping bind
+[I 1824731365] main: Enabling FrameSource channel 0
+[I 1824731422] main: Channel 0: nrVBs=1, resolution=1920x1080[Encoder] stream_thread: started for channel 1
+[Encoder] encoder_thread: started for channel 1
 [Encoder] stream_thread: started for channel 0
+[Encoder] encoder_thread: started for channel 5
+[Encoder] stream_thread: started for channel 5
 [Encoder] stream_thread: started for channel 4
 [Encoder] encoder_thread: started for channel 4
 [Encoder] encoder_thread: started for channel 0
-[Encoder] stream_thread: started for channel 5
-[Encoder] encoder_thread: started for channel 5
-[DMA] Alloc: _p�$�� size=3133440 phys=0x6300000 virt=0x75afa000 (rmem off=0x0)
-[VBM] Frame 0: phys=0x6300000 virt=0x75afa000
+
+[FrameSource] GetChnFifoAttr: chn=0 -> maxdepth=1, depth=1
+[I 1824733026] main: Channel 0: FIFO maxdepth=1, type=1
+[I 1824733143] main: Channel 0: Expected VBM allocation ~3110400 bytes (3.0MB) for 1 buffers
+[KernelIF] Got format: 1920x1080 fmt=0x3231564e sizeimage=0 bytesperline=0
+[KernelIF] Set format: 1920x1080 fmt=0xa (fourcc=0x3231564e) colorspace=8
+[KernelIF] Got format: 2x-2079071288 fmt=0x801067b4 sizeimage=-2052438016 bytesperline=0
+[VBM] CreatePool: invalid frame_count=0, using default 4
+[VBM] CreatePool: allocating pool_size=4640 (frame_count=4 * 0x428 + 0x180)
+[VBM] CreatePool: chn=0, 1920x1080 fmt=0xa, 4 frames, size=3133440
+[DMA] DMA init: using /dev/rmem
+[DMA] DMA init: /dev/rmem mapped at 0x756ca000 size=30408704 base_phys=0x06300000
+[DMA] Alloc: =0x801067b4 sizeimage=-2052438016 size=12533760 phys=0x6300000 virt=0x756ca000 (rmem off=0x0)
+[VBM] Frame 0: phys=0x6300000 virt=0x756ca000
+[VBM] Frame 1: phys=0x65fd000 virt=0x759c7000
+[VBM] Frame 2: phys=0x68fa000 virt=0x75cc4000
+[VBM] Frame 3: phys=0x6bf7000 virt=0x75fc1000
 [VBM] CreatePool: chn=0 created successfully
 [KernelIF] Set buffer count: 4 (actual: 4)
-[VBM] FillPool: chn=0, filling 1 frames
-[VBM] FillPool: queued 1 frames
+[VBM] FillPool: chn=0, filling 4 frames
+[VBM] FillPool: queued 4 frames
+[KernelIF] Got format: 2x-2079071288 fmt=0x801067b4 sizeimage=-2052438016 bytesperline=0
+[VBM] PrimeKernelQueue: idx=0 fallback use pool size=3133440 (w=1920 h=1080)
 [KernelIF] QBUF failed: idx=0 phys=0x6300000 len=3133440 err=Invalid argument
-[VBM] PrimeKernelQueue: qbuf failed for idx=0
+[VBM] PrimeKernelQueue: qbuf failed for idx=0 (len=3133440)
 [FrameSource] EnableChn failed: cannot prime kernel queue
 [VBM] DestroyPool: chn=0
 [DMA] Free: phys=0x6300000
 [DMA] Free: freed buffer phys=0x6300000
 [VBM] DestroyPool: chn=0 destroyed
 [KernelIF] Closed device (fd=5)
-[E 65587365] main: IMP_FrameSource_EnableChn(0) error: -1
-[E 65587409] main: Channel 0 details: 1920x1080, nrVBs=1, pixFmt=10
-[E 65587532] main: Possible causes:
-[E 65587571] main:   1. Memory allocation failure (check dmesg)
-[E 65587607] main:   2. Invalid channel configuration
-[E 65587722] main:   3. Hardware resource conflict
-[E 65587762] main:   4. ISP/Sensor not properly initialized
-[D 65587861] main: Lock file cleaned up
+[E 1824736300] main: IMP_FrameSource_EnableChn(0) error: -1
+[E 1824736359] main: Channel 0 details: 1920x1080, nrVBs=1, pixFmt=10
+[E 1824736396] main: Possible causes:
+[E 1824736431] main:   1. Memory allocation failure (check dmesg)
+[E 1824736716] main:   2. Invalid channel configuration
+[E 1824736920] main:   3. Hardware resource conflict
+[E 1824736961] main:   4. ISP/Sensor not properly initialized
+[D 1824737064] main: Lock file cleaned up
 root@ing-wyze-cam3-a000 opt# 
 

@@ -25,6 +25,7 @@
 #define VIDIOC_STREAM_OFF   0x80045613  /* Stop streaming */
 /* Buffer queue/dequeue ioctls (from decompilation notes) */
 #define VIDIOC_QBUF         0xc044560f  /* Queue buffer */
+#define VIDIOC_QUERYBUF     0xc0445609  /* Query buffer */
 #define VIDIOC_DQBUF        0xc0445611  /* Dequeue buffer */
 
 /* Encoder ioctl commands (to be discovered) */
@@ -79,12 +80,15 @@ typedef struct {
     char padding[0x68];         /* 0x60-0xc7: Padding to 200 bytes */
 } fs_format_t;
 
-/* v4l2_requestbuffers (32-bit) */
+/* v4l2_requestbuffers (driver expects 5 x u32 = 0x14 bytes):
+ * count, type, memory, capabilities, reserved[1]
+ */
 typedef struct {
-    uint32_t count;      /* Buffer count */
-    uint32_t type;       /* Buffer type (V4L2_BUF_TYPE_VIDEO_CAPTURE=1) */
-    uint32_t memory;     /* Memory type (use 2 per driver expectation) */
-    uint32_t reserved;   /* Reserved */
+    uint32_t count;        /* Buffer count */
+    uint32_t type;         /* V4L2_BUF_TYPE_VIDEO_CAPTURE=1 */
+    uint32_t memory;       /* 1=MMAP, 2=USERPTR */
+    uint32_t capabilities; /* set to 0 unless using V4L2 capability flags */
+    uint32_t reserved[1];  /* reserved */
 } fs_bufcnt_t;
 
 /**
@@ -126,15 +130,38 @@ int fs_get_format(int fd, fs_format_t *fmt) {
         return -1;
     }
 
-    /* Use the correct ioctl code from the binary */
-    int ret = ioctl(fd, 0x407056c4, fmt);
+    /* The driver returns a 0x70-byte v4l2-like structure; don't use our 0xc8 SET struct here. */
+    struct __attribute__((packed)) fs_format70_t {
+        uint32_t type;         /* 0x00 */
+        uint32_t width;        /* 0x04 */
+        uint32_t height;       /* 0x08 */
+        uint32_t pixelformat;  /* 0x0c */
+        uint32_t field;        /* 0x10 */
+        uint32_t bytesperline; /* 0x14 */
+        uint32_t sizeimage;    /* 0x18 */
+        uint32_t colorspace;   /* 0x1c */
+        uint32_t priv;         /* 0x20 */
+        uint8_t  reserved[0x70 - 0x24];
+    } g = {0};
+
+    g.type = 1; /* V4L2_BUF_TYPE_VIDEO_CAPTURE */
+    int ret = ioctl(fd, VIDIOC_GET_FMT, &g);
     if (ret < 0) {
         fprintf(stderr, "[KernelIF] VIDIOC_GET_FMT failed: %s\n", strerror(errno));
         return -1;
     }
 
-    fprintf(stderr, "[KernelIF] Got format: %dx%d fmt=0x%x\n",
-            fmt->width, fmt->height, fmt->pixelformat);
+    /* Copy relevant fields back out */
+    fmt->type = (int)g.type;
+    fmt->width = (int)g.width;
+    fmt->height = (int)g.height;
+    fmt->pixelformat = (int)g.pixelformat;
+    fmt->bytesperline = (int)g.bytesperline;
+    fmt->sizeimage = (int)g.sizeimage;
+    fmt->colorspace = (int)g.colorspace;
+
+    fprintf(stderr, "[KernelIF] Got format: %dx%d fmt=0x%x sizeimage=%d bytesperline=%d\n",
+            fmt->width, fmt->height, fmt->pixelformat, fmt->sizeimage, fmt->bytesperline);
     return 0;
 }
 
@@ -168,60 +195,49 @@ int fs_set_format(int fd, fs_format_t *fmt) {
         return -1;
     }
 
-    /* Make a copy and ensure all fields are properly initialized */
-    fs_format_t kernel_fmt;
-    memset(&kernel_fmt, 0, sizeof(kernel_fmt));
+    /* Use v4l2-like 0x70 struct for SET as well (matches driver expectations) */
+    struct __attribute__((packed)) fs_format70_t {
+        uint32_t type;         /* 0x00 */
+        uint32_t width;        /* 0x04 */
+        uint32_t height;       /* 0x08 */
+        uint32_t pixelformat;  /* 0x0c */
+        uint32_t field;        /* 0x10 */
+        uint32_t bytesperline; /* 0x14 */
+        uint32_t sizeimage;    /* 0x18 */
+        uint32_t colorspace;   /* 0x1c */
+        uint32_t priv;         /* 0x20 */
+        uint8_t  reserved[0x70 - 0x24];
+    } s = {0};
 
-    /* V4L2 standard fields */
-    kernel_fmt.type = 1; /* V4L2_BUF_TYPE_VIDEO_CAPTURE */
-    kernel_fmt.width = fmt->width;
-    kernel_fmt.height = fmt->height;
+    s.type = 1; /* V4L2_BUF_TYPE_VIDEO_CAPTURE */
+    s.width = (uint32_t)fmt->width;
+    s.height = (uint32_t)fmt->height;
 
     /* Convert enum pixfmt to fourcc if needed */
-    if (fmt->pixelformat < 0x100) {
-        kernel_fmt.pixelformat = pixfmt_to_fourcc(fmt->pixelformat);
-    } else {
-        kernel_fmt.pixelformat = fmt->pixelformat;
-    }
+    uint32_t fourcc = (fmt->pixelformat < 0x100) ? pixfmt_to_fourcc(fmt->pixelformat)
+                                                 : (uint32_t)fmt->pixelformat;
+    s.pixelformat = fourcc;
 
-    kernel_fmt.field = 0; /* V4L2_FIELD_ANY - let driver choose */
-    kernel_fmt.bytesperline = 0; /* Driver will calculate */
-    kernel_fmt.sizeimage = 0; /* Driver will calculate */
-    kernel_fmt.colorspace = 8; /* V4L2_COLORSPACE_SRGB */
-    kernel_fmt.priv = 0;
+    s.field = 0;         /* V4L2_FIELD_NONE */
+    s.bytesperline = 0;  /* Let driver compute */
+    s.sizeimage = 0;     /* Let driver compute */
+    s.colorspace = 8;    /* V4L2_COLORSPACE_SRGB */
+    s.priv = 0;
 
-    /* Ingenic imp_channel_attr fields in raw_data area
-     * Note: pixel format is provided via V4L2 header (pixelformat), not raw_data. */
-    kernel_fmt.enable = fmt->enable;
-    kernel_fmt.attr_width = fmt->attr_width ? fmt->attr_width : fmt->width;
-    kernel_fmt.attr_height = fmt->attr_height ? fmt->attr_height : fmt->height;
-
-    kernel_fmt.crop_enable = fmt->crop_enable;
-    kernel_fmt.crop_x = fmt->crop_x;
-    kernel_fmt.crop_y = fmt->crop_y;
-    kernel_fmt.crop_width = fmt->crop_width;
-    kernel_fmt.crop_height = fmt->crop_height;
-
-    kernel_fmt.scaler_enable = fmt->scaler_enable;
-    kernel_fmt.scaler_outwidth = fmt->scaler_outwidth;
-    kernel_fmt.scaler_outheight = fmt->scaler_outheight;
-
-    kernel_fmt.picwidth = fmt->picwidth ? fmt->picwidth : fmt->width;
-    kernel_fmt.picheight = fmt->picheight ? fmt->picheight : fmt->height;
-
-    kernel_fmt.fps_num = fmt->fps_num;
-    kernel_fmt.fps_den = fmt->fps_den;
-
-    int ret = ioctl(fd, VIDIOC_SET_FMT, &kernel_fmt);
+    int ret = ioctl(fd, VIDIOC_SET_FMT, &s);
     if (ret < 0) {
         fprintf(stderr, "[KernelIF] VIDIOC_SET_FMT failed: %s\n", strerror(errno));
         fprintf(stderr, "[KernelIF]   Requested: %dx%d fmt=0x%x (fourcc=0x%x) colorspace=%d\n",
-                fmt->width, fmt->height, fmt->pixelformat, kernel_fmt.pixelformat, kernel_fmt.colorspace);
+                fmt->width, fmt->height, fmt->pixelformat, fourcc, s.colorspace);
         return -1;
     }
 
+    /* Immediately query back the format to confirm what kernel accepted */
+    fs_format_t after = {0};
+    (void)fs_get_format(fd, &after);
+
     fprintf(stderr, "[KernelIF] Set format: %dx%d fmt=0x%x (fourcc=0x%x) colorspace=%d\n",
-            fmt->width, fmt->height, fmt->pixelformat, kernel_fmt.pixelformat, kernel_fmt.colorspace);
+            fmt->width, fmt->height, fmt->pixelformat, fourcc, s.colorspace);
     return 0;
 }
 
@@ -236,8 +252,10 @@ int fs_set_buffer_count(int fd, int count) {
 
     fs_bufcnt_t req = {0};
     req.count = (uint32_t)count;
-    req.type = 1;     /* V4L2_BUF_TYPE_VIDEO_CAPTURE */
-    req.memory = 2;   /* Use memory type 2 (driver expects this) */
+    req.type = 1;            /* V4L2_BUF_TYPE_VIDEO_CAPTURE */
+    req.memory = 2;          /* V4L2_MEMORY_USERPTR (matches earlier success) */
+    req.capabilities = 0;    /* no special caps */
+    req.reserved[0] = 0;
 
     int ret = ioctl(fd, VIDIOC_SET_BUFCNT, &req);
     if (ret < 0) {
@@ -308,36 +326,57 @@ int fs_stream_off(int fd) {
     return 0;
 }
 
+/* 32-bit v4l2_buffer layout used by this driver */
+struct v4l2_buf32 {
+    uint32_t index;        /* 0x00 */
+    uint32_t type;         /* 0x04 */
+    uint32_t bytesused;    /* 0x08 */
+    uint32_t flags;        /* 0x0C */
+    uint32_t field;        /* 0x10 */
+    uint32_t ts_sec;       /* 0x14 */
+    uint32_t ts_usec;      /* 0x18 */
+    uint32_t timecode[4];  /* 0x1C..0x28 */
+    uint32_t sequence;     /* 0x2C */
+    uint32_t memory;       /* 0x30 */
+    uint32_t m;            /* 0x34: union userptr/offset/fd */
+    uint32_t length;       /* 0x38 */
+    uint32_t reserved2;    /* 0x3C */
+    uint32_t reserved;     /* 0x40 */
+} __attribute__((packed));
+
+/* Query buffer to get the exact length the driver expects */
+int fs_querybuf(int fd, int index, unsigned int *length_out) {
+    if (fd < 0 || index < 0) return -1;
+    struct v4l2_buf32 b;
+    memset(&b, 0, sizeof(b));
+    b.index = (uint32_t)index;
+    b.type = 1; /* V4L2_BUF_TYPE_VIDEO_CAPTURE */
+    int ret = ioctl(fd, VIDIOC_QUERYBUF, &b);
+    if (ret < 0) {
+        fprintf(stderr, "[KernelIF] QUERYBUF failed: idx=%d err=%s\n", index, strerror(errno));
+        return -1;
+    }
+    if (length_out) *length_out = b.length;
+    return 0;
+}
+
 /* Queue a userspace buffer to the framechan driver
  * Driver expects a 0x44-byte v4l2_buffer-like struct (32-bit layout).
  */
 int fs_qbuf(int fd, int index, unsigned long phys, unsigned int length) {
     if (fd < 0 || index < 0) return -1;
 
-    struct v4l2_buf32 {
-        uint32_t index;        /* 0x00 */
-        uint32_t type;         /* 0x04 */
-        uint32_t bytesused;    /* 0x08 */
-        uint32_t flags;        /* 0x0C */
-        uint32_t field;        /* 0x10 */
-        uint32_t ts_sec;       /* 0x14 */
-        uint32_t ts_usec;      /* 0x18 */
-        uint32_t timecode[4];  /* 0x1C..0x28 */
-        uint32_t sequence;     /* 0x2C */
-        uint32_t memory;       /* 0x30 */
-        uint32_t m;            /* 0x34: union userptr/offset/fd */
-        uint32_t length;       /* 0x38 */
-        uint32_t reserved2;    /* 0x3C */
-        uint32_t reserved;     /* 0x40 */
-    } __attribute__((packed));
-
     struct v4l2_buf32 b;
     memset(&b, 0, sizeof(b));
     b.index = (uint32_t)index;
     b.type = 1;            /* V4L2_BUF_TYPE_VIDEO_CAPTURE */
-    b.memory = 2;          /* Must match reqbufs memory type */
-    b.m = (uint32_t)phys;  /* Driver uses this as DMA phys */
-    b.length = length;     /* Must equal kernel sizeimage */
+    b.memory = 2;          /* Must match REQBUFS memory type (USERPTR) */
+    b.field = 0;           /* V4L2_FIELD_NONE */
+    b.flags = 0;
+    b.sequence = 0;
+    b.m = (uint32_t)phys;  /* Driver uses this as DMA phys (driver-specific) */
+    b.length = length;     /* Must equal kernel expected length */
+    b.bytesused = length;  /* Some drivers check bytesused too */
 
     int ret = ioctl(fd, VIDIOC_QBUF, &b);
     if (ret < 0) {
@@ -350,23 +389,6 @@ int fs_qbuf(int fd, int index, unsigned long phys, unsigned int length) {
 /* Dequeue a filled buffer from the framechan driver */
 int fs_dqbuf(int fd, int *index_out) {
     if (fd < 0 || !index_out) return -1;
-
-    struct v4l2_buf32 {
-        uint32_t index;        /* 0x00 */
-        uint32_t type;         /* 0x04 */
-        uint32_t bytesused;    /* 0x08 */
-        uint32_t flags;        /* 0x0C */
-        uint32_t field;        /* 0x10 */
-        uint32_t ts_sec;       /* 0x14 */
-        uint32_t ts_usec;      /* 0x18 */
-        uint32_t timecode[4];  /* 0x1C..0x28 */
-        uint32_t sequence;     /* 0x2C */
-        uint32_t memory;       /* 0x30 */
-        uint32_t m;            /* 0x34 */
-        uint32_t length;       /* 0x38 */
-        uint32_t reserved2;    /* 0x3C */
-        uint32_t reserved;     /* 0x40 */
-    } __attribute__((packed));
 
     struct v4l2_buf32 b;
     memset(&b, 0, sizeof(b));
@@ -764,13 +786,57 @@ int VBMPrimeKernelQueue(int chn, int fd) {
     VBMPool *pool = vbm_instance[chn];
     if (!pool) return -1;
     pool->fd = fd;
+    /* Ask driver for sizeimage once (fallback if QUERYBUF returns 0) */
+    fs_format_t kfmt;
+    memset(&kfmt, 0, sizeof(kfmt));
+    unsigned int drv_len = 0;
+    if (fs_get_format(fd, &kfmt) == 0 && kfmt.sizeimage > 0) {
+        drv_len = (unsigned int)kfmt.sizeimage;
+    }
     for (int i = 0; i < pool->frame_count; i++) {
         VBMFrame *f = &pool->frames[i];
-        unsigned long phys = f->phys_addr;
-        unsigned int length = (unsigned int)f->size;
-        if (fs_qbuf(fd, i, phys, length) < 0) {
-            fprintf(stderr, "[VBM] PrimeKernelQueue: qbuf failed for idx=%d\n", i);
+        /* Driver expects DMA physical address in .m (BN MCP shows KSEG1 writes) */
+        unsigned long phys = (unsigned long)f->phys_addr;
+        unsigned int klen = 0;
+        if (fs_querybuf(fd, i, &klen) < 0) {
+            fprintf(stderr, "[VBM] PrimeKernelQueue: querybuf failed for idx=%d\n", i);
             return -1;
+        }
+        if (klen == 0 && drv_len > 0) {
+            klen = drv_len;
+            fprintf(stderr, "[VBM] PrimeKernelQueue: idx=%d querybuf_len=0, using sizeimage=%u\n", i, klen);
+        }
+        /* If still unknown, prefer NV12 exact size w*h*3/2 first, then fall back to pool size */
+        if (klen == 0) {
+            unsigned int nv12 = (unsigned int)f->width * (unsigned int)f->height * 3 / 2;
+            if (nv12 > 0) {
+                klen = nv12;
+                fprintf(stderr, "[VBM] PrimeKernelQueue: idx=%d fallback NV12 size=%u (w=%d h=%d)\n", i, klen, f->width, f->height);
+            }
+        }
+        if (klen == 0) {
+            klen = (unsigned int)f->size;
+            fprintf(stderr, "[VBM] PrimeKernelQueue: idx=%d fallback use pool size=%u (w=%d h=%d)\n", i, klen, f->width, f->height);
+        }
+        if (klen > (unsigned int)f->size) {
+            fprintf(stderr, "[VBM] PrimeKernelQueue: idx=%d driver_len=%u > our_len=%u -> clamping\n", i, klen, (unsigned int)f->size);
+            klen = (unsigned int)f->size;
+        }
+        if (fs_qbuf(fd, i, userptr, klen) < 0) {
+            /* Probe alternate length if NV12 vs stride mismatch: try other of {3110400, pool_size} */
+            unsigned int alt = (klen == (unsigned int)f->size) ? ((unsigned int)f->width * (unsigned int)f->height * 3 / 2) : (unsigned int)f->size;
+            if (alt != klen && alt > 0 && alt <= (unsigned int)f->size) {
+                fprintf(stderr, "[VBM] PrimeKernelQueue: idx=%d first qbuf len=%u failed, trying alt len=%u\n", i, klen, alt);
+                if (fs_qbuf(fd, i, userptr, alt) == 0) {
+                    klen = alt;
+                } else {
+                    fprintf(stderr, "[VBM] PrimeKernelQueue: qbuf failed for idx=%d (len=%u)\n", i, alt);
+                    return -1;
+                }
+            } else {
+                fprintf(stderr, "[VBM] PrimeKernelQueue: qbuf failed for idx=%d (len=%u)\n", i, klen);
+                return -1;
+            }
         }
     }
     fprintf(stderr, "[VBM] PrimeKernelQueue: queued %d frames to kernel for chn=%d\n", pool->frame_count, chn);
