@@ -223,10 +223,29 @@ int IMP_ISP_AddSensor(IMPSensorInfo *pinfo) {
         return -1;
     }
 
-    /* Extract buffer info from the returned structure */
-    gISPdev->isp_buffer_virt = *(void**)(isp_buf_info + 0x80);
-    gISPdev->isp_buffer_phys = *(uint32_t*)(isp_buf_info + 0x84);
-    gISPdev->isp_buffer_size = buf_info.size;
+    /* Extract buffer info from the returned structure using safe struct access
+     * IMP_Alloc copies the DMABuffer structure into isp_buf_info.
+     * DMABuffer layout:
+     *   0x00-0x5f: name[96]
+     *   0x60-0x7f: tag[32]
+     *   0x80: virt_addr (void*)
+     *   0x84: phys_addr (uint32_t)
+     *   0x88: size (uint32_t)
+     */
+    typedef struct {
+        char name[96];
+        char tag[32];
+        void *virt_addr;
+        uint32_t phys_addr;
+        uint32_t size;
+        uint32_t flags;
+        uint32_t pool_id;
+    } DMABuffer;
+
+    DMABuffer *dma_buf = (DMABuffer*)isp_buf_info;
+    gISPdev->isp_buffer_virt = dma_buf->virt_addr;
+    gISPdev->isp_buffer_phys = dma_buf->phys_addr;
+    gISPdev->isp_buffer_size = dma_buf->size;
 
     LOG_ISP("AddSensor: allocated ISP buffer: virt=%p phys=0x%lx size=%u",
             gISPdev->isp_buffer_virt, gISPdev->isp_buffer_phys, gISPdev->isp_buffer_size);
@@ -311,13 +330,16 @@ int IMP_ISP_EnableSensor(void) {
         LOG_ISP("EnableSensor: ioctl 0xc00456e3 (AWB_INIT) succeeded");
     }
 
+    LOG_ISP("EnableSensor: AE/AWB initialization complete, proceeding to sensor index check");
+
     /* CRITICAL: Call ioctl 0x40045626 to get sensor index before streaming
      * This ioctl validates the sensor is ready and returns the sensor index.
      * It must be called before STREAMON.
      */
     int sensor_idx = -1;
-    LOG_ISP("EnableSensor: calling ioctl 0x40045626 (GET_SENSOR_INDEX)");
+    LOG_ISP("EnableSensor: about to call ioctl 0x40045626");
     ret = ioctl(gISPdev->fd, 0x40045626, &sensor_idx);
+    LOG_ISP("EnableSensor: ioctl 0x40045626 returned %d", ret);
     if (ret != 0) {
         LOG_ISP("EnableSensor: ioctl 0x40045626 (GET_SENSOR_INDEX) failed: %s", strerror(errno));
         return -1;
@@ -328,6 +350,8 @@ int IMP_ISP_EnableSensor(void) {
         LOG_ISP("EnableSensor: sensor index is -1, sensor not ready");
         return -1;
     }
+
+    LOG_ISP("EnableSensor: sensor index validated, proceeding to STREAMON");
 
     /* CRITICAL: Call ioctl 0x80045612 (VIDIOC_STREAMON) to start ISP video streaming
      * This is the global ISP stream-on, not the per-channel stream-on.
@@ -364,6 +388,7 @@ int IMP_ISP_EnableSensor(void) {
     sensor_enabled = 1;
 
     LOG_ISP("EnableSensor: sensor enabled (idx=%d)", sensor_idx);
+    LOG_ISP("EnableSensor: about to return 0");
     return 0;
 }
 
@@ -469,9 +494,14 @@ int IMP_ISP_Tuning_SetSensorFPS(uint32_t fps_num, uint32_t fps_den) {
 }
 
 int IMP_ISP_Tuning_GetSensorFPS(uint32_t *fps_num, uint32_t *fps_den) {
-    if (fps_num == NULL || fps_den == NULL) return -1;
+    LOG_ISP("GetSensorFPS: called with fps_num=%p fps_den=%p", fps_num, fps_den);
+    if (fps_num == NULL || fps_den == NULL) {
+        LOG_ISP("GetSensorFPS: NULL pointer passed");
+        return -1;
+    }
     *fps_num = 25;
     *fps_den = 1;
+    LOG_ISP("GetSensorFPS: returning 25/1");
     return 0;
 }
 

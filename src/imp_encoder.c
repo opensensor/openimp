@@ -1637,6 +1637,3 @@ static int encoder_update(void *module, void *frame) {
 
     return frame_processed ? 0 : -1;
 }
-
-/* ========== Stub Implementations for External Functions ========== */
-
