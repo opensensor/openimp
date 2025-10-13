@@ -319,8 +319,9 @@ int IMP_FrameSource_EnableChn(int chnNum) {
      * The kernel's REQBUFS handler allocates internal buffer structures.
      * This matches the OEM libimp.so sequence: SET_FMT -> REQBUFS -> VBMCreatePool.
      */
-    /* Use channel attr nrVBs (prudynt behavior) */
+    /* Use channel attr nrVBs; some T31 drivers require at least 2 buffers */
     int requested_bufcnt = chn->attr.nrVBs > 0 ? chn->attr.nrVBs : 4;
+    if (requested_bufcnt < 2) requested_bufcnt = 2;
     int bufcnt = fs_set_buffer_count(chn->fd, requested_bufcnt);
     if (bufcnt < 0) {
         LOG_FS("EnableChn failed: cannot set buffer count");
@@ -371,19 +372,7 @@ int IMP_FrameSource_EnableChn(int chnNum) {
     /* Small guard delay before STREAM_ON to mirror vendor pacing */
     usleep(5000); /* 5ms */
 
-    /* One-shot probe: try to dequeue immediately after priming (non-blocking) */
-    {
-        extern int VBMKernelDequeue(int chn, int fd, void **frame_out);
-        void *probe_frame = NULL;
-        if (VBMKernelDequeue(chnNum, chn->fd, &probe_frame) == 0 && probe_frame != NULL) {
-            LOG_FS("EnableChn: probe DQBUF succeeded; kernel produced an early frame %p", probe_frame);
-            /* Immediately re-queue it so normal loop can pick it up */
-            extern int VBMReleaseFrame(int chn, void *frame);
-            VBMReleaseFrame(chnNum, probe_frame);
-        } else {
-            LOG_FS("EnableChn: probe DQBUF found no frame yet (expected on some sensors)");
-        }
-    }
+    /* Do not DQBUF before STREAM_ON; some drivers return EINVAL and may abort later */
 
     /* Match OEM: ensure kernel frame depth is configured (default 0) before STREAM_ON */
     {

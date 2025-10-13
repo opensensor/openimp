@@ -459,7 +459,7 @@ int fs_qbuf(int fd, int index, unsigned long phys, unsigned int length) {
     b.sequence = 0;
     b.m = (uint32_t)phys;  /* Driver uses this as DMA phys (driver-specific) */
     b.length = length;     /* Must equal kernel expected length */
-    b.bytesused = 0;       /* Let driver set bytesused; some drivers ignore this on capture */
+    b.bytesused = length;  /* Some T31 drivers require bytesused==length on capture */
 
     int ret = ioctl(fd, VIDIOC_QBUF, &b);
     if (ret < 0) {
@@ -708,12 +708,12 @@ int VBMCreatePool(int chn, void *fmt, void *ops, void *priv) {
     memcpy(&pixfmt, fmt_bytes + 0x8, sizeof(int));
     memcpy(&req_size, fmt_bytes + 0xc, sizeof(int));
 
-    /* Calculate frame size */
+    /* Calculate frame size and honor requested size from SET_FMT (kernel sizeimage) */
     int calc_size = calculate_frame_size(width, height, pixfmt);
-    pool->frame_size = (req_size >= calc_size) ? req_size : calc_size;
+    pool->frame_size = (req_size > 0) ? req_size : calc_size;
 
-    fprintf(stderr, "[VBM] CreatePool: chn=%d, %dx%d fmt=0x%x, %d frames, size=%d\n",
-            chn, width, height, pixfmt, frame_count, pool->frame_size);
+    fprintf(stderr, "[VBM] CreatePool: chn=%d, %dx%d fmt=0x%x, %d frames, size=%d (req=%d calc=%d)\n",
+            chn, width, height, pixfmt, frame_count, pool->frame_size, req_size, calc_size);
 
     /* Try to get pool from FrameSource */
     pool->pool_id = IMP_FrameSource_GetPool(chn);
@@ -880,43 +880,11 @@ int VBMPrimeKernelQueue(int chn, int fd) {
         VBMFrame *f = &pool->frames[i];
         /* Driver expects DMA physical address in .m (BN MCP shows KSEG1 writes) */
         unsigned long phys = (unsigned long)f->phys_addr;
-        unsigned int klen = 0;
-
-        /* Try QUERYBUF first */
-        if (fs_querybuf(fd, i, &klen) < 0) {
-            fprintf(stderr, "[VBM] PrimeKernelQueue: querybuf failed for idx=%d\n", i);
-            return -1;
-        }
-
-        /* If QUERYBUF returns 0, use the frame's stored size (from SET_FMT sizeimage)
-         * This is the size the kernel expects for QBUF validation.
-         */
-        if (klen == 0) {
-            klen = (unsigned int)f->size;
-            unsigned int nv12_calc = (unsigned int)f->width * (unsigned int)f->height * 3 / 2;
-            fprintf(stderr, "[VBM] PrimeKernelQueue: idx=%d querybuf=0, using frame size=%u (NV12 would be %u, w=%d h=%d)\n",
-                    i, klen, nv12_calc, f->width, f->height);
-        }
-
-        if (klen > (unsigned int)f->size) {
-            fprintf(stderr, "[VBM] PrimeKernelQueue: idx=%d driver_len=%u > our_len=%u -> clamping\n", i, klen, (unsigned int)f->size);
-            klen = (unsigned int)f->size;
-        }
+        /* Use the frame's recorded size (from SET_FMT sizeimage) for QBUF length */
+        unsigned int klen = (unsigned int)f->size;
         if (fs_qbuf(fd, i, phys, klen) < 0) {
-            /* Probe alternate length if NV12 vs stride mismatch: try other of {3110400, pool_size} */
-            unsigned int alt = (klen == (unsigned int)f->size) ? ((unsigned int)f->width * (unsigned int)f->height * 3 / 2) : (unsigned int)f->size;
-            if (alt != klen && alt > 0 && alt <= (unsigned int)f->size) {
-                fprintf(stderr, "[VBM] PrimeKernelQueue: idx=%d first qbuf len=%u failed, trying alt len=%u\n", i, klen, alt);
-                if (fs_qbuf(fd, i, phys, alt) == 0) {
-                    klen = alt;
-                } else {
-                    fprintf(stderr, "[VBM] PrimeKernelQueue: qbuf failed for idx=%d (len=%u)\n", i, alt);
-                    return -1;
-                }
-            } else {
-                fprintf(stderr, "[VBM] PrimeKernelQueue: qbuf failed for idx=%d (len=%u)\n", i, klen);
-                return -1;
-            }
+            fprintf(stderr, "[VBM] PrimeKernelQueue: qbuf failed for idx=%d (len=%u)\n", i, klen);
+            return -1;
         }
     }
     fprintf(stderr, "[VBM] PrimeKernelQueue: queued %d frames to kernel for chn=%d\n", pool->frame_count, chn);

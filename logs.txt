@@ -1,26 +1,438 @@
-[  234.819762] -----sensor_detect: 1330 ret = 0, v = 0x20
-[  234.820256] -----sensor_detect: 1338 ret = 0, v = 0x53
-[  234.820263] gc2053 chip found @ 0x37 (i2c0)
-[  234.820269] sensor driver version H20230726a
-[  234.988795] gc2053 stream on
-[  235.016398] Streaming off, will not wait for buffers,chan index 0
-[  235.016414] CPU: 0 PID: 3051 Comm: streamer Tainted: G           O 3.10.14__isvp_swan_1.0__ #1
-[  235.016421] Stack : 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
-[  235.016421] 	  00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
-[  235.016421] 	  00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
-[  235.016421] 	  00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
-[  235.016421] 	  00000000 00000000 00000000 00000000 00000000 00000000 00000000 84655d60
-[  235.016421] 	  ...
-[  235.016547] Call Trace:[<8001f744>] 0x8001f744
-[  235.016676] [<8001f744>] 0x8001f744
-[  235.016687] [<c024c078>] 0xc024c078
-[  235.016695] [<c02582a4>] 0xc02582a4
-[  235.016702] [<803a5e90>] 0x803a5e90
-[  235.016713] [<800dadb0>] 0x800dadb0
-[  235.016720] [<800dbbb8>] 0x800dbbb8
-[  235.016726] [<8005cfa4>] 0x8005cfa4
-[  235.016734] [<800224bc>] 0x800224bc
-[  235.016743] 
-[  235.209670] ispcore: irq-status 0x00000040, err is 0x40,0x3f8,084c is 0x1
-root@ing-wyze-cam3-a000 ~# 
+root@ing-wyze-cam3-a000 ~# cd /opt/
+root@ing-wyze-cam3-a000 opt# ./streamer
+[I 24821832] MODULE: Initializing module system
+[I 24822700] MODULE: Module system initialized successfully
+[I 24823476] MODULE: Registered module 'rtsp' v1.0.0 (RTSP streaming server module)
+[D 24824451] main: Starting streamer - PID: 2373
+[I 24824913] main: Channel metrics initialized (legacy mode)
+[D 24825300] CONFIG: Using config file /opt/streamer.json
+[I 24825565] CONFIG: Loading configuration from: /opt/streamer.json
+[I 24826564] CONFIG: JSON configuration loaded successfully
+[D 24827430] CONFIG: Parsing JSON configuration values...
+[D 24828000] CONFIG: Parsed JPEG config: enabled=true, quality=85, channel=2
+[D 24828698] CONFIG: Found streams array at root level
+[D 24829488] CONFIG: Found streams array with 2 elements
+[D 24829774] CONFIG: Allocated streams array for 2 streams
+[D 24830108] CONFIG: Parsed resolution '1920x1080' as 1920x1080
+[D 24830336] CONFIG: Parsed stream[0]: 1920x1080, endpoint=ch0
+[D 24830532] CONFIG: Parsed resolution '640x360' as 640x360
+[D 24831486] CONFIG: Parsed stream[1]: 640x360, endpoint=ch1
+[D 24832039] CONFIG: JSON configuration parsed successfully
+[D 24832959] CONFIG:   Stream[0]: 1920x1080, bitrate=2048kbps, endpoint='ch0'
+[D 24833497] CONFIG:   Stream[1]: 640x360, bitrate=512kbps, endpoint='ch1'
+[I 24833794] CONFIG: Configuration monitoring thread started
+[I 24833990] CONFIG: Configuration initialized successfully
+[D 24834034] main: Streamer configuration loaded successfully
+[W 24834071] MODULE: Module system already initialized
+[I 24834198] main: Module system initialized
+[I 24834250] MODULE: Initializing 1 registered modules
+[I 24834466] MODULE: Initializing module 'rtsp'
+[D 24834579] MODULE: Trying module config: /opt/rtsp.json
+[I 24834892] CONFIG: Configuration monitoring started for: /opt/streamer.json
+[I 24835542] MODULE: Loading config for module 'rtsp' from /opt/rtsp.json (binary dir)
+[I 24835644] RTSP_MODULE: RTSP config loaded - port: 554, enabled: true, TLS: disabled (port: 322)
+[I 24835671] RTSP_MODULE: RTSP auth config - enabled: false, username: 'admin', password: 'admin'
+[I 24835708] MODULE: Module 'rtsp' config loaded successfully
+[I 24835733] MODULE: Module 'rtsp' initialized successfully
+[I 24835752] MODULE: Module initialization complete: 1 success, 0 errors
+[I 24835771] main: Modules initialized
+[D 24835786] SENSOR: Getting sensor information from /proc/jz/sensor
+[D 24835984] SENSOR:   name: gc2053
+[D 24836110] SENSOR:   chip_id: 0x2053
+[D 24836216] SENSOR:   version: H20230726a
+[D 24836326] SENSOR:   i2c_addr: 0x37
+[D 24836446] SENSOR:   width: 1920
+[D 24836562] SENSOR:   height: 1080
+[D 24836671] SENSOR:   min_fps: 5
+[D 24836779] SENSOR:   max_fps: 40
+[E 24838178] SENSOR: File /proc/jz/sensor/i2c_bus not found
+[E 24838986] SENSOR: Using default value 0 for i2c_bus
+[E 24839823] SENSOR: File /proc/jz/sensor/boot not found
+[E 24840564] SENSOR: Using default value 0 for boot
+[E 24840753] SENSOR: File /proc/jz/sensor/mclk not found
+[E 24840911] SENSOR: Using default value 1 for mclk
+[E 24840995] SENSOR: File /proc/jz/sensor/video_interface not found
+[E 24841157] SENSOR: Using default value 0 for video_interface
+[E 24841320] SENSOR: File /proc/jz/sensor/reset_gpio not found
+[E 24841546] SENSOR: Using default value 91 for reset_gpio
+[D 24842032] SENSOR: Sensor info: gc2053 (1920x1080@40fps, i2c:0x37)
+[D 24842300] main: Sensor info read successfully
+[D 24842349] SENSOR: Validating configuration against sensor capabilities
+[I 24842387] SENSOR: Sensor configuration: 1920x1080@20fps
+[I 24842681] SENSOR: All streams will use sensor FPS: 20fps
+[D 24842746] main: Configuration validated and adjusted based on sensor capabilities
+[D 24842792] main: System init start
+[I 24842831] main: Opening ISP...
+[IMP_ISP] Open: opened /dev/tx-isp (fd=4)
+[I 24843540] main: ISP opened successfully
+[I 24843604] main: Adding sensor...
+[IMP_ISP] AddSensor: enum idx=0 name='gc2053'
+[IMP_ISP] AddSensor: found matching sensor at index 0
+[IMP_ISP] AddSensor: using sensor_idx=0 for gc2053
+[IMP_ISP] AddSensor: calling TX_ISP_SENSOR_SET_INPUT with index=0
+[IMP_ISP] AddSensor: TX_ISP_SENSOR_SET_INPUT succeeded
+[IMP_ISP] AddSensor: ISP buffer info: addr=0x0 size=4685424
+[DMA] DMA init: using /dev/rmem
+[DMA] DMA init: /dev/rmem mapped at 0x7544b000 size=30408704 base_phys=0x06300000
+[DMA] Alloc: (unnamed) size=4685424 phys=0x6300000 virt=0x7544b000 (rmem off=0x0)
+[IMP_ISP] AddSensor: allocated ISP buffer: virt=0x7544b000 phys=0x6300000 size=4685424
+[IMP_ISP] AddSensor: calling TX_ISP_SET_BUF with addr=0x6300000 size=4685424
+[IMP_ISP] AddSensor: TX_ISP_SET_BUF succeeded
+[IMP_ISP] AddSensor: gc2053 (idx=0, buf_size=4685424)
+[I 25089156] main: Sensor added successfully
+[I 25089610] main: Enabling sensor...
+[IMP_ISP] EnableSensor: proceeding without custom AE/AWB
+[IMP_ISP] EnableSensor: about to call ioctl 0x40045626
+[IMP_ISP] EnableSensor: ioctl 0x40045626 returned 0
+[IMP_ISP] EnableSensor: ioctl 0x40045626 succeeded, sensor_idx=0
+[IMP_ISP] EnableSensor: sensor index validated, proceeding to STREAMON
+[IMP_ISP] EnableSensor: calling ioctl 0x80045612 (ISP STREAMON)
+[IMP_ISP] EnableSensor: ioctl 0x80045612 succeeded
+[IMP_ISP] EnableSensor: calling ioctl 0x800456d0 (LINK_SETUP)
+[IMP_ISP] EnableSensor: ioctl 0x800456d0 succeeded, result=0
+[IMP_ISP] EnableSensor: about to call ioctl 0x800456d2 (LINK_STREAM_ON)
+[IMP_ISP] EnableSensor: gISPdev=0x7721cac0, fd=4
+[IMP_ISP] EnableSensor: ioctl 0x800456d2 returned 0
+[IMP_ISP] EnableSensor: ioctl 0x800456d2 succeeded
+[IMP_ISP] EnableSensor: incrementing opened flag
+[IMP_ISP] EnableSensor: sensor enabled (idx=0)
+[IMP_ISP] EnableSensor: about to return 0
+[I 25091130] main: Sensor enabled successfully
+[I 25091486] COMMON: System memory: 93 MB
+[I 25091824] COMMON: Detected low-memory device: 93 MB total RAM
+[I 25091952] COMMON: Skipping explicit memory pools - relying on reduced buffer counts
+[I 25091994] COMMON: Low-memory optimizations rely on:
+[I 25092110] COMMON:   - Reduced nrVBs (1 buffer per channel)
+[I 25092152] COMMON:   - Smaller OSD pool (512KB)
+[I 25092187] COMMON:   - Disabled unused channels
+[I 25092304] COMMON:   - Let IMP system manage RMEM automatically
+[I 25092344] main: Calling IMP_System_Init()...
+[System] Initializing...
+[System] Subsystems initialized
+[System] Initialized (IMP-1.1.6)
+[I 25092765] main: IMP_System_Init() returned: 0
+[I 25092892] main: System initialized successfully
+[IMP_ISP] EnableTuning: opened /dev/isp-m0 (fd=6)
+[IMP_ISP] EnableTuning: tuning initialized successfully
+[D 25093160] main: ISP tuning enabled successfully
+[IMP_ISP] SetContrast: 128
+[D 25093876] main: ISP tuning contrast set to 128
+[IMP_ISP] SetSharpness: 128
+[D 25094202] main: ISP tuning sharpness set to 128
+[IMP_ISP] SetSaturation: 128
+[D 25094275] main: ISP tuning saturation set to 128
+[IMP_ISP] SetBrightness: 128
+[D 25094332] main: ISP tuning brightness set to 128
+[IMP_ISP] SetISPRunningMode: 0
+[IMP_ISP] SetISPRunningMode: mode set successfully to 0
+[D 25094686] main: ISP running mode set to DAY
+[IMP_ISP] SetSensorFPS: 20/1
+[IMP_ISP] SetSensorFPS: FPS set successfully to 20/1
+[I 25097681] main: Sensor FPS set to 20/1 (all channels use sensor FPS)
+[IMP_ISP] GetSensorFPS: called with fps_num=0x7fbfb410 fps_den=0x7fbfb414
+[IMP_ISP] GetSensorFPS: returning 25/1
+[I 25099447] main: Verified sensor FPS: 25/1 (25.00 fps)
+[I 25099748] COMMON: Channel 0: enabled=1, format='H264' -> payloadType=0x1 (H264), 1920x1080@20/1fps
+[I 25100085] COMMON: Channel 1: enabled=0, format='H264' -> payloadType=0x1 (H264), 640x360@20/1fps, scaler=enabled
+[D 25100156] COMMON: Updated channel configuration from JSON config: ch0=1, ch1=0, ch2=0, ch3=0
+[D 25100194] main: Configuration applied to channels successfully
+[W 25100230] COMMON: Applying memory optimizations for low-memory device
+[I 25100523] COMMON: Low-memory optimizations applied:
+[I 25100600] COMMON:   - Buffer optimization: nrVBs=1, FIFO depth=0
+[I 25100638] COMMON:   - Channel enabling: Based on configuration
+[I 25100673] COMMON:   - Channels 2-3: Not used in current setup
+[I 25100708] COMMON:   - Output resolution: Handled by RTSP module
+[I 25101002] COMMON: SUCCESS: optimized with configuration-driven channel management
+[FrameSource] CreateChn: Opened /dev/framechan0 (fd=7, nonblock)
+[System] Registered module [0,0]: FrameSource
+[FrameSource] CreateChn: registered FrameSource module [0,0] with 1 output
+[FrameSource] CreateChn: chn=0, 1920x1080, fmt=0xa
+[D 25101408] main: FrameSource channel 0 created
+[FrameSource] SetChnAttr: chn=0, 1920x1080, fmt=0xa
+[D 25101485] main: FrameSource channel 0 attributes set
+[I 25101631] main: T31: Forcing FIFO depth to 0 (vendor-compatible)
+[D 25101684] main: Using FIFO depth 0 for channel 0
+[FrameSource] SetChnFifoAttr: chn=0, maxdepth=0, depth=0
+[I 25101835] main: FrameSource channel 0: FIFO buffer depth set to 0 frames
+[D 25101884] main: FrameSource channel 1 not enabled
+[D 25101998] main: FrameSource channel 2 not enabled
+[D 25102045] main: FrameSource channel 3 not enabled
+[D 25102084] main: FrameSource initialized successfully
+[System] Registered module [1,0]: Encoder
+[Encoder] CreateGroup: registered Encoder module [1,0] with 1 output and update callback
+[Encoder] CreateGroup: grp=0
+[I 25102375] main: Encoder group 0 created successfully
+[I 25102420] main: Encoder group 1 not enabled
+[I 25102456] main: Encoder group 2 not enabled
+[I 25102574] main: Encoder group 3 not enabled
+[Encoder] SetMaxStreamCnt: chn=0, cnt=2
+[I 25102744] main: Channel 0: Set 2 stream buffers for low-memory device
+[Encoder] SetStreamBufSize: chn=0, size=262144
+[I 25102820] main: Channel 0: Set 256KB stream buffer size for low-memory device
+[I 25102950] main: Channel 0: Set 2 stream buffers, 262144 bytes each
+[Encoder] SetChnEntropyMode: chn=0, mode=2
+[I 25103111] main: Channel 0: payloadType=0x1, computed profile=0x42
+[Encoder] SetDefaultParam: 1920x1080, 20/1 fps, profile=66, rc=1
+[I 25103197] main: Encoder channel 0 configured: 1920x1080@20/1fps, GOP=20, bitrate=2000kbps, mode=CBR
+[Codec] SetDefaultParam: initialized
+[Encoder] channel_encoder_init: 1920x1080, profile=0x42->0x42, fps=20/1, gop=20, bitrate=0
+[Fifo] Init: size=4, max_elements=5
+[Fifo] Init: size=7, max_elements=8
+[Codec] Create: vendor library will handle hardware acceleration via /dev/avpu
+[Codec] Create: codec=0x754480d0, channel=0
+[Encoder] channel_encoder_init: frame_cnt=4, frame_size=1048576
+[Fifo] Init: size=4, max_elements=5
+[Encoder] CreateChn: chn=0, profile=66 created successfully
+[Encoder] SetChnGopLength: chn=0, gop=20
+[Encoder] RequestIDR: chn=0
+[HW_Encoder] RequestIDR: next frame will be IDR
+[Encoder] RegisterChn: grp=0, chn=0
+[I 25104833] main: Encoder initialized successfully
+[I 25104876] main: Initializing JPEG encoder for channel 4 (stream 0)
+[Encoder] SetDefaultParam: 1920x1080, 20/1 fps, profile=67108864, rc=0
+[D 25105041] main: Set default JPEG parameters for channel 4: 1920x1080
+[Codec] SetDefaultParam: initialized
+[Encoder] channel_encoder_init: 1920x1080, profile=0x4000000->0x0, fps=20/1, gop=0, bitrate=0
+[Fifo] Init: size=4, max_elements=5
+[Fifo] Init: size=7, max_elements=8
+[Codec] Create: vendor library will handle hardware acceleration via /dev/avpu
+[Codec] Create: codec=0x75448b80, channel=1
+[Encoder] channel_encoder_init: frame_cnt=4, frame_size=1048576
+[Fifo] Init: size=4, max_elements=5
+[Encoder] CreateChn: chn=4, profile=67108864 created successfully
+[D 25106357] main: Created JPEG channel 4
+[Encoder] RegisterChn: grp=0, chn=4
+[D 25106430] main: Registered JPEG channel 4 to group 0
+[I 25106602] main: JPEG encoder channel 4 initialized successfully
+[I 25106648] main: Stream 1 disabled, skipping JPEG encoder initialization
+[I 25106803] main: Binding FrameSource -> Encoder for channel 0 (OSD disabled)
+[System] Bind request: [0,0,0] -> [1,0,0]
+[System] Binding [0,0,0] -> [1,0,0]
+[System] Bound FrameSource -> Encoder (observer added)
+[I 25107033] main: Bound FrameSource -> Encoder for channel 0
+[I 25107072] main: Channel 1 not enabled, skipping bind
+[I 25107110] main: Channel 2 not enabled, skipping bind
+[I 25107382] main: Channel 3 not enabled, skipping bind
+[I 25107608] main: Enabling FrameSource channel 0
+[I 25107650] main: Channel 0: nrVBs=1, resolution=1920x1080
+[FrameSource] GetChnFifoAttr: chn=0 -> maxdepth=0, depth=0
+[I 25107715] main: Channel 0: FIFO maxdepth=0, type=0
+[KernelIF] Set frame depth: 0
+[FrameSource] SetFrameDepth: chn=0, depth=0
+[I 25107920] main: Channel 0: Frame depth set to 0
+[I 25108054] main: Channel 0: Expected VBM allocation ~3110400 bytes (3.0MB) for 1 buffers
+[KernelIF] Set format: 1920x1080 fmt=0xa (fourcc=0x3231564e) sizeimage=3110400->3133440 bytesperline=2880 colorspace=8
+[FrameSource] EnableChn: using sizeimage=3133440 from SET_FMT for chn=0
+[KernelIF] Set buffer count: 1 (actual: 1)
+[VBM] CreatePool: allocating pool_size=1448 (frame_count=1 * 0x428 + 0x180)
+[VBM] CreatePool: chn=0, 1920x1080 fmt=0xa, 1 frames, size=3133440 (req=3133440 calc=3133440)
+[DMA] Alloc: ��� siz��� size=3133440 phys=0x6778000 virt=0x758c3000 (rmem off=0x478000)
+[VBM] Frame 0: phys=0x6778000 virt=0x758c3000
+[VBM] CreatePool: chn=0 created successfully
+[VBM] FillPool: chn=0, filling 1 frames
+[VBM] FillPool: queued 1 frames
+[VBM] PrimeKernelQueue: queued 1 frames to kernel for chn=0
+[Encoder] stream_thread: started for channel 0
+[Encoder] stream_thread: started for channel 4
+[Encoder] encoder_thread: started for channel 0
+[Encoder] encoder_thread: started for channel 4
+[KernelIF] DQBUF failed: Invalid argument
+[FrameSource] EnableChn: probe DQBUF found no frame yet (expected on some sensors)
+[KernelIF] Set frame depth: 0
+[FrameSource] EnableChn: capture thread signaled readiness
+[KernelIF] Stream started
+[FrameSource] EnableChn: chn=0 enabled successfully
+[I 25115970] main: FrameSource channel 0 enabled successfully
+[I 25116015] main: FrameSource stream started successfully
+[I 25116051] main: OSD updates will be handled by OSD module
+[Encoder] RequestIDR: chn=0
+[HW_Encoder] RequestIDR: next frame will be IDR
+[Encoder] StartRecvPic: chn=0
+[I 25116154] main: Encoder channel 0 started receiving pictures
+[Encoder] RequestIDR: chn=0
+[HW_Encoder] RequestIDR: next frame will be IDR
+[I 25116233] MODULE: Starting all initialized modules
+[I 25116526] MODULE: Starting module 'rtsp'
+[I 25116598] RTSP_MODULE: Starting RTSP module
+[D 25116726] RTSP: Creating RTSP server on port 554
+[D 25117350] RTSP: Copying RTSP server configuration
+[D 25117422] RTSP: Initializing GOP cache
+[D 25117777] RTSP: Initializing GOP cache for channel 0
+[D 25117823] RTSP: Initializing frame buffers for channel 0
+[D 25117853] RTSP: Allocating frame buffer 0 for channel 0
+[D 25117924] RTSP: Allocating frame buffer 1 for channel 0
+[D 25118291] RTSP: Allocating frame buffer 2 for channel 0
+[D 25118363] RTSP: Allocating frame buffer 3 for channel 0
+[D 25118729] RTSP: Allocating frame buffer 4 for channel 0
+[D 25118811] RTSP: Allocating frame buffer 5 for channel 0
+[D 25118871] RTSP: Allocating frame buffer 6 for channel 0
+[D 25119236] RTSP: Allocating frame buffer 7 for channel 0
+[D 25119302] RTSP: Allocating frame buffer 8 for channel 0
+[D 25119641] RTSP: Allocating frame buffer 9 for channel 0
+[D 25119752] RTSP: Allocating frame buffer 10 for channel 0
+[D 25120182] RTSP: Allocating frame buffer 11 for channel 0
+[D 25120240] RTSP: Allocating frame buffer 12 for channel 0
+[D 25120302] RTSP: Allocating frame buffer 13 for channel 0
+[D 25120669] RTSP: Allocating frame buffer 14 for channel 0
+[D 25120728] RTSP: Allocating frame buffer 15 for channel 0
+[D 25120792] RTSP: Allocating frame buffer 16 for channel 0
+[D 25121139] RTSP: Allocating frame buffer 17 for channel 0
+[D 25121198] RTSP: Allocating frame buffer 18 for channel 0
+[D 25121262] RTSP: Allocating frame buffer 19 for channel 0
+[D 25121611] RTSP: Allocating frame buffer 20 for channel 0
+[D 25121692] RTSP: Allocating frame buffer 21 for channel 0
+[FrameSource] frame_capture_thread: started for channel 0, state=2, fd=7
+[D 25122136] RTSP: Allocating frame buffer 22 for channel 0
+[D 25122202] RTSP: Allocating frame buffer 23 for channel 0
+[D 25122410] RTSP: Allocating frame buffer 24 for channel 0
+[D 25122788] RTSP: Allocating frame buffer 25 for channel 0
+[D 25122846] RTSP: Allocating frame buffer 26 for channel 0
+[D 25122909] RTSP: Allocating frame buffer 27 for channel 0
+[D 25123408] RTSP: Allocating frame buffer 28 for channel 0
+[D 25123466] RTSP: Allocating frame buffer 29 for channel 0
+[D 25123510] RTSP: Allocating frame buffer 30 for channel 0
+[D 25123886] RTSP: Allocating frame buffer 31 for channel 0
+[D 25123971] RTSP: Allocating frame buffer 32 for channel 0
+[D 25124022] RTSP: Allocating frame buffer 33 for channel 0
+[D 25124368] RTSP: Allocating frame buffer 34 for channel 0
+[D 25124430] RTSP: Allocating frame buffer 35 for channel 0
+[D 25124469] RTSP: Allocating frame buffer 36 for channel 0
+[D 25124825] RTSP: Allocating frame buffer 37 for channel 0
+[D 25124890] RTSP: Allocating frame buffer 38 for channel 0
+[D 25124931] RTSP: Allocating frame buffer 39 for channel 0
+[D 25125476] RTSP: Allocating frame buffer 40 for channel 0
+[D 25125547] RTSP: Allocating frame buffer 41 for channel 0
+[D 25125614] RTSP: Allocating frame buffer 42 for channel 0
+[D 25125968] RTSP: Allocating frame buffer 43 for channel 0
+[D 25126031] RTSP: Allocating frame buffer 44 for channel 0
+[D 25126075] RTSP: Allocating frame buffer 45 for channel 0
+[D 25126409] RTSP: Allocating frame buffer 46 for channel 0
+[D 25126471] RTSP: Allocating frame buffer 47 for channel 0
+[D 25126521] RTSP: Allocating frame buffer 48 for channel 0
+[D 25126926] RTSP: Allocating frame buffer 49 for channel 0
+[D 25126988] RTSP: Allocating frame buffer 50 for channel 0
+[D 25127028] RTSP: Allocating frame buffer 51 for channel 0
+[D 25127381] RTSP: Allocating frame buffer 52 for channel 0
+[D 25127458] RTSP: Allocating frame buffer 53 for channel 0
+[D 25127500] RTSP: Allocating frame buffer 54 for channel 0
+[D 25127986] RTSP: Allocating frame buffer 55 for channel 0
+[D 25128060] RTSP: Allocating frame buffer 56 for channel 0
+[D 25128436] RTSP: Allocating frame buffer 57 for channel 0
+[D 25128498] RTSP: Allocating frame buffer 58 for channel 0
+[D 25128540] RTSP: Allocating frame buffer 59 for channel 0
+[D 25128582] RTSP: Initializing GOP cache for channel 1
+[D 25128910] RTSP: Initializing frame buffers for channel 1
+[D 25128956] RTSP: Allocating frame buffer 0 for channel 1
+[D 25129008] RTSP: Allocating frame buffer 1 for channel 1
+[D 25129072] RTSP: Allocating frame buffer 2 for channel 1
+[D 25129293] RTSP: Allocating frame buffer 3 for channel 1
+[D 25129344] RTSP: Allocating frame buffer 4 for channel 1
+[D 25129390] RTSP: Allocating frame buffer 5 for channel 1
+[D 25129540] RTSP: Allocating frame buffer 6 for channel 1
+[D 25129594] RTSP: Allocating frame buffer 7 for channel 1
+[D 25129738] RTSP: Allocating frame buffer 8 for channel 1
+[D 25129786] RTSP: Allocating frame buffer 9 for channel 1
+[D 25130336] RTSP: Allocating frame buffer 10 for channel 1
+[D 25130677] RTSP: Allocating frame buffer 11 for channel 1
+[D 25130750] RTSP: Allocating frame buffer 12 for channel 1
+[D 25130970] RTSP: Allocating frame buffer 13 for channel 1
+[D 25131024] RTSP: Allocating frame buffer 14 for channel 1
+[D 25131178] RTSP: Allocating frame buffer 15 for channel 1
+[D 25131226] RTSP: Allocating frame buffer 16 for channel 1
+[D 25131370] RTSP: Allocating frame buffer 17 for channel 1
+[D 25131420] RTSP: Allocating frame buffer 18 for channel 1
+[D 25131560] RTSP: Allocating frame buffer 19 for channel 1
+[D 25131610] RTSP: Allocating frame buffer 20 for channel 1
+[D 25131747] RTSP: Allocating frame buffer 21 for channel 1
+[D 25131813] RTSP: Allocating frame buffer 22 for channel 1
+[D 25131972] RTSP: Allocating frame buffer 23 for channel 1
+[D 25132117] RTSP: Allocating frame buffer 24 for channel 1
+[D 25132170] RTSP: Allocating frame buffer 25 for channel 1
+[D 25132307] RTSP: Allocating frame buffer 26 for channel 1
+[D 25132360] RTSP: Allocating frame buffer 27 for channel 1
+[D 25132502] RTSP: Allocating frame buffer 28 for channel 1
+[D 25132550] RTSP: Allocating frame buffer 29 for channel 1
+[D 25132689] RTSP: Allocating frame buffer 30 for channel 1
+[D 25132736] RTSP: Allocating frame buffer 31 for channel 1
+[D 25132898] RTSP: Allocating frame buffer 32 for channel 1
+[D 25133124] RTSP: Allocating frame buffer 33 for channel 1
+[D 25133471] RTSP: Allocating frame buffer 34 for channel 1
+[D 25133527] RTSP: Allocating frame buffer 35 for channel 1
+[D 25133671] RTSP: Allocating frame buffer 36 for channel 1
+[D 25133723] RTSP: Allocating frame buffer 37 for channel 1
+[D 25133859] RTSP: Allocating frame buffer 38 for channel 1
+[D 25133914] RTSP: Allocating frame buffer 39 for channel 1
+[D 25134047] RTSP: Allocating frame buffer 40 for channel 1
+[D 25134106] RTSP: Allocating frame buffer 41 for channel 1
+[D 25134268] RTSP: Allocating frame buffer 42 for channel 1
+[D 25134423] RTSP: Allocating frame buffer 43 for channel 1
+[D 25134478] RTSP: Allocating frame buffer 44 for channel 1
+[D 25134618] RTSP: Allocating frame buffer 45 for channel 1
+[D 25134672] RTSP: Allocating frame buffer 46 for channel 1
+[D 25134970] RTSP: Allocating frame buffer 47 for channel 1
+[D 25135211] RTSP: Allocating frame buffer 48 for channel 1
+[D 25135263] RTSP: Allocating frame buffer 49 for channel 1
+[D 25135313] RTSP: Allocating frame buffer 50 for channel 1
+[D 25135462] RTSP: Allocating frame buffer 51 for channel 1
+[D 25135538] RTSP: Allocating frame buffer 52 for channel 1
+[D 25135701] RTSP: Allocating frame buffer 53 for channel 1
+[D 25135847] RTSP: Allocating frame buffer 54 for channel 1
+[D 25135898] RTSP: Allocating frame buffer 55 for channel 1
+[D 25136040] RTSP: Allocating frame buffer 56 for channel 1
+[D 25136091] RTSP: Allocating frame buffer 57 for channel 1
+[D 25136238] RTSP: Allocating frame buffer 58 for channel 1
+[D 25136287] RTSP: Allocating frame buffer 59 for channel 1
+[D 25136599] RTSP: Initializing clients
+[D 25136811] RTSP: Initializing client 0
+[D 25136911] RTSP: Initializing client 1
+[D 25137046] RTSP: Initializing client 2
+[D 25137108] RTSP: Initializing client 3
+[D 25137145] RTSP: Initializing client 4
+[D 25137277] RTSP: Initializing client 5
+[D 25137315] RTSP: Initializing client 6
+[D 25137347] RTSP: Initializing client 7
+[D 25137470] RTSP: RTSP server created successfully
+[E 25137514] RTSP_MODULE: RTSP: Configuring stream 0 (ch0): 1920x1080, bitrate=2048
+[Encoder] GetChnAttr: chn=0
+[D 25137694] RTSP: Adding stream: ch0 (channel 0, H264)
+[D 25137744] RTSP: Reallocating streams array (current count: 0)
+[D 25137880] RTSP: Copying stream configuration
+[D 25137922] RTSP: Stream added successfully (total streams: 1)
+[Encoder] RequestIDR: chn=0
+[HW_Encoder] RequestIDR: next frame will be IDR
+[Encoder] StartRecvPic: chn=0
+[I 25138128] RTSP: Starting RTSP server
+[I 25138166] RTSP: Creating listen socket...
+[I 25138880] RTSP: Listen socket created successfully
+[I 25138952] RTSP: Binding socket to port 554...
+[I 25139328] RTSP: Socket bound successfully to port 554
+[I 25139376] RTSP: Setting socket to listen mode...
+[I 25139434] RTSP: Socket listening successfully
+[I 25139742] RTSP: Starting RTSP server thread...
+[I 25139871] RTSP: RTSP server thread started successfully
+[I 25140248] RTSP: Starting RTP thread...
+[I 25140406] RTSP: RTP thread started successfully
+[I 25140744] RTSP: RTSP server started successfully on port 554
+[I 25140791] MODULE: Module 'rtsp' started successfully
+[I 25140830] MODULE: Module start complete: 1 success, 0 errors
+[I 25140868] main: Modules started
+[I 25141201] SNAPSHOT_FALLBACK: Snapshot fallback initialized (dir=/tmp, interval=5000ms)
+[I 25141259] SNAPSHOT_FALLBACK: HTTP module not available, starting snapshot fallback
+[I 25141378] SNAPSHOT_FALLBACK: Snapshot fallback started
+[I 25141871] main: Snapshot fallback system started
+[I 25141926] main: Initialization complete, starting frame manager
+[I 25142276] FRAME_MGR: Frame manager initialized successfully
+[I 25142409] FRAME_MGR: Frame manager started successfully
+[I 25142752] main: Frame manager started - using modular architecture
+[I 25143119] SNAPSHOT_FALLBACK: Snapshot fallback worker thread started
+[D 25143449] SNAPSHOT_FALLBACK: Capturing snapshot for channel 0 to /tmp/snap0.jpg
+[Encoder] RequestIDR: chn=4
+[HW_Encoder] RequestIDR: next frame will be IDR
+[Encoder] StartRecvPic: chn=4
+[I 25143794] FRAME_MGR: Frame processing thread started
+[I 25144870] FRAME_MGR: 64MB SoC: Using aggressive polling timeout: 25ms (was 50ms)
+[W 25144825] SNAPSHOT_FALLBACK: Polling JPEG stream timeout for channel 0
+[Encoder] StopRecvPic: chn=4
+[D 25746158] SNAPSHOT_FALLBACK: Capturing snapshot for channel 0 to /tmp/snap0.jpg
+
 
