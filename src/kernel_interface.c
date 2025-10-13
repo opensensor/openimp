@@ -454,7 +454,7 @@ int fs_qbuf(int fd, int index, unsigned long phys, unsigned int length) {
     b.index = (uint32_t)index;
     b.type = 1;            /* V4L2_BUF_TYPE_VIDEO_CAPTURE */
     b.memory = 2;          /* Must match REQBUFS memory type (USERPTR) */
-    b.field = 0;           /* V4L2_FIELD_NONE */
+    b.field = 4;           /* Driver expects specific field value (vendor used 4) */
     b.flags = 0;
     b.sequence = 0;
     b.m = (uint32_t)phys;  /* Driver uses this as DMA phys (driver-specific) */
@@ -477,7 +477,7 @@ int fs_dqbuf(int fd, int *index_out) {
     memset(&b, 0, sizeof(b));
     b.type   = 1;   /* V4L2_BUF_TYPE_VIDEO_CAPTURE */
     b.memory = 2;   /* V4L2_MEMORY_USERPTR */
-    b.field  = 0;   /* V4L2_FIELD_NONE */
+    b.field  = 4;   /* Match vendor value to avoid silent DQ issues */
 
     int ret = ioctl(fd, VIDIOC_DQBUF, &b);
     if (ret < 0) {

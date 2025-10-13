@@ -11,6 +11,7 @@
 #include <fcntl.h>
 #include <sys/ioctl.h>
 #include <sys/select.h>
+
 #include <sys/time.h>
 #include <pthread.h>
 #include <semaphore.h>
@@ -273,7 +274,7 @@ int IMP_FrameSource_EnableChn(int chnNum) {
     fmt.pixelformat = chn->attr.pixFmt;
 
     /* Ingenic imp_channel_attr fields (for tisp_channel_attr_set) */
-    fmt.enable = 0; /* 0 = use sensor dimensions, 1 = use custom dimensions */
+    fmt.enable = 1; /* Enable explicit channel dimensions like prudynt */
     fmt.attr_width = chn->attr.picWidth;
     fmt.attr_height = chn->attr.picHeight;
 
@@ -319,9 +320,9 @@ int IMP_FrameSource_EnableChn(int chnNum) {
      * The kernel's REQBUFS handler allocates internal buffer structures.
      * This matches the OEM libimp.so sequence: SET_FMT -> REQBUFS -> VBMCreatePool.
      */
-    /* Use channel attr nrVBs; some T31 drivers require at least 2 buffers */
-    int requested_bufcnt = chn->attr.nrVBs > 0 ? chn->attr.nrVBs : 4;
-    if (requested_bufcnt < 2) requested_bufcnt = 2;
+    /* Use channel attr nrVBs; align with prudynt (nrVBs=1) but let driver adjust actual count */
+    int requested_bufcnt = chn->attr.nrVBs > 0 ? chn->attr.nrVBs : 1;
+    if (requested_bufcnt < 1) requested_bufcnt = 1;
     int bufcnt = fs_set_buffer_count(chn->fd, requested_bufcnt);
     if (bufcnt < 0) {
         LOG_FS("EnableChn failed: cannot set buffer count");
@@ -640,6 +641,7 @@ static void *frame_capture_thread(void *arg) {
 
     LOG_FS("frame_capture_thread: started for channel %d, state=%d, fd=%d",
            chn_num, chn->state, chn->fd);
+    fflush(stderr);
 
     int frame_count = 0;
     int poll_count = 0;
@@ -650,11 +652,20 @@ static void *frame_capture_thread(void *arg) {
     const int NO_FRAME_THRESHOLD = 20;  /* ~2s: 20 x 100ms select timeouts */
     const int IOCTL_FAIL_THRESHOLD = 5; /* switch after repeated ioctl errors */
 
+    LOG_FS("frame_capture_thread chn=%d: entering main loop", chn_num);
+    fflush(stderr);
 
     /* Main capture loop */
     while (1) {
         /* Check for thread cancellation */
         pthread_testcancel();
+
+        poll_count++;
+        if (poll_count == 1 || poll_count == 5 || poll_count == 10 || (poll_count % 50) == 0) {
+            LOG_FS("frame_capture_thread chn=%d: poll iteration %d, state=%d, fd=%d, software_mode=%d",
+                   chn_num, poll_count, chn->state, chn->fd, software_mode);
+            fflush(stderr);
+        }
 
         /* Check if channel is still running */
         if (chn->state != 2) {
@@ -662,6 +673,7 @@ static void *frame_capture_thread(void *arg) {
             if (state_wait_count % 100 == 0) {
                 LOG_FS("frame_capture_thread chn=%d: waiting for state=2 (current state=%d, waited %d times)",
                        chn_num, chn->state, state_wait_count);
+                fflush(stderr);
             }
             usleep(10000); /* 10ms */
             continue;
@@ -669,6 +681,7 @@ static void *frame_capture_thread(void *arg) {
 
         if (state_wait_count > 0) {
             LOG_FS("frame_capture_thread chn=%d: state is now 2, starting capture", chn_num);
+            fflush(stderr);
             state_wait_count = 0;
         }
 
@@ -713,8 +726,32 @@ static void *frame_capture_thread(void *arg) {
             continue;
         }
 
-        /* HARDWARE MODE: Avoid VIDIOC_POLL_FRAME (may block); try non-blocking DQBUF loop */
+        /* HARDWARE MODE: Use VIDIOC_POLL_FRAME to wait for frames, then drain all with DQBUF */
         int drained = 0;
+        {
+            if (poll_count <= 3) {
+                LOG_FS("frame_capture_thread chn=%d: about to call VIDIOC_POLL_FRAME (poll #%d)", chn_num, poll_count);
+                fflush(stderr);
+            }
+            int timeout_ms = 25; /* short, responsive */
+            int prc = ioctl(chn->fd, VIDIOC_POLL_FRAME, &timeout_ms);
+            if (poll_count <= 3) {
+                LOG_FS("frame_capture_thread chn=%d: VIDIOC_POLL_FRAME returned %d (errno=%d)", chn_num, prc, errno);
+                fflush(stderr);
+            }
+            if (prc < 0) {
+                if (errno != EAGAIN && errno != ETIMEDOUT) {
+                    ioctl_fail_count++;
+                    if (ioctl_fail_count % 5 == 0) {
+                        LOG_FS("frame_capture_thread chn=%d: POLL_FRAME error: %s (count=%d)", chn_num, strerror(errno), ioctl_fail_count);
+                        fflush(stderr);
+                    }
+                }
+            } else {
+                ioctl_fail_count = 0;
+            }
+        }
+
         while (1) {
             void *frame = NULL;
             extern int VBMKernelDequeue(int chn, int fd, void **frame_out);

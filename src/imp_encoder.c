@@ -8,6 +8,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <time.h>
+#include <errno.h>
 #include <sys/select.h>
 #include <sys/eventfd.h>
 #include <pthread.h>
@@ -915,10 +916,43 @@ int IMP_Encoder_ReleaseStream(int encChn, IMPEncoderStream *stream) {
 }
 
 int IMP_Encoder_PollingStream(int encChn, uint32_t timeoutMsec) {
-    /* Disabled noisy log - always returns timeout */
-    (void)encChn;
-    (void)timeoutMsec;
-    return -1;
+    if (encChn < 0 || encChn >= MAX_ENC_CHANNELS) {
+        return -1;
+    }
+
+    EncChannel *chn = &g_EncChannel[encChn];
+
+    /* Check if channel is registered */
+    if (chn->chn_id < 0) {
+        return -1;
+    }
+
+    /* Wait for stream with timeout using sem_timedwait */
+    struct timespec ts;
+    if (clock_gettime(CLOCK_REALTIME, &ts) < 0) {
+        return -1;
+    }
+
+    /* Add timeout */
+    ts.tv_sec += timeoutMsec / 1000;
+    ts.tv_nsec += (timeoutMsec % 1000) * 1000000;
+    if (ts.tv_nsec >= 1000000000) {
+        ts.tv_sec++;
+        ts.tv_nsec -= 1000000000;
+    }
+
+    /* Wait for stream availability */
+    if (sem_timedwait(&chn->sem_408, &ts) < 0) {
+        if (errno == ETIMEDOUT) {
+            return -1; /* Timeout */
+        }
+        return -1; /* Error */
+    }
+
+    /* Stream is available, post back to semaphore so GetStream can retrieve it */
+    sem_post(&chn->sem_408);
+
+    return 0; /* Stream available */
 }
 
 int IMP_Encoder_Query(int encChn, IMPEncoderCHNStat *stat) {
