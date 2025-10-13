@@ -1,111 +1,110 @@
-root@ing-wyze-cam3-a000 ~# cd /opt/
 root@ing-wyze-cam3-a000 opt# ./streamer
-[I 324173161] MODULE: Initializing module system
-[I 324174020] MODULE: Module system initialized successfully
-[I 324174832] MODULE: Registered module 'osd' v1.0.0 (On-Screen Display overlay system)
-[I 324175353] MODULE: Registered module 'rtsp' v1.0.0 (RTSP streaming server module)
-[D 324175725] main: Starting streamer - PID: 3025
-[I 324175971] main: Channel metrics initialized (legacy mode)
-[D 324176347] CONFIG: Using config file /opt/streamer.json
-[I 324176606] CONFIG: Loading configuration from: /opt/streamer.json
-[I 324177596] CONFIG: JSON configuration loaded successfully
-[D 324178493] CONFIG: Parsing JSON configuration values...
-[D 324179027] CONFIG: Parsed JPEG config: enabled=true, quality=85, channel=2
-[D 324179666] CONFIG: Found streams array at root level
-[D 324179908] CONFIG: Found streams array with 2 elements
-[D 324180208] CONFIG: Allocated streams array for 2 streams
-[D 324180483] CONFIG: Parsed resolution '1920x1080' as 1920x1080
-[D 324180698] CONFIG: Parsed stream[0]: 1920x1080, endpoint=ch0
-[D 324180965] CONFIG: Parsed resolution '640x360' as 640x360
-[D 324181787] CONFIG: Parsed stream[1]: 640x360, endpoint=ch1
-[D 324182350] CONFIG: JSON configuration parsed successfully
-[D 324183171] CONFIG:   Stream[0]: 1920x1080, bitrate=2048kbps, endpoint='ch0'
-[D 324183431] CONFIG:   Stream[1]: 640x360, bitrate=512kbps, endpoint='ch1'
-[I 324184119] CONFIG: Configuration monitoring thread started
-[I 324184641] CONFIG: Configuration initialized successfully
-[D 324184879] main: Streamer configuration loaded successfully
-[W 324185108] MODULE: Module system already initialized
-[I 324185221] main: Module system initialized
-[I 324185262] MODULE: Registered module 'motion' v1.0.0 (IVS-based motion detection with configurable ROI regions)
-[I 324185387] main: Motion detection module registered manually
-[E 324185874] MODULE: Module 'osd' already registered
-[W 324186055] main: Failed to register OSD module
-[I 324186107] MODULE: Initializing 3 registered modules
-[I 324186149] MODULE: Initializing module 'osd'
-[D 324186252] MODULE: Trying module config: /opt/osd.json
-[I 324186565] CONFIG: Configuration monitoring started for: /opt/streamer.json
-[I 324188064] MODULE: Loading config for module 'osd' from /opt/osd.json (binary dir)
-[I 324189301] MODULE: Module 'osd' config loaded successfully
-[I 324189694] OSD_MODULE: Initializing OSD module
-[I 324189883] OSD_MODULE: OSD module init - copied config: enabled=true, stream0_enabled=true, stream1_enabled=true
-[I 324190061] OSD_MODULE: Stream 0 time config: enabled=true, format='%F %T', font='/usr/share/fonts/default.ttf', size=48
-[I 324190117] OSD_MODULE: Stream 1 time config: enabled=true, format='%H:%M:%S', font='/usr/share/fonts/default.ttf', size=24
-[I 324190157] OSD_MODULE: OSD module initialized successfully
-[I 324190313] MODULE: Module 'osd' initialized successfully
-[I 324190359] MODULE: Initializing module 'rtsp'
-[D 324190406] MODULE: Trying module config: /opt/rtsp.json
-[I 324191606] MODULE: Loading config for module 'rtsp' from /opt/rtsp.json (binary dir)
-[I 324191979] RTSP_MODULE: RTSP config loaded - port: 554, enabled: true, TLS: disabled (port: 322)
-[I 324192252] RTSP_MODULE: RTSP auth config - enabled: false, username: 'admin', password: 'admin'
-[I 324192324] MODULE: Module 'rtsp' config loaded successfully
-[I 324192467] MODULE: Module 'rtsp' initialized successfully
-[I 324192601] MODULE: Initializing module 'motion'
-[D 324192652] MODULE: Trying module config: /opt/motion.json
-[I 324193301] MODULE: Loading config for module 'motion' from /opt/motion.json (binary dir)
-[I 324193675] MODULE: Module 'motion' config loaded successfully
-[I 324193944] MOTION: Initializing motion detection module
-[I 324195220] MOTION: Loaded ROI configuration from: ./roi.json
-[I 324195689] MOTION: Parsing 1 zones from web UI format
-[I 324195947] MOTION: Zone[0] ID=1 'Full Frame' type=include: (0,0) 0x0
-[I 324196139] MOTION: Motion settings: sensitivity=3, min_object_size=5
-[I 324196274] MOTION: Channel 1 dimensions: 640x360 (scaler enabled)
-[I 324196326] MOTION: Using channel 1 dimensions: 640x360
-[I 324196446] MOTION: Set zone[0] 'Full Frame' to IVS frame dimensions: 640x360
-[I 324196485] MOTION: Keeping original zone coordinates for OSD scaling per stream resolution
-[I 324196604] MOTION: Attempting to update OSD motion zones for stream 0
-[I 324196657] OSD_MODULE: osd_update_motion_zones called for group_id=0
-[E 324196788] OSD_MODULE: Invalid group_id 0 or context not found
-[D 324196833] MOTION: Failed to update OSD motion zones for stream 0 (result=-1), may not be enabled or ready
-[I 324196877] MOTION: Attempting to update OSD motion zones for stream 1
-[I 324196998] OSD_MODULE: osd_update_motion_zones called for group_id=1
-[E 324197035] OSD_MODULE: Invalid group_id 1 or context not found
-[D 324197073] MOTION: Failed to update OSD motion zones for stream 1 (result=-1), may not be enabled or ready
-[I 324197199] MOTION: Motion detection module initialized successfully
-[I 324197241] MODULE: Module 'motion' initialized successfully
-[I 324197615] MODULE: Module initialization complete: 3 success, 0 errors
-[I 324197677] main: Modules initialized
-[D 324197714] SENSOR: Getting sensor information from /proc/jz/sensor
-[D 324197925] SENSOR:   name: gc2053
-[D 324198700] SENSOR:   chip_id: 0x2053
-[D 324199429] SENSOR:   version: H20230726a
-[D 324199852] SENSOR:   i2c_addr: 0x37
-[D 324200319] SENSOR:   width: 1920
-[D 324201119] SENSOR:   height: 1080
-[D 324202054] SENSOR:   min_fps: 5
-[D 324202685] SENSOR:   max_fps: 40
-[E 324202991] SENSOR: File /proc/jz/sensor/i2c_bus not found
-[E 324203205] SENSOR: Using default value 0 for i2c_bus
-[E 324203358] SENSOR: File /proc/jz/sensor/boot not found
-[E 324203779] SENSOR: Using default value 0 for boot
-[E 324204095] SENSOR: File /proc/jz/sensor/mclk not found
-[E 324204433] SENSOR: Using default value 1 for mclk
-[E 324204536] SENSOR: File /proc/jz/sensor/video_interface not found
-[E 324205063] SENSOR: Using default value 0 for video_interface
-[E 324205319] SENSOR: File /proc/jz/sensor/reset_gpio not found
-[E 324205473] SENSOR: Using default value 91 for reset_gpio
-[D 324205513] SENSOR: Sensor info: gc2053 (1920x1080@40fps, i2c:0x37)
-[D 324205557] main: Sensor info read successfully
-[D 324205685] SENSOR: Validating configuration against sensor capabilities
-[I 324205729] SENSOR: Sensor configuration: 1920x1080@20fps
-[I 324205852] SENSOR: All streams will use sensor FPS: 20fps
-[D 324205896] main: Configuration validated and adjusted based on sensor capabilities
+[I 1279990884] MODULE: Initializing module system
+[I 1279991748] MODULE: Module system initialized successfully
+[I 1279992552] MODULE: Registered module 'osd' v1.0.0 (On-Screen Display overlay system)
+[I 1279993356] MODULE: Registered module 'rtsp' v1.0.0 (RTSP streaming server module)
+[D 1279993936] main: Starting streamer - PID: 4506
+[I 1279994170] main: Channel metrics initialized (legacy mode)
+[D 1279994528] CONFIG: Using config file /opt/streamer.json
+[I 1279994784] CONFIG: Loading configuration from: /opt/streamer.json
+[I 1279995763] CONFIG: JSON configuration loaded successfully
+[D 1279996723] CONFIG: Parsing JSON configuration values...
+[D 1279997257] CONFIG: Parsed JPEG config: enabled=true, quality=85, channel=2
+[D 1279997529] CONFIG: Found streams array at root level
+[D 1279999048] CONFIG: Found streams array with 2 elements
+[D 1279999806] CONFIG: Allocated streams array for 2 streams
+[D 1280000875] CONFIG: Parsed resolution '1920x1080' as 1920x1080
+[D 1280001440] CONFIG: Parsed stream[0]: 1920x1080, endpoint=ch0
+[D 1280001682] CONFIG: Parsed resolution '640x360' as 640x360
+[D 1280001872] CONFIG: Parsed stream[1]: 640x360, endpoint=ch1
+[D 1280002058] CONFIG: JSON configuration parsed successfully
+[D 1280002292] CONFIG:   Stream[0]: 1920x1080, bitrate=2048kbps, endpoint='ch0'
+[D 1280002415] CONFIG:   Stream[1]: 640x360, bitrate=512kbps, endpoint='ch1'
+[I 1280002568] CONFIG: Configuration monitoring thread started
+[I 1280002841] CONFIG: Configuration initialized successfully
+[D 1280002966] main: Streamer configuration loaded successfully
+[W 1280003008] MODULE: Module system already initialized
+[I 1280003046] main: Module system initialized
+[I 1280003166] MODULE: Registered module 'motion' v1.0.0 (IVS-based motion detection with configurable ROI regions)
+[I 1280003214] main: Motion detection module registered manually
+[E 1280003346] MODULE: Module 'osd' already registered
+[W 1280003392] main: Failed to register OSD module
+[I 1280003522] MODULE: Initializing 3 registered modules
+[I 1280003568] MODULE: Initializing module 'osd'
+[D 1280003756] MODULE: Trying module config: /opt/osd.json
+[I 1280004070] CONFIG: Configuration monitoring started for: /opt/streamer.json
+[I 1280005042] MODULE: Loading config for module 'osd' from /opt/osd.json (binary dir)
+[I 1280005515] MODULE: Module 'osd' config loaded successfully
+[I 1280005810] OSD_MODULE: Initializing OSD module
+[I 1280006070] OSD_MODULE: OSD module init - copied config: enabled=true, stream0_enabled=true, stream1_enabled=true
+[I 1280006223] OSD_MODULE: Stream 0 time config: enabled=true, format='%F %T', font='/usr/share/fonts/default.ttf', size=48
+[I 1280006346] OSD_MODULE: Stream 1 time config: enabled=true, format='%H:%M:%S', font='/usr/share/fonts/default.ttf', size=24
+[I 1280006393] OSD_MODULE: OSD module initialized successfully
+[I 1280006432] MODULE: Module 'osd' initialized successfully
+[I 1280006958] MODULE: Initializing module 'rtsp'
+[D 1280007028] MODULE: Trying module config: /opt/rtsp.json
+[I 1280007718] MODULE: Loading config for module 'rtsp' from /opt/rtsp.json (binary dir)
+[I 1280008097] RTSP_MODULE: RTSP config loaded - port: 554, enabled: true, TLS: disabled (port: 322)
+[I 1280008323] RTSP_MODULE: RTSP auth config - enabled: false, username: 'admin', password: 'admin'
+[I 1280009164] MODULE: Module 'rtsp' config loaded successfully
+[I 1280009330] MODULE: Module 'rtsp' initialized successfully
+[I 1280009941] MODULE: Initializing module 'motion'
+[D 1280010056] MODULE: Trying module config: /opt/motion.json
+[I 1280011178] MODULE: Loading config for module 'motion' from /opt/motion.json (binary dir)
+[I 1280011803] MODULE: Module 'motion' config loaded successfully
+[I 1280011868] MOTION: Initializing motion detection module
+[I 1280013271] MOTION: Loaded ROI configuration from: ./roi.json
+[I 1280013874] MOTION: Parsing 1 zones from web UI format
+[I 1280014330] MOTION: Zone[0] ID=1 'Full Frame' type=include: (0,0) 0x0
+[I 1280014676] MOTION: Motion settings: sensitivity=3, min_object_size=5
+[I 1280014762] MOTION: Channel 1 dimensions: 640x360 (scaler enabled)
+[I 1280014808] MOTION: Using channel 1 dimensions: 640x360
+[I 1280014840] MOTION: Set zone[0] 'Full Frame' to IVS frame dimensions: 640x360
+[I 1280015148] MOTION: Keeping original zone coordinates for OSD scaling per stream resolution
+[I 1280015200] MOTION: Attempting to update OSD motion zones for stream 0
+[I 1280015248] OSD_MODULE: osd_update_motion_zones called for group_id=0
+[E 1280015284] OSD_MODULE: Invalid group_id 0 or context not found
+[D 1280015563] MOTION: Failed to update OSD motion zones for stream 0 (result=-1), may not be enabled or ready
+[I 1280015653] MOTION: Attempting to update OSD motion zones for stream 1
+[I 1280015687] OSD_MODULE: osd_update_motion_zones called for group_id=1
+[E 1280015718] OSD_MODULE: Invalid group_id 1 or context not found
+[D 1280015755] MOTION: Failed to update OSD motion zones for stream 1 (result=-1), may not be enabled or ready
+[I 1280016044] MOTION: Motion detection module initialized successfully
+[I 1280016118] MODULE: Module 'motion' initialized successfully
+[I 1280016158] MODULE: Module initialization complete: 3 success, 0 errors
+[I 1280016197] main: Modules initialized
+[D 1280016486] SENSOR: Getting sensor information from /proc/jz/sensor
+[D 1280016714] SENSOR:   name: gc2053
+[D 1280017224] SENSOR:   chip_id: 0x2053
+[D 1280017764] SENSOR:   version: H20230726a
+[D 1280018468] SENSOR:   i2c_addr: 0x37
+[D 1280019356] SENSOR:   width: 1920
+[D 1280019926] SENSOR:   height: 1080
+[D 1280020384] SENSOR:   min_fps: 5
+[D 1280021266] SENSOR:   max_fps: 40
+[E 1280021968] SENSOR: File /proc/jz/sensor/i2c_bus not found
+[E 1280022293] SENSOR: Using default value 0 for i2c_bus
+[E 1280022403] SENSOR: File /proc/jz/sensor/boot not found
+[E 1280022731] SENSOR: Using default value 0 for boot
+[E 1280022835] SENSOR: File /proc/jz/sensor/mclk not found
+[E 1280023156] SENSOR: Using default value 1 for mclk
+[E 1280023270] SENSOR: File /proc/jz/sensor/video_interface not found
+[E 1280023605] SENSOR: Using default value 0 for video_interface
+[E 1280023709] SENSOR: File /proc/jz/sensor/reset_gpio not found
+[E 1280023918] SENSOR: Using default value 91 for reset_gpio
+[D 1280023959] SENSOR: Sensor info: gc2053 (1920x1080@40fps, i2c:0x37)
+[D 1280024002] main: Sensor info read successfully
+[D 1280024127] SENSOR: Validating configuration against sensor capabilities
+[I 1280024170] SENSOR: Sensor configuration: 1920x1080@20fps
+[I 1280024293] SENSOR: All streams will use sensor FPS: 20fps
+[D 1280024336] main: Configuration validated and adjusted based on sensor capabilities
 [OSD] SetPoolSize: 1228800 bytes
-[I 324206361] main: OSD memory pool set to 1200KB (matching prudynt-t)
-[D 324206467] main: System init start
-[I 324206740] main: Opening ISP...
+[I 1280024507] main: OSD memory pool set to 1200KB (matching prudynt-t)
+[D 1280024554] main: System init start
+[I 1280024670] main: Opening ISP...
 [IMP_ISP] Open: opened /dev/tx-isp (fd=4)
-[I 324207371] main: ISP opened successfully
-[I 324207660] main: Adding sensor...
+[I 1280025257] main: ISP opened successfully
+[I 1280025394] main: Adding sensor...
 [IMP_ISP] AddSensor: enum idx=0 name='gc2053'
 [IMP_ISP] AddSensor: found matching sensor at index 0
 [IMP_ISP] AddSensor: using sensor_idx=0 for gc2053
@@ -113,14 +112,14 @@ root@ing-wyze-cam3-a000 opt# ./streamer
 [IMP_ISP] AddSensor: TX_ISP_SENSOR_SET_INPUT succeeded
 [IMP_ISP] AddSensor: ISP buffer info: addr=0x0 size=4685424
 [DMA] DMA init: using /dev/rmem
-[DMA] DMA init: /dev/rmem mapped at 0x75bd5000 size=30408704 base_phys=0x06300000
-[DMA] Alloc: (unnamed) size=4685424 phys=0x6300000 virt=0x75bd5000 (rmem off=0x0)
-[IMP_ISP] AddSensor: allocated ISP buffer: virt=0x75bd5000 phys=0x6300000 size=4685424
+[DMA] DMA init: /dev/rmem mapped at 0x75231000 size=30408704 base_phys=0x06300000
+[DMA] Alloc: (unnamed) size=4685424 phys=0x6300000 virt=0x75231000 (rmem off=0x0)
+[IMP_ISP] AddSensor: allocated ISP buffer: virt=0x75231000 phys=0x6300000 size=4685424
 [IMP_ISP] AddSensor: calling TX_ISP_SET_BUF with addr=0x6300000 size=4685424
 [IMP_ISP] AddSensor: TX_ISP_SET_BUF succeeded
 [IMP_ISP] AddSensor: gc2053 (idx=0, buf_size=4685424)
-[I 324456037] main: Sensor added successfully
-[I 324456265] main: Enabling ISP sensor...
+[I 1280267901] main: Sensor added successfully
+[I 1280268175] main: Enabling ISP sensor...
 [IMP_ISP] EnableSensor: proceeding without custom AE/AWB
 [IMP_ISP] EnableSensor: about to call ioctl 0x40045626
 [IMP_ISP] EnableSensor: ioctl 0x40045626 returned 0
@@ -131,208 +130,208 @@ root@ing-wyze-cam3-a000 opt# ./streamer
 [IMP_ISP] EnableSensor: calling ioctl 0x800456d0 (LINK_SETUP)
 [IMP_ISP] EnableSensor: ioctl 0x800456d0 succeeded, result=0
 [IMP_ISP] EnableSensor: about to call ioctl 0x800456d2 (LINK_STREAM_ON)
-[IMP_ISP] EnableSensor: gISPdev=0x77a28850, fd=4
+[IMP_ISP] EnableSensor: gISPdev=0x77084850, fd=4
 [IMP_ISP] EnableSensor: ioctl 0x800456d2 returned 0
 [IMP_ISP] EnableSensor: ioctl 0x800456d2 succeeded
 [IMP_ISP] EnableSensor: incrementing opened flag
 [IMP_ISP] EnableSensor: sensor enabled (idx=0)
 [IMP_ISP] EnableSensor: about to return 0
-[I 324458894] main: ISP sensor enabled successfully
-[I 324459239] COMMON: System memory: 93 MB
-[I 324459566] COMMON: Detected low-memory device: 93 MB total RAM
-[I 324459689] COMMON: Skipping explicit memory pools - relying on reduced buffer counts
-[I 324459800] COMMON: Low-memory optimizations rely on:
-[I 324459845] COMMON:   - Reduced nrVBs (1 buffer per channel)
-[I 324459883] COMMON:   - Smaller OSD pool (512KB)
-[I 324459995] COMMON:   - Disabled unused channels
-[I 324460168] COMMON:   - Let IMP system manage RMEM automatically
-[I 324460212] main: Calling IMP_System_Init()...
+[I 1280270324] main: ISP sensor enabled successfully
+[I 1280270751] COMMON: System memory: 93 MB
+[I 1280271187] COMMON: Detected low-memory device: 93 MB total RAM
+[I 1280271451] COMMON: Skipping explicit memory pools - relying on reduced buffer counts
+[I 1280271499] COMMON: Low-memory optimizations rely on:
+[I 1280271653] COMMON:   - Reduced nrVBs (1 buffer per channel)
+[I 1280271700] COMMON:   - Smaller OSD pool (512KB)
+[I 1280271962] COMMON:   - Disabled unused channels
+[I 1280272010] COMMON:   - Let IMP system manage RMEM automatically
+[I 1280272278] main: Calling IMP_System_Init()...
 [System] Initializing...
 [System] Subsystems initialized
 [System] Initialized (IMP-1.1.6)
-[I 324461327] main: IMP_System_Init() returned: 0
-[I 324461546] main: System initialized successfully
+[I 1280272837] main: IMP_System_Init() returned: 0
+[I 1280272873] main: System initialized successfully
 [IMP_ISP] EnableTuning: opened /dev/isp-m0 (fd=6)
 [IMP_ISP] EnableTuning: tuning initialized successfully
-[D 324461973] main: ISP tuning enabled successfully
+[D 1280273283] main: ISP tuning enabled successfully
 [IMP_ISP] SetContrast: 128
-[D 324462054] main: ISP tuning contrast set to 128
+[D 1280273364] main: ISP tuning contrast set to 128
 [IMP_ISP] SetSharpness: 128
-[D 324462389] main: ISP tuning sharpness set to 128
+[D 1280273700] main: ISP tuning sharpness set to 128
 [IMP_ISP] SetSaturation: 128
-[D 324462451] main: ISP tuning saturation set to 128
+[D 1280273763] main: ISP tuning saturation set to 128
 [IMP_ISP] SetBrightness: 128
-[D 324462762] main: ISP tuning brightness set to 128
+[D 1280273818] main: ISP tuning brightness set to 128
 [IMP_ISP] SetISPRunningMode: 0
 [IMP_ISP] SetISPRunningMode: mode set successfully to 0
-[D 324462881] main: ISP running mode set to DAY
-[IMP_ISP] SetSensorFPS: 20/1
-[IMP_ISP] SetSensorFPS: FPS set successfully to 20/1
-[I 324465414] main: Sensor FPS set to 20/1 (all channels use sensor FPS)
-[IMP_ISP] GetSensorFPS: called with fps_num=0x7f9cde58 fps_den=0x7f9cde5c
+[D 1280274190] main: ISP running mode set to DAY
+[IMP_ISP] SetSensorFPS: 25/1
+[IMP_ISP] SetSensorFPS: FPS set successfully to 25/1
+[I 1280277010] main: Sensor FPS set to 25/1 (prudynt-aligned; all channels use sensor FPS)
+[IMP_ISP] GetSensorFPS: called with fps_num=0x7fcaa5c8 fps_den=0x7fcaa5cc
 [IMP_ISP] GetSensorFPS: returning 25/1
-[I 324465958] main: Verified sensor FPS: 25/1 (25.00 fps)
-[I 324467087] COMMON: Channel 0: enabled=1, format='H264' -> payloadType=0x1 (H264), 1920x1080@20/1fps
-[I 324467385] COMMON: Channel 1: enabled=1, format='H264' -> payloadType=0x1 (H264), 640x360@20/1fps, scaler=enabled
-[D 324467569] COMMON: Updated channel configuration from JSON config: ch0=1, ch1=1, ch2=0, ch3=0
-[D 324467743] main: Configuration applied to channels successfully
-[W 324467968] COMMON: Applying memory optimizations for low-memory device
-[I 324468013] COMMON: Low-memory optimizations applied:
-[I 324468124] COMMON:   - Buffer optimization: nrVBs=1, FIFO depth=0
-[I 324468165] COMMON:   - Channel enabling: Based on configuration
-[I 324468277] COMMON:   - Channels 2-3: Not used in current setup
-[I 324468319] COMMON:   - Output resolution: Handled by RTSP module
-[I 324468355] COMMON: SUCCESS: optimized with configuration-driven channel management
-[I 324468486] main: === Initializing channel 0 ===
-[FrameSource] CreateChn: Opened /dev/framechan0 (fd=7, nonblock)
+[I 1280277958] main: Verified sensor FPS: 25/1 (25.00 fps)
+[I 1280278239] COMMON: Channel 0: enabled=1, format='H264' -> payloadType=0x1 (H264), 1920x1080@25/1fps
+[I 1280278490] COMMON: Channel 1: enabled=1, format='H264' -> payloadType=0x1 (H264), 640x360@25/1fps, scaler=enabled
+[D 1280278618] COMMON: Updated channel configuration from JSON config: ch0=1, ch1=1, ch2=0, ch3=0
+[D 1280278731] main: Configuration applied to channels successfully
+[W 1280278772] COMMON: Applying memory optimizations for low-memory device
+[I 1280278880] COMMON: Low-memory optimizations applied:
+[I 1280278924] COMMON:   - Buffer optimization: nrVBs=1, FIFO depth=0
+[I 1280278962] COMMON:   - Channel enabling: Based on configuration
+[I 1280279076] COMMON:   - Channels 2-3: Not used in current setup
+[I 1280279118] COMMON:   - Output resolution: Handled by RTSP module
+[I 1280279154] COMMON: SUCCESS: optimized with configuration-driven channel management
+[I 1280279280] main: === Initializing channel 0 ===
+[FrameSource] CreateChn: Opened /dev/framechan0 (fd=7, blocking)
 [System] Registered module [0,0]: FrameSource
 [FrameSource] CreateChn: registered FrameSource module [0,0] with 1 output
 [FrameSource] CreateChn: chn=0, 1920x1080, fmt=0xa
-[D 324468929] main: FrameSource channel 0 created
+[D 1280279709] main: FrameSource channel 0 created
 [FrameSource] SetChnAttr: chn=0, 1920x1080, fmt=0xa
-[D 324469097] main: FrameSource channel 0 attributes set
+[D 1280279868] main: FrameSource channel 0 attributes set
 [FrameSource] GetChnFifoAttr: chn=0 -> maxdepth=0, depth=0
-[I 324469259] main: T31: Forcing FIFO depth to 0 (vendor-compatible)
+[I 1280280064] main: T31: Forcing FIFO depth to 0 (vendor-compatible)
 [FrameSource] SetChnFifoAttr: chn=0, maxdepth=0, depth=0
-[I 324469402] main: FrameSource channel 0: FIFO buffer depth set to 0 frames
+[I 1280280142] main: FrameSource channel 0: FIFO buffer depth set to 0 frames
 [KernelIF] Set frame depth: 0
 [FrameSource] SetFrameDepth: chn=0, depth=0
 [Encoder] SetMaxStreamCnt: chn=0, cnt=2
-[I 324469659] main: Channel 0: Set 2 stream buffers for low-memory device
+[I 1280280514] main: Channel 0: Set 2 stream buffers for low-memory device
 [Encoder] SetStreamBufSize: chn=0, size=262144
-[I 324469827] main: Channel 0: Set 256KB stream buffer size for low-memory device
-[I 324469869] main: Channel 0: Set 2 stream buffers, 262144 bytes each
+[I 1280280688] main: Channel 0: Set 256KB stream buffer size for low-memory device
+[I 1280280736] main: Channel 0: Set 2 stream buffers, 262144 bytes each
 [Encoder] SetChnEntropyMode: chn=0, mode=2
-[I 324470080] main: Channel 0: payloadType=0x1, computed profile=0x42
-[Encoder] SetDefaultParam: 1920x1080, 20/1 fps, profile=66, rc=1
-[I 324470280] main: Encoder channel 0 configured: 1920x1080@20/1fps, GOP=20, bitrate=2000kbps, mode=CBR
+[I 1280280887] main: Channel 0: payloadType=0x1, computed profile=0x42
+[Encoder] SetDefaultParam: 1920x1080, 25/1 fps, profile=66, rc=1
+[I 1280281055] main: Encoder channel 0 configured: 1920x1080@25/1fps, GOP=25, bitrate=2000kbps, mode=CBR
 [Codec] SetDefaultParam: initialized
-[Encoder] channel_encoder_init: 1920x1080, profile=0x42->0x42, fps=20/1, gop=20, bitrate=0
+[Encoder] channel_encoder_init: 1920x1080, profile=0x42->0x42, fps=25/1, gop=25, bitrate=0
 [Fifo] Init: size=4, max_elements=5
 [Fifo] Init: size=7, max_elements=8
 [Codec] Create: vendor library will handle hardware acceleration via /dev/avpu
-[Codec] Create: codec=0x75bd20e0, channel=0
+[Codec] Create: codec=0x7522e0e0, channel=0
 [Encoder] channel_encoder_init: frame_cnt=4, frame_size=1048576
 [Fifo] Init: size=4, max_elements=5
 [Encoder] CreateChn: chn=0, profile=66 created successfully
-[Encoder] SetChnGopLength: chn=0, gop=20
+[Encoder] SetChnGopLength: chn=0, gop=25
 [Encoder] RequestIDR: chn=0
 [HW_Encoder] RequestIDR: next frame will be IDR
 [Encoder] RegisterChn: grp=0, chn=0
 [System] Registered module [1,0]: Encoder
 [Encoder] CreateGroup: registered Encoder module [1,0] with 1 output and update callback
 [Encoder] CreateGroup: grp=0
-[I 324472515] main: Encoder group 0 created successfully
-[I 324472903] main: Initializing OSD for channel 0 (size: 1920x1080)
-[I 324472983] OSD_MODULE: Initializing OSD for Group 0 (1920x1080)
-[I 324473509] OSD_MODULE: Channel 0 is enabled
-[I 324473577] OSD_MODULE: Global config available, stream_count=2
-[I 324473609] OSD_MODULE: Using stream0 configuration for channel 0
-[I 324473641] OSD_MODULE: OSD module state - initialized=true, enabled=true
-[I 324473674] OSD_MODULE: Stream 0 enabled in module config: true
-[I 324473987] OSD_MODULE: Applying module configuration to stream 0
-[I 324474039] OSD_MODULE: Applied module config to stream 0: enabled=true, time_enabled=true, format='%F %T'
-[I 324474083] OSD_MODULE: Allocating OSD context for group 0
-[I 324474153] OSD_MODULE: OSD context allocated successfully for group 0
-[I 324474485] OSD_MODULE: Initializing OSD context for group 0
-[I 324474544] OSD_MODULE: Initializing OSD context for group 0 (1920x1080)
-[I 324474587] OSD_MODULE: OSD config - enabled=true, time.enabled=true, time.format='%F %T'
-[I 324474786] OSD_MODULE: Context initialized with group_id=0, dimensions=1920x1080
-[I 324474831] OSD_MODULE: All 7 region handles initialized to INVHANDLE (-1)
-[I 324474873] OSD_MODULE: Mutex initialized successfully for group 0
-[I 324474905] OSD_MODULE: Stored OSD context for group 0 in global array at index 0
-[I 324474937] OSD_MODULE: Creating OSD group 0
+[I 1280282656] main: Encoder group 0 created successfully
+[I 1280282782] main: Initializing OSD for channel 0 (size: 1920x1080)
+[I 1280282836] OSD_MODULE: Initializing OSD for Group 0 (1920x1080)
+[I 1280282972] OSD_MODULE: Channel 0 is enabled
+[I 1280283014] OSD_MODULE: Global config available, stream_count=2
+[I 1280283046] OSD_MODULE: Using stream0 configuration for channel 0
+[I 1280283166] OSD_MODULE: OSD module state - initialized=true, enabled=true
+[I 1280283204] OSD_MODULE: Stream 0 enabled in module config: true
+[I 1280283238] OSD_MODULE: Applying module configuration to stream 0
+[I 1280283361] OSD_MODULE: Applied module config to stream 0: enabled=true, time_enabled=true, format='%F %T'
+[I 1280283412] OSD_MODULE: Allocating OSD context for group 0
+[I 1280283563] OSD_MODULE: OSD context allocated successfully for group 0
+[I 1280283800] OSD_MODULE: Initializing OSD context for group 0
+[I 1280284258] OSD_MODULE: Initializing OSD context for group 0 (1920x1080)
+[I 1280284340] OSD_MODULE: OSD config - enabled=true, time.enabled=true, time.format='%F %T'
+[I 1280284518] OSD_MODULE: Context initialized with group_id=0, dimensions=1920x1080
+[I 1280284562] OSD_MODULE: All 7 region handles initialized to INVHANDLE (-1)
+[I 1280284604] OSD_MODULE: Mutex initialized successfully for group 0
+[I 1280284720] OSD_MODULE: Stored OSD context for group 0 in global array at index 0
+[I 1280284765] OSD_MODULE: Creating OSD group 0
 [OSD] CreateGroup: allocated group 0 (36884 bytes)
 [System] Registered module [4,0]: OSD
 [OSD] CreateGroup: registered OSD module [4,0] with 1 output and update callback
 [OSD] CreateGroup: grp=0
-[I 324475661] OSD_MODULE: OSD group 0 created successfully
-[I 324475787] OSD_MODULE: Initializing libschrift for group 0
+[I 1280285764] OSD_MODULE: OSD group 0 created successfully
+[I 1280285812] OSD_MODULE: Initializing libschrift for group 0
 [Encoder] stream_thread: started for channel 0
 [Encoder] encoder_thread: started for channel 0
-[I 324494379] OSD_MODULE: libschrift initialized with simple, fast rendering
-[D 324495248] OSD_MODULE: Parsed font color '#FFFFFFFF' -> 0xFFFFFFFF
-[D 324495801] OSD_MODULE: Parsed background color '#00000044' -> 0x00000044
-[I 324496341] OSD_MODULE: OSD colors: font=#FFFFFFFF -> 0xFFFFFFFF (BGRA: 255,255,255,255), bg=#00000044 -> 0x00000044 (BGRA: 0,0,0,68)
-[I 324502775] OSD_MODULE: libschrift initialized successfully for group 0
-[I 324503384] OSD_MODULE: Validating time format for group 0
-[I 324504061] OSD_MODULE: Time format validated for group 0: '%F %T' -> '2025-10-13 07:52:19'
-[I 324504855] OSD_MODULE: Time format validated successfully for group 0
-[I 324505090] OSD_MODULE: Creating OSD regions for group 0
-[I 324505262] OSD_MODULE: Creating all OSD regions for Group 0
-[I 324505458] OSD_MODULE: Creating font region for Group 0
+[I 1280305693] OSD_MODULE: libschrift initialized with simple, fast rendering
+[D 1280306558] OSD_MODULE: Parsed font color '#FFFFFFFF' -> 0xFFFFFFFF
+[D 1280307110] OSD_MODULE: Parsed background color '#00000044' -> 0x00000044
+[I 1280307656] OSD_MODULE: OSD colors: font=#FFFFFFFF -> 0xFFFFFFFF (BGRA: 255,255,255,255), bg=#00000044 -> 0x00000044 (BGRA: 0,0,0,68)
+[I 1280313972] OSD_MODULE: libschrift initialized successfully for group 0
+[I 1280314776] OSD_MODULE: Validating time format for group 0
+[I 1280315383] OSD_MODULE: Time format validated for group 0: '%F %T' -> '2025-10-13 08:38:05'
+[I 1280316175] OSD_MODULE: Time format validated successfully for group 0
+[I 1280316714] OSD_MODULE: Creating OSD regions for group 0
+[I 1280317232] OSD_MODULE: Creating all OSD regions for Group 0
+[I 1280317781] OSD_MODULE: Creating font region for Group 0
 [OSD] CreateRgn: called with prAttr=0
 [OSD] CreateRgn: allocated handle=0 from free list
 [OSD] CreateRgn: NULL prAttr, creating empty region
 [OSD] CreateRgn: handle=0 created (empty)
-[I 324506667] OSD_MODULE: Font region created with handle 0 for Group 0
-[I 324506847] OSD_MODULE: Creating logo region for Group 0 (enabled in config)
+[I 1280320853] OSD_MODULE: Font region created with handle 0 for Group 0
+[I 1280321252] OSD_MODULE: Creating logo region for Group 0 (enabled in config)
 [OSD] CreateRgn: called with prAttr=0
 [OSD] CreateRgn: allocated handle=1 from free list
 [OSD] CreateRgn: NULL prAttr, creating empty region
 [OSD] CreateRgn: handle=1 created (empty)
-[I 324508625] OSD_MODULE: Logo region created with handle 1 for Group 0
-[I 324509050] OSD_MODULE: Creating info region for Group 0 (enabled in config)
+[I 1280321569] OSD_MODULE: Logo region created with handle 1 for Group 0
+[I 1280321684] OSD_MODULE: Creating info region for Group 0 (enabled in config)
 [OSD] CreateRgn: called with prAttr=0
 [OSD] CreateRgn: allocated handle=2 from free list
 [OSD] CreateRgn: NULL prAttr, creating empty region
 [OSD] CreateRgn: handle=2 created (empty)
-[I 324510319] OSD_MODULE: Info region created with handle 2 for Group 0
-[I 324510362] OSD_MODULE: Skipping motion zone regions creation for Group 0 (disabled in config)
-[I 324510494] OSD_MODULE: Registering all valid regions to Group 0
-[I 324510530] OSD_MODULE: Registering region 0 (handle=0) to Group 0
+[I 1280321906] OSD_MODULE: Info region created with handle 2 for Group 0
+[I 1280321941] OSD_MODULE: Skipping motion zone regions creation for Group 0 (disabled in config)
+[I 1280322062] OSD_MODULE: Registering all valid regions to Group 0
+[I 1280322098] OSD_MODULE: Registering region 0 (handle=0) to Group 0
 [OSD] RegisterRgn: handle=0, grp=0
-[I 324510679] OSD_MODULE: Region 0 registered successfully to Group 0
-[I 324510719] OSD_MODULE: Registering region 1 (handle=1) to Group 0
+[I 1280322343] OSD_MODULE: Region 0 registered successfully to Group 0
+[I 1280322380] OSD_MODULE: Registering region 1 (handle=1) to Group 0
 [OSD] RegisterRgn: handle=1, grp=0
-[I 324510861] OSD_MODULE: Region 1 registered successfully to Group 0
-[I 324510899] OSD_MODULE: Registering region 2 (handle=2) to Group 0
+[I 1280322532] OSD_MODULE: Region 1 registered successfully to Group 0
+[I 1280322572] OSD_MODULE: Registering region 2 (handle=2) to Group 0
 [OSD] RegisterRgn: handle=2, grp=0
-[I 324511034] OSD_MODULE: Region 2 registered successfully to Group 0
-[I 324511073] OSD_MODULE: Registered 3 regions to Group 0
+[I 1280322712] OSD_MODULE: Region 2 registered successfully to Group 0
+[I 1280322756] OSD_MODULE: Registered 3 regions to Group 0
 [OSD] SetRgnAttr: handle=2
 [OSD] SetGrpRgnAttr: handle=2, grp=0
-[I 324511255] OSD_MODULE: Info region setup completed for Group 0
-[E 324511464] OSD_MODULE: Failed to open logo file: /usr/share/images/logo_224x60.bgra
-[E 324511639] OSD_MODULE: Failed to load logo from /usr/share/images/logo_224x60.bgra, disabling logo
-[I 324511772] OSD_MODULE: Logo region setup completed for Group 0
-[I 324511810] OSD_MODULE: Creating timestamp region for Group 0
+[I 1280322956] OSD_MODULE: Info region setup completed for Group 0
+[E 1280323073] OSD_MODULE: Failed to open logo file: /usr/share/images/logo_224x60.bgra
+[E 1280323252] OSD_MODULE: Failed to load logo from /usr/share/images/logo_224x60.bgra, disabling logo
+[I 1280323388] OSD_MODULE: Logo region setup completed for Group 0
+[I 1280323426] OSD_MODULE: Creating timestamp region for Group 0
 [OSD] CreateRgn: called with prAttr=0
 [OSD] CreateRgn: allocated handle=3 from free list
 [OSD] CreateRgn: NULL prAttr, creating empty region
 [OSD] CreateRgn: handle=3 created (empty)
-[I 324512032] OSD_MODULE: IMP_OSD_CreateRgn returned handle: 3 for Group 0 timestamp
-[I 324512159] OSD_MODULE: Timestamp region created with handle 3 for Group 0
-[I 324512195] OSD_MODULE: Registering timestamp region 3 with group 0
+[I 1280323728] OSD_MODULE: IMP_OSD_CreateRgn returned handle: 3 for Group 0 timestamp
+[I 1280323775] OSD_MODULE: Timestamp region created with handle 3 for Group 0
+[I 1280323884] OSD_MODULE: Registering timestamp region 3 with group 0
 [OSD] RegisterRgn: handle=3, grp=0
-[I 324512341] OSD_MODULE: Timestamp region 3 registered with Group 0 successfully
-[I 324512385] OSD_MODULE: Timestamp region created successfully for Group 0
-[I 324512501] OSD_MODULE: Motion zones regions not created (T31L optimization), skipping setup for Group 0
-[I 324512542] OSD_MODULE: OSD regions created successfully for group 0
-[I 324512575] OSD_MODULE: Starting OSD for group 0
+[I 1280323954] OSD_MODULE: Timestamp region 3 registered with Group 0 successfully
+[I 1280324076] OSD_MODULE: Timestamp region created successfully for Group 0
+[I 1280324114] OSD_MODULE: Motion zones regions not created (T31L optimization), skipping setup for Group 0
+[I 1280324150] OSD_MODULE: OSD regions created successfully for group 0
+[I 1280324268] OSD_MODULE: Starting OSD for group 0
 [OSD] Start: grp=0
-[I 324512730] OSD_MODULE: OSD started successfully for group 0
-[I 324512851] OSD_MODULE: OSD initialized and started for Group 0 (1920x1080) - COMPLETE SUCCESS
-[I 324512899] OSD_MODULE: Applying motion zones configuration for group 0
-[I 324513015] OSD_MODULE: Applied motion zones config to stream 0: enabled=false, include_color=0x80FF80FF, exclude_color=0xFFFF8080
-[I 324513063] OSD_MODULE: OSD initialized successfully for Group 0 - COMPLETE SUCCESS
-[I 324513105] main: OSD initialized successfully for channel 0
-[I 324513231] main: Binding FrameSource -> OSD -> Encoder for channel 0
+[I 1280324343] OSD_MODULE: OSD started successfully for group 0
+[I 1280324465] OSD_MODULE: OSD initialized and started for Group 0 (1920x1080) - COMPLETE SUCCESS
+[I 1280324514] OSD_MODULE: Applying motion zones configuration for group 0
+[I 1280324630] OSD_MODULE: Applied motion zones config to stream 0: enabled=false, include_color=0x80FF80FF, exclude_color=0xFFFF8080
+[I 1280324675] OSD_MODULE: OSD initialized successfully for Group 0 - COMPLETE SUCCESS
+[I 1280324803] main: OSD initialized successfully for channel 0
+[I 1280324840] main: Binding FrameSource -> OSD -> Encoder for channel 0
 [System] Bind request: [0,0,0] -> [4,0,0]
 [System] Binding [0,0,0] -> [4,0,0]
 [System] Bound FrameSource -> OSD (observer added)
 [System] Bind request: [4,0,0] -> [1,0,0]
 [System] Binding [4,0,0] -> [1,0,0]
 [System] Bound OSD -> Encoder (observer added)
-[I 324513623] main: Bound FrameSource -> OSD -> Encoder for channel 0
-[I 324513656] main: Enabling FrameSource channel 0
+[I 1280325219] main: Bound FrameSource -> OSD -> Encoder for channel 0
+[I 1280325331] main: Enabling FrameSource channel 0
 [KernelIF] Set format: 1920x1080 fmt=0xa (fourcc=0x3231564e) sizeimage=3110400->3133440 bytesperline=2880 colorspace=8
 [FrameSource] EnableChn: using sizeimage=3133440 from SET_FMT for chn=0
 [KernelIF] Set buffer count: 1 (actual: 1)
 [VBM] CreatePool: allocating pool_size=1448 (frame_count=1 * 0x428 + 0x180)
 [VBM] CreatePool: chn=0, 1920x1080 fmt=0xa, 1 frames, size=3133440 (req=3133440 calc=3133440)
-[DMA] Alloc: �ڜ sizܜ size=3133440 phys=0x6778000 virt=0x7604d000 (rmem off=0x478000)
-[VBM] Frame 0: phys=0x6778000 virt=0x7604d000
+[DMA] Alloc: L�� siz��� size=3133440 phys=0x6778000 virt=0x756a9000 (rmem off=0x478000)
+[VBM] Frame 0: phys=0x6778000 virt=0x756a9000
 [VBM] CreatePool: chn=0 created successfully
 [VBM] FillPool: chn=0, filling 1 frames
 [VBM] FillPool: queued 1 frames
@@ -341,158 +340,159 @@ root@ing-wyze-cam3-a000 opt# ./streamer
 [FrameSource] EnableChn: capture thread signaled readiness
 [KernelIF] Stream started
 [FrameSource] EnableChn: chn=0 enabled successfully
-[I 324520845] main: FrameSource channel 0 enabled successfully
+[I 1280332158] main: FrameSource channel 0 enabled successfully
 [Encoder] RequestIDR: chn=0
 [HW_Encoder] RequestIDR: next frame will be IDR
 [Encoder] StartRecvPic: chn=0
-[I 324521207] main: Encoder channel 0 started receiving pictures
+[I 1280332612] main: Encoder channel 0 started receiving pictures
 [Encoder] RequestIDR: chn=0
 [HW_Encoder] RequestIDR: next frame will be IDR
-[I 324521561] main: === Channel 0 initialization complete ===
-[I 324521749] main: === Initializing channel 1 ===
-[FrameSource] CreateChn: Opened /dev/framechan1 (fd=9, nonblock)
+[I 1280333176] main: === Channel 0 initialization complete ===
+[I 1280333226] main: === Initializing channel 1 ===
+[FrameSource] CreateChn: Opened /dev/framechan1 (fd=9, blocking)
 [System] Registered module [0,1]: FrameSource
 [FrameSource] CreateChn: registered FrameSource module [0,1] with 1 output
 [FrameSource] CreateChn: chn=1, 640x360, fmt=0xa
-[D 324522289] main: FrameSource channel 1 created
+[D 1280333718] main: FrameSource channel 1 created
 [FrameSource] SetChnAttr: chn=1, 640x360, fmt=0xa
-[D 324522633] main: FrameSource channel 1 attributes set
+[D 1280333787] main: FrameSource channel 1 attributes set
 [FrameSource] GetChnFifoAttr: chn=1 -> maxdepth=0, depth=0
-[I 324522703] main: T31: Forcing FIFO depth to 0 (vendor-compatible)
+[I 1280334135] main: T31: Forcing FIFO depth to 0 (vendor-compatible)
 [FrameSource] SetChnFifoAttr: chn=1, maxdepth=0, depth=0
-[I 324522764] main: FrameSource channel 1: FIFO buffer depth set to 0 frames
+[I 1280334202] main: FrameSource channel 1: FIFO buffer depth set to 0 frames
 [KernelIF] Set frame depth: 0
 [FrameSource] SetFrameDepth: chn=1, depth=0
 [Encoder] SetMaxStreamCnt: chn=1, cnt=2
-[I 324523171] main: Channel 1: Set 2 stream buffers for low-memory device
+[I 1280334601] main: Channel 1: Set 2 stream buffers for low-memory device
 [Encoder] SetStreamBufSize: chn=1, size=262144
-[I 324523498] main: Channel 1: Set 256KB stream buffer size for low-memory device
-[I 324523555] main: Channel 1: Set 2 stream buffers, 262144 bytes each
+[I 1280334670] main: Channel 1: Set 256KB stream buffer size for low-memory device
+[I 1280335142] main: Channel 1: Set 2 stream buffers, 262144 bytes each
 [Encoder] SetChnEntropyMode: chn=1, mode=2
-[I 324523625] main: Channel 1: payloadType=0x1, computed profile=0x42
-[Encoder] SetDefaultParam: 640x360, 20/1 fps, profile=66, rc=1
-[I 324524013] main: Encoder channel 1 configured: 640x360@20/1fps, GOP=20, bitrate=500kbps, mode=CBR
+[I 1280335228] main: Channel 1: payloadType=0x1, computed profile=0x42
+[Encoder] SetDefaultParam: 640x360, 25/1 fps, profile=66, rc=1
+[I 1280335594] main: Encoder channel 1 configured: 640x360@25/1fps, GOP=25, bitrate=500kbps, mode=CBR
 [Codec] SetDefaultParam: initialized
-[Encoder] channel_encoder_init: 640x360, profile=0x42->0x42, fps=20/1, gop=20, bitrate=0
+[Encoder] channel_encoder_init: 640x360, profile=0x42->0x42, fps=25/1, gop=25, bitrate=0
 [Fifo] Init: size=4, max_elements=5
 [Fifo] Init: size=7, max_elements=8
 [Codec] Create: vendor library will handle hardware acceleration via /dev/avpu
-[Codec] Create: codec=0x75bd35a0, channel=1
+[Codec] Create: codec=0x7522f5a0, channel=1
 [Encoder] channel_encoder_init: frame_cnt=4, frame_size=1048576
 [Fifo] Init: size=4, max_elements=5
 [Encoder] CreateChn: chn=1, profile=66 created successfully
-[Encoder] SetChnGopLength: chn=1, gop=20
+[Encoder] SetChnGopLength: chn=1, gop=25
 [Encoder] RequestIDR: chn=1
 [HW_Encoder] RequestIDR: next frame will be IDR
 [Encoder] RegisterChn: grp=1, chn=1
 [System] Registered module [1,1]: Encoder
 [Encoder] CreateGroup: registered Encoder module [1,1] with 1 output and update callback
 [Encoder] CreateGroup: grp=1
-[I 324525357] main: Encoder group 1 created successfully
-[I 324525490] main: Initializing OSD for channel 1 (size: 640x360)
-[I 324525537] OSD_MODULE: Initializing OSD for Group 1 (640x360)
-[I 324525662] OSD_MODULE: Channel 1 is enabled
-[I 324525705] OSD_MODULE: Global config available, stream_count=2
-[I 324525737] OSD_MODULE: Using stream1 configuration for channel 1
-[I 324525851] OSD_MODULE: OSD module state - initialized=true, enabled=true
-[I 324525890] OSD_MODULE: Stream 1 enabled in module config: true
-[I 324526006] OSD_MODULE: Applying module configuration to stream 1
-[I 324526049] OSD_MODULE: Applied module config to stream 1: enabled=true, time_enabled=true, format='%H:%M:%S'
-[I 324526182] OSD_MODULE: Allocating OSD context for group 1
-[I 324526274] OSD_MODULE: OSD context allocated successfully for group 1
-[I 324526440] OSD_MODULE: Initializing OSD context for group 1
-[I 324526486] OSD_MODULE: Initializing OSD context for group 1 (640x360)
-[I 324526624] OSD_MODULE: OSD config - enabled=true, time.enabled=true, time.format='%H:%M:%S'
-[I 324526679] OSD_MODULE: Context initialized with group_id=1, dimensions=640x360
-[I 324526801] OSD_MODULE: All 7 region handles initialized to INVHANDLE (-1)
-[I 324526859] OSD_MODULE: Mutex initialized successfully for group 1
-[I 324526899] OSD_MODULE: Stored OSD context for group 1 in global array at index 1
-[I 324527023] OSD_MODULE: Creating OSD group 1
+[I 1280337712] main: Encoder group 1 created successfully
+[I 1280337754] main: Initializing OSD for channel 1 (size: 640x360)
+[I 1280337794] OSD_MODULE: Initializing OSD for Group 1 (640x360)
+[I 1280337980] OSD_MODULE: Channel 1 is enabled
+[I 1280338223] OSD_MODULE: Global config available, stream_count=2
+[I 1280338264] OSD_MODULE: Using stream1 configuration for channel 1
+[I 1280338317] OSD_MODULE: OSD module state - initialized=true, enabled=true
+[I 1280338356] OSD_MODULE: Stream 1 enabled in module config: true
 [FrameSource] frame_capture_thread: started for channel 0, state=2, fd=7
 [FrameSource] frame_capture_thread chn=0: entering main loop
 [FrameSource] frame_capture_thread chn=0: poll iteration 1, state=2, fd=7, software_mode=0
-[FrameSource] frame_capture_thread chn=0: about to call VIDIOC_POLL_FRAME (poll #1)
+[FrameSource] frame_capture_thread chn=0: about to select() (poll #1)
+[FrameSource] frame_capture_thread chn=0: select() returned 1 (errno=0)
+[I 1280338521] OSD_MODULE: Applying module configuration to stream 1
+[I 1280339301] OSD_MODULE: Applied module config to stream 1: enabled=true, time_enabled=true, format='%H:%M:%S'
+[I 1280339352] OSD_MODULE: Allocating OSD context for group 1
+[I 1280339426] OSD_MODULE: OSD context allocated successfully for group 1
+[I 1280339468] OSD_MODULE: Initializing OSD context for group 1
+[I 1280339502] OSD_MODULE: Initializing OSD context for group 1 (640x360)
+[I 1280339846] OSD_MODULE: OSD config - enabled=true, time.enabled=true, time.format='%H:%M:%S'
+[I 1280339932] OSD_MODULE: Context initialized with group_id=1, dimensions=640x360
+[I 1280339969] OSD_MODULE: All 7 region handles initialized to INVHANDLE (-1)
+[I 1280340060] OSD_MODULE: Mutex initialized successfully for group 1
+[I 1280340098] OSD_MODULE: Stored OSD context for group 1 in global array at index 1
+[I 1280340424] OSD_MODULE: Creating OSD group 1
 [OSD] CreateGroup: allocated group 1 (36884 bytes)
 [System] Registered module [4,1]: OSD
 [OSD] CreateGroup: registered OSD module [4,1] with 1 output and update callback
 [OSD] CreateGroup: grp=1
-[I 324527695] OSD_MODULE: OSD group 1 created successfully
-[I 324527821] OSD_MODULE: Initializing libschrift for group 1
-[I 324528763] OSD_MODULE: libschrift initialized with simple, fast rendering
-[D 324529025] OSD_MODULE: Parsed font color '#FFFFFFFF' -> 0xFFFFFFFF
-[D 324529219] OSD_MODULE: Parsed background color '#00000044' -> 0x00000044
-[I 324529511] OSD_MODULE: OSD colors: font=#FFFFFFFF -> 0xFFFFFFFF (BGRA: 255,255,255,255), bg=#00000044 -> 0x00000044 (BGRA: 0,0,0,68)
+[I 1280341016] OSD_MODULE: OSD group 1 created successfully
+[I 1280341056] OSD_MODULE: Initializing libschrift for group 1
+[I 1280341272] OSD_MODULE: libschrift initialized with simple, fast rendering
+[D 1280341710] OSD_MODULE: Parsed font color '#FFFFFFFF' -> 0xFFFFFFFF
+[D 1280341981] OSD_MODULE: Parsed background color '#00000044' -> 0x00000044
+[I 1280342028] OSD_MODULE: OSD colors: font=#FFFFFFFF -> 0xFFFFFFFF (BGRA: 255,255,255,255), bg=#00000044 -> 0x00000044 (BGRA: 0,0,0,68)
 [Encoder] stream_thread: started for channel 1
 [Encoder] encoder_thread: started for channel 1
-[I 324532737] OSD_MODULE: libschrift initialized successfully for group 1
-[I 324533364] OSD_MODULE: Validating time format for group 1
-[I 324533792] OSD_MODULE: Time format validated for group 1: '%H:%M:%S' -> '07:52:19'
-[I 324535101] OSD_MODULE: Time format validated successfully for group 1
-[I 324535345] OSD_MODULE: Creating OSD regions for group 1
-[I 324535515] OSD_MODULE: Creating all OSD regions for Group 1
-[I 324535683] OSD_MODULE: Creating font region for Group 1
+[I 1280346034] OSD_MODULE: libschrift initialized successfully for group 1
+[I 1280346850] OSD_MODULE: Validating time format for group 1
+[I 1280347418] OSD_MODULE: Time format validated for group 1: '%H:%M:%S' -> '08:38:05'
+[I 1280348205] OSD_MODULE: Time format validated successfully for group 1
+[I 1280348739] OSD_MODULE: Creating OSD regions for group 1
+[I 1280349271] OSD_MODULE: Creating all OSD regions for Group 1
+[I 1280349538] OSD_MODULE: Creating font region for Group 1
 [OSD] CreateRgn: called with prAttr=0
 [OSD] CreateRgn: allocated handle=4 from free list
 [OSD] CreateRgn: NULL prAttr, creating empty region
 [OSD] CreateRgn: handle=4 created (empty)
-[I 324536437] OSD_MODULE: Font region created with handle 4 for Group 1
-[I 324536606] OSD_MODULE: Creating logo region for Group 1 (enabled in config)
+[I 1280349927] OSD_MODULE: Font region created with handle 4 for Group 1
+[I 1280350266] OSD_MODULE: Creating logo region for Group 1 (enabled in config)
 [OSD] CreateRgn: called with prAttr=0
 [OSD] CreateRgn: allocated handle=5 from free list
 [OSD] CreateRgn: NULL prAttr, creating empty region
 [OSD] CreateRgn: handle=5 created (empty)
-[I 324537078] OSD_MODULE: Logo region created with handle 5 for Group 1
-[I 324537117] OSD_MODULE: Skipping info region creation for Group 1 (disabled in config)
-[I 324537158] OSD_MODULE: Skipping motion zone regions creation for Group 1 (disabled in config)
-[I 324537286] OSD_MODULE: Registering all valid regions to Group 1
-[I 324537323] OSD_MODULE: Registering region 0 (handle=4) to Group 1
+[I 1280350413] OSD_MODULE: Logo region created with handle 5 for Group 1
+[I 1280350446] OSD_MODULE: Skipping info region creation for Group 1 (disabled in config)
+[I 1280350746] OSD_MODULE: Skipping motion zone regions creation for Group 1 (disabled in config)
+[I 1280350829] OSD_MODULE: Registering all valid regions to Group 1
+[I 1280350862] OSD_MODULE: Registering region 0 (handle=4) to Group 1
 [OSD] RegisterRgn: handle=4, grp=1
-[I 324537473] OSD_MODULE: Region 0 registered successfully to Group 1
-[I 324537508] OSD_MODULE: Registering region 1 (handle=5) to Group 1
+[I 1280350924] OSD_MODULE: Region 0 registered successfully to Group 1
+[I 1280351120] OSD_MODULE: Registering region 1 (handle=5) to Group 1
 [OSD] RegisterRgn: handle=5, grp=1
-[I 324537651] OSD_MODULE: Region 1 registered successfully to Group 1
-[I 324537686] OSD_MODULE: Registered 2 regions to Group 1
-[I 324537799] OSD_MODULE: Skipping info region setup for Group 1 (disabled in config)
-[E 324537898] OSD_MODULE: Failed to open logo file: /usr/share/images/logo_100x30.bgra
-[E 324538056] OSD_MODULE: Failed to load logo from /usr/share/images/logo_100x30.bgra, disabling logo
-[I 324538190] OSD_MODULE: Logo region setup completed for Group 1
-[I 324538228] OSD_MODULE: Creating timestamp region for Group 1
+[I 1280351192] OSD_MODULE: Region 1 registered successfully to Group 1
+[I 1280351224] OSD_MODULE: Registered 2 regions to Group 1
+[I 1280351256] OSD_MODULE: Skipping info region setup for Group 1 (disabled in config)
+[E 1280351348] OSD_MODULE: Failed to open logo file: /usr/share/images/logo_100x30.bgra
+[E 1280351523] OSD_MODULE: Failed to load logo from /usr/share/images/logo_100x30.bgra, disabling logo
+[I 1280351654] OSD_MODULE: Logo region setup completed for Group 1
+[I 1280351692] OSD_MODULE: Creating timestamp region for Group 1
 [OSD] CreateRgn: called with prAttr=0
 [OSD] CreateRgn: allocated handle=6 from free list
 [OSD] CreateRgn: NULL prAttr, creating empty region
 [OSD] CreateRgn: handle=6 created (empty)
-[I 324538822] OSD_MODULE: IMP_OSD_CreateRgn returned handle: 6 for Group 1 timestamp
-[I 324538867] OSD_MODULE: Timestamp region created with handle 6 for Group 1
-[I 324538901] OSD_MODULE: Registering timestamp region 6 with group 1
+[I 1280351908] OSD_MODULE: IMP_OSD_CreateRgn returned handle: 6 for Group 1 timestamp
+[I 1280352036] OSD_MODULE: Timestamp region created with handle 6 for Group 1
+[I 1280352074] OSD_MODULE: Registering timestamp region 6 with group 1
 [OSD] RegisterRgn: handle=6, grp=1
-[I 324539056] OSD_MODULE: Timestamp region 6 registered with Group 1 successfully
-[I 324539099] OSD_MODULE: Timestamp region created successfully for Group 1
-[I 324539211] OSD_MODULE: Motion zones regions not created (T31L optimization), skipping setup for Group 1
-[I 324539255] OSD_MODULE: OSD regions created successfully for group 1
-[I 324539289] OSD_MODULE: Starting OSD for group 1
+[I 1280352220] OSD_MODULE: Timestamp region 6 registered with Group 1 successfully
+[I 1280352262] OSD_MODULE: Timestamp region created successfully for Group 1
+[I 1280352378] OSD_MODULE: Motion zones regions not created (T31L optimization), skipping setup for Group 1
+[I 1280352416] OSD_MODULE: OSD regions created successfully for group 1
+[I 1280352508] OSD_MODULE: Starting OSD for group 1
 [OSD] Start: grp=1
-[I 324539429] OSD_MODULE: OSD started successfully for group 1
-[I 324539461] OSD_MODULE: OSD initialized and started for Group 1 (640x360) - COMPLETE SUCCESS
-[I 324539589] OSD_MODULE: Applying motion zones configuration for group 1
-[I 324539631] OSD_MODULE: Applied motion zones config to stream 1: enabled=false, include_color=0x006000FF, exclude_color=0xFF600000
-[I 324539752] OSD_MODULE: OSD initialized successfully for Group 1 - COMPLETE SUCCESS
-[I 324539801] main: OSD initialized successfully for channel 1
-[I 324539835] main: Binding FrameSource -> OSD -> Encoder for channel 1
+[I 1280352690] OSD_MODULE: OSD started successfully for group 1
+[I 1280352919] OSD_MODULE: OSD initialized and started for Group 1 (640x360) - COMPLETE SUCCESS
+[I 1280353123] OSD_MODULE: Applying motion zones configuration for group 1
+[I 1280353168] OSD_MODULE: Applied motion zones config to stream 1: enabled=false, include_color=0x006000FF, exclude_color=0xFF600000
+[I 1280353295] OSD_MODULE: OSD initialized successfully for Group 1 - COMPLETE SUCCESS
+[I 1280353344] main: OSD initialized successfully for channel 1
+[I 1280353378] main: Binding FrameSource -> OSD -> Encoder for channel 1
 [System] Bind request: [0,1,0] -> [4,1,0]
 [System] Binding [0,1,0] -> [4,1,0]
 [System] Bound FrameSource -> OSD (observer added)
 [System] Bind request: [4,1,0] -> [1,1,0]
 [System] Binding [4,1,0] -> [1,1,0]
 [System] Bound OSD -> Encoder (observer added)
-[I 324540319] main: Bound FrameSource -> OSD -> Encoder for channel 1
-[I 324540447] main: Enabling FrameSource channel 1
+[I 1280353889] main: Bound FrameSource -> OSD -> Encoder for channel 1
+[I 1280353929] main: Enabling FrameSource channel 1
 [KernelIF] Set format: 640x360 fmt=0xa (fourcc=0x3231564e) sizeimage=345600->353280 bytesperline=960 colorspace=8
 [FrameSource] EnableChn: using sizeimage=353280 from SET_FMT for chn=1
 [KernelIF] Set buffer count: 1 (actual: 1)
 [VBM] CreatePool: allocating pool_size=1448 (frame_count=1 * 0x428 + 0x180)
 [VBM] CreatePool: chn=1, 640x360 fmt=0xa, 1 frames, size=353280 (req=353280 calc=353280)
-[DMA] Alloc: �ڜizeiܜ size=353280 phys=0x6a75000 virt=0x7634a000 (rmem off=0x775000)
-[VBM] Frame 0: phys=0x6a75000 virt=0x7634a000
+[DMA] Alloc: L��izei��� size=353280 phys=0x6a75000 virt=0x759a6000 (rmem off=0x775000)
+[VBM] Frame 0: phys=0x6a75000 virt=0x759a6000
 [VBM] CreatePool: chn=1 created successfully
 [VBM] FillPool: chn=1, filling 1 frames
 [VBM] FillPool: queued 1 frames
@@ -501,539 +501,274 @@ root@ing-wyze-cam3-a000 opt# ./streamer
 [FrameSource] EnableChn: capture thread signaled readiness
 [KernelIF] Stream started
 [FrameSource] EnableChn: chn=1 enabled successfully
-[I 324548150] main: FrameSource channel 1 enabled successfully
+[I 1280360930] main: FrameSource channel 1 enabled successfully
 [Encoder] RequestIDR: chn=1
 [HW_Encoder] RequestIDR: next frame will be IDR
 [Encoder] StartRecvPic: chn=1
-[I 324548309] main: Encoder channel 1 started receiving pictures
+[I 1280361293] main: Encoder channel 1 started receiving pictures
 [Encoder] RequestIDR: chn=1
 [HW_Encoder] RequestIDR: next frame will be IDR
-[I 324548492] main: === Channel 1 initialization complete ===
-[D 324548702] main: Channel 2 not enabled, skipping
-[D 324548752] main: Channel 3 not enabled, skipping
-[I 324548789] main: All channels initialized successfully
-[I 324548826] main: Initializing JPEG encoder for channel 4 (stream 0)
-[Encoder] SetDefaultParam: 1920x1080, 20/1 fps, profile=67108864, rc=0
-[D 324549280] main: Set default JPEG parameters for channel 4: 1920x1080
+[I 1280361394] main: === Channel 1 initialization complete ===
+[D 1280361431] main: Channel 2 not enabled, skipping
+[D 1280361730] main: Channel 3 not enabled, skipping
+[I 1280361779] main: All channels initialized successfully
+[I 1280361816] main: Initializing JPEG encoder for channel 4 (stream 0)
+[Encoder] SetDefaultParam: 1920x1080, 25/1 fps, profile=67108864, rc=0
+[D 1280362118] main: Set default JPEG parameters for channel 4: 1920x1080
 [Codec] SetDefaultParam: initialized
-[Encoder] channel_encoder_init: 1920x1080, profile=0x4000000->0x0, fps=20/1, gop=0, bitrate=0
+[Encoder] channel_encoder_init: 1920x1080, profile=0x4000000->0x0, fps=25/1, gop=0, bitrate=0
 [Fifo] Init: size=4, max_elements=5
 [Fifo] Init: size=7, max_elements=8
 [Codec] Create: vendor library will handle hardware acceleration via /dev/avpu
-[Codec] Create: codec=0x75ac1ad0, channel=2
+[Codec] Create: codec=0x7511dad0, channel=2
 [Encoder] channel_encoder_init: frame_cnt=4, frame_size=1048576
 [Fifo] Init: size=4, max_elements=5
 [Encoder] CreateChn: chn=4, profile=67108864 created successfully
-[D 324550562] main: Created JPEG channel 4
+[D 1280363505] main: Created JPEG channel 4
 [Encoder] RegisterChn: grp=0, chn=4
-[D 324550754] main: Registered JPEG channel 4 to group 0
-[I 324550877] main: JPEG encoder channel 4 initialized successfully
-[I 324550931] main: Initializing JPEG encoder for channel 5 (stream 1)
-[Encoder] SetDefaultParam: 640x360, 20/1 fps, profile=67108864, rc=0
-[D 324551095] main: Set default JPEG parameters for channel 5: 640x360
+[D 1280363862] main: Registered JPEG channel 4 to group 0
+[I 1280363900] main: JPEG encoder channel 4 initialized successfully
+[I 1280363938] main: Initializing JPEG encoder for channel 5 (stream 1)
+[Encoder] SetDefaultParam: 640x360, 25/1 fps, profile=67108864, rc=0
+[D 1280364288] main: Set default JPEG parameters for channel 5: 640x360
 [Codec] SetDefaultParam: initialized
-[Encoder] channel_encoder_init: 640x360, profile=0x4000000->0x0, fps=20/1, gop=0, bitrate=0
+[Encoder] channel_encoder_init: 640x360, profile=0x4000000->0x0, fps=25/1, gop=0, bitrate=0
 [Fifo] Init: size=4, max_elements=5
 [Fifo] Init: size=7, max_elements=8
 [Codec] Create: vendor library will handle hardware acceleration via /dev/avpu
-[Codec] Create: codec=0x75ac2590, channel=3
+[Codec] Create: codec=0x7511e590, channel=3
 [Encoder] channel_encoder_init: frame_cnt=4, frame_size=1048576
 [Fifo] Init: size=4, max_elements=5
 [Encoder] CreateChn: chn=5, profile=67108864 created successfully
-[D 324552483] main: Created JPEG channel 5
+[D 1280365395] main: Created JPEG channel 5
 [Encoder] RegisterChn: grp=1, chn=5
-[D 324552549] main: Registered JPEG channel 5 to group 1
-[I 324552581] main: JPEG encoder channel 5 initialized successfully
-[I 324552620] main: FrameSource stream started successfully
-[I 324552655] main: OSD updates will be handled by OSD module
-[I 324552691] MODULE: Starting all initialized modules
-[I 324552727] MODULE: Starting module 'osd'
-[I 324552763] OSD_MODULE: Starting OSD module
-[I 324552799] OSD_MODULE: Starting OSD timer thread
-[I 324552883] OSD_MODULE: OSD timer thread started successfully
-[I 324552931] OSD_MODULE: OSD module started successfully with independent timer thread
-[I 324552972] MODULE: Module 'osd' started successfully
-[I 324553009] MODULE: Starting module 'rtsp'
-[I 324553046] RTSP_MODULE: Starting RTSP module
-[D 324553107] RTSP: Creating RTSP server on port 554
-[D 324553198] RTSP: Copying RTSP server configuration
-[D 324553261] RTSP: Initializing GOP cache
-[D 324553303] RTSP: Initializing GOP cache for channel 0
-[D 324553336] RTSP: Initializing frame buffers for channel 0
-[D 324553367] RTSP: Allocating frame buffer 0 for channel 0
-[D 324553421] RTSP: Allocating frame buffer 1 for channel 0
-[D 324553481] RTSP: Allocating frame buffer 2 for channel 0
-[D 324553536] RTSP: Allocating frame buffer 3 for channel 0
-[D 324553587] RTSP: Allocating frame buffer 4 for channel 0
-[D 324553637] RTSP: Allocating frame buffer 5 for channel 0
-[D 324553689] RTSP: Allocating frame buffer 6 for channel 0
-[D 324553740] RTSP: Allocating frame buffer 7 for channel 0
-[D 324554037] RTSP: Allocating frame buffer 8 for channel 0
-[D 324554101] RTSP: Allocating frame buffer 9 for channel 0
-[D 324554167] RTSP: Allocating frame buffer 10 for channel 0
-[D 324554219] RTSP: Allocating frame buffer 11 for channel 0
-[D 324554496] RTSP: Allocating frame buffer 12 for channel 0
-[D 324554569] RTSP: Allocating frame buffer 13 for channel 0
-[D 324554750] RTSP: Allocating frame buffer 14 for channel 0
-[D 324554802] RTSP: Allocating frame buffer 15 for channel 0
-[D 324554862] RTSP: Allocating frame buffer 16 for channel 0
-[D 324555033] RTSP: Allocating frame buffer 17 for channel 0
-[D 324555181] RTSP: Allocating frame buffer 18 for channel 0
-[D 324555251] RTSP: Allocating frame buffer 19 for channel 0[FrameSource] frame_capture_thread: started for channel 1, state=2, fd=9
+[D 1280365460] main: Registered JPEG channel 5 to group 1
+[I 1280365492] main: JPEG encoder channel 5 initialized successfully
+[I 1280365530] main: FrameSource stream started successfully
+[I 1280365565] main: OSD updates will be handled by OSD module
+[I 1280366142] MODULE: Starting all initialized modules
+[I 1280366195] MODULE: Starting module 'osd'
+[I 1280366234] OSD_MODULE: Starting OSD module
+[I 1280366272] OSD_MODULE: Starting OSD timer thread
+[I 1280366387] OSD_MODULE: OSD timer thread started successfully
+[I 1280366440] OSD_MODULE: OSD module started successfully with independent timer thread
+[I 1280366482] MODULE: Module 'osd' started successfully
+[I 1280366519] MODULE: Starting module 'rtsp'
+[I 1280366556] RTSP_MODULE: Starting RTSP module
+[D 1280366618] RTSP: Creating RTSP server on port 554
+[D 1280366713] RTSP: Copying RTSP server configuration
+[D 1280366773] RTSP: Initializing GOP cache
+[D 1280366815] RTSP: Initializing GOP cache for channel 0
+[D 1280366848] RTSP: Initializing frame buffers for channel 0
+[D 1280366879] RTSP: Allocating frame buffer 0 for channel 0
+[D 1280366933] RTSP: Allocating frame buffer 1 for channel 0
+[D 1280366994] RTSP: Allocating frame buffer 2 for channel 0
+[D 1280367052] RTSP: Allocating frame buffer 3 for channel 0
+[D 1280367108] RTSP: Allocating frame buffer 4 for channel 0
+[D 1280367162] RTSP: Allocating frame buffer 5 for channel 0
+[D 1280367215] RTSP: Allocating frame buffer 6 for channel 0
+[D 1280367267] RTSP: Allocating frame buffer 7 for channel 0
+[D 1280367315] RTSP: Allocating frame buffer 8 for channel 0
+[D 1280367360] RTSP: Allocating frame buffer 9 for channel 0
+[D 1280367412] RTSP: Allocating frame buffer 10 for channel 0
+[D 1280367460] RTSP: Allocating frame buffer 11 for channel 0
+[D 1280367501] RTSP: Allocating frame buffer 12 for channel 0
+[D 1280367820] RTSP: Allocating frame buffer 13 for channel 0
+[D 1280367888] RTSP: Allocating frame buffer 14 for channel 0
+[D 1280367932] RTSP: Allocating frame buffer 15 for channel 0
+[D 1280367987] RTSP: Allocating frame buffer 16 for channel 0[FrameSource] frame_capture_thread: started for channel 1, state=2, fd=9
 [FrameSource] frame_capture_thread chn=1: entering main loop
 [FrameSource] frame_capture_thread chn=1: poll iteration 1, state=2, fd=9, software_mode=0
-[FrameSource] frame_capture_thread chn=1: about to call VIDIOC_POLL_FRAME (poll #1)
+[FrameSource] frame_capture_thread chn=1: about to select() (poll #1)
+[FrameSource] frame_capture_thread chn=1: select() returned 1 (errno=0)
 [Encoder] stream_thread: started for channel 5
 [Encoder] encoder_thread: started for channel 5
 
-[D 324556161] RTSP: Allocating frame buffer 20 for channel 0
-[D 324556397] RTSP: Allocating frame buffer 21 for channel 0
-[D 324556636] RTSP: Allocating frame buffer 22 for channel 0
-[D 324556917] RTSP: Allocating frame buffer 23 for channel 0
-[D 324557154] RTSP: Allocating frame buffer 24 for channel 0
-[D 324557379] RTSP: Allocating frame buffer 25 for channel 0
-[D 324558139] RTSP: Allocating frame buffer 26 for channel 0
-[D 324558582] RTSP: Allocating frame buffer 27 for channel 0
-[D 324558961] RTSP: Allocating frame buffer 28 for channel 0
-[D 324559037] RTSP: Allocating frame buffer 29 for channel 0
-[D 324559265] RTSP: Allocating frame buffer 30 for channel 0
-[I 324555651] OSD_MODULE: OSD timer thread started
+[D 1280369226] RTSP: Allocating frame buffer 17 for channel 0
+[D 1280369476] RTSP: Allocating frame buffer 18 for channel 0
+[D 1280369718] RTSP: Allocating frame buffer 19 for channel 0
 [Encoder] stream_thread: started for channel 4
-[Encoder] encoder_thread: started for channel 4
-[D 324559469] RTSP: Allocating frame buffer 31 for channel 0
-[D 324559664] RTSP: Allocating frame buffer 32 for channel 0
-[D 324559729] RTSP: Allocating frame buffer 33 for channel 0
-[D 324559887] RTSP: Allocating frame buffer 34 for channel 0
-[D 324559947] RTSP: Allocating frame buffer 35 for channel 0
-[D 324560154] RTSP: Allocating frame buffer 36 for channel 0
-[D 324560228] RTSP: Allocating frame buffer 37 for channel 0
-[D 324560713] RTSP: Allocating frame buffer 38 for channel 0
-[D 324560930] RTSP: Allocating frame buffer 39 for channel 0
-[D 324560984] RTSP: Allocating frame buffer 40 for channel 0
-[D 324561026] RTSP: Allocating frame buffer 41 for channel 0
-[D 324561190] RTSP: Allocating frame buffer 42 for channel 0
-[D 324561338] RTSP: Allocating frame buffer 43 for channel 0
-[D 324561398] RTSP: Allocating frame buffer 44 for channel 0
-[D 324561542] RTSP: Allocating frame buffer 45 for channel 0
-[D 324562180] RTSP: Allocating frame buffer 46 for channel 0
-[D 324562268] RTSP: Allocating frame buffer 47 for channel 0
-[D 324562516] RTSP: Allocating frame buffer 48 for channel 0
-[D 324562854] RTSP: Allocating frame buffer 49 for channel 0
-[D 324562916] RTSP: Allocating frame buffer 50 for channel 0
-[D 324562956] RTSP: Allocating frame buffer 51 for channel 0
-[D 324563311] RTSP: Allocating frame buffer 52 for channel 0
-[D 324563384] RTSP: Allocating frame buffer 53 for channel 0
-[D 324563604] RTSP: Allocating frame buffer 54 for channel 0
-[D 324563661] RTSP: Allocating frame buffer 55 for channel 0
-[D 324563703] RTSP: Allocating frame buffer 56 for channel 0
-[D 324563848] RTSP: Allocating frame buffer 57 for channel 0
-[D 324563900] RTSP: Allocating frame buffer 58 for channel 0
-[D 324564040] RTSP: Allocating frame buffer 59 for channel 0
-[D 324564092] RTSP: Initializing GOP cache for channel 1
-[D 324564215] RTSP: Initializing frame buffers for channel 1
-[D 324564251] RTSP: Allocating frame buffer 0 for channel 1
-[D 324564295] RTSP: Allocating frame buffer 1 for channel 1
-[D 324564847] RTSP: Allocating frame buffer 2 for channel 1
-[D 324565232] RTSP: Allocating frame buffer 3 for channel 1
-[D 324565564] RTSP: Allocating frame buffer 4 for channel 1
-[D 324565625] RTSP: Allocating frame buffer 5 for channel 1
-[D 324565664] RTSP: Allocating frame buffer 6 for channel 1
-[D 324566016] RTSP: Allocating frame buffer 7 for channel 1
-[D 324566076] RTSP: Allocating frame buffer 8 for channel 1
-[D 324566151] RTSP: Allocating frame buffer 9 for channel 1
-[D 324566511] RTSP: Allocating frame buffer 10 for channel 1
-[D 324566569] RTSP: Allocating frame buffer 11 for channel 1
-[D 324566633] RTSP: Allocating frame buffer 12 for channel 1
-[D 324566855] RTSP: Allocating frame buffer 13 for channel 1
-[D 324566910] RTSP: Allocating frame buffer 14 for channel 1
-[D 324567056] RTSP: Allocating frame buffer 15 for channel 1
-[D 324567104] RTSP: Allocating frame buffer 16 for channel 1
-[D 324567243] RTSP: Allocating frame buffer 17 for channel 1
-[D 324567294] RTSP: Allocating frame buffer 18 for channel 1
-[D 324567436] RTSP: Allocating frame buffer 19 for channel 1
-[D 324567566] RTSP: Allocating frame buffer 20 for channel 1
-[D 324567619] RTSP: Allocating frame buffer 21 for channel 1
-[D 324567775] RTSP: Allocating frame buffer 22 for channel 1
-[D 324567931] RTSP: Allocating frame buffer 23 for channel 1
-[D 324567979] RTSP: Allocating frame buffer 24 for channel 1
-[D 324568122] RTSP: Allocating frame buffer 25 for channel 1
-[D 324568171] RTSP: Allocating frame buffer 26 for channel 1
-[D 324568312] RTSP: Allocating frame buffer 27 for channel 1
-[D 324568368] RTSP: Allocating frame buffer 28 for channel 1
-[D 324568511] RTSP: Allocating frame buffer 29 for channel 1
-[D 324568645] RTSP: Allocating frame buffer 30 for channel 1
-[D 324568700] RTSP: Allocating frame buffer 31 for channel 1
-[D 324568858] RTSP: Allocating frame buffer 32 for channel 1
-[D 324569148] RTSP: Allocating frame buffer 33 for channel 1
-[D 324569356] RTSP: Allocating frame buffer 34 for channel 1
-[D 324569539] RTSP: Allocating frame buffer 35 for channel 1
-[D 324569599] RTSP: Allocating frame buffer 36 for channel 1
-[D 324569758] RTSP: Allocating frame buffer 37 for channel 1
-[D 324569902] RTSP: Allocating frame buffer 38 for channel 1
-[D 324569958] RTSP: Allocating frame buffer 39 for channel 1
-[D 324570460] RTSP: Allocating frame buffer 40 for channel 1
-[D 324570616] RTSP: Allocating frame buffer 41 for channel 1
-[D 324570981] RTSP: Allocating frame buffer 42 for channel 1
-[D 324571350] RTSP: Allocating frame buffer 43 for channel 1
-[D 324571686] RTSP: Allocating frame buffer 44 for channel 1
-[D 324571752] RTSP: Allocating frame buffer 45 for channel 1
-[D 324571791] RTSP: Allocating frame buffer 46 for channel 1
-[D 324572131] RTSP: Allocating frame buffer 47 for channel 1
-[D 324572190] RTSP: Allocating frame buffer 48 for channel 1
-[D 324572230] RTSP: Allocating frame buffer 49 for channel 1
-[D 324572610] RTSP: Allocating frame buffer 50 for channel 1
-[D 324572787] RTSP: Allocating frame buffer 51 for channel 1
-[D 324573193] RTSP: Allocating frame buffer 52 for channel 1
-[D 324573260] RTSP: Allocating frame buffer 53 for channel 1
-[D 324573308] RTSP: Allocating frame buffer 54 for channel 1
-[D 324573661] RTSP: Allocating frame buffer 55 for channel 1
-[D 324573719] RTSP: Allocating frame buffer 56 for channel 1
-[D 324573762] RTSP: Allocating frame buffer 57 for channel 1
-[D 324573806] RTSP: Allocating frame buffer 58 for channel 1
-[D 324574020] RTSP: Allocating frame buffer 59 for channel 1
-[D 324574074] RTSP: Initializing clients
-[D 324574114] RTSP: Initializing client 0
-[D 324574234] RTSP: Initializing client 1
-[D 324574289] RTSP: Initializing client 2
-[D 324574326] RTSP: Initializing client 3
-[D 324574449] RTSP: Initializing client 4
-[D 324574546] RTSP: Initializing client 5
-[D 324574691] RTSP: Initializing client 6
-[D 324574731] RTSP: Initializing client 7
-[D 324574763] RTSP: RTSP server created successfully
-[E 324574894] RTSP_MODULE: RTSP: Configuring stream 0 (ch0): 1920x1080, bitrate=2048
+[D 1280370581] RTSP: Allocating frame buffer 20 for channel 0
+[D 1280371730] RTSP: Allocating frame buffer 21 for channel 0
+[D 1280372142] RTSP: Allocating frame buffer 22 for channel 0
+[D 1280372243] RTSP: Allocating frame buffer 23 for channel 0[Encoder] encoder_thread: started for channel 4
+
+[D 1280372646] RTSP: Allocating frame buffer 24 for channel 0
+[D 1280372781] RTSP: Allocating frame buffer 25 for channel 0
+[D 1280373136] RTSP: Allocating frame buffer 26 for channel 0
+[I 1280368703] OSD_MODULE: OSD timer thread started
+[D 1280373295] RTSP: Allocating frame buffer 27 for channel 0
+[D 1280373643] RTSP: Allocating frame buffer 28 for channel 0
+[D 1280373715] RTSP: Allocating frame buffer 29 for channel 0
+[D 1280373760] RTSP: Allocating frame buffer 30 for channel 0
+[D 1280373800] RTSP: Allocating frame buffer 31 for channel 0
+[D 1280374168] RTSP: Allocating frame buffer 32 for channel 0
+[D 1280374235] RTSP: Allocating frame buffer 33 for channel 0
+[D 1280374277] RTSP: Allocating frame buffer 34 for channel 0
+[D 1280374624] RTSP: Allocating frame buffer 35 for channel 0
+[D 1280374686] RTSP: Allocating frame buffer 36 for channel 0
+[D 1280374747] RTSP: Allocating frame buffer 37 for channel 0
+[D 1280375101] RTSP: Allocating frame buffer 38 for channel 0
+[D 1280375159] RTSP: Allocating frame buffer 39 for channel 0
+[D 1280375405] RTSP: Allocating frame buffer 40 for channel 0
+[D 1280375760] RTSP: Allocating frame buffer 41 for channel 0
+[D 1280375844] RTSP: Allocating frame buffer 42 for channel 0
+[D 1280376198] RTSP: Allocating frame buffer 43 for channel 0
+[D 1280376260] RTSP: Allocating frame buffer 44 for channel 0
+[D 1280376598] RTSP: Allocating frame buffer 45 for channel 0
+[D 1280376654] RTSP: Allocating frame buffer 46 for channel 0
+[D 1280376698] RTSP: Allocating frame buffer 47 for channel 0
+[D 1280377042] RTSP: Allocating frame buffer 48 for channel 0
+[D 1280377102] RTSP: Allocating frame buffer 49 for channel 0
+[D 1280377146] RTSP: Allocating frame buffer 50 for channel 0
+[D 1280377186] RTSP: Allocating frame buffer 51 for channel 0
+[D 1280377551] RTSP: Allocating frame buffer 52 for channel 0
+[D 1280377622] RTSP: Allocating frame buffer 53 for channel 0
+[D 1280377835] RTSP: Allocating frame buffer 54 for channel 0
+[D 1280377894] RTSP: Allocating frame buffer 55 for channel 0
+[D 1280377936] RTSP: Allocating frame buffer 56 for channel 0
+[D 1280377980] RTSP: Allocating frame buffer 57 for channel 0
+[D 1280378139] RTSP: Allocating frame buffer 58 for channel 0
+[D 1280378188] RTSP: Allocating frame buffer 59 for channel 0
+[D 1280378335] RTSP: Initializing GOP cache for channel 1
+[D 1280378377] RTSP: Initializing frame buffers for channel 1
+[D 1280378498] RTSP: Allocating frame buffer 0 for channel 1
+[D 1280378950] RTSP: Allocating frame buffer 1 for channel 1
+[D 1280379062] RTSP: Allocating frame buffer 2 for channel 1
+[D 1280379235] RTSP: Allocating frame buffer 3 for channel 1
+[D 1280379404] RTSP: Allocating frame buffer 4 for channel 1
+[D 1280379458] RTSP: Allocating frame buffer 5 for channel 1
+[D 1280379604] RTSP: Allocating frame buffer 6 for channel 1
+[D 1280379656] RTSP: Allocating frame buffer 7 for channel 1
+[D 1280379800] RTSP: Allocating frame buffer 8 for channel 1
+[D 1280379930] RTSP: Allocating frame buffer 9 for channel 1
+[D 1280379994] RTSP: Allocating frame buffer 10 for channel 1
+[D 1280380203] RTSP: Allocating frame buffer 11 for channel 1
+[D 1280380374] RTSP: Allocating frame buffer 12 for channel 1
+[D 1280380851] RTSP: Allocating frame buffer 13 for channel 1
+[D 1280381114] RTSP: Allocating frame buffer 14 for channel 1
+[D 1280381456] RTSP: Allocating frame buffer 15 for channel 1
+[D 1280381513] RTSP: Allocating frame buffer 16 for channel 1
+[D 1280381842] RTSP: Allocating frame buffer 17 for channel 1
+[D 1280381902] RTSP: Allocating frame buffer 18 for channel 1
+[D 1280381950] RTSP: Allocating frame buffer 19 for channel 1
+[D 1280382165] RTSP: Allocating frame buffer 20 for channel 1
+[D 1280382218] RTSP: Allocating frame buffer 21 for channel 1
+[D 1280382288] RTSP: Allocating frame buffer 22 for channel 1
+[D 1280382464] RTSP: Allocating frame buffer 23 for channel 1
+[D 1280382516] RTSP: Allocating frame buffer 24 for channel 1
+[D 1280382704] RTSP: Allocating frame buffer 25 for channel 1
+[D 1280382760] RTSP: Allocating frame buffer 26 for channel 1
+[D 1280382986] RTSP: Allocating frame buffer 27 for channel 1
+[D 1280383148] RTSP: Allocating frame buffer 28 for channel 1
+[D 1280383206] RTSP: Allocating frame buffer 29 for channel 1
+[D 1280383357] RTSP: Allocating frame buffer 30 for channel 1
+[D 1280383407] RTSP: Allocating frame buffer 31 for channel 1
+[D 1280383568] RTSP: Allocating frame buffer 32 for channel 1
+[D 1280383722] RTSP: Allocating frame buffer 33 for channel 1
+[D 1280383780] RTSP: Allocating frame buffer 34 for channel 1
+[D 1280383928] RTSP: Allocating frame buffer 35 for channel 1
+[D 1280383976] RTSP: Allocating frame buffer 36 for channel 1
+[D 1280384130] RTSP: Allocating frame buffer 37 for channel 1
+[D 1280384183] RTSP: Allocating frame buffer 38 for channel 1
+[D 1280384333] RTSP: Allocating frame buffer 39 for channel 1
+[D 1280384386] RTSP: Allocating frame buffer 40 for channel 1
+[D 1280384530] RTSP: Allocating frame buffer 41 for channel 1
+[D 1280384598] RTSP: Allocating frame buffer 42 for channel 1
+[D 1280384758] RTSP: Allocating frame buffer 43 for channel 1
+[D 1280384905] RTSP: Allocating frame buffer 44 for channel 1
+[D 1280384962] RTSP: Allocating frame buffer 45 for channel 1
+[D 1280385106] RTSP: Allocating frame buffer 46 for channel 1
+[D 1280385159] RTSP: Allocating frame buffer 47 for channel 1
+[D 1280385304] RTSP: Allocating frame buffer 48 for channel 1
+[D 1280385352] RTSP: Allocating frame buffer 49 for channel 1
+[D 1280385496] RTSP: Allocating frame buffer 50 for channel 1
+[D 1280385544] RTSP: Allocating frame buffer 51 for channel 1
+[D 1280385704] RTSP: Allocating frame buffer 52 for channel 1
+[D 1280385860] RTSP: Allocating frame buffer 53 for channel 1
+[D 1280386216] RTSP: Allocating frame buffer 54 for channel 1
+[D 1280386290] RTSP: Allocating frame buffer 55 for channel 1
+[D 1280386486] RTSP: Allocating frame buffer 56 for channel 1
+[D 1280386540] RTSP: Allocating frame buffer 57 for channel 1
+[D 1280386587] RTSP: Allocating frame buffer 58 for channel 1
+[D 1280386734] RTSP: Allocating frame buffer 59 for channel 1
+[D 1280386788] RTSP: Initializing clients
+[D 1280386920] RTSP: Initializing client 0
+[D 1280386958] RTSP: Initializing client 1
+[D 1280387078] RTSP: Initializing client 2
+[D 1280387123] RTSP: Initializing client 3
+[D 1280387155] RTSP: Initializing client 4
+[D 1280387276] RTSP: Initializing client 5
+[D 1280387314] RTSP: Initializing client 6
+[D 1280387346] RTSP: Initializing client 7
+[D 1280387464] RTSP: RTSP server created successfully
+[E 1280387508] RTSP_MODULE: RTSP: Configuring stream 0 (ch0): 1920x1080, bitrate=2048
 [Encoder] GetChnAttr: chn=0
-[D 324574983] RTSP: Adding stream: ch0 (channel 0, H264)
-[D 324575119] RTSP: Reallocating streams array (current count: 0)
-[D 324575168] RTSP: Copying stream configuration
-[D 324575290] RTSP: Stream added successfully (total streams: 1)
-[E 324575333] RTSP_MODULE: RTSP: Configuring stream 1 (ch1): 640x360, bitrate=512
+[D 1280387682] RTSP: Adding stream: ch0 (channel 0, H264)
+[D 1280387816] RTSP: Reallocating streams array (current count: 0)
+[D 1280387865] RTSP: Copying stream configuration
+[D 1280387902] RTSP: Stream added successfully (total streams: 1)
+[E 1280388030] RTSP_MODULE: RTSP: Configuring stream 1 (ch1): 640x360, bitrate=512
 [Encoder] GetChnAttr: chn=1
-[D 324575484] RTSP: Adding stream: ch1 (channel 1, H264)
-[D 324575525] RTSP: Reallocating streams array (current count: 1)
-[D 324575653] RTSP: Copying stream configuration
-[D 324575696] RTSP: Stream added successfully (total streams: 2)
-[I 324575736] RTSP: Starting RTSP server
-[I 324575854] RTSP: Creating listen socket...
-[I 324575918] RTSP: Listen socket created successfully
-[I 324576062] RTSP: Binding socket to port 554...
-[I 324576130] RTSP: Socket bound successfully to port 554
-[I 324576313] RTSP: Setting socket to listen mode...
-[I 324576396] RTSP: Socket listening successfully
-[I 324576548] RTSP: Starting RTSP server thread...
-[I 324576671] RTSP: RTSP server thread started successfully
-[I 324576856] RTSP: Starting RTP thread...
-[I 324577054] RTSP: RTP thread started successfully
-[I 324577448] RTSP: RTSP server started successfully on port 554
-[I 324577494] MODULE: Module 'rtsp' started successfully
-[I 324577628] MODULE: Starting module 'motion'
-[I 324577684] MOTION: Starting motion detection module
-[I 324577816] MOTION: Motion detection disabled in configuration
-[I 324577860] MODULE: Module 'motion' started successfully
-[I 324577898] MODULE: Module start complete: 3 success, 0 errors
-[I 324578025] main: Modules started
-[I 324578102] SNAPSHOT_FALLBACK: Snapshot fallback initialized (dir=/tmp, interval=5000ms)
-[I 324578266] SNAPSHOT_FALLBACK: Snapshot fallback disabled in configuration
-[I 324578311] main: Snapshot fallback system started
-[I 324578434] main: Initialization complete, starting frame manager
-[I 324578486] FRAME_MGR: Frame manager initialized successfully
-[I 324579054] FRAME_MGR: Frame manager started successfully
-[I 324579407] main: Frame manager started - using modular architecture
-[I 324580256] FRAME_MGR: Frame processing thread started
-[I 324581095] FRAME_MGR: 64MB SoC: Using aggressive polling timeout: 25ms (was 50ms)
-[E 324581408] FRAME_MGR: hal_stream_get(block=1) failed on ch0: -1
-[E 324581608] FRAME_MGR: hal_stream_get(block=1) failed on ch1: -1
-[W 324581785] FRAME_MGR: hal_stream_poll(timeout=25ms) returned -1 on ch2
-[W 324582384] FRAME_MGR: hal_stream_poll(timeout=25ms) returned -1 on ch3
-[E 324607542] FRAME_MGR: hal_stream_get(block=1) failed on ch0: -1
-[E 324607628] FRAME_MGR: hal_stream_get(block=1) failed on ch1: -1
-[W 324607665] FRAME_MGR: hal_stream_poll(timeout=25ms) returned -1 on ch2
-[W 324607966] FRAME_MGR: hal_stream_poll(timeout=25ms) returned -1 on ch3
-[E 324633124] FRAME_MGR: hal_stream_get(block=1) failed on ch0: -1
-[E 324633210] FRAME_MGR: hal_stream_get(block=1) failed on ch1: -1
-[W 324633248] FRAME_MGR: hal_stream_poll(timeout=25ms) returned -1 on ch2
-[W 324633282] FRAME_MGR: hal_stream_poll(timeout=25ms) returned -1 on ch3
-[E 324658406] FRAME_MGR: hal_stream_get(block=1) failed on ch0: -1
-[E 324658496] FRAME_MGR: hal_stream_get(block=1) failed on ch1: -1
-[W 324658534] FRAME_MGR: hal_stream_poll(timeout=25ms) returned -1 on ch2
-[W 324658568] FRAME_MGR: hal_stream_poll(timeout=25ms) returned -1 on ch3
-[W 324708735] FRAME_MGR: hal_stream_poll(timeout=25ms) returned -1 on ch0
-[W 324733877] FRAME_MGR: hal_stream_poll(timeout=25ms) returned -1 on ch1
-[W 324733955] FRAME_MGR: hal_stream_poll(timeout=25ms) returned -1 on ch2
-[W 324733991] FRAME_MGR: hal_stream_poll(timeout=25ms) returned -1 on ch3
-[W 324784161] FRAME_MGR: hal_stream_poll(timeout=25ms) returned -1 on ch0
-[W 324809309] FRAME_MGR: hal_stream_poll(timeout=25ms) returned -1 on ch1
-[W 324859530] FRAME_MGR: hal_stream_poll(timeout=25ms) returned -1 on ch0
-[W 324884681] FRAME_MGR: hal_stream_poll(timeout=25ms) returned -1 on ch1
-[W 324934874] FRAME_MGR: hal_stream_poll(timeout=25ms) returned -1 on ch0
-[W 324960018] FRAME_MGR: hal_stream_poll(timeout=25ms) returned -1 on ch1
-[W 325012554] FRAME_MGR: hal_stream_poll(timeout=25ms) returned -1 on ch0
-[W 325037687] FRAME_MGR: hal_stream_poll(timeout=25ms) returned -1 on ch1
-^C
-root@ing-wyze-cam3-a000 opt# dmesg 
-[    0.000000] Initializing cgroup subsys cpu
-[    0.000000] Initializing cgroup subsys cpuacct
-[    0.000000] Linux version 3.10.14__isvp_swan_1.0__ (buildroot@buildroot) (buildroot-gcc-14.3.0) #1 PREEMPT Sun Sep 7 20:46:40 UTC 2025
-[    0.000000] CPU0 RESET ERROR PC:801ADC80
-[    0.000000] [<801adc80>] 0x801adc80
-[    0.000000] CPU0 revision is: 00d00100 (Ingenic Xburst)
-[    0.000000] FPU revision is: 00b70000
-[    0.000000] cgu_get_rate, parent = 1392000000, rate = 0, m = 129, n = 255, reg val = 0x081000ff
-[    0.000000] cgu_get_rate, parent = 1392000000, rate = 0, m = 129, n = 255, reg val = 0x081000ff
-[    0.000000] CCLK:1392MHz L2CLK:696Mhz H0CLK:200MHz H2CLK:200Mhz PCLK:100Mhz
-[    0.000000] Determined physical RAM map:
-[    0.000000]  memory: 0044e000 @ 00010000 (usable)
-[    0.000000]  memory: 00032000 @ 0045e000 (usable after init)
-[    0.000000] User-defined physical RAM map:
-[    0.000000]  memory: 06300000 @ 00000000 (usable)
-[    0.000000] Zone ranges:
-[    0.000000]   Normal   [mem 0x00000000-0x062fffff]
-[    0.000000] Movable zone start for each node
-[    0.000000] Early memory node ranges
-[    0.000000]   node   0: [mem 0x00000000-0x062fffff]
-[    0.000000] On node 0 totalpages: 25344
-[    0.000000] free_area_init_node: node 0, pgdat 804562c0, node_mem_map 81000000
-[    0.000000]   Normal zone: 198 pages used for memmap
-[    0.000000]   Normal zone: 0 pages reserved
-[    0.000000]   Normal zone: 25344 pages, LIFO batch:7
-[    0.000000] Primary instruction cache 32kB, 8-way, VIPT, linesize 32 bytes.
-[    0.000000] Primary data cache 32kB, 8-way, VIPT, no aliases, linesize 32 bytes
-[    0.000000] pls check processor_id[0x00d00100],sc_jz not support!
-[    0.000000] MIPS secondary cache 128kB, 8-way, linesize 32 bytes.
-[    0.000000] pcpu-alloc: s0 r0 d32768 u32768 alloc=1*32768
-[    0.000000] pcpu-alloc: [0] 0 
-[    0.000000] Built 1 zonelists in Zone order, mobility grouping off.  Total pages: 25146
-[    0.000000] Kernel command line: mem=99M@0x0 rmem=29M@0x6300000 console=ttyS1,115200n8 panic=10 root=/dev/mtdblock4 rootfstype=squashfs init=/init mtdparts=jz_sfc:256k(boot),32k(env),224k(config),1472k(kernel),6272k(rootfs),-(rootfs_data),15872k@0x80000(upgrade),16384k@0(all)
-[    0.000000] PID hash table entries: 512 (order: -1, 2048 bytes)
-[    0.000000] Dentry cache hash table entries: 16384 (order: 4, 65536 bytes)
-[    0.000000] Inode-cache hash table entries: 8192 (order: 3, 32768 bytes)
-[    0.000000] Memory: 95136k/101376k available (3683k kernel code, 6240k reserved, 721k data, 200k init, 0k highmem)
-[    0.000000] SLUB: HWalign=32, Order=0-3, MinObjects=0, CPUs=1, Nodes=1
-[    0.000000] Preemptible hierarchical RCU implementation.
-[    0.000000] NR_IRQS:358
-[    0.000000] clockevents_config_and_register success.
-[    0.000012] Calibrating delay loop... 1391.00 BogoMIPS (lpj=6955008)
-[    0.090039] pid_max: default: 32768 minimum: 301
-[    0.090195] Mount-cache hash table entries: 512
-[    0.090582] Initializing cgroup subsys debug
-[    0.090599] Initializing cgroup subsys freezer
-[    0.092102] devtmpfs: initialized
-[    0.093574] regulator-dummy: no parameters
-[    0.093828] NET: Registered protocol family 16
-[    0.097282] set gpio strength: 32-2
-[    0.097292] set gpio strength: 33-2
-[    0.097298] set gpio strength: 34-2
-[    0.097304] set gpio strength: 35-2
-[    0.097310] set gpio strength: 36-2
-[    0.097316] set gpio strength: 37-2
-[    0.108206] bio: create slab <bio-0> at 0
-[    0.113789] jz-dma jz-dma: JZ SoC DMA initialized
-[    0.114918] usbcore: registered new interface driver usbfs
-[    0.115092] usbcore: registered new interface driver hub
-[    0.115282] usbcore: registered new device driver usb
-[    0.115614]  (null): set:249  hold:250 dev=100000000 h=500 l=500
-[    0.117816] cfg80211: Calling CRDA to update world regulatory domain
-[    0.118916] Switching to clocksource jz_clocksource
-[    0.121400] dwc2 otg probe start
-[    0.121427] jz-dwc2 jz-dwc2: cgu clk gate get error
-[    0.121450] DWC IN OTG MODE
-[    0.122234] dwc2 dwc2: Keep PHY ON
-[    0.122246] dwc2 dwc2: Using Buffer DMA mode
-[    0.122255] dwc2 dwc2: Core Release: 3.00a
-[    0.122295] dwc2 dwc2: DesignWare USB2.0 High-Speed Host Controller
-[    0.122315] dwc2 dwc2: new USB bus registered, assigned bus number 1
-[    0.123314] hub 1-0:1.0: USB hub found
-[    0.123338] hub 1-0:1.0: 1 port detected
-[    0.123434] dwc2 dwc2: DWC2 Host Initialized
-[    0.123781] dwc2 dwc2: enter dwc2_gadget_plug_change:2588: plugin = 1 pullup_on = 0 suspend = 0
-[    0.123798] dwc2 otg probe success
-[    0.124053] NET: Registered protocol family 2
-[    0.124400] TCP established hash table entries: 1024 (order: 1, 8192 bytes)
-[    0.124428] TCP bind hash table entries: 1024 (order: 0, 4096 bytes)
-[    0.124448] TCP: Hash tables configured (established 1024 bind 1024)
-[    0.124494] TCP: reno registered
-[    0.124506] UDP hash table entries: 256 (order: 0, 4096 bytes)
-[    0.124524] UDP-Lite hash table entries: 256 (order: 0, 4096 bytes)
-[    0.124697] NET: Registered protocol family 1
-[    0.124978] RPC: Registered named UNIX socket transport module.
-[    0.124989] RPC: Registered udp transport module.
-[    0.124994] RPC: Registered tcp transport module.
-[    0.124999] RPC: Registered tcp NFSv4.1 backchannel transport module.
-[    0.125566] freq_udelay_jiffys[0].max_num = 10
-[    0.125576] cpufreq 	udelay 	loops_per_jiffy	
-[    0.125582] 12000	 59956	 59956	
-[    0.125587] 24000	 119913	 119913	
-[    0.125592] 60000	 299784	 299784	
-[    0.125598] 120000	 599569	 599569	
-[    0.125603] 200000	 999282	 999282	
-[    0.125609] 300000	 1498924	 1498924	
-[    0.125614] 600000	 2997848	 2997848	
-[    0.125620] 792000	 3957159	 3957159	
-[    0.125626] 1008000	 5036385	 5036385	
-[    0.125631] 1200000	 5995696	 5995696	
-[    0.136343] squashfs: version 4.0 (2009/01/31) Phillip Lougher
-[    0.137551] jffs2: version 2.2. © 2001-2006 Red Hat, Inc.
-[    0.138124] msgmni has been set to 185
-[    0.139508] io scheduler noop registered
-[    0.139542] io scheduler cfq registered (default)
-[    0.146166] jz-uart.1: ttyS1 at MMIO 0x10031000 (irq = 58) is a uart1
-[    0.224624] dwc2 dwc2: ID PIN CHANGED!
-[    0.632119] console [ttyS1] enabled
-[    0.636391] logger: created 256K log 'log_main'
-[    0.642946] jz TCU driver register completed
-[    0.648252] the id code = b4018, the flash name is XT25F128B
-[    0.654168] JZ SFC Controller for SFC channel 0 driver register
-[    0.660315] 8 cmdlinepart partitions found on MTD device jz_sfc
-[    0.666426] Creating 8 MTD partitions on "jz_sfc":
-[    0.671530] 0x000000000000-0x000000040000 : "boot"
-[    0.677490] 0x000000040000-0x000000048000 : "env"
-[    0.683441] 0x000000048000-0x000000080000 : "config"
-[    0.689738] 0x000000080000-0x0000001f0000 : "kernel"
-[    0.695861] 0x0000001f0000-0x000000810000 : "rootfs"
-[    0.702162] 0x000000810000-0x000001000000 : "rootfs_data"
-[    0.708733] 0x000000080000-0x000001000000 : "upgrade"
-[    0.715117] 0x000000000000-0x000001000000 : "all"
-[    0.721125] SPI NOR MTD LOAD OK
-[    0.724702] usbcore: registered new interface driver asix
-[    0.730560] usbcore: registered new interface driver cdc_ether
-[    0.736783] usbcore: registered new interface driver cdc_ncm
-[    0.742721] i2c /dev entries driver
-[    0.747161] jz-wdt: watchdog initialized
-[    0.751879] TCP: cubic registered
-[    0.756287] NET: Registered protocol family 10
-[    0.761697] NET: Registered protocol family 17
-[    0.767454] input: gpio-keys as /devices/platform/gpio-keys/input/input0
-[    0.778825] VFS: Mounted root (squashfs filesystem) readonly on device 31:4.
-[    0.789252] devtmpfs: mounted
-[    0.792580] Freeing unused kernel memory: 200K (8045e000 - 80490000)
-[    1.199260] jffs2: notice: (407) jffs2_build_xattr_subsystem: complete building xattr subsystem, 1 of xdatum (0 unchecked, 0 orphan) and 1 of xref (0 dead, 0 orphan) found.
-[    1.961962] jffs2: notice: (419) jffs2_build_xattr_subsystem: complete building xattr subsystem, 0 of xdatum (0 unchecked, 0 orphan) and 0 of xref (0 dead, 0 orphan) found.
-[    6.382601] jzmmc_v1.2 jzmmc_v1.2.0: vmmc regulator missing
-[    6.385169] jzmmc_v1.2 jzmmc_v1.2.0: register success!
-[    6.385233] jzmmc_v1.2 jzmmc_v1.2.1: vmmc regulator missing
-[    6.387853] jzmmc_v1.2 jzmmc_v1.2.1: register success!
-[    6.518282] exFAT: Version 1.2.9
-[    6.547119] usbcore: registered new interface driver usbserial
-[    6.567441] usbcore: registered new interface driver ch341
-[    6.569987] usbserial: USB Serial support registered for ch341-uart
-[    6.584607] usbcore: registered new interface driver cp210x
-[    6.587029] usbserial: USB Serial support registered for cp210x
-[    6.623913] request spk en gpio 63 ok!
-[    6.623924] jz_codec_register: probe() successful!
-[    6.624000] cgu_set_rate, parent = 1392000000, rate = 2048000, n = 10875, reg val = 0x01002a7b
-[    6.624009] cgu_enable,cgu_i2s_spk reg val = 0x21002a7b
-[    6.624025] cgu_set_rate, parent = 1392000000, rate = 2048000, n = 10875, reg val = 0x01002a7b
-[    6.624033] cgu_enable,cgu_i2s_mic reg val = 0x21002a7b
-[    7.029162] dma dma0chan24: Channel 24 have been requested.(phy id 7,type 0x06 desc a48f0000)
-[    7.029452] dma dma0chan25: Channel 25 have been requested.(phy id 6,type 0x06 desc a4842000)
-[    7.029774] dma dma0chan26: Channel 26 have been requested.(phy id 5,type 0x04 desc a48d4000)
-[    7.046542] @@@@ avpu driver ok(version H20220825a) @@@@@
-[    7.076948] input: gpio-keys as /devices/platform/gpio-keys/input/input1
-[    7.079764] Additional GPIO keys device registered with 1 buttons
-[    7.274172] @@@@ tx-isp-probe ok(version H20221206a), compiler date=Dec  6 2022 @@@@@
-[    7.282707] The version of PWM driver is H20210412a
-[    7.293674] pwm-jz pwm-jz: jz_pwm_probe register ok !
-[    7.804833] jzmmc_v1.2 jzmmc_v1.2.1: card insert via sysfs
-[    7.921384] mmc1: card claims to support voltages below the defined range. These will be ignored.
-[    7.979773] mmc1: new SDIO card at address 0001
-[    8.192918] RTW: module init start
-[    8.192932] RTW: rtl8189fs v5.11.6.0-2-gb9aa73b62.20211117
-[    8.192938] RTW: build time: Sep  7 2025 20:46:40
-[    8.193158] RTW: == SDIO Card Info ==
-[    8.193168] RTW:   card: 849f4c00
-[    8.193174] RTW:   clock: 24000000 Hz
-[    8.193179] RTW:   timing spec: legacy
-[    8.193187] RTW:   sd3_bus_mode: FALSE
-[    8.193192] RTW:   func num: 1
-[    8.193199] RTW:   func1: 84b3c900 (*)
-[    8.193204] RTW: ================
-[    8.222394] RTW: HW EFUSE
-[    8.222407] RTW: 0x000: 29 81 03 CC  00 00 50 00  00 00 04 CC  0A 0C 00 00  
-[    8.222440] RTW: 0x010: 24 25 26 27  27 27 2C 2C  2E 2E 2E 02  FF FF FF FF  
-[    8.222472] RTW: 0x020: FF FF FF FF  FF FF FF FF  FF FF FF FF  FF FF FF FF  
-[    8.222505] RTW: 0x030: FF FF FF FF  FF FF FF FF  FF FF FF FF  FF FF FF FF  
-[    8.222538] RTW: 0x040: FF FF FF FF  FF FF FF FF  FF FF FF FF  FF FF FF FF  
-[    8.222570] RTW: 0x050: FF FF FF FF  FF FF FF FF  FF FF FF FF  FF FF FF FF  
-[    8.222603] RTW: 0x060: FF FF FF FF  FF FF FF FF  FF FF FF FF  FF FF FF FF  
-[    8.222636] RTW: 0x070: FF FF FF FF  FF FF FF FF  FF FF FF FF  FF FF FF FF  
-[    8.222668] RTW: 0x080: FF FF FF FF  FF FF FF FF  FF FF FF FF  FF FF FF FF  
-[    8.222701] RTW: 0x090: FF FF FF FF  FF FF FF FF  FF FF FF FF  FF FF FF FF  
-[    8.222734] RTW: 0x0A0: FF FF FF FF  FF FF FF FF  FF FF FF FF  FF FF FF FF  
-[    8.222766] RTW: 0x0B0: FF FF FF FF  FF FF FF FF  20 1C 1B 00  00 00 00 FF  
-[    8.222799] RTW: 0x0C0: FF 12 00 10  00 FF 00 FF  00 00 FF FF  FF FF FF FF  
-[    8.222831] RTW: 0x0D0: 3E 10 01 12  23 FF FF FF  20 04 4C 02  79 F1 21 02  
-[    8.222864] RTW: 0x0E0: 0C 00 22 04  00 08 00 32  FF 21 02 0C  00 22 2A 01  
-[    8.222896] RTW: 0x0F0: 01 00 00 00  00 00 00 00  00 00 00 00  02 00 FF FF  
-[    8.222927] RTW: 0x100: 00 00 00 00  00 00 00 00  00 00 00 00  00 00 00 00  
-[    8.222958] RTW: 0x110: 00 EB 00 6E  01 00 00 00  00 FF 4C 31  2D 6A D0 0D  
-[    8.222990] RTW: 0x120: FF FF FF FF  FF FF FF FF  FF FF FF FF  FF FF FF FF  
-[    8.223023] RTW: 0x130: FF FF FF FF  FF FF FF FF  FF FF FF FF  FF FF FF FF  
-[    8.223056] RTW: 0x140: FF FF FF FF  FF FF FF FF  FF FF FF FF  FF FF FF FF  
-[    8.223088] RTW: 0x150: FF FF FF FF  FF FF FF FF  FF FF FF FF  FF FF FF FF  
-[    8.223121] RTW: 0x160: FF FF FF FF  FF FF FF FF  FF FF FF FF  FF FF FF FF  
-[    8.223154] RTW: 0x170: FF FF FF FF  FF FF FF FF  FF FF FF FF  FF FF FF FF  
-[    8.223186] RTW: 0x180: FF FF FF FF  FF FF FF FF  FF FF FF FF  FF FF FF FF  
-[    8.223219] RTW: 0x190: FF FF FF FF  FF FF FF FF  FF FF FF FF  FF FF FF FF  
-[    8.223252] RTW: 0x1A0: FF FF FF FF  FF FF FF FF  FF FF FF FF  FF FF FF FF  
-[    8.223284] RTW: 0x1B0: FF FF FF FF  FF FF FF FF  FF FF FF FF  FF FF FF FF  
-[    8.223317] RTW: 0x1C0: FF FF FF FF  FF FF FF FF  FF FF FF FF  FF FF FF FF  
-[    8.223350] RTW: 0x1D0: FF FF FF FF  FF FF FF FF  FF FF FF FF  FF FF FF FF  
-[    8.223382] RTW: 0x1E0: FF FF FF FF  FF FF FF FF  FF FF FF FF  FF FF FF FF  
-[    8.223415] RTW: 0x1F0: FF FF FF FF  FF FF FF FF  FF FF FF FF  FF FF FF FF  
-[    8.223458] RTW: hal_com_config_channel_plan chplan:0x20
-[    8.306913] RTW: [RF_PATH] ver_id.RF_TYPE:RF_1T1R
-[    8.306928] RTW: [RF_PATH] HALSPEC's rf_reg_trx_path_bmp:0x11, rf_reg_path_avail_num:1, max_tx_cnt:1
-[    8.306935] RTW: [RF_PATH] PG's trx_path_bmp:0x00, max_tx_cnt:0
-[    8.306942] RTW: [RF_PATH] Registry's trx_path_bmp:0x00, tx_path_lmt:0, rx_path_lmt:0
-[    8.306948] RTW: [RF_PATH] HALDATA's trx_path_bmp:0x11, max_tx_cnt:1
-[    8.306955] RTW: [RF_PATH] HALDATA's rf_type:RF_1T1R, NumTotalRFPath:1
-[    8.306962] RTW: [TRX_Nss] HALSPEC - tx_nss:1, rx_nss:1
-[    8.306968] RTW: [TRX_Nss] Registry - tx_nss:0, rx_nss:0
-[    8.306974] RTW: [TRX_Nss] HALDATA - tx_nss:1, rx_nss:1
-[    8.308209] RTW: rtw_regsty_chk_target_tx_power_valid return _FALSE for band:0, path:0, rs:0, t:-1
-[    8.328198] RTW: rtw_ndev_init(wlan0) if1 mac_addr=4c:31:2d:6a:d0:0d
-[    8.341543] RTW: rtw_ndev_init(wlan1) if2 mac_addr=4e:31:2d:6a:d0:0d
-[    8.357073] RTW: module init ret=0
-[    8.981658] RTW: txpath=0x1, rxpath=0x1
-[    8.981669] RTW: txpath_1ss:0x1, num:1
-[    9.067487] IPv6: ADDRCONF(NETDEV_UP): wlan0: link is not ready
-[   10.752889] RTW: rtw_set_802_11_connect(wlan0)  fw_state=0x00000008
-[   11.004769] RTW: start auth
-[   11.009318] RTW: auth success, start assoc
-[   11.014522] RTW: assoc success
-[   11.014610] IPv6: ADDRCONF(NETDEV_CHANGE): wlan0: link becomes ready
-[   11.016082] RTW: ============ STA [e8:9c:25:02:11:0c]  ===================
-[   11.016093] RTW: mac_id : 0
-[   11.016098] RTW: wireless_mode : 0x0b
-[   11.016104] RTW: mimo_type : 0
-[   11.016110] RTW: static smps : N
-[   11.016116] RTW: bw_mode : 20MHz, ra_bw_mode : 20MHz
-[   11.016121] RTW: rate_id : 3
-[   11.016128] RTW: rssi : -1 (%), rssi_level : 0
-[   11.016134] RTW: is_support_sgi : Y, is_vht_enable : N
-[   11.016140] RTW: disable_ra : N, disable_pt : N
-[   11.016145] RTW: is_noisy : N
-[   11.016150] RTW: txrx_state : 0
-[   11.016156] RTW: curr_tx_rate : CCK_1M (L)
-[   11.016162] RTW: curr_tx_bw : 20MHz
-[   11.016168] RTW: curr_retry_ratio : 0
-[   11.016173] RTW: ra_mask : 0x00000000000fffff
-[   11.016173] 
-[   11.019642] RTW: recv eapol packet 1/4
-[   11.020805] RTW: send eapol packet 2/4
-[   11.027478] RTW: recv eapol packet 3/4
-[   11.027855] RTW: send eapol packet 4/4
-[   11.029368] RTW: set pairwise key camid:0, addr:e8:9c:25:02:11:0c, kid:0, type:AES
-[   11.029656] RTW: set group key camid:1, addr:e8:9c:25:02:11:0c, kid:1, type:AES
-[   11.634419] RTW: recv eapol packet - WPA Group Key 1/2
-[   11.635027] RTW: send eapol packet - WPA Group Key 2/2
-[   11.635291] RTW: set group key camid:2, addr:e8:9c:25:02:11:0c, kid:2, type:AES
-[  324.300690] -----sensor_detect: 1330 ret = 0, v = 0x20
-[  324.301184] -----sensor_detect: 1338 ret = 0, v = 0x53
-[  324.301191] gc2053 chip found @ 0x37 (i2c0)
-[  324.301197] sensor driver version H20230726a
-[  324.467613] gc2053 stream on
-[  324.690621] ispcore: irq-status 0x00000040, err is 0x40,0x3f8,084c is 0x0
-[  325.972359] gc2053 stream off
-root@ing-wyze-cam3-a000 opt# 
+[D 1280388095] RTSP: Adding stream: ch1 (channel 1, H264)
+[D 1280388217] RTSP: Reallocating streams array (current count: 1)
+[D 1280388265] RTSP: Copying stream configuration
+[D 1280388384] RTSP: Stream added successfully (total streams: 2)
+[I 1280388426] RTSP: Starting RTSP server
+[I 1280388546] RTSP: Creating listen socket...
+[I 1280388610] RTSP: Listen socket created successfully
+[I 1280388754] RTSP: Binding socket to port 554...
+[I 1280388822] RTSP: Socket bound successfully to port 554
+[I 1280388960] RTSP: Setting socket to listen mode...
+[I 1280389025] RTSP: Socket listening successfully
+[I 1280389171] RTSP: Starting RTSP server thread...
+[I 1280389429] RTSP: RTSP server thread started successfully
+[I 1280389841] RTSP: Starting RTP thread...
+[I 1280390145] RTSP: RTP thread started successfully
+[I 1280390528] RTSP: RTSP server started successfully on port 554
+[I 1280390713] MODULE: Module 'rtsp' started successfully
+[I 1280390760] MODULE: Starting module 'motion'
+[I 1280390811] MOTION: Starting motion detection module
+[I 1280390948] MOTION: Motion detection disabled in configuration
+[I 1280390990] MODULE: Module 'motion' started successfully
+[I 1280391028] MODULE: Module start complete: 3 success, 0 errors
+[I 1280391156] main: Modules started
+[I 1280391232] SNAPSHOT_FALLBACK: Snapshot fallback initialized (dir=/tmp, interval=5000ms)
+[I 1280391399] SNAPSHOT_FALLBACK: Snapshot fallback disabled in configuration
+[I 1280391445] main: Snapshot fallback system started
+[I 1280391640] main: Initialization complete, starting frame manager
+[I 1280392228] FRAME_MGR: Frame manager initialized successfully
+[I 1280392363] FRAME_MGR: Frame manager started successfully
+[I 1280392997] main: Frame manager started - using modular architecture
+[I 1280393816] FRAME_MGR: Frame processing thread started
+[I 1280394644] FRAME_MGR: 64MB SoC: Using aggressive polling timeout: 20ms (was 40ms)
+[E 1280395415] FRAME_MGR: hal_stream_get(block=1) failed on ch0: -1
+[E 1280395748] FRAME_MGR: hal_stream_get(block=1) failed on ch1: -1
+[W 1280395798] FRAME_MGR: hal_stream_poll(timeout=20ms) returned -1 on ch2
+[W 1280396086] FRAME_MGR: hal_stream_poll(timeout=20ms) returned -1 on ch3
+[E 1280416240] FRAME_MGR: hal_stream_get(block=1) failed on ch0: -1
+[E 1280416328] FRAME_MGR: hal_stream_get(block=1) failed on ch1: -1
+[W 1280416366] FRAME_MGR: hal_stream_poll(timeout=20ms) returned -1 on ch2
+[W 1280416401] FRAME_MGR: hal_stream_poll(timeout=20ms) returned -1 on ch3
+[E 1280436526] FRAME_MGR: hal_stream_get(block=1) failed on ch0: -1
+[E 1280436615] FRAME_MGR: hal_stream_get(block=1) failed on ch1: -1
+[W 1280436653] FRAME_MGR: hal_stream_poll(timeout=20ms) returned -1 on ch2
+[W 1280436688] FRAME_MGR: hal_stream_poll(timeout=20ms) returned -1 on ch3
+[E 1280456816] FRAME_MGR: hal_stream_get(block=1) failed on ch0: -1
+[E 1280456901] FRAME_MGR: hal_stream_get(block=1) failed on ch1: -1
+[W 1280456938] FRAME_MGR: hal_stream_poll(timeout=20ms) returned -1 on ch2
+[W 1280456974] FRAME_MGR: hal_stream_poll(timeout=20ms) returned -1 on ch3
+[W 1280497148] FRAME_MGR: hal_stream_poll(timeout=20ms) returned -1 on ch0
+[W 1280517294] FRAME_MGR: hal_stream_poll(timeout=20ms) returned -1 on ch1
+[W 1280517376] FRAME_MGR: hal_stream_poll(timeout=20ms) returned -1 on ch2
+[W 1280517412] FRAME_MGR: hal_stream_poll(timeout=20ms) returned -1 on ch3
+[W 1280557583] FRAME_MGR: hal_stream_poll(timeout=20ms) returned -1 on ch0
+[W 1280577729] FRAME_MGR: hal_stream_poll(timeout=20ms) returned -1 on ch1
+[W 1280617950] FRAME_MGR: hal_stream_poll(timeout=20ms) returned -1 on ch0
+[W 1280638073] FRAME_MGR: hal_stream_poll(timeout=20ms) returned -1 on ch1
+[W 1280678270] FRAME_MGR: hal_stream_poll(timeout=20ms) returned -1 on ch0
+[W 1280698400] FRAME_MGR: hal_stream_poll(timeout=20ms) returned -1 on ch1
+[W 1280738598] FRAME_MGR: hal_stream_poll(timeout=20ms) returned -1 on ch0
+[W 1280758724] FRAME_MGR: hal_stream_poll(timeout=20ms) returned -1 on ch1
+^C^C^C^C^C^C^C^C^C^C^C^C^C^C
 

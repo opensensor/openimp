@@ -726,24 +726,33 @@ static void *frame_capture_thread(void *arg) {
             continue;
         }
 
-        /* HARDWARE MODE: Use VIDIOC_POLL_FRAME to wait for frames, then drain all with DQBUF */
+        /* HARDWARE MODE: Wait using select(2) on framechan fd, then drain with DQBUF */
         int drained = 0;
         {
             if (poll_count <= 3) {
-                LOG_FS("frame_capture_thread chn=%d: about to call VIDIOC_POLL_FRAME (poll #%d)", chn_num, poll_count);
+                LOG_FS("frame_capture_thread chn=%d: about to select() (poll #%d)", chn_num, poll_count);
                 fflush(stderr);
             }
-            int timeout_ms = 25; /* short, responsive */
-            int prc = ioctl(chn->fd, VIDIOC_POLL_FRAME, &timeout_ms);
+
+            fd_set rfds; FD_ZERO(&rfds); FD_SET(chn->fd, &rfds);
+            struct timeval tv; tv.tv_sec = 0; tv.tv_usec = 25000; /* 25ms */
+
+            pthread_testcancel();
+            int rc = select(chn->fd + 1, &rfds, NULL, NULL, &tv);
+            pthread_testcancel();
+
             if (poll_count <= 3) {
-                LOG_FS("frame_capture_thread chn=%d: VIDIOC_POLL_FRAME returned %d (errno=%d)", chn_num, prc, errno);
+                LOG_FS("frame_capture_thread chn=%d: select() returned %d (errno=%d)", chn_num, rc, errno);
                 fflush(stderr);
             }
-            if (prc < 0) {
-                if (errno != EAGAIN && errno != ETIMEDOUT) {
+
+            if (rc < 0) {
+                if (errno == EINTR) {
+                    /* interrupted by signal, retry */
+                } else {
                     ioctl_fail_count++;
                     if (ioctl_fail_count % 5 == 0) {
-                        LOG_FS("frame_capture_thread chn=%d: POLL_FRAME error: %s (count=%d)", chn_num, strerror(errno), ioctl_fail_count);
+                        LOG_FS("frame_capture_thread chn=%d: select() error: %s (count=%d)", chn_num, strerror(errno), ioctl_fail_count);
                         fflush(stderr);
                     }
                 }

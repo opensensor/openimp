@@ -896,11 +896,28 @@ int VBMKernelDequeue(int chn, int fd, void **frame_out) {
     if (chn < 0 || chn >= MAX_VBM_POOLS || !frame_out) return -1;
     VBMPool *pool = vbm_instance[chn];
     if (!pool) return -1;
+    static int eagain_count[MAX_VBM_POOLS] = {0};
+    static int err_count[MAX_VBM_POOLS] = {0};
     int idx = -1;
     int ret = fs_dqbuf(fd, &idx);
-    if (ret == -2) return -2; /* EAGAIN */
-    if (ret != 0) return -1;
-    if (idx < 0 || idx >= pool->frame_count) return -1;
+    if (ret == -2) {
+        int c = ++eagain_count[chn];
+        if (c <= 5 || (c % 50) == 0) {
+            fprintf(stderr, "[VBM] VBMKernelDequeue chn=%d: DQBUF EAGAIN (count=%d)\n", chn, c);
+        }
+        return -2; /* EAGAIN */
+    }
+    if (ret != 0) {
+        int c = ++err_count[chn];
+        if (c <= 5 || (c % 50) == 0) {
+            fprintf(stderr, "[VBM] VBMKernelDequeue chn=%d: DQBUF error ret=%d\n", chn, ret);
+        }
+        return -1;
+    }
+    if (idx < 0 || idx >= pool->frame_count) {
+        fprintf(stderr, "[VBM] VBMKernelDequeue chn=%d: invalid idx=%d (frame_count=%d)\n", chn, idx, pool->frame_count);
+        return -1;
+    }
     *frame_out = &pool->frames[idx];
     return 0;
 }
