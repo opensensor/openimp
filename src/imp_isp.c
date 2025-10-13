@@ -33,6 +33,12 @@ static ISPDevice *gISPdev = NULL;
 static int sensor_enabled = 0;
 static int tuning_enabled = 0;
 
+/* AE/AWB algorithm state */
+static int ae_algo_en = 0;
+static int awb_algo_en = 0;
+static void *ae_func_tmp = NULL;
+static void *awb_func_tmp = NULL;
+
 /* Core ISP Functions */
 
 /* IMP_ISP_Open - based on decompilation at 0x8b6ec */
@@ -272,29 +278,55 @@ int IMP_ISP_DelSensor_VI(IMPVI vi, IMPSensorInfo *pinfo) {
 
 /* IMP_ISP_EnableSensor - based on decompilation at 0x98450 */
 int IMP_ISP_EnableSensor(void) {
+    int ret;
+
     if (gISPdev == NULL) {
         LOG_ISP("EnableSensor: ISP not opened");
         return -1;
     }
 
-    /* Get sensor index via ioctl 0x40045626
-     * This ioctl gets the current sensor index. It may fail if called before AddSensor.
+    /* CRITICAL: Initialize AE (Auto Exposure) before streaming
+     * The vendor library calls ioctl 0x800456dd to initialize AE.
+     * This must be done before STREAMON.
      */
-    int sensor_idx = -1;
-    int ret = ioctl(gISPdev->fd, 0x40045626, &sensor_idx);
-
-    /* The ioctl may fail if called multiple times or sensor not ready - this is OK.
-     * We only fail if the ioctl succeeds but returns sensor_idx == -1 (no sensor found).
-     */
-    if (ret == 0 && sensor_idx == -1) {
-        LOG_ISP("EnableSensor: no sensor found (query returned -1)");
-        return -1;
+    uint32_t ae_init_info = 0x336ac;  /* Default AE init value from vendor lib */
+    LOG_ISP("EnableSensor: calling ioctl 0x800456dd (AE_INIT)");
+    ret = ioctl(gISPdev->fd, 0x800456dd, &ae_init_info);
+    if (ret != 0) {
+        LOG_ISP("EnableSensor: ioctl 0x800456dd (AE_INIT) failed: %s (continuing anyway)", strerror(errno));
+        /* Don't fail - AE might be optional */
+    } else {
+        LOG_ISP("EnableSensor: ioctl 0x800456dd (AE_INIT) succeeded");
     }
 
-    /* If ioctl failed, assume sensor 0 (already configured by AddSensor) */
+    /* CRITICAL: Initialize AWB (Auto White Balance) before streaming
+     * The vendor library calls ioctl 0xc00456e3 to initialize AWB.
+     */
+    LOG_ISP("EnableSensor: calling ioctl 0xc00456e3 (AWB_INIT)");
+    ret = ioctl(gISPdev->fd, 0xc00456e3, 0);
     if (ret != 0) {
-        sensor_idx = 0;
-        LOG_ISP("EnableSensor: ioctl 0x40045626 failed (%s), assuming sensor 0", strerror(errno));
+        LOG_ISP("EnableSensor: ioctl 0xc00456e3 (AWB_INIT) failed: %s (continuing anyway)", strerror(errno));
+        /* Don't fail - AWB might be optional */
+    } else {
+        LOG_ISP("EnableSensor: ioctl 0xc00456e3 (AWB_INIT) succeeded");
+    }
+
+    /* CRITICAL: Call ioctl 0x40045626 to get sensor index before streaming
+     * This ioctl validates the sensor is ready and returns the sensor index.
+     * It must be called before STREAMON.
+     */
+    int sensor_idx = -1;
+    LOG_ISP("EnableSensor: calling ioctl 0x40045626 (GET_SENSOR_INDEX)");
+    ret = ioctl(gISPdev->fd, 0x40045626, &sensor_idx);
+    if (ret != 0) {
+        LOG_ISP("EnableSensor: ioctl 0x40045626 (GET_SENSOR_INDEX) failed: %s", strerror(errno));
+        return -1;
+    }
+    LOG_ISP("EnableSensor: ioctl 0x40045626 succeeded, sensor_idx=%d", sensor_idx);
+
+    if (sensor_idx == -1) {
+        LOG_ISP("EnableSensor: sensor index is -1, sensor not ready");
+        return -1;
     }
 
     /* CRITICAL: Call ioctl 0x80045612 (VIDIOC_STREAMON) to start ISP video streaming
@@ -355,7 +387,47 @@ int IMP_ISP_DisableSensor_VI(IMPVI vi) {
 }
 
 int IMP_ISP_EnableTuning(void) {
-    LOG_ISP("EnableTuning");
+    if (gISPdev == NULL) {
+        LOG_ISP("EnableTuning: ISP not opened");
+        return -1;
+    }
+
+    if (gISPdev->tisp_fd >= 0) {
+        LOG_ISP("EnableTuning: already enabled");
+        return 0;
+    }
+
+    /* Open /dev/isp-m0 for tuning interface */
+    char tisp_dev[32];
+    snprintf(tisp_dev, sizeof(tisp_dev), "/dev/isp-m0");
+
+    gISPdev->tisp_fd = open(tisp_dev, O_RDWR | O_NONBLOCK);
+    if (gISPdev->tisp_fd < 0) {
+        LOG_ISP("EnableTuning: failed to open %s: %s", tisp_dev, strerror(errno));
+        return -1;
+    }
+
+    LOG_ISP("EnableTuning: opened %s (fd=%d)", tisp_dev, gISPdev->tisp_fd);
+
+    /* Call ioctl 0xc00c56c6 to initialize tuning with default FPS */
+    struct {
+        uint32_t cmd;
+        uint32_t subcmd;
+        uint32_t value;  /* fps_num << 16 | fps_den */
+    } tuning_init;
+
+    tuning_init.cmd = 1;
+    tuning_init.subcmd = 0x80000e0;
+    tuning_init.value = (25 << 16) | 1;  /* Default 25/1 fps */
+
+    if (ioctl(gISPdev->tisp_fd, 0xc00c56c6, &tuning_init) != 0) {
+        LOG_ISP("EnableTuning: ioctl 0xc00c56c6 failed: %s", strerror(errno));
+        close(gISPdev->tisp_fd);
+        gISPdev->tisp_fd = -1;
+        return -1;
+    }
+
+    LOG_ISP("EnableTuning: tuning initialized successfully");
     tuning_enabled = 1;
     return 0;
 }
@@ -369,7 +441,30 @@ int IMP_ISP_DisableTuning(void) {
 /* ISP Tuning Functions */
 
 int IMP_ISP_Tuning_SetSensorFPS(uint32_t fps_num, uint32_t fps_den) {
+    if (gISPdev == NULL || gISPdev->tisp_fd < 0) {
+        LOG_ISP("SetSensorFPS: tuning not enabled");
+        return -1;
+    }
+
     LOG_ISP("SetSensorFPS: %u/%u", fps_num, fps_den);
+
+    /* Call ioctl 0xc00c56c6 with FPS parameters */
+    struct {
+        uint32_t cmd;
+        uint32_t subcmd;
+        uint32_t value;  /* fps_num << 16 | fps_den */
+    } fps_cmd;
+
+    fps_cmd.cmd = 0;
+    fps_cmd.subcmd = 0x80000e0;
+    fps_cmd.value = (fps_num << 16) | fps_den;
+
+    if (ioctl(gISPdev->tisp_fd, 0xc00c56c6, &fps_cmd) != 0) {
+        LOG_ISP("SetSensorFPS: ioctl 0xc00c56c6 failed: %s", strerror(errno));
+        return -1;
+    }
+
+    LOG_ISP("SetSensorFPS: FPS set successfully to %u/%u", fps_num, fps_den);
     return 0;
 }
 
@@ -386,7 +481,30 @@ int IMP_ISP_Tuning_SetAntiFlickerAttr(IMPISPAntiflickerAttr attr) {
 }
 
 int IMP_ISP_Tuning_SetISPRunningMode(IMPISPRunningMode mode) {
+    if (gISPdev == NULL || gISPdev->tisp_fd < 0) {
+        LOG_ISP("SetISPRunningMode: tuning not enabled");
+        return -1;
+    }
+
     LOG_ISP("SetISPRunningMode: %d", mode);
+
+    /* Call ioctl 0xc00c56c6 with running mode */
+    struct {
+        uint32_t value;
+        uint32_t subcmd;
+        uint32_t cmd;
+    } mode_cmd;
+
+    mode_cmd.value = mode;
+    mode_cmd.subcmd = 0x80000e1;
+    mode_cmd.cmd = 0;
+
+    if (ioctl(gISPdev->tisp_fd, 0xc00c56c6, &mode_cmd) != 0) {
+        LOG_ISP("SetISPRunningMode: ioctl 0xc00c56c6 failed: %s", strerror(errno));
+        return -1;
+    }
+
+    LOG_ISP("SetISPRunningMode: mode set successfully to %d", mode);
     return 0;
 }
 
