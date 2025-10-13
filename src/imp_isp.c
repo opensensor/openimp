@@ -8,12 +8,17 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <errno.h>
+#include <pthread.h>
 #include <sys/ioctl.h>
 #include <imp/imp_isp.h>
 
 /* Forward declarations for DMA allocation */
 int IMP_Alloc(char *name, int size, char *tag);
 int IMP_Free(uint32_t phys_addr);
+
+/* Forward declarations for logging (vendor functions) */
+int IMP_Log_Get_Option(void);
+void imp_log_fun(int level, int option, int type, ...);
 
 #define LOG_ISP(fmt, ...) fprintf(stderr, "[IMP_ISP] " fmt "\n", ##__VA_ARGS__)
 
@@ -69,32 +74,102 @@ static pthread_t awb_thread = 0;
 static volatile int ae_thread_running = 0;
 static volatile int awb_thread_running = 0;
 
+/* AE thread - based on vendor's impisp_algo_thread1 at 0x8abe4 */
 static void* ae_thread_func(void* arg) {
     LOG_ISP("AE thread started");
     ae_thread_running = 1;
 
-    /* The thread needs to periodically update AE parameters.
-     * For now, just keep it alive so the ISP doesn't timeout.
-     * TODO: Implement actual AE algorithm or call ISP ioctls for AE updates.
-     */
-    while (ae_thread_running) {
-        usleep(33000);  /* ~30fps */
+    /* Allocate buffers matching vendor sizes */
+    uint8_t ae_stats_buf[0x7d8];  /* AE stats from ISP */
+    uint8_t ae_result_buf[0x34];   /* AE result to send back */
+
+    /* Initialize buffers */
+    memset(ae_stats_buf, 0, sizeof(ae_stats_buf));
+    memset(ae_result_buf, 0, sizeof(ae_result_buf));
+
+    /* Set version magic - CRITICAL */
+    *(uint32_t*)ae_stats_buf = 0x336ac;
+    *(uint32_t*)ae_result_buf = 0x336ac;
+
+    /* Main loop - exactly like vendor */
+    while (1) {
+        pthread_testcancel();
+
+        /* Get AE statistics from ISP - ioctl 0x800456db */
+        if (ioctl(gISPdev->fd, 0x800456db, ae_stats_buf) != 0) {
+            LOG_ISP("AE thread: ioctl 0x800456db failed: %s", strerror(errno));
+            imp_log_fun(6, IMP_Log_Get_Option(), 2, 0xea498, 0xea4b0, 0x1222, 0xebc4c, 0xea538, 0xebc4c, 0x1222, NULL);
+            return NULL;
+        }
+
+        /* Call the AE run callback to process stats and generate result
+         * Vendor calls: (*(gISPdev + 0xc4))(priv_data_self, &stats, &result)
+         * We don't have the callback, so we need to implement a basic AE algorithm
+         * or just pass through the stats without modification.
+         *
+         * For now, the result buffer stays as initialized (zeros with version magic).
+         * The ISP should use its built-in AE if we don't provide valid results.
+         */
+
+        /* Set AE result back to ISP - ioctl 0x800456dc */
+        if (ioctl(gISPdev->fd, 0x800456dc, ae_result_buf) != 0) {
+            LOG_ISP("AE thread: ioctl 0x800456dc failed: %s", strerror(errno));
+            imp_log_fun(6, IMP_Log_Get_Option(), 2, 0xea498, 0xea4b0, 0x122c, 0xebc4c, 0xea56c, 0xebc4c, 0x122c, NULL);
+            return NULL;
+        }
+
+        /* No sleep in vendor code - it runs as fast as the ioctls allow */
     }
 
     LOG_ISP("AE thread stopped");
     return NULL;
 }
 
+/* AWB thread - based on vendor's impisp_algo_thread5 at 0x8ae4c */
 static void* awb_thread_func(void* arg) {
     LOG_ISP("AWB thread started");
     awb_thread_running = 1;
 
-    /* The thread needs to periodically update AWB parameters.
-     * For now, just keep it alive so the ISP doesn't timeout.
-     * TODO: Implement actual AWB algorithm or call ISP ioctls for AWB updates.
-     */
-    while (awb_thread_running) {
-        usleep(33000);  /* ~30fps */
+    /* Allocate buffers matching vendor sizes */
+    uint8_t awb_stats_buf[0x2c3];  /* AWB stats from ISP */
+    uint8_t awb_result_buf[0x14];   /* AWB result to send back */
+
+    /* Initialize buffers */
+    memset(awb_stats_buf, 0, sizeof(awb_stats_buf));
+    memset(awb_result_buf, 0, sizeof(awb_result_buf));
+
+    /* Set version magic - CRITICAL */
+    *(uint32_t*)awb_stats_buf = 0x336ac;
+    *(uint32_t*)awb_result_buf = 0x336ac;
+
+    /* Main loop - exactly like vendor */
+    while (1) {
+        pthread_testcancel();
+
+        /* Get AWB statistics from ISP - ioctl 0xc00456e1 */
+        if (ioctl(gISPdev->fd, 0xc00456e1, awb_stats_buf) != 0) {
+            LOG_ISP("AWB thread: ioctl 0xc00456e1 failed: %s", strerror(errno));
+            imp_log_fun(6, IMP_Log_Get_Option(), 2, 0xea498, 0xea4b0, 0x128a, 0xebbf8, 0xea5a0, 0xebbf8, 0x128a, NULL);
+            return NULL;
+        }
+
+        /* Call the AWB run callback to process stats and generate result
+         * Vendor calls: (*(gISPdev + 0xd8))(awb_priv_data_self, &stats, &result)
+         * We don't have the callback, so we need to implement a basic AWB algorithm
+         * or just pass through the stats without modification.
+         *
+         * For now, the result buffer stays as initialized (zeros with version magic).
+         * The ISP should use its built-in AWB if we don't provide valid results.
+         */
+
+        /* Set AWB result back to ISP - ioctl 0xc00456e2 */
+        if (ioctl(gISPdev->fd, 0xc00456e2, awb_result_buf) != 0) {
+            LOG_ISP("AWB thread: ioctl 0xc00456e2 failed: %s", strerror(errno));
+            imp_log_fun(6, IMP_Log_Get_Option(), 2, 0xea498, 0xea4b0, 0x1290, 0xebbf8, 0xea5d4, 0xebbf8, 0x1290, NULL);
+            return NULL;
+        }
+
+        /* No sleep in vendor code - it runs as fast as the ioctls allow */
     }
 
     LOG_ISP("AWB thread stopped");
@@ -381,11 +456,11 @@ int IMP_ISP_EnableSensor(void) {
         return -1;
     }
 
-    /* SKIP AE/AWB ioctls for now - they require pthread callbacks we don't have
-     * The ISP should use built-in AE/AWB algorithms instead.
-     * TODO: Implement proper AE/AWB with pthread callbacks like vendor does.
+    /* Skip AE/AWB ioctls - the streamer doesn't call SetAeAlgoFunc/SetAwbAlgoFunc,
+     * so the stock libimp must handle AE/AWB differently (maybe in the driver or
+     * automatically enabled). We need to figure out what's actually required.
      */
-    LOG_ISP("EnableSensor: skipping AE/AWB ioctls - using built-in ISP algorithms");
+    LOG_ISP("EnableSensor: proceeding without custom AE/AWB");
 
     /* CRITICAL: Call ioctl 0x40045626 to get sensor index before streaming
      * This ioctl validates the sensor is ready and returns the sensor index.

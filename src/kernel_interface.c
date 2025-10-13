@@ -459,7 +459,7 @@ int fs_qbuf(int fd, int index, unsigned long phys, unsigned int length) {
     b.sequence = 0;
     b.m = (uint32_t)phys;  /* Driver uses this as DMA phys (driver-specific) */
     b.length = length;     /* Must equal kernel expected length */
-    b.bytesused = length;  /* Some drivers check bytesused too */
+    b.bytesused = 0;       /* Let driver set bytesused; some drivers ignore this on capture */
 
     int ret = ioctl(fd, VIDIOC_QBUF, &b);
     if (ret < 0) {
@@ -475,7 +475,9 @@ int fs_dqbuf(int fd, int *index_out) {
 
     struct v4l2_buf32 b;
     memset(&b, 0, sizeof(b));
-    b.type = 1;      /* Required for type check in driver */
+    b.type   = 1;   /* V4L2_BUF_TYPE_VIDEO_CAPTURE */
+    b.memory = 2;   /* V4L2_MEMORY_USERPTR */
+    b.field  = 0;   /* V4L2_FIELD_NONE */
 
     int ret = ioctl(fd, VIDIOC_DQBUF, &b);
     if (ret < 0) {
@@ -928,6 +930,7 @@ int VBMKernelDequeue(int chn, int fd, void **frame_out) {
     if (!pool) return -1;
     int idx = -1;
     int ret = fs_dqbuf(fd, &idx);
+    if (ret == -2) return -2; /* EAGAIN */
     if (ret != 0) return -1;
     if (idx < 0 || idx >= pool->frame_count) return -1;
     *frame_out = &pool->frames[idx];
