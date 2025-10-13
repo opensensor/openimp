@@ -39,68 +39,81 @@ static int awb_algo_en = 0;
 static void *ae_func_tmp = NULL;
 static void *awb_func_tmp = NULL;
 
-/* AE/AWB Algorithm Function Structure
- * Based on vendor decompilation at 0x97b24 (SetAeAlgoFunc_internal)
- * The kernel driver checks for a version field - error message:
- * "Ae Algo Function register version error" at tx_isp_set_ae_algo_open:1106
+/* AE/AWB Algorithm Data Buffer
+ * Based on driver decompilation at tisp_ae_algo_init:
+ * - Driver copies 0x80 bytes from userspace: private_copy_from_user($v0_114, arg3, 0x80)
+ * - Driver WRITES to offsets 0x08-0x7f, filling the buffer with AE/AWB parameters
+ * - First field must be version magic 0x336ac
+ * - This is NOT a callback structure - it's a DATA BUFFER for AE/AWB parameters
  *
- * The structure must start with a version magic number that the driver validates.
+ * The driver writes values like:
+ *   *(arg2 + 0x08) = 0
+ *   *(arg2 + 0x0c) = data_c46e8
+ *   *(arg2 + 0x10) = data_c46e0
+ *   *(arg2 + 0x14) = 0x400
+ *   ... etc up to offset 0x7f
+ *
+ * The structure MUST be exactly 0x80 (128) bytes.
  */
 typedef struct {
-    uint32_t version;                   /* 0x00: Version magic - driver validates this */
-    void *priv_data;                    /* 0x04: Private data pointer */
-    void (*init)(void*, void*);         /* 0x08: Init callback - called with (priv_data, param) */
-    void (*run)(void*, void*, void*);   /* 0x0c: Per-frame callback */
-    void (*deinit)(void*);              /* 0x10: Cleanup callback */
-    void *reserved;                     /* 0x14: Reserved */
-} IMPISPAlgoFunc;
+    uint32_t version;                   /* 0x00: Version magic - MUST be 0x336ac */
+    uint8_t data[0x80 - 4];             /* 0x04-0x7f: AE/AWB parameter data filled by driver */
+} IMPISPAlgoData;
 
-/* Dummy AE callbacks that do nothing - let ISP use built-in algorithms */
-static void ae_init_dummy(void *priv, void *param) {
-    /* ISP calls this during initialization - do nothing */
-}
-
-static void ae_run_dummy(void *priv, void *stats, void *result) {
-    /* ISP calls this per-frame - do nothing, let hardware AE work */
-}
-
-static void ae_deinit_dummy(void *priv) {
-    /* ISP calls this during cleanup - do nothing */
-}
-
-/* Dummy AWB callbacks */
-static void awb_init_dummy(void *priv, void *param) {
-    /* ISP calls this during initialization - do nothing */
-}
-
-static void awb_run_dummy(void *priv, void *stats, void *result) {
-    /* ISP calls this per-frame - do nothing, let hardware AWB work */
-}
-
-static void awb_deinit_dummy(void *priv) {
-    /* ISP calls this during cleanup - do nothing */
-}
-
-/* Global AE/AWB algorithm structures
- * These are passed to the ioctls and must remain valid for the lifetime of the ISP
- * The version field MUST be 0x336ac for the driver to accept the structure
+/* AE/AWB thread functions
+ * The vendor creates a pthread after the AE ioctl succeeds.
+ * This thread must periodically provide AE/AWB updates to the ISP.
  */
-static IMPISPAlgoFunc g_ae_algo = {
-    .version = 0x336ac,        /* CRITICAL: Driver validates this magic number */
-    .priv_data = NULL,
-    .init = ae_init_dummy,
-    .run = ae_run_dummy,
-    .deinit = ae_deinit_dummy,
-    .reserved = NULL
+static pthread_t ae_thread = 0;
+static pthread_t awb_thread = 0;
+static volatile int ae_thread_running = 0;
+static volatile int awb_thread_running = 0;
+
+static void* ae_thread_func(void* arg) {
+    LOG_ISP("AE thread started");
+    ae_thread_running = 1;
+
+    /* The thread needs to periodically update AE parameters.
+     * For now, just keep it alive so the ISP doesn't timeout.
+     * TODO: Implement actual AE algorithm or call ISP ioctls for AE updates.
+     */
+    while (ae_thread_running) {
+        usleep(33000);  /* ~30fps */
+    }
+
+    LOG_ISP("AE thread stopped");
+    return NULL;
+}
+
+static void* awb_thread_func(void* arg) {
+    LOG_ISP("AWB thread started");
+    awb_thread_running = 1;
+
+    /* The thread needs to periodically update AWB parameters.
+     * For now, just keep it alive so the ISP doesn't timeout.
+     * TODO: Implement actual AWB algorithm or call ISP ioctls for AWB updates.
+     */
+    while (awb_thread_running) {
+        usleep(33000);  /* ~30fps */
+    }
+
+    LOG_ISP("AWB thread stopped");
+    return NULL;
+}
+
+/* Global AE/AWB data buffers
+ * These are passed to the ioctls and the driver fills them with AE/AWB parameters
+ * The version field MUST be 0x336ac for the driver to accept the buffer
+ * The data array is zero-initialized and will be filled by the driver
+ */
+static IMPISPAlgoData g_ae_data = {
+    .version = 0x336ac        /* CRITICAL: Driver validates this magic number */
+    /* data is automatically zero-initialized, driver will fill it */
 };
 
-static IMPISPAlgoFunc g_awb_algo = {
-    .version = 0x336ac,        /* CRITICAL: Driver validates this magic number */
-    .priv_data = NULL,
-    .init = awb_init_dummy,
-    .run = awb_run_dummy,
-    .deinit = awb_deinit_dummy,
-    .reserved = NULL
+static IMPISPAlgoData g_awb_data = {
+    .version = 0x336ac        /* CRITICAL: Driver validates this magic number */
+    /* data is automatically zero-initialized, driver will fill it */
 };
 
 /* Core ISP Functions */
@@ -368,36 +381,11 @@ int IMP_ISP_EnableSensor(void) {
         return -1;
     }
 
-    /* CRITICAL: Initialize AE (Auto Exposure) before streaming
-     * Based on driver decompilation at tx_isp_unlocked_ioctl:
-     *   private_copy_from_user($v0_114, arg3, 0x80)  // Copy 0x80 bytes from userspace
-     *   if (*$v0_114 != 0x336ac) return error        // Check first field is version magic
-     *
-     * The ioctl expects a pointer to the algo structure (not pointer to pointer).
-     * The driver copies 0x80 bytes and validates the first field is 0x336ac.
+    /* SKIP AE/AWB ioctls for now - they require pthread callbacks we don't have
+     * The ISP should use built-in AE/AWB algorithms instead.
+     * TODO: Implement proper AE/AWB with pthread callbacks like vendor does.
      */
-    LOG_ISP("EnableSensor: calling ioctl 0x800456dd (AE_INIT) with algo=%p (version=0x%x)",
-            &g_ae_algo, g_ae_algo.version);
-    ret = ioctl(gISPdev->fd, 0x800456dd, &g_ae_algo);
-    if (ret != 0) {
-        LOG_ISP("EnableSensor: ioctl 0x800456dd (AE_INIT) failed: %s (continuing anyway)", strerror(errno));
-        /* Don't fail - continue anyway */
-    } else {
-        LOG_ISP("EnableSensor: ioctl 0x800456dd (AE_INIT) succeeded");
-    }
-
-    /* CRITICAL: Initialize AWB (Auto White Balance) before streaming */
-    LOG_ISP("EnableSensor: calling ioctl 0xc00456e3 (AWB_INIT) with algo=%p (version=0x%x)",
-            &g_awb_algo, g_awb_algo.version);
-    ret = ioctl(gISPdev->fd, 0xc00456e3, &g_awb_algo);
-    if (ret != 0) {
-        LOG_ISP("EnableSensor: ioctl 0xc00456e3 (AWB_INIT) failed: %s (continuing anyway)", strerror(errno));
-        /* Don't fail - continue anyway */
-    } else {
-        LOG_ISP("EnableSensor: ioctl 0xc00456e3 (AWB_INIT) succeeded");
-    }
-
-    LOG_ISP("EnableSensor: AE/AWB initialization complete, proceeding to sensor index check");
+    LOG_ISP("EnableSensor: skipping AE/AWB ioctls - using built-in ISP algorithms");
 
     /* CRITICAL: Call ioctl 0x40045626 to get sensor index before streaming
      * This ioctl validates the sensor is ready and returns the sensor index.
@@ -595,16 +583,18 @@ int IMP_ISP_Tuning_SetISPRunningMode(IMPISPRunningMode mode) {
 
     LOG_ISP("SetISPRunningMode: %d", mode);
 
-    /* Call ioctl 0xc00c56c6 with running mode */
+    /* Call ioctl 0xc00c56c6 with running mode
+     * CRITICAL: Field order must be cmd, subcmd, value (same as other tuning ioctls)
+     */
     struct {
-        uint32_t value;
-        uint32_t subcmd;
         uint32_t cmd;
+        uint32_t subcmd;
+        uint32_t value;
     } mode_cmd;
 
-    mode_cmd.value = mode;
-    mode_cmd.subcmd = 0x80000e1;
     mode_cmd.cmd = 0;
+    mode_cmd.subcmd = 0x80000e1;
+    mode_cmd.value = mode;
 
     if (ioctl(gISPdev->tisp_fd, 0xc00c56c6, &mode_cmd) != 0) {
         LOG_ISP("SetISPRunningMode: ioctl 0xc00c56c6 failed: %s", strerror(errno));
