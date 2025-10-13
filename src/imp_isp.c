@@ -39,6 +39,70 @@ static int awb_algo_en = 0;
 static void *ae_func_tmp = NULL;
 static void *awb_func_tmp = NULL;
 
+/* AE/AWB Algorithm Function Structure
+ * Based on vendor decompilation at 0x97b24 (SetAeAlgoFunc_internal)
+ * The kernel driver checks for a version field - error message:
+ * "Ae Algo Function register version error" at tx_isp_set_ae_algo_open:1106
+ *
+ * The structure must start with a version magic number that the driver validates.
+ */
+typedef struct {
+    uint32_t version;                   /* 0x00: Version magic - driver validates this */
+    void *priv_data;                    /* 0x04: Private data pointer */
+    void (*init)(void*, void*);         /* 0x08: Init callback - called with (priv_data, param) */
+    void (*run)(void*, void*, void*);   /* 0x0c: Per-frame callback */
+    void (*deinit)(void*);              /* 0x10: Cleanup callback */
+    void *reserved;                     /* 0x14: Reserved */
+} IMPISPAlgoFunc;
+
+/* Dummy AE callbacks that do nothing - let ISP use built-in algorithms */
+static void ae_init_dummy(void *priv, void *param) {
+    /* ISP calls this during initialization - do nothing */
+}
+
+static void ae_run_dummy(void *priv, void *stats, void *result) {
+    /* ISP calls this per-frame - do nothing, let hardware AE work */
+}
+
+static void ae_deinit_dummy(void *priv) {
+    /* ISP calls this during cleanup - do nothing */
+}
+
+/* Dummy AWB callbacks */
+static void awb_init_dummy(void *priv, void *param) {
+    /* ISP calls this during initialization - do nothing */
+}
+
+static void awb_run_dummy(void *priv, void *stats, void *result) {
+    /* ISP calls this per-frame - do nothing, let hardware AWB work */
+}
+
+static void awb_deinit_dummy(void *priv) {
+    /* ISP calls this during cleanup - do nothing */
+}
+
+/* Global AE/AWB algorithm structures
+ * These are passed to the ioctls and must remain valid for the lifetime of the ISP
+ * The version field MUST be 0x336ac for the driver to accept the structure
+ */
+static IMPISPAlgoFunc g_ae_algo = {
+    .version = 0x336ac,        /* CRITICAL: Driver validates this magic number */
+    .priv_data = NULL,
+    .init = ae_init_dummy,
+    .run = ae_run_dummy,
+    .deinit = ae_deinit_dummy,
+    .reserved = NULL
+};
+
+static IMPISPAlgoFunc g_awb_algo = {
+    .version = 0x336ac,        /* CRITICAL: Driver validates this magic number */
+    .priv_data = NULL,
+    .init = awb_init_dummy,
+    .run = awb_run_dummy,
+    .deinit = awb_deinit_dummy,
+    .reserved = NULL
+};
+
 /* Core ISP Functions */
 
 /* IMP_ISP_Open - based on decompilation at 0x8b6ec */
@@ -305,27 +369,30 @@ int IMP_ISP_EnableSensor(void) {
     }
 
     /* CRITICAL: Initialize AE (Auto Exposure) before streaming
-     * The vendor library calls ioctl 0x800456dd to initialize AE.
-     * This must be done before STREAMON.
+     * Based on driver decompilation at tx_isp_unlocked_ioctl:
+     *   private_copy_from_user($v0_114, arg3, 0x80)  // Copy 0x80 bytes from userspace
+     *   if (*$v0_114 != 0x336ac) return error        // Check first field is version magic
+     *
+     * The ioctl expects a pointer to the algo structure (not pointer to pointer).
+     * The driver copies 0x80 bytes and validates the first field is 0x336ac.
      */
-    uint32_t ae_init_info = 0x336ac;  /* Default AE init value from vendor lib */
-    LOG_ISP("EnableSensor: calling ioctl 0x800456dd (AE_INIT)");
-    ret = ioctl(gISPdev->fd, 0x800456dd, &ae_init_info);
+    LOG_ISP("EnableSensor: calling ioctl 0x800456dd (AE_INIT) with algo=%p (version=0x%x)",
+            &g_ae_algo, g_ae_algo.version);
+    ret = ioctl(gISPdev->fd, 0x800456dd, &g_ae_algo);
     if (ret != 0) {
         LOG_ISP("EnableSensor: ioctl 0x800456dd (AE_INIT) failed: %s (continuing anyway)", strerror(errno));
-        /* Don't fail - AE might be optional */
+        /* Don't fail - continue anyway */
     } else {
         LOG_ISP("EnableSensor: ioctl 0x800456dd (AE_INIT) succeeded");
     }
 
-    /* CRITICAL: Initialize AWB (Auto White Balance) before streaming
-     * The vendor library calls ioctl 0xc00456e3 to initialize AWB.
-     */
-    LOG_ISP("EnableSensor: calling ioctl 0xc00456e3 (AWB_INIT)");
-    ret = ioctl(gISPdev->fd, 0xc00456e3, 0);
+    /* CRITICAL: Initialize AWB (Auto White Balance) before streaming */
+    LOG_ISP("EnableSensor: calling ioctl 0xc00456e3 (AWB_INIT) with algo=%p (version=0x%x)",
+            &g_awb_algo, g_awb_algo.version);
+    ret = ioctl(gISPdev->fd, 0xc00456e3, &g_awb_algo);
     if (ret != 0) {
         LOG_ISP("EnableSensor: ioctl 0xc00456e3 (AWB_INIT) failed: %s (continuing anyway)", strerror(errno));
-        /* Don't fail - AWB might be optional */
+        /* Don't fail - continue anyway */
     } else {
         LOG_ISP("EnableSensor: ioctl 0xc00456e3 (AWB_INIT) succeeded");
     }
@@ -375,8 +442,15 @@ int IMP_ISP_EnableSensor(void) {
     LOG_ISP("EnableSensor: ioctl 0x800456d0 succeeded, result=%d", config_result);
 
     /* CRITICAL: Call ioctl 0x800456d2 (TX_ISP_VIDEO_LINK_STREAM_ON) to start ISP link streaming */
-    LOG_ISP("EnableSensor: calling ioctl 0x800456d2 (LINK_STREAM_ON)");
+    LOG_ISP("EnableSensor: about to call ioctl 0x800456d2 (LINK_STREAM_ON)");
+    LOG_ISP("EnableSensor: gISPdev=%p, fd=%d", gISPdev, gISPdev->fd);
+    fflush(stderr);
+
     ret = ioctl(gISPdev->fd, 0x800456d2, 0);
+
+    LOG_ISP("EnableSensor: ioctl 0x800456d2 returned %d", ret);
+    fflush(stderr);
+
     if (ret != 0) {
         LOG_ISP("EnableSensor: ioctl 0x800456d2 (LINK_STREAM_ON) failed: %s", strerror(errno));
         return -1;
@@ -384,11 +458,14 @@ int IMP_ISP_EnableSensor(void) {
     LOG_ISP("EnableSensor: ioctl 0x800456d2 succeeded");
 
     /* Increment opened flag by 2 to mark sensor as enabled */
+    LOG_ISP("EnableSensor: incrementing opened flag");
+    fflush(stderr);
     gISPdev->opened += 2;
     sensor_enabled = 1;
 
     LOG_ISP("EnableSensor: sensor enabled (idx=%d)", sensor_idx);
     LOG_ISP("EnableSensor: about to return 0");
+    fflush(stderr);
     return 0;
 }
 
