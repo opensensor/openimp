@@ -869,38 +869,33 @@ int VBMPrimeKernelQueue(int chn, int fd) {
     VBMPool *pool = vbm_instance[chn];
     if (!pool) return -1;
     pool->fd = fd;
-    /* Ask driver for sizeimage once (fallback if QUERYBUF returns 0) */
-    fs_format_t kfmt;
-    memset(&kfmt, 0, sizeof(kfmt));
-    unsigned int drv_len = 0;
-    if (fs_get_format(fd, &kfmt) == 0 && kfmt.sizeimage > 0) {
-        drv_len = (unsigned int)kfmt.sizeimage;
-    }
+
+    /* DO NOT call GET_FMT here - it returns garbage from the remote ISP core.
+     * Instead, use QUERYBUF to get the kernel's expected length for each buffer,
+     * and fall back to NV12 calculation if QUERYBUF returns 0.
+     */
     for (int i = 0; i < pool->frame_count; i++) {
         VBMFrame *f = &pool->frames[i];
         /* Driver expects DMA physical address in .m (BN MCP shows KSEG1 writes) */
         unsigned long phys = (unsigned long)f->phys_addr;
         unsigned int klen = 0;
+
+        /* Try QUERYBUF first */
         if (fs_querybuf(fd, i, &klen) < 0) {
             fprintf(stderr, "[VBM] PrimeKernelQueue: querybuf failed for idx=%d\n", i);
             return -1;
         }
-        if (klen == 0 && drv_len > 0) {
-            klen = drv_len;
-            fprintf(stderr, "[VBM] PrimeKernelQueue: idx=%d querybuf_len=0, using sizeimage=%u\n", i, klen);
-        }
-        /* If still unknown, prefer NV12 exact size w*h*3/2 first, then fall back to pool size */
-        if (klen == 0) {
-            unsigned int nv12 = (unsigned int)f->width * (unsigned int)f->height * 3 / 2;
-            if (nv12 > 0) {
-                klen = nv12;
-                fprintf(stderr, "[VBM] PrimeKernelQueue: idx=%d fallback NV12 size=%u (w=%d h=%d)\n", i, klen, f->width, f->height);
-            }
-        }
+
+        /* If QUERYBUF returns 0, use the frame's stored size (from SET_FMT sizeimage)
+         * This is the size the kernel expects for QBUF validation.
+         */
         if (klen == 0) {
             klen = (unsigned int)f->size;
-            fprintf(stderr, "[VBM] PrimeKernelQueue: idx=%d fallback use pool size=%u (w=%d h=%d)\n", i, klen, f->width, f->height);
+            unsigned int nv12_calc = (unsigned int)f->width * (unsigned int)f->height * 3 / 2;
+            fprintf(stderr, "[VBM] PrimeKernelQueue: idx=%d querybuf=0, using frame size=%u (NV12 would be %u, w=%d h=%d)\n",
+                    i, klen, nv12_calc, f->width, f->height);
         }
+
         if (klen > (unsigned int)f->size) {
             fprintf(stderr, "[VBM] PrimeKernelQueue: idx=%d driver_len=%u > our_len=%u -> clamping\n", i, klen, (unsigned int)f->size);
             klen = (unsigned int)f->size;

@@ -294,7 +294,7 @@ int IMP_FrameSource_EnableChn(int chnNum) {
     fmt.fps_num = chn->attr.outFrmRateNum;
     fmt.fps_den = chn->attr.outFrmRateDen;
 
-    /* Set format via ioctl */
+    /* Set format via ioctl - this updates fmt.sizeimage with kernel's value */
     if (fs_set_format(chn->fd, &fmt) < 0) {
         LOG_FS("EnableChn failed: cannot set format");
         fs_close_device(chn->fd);
@@ -303,25 +303,22 @@ int IMP_FrameSource_EnableChn(int chnNum) {
         return -1;
     }
 
-    /* CRITICAL: Must call REQBUFS *before* querying format or creating VBM pool!
-     * The kernel's REQBUFS handler allocates internal buffer structures and sets
-     * the sizeimage field. Only after REQBUFS can we get the correct sizeimage.
+    /* Use the sizeimage that SET_FMT returned (kernel modified it in-place).
+     * DO NOT call GET_FMT - the remote ISP core returns garbage on GET_FMT.
+     * The OEM library uses the sizeimage from SET_FMT's modified structure.
+     */
+    int kernel_sizeimage = fmt.sizeimage;
+
+    fprintf(stderr, "[FrameSource] EnableChn: using sizeimage=%d from SET_FMT for chn=%d\n",
+            kernel_sizeimage, chnNum);
+
+    /* CRITICAL: Must call REQBUFS *before* creating VBM pool!
+     * The kernel's REQBUFS handler allocates internal buffer structures.
      * This matches the OEM libimp.so sequence: SET_FMT -> REQBUFS -> VBMCreatePool.
      */
     int bufcnt = fs_set_buffer_count(chn->fd, 4); /* Default 4 buffers */
     if (bufcnt < 0) {
         LOG_FS("EnableChn failed: cannot set buffer count");
-        fs_close_device(chn->fd);
-        chn->fd = -1;
-        pthread_mutex_unlock(&fs_mutex);
-        return -1;
-    }
-
-    /* NOW query kernel-computed sizeimage after REQBUFS has set it */
-    fs_format_t fmt_after;
-    memset(&fmt_after, 0, sizeof(fmt_after));
-    if (fs_get_format(chn->fd, &fmt_after) < 0) {
-        LOG_FS("EnableChn failed: cannot get format after reqbufs");
         fs_close_device(chn->fd);
         chn->fd = -1;
         pthread_mutex_unlock(&fs_mutex);
@@ -334,7 +331,7 @@ int IMP_FrameSource_EnableChn(int chnNum) {
     vbm_info.w = chn->attr.picWidth;
     vbm_info.h = chn->attr.picHeight;
     vbm_info.pixfmt = chn->attr.pixFmt; /* enum like 0xa for NV12 */
-    vbm_info.size = fmt_after.sizeimage; /* kernel-computed size from REQBUFS */
+    vbm_info.size = kernel_sizeimage; /* Use sizeimage from SET_FMT */
 
     /* Create VBM pool using kernel-computed size */
     if (VBMCreatePool(chnNum, &vbm_info, NULL, NULL) < 0) {

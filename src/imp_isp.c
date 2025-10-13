@@ -11,6 +11,10 @@
 #include <sys/ioctl.h>
 #include <imp/imp_isp.h>
 
+/* Forward declarations for DMA allocation */
+int IMP_Alloc(char *name, int size, char *tag);
+int IMP_Free(uint32_t phys_addr);
+
 #define LOG_ISP(fmt, ...) fprintf(stderr, "[IMP_ISP] " fmt "\n", ##__VA_ARGS__)
 
 /* ISP Device structure (userspace) */
@@ -20,6 +24,9 @@ typedef struct {
     int tisp_fd;            /* Optional tuning device fd ("/dev/tisp"), -1 if not open */
     int opened;             /* Opened flag; +2 indicates sensor enabled */
     uint8_t data[0xb8];     /* Scratch/device data area for mirroring sensor info, etc. */
+    void *isp_buffer_virt;  /* Virtual address of ISP RAW buffer */
+    unsigned long isp_buffer_phys; /* Physical address of ISP RAW buffer */
+    uint32_t isp_buffer_size;      /* Size of ISP RAW buffer */
 } ISPDevice;
 
 static ISPDevice *gISPdev = NULL;
@@ -78,6 +85,14 @@ int IMP_ISP_Close(void) {
         return -1;
     }
 
+    /* Free ISP buffer if allocated */
+    if (gISPdev->isp_buffer_phys != 0) {
+        IMP_Free(gISPdev->isp_buffer_phys);
+        gISPdev->isp_buffer_virt = NULL;
+        gISPdev->isp_buffer_phys = 0;
+        gISPdev->isp_buffer_size = 0;
+    }
+
     /* Close devices */
     if (gISPdev->fd >= 0) {
         close(gISPdev->fd);
@@ -117,10 +132,123 @@ int IMP_ISP_AddSensor(IMPSensorInfo *pinfo) {
         return -1;
     }
 
+    /* Enumerate sensors to find the one we just added
+     * The ioctl code 0xc050561a has size 0x50 (80 bytes)
+     * Structure: int index (4) + char name[32] (32) + padding (44) = 80 bytes
+     */
+    int sensor_idx = -1;
+    int idx = 0;
+    struct {
+        int index;
+        char name[32];
+        int padding[11];  /* Pad to 80 bytes total: 4 + 32 + 44 = 80 */
+    } enum_input;
+
+    while (1) {
+        memset(&enum_input, 0, sizeof(enum_input));
+        enum_input.index = idx;
+
+        if (ioctl(gISPdev->fd, 0xc050561a, &enum_input) != 0) {
+            /* End of enumeration */
+            break;
+        }
+
+        LOG_ISP("AddSensor: enum idx=%d name='%s'", idx, enum_input.name);
+
+        if (strcmp(pinfo->name, enum_input.name) == 0) {
+            sensor_idx = idx;
+            LOG_ISP("AddSensor: found matching sensor at index %d", sensor_idx);
+        }
+        idx++;
+    }
+
+    if (sensor_idx == -1) {
+        LOG_ISP("AddSensor: sensor %s not found in enumeration", pinfo->name);
+        return -1;
+    }
+
+    LOG_ISP("AddSensor: using sensor_idx=%d for %s", sensor_idx, pinfo->name);
+
     /* Copy sensor info into our scratch area */
     memcpy(&gISPdev->data[0], pinfo, sizeof(IMPSensorInfo));
 
-    LOG_ISP("AddSensor: %s", pinfo->name);
+    /* CRITICAL: Set active sensor input via ioctl 0xc0045627 (TX_ISP_SENSOR_SET_INPUT)
+     * This must be called BEFORE GET_BUF so the kernel knows which sensor to use
+     * and can calculate the correct buffer size.
+     */
+    int input_index = sensor_idx;
+    LOG_ISP("AddSensor: calling TX_ISP_SENSOR_SET_INPUT with index=%d", input_index);
+
+    if (ioctl(gISPdev->fd, 0xc0045627, &input_index) != 0) {
+        LOG_ISP("AddSensor: TX_ISP_SENSOR_SET_INPUT failed: %s", strerror(errno));
+        return -1;
+    }
+
+    LOG_ISP("AddSensor: TX_ISP_SENSOR_SET_INPUT succeeded");
+
+    /* CRITICAL: Get buffer info via ioctl 0x800856d5 (TX_ISP_GET_BUF) */
+    struct {
+        uint32_t addr;   /* Physical address (usually 0) */
+        uint32_t size;   /* Calculated buffer size */
+    } buf_info;
+    memset(&buf_info, 0, sizeof(buf_info));
+
+    if (ioctl(gISPdev->fd, 0x800856d5, &buf_info) != 0) {
+        LOG_ISP("AddSensor: TX_ISP_GET_BUF failed: %s", strerror(errno));
+        return -1;
+    }
+
+    LOG_ISP("AddSensor: ISP buffer info: addr=0x%x size=%u", buf_info.addr, buf_info.size);
+
+    /* CRITICAL: Allocate DMA buffer for ISP RAW data
+     * The OEM allocates a DMA buffer and passes its physical address to SET_BUF.
+     * This buffer is used by the ISP hardware to store RAW sensor data before processing.
+     *
+     * IMP_Alloc returns buffer info in the first parameter (0x94 bytes):
+     *   offset 0x80: virt_addr
+     *   offset 0x84: phys_addr
+     *   offset 0x88: size
+     */
+    char isp_buf_info[0x94];
+    memset(isp_buf_info, 0, sizeof(isp_buf_info));
+
+    if (IMP_Alloc(isp_buf_info, buf_info.size, "isp_raw") != 0) {
+        LOG_ISP("AddSensor: failed to allocate ISP buffer of size %u", buf_info.size);
+        return -1;
+    }
+
+    /* Extract buffer info from the returned structure */
+    gISPdev->isp_buffer_virt = *(void**)(isp_buf_info + 0x80);
+    gISPdev->isp_buffer_phys = *(uint32_t*)(isp_buf_info + 0x84);
+    gISPdev->isp_buffer_size = buf_info.size;
+
+    LOG_ISP("AddSensor: allocated ISP buffer: virt=%p phys=0x%lx size=%u",
+            gISPdev->isp_buffer_virt, gISPdev->isp_buffer_phys, gISPdev->isp_buffer_size);
+
+    /* CRITICAL: Set buffer address via ioctl 0x800856d4 (TX_ISP_SET_BUF)
+     * Pass the physical address and size of the allocated DMA buffer.
+     */
+    struct {
+        uint32_t addr;   /* Physical buffer address */
+        uint32_t size;   /* Buffer size */
+    } set_buf;
+    set_buf.addr = gISPdev->isp_buffer_phys;
+    set_buf.size = buf_info.size;
+
+    LOG_ISP("AddSensor: calling TX_ISP_SET_BUF with addr=0x%x size=%u", set_buf.addr, set_buf.size);
+
+    if (ioctl(gISPdev->fd, 0x800856d4, &set_buf) != 0) {
+        LOG_ISP("AddSensor: TX_ISP_SET_BUF failed: %s", strerror(errno));
+        IMP_Free(gISPdev->isp_buffer_phys);
+        gISPdev->isp_buffer_virt = NULL;
+        gISPdev->isp_buffer_phys = 0;
+        gISPdev->isp_buffer_size = 0;
+        return -1;
+    }
+
+    LOG_ISP("AddSensor: TX_ISP_SET_BUF succeeded");
+
+    LOG_ISP("AddSensor: %s (idx=%d, buf_size=%u)", pinfo->name, sensor_idx, buf_info.size);
     return 0;
 }
 
@@ -149,25 +277,55 @@ int IMP_ISP_EnableSensor(void) {
         return -1;
     }
 
-    /* Get sensor index via ioctl 0x40045626 */
+    /* Get sensor index via ioctl 0x40045626
+     * This ioctl gets the current sensor index. It may fail if called before AddSensor.
+     */
     int sensor_idx = -1;
     int ret = ioctl(gISPdev->fd, 0x40045626, &sensor_idx);
 
-    /* The ioctl may fail if sensor is already configured, which is OK */
-    if (ret != 0 && errno != EINVAL) {
-        LOG_ISP("EnableSensor: failed to get sensor index: %s", strerror(errno));
-        /* Don't fail - continue with sensor_idx = -1 */
+    /* The ioctl may fail if called multiple times or sensor not ready - this is OK.
+     * We only fail if the ioctl succeeds but returns sensor_idx == -1 (no sensor found).
+     */
+    if (ret == 0 && sensor_idx == -1) {
+        LOG_ISP("EnableSensor: no sensor found (query returned -1)");
+        return -1;
     }
 
-    /* If sensor_idx is still -1, assume sensor 0 */
-    if (sensor_idx == -1) {
+    /* If ioctl failed, assume sensor 0 (already configured by AddSensor) */
+    if (ret != 0) {
         sensor_idx = 0;
-        LOG_ISP("EnableSensor: using default sensor index 0");
+        LOG_ISP("EnableSensor: ioctl 0x40045626 failed (%s), assuming sensor 0", strerror(errno));
     }
 
-    /* Defer stream-on and sensor enable to FrameSource path. The OEM starts streaming
-     * only after format and buffers are configured on the channel. */
-    (void)gISPdev; /* suppress unused warnings if builds differ */
+    /* CRITICAL: Call ioctl 0x80045612 (VIDIOC_STREAMON) to start ISP video streaming
+     * This is the global ISP stream-on, not the per-channel stream-on.
+     */
+    LOG_ISP("EnableSensor: calling ioctl 0x80045612 (ISP STREAMON)");
+    ret = ioctl(gISPdev->fd, 0x80045612, 0);
+    if (ret != 0) {
+        LOG_ISP("EnableSensor: ioctl 0x80045612 (ISP STREAMON) failed: %s", strerror(errno));
+        return -1;
+    }
+    LOG_ISP("EnableSensor: ioctl 0x80045612 succeeded");
+
+    /* CRITICAL: Call ioctl 0x800456d0 (TX_ISP_VIDEO_LINK_SETUP) to configure ISP video link */
+    LOG_ISP("EnableSensor: calling ioctl 0x800456d0 (LINK_SETUP)");
+    int config_result = 0;
+    ret = ioctl(gISPdev->fd, 0x800456d0, &config_result);
+    if (ret != 0) {
+        LOG_ISP("EnableSensor: ioctl 0x800456d0 (LINK_SETUP) failed: %s", strerror(errno));
+        return -1;
+    }
+    LOG_ISP("EnableSensor: ioctl 0x800456d0 succeeded, result=%d", config_result);
+
+    /* CRITICAL: Call ioctl 0x800456d2 (TX_ISP_VIDEO_LINK_STREAM_ON) to start ISP link streaming */
+    LOG_ISP("EnableSensor: calling ioctl 0x800456d2 (LINK_STREAM_ON)");
+    ret = ioctl(gISPdev->fd, 0x800456d2, 0);
+    if (ret != 0) {
+        LOG_ISP("EnableSensor: ioctl 0x800456d2 (LINK_STREAM_ON) failed: %s", strerror(errno));
+        return -1;
+    }
+    LOG_ISP("EnableSensor: ioctl 0x800456d2 succeeded");
 
     /* Increment opened flag by 2 to mark sensor as enabled */
     gISPdev->opened += 2;
