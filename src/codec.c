@@ -238,12 +238,11 @@ int AL_Codec_Encode_Create(void **codec, void *params) {
     enc->src_fourcc = 0x3231564e;  /* 'NV12' */
     enc->metadata_type = -1;
 
-    /* Hardware encoder is handled internally by vendor library via /dev/avpu */
-    /* We don't need to initialize a separate hardware encoder here */
+    /* Attempt to use hardware encoder via /dev/avpu (lazy-init on first frame) */
     enc->hw_encoder_fd = -1;
-    enc->use_hardware = 0;
+    enc->use_hardware = 1;
 
-    LOG_CODEC("Create: vendor library will handle hardware acceleration via /dev/avpu");
+    LOG_CODEC("Create: hardware encoder will be attempted via /dev/avpu (lazy init)");
 
     /* Register in global instances */
     pthread_mutex_lock(&g_codec_mutex);
@@ -373,6 +372,44 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
 
     /* Get current timestamp */
     uint64_t timestamp = IMP_System_GetTimeStamp();
+
+    if (enc->use_hardware) {
+        /* Lazy-init hardware encoder on first frame */
+        if (enc->hw_encoder_fd < 0) {
+            /* Build parameters from codec_param (written by channel_encoder_init) */
+            uint32_t bitrate = *(uint32_t*)(enc->codec_param + 0x30);
+            uint32_t fps_num = *(uint32_t*)(enc->codec_param + 0x7c);
+            uint32_t fps_den = *(uint32_t*)(enc->codec_param + 0x80);
+            uint32_t gop = *(uint32_t*)(enc->codec_param + 0xb0);
+            uint32_t profile_idc = *(uint32_t*)(enc->codec_param + 0x24);
+
+            memset(&enc->hw_params, 0, sizeof(enc->hw_params));
+            enc->hw_params.codec_type = HW_CODEC_H264; /* prudynt-t default */
+            enc->hw_params.width = width;
+            enc->hw_params.height = height;
+            enc->hw_params.fps_num = fps_num ? fps_num : 25;
+            enc->hw_params.fps_den = fps_den ? fps_den : 1;
+            enc->hw_params.gop_length = gop ? gop : 25;
+            enc->hw_params.rc_mode = HW_RC_MODE_CBR;
+            enc->hw_params.bitrate = bitrate ? bitrate : 2*1000*1000;
+            /* Map profile_idc to HW profile */
+            switch (profile_idc) {
+                case 66: enc->hw_params.profile = HW_PROFILE_BASELINE; break; /* Baseline */
+                case 77: enc->hw_params.profile = HW_PROFILE_MAIN; break;     /* Main */
+                case 100: enc->hw_params.profile = HW_PROFILE_HIGH; break;    /* High */
+                default: enc->hw_params.profile = HW_PROFILE_MAIN; break;
+            }
+
+            int init_fd = -1;
+            if (HW_Encoder_Init(&init_fd, &enc->hw_params) == 0 && init_fd >= 0) {
+                enc->hw_encoder_fd = init_fd;
+                LOG_CODEC("Process: hardware encoder initialized (fd=%d)", init_fd);
+            } else {
+                LOG_CODEC("Process: hardware encoder init failed; falling back to software");
+                enc->use_hardware = 0;
+            }
+        }
+    }
 
     if (enc->use_hardware && enc->hw_encoder_fd >= 0) {
         /* Use hardware encoder */

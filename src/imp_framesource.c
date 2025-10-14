@@ -352,14 +352,6 @@ int IMP_FrameSource_EnableChn(int chnNum) {
     }
 
     /* Prime kernel with QBUF for all frames before streaming */
-    if (VBMFillPool(chnNum) < 0) {
-        LOG_FS("EnableChn failed: cannot fill VBM pool");
-        VBMDestroyPool(chnNum);
-        fs_close_device(chn->fd);
-        chn->fd = -1;
-        pthread_mutex_unlock(&fs_mutex);
-        return -1;
-    }
     extern int VBMPrimeKernelQueue(int chn, int fd);
     if (VBMPrimeKernelQueue(chnNum, chn->fd) < 0) {
         LOG_FS("EnableChn failed: cannot prime kernel queue");
@@ -369,6 +361,16 @@ int IMP_FrameSource_EnableChn(int chnNum) {
         pthread_mutex_unlock(&fs_mutex);
         return -1;
     }
+    /* Clear user-space available queue to avoid initial 'queue full' on ReleaseFrame */
+    extern int VBMFlushFrame(int chn);
+    VBMFlushFrame(chnNum);
+
+    /* After priming the kernel, clear the user-space available queue.
+     * In kernel-backed mode, frames are sourced via DQBUF and not from the
+     * available_queue. Pre-filling it would make ReleaseFrame think the queue
+     * is full on the first return. Flushing prevents 'queue full' errors. */
+    extern int VBMFlushFrame(int chn);
+    VBMFlushFrame(chnNum);
 
     /* Small guard delay before STREAM_ON to mirror vendor pacing */
     usleep(5000); /* 5ms */
@@ -385,14 +387,9 @@ int IMP_FrameSource_EnableChn(int chnNum) {
     }
 
 
-    /* Mark running and start capture thread first (match OEM ordering) */
-    chn->state = 2; /* Running */
-    gFramesource->active_count++;
-
-    if (pthread_create(&chn->thread, NULL, frame_capture_thread, chn) != 0) {
-        LOG_FS("EnableChn failed: cannot create capture thread");
-        chn->state = 0;
-        gFramesource->active_count--;
+    /* Start streaming BEFORE starting the capture thread to avoid DQBUF before STREAM_ON */
+    if (fs_stream_on(chn->fd) < 0) {
+        LOG_FS("EnableChn failed: cannot start streaming");
         VBMFlushFrame(chnNum);
         VBMDestroyPool(chnNum);
         fs_close_device(chn->fd);
@@ -401,26 +398,12 @@ int IMP_FrameSource_EnableChn(int chnNum) {
         return -1;
     }
 
-    /* Wait briefly for capture thread to be running before STREAM_ON */
-    {
-        struct timespec ts; clock_gettime(CLOCK_REALTIME, &ts);
-        /* 100ms timeout */
-        ts.tv_nsec += 100 * 1000000;
-        if (ts.tv_nsec >= 1000000000) { ts.tv_sec += 1; ts.tv_nsec -= 1000000000; }
-        int sem_rc = sem_timedwait(&chn->sem, &ts);
-        if (sem_rc != 0) {
-            LOG_FS("EnableChn: capture thread readiness wait timed out (%s) — continuing", strerror(errno));
-        } else {
-            LOG_FS("EnableChn: capture thread signaled readiness");
-        }
-    }
+    /* Mark running and start capture thread (post-STREAM_ON) */
+    chn->state = 2; /* Running */
+    gFramesource->active_count++;
 
-    /* Start streaming after thread is ready */
-    if (fs_stream_on(chn->fd) < 0) {
-        LOG_FS("EnableChn failed: cannot start streaming");
-        /* Stop and join capture thread before teardown */
-        pthread_cancel(chn->thread);
-        pthread_join(chn->thread, NULL);
+    if (pthread_create(&chn->thread, NULL, frame_capture_thread, chn) != 0) {
+        LOG_FS("EnableChn failed: cannot create capture thread");
         chn->state = 0;
         gFramesource->active_count--;
         VBMFlushFrame(chnNum);
@@ -760,6 +743,18 @@ static void *frame_capture_thread(void *arg) {
                 ioctl_fail_count = 0;
             }
         }
+        if (poll_count <= 3) {
+            LOG_FS("frame_capture_thread chn=%d: entering DQBUF drain loop", chn_num);
+            fflush(stderr);
+        }
+
+        /* Enforce non-blocking on fd in case driver cleared O_NONBLOCK */
+        int __fl = fcntl(chn->fd, F_GETFL, 0);
+        if (__fl != -1 && !(__fl & O_NONBLOCK)) {
+            fcntl(chn->fd, F_SETFL, __fl | O_NONBLOCK);
+            LOG_FS("frame_capture_thread chn=%d: re-enabled O_NONBLOCK before DQBUF", chn_num);
+        }
+
 
         while (1) {
             void *frame = NULL;

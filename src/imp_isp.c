@@ -8,6 +8,10 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <errno.h>
+#include <stdio.h>
+#include <sys/prctl.h>
+
+
 #include <pthread.h>
 #include <sys/ioctl.h>
 #include <imp/imp_isp.h>
@@ -17,6 +21,10 @@ int IMP_Alloc(char *name, int size, char *tag);
 int IMP_Free(uint32_t phys_addr);
 
 /* Forward declarations for logging (vendor functions) */
+
+/* Forward declarations for vendor-like tuning getters used internally */
+int IMP_ISP_Tuning_GetTotalGain(uint32_t *pgain);
+
 int IMP_Log_Get_Option(void);
 void imp_log_fun(int level, int option, int type, ...);
 
@@ -37,6 +45,267 @@ typedef struct {
 static ISPDevice *gISPdev = NULL;
 static int sensor_enabled = 0;
 static int tuning_enabled = 0;
+
+/* ISP tuning daemon and related methods (safe struct access version) */
+
+typedef void (*IspTuningFunc)(void* arg);
+
+typedef struct {
+    /* Match vendor semantics but use safe, explicit fields */
+    char            name[0x14];   /* up to 20 chars incl. NUL in vendor */
+    int             used;         /* non-zero when slot is used */
+    IspTuningFunc   fn;           /* callback */
+    void*           arg;          /* opaque arg passed to callback */
+} IspTuningSlot;
+
+#define ISP_TUNING_MAX_SLOTS 10
+
+static pthread_mutex_t g_isp_deamon_mutex = PTHREAD_MUTEX_INITIALIZER;
+/* Cached tuning state and video drop monitors (safe globals) */
+static uint32_t g_total_gain = 0;                 /* updated by tuning_update_total_gain */
+static uint32_t s_last_total_gain = 0;            /* last sent gain for contrastjudge */
+static uint32_t g_isp_vic_frd_c = 0;              /* last value read from /proc/jz/isp/isp-w02 */
+static unsigned g_video_drop_status = 0;          /* consecutive same-count detections */
+static unsigned g_video_drop_notify_c = 0;        /* notifications emitted (limited) */
+static void (*g_video_drop_cb)(void) = NULL;      /* optional callback hook */
+
+static volatile int g_isp_deamon_info = 0;   /* vendor: nonzero while thread should run */
+static volatile int g_isp_deamon_init = 0;   /* vendor sets this true on first EnableTuning */
+static uint32_t g_isp_tuning_mask = 0;       /* bitmask from /tmp/isp_tuning_func */
+static IspTuningSlot g_isp_tuning_slots[ISP_TUNING_MAX_SLOTS];
+static pthread_t g_isp_deamon_thread = 0;
+
+static void* isp_tuning_deamon_thread(void* arg)
+{
+    (void)arg;
+
+    /* Name the thread to match vendor */
+    prctl(PR_SET_NAME, "isp_tuning_deamon_thread");
+
+    pthread_mutex_lock(&g_isp_deamon_mutex);
+
+    if (g_isp_deamon_info != 0) {
+        for (;;) {
+            /* Optional runtime override of mask via file (vendor behavior) */
+            FILE* fp = fopen("/tmp/isp_tuning_func", "r");
+            if (fp) {
+                unsigned int mask = 0;
+                /* Try hex first, then decimal */
+                if (fscanf(fp, "%x", &mask) == 1 || fscanf(fp, "%u", &mask) == 1) {
+                    g_isp_tuning_mask = mask;
+                }
+                fclose(fp);
+            }
+
+            int executed = 0;
+            for (int i = 0; i < ISP_TUNING_MAX_SLOTS; ++i) {
+                IspTuningFunc fn = g_isp_tuning_slots[i].fn;
+                void* cb_arg = g_isp_tuning_slots[i].arg;
+                uint32_t bit = (uint32_t)1u << (i & 31);
+
+                if (fn != NULL && (g_isp_tuning_mask & bit) != 0) {
+                    /* Call while holding the mutex, like vendor code */
+                    fn(cb_arg);
+                    executed++;
+                }
+            }
+
+            if (executed == 0) {
+                LOG_ISP("isp_tuning_deamon_thread: no functions executed; exiting");
+                break;
+            }
+
+            pthread_mutex_unlock(&g_isp_deamon_mutex);
+            sleep(1);
+            pthread_mutex_lock(&g_isp_deamon_mutex);
+
+            if (g_isp_deamon_info == 0) {
+                break;
+            }
+        }
+    }
+
+    pthread_mutex_unlock(&g_isp_deamon_mutex);
+    return NULL;
+}
+
+static int isp_tuning_deamon_func_add(const char* name, IspTuningFunc fn)
+{
+    if (name == NULL || fn == NULL) return -1;
+
+    size_t nlen = strnlen(name, sizeof(((IspTuningSlot*)0)->name));
+    if (nlen >= sizeof(((IspTuningSlot*)0)->name)) {
+        LOG_ISP("deamon_func_add: name too long (max %zu)", sizeof(((IspTuningSlot*)0)->name) - 1);
+        return -1;
+    }
+
+    if (g_isp_deamon_init == 0) {
+        LOG_ISP("deamon_func_add: daemon not initialized");
+        return -1;
+    }
+
+    pthread_mutex_lock(&g_isp_deamon_mutex);
+
+    /* Duplicate check */
+    for (int i = 0; i < ISP_TUNING_MAX_SLOTS; ++i) {
+        if (g_isp_tuning_slots[i].used && g_isp_tuning_slots[i].fn == fn &&
+            strncmp(g_isp_tuning_slots[i].name, name, sizeof(g_isp_tuning_slots[i].name)) == 0) {
+            LOG_ISP("deamon_func_add: duplicate entry for '%s'", name);
+            pthread_mutex_unlock(&g_isp_deamon_mutex);
+            return 0;
+        }
+    }
+
+    /* Find free slot */
+    for (int i = 0; i < ISP_TUNING_MAX_SLOTS; ++i) {
+        if (!g_isp_tuning_slots[i].used && g_isp_tuning_slots[i].fn == NULL) {
+            /* Fill slot safely */
+            IspTuningSlot* s = &g_isp_tuning_slots[i];
+            memset(s, 0, sizeof(*s));
+            memcpy(s->name, name, nlen);
+            s->name[nlen] = '\0';
+            s->used = 1;
+            s->fn = fn;
+            s->arg = NULL; /* vendor sets arg to 0 on add */
+
+            /* Enable this slot's bit by default like vendor */
+            g_isp_tuning_mask |= (uint32_t)1u << (i & 31);
+
+            /* Start daemon thread if not running */
+            if (g_isp_deamon_info == 0 && g_isp_deamon_thread == 0) {
+                int rc = pthread_create(&g_isp_deamon_thread, NULL, isp_tuning_deamon_thread, NULL);
+                if (rc != 0) {
+                    g_isp_deamon_thread = 0;
+                    LOG_ISP("deamon_func_add: pthread_create failed: %d", rc);
+                } else {
+                    g_isp_deamon_info = 1;
+                }
+            }
+
+            pthread_mutex_unlock(&g_isp_deamon_mutex);
+            return 0;
+        }
+    }
+
+    pthread_mutex_unlock(&g_isp_deamon_mutex);
+    LOG_ISP("deamon_func_add: registry full");
+    return -1;
+}
+
+static int isp_tuning_deamon_func_del(const char* name, IspTuningFunc fn)
+{
+    if (name == NULL || fn == NULL) return -1;
+    if (g_isp_deamon_init == 0) {
+        LOG_ISP("deamon_func_del: daemon not initialized");
+        return -1;
+    }
+
+    pthread_mutex_lock(&g_isp_deamon_mutex);
+
+    int removed = 0;
+    for (int i = 0; i < ISP_TUNING_MAX_SLOTS; ++i) {
+        IspTuningSlot* s = &g_isp_tuning_slots[i];
+        if (s->used && s->fn == fn && strncmp(s->name, name, sizeof(s->name)) == 0) {
+            memset(s, 0, sizeof(*s));
+            removed++;
+        }
+    }
+
+    if (removed >= 2) {
+        LOG_ISP("deamon_func_del: removed %d entries (unexpected duplicates)", removed);
+    }
+
+    pthread_mutex_unlock(&g_isp_deamon_mutex);
+    return 0;
+}
+/* Default periodic tuning callback (placeholder) */
+static void tuning_periodic(void* arg)
+{
+    (void)arg;
+    /* Placeholder: vendor uses daemon to run periodic tuning tasks. */
+}
+
+/* Vendor-registered daemon callbacks (safe placeholders) */
+static void tuning_update_total_gain(void* arg)
+{
+    (void)arg;
+    uint32_t gain = 0;
+    if (IMP_ISP_Tuning_GetTotalGain(&gain) < 0) {
+        g_total_gain = 0;
+        return;
+    }
+    g_total_gain = gain;
+}
+
+static void tuning_contrastjudge(void* arg)
+{
+    (void)arg;
+
+    /* Mirror vendor behavior: only act when total_gain is non-zero and changed */
+    if (g_total_gain == 0 || g_total_gain == s_last_total_gain)
+        return;
+
+    if (gISPdev == NULL || gISPdev->tisp_fd < 0)
+        return;
+
+    unsigned char contrast = 0;
+    (void)IMP_ISP_Tuning_GetContrast(&contrast); /* fall back to 0 if not available */
+
+    struct {
+        uint32_t value;   /* low 8 bits: contrast, high bits: total_gain << 8 */
+        uint32_t subcmd;  /* 0x110000 as seen in vendor */
+    } cmd;
+
+    cmd.value = ((uint32_t)contrast & 0xffu) | (g_total_gain << 8);
+    cmd.subcmd = 0x110000u;
+
+    if (ioctl(gISPdev->tisp_fd, 0xc008561c, &cmd) < 0) {
+        LOG_ISP("contrastjudge: ioctl(0x%08x) failed: %s", 0xc008561c, strerror(errno));
+        return;
+    }
+
+    s_last_total_gain = g_total_gain;
+}
+
+static void tuning_videodrop(void* arg)
+{
+    (void)arg;
+
+    FILE *fp = fopen("/proc/jz/isp/isp-w02", "r");
+    if (fp == NULL) {
+        LOG_ISP("videodrop: failed to open %s: %s", "/proc/jz/isp/isp-w02", strerror(errno));
+        return;
+    }
+
+    unsigned int cnt = 0;
+    if (fscanf(fp, "%u", &cnt) != 1) {
+        LOG_ISP("videodrop: failed to read from %s", "/proc/jz/isp/isp-w02");
+        fclose(fp);
+        return;
+    }
+
+    if (cnt == g_isp_vic_frd_c) {
+        g_video_drop_status++;
+    } else {
+        g_isp_vic_frd_c = cnt;
+        g_video_drop_status = 0;
+        g_video_drop_notify_c = 0;
+    }
+
+    if (g_video_drop_status >= 2) {
+        g_video_drop_status = 0;
+        if (g_video_drop_notify_c < 4) {
+            g_video_drop_notify_c++;
+            LOG_ISP("videodrop: video drop detected (notify #%u)", g_video_drop_notify_c);
+            if (g_video_drop_cb) {
+                g_video_drop_cb();
+            }
+        }
+    }
+
+    fclose(fp);
+}
+
 
 /* AE/AWB algorithm state */
 static int ae_algo_en = 0;
@@ -594,6 +863,36 @@ int IMP_ISP_EnableTuning(void) {
 
     LOG_ISP("EnableTuning: tuning initialized successfully");
     tuning_enabled = 1;
+
+    /* Initialize/clear daemon registry on first enable (vendor behavior) */
+    pthread_mutex_lock(&g_isp_deamon_mutex);
+    if (g_isp_deamon_init == 1) {
+        LOG_ISP("EnableTuning: daemon already initialized");
+    } else {
+        memset(g_isp_tuning_slots, 0, sizeof(g_isp_tuning_slots));
+        g_isp_tuning_mask = 0;
+        g_isp_deamon_info = 0;
+        g_isp_deamon_thread = 0;
+        g_isp_deamon_init = 1;
+    }
+    pthread_mutex_unlock(&g_isp_deamon_mutex);
+
+    /* Register vendor-named periodic functions */
+    isp_tuning_deamon_func_add("update_total_gain", tuning_update_total_gain);
+    isp_tuning_deamon_func_add("contrastjudge", tuning_contrastjudge);
+    isp_tuning_deamon_func_add("videodrop", tuning_videodrop);
+
+    /* Persist current mask for external override (thread accepts hex/dec) */
+    {
+        FILE* fp = fopen("/tmp/isp_tuning_func", "w+");
+        if (fp) {
+            char buf[32];
+            int n = snprintf(buf, sizeof(buf), "%u\n", g_isp_tuning_mask);
+            if (n > 0) fwrite(buf, 1, (size_t)n, fp);
+            fclose(fp);
+        }
+    }
+
     return 0;
 }
 
@@ -740,6 +1039,30 @@ int IMP_ISP_Tuning_SetBacklightComp(uint32_t strength) {
     LOG_ISP("SetBacklightComp: %u", strength);
     return 0;
 }
+
+int IMP_ISP_Tuning_GetTotalGain(uint32_t *pgain) {
+    if (pgain == NULL) return -1;
+    if (gISPdev == NULL || gISPdev->tisp_fd < 0) return -1;
+
+    struct {
+        uint32_t cmd;     /* 1 = read */
+        uint32_t subcmd;  /* 0x8000027 per vendor */
+        uint32_t value;   /* out: total gain */
+    } req;
+
+    req.cmd = 1;
+    req.subcmd = 0x8000027u;
+    req.value = 0;
+
+    if (ioctl(gISPdev->tisp_fd, 0xc00c56c6, &req) < 0) {
+        LOG_ISP("GetTotalGain: ioctl failed: %s", strerror(errno));
+        return -1;
+    }
+
+    *pgain = req.value;
+    return 0;
+}
+
 
 int IMP_ISP_Tuning_SetDPC_Strength(uint32_t ratio) {
     LOG_ISP("SetDPC_Strength: %u", ratio);

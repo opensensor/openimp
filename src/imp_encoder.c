@@ -486,9 +486,8 @@ int IMP_Encoder_CreateChn(int encChn, IMPEncoderCHNAttr *attr) {
     /* sem_init at offset 0x418 with value 0 */
     sem_init(&chn->sem_418, 0, 0);
 
-    /* sem_init at offset 0x408 with buffer count value */
-    int buf_count = 4; /* Default buffer count */
-    sem_init(&chn->sem_408, 0, buf_count);
+    /* Initialize stream-available semaphore with 0 (posted when stream is ready) */
+    sem_init(&chn->sem_408, 0, 0);
 
     /* Initialize mutexes (from decompilation at 0x83d30) */
     if (pthread_mutex_init(&chn->mutex_438, NULL) < 0) {
@@ -541,9 +540,9 @@ int IMP_Encoder_CreateChn(int encChn, IMPEncoderCHNAttr *attr) {
     }
 
     /* Allocate stream buffers (from decompilation at 0x83e10) */
-    int stream_cnt = buf_count;
-    int stream_size = 0x188; /* Size per stream buffer metadata structure (0x188 from BN MCP) */
-    size_t total_size = stream_cnt * stream_size;
+    int stream_cnt = (chn->max_stream_cnt > 0) ? chn->max_stream_cnt : 4;
+    int stream_size = (chn->stream_buf_size > 0) ? chn->stream_buf_size : 0x188; /* Size per stream buffer metadata structure */
+    size_t total_size = (size_t)stream_cnt * (size_t)stream_size;
 
     void **buf_ptr = (void**)&chn->data_298[0];
     *buf_ptr = calloc(total_size, 1);

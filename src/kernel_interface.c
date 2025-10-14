@@ -468,6 +468,22 @@ int fs_qbuf(int fd, int index, unsigned long phys, unsigned int length) {
     }
     return 0;
 }
+/* Dequeue with preset length/bytesused to satisfy strict drivers */
+int fs_dqbuf_len(int fd, unsigned int preset_len, int *index_out) {
+    if (fd < 0 || !index_out) return -1;
+    struct v4l2_buf32 b; memset(&b, 0, sizeof(b));
+    b.type = 1; b.memory = 2; b.field = 4;
+    b.length = preset_len; b.bytesused = preset_len;
+    int ret = ioctl(fd, VIDIOC_DQBUF, &b);
+    if (ret < 0) {
+        if (errno == EAGAIN) return -2;
+        fprintf(stderr, "[KernelIF] DQBUF(len=%u) failed: %s\n", preset_len, strerror(errno));
+        return -1;
+    }
+    *index_out = (int)b.index;
+    return 0;
+}
+
 
 /* Dequeue a filled buffer from the framechan driver */
 int fs_dqbuf(int fd, int *index_out) {
@@ -898,8 +914,19 @@ int VBMKernelDequeue(int chn, int fd, void **frame_out) {
     if (!pool) return -1;
     static int eagain_count[MAX_VBM_POOLS] = {0};
     static int err_count[MAX_VBM_POOLS] = {0};
+    static int dbg_count[MAX_VBM_POOLS] = {0};
+
     int idx = -1;
-    int ret = fs_dqbuf(fd, &idx);
+    if (dbg_count[chn] < 3) {
+        fprintf(stderr, "[VBM] VBMKernelDequeue chn=%d: attempting DQBUF...\n", chn);
+    }
+    /* Some drivers require preset length/bytesused to DQBUF; use pool->frames[0].size */
+    unsigned int preset_len = (unsigned int)pool->frames[0].size;
+    int ret = fs_dqbuf_len(fd, preset_len, &idx);
+    if (dbg_count[chn] < 3) {
+        fprintf(stderr, "[VBM] VBMKernelDequeue chn=%d: DQBUF(len) returned ret=%d idx=%d\n", chn, ret, idx);
+        dbg_count[chn]++;
+    }
     if (ret == -2) {
         int c = ++eagain_count[chn];
         if (c <= 5 || (c % 50) == 0) {
@@ -908,11 +935,17 @@ int VBMKernelDequeue(int chn, int fd, void **frame_out) {
         return -2; /* EAGAIN */
     }
     if (ret != 0) {
-        int c = ++err_count[chn];
-        if (c <= 5 || (c % 50) == 0) {
-            fprintf(stderr, "[VBM] VBMKernelDequeue chn=%d: DQBUF error ret=%d\n", chn, ret);
+        /* Fallback: try plain DQBUF without preset length/bytesused */
+        int ret2 = fs_dqbuf(fd, &idx);
+        if (ret2 != 0) {
+            int c = ++err_count[chn];
+            if (c <= 5 || (c % 50) == 0) {
+                fprintf(stderr, "[VBM] VBMKernelDequeue chn=%d: DQBUF error ret=%d (fallback ret=%d)\n", chn, ret, ret2);
+            }
+            return -1;
+        } else {
+            fprintf(stderr, "[VBM] VBMKernelDequeue chn=%d: DQBUF fallback succeeded, idx=%d\n", chn, idx);
         }
-        return -1;
     }
     if (idx < 0 || idx >= pool->frame_count) {
         fprintf(stderr, "[VBM] VBMKernelDequeue chn=%d: invalid idx=%d (frame_count=%d)\n", chn, idx, pool->frame_count);
@@ -1054,10 +1087,11 @@ int VBMReleaseFrame(int chn, void *frame) {
     pthread_mutex_lock(&pool->queue_mutex);
 
     if (pool->queue_count >= pool->frame_count) {
-        /* Queue is full - shouldn't happen */
-        pthread_mutex_unlock(&pool->queue_mutex);
-        fprintf(stderr, "[VBM] ReleaseFrame: queue full!\n");
-        return -1;
+        /* Queue is full - make room by dropping the oldest entry (kernel-backed path doesn't use this queue) */
+        int dropped_idx = pool->available_queue[pool->queue_head];
+        pool->queue_head = (pool->queue_head + 1) % pool->frame_count;
+        pool->queue_count--;
+        fprintf(stderr, "[VBM] ReleaseFrame: queue full, dropped idx=%d to make room\n", dropped_idx);
     }
 
     /* If kernel-backed, re-queue to kernel immediately (QBUF) */
