@@ -10,6 +10,7 @@
 #include <errno.h>
 #include <stdio.h>
 #include <sys/prctl.h>
+#include <sys/stat.h>
 
 
 #include <pthread.h>
@@ -274,6 +275,10 @@ static void tuning_contrastjudge(void* arg)
     if (gISPdev == NULL || gISPdev->tisp_fd < 0)
         return;
 
+    /* Only run after sensor/link is enabled to avoid EPERM before streaming */
+    if (gISPdev->opened < 2)
+        return;
+
     ISPTuningState *st = gISPdev->tuning;
     if (st == NULL)
         return;
@@ -292,8 +297,19 @@ static void tuning_contrastjudge(void* arg)
     cmd.subcmd = 0x110000u;
     cmd.value  = ((uint32_t)contrast & 0xffu) | (st->total_gain << 8);
 
+    static int cj_disabled = 0;
+    if (cj_disabled)
+        return;
+
     if (ioctl(gISPdev->tisp_fd, 0xc008561c, &cmd) < 0) {
-        LOG_ISP("contrastjudge: ioctl(0x%08x) failed: %s", 0xc008561c, strerror(errno));
+        int e = errno;
+        /* On EPERM/ENOTTY, disable this function quietly to avoid log spam */
+        if (e == EPERM || e == ENOTTY) {
+            cj_disabled = 1;
+            /* Do not modify tuning_mask here; cj_disabled will skip future calls */
+        } else {
+            LOG_ISP("contrastjudge: ioctl(0x%08x) failed: %s", 0xc008561c, strerror(e));
+        }
         return;
     }
 
@@ -589,22 +605,64 @@ int IMP_ISP_AddSensor(IMPSensorInfo *pinfo) {
         return -1;
     }
 
-    /* Add sensor via ioctl 0x805056c1 */
-    if (ioctl(gISPdev->fd, 0x805056c1, pinfo) != 0) {
-        LOG_ISP("AddSensor: ioctl failed for %s: %s", pinfo->name, strerror(errno));
+    /* Log the key IMPSensorInfo fields for debugging */
+#ifdef PLATFORM_T23
+    LOG_ISP("AddSensor: name='%s' reserved1=%d cbus=%d i2c.type='%s' i2c.addr=0x%x",
+            pinfo->name, pinfo->reserved1, (int)pinfo->cbus_type, pinfo->i2c.type, pinfo->i2c.addr);
+    LOG_ISP("AddSensor: i2c_adapter=%d rst_gpio=%d pwdn_gpio=%d power_gpio=%d sensor_id=0x%x",
+            pinfo->i2c_adapter, pinfo->rst_gpio, pinfo->pwdn_gpio, pinfo->power_gpio, pinfo->sensor_id);
+    LOG_ISP("AddSensor: sizeof(IMPSensorInfo)=%zu expected=84", sizeof(IMPSensorInfo));
+#else
+    LOG_ISP("AddSensor: name='%s' cbus=%d i2c.type='%s' i2c.addr=0x%x i2c.adapter=%d rst_gpio=%d",
+            pinfo->name, (int)pinfo->cbus_type, pinfo->i2c.type, pinfo->i2c.addr,
+            pinfo->i2c.i2c_adapter, pinfo->rst_gpio);
+    LOG_ISP("AddSensor: pwdn_gpio=%d power_gpio=%d sensor_id=0x%x",
+            pinfo->pwdn_gpio, pinfo->power_gpio, pinfo->sensor_id);
+#endif
+
+    /* REGISTER_SENSOR - Stock T23 libimp calls this first
+     * This registers the sensor configuration with the ISP subsystem.
+     * The kernel iterates through loaded sensor subdevs and calls their ioctl handlers.
+     *
+     * On T23, the sensor driver subdev must already be loaded and registered with tx-isp.
+     * Check dmesg or /proc/jz/isp/isp-* to see if sensor driver is loaded.
+     */
+    LOG_ISP("AddSensor: calling REGISTER_SENSOR ioctl(0x%08x)", TX_ISP_REGISTER_SENSOR);
+    if (ioctl(gISPdev->fd, TX_ISP_REGISTER_SENSOR, pinfo) != 0) {
+        LOG_ISP("AddSensor: REGISTER_SENSOR failed: %s (errno=%d)", strerror(errno), errno);
+        LOG_ISP("AddSensor: This usually means:");
+        LOG_ISP("  1. Sensor driver module not loaded (check lsmod | grep sensor)");
+        LOG_ISP("  2. Sensor name mismatch (driver expects different name)");
+        LOG_ISP("  3. I2C address/bus mismatch");
+        LOG_ISP("  4. Sensor driver rejected the configuration");
+        LOG_ISP("AddSensor: Dumping IMPSensorInfo structure (84 bytes):");
+        for (int i = 0; i < 84; i += 16) {
+            LOG_ISP("  [%02d-%02d]: %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x",
+                    i, i+15,
+                    ((unsigned char*)pinfo)[i+0], ((unsigned char*)pinfo)[i+1],
+                    ((unsigned char*)pinfo)[i+2], ((unsigned char*)pinfo)[i+3],
+                    ((unsigned char*)pinfo)[i+4], ((unsigned char*)pinfo)[i+5],
+                    ((unsigned char*)pinfo)[i+6], ((unsigned char*)pinfo)[i+7],
+                    ((unsigned char*)pinfo)[i+8], ((unsigned char*)pinfo)[i+9],
+                    ((unsigned char*)pinfo)[i+10], ((unsigned char*)pinfo)[i+11],
+                    ((unsigned char*)pinfo)[i+12], ((unsigned char*)pinfo)[i+13],
+                    ((unsigned char*)pinfo)[i+14], ((unsigned char*)pinfo)[i+15]);
+        }
         return -1;
     }
+    LOG_ISP("AddSensor: REGISTER_SENSOR succeeded");
 
-    /* Enumerate sensors to find the one we just added
-     * The ioctl code 0xc050561a has size 0x50 (80 bytes)
-     * Structure: int index (4) + char name[32] (32) + padding (44) = 80 bytes
+    /* Enumerate sensors to find the one we just registered
+     * The sensor driver is already loaded as a kernel module, so we just need to find it.
+     * Uses ioctl 0xC050561A which returns sensor info at each index.
+     * The ioctl is _IOWR('V', 0x1a, 0x50) = 0xC050561A, so it expects 0x50 (80) bytes.
      */
     int sensor_idx = -1;
     int idx = 0;
     struct {
         int index;
         char name[32];
-        int padding[11];  /* Pad to 80 bytes total: 4 + 32 + 44 = 80 */
+        char extra[44]; /* padding to make total 80 bytes */
     } enum_input;
 
     while (1) {
@@ -616,6 +674,22 @@ int IMP_ISP_AddSensor(IMPSensorInfo *pinfo) {
             break;
         }
 
+        /* Dump the entire structure to see what we're getting */
+        LOG_ISP("AddSensor: enum idx=%d raw data (all 80 bytes):", idx);
+        for (int i = 0; i < 80; i += 16) {
+            LOG_ISP("  [%02d-%02d]: %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x",
+                    i, i+15,
+                    ((unsigned char*)&enum_input)[i+0], ((unsigned char*)&enum_input)[i+1],
+                    ((unsigned char*)&enum_input)[i+2], ((unsigned char*)&enum_input)[i+3],
+                    ((unsigned char*)&enum_input)[i+4], ((unsigned char*)&enum_input)[i+5],
+                    ((unsigned char*)&enum_input)[i+6], ((unsigned char*)&enum_input)[i+7],
+                    ((unsigned char*)&enum_input)[i+8], ((unsigned char*)&enum_input)[i+9],
+                    ((unsigned char*)&enum_input)[i+10], ((unsigned char*)&enum_input)[i+11],
+                    ((unsigned char*)&enum_input)[i+12], ((unsigned char*)&enum_input)[i+13],
+                    ((unsigned char*)&enum_input)[i+14], ((unsigned char*)&enum_input)[i+15]);
+        }
+
+        /* The name field should be at offset 4 (after the index) */
         LOG_ISP("AddSensor: enum idx=%d name='%s'", idx, enum_input.name);
 
         if (strcmp(pinfo->name, enum_input.name) == 0) {
@@ -630,17 +704,20 @@ int IMP_ISP_AddSensor(IMPSensorInfo *pinfo) {
         return -1;
     }
 
-    LOG_ISP("AddSensor: using sensor_idx=%d for %s", sensor_idx, pinfo->name);
-
     /* Copy sensor info into our scratch area */
     memcpy(&gISPdev->data[0], pinfo, sizeof(IMPSensorInfo));
 
     /* CRITICAL: Set active sensor input via ioctl 0xc0045627 (TX_ISP_SENSOR_SET_INPUT)
-     * This must be called BEFORE GET_BUF so the kernel knows which sensor to use
-     * and can calculate the correct buffer size.
+     * Stock T23 libimp uses HARDCODED value 1 (not the enumerated index!)
+     * See decompilation: var_34 = 1; ioctl($a0_5, 0xc0045627, &var_34)
      */
+#ifdef PLATFORM_T23
+    int input_index = 1;  /* Stock T23 always uses 1 */
+    LOG_ISP("AddSensor: calling TX_ISP_SENSOR_SET_INPUT with hardcoded value=1 (T23)");
+#else
     int input_index = sensor_idx;
     LOG_ISP("AddSensor: calling TX_ISP_SENSOR_SET_INPUT with index=%d", input_index);
+#endif
 
     if (ioctl(gISPdev->fd, 0xc0045627, &input_index) != 0) {
         LOG_ISP("AddSensor: TX_ISP_SENSOR_SET_INPUT failed: %s", strerror(errno));
@@ -652,8 +729,14 @@ int IMP_ISP_AddSensor(IMPSensorInfo *pinfo) {
     /* CRITICAL: Get buffer info via TX_ISP_GET_BUF (platform-dependent) */
     tx_isp_buf_t buf_info;
     TXISP_BUF_INIT(buf_info);
-    /* On T23 the driver expects the active sensor index in the request structure */
-    TXISP_BUF_SET_INDEX(buf_info, sensor_idx);
+    /* On T23 vendor path, driver expects cbus_type (1=I2C) in the index field */
+#ifdef PLATFORM_T23
+    TXISP_BUF_SET_INDEX(buf_info, pinfo->cbus_type);
+    LOG_ISP("AddSensor: TX_ISP_GET_BUF using index=cbus_type=%d", pinfo->cbus_type);
+#else
+    TXISP_BUF_SET_INDEX(buf_info, input_index);
+    LOG_ISP("AddSensor: TX_ISP_GET_BUF using index=input_index=%d", input_index);
+#endif
 
     if (ioctl(gISPdev->fd, TX_ISP_GET_BUF, &buf_info) != 0) {
         LOG_ISP("AddSensor: TX_ISP_GET_BUF failed: %s", strerror(errno));
@@ -712,7 +795,13 @@ int IMP_ISP_AddSensor(IMPSensorInfo *pinfo) {
      */
     tx_isp_buf_t set_buf;
     TXISP_BUF_INIT(set_buf);
+#ifdef PLATFORM_T23
+    TXISP_BUF_SET_INDEX(set_buf, pinfo->cbus_type);
+    LOG_ISP("AddSensor: TX_ISP_SET_BUF using index=cbus_type=%d", pinfo->cbus_type);
+#else
     TXISP_BUF_SET_INDEX(set_buf, sensor_idx);
+    LOG_ISP("AddSensor: TX_ISP_SET_BUF using index=sensor_idx=%d", sensor_idx);
+#endif
     TXISP_BUF_SET_PHYS_SIZE(set_buf, gISPdev->isp_buffer_phys, TXISP_BUF_GET_SIZE(buf_info));
 
     LOG_ISP("AddSensor: calling TX_ISP_SET_BUF (0x%08x) with phys=0x%lx size=%u",

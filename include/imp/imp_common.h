@@ -118,16 +118,47 @@ typedef enum {
 
 /**
  * I2C configuration
+ * NOTE: Platform-specific layout! T23 has different field order than T31.
  */
+#if defined(PLATFORM_T23)
+typedef struct {
+    char type[20];      /**< Sensor type string */
+    int addr;           /**< I2C address */
+} TXSNSI2CConfig;
+#else
 typedef struct {
     char type[20];      /**< Sensor type string */
     int addr;           /**< I2C address */
     int i2c_adapter;    /**< I2C adapter number */
 } TXSNSI2CConfig;
+#endif
 
 /**
- * Sensor information
+ * Sensor information (platform-specific layout)
+ *
+ * Structure size varies by platform to match kernel driver expectations:
+ * - T31/T21/C100: 80 bytes (0x50) - no private_data field
+ * - T23: 84 bytes (0x54) - cbus_type at offset 0x24 (36), i2c_adapter at offset 0x40 (64)
+ * - T40/T41: Extended structure with additional fields
+ *
+ * T23 kernel reads:
+ *   *(arg3 + 0x24) = cbus_type (offset 36)
+ *   *(arg3 + 0x40) = i2c_adapter (offset 64)
  */
+#if defined(PLATFORM_T23)
+typedef struct {
+    char name[32];                          /**< Sensor name (0-31) */
+    int reserved1;                          /**< Reserved/padding (32-35) */
+    TXSensorControlBusType cbus_type;       /**< Control bus type at offset 0x24 (36-39) */
+    TXSNSI2CConfig i2c;                     /**< I2C: type[20] + addr[4] = 24 bytes (40-63) */
+    int i2c_adapter;                        /**< I2C adapter at offset 0x40 (64-67) */
+    int rst_gpio;                           /**< Reset GPIO (68-71) */
+    int pwdn_gpio;                          /**< Power down GPIO (72-75) */
+    int power_gpio;                         /**< Power GPIO (76-79) */
+    int sensor_id;                          /**< Sensor ID (80-83) */
+    /* Total: 32+4+4+24+4+4+4+4+4 = 84 bytes */
+} IMPSensorInfo;
+#else
 typedef struct {
     char name[32];                          /**< Sensor name */
     TXSensorControlBusType cbus_type;       /**< Control bus type */
@@ -136,8 +167,12 @@ typedef struct {
     int pwdn_gpio;                          /**< Power down GPIO */
     int power_gpio;                         /**< Power GPIO */
     int sensor_id;                          /**< Sensor ID */
-    void *private_data;                     /**< Private data */
+#if defined(PLATFORM_T40) || defined(PLATFORM_T41)
+    void *private_data;                     /**< Private data (T40/T41) */
+#endif
+    /* Note: T31/T21/C100 have no field here, keeping struct at 80 bytes */
 } IMPSensorInfo;
+#endif
 
 /**
  * Region handle type

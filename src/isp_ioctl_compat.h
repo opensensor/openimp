@@ -10,9 +10,14 @@
  */
 
 #ifdef PLATFORM_T23
-    /* T23 ioctls (observed in BN decomp): */
-    #define TX_ISP_GET_BUF   0x800c56d5u
-    #define TX_ISP_SET_BUF   0x800c56d4u
+    /* T23 ioctls (vendor path):
+     * - REGISTER_SENSOR: 0x805456c1 (correct T23 ioctl, different from T31)
+     * - GET_BUF:        0x800C56D5 (12-byte: index/phys/size)
+     * - SET_BUF:        0x800C56D4 (12-byte: index/phys/size)
+     */
+    #define TX_ISP_GET_BUF            0x800c56d5u
+    #define TX_ISP_SET_BUF            0x800c56d4u
+    #define TX_ISP_REGISTER_SENSOR    0x805456c1u
 
     typedef struct {
         uint32_t index; /* active sensor index (or driver selector) */
@@ -27,8 +32,9 @@
         do { (buf).phys = (uint32_t)(phys_); (buf).size = (uint32_t)(size_); } while (0)
 #else
     /* Default to T31-compatible ioctls */
-    #define TX_ISP_GET_BUF   0x800856d5u
-    #define TX_ISP_SET_BUF   0x800856d4u
+    #define TX_ISP_GET_BUF            0x800856d5u
+    #define TX_ISP_SET_BUF            0x800856d4u
+    #define TX_ISP_REGISTER_SENSOR    0x805056c1u  /* size 0x50 (IMPSensorInfo without private_data) */
 
     typedef struct {
         uint32_t addr; /* physical address (input for SET_BUF, typically 0 for GET_BUF) */

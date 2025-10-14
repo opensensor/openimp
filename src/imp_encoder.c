@@ -461,6 +461,9 @@ int IMP_Encoder_CreateChn(int encChn, IMPEncoderCHNAttr *attr) {
 
     pthread_mutex_lock(&encoder_mutex);
 
+    /* Ensure encoder globals are initialized (sets chn_id = -1 for all) */
+    encoder_init();
+
     EncChannel *chn = &g_EncChannel[encChn];
 
     /* Check if channel already exists */
@@ -661,6 +664,25 @@ int IMP_Encoder_RegisterChn(int encGroup, int encChn) {
     }
 
     pthread_mutex_lock(&encoder_mutex);
+
+    /* Ensure globals are initialized so chn_id is valid */
+    encoder_init();
+
+    /* Lazily allocate gEncoder/groups if needed (vendor allows RegisterChn before CreateGroup) */
+    if (gEncoder == NULL) {
+        gEncoder = (EncoderState*)calloc(1, sizeof(EncoderState));
+        if (gEncoder == NULL) {
+            pthread_mutex_unlock(&encoder_mutex);
+            return -1;
+        }
+        for (int i = 0; i < 6; i++) {
+            gEncoder->groups[i].group_id = -1;
+            gEncoder->groups[i].chn_count = 0;
+            gEncoder->groups[i].channels[0] = NULL;
+            gEncoder->groups[i].channels[1] = NULL;
+            gEncoder->groups[i].channels[2] = NULL;
+        }
+    }
 
     /* Check if channel exists */
     if (g_EncChannel[encChn].chn_id < 0) {
