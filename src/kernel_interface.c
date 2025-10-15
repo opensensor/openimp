@@ -263,22 +263,24 @@ int fs_set_format(int fd, fs_format_t *fmt) {
     s.pixelformat = fourcc;
     s.field = 0;         /* V4L2_FIELD_NONE (driver forces to 4) */
 
-    /* CRITICAL: Driver does NOT compute sizeimage properly - we must set it explicitly
-     * For NV12/NV21: size = width * height * 3/2 (Y plane + UV plane)
-     * The driver stores this at offset 0x58 and validates QBUF length against it.
+    /* Compute sizeimage explicitly. T31 capture validates QBUF length against an
+     * internally stored sizeimage that reflects alignment. Empirically, height is
+     * aligned to 16 while width remains native for NV12/NV21.
      */
     uint32_t calc_sizeimage = 0;
     if (fourcc == 0x3231564e || fourcc == 0x3132564e) {  /* NV12 or NV21 */
-        calc_sizeimage = (uint32_t)fmt->width * (uint32_t)fmt->height * 3 / 2;
+        uint32_t aligned_h = (uint32_t)((fmt->height + 15) & ~15); /* align height to 16 */
+        calc_sizeimage = (uint32_t)fmt->width * aligned_h * 3 / 2;
     } else if (fourcc == 0x56595559 || fourcc == 0x59565955) {  /* YUYV or UYVY */
         calc_sizeimage = (uint32_t)fmt->width * (uint32_t)fmt->height * 2;
     } else {
-        /* Fallback: assume 3/2 for planar formats */
-        calc_sizeimage = (uint32_t)fmt->width * (uint32_t)fmt->height * 3 / 2;
+        /* Fallback: conservative height-align for planar formats */
+        uint32_t aligned_h = (uint32_t)((fmt->height + 15) & ~15);
+        calc_sizeimage = (uint32_t)fmt->width * aligned_h * 3 / 2;
     }
 
     s.bytesperline = 0;  /* Let driver compute */
-    s.sizeimage = calc_sizeimage;  /* MUST set explicitly */
+    s.sizeimage = calc_sizeimage;  /* set explicitly to avoid 0 in driver */
     s.colorspace = 8;    /* V4L2_COLORSPACE_SRGB */
     s.priv = 0;
 
