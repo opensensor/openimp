@@ -424,16 +424,6 @@ int IMP_FrameSource_EnableChn(int chnNum) {
     }
 
 
-    /* Start streaming BEFORE starting the capture thread to avoid DQBUF before STREAM_ON */
-    if (fs_stream_on(chn->fd) < 0) {
-        LOG_FS("EnableChn failed: cannot start streaming");
-        VBMFlushFrame(chnNum);
-        VBMDestroyPool(chnNum);
-        fs_close_device(chn->fd);
-        chn->fd = -1;
-        pthread_mutex_unlock(&fs_mutex);
-        return -1;
-    }
 
     /* Mark running and start capture thread (post-STREAM_ON) */
     chn->state = 2; /* Running */
