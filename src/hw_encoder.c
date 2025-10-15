@@ -43,6 +43,16 @@ int HW_Encoder_Init(int *fd, HWEncoderParams *params) {
         if (dev_fd >= 0) {
             opened_device = device_paths[i];
             LOG_HW("Opened hardware encoder device: %s (fd=%d)", opened_device, dev_fd);
+            /* IMPORTANT: /dev/avpu does not speak our legacy VENC ioctls.
+             * The vendor path uses an AL layer. Avoid issuing unknown ioctls
+             * to the avpu driver and fall back to software until AL is wired.
+             */
+            if (strcmp(opened_device, "/dev/avpu") == 0) {
+                LOG_HW("/dev/avpu requires AL layer; skipping legacy VENC ioctls (fallback to SW)");
+                close(dev_fd);
+                *fd = -1;
+                return -1;
+            }
             break;
         }
     }

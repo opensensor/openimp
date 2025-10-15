@@ -15,6 +15,7 @@
 #include "fifo.h"
 #include "hw_encoder.h"
 
+#include "al_avpu.h"
 #define LOG_CODEC(fmt, ...) fprintf(stderr, "[Codec] " fmt "\n", ##__VA_ARGS__)
 
 /* Codec structure - based on decompilation at 0x7950c */
@@ -53,6 +54,7 @@ typedef struct {
     int hw_encoder_fd;              /* Hardware encoder file descriptor */
     HWEncoderParams hw_params;      /* Hardware encoder parameters */
     int use_hardware;               /* Flag: 1=hardware, 0=software */
+    ALAvpuContext avpu;            /* Vendor-like AL over /dev/avpu (scaffolding) */
 } AL_CodecEncode;
 
 /* Global codec state */
@@ -69,13 +71,13 @@ int AL_Codec_Encode_SetDefaultParam(void *param) {
         LOG_CODEC("SetDefaultParam: NULL param");
         return -1;
     }
-    
+
     /* Clear entire structure */
     memset(param, 0, 0x794);
-    
+
     /* Set default values from decompilation */
     uint8_t *p = (uint8_t*)param;
-    
+
     /* Basic settings */
     *(int32_t*)(p + 0x00) = 0;          /* codec type */
     *(int32_t*)(p + 0x04) = 0;          /* reserved */
@@ -85,19 +87,19 @@ int AL_Codec_Encode_SetDefaultParam(void *param) {
     *(int32_t*)(p + 0x24) = 0x32;       /* profile (50 = high) */
     *(int32_t*)(p + 0x34) = 0x1c;       /* level */
     *(int32_t*)(p + 0x30) = 0x40000;    /* bitrate */
-    
+
     /* QP settings */
     *(uint8_t*)(p + 0x38) = 0xff;       /* initial QP */
     *(uint8_t*)(p + 0x39) = 0xff;       /* min QP */
     *(uint8_t*)(p + 0x3f) = 1;          /* enable QP */
     *(uint8_t*)(p + 0x44) = 1;          /* enable rate control */
-    
+
     /* GOP settings */
     *(uint16_t*)(p + 0x4e) = 0xffff;
     *(uint16_t*)(p + 0x50) = 0xffff;
     *(uint16_t*)(p + 0x4a) = 0xffff;
     *(uint16_t*)(p + 0x4c) = 0xffff;
-    
+
     /* Rate control */
     *(uint8_t*)(p + 0x53) = 3;          /* RC mode */
     *(uint16_t*)(p + 0x8a) = 0xffff;
@@ -107,12 +109,12 @@ int AL_Codec_Encode_SetDefaultParam(void *param) {
     *(uint8_t*)(p + 0x6a) = 0xf;
     *(uint16_t*)(p + 0x92) = 0xa;
     *(uint16_t*)(p + 0x94) = 0x11;
-    
+
     /* Timing */
     *(int32_t*)(p + 0x7c) = 0xaae60;    /* framerate num */
     *(int32_t*)(p + 0x80) = 0xaae60;    /* framerate den */
     *(int32_t*)(p + 0x9c) = 0x1068;
-    
+
     /* Slice settings */
     *(uint8_t*)(p + 0x52) = 5;
     *(uint8_t*)(p + 0x54) = 5;
@@ -121,13 +123,13 @@ int AL_Codec_Encode_SetDefaultParam(void *param) {
     *(uint16_t*)(p + 0x7a) = 0x3e8;
     *(uint16_t*)(p + 0x84) = 0x19;
     *(uint16_t*)(p + 0x88) = 0x33;
-    
+
     /* Enable flags */
     *(uint8_t*)(p + 0x56) = 1;
     *(uint8_t*)(p + 0x57) = 1;
     *(uint8_t*)(p + 0x58) = 1;
     *(uint8_t*)(p + 0x6c) = 1;
-    
+
     /* GOP parameters */
     *(int32_t*)(p + 0xac) = 2;
     *(int32_t*)(p + 0xb4) = 0x7fffffff;
@@ -143,14 +145,14 @@ int AL_Codec_Encode_SetDefaultParam(void *param) {
     *(uint8_t*)(p + 0x11c) = 1;
     *(uint8_t*)(p + 0x124) = 1;
     *(uint8_t*)(p + 0x128) = 1;
-    
+
     /* Pixel format */
     strncpy((char*)(p + 0x764), "NV12", 4);
     *(uint8_t*)(p + 0x758) = 1;
     *(uint8_t*)(p + 0x760) = 1;
     *(uint8_t*)(p + 0x768) = 1;
     *(uint8_t*)(p + 0x76c) = 0x10;      /* alignment */
-    
+
     LOG_CODEC("SetDefaultParam: initialized");
     return 0;
 }
@@ -163,13 +165,13 @@ int AL_Codec_Encode_GetSrcFrameCntAndSize(void *codec, int *cnt, int *size) {
     if (codec == NULL || cnt == NULL || size == NULL) {
         return -1;
     }
-    
+
     AL_CodecEncode *enc = (AL_CodecEncode*)codec;
-    
+
     /* From decompilation: offsets 0x840 and 0x8dc */
     *cnt = enc->frame_buf_count;
     *size = enc->frame_buf_size;
-    
+
     return 0;
 }
 
@@ -181,13 +183,13 @@ int AL_Codec_Encode_GetSrcStreamCntAndSize(void *codec, int *cnt, int *size) {
     if (codec == NULL || cnt == NULL || size == NULL) {
         return -1;
     }
-    
+
     AL_CodecEncode *enc = (AL_CodecEncode*)codec;
-    
+
     /* From decompilation: offsets 0x7ac and 0x7b0 */
     *cnt = enc->stream_buf_count;
     *size = enc->stream_buf_size;
-    
+
     return 0;
 }
 
@@ -200,7 +202,7 @@ int AL_Codec_Encode_Create(void **codec, void *params) {
         LOG_CODEC("Create: NULL parameters");
         return -1;
     }
-    
+
     /* Allocate codec structure using real size */
     AL_CodecEncode *enc = (AL_CodecEncode*)malloc(sizeof(AL_CodecEncode));
     if (enc == NULL) {
@@ -213,13 +215,13 @@ int AL_Codec_Encode_Create(void **codec, void *params) {
     /* Initialize from parameters */
     enc->g_pCodec = g_pCodec;
     memcpy(enc->codec_param, params, 0x794);
-    
+
     /* Set default buffer counts and sizes */
     enc->frame_buf_count = 4;           /* Default frame buffer count */
     enc->frame_buf_size = 0x100000;     /* 1MB per frame */
     enc->stream_buf_count = 7;          /* Default stream buffer count */
     enc->stream_buf_size = 0x20000;     /* 128KB stream buffer size (for encoded H.264 data) */
-    
+
     /* Allocate and initialize FIFO control structures safely */
     int fifo_size = Fifo_SizeOf();
     enc->fifo_frames = malloc(fifo_size);
@@ -258,7 +260,7 @@ int AL_Codec_Encode_Create(void **codec, void *params) {
         }
     }
     pthread_mutex_unlock(&g_codec_mutex);
-    
+
     /* No free slots */
     Fifo_Deinit(enc->fifo_frames);
     Fifo_Deinit(enc->fifo_streams);
@@ -277,9 +279,9 @@ int AL_Codec_Encode_Destroy(void *codec) {
     if (codec == NULL) {
         return -1;
     }
-    
+
     AL_CodecEncode *enc = (AL_CodecEncode*)codec;
-    
+
     LOG_CODEC("Destroy: codec=%p, channel=%d", codec, enc->channel_id - 1);
 
     /* Deinitialize hardware encoder */
@@ -400,23 +402,29 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
                 default: enc->hw_params.profile = HW_PROFILE_MAIN; break;
             }
 
-            int init_fd = -1;
-            if (HW_Encoder_Init(&init_fd, &enc->hw_params) == 0 && init_fd >= 0) {
-                enc->hw_encoder_fd = init_fd;
-                LOG_CODEC("Process: hardware encoder initialized (fd=%d)", init_fd);
+            /* Prefer vendor-like AL over /dev/avpu */
+            if (ALAvpu_Open(&enc->avpu, &enc->hw_params) == 0 && enc->avpu.fd >= 0) {
+                enc->use_hardware = 2; /* 2 = AL/AVPU path */
+                LOG_CODEC("Process: AVPU(AL) opened (fd=%d)", enc->avpu.fd);
             } else {
-                LOG_CODEC("Process: hardware encoder init failed; falling back to software");
-                enc->use_hardware = 0;
+                /* Fallback: try legacy non-avpu devices via HW_Encoder_Init */
+                int init_fd = -1;
+                if (HW_Encoder_Init(&init_fd, &enc->hw_params) == 0 && init_fd >= 0) {
+                    enc->hw_encoder_fd = init_fd;
+                    enc->use_hardware = 1; /* legacy path */
+                    LOG_CODEC("Process: legacy HW encoder initialized (fd=%d)", init_fd);
+                } else {
+                    LOG_CODEC("Process: no hardware path available; falling back to software");
+                    enc->use_hardware = 0;
+                }
             }
         }
     }
 
-    if (enc->use_hardware && enc->hw_encoder_fd >= 0) {
-        /* Use hardware encoder */
+    if (enc->use_hardware == 1 && enc->hw_encoder_fd >= 0) {
+        /* Legacy hardware path (/dev/venc, etc.) */
         HWFrameBuffer hw_frame;
         memset(&hw_frame, 0, sizeof(HWFrameBuffer));
-
-        /* Use actual frame data from VBM */
         hw_frame.phys_addr = phys_addr;
         hw_frame.virt_addr = virt_addr;
         hw_frame.size = size;
@@ -424,25 +432,42 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
         hw_frame.height = height;
         hw_frame.pixfmt = pixfmt;
         hw_frame.timestamp = timestamp;
-
-        LOG_CODEC("Process: HW encode frame %ux%u, phys=0x%x, virt=0x%x, size=%u",
+        LOG_CODEC("Process: HW(lgcy) encode frame %ux%u, phys=0x%x, virt=0x%x, size=%u",
                   width, height, phys_addr, virt_addr, size);
-
-        /* Submit frame for encoding */
         if (HW_Encoder_Encode(enc->hw_encoder_fd, &hw_frame) < 0) {
-            LOG_CODEC("Process: hardware encoding failed");
+            LOG_CODEC("Process: legacy hardware encoding failed");
             free(hw_stream);
             return -1;
         }
-
-        /* Get encoded stream */
         if (HW_Encoder_GetStream(enc->hw_encoder_fd, hw_stream, 100) < 0) {
-            LOG_CODEC("Process: failed to get stream from hardware");
+            LOG_CODEC("Process: legacy HW get stream timed out");
+            free(hw_stream);
+            return 0; /* no stream yet */
+        }
+    } else if (enc->use_hardware == 2 && enc->avpu.fd >= 0) {
+        /* Vendor-like AL over /dev/avpu */
+        HWFrameBuffer hw_frame;
+        memset(&hw_frame, 0, sizeof(HWFrameBuffer));
+        hw_frame.phys_addr = phys_addr;
+        hw_frame.virt_addr = virt_addr;
+        hw_frame.size = size;
+        hw_frame.width = width;
+        hw_frame.height = height;
+        hw_frame.pixfmt = pixfmt;
+        hw_frame.timestamp = timestamp;
+        LOG_CODEC("Process: AVPU(AL) queue frame %ux%u phys=0x%x", width, height, phys_addr);
+        if (ALAvpu_QueueFrame(&enc->avpu, &hw_frame) < 0) {
+            LOG_CODEC("Process: AVPU queue failed");
             free(hw_stream);
             return -1;
+        }
+        if (ALAvpu_DequeueStream(&enc->avpu, hw_stream, 10) < 0) {
+            /* Nothing ready yet; don't queue to FIFO */
+            free(hw_stream);
+            return 0;
         }
     } else {
-        /* Use software fallback */
+        /* Software fallback */
         HWFrameBuffer hw_frame;
         memset(&hw_frame, 0, sizeof(HWFrameBuffer));
         hw_frame.phys_addr = phys_addr;
@@ -450,9 +475,7 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
         hw_frame.width = width;
         hw_frame.height = height;
         hw_frame.timestamp = timestamp;
-
         LOG_CODEC("Process: SW encode frame %ux%u", width, height);
-
         if (HW_Encoder_Encode_Software(&hw_frame, hw_stream) < 0) {
             LOG_CODEC("Process: software encoding failed");
             free(hw_stream);
