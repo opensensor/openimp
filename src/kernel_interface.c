@@ -299,6 +299,15 @@ int fs_set_format(int fd, fs_format_t *fmt) {
     s.fps_num          = (uint32_t)fmt->fps_num;
     s.fps_den          = (uint32_t)fmt->fps_den;
 
+    /* Debug: dump structure before ioctl */
+    fprintf(stderr, "[KernelIF] SET_FMT before ioctl:\n");
+    fprintf(stderr, "[KernelIF]   width=%u height=%u pixelformat=0x%x\n", s.width, s.height, s.pixelformat);
+    fprintf(stderr, "[KernelIF]   scaler_enable=%u scaler_outwidth=%u scaler_outheight=%u\n",
+            s.scaler_enable, s.scaler_outwidth, s.scaler_outheight);
+    fprintf(stderr, "[KernelIF]   picwidth=%u picheight=%u\n", s.picwidth, s.picheight);
+    fprintf(stderr, "[KernelIF]   crop_enable=%u crop=%ux%u+%u+%u\n",
+            s.crop_enable, s.crop_width, s.crop_height, s.crop_x, s.crop_y);
+
     int ret = ioctl(fd, VIDIOC_SET_FMT, &s);
     if (ret < 0) {
         fprintf(stderr, "[KernelIF] VIDIOC_SET_FMT failed: %s\n", strerror(errno));
@@ -306,6 +315,13 @@ int fs_set_format(int fd, fs_format_t *fmt) {
                 fmt->width, fmt->height, fmt->pixelformat, fourcc, s.colorspace);
         return -1;
     }
+
+    /* Debug: dump structure after ioctl */
+    fprintf(stderr, "[KernelIF] SET_FMT after ioctl:\n");
+    fprintf(stderr, "[KernelIF]   width=%u height=%u sizeimage=%u bytesperline=%u\n",
+            s.width, s.height, s.sizeimage, s.bytesperline);
+    fprintf(stderr, "[KernelIF]   scaler_enable=%u scaler_outwidth=%u scaler_outheight=%u\n",
+            s.scaler_enable, s.scaler_outwidth, s.scaler_outheight);
 
     /* CRITICAL: The kernel modifies the structure in-place during SET_FMT and copies it back.
      * The remote ISP core may update sizeimage, bytesperline, and other fields.
@@ -920,11 +936,10 @@ int VBMKernelDequeue(int chn, int fd, void **frame_out) {
     if (dbg_count[chn] < 3) {
         fprintf(stderr, "[VBM] VBMKernelDequeue chn=%d: attempting DQBUF...\n", chn);
     }
-    /* Some drivers require preset length/bytesused to DQBUF; use pool->frames[0].size */
-    unsigned int preset_len = (unsigned int)pool->frames[0].size;
-    int ret = fs_dqbuf_len(fd, preset_len, &idx);
+    /* First try plain non-blocking DQBUF. Some drivers misbehave if bytesused/length are preset. */
+    int ret = fs_dqbuf(fd, &idx);
     if (dbg_count[chn] < 3) {
-        fprintf(stderr, "[VBM] VBMKernelDequeue chn=%d: DQBUF(len) returned ret=%d idx=%d\n", chn, ret, idx);
+        fprintf(stderr, "[VBM] VBMKernelDequeue chn=%d: DQBUF returned ret=%d idx=%d\n", chn, ret, idx);
         dbg_count[chn]++;
     }
     if (ret == -2) {
@@ -935,8 +950,9 @@ int VBMKernelDequeue(int chn, int fd, void **frame_out) {
         return -2; /* EAGAIN */
     }
     if (ret != 0) {
-        /* Fallback: try plain DQBUF without preset length/bytesused */
-        int ret2 = fs_dqbuf(fd, &idx);
+        /* Fallback: try DQBUF with preset length/bytesused for strict drivers */
+        unsigned int preset_len = (unsigned int)pool->frames[0].size;
+        int ret2 = fs_dqbuf_len(fd, preset_len, &idx);
         if (ret2 != 0) {
             int c = ++err_count[chn];
             if (c <= 5 || (c % 50) == 0) {
@@ -944,7 +960,7 @@ int VBMKernelDequeue(int chn, int fd, void **frame_out) {
             }
             return -1;
         } else {
-            fprintf(stderr, "[VBM] VBMKernelDequeue chn=%d: DQBUF fallback succeeded, idx=%d\n", chn, idx);
+            fprintf(stderr, "[VBM] VBMKernelDequeue chn=%d: DQBUF(len) fallback succeeded, idx=%d\n", chn, idx);
         }
     }
     if (idx < 0 || idx >= pool->frame_count) {

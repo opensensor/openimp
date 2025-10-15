@@ -320,9 +320,17 @@ int IMP_FrameSource_EnableChn(int chnNum) {
      * The kernel's REQBUFS handler allocates internal buffer structures.
      * This matches the OEM libimp.so sequence: SET_FMT -> REQBUFS -> VBMCreatePool.
      */
-    /* Use channel attr nrVBs; align with prudynt (nrVBs=1) but let driver adjust actual count */
+    /* Use channel attr nrVBs; T23 requires minimum 2 buffers for double-buffering */
     int requested_bufcnt = chn->attr.nrVBs > 0 ? chn->attr.nrVBs : 1;
+#ifdef PLATFORM_T23
+    /* T23 ISP requires at least 2 buffers to start producing frames (double-buffering) */
+    if (requested_bufcnt < 2) {
+        LOG_FS("EnableChn: T23 requires minimum 2 buffers, adjusting from %d to 2", requested_bufcnt);
+        requested_bufcnt = 2;
+    }
+#else
     if (requested_bufcnt < 1) requested_bufcnt = 1;
+#endif
     int bufcnt = fs_set_buffer_count(chn->fd, requested_bufcnt);
     if (bufcnt < 0) {
         LOG_FS("EnableChn failed: cannot set buffer count");
