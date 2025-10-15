@@ -12,6 +12,7 @@ extern "C" {
 #endif
 
 #include "imp_common.h"
+#include <stdbool.h>
 
 /**
  * Encoder type
@@ -185,49 +186,109 @@ typedef struct {
     IMPEncoderRcAttr rcAttr;            /**< RC attributes */
 } IMPEncoderChnAttr;
 
-/* T31-compatible NAL type structure (minimal) */
-typedef struct {
-    uint8_t h264NalType;                /**< H.264 NAL type */
-    uint8_t h265NalType;                /**< H.265 NAL type */
+/* NAL unit types (match vendor headers) */
+typedef enum {
+    IMP_H264_NAL_UNKNOWN   = 0,
+    IMP_H264_NAL_SLICE     = 1,
+    IMP_H264_NAL_SLICE_DPA = 2,
+    IMP_H264_NAL_SLICE_DPB = 3,
+    IMP_H264_NAL_SLICE_DPC = 4,
+    IMP_H264_NAL_SLICE_IDR = 5,
+    IMP_H264_NAL_SEI       = 6,
+    IMP_H264_NAL_SPS       = 7,
+    IMP_H264_NAL_PPS       = 8,
+    IMP_H264_NAL_AUD       = 9,
+    IMP_H264_NAL_FILLER    = 12,
+} IMPEncoderH264NaluType;
+
+typedef enum {
+    IMP_H265_NAL_SLICE_TRAIL_N = 0,
+    IMP_H265_NAL_SLICE_TRAIL_R = 1,
+    IMP_H265_NAL_SLICE_TSA_N   = 2,
+    IMP_H265_NAL_SLICE_TSA_R   = 3,
+    IMP_H265_NAL_SLICE_STSA_N  = 4,
+    IMP_H265_NAL_SLICE_STSA_R  = 5,
+    IMP_H265_NAL_SLICE_RADL_N  = 6,
+    IMP_H265_NAL_SLICE_RADL_R  = 7,
+    IMP_H265_NAL_SLICE_RASL_N  = 8,
+    IMP_H265_NAL_SLICE_RASL_R  = 9,
+    IMP_H265_NAL_SLICE_BLA_W_LP= 16,
+    IMP_H265_NAL_SLICE_BLA_W_RADL=17,
+    IMP_H265_NAL_SLICE_BLA_N_LP= 18,
+    IMP_H265_NAL_SLICE_IDR_W_RADL=19,
+    IMP_H265_NAL_SLICE_IDR_N_LP=20,
+    IMP_H265_NAL_SLICE_CRA     = 21,
+    IMP_H265_NAL_VPS           = 32,
+    IMP_H265_NAL_SPS           = 33,
+    IMP_H265_NAL_PPS           = 34,
+    IMP_H265_NAL_AUD           = 35,
+    IMP_H265_NAL_EOS           = 36,
+    IMP_H265_NAL_EOB           = 37,
+    IMP_H265_NAL_FILLER_DATA   = 38,
+    IMP_H265_NAL_PREFIX_SEI    = 39,
+    IMP_H265_NAL_SUFFIX_SEI    = 40,
+    IMP_H265_NAL_INVALID       = 64,
+} IMPEncoderH265NaluType;
+
+/* Vendor ABI: nalType is a union of enums (int-sized) */
+typedef union {
+    IMPEncoderH264NaluType h264NalType;
+    IMPEncoderH265NaluType h265NalType;
 } IMPEncoderNalType;
 
-/* T31-compatible slice type (keep as int for ABI leniency) */
-typedef int IMPEncoderSliceType;
+typedef enum {
+    IMP_ENC_SLICE_SI = 4,
+    IMP_ENC_SLICE_SP = 3,
+    IMP_ENC_SLICE_GOLDEN = 3,
+    IMP_ENC_SLICE_I = 2,
+    IMP_ENC_SLICE_P = 1,
+    IMP_ENC_SLICE_B = 0,
+    IMP_ENC_SLICE_CONCEAL = 6,
+    IMP_ENC_SLICE_SKIP = 7,
+    IMP_ENC_SLICE_REPEAT = 8,
+    IMP_ENC_SLICE_MAX_ENUM,
+} IMPEncoderSliceType;
 
-/**
- * Stream pack (T31 layout)
- */
+/* Stream pack (match vendor layout: bool frameEnd; union nalType; enum sliceType) */
 typedef struct {
-    uint32_t offset;                    /**< Stream packet offset */
-    uint32_t length;                    /**< Stream packet length */
-    int64_t  timestamp;                 /**< Timestamp in us */
-    int      frameEnd;                  /**< End of frame flag (bool) */
-    IMPEncoderNalType   nalType;        /**< NAL type (H.264/H.265) */
-    IMPEncoderSliceType sliceType;      /**< Slice type */
+    uint32_t    offset;
+    uint32_t    length;
+    int64_t     timestamp;
+    bool        frameEnd;
+    IMPEncoderNalType   nalType;
+    IMPEncoderSliceType sliceType;
 } IMPEncoderPack;
 
-/**
- * Encoder stream (T31 layout)
- */
 typedef struct {
-    uint32_t        phyAddr;            /**< Physical base address of frame */
-    uint32_t        virAddr;            /**< Virtual base address of frame */
-    uint32_t        streamSize;         /**< Size of the allocated virtual address */
-    IMPEncoderPack *pack;               /**< Frame stream packets */
-    uint32_t        packCount;          /**< Number of packets in the frame */
-    uint32_t        seq;                /**< Sequence number of coded frame */
-    int             isVI;               /**< Source is VI flag (bool) */
+    int32_t  iNumBytes;
+    int16_t  iQPfactor;
+} IMPEncoderJpegInfo;
+
+typedef struct {
+    int32_t  iNumBytes;
+    uint32_t uNumIntra;
+    uint32_t uNumSkip;
+    uint32_t uNumCU8x8;
+    uint32_t uNumCU16x16;
+    uint32_t uNumCU32x32;
+    uint32_t uNumCU64x64;
+    int16_t  iSliceQP;
+    int16_t  iMinQP;
+    int16_t  iMaxQP;
+} IMPEncoderStreamInfo;
+
+/* Encoder stream (match vendor layout) */
+typedef struct {
+    uint32_t        phyAddr;
+    uint32_t        virAddr;
+    uint32_t        streamSize;
+    IMPEncoderPack *pack;
+    uint32_t        packCount;
+    uint32_t        seq;
+    bool            isVI;
     union {
-        struct {                         /* Minimal JPEG info placeholder */
-            int32_t iNumBytes;
-            int16_t iQPfactor;
-        } jpegInfo;
-        struct {                         /* Minimal stream info placeholder */
-            int32_t iNumBytes;
-            int16_t iSliceQP;
-            int16_t iMinQP;
-            int16_t iMaxQP;
-        } streamInfo;
+        IMPEncoderStreamInfo streamInfo;
+        IMPEncoderJpegInfo   jpegInfo;
     };
 } IMPEncoderStream;
 

@@ -776,10 +776,10 @@ int IMP_Encoder_StartRecvPic(int encChn) {
         LOG_ENC("StartRecvPic failed: channel %d not created", encChn);
         pthread_mutex_unlock(&encoder_mutex);
         return -1;
+    }
+
     /* Warm up: force prefix injection on first ~60 AUs so clients always see SPS/PPS */
     g_inject_warmup[encChn] = 60;
-
-    }
 
     /* Set flags at offsets 0x404 and 0x400 */
     g_EncChannel[encChn].recv_pic_started = 1;
@@ -1550,45 +1550,83 @@ static void *stream_thread(void *arg) {
                     stream_buf->pack.length = out_len;
                     stream_buf->pack.timestamp = (int64_t)timestamp;
                     stream_buf->pack.frameEnd = 1;
-                    /* Heuristic NAL type: mark IDR for I-frames */
-                    stream_buf->pack.nalType.h264NalType = (frame_type == 0) ? 5 : 1;
-                    stream_buf->pack.nalType.h265NalType = (frame_type == 0) ? 32 : 1;
+                    /* Determine NAL type based on actual outgoing buffer content for T31 semantics */
+                    uint8_t *p_first = (uint8_t*)(uintptr_t)out_vir;
+                    size_t L_first = (size_t)out_len;
+                    size_t i_first = 0; int sc_first = 0;
+                    /* Skip start code and any AUD (9) and SEI (6) to find SPS(7)/PPS(8)/IDR(5) */
+                    i_first = find_start_code(p_first, 0, L_first, &sc_first);
+                    int nal = 0;
+                    while (i_first < L_first) {
+                        size_t ns = i_first + (sc_first ? sc_first : 0);
+                        if (ns < L_first) {
+                            nal = p_first[ns] & 0x1F;
+                            if (nal != 9 && nal != 6) break; /* ignore AUD/SEI */
+                        }
+                        int sc2 = 0; size_t nx = find_start_code(p_first, ns, L_first, &sc2);
+                        if (nx >= L_first) break; i_first = nx; sc_first = sc2;
+                    }
+                    if (nal == 7 || nal == 8 || nal == 5) {
+                        /* Map directly for H.264; zero union to avoid mixed values being read as 0x0107 etc. */
+                        memset(&stream_buf->pack.nalType, 0, sizeof(stream_buf->pack.nalType));
+                        stream_buf->pack.nalType.h264NalType = nal;
+                    } else {
+                        /* Fallback to frame_type heuristic */
+                        memset(&stream_buf->pack.nalType, 0, sizeof(stream_buf->pack.nalType));
+                        stream_buf->pack.nalType.h264NalType = (frame_type == 0) ? 5 : 1;
+                    }
+                    /* Do not write h265NalType here for H.264 streams; some consumers read the union as int. */
                     stream_buf->pack.sliceType = (IMPEncoderSliceType)slice_type;
 
-                    /* Store in channel for GetStream */
+                    /* Store in channel for GetStream (only if slot is empty) */
+                    int posted = 0;
                     pthread_mutex_lock(&chn->mutex_450);
-                    if (chn->current_stream != NULL) {
-                        /* Free old stream if not retrieved */
-                        free(chn->current_stream);
+                    if (chn->current_stream == NULL) {
+                        chn->current_stream = stream_buf;
+                        /* Signal semaphore that stream is available */
+                        sem_post(&chn->sem_408);
+                        posted = 1;
                     }
-                    chn->current_stream = stream_buf;
                     pthread_mutex_unlock(&chn->mutex_450);
 
-                    /* Signal semaphore that stream is available */
-                    sem_post(&chn->sem_408);
-
-                    LOG_ENC("stream_thread: stream seq=%u, length=%u, type=%s",
-                            stream_buf->seq, stream_buf->pack.length,
-                            frame_type == 0 ? "I" : (frame_type == 1 ? "P" : "B"));
-
-                    /* Debug: print first few NAL types from outgoing buffer */
-                    if (stream_buf->pack.length >= 6) {
-                        const uint8_t *p = (const uint8_t*)(uintptr_t)stream_buf->base_vir;
-                        size_t L = stream_buf->pack.length;
-                        size_t i = 0; int sc = 0; int cnt = 0;
-                        i = find_start_code(p, 0, L, &sc);
-                        char nal_str[64]; int off = 0;
-                        off += snprintf(nal_str+off, sizeof(nal_str)-off, "NALs:");
-                        while (i < L && cnt < 4) {
-                            size_t ns = i + (sc ? sc : 0);
-                            int sc2 = 0; size_t nx = find_start_code(p, ns, L, &sc2);
-                            if (ns < nx) {
-                                uint8_t t = p[ns] & 0x1F; cnt++;
-                                off += snprintf(nal_str+off, sizeof(nal_str)-off, " %u", t);
-                            }
-                            if (nx >= L) break; i = nx; sc = sc2;
+                    /* If consumer hasn't released previous stream yet, drop this one and release codec stream */
+                    if (!posted) {
+                        if (stream_buf->injected_buf) {
+                            free(stream_buf->injected_buf);
+                            stream_buf->injected_buf = NULL;
                         }
-                        LOG_ENC("stream_thread: %s", nal_str);
+                        if (chn->codec != NULL && stream_buf->codec_stream != NULL) {
+                            AL_Codec_Encode_ReleaseStream(chn->codec, stream_buf->codec_stream, NULL);
+                        }
+                        free(stream_buf);
+                        stream_buf = NULL;
+                        LOG_ENC("stream_thread: dropped frame because previous stream not yet released");
+                    } else {
+                        LOG_ENC("stream_thread: stream seq=%u, length=%u, type=%s",
+                                stream_buf->seq, stream_buf->pack.length,
+                                frame_type == 0 ? "I" : (frame_type == 1 ? "P" : "B"));
+
+                        /* Debug: print first few NAL types from outgoing buffer */
+                        if (stream_buf->pack.length >= 6) {
+                            const uint8_t *p = (const uint8_t*)(uintptr_t)stream_buf->base_vir;
+                            size_t L = stream_buf->pack.length;
+                            size_t i = 0; int sc = 0; int cnt = 0;
+                            i = find_start_code(p, 0, L, &sc);
+                            char nal_str[64]; int off = 0;
+                            off += snprintf(nal_str+off, sizeof(nal_str)-off, "NALs:");
+                            while (i < L && cnt < 4) {
+                                size_t ns = i + (sc ? sc : 0);
+                                int sc2 = 0; size_t nx = find_start_code(p, ns, L, &sc2);
+                                if (ns < nx) {
+                                    uint8_t t = p[ns] & 0x1F; cnt++;
+                                    off += snprintf(nal_str+off, sizeof(nal_str)-off, " %u", t);
+                                }
+                                if (nx >= L) break;
+                                i = nx;
+                                sc = sc2;
+                            }
+                            LOG_ENC("stream_thread: %s", nal_str);
+                        }
                     }
 
                 }
@@ -1603,7 +1641,6 @@ static void *stream_thread(void *arg) {
 }
 
 /* ========== Module Binding Functions ========== */
-
 /**
  * encoder_update - Called by observer pattern when a frame is available
  * This is the callback at offset 0x4c in the Module structure

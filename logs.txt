@@ -1,0 +1,1929 @@
+
+root@ing-wyze-cam3-a000 ~# cd /opt/
+root@ing-wyze-cam3-a000 opt# ./prudynt 
+[INFO:Config.cpp]: Loaded configuration from /etc/prudynt.json
+[INFO:main.cpp]: PRUDYNT-T Next-Gen Video Daemon: prudynt-t vOct 14 2025 22:24:35 [2fef789-dev1760495075]
+[DEBUG:Logger.cpp]: Logger Init.
+[INFO:main.cpp]: Starting Prudynt Video Server.
+[DEBUG:IMPSystem.cpp]: IMPSystem::init()
+[OSD] SetPoolSize: 1228800 bytes
+[DEBUG:IMPSystem.cpp]: IMP_OSD_SetPoolSize(1228800)
+[INFO:IMPSystem.cpp]: LIBIMP Version IMP-1.1.6
+[INFO:IMPSystem.cpp]: SYSUTILS Version: SYSUTILS-1.1.6
+[INFO:IMPSystem.cpp]: CPU Information: T31
+[IMP_ISP] Open: opened /dev/tx-isp (fd=4)
+[DEBUG:IMPSystem.cpp]: IMP_ISP_Open() = 0
+[INFO:IMPSystem.cpp]: Sensor: gc2053
+[IMP_ISP] AddSensor: name='gc2053' cbus=1 i2c.type='gc2053' i2c.addr=0x37 i2c.adapter=0 rst_gpio=0
+[IMP_ISP] AddSensor: pwdn_gpio=0 power_gpio=0 sensor_id=0x0
+[IMP_ISP] AddSensor: calling REGISTER_SENSOR ioctl(0x805056c1)
+[IMP_ISP] AddSensor: REGISTER_SENSOR succeeded
+[IMP_ISP] AddSensor: enum idx=0 raw data (all 80 bytes):
+[IMP_ISP]   [00-15]: 00 00 00 00 67 63 32 30 35 33 00 00 00 00 00 00
+[IMP_ISP]   [16-31]: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+[IMP_ISP]   [32-47]: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+[IMP_ISP]   [48-63]: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+[IMP_ISP]   [64-79]: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+[IMP_ISP] AddSensor: enum idx=0 name='gc2053'
+[IMP_ISP] AddSensor: found matching sensor at index 0
+[IMP_ISP] AddSensor: calling TX_ISP_SENSOR_SET_INPUT with index=0
+[IMP_ISP] AddSensor: TX_ISP_SENSOR_SET_INPUT succeeded
+[IMP_ISP] AddSensor: TX_ISP_GET_BUF using index=input_index=125830200
+[IMP_ISP] AddSensor: ISP buffer size=4685424 (platform struct size=8)
+[DMA] DMA init: using /dev/rmem
+[DMA] DMA init: /dev/rmem mapped at 0x75029000 size=30408704 base_phys=0x06300000
+[DMA] Alloc: (unnamed) size=4685424 phys=0x6300000 virt=0x75029000 (rmem off=0x0)
+[IMP_ISP] AddSensor: allocated ISP buffer: virt=0x75029000 phys=0x6300000 size=4685424
+[IMP_ISP] AddSensor: TX_ISP_SET_BUF using index=sensor_idx=0
+[IMP_ISP] AddSensor: calling TX_ISP_SET_BUF (0x800856d4) with phys=0x6300000 size=4685424
+[IMP_ISP] AddSensor: TX_ISP_SET_BUF succeeded
+[IMP_ISP] AddSensor: secondary ISP buffer not requested or ioctl failed
+[IMP_ISP] AddSensor: gc2053 (idx=0, buf_size=4685424)
+[DEBUG:IMPSystem.cpp]: IMP_ISP_AddSensor(&sinfo) = 0
+[IMP_ISP] EnableSensor: proceeding without custom AE/AWB
+[IMP_ISP] EnableSensor: about to call ioctl 0x40045626
+[IMP_ISP] EnableSensor: ioctl 0x40045626 returned 0
+[IMP_ISP] EnableSensor: ioctl 0x40045626 succeeded, sensor_idx=0
+[IMP_ISP] EnableSensor: sensor index validated, deferring LINK_SETUP and STREAMON until FS is ready
+[IMP_ISP] EnableSensor: deferring ISP STREAMON/LINK_STREAM_ON until FrameSource is ready
+[DEBUG:IMPSystem.cpp]: IMP_ISP_EnableSensor() = 0
+[System] Initializing...
+[System] Subsystems initialized
+[System] Initialized (IMP-1.1.6)
+[DEBUG:IMPSystem.cpp]: IMP_System_Init() = 0
+[IMP_ISP] EnableTuning: opened /dev/isp-m0 (fd=6)
+[IMP_ISP] GetContrast: 128
+[IMP_ISP] EnableTuning: tuning initialized successfully
+[DEBUG:IMPSystem.cpp]: IMP_ISP_EnableTuning() = 0
+[IMP_ISP] SetContrast: 128
+[DEBUG:IMPSystem.cpp]: IMP_ISP_Tuning_SetContrast(128)
+[IMP_ISP] SetSharpness: 128
+[DEBUG:IMPSystem.cpp]: IMP_ISP_Tuning_SetSharpness(128)
+[IMP_ISP] SetSaturation: 128
+[DEBUG:IMPSystem.cpp]: IMP_ISP_Tuning_SetSaturation(128)
+[IMP_ISP] SetBrightness: 128
+[DEBUG:IMPSystem.cpp]: IMP_ISP_Tuning_SetBrightness(128)
+[IMP_ISP] SetContrast: 128
+[DEBUG:IMPSystem.cpp]: IMP_ISP_Tuning_SetContrast(128)
+[IMP_ISP] SetSharpness: 128
+[DEBUG:IMPSystem.cpp]: IMP_ISP_Tuning_SetSharpness(128)
+[IMP_ISP] SetSaturation: 128
+[DEBUG:IMPSystem.cpp]: IMP_ISP_Tuning_SetSaturation(128)
+[IMP_ISP] SetBrightness: 128
+[DEBUG:IMPSystem.cpp]: IMP_ISP_Tuning_SetBrightness(128)
+[IMP_ISP] SetSinterStrength: 128
+[DEBUG:IMPSystem.cpp]: IMP_ISP_Tuning_SetSinterStrength(128)
+[IMP_ISP] SetTemperStrength: 128
+[DEBUG:IMPSystem.cpp]: IMP_ISP_Tuning_SetTemperStrength(128)
+[IMP_ISP] SetISPHflip: 0
+[DEBUG:IMPSystem.cpp]: IMP_ISP_Tuning_SetISPHflip(0)
+[IMP_ISP] SetISPVflip: 0
+[DEBUG:IMPSystem.cpp]: IMP_ISP_Tuning_SetISPVflip(0)
+[IMP_ISP] SetISPRunningMode: 0
+[IMP_ISP] SetISPRunningMode: mode set successfully to 0
+[DEBUG:IMPSystem.cpp]: IMP_ISP_Tuning_SetISPRunningMode(0)
+[IMP_ISP] SetISPBypass: 0
+[DEBUG:IMPSystem.cpp]: IMP_ISP_Tuning_SetISPBypass(0)
+[IMP_ISP] SetAntiFlickerAttr: 2
+[DEBUG:IMPSystem.cpp]: IMP_ISP_Tuning_SetAntiFlickerAttr(2)
+[IMP_ISP] SetAeComp: 128
+[DEBUG:IMPSystem.cpp]: IMP_ISP_Tuning_SetAeComp(128)
+[IMP_ISP] SetMaxAgain: 160
+[DEBUG:IMPSystem.cpp]: IMP_ISP_Tuning_SetMaxAgain(160)
+[IMP_ISP] SetMaxDgain: 80
+[DEBUG:IMPSystem.cpp]: IMP_ISP_Tuning_SetMaxDgain(80)
+[IMP_ISP] SetWB: mode=0, rgain=0, bgain=0
+[DEBUG:IMPSystem.cpp]: Set white balance. Mode: 0, rgain: 0, bgain: 0
+[IMP_ISP] SetBcshHue: 128
+[DEBUG:IMPSystem.cpp]: IMP_ISP_Tuning_SetBcshHue(128)
+[IMP_ISP] SetDefog_Strength: 2139409875
+[DEBUG:IMPSystem.cpp]: IMP_ISP_Tuning_SetDefog_Strength(128)
+[IMP_ISP] SetDPC_Strength: 128
+[DEBUG:IMPSystem.cpp]: IMP_ISP_Tuning_SetDPC_Strength(128)
+[IMP_ISP] SetDRC_Strength: 128
+[DEBUG:IMPSystem.cpp]: IMP_ISP_Tuning_SetDRC_Strength(128)
+[DEBUG:IMPSystem.cpp]: ISP Tuning Defaults set
+[IMP_ISP] SetSensorFPS: 25/1
+[IMP_ISP] SetSensorFPS: FPS set successfully to 25/1
+[DEBUG:IMPSystem.cpp]: IMP_ISP_Tuning_SetSensorFPS(25, 1) = 0
+[IMP_ISP] SetISPRunningMode: 0
+[IMP_ISP] SetISPRunningMode: mode set successfully to 0
+[DEBUG:IMPSystem.cpp]: IMP_ISP_Tuning_SetISPRunningMode(0) = 0
+[IMP_System] Timestamp rebased to 1604235278 us
+[DEBUG:IMPSystem.hpp]: IMP_System_RebaseTimeStamp(1604235278);
+[INFO:TimestampManager.cpp]: TimestampManager initialized - using IMP hardware timestamps directly
+[DEBUG:main.cpp]: create video[0] thread
+[DEBUG:ConfigWatcher.cpp]: Starting config watch thread.
+[DEBUG:ConfigWatcher.cpp]: ConfigWatcher created.
+[DEBUG:ConfigWatcher.cpp]: Monitoring file for changes: /etc/prudynt.json
+[DEBUG:WS.cpp]: No boot-session token, generated new: 'uUMvAYQRHGPSvXTCF2WIDQTiM6KMzzB5'
+[INFO:WS.cpp]: libwebsockets version: 4.3.5-unknown
+[INFO:WS.cpp]: WS context: port=8089 iface=<any>
+[DEBUG:VideoWorker.cpp]: Start stream_grabber thread for stream 0
+[DEBUG:IMPFramesource.cpp]: IMPFramesource::init()
+[DEBUG:WS.cpp]: [lws] [2025/10/15 10:37:19:6687] E: OOM
+
+[ERROR:WS.cpp]: lws init failed (errno=12)
+[FrameSource] GetChnAttr failed: channel 0 not configured
+[DEBUG:IMPFramesource.cpp]: Channel 0 configuration (post-attr):
+[DEBUG:IMPFramesource.cpp]:   pic: 1920x1080
+[DEBUG:IMPFramesource.cpp]:   crop.enable=0 crop=1920x1080
+[DEBUG:IMPFramesource.cpp]:   scaler.enable=1 out=1920x1080
+[DEBUG:IMPFramesource.cpp]:   fps=25/1 nrVBs=1 pixFmt=10
+[FrameSource] CreateChn: Opened /dev/framechan0 (fd=8, nonblock)
+[System] Registered module [0,0]: FrameSource
+[FrameSource] CreateChn: registered FrameSource module [0,0] with 1 output
+[FrameSource] CreateChn: chn=0, 1920x1080, fmt=0xa
+[DEBUG:IMPFramesource.cpp]: IMP_FrameSource_CreateChn(0, &chnAttr)
+[FrameSource] SetChnAttr: chn=0, 1920x1080, fmt=0xa
+[DEBUG:IMPFramesource.cpp]: IMP_FrameSource_SetChnAttr(0, &chnAttr)
+[FrameSource] GetChnFifoAttr: chn=0 -> maxdepth=0, depth=0
+[DEBUG:IMPFramesource.cpp]: IMP_FrameSource_GetChnFifoAttr(0, &fifo)
+[FrameSource] SetChnFifoAttr: chn=0, maxdepth=0, depth=0
+[DEBUG:IMPFramesource.cpp]: IMP_FrameSource_SetChnFifoAttr(0, &fifo)
+[KernelIF] Set frame depth: 0
+[FrameSource] SetFrameDepth: chn=0, depth=0
+[DEBUG:IMPFramesource.cpp]: IMP_FrameSource_SetFrameDepth(0, 0)
+[DEBUG:IMPEncoder.cpp]: IMPEncoder::init(0, 0)
+[Encoder] SetDefaultParam: 1920x1080, 25/1 fps, profile=16777217, rc=1
+[DEBUG:IMPEncoder.cpp]: STREAM PROFILE ch0, fps:0, bps:3000, gop:20, profile:2, 1920x1080
+[Encoder] SetbufshareChn: src=2, dst=0
+[DEBUG:IMPEncoder.cpp]: IMP_Encoder_SetbufshareChn(2, 0) = 0
+[Codec] SetDefaultParam: initialized
+[Encoder] channel_encoder_init: 1920x1080, profile=0x1000001->0x1, fps=25/1, gop=65535, bitrate=0
+[Fifo] Init: size=4, max_elements=5
+[Fifo] Init: size=7, max_elements=8
+[Codec] Create: hardware encoder will be attempted via /dev/avpu (lazy init)
+[Codec] Create: codec=0x76d37b30, channel=0
+[Encoder] channel_encoder_init: frame_cnt=4, frame_size=1048576
+[Fifo] Init: size=4, max_elements=5
+[Encoder] CreateChn: chn=0, profile=16777217 created successfully
+[DEBUG:IMPEncoder.cpp]: IMP_Encoder_CreateChn(0, chnAttr) = 0
+[Encoder] RegisterChn: grp=0, chn=0
+[DEBUG:IMPEncoder.cpp]: IMP_Encoder_RegisterChn(0, 0) = 0
+[System] Registered module [1,0]: Encoder
+[Encoder] CreateGroup: registered Encoder module [1,0] with 1 output and update callback
+[Encoder] CreateGroup: grp=0
+[DEBUG:IMPEncoder.cpp]: IMP_Encoder_CreateGroup(0) = 0
+[DEBUG:OSD.cpp]: OSD init for begin
+[OSD] SetPoolSize: 1228800 bytes
+[DEBUG:OSD.cpp]: IMP_OSD_SetPoolSize(1228800)
+[Encoder] GetChnAttr: chn=0
+[DEBUG:OSD.cpp]: IMP_Encoder_GetChnAttr read. Stream resolution: 0x0
+[OSD] CreateGroup: allocated group 0 (36884 bytes)
+[System] Registered module [4,0]: OSD
+[OSD] CreateGroup: registered OSD module [4,0] with 1 output and update callback
+[OSD] CreateGroup: grp=0
+[Encoder] stream_thread: started for channel 0
+[DEBUG:OSD.cpp]: OSD::libschrift_init()
+[Encoder] encoder_thread: started for channel 0
+[OSD] CreateRgn: called with prAttr=0
+[OSD] CreateRgn: allocated handle=0 from free list
+[OSD] CreateRgn: NULL prAttr, creating empty region
+[OSD] CreateRgn: handle=0 created (empty)
+[OSD] RegisterRgn: handle=0, grp=0
+[DEBUG:OSD.cpp]: OSD Text Alpha - Text: 255, Stroke: 255
+[OSD] SetRgnAttr: handle=0
+[OSD] SetRgnAttr: handle=0
+[OSD] SetGrpRgnAttr: handle=0, grp=0
+[OSD] CreateRgn: called with prAttr=0
+[OSD] CreateRgn: allocated handle=1 from free list
+[OSD] CreateRgn: NULL prAttr, creating empty region
+[OSD] CreateRgn: handle=1 created (empty)
+[OSD] RegisterRgn: handle=1, grp=0
+[DEBUG:OSD.cpp]: OSD Text Alpha - Text: 255, Stroke: 255
+[OSD] SetRgnAttr: handle=1
+[OSD] SetRgnAttr: handle=1
+[OSD] SetGrpRgnAttr: handle=1, grp=0
+[OSD] CreateRgn: called with prAttr=0
+[OSD] CreateRgn: allocated handle=2 from free list
+[OSD] CreateRgn: NULL prAttr, creating empty region
+[OSD] CreateRgn: handle=2 created (empty)
+[OSD] RegisterRgn: handle=2, grp=0
+[DEBUG:OSD.cpp]: OSD Text Alpha - Text: 255, Stroke: 255
+[OSD] SetRgnAttr: handle=2
+[OSD] SetRgnAttr: handle=2
+[OSD] SetGrpRgnAttr: handle=2, grp=0
+[OSD] CreateRgn: called with prAttr=0
+[OSD] CreateRgn: allocated handle=3 from free list
+[OSD] CreateRgn: NULL prAttr, creating empty region
+[OSD] CreateRgn: handle=3 created (empty)
+[OSD] RegisterRgn: handle=3, grp=0
+[OSD] SetRgnAttr: handle=3
+[OSD] SetGrpRgnAttr: handle=3, grp=0
+[System] Bind request: [0,0,0] -> [4,0,0]
+[System] Binding [0,0,0] -> [4,0,0]
+[System] Bound FrameSource -> OSD (observer added)
+[DEBUG:IMPEncoder.cpp]: IMP_System_Bind(&fs, &osd_cell) = 0
+[System] Bind request: [4,0,0] -> [1,0,0]
+[System] Binding [4,0,0] -> [1,0,0]
+[System] Bound OSD -> Encoder (observer added)
+[DEBUG:IMPEncoder.cpp]: IMP_System_Bind(&osd_cell, &enc) = 0
+[KernelIF] SET_FMT before ioctl:
+[KernelIF]   width=1920 height=1080 pixelformat=0x3231564e
+[KernelIF]   scaler_enable=1 scaler_outwidth=1920 scaler_outheight=1080
+[KernelIF]   picwidth=1920 picheight=1080
+[KernelIF]   crop_enable=0 crop=1920x1080+0+0
+[KernelIF] SET_FMT after ioctl:
+[KernelIF]   width=1920 height=1080 sizeimage=3110400 bytesperline=0
+[KernelIF]   scaler_enable=1 scaler_outwidth=1920 scaler_outheight=1080
+[KernelIF] Set format: 1920x1080 fmt=0xa (fourcc=0x3231564e) sizeimage=3110400->3110400 bytesperline=0 colorspace=8
+[FrameSource] EnableChn: using sizeimage=3110400 from SET_FMT for chn=0
+[VBM] CreatePool: allocating pool_size=1448 (frame_count=1 * 0x428 + 0x180)
+[VBM] CreatePool: chn=0, 1920x1080 fmt=0xa, 1 frames, size=3110400 (req=3110400 calc=3133440)
+[DMA] Alloc: ���tge=3���t size=3110400 phys=0x6778000 virt=0x754a1000 (rmem off=0x478000)
+[VBM] Frame 0: phys=0x6778000 virt=0x754a1000
+[VBM] CreatePool: chn=0 created successfully
+[KernelIF] Set buffer count: 1 (actual: 1)
+[VBM] FillPool: chn=0, filling 1 frames
+[VBM] FillPool: queued 1 frames
+[VBM] PrimeKernelQueue: queued 1 frames to kernel for chn=0 (limit=1)
+[VBM] FlushFrame: chn=0
+[VBM] FlushFrame: flushed all frames
+[KernelIF] Set frame depth: 0
+[IMP_ISP] EnsureLinkStreamOn: calling ioctl 0x80045612 (ISP STREAMON)
+[IMP_ISP] EnsureLinkStreamOn: calling ioctl 0x800456d0 (LINK_SETUP)
+[IMP_ISP] EnsureLinkStreamOn: LINK_SETUP succeeded, result=0
+[IMP_ISP] EnsureLinkStreamOn: calling ioctl 0x800456d2 (LINK_STREAM_ON)
+[IMP_ISP] EnsureLinkStreamOn: ISP streaming started
+[KernelIF] Stream started
+[FrameSource] EnableChn: chn=0 enabled successfully
+[DEBUG:IMPFramesource.cpp]: IMP_FrameSource_EnableChn(0) = 0
+[DEBUG:main.cpp]: create video[1] thread
+[Encoder] RequestIDR: chn=0
+[HW_Encoder] RequestIDR: next frame will be IDR
+[Encoder] StartRecvPic: chn=0
+[DEBUG:VideoWorker.cpp]: IMP_Encoder_StartRecvPic(0)
+[Encoder] RequestIDR: chn=0
+[HW_Encoder] RequestIDR: next frame will be IDR
+[DEBUG:VideoWorker.cpp]: IMP_Encoder_RequestIDR(0)
+[DEBUG:VideoWorker.cpp]: VideoWorker created for channel 0
+[DEBUG:VideoWorker.cpp]: Start video processing run loop for stream 0
+[DEBUG:VideoWorker.cpp]: VideoWorker run loop starting for channel 0, idr=0
+[DEBUG:VideoWorker.cpp]: Start stream_grabber thread for stream 1
+[DEBUG:IMPFramesource.cpp]: IMPFramesource::init()
+[FrameSource] GetChnAttr failed: channel 1 not configured
+[FrameSource] frame_capture_thread: started for channel 0, state=2, fd=8
+[FrameSource] frame_capture_thread chn=0: entering main loop
+[FrameSource] frame_capture_thread chn=0: poll iteration 1, state=2, fd=8, software_mode=0
+[FrameSource] frame_capture_thread chn=0: about to select() (poll #1)
+[FrameSource] frame_capture_thread chn=0: select() returned 1 (errno=0)
+[FrameSource] frame_capture_thread chn=0: entering DQBUF drain loop
+[VBM] VBMKernelDequeue chn=0: attempting DQBUF...
+[DEBUG:IMPFramesource.cpp]: Channel 1 configuration (post-attr):
+[DEBUG:IMPFramesource.cpp]:   pic: 640x360
+[DEBUG:IMPFramesource.cpp]:   crop.enable=0 crop=1920x1080
+[DEBUG:IMPFramesource.cpp]:   scaler.enable=1 out=640x360
+[DEBUG:IMPFramesource.cpp]:   fps=25/1 nrVBs=1 pixFmt=10
+[FrameSource] CreateChn: Opened /dev/framechan1 (fd=10, nonblock)
+[System] Registered module [0,1]: FrameSource
+[FrameSource] CreateChn: registered FrameSource module [0,1] with 1 output
+[FrameSource] CreateChn: chn=1, 640x360, fmt=0xa
+[DEBUG:IMPFramesource.cpp]: IMP_FrameSource_CreateChn(1, &chnAttr)
+[FrameSource] SetChnAttr: chn=1, 640x360, fmt=0xa
+[DEBUG:IMPFramesource.cpp]: IMP_FrameSource_SetChnAttr(1, &chnAttr)
+[FrameSource] GetChnFifoAttr: chn=1 -> maxdepth=0, depth=0
+[DEBUG:IMPFramesource.cpp]: IMP_FrameSource_GetChnFifoAttr(1, &fifo)
+[FrameSource] SetChnFifoAttr: chn=1, maxdepth=0, depth=0
+[DEBUG:IMPFramesource.cpp]: IMP_FrameSource_SetChnFifoAttr(1, &fifo)
+[KernelIF] Set frame depth: 0
+[FrameSource] SetFrameDepth: chn=1, depth=0
+[DEBUG:IMPFramesource.cpp]: IMP_FrameSource_SetFrameDepth(1, 0)
+[DEBUG:IMPEncoder.cpp]: IMPEncoder::init(1, 1)
+[Encoder] SetDefaultParam: 640x360, 25/1 fps, profile=100, rc=1
+[DEBUG:IMPEncoder.cpp]: STREAM PROFILE ch1, fps:0, bps:1000, gop:20, profile:2, 640x360
+[Codec] SetDefaultParam: initialized
+[Encoder] channel_encoder_init: 640x360, profile=0x64->0x64, fps=25/1, gop=65535, bitrate=0
+[Fifo] Init: size=4, max_elements=5
+[Fifo] Init: size=7, max_elements=8
+[Codec] Create: hardware encoder will be attempted via /dev/avpu (lazy init)
+[Codec] Create: codec=0x76d38560, channel=1
+[Encoder] channel_encoder_init: frame_cnt=4, frame_size=1048576
+[Fifo] Init: size=4, max_elements=5
+[Encoder] CreateChn: chn=1, profile=100 created successfully
+[DEBUG:IMPEncoder.cpp]: IMP_Encoder_CreateChn(1, chnAttr) = 0
+[Encoder] RegisterChn: grp=1, chn=1
+[DEBUG:IMPEncoder.cpp]: IMP_Encoder_RegisterChn(1, 1) = 0
+[System] Registered module [1,1]: Encoder
+[Encoder] CreateGroup: registered Encoder module [1,1] with 1 output and update callback
+[Encoder] CreateGroup: grp=1
+[DEBUG:IMPEncoder.cpp]: IMP_Encoder_CreateGroup(1) = 0
+[DEBUG:OSD.cpp]: OSD init for begin
+[OSD] SetPoolSize: 1228800 bytes
+[DEBUG:OSD.cpp]: IMP_OSD_SetPoolSize(1228800)
+[Encoder] GetChnAttr: chn=1
+[DEBUG:OSD.cpp]: IMP_Encoder_GetChnAttr read. Stream resolution: 0x0
+[OSD] CreateGroup: allocated group 1 (36884 bytes)
+[System] Registered module [4,1]: OSD
+[OSD] CreateGroup: registered OSD module [4,1] with 1 output and update callback
+[OSD] CreateGroup: grp=1
+[Encoder] stream_thread: started for channel 1
+[DEBUG:OSD.cpp]: OSD::libschrift_init()
+[Encoder] encoder_thread: started for channel 1
+[OSD] CreateRgn: called with prAttr=0
+[OSD] CreateRgn: allocated handle=4 from free list
+[OSD] CreateRgn: NULL prAttr, creating empty region
+[OSD] CreateRgn: handle=4 created (empty)
+[OSD] RegisterRgn: handle=4, grp=1
+[DEBUG:OSD.cpp]: OSD Text Alpha - Text: 255, Stroke: 255
+[OSD] SetRgnAttr: handle=4
+[OSD] SetRgnAttr: handle=4
+[OSD] SetGrpRgnAttr: handle=4, grp=1
+[OSD] CreateRgn: called with prAttr=0
+[OSD] CreateRgn: allocated handle=5 from free list
+[OSD] CreateRgn: NULL prAttr, creating empty region
+[OSD] CreateRgn: handle=5 created (empty)
+[OSD] RegisterRgn: handle=5, grp=1
+[DEBUG:OSD.cpp]: OSD Text Alpha - Text: 255, Stroke: 255
+[OSD] SetRgnAttr: handle=5
+[OSD] SetRgnAttr: handle=5
+[OSD] SetGrpRgnAttr: handle=5, grp=1
+[OSD] CreateRgn: called with prAttr=0
+[OSD] CreateRgn: allocated handle=6 from free list
+[OSD] CreateRgn: NULL prAttr, creating empty region
+[OSD] CreateRgn: handle=6 created (empty)
+[OSD] RegisterRgn: handle=6, grp=1
+[DEBUG:OSD.cpp]: OSD Text Alpha - Text: 255, Stroke: 255
+[OSD] SetRgnAttr: handle=6
+[OSD] SetRgnAttr: handle=6
+[OSD] SetGrpRgnAttr: handle=6, grp=1
+[OSD] CreateRgn: called with prAttr=0
+[OSD] CreateRgn: allocated handle=7 from free list
+[OSD] CreateRgn: NULL prAttr, creating empty region
+[OSD] CreateRgn: handle=7 created (empty)
+[OSD] RegisterRgn: handle=7, grp=1
+[OSD] SetRgnAttr: handle=7
+[OSD] SetGrpRgnAttr: handle=7, grp=1
+[VBM] VBMKernelDequeue chn=0: DQBUF returned ret=0 idx=0
+[FrameSource] frame_capture_thread chn=0: got frame #1 (0x74f23980) from kernel
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x74f23980
+[Codec] Process: frame=0x74f23980, extracting metadata
+[HW_Encoder] Opened hardware encoder device: /dev/avpu (fd=12)
+[HW_Encoder] Attempting to initialize hardware encoder:
+[HW_Encoder]   Codec: H.264 (type=0)
+[HW_Encoder]   Profile: 1 (Main)
+[HW_Encoder]   Resolution: 1920x1080
+[HW_Encoder]   FPS: 25/1
+[HW_Encoder]   GOP: 65535
+[HW_Encoder]   RC Mode: 1
+[HW_Encoder]   Bitrate: 2000000 bps
+[HW_Encoder] VENC_IOCTL_INIT failed: Invalid argument
+[HW_Encoder] Hardware encoder initialization failed, falling back to software
+[Codec] Process: hardware encoder init failed; falling back to software
+[Codec] Process: SW encode frame 1920x1080
+[HW_Encoder] Software encoding: Forcing IDR frame (requested by IMP_Encoder_RequestIDR)
+[HW_Encoder] Software encoding: IDR frame 0, total=94 bytes
+[Codec] Process: encoded and queued stream, length=94
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=0, frame=0x74f23980
+[VBM] ReleaseFrame: returned frame idx=0 (1 available)
+[FrameSource] ReleaseFrame: Released frame 0x74f23980 from channel 0
+[Encoder] encoder_update: Released frame 0x74f23980 back to its source channel 0
+[VBM] VBMKernelDequeue chn=0: attempting DQBUF...
+[Codec] GetStream: got stream 0x74e5d070
+[Encoder] stream_thread: got stream 0x74e5d070
+[Encoder] stream_thread: stream seq=0, length=94, type=I
+[Encoder] stream_thread: NALs: 9 6 6 7
+[DEBUG:VideoWorker.cpp]: IMP_Encoder_PollingStream(0) succeeded, getting stream
+[Encoder] GetStream: returning stream seq=0, length=94
+[DEBUG:TimestampManager.cpp]: TIMESTAMP_MANAGER_SOURCE: impTimestamp=157810 tv_sec=0 tv_usec=157810 diff_from_last=157810
+[DEBUG:VideoWorker.cpp]: VIDEO_TIMESTAMP_1_PROCESS: pack_timestamp=127 monotonic_time.tv_sec=0 monotonic_time.tv_usec=157810
+[DEBUG:VideoWorker.cpp]: Channel 0: Detected H.264 IDR-related NAL (type=7), setting idr=true
+[DEBUG:VideoWorker.cpp]: Channel 0: Writing NAL unit to message channel (size=90)
+[System] Bind request: [0,1,0] -> [4,1,0]
+[System] Binding [0,1,0] -> [4,1,0]
+[System] Bound FrameSource -> OSD (observer added)
+[DEBUG:IMPEncoder.cpp]: IMP_System_Bind(&fs, &osd_cell) = 0
+[System] Bind request: [4,1,0] -> [1,1,0]
+[System] Binding [4,1,0] -> [1,1,0]
+[System] Bound OSD -> Encoder (observer added)
+[DEBUG:IMPEncoder.cpp]: IMP_System_Bind(&osd_cell, &enc) = 0
+[KernelIF] SET_FMT before ioctl:
+[KernelIF]   width=640 height=360 pixelformat=0x3231564e
+[KernelIF]   scaler_enable=1 scaler_outwidth=640 scaler_outheight=360
+[KernelIF]   picwidth=640 picheight=360
+[KernelIF]   crop_enable=0 crop=1920x1080+0+0
+[KernelIF] SET_FMT after ioctl:
+[KernelIF]   width=640 height=360 sizeimage=353280 bytesperline=960
+[KernelIF]   scaler_enable=1 scaler_outwidth=640 scaler_outheight=360
+[KernelIF] Set format: 640x360 fmt=0xa (fourcc=0x3231564e) sizeimage=345600->353280 bytesperline=960 colorspace=8
+[FrameSource] EnableChn: using sizeimage=353280 from SET_FMT for chn=1
+[VBM] CreatePool: allocating pool_size=1448 (frame_count=1 * 0x428 + 0x180)
+[VBM] CreatePool: chn=1, 640x360 fmt=0xa, 1 frames, size=353280 (req=353280 calc=353280)
+[DMA] Alloc: �V�t=345�W�t size=353280 phys=0x6a70000 virt=0x75799000 (rmem off=0x770000)
+[VBM] Frame 0: phys=0x6a70000 virt=0x75799000
+[VBM] CreatePool: chn=1 created successfully
+[KernelIF] Set buffer count: 1 (actual: 1)
+[VBM] FillPool: chn=1, filling 1 frames
+[VBM] FillPool: queued 1 frames
+[VBM] PrimeKernelQueue: queued 1 frames to kernel for chn=1 (limit=1)
+[VBM] FlushFrame: chn=1
+[VBM] FlushFrame: flushed all frames
+[KernelIF] Set frame depth: 0
+[KernelIF] Stream started
+[FrameSource] EnableChn: chn=1 enabled successfully
+[DEBUG:IMPFramesource.cpp]: IMP_FrameSource_EnableChn(1) = 0
+[DEBUG:main.cpp]: create jpeg thread
+[Encoder] RequestIDR: chn=1
+[HW_Encoder] RequestIDR: next frame will be IDR
+[Encoder] StartRecvPic: chn=1
+[DEBUG:VideoWorker.cpp]: IMP_Encoder_StartRecvPic(1)
+[Encoder] RequestIDR: chn=1
+[HW_Encoder] RequestIDR: next frame will be IDR
+[DEBUG:VideoWorker.cpp]: IMP_Encoder_RequestIDR(1)
+[DEBUG:VideoWorker.cpp]: VideoWorker created for channel 1
+[DEBUG:VideoWorker.cpp]: Start video processing run loop for stream 1
+[DEBUG:VideoWorker.cpp]: VideoWorker run loop starting for channel 1, idr=0
+[DEBUG:JPEGWorker.cpp]: Start jpeg_grabber thread.
+[DEBUG:IMPEncoder.cpp]: IMPEncoder::init(2, 0)
+[Encoder] SetDefaultParam: 1920x1080, 24/1 fps, profile=67108864, rc=0
+[FrameSource] frame_capture_thread: started for channel 1, state=2, fd=10
+[FrameSource] frame_capture_thread chn=1: entering main loop
+[FrameSource] frame_capture_thread chn=1: poll iteration 1, state=2, fd=10, software_mode=0
+[FrameSource] frame_capture_thread chn=1: about to select() (poll #1)
+[FrameSource] frame_capture_thread chn=1: select() returned 1 (errno=0)
+[FrameSource] frame_capture_thread chn=1: entering DQBUF drain loop
+[VBM] VBMKernelDequeue chn=1: attempting DQBUF...
+[DEBUG:IMPEncoder.cpp]: STREAM PROFILE 2, 0, JPEG, 0fps, profile:0, 1920x1080
+[Codec] SetDefaultParam: initialized
+[Encoder] channel_encoder_init: 1920x1080, profile=0x4000000->0x0, fps=24/1, gop=0, bitrate=0
+[Fifo] Init: size=4, max_elements=5
+[Fifo] Init: size=7, max_elements=8
+[Codec] Create: hardware encoder will be attempted via /dev/avpu (lazy init)
+[Codec] Create: codec=0x74e04080, channel=2
+[Encoder] channel_encoder_init: frame_cnt=4, frame_size=1048576
+[Fifo] Init: size=4, max_elements=5
+[Encoder] CreateChn: chn=2, profile=67108864 created successfully
+[DEBUG:IMPEncoder.cpp]: IMP_Encoder_CreateChn(2, chnAttr) = 0
+[Encoder] RegisterChn: grp=0, chn=2
+[DEBUG:IMPEncoder.cpp]: IMP_Encoder_RegisterChn(0, 2) = 0
+[DEBUG:main.cpp]: create osd thread
+[DEBUG:main.cpp]: create rtsp thread
+[Encoder] RequestIDR: chn=2
+[HW_Encoder] RequestIDR: next frame will be IDR
+[Encoder] StartRecvPic: chn=2
+[DEBUG:JPEGWorker.cpp]: IMP_Encoder_StartRecvPic(2)
+[DEBUG:JPEGWorker.cpp]: JPEGWorker created for JPEG channel index 0 (IMP Encoder Channel 2)
+[DEBUG:JPEGWorker.cpp]: Start JPEG processing run loop for index 0 (IMP Encoder Channel 2)
+[DEBUG:TimestampManager.cpp]: TIMESTAMP_MANAGER_SOURCE: impTimestamp=177490 tv_sec=0 tv_usec=177490 diff_from_last=19680
+[DEBUG:RTSPStatus.cpp]: RTSPStatus: Initializing RTSP status interface at /run/prudynt/rtsp/
+[Encoder] stream_thread: started for channel 2
+[DEBUG:RTSPStatus.cpp]: RTSPStatus: Created base directory: /run/prudynt/rtsp/
+[INFO:RTSPStatus.cpp]: RTSPStatus: RTSP status interface initialized successfully
+[Encoder] encoder_thread: started for channel 2
+[INFO:RTSP.cpp]: Set shared RTP timestamp base: 3921775265 (0xe9c18aa1)
+[DEBUG:RTSP.cpp]: identify stream 0
+[DEBUG:IMPDeviceSource.cpp]: IMPDeviceSource video/pps/sps/vps constructed, encoder channel:0
+[DEBUG:OSD.cpp]: start osd update thread.
+[OSD] Start: grp=0
+[DEBUG:OSD.cpp]: IMP_OSD_Start(0)
+[OSD] SetPoolSize: 1228800 bytes
+[DEBUG:OSD.cpp]: IMP_OSD_SetPoolSize(1228800)
+[OSD] Start: grp=1
+[DEBUG:OSD.cpp]: IMP_OSD_Start(1)
+[OSD] SetPoolSize: 1228800 bytes
+[DEBUG:OSD.cpp]: IMP_OSD_SetPoolSize(1228800)
+[DEBUG:RTSP.cpp]: Waiting for SPS/PPS/VPS from stream 0
+[VBM] VBMKernelDequeue chn=0: DQBUF returned ret=0 idx=0
+[FrameSource] frame_capture_thread chn=0: got frame #2 (0x74f23980) from kernel
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x74f23980
+[Codec] Process: frame=0x74f23980, extracting metadata
+[Codec] Process: SW encode frame 1920x1080
+[HW_Encoder] Software encoding: Forcing IDR frame (requested by IMP_Encoder_RequestIDR)
+[HW_Encoder] Software encoding: IDR frame 1, total=93 bytes
+[Codec] Process: encoded and queued stream, length=93
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=0, frame=0x74f23980
+[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[VBM] ReleaseFrame: returned frame idx=0 (1 available)
+[FrameSource] ReleaseFrame: Released frame 0x74f23980 from channel 0
+[Encoder] encoder_update: Released frame 0x74f23980 back to its source channel 0
+[VBM] VBMKernelDequeue chn=0: attempting DQBUF...
+[Codec] GetStream: got stream 0x74e5dff0
+[Encoder] stream_thread: got stream 0x74e5dff0
+[Codec] ReleaseStream: freed software-encoded data at 0x74e58910
+[Codec] ReleaseStream: freed stream 0x74e5dff0
+[Encoder] stream_thread: dropped frame because previous stream not yet released
+[VBM] VBMKernelDequeue chn=1: DQBUF returned ret=0 idx=0
+[FrameSource] frame_capture_thread chn=1: got frame #1 (0x74e5c980) from kernel
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x74e5c980
+[Codec] Process: frame=0x74e5c980, extracting metadata
+[Codec] Process: SW encode frame 640x360
+[HW_Encoder] Software encoding: P frame 2, total=36 bytes
+[Codec] Process: encoded and queued stream, length=36
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=1, frame=0x74e5c980
+[VBM] ReleaseFrame: returned frame idx=0 (1 available)
+[FrameSource] ReleaseFrame: Released frame 0x74e5c980 from channel 1
+[Encoder] encoder_update: Released frame 0x74e5c980 back to its source channel 1
+[VBM] VBMKernelDequeue chn=1: attempting DQBUF...
+[Codec] GetStream: got stream 0x74e5e090
+[Encoder] stream_thread: got stream 0x74e5e090
+[Codec] ReleaseStream: freed software-encoded data at 0x74e58920
+[Codec] ReleaseStream: freed stream 0x74e5e090
+[Encoder] stream_thread: dropped frame because previous stream not yet released
+[VBM] VBMKernelDequeue chn=0: DQBUF returned ret=0 idx=0
+[FrameSource] frame_capture_thread chn=0: got frame #3 (0x74f23980) from kernel
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x74f23980
+[Codec] Process: frame=0x74f23980, extracting metadata
+[Codec] Process: SW encode frame 1920x1080
+[HW_Encoder] Software encoding: P frame 3, total=37 bytes
+[Codec] Process: encoded and queued stream, length=37
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=0, frame=0x74f23980
+[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[VBM] ReleaseFrame: returned frame idx=0 (1 available)
+[FrameSource] ReleaseFrame: Released frame 0x74f23980 from channel 0
+[Encoder] encoder_update: Released frame 0x74f23980 back to its source channel 0
+[Codec] GetStream: got stream 0x74e5dff0
+[Encoder] stream_thread: got stream 0x74e5dff0
+[Codec] ReleaseStream: freed software-encoded data at 0x74e58930
+[Codec] ReleaseStream: freed stream 0x74e5dff0
+[Encoder] stream_thread: dropped frame because previous stream not yet released
+[VBM] VBMKernelDequeue chn=1: DQBUF returned ret=0 idx=0
+[FrameSource] frame_capture_thread chn=1: got frame #2 (0x74e5c980) from kernel
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x74e5c980
+[Codec] Process: frame=0x74e5c980, extracting metadata
+[Codec] Process: SW encode frame 640x360
+[HW_Encoder] Software encoding: P frame 4, total=36 bytes
+[Codec] Process: encoded and queued stream, length=36
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=1, frame=0x74e5c980
+[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[VBM] ReleaseFrame: returned frame idx=0 (1 available)
+[FrameSource] ReleaseFrame: Released frame 0x74e5c980 from channel 1
+[Encoder] encoder_update: Released frame 0x74e5c980 back to its source channel 1
+[VBM] VBMKernelDequeue chn=1: attempting DQBUF...
+[Codec] GetStream: got stream 0x74e5e090
+[Encoder] stream_thread: got stream 0x74e5e090
+[Codec] ReleaseStream: freed software-encoded data at 0x74e58940
+[Codec] ReleaseStream: freed stream 0x74e5e090
+[Encoder] stream_thread: dropped frame because previous stream not yet released
+[FrameSource] frame_capture_thread chn=0: got frame #4 (0x74f23980) from kernel
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x74f23980
+[Codec] Process: frame=0x74f23980, extracting metadata
+[Codec] Process: SW encode frame 1920x1080
+[HW_Encoder] Software encoding: P frame 5, total=37 bytes
+[Codec] Process: encoded and queued stream, length=37
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=0, frame=0x74f23980
+[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[VBM] ReleaseFrame: returned frame idx=0 (1 available)
+[FrameSource] ReleaseFrame: Released frame 0x74f23980 from channel 0
+[Encoder] encoder_update: Released frame 0x74f23980 back to its source channel 0
+[Codec] GetStream: got stream 0x74e5dff0
+[Encoder] stream_thread: got stream 0x74e5dff0
+[Codec] ReleaseStream: freed software-encoded data at 0x74e58950
+[Codec] ReleaseStream: freed stream 0x74e5dff0
+[Encoder] stream_thread: dropped frame because previous stream not yet released
+[VBM] VBMKernelDequeue chn=1: DQBUF returned ret=0 idx=0
+[FrameSource] frame_capture_thread chn=1: got frame #3 (0x74e5c980) from kernel
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x74e5c980
+[Codec] Process: frame=0x74e5c980, extracting metadata
+[Codec] Process: SW encode frame 640x360
+[HW_Encoder] Software encoding: P frame 6, total=36 bytes
+[Codec] Process: encoded and queued stream, length=36
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=1, frame=0x74e5c980
+[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[VBM] ReleaseFrame: returned frame idx=0 (1 available)
+[FrameSource] ReleaseFrame: Released frame 0x74e5c980 from channel 1
+[Encoder] encoder_update: Released frame 0x74e5c980 back to its source channel 1
+[Codec] GetStream: got stream 0x74e5e090
+[Encoder] stream_thread: got stream 0x74e5e090
+[Codec] ReleaseStream: freed software-encoded data at 0x74e58960
+[Codec] ReleaseStream: freed stream 0x74e5e090
+[Encoder] stream_thread: dropped frame because previous stream not yet released
+[FrameSource] frame_capture_thread chn=0: got frame #5 (0x74f23980) from kernel
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x74f23980
+[Codec] Process: frame=0x74f23980, extracting metadata
+[Codec] Process: SW encode frame 1920x1080
+[HW_Encoder] Software encoding: P frame 7, total=37 bytes
+[Codec] Process: encoded and queued stream, length=37
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=0, frame=0x74f23980
+[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[VBM] ReleaseFrame: returned frame idx=0 (1 available)
+[FrameSource] ReleaseFrame: Released frame 0x74f23980 from channel 0
+[Encoder] encoder_update: Released frame 0x74f23980 back to its source channel 0
+[Codec] GetStream: got stream 0x74e5dff0
+[Encoder] stream_thread: got stream 0x74e5dff0
+[Codec] ReleaseStream: freed software-encoded data at 0x74e58970
+[Codec] ReleaseStream: freed stream 0x74e5dff0
+[Encoder] stream_thread: dropped frame because previous stream not yet released
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x74f23980
+[Codec] Process: frame=0x74f23980, extracting metadata
+[Codec] Process: SW encode frame 1920x1080
+[HW_Encoder] Software encoding: P frame 8, total=37 bytes
+[Codec] Process: encoded and queued stream, length=37
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=0, frame=0x74f23980
+[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[VBM] ReleaseFrame: returned frame idx=0 (1 available)
+[FrameSource] ReleaseFrame: Released frame 0x74f23980 from channel 0
+[Encoder] encoder_update: Released frame 0x74f23980 back to its source channel 0
+[Codec] GetStream: got stream 0x74e5e090
+[Encoder] stream_thread: got stream 0x74e5e090
+[Codec] ReleaseStream: freed software-encoded data at 0x74e58980
+[Codec] ReleaseStream: freed stream 0x74e5e090
+[Encoder] stream_thread: dropped frame because previous stream not yet released
+[FrameSource] frame_capture_thread chn=1: got frame #4 (0x74e5c980) from kernel
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x74e5c980
+[Codec] Process: frame=0x74e5c980, extracting metadata
+[Codec] Process: SW encode frame 640x360
+[HW_Encoder] Software encoding: P frame 9, total=36 bytes
+[Codec] Process: encoded and queued stream, length=36
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=1, frame=0x74e5c980
+[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[VBM] ReleaseFrame: returned frame idx=0 (1 available)
+[FrameSource] ReleaseFrame: Released frame 0x74e5c980 from channel 1
+[Encoder] encoder_update: Released frame 0x74e5c980 back to its source channel 1
+[Codec] GetStream: got stream 0x74e5dff0
+[Encoder] stream_thread: got stream 0x74e5dff0
+[Codec] ReleaseStream: freed software-encoded data at 0x74e58990
+[Codec] ReleaseStream: freed stream 0x74e5dff0
+[Encoder] stream_thread: dropped frame because previous stream not yet released
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x74f23980
+[Codec] Process: frame=0x74f23980, extracting metadata
+[Codec] Process: SW encode frame 1920x1080
+[HW_Encoder] Software encoding: P frame 10, total=37 bytes
+[Codec] Process: encoded and queued stream, length=37
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=0, frame=0x74f23980
+[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[VBM] ReleaseFrame: returned frame idx=0 (1 available)
+[FrameSource] ReleaseFrame: Released frame 0x74f23980 from channel 0
+[Encoder] encoder_update: Released frame 0x74f23980 back to its source channel 0
+[FrameSource] frame_capture_thread chn=1: got frame #5 (0x74e5c980) from kernel
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x74e5c980
+[Codec] Process: frame=0x74e5c980, extracting metadata
+[Codec] Process: SW encode frame 640x360
+[HW_Encoder] Software encoding: P frame 11, total=36 bytes
+[Codec] Process: encoded and queued stream, length=36
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=1, frame=0x74e5c980
+[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[VBM] ReleaseFrame: returned frame idx=0 (1 available)
+[FrameSource] ReleaseFrame: Released frame 0x74e5c980 from channel 1
+[Encoder] encoder_update: Released frame 0x74e5c980 back to its source channel 1
+[Codec] GetStream: got stream 0x74e5e090
+[Encoder] stream_thread: got stream 0x74e5e090
+[Codec] ReleaseStream: freed software-encoded data at 0x74e589a0
+[Codec] ReleaseStream: freed stream 0x74e5e090
+[Encoder] stream_thread: dropped frame because previous stream not yet released
+[Codec] GetStream: got stream 0x74e5e0e0
+[Encoder] stream_thread: got stream 0x74e5e0e0
+[Codec] ReleaseStream: freed software-encoded data at 0x74d6f020
+[Codec] ReleaseStream: freed stream 0x74e5e0e0
+[Encoder] stream_thread: dropped frame because previous stream not yet released
+[DEBUG:main.cpp]: main thread is going to sleep
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x74f23980
+[Codec] Process: frame=0x74f23980, extracting metadata
+[Codec] Process: SW encode frame 1920x1080
+[HW_Encoder] Software encoding: P frame 12, total=37 bytes
+[Codec] Process: encoded and queued stream, length=37
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=0, frame=0x74f23980
+[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[VBM] ReleaseFrame: returned frame idx=0 (1 available)
+[FrameSource] ReleaseFrame: Released frame 0x74f23980 from channel 0
+[Encoder] encoder_update: Released frame 0x74f23980 back to its source channel 0
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x74e5c980
+[Codec] Process: frame=0x74e5c980, extracting metadata
+[Codec] Process: SW encode frame 640x360
+[HW_Encoder] Software encoding: P frame 13, total=36 bytes
+[Codec] Process: encoded and queued stream, length=36
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=1, frame=0x74e5c980
+[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[VBM] ReleaseFrame: returned frame idx=0 (1 available)
+[FrameSource] ReleaseFrame: Released frame 0x74e5c980 from channel 1
+[Encoder] encoder_update: Released frame 0x74e5c980 back to its source channel 1
+[Codec] GetStream: got stream 0x74e5dff0
+[Encoder] stream_thread: got stream 0x74e5dff0
+[Codec] ReleaseStream: freed software-encoded data at 0x74e589b0
+[Codec] ReleaseStream: freed stream 0x74e5dff0
+[Encoder] stream_thread: dropped frame because previous stream not yet released
+[Codec] GetStream: got stream 0x74e5e040
+[Encoder] stream_thread: got stream 0x74e5e040
+[Codec] ReleaseStream: freed software-encoded data at 0x74d6f030
+[Codec] ReleaseStream: freed stream 0x74e5e040
+[Encoder] stream_thread: dropped frame because previous stream not yet released
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x74f23980
+[Codec] Process: frame=0x74f23980, extracting metadata
+[Codec] Process: SW encode frame 1920x1080
+[HW_Encoder] Software encoding: P frame 14, total=37 bytes
+[Codec] Process: encoded and queued stream, length=37
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=0, frame=0x74f23980
+[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[VBM] ReleaseFrame: returned frame idx=0 (1 available)
+[FrameSource] ReleaseFrame: Released frame 0x74f23980 from channel 0
+[Encoder] encoder_update: Released frame 0x74f23980 back to its source channel 0
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x74e5c980
+[Codec] Process: frame=0x74e5c980, extracting metadata
+[Codec] Process: SW encode frame 640x360
+[HW_Encoder] Software encoding: P frame 15, total=36 bytes
+[Codec] Process: encoded and queued stream, length=36
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=1, frame=0x74e5c980
+[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[VBM] ReleaseFrame: returned frame idx=0 (1 available)
+[FrameSource] ReleaseFrame: Released frame 0x74e5c980 from channel 1
+[Encoder] encoder_update: Released frame 0x74e5c980 back to its source channel 1
+[Codec] GetStream: got stream 0x74e5dff0
+[Encoder] stream_thread: got stream 0x74e5dff0
+[Codec] ReleaseStream: freed software-encoded data at 0x74e589c0
+[Codec] ReleaseStream: freed stream 0x74e5dff0
+[Encoder] stream_thread: dropped frame because previous stream not yet released
+[Codec] GetStream: got stream 0x74e5e040
+[Encoder] stream_thread: got stream 0x74e5e040
+[Codec] ReleaseStream: freed software-encoded data at 0x74d6f040
+[Codec] ReleaseStream: freed stream 0x74e5e040
+[Encoder] stream_thread: dropped frame because previous stream not yet released
+[DEBUG:OSD.cpp]: OSD Text Alpha - Text: 255, Stroke: 255
+[OSD] GetRgnAttr: handle=0
+[OSD] SetRgnAttr: handle=0
+[DEBUG:OSD.cpp]: OSD Text Alpha - Text: 255, Stroke: 255
+[OSD] GetRgnAttr: handle=4
+[OSD] SetRgnAttr: handle=4
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x74f23980
+[Codec] Process: frame=0x74f23980, extracting metadata
+[Codec] Process: SW encode frame 1920x1080
+[HW_Encoder] Software encoding: P frame 16, total=37 bytes
+[Codec] Process: encoded and queued stream, length=37
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=0, frame=0x74f23980
+[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[VBM] ReleaseFrame: returned frame idx=0 (1 available)
+[FrameSource] ReleaseFrame: Released frame 0x74f23980 from channel 0
+[Encoder] encoder_update: Released frame 0x74f23980 back to its source channel 0
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x74e5c980
+[Codec] Process: frame=0x74e5c980, extracting metadata
+[Codec] Process: SW encode frame 640x360
+[HW_Encoder] Software encoding: P frame 17, total=36 bytes
+[Codec] Process: encoded and queued stream, length=36
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=1, frame=0x74e5c980
+[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[VBM] ReleaseFrame: returned frame idx=0 (1 available)
+[FrameSource] ReleaseFrame: Released frame 0x74e5c980 from channel 1
+[Encoder] encoder_update: Released frame 0x74e5c980 back to its source channel 1
+[Codec] GetStream: got stream 0x74e5e090
+[Encoder] stream_thread: got stream 0x74e5e090
+[Codec] ReleaseStream: freed software-encoded data at 0x74e589d0
+[Codec] ReleaseStream: freed stream 0x74e5e090
+[Encoder] stream_thread: dropped frame because previous stream not yet released
+[Codec] GetStream: got stream 0x74e5e0e0
+[Encoder] stream_thread: got stream 0x74e5e0e0
+[Codec] ReleaseStream: freed software-encoded data at 0x74d5b070
+[Codec] ReleaseStream: freed stream 0x74e5e0e0
+[Encoder] stream_thread: dropped frame because previous stream not yet released
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x74f23980
+[Codec] Process: frame=0x74f23980, extracting metadata
+[Codec] Process: SW encode frame 1920x1080
+[HW_Encoder] Software encoding: P frame 18, total=37 bytes
+[Codec] Process: encoded and queued stream, length=37
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=0, frame=0x74f23980
+[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[VBM] ReleaseFrame: returned frame idx=0 (1 available)
+[FrameSource] ReleaseFrame: Released frame 0x74f23980 from channel 0
+[Encoder] encoder_update: Released frame 0x74f23980 back to its source channel 0
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x74e5c980
+[Codec] Process: frame=0x74e5c980, extracting metadata
+[Codec] Process: SW encode frame 640x360
+[HW_Encoder] Software encoding: P frame 19, total=36 bytes
+[Codec] Process: encoded and queued stream, length=36
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=1, frame=0x74e5c980
+[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[VBM] ReleaseFrame: returned frame idx=0 (1 available)
+[FrameSource] ReleaseFrame: Released frame 0x74e5c980 from channel 1
+[Encoder] encoder_update: Released frame 0x74e5c980 back to its source channel 1
+[Codec] GetStream: got stream 0x74e5dff0
+[Encoder] stream_thread: got stream 0x74e5dff0
+[Codec] ReleaseStream: freed software-encoded data at 0x74e589e0
+[Codec] ReleaseStream: freed stream 0x74e5dff0
+[Encoder] stream_thread: dropped frame because previous stream not yet released
+[Codec] GetStream: got stream 0x74e5e040
+[Encoder] stream_thread: got stream 0x74e5e040
+[Codec] ReleaseStream: freed software-encoded data at 0x74d5b080
+[Codec] ReleaseStream: freed stream 0x74e5e040
+[Encoder] stream_thread: dropped frame because previous stream not yet released
+[DEBUG:OSD.cpp]: OSD Text Alpha - Text: 255, Stroke: 255
+[OSD] GetRgnAttr: handle=0
+[OSD] SetRgnAttr: handle=0
+[DEBUG:OSD.cpp]: OSD Text Alpha - Text: 255, Stroke: 255
+[OSD] GetRgnAttr: handle=0
+[OSD] SetRgnAttr: handle=0
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x74f23980
+[Codec] Process: frame=0x74f23980, extracting metadata
+[Codec] Process: SW encode frame 1920x1080
+[HW_Encoder] Software encoding: P frame 20, total=37 bytes
+[Codec] Process: encoded and queued stream, length=37
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=0, frame=0x74f23980
+[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[VBM] ReleaseFrame: returned frame idx=0 (1 available)
+[FrameSource] ReleaseFrame: Released frame 0x74f23980 from channel 0
+[Encoder] encoder_update: Released frame 0x74f23980 back to its source channel 0
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x74e5c980
+[Codec] Process: frame=0x74e5c980, extracting metadata
+[Codec] Process: SW encode frame 640x360
+[HW_Encoder] Software encoding: P frame 21, total=36 bytes
+[Codec] Process: encoded and queued stream, length=36
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=1, frame=0x74e5c980
+[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[VBM] ReleaseFrame: returned frame idx=0 (1 available)
+[FrameSource] ReleaseFrame: Released frame 0x74e5c980 from channel 1
+[Encoder] encoder_update: Released frame 0x74e5c980 back to its source channel 1
+[Codec] GetStream: got stream 0x74e5e090
+[Encoder] stream_thread: got stream 0x74e5e090
+[Codec] ReleaseStream: freed software-encoded data at 0x74e589f0
+[Codec] ReleaseStream: freed stream 0x74e5e090
+[Encoder] stream_thread: dropped frame because previous stream not yet released
+[Codec] GetStream: got stream 0x74e5e0e0
+[Encoder] stream_thread: got stream 0x74e5e0e0
+[Codec] ReleaseStream: freed software-encoded data at 0x74d430b0
+[Codec] ReleaseStream: freed stream 0x74e5e0e0
+[Encoder] stream_thread: dropped frame because previous stream not yet released
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x74f23980
+[Codec] Process: frame=0x74f23980, extracting metadata
+[Codec] Process: SW encode frame 1920x1080
+[HW_Encoder] Software encoding: P frame 22, total=37 bytes
+[Codec] Process: encoded and queued stream, length=37
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=0, frame=0x74f23980
+[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[Codec] GetStream: got stream 0x74e5dff0
+[Encoder] stream_thread: got stream 0x74e5dff0
+[Codec] ReleaseStream: freed software-encoded data at 0x74e58a00
+[Codec] ReleaseStream: freed stream 0x74e5dff0
+[Encoder] stream_thread: dropped frame because previous stream not yet released
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x74e5c980
+[Codec] Process: frame=0x74e5c980, extracting metadata
+[Codec] Process: SW encode frame 640x360
+[HW_Encoder] Software encoding: P frame 23, total=36 bytes
+[Codec] Process: encoded and queued stream, length=36
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=1, frame=0x74e5c980
+[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[VBM] ReleaseFrame: returned frame idx=0 (1 available)
+[FrameSource] ReleaseFrame: Released frame 0x74e5c980 from channel 1
+[Encoder] encoder_update: Released frame 0x74e5c980 back to its source channel 1
+[Codec] GetStream: got stream 0x74e5e090
+[Encoder] stream_thread: got stream 0x74e5e090
+[Codec] ReleaseStream: freed software-encoded data at 0x74e58a10
+[Codec] ReleaseStream: freed stream 0x74e5e090
+[Encoder] stream_thread: dropped frame because previous stream not yet released
+[VBM] ReleaseFrame: returned frame idx=0 (1 available)
+[FrameSource] ReleaseFrame: Released frame 0x74f23980 from channel 0
+[Encoder] encoder_update: Released frame 0x74f23980 back to its source channel 0
+[DEBUG:VideoWorker.cpp]: IMP_Encoder_PollingStream(0) returned -1 (timeout or error)
+[DEBUG:VideoWorker.cpp]: IMP_Encoder_PollingStream(1) returned -1 (timeout or error)
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x74e5c980
+[Codec] Process: frame=0x74e5c980, extracting metadata
+[Codec] Process: SW encode frame 640x360
+[HW_Encoder] Software encoding: P frame 24, total=36 bytes
+[Codec] Process: encoded and queued stream, length=36
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=1, frame=0x74e5c980
+[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[VBM] ReleaseFrame: returned frame idx=0 (1 available)
+[FrameSource] ReleaseFrame: Released frame 0x74e5c980 from channel 1
+[Encoder] encoder_update: Released frame 0x74e5c980 back to its source channel 1
+[Codec] GetStream: got stream 0x74e5e090
+[Encoder] stream_thread: got stream 0x74e5e090
+[Codec] ReleaseStream: freed software-encoded data at 0x74e58a20
+[Codec] ReleaseStream: freed stream 0x74e5e090
+[Encoder] stream_thread: dropped frame because previous stream not yet released
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x74f23980
+[Codec] Process: frame=0x74f23980, extracting metadata
+[Codec] Process: SW encode frame 1920x1080
+[HW_Encoder] Software encoding: P frame 25, total=37 bytes
+[Codec] Process: encoded and queued stream, length=37
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=0, frame=0x74f23980
+[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[VBM] ReleaseFrame: returned frame idx=0 (1 available)
+[FrameSource] ReleaseFrame: Released frame 0x74f23980 from channel 0
+[Encoder] encoder_update: Released frame 0x74f23980 back to its source channel 0
+[Codec] GetStream: got stream 0x74e5dff0
+[Encoder] stream_thread: got stream 0x74e5dff0
+[Codec] ReleaseStream: freed software-encoded data at 0x74e58a30
+[Codec] ReleaseStream: freed stream 0x74e5dff0
+[Encoder] stream_thread: dropped frame because previous stream not yet released
+[DEBUG:OSD.cpp]: OSD Text Alpha - Text: 255, Stroke: 255
+[OSD] GetRgnAttr: handle=0
+[OSD] SetRgnAttr: handle=0
+[DEBUG:OSD.cpp]: OSD Text Alpha - Text: 255, Stroke: 255
+[OSD] GetRgnAttr: handle=0
+[OSD] SetRgnAttr: handle=0
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x74f23980
+[Codec] Process: frame=0x74f23980, extracting metadata
+[Codec] Process: SW encode frame 1920x1080
+[HW_Encoder] Software encoding: P frame 26, total=37 bytes
+[Codec] Process: encoded and queued stream, length=37
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=0, frame=0x74f23980
+[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[VBM] ReleaseFrame: returned frame idx=0 (1 available)
+[FrameSource] ReleaseFrame: Released frame 0x74f23980 from channel 0
+[Encoder] encoder_update: Released frame 0x74f23980 back to its source channel 0
+[Codec] GetStream: got stream 0x74e5dff0
+[Encoder] stream_thread: got stream 0x74e5dff0
+[Codec] ReleaseStream: freed software-encoded data at 0x74e58a40
+[Codec] ReleaseStream: freed stream 0x74e5dff0
+[Encoder] stream_thread: dropped frame because previous stream not yet released
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x74e5c980
+[Codec] Process: frame=0x74e5c980, extracting metadata
+[Codec] Process: SW encode frame 640x360
+[HW_Encoder] Software encoding: P frame 27, total=36 bytes
+[Codec] Process: encoded and queued stream, length=36
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=1, frame=0x74e5c980
+[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[VBM] ReleaseFrame: returned frame idx=0 (1 available)
+[FrameSource] ReleaseFrame: Released frame 0x74e5c980 from channel 1
+[Encoder] encoder_update: Released frame 0x74e5c980 back to its source channel 1
+[Codec] GetStream: got stream 0x74e5e090
+[Encoder] stream_thread: got stream 0x74e5e090
+[Codec] ReleaseStream: freed software-encoded data at 0x74e58a50
+[Codec] ReleaseStream: freed stream 0x74e5e090
+[Encoder] stream_thread: dropped frame because previous stream not yet released
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x74f23980
+[Codec] Process: frame=0x74f23980, extracting metadata
+[Codec] Process: SW encode frame 1920x1080
+[HW_Encoder] Software encoding: P frame 28, total=37 bytes
+[Codec] Process: encoded and queued stream, length=37
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=0, frame=0x74f23980
+[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[VBM] ReleaseFrame: returned frame idx=0 (1 available)
+[FrameSource] ReleaseFrame: Released frame 0x74f23980 from channel 0
+[Encoder] encoder_update: Released frame 0x74f23980 back to its source channel 0
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x74e5c980
+[Codec] Process: frame=0x74e5c980, extracting metadata
+[Codec] Process: SW encode frame 640x360
+[HW_Encoder] Software encoding: P frame 29, total=36 bytes
+[Codec] Process: encoded and queued stream, length=36
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=1, frame=0x74e5c980
+[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[VBM] ReleaseFrame: returned frame idx=0 (1 available)
+[FrameSource] ReleaseFrame: Released frame 0x74e5c980 from channel 1
+[Encoder] encoder_update: Released frame 0x74e5c980 back to its source channel 1
+[Codec] GetStream: got stream 0x74e5dff0
+[Encoder] stream_thread: got stream 0x74e5dff0
+[Codec] ReleaseStream: freed software-encoded data at 0x74e58a60
+[Codec] ReleaseStream: freed stream 0x74e5dff0
+[Encoder] stream_thread: dropped frame because previous stream not yet released
+[Codec] GetStream: got stream 0x74e5e040
+[Encoder] stream_thread: got stream 0x74e5e040
+[Codec] ReleaseStream: freed software-encoded data at 0x74d2f0e0
+[Codec] ReleaseStream: freed stream 0x74e5e040
+[Encoder] stream_thread: dropped frame because previous stream not yet released
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x74f23980
+[Codec] Process: frame=0x74f23980, extracting metadata
+[Codec] Process: SW encode frame 1920x1080
+[HW_Encoder] Software encoding: IDR frame 30, total=93 bytes
+[Codec] Process: encoded and queued stream, length=93
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=0, frame=0x74f23980
+[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[VBM] ReleaseFrame: returned frame idx=0 (1 available)
+[FrameSource] ReleaseFrame: Released frame 0x74f23980 from channel 0
+[Encoder] encoder_update: Released frame 0x74f23980 back to its source channel 0
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x74e5c980
+[Codec] Process: frame=0x74e5c980, extracting metadata
+[Codec] Process: SW encode frame 640x360
+[HW_Encoder] Software encoding: P frame 31, total=36 bytes
+[Codec] Process: encoded and queued stream, length=36
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=1, frame=0x74e5c980
+[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[VBM] ReleaseFrame: returned frame idx=0 (1 available)
+[FrameSource] ReleaseFrame: Released frame 0x74e5c980 from channel 1
+[Encoder] encoder_update: Released frame 0x74e5c980 back to its source channel 1
+[Codec] GetStream: got stream 0x74e5dff0
+[Encoder] stream_thread: got stream 0x74e5dff0
+[Codec] ReleaseStream: freed software-encoded data at 0x74e58a70
+[Codec] ReleaseStream: freed stream 0x74e5dff0
+[Encoder] stream_thread: dropped frame because previous stream not yet released
+[Codec] GetStream: got stream 0x74e5e040
+[Encoder] stream_thread: got stream 0x74e5e040
+[Codec] ReleaseStream: freed software-encoded data at 0x74d2f0f0
+[Codec] ReleaseStream: freed stream 0x74e5e040
+[Encoder] stream_thread: dropped frame because previous stream not yet released
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x74f23980
+[Codec] Process: frame=0x74f23980, extracting metadata
+[Codec] Process: SW encode frame 1920x1080
+[HW_Encoder] Software encoding: P frame 32, total=37 bytes
+[Codec] Process: encoded and queued stream, length=37
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=0, frame=0x74f23980
+[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[VBM] ReleaseFrame: returned frame idx=0 (1 available)
+[FrameSource] ReleaseFrame: Released frame 0x74f23980 from channel 0
+[Encoder] encoder_update: Released frame 0x74f23980 back to its source channel 0
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x74e5c980
+[Codec] Process: frame=0x74e5c980, extracting metadata
+[Codec] Process: SW encode frame 640x360
+[HW_Encoder] Software encoding: P frame 33, total=36 bytes
+[Codec] Process: encoded and queued stream, length=36
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=1, frame=0x74e5c980
+[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[VBM] ReleaseFrame: returned frame idx=0 (1 available)
+[FrameSource] ReleaseFrame: Released frame 0x74e5c980 from channel 1
+[Encoder] encoder_update: Released frame 0x74e5c980 back to its source channel 1
+[Codec] GetStream: got stream 0x74e5dff0
+[Encoder] stream_thread: got stream 0x74e5dff0
+[Codec] ReleaseStream: freed software-encoded data at 0x74e58a80
+[Codec] ReleaseStream: freed stream 0x74e5dff0
+[Encoder] stream_thread: dropped frame because previous stream not yet released
+[Codec] GetStream: got stream 0x74e5e040
+[Encoder] stream_thread: got stream 0x74e5e040
+[Codec] ReleaseStream: freed software-encoded data at 0x74d2f100
+[Codec] ReleaseStream: freed stream 0x74e5e040
+[Encoder] stream_thread: dropped frame because previous stream not yet released
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x74e5c980
+[Codec] Process: frame=0x74e5c980, extracting metadata
+[Codec] Process: SW encode frame 640x360
+[HW_Encoder] Software encoding: P frame 34, total=36 bytes
+[Codec] Process: encoded and queued stream, length=36
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=1, frame=0x74e5c980
+[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[VBM] ReleaseFrame: returned frame idx=0 (1 available)
+[FrameSource] ReleaseFrame: Released frame 0x74e5c980 from channel 1
+[Encoder] encoder_update: Released frame 0x74e5c980 back to its source channel 1
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x74f23980
+[Codec] Process: frame=0x74f23980, extracting metadata
+[Codec] Process: SW encode frame 1920x1080
+[HW_Encoder] Software encoding: P frame 35, total=37 bytes
+[Codec] Process: encoded and queued stream, length=37
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=0, frame=0x74f23980
+[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[VBM] ReleaseFrame: returned frame idx=0 (1 available)
+[FrameSource] ReleaseFrame: Released frame 0x74f23980 from channel 0
+[Encoder] encoder_update: Released frame 0x74f23980 back to its source channel 0
+[Codec] GetStream: got stream 0x74e5dff0
+[Encoder] stream_thread: got stream 0x74e5dff0
+[Codec] ReleaseStream: freed software-encoded data at 0x74e58a90
+[Codec] ReleaseStream: freed stream 0x74e5dff0
+[Encoder] stream_thread: dropped frame because previous stream not yet released
+[Codec] GetStream: got stream 0x74e5e040
+[Encoder] stream_thread: got stream 0x74e5e040
+[Codec] ReleaseStream: freed software-encoded data at 0x74d2f110
+[Codec] ReleaseStream: freed stream 0x74e5e040
+[Encoder] stream_thread: dropped frame because previous stream not yet released
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x74f23980
+[Codec] Process: frame=0x74f23980, extracting metadata
+[Codec] Process: SW encode frame 1920x1080
+[HW_Encoder] Software encoding: P frame 36, total=37 bytes
+[Codec] Process: encoded and queued stream, length=37
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=0, frame=0x74f23980
+[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[VBM] ReleaseFrame: returned frame idx=0 (1 available)
+[FrameSource] ReleaseFrame: Released frame 0x74f23980 from channel 0
+[Encoder] encoder_update: Released frame 0x74f23980 back to its source channel 0
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x74e5c980
+[Codec] Process: frame=0x74e5c980, extracting metadata
+[Codec] Process: SW encode frame 640x360
+[HW_Encoder] Software encoding: P frame 37, total=36 bytes
+[Codec] Process: encoded and queued stream, length=36
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=1, frame=0x74e5c980
+[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[VBM] ReleaseFrame: returned frame idx=0 (1 available)
+[FrameSource] ReleaseFrame: Released frame 0x74e5c980 from channel 1
+[Encoder] encoder_update: Released frame 0x74e5c980 back to its source channel 1
+[Codec] GetStream: got stream 0x74e5dff0
+[Encoder] stream_thread: got stream 0x74e5dff0
+[Codec] ReleaseStream: freed software-encoded data at 0x74e58aa0
+[Codec] ReleaseStream: freed stream 0x74e5dff0
+[Encoder] stream_thread: dropped frame because previous stream not yet released
+[Codec] GetStream: got stream 0x74e5e040
+[Encoder] stream_thread: got stream 0x74e5e040
+[Codec] ReleaseStream: freed software-encoded data at 0x74d2f120
+[Codec] ReleaseStream: freed stream 0x74e5e040
+[Encoder] stream_thread: dropped frame because previous stream not yet released
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x74f23980
+[Codec] Process: frame=0x74f23980, extracting metadata
+[Codec] Process: SW encode frame 1920x1080
+[HW_Encoder] Software encoding: P frame 38, total=37 bytes
+[Codec] Process: encoded and queued stream, length=37
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=0, frame=0x74f23980
+[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[VBM] ReleaseFrame: returned frame idx=0 (1 available)
+[FrameSource] ReleaseFrame: Released frame 0x74f23980 from channel 0
+[Encoder] encoder_update: Released frame 0x74f23980 back to its source channel 0
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x74e5c980
+[Codec] Process: frame=0x74e5c980, extracting metadata
+[Codec] Process: SW encode frame 640x360
+[HW_Encoder] Software encoding: P frame 39, total=36 bytes
+[Codec] Process: encoded and queued stream, length=36
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=1, frame=0x74e5c980
+[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[VBM] ReleaseFrame: returned frame idx=0 (1 available)
+[FrameSource] ReleaseFrame: Released frame 0x74e5c980 from channel 1
+[Encoder] encoder_update: Released frame 0x74e5c980 back to its source channel 1
+[Codec] GetStream: got stream 0x74e5dff0
+[Encoder] stream_thread: got stream 0x74e5dff0
+[Codec] ReleaseStream: freed software-encoded data at 0x74e58ab0
+[Codec] ReleaseStream: freed stream 0x74e5dff0
+[Encoder] stream_thread: dropped frame because previous stream not yet released
+[Codec] GetStream: got stream 0x74e5e040
+[Encoder] stream_thread: got stream 0x74e5e040
+[Codec] ReleaseStream: freed software-encoded data at 0x74d2f130
+[Codec] ReleaseStream: freed stream 0x74e5e040
+[Encoder] stream_thread: dropped frame because previous stream not yet released
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x74f23980
+[Codec] Process: frame=0x74f23980, extracting metadata
+[Codec] Process: SW encode frame 1920x1080
+[HW_Encoder] Software encoding: P frame 40, total=37 bytes
+[Codec] Process: encoded and queued stream, length=37
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=0, frame=0x74f23980
+[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[VBM] ReleaseFrame: returned frame idx=0 (1 available)
+[FrameSource] ReleaseFrame: Released frame 0x74f23980 from channel 0
+[Encoder] encoder_update: Released frame 0x74f23980 back to its source channel 0
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x74e5c980
+[Codec] Process: frame=0x74e5c980, extracting metadata
+[Codec] Process: SW encode frame 640x360
+[HW_Encoder] Software encoding: P frame 41, total=36 bytes
+[Codec] Process: encoded and queued stream, length=36
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=1, frame=0x74e5c980
+[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[VBM] ReleaseFrame: returned frame idx=0 (1 available)
+[FrameSource] ReleaseFrame: Released frame 0x74e5c980 from channel 1
+[Encoder] encoder_update: Released frame 0x74e5c980 back to its source channel 1
+[Codec] GetStream: got stream 0x74e5dff0
+[Encoder] stream_thread: got stream 0x74e5dff0
+[Codec] ReleaseStream: freed software-encoded data at 0x74e58ac0
+[Codec] ReleaseStream: freed stream 0x74e5dff0
+[Encoder] stream_thread: dropped frame because previous stream not yet released
+[Codec] GetStream: got stream 0x74e5e040
+[Encoder] stream_thread: got stream 0x74e5e040
+[Codec] ReleaseStream: freed software-encoded data at 0x74d2f140
+[Codec] ReleaseStream: freed stream 0x74e5e040
+[Encoder] stream_thread: dropped frame because previous stream not yet released
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x74f23980
+[Codec] Process: frame=0x74f23980, extracting metadata
+[Codec] Process: SW encode frame 1920x1080
+[HW_Encoder] Software encoding: P frame 42, total=37 bytes
+[Codec] Process: encoded and queued stream, length=37
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=0, frame=0x74f23980
+[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[VBM] ReleaseFrame: returned frame idx=0 (1 available)
+[FrameSource] ReleaseFrame: Released frame 0x74f23980 from channel 0
+[Encoder] encoder_update: Released frame 0x74f23980 back to its source channel 0
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x74e5c980
+[Codec] Process: frame=0x74e5c980, extracting metadata
+[Codec] Process: SW encode frame 640x360
+[HW_Encoder] Software encoding: P frame 43, total=36 bytes
+[Codec] Process: encoded and queued stream, length=36
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=1, frame=0x74e5c980
+[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[VBM] ReleaseFrame: returned frame idx=0 (1 available)
+[FrameSource] ReleaseFrame: Released frame 0x74e5c980 from channel 1
+[Encoder] encoder_update: Released frame 0x74e5c980 back to its source channel 1
+[Codec] GetStream: got stream 0x74e5dff0
+[Encoder] stream_thread: got stream 0x74e5dff0
+[Codec] ReleaseStream: freed software-encoded data at 0x74e58ad0
+[Codec] ReleaseStream: freed stream 0x74e5dff0
+[Encoder] stream_thread: dropped frame because previous stream not yet released
+[Codec] GetStream: got stream 0x74e5e040
+[Encoder] stream_thread: got stream 0x74e5e040
+[Codec] ReleaseStream: freed software-encoded data at 0x74d2f150
+[Codec] ReleaseStream: freed stream 0x74e5e040
+[Encoder] stream_thread: dropped frame because previous stream not yet released
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x74f23980
+[Codec] Process: frame=0x74f23980, extracting metadata
+[Codec] Process: SW encode frame 1920x1080
+[HW_Encoder] Software encoding: P frame 44, total=37 bytes
+[Codec] Process: encoded and queued stream, length=37
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=0, frame=0x74f23980
+[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[VBM] ReleaseFrame: returned frame idx=0 (1 available)
+[FrameSource] ReleaseFrame: Released frame 0x74f23980 from channel 0
+[Encoder] encoder_update: Released frame 0x74f23980 back to its source channel 0
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x74e5c980
+[Codec] Process: frame=0x74e5c980, extracting metadata
+[Codec] Process: SW encode frame 640x360
+[HW_Encoder] Software encoding: P frame 45, total=36 bytes
+[Codec] Process: encoded and queued stream, length=36
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=1, frame=0x74e5c980
+[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[VBM] ReleaseFrame: returned frame idx=0 (1 available)
+[FrameSource] ReleaseFrame: Released frame 0x74e5c980 from channel 1
+[Encoder] encoder_update: Released frame 0x74e5c980 back to its source channel 1
+[Codec] GetStream: got stream 0x74e5dff0
+[Encoder] stream_thread: got stream 0x74e5dff0
+[Codec] ReleaseStream: freed software-encoded data at 0x74e58ae0
+[Codec] ReleaseStream: freed stream 0x74e5dff0
+[Encoder] stream_thread: dropped frame because previous stream not yet released
+[Codec] GetStream: got stream 0x74e5e040
+[Encoder] stream_thread: got stream 0x74e5e040
+[Codec] ReleaseStream: freed software-encoded data at 0x74d2f160
+[Codec] ReleaseStream: freed stream 0x74e5e040
+[Encoder] stream_thread: dropped frame because previous stream not yet released
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x74f23980
+[Codec] Process: frame=0x74f23980, extracting metadata
+[Codec] Process: SW encode frame 1920x1080
+[HW_Encoder] Software encoding: P frame 46, total=37 bytes
+[Codec] Process: encoded and queued stream, length=37
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=0, frame=0x74f23980
+[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[VBM] ReleaseFrame: returned frame idx=0 (1 available)
+[FrameSource] ReleaseFrame: Released frame 0x74f23980 from channel 0
+[Encoder] encoder_update: Released frame 0x74f23980 back to its source channel 0
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x74e5c980
+[Codec] Process: frame=0x74e5c980, extracting metadata
+[Codec] Process: SW encode frame 640x360
+[HW_Encoder] Software encoding: P frame 47, total=36 bytes
+[Codec] Process: encoded and queued stream, length=36
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=1, frame=0x74e5c980
+[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[VBM] ReleaseFrame: returned frame idx=0 (1 available)
+[FrameSource] ReleaseFrame: Released frame 0x74e5c980 from channel 1
+[Encoder] encoder_update: Released frame 0x74e5c980 back to its source channel 1
+[Codec] GetStream: got stream 0x74e5dff0
+[Encoder] stream_thread: got stream 0x74e5dff0
+[Codec] ReleaseStream: freed software-encoded data at 0x74e58af0
+[Codec] ReleaseStream: freed stream 0x74e5dff0
+[Encoder] stream_thread: dropped frame because previous stream not yet released
+[Codec] GetStream: got stream 0x74e5e040
+[Encoder] stream_thread: got stream 0x74e5e040
+[Codec] ReleaseStream: freed software-encoded data at 0x74d2f170
+[Codec] ReleaseStream: freed stream 0x74e5e040
+[Encoder] stream_thread: dropped frame because previous stream not yet released
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x74f23980
+[Codec] Process: frame=0x74f23980, extracting metadata
+[Codec] Process: SW encode frame 1920x1080
+[HW_Encoder] Software encoding: P frame 48, total=37 bytes
+[Codec] Process: encoded and queued stream, length=37
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=0, frame=0x74f23980
+[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[VBM] ReleaseFrame: returned frame idx=0 (1 available)
+[FrameSource] ReleaseFrame: Released frame 0x74f23980 from channel 0
+[Encoder] encoder_update: Released frame 0x74f23980 back to its source channel 0
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x74e5c980
+[Codec] Process: frame=0x74e5c980, extracting metadata
+[Codec] Process: SW encode frame 640x360
+[HW_Encoder] Software encoding: P frame 49, total=36 bytes
+[Codec] Process: encoded and queued stream, length=36
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=1, frame=0x74e5c980
+[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[VBM] ReleaseFrame: returned frame idx=0 (1 available)
+[FrameSource] ReleaseFrame: Released frame 0x74e5c980 from channel 1
+[Encoder] encoder_update: Released frame 0x74e5c980 back to its source channel 1
+[Codec] GetStream: got stream 0x74e5dff0
+[Encoder] stream_thread: got stream 0x74e5dff0
+[Codec] ReleaseStream: freed software-encoded data at 0x74e58b00
+[Codec] ReleaseStream: freed stream 0x74e5dff0
+[Encoder] stream_thread: dropped frame because previous stream not yet released
+[Codec] GetStream: got stream 0x74e5e040
+[Encoder] stream_thread: got stream 0x74e5e040
+[Codec] ReleaseStream: freed software-encoded data at 0x74d2f180
+[Codec] ReleaseStream: freed stream 0x74e5e040
+[Encoder] stream_thread: dropped frame because previous stream not yet released
+[DEBUG:VideoWorker.cpp]: IMP_Encoder_PollingStream(0) returned -1 (timeout or error)
+[DEBUG:VideoWorker.cpp]: IMP_Encoder_PollingStream(1) returned -1 (timeout or error)
+[DEBUG:RTSP.cpp]: Still waiting for NAL units from stream 0 (have_sps=0 have_pps=0 have_vps=0) - 1s elapsed
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x74f23980
+[Codec] Process: frame=0x74f23980, extracting metadata
+[Codec] Process: SW encode frame 1920x1080
+[HW_Encoder] Software encoding: P frame 50, total=37 bytes
+[Codec] Process: encoded and queued stream, length=37
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=0, frame=0x74f23980
+[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[VBM] ReleaseFrame: returned frame idx=0 (1 available)
+[FrameSource] ReleaseFrame: Released frame 0x74f23980 from channel 0
+[Encoder] encoder_update: Released frame 0x74f23980 back to its source channel 0
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x74e5c980
+[Codec] Process: frame=0x74e5c980, extracting metadata
+[Codec] Process: SW encode frame 640x360
+[HW_Encoder] Software encoding: P frame 51, total=36 bytes
+[Codec] Process: encoded and queued stream, length=36
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=1, frame=0x74e5c980
+[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[VBM] ReleaseFrame: returned frame idx=0 (1 available)
+[FrameSource] ReleaseFrame: Released frame 0x74e5c980 from channel 1
+[Encoder] encoder_update: Released frame 0x74e5c980 back to its source channel 1
+[Codec] GetStream: got stream 0x74e5e090
+[Encoder] stream_thread: got stream 0x74e5e090
+[Codec] ReleaseStream: freed software-encoded data at 0x74e58b10
+[Codec] ReleaseStream: freed stream 0x74e5e090
+[Encoder] stream_thread: dropped frame because previous stream not yet released
+[Codec] GetStream: got stream 0x74e5e0e0
+[Encoder] stream_thread: got stream 0x74e5e0e0
+[Codec] ReleaseStream: freed software-encoded data at 0x74d2f190
+[Codec] ReleaseStream: freed stream 0x74e5e0e0
+[Encoder] stream_thread: dropped frame because previous stream not yet released
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x74f23980
+[Codec] Process: frame=0x74f23980, extracting metadata
+[Codec] Process: SW encode frame 1920x1080
+[HW_Encoder] Software encoding: P frame 52, total=37 bytes
+[Codec] Process: encoded and queued stream, length=37
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=0, frame=0x74f23980
+[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[VBM] ReleaseFrame: returned frame idx=0 (1 available)
+[FrameSource] ReleaseFrame: Released frame 0x74f23980 from channel 0
+[Encoder] encoder_update: Released frame 0x74f23980 back to its source channel 0
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x74e5c980
+[Codec] Process: frame=0x74e5c980, extracting metadata
+[Codec] Process: SW encode frame 640x360
+[HW_Encoder] Software encoding: P frame 53, total=36 bytes
+[Codec] Process: encoded and queued stream, length=36
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=1, frame=0x74e5c980
+[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[VBM] ReleaseFrame: returned frame idx=0 (1 available)
+[FrameSource] ReleaseFrame: Released frame 0x74e5c980 from channel 1
+[Encoder] encoder_update: Released frame 0x74e5c980 back to its source channel 1
+[Codec] GetStream: got stream 0x74e5dff0
+[Encoder] stream_thread: got stream 0x74e5dff0
+[Codec] ReleaseStream: freed software-encoded data at 0x74e58b20
+[Codec] ReleaseStream: freed stream 0x74e5dff0
+[Encoder] stream_thread: dropped frame because previous stream not yet released
+[Codec] GetStream: got stream 0x74e5e040
+[Encoder] stream_thread: got stream 0x74e5e040
+[Codec] ReleaseStream: freed software-encoded data at 0x74d2f1a0
+[Codec] ReleaseStream: freed stream 0x74e5e040
+[Encoder] stream_thread: dropped frame because previous stream not yet released
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x74f23980
+[Codec] Process: frame=0x74f23980, extracting metadata
+[Codec] Process: SW encode frame 1920x1080
+[HW_Encoder] Software encoding: P frame 54, total=37 bytes
+[Codec] Process: encoded and queued stream, length=37
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=0, frame=0x74f23980
+[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[VBM] ReleaseFrame: returned frame idx=0 (1 available)
+[FrameSource] ReleaseFrame: Released frame 0x74f23980 from channel 0
+[Encoder] encoder_update: Released frame 0x74f23980 back to its source channel 0
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x74e5c980
+[Codec] Process: frame=0x74e5c980, extracting metadata
+[Codec] Process: SW encode frame 640x360
+[HW_Encoder] Software encoding: P frame 55, total=36 bytes
+[Codec] Process: encoded and queued stream, length=36
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=1, frame=0x74e5c980
+[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[VBM] ReleaseFrame: returned frame idx=0 (1 available)
+[FrameSource] ReleaseFrame: Released frame 0x74e5c980 from channel 1
+[Encoder] encoder_update: Released frame 0x74e5c980 back to its source channel 1
+[Codec] GetStream: got stream 0x74e5dff0
+[Encoder] stream_thread: got stream 0x74e5dff0
+[Codec] ReleaseStream: freed software-encoded data at 0x74e58b30
+[Codec] ReleaseStream: freed stream 0x74e5dff0
+[Encoder] stream_thread: dropped frame because previous stream not yet released
+[Codec] GetStream: got stream 0x74e5e040
+[Encoder] stream_thread: got stream 0x74e5e040
+[Codec] ReleaseStream: freed software-encoded data at 0x74d2f1b0
+[Codec] ReleaseStream: freed stream 0x74e5e040
+[Encoder] stream_thread: dropped frame because previous stream not yet released
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x74f23980
+[Codec] Process: frame=0x74f23980, extracting metadata
+[Codec] Process: SW encode frame 1920x1080
+[HW_Encoder] Software encoding: P frame 56, total=37 bytes
+[Codec] Process: encoded and queued stream, length=37
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=0, frame=0x74f23980
+[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[VBM] ReleaseFrame: returned frame idx=0 (1 available)
+[FrameSource] ReleaseFrame: Released frame 0x74f23980 from channel 0
+[Encoder] encoder_update: Released frame 0x74f23980 back to its source channel 0
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x74e5c980
+[Codec] Process: frame=0x74e5c980, extracting metadata
+[Codec] Process: SW encode frame 640x360
+[HW_Encoder] Software encoding: P frame 57, total=36 bytes
+[Codec] Process: encoded and queued stream, length=36
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=1, frame=0x74e5c980
+[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[VBM] ReleaseFrame: returned frame idx=0 (1 available)
+[FrameSource] ReleaseFrame: Released frame 0x74e5c980 from channel 1
+[Encoder] encoder_update: Released frame 0x74e5c980 back to its source channel 1
+[Codec] GetStream: got stream 0x74e5dff0
+[Encoder] stream_thread: got stream 0x74e5dff0
+[Codec] ReleaseStream: freed software-encoded data at 0x74e58b40
+[Codec] ReleaseStream: freed stream 0x74e5dff0
+[Encoder] stream_thread: dropped frame because previous stream not yet released
+[Codec] GetStream: got stream 0x74e5e040
+[Encoder] stream_thread: got stream 0x74e5e040
+[Codec] ReleaseStream: freed software-encoded data at 0x74d2f1c0
+[Codec] ReleaseStream: freed stream 0x74e5e040
+[Encoder] stream_thread: dropped frame because previous stream not yet released
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x74f23980
+[Codec] Process: frame=0x74f23980, extracting metadata
+[Codec] Process: SW encode frame 1920x1080
+[HW_Encoder] Software encoding: P frame 58, total=37 bytes
+[Codec] Process: encoded and queued stream, length=37
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=0, frame=0x74f23980
+[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[VBM] ReleaseFrame: returned frame idx=0 (1 available)
+[FrameSource] ReleaseFrame: Released frame 0x74f23980 from channel 0
+[Encoder] encoder_update: Released frame 0x74f23980 back to its source channel 0
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x74e5c980
+[Codec] Process: frame=0x74e5c980, extracting metadata
+[Codec] Process: SW encode frame 640x360
+[HW_Encoder] Software encoding: P frame 59, total=36 bytes
+[Codec] Process: encoded and queued stream, length=36
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=1, frame=0x74e5c980
+[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[VBM] ReleaseFrame: returned frame idx=0 (1 available)
+[FrameSource] ReleaseFrame: Released frame 0x74e5c980 from channel 1
+[Encoder] encoder_update: Released frame 0x74e5c980 back to its source channel 1
+[Codec] GetStream: got stream 0x74e5dff0
+[Encoder] stream_thread: got stream 0x74e5dff0
+[Codec] ReleaseStream: freed software-encoded data at 0x74e58b50
+[Codec] ReleaseStream: freed stream 0x74e5dff0
+[Encoder] stream_thread: dropped frame because previous stream not yet released
+[Codec] GetStream: got stream 0x74e5e040
+[Encoder] stream_thread: got stream 0x74e5e040
+[Codec] ReleaseStream: freed software-encoded data at 0x74d2f1d0
+[Codec] ReleaseStream: freed stream 0x74e5e040
+[Encoder] stream_thread: dropped frame because previous stream not yet released
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x74f23980
+[Codec] Process: frame=0x74f23980, extracting metadata
+[Codec] Process: SW encode frame 1920x1080
+[HW_Encoder] Software encoding: IDR frame 60, total=93 bytes
+[Codec] Process: encoded and queued stream, length=93
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=0, frame=0x74f23980
+[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[VBM] ReleaseFrame: returned frame idx=0 (1 available)
+[FrameSource] ReleaseFrame: Released frame 0x74f23980 from channel 0
+[Encoder] encoder_update: Released frame 0x74f23980 back to its source channel 0
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x74e5c980
+[Codec] Process: frame=0x74e5c980, extracting metadata
+[Codec] Process: SW encode frame 640x360
+[HW_Encoder] Software encoding: P frame 61, total=36 bytes
+[Codec] Process: encoded and queued stream, length=36
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=1, frame=0x74e5c980
+[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[VBM] ReleaseFrame: returned frame idx=0 (1 available)
+[FrameSource] ReleaseFrame: Released frame 0x74e5c980 from channel 1
+[Encoder] encoder_update: Released frame 0x74e5c980 back to its source channel 1
+[Codec] GetStream: got stream 0x74e5dff0
+[Encoder] stream_thread: got stream 0x74e5dff0
+[Codec] ReleaseStream: freed software-encoded data at 0x74e58b60
+[Codec] ReleaseStream: freed stream 0x74e5dff0
+[Encoder] stream_thread: dropped frame because previous stream not yet released
+[Codec] GetStream: got stream 0x74e5e040
+[Encoder] stream_thread: got stream 0x74e5e040
+[Codec] ReleaseStream: freed software-encoded data at 0x74d2f1e0
+[Codec] ReleaseStream: freed stream 0x74e5e040
+[Encoder] stream_thread: dropped frame because previous stream not yet released
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x74f23980
+[Codec] Process: frame=0x74f23980, extracting metadata
+[Codec] Process: SW encode frame 1920x1080
+[HW_Encoder] Software encoding: P frame 62, total=37 bytes
+[Codec] Process: encoded and queued stream, length=37
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=0, frame=0x74f23980
+[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[VBM] ReleaseFrame: returned frame idx=0 (1 available)
+[FrameSource] ReleaseFrame: Released frame 0x74f23980 from channel 0
+[Encoder] encoder_update: Released frame 0x74f23980 back to its source channel 0
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x74e5c980
+[Codec] Process: frame=0x74e5c980, extracting metadata
+[Codec] Process: SW encode frame 640x360
+[HW_Encoder] Software encoding: P frame 63, total=36 bytes
+[Codec] Process: encoded and queued stream, length=36
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=1, frame=0x74e5c980
+[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[VBM] ReleaseFrame: returned frame idx=0 (1 available)
+[FrameSource] ReleaseFrame: Released frame 0x74e5c980 from channel 1
+[Encoder] encoder_update: Released frame 0x74e5c980 back to its source channel 1
+[Codec] GetStream: got stream 0x74e5dff0
+[Encoder] stream_thread: got stream 0x74e5dff0
+[Codec] ReleaseStream: freed software-encoded data at 0x74e58b70
+[Codec] ReleaseStream: freed stream 0x74e5dff0
+[Encoder] stream_thread: dropped frame because previous stream not yet released
+[Codec] GetStream: got stream 0x74e5e040
+[Encoder] stream_thread: got stream 0x74e5e040
+[Codec] ReleaseStream: freed software-encoded data at 0x74d2f1f0
+[Codec] ReleaseStream: freed stream 0x74e5e040
+[Encoder] stream_thread: dropped frame because previous stream not yet released
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x74f23980
+[Codec] Process: frame=0x74f23980, extracting metadata
+[Codec] Process: SW encode frame 1920x1080
+[HW_Encoder] Software encoding: P frame 64, total=37 bytes
+[Codec] Process: encoded and queued stream, length=37
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=0, frame=0x74f23980
+[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[VBM] ReleaseFrame: returned frame idx=0 (1 available)
+[FrameSource] ReleaseFrame: Released frame 0x74f23980 from channel 0
+[Encoder] encoder_update: Released frame 0x74f23980 back to its source channel 0
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x74e5c980
+[Codec] Process: frame=0x74e5c980, extracting metadata
+[Codec] Process: SW encode frame 640x360
+[HW_Encoder] Software encoding: P frame 65, total=36 bytes
+[Codec] Process: encoded and queued stream, length=36
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=1, frame=0x74e5c980
+[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[VBM] ReleaseFrame: returned frame idx=0 (1 available)
+[FrameSource] ReleaseFrame: Released frame 0x74e5c980 from channel 1
+[Encoder] encoder_update: Released frame 0x74e5c980 back to its source channel 1
+[Codec] GetStream: got stream 0x74e5dff0
+[Encoder] stream_thread: got stream 0x74e5dff0
+[Codec] ReleaseStream: freed software-encoded data at 0x74e58b80
+[Codec] ReleaseStream: freed stream 0x74e5dff0
+[Encoder] stream_thread: dropped frame because previous stream not yet released
+[Codec] GetStream: got stream 0x74e5e040
+[Encoder] stream_thread: got stream 0x74e5e040
+[Codec] ReleaseStream: freed software-encoded data at 0x74d2f200
+[Codec] ReleaseStream: freed stream 0x74e5e040
+[Encoder] stream_thread: dropped frame because previous stream not yet released
+[DEBUG:OSD.cpp]: OSD Text Alpha - Text: 255, Stroke: 255
+[OSD] UpdateRgnAttrData: handle=0 (count=1)
+[DEBUG:OSD.cpp]: OSD Text Alpha - Text: 255, Stroke: 255
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x74f23980
+[Codec] Process: frame=0x74f23980, extracting metadata
+[Codec] Process: SW encode frame 1920x1080
+[HW_Encoder] Software encoding: P frame 66, total=37 bytes
+[Codec] Process: encoded and queued stream, length=37
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=0, frame=0x74f23980
+[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[VBM] ReleaseFrame: returned frame idx=0 (1 available)
+[FrameSource] ReleaseFrame: Released frame 0x74f23980 from channel 0
+[Encoder] encoder_update: Released frame 0x74f23980 back to its source channel 0
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x74e5c980
+[Codec] Process: frame=0x74e5c980, extracting metadata
+[Codec] Process: SW encode frame 640x360
+[HW_Encoder] Software encoding: P frame 67, total=36 bytes
+[Codec] Process: encoded and queued stream, length=36
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=1, frame=0x74e5c980
+[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[VBM] ReleaseFrame: returned frame idx=0 (1 available)
+[FrameSource] ReleaseFrame: Released frame 0x74e5c980 from channel 1
+[Encoder] encoder_update: Released frame 0x74e5c980 back to its source channel 1
+[Codec] GetStream: got stream 0x74e5e090
+[Encoder] stream_thread: got stream 0x74e5e090
+[Codec] ReleaseStream: freed software-encoded data at 0x74e58b90
+[Codec] ReleaseStream: freed stream 0x74e5e090
+[Encoder] stream_thread: dropped frame because previous stream not yet released
+[Codec] GetStream: got stream 0x74e5e0e0
+[Encoder] stream_thread: got stream 0x74e5e0e0
+[Codec] ReleaseStream: freed software-encoded data at 0x74d2f230
+[Codec] ReleaseStream: freed stream 0x74e5e0e0
+[Encoder] stream_thread: dropped frame because previous stream not yet released
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x74f23980
+[Codec] Process: frame=0x74f23980, extracting metadata
+[Codec] Process: SW encode frame 1920x1080
+[HW_Encoder] Software encoding: P frame 68, total=37 bytes
+[Codec] Process: encoded and queued stream, length=37
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=0, frame=0x74f23980
+[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[VBM] ReleaseFrame: returned frame idx=0 (1 available)
+[FrameSource] ReleaseFrame: Released frame 0x74f23980 from channel 0
+[Encoder] encoder_update: Released frame 0x74f23980 back to its source channel 0
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x74e5c980
+[Codec] Process: frame=0x74e5c980, extracting metadata
+[Codec] Process: SW encode frame 640x360
+[HW_Encoder] Software encoding: P frame 69, total=36 bytes
+[Codec] Process: encoded and queued stream, length=36
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=1, frame=0x74e5c980
+[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[VBM] ReleaseFrame: returned frame idx=0 (1 available)
+[FrameSource] ReleaseFrame: Released frame 0x74e5c980 from channel 1
+[Encoder] encoder_update: Released frame 0x74e5c980 back to its source channel 1
+[Codec] GetStream: got stream 0x74e5dff0
+[Encoder] stream_thread: got stream 0x74e5dff0
+[Codec] ReleaseStream: freed software-encoded data at 0x74e58ba0
+[Codec] ReleaseStream: freed stream 0x74e5dff0
+[Encoder] stream_thread: dropped frame because previous stream not yet released
+[Codec] GetStream: got stream 0x74e5e040
+[Encoder] stream_thread: got stream 0x74e5e040
+[Codec] ReleaseStream: freed software-encoded data at 0x74d2f240
+[Codec] ReleaseStream: freed stream 0x74e5e040
+[Encoder] stream_thread: dropped frame because previous stream not yet released
+[DEBUG:OSD.cpp]: OSD Text Alpha - Text: 255, Stroke: 255
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x74f23980
+[Codec] Process: frame=0x74f23980, extracting metadata
+[Codec] Process: SW encode frame 1920x1080
+[HW_Encoder] Software encoding: P frame 70, total=37 bytes
+[Codec] Process: encoded and queued stream, length=37
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=0, frame=0x74f23980
+[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[VBM] ReleaseFrame: returned frame idx=0 (1 available)
+[FrameSource] ReleaseFrame: Released frame 0x74f23980 from channel 0
+[Encoder] encoder_update: Released frame 0x74f23980 back to its source channel 0
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x74e5c980
+[Codec] Process: frame=0x74e5c980, extracting metadata
+[Codec] Process: SW encode frame 640x360
+[HW_Encoder] Software encoding: P frame 71, total=36 bytes
+[Codec] Process: encoded and queued stream, length=36
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=1, frame=0x74e5c980
+[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[VBM] ReleaseFrame: returned frame idx=0 (1 available)
+[FrameSource] ReleaseFrame: Released frame 0x74e5c980 from channel 1
+[Encoder] encoder_update: Released frame 0x74e5c980 back to its source channel 1
+[Codec] GetStream: got stream 0x74e5e040
+[Encoder] stream_thread: got stream 0x74e5e040
+[Codec] ReleaseStream: freed software-encoded data at 0x74e58bb0
+[Codec] ReleaseStream: freed stream 0x74e5e040
+[Encoder] stream_thread: dropped frame because previous stream not yet released
+[Codec] GetStream: got stream 0x74e5e090
+[Encoder] stream_thread: got stream 0x74e5e090
+[Codec] ReleaseStream: freed software-encoded data at 0x74d2f260
+[Codec] ReleaseStream: freed stream 0x74e5e090
+[Encoder] stream_thread: dropped frame because previous stream not yet released
+[DEBUG:OSD.cpp]: OSD Text Alpha - Text: 255, Stroke: 255
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x74f23980
+[Codec] Process: frame=0x74f23980, extracting metadata
+[Codec] Process: SW encode frame 1920x1080
+[HW_Encoder] Software encoding: P frame 72, total=37 bytes
+[Codec] Process: encoded and queued stream, length=37
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=0, frame=0x74f23980
+[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[VBM] ReleaseFrame: returned frame idx=0 (1 available)
+[FrameSource] ReleaseFrame: Released frame 0x74f23980 from channel 0
+[Encoder] encoder_update: Released frame 0x74f23980 back to its source channel 0
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x74e5c980
+[Codec] Process: frame=0x74e5c980, extracting metadata
+[Codec] Process: SW encode frame 640x360
+[HW_Encoder] Software encoding: P frame 73, total=36 bytes
+[Codec] Process: encoded and queued stream, length=36
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=1, frame=0x74e5c980
+[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[VBM] ReleaseFrame: returned frame idx=0 (1 available)
+[FrameSource] ReleaseFrame: Released frame 0x74e5c980 from channel 1
+[Encoder] encoder_update: Released frame 0x74e5c980 back to its source channel 1
+[Codec] GetStream: got stream 0x74e5e0e0
+[Encoder] stream_thread: got stream 0x74e5e0e0
+[Codec] ReleaseStream: freed software-encoded data at 0x74e58bc0
+[Codec] ReleaseStream: freed stream 0x74e5e0e0
+[Encoder] stream_thread: dropped frame because previous stream not yet released
+[Codec] GetStream: got stream 0x74e5dff0
+[Encoder] stream_thread: got stream 0x74e5dff0
+[Codec] ReleaseStream: freed software-encoded data at 0x74d2f280
+[Codec] ReleaseStream: freed stream 0x74e5dff0
+[Encoder] stream_thread: dropped frame because previous stream not yet released
+[DEBUG:VideoWorker.cpp]: IMP_Encoder_PollingStream(0) returned -1 (timeout or error)
+[DEBUG:VideoWorker.cpp]: IMP_Encoder_PollingStream(1) returned -1 (timeout or error)
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x74f23980
+[Codec] Process: frame=0x74f23980, extracting metadata
+[Codec] Process: SW encode frame 1920x1080
+[HW_Encoder] Software encoding: P frame 74, total=37 bytes
+[Codec] Process: encoded and queued stream, length=37
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=0, frame=0x74f23980
+[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[VBM] ReleaseFrame: returned frame idx=0 (1 available)
+[FrameSource] ReleaseFrame: Released frame 0x74f23980 from channel 0
+[Encoder] encoder_update: Released frame 0x74f23980 back to its source channel 0
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x74e5c980
+[Codec] Process: frame=0x74e5c980, extracting metadata
+[Codec] Process: SW encode frame 640x360
+[HW_Encoder] Software encoding: P frame 75, total=36 bytes
+[Codec] Process: encoded and queued stream, length=36
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=1, frame=0x74e5c980
+[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[VBM] ReleaseFrame: returned frame idx=0 (1 available)
+[FrameSource] ReleaseFrame: Released frame 0x74e5c980 from channel 1
+[Encoder] encoder_update: Released frame 0x74e5c980 back to its source channel 1
+[Codec] GetStream: got stream 0x74e5e090
+[Encoder] stream_thread: got stream 0x74e5e090
+[Codec] ReleaseStream: freed software-encoded data at 0x74e58bd0
+[Codec] ReleaseStream: freed stream 0x74e5e090
+[Encoder] stream_thread: dropped frame because previous stream not yet released
+[Codec] GetStream: got stream 0x74e5e0e0
+[Encoder] stream_thread: got stream 0x74e5e0e0
+[Codec] ReleaseStream: freed software-encoded data at 0x74d2f290
+[Codec] ReleaseStream: freed stream 0x74e5e0e0
+[Encoder] stream_thread: dropped frame because previous stream not yet released
+[DEBUG:OSD.cpp]: OSD Text Alpha - Text: 255, Stroke: 255
+[DEBUG:OSD.cpp]: OSD Text Alpha - Text: 255, Stroke: 255
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x74f23980
+[Codec] Process: frame=0x74f23980, extracting metadata
+[Codec] Process: SW encode frame 1920x1080
+[HW_Encoder] Software encoding: P frame 76, total=37 bytes
+[Codec] Process: encoded and queued stream, length=37
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=0, frame=0x74f23980
+[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[VBM] ReleaseFrame: returned frame idx=0 (1 available)
+[FrameSource] ReleaseFrame: Released frame 0x74f23980 from channel 0
+[Encoder] encoder_update: Released frame 0x74f23980 back to its source channel 0
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x74e5c980
+[Codec] Process: frame=0x74e5c980, extracting metadata
+[Codec] Process: SW encode frame 640x360
+[HW_Encoder] Software encoding: P frame 77, total=36 bytes
+[Codec] Process: encoded and queued stream, length=36
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=1, frame=0x74e5c980
+[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[VBM] ReleaseFrame: returned frame idx=0 (1 available)
+[FrameSource] ReleaseFrame: Released frame 0x74e5c980 from channel 1
+[Encoder] encoder_update: Released frame 0x74e5c980 back to its source channel 1
+[Codec] GetStream: got stream 0x74e5e090
+[Encoder] stream_thread: got stream 0x74e5e090
+[Codec] ReleaseStream: freed software-encoded data at 0x74e58be0
+[Codec] ReleaseStream: freed stream 0x74e5e090
+[Encoder] stream_thread: dropped frame because previous stream not yet released
+[Codec] GetStream: got stream 0x74e5e0e0
+[Encoder] stream_thread: got stream 0x74e5e0e0
+[Codec] ReleaseStream: freed software-encoded data at 0x74d2f2c0
+[Codec] ReleaseStream: freed stream 0x74e5e0e0
+[Encoder] stream_thread: dropped frame because previous stream not yet released
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x74f23980
+[Codec] Process: frame=0x74f23980, extracting metadata
+[Codec] Process: SW encode frame 1920x1080
+[HW_Encoder] Software encoding: P frame 78, total=37 bytes
+[Codec] Process: encoded and queued stream, length=37
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=0, frame=0x74f23980
+[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[VBM] ReleaseFrame: returned frame idx=0 (1 available)
+[FrameSource] ReleaseFrame: Released frame 0x74f23980 from channel 0
+[Encoder] encoder_update: Released frame 0x74f23980 back to its source channel 0
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x74e5c980
+[Codec] Process: frame=0x74e5c980, extracting metadata
+[Codec] Process: SW encode frame 640x360
+[HW_Encoder] Software encoding: P frame 79, total=36 bytes
+[Codec] Process: encoded and queued stream, length=36
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=1, frame=0x74e5c980
+[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[VBM] ReleaseFrame: returned frame idx=0 (1 available)
+[FrameSource] ReleaseFrame: Released frame 0x74e5c980 from channel 1
+[Encoder] encoder_update: Released frame 0x74e5c980 back to its source channel 1
+[Codec] GetStream: got stream 0x74e5dff0
+[Encoder] stream_thread: got stream 0x74e5dff0
+[Codec] ReleaseStream: freed software-encoded data at 0x74e58bf0
+[Codec] ReleaseStream: freed stream 0x74e5dff0
+[Encoder] stream_thread: dropped frame because previous stream not yet released
+[Codec] GetStream: got stream 0x74e5e040
+[Encoder] stream_thread: got stream 0x74e5e040
+[Codec] ReleaseStream: freed software-encoded data at 0x74d2f2d0
+[Codec] ReleaseStream: freed stream 0x74e5e040
+[Encoder] stream_thread: dropped frame because previous stream not yet released
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x74f23980
+[Codec] Process: frame=0x74f23980, extracting metadata
+[Codec] Process: SW encode frame 1920x1080
+[HW_Encoder] Software encoding: P frame 80, total=37 bytes
+[Codec] Process: encoded and queued stream, length=37
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=0, frame=0x74f23980
+[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[VBM] ReleaseFrame: returned frame idx=0 (1 available)
+[FrameSource] ReleaseFrame: Released frame 0x74f23980 from channel 0
+[Encoder] encoder_update: Released frame 0x74f23980 back to its source channel 0
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x74e5c980
+[Codec] Process: frame=0x74e5c980, extracting metadata
+[Codec] Process: SW encode frame 640x360
+[HW_Encoder] Software encoding: P frame 81, total=36 bytes
+[Codec] Process: encoded and queued stream, length=36
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=1, frame=0x74e5c980
+[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[VBM] ReleaseFrame: returned frame idx=0 (1 available)
+[FrameSource] ReleaseFrame: Released frame 0x74e5c980 from channel 1
+[Encoder] encoder_update: Released frame 0x74e5c980 back to its source channel 1
+[Codec] GetStream: got stream 0x74e5dff0
+[Encoder] stream_thread: got stream 0x74e5dff0
+[Codec] ReleaseStream: freed software-encoded data at 0x74e58c00
+[Codec] ReleaseStream: freed stream 0x74e5dff0
+[Encoder] stream_thread: dropped frame because previous stream not yet released
+[Codec] GetStream: got stream 0x74e5e040
+[Encoder] stream_thread: got stream 0x74e5e040
+[Codec] ReleaseStream: freed software-encoded data at 0x74d2f2e0
+[Codec] ReleaseStream: freed stream 0x74e5e040
+[Encoder] stream_thread: dropped frame because previous stream not yet released
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x74f23980
+[Codec] Process: frame=0x74f23980, extracting metadata
+[Codec] Process: SW encode frame 1920x1080
+[HW_Encoder] Software encoding: P frame 82, total=37 bytes
+[Codec] Process: encoded and queued stream, length=37
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=0, frame=0x74f23980
+[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[VBM] ReleaseFrame: returned frame idx=0 (1 available)
+[FrameSource] ReleaseFrame: Released frame 0x74f23980 from channel 0
+[Encoder] encoder_update: Released frame 0x74f23980 back to its source channel 0
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x74e5c980
+[Codec] Process: frame=0x74e5c980, extracting metadata
+[Codec] Process: SW encode frame 640x360
+[HW_Encoder] Software encoding: P frame 83, total=36 bytes
+[Codec] Process: encoded and queued stream, length=36
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=1, frame=0x74e5c980
+[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[VBM] ReleaseFrame: returned frame idx=0 (1 available)
+[FrameSource] ReleaseFrame: Released frame 0x74e5c980 from channel 1
+[Encoder] encoder_update: Released frame 0x74e5c980 back to its source channel 1
+[Codec] GetStream: got stream 0x74e5dff0
+[Encoder] stream_thread: got stream 0x74e5dff0
+[Codec] ReleaseStream: freed software-encoded data at 0x74e58c10
+[Codec] ReleaseStream: freed stream 0x74e5dff0
+[Encoder] stream_thread: dropped frame because previous stream not yet released
+[Codec] GetStream: got stream 0x74e5e040
+[Encoder] stream_thread: got stream 0x74e5e040
+[Codec] ReleaseStream: freed software-encoded data at 0x74d2f2f0
+[Codec] ReleaseStream: freed stream 0x74e5e040
+[Encoder] stream_thread: dropped frame because previous stream not yet released
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x74f23980
+[Codec] Process: frame=0x74f23980, extracting metadata
+[Codec] Process: SW encode frame 1920x1080
+[HW_Encoder] Software encoding: P frame 84, total=37 bytes
+[Codec] Process: encoded and queued stream, length=37
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=0, frame=0x74f23980
+[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[VBM] ReleaseFrame: returned frame idx=0 (1 available)
+[FrameSource] ReleaseFrame: Released frame 0x74f23980 from channel 0
+[Encoder] encoder_update: Released frame 0x74f23980 back to its source channel 0
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x74e5c980
+[Codec] Process: frame=0x74e5c980, extracting metadata
+[Codec] Process: SW encode frame 640x360
+[HW_Encoder] Software encoding: P frame 85, total=36 bytes
+[Codec] Process: encoded and queued stream, length=36
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=1, frame=0x74e5c980
+[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[VBM] ReleaseFrame: returned frame idx=0 (1 available)
+[FrameSource] ReleaseFrame: Released frame 0x74e5c980 from channel 1
+[Encoder] encoder_update: Released frame 0x74e5c980 back to its source channel 1
+[Codec] GetStream: got stream 0x74e5dff0
+[Encoder] stream_thread: got stream 0x74e5dff0
+[Codec] ReleaseStream: freed software-encoded data at 0x74e58c20
+[Codec] ReleaseStream: freed stream 0x74e5dff0
+[Encoder] stream_thread: dropped frame because previous stream not yet released
+[Codec] GetStream: got stream 0x74e5e040
+[Encoder] stream_thread: got stream 0x74e5e040
+[Codec] ReleaseStream: freed software-encoded data at 0x74d2f300
+[Codec] ReleaseStream: freed stream 0x74e5e040
+[Encoder] stream_thread: dropped frame because previous stream not yet released
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x74f23980
+[Codec] Process: frame=0x74f23980, extracting metadata
+[Codec] Process: SW encode frame 1920x1080
+[HW_Encoder] Software encoding: P frame 86, total=37 bytes
+[Codec] Process: encoded and queued stream, length=37
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=0, frame=0x74f23980
+[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[VBM] ReleaseFrame: returned frame idx=0 (1 available)
+[FrameSource] ReleaseFrame: Released frame 0x74f23980 from channel 0
+[Encoder] encoder_update: Released frame 0x74f23980 back to its source channel 0
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x74e5c980
+[Codec] Process: frame=0x74e5c980, extracting metadata
+[Codec] Process: SW encode frame 640x360
+[HW_Encoder] Software encoding: P frame 87, total=36 bytes
+[Codec] Process: encoded and queued stream, length=36
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=1, frame=0x74e5c980
+[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[VBM] ReleaseFrame: returned frame idx=0 (1 available)
+[FrameSource] ReleaseFrame: Released frame 0x74e5c980 from channel 1
+[Encoder] encoder_update: Released frame 0x74e5c980 back to its source channel 1
+[Codec] GetStream: got stream 0x74e5dff0
+[Encoder] stream_thread: got stream 0x74e5dff0
+[Codec] ReleaseStream: freed software-encoded data at 0x74e58c30
+[Codec] ReleaseStream: freed stream 0x74e5dff0
+[Encoder] stream_thread: dropped frame because previous stream not yet released
+[Codec] GetStream: got stream 0x74e5e040
+[Encoder] stream_thread: got stream 0x74e5e040
+[Codec] ReleaseStream: freed software-encoded data at 0x74d2f310
+[Codec] ReleaseStream: freed stream 0x74e5e040
+[Encoder] stream_thread: dropped frame because previous stream not yet released
+^C
