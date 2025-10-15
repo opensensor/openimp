@@ -268,10 +268,16 @@ int IMP_FrameSource_EnableChn(int chnNum) {
     fs_format_t fmt;
     memset(&fmt, 0, sizeof(fmt));
 
-    /* V4L2 fields (for validation) */
+    /* V4L2 header fields (match OEM defaults) */
+    fmt.type = 1;           /* V4L2_BUF_TYPE_VIDEO_CAPTURE */
     fmt.width = chn->attr.picWidth;
     fmt.height = chn->attr.picHeight;
     fmt.pixelformat = chn->attr.pixFmt;
+    fmt.field = 0;          /* progressive */
+    fmt.bytesperline = 0;   /* driver will compute */
+    fmt.sizeimage = 0;      /* driver will fill */
+    fmt.colorspace = 8;     /* V4L2_COLORSPACE_SRGB like OEM */
+    fmt.priv = 0;
 
     /* Ingenic imp_channel_attr fields (for tisp_channel_attr_set) */
     fmt.enable = 1; /* Enable explicit channel dimensions like prudynt */
@@ -298,6 +304,21 @@ int IMP_FrameSource_EnableChn(int chnNum) {
     fmt.fps_num = chn->attr.outFrmRateNum;
     fmt.fps_den = chn->attr.outFrmRateDen;
 
+    /* OEM-like: for ch0 without scaler, pre-SET_FMT GET_FMT to seed negotiated fields */
+    if (chnNum == 0 && chn->attr.scaler.enable == 0) {
+        fs_format_t cur = {0};
+        if (fs_get_format(chn->fd, &cur) == 0) {
+            fprintf(stderr, "[FrameSource] EnableChn: pre-SET_FMT GET_FMT %dx%d fmt=0x%x bpl=%d chn=%d\n",
+                    cur.width, cur.height, cur.pixelformat, cur.bytesperline, chnNum);
+            fmt.width = cur.width;
+            fmt.height = cur.height;
+            fmt.pixelformat = cur.pixelformat;
+            /* Leave bytesperline=0 so driver computes bpl during SET_FMT (OEM parity) */
+        } else {
+            fprintf(stderr, "[FrameSource] EnableChn: pre-SET_FMT GET_FMT failed for ch0\n");
+        }
+    }
+
     /* Set format via ioctl - this updates fmt.sizeimage with kernel's value */
     if (fs_set_format(chn->fd, &fmt) < 0) {
         LOG_FS("EnableChn failed: cannot set format");
@@ -307,38 +328,23 @@ int IMP_FrameSource_EnableChn(int chnNum) {
         return -1;
     }
 
-    /* Use the sizeimage that SET_FMT returned (kernel modified it in-place).
-     * DO NOT call GET_FMT - the remote ISP core returns garbage on GET_FMT.
-     * The OEM library uses the sizeimage from SET_FMT's modified structure.
-     */
+    /* Determine sizeimage. For ch0 without scaler, prefer GET_FMT sizeimage if provided */
     int kernel_sizeimage = fmt.sizeimage;
-
-    fprintf(stderr, "[FrameSource] EnableChn: using sizeimage=%d from SET_FMT for chn=%d\n",
-            kernel_sizeimage, chnNum);
-
-    /* CRITICAL: Must call REQBUFS *before* creating VBM pool!
-     * The kernel's REQBUFS handler allocates internal buffer structures.
-     * This matches the OEM libimp.so sequence: SET_FMT -> REQBUFS -> VBMCreatePool.
-     */
-    /* Use channel attr nrVBs; T23 requires minimum 2 buffers for double-buffering */
-    int requested_bufcnt = chn->attr.nrVBs > 0 ? chn->attr.nrVBs : 1;
-#ifdef PLATFORM_T23
-    /* T23 ISP requires at least 2 buffers to start producing frames (double-buffering) */
-    if (requested_bufcnt < 2) {
-        LOG_FS("EnableChn: T23 requires minimum 2 buffers, adjusting from %d to 2", requested_bufcnt);
-        requested_bufcnt = 2;
+    if (chnNum == 0 && chn->attr.scaler.enable == 0) {
+        fs_format_t gfmt = {0};
+        if (fs_get_format(chn->fd, &gfmt) == 0 && gfmt.sizeimage > 0) {
+            fprintf(stderr, "[FrameSource] EnableChn: ch0: GET_FMT sizeimage=%d (SET_FMT=%d)\n",
+                    gfmt.sizeimage, fmt.sizeimage);
+            kernel_sizeimage = gfmt.sizeimage;
+        } else {
+            fprintf(stderr, "[FrameSource] EnableChn: ch0: GET_FMT sizeimage unavailable, using SET_FMT sizeimage=%d\n",
+                    kernel_sizeimage);
+        }
+    } else {
+        fprintf(stderr, "[FrameSource] EnableChn: using sizeimage=%d from SET_FMT for chn=%d\n",
+                kernel_sizeimage, chnNum);
     }
-#else
-    if (requested_bufcnt < 1) requested_bufcnt = 1;
-#endif
-    int bufcnt = fs_set_buffer_count(chn->fd, requested_bufcnt);
-    if (bufcnt < 0) {
-        LOG_FS("EnableChn failed: cannot set buffer count");
-        fs_close_device(chn->fd);
-        chn->fd = -1;
-        pthread_mutex_unlock(&fs_mutex);
-        return -1;
-    }
+
 
     /* Build VBM format block matching IMPFSChnAttr layout offsets expected by VBMCreatePool:
        [0x00]=width, [0x04]=height, [0x08]=pixfmt(enum), [0x0c]=req_size(sizeimage), [0x34]=nrVBs */
@@ -348,7 +354,8 @@ int IMP_FrameSource_EnableChn(int chnNum) {
     memcpy(vbm_fmt + 0x04, &chn->attr.picHeight, sizeof(int));
     memcpy(vbm_fmt + 0x08, &chn->attr.pixFmt, sizeof(int));
     memcpy(vbm_fmt + 0x0c, &kernel_sizeimage, sizeof(int));
-    memcpy(vbm_fmt + 0x34, &bufcnt, sizeof(int));
+    int vbm_count = chn->attr.nrVBs > 0 ? chn->attr.nrVBs : 1;
+    memcpy(vbm_fmt + 0x34, &vbm_count, sizeof(int));
 
     /* Create VBM pool using kernel-computed size and requested buffer count */
     if (VBMCreatePool(chnNum, vbm_fmt, NULL, NULL) < 0) {
@@ -359,9 +366,34 @@ int IMP_FrameSource_EnableChn(int chnNum) {
         return -1;
     }
 
-    /* Prime kernel with QBUF for all frames before streaming */
-    extern int VBMPrimeKernelQueue(int chn, int fd);
-    if (VBMPrimeKernelQueue(chnNum, chn->fd) < 0) {
+    /* OEM ordering: after creating pool, set REQBUFS and tolerate reductions */
+    int requested_bufcnt = chn->attr.nrVBs + (g_frame_depth[chnNum] > 0 ? g_frame_depth[chnNum] : 0);
+    if (requested_bufcnt < 1) requested_bufcnt = 1;
+    int bufcnt = fs_set_buffer_count(chn->fd, requested_bufcnt);
+    if (bufcnt < 0) {
+        LOG_FS("EnableChn failed: cannot set buffer count");
+        VBMDestroyPool(chnNum);
+        fs_close_device(chn->fd);
+        chn->fd = -1;
+        pthread_mutex_unlock(&fs_mutex);
+        return -1;
+    }
+    if (bufcnt < requested_bufcnt) {
+        LOG_FS("EnableChn: driver reduced buffer count from %d to %d; continuing",
+               requested_bufcnt, bufcnt);
+    }
+
+    /* Fill VBM pool and prime only up to the kernel's buffer count */
+    if (VBMFillPool(chnNum) < 0) {
+        LOG_FS("EnableChn failed: cannot fill VBM pool");
+        VBMDestroyPool(chnNum);
+        fs_close_device(chn->fd);
+        chn->fd = -1;
+        pthread_mutex_unlock(&fs_mutex);
+        return -1;
+    }
+    extern int VBMPrimeKernelQueue(int chn, int fd, int limit);
+    if (VBMPrimeKernelQueue(chnNum, chn->fd, bufcnt) < 0) {
         LOG_FS("EnableChn failed: cannot prime kernel queue");
         VBMDestroyPool(chnNum);
         fs_close_device(chn->fd);
@@ -369,9 +401,6 @@ int IMP_FrameSource_EnableChn(int chnNum) {
         pthread_mutex_unlock(&fs_mutex);
         return -1;
     }
-    /* Clear user-space available queue to avoid initial 'queue full' on ReleaseFrame */
-    extern int VBMFlushFrame(int chn);
-    VBMFlushFrame(chnNum);
 
     /* After priming the kernel, clear the user-space available queue.
      * In kernel-backed mode, frames are sourced via DQBUF and not from the
@@ -410,8 +439,34 @@ int IMP_FrameSource_EnableChn(int chnNum) {
     chn->state = 2; /* Running */
     gFramesource->active_count++;
 
+    /* Start capture thread before enabling streaming; it will block on select() */
     if (pthread_create(&chn->thread, NULL, frame_capture_thread, chn) != 0) {
         LOG_FS("EnableChn failed: cannot create capture thread");
+        chn->state = 0;
+        gFramesource->active_count--;
+        VBMFlushFrame(chnNum);
+        VBMDestroyPool(chnNum);
+        fs_close_device(chn->fd);
+        chn->fd = -1;
+        pthread_mutex_unlock(&fs_mutex);
+        return -1;
+    }
+
+    /* Ensure ISP global stream is active before per-channel STREAM_ON */
+    {
+        extern int ISP_EnsureLinkStreamOn(void);
+        int isp_ok = ISP_EnsureLinkStreamOn();
+        if (isp_ok < 0) {
+            LOG_FS("EnableChn warning: ISP EnsureLinkStreamOn failed; proceeding may cause no frames");
+        }
+    }
+
+    /* Start streaming now that thread is running */
+    if (fs_stream_on(chn->fd) < 0) {
+        LOG_FS("EnableChn failed: cannot start streaming");
+        /* Stop and join capture thread before teardown */
+        pthread_cancel(chn->thread);
+        pthread_join(chn->thread, NULL);
         chn->state = 0;
         gFramesource->active_count--;
         VBMFlushFrame(chnNum);
@@ -848,6 +903,15 @@ static int framesource_bind(void *src_module, void *dst_module, void *output_ptr
 
     /* Add observer to source module's observer list */
     if (add_observer_to_module(src_module, observer) < 0) {
+        LOG_FS("bind: Failed to add observer");
+        free(observer);
+        return -1;
+    }
+
+    LOG_FS("bind: Successfully bound FrameSource to module");
+    return 0;
+}
+
 /* Minimal GetFrame/SnapFrame for thingino-streamer API parity */
 int IMP_FrameSource_GetFrame(int chnNum, void **frame) {
     if (!frame) return -1;
@@ -911,15 +975,6 @@ int IMP_FrameSource_SnapFrame(int chnNum, IMPPixelFormat fmt, int width, int hei
     info->height = height;
 
     VBMReleaseFrame(chnNum, frame);
-    return 0;
-}
-
-        LOG_FS("bind: Failed to add observer");
-        free(observer);
-        return -1;
-    }
-
-    LOG_FS("bind: Successfully bound FrameSource to module");
     return 0;
 }
 

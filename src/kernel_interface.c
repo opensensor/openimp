@@ -897,29 +897,50 @@ int VBMDestroyPool(int chn) {
     return 0;
 }
 
-/* Prime kernel queue with all VBM frames */
-int VBMPrimeKernelQueue(int chn, int fd) {
+/* Prime kernel queue with up to 'limit' VBM frames (if limit<=0, use all) */
+int VBMPrimeKernelQueue(int chn, int fd, int limit) {
     if (chn < 0 || chn >= MAX_VBM_POOLS) return -1;
     VBMPool *pool = vbm_instance[chn];
     if (!pool) return -1;
     pool->fd = fd;
 
+    int to_queue = pool->frame_count;
+    if (limit > 0 && limit < to_queue) to_queue = limit;
+
     /* DO NOT call GET_FMT here - it returns garbage from the remote ISP core.
      * Instead, use QUERYBUF to get the kernel's expected length for each buffer,
      * and fall back to NV12 calculation if QUERYBUF returns 0.
+     *
+     * IMPORTANT: Pop indices from the available_queue when priming the kernel so
+     * they are no longer considered 'available' by the pool. This prevents the
+     * queue from being full when releasing the first DQBUF frame.
      */
-    for (int i = 0; i < pool->frame_count; i++) {
-        VBMFrame *f = &pool->frames[i];
+    pthread_mutex_lock(&pool->queue_mutex);
+    for (int j = 0; j < to_queue; j++) {
+        if (pool->queue_count <= 0) {
+            break;
+        }
+        int idx = pool->available_queue[pool->queue_head];
+        pool->queue_head = (pool->queue_head + 1) % pool->frame_count;
+        pool->queue_count--;
+
+        VBMFrame *f = &pool->frames[idx];
         /* Driver expects DMA physical address in .m (BN MCP shows KSEG1 writes) */
         unsigned long phys = (unsigned long)f->phys_addr;
-        /* Use the frame's recorded size (from SET_FMT sizeimage) for QBUF length */
-        unsigned int klen = (unsigned int)f->size;
-        if (fs_qbuf(fd, i, phys, klen) < 0) {
-            fprintf(stderr, "[VBM] PrimeKernelQueue: qbuf failed for idx=%d (len=%u)\n", i, klen);
+        /* Prefer the kernel-advertised buffer length via QUERYBUF */
+        unsigned int qlen = 0;
+        if (fs_querybuf(fd, idx, &qlen) < 0 || qlen == 0) {
+            qlen = (unsigned int)f->size; /* fallback: use our frame size */
+        }
+        if (fs_qbuf(fd, idx, phys, qlen) < 0) {
+            pthread_mutex_unlock(&pool->queue_mutex);
+            fprintf(stderr, "[VBM] PrimeKernelQueue: qbuf failed for idx=%d (len=%u)\n", idx, qlen);
             return -1;
         }
     }
-    fprintf(stderr, "[VBM] PrimeKernelQueue: queued %d frames to kernel for chn=%d\n", pool->frame_count, chn);
+    pthread_mutex_unlock(&pool->queue_mutex);
+
+    fprintf(stderr, "[VBM] PrimeKernelQueue: queued %d frames to kernel for chn=%d (limit=%d)\n", to_queue, chn, limit);
     return 0;
 }
 
@@ -1113,9 +1134,13 @@ int VBMReleaseFrame(int chn, void *frame) {
     /* If kernel-backed, re-queue to kernel immediately (QBUF) */
     if (pool->fd >= 0) {
         unsigned long phys = vbm_frame->phys_addr;
-        unsigned int length = (unsigned int)vbm_frame->size;
-        if (fs_qbuf(pool->fd, frame_idx, phys, length) < 0) {
-            fprintf(stderr, "[VBM] ReleaseFrame: fs_qbuf failed for idx=%d\n", frame_idx);
+        /* Query expected length from driver for this index, fallback to our size */
+        unsigned int qlen = 0;
+        if (fs_querybuf(pool->fd, frame_idx, &qlen) < 0 || qlen == 0) {
+            qlen = (unsigned int)vbm_frame->size;
+        }
+        if (fs_qbuf(pool->fd, frame_idx, phys, qlen) < 0) {
+            fprintf(stderr, "[VBM] ReleaseFrame: fs_qbuf failed for idx=%d (len=%u)\n", frame_idx, qlen);
         }
     }
 
@@ -1128,6 +1153,15 @@ int VBMReleaseFrame(int chn, void *frame) {
     fprintf(stderr, "[VBM] ReleaseFrame: returned frame idx=%d (%d available)\n",
             frame_idx, pool->queue_count);
 
+    return 0;
+}
+
+
+/* Get originating channel from VBM frame (offset 0x04) */
+int VBMFrame_GetChannel(void *frame, int *chn_out) {
+    if (!frame || !chn_out) return -1;
+    VBMFrame *f = (VBMFrame*)frame;
+    *chn_out = f->chn;
     return 0;
 }
 

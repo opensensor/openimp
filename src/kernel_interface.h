@@ -72,6 +72,8 @@ int VBMFlushFrame(int chn);
 int VBMGetFrame(int chn, void **frame);
 int VBMReleaseFrame(int chn, void *frame);
 int VBMFrame_GetBuffer(void *frame, void **virt, int *size);
+/* Get originating channel from VBM frame (reads offset 0x04) */
+int VBMFrame_GetChannel(void *frame, int *chn_out);
 
 /* FS buffer queueing to kernel (V4L2-style) */
 int fs_querybuf(int fd, int index, unsigned int *length_out);
@@ -79,7 +81,7 @@ int fs_qbuf(int fd, int index, unsigned long phys, unsigned int length);
 int fs_dqbuf(int fd, int *index_out);
 
 /* Bridge between VBM and kernel queue */
-int VBMPrimeKernelQueue(int chn, int fd);
+int VBMPrimeKernelQueue(int chn, int fd, int limit);
 int VBMKernelDequeue(int chn, int fd, void **frame_out);
 
 #ifdef __cplusplus

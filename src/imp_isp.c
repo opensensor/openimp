@@ -47,6 +47,10 @@ typedef struct {
     void *isp_buffer_virt;  /* Virtual address of ISP RAW buffer */
     unsigned long isp_buffer_phys; /* Physical address of ISP RAW buffer */
     uint32_t isp_buffer_size;      /* Size of ISP RAW buffer */
+    /* Optional secondary RAW buffer (some sensors/driver configs request this) */
+    void *isp_buffer2_virt;        /* Virtual address of second RAW buffer */
+    unsigned long isp_buffer2_phys;/* Physical address of second RAW buffer */
+    uint32_t isp_buffer2_size;     /* Size of second RAW buffer */
     /* Safe pointer to internal tuning state (vendor kept this at +0x9c) */
     struct ISPTuningState *tuning;
 } ISPDevice;
@@ -54,6 +58,7 @@ typedef struct {
 static ISPDevice *gISPdev = NULL;
 static int sensor_enabled = 0;
 static int tuning_enabled = 0;
+static int isp_stream_started = 0; /* Deferred ISP streaming flag */
 
 /* ISP tuning daemon and related methods (safe struct access version) */
 
@@ -571,6 +576,13 @@ int IMP_ISP_Close(void) {
         gISPdev->isp_buffer_phys = 0;
         gISPdev->isp_buffer_size = 0;
     }
+    /* Free optional secondary ISP buffer if allocated */
+    if (gISPdev->isp_buffer2_phys != 0) {
+        IMP_Free(gISPdev->isp_buffer2_phys);
+        gISPdev->isp_buffer2_virt = NULL;
+        gISPdev->isp_buffer2_phys = 0;
+        gISPdev->isp_buffer2_size = 0;
+    }
 
     /* Close devices */
     if (gISPdev->fd >= 0) {
@@ -818,6 +830,40 @@ int IMP_ISP_AddSensor(IMPSensorInfo *pinfo) {
 
     LOG_ISP("AddSensor: TX_ISP_SET_BUF succeeded");
 
+    /* Optional: query and set a second RAW buffer if driver requests it (0x800856d7/56d6) */
+    struct { uint32_t addr; uint32_t size; } buf2_info;
+    memset(&buf2_info, 0, sizeof(buf2_info));
+    if (ioctl(gISPdev->fd, 0x800856d7, &buf2_info) == 0 && buf2_info.size > 0) {
+        LOG_ISP("AddSensor: secondary ISP buffer requested: size=%u", buf2_info.size);
+        char isp_buf2_info[0x94];
+        memset(isp_buf2_info, 0, sizeof(isp_buf2_info));
+        if (IMP_Alloc(isp_buf2_info, buf2_info.size, "ISP RAW2") == 0) {
+            typedef struct { void *virt_addr; uint32_t phys_addr; uint32_t size; } DMABuffer;
+            DMABuffer *dma2 = (DMABuffer*)isp_buf2_info;
+            gISPdev->isp_buffer2_virt = dma2->virt_addr;
+            gISPdev->isp_buffer2_phys = dma2->phys_addr;
+            gISPdev->isp_buffer2_size = dma2->size;
+
+            struct { uint32_t addr; uint32_t size; } set_buf2;
+            set_buf2.addr = gISPdev->isp_buffer2_phys;
+            set_buf2.size = buf2_info.size;
+            if (ioctl(gISPdev->fd, 0x800856d6, &set_buf2) != 0) {
+                LOG_ISP("AddSensor: TX_ISP_SET_BUF(2) failed: %s", strerror(errno));
+                IMP_Free(gISPdev->isp_buffer2_phys);
+                gISPdev->isp_buffer2_virt = NULL;
+                gISPdev->isp_buffer2_phys = 0;
+                gISPdev->isp_buffer2_size = 0;
+            } else {
+                LOG_ISP("AddSensor: TX_ISP_SET_BUF(2) succeeded");
+            }
+        } else {
+            LOG_ISP("AddSensor: IMP_Alloc for second buffer failed");
+        }
+    } else {
+        /* Not all configurations require a second buffer; this is not an error. */
+        LOG_ISP("AddSensor: secondary ISP buffer not requested or ioctl failed");
+    }
+
     LOG_ISP("AddSensor: %s (idx=%d, buf_size=%u)", pinfo->name, sensor_idx, buf_info.size);
     return 0;
 }
@@ -874,54 +920,49 @@ int IMP_ISP_EnableSensor(void) {
         return -1;
     }
 
-    LOG_ISP("EnableSensor: sensor index validated, proceeding to STREAMON");
+    LOG_ISP("EnableSensor: sensor index validated, deferring LINK_SETUP and STREAMON until FS is ready");
 
-    /* CRITICAL: Call ioctl 0x80045612 (VIDIOC_STREAMON) to start ISP video streaming
-     * This is the global ISP stream-on, not the per-channel stream-on.
-     */
-    LOG_ISP("EnableSensor: calling ioctl 0x80045612 (ISP STREAMON)");
-    ret = ioctl(gISPdev->fd, 0x80045612, 0);
-    if (ret != 0) {
-        LOG_ISP("EnableSensor: ioctl 0x80045612 (ISP STREAMON) failed: %s", strerror(errno));
+    /* Mark sensor enabled; actual streaming will be started by FrameSource */
+    LOG_ISP("EnableSensor: deferring ISP STREAMON/LINK_STREAM_ON until FrameSource is ready");
+    gISPdev->opened += 2;
+    sensor_enabled = 1;
+    return 0;
+}
+
+/* Internal: ensure ISP global STREAMON and LINK_STREAM_ON are active (idempotent) */
+int ISP_EnsureLinkStreamOn(void) {
+    if (gISPdev == NULL) {
+        LOG_ISP("EnsureLinkStreamOn: ISP not opened");
         return -1;
     }
-    LOG_ISP("EnableSensor: ioctl 0x80045612 succeeded");
-
-    /* CRITICAL: Call ioctl 0x800456d0 (TX_ISP_VIDEO_LINK_SETUP) to configure ISP video link */
-    LOG_ISP("EnableSensor: calling ioctl 0x800456d0 (LINK_SETUP)");
+    if (isp_stream_started) {
+        return 0;
+    }
+    int ret;
+    LOG_ISP("EnsureLinkStreamOn: calling ioctl 0x80045612 (ISP STREAMON)");
+    ret = ioctl(gISPdev->fd, 0x80045612, 0);
+    if (ret != 0) {
+        LOG_ISP("EnsureLinkStreamOn: STREAMON failed: %s", strerror(errno));
+        return -1;
+    }
+    /* Perform LINK_SETUP now (OEM order requires this after STREAMON) */
+    LOG_ISP("EnsureLinkStreamOn: calling ioctl 0x800456d0 (LINK_SETUP)");
     int config_result = 0;
     ret = ioctl(gISPdev->fd, 0x800456d0, &config_result);
     if (ret != 0) {
-        LOG_ISP("EnableSensor: ioctl 0x800456d0 (LINK_SETUP) failed: %s", strerror(errno));
+        LOG_ISP("EnsureLinkStreamOn: LINK_SETUP failed: %s", strerror(errno));
         return -1;
     }
-    LOG_ISP("EnableSensor: ioctl 0x800456d0 succeeded, result=%d", config_result);
+    LOG_ISP("EnsureLinkStreamOn: LINK_SETUP succeeded, result=%d", config_result);
 
-    /* CRITICAL: Call ioctl 0x800456d2 (TX_ISP_VIDEO_LINK_STREAM_ON) to start ISP link streaming */
-    LOG_ISP("EnableSensor: about to call ioctl 0x800456d2 (LINK_STREAM_ON)");
-    LOG_ISP("EnableSensor: gISPdev=%p, fd=%d", gISPdev, gISPdev->fd);
-    fflush(stderr);
-
+    LOG_ISP("EnsureLinkStreamOn: calling ioctl 0x800456d2 (LINK_STREAM_ON)");
     ret = ioctl(gISPdev->fd, 0x800456d2, 0);
-
-    LOG_ISP("EnableSensor: ioctl 0x800456d2 returned %d", ret);
-    fflush(stderr);
-
     if (ret != 0) {
-        LOG_ISP("EnableSensor: ioctl 0x800456d2 (LINK_STREAM_ON) failed: %s", strerror(errno));
+        LOG_ISP("EnsureLinkStreamOn: LINK_STREAM_ON failed: %s", strerror(errno));
         return -1;
     }
-    LOG_ISP("EnableSensor: ioctl 0x800456d2 succeeded");
-
-    /* Increment opened flag by 2 to mark sensor as enabled */
-    LOG_ISP("EnableSensor: incrementing opened flag");
-    fflush(stderr);
-    gISPdev->opened += 2;
-    sensor_enabled = 1;
-
-    LOG_ISP("EnableSensor: sensor enabled (idx=%d)", sensor_idx);
-    LOG_ISP("EnableSensor: about to return 0");
-    fflush(stderr);
+    isp_stream_started = 1;
+    LOG_ISP("EnsureLinkStreamOn: ISP streaming started");
     return 0;
 }
 

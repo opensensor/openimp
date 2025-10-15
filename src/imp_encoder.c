@@ -31,11 +31,16 @@ extern void* IMP_System_GetModule(int deviceID, int groupID);
 
 /* Internal stream buffer structure */
 typedef struct {
-    IMPEncoderPack pack;        /* Stream pack data */
+    /* T31-style exposed pack: offset/length/timestamp/nalType/sliceType */
+    IMPEncoderPack pack;
     uint32_t seq;               /* Sequence number */
     int streamEnd;              /* Stream end flag */
     void *codec_stream;         /* Pointer to codec stream data */
     void *injected_buf;         /* If non-NULL, malloc'd buffer we must free */
+    /* Base addresses for the full frame buffer (for IMPEncoderStream top-level) */
+    uint32_t base_phy;          /* Physical base address */
+    uint32_t base_vir;          /* Virtual base address */
+    uint32_t base_size;         /* Total available bytes at base_vir */
 } StreamBuffer;
 
 typedef struct {
@@ -876,11 +881,14 @@ int IMP_Encoder_GetStream(int encChn, IMPEncoderStream *stream, int block) {
 
     StreamBuffer *stream_buf = chn->current_stream;
 
-    /* Populate IMPEncoderStream structure */
+    /* Populate IMPEncoderStream structure (T31 layout) */
+    stream->phyAddr = stream_buf->base_phy;
+    stream->virAddr = stream_buf->base_vir;
+    stream->streamSize = stream_buf->base_size;
     stream->pack = &stream_buf->pack;
     stream->packCount = 1;
     stream->seq = stream_buf->seq;
-    stream->streamEnd = stream_buf->streamEnd;
+    stream->isVI = 0;
 
     /* Log using internal buffer to avoid dereferencing app-provided pointer */
     LOG_ENC("GetStream: returning stream seq=%u, length=%u",
@@ -1532,13 +1540,20 @@ static void *stream_thread(void *arg) {
                     stream_buf->seq = chn->stream_seq++;
                     stream_buf->streamEnd = 0;
 
-                    /* Populate pack data (possibly using injected buffer) */
-                    stream_buf->pack.phyAddr = out_phy;
-                    stream_buf->pack.virAddr = out_vir;
+                    /* Populate base addresses and T31-style pack (possibly using injected buffer) */
+                    stream_buf->base_phy = out_phy;
+                    stream_buf->base_vir = out_vir;
+                    stream_buf->base_size = out_len;
+
+                    /* Single-pack frame: offset 0, full length */
+                    stream_buf->pack.offset = 0;
                     stream_buf->pack.length = out_len;
-                    stream_buf->pack.timestamp = timestamp;
-                    stream_buf->pack.h264RefType = (frame_type == 0) ? 1 : 0; /* I-frame = ref */
-                    stream_buf->pack.sliceType = slice_type;
+                    stream_buf->pack.timestamp = (int64_t)timestamp;
+                    stream_buf->pack.frameEnd = 1;
+                    /* Heuristic NAL type: mark IDR for I-frames */
+                    stream_buf->pack.nalType.h264NalType = (frame_type == 0) ? 5 : 1;
+                    stream_buf->pack.nalType.h265NalType = (frame_type == 0) ? 32 : 1;
+                    stream_buf->pack.sliceType = (IMPEncoderSliceType)slice_type;
 
                     /* Store in channel for GetStream */
                     pthread_mutex_lock(&chn->mutex_450);
@@ -1558,7 +1573,7 @@ static void *stream_thread(void *arg) {
 
                     /* Debug: print first few NAL types from outgoing buffer */
                     if (stream_buf->pack.length >= 6) {
-                        const uint8_t *p = (const uint8_t*)(uintptr_t)stream_buf->pack.virAddr;
+                        const uint8_t *p = (const uint8_t*)(uintptr_t)stream_buf->base_vir;
                         size_t L = stream_buf->pack.length;
                         size_t i = 0; int sc = 0; int cnt = 0;
                         i = find_start_code(p, 0, L, &sc);
@@ -1664,30 +1679,18 @@ static int encoder_update(void *module, void *frame) {
         }
     }
 
-    /* Release the frame back to the correct VBM pool (matching channel) */
+    /* Release the frame back to its originating FrameSource channel only */
     extern int IMP_FrameSource_ReleaseFrame(int chnNum, void *frame);
-    if (dst_chn >= 0) {
-        if (IMP_FrameSource_ReleaseFrame(dst_chn, frame) == 0) {
-            LOG_ENC("encoder_update: Released frame %p back to channel %d", frame, dst_chn);
+    extern int VBMFrame_GetChannel(void *frame, int *chn_out);
+    int src_chn = -1;
+    if (VBMFrame_GetChannel(frame, &src_chn) == 0 && src_chn >= 0) {
+        if (IMP_FrameSource_ReleaseFrame(src_chn, frame) == 0) {
+            LOG_ENC("encoder_update: Released frame %p back to its source channel %d", frame, src_chn);
         } else {
-            LOG_ENC("encoder_update: WARNING - ReleaseFrame failed for channel %d; attempting fallback", dst_chn);
-            /* Try other channels only if the expected one failed (should be rare) */
-            for (int chn = 0; chn < MAX_ENC_CHANNELS; chn++) {
-                if (chn == dst_chn) continue;
-                if (IMP_FrameSource_ReleaseFrame(chn, frame) == 0) {
-                    LOG_ENC("encoder_update: Released frame %p back to fallback channel %d", frame, chn);
-                    break;
-                }
-            }
+            LOG_ENC("encoder_update: WARNING - ReleaseFrame failed for source channel %d", src_chn);
         }
     } else {
-        /* No group_id available; last resort try both primary channels */
-        for (int chn = 0; chn < 2; chn++) {
-            if (IMP_FrameSource_ReleaseFrame(chn, frame) == 0) {
-                LOG_ENC("encoder_update: Released frame %p back to channel %d (no group_id)", frame, chn);
-                break;
-            }
-        }
+        LOG_ENC("encoder_update: WARNING - could not determine source channel for frame %p", frame);
     }
 
     return frame_processed ? 0 : -1;

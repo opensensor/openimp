@@ -185,26 +185,50 @@ typedef struct {
     IMPEncoderRcAttr rcAttr;            /**< RC attributes */
 } IMPEncoderChnAttr;
 
+/* T31-compatible NAL type structure (minimal) */
+typedef struct {
+    uint8_t h264NalType;                /**< H.264 NAL type */
+    uint8_t h265NalType;                /**< H.265 NAL type */
+} IMPEncoderNalType;
+
+/* T31-compatible slice type (keep as int for ABI leniency) */
+typedef int IMPEncoderSliceType;
+
 /**
- * Stream pack
+ * Stream pack (T31 layout)
  */
 typedef struct {
-    uint32_t phyAddr;                   /**< Physical address */
-    uint32_t virAddr;                   /**< Virtual address */
-    uint32_t length;                    /**< Length */
-    uint64_t timestamp;                 /**< Timestamp */
-    int h264RefType;                    /**< H264 reference type */
-    int sliceType;                      /**< Slice type */
+    uint32_t offset;                    /**< Stream packet offset */
+    uint32_t length;                    /**< Stream packet length */
+    int64_t  timestamp;                 /**< Timestamp in us */
+    int      frameEnd;                  /**< End of frame flag (bool) */
+    IMPEncoderNalType   nalType;        /**< NAL type (H.264/H.265) */
+    IMPEncoderSliceType sliceType;      /**< Slice type */
 } IMPEncoderPack;
 
 /**
- * Encoder stream
+ * Encoder stream (T31 layout)
  */
 typedef struct {
-    IMPEncoderPack *pack;               /**< Stream packs */
-    uint32_t packCount;                 /**< Pack count */
-    uint32_t seq;                       /**< Sequence number */
-    int streamEnd;                      /**< Stream end flag */
+    uint32_t        phyAddr;            /**< Physical base address of frame */
+    uint32_t        virAddr;            /**< Virtual base address of frame */
+    uint32_t        streamSize;         /**< Size of the allocated virtual address */
+    IMPEncoderPack *pack;               /**< Frame stream packets */
+    uint32_t        packCount;          /**< Number of packets in the frame */
+    uint32_t        seq;                /**< Sequence number of coded frame */
+    int             isVI;               /**< Source is VI flag (bool) */
+    union {
+        struct {                         /* Minimal JPEG info placeholder */
+            int32_t iNumBytes;
+            int16_t iQPfactor;
+        } jpegInfo;
+        struct {                         /* Minimal stream info placeholder */
+            int32_t iNumBytes;
+            int16_t iSliceQP;
+            int16_t iMinQP;
+            int16_t iMaxQP;
+        } streamInfo;
+    };
 } IMPEncoderStream;
 
 /**
