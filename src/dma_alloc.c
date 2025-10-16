@@ -391,3 +391,20 @@ int IMP_Flush_Cache(uint32_t phys_addr, uint32_t size) {
     return 0;
 }
 
+
+
+int DMA_Get_RMEM_Base(uint32_t *base_phys_out)
+{
+    if (base_phys_out == NULL)
+        return -1;
+    if (g_is_rmem && g_rmem_virt_base != NULL) {
+        *base_phys_out = g_rmem_base_phys;
+        return 0;
+    }
+    return -1;
+}
+
+int DMA_Is_RMEM(void)
+{
+    return (g_is_rmem && g_rmem_virt_base != NULL) ? 1 : 0;
+}

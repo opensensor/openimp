@@ -31,8 +31,11 @@ extern void* IMP_System_GetModule(int deviceID, int groupID);
 
 /* Internal stream buffer structure */
 typedef struct {
-    /* T31-style exposed pack: offset/length/timestamp/nalType/sliceType */
+    /* Legacy single-pack (kept for internal debug compatibility) */
     IMPEncoderPack pack;
+    /* New: array of packs to mirror OEM libimp semantics */
+    IMPEncoderPack *packs;      /* Dynamically allocated array of packs for this frame */
+    uint32_t packCount;         /* Number of packs in 'packs' */
     uint32_t seq;               /* Sequence number */
     int streamEnd;              /* Stream end flag */
     void *codec_stream;         /* Pointer to codec stream data */
@@ -252,8 +255,8 @@ static uint8_t *inject_prefix_if_needed(int ch, int is_h264, const uint8_t *buf,
     if (!is_h264 || !buf || len == 0 || ch < 0 || ch >= MAX_ENC_CHANNELS) return NULL;
     /* Update caches from current buffer */
     cache_sps_pps_from_annexb(ch, buf, len);
-    /* If SPS/PPS already present before first VCL and not in warmup, do nothing */
-    if (has_sps_pps_before_vcl(buf, len) && g_inject_warmup[ch] <= 0) return NULL;
+    /* If SPS/PPS already present before first VCL, do nothing (OEM-compatible). Otherwise inject unconditionally. */
+    if (has_sps_pps_before_vcl(buf, len)) return NULL;
 
     /* Determine if first VCL is IDR to choose AUD primary_pic_type */
     int vcl_t = first_vcl_type(buf, len);
@@ -778,8 +781,8 @@ int IMP_Encoder_StartRecvPic(int encChn) {
         return -1;
     }
 
-    /* Warm up: force prefix injection on first ~60 AUs so clients always see SPS/PPS */
-    g_inject_warmup[encChn] = 60;
+    /* Injection path removed: rely on guaranteed IDR+SPS+PPS at StartRecvPic */
+    g_inject_warmup[encChn] = 0;
 
     /* Set flags at offsets 0x404 and 0x400 */
     g_EncChannel[encChn].recv_pic_started = 1;
@@ -885,14 +888,14 @@ int IMP_Encoder_GetStream(int encChn, IMPEncoderStream *stream, int block) {
     stream->phyAddr = stream_buf->base_phy;
     stream->virAddr = stream_buf->base_vir;
     stream->streamSize = stream_buf->base_size;
-    stream->pack = &stream_buf->pack;
-    stream->packCount = 1;
+    stream->pack = stream_buf->packs ? stream_buf->packs : &stream_buf->pack;
+    stream->packCount = stream_buf->packs ? stream_buf->packCount : 1;
     stream->seq = stream_buf->seq;
     stream->isVI = 0;
 
     /* Log using internal buffer to avoid dereferencing app-provided pointer */
-    LOG_ENC("GetStream: returning stream seq=%u, length=%u",
-            stream_buf->seq, stream_buf->pack.length);
+    LOG_ENC("GetStream: returning stream seq=%u, packs=%u, total_len=%u",
+            stream_buf->seq, stream_buf->packs ? stream_buf->packCount : 1, stream_buf->base_size);
 
     /* Keep stream_buf in current_stream until ReleaseStream is called */
     /* Don't set current_stream to NULL here */
@@ -931,6 +934,12 @@ int IMP_Encoder_ReleaseStream(int encChn, IMPEncoderStream *stream) {
         if (stream_buf->injected_buf) {
             free(stream_buf->injected_buf);
             stream_buf->injected_buf = NULL;
+        }
+        /* Free packs array if allocated */
+        if (stream_buf->packs) {
+            free(stream_buf->packs);
+            stream_buf->packs = NULL;
+            stream_buf->packCount = 0;
         }
         /* Free stream buffer */
         free(stream_buf);
@@ -1522,18 +1531,12 @@ static void *stream_thread(void *arg) {
                         uint32_t out_vir = virt_addr;
                         uint32_t out_len = length;
                         stream_buf->injected_buf = NULL;
-                        int is_h264 = (chn->attr.encAttr.profile <= IMP_ENC_PROFILE_AVC_HIGH);
-                        if (is_h264) {
-                            const uint8_t *orig_ptr = (const uint8_t*)(uintptr_t)virt_addr;
-                            size_t inj_len_sz = 0;
-                            uint8_t *inj = inject_prefix_if_needed(chn->chn_id, 1, orig_ptr, (size_t)length, &inj_len_sz);
-                            if (inj) {
-                                out_phy = 0;
-                                out_vir = (uint32_t)(uintptr_t)inj;
-                                out_len = (uint32_t)inj_len_sz;
-                                stream_buf->injected_buf = inj;
-                            }
-                        }
+                        /* Determine codec type from profile's top byte (OEM format): 0=AVC,1=HEVC,4=JPEG */
+                        uint32_t profile_enum = chn->attr.encAttr.profile;
+                        uint32_t codec_type = (profile_enum >> 24) & 0xFF;
+                        int is_h264 = (codec_type == IMP_ENC_TYPE_AVC);
+                        /* Injection path removed: streaming uses encoder-provided AU only */
+                        (void)is_h264; /* keep variable for potential future use */
 
                     /* Initialize stream buffer */
                     stream_buf->codec_stream = codec_stream;
@@ -1545,38 +1548,61 @@ static void *stream_thread(void *arg) {
                     stream_buf->base_vir = out_vir;
                     stream_buf->base_size = out_len;
 
-                    /* Single-pack frame: offset 0, full length */
-                    stream_buf->pack.offset = 0;
-                    stream_buf->pack.length = out_len;
-                    stream_buf->pack.timestamp = (int64_t)timestamp;
-                    stream_buf->pack.frameEnd = 1;
-                    /* Determine NAL type based on actual outgoing buffer content for T31 semantics */
-                    uint8_t *p_first = (uint8_t*)(uintptr_t)out_vir;
-                    size_t L_first = (size_t)out_len;
-                    size_t i_first = 0; int sc_first = 0;
-                    /* Skip start code and any AUD (9) and SEI (6) to find SPS(7)/PPS(8)/IDR(5) */
-                    i_first = find_start_code(p_first, 0, L_first, &sc_first);
-                    int nal = 0;
-                    while (i_first < L_first) {
-                        size_t ns = i_first + (sc_first ? sc_first : 0);
-                        if (ns < L_first) {
-                            nal = p_first[ns] & 0x1F;
-                            if (nal != 9 && nal != 6) break; /* ignore AUD/SEI */
-                        }
-                        int sc2 = 0; size_t nx = find_start_code(p_first, ns, L_first, &sc2);
-                        if (nx >= L_first) break; i_first = nx; sc_first = sc2;
+                    /* Split Annex B buffer into packs per NAL start code to mirror OEM libimp */
+                    uint8_t *p_all = (uint8_t*)(uintptr_t)out_vir;
+                    size_t L_all = (size_t)out_len;
+                    size_t i = 0; int sc = 0; int count = 0;
+                    i = find_start_code(p_all, 0, L_all, &sc);
+                    while (i < L_all) {
+                        size_t ns = i + (sc ? sc : 0);
+                        int sc2 = 0; size_t nx = find_start_code(p_all, ns, L_all, &sc2);
+                        count++;
+                        if (nx >= L_all) break;
+                        i = nx; sc = sc2;
                     }
-                    if (nal == 7 || nal == 8 || nal == 5) {
-                        /* Map directly for H.264; zero union to avoid mixed values being read as 0x0107 etc. */
+
+                    if (count <= 0) {
+                        /* Fallback: single pack covering whole buffer */
+                        stream_buf->packs = NULL;
+                        stream_buf->packCount = 0;
+                        stream_buf->pack.offset = 0;
+                        stream_buf->pack.length = out_len;
+                        stream_buf->pack.timestamp = (int64_t)timestamp;
+                        stream_buf->pack.frameEnd = 1;
                         memset(&stream_buf->pack.nalType, 0, sizeof(stream_buf->pack.nalType));
-                        stream_buf->pack.nalType.h264NalType = nal;
-                    } else {
-                        /* Fallback to frame_type heuristic */
-                        memset(&stream_buf->pack.nalType, 0, sizeof(stream_buf->pack.nalType));
+                        /* Heuristic based on frame_type */
                         stream_buf->pack.nalType.h264NalType = (frame_type == 0) ? 5 : 1;
+                        stream_buf->pack.sliceType = (IMPEncoderSliceType)slice_type;
+                    } else {
+                        stream_buf->packs = (IMPEncoderPack*)calloc((size_t)count, sizeof(IMPEncoderPack));
+                        stream_buf->packCount = (uint32_t)count;
+
+                        /* Second pass: fill packs */
+                        i = find_start_code(p_all, 0, L_all, &sc);
+                        int idx = 0;
+                        while (idx < count && i < L_all) {
+                            size_t ns = i + (sc ? sc : 0);
+                            int sc2 = 0; size_t nx = find_start_code(p_all, ns, L_all, &sc2);
+                            size_t seg_len = (nx < L_all) ? (nx - i) : (L_all - i);
+
+                            stream_buf->packs[idx].offset = (uint32_t)i;
+                            stream_buf->packs[idx].length = (uint32_t)seg_len;
+                            stream_buf->packs[idx].timestamp = (int64_t)timestamp;
+                            stream_buf->packs[idx].frameEnd = (idx == (count - 1)) ? 1 : 0;
+                            memset(&stream_buf->packs[idx].nalType, 0, sizeof(stream_buf->packs[idx].nalType));
+                            if (ns < L_all) {
+                                uint8_t t = p_all[ns] & 0x1F; /* H.264 */
+                                stream_buf->packs[idx].nalType.h264NalType = t;
+                            }
+                            stream_buf->packs[idx].sliceType = (IMPEncoderSliceType)slice_type;
+
+                            if (nx >= L_all) break;
+                            i = nx; sc = sc2; idx++;
+                        }
+
+                        /* Populate legacy single-pack with first pack for debug compatibility */
+                        stream_buf->pack = stream_buf->packs[0];
                     }
-                    /* Do not write h265NalType here for H.264 streams; some consumers read the union as int. */
-                    stream_buf->pack.sliceType = (IMPEncoderSliceType)slice_type;
 
                     /* Store in channel for GetStream (only if slot is empty) */
                     int posted = 0;
@@ -1602,14 +1628,14 @@ static void *stream_thread(void *arg) {
                         stream_buf = NULL;
                         LOG_ENC("stream_thread: dropped frame because previous stream not yet released");
                     } else {
-                        LOG_ENC("stream_thread: stream seq=%u, length=%u, type=%s",
-                                stream_buf->seq, stream_buf->pack.length,
+                        LOG_ENC("stream_thread: stream seq=%u, packs=%u, total_len=%u, type=%s",
+                                stream_buf->seq, stream_buf->packs ? stream_buf->packCount : 1, stream_buf->base_size,
                                 frame_type == 0 ? "I" : (frame_type == 1 ? "P" : "B"));
 
                         /* Debug: print first few NAL types from outgoing buffer */
-                        if (stream_buf->pack.length >= 6) {
+                        if (stream_buf->base_size >= 6) {
                             const uint8_t *p = (const uint8_t*)(uintptr_t)stream_buf->base_vir;
-                            size_t L = stream_buf->pack.length;
+                            size_t L = stream_buf->base_size;
                             size_t i = 0; int sc = 0; int cnt = 0;
                             i = find_start_code(p, 0, L, &sc);
                             char nal_str[64]; int off = 0;

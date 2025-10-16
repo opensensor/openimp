@@ -61,6 +61,19 @@ int IMP_FrameSource_GetPool(int chn);
  */
 int IMP_Flush_Cache(uint32_t phys_addr, uint32_t size);
 
+/**
+ * Get RMEM base physical address if using /dev/rmem bump allocator
+ * @param base_phys_out Output pointer for base physical address
+ * @return 0 if RMEM is active and base is valid, -1 otherwise
+ */
+int DMA_Get_RMEM_Base(uint32_t *base_phys_out);
+
+/**
+ * Check if RMEM bump allocator is active
+ * @return 1 if RMEM is active, 0 otherwise
+ */
+int DMA_Is_RMEM(void);
+
 #ifdef __cplusplus
 }
 #endif
