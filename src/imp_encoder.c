@@ -94,6 +94,9 @@ typedef struct {
     int entropy_mode;              /* Entropy mode (offset 0x3fc) */
     int max_stream_cnt;            /* Max stream count (offset 0x4c0) */
     int stream_buf_size;           /* Stream buffer size (offset 0x4c4) */
+    /* OpenIMP tracking to ensure early IDR without GetStream-time injection */
+    int idr_requested_once;        /* 0=no request yet, 1=requested due to missing SPS/PPS */
+    int param_sets_seen;           /* 1 once SPS and PPS observed in packs */
 } EncChannel;
 
 /* Encoder group structure */
@@ -787,6 +790,9 @@ int IMP_Encoder_StartRecvPic(int encChn) {
     /* Set flags at offsets 0x404 and 0x400 */
     g_EncChannel[encChn].recv_pic_started = 1;
     g_EncChannel[encChn].recv_pic_enabled = 1;
+    /* Reset pack-state tracking for this start */
+    g_EncChannel[encChn].idr_requested_once = 0;
+    g_EncChannel[encChn].param_sets_seen = 0;
 
     pthread_mutex_unlock(&encoder_mutex);
 
@@ -944,6 +950,8 @@ int IMP_Encoder_ReleaseStream(int encChn, IMPEncoderStream *stream) {
         /* Free stream buffer */
         free(stream_buf);
         chn->current_stream = NULL;
+        /* Signal producer that a slot is now available */
+        sem_post(&chn->sem_418);
 
         LOG_ENC("ReleaseStream: freed stream buffer");
     }
@@ -1604,6 +1612,27 @@ static void *stream_thread(void *arg) {
                         stream_buf->pack = stream_buf->packs[0];
                     }
 
+                    /* If no SPS/PPS observed yet on this channel, request an IDR once */
+                    if (!chn->param_sets_seen) {
+                        int saw_sps = 0, saw_pps = 0;
+                        if (stream_buf->packs && stream_buf->packCount > 0) {
+                            for (uint32_t ii = 0; ii < stream_buf->packCount; ++ii) {
+                                uint8_t t = stream_buf->packs[ii].nalType.h264NalType;
+                                if (t == 7) saw_sps = 1; else if (t == 8) saw_pps = 1;
+                            }
+                        } else {
+                            uint8_t t = stream_buf->pack.nalType.h264NalType;
+                            if (t == 7) saw_sps = 1; else if (t == 8) saw_pps = 1;
+                        }
+                        if (saw_sps && saw_pps) {
+                            chn->param_sets_seen = 1;
+                        } else if (!chn->idr_requested_once) {
+                            chn->idr_requested_once = 1;
+                            LOG_ENC("No SPS/PPS yet on chn=%d; requesting IDR", chn->chn_id);
+                            IMP_Encoder_RequestIDR(chn->chn_id);
+                        }
+                    }
+
                     /* Store in channel for GetStream (only if slot is empty) */
                     int posted = 0;
                     pthread_mutex_lock(&chn->mutex_450);
@@ -1615,44 +1644,48 @@ static void *stream_thread(void *arg) {
                     }
                     pthread_mutex_unlock(&chn->mutex_450);
 
-                    /* If consumer hasn't released previous stream yet, drop this one and release codec stream */
+                    /* If consumer hasn't released previous stream yet, wait until it is released, then post */
                     if (!posted) {
-                        if (stream_buf->injected_buf) {
-                            free(stream_buf->injected_buf);
-                            stream_buf->injected_buf = NULL;
-                        }
-                        if (chn->codec != NULL && stream_buf->codec_stream != NULL) {
-                            AL_Codec_Encode_ReleaseStream(chn->codec, stream_buf->codec_stream, NULL);
-                        }
-                        free(stream_buf);
-                        stream_buf = NULL;
-                        LOG_ENC("stream_thread: dropped frame because previous stream not yet released");
-                    } else {
-                        LOG_ENC("stream_thread: stream seq=%u, packs=%u, total_len=%u, type=%s",
-                                stream_buf->seq, stream_buf->packs ? stream_buf->packCount : 1, stream_buf->base_size,
-                                frame_type == 0 ? "I" : (frame_type == 1 ? "P" : "B"));
-
-                        /* Debug: print first few NAL types from outgoing buffer */
-                        if (stream_buf->base_size >= 6) {
-                            const uint8_t *p = (const uint8_t*)(uintptr_t)stream_buf->base_vir;
-                            size_t L = stream_buf->base_size;
-                            size_t i = 0; int sc = 0; int cnt = 0;
-                            i = find_start_code(p, 0, L, &sc);
-                            char nal_str[64]; int off = 0;
-                            off += snprintf(nal_str+off, sizeof(nal_str)-off, "NALs:");
-                            while (i < L && cnt < 4) {
-                                size_t ns = i + (sc ? sc : 0);
-                                int sc2 = 0; size_t nx = find_start_code(p, ns, L, &sc2);
-                                if (ns < nx) {
-                                    uint8_t t = p[ns] & 0x1F; cnt++;
-                                    off += snprintf(nal_str+off, sizeof(nal_str)-off, " %u", t);
-                                }
-                                if (nx >= L) break;
-                                i = nx;
-                                sc = sc2;
+                        LOG_ENC("stream_thread: waiting (not dropping) because previous stream not yet released");
+                        while (!posted) {
+                            /* Wait for ReleaseStream to signal availability */
+                            sem_wait(&chn->sem_418);
+                            /* Try again to post */
+                            pthread_mutex_lock(&chn->mutex_450);
+                            if (chn->current_stream == NULL) {
+                                chn->current_stream = stream_buf;
+                                sem_post(&chn->sem_408);
+                                posted = 1;
                             }
-                            LOG_ENC("stream_thread: %s", nal_str);
+                            pthread_mutex_unlock(&chn->mutex_450);
                         }
+                    }
+
+                    /* Log final posted stream */
+                    LOG_ENC("stream_thread: stream seq=%u, packs=%u, total_len=%u, type=%s",
+                            stream_buf->seq, stream_buf->packs ? stream_buf->packCount : 1, stream_buf->base_size,
+                            frame_type == 0 ? "I" : (frame_type == 1 ? "P" : "B"));
+
+                    /* Debug: print first few NAL types from outgoing buffer */
+                    if (stream_buf->base_size >= 6) {
+                        const uint8_t *p = (const uint8_t*)(uintptr_t)stream_buf->base_vir;
+                        size_t L = stream_buf->base_size;
+                        size_t i = 0; int sc = 0; int cnt = 0;
+                        i = find_start_code(p, 0, L, &sc);
+                        char nal_str[64]; int off = 0;
+                        off += snprintf(nal_str+off, sizeof(nal_str)-off, "NALs:");
+                        while (i < L && cnt < 4) {
+                            size_t ns = i + (sc ? sc : 0);
+                            int sc2 = 0; size_t nx = find_start_code(p, ns, L, &sc2);
+                            if (ns < nx) {
+                                uint8_t t = p[ns] & 0x1F; cnt++;
+                                off += snprintf(nal_str+off, sizeof(nal_str)-off, " %u", t);
+                            }
+                            if (nx >= L) break;
+                            i = nx;
+                            sc = sc2;
+                        }
+                        LOG_ENC("stream_thread: %s", nal_str);
                     }
 
                 }

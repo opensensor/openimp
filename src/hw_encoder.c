@@ -311,11 +311,11 @@ static int generate_h264_sps(uint8_t *buf, int width, int height) {
     /* gaps_in_frame_num_value_allowed_flag */
     write_bit(buf, &bit_pos, 0);
 
-    /* pic_width_in_mbs_minus1 */
-    write_exp_golomb(buf, &bit_pos, (width / 16) - 1);
-
-    /* pic_height_in_map_units_minus1 */
-    write_exp_golomb(buf, &bit_pos, (height / 16) - 1);
+    /* pic_width_in_mbs_minus1 / pic_height_in_map_units_minus1 (use ceil) */
+    int mb_width  = (width  + 15) / 16;
+    int mb_height = (height + 15) / 16;
+    write_exp_golomb(buf, &bit_pos, mb_width - 1);
+    write_exp_golomb(buf, &bit_pos, mb_height - 1);
 
     /* frame_mbs_only_flag */
     write_bit(buf, &bit_pos, 1);
@@ -323,8 +323,17 @@ static int generate_h264_sps(uint8_t *buf, int width, int height) {
     /* direct_8x8_inference_flag */
     write_bit(buf, &bit_pos, 1);
 
-    /* frame_cropping_flag */
-    write_bit(buf, &bit_pos, 0);
+    /* frame_cropping_flag + offsets when not multiple of 16 (4:2:0 crop units = 2) */
+    int crop_right  = (mb_width  * 16 - width)  / 2;
+    int crop_bottom = (mb_height * 16 - height) / 2;
+    int need_crop = (crop_right > 0) || (crop_bottom > 0);
+    write_bit(buf, &bit_pos, need_crop ? 1 : 0);
+    if (need_crop) {
+        /* frame_crop_left_offset */  write_exp_golomb(buf, &bit_pos, 0);
+        /* frame_crop_right_offset */ write_exp_golomb(buf, &bit_pos, crop_right);
+        /* frame_crop_top_offset */   write_exp_golomb(buf, &bit_pos, 0);
+        /* frame_crop_bottom_offset */write_exp_golomb(buf, &bit_pos, crop_bottom);
+    }
 
     /* vui_parameters_present_flag */
     write_bit(buf, &bit_pos, 1);

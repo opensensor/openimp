@@ -17,6 +17,7 @@
 
 #include "al_avpu.h"
 #define LOG_CODEC(fmt, ...) fprintf(stderr, "[Codec] " fmt "\n", ##__VA_ARGS__)
+#include <sys/eventfd.h>
 
 /* Codec structure - based on decompilation at 0x7950c */
 /* Size: 0x924 bytes */
@@ -153,7 +154,21 @@ int AL_Codec_Encode_SetDefaultParam(void *param) {
     *(uint8_t*)(p + 0x768) = 1;
     *(uint8_t*)(p + 0x76c) = 0x10;      /* alignment */
 
-    LOG_CODEC("SetDefaultParam: initialized");
+    /* OEM-aligned zeroing of subregions */
+    memset(p + 0x12c, 0, 0x600);
+    memset(p + 0x72c, 0, 0x18);
+    memset(p + 0x744, 0, 8);
+    memset(p + 0x74c, 0, 8);
+    *(uint32_t*)(p + 0x754) = 0;
+    *(uint8_t*)(p + 0x769) = 0; /* per OEM defaults */
+    *(uint32_t*)(p + 0x770) = 0;
+    *(uint32_t*)(p + 0x774) = 0;
+    *(uint32_t*)(p + 0x778) = 0;
+    *(uint32_t*)(p + 0x77c) = 0;
+    *(uint32_t*)(p + 0x780) = 0;
+    *(uint32_t*)(p + 0x784) = 0;
+
+    LOG_CODEC("SetDefaultParam: initialized (OEM-aligned)");
     return 0;
 }
 
@@ -215,6 +230,12 @@ int AL_Codec_Encode_Create(void **codec, void *params) {
     /* Initialize from parameters */
     enc->g_pCodec = g_pCodec;
     memcpy(enc->codec_param, params, 0x794);
+
+    /* OEM-like callback placeholders and event */
+    enc->callback = NULL;
+    enc->callback_arg = enc;
+    int efd = eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC);
+    if (efd >= 0) enc->event = (void*)(uintptr_t)efd;
 
     /* Set default buffer counts and sizes */
     enc->frame_buf_count = 4;           /* Default frame buffer count */
@@ -284,7 +305,10 @@ int AL_Codec_Encode_Destroy(void *codec) {
 
     LOG_CODEC("Destroy: codec=%p, channel=%d", codec, enc->channel_id - 1);
 
-    /* Deinitialize hardware encoder */
+    /* Deinitialize hardware encoder(s) */
+    if (enc->use_hardware == 2 && enc->avpu.fd >= 0) {
+        ALAvpu_Close(&enc->avpu);
+    }
     if (enc->hw_encoder_fd >= 0) {
         HW_Encoder_Deinit(enc->hw_encoder_fd);
         enc->hw_encoder_fd = -1;
@@ -307,6 +331,13 @@ int AL_Codec_Encode_Destroy(void *codec) {
     /* Free FIFO control blocks */
     free(enc->fifo_frames);
     free(enc->fifo_streams);
+
+    /* Close OEM-like event if created */
+    if (enc->event) {
+        int efd = (int)(uintptr_t)enc->event;
+        close(efd);
+        enc->event = NULL;
+    }
 
     /* Free codec structure */
     free(enc);
@@ -405,6 +436,11 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
             /* Prefer vendor-like AL over /dev/avpu */
             if (ALAvpu_Open(&enc->avpu, &enc->hw_params) == 0 && enc->avpu.fd >= 0) {
                 enc->use_hardware = 2; /* 2 = AL/AVPU path */
+                /* Wire eventfd for OEM-like wakeups */
+                if (enc->event) {
+                    int efd = (int)(uintptr_t)enc->event;
+                    ALAvpu_SetEvent(&enc->avpu, efd);
+                }
                 LOG_CODEC("Process: AVPU(AL) opened (fd=%d)", enc->avpu.fd);
             } else {
                 /* Fallback: try legacy non-avpu devices via HW_Encoder_Init */
@@ -445,7 +481,7 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
             return 0; /* no stream yet */
         }
     } else if (enc->use_hardware == 2 && enc->avpu.fd >= 0) {
-        /* Vendor-like AL over /dev/avpu */
+        /* Vendor-like AL over /dev/avpu: only queue source here; stream is retrieved in GetStream() via IRQ-driven dequeue */
         HWFrameBuffer hw_frame;
         memset(&hw_frame, 0, sizeof(HWFrameBuffer));
         hw_frame.phys_addr = phys_addr;
@@ -461,11 +497,9 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
             free(hw_stream);
             return -1;
         }
-        if (ALAvpu_DequeueStream(&enc->avpu, hw_stream, 10) < 0) {
-            /* Nothing ready yet; don't queue to FIFO */
-            free(hw_stream);
-            return 0;
-        }
+        /* Do not dequeue or queue to our FIFO here; let GetStream() block on AVPU IRQs */
+        free(hw_stream);
+        return 0;
     } else {
         /* Software fallback */
         HWFrameBuffer hw_frame;
@@ -508,7 +542,20 @@ int AL_Codec_Encode_GetStream(void *codec, void **stream, void **user_data) {
     /* No metadata in openimp path; match libimp by providing a separate pointer */
     *user_data = NULL;
 
-    /* Dequeue stream from FIFO (wait indefinitely) */
+    if (enc->use_hardware == 2 && enc->avpu.fd >= 0) {
+        /* AVPU path: block until IRQ-driven stream is available */
+        HWStreamBuffer *s = (HWStreamBuffer*)malloc(sizeof(HWStreamBuffer));
+        if (!s) return -1;
+        if (ALAvpu_DequeueStream(&enc->avpu, s, -1) < 0) {
+            free(s);
+            return -1;
+        }
+        *stream = s;
+        LOG_CODEC("GetStream[AVPU]: got stream phys=0x%x len=%u", s->phys_addr, s->length);
+        return 0;
+    }
+
+    /* Legacy/SW path: dequeue from our FIFO (wait indefinitely) */
     void *s = Fifo_Dequeue(enc->fifo_streams, -1);
     if (s == NULL) {
         return -1;
@@ -529,36 +576,34 @@ int AL_Codec_Encode_ReleaseStream(void *codec, void *stream, void *user_data) {
     }
 
     AL_CodecEncode *enc = (AL_CodecEncode*)codec;
-    (void)enc; /* Unused in this implementation */
 
-    /* Based on decompilation at 0x7a624:
-     * AL_Buffer_Unref(arg3)
-     * AL_Encoder_PutStreamBuffer(*(arg1 + 0x798), arg2)
-     * AL_Buffer_Unref(arg2)
-     */
+    if (enc->use_hardware == 2 && enc->avpu.fd >= 0) {
+        /* AVPU path: return buffer to hardware ring and free wrapper */
+        HWStreamBuffer *hw_stream = (HWStreamBuffer*)stream;
+        (void)user_data; /* no separate metadata buffer in this path */
+        if (ALAvpu_ReleaseStream(&enc->avpu, hw_stream) < 0) {
+            LOG_CODEC("ReleaseStream[AVPU]: failed to requeue phys=0x%x", hw_stream->phys_addr);
+            /* Still free wrapper to avoid leaks */
+        }
+        free(hw_stream);
+        LOG_CODEC("ReleaseStream[AVPU]: released stream phys=0x%x", (unsigned)hw_stream->phys_addr);
+        return 0;
+    }
 
-    /* Unref user_data buffer if provided */
+    /* Legacy/SW path follows libimp semantics (no refcounts) */
     if (user_data != NULL) {
-        /* AL_Buffer_Unref(user_data) - would decrement reference count */
         (void)user_data;
     }
 
-    /* Free the HWStreamBuffer and its data */
     HWStreamBuffer *hw_stream = (HWStreamBuffer*)stream;
-
-    /* Free the encoded data buffer (allocated in software encoder) */
     if (hw_stream->virt_addr != 0 && hw_stream->phys_addr == 0) {
         /* Software-encoded stream - free the allocated buffer */
         void *data_ptr = (void*)(uintptr_t)hw_stream->virt_addr;
         free(data_ptr);
         LOG_CODEC("ReleaseStream: freed software-encoded data at %p", data_ptr);
     }
-
-    /* Free the stream buffer structure itself */
     free(hw_stream);
-
     LOG_CODEC("ReleaseStream: freed stream %p", stream);
-
     return 0;
 }
 
