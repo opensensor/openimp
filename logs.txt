@@ -1,3 +1,5 @@
+               13:39:39 up 6 min,  load average: 0.17, 0.15, 0.07
+
 root@ing-wyze-cam3-a000 ~# cd /opt/
 root@ing-wyze-cam3-a000 opt# ./prudynt 
 [INFO:Config.cpp]: Loaded configuration from /etc/prudynt.json
@@ -26,9 +28,9 @@ root@ing-wyze-cam3-a000 opt# ./prudynt
 [IMP_ISP] AddSensor: TX_ISP_GET_BUF using index=input_index=125830200
 [IMP_ISP] AddSensor: ISP buffer size=4685424 (platform struct size=8)
 [DMA] DMA init: using /dev/rmem
-[DMA] DMA init: /dev/rmem mapped at 0x753d3000 size=30408704 base_phys=0x06300000
-[DMA] Alloc: (unnamed) size=4685424 phys=0x6300000 virt=0x753d3000 (rmem off=0x0)
-[IMP_ISP] AddSensor: allocated ISP buffer: virt=0x753d3000 phys=0x6300000 size=4685424
+[DMA] DMA init: /dev/rmem mapped at 0x756a8000 size=30408704 base_phys=0x06300000
+[DMA] Alloc: (unnamed) size=4685424 phys=0x6300000 virt=0x756a8000 (rmem off=0x0)
+[IMP_ISP] AddSensor: allocated ISP buffer: virt=0x756a8000 phys=0x6300000 size=4685424
 [IMP_ISP] AddSensor: TX_ISP_SET_BUF using index=sensor_idx=0
 [IMP_ISP] AddSensor: calling TX_ISP_SET_BUF (0x800856d4) with phys=0x6300000 size=4685424
 [IMP_ISP] AddSensor: TX_ISP_SET_BUF succeeded
@@ -67,20 +69,23 @@ root@ing-wyze-cam3-a000 opt# ./prudynt
 [IMP_ISP] SetMaxDgain: 80
 [IMP_ISP] SetWB: mode=0, rgain=0, bgain=0
 [IMP_ISP] SetBcshHue: 128
-[IMP_ISP] SetDefog_Strength: 2146135115
+[IMP_ISP] SetDefog_Strength: 2140814891
 [IMP_ISP] SetDPC_Strength: 128
 [IMP_ISP] SetDRC_Strength: 128
 [IMP_ISP] SetSensorFPS: 25/1
 [IMP_ISP] SetSensorFPS: FPS set successfully to 25/1
 [IMP_ISP] SetISPRunningMode: 0
 [IMP_ISP] SetISPRunningMode: mode set successfully to 0
-[IMP_System] Timestamp rebased to 47796749 us
+[IMP_System] Timestamp rebased to 398257599 us
 [INFO:TimestampManager.cpp]: TimestampManager initialized - using IMP hardware timestamps directly
 [FrameSource] GetChnAttr failed: channel 0 not configured
 [FrameSource] CreateChn: Opened /dev/framechan0 (fd=7, nonblock)
 [System] Registered module [0,0]: FrameSource
 [FrameSource] CreateChn: registered FrameSource module [0,0] with 1 output
 [FrameSource] CreateChn: chn=0, 1920x1080, fmt=0xa
+[INFO:WS.cpp]: libwebsockets version: 4.3.5-unknown
+[INFO:WS.cpp]: WS context: port=0 iface=<any>
+[ERROR:WS.cpp]: lws init failed (errno=12)
 [FrameSource] SetChnAttr: chn=0, 1920x1080, fmt=0xa
 [FrameSource] GetChnFifoAttr: chn=0 -> maxdepth=0, depth=0
 [FrameSource] SetChnFifoAttr: chn=0, maxdepth=0, depth=0
@@ -93,7 +98,7 @@ root@ing-wyze-cam3-a000 opt# ./prudynt
 [Fifo] Init: size=4, max_elements=5
 [Fifo] Init: size=7, max_elements=8
 [Codec] Create: hardware encoder will be attempted via /dev/avpu (lazy init)
-[Codec] Create: codec=0x770da0a0, channel=0
+[Codec] Create: codec=0x773af0a0, channel=0
 [Encoder] channel_encoder_init: frame_cnt=4, frame_size=1048576
 [Fifo] Init: size=4, max_elements=5
 [Encoder] CreateChn: chn=0, profile=100 created successfully
@@ -107,11 +112,8 @@ root@ing-wyze-cam3-a000 opt# ./prudynt
 [System] Registered module [4,0]: OSD
 [OSD] CreateGroup: registered OSD module [4,0] with 1 output and update callback
 [OSD] CreateGroup: grp=0
-[INFO:WS.cpp]: libwebsockets version: 4.3.5-unknown
-[INFO:WS.cpp]: WS context: port=0 iface=<any>
 [Encoder] stream_thread: started for channel 0
 [Encoder] encoder_thread: started for channel 0
-[ERROR:WS.cpp]: lws init failed (errno=12)
 [OSD] CreateRgn: called with prAttr=0
 [OSD] CreateRgn: allocated handle=0 from free list
 [OSD] CreateRgn: NULL prAttr, creating empty region
@@ -161,8 +163,8 @@ root@ing-wyze-cam3-a000 opt# ./prudynt
 [FrameSource] EnableChn: using sizeimage=3133440 from SET_FMT for chn=0
 [VBM] CreatePool: allocating pool_size=1448 (frame_count=1 * 0x428 + 0x180)
 [VBM] CreatePool: chn=0, 1920x1080 fmt=0xa, 1 frames, size=3133440 (req=3133440 calc=3133440)
-[DMA] Alloc: \�Xwge=3��6u size=3133440 phys=0x6778000 virt=0x7584b000 (rmem off=0x478000)
-[VBM] Frame 0: phys=0x6778000 virt=0x7584b000
+[DMA] Alloc: \>�wge=3��cu size=3133440 phys=0x6778000 virt=0x75b20000 (rmem off=0x478000)
+[VBM] Frame 0: phys=0x6778000 virt=0x75b20000
 [VBM] CreatePool: chn=0 created successfully
 [KernelIF] Set buffer count: 1 (actual: 1)
 [VBM] FillPool: chn=0, filling 1 frames
@@ -197,10 +199,11 @@ root@ing-wyze-cam3-a000 opt# ./prudynt
 [Fifo] Init: size=4, max_elements=5
 [Fifo] Init: size=7, max_elements=8
 [Codec] Create: hardware encoder will be attempted via /dev/avpu (lazy init)
-[Codec] Create: codec=0x752c21c0, channel=1
+[Codec] Create: codec=0x755971a0, channel=1
 [Encoder] channel_encoder_init: frame_cnt=4, frame_size=1048576
 [Fifo] Init: size=4, max_elements=5
 [Encoder] CreateChn: chn=1, profile=100 created successfully
+[Encoder] RegisterChn: grp=1, chn=1
 [FrameSource] frame_capture_thread: started for channel 0, state=2, fd=7
 [FrameSource] frame_capture_thread chn=0: entering main loop
 [FrameSource] frame_capture_thread chn=0: poll iteration 1, state=2, fd=7, software_mode=0
@@ -208,7 +211,6 @@ root@ing-wyze-cam3-a000 opt# ./prudynt
 [FrameSource] frame_capture_thread chn=0: select() returned 1 (errno=0)
 [FrameSource] frame_capture_thread chn=0: entering DQBUF drain loop
 [VBM] VBMKernelDequeue chn=0: attempting DQBUF...
-[Encoder] RegisterChn: grp=1, chn=1
 [System] Registered module [1,1]: Encoder
 [Encoder] CreateGroup: registered Encoder module [1,1] with 1 output and update callback
 [Encoder] CreateGroup: grp=1
@@ -242,55 +244,125 @@ root@ing-wyze-cam3-a000 opt# ./prudynt
 [OSD] CreateRgn: handle=6 created (empty)
 [OSD] RegisterRgn: handle=6, grp=1
 [OSD] SetRgnAttr: handle=6
+[OSD] SetRgnAttr: handle=6
+[OSD] SetGrpRgnAttr: handle=6, grp=1
+[OSD] CreateRgn: called with prAttr=0
+[OSD] CreateRgn: allocated handle=7 from free list
+[OSD] CreateRgn: NULL prAttr, creating empty region
+[OSD] CreateRgn: handle=7 created (empty)
+[OSD] RegisterRgn: handle=7, grp=1
+[OSD] SetRgnAttr: handle=7
+[OSD] SetGrpRgnAttr: handle=7, grp=1
+[System] Bind request: [0,1,0] -> [4,1,0]
+[System] Binding [0,1,0] -> [4,1,0]
+[System] Bound FrameSource -> OSD (observer added)
+[System] Bind request: [4,1,0] -> [1,1,0]
+[System] Binding [4,1,0] -> [1,1,0]
+[System] Bound OSD -> Encoder (observer added)
+[KernelIF] SET_FMT before ioctl:
+[KernelIF]   width=640 height=360 pixelformat=0x3231564e
+[KernelIF]   scaler_enable=1 scaler_outwidth=640 scaler_outheight=360
+[KernelIF]   picwidth=640 picheight=360
+[KernelIF]   crop_enable=0 crop=1920x1080+0+0
+[KernelIF] SET_FMT after ioctl:
+[KernelIF]   width=640 height=360 sizeimage=353280 bytesperline=960
+[KernelIF]   scaler_enable=1 scaler_outwidth=640 scaler_outheight=360
+[KernelIF] Set format: 640x360 fmt=0xa (fourcc=0x3231564e) sizeimage=353280->353280 bytesperline=960 colorspace=8
+[FrameSource] EnableChn: using sizeimage=353280 from SET_FMT for chn=1
+[VBM] CreatePool: allocating pool_size=1448 (frame_count=1 * 0x428 + 0x180)
+[VBM] CreatePool: chn=1, 640x360 fmt=0xa, 1 frames, size=353280 (req=353280 calc=353280)
+[DMA] Alloc: \>�w=353��Tu size=353280 phys=0x6a75000 virt=0x75e1d000 (rmem off=0x775000)
+[VBM] Frame 0: phys=0x6a75000 virt=0x75e1d000
+[VBM] CreatePool: chn=1 created successfully
+[KernelIF] Set buffer count: 1 (actual: 1)
+[VBM] FillPool: chn=1, filling 1 frames
+[VBM] FillPool: queued 1 frames
+[VBM] PrimeKernelQueue: queued 1 frames to kernel for chn=1 (limit=1)
+[VBM] FlushFrame: chn=1
+[VBM] FlushFrame: flushed all frames
+[KernelIF] Set frame depth: 0
+[KernelIF] Stream started
+[FrameSource] EnableChn: chn=1 enabled successfully
+[Encoder] RequestIDR: chn=1
+[HW_Encoder] RequestIDR: next frame will be IDR
+[Encoder] StartRecvPic: chn=1
+[Encoder] SetDefaultParam: 1920x1080, 24/1 fps, profile=67108864, rc=0
+[Codec] SetDefaultParam: initialized (OEM-aligned)
+[Encoder] channel_encoder_init: 1920x1080, profile=0x4000000->0x0, fps=24/1, gop=0, bitrate=0
+[Fifo] Init: size=4, max_elements=5
+[Fifo] Init: size=7, max_elements=8
+[Codec] Create: hardware encoder will be attempted via /dev/avpu (lazy init)
+[Codec] Create: codec=0x7558f270, channel=2
+[Encoder] channel_encoder_init: frame_cnt=4, frame_size=1048576
+[Fifo] Init: size=4, max_elements=5
+[FrameSource] frame_capture_thread: started for channel 1, state=2, fd=11
+[FrameSource] frame_capture_thread chn=1: entering main loop
+[FrameSource] frame_capture_thread chn=1: poll iteration 1, state=2, fd=11, software_mode=0
+[FrameSource] frame_capture_thread chn=1: about to select() (poll #1)
+[FrameSource] frame_capture_thread chn=1: select() returned 1 (errno=0)
+[FrameSource] frame_capture_thread chn=1: entering DQBUF drain loop
+[VBM] VBMKernelDequeue chn=1: attempting DQBUF...
+[Encoder] CreateChn: chn=2, profile=67108864 created successfully
+[Encoder] RegisterChn: grp=0, chn=2
+[Encoder] RequestIDR: chn=2
+[HW_Encoder] RequestIDR: next frame will be IDR
+[Encoder] StartRecvPic: chn=2
+[Encoder] stream_thread: started for channel 2
+[INFO:RTSPStatus.cpp]: RTSPStatus: RTSP status interface initialized successfully
+[Encoder] encoder_thread: started for channel 2
+[INFO:RTSP.cpp]: Set shared RTP timestamp base: 3921775265 (0xe9c18aa1)
+[OSD] Start: grp=0
+[OSD] SetPoolSize: 1228800 bytes
+[OSD] Start: grp=1
+[OSD] SetPoolSize: 1228800 bytes
 [VBM] VBMKernelDequeue chn=0: DQBUF returned ret=0 idx=0
-[FrameSource] frame_capture_thread chn=0: got frame #1 (0x752b8980) from kernel
-[Encoder] encoder_update: Frame available from FrameSource, frame=0x752b8980
-[Codec] Process: frame=0x752b8980, extracting metadata
+[FrameSource] frame_capture_thread chn=0: got frame #1 (0x7558d980) from kernel
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x7558d980
+[Codec] Process: frame=0x7558d980, extracting metadata
 [AL-AVPU] sensor: gc2053 1920x1080 @ 25 fps
-[DMA] Alloc: (unnamed) size=131072 phys=0x6a75000 virt=0x75b48000 (rmem off=0x775000)
-[AL-AVPU] stream buf[0]: RMEM phys=0x06a75000 size=131072 virt=0x75b48000
-[DMA] Alloc: (unnamed) size=131072 phys=0x6a95000 virt=0x75b68000 (rmem off=0x795000)
-[AL-AVPU] stream buf[1]: RMEM phys=0x06a95000 size=131072 virt=0x75b68000
-[DMA] Alloc: (unnamed) size=131072 phys=0x6ab5000 virt=0x75b88000 (rmem off=0x7b5000)
-[AL-AVPU] stream buf[2]: RMEM phys=0x06ab5000 size=131072 virt=0x75b88000
-[DMA] Alloc: (unnamed) size=131072 phys=0x6ad5000 virt=0x75ba8000 (rmem off=0x7d5000)
-[AL-AVPU] stream buf[3]: RMEM phys=0x06ad5000 size=131072 virt=0x75ba8000
-[DMA] Alloc: (unnamed) size=131072 phys=0x6af5000 virt=0x75bc8000 (rmem off=0x7f5000)
-[AL-AVPU] stream buf[4]: RMEM phys=0x06af5000 size=131072 virt=0x75bc8000
-[DMA] Alloc: (unnamed) size=131072 phys=0x6b15000 virt=0x75be8000 (rmem off=0x815000)
-[AL-AVPU] stream buf[5]: RMEM phys=0x06b15000 size=131072 virt=0x75be8000
-[DMA] Alloc: (unnamed) size=131072 phys=0x6b35000 virt=0x75c08000 (rmem off=0x835000)
-[AL-AVPU] stream buf[6]: RMEM phys=0x06b35000 size=131072 virt=0x75c08000
+[DMA] Alloc: (unnamed) size=131072 phys=0x6acc000 virt=0x75e74000 (rmem off=0x7cc000)
+[AL-AVPU] stream buf[0]: RMEM phys=0x06acc000 size=131072 virt=0x75e74000
+[DMA] Alloc: (unnamed) size=131072 phys=0x6aec000 virt=0x75e94000 (rmem off=0x7ec000)
+[AL-AVPU] stream buf[1]: RMEM phys=0x06aec000 size=131072 virt=0x75e94000
+[DMA] Alloc: (unnamed) size=131072 phys=0x6b0c000 virt=0x75eb4000 (rmem off=0x80c000)
+[AL-AVPU] stream buf[2]: RMEM phys=0x06b0c000 size=131072 virt=0x75eb4000
+[DMA] Alloc: (unnamed) size=131072 phys=0x6b2c000 virt=0x75ed4000 (rmem off=0x82c000)
+[AL-AVPU] stream buf[3]: RMEM phys=0x06b2c000 size=131072 virt=0x75ed4000
+[DMA] Alloc: (unnamed) size=131072 phys=0x6b4c000 virt=0x75ef4000 (rmem off=0x84c000)
+[AL-AVPU] stream buf[4]: RMEM phys=0x06b4c000 size=131072 virt=0x75ef4000
+[DMA] Alloc: (unnamed) size=131072 phys=0x6b6c000 virt=0x75f14000 (rmem off=0x86c000)
+[AL-AVPU] stream buf[5]: RMEM phys=0x06b6c000 size=131072 virt=0x75f14000
+[DMA] Alloc: (unnamed) size=131072 phys=0x6b8c000 virt=0x75f34000 (rmem off=0x88c000)
+[AL-AVPU] stream buf[6]: RMEM phys=0x06b8c000 size=131072 virt=0x75f34000
 [AL-AVPU] WRITE[0x9208] <- 0x06300000
 [AL-AVPU] set AXI_ADDR_OFFSET_IP (0x9208) = 0x06300000 (use_offsets=1)
-[DMA] Alloc: (unnamed) size=9728 phys=0x6b55000 virt=0x75c28000 (rmem off=0x855000)
-[AL-AVPU] cmdlist ring: phys=0x06b55000 size=9728 entries=19 entry_size=512 first:[0x06b55000..0x06b55200)
+[DMA] Alloc: (unnamed) size=9728 phys=0x6bac000 virt=0x75f54000 (rmem off=0x8ac000)
+[AL-AVPU] cmdlist ring: phys=0x06bac000 size=9728 entries=19 entry_size=512 first:[0x06bac000..0x06bac200)
 [AL-AVPU] WRITE[0x8054] <- 0x00000080
 [AL-AVPU] WRITE[0x83f0] <- 0x00000002
 [AL-AVPU] WRITE[0x83f0] <- 0x00000004
-[AL-AVPU] WRITE[0x83f4] <- 0x00000001
-[AL-AVPU] configured core=0: TOP_CTRL=0x00000080->0x00000000, RESET(2->4), CLKCMD=0x00000001
-[AL-AVPU] program CL regs: start=0x00855000 end=0x00855200 -> [0x8900,0x8904]
-[AL-AVPU] WRITE[0x8900] <- 0x00855000
-[AL-AVPU] WRITE[0x8904] <- 0x00855200
+[AL-AVPU] WRITE[0x83f4] <- 0x00010001
+[AL-AVPU] configured core=0: TOP_CTRL=0x00000080->0x00000000, RESET(2->4), CLKCMD=0x00010001
+[AL-AVPU] program CL regs: start=0x008ac000 end=0x008ac200 -> [0x8900,0x8904]
+[AL-AVPU] WRITE[0x8900] <- 0x008ac000
+[AL-AVPU] WRITE[0x8904] <- 0x008ac200
 [AL-AVPU] readback CL regs: [0x8900]=0x00000000 [0x8904]=0x00000000
-[AL-AVPU] WRITE[0x8094] <- 0x00775000
-[AL-AVPU] push STRM buf[0] -> reg 0x8094 = 0x00775000 (off)
-[AL-AVPU] WRITE[0x8094] <- 0x00795000
-[AL-AVPU] push STRM buf[1] -> reg 0x8094 = 0x00795000 (off)
-[AL-AVPU] WRITE[0x8094] <- 0x007b5000
-[AL-AVPU] push STRM buf[2] -> reg 0x8094 = 0x007b5000 (off)
-[AL-AVPU] WRITE[0x8094] <- 0x007d5000
-[AL-AVPU] push STRM buf[3] -> reg 0x8094 = 0x007d5000 (off)
-[AL-AVPU] WRITE[0x8094] <- 0x007f5000
-[AL-AVPU] push STRM buf[4] -> reg 0x8094 = 0x007f5000 (off)
-[AL-AVPU] WRITE[0x8094] <- 0x00815000
-[AL-AVPU] push STRM buf[5] -> reg 0x8094 = 0x00815000 (off)
-[AL-AVPU] WRITE[0x8094] <- 0x00835000
-[AL-AVPU] push STRM buf[6] -> reg 0x8094 = 0x00835000 (off)
-[AL-AVPU] IRQ: mask=0x00000000, pending=0x00000000
+[AL-AVPU] WRITE[0x8094] <- 0x007cc000
+[AL-AVPU] push STRM buf[0] -> reg 0x8094 = 0x007cc000 (off)
+[AL-AVPU] WRITE[0x8094] <- 0x007ec000
+[AL-AVPU] push STRM buf[1] -> reg 0x8094 = 0x007ec000 (off)
+[AL-AVPU] WRITE[0x8094] <- 0x0080c000
+[AL-AVPU] push STRM buf[2] -> reg 0x8094 = 0x0080c000 (off)
+[AL-AVPU] WRITE[0x8094] <- 0x0082c000
+[AL-AVPU] push STRM buf[3] -> reg 0x8094 = 0x0082c000 (off)
+[AL-AVPU] WRITE[0x8094] <- 0x0084c000
+[AL-AVPU] push STRM buf[4] -> reg 0x8094 = 0x0084c000 (off)
+[AL-AVPU] WRITE[0x8094] <- 0x0086c000
+[AL-AVPU] push STRM buf[5] -> reg 0x8094 = 0x0086c000 (off)
+[AL-AVPU] WRITE[0x8094] <- 0x0088c000
+[AL-AVPU] push STRM buf[6] -> reg 0x8094 = 0x0088c000 (off)
+[AL-AVPU] IRQ: mask=0x00000005, pending=0x00000000
 [AL-AVPU] WRITE[0x8018] <- 0xffffffff
-[AL-AVPU] WRITE[0x8014] <- 0x00000005
 [AL-AVPU] IRQ: enable core=0 bits enc1=0x00000001 enc2=0x00000004 -> mask=0x00000005, pending=0x00000000
 [AL-AVPU] REG[0x8010] = 0x00000000
 [AL-AVPU] REG[0x8014] = 0x00000005
@@ -340,48 +412,41 @@ root@ing-wyze-cam3-a000 opt# ./prudynt
 [AL-AVPU] REG[0x8114] = 0x00000000
 [AL-AVPU] REG[0x8118] = 0x00000000
 [AL-AVPU] REG[0x811c] = 0x00000000
-[OSD] SetRgnAttr: handle=6
-[OSD] SetGrpRgnAttr: handle=6, grp=1
-[OSD] CreateRgn: called with prAttr=0
-[OSD] CreateRgn: allocated handle=7 from free list
-[OSD] CreateRgn: NULL prAttr, creating empty region
-[OSD] CreateRgn: handle=7 created (empty)
-[OSD] RegisterRgn: handle=7, grp=1
-[OSD] SetRgnAttr: handle=7
-[OSD] SetGrpRgnAttr: handle=7, grp=1
-[System] Bind request: [0,1,0] -> [4,1,0]
-[System] Binding [0,1,0] -> [4,1,0]
-[System] Bound FrameSource -> OSD (observer added)
-[System] Bind request: [4,1,0] -> [1,1,0]
-[System] Binding [4,1,0] -> [1,1,0]
-[System] Bound OSD -> Encoder (observer added)
-[KernelIF] SET_FMT before ioctl:
-[KernelIF]   width=640 height=360 pixelformat=0x3231564e
-[KernelIF]   scaler_enable=1 scaler_outwidth=640 scaler_outheight=360
-[KernelIF]   picwidth=640 picheight=360
-[KernelIF]   crop_enable=0 crop=1920x1080+0+0
-[KernelIF] SET_FMT after ioctl:
-[KernelIF]   width=640 height=360 sizeimage=353280 bytesperline=960
-[KernelIF]   scaler_enable=1 scaler_outwidth=640 scaler_outheight=360
-[KernelIF] Set format: 640x360 fmt=0xa (fourcc=0x3231564e) sizeimage=353280->353280 bytesperline=960 colorspace=8
-[FrameSource] EnableChn: using sizeimage=353280 from SET_FMT for chn=1
-[VBM] CreatePool: allocating pool_size=1448 (frame_count=1 * 0x428 + 0x180)
-[VBM] CreatePool: chn=1, 640x360 fmt=0xa, 1 frames, size=353280 (req=353280 calc=353280)
-[DMA] Alloc: \�Xw=353��'u size=353280 phys=0x6b58000 virt=0x75c2b000 (rmem off=0x858000)
-[VBM] Frame 0: phys=0x6b58000 virt=0x75c2b000
-[VBM] CreatePool: chn=1 created successfully
-[KernelIF] Set buffer count: 1 (actual: 1)
-[VBM] FillPool: chn=1, filling 1 frames
-[VBM] FillPool: queued 1 frames
-[VBM] PrimeKernelQueue: queued 1 frames to kernel for chn=1 (limit=1)
-[VBM] FlushFrame: chn=1
-[VBM] FlushFrame: flushed all frames
 [AL-AVPU] REG[0x8120] = 0x00000000
 [AL-AVPU] REG[0x8124] = 0x00000000
 [AL-AVPU] REG[0x8128] = 0x00000000
 [AL-AVPU] REG[0x812c] = 0x00000000
 [AL-AVPU] REG[0x8130] = 0x00000000
 [AL-AVPU] REG[0x8134] = 0x00000000
+[VBM] VBMKernelDequeue chn=1: DQBUF returned ret=0 idx=0
+[FrameSource] frame_capture_thread chn=1: got frame #1 (0x75595840) from kernel
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x75595840
+[Codec] Process: frame=0x75595840, extracting metadata
+[AL-AVPU] open(/dev/avpu) failed: No such device
+[HW_Encoder] Failed to open hardware encoder (tried /dev/venc, /dev/jz-venc, /dev/h264enc)
+[HW_Encoder] Hardware encoder not available, using software fallback
+[Codec] Process: no hardware path available; falling back to software
+[Codec] Process: SW encode frame 640x360
+[HW_Encoder] Software encoding: Forcing IDR frame (requested by IMP_Encoder_RequestIDR)
+[HW_Encoder] Software encoding: IDR frame 0, total=94 bytes
+[Codec] Process: encoded and queued stream, length=94
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=1, frame=0x75595840
+[VBM] ReleaseFrame: returned frame idx=0 (1 available)
+[FrameSource] ReleaseFrame: Released frame 0x75595840 from channel 1
+[Encoder] encoder_update: Released frame 0x75595840 back to its source channel 1
+[VBM] VBMKernelDequeue chn=1: attempting DQBUF...
+[Codec] GetStream: got stream 0x75593830
+[Encoder] stream_thread: got stream 0x75593830
+[Encoder] stream_thread: stream seq=0, packs=6, total_len=94, type=I
+[Encoder] stream_thread: NALs: 9 6 6 7
+[Encoder] GetStream: returning stream seq=0, packs=6, total_len=94
+[Encoder] ReleaseStream: chn=0, seq=0
+[Codec] ReleaseStream: freed software-encoded data at 0x753f3290
+[Codec] ReleaseStream: freed stream 0x75593830
+[Encoder] ReleaseStream: freed stream buffer
+[INFO:RTSP.cpp]: stream 0 available at: rtsp://192.168.50.211/ch0
+[INFO:RTSPStatus.cpp]: RTSPStatus: Updated status for stream stream0 (H264 1920x1080@25fps)
 [AL-AVPU] REG[0x8138] = 0x00000000
 [AL-AVPU] REG[0x813c] = 0x00000000
 [AL-AVPU] REG[0x8140] = 0x00000000
@@ -437,12 +502,6 @@ root@ing-wyze-cam3-a000 opt# ./prudynt
 [AL-AVPU] REG[0x83f8] = 0x00000000
 [AL-AVPU] REG[0x83fc] = 0x00000000
 [AL-AVPU] REG[0x8900] = 0x00000000
-[KernelIF] Set frame depth: 0
-[KernelIF] Stream started
-[FrameSource] EnableChn: chn=1 enabled successfully
-[Encoder] RequestIDR: chn=1
-[HW_Encoder] RequestIDR: next frame will be IDR
-[Encoder] StartRecvPic: chn=1
 [AL-AVPU] REG[0x8904] = 0x00000000
 [AL-AVPU] REG[0x8908] = 0x00000000
 [AL-AVPU] REG[0x890c] = 0x00000000
@@ -531,27 +590,6 @@ root@ing-wyze-cam3-a000 opt# ./prudynt
 [AL-AVPU] REG[0x9098] = 0x00000000
 [AL-AVPU] REG[0x909c] = 0x00000000
 [AL-AVPU] REG[0x90a0] = 0x00000000
-[Encoder] SetDefaultParam: 1920x1080, 24/1 fps, profile=67108864, rc=0
-[Codec] SetDefaultParam: initialized (OEM-aligned)
-[Encoder] channel_encoder_init: 1920x1080, profile=0x4000000->0x0, fps=24/1, gop=0, bitrate=0
-[Fifo] Init: size=4, max_elements=5
-[Fifo] Init: size=7, max_elements=8
-[Codec] Create: hardware encoder will be attempted via /dev/avpu (lazy init)
-[Codec] Create: codec=0x752ba290, channel=2
-[Encoder] channel_encoder_init: frame_cnt=4, frame_size=1048576
-[Fifo] Init: size=4, max_elements=5
-[Encoder] CreateChn: chn=2, profile=67108864 created successfully
-[Encoder] RegisterChn: grp=0, chn=2
-[Encoder] RequestIDR: chn=2
-[HW_Encoder] RequestIDR: next frame will be IDR
-[Encoder] StartRecvPic: chn=2
-[FrameSource] frame_capture_thread: started for channel 1, state=2, fd=11
-[FrameSource] frame_capture_thread chn=1: entering main loop
-[FrameSource] frame_capture_thread chn=1: poll iteration 1, state=2, fd=11, software_mode=0
-[FrameSource] frame_capture_thread chn=1: about to select() (poll #1)
-[FrameSource] frame_capture_thread chn=1: select() returned 1 (errno=0)
-[FrameSource] frame_capture_thread chn=1: entering DQBUF drain loop
-[VBM] VBMKernelDequeue chn=1: attempting DQBUF...
 [AL-AVPU] REG[0x90a4] = 0x00000000
 [AL-AVPU] REG[0x90a8] = 0x00000000
 [AL-AVPU] REG[0x90ac] = 0x00000000
@@ -576,1331 +614,1182 @@ root@ing-wyze-cam3-a000 opt# ./prudynt
 [AL-AVPU] REG[0x9238] = 0x00000000
 [AL-AVPU] REG[0x923c] = 0x00000000
 [AL-AVPU] session ready and IRQ thread started
-[AL-AVPU] opened avpu fd=14, target 1920x1080 @ 25/1 fps, gop=65535, bitrate=2000000, profile=2
-[Codec] Process: AVPU(AL) opened (fd=14)
+[AL-AVPU] opened avpu fd=18, target 1920x1080 @ 25/1 fps, gop=65535, bitrate=2000000, profile=2
+[Codec] Process: AVPU(AL) opened (fd=0)
 [Codec] Process: AVPU(AL) queue frame 1920x1080 phys=0x6778000
-[AL-AVPU] WRITE[0x8084] <- 0x00478000
-[AL-AVPU] push SRC frame off=0x00478000 -> reg 0x8084
-[AL-AVPU] CL[0] cmd[0..7]=00000011 0043777f 00002100 00000005 00000000 00001000 00001000 00043077
-[AL-AVPU] WRITE[0x8900] <- 0x00855000
-[AL-AVPU] WRITE[0x8904] <- 0x00855200
-[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
-[VBM] ReleaseFrame: chn=0, frame=0x752b8980
-[VBM] ReleaseFrame: returned frame idx=0 (1 available)
-[FrameSource] ReleaseFrame: Released frame 0x752b8980 from channel 0
-[Encoder] encoder_update: Released frame 0x752b8980 back to its source channel 0
-[VBM] VBMKernelDequeue chn=0: attempting DQBUF...
-[OSD] Start: grp=0
-[Encoder] stream_thread: started for channel 2
-[INFO:RTSPStatus.cpp]: RTSPStatus: RTSP status interface initialized successfully
-[Encoder] encoder_thread: started for channel 2
-[INFO:RTSP.cpp]: Set shared RTP timestamp base: 3921775265 (0xe9c18aa1)
-[OSD] SetPoolSize: 1228800 bytes
-[OSD] Start: grp=1
-[OSD] SetPoolSize: 1228800 bytes
-[VBM] VBMKernelDequeue chn=0: DQBUF returned ret=0 idx=0
-[FrameSource] frame_capture_thread chn=0: got frame #2 (0x752b8980) from kernel
-[Encoder] encoder_update: Frame available from FrameSource, frame=0x752b8980
-[Codec] Process: frame=0x752b8980, extracting metadata
+[AL-AVPU] SRC push failed: reg 0x8084 <- 0x00478000 (phys=0x06778000) off : Not a tty
+[Codec] Process: AVPU queue failed
+[Encoder] encoder_update: Failed to queue via group_id=0, falling back to scan
+[Codec] Process: frame=0x7558d980, extracting metadata
 [AL-AVPU] open(/dev/avpu) failed: No such device
 [HW_Encoder] Failed to open hardware encoder (tried /dev/venc, /dev/jz-venc, /dev/h264enc)
 [HW_Encoder] Hardware encoder not available, using software fallback
 [Codec] Process: no hardware path available; falling back to software
 [Codec] Process: SW encode frame 1920x1080
-[HW_Encoder] Software encoding: Forcing IDR frame (requested by IMP_Encoder_RequestIDR)
-[HW_Encoder] Software encoding: IDR frame 0, total=95 bytes
-[Codec] Process: encoded and queued stream, length=95
-[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
-[VBM] ReleaseFrame: chn=0, frame=0x752b8980
-[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[HW_Encoder] Software encoding: P frame 1, total=37 bytes
+[Codec] GetStream: got stream 0x75590160
+[Encoder] stream_thread: got stream 0x75590160
+[Encoder] stream_thread: stream seq=1, packs=3, total_len=37, type=I
+[Encoder] stream_thread: NALs: 9 6 1
+[Encoder] GetStream: returning stream seq=1, packs=3, total_len=37
+[Encoder] ReleaseStream: chn=0, seq=1
+[Codec] ReleaseStream: freed software-encoded data at 0x753d0340
+[Codec] ReleaseStream: freed stream 0x75590160
+[Encoder] ReleaseStream: freed stream buffer
+[Codec] Process: encoded and queued stream, length=37
+[Encoder] encoder_update: Queued frame to channel 0 (fallback)
+[VBM] ReleaseFrame: chn=0, frame=0x7558d980
 [VBM] ReleaseFrame: returned frame idx=0 (1 available)
-[FrameSource] ReleaseFrame: Released frame 0x752b8980 from channel 0
-[Encoder] encoder_update: Released frame 0x752b8980 back to its source channel 0
+[FrameSource] ReleaseFrame: Released frame 0x7558d980 from channel 0
+[Encoder] encoder_update: Released frame 0x7558d980 back to its source channel 0
 [VBM] VBMKernelDequeue chn=0: attempting DQBUF...
+[AL-AVPU] irq thread: missing sync primitives (m=0 c=0)
 [VBM] VBMKernelDequeue chn=1: DQBUF returned ret=0 idx=0
-[FrameSource] frame_capture_thread chn=1: got frame #1 (0x752c0860) from kernel
-[Encoder] encoder_update: Frame available from FrameSource, frame=0x752c0860
-[Codec] Process: frame=0x752c0860, extracting metadata
+[FrameSource] frame_capture_thread chn=1: got frame #2 (0x75595840) from kernel
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x75595840
+[Codec] Process: frame=0x75595840, extracting metadata
 [Codec] Process: SW encode frame 640x360
-[HW_Encoder] Software encoding: P frame 1, total=36 bytes
+[HW_Encoder] Software encoding: P frame 2, total=36 bytes
 [Codec] Process: encoded and queued stream, length=36
 [Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
-[VBM] ReleaseFrame: chn=1, frame=0x752c0860
-[VBM] ReleaseFrame: returned frame idx=0 (1 available)
-[FrameSource] ReleaseFrame: Released frame 0x752c0860 from channel 1
-[Encoder] encoder_update: Released frame 0x752c0860 back to its source channel 1
-[VBM] VBMKernelDequeue chn=1: attempting DQBUF...
-[Codec] GetStream: got stream 0x752beef0
-[Encoder] stream_thread: got stream 0x752beef0
-[Encoder] stream_thread: stream seq=0, packs=6, total_len=95, type=I
-[Encoder] stream_thread: NALs: 9 6 6 7
-[Codec] GetStream: got stream 0x752be730
-[Encoder] stream_thread: got stream 0x752be730
-[Encoder] stream_thread: waiting (not dropping) because previous stream not yet released
-[Encoder] GetStream: returning stream seq=0, packs=6, total_len=95
-[Encoder] ReleaseStream: chn=0, seq=0
-[Codec] ReleaseStream: freed software-encoded data at 0x750fb2b0
-[Codec] ReleaseStream: freed stream 0x752beef0
-[Encoder] ReleaseStream: freed stream buffer
-[Encoder] stream_thread: stream seq=1, packs=3, total_len=36, type=I
-[Encoder] stream_thread: NALs: 9 6 1
-[Encoder] GetStream: returning stream seq=1, packs=3, total_len=36
-[Encoder] ReleaseStream: chn=0, seq=1
-[Codec] ReleaseStream: freed software-encoded data at 0x750fd730
-[Codec] ReleaseStream: freed stream 0x752be730
-[Encoder] ReleaseStream: freed stream buffer
-[INFO:RTSP.cpp]: stream 0 available at: rtsp://192.168.50.211/ch0
-[INFO:RTSPStatus.cpp]: RTSPStatus: Updated status for stream stream0 (H264 1920x1080@25fps)
-[VBM] VBMKernelDequeue chn=0: DQBUF returned ret=0 idx=0
-[FrameSource] frame_capture_thread chn=0: got frame #3 (0x752b8980) from kernel
-[Encoder] encoder_update: Frame available from FrameSource, frame=0x752b8980
-[Codec] Process: frame=0x752b8980, extracting metadata
-[Codec] Process: SW encode frame 1920x1080
-[HW_Encoder] Software encoding: P frame 2, total=37 bytes
-[Codec] Process: encoded and queued stream, length=37
-[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
-[VBM] ReleaseFrame: chn=0, frame=0x752b8980
+[VBM] ReleaseFrame: chn=1, frame=0x75595840
 [VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[Codec] GetStream: got stream 0x75590070
+[Encoder] stream_thread: got stream 0x75590070
+[Encoder] stream_thread: stream seq=2, packs=3, total_len=36, type=I
+[Encoder] stream_thread: NALs: 9 6 1
+[Encoder] GetStream: returning stream seq=2, packs=3, total_len=36
+[Encoder] ReleaseStream: chn=0, seq=2
+[Codec] ReleaseStream: freed software-encoded data at 0x753d0350
+[Codec] ReleaseStream: freed stream 0x75590070
+[Encoder] ReleaseStream: freed stream buffer
 [VBM] ReleaseFrame: returned frame idx=0 (1 available)
-[FrameSource] ReleaseFrame: Released frame 0x752b8980 from channel 0
-[Encoder] encoder_update: Released frame 0x752b8980 back to its source channel 0
+[FrameSource] ReleaseFrame: Released frame 0x75595840 from channel 1
+[Encoder] encoder_update: Released frame 0x75595840 back to its source channel 1
+[VBM] VBMKernelDequeue chn=1: attempting DQBUF...
 [VBM] VBMKernelDequeue chn=1: DQBUF returned ret=0 idx=0
-[FrameSource] frame_capture_thread chn=1: got frame #2 (0x752c0860) from kernel
-[Encoder] encoder_update: Frame available from FrameSource, frame=0x752c0860
-[Codec] Process: frame=0x752c0860, extracting metadata
+[FrameSource] frame_capture_thread chn=1: got frame #3 (0x75595840) from kernel
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x75595840
+[Codec] Process: frame=0x75595840, extracting metadata
 [Codec] Process: SW encode frame 640x360
 [HW_Encoder] Software encoding: P frame 3, total=36 bytes
 [Codec] Process: encoded and queued stream, length=36
 [Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
-[VBM] ReleaseFrame: chn=1, frame=0x752c0860
+[VBM] ReleaseFrame: chn=1, frame=0x75595840
 [VBM] ReleaseFrame: queue full, dropped idx=0 to make room
 [VBM] ReleaseFrame: returned frame idx=0 (1 available)
-[FrameSource] ReleaseFrame: Released frame 0x752c0860 from channel 1
-[Encoder] encoder_update: Released frame 0x752c0860 back to its source channel 1
-[VBM] VBMKernelDequeue chn=1: attempting DQBUF...
-[Codec] GetStream: got stream 0x752beef0
-[Encoder] stream_thread: got stream 0x752beef0
-[Encoder] stream_thread: stream seq=2, packs=3, total_len=37, type=I
-[Encoder] stream_thread: NALs: 9 6 1
-[Codec] GetStream: got stream 0x752be730
-[Encoder] stream_thread: got stream 0x752be730
-[Encoder] stream_thread: waiting (not dropping) because previous stream not yet released
-[Encoder] GetStream: returning stream seq=2, packs=3, total_len=37
-[Encoder] ReleaseStream: chn=0, seq=2
-[Codec] ReleaseStream: freed software-encoded data at 0x750fb370
-[Codec] ReleaseStream: freed stream 0x752beef0
-[Encoder] ReleaseStream: freed stream buffer
+[FrameSource] ReleaseFrame: Released frame 0x75595840 from channel 1
+[Encoder] encoder_update: Released frame 0x75595840 back to its source channel 1
+[Codec] GetStream: got stream 0x75590160
+[Encoder] stream_thread: got stream 0x75590160
 [Encoder] stream_thread: stream seq=3, packs=3, total_len=36, type=I
 [Encoder] stream_thread: NALs: 9 6 1
 [Encoder] GetStream: returning stream seq=3, packs=3, total_len=36
 [Encoder] ReleaseStream: chn=0, seq=3
-[Codec] ReleaseStream: freed software-encoded data at 0x750fd7f0
-[Codec] ReleaseStream: freed stream 0x752be730
+[Codec] ReleaseStream: freed software-encoded data at 0x753d0360
+[Codec] ReleaseStream: freed stream 0x75590160
 [Encoder] ReleaseStream: freed stream buffer
-[VBM] VBMKernelDequeue chn=1: DQBUF returned ret=0 idx=0
-[FrameSource] frame_capture_thread chn=1: got frame #3 (0x752c0860) from kernel
-[Encoder] encoder_update: Frame available from FrameSource, frame=0x752c0860
-[Codec] Process: frame=0x752c0860, extracting metadata
+[VBM] VBMKernelDequeue chn=0: DQBUF returned ret=0 idx=0
+[FrameSource] frame_capture_thread chn=0: got frame #2 (0x7558d980) from kernel
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x7558d980
+[Codec] Process: frame=0x7558d980, extracting metadata
+[Codec] Process: SW encode frame 1920x1080
+[HW_Encoder] Software encoding: P frame 4, total=37 bytes
+[Codec] GetStream: got stream 0x75593830
+[Encoder] stream_thread: got stream 0x75593830
+[Encoder] stream_thread: stream seq=4, packs=3, total_len=37, type=I
+[Encoder] stream_thread: NALs: 9 6 1
+[Encoder] GetStream: returning stream seq=4, packs=3, total_len=37
+[Encoder] ReleaseStream: chn=0, seq=4
+[Codec] ReleaseStream: freed software-encoded data at 0x753d0370
+[Codec] ReleaseStream: freed stream 0x75593830
+[Encoder] ReleaseStream: freed stream buffer
+[Codec] Process: encoded and queued stream, length=37
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=0, frame=0x7558d980
+[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[VBM] ReleaseFrame: returned frame idx=0 (1 available)
+[FrameSource] ReleaseFrame: Released frame 0x7558d980 from channel 0
+[Encoder] encoder_update: Released frame 0x7558d980 back to its source channel 0
+[VBM] VBMKernelDequeue chn=0: attempting DQBUF...
+[FrameSource] frame_capture_thread chn=1: got frame #4 (0x75595840) from kernel
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x75595840
+[Codec] Process: frame=0x75595840, extracting metadata
 [Codec] Process: SW encode frame 640x360
-[HW_Encoder] Software encoding: P frame 4, total=36 bytes
+[HW_Encoder] Software encoding: P frame 5, total=36 bytes
 [Codec] Process: encoded and queued stream, length=36
 [Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
-[VBM] ReleaseFrame: chn=1, frame=0x752c0860
+[VBM] ReleaseFrame: chn=1, frame=0x75595840
 [VBM] ReleaseFrame: queue full, dropped idx=0 to make room
 [VBM] ReleaseFrame: returned frame idx=0 (1 available)
-[FrameSource] ReleaseFrame: Released frame 0x752c0860 from channel 1
-[Encoder] encoder_update: Released frame 0x752c0860 back to its source channel 1
-[Codec] GetStream: got stream 0x752be730
-[Encoder] stream_thread: got stream 0x752be730
-[Encoder] stream_thread: stream seq=4, packs=3, total_len=36, type=I
+[FrameSource] ReleaseFrame: Released frame 0x75595840 from channel 1
+[Encoder] encoder_update: Released frame 0x75595840 back to its source channel 1
+[Codec] GetStream: got stream 0x755900c0
+[Encoder] stream_thread: got stream 0x755900c0
+[Encoder] stream_thread: stream seq=5, packs=3, total_len=36, type=I
 [Encoder] stream_thread: NALs: 9 6 1
-[Encoder] GetStream: returning stream seq=4, packs=3, total_len=36
-[Encoder] ReleaseStream: chn=0, seq=4
-[Codec] ReleaseStream: freed software-encoded data at 0x750fb380
-[Codec] ReleaseStream: freed stream 0x752be730
-[Encoder] ReleaseStream: freed stream buffer
-[FrameSource] frame_capture_thread chn=0: got frame #4 (0x752b8980) from kernel
-[Encoder] encoder_update: Frame available from FrameSource, frame=0x752b8980
-[Codec] Process: frame=0x752b8980, extracting metadata
-[Codec] Process: SW encode frame 1920x1080
-[HW_Encoder] Software encoding: P frame 5, total=37 bytes
-[Codec] Process: encoded and queued stream, length=37
-[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
-[VBM] ReleaseFrame: chn=0, frame=0x752b8980
-[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
-[VBM] ReleaseFrame: returned frame idx=0 (1 available)
-[FrameSource] ReleaseFrame: Released frame 0x752b8980 from channel 0
-[Encoder] encoder_update: Released frame 0x752b8980 back to its source channel 0
-[Codec] GetStream: got stream 0x752bee50
-[Encoder] stream_thread: got stream 0x752bee50
-[Encoder] stream_thread: stream seq=5, packs=3, total_len=37, type=I
-[Encoder] stream_thread: NALs: 9 6 1
-[Encoder] GetStream: returning stream seq=5, packs=3, total_len=37
+[Encoder] GetStream: returning stream seq=5, packs=3, total_len=36
 [Encoder] ReleaseStream: chn=0, seq=5
-[Codec] ReleaseStream: freed software-encoded data at 0x750fb390
-[Codec] ReleaseStream: freed stream 0x752bee50
+[Codec] ReleaseStream: freed software-encoded data at 0x753d0380
+[Codec] ReleaseStream: freed stream 0x755900c0
 [Encoder] ReleaseStream: freed stream buffer
-[FrameSource] frame_capture_thread chn=0: got frame #5 (0x752b8980) from kernel
-[Encoder] encoder_update: Frame available from FrameSource, frame=0x752b8980
-[Codec] Process: frame=0x752b8980, extracting metadata
+[VBM] VBMKernelDequeue chn=0: DQBUF returned ret=0 idx=0
+[FrameSource] frame_capture_thread chn=0: got frame #3 (0x7558d980) from kernel
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x7558d980
+[Codec] Process: frame=0x7558d980, extracting metadata
 [Codec] Process: SW encode frame 1920x1080
 [HW_Encoder] Software encoding: P frame 6, total=37 bytes
-[Codec] Process: encoded and queued stream, length=37
-[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
-[VBM] ReleaseFrame: chn=0, frame=0x752b8980
-[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
-[VBM] ReleaseFrame: returned frame idx=0 (1 available)
-[FrameSource] ReleaseFrame: Released frame 0x752b8980 from channel 0
-[Encoder] encoder_update: Released frame 0x752b8980 back to its source channel 0
-[Codec] GetStream: got stream 0x752be730
-[Encoder] stream_thread: got stream 0x752be730
+[Codec] GetStream: got stream 0x755901b0
+[Encoder] stream_thread: got stream 0x755901b0
 [Encoder] stream_thread: stream seq=6, packs=3, total_len=37, type=I
 [Encoder] stream_thread: NALs: 9 6 1
 [Encoder] GetStream: returning stream seq=6, packs=3, total_len=37
 [Encoder] ReleaseStream: chn=0, seq=6
-[Codec] ReleaseStream: freed software-encoded data at 0x750fb3a0
-[Codec] ReleaseStream: freed stream 0x752be730
+[Codec] ReleaseStream: freed software-encoded data at 0x753d0390
+[Codec] ReleaseStream: freed stream 0x755901b0
 [Encoder] ReleaseStream: freed stream buffer
-[FrameSource] frame_capture_thread chn=1: got frame #4 (0x752c0860) from kernel
-[Encoder] encoder_update: Frame available from FrameSource, frame=0x752c0860
-[Codec] Process: frame=0x752c0860, extracting metadata
+[Codec] Process: encoded and queued stream, length=37
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=0, frame=0x7558d980
+[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[VBM] ReleaseFrame: returned frame idx=0 (1 available)
+[FrameSource] ReleaseFrame: Released frame 0x7558d980 from channel 0
+[Encoder] encoder_update: Released frame 0x7558d980 back to its source channel 0
+[OSD] GetRgnAttr: handle=0
+[OSD] SetRgnAttr: handle=0
+[OSD] GetRgnAttr: handle=4
+[OSD] SetRgnAttr: handle=4
+[FrameSource] frame_capture_thread chn=1: got frame #5 (0x75595840) from kernel
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x75595840
+[Codec] Process: frame=0x75595840, extracting metadata
 [Codec] Process: SW encode frame 640x360
 [HW_Encoder] Software encoding: P frame 7, total=36 bytes
 [Codec] Process: encoded and queued stream, length=36
 [Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
-[VBM] ReleaseFrame: chn=1, frame=0x752c0860
+[VBM] ReleaseFrame: chn=1, frame=0x75595840
 [VBM] ReleaseFrame: queue full, dropped idx=0 to make room
 [VBM] ReleaseFrame: returned frame idx=0 (1 available)
-[FrameSource] ReleaseFrame: Released frame 0x752c0860 from channel 1
-[Encoder] encoder_update: Released frame 0x752c0860 back to its source channel 1
-[Codec] GetStream: got stream 0x752bee50
-[Encoder] stream_thread: got stream 0x752bee50
+[FrameSource] ReleaseFrame: Released frame 0x75595840 from channel 1
+[Encoder] encoder_update: Released frame 0x75595840 back to its source channel 1
+[Codec] GetStream: got stream 0x75590160
+[Encoder] stream_thread: got stream 0x75590160
 [Encoder] stream_thread: stream seq=7, packs=3, total_len=36, type=I
 [Encoder] stream_thread: NALs: 9 6 1
 [Encoder] GetStream: returning stream seq=7, packs=3, total_len=36
 [Encoder] ReleaseStream: chn=0, seq=7
-[Codec] ReleaseStream: freed software-encoded data at 0x750fb3b0
-[Codec] ReleaseStream: freed stream 0x752bee50
+[Codec] ReleaseStream: freed software-encoded data at 0x753bc3c0
+[Codec] ReleaseStream: freed stream 0x75590160
 [Encoder] ReleaseStream: freed stream buffer
-[OSD] GetRgnAttr: handle=0
-[OSD] SetRgnAttr: handle=0
-[OSD] GetRgnAttr: handle=4
-[FrameSource] frame_capture_thread chn=1: got frame #5 (0x752c0860) from kernel
-[Encoder] encoder_update: Frame available from FrameSource, frame=0x752c0860
-[Codec] Process: frame=0x752c0860, extracting metadata
+[FrameSource] frame_capture_thread chn=0: got frame #4 (0x7558d980) from kernel
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x7558d980
+[Codec] Process: frame=0x7558d980, extracting metadata
+[Codec] Process: SW encode frame 1920x1080
+[HW_Encoder] Software encoding: P frame 8, total=37 bytes
+[Codec] GetStream: got stream 0x75593830
+[Encoder] stream_thread: got stream 0x75593830
+[Encoder] stream_thread: stream seq=8, packs=3, total_len=37, type=I
+[Encoder] stream_thread: NALs: 9 6 1
+[Encoder] GetStream: returning stream seq=8, packs=3, total_len=37
+[Encoder] ReleaseStream: chn=0, seq=8
+[Codec] ReleaseStream: freed software-encoded data at 0x753bc3d0
+[Codec] ReleaseStream: freed stream 0x75593830
+[Encoder] ReleaseStream: freed stream buffer
+[Codec] Process: encoded and queued stream, length=37
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=0, frame=0x7558d980
+[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[VBM] ReleaseFrame: returned frame idx=0 (1 available)
+[FrameSource] ReleaseFrame: Released frame 0x7558d980 from channel 0
+[Encoder] encoder_update: Released frame 0x7558d980 back to its source channel 0
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x75595840
+[Codec] Process: frame=0x75595840, extracting metadata
 [Codec] Process: SW encode frame 640x360
-[HW_Encoder] Software encoding: P frame 8, total=36 bytes
+[HW_Encoder] Software encoding: P frame 9, total=36 bytes
 [Codec] Process: encoded and queued stream, length=36
 [Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
-[VBM] ReleaseFrame: chn=1, frame=0x752c0860
+[VBM] ReleaseFrame: chn=1, frame=0x75595840
 [VBM] ReleaseFrame: queue full, dropped idx=0 to make room
 [VBM] ReleaseFrame: returned frame idx=0 (1 available)
-[FrameSource] ReleaseFrame: Released frame 0x752c0860 from channel 1
-[Encoder] encoder_update: Released frame 0x752c0860 back to its source channel 1
-[Codec] GetStream: got stream 0x752bee50
-[Encoder] stream_thread: got stream 0x752bee50
-[Encoder] stream_thread: stream seq=8, packs=3, total_len=36, type=I
+[FrameSource] ReleaseFrame: Released frame 0x75595840 from channel 1
+[Encoder] encoder_update: Released frame 0x75595840 back to its source channel 1
+[Codec] GetStream: got stream 0x755900c0
+[Encoder] stream_thread: got stream 0x755900c0
+[Encoder] stream_thread: stream seq=9, packs=3, total_len=36, type=I
 [Encoder] stream_thread: NALs: 9 6 1
-[Encoder] GetStream: returning stream seq=8, packs=3, total_len=36
-[Encoder] ReleaseStream: chn=0, seq=8
-[Codec] ReleaseStream: freed software-encoded data at 0x750e73e0
-[Codec] ReleaseStream: freed stream 0x752bee50
-[Encoder] ReleaseStream: freed stream buffer
-[Encoder] encoder_update: Frame available from FrameSource, frame=0x752b8980
-[Codec] Process: frame=0x752b8980, extracting metadata
-[Codec] Process: SW encode frame 1920x1080
-[HW_Encoder] Software encoding: P frame 9, total=37 bytes
-[Codec] Process: encoded and queued stream, length=37
-[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
-[VBM] ReleaseFrame: chn=0, frame=0x752b8980
-[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
-[VBM] ReleaseFrame: returned frame idx=0 (1 available)
-[FrameSource] ReleaseFrame: Released frame 0x752b8980 from channel 0
-[Encoder] encoder_update: Released frame 0x752b8980 back to its source channel 0
-[Codec] GetStream: got stream 0x752be730
-[Encoder] stream_thread: got stream 0x752be730
-[Encoder] stream_thread: stream seq=9, packs=3, total_len=37, type=I
-[Encoder] stream_thread: NALs: 9 6 1
-[Encoder] GetStream: returning stream seq=9, packs=3, total_len=37
+[Encoder] GetStream: returning stream seq=9, packs=3, total_len=36
 [Encoder] ReleaseStream: chn=0, seq=9
-[Codec] ReleaseStream: freed software-encoded data at 0x750e73f0
-[Codec] ReleaseStream: freed stream 0x752be730
+[Codec] ReleaseStream: freed software-encoded data at 0x753bc3e0
+[Codec] ReleaseStream: freed stream 0x755900c0
 [Encoder] ReleaseStream: freed stream buffer
-[OSD] SetRgnAttr: handle=4
-[Encoder] encoder_update: Frame available from FrameSource, frame=0x752b8980
-[Codec] Process: frame=0x752b8980, extracting metadata
+[FrameSource] frame_capture_thread chn=0: got frame #5 (0x7558d980) from kernel
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x7558d980
+[Codec] Process: frame=0x7558d980, extracting metadata
 [Codec] Process: SW encode frame 1920x1080
 [HW_Encoder] Software encoding: P frame 10, total=37 bytes
+[Codec] GetStream: got stream 0x755901b0
+[Encoder] stream_thread: got stream 0x755901b0
+[Encoder] stream_thread: stream seq=10, packs=3, total_len=37, type=I
+[Encoder] stream_thread: NALs: 9 6 1
+[Encoder] GetStream: returning stream seq=10, packs=3, total_len=37
+[Encoder] ReleaseStream: chn=0, seq=10
+[Codec] ReleaseStream: freed software-encoded data at 0x753bc3f0
+[Codec] ReleaseStream: freed stream 0x755901b0
+[Encoder] ReleaseStream: freed stream buffer
 [Codec] Process: encoded and queued stream, length=37
 [Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
-[VBM] ReleaseFrame: chn=0, frame=0x752b8980
+[VBM] ReleaseFrame: chn=0, frame=0x7558d980
 [VBM] ReleaseFrame: queue full, dropped idx=0 to make room
 [VBM] ReleaseFrame: returned frame idx=0 (1 available)
-[FrameSource] ReleaseFrame: Released frame 0x752b8980 from channel 0
-[Encoder] encoder_update: Released frame 0x752b8980 back to its source channel 0
-[Encoder] encoder_update: Frame available from FrameSource, frame=0x752c0860
-[Codec] Process: frame=0x752c0860, extracting metadata
+[FrameSource] ReleaseFrame: Released frame 0x7558d980 from channel 0
+[Encoder] encoder_update: Released frame 0x7558d980 back to its source channel 0
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x75595840
+[Codec] Process: frame=0x75595840, extracting metadata
 [Codec] Process: SW encode frame 640x360
 [HW_Encoder] Software encoding: P frame 11, total=36 bytes
 [Codec] Process: encoded and queued stream, length=36
 [Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
-[VBM] ReleaseFrame: chn=1, frame=0x752c0860
+[VBM] ReleaseFrame: chn=1, frame=0x75595840
 [VBM] ReleaseFrame: queue full, dropped idx=0 to make room
 [VBM] ReleaseFrame: returned frame idx=0 (1 available)
-[FrameSource] ReleaseFrame: Released frame 0x752c0860 from channel 1
-[Encoder] encoder_update: Released frame 0x752c0860 back to its source channel 1
-[Codec] GetStream: got stream 0x752bee50
-[Encoder] stream_thread: got stream 0x752bee50
-[Encoder] stream_thread: stream seq=10, packs=3, total_len=37, type=I
-[Encoder] stream_thread: NALs: 9 6 1
-[Codec] GetStream: got stream 0x752beef0
-[Encoder] stream_thread: got stream 0x752beef0
-[Encoder] stream_thread: waiting (not dropping) because previous stream not yet released
-[Encoder] GetStream: returning stream seq=10, packs=3, total_len=37
-[Encoder] ReleaseStream: chn=0, seq=10
-[Codec] ReleaseStream: freed software-encoded data at 0x750e7400
-[Codec] ReleaseStream: freed stream 0x752bee50
-[Encoder] ReleaseStream: freed stream buffer
+[FrameSource] ReleaseFrame: Released frame 0x75595840 from channel 1
+[Encoder] encoder_update: Released frame 0x75595840 back to its source channel 1
+[Codec] GetStream: got stream 0x75590070
+[Encoder] stream_thread: got stream 0x75590070
 [Encoder] stream_thread: stream seq=11, packs=3, total_len=36, type=I
 [Encoder] stream_thread: NALs: 9 6 1
 [Encoder] GetStream: returning stream seq=11, packs=3, total_len=36
 [Encoder] ReleaseStream: chn=0, seq=11
-[Codec] ReleaseStream: freed software-encoded data at 0x750e9880
-[Codec] ReleaseStream: freed stream 0x752beef0
+[Codec] ReleaseStream: freed software-encoded data at 0x753bc400
+[Codec] ReleaseStream: freed stream 0x75590070
 [Encoder] ReleaseStream: freed stream buffer
-[Encoder] encoder_update: Frame available from FrameSource, frame=0x752b8980
-[Codec] Process: frame=0x752b8980, extracting metadata
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x7558d980
+[Codec] Process: frame=0x7558d980, extracting metadata
 [Codec] Process: SW encode frame 1920x1080
 [HW_Encoder] Software encoding: P frame 12, total=37 bytes
 [Codec] Process: encoded and queued stream, length=37
 [Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
-[VBM] ReleaseFrame: chn=0, frame=0x752b8980
+[VBM] ReleaseFrame: chn=0, frame=0x7558d980
 [VBM] ReleaseFrame: queue full, dropped idx=0 to make room
 [VBM] ReleaseFrame: returned frame idx=0 (1 available)
-[FrameSource] ReleaseFrame: Released frame 0x752b8980 from channel 0
-[Encoder] encoder_update: Released frame 0x752b8980 back to its source channel 0
-[Encoder] encoder_update: Frame available from FrameSource, frame=0x752c0860
-[Codec] Process: frame=0x752c0860, extracting metadata
-[Codec] Process: SW encode frame 640x360
-[HW_Encoder] Software encoding: P frame 13, total=36 bytes
-[Codec] Process: encoded and queued stream, length=36
-[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
-[VBM] ReleaseFrame: chn=1, frame=0x752c0860
-[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
-[VBM] ReleaseFrame: returned frame idx=0 (1 available)
-[FrameSource] ReleaseFrame: Released frame 0x752c0860 from channel 1
-[Encoder] encoder_update: Released frame 0x752c0860 back to its source channel 1
-[Codec] GetStream: got stream 0x752be730
-[Encoder] stream_thread: got stream 0x752be730
+[FrameSource] ReleaseFrame: Released frame 0x7558d980 from channel 0
+[Encoder] encoder_update: Released frame 0x7558d980 back to its source channel 0
+[Codec] GetStream: got stream 0x75590160
+[Encoder] stream_thread: got stream 0x75590160
 [Encoder] stream_thread: stream seq=12, packs=3, total_len=37, type=I
 [Encoder] stream_thread: NALs: 9 6 1
-[Codec] GetStream: got stream 0x752bee00
-[Encoder] stream_thread: got stream 0x752bee00
-[Encoder] stream_thread: waiting (not dropping) because previous stream not yet released
 [Encoder] GetStream: returning stream seq=12, packs=3, total_len=37
 [Encoder] ReleaseStream: chn=0, seq=12
-[Codec] ReleaseStream: freed software-encoded data at 0x750e7410
-[Codec] ReleaseStream: freed stream 0x752be730
+[Codec] ReleaseStream: freed software-encoded data at 0x753bc410
+[Codec] ReleaseStream: freed stream 0x75590160
 [Encoder] ReleaseStream: freed stream buffer
-[Encoder] stream_thread: stream seq=13, packs=3, total_len=36, type=I
+[OSD] GetRgnAttr: handle=0
+[OSD] SetRgnAttr: handle=0
+[OSD] GetRgnAttr: handle=0
+[OSD] SetRgnAttr: handle=0
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x7558d980
+[Codec] Process: frame=0x7558d980, extracting metadata
+[Codec] Process: SW encode frame 1920x1080
+[HW_Encoder] Software encoding: P frame 13, total=37 bytes
+[Codec] Process: encoded and queued stream, length=37
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=0, frame=0x7558d980
+[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[VBM] ReleaseFrame: returned frame idx=0 (1 available)
+[FrameSource] ReleaseFrame: Released frame 0x7558d980 from channel 0
+[Encoder] encoder_update: Released frame 0x7558d980 back to its source channel 0
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x75595840
+[Codec] Process: frame=0x75595840, extracting metadata
+[Codec] Process: SW encode frame 640x360
+[HW_Encoder] Software encoding: P frame 14, total=36 bytes
+[Codec] Process: encoded and queued stream, length=36
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=1, frame=0x75595840
+[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[VBM] ReleaseFrame: returned frame idx=0 (1 available)
+[FrameSource] ReleaseFrame: Released frame 0x75595840 from channel 1
+[Encoder] encoder_update: Released frame 0x75595840 back to its source channel 1
+[Codec] GetStream: got stream 0x755900c0
+[Encoder] stream_thread: got stream 0x755900c0
+[Encoder] stream_thread: stream seq=13, packs=3, total_len=37, type=I
 [Encoder] stream_thread: NALs: 9 6 1
-[Encoder] GetStream: returning stream seq=13, packs=3, total_len=36
+[Codec] GetStream: got stream 0x75590160
+[Encoder] stream_thread: got stream 0x75590160
+[Encoder] stream_thread: waiting (not dropping) because previous stream not yet released
+[Encoder] GetStream: returning stream seq=13, packs=3, total_len=37
 [Encoder] ReleaseStream: chn=0, seq=13
-[Codec] ReleaseStream: freed software-encoded data at 0x750e9890
-[Codec] ReleaseStream: freed stream 0x752bee00
+[Codec] ReleaseStream: freed software-encoded data at 0x753a5440
+[Codec] ReleaseStream: freed stream 0x755900c0
 [Encoder] ReleaseStream: freed stream buffer
-[OSD] GetRgnAttr: handle=0
-[OSD] SetRgnAttr: handle=0
-[OSD] GetRgnAttr: handle=0
-[OSD] SetRgnAttr: handle=0
-[Encoder] encoder_update: Frame available from FrameSource, frame=0x752b8980
-[Codec] Process: frame=0x752b8980, extracting metadata
-[Codec] Process: SW encode frame 1920x1080
-[HW_Encoder] Software encoding: P frame 14, total=37 bytes
-[Codec] Process: encoded and queued stream, length=37
-[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
-[VBM] ReleaseFrame: chn=0, frame=0x752b8980
-[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
-[VBM] ReleaseFrame: returned frame idx=0 (1 available)
-[FrameSource] ReleaseFrame: Released frame 0x752b8980 from channel 0
-[Encoder] encoder_update: Released frame 0x752b8980 back to its source channel 0
-[Encoder] encoder_update: Frame available from FrameSource, frame=0x752c0860
-[Codec] Process: frame=0x752c0860, extracting metadata
-[Codec] Process: SW encode frame 640x360
-[HW_Encoder] Software encoding: P frame 15, total=36 bytes
-[Codec] Process: encoded and queued stream, length=36
-[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
-[VBM] ReleaseFrame: chn=1, frame=0x752c0860
-[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
-[VBM] ReleaseFrame: returned frame idx=0 (1 available)
-[FrameSource] ReleaseFrame: Released frame 0x752c0860 from channel 1
-[Encoder] encoder_update: Released frame 0x752c0860 back to its source channel 1
-[Codec] GetStream: got stream 0x752bee50
-[Encoder] stream_thread: got stream 0x752bee50
-[Encoder] stream_thread: stream seq=14, packs=3, total_len=37, type=I
+[Encoder] stream_thread: stream seq=14, packs=3, total_len=36, type=I
 [Encoder] stream_thread: NALs: 9 6 1
-[Codec] GetStream: got stream 0x752beef0
-[Encoder] stream_thread: got stream 0x752beef0
-[Encoder] stream_thread: waiting (not dropping) because previous stream not yet released
-[Encoder] GetStream: returning stream seq=14, packs=3, total_len=37
+[Encoder] GetStream: returning stream seq=14, packs=3, total_len=36
 [Encoder] ReleaseStream: chn=0, seq=14
-[Codec] ReleaseStream: freed software-encoded data at 0x750d0440
-[Codec] ReleaseStream: freed stream 0x752bee50
+[Codec] ReleaseStream: freed software-encoded data at 0x753a78c0
+[Codec] ReleaseStream: freed stream 0x75590160
 [Encoder] ReleaseStream: freed stream buffer
-[Encoder] stream_thread: stream seq=15, packs=3, total_len=36, type=I
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x7558d980
+[Codec] Process: frame=0x7558d980, extracting metadata
+[Codec] Process: SW encode frame 1920x1080
+[HW_Encoder] Software encoding: P frame 15, total=37 bytes
+[Codec] Process: encoded and queued stream, length=37
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=0, frame=0x7558d980
+[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[VBM] ReleaseFrame: returned frame idx=0 (1 available)
+[FrameSource] ReleaseFrame: Released frame 0x7558d980 from channel 0
+[Encoder] encoder_update: Released frame 0x7558d980 back to its source channel 0
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x75595840
+[Codec] Process: frame=0x75595840, extracting metadata
+[Codec] Process: SW encode frame 640x360
+[HW_Encoder] Software encoding: P frame 16, total=36 bytes
+[Codec] Process: encoded and queued stream, length=36
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=1, frame=0x75595840
+[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[VBM] ReleaseFrame: returned frame idx=0 (1 available)
+[FrameSource] ReleaseFrame: Released frame 0x75595840 from channel 1
+[Encoder] encoder_update: Released frame 0x75595840 back to its source channel 1
+[Codec] GetStream: got stream 0x75590070
+[Encoder] stream_thread: got stream 0x75590070
+[Encoder] stream_thread: stream seq=15, packs=3, total_len=37, type=I
 [Encoder] stream_thread: NALs: 9 6 1
-[Encoder] GetStream: returning stream seq=15, packs=3, total_len=36
+[Codec] GetStream: got stream 0x755900c0
+[Encoder] stream_thread: got stream 0x755900c0
+[Encoder] stream_thread: waiting (not dropping) because previous stream not yet released
+[Encoder] GetStream: returning stream seq=15, packs=3, total_len=37
 [Encoder] ReleaseStream: chn=0, seq=15
-[Codec] ReleaseStream: freed software-encoded data at 0x750d28c0
-[Codec] ReleaseStream: freed stream 0x752beef0
+[Codec] ReleaseStream: freed software-encoded data at 0x753a5450
+[Codec] ReleaseStream: freed stream 0x75590070
 [Encoder] ReleaseStream: freed stream buffer
-[Encoder] encoder_update: Frame available from FrameSource, frame=0x752b8980
-[Codec] Process: frame=0x752b8980, extracting metadata
-[Codec] Process: SW encode frame 1920x1080
-[HW_Encoder] Software encoding: P frame 16, total=37 bytes
-[Codec] Process: encoded and queued stream, length=37
-[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
-[VBM] ReleaseFrame: chn=0, frame=0x752b8980
-[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
-[VBM] ReleaseFrame: returned frame idx=0 (1 available)
-[FrameSource] ReleaseFrame: Released frame 0x752b8980 from channel 0
-[Encoder] encoder_update: Released frame 0x752b8980 back to its source channel 0
-[Encoder] encoder_update: Frame available from FrameSource, frame=0x752c0860
-[Codec] Process: frame=0x752c0860, extracting metadata
-[Codec] Process: SW encode frame 640x360
-[HW_Encoder] Software encoding: P frame 17, total=36 bytes
-[Codec] Process: encoded and queued stream, length=36
-[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
-[VBM] ReleaseFrame: chn=1, frame=0x752c0860
-[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
-[VBM] ReleaseFrame: returned frame idx=0 (1 available)
-[FrameSource] ReleaseFrame: Released frame 0x752c0860 from channel 1
-[Encoder] encoder_update: Released frame 0x752c0860 back to its source channel 1
-[Codec] GetStream: got stream 0x752be730
-[Encoder] stream_thread: got stream 0x752be730
-[Encoder] stream_thread: stream seq=16, packs=3, total_len=37, type=I
+[Encoder] stream_thread: stream seq=16, packs=3, total_len=36, type=I
 [Encoder] stream_thread: NALs: 9 6 1
-[Codec] GetStream: got stream 0x752bee00
-[Encoder] stream_thread: got stream 0x752bee00
-[Encoder] stream_thread: waiting (not dropping) because previous stream not yet released
-[Encoder] GetStream: returning stream seq=16, packs=3, total_len=37
+[Encoder] GetStream: returning stream seq=16, packs=3, total_len=36
 [Encoder] ReleaseStream: chn=0, seq=16
-[Codec] ReleaseStream: freed software-encoded data at 0x750d0450
-[Codec] ReleaseStream: freed stream 0x752be730
+[Codec] ReleaseStream: freed software-encoded data at 0x753a78d0
+[Codec] ReleaseStream: freed stream 0x755900c0
 [Encoder] ReleaseStream: freed stream buffer
-[Encoder] stream_thread: stream seq=17, packs=3, total_len=36, type=I
-[Encoder] stream_thread: NALs: 9 6 1
-[Encoder] GetStream: returning stream seq=17, packs=3, total_len=36
-[Encoder] ReleaseStream: chn=0, seq=17
-[Codec] ReleaseStream: freed software-encoded data at 0x750d28d0
-[Codec] ReleaseStream: freed stream 0x752bee00
-[Encoder] ReleaseStream: freed stream buffer
-[Encoder] encoder_update: Frame available from FrameSource, frame=0x752b8980
-[Codec] Process: frame=0x752b8980, extracting metadata
+[OSD] GetRgnAttr: handle=0
+[OSD] SetRgnAttr: handle=0
+[OSD] GetRgnAttr: handle=0
+[OSD] SetRgnAttr: handle=0
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x7558d980
+[Codec] Process: frame=0x7558d980, extracting metadata
 [Codec] Process: SW encode frame 1920x1080
-[HW_Encoder] Software encoding: P frame 18, total=37 bytes
+[HW_Encoder] Software encoding: P frame 17, total=37 bytes
 [Codec] Process: encoded and queued stream, length=37
 [Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
-[VBM] ReleaseFrame: chn=0, frame=0x752b8980
+[VBM] ReleaseFrame: chn=0, frame=0x7558d980
 [VBM] ReleaseFrame: queue full, dropped idx=0 to make room
 [VBM] ReleaseFrame: returned frame idx=0 (1 available)
-[FrameSource] ReleaseFrame: Released frame 0x752b8980 from channel 0
-[Encoder] encoder_update: Released frame 0x752b8980 back to its source channel 0
-[Encoder] encoder_update: Frame available from FrameSource, frame=0x752c0860
-[Codec] Process: frame=0x752c0860, extracting metadata
+[FrameSource] ReleaseFrame: Released frame 0x7558d980 from channel 0
+[Encoder] encoder_update: Released frame 0x7558d980 back to its source channel 0
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x75595840
+[Codec] Process: frame=0x75595840, extracting metadata
 [Codec] Process: SW encode frame 640x360
-[HW_Encoder] Software encoding: P frame 19, total=36 bytes
+[HW_Encoder] Software encoding: P frame 18, total=36 bytes
 [Codec] Process: encoded and queued stream, length=36
 [Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
-[VBM] ReleaseFrame: chn=1, frame=0x752c0860
+[VBM] ReleaseFrame: chn=1, frame=0x75595840
 [VBM] ReleaseFrame: queue full, dropped idx=0 to make room
 [VBM] ReleaseFrame: returned frame idx=0 (1 available)
-[FrameSource] ReleaseFrame: Released frame 0x752c0860 from channel 1
-[Encoder] encoder_update: Released frame 0x752c0860 back to its source channel 1
-[Codec] GetStream: got stream 0x752be730
-[Encoder] stream_thread: got stream 0x752be730
-[Encoder] stream_thread: stream seq=18, packs=3, total_len=37, type=I
+[FrameSource] ReleaseFrame: Released frame 0x75595840 from channel 1
+[Encoder] encoder_update: Released frame 0x75595840 back to its source channel 1
+[Codec] GetStream: got stream 0x755900c0
+[Encoder] stream_thread: got stream 0x755900c0
+[Encoder] stream_thread: stream seq=17, packs=3, total_len=37, type=I
 [Encoder] stream_thread: NALs: 9 6 1
-[Codec] GetStream: got stream 0x752bee00
-[Encoder] stream_thread: got stream 0x752bee00
+[Codec] GetStream: got stream 0x75590160
+[Encoder] stream_thread: got stream 0x75590160
 [Encoder] stream_thread: waiting (not dropping) because previous stream not yet released
-[Encoder] GetStream: returning stream seq=18, packs=3, total_len=37
-[Encoder] ReleaseStream: chn=0, seq=18
-[Codec] ReleaseStream: freed software-encoded data at 0x750d0460
-[Codec] ReleaseStream: freed stream 0x752be730
+[Encoder] GetStream: returning stream seq=17, packs=3, total_len=37
+[Encoder] ReleaseStream: chn=0, seq=17
+[Codec] ReleaseStream: freed software-encoded data at 0x75390480
+[Codec] ReleaseStream: freed stream 0x755900c0
 [Encoder] ReleaseStream: freed stream buffer
-[Encoder] stream_thread: stream seq=19, packs=3, total_len=36, type=I
+[Encoder] stream_thread: stream seq=18, packs=3, total_len=36, type=I
 [Encoder] stream_thread: NALs: 9 6 1
-[Encoder] GetStream: returning stream seq=19, packs=3, total_len=36
-[Encoder] ReleaseStream: chn=0, seq=19
-[Codec] ReleaseStream: freed software-encoded data at 0x750d28e0
-[Codec] ReleaseStream: freed stream 0x752bee00
+[Encoder] GetStream: returning stream seq=18, packs=3, total_len=36
+[Encoder] ReleaseStream: chn=0, seq=18
+[Codec] ReleaseStream: freed software-encoded data at 0x75392900
+[Codec] ReleaseStream: freed stream 0x75590160
 [Encoder] ReleaseStream: freed stream buffer
-[OSD] GetRgnAttr: handle=0
-[OSD] SetRgnAttr: handle=0
-[OSD] GetRgnAttr: handle=0
-[OSD] SetRgnAttr: handle=0
-[Encoder] encoder_update: Frame available from FrameSource, frame=0x752b8980
-[Codec] Process: frame=0x752b8980, extracting metadata
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x7558d980
+[Codec] Process: frame=0x7558d980, extracting metadata
 [Codec] Process: SW encode frame 1920x1080
-[HW_Encoder] Software encoding: P frame 20, total=37 bytes
+[HW_Encoder] Software encoding: P frame 19, total=37 bytes
 [Codec] Process: encoded and queued stream, length=37
 [Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
-[VBM] ReleaseFrame: chn=0, frame=0x752b8980
+[VBM] ReleaseFrame: chn=0, frame=0x7558d980
 [VBM] ReleaseFrame: queue full, dropped idx=0 to make room
 [VBM] ReleaseFrame: returned frame idx=0 (1 available)
-[FrameSource] ReleaseFrame: Released frame 0x752b8980 from channel 0
-[Encoder] encoder_update: Released frame 0x752b8980 back to its source channel 0
-[Encoder] encoder_update: Frame available from FrameSource, frame=0x752c0860
-[Codec] Process: frame=0x752c0860, extracting metadata
+[FrameSource] ReleaseFrame: Released frame 0x7558d980 from channel 0
+[Encoder] encoder_update: Released frame 0x7558d980 back to its source channel 0
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x75595840
+[Codec] Process: frame=0x75595840, extracting metadata
+[Codec] Process: SW encode frame 640x360
+[HW_Encoder] Software encoding: P frame 20, total=36 bytes
+[Codec] Process: encoded and queued stream, length=36
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=1, frame=0x75595840
+[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[VBM] ReleaseFrame: returned frame idx=0 (1 available)
+[FrameSource] ReleaseFrame: Released frame 0x75595840 from channel 1
+[Encoder] encoder_update: Released frame 0x75595840 back to its source channel 1
+[Codec] GetStream: got stream 0x75590070
+[Encoder] stream_thread: got stream 0x75590070
+[Encoder] stream_thread: stream seq=19, packs=3, total_len=37, type=I
+[Encoder] stream_thread: NALs: 9 6 1
+[Codec] GetStream: got stream 0x755900c0
+[Encoder] stream_thread: got stream 0x755900c0
+[Encoder] stream_thread: waiting (not dropping) because previous stream not yet released
+[Encoder] GetStream: returning stream seq=19, packs=3, total_len=37
+[Encoder] ReleaseStream: chn=0, seq=19
+[Codec] ReleaseStream: freed software-encoded data at 0x75390010
+[Codec] ReleaseStream: freed stream 0x75590070
+[Encoder] ReleaseStream: freed stream buffer
+[Encoder] stream_thread: stream seq=20, packs=3, total_len=36, type=I
+[Encoder] stream_thread: NALs: 9 6 1
+[Encoder] GetStream: returning stream seq=20, packs=3, total_len=36
+[Encoder] ReleaseStream: chn=0, seq=20
+[Codec] ReleaseStream: freed software-encoded data at 0x75392490
+[Codec] ReleaseStream: freed stream 0x755900c0
+[Encoder] ReleaseStream: freed stream buffer
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x75595840
+[Codec] Process: frame=0x75595840, extracting metadata
 [Codec] Process: SW encode frame 640x360
 [HW_Encoder] Software encoding: P frame 21, total=36 bytes
 [Codec] Process: encoded and queued stream, length=36
 [Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
-[VBM] ReleaseFrame: chn=1, frame=0x752c0860
+[VBM] ReleaseFrame: chn=1, frame=0x75595840
 [VBM] ReleaseFrame: queue full, dropped idx=0 to make room
 [VBM] ReleaseFrame: returned frame idx=0 (1 available)
-[FrameSource] ReleaseFrame: Released frame 0x752c0860 from channel 1
-[Encoder] encoder_update: Released frame 0x752c0860 back to its source channel 1
-[Codec] GetStream: got stream 0x752bee50
-[Encoder] stream_thread: got stream 0x752bee50
-[Encoder] stream_thread: stream seq=20, packs=3, total_len=37, type=I
-[Encoder] stream_thread: NALs: 9 6 1
-[Codec] GetStream: got stream 0x752beef0
-[Encoder] stream_thread: got stream 0x752beef0
-[Encoder] stream_thread: waiting (not dropping) because previous stream not yet released
-[Encoder] GetStream: returning stream seq=20, packs=3, total_len=37
-[Encoder] ReleaseStream: chn=0, seq=20
-[Codec] ReleaseStream: freed software-encoded data at 0x750bb010
-[Codec] ReleaseStream: freed stream 0x752bee50
-[Encoder] ReleaseStream: freed stream buffer
+[FrameSource] ReleaseFrame: Released frame 0x75595840 from channel 1
+[Encoder] encoder_update: Released frame 0x75595840 back to its source channel 1
+[Codec] GetStream: got stream 0x75593830
+[Encoder] stream_thread: got stream 0x75593830
 [Encoder] stream_thread: stream seq=21, packs=3, total_len=36, type=I
 [Encoder] stream_thread: NALs: 9 6 1
 [Encoder] GetStream: returning stream seq=21, packs=3, total_len=36
 [Encoder] ReleaseStream: chn=0, seq=21
-[Codec] ReleaseStream: freed software-encoded data at 0x750bd490
-[Codec] ReleaseStream: freed stream 0x752beef0
+[Codec] ReleaseStream: freed software-encoded data at 0x75390020
+[Codec] ReleaseStream: freed stream 0x75593830
 [Encoder] ReleaseStream: freed stream buffer
-[Encoder] encoder_update: Frame available from FrameSource, frame=0x752b8980
-[Codec] Process: frame=0x752b8980, extracting metadata
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x7558d980
+[Codec] Process: frame=0x7558d980, extracting metadata
 [Codec] Process: SW encode frame 1920x1080
 [HW_Encoder] Software encoding: P frame 22, total=37 bytes
 [Codec] Process: encoded and queued stream, length=37
 [Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
-[VBM] ReleaseFrame: chn=0, frame=0x752b8980
+[VBM] ReleaseFrame: chn=0, frame=0x7558d980
 [VBM] ReleaseFrame: queue full, dropped idx=0 to make room
 [VBM] ReleaseFrame: returned frame idx=0 (1 available)
-[FrameSource] ReleaseFrame: Released frame 0x752b8980 from channel 0
-[Encoder] encoder_update: Released frame 0x752b8980 back to its source channel 0
-[Encoder] encoder_update: Frame available from FrameSource, frame=0x752c0860
-[Codec] Process: frame=0x752c0860, extracting metadata
+[FrameSource] ReleaseFrame: Released frame 0x7558d980 from channel 0
+[Encoder] encoder_update: Released frame 0x7558d980 back to its source channel 0
+[Codec] GetStream: got stream 0x755900c0
+[Encoder] stream_thread: got stream 0x755900c0
+[Encoder] stream_thread: stream seq=22, packs=3, total_len=37, type=I
+[Encoder] stream_thread: NALs: 9 6 1
+[Encoder] GetStream: returning stream seq=22, packs=3, total_len=37
+[Encoder] ReleaseStream: chn=0, seq=22
+[Codec] ReleaseStream: freed software-encoded data at 0x75390030
+[Codec] ReleaseStream: freed stream 0x755900c0
+[Encoder] ReleaseStream: freed stream buffer
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x75595840
+[Codec] Process: frame=0x75595840, extracting metadata
 [Codec] Process: SW encode frame 640x360
 [HW_Encoder] Software encoding: P frame 23, total=36 bytes
 [Codec] Process: encoded and queued stream, length=36
 [Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
-[VBM] ReleaseFrame: chn=1, frame=0x752c0860
+[VBM] ReleaseFrame: chn=1, frame=0x75595840
 [VBM] ReleaseFrame: queue full, dropped idx=0 to make room
 [VBM] ReleaseFrame: returned frame idx=0 (1 available)
-[FrameSource] ReleaseFrame: Released frame 0x752c0860 from channel 1
-[Encoder] encoder_update: Released frame 0x752c0860 back to its source channel 1
-[Codec] GetStream: got stream 0x752be730
-[Encoder] stream_thread: got stream 0x752be730
-[Encoder] stream_thread: stream seq=22, packs=3, total_len=37, type=I
-[Encoder] stream_thread: NALs: 9 6 1
-[Codec] GetStream: got stream 0x752bee00
-[Encoder] stream_thread: got stream 0x752bee00
-[Encoder] stream_thread: waiting (not dropping) because previous stream not yet released
-[Encoder] GetStream: returning stream seq=22, packs=3, total_len=37
-[Encoder] ReleaseStream: chn=0, seq=22
-[Codec] ReleaseStream: freed software-encoded data at 0x750bb020
-[Codec] ReleaseStream: freed stream 0x752be730
-[Encoder] ReleaseStream: freed stream buffer
+[FrameSource] ReleaseFrame: Released frame 0x75595840 from channel 1
+[Encoder] encoder_update: Released frame 0x75595840 back to its source channel 1
+[Codec] GetStream: got stream 0x755901b0
+[Encoder] stream_thread: got stream 0x755901b0
 [Encoder] stream_thread: stream seq=23, packs=3, total_len=36, type=I
 [Encoder] stream_thread: NALs: 9 6 1
 [Encoder] GetStream: returning stream seq=23, packs=3, total_len=36
 [Encoder] ReleaseStream: chn=0, seq=23
-[Codec] ReleaseStream: freed software-encoded data at 0x750bd4a0
-[Codec] ReleaseStream: freed stream 0x752bee00
+[Codec] ReleaseStream: freed software-encoded data at 0x75390040
+[Codec] ReleaseStream: freed stream 0x755901b0
 [Encoder] ReleaseStream: freed stream buffer
-[Encoder] encoder_update: Frame available from FrameSource, frame=0x752b8980
-[Codec] Process: frame=0x752b8980, extracting metadata
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x7558d980
+[Codec] Process: frame=0x7558d980, extracting metadata
 [Codec] Process: SW encode frame 1920x1080
 [HW_Encoder] Software encoding: P frame 24, total=37 bytes
 [Codec] Process: encoded and queued stream, length=37
 [Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
-[VBM] ReleaseFrame: chn=0, frame=0x752b8980
+[VBM] ReleaseFrame: chn=0, frame=0x7558d980
 [VBM] ReleaseFrame: queue full, dropped idx=0 to make room
 [VBM] ReleaseFrame: returned frame idx=0 (1 available)
-[FrameSource] ReleaseFrame: Released frame 0x752b8980 from channel 0
-[Encoder] encoder_update: Released frame 0x752b8980 back to its source channel 0
-[Encoder] encoder_update: Frame available from FrameSource, frame=0x752c0860
-[Codec] Process: frame=0x752c0860, extracting metadata
-[Codec] Process: SW encode frame 640x360
-[HW_Encoder] Software encoding: P frame 25, total=36 bytes
-[Codec] Process: encoded and queued stream, length=36
-[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
-[VBM] ReleaseFrame: chn=1, frame=0x752c0860
-[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
-[VBM] ReleaseFrame: returned frame idx=0 (1 available)
-[FrameSource] ReleaseFrame: Released frame 0x752c0860 from channel 1
-[Encoder] encoder_update: Released frame 0x752c0860 back to its source channel 1
-[Codec] GetStream: got stream 0x752be730
-[Encoder] stream_thread: got stream 0x752be730
+[FrameSource] ReleaseFrame: Released frame 0x7558d980 from channel 0
+[Encoder] encoder_update: Released frame 0x7558d980 back to its source channel 0
+[Codec] GetStream: got stream 0x75590070
+[Encoder] stream_thread: got stream 0x75590070
 [Encoder] stream_thread: stream seq=24, packs=3, total_len=37, type=I
 [Encoder] stream_thread: NALs: 9 6 1
-[Codec] GetStream: got stream 0x752bee00
-[Encoder] stream_thread: got stream 0x752bee00
-[Encoder] stream_thread: waiting (not dropping) because previous stream not yet released
 [Encoder] GetStream: returning stream seq=24, packs=3, total_len=37
 [Encoder] ReleaseStream: chn=0, seq=24
-[Codec] ReleaseStream: freed software-encoded data at 0x750bb030
-[Codec] ReleaseStream: freed stream 0x752be730
+[Codec] ReleaseStream: freed software-encoded data at 0x75390050
+[Codec] ReleaseStream: freed stream 0x75590070
 [Encoder] ReleaseStream: freed stream buffer
-[Encoder] stream_thread: stream seq=25, packs=3, total_len=36, type=I
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x7558d980
+[Codec] Process: frame=0x7558d980, extracting metadata
+[Codec] Process: SW encode frame 1920x1080
+[HW_Encoder] Software encoding: P frame 25, total=37 bytes
+[Codec] Process: encoded and queued stream, length=37
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=0, frame=0x7558d980
+[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[VBM] ReleaseFrame: returned frame idx=0 (1 available)
+[FrameSource] ReleaseFrame: Released frame 0x7558d980 from channel 0
+[Encoder] encoder_update: Released frame 0x7558d980 back to its source channel 0
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x75595840
+[Codec] Process: frame=0x75595840, extracting metadata
+[Codec] Process: SW encode frame 640x360
+[HW_Encoder] Software encoding: P frame 26, total=36 bytes
+[Codec] Process: encoded and queued stream, length=36
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=1, frame=0x75595840
+[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[VBM] ReleaseFrame: returned frame idx=0 (1 available)
+[FrameSource] ReleaseFrame: Released frame 0x75595840 from channel 1
+[Encoder] encoder_update: Released frame 0x75595840 back to its source channel 1
+[Codec] GetStream: got stream 0x75590160
+[Encoder] stream_thread: got stream 0x75590160
+[Encoder] stream_thread: stream seq=25, packs=3, total_len=37, type=I
 [Encoder] stream_thread: NALs: 9 6 1
-[Encoder] GetStream: returning stream seq=25, packs=3, total_len=36
+[Codec] GetStream: got stream 0x755901b0
+[Encoder] stream_thread: got stream 0x755901b0
+[Encoder] stream_thread: waiting (not dropping) because previous stream not yet released
+[Encoder] GetStream: returning stream seq=25, packs=3, total_len=37
 [Encoder] ReleaseStream: chn=0, seq=25
-[Codec] ReleaseStream: freed software-encoded data at 0x750bd4b0
-[Codec] ReleaseStream: freed stream 0x752bee00
+[Codec] ReleaseStream: freed software-encoded data at 0x75390060
+[Codec] ReleaseStream: freed stream 0x75590160
 [Encoder] ReleaseStream: freed stream buffer
-[Encoder] encoder_update: Frame available from FrameSource, frame=0x752b8980
-[Codec] Process: frame=0x752b8980, extracting metadata
-[Codec] Process: SW encode frame 1920x1080
-[HW_Encoder] Software encoding: P frame 26, total=37 bytes
-[Codec] Process: encoded and queued stream, length=37
-[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
-[VBM] ReleaseFrame: chn=0, frame=0x752b8980
-[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
-[VBM] ReleaseFrame: returned frame idx=0 (1 available)
-[FrameSource] ReleaseFrame: Released frame 0x752b8980 from channel 0
-[Encoder] encoder_update: Released frame 0x752b8980 back to its source channel 0
-[Encoder] encoder_update: Frame available from FrameSource, frame=0x752c0860
-[Codec] Process: frame=0x752c0860, extracting metadata
-[Codec] Process: SW encode frame 640x360
-[HW_Encoder] Software encoding: P frame 27, total=36 bytes
-[Codec] Process: encoded and queued stream, length=36
-[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
-[VBM] ReleaseFrame: chn=1, frame=0x752c0860
-[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
-[VBM] ReleaseFrame: returned frame idx=0 (1 available)
-[FrameSource] ReleaseFrame: Released frame 0x752c0860 from channel 1
-[Encoder] encoder_update: Released frame 0x752c0860 back to its source channel 1
-[Codec] GetStream: got stream 0x752be730
-[Encoder] stream_thread: got stream 0x752be730
-[Encoder] stream_thread: stream seq=26, packs=3, total_len=37, type=I
+[Encoder] stream_thread: stream seq=26, packs=3, total_len=36, type=I
 [Encoder] stream_thread: NALs: 9 6 1
-[Codec] GetStream: got stream 0x752bee00
-[Encoder] stream_thread: got stream 0x752bee00
-[Encoder] stream_thread: waiting (not dropping) because previous stream not yet released
-[Encoder] GetStream: returning stream seq=26, packs=3, total_len=37
+[Encoder] GetStream: returning stream seq=26, packs=3, total_len=36
 [Encoder] ReleaseStream: chn=0, seq=26
-[Codec] ReleaseStream: freed software-encoded data at 0x750bb040
-[Codec] ReleaseStream: freed stream 0x752be730
-[Encoder] ReleaseStream: freed stream buffer
-[Encoder] stream_thread: stream seq=27, packs=3, total_len=36, type=I
-[Encoder] stream_thread: NALs: 9 6 1
-[Encoder] GetStream: returning stream seq=27, packs=3, total_len=36
-[Encoder] ReleaseStream: chn=0, seq=27
-[Codec] ReleaseStream: freed software-encoded data at 0x750bd4c0
-[Codec] ReleaseStream: freed stream 0x752bee00
-[Encoder] ReleaseStream: freed stream buffer
-[Encoder] encoder_update: Frame available from FrameSource, frame=0x752b8980
-[Codec] Process: frame=0x752b8980, extracting metadata
-[Codec] Process: SW encode frame 1920x1080
-[HW_Encoder] Software encoding: P frame 28, total=37 bytes
-[Codec] Process: encoded and queued stream, length=37
-[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
-[VBM] ReleaseFrame: chn=0, frame=0x752b8980
-[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
-[VBM] ReleaseFrame: returned frame idx=0 (1 available)
-[FrameSource] ReleaseFrame: Released frame 0x752b8980 from channel 0
-[Encoder] encoder_update: Released frame 0x752b8980 back to its source channel 0
-[Encoder] encoder_update: Frame available from FrameSource, frame=0x752c0860
-[Codec] Process: frame=0x752c0860, extracting metadata
-[Codec] Process: SW encode frame 640x360
-[HW_Encoder] Software encoding: P frame 29, total=36 bytes
-[Codec] Process: encoded and queued stream, length=36
-[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
-[VBM] ReleaseFrame: chn=1, frame=0x752c0860
-[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
-[VBM] ReleaseFrame: returned frame idx=0 (1 available)
-[FrameSource] ReleaseFrame: Released frame 0x752c0860 from channel 1
-[Encoder] encoder_update: Released frame 0x752c0860 back to its source channel 1
-[Codec] GetStream: got stream 0x752be730
-[Encoder] stream_thread: got stream 0x752be730
-[Encoder] stream_thread: stream seq=28, packs=3, total_len=37, type=I
-[Encoder] stream_thread: NALs: 9 6 1
-[Codec] GetStream: got stream 0x752bee00
-[Encoder] stream_thread: got stream 0x752bee00
-[Encoder] stream_thread: waiting (not dropping) because previous stream not yet released
-[Encoder] GetStream: returning stream seq=28, packs=3, total_len=37
-[Encoder] ReleaseStream: chn=0, seq=28
-[Codec] ReleaseStream: freed software-encoded data at 0x750bb050
-[Codec] ReleaseStream: freed stream 0x752be730
-[Encoder] ReleaseStream: freed stream buffer
-[Encoder] stream_thread: stream seq=29, packs=3, total_len=36, type=I
-[Encoder] stream_thread: NALs: 9 6 1
-[Encoder] GetStream: returning stream seq=29, packs=3, total_len=36
-[Encoder] ReleaseStream: chn=0, seq=29
-[Codec] ReleaseStream: freed software-encoded data at 0x750bd4d0
-[Codec] ReleaseStream: freed stream 0x752bee00
-[Encoder] ReleaseStream: freed stream buffer
-[Encoder] encoder_update: Frame available from FrameSource, frame=0x752b8980
-[Codec] Process: frame=0x752b8980, extracting metadata
-[Codec] Process: SW encode frame 1920x1080
-[HW_Encoder] Software encoding: IDR frame 30, total=94 bytes
-[Codec] Process: encoded and queued stream, length=94
-[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
-[VBM] ReleaseFrame: chn=0, frame=0x752b8980
-[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
-[VBM] ReleaseFrame: returned frame idx=0 (1 available)
-[FrameSource] ReleaseFrame: Released frame 0x752b8980 from channel 0
-[Encoder] encoder_update: Released frame 0x752b8980 back to its source channel 0
-[Encoder] encoder_update: Frame available from FrameSource, frame=0x752c0860
-[Codec] Process: frame=0x752c0860, extracting metadata
-[Codec] Process: SW encode frame 640x360
-[HW_Encoder] Software encoding: P frame 31, total=36 bytes
-[Codec] Process: encoded and queued stream, length=36
-[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
-[VBM] ReleaseFrame: chn=1, frame=0x752c0860
-[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
-[VBM] ReleaseFrame: returned frame idx=0 (1 available)
-[FrameSource] ReleaseFrame: Released frame 0x752c0860 from channel 1
-[Encoder] encoder_update: Released frame 0x752c0860 back to its source channel 1
-[Codec] GetStream: got stream 0x752be730
-[Encoder] stream_thread: got stream 0x752be730
-[Encoder] stream_thread: stream seq=30, packs=6, total_len=94, type=I
-[Encoder] stream_thread: NALs: 9 6 6 7
-[Codec] GetStream: got stream 0x752bee00
-[Encoder] stream_thread: got stream 0x752bee00
-[Encoder] stream_thread: waiting (not dropping) because previous stream not yet released
-[Encoder] GetStream: returning stream seq=30, packs=6, total_len=94
-[Encoder] ReleaseStream: chn=0, seq=30
-[Codec] ReleaseStream: freed software-encoded data at 0x750bb060
-[Codec] ReleaseStream: freed stream 0x752be730
-[Encoder] ReleaseStream: freed stream buffer
-[Encoder] stream_thread: stream seq=31, packs=3, total_len=36, type=I
-[Encoder] stream_thread: NALs: 9 6 1
-[Encoder] GetStream: returning stream seq=31, packs=3, total_len=36
-[Encoder] ReleaseStream: chn=0, seq=31
-[Codec] ReleaseStream: freed software-encoded data at 0x750bd4e0
-[Codec] ReleaseStream: freed stream 0x752bee00
-[Encoder] ReleaseStream: freed stream buffer
-[Encoder] encoder_update: Frame available from FrameSource, frame=0x752b8980
-[Codec] Process: frame=0x752b8980, extracting metadata
-[Codec] Process: SW encode frame 1920x1080
-[HW_Encoder] Software encoding: P frame 32, total=37 bytes
-[Codec] Process: encoded and queued stream, length=37
-[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
-[VBM] ReleaseFrame: chn=0, frame=0x752b8980
-[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
-[VBM] ReleaseFrame: returned frame idx=0 (1 available)
-[FrameSource] ReleaseFrame: Released frame 0x752b8980 from channel 0
-[Encoder] encoder_update: Released frame 0x752b8980 back to its source channel 0
-[Encoder] encoder_update: Frame available from FrameSource, frame=0x752c0860
-[Codec] Process: frame=0x752c0860, extracting metadata
-[Codec] Process: SW encode frame 640x360
-[HW_Encoder] Software encoding: P frame 33, total=36 bytes
-[Codec] Process: encoded and queued stream, length=36
-[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
-[VBM] ReleaseFrame: chn=1, frame=0x752c0860
-[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
-[VBM] ReleaseFrame: returned frame idx=0 (1 available)
-[FrameSource] ReleaseFrame: Released frame 0x752c0860 from channel 1
-[Encoder] encoder_update: Released frame 0x752c0860 back to its source channel 1
-[Codec] GetStream: got stream 0x752be730
-[Encoder] stream_thread: got stream 0x752be730
-[Encoder] stream_thread: stream seq=32, packs=3, total_len=37, type=I
-[Encoder] stream_thread: NALs: 9 6 1
-[Codec] GetStream: got stream 0x752bee00
-[Encoder] stream_thread: got stream 0x752bee00
-[Encoder] stream_thread: waiting (not dropping) because previous stream not yet released
-[Encoder] GetStream: returning stream seq=32, packs=3, total_len=37
-[Encoder] ReleaseStream: chn=0, seq=32
-[Codec] ReleaseStream: freed software-encoded data at 0x750bb070
-[Codec] ReleaseStream: freed stream 0x752be730
-[Encoder] ReleaseStream: freed stream buffer
-[Encoder] stream_thread: stream seq=33, packs=3, total_len=36, type=I
-[Encoder] stream_thread: NALs: 9 6 1
-[Encoder] GetStream: returning stream seq=33, packs=3, total_len=36
-[Encoder] ReleaseStream: chn=0, seq=33
-[Codec] ReleaseStream: freed software-encoded data at 0x750bd4f0
-[Codec] ReleaseStream: freed stream 0x752bee00
-[Encoder] ReleaseStream: freed stream buffer
-[Encoder] encoder_update: Frame available from FrameSource, frame=0x752b8980
-[Codec] Process: frame=0x752b8980, extracting metadata
-[Codec] Process: SW encode frame 1920x1080
-[HW_Encoder] Software encoding: P frame 34, total=37 bytes
-[Codec] Process: encoded and queued stream, length=37
-[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
-[VBM] ReleaseFrame: chn=0, frame=0x752b8980
-[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
-[VBM] ReleaseFrame: returned frame idx=0 (1 available)
-[FrameSource] ReleaseFrame: Released frame 0x752b8980 from channel 0
-[Encoder] encoder_update: Released frame 0x752b8980 back to its source channel 0
-[Encoder] encoder_update: Frame available from FrameSource, frame=0x752c0860
-[Codec] Process: frame=0x752c0860, extracting metadata
-[Codec] Process: SW encode frame 640x360
-[HW_Encoder] Software encoding: P frame 35, total=36 bytes
-[Codec] Process: encoded and queued stream, length=36
-[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
-[VBM] ReleaseFrame: chn=1, frame=0x752c0860
-[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
-[VBM] ReleaseFrame: returned frame idx=0 (1 available)
-[FrameSource] ReleaseFrame: Released frame 0x752c0860 from channel 1
-[Encoder] encoder_update: Released frame 0x752c0860 back to its source channel 1
-[Codec] GetStream: got stream 0x752be730
-[Encoder] stream_thread: got stream 0x752be730
-[Encoder] stream_thread: stream seq=34, packs=3, total_len=37, type=I
-[Encoder] stream_thread: NALs: 9 6 1
-[Codec] GetStream: got stream 0x752bee00
-[Encoder] stream_thread: got stream 0x752bee00
-[Encoder] stream_thread: waiting (not dropping) because previous stream not yet released
-[Encoder] GetStream: returning stream seq=34, packs=3, total_len=37
-[Encoder] ReleaseStream: chn=0, seq=34
-[Codec] ReleaseStream: freed software-encoded data at 0x750bb080
-[Codec] ReleaseStream: freed stream 0x752be730
-[Encoder] ReleaseStream: freed stream buffer
-[Encoder] stream_thread: stream seq=35, packs=3, total_len=36, type=I
-[Encoder] stream_thread: NALs: 9 6 1
-[Encoder] GetStream: returning stream seq=35, packs=3, total_len=36
-[Encoder] ReleaseStream: chn=0, seq=35
-[Codec] ReleaseStream: freed software-encoded data at 0x750bd500
-[Codec] ReleaseStream: freed stream 0x752bee00
-[Encoder] ReleaseStream: freed stream buffer
-[Encoder] encoder_update: Frame available from FrameSource, frame=0x752b8980
-[Codec] Process: frame=0x752b8980, extracting metadata
-[Codec] Process: SW encode frame 1920x1080
-[HW_Encoder] Software encoding: P frame 36, total=37 bytes
-[Codec] Process: encoded and queued stream, length=37
-[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
-[VBM] ReleaseFrame: chn=0, frame=0x752b8980
-[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
-[VBM] ReleaseFrame: returned frame idx=0 (1 available)
-[FrameSource] ReleaseFrame: Released frame 0x752b8980 from channel 0
-[Encoder] encoder_update: Released frame 0x752b8980 back to its source channel 0
-[Encoder] encoder_update: Frame available from FrameSource, frame=0x752c0860
-[Codec] Process: frame=0x752c0860, extracting metadata
-[Codec] Process: SW encode frame 640x360
-[HW_Encoder] Software encoding: P frame 37, total=36 bytes
-[Codec] Process: encoded and queued stream, length=36
-[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
-[VBM] ReleaseFrame: chn=1, frame=0x752c0860
-[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
-[VBM] ReleaseFrame: returned frame idx=0 (1 available)
-[FrameSource] ReleaseFrame: Released frame 0x752c0860 from channel 1
-[Encoder] encoder_update: Released frame 0x752c0860 back to its source channel 1
-[Codec] GetStream: got stream 0x752be730
-[Encoder] stream_thread: got stream 0x752be730
-[Encoder] stream_thread: stream seq=36, packs=3, total_len=37, type=I
-[Encoder] stream_thread: NALs: 9 6 1
-[Codec] GetStream: got stream 0x752bee00
-[Encoder] stream_thread: got stream 0x752bee00
-[Encoder] stream_thread: waiting (not dropping) because previous stream not yet released
-[Encoder] GetStream: returning stream seq=36, packs=3, total_len=37
-[Encoder] ReleaseStream: chn=0, seq=36
-[Codec] ReleaseStream: freed software-encoded data at 0x750bb090
-[Codec] ReleaseStream: freed stream 0x752be730
-[Encoder] ReleaseStream: freed stream buffer
-[Encoder] stream_thread: stream seq=37, packs=3, total_len=36, type=I
-[Encoder] stream_thread: NALs: 9 6 1
-[Encoder] GetStream: returning stream seq=37, packs=3, total_len=36
-[Encoder] ReleaseStream: chn=0, seq=37
-[Codec] ReleaseStream: freed software-encoded data at 0x750bd510
-[Codec] ReleaseStream: freed stream 0x752bee00
-[Encoder] ReleaseStream: freed stream buffer
-[Encoder] encoder_update: Frame available from FrameSource, frame=0x752b8980
-[Codec] Process: frame=0x752b8980, extracting metadata
-[Codec] Process: SW encode frame 1920x1080
-[HW_Encoder] Software encoding: P frame 38, total=37 bytes
-[Codec] Process: encoded and queued stream, length=37
-[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
-[VBM] ReleaseFrame: chn=0, frame=0x752b8980
-[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
-[VBM] ReleaseFrame: returned frame idx=0 (1 available)
-[FrameSource] ReleaseFrame: Released frame 0x752b8980 from channel 0
-[Encoder] encoder_update: Released frame 0x752b8980 back to its source channel 0
-[Encoder] encoder_update: Frame available from FrameSource, frame=0x752c0860
-[Codec] Process: frame=0x752c0860, extracting metadata
-[Codec] Process: SW encode frame 640x360
-[HW_Encoder] Software encoding: P frame 39, total=36 bytes
-[Codec] Process: encoded and queued stream, length=36
-[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
-[VBM] ReleaseFrame: chn=1, frame=0x752c0860
-[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
-[VBM] ReleaseFrame: returned frame idx=0 (1 available)
-[FrameSource] ReleaseFrame: Released frame 0x752c0860 from channel 1
-[Encoder] encoder_update: Released frame 0x752c0860 back to its source channel 1
-[Codec] GetStream: got stream 0x752be730
-[Encoder] stream_thread: got stream 0x752be730
-[Encoder] stream_thread: stream seq=38, packs=3, total_len=37, type=I
-[Encoder] stream_thread: NALs: 9 6 1
-[Codec] GetStream: got stream 0x752bee00
-[Encoder] stream_thread: got stream 0x752bee00
-[Encoder] stream_thread: waiting (not dropping) because previous stream not yet released
-[Encoder] GetStream: returning stream seq=38, packs=3, total_len=37
-[Encoder] ReleaseStream: chn=0, seq=38
-[Codec] ReleaseStream: freed software-encoded data at 0x750bb0a0
-[Codec] ReleaseStream: freed stream 0x752be730
-[Encoder] ReleaseStream: freed stream buffer
-[Encoder] stream_thread: stream seq=39, packs=3, total_len=36, type=I
-[Encoder] stream_thread: NALs: 9 6 1
-[Encoder] GetStream: returning stream seq=39, packs=3, total_len=36
-[Encoder] ReleaseStream: chn=0, seq=39
-[Codec] ReleaseStream: freed software-encoded data at 0x750bd520
-[Codec] ReleaseStream: freed stream 0x752bee00
-[Encoder] ReleaseStream: freed stream buffer
-[Encoder] encoder_update: Frame available from FrameSource, frame=0x752b8980
-[Codec] Process: frame=0x752b8980, extracting metadata
-[Codec] Process: SW encode frame 1920x1080
-[HW_Encoder] Software encoding: P frame 40, total=37 bytes
-[Codec] Process: encoded and queued stream, length=37
-[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
-[VBM] ReleaseFrame: chn=0, frame=0x752b8980
-[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
-[VBM] ReleaseFrame: returned frame idx=0 (1 available)
-[FrameSource] ReleaseFrame: Released frame 0x752b8980 from channel 0
-[Encoder] encoder_update: Released frame 0x752b8980 back to its source channel 0
-[Encoder] encoder_update: Frame available from FrameSource, frame=0x752c0860
-[Codec] Process: frame=0x752c0860, extracting metadata
-[Codec] Process: SW encode frame 640x360
-[HW_Encoder] Software encoding: P frame 41, total=36 bytes
-[Codec] Process: encoded and queued stream, length=36
-[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
-[VBM] ReleaseFrame: chn=1, frame=0x752c0860
-[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
-[VBM] ReleaseFrame: returned frame idx=0 (1 available)
-[FrameSource] ReleaseFrame: Released frame 0x752c0860 from channel 1
-[Encoder] encoder_update: Released frame 0x752c0860 back to its source channel 1
-[Codec] GetStream: got stream 0x752be730
-[Encoder] stream_thread: got stream 0x752be730
-[Encoder] stream_thread: stream seq=40, packs=3, total_len=37, type=I
-[Encoder] stream_thread: NALs: 9 6 1
-[Codec] GetStream: got stream 0x752bee00
-[Encoder] stream_thread: got stream 0x752bee00
-[Encoder] stream_thread: waiting (not dropping) because previous stream not yet released
-[Encoder] GetStream: returning stream seq=40, packs=3, total_len=37
-[Encoder] ReleaseStream: chn=0, seq=40
-[Codec] ReleaseStream: freed software-encoded data at 0x750bb0b0
-[Codec] ReleaseStream: freed stream 0x752be730
-[Encoder] ReleaseStream: freed stream buffer
-[Encoder] stream_thread: stream seq=41, packs=3, total_len=36, type=I
-[Encoder] stream_thread: NALs: 9 6 1
-[Encoder] GetStream: returning stream seq=41, packs=3, total_len=36
-[Encoder] ReleaseStream: chn=0, seq=41
-[Codec] ReleaseStream: freed software-encoded data at 0x750bd530
-[Codec] ReleaseStream: freed stream 0x752bee00
-[Encoder] ReleaseStream: freed stream buffer
-[Encoder] encoder_update: Frame available from FrameSource, frame=0x752b8980
-[Codec] Process: frame=0x752b8980, extracting metadata
-[Codec] Process: SW encode frame 1920x1080
-[HW_Encoder] Software encoding: P frame 42, total=37 bytes
-[Codec] Process: encoded and queued stream, length=37
-[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
-[VBM] ReleaseFrame: chn=0, frame=0x752b8980
-[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
-[VBM] ReleaseFrame: returned frame idx=0 (1 available)
-[FrameSource] ReleaseFrame: Released frame 0x752b8980 from channel 0
-[Encoder] encoder_update: Released frame 0x752b8980 back to its source channel 0
-[Encoder] encoder_update: Frame available from FrameSource, frame=0x752c0860
-[Codec] Process: frame=0x752c0860, extracting metadata
-[Codec] Process: SW encode frame 640x360
-[HW_Encoder] Software encoding: P frame 43, total=36 bytes
-[Codec] Process: encoded and queued stream, length=36
-[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
-[VBM] ReleaseFrame: chn=1, frame=0x752c0860
-[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
-[VBM] ReleaseFrame: returned frame idx=0 (1 available)
-[FrameSource] ReleaseFrame: Released frame 0x752c0860 from channel 1
-[Encoder] encoder_update: Released frame 0x752c0860 back to its source channel 1
-[Codec] GetStream: got stream 0x752be730
-[Encoder] stream_thread: got stream 0x752be730
-[Encoder] stream_thread: stream seq=42, packs=3, total_len=37, type=I
-[Encoder] stream_thread: NALs: 9 6 1
-[Codec] GetStream: got stream 0x752bee00
-[Encoder] stream_thread: got stream 0x752bee00
-[Encoder] stream_thread: waiting (not dropping) because previous stream not yet released
-[Encoder] GetStream: returning stream seq=42, packs=3, total_len=37
-[Encoder] ReleaseStream: chn=0, seq=42
-[Codec] ReleaseStream: freed software-encoded data at 0x750bb0c0
-[Codec] ReleaseStream: freed stream 0x752be730
-[Encoder] ReleaseStream: freed stream buffer
-[Encoder] stream_thread: stream seq=43, packs=3, total_len=36, type=I
-[Encoder] stream_thread: NALs: 9 6 1
-[Encoder] GetStream: returning stream seq=43, packs=3, total_len=36
-[Encoder] ReleaseStream: chn=0, seq=43
-[Codec] ReleaseStream: freed software-encoded data at 0x750bd540
-[Codec] ReleaseStream: freed stream 0x752bee00
+[Codec] ReleaseStream: freed software-encoded data at 0x753924e0
+[Codec] ReleaseStream: freed stream 0x755901b0
 [Encoder] ReleaseStream: freed stream buffer
 [OSD] UpdateRgnAttrData: handle=0 (count=1)
-[Encoder] encoder_update: Frame available from FrameSource, frame=0x752b8980
-[Codec] Process: frame=0x752b8980, extracting metadata
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x7558d980
+[Codec] Process: frame=0x7558d980, extracting metadata
 [Codec] Process: SW encode frame 1920x1080
-[HW_Encoder] Software encoding: P frame 44, total=37 bytes
+[HW_Encoder] Software encoding: P frame 27, total=37 bytes
 [Codec] Process: encoded and queued stream, length=37
 [Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
-[VBM] ReleaseFrame: chn=0, frame=0x752b8980
+[VBM] ReleaseFrame: chn=0, frame=0x7558d980
 [VBM] ReleaseFrame: queue full, dropped idx=0 to make room
 [VBM] ReleaseFrame: returned frame idx=0 (1 available)
-[FrameSource] ReleaseFrame: Released frame 0x752b8980 from channel 0
-[Encoder] encoder_update: Released frame 0x752b8980 back to its source channel 0
-[Encoder] encoder_update: Frame available from FrameSource, frame=0x752c0860
-[Codec] Process: frame=0x752c0860, extracting metadata
+[FrameSource] ReleaseFrame: Released frame 0x7558d980 from channel 0
+[Encoder] encoder_update: Released frame 0x7558d980 back to its source channel 0
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x75595840
+[Codec] Process: frame=0x75595840, extracting metadata
 [Codec] Process: SW encode frame 640x360
-[HW_Encoder] Software encoding: P frame 45, total=36 bytes
+[HW_Encoder] Software encoding: P frame 28, total=36 bytes
 [Codec] Process: encoded and queued stream, length=36
 [Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
-[VBM] ReleaseFrame: chn=1, frame=0x752c0860
+[VBM] ReleaseFrame: chn=1, frame=0x75595840
 [VBM] ReleaseFrame: queue full, dropped idx=0 to make room
 [VBM] ReleaseFrame: returned frame idx=0 (1 available)
-[FrameSource] ReleaseFrame: Released frame 0x752c0860 from channel 1
-[Encoder] encoder_update: Released frame 0x752c0860 back to its source channel 1
-[Codec] GetStream: got stream 0x752bee50
-[Encoder] stream_thread: got stream 0x752bee50
-[Encoder] stream_thread: stream seq=44, packs=3, total_len=37, type=I
+[FrameSource] ReleaseFrame: Released frame 0x75595840 from channel 1
+[Encoder] encoder_update: Released frame 0x75595840 back to its source channel 1
+[Codec] GetStream: got stream 0x75590070
+[Encoder] stream_thread: got stream 0x75590070
+[Encoder] stream_thread: stream seq=27, packs=3, total_len=37, type=I
 [Encoder] stream_thread: NALs: 9 6 1
-[Codec] GetStream: got stream 0x752beef0
-[Encoder] stream_thread: got stream 0x752beef0
+[Codec] GetStream: got stream 0x755900c0
+[Encoder] stream_thread: got stream 0x755900c0
 [Encoder] stream_thread: waiting (not dropping) because previous stream not yet released
-[Encoder] GetStream: returning stream seq=44, packs=3, total_len=37
-[Encoder] ReleaseStream: chn=0, seq=44
-[Codec] ReleaseStream: freed software-encoded data at 0x750bb0f0
-[Codec] ReleaseStream: freed stream 0x752bee50
+[Encoder] GetStream: returning stream seq=27, packs=3, total_len=37
+[Encoder] ReleaseStream: chn=0, seq=27
+[Codec] ReleaseStream: freed software-encoded data at 0x75390090
+[Codec] ReleaseStream: freed stream 0x75590070
 [Encoder] ReleaseStream: freed stream buffer
-[Encoder] stream_thread: stream seq=45, packs=3, total_len=36, type=I
+[Encoder] stream_thread: stream seq=28, packs=3, total_len=36, type=I
 [Encoder] stream_thread: NALs: 9 6 1
-[Encoder] GetStream: returning stream seq=45, packs=3, total_len=36
-[Encoder] ReleaseStream: chn=0, seq=45
-[Codec] ReleaseStream: freed software-encoded data at 0x750bd570
-[Codec] ReleaseStream: freed stream 0x752beef0
+[Encoder] GetStream: returning stream seq=28, packs=3, total_len=36
+[Encoder] ReleaseStream: chn=0, seq=28
+[Codec] ReleaseStream: freed software-encoded data at 0x75392510
+[Codec] ReleaseStream: freed stream 0x755900c0
 [Encoder] ReleaseStream: freed stream buffer
-[Encoder] encoder_update: Frame available from FrameSource, frame=0x752b8980
-[Codec] Process: frame=0x752b8980, extracting metadata
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x7558d980
+[Codec] Process: frame=0x7558d980, extracting metadata
 [Codec] Process: SW encode frame 1920x1080
-[HW_Encoder] Software encoding: P frame 46, total=37 bytes
+[HW_Encoder] Software encoding: P frame 29, total=37 bytes
 [Codec] Process: encoded and queued stream, length=37
 [Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
-[VBM] ReleaseFrame: chn=0, frame=0x752b8980
+[VBM] ReleaseFrame: chn=0, frame=0x7558d980
 [VBM] ReleaseFrame: queue full, dropped idx=0 to make room
 [VBM] ReleaseFrame: returned frame idx=0 (1 available)
-[FrameSource] ReleaseFrame: Released frame 0x752b8980 from channel 0
-[Encoder] encoder_update: Released frame 0x752b8980 back to its source channel 0
-[Encoder] encoder_update: Frame available from FrameSource, frame=0x752c0860
-[Codec] Process: frame=0x752c0860, extracting metadata
+[FrameSource] ReleaseFrame: Released frame 0x7558d980 from channel 0
+[Encoder] encoder_update: Released frame 0x7558d980 back to its source channel 0
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x75595840
+[Codec] Process: frame=0x75595840, extracting metadata
 [Codec] Process: SW encode frame 640x360
-[HW_Encoder] Software encoding: P frame 47, total=36 bytes
-[Codec] Process: encoded and queued stream, length=36
+[HW_Encoder] Software encoding: IDR frame 30, total=93 bytes
+[Codec] Process: encoded and queued stream, length=93
 [Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
-[VBM] ReleaseFrame: chn=1, frame=0x752c0860
+[VBM] ReleaseFrame: chn=1, frame=0x75595840
 [VBM] ReleaseFrame: queue full, dropped idx=0 to make room
 [VBM] ReleaseFrame: returned frame idx=0 (1 available)
-[FrameSource] ReleaseFrame: Released frame 0x752c0860 from channel 1
-[Encoder] encoder_update: Released frame 0x752c0860 back to its source channel 1
-[Codec] GetStream: got stream 0x752be730
-[Encoder] stream_thread: got stream 0x752be730
-[Encoder] stream_thread: stream seq=46, packs=3, total_len=37, type=I
+[FrameSource] ReleaseFrame: Released frame 0x75595840 from channel 1
+[Encoder] encoder_update: Released frame 0x75595840 back to its source channel 1
+[Codec] GetStream: got stream 0x75593830
+[Encoder] stream_thread: got stream 0x75593830
+[Encoder] stream_thread: stream seq=29, packs=3, total_len=37, type=I
 [Encoder] stream_thread: NALs: 9 6 1
-[Codec] GetStream: got stream 0x752bee00
-[Encoder] stream_thread: got stream 0x752bee00
+[Codec] GetStream: got stream 0x75590070
+[Encoder] stream_thread: got stream 0x75590070
 [Encoder] stream_thread: waiting (not dropping) because previous stream not yet released
-[Encoder] GetStream: returning stream seq=46, packs=3, total_len=37
-[Encoder] ReleaseStream: chn=0, seq=46
-[Codec] ReleaseStream: freed software-encoded data at 0x750bb100
-[Codec] ReleaseStream: freed stream 0x752be730
+[Encoder] GetStream: returning stream seq=29, packs=3, total_len=37
+[Encoder] ReleaseStream: chn=0, seq=29
+[Codec] ReleaseStream: freed software-encoded data at 0x753900a0
+[Codec] ReleaseStream: freed stream 0x75593830
 [Encoder] ReleaseStream: freed stream buffer
-[Encoder] stream_thread: stream seq=47, packs=3, total_len=36, type=I
-[Encoder] stream_thread: NALs: 9 6 1
-[Encoder] GetStream: returning stream seq=47, packs=3, total_len=36
-[Encoder] ReleaseStream: chn=0, seq=47
-[Codec] ReleaseStream: freed software-encoded data at 0x750bd580
-[Codec] ReleaseStream: freed stream 0x752bee00
-[Encoder] ReleaseStream: freed stream buffer
-[Encoder] encoder_update: Frame available from FrameSource, frame=0x752b8980
-[Codec] Process: frame=0x752b8980, extracting metadata
-[Codec] Process: SW encode frame 1920x1080
-[HW_Encoder] Software encoding: P frame 48, total=37 bytes
-[Codec] Process: encoded and queued stream, length=37
-[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
-[VBM] ReleaseFrame: chn=0, frame=0x752b8980
-[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
-[VBM] ReleaseFrame: returned frame idx=0 (1 available)
-[FrameSource] ReleaseFrame: Released frame 0x752b8980 from channel 0
-[Encoder] encoder_update: Released frame 0x752b8980 back to its source channel 0
-[Encoder] encoder_update: Frame available from FrameSource, frame=0x752c0860
-[Codec] Process: frame=0x752c0860, extracting metadata
-[Codec] Process: SW encode frame 640x360
-[HW_Encoder] Software encoding: P frame 49, total=36 bytes
-[Codec] Process: encoded and queued stream, length=36
-[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
-[VBM] ReleaseFrame: chn=1, frame=0x752c0860
-[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
-[VBM] ReleaseFrame: returned frame idx=0 (1 available)
-[FrameSource] ReleaseFrame: Released frame 0x752c0860 from channel 1
-[Encoder] encoder_update: Released frame 0x752c0860 back to its source channel 1
-[Codec] GetStream: got stream 0x752be730
-[Encoder] stream_thread: got stream 0x752be730
-[Encoder] stream_thread: stream seq=48, packs=3, total_len=37, type=I
-[Encoder] stream_thread: NALs: 9 6 1
-[Codec] GetStream: got stream 0x752bee00
-[Encoder] stream_thread: got stream 0x752bee00
-[Encoder] stream_thread: waiting (not dropping) because previous stream not yet released
-[Encoder] GetStream: returning stream seq=48, packs=3, total_len=37
-[Encoder] ReleaseStream: chn=0, seq=48
-[Codec] ReleaseStream: freed software-encoded data at 0x750bb110
-[Codec] ReleaseStream: freed stream 0x752be730
-[Encoder] ReleaseStream: freed stream buffer
-[Encoder] stream_thread: stream seq=49, packs=3, total_len=36, type=I
-[Encoder] stream_thread: NALs: 9 6 1
-[Encoder] GetStream: returning stream seq=49, packs=3, total_len=36
-[Encoder] ReleaseStream: chn=0, seq=49
-[Codec] ReleaseStream: freed software-encoded data at 0x750bd590
-[Codec] ReleaseStream: freed stream 0x752bee00
-[Encoder] ReleaseStream: freed stream buffer
-[Encoder] encoder_update: Frame available from FrameSource, frame=0x752b8980
-[Codec] Process: frame=0x752b8980, extracting metadata
-[Codec] Process: SW encode frame 1920x1080
-[HW_Encoder] Software encoding: P frame 50, total=37 bytes
-[Codec] Process: encoded and queued stream, length=37
-[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
-[VBM] ReleaseFrame: chn=0, frame=0x752b8980
-[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
-[VBM] ReleaseFrame: returned frame idx=0 (1 available)
-[FrameSource] ReleaseFrame: Released frame 0x752b8980 from channel 0
-[Encoder] encoder_update: Released frame 0x752b8980 back to its source channel 0
-[Encoder] encoder_update: Frame available from FrameSource, frame=0x752c0860
-[Codec] Process: frame=0x752c0860, extracting metadata
-[Codec] Process: SW encode frame 640x360
-[HW_Encoder] Software encoding: P frame 51, total=36 bytes
-[Codec] Process: encoded and queued stream, length=36
-[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
-[VBM] ReleaseFrame: chn=1, frame=0x752c0860
-[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
-[VBM] ReleaseFrame: returned frame idx=0 (1 available)
-[FrameSource] ReleaseFrame: Released frame 0x752c0860 from channel 1
-[Encoder] encoder_update: Released frame 0x752c0860 back to its source channel 1
-[Codec] GetStream: got stream 0x752bee50
-[Encoder] stream_thread: got stream 0x752bee50
-[Encoder] stream_thread: stream seq=50, packs=3, total_len=37, type=I
-[Encoder] stream_thread: NALs: 9 6 1
-[Codec] GetStream: got stream 0x752beef0
-[Encoder] stream_thread: got stream 0x752beef0
-[Encoder] stream_thread: waiting (not dropping) because previous stream not yet released
-[Encoder] GetStream: returning stream seq=50, packs=3, total_len=37
-[Encoder] ReleaseStream: chn=0, seq=50
-[Codec] ReleaseStream: freed software-encoded data at 0x750bb140
-[Codec] ReleaseStream: freed stream 0x752bee50
-[Encoder] ReleaseStream: freed stream buffer
-[Encoder] stream_thread: stream seq=51, packs=3, total_len=36, type=I
-[Encoder] stream_thread: NALs: 9 6 1
-[Encoder] GetStream: returning stream seq=51, packs=3, total_len=36
-[Encoder] ReleaseStream: chn=0, seq=51
-[Codec] ReleaseStream: freed software-encoded data at 0x750bd5c0
-[Codec] ReleaseStream: freed stream 0x752beef0
-[Encoder] ReleaseStream: freed stream buffer
-[Encoder] encoder_update: Frame available from FrameSource, frame=0x752b8980
-[Codec] Process: frame=0x752b8980, extracting metadata
-[Codec] Process: SW encode frame 1920x1080
-[HW_Encoder] Software encoding: P frame 52, total=37 bytes
-[Codec] Process: encoded and queued stream, length=37
-[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
-[VBM] ReleaseFrame: chn=0, frame=0x752b8980
-[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
-[VBM] ReleaseFrame: returned frame idx=0 (1 available)
-[FrameSource] ReleaseFrame: Released frame 0x752b8980 from channel 0
-[Encoder] encoder_update: Released frame 0x752b8980 back to its source channel 0
-[Encoder] encoder_update: Frame available from FrameSource, frame=0x752c0860
-[Codec] Process: frame=0x752c0860, extracting metadata
-[Codec] Process: SW encode frame 640x360
-[HW_Encoder] Software encoding: P frame 53, total=36 bytes
-[Codec] Process: encoded and queued stream, length=36
-[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
-[VBM] ReleaseFrame: chn=1, frame=0x752c0860
-[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
-[VBM] ReleaseFrame: returned frame idx=0 (1 available)
-[FrameSource] ReleaseFrame: Released frame 0x752c0860 from channel 1
-[Encoder] encoder_update: Released frame 0x752c0860 back to its source channel 1
-[Codec] GetStream: got stream 0x752be730
-[Encoder] stream_thread: got stream 0x752be730
-[Encoder] stream_thread: stream seq=52, packs=3, total_len=37, type=I
-[Encoder] stream_thread: NALs: 9 6 1
-[Codec] GetStream: got stream 0x752bee00
-[Encoder] stream_thread: got stream 0x752bee00
-[Encoder] stream_thread: waiting (not dropping) because previous stream not yet released
-[Encoder] GetStream: returning stream seq=52, packs=3, total_len=37
-[Encoder] ReleaseStream: chn=0, seq=52
-[Codec] ReleaseStream: freed software-encoded data at 0x750bb150
-[Codec] ReleaseStream: freed stream 0x752be730
-[Encoder] ReleaseStream: freed stream buffer
-[Encoder] stream_thread: stream seq=53, packs=3, total_len=36, type=I
-[Encoder] stream_thread: NALs: 9 6 1
-[Encoder] GetStream: returning stream seq=53, packs=3, total_len=36
-[Encoder] ReleaseStream: chn=0, seq=53
-[Codec] ReleaseStream: freed software-encoded data at 0x750bd5d0
-[Codec] ReleaseStream: freed stream 0x752bee00
-[Encoder] ReleaseStream: freed stream buffer
-[Encoder] encoder_update: Frame available from FrameSource, frame=0x752b8980
-[Codec] Process: frame=0x752b8980, extracting metadata
-[Codec] Process: SW encode frame 1920x1080
-[HW_Encoder] Software encoding: P frame 54, total=37 bytes
-[Codec] Process: encoded and queued stream, length=37
-[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
-[VBM] ReleaseFrame: chn=0, frame=0x752b8980
-[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
-[VBM] ReleaseFrame: returned frame idx=0 (1 available)
-[FrameSource] ReleaseFrame: Released frame 0x752b8980 from channel 0
-[Encoder] encoder_update: Released frame 0x752b8980 back to its source channel 0
-[Encoder] encoder_update: Frame available from FrameSource, frame=0x752c0860
-[Codec] Process: frame=0x752c0860, extracting metadata
-[Codec] Process: SW encode frame 640x360
-[HW_Encoder] Software encoding: P frame 55, total=36 bytes
-[Codec] Process: encoded and queued stream, length=36
-[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
-[VBM] ReleaseFrame: chn=1, frame=0x752c0860
-[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
-[VBM] ReleaseFrame: returned frame idx=0 (1 available)
-[FrameSource] ReleaseFrame: Released frame 0x752c0860 from channel 1
-[Encoder] encoder_update: Released frame 0x752c0860 back to its source channel 1
-[Codec] GetStream: got stream 0x752bee50
-[Encoder] stream_thread: got stream 0x752bee50
-[Encoder] stream_thread: stream seq=54, packs=3, total_len=37, type=I
-[Encoder] stream_thread: NALs: 9 6 1
-[Codec] GetStream: got stream 0x752beef0
-[Encoder] stream_thread: got stream 0x752beef0
-[Encoder] stream_thread: waiting (not dropping) because previous stream not yet released
-[Encoder] GetStream: returning stream seq=54, packs=3, total_len=37
-[Encoder] ReleaseStream: chn=0, seq=54
-[Codec] ReleaseStream: freed software-encoded data at 0x750bb180
-[Codec] ReleaseStream: freed stream 0x752bee50
-[Encoder] ReleaseStream: freed stream buffer
-[Encoder] stream_thread: stream seq=55, packs=3, total_len=36, type=I
-[Encoder] stream_thread: NALs: 9 6 1
-[Encoder] GetStream: returning stream seq=55, packs=3, total_len=36
-[Encoder] ReleaseStream: chn=0, seq=55
-[Codec] ReleaseStream: freed software-encoded data at 0x750bd600
-[Codec] ReleaseStream: freed stream 0x752beef0
-[Encoder] ReleaseStream: freed stream buffer
-[Encoder] encoder_update: Frame available from FrameSource, frame=0x752b8980
-[Codec] Process: frame=0x752b8980, extracting metadata
-[Codec] Process: SW encode frame 1920x1080
-[HW_Encoder] Software encoding: P frame 56, total=37 bytes
-[Codec] Process: encoded and queued stream, length=37
-[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
-[VBM] ReleaseFrame: chn=0, frame=0x752b8980
-[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
-[VBM] ReleaseFrame: returned frame idx=0 (1 available)
-[FrameSource] ReleaseFrame: Released frame 0x752b8980 from channel 0
-[Encoder] encoder_update: Released frame 0x752b8980 back to its source channel 0
-[Encoder] encoder_update: Frame available from FrameSource, frame=0x752c0860
-[Codec] Process: frame=0x752c0860, extracting metadata
-[Codec] Process: SW encode frame 640x360
-[HW_Encoder] Software encoding: P frame 57, total=36 bytes
-[Codec] Process: encoded and queued stream, length=36
-[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
-[VBM] ReleaseFrame: chn=1, frame=0x752c0860
-[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
-[VBM] ReleaseFrame: returned frame idx=0 (1 available)
-[FrameSource] ReleaseFrame: Released frame 0x752c0860 from channel 1
-[Encoder] encoder_update: Released frame 0x752c0860 back to its source channel 1
-[Codec] GetStream: got stream 0x752be730
-[Encoder] stream_thread: got stream 0x752be730
-[Encoder] stream_thread: stream seq=56, packs=3, total_len=37, type=I
-[Encoder] stream_thread: NALs: 9 6 1
-[Codec] GetStream: got stream 0x752bee00
-[Encoder] stream_thread: got stream 0x752bee00
-[Encoder] stream_thread: waiting (not dropping) because previous stream not yet released
-[Encoder] GetStream: returning stream seq=56, packs=3, total_len=37
-[Encoder] ReleaseStream: chn=0, seq=56
-[Codec] ReleaseStream: freed software-encoded data at 0x750bb190
-[Codec] ReleaseStream: freed stream 0x752be730
-[Encoder] ReleaseStream: freed stream buffer
-[Encoder] stream_thread: stream seq=57, packs=3, total_len=36, type=I
-[Encoder] stream_thread: NALs: 9 6 1
-[Encoder] GetStream: returning stream seq=57, packs=3, total_len=36
-[Encoder] ReleaseStream: chn=0, seq=57
-[Codec] ReleaseStream: freed software-encoded data at 0x750bd610
-[Codec] ReleaseStream: freed stream 0x752bee00
-[Encoder] ReleaseStream: freed stream buffer
-[Encoder] encoder_update: Frame available from FrameSource, frame=0x752b8980
-[Codec] Process: frame=0x752b8980, extracting metadata
-[Codec] Process: SW encode frame 1920x1080
-[HW_Encoder] Software encoding: P frame 58, total=37 bytes
-[Codec] Process: encoded and queued stream, length=37
-[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
-[VBM] ReleaseFrame: chn=0, frame=0x752b8980
-[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
-[VBM] ReleaseFrame: returned frame idx=0 (1 available)
-[FrameSource] ReleaseFrame: Released frame 0x752b8980 from channel 0
-[Encoder] encoder_update: Released frame 0x752b8980 back to its source channel 0
-[Encoder] encoder_update: Frame available from FrameSource, frame=0x752c0860
-[Codec] Process: frame=0x752c0860, extracting metadata
-[Codec] Process: SW encode frame 640x360
-[HW_Encoder] Software encoding: P frame 59, total=36 bytes
-[Codec] Process: encoded and queued stream, length=36
-[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
-[VBM] ReleaseFrame: chn=1, frame=0x752c0860
-[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
-[VBM] ReleaseFrame: returned frame idx=0 (1 available)
-[FrameSource] ReleaseFrame: Released frame 0x752c0860 from channel 1
-[Encoder] encoder_update: Released frame 0x752c0860 back to its source channel 1
-[Codec] GetStream: got stream 0x752be730
-[Encoder] stream_thread: got stream 0x752be730
-[Encoder] stream_thread: stream seq=58, packs=3, total_len=37, type=I
-[Encoder] stream_thread: NALs: 9 6 1
-[Codec] GetStream: got stream 0x752bee00
-[Encoder] stream_thread: got stream 0x752bee00
-[Encoder] stream_thread: waiting (not dropping) because previous stream not yet released
-[Encoder] GetStream: returning stream seq=58, packs=3, total_len=37
-[Encoder] ReleaseStream: chn=0, seq=58
-[Codec] ReleaseStream: freed software-encoded data at 0x750bb1a0
-[Codec] ReleaseStream: freed stream 0x752be730
-[Encoder] ReleaseStream: freed stream buffer
-[Encoder] stream_thread: stream seq=59, packs=3, total_len=36, type=I
-[Encoder] stream_thread: NALs: 9 6 1
-[Encoder] GetStream: returning stream seq=59, packs=3, total_len=36
-[Encoder] ReleaseStream: chn=0, seq=59
-[Codec] ReleaseStream: freed software-encoded data at 0x750bd620
-[Codec] ReleaseStream: freed stream 0x752bee00
-[Encoder] ReleaseStream: freed stream buffer
-[Encoder] encoder_update: Frame available from FrameSource, frame=0x752b8980
-[Codec] Process: frame=0x752b8980, extracting metadata
-[Codec] Process: SW encode frame 1920x1080
-[HW_Encoder] Software encoding: IDR frame 60, total=94 bytes
-[Codec] Process: encoded and queued stream, length=94
-[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
-[VBM] ReleaseFrame: chn=0, frame=0x752b8980
-[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
-[VBM] ReleaseFrame: returned frame idx=0 (1 available)
-[FrameSource] ReleaseFrame: Released frame 0x752b8980 from channel 0
-[Encoder] encoder_update: Released frame 0x752b8980 back to its source channel 0
-[Encoder] encoder_update: Frame available from FrameSource, frame=0x752c0860
-[Codec] Process: frame=0x752c0860, extracting metadata
-[Codec] Process: SW encode frame 640x360
-[HW_Encoder] Software encoding: P frame 61, total=36 bytes
-[Codec] Process: encoded and queued stream, length=36
-[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
-[VBM] ReleaseFrame: chn=1, frame=0x752c0860
-[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
-[VBM] ReleaseFrame: returned frame idx=0 (1 available)
-[FrameSource] ReleaseFrame: Released frame 0x752c0860 from channel 1
-[Encoder] encoder_update: Released frame 0x752c0860 back to its source channel 1
-[Codec] GetStream: got stream 0x752be730
-[Encoder] stream_thread: got stream 0x752be730
-[Encoder] stream_thread: stream seq=60, packs=6, total_len=94, type=I
+[Encoder] stream_thread: stream seq=30, packs=6, total_len=93, type=I
 [Encoder] stream_thread: NALs: 9 6 6 7
-[Codec] GetStream: got stream 0x752bee00
-[Encoder] stream_thread: got stream 0x752bee00
-[Encoder] stream_thread: waiting (not dropping) because previous stream not yet released
-[Encoder] GetStream: returning stream seq=60, packs=6, total_len=94
-[Encoder] ReleaseStream: chn=0, seq=60
-[Codec] ReleaseStream: freed software-encoded data at 0x750bb1b0
-[Codec] ReleaseStream: freed stream 0x752be730
+[Encoder] GetStream: returning stream seq=30, packs=6, total_len=93
+[Encoder] ReleaseStream: chn=0, seq=30
+[Codec] ReleaseStream: freed software-encoded data at 0x75392520
+[Codec] ReleaseStream: freed stream 0x75590070
 [Encoder] ReleaseStream: freed stream buffer
-[Encoder] stream_thread: stream seq=61, packs=3, total_len=36, type=I
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x7558d980
+[Codec] Process: frame=0x7558d980, extracting metadata
+[Codec] Process: SW encode frame 1920x1080
+[HW_Encoder] Software encoding: P frame 31, total=37 bytes
+[Codec] Process: encoded and queued stream, length=37
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=0, frame=0x7558d980
+[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[VBM] ReleaseFrame: returned frame idx=0 (1 available)
+[FrameSource] ReleaseFrame: Released frame 0x7558d980 from channel 0
+[Encoder] encoder_update: Released frame 0x7558d980 back to its source channel 0
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x75595840
+[Codec] Process: frame=0x75595840, extracting metadata
+[Codec] Process: SW encode frame 640x360
+[HW_Encoder] Software encoding: P frame 32, total=36 bytes
+[Codec] Process: encoded and queued stream, length=36
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=1, frame=0x75595840
+[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[VBM] ReleaseFrame: returned frame idx=0 (1 available)
+[FrameSource] ReleaseFrame: Released frame 0x75595840 from channel 1
+[Encoder] encoder_update: Released frame 0x75595840 back to its source channel 1
+[Codec] GetStream: got stream 0x755901b0
+[Encoder] stream_thread: got stream 0x755901b0
+[Encoder] stream_thread: stream seq=31, packs=3, total_len=37, type=I
 [Encoder] stream_thread: NALs: 9 6 1
-[Encoder] GetStream: returning stream seq=61, packs=3, total_len=36
-[Encoder] ReleaseStream: chn=0, seq=61
-[Codec] ReleaseStream: freed software-encoded data at 0x750bd630
-[Codec] ReleaseStream: freed stream 0x752bee00
+[Codec] GetStream: got stream 0x75593830
+[Encoder] stream_thread: got stream 0x75593830
+[Encoder] stream_thread: waiting (not dropping) because previous stream not yet released
+[Encoder] GetStream: returning stream seq=31, packs=3, total_len=37
+[Encoder] ReleaseStream: chn=0, seq=31
+[Codec] ReleaseStream: freed software-encoded data at 0x753900b0
+[Codec] ReleaseStream: freed stream 0x755901b0
+[Encoder] ReleaseStream: freed stream buffer
+[Encoder] stream_thread: stream seq=32, packs=3, total_len=36, type=I
+[Encoder] stream_thread: NALs: 9 6 1
+[Encoder] GetStream: returning stream seq=32, packs=3, total_len=36
+[Encoder] ReleaseStream: chn=0, seq=32
+[Codec] ReleaseStream: freed software-encoded data at 0x75392530
+[Codec] ReleaseStream: freed stream 0x75593830
+[Encoder] ReleaseStream: freed stream buffer
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x7558d980
+[Codec] Process: frame=0x7558d980, extracting metadata
+[Codec] Process: SW encode frame 1920x1080
+[HW_Encoder] Software encoding: P frame 33, total=37 bytes
+[Codec] Process: encoded and queued stream, length=37
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=0, frame=0x7558d980
+[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[VBM] ReleaseFrame: returned frame idx=0 (1 available)
+[FrameSource] ReleaseFrame: Released frame 0x7558d980 from channel 0
+[Encoder] encoder_update: Released frame 0x7558d980 back to its source channel 0
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x75595840
+[Codec] Process: frame=0x75595840, extracting metadata
+[Codec] Process: SW encode frame 640x360
+[HW_Encoder] Software encoding: P frame 34, total=36 bytes
+[Codec] Process: encoded and queued stream, length=36
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=1, frame=0x75595840
+[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[VBM] ReleaseFrame: returned frame idx=0 (1 available)
+[FrameSource] ReleaseFrame: Released frame 0x75595840 from channel 1
+[Encoder] encoder_update: Released frame 0x75595840 back to its source channel 1
+[Codec] GetStream: got stream 0x75590070
+[Encoder] stream_thread: got stream 0x75590070
+[Encoder] stream_thread: stream seq=33, packs=3, total_len=37, type=I
+[Encoder] stream_thread: NALs: 9 6 1
+[Codec] GetStream: got stream 0x755900c0
+[Encoder] stream_thread: got stream 0x755900c0
+[Encoder] stream_thread: waiting (not dropping) because previous stream not yet released
+[Encoder] GetStream: returning stream seq=33, packs=3, total_len=37
+[Encoder] ReleaseStream: chn=0, seq=33
+[Codec] ReleaseStream: freed software-encoded data at 0x753900e0
+[Codec] ReleaseStream: freed stream 0x75590070
+[Encoder] ReleaseStream: freed stream buffer
+[Encoder] stream_thread: stream seq=34, packs=3, total_len=36, type=I
+[Encoder] stream_thread: NALs: 9 6 1
+[Encoder] GetStream: returning stream seq=34, packs=3, total_len=36
+[Encoder] ReleaseStream: chn=0, seq=34
+[Codec] ReleaseStream: freed software-encoded data at 0x75392560
+[Codec] ReleaseStream: freed stream 0x755900c0
+[Encoder] ReleaseStream: freed stream buffer
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x7558d980
+[Codec] Process: frame=0x7558d980, extracting metadata
+[Codec] Process: SW encode frame 1920x1080
+[HW_Encoder] Software encoding: P frame 35, total=37 bytes
+[Codec] Process: encoded and queued stream, length=37
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=0, frame=0x7558d980
+[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[VBM] ReleaseFrame: returned frame idx=0 (1 available)
+[FrameSource] ReleaseFrame: Released frame 0x7558d980 from channel 0
+[Encoder] encoder_update: Released frame 0x7558d980 back to its source channel 0
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x75595840
+[Codec] Process: frame=0x75595840, extracting metadata
+[Codec] Process: SW encode frame 640x360
+[HW_Encoder] Software encoding: P frame 36, total=36 bytes
+[Codec] Process: encoded and queued stream, length=36
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=1, frame=0x75595840
+[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[VBM] ReleaseFrame: returned frame idx=0 (1 available)
+[FrameSource] ReleaseFrame: Released frame 0x75595840 from channel 1
+[Encoder] encoder_update: Released frame 0x75595840 back to its source channel 1
+[Codec] GetStream: got stream 0x75593830
+[Encoder] stream_thread: got stream 0x75593830
+[Encoder] stream_thread: stream seq=35, packs=3, total_len=37, type=I
+[Encoder] stream_thread: NALs: 9 6 1
+[Codec] GetStream: got stream 0x75590070
+[Encoder] stream_thread: got stream 0x75590070
+[Encoder] stream_thread: waiting (not dropping) because previous stream not yet released
+[Encoder] GetStream: returning stream seq=35, packs=3, total_len=37
+[Encoder] ReleaseStream: chn=0, seq=35
+[Codec] ReleaseStream: freed software-encoded data at 0x753900f0
+[Codec] ReleaseStream: freed stream 0x75593830
+[Encoder] ReleaseStream: freed stream buffer
+[Encoder] stream_thread: stream seq=36, packs=3, total_len=36, type=I
+[Encoder] stream_thread: NALs: 9 6 1
+[Encoder] GetStream: returning stream seq=36, packs=3, total_len=36
+[Encoder] ReleaseStream: chn=0, seq=36
+[Codec] ReleaseStream: freed software-encoded data at 0x75392570
+[Codec] ReleaseStream: freed stream 0x75590070
+[Encoder] ReleaseStream: freed stream buffer
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x7558d980
+[Codec] Process: frame=0x7558d980, extracting metadata
+[Codec] Process: SW encode frame 1920x1080
+[HW_Encoder] Software encoding: P frame 37, total=37 bytes
+[Codec] Process: encoded and queued stream, length=37
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=0, frame=0x7558d980
+[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[VBM] ReleaseFrame: returned frame idx=0 (1 available)
+[FrameSource] ReleaseFrame: Released frame 0x7558d980 from channel 0
+[Encoder] encoder_update: Released frame 0x7558d980 back to its source channel 0
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x75595840
+[Codec] Process: frame=0x75595840, extracting metadata
+[Codec] Process: SW encode frame 640x360
+[HW_Encoder] Software encoding: P frame 38, total=36 bytes
+[Codec] Process: encoded and queued stream, length=36
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=1, frame=0x75595840
+[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[VBM] ReleaseFrame: returned frame idx=0 (1 available)
+[FrameSource] ReleaseFrame: Released frame 0x75595840 from channel 1
+[Encoder] encoder_update: Released frame 0x75595840 back to its source channel 1
+[Codec] GetStream: got stream 0x75590070
+[Encoder] stream_thread: got stream 0x75590070
+[Encoder] stream_thread: stream seq=37, packs=3, total_len=37, type=I
+[Encoder] stream_thread: NALs: 9 6 1
+[Codec] GetStream: got stream 0x755900c0
+[Encoder] stream_thread: got stream 0x755900c0
+[Encoder] stream_thread: waiting (not dropping) because previous stream not yet released
+[Encoder] GetStream: returning stream seq=37, packs=3, total_len=37
+[Encoder] ReleaseStream: chn=0, seq=37
+[Codec] ReleaseStream: freed software-encoded data at 0x75390120
+[Codec] ReleaseStream: freed stream 0x75590070
+[Encoder] ReleaseStream: freed stream buffer
+[Encoder] stream_thread: stream seq=38, packs=3, total_len=36, type=I
+[Encoder] stream_thread: NALs: 9 6 1
+[Encoder] GetStream: returning stream seq=38, packs=3, total_len=36
+[Encoder] ReleaseStream: chn=0, seq=38
+[Codec] ReleaseStream: freed software-encoded data at 0x753925a0
+[Codec] ReleaseStream: freed stream 0x755900c0
+[Encoder] ReleaseStream: freed stream buffer
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x7558d980
+[Codec] Process: frame=0x7558d980, extracting metadata
+[Codec] Process: SW encode frame 1920x1080
+[HW_Encoder] Software encoding: P frame 39, total=37 bytes
+[Codec] Process: encoded and queued stream, length=37
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=0, frame=0x7558d980
+[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[VBM] ReleaseFrame: returned frame idx=0 (1 available)
+[FrameSource] ReleaseFrame: Released frame 0x7558d980 from channel 0
+[Encoder] encoder_update: Released frame 0x7558d980 back to its source channel 0
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x75595840
+[Codec] Process: frame=0x75595840, extracting metadata
+[Codec] Process: SW encode frame 640x360
+[HW_Encoder] Software encoding: P frame 40, total=36 bytes
+[Codec] Process: encoded and queued stream, length=36
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=1, frame=0x75595840
+[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[VBM] ReleaseFrame: returned frame idx=0 (1 available)
+[FrameSource] ReleaseFrame: Released frame 0x75595840 from channel 1
+[Encoder] encoder_update: Released frame 0x75595840 back to its source channel 1
+[Codec] GetStream: got stream 0x75593830
+[Encoder] stream_thread: got stream 0x75593830
+[Encoder] stream_thread: stream seq=39, packs=3, total_len=37, type=I
+[Encoder] stream_thread: NALs: 9 6 1
+[Codec] GetStream: got stream 0x75590070
+[Encoder] stream_thread: got stream 0x75590070
+[Encoder] stream_thread: waiting (not dropping) because previous stream not yet released
+[Encoder] GetStream: returning stream seq=39, packs=3, total_len=37
+[Encoder] ReleaseStream: chn=0, seq=39
+[Codec] ReleaseStream: freed software-encoded data at 0x75390130
+[Codec] ReleaseStream: freed stream 0x75593830
+[Encoder] ReleaseStream: freed stream buffer
+[Encoder] stream_thread: stream seq=40, packs=3, total_len=36, type=I
+[Encoder] stream_thread: NALs: 9 6 1
+[Encoder] GetStream: returning stream seq=40, packs=3, total_len=36
+[Encoder] ReleaseStream: chn=0, seq=40
+[Codec] ReleaseStream: freed software-encoded data at 0x753925b0
+[Codec] ReleaseStream: freed stream 0x75590070
+[Encoder] ReleaseStream: freed stream buffer
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x7558d980
+[Codec] Process: frame=0x7558d980, extracting metadata
+[Codec] Process: SW encode frame 1920x1080
+[HW_Encoder] Software encoding: P frame 41, total=37 bytes
+[Codec] Process: encoded and queued stream, length=37
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=0, frame=0x7558d980
+[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[VBM] ReleaseFrame: returned frame idx=0 (1 available)
+[FrameSource] ReleaseFrame: Released frame 0x7558d980 from channel 0
+[Encoder] encoder_update: Released frame 0x7558d980 back to its source channel 0
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x75595840
+[Codec] Process: frame=0x75595840, extracting metadata
+[Codec] Process: SW encode frame 640x360
+[HW_Encoder] Software encoding: P frame 42, total=36 bytes
+[Codec] Process: encoded and queued stream, length=36
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=1, frame=0x75595840
+[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[VBM] ReleaseFrame: returned frame idx=0 (1 available)
+[FrameSource] ReleaseFrame: Released frame 0x75595840 from channel 1
+[Encoder] encoder_update: Released frame 0x75595840 back to its source channel 1
+[Codec] GetStream: got stream 0x755901b0
+[Encoder] stream_thread: got stream 0x755901b0
+[Encoder] stream_thread: stream seq=41, packs=3, total_len=37, type=I
+[Encoder] stream_thread: NALs: 9 6 1
+[Codec] GetStream: got stream 0x75593830
+[Encoder] stream_thread: got stream 0x75593830
+[Encoder] stream_thread: waiting (not dropping) because previous stream not yet released
+[Encoder] GetStream: returning stream seq=41, packs=3, total_len=37
+[Encoder] ReleaseStream: chn=0, seq=41
+[Codec] ReleaseStream: freed software-encoded data at 0x75390140
+[Codec] ReleaseStream: freed stream 0x755901b0
+[Encoder] ReleaseStream: freed stream buffer
+[Encoder] stream_thread: stream seq=42, packs=3, total_len=36, type=I
+[Encoder] stream_thread: NALs: 9 6 1
+[Encoder] GetStream: returning stream seq=42, packs=3, total_len=36
+[Encoder] ReleaseStream: chn=0, seq=42
+[Codec] ReleaseStream: freed software-encoded data at 0x753925c0
+[Codec] ReleaseStream: freed stream 0x75593830
+[Encoder] ReleaseStream: freed stream buffer
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x7558d980
+[Codec] Process: frame=0x7558d980, extracting metadata
+[Codec] Process: SW encode frame 1920x1080
+[HW_Encoder] Software encoding: P frame 43, total=37 bytes
+[Codec] Process: encoded and queued stream, length=37
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=0, frame=0x7558d980
+[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[VBM] ReleaseFrame: returned frame idx=0 (1 available)
+[FrameSource] ReleaseFrame: Released frame 0x7558d980 from channel 0
+[Encoder] encoder_update: Released frame 0x7558d980 back to its source channel 0
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x75595840
+[Codec] Process: frame=0x75595840, extracting metadata
+[Codec] Process: SW encode frame 640x360
+[HW_Encoder] Software encoding: P frame 44, total=36 bytes
+[Codec] Process: encoded and queued stream, length=36
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=1, frame=0x75595840
+[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[VBM] ReleaseFrame: returned frame idx=0 (1 available)
+[FrameSource] ReleaseFrame: Released frame 0x75595840 from channel 1
+[Encoder] encoder_update: Released frame 0x75595840 back to its source channel 1
+[Codec] GetStream: got stream 0x75590160
+[Encoder] stream_thread: got stream 0x75590160
+[Encoder] stream_thread: stream seq=43, packs=3, total_len=37, type=I
+[Encoder] stream_thread: NALs: 9 6 1
+[Codec] GetStream: got stream 0x75593830
+[Encoder] stream_thread: got stream 0x75593830
+[Encoder] stream_thread: waiting (not dropping) because previous stream not yet released
+[Encoder] GetStream: returning stream seq=43, packs=3, total_len=37
+[Encoder] ReleaseStream: chn=0, seq=43
+[Codec] ReleaseStream: freed software-encoded data at 0x75390150
+[Codec] ReleaseStream: freed stream 0x75590160
+[Encoder] ReleaseStream: freed stream buffer
+[Encoder] stream_thread: stream seq=44, packs=3, total_len=36, type=I
+[Encoder] stream_thread: NALs: 9 6 1
+[Encoder] GetStream: returning stream seq=44, packs=3, total_len=36
+[Encoder] ReleaseStream: chn=0, seq=44
+[Codec] ReleaseStream: freed software-encoded data at 0x753925d0
+[Codec] ReleaseStream: freed stream 0x75593830
+[Encoder] ReleaseStream: freed stream buffer
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x7558d980
+[Codec] Process: frame=0x7558d980, extracting metadata
+[Codec] Process: SW encode frame 1920x1080
+[HW_Encoder] Software encoding: P frame 45, total=37 bytes
+[Codec] Process: encoded and queued stream, length=37
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=0, frame=0x7558d980
+[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[VBM] ReleaseFrame: returned frame idx=0 (1 available)
+[FrameSource] ReleaseFrame: Released frame 0x7558d980 from channel 0
+[Encoder] encoder_update: Released frame 0x7558d980 back to its source channel 0
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x75595840
+[Codec] Process: frame=0x75595840, extracting metadata
+[Codec] Process: SW encode frame 640x360
+[HW_Encoder] Software encoding: P frame 46, total=36 bytes
+[Codec] Process: encoded and queued stream, length=36
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=1, frame=0x75595840
+[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[VBM] ReleaseFrame: returned frame idx=0 (1 available)
+[FrameSource] ReleaseFrame: Released frame 0x75595840 from channel 1
+[Encoder] encoder_update: Released frame 0x75595840 back to its source channel 1
+[Codec] GetStream: got stream 0x755901b0
+[Encoder] stream_thread: got stream 0x755901b0
+[Encoder] stream_thread: stream seq=45, packs=3, total_len=37, type=I
+[Encoder] stream_thread: NALs: 9 6 1
+[Codec] GetStream: got stream 0x75593830
+[Encoder] stream_thread: got stream 0x75593830
+[Encoder] stream_thread: waiting (not dropping) because previous stream not yet released
+[Encoder] GetStream: returning stream seq=45, packs=3, total_len=37
+[Encoder] ReleaseStream: chn=0, seq=45
+[Codec] ReleaseStream: freed software-encoded data at 0x75390160
+[Codec] ReleaseStream: freed stream 0x755901b0
+[Encoder] ReleaseStream: freed stream buffer
+[Encoder] stream_thread: stream seq=46, packs=3, total_len=36, type=I
+[Encoder] stream_thread: NALs: 9 6 1
+[Encoder] GetStream: returning stream seq=46, packs=3, total_len=36
+[Encoder] ReleaseStream: chn=0, seq=46
+[Codec] ReleaseStream: freed software-encoded data at 0x753925e0
+[Codec] ReleaseStream: freed stream 0x75593830
+[Encoder] ReleaseStream: freed stream buffer
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x7558d980
+[Codec] Process: frame=0x7558d980, extracting metadata
+[Codec] Process: SW encode frame 1920x1080
+[HW_Encoder] Software encoding: P frame 47, total=37 bytes
+[Codec] Process: encoded and queued stream, length=37
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=0, frame=0x7558d980
+[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[VBM] ReleaseFrame: returned frame idx=0 (1 available)
+[FrameSource] ReleaseFrame: Released frame 0x7558d980 from channel 0
+[Encoder] encoder_update: Released frame 0x7558d980 back to its source channel 0
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x75595840
+[Codec] Process: frame=0x75595840, extracting metadata
+[Codec] Process: SW encode frame 640x360
+[HW_Encoder] Software encoding: P frame 48, total=36 bytes
+[Codec] Process: encoded and queued stream, length=36
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=1, frame=0x75595840
+[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[VBM] ReleaseFrame: returned frame idx=0 (1 available)
+[FrameSource] ReleaseFrame: Released frame 0x75595840 from channel 1
+[Encoder] encoder_update: Released frame 0x75595840 back to its source channel 1
+[Codec] GetStream: got stream 0x75590160
+[Encoder] stream_thread: got stream 0x75590160
+[Encoder] stream_thread: stream seq=47, packs=3, total_len=37, type=I
+[Encoder] stream_thread: NALs: 9 6 1
+[Codec] GetStream: got stream 0x75593830
+[Encoder] stream_thread: got stream 0x75593830
+[Encoder] stream_thread: waiting (not dropping) because previous stream not yet released
+[Encoder] GetStream: returning stream seq=47, packs=3, total_len=37
+[Encoder] ReleaseStream: chn=0, seq=47
+[Codec] ReleaseStream: freed software-encoded data at 0x75390170
+[Codec] ReleaseStream: freed stream 0x75590160
+[Encoder] ReleaseStream: freed stream buffer
+[Encoder] stream_thread: stream seq=48, packs=3, total_len=36, type=I
+[Encoder] stream_thread: NALs: 9 6 1
+[Encoder] GetStream: returning stream seq=48, packs=3, total_len=36
+[Encoder] ReleaseStream: chn=0, seq=48
+[Codec] ReleaseStream: freed software-encoded data at 0x753925f0
+[Codec] ReleaseStream: freed stream 0x75593830
+[Encoder] ReleaseStream: freed stream buffer
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x7558d980
+[Codec] Process: frame=0x7558d980, extracting metadata
+[Codec] Process: SW encode frame 1920x1080
+[HW_Encoder] Software encoding: P frame 49, total=37 bytes
+[Codec] Process: encoded and queued stream, length=37
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=0, frame=0x7558d980
+[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[VBM] ReleaseFrame: returned frame idx=0 (1 available)
+[FrameSource] ReleaseFrame: Released frame 0x7558d980 from channel 0
+[Encoder] encoder_update: Released frame 0x7558d980 back to its source channel 0
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x75595840
+[Codec] Process: frame=0x75595840, extracting metadata
+[Codec] Process: SW encode frame 640x360
+[HW_Encoder] Software encoding: P frame 50, total=36 bytes
+[Codec] Process: encoded and queued stream, length=36
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=1, frame=0x75595840
+[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[VBM] ReleaseFrame: returned frame idx=0 (1 available)
+[FrameSource] ReleaseFrame: Released frame 0x75595840 from channel 1
+[Encoder] encoder_update: Released frame 0x75595840 back to its source channel 1
+[Codec] GetStream: got stream 0x755901b0
+[Encoder] stream_thread: got stream 0x755901b0
+[Encoder] stream_thread: stream seq=49, packs=3, total_len=37, type=I
+[Encoder] stream_thread: NALs: 9 6 1
+[Codec] GetStream: got stream 0x75593830
+[Encoder] stream_thread: got stream 0x75593830
+[Encoder] stream_thread: waiting (not dropping) because previous stream not yet released
+[Encoder] GetStream: returning stream seq=49, packs=3, total_len=37
+[Encoder] ReleaseStream: chn=0, seq=49
+[Codec] ReleaseStream: freed software-encoded data at 0x75390180
+[Codec] ReleaseStream: freed stream 0x755901b0
+[Encoder] ReleaseStream: freed stream buffer
+[Encoder] stream_thread: stream seq=50, packs=3, total_len=36, type=I
+[Encoder] stream_thread: NALs: 9 6 1
+[Encoder] GetStream: returning stream seq=50, packs=3, total_len=36
+[Encoder] ReleaseStream: chn=0, seq=50
+[Codec] ReleaseStream: freed software-encoded data at 0x75392600
+[Codec] ReleaseStream: freed stream 0x75593830
+[Encoder] ReleaseStream: freed stream buffer
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x7558d980
+[Codec] Process: frame=0x7558d980, extracting metadata
+[Codec] Process: SW encode frame 1920x1080
+[HW_Encoder] Software encoding: P frame 51, total=37 bytes
+[Codec] Process: encoded and queued stream, length=37
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=0, frame=0x7558d980
+[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[VBM] ReleaseFrame: returned frame idx=0 (1 available)
+[FrameSource] ReleaseFrame: Released frame 0x7558d980 from channel 0
+[Encoder] encoder_update: Released frame 0x7558d980 back to its source channel 0
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x75595840
+[Codec] Process: frame=0x75595840, extracting metadata
+[Codec] Process: SW encode frame 640x360
+[HW_Encoder] Software encoding: P frame 52, total=36 bytes
+[Codec] Process: encoded and queued stream, length=36
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=1, frame=0x75595840
+[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[VBM] ReleaseFrame: returned frame idx=0 (1 available)
+[FrameSource] ReleaseFrame: Released frame 0x75595840 from channel 1
+[Encoder] encoder_update: Released frame 0x75595840 back to its source channel 1
+[Codec] GetStream: got stream 0x75590160
+[Encoder] stream_thread: got stream 0x75590160
+[Encoder] stream_thread: stream seq=51, packs=3, total_len=37, type=I
+[Encoder] stream_thread: NALs: 9 6 1
+[Codec] GetStream: got stream 0x75593830
+[Encoder] stream_thread: got stream 0x75593830
+[Encoder] stream_thread: waiting (not dropping) because previous stream not yet released
+[Encoder] GetStream: returning stream seq=51, packs=3, total_len=37
+[Encoder] ReleaseStream: chn=0, seq=51
+[Codec] ReleaseStream: freed software-encoded data at 0x75390190
+[Codec] ReleaseStream: freed stream 0x75590160
+[Encoder] ReleaseStream: freed stream buffer
+[Encoder] stream_thread: stream seq=52, packs=3, total_len=36, type=I
+[Encoder] stream_thread: NALs: 9 6 1
+[Encoder] GetStream: returning stream seq=52, packs=3, total_len=36
+[Encoder] ReleaseStream: chn=0, seq=52
+[Codec] ReleaseStream: freed software-encoded data at 0x75392610
+[Codec] ReleaseStream: freed stream 0x75593830
+[Encoder] ReleaseStream: freed stream buffer
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x7558d980
+[Codec] Process: frame=0x7558d980, extracting metadata
+[Codec] Process: SW encode frame 1920x1080
+[HW_Encoder] Software encoding: P frame 53, total=37 bytes
+[Codec] Process: encoded and queued stream, length=37
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=0, frame=0x7558d980
+[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[VBM] ReleaseFrame: returned frame idx=0 (1 available)
+[FrameSource] ReleaseFrame: Released frame 0x7558d980 from channel 0
+[Encoder] encoder_update: Released frame 0x7558d980 back to its source channel 0
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x75595840
+[Codec] Process: frame=0x75595840, extracting metadata
+[Codec] Process: SW encode frame 640x360
+[HW_Encoder] Software encoding: P frame 54, total=36 bytes
+[Codec] Process: encoded and queued stream, length=36
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=1, frame=0x75595840
+[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[VBM] ReleaseFrame: returned frame idx=0 (1 available)
+[FrameSource] ReleaseFrame: Released frame 0x75595840 from channel 1
+[Encoder] encoder_update: Released frame 0x75595840 back to its source channel 1
+[Codec] GetStream: got stream 0x755901b0
+[Encoder] stream_thread: got stream 0x755901b0
+[Encoder] stream_thread: stream seq=53, packs=3, total_len=37, type=I
+[Encoder] stream_thread: NALs: 9 6 1
+[Codec] GetStream: got stream 0x75593830
+[Encoder] stream_thread: got stream 0x75593830
+[Encoder] stream_thread: waiting (not dropping) because previous stream not yet released
+[Encoder] GetStream: returning stream seq=53, packs=3, total_len=37
+[Encoder] ReleaseStream: chn=0, seq=53
+[Codec] ReleaseStream: freed software-encoded data at 0x753901a0
+[Codec] ReleaseStream: freed stream 0x755901b0
+[Encoder] ReleaseStream: freed stream buffer
+[Encoder] stream_thread: stream seq=54, packs=3, total_len=36, type=I
+[Encoder] stream_thread: NALs: 9 6 1
+[Encoder] GetStream: returning stream seq=54, packs=3, total_len=36
+[Encoder] ReleaseStream: chn=0, seq=54
+[Codec] ReleaseStream: freed software-encoded data at 0x75392620
+[Codec] ReleaseStream: freed stream 0x75593830
+[Encoder] ReleaseStream: freed stream buffer
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x7558d980
+[Codec] Process: frame=0x7558d980, extracting metadata
+[Codec] Process: SW encode frame 1920x1080
+[HW_Encoder] Software encoding: P frame 55, total=37 bytes
+[Codec] Process: encoded and queued stream, length=37
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=0, frame=0x7558d980
+[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[VBM] ReleaseFrame: returned frame idx=0 (1 available)
+[FrameSource] ReleaseFrame: Released frame 0x7558d980 from channel 0
+[Encoder] encoder_update: Released frame 0x7558d980 back to its source channel 0
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x75595840
+[Codec] Process: frame=0x75595840, extracting metadata
+[Codec] Process: SW encode frame 640x360
+[HW_Encoder] Software encoding: P frame 56, total=36 bytes
+[Codec] Process: encoded and queued stream, length=36
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=1, frame=0x75595840
+[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[VBM] ReleaseFrame: returned frame idx=0 (1 available)
+[FrameSource] ReleaseFrame: Released frame 0x75595840 from channel 1
+[Encoder] encoder_update: Released frame 0x75595840 back to its source channel 1
+[Codec] GetStream: got stream 0x75590160
+[Encoder] stream_thread: got stream 0x75590160
+[Encoder] stream_thread: stream seq=55, packs=3, total_len=37, type=I
+[Encoder] stream_thread: NALs: 9 6 1
+[Codec] GetStream: got stream 0x75593830
+[Encoder] stream_thread: got stream 0x75593830
+[Encoder] stream_thread: waiting (not dropping) because previous stream not yet released
+[Encoder] GetStream: returning stream seq=55, packs=3, total_len=37
+[Encoder] ReleaseStream: chn=0, seq=55
+[Codec] ReleaseStream: freed software-encoded data at 0x753901b0
+[Codec] ReleaseStream: freed stream 0x75590160
+[Encoder] ReleaseStream: freed stream buffer
+[Encoder] stream_thread: stream seq=56, packs=3, total_len=36, type=I
+[Encoder] stream_thread: NALs: 9 6 1
+[Encoder] GetStream: returning stream seq=56, packs=3, total_len=36
+[Encoder] ReleaseStream: chn=0, seq=56
+[Codec] ReleaseStream: freed software-encoded data at 0x75392630
+[Codec] ReleaseStream: freed stream 0x75593830
 [Encoder] ReleaseStream: freed stream buffer
 ^C
 root@ing-wyze-cam3-a000 opt# dmesg 
@@ -2165,25 +2054,33 @@ root@ing-wyze-cam3-a000 opt# dmesg
 [   47.795398] Not the wdr mode, do not need to alloc buf!!!
 [   47.933046] gc2053 stream on
 [   49.368378] gc2053 stream off
+[  398.110179] -----sensor_detect: 1330 ret = 0, v = 0x20
+[  398.110673] -----sensor_detect: 1338 ret = 0, v = 0x53
+[  398.110681] gc2053 chip found @ 0x37 (i2c0)
+[  398.110686] sensor driver version H20230726a
+[  398.256417] Not the wdr mode, do not need to alloc buf!!!
+[  398.314136] gc2053 stream on
+[  399.669679] gc2053 stream off
 root@ing-wyze-cam3-a000 opt# cat /proc/interrupts 
            CPU0       
   9:          0   jz-intc  i2s_irq
- 11:       7815   jz-intc  jz-timerost
+ 11:      52601   jz-intc  jz-timerost
  14:          0   jz-intc  ipu
- 15:      29657   jz-intc  jz-sfc
+ 15:      47678   jz-intc  jz-sfc
  18:          0   jz-intc  pdma
  23:          0   jz-intc  GPIO C
  24:          1   jz-intc  GPIO B
  25:          0   jz-intc  GPIO A
  29:          1   jz-intc  dwc2
- 37:        188   jz-intc  isp-m0
- 38:         45   jz-intc  isp-w02
- 44:       8287   jz-intc  jzmmc_v1.2.1
+ 37:        336   jz-intc  isp-m0
+ 38:         86   jz-intc  isp-w02
+ 44:      25137   jz-intc  jzmmc_v1.2.1
  45:          0   jz-intc  jzmmc_v1.2.0
  58:        365   jz-intc  uart1
- 68:        269   jz-intc  jz-i2c.0
+ 68:        550   jz-intc  jz-i2c.0
  70:          0   jz-intc  avpu.0
 126:          0    GPIO B  GPIO Button
 134:          1    GPIO B  mmc-insert-detect
 ERR:          0
 root@ing-wyze-cam3-a000 opt# 
+
