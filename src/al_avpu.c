@@ -182,6 +182,8 @@ static void al_avpu_fill_cmd_entry_enc1(ALAvpuContext* ctx, uint32_t* cmd)
     cmd[0] &= ~(3u << 10);
     cmd[0] = (cmd[0] & ~(3u << 8)) | (1u << 8);
     cmd[0] &= ~(7u << 20);
+    /* HLIL sets cmd[0] bit 31 from pSP[8]; for a single-slice full picture treat as entry valid */
+    cmd[0] |= (1u << 31);
 
     /* Minimal slice/NAL type in cmd[3] low 5 bits (HLIL packs arg1[0x26] & 0x1f)
        Use H.264 NAL unit types: 5 = IDR, 1 = non-IDR slice.
@@ -194,9 +196,9 @@ static void al_avpu_fill_cmd_entry_enc1(ALAvpuContext* ctx, uint32_t* cmd)
         cmd[3] |= (1u << 31) | (1u << 30);
     }
 
-    /* cmd[4] low 5 bits: initial QP when FIXQP; HLIL shows (arg1[0x36] & 0x1f) */
-    if (ctx->rc_mode == HW_RC_MODE_FIXQP) {
-        uint32_t q = ctx->qp & 0x1f; /* HLIL masks to 5 bits */
+    /* cmd[4] low 5 bits: QP field exists regardless of RC; use ctx->qp or conservative default (26) */
+    {
+        uint32_t q = ctx->qp ? (ctx->qp & 0x1f) : (26u & 0x1f);
         cmd[4] = (cmd[4] & ~0x1Fu) | q;
     }
 

@@ -564,6 +564,8 @@ int notify_observers(Module *module, void *frame) {
                 int (*update_fn)(Module*, void*) = (int (*)(Module*, void*))dst_module->func_4c;
 
                 /* Call update function with module and frame */
+                fprintf(stderr, "[System] notify: calling update %p on %s (frame=%p)\n",
+                        (void*)update_fn, dst_module->name, frame);
                 if (update_fn(dst_module, frame) < 0) {
                     fprintf(stderr, "[System] Observer update failed for %s\n",
                             dst_module->name);

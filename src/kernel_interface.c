@@ -755,6 +755,7 @@ int VBMCreatePool(int chn, void *fmt, void *ops, void *priv) {
     /* Allocate memory for frames via DMA allocator */
     int total_size = pool->frame_size * frame_count;
     char alloc_name[256];
+    memset(alloc_name, 0, sizeof(alloc_name)); /* Ensure DMABuffer return area is zero-initialized */
     int ret;
 
     if (pool->pool_id < 0) {

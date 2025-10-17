@@ -17,6 +17,18 @@
 
 #define LOG_DMA(fmt, ...) fprintf(stderr, "[DMA] " fmt "\n", ##__VA_ARGS__)
 
+/* Best-effort check that a pointer looks like a C string within max bytes */
+static int is_probably_cstring(const char *p, size_t max)
+{
+    if (!p) return 0;
+    for (size_t i = 0; i < max; ++i) {
+        unsigned char c = (unsigned char)p[i];
+        if (c == '\0') return 1;
+        if (c < 0x09 || (c > 0x0d && c < 0x20)) return 0; /* control chars */
+    }
+    return 0;
+}
+
 /* DMA buffer structure - based on decompilation */
 /* Size: 0x94 bytes (148 bytes) */
 typedef struct {
@@ -197,11 +209,14 @@ int IMP_Alloc(char *name, int size, char *tag) {
         return -1;
     }
 
-    /* Copy name and tag */
-    strncpy(buf->name, name, sizeof(buf->name) - 1);
-    if (tag != NULL) {
+    /* Copy tag; treat 'name' as OUTPUT buffer per OEM, so do not trust it as input string */
+    if (tag && is_probably_cstring(tag, sizeof(buf->tag)-1)) {
         strncpy(buf->tag, tag, sizeof(buf->tag) - 1);
+    } else {
+        buf->tag[0] = '\0';
     }
+    /* Keep buf->name empty or default; many callers pass non-string output buffers here */
+    buf->name[0] = '\0';
     buf->size = size;
 
     /* Try kernel DMA path first if available */
@@ -278,7 +293,7 @@ int IMP_PoolAlloc(int pool_id, char *name, int size, char *tag) {
         return -1;
     }
 
-    LOG_DMA("PoolAlloc: pool=%d name=%s size=%d", pool_id, name, size);
+    LOG_DMA("PoolAlloc: pool=%d size=%d", pool_id, size);
 
     /* Pool-based allocation uses the same underlying allocator as IMP_Alloc
      * The pool_id is just metadata to track which pool the buffer belongs to
