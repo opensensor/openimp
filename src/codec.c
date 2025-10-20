@@ -18,6 +18,8 @@
 #include "al_avpu.h"
 #define LOG_CODEC(fmt, ...) fprintf(stderr, "[Codec] " fmt "\n", ##__VA_ARGS__)
 #include <sys/eventfd.h>
+#include <errno.h>
+
 
 /* Codec structure - based on decompilation at 0x7950c */
 /* Size: 0x924 bytes */
@@ -62,6 +64,10 @@ typedef struct {
 static void *g_pCodec = NULL;
 static pthread_mutex_t g_codec_mutex = PTHREAD_MUTEX_INITIALIZER;
 static AL_CodecEncode *g_codec_instances[6] = {NULL};
+
+/* Single-owner gate for AVPU to avoid noisy second opens */
+static pthread_mutex_t g_avpu_owner_mutex = PTHREAD_MUTEX_INITIALIZER;
+static int g_avpu_owner_channel = 0;
 
 /**
  * AL_Codec_Encode_SetDefaultParam - based on decompilation at 0x790b8
@@ -308,6 +314,12 @@ int AL_Codec_Encode_Destroy(void *codec) {
     /* Deinitialize hardware encoder(s) */
     if (enc->use_hardware == 2 && enc->avpu.fd >= 0) {
         ALAvpu_Close(&enc->avpu);
+        pthread_mutex_lock(&g_avpu_owner_mutex);
+        if (g_avpu_owner_channel == enc->channel_id) {
+            g_avpu_owner_channel = 0;
+            LOG_CODEC("AVPU: released ownership by channel=%d", enc->channel_id - 1);
+        }
+        pthread_mutex_unlock(&g_avpu_owner_mutex);
     }
     if (enc->hw_encoder_fd >= 0) {
         HW_Encoder_Deinit(enc->hw_encoder_fd);
@@ -433,16 +445,59 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
                 default: enc->hw_params.profile = HW_PROFILE_MAIN; break;
             }
 
-            /* Prefer vendor-like AL over /dev/avpu */
-            if (ALAvpu_Open(&enc->avpu, &enc->hw_params) == 0 && enc->avpu.fd >= 0) {
-                enc->use_hardware = 2; /* 2 = AL/AVPU path */
-                /* Wire eventfd for OEM-like wakeups */
-                if (enc->event) {
-                    int efd = (int)(uintptr_t)enc->event;
-                    ALAvpu_SetEvent(&enc->avpu, efd);
+            /* Prefer vendor-like AL over /dev/avpu, but gate to a single owner */
+            int skip_avpu = 0, current_owner = 0;
+            pthread_mutex_lock(&g_avpu_owner_mutex);
+            current_owner = g_avpu_owner_channel;
+            if (current_owner != 0 && current_owner != enc->channel_id) {
+                skip_avpu = 1;
+            }
+            pthread_mutex_unlock(&g_avpu_owner_mutex);
+
+            if (!skip_avpu) {
+                if (enc->avpu.fd > 2) {
+                    /* Already open for this channel; do not re-open */
+                    pthread_mutex_lock(&g_avpu_owner_mutex);
+                    if (g_avpu_owner_channel == 0) {
+                        g_avpu_owner_channel = enc->channel_id;
+                    }
+                    pthread_mutex_unlock(&g_avpu_owner_mutex);
+
+                    enc->use_hardware = 2; /* 2 = AL/AVPU path */
+                    if (enc->event) {
+                        int efd = (int)(uintptr_t)enc->event;
+                        ALAvpu_SetEvent(&enc->avpu, efd);
+                    }
+                    LOG_CODEC("AVPU: channel=%d already open (fd=%d); skipping re-open", enc->channel_id - 1, enc->avpu.fd);
+                } else if (ALAvpu_Open(&enc->avpu, &enc->hw_params) == 0 && enc->avpu.fd > 2) {
+                    pthread_mutex_lock(&g_avpu_owner_mutex);
+                    if (g_avpu_owner_channel == 0) {
+                        g_avpu_owner_channel = enc->channel_id;
+                        LOG_CODEC("AVPU: channel=%d acquired ownership", enc->channel_id - 1);
+                    }
+                    pthread_mutex_unlock(&g_avpu_owner_mutex);
+
+                    enc->use_hardware = 2; /* 2 = AL/AVPU path */
+                    if (enc->event) {
+                        int efd = (int)(uintptr_t)enc->event;
+                        ALAvpu_SetEvent(&enc->avpu, efd);
+                    }
+                    LOG_CODEC("Process: AVPU(AL) opened ctx=%p (fd=%d) channel=%d", (void*)&enc->avpu, enc->avpu.fd, enc->channel_id - 1);
+                } else {
+                    int e = errno;
+                    LOG_CODEC("Process: channel=%d ALAvpu_Open failed: %s", enc->channel_id - 1, strerror(e));
+                    int init_fd = -1;
+                    if (HW_Encoder_Init(&init_fd, &enc->hw_params) == 0 && init_fd >= 0) {
+                        enc->hw_encoder_fd = init_fd;
+                        enc->use_hardware = 1; /* legacy path */
+                        LOG_CODEC("Process: legacy HW encoder initialized (fd=%d)", init_fd);
+                    } else {
+                        LOG_CODEC("Process: no hardware path available; falling back to software");
+                        enc->use_hardware = 0;
+                    }
                 }
-                LOG_CODEC("Process: AVPU(AL) opened (fd=%d)", enc->avpu.fd);
             } else {
+                LOG_CODEC("Process: channel=%d skipping AVPU open; already owned by channel=%d", enc->channel_id - 1, current_owner - 1);
                 /* Fallback: try legacy non-avpu devices via HW_Encoder_Init */
                 int init_fd = -1;
                 if (HW_Encoder_Init(&init_fd, &enc->hw_params) == 0 && init_fd >= 0) {

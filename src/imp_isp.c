@@ -940,7 +940,8 @@ int ISP_EnsureLinkStreamOn(void) {
     }
     int ret;
     LOG_ISP("EnsureLinkStreamOn: calling ioctl 0x80045612 (ISP STREAMON)");
-    ret = ioctl(gISPdev->fd, 0x80045612, 0);
+    int enable = 1;
+    ret = ioctl(gISPdev->fd, 0x80045612, &enable);
     if (ret != 0) {
         LOG_ISP("EnsureLinkStreamOn: STREAMON failed: %s", strerror(errno));
         return -1;
@@ -956,7 +957,8 @@ int ISP_EnsureLinkStreamOn(void) {
     LOG_ISP("EnsureLinkStreamOn: LINK_SETUP succeeded, result=%d", config_result);
 
     LOG_ISP("EnsureLinkStreamOn: calling ioctl 0x800456d2 (LINK_STREAM_ON)");
-    ret = ioctl(gISPdev->fd, 0x800456d2, 0);
+    int link_enable = 1;
+    ret = ioctl(gISPdev->fd, 0x800456d2, &link_enable);
     if (ret != 0) {
         LOG_ISP("EnsureLinkStreamOn: LINK_STREAM_ON failed: %s", strerror(errno));
         return -1;

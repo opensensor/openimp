@@ -12,6 +12,8 @@
 #include <string.h>
 #include <stdlib.h>
 #include <errno.h>
+#include <unistd.h>
+
 #include <fcntl.h>
 #include <unistd.h>
 #include <sys/ioctl.h>
@@ -156,7 +158,15 @@ static int probe_sensor(int* sw, int* sh, int* sfps, char* name, size_t name_sz)
 #define AVPU_REG_SRC_PUSH   (AVPU_BASE_OFFSET + 0x84)   /* 0x8084 */
 #define AVPU_REG_STRM_PUSH  (AVPU_BASE_OFFSET + 0x94)   /* 0x8094 */
 /* From driver: AXI address offset register for IP */
+/* Hypothesized control regs for enabling source/stream paths (bring-up) */
+#define AVPU_REG_SRC_CTRL   (AVPU_BASE_OFFSET + 0x80)   /* 0x8080 */
+#define AVPU_REG_STRM_CTRL  (AVPU_BASE_OFFSET + 0x90)   /* 0x8090 */
+
 #define AVPU_REG_AXI_ADDR_OFFSET_IP (AVPU_BASE_OFFSET + 0x1208) /* 0x9208 */
+/* Per-core control window (doorbell/commit) */
+/* Per-core doorbell register (offset +0x08 from core base 0x83F0) */
+#define AVPU_REG_CORE0_DOORBELL  (AVPU_BASE_OFFSET + 0x3F8)   /* 0x83F8 */
+
 
 
 /* Minimal Enc1 command-list entry fill (strict OEM parity for known fields) */
@@ -226,62 +236,87 @@ static int avpu_ip_read_reg(int fd, unsigned int off, unsigned int *out);
 
 /* OEM-observed control regs (from BN MCP) */
 #define AVPU_REG_TOP_CTRL      (AVPU_BASE_OFFSET + 0x54)  /* 0x8054 */
+#define AVPU_REG_TOP_STATE     (AVPU_BASE_OFFSET + 0x50)  /* 0x8050 (state/clear) */
+#define AVPU_REG_MISC_CTRL     (AVPU_BASE_OFFSET + 0x10)  /* 0x8010: AXI/addr mode per OEM */
 /* Per-core register window: base = AVPU_BASE_OFFSET + 0x3F0 + (core<<9) */
 static inline unsigned AVPU_CORE_BASE(int core) { return (AVPU_BASE_OFFSET + 0x3F0) + ((unsigned)core << 9); }
-#define AVPU_REG_CORE_RESET(c)   (AVPU_CORE_BASE(c) + 0x00) /* ResetCore: write 2 then 4 */
+#define AVPU_REG_CORE_RESET(c)   (AVPU_CORE_BASE(c) + 0x00) /* ResetCore: write 1,2,4 */
 #define AVPU_REG_CORE_CLKCMD(c)  (AVPU_CORE_BASE(c) + 0x04) /* SetClockCommand: set bits[1:0] to 1 */
+#define AVPU_REG_CL_ADDR         (AVPU_BASE_OFFSET + 0x3E0) /* 0x83E0: command list start */
+#define AVPU_REG_CL_PUSH         (AVPU_BASE_OFFSET + 0x3E4) /* 0x83E4: push/trigger (2) */
+#define AVPU_REG_ENC_EN_A        (AVPU_BASE_OFFSET + 0x5F0) /* 0x85F0: enable */
+#define AVPU_REG_ENC_EN_B        (AVPU_BASE_OFFSET + 0x5F4) /* 0x85F4: clock/ungate */
+#define AVPU_REG_ENC_EN_C        (AVPU_BASE_OFFSET + 0x5E4) /* 0x85E4: enable */
+
 
 static int avpu_minimal_configure(int fd, int core)
 {
-    /* Enable top-level block (EncCore_Init writes 0x8054 <- 0x80) */
-    if (avpu_ip_write_reg(fd, AVPU_REG_TOP_CTRL, 0x80) < 0) {
-        LOG_AL("TOP_CTRL write failed (0x%04x <- 0x%08x): %s", AVPU_REG_TOP_CTRL, 0x80, strerror(errno));
+
+    /* Read ID/version regs FIRST (OEM does this before writing to MISC_CTRL)
+       Note: Avoid reading 0x800C and 0x8008 on T31 kernel 3.10; observed to trigger
+       an unaligned access oops in older kernels. */
+    /* Skip probe reads on T31 to avoid any early readbacks; writes-only bring-up. */
+
+    /* Program misc/AXI control AFTER probe reads (OEM does NOT write to INTERRUPT_MASK here - doing so causes kernel crash) */
+    (void)avpu_ip_write_reg(fd, AVPU_REG_MISC_CTRL, 0x00001000);
+
+    /* Reset core: write 1, then 2, then 4 to CORE_RESET (OEM does this BEFORE clearing interrupts) */
+    unsigned reset_reg = AVPU_REG_CORE_RESET(core);
+    if (avpu_ip_write_reg(fd, reset_reg, 1) < 0) {
+        LOG_AL("CORE_RESET(1) failed (reg=0x%04x): %s", reset_reg, strerror(errno));
         return -1;
     }
-
-    /* Reset core: write 2 then 4 to CORE_RESET (ResetCore sequence) */
-    unsigned reset_reg = AVPU_REG_CORE_RESET(core);
+    usleep(1000); /* 1ms delay between reset steps */
     if (avpu_ip_write_reg(fd, reset_reg, 2) < 0) {
         LOG_AL("CORE_RESET(2) failed (reg=0x%04x): %s", reset_reg, strerror(errno));
         return -1;
     }
+    usleep(1000); /* 1ms delay before final reset step */
     if (avpu_ip_write_reg(fd, reset_reg, 4) < 0) {
         LOG_AL("CORE_RESET(4) failed (reg=0x%04x): %s", reset_reg, strerror(errno));
         return -1;
     }
+    /* Clear pending IRQs (OEM uses 0x00FFFFFF) then set TOP_CTRL=0x80 */
+    (void)avpu_ip_write_reg(fd, AVPU_INTERRUPT, 0x00FFFFFF);
+    (void)avpu_ip_write_reg(fd, AVPU_REG_TOP_CTRL, 0x80);
+
 
     /* Turn clock command to ON (SetClockCommand -> set bits[1:0]=1 at CORE_CLKCMD) */
     unsigned clk_reg = AVPU_REG_CORE_CLKCMD(core);
-    unsigned v = 0;
-    (void)avpu_ip_read_reg(fd, clk_reg, &v);
-    unsigned new_v = (v & ~0x3u) | 0x1u;
+    /* Set clock command ON directly (bits[1:0]=1); avoid readback. */
+    unsigned new_v = 0x1u;
     if (avpu_ip_write_reg(fd, clk_reg, new_v) < 0) {
-        LOG_AL("CORE_CLKCMD write failed (reg=0x%04x val=0x%08x prev=0x%08x): %s", clk_reg, new_v, v, strerror(errno));
+        LOG_AL("CORE_CLKCMD write failed (reg=0x%04x val=0x%08x)", clk_reg, new_v);
         return -1;
     }
 
-    /* OEM keeps TOP_CTRL at 0x80; no tentative bit0 kick here. */
-    unsigned top_prev = 0;
-    (void)avpu_ip_read_reg(fd, AVPU_REG_TOP_CTRL, &top_prev);
+    /* Ungate/enable sub-blocks observed in OEM */
+    (void)avpu_ip_write_reg(fd, AVPU_REG_ENC_EN_B, 1);
+    (void)avpu_ip_write_reg(fd, AVPU_REG_ENC_EN_A, 1);
+    (void)avpu_ip_write_reg(fd, AVPU_REG_ENC_EN_C, 1);
 
-    LOG_AL("configured core=%d: TOP_CTRL=0x%08x->0x%08x, RESET(2->4), CLKCMD=0x%08x", core, 0x80u, top_prev, new_v);
+    /* OEM keeps TOP_CTRL at 0x80; no tentative bit0 kick here. */
+    unsigned top_prev = 0x80u; /* assume vendor default; skip readback */
+    LOG_AL("configured core=%d: TOP_CTRL(default)=0x%08x, RESET(1->2->4), CLKCMD=0x%08x", core, top_prev, new_v);
     return 0;
 }
 
 static int avpu_ip_write_reg(int fd, unsigned int off, unsigned int val)
 {
-    struct avpu_reg r = { .id = off, .value = val };
+    if ((off & 3) != 0) { LOG_AL("WARN: unaligned reg write off=0x%04x", off); return -1; }
+    struct avpu_reg r; r.id = off; r.value = val;
     int ret = ioctl(fd, AL_CMD_IP_WRITE_REG, &r);
-    if (ret < 0) return -1;
-    /* Debug: trace writes to help locate start/kick and config sequences */
+    if (ret < 0) { LOG_AL("ioctl WRITE failed off=0x%04x err=%d", off, ret); return -1; }
     LOG_AL("WRITE[0x%04x] <- 0x%08x", off, val);
     return 0;
 }
 
 static int avpu_ip_read_reg(int fd, unsigned int off, unsigned int *out)
 {
-    struct avpu_reg r = { .id = off, .value = 0 };
-    if (ioctl(fd, AL_CMD_IP_READ_REG, &r) < 0) return -1;
+    if ((off & 3) != 0) { LOG_AL("WARN: unaligned reg read off=0x%04x", off); return -1; }
+    struct avpu_reg r; r.id = off; r.value = 0;
+    int ret = ioctl(fd, AL_CMD_IP_READ_REG, &r);
+    if (ret < 0) { LOG_AL("ioctl READ failed off=0x%04x err=%d", off, ret); return -1; }
     if (out) *out = r.value;
     return 0;
 }
@@ -310,6 +345,17 @@ static void avpu_enable_interrupts_core(int fd, int core)
     LOG_AL("IRQ: enable core=%d bits enc1=0x%08x enc2=0x%08x -> mask=0x%08x, pending=0x%08x", core, b_enc1, b_enc2, new_mask, pend);
 }
 
+/* Temporarily unmask all interrupts for bring-up */
+static void avpu_enable_interrupts_all(int fd)
+{
+    (void)avpu_ip_write_reg(fd, AVPU_INTERRUPT_MASK, 0xFFFFFFFFu);
+    unsigned pend = 0, mask = 0;
+    (void)avpu_ip_read_reg(fd, AVPU_INTERRUPT_MASK, &mask);
+    (void)avpu_ip_read_reg(fd, AVPU_INTERRUPT, &pend);
+    LOG_AL("IRQ: enable ALL mask=0x%08x, pending=0x%08x", mask, pend);
+}
+
+
 /* Lightweight register dump to help identify start/status regs during bring-up */
 static void avpu_dump_regs(int fd)
 {
@@ -335,6 +381,28 @@ static void avpu_dump_regs(int fd)
             LOG_AL("REG[0x%04x] = 0x%08x", off, val);
         }
     }
+}
+
+/* OEM-mirroring: write back the values we read in the control windows.
+ * This is conservative (no guessed values) and still matches OEM behavior of
+ * touching these registers inside the commit bracket, which may ungate paths
+ * with write-latch semantics. */
+static void avpu_oem_mirror_ctrl_windows(int fd)
+{
+    unsigned win1_base = AVPU_BASE_OFFSET + 0x0A0;  /* 0x80A0..0x80FC */
+    unsigned win2_base = AVPU_BASE_OFFSET + 0x0100; /* 0x8100..0x817C */
+
+    for (unsigned i = 0; i < 24; ++i) {
+        unsigned off = win1_base + (i * 4);
+        unsigned v = 0; (void)avpu_ip_read_reg(fd, off, &v);
+        (void)avpu_ip_write_reg(fd, off, v);
+    }
+    for (unsigned i = 0; i < 32; ++i) {
+        unsigned off = win2_base + (i * 4);
+        unsigned v = 0; (void)avpu_ip_read_reg(fd, off, &v);
+        (void)avpu_ip_write_reg(fd, off, v);
+    }
+    LOG_AL("oem-mirror: touched 0x80A0..0x80FC and 0x8100..0x817C");
 }
 
 
@@ -416,6 +484,7 @@ static void* irq_thread_main(void* arg)
             nanosleep(&ts, NULL);
             continue;
         }
+        LOG_AL("irq thread: got irq=%d", irq);
         pthread_mutex_lock(m);
         irq_queue_push(ctx, irq);
         pthread_cond_broadcast(c);
@@ -440,11 +509,15 @@ int ALAvpu_Open(ALAvpuContext *ctx, const HWEncoderParams *p)
         return -1;
     }
 
+    /* Allow clocks to stabilize after device open (kernel enables clocks in bind_channel) */
+    usleep(10000); /* 10ms delay */
+
     ctx->fd = fd;
     ctx->event_fd = -1; /* can wire later via eventfd if needed */
 
     /* Initial pool sizing; will be tuned using params later */
-    ctx->stream_buf_count = 7;
+    /* Conservative default until RMEM size is confirmed on device */
+    ctx->stream_buf_count = 4;
     ctx->stream_buf_size  = 128 * 1024; /* 128KB default */
     ctx->frame_buf_count  = 4;
     ctx->frame_buf_size   = 0x458;      /* matches our VBM frame stub size */
@@ -486,6 +559,11 @@ int ALAvpu_Open(ALAvpuContext *ctx, const HWEncoderParams *p)
         if (IMP_Alloc((char*)info, ctx->stream_buf_size, (char*)"avpu_stream") == 0) {
             void *virt = *(void**)(info + 0x80);
             uint32_t phys = *(uint32_t*)(info + 0x84);
+            /* Validate allocation returned valid addresses */
+            if (virt == NULL || phys == 0) {
+                LOG_AL("IMP_Alloc succeeded but returned invalid addresses at idx=%d (virt=%p phys=0x%08x)", i, virt, phys);
+                break;
+            }
             ctx->stream_bufs[i].phy_addr = phys;
             ctx->stream_bufs[i].mmap_off = 0;
             ctx->stream_bufs[i].dmabuf_fd = -1;
@@ -504,22 +582,18 @@ int ALAvpu_Open(ALAvpuContext *ctx, const HWEncoderParams *p)
     }
 
     /* For now, enable session immediately so pushes/IRQ can proceed */
-    /* Program AXI address offset so IP can access our rmem-backed buffers */
+    /* OEM parity: do NOT use AXI offset mode at init; use absolute addresses */
     uint32_t axi_base = 0;
     int use_offsets = 0;
-    if (DMA_Get_RMEM_Base(&axi_base) == 0) {
-        use_offsets = 1;
-    } else if (ctx->stream_bufs_used > 0) {
-        /* Fallback: derive a base from first stream buffer (1MB align) */
-        axi_base = ctx->stream_bufs[0].phy_addr & 0xFFF00000;
-    }
-    if (axi_base) {
-        if (avpu_ip_write_reg(fd, AVPU_REG_AXI_ADDR_OFFSET_IP, axi_base) == 0) {
-            LOG_AL("set AXI_ADDR_OFFSET_IP (0x%04x) = 0x%08x (use_offsets=%d)", AVPU_REG_AXI_ADDR_OFFSET_IP, axi_base, use_offsets);
-        } else {
-            LOG_AL("failed to set AXI_ADDR_OFFSET_IP: %s", strerror(errno));
-        }
-    }
+    ctx->force_cl_abs = 0;
+    ctx->disable_axi_offset = 1;
+
+    /* Persist addressing mode */
+    ctx->axi_base = 0;
+    ctx->use_offsets = 0;
+
+    LOG_AL("addr-mode: use_offsets=%d axi_base=0x%08x (OEM ABS)", ctx->use_offsets, ctx->axi_base);
+
     /* Prepare command-list ring (OEM parity): allocate 0x13 entries of 512B */
     {
         const uint32_t CL_ENTRY_SIZE = 0x200; /* 512B */
@@ -534,117 +608,47 @@ int ALAvpu_Open(ALAvpuContext *ctx, const HWEncoderParams *p)
         if (IMP_Alloc((char*)info, (int)cl_bytes, (char*)"avpu_cmdlist") == 0) {
             void *virt = *(void**)(info + 0x80);
             uint32_t phys = *(uint32_t*)(info + 0x84);
-            ctx->cl_ring.phy_addr = phys;
-            ctx->cl_ring.map = virt;
-            ctx->cl_ring.size = cl_bytes;
-            ctx->cl_ring.from_rmem = 1;
-            ctx->cl_entry_size = CL_ENTRY_SIZE;
-            ctx->cl_count = CL_COUNT;
-            ctx->cl_idx = 0;
-            /* Zero the ring */
-            if (virt && cl_bytes)
-                memset(virt, 0, cl_bytes);
-            /* Write basic picture dimensions into first entry (Enc1 cmd regs at +4) */
-            if (virt && ctx->enc_w && ctx->enc_h) {
-                uint32_t *cmd = (uint32_t*)virt;
-                uint32_t w = ctx->enc_w ? ctx->enc_w : eff_w;
-                uint32_t h = ctx->enc_h ? ctx->enc_h : eff_h;
-                if (w > 0) w -= 1; if (h > 0) h -= 1;
-                uint32_t dims = ((h & 0x7ff) << 12) | (w & 0x7ff);
-                cmd[1] = dims; /* matches GetPicDimFromCmdRegsEnc1 */
+            /* Validate allocation returned valid addresses */
+            if (virt == NULL || phys == 0) {
+                LOG_AL("IMP_Alloc succeeded but returned invalid addresses (virt=%p phys=0x%08x); CL disabled", virt, phys);
+            } else {
+                ctx->cl_ring.phy_addr = phys;
+                ctx->cl_ring.map = virt;
+                ctx->cl_ring.size = cl_bytes;
+                ctx->cl_ring.from_rmem = 1;
+                ctx->cl_entry_size = CL_ENTRY_SIZE;
+                ctx->cl_count = CL_COUNT;
+                ctx->cl_idx = 0;
+                /* Zero the ring */
+                if (virt && cl_bytes)
+                    memset(virt, 0, cl_bytes);
+                /* Write basic picture dimensions into first entry (Enc1 cmd regs at +4) */
+                if (virt && ctx->enc_w && ctx->enc_h) {
+                    uint32_t *cmd = (uint32_t*)virt;
+                    uint32_t w = ctx->enc_w ? ctx->enc_w : eff_w;
+                    uint32_t h = ctx->enc_h ? ctx->enc_h : eff_h;
+                    if (w > 0) w -= 1; if (h > 0) h -= 1;
+                    uint32_t dims = ((h & 0x7ff) << 12) | (w & 0x7ff);
+                    cmd[1] = dims; /* matches GetPicDimFromCmdRegsEnc1 */
+                }
+                /* Log first entry start/end like SetCommandListBuffer would generate */
+                uint32_t first_start = phys;
+                uint32_t first_end   = phys + CL_ENTRY_SIZE;
+                LOG_AL("cmdlist ring: phys=0x%08x size=%zu entries=%u entry_size=%u first:[0x%08x..0x%08x)",
+                       phys, cl_bytes, CL_COUNT, CL_ENTRY_SIZE, first_start, first_end);
             }
-            /* Log first entry start/end like SetCommandListBuffer would generate */
-            uint32_t first_start = phys;
-            uint32_t first_end   = phys + CL_ENTRY_SIZE;
-            LOG_AL("cmdlist ring: phys=0x%08x size=%zu entries=%u entry_size=%u first:[0x%08x..0x%08x)",
-                   phys, cl_bytes, CL_COUNT, CL_ENTRY_SIZE, first_start, first_end);
         } else {
             LOG_AL("IMP_Alloc for cmdlist ring failed; proceeding without CL (will block start)");
         }
     }
 
+    /* Defer hardware configure/unmask to first frame queue to avoid early IRQs on T31.
+     * We only prepare software state here; IRQ thread and register programming happen lazily. */
+    ctx->session_ready = 0;
+    LOG_AL("deferring AVPU HW configure/unmask until first frame is queued");
 
-    /* Minimal OEM-aligned configure/start sequence (core 0) */
-    (void)avpu_minimal_configure(fd, 0);
-
-    /* Program command-list base/end for core 0 (OEM parity; will be extended per-slice) */
-    if (ctx->cl_ring.phy_addr != 0 && ctx->cl_entry_size) {
-        uint32_t cl_start = ctx->cl_ring.phy_addr + (ctx->cl_idx * ctx->cl_entry_size);
-        uint32_t cl_end   = cl_start + ctx->cl_entry_size;
-        if (use_offsets && axi_base) { cl_start -= axi_base; cl_end -= axi_base; }
-        unsigned base = AVPU_BASE_OFFSET + 0x900; /* 0x8900 zone */
-        unsigned reg_start = base + 0x0; /* CL_START */
-        unsigned reg_end   = base + 0x4; /* CL_END   */
-        LOG_AL("program CL regs: start=0x%08x end=0x%08x -> [0x%04x,0x%04x]", cl_start, cl_end, reg_start, reg_end);
-        (void)avpu_ip_write_reg(fd, reg_start, cl_start);
-        (void)avpu_ip_write_reg(fd, reg_end,   cl_end);
-        unsigned r0=0,r1=0; (void)avpu_ip_read_reg(fd, reg_start, &r0); (void)avpu_ip_read_reg(fd, reg_end, &r1);
-        LOG_AL("readback CL regs: [0x%04x]=0x%08x [0x%04x]=0x%08x", reg_start, r0, reg_end, r1);
-    } else {
-        LOG_AL("CL ring not available; skip CL programming");
-    }
-
-
-    /* Provide stream buffers to hardware */
-    for (int i = 0; i < ctx->stream_bufs_used; ++i) {
-
-        uint32_t phys = ctx->stream_bufs[i].phy_addr;
-        uint32_t val = use_offsets ? (phys - axi_base) : phys;
-        if (avpu_ip_write_reg(fd, AVPU_REG_STRM_PUSH, val) == 0) {
-            ctx->stream_in_hw[i] = 1;
-            LOG_AL("push STRM buf[%d] -> reg 0x%04x = 0x%08x%s", i, AVPU_REG_STRM_PUSH, val, use_offsets?" (off)":"");
-        } else {
-            LOG_AL("failed to push STRM buf[%d] (phys=0x%08x val=0x%08x): %s", i, phys, val, strerror(errno));
-        }
-    }
-
-    /* IRQ state: observe current mask and pending; clear pending and enable Enc1/Enc2 bits for core 0 */
-    unsigned int pend = 0, mask = 0;
-    (void)avpu_ip_read_reg(fd, AVPU_INTERRUPT_MASK, &mask);
-    (void)avpu_ip_read_reg(fd, AVPU_INTERRUPT, &pend);
-    LOG_AL("IRQ: mask=0x%08x, pending=0x%08x", mask, pend);
-
-    /* Clear any pending bits */
-    (void)avpu_ip_write_reg(fd, AVPU_INTERRUPT, 0xFFFFFFFF);
-
-    /* Enable only the OEM Enc1/Enc2 bits for core 0 */
-    avpu_enable_interrupts_core(fd, 0);
-
-    /* Dump a few key registers for bring-up */
-    avpu_dump_regs(fd);
-
-    /* Init simple IRQ queue; start thread */
-    ctx->irq_q_head = ctx->irq_q_tail = 0;
-    pthread_mutex_t* m = (pthread_mutex_t*)malloc(sizeof(pthread_mutex_t));
-    pthread_cond_t*  c = (pthread_cond_t*)malloc(sizeof(pthread_cond_t));
-    if (!m || !c) {
-        LOG_AL("failed to alloc irq sync primitives");
-        if (m) free(m);
-        if (c) free(c);
-        close(fd);
-        ctx->fd = -1;
-        return -1;
-    }
-    pthread_mutex_init(m, NULL);
-    pthread_cond_init(c, NULL);
-    ctx->irq_mutex = m;
-    ctx->irq_cond  = c;
-    ctx->irq_thread_running = 1;
-    pthread_t th;
-    if (pthread_create(&th, NULL, irq_thread_main, ctx) != 0) {
-        LOG_AL("failed to start irq thread: %s", strerror(errno));
-        pthread_cond_destroy(c);
-        pthread_mutex_destroy(m);
-        free(c); free(m);
-        close(fd); ctx->fd = -1;
-        return -1;
-    }
-    ctx->irq_thread = (long)th;
-    ctx->session_ready = 1;
-    LOG_AL("session ready and IRQ thread started");
-
-    LOG_AL("opened avpu fd=%d, target %ux%u @ %u/%u fps, gop=%d, bitrate=%u, profile=%d",
-           fd, eff_w, eff_h, eff_fps_num, eff_fps_den, p->gop_length, p->bitrate, p->profile);
+    LOG_AL("opened avpu ctx=%p fd(local)=%d fd(ctx)=%d, target %ux%u @ %u/%u fps, gop=%d, bitrate=%u, profile=%d",
+           (void*)ctx, fd, ctx->fd, eff_w, eff_h, eff_fps_num, eff_fps_den, p->gop_length, p->bitrate, p->profile);
 
     /* initialize buffer pools / FIFOs placeholders */
     ctx->fifo_streams = NULL;
@@ -707,10 +711,61 @@ int ALAvpu_Close(ALAvpuContext *ctx)
 int ALAvpu_QueueFrame(ALAvpuContext *ctx, const HWFrameBuffer *frame)
 {
     if (!ctx || ctx->fd < 0 || !frame) return -1;
+    if (ctx->fd <= 2) {
+        LOG_AL("FD invalid for AVPU (ctx=%p fd=%d): refusing to issue ioctls", (void*)ctx, ctx->fd);
+        errno = EBADF;
+        return -1;
+    }
 
     if (!ctx->session_ready) {
-        /* Session not yet configured; drop gracefully to avoid upsetting driver */
-        return 0;
+        int fd = ctx->fd;
+        /* Lazy-start: configure HW and start IRQ thread on first frame to avoid early IRQs */
+        ctx->irq_q_head = ctx->irq_q_tail = 0;
+        pthread_mutex_t* m = (pthread_mutex_t*)malloc(sizeof(pthread_mutex_t));
+        pthread_cond_t*  c = (pthread_cond_t*)malloc(sizeof(pthread_cond_t));
+        if (!m || !c) {
+            LOG_AL("lazy-start: failed to alloc irq sync primitives");
+            if (m) free(m);
+            if (c) free(c);
+            errno = ENOMEM;
+            return -1;
+        }
+        pthread_mutex_init(m, NULL);
+        pthread_cond_init(c, NULL);
+        ctx->irq_mutex = m;
+        ctx->irq_cond  = c;
+        ctx->irq_thread_running = 0; /* do not start IRQ thread yet */
+
+        /* Minimal OEM-aligned configure/start sequence (core 0) */
+        (void)avpu_minimal_configure(fd, 0);
+
+        /* Do NOT unmask IRQs yet on T31; defer until stable. */
+
+        /* Program command-list start and push (OEM sequence uses 0x83E0/0x83E4) */
+        if (ctx->cl_ring.phy_addr != 0 && ctx->cl_entry_size) {
+            uint32_t cl_start_abs = ctx->cl_ring.phy_addr + (ctx->cl_idx * ctx->cl_entry_size);
+            (void)avpu_ip_write_reg(fd, AVPU_REG_CL_ADDR, cl_start_abs);
+            (void)avpu_ip_write_reg(fd, AVPU_REG_CL_PUSH, 0x00000002);
+        }
+
+        /* Provide stream buffers to hardware */
+        {
+            uint32_t axi_base = ctx->axi_base;
+            int use_offsets = ctx->use_offsets;
+            for (int i = 0; i < ctx->stream_bufs_used; ++i) {
+                uint32_t phys = ctx->stream_bufs[i].phy_addr;
+                uint32_t val = use_offsets ? (phys - axi_base) : phys;
+                if (avpu_ip_write_reg(fd, AVPU_REG_STRM_PUSH, val) == 0) {
+                    ctx->stream_in_hw[i] = 1;
+                }
+            }
+        }
+
+        /* Clear any pending bits; keep IRQs masked for now */
+        (void)avpu_ip_write_reg(fd, AVPU_INTERRUPT, 0x00FFFFFF);
+
+        ctx->session_ready = 1;
+        LOG_AL("lazy-start: AVPU HW configured (IRQs masked); session_ready=1");
     }
 
     /* For T31 NV12 from ISP, phys_addr points to a VBM header followed by Y/UV planes. */
@@ -725,10 +780,11 @@ int ALAvpu_QueueFrame(ALAvpuContext *ctx, const HWFrameBuffer *frame)
 
     /* Push the source descriptor/addr to the device. Vendor does this via driver vtable +0x0C. */
     /* If AXI base is set from RMEM, provide offset rather than absolute phys. */
-    uint32_t axi_base = 0;
-    int use_offsets = (DMA_Get_RMEM_Base(&axi_base) == 0);
+    uint32_t axi_base = ctx->axi_base;
+    int use_offsets = ctx->use_offsets;
     uint32_t phys = frame->phys_addr;
     uint32_t val = use_offsets ? (phys - axi_base) : phys;
+    LOG_AL("ctx=%p fd=%d: SRC push prepare val=0x%08x (phys=0x%08x)%s", (void*)ctx, ctx->fd, val, phys, use_offsets?" off":"");
     if (avpu_ip_write_reg(ctx->fd, AVPU_REG_SRC_PUSH, val) < 0) {
         LOG_AL("SRC push failed: reg 0x%04x <- 0x%08x (phys=0x%08x)%s : %s", AVPU_REG_SRC_PUSH, val, phys, use_offsets?" off":"", strerror(errno));
         return -1;
@@ -748,19 +804,66 @@ int ALAvpu_QueueFrame(ALAvpuContext *ctx, const HWFrameBuffer *frame)
         /* Optional debug: dump first 8 dwords of entry */
         LOG_AL("CL[%u] cmd[0..7]=%08x %08x %08x %08x %08x %08x %08x %08x",
                idx, cmd[0], cmd[1], cmd[2], cmd[3], cmd[4], cmd[5], cmd[6], cmd[7]);
+        /* Ensure SRC/STRM controls are enabled (belt-and-suspenders) */
+        (void)avpu_ip_write_reg(ctx->fd, AVPU_REG_SRC_CTRL, 1);
+        (void)avpu_ip_write_reg(ctx->fd, AVPU_REG_STRM_CTRL, 1);
+
 
         /* Clean cache for this CL entry before device reads it (use virtual addr) */
         void* cl_entry_virt = (void*)((uint8_t*)ctx->cl_ring.map + (size_t)idx * ctx->cl_entry_size);
         avpu_cache_clean_virt(ctx->fd, cl_entry_virt, ctx->cl_entry_size);
 
-        /* Program CL start/end for core0 */
+        /* Ensure clock command is ON (bits[1:0]=1) before commit */
+        {
+            unsigned clk_reg = AVPU_REG_CORE_CLKCMD(0);
+        /* Additional safe ungates observed in OEM footprints (queue path) */
+        /* Clear pending before programming */
+        (void)avpu_ip_write_reg(ctx->fd, AVPU_INTERRUPT, 0x00FFFFFF);
+
+            unsigned v = 0; (void)avpu_ip_read_reg(ctx->fd, clk_reg, &v);
+            unsigned new_v = (v & ~0x3u) | 0x1u;
+            if (new_v != v) (void)avpu_ip_write_reg(ctx->fd, clk_reg, new_v);
+        }
+
+
+        /* OEM parity: no commit pulsing or generic ungates here */
+
+        /* IRQ mask per OEM before push */
+        (void)avpu_ip_write_reg(ctx->fd, AVPU_INTERRUPT_MASK, 0x00000010);
+
+        /* Program CL start and push (OEM path: 0x83E0/0x83E4) */
         uint32_t cl_phys = ctx->cl_ring.phy_addr + (idx * ctx->cl_entry_size);
-        uint32_t cl_start = cl_phys;
-        uint32_t cl_end   = cl_phys + ctx->cl_entry_size;
-        if (use_offsets && axi_base) { cl_start -= axi_base; cl_end -= axi_base; }
-        unsigned base = AVPU_BASE_OFFSET + 0x900; /* 0x8900 */
-        (void)avpu_ip_write_reg(ctx->fd, base + 0x0, cl_start);
-        (void)avpu_ip_write_reg(ctx->fd, base + 0x4, cl_end);
+        uint32_t cl_start_abs = cl_phys;
+        (void)avpu_ip_write_reg(ctx->fd, AVPU_REG_CL_ADDR, cl_start_abs);
+        (void)avpu_ip_write_reg(ctx->fd, AVPU_REG_CL_PUSH, 0x00000002);
+        LOG_AL("queue: CL start=0x%08x (ABS) -> [0x%04x], push [0x%04x]=0x2", cl_start_abs, AVPU_REG_CL_ADDR, AVPU_REG_CL_PUSH);
+        /* Debug: read back key control registers around SRC/STRM and IRQ */
+        #if AVPU_DEBUG_REGS
+        {
+            unsigned v;
+            (void)avpu_ip_read_reg(ctx->fd, AVPU_REG_TOP_CTRL, &v);
+            LOG_AL("dbg TOP_CTRL(0x%04x)=0x%08x", AVPU_REG_TOP_CTRL, v);
+            (void)avpu_ip_read_reg(ctx->fd, AVPU_REG_SRC_CTRL, &v);
+            LOG_AL("dbg SRC_CTRL(0x%04x)=0x%08x", AVPU_REG_SRC_CTRL, v);
+            (void)avpu_ip_read_reg(ctx->fd, AVPU_REG_SRC_PUSH, &v);
+            LOG_AL("dbg SRC_PUSH(0x%04x)=0x%08x", AVPU_REG_SRC_PUSH, v);
+            (void)avpu_ip_read_reg(ctx->fd, AVPU_REG_STRM_CTRL, &v);
+            LOG_AL("dbg STRM_CTRL(0x%04x)=0x%08x", AVPU_REG_STRM_CTRL, v);
+            (void)avpu_ip_read_reg(ctx->fd, AVPU_REG_STRM_PUSH, &v);
+            LOG_AL("dbg STRM_PUSH(0x%04x)=0x%08x", AVPU_REG_STRM_PUSH, v);
+            (void)avpu_ip_read_reg(ctx->fd, AVPU_INTERRUPT_MASK, &v);
+            LOG_AL("dbg IRQ_MASK(0x%04x)=0x%08x", AVPU_INTERRUPT_MASK, v);
+            (void)avpu_ip_read_reg(ctx->fd, AVPU_INTERRUPT, &v);
+            LOG_AL("dbg IRQ_PEND(0x%04x)=0x%08x", AVPU_INTERRUPT, v);
+        }
+    #endif
+
+
+        /* Peek pending IRQs immediately */
+        {
+            unsigned pend = 0; (void)avpu_ip_read_reg(ctx->fd, AVPU_INTERRUPT, &pend);
+            LOG_AL("post-kick IRQ pending=0x%08x", pend);
+        }
 
         /* Advance to next CL slot */
         ctx->cl_idx = (idx + 1) % ctx->cl_count;
@@ -808,14 +911,15 @@ int ALAvpu_DequeueStream(ALAvpuContext *ctx, HWStreamBuffer *out, int timeout_ms
         if (ctx->stream_in_hw[i]) {
             out->phys_addr = ctx->stream_bufs[i].phy_addr;
             out->virt_addr = (uint32_t)(uintptr_t)ctx->stream_bufs[i].map;
-            /* Invalidate cache before CPU read */
-            avpu_cache_inv(ctx->fd, out->phys_addr, ctx->stream_buf_size);
+            /* Invalidate cache before CPU read: use VIRT address (driver expects CPU-mapped VA) */
+            avpu_cache_inv_virt(ctx->fd, (void*)(uintptr_t)out->virt_addr, ctx->stream_buf_size);
             size_t eff = annexb_effective_size((const uint8_t*)(uintptr_t)out->virt_addr, (size_t)ctx->stream_buf_size);
             if (eff == 0) {
                 /* No AnnexB header detected; requeue and wait for next IRQ */
                 LOG_AL("no AnnexB startcode in STRM buf[%d]; requeue", i);
                 {
-                    uint32_t axi_base = 0; int use_offsets = (DMA_Get_RMEM_Base(&axi_base) == 0);
+                    uint32_t axi_base = ctx->axi_base;
+                    int use_offsets = ctx->use_offsets;
                     uint32_t phys = out->phys_addr;
                     uint32_t val = use_offsets ? (phys - axi_base) : phys;
                     if (avpu_ip_write_reg(ctx->fd, AVPU_REG_STRM_PUSH, val) == 0) {
@@ -849,7 +953,8 @@ int ALAvpu_ReleaseStream(ALAvpuContext *ctx, HWStreamBuffer *out)
     for (int i = 0; i < ctx->stream_bufs_used; ++i) {
         if (ctx->stream_bufs[i].phy_addr == out->phys_addr) {
             {
-                uint32_t axi_base = 0; int use_offsets = (DMA_Get_RMEM_Base(&axi_base) == 0);
+                uint32_t axi_base = ctx->axi_base;
+                int use_offsets = ctx->use_offsets;
                 uint32_t phys = out->phys_addr;
                 uint32_t val = use_offsets ? (phys - axi_base) : phys;
                 if (avpu_ip_write_reg(ctx->fd, AVPU_REG_STRM_PUSH, val) < 0) {

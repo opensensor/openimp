@@ -354,7 +354,10 @@ int IMP_FrameSource_EnableChn(int chnNum) {
     memcpy(vbm_fmt + 0x04, &chn->attr.picHeight, sizeof(int));
     memcpy(vbm_fmt + 0x08, &chn->attr.pixFmt, sizeof(int));
     memcpy(vbm_fmt + 0x0c, &kernel_sizeimage, sizeof(int));
-    int vbm_count = chn->attr.nrVBs > 0 ? chn->attr.nrVBs : 1;
+    /* OEM prudynt-t defaults to 2 buffers minimum (verified via BN MCP and prudynt-t source).
+     * Kernel driver requires at least 2 buffers for double-buffering. Enforce min=2 here. */
+    int vbm_count = chn->attr.nrVBs;
+    if (vbm_count < 2) vbm_count = 2;
     memcpy(vbm_fmt + 0x34, &vbm_count, sizeof(int));
 
     /* Create VBM pool using kernel-computed size and requested buffer count */
@@ -368,7 +371,7 @@ int IMP_FrameSource_EnableChn(int chnNum) {
 
     /* OEM ordering: after creating pool, set REQBUFS and tolerate reductions */
     int requested_bufcnt = chn->attr.nrVBs + (g_frame_depth[chnNum] > 0 ? g_frame_depth[chnNum] : 0);
-    if (requested_bufcnt < 1) requested_bufcnt = 1;
+    if (requested_bufcnt < 2) requested_bufcnt = 2;  /* Kernel requires minimum 2 buffers */
     int bufcnt = fs_set_buffer_count(chn->fd, requested_bufcnt);
     if (bufcnt < 0) {
         LOG_FS("EnableChn failed: cannot set buffer count");
@@ -402,24 +405,23 @@ int IMP_FrameSource_EnableChn(int chnNum) {
         return -1;
     }
 
-    /* After priming the kernel, clear the user-space available queue.
-     * In kernel-backed mode, frames are sourced via DQBUF and not from the
-     * available_queue. Pre-filling it would make ReleaseFrame think the queue
-     * is full on the first return. Flushing prevents 'queue full' errors. */
-    extern int VBMFlushFrame(int chn);
-    VBMFlushFrame(chnNum);
+    /* OEM parity: do NOT flush the userspace queue here for kernel-backed capture.
+     * Kernel will drive buffer ownership via QBUF/DQBUF; local queue is unused. */
 
     /* Small guard delay before STREAM_ON to mirror vendor pacing */
     usleep(5000); /* 5ms */
 
     /* Do not DQBUF before STREAM_ON; some drivers return EINVAL and may abort later */
 
-    /* Match OEM: ensure kernel frame depth is configured (default 0) before STREAM_ON */
+    /* Match OEM: ensure kernel frame depth is configured before STREAM_ON
+     * OEM only calls SET_DEPTH when depth > 0 (verified via BN MCP decompilation) */
     {
         extern int fs_set_depth(int fd, int depth);
         int desired_depth = g_frame_depth[chnNum]; /* defaults to 0 unless app set */
-        if (fs_set_depth(chn->fd, desired_depth) < 0) {
-            LOG_FS("EnableChn: warning: could not set kernel frame depth to %d", desired_depth);
+        if (desired_depth > 0) {
+            if (fs_set_depth(chn->fd, desired_depth) < 0) {
+                LOG_FS("EnableChn: warning: could not set kernel frame depth to %d", desired_depth);
+            }
         }
     }
 

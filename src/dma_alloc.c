@@ -131,6 +131,28 @@ static DMABuffer* lookup_buffer_by_phys(uint32_t phys_addr) {
 /**
  * Initialize DMA allocator
  */
+static void maybe_override_rmem_from_env(void)
+{
+    const char *env_base = getenv("OPENIMP_RMEM_BASE");
+    const char *env_size = getenv("OPENIMP_RMEM_SIZE");
+    if (env_base && *env_base) {
+        char *endp = NULL;
+        unsigned long v = strtoul(env_base, &endp, 0);
+        if (endp && endp != env_base) {
+            g_rmem_base_phys = (uint32_t)v;
+            LOG_DMA("RMEM base overridden by env: 0x%08x", g_rmem_base_phys);
+        }
+    }
+    if (env_size && *env_size) {
+        char *endp = NULL;
+        unsigned long v = strtoul(env_size, &endp, 0);
+        if (endp && endp != env_size && v > 0) {
+            g_rmem_size = (size_t)v;
+            LOG_DMA("RMEM size overridden by env: %zu (0x%zx)", g_rmem_size, g_rmem_size);
+        }
+    }
+}
+
 static int dma_init(void) {
     if (g_dma_initialized) {
         return 0;
@@ -142,6 +164,9 @@ static int dma_init(void) {
         pthread_mutex_unlock(&g_dma_mutex);
         return 0;
     }
+
+    /* Allow environment to override RMEM base/size to match device-specific layout */
+    maybe_override_rmem_from_env();
 
     const char *candidates[] = {
         "/dev/rmem",

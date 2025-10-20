@@ -371,6 +371,8 @@ int fs_set_buffer_count(int fd, int count) {
 /**
  * Set frame depth
  * ioctl: 0x800456c5
+ *
+ * OEM passes pointer to int (verified via BN MCP decompilation)
  */
 int fs_set_depth(int fd, int depth) {
     if (fd < 0) {
@@ -390,6 +392,8 @@ int fs_set_depth(int fd, int depth) {
 /**
  * Start streaming
  * ioctl: 0x80045612
+ *
+ * OEM passes pointer to int (verified via BN MCP decompilation)
  */
 int fs_stream_on(int fd) {
     if (fd < 0) {
@@ -410,6 +414,8 @@ int fs_stream_on(int fd) {
 /**
  * Stop streaming
  * ioctl: 0x80045613
+ *
+ * OEM passes pointer to int (verified via BN MCP decompilation)
  */
 int fs_stream_off(int fd) {
     if (fd < 0) {

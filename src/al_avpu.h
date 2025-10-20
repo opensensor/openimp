@@ -49,6 +49,12 @@ typedef struct ALAvpuContext {
     int stream_bufs_used;     /* actual count provisioned */
     unsigned char stream_in_hw[16]; /* 1 if queued to HW */
 
+    /* Addressing mode: persist AXI base and whether offsets are used */
+    uint32_t axi_base;
+    int use_offsets;
+    int force_cl_abs;         /* debug: force CL start/end to absolute phys addrs */
+    int disable_axi_offset;   /* debug: disable AXI offset mode globally */
+
     /* Command-list ring (userspace-managed; OEM uses 0x13 entries x 512B) */
     AvpuDMABuf cl_ring;       /* backing storage (rmem/IMP_Alloc) */
     uint32_t cl_entry_size;   /* bytes per entry (512) */
