@@ -1,4 +1,15 @@
-root@ing-wyze-cam3-a000 opt# [INFO:Config.cpp]: Loaded configuration from /etc/prudynt.json
+                                 wyze_cam3_t31x_gc2053_rtl8189ftv
+                        master+b66c716, 2025-10-17 17:40:13 +0000
+
+                                       02:c2:61:85:a0:00 as wlan0
+                                   fe80::c2:61ff:fe85:a000 (IPv6)
+                                            192.168.50.211 (IPv4)
+
+              04:54:07 up 19 min,  load average: 0.58, 0.28, 0.18
+
+root@ing-wyze-cam3-a000 ~# cd /opt/
+root@ing-wyze-cam3-a000 opt# LOG_AVPU_TRACE=/opt/avpu_trace.log LD_PRELOAD=/opt/libioctl_trace.so ./prudynt
+[INFO:Config.cpp]: Loaded configuration from /etc/prudynt.json
 [INFO:main.cpp]: PRUDYNT-T Next-Gen Video Daemon: prudynt-t vOct 15 2025 19:34:34 [24c730b-dev1760571274]
 [INFO:main.cpp]: Starting Prudynt Video Server.
 [OSD] SetPoolSize: 1228800 bytes
@@ -24,9 +35,9 @@ root@ing-wyze-cam3-a000 opt# [INFO:Config.cpp]: Loaded configuration from /etc/p
 [IMP_ISP] AddSensor: TX_ISP_GET_BUF using index=input_index=125830200
 [IMP_ISP] AddSensor: ISP buffer size=4685424 (platform struct size=8)
 [DMA] DMA init: using /dev/rmem
-[DMA] DMA init: /dev/rmem mapped at 0x751ee000 size=30408704 base_phys=0x06300000
-[DMA] Alloc: (unnamed) size=4685424 phys=0x6300000 virt=0x751ee000 (rmem off=0x0)
-[IMP_ISP] AddSensor: allocated ISP buffer: virt=0x751ee000 phys=0x6300000 size=4685424
+[DMA] DMA init: /dev/rmem mapped at 0x7596d000 size=30408704 base_phys=0x06300000
+[DMA] Alloc: (unnamed) size=4685424 phys=0x6300000 virt=0x7596d000 (rmem off=0x0)
+[IMP_ISP] AddSensor: allocated ISP buffer: virt=0x7596d000 phys=0x6300000 size=4685424
 [IMP_ISP] AddSensor: TX_ISP_SET_BUF using index=sensor_idx=0
 [IMP_ISP] AddSensor: calling TX_ISP_SET_BUF (0x800856d4) with phys=0x6300000 size=4685424
 [IMP_ISP] AddSensor: TX_ISP_SET_BUF succeeded
@@ -65,14 +76,14 @@ root@ing-wyze-cam3-a000 opt# [INFO:Config.cpp]: Loaded configuration from /etc/p
 [IMP_ISP] SetMaxDgain: 80
 [IMP_ISP] SetWB: mode=0, rgain=0, bgain=0
 [IMP_ISP] SetBcshHue: 128
-[IMP_ISP] SetDefog_Strength: 2142290299
+[IMP_ISP] SetDefog_Strength: 2141633723
 [IMP_ISP] SetDPC_Strength: 128
 [IMP_ISP] SetDRC_Strength: 128
 [IMP_ISP] SetSensorFPS: 25/1
 [IMP_ISP] SetSensorFPS: FPS set successfully to 25/1
 [IMP_ISP] SetISPRunningMode: 0
 [IMP_ISP] SetISPRunningMode: mode set successfully to 0
-[IMP_System] Timestamp rebased to 14457125513 us
+[IMP_System] Timestamp rebased to 1195729088 us
 [INFO:TimestampManager.cpp]: TimestampManager initialized - using IMP hardware timestamps directly
 [FrameSource] GetChnAttr failed: channel 0 not configured
 [FrameSource] CreateChn: Opened /dev/framechan0 (fd=8, nonblock)
@@ -81,17 +92,19 @@ root@ing-wyze-cam3-a000 opt# [INFO:Config.cpp]: Loaded configuration from /etc/p
 [FrameSource] CreateChn: chn=0, 1920x1080, fmt=0xa
 [FrameSource] SetChnAttr: chn=0, 1920x1080, fmt=0xa
 [FrameSource] GetChnFifoAttr: chn=0 -> maxdepth=0, depth=0
+[INFO:WS.cpp]: libwebsockets version: 4.3.5-unknown
+[INFO:WS.cpp]: WS context: port=0 iface=<any>
+[ERROR:WS.cpp]: lws init failed (errno=12)
 [FrameSource] SetChnFifoAttr: chn=0, maxdepth=0, depth=0
 [KernelIF] Set frame depth: 0
 [FrameSource] SetFrameDepth: chn=0, depth=0
 [Encoder] SetDefaultParam: 1920x1080, 25/1 fps, profile=100, rc=1
-[Encoder] SetbufshareChn: src=2, dst=0
 [Codec] SetDefaultParam: initialized (OEM-aligned)
 [Encoder] channel_encoder_init: 1920x1080, profile=0x64->0x64, fps=25/1, gop=65535, bitrate=0
 [Fifo] Init: size=4, max_elements=5
 [Fifo] Init: size=7, max_elements=8
 [Codec] Create: hardware encoder will be attempted via /dev/avpu (lazy init)
-[Codec] Create: codec=0x76ef50a0, channel=0
+[Codec] Create: codec=0x776740a0, channel=0
 [Encoder] channel_encoder_init: frame_cnt=4, frame_size=1048576
 [Fifo] Init: size=4, max_elements=5
 [Encoder] CreateChn: chn=0, profile=100 created successfully
@@ -114,40 +127,28 @@ root@ing-wyze-cam3-a000 opt# [INFO:Config.cpp]: Loaded configuration from /etc/p
 [FrameSource] EnableChn: using sizeimage=3133440 from SET_FMT for chn=0
 [VBM] CreatePool: allocating pool_size=2512 (frame_count=2 * 0x428 + 0x180)
 [VBM] CreatePool: chn=0, 1920x1080 fmt=0xa, 2 frames, size=3133440 (req=3133440 calc=3133440)
-[DMA] Alloc: (unnamed) size=6266880 phys=0x6778000 virt=0x75666000 (rmem off=0x478000)
-[VBM] Frame 0: phys=0x6778000 virt=0x75666000
-[VBM] Frame 1: phys=0x6a75000 virt=0x75963000
+[DMA] Alloc: (unnamed) size=6266880 phys=0x6778000 virt=0x75de5000 (rmem off=0x478000)
+[VBM] Frame 0: phys=0x6778000 virt=0x75de5000
+[VBM] Frame 1: phys=0x6a75000 virt=0x760e2000
 [VBM] CreatePool: chn=0 created successfully
 [KernelIF] Set buffer count: 2 (actual: 2)
 [VBM] FillPool: chn=0, filling 2 frames
 [VBM] FillPool: queued 2 frames
 [VBM] PrimeKernelQueue: queued 2 frames to kernel for chn=0 (limit=2)
-[INFO:WS.cpp]: libwebsockets version: 4.3.5-unknown
-[INFO:WS.cpp]: WS context: port=0 iface=<any>
 [Encoder] stream_thread: started for channel 0
 [Encoder] encoder_thread: started for channel 0
-[IMP_ISP] EnsureLinkStreamOn: calling ioctl 0x80045612 (ISP STREAMON)
-[IMP_ISP] EnsureLinkStreamOn: calling ioctl 0x800456d0 (LINK_SETUP)
+[IMP_ISP] EnsureLinkStreamOn: calling ioctl 0x80045612 (ISP STREAMON) [OEM-parity arg=NULL]
+[IMP_ISP] EnsureLinkStreamOn: calling ioctl 0x800456d0 (LINK_SETUP) [arg=&int]
 [IMP_ISP] EnsureLinkStreamOn: LINK_SETUP succeeded, result=0
-[IMP_ISP] EnsureLinkStreamOn: calling ioctl 0x800456d2 (LINK_STREAM_ON)
+[IMP_ISP] EnsureLinkStreamOn: calling ioctl 0x800456d2 (LINK_STREAM_ON) [OEM-parity arg=NULL]
 [IMP_ISP] EnsureLinkStreamOn: ISP streaming started
 [KernelIF] Stream started
 [FrameSource] EnableChn: chn=0 enabled successfully
 [Encoder] RequestIDR: chn=0
 [HW_Encoder] RequestIDR: next frame will be IDR
 [Encoder] StartRecvPic: chn=0
-[ERROR:WS.cpp]: lws init failed (errno=12)
-[Encoder] SetDefaultParam: 1920x1080, 24/1 fps, profile=67108864, rc=0
-[Codec] SetDefaultParam: initialized (OEM-aligned)
-[Encoder] channel_encoder_init: 1920x1080, profile=0x4000000->0x0, fps=24/1, gop=0, bitrate=0
-[Fifo] Init: size=4, max_elements=5
-[Fifo] Init: size=7, max_elements=8
-[Codec] Create: hardware encoder will be attempted via /dev/avpu (lazy init)
-[Codec] Create: codec=0x76ef40b0, channel=1
-[Encoder] channel_encoder_init: frame_cnt=4, frame_size=1048576
-[Fifo] Init: size=4, max_elements=5
-[Encoder] CreateChn: chn=2, profile=67108864 created successfully
-[Encoder] RegisterChn: grp=0, chn=2
+[INFO:RTSPStatus.cpp]: RTSPStatus: RTSP status interface initialized successfully
+[INFO:RTSP.cpp]: Set shared RTP timestamp base: 3921775265 (0xe9c18aa1)
 [FrameSource] frame_capture_thread: started for channel 0, state=2, fd=8
 [FrameSource] frame_capture_thread chn=0: entering main loop
 [FrameSource] frame_capture_thread chn=0: poll iteration 1, state=2, fd=8, software_mode=0
@@ -155,137 +156,1253 @@ root@ing-wyze-cam3-a000 opt# [INFO:Config.cpp]: Loaded configuration from /etc/p
 [FrameSource] frame_capture_thread chn=0: select() returned 1 (errno=0)
 [FrameSource] frame_capture_thread chn=0: entering DQBUF drain loop
 [VBM] VBMKernelDequeue chn=0: attempting DQBUF...
-[Encoder] RequestIDR: chn=2
-[HW_Encoder] RequestIDR: next frame will be IDR
-[Encoder] StartRecvPic: chn=2
-[INFO:RTSPStatus.cpp]: RTSPStatus: RTSP status interface initialized successfully
-[Encoder] stream_thread: started for channel 2
-[INFO:RTSP.cpp]: Set shared RTP timestamp base: 3921775265 (0xe9c18aa1)
-[Encoder] encoder_thread: started for channel 2
 [VBM] VBMKernelDequeue chn=0: DQBUF returned ret=0 idx=0
-[FrameSource] frame_capture_thread chn=0: got frame #1 (0x76efccc0) from kernel
-[System] notify: calling update 0x773963ec on Encoder (frame=0x76efccc0)
-[Encoder] encoder_update: Frame available from FrameSource, frame=0x76efccc0
-[Codec] Process: frame=0x76efccc0, extracting metadata
+[FrameSource] frame_capture_thread chn=0: got frame #1 (0x7767bcc0) from kernel
+[System] notify: calling update 0x77b153dc on Encoder (frame=0x7767bcc0)
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x7767bcc0
+[Codec] Process: frame=0x7767bcc0, extracting metadata
 [AL-AVPU] sensor: gc2053 1920x1080 @ 25 fps
-[DMA] Alloc: (unnamed) size=131072 phys=0x6d72000 virt=0x75c60000 (rmem off=0xa72000)
-[AL-AVPU] stream buf[0]: RMEM phys=0x06d72000 size=131072 virt=0x75c60000
-[DMA] Alloc: (unnamed) size=131072 phys=0x6d92000 virt=0x75c80000 (rmem off=0xa92000)
-[AL-AVPU] stream buf[1]: RMEM phys=0x06d92000 size=131072 virt=0x75c80000
-[DMA] Alloc: (unnamed) size=131072 phys=0x6db2000 virt=0x75ca0000 (rmem off=0xab2000)
-[AL-AVPU] stream buf[2]: RMEM phys=0x06db2000 size=131072 virt=0x75ca0000
-[DMA] Alloc: (unnamed) size=131072 phys=0x6dd2000 virt=0x75cc0000 (rmem off=0xad2000)
-[AL-AVPU] stream buf[3]: RMEM phys=0x06dd2000 size=131072 virt=0x75cc0000
-[AL-AVPU] addr-mode: use_offsets=0 axi_base=0x00000000 (OEM ABS)
-[DMA] Alloc: (unnamed) size=9728 phys=0x6df2000 virt=0x75ce0000 (rmem off=0xaf2000)
+[DMA] Alloc: (unnamed) size=131072 phys=0x6d72000 virt=0x763df000 (rmem off=0xa72000)
+[AL-AVPU] stream buf[0]: RMEM phys=0x06d72000 size=131072 virt=0x763df000
+[DMA] Alloc: (unnamed) size=131072 phys=0x6d92000 virt=0x763ff000 (rmem off=0xa92000)
+[AL-AVPU] stream buf[1]: RMEM phys=0x06d92000 size=131072 virt=0x763ff000
+[DMA] Alloc: (unnamed) size=131072 phys=0x6db2000 virt=0x7641f000 (rmem off=0xab2000)
+[AL-AVPU] stream buf[2]: RMEM phys=0x06db2000 size=131072 virt=0x7641f000
+[DMA] Alloc: (unnamed) size=131072 phys=0x6dd2000 virt=0x7643f000 (rmem off=0xad2000)
+[AL-AVPU] stream buf[3]: RMEM phys=0x06dd2000 size=131072 virt=0x7643f000
+[AL-AVPU] addr-mode: use_offsets=1 axi_base=0x06300000 (OEM OFFSET)
+[DMA] Alloc: (unnamed) size=9728 phys=0x6df2000 virt=0x7645f000 (rmem off=0xaf2000)
 [AL-AVPU] cmdlist ring: phys=0x06df2000 size=9728 entries=19 entry_size=512 first:[0x06df2000..0x06df2200)
 [AL-AVPU] deferring AVPU HW configure/unmask until first frame is queued
-[AL-AVPU] opened avpu ctx=0x76ef5a64 fd(local)=16 fd(ctx)=16, target 1920x1080 @ 25/1 fps, gop=65535, bitrate=2000000, profile=2
-[Codec] AVPU: chann[14457.933569] Unhandled kernel unaligned access[#1]:
-[14457.943428] CPU: 0 PID: 20959 Comm: prudynt Tainted: G           O 3.10.14__isvp_swan_1.0__ #1
-[14457.952320] task: 841f2880 ti: 82056000 task.ti: 82056000
-[14457.957884] $ 0   : 00000000 10001c00 00000000 00000000
-[14457.963280] $ 4   : ffffd8ff fffffffe 00000041 00000000
-[14457.968683] $ 8   : 10001c01 1000001e 80446458 3ffdc0a3
-[14457.974082] $12   : 00000d26 8043b200 00000000 30303030
-[14457.979476] $16   : 8e500000 ffffd8ff 80020f98 80000000
-[14457.984876] $20   : 8001b084 82057e48 00008054 00000000
-[14457.990276] $24   : 00000000 7741437c                  
-[14457.995667] $28   : 82056000 82057e10 00000000 8001b084
-[14458.001060] Hi    : 307e2bd7
-[14458.004017] Lo    : 7aebe520
-[14458.006988] epc   : 80021064 0x80021064
-[14458.010938]     Tainted: G           O
-[14458.014805] ra    : 8001b084 0x8001b084
-[14458.018750] Status: 10001c03	KERNEL EXL IE 
-[14458.023072] Cause : 40808014
-[14458.026038] BadVA : ffffd8ff
-[14458.029009] PrId  : 00d00100 (Ingenic Xburst)
-[14458.033495] Modules linked in:Unhandled kernel unaligned access[#2]:
-[14458.040052] CPU: 0 PID: 20959 Comm: prudynt Tainted: G           O 3.10.14__isvp_swan_1.0__ #1
-[14458.048935] task: 841f2880 ti: 82056000 task.ti: 82056000
-[14458.054501] $ 0   : 00000000 10001c00 00000000 00000000
-[14458.059894] $ 4   : ffffda23 fffffffe 00000000 00000124
-[14458.065293] $ 8   : 10001c00 1000001e 00000000 ffffffe0
-[14458.070699] $12   : 82057aa0 00000000 00000000 696e6567
-[14458.076098] $16   : 8e020000 ffffda23 803aa81c 00000000
-[14458.081488] $20   : 803aa778 82057be8 00008054 00000000
-[14458.086888] $24   : 00000001 7741437c                  
-[14458.092285] $28   : 82056000 82057bb0 00000000 8001b084
-[14458.097678] Hi    : 00000000
-[14458.100640] Lo    : 00000000
-[14458.103603] epc   : 80021064 0x80021064
-[14458.107551]     Tainted: G           O
-[14458.111410] ra    : 8001b084 0x8001b084
-[14458.115357] Status: 10001c02	KERNEL EXL 
-[14458.119394] Cause : 40809414
-[14458.122357] BadVA : ffffda23
-[14458.125327] PrId  : 00d00100 (Ingenic Xburst)
-[14458.129818] Modules linked in:Unhandled kernel unaligned access[#3]:
-[14458.136370] CPU: 0 PID: 20959 Comm: prudynt Tainted: G           O 3.10.14__isvp_swan_1.0__ #1
-[14458.145259] task: 841f2880 ti: 82056000 task.ti: 82056000
-[14458.150828] $ 0   : 00000000 10001c00 00000000 00000000
-[14458.156221] $ 4   : ffffda37 fffffffe 00000000 00000138
-[14458.161606] $ 8   : 10001c00 1000001e 00000000 ffffffe0
-[14458.167011] $12   : 82057840 00000000 00000000 696e6567
-[14458.172407] $16   : 8e020000 ffffda37 803aa81c 00000000
-[14458.177804] $20   : 803aa778 82057988 00008054 00000000
-[14458.183189] $24   : 00000001 7741437c                  
-[14458.188583] $28   : 82056000 82057950 00000000 8001b084
-[14458.193988] Hi    : 00000000
-[14458.196951] Lo    : 00000000
-[14458.199914] epc   : 80021064 0x80021064
-[14458.203860]     Tainted: G           O
-[14458.207719] ra    : 8001b084 0x8001b084
-[14458.211665] Status: 10001c02	KERNEL EXL 
-[14458.215701] Cause : 40809414
-[14458.218666] BadVA : ffffda37
-[14458.221636] PrId  : 00d00100 (Ingenic Xburst)
-[14458.226128] Modules linked in:Unhandled kernel unaligned access[#4]:
-[14458.232685] CPU: 0 PID: 20959 Comm: prudynt Tainted: G           O 3.10.14__isvp_swan_1.0__ #1
-[14458.241571] task: 841f2880 ti: 82056000 task.ti: 82056000
-[14458.247139] $ 0   : 00000000 10001c00 00000000 00000000
-[14458.252533] $ 4   : ffffda4b fffffffe 00000000 0000014c
-[14458.257931] $ 8   : 10001c00 1000001e 00000000 ffffffe0
-[14458.263324] $12   : 820575e0 00000000 00000000 696e6567
-[14458.268722] $16   : 8e020000 ffffda4b 803aa81c 00000000
-[14458.274115] $20   : 803aa778 82057728 00008054 00000000
-[14458.279501] $24   : 00000001 7741437c                  
-[14458.284885] $28   : 82056000 820576f0 00000000 8001b084
-[14458.290275] Hi    : 00000000
-[14458.293239] Lo    : 00000000
-[14458.296203] epc   : 80021064 0x80021064
-[14458.300152]     Tainted: G           O
-[14458.304009] ra    : 8001b084 0x8001b084
-[14458.307956] Status: 10001c02	KERNEL EXL 
-[14458.311992] Cause : 40809414
-[14458.314956] BadVA : ffffda4b
-[14458.317926] PrId  : 00d00100 (Ingenic Xburst)
-[14458.322417] Modules linked in:Unhandled kernel unaligned access[#5]:
-[14458.328975] CPU: 0 PID: 20959 Comm: prudynt Tainted: G           O 3.10.14__isvp_swan_1.0__ #1
-[14458.337856] task: 841f2880 ti: 82056000 task.ti: 82056000
-[14458.343426] $ 0   : 00000000 10001c00 00000000 00000000
-[14458.348819] $ 4   : ffffda5f fffffffe 00000000 00000160
-[14458.354219] $ 8   : 10001c00 1000001e 00000000 ffffffe0
-[14458.359625] $12   : 82057380 00000000 00000000 696e6567
-[14458.365021] $16   : 8e020000 ffffda5f 803aa81c 00000000
-[14458.370419] $20   : 803aa778 820574c8 00008054 00000000
-[14458.375803] $24   : 00000001 7741437c                  
-[14458.381195] $28   : 82056000 82057490 00000000 8001b084
-[14458.386588] Hi    : 00000000
-[14458.389554] Lo    : 00000000
-[14458.392517] epc   : 80021064 0x80021064
-[14458.396465]     Tainted: G           O
-[14458.400324] ra    : 8001b084 0x8001b084
-[14458.404271] Status: 10001c02	KERNEL EXL 
-[14458.408307] Cause : 40809414
-[14458.411269] BadVA : ffffda5f
-[14458.414227] PrId  : 00d00100 (Ingenic Xburst)
-[14458.418718] Modules linked in:Unhandled kernel unaligned access[#6]:
-[14458.425275] CPU: 0 PID: 20959 Comm: prudynt Tainted: G           O 3.10.14__isvp_swan_1.0__ #1
-[14458.434164] task: 841f2880 ti: 82056000 task.ti: 82056000
-[14458.439733] $ 0   : 00000000 10001c00 00000000 00000000
-[14458.445126] $ 4   : ffffda73 fffffffe 00000000 00000174
-[14458.450524] $ 8   : 10001c00 1000001e 00000000 ffffffe0
-[14458.455931] $12   : 82057120 00000000 000�
+[AL-AVPU] opened avpu ctx=0x77674a64 fd(local)=14 fd(ctx)=14, target 1920x1080 @ 25/1 fps, gop=65535, bitrate=2000000, profile=2
+[Codec] AVPU: channel=0 acquired ownership
+[Codec] Process: AVPU(AL) opened ctx=0x77674a64 (fd=14) channel=0
+[Codec] Process: AVPU(AL) queue frame 1920x1080 phys=0x6778000
+[AL-AVPU] program AXI_ADDR_OFFSET_IP(0x9208) = 0x06300000
+[AL-AVPU] about to IOCTL WRITE off=0x9208 val=0x06300000 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x9208] <- 0x06300000
+[AL-AVPU] about to IOCTL WRITE off=0x83f0 val=0x00000002 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x83f0] <- 0x00000002
+[AL-AVPU] about to IOCTL WRITE off=0x83f0 val=0x00000004 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x83f0] <- 0x00000004
+[AL-AVPU] about to IOCTL WRITE off=0x8054 val=0x00000080 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x8054] <- 0x00000080
+[AL-AVPU] CL start off=0x00af2000 (phys=0x06df2000) -> [0x83e0]
+[AL-AVPU] about to IOCTL WRITE off=0x83e0 val=0x00af2000 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x83e0] <- 0x00af2000
+[AL-AVPU] about to IOCTL WRITE off=0x83e4 val=0x00000002 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x83e4] <- 0x00000002
+[AL-AVPU] about to IOCTL WRITE off=0x8094 val=0x00a72000 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x8094] <- 0x00a72000
+[AL-AVPU] about to IOCTL WRITE off=0x8094 val=0x00a92000 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x8094] <- 0x00a92000
+[AL-AVPU] about to IOCTL WRITE off=0x8094 val=0x00ab2000 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x8094] <- 0x00ab2000
+[AL-AVPU] about to IOCTL WRITE off=0x8094 val=0x00ad2000 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x8094] <- 0x00ad2000
+[AL-AVPU] lazy-start: AVPU HW configured; session_ready=1
+[AL-AVPU] ctx=0x77674a64 fd=14: SRC push prepare val=0x00478000 (phys=0x06778000) off
+[AL-AVPU] about to IOCTL WRITE off=0x8084 val=0x00478000 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x8084] <- 0x00478000
+[AL-AVPU] push SRC frame off=0x00478000 -> reg 0x8084
+[AL-AVPU] CL[0] pre-clean cmd[0..7]=80000111 0043777f 00002000 c0000005 0000001a 00001000 00001000 00043077
+[AL-AVPU] CL[0] post-no-clean cmd[0..7]=80000111 0043777f 00002000 c0000005 0000001a 00001000 00001000 00043077
+[AL-AVPU] about to IOCTL WRITE off=0x8080 val=0x00000001 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x8080] <- 0x00000001
+[AL-AVPU] about to IOCTL WRITE off=0x8090 val=0x00000001 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x8090] <- 0x00000001
+[AL-AVPU] about to IOCTL WRITE off=0x83e0 val=0x00af2000 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x83e0] <- 0x00af2000
+[AL-AVPU] about to IOCTL WRITE off=0x83e4 val=0x00000002 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x83e4] <- 0x00000002
+[AL-AVPU] queue: CL start off=0x00af2000 (phys=0x06df2000) -> [0x83e0], push [0x83e4]=0x2
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=0, frame=0x7767bcc0
+[VBM] ReleaseFrame: returned frame idx=0 (1 available)
+[FrameSource] ReleaseFrame: Released frame 0x7767bcc0 from channel 0
+[Encoder] encoder_update: Released frame 0x7767bcc0 back to its source channel 0
+[VBM] VBMKernelDequeue chn=0: attempting DQBUF...
+[VBM] VBMKernelDequeue chn=0: DQBUF returned ret=0 idx=1
+[FrameSource] frame_capture_thread chn=0: got frame #2 (0x7767c0e8) from kernel
+[System] notify: calling update 0x77b153dc on Encoder (frame=0x7767c0e8)
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x7767c0e8
+[Codec] Process: frame=0x7767c0e8, extracting metadata
+[Codec] AVPU: channel=0 already open (fd=14); skipping re-open
+[Codec] Process: AVPU(AL) queue frame 1920x1080 phys=0x6a75000
+[AL-AVPU] ctx=0x77674a64 fd=14: SRC push prepare val=0x00775000 (phys=0x06a75000) off
+[AL-AVPU] about to IOCTL WRITE off=0x8084 val=0x00775000 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x8084] <- 0x00775000
+[AL-AVPU] push SRC frame off=0x00775000 -> reg 0x8084
+[AL-AVPU] CL[1] pre-clean cmd[0..7]=80000111 0043777f 00002000 c0000001 0000001a 00001000 00001000 00043077
+[AL-AVPU] CL[1] post-no-clean cmd[0..7]=80000111 0043777f 00002000 c0000001 0000001a 00001000 00001000 00043077
+[AL-AVPU] about to IOCTL WRITE off=0x8080 val=0x00000001 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x8080] <- 0x00000001
+[AL-AVPU] about to IOCTL WRITE off=0x8090 val=0x00000001 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x8090] <- 0x00000001
+[AL-AVPU] about to IOCTL WRITE off=0x83e0 val=0x00af2200 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x83e0] <- 0x00af2200
+[AL-AVPU] about to IOCTL WRITE off=0x83e4 val=0x00000002 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x83e4] <- 0x00000002
+[AL-AVPU] queue: CL start off=0x00af2200 (phys=0x06df2200) -> [0x83e0], push [0x83e4]=0x2
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=0, frame=0x7767c0e8
+[VBM] ReleaseFrame: returned frame idx=1 (2 available)
+[FrameSource] ReleaseFrame: Released frame 0x7767c0e8 from channel 0
+[Encoder] encoder_update: Released frame 0x7767c0e8 back to its source channel 0
+[VBM] VBMKernelDequeue chn=0: attempting DQBUF...
+[VBM] VBMKernelDequeue chn=0: DQBUF returned ret=0 idx=0
+[FrameSource] frame_capture_thread chn=0: got frame #3 (0x7767bcc0) from kernel
+[System] notify: calling update 0x77b153dc on Encoder (frame=0x7767bcc0)
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x7767bcc0
+[Codec] Process: frame=0x7767bcc0, extracting metadata
+[Codec] AVPU: channel=0 already open (fd=14); skipping re-open
+[Codec] Process: AVPU(AL) queue frame 1920x1080 phys=0x6778000
+[AL-AVPU] ctx=0x77674a64 fd=14: SRC push prepare val=0x00478000 (phys=0x06778000) off
+[AL-AVPU] about to IOCTL WRITE off=0x8084 val=0x00478000 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x8084] <- 0x00478000
+[AL-AVPU] push SRC frame off=0x00478000 -> reg 0x8084
+[AL-AVPU] CL[2] pre-clean cmd[0..7]=80000111 0043777f 00002000 c0000001 0000001a 00001000 00001000 00043077
+[AL-AVPU] CL[2] post-no-clean cmd[0..7]=80000111 0043777f 00002000 c0000001 0000001a 00001000 00001000 00043077
+[AL-AVPU] about to IOCTL WRITE off=0x8080 val=0x00000001 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x8080] <- 0x00000001
+[AL-AVPU] about to IOCTL WRITE off=0x8090 val=0x00000001 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x8090] <- 0x00000001
+[AL-AVPU] about to IOCTL WRITE off=0x83e0 val=0x00af2400 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x83e0] <- 0x00af2400
+[AL-AVPU] about to IOCTL WRITE off=0x83e4 val=0x00000002 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x83e4] <- 0x00000002
+[AL-AVPU] queue: CL start off=0x00af2400 (phys=0x06df2400) -> [0x83e0], push [0x83e4]=0x2
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=0, frame=0x7767bcc0
+[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[VBM] ReleaseFrame: returned frame idx=0 (2 available)
+[FrameSource] ReleaseFrame: Released frame 0x7767bcc0 from channel 0
+[Encoder] encoder_update: Released frame 0x7767bcc0 back to its source channel 0
+[FrameSource] frame_capture_thread chn=0: got frame #4 (0x7767c0e8) from kernel
+[System] notify: calling update 0x77b153dc on Encoder (frame=0x7767c0e8)
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x7767c0e8
+[Codec] Process: frame=0x7767c0e8, extracting metadata
+[Codec] AVPU: channel=0 already open (fd=14); skipping re-open
+[Codec] Process: AVPU(AL) queue frame 1920x1080 phys=0x6a75000
+[AL-AVPU] ctx=0x77674a64 fd=14: SRC push prepare val=0x00775000 (phys=0x06a75000) off
+[AL-AVPU] about to IOCTL WRITE off=0x8084 val=0x00775000 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x8084] <- 0x00775000
+[AL-AVPU] push SRC frame off=0x00775000 -> reg 0x8084
+[AL-AVPU] CL[3] pre-clean cmd[0..7]=80000111 0043777f 00002000 c0000001 0000001a 00001000 00001000 00043077
+[AL-AVPU] CL[3] post-no-clean cmd[0..7]=80000111 0043777f 00002000 c0000001 0000001a 00001000 00001000 00043077
+[AL-AVPU] about to IOCTL WRITE off=0x8080 val=0x00000001 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x8080] <- 0x00000001
+[AL-AVPU] about to IOCTL WRITE off=0x8090 val=0x00000001 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x8090] <- 0x00000001
+[AL-AVPU] about to IOCTL WRITE off=0x83e0 val=0x00af2600 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x83e0] <- 0x00af2600
+[AL-AVPU] about to IOCTL WRITE off=0x83e4 val=0x00000002 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x83e4] <- 0x00000002
+[AL-AVPU] queue: CL start off=0x00af2600 (phys=0x06df2600) -> [0x83e0], push [0x83e4]=0x2
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=0, frame=0x7767c0e8
+[VBM] ReleaseFrame: queue full, dropped idx=1 to make room
+[VBM] ReleaseFrame: returned frame idx=1 (2 available)
+[FrameSource] ReleaseFrame: Released frame 0x7767c0e8 from channel 0
+[Encoder] encoder_update: Released frame 0x7767c0e8 back to its source channel 0
+[FrameSource] frame_capture_thread chn=0: got frame #5 (0x7767bcc0) from kernel
+[System] notify: calling update 0x77b153dc on Encoder (frame=0x7767bcc0)
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x7767bcc0
+[Codec] Process: frame=0x7767bcc0, extracting metadata
+[Codec] AVPU: channel=0 already open (fd=14); skipping re-open
+[Codec] Process: AVPU(AL) queue frame 1920x1080 phys=0x6778000
+[AL-AVPU] ctx=0x77674a64 fd=14: SRC push prepare val=0x00478000 (phys=0x06778000) off
+[AL-AVPU] about to IOCTL WRITE off=0x8084 val=0x00478000 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x8084] <- 0x00478000
+[AL-AVPU] push SRC frame off=0x00478000 -> reg 0x8084
+[AL-AVPU] CL[4] pre-clean cmd[0..7]=80000111 0043777f 00002000 c0000001 0000001a 00001000 00001000 00043077
+[AL-AVPU] CL[4] post-no-clean cmd[0..7]=80000111 0043777f 00002000 c0000001 0000001a 00001000 00001000 00043077
+[AL-AVPU] about to IOCTL WRITE off=0x8080 val=0x00000001 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x8080] <- 0x00000001
+[AL-AVPU] about to IOCTL WRITE off=0x8090 val=0x00000001 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x8090] <- 0x00000001
+[AL-AVPU] about to IOCTL WRITE off=0x83e0 val=0x00af2800 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x83e0] <- 0x00af2800
+[AL-AVPU] about to IOCTL WRITE off=0x83e4 val=0x00000002 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x83e4] <- 0x00000002
+[AL-AVPU] queue: CL start off=0x00af2800 (phys=0x06df2800) -> [0x83e0], push [0x83e4]=0x2
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=0, frame=0x7767bcc0
+[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[VBM] ReleaseFrame: returned frame idx=0 (2 available)
+[FrameSource] ReleaseFrame: Released frame 0x7767bcc0 from channel 0
+[Encoder] encoder_update: Released frame 0x7767bcc0 back to its source channel 0
+[System] notify: calling update 0x77b153dc on Encoder (frame=0x7767c0e8)
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x7767c0e8
+[Codec] Process: frame=0x7767c0e8, extracting metadata
+[Codec] AVPU: channel=0 already open (fd=14); skipping re-open
+[Codec] Process: AVPU(AL) queue frame 1920x1080 phys=0x6a75000
+[AL-AVPU] ctx=0x77674a64 fd=14: SRC push prepare val=0x00775000 (phys=0x06a75000) off
+[AL-AVPU] about to IOCTL WRITE off=0x8084 val=0x00775000 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x8084] <- 0x00775000
+[AL-AVPU] push SRC frame off=0x00775000 -> reg 0x8084
+[AL-AVPU] CL[5] pre-clean cmd[0..7]=80000111 0043777f 00002000 c0000001 0000001a 00001000 00001000 00043077
+[AL-AVPU] CL[5] post-no-clean cmd[0..7]=80000111 0043777f 00002000 c0000001 0000001a 00001000 00001000 00043077
+[AL-AVPU] about to IOCTL WRITE off=0x8080 val=0x00000001 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x8080] <- 0x00000001
+[AL-AVPU] about to IOCTL WRITE off=0x8090 val=0x00000001 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x8090] <- 0x00000001
+[AL-AVPU] about to IOCTL WRITE off=0x83e0 val=0x00af2a00 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x83e0] <- 0x00af2a00
+[AL-AVPU] about to IOCTL WRITE off=0x83e4 val=0x00000002 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x83e4] <- 0x00000002
+[AL-AVPU] queue: CL start off=0x00af2a00 (phys=0x06df2a00) -> [0x83e0], push [0x83e4]=0x2
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=0, frame=0x7767c0e8
+[VBM] ReleaseFrame: queue full, dropped idx=1 to make room
+[VBM] ReleaseFrame: returned frame idx=1 (2 available)
+[FrameSource] ReleaseFrame: Released frame 0x7767c0e8 from channel 0
+[Encoder] encoder_update: Released frame 0x7767c0e8 back to its source channel 0
+[System] notify: calling update 0x77b153dc on Encoder (frame=0x7767bcc0)
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x7767bcc0
+[Codec] Process: frame=0x7767bcc0, extracting metadata
+[Codec] AVPU: channel=0 already open (fd=14); skipping re-open
+[Codec] Process: AVPU(AL) queue frame 1920x1080 phys=0x6778000
+[AL-AVPU] ctx=0x77674a64 fd=14: SRC push prepare val=0x00478000 (phys=0x06778000) off
+[AL-AVPU] about to IOCTL WRITE off=0x8084 val=0x00478000 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x8084] <- 0x00478000
+[AL-AVPU] push SRC frame off=0x00478000 -> reg 0x8084
+[AL-AVPU] CL[6] pre-clean cmd[0..7]=80000111 0043777f 00002000 c0000001 0000001a 00001000 00001000 00043077
+[AL-AVPU] CL[6] post-no-clean cmd[0..7]=80000111 0043777f 00002000 c0000001 0000001a 00001000 00001000 00043077
+[AL-AVPU] about to IOCTL WRITE off=0x8080 val=0x00000001 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x8080] <- 0x00000001
+[AL-AVPU] about to IOCTL WRITE off=0x8090 val=0x00000001 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x8090] <- 0x00000001
+[AL-AVPU] about to IOCTL WRITE off=0x83e0 val=0x00af2c00 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x83e0] <- 0x00af2c00
+[AL-AVPU] about to IOCTL WRITE off=0x83e4 val=0x00000002 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x83e4] <- 0x00000002
+[AL-AVPU] queue: CL start off=0x00af2c00 (phys=0x06df2c00) -> [0x83e0], push [0x83e4]=0x2
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=0, frame=0x7767bcc0
+[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[VBM] ReleaseFrame: returned frame idx=0 (2 available)
+[FrameSource] ReleaseFrame: Released frame 0x7767bcc0 from channel 0
+[Encoder] encoder_update: Released frame 0x7767bcc0 back to its source channel 0
+[System] notify: calling update 0x77b153dc on Encoder (frame=0x7767c0e8)
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x7767c0e8
+[Codec] Process: frame=0x7767c0e8, extracting metadata
+[Codec] AVPU: channel=0 already open (fd=14); skipping re-open
+[Codec] Process: AVPU(AL) queue frame 1920x1080 phys=0x6a75000
+[AL-AVPU] ctx=0x77674a64 fd=14: SRC push prepare val=0x00775000 (phys=0x06a75000) off
+[AL-AVPU] about to IOCTL WRITE off=0x8084 val=0x00775000 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x8084] <- 0x00775000
+[AL-AVPU] push SRC frame off=0x00775000 -> reg 0x8084
+[AL-AVPU] CL[7] pre-clean cmd[0..7]=80000111 0043777f 00002000 c0000001 0000001a 00001000 00001000 00043077
+[AL-AVPU] CL[7] post-no-clean cmd[0..7]=80000111 0043777f 00002000 c0000001 0000001a 00001000 00001000 00043077
+[AL-AVPU] about to IOCTL WRITE off=0x8080 val=0x00000001 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x8080] <- 0x00000001
+[AL-AVPU] about to IOCTL WRITE off=0x8090 val=0x00000001 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x8090] <- 0x00000001
+[AL-AVPU] about to IOCTL WRITE off=0x83e0 val=0x00af2e00 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x83e0] <- 0x00af2e00
+[AL-AVPU] about to IOCTL WRITE off=0x83e4 val=0x00000002 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x83e4] <- 0x00000002
+[AL-AVPU] queue: CL start off=0x00af2e00 (phys=0x06df2e00) -> [0x83e0], push [0x83e4]=0x2
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=0, frame=0x7767c0e8
+[VBM] ReleaseFrame: queue full, dropped idx=1 to make room
+[VBM] ReleaseFrame: returned frame idx=1 (2 available)
+[FrameSource] ReleaseFrame: Released frame 0x7767c0e8 from channel 0
+[Encoder] encoder_update: Released frame 0x7767c0e8 back to its source channel 0
+[System] notify: calling update 0x77b153dc on Encoder (frame=0x7767bcc0)
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x7767bcc0
+[Codec] Process: frame=0x7767bcc0, extracting metadata
+[Codec] AVPU: channel=0 already open (fd=14); skipping re-open
+[Codec] Process: AVPU(AL) queue frame 1920x1080 phys=0x6778000
+[AL-AVPU] ctx=0x77674a64 fd=14: SRC push prepare val=0x00478000 (phys=0x06778000) off
+[AL-AVPU] about to IOCTL WRITE off=0x8084 val=0x00478000 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x8084] <- 0x00478000
+[AL-AVPU] push SRC frame off=0x00478000 -> reg 0x8084
+[AL-AVPU] CL[8] pre-clean cmd[0..7]=80000111 0043777f 00002000 c0000001 0000001a 00001000 00001000 00043077
+[AL-AVPU] CL[8] post-no-clean cmd[0..7]=80000111 0043777f 00002000 c0000001 0000001a 00001000 00001000 00043077
+[AL-AVPU] about to IOCTL WRITE off=0x8080 val=0x00000001 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x8080] <- 0x00000001
+[AL-AVPU] about to IOCTL WRITE off=0x8090 val=0x00000001 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x8090] <- 0x00000001
+[AL-AVPU] about to IOCTL WRITE off=0x83e0 val=0x00af3000 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x83e0] <- 0x00af3000
+[AL-AVPU] about to IOCTL WRITE off=0x83e4 val=0x00000002 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x83e4] <- 0x00000002
+[AL-AVPU] queue: CL start off=0x00af3000 (phys=0x06df3000) -> [0x83e0], push [0x83e4]=0x2
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=0, frame=0x7767bcc0
+[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[VBM] ReleaseFrame: returned frame idx=0 (2 available)
+[FrameSource] ReleaseFrame: Released frame 0x7767bcc0 from channel 0
+[Encoder] encoder_update: Released frame 0x7767bcc0 back to its source channel 0
+[System] notify: calling update 0x77b153dc on Encoder (frame=0x7767c0e8)
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x7767c0e8
+[Codec] Process: frame=0x7767c0e8, extracting metadata
+[Codec] AVPU: channel=0 already open (fd=14); skipping re-open
+[Codec] Process: AVPU(AL) queue frame 1920x1080 phys=0x6a75000
+[AL-AVPU] ctx=0x77674a64 fd=14: SRC push prepare val=0x00775000 (phys=0x06a75000) off
+[AL-AVPU] about to IOCTL WRITE off=0x8084 val=0x00775000 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x8084] <- 0x00775000
+[AL-AVPU] push SRC frame off=0x00775000 -> reg 0x8084
+[AL-AVPU] CL[9] pre-clean cmd[0..7]=80000111 0043777f 00002000 c0000001 0000001a 00001000 00001000 00043077
+[AL-AVPU] CL[9] post-no-clean cmd[0..7]=80000111 0043777f 00002000 c0000001 0000001a 00001000 00001000 00043077
+[AL-AVPU] about to IOCTL WRITE off=0x8080 val=0x00000001 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x8080] <- 0x00000001
+[AL-AVPU] about to IOCTL WRITE off=0x8090 val=0x00000001 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x8090] <- 0x00000001
+[AL-AVPU] about to IOCTL WRITE off=0x83e0 val=0x00af3200 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x83e0] <- 0x00af3200
+[AL-AVPU] about to IOCTL WRITE off=0x83e4 val=0x00000002 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x83e4] <- 0x00000002
+[AL-AVPU] queue: CL start off=0x00af3200 (phys=0x06df3200) -> [0x83e0], push [0x83e4]=0x2
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=0, frame=0x7767c0e8
+[VBM] ReleaseFrame: queue full, dropped idx=1 to make room
+[VBM] ReleaseFrame: returned frame idx=1 (2 available)
+[FrameSource] ReleaseFrame: Released frame 0x7767c0e8 from channel 0
+[Encoder] encoder_update: Released frame 0x7767c0e8 back to its source channel 0
+[System] notify: calling update 0x77b153dc on Encoder (frame=0x7767bcc0)
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x7767bcc0
+[Codec] Process: frame=0x7767bcc0, extracting metadata
+[Codec] AVPU: channel=0 already open (fd=14); skipping re-open
+[Codec] Process: AVPU(AL) queue frame 1920x1080 phys=0x6778000
+[AL-AVPU] ctx=0x77674a64 fd=14: SRC push prepare val=0x00478000 (phys=0x06778000) off
+[AL-AVPU] about to IOCTL WRITE off=0x8084 val=0x00478000 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x8084] <- 0x00478000
+[AL-AVPU] push SRC frame off=0x00478000 -> reg 0x8084
+[AL-AVPU] CL[10] pre-clean cmd[0..7]=80000111 0043777f 00002000 c0000001 0000001a 00001000 00001000 00043077
+[AL-AVPU] CL[10] post-no-clean cmd[0..7]=80000111 0043777f 00002000 c0000001 0000001a 00001000 00001000 00043077
+[AL-AVPU] about to IOCTL WRITE off=0x8080 val=0x00000001 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x8080] <- 0x00000001
+[AL-AVPU] about to IOCTL WRITE off=0x8090 val=0x00000001 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x8090] <- 0x00000001
+[AL-AVPU] about to IOCTL WRITE off=0x83e0 val=0x00af3400 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x83e0] <- 0x00af3400
+[AL-AVPU] about to IOCTL WRITE off=0x83e4 val=0x00000002 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x83e4] <- 0x00000002
+[AL-AVPU] queue: CL start off=0x00af3400 (phys=0x06df3400) -> [0x83e0], push [0x83e4]=0x2
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=0, frame=0x7767bcc0
+[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[VBM] ReleaseFrame: returned frame idx=0 (2 available)
+[FrameSource] ReleaseFrame: Released frame 0x7767bcc0 from channel 0
+[Encoder] encoder_update: Released frame 0x7767bcc0 back to its source channel 0
+[System] notify: calling update 0x77b153dc on Encoder (frame=0x7767c0e8)
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x7767c0e8
+[Codec] Process: frame=0x7767c0e8, extracting metadata
+[Codec] AVPU: channel=0 already open (fd=14); skipping re-open
+[Codec] Process: AVPU(AL) queue frame 1920x1080 phys=0x6a75000
+[AL-AVPU] ctx=0x77674a64 fd=14: SRC push prepare val=0x00775000 (phys=0x06a75000) off
+[AL-AVPU] about to IOCTL WRITE off=0x8084 val=0x00775000 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x8084] <- 0x00775000
+[AL-AVPU] push SRC frame off=0x00775000 -> reg 0x8084
+[AL-AVPU] CL[11] pre-clean cmd[0..7]=80000111 0043777f 00002000 c0000001 0000001a 00001000 00001000 00043077
+[AL-AVPU] CL[11] post-no-clean cmd[0..7]=80000111 0043777f 00002000 c0000001 0000001a 00001000 00001000 00043077
+[AL-AVPU] about to IOCTL WRITE off=0x8080 val=0x00000001 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x8080] <- 0x00000001
+[AL-AVPU] about to IOCTL WRITE off=0x8090 val=0x00000001 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x8090] <- 0x00000001
+[AL-AVPU] about to IOCTL WRITE off=0x83e0 val=0x00af3600 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x83e0] <- 0x00af3600
+[AL-AVPU] about to IOCTL WRITE off=0x83e4 val=0x00000002 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x83e4] <- 0x00000002
+[AL-AVPU] queue: CL start off=0x00af3600 (phys=0x06df3600) -> [0x83e0], push [0x83e4]=0x2
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=0, frame=0x7767c0e8
+[VBM] ReleaseFrame: queue full, dropped idx=1 to make room
+[VBM] ReleaseFrame: returned frame idx=1 (2 available)
+[FrameSource] ReleaseFrame: Released frame 0x7767c0e8 from channel 0
+[Encoder] encoder_update: Released frame 0x7767c0e8 back to its source channel 0
+[System] notify: calling update 0x77b153dc on Encoder (frame=0x7767bcc0)
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x7767bcc0
+[Codec] Process: frame=0x7767bcc0, extracting metadata
+[Codec] AVPU: channel=0 already open (fd=14); skipping re-open
+[Codec] Process: AVPU(AL) queue frame 1920x1080 phys=0x6778000
+[AL-AVPU] ctx=0x77674a64 fd=14: SRC push prepare val=0x00478000 (phys=0x06778000) off
+[AL-AVPU] about to IOCTL WRITE off=0x8084 val=0x00478000 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x8084] <- 0x00478000
+[AL-AVPU] push SRC frame off=0x00478000 -> reg 0x8084
+[AL-AVPU] CL[12] pre-clean cmd[0..7]=80000111 0043777f 00002000 c0000001 0000001a 00001000 00001000 00043077
+[AL-AVPU] CL[12] post-no-clean cmd[0..7]=00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+[AL-AVPU] about to IOCTL WRITE off=0x8080 val=0x00000001 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x8080] <- 0x00000001
+[AL-AVPU] about to IOCTL WRITE off=0x8090 val=0x00000001 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x8090] <- 0x00000001
+[AL-AVPU] about to IOCTL WRITE off=0x83e0 val=0x00af3800 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x83e0] <- 0x00af3800
+[AL-AVPU] about to IOCTL WRITE off=0x83e4 val=0x00000002 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x83e4] <- 0x00000002
+[AL-AVPU] queue: CL start off=0x00af3800 (phys=0x06df3800) -> [0x83e0], push [0x83e4]=0x2
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=0, frame=0x7767bcc0
+[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[VBM] ReleaseFrame: returned frame idx=0 (2 available)
+[FrameSource] ReleaseFrame: Released frame 0x7767bcc0 from channel 0
+[Encoder] encoder_update: Released frame 0x7767bcc0 back to its source channel 0
+[System] notify: calling update 0x77b153dc on Encoder (frame=0x7767c0e8)
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x7767c0e8
+[Codec] Process: frame=0x7767c0e8, extracting metadata
+[Codec] AVPU: channel=0 already open (fd=14); skipping re-open
+[Codec] Process: AVPU(AL) queue frame 1920x1080 phys=0x6a75000
+[AL-AVPU] ctx=0x77674a64 fd=14: SRC push prepare val=0x00775000 (phys=0x06a75000) off
+[AL-AVPU] about to IOCTL WRITE off=0x8084 val=0x00775000 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x8084] <- 0x00775000
+[AL-AVPU] push SRC frame off=0x00775000 -> reg 0x8084
+[AL-AVPU] CL[13] pre-clean cmd[0..7]=80000111 0043777f 00002000 c0000001 0000001a 00001000 00001000 00043077
+[AL-AVPU] CL[13] post-no-clean cmd[0..7]=80000111 0043777f 00002000 c0000001 0000001a 00001000 00001000 00043077
+[AL-AVPU] about to IOCTL WRITE off=0x8080 val=0x00000001 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x8080] <- 0x00000001
+[AL-AVPU] about to IOCTL WRITE off=0x8090 val=0x00000001 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x8090] <- 0x00000001
+[AL-AVPU] about to IOCTL WRITE off=0x83e0 val=0x00af3a00 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x83e0] <- 0x00af3a00
+[AL-AVPU] about to IOCTL WRITE off=0x83e4 val=0x00000002 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x83e4] <- 0x00000002
+[AL-AVPU] queue: CL start off=0x00af3a00 (phys=0x06df3a00) -> [0x83e0], push [0x83e4]=0x2
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=0, frame=0x7767c0e8
+[VBM] ReleaseFrame: queue full, dropped idx=1 to make room
+[VBM] ReleaseFrame: returned frame idx=1 (2 available)
+[FrameSource] ReleaseFrame: Released frame 0x7767c0e8 from channel 0
+[Encoder] encoder_update: Released frame 0x7767c0e8 back to its source channel 0
+[System] notify: calling update 0x77b153dc on Encoder (frame=0x7767bcc0)
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x7767bcc0
+[Codec] Process: frame=0x7767bcc0, extracting metadata
+[Codec] AVPU: channel=0 already open (fd=14); skipping re-open
+[Codec] Process: AVPU(AL) queue frame 1920x1080 phys=0x6778000
+[AL-AVPU] ctx=0x77674a64 fd=14: SRC push prepare val=0x00478000 (phys=0x06778000) off
+[AL-AVPU] about to IOCTL WRITE off=0x8084 val=0x00478000 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x8084] <- 0x00478000
+[AL-AVPU] push SRC frame off=0x00478000 -> reg 0x8084
+[AL-AVPU] CL[14] pre-clean cmd[0..7]=80000111 0043777f 00002000 c0000001 0000001a 00001000 00001000 00043077
+[AL-AVPU] CL[14] post-no-clean cmd[0..7]=80000111 0043777f 00002000 c0000001 0000001a 00001000 00001000 00043077
+[AL-AVPU] about to IOCTL WRITE off=0x8080 val=0x00000001 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x8080] <- 0x00000001
+[AL-AVPU] about to IOCTL WRITE off=0x8090 val=0x00000001 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x8090] <- 0x00000001
+[AL-AVPU] about to IOCTL WRITE off=0x83e0 val=0x00af3c00 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x83e0] <- 0x00af3c00
+[AL-AVPU] about to IOCTL WRITE off=0x83e4 val=0x00000002 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x83e4] <- 0x00000002
+[AL-AVPU] queue: CL start off=0x00af3c00 (phys=0x06df3c00) -> [0x83e0], push [0x83e4]=0x2
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=0, frame=0x7767bcc0
+[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[VBM] ReleaseFrame: returned frame idx=0 (2 available)
+[FrameSource] ReleaseFrame: Released frame 0x7767bcc0 from channel 0
+[Encoder] encoder_update: Released frame 0x7767bcc0 back to its source channel 0
+[System] notify: calling update 0x77b153dc on Encoder (frame=0x7767c0e8)
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x7767c0e8
+[Codec] Process: frame=0x7767c0e8, extracting metadata
+[Codec] AVPU: channel=0 already open (fd=14); skipping re-open
+[Codec] Process: AVPU(AL) queue frame 1920x1080 phys=0x6a75000
+[AL-AVPU] ctx=0x77674a64 fd=14: SRC push prepare val=0x00775000 (phys=0x06a75000) off
+[AL-AVPU] about to IOCTL WRITE off=0x8084 val=0x00775000 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x8084] <- 0x00775000
+[AL-AVPU] push SRC frame off=0x00775000 -> reg 0x8084
+[AL-AVPU] CL[15] pre-clean cmd[0..7]=80000111 0043777f 00002000 c0000001 0000001a 00001000 00001000 00043077
+[AL-AVPU] CL[15] post-no-clean cmd[0..7]=00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+[AL-AVPU] about to IOCTL WRITE off=0x8080 val=0x00000001 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x8080] <- 0x00000001
+[AL-AVPU] about to IOCTL WRITE off=0x8090 val=0x00000001 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x8090] <- 0x00000001
+[AL-AVPU] about to IOCTL WRITE off=0x83e0 val=0x00af3e00 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x83e0] <- 0x00af3e00
+[AL-AVPU] about to IOCTL WRITE off=0x83e4 val=0x00000002 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x83e4] <- 0x00000002
+[AL-AVPU] queue: CL start off=0x00af3e00 (phys=0x06df3e00) -> [0x83e0], push [0x83e4]=0x2
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=0, frame=0x7767c0e8
+[VBM] ReleaseFrame: queue full, dropped idx=1 to make room
+[VBM] ReleaseFrame: returned frame idx=1 (2 available)
+[FrameSource] ReleaseFrame: Released frame 0x7767c0e8 from channel 0
+[Encoder] encoder_update: Released frame 0x7767c0e8 back to its source channel 0
+[System] notify: calling update 0x77b153dc on Encoder (frame=0x7767bcc0)
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x7767bcc0
+[Codec] Process: frame=0x7767bcc0, extracting metadata
+[Codec] AVPU: channel=0 already open (fd=14); skipping re-open
+[Codec] Process: AVPU(AL) queue frame 1920x1080 phys=0x6778000
+[AL-AVPU] ctx=0x77674a64 fd=14: SRC push prepare val=0x00478000 (phys=0x06778000) off
+[AL-AVPU] about to IOCTL WRITE off=0x8084 val=0x00478000 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x8084] <- 0x00478000
+[AL-AVPU] push SRC frame off=0x00478000 -> reg 0x8084
+[AL-AVPU] CL[16] pre-clean cmd[0..7]=80000111 0043777f 00002000 c0000001 0000001a 00001000 00001000 00043077
+[AL-AVPU] CL[16] post-no-clean cmd[0..7]=80000111 0043777f 00002000 c0000001 0000001a 00001000 00001000 00043077
+[AL-AVPU] about to IOCTL WRITE off=0x8080 val=0x00000001 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x8080] <- 0x00000001
+[AL-AVPU] about to IOCTL WRITE off=0x8090 val=0x00000001 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x8090] <- 0x00000001
+[AL-AVPU] about to IOCTL WRITE off=0x83e0 val=0x00af4000 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x83e0] <- 0x00af4000
+[AL-AVPU] about to IOCTL WRITE off=0x83e4 val=0x00000002 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x83e4] <- 0x00000002
+[AL-AVPU] queue: CL start off=0x00af4000 (phys=0x06df4000) -> [0x83e0], push [0x83e4]=0x2
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=0, frame=0x7767bcc0
+[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[VBM] ReleaseFrame: returned frame idx=0 (2 available)
+[FrameSource] ReleaseFrame: Released frame 0x7767bcc0 from channel 0
+[Encoder] encoder_update: Released frame 0x7767bcc0 back to its source channel 0
+[System] notify: calling update 0x77b153dc on Encoder (frame=0x7767c0e8)
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x7767c0e8
+[Codec] Process: frame=0x7767c0e8, extracting metadata
+[Codec] AVPU: channel=0 already open (fd=14); skipping re-open
+[Codec] Process: AVPU(AL) queue frame 1920x1080 phys=0x6a75000
+[AL-AVPU] ctx=0x77674a64 fd=14: SRC push prepare val=0x00775000 (phys=0x06a75000) off
+[AL-AVPU] about to IOCTL WRITE off=0x8084 val=0x00775000 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x8084] <- 0x00775000
+[AL-AVPU] push SRC frame off=0x00775000 -> reg 0x8084
+[AL-AVPU] CL[17] pre-clean cmd[0..7]=80000111 0043777f 00002000 c0000001 0000001a 00001000 00001000 00043077
+[AL-AVPU] CL[17] post-no-clean cmd[0..7]=80000111 0043777f 00002000 c0000001 0000001a 00001000 00001000 00043077
+[AL-AVPU] about to IOCTL WRITE off=0x8080 val=0x00000001 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x8080] <- 0x00000001
+[AL-AVPU] about to IOCTL WRITE off=0x8090 val=0x00000001 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x8090] <- 0x00000001
+[AL-AVPU] about to IOCTL WRITE off=0x83e0 val=0x00af4200 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x83e0] <- 0x00af4200
+[AL-AVPU] about to IOCTL WRITE off=0x83e4 val=0x00000002 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x83e4] <- 0x00000002
+[AL-AVPU] queue: CL start off=0x00af4200 (phys=0x06df4200) -> [0x83e0], push [0x83e4]=0x2
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=0, frame=0x7767c0e8
+[VBM] ReleaseFrame: queue full, dropped idx=1 to make room
+[VBM] ReleaseFrame: returned frame idx=1 (2 available)
+[FrameSource] ReleaseFrame: Released frame 0x7767c0e8 from channel 0
+[Encoder] encoder_update: Released frame 0x7767c0e8 back to its source channel 0
+[System] notify: calling update 0x77b153dc on Encoder (frame=0x7767bcc0)
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x7767bcc0
+[Codec] Process: frame=0x7767bcc0, extracting metadata
+[Codec] AVPU: channel=0 already open (fd=14); skipping re-open
+[Codec] Process: AVPU(AL) queue frame 1920x1080 phys=0x6778000
+[AL-AVPU] ctx=0x77674a64 fd=14: SRC push prepare val=0x00478000 (phys=0x06778000) off
+[AL-AVPU] about to IOCTL WRITE off=0x8084 val=0x00478000 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x8084] <- 0x00478000
+[AL-AVPU] push SRC frame off=0x00478000 -> reg 0x8084
+[AL-AVPU] CL[18] pre-clean cmd[0..7]=80000111 0043777f 00002000 c0000001 0000001a 00001000 00001000 00043077
+[AL-AVPU] CL[18] post-no-clean cmd[0..7]=80000111 0043777f 00002000 c0000001 0000001a 00001000 00001000 00043077
+[AL-AVPU] about to IOCTL WRITE off=0x8080 val=0x00000001 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x8080] <- 0x00000001
+[AL-AVPU] about to IOCTL WRITE off=0x8090 val=0x00000001 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x8090] <- 0x00000001
+[AL-AVPU] about to IOCTL WRITE off=0x83e0 val=0x00af4400 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x83e0] <- 0x00af4400
+[AL-AVPU] about to IOCTL WRITE off=0x83e4 val=0x00000002 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x83e4] <- 0x00000002
+[AL-AVPU] queue: CL start off=0x00af4400 (phys=0x06df4400) -> [0x83e0], push [0x83e4]=0x2
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=0, frame=0x7767bcc0
+[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[VBM] ReleaseFrame: returned frame idx=0 (2 available)
+[FrameSource] ReleaseFrame: Released frame 0x7767bcc0 from channel 0
+[Encoder] encoder_update: Released frame 0x7767bcc0 back to its source channel 0
+[System] notify: calling update 0x77b153dc on Encoder (frame=0x7767c0e8)
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x7767c0e8
+[Codec] Process: frame=0x7767c0e8, extracting metadata
+[Codec] AVPU: channel=0 already open (fd=14); skipping re-open
+[Codec] Process: AVPU(AL) queue frame 1920x1080 phys=0x6a75000
+[AL-AVPU] ctx=0x77674a64 fd=14: SRC push prepare val=0x00775000 (phys=0x06a75000) off
+[AL-AVPU] about to IOCTL WRITE off=0x8084 val=0x00775000 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x8084] <- 0x00775000
+[AL-AVPU] push SRC frame off=0x00775000 -> reg 0x8084
+[AL-AVPU] CL[0] pre-clean cmd[0..7]=80000111 0043777f 00002000 c0000005 0000001a 00001000 00001000 00043077
+[AL-AVPU] CL[0] post-no-clean cmd[0..7]=80000111 0043777f 00002000 c0000005 0000001a 00001000 00001000 00043077
+[AL-AVPU] about to IOCTL WRITE off=0x8080 val=0x00000001 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x8080] <- 0x00000001
+[AL-AVPU] about to IOCTL WRITE off=0x8090 val=0x00000001 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x8090] <- 0x00000001
+[AL-AVPU] about to IOCTL WRITE off=0x83e0 val=0x00af2000 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x83e0] <- 0x00af2000
+[AL-AVPU] about to IOCTL WRITE off=0x83e4 val=0x00000002 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x83e4] <- 0x00000002
+[AL-AVPU] queue: CL start off=0x00af2000 (phys=0x06df2000) -> [0x83e0], push [0x83e4]=0x2
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=0, frame=0x7767c0e8
+[VBM] ReleaseFrame: queue full, dropped idx=1 to make room
+[VBM] ReleaseFrame: returned frame idx=1 (2 available)
+[FrameSource] ReleaseFrame: Released frame 0x7767c0e8 from channel 0
+[Encoder] encoder_update: Released frame 0x7767c0e8 back to its source channel 0
+[System] notify: calling update 0x77b153dc on Encoder (frame=0x7767bcc0)
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x7767bcc0
+[Codec] Process: frame=0x7767bcc0, extracting metadata
+[Codec] AVPU: channel=0 already open (fd=14); skipping re-open
+[Codec] Process: AVPU(AL) queue frame 1920x1080 phys=0x6778000
+[AL-AVPU] ctx=0x77674a64 fd=14: SRC push prepare val=0x00478000 (phys=0x06778000) off
+[AL-AVPU] about to IOCTL WRITE off=0x8084 val=0x00478000 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x8084] <- 0x00478000
+[AL-AVPU] push SRC frame off=0x00478000 -> reg 0x8084
+[AL-AVPU] CL[1] pre-clean cmd[0..7]=80000111 0043777f 00002000 c0000001 0000001a 00001000 00001000 00043077
+[AL-AVPU] CL[1] post-no-clean cmd[0..7]=80000111 0043777f 00002000 c0000001 0000001a 00001000 00001000 00043077
+[AL-AVPU] about to IOCTL WRITE off=0x8080 val=0x00000001 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x8080] <- 0x00000001
+[AL-AVPU] about to IOCTL WRITE off=0x8090 val=0x00000001 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x8090] <- 0x00000001
+[AL-AVPU] about to IOCTL WRITE off=0x83e0 val=0x00af2200 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x83e0] <- 0x00af2200
+[AL-AVPU] about to IOCTL WRITE off=0x83e4 val=0x00000002 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x83e4] <- 0x00000002
+[AL-AVPU] queue: CL start off=0x00af2200 (phys=0x06df2200) -> [0x83e0], push [0x83e4]=0x2
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=0, frame=0x7767bcc0
+[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[VBM] ReleaseFrame: returned frame idx=0 (2 available)
+[FrameSource] ReleaseFrame: Released frame 0x7767bcc0 from channel 0
+[Encoder] encoder_update: Released frame 0x7767bcc0 back to its source channel 0
+[System] notify: calling update 0x77b153dc on Encoder (frame=0x7767c0e8)
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x7767c0e8
+[Codec] Process: frame=0x7767c0e8, extracting metadata
+[Codec] AVPU: channel=0 already open (fd=14); skipping re-open
+[Codec] Process: AVPU(AL) queue frame 1920x1080 phys=0x6a75000
+[AL-AVPU] ctx=0x77674a64 fd=14: SRC push prepare val=0x00775000 (phys=0x06a75000) off
+[AL-AVPU] about to IOCTL WRITE off=0x8084 val=0x00775000 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x8084] <- 0x00775000
+[AL-AVPU] push SRC frame off=0x00775000 -> reg 0x8084
+[AL-AVPU] CL[2] pre-clean cmd[0..7]=80000111 0043777f 00002000 c0000001 0000001a 00001000 00001000 00043077
+[AL-AVPU] CL[2] post-no-clean cmd[0..7]=80000111 0043777f 00002000 c0000001 0000001a 00001000 00001000 00043077
+[AL-AVPU] about to IOCTL WRITE off=0x8080 val=0x00000001 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x8080] <- 0x00000001
+[AL-AVPU] about to IOCTL WRITE off=0x8090 val=0x00000001 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x8090] <- 0x00000001
+[AL-AVPU] about to IOCTL WRITE off=0x83e0 val=0x00af2400 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x83e0] <- 0x00af2400
+[AL-AVPU] about to IOCTL WRITE off=0x83e4 val=0x00000002 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x83e4] <- 0x00000002
+[AL-AVPU] queue: CL start off=0x00af2400 (phys=0x06df2400) -> [0x83e0], push [0x83e4]=0x2
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=0, frame=0x7767c0e8
+[VBM] ReleaseFrame: queue full, dropped idx=1 to make room
+[VBM] ReleaseFrame: returned frame idx=1 (2 available)
+[FrameSource] ReleaseFrame: Released frame 0x7767c0e8 from channel 0
+[Encoder] encoder_update: Released frame 0x7767c0e8 back to its source channel 0
+[System] notify: calling update 0x77b153dc on Encoder (frame=0x7767bcc0)
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x7767bcc0
+[Codec] Process: frame=0x7767bcc0, extracting metadata
+[Codec] AVPU: channel=0 already open (fd=14); skipping re-open
+[Codec] Process: AVPU(AL) queue frame 1920x1080 phys=0x6778000
+[AL-AVPU] ctx=0x77674a64 fd=14: SRC push prepare val=0x00478000 (phys=0x06778000) off
+[AL-AVPU] about to IOCTL WRITE off=0x8084 val=0x00478000 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x8084] <- 0x00478000
+[AL-AVPU] push SRC frame off=0x00478000 -> reg 0x8084
+[AL-AVPU] CL[3] pre-clean cmd[0..7]=80000111 0043777f 00002000 c0000001 0000001a 00001000 00001000 00043077
+[AL-AVPU] CL[3] post-no-clean cmd[0..7]=80000111 0043777f 00002000 c0000001 0000001a 00001000 00001000 00043077
+[AL-AVPU] about to IOCTL WRITE off=0x8080 val=0x00000001 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x8080] <- 0x00000001
+[AL-AVPU] about to IOCTL WRITE off=0x8090 val=0x00000001 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x8090] <- 0x00000001
+[AL-AVPU] about to IOCTL WRITE off=0x83e0 val=0x00af2600 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x83e0] <- 0x00af2600
+[AL-AVPU] about to IOCTL WRITE off=0x83e4 val=0x00000002 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x83e4] <- 0x00000002
+[AL-AVPU] queue: CL start off=0x00af2600 (phys=0x06df2600) -> [0x83e0], push [0x83e4]=0x2
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=0, frame=0x7767bcc0
+[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[VBM] ReleaseFrame: returned frame idx=0 (2 available)
+[FrameSource] ReleaseFrame: Released frame 0x7767bcc0 from channel 0
+[Encoder] encoder_update: Released frame 0x7767bcc0 back to its source channel 0
+[System] notify: calling update 0x77b153dc on Encoder (frame=0x7767c0e8)
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x7767c0e8
+[Codec] Process: frame=0x7767c0e8, extracting metadata
+[Codec] AVPU: channel=0 already open (fd=14); skipping re-open
+[Codec] Process: AVPU(AL) queue frame 1920x1080 phys=0x6a75000
+[AL-AVPU] ctx=0x77674a64 fd=14: SRC push prepare val=0x00775000 (phys=0x06a75000) off
+[AL-AVPU] about to IOCTL WRITE off=0x8084 val=0x00775000 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x8084] <- 0x00775000
+[AL-AVPU] push SRC frame off=0x00775000 -> reg 0x8084
+[AL-AVPU] CL[4] pre-clean cmd[0..7]=80000111 0043777f 00002000 c0000001 0000001a 00001000 00001000 00043077
+[AL-AVPU] CL[4] post-no-clean cmd[0..7]=80000111 0043777f 00002000 c0000001 0000001a 00001000 00001000 00043077
+[AL-AVPU] about to IOCTL WRITE off=0x8080 val=0x00000001 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x8080] <- 0x00000001
+[AL-AVPU] about to IOCTL WRITE off=0x8090 val=0x00000001 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x8090] <- 0x00000001
+[AL-AVPU] about to IOCTL WRITE off=0x83e0 val=0x00af2800 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x83e0] <- 0x00af2800
+[AL-AVPU] about to IOCTL WRITE off=0x83e4 val=0x00000002 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x83e4] <- 0x00000002
+[AL-AVPU] queue: CL start off=0x00af2800 (phys=0x06df2800) -> [0x83e0], push [0x83e4]=0x2
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=0, frame=0x7767c0e8
+[VBM] ReleaseFrame: queue full, dropped idx=1 to make room
+[VBM] ReleaseFrame: returned frame idx=1 (2 available)
+[FrameSource] ReleaseFrame: Released frame 0x7767c0e8 from channel 0
+[Encoder] encoder_update: Released frame 0x7767c0e8 back to its source channel 0
+[System] notify: calling update 0x77b153dc on Encoder (frame=0x7767bcc0)
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x7767bcc0
+[Codec] Process: frame=0x7767bcc0, extracting metadata
+[Codec] AVPU: channel=0 already open (fd=14); skipping re-open
+[Codec] Process: AVPU(AL) queue frame 1920x1080 phys=0x6778000
+[AL-AVPU] ctx=0x77674a64 fd=14: SRC push prepare val=0x00478000 (phys=0x06778000) off
+[AL-AVPU] about to IOCTL WRITE off=0x8084 val=0x00478000 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x8084] <- 0x00478000
+[AL-AVPU] push SRC frame off=0x00478000 -> reg 0x8084
+[AL-AVPU] CL[5] pre-clean cmd[0..7]=80000111 0043777f 00002000 c0000001 0000001a 00001000 00001000 00043077
+[AL-AVPU] CL[5] post-no-clean cmd[0..7]=80000111 0043777f 00002000 c0000001 0000001a 00001000 00001000 00043077
+[AL-AVPU] about to IOCTL WRITE off=0x8080 val=0x00000001 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x8080] <- 0x00000001
+[AL-AVPU] about to IOCTL WRITE off=0x8090 val=0x00000001 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x8090] <- 0x00000001
+[AL-AVPU] about to IOCTL WRITE off=0x83e0 val=0x00af2a00 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x83e0] <- 0x00af2a00
+[AL-AVPU] about to IOCTL WRITE off=0x83e4 val=0x00000002 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x83e4] <- 0x00000002
+[AL-AVPU] queue: CL start off=0x00af2a00 (phys=0x06df2a00) -> [0x83e0], push [0x83e4]=0x2
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=0, frame=0x7767bcc0
+[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[VBM] ReleaseFrame: returned frame idx=0 (2 available)
+[FrameSource] ReleaseFrame: Released frame 0x7767bcc0 from channel 0
+[Encoder] encoder_update: Released frame 0x7767bcc0 back to its source channel 0
+[System] notify: calling update 0x77b153dc on Encoder (frame=0x7767c0e8)
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x7767c0e8
+[Codec] Process: frame=0x7767c0e8, extracting metadata
+[Codec] AVPU: channel=0 already open (fd=14); skipping re-open
+[Codec] Process: AVPU(AL) queue frame 1920x1080 phys=0x6a75000
+[AL-AVPU] ctx=0x77674a64 fd=14: SRC push prepare val=0x00775000 (phys=0x06a75000) off
+[AL-AVPU] about to IOCTL WRITE off=0x8084 val=0x00775000 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x8084] <- 0x00775000
+[AL-AVPU] push SRC frame off=0x00775000 -> reg 0x8084
+[AL-AVPU] CL[6] pre-clean cmd[0..7]=80000111 0043777f 00002000 c0000001 0000001a 00001000 00001000 00043077
+[AL-AVPU] CL[6] post-no-clean cmd[0..7]=80000111 0043777f 00002000 c0000001 0000001a 00001000 00001000 00043077
+[AL-AVPU] about to IOCTL WRITE off=0x8080 val=0x00000001 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x8080] <- 0x00000001
+[AL-AVPU] about to IOCTL WRITE off=0x8090 val=0x00000001 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x8090] <- 0x00000001
+[AL-AVPU] about to IOCTL WRITE off=0x83e0 val=0x00af2c00 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x83e0] <- 0x00af2c00
+[AL-AVPU] about to IOCTL WRITE off=0x83e4 val=0x00000002 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x83e4] <- 0x00000002
+[AL-AVPU] queue: CL start off=0x00af2c00 (phys=0x06df2c00) -> [0x83e0], push [0x83e4]=0x2
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=0, frame=0x7767c0e8
+[VBM] ReleaseFrame: queue full, dropped idx=1 to make room
+[VBM] ReleaseFrame: returned frame idx=1 (2 available)
+[FrameSource] ReleaseFrame: Released frame 0x7767c0e8 from channel 0
+[Encoder] encoder_update: Released frame 0x7767c0e8 back to its source channel 0
+[System] notify: calling update 0x77b153dc on Encoder (frame=0x7767bcc0)
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x7767bcc0
+[Codec] Process: frame=0x7767bcc0, extracting metadata
+[Codec] AVPU: channel=0 already open (fd=14); skipping re-open
+[Codec] Process: AVPU(AL) queue frame 1920x1080 phys=0x6778000
+[AL-AVPU] ctx=0x77674a64 fd=14: SRC push prepare val=0x00478000 (phys=0x06778000) off
+[AL-AVPU] about to IOCTL WRITE off=0x8084 val=0x00478000 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x8084] <- 0x00478000
+[AL-AVPU] push SRC frame off=0x00478000 -> reg 0x8084
+[AL-AVPU] CL[7] pre-clean cmd[0..7]=80000111 0043777f 00002000 c0000001 0000001a 00001000 00001000 00043077
+[AL-AVPU] CL[7] post-no-clean cmd[0..7]=80000111 0043777f 00002000 c0000001 0000001a 00001000 00001000 00043077
+[AL-AVPU] about to IOCTL WRITE off=0x8080 val=0x00000001 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x8080] <- 0x00000001
+[AL-AVPU] about to IOCTL WRITE off=0x8090 val=0x00000001 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x8090] <- 0x00000001
+[AL-AVPU] about to IOCTL WRITE off=0x83e0 val=0x00af2e00 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x83e0] <- 0x00af2e00
+[AL-AVPU] about to IOCTL WRITE off=0x83e4 val=0x00000002 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x83e4] <- 0x00000002
+[AL-AVPU] queue: CL start off=0x00af2e00 (phys=0x06df2e00) -> [0x83e0], push [0x83e4]=0x2
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=0, frame=0x7767bcc0
+[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[VBM] ReleaseFrame: returned frame idx=0 (2 available)
+[FrameSource] ReleaseFrame: Released frame 0x7767bcc0 from channel 0
+[Encoder] encoder_update: Released frame 0x7767bcc0 back to its source channel 0
+[System] notify: calling update 0x77b153dc on Encoder (frame=0x7767c0e8)
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x7767c0e8
+[Codec] Process: frame=0x7767c0e8, extracting metadata
+[Codec] AVPU: channel=0 already open (fd=14); skipping re-open
+[Codec] Process: AVPU(AL) queue frame 1920x1080 phys=0x6a75000
+[AL-AVPU] ctx=0x77674a64 fd=14: SRC push prepare val=0x00775000 (phys=0x06a75000) off
+[AL-AVPU] about to IOCTL WRITE off=0x8084 val=0x00775000 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x8084] <- 0x00775000
+[AL-AVPU] push SRC frame off=0x00775000 -> reg 0x8084
+[AL-AVPU] CL[8] pre-clean cmd[0..7]=80000111 0043777f 00002000 c0000001 0000001a 00001000 00001000 00043077
+[AL-AVPU] CL[8] post-no-clean cmd[0..7]=80000111 0043777f 00002000 c0000001 0000001a 00001000 00001000 00043077
+[AL-AVPU] about to IOCTL WRITE off=0x8080 val=0x00000001 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x8080] <- 0x00000001
+[AL-AVPU] about to IOCTL WRITE off=0x8090 val=0x00000001 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x8090] <- 0x00000001
+[AL-AVPU] about to IOCTL WRITE off=0x83e0 val=0x00af3000 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x83e0] <- 0x00af3000
+[AL-AVPU] about to IOCTL WRITE off=0x83e4 val=0x00000002 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x83e4] <- 0x00000002
+[AL-AVPU] queue: CL start off=0x00af3000 (phys=0x06df3000) -> [0x83e0], push [0x83e4]=0x2
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=0, frame=0x7767c0e8
+[VBM] ReleaseFrame: queue full, dropped idx=1 to make room
+[VBM] ReleaseFrame: returned frame idx=1 (2 available)
+[FrameSource] ReleaseFrame: Released frame 0x7767c0e8 from channel 0
+[Encoder] encoder_update: Released frame 0x7767c0e8 back to its source channel 0
+[System] notify: calling update 0x77b153dc on Encoder (frame=0x7767bcc0)
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x7767bcc0
+[Codec] Process: frame=0x7767bcc0, extracting metadata
+[Codec] AVPU: channel=0 already open (fd=14); skipping re-open
+[Codec] Process: AVPU(AL) queue frame 1920x1080 phys=0x6778000
+[AL-AVPU] ctx=0x77674a64 fd=14: SRC push prepare val=0x00478000 (phys=0x06778000) off
+[AL-AVPU] about to IOCTL WRITE off=0x8084 val=0x00478000 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x8084] <- 0x00478000
+[AL-AVPU] push SRC frame off=0x00478000 -> reg 0x8084
+[AL-AVPU] CL[9] pre-clean cmd[0..7]=80000111 0043777f 00002000 c0000001 0000001a 00001000 00001000 00043077
+[AL-AVPU] CL[9] post-no-clean cmd[0..7]=80000111 0043777f 00002000 c0000001 0000001a 00001000 00001000 00043077
+[AL-AVPU] about to IOCTL WRITE off=0x8080 val=0x00000001 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x8080] <- 0x00000001
+[AL-AVPU] about to IOCTL WRITE off=0x8090 val=0x00000001 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x8090] <- 0x00000001
+[AL-AVPU] about to IOCTL WRITE off=0x83e0 val=0x00af3200 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x83e0] <- 0x00af3200
+[AL-AVPU] about to IOCTL WRITE off=0x83e4 val=0x00000002 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x83e4] <- 0x00000002
+[AL-AVPU] queue: CL start off=0x00af3200 (phys=0x06df3200) -> [0x83e0], push [0x83e4]=0x2
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=0, frame=0x7767bcc0
+[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[VBM] ReleaseFrame: returned frame idx=0 (2 available)
+[FrameSource] ReleaseFrame: Released frame 0x7767bcc0 from channel 0
+[Encoder] encoder_update: Released frame 0x7767bcc0 back to its source channel 0
+[System] notify: calling update 0x77b153dc on Encoder (frame=0x7767c0e8)
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x7767c0e8
+[Codec] Process: frame=0x7767c0e8, extracting metadata
+[Codec] AVPU: channel=0 already open (fd=14); skipping re-open
+[Codec] Process: AVPU(AL) queue frame 1920x1080 phys=0x6a75000
+[AL-AVPU] ctx=0x77674a64 fd=14: SRC push prepare val=0x00775000 (phys=0x06a75000) off
+[AL-AVPU] about to IOCTL WRITE off=0x8084 val=0x00775000 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x8084] <- 0x00775000
+[AL-AVPU] push SRC frame off=0x00775000 -> reg 0x8084
+[AL-AVPU] CL[10] pre-clean cmd[0..7]=80000111 0043777f 00002000 c0000001 0000001a 00001000 00001000 00043077
+[AL-AVPU] CL[10] post-no-clean cmd[0..7]=80000111 0043777f 00002000 c0000001 0000001a 00001000 00001000 00043077
+[AL-AVPU] about to IOCTL WRITE off=0x8080 val=0x00000001 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x8080] <- 0x00000001
+[AL-AVPU] about to IOCTL WRITE off=0x8090 val=0x00000001 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x8090] <- 0x00000001
+[AL-AVPU] about to IOCTL WRITE off=0x83e0 val=0x00af3400 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x83e0] <- 0x00af3400
+[AL-AVPU] about to IOCTL WRITE off=0x83e4 val=0x00000002 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x83e4] <- 0x00000002
+[AL-AVPU] queue: CL start off=0x00af3400 (phys=0x06df3400) -> [0x83e0], push [0x83e4]=0x2
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=0, frame=0x7767c0e8
+[VBM] ReleaseFrame: queue full, dropped idx=1 to make room
+[VBM] ReleaseFrame: returned frame idx=1 (2 available)
+[FrameSource] ReleaseFrame: Released frame 0x7767c0e8 from channel 0
+[Encoder] encoder_update: Released frame 0x7767c0e8 back to its source channel 0
+[System] notify: calling update 0x77b153dc on Encoder (frame=0x7767bcc0)
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x7767bcc0
+[Codec] Process: frame=0x7767bcc0, extracting metadata
+[Codec] AVPU: channel=0 already open (fd=14); skipping re-open
+[Codec] Process: AVPU(AL) queue frame 1920x1080 phys=0x6778000
+[AL-AVPU] ctx=0x77674a64 fd=14: SRC push prepare val=0x00478000 (phys=0x06778000) off
+[AL-AVPU] about to IOCTL WRITE off=0x8084 val=0x00478000 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x8084] <- 0x00478000
+[AL-AVPU] push SRC frame off=0x00478000 -> reg 0x8084
+[AL-AVPU] CL[11] pre-clean cmd[0..7]=80000111 0043777f 00002000 c0000001 0000001a 00001000 00001000 00043077
+[AL-AVPU] CL[11] post-no-clean cmd[0..7]=80000111 0043777f 00002000 c0000001 0000001a 00001000 00001000 00043077
+[AL-AVPU] about to IOCTL WRITE off=0x8080 val=0x00000001 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x8080] <- 0x00000001
+[AL-AVPU] about to IOCTL WRITE off=0x8090 val=0x00000001 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x8090] <- 0x00000001
+[AL-AVPU] about to IOCTL WRITE off=0x83e0 val=0x00af3600 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x83e0] <- 0x00af3600
+[AL-AVPU] about to IOCTL WRITE off=0x83e4 val=0x00000002 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x83e4] <- 0x00000002
+[AL-AVPU] queue: CL start off=0x00af3600 (phys=0x06df3600) -> [0x83e0], push [0x83e4]=0x2
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=0, frame=0x7767bcc0
+[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[VBM] ReleaseFrame: returned frame idx=0 (2 available)
+[FrameSource] ReleaseFrame: Released frame 0x7767bcc0 from channel 0
+[Encoder] encoder_update: Released frame 0x7767bcc0 back to its source channel 0
+[System] notify: calling update 0x77b153dc on Encoder (frame=0x7767c0e8)
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x7767c0e8
+[Codec] Process: frame=0x7767c0e8, extracting metadata
+[Codec] AVPU: channel=0 already open (fd=14); skipping re-open
+[Codec] Process: AVPU(AL) queue frame 1920x1080 phys=0x6a75000
+[AL-AVPU] ctx=0x77674a64 fd=14: SRC push prepare val=0x00775000 (phys=0x06a75000) off
+[AL-AVPU] about to IOCTL WRITE off=0x8084 val=0x00775000 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x8084] <- 0x00775000
+[AL-AVPU] push SRC frame off=0x00775000 -> reg 0x8084
+[AL-AVPU] CL[12] pre-clean cmd[0..7]=80000111 0043777f 00002000 c0000001 0000001a 00001000 00001000 00043077
+[AL-AVPU] CL[12] post-no-clean cmd[0..7]=80000111 0043777f 00002000 c0000001 0000001a 00001000 00001000 00043077
+[AL-AVPU] about to IOCTL WRITE off=0x8080 val=0x00000001 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x8080] <- 0x00000001
+[AL-AVPU] about to IOCTL WRITE off=0x8090 val=0x00000001 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x8090] <- 0x00000001
+[AL-AVPU] about to IOCTL WRITE off=0x83e0 val=0x00af3800 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x83e0] <- 0x00af3800
+[AL-AVPU] about to IOCTL WRITE off=0x83e4 val=0x00000002 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x83e4] <- 0x00000002
+[AL-AVPU] queue: CL start off=0x00af3800 (phys=0x06df3800) -> [0x83e0], push [0x83e4]=0x2
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=0, frame=0x7767c0e8
+[VBM] ReleaseFrame: queue full, dropped idx=1 to make room
+[VBM] ReleaseFrame: returned frame idx=1 (2 available)
+[FrameSource] ReleaseFrame: Released frame 0x7767c0e8 from channel 0
+[Encoder] encoder_update: Released frame 0x7767c0e8 back to its source channel 0
+[System] notify: calling update 0x77b153dc on Encoder (frame=0x7767bcc0)
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x7767bcc0
+[Codec] Process: frame=0x7767bcc0, extracting metadata
+[Codec] AVPU: channel=0 already open (fd=14); skipping re-open
+[Codec] Process: AVPU(AL) queue frame 1920x1080 phys=0x6778000
+[AL-AVPU] ctx=0x77674a64 fd=14: SRC push prepare val=0x00478000 (phys=0x06778000) off
+[AL-AVPU] about to IOCTL WRITE off=0x8084 val=0x00478000 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x8084] <- 0x00478000
+[AL-AVPU] push SRC frame off=0x00478000 -> reg 0x8084
+[AL-AVPU] CL[13] pre-clean cmd[0..7]=80000111 0043777f 00002000 c0000001 0000001a 00001000 00001000 00043077
+[AL-AVPU] CL[13] post-no-clean cmd[0..7]=80000111 0043777f 00002000 c0000001 0000001a 00001000 00001000 00043077
+[AL-AVPU] about to IOCTL WRITE off=0x8080 val=0x00000001 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x8080] <- 0x00000001
+[AL-AVPU] about to IOCTL WRITE off=0x8090 val=0x00000001 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x8090] <- 0x00000001
+[AL-AVPU] about to IOCTL WRITE off=0x83e0 val=0x00af3a00 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x83e0] <- 0x00af3a00
+[AL-AVPU] about to IOCTL WRITE off=0x83e4 val=0x00000002 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x83e4] <- 0x00000002
+[AL-AVPU] queue: CL start off=0x00af3a00 (phys=0x06df3a00) -> [0x83e0], push [0x83e4]=0x2
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=0, frame=0x7767bcc0
+[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[VBM] ReleaseFrame: returned frame idx=0 (2 available)
+[FrameSource] ReleaseFrame: Released frame 0x7767bcc0 from channel 0
+[Encoder] encoder_update: Released frame 0x7767bcc0 back to its source channel 0
+[System] notify: calling update 0x77b153dc on Encoder (frame=0x7767c0e8)
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x7767c0e8
+[Codec] Process: frame=0x7767c0e8, extracting metadata
+[Codec] AVPU: channel=0 already open (fd=14); skipping re-open
+[Codec] Process: AVPU(AL) queue frame 1920x1080 phys=0x6a75000
+[AL-AVPU] ctx=0x77674a64 fd=14: SRC push prepare val=0x00775000 (phys=0x06a75000) off
+[AL-AVPU] about to IOCTL WRITE off=0x8084 val=0x00775000 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x8084] <- 0x00775000
+[AL-AVPU] push SRC frame off=0x00775000 -> reg 0x8084
+[AL-AVPU] CL[14] pre-clean cmd[0..7]=80000111 0043777f 00002000 c0000001 0000001a 00001000 00001000 00043077
+[AL-AVPU] CL[14] post-no-clean cmd[0..7]=80000111 0043777f 00002000 c0000001 0000001a 00001000 00001000 00043077
+[AL-AVPU] about to IOCTL WRITE off=0x8080 val=0x00000001 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x8080] <- 0x00000001
+[AL-AVPU] about to IOCTL WRITE off=0x8090 val=0x00000001 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x8090] <- 0x00000001
+[AL-AVPU] about to IOCTL WRITE off=0x83e0 val=0x00af3c00 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x83e0] <- 0x00af3c00
+[AL-AVPU] about to IOCTL WRITE off=0x83e4 val=0x00000002 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x83e4] <- 0x00000002
+[AL-AVPU] queue: CL start off=0x00af3c00 (phys=0x06df3c00) -> [0x83e0], push [0x83e4]=0x2
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=0, frame=0x7767c0e8
+[VBM] ReleaseFrame: queue full, dropped idx=1 to make room
+[VBM] ReleaseFrame: returned frame idx=1 (2 available)
+[FrameSource] ReleaseFrame: Released frame 0x7767c0e8 from channel 0
+[Encoder] encoder_update: Released frame 0x7767c0e8 back to its source channel 0
+[System] notify: calling update 0x77b153dc on Encoder (frame=0x7767bcc0)
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x7767bcc0
+[Codec] Process: frame=0x7767bcc0, extracting metadata
+[Codec] AVPU: channel=0 already open (fd=14); skipping re-open
+[Codec] Process: AVPU(AL) queue frame 1920x1080 phys=0x6778000
+[AL-AVPU] ctx=0x77674a64 fd=14: SRC push prepare val=0x00478000 (phys=0x06778000) off
+[AL-AVPU] about to IOCTL WRITE off=0x8084 val=0x00478000 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x8084] <- 0x00478000
+[AL-AVPU] push SRC frame off=0x00478000 -> reg 0x8084
+[AL-AVPU] CL[15] pre-clean cmd[0..7]=80000111 0043777f 00002000 c0000001 0000001a 00001000 00001000 00043077
+[AL-AVPU] CL[15] post-no-clean cmd[0..7]=80000111 0043777f 00002000 c0000001 0000001a 00001000 00001000 00043077
+[AL-AVPU] about to IOCTL WRITE off=0x8080 val=0x00000001 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x8080] <- 0x00000001
+[AL-AVPU] about to IOCTL WRITE off=0x8090 val=0x00000001 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x8090] <- 0x00000001
+[AL-AVPU] about to IOCTL WRITE off=0x83e0 val=0x00af3e00 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x83e0] <- 0x00af3e00
+[AL-AVPU] about to IOCTL WRITE off=0x83e4 val=0x00000002 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x83e4] <- 0x00000002
+[AL-AVPU] queue: CL start off=0x00af3e00 (phys=0x06df3e00) -> [0x83e0], push [0x83e4]=0x2
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=0, frame=0x7767bcc0
+[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[VBM] ReleaseFrame: returned frame idx=0 (2 available)
+[FrameSource] ReleaseFrame: Released frame 0x7767bcc0 from channel 0
+[Encoder] encoder_update: Released frame 0x7767bcc0 back to its source channel 0
+[System] notify: calling update 0x77b153dc on Encoder (frame=0x7767c0e8)
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x7767c0e8
+[Codec] Process: frame=0x7767c0e8, extracting metadata
+[Codec] AVPU: channel=0 already open (fd=14); skipping re-open
+[Codec] Process: AVPU(AL) queue frame 1920x1080 phys=0x6a75000
+[AL-AVPU] ctx=0x77674a64 fd=14: SRC push prepare val=0x00775000 (phys=0x06a75000) off
+[AL-AVPU] about to IOCTL WRITE off=0x8084 val=0x00775000 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x8084] <- 0x00775000
+[AL-AVPU] push SRC frame off=0x00775000 -> reg 0x8084
+[AL-AVPU] CL[16] pre-clean cmd[0..7]=80000111 0043777f 00002000 c0000001 0000001a 00001000 00001000 00043077
+[AL-AVPU] CL[16] post-no-clean cmd[0..7]=80000111 0043777f 00002000 c0000001 0000001a 00001000 00001000 00043077
+[AL-AVPU] about to IOCTL WRITE off=0x8080 val=0x00000001 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x8080] <- 0x00000001
+[AL-AVPU] about to IOCTL WRITE off=0x8090 val=0x00000001 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x8090] <- 0x00000001
+[AL-AVPU] about to IOCTL WRITE off=0x83e0 val=0x00af4000 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x83e0] <- 0x00af4000
+[AL-AVPU] about to IOCTL WRITE off=0x83e4 val=0x00000002 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x83e4] <- 0x00000002
+[AL-AVPU] queue: CL start off=0x00af4000 (phys=0x06df4000) -> [0x83e0], push [0x83e4]=0x2
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=0, frame=0x7767c0e8
+[VBM] ReleaseFrame: queue full, dropped idx=1 to make room
+[VBM] ReleaseFrame: returned frame idx=1 (2 available)
+[FrameSource] ReleaseFrame: Released frame 0x7767c0e8 from channel 0
+[Encoder] encoder_update: Released frame 0x7767c0e8 back to its source channel 0
+[System] notify: calling update 0x77b153dc on Encoder (frame=0x7767bcc0)
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x7767bcc0
+[Codec] Process: frame=0x7767bcc0, extracting metadata
+[Codec] AVPU: channel=0 already open (fd=14); skipping re-open
+[Codec] Process: AVPU(AL) queue frame 1920x1080 phys=0x6778000
+[AL-AVPU] ctx=0x77674a64 fd=14: SRC push prepare val=0x00478000 (phys=0x06778000) off
+[AL-AVPU] about to IOCTL WRITE off=0x8084 val=0x00478000 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x8084] <- 0x00478000
+[AL-AVPU] push SRC frame off=0x00478000 -> reg 0x8084
+[AL-AVPU] CL[17] pre-clean cmd[0..7]=80000111 0043777f 00002000 c0000001 0000001a 00001000 00001000 00043077
+[AL-AVPU] CL[17] post-no-clean cmd[0..7]=80000111 0043777f 00002000 c0000001 0000001a 00001000 00001000 00043077
+[AL-AVPU] about to IOCTL WRITE off=0x8080 val=0x00000001 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x8080] <- 0x00000001
+[AL-AVPU] about to IOCTL WRITE off=0x8090 val=0x00000001 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x8090] <- 0x00000001
+[AL-AVPU] about to IOCTL WRITE off=0x83e0 val=0x00af4200 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x83e0] <- 0x00af4200
+[AL-AVPU] about to IOCTL WRITE off=0x83e4 val=0x00000002 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x83e4] <- 0x00000002
+[AL-AVPU] queue: CL start off=0x00af4200 (phys=0x06df4200) -> [0x83e0], push [0x83e4]=0x2
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=0, frame=0x7767bcc0
+[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[VBM] ReleaseFrame: returned frame idx=0 (2 available)
+[FrameSource] ReleaseFrame: Released frame 0x7767bcc0 from channel 0
+[Encoder] encoder_update: Released frame 0x7767bcc0 back to its source channel 0
+[System] notify: calling update 0x77b153dc on Encoder (frame=0x7767c0e8)
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x7767c0e8
+[Codec] Process: frame=0x7767c0e8, extracting metadata
+[Codec] AVPU: channel=0 already open (fd=14); skipping re-open
+[Codec] Process: AVPU(AL) queue frame 1920x1080 phys=0x6a75000
+[AL-AVPU] ctx=0x77674a64 fd=14: SRC push prepare val=0x00775000 (phys=0x06a75000) off
+[AL-AVPU] about to IOCTL WRITE off=0x8084 val=0x00775000 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x8084] <- 0x00775000
+[AL-AVPU] push SRC frame off=0x00775000 -> reg 0x8084
+[AL-AVPU] CL[18] pre-clean cmd[0..7]=80000111 0043777f 00002000 c0000001 0000001a 00001000 00001000 00043077
+[AL-AVPU] CL[18] post-no-clean cmd[0..7]=80000111 0043777f 00002000 c0000001 0000001a 00001000 00001000 00043077
+[AL-AVPU] about to IOCTL WRITE off=0x8080 val=0x00000001 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x8080] <- 0x00000001
+[AL-AVPU] about to IOCTL WRITE off=0x8090 val=0x00000001 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x8090] <- 0x00000001
+[AL-AVPU] about to IOCTL WRITE off=0x83e0 val=0x00af4400 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x83e0] <- 0x00af4400
+[AL-AVPU] about to IOCTL WRITE off=0x83e4 val=0x00000002 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x83e4] <- 0x00000002
+[AL-AVPU] queue: CL start off=0x00af4400 (phys=0x06df4400) -> [0x83e0], push [0x83e4]=0x2
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=0, frame=0x7767c0e8
+[VBM] ReleaseFrame: queue full, dropped idx=1 to make room
+[VBM] ReleaseFrame: returned frame idx=1 (2 available)
+[FrameSource] ReleaseFrame: Released frame 0x7767c0e8 from channel 0
+[Encoder] encoder_update: Released frame 0x7767c0e8 back to its source channel 0
+[System] notify: calling update 0x77b153dc on Encoder (frame=0x7767bcc0)
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x7767bcc0
+[Codec] Process: frame=0x7767bcc0, extracting metadata
+[Codec] AVPU: channel=0 already open (fd=14); skipping re-open
+[Codec] Process: AVPU(AL) queue frame 1920x1080 phys=0x6778000
+[AL-AVPU] ctx=0x77674a64 fd=14: SRC push prepare val=0x00478000 (phys=0x06778000) off
+[AL-AVPU] about to IOCTL WRITE off=0x8084 val=0x00478000 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x8084] <- 0x00478000
+[AL-AVPU] push SRC frame off=0x00478000 -> reg 0x8084
+[AL-AVPU] CL[0] pre-clean cmd[0..7]=80000111 0043777f 00002000 c0000005 0000001a 00001000 00001000 00043077
+[AL-AVPU] CL[0] post-no-clean cmd[0..7]=80000111 0043777f 00002000 c0000005 0000001a 00001000 00001000 00043077
+[AL-AVPU] about to IOCTL WRITE off=0x8080 val=0x00000001 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x8080] <- 0x00000001
+[AL-AVPU] about to IOCTL WRITE off=0x8090 val=0x00000001 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x8090] <- 0x00000001
+[AL-AVPU] about to IOCTL WRITE off=0x83e0 val=0x00af2000 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x83e0] <- 0x00af2000
+[AL-AVPU] about to IOCTL WRITE off=0x83e4 val=0x00000002 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x83e4] <- 0x00000002
+[AL-AVPU] queue: CL start off=0x00af2000 (phys=0x06df2000) -> [0x83e0], push [0x83e4]=0x2
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=0, frame=0x7767bcc0
+[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[VBM] ReleaseFrame: returned frame idx=0 (2 available)
+[FrameSource] ReleaseFrame: Released frame 0x7767bcc0 from channel 0
+[Encoder] encoder_update: Released frame 0x7767bcc0 back to its source channel 0
+[System] notify: calling update 0x77b153dc on Encoder (frame=0x7767c0e8)
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x7767c0e8
+[Codec] Process: frame=0x7767c0e8, extracting metadata
+[Codec] AVPU: channel=0 already open (fd=14); skipping re-open
+[Codec] Process: AVPU(AL) queue frame 1920x1080 phys=0x6a75000
+[AL-AVPU] ctx=0x77674a64 fd=14: SRC push prepare val=0x00775000 (phys=0x06a75000) off
+[AL-AVPU] about to IOCTL WRITE off=0x8084 val=0x00775000 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x8084] <- 0x00775000
+[AL-AVPU] push SRC frame off=0x00775000 -> reg 0x8084
+[AL-AVPU] CL[1] pre-clean cmd[0..7]=80000111 0043777f 00002000 c0000001 0000001a 00001000 00001000 00043077
+[AL-AVPU] CL[1] post-no-clean cmd[0..7]=80000111 0043777f 00002000 c0000001 0000001a 00001000 00001000 00043077
+[AL-AVPU] about to IOCTL WRITE off=0x8080 val=0x00000001 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x8080] <- 0x00000001
+[AL-AVPU] about to IOCTL WRITE off=0x8090 val=0x00000001 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x8090] <- 0x00000001
+[AL-AVPU] about to IOCTL WRITE off=0x83e0 val=0x00af2200 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x83e0] <- 0x00af2200
+[AL-AVPU] about to IOCTL WRITE off=0x83e4 val=0x00000002 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x83e4] <- 0x00000002
+[AL-AVPU] queue: CL start off=0x00af2200 (phys=0x06df2200) -> [0x83e0], push [0x83e4]=0x2
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=0, frame=0x7767c0e8
+[VBM] ReleaseFrame: queue full, dropped idx=1 to make room
+[VBM] ReleaseFrame: returned frame idx=1 (2 available)
+[FrameSource] ReleaseFrame: Released frame 0x7767c0e8 from channel 0
+[Encoder] encoder_update: Released frame 0x7767c0e8 back to its source channel 0
+[System] notify: calling update 0x77b153dc on Encoder (frame=0x7767bcc0)
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x7767bcc0
+[Codec] Process: frame=0x7767bcc0, extracting metadata
+[Codec] AVPU: channel=0 already open (fd=14); skipping re-open
+[Codec] Process: AVPU(AL) queue frame 1920x1080 phys=0x6778000
+[AL-AVPU] ctx=0x77674a64 fd=14: SRC push prepare val=0x00478000 (phys=0x06778000) off
+[AL-AVPU] about to IOCTL WRITE off=0x8084 val=0x00478000 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x8084] <- 0x00478000
+[AL-AVPU] push SRC frame off=0x00478000 -> reg 0x8084
+[AL-AVPU] CL[2] pre-clean cmd[0..7]=80000111 0043777f 00002000 c0000001 0000001a 00001000 00001000 00043077
+[AL-AVPU] CL[2] post-no-clean cmd[0..7]=80000111 0043777f 00002000 c0000001 0000001a 00001000 00001000 00043077
+[AL-AVPU] about to IOCTL WRITE off=0x8080 val=0x00000001 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x8080] <- 0x00000001
+[AL-AVPU] about to IOCTL WRITE off=0x8090 val=0x00000001 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x8090] <- 0x00000001
+[AL-AVPU] about to IOCTL WRITE off=0x83e0 val=0x00af2400 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x83e0] <- 0x00af2400
+[AL-AVPU] about to IOCTL WRITE off=0x83e4 val=0x00000002 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x83e4] <- 0x00000002
+[AL-AVPU] queue: CL start off=0x00af2400 (phys=0x06df2400) -> [0x83e0], push [0x83e4]=0x2
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=0, frame=0x7767bcc0
+[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[VBM] ReleaseFrame: returned frame idx=0 (2 available)
+[FrameSource] ReleaseFrame: Released frame 0x7767bcc0 from channel 0
+[Encoder] encoder_update: Released frame 0x7767bcc0 back to its source channel 0
+[System] notify: calling update 0x77b153dc on Encoder (frame=0x7767c0e8)
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x7767c0e8
+[Codec] Process: frame=0x7767c0e8, extracting metadata
+[Codec] AVPU: channel=0 already open (fd=14); skipping re-open
+[Codec] Process: AVPU(AL) queue frame 1920x1080 phys=0x6a75000
+[AL-AVPU] ctx=0x77674a64 fd=14: SRC push prepare val=0x00775000 (phys=0x06a75000) off
+[AL-AVPU] about to IOCTL WRITE off=0x8084 val=0x00775000 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x8084] <- 0x00775000
+[AL-AVPU] push SRC frame off=0x00775000 -> reg 0x8084
+[AL-AVPU] CL[3] pre-clean cmd[0..7]=80000111 0043777f 00002000 c0000001 0000001a 00001000 00001000 00043077
+[AL-AVPU] CL[3] post-no-clean cmd[0..7]=80000111 0043777f 00002000 c0000001 0000001a 00001000 00001000 00043077
+[AL-AVPU] about to IOCTL WRITE off=0x8080 val=0x00000001 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x8080] <- 0x00000001
+[AL-AVPU] about to IOCTL WRITE off=0x8090 val=0x00000001 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x8090] <- 0x00000001
+[AL-AVPU] about to IOCTL WRITE off=0x83e0 val=0x00af2600 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x83e0] <- 0x00af2600
+[AL-AVPU] about to IOCTL WRITE off=0x83e4 val=0x00000002 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x83e4] <- 0x00000002
+[AL-AVPU] queue: CL start off=0x00af2600 (phys=0x06df2600) -> [0x83e0], push [0x83e4]=0x2
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=0, frame=0x7767c0e8
+[VBM] ReleaseFrame: queue full, dropped idx=1 to make room
+[VBM] ReleaseFrame: returned frame idx=1 (2 available)
+[FrameSource] ReleaseFrame: Released frame 0x7767c0e8 from channel 0
+[Encoder] encoder_update: Released frame 0x7767c0e8 back to its source channel 0
+[System] notify: calling update 0x77b153dc on Encoder (frame=0x7767bcc0)
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x7767bcc0
+[Codec] Process: frame=0x7767bcc0, extracting metadata
+[Codec] AVPU: channel=0 already open (fd=14); skipping re-open
+[Codec] Process: AVPU(AL) queue frame 1920x1080 phys=0x6778000
+[AL-AVPU] ctx=0x77674a64 fd=14: SRC push prepare val=0x00478000 (phys=0x06778000) off
+[AL-AVPU] about to IOCTL WRITE off=0x8084 val=0x00478000 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x8084] <- 0x00478000
+[AL-AVPU] push SRC frame off=0x00478000 -> reg 0x8084
+[AL-AVPU] CL[4] pre-clean cmd[0..7]=80000111 0043777f 00002000 c0000001 0000001a 00001000 00001000 00043077
+[AL-AVPU] CL[4] post-no-clean cmd[0..7]=80000111 0043777f 00002000 c0000001 0000001a 00001000 00001000 00043077
+[AL-AVPU] about to IOCTL WRITE off=0x8080 val=0x00000001 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x8080] <- 0x00000001
+[AL-AVPU] about to IOCTL WRITE off=0x8090 val=0x00000001 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x8090] <- 0x00000001
+[AL-AVPU] about to IOCTL WRITE off=0x83e0 val=0x00af2800 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x83e0] <- 0x00af2800
+[AL-AVPU] about to IOCTL WRITE off=0x83e4 val=0x00000002 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x83e4] <- 0x00000002
+[AL-AVPU] queue: CL start off=0x00af2800 (phys=0x06df2800) -> [0x83e0], push [0x83e4]=0x2
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=0, frame=0x7767bcc0
+[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[VBM] ReleaseFrame: returned frame idx=0 (2 available)
+[FrameSource] ReleaseFrame: Released frame 0x7767bcc0 from channel 0
+[Encoder] encoder_update: Released frame 0x7767bcc0 back to its source channel 0
+[System] notify: calling update 0x77b153dc on Encoder (frame=0x7767c0e8)
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x7767c0e8
+[Codec] Process: frame=0x7767c0e8, extracting metadata
+[Codec] AVPU: channel=0 already open (fd=14); skipping re-open
+[Codec] Process: AVPU(AL) queue frame 1920x1080 phys=0x6a75000
+[AL-AVPU] ctx=0x77674a64 fd=14: SRC push prepare val=0x00775000 (phys=0x06a75000) off
+[AL-AVPU] about to IOCTL WRITE off=0x8084 val=0x00775000 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x8084] <- 0x00775000
+[AL-AVPU] push SRC frame off=0x00775000 -> reg 0x8084
+[AL-AVPU] CL[5] pre-clean cmd[0..7]=80000111 0043777f 00002000 c0000001 0000001a 00001000 00001000 00043077
+[AL-AVPU] CL[5] post-no-clean cmd[0..7]=80000111 0043777f 00002000 c0000001 0000001a 00001000 00001000 00043077
+[AL-AVPU] about to IOCTL WRITE off=0x8080 val=0x00000001 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x8080] <- 0x00000001
+[AL-AVPU] about to IOCTL WRITE off=0x8090 val=0x00000001 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x8090] <- 0x00000001
+[AL-AVPU] about to IOCTL WRITE off=0x83e0 val=0x00af2a00 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x83e0] <- 0x00af2a00
+[AL-AVPU] about to IOCTL WRITE off=0x83e4 val=0x00000002 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x83e4] <- 0x00000002
+[AL-AVPU] queue: CL start off=0x00af2a00 (phys=0x06df2a00) -> [0x83e0], push [0x83e4]=0x2
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=0, frame=0x7767c0e8
+[VBM] ReleaseFrame: queue full, dropped idx=1 to make room
+[VBM] ReleaseFrame: returned frame idx=1 (2 available)
+[FrameSource] ReleaseFrame: Released frame 0x7767c0e8 from channel 0
+[Encoder] encoder_update: Released frame 0x7767c0e8 back to its source channel 0
+[System] notify: calling update 0x77b153dc on Encoder (frame=0x7767bcc0)
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x7767bcc0
+[Codec] Process: frame=0x7767bcc0, extracting metadata
+[Codec] AVPU: channel=0 already open (fd=14); skipping re-open
+[Codec] Process: AVPU(AL) queue frame 1920x1080 phys=0x6778000
+[AL-AVPU] ctx=0x77674a64 fd=14: SRC push prepare val=0x00478000 (phys=0x06778000) off
+[AL-AVPU] about to IOCTL WRITE off=0x8084 val=0x00478000 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x8084] <- 0x00478000
+[AL-AVPU] push SRC frame off=0x00478000 -> reg 0x8084
+[AL-AVPU] CL[6] pre-clean cmd[0..7]=80000111 0043777f 00002000 c0000001 0000001a 00001000 00001000 00043077
+[AL-AVPU] CL[6] post-no-clean cmd[0..7]=80000111 0043777f 00002000 c0000001 0000001a 00001000 00001000 00043077
+[AL-AVPU] about to IOCTL WRITE off=0x8080 val=0x00000001 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x8080] <- 0x00000001
+[AL-AVPU] about to IOCTL WRITE off=0x8090 val=0x00000001 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x8090] <- 0x00000001
+[AL-AVPU] about to IOCTL WRITE off=0x83e0 val=0x00af2c00 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x83e0] <- 0x00af2c00
+[AL-AVPU] about to IOCTL WRITE off=0x83e4 val=0x00000002 arg=0x7589a9c4
+[AL-AVPU] WRITE[0x83e4] <- 0x00000002
+[AL-AVPU] queue: CL start off=0x00af2c00 (phys=0x06df2c00) -> [0x83e0], push [0x83e4]=0x2
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=0, frame=0x7767bcc0
+[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[VBM] ReleaseFrame: returned frame idx=0 (2 available)
+[FrameSource] ReleaseFrame: Released frame 0x7767bcc0 from channel 0
+[Encoder] encoder_update: Released frame 0x7767bcc0 back to its source channel 0
+^C
+root@ing-wyze-cam3-a000 opt# cat avpu_trace.log 
+2025-10-20 04:20:46.594 [ioctl_trace] initialized
+2025-10-20 04:25:06.799 [ioctl_trace] initialized
+2025-10-20 04:34:05.816 [ioctl_trace] initialized
+2025-10-20 04:44:59.526 [ioctl_trace] initialized
+2025-10-20 04:49:53.443 [ioctl_trace] initialized
+2025-10-20 04:53:06.612 [ioctl_trace] initialized
+2025-10-20 04:54:10.934 [ioctl_trace] initialized
+root@ing-wyze-cam3-a000 opt# cat /proc/interrupts 
+           CPU0       
+  9:          0   jz-intc  i2s_irq
+ 11:      51041   jz-intc  jz-timerost
+ 14:          0   jz-intc  ipu
+ 15:     160631   jz-intc  jz-sfc
+ 18:          0   jz-intc  pdma
+ 23:          0   jz-intc  GPIO C
+ 24:          1   jz-intc  GPIO B
+ 25:          0   jz-intc  GPIO A
+ 29:          1   jz-intc  dwc2
+ 37:      10052   jz-intc  isp-m0
+ 38:       1501   jz-intc  isp-w02
+ 44:      64895   jz-intc  jzmmc_v1.2.1
+ 45:          0   jz-intc  jzmmc_v1.2.0
+ 58:        637   jz-intc  uart1
+ 68:        999   jz-intc  jz-i2c.0
+ 70:          0   jz-intc  avpu.0
+126:          0    GPIO B  GPIO Button
+134:          1    GPIO B  mmc-insert-detect
+ERR:          0
+root@ing-wyze-cam3-a000 opt# exit
+Connection to 192.168.50.211 closed.
+matteius@matteius-Ryzen9:~/openimp/lib$ 
 

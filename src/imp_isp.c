@@ -939,15 +939,15 @@ int ISP_EnsureLinkStreamOn(void) {
         return 0;
     }
     int ret;
-    LOG_ISP("EnsureLinkStreamOn: calling ioctl 0x80045612 (ISP STREAMON)");
-    int enable = 1;
-    ret = ioctl(gISPdev->fd, 0x80045612, &enable);
+    LOG_ISP("EnsureLinkStreamOn: calling ioctl 0x80045612 (ISP STREAMON) [OEM-parity arg=NULL]");
+    ret = ioctl(gISPdev->fd, 0x80045612, 0);
     if (ret != 0) {
         LOG_ISP("EnsureLinkStreamOn: STREAMON failed: %s", strerror(errno));
         return -1;
     }
-    /* Perform LINK_SETUP now (OEM order requires this after STREAMON) */
-    LOG_ISP("EnsureLinkStreamOn: calling ioctl 0x800456d0 (LINK_SETUP)");
+
+    /* Per OEM decompilation, LINK_SETUP expects a pointer to a 32-bit int result */
+    LOG_ISP("EnsureLinkStreamOn: calling ioctl 0x800456d0 (LINK_SETUP) [arg=&int]");
     int config_result = 0;
     ret = ioctl(gISPdev->fd, 0x800456d0, &config_result);
     if (ret != 0) {
@@ -956,9 +956,8 @@ int ISP_EnsureLinkStreamOn(void) {
     }
     LOG_ISP("EnsureLinkStreamOn: LINK_SETUP succeeded, result=%d", config_result);
 
-    LOG_ISP("EnsureLinkStreamOn: calling ioctl 0x800456d2 (LINK_STREAM_ON)");
-    int link_enable = 1;
-    ret = ioctl(gISPdev->fd, 0x800456d2, &link_enable);
+    LOG_ISP("EnsureLinkStreamOn: calling ioctl 0x800456d2 (LINK_STREAM_ON) [OEM-parity arg=NULL]");
+    ret = ioctl(gISPdev->fd, 0x800456d2, 0);
     if (ret != 0) {
         LOG_ISP("EnsureLinkStreamOn: LINK_STREAM_ON failed: %s", strerror(errno));
         return -1;
