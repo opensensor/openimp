@@ -34,6 +34,10 @@ void imp_log_fun(int level, int option, int type, ...);
 #define LOG_ISP(fmt, ...) fprintf(stderr, "[IMP_ISP] " fmt "\n", ##__VA_ARGS__)
 
 
+
+/* Forward declaration: ISP global stream/link start */
+int ISP_EnsureLinkStreamOn(void);
+
 /* Forward declaration to allow pointer use in ISPDevice */
 struct ISPTuningState;
 
@@ -59,6 +63,11 @@ static ISPDevice *gISPdev = NULL;
 static int sensor_enabled = 0;
 static int tuning_enabled = 0;
 static int isp_stream_started = 0; /* Deferred ISP streaming flag */
+
+/* Expose streaming state for other modules (e.g., AVPU) to gate init safely */
+int ISP_IsStreaming(void) {
+    return isp_stream_started;
+}
 
 /* ISP tuning daemon and related methods (safe struct access version) */
 
@@ -294,13 +303,14 @@ static void tuning_contrastjudge(void* arg)
 
     unsigned char contrast = st->contrast_byte;
 
+    /* BN MCP: ioctl 0xc008561c expects { id (V4L2_CID_*), value } where id=0x00980901 (CONTRAST) */
     struct {
-        uint32_t subcmd;  /* 0x110000 per vendor */
-        uint32_t value;   /* low 8 bits: contrast, high bits: total_gain << 8 */
+        uint32_t id;     /* 0x00980901 = V4L2_CID_CONTRAST */
+        uint32_t value;  /* contrast value (lower 8 bits used) */
     } cmd;
 
-    cmd.subcmd = 0x110000u;
-    cmd.value  = ((uint32_t)contrast & 0xffu) | (st->total_gain << 8);
+    cmd.id = 0x00980901u;
+    cmd.value = (uint32_t)contrast;
 
     static int cj_disabled = 0;
     if (cj_disabled)
@@ -801,6 +811,10 @@ int IMP_ISP_AddSensor(IMPSensorInfo *pinfo) {
 
     LOG_ISP("AddSensor: allocated ISP buffer: virt=%p phys=0x%lx size=%u",
             gISPdev->isp_buffer_virt, gISPdev->isp_buffer_phys, gISPdev->isp_buffer_size);
+    /* Safety: clear ISP buffer to avoid driver reading stale data on first IRQ */
+    if (gISPdev->isp_buffer_virt && gISPdev->isp_buffer_size > 0) {
+        memset(gISPdev->isp_buffer_virt, 0, gISPdev->isp_buffer_size);
+    }
 
     /* CRITICAL: Set buffer address via TX_ISP_SET_BUF (platform-dependent)
      * Pass the physical address and size of the allocated DMA buffer.
@@ -920,10 +934,14 @@ int IMP_ISP_EnableSensor(void) {
         return -1;
     }
 
-    LOG_ISP("EnableSensor: sensor index validated, deferring LINK_SETUP and STREAMON until FS is ready");
+    LOG_ISP("EnableSensor: sensor index validated, proceeding to STREAMON/LINK_SETUP now (OEM parity)");
 
-    /* Mark sensor enabled; actual streaming will be started by FrameSource */
-    LOG_ISP("EnableSensor: deferring ISP STREAMON/LINK_STREAM_ON until FrameSource is ready");
+    /* Start ISP streaming and link setup immediately to match OEM */
+    if (ISP_EnsureLinkStreamOn() != 0) {
+        LOG_ISP("EnableSensor: failed to start ISP stream + link setup");
+        return -1;
+    }
+
     gISPdev->opened += 2;
     sensor_enabled = 1;
     return 0;
@@ -939,8 +957,10 @@ int ISP_EnsureLinkStreamOn(void) {
         return 0;
     }
     int ret;
-    LOG_ISP("EnsureLinkStreamOn: calling ioctl 0x80045612 (ISP STREAMON) [OEM-parity arg=NULL]");
-    ret = ioctl(gISPdev->fd, 0x80045612, 0);
+    /* Some T31 variants expect a pointer to type=1 for STREAMON */
+    int v4l2_type = 1;
+    LOG_ISP("EnsureLinkStreamOn: calling ioctl 0x80045612 (ISP STREAMON) [arg=&type=1]");
+    ret = ioctl(gISPdev->fd, 0x80045612, &v4l2_type);
     if (ret != 0) {
         LOG_ISP("EnsureLinkStreamOn: STREAMON failed: %s", strerror(errno));
         return -1;
@@ -956,8 +976,8 @@ int ISP_EnsureLinkStreamOn(void) {
     }
     LOG_ISP("EnsureLinkStreamOn: LINK_SETUP succeeded, result=%d", config_result);
 
-    LOG_ISP("EnsureLinkStreamOn: calling ioctl 0x800456d2 (LINK_STREAM_ON) [OEM-parity arg=NULL]");
-    ret = ioctl(gISPdev->fd, 0x800456d2, 0);
+    LOG_ISP("EnsureLinkStreamOn: calling ioctl 0x800456d2 (LINK_STREAM_ON) [arg=&type=1]");
+    ret = ioctl(gISPdev->fd, 0x800456d2, &v4l2_type);
     if (ret != 0) {
         LOG_ISP("EnsureLinkStreamOn: LINK_STREAM_ON failed: %s", strerror(errno));
         return -1;
@@ -1175,7 +1195,50 @@ int IMP_ISP_Tuning_GetISPRunningMode(IMPISPRunningMode *pmode) {
 }
 
 int IMP_ISP_Tuning_SetISPBypass(IMPISPTuningOpsMode enable) {
+    if (gISPdev == NULL) {
+        LOG_ISP("SetISPBypass: ISP not opened");
+        return -1;
+    }
     LOG_ISP("SetISPBypass: %d", enable);
+
+    /* Step 1: ioctl 0x800456d3 with NULL (OEM path) */
+    if (ioctl(gISPdev->fd, 0x800456d3, 0) != 0) {
+        LOG_ISP("SetISPBypass: ioctl 0x800456d3 failed: %s", strerror(errno));
+        return -1;
+    }
+
+    /* Step 2: ioctl 0x800456d1 with &var (OEM path) */
+    int var = -1;
+    if (ioctl(gISPdev->fd, 0x800456d1, &var) != 0) {
+        LOG_ISP("SetISPBypass: ioctl 0x800456d1 failed: %s", strerror(errno));
+        return -1;
+    }
+
+    /* Step 3: tuning ioctl on /dev/isp-m0: 0xc008561c with {cmd=0x8000164, value=enable} */
+    if (gISPdev->tisp_fd < 0) {
+        LOG_ISP("SetISPBypass: tuning not enabled (tisp_fd<0)");
+        return -1;
+    }
+    struct { int cmd; int value; } bypass_cmd;
+    bypass_cmd.cmd = 0x8000164;
+    bypass_cmd.value = (int)enable;
+    if (ioctl(gISPdev->tisp_fd, 0xc008561c, &bypass_cmd) != 0) {
+        LOG_ISP("SetISPBypass: tuning ioctl 0xc008561c failed: %s", strerror(errno));
+        return -1;
+    }
+
+    /* Step 4: LINK_SETUP with arg = (enable==0)?1:0, then LINK_STREAM_ON with &type=1 */
+    int link_arg = (enable == 0) ? 1 : 0;
+    if (ioctl(gISPdev->fd, 0x800456d0, &link_arg) != 0) {
+        LOG_ISP("SetISPBypass: LINK_SETUP failed: %s", strerror(errno));
+        return -1;
+    }
+    int v4l2_type2 = 1;
+    if (ioctl(gISPdev->fd, 0x800456d2, &v4l2_type2) != 0) {
+        LOG_ISP("SetISPBypass: LINK_STREAM_ON failed: %s", strerror(errno));
+        return -1;
+    }
+
     return 0;
 }
 

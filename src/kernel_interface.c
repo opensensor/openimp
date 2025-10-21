@@ -364,7 +364,7 @@ int fs_set_buffer_count(int fd, int count) {
         return -1;
     }
 
-    fprintf(stderr, "[KernelIF] Set buffer count: %d (actual: %u)\n", count, req.count);
+    fprintf(stderr, "[KernelIF] REQBUFS: requested=%d actual=%u\n", count, req.count);
     return (int)req.count;
 }
 
@@ -458,6 +458,8 @@ int fs_querybuf(int fd, int index, unsigned int *length_out) {
     memset(&b, 0, sizeof(b));
     b.index = (uint32_t)index;
     b.type = 1; /* V4L2_BUF_TYPE_VIDEO_CAPTURE */
+    b.memory = 2; /* USERPTR */
+    b.field = 4;  /* match vendor */
     int ret = ioctl(fd, VIDIOC_QUERYBUF, &b);
     if (ret < 0) {
         fprintf(stderr, "[KernelIF] QUERYBUF failed: idx=%d err=%s\n", index, strerror(errno));
@@ -481,9 +483,9 @@ int fs_qbuf(int fd, int index, unsigned long phys, unsigned int length) {
     b.field = 4;           /* Driver expects specific field value (vendor used 4) */
     b.flags = 0;
     b.sequence = 0;
-    b.m = (uint32_t)phys;  /* Driver uses this as DMA phys (driver-specific) */
+    b.m = (uint32_t)phys;  /* USERPTR carries DMA phys on this T31 variant */
     b.length = length;     /* Must equal kernel expected length */
-    b.bytesused = length;  /* Some T31 drivers require bytesused==length on capture */
+    b.bytesused = length;  /* some variants require non-zero to mark valid buffer */
 
     int ret = ioctl(fd, VIDIOC_QBUF, &b);
     if (ret < 0) {
@@ -492,16 +494,18 @@ int fs_qbuf(int fd, int index, unsigned long phys, unsigned int length) {
     }
     return 0;
 }
-/* Dequeue with preset length/bytesused to satisfy strict drivers */
-int fs_dqbuf_len(int fd, unsigned int preset_len, int *index_out) {
+/* Dequeue using plain VIDIOC_DQBUF (non-blocking fd). Return -2 on EAGAIN. */
+int fs_dqbuf_plain(int fd, int *index_out) {
     if (fd < 0 || !index_out) return -1;
     struct v4l2_buf32 b; memset(&b, 0, sizeof(b));
     b.type = 1; b.memory = 2; b.field = 4;
-    b.length = preset_len; b.bytesused = preset_len;
+    fprintf(stderr, "[KernelIF] DQBUF ioctl ENTER\n");
     int ret = ioctl(fd, VIDIOC_DQBUF, &b);
+    int errsv = errno;
+    fprintf(stderr, "[KernelIF] DQBUF ioctl LEAVE ret=%d errno=%d\n", ret, errsv);
     if (ret < 0) {
-        if (errno == EAGAIN) return -2;
-        fprintf(stderr, "[KernelIF] DQBUF(len=%u) failed: %s\n", preset_len, strerror(errno));
+        if (errsv == EAGAIN) return -2;
+        fprintf(stderr, "[KernelIF] DQBUF failed: %s\n", strerror(errsv));
         return -1;
     }
     *index_out = (int)b.index;
@@ -934,14 +938,20 @@ int VBMPrimeKernelQueue(int chn, int fd, int limit) {
         pool->queue_count--;
 
         VBMFrame *f = &pool->frames[idx];
-        /* Driver expects DMA physical address in .m (BN MCP shows KSEG1 writes) */
-        unsigned long phys = (unsigned long)f->phys_addr;
+        /* Choose address to put into .m: default to DMA PHYS per T31 driver semantics.
+         * Allow forcing VIRT via OPENIMP_QBUF_USE_VIRT for debugging/variants. */
+        unsigned long addr_m = (unsigned long)f->phys_addr; /* default: PHYS (T31 driver semantics) */
+        /* If needed for other variants, OPENIMP_QBUF_USE_VIRT can be set to force VIRT */
+        const char* ev = getenv("OPENIMP_QBUF_USE_VIRT");
+        int use_virt = (ev && ev[0] != '\0') ? 1 : 0;
+        fprintf(stderr, "[VBM] PrimeKernelQueue: QBUF using %s address in .m\n", use_virt?"VIRT":"PHYS");
+        if (use_virt) addr_m = (unsigned long)f->virt_addr;
         /* Prefer the kernel-advertised buffer length via QUERYBUF */
         unsigned int qlen = 0;
         if (fs_querybuf(fd, idx, &qlen) < 0 || qlen == 0) {
             qlen = (unsigned int)f->size; /* fallback: use our frame size */
         }
-        if (fs_qbuf(fd, idx, phys, qlen) < 0) {
+        if (fs_qbuf(fd, idx, addr_m, qlen) < 0) {
             pthread_mutex_unlock(&pool->queue_mutex);
             fprintf(stderr, "[VBM] PrimeKernelQueue: qbuf failed for idx=%d (len=%u)\n", idx, qlen);
             return -1;
@@ -954,6 +964,7 @@ int VBMPrimeKernelQueue(int chn, int fd, int limit) {
 }
 
 /* Dequeue a kernel-filled frame and map to VBM frame pointer */
+
 int VBMKernelDequeue(int chn, int fd, void **frame_out) {
     if (chn < 0 || chn >= MAX_VBM_POOLS || !frame_out) return -1;
     VBMPool *pool = vbm_instance[chn];
@@ -966,12 +977,13 @@ int VBMKernelDequeue(int chn, int fd, void **frame_out) {
     if (dbg_count[chn] < 3) {
         fprintf(stderr, "[VBM] VBMKernelDequeue chn=%d: attempting DQBUF...\n", chn);
     }
-    /* First try plain non-blocking DQBUF. Some drivers misbehave if bytesused/length are preset. */
-    int ret = fs_dqbuf(fd, &idx);
+
+    int ret = fs_dqbuf_plain(fd, &idx);
     if (dbg_count[chn] < 3) {
-        fprintf(stderr, "[VBM] VBMKernelDequeue chn=%d: DQBUF returned ret=%d idx=%d\n", chn, ret, idx);
+        fprintf(stderr, "[VBM] VBMKernelDequeue chn=%d: DQBUF ret=%d idx=%d\n", chn, ret, idx);
         dbg_count[chn]++;
     }
+
     if (ret == -2) {
         int c = ++eagain_count[chn];
         if (c <= 5 || (c % 50) == 0) {
@@ -980,18 +992,11 @@ int VBMKernelDequeue(int chn, int fd, void **frame_out) {
         return -2; /* EAGAIN */
     }
     if (ret != 0) {
-        /* Fallback: try DQBUF with preset length/bytesused for strict drivers */
-        unsigned int preset_len = (unsigned int)pool->frames[0].size;
-        int ret2 = fs_dqbuf_len(fd, preset_len, &idx);
-        if (ret2 != 0) {
-            int c = ++err_count[chn];
-            if (c <= 5 || (c % 50) == 0) {
-                fprintf(stderr, "[VBM] VBMKernelDequeue chn=%d: DQBUF error ret=%d (fallback ret=%d)\n", chn, ret, ret2);
-            }
-            return -1;
-        } else {
-            fprintf(stderr, "[VBM] VBMKernelDequeue chn=%d: DQBUF(len) fallback succeeded, idx=%d\n", chn, idx);
+        int c = ++err_count[chn];
+        if (c <= 5 || (c % 50) == 0) {
+            fprintf(stderr, "[VBM] VBMKernelDequeue chn=%d: DQBUF error ret=%d\n", chn, ret);
         }
+        return -1;
     }
     if (idx < 0 || idx >= pool->frame_count) {
         fprintf(stderr, "[VBM] VBMKernelDequeue chn=%d: invalid idx=%d (frame_count=%d)\n", chn, idx, pool->frame_count);

@@ -89,6 +89,7 @@ typedef struct ALAvpuContext {
 
     /* Session state */
     int session_ready;        /* when 1, reg pushes + IRQ thread enabled */
+    int hw_prepared;          /* base HW configured (regs set, ENC_EN on, no CL yet) */
 } ALAvpuContext;
 
 /* Open / setup AVPU context from high-level encoder params */

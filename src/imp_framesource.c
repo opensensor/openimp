@@ -304,6 +304,14 @@ int IMP_FrameSource_EnableChn(int chnNum) {
     fmt.fps_num = chn->attr.outFrmRateNum;
     fmt.fps_den = chn->attr.outFrmRateDen;
 
+    /* Normalize scaler: if enabled but output dims equal input, disable scaler (BN/OEM do not scale in this case) */
+    if (fmt.scaler_enable && fmt.scaler_outwidth == fmt.picwidth && fmt.scaler_outheight == fmt.picheight) {
+        fprintf(stderr, "[FrameSource] EnableChn: disabling redundant scaler (out==in %dx%d)\n", fmt.picwidth, fmt.picheight);
+        fmt.scaler_enable = 0;
+        fmt.scaler_outwidth = fmt.picwidth;
+        fmt.scaler_outheight = fmt.picheight;
+    }
+
     /* OEM-like: for ch0 without scaler, pre-SET_FMT GET_FMT to seed negotiated fields */
     if (chnNum == 0 && chn->attr.scaler.enable == 0) {
         fs_format_t cur = {0};
@@ -369,7 +377,7 @@ int IMP_FrameSource_EnableChn(int chnNum) {
         return -1;
     }
 
-    /* OEM ordering: after creating pool, set REQBUFS and tolerate reductions */
+    /* Set REQBUFS before STREAM_ON (driver requires this), tolerate reductions */
     int requested_bufcnt = chn->attr.nrVBs + (g_frame_depth[chnNum] > 0 ? g_frame_depth[chnNum] : 0);
     if (requested_bufcnt < 2) requested_bufcnt = 2;  /* Kernel requires minimum 2 buffers */
     int bufcnt = fs_set_buffer_count(chn->fd, requested_bufcnt);
@@ -404,6 +412,7 @@ int IMP_FrameSource_EnableChn(int chnNum) {
         pthread_mutex_unlock(&fs_mutex);
         return -1;
     }
+
 
     /* OEM parity: do NOT flush the userspace queue here for kernel-backed capture.
      * Kernel will drive buffer ownership via QBUF/DQBUF; local queue is unused. */
@@ -468,6 +477,7 @@ int IMP_FrameSource_EnableChn(int chnNum) {
         pthread_mutex_unlock(&fs_mutex);
         return -1;
     }
+
 
     pthread_mutex_unlock(&fs_mutex);
 
@@ -810,7 +820,6 @@ static void *frame_capture_thread(void *arg) {
             LOG_FS("frame_capture_thread chn=%d: re-enabled O_NONBLOCK before DQBUF", chn_num);
         }
 
-
         while (1) {
             void *frame = NULL;
             extern int VBMKernelDequeue(int chn, int fd, void **frame_out);
@@ -830,6 +839,7 @@ static void *frame_capture_thread(void *arg) {
             }
             break;
         }
+
 
         if (drained == 0) {
             /* No frames dequeued; avoid busy loop */
