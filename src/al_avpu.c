@@ -195,21 +195,28 @@ static inline unsigned AVPU_CORE_BASE(int core) { return (AVPU_BASE_OFFSET + 0x3
 static int avpu_ip_write_reg(int fd, unsigned int off, unsigned int val)
 {
     if ((off & 3) != 0) { LOG_AL("WARN: unaligned reg write off=0x%04x", off); return -1; }
-    struct avpu_reg r; r.id = off; r.value = val;
-    LOG_AL("about to IOCTL WRITE off=0x%04x val=0x%08x arg=%p", off, val, (void*)&r);
-    int ret = ioctl(fd, AL_CMD_IP_WRITE_REG, &r);
-    if (ret < 0) { LOG_AL("ioctl WRITE failed off=0x%04x err=%d errno=%d", off, ret, errno); return -1; }
+    struct avpu_reg *r = NULL;
+    if (posix_memalign((void**)&r, 64, sizeof(*r)) != 0 || !r) { errno = ENOMEM; return -1; }
+    r->id = off; r->value = val;
+    LOG_AL("about to IOCTL WRITE off=0x%04x val=0x%08x arg=%p", off, val, (void*)r);
+    int ret = ioctl(fd, AL_CMD_IP_WRITE_REG, r);
+    if (ret < 0) { LOG_AL("ioctl WRITE failed off=0x%04x err=%d errno=%d", off, ret, errno); free(r); return -1; }
     LOG_AL("WRITE[0x%04x] <- 0x%08x", off, val);
+    free(r);
     return 0;
 }
 
 static int avpu_ip_read_reg(int fd, unsigned int off, unsigned int *out)
 {
     if ((off & 3) != 0) { LOG_AL("WARN: unaligned reg read off=0x%04x", off); return -1; }
-    struct avpu_reg r; r.id = off; r.value = 0;
-    int ret = ioctl(fd, AL_CMD_IP_READ_REG, &r);
-    if (ret < 0) { LOG_AL("ioctl READ failed off=0x%04x err=%d", off, ret); return -1; }
-    if (out) *out = r.value;
+    struct avpu_reg *r = NULL;
+    if (posix_memalign((void**)&r, 64, sizeof(*r)) != 0 || !r) { errno = ENOMEM; return -1; }
+    r->id = off; r->value = 0;
+    int ret = ioctl(fd, AL_CMD_IP_READ_REG, r);
+    if (ret < 0) { LOG_AL("ioctl READ failed off=0x%04x err=%d errno=%d", off, ret, errno); free(r); return -1; }
+    if (out) *out = r->value;
+    LOG_AL("READ[0x%04x] -> 0x%08x", off, r->value);
+    free(r);
     return 0;
 }
 
@@ -223,7 +230,7 @@ static void avpu_enable_interrupts_core(int fd, int core)
         return;
     unsigned b0 = 1u << (((unsigned)core << 2) & 0x1F);
     unsigned b2 = 1u << ((((unsigned)core << 2) + 2) & 0x1F);
-    unsigned new_m = m & ~(b0 | b2); /* clear bits to unmask */
+    unsigned new_m = m | (b0 | b2); /* set bits to enable */
     if (new_m != m)
         (void)avpu_ip_write_reg(fd, AVPU_INTERRUPT_MASK, new_m);
 }
@@ -544,13 +551,31 @@ int ALAvpu_Open(ALAvpuContext *ctx, const HWEncoderParams *p)
 
         /* TOP_CTRL */
         (void)avpu_ip_write_reg(fd, AVPU_REG_TOP_CTRL, 0x00000080);
-        /* Unmask minimal interrupts (mask register 0x8014) */
-        avpu_enable_interrupts_core(fd, 0);
-        /* MISC_CTRL to enable AXI offset addressing */
-        (void)avpu_ip_write_reg(fd, AVPU_REG_MISC_CTRL, 0x00001000);
-        /* Enable encoder blocks (ENC_EN_A/C) */
+
+        /* Mask all IRQs and then clear any pending before enabling blocks */
+        {
+            unsigned pend = 0;
+            (void)avpu_ip_write_reg(fd, AVPU_INTERRUPT_MASK, 0x00000000);
+            (void)avpu_ip_read_reg(fd, AVPU_INTERRUPT, &pend);
+            if (pend)
+                (void)avpu_ip_write_reg(fd, AVPU_INTERRUPT, pend);
+        }
+
+        /* Defer unmask until CL/SRC are programmed to avoid early IRQs */
+        /* avpu_enable_interrupts_core(fd, 0); */
+
+        /* MISC_CTRL: only enable AXI offset addressing when offsets mode is active */
+        if (ctx->use_offsets) {
+            (void)avpu_ip_write_reg(fd, AVPU_REG_MISC_CTRL, 0x00001000);
+        } else {
+            LOG_AL("skip MISC_CTRL (offset mode) in ABSOLUTE mode");
+        }
+
+        /* Enable encoder blocks (ENC_EN_A/B/C) */
         (void)avpu_ip_write_reg(fd, AVPU_REG_ENC_EN_A, 0x00000001);
+        (void)avpu_ip_write_reg(fd, AVPU_REG_ENC_EN_B, 0x00000001);
         (void)avpu_ip_write_reg(fd, AVPU_REG_ENC_EN_C, 0x00000001);
+
         /* Seed a single STRM buffer so hardware has a sink (do not burst-fill) */
         if (ctx->stream_bufs_used > 0) {
             uint32_t axi_base = ctx->axi_base;
@@ -655,11 +680,15 @@ int ALAvpu_QueueFrame(ALAvpuContext *ctx, const HWFrameBuffer *frame)
 
             /* TOP_CTRL */
             (void)avpu_ip_write_reg(fd, AVPU_REG_TOP_CTRL, 0x00000080);
-            /* Unmask core0 interrupts */
-            avpu_enable_interrupts_core(fd, 0);
+            /* Defer unmask until CL/SRC are programmed to avoid early IRQs */
+            /* avpu_enable_interrupts_core(fd, 0); */
 
-            /* MISC_CTRL to enable AXI offset addressing */
-            (void)avpu_ip_write_reg(fd, AVPU_REG_MISC_CTRL, 0x00001000);
+            /* MISC_CTRL: only enable AXI offset addressing when offsets mode is active */
+            if (ctx->use_offsets) {
+                (void)avpu_ip_write_reg(fd, AVPU_REG_MISC_CTRL, 0x00001000);
+            } else {
+                LOG_AL("skip MISC_CTRL (offset mode) in ABSOLUTE mode");
+            }
             /* Enable encoder blocks (ENC_EN_A/C) */
             (void)avpu_ip_write_reg(fd, AVPU_REG_ENC_EN_A, 0x00000001);
             (void)avpu_ip_write_reg(fd, AVPU_REG_ENC_EN_C, 0x00000001);
@@ -723,6 +752,9 @@ int ALAvpu_QueueFrame(ALAvpuContext *ctx, const HWFrameBuffer *frame)
             (void)avpu_ip_write_reg(ctx->fd, AVPU_REG_SRC_PUSH, val2);
             LOG_AL("push SRC frame %s=0x%08x -> reg 0x%04x", use_offsets2?"off":"phys", val2, AVPU_REG_SRC_PUSH);
         }
+
+        /* Now that CL/SRC are set, unmask interrupts to start receiving IRQs */
+        avpu_enable_interrupts_core(ctx->fd, 0);
 
         /* Ensure at least one STRM buffer is queued before first encode */
         {
