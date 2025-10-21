@@ -63,6 +63,7 @@ static ISPDevice *gISPdev = NULL;
 static int sensor_enabled = 0;
 static int tuning_enabled = 0;
 static int isp_stream_started = 0; /* Deferred ISP streaming flag */
+static int bypass_link_setup_done = 0;  /* Track if SetISPBypass already did LINK_SETUP */
 
 /* Expose streaming state for other modules (e.g., AVPU) to gate init safely */
 int ISP_IsStreaming(void) {
@@ -866,6 +867,7 @@ int ISP_EnsureLinkStreamOn(int sensor_idx) {
         return -1;
     }
     if (isp_stream_started) {
+        LOG_ISP("EnsureLinkStreamOn: already started (bypass_link_setup_done=%d)", bypass_link_setup_done);
         return 0;
     }
     int ret;
@@ -877,23 +879,29 @@ int ISP_EnsureLinkStreamOn(int sensor_idx) {
         return -1;
     }
 
-    /* Per OEM decompilation, LINK_SETUP expects a pointer to sensor_idx */
-    LOG_ISP("EnsureLinkStreamOn: calling ioctl 0x800456d0 (LINK_SETUP) [arg=&sensor_idx=%d]", sensor_idx);
-    int link_arg = sensor_idx;
-    ret = ioctl(gISPdev->fd, 0x800456d0, &link_arg);
-    if (ret != 0) {
-        LOG_ISP("EnsureLinkStreamOn: LINK_SETUP failed: %s", strerror(errno));
-        return -1;
-    }
-    LOG_ISP("EnsureLinkStreamOn: LINK_SETUP succeeded, sensor_idx=%d", link_arg);
+    /* Skip LINK_SETUP if SetISPBypass already did it (to preserve bypass configuration) */
+    if (!bypass_link_setup_done) {
+        /* Per OEM decompilation, LINK_SETUP expects a pointer to sensor_idx */
+        LOG_ISP("EnsureLinkStreamOn: calling ioctl 0x800456d0 (LINK_SETUP) [arg=&sensor_idx=%d]", sensor_idx);
+        int link_arg = sensor_idx;
+        ret = ioctl(gISPdev->fd, 0x800456d0, &link_arg);
+        if (ret != 0) {
+            LOG_ISP("EnsureLinkStreamOn: LINK_SETUP failed: %s", strerror(errno));
+            return -1;
+        }
+        LOG_ISP("EnsureLinkStreamOn: LINK_SETUP succeeded, sensor_idx=%d", link_arg);
 
-    /* OEM passes 0 (NULL) for LINK_STREAM_ON, not &type */
-    LOG_ISP("EnsureLinkStreamOn: calling ioctl 0x800456d2 (LINK_STREAM_ON) [arg=0]");
-    ret = ioctl(gISPdev->fd, 0x800456d2, 0);
-    if (ret != 0) {
-        LOG_ISP("EnsureLinkStreamOn: LINK_STREAM_ON failed: %s", strerror(errno));
-        return -1;
+        /* OEM passes 0 (NULL) for LINK_STREAM_ON, not &type */
+        LOG_ISP("EnsureLinkStreamOn: calling ioctl 0x800456d2 (LINK_STREAM_ON) [arg=0]");
+        ret = ioctl(gISPdev->fd, 0x800456d2, 0);
+        if (ret != 0) {
+            LOG_ISP("EnsureLinkStreamOn: LINK_STREAM_ON failed: %s", strerror(errno));
+            return -1;
+        }
+    } else {
+        LOG_ISP("EnsureLinkStreamOn: skipping LINK_SETUP/LINK_STREAM_ON (already done by SetISPBypass)");
     }
+
     isp_stream_started = 1;
     LOG_ISP("EnsureLinkStreamOn: ISP streaming started");
     return 0;
@@ -1162,6 +1170,10 @@ int IMP_ISP_Tuning_SetISPBypass(IMPISPTuningOpsMode enable) {
         LOG_ISP("SetISPBypass: LINK_STREAM_ON failed: %s", strerror(errno));
         return -1;
     }
+
+    /* Mark that we've done LINK_SETUP so ISP_EnsureLinkStreamOn doesn't redo it */
+    bypass_link_setup_done = 1;
+    isp_stream_started = 1;  /* Also mark streaming as started */
 
     return 0;
 }

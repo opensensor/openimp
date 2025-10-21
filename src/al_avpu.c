@@ -49,31 +49,32 @@ struct flush_cache_info { unsigned int addr; unsigned int len; unsigned int dir;
 #define DMA_BIDIRECTIONAL 3
 #endif
 
+/* T31 RMEM cache flush workaround: The kernel's dma_cache_sync() has critical bugs
+ * that cause system-wide crashes. RMEM appears to be mapped cache-coherent, so
+ * explicit cache flushes are not needed and actually harmful. */
 static void avpu_cache_inv(int fd, uint32_t phys, uint32_t len)
 {
-    struct flush_cache_info info = { .addr = phys, .len = len, .dir = DMA_FROM_DEVICE };
-    (void)ioctl(fd, JZ_CMD_FLUSH_CACHE, (unsigned long)&info);
+    /* DISABLED: T31 kernel bug - cache flush causes crashes */
+    (void)fd; (void)phys; (void)len;
 }
 
 static void avpu_cache_clean(int fd, uint32_t phys, uint32_t len)
 {
-    struct flush_cache_info info = { .addr = phys, .len = len, .dir = DMA_TO_DEVICE };
-    (void)ioctl(fd, JZ_CMD_FLUSH_CACHE, (unsigned long)&info);
+    /* DISABLED: T31 kernel bug - cache flush causes crashes */
+    (void)fd; (void)phys; (void)len;
 }
 
 /* Virtual-address cache ops: driver expects a CPU-mapped pointer in addr */
 static void avpu_cache_inv_virt(int fd, void* addr, uint32_t len)
 {
-    if (!addr || !len) return;
-    struct flush_cache_info info = { .addr = (unsigned int)(uintptr_t)addr, .len = len, .dir = DMA_FROM_DEVICE };
-    (void)ioctl(fd, JZ_CMD_FLUSH_CACHE, (unsigned long)&info);
+    /* DISABLED: T31 kernel bug - cache flush causes crashes */
+    (void)fd; (void)addr; (void)len;
 }
 
 static void avpu_cache_clean_virt(int fd, void* addr, uint32_t len)
 {
-    if (!addr || !len) return;
-    struct flush_cache_info info = { .addr = (unsigned int)(uintptr_t)addr, .len = len, .dir = DMA_TO_DEVICE };
-    (void)ioctl(fd, JZ_CMD_FLUSH_CACHE, (unsigned long)&info);
+    /* DISABLED: T31 kernel bug - cache flush causes crashes */
+    (void)fd; (void)addr; (void)len;
 }
 
 static size_t annexb_effective_size(const uint8_t *buf, size_t maxlen)
@@ -456,35 +457,21 @@ int ALAvpu_Open(ALAvpuContext *ctx, const HWEncoderParams *p)
         }
     }
 
-    /* Addressing mode: prefer AXI offset addressing when RMEM is active (OEM pattern) */
+    /* Addressing mode: T31 requires absolute addressing due to kernel bugs with offset mode */
     uint32_t axi_base = 0;
     int use_offsets = 0;
-    uint32_t rmem_base = 0;
 
-    /* Allow forcing absolute addressing via environment variable (T31 workaround for unaligned access crashes) */
-    const char *force_abs_env = getenv("OPENIMP_AVPU_FORCE_ABS");
-    int force_absolute = (force_abs_env && force_abs_env[0] == '1');
-
-    if (force_absolute) {
-        /* Force absolute addressing mode */
-        axi_base = 0;
-        use_offsets = 0;
-        ctx->disable_axi_offset = 1;
-        LOG_AL("addr-mode: FORCED ABSOLUTE (env OPENIMP_AVPU_FORCE_ABS=1)");
-    } else if (DMA_Is_RMEM() && DMA_Get_RMEM_Base(&rmem_base) == 0 && rmem_base != 0) {
-        axi_base = rmem_base;
-        use_offsets = 1;
-        ctx->disable_axi_offset = 0;
-    } else {
-        ctx->disable_axi_offset = 1;
-    }
+    /* T31 default: absolute addressing (offset mode causes kernel crashes) */
+    axi_base = 0;
+    use_offsets = 0;
+    ctx->disable_axi_offset = 1;
     ctx->force_cl_abs = 0;
+
+    LOG_AL("addr-mode: ABSOLUTE (T31 default - offset mode causes kernel crashes)");
 
     /* Persist addressing mode */
     ctx->axi_base = axi_base;
     ctx->use_offsets = use_offsets;
-
-    LOG_AL("addr-mode: use_offsets=%d axi_base=0x%08x (%s)", ctx->use_offsets, ctx->axi_base, use_offsets?"OEM OFFSET":"OEM ABS");
 
     /* Prepare command-list ring (OEM parity): allocate 0x13 entries of 512B */
     {
@@ -539,16 +526,22 @@ int ALAvpu_Open(ALAvpuContext *ctx, const HWEncoderParams *p)
     ctx->session_ready = 0;
     ctx->hw_prepared = 0;
     do {
-        /* Program AXI address offset base when using offset mode */
-        if (ctx->use_offsets && ctx->axi_base) {
-            LOG_AL("program AXI_ADDR_OFFSET_IP(0x%04x) = 0x%08x", AVPU_REG_AXI_ADDR_OFFSET_IP, ctx->axi_base);
-            (void)avpu_ip_write_reg(fd, AVPU_REG_AXI_ADDR_OFFSET_IP, ctx->axi_base);
-        }
-        /* Core reset */
+        /* Core reset FIRST - this clears all registers */
         unsigned reset_reg = AVPU_REG_CORE_RESET(0);
         (void)avpu_ip_write_reg(fd, reset_reg, 2);
         usleep(1000);
         (void)avpu_ip_write_reg(fd, reset_reg, 4);
+
+        /* Program AXI address offset base AFTER reset (required even in absolute mode - write 0) */
+        if (ctx->use_offsets && ctx->axi_base) {
+            LOG_AL("program AXI_ADDR_OFFSET_IP(0x%04x) = 0x%08x", AVPU_REG_AXI_ADDR_OFFSET_IP, ctx->axi_base);
+            (void)avpu_ip_write_reg(fd, AVPU_REG_AXI_ADDR_OFFSET_IP, ctx->axi_base);
+        } else {
+            /* In absolute mode, explicitly write 0 to AXI offset register */
+            LOG_AL("program AXI_ADDR_OFFSET_IP(0x%04x) = 0x00000000 (absolute mode)", AVPU_REG_AXI_ADDR_OFFSET_IP);
+            (void)avpu_ip_write_reg(fd, AVPU_REG_AXI_ADDR_OFFSET_IP, 0);
+        }
+
         /* TOP_CTRL */
         (void)avpu_ip_write_reg(fd, AVPU_REG_TOP_CTRL, 0x00000080);
         /* Unmask minimal interrupts (mask register 0x8014) */
@@ -644,17 +637,22 @@ int ALAvpu_QueueFrame(ALAvpuContext *ctx, const HWFrameBuffer *frame)
 
         /* If base HW was prepared in ALAvpu_Open, skip base config here */
         if (!ctx->hw_prepared) {
-            /* Program AXI address offset base when using offset mode */
-            if (ctx->use_offsets && ctx->axi_base) {
-                LOG_AL("program AXI_ADDR_OFFSET_IP(0x%04x) = 0x%08x", AVPU_REG_AXI_ADDR_OFFSET_IP, ctx->axi_base);
-                (void)avpu_ip_write_reg(fd, AVPU_REG_AXI_ADDR_OFFSET_IP, ctx->axi_base);
-            }
-
-            /* Core reset */
+            /* Core reset FIRST - this clears all registers */
             unsigned reset_reg = AVPU_REG_CORE_RESET(0);
             (void)avpu_ip_write_reg(fd, reset_reg, 2);
             usleep(1000);
             (void)avpu_ip_write_reg(fd, reset_reg, 4);
+
+            /* Program AXI address offset base AFTER reset (required even in absolute mode - write 0) */
+            if (ctx->use_offsets && ctx->axi_base) {
+                LOG_AL("program AXI_ADDR_OFFSET_IP(0x%04x) = 0x%08x", AVPU_REG_AXI_ADDR_OFFSET_IP, ctx->axi_base);
+                (void)avpu_ip_write_reg(fd, AVPU_REG_AXI_ADDR_OFFSET_IP, ctx->axi_base);
+            } else {
+                /* In absolute mode, explicitly write 0 to AXI offset register */
+                LOG_AL("program AXI_ADDR_OFFSET_IP(0x%04x) = 0x00000000 (absolute mode)", AVPU_REG_AXI_ADDR_OFFSET_IP);
+                (void)avpu_ip_write_reg(fd, AVPU_REG_AXI_ADDR_OFFSET_IP, 0);
+            }
+
             /* TOP_CTRL */
             (void)avpu_ip_write_reg(fd, AVPU_REG_TOP_CTRL, 0x00000080);
             /* Unmask core0 interrupts */

@@ -1,803 +1,864 @@
-root@ing-wyze-cam3-a000 opt# LOG_AVPU_TRACE=/opt/avpu_trace.log LD_PRELOAD=/opt/libioctl_trace.so ./prudynt
-[INFO:Config.cpp]: Loaded configuration from /etc/prudynt.json
-[INFO:main.cpp]: PRUDYNT-T Next-Gen Video Daemon: prudynt-t vOct 15 2025 19:34:34 [24c730b-dev1760571274]
-[INFO:main.cpp]: Starting Prudynt Video Server.
-[OSD] SetPoolSize: 1228800 bytes
-[INFO:IMPSystem.cpp]: LIBIMP Version IMP-1.1.6
-[INFO:IMPSystem.cpp]: SYSUTILS Version: SYSUTILS-1.1.6
-[INFO:IMPSystem.cpp]: CPU Information: T31
-[IMP_ISP] Open: opened /dev/tx-isp (fd=5)
-[INFO:IMPSystem.cpp]: Sensor: gc2053
-[IMP_ISP] AddSensor: name='gc2053' cbus=1 i2c.type='gc2053' i2c.addr=0x37 rst_gpio=0
-[IMP_ISP] AddSensor: pwdn_gpio=0 power_gpio=0
-[IMP_ISP] AddSensor: calling REGISTER_SENSOR ioctl(0x805056c1)
-[IMP_ISP] AddSensor: REGISTER_SENSOR succeeded
-[IMP_ISP] AddSensor: enum idx=0 name='gc2053'
-[IMP_ISP] AddSensor: found matching sensor at index 0
-[IMP_ISP] AddSensor: calling TX_ISP_SENSOR_SET_INPUT with index=0
-[IMP_ISP] AddSensor: TX_ISP_SENSOR_SET_INPUT succeeded
-[IMP_ISP] AddSensor: TX_ISP_GET_BUF using index=input_index=125830200
-[IMP_ISP] AddSensor: ISP buffer size=4685424 (platform struct size=8)
-[DMA] DMA init: using /dev/rmem
-[DMA] DMA init: /dev/rmem mapped at 0x7548d000 size=30408704 base_phys=0x06300000
-[DMA] Alloc: (unnamed) size=4685424 phys=0x6300000 virt=0x7548d000 (rmem off=0x0)
-[IMP_ISP] AddSensor: allocated ISP buffer: virt=0x7548d000 phys=0x6300000 size=4685424
-[IMP_ISP] AddSensor: calling TX_ISP_SET_BUF (0x800856d4) with phys=0x6300000 size=4685424
-[IMP_ISP] AddSensor: TX_ISP_SET_BUF succeeded
-[IMP_ISP] AddSensor: secondary ISP buffer not requested or ioctl failed
-[IMP_ISP] AddSensor: gc2053 (idx=0, buf_size=4685424)
-[IMP_ISP] EnableSensor: proceeding without custom AE/AWB
-[IMP_ISP] EnableSensor: about to call ioctl 0x40045626
-[IMP_ISP] EnableSensor: ioctl 0x40045626 returned 0
-[IMP_ISP] EnableSensor: ioctl 0x40045626 succeeded, sensor_idx=0
-[IMP_ISP] EnableSensor: sensor index validated, proceeding to STREAMON/LINK_SETUP now (OEM parity)
-[IMP_ISP] EnsureLinkStreamOn: calling ioctl 0x80045612 (ISP STREAMON) [arg=0]
-[IMP_ISP] EnsureLinkStreamOn: calling ioctl 0x800456d0 (LINK_SETUP) [arg=&sensor_idx=0]
-[IMP_ISP] EnsureLinkStreamOn: LINK_SETUP succeeded, sensor_idx=0
-[IMP_ISP] EnsureLinkStreamOn: calling ioctl 0x800456d2 (LINK_STREAM_ON) [arg=0]
-[IMP_ISP] EnsureLinkStreamOn: ISP streaming started
-[System] Initializing...
-[System] Subsystems initialized
-[System] Initialized (IMP-1.1.6)
-[IMP_ISP] EnableTuning: opened /dev/isp-m0 (fd=7)
-[IMP_ISP] GetContrast: 128
-[IMP_ISP] EnableTuning: tuning initialized successfully
-[IMP_ISP] SetContrast: 128
-[IMP_ISP] SetSharpness: 128
-[IMP_ISP] SetSaturation: 128
-[IMP_ISP] SetBrightness: 128
-[IMP_ISP] SetContrast: 128
-[IMP_ISP] SetSharpness: 128
-[IMP_ISP] SetSaturation: 128
-[IMP_ISP] SetBrightness: 128
-[IMP_ISP] SetSinterStrength: 128
-[IMP_ISP] SetTemperStrength: 128
-[IMP_ISP] SetISPHflip: 0
-[IMP_ISP] SetISPVflip: 0
-[IMP_ISP] SetISPRunningMode: 0
-[IMP_ISP] SetISPRunningMode: mode set successfully to 0
-[IMP_ISP] SetISPBypass: 0
-[IMP_ISP] SetAntiFlickerAttr: 2
-[IMP_ISP] SetAeComp: 128
-[IMP_ISP] SetMaxAgain: 160
-[IMP_ISP] SetMaxDgain: 80
-[IMP_ISP] SetWB: mode=0, rgain=0, bgain=0
-[IMP_ISP] SetBcshHue: 128
-[IMP_ISP] SetDefog_Strength: 2140908203
-[IMP_ISP] SetDPC_Strength: 128
-[IMP_ISP] SetDRC_Strength: 128
-[IMP_ISP] SetSensorFPS: 25/1
-[IMP_ISP] SetSensorFPS: FPS set successfully to 25/1
-[IMP_ISP] SetISPRunningMode: 0
-[IMP_ISP] SetISPRunningMode: mode set successfully to 0
-[IMP_System] Timestamp rebased to 46938685 us
-[INFO:TimestampManager.cpp]: TimestampManager initialized - using IMP hardware timestamps directly
-[FrameSource] GetChnAttr failed: channel 0 not configured
-[FrameSource] CreateChn: Opened /dev/framechan0 (fd=8, nonblock)
-[System] Registered module [0,0]: FrameSource
-[FrameSource] CreateChn: registered FrameSource module [0,0] with 1 output
-[FrameSource] CreateChn: chn=0, 1920x1080, fmt=0xa
-[FrameSource] SetChnAttr: chn=0, 1920x1080, fmt=0xa
-[FrameSource] GetChnFifoAttr: chn=0 -> maxdepth=0, depth=0
-[FrameSource] SetChnFifoAttr: chn=0, maxdepth=0, depth=0
-[KernelIF] Set frame depth: 0
-[FrameSource] SetFrameDepth: chn=0, depth=0
-[Encoder] SetDefaultParam: 1920x1080, 25/1 fps, profile=100, rc=1
-[Codec] SetDefaultParam: initialized (OEM-aligned)
-[Encoder] channel_encoder_init: 1920x1080, profile=0x64->0x64, fps=25/1, gop=65535, bitrate=0
-[Fifo] Init: size=4, max_elements=5
-[Fifo] Init: size=7, max_elements=8
-[Codec] Create: hardware encoder will be attempted via /dev/avpu (lazy init)
-[Codec] Create: codec=0x771940a0, channel=0
-[Encoder] channel_encoder_init: frame_cnt=4, frame_size=1048576
-[Fifo] Init: size=4, max_elements=5
-[Encoder] CreateChn: chn=0, profile=100 created successfully
-[Encoder] RegisterChn: grp=0, chn=0
-[System] Registered module [1,0]: Encoder
-[Encoder] CreateGroup: registered Encoder module [1,0] with 1 output and update callback
-[Encoder] CreateGroup: grp=0
-[System] Bind request: [0,0,0] -> [1,0,0]
-[System] Binding [0,0,0] -> [1,0,0]
-[System] Bound FrameSource -> Encoder (observer added)
-[FrameSource] EnableChn: disabling redundant scaler (out==in 1920x1080)
-[KernelIF] SET_FMT before ioctl:
-[KernelIF]   width=1920 height=1080 pixelformat=0x3231564e
-[KernelIF]   scaler_enable=0 scaler_outwidth=1920 scaler_outheight=1080
-[KernelIF]   picwidth=1920 picheight=1080
-[KernelIF]   crop_enable=0 crop=1920x1080+0+0
-[KernelIF] SET_FMT after ioctl:
-[KernelIF]   width=1920 height=1080 sizeimage=3133440 bytesperline=0
-[KernelIF]   scaler_enable=0 scaler_outwidth=1920 scaler_outheight=1080
-[KernelIF] Set format: 1920x1080 fmt=0xa (fourcc=0x3231564e) sizeimage=3133440->3133440 bytesperline=0 colorspace=8
-[FrameSource] EnableChn: using sizeimage=3133440 from SET_FMT for chn=0
-[VBM] CreatePool: allocating pool_size=2512 (frame_count=2 * 0x428 + 0x180)
-[VBM] CreatePool: chn=0, 1920x1080 fmt=0xa, 2 frames, size=3133440 (req=3133440 calc=3133440)
-[DMA] Alloc: (unnamed) size=6266880 phys=0x6778000 virt=0x75905000 (rmem off=0x478000)
-[VBM] Frame 0: phys=0x6778000 virt=0x75905000
-[VBM] Frame 1: phys=0x6a75000 virt=0x75c02000
-[VBM] CreatePool: chn=0 created successfully
-[KernelIF] REQBUFS: requested=2 actual=2
-[VBM] FillPool: chn=0, filling 2 frames
-[VBM] FillPool: queued 2 frames
-[VBM] PrimeKernelQueue: QBUF using PHYS address in .m
-[VBM] PrimeKernelQueue: QBUF using PHYS address in .m
-[VBM] PrimeKernelQueue: queued 2 frames to kernel for chn=0 (limit=2)
-[INFO:WS.cpp]: libwebsockets version: 4.3.5-unknown
-[INFO:WS.cpp]: WS context: port=0 iface=<any>
-[Encoder] encoder_thread: started for channel 0
-[Encoder] stream_thread: started for channel 0
-[KernelIF] Stream started
-[FrameSource] EnableChn: chn=0 enabled successfully
-[Encoder] RequestIDR: chn=0
-[HW_Encoder] RequestIDR: next frame will be IDR
-[Encoder] StartRecvPic: chn=0
-[ERROR:WS.cpp]: lws init failed (errno=12)
-[INFO:RTSPStatus.cpp]: RTSPStatus: RTSP status interface initialized successfully
-[INFO:RTSP.cpp]: Set shared RTP timestamp base: 3921775265 (0xe9c18aa1)
-[FrameSource] frame_capture_thread: started for channel 0, state=2, fd=8
-[FrameSource] frame_capture_thread chn=0: entering main loop
-[FrameSource] frame_capture_thread chn=0: poll iteration 1, state=2, fd=8, software_mode=0
-[FrameSource] frame_capture_thread chn=0: about to select() (poll #1)
-[FrameSource] frame_capture_thread chn=0: select() returned 1 (errno=0)
-[FrameSource] frame_capture_thread chn=0: entering DQBUF drain loop
-[VBM] VBMKernelDequeue chn=0: attempting DQBUF...
-[KernelIF] DQBUF ioctl ENTER
-[KernelIF] DQBUF ioctl LEAVE ret=0 errno=0
-[VBM] VBMKernelDequeue chn=0: DQBUF ret=0 idx=0
-[FrameSource] frame_capture_thread chn=0: got frame #1 (0x7719bcc0) from kernel
-[System] notify: calling update 0x7763571c on Encoder (frame=0x7719bcc0)
-[Encoder] encoder_update: Frame available from FrameSource, frame=0x7719bcc0
-[Codec] Process: frame=0x7719bcc0, extracting metadata
-[AL-AVPU] sensor: gc2053 1920x1080 @ 25 fps
-[DMA] Alloc: (unnamed) size=131072 phys=0x6d72000 virt=0x75eff000 (rmem off=0xa72000)
-[AL-AVPU] stream buf[0]: RMEM phys=0x06d72000 size=131072 virt=0x75eff000
-[DMA] Alloc: (unnamed) size=131072 phys=0x6d92000 virt=0x75f1f000 (rmem off=0xa92000)
-[AL-AVPU] stream buf[1]: RMEM phys=0x06d92000 size=131072 virt=0x75f1f000
-[DMA] Alloc: (unnamed) size=131072 phys=0x6db2000 virt=0x75f3f000 (rmem off=0xab2000)
-[AL-AVPU] stream buf[2]: RMEM phys=0x06db2000 size=131072 virt=0x75f3f000
-[DMA] Alloc: (unnamed) size=131072 phys=0x6dd2000 virt=0x75f5f000 (rmem off=0xad2000)
-[AL-AVPU] stream buf[3]: RMEM phys=0x06dd2000 size=131072 virt=0x75f5f000
-[AL-AVPU] addr-mode: use_offsets=1 axi_base=0x06300000 (OEM OFFSET)
-[DMA] Alloc: (unnamed) size=9728 phys=0x6df2000 virt=0x75f7f000 (rmem off=0xaf2000)
-[AL-AVPU] cmdlist ring: phys=0x06df2000 size=9728 entries=19 entry_size=512 first:[0x06df2000..0x06df2200)
-[AL-AVPU] program AXI_ADDR_OFFSET_IP(0x9208) = 0x06300000
-[AL-AVPU] about to IOCTL WRITE off=0x9208 val=0x06300000 arg=0x753ba8d4
-[AL-AVPU] WRITE[0x9208] <- 0x06300000
-[AL-AVPU] about to IOCTL WRITE off=0x83f0 val=0x00000002 arg=0x753ba8d4
-[AL-AVPU] WRITE[0x83f0] <- 0x00000002
-[AL-AVPU] about to IOCTL WRITE off=0x83f0 val=0x00000004 arg=0x753ba8d4
-[AL-AVPU] WRITE[0x83f0] <- 0x00000004
-[AL-AVPU] about to IOCTL WRITE off=0x8054 val=0x00000080 arg=0x753ba8d4
-[AL-AVPU] WRITE[0x8054] <- 0x00000080
-[AL-AVPU] about to IOCTL WRITE off=0x8010 val=0x00001000 arg=0x753ba8d4
-ing-wyze-cam3-a000 login: [   47.141223] Unhandled kernel unaligned access[#1]:
-[   47.146179] CPU: 0 PID: 2897 Comm: dropbear Tainted: G           O 3.10.14__isvp_swan_1.0__ #1
-[   47.155063] task: 842be880 ti: 8473c000 task.ti: 8473c000
-[   47.160631] $ 0   : 00000000 00000001 00000000 00000000
-[   47.166017] $ 4   : ffffdb8d fffffffe 00000000 0000028e
-[   47.171399] $ 8   : 10001c01 1000001e 8561c202 000800a0
-[   47.176795] $12   : 820350c0 4410eb3f 00000000 00000000
-[   47.182198] $16   : 8c420014 ffffdb8d 8027130c 80000000
-[   47.187593] $20   : 80276e34 8473da70 0000000a 84b04534
-[   47.192993] $24   : 00000000 8029cd88                  
-[   47.198385] $28   : 8473c000 8473da38 00000002 8001b084
-[   47.203784] Hi    : 04d81a7d
-[   47.206752] Lo    : 00bd2fc0
-[   47.209720] epc   : 80021064 0x80021064
-[   47.213666]     Tainted: G           O
-[   47.217531] ra    : 8001b084 0x8001b084
-[   47.221487] Status: 10001c03	KERNEL EXL IE 
-[   47.225799] Cause : 40808014
-[   47.228767] BadVA : ffffdb8d
-[   47.231733] PrId  : 00d00100 (Ingenic Xburst)
-[   47.236216] Modules linked in:Unhandled kernel unaligned access[#2]:
-[   47.242774] CPU: 0 PID: 2897 Comm: dropbear Tainted: G           O 3.10.14__isvp_swan_1.0__ #1
-[   47.251661] task: 842be880 ti: 8473c000 task.ti: 8473c000
-[   47.257220] $ 0   : 00000000 10001c00 00000000 00000000
-[   47.262618] $ 4   : ffffd8ff fffffffe 8007aa6c 00000000
-[   47.268017] $ 8   : 10001c00 1000001e 00000000 ffffffe0
-[   47.273413] $12   : 8473d6c8 00000000 00000000 696e6567
-[   47.278805] $16   : 8e020000 ffffd8ff 8007aa6c 00000000
-[   47.284194] $20   : 80023fd8 8473d460 00030000 84b04534
-[   47.289592] $24   : 00000001 8029cd88                  
-[   47.294989] $28   : 8473c000 8473d428 00000002 8001b084
-[   47.300390] Hi    : 00000000
-[   47.303348] Lo    : 00000000
-[   47.306309] epc   : 80021064 0x80021064
-[   47.310253]     Tainted: G           O
-[   47.314121] ra    : 8001b084 0x8001b084
-[   47.318077] Status: 10001c02	KERNEL EXL 
-[   47.322118] Cause : 40809414
-[   47.325079] BadVA : ffffd8ff
-[   47.328045] PrId  : 00d00100 (Ingenic Xburst)
-[   47.332534] Modules linked in:Unhandled kernel unaligned access[#3]:
-[   47.339101] CPU: 0 PID: 2897 Comm: dropbear Tainted: G           O 3.10.14__isvp_swan_1.0__ #1
-[   47.347987] task: 842be880 ti: 8473c000 task.ti: 8473c000
-[   47.353552] $ 0   : 00000000 10001c00 00000000 00000000
-[   47.358951] $ 4   : ffffd8ff fffffffe 8007aa6c 00000000
-[   47.364349] $ 8   : 10001c00 1000001e 00000000 ffffffe0
-[   47.369745] $12   : 8473d0b8 00000000 00000000 696e6567
-[   47.375139] $16   : 8e020000 ffffd8ff 8007aa6c 00000000
-[   47.380535] $20   : 80023fd8 8473ce50 00030000 84b04534
-[   47.385923] $24   : 00000001 8029cd88                  
-[   47.391318] $28   : 8473c000 8473ce18 00000002 8001b084
-[   47.396704] Hi    : 00000000
-[   47.399666] Lo    : 00000000
-[   47.402625] epc   : 80021064 0x80021064
-[   47.406583]     Tainted: G           O
-[   47.410449] ra    : 8001b084 0x8001b084
-[   47.414406] Status: 10001c02	KERNEL EXL 
-[   47.418447] Cause : 40809414
-[   47.421407] BadVA : ffffd8ff
-[   47.424373] PrId  : 00d00100 (Ingenic Xburst)
-[   47.428861] Modules linked in:Unhandled kernel unaligned access[#4]:
-[   47.435423] CPU: 0 PID: 2897 Comm: dropbear Tainted: G           O 3.10.14__isvp_swan_1.0__ #1
-[   47.444306] task: 842be880 ti: 8473c000 task.ti: 8473c000
-[   47.449871] $ 0   : 00000000 10001c00 00000000 00000000
-[   47.455257] $ 4   : ffffd8ff fffffffe 8007aa6c 00000000
-[   47.460644] $ 8   : 10001c00 1000001e 00000000 ffffffe0
-[   47.466055] $12   : 8473caa8 00000000 00000000 696e6567
-[   47.471457] $16   : 8e020000 ffffd8ff 8007aa6c 00000000
-[   47.476842] $20   : 80023fd8 8473c840 00030000 84b04534
-[   47.482231] $24   : 00000001 8029cd88                  
-[   47.487627] $28   : 8473c000 8473c808 00000002 8001b084
-[   47.493024] Hi    : 00000000
-[   47.495986] Lo    : 00000000
-[   47.498947] epc   : 80021064 0x80021064
-[   47.502904]     Tainted: G           O
-[   47.506769] ra    : 8001b084 0x8001b084
-[   47.510713] Status: 10001c02	KERNEL EXL 
-[   47.514754] Cause : 40809414
-[   47.517713] BadVA : ffffd8ff
-[   47.520679] PrId  : 00d00100 (Ingenic Xburst)
-[   47.525167] Modules linked in:[   47.528135] Unhandled kernel unaligned access[#5]:
-[   47.533081] Unhandled kernel unaligned access[#6]:
-[   47.538028] CPU: 0 PID: 16 Comm:  Tainted: G           O 3.10.14__isvp_swan_1.0__ #1
-[   47.546110] task: 8473a019 ti: 8473a000 task.ti: 008473a0
+[   33.166176] @@@@ avpu driver ok(version H20220825a) @@@@@
+[   35.284271] @@@@ tx-isp-probe ok(version H20221206a), compiler date=Dec  6 2022 @@@@@
+[   40.189296] -----sensor_detect: 1330 ret = 0, v = 0x20
+[   40.189790] -----sensor_detect: 1338 ret = 0, v = 0x53
+[   40.189797] gc2053 chip found @ 0x37 (i2c0)
+[   40.189802] sensor driver version H20230726a
+[   40.390589] gc2053 stream on
+   63.200153] gc2053 stream on
+[   63.241319] [AVPU] ioctl cmd=0xc008710b arg=0x7fb9cf18
+[   63.241332] [AVPU] ioctl cmd=0xc008710b ret=0
+[   63.241382] [AVPU] ioctl cmd=0xc008710b arg=0x7fb9cf18
+[   63.241390] [AVPU] ioctl cmd=0xc008710b ret=0
+[   63.241426] [AVPU] ioctl cmd=0xc008710b arg=0x7fb9cf18
+[   63.241433] [AVPU] ioctl cmd=0xc008710b ret=0
+[   63.241449] [AVPU] ioctl cmd=0xc008710b arg=0x7fb9cf18
+[   63.241456] [AVPU] ioctl cmd=0xc008710b ret=0
+[   63.241567] [AVPU] ioctl cmd=0xc004710c arg=0x74d54cb8
+[   63.264422] [AVPU] ioctl cmd=0xc008710a arg=0x7fb9ceb8
+[   63.264436] [AVPU] ioctl cmd=0xc008710a ret=0
+[   63.264461] [AVPU] ioctl cmd=0xc008710a arg=0x7fb9ce68
+[   63.264468] [AVPU] ioctl cmd=0xc008710a ret=0
+[   63.264475] [AVPU] ioctl cmd=0xc008710a arg=0x7fb9ce68
+[   63.264481] [AVPU] ioctl cmd=0xc008710a ret=0
+[   63.264488] [AVPU] ioctl cmd=0xc008710a arg=0x7fb9ce90
+[   63.264494] [AVPU] ioctl cmd=0xc008710a ret=0
+[   63.264502] [AVPU] ioctl cmd=0xc008710a arg=0x7fb9ce90
+[   63.264508] [AVPU] ioctl cmd=0xc008710a ret=0
+[   63.264515] [AVPU] ioctl cmd=0xc008710a arg=0x7fb9ce90
+[   63.264521] [AVPU] ioctl cmd=0xc008710a ret=0
+[   63.363373] [AVPU] ioctl cmd=0xc008710b arg=0x74bec5c8
+[   63.363387] [AVPU] ioctl cmd=0xc008710b ret=0
+[   63.363396] [AVPU] ioctl cmd=0xc008710a arg=0x74bec5f0
+[   63.363403] [AVPU] ioctl cmd=0xc008710a ret=0
+[   63.363412] [AVPU] ioctl cmd=0xc008710a arg=0x74bec590
+[   63.363418] [AVPU] ioctl cmd=0xc008710a ret=0
+[   63.363426] [AVPU] ioctl cmd=0xc008710a arg=0x74bec590
+[   63.363432] [AVPU] ioctl cmd=0xc008710a ret=0
+[   63.363439] [AVPU] ioctl cmd=0xc008710a arg=0x74bec5b8
+[   63.363445] [AVPU] ioctl cmd=0xc008710a ret=0
+[   63.363516] [AVPU] ioctl cmd=0xc008710b arg=0x74bec4d0
+[   63.363524] [AVPU] ioctl cmd=0xc008710b ret=0
+[   63.363532] [AVPU] ioctl cmd=0xc008710a arg=0x74bec4d0
+[   63.363538] [AVPU] ioctl cmd=0xc008710a ret=0
+[   63.363551] [AVPU] ioctl cmd=0xc008710b arg=0x74bec4c8
+[   63.363558] [AVPU] ioctl cmd=0xc008710b ret=0
+[   63.363656] [AVPU] ioctl cmd=0xc008710a arg=0x74bec4f0
+[   63.363666] [AVPU] ioctl cmd=0xc008710a ret=0
+[   63.363674] [AVPU] ioctl cmd=0xc008710a arg=0x74bec518
+[   63.363680] [AVPU] ioctl cmd=0xc008710a ret=0
+[   63.375645] [AVPU] ioctl cmd=0xc004710c ret=0
+[   63.375677] [AVPU] ioctl cmd=0xc008710b arg=0x74d54b50
+[   63.375685] [AVPU] ioctl cmd=0xc008710b ret=0
+[   63.375692] [AVPU] ioctl cmd=0xc008710a arg=0x74d54b78
+[   63.375699] [AVPU] ioctl cmd=0xc008710a ret=0
+[   63.375872] [AVPU] ioctl cmd=0xc008710b arg=0x74d54a48
+[   63.375882] [AVPU] ioctl cmd=0xc008710b ret=0
+[   63.375890] [AVPU] ioctl cmd=0xc008710a arg=0x74d54a70
+[   63.375896] [AVPU] ioctl cmd=0xc008710a ret=0
+[   63.376036] [AVPU] ioctl cmd=0xc004710c arg=0x74d54cb8
 
-[   47.551683] $ 0   : 00000000 10001c00 00803ded 803cb618
-[   47.557251] $ 4   : 00803ded 00803dec 00803ded 00000000
-[   47.562641] $ 8   : 804a3140 803e0ac8 00000030 00000020
-[   47.568040] $12   : 00000023 00000000 803e0ac8 6e67696c
-[   47.573439] $16   : 804a3140 ffffffff 804a3520 ffffffff
-[   47.578825] $20   : 00000004 803e0aca 8473c02d 0000000a
-[   47.584225] $24   : 00000008 8029cd88                  
-[   47.589614] $28   : 8473c000 8473bf10 804a3520 801a6794
-[   47.595006] Hi    : 00000000
-[   47.597968] Lo    : 00000000
-[   47.600927] epc   : 801a4f2c 0x801a4f2c
-[   47.604885]     Tainted: G           O
-[   47.608753] ra    : 801a6794 0x801a6794
-[   47.612709] Status: 10001c02	KERNEL EXL 
-[   47.616749] Cause : 40809414
-[   47.619709] BadVA : ffffd8ff
-[   47.622675] PrId  : 00d00100 (Ingenic Xburst)
-[   47.627163] Modules linked in:Unhandled kernel unaligned access[#7]:
-[   47.633726] CPU: 0 PID: 16 Comm:  Tainted: G           O 3.10.14__isvp_swan_1.0__ #1
-[   47.641807] task: 8473a019 ti: 8473a000 task.ti: 008473a0
-[   47.647373] $ 0   : 00000000 10001c00 00000000 00000000
-[   47.652769] $ 4   : ffffda6b fffffffe 00000000 0000016c
-[   47.658163] $ 8   : 10001c00 1000001e 00000000 ffffffe0
-[   47.663572] $12   : 8473bba0 00000000 00000000 696e6567
-[   47.668963] $16   : 8e020000 ffffda6b 803aa81c 00000000
-[   47.674349] $20   : 803aa778 8473bce8 8473c02d 0000000a
-[   47.679738] $24   : 00000001 8029cd88                  
-[   47.685138] $28   : 8473a000 8473bcb0 804a3520 8001b084
-[   47.690530] Hi    : 00000000
-[   47.693493] Lo    : 00000000
-[   47.696453] epc   : 80021064 0x80021064
-[   47.700397]     Tainted: G           O
-[   47.704265] ra    : 8001b084 0x8001b084
-[   47.708221] Status: 10001c02	KERNEL EXL 
-[   47.712262] Cause : 40809414
-[   47.715222] BadVA : ffffda6b
-[   47.718188] PrId  : 00d00100 (Ingenic Xburst)
-[   47.722675] Modules linked in:Unhandled kernel unaligned access[#8]:
-[   47.729241] CPU: 0 PID: 16 Comm:  Tainted: G           O 3.10.14__isvp_swan_1.0__ #1
-[   47.737317] task: 8473a019 ti: 8473a000 task.ti: 008473a0
-[   47.742885] $ 0   : 00000000 10001c00 00000000 00000000
-[   47.748271] $ 4   : ffffda7f fffffffe 00000000 00000180
-[   47.753674] $ 8   : 10001c00 1000001e 00000000 ffffffe0
-[   47.759072] $12   : 8473b940 00000000 00000000 696e6567
-[   47.764474] $16   : 8e020000 ffffda7f 803aa81c 00000000
-[   47.769863] $20   : 803aa778 8473ba88 8473c02d 0000000a
-[   47.775258] $24   : 00000001 8029cd88                  
-[   47.780649] $28   : 8473a000 8473ba50 804a3520 8001b084
-[   47.786043] Hi    : 00000000
-[   47.789002] Lo    : 00000000
-[   47.791962] epc   : 80021064 0x80021064
-[   47.795918]     Tainted: G           O
-[   47.799785] ra    : 8001b084 0x8001b084
-[   47.803729] Status: 10001c02	KERNEL EXL 
-[   47.807770] Cause : 40809414
-[   47.810731] BadVA : ffffda7f
-[   47.813697] PrId  : 00d00100 (Ingenic Xburst)
-[   47.818186] Modules linked in:Unhandled kernel unaligned access[#9]:
-[   47.824748] CPU: 0 PID: 16 Comm:  Tainted: G           O 3.10.14__isvp_swan_1.0__ #1
-[   47.832828] task: 8473a019 ti: 8473a000 task.ti: 008473a0
-[   47.838396] $ 0   : 00000000 10001c00 00000000 00000000
-[   47.843781] $ 4   : ffffda93 fffffffe 00000000 00000194
-[   47.849172] $ 8   : 10001c00 1000001e 00000000 ffffffe0
-[   47.854581] $12   : 8473b6e0 00000000 00000000 696e6567
-[   47.859973] $16   : 8e020000 ffffda93 803aa81c 00000000
-[   47.865361] $20   : 803aa778 8473b828 8473c02d 0000000a
-[   47.870772] $24   : 00000001 8029cd88                  
-[   47.876175] $28   : 8473a000 8473b7f0 804a3520 8001b084
-[   47.881578] Hi    : 00000000
-[   47.884536] Lo    : 00000000
-[   47.887496] epc   : 80021064 0x80021064
-[   47.891454]     Tainted: G           O
-[   47.895308] ra    : 8001b084 0x8001b084
-[   47.899252] Status: 10001c02	KERNEL EXL 
-[   47.903292] Cause : 40809414
-[   47.906254] BadVA : ffffda93
-[   47.909220] PrId  : 00d00100 (Ingenic Xburst)
-[   47.913708] Modules linked in:Unhandled kernel unaligned access[#10]:
-[   47.920362] CPU: 0 PID: 16 Comm:  Tainted: G           O 3.10.14__isvp_swan_1.0__ #1
-[   47.928440] task: 8473a019 ti: 8473a000 task.ti: 008473a0
-[   47.934007] $ 0   : 00000000 10001c00 00000000 00000000
-[   47.939392] $ 4   : ffffdaa7 fffffffe 00000000 000001a8
-[   47.944782] $ 8   : 10001c00 1000001e 00000000 ffffffe0
-[   47.950178] $12   : 8473b480 00000000 00000000 696e6567
-[   47.955571] $16   : 8e020000 ffffdaa7 803aa81c 00000000
-[   47.960960] $20   : 803aa778 8473b5c8 8473c02d 0000000a
-[   47.966355] $24   : 00000001 8029cd88                  
-[   47.971746] $28   : 8473a000 8473b590 804a3520 8001b084
-[   47.977138] Hi    : 00000000
-[   47.980099] Lo    : 00000000
-[   47.983060] epc   : 80021064 0x80021064
-[   47.987016]     Tainted: G           O
-[   47.990872] ra    : 8001b084 0x8001b084
-[   47.994827] Status: 10001c02	KERNEL EXL 
-[   47.998868] Cause : 40809414
-[   48.001828] BadVA : ffffdaa7
-[   48.004797] PrId  : 00d00100 (Ingenic Xburst)
-[   48.009286] Modules linked in:Unhandled kernel unaligned access[#11]:
-[   48.015938] CPU: 0 PID: 16 Comm:  Tainted: G           O 3.10.14__isvp_swan_1.0__ #1
-[   48.024016] task: 8473a019 ti: 8473a000 task.ti: 008473a0
-[   48.029585] $ 0   : 00000000 10001c00 00000000 00000000
-[   48.034973] $ 4   : ffffdabb fffffffe 00000000 000001bc
-[   48.040360] $ 8   : 10001c00 1000001e 00000000 ffffffe0
-[   48.045748] $12   : 8473b220 00000000 00000000 696e6567
-[   48.051142] $16   : 8e020000 ffffdabb 803aa81c 00000000
-[   48.056529] $20   : 803aa778 8473b368 8473c02d 0000000a
-[   48.061927] $24   : 00000001 8029cd88                  
-[   48.067316] $28   : 8473a000 8473b330 804a3520 8001b084
-[   48.072708] Hi    : 00000000
-[   48.075672] Lo    : 00000000
-[   48.078634] epc   : 80021064 0x80021064
-[   48.082579]     Tainted: G           O
-[   48.086436] ra    : 8001b084 0x8001b084
-[   48.090380] Status: 10001c02	KERNEL EXL 
-[   48.094421] Cause : 40809414
-[   48.097384] BadVA : ffffdabb
-[   48.100352] PrId  : 00d00100 (Ingenic Xburst)
-[   48.104839] Modules linked in:Unhandled kernel unaligned access[#12]:
-[   48.111493] CPU: 0 PID: 16 Comm:  Tainted: G           O 3.10.14__isvp_swan_1.0__ #1
-[   48.119573] task: 8473a019 ti: 8473a000 task.ti: 008473a0
-[   48.125141] $ 0   : 00000000 10001c00 00000000 00000000
-[   48.130528] $ 4   : ffffdacf fffffffe 00000000 000001d0
-[   48.135916] $ 8   : 10001c00 1000001e 00000000 ffffffe0
-[   48.141316] $12   : 8473afc0 00000000 00000000 696e6567
-[   48.146707] $16   : 8e020000 ffffdacf 803aa81c 00000000
-[   48.152096] $20   : 803aa778 8473b108 8473c02d 0000000a
-[   48.157494] $24   : 00000001 8029cd88                  
-[   48.162895] $28   : 8473a000 8473b0d0 804a3520 8001b084
-[   48.168288] Hi    : 00000000
-[   48.171252] Lo    : 00000000
-[   48.174213] epc   : 80021064 0x80021064
-[   48.178158]     Tainted: G           O
-[   48.182015] ra    : 8001b084 0x8001b084
-[   48.185960] Status: 10001c02	KERNEL EXL 
-[   48.190002] Cause : 40809414
-[   48.192962] BadVA : ffffdacf
-[   48.195930] PrId  : 00d00100 (Ingenic Xburst)
-[   48.200420] Modules linked in:Unhandled kernel unaligned access[#13]:
-[   48.207072] CPU: 0 PID: 16 Comm:  Tainted: G           O 3.10.14__isvp_swan_1.0__ #1
-[   48.215152] task: 8473a019 ti: 8473a000 task.ti: 008473a0
-[   48.220720] $ 0   : 00000000 10001c00 00000000 00000000
-[   48.226104] $ 4   : ffffdae3 fffffffe 00000000 000001e4
-[   48.231498] $ 8   : 10001c00 1000001e 00000000 ffffffe0
-[   48.236894] $12   : 8473ad60 00000000 00000000 696e6567
-[   48.242287] $16   : 8e020000 ffffdae3 803aa81c 00000000
-[   48.247674] $20   : 803aa778 8473aea8 8473c02d 0000000a
-[   48.253060] $24   : 00000001 8029cd88                  
-[   48.258451] $28   : 8473a000 8473ae70 804a3520 8001b084
-[   48.263838] Hi    : 00000000
-[   48.266795] Lo    : 00000000
-[   48.269756] epc   : 80021064 0x80021064
-[   48.273701]     Tainted: G           O
-[   48.277556] ra    : 8001b084 0x8001b084
-[   48.281502] Status: 10001c02	KERNEL EXL 
-[   48.285544] Cause : 40809414
-[   48.288504] BadVA : ffffdae3
-[   48.291473] PrId  : 00d00100 (Ingenic Xburst)
-[   48.295962] Modules linked in:Unhandled kernel unaligned access[#14]:
-[   48.302614] CPU: 0 PID: 16 Comm:  Tainted: G           O 3.10.14__isvp_swan_1.0__ #1
-[   48.310695] task: 8473a019 ti: 8473a000 task.ti: 008473a0
-[   48.316264] $ 0   : 00000000 10001c00 00000000 00000000
-[   48.321648] $ 4   : ffffdaf7 fffffffe 00000000 000001f8
-[   48.327031] $ 8   : 10001c00 1000001e 00000000 ffffffe0
-[   48.332439] $12   : 8473ab00 00000000 00000000 696e6567
-[   48.337832] $16   : 8e020000 ffffdaf7 803aa81c 00000000
-[   48.343220] $20   : 803aa778 8473ac48 8473c02d 0000000a
-[   48.348608] $24   : 00000001 8029cd88                  
-[   48.354010] $28   : 8473a000 8473ac10 804a3520 8001b084
-[   48.359401] Hi    : 00000000
-[   48.362366] Lo    : 00000000
-[   48.365327] epc   : 80021064 0x80021064
-[   48.369273]     Tainted: G           O
-[   48.373128] ra    : 8001b084 0x8001b084
-[   48.377074] Status: 10001c02	KERNEL EXL 
-[   48.381115] Cause : 40809414
-[   48.384077] BadVA : ffffdaf7
-[   48.387044] PrId  : 00d00100 (Ingenic Xburst)
-[   48.391534] Modules linked in:Unhandled kernel unaligned access[#15]:
-[   48.398189] CPU: 0 PID: 16 Comm:  Tainted: G           O 3.10.14__isvp_swan_1.0__ #1
-[   48.406270] task: 8473a019 ti: 8473a000 task.ti: 008473a0
-[   48.411840] $ 0   : 00000000 10001c00 00000000 00000000
-[   48.417226] $ 4   : ffffdb0b fffffffe 00000000 0000020c
-[   48.422617] $ 8   : 10001c00 1000001e 00000000 ffffffe0
-[   48.428004] $12   : 8473a8a0 00000000 00000000 696e6567
-[   48.433405] $16   : 8e020000 ffffdb0b 803aa81c 00000000
-[   48.438796] $20   : 803aa778 8473a9e8 8473c02d 0000000a
-[   48.444204] $24   : 00000001 8029cd88                  
-[   48.449586] $28   : 8473a000 8473a9b0 804a3520 8001b084
-[   48.454982] Hi    : 00000000
-[   48.457950] Lo    : 00000000
-[   48.460912] epc   : 80021064 0x80021064
-[   48.464858]     Tainted: G           O
-[   48.468714] ra    : 8001b084 0x8001b084
-[   48.472660] Status: 10001c02	KERNEL EXL 
-[   48.476701] Cause : 40809414
-[   48.479663] BadVA : ffffdb0b
-[   48.482631] PrId  : 00d00100 (Ingenic Xburst)
-[   48.487120] Modules linked in:Unhandled kernel unaligned access[#16]:
-[   48.493770] CPU: 0 PID: 16 Comm:  Tainted: G           O 3.10.14__isvp_swan_1.0__ #1
-[   48.501849] task: 8473a019 ti: 8473a000 task.ti: 008473a0
-[   48.507419] $ 0   : 00000000 10001c00 00000000 00000000
-[   48.512805] $ 4   : ffffdb1f fffffffe 00000000 00000220
-[   48.518196] $ 8   : 10001c00 1000001e 00000000 ffffffe0
-[   48.523592] $12   : 8473a640 00000000 00000000 696e6567
-[   48.528984] $16   : 8e020000 ffffdb1f 803aa81c 00000000
-[   48.534375] $20   : 803aa778 8473a788 8473c02d 0000000a
-[   48.539774] $24   : 00000001 8029cd88                  
-[   48.545173] $28   : 8473a000 8473a750 804a3520 8001b084
-[   48.550567] Hi    : 00000000
-[   48.553531] Lo    : 00000000
-[   48.556493] epc   : 80021064 0x80021064
-[   48.560438]     Tainted: G           O
-[   48.564306] ra    : 8001b084 0x8001b084
-[   48.568251] Status: 10001c02	KERNEL EXL 
-[   48.572292] Cause : 40809414
-[   48.575252] BadVA : ffffdb1f
-[   48.578219] PrId  : 00d00100 (Ingenic Xburst)
-[   48.582709] Modules linked in:Unhandled kernel unaligned access[#17]:
-[   48.589362] CPU: 0 PID: 16 Comm:  Tainted: G           O 3.10.14__isvp_swan_1.0__ #1
-[   48.597445] task: 8473a019 ti: 8473a000 task.ti: 008473a0
-[   48.603013] $ 0   : 00000000 10001c00 00000000 00000000
-[   48.608400] $ 4   : ffffdb33 fffffffe 00000000 00000234
-[   48.613787] $ 8   : 10001c00 1000001e 00000000 ffffffe0
-[   48.619187] $12   : 8473a3e0 00000000 00000000 696e6567
-[   48.624580] $16   : 8e020000 ffffdb33 803aa81c 00000000
-[   48.629970] $20   : 803aa778 8473a528 8473c02d 0000000a
-[   48.635369] $24   : 00000001 8029cd88                  
-[   48.640769] $28   : 8473a000 8473a4f0 804a3520 8001b084
-[   48.646162] Hi    : 00000000
-[   48.649126] Lo    : 00000000
-[   48.652087] epc   : 80021064 0x80021064
-[   48.656033]     Tainted: G           O
-[   48.659889] ra    : 8001b084 0x8001b084
-[   48.663834] Status: 10001c02	KERNEL EXL 
-[   48.667875] Cause : 40809414
-[   48.670837] BadVA : ffffdb33
-[   48.673805] PrId  : 00d00100 (Ingenic Xburst)
-[   48.678294] Modules linked in:Unhandled kernel unaligned access[#18]:
-[   48.684945] CPU: 0 PID: 956301312 Comm:  Tainted: G           O 3.10.14__isvp_swan_1.0__ #1
-[   48.693562] Unhandled kernel unaligned access[#19]:
-[   48.698599] CPU: 0 PID: 0 Comm:  Tainted: G           O 3.10.14__isvp_swan_1.0__ #1
-[   48.706504] task: 845d7a90 ti: 84738000 task.ti: 0013c587
-[   48.712069] $ 0   : 00000000 10001c00 00000000 00000000
-[   48.717455] $ 4   : ffffdb49 fffffffe 804a0000 0000024a
-[   48.722853] $ 8   : 10001c00 1000001e 00000000 ffffffe0
-[   48.728243] $12   : 84739e70 00000000 00000000 00000249
-[   48.733636] $16   : 8ca2000c ffffdb49 80052b7c 00000000
-[   48.739047] $20   : 80039adc 8473a000 8473c02d 0000000a
-[   48.744433] $24   : 00000002 8029cd88                  
-[   48.749825] $28   : 8473a000 84739fc8 804a3520 8001b084
-[   48.755229] Hi    : 00000000
-[   48.758189] Lo    : 00000000
-[   48.761151] epc   : 80021064 0x80021064
-[   48.765097]     Tainted: G           O
-[   48.768953] ra    : 8001b084 0x8001b084
-[   48.772898] Status: 10001c02	KERNEL EXL 
-[   48.776939] Cause : 40809414
-[   48.779901] BadVA : ffffdb49
-[   48.782869] PrId  : 00d00100 (Ingenic Xburst)
-[   48.787358] Modules linked in:Unhandled kernel unaligned access[#20]:
-[   48.794008] CPU: 0 PID: 0 Comm:  Tainted: G           O 3.10.14__isvp_swan_1.0__ #1
-[   48.801913] task: 845d7a90 ti: 84738000 task.ti: 0013c587
-[   48.807481] $ 0   : 00000000 10001c00 00000000 00000000
-[   48.812867] $ 4   : ffffdb5d fffffffe 00000000 0000025e
-[   48.818258] $ 8   : 10001c00 1000001e 00000000 ffffffe0
-[   48.823643] $12   : 84739c58 00000000 00000000 696e6567
-[   48.829034] $16   : 8e020000 ffffdb5d 803aa81c 00000000
-[   48.834423] $20   : 803aa778 84739da0 8473c02d 0000000a
-[   48.839819] $24   : 00000001 8029cd88                  
-[   48.845210] $28   : 84738000 84739d68 804a3520 8001b084
-[   48.850596] Hi    : 00000000
-[   48.853566] Lo    : 00000000
-[   48.856528] epc   : 80021064 0x80021064
-[   48.860472]     Tainted: G           O
-[   48.864328] ra    : 8001b084 0x8001b084
-[   48.868273] Status: 10001c02	KERNEL EXL 
-[   48.872315] Cause : 40809414
-[   48.875275] BadVA : ffffdb5d
-[   48.878244] PrId  : 00d00100 (Ingenic Xburst)
-[   48.882733] Modules linked in:Unhandled kernel unaligned access[#21]:
-[   48.889381] CPU: 0 PID: 0 Comm:  Tainted: G           O 3.10.14__isvp_swan_1.0__ #1
-[   48.897284] task: 845d7a90 ti: 84738000 task.ti: 0013c587
-[   48.902852] $ 0   : 00000000 10001c00 00000000 00000000
-[   48.908238] $ 4   : ffffdb71 fffffffe 00000000 00000272
-[   48.913625] $ 8   : 10001c00 1000001e 00000000 ffffffe0
-[   48.919025] $12   : 847399f8 00000000 00000000 696e6567
-[   48.924421] $16   : 8e020000 ffffdb71 803aa81c 00000000
-[   48.929819] $20   : 803aa778 84739b40 8473c02d 0000000a
-[   48.935215] $24   : 00000001 8029cd88                  
-[   48.940607] $28   : 84738000 84739b08 804a3520 8001b084
-[   48.945993] Hi    : 00000000
-[   48.948951] Lo    : 00000000
-[   48.951913] epc   : 80021064 0x80021064
-[   48.955857]     Tainted: G           O
-[   48.959713] ra    : 8001b084 0x8001b084
-[   48.963659] Status: 10001c02	KERNEL EXL 
-[   48.967699] Cause : 40809414
-[   48.970661] BadVA : ffffdb71
-[   48.973629] PrId  : 00d00100 (Ingenic Xburst)
-[   48.978118] Modules linked in:Unhandled kernel unaligned access[#22]:
-[   48.984766] CPU: 0 PID: 0 Comm:  Tainted: G           O 3.10.14__isvp_swan_1.0__ #1
-[   48.992671] task: 845d7a90 ti: 84738000 task.ti: 0013c587
-[   48.998239] $ 0   : 00000000 10001c00 00000000 00000000
-[   49.003625] $ 4   : ffffdb85 fffffffe 00000000 00000286
-[   49.009017] $ 8   : 10001c00 1000001e 00000000 ffffffe0
-[   49.014408] $12   : 84739798 00000000 00000000 696e6567
-[   49.019806] $16   : 8e020000 ffffdb85 803aa81c 00000000
-[   49.025195] $20   : 803aa778 847398e0 8473c02d 0000000a
-[   49.030591] $24   : 00000001 8029cd88                  
-[   49.035981] $28   : 84738000 847398a8 804a3520 8001b084
-[   49.041368] Hi    : 00000000
-[   49.044325] Lo    : 00000000
-[   49.047286] epc   : 80021064 0x80021064
-[   49.051231]     Tainted: G           O
-[   49.055087] ra    : 8001b084 0x8001b084
-[   49.059031] Status: 10001c02	KERNEL EXL 
-[   49.063073] Cause : 40809414
-[   49.066034] BadVA : ffffdb85
-[   49.069001] PrId  : 00d00100 (Ingenic Xburst)
-[   49.073491] Modules linked in:Unhandled kernel unaligned access[#23]:
-[   49.080141] CPU: 0 PID: 0 Comm:  Tainted: G           O 3.10.14__isvp_swan_1.0__ #1
-[   49.088035] task: 845d7a90 ti: 84738000 task.ti: 0013c587
-[   49.093603] $ 0   : 00000000 10001c00 00000000 00000000
-[   49.098989] $ 4   : ffffdb99 fffffffe 00000000 0000029a
-[   49.104381] $ 8   : 10001c00 1000001e 00000000 ffffffe0
-[   49.109767] $12   : 84739538 00000000 00000000 696e6567
-[   49.115169] $16   : 8e020000 ffffdb99 803aa81c 00000000
-[   49.120559] $20   : 803aa778 84739680 8473c02d 0000000a
-[   49.125955] $24   : 00000001 8029cd88                  
-[   49.131346] $28   : 84738000 84739648 804a3520 8001b084
-[   49.136732] Hi    : 00000000
-[   49.139688] Lo    : 00000000
-[   49.142649] epc   : 80021064 0x80021064
-[   49.146595]     Tainted: G           O
-[   49.150450] ra    : 8001b084 0x8001b084
-[   49.154394] Status: 10001c02	KERNEL EXL 
-[   49.158435] Cause : 40809414
-[   49.161397] BadVA : ffffdb99
-[   49.164364] PrId  : 00d00100 (Ingenic Xburst)
-[   49.168853] Modules linked in:Unhandled kernel unaligned access[#24]:
-[   49.175499] CPU: 0 PID: 0 Comm:  Tainted: G           O 3.10.14__isvp_swan_1.0__ #1
-[   49.183403] task: 845d7a90 ti: 84738000 task.ti: 0013c587
-[   49.188972] $ 0   : 00000000 10001c00 00000000 00000000
-[   49.194358] $ 4   : ffffdbad fffffffe 00000000 000002ae
-[   49.199744] $ 8   : 10001c00 1000001e 00000000 ffffffe0
-[   49.205145] $12   : 847392d8 00000000 00000000 696e6567
-[   49.210536] $16   : 8e020000 ffffdbad 803aa81c 00000000
-[   49.215936] $20   : 803aa778 84739420 8473c02d 0000000a
-[   49.221321] $24   : 00000001 8029cd88                  
-[   49.226712] $28   : 84738000 847393e8 804a3520 8001b084
-[   49.232104] Hi    : 00000000
-[   49.235068] Lo    : 00000000
-[   49.238029] epc   : 80021064 0x80021064
-[   49.241974]     Tainted: G           O
-[   49.245830] ra    : 8001b084 0x8001b084
-[   49.249774] Status: 10001c02	KERNEL EXL 
-[   49.253816] Cause : 40809414
-[   49.256776] BadVA : ffffdbad
-[   49.259744] PrId  : 00d00100 (Ingenic Xburst)
-[   49.264232] Modules linked in:Unhandled kernel unaligned access[#25]:
-[   49.270882] CPU: 0 PID: 0 Comm:  Tainted: G           O 3.10.14__isvp_swan_1.0__ #1
-[   49.278787] task: 845d7a90 ti: 84738000 task.ti: 0013c587
-[   49.284355] $ 0   : 00000000 10001c00 00000000 00000000
-[   49.289739] $ 4   : ffffdbc1 fffffffe 00000000 000002c2
-[   49.295134] $ 8   : 10001c00 1000001e 00000000 ffffffe0
-[   49.300542] $12   : 84739078 00000000 00000000 696e6567
-[   49.305934] $16   : 8e020000 ffffdbc1 803aa81c 00000000
-[   49.311325] $20   : 803aa778 847391c0 8473c02d 0000000a
-[   49.316723] $24   : 00000001 8029cd88                  
-[   49.322124] $28   : 84738000 84739188 804a3520 8001b084
-[   49.327517] Hi    : 00000000
-[   49.330480] Lo    : 00000000
-[   49.333442] epc   : 80021064 0x80021064
-[   49.337386]     Tainted: G           O
-[   49.341242] ra    : 8001b084 0x8001b084
-[   49.345187] Status: 10001c02	KERNEL EXL 
-[   49.349228] Cause : 40809414
-[   49.352188] BadVA : ffffdbc1
-[   49.355156] PrId  : 00d00100 (Ingenic Xburst)
-[   49.359644] Modules linked in:Unhandled kernel unaligned access[#26]:
-[   49.366294] CPU: 0 PID: 0 Comm:  Tainted: G           O 3.10.14__isvp_swan_1.0__ #1
-[   49.374198] task: 845d7a90 ti: 84738000 task.ti: 0013c587
-[   49.379766] $ 0   : 00000000 10001c00 00000000 00000000
-[   49.385149] $ 4   : ffffdbd5 fffffffe 00000000 000002d6
-[   49.390542] $ 8   : 10001c00 1000001e 00000000 ffffffe0
-[   49.395929] $12   : 84738e18 00000000 00000000 696e6567
-[   49.401330] $16   : 8e020000 ffffdbd5 803aa81c 00000000
-[   49.406729] $20   : 803aa778 84738f60 8473c02d 0000000a
-[   49.412128] $24   : 00000001 8029cd88                  
-[   49.417519] $28   : 84738000 84738f28 804a3520 8001b084
-[   49.422905] Hi    : 00000000
-[   49.425862] Lo    : 00000000
-[   49.428823] epc   : 80021064 0x80021064
-[   49.432768]     Tainted: G           O
-[   49.436623] ra    : 8001b084 0x8001b084
-[   49.440568] Status: 10001c02	KERNEL EXL 
-[   49.444609] Cause : 40809414
-[   49.447571] BadVA : ffffdbd5
-[   49.450538] PrId  : 00d00100 (Ingenic Xburst)
-[   49.455027] Modules linked in:Unhandled kernel unaligned access[#27]:
-[   49.461678] CPU: 0 PID: 0 Comm:  Tainted: G           O 3.10.14__isvp_swan_1.0__ #1
-[   49.469582] task: 845d7a90 ti: 84738000 task.ti: 0013c587
-[   49.475148] $ 0   : 00000000 10001c00 00000000 00000000
-[   49.480535] $ 4   : ffffdbe9 fffffffe 00000000 000002ea
-[   49.485922] $ 8   : 10001c00 1000001e 00000000 ffffffe0
-[   49.491308] $12   : 84738bb8 00000000 00000000 696e6567
-[   49.496700] $16   : 8e020000 ffffdbe9 803aa81c 00000000
-[   49.502099] $20   : 803aa778 84738d00 8473c02d 0000000a
-[   49.507486] $24   : 00000001 8029cd88                  
-[   49.512876] $28   : 84738000 84738cc8 804a3520 8001b084
-[   49.518268] Hi    : 00000000
-[   49.521232] Lo    : 00000000
-[   49.524194] epc   : 80021064 0x80021064
-[   49.528139]     Tainted: G           O
-[   49.531994] ra    : 8001b084 0x8001b084
-[   49.535938] Status: 10001c02	KERNEL EXL 
-[   49.539979] Cause : 40809414
-[   49.542940] BadVA : ffffdbe9
-[   49.545908] PrId  : 00d00100 (Ingenic Xburst)
-[   49.550396] Modules linked in:Unhandled kernel unaligned access[#28]:
-[   49.557045] CPU: 0 PID: 0 Comm:  Tainted: G           O 3.10.14__isvp_swan_1.0__ #1
-[   49.564952] task: 845d7a90 ti: 84738000 task.ti: 0013c587
-[   49.570520] $ 0   : 00000000 10001c00 00000000 00000000
-[   49.575906] $ 4   : ffffdbfd fffffffe 00000000 000002fe
-[   49.581298] $ 8   : 10001c00 1000001e 00000000 ffffffe0
-[   49.586694] $12   : 84738958 00000000 00000000 696e6567
-[   49.592088] $16   : 8e020000 ffffdbfd 803aa81c 00000000
-[   49.597486] $20   : 803aa778 84738aa0 8473c02d 0000000a
-[   49.602882] $24   : 00000001 8029cd88                  
-[   49.608273] $28   : 84738000 84738a68 804a3520 8001b084
-[   49.613666] Hi    : 00000000
-[   49.616629] Lo    : 00000000
-[   49.619588] epc   : 80021064 0x80021064
-[   49.623544]     Tainted: G           O
-[   49.627400] ra    : 8001b084 0x8001b084
-[   49.631344] Status: 10001c02	KERNEL EXL 
-[   49.635386] Cause : 40809414
-[   49.638347] BadVA : ffffdbfd
-[   49.641314] PrId  : 00d00100 (Ingenic Xburst)
-[   49.645802] Modules linked in:Unhandled kernel unaligned access[#29]:
-[   49.652452] CPU: 0 PID: 0 Comm:  Tainted: G           O 3.10.14__isvp_swan_1.0__ #1
-[   49.660358] task: 845d7a90 ti: 84738000 task.ti: 0013c587
-[   49.665926] $ 0   : 00000000 10001c00 00000000 00000000
-[   49.671312] $ 4   : ffffdc11 fffffffe 00000000 00000312
-[   49.676704] $ 8   : 10001c00 1000001e 00000000 ffffffe0
-[   49.682112] $12   : 847386f8 00000000 00000000 696e6567
-[   49.687504] $16   : 8e020000 ffffdc11 803aa81c 00000000
-[   49.692894] $20   : 803aa778 84738840 8473c02d 0000000a
-[   49.698293] $24   : 00000001 8029cd88                  
-[   49.703694] $28   : 84738000 84738808 804a3520 8001b084
-[   49.709080] Hi    : 00000000
-[   49.712036] Lo    : 00000000
-[   49.714998] epc   : 80021064 0x80021064
-[   49.718942]     Tainted: G           O
-[   49.722798] ra    : 8001b084 0x8001b084
-[   49.726743] Status: 10001c02	KERNEL EXL 
-[   49.730784] Cause : 40809414
-[   49.733745] BadVA : ffffdc11
-[   49.736712] PrId  : 00d00100 (Ingenic Xburst)
-[   49.741202] Modules linked in:Unhandled kernel unaligned access[#30]:
-[   49.747850] CPU: 0 PID: 0 Comm:  Tainted: G           O 3.10.14__isvp_swan_1.0__ #1
-[   49.755756] task: 845d7a90 ti: 84738000 task.ti: 0013c587
-[   49.761324] $ 0   : 00000000 10001c00 00000000 00000000
-[   49.766710] $ 4   : ffffdc25 fffffffe 00000000 00000326
-[   49.772100] $ 8   : 10001c00 1000001e 00000000 ffffffe0
-[   49.777487] $12   : 84738498 00000000 00000000 696e6567
-[   49.782888] $16   : 8e020000 ffffdc25 803aa81c 00000000
-[   49.788278] $20   : 803aa778 847385e0 8473c02d 0000000a
-[   49.793677] $24   : 00000001 8029cd88                  
-[   49.799080] $28   : 84738000 847385a8 804a3520 8001b084
-[   49.804482] Hi    : 00000000
-[   49.807446] Lo    : 00000000
-[   49.810407] epc   : 80021064 0x80021064
-[   49.814352]     Tainted: G           O
-[   49.818208] ra    : 8001b084 0x8001b084
-[   49.822153] Status: 10001c02	KERNEL EXL 
-[   49.826194] Cause : 40809414
-[   49.829155] BadVA : ffffdc25
-[   49.832122] PrId  : 00d00100 (Ingenic Xburst)
-[   49.836612] Modules linked in:Unhandled kernel unaligned access[#31]:
-[   49.843262] CPU: 0 PID: 0 Comm:  Tainted: G           O 3.10.14__isvp_swan_1.0__ #1
-[   49.851187] Unhandled kernel unaligned access[#32]:
-[   49.856213] CPU: 0 PID: 0 Comm:  Tainted: G           O 3.10.14__isvp_swan_1.0__ #1
-[   49.864115] task: 8c6200c0 ti: 84736000 task.ti:   (null)
-[   49.869674] $ 0   : 00000000 10001c00 00000000 00000000
-[   49.875063] $ 4   : 622f21e3 fffffffe 84736210 ffffffff
-[   49.880458] $ 8   : 10001c00 1000001e 00000000 ffffffe0
-[   49.885847] $12   : 84737f28 00000000 00000000 0000033b
-[   49.891245] $16   : 8c6200c0 622f21e3 80054044 00000000
-[   49.896631] $20   : 8005d62c 84736108 8473c02d 0000000a
-[   49.902025] $24   : 00000002 8029cd88                  
-[   49.907421] $28   : 84736000 847360d0 804a3520 8001b084
-[   49.912805] Hi    : 00000000
-[   49.915767] Lo    : 00000000
-[   49.918737] epc   : 80021064 0x80021064
-[   49.922688]     Tainted: G           O
-[   49.926551] ra    : 8001b084 0x8001b084
-[   49.930501] Status: 10001c02	KERNEL EXL 
-[   49.934541] Cause : 40809414
-[   49.937503] BadVA : ffffd8fe
-[   49.940465] PrId  : 00d00100 (Ingenic Xburst)
-[   49.944947] Modules linked in:[   49.947929] Unhandled kernel unaligned access[#33]:
-[   49.952967] CPU: 0 PID: 0 Comm: � Tainted: G           O 3.10.14__isvp_swan_1.0__ #1
-[   49.961043] task: 84734080 ti: 84734000 task.ti:   (null)
 
-[   49.966605] $ 0   : 00000000 10001c00 00000000 00000000
-[   49.972180] $ 4   : ffffd8fe fffffffe 84734270 ffffffff
-[   49.977568] $ 8   : 10001c00 1000001e 00000000 ffffffe0
-[   49.982954] $12   : 84735d60 00000000 00000000 696e6567
-[   49.988349] $16   : 8c6200c0 ffffd8fe 80054044 00000000
-[   49.993735] $20   : 8005d62c 84734168 8473c02d 0000000a
-[   49.999128] $24   : 00000001 8029cd88                  
-[   50.004523] $28   : 84734000 84734130 804a3520 8001b084
-[   50.009909] Hi    : 00000000
-[   50.012873] Lo    : 00000000
-[   50.015842] epc   : 80021064 0x80021064
-[   50.019793]     Tainted: G           O
-[   50.023656] ra    : 8001b084 0x8001b084
-[   50.027608] Status: 10001c02	KERNEL EXL 
-[   50.031647] Cause : 40809414
-[   50.034611] BadVA : ffffd8fe
-[   50.037572] PrId  : 00d00100 (Ingenic Xburst)
-[   50.042055] Modules linked in:[   50.045085] Unhandled kernel unaligned access[#34]:
-[   50.050120] CPU: 0 PID: -2056503872 Comm: ���� Tainted: G           O 3.10.14__isvp_swan_1.0__ #1
-[   50.059461] Unhandled kernel unaligned access[#35]:
-[   50.064493] CPU: 0 PID: -2056503872 Comm: ���� Tainted: G           O 3.10.14__isvp_swan_1.0__ #1
-[   50.073837] Unhandled kernel unaligned access[#36]:
-[   50.078864] CPU: 0 PID: -2056503872 Comm: ���� Tainted: G           O 3.10.14__isvp_swan_1.0__ #1
-[   50.088206] Unhandled kernel unaligned access[#37]:
-[   50.093237] CPU: 0 PID: -2056503872 Comm: ���� Tainted: G           O 3.10.14__isvp_swan_1.0__ #1
-[   50.102569] Unhandled kernel unaligned access[#38]:
-[   50.107605] CPU: 0 PID: -2056503872 Comm: ���� Tainted: G           O 3.10.14__isvp_swan_1.0__ #1
-[   50.116948] Unhandled kernel unaligned access[#39]:
-[   50.121977] CPU: 0 PID: -2056503872 Comm: ���� Tainted: G           O 3.10.14__isvp_swan_1.0__ #1
-[   50.131321] Unhandled kernel unaligned access[#40]:
-[   50.136353] CPU: 0 PID: -2056503872 Comm: ���� Tainted: G           O 3.10.14__isvp_swan_1.0__ #1
-[   50.145696] Unhandled kernel unaligned access[#41]:
-[   50.150734] CPU: 0 PID: -2056503872 Comm: ���� Tainted: G           O 3.10.14__isvp_swan_1.0__ #1
-[   50.160067] Unhandled kernel unaligned access[#42]:
-[   50.165101] CPU: 0 PID: -2056503872 Comm: ���� Tainted: G           O 3.10.14__isvp_swan_1.0__ #1
-[   50.174444] Unhandled kernel unaligned access[#43]:
-[   50.179475] CPU: 0 PID: -2056503872 Comm: ���� Tainted: G           O 3.10.14__isvp_swan_1.0__ #1
-[   50.188811] Unhandled kernel unaligned access[#44]:
-[   50.193841] CPU: 0 PID: 16 Comm:  Tainted: G           O 3.10.14__isvp_swan_1.0__ #1
-[   50.201924] task: 8472a0d9 ti: 8472a000 task.ti: 0084729f
 
+
+[   40.431987] [AVPU] ioctl cmd=0xc008710b arg=0x7fa1b1a8
+[   40.432000] [AVPU] ioctl cmd=0xc008710b ret=0
+[   40.432053] [AVPU] ioctl cmd=0xc008710b arg=0x7fa1b1a8
+[   40.432060] [AVPU] ioctl cmd=0xc008710b ret=0
+[   40.432095] [AVPU] ioctl cmd=0xc008710b arg=0x7fa1b1a8
+[   40.432103] [AVPU] ioctl cmd=0xc008710b ret=0
+[   40.432119] [AVPU] ioctl cmd=0xc008710b arg=0x7fa1b1a8
+[   40.432125] [AVPU] ioctl cmd=0xc008710b ret=0
+[   40.432241] [AVPU] ioctl cmd=0xc004710c arg=0x74f63cb8
+[   40.455047] [AVPU] ioctl cmd=0xc008710a arg=0x7fa1b148
+[   40.455061] [AVPU] ioctl cmd=0xc008710a ret=0
+[   40.455086] [AVPU] ioctl cmd=0xc008710a arg=0x7fa1b0f8
+[   40.455093] [AVPU] ioctl cmd=0xc008710a ret=0
+[   40.455100] [AVPU] ioctl cmd=0xc008710a arg=0x7fa1b0f8
+[   40.455106] [AVPU] ioctl cmd=0xc008710a ret=0
+[   40.455113] [AVPU] ioctl cmd=0xc008710a arg=0x7fa1b120
+[   40.455119] [AVPU] ioctl cmd=0xc008710a ret=0
+[   40.455127] [AVPU] ioctl cmd=0xc008710a arg=0x7fa1b120
+[   40.455133] [AVPU] ioctl cmd=0xc008710a ret=0
+[   40.455139] [AVPU] ioctl cmd=0xc008710a arg=0x7fa1b120
+[   40.455146] [AVPU] ioctl cmd=0xc008710a ret=0
+[   40.593313] [AVPU] ioctl cmd=0xc008710b arg=0x74dfb5c8
+[   40.593327] [AVPU] ioctl cmd=0xc008710b ret=0
+[   40.593335] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb5f0
+[   40.593343] [AVPU] ioctl cmd=0xc008710a ret=0
+[   40.593353] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb590
+[   40.593359] [AVPU] ioctl cmd=0xc008710a ret=0
+[   40.593366] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb590
+[   40.593372] [AVPU] ioctl cmd=0xc008710a ret=0
+[   40.593379] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb5b8
+[   40.593385] [AVPU] ioctl cmd=0xc008710a ret=0
+[   40.593453] [AVPU] ioctl cmd=0xc008710b arg=0x74dfb4d0
+[   40.593460] [AVPU] ioctl cmd=0xc008710b ret=0
+[   40.593468] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb4d0
+[   40.593475] [AVPU] ioctl cmd=0xc008710a ret=0
+[   40.593487] [AVPU] ioctl cmd=0xc008710b arg=0x74dfb4c8
+[   40.593493] [AVPU] ioctl cmd=0xc008710b ret=0
+[   40.593593] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb4f0
+[   40.593603] [AVPU] ioctl cmd=0xc008710a ret=0
+[   40.593609] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb518
+[   40.593617] [AVPU] ioctl cmd=0xc008710a ret=0
+[   40.605583] [AVPU] ioctl cmd=0xc004710c ret=0
+[   40.605619] [AVPU] ioctl cmd=0xc008710b arg=0x74f63b50
+[   40.605626] [AVPU] ioctl cmd=0xc008710b ret=0
+[   40.605633] [AVPU] ioctl cmd=0xc008710a arg=0x74f63b78
+[   40.605640] [AVPU] ioctl cmd=0xc008710a ret=0
+[   40.605815] [AVPU] ioctl cmd=0xc008710b arg=0x74f63a48
+[   40.605826] [AVPU] ioctl cmd=0xc008710b ret=0
+[   40.605833] [AVPU] ioctl cmd=0xc008710a arg=0x74f63a70
+[   40.605840] [AVPU] ioctl cmd=0xc008710a ret=0
+[   40.605982] [AVPU] ioctl cmd=0xc004710c arg=0x74f63cb8
+[   40.671805] [AVPU] ioctl cmd=0xc008710b arg=0x74dfb5c8
+[   40.671819] [AVPU] ioctl cmd=0xc008710b ret=0
+[   40.671827] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb5f0
+[   40.671835] [AVPU] ioctl cmd=0xc008710a ret=0
+[   40.671843] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb590
+[   40.671850] [AVPU] ioctl cmd=0xc008710a ret=0
+[   40.671857] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb590
+[   40.671863] [AVPU] ioctl cmd=0xc008710a ret=0
+[   40.671870] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb5b8
+[   40.671877] [AVPU] ioctl cmd=0xc008710a ret=0
+[   40.671925] [AVPU] ioctl cmd=0xc008710b arg=0x74dfb4d0
+[   40.671933] [AVPU] ioctl cmd=0xc008710b ret=0
+[   40.671940] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb4d0
+[   40.671947] [AVPU] ioctl cmd=0xc008710a ret=0
+[   40.671959] [AVPU] ioctl cmd=0xc008710b arg=0x74dfb4c8
+[   40.671965] [AVPU] ioctl cmd=0xc008710b ret=0
+[   40.672064] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb4f0
+[   40.672073] [AVPU] ioctl cmd=0xc008710a ret=0
+[   40.672080] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb518
+[   40.672087] [AVPU] ioctl cmd=0xc008710a ret=0
+[   40.684525] [AVPU] ioctl cmd=0xc004710c ret=0
+[   40.684559] [AVPU] ioctl cmd=0xc008710b arg=0x74f63b50
+[   40.684566] [AVPU] ioctl cmd=0xc008710b ret=0
+[   40.684574] [AVPU] ioctl cmd=0xc008710a arg=0x74f63b78
+[   40.684581] [AVPU] ioctl cmd=0xc008710a ret=0
+[   40.684719] [AVPU] ioctl cmd=0xc008710b arg=0x74f63a48
+[   40.684728] [AVPU] ioctl cmd=0xc008710b ret=0
+[   40.684735] [AVPU] ioctl cmd=0xc008710a arg=0x74f63a70
+[   40.684742] [AVPU] ioctl cmd=0xc008710a ret=0
+[   40.684882] [AVPU] ioctl cmd=0xc004710c arg=0x74f63cb8
+[   40.751799] [AVPU] ioctl cmd=0xc008710b arg=0x74dfb5c8
+[   40.751813] [AVPU] ioctl cmd=0xc008710b ret=0
+[   40.751821] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb5f0
+[   40.751829] [AVPU] ioctl cmd=0xc008710a ret=0
+[   40.751838] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb590
+[   40.751845] [AVPU] ioctl cmd=0xc008710a ret=0
+[   40.751852] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb590
+[   40.751858] [AVPU] ioctl cmd=0xc008710a ret=0
+[   40.751865] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb5b8
+[   40.751871] [AVPU] ioctl cmd=0xc008710a ret=0
+[   40.751919] [AVPU] ioctl cmd=0xc008710b arg=0x74dfb4d0
+[   40.751927] [AVPU] ioctl cmd=0xc008710b ret=0
+[   40.751935] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb4d0
+[   40.751941] [AVPU] ioctl cmd=0xc008710a ret=0
+[   40.751953] [AVPU] ioctl cmd=0xc008710b arg=0x74dfb4c8
+[   40.751959] [AVPU] ioctl cmd=0xc008710b ret=0
+[   40.752057] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb4f0
+[   40.752066] [AVPU] ioctl cmd=0xc008710a ret=0
+[   40.752073] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb518
+[   40.752080] [AVPU] ioctl cmd=0xc008710a ret=0
+[   40.764521] [AVPU] ioctl cmd=0xc004710c ret=0
+[   40.764555] [AVPU] ioctl cmd=0xc008710b arg=0x74f63b50
+[   40.764563] [AVPU] ioctl cmd=0xc008710b ret=0
+[   40.764571] [AVPU] ioctl cmd=0xc008710a arg=0x74f63b78
+[   40.764577] [AVPU] ioctl cmd=0xc008710a ret=0
+[   40.764718] [AVPU] ioctl cmd=0xc008710b arg=0x74f63a48
+[   40.764727] [AVPU] ioctl cmd=0xc008710b ret=0
+[   40.764734] [AVPU] ioctl cmd=0xc008710a arg=0x74f63a70
+[   40.764741] [AVPU] ioctl cmd=0xc008710a ret=0
+[   40.764880] [AVPU] ioctl cmd=0xc004710c arg=0x74f63cb8
+[   40.831765] [AVPU] ioctl cmd=0xc008710b arg=0x74dfb5c8
+[   40.831779] [AVPU] ioctl cmd=0xc008710b ret=0
+[   40.831788] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb5f0
+[   40.831795] [AVPU] ioctl cmd=0xc008710a ret=0
+[   40.831804] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb590
+[   40.831811] [AVPU] ioctl cmd=0xc008710a ret=0
+[   40.831817] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb590
+[   40.831824] [AVPU] ioctl cmd=0xc008710a ret=0
+[   40.831831] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb5b8
+[   40.831837] [AVPU] ioctl cmd=0xc008710a ret=0
+[   40.831884] [AVPU] ioctl cmd=0xc008710b arg=0x74dfb4d0
+[   40.831892] [AVPU] ioctl cmd=0xc008710b ret=0
+[   40.831899] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb4d0
+[   40.831906] [AVPU] ioctl cmd=0xc008710a ret=0
+[   40.831918] [AVPU] ioctl cmd=0xc008710b arg=0x74dfb4c8
+[   40.831924] [AVPU] ioctl cmd=0xc008710b ret=0
+[   40.832022] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb4f0
+[   40.832032] [AVPU] ioctl cmd=0xc008710a ret=0
+[   40.832039] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb518
+[   40.832046] [AVPU] ioctl cmd=0xc008710a ret=0
+[   40.844488] [AVPU] ioctl cmd=0xc004710c ret=0
+[   40.844523] [AVPU] ioctl cmd=0xc008710b arg=0x74f63b50
+[   40.844531] [AVPU] ioctl cmd=0xc008710b ret=0
+[   40.844539] [AVPU] ioctl cmd=0xc008710a arg=0x74f63b78
+[   40.844545] [AVPU] ioctl cmd=0xc008710a ret=0
+[   40.844685] [AVPU] ioctl cmd=0xc008710b arg=0x74f63a48
+[   40.844694] [AVPU] ioctl cmd=0xc008710b ret=0
+[   40.844701] [AVPU] ioctl cmd=0xc008710a arg=0x74f63a70
+[   40.844708] [AVPU] ioctl cmd=0xc008710a ret=0
+[   40.844847] [AVPU] ioctl cmd=0xc004710c arg=0x74f63cb8
+[   40.911768] [AVPU] ioctl cmd=0xc008710b arg=0x74dfb5c8
+[   40.911781] [AVPU] ioctl cmd=0xc008710b ret=0
+[   40.911790] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb5f0
+[   40.911797] [AVPU] ioctl cmd=0xc008710a ret=0
+[   40.911807] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb590
+[   40.911813] [AVPU] ioctl cmd=0xc008710a ret=0
+[   40.911820] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb590
+[   40.911826] [AVPU] ioctl cmd=0xc008710a ret=0
+[   40.911833] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb5b8
+[   40.911839] [AVPU] ioctl cmd=0xc008710a ret=0
+[   40.911887] [AVPU] ioctl cmd=0xc008710b arg=0x74dfb4d0
+[   40.911895] [AVPU] ioctl cmd=0xc008710b ret=0
+[   40.911902] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb4d0
+[   40.911909] [AVPU] ioctl cmd=0xc008710a ret=0
+[   40.911921] [AVPU] ioctl cmd=0xc008710b arg=0x74dfb4c8
+[   40.911927] [AVPU] ioctl cmd=0xc008710b ret=0
+[   40.912026] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb4f0
+[   40.912035] [AVPU] ioctl cmd=0xc008710a ret=0
+[   40.912043] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb518
+[   40.912049] [AVPU] ioctl cmd=0xc008710a ret=0
+[   40.924489] [AVPU] ioctl cmd=0xc004710c ret=0
+[   40.924523] [AVPU] ioctl cmd=0xc008710b arg=0x74f63b50
+[   40.924531] [AVPU] ioctl cmd=0xc008710b ret=0
+[   40.924537] [AVPU] ioctl cmd=0xc008710a arg=0x74f63b78
+[   40.924545] [AVPU] ioctl cmd=0xc008710a ret=0
+[   40.924681] [AVPU] ioctl cmd=0xc008710b arg=0x74f63a48
+[   40.924689] [AVPU] ioctl cmd=0xc008710b ret=0
+[   40.924697] [AVPU] ioctl cmd=0xc008710a arg=0x74f63a70
+[   40.924704] [AVPU] ioctl cmd=0xc008710a ret=0
+[   40.924843] [AVPU] ioctl cmd=0xc004710c arg=0x74f63cb8
+[   40.991759] [AVPU] ioctl cmd=0xc008710b arg=0x74dfb5c8
+[   40.991773] [AVPU] ioctl cmd=0xc008710b ret=0
+[   40.991782] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb5f0
+[   40.991789] [AVPU] ioctl cmd=0xc008710a ret=0
+[   40.991798] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb590
+[   40.991805] [AVPU] ioctl cmd=0xc008710a ret=0
+[   40.991812] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb590
+[   40.991818] [AVPU] ioctl cmd=0xc008710a ret=0
+[   40.991825] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb5b8
+[   40.991832] [AVPU] ioctl cmd=0xc008710a ret=0
+[   40.991880] [AVPU] ioctl cmd=0xc008710b arg=0x74dfb4d0
+[   40.991888] [AVPU] ioctl cmd=0xc008710b ret=0
+[   40.991895] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb4d0
+[   40.991902] [AVPU] ioctl cmd=0xc008710a ret=0
+[   40.991914] [AVPU] ioctl cmd=0xc008710b arg=0x74dfb4c8
+[   40.991920] [AVPU] ioctl cmd=0xc008710b ret=0
+[   40.992019] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb4f0
+[   40.992028] [AVPU] ioctl cmd=0xc008710a ret=0
+[   40.992036] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb518
+[   40.992042] [AVPU] ioctl cmd=0xc008710a ret=0
+[   41.004481] [AVPU] ioctl cmd=0xc004710c ret=0
+[   41.004515] [AVPU] ioctl cmd=0xc008710b arg=0x74f63b50
+[   41.004522] [AVPU] ioctl cmd=0xc008710b ret=0
+[   41.004530] [AVPU] ioctl cmd=0xc008710a arg=0x74f63b78
+[   41.004537] [AVPU] ioctl cmd=0xc008710a ret=0
+[   41.004674] [AVPU] ioctl cmd=0xc008710b arg=0x74f63a48
+[   41.004683] [AVPU] ioctl cmd=0xc008710b ret=0
+[   41.004690] [AVPU] ioctl cmd=0xc008710a arg=0x74f63a70
+[   41.004697] [AVPU] ioctl cmd=0xc008710a ret=0
+[   41.004836] [AVPU] ioctl cmd=0xc004710c arg=0x74f63cb8
+[   41.071757] [AVPU] ioctl cmd=0xc008710b arg=0x74dfb5c8
+[   41.071771] [AVPU] ioctl cmd=0xc008710b ret=0
+[   41.071780] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb5f0
+[   41.071787] [AVPU] ioctl cmd=0xc008710a ret=0
+[   41.071796] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb590
+[   41.071803] [AVPU] ioctl cmd=0xc008710a ret=0
+[   41.071810] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb590
+[   41.071816] [AVPU] ioctl cmd=0xc008710a ret=0
+[   41.071824] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb5b8
+[   41.071830] [AVPU] ioctl cmd=0xc008710a ret=0
+[   41.071878] [AVPU] ioctl cmd=0xc008710b arg=0x74dfb4d0
+[   41.071885] [AVPU] ioctl cmd=0xc008710b ret=0
+[   41.071893] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb4d0
+[   41.071900] [AVPU] ioctl cmd=0xc008710a ret=0
+[   41.071911] [AVPU] ioctl cmd=0xc008710b arg=0x74dfb4c8
+[   41.071918] [AVPU] ioctl cmd=0xc008710b ret=0
+[   41.072016] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb4f0
+[   41.072025] [AVPU] ioctl cmd=0xc008710a ret=0
+[   41.072032] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb518
+[   41.072039] [AVPU] ioctl cmd=0xc008710a ret=0
+[   41.084476] [AVPU] ioctl cmd=0xc004710c ret=0
+[   41.084510] [AVPU] ioctl cmd=0xc008710b arg=0x74f63b50
+[   41.084518] [AVPU] ioctl cmd=0xc008710b ret=0
+[   41.084525] [AVPU] ioctl cmd=0xc008710a arg=0x74f63b78
+[   41.084532] [AVPU] ioctl cmd=0xc008710a ret=0
+[   41.084669] [AVPU] ioctl cmd=0xc008710b arg=0x74f63a48
+[   41.084678] [AVPU] ioctl cmd=0xc008710b ret=0
+[   41.084686] [AVPU] ioctl cmd=0xc008710a arg=0x74f63a70
+[   41.084692] [AVPU] ioctl cmd=0xc008710a ret=0
+[   41.084832] [AVPU] ioctl cmd=0xc004710c arg=0x74f63cb8
+[   41.151773] [AVPU] ioctl cmd=0xc008710b arg=0x74dfb5c8
+[   41.151787] [AVPU] ioctl cmd=0xc008710b ret=0
+[   41.151796] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb5f0
+[   41.151803] [AVPU] ioctl cmd=0xc008710a ret=0
+[   41.151812] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb590
+[   41.151819] [AVPU] ioctl cmd=0xc008710a ret=0
+[   41.151826] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb590
+[   41.151832] [AVPU] ioctl cmd=0xc008710a ret=0
+[   41.151839] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb5b8
+[   41.151846] [AVPU] ioctl cmd=0xc008710a ret=0
+[   41.151892] [AVPU] ioctl cmd=0xc008710b arg=0x74dfb4d0
+[   41.151900] [AVPU] ioctl cmd=0xc008710b ret=0
+[   41.151908] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb4d0
+[   41.151914] [AVPU] ioctl cmd=0xc008710a ret=0
+[   41.151926] [AVPU] ioctl cmd=0xc008710b arg=0x74dfb4c8
+[   41.151932] [AVPU] ioctl cmd=0xc008710b ret=0
+[   41.152031] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb4f0
+[   41.152040] [AVPU] ioctl cmd=0xc008710a ret=0
+[   41.152048] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb518
+[   41.152054] [AVPU] ioctl cmd=0xc008710a ret=0
+[   41.164494] [AVPU] ioctl cmd=0xc004710c ret=0
+[   41.164528] [AVPU] ioctl cmd=0xc008710b arg=0x74f63b50
+[   41.164535] [AVPU] ioctl cmd=0xc008710b ret=0
+[   41.164542] [AVPU] ioctl cmd=0xc008710a arg=0x74f63b78
+[   41.164549] [AVPU] ioctl cmd=0xc008710a ret=0
+[   41.164687] [AVPU] ioctl cmd=0xc008710b arg=0x74f63a48
+[   41.164696] [AVPU] ioctl cmd=0xc008710b ret=0
+[   41.164704] [AVPU] ioctl cmd=0xc008710a arg=0x74f63a70
+[   41.164710] [AVPU] ioctl cmd=0xc008710a ret=0
+[   41.164849] [AVPU] ioctl cmd=0xc004710c arg=0x74f63cb8
+[   41.230163] [AVPU] ioctl cmd=0xc008710b arg=0x74dfb5c8
+[   41.230178] [AVPU] ioctl cmd=0xc008710b ret=0
+[   41.230186] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb5f0
+[   41.230193] [AVPU] ioctl cmd=0xc008710a ret=0
+[   41.230203] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb590
+[   41.230210] [AVPU] ioctl cmd=0xc008710a ret=0
+[   41.230216] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb590
+[   41.230223] [AVPU] ioctl cmd=0xc008710a ret=0
+[   41.230230] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb5b8
+[   41.230236] [AVPU] ioctl cmd=0xc008710a ret=0
+[   41.230284] [AVPU] ioctl cmd=0xc008710b arg=0x74dfb4d0
+[   41.230291] [AVPU] ioctl cmd=0xc008710b ret=0
+[   41.230299] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb4d0
+[   41.230306] [AVPU] ioctl cmd=0xc008710a ret=0
+[   41.230317] [AVPU] ioctl cmd=0xc008710b arg=0x74dfb4c8
+[   41.230324] [AVPU] ioctl cmd=0xc008710b ret=0
+[   41.230422] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb4f0
+[   41.230431] [AVPU] ioctl cmd=0xc008710a ret=0
+[   41.230438] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb518
+[   41.230445] [AVPU] ioctl cmd=0xc008710a ret=0
+[   41.242882] [AVPU] ioctl cmd=0xc004710c ret=0
+[   41.242916] [AVPU] ioctl cmd=0xc008710b arg=0x74f63b50
+[   41.242923] [AVPU] ioctl cmd=0xc008710b ret=0
+[   41.242930] [AVPU] ioctl cmd=0xc008710a arg=0x74f63b78
+[   41.242938] [AVPU] ioctl cmd=0xc008710a ret=0
+[   41.243075] [AVPU] ioctl cmd=0xc008710b arg=0x74f63a48
+[   41.243083] [AVPU] ioctl cmd=0xc008710b ret=0
+[   41.243091] [AVPU] ioctl cmd=0xc008710a arg=0x74f63a70
+[   41.243098] [AVPU] ioctl cmd=0xc008710a ret=0
+[   41.243257] [AVPU] ioctl cmd=0xc004710c arg=0x74f63cb8
+[   41.311718] [AVPU] ioctl cmd=0xc008710b arg=0x74dfb5c8
+[   41.311732] [AVPU] ioctl cmd=0xc008710b ret=0
+[   41.311741] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb5f0
+[   41.311748] [AVPU] ioctl cmd=0xc008710a ret=0
+[   41.311758] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb590
+[   41.311764] [AVPU] ioctl cmd=0xc008710a ret=0
+[   41.311771] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb590
+[   41.311778] [AVPU] ioctl cmd=0xc008710a ret=0
+[   41.311784] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb5b8
+[   41.311791] [AVPU] ioctl cmd=0xc008710a ret=0
+[   41.311838] [AVPU] ioctl cmd=0xc008710b arg=0x74dfb4d0
+[   41.311846] [AVPU] ioctl cmd=0xc008710b ret=0
+[   41.311854] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb4d0
+[   41.311860] [AVPU] ioctl cmd=0xc008710a ret=0
+[   41.311872] [AVPU] ioctl cmd=0xc008710b arg=0x74dfb4c8
+[   41.311879] [AVPU] ioctl cmd=0xc008710b ret=0
+[   41.311978] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb4f0
+[   41.311986] [AVPU] ioctl cmd=0xc008710a ret=0
+[   41.311994] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb518
+[   41.312000] [AVPU] ioctl cmd=0xc008710a ret=0
+[   41.324438] [AVPU] ioctl cmd=0xc004710c ret=0
+[   41.324472] [AVPU] ioctl cmd=0xc008710b arg=0x74f63b50
+[   41.324480] [AVPU] ioctl cmd=0xc008710b ret=0
+[   41.324487] [AVPU] ioctl cmd=0xc008710a arg=0x74f63b78
+[   41.324494] [AVPU] ioctl cmd=0xc008710a ret=0
+[   41.324633] [AVPU] ioctl cmd=0xc008710b arg=0x74f63a48
+[   41.324642] [AVPU] ioctl cmd=0xc008710b ret=0
+[   41.324649] [AVPU] ioctl cmd=0xc008710a arg=0x74f63a70
+[   41.324656] [AVPU] ioctl cmd=0xc008710a ret=0
+[   41.324795] [AVPU] ioctl cmd=0xc004710c arg=0x74f63cb8
+[   41.391715] [AVPU] ioctl cmd=0xc008710b arg=0x74dfb5c8
+[   41.391728] [AVPU] ioctl cmd=0xc008710b ret=0
+[   41.391738] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb5f0
+[   41.391744] [AVPU] ioctl cmd=0xc008710a ret=0
+[   41.391754] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb590
+[   41.391760] [AVPU] ioctl cmd=0xc008710a ret=0
+[   41.391768] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb590
+[   41.391774] [AVPU] ioctl cmd=0xc008710a ret=0
+[   41.391781] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb5b8
+[   41.391787] [AVPU] ioctl cmd=0xc008710a ret=0
+[   41.391834] [AVPU] ioctl cmd=0xc008710b arg=0x74dfb4d0
+[   41.391842] [AVPU] ioctl cmd=0xc008710b ret=0
+[   41.391850] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb4d0
+[   41.391856] [AVPU] ioctl cmd=0xc008710a ret=0
+[   41.391868] [AVPU] ioctl cmd=0xc008710b arg=0x74dfb4c8
+[   41.391875] [AVPU] ioctl cmd=0xc008710b ret=0
+[   41.391974] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb4f0
+[   41.391983] [AVPU] ioctl cmd=0xc008710a ret=0
+[   41.391990] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb518
+[   41.391997] [AVPU] ioctl cmd=0xc008710a ret=0
+[   41.404434] [AVPU] ioctl cmd=0xc004710c ret=0
+[   41.404470] [AVPU] ioctl cmd=0xc008710b arg=0x74f63b50
+[   41.404478] [AVPU] ioctl cmd=0xc008710b ret=0
+[   41.404485] [AVPU] ioctl cmd=0xc008710a arg=0x74f63b78
+[   41.404492] [AVPU] ioctl cmd=0xc008710a ret=0
+[   41.404638] [AVPU] ioctl cmd=0xc008710b arg=0x74f63a48
+[   41.404648] [AVPU] ioctl cmd=0xc008710b ret=0
+[   41.404656] [AVPU] ioctl cmd=0xc008710a arg=0x74f63a70
+[   41.404662] [AVPU] ioctl cmd=0xc008710a ret=0
+[   41.404804] [AVPU] ioctl cmd=0xc004710c arg=0x74f63cb8
+[   41.471697] [AVPU] ioctl cmd=0xc008710b arg=0x74dfb5c8
+[   41.471711] [AVPU] ioctl cmd=0xc008710b ret=0
+[   41.471720] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb5f0
+[   41.471726] [AVPU] ioctl cmd=0xc008710a ret=0
+[   41.471736] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb590
+[   41.471742] [AVPU] ioctl cmd=0xc008710a ret=0
+[   41.471750] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb590
+[   41.471756] [AVPU] ioctl cmd=0xc008710a ret=0
+[   41.471763] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb5b8
+[   41.471769] [AVPU] ioctl cmd=0xc008710a ret=0
+[   41.471818] [AVPU] ioctl cmd=0xc008710b arg=0x74dfb4d0
+[   41.471825] [AVPU] ioctl cmd=0xc008710b ret=0
+[   41.471833] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb4d0
+[   41.471840] [AVPU] ioctl cmd=0xc008710a ret=0
+[   41.471851] [AVPU] ioctl cmd=0xc008710b arg=0x74dfb4c8
+[   41.471858] [AVPU] ioctl cmd=0xc008710b ret=0
+[   41.471956] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb4f0
+[   41.471965] [AVPU] ioctl cmd=0xc008710a ret=0
+[   41.471972] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb518
+[   41.471980] [AVPU] ioctl cmd=0xc008710a ret=0
+[   41.484416] [AVPU] ioctl cmd=0xc004710c ret=0
+[   41.484450] [AVPU] ioctl cmd=0xc008710b arg=0x74f63b50
+[   41.484458] [AVPU] ioctl cmd=0xc008710b ret=0
+[   41.484465] [AVPU] ioctl cmd=0xc008710a arg=0x74f63b78
+[   41.484472] [AVPU] ioctl cmd=0xc008710a ret=0
+[   41.484617] [AVPU] ioctl cmd=0xc008710b arg=0x74f63a48
+[   41.484626] [AVPU] ioctl cmd=0xc008710b ret=0
+[   41.484634] [AVPU] ioctl cmd=0xc008710a arg=0x74f63a70
+[   41.484641] [AVPU] ioctl cmd=0xc008710a ret=0
+[   41.484782] [AVPU] ioctl cmd=0xc004710c arg=0x74f63cb8
+[   41.551678] [AVPU] ioctl cmd=0xc008710b arg=0x74dfb5c8
+[   41.551692] [AVPU] ioctl cmd=0xc008710b ret=0
+[   41.551701] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb5f0
+[   41.551708] [AVPU] ioctl cmd=0xc008710a ret=0
+[   41.551718] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb590
+[   41.551724] [AVPU] ioctl cmd=0xc008710a ret=0
+[   41.551731] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb590
+[   41.551737] [AVPU] ioctl cmd=0xc008710a ret=0
+[   41.551744] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb5b8
+[   41.551750] [AVPU] ioctl cmd=0xc008710a ret=0
+[   41.551798] [AVPU] ioctl cmd=0xc008710b arg=0x74dfb4d0
+[   41.551806] [AVPU] ioctl cmd=0xc008710b ret=0
+[   41.551813] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb4d0
+[   41.551820] [AVPU] ioctl cmd=0xc008710a ret=0
+[   41.551832] [AVPU] ioctl cmd=0xc008710b arg=0x74dfb4c8
+[   41.551838] [AVPU] ioctl cmd=0xc008710b ret=0
+[   41.551936] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb4f0
+[   41.551946] [AVPU] ioctl cmd=0xc008710a ret=0
+[   41.551953] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb518
+[   41.551960] [AVPU] ioctl cmd=0xc008710a ret=0
+[   41.564396] [AVPU] ioctl cmd=0xc004710c ret=0
+[   41.564431] [AVPU] ioctl cmd=0xc008710b arg=0x74f63b50
+[   41.564439] [AVPU] ioctl cmd=0xc008710b ret=0
+[   41.564446] [AVPU] ioctl cmd=0xc008710a arg=0x74f63b78
+[   41.564453] [AVPU] ioctl cmd=0xc008710a ret=0
+[   41.564595] [AVPU] ioctl cmd=0xc008710b arg=0x74f63a48
+[   41.564604] [AVPU] ioctl cmd=0xc008710b ret=0
+[   41.564612] [AVPU] ioctl cmd=0xc008710a arg=0x74f63a70
+[   41.564618] [AVPU] ioctl cmd=0xc008710a ret=0
+[   41.564760] [AVPU] ioctl cmd=0xc004710c arg=0x74f63cb8
+[   41.631678] [AVPU] ioctl cmd=0xc008710b arg=0x74dfb5c8
+[   41.631691] [AVPU] ioctl cmd=0xc008710b ret=0
+[   41.631700] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb5f0
+[   41.631707] [AVPU] ioctl cmd=0xc008710a ret=0
+[   41.631716] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb590
+[   41.631722] [AVPU] ioctl cmd=0xc008710a ret=0
+[   41.631730] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb590
+[   41.631736] [AVPU] ioctl cmd=0xc008710a ret=0
+[   41.631743] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb5b8
+[   41.631749] [AVPU] ioctl cmd=0xc008710a ret=0
+[   41.631797] [AVPU] ioctl cmd=0xc008710b arg=0x74dfb4d0
+[   41.631805] [AVPU] ioctl cmd=0xc008710b ret=0
+[   41.631812] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb4d0
+[   41.631819] [AVPU] ioctl cmd=0xc008710a ret=0
+[   41.631831] [AVPU] ioctl cmd=0xc008710b arg=0x74dfb4c8
+[   41.631838] [AVPU] ioctl cmd=0xc008710b ret=0
+[   41.631936] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb4f0
+[   41.631946] [AVPU] ioctl cmd=0xc008710a ret=0
+[   41.631954] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb518
+[   41.631960] [AVPU] ioctl cmd=0xc008710a ret=0
+[   41.644398] [AVPU] ioctl cmd=0xc004710c ret=0
+[   41.644434] [AVPU] ioctl cmd=0xc008710b arg=0x74f63b50
+[   41.644441] [AVPU] ioctl cmd=0xc008710b ret=0
+[   41.644449] [AVPU] ioctl cmd=0xc008710a arg=0x74f63b78
+[   41.644455] [AVPU] ioctl cmd=0xc008710a ret=0
+[   41.644601] [AVPU] ioctl cmd=0xc008710b arg=0x74f63a48
+[   41.644610] [AVPU] ioctl cmd=0xc008710b ret=0
+[   41.644617] [AVPU] ioctl cmd=0xc008710a arg=0x74f63a70
+[   41.644624] [AVPU] ioctl cmd=0xc008710a ret=0
+[   41.644765] [AVPU] ioctl cmd=0xc004710c arg=0x74f63cb8
+[   41.711671] [AVPU] ioctl cmd=0xc008710b arg=0x74dfb5c8
+[   41.711684] [AVPU] ioctl cmd=0xc008710b ret=0
+[   41.711693] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb5f0
+[   41.711700] [AVPU] ioctl cmd=0xc008710a ret=0
+[   41.711709] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb590
+[   41.711715] [AVPU] ioctl cmd=0xc008710a ret=0
+[   41.711723] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb590
+[   41.711729] [AVPU] ioctl cmd=0xc008710a ret=0
+[   41.711736] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb5b8
+[   41.711742] [AVPU] ioctl cmd=0xc008710a ret=0
+[   41.711789] [AVPU] ioctl cmd=0xc008710b arg=0x74dfb4d0
+[   41.711797] [AVPU] ioctl cmd=0xc008710b ret=0
+[   41.711805] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb4d0
+[   41.711811] [AVPU] ioctl cmd=0xc008710a ret=0
+[   41.711823] [AVPU] ioctl cmd=0xc008710b arg=0x74dfb4c8
+[   41.711829] [AVPU] ioctl cmd=0xc008710b ret=0
+[   41.711927] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb4f0
+[   41.711937] [AVPU] ioctl cmd=0xc008710a ret=0
+[   41.711944] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb518
+[   41.711951] [AVPU] ioctl cmd=0xc008710a ret=0
+[   41.724389] [AVPU] ioctl cmd=0xc004710c ret=0
+[   41.724423] [AVPU] ioctl cmd=0xc008710b arg=0x74f63b50
+[   41.724431] [AVPU] ioctl cmd=0xc008710b ret=0
+[   41.724438] [AVPU] ioctl cmd=0xc008710a arg=0x74f63b78
+[   41.724445] [AVPU] ioctl cmd=0xc008710a ret=0
+[   41.724589] [AVPU] ioctl cmd=0xc008710b arg=0x74f63a48
+[   41.724597] [AVPU] ioctl cmd=0xc008710b ret=0
+[   41.724605] [AVPU] ioctl cmd=0xc008710a arg=0x74f63a70
+[   41.724612] [AVPU] ioctl cmd=0xc008710a ret=0
+[   41.724753] [AVPU] ioctl cmd=0xc004710c arg=0x74f63cb8
+[   41.791661] [AVPU] ioctl cmd=0xc008710b arg=0x74dfb5c8
+[   41.791675] [AVPU] ioctl cmd=0xc008710b ret=0
+[   41.791683] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb5f0
+[   41.791691] [AVPU] ioctl cmd=0xc008710a ret=0
+[   41.791700] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb590
+[   41.791706] [AVPU] ioctl cmd=0xc008710a ret=0
+[   41.791713] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb590
+[   41.791720] [AVPU] ioctl cmd=0xc008710a ret=0
+[   41.791727] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb5b8
+[   41.791733] [AVPU] ioctl cmd=0xc008710a ret=0
+[   41.791781] [AVPU] ioctl cmd=0xc008710b arg=0x74dfb4d0
+[   41.791788] [AVPU] ioctl cmd=0xc008710b ret=0
+[   41.791796] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb4d0
+[   41.791803] [AVPU] ioctl cmd=0xc008710a ret=0
+[   41.791815] [AVPU] ioctl cmd=0xc008710b arg=0x74dfb4c8
+[   41.791821] [AVPU] ioctl cmd=0xc008710b ret=0
+[   41.791919] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb4f0
+[   41.791929] [AVPU] ioctl cmd=0xc008710a ret=0
+[   41.791936] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb518
+[   41.791943] [AVPU] ioctl cmd=0xc008710a ret=0
+[   41.804379] [AVPU] ioctl cmd=0xc004710c ret=0
+[   41.804414] [AVPU] ioctl cmd=0xc008710b arg=0x74f63b50
+[   41.804421] [AVPU] ioctl cmd=0xc008710b ret=0
+[   41.804429] [AVPU] ioctl cmd=0xc008710a arg=0x74f63b78
+[   41.804435] [AVPU] ioctl cmd=0xc008710a ret=0
+[   41.804576] [AVPU] ioctl cmd=0xc008710b arg=0x74f63a48
+[   41.804585] [AVPU] ioctl cmd=0xc008710b ret=0
+[   41.804593] [AVPU] ioctl cmd=0xc008710a arg=0x74f63a70
+[   41.804599] [AVPU] ioctl cmd=0xc008710a ret=0
+[   41.804738] [AVPU] ioctl cmd=0xc004710c arg=0x74f63cb8
+[   41.871659] [AVPU] ioctl cmd=0xc008710b arg=0x74dfb5c8
+[   41.871673] [AVPU] ioctl cmd=0xc008710b ret=0
+[   41.871683] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb5f0
+[   41.871690] [AVPU] ioctl cmd=0xc008710a ret=0
+[   41.871699] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb590
+[   41.871705] [AVPU] ioctl cmd=0xc008710a ret=0
+[   41.871713] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb590
+[   41.871719] [AVPU] ioctl cmd=0xc008710a ret=0
+[   41.871726] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb5b8
+[   41.871732] [AVPU] ioctl cmd=0xc008710a ret=0
+[   41.871779] [AVPU] ioctl cmd=0xc008710b arg=0x74dfb4d0
+[   41.871787] [AVPU] ioctl cmd=0xc008710b ret=0
+[   41.871794] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb4d0
+[   41.871801] [AVPU] ioctl cmd=0xc008710a ret=0
+[   41.871813] [AVPU] ioctl cmd=0xc008710b arg=0x74dfb4c8
+[   41.871819] [AVPU] ioctl cmd=0xc008710b ret=0
+[   41.871917] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb4f0
+[   41.871926] [AVPU] ioctl cmd=0xc008710a ret=0
+[   41.871933] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb518
+[   41.871940] [AVPU] ioctl cmd=0xc008710a ret=0
+[   41.884378] [AVPU] ioctl cmd=0xc004710c ret=0
+[   41.884412] [AVPU] ioctl cmd=0xc008710b arg=0x74f63b50
+[   41.884420] [AVPU] ioctl cmd=0xc008710b ret=0
+[   41.884427] [AVPU] ioctl cmd=0xc008710a arg=0x74f63b78
+[   41.884434] [AVPU] ioctl cmd=0xc008710a ret=0
+[   41.884576] [AVPU] ioctl cmd=0xc008710b arg=0x74f63a48
+[   41.884585] [AVPU] ioctl cmd=0xc008710b ret=0
+[   41.884593] [AVPU] ioctl cmd=0xc008710a arg=0x74f63a70
+[   41.884599] [AVPU] ioctl cmd=0xc008710a ret=0
+[   41.884741] [AVPU] ioctl cmd=0xc004710c arg=0x74f63cb8
+[   41.951639] [AVPU] ioctl cmd=0xc008710b arg=0x74dfb5c8
+[   41.951652] [AVPU] ioctl cmd=0xc008710b ret=0
+[   41.951661] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb5f0
+[   41.951668] [AVPU] ioctl cmd=0xc008710a ret=0
+[   41.951677] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb590
+[   41.951684] [AVPU] ioctl cmd=0xc008710a ret=0
+[   41.951691] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb590
+[   41.951697] [AVPU] ioctl cmd=0xc008710a ret=0
+[   41.951704] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb5b8
+[   41.951711] [AVPU] ioctl cmd=0xc008710a ret=0
+[   41.951758] [AVPU] ioctl cmd=0xc008710b arg=0x74dfb4d0
+[   41.951765] [AVPU] ioctl cmd=0xc008710b ret=0
+[   41.951773] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb4d0
+[   41.951780] [AVPU] ioctl cmd=0xc008710a ret=0
+[   41.951792] [AVPU] ioctl cmd=0xc008710b arg=0x74dfb4c8
+[   41.951798] [AVPU] ioctl cmd=0xc008710b ret=0
+[   41.951896] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb4f0
+[   41.951905] [AVPU] ioctl cmd=0xc008710a ret=0
+[   41.951913] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb518
+[   41.951919] [AVPU] ioctl cmd=0xc008710a ret=0
+[   41.964358] [AVPU] ioctl cmd=0xc004710c ret=0
+[   41.964392] [AVPU] ioctl cmd=0xc008710b arg=0x74f63b50
+[   41.964400] [AVPU] ioctl cmd=0xc008710b ret=0
+[   41.964407] [AVPU] ioctl cmd=0xc008710a arg=0x74f63b78
+[   41.964414] [AVPU] ioctl cmd=0xc008710a ret=0
+[   41.964554] [AVPU] ioctl cmd=0xc008710b arg=0x74f63a48
+[   41.964563] [AVPU] ioctl cmd=0xc008710b ret=0
+[   41.964571] [AVPU] ioctl cmd=0xc008710a arg=0x74f63a70
+[   41.964577] [AVPU] ioctl cmd=0xc008710a ret=0
+[   41.964718] [AVPU] ioctl cmd=0xc004710c arg=0x74f63cb8
+[   42.031623] [AVPU] ioctl cmd=0xc008710b arg=0x74dfb5c8
+[   42.031637] [AVPU] ioctl cmd=0xc008710b ret=0
+[   42.031645] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb5f0
+[   42.031653] [AVPU] ioctl cmd=0xc008710a ret=0
+[   42.031662] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb590
+[   42.031668] [AVPU] ioctl cmd=0xc008710a ret=0
+[   42.031675] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb590
+[   42.031681] [AVPU] ioctl cmd=0xc008710a ret=0
+[   42.031688] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb5b8
+[   42.031695] [AVPU] ioctl cmd=0xc008710a ret=0
+[   42.031741] [AVPU] ioctl cmd=0xc008710b arg=0x74dfb4d0
+[   42.031749] [AVPU] ioctl cmd=0xc008710b ret=0
+[   42.031757] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb4d0
+[   42.031763] [AVPU] ioctl cmd=0xc008710a ret=0
+[   42.031775] [AVPU] ioctl cmd=0xc008710b arg=0x74dfb4c8
+[   42.031781] [AVPU] ioctl cmd=0xc008710b ret=0
+[   42.031879] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb4f0
+[   42.031889] [AVPU] ioctl cmd=0xc008710a ret=0
+[   42.031896] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb518
+[   42.031902] [AVPU] ioctl cmd=0xc008710a ret=0
+[   42.044341] [AVPU] ioctl cmd=0xc004710c ret=0
+[   42.044375] [AVPU] ioctl cmd=0xc008710b arg=0x74f63b50
+[   42.044383] [AVPU] ioctl cmd=0xc008710b ret=0
+[   42.044390] [AVPU] ioctl cmd=0xc008710a arg=0x74f63b78
+[   42.044397] [AVPU] ioctl cmd=0xc008710a ret=0
+[   42.044539] [AVPU] ioctl cmd=0xc008710b arg=0x74f63a48
+[   42.044548] [AVPU] ioctl cmd=0xc008710b ret=0
+[   42.044556] [AVPU] ioctl cmd=0xc008710a arg=0x74f63a70
+[   42.044563] [AVPU] ioctl cmd=0xc008710a ret=0
+[   42.044704] [AVPU] ioctl cmd=0xc004710c arg=0x74f63cb8
+[   42.110032] [AVPU] ioctl cmd=0xc008710b arg=0x74dfb5c8
+[   42.110046] [AVPU] ioctl cmd=0xc008710b ret=0
+[   42.110055] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb5f0
+[   42.110062] [AVPU] ioctl cmd=0xc008710a ret=0
+[   42.110071] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb590
+[   42.110078] [AVPU] ioctl cmd=0xc008710a ret=0
+[   42.110085] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb590
+[   42.110091] [AVPU] ioctl cmd=0xc008710a ret=0
+[   42.110098] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb5b8
+[   42.110104] [AVPU] ioctl cmd=0xc008710a ret=0
+[   42.110152] [AVPU] ioctl cmd=0xc008710b arg=0x74dfb4d0
+[   42.110159] [AVPU] ioctl cmd=0xc008710b ret=0
+[   42.110167] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb4d0
+[   42.110174] [AVPU] ioctl cmd=0xc008710a ret=0
+[   42.110186] [AVPU] ioctl cmd=0xc008710b arg=0x74dfb4c8
+[   42.110193] [AVPU] ioctl cmd=0xc008710b ret=0
+[   42.110290] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb4f0
+[   42.110299] [AVPU] ioctl cmd=0xc008710a ret=0
+[   42.110307] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb518
+[   42.110313] [AVPU] ioctl cmd=0xc008710a ret=0
+[   42.122753] [AVPU] ioctl cmd=0xc004710c ret=0
+[   42.122789] [AVPU] ioctl cmd=0xc008710b arg=0x74f63b50
+[   42.122797] [AVPU] ioctl cmd=0xc008710b ret=0
+[   42.122804] [AVPU] ioctl cmd=0xc008710a arg=0x74f63b78
+[   42.122811] [AVPU] ioctl cmd=0xc008710a ret=0
+[   42.122953] [AVPU] ioctl cmd=0xc008710b arg=0x74f63a48
+[   42.122961] [AVPU] ioctl cmd=0xc008710b ret=0
+[   42.122969] [AVPU] ioctl cmd=0xc008710a arg=0x74f63a70
+[   42.122976] [AVPU] ioctl cmd=0xc008710a ret=0
+[   42.123117] [AVPU] ioctl cmd=0xc004710c arg=0x74f63cb8
+[   42.191599] [AVPU] ioctl cmd=0xc008710b arg=0x74dfb5c8
+[   42.191613] [AVPU] ioctl cmd=0xc008710b ret=0
+[   42.191622] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb5f0
+[   42.191629] [AVPU] ioctl cmd=0xc008710a ret=0
+[   42.191639] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb590
+[   42.191645] [AVPU] ioctl cmd=0xc008710a ret=0
+[   42.191652] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb590
+[   42.191658] [AVPU] ioctl cmd=0xc008710a ret=0
+[   42.191665] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb5b8
+[   42.191671] [AVPU] ioctl cmd=0xc008710a ret=0
+[   42.191718] [AVPU] ioctl cmd=0xc008710b arg=0x74dfb4d0
+[   42.191726] [AVPU] ioctl cmd=0xc008710b ret=0
+[   42.191733] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb4d0
+[   42.191740] [AVPU] ioctl cmd=0xc008710a ret=0
+[   42.191751] [AVPU] ioctl cmd=0xc008710b arg=0x74dfb4c8
+[   42.191758] [AVPU] ioctl cmd=0xc008710b ret=0
+[   42.191856] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb4f0
+[   42.191865] [AVPU] ioctl cmd=0xc008710a ret=0
+[   42.191872] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb518
+[   42.191879] [AVPU] i^[[octl cmd=0xc008710a ret=0
+[   42.204319] [AVPU] ioctl cmd=0xc004710c ret=0
+[   42.204353] [AVPU] ioctl cmd=0xc008710b arg=0x74f63b50
+[   42.204361] [AVPU] ioctl cmd=0xc008710b ret=0
+[   42.204368] [AVPU] ioctl cmd=0xc008710a arg=0x74f63b78
+[   42.204375] [AVPU] ioctl cmd=0xc008710a ret=0
+[   42.204517] [AVPU] ioctl cmd=0xc008710b arg=0x74f63a48
+[   42.204526] [AVPU] ioctl cmd=0xc008710b ret=0
+[   42.204533] [AVPU] ioctl cmd=0xc008710a arg=0x74f63a70
+[   42.204540] [AVPU] ioctl cmd=0xc008710a ret=0
+[   42.204682] [AVPU] ioctl cmd=0xc004710c arg=0x74f63cb8
+[   42.270025] [AVPU] ioctl cmd=0xc008710b arg=0x74dfb5c8
+[   42.270039] [AVPU] ioctl cmd=0xc008710b ret=0
+[   42.270048] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb5f0
+[   42.270055] [AVPU] ioctl cmd=0xc008710a ret=0
+[   42.270065] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb590
+[   42.270071] [AVPU] ioctl cmd=0xc008710a ret=0
+[   42.270078] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb590
+[   42.270084] [AVPU] ioctl cmd=0xc008710a ret=0
+[   42.270091] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb5b8
+[   42.270097] [AVPU] ioctl cmd=0xc008710a ret=0
+[   42.270145] [AVPU] ioctl cmd=0xc008710b arg=0x74dfb4d0
+[   42.270153] [AVPU] ioctl cmd=0xc008710b ret=0
+[   42.270161] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb4d0
+[   42.270167] [AVPU] ioctl cmd=0xc008710a ret=0
+[   42.270179] [AVPU] ioctl cmd=0xc008710b arg=0x74dfb4c8
+[   42.270186] [AVPU] ioctl cmd=0xc008710b ret=0
+[   42.270283] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb4f0
+[   42.270293] [AVPU] ioctl cmd=0xc008710a ret=0
+[   42.270301] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb518
+[   42.270307] [AVPU] ioctl cmd=0xc008710a ret=0
+[   42.282747] [AVPU] ioctl cmd=0xc004710c ret=0
+[   42.282781] [AVPU] ioctl cmd=0xc008710b arg=0x74f63b50
+[   42.282789] [AVPU] ioctl cmd=0xc008710b ret=0
+[   42.282796] [AVPU] ioctl cmd=0xc008710a arg=0x74f63b78
+[   42.282803] [AVPU] ioctl cmd=0xc008710a ret=0
+[   42.282943] [AVPU] ioctl cmd=0xc008710b arg=0x74f63a48
+[   42.282952] [AVPU] ioctl cmd=0xc008710b ret=0
+[   42.2845;184R2960] [AVPU] ioctl cmd=0xc008710a arg=0x74f63a70
+[   42.282967] [AVPU] ioctl cmd=0xc008710a ret=0
+[   42.283107] [AVPU] ioctl cmd=0xc004710c arg=0x74f63cb8
+[   42.349994] [AVPU] ioctl cmd=0xc008710b arg=0x74dfb5c8
+[   42.350008] [AVPU] ioctl cmd=0xc008710b ret=0
+[   42.350017] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb5f0
+[   42.350024] [AVPU] ioctl cmd=0xc008710a ret=0
+[   42.350034] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb590
+[   42.350040] [AVPU] ioctl cmd=0xc008710a ret=0
+[   42.350047] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb590
+[   42.350054] [AVPU] ioctl cmd=0xc008710a ret=0
+[   42.350060] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb5b8
+[   42.350067] [AVPU] ioctl cmd=0xc008710a ret=0
+[   42.350114] [AVPU] ioctl cmd=0xc008710b arg=0x74dfb4d0
+[   42.350121] [AVPU] ioctl cmd=0xc008710b ret=0
+[   42.350129] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb4d0
+[   42.350136] [AVPU] ioctl cmd=0xc008710a ret=0
+[   42.350148] [AVPU] ioctl cmd=0xc008710b arg=0x74dfb4c8
+[   42.350154] [AVPU] ioctl cmd=0xc008710b ret=0
+[   42.350252] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb4f0
+[   42.350261] [AVPU] ioctl cmd=0xc008710a ret=0
+[   42.350268] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb518
+[   42.350276] [AVPU] ioctl cmd=0xc008710a ret=0
+[   42.362714] [AVPU] ioctl cmd=0xc004710c ret=0
+[   42.362751] [AVPU] ioctl cmd=0xc008710b arg=0x74f63b50
+[   42.362758] [AVPU] ioctl cmd=0xc008710b ret=0
+[   42.362766] [AVPU] ioctl cmd=0xc008710a arg=0x74f63b78
+[   42.362772] [AVPU] ioctl cmd=0xc008710a ret=0
+[   42.362919] [AVPU] ioctl cmd=0xc008710b arg=0x74f63a48
+[   42.362928] [AVPU] ioctl cmd=0xc008710b ret=0
+[   42.362936] [AVPU] ioctl cmd=0xc008710a arg=0x74f63a70
+[   42.362942] [AVPU] ioctl cmd=0xc008710a ret=0
+[   42.363084] [AVPU] ioctl cmd=0xc004710c arg=0x74f63cb8
+[   42.429986] [AVPU] ioctl cmd=0xc008710b arg=0x74dfb5c8
+[   42.430000] [AVPU] ioctl cmd=0xc008710b ret=0
+[   42.430009] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb5f0
+[   42.430016] [AVPU] ioctl cmd=0xc008710a ret=0
+[   42.430026] [AVPU] ioctl cmd=0xc0^[[45;184R^[[45;184R^[[45;184R^[[45;184R^[[45;184R^[[45;184R^[[45;184R^[[45;184R^[[45;184R08710a arg=0x74dfb590
+[   42.430032] [AVPU] ioctl cmd=0xc008710a ret=0
+[   42.430040] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb590
+[   42.430046] [AVPU] ioctl cmd=0xc008710a ret=0
+[   42.430053] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb5b8
+[   42.430059] [AVPU] ioctl cmd=0xc008710a ret=0
+[   42.430106] [AVPU] ioctl cmd=0xc008710b arg=0x74dfb4d0
+[   42.430114] [AVPU] ioctl cmd=0xc008710b ret=0
+[   42.430122] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb4d0
+[   42.430128] [AVPU] ioctl cmd=0xc008710a ret=0
+[   42.430140] [AVPU] ioctl cmd=0xc008710b arg=0x74dfb4c8
+[   42.430146] [AVPU] ioctl cmd=0xc008710b ret=0
+[   42.430244] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb4f0
+[   42.430254] [AVPU] ioctl cmd=0xc008710a ret=0
+[   42.430261] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb518
+[   42.430268] [AVPU] ioctl cmd=0xc008710a ret=0
+[   42.442707] [AVPU] ioctl cmd=0xc004710c ret=0
+[   42.442740] [AVPU] ioctl cmd=0xc008710b arg=0x74f63b50
+[   42.442748] [AVPU] ioctl cmd=0xc008710b ret=0
+[   42.442755] [AVPU] ioctl cmd=0xc008710a arg=0x74f63b78
+[   42.442762] [AVPU] ioctl cmd=0xc008710a ret=0
+[   42.442904] [AVPU] ioctl cmd=0xc008710b arg=0x74f63a48
+[   42.442914] [AVPU] ioctl cmd=0xc008710b ret=0
+[   42.442921] [AVPU] ioctl cmd=0xc008710a arg=0x74f63a70
+[   42.442928] [AVPU] ioctl cmd=0xc008710a ret=0
+[   42.443070] [AVPU] ioctl cmd=0xc004710c arg=0x74f63cb8
+[   42.509982] [AVPU] ioctl cmd=0xc008710b arg=0x74dfb5c8
+[   42.509996] [AVPU] ioctl cmd=0xc008710b ret=0
+[   42.510004] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb5f0
+[   42.510012] [AVPU] ioctl cmd=0xc008710a ret=0
+[   42.510021] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb590
+[   42.510028] [AVPU] ioctl cmd=0xc008710a ret=0
+[   42.510034] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb590
+[   42.510040] [AVPU] ioctl cmd=0xc008710a ret=0
+[   42.510048] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb5b8
+[   42.510054] [AVPU] ioctl cmd=0xc008710a ret=0
+[   42.510101] [AVPU] ioctl cmd=0xc008710b arg=0x74dfb4d0
+[   42.510108] [AVPU] ioctl cmd=0xc008710b ret=0
+[   42.510116] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb4d0
+[   42.510123] [AVPU] ioctl cmd=0xc008710a ret=0
+[   42.510135] [AVPU] ioctl cmd=0xc008710b arg=0x74dfb4c8
+[   42.510141] [AVPU] ioctl cmd=0xc008710b ret=0
+[   42.510240] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb4f0
+[   42.510248] [AVPU] ioctl cmd=0xc008710a ret=0
+[   42.510256] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb518
+[   42.510263] [AVPU] ioctl cmd=0xc008710a ret=0
+[   42.522706] [AVPU] ioctl cmd=0xc004710c ret=0
+[   42.522740] [AVPU] ioctl cmd=0xc008710b arg=0x74f63b50
+[   42.522747] [AVPU] ioctl cmd=0xc008710b ret=0
+[   42.522754] [AVPU] ioctl cmd=0xc008710a arg=0x74f63b78
+[   42.522762] [AVPU] ioctl cmd=0xc008710a ret=0
+[   42.522902] [AVPU] ioctl cmd=0xc008710b arg=0x74f63a48
+[   42.522911] [AVPU] ioctl cmd=0xc008710b ret=0
+[   42.522918] [AVPU] ioctl cmd=0xc008710a arg=0x74f63a70
+[   42.522925] [AVPU] ioctl cmd=0xc008710a ret=0
+[   42.523066] [AVPU] ioctl cmd=0xc004710c arg=0x74f63cb8
+[   42.591543] [AVPU] ioctl cmd=0xc008710b arg=0x74dfb5c8
+[   42.591556] [AVPU] ioctl cmd=0xc008710b ret=0
+[   42.591566] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb5f0
+[   42.591573] [AVPU] ioctl cmd=0xc008710a ret=0
+[   42.591582] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb590
+[   42.591588] [AVPU] ioctl cmd=0xc008710a ret=0
+[   42.591596] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb590
+[   42.591602] [AVPU] ioctl cmd=0xc008710a ret=0
+[   42.591609] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb5b8
+[   42.591615] [AVPU] ioctl cmd=0xc008710a ret=0
+[   42.591663] [AVPU] ioctl cmd=0xc008710b arg=0x74dfb4d0
+[   42.591671] [AVPU] ioctl cmd=0xc008710b ret=0
+[   42.591678] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb4d0
+[   42.591685] [AVPU] ioctl cmd=0xc008710a ret=0
+[   42.591697] [AVPU] ioctl cmd=0xc008710b arg=0x74dfb4c8
+[   42.591704] [AVPU] ioctl cmd=0xc008710b ret=0
+[   42.591802] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb4f0
+[   42.591812] [AVPU] ioctl cmd=0xc008710a ret=0
+[   42.591818] [AVPU] ioctl cmd=0xc008710a arg=0x74dfb518
+[   42.591825] [AVPU] ioctl cmd=0xc008710a ret=0
+[   42.604274] [AVPU] ioctl cmd=0xc004710c ret=0
+[   42.604309] [AVPU] ioctl cmd=0xc008710b arg=0x74f63b50
+[   42.604316] [AVPU] ioctl cmd=0xc008710b ret=0
+[   42.604324] [AVPU] ioctl cmd=0xc008710a arg=0x74f63b78
+[   42.604331] [AVPU] ioctl cmd=0xc008710a ret=0
+[   42.604474] [AVPU] ioctl cmd=0xc008710b arg=0x74f63a48
+[   42.604484] [AVPU] ioctl cmd=0xc008710b ret=0
+[   42.604492] [AVPU] ioctl cmd=0xc008710a arg=0x74f63a70
+[   42.604499] [AVPU] ioctl cmd=0xc008710a ret=0
+[   42.604640] [AVPU] ioctl cmd=0xc004710c arg=0x74f63cb8

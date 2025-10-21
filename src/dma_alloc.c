@@ -168,6 +168,10 @@ static int dma_init(void) {
     /* Allow environment to override RMEM base/size to match device-specific layout */
     maybe_override_rmem_from_env();
 
+    /* Check if RMEM should be disabled (T31 workaround for kernel bugs) */
+    const char *disable_rmem_env = getenv("OPENIMP_DISABLE_RMEM");
+    int disable_rmem = (disable_rmem_env && disable_rmem_env[0] == '1');
+
     const char *candidates[] = {
         "/dev/rmem",
         "/dev/memalloc",
@@ -182,6 +186,12 @@ static int dma_init(void) {
 
     g_mem_fd = -1;
     for (int i = 0; candidates[i] != NULL; i++) {
+        /* Skip /dev/rmem if disabled via environment variable */
+        if (disable_rmem && strcmp(candidates[i], "/dev/rmem") == 0) {
+            LOG_DMA("DMA init: skipping /dev/rmem (OPENIMP_DISABLE_RMEM=1)");
+            continue;
+        }
+
         int fd = open(candidates[i], O_RDWR | O_CLOEXEC);
         if (fd >= 0) {
             g_mem_fd = fd;
