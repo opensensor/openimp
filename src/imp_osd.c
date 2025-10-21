@@ -172,7 +172,6 @@ int IMP_OSD_CreateGroup(int grpNum) {
     LOG_OSD("CreateGroup: allocated group %d (%zu bytes)", grpNum, sizeof(OSDGroup));
 
     /* Register OSD module with system (DEV_ID_OSD = 4) */
-    /* Allocate a proper Module structure for this OSD group */
     extern void* IMP_System_AllocModule(const char *name, int groupID);
     void *osd_module = IMP_System_AllocModule("OSD", grpNum);
     if (osd_module == NULL) {
@@ -230,7 +229,7 @@ int IMP_OSD_DestroyGroup(int grpNum) {
     }
 
     /* Free the group structure */
-    OSDGroup *group = (OSDGroup*)gosd->group_ptrs[grpNum];
+    OSDGroup *group = gosd->group_ptrs[grpNum];
     if (group != NULL) {
         free(group);
         LOG_OSD("DestroyGroup: freed group %d", grpNum);
@@ -524,7 +523,6 @@ int IMP_OSD_RegisterRgn(IMPRgnHandle handle, int grpNum, IMPOSDGrpRgnAttr *pgrAt
 }
 
 int IMP_OSD_UnRegisterRgn(IMPRgnHandle handle, int grpNum) {
-    /* Based on decompilation at 0xc2f18 */
     if (handle < 0 || handle >= MAX_OSD_REGIONS) {
         LOG_OSD("UnRegisterRgn failed: invalid handle %d", handle);
         return -1;

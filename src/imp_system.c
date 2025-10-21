@@ -349,6 +349,7 @@ int IMP_System_Bind(IMPCell *srcCell, IMPCell *dstCell) {
         return -1;
     }
 
+    // Assuming system_bind is a function that handles the actual binding logic
     return system_bind(srcCell, dstCell);
 }
 
@@ -374,7 +375,7 @@ int IMP_System_UnBind(IMPCell *srcCell, IMPCell *dstCell) {
 
     /* Call unbind function if it exists */
     if (src_module->unbind_func != NULL) {
-        int (*unbind_fn)(void*, void*, void*) = (int (*)(void*, void*, void*))src_module->unbind_func;
+        int (*unbind_fn)(void*, void*, void*) = src_module->unbind_func;
 
         /* Calculate output pointer */
         void *output_ptr = (void*)((char*)src_module + 0x128 + ((srcCell->outputID + 4) << 2));

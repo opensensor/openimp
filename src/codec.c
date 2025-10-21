@@ -651,6 +651,7 @@ int AL_Codec_Encode_ReleaseStream(void *codec, void *stream, void *user_data) {
     }
 
     HWStreamBuffer *hw_stream = (HWStreamBuffer*)stream;
+    LOG_CODEC("ReleaseStream: freed stream %p", stream);
     if (hw_stream->virt_addr != 0 && hw_stream->phys_addr == 0) {
         /* Software-encoded stream - free the allocated buffer */
         void *data_ptr = (void*)(uintptr_t)hw_stream->virt_addr;
@@ -658,7 +659,6 @@ int AL_Codec_Encode_ReleaseStream(void *codec, void *stream, void *user_data) {
         LOG_CODEC("ReleaseStream: freed software-encoded data at %p", data_ptr);
     }
     free(hw_stream);
-    LOG_CODEC("ReleaseStream: freed stream %p", stream);
     return 0;
 }
 

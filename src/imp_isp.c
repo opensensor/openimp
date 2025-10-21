@@ -36,7 +36,7 @@ void imp_log_fun(int level, int option, int type, ...);
 
 
 /* Forward declaration: ISP global stream/link start */
-int ISP_EnsureLinkStreamOn(void);
+int ISP_EnsureLinkStreamOn(int sensor_idx);
 
 /* Forward declaration to allow pointer use in ISPDevice */
 struct ISPTuningState;
@@ -628,57 +628,21 @@ int IMP_ISP_AddSensor(IMPSensorInfo *pinfo) {
     }
 
     /* Log the key IMPSensorInfo fields for debugging */
-#ifdef PLATFORM_T23
-    LOG_ISP("AddSensor: name='%s' reserved1=%d cbus=%d i2c.type='%s' i2c.addr=0x%x",
-            pinfo->name, pinfo->reserved1, (int)pinfo->cbus_type, pinfo->i2c.type, pinfo->i2c.addr);
-    LOG_ISP("AddSensor: i2c_adapter=%d rst_gpio=%d pwdn_gpio=%d power_gpio=%d sensor_id=0x%x",
-            pinfo->i2c_adapter, pinfo->rst_gpio, pinfo->pwdn_gpio, pinfo->power_gpio, pinfo->sensor_id);
-    LOG_ISP("AddSensor: sizeof(IMPSensorInfo)=%zu expected=84", sizeof(IMPSensorInfo));
-#else
-    LOG_ISP("AddSensor: name='%s' cbus=%d i2c.type='%s' i2c.addr=0x%x i2c.adapter=%d rst_gpio=%d",
-            pinfo->name, (int)pinfo->cbus_type, pinfo->i2c.type, pinfo->i2c.addr,
-            pinfo->i2c.i2c_adapter, pinfo->rst_gpio);
-    LOG_ISP("AddSensor: pwdn_gpio=%d power_gpio=%d sensor_id=0x%x",
-            pinfo->pwdn_gpio, pinfo->power_gpio, pinfo->sensor_id);
-#endif
+    LOG_ISP("AddSensor: name='%s' cbus=%d i2c.type='%s' i2c.addr=0x%x rst_gpio=%d",
+            pinfo->name, pinfo->cbus_type, pinfo->i2c.type, pinfo->i2c.addr,
+            pinfo->rst_gpio);
+    LOG_ISP("AddSensor: pwdn_gpio=%d power_gpio=%d",
+            pinfo->pwdn_gpio, pinfo->power_gpio);
 
-    /* REGISTER_SENSOR - Stock T23 libimp calls this first
-     * This registers the sensor configuration with the ISP subsystem.
-     * The kernel iterates through loaded sensor subdevs and calls their ioctl handlers.
-     *
-     * On T23, the sensor driver subdev must already be loaded and registered with tx-isp.
-     * Check dmesg or /proc/jz/isp/isp-* to see if sensor driver is loaded.
-     */
+    /* REGISTER_SENSOR - Stock T23 libimp calls this first */
     LOG_ISP("AddSensor: calling REGISTER_SENSOR ioctl(0x%08x)", TX_ISP_REGISTER_SENSOR);
     if (ioctl(gISPdev->fd, TX_ISP_REGISTER_SENSOR, pinfo) != 0) {
         LOG_ISP("AddSensor: REGISTER_SENSOR failed: %s (errno=%d)", strerror(errno), errno);
-        LOG_ISP("AddSensor: This usually means:");
-        LOG_ISP("  1. Sensor driver module not loaded (check lsmod | grep sensor)");
-        LOG_ISP("  2. Sensor name mismatch (driver expects different name)");
-        LOG_ISP("  3. I2C address/bus mismatch");
-        LOG_ISP("  4. Sensor driver rejected the configuration");
-        LOG_ISP("AddSensor: Dumping IMPSensorInfo structure (84 bytes):");
-        for (int i = 0; i < 84; i += 16) {
-            LOG_ISP("  [%02d-%02d]: %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x",
-                    i, i+15,
-                    ((unsigned char*)pinfo)[i+0], ((unsigned char*)pinfo)[i+1],
-                    ((unsigned char*)pinfo)[i+2], ((unsigned char*)pinfo)[i+3],
-                    ((unsigned char*)pinfo)[i+4], ((unsigned char*)pinfo)[i+5],
-                    ((unsigned char*)pinfo)[i+6], ((unsigned char*)pinfo)[i+7],
-                    ((unsigned char*)pinfo)[i+8], ((unsigned char*)pinfo)[i+9],
-                    ((unsigned char*)pinfo)[i+10], ((unsigned char*)pinfo)[i+11],
-                    ((unsigned char*)pinfo)[i+12], ((unsigned char*)pinfo)[i+13],
-                    ((unsigned char*)pinfo)[i+14], ((unsigned char*)pinfo)[i+15]);
-        }
         return -1;
     }
     LOG_ISP("AddSensor: REGISTER_SENSOR succeeded");
 
-    /* Enumerate sensors to find the one we just registered
-     * The sensor driver is already loaded as a kernel module, so we just need to find it.
-     * Uses ioctl 0xC050561A which returns sensor info at each index.
-     * The ioctl is _IOWR('V', 0x1a, 0x50) = 0xC050561A, so it expects 0x50 (80) bytes.
-     */
+    /* Enumerate sensors to find the one we just registered */
     int sensor_idx = -1;
     int idx = 0;
     struct {
@@ -696,22 +660,6 @@ int IMP_ISP_AddSensor(IMPSensorInfo *pinfo) {
             break;
         }
 
-        /* Dump the entire structure to see what we're getting */
-        LOG_ISP("AddSensor: enum idx=%d raw data (all 80 bytes):", idx);
-        for (int i = 0; i < 80; i += 16) {
-            LOG_ISP("  [%02d-%02d]: %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x",
-                    i, i+15,
-                    ((unsigned char*)&enum_input)[i+0], ((unsigned char*)&enum_input)[i+1],
-                    ((unsigned char*)&enum_input)[i+2], ((unsigned char*)&enum_input)[i+3],
-                    ((unsigned char*)&enum_input)[i+4], ((unsigned char*)&enum_input)[i+5],
-                    ((unsigned char*)&enum_input)[i+6], ((unsigned char*)&enum_input)[i+7],
-                    ((unsigned char*)&enum_input)[i+8], ((unsigned char*)&enum_input)[i+9],
-                    ((unsigned char*)&enum_input)[i+10], ((unsigned char*)&enum_input)[i+11],
-                    ((unsigned char*)&enum_input)[i+12], ((unsigned char*)&enum_input)[i+13],
-                    ((unsigned char*)&enum_input)[i+14], ((unsigned char*)&enum_input)[i+15]);
-        }
-
-        /* The name field should be at offset 4 (after the index) */
         LOG_ISP("AddSensor: enum idx=%d name='%s'", idx, enum_input.name);
 
         if (strcmp(pinfo->name, enum_input.name) == 0) {
@@ -729,17 +677,9 @@ int IMP_ISP_AddSensor(IMPSensorInfo *pinfo) {
     /* Copy sensor info into our scratch area */
     memcpy(&gISPdev->data[0], pinfo, sizeof(IMPSensorInfo));
 
-    /* CRITICAL: Set active sensor input via ioctl 0xc0045627 (TX_ISP_SENSOR_SET_INPUT)
-     * Stock T23 libimp uses HARDCODED value 1 (not the enumerated index!)
-     * See decompilation: var_34 = 1; ioctl($a0_5, 0xc0045627, &var_34)
-     */
-#ifdef PLATFORM_T23
-    int input_index = 1;  /* Stock T23 always uses 1 */
-    LOG_ISP("AddSensor: calling TX_ISP_SENSOR_SET_INPUT with hardcoded value=1 (T23)");
-#else
+    /* CRITICAL: Set active sensor input via ioctl 0xc0045627 (TX_ISP_SENSOR_SET_INPUT) */
     int input_index = sensor_idx;
     LOG_ISP("AddSensor: calling TX_ISP_SENSOR_SET_INPUT with index=%d", input_index);
-#endif
 
     if (ioctl(gISPdev->fd, 0xc0045627, &input_index) != 0) {
         LOG_ISP("AddSensor: TX_ISP_SENSOR_SET_INPUT failed: %s", strerror(errno));
@@ -751,14 +691,8 @@ int IMP_ISP_AddSensor(IMPSensorInfo *pinfo) {
     /* CRITICAL: Get buffer info via TX_ISP_GET_BUF (platform-dependent) */
     tx_isp_buf_t buf_info;
     TXISP_BUF_INIT(buf_info);
-    /* On T23 vendor path, driver expects cbus_type (1=I2C) in the index field */
-#ifdef PLATFORM_T23
-    TXISP_BUF_SET_INDEX(buf_info, pinfo->cbus_type);
-    LOG_ISP("AddSensor: TX_ISP_GET_BUF using index=cbus_type=%d", pinfo->cbus_type);
-#else
     TXISP_BUF_SET_INDEX(buf_info, input_index);
     LOG_ISP("AddSensor: TX_ISP_GET_BUF using index=input_index=%d", input_index);
-#endif
 
     if (ioctl(gISPdev->fd, TX_ISP_GET_BUF, &buf_info) != 0) {
         LOG_ISP("AddSensor: TX_ISP_GET_BUF failed: %s", strerror(errno));
@@ -768,15 +702,7 @@ int IMP_ISP_AddSensor(IMPSensorInfo *pinfo) {
     LOG_ISP("AddSensor: ISP buffer size=%u (platform struct size=%zu)",
             (unsigned)TXISP_BUF_GET_SIZE(buf_info), sizeof(buf_info));
 
-    /* CRITICAL: Allocate DMA buffer for ISP RAW data
-     * The OEM allocates a DMA buffer and passes its physical address to SET_BUF.
-     * This buffer is used by the ISP hardware to store RAW sensor data before processing.
-     *
-     * IMP_Alloc returns buffer info in the first parameter (0x94 bytes):
-     *   offset 0x80: virt_addr
-     *   offset 0x84: phys_addr
-     *   offset 0x88: size
-     */
+    /* CRITICAL: Allocate DMA buffer for ISP RAW data */
     char isp_buf_info[0x94];
     memset(isp_buf_info, 0, sizeof(isp_buf_info));
 
@@ -785,15 +711,6 @@ int IMP_ISP_AddSensor(IMPSensorInfo *pinfo) {
         return -1;
     }
 
-    /* Extract buffer info from the returned structure using safe struct access
-     * IMP_Alloc copies the DMABuffer structure into isp_buf_info.
-     * DMABuffer layout:
-     *   0x00-0x5f: name[96]
-     *   0x60-0x7f: tag[32]
-     *   0x80: virt_addr (void*)
-     *   0x84: phys_addr (uint32_t)
-     *   0x88: size (uint32_t)
-     */
     typedef struct {
         char name[96];
         char tag[32];
@@ -811,23 +728,12 @@ int IMP_ISP_AddSensor(IMPSensorInfo *pinfo) {
 
     LOG_ISP("AddSensor: allocated ISP buffer: virt=%p phys=0x%lx size=%u",
             gISPdev->isp_buffer_virt, gISPdev->isp_buffer_phys, gISPdev->isp_buffer_size);
-    /* Safety: clear ISP buffer to avoid driver reading stale data on first IRQ */
-    if (gISPdev->isp_buffer_virt && gISPdev->isp_buffer_size > 0) {
-        memset(gISPdev->isp_buffer_virt, 0, gISPdev->isp_buffer_size);
-    }
+    /* DO NOT memset the ISP buffer - the ISP firmware manages it entirely */
 
-    /* CRITICAL: Set buffer address via TX_ISP_SET_BUF (platform-dependent)
-     * Pass the physical address and size of the allocated DMA buffer.
-     */
+    /* CRITICAL: Set buffer address via TX_ISP_SET_BUF (platform-dependent) */
     tx_isp_buf_t set_buf;
     TXISP_BUF_INIT(set_buf);
-#ifdef PLATFORM_T23
-    TXISP_BUF_SET_INDEX(set_buf, pinfo->cbus_type);
-    LOG_ISP("AddSensor: TX_ISP_SET_BUF using index=cbus_type=%d", pinfo->cbus_type);
-#else
     TXISP_BUF_SET_INDEX(set_buf, sensor_idx);
-    LOG_ISP("AddSensor: TX_ISP_SET_BUF using index=sensor_idx=%d", sensor_idx);
-#endif
     TXISP_BUF_SET_PHYS_SIZE(set_buf, gISPdev->isp_buffer_phys, TXISP_BUF_GET_SIZE(buf_info));
 
     LOG_ISP("AddSensor: calling TX_ISP_SET_BUF (0x%08x) with phys=0x%lx size=%u",
@@ -852,7 +758,6 @@ int IMP_ISP_AddSensor(IMPSensorInfo *pinfo) {
         char isp_buf2_info[0x94];
         memset(isp_buf2_info, 0, sizeof(isp_buf2_info));
         if (IMP_Alloc(isp_buf2_info, buf2_info.size, "ISP RAW2") == 0) {
-            typedef struct { void *virt_addr; uint32_t phys_addr; uint32_t size; } DMABuffer;
             DMABuffer *dma2 = (DMABuffer*)isp_buf2_info;
             gISPdev->isp_buffer2_virt = dma2->virt_addr;
             gISPdev->isp_buffer2_phys = dma2->phys_addr;
@@ -874,7 +779,6 @@ int IMP_ISP_AddSensor(IMPSensorInfo *pinfo) {
             LOG_ISP("AddSensor: IMP_Alloc for second buffer failed");
         }
     } else {
-        /* Not all configurations require a second buffer; this is not an error. */
         LOG_ISP("AddSensor: secondary ISP buffer not requested or ioctl failed");
     }
 
@@ -889,8 +793,16 @@ int IMP_ISP_AddSensor_VI(IMPVI vi, IMPSensorInfo *pinfo) {
 }
 
 int IMP_ISP_DelSensor(IMPSensorInfo *pinfo) {
-    if (pinfo == NULL) return -1;
+    if (pinfo == NULL) {
+        LOG_ISP("DelSensor: NULL sensor info");
+        return -1;
+    }
+
     LOG_ISP("DelSensor: %s", pinfo->name);
+
+    // Assuming additional logic is needed to actually delete the sensor
+    // This could involve ioctl calls or other cleanup operations
+
     return 0;
 }
 
@@ -937,7 +849,7 @@ int IMP_ISP_EnableSensor(void) {
     LOG_ISP("EnableSensor: sensor index validated, proceeding to STREAMON/LINK_SETUP now (OEM parity)");
 
     /* Start ISP streaming and link setup immediately to match OEM */
-    if (ISP_EnsureLinkStreamOn() != 0) {
+    if (ISP_EnsureLinkStreamOn(sensor_idx) != 0) {
         LOG_ISP("EnableSensor: failed to start ISP stream + link setup");
         return -1;
     }
@@ -948,7 +860,7 @@ int IMP_ISP_EnableSensor(void) {
 }
 
 /* Internal: ensure ISP global STREAMON and LINK_STREAM_ON are active (idempotent) */
-int ISP_EnsureLinkStreamOn(void) {
+int ISP_EnsureLinkStreamOn(int sensor_idx) {
     if (gISPdev == NULL) {
         LOG_ISP("EnsureLinkStreamOn: ISP not opened");
         return -1;
@@ -957,27 +869,27 @@ int ISP_EnsureLinkStreamOn(void) {
         return 0;
     }
     int ret;
-    /* Some T31 variants expect a pointer to type=1 for STREAMON */
-    int v4l2_type = 1;
-    LOG_ISP("EnsureLinkStreamOn: calling ioctl 0x80045612 (ISP STREAMON) [arg=&type=1]");
-    ret = ioctl(gISPdev->fd, 0x80045612, &v4l2_type);
+    /* OEM passes 0 (NULL) for STREAMON, not &type */
+    LOG_ISP("EnsureLinkStreamOn: calling ioctl 0x80045612 (ISP STREAMON) [arg=0]");
+    ret = ioctl(gISPdev->fd, 0x80045612, 0);
     if (ret != 0) {
         LOG_ISP("EnsureLinkStreamOn: STREAMON failed: %s", strerror(errno));
         return -1;
     }
 
-    /* Per OEM decompilation, LINK_SETUP expects a pointer to a 32-bit int result */
-    LOG_ISP("EnsureLinkStreamOn: calling ioctl 0x800456d0 (LINK_SETUP) [arg=&int]");
-    int config_result = 0;
-    ret = ioctl(gISPdev->fd, 0x800456d0, &config_result);
+    /* Per OEM decompilation, LINK_SETUP expects a pointer to sensor_idx */
+    LOG_ISP("EnsureLinkStreamOn: calling ioctl 0x800456d0 (LINK_SETUP) [arg=&sensor_idx=%d]", sensor_idx);
+    int link_arg = sensor_idx;
+    ret = ioctl(gISPdev->fd, 0x800456d0, &link_arg);
     if (ret != 0) {
         LOG_ISP("EnsureLinkStreamOn: LINK_SETUP failed: %s", strerror(errno));
         return -1;
     }
-    LOG_ISP("EnsureLinkStreamOn: LINK_SETUP succeeded, result=%d", config_result);
+    LOG_ISP("EnsureLinkStreamOn: LINK_SETUP succeeded, sensor_idx=%d", link_arg);
 
-    LOG_ISP("EnsureLinkStreamOn: calling ioctl 0x800456d2 (LINK_STREAM_ON) [arg=&type=1]");
-    ret = ioctl(gISPdev->fd, 0x800456d2, &v4l2_type);
+    /* OEM passes 0 (NULL) for LINK_STREAM_ON, not &type */
+    LOG_ISP("EnsureLinkStreamOn: calling ioctl 0x800456d2 (LINK_STREAM_ON) [arg=0]");
+    ret = ioctl(gISPdev->fd, 0x800456d2, 0);
     if (ret != 0) {
         LOG_ISP("EnsureLinkStreamOn: LINK_STREAM_ON failed: %s", strerror(errno));
         return -1;
@@ -996,7 +908,19 @@ int IMP_ISP_EnableSensor_VI(IMPVI vi, IMPSensorInfo *pinfo) {
 
 int IMP_ISP_DisableSensor(void) {
     LOG_ISP("DisableSensor");
+
+    // Assuming gISPdev is a global pointer to the ISPDevice structure
+    if (gISPdev == NULL) {
+        LOG_ISP("DisableSensor: ISP not opened");
+        return -1;
+    }
+
+    // Assuming sensor_enabled is a global or static variable indicating sensor state
     sensor_enabled = 0;
+
+    // Additional logic may be required to properly disable the sensor
+    // This could involve ioctl calls or other cleanup operations
+
     return 0;
 }
 
@@ -1227,14 +1151,14 @@ int IMP_ISP_Tuning_SetISPBypass(IMPISPTuningOpsMode enable) {
         return -1;
     }
 
-    /* Step 4: LINK_SETUP with arg = (enable==0)?1:0, then LINK_STREAM_ON with &type=1 */
+    /* Step 4: LINK_SETUP with arg = (enable==0)?1:0, then LINK_STREAM_ON with arg=0 */
     int link_arg = (enable == 0) ? 1 : 0;
     if (ioctl(gISPdev->fd, 0x800456d0, &link_arg) != 0) {
         LOG_ISP("SetISPBypass: LINK_SETUP failed: %s", strerror(errno));
         return -1;
     }
-    int v4l2_type2 = 1;
-    if (ioctl(gISPdev->fd, 0x800456d2, &v4l2_type2) != 0) {
+    /* OEM passes 0 (NULL) for LINK_STREAM_ON, not &type */
+    if (ioctl(gISPdev->fd, 0x800456d2, 0) != 0) {
         LOG_ISP("SetISPBypass: LINK_STREAM_ON failed: %s", strerror(errno));
         return -1;
     }
@@ -1254,24 +1178,81 @@ int IMP_ISP_Tuning_SetISPVflip(IMPISPTuningOpsMode mode) {
 
 int IMP_ISP_Tuning_SetBrightness(unsigned char bright) {
     LOG_ISP("SetBrightness: %u", bright);
+
+    // Assuming gISPdev is a global pointer to the ISPDevice structure
+    if (gISPdev == NULL) {
+        LOG_ISP("SetBrightness: ISP not opened");
+        return -1;
+    }
+
+    // Assuming there is a mechanism to set brightness in the ISP device
+    // This could involve an ioctl call or direct register manipulation
+    // Example (pseudo-code):
+    // int ret = ioctl(gISPdev->fd, IOCTL_SET_BRIGHTNESS, &bright);
+    // if (ret != 0) {
+    //     LOG_ISP("SetBrightness: ioctl failed: %s", strerror(errno));
+    //     return -1;
+    // }
+
     return 0;
 }
 
 int IMP_ISP_Tuning_SetContrast(unsigned char contrast) {
     LOG_ISP("SetContrast: %u", contrast);
-    if (gISPdev && gISPdev->tuning) {
-        gISPdev->tuning->contrast_byte = contrast;
+
+    if (gISPdev == NULL) {
+        LOG_ISP("SetContrast: ISP not opened");
+        return -1;
     }
+
+    if (gISPdev->tuning == NULL) {
+        LOG_ISP("SetContrast: Tuning structure not initialized");
+        return -1;
+    }
+
+    gISPdev->tuning->contrast_byte = contrast;
     return 0;
 }
 
 int IMP_ISP_Tuning_SetSharpness(unsigned char sharpness) {
     LOG_ISP("SetSharpness: %u", sharpness);
+
+    // Assuming gISPdev is a global pointer to the ISPDevice structure
+    if (gISPdev == NULL) {
+        LOG_ISP("SetSharpness: ISP not opened");
+        return -1;
+    }
+
+    // Assuming there is a mechanism to set sharpness in the ISP device
+    // This could involve an ioctl call or direct register manipulation
+    // Example (pseudo-code):
+    // int ret = ioctl(gISPdev->fd, IOCTL_SET_SHARPNESS, &sharpness);
+    // if (ret != 0) {
+    //     LOG_ISP("SetSharpness: ioctl failed: %s", strerror(errno));
+    //     return -1;
+    // }
+
     return 0;
 }
 
 int IMP_ISP_Tuning_SetSaturation(unsigned char sat) {
     LOG_ISP("SetSaturation: %u", sat);
+
+    // Assuming gISPdev is a global pointer to the ISPDevice structure
+    if (gISPdev == NULL) {
+        LOG_ISP("SetSaturation: ISP not opened");
+        return -1;
+    }
+
+    // Assuming there is a mechanism to set saturation in the ISP device
+    // This could involve an ioctl call or direct register manipulation
+    // Example (pseudo-code):
+    // int ret = ioctl(gISPdev->fd, IOCTL_SET_SATURATION, &sat);
+    // if (ret != 0) {
+    //     LOG_ISP("SetSaturation: ioctl failed: %s", strerror(errno));
+    //     return -1;
+    // }
+
     return 0;
 }
 
@@ -1371,28 +1352,104 @@ int IMP_ISP_Tuning_GetWB(IMPISPWB *wb) {
 /* ISP Tuning Get Functions - based on Binary Ninja decompilations */
 
 int IMP_ISP_Tuning_GetBrightness(unsigned char *pbright) {
-    if (pbright == NULL) return -1;
+    if (pbright == NULL) {
+        LOG_ISP("GetBrightness: NULL pointer provided");
+        return -1;
+    }
+
+    // Assuming gISPdev is a global pointer to the ISPDevice structure
+    if (gISPdev == NULL) {
+        LOG_ISP("GetBrightness: ISP not opened");
+        return -1;
+    }
+
+    // Assuming there is a mechanism to get brightness from the ISP device
+    // This could involve an ioctl call or direct register access
+    // Example (pseudo-code):
+    // int ret = ioctl(gISPdev->fd, IOCTL_GET_BRIGHTNESS, pbright);
+    // if (ret != 0) {
+    //     LOG_ISP("GetBrightness: ioctl failed: %s", strerror(errno));
+    //     return -1;
+    // }
+
     *pbright = 128;  /* Default middle value */
     LOG_ISP("GetBrightness: %u", *pbright);
     return 0;
 }
 
 int IMP_ISP_Tuning_GetContrast(unsigned char *pcontrast) {
-    if (pcontrast == NULL) return -1;
+    if (pcontrast == NULL) {
+        LOG_ISP("GetContrast: NULL pointer provided");
+        return -1;
+    }
+
+    // Assuming gISPdev is a global pointer to the ISPDevice structure
+    if (gISPdev == NULL) {
+        LOG_ISP("GetContrast: ISP not opened");
+        return -1;
+    }
+
+    // Assuming there is a mechanism to get contrast from the ISP device
+    // This could involve an ioctl call or direct register access
+    // Example (pseudo-code):
+    // int ret = ioctl(gISPdev->fd, IOCTL_GET_CONTRAST, pcontrast);
+    // if (ret != 0) {
+    //     LOG_ISP("GetContrast: ioctl failed: %s", strerror(errno));
+    //     return -1;
+    // }
+
     *pcontrast = 128;  /* Default middle value */
     LOG_ISP("GetContrast: %u", *pcontrast);
     return 0;
 }
 
 int IMP_ISP_Tuning_GetSharpness(unsigned char *psharpness) {
-    if (psharpness == NULL) return -1;
+    if (psharpness == NULL) {
+        LOG_ISP("GetSharpness: NULL pointer provided");
+        return -1;
+    }
+
+    // Assuming gISPdev is a global pointer to the ISPDevice structure
+    if (gISPdev == NULL) {
+        LOG_ISP("GetSharpness: ISP not opened");
+        return -1;
+    }
+
+    // Assuming there is a mechanism to get sharpness from the ISP device
+    // This could involve an ioctl call or direct register access
+    // Example (pseudo-code):
+    // int ret = ioctl(gISPdev->fd, IOCTL_GET_SHARPNESS, psharpness);
+    // if (ret != 0) {
+    //     LOG_ISP("GetSharpness: ioctl failed: %s", strerror(errno));
+    //     return -1;
+    // }
+
     *psharpness = 128;  /* Default middle value */
     LOG_ISP("GetSharpness: %u", *psharpness);
     return 0;
 }
 
 int IMP_ISP_Tuning_GetSaturation(unsigned char *psat) {
-    if (psat == NULL) return -1;
+    if (psat == NULL) {
+        LOG_ISP("GetSaturation: NULL pointer provided");
+        return -1;
+    }
+
+    // Assuming gISPdev is a global pointer to the ISPDevice structure
+    if (gISPdev == NULL) {
+        LOG_ISP("GetSaturation: ISP not opened");
+        return -1;
+    }
+
+    // Assuming there is a mechanism to get saturation from the ISP device
+    // This could involve an ioctl call or direct register access
+    // Example (pseudo-code):
+    // int ret = ioctl(gISPdev->fd, IOCTL_GET_SATURATION, psat);
+    // if (ret != 0) {
+    //     LOG_ISP("GetSaturation: ioctl failed: %s", strerror(errno));
+    //     return -1;
+    // }
+
     *psat = 128;  /* Default middle value */
     LOG_ISP("GetSaturation: %u", *psat);
     return 0;

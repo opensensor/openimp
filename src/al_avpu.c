@@ -460,7 +460,18 @@ int ALAvpu_Open(ALAvpuContext *ctx, const HWEncoderParams *p)
     uint32_t axi_base = 0;
     int use_offsets = 0;
     uint32_t rmem_base = 0;
-    if (DMA_Is_RMEM() && DMA_Get_RMEM_Base(&rmem_base) == 0 && rmem_base != 0) {
+
+    /* Allow forcing absolute addressing via environment variable (T31 workaround for unaligned access crashes) */
+    const char *force_abs_env = getenv("OPENIMP_AVPU_FORCE_ABS");
+    int force_absolute = (force_abs_env && force_abs_env[0] == '1');
+
+    if (force_absolute) {
+        /* Force absolute addressing mode */
+        axi_base = 0;
+        use_offsets = 0;
+        ctx->disable_axi_offset = 1;
+        LOG_AL("addr-mode: FORCED ABSOLUTE (env OPENIMP_AVPU_FORCE_ABS=1)");
+    } else if (DMA_Is_RMEM() && DMA_Get_RMEM_Base(&rmem_base) == 0 && rmem_base != 0) {
         axi_base = rmem_base;
         use_offsets = 1;
         ctx->disable_axi_offset = 0;

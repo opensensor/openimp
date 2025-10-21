@@ -455,8 +455,8 @@ int IMP_FrameSource_EnableChn(int chnNum) {
 
     /* Ensure ISP global stream is active before per-channel STREAM_ON */
     {
-        extern int ISP_EnsureLinkStreamOn(void);
-        int isp_ok = ISP_EnsureLinkStreamOn();
+        extern int ISP_EnsureLinkStreamOn(int sensor_idx);
+        int isp_ok = ISP_EnsureLinkStreamOn(0);  /* sensor_idx=0 (already called in EnableSensor, this is idempotent) */
         if (isp_ok < 0) {
             LOG_FS("EnableChn warning: ISP EnsureLinkStreamOn failed; proceeding may cause no frames");
         }
