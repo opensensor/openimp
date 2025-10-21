@@ -1127,6 +1127,11 @@ int IMP_ISP_Tuning_GetISPRunningMode(IMPISPRunningMode *pmode) {
 }
 
 int IMP_ISP_Tuning_SetISPBypass(IMPISPTuningOpsMode enable) {
+    /* On T31 normal pipeline, OEM does not enable full ISP bypass. Coerce to DISABLE. */
+    if (enable != 0) {
+        LOG_ISP("SetISPBypass: request=%d coerced to 0 (normal pipeline)", enable);
+        enable = 0;
+    }
     if (gISPdev == NULL) {
         LOG_ISP("SetISPBypass: ISP not opened");
         return -1;
@@ -1146,21 +1151,34 @@ int IMP_ISP_Tuning_SetISPBypass(IMPISPTuningOpsMode enable) {
         return -1;
     }
 
-    /* Step 3: tuning ioctl on /dev/isp-m0: 0xc008561c with {cmd=0x8000164, value=enable} */
+    /* Step 3: tuning ioctl on /dev/isp-m0: 0xc008561c with {cmd=0x8000164, value=enable}
+     * If tuning interface isn't up yet and we're DISABLING bypass (enable==0), skip this step.
+     * This lets stock prudynt call this early without failing, while still enforcing non-bypass.
+     */
     if (gISPdev->tisp_fd < 0) {
-        LOG_ISP("SetISPBypass: tuning not enabled (tisp_fd<0)");
-        return -1;
-    }
-    struct { int cmd; int value; } bypass_cmd;
-    bypass_cmd.cmd = 0x8000164;
-    bypass_cmd.value = (int)enable;
-    if (ioctl(gISPdev->tisp_fd, 0xc008561c, &bypass_cmd) != 0) {
-        LOG_ISP("SetISPBypass: tuning ioctl 0xc008561c failed: %s", strerror(errno));
-        return -1;
+        if (enable == 0) {
+            LOG_ISP("SetISPBypass: tuning not enabled (tisp_fd<0), skip write for disable");
+        } else {
+            LOG_ISP("SetISPBypass: tuning not enabled (tisp_fd<0)");
+            return -1;
+        }
+    } else {
+        struct { int cmd; int value; } bypass_cmd;
+        bypass_cmd.cmd = 0x8000164;
+        bypass_cmd.value = (int)enable;
+        if (ioctl(gISPdev->tisp_fd, 0xc008561c, &bypass_cmd) != 0) {
+            LOG_ISP("SetISPBypass: tuning ioctl 0xc008561c failed: %s", strerror(errno));
+            return -1;
+        }
     }
 
-    /* Step 4: LINK_SETUP with arg = (enable==0)?1:0, then LINK_STREAM_ON with arg=0 */
-    int link_arg = (enable == 0) ? 1 : 0;
+    /* Step 4: LINK_SETUP must use the active sensor index (BN MCP: arg=&sensor_idx) */
+    int link_arg = -1;
+    if (ioctl(gISPdev->fd, 0x40045626, &link_arg) != 0 || link_arg < 0) {
+        LOG_ISP("SetISPBypass: GET_SENSOR_INDEX failed before LINK_SETUP: %s", strerror(errno));
+        return -1;
+    }
+    LOG_ISP("SetISPBypass: LINK_SETUP with sensor_idx=%d (enable=%d)", link_arg, enable);
     if (ioctl(gISPdev->fd, 0x800456d0, &link_arg) != 0) {
         LOG_ISP("SetISPBypass: LINK_SETUP failed: %s", strerror(errno));
         return -1;
@@ -1169,6 +1187,7 @@ int IMP_ISP_Tuning_SetISPBypass(IMPISPTuningOpsMode enable) {
     if (ioctl(gISPdev->fd, 0x800456d2, 0) != 0) {
         LOG_ISP("SetISPBypass: LINK_STREAM_ON failed: %s", strerror(errno));
         return -1;
+
     }
 
     /* Mark that we've done LINK_SETUP so ISP_EnsureLinkStreamOn doesn't redo it */
@@ -1529,3 +1548,23 @@ int IMP_ISP_Tuning_GetWB_GOL_Statis(IMPISPWB *wb) {
     return 0;
 }
 
+
+
+/* OEM-style API: pointer form. Stock prudynt may call this before AddSensor. */
+int32_t IMP_ISP_SetISPBypass(int num, IMPISPTuningOpsMode *enable)
+{
+    (void)num; /* Single-sensor systems ignore num (always main) */
+    if (enable == NULL) return -1;
+    /* Coerce to normal pipeline as per OEM default */
+    IMPISPTuningOpsMode v = (*enable != 0) ? 0 : 0;
+    return IMP_ISP_Tuning_SetISPBypass(v);
+}
+
+int32_t IMP_ISP_GetISPBypass(int num, IMPISPTuningOpsMode *enable)
+{
+    (void)num;
+    if (enable == NULL) return -1;
+    /* We enforce non-bypass by default */
+    *enable = 0;
+    return 0;
+}

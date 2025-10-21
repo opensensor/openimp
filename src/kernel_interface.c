@@ -355,7 +355,7 @@ int fs_set_buffer_count(int fd, int count) {
     req.count = (uint32_t)count;
     req.type = 1;            /* V4L2_BUF_TYPE_VIDEO_CAPTURE */
     req.memory = 2;          /* V4L2_MEMORY_USERPTR (matches earlier success) */
-    req.capabilities = 0;    /* no special caps */
+    req.capabilities = 1;    /* OEM sets capabilities=1; required by some driver builds */
     req.reserved[0] = 0;
 
     int ret = ioctl(fd, VIDIOC_SET_BUFCNT, &req);
