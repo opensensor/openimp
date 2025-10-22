@@ -19,9 +19,9 @@ root@ing-wyze-cam3-a000 opt# LOG_AVPU_TRACE=/opt/avpu_trace.log LD_PRELOAD=/opt/
 [IMP_ISP] AddSensor: TX_ISP_GET_BUF using index=input_index=125830200
 [IMP_ISP] AddSensor: ISP buffer size=4685424 (platform struct size=8)
 [DMA] DMA init: using /dev/rmem
-[DMA] DMA init: /dev/rmem mapped at 0x74d89000 size=30408704 base_phys=0x06300000
-[DMA] Alloc: (unnamed) size=4685424 phys=0x6300000 virt=0x74d89000 (rmem off=0x0)
-[IMP_ISP] AddSensor: allocated ISP buffer: virt=0x74d89000 phys=0x6300000 size=4685424
+[DMA] DMA init: /dev/rmem mapped at 0x755f0000 size=30408704 base_phys=0x06300000
+[DMA] Alloc: (unnamed) size=4685424 phys=0x6300000 virt=0x755f0000 (rmem off=0x0)
+[IMP_ISP] AddSensor: allocated ISP buffer: virt=0x755f0000 phys=0x6300000 size=4685424
 [IMP_ISP] AddSensor: calling TX_ISP_SET_BUF (0x800856d4) with phys=0x6300000 size=4685424
 [IMP_ISP] AddSensor: TX_ISP_SET_BUF succeeded
 [IMP_ISP] AddSensor: secondary ISP buffer not requested or ioctl failed
@@ -65,14 +65,14 @@ root@ing-wyze-cam3-a000 opt# LOG_AVPU_TRACE=/opt/avpu_trace.log LD_PRELOAD=/opt/
 [IMP_ISP] SetMaxDgain: 80
 [IMP_ISP] SetWB: mode=0, rgain=0, bgain=0
 [IMP_ISP] SetBcshHue: 128
-[IMP_ISP] SetDefog_Strength: 2142343275
+[IMP_ISP] SetDefog_Strength: 2140126059
 [IMP_ISP] SetDPC_Strength: 128
 [IMP_ISP] SetDRC_Strength: 128
 [IMP_ISP] SetSensorFPS: 25/1
 [IMP_ISP] SetSensorFPS: FPS set successfully to 25/1
 [IMP_ISP] SetISPRunningMode: 0
 [IMP_ISP] SetISPRunningMode: mode set successfully to 0
-[IMP_System] Timestamp rebased to 1005093426 us
+[IMP_System] Timestamp rebased to 1087520185 us
 [INFO:TimestampManager.cpp]: TimestampManager initialized - using IMP hardware timestamps directly
 [FrameSource] GetChnAttr failed: channel 0 not configured
 [FrameSource] CreateChn: Opened /dev/framechan0 (fd=8, nonblock)
@@ -90,7 +90,7 @@ root@ing-wyze-cam3-a000 opt# LOG_AVPU_TRACE=/opt/avpu_trace.log LD_PRELOAD=/opt/
 [Fifo] Init: size=4, max_elements=5
 [Fifo] Init: size=7, max_elements=8
 [Codec] Create: hardware encoder will be attempted via /dev/avpu (lazy init)
-[Codec] Create: codec=0x76a900a0, channel=0
+[Codec] Create: codec=0x772f70a0, channel=0
 [Encoder] channel_encoder_init: frame_cnt=4, frame_size=1048576
 [Fifo] Init: size=4, max_elements=5
 [Encoder] CreateChn: chn=0, profile=100 created successfully
@@ -114,9 +114,9 @@ root@ing-wyze-cam3-a000 opt# LOG_AVPU_TRACE=/opt/avpu_trace.log LD_PRELOAD=/opt/
 [FrameSource] EnableChn: using sizeimage=3133440 from SET_FMT for chn=0
 [VBM] CreatePool: allocating pool_size=2512 (frame_count=2 * 0x428 + 0x180)
 [VBM] CreatePool: chn=0, 1920x1080 fmt=0xa, 2 frames, size=3133440 (req=3133440 calc=3133440)
-[DMA] Alloc: (unnamed) size=6266880 phys=0x6778000 virt=0x75201000 (rmem off=0x478000)
-[VBM] Frame 0: phys=0x6778000 virt=0x75201000
-[VBM] Frame 1: phys=0x6a75000 virt=0x754fe000
+[DMA] Alloc: (unnamed) size=6266880 phys=0x6778000 virt=0x75a68000 (rmem off=0x478000)
+[VBM] Frame 0: phys=0x6778000 virt=0x75a68000
+[VBM] Frame 1: phys=0x6a75000 virt=0x75d65000
 [VBM] CreatePool: chn=0 created successfully
 [KernelIF] REQBUFS: requested=2 actual=2
 [VBM] FillPool: chn=0, filling 2 frames
@@ -147,66 +147,21 @@ root@ing-wyze-cam3-a000 opt# LOG_AVPU_TRACE=/opt/avpu_trace.log LD_PRELOAD=/opt/
 [KernelIF] DQBUF ioctl ENTER
 [KernelIF] DQBUF ioctl LEAVE ret=0 errno=0
 [VBM] VBMKernelDequeue chn=0: DQBUF ret=0 idx=0
-[FrameSource] frame_capture_thread chn=0: got frame #1 (0x76a97cc0) from kernel
-[System] notify: calling update 0x76f3194c on Encoder (frame=0x76a97cc0)
-[Encoder] encoder_update: Frame available from FrameSource, frame=0x76a97cc0
-[ 1005.277651] CPU: 0 PID: 7087 Comm: prudynt Tainted: G           O 3.10.14__isvp_swan_1.0__ #1
-[ 1005.286452] task: 841106c0 ti: 82054000 task.ti: 82054000
-[ 1005.292016] $ 0   : 00000000 10001c00 c00086cc 40808014
-[ 1005.297406] $ 4   : ffffd90e fffffffe 00000008 0000000f
-[ 1005.302800] $ 8   : 10001c01 1000001e 00000000 00000002
-[ 1005.308190] $12   : 00000000 00000020 00000000 20333030
-[ 1005.313578] $16   : ac4316bc ffffd90e 801b3018 80000000
-[ 1005.318968] $20   : 80166510 82055b28 85f02e14 00000039
-[ 1005.324367] $24   : 00000000 76f9fbb0                  
-[ 1005.329763] $28   : 82054000 82055af0 804566b0 8001b084
-[ 1005.335168] Hi    : 00000000
-[ 1005.338134] Lo    : 00040000
-[ 1005.341098] epc   : 80021204 0x80021204
-[ 1005.345052]     Tainted: G           O
-[ 1005.348912] ra    : 8001b084 0x8001b084
-[ 1005.352864] Status: 10001c03	KERNEL EXL IE 
-[ 1005.357177] Cause : 40808014
-[ 1005.360140] BadVA : ffffd90e
-[ 1005.363102] PrId  : 00d00100 (Ingenic Xburst)
-[ 1005.367591] Modules linked in:Unhandled kernel unaligned access[#2]:
-[ 1005.374141] CPU: 0 PID: 7087 Comm: prudynt Tainted: G           O 3.10.14__isvp_swan_1.0__ #1
-[ 1005.382945] task: 841106c0 ti: 82054000 task.ti: 82054000
-[ 1005.388504] $ 0   : 00000000 10001c00 00000000 00000000
-[ 1005.393900] $ 4   : ffffda29 fffffffe 00000000 0000012a
-[ 1005.399297] $ 8   : 10001c00 1000001e 00000000 ffffffe0
-[ 1005.404684] $12   : 82055780 00000000 00000000 696e6567
-[ 1005.410086] $16   : 8e020000 ffffda29 803aa81c 00000000
-[ 1005.415494] $20   : 803aa778 820558c8 85f02e14 00000039
-[ 1005.420888] $24   : 00000001 76f9fbb0                  
-[ 1005.426275] $28   : 82054000 82055890 804566b0 8001b084
-[ 1005.431676] Hi    : 00000000
-[ 1005.434643] Lo    : 00000000
-[ 1005.437612] epc   : 80021064 0x80021064
-[ 1005.441564]     Tainted: G           O
-[ 1005.445426] ra    : 8001b084 0x8001b084
-[ 1005.449378] Status: 10001c02	KERNEL EXL 
-[ 1005.453416] Cause : 40809414
-[ 1005.456384] BadVA : ffffda29
-[ 1005.459346] PrId  : 00d00100 (Ingenic Xburst)
-[ 1005.463828] Modules linked in:Unhandled kernel unaligned access[#3]:
-[ 1005.470385] CPU: 0 PID: 7087 Comm: prudynt Tainted: G           O 3.10.14__isvp_swan_1.0__ #1
-[ 1005.479190] task: 841106c0 ti: 82054000 task.ti: 82054000
-[ 1005.484749] $ 0   : 00000000 10001c00 00000000 00000000
-[ 1005.490146] $ 4   : ffffda3d fffffffe 00000000 0000013e
-[ 1005.495547] $ 8   : 10001c00 1000001e 00000000 ffffffe0
-[ 1005.500956] $12   : 82055520 00000000 00000000 696e6567
-[ 1005.506357] $16   : 8e020000 ffffda3d 803aa81c 00000000
-[ 1005.511763] $20   : 803aa778 82055668 85f02e14 00000039
-[ 1005.517162] $24   : 00000001 76f9fbb0                  
-[ 1005.522562] $28   : 82054000 82055630 804566b0 8001b084
-[ 1005.527964] Hi    : 00000000
-[ 1005.530932] Lo    : 00000000
-[ 1005.533899] epc   : 80021064 0x80021064
-[ 1005.537852]     Tainted: G           O
-[ 1005.541716] ra    : 8001b084 0x8001b084
-[ 1005.545666] Status: 10001c02	KERNEL EXL 
-[ 1005.549704] Cause : 40809414
-[ 1005.552672] BadVA : ffffda3d
-[ 1005.555634] PrId  : 00d00100 (Ingenic Xburst)
-[ 1005.560117] Modules linked in:Unhandled kernel unaligned access[#4]:
+[FrameSource] frame_capture_thread chn=0: got frame #1 (0x772fecc0) from kernel
+[System] notify: calling update 0x7779881c on Encoder (frame=0x772fecc0)
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x772fecc0
+[Codec] Process: frame=0x772fecc0, extracting metadata
+[DevicePool] Init: device pool initialized
+[DevicePool] Open: opened '/dev/avpu' (fd=14, slot=0)
+[DMA] Alloc: (unnamed) size=131072 phys=0x6d72000 virt=0x76062000 (rmem off=0xa72000)
+[Codec] AVPU: stream buf[0] phys=0x06d72000 size=131072
+[DMA] Alloc: (unnamed) size=131072 phys=0x6d92000 virt=0x76082000 (rmem off=0xa92000)
+[Codec] AVPU: stream buf[1] phys=0x06d92000 size=131072
+[DMA] Alloc: (unnamed) size=131072 phys=0x6db2000 virt=0x760a2000 (rmem off=0xab2000)
+[Codec] AVPU: stream buf[2] phys=0x06db2000 size=131072
+[DMA] Alloc: (unnamed) size=131072 phys=0x6dd2000 virt=0x760c2000 (rmem off=0xad2000)
+[Codec] AVPU: stream buf[3] phys=0x06dd2000 size=131072
+[DMA] Alloc: (unnamed) size=9728 phys=0x6df2000 virt=0x760e2000 (rmem off=0xaf2000)
+[Codec] AVPU: cmdlist ring phys=0x06df2000 size=9728 entries=19
+[Codec] AVPU: channel=0 acquired ownership
+[Codec] Process: AVPU opened fd=14 channel=0

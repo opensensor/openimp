@@ -92,30 +92,20 @@ typedef struct ALAvpuContext {
     int hw_prepared;          /* base HW configured (regs set, ENC_EN on, no CL yet) */
 } ALAvpuContext;
 
-/* Initialize AVPU context with device fd and encoder params
- * Device fd must be obtained via AL_DevicePool_Open before calling this
- * (OEM parity: no ALAvpu_Open, initialization done in encoder layer)
+/* REMOVED: ALL ALAvpu_* wrapper functions do NOT exist in OEM binary
+ * Confirmed via Binary Ninja MCP search - no ALAvpu_Init, ALAvpu_Deinit,
+ * ALAvpu_QueueFrame, ALAvpu_DequeueStream, ALAvpu_ReleaseStream, or ALAvpu_SetEvent.
+ *
+ * OEM architecture (from Binary Ninja decompilation):
+ * - Device opening: AL_DevicePool_Open("/dev/avpu") at 0x362dc
+ * - Context init: AL_Common_Encoder_CreateChannel (called from AL_Encoder_Create)
+ * - Frame encoding: Direct ioctl calls (AL_CMD_IP_WRITE_REG, AL_CMD_IP_READ_REG)
+ * - Stream retrieval: Fifo_Dequeue (not ALAvpu_DequeueStream)
+ * - Stream release: AL_Encoder_PutStreamBuffer (not ALAvpu_ReleaseStream)
+ *
+ * All AVPU operations are performed directly in the encoder layer (codec.c)
+ * using direct ioctl calls to /dev/avpu, matching OEM behavior exactly.
  */
-int ALAvpu_Init(ALAvpuContext *ctx, int fd, const HWEncoderParams *p);
-
-/* Deinitialize AVPU context resources (does NOT close device fd)
- * Device fd is managed separately via AL_DevicePool_Close
- * (OEM parity: no ALAvpu_Close, cleanup done in encoder layer)
- */
-int ALAvpu_Deinit(ALAvpuContext *ctx);
-
-/* Optional: register an eventfd to signal on IRQ (OEM parity with event at 0x79c) */
-int ALAvpu_SetEvent(ALAvpuContext *ctx, int event_fd);
-
-
-/* Queue a raw frame (NV12) for encoding */
-int ALAvpu_QueueFrame(ALAvpuContext *ctx, const HWFrameBuffer *frame);
-
-/* Dequeue an encoded stream (Annex B). timeout_ms < 0 means wait forever */
-int ALAvpu_DequeueStream(ALAvpuContext *ctx, HWStreamBuffer *out, int timeout_ms);
-
-/* Release a previously dequeued stream back to the pool */
-int ALAvpu_ReleaseStream(ALAvpuContext *ctx, HWStreamBuffer *out);
 
 #ifdef __cplusplus
 }
