@@ -27,7 +27,12 @@
 #ifndef AVPU_IOC_MAGIC
 #define AVPU_IOC_MAGIC 'q'
 #endif
-struct avpu_reg { unsigned int id; unsigned int value; };
+/* IMPORTANT: Must be 4-byte aligned for MIPS kernel */
+struct avpu_reg {
+    unsigned int id;
+    unsigned int value;
+} __attribute__((aligned(4)));
+
 #define AL_CMD_IP_WRITE_REG    _IOWR(AVPU_IOC_MAGIC, 10, struct avpu_reg)
 #define AL_CMD_IP_READ_REG     _IOWR(AVPU_IOC_MAGIC, 11, struct avpu_reg)
 
@@ -53,14 +58,36 @@ static inline unsigned AVPU_CORE_BASE(int core) { return (AVPU_BASE_OFFSET + 0x3
 static int avpu_write_reg(int fd, unsigned int off, unsigned int val)
 {
     if (fd < 0 || (off & 3) != 0) return -1;
-    struct avpu_reg r = { .id = off, .value = val };
+
+    /* Ensure struct is on stack with proper alignment (MIPS requirement) */
+    struct avpu_reg r __attribute__((aligned(4)));
+    r.id = off;
+    r.value = val;
+
+    /* Verify alignment before ioctl */
+    if (((uintptr_t)&r & 3) != 0) {
+        LOG_CODEC("ERROR: avpu_reg struct not 4-byte aligned: %p", (void*)&r);
+        return -1;
+    }
+
     return ioctl(fd, AL_CMD_IP_WRITE_REG, &r);
 }
 
 static int avpu_read_reg(int fd, unsigned int off, unsigned int *out)
 {
     if (fd < 0 || (off & 3) != 0) return -1;
-    struct avpu_reg r = { .id = off, .value = 0 };
+
+    /* Ensure struct is on stack with proper alignment (MIPS requirement) */
+    struct avpu_reg r __attribute__((aligned(4)));
+    r.id = off;
+    r.value = 0;
+
+    /* Verify alignment before ioctl */
+    if (((uintptr_t)&r & 3) != 0) {
+        LOG_CODEC("ERROR: avpu_reg struct not 4-byte aligned: %p", (void*)&r);
+        return -1;
+    }
+
     int ret = ioctl(fd, AL_CMD_IP_READ_REG, &r);
     if (ret == 0 && out) *out = r.value;
     return ret;
@@ -70,6 +97,15 @@ static int avpu_read_reg(int fd, unsigned int off, unsigned int *out)
 static void fill_cmd_regs_enc1(const ALAvpuContext* ctx, uint32_t* cmd)
 {
     if (!ctx || !cmd) return;
+
+    /* Ensure cmd pointer is 4-byte aligned (MIPS requirement) */
+    if (((uintptr_t)cmd & 3) != 0) {
+        LOG_CODEC("ERROR: cmd buffer not 4-byte aligned: %p", (void*)cmd);
+        return;
+    }
+
+    /* Initialize entire command buffer to zero first (512 bytes = 128 uint32_t) */
+    memset(cmd, 0, 512);
 
     /* cmd[0]: base flags and formats */
     uint32_t c0 = 0x11 | (1u << 8) | (1u << 31); /* 4:2:0, Baseline, entry valid */
@@ -648,13 +684,18 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
                             void *virt = *(void**)(cl_info + 0x80);
                             uint32_t phys = *(uint32_t*)(cl_info + 0x84);
                             if (virt && phys) {
-                                enc->avpu.cl_ring.phy_addr = phys;
-                                enc->avpu.cl_ring.map = virt;
-                                enc->avpu.cl_ring.size = cl_bytes;
-                                enc->avpu.cl_ring.from_rmem = 1;
-                                enc->avpu.cl_idx = 0;
-                                memset(virt, 0, cl_bytes);
-                                LOG_CODEC("AVPU: cmdlist ring phys=0x%08x size=%zu entries=%u", phys, cl_bytes, enc->avpu.cl_count);
+                                /* Verify alignment (MIPS requires 4-byte alignment for 32-bit access) */
+                                if ((phys & 3) != 0 || ((uintptr_t)virt & 3) != 0) {
+                                    LOG_CODEC("ERROR: cmdlist buffer not 4-byte aligned: phys=0x%08x virt=%p", phys, virt);
+                                } else {
+                                    enc->avpu.cl_ring.phy_addr = phys;
+                                    enc->avpu.cl_ring.map = virt;
+                                    enc->avpu.cl_ring.size = cl_bytes;
+                                    enc->avpu.cl_ring.from_rmem = 1;
+                                    enc->avpu.cl_idx = 0;
+                                    memset(virt, 0, cl_bytes);
+                                    LOG_CODEC("AVPU: cmdlist ring phys=0x%08x size=%zu entries=%u", phys, cl_bytes, enc->avpu.cl_count);
+                                }
                             }
                         }
 
@@ -731,70 +772,57 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
         ALAvpuContext *ctx = &enc->avpu;
         int fd = ctx->fd;
 
-        /* Lazy-start: configure HW on first frame (OEM parity: AL_Common_Encoder_CreateChannel) */
+        /* AL_EncCore_Init: from decompilation at 0x6c8d8 */
         if (!ctx->session_ready) {
-            /* Core reset FIRST */
-            avpu_write_reg(fd, AVPU_REG_CORE_RESET(0), 2);
-            usleep(1000);
-            avpu_write_reg(fd, AVPU_REG_CORE_RESET(0), 4);
+            /* ResetCore.isra.27(*arg1, &arg1[3]) */
+            /* This writes to CORE_RESET register */
+            avpu_write_reg(fd, AVPU_REG_CORE_RESET(0), 0x00000001);
+            avpu_write_reg(fd, AVPU_REG_CORE_RESET(0), 0x00000002);
+            avpu_write_reg(fd, AVPU_REG_CORE_RESET(0), 0x00000004);
 
-            /* Program AXI offset (write 0 for absolute mode) */
-            avpu_write_reg(fd, AVPU_REG_AXI_ADDR_OFFSET_IP, 0);
-
-            /* TOP_CTRL */
+            /* (*(*arg3 + 8))(arg3, 0x8054, 0x80) */
+            /* Write 0x80 to TOP_CTRL (0x8054) */
             avpu_write_reg(fd, AVPU_REG_TOP_CTRL, 0x00000080);
 
-            /* Mask all IRQs and clear pending */
-            avpu_write_reg(fd, AVPU_INTERRUPT_MASK, 0x00000000);
-            unsigned pend = 0;
-            if (avpu_read_reg(fd, AVPU_INTERRUPT, &pend) == 0 && pend) {
-                avpu_write_reg(fd, AVPU_INTERRUPT, pend);
-            }
-
-            /* Enable encoder blocks */
-            avpu_write_reg(fd, AVPU_REG_ENC_EN_A, 0x00000001);
-            avpu_write_reg(fd, AVPU_REG_ENC_EN_B, 0x00000001);
-            avpu_write_reg(fd, AVPU_REG_ENC_EN_C, 0x00000001);
+            /* arg1[8] = 1; arg1[9] = 0; arg1[0x10] = 2 */
+            /* These are state variables, not register writes */
 
             ctx->session_ready = 1;
-            LOG_CODEC("AVPU: HW initialized for channel=%d", enc->channel_id - 1);
+            LOG_CODEC("AVPU: HW initialized (AL_EncCore_Init)");
         }
 
         /* Prepare command-list entry (OEM parity: SetCommandListBuffer) */
         if (ctx->cl_ring.phy_addr && ctx->cl_ring.map && ctx->cl_entry_size) {
             uint32_t idx = ctx->cl_idx % ctx->cl_count;
             uint8_t* entry = (uint8_t*)ctx->cl_ring.map + (size_t)idx * ctx->cl_entry_size;
-            memset(entry, 0, ctx->cl_entry_size);
+
+            /* Verify entry alignment */
+            if (((uintptr_t)entry & 3) != 0) {
+                LOG_CODEC("ERROR: CL entry not 4-byte aligned: %p", (void*)entry);
+                free(hw_stream);
+                return -1;
+            }
+
             uint32_t* cmd = (uint32_t*)entry;
 
-            /* Fill Enc1 command registers */
+            /* Fill Enc1 command registers (includes memset) */
             fill_cmd_regs_enc1(ctx, cmd);
 
-            /* SetClockCommand: read-modify-write on CORE_CLKCMD */
-            unsigned clk = 0;
-            avpu_read_reg(fd, AVPU_REG_CORE_CLKCMD(0), &clk);
-            avpu_write_reg(fd, AVPU_REG_CORE_CLKCMD(0), clk ^ 0x3u);
+            /* AL_EncCore_Encode1: Rtos_FlushCacheMemory(arg3, 0x100000) */
+            __builtin___clear_cache((char*)entry, (char*)entry + ctx->cl_entry_size);
 
-            /* Program CL start and push (OEM parity: direct ioctl) */
+            /* StartEnc1WithCommandList.isra.25: (*(**arg1 + 8))() */
+            /* This triggers the hardware via function pointer */
+            /* Based on trace, this writes CL_ADDR and CL_PUSH */
             uint32_t cl_phys = ctx->cl_ring.phy_addr + (idx * ctx->cl_entry_size);
             avpu_write_reg(fd, AVPU_REG_CL_ADDR, cl_phys);
             avpu_write_reg(fd, AVPU_REG_CL_PUSH, 0x00000002);
 
-            /* Push source frame address (OEM parity: direct ioctl) */
+            /* Push source frame: this is separate from CL trigger */
             avpu_write_reg(fd, AVPU_REG_SRC_PUSH, phys_addr);
 
-            /* Unmask interrupts */
+            /* Enable interrupts */
             avpu_enable_interrupts(fd, 0);
-
-            /* Ensure at least one STRM buffer is queued */
-            int any_in_hw = 0;
-            for (int i = 0; i < ctx->stream_bufs_used; ++i) {
-                if (ctx->stream_in_hw[i]) { any_in_hw = 1; break; }
-            }
-            if (!any_in_hw && ctx->stream_bufs_used > 0) {
-                avpu_write_reg(fd, AVPU_REG_STRM_PUSH, ctx->stream_bufs[0].phy_addr);
-                ctx->stream_in_hw[0] = 1;
-            }
 
             /* Advance to next CL slot */
             ctx->cl_idx = (idx + 1) % ctx->cl_count;
