@@ -1,4 +1,4 @@
-root@ing-wyze-cam3-a000 opt# LOG_AVPU_TRACE=/opt/avpu_trace.log LD_PRELOAD=/opt/libioctl_trace.so ./prudynt
+root@ing-wyze-cam3-a000 opt# ./prudynt 
 [INFO:Config.cpp]: Loaded configuration from /etc/prudynt.json
 [INFO:main.cpp]: PRUDYNT-T Next-Gen Video Daemon: prudynt-t vOct 15 2025 19:34:34 [24c730b-dev1760571274]
 [INFO:main.cpp]: Starting Prudynt Video Server.
@@ -6,7 +6,7 @@ root@ing-wyze-cam3-a000 opt# LOG_AVPU_TRACE=/opt/avpu_trace.log LD_PRELOAD=/opt/
 [INFO:IMPSystem.cpp]: LIBIMP Version IMP-1.1.6
 [INFO:IMPSystem.cpp]: SYSUTILS Version: SYSUTILS-1.1.6
 [INFO:IMPSystem.cpp]: CPU Information: T31
-[IMP_ISP] Open: opened /dev/tx-isp (fd=5)
+[IMP_ISP] Open: opened /dev/tx-isp (fd=4)
 [INFO:IMPSystem.cpp]: Sensor: gc2053
 [IMP_ISP] AddSensor: name='gc2053' cbus=1 i2c.type='gc2053' i2c.addr=0x37 rst_gpio=0
 [IMP_ISP] AddSensor: pwdn_gpio=0 power_gpio=0
@@ -19,9 +19,9 @@ root@ing-wyze-cam3-a000 opt# LOG_AVPU_TRACE=/opt/avpu_trace.log LD_PRELOAD=/opt/
 [IMP_ISP] AddSensor: TX_ISP_GET_BUF using index=input_index=125830200
 [IMP_ISP] AddSensor: ISP buffer size=4685424 (platform struct size=8)
 [DMA] DMA init: using /dev/rmem
-[DMA] DMA init: /dev/rmem mapped at 0x759d1000 size=30408704 base_phys=0x06300000
-[DMA] Alloc: (unnamed) size=4685424 phys=0x6300000 virt=0x759d1000 (rmem off=0x0)
-[IMP_ISP] AddSensor: allocated ISP buffer: virt=0x759d1000 phys=0x6300000 size=4685424
+[DMA] DMA init: /dev/rmem mapped at 0x75473000 size=30408704 base_phys=0x06300000
+[DMA] Alloc: (unnamed) size=4685424 phys=0x6300000 virt=0x75473000 (rmem off=0x0)
+[IMP_ISP] AddSensor: allocated ISP buffer: virt=0x75473000 phys=0x6300000 size=4685424
 [IMP_ISP] AddSensor: calling TX_ISP_SET_BUF (0x800856d4) with phys=0x6300000 size=4685424
 [IMP_ISP] AddSensor: TX_ISP_SET_BUF succeeded
 [IMP_ISP] AddSensor: secondary ISP buffer not requested or ioctl failed
@@ -39,7 +39,7 @@ root@ing-wyze-cam3-a000 opt# LOG_AVPU_TRACE=/opt/avpu_trace.log LD_PRELOAD=/opt/
 [System] Initializing...
 [System] Subsystems initialized
 [System] Initialized (IMP-1.1.6)
-[IMP_ISP] EnableTuning: opened /dev/isp-m0 (fd=7)
+[IMP_ISP] EnableTuning: opened /dev/isp-m0 (fd=6)
 [IMP_ISP] GetContrast: 128
 [IMP_ISP] EnableTuning: tuning initialized successfully
 [IMP_ISP] SetContrast: 128
@@ -65,22 +65,25 @@ root@ing-wyze-cam3-a000 opt# LOG_AVPU_TRACE=/opt/avpu_trace.log LD_PRELOAD=/opt/
 [IMP_ISP] SetMaxDgain: 80
 [IMP_ISP] SetWB: mode=0, rgain=0, bgain=0
 [IMP_ISP] SetBcshHue: 128
-[IMP_ISP] SetDefog_Strength: 2139967483
+[IMP_ISP] SetDefog_Strength: 2145819915
 [IMP_ISP] SetDPC_Strength: 128
 [IMP_ISP] SetDRC_Strength: 128
 [IMP_ISP] SetSensorFPS: 25/1
 [IMP_ISP] SetSensorFPS: FPS set successfully to 25/1
 [IMP_ISP] SetISPRunningMode: 0
 [IMP_ISP] SetISPRunningMode: mode set successfully to 0
-[IMP_System] Timestamp rebased to 1058454899 us
+[IMP_System] Timestamp rebased to 525034933 us
 [INFO:TimestampManager.cpp]: TimestampManager initialized - using IMP hardware timestamps directly
 [FrameSource] GetChnAttr failed: channel 0 not configured
-[FrameSource] CreateChn: Opened /dev/framechan0 (fd=8, nonblock)
+[FrameSource] CreateChn: Opened /dev/framechan0 (fd=7, nonblock)
 [System] Registered module [0,0]: FrameSource
 [FrameSource] CreateChn: registered FrameSource module [0,0] with 1 output
 [FrameSource] CreateChn: chn=0, 1920x1080, fmt=0xa
 [FrameSource] SetChnAttr: chn=0, 1920x1080, fmt=0xa
 [FrameSource] GetChnFifoAttr: chn=0 -> maxdepth=0, depth=0
+[INFO:WS.cpp]: libwebsockets version: 4.3.5-unknown
+[INFO:WS.cpp]: WS context: port=0 iface=<any>
+[ERROR:WS.cpp]: lws init failed (errno=12)
 [FrameSource] SetChnFifoAttr: chn=0, maxdepth=0, depth=0
 [KernelIF] Set frame depth: 0
 [FrameSource] SetFrameDepth: chn=0, depth=0
@@ -90,7 +93,7 @@ root@ing-wyze-cam3-a000 opt# LOG_AVPU_TRACE=/opt/avpu_trace.log LD_PRELOAD=/opt/
 [Fifo] Init: size=4, max_elements=5
 [Fifo] Init: size=7, max_elements=8
 [Codec] Create: hardware encoder will be attempted via /dev/avpu (lazy init)
-[Codec] Create: codec=0x776d80a0, channel=0
+[Codec] Create: codec=0x7717a0a0, channel=0
 [Encoder] channel_encoder_init: frame_cnt=4, frame_size=1048576
 [Fifo] Init: size=4, max_elements=5
 [Encoder] CreateChn: chn=0, profile=100 created successfully
@@ -114,9 +117,9 @@ root@ing-wyze-cam3-a000 opt# LOG_AVPU_TRACE=/opt/avpu_trace.log LD_PRELOAD=/opt/
 [FrameSource] EnableChn: using sizeimage=3133440 from SET_FMT for chn=0
 [VBM] CreatePool: allocating pool_size=2512 (frame_count=2 * 0x428 + 0x180)
 [VBM] CreatePool: chn=0, 1920x1080 fmt=0xa, 2 frames, size=3133440 (req=3133440 calc=3133440)
-[DMA] Alloc: (unnamed) size=6266880 phys=0x6778000 virt=0x75e49000 (rmem off=0x478000)
-[VBM] Frame 0: phys=0x6778000 virt=0x75e49000
-[VBM] Frame 1: phys=0x6a75000 virt=0x76146000
+[DMA] Alloc: (unnamed) size=6266880 phys=0x6778000 virt=0x758eb000 (rmem off=0x478000)
+[VBM] Frame 0: phys=0x6778000 virt=0x758eb000
+[VBM] Frame 1: phys=0x6a75000 virt=0x75be8000
 [VBM] CreatePool: chn=0 created successfully
 [KernelIF] REQBUFS: requested=2 actual=2
 [VBM] FillPool: chn=0, filling 2 frames
@@ -124,22 +127,19 @@ root@ing-wyze-cam3-a000 opt# LOG_AVPU_TRACE=/opt/avpu_trace.log LD_PRELOAD=/opt/
 [VBM] PrimeKernelQueue: QBUF using PHYS address in .m
 [VBM] PrimeKernelQueue: QBUF using PHYS address in .m
 [VBM] PrimeKernelQueue: queued 2 frames to kernel for chn=0 (limit=2)
-[INFO:WS.cpp]: libwebsockets version: 4.3.5-unknown
-[INFO:WS.cpp]: WS context: port=0 iface=<any>
-[Encoder] encoder_thread: started for channel 0
 [Encoder] stream_thread: started for channel 0
+[Encoder] encoder_thread: started for channel 0
 [IMP_ISP] EnsureLinkStreamOn: already started (bypass_link_setup_done=1)
 [KernelIF] Stream started
 [FrameSource] EnableChn: chn=0 enabled successfully
 [Encoder] RequestIDR: chn=0
 [HW_Encoder] RequestIDR: next frame will be IDR
 [Encoder] StartRecvPic: chn=0
-[ERROR:WS.cpp]: lws init failed (errno=12)
 [INFO:RTSPStatus.cpp]: RTSPStatus: RTSP status interface initialized successfully
 [INFO:RTSP.cpp]: Set shared RTP timestamp base: 3921775265 (0xe9c18aa1)
-[FrameSource] frame_capture_thread: started for channel 0, state=2, fd=8
+[FrameSource] frame_capture_thread: started for channel 0, state=2, fd=7
 [FrameSource] frame_capture_thread chn=0: entering main loop
-[FrameSource] frame_capture_thread chn=0: poll iteration 1, state=2, fd=8, software_mode=0
+[FrameSource] frame_capture_thread chn=0: poll iteration 1, state=2, fd=7, software_mode=0
 [FrameSource] frame_capture_thread chn=0: about to select() (poll #1)
 [FrameSource] frame_capture_thread chn=0: select() returned 1 (errno=0)
 [FrameSource] frame_capture_thread chn=0: entering DQBUF drain loop
@@ -147,21 +147,130 @@ root@ing-wyze-cam3-a000 opt# LOG_AVPU_TRACE=/opt/avpu_trace.log LD_PRELOAD=/opt/
 [KernelIF] DQBUF ioctl ENTER
 [KernelIF] DQBUF ioctl LEAVE ret=0 errno=0
 [VBM] VBMKernelDequeue chn=0: DQBUF ret=0 idx=0
-[FrameSource] frame_capture_thread chn=0: got frame #1 (0x776dfcc0) from kernel
-[System] notify: calling update 0x77b7983c on Encoder (frame=0x776dfcc0)
-[Encoder] encoder_update: Frame available from FrameSource, frame=0x776dfcc0
-[Codec] Process: frame=0x776dfcc0, extracting metadata
+[FrameSource] frame_capture_thread chn=0: got frame #1 (0x77181cc0) from kernel
+[System] notify: calling update 0x7761b83c on Encoder (frame=0x77181cc0)
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x77181cc0
+[Codec] Process: frame=0x77181cc0, extracting metadata
 [DevicePool] Init: device pool initialized
-[DevicePool] Open: opened '/dev/avpu' (fd=14, slot=0)
-[DMA] Alloc: (unnamed) size=131072 phys=0x6d72000 virt=0x76443000 (rmem off=0xa72000)
+[DevicePool] Open: opened '/dev/avpu' (fd=13, slot=0)
+[DMA] Alloc: (unnamed) size=131072 phys=0x6d72000 virt=0x75ee5000 (rmem off=0xa72000)
 [Codec] AVPU: stream buf[0] phys=0x06d72000 size=131072
-[DMA] Alloc: (unnamed) size=131072 phys=0x6d92000 virt=0x76463000 (rmem off=0xa92000)
+[DMA] Alloc: (unnamed) size=131072 phys=0x6d92000 virt=0x75f05000 (rmem off=0xa92000)
 [Codec] AVPU: stream buf[1] phys=0x06d92000 size=131072
-[DMA] Alloc: (unnamed) size=131072 phys=0x6db2000 virt=0x76483000 (rmem off=0xab2000)
+[DMA] Alloc: (unnamed) size=131072 phys=0x6db2000 virt=0x75f25000 (rmem off=0xab2000)
 [Codec] AVPU: stream buf[2] phys=0x06db2000 size=131072
-[DMA] Alloc: (unnamed) size=131072 phys=0x6dd2000 virt=0x764a3000 (rmem off=0xad2000)
+[DMA] Alloc: (unnamed) size=131072 phys=0x6dd2000 virt=0x75f45000 (rmem off=0xad2000)
 [Codec] AVPU: stream buf[3] phys=0x06dd2000 size=131072
-[DMA] Alloc: (unnamed) size=9728 phys=0x6df2000 virt=0x764c3000 (rmem off=0xaf2000)
+[DMA] Alloc: (unnamed) size=9728 phys=0x6df2000 virt=0x75f65000 (rmem off=0xaf2000)
 [Codec] AVPU: cmdlist ring phys=0x06df2000 size=9728 entries=19
 [Codec] AVPU: channel=0 acquired ownership
-[Codec] Process: AVPU opened fd=14 channel=0
+[Codec] AVPU: IRQ thread started
+[Codec] Process: AVPU opened fd=13 channel=0
+[Codec] AVPU: HW initialized (AL_EncCore_Init)
+[Codec] Process: AVPU queued frame 1920x1080 phys=0x6778000 CL[0]
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=0, frame=0x77181cc0
+[VBM] ReleaseFrame: returned frame idx=0 (1 available)
+[FrameSource] ReleaseFrame: Released frame 0x77181cc0 from channel 0
+[Encoder] encoder_update: Released frame 0x77181cc0 back to its source channel 0
+[VBM] VBMKernelDequeue chn=0: attempting DQBUF...
+[KernelIF] DQBUF ioctl ENTER
+[Codec] IRQ thread: started for fd=13
+[Codec] IRQ thread: got IRQ 0 - frame encoded
+[Codec] IRQ thread: got IRQ 0 - frame encoded
+[KernelIF] DQBUF ioctl LEAVE ret=0 errno=0
+[VBM] VBMKernelDequeue chn=0: DQBUF ret=0 idx=1
+[FrameSource] frame_capture_thread chn=0: got frame #2 (0x771820e8) from kernel
+[System] notify: calling update 0x7761b83c on Encoder (frame=0x771820e8)
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x771820e8
+[Codec] Process: frame=0x771820e8, extracting metadata
+[Codec] AVPU: channel=0 already open (fd=13); skipping re-open
+[Codec] Process: AVPU queued frame 1920x1080 phys=0x6a75000 CL[1]
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=0, frame=0x771820e8
+[VBM] ReleaseFrame: returned frame idx=1 (2 available)
+[FrameSource] ReleaseFrame: Released frame 0x771820e8 from channel 0
+[Encoder] encoder_update: Released frame 0x771820e8 back to its source channel 0
+[VBM] VBMKernelDequeue chn=0: attempting DQBUF...
+[KernelIF] DQBUF ioctl ENTER
+[KernelIF] DQBUF ioctl LEAVE ret=0 errno=0
+[VBM] VBMKernelDequeue chn=0: DQBUF ret=0 idx=0
+[FrameSource] frame_capture_thread chn=0: got frame #3 (0x77181cc0) from kernel
+[System] notify: calling update 0x7761b83c on Encoder (frame=0x77181cc0)
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x77181cc0
+[Codec] Process: frame=0x77181cc0, extracting metadata
+[Codec] AVPU: channel=0 already open (fd=13); skipping re-open
+[Codec] Process: AVPU queued frame 1920x1080 phys=0x6778000 CL[2]
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=0, frame=0x77181cc0
+[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[VBM] ReleaseFrame: returned frame idx=0 (2 available)
+[FrameSource] ReleaseFrame: Released frame 0x77181cc0 from channel 0
+[Encoder] encoder_update: Released frame 0x77181cc0 back to its source channel 0
+[KernelIF] DQBUF ioctl ENTER
+[KernelIF] DQBUF ioctl LEAVE ret=0 errno=0
+[FrameSource] frame_capture_thread chn=0: got frame #4 (0x771820e8) from kernel
+[System] notify: calling update 0x7761b83c on Encoder (frame=0x771820e8)
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x771820e8
+[Codec] Process: frame=0x771820e8, extracting metadata
+[Codec] AVPU: channel=0 already open (fd=13); skipping re-open
+[Codec] Process: AVPU queued frame 1920x1080 phys=0x6a75000 CL[3]
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=0, frame=0x771820e8
+[VBM] ReleaseFrame: queue full, dropped idx=1 to make room
+[VBM] ReleaseFrame: returned frame idx=1 (2 available)
+[FrameSource] ReleaseFrame: Released frame 0x771820e8 from channel 0
+[Encoder] encoder_update: Released frame 0x771820e8 back to its source channel 0
+[KernelIF] DQBUF ioctl ENTER
+[KernelIF] DQBUF ioctl LEAVE ret=0 errno=0
+[FrameSource] frame_capture_thread chn=0: got frame #5 (0x77181cc0) from kernel
+[System] notify: calling update 0x7761b83c on Encoder (frame=0x77181cc0)
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x77181cc0
+[Codec] Process: frame=0x77181cc0, extracting metadata
+[Codec] AVPU: channel=0 already open (fd=13); skipping re-open
+[Codec] Process: AVPU queued frame 1920x1080 phys=0x6778000 CL[4]
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=0, frame=0x77181cc0
+[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[VBM] ReleaseFrame: returned frame idx=0 (2 available)
+[FrameSource] ReleaseFrame: Released frame 0x77181cc0 from channel 0
+[Encoder] encoder_update: Released frame 0x77181cc0 back to its source channel 0
+[KernelIF] DQBUF ioctl ENTER
+[KernelIF] DQBUF ioctl LEAVE ret=0 errno=0
+[System] notify: calling update 0x7761b83c on Encoder (frame=0x771820e8)
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x771820e8
+[Codec] Process: frame=0x771820e8, extracting metadata
+[Codec] AVPU: channel=0 already open (fd=13); skipping re-open
+[Codec] Process: AVPU queued frame 1920x1080 phys=0x6a75000 CL[5]
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=0, frame=0x771820e8
+[VBM] ReleaseFrame: queue full, dropped idx=1 to make room
+[VBM] ReleaseFrame: returned frame idx=1 (2 available)
+[FrameSource] ReleaseFrame: Released frame 0x771820e8 from channel 0
+[Encoder] encoder_update: Released frame 0x771820e8 back to its source channel 0
+[KernelIF] DQBUF ioctl ENTER
+[KernelIF] DQBUF ioctl LEAVE ret=0 errno=0
+[System] notify: calling update 0x7761b83c on Encoder (frame=0x77181cc0)
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x77181cc0
+[Codec] Process: frame=0x77181cc0, extracting metadata
+[Codec] AVPU: channel=0 already open (fd=13); skipping re-open
+[Codec] Process: AVPU queued frame 1920x1080 phys=0x6778000 CL[6]
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=0, frame=0x77181cc0
+[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
+[VBM] ReleaseFrame: returned frame idx=0 (2 available)
+[FrameSource] ReleaseFrame: Released frame 0x77181cc0 from channel 0
+[Encoder] encoder_update: Released frame 0x77181cc0 back to its source channel 0
+[KernelIF] DQBUF ioctl ENTER
+[KernelIF] DQBUF ioctl LEAVE ret=0 errno=0
+[System] notify: calling update 0x7761b83c on Encoder (frame=0x771820e8)
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x771820e8
+[Codec] Process: frame=0x771820e8, extracting metadata
+[Codec] AVPU: channel=0 already open (fd=13); skipping re-open
+[Codec] Process: AVPU queued frame 1920x1080 phys=0x6a75000 CL[7]
+[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
+[VBM] ReleaseFrame: chn=0, frame=0x771820e8
+[VBM] ReleaseFrame: queue full, dropped idx=1 to make room
+[VBM] ReleaseFrame: returned frame idx=1 (2 available)
+[FrameSource] ReleaseFrame: Released frame 0x771820e8 from channel 0
+[Encoder] encoder_update: Released frame 0x771820e8 back to its source channel 0

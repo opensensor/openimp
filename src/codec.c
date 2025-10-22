@@ -35,6 +35,7 @@ struct avpu_reg {
 
 #define AL_CMD_IP_WRITE_REG    _IOWR(AVPU_IOC_MAGIC, 10, struct avpu_reg)
 #define AL_CMD_IP_READ_REG     _IOWR(AVPU_IOC_MAGIC, 11, struct avpu_reg)
+#define AL_CMD_IP_WAIT_IRQ     _IOWR(AVPU_IOC_MAGIC, 12, int)
 
 /* AVPU register offsets (from driver and BN decompilation) */
 #define AVPU_BASE_OFFSET       0x8000
@@ -145,6 +146,47 @@ static void avpu_enable_interrupts(int fd, int core)
     unsigned b2 = 1u << ((((unsigned)core << 2) + 2) & 0x1F);
     unsigned new_m = m | (b0 | b2);
     if (new_m != m) avpu_write_reg(fd, AVPU_INTERRUPT_MASK, new_m);
+}
+
+/* WaitInterruptThread - based on decompilation at 0x35e28 */
+static void* avpu_irq_thread(void* arg)
+{
+    ALAvpuContext* ctx = (ALAvpuContext*)arg;
+    int fd = ctx->fd;
+
+    LOG_CODEC("IRQ thread: started for fd=%d", fd);
+
+    while (ctx->irq_thread_running) {
+        int irq_id = -1;
+
+        /* ioctl($a0_2, 0xc004710c, &var_28) - AL_CMD_IP_WAIT_IRQ */
+        if (ioctl(fd, AL_CMD_IP_WAIT_IRQ, &irq_id) == -1) {
+            if (errno == EINTR) {
+                continue; /* interrupted, retry */
+            }
+            LOG_CODEC("IRQ thread: WAIT_IRQ failed: %s", strerror(errno));
+            break;
+        }
+
+        /* OEM checks if (var_28 u>= 0x14) - we just check for valid IRQ */
+        if (irq_id < 0 || irq_id >= 20) {
+            LOG_CODEC("IRQ thread: invalid IRQ ID %d", irq_id);
+            continue;
+        }
+
+        LOG_CODEC("IRQ thread: got IRQ %d - frame encoded", irq_id);
+
+        /* AL_EncCore_ReadStatusRegsEnc: reads status from CL entries */
+        /* The hardware writes encoding results back to the CL entry */
+        /* The stream data is already in the stream buffers we queued */
+        /* GetStream will find it by checking for valid AnnexB data */
+
+        /* Clear the interrupt */
+        avpu_write_reg(fd, AVPU_INTERRUPT, 1 << irq_id);
+    }
+
+    LOG_CODEC("IRQ thread: exiting");
+    return NULL;
 }
 
 /* Compute effective AnnexB stream size (trim trailing zeros) */
@@ -712,6 +754,17 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
                         }
                         pthread_mutex_unlock(&g_avpu_owner_mutex);
 
+                        /* Start IRQ thread (OEM parity: WaitInterruptThread at 0x35e28) */
+                        enc->avpu.irq_thread_running = 1;
+                        pthread_t tid;
+                        if (pthread_create(&tid, NULL, avpu_irq_thread, &enc->avpu) == 0) {
+                            enc->avpu.irq_thread = (long)tid;
+                            LOG_CODEC("AVPU: IRQ thread started");
+                        } else {
+                            LOG_CODEC("AVPU: failed to start IRQ thread");
+                            enc->avpu.irq_thread_running = 0;
+                        }
+
                         enc->use_hardware = 2; /* 2 = AL/AVPU path */
                         LOG_CODEC("Process: AVPU opened fd=%d channel=%d", fd, enc->channel_id - 1);
                     } else {
@@ -784,9 +837,6 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
             /* Write 0x80 to TOP_CTRL (0x8054) */
             avpu_write_reg(fd, AVPU_REG_TOP_CTRL, 0x00000080);
 
-            /* arg1[8] = 1; arg1[9] = 0; arg1[0x10] = 2 */
-            /* These are state variables, not register writes */
-
             ctx->session_ready = 1;
             LOG_CODEC("AVPU: HW initialized (AL_EncCore_Init)");
         }
@@ -810,6 +860,17 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
 
             /* AL_EncCore_Encode1: Rtos_FlushCacheMemory(arg3, 0x100000) */
             __builtin___clear_cache((char*)entry, (char*)entry + ctx->cl_entry_size);
+
+            /* Ensure at least one STRM buffer is queued BEFORE starting encode */
+            int any_in_hw = 0;
+            for (int i = 0; i < ctx->stream_bufs_used; ++i) {
+                if (ctx->stream_in_hw[i]) { any_in_hw = 1; break; }
+            }
+            if (!any_in_hw && ctx->stream_bufs_used > 0) {
+                avpu_write_reg(fd, AVPU_REG_STRM_PUSH, ctx->stream_bufs[0].phy_addr);
+                ctx->stream_in_hw[0] = 1;
+                LOG_CODEC("AVPU: queued stream buf[0] phys=0x%08x", ctx->stream_bufs[0].phy_addr);
+            }
 
             /* StartEnc1WithCommandList.isra.25: (*(**arg1 + 8))() */
             /* This triggers the hardware via function pointer */
