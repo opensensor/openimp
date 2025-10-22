@@ -45,7 +45,8 @@ IMP_SOURCES = \
 	$(SRC_DIR)/al_avpu.c \
 	$(SRC_DIR)/codec.c \
 	$(SRC_DIR)/dma_alloc.c \
-	$(SRC_DIR)/hw_encoder.c
+	$(SRC_DIR)/hw_encoder.c \
+	$(SRC_DIR)/device_pool.c
 
 SU_SOURCES = \
 	$(SRC_DIR)/su_base.c

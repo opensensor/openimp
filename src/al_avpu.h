@@ -92,11 +92,17 @@ typedef struct ALAvpuContext {
     int hw_prepared;          /* base HW configured (regs set, ENC_EN on, no CL yet) */
 } ALAvpuContext;
 
-/* Open / setup AVPU context from high-level encoder params */
-int ALAvpu_Open(ALAvpuContext *ctx, const HWEncoderParams *p);
+/* Initialize AVPU context with device fd and encoder params
+ * Device fd must be obtained via AL_DevicePool_Open before calling this
+ * (OEM parity: no ALAvpu_Open, initialization done in encoder layer)
+ */
+int ALAvpu_Init(ALAvpuContext *ctx, int fd, const HWEncoderParams *p);
 
-/* Close and cleanup */
-int ALAvpu_Close(ALAvpuContext *ctx);
+/* Deinitialize AVPU context resources (does NOT close device fd)
+ * Device fd is managed separately via AL_DevicePool_Close
+ * (OEM parity: no ALAvpu_Close, cleanup done in encoder layer)
+ */
+int ALAvpu_Deinit(ALAvpuContext *ctx);
 
 /* Optional: register an eventfd to signal on IRQ (OEM parity with event at 0x79c) */
 int ALAvpu_SetEvent(ALAvpuContext *ctx, int event_fd);

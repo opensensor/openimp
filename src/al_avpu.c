@@ -23,6 +23,7 @@
 
 #include "fifo.h"
 #include "dma_alloc.h"
+#include "device_pool.h"
 
 
 /* Local copy of minimal /dev/avpu UAPI (do not include driver headers) */
@@ -380,20 +381,15 @@ static int avpu_get_dma_fd_map(int avpu_fd, size_t size, AvpuDMABuf *out)
 
 
 
-int ALAvpu_Open(ALAvpuContext *ctx, const HWEncoderParams *p)
+/**
+ * ALAvpu_Init - Initialize AVPU context with device fd and encoder params
+ * Device fd must be obtained via AL_DevicePool_Open before calling this
+ * (OEM parity: no ALAvpu_Open, initialization done in encoder layer)
+ */
+int ALAvpu_Init(ALAvpuContext *ctx, int fd, const HWEncoderParams *p)
 {
-    if (!ctx || !p) return -1;
+    if (!ctx || fd < 0 || !p) return -1;
     memset(ctx, 0, sizeof(*ctx));
-
-    int fd = open("/dev/avpu", O_RDWR | O_CLOEXEC);
-    if (fd < 0) {
-        LOG_AL("open(/dev/avpu) failed: %s", strerror(errno));
-        return -1;
-    }
-
-
-    /* Allow clocks to stabilize after device open (kernel enables clocks in bind_channel) */
-    usleep(10000); /* 10ms delay */
 
     ctx->fd = fd;
     ctx->event_fd = -1; /* can wire later via eventfd if needed */
@@ -604,7 +600,12 @@ int ALAvpu_Open(ALAvpuContext *ctx, const HWEncoderParams *p)
     return 0;
 }
 
-int ALAvpu_Close(ALAvpuContext *ctx)
+/**
+ * ALAvpu_Deinit - Clean up AVPU context resources
+ * Does NOT close the device fd (caller manages via AL_DevicePool_Close)
+ * (OEM parity: no ALAvpu_Close, cleanup done in encoder layer)
+ */
+int ALAvpu_Deinit(ALAvpuContext *ctx)
 {
     if (!ctx) return -1;
 
@@ -614,6 +615,7 @@ int ALAvpu_Close(ALAvpuContext *ctx)
     ctx->irq_cond = NULL;
     ctx->irq_mutex = NULL;
 
+    /* Clean up stream buffers */
     for (int i = 0; i < ctx->stream_bufs_used; ++i) {
         if (ctx->stream_bufs[i].map && !ctx->stream_bufs[i].from_rmem) {
             munmap(ctx->stream_bufs[i].map, ctx->stream_bufs[i].size);
@@ -624,10 +626,8 @@ int ALAvpu_Close(ALAvpuContext *ctx)
             ctx->stream_bufs[i].dmabuf_fd = -1;
         }
     }
-    if (ctx->fd >= 0) {
-        close(ctx->fd);
-        ctx->fd = -1;
-    }
+
+    /* Do NOT close ctx->fd - caller manages via AL_DevicePool_Close */
     /* Do not close event_fd: owned by caller (codec layer) */
     ctx->fifo_streams = NULL;
     ctx->fifo_tags = NULL;

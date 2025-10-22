@@ -1,6 +1,3 @@
-root@ing-wyze-cam3-a000 opt# insmod avpu.ko 
-root@ing-wyze-cam3-a000 opt# insmod /lib/modules/3.10.14__isvp_swan_1.0__/ingenic/tx-isp-t31.ko 
-root@ing-wyze-cam3-a000 opt# insmod /lib/modules/3.10.14__isvp_swan_1.0__/ingenic/sensor_gc2053_t31.ko 
 root@ing-wyze-cam3-a000 opt# LOG_AVPU_TRACE=/opt/avpu_trace.log LD_PRELOAD=/opt/libioctl_trace.so ./prudynt
 [INFO:Config.cpp]: Loaded configuration from /etc/prudynt.json
 [INFO:main.cpp]: PRUDYNT-T Next-Gen Video Daemon: prudynt-t vOct 15 2025 19:34:34 [24c730b-dev1760571274]
@@ -22,9 +19,9 @@ root@ing-wyze-cam3-a000 opt# LOG_AVPU_TRACE=/opt/avpu_trace.log LD_PRELOAD=/opt/
 [IMP_ISP] AddSensor: TX_ISP_GET_BUF using index=input_index=125830200
 [IMP_ISP] AddSensor: ISP buffer size=4685424 (platform struct size=8)
 [DMA] DMA init: using /dev/rmem
-[DMA] DMA init: /dev/rmem mapped at 0x7536d000 size=30408704 base_phys=0x06300000
-[DMA] Alloc: (unnamed) size=4685424 phys=0x6300000 virt=0x7536d000 (rmem off=0x0)
-[IMP_ISP] AddSensor: allocated ISP buffer: virt=0x7536d000 phys=0x6300000 size=4685424
+[DMA] DMA init: /dev/rmem mapped at 0x74d89000 size=30408704 base_phys=0x06300000
+[DMA] Alloc: (unnamed) size=4685424 phys=0x6300000 virt=0x74d89000 (rmem off=0x0)
+[IMP_ISP] AddSensor: allocated ISP buffer: virt=0x74d89000 phys=0x6300000 size=4685424
 [IMP_ISP] AddSensor: calling TX_ISP_SET_BUF (0x800856d4) with phys=0x6300000 size=4685424
 [IMP_ISP] AddSensor: TX_ISP_SET_BUF succeeded
 [IMP_ISP] AddSensor: secondary ISP buffer not requested or ioctl failed
@@ -68,14 +65,14 @@ root@ing-wyze-cam3-a000 opt# LOG_AVPU_TRACE=/opt/avpu_trace.log LD_PRELOAD=/opt/
 [IMP_ISP] SetMaxDgain: 80
 [IMP_ISP] SetWB: mode=0, rgain=0, bgain=0
 [IMP_ISP] SetBcshHue: 128
-[IMP_ISP] SetDefog_Strength: 2142937035
+[IMP_ISP] SetDefog_Strength: 2142343275
 [IMP_ISP] SetDPC_Strength: 128
 [IMP_ISP] SetDRC_Strength: 128
 [IMP_ISP] SetSensorFPS: 25/1
 [IMP_ISP] SetSensorFPS: FPS set successfully to 25/1
 [IMP_ISP] SetISPRunningMode: 0
 [IMP_ISP] SetISPRunningMode: mode set successfully to 0
-[IMP_System] Timestamp rebased to 244245549 us
+[IMP_System] Timestamp rebased to 1005093426 us
 [INFO:TimestampManager.cpp]: TimestampManager initialized - using IMP hardware timestamps directly
 [FrameSource] GetChnAttr failed: channel 0 not configured
 [FrameSource] CreateChn: Opened /dev/framechan0 (fd=8, nonblock)
@@ -93,7 +90,7 @@ root@ing-wyze-cam3-a000 opt# LOG_AVPU_TRACE=/opt/avpu_trace.log LD_PRELOAD=/opt/
 [Fifo] Init: size=4, max_elements=5
 [Fifo] Init: size=7, max_elements=8
 [Codec] Create: hardware encoder will be attempted via /dev/avpu (lazy init)
-[Codec] Create: codec=0x770740a0, channel=0
+[Codec] Create: codec=0x76a900a0, channel=0
 [Encoder] channel_encoder_init: frame_cnt=4, frame_size=1048576
 [Fifo] Init: size=4, max_elements=5
 [Encoder] CreateChn: chn=0, profile=100 created successfully
@@ -117,9 +114,9 @@ root@ing-wyze-cam3-a000 opt# LOG_AVPU_TRACE=/opt/avpu_trace.log LD_PRELOAD=/opt/
 [FrameSource] EnableChn: using sizeimage=3133440 from SET_FMT for chn=0
 [VBM] CreatePool: allocating pool_size=2512 (frame_count=2 * 0x428 + 0x180)
 [VBM] CreatePool: chn=0, 1920x1080 fmt=0xa, 2 frames, size=3133440 (req=3133440 calc=3133440)
-[DMA] Alloc: (unnamed) size=6266880 phys=0x6778000 virt=0x757e5000 (rmem off=0x478000)
-[VBM] Frame 0: phys=0x6778000 virt=0x757e5000
-[VBM] Frame 1: phys=0x6a75000 virt=0x75ae2000
+[DMA] Alloc: (unnamed) size=6266880 phys=0x6778000 virt=0x75201000 (rmem off=0x478000)
+[VBM] Frame 0: phys=0x6778000 virt=0x75201000
+[VBM] Frame 1: phys=0x6a75000 virt=0x754fe000
 [VBM] CreatePool: chn=0 created successfully
 [KernelIF] REQBUFS: requested=2 actual=2
 [VBM] FillPool: chn=0, filling 2 frames
@@ -127,10 +124,10 @@ root@ing-wyze-cam3-a000 opt# LOG_AVPU_TRACE=/opt/avpu_trace.log LD_PRELOAD=/opt/
 [VBM] PrimeKernelQueue: QBUF using PHYS address in .m
 [VBM] PrimeKernelQueue: QBUF using PHYS address in .m
 [VBM] PrimeKernelQueue: queued 2 frames to kernel for chn=0 (limit=2)
-[Encoder] stream_thread: started for channel 0
-[Encoder] encoder_thread: started for channel 0
 [INFO:WS.cpp]: libwebsockets version: 4.3.5-unknown
 [INFO:WS.cpp]: WS context: port=0 iface=<any>
+[Encoder] encoder_thread: started for channel 0
+[Encoder] stream_thread: started for channel 0
 [IMP_ISP] EnsureLinkStreamOn: already started (bypass_link_setup_done=1)
 [KernelIF] Stream started
 [FrameSource] EnableChn: chn=0 enabled successfully
@@ -139,6 +136,7 @@ root@ing-wyze-cam3-a000 opt# LOG_AVPU_TRACE=/opt/avpu_trace.log LD_PRELOAD=/opt/
 [Encoder] StartRecvPic: chn=0
 [ERROR:WS.cpp]: lws init failed (errno=12)
 [INFO:RTSPStatus.cpp]: RTSPStatus: RTSP status interface initialized successfully
+[INFO:RTSP.cpp]: Set shared RTP timestamp base: 3921775265 (0xe9c18aa1)
 [FrameSource] frame_capture_thread: started for channel 0, state=2, fd=8
 [FrameSource] frame_capture_thread chn=0: entering main loop
 [FrameSource] frame_capture_thread chn=0: poll iteration 1, state=2, fd=8, software_mode=0
@@ -147,144 +145,68 @@ root@ing-wyze-cam3-a000 opt# LOG_AVPU_TRACE=/opt/avpu_trace.log LD_PRELOAD=/opt/
 [FrameSource] frame_capture_thread chn=0: entering DQBUF drain loop
 [VBM] VBMKernelDequeue chn=0: attempting DQBUF...
 [KernelIF] DQBUF ioctl ENTER
-[INFO:RTSP.cpp]: Set shared RTP timestamp base: 3921775265 (0xe9c18aa1)
 [KernelIF] DQBUF ioctl LEAVE ret=0 errno=0
 [VBM] VBMKernelDequeue chn=0: DQBUF ret=0 idx=0
-[FrameSource] frame_capture_thread chn=0: got frame #1 (0x7707bcc0) from kernel
-[System] notify: calling update 0x775158bc on Encoder (frame=0x7707bcc0)
-[Encoder] encoder_update: Frame available from FrameSource, frame=0x7707bcc0
-[Codec] Process: frame=0x7707bcc0, extracting metadata
-[AL-AVPU] sensor: gc2053 1920x1080 @ 25 fps
-[DMA] Alloc: (unnamed) size=131072 phys=0x6d72000 virt=0x75ddf000 (rmem off=0xa72000)
-[AL-AVPU] stream buf[0]: RMEM phys=0x06d72000 size=131072 virt=0x75ddf000
-[DMA] Alloc: (unnamed) size=131072 phys=0x6d92000 virt=0x75dff000 (rmem off=0xa92000)
-[AL-AVPU] stream buf[1]: RMEM phys=0x06d92000 size=131072 virt=0x75dff000
-[DMA] Alloc: (unnamed) size=131072 phys=0x6db2000 virt=0x75e1f000 (rmem off=0xab2000)
-[AL-AVPU] stream buf[2]: RMEM phys=0x06db2000 size=131072 virt=0x75e1f000
-[DMA] Alloc: (unnamed) size=131072 phys=0x6dd2000 virt=0x75e3f000 (rmem off=0xad2000)
-[AL-AVPU] stream buf[3]: RMEM phys=0x06dd2000 size=131072 virt=0x75e3f000
-[AL-AVPU] addr-mode: ABSOLUTE (T31 default - offset mode causes kernel crashes)
-[DMA] Alloc: (unnamed) size=9728 phys=0x6df2000 virt=0x75e5f000 (rmem off=0xaf2000)
-[AL-AVPU] cmdlist ring: phys=0x06df2000 size=9728 entries=19 entry_size=512 first:[0x06df2000..0x06df2200)
-[AL-AVPU] about to IOCTL WRITE off=0x83f0 val=0x00000002 arg=0x773aad80
-[AL-AVPU] WRITE[0x83f0] <- 0x00000002
-[AL-AVPU] about to IOCTL WRITE off=0x83f0 val=0x00000004 arg=0x773aadc0
-[AL-AVPU] WRITE[0x83f0] <- 0x00000004
-[AL-AVPU] program AXI_ADDR_OFFSET_IP(0x9208) = 0x00000000 (absolute mode)
-[AL-AVPU] about to IOCTL WRITE off=0x9208 val=0x00000000 arg=0x773aae00
-[AL-AVPU] WRITE[0x9208] <- 0x00000000
-[AL-AVPU] about to IOCTL WRITE off=0x8054 val=0x00000080 arg=0x773aad80
-[AL-AVPU] WRITE[0x8054] <- 0x00000080
-[AL-AVPU] about to IOCTL WRITE off=0x8014 val=0x00000000 arg=0x773aadc0
-[AL-AVPU] WRITE[0x8014] <- 0x00000000
-[AL-AVPU][  245.056303] Unhandled kernel unaligned access[#1]:
-[  245.064458] CPU: 0 PID: 11371 Comm: prudynt Tainted: G           O 3.10.14__isvp_swan_1.0__ #1
-[  245.073341] task: 84111440 ti: 80484000 task.ti: 80484000
-[  245.078903] $ 0   : 00000000 10001c00 00000000 00000000
-[  245.084299] $ 4   : ffffd8ff fffffffe 00000039 00000000
-[  245.089689] $ 8   : 10001c01 1000001e 80446458 0e7d9768
-[  245.095092] $12   : 00000039 8043b200 00000000 3436342e
-[  245.100488] $16   : 8e500000 ffffd8ff 80020f98 80000000
-[  245.105884] $20   : 8001b084 80485e48 00008094 00000780
-[  245.111285] $24   : 00000010 7759337c                  
-[  245.116669] $28   : 80484000 80485e10 00000001 8001b084
-[  245.122061] Hi    : 307e71d6
-[  245.125026] Lo    : 9c2b2de0
-[  245.127989] epc   : 80021064 0x80021064
-[  245.131945]     Tainted: G           O
-[  245.135805] ra    : 8001b084 0x8001b084
-[  245.139757] Status: 10001c03	KERNEL EXL IE 
-[  245.144067] Cause : 40808014
-[  245.147027] BadVA : ffffd8ff
-[  245.149990] PrId  : 00d00100 (Ingenic Xburst)
-[  245.154485] Modules linked in:Unhandled kernel unaligned access[#2]:
-[  245.161042] CPU: 0 PID: 11371 Comm: prudynt Tainted: G           O 3.10.14__isvp_swan_1.0__ #1
-[  245.169932] task: 84111440 ti: 80484000 task.ti: 80484000
-[  245.175491] $ 0   : 00000000 10001c00 00000000 00000000
-[  245.180887] $ 4   : ffffda29 fffffffe 00000000 0000012a
-[  245.186287] $ 8   : 10001c00 1000001e 00000000 ffffffe0
-[  245.191686] $12   : 80485aa0 00000000 00000000 696e6567
-[  245.197083] $16   : 8e020000 ffffda29 803aa81c 00000000
-[  245.202477] $20   : 803aa778 80485be8 00008094 00000780
-[  245.207873] $24   : 00000001 7759337c                  
-[  245.213269] $28   : 80484000 80485bb0 00000001 8001b084
-[  245.218665] Hi    : 00000000
-[  245.221623] Lo    : 00000000
-[  245.224593] epc   : 80021064 0x80021064
-[  245.228547]     Tainted: G           O
-[  245.232412] ra    : 8001b084 0x8001b084
-[  245.236365] Status: 10001c02	KERNEL EXL 
-[  245.240403] Cause : 40809414
-[  245.243373] BadVA : ffffda29
-[  245.246337] PrId  : 00d00100 (Ingenic Xburst)
-[  245.250821] Modules linked in:Unhandled kernel unaligned access[#3]:
-[  245.257377] CPU: 0 PID: 11371 Comm: prudynt Tainted: G           O 3.10.14__isvp_swan_1.0__ #1
-[  245.266271] task: 84111440 ti: 80484000 task.ti: 80484000
-[  245.271833] $ 0   : 00000000 10001c00 00000000 00000000
-[  245.277229] $ 4   : ffffda3d fffffffe 00000000 0000013e
-[  245.282618] $ 8   : 10001c00 1000001e 00000000 ffffffe0
-[  245.288011] $12   : 80485840 00000000 00000000 696e6567
-[  245.293411] $16   : 8e020000 ffffda3d 803aa81c 00000000
-[  245.298806] $20   : 803aa778 80485988 00008094 00000780
-[  245.304203] $24   : 00000001 7759337c                  
-[  245.309598] $28   : 80484000 80485950 00000001 8001b084
-[  245.314995] Hi    : 00000000
-[  245.317965] Lo    : 00000000
-[  245.320934] epc   : 80021064 0x80021064
-[  245.324888]     Tainted: G           O
-[  245.328753] ra    : 8001b084 0x8001b084
-[  245.332705] Status: 10001c02	KERNEL EXL 
-[  245.336749] Cause : 40809414
-[  245.339715] BadVA : ffffda3d
-[  245.342677] PrId  : 00d00100 (Ingenic Xburst)
-[  245.347161] Modules linked in:Unhandled kernel unaligned access[#4]:
-[  245.353723] CPU: 0 PID: 11371 Comm: prudynt Tainted: G           O 3.10.14__isvp_swan_1.0__ #1
-[  245.362617] task: 84111440 ti: 80484000 task.ti: 80484000
-[  245.368179] $ 0   : 00000000 10001c00 00000000 00000000
-[  245.373574] $ 4   : ffffda51 fffffffe 00000000 00000152
-[  245.378976] $ 8   : 10001c00 1000001e 00000000 ffffffe0
-[  245.384369] $12   : 804855e0 00000000 00000000 696e6567
-[  245.389767] $16   : 8e020000 ffffda51 803aa81c 00000000
-[  245.395151] $20   : 803aa778 80485728 00008094 00000780
-[  245.400547] $24   : 00000001 7759337c                  
-[  245.405943] $28   : 80484000 804856f0 00000001 8001b084
-[  245.411341] Hi    : 00000000
-[  245.414308] Lo    : 00000000
-[  245.417266] epc   : 80021064 0x80021064
-[  245.421219]     Tainted: G           O
-[  245.425084] ra    : 8001b084 0x8001b084
-[  245.429037] Status: 10001c02	KERNEL EXL 
-[  245.433076] Cause : 40809414
-[  245.436045] BadVA : ffffda51
-[  245.439008] PrId  : 00d00100 (Ingenic Xburst)
-[  245.443492] Modules linked in:Unhandled kernel unaligned access[#5]:
-[  245.450053] CPU: 0 PID: 11371 Comm: prudynt Tainted: G           O 3.10.14__isvp_swan_1.0__ #1
-[  245.458947] task: 84111440 ti: 80484000 task.ti: 80484000
-[  245.464508] $ 0   : 00000000 10001c00 00000000 00000000
-[  245.469905] $ 4   : ffffda65 fffffffe 00000000 00000166
-[  245.475305] $ 8   : 10001c00 1000001e 00000000 ffffffe0
-[  245.480713] $12   : 80485380 00000000 00000000 696e6567
-[  245.486111] $16   : 8e020000 ffffda65 803aa81c 00000000
-[  245.491509] $20   : 803aa778 804854c8 00008094 00000780
-[  245.496905] $24   : 00000001 7759337c                  
-[  245.502302] $28   : 80484000 80485490 00000001 8001b084
-[  245.507699] Hi    : 00000000
-[  245.510668] Lo    : 00000000
-[  245.513638] epc   : 80021064 0x80021064
-[  245.517593]     Tainted: G           O
-[  245.521457] ra    : 8001b084 0x8001b084
-[  245.525411] Status: 10001c02	KERNEL EXL 
-[  245.529450] Cause : 40809414
-[  245.532407] BadVA : ffffda65
-[  245.535371] PrId  : 00d00100 (Ingenic Xburst)
-2025-10-21 10:33:05.300 [ioctl_trace] initialized
-2025-10-21 10:33:06.125 AVPU WREG [0x83f0] <- 0x00000002
-2025-10-21 10:33:06.127 AVPU WREG [0x83f0] <- 0x00000004
-2025-10-21 10:33:06.128 AVPU WREG [0x9208] <- 0x00000000
-2025-10-21 10:33:06.129 AVPU WREG [0x8054] <- 0x00000080
-2025-10-21 10:33:06.130 AVPU WREG [0x8014] <- 0x00000000
-2025-10-21 10:33:06.131 AVPU RREG [0x8018] -> 0x00000000 (ret=0)
-2025-10-21 10:33:06.131 AVPU WREG [0x85f0] <- 0x00000001
-2025-10-21 10:33:06.462 AVPU WREG [0x85f4] <- 0x00000001
-2025-10-21 10:33:06.463 AVPU WREG [0x85e4] <- 0x00000001
-2025-10-21 10:33:06.464 AVPU WREG [0x8094] <- 0x06d72000
+[FrameSource] frame_capture_thread chn=0: got frame #1 (0x76a97cc0) from kernel
+[System] notify: calling update 0x76f3194c on Encoder (frame=0x76a97cc0)
+[Encoder] encoder_update: Frame available from FrameSource, frame=0x76a97cc0
+[ 1005.277651] CPU: 0 PID: 7087 Comm: prudynt Tainted: G           O 3.10.14__isvp_swan_1.0__ #1
+[ 1005.286452] task: 841106c0 ti: 82054000 task.ti: 82054000
+[ 1005.292016] $ 0   : 00000000 10001c00 c00086cc 40808014
+[ 1005.297406] $ 4   : ffffd90e fffffffe 00000008 0000000f
+[ 1005.302800] $ 8   : 10001c01 1000001e 00000000 00000002
+[ 1005.308190] $12   : 00000000 00000020 00000000 20333030
+[ 1005.313578] $16   : ac4316bc ffffd90e 801b3018 80000000
+[ 1005.318968] $20   : 80166510 82055b28 85f02e14 00000039
+[ 1005.324367] $24   : 00000000 76f9fbb0                  
+[ 1005.329763] $28   : 82054000 82055af0 804566b0 8001b084
+[ 1005.335168] Hi    : 00000000
+[ 1005.338134] Lo    : 00040000
+[ 1005.341098] epc   : 80021204 0x80021204
+[ 1005.345052]     Tainted: G           O
+[ 1005.348912] ra    : 8001b084 0x8001b084
+[ 1005.352864] Status: 10001c03	KERNEL EXL IE 
+[ 1005.357177] Cause : 40808014
+[ 1005.360140] BadVA : ffffd90e
+[ 1005.363102] PrId  : 00d00100 (Ingenic Xburst)
+[ 1005.367591] Modules linked in:Unhandled kernel unaligned access[#2]:
+[ 1005.374141] CPU: 0 PID: 7087 Comm: prudynt Tainted: G           O 3.10.14__isvp_swan_1.0__ #1
+[ 1005.382945] task: 841106c0 ti: 82054000 task.ti: 82054000
+[ 1005.388504] $ 0   : 00000000 10001c00 00000000 00000000
+[ 1005.393900] $ 4   : ffffda29 fffffffe 00000000 0000012a
+[ 1005.399297] $ 8   : 10001c00 1000001e 00000000 ffffffe0
+[ 1005.404684] $12   : 82055780 00000000 00000000 696e6567
+[ 1005.410086] $16   : 8e020000 ffffda29 803aa81c 00000000
+[ 1005.415494] $20   : 803aa778 820558c8 85f02e14 00000039
+[ 1005.420888] $24   : 00000001 76f9fbb0                  
+[ 1005.426275] $28   : 82054000 82055890 804566b0 8001b084
+[ 1005.431676] Hi    : 00000000
+[ 1005.434643] Lo    : 00000000
+[ 1005.437612] epc   : 80021064 0x80021064
+[ 1005.441564]     Tainted: G           O
+[ 1005.445426] ra    : 8001b084 0x8001b084
+[ 1005.449378] Status: 10001c02	KERNEL EXL 
+[ 1005.453416] Cause : 40809414
+[ 1005.456384] BadVA : ffffda29
+[ 1005.459346] PrId  : 00d00100 (Ingenic Xburst)
+[ 1005.463828] Modules linked in:Unhandled kernel unaligned access[#3]:
+[ 1005.470385] CPU: 0 PID: 7087 Comm: prudynt Tainted: G           O 3.10.14__isvp_swan_1.0__ #1
+[ 1005.479190] task: 841106c0 ti: 82054000 task.ti: 82054000
+[ 1005.484749] $ 0   : 00000000 10001c00 00000000 00000000
+[ 1005.490146] $ 4   : ffffda3d fffffffe 00000000 0000013e
+[ 1005.495547] $ 8   : 10001c00 1000001e 00000000 ffffffe0
+[ 1005.500956] $12   : 82055520 00000000 00000000 696e6567
+[ 1005.506357] $16   : 8e020000 ffffda3d 803aa81c 00000000
+[ 1005.511763] $20   : 803aa778 82055668 85f02e14 00000039
+[ 1005.517162] $24   : 00000001 76f9fbb0                  
+[ 1005.522562] $28   : 82054000 82055630 804566b0 8001b084
+[ 1005.527964] Hi    : 00000000
+[ 1005.530932] Lo    : 00000000
+[ 1005.533899] epc   : 80021064 0x80021064
+[ 1005.537852]     Tainted: G           O
+[ 1005.541716] ra    : 8001b084 0x8001b084
+[ 1005.545666] Status: 10001c02	KERNEL EXL 
+[ 1005.549704] Cause : 40809414
+[ 1005.552672] BadVA : ffffda3d
+[ 1005.555634] PrId  : 00d00100 (Ingenic Xburst)
+[ 1005.560117] Modules linked in:Unhandled kernel unaligned access[#4]:

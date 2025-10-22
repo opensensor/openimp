@@ -16,6 +16,7 @@
 #include "hw_encoder.h"
 
 #include "al_avpu.h"
+#include "device_pool.h"
 #define LOG_CODEC(fmt, ...) fprintf(stderr, "[Codec] " fmt "\n", ##__VA_ARGS__)
 #include <sys/eventfd.h>
 #include <errno.h>
@@ -313,7 +314,11 @@ int AL_Codec_Encode_Destroy(void *codec) {
 
     /* Deinitialize hardware encoder(s) */
     if (enc->use_hardware == 2 && enc->avpu.fd >= 0) {
-        ALAvpu_Close(&enc->avpu);
+        /* Deinit AVPU context and close device via device pool (OEM parity) */
+        ALAvpu_Deinit(&enc->avpu);
+        AL_DevicePool_Close(enc->avpu.fd);
+        enc->avpu.fd = -1;
+
         pthread_mutex_lock(&g_avpu_owner_mutex);
         if (g_avpu_owner_channel == enc->channel_id) {
             g_avpu_owner_channel = 0;
@@ -469,31 +474,43 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
                         ALAvpu_SetEvent(&enc->avpu, efd);
                     }
                     LOG_CODEC("AVPU: channel=%d already open (fd=%d); skipping re-open", enc->channel_id - 1, enc->avpu.fd);
-                } else if (ALAvpu_Open(&enc->avpu, &enc->hw_params) == 0 && enc->avpu.fd > 2) {
-                    pthread_mutex_lock(&g_avpu_owner_mutex);
-                    if (g_avpu_owner_channel == 0) {
-                        g_avpu_owner_channel = enc->channel_id;
-                        LOG_CODEC("AVPU: channel=%d acquired ownership", enc->channel_id - 1);
-                    }
-                    pthread_mutex_unlock(&g_avpu_owner_mutex);
-
-                    enc->use_hardware = 2; /* 2 = AL/AVPU path */
-                    if (enc->event) {
-                        int efd = (int)(uintptr_t)enc->event;
-                        ALAvpu_SetEvent(&enc->avpu, efd);
-                    }
-                    LOG_CODEC("Process: AVPU(AL) opened ctx=%p (fd=%d) channel=%d", (void*)&enc->avpu, enc->avpu.fd, enc->channel_id - 1);
                 } else {
-                    int e = errno;
-                    LOG_CODEC("Process: channel=%d ALAvpu_Open failed: %s", enc->channel_id - 1, strerror(e));
-                    int init_fd = -1;
-                    if (HW_Encoder_Init(&init_fd, &enc->hw_params) == 0 && init_fd >= 0) {
-                        enc->hw_encoder_fd = init_fd;
-                        enc->use_hardware = 1; /* legacy path */
-                        LOG_CODEC("Process: legacy HW encoder initialized (fd=%d)", init_fd);
+                    /* Open device via device pool (OEM parity) */
+                    int fd = AL_DevicePool_Open("/dev/avpu");
+                    if (fd >= 0) {
+                        /* Initialize AVPU context (OEM parity) */
+                        if (ALAvpu_Init(&enc->avpu, fd, &enc->hw_params) == 0) {
+                            pthread_mutex_lock(&g_avpu_owner_mutex);
+                            if (g_avpu_owner_channel == 0) {
+                                g_avpu_owner_channel = enc->channel_id;
+                                LOG_CODEC("AVPU: channel=%d acquired ownership", enc->channel_id - 1);
+                            }
+                            pthread_mutex_unlock(&g_avpu_owner_mutex);
+
+                            enc->use_hardware = 2; /* 2 = AL/AVPU path */
+                            if (enc->event) {
+                                int efd = (int)(uintptr_t)enc->event;
+                                ALAvpu_SetEvent(&enc->avpu, efd);
+                            }
+                            LOG_CODEC("Process: AVPU(AL) opened ctx=%p (fd=%d) channel=%d", (void*)&enc->avpu, enc->avpu.fd, enc->channel_id - 1);
+                        } else {
+                            /* Init failed, close device */
+                            AL_DevicePool_Close(fd);
+                            LOG_CODEC("Process: channel=%d ALAvpu_Init failed", enc->channel_id - 1);
+                            enc->use_hardware = 0;
+                        }
                     } else {
-                        LOG_CODEC("Process: no hardware path available; falling back to software");
-                        enc->use_hardware = 0;
+                        int e = errno;
+                        LOG_CODEC("Process: channel=%d AL_DevicePool_Open failed: %s", enc->channel_id - 1, strerror(e));
+                        int init_fd = -1;
+                        if (HW_Encoder_Init(&init_fd, &enc->hw_params) == 0 && init_fd >= 0) {
+                            enc->hw_encoder_fd = init_fd;
+                            enc->use_hardware = 1; /* legacy path */
+                            LOG_CODEC("Process: legacy HW encoder initialized (fd=%d)", init_fd);
+                        } else {
+                            LOG_CODEC("Process: no hardware path available; falling back to software");
+                            enc->use_hardware = 0;
+                        }
                     }
                 }
             } else {
