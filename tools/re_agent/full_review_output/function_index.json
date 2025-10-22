@@ -1,0 +1,32 @@
+{
+  "functions": [
+    "IMP_ISP_AddSensor",
+    "IMP_ISP_Close",
+    "IMP_ISP_DelSensor",
+    "IMP_ISP_DisableSensor",
+    "IMP_ISP_EnableSensor",
+    "IMP_ISP_Open",
+    "IMP_ISP_Tuning_GetBrightness",
+    "IMP_ISP_Tuning_GetContrast",
+    "IMP_ISP_Tuning_GetSaturation",
+    "IMP_ISP_Tuning_GetSharpness",
+    "IMP_ISP_Tuning_SetBrightness",
+    "IMP_ISP_Tuning_SetContrast",
+    "IMP_ISP_Tuning_SetSaturation",
+    "IMP_ISP_Tuning_SetSharpness",
+    "IMP_IVS_CreateChn",
+    "IMP_IVS_DestroyGroup",
+    "IMP_OSD_CreateGroup",
+    "IMP_OSD_DestroyGroup",
+    "IMP_OSD_GetRgnAttr",
+    "IMP_OSD_SetRgnAttr",
+    "IMP_OSD_ShowRgn",
+    "IMP_OSD_UnRegisterRgn",
+    "IMP_System_Bind",
+    "IMP_System_Exit",
+    "IMP_System_GetVersion",
+    "IMP_System_Init",
+    "IMP_System_UnBind"
+  ],
+  "count": 27
+}

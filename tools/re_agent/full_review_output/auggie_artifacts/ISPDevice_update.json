@@ -1,0 +1,14 @@
+{
+  "src_file": "src/imp_isp.c",
+  "struct_name": "ISPDevice",
+  "discovered_offsets": {
+    "0x20": "file descriptor for ioctl operations",
+    "0x24": "sensor status or count",
+    "0x28": "sensor data buffer start",
+    "0xac": "pointer to allocated memory for sensor",
+    "0xb0": "sensor initialization status",
+    "0xb4": "pointer to additional allocated memory for sensor"
+  },
+  "proposed_definition": "typedef struct {\n    int fd;                // 0x20: file descriptor for ioctl operations\n    uint32_t status;       // 0x24: sensor status or count\n    char sensor_data[80];  // 0x28: sensor data buffer (0x50 bytes)\n    void *sensor_mem;      // 0xac: pointer to allocated memory for sensor\n    uint32_t init_status;  // 0xb0: sensor initialization status\n    void *additional_mem;  // 0xb4: pointer to additional allocated memory for sensor\n} ISPDevice;",
+  "notes": "Struct definition needs update based on discovered offsets"
+}
