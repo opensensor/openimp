@@ -81,9 +81,21 @@ typedef struct ALAvpuContext {
     long irq_thread;              /* pthread_t stored as long */
     int irq_thread_running;
 
-    /* TODO: buffer pool/FIFO/meta structures ala AL_BufPool_Init / Fifo_Init */
-    void *fifo_streams;       /* placeholder FIFO ctrl (if we mirror vendor logic) */
-    void *fifo_tags;          /* placeholder FIFO for aux tags/metadata */
+    /* FIFO structures (OEM parity: Fifo_Init at 0x7af28)
+     * OEM uses FIFOs at encoder+0x7f8 (streams) and encoder+0x81c (metadata)
+     * Structure layout from decompilation:
+     * [0] = max_elements + 1
+     * [1] = write_idx
+     * [2] = read_idx
+     * [3] = buffer pointer
+     * [4] = mutex
+     * [5] = event
+     * [6] = count
+     * [7] = flag (byte)
+     * [8] = semaphore
+     */
+    long fifo_streams[9];     /* FIFO for encoded stream buffers */
+    long fifo_metadata[9];    /* FIFO for metadata/tags */
 
     /* Session state */
     int session_ready;        /* when 1, reg pushes + IRQ thread enabled */

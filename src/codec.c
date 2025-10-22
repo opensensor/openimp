@@ -148,6 +148,162 @@ static void avpu_enable_interrupts(int fd, int core)
     if (new_m != m) avpu_write_reg(fd, AVPU_INTERRUPT_MASK, new_m);
 }
 
+/* Fifo_Init - based on decompilation at 0x7af28 */
+static int fifo_init(long *fifo, int max_elements)
+{
+    fifo[0] = max_elements + 1;
+    fifo[1] = 0; /* write_idx */
+    fifo[2] = 0; /* read_idx */
+    fifo[6] = 0; /* count */
+    fifo[7] = 0; /* flag (stored as long, but OEM uses byte) */
+
+    /* Allocate buffer */
+    void *buf = malloc((max_elements + 1) * sizeof(void*));
+    if (!buf) return 0;
+    memset(buf, 0xcd, (max_elements + 1) * sizeof(void*));
+    fifo[3] = (long)buf;
+
+    /* Create synchronization primitives */
+    pthread_mutex_t *mutex = (pthread_mutex_t*)malloc(sizeof(pthread_mutex_t));
+    pthread_cond_t *cond = (pthread_cond_t*)malloc(sizeof(pthread_cond_t));
+
+    if (!mutex || !cond) {
+        free(buf);
+        free(mutex);
+        free(cond);
+        return 0;
+    }
+
+    pthread_mutex_init(mutex, NULL);
+    pthread_cond_init(cond, NULL);
+
+    fifo[4] = (long)mutex;
+    fifo[5] = (long)cond;  /* OEM uses event, we use cond var */
+    fifo[8] = 0; /* semaphore - not used in our implementation */
+
+    return 1;
+}
+
+/* Fifo_Queue - based on decompilation at 0x7b254 */
+static int fifo_queue(long *fifo, void *item, unsigned int timeout_ms)
+{
+    pthread_mutex_t *mutex = (pthread_mutex_t*)fifo[4];
+    pthread_cond_t *cond = (pthread_cond_t*)fifo[5];
+
+    pthread_mutex_lock(mutex);
+
+    int max = (int)fifo[0];
+    int write_idx = (int)fifo[1];
+    void **buf = (void**)fifo[3];
+
+    buf[write_idx] = item;
+    fifo[6]++; /* increment count */
+    fifo[1] = (write_idx + 1) % max;
+
+    pthread_cond_signal(cond);
+    pthread_mutex_unlock(mutex);
+
+    return 1;
+}
+
+/* Fifo_Dequeue - based on decompilation at 0x7b384 */
+static void* fifo_dequeue(long *fifo, unsigned int timeout_ms)
+{
+    pthread_mutex_t *mutex = (pthread_mutex_t*)fifo[4];
+    pthread_cond_t *cond = (pthread_cond_t*)fifo[5];
+
+    pthread_mutex_lock(mutex);
+
+    int count = (int)fifo[6];
+
+    /* Wait for data if empty */
+    while (count <= 0) {
+        if (timeout_ms == 0xffffffff) {
+            /* Infinite wait */
+            pthread_cond_wait(cond, mutex);
+        } else {
+            /* Timed wait */
+            struct timespec ts;
+            clock_gettime(CLOCK_REALTIME, &ts);
+            ts.tv_sec += timeout_ms / 1000;
+            ts.tv_nsec += (timeout_ms % 1000) * 1000000;
+            if (ts.tv_nsec >= 1000000000) {
+                ts.tv_sec++;
+                ts.tv_nsec -= 1000000000;
+            }
+
+            if (pthread_cond_timedwait(cond, mutex, &ts) != 0) {
+                pthread_mutex_unlock(mutex);
+                return NULL;
+            }
+        }
+        count = (int)fifo[6];
+    }
+
+    int max = (int)fifo[0];
+    int read_idx = (int)fifo[2];
+    void **buf = (void**)fifo[3];
+
+    void *result = buf[read_idx];
+    fifo[6]--; /* decrement count */
+    fifo[2] = (read_idx + 1) % max;
+
+    pthread_mutex_unlock(mutex);
+
+    return result;
+}
+
+/* EndEncoding callback - based on OEM's EndEncoding at 0x443b0
+ * Called when encoding completes for a frame.
+ * This is the callback registered for encoding interrupts.
+ */
+static void avpu_end_encoding_callback(void *user_data)
+{
+    ALAvpuContext *ctx = (ALAvpuContext*)user_data;
+
+    LOG_CODEC("EndEncoding callback: encoding completed");
+
+    /* OEM reads status registers from command list entries
+     * AL_EncCore_ReadStatusRegsEnc at 0x6d218:
+     * - Reads from CL entries at 0x200 byte intervals
+     * - Calls EncodingStatusRegsToSliceStatus
+     * - Merges status into result structure
+     */
+
+    /* Find which stream buffer has data by checking for valid AnnexB start codes */
+    for (int i = 0; i < ctx->stream_bufs_used; ++i) {
+        if (ctx->stream_in_hw[i]) {
+            const uint8_t *virt = (const uint8_t*)ctx->stream_bufs[i].map;
+
+            /* Check for AnnexB start code (00 00 00 01 or 00 00 01) */
+            if ((virt[0] == 0 && virt[1] == 0 && virt[2] == 0 && virt[3] == 1) ||
+                (virt[0] == 0 && virt[1] == 0 && virt[2] == 1)) {
+
+                /* Found encoded data - create stream buffer and queue to FIFO */
+                HWStreamBuffer *stream = (HWStreamBuffer*)malloc(sizeof(HWStreamBuffer));
+                if (stream) {
+                    stream->phys_addr = ctx->stream_bufs[i].phy_addr;
+                    stream->virt_addr = (uint32_t)(uintptr_t)virt;
+                    stream->length = ctx->stream_buf_size; /* TODO: get actual length from CL status */
+                    stream->timestamp = 0;
+                    stream->frame_type = 0;
+                    stream->slice_type = 0;
+
+                    /* OEM: Fifo_Queue(arg1 + 0x7f8, stream_buffer, 0xffffffff) */
+                    fifo_queue(ctx->fifo_streams, stream, 0xffffffff);
+
+                    /* Mark as dequeued from HW */
+                    ctx->stream_in_hw[i] = 0;
+
+                    LOG_CODEC("EndEncoding: queued stream buf[%d] phys=0x%08x len=%u to FIFO",
+                             i, stream->phys_addr, stream->length);
+                }
+                break;
+            }
+        }
+    }
+}
+
 /* LinuxIpCtrl_RegisterCallBack - based on decompilation at 0x35fd0
  * Register a callback for a specific interrupt ID (0-19).
  * OEM signature: void LinuxIpCtrl_RegisterCallBack(void *ctx, void (*callback)(void*), void *user_data, int irq_id)
@@ -809,6 +965,17 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
                         }
                         pthread_mutex_unlock(&g_avpu_owner_mutex);
 
+                        /* Initialize FIFOs (OEM parity: Fifo_Init at 0x7af28)
+                         * OEM uses FIFOs at encoder+0x7f8 (streams) and encoder+0x81c (metadata)
+                         */
+                        if (!fifo_init(enc->avpu.fifo_streams, 16)) {
+                            LOG_CODEC("AVPU: failed to init stream FIFO");
+                        }
+                        if (!fifo_init(enc->avpu.fifo_metadata, 16)) {
+                            LOG_CODEC("AVPU: failed to init metadata FIFO");
+                        }
+                        LOG_CODEC("AVPU: initialized FIFOs (streams + metadata)");
+
                         /* Initialize IRQ callback system (OEM parity: WaitInterruptThread at 0x35e28) */
                         memset(enc->avpu.irq_callbacks, 0, sizeof(enc->avpu.irq_callbacks));
 
@@ -829,6 +996,24 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
                             LOG_CODEC("AVPU: failed to start IRQ thread");
                             enc->avpu.irq_thread_running = 0;
                         }
+
+                        /* Register EndEncoding callback (OEM parity: AL_EncCore_Init at 0x6c8d8)
+                         * OEM calculates IRQ ID from channel: 1 << ((channel * 4) & 0x1f)
+                         * For channel 0: IRQ ID = bit 0 = IRQ 0
+                         * For channel 1: IRQ ID = bit 4 = IRQ 4
+                         */
+                        int channel = enc->channel_id - 1; /* 0-based */
+                        int irq_bit = 1 << ((channel * 4) & 0x1f);
+                        int irq_id = 0;
+                        /* Find which bit is set */
+                        for (int i = 0; i < 20; i++) {
+                            if (irq_bit & (1 << i)) {
+                                irq_id = i;
+                                break;
+                            }
+                        }
+                        avpu_register_callback(&enc->avpu, avpu_end_encoding_callback, &enc->avpu, irq_id);
+                        LOG_CODEC("AVPU: registered EndEncoding callback for channel %d (IRQ %d)", channel, irq_id);
 
                         enc->use_hardware = 2; /* 2 = AL/AVPU path */
                         LOG_CODEC("Process: AVPU opened fd=%d channel=%d", fd, enc->channel_id - 1);
@@ -1007,7 +1192,10 @@ int AL_Codec_Encode_GetStream(void *codec, void **stream, void **user_data) {
     *user_data = NULL;
 
     if (enc->use_hardware == 2 && enc->avpu.fd >= 0) {
-        /* OEM parity: Direct stream buffer checking (no ALAvpu_DequeueStream wrapper) */
+        /* OEM parity: Fifo_Dequeue(arg1 + 0x7f8, 0xffffffff) at EndEncoding callback
+         * The EndEncoding callback queues stream buffers to the FIFO when encoding completes.
+         * We dequeue from the FIFO here (blocking wait).
+         */
         ALAvpuContext *ctx = &enc->avpu;
 
         if (!ctx->session_ready) {
@@ -1015,49 +1203,20 @@ int AL_Codec_Encode_GetStream(void *codec, void **stream, void **user_data) {
             return -1;
         }
 
-        /* Poll for encoded stream with short sleep (OEM parity: no userspace IRQ wait) */
-        struct timespec nap = {0, 5000000L}; /* 5ms */
-        LOG_CODEC("GetStream[AVPU]: polling for stream data (max 20 retries)...");
+        LOG_CODEC("GetStream[AVPU]: waiting for stream from FIFO...");
 
-        for (int retry = 0; retry < 20; ++retry) {
-            nanosleep(&nap, NULL);
+        /* OEM: Fifo_Dequeue(encoder + 0x7f8, 0xffffffff) - infinite wait */
+        HWStreamBuffer *s = (HWStreamBuffer*)fifo_dequeue(ctx->fifo_streams, 0xffffffff);
 
-            /* Check stream buffers for valid AnnexB data */
-            for (int i = 0; i < ctx->stream_bufs_used; ++i) {
-                if (ctx->stream_in_hw[i]) {
-                    const uint8_t *virt = (const uint8_t*)ctx->stream_bufs[i].map;
-
-                    /* Log first check */
-                    if (retry == 0) {
-                        LOG_CODEC("GetStream[AVPU]: retry %d - checking buf[%d] first 8 bytes: %02x %02x %02x %02x %02x %02x %02x %02x",
-                                 retry, i, virt[0], virt[1], virt[2], virt[3], virt[4], virt[5], virt[6], virt[7]);
-                    }
-
-                    size_t eff = annexb_effective_size(virt, ctx->stream_buf_size);
-                    if (eff > 0) {
-                        /* Found valid stream */
-                        HWStreamBuffer *s = (HWStreamBuffer*)malloc(sizeof(HWStreamBuffer));
-                        if (!s) return -1;
-                        s->phys_addr = ctx->stream_bufs[i].phy_addr;
-                        s->virt_addr = (uint32_t)(uintptr_t)virt;
-                        s->length = (uint32_t)eff;
-                        s->timestamp = 0;
-                        s->frame_type = 0;
-                        s->slice_type = 0;
-                        ctx->stream_in_hw[i] = 0; /* mark as dequeued */
-                        *stream = s;
-                        LOG_CODEC("GetStream[AVPU]: ✓ SUCCESS - got stream from buf[%d] phys=0x%x len=%u after %d retries",
-                                 i, s->phys_addr, s->length, retry);
-                        return 0;
-                    }
-                } else if (retry == 0) {
-                    LOG_CODEC("GetStream[AVPU]: retry %d - buf[%d] not in HW (stream_in_hw=0)", retry, i);
-                }
-            }
+        if (s) {
+            *stream = s;
+            LOG_CODEC("GetStream[AVPU]: ✓ got stream from FIFO phys=0x%08x len=%u",
+                     s->phys_addr, s->length);
+            return 0;
         }
 
-        /* Timeout */
-        LOG_CODEC("GetStream[AVPU]: ✗ TIMEOUT - no stream data found after 20 retries");
+        /* Should not reach here with infinite wait, but handle gracefully */
+        LOG_CODEC("GetStream[AVPU]: ✗ FIFO dequeue returned NULL");
         errno = EAGAIN;
         return -1;
     }
