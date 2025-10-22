@@ -80,6 +80,7 @@ typedef struct ALAvpuContext {
     void *irq_mutex;              /* pthread_mutex_t* for callback access */
     long irq_thread;              /* pthread_t stored as long */
     int irq_thread_running;
+volatile int frames_encoded;  /* Counter incremented by EndEncoding callback */
 
     /* FIFO structures (OEM parity: Fifo_Init at 0x7af28)
      * OEM uses FIFOs at encoder+0x7f8 (streams) and encoder+0x81c (metadata)

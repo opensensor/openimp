@@ -588,7 +588,7 @@ typedef struct {
 
 /* Global VBM state */
 typedef struct {
-    VBMPool *pool;          /* 0x00: Pool pointer */
+    VBMFrame *frame;        /* 0x00: Frame pointer */
     uint32_t phys_addr;     /* 0x04: Physical address */
     uint32_t virt_addr;     /* 0x08: Virtual address */
     int ref_count;          /* 0x0c: Reference count */
@@ -832,8 +832,8 @@ int VBMCreatePool(int chn, void *fmt, void *ops, void *priv) {
 
         /* Register in global frame volumes */
         for (int j = 0; j < 30; j++) {
-            if (g_framevolumes[j].pool == NULL) {
-                g_framevolumes[j].pool = (VBMPool*)frame;
+            if (g_framevolumes[j].frame == NULL) {
+                g_framevolumes[j].frame = frame;
                 g_framevolumes[j].phys_addr = frame->phys_addr;
                 g_framevolumes[j].virt_addr = frame->virt_addr;
                 g_framevolumes[j].ref_count = 0;
@@ -877,11 +877,11 @@ int VBMDestroyPool(int chn) {
 
     /* Unregister frames from global volumes */
     for (int i = 0; i < 30; i++) {
-        if (g_framevolumes[i].pool != NULL) {
-            VBMFrame *frame = (VBMFrame*)g_framevolumes[i].pool;
+        if (g_framevolumes[i].frame != NULL) {
+            VBMFrame *frame = g_framevolumes[i].frame;
             if (frame->chn == chn) {
                 pthread_mutex_destroy(&g_framevolumes[i].mutex);
-                g_framevolumes[i].pool = NULL;
+                g_framevolumes[i].frame = NULL;
                 g_framevolumes[i].phys_addr = 0;
                 g_framevolumes[i].virt_addr = 0;
                 g_framevolumes[i].ref_count = 0;

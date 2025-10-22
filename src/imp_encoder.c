@@ -1640,6 +1640,12 @@ static void *stream_thread(void *arg) {
                         chn->current_stream = stream_buf;
                         /* Signal semaphore that stream is available */
                         sem_post(&chn->sem_408);
+                        /* Also notify via eventfd for apps using GetFd/poll */
+                        if (chn->eventfd >= 0) {
+                            uint64_t val = 1;
+                            ssize_t n = write(chn->eventfd, &val, sizeof(val));
+                            (void)n;
+                        }
                         posted = 1;
                     }
                     pthread_mutex_unlock(&chn->mutex_450);
@@ -1655,6 +1661,11 @@ static void *stream_thread(void *arg) {
                             if (chn->current_stream == NULL) {
                                 chn->current_stream = stream_buf;
                                 sem_post(&chn->sem_408);
+                                if (chn->eventfd >= 0) {
+                                    uint64_t val = 1;
+                                    ssize_t n = write(chn->eventfd, &val, sizeof(val));
+                                    (void)n;
+                                }
                                 posted = 1;
                             }
                             pthread_mutex_unlock(&chn->mutex_450);
