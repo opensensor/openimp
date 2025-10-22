@@ -148,7 +148,45 @@ static void avpu_enable_interrupts(int fd, int core)
     if (new_m != m) avpu_write_reg(fd, AVPU_INTERRUPT_MASK, new_m);
 }
 
-/* WaitInterruptThread - based on decompilation at 0x35e28 */
+/* LinuxIpCtrl_RegisterCallBack - based on decompilation at 0x35fd0
+ * Register a callback for a specific interrupt ID (0-19).
+ * OEM signature: void LinuxIpCtrl_RegisterCallBack(void *ctx, void (*callback)(void*), void *user_data, int irq_id)
+ */
+static void avpu_register_callback(ALAvpuContext *ctx, void (*callback)(void*), void *user_data, int irq_id)
+{
+    if (irq_id < 0 || irq_id >= 20) {
+        LOG_CODEC("AVPU: invalid IRQ ID %d for callback registration", irq_id);
+        return;
+    }
+
+    /* OEM: Rtos_GetMutex(*(arg1 + 0xc)) */
+    pthread_mutex_lock((pthread_mutex_t*)ctx->irq_mutex);
+
+    /* OEM: Calculate offset: arg1 + (irq_id * 16 - irq_id * 4) + 0x10 = arg1 + (irq_id * 12) + 0x10 */
+    int idx = irq_id * 3; /* 3 ints per entry: [callback_fn, user_data, flag] */
+    ctx->irq_callbacks[idx] = (long)callback;
+    ctx->irq_callbacks[idx + 1] = (long)user_data;
+
+    /* OEM: if (arg2 != 0) ... else *($v0_1 + 0x14) = 1 */
+    if (callback != NULL) {
+        /* callback is set, clear flag */
+        ctx->irq_callbacks[idx + 2] = 0;
+    } else {
+        /* callback is NULL, set flag to 1 */
+        ctx->irq_callbacks[idx + 2] = 1;
+    }
+
+    /* OEM: Rtos_ReleaseMutex(...) */
+    pthread_mutex_unlock((pthread_mutex_t*)ctx->irq_mutex);
+
+    LOG_CODEC("AVPU: registered callback for IRQ %d (callback=%p, user_data=%p)",
+              irq_id, callback, user_data);
+}
+
+/* WaitInterruptThread - based on decompilation at 0x35e28
+ * This thread waits for AVPU interrupts and dispatches registered callbacks.
+ * The OEM uses this for encoding completion notifications.
+ */
 static void* avpu_irq_thread(void* arg)
 {
     ALAvpuContext* ctx = (ALAvpuContext*)arg;
@@ -162,27 +200,44 @@ static void* avpu_irq_thread(void* arg)
         /* ioctl($a0_2, 0xc004710c, &var_28) - AL_CMD_IP_WAIT_IRQ */
         if (ioctl(fd, AL_CMD_IP_WAIT_IRQ, &irq_id) == -1) {
             if (errno == EINTR) {
-                continue; /* interrupted, retry */
+                continue; /* interrupted by signal, retry */
             }
-            LOG_CODEC("IRQ thread: WAIT_IRQ failed: %s", strerror(errno));
+            /* OEM: if (*__errno_location() != 4) perror("IOCTL0 failed with ") */
+            if (errno != EINTR) {
+                LOG_CODEC("IRQ thread: WAIT_IRQ failed: %s", strerror(errno));
+            }
             break;
         }
 
-        /* OEM checks if (var_28 u>= 0x14) - we just check for valid IRQ */
+        /* OEM: if (var_28 u>= 0x14) fprintf(stderr, ...) */
         if (irq_id < 0 || irq_id >= 20) {
             LOG_CODEC("IRQ thread: invalid IRQ ID %d", irq_id);
             continue;
         }
 
-        LOG_CODEC("IRQ thread: got IRQ %d - frame encoded", irq_id);
+        LOG_CODEC("IRQ thread: IRQ %d received", irq_id);
 
-        /* AL_EncCore_ReadStatusRegsEnc: reads status from CL entries */
-        /* The hardware writes encoding results back to the CL entry */
-        /* The stream data is already in the stream buffers we queued */
-        /* GetStream will find it by checking for valid AnnexB data */
+        /* OEM: Rtos_GetMutex(*(arg1 + 0xc)) */
+        pthread_mutex_lock((pthread_mutex_t*)ctx->irq_mutex);
 
-        /* Clear the interrupt */
-        avpu_write_reg(fd, AVPU_INTERRUPT, 1 << irq_id);
+        /* OEM: Calculate callback offset: arg1 + (irq_id * 16 - irq_id * 4) + 0x10
+         * This is: arg1 + (irq_id * 12) + 0x10
+         * Array of 20 entries, each 12 bytes: [callback_fn, user_data, flag]
+         */
+        int idx = irq_id * 3; /* 3 ints per entry */
+        void (*callback)(void*) = (void(*)(void*))ctx->irq_callbacks[idx];
+        void *user_data = (void*)ctx->irq_callbacks[idx + 1];
+        int flag = ctx->irq_callbacks[idx + 2];
+
+        /* OEM: if ($t9_1 != 0) $t9_1(...) else if (flag == 0) fprintf(stderr, ...) */
+        if (callback != NULL) {
+            callback(user_data);
+        } else if (flag == 0) {
+            LOG_CODEC("IRQ thread: Interrupt %d doesn't have a handler", irq_id);
+        }
+
+        /* OEM: Rtos_ReleaseMutex(*(arg1 + 0xc)) */
+        pthread_mutex_unlock((pthread_mutex_t*)ctx->irq_mutex);
     }
 
     LOG_CODEC("IRQ thread: exiting");
@@ -754,7 +809,17 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
                         }
                         pthread_mutex_unlock(&g_avpu_owner_mutex);
 
-                        /* Start IRQ thread (OEM parity: WaitInterruptThread at 0x35e28) */
+                        /* Initialize IRQ callback system (OEM parity: WaitInterruptThread at 0x35e28) */
+                        memset(enc->avpu.irq_callbacks, 0, sizeof(enc->avpu.irq_callbacks));
+
+                        /* Allocate and initialize mutex for callback access */
+                        pthread_mutex_t *mutex = (pthread_mutex_t*)malloc(sizeof(pthread_mutex_t));
+                        if (mutex) {
+                            pthread_mutex_init(mutex, NULL);
+                            enc->avpu.irq_mutex = mutex;
+                        }
+
+                        /* Start IRQ thread */
                         enc->avpu.irq_thread_running = 1;
                         pthread_t tid;
                         if (pthread_create(&tid, NULL, avpu_irq_thread, &enc->avpu) == 0) {
@@ -867,19 +932,24 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
                 if (ctx->stream_in_hw[i]) { any_in_hw = 1; break; }
             }
             if (!any_in_hw && ctx->stream_bufs_used > 0) {
+                LOG_CODEC("AVPU: No stream buffers in HW, queueing buf[0]...");
                 avpu_write_reg(fd, AVPU_REG_STRM_PUSH, ctx->stream_bufs[0].phy_addr);
                 ctx->stream_in_hw[0] = 1;
-                LOG_CODEC("AVPU: queued stream buf[0] phys=0x%08x", ctx->stream_bufs[0].phy_addr);
+                LOG_CODEC("AVPU: ✓ queued stream buf[0] phys=0x%08x (stream_in_hw[0]=1)", ctx->stream_bufs[0].phy_addr);
+            } else {
+                LOG_CODEC("AVPU: Stream buffer already in HW (any_in_hw=%d)", any_in_hw);
             }
 
             /* StartEnc1WithCommandList.isra.25: (*(**arg1 + 8))() */
             /* This triggers the hardware via function pointer */
             /* Based on trace, this writes CL_ADDR and CL_PUSH */
             uint32_t cl_phys = ctx->cl_ring.phy_addr + (idx * ctx->cl_entry_size);
+            LOG_CODEC("Process: Programming CL_ADDR=0x%08x CL_PUSH=0x2", cl_phys);
             avpu_write_reg(fd, AVPU_REG_CL_ADDR, cl_phys);
             avpu_write_reg(fd, AVPU_REG_CL_PUSH, 0x00000002);
 
             /* Push source frame: this is separate from CL trigger */
+            LOG_CODEC("Process: Programming SRC_PUSH=0x%08x", phys_addr);
             avpu_write_reg(fd, AVPU_REG_SRC_PUSH, phys_addr);
 
             /* Enable interrupts */
@@ -888,7 +958,7 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
             /* Advance to next CL slot */
             ctx->cl_idx = (idx + 1) % ctx->cl_count;
 
-            LOG_CODEC("Process: AVPU queued frame %ux%u phys=0x%x CL[%u]", width, height, phys_addr, idx);
+            LOG_CODEC("Process: AVPU queued frame %ux%u phys=0x%x CL[%u] - encoding triggered", width, height, phys_addr, idx);
         }
 
         /* Do not dequeue here; GetStream() will handle stream retrieval */
@@ -947,6 +1017,8 @@ int AL_Codec_Encode_GetStream(void *codec, void **stream, void **user_data) {
 
         /* Poll for encoded stream with short sleep (OEM parity: no userspace IRQ wait) */
         struct timespec nap = {0, 5000000L}; /* 5ms */
+        LOG_CODEC("GetStream[AVPU]: polling for stream data (max 20 retries)...");
+
         for (int retry = 0; retry < 20; ++retry) {
             nanosleep(&nap, NULL);
 
@@ -954,6 +1026,13 @@ int AL_Codec_Encode_GetStream(void *codec, void **stream, void **user_data) {
             for (int i = 0; i < ctx->stream_bufs_used; ++i) {
                 if (ctx->stream_in_hw[i]) {
                     const uint8_t *virt = (const uint8_t*)ctx->stream_bufs[i].map;
+
+                    /* Log first check */
+                    if (retry == 0) {
+                        LOG_CODEC("GetStream[AVPU]: retry %d - checking buf[%d] first 8 bytes: %02x %02x %02x %02x %02x %02x %02x %02x",
+                                 retry, i, virt[0], virt[1], virt[2], virt[3], virt[4], virt[5], virt[6], virt[7]);
+                    }
+
                     size_t eff = annexb_effective_size(virt, ctx->stream_buf_size);
                     if (eff > 0) {
                         /* Found valid stream */
@@ -967,14 +1046,18 @@ int AL_Codec_Encode_GetStream(void *codec, void **stream, void **user_data) {
                         s->slice_type = 0;
                         ctx->stream_in_hw[i] = 0; /* mark as dequeued */
                         *stream = s;
-                        LOG_CODEC("GetStream[AVPU]: got stream phys=0x%x len=%u", s->phys_addr, s->length);
+                        LOG_CODEC("GetStream[AVPU]: ✓ SUCCESS - got stream from buf[%d] phys=0x%x len=%u after %d retries",
+                                 i, s->phys_addr, s->length, retry);
                         return 0;
                     }
+                } else if (retry == 0) {
+                    LOG_CODEC("GetStream[AVPU]: retry %d - buf[%d] not in HW (stream_in_hw=0)", retry, i);
                 }
             }
         }
 
         /* Timeout */
+        LOG_CODEC("GetStream[AVPU]: ✗ TIMEOUT - no stream data found after 20 retries");
         errno = EAGAIN;
         return -1;
     }

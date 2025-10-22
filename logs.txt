@@ -1,276 +1,787 @@
-root@ing-wyze-cam3-a000 opt# ./prudynt 
+root@ing-wyze-cam3-a000 opt# insmod avpu.ko 
+root@ing-wyze-cam3-a000 opt# insmod /lib/modules/3.10.14__isvp_swan_1.0__/ingenic/tx-isp-t31.ko 
+root@ing-wyze-cam3-a000 opt# insmod /lib/modules/3.10.14__isvp_swan_1.0__/ingenic/sensor_gc2053_t31.ko 
+root@ing-wyze-cam3-a000 opt# LOG_AVPU_TRACE=/opt/avpu_trace.log ^C_PRELOAD=/opt/libioctl_trace.so ./prudynt
+
+root@ing-wyze-cam3-a000 opt# ls
+S15thingino-button    S95streamer           avpu_trace.log        avpu_trace_last.log   libimp.so             prudynt               tx-isp-t31.ko
+S95prudynt            avpu.ko               avpu_trace_OEM.log    csi.txt               libioctl_trace.so     sensor_gc2053_t31.ko
+root@ing-wyze-cam3-a000 opt# rm avpu_trace.log 
+root@ing-wyze-cam3-a000 opt# LOG_AVPU_TRACE=/opt/avpu_trace.log LD_PRELOAD=/opt/libioctl_trace.so ./prudynt
 [INFO:Config.cpp]: Loaded configuration from /etc/prudynt.json
 [INFO:main.cpp]: PRUDYNT-T Next-Gen Video Daemon: prudynt-t vOct 15 2025 19:34:34 [24c730b-dev1760571274]
 [INFO:main.cpp]: Starting Prudynt Video Server.
-[OSD] SetPoolSize: 1228800 bytes
 [INFO:IMPSystem.cpp]: LIBIMP Version IMP-1.1.6
 [INFO:IMPSystem.cpp]: SYSUTILS Version: SYSUTILS-1.1.6
-[INFO:IMPSystem.cpp]: CPU Information: T31
-[IMP_ISP] Open: opened /dev/tx-isp (fd=4)
+[INFO:IMPSystem.cpp]: CPU Information: T31-X
 [INFO:IMPSystem.cpp]: Sensor: gc2053
-[IMP_ISP] AddSensor: name='gc2053' cbus=1 i2c.type='gc2053' i2c.addr=0x37 rst_gpio=0
-[IMP_ISP] AddSensor: pwdn_gpio=0 power_gpio=0
-[IMP_ISP] AddSensor: calling REGISTER_SENSOR ioctl(0x805056c1)
-[IMP_ISP] AddSensor: REGISTER_SENSOR succeeded
-[IMP_ISP] AddSensor: enum idx=0 name='gc2053'
-[IMP_ISP] AddSensor: found matching sensor at index 0
-[IMP_ISP] AddSensor: calling TX_ISP_SENSOR_SET_INPUT with index=0
-[IMP_ISP] AddSensor: TX_ISP_SENSOR_SET_INPUT succeeded
-[IMP_ISP] AddSensor: TX_ISP_GET_BUF using index=input_index=125830200
-[IMP_ISP] AddSensor: ISP buffer size=4685424 (platform struct size=8)
-[DMA] DMA init: using /dev/rmem
-[DMA] DMA init: /dev/rmem mapped at 0x75473000 size=30408704 base_phys=0x06300000
-[DMA] Alloc: (unnamed) size=4685424 phys=0x6300000 virt=0x75473000 (rmem off=0x0)
-[IMP_ISP] AddSensor: allocated ISP buffer: virt=0x75473000 phys=0x6300000 size=4685424
-[IMP_ISP] AddSensor: calling TX_ISP_SET_BUF (0x800856d4) with phys=0x6300000 size=4685424
-[IMP_ISP] AddSensor: TX_ISP_SET_BUF succeeded
-[IMP_ISP] AddSensor: secondary ISP buffer not requested or ioctl failed
-[IMP_ISP] AddSensor: gc2053 (idx=0, buf_size=4685424)
-[IMP_ISP] EnableSensor: proceeding without custom AE/AWB
-[IMP_ISP] EnableSensor: about to call ioctl 0x40045626
-[IMP_ISP] EnableSensor: ioctl 0x40045626 returned 0
-[IMP_ISP] EnableSensor: ioctl 0x40045626 succeeded, sensor_idx=0
-[IMP_ISP] EnableSensor: sensor index validated, proceeding to STREAMON/LINK_SETUP now (OEM parity)
-[IMP_ISP] EnsureLinkStreamOn: calling ioctl 0x80045612 (ISP STREAMON) [arg=0]
-[IMP_ISP] EnsureLinkStreamOn: calling ioctl 0x800456d0 (LINK_SETUP) [arg=&sensor_idx=0]
-[IMP_ISP] EnsureLinkStreamOn: LINK_SETUP succeeded, sensor_idx=0
-[IMP_ISP] EnsureLinkStreamOn: calling ioctl 0x800456d2 (LINK_STREAM_ON) [arg=0]
-[IMP_ISP] EnsureLinkStreamOn: ISP streaming started
-[System] Initializing...
-[System] Subsystems initialized
-[System] Initialized (IMP-1.1.6)
-[IMP_ISP] EnableTuning: opened /dev/isp-m0 (fd=6)
-[IMP_ISP] GetContrast: 128
-[IMP_ISP] EnableTuning: tuning initialized successfully
-[IMP_ISP] SetContrast: 128
-[IMP_ISP] SetSharpness: 128
-[IMP_ISP] SetSaturation: 128
-[IMP_ISP] SetBrightness: 128
-[IMP_ISP] SetContrast: 128
-[IMP_ISP] SetSharpness: 128
-[IMP_ISP] SetSaturation: 128
-[IMP_ISP] SetBrightness: 128
-[IMP_ISP] SetSinterStrength: 128
-[IMP_ISP] SetTemperStrength: 128
-[IMP_ISP] SetISPHflip: 0
-[IMP_ISP] SetISPVflip: 0
-[IMP_ISP] SetISPRunningMode: 0
-[IMP_ISP] SetISPRunningMode: mode set successfully to 0
-[IMP_ISP] SetISPBypass: request=1 coerced to 0 (normal pipeline)
-[IMP_ISP] SetISPBypass: 0
-[IMP_ISP] SetISPBypass: LINK_SETUP with sensor_idx=0 (enable=0)
-[IMP_ISP] SetAntiFlickerAttr: 2
-[IMP_ISP] SetAeComp: 128
-[IMP_ISP] SetMaxAgain: 160
-[IMP_ISP] SetMaxDgain: 80
-[IMP_ISP] SetWB: mode=0, rgain=0, bgain=0
-[IMP_ISP] SetBcshHue: 128
-[IMP_ISP] SetDefog_Strength: 2145819915
-[IMP_ISP] SetDPC_Strength: 128
-[IMP_ISP] SetDRC_Strength: 128
-[IMP_ISP] SetSensorFPS: 25/1
-[IMP_ISP] SetSensorFPS: FPS set successfully to 25/1
-[IMP_ISP] SetISPRunningMode: 0
-[IMP_ISP] SetISPRunningMode: mode set successfully to 0
-[IMP_System] Timestamp rebased to 525034933 us
+---- FPGA board is ready ----
+  Board UID : 30AB6E51
+  Board HW ID : 72000460
+  Board rev.  : 5DE5A975
+  Board date  : 20190326
+-----------------------------
 [INFO:TimestampManager.cpp]: TimestampManager initialized - using IMP hardware timestamps directly
-[FrameSource] GetChnAttr failed: channel 0 not configured
-[FrameSource] CreateChn: Opened /dev/framechan0 (fd=7, nonblock)
-[System] Registered module [0,0]: FrameSource
-[FrameSource] CreateChn: registered FrameSource module [0,0] with 1 output
-[FrameSource] CreateChn: chn=0, 1920x1080, fmt=0xa
-[FrameSource] SetChnAttr: chn=0, 1920x1080, fmt=0xa
-[FrameSource] GetChnFifoAttr: chn=0 -> maxdepth=0, depth=0
 [INFO:WS.cpp]: libwebsockets version: 4.3.5-unknown
 [INFO:WS.cpp]: WS context: port=0 iface=<any>
-[ERROR:WS.cpp]: lws init failed (errno=12)
-[FrameSource] SetChnFifoAttr: chn=0, maxdepth=0, depth=0
-[KernelIF] Set frame depth: 0
-[FrameSource] SetFrameDepth: chn=0, depth=0
-[Encoder] SetDefaultParam: 1920x1080, 25/1 fps, profile=100, rc=1
-[Codec] SetDefaultParam: initialized (OEM-aligned)
-[Encoder] channel_encoder_init: 1920x1080, profile=0x64->0x64, fps=25/1, gop=65535, bitrate=0
-[Fifo] Init: size=4, max_elements=5
-[Fifo] Init: size=7, max_elements=8
-[Codec] Create: hardware encoder will be attempted via /dev/avpu (lazy init)
-[Codec] Create: codec=0x7717a0a0, channel=0
-[Encoder] channel_encoder_init: frame_cnt=4, frame_size=1048576
-[Fifo] Init: size=4, max_elements=5
-[Encoder] CreateChn: chn=0, profile=100 created successfully
-[Encoder] RegisterChn: grp=0, chn=0
-[System] Registered module [1,0]: Encoder
-[Encoder] CreateGroup: registered Encoder module [1,0] with 1 output and update callback
-[Encoder] CreateGroup: grp=0
-[System] Bind request: [0,0,0] -> [1,0,0]
-[System] Binding [0,0,0] -> [1,0,0]
-[System] Bound FrameSource -> Encoder (observer added)
-[FrameSource] EnableChn: disabling redundant scaler (out==in 1920x1080)
-[KernelIF] SET_FMT before ioctl:
-[KernelIF]   width=1920 height=1080 pixelformat=0x3231564e
-[KernelIF]   scaler_enable=0 scaler_outwidth=1920 scaler_outheight=1080
-[KernelIF]   picwidth=1920 picheight=1080
-[KernelIF]   crop_enable=0 crop=1920x1080+0+0
-[KernelIF] SET_FMT after ioctl:
-[KernelIF]   width=1920 height=1080 sizeimage=3133440 bytesperline=0
-[KernelIF]   scaler_enable=0 scaler_outwidth=1920 scaler_outheight=1080
-[KernelIF] Set format: 1920x1080 fmt=0xa (fourcc=0x3231564e) sizeimage=3133440->3133440 bytesperline=0 colorspace=8
-[FrameSource] EnableChn: using sizeimage=3133440 from SET_FMT for chn=0
-[VBM] CreatePool: allocating pool_size=2512 (frame_count=2 * 0x428 + 0x180)
-[VBM] CreatePool: chn=0, 1920x1080 fmt=0xa, 2 frames, size=3133440 (req=3133440 calc=3133440)
-[DMA] Alloc: (unnamed) size=6266880 phys=0x6778000 virt=0x758eb000 (rmem off=0x478000)
-[VBM] Frame 0: phys=0x6778000 virt=0x758eb000
-[VBM] Frame 1: phys=0x6a75000 virt=0x75be8000
-[VBM] CreatePool: chn=0 created successfully
-[KernelIF] REQBUFS: requested=2 actual=2
-[VBM] FillPool: chn=0, filling 2 frames
-[VBM] FillPool: queued 2 frames
-[VBM] PrimeKernelQueue: QBUF using PHYS address in .m
-[VBM] PrimeKernelQueue: QBUF using PHYS address in .m
-[VBM] PrimeKernelQueue: queued 2 frames to kernel for chn=0 (limit=2)
-[Encoder] stream_thread: started for channel 0
-[Encoder] encoder_thread: started for channel 0
-[IMP_ISP] EnsureLinkStreamOn: already started (bypass_link_setup_done=1)
-[KernelIF] Stream started
-[FrameSource] EnableChn: chn=0 enabled successfully
-[Encoder] RequestIDR: chn=0
-[HW_Encoder] RequestIDR: next frame will be IDR
-[Encoder] StartRecvPic: chn=0
 [INFO:RTSPStatus.cpp]: RTSPStatus: RTSP status interface initialized successfully
 [INFO:RTSP.cpp]: Set shared RTP timestamp base: 3921775265 (0xe9c18aa1)
-[FrameSource] frame_capture_thread: started for channel 0, state=2, fd=7
-[FrameSource] frame_capture_thread chn=0: entering main loop
-[FrameSource] frame_capture_thread chn=0: poll iteration 1, state=2, fd=7, software_mode=0
-[FrameSource] frame_capture_thread chn=0: about to select() (poll #1)
-[FrameSource] frame_capture_thread chn=0: select() returned 1 (errno=0)
-[FrameSource] frame_capture_thread chn=0: entering DQBUF drain loop
-[VBM] VBMKernelDequeue chn=0: attempting DQBUF...
-[KernelIF] DQBUF ioctl ENTER
-[KernelIF] DQBUF ioctl LEAVE ret=0 errno=0
-[VBM] VBMKernelDequeue chn=0: DQBUF ret=0 idx=0
-[FrameSource] frame_capture_thread chn=0: got frame #1 (0x77181cc0) from kernel
-[System] notify: calling update 0x7761b83c on Encoder (frame=0x77181cc0)
-[Encoder] encoder_update: Frame available from FrameSource, frame=0x77181cc0
-[Codec] Process: frame=0x77181cc0, extracting metadata
-[DevicePool] Init: device pool initialized
-[DevicePool] Open: opened '/dev/avpu' (fd=13, slot=0)
-[DMA] Alloc: (unnamed) size=131072 phys=0x6d72000 virt=0x75ee5000 (rmem off=0xa72000)
-[Codec] AVPU: stream buf[0] phys=0x06d72000 size=131072
-[DMA] Alloc: (unnamed) size=131072 phys=0x6d92000 virt=0x75f05000 (rmem off=0xa92000)
-[Codec] AVPU: stream buf[1] phys=0x06d92000 size=131072
-[DMA] Alloc: (unnamed) size=131072 phys=0x6db2000 virt=0x75f25000 (rmem off=0xab2000)
-[Codec] AVPU: stream buf[2] phys=0x06db2000 size=131072
-[DMA] Alloc: (unnamed) size=131072 phys=0x6dd2000 virt=0x75f45000 (rmem off=0xad2000)
-[Codec] AVPU: stream buf[3] phys=0x06dd2000 size=131072
-[DMA] Alloc: (unnamed) size=9728 phys=0x6df2000 virt=0x75f65000 (rmem off=0xaf2000)
-[Codec] AVPU: cmdlist ring phys=0x06df2000 size=9728 entries=19
-[Codec] AVPU: channel=0 acquired ownership
-[Codec] AVPU: IRQ thread started
-[Codec] Process: AVPU opened fd=13 channel=0
-[Codec] AVPU: HW initialized (AL_EncCore_Init)
-[Codec] Process: AVPU queued frame 1920x1080 phys=0x6778000 CL[0]
-[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
-[VBM] ReleaseFrame: chn=0, frame=0x77181cc0
-[VBM] ReleaseFrame: returned frame idx=0 (1 available)
-[FrameSource] ReleaseFrame: Released frame 0x77181cc0 from channel 0
-[Encoder] encoder_update: Released frame 0x77181cc0 back to its source channel 0
-[VBM] VBMKernelDequeue chn=0: attempting DQBUF...
-[KernelIF] DQBUF ioctl ENTER
-[Codec] IRQ thread: started for fd=13
-[Codec] IRQ thread: got IRQ 0 - frame encoded
-[Codec] IRQ thread: got IRQ 0 - frame encoded
-[KernelIF] DQBUF ioctl LEAVE ret=0 errno=0
-[VBM] VBMKernelDequeue chn=0: DQBUF ret=0 idx=1
-[FrameSource] frame_capture_thread chn=0: got frame #2 (0x771820e8) from kernel
-[System] notify: calling update 0x7761b83c on Encoder (frame=0x771820e8)
-[Encoder] encoder_update: Frame available from FrameSource, frame=0x771820e8
-[Codec] Process: frame=0x771820e8, extracting metadata
-[Codec] AVPU: channel=0 already open (fd=13); skipping re-open
-[Codec] Process: AVPU queued frame 1920x1080 phys=0x6a75000 CL[1]
-[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
-[VBM] ReleaseFrame: chn=0, frame=0x771820e8
-[VBM] ReleaseFrame: returned frame idx=1 (2 available)
-[FrameSource] ReleaseFrame: Released frame 0x771820e8 from channel 0
-[Encoder] encoder_update: Released frame 0x771820e8 back to its source channel 0
-[VBM] VBMKernelDequeue chn=0: attempting DQBUF...
-[KernelIF] DQBUF ioctl ENTER
-[KernelIF] DQBUF ioctl LEAVE ret=0 errno=0
-[VBM] VBMKernelDequeue chn=0: DQBUF ret=0 idx=0
-[FrameSource] frame_capture_thread chn=0: got frame #3 (0x77181cc0) from kernel
-[System] notify: calling update 0x7761b83c on Encoder (frame=0x77181cc0)
-[Encoder] encoder_update: Frame available from FrameSource, frame=0x77181cc0
-[Codec] Process: frame=0x77181cc0, extracting metadata
-[Codec] AVPU: channel=0 already open (fd=13); skipping re-open
-[Codec] Process: AVPU queued frame 1920x1080 phys=0x6778000 CL[2]
-[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
-[VBM] ReleaseFrame: chn=0, frame=0x77181cc0
-[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
-[VBM] ReleaseFrame: returned frame idx=0 (2 available)
-[FrameSource] ReleaseFrame: Released frame 0x77181cc0 from channel 0
-[Encoder] encoder_update: Released frame 0x77181cc0 back to its source channel 0
-[KernelIF] DQBUF ioctl ENTER
-[KernelIF] DQBUF ioctl LEAVE ret=0 errno=0
-[FrameSource] frame_capture_thread chn=0: got frame #4 (0x771820e8) from kernel
-[System] notify: calling update 0x7761b83c on Encoder (frame=0x771820e8)
-[Encoder] encoder_update: Frame available from FrameSource, frame=0x771820e8
-[Codec] Process: frame=0x771820e8, extracting metadata
-[Codec] AVPU: channel=0 already open (fd=13); skipping re-open
-[Codec] Process: AVPU queued frame 1920x1080 phys=0x6a75000 CL[3]
-[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
-[VBM] ReleaseFrame: chn=0, frame=0x771820e8
-[VBM] ReleaseFrame: queue full, dropped idx=1 to make room
-[VBM] ReleaseFrame: returned frame idx=1 (2 available)
-[FrameSource] ReleaseFrame: Released frame 0x771820e8 from channel 0
-[Encoder] encoder_update: Released frame 0x771820e8 back to its source channel 0
-[KernelIF] DQBUF ioctl ENTER
-[KernelIF] DQBUF ioctl LEAVE ret=0 errno=0
-[FrameSource] frame_capture_thread chn=0: got frame #5 (0x77181cc0) from kernel
-[System] notify: calling update 0x7761b83c on Encoder (frame=0x77181cc0)
-[Encoder] encoder_update: Frame available from FrameSource, frame=0x77181cc0
-[Codec] Process: frame=0x77181cc0, extracting metadata
-[Codec] AVPU: channel=0 already open (fd=13); skipping re-open
-[Codec] Process: AVPU queued frame 1920x1080 phys=0x6778000 CL[4]
-[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
-[VBM] ReleaseFrame: chn=0, frame=0x77181cc0
-[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
-[VBM] ReleaseFrame: returned frame idx=0 (2 available)
-[FrameSource] ReleaseFrame: Released frame 0x77181cc0 from channel 0
-[Encoder] encoder_update: Released frame 0x77181cc0 back to its source channel 0
-[KernelIF] DQBUF ioctl ENTER
-[KernelIF] DQBUF ioctl LEAVE ret=0 errno=0
-[System] notify: calling update 0x7761b83c on Encoder (frame=0x771820e8)
-[Encoder] encoder_update: Frame available from FrameSource, frame=0x771820e8
-[Codec] Process: frame=0x771820e8, extracting metadata
-[Codec] AVPU: channel=0 already open (fd=13); skipping re-open
-[Codec] Process: AVPU queued frame 1920x1080 phys=0x6a75000 CL[5]
-[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
-[VBM] ReleaseFrame: chn=0, frame=0x771820e8
-[VBM] ReleaseFrame: queue full, dropped idx=1 to make room
-[VBM] ReleaseFrame: returned frame idx=1 (2 available)
-[FrameSource] ReleaseFrame: Released frame 0x771820e8 from channel 0
-[Encoder] encoder_update: Released frame 0x771820e8 back to its source channel 0
-[KernelIF] DQBUF ioctl ENTER
-[KernelIF] DQBUF ioctl LEAVE ret=0 errno=0
-[System] notify: calling update 0x7761b83c on Encoder (frame=0x77181cc0)
-[Encoder] encoder_update: Frame available from FrameSource, frame=0x77181cc0
-[Codec] Process: frame=0x77181cc0, extracting metadata
-[Codec] AVPU: channel=0 already open (fd=13); skipping re-open
-[Codec] Process: AVPU queued frame 1920x1080 phys=0x6778000 CL[6]
-[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
-[VBM] ReleaseFrame: chn=0, frame=0x77181cc0
-[VBM] ReleaseFrame: queue full, dropped idx=0 to make room
-[VBM] ReleaseFrame: returned frame idx=0 (2 available)
-[FrameSource] ReleaseFrame: Released frame 0x77181cc0 from channel 0
-[Encoder] encoder_update: Released frame 0x77181cc0 back to its source channel 0
-[KernelIF] DQBUF ioctl ENTER
-[KernelIF] DQBUF ioctl LEAVE ret=0 errno=0
-[System] notify: calling update 0x7761b83c on Encoder (frame=0x771820e8)
-[Encoder] encoder_update: Frame available from FrameSource, frame=0x771820e8
-[Codec] Process: frame=0x771820e8, extracting metadata
-[Codec] AVPU: channel=0 already open (fd=13); skipping re-open
-[Codec] Process: AVPU queued frame 1920x1080 phys=0x6a75000 CL[7]
-[Encoder] encoder_update: Queued frame to channel 0 (by module group_id)
-[VBM] ReleaseFrame: chn=0, frame=0x771820e8
-[VBM] ReleaseFrame: queue full, dropped idx=1 to make room
-[VBM] ReleaseFrame: returned frame idx=1 (2 available)
-[FrameSource] ReleaseFrame: Released frame 0x771820e8 from channel 0
-[Encoder] encoder_update: Released frame 0x771820e8 back to its source channel 0
+[ERROR:WS.cpp]: lws init failed (errno=12)
+[INFO:RTSP.cpp]: stream 0 available at: rtsp://192.168.50.211/ch0
+[INFO:RTSPStatus.cpp]: RTSPStatus: Updated status for stream stream0 (H264 1920x1080@25fps)
+^C
+root@ing-wyze-cam3-a000 opt# cat avpu_trace.log 
+2025-10-22 06:51:42.440 [ioctl_trace] initialized
+2025-10-22 06:51:42.919 AVPU RREG [0x8004] -> 0x72000460 (ret=0)
+2025-10-22 06:51:42.920 AVPU RREG [0x8000] -> 0x30ab6e51 (ret=0)
+2025-10-22 06:51:42.922 AVPU RREG [0x800c] -> 0x5de5a975 (ret=0)
+2025-10-22 06:51:42.923 AVPU RREG [0x8008] -> 0x20190326 (ret=0)
+2025-10-22 06:51:42.925 AVPU WREG [0x8010] <- 0x00001000
+2025-10-22 06:51:42.926 AVPU WREG [0x83f0] <- 0x00000001
+2025-10-22 06:51:42.926 AVPU WREG [0x83f0] <- 0x00000002
+2025-10-22 06:51:42.927 AVPU WREG [0x83f0] <- 0x00000004
+2025-10-22 06:51:42.928 AVPU WREG [0x8018] <- 0x00ffffff
+2025-10-22 06:51:42.928 AVPU WREG [0x8054] <- 0x00000080
+2025-10-22 06:51:43.038 AVPU RREG [0x83f4] -> 0x00000000 (ret=0)
+2025-10-22 06:51:43.039 AVPU WREG [0x83f4] <- 0x00000001
+2025-10-22 06:51:43.039 AVPU WREG [0x83f0] <- 0x00000001
+2025-10-22 06:51:43.040 AVPU WREG [0x83f0] <- 0x00000002
+2025-10-22 06:51:43.041 AVPU WREG [0x83f0] <- 0x00000004
+2025-10-22 06:51:43.042 AVPU RREG [0x8014] -> 0x00000000 (ret=0)
+2025-10-22 06:51:43.042 AVPU WREG [0x8014] <- 0x00000001
+2025-10-22 06:51:43.043 AVPU RREG [0x83f8] -> 0x00000000 (ret=0)
+2025-10-22 06:51:43.044 AVPU WREG [0x83e0] <- 0x068aea00
+2025-10-22 06:51:43.044 AVPU WREG [0x83e4] <- 0x00000002
+2025-10-22 06:51:43.057 AVPU RREG [0x8014] -> 0x00000001 (ret=0)
+2025-10-22 06:51:43.058 AVPU WREG [0x8014] <- 0x00000000
+2025-10-22 06:51:43.060 AVPU RREG [0x83f4] -> 0x00010001 (ret=0)
+2025-10-22 06:51:43.073 AVPU WREG [0x83f4] <- 0x00010000
+2025-10-22 06:51:43.116 AVPU RREG [0x83f4] -> 0x00000000 (ret=0)
+2025-10-22 06:51:43.116 AVPU WREG [0x83f4] <- 0x00000001
+2025-10-22 06:51:43.117 AVPU WREG [0x83f0] <- 0x00000001
+2025-10-22 06:51:43.118 AVPU WREG [0x83f0] <- 0x00000002
+2025-10-22 06:51:43.119 AVPU WREG [0x83f0] <- 0x00000004
+2025-10-22 06:51:43.119 AVPU RREG [0x8014] -> 0x00000000 (ret=0)
+2025-10-22 06:51:43.120 AVPU WREG [0x8014] <- 0x00000001
+2025-10-22 06:51:43.121 AVPU RREG [0x83f8] -> 0x00000000 (ret=0)
+2025-10-22 06:51:43.122 AVPU WREG [0x83e0] <- 0x068aec00
+2025-10-22 06:51:43.122 AVPU WREG [0x83e4] <- 0x00000002
+2025-10-22 06:51:43.136 AVPU RREG [0x8014] -> 0x00000001 (ret=0)
+2025-10-22 06:51:43.136 AVPU WREG [0x8014] <- 0x00000000
+2025-10-22 06:51:43.137 AVPU RREG [0x83f4] -> 0x00010001 (ret=0)
+2025-10-22 06:51:43.138 AVPU WREG [0x83f4] <- 0x00010000
+2025-10-22 06:51:43.196 AVPU RREG [0x83f4] -> 0x00000000 (ret=0)
+2025-10-22 06:51:43.197 AVPU WREG [0x83f4] <- 0x00000001
+2025-10-22 06:51:43.198 AVPU WREG [0x83f0] <- 0x00000001
+2025-10-22 06:51:43.198 AVPU WREG [0x83f0] <- 0x00000002
+2025-10-22 06:51:43.199 AVPU WREG [0x83f0] <- 0x00000004
+2025-10-22 06:51:43.200 AVPU RREG [0x8014] -> 0x00000000 (ret=0)
+2025-10-22 06:51:43.200 AVPU WREG [0x8014] <- 0x00000001
+2025-10-22 06:51:43.201 AVPU RREG [0x83f8] -> 0x00000000 (ret=0)
+2025-10-22 06:51:43.202 AVPU WREG [0x83e0] <- 0x068aee00
+2025-10-22 06:51:43.203 AVPU WREG [0x83e4] <- 0x00000002
+2025-10-22 06:51:43.216 AVPU RREG [0x8014] -> 0x00000001 (ret=0)
+2025-10-22 06:51:43.217 AVPU WREG [0x8014] <- 0x00000000
+2025-10-22 06:51:43.218 AVPU RREG [0x83f4] -> 0x00010001 (ret=0)
+2025-10-22 06:51:43.219 AVPU WREG [0x83f4] <- 0x00010000
+2025-10-22 06:51:43.278 AVPU RREG [0x83f4] -> 0x00000000 (ret=0)
+2025-10-22 06:51:43.279 AVPU WREG [0x83f4] <- 0x00000001
+2025-10-22 06:51:43.280 AVPU WREG [0x83f0] <- 0x00000001
+2025-10-22 06:51:43.280 AVPU WREG [0x83f0] <- 0x00000002
+2025-10-22 06:51:43.281 AVPU WREG [0x83f0] <- 0x00000004
+2025-10-22 06:51:43.282 AVPU RREG [0x8014] -> 0x00000000 (ret=0)
+2025-10-22 06:51:43.282 AVPU WREG [0x8014] <- 0x00000001
+2025-10-22 06:51:43.283 AVPU RREG [0x83f8] -> 0x00000000 (ret=0)
+2025-10-22 06:51:43.284 AVPU WREG [0x83e0] <- 0x068af000
+2025-10-22 06:51:43.285 AVPU WREG [0x83e4] <- 0x00000002
+2025-10-22 06:51:43.298 AVPU RREG [0x8014] -> 0x00000001 (ret=0)
+2025-10-22 06:51:43.299 AVPU WREG [0x8014] <- 0x00000000
+2025-10-22 06:51:43.300 AVPU RREG [0x83f4] -> 0x00010001 (ret=0)
+2025-10-22 06:51:43.300 AVPU WREG [0x83f4] <- 0x00010000
+2025-10-22 06:51:43.358 AVPU RREG [0x83f4] -> 0x00000000 (ret=0)
+2025-10-22 06:51:43.359 AVPU WREG [0x83f4] <- 0x00000001
+2025-10-22 06:51:43.369 AVPU WREG [0x83f0] <- 0x00000001
+2025-10-22 06:51:43.370 AVPU WREG [0x83f0] <- 0x00000002
+2025-10-22 06:51:43.370 AVPU WREG [0x83f0] <- 0x00000004
+2025-10-22 06:51:43.371 AVPU RREG [0x8014] -> 0x00000000 (ret=0)
+2025-10-22 06:51:43.372 AVPU WREG [0x8014] <- 0x00000001
+2025-10-22 06:51:43.373 AVPU RREG [0x83f8] -> 0x00000000 (ret=0)
+2025-10-22 06:51:43.373 AVPU WREG [0x83e0] <- 0x068af200
+2025-10-22 06:51:43.374 AVPU WREG [0x83e4] <- 0x00000002
+2025-10-22 06:51:43.387 AVPU RREG [0x8014] -> 0x00000001 (ret=0)
+2025-10-22 06:51:43.388 AVPU WREG [0x8014] <- 0x00000000
+2025-10-22 06:51:43.389 AVPU RREG [0x83f4] -> 0x00010001 (ret=0)
+2025-10-22 06:51:43.390 AVPU WREG [0x83f4] <- 0x00010000
+2025-10-22 06:51:43.438 AVPU RREG [0x83f4] -> 0x00000000 (ret=0)
+2025-10-22 06:51:43.439 AVPU WREG [0x83f4] <- 0x00000001
+2025-10-22 06:51:43.439 AVPU WREG [0x83f0] <- 0x00000001
+2025-10-22 06:51:43.440 AVPU WREG [0x83f0] <- 0x00000002
+2025-10-22 06:51:43.441 AVPU WREG [0x83f0] <- 0x00000004
+2025-10-22 06:51:43.442 AVPU RREG [0x8014] -> 0x00000000 (ret=0)
+2025-10-22 06:51:43.442 AVPU WREG [0x8014] <- 0x00000001
+2025-10-22 06:51:43.443 AVPU RREG [0x83f8] -> 0x00000000 (ret=0)
+2025-10-22 06:51:43.444 AVPU WREG [0x83e0] <- 0x068af400
+2025-10-22 06:51:43.445 AVPU WREG [0x83e4] <- 0x00000002
+2025-10-22 06:51:43.458 AVPU RREG [0x8014] -> 0x00000001 (ret=0)
+2025-10-22 06:51:43.459 AVPU WREG [0x8014] <- 0x00000000
+2025-10-22 06:51:43.460 AVPU RREG [0x83f4] -> 0x00010001 (ret=0)
+2025-10-22 06:51:43.461 AVPU WREG [0x83f4] <- 0x00010000
+2025-10-22 06:51:43.518 AVPU RREG [0x83f4] -> 0x00000000 (ret=0)
+2025-10-22 06:51:43.519 AVPU WREG [0x83f4] <- 0x00000001
+2025-10-22 06:51:43.519 AVPU WREG [0x83f0] <- 0x00000001
+2025-10-22 06:51:43.520 AVPU WREG [0x83f0] <- 0x00000002
+2025-10-22 06:51:43.521 AVPU WREG [0x83f0] <- 0x00000004
+2025-10-22 06:51:43.522 AVPU RREG [0x8014] -> 0x00000000 (ret=0)
+2025-10-22 06:51:43.522 AVPU WREG [0x8014] <- 0x00000001
+2025-10-22 06:51:43.523 AVPU RREG [0x83f8] -> 0x00000000 (ret=0)
+2025-10-22 06:51:43.524 AVPU WREG [0x83e0] <- 0x068af600
+2025-10-22 06:51:43.525 AVPU WREG [0x83e4] <- 0x00000002
+2025-10-22 06:51:43.538 AVPU RREG [0x8014] -> 0x00000001 (ret=0)
+2025-10-22 06:51:43.539 AVPU WREG [0x8014] <- 0x00000000
+2025-10-22 06:51:43.540 AVPU RREG [0x83f4] -> 0x00010001 (ret=0)
+2025-10-22 06:51:43.541 AVPU WREG [0x83f4] <- 0x00010000
+2025-10-22 06:51:43.596 AVPU RREG [0x83f4] -> 0x00000000 (ret=0)
+2025-10-22 06:51:43.597 AVPU WREG [0x83f4] <- 0x00000001
+2025-10-22 06:51:43.597 AVPU WREG [0x83f0] <- 0x00000001
+2025-10-22 06:51:43.598 AVPU WREG [0x83f0] <- 0x00000002
+2025-10-22 06:51:43.599 AVPU WREG [0x83f0] <- 0x00000004
+2025-10-22 06:51:43.600 AVPU RREG [0x8014] -> 0x00000000 (ret=0)
+2025-10-22 06:51:43.600 AVPU WREG [0x8014] <- 0x00000001
+2025-10-22 06:51:43.601 AVPU RREG [0x83f8] -> 0x00000000 (ret=0)
+2025-10-22 06:51:43.602 AVPU WREG [0x83e0] <- 0x068af800
+2025-10-22 06:51:43.602 AVPU WREG [0x83e4] <- 0x00000002
+2025-10-22 06:51:43.616 AVPU RREG [0x8014] -> 0x00000001 (ret=0)
+2025-10-22 06:51:43.616 AVPU WREG [0x8014] <- 0x00000000
+2025-10-22 06:51:43.617 AVPU RREG [0x83f4] -> 0x00010001 (ret=0)
+2025-10-22 06:51:43.618 AVPU WREG [0x83f4] <- 0x00010000
+2025-10-22 06:51:43.676 AVPU RREG [0x83f4] -> 0x00000000 (ret=0)
+2025-10-22 06:51:43.677 AVPU WREG [0x83f4] <- 0x00000001
+2025-10-22 06:51:43.678 AVPU WREG [0x83f0] <- 0x00000001
+2025-10-22 06:51:43.678 AVPU WREG [0x83f0] <- 0x00000002
+2025-10-22 06:51:43.679 AVPU WREG [0x83f0] <- 0x00000004
+2025-10-22 06:51:43.680 AVPU RREG [0x8014] -> 0x00000000 (ret=0)
+2025-10-22 06:51:43.680 AVPU WREG [0x8014] <- 0x00000001
+2025-10-22 06:51:43.681 AVPU RREG [0x83f8] -> 0x00000000 (ret=0)
+2025-10-22 06:51:43.682 AVPU WREG [0x83e0] <- 0x068afa00
+2025-10-22 06:51:43.683 AVPU WREG [0x83e4] <- 0x00000002
+2025-10-22 06:51:43.696 AVPU RREG [0x8014] -> 0x00000001 (ret=0)
+2025-10-22 06:51:43.697 AVPU WREG [0x8014] <- 0x00000000
+2025-10-22 06:51:43.698 AVPU RREG [0x83f4] -> 0x00010001 (ret=0)
+2025-10-22 06:51:43.699 AVPU WREG [0x83f4] <- 0x00010000
+2025-10-22 06:51:43.755 AVPU RREG [0x83f4] -> 0x00000000 (ret=0)
+2025-10-22 06:51:43.756 AVPU WREG [0x83f4] <- 0x00000001
+2025-10-22 06:51:43.757 AVPU WREG [0x83f0] <- 0x00000001
+2025-10-22 06:51:43.758 AVPU WREG [0x83f0] <- 0x00000002
+2025-10-22 06:51:43.759 AVPU WREG [0x83f0] <- 0x00000004
+2025-10-22 06:51:43.759 AVPU RREG [0x8014] -> 0x00000000 (ret=0)
+2025-10-22 06:51:43.760 AVPU WREG [0x8014] <- 0x00000001
+2025-10-22 06:51:43.761 AVPU RREG [0x83f8] -> 0x00000000 (ret=0)
+2025-10-22 06:51:43.762 AVPU WREG [0x83e0] <- 0x068afc00
+2025-10-22 06:51:43.762 AVPU WREG [0x83e4] <- 0x00000002
+2025-10-22 06:51:43.775 AVPU RREG [0x8014] -> 0x00000001 (ret=0)
+2025-10-22 06:51:43.776 AVPU WREG [0x8014] <- 0x00000000
+2025-10-22 06:51:43.777 AVPU RREG [0x83f4] -> 0x00010001 (ret=0)
+2025-10-22 06:51:43.778 AVPU WREG [0x83f4] <- 0x00010000
+2025-10-22 06:51:43.836 AVPU RREG [0x83f4] -> 0x00000000 (ret=0)
+2025-10-22 06:51:43.837 AVPU WREG [0x83f4] <- 0x00000001
+2025-10-22 06:51:43.837 AVPU WREG [0x83f0] <- 0x00000001
+2025-10-22 06:51:43.838 AVPU WREG [0x83f0] <- 0x00000002
+2025-10-22 06:51:43.839 AVPU WREG [0x83f0] <- 0x00000004
+2025-10-22 06:51:43.840 AVPU RREG [0x8014] -> 0x00000000 (ret=0)
+2025-10-22 06:51:43.840 AVPU WREG [0x8014] <- 0x00000001
+2025-10-22 06:51:43.841 AVPU RREG [0x83f8] -> 0x00000000 (ret=0)
+2025-10-22 06:51:43.842 AVPU WREG [0x83e0] <- 0x068afe00
+2025-10-22 06:51:43.842 AVPU WREG [0x83e4] <- 0x00000002
+2025-10-22 06:51:43.856 AVPU RREG [0x8014] -> 0x00000001 (ret=0)
+2025-10-22 06:51:43.856 AVPU WREG [0x8014] <- 0x00000000
+2025-10-22 06:51:43.858 AVPU RREG [0x83f4] -> 0x00010001 (ret=0)
+2025-10-22 06:51:43.858 AVPU WREG [0x83f4] <- 0x00010000
+2025-10-22 06:51:43.916 AVPU RREG [0x83f4] -> 0x00000000 (ret=0)
+2025-10-22 06:51:43.917 AVPU WREG [0x83f4] <- 0x00000001
+2025-10-22 06:51:43.917 AVPU WREG [0x83f0] <- 0x00000001
+2025-10-22 06:51:43.918 AVPU WREG [0x83f0] <- 0x00000002
+2025-10-22 06:51:43.919 AVPU WREG [0x83f0] <- 0x00000004
+2025-10-22 06:51:43.920 AVPU RREG [0x8014] -> 0x00000000 (ret=0)
+2025-10-22 06:51:43.920 AVPU WREG [0x8014] <- 0x00000001
+2025-10-22 06:51:43.921 AVPU RREG [0x83f8] -> 0x00000000 (ret=0)
+2025-10-22 06:51:43.922 AVPU WREG [0x83e0] <- 0x068b0000
+2025-10-22 06:51:43.922 AVPU WREG [0x83e4] <- 0x00000002
+2025-10-22 06:51:43.936 AVPU RREG [0x8014] -> 0x00000001 (ret=0)
+2025-10-22 06:51:43.936 AVPU WREG [0x8014] <- 0x00000000
+2025-10-22 06:51:43.938 AVPU RREG [0x83f4] -> 0x00010001 (ret=0)
+2025-10-22 06:51:43.938 AVPU WREG [0x83f4] <- 0x00010000
+2025-10-22 06:51:43.996 AVPU RREG [0x83f4] -> 0x00000000 (ret=0)
+2025-10-22 06:51:43.997 AVPU WREG [0x83f4] <- 0x00000001
+2025-10-22 06:51:43.997 AVPU WREG [0x83f0] <- 0x00000001
+2025-10-22 06:51:43.998 AVPU WREG [0x83f0] <- 0x00000002
+2025-10-22 06:51:43.998 AVPU WREG [0x83f0] <- 0x00000004
+2025-10-22 06:51:43.999 AVPU RREG [0x8014] -> 0x00000000 (ret=0)
+2025-10-22 06:51:44.000 AVPU WREG [0x8014] <- 0x00000001
+2025-10-22 06:51:44.001 AVPU RREG [0x83f8] -> 0x00000000 (ret=0)
+2025-10-22 06:51:44.001 AVPU WREG [0x83e0] <- 0x068b0200
+2025-10-22 06:51:44.002 AVPU WREG [0x83e4] <- 0x00000002
+2025-10-22 06:51:44.015 AVPU RREG [0x8014] -> 0x00000001 (ret=0)
+2025-10-22 06:51:44.016 AVPU WREG [0x8014] <- 0x00000000
+2025-10-22 06:51:44.017 AVPU RREG [0x83f4] -> 0x00010001 (ret=0)
+2025-10-22 06:51:44.018 AVPU WREG [0x83f4] <- 0x00010000
+2025-10-22 06:51:44.076 AVPU RREG [0x83f4] -> 0x00000000 (ret=0)
+2025-10-22 06:51:44.077 AVPU WREG [0x83f4] <- 0x00000001
+2025-10-22 06:51:44.077 AVPU WREG [0x83f0] <- 0x00000001
+2025-10-22 06:51:44.078 AVPU WREG [0x83f0] <- 0x00000002
+2025-10-22 06:51:44.079 AVPU WREG [0x83f0] <- 0x00000004
+2025-10-22 06:51:44.079 AVPU RREG [0x8014] -> 0x00000000 (ret=0)
+2025-10-22 06:51:44.080 AVPU WREG [0x8014] <- 0x00000001
+2025-10-22 06:51:44.081 AVPU RREG [0x83f8] -> 0x00000000 (ret=0)
+2025-10-22 06:51:44.082 AVPU WREG [0x83e0] <- 0x068b0400
+2025-10-22 06:51:44.082 AVPU WREG [0x83e4] <- 0x00000002
+2025-10-22 06:51:44.096 AVPU RREG [0x8014] -> 0x00000001 (ret=0)
+2025-10-22 06:51:44.096 AVPU WREG [0x8014] <- 0x00000000
+2025-10-22 06:51:44.097 AVPU RREG [0x83f4] -> 0x00010001 (ret=0)
+2025-10-22 06:51:44.107 AVPU WREG [0x83f4] <- 0x00010000
+2025-10-22 06:51:44.155 AVPU RREG [0x83f4] -> 0x00000000 (ret=0)
+2025-10-22 06:51:44.156 AVPU WREG [0x83f4] <- 0x00000001
+2025-10-22 06:51:44.157 AVPU WREG [0x83f0] <- 0x00000001
+2025-10-22 06:51:44.158 AVPU WREG [0x83f0] <- 0x00000002
+2025-10-22 06:51:44.158 AVPU WREG [0x83f0] <- 0x00000004
+2025-10-22 06:51:44.159 AVPU RREG [0x8014] -> 0x00000000 (ret=0)
+2025-10-22 06:51:44.160 AVPU WREG [0x8014] <- 0x00000001
+2025-10-22 06:51:44.161 AVPU RREG [0x83f8] -> 0x00000000 (ret=0)
+2025-10-22 06:51:44.161 AVPU WREG [0x83e0] <- 0x068b0600
+2025-10-22 06:51:44.162 AVPU WREG [0x83e4] <- 0x00000002
+2025-10-22 06:51:44.175 AVPU RREG [0x8014] -> 0x00000001 (ret=0)
+2025-10-22 06:51:44.176 AVPU WREG [0x8014] <- 0x00000000
+2025-10-22 06:51:44.177 AVPU RREG [0x83f4] -> 0x00010001 (ret=0)
+2025-10-22 06:51:44.178 AVPU WREG [0x83f4] <- 0x00010000
+2025-10-22 06:51:44.236 AVPU RREG [0x83f4] -> 0x00000000 (ret=0)
+2025-10-22 06:51:44.237 AVPU WREG [0x83f4] <- 0x00000001
+2025-10-22 06:51:44.237 AVPU WREG [0x83f0] <- 0x00000001
+2025-10-22 06:51:44.238 AVPU WREG [0x83f0] <- 0x00000002
+2025-10-22 06:51:44.239 AVPU WREG [0x83f0] <- 0x00000004
+2025-10-22 06:51:44.239 AVPU RREG [0x8014] -> 0x00000000 (ret=0)
+2025-10-22 06:51:44.240 AVPU WREG [0x8014] <- 0x00000001
+2025-10-22 06:51:44.241 AVPU RREG [0x83f8] -> 0x00000000 (ret=0)
+2025-10-22 06:51:44.242 AVPU WREG [0x83e0] <- 0x068b0800
+2025-10-22 06:51:44.242 AVPU WREG [0x83e4] <- 0x00000002
+2025-10-22 06:51:44.256 AVPU RREG [0x8014] -> 0x00000001 (ret=0)
+2025-10-22 06:51:44.256 AVPU WREG [0x8014] <- 0x00000000
+2025-10-22 06:51:44.257 AVPU RREG [0x83f4] -> 0x00010001 (ret=0)
+2025-10-22 06:51:44.258 AVPU WREG [0x83f4] <- 0x00010000
+2025-10-22 06:51:44.316 AVPU RREG [0x83f4] -> 0x00000000 (ret=0)
+2025-10-22 06:51:44.316 AVPU WREG [0x83f4] <- 0x00000001
+2025-10-22 06:51:44.317 AVPU WREG [0x83f0] <- 0x00000001
+2025-10-22 06:51:44.318 AVPU WREG [0x83f0] <- 0x00000002
+2025-10-22 06:51:44.319 AVPU WREG [0x83f0] <- 0x00000004
+2025-10-22 06:51:44.319 AVPU RREG [0x8014] -> 0x00000000 (ret=0)
+2025-10-22 06:51:44.320 AVPU WREG [0x8014] <- 0x00000001
+2025-10-22 06:51:44.321 AVPU RREG [0x83f8] -> 0x00000000 (ret=0)
+2025-10-22 06:51:44.322 AVPU WREG [0x83e0] <- 0x068b0a00
+2025-10-22 06:51:44.322 AVPU WREG [0x83e4] <- 0x00000002
+2025-10-22 06:51:44.335 AVPU RREG [0x8014] -> 0x00000001 (ret=0)
+2025-10-22 06:51:44.336 AVPU WREG [0x8014] <- 0x00000000
+2025-10-22 06:51:44.337 AVPU RREG [0x83f4] -> 0x00010001 (ret=0)
+2025-10-22 06:51:44.338 AVPU WREG [0x83f4] <- 0x00010000
+2025-10-22 06:51:44.396 AVPU RREG [0x83f4] -> 0x00000000 (ret=0)
+2025-10-22 06:51:44.396 AVPU WREG [0x83f4] <- 0x00000001
+2025-10-22 06:51:44.398 AVPU WREG [0x83f0] <- 0x00000001
+2025-10-22 06:51:44.398 AVPU WREG [0x83f0] <- 0x00000002
+2025-10-22 06:51:44.399 AVPU WREG [0x83f0] <- 0x00000004
+2025-10-22 06:51:44.400 AVPU RREG [0x8014] -> 0x00000000 (ret=0)
+2025-10-22 06:51:44.401 AVPU WREG [0x8014] <- 0x00000001
+2025-10-22 06:51:44.401 AVPU RREG [0x83f8] -> 0x00000000 (ret=0)
+2025-10-22 06:51:44.402 AVPU WREG [0x83e0] <- 0x068b0c00
+2025-10-22 06:51:44.403 AVPU WREG [0x83e4] <- 0x00000002
+2025-10-22 06:51:44.416 AVPU RREG [0x8014] -> 0x00000001 (ret=0)
+2025-10-22 06:51:44.417 AVPU WREG [0x8014] <- 0x00000000
+2025-10-22 06:51:44.418 AVPU RREG [0x83f4] -> 0x00010001 (ret=0)
+2025-10-22 06:51:44.419 AVPU WREG [0x83f4] <- 0x00010000
+2025-10-22 06:51:44.476 AVPU RREG [0x83f4] -> 0x00000000 (ret=0)
+2025-10-22 06:51:44.476 AVPU WREG [0x83f4] <- 0x00000001
+2025-10-22 06:51:44.477 AVPU WREG [0x83f0] <- 0x00000001
+2025-10-22 06:51:44.478 AVPU WREG [0x83f0] <- 0x00000002
+2025-10-22 06:51:44.479 AVPU WREG [0x83f0] <- 0x00000004
+2025-10-22 06:51:44.479 AVPU RREG [0x8014] -> 0x00000000 (ret=0)
+2025-10-22 06:51:44.480 AVPU WREG [0x8014] <- 0x00000001
+2025-10-22 06:51:44.481 AVPU RREG [0x83f8] -> 0x00000000 (ret=0)
+2025-10-22 06:51:44.482 AVPU WREG [0x83e0] <- 0x068b0e00
+2025-10-22 06:51:44.482 AVPU WREG [0x83e4] <- 0x00000002
+2025-10-22 06:51:44.496 AVPU RREG [0x8014] -> 0x00000001 (ret=0)
+2025-10-22 06:51:44.505 AVPU WREG [0x8014] <- 0x00000000
+2025-10-22 06:51:44.506 AVPU RREG [0x83f4] -> 0x00010001 (ret=0)
+2025-10-22 06:51:44.507 AVPU WREG [0x83f4] <- 0x00010000
+2025-10-22 06:51:44.555 AVPU RREG [0x83f4] -> 0x00000000 (ret=0)
+2025-10-22 06:51:44.556 AVPU WREG [0x83f4] <- 0x00000001
+2025-10-22 06:51:44.557 AVPU WREG [0x83f0] <- 0x00000001
+2025-10-22 06:51:44.558 AVPU WREG [0x83f0] <- 0x00000002
+2025-10-22 06:51:44.558 AVPU WREG [0x83f0] <- 0x00000004
+2025-10-22 06:51:44.559 AVPU RREG [0x8014] -> 0x00000000 (ret=0)
+2025-10-22 06:51:44.560 AVPU WREG [0x8014] <- 0x00000001
+2025-10-22 06:51:44.561 AVPU RREG [0x83f8] -> 0x00000000 (ret=0)
+2025-10-22 06:51:44.561 AVPU WREG [0x83e0] <- 0x068aea00
+2025-10-22 06:51:44.562 AVPU WREG [0x83e4] <- 0x00000002
+2025-10-22 06:51:44.575 AVPU RREG [0x8014] -> 0x00000001 (ret=0)
+2025-10-22 06:51:44.576 AVPU WREG [0x8014] <- 0x00000000
+2025-10-22 06:51:44.577 AVPU RREG [0x83f4] -> 0x00010001 (ret=0)
+2025-10-22 06:51:44.578 AVPU WREG [0x83f4] <- 0x00010000
+2025-10-22 06:51:44.636 AVPU RREG [0x83f4] -> 0x00000000 (ret=0)
+2025-10-22 06:51:44.636 AVPU WREG [0x83f4] <- 0x00000001
+2025-10-22 06:51:44.637 AVPU WREG [0x83f0] <- 0x00000001
+2025-10-22 06:51:44.638 AVPU WREG [0x83f0] <- 0x00000002
+2025-10-22 06:51:44.638 AVPU WREG [0x83f0] <- 0x00000004
+2025-10-22 06:51:44.639 AVPU RREG [0x8014] -> 0x00000000 (ret=0)
+2025-10-22 06:51:44.640 AVPU WREG [0x8014] <- 0x00000001
+2025-10-22 06:51:44.641 AVPU RREG [0x83f8] -> 0x00000000 (ret=0)
+2025-10-22 06:51:44.641 AVPU WREG [0x83e0] <- 0x068aec00
+2025-10-22 06:51:44.642 AVPU WREG [0x83e4] <- 0x00000002
+2025-10-22 06:51:44.655 AVPU RREG [0x8014] -> 0x00000001 (ret=0)
+2025-10-22 06:51:44.656 AVPU WREG [0x8014] <- 0x00000000
+2025-10-22 06:51:44.657 AVPU RREG [0x83f4] -> 0x00010001 (ret=0)
+2025-10-22 06:51:44.658 AVPU WREG [0x83f4] <- 0x00010000
+2025-10-22 06:51:44.716 AVPU RREG [0x83f4] -> 0x00000000 (ret=0)
+2025-10-22 06:51:44.717 AVPU WREG [0x83f4] <- 0x00000001
+2025-10-22 06:51:44.717 AVPU WREG [0x83f0] <- 0x00000001
+2025-10-22 06:51:44.718 AVPU WREG [0x83f0] <- 0x00000002
+2025-10-22 06:51:44.719 AVPU WREG [0x83f0] <- 0x00000004
+2025-10-22 06:51:44.719 AVPU RREG [0x8014] -> 0x00000000 (ret=0)
+2025-10-22 06:51:44.720 AVPU WREG [0x8014] <- 0x00000001
+2025-10-22 06:51:44.721 AVPU RREG [0x83f8] -> 0x00000000 (ret=0)
+2025-10-22 06:51:44.722 AVPU WREG [0x83e0] <- 0x068aee00
+2025-10-22 06:51:44.722 AVPU WREG [0x83e4] <- 0x00000002
+2025-10-22 06:51:44.735 AVPU RREG [0x8014] -> 0x00000001 (ret=0)
+2025-10-22 06:51:44.736 AVPU WREG [0x8014] <- 0x00000000
+2025-10-22 06:51:44.737 AVPU RREG [0x83f4] -> 0x00010001 (ret=0)
+2025-10-22 06:51:44.738 AVPU WREG [0x83f4] <- 0x00010000
+2025-10-22 06:51:44.796 AVPU RREG [0x83f4] -> 0x00000000 (ret=0)
+2025-10-22 06:51:44.796 AVPU WREG [0x83f4] <- 0x00000001
+2025-10-22 06:51:44.797 AVPU WREG [0x83f0] <- 0x00000001
+2025-10-22 06:51:44.798 AVPU WREG [0x83f0] <- 0x00000002
+2025-10-22 06:51:44.799 AVPU WREG [0x83f0] <- 0x00000004
+2025-10-22 06:51:44.799 AVPU RREG [0x8014] -> 0x00000000 (ret=0)
+2025-10-22 06:51:44.800 AVPU WREG [0x8014] <- 0x00000001
+2025-10-22 06:51:44.801 AVPU RREG [0x83f8] -> 0x00000000 (ret=0)
+2025-10-22 06:51:44.801 AVPU WREG [0x83e0] <- 0x068af000
+2025-10-22 06:51:44.802 AVPU WREG [0x83e4] <- 0x00000002
+2025-10-22 06:51:44.815 AVPU RREG [0x8014] -> 0x00000001 (ret=0)
+2025-10-22 06:51:44.816 AVPU WREG [0x8014] <- 0x00000000
+2025-10-22 06:51:44.817 AVPU RREG [0x83f4] -> 0x00010001 (ret=0)
+2025-10-22 06:51:44.818 AVPU WREG [0x83f4] <- 0x00010000
+2025-10-22 06:51:44.876 AVPU RREG [0x83f4] -> 0x00000000 (ret=0)
+2025-10-22 06:51:44.876 AVPU WREG [0x83f4] <- 0x00000001
+2025-10-22 06:51:44.877 AVPU WREG [0x83f0] <- 0x00000001
+2025-10-22 06:51:44.878 AVPU WREG [0x83f0] <- 0x00000002
+2025-10-22 06:51:44.878 AVPU WREG [0x83f0] <- 0x00000004
+2025-10-22 06:51:44.879 AVPU RREG [0x8014] -> 0x00000000 (ret=0)
+2025-10-22 06:51:44.880 AVPU WREG [0x8014] <- 0x00000001
+2025-10-22 06:51:44.881 AVPU RREG [0x83f8] -> 0x00000000 (ret=0)
+2025-10-22 06:51:44.881 AVPU WREG [0x83e0] <- 0x068af200
+2025-10-22 06:51:44.882 AVPU WREG [0x83e4] <- 0x00000002
+2025-10-22 06:51:44.904 AVPU RREG [0x8014] -> 0x00000001 (ret=0)
+2025-10-22 06:51:44.905 AVPU WREG [0x8014] <- 0x00000000
+2025-10-22 06:51:44.907 AVPU RREG [0x83f4] -> 0x00010001 (ret=0)
+2025-10-22 06:51:44.907 AVPU WREG [0x83f4] <- 0x00010000
+2025-10-22 06:51:44.956 AVPU RREG [0x83f4] -> 0x00000000 (ret=0)
+2025-10-22 06:51:44.958 AVPU WREG [0x83f4] <- 0x00000001
+2025-10-22 06:51:44.959 AVPU WREG [0x83f0] <- 0x00000001
+2025-10-22 06:51:44.959 AVPU WREG [0x83f0] <- 0x00000002
+2025-10-22 06:51:44.960 AVPU WREG [0x83f0] <- 0x00000004
+2025-10-22 06:51:44.961 AVPU RREG [0x8014] -> 0x00000000 (ret=0)
+2025-10-22 06:51:44.961 AVPU WREG [0x8014] <- 0x00000001
+2025-10-22 06:51:44.962 AVPU RREG [0x83f8] -> 0x00000000 (ret=0)
+2025-10-22 06:51:44.963 AVPU WREG [0x83e0] <- 0x068af400
+2025-10-22 06:51:44.964 AVPU WREG [0x83e4] <- 0x00000002
+2025-10-22 06:51:44.977 AVPU RREG [0x8014] -> 0x00000001 (ret=0)
+2025-10-22 06:51:44.978 AVPU WREG [0x8014] <- 0x00000000
+2025-10-22 06:51:44.979 AVPU RREG [0x83f4] -> 0x00010001 (ret=0)
+2025-10-22 06:51:44.979 AVPU WREG [0x83f4] <- 0x00010000
+2025-10-22 06:51:45.036 AVPU RREG [0x83f4] -> 0x00000000 (ret=0)
+2025-10-22 06:51:45.036 AVPU WREG [0x83f4] <- 0x00000001
+2025-10-22 06:51:45.037 AVPU WREG [0x83f0] <- 0x00000001
+2025-10-22 06:51:45.038 AVPU WREG [0x83f0] <- 0x00000002
+2025-10-22 06:51:45.039 AVPU WREG [0x83f0] <- 0x00000004
+2025-10-22 06:51:45.039 AVPU RREG [0x8014] -> 0x00000000 (ret=0)
+2025-10-22 06:51:45.040 AVPU WREG [0x8014] <- 0x00000001
+2025-10-22 06:51:45.041 AVPU RREG [0x83f8] -> 0x00000000 (ret=0)
+2025-10-22 06:51:45.042 AVPU WREG [0x83e0] <- 0x068af600
+2025-10-22 06:51:45.042 AVPU WREG [0x83e4] <- 0x00000002
+2025-10-22 06:51:45.055 AVPU RREG [0x8014] -> 0x00000001 (ret=0)
+2025-10-22 06:51:45.056 AVPU WREG [0x8014] <- 0x00000000
+2025-10-22 06:51:45.057 AVPU RREG [0x83f4] -> 0x00010001 (ret=0)
+2025-10-22 06:51:45.058 AVPU WREG [0x83f4] <- 0x00010000
+2025-10-22 06:51:45.115 AVPU RREG [0x83f4] -> 0x00000000 (ret=0)
+2025-10-22 06:51:45.117 AVPU WREG [0x83f4] <- 0x00000001
+2025-10-22 06:51:45.117 AVPU WREG [0x83f0] <- 0x00000001
+2025-10-22 06:51:45.118 AVPU WREG [0x83f0] <- 0x00000002
+2025-10-22 06:51:45.119 AVPU WREG [0x83f0] <- 0x00000004
+2025-10-22 06:51:45.120 AVPU RREG [0x8014] -> 0x00000000 (ret=0)
+2025-10-22 06:51:45.120 AVPU WREG [0x8014] <- 0x00000001
+2025-10-22 06:51:45.121 AVPU RREG [0x83f8] -> 0x00000000 (ret=0)
+2025-10-22 06:51:45.122 AVPU WREG [0x83e0] <- 0x068af800
+2025-10-22 06:51:45.122 AVPU WREG [0x83e4] <- 0x00000002
+2025-10-22 06:51:45.136 AVPU RREG [0x8014] -> 0x00000001 (ret=0)
+2025-10-22 06:51:45.136 AVPU WREG [0x8014] <- 0x00000000
+2025-10-22 06:51:45.137 AVPU RREG [0x83f4] -> 0x00010001 (ret=0)
+2025-10-22 06:51:45.138 AVPU WREG [0x83f4] <- 0x00010000
+2025-10-22 06:51:45.196 AVPU RREG [0x83f4] -> 0x00000000 (ret=0)
+2025-10-22 06:51:45.196 AVPU WREG [0x83f4] <- 0x00000001
+2025-10-22 06:51:45.197 AVPU WREG [0x83f0] <- 0x00000001
+2025-10-22 06:51:45.198 AVPU WREG [0x83f0] <- 0x00000002
+2025-10-22 06:51:45.198 AVPU WREG [0x83f0] <- 0x00000004
+2025-10-22 06:51:45.199 AVPU RREG [0x8014] -> 0x00000000 (ret=0)
+2025-10-22 06:51:45.200 AVPU WREG [0x8014] <- 0x00000001
+2025-10-22 06:51:45.201 AVPU RREG [0x83f8] -> 0x00000000 (ret=0)
+2025-10-22 06:51:45.202 AVPU WREG [0x83e0] <- 0x068afa00
+2025-10-22 06:51:45.202 AVPU WREG [0x83e4] <- 0x00000002
+2025-10-22 06:51:45.215 AVPU RREG [0x8014] -> 0x00000001 (ret=0)
+2025-10-22 06:51:45.216 AVPU WREG [0x8014] <- 0x00000000
+2025-10-22 06:51:45.217 AVPU RREG [0x83f4] -> 0x00010001 (ret=0)
+2025-10-22 06:51:45.218 AVPU WREG [0x83f4] <- 0x00010000
+2025-10-22 06:51:45.276 AVPU RREG [0x83f4] -> 0x00000000 (ret=0)
+2025-10-22 06:51:45.276 AVPU WREG [0x83f4] <- 0x00000001
+2025-10-22 06:51:45.277 AVPU WREG [0x83f0] <- 0x00000001
+2025-10-22 06:51:45.278 AVPU WREG [0x83f0] <- 0x00000002
+2025-10-22 06:51:45.279 AVPU WREG [0x83f0] <- 0x00000004
+2025-10-22 06:51:45.279 AVPU RREG [0x8014] -> 0x00000000 (ret=0)
+2025-10-22 06:51:45.280 AVPU WREG [0x8014] <- 0x00000001
+2025-10-22 06:51:45.281 AVPU RREG [0x83f8] -> 0x00000000 (ret=0)
+2025-10-22 06:51:45.291 AVPU WREG [0x83e0] <- 0x068afc00
+2025-10-22 06:51:45.291 AVPU WREG [0x83e4] <- 0x00000002
+2025-10-22 06:51:45.304 AVPU RREG [0x8014] -> 0x00000001 (ret=0)
+2025-10-22 06:51:45.305 AVPU WREG [0x8014] <- 0x00000000
+2025-10-22 06:51:45.306 AVPU RREG [0x83f4] -> 0x00010001 (ret=0)
+2025-10-22 06:51:45.307 AVPU WREG [0x83f4] <- 0x00010000
+2025-10-22 06:51:45.356 AVPU RREG [0x83f4] -> 0x00000000 (ret=0)
+2025-10-22 06:51:45.357 AVPU WREG [0x83f4] <- 0x00000001
+2025-10-22 06:51:45.357 AVPU WREG [0x83f0] <- 0x00000001
+2025-10-22 06:51:45.358 AVPU WREG [0x83f0] <- 0x00000002
+2025-10-22 06:51:45.359 AVPU WREG [0x83f0] <- 0x00000004
+2025-10-22 06:51:45.359 AVPU RREG [0x8014] -> 0x00000000 (ret=0)
+2025-10-22 06:51:45.360 AVPU WREG [0x8014] <- 0x00000001
+2025-10-22 06:51:45.361 AVPU RREG [0x83f8] -> 0x00000000 (ret=0)
+2025-10-22 06:51:45.362 AVPU WREG [0x83e0] <- 0x068afe00
+2025-10-22 06:51:45.362 AVPU WREG [0x83e4] <- 0x00000002
+2025-10-22 06:51:45.375 AVPU RREG [0x8014] -> 0x00000001 (ret=0)
+2025-10-22 06:51:45.376 AVPU WREG [0x8014] <- 0x00000000
+2025-10-22 06:51:45.377 AVPU RREG [0x83f4] -> 0x00010001 (ret=0)
+2025-10-22 06:51:45.378 AVPU WREG [0x83f4] <- 0x00010000
+2025-10-22 06:51:45.436 AVPU RREG [0x83f4] -> 0x00000000 (ret=0)
+2025-10-22 06:51:45.437 AVPU WREG [0x83f4] <- 0x00000001
+2025-10-22 06:51:45.437 AVPU WREG [0x83f0] <- 0x00000001
+2025-10-22 06:51:45.438 AVPU WREG [0x83f0] <- 0x00000002
+2025-10-22 06:51:45.439 AVPU WREG [0x83f0] <- 0x00000004
+2025-10-22 06:51:45.439 AVPU RREG [0x8014] -> 0x00000000 (ret=0)
+2025-10-22 06:51:45.440 AVPU WREG [0x8014] <- 0x00000001
+2025-10-22 06:51:45.441 AVPU RREG [0x83f8] -> 0x00000000 (ret=0)
+2025-10-22 06:51:45.442 AVPU WREG [0x83e0] <- 0x068b0000
+2025-10-22 06:51:45.442 AVPU WREG [0x83e4] <- 0x00000002
+2025-10-22 06:51:45.456 AVPU RREG [0x8014] -> 0x00000001 (ret=0)
+2025-10-22 06:51:45.456 AVPU WREG [0x8014] <- 0x00000000
+2025-10-22 06:51:45.457 AVPU RREG [0x83f4] -> 0x00010001 (ret=0)
+2025-10-22 06:51:45.458 AVPU WREG [0x83f4] <- 0x00010000
+2025-10-22 06:51:45.516 AVPU RREG [0x83f4] -> 0x00000000 (ret=0)
+2025-10-22 06:51:45.516 AVPU WREG [0x83f4] <- 0x00000001
+2025-10-22 06:51:45.517 AVPU WREG [0x83f0] <- 0x00000001
+2025-10-22 06:51:45.518 AVPU WREG [0x83f0] <- 0x00000002
+2025-10-22 06:51:45.518 AVPU WREG [0x83f0] <- 0x00000004
+2025-10-22 06:51:45.519 AVPU RREG [0x8014] -> 0x00000000 (ret=0)
+2025-10-22 06:51:45.520 AVPU WREG [0x8014] <- 0x00000001
+2025-10-22 06:51:45.521 AVPU RREG [0x83f8] -> 0x00000000 (ret=0)
+2025-10-22 06:51:45.522 AVPU WREG [0x83e0] <- 0x068b0200
+2025-10-22 06:51:45.523 AVPU WREG [0x83e4] <- 0x00000002
+2025-10-22 06:51:45.536 AVPU RREG [0x8014] -> 0x00000001 (ret=0)
+2025-10-22 06:51:45.536 AVPU WREG [0x8014] <- 0x00000000
+2025-10-22 06:51:45.537 AVPU RREG [0x83f4] -> 0x00010001 (ret=0)
+2025-10-22 06:51:45.538 AVPU WREG [0x83f4] <- 0x00010000
+2025-10-22 06:51:45.596 AVPU RREG [0x83f4] -> 0x00000000 (ret=0)
+2025-10-22 06:51:45.596 AVPU WREG [0x83f4] <- 0x00000001
+2025-10-22 06:51:45.597 AVPU WREG [0x83f0] <- 0x00000001
+2025-10-22 06:51:45.598 AVPU WREG [0x83f0] <- 0x00000002
+2025-10-22 06:51:45.598 AVPU WREG [0x83f0] <- 0x00000004
+2025-10-22 06:51:45.599 AVPU RREG [0x8014] -> 0x00000000 (ret=0)
+2025-10-22 06:51:45.600 AVPU WREG [0x8014] <- 0x00000001
+2025-10-22 06:51:45.601 AVPU RREG [0x83f8] -> 0x00000000 (ret=0)
+2025-10-22 06:51:45.601 AVPU WREG [0x83e0] <- 0x068b0400
+2025-10-22 06:51:45.602 AVPU WREG [0x83e4] <- 0x00000002
+2025-10-22 06:51:45.615 AVPU RREG [0x8014] -> 0x00000001 (ret=0)
+2025-10-22 06:51:45.616 AVPU WREG [0x8014] <- 0x00000000
+2025-10-22 06:51:45.617 AVPU RREG [0x83f4] -> 0x00010001 (ret=0)
+2025-10-22 06:51:45.618 AVPU WREG [0x83f4] <- 0x00010000
+2025-10-22 06:51:45.676 AVPU RREG [0x83f4] -> 0x00000000 (ret=0)
+2025-10-22 06:51:45.676 AVPU WREG [0x83f4] <- 0x00000001
+2025-10-22 06:51:45.677 AVPU WREG [0x83f0] <- 0x00000001
+2025-10-22 06:51:45.678 AVPU WREG [0x83f0] <- 0x00000002
+2025-10-22 06:51:45.679 AVPU WREG [0x83f0] <- 0x00000004
+2025-10-22 06:51:45.679 AVPU RREG [0x8014] -> 0x00000000 (ret=0)
+2025-10-22 06:51:45.680 AVPU WREG [0x8014] <- 0x00000001
+2025-10-22 06:51:45.690 AVPU RREG [0x83f8] -> 0x00000000 (ret=0)
+2025-10-22 06:51:45.691 AVPU WREG [0x83e0] <- 0x068b0600
+2025-10-22 06:51:45.691 AVPU WREG [0x83e4] <- 0x00000002
+2025-10-22 06:51:45.705 AVPU RREG [0x8014] -> 0x00000001 (ret=0)
+2025-10-22 06:51:45.705 AVPU WREG [0x8014] <- 0x00000000
+2025-10-22 06:51:45.706 AVPU RREG [0x83f4] -> 0x00010001 (ret=0)
+2025-10-22 06:51:45.707 AVPU WREG [0x83f4] <- 0x00010000
+2025-10-22 06:51:45.756 AVPU RREG [0x83f4] -> 0x00000000 (ret=0)
+2025-10-22 06:51:45.756 AVPU WREG [0x83f4] <- 0x00000001
+2025-10-22 06:51:45.757 AVPU WREG [0x83f0] <- 0x00000001
+2025-10-22 06:51:45.758 AVPU WREG [0x83f0] <- 0x00000002
+2025-10-22 06:51:45.759 AVPU WREG [0x83f0] <- 0x00000004
+2025-10-22 06:51:45.759 AVPU RREG [0x8014] -> 0x00000000 (ret=0)
+2025-10-22 06:51:45.760 AVPU WREG [0x8014] <- 0x00000001
+2025-10-22 06:51:45.761 AVPU RREG [0x83f8] -> 0x00000000 (ret=0)
+2025-10-22 06:51:45.761 AVPU WREG [0x83e0] <- 0x068b0800
+2025-10-22 06:51:45.762 AVPU WREG [0x83e4] <- 0x00000002
+2025-10-22 06:51:45.775 AVPU RREG [0x8014] -> 0x00000001 (ret=0)
+2025-10-22 06:51:45.776 AVPU WREG [0x8014] <- 0x00000000
+2025-10-22 06:51:45.777 AVPU RREG [0x83f4] -> 0x00010001 (ret=0)
+2025-10-22 06:51:45.778 AVPU WREG [0x83f4] <- 0x00010000
+2025-10-22 06:51:45.836 AVPU RREG [0x83f4] -> 0x00000000 (ret=0)
+2025-10-22 06:51:45.836 AVPU WREG [0x83f4] <- 0x00000001
+2025-10-22 06:51:45.837 AVPU WREG [0x83f0] <- 0x00000001
+2025-10-22 06:51:45.838 AVPU WREG [0x83f0] <- 0x00000002
+2025-10-22 06:51:45.839 AVPU WREG [0x83f0] <- 0x00000004
+2025-10-22 06:51:45.839 AVPU RREG [0x8014] -> 0x00000000 (ret=0)
+2025-10-22 06:51:45.840 AVPU WREG [0x8014] <- 0x00000001
+2025-10-22 06:51:45.841 AVPU RREG [0x83f8] -> 0x00000000 (ret=0)
+2025-10-22 06:51:45.842 AVPU WREG [0x83e0] <- 0x068b0a00
+2025-10-22 06:51:45.842 AVPU WREG [0x83e4] <- 0x00000002
+2025-10-22 06:51:45.855 AVPU RREG [0x8014] -> 0x00000001 (ret=0)
+2025-10-22 06:51:45.856 AVPU WREG [0x8014] <- 0x00000000
+2025-10-22 06:51:45.857 AVPU RREG [0x83f4] -> 0x00010001 (ret=0)
+2025-10-22 06:51:45.858 AVPU WREG [0x83f4] <- 0x00010000
+2025-10-22 06:51:45.916 AVPU RREG [0x83f4] -> 0x00000000 (ret=0)
+2025-10-22 06:51:45.916 AVPU WREG [0x83f4] <- 0x00000001
+2025-10-22 06:51:45.917 AVPU WREG [0x83f0] <- 0x00000001
+2025-10-22 06:51:45.918 AVPU WREG [0x83f0] <- 0x00000002
+2025-10-22 06:51:45.919 AVPU WREG [0x83f0] <- 0x00000004
+2025-10-22 06:51:45.919 AVPU RREG [0x8014] -> 0x00000000 (ret=0)
+2025-10-22 06:51:45.920 AVPU WREG [0x8014] <- 0x00000001
+2025-10-22 06:51:45.921 AVPU RREG [0x83f8] -> 0x00000000 (ret=0)
+2025-10-22 06:51:45.921 AVPU WREG [0x83e0] <- 0x068b0c00
+2025-10-22 06:51:45.922 AVPU WREG [0x83e4] <- 0x00000002
+2025-10-22 06:51:45.935 AVPU RREG [0x8014] -> 0x00000001 (ret=0)
+2025-10-22 06:51:45.936 AVPU WREG [0x8014] <- 0x00000000
+2025-10-22 06:51:45.937 AVPU RREG [0x83f4] -> 0x00010001 (ret=0)
+2025-10-22 06:51:45.938 AVPU WREG [0x83f4] <- 0x00010000
+2025-10-22 06:51:45.996 AVPU RREG [0x83f4] -> 0x00000000 (ret=0)
+2025-10-22 06:51:45.996 AVPU WREG [0x83f4] <- 0x00000001
+2025-10-22 06:51:45.997 AVPU WREG [0x83f0] <- 0x00000001
+2025-10-22 06:51:45.998 AVPU WREG [0x83f0] <- 0x00000002
+2025-10-22 06:51:45.999 AVPU WREG [0x83f0] <- 0x00000004
+2025-10-22 06:51:45.999 AVPU RREG [0x8014] -> 0x00000000 (ret=0)
+2025-10-22 06:51:46.000 AVPU WREG [0x8014] <- 0x00000001
+2025-10-22 06:51:46.001 AVPU RREG [0x83f8] -> 0x00000000 (ret=0)
+2025-10-22 06:51:46.002 AVPU WREG [0x83e0] <- 0x068b0e00
+2025-10-22 06:51:46.002 AVPU WREG [0x83e4] <- 0x00000002
+2025-10-22 06:51:46.015 AVPU RREG [0x8014] -> 0x00000001 (ret=0)
+2025-10-22 06:51:46.016 AVPU WREG [0x8014] <- 0x00000000
+2025-10-22 06:51:46.017 AVPU RREG [0x83f4] -> 0x00010001 (ret=0)
+2025-10-22 06:51:46.018 AVPU WREG [0x83f4] <- 0x00010000
+2025-10-22 06:51:46.076 AVPU RREG [0x83f4] -> 0x00000000 (ret=0)
+2025-10-22 06:51:46.076 AVPU WREG [0x83f4] <- 0x00000001
+2025-10-22 06:51:46.077 AVPU WREG [0x83f0] <- 0x00000001
+2025-10-22 06:51:46.078 AVPU WREG [0x83f0] <- 0x00000002
+2025-10-22 06:51:46.079 AVPU WREG [0x83f0] <- 0x00000004
+2025-10-22 06:51:46.089 AVPU RREG [0x8014] -> 0x00000000 (ret=0)
+2025-10-22 06:51:46.090 AVPU WREG [0x8014] <- 0x00000001
+2025-10-22 06:51:46.091 AVPU RREG [0x83f8] -> 0x00000000 (ret=0)
+2025-10-22 06:51:46.092 AVPU WREG [0x83e0] <- 0x068aea00
+2025-10-22 06:51:46.093 AVPU WREG [0x83e4] <- 0x00000002
+2025-10-22 06:51:46.108 AVPU RREG [0x8014] -> 0x00000001 (ret=0)
+2025-10-22 06:51:46.109 AVPU WREG [0x8014] <- 0x00000000
+2025-10-22 06:51:46.110 AVPU RREG [0x83f4] -> 0x00010001 (ret=0)
+2025-10-22 06:51:46.111 AVPU WREG [0x83f4] <- 0x00010000
+2025-10-22 06:51:46.156 AVPU RREG [0x83f4] -> 0x00000000 (ret=0)
+2025-10-22 06:51:46.156 AVPU WREG [0x83f4] <- 0x00000001
+2025-10-22 06:51:46.157 AVPU WREG [0x83f0] <- 0x00000001
+2025-10-22 06:51:46.158 AVPU WREG [0x83f0] <- 0x00000002
+2025-10-22 06:51:46.158 AVPU WREG [0x83f0] <- 0x00000004
+2025-10-22 06:51:46.159 AVPU RREG [0x8014] -> 0x00000000 (ret=0)
+2025-10-22 06:51:46.160 AVPU WREG [0x8014] <- 0x00000001
+2025-10-22 06:51:46.161 AVPU RREG [0x83f8] -> 0x00000000 (ret=0)
+2025-10-22 06:51:46.162 AVPU WREG [0x83e0] <- 0x068aec00
+2025-10-22 06:51:46.162 AVPU WREG [0x83e4] <- 0x00000002
+2025-10-22 06:51:46.175 AVPU RREG [0x8014] -> 0x00000001 (ret=0)
+2025-10-22 06:51:46.176 AVPU WREG [0x8014] <- 0x00000000
+2025-10-22 06:51:46.177 AVPU RREG [0x83f4] -> 0x00010001 (ret=0)
+2025-10-22 06:51:46.178 AVPU WREG [0x83f4] <- 0x00010000
+2025-10-22 06:51:46.236 AVPU RREG [0x83f4] -> 0x00000000 (ret=0)
+2025-10-22 06:51:46.236 AVPU WREG [0x83f4] <- 0x00000001
+2025-10-22 06:51:46.237 AVPU WREG [0x83f0] <- 0x00000001
+2025-10-22 06:51:46.238 AVPU WREG [0x83f0] <- 0x00000002
+2025-10-22 06:51:46.238 AVPU WREG [0x83f0] <- 0x00000004
+2025-10-22 06:51:46.239 AVPU RREG [0x8014] -> 0x00000000 (ret=0)
+2025-10-22 06:51:46.240 AVPU WREG [0x8014] <- 0x00000001
+2025-10-22 06:51:46.241 AVPU RREG [0x83f8] -> 0x00000000 (ret=0)
+2025-10-22 06:51:46.242 AVPU WREG [0x83e0] <- 0x068aee00
+2025-10-22 06:51:46.243 AVPU WREG [0x83e4] <- 0x00000002
+2025-10-22 06:51:46.256 AVPU RREG [0x8014] -> 0x00000001 (ret=0)
+2025-10-22 06:51:46.257 AVPU WREG [0x8014] <- 0x00000000
+2025-10-22 06:51:46.258 AVPU RREG [0x83f4] -> 0x00010001 (ret=0)
+2025-10-22 06:51:46.259 AVPU WREG [0x83f4] <- 0x00010000
+2025-10-22 06:51:46.316 AVPU RREG [0x83f4] -> 0x00000000 (ret=0)
+2025-10-22 06:51:46.360 AVPU WREG [0x83f4] <- 0x00000001
+2025-10-22 06:51:46.361 AVPU WREG [0x83f0] <- 0x00000001
+2025-10-22 06:51:46.362 AVPU WREG [0x83f0] <- 0x00000002
+2025-10-22 06:51:46.362 AVPU WREG [0x83f0] <- 0x00000004
+2025-10-22 06:51:46.363 AVPU RREG [0x8014] -> 0x00000000 (ret=0)
+2025-10-22 06:51:46.364 AVPU WREG [0x8014] <- 0x00000001
+2025-10-22 06:51:46.365 AVPU RREG [0x83f8] -> 0x00000000 (ret=0)
+2025-10-22 06:51:46.365 AVPU WREG [0x83e0] <- 0x068af000
+2025-10-22 06:51:46.366 AVPU WREG [0x83e4] <- 0x00000002
+2025-10-22 06:51:46.379 AVPU RREG [0x8014] -> 0x00000001 (ret=0)
+2025-10-22 06:51:46.380 AVPU WREG [0x8014] <- 0x00000000
+2025-10-22 06:51:46.381 AVPU RREG [0x83f4] -> 0x00010001 (ret=0)
+2025-10-22 06:51:46.382 AVPU WREG [0x83f4] <- 0x00010000
+2025-10-22 06:51:46.436 AVPU RREG [0x83f4] -> 0x00000000 (ret=0)
+2025-10-22 06:51:46.480 AVPU WREG [0x83f4] <- 0x00000001
+2025-10-22 06:51:46.481 AVPU WREG [0x83f0] <- 0x00000001
+2025-10-22 06:51:46.482 AVPU WREG [0x83f0] <- 0x00000002
+2025-10-22 06:51:46.483 AVPU WREG [0x83f0] <- 0x00000004
+2025-10-22 06:51:46.483 AVPU RREG [0x8014] -> 0x00000000 (ret=0)
+2025-10-22 06:51:46.484 AVPU WREG [0x8014] <- 0x00000001
+2025-10-22 06:51:46.485 AVPU RREG [0x83f8] -> 0x00000000 (ret=0)
+2025-10-22 06:51:46.486 AVPU WREG [0x83e0] <- 0x068af200
+2025-10-22 06:51:46.486 AVPU WREG [0x83e4] <- 0x00000002
+2025-10-22 06:51:46.500 AVPU RREG [0x8014] -> 0x00000001 (ret=0)
+2025-10-22 06:51:46.500 AVPU WREG [0x8014] <- 0x00000000
+2025-10-22 06:51:46.501 AVPU RREG [0x83f4] -> 0x00010001 (ret=0)
+2025-10-22 06:51:46.502 AVPU WREG [0x83f4] <- 0x00010000
+2025-10-22 06:51:46.555 AVPU RREG [0x83f4] -> 0x00000000 (ret=0)
+2025-10-22 06:51:46.556 AVPU WREG [0x83f4] <- 0x00000001
+2025-10-22 06:51:46.557 AVPU WREG [0x83f0] <- 0x00000001
+2025-10-22 06:51:46.566 AVPU WREG [0x83f0] <- 0x00000002
+2025-10-22 06:51:46.567 AVPU WREG [0x83f0] <- 0x00000004
+2025-10-22 06:51:46.568 AVPU RREG [0x8014] -> 0x00000000 (ret=0)
+2025-10-22 06:51:46.569 AVPU WREG [0x8014] <- 0x00000001
+2025-10-22 06:51:46.570 AVPU RREG [0x83f8] -> 0x00000000 (ret=0)
+2025-10-22 06:51:46.570 AVPU WREG [0x83e0] <- 0x068af400
+2025-10-22 06:51:46.571 AVPU WREG [0x83e4] <- 0x00000002
+2025-10-22 06:51:46.584 AVPU RREG [0x8014] -> 0x00000001 (ret=0)
+2025-10-22 06:51:46.585 AVPU WREG [0x8014] <- 0x00000000
+2025-10-22 06:51:46.586 AVPU RREG [0x83f4] -> 0x00010001 (ret=0)
+2025-10-22 06:51:46.587 AVPU WREG [0x83f4] <- 0x00010000
+2025-10-22 06:51:46.636 AVPU RREG [0x83f4] -> 0x00000000 (ret=0)
+2025-10-22 06:51:46.636 AVPU WREG [0x83f4] <- 0x00000001
+2025-10-22 06:51:46.637 AVPU WREG [0x83f0] <- 0x00000001
+2025-10-22 06:51:46.638 AVPU WREG [0x83f0] <- 0x00000002
+2025-10-22 06:51:46.638 AVPU WREG [0x83f0] <- 0x00000004
+2025-10-22 06:51:46.639 AVPU RREG [0x8014] -> 0x00000000 (ret=0)
+2025-10-22 06:51:46.640 AVPU WREG [0x8014] <- 0x00000001
+2025-10-22 06:51:46.641 AVPU RREG [0x83f8] -> 0x00000000 (ret=0)
+2025-10-22 06:51:46.641 AVPU WREG [0x83e0] <- 0x068af600
+2025-10-22 06:51:46.642 AVPU WREG [0x83e4] <- 0x00000002
+2025-10-22 06:51:46.655 AVPU RREG [0x8014] -> 0x00000001 (ret=0)
+2025-10-22 06:51:46.656 AVPU WREG [0x8014] <- 0x00000000
+2025-10-22 06:51:46.657 AVPU RREG [0x83f4] -> 0x00010001 (ret=0)
+2025-10-22 06:51:46.658 AVPU WREG [0x83f4] <- 0x00010000
+2025-10-22 06:51:46.716 AVPU RREG [0x83f4] -> 0x00000000 (ret=0)
+2025-10-22 06:51:46.716 AVPU WREG [0x83f4] <- 0x00000001
+2025-10-22 06:51:46.717 AVPU WREG [0x83f0] <- 0x00000001
+2025-10-22 06:51:46.718 AVPU WREG [0x83f0] <- 0x00000002
+2025-10-22 06:51:46.718 AVPU WREG [0x83f0] <- 0x00000004
+2025-10-22 06:51:46.719 AVPU RREG [0x8014] -> 0x00000000 (ret=0)
+2025-10-22 06:51:46.720 AVPU WREG [0x8014] <- 0x00000001
+2025-10-22 06:51:46.721 AVPU RREG [0x83f8] -> 0x00000000 (ret=0)
+2025-10-22 06:51:46.721 AVPU WREG [0x83e0] <- 0x068af800
+2025-10-22 06:51:46.722 AVPU WREG [0x83e4] <- 0x00000002
+2025-10-22 06:51:46.735 AVPU RREG [0x8014] -> 0x00000001 (ret=0)
+2025-10-22 06:51:46.736 AVPU WREG [0x8014] <- 0x00000000
+2025-10-22 06:51:46.737 AVPU RREG [0x83f4] -> 0x00010001 (ret=0)
+2025-10-22 06:51:46.738 AVPU WREG [0x83f4] <- 0x00010000
+2025-10-22 06:51:46.796 AVPU RREG [0x83f4] -> 0x00000000 (ret=0)
+2025-10-22 06:51:46.796 AVPU WREG [0x83f4] <- 0x00000001
+2025-10-22 06:51:46.797 AVPU WREG [0x83f0] <- 0x00000001
+2025-10-22 06:51:46.798 AVPU WREG [0x83f0] <- 0x00000002
+2025-10-22 06:51:46.799 AVPU WREG [0x83f0] <- 0x00000004
+2025-10-22 06:51:46.799 AVPU RREG [0x8014] -> 0x00000000 (ret=0)
+2025-10-22 06:51:46.800 AVPU WREG [0x8014] <- 0x00000001
+2025-10-22 06:51:46.801 AVPU RREG [0x83f8] -> 0x00000000 (ret=0)
+2025-10-22 06:51:46.802 AVPU WREG [0x83e0] <- 0x068afa00
+2025-10-22 06:51:46.802 AVPU WREG [0x83e4] <- 0x00000002
+2025-10-22 06:51:46.815 AVPU RREG [0x8014] -> 0x00000001 (ret=0)
+2025-10-22 06:51:46.816 AVPU WREG [0x8014] <- 0x00000000
+2025-10-22 06:51:46.817 AVPU RREG [0x83f4] -> 0x00010001 (ret=0)
+2025-10-22 06:51:46.818 AVPU WREG [0x83f4] <- 0x00010000
+2025-10-22 06:51:46.876 AVPU RREG [0x83f4] -> 0x00000000 (ret=0)
+2025-10-22 06:51:46.876 AVPU WREG [0x83f4] <- 0x00000001
+2025-10-22 06:51:46.877 AVPU WREG [0x83f0] <- 0x00000001
+2025-10-22 06:51:46.878 AVPU WREG [0x83f0] <- 0x00000002
+2025-10-22 06:51:46.878 AVPU WREG [0x83f0] <- 0x00000004
+2025-10-22 06:51:46.879 AVPU RREG [0x8014] -> 0x00000000 (ret=0)
+2025-10-22 06:51:46.880 AVPU WREG [0x8014] <- 0x00000001
+2025-10-22 06:51:46.881 AVPU RREG [0x83f8] -> 0x00000000 (ret=0)
+2025-10-22 06:51:46.881 AVPU WREG [0x83e0] <- 0x068afc00
+2025-10-22 06:51:46.882 AVPU WREG [0x83e4] <- 0x00000002
+2025-10-22 06:51:46.895 AVPU RREG [0x8014] -> 0x00000001 (ret=0)
+2025-10-22 06:51:46.896 AVPU WREG [0x8014] <- 0x00000000
+2025-10-22 06:51:46.897 AVPU RREG [0x83f4] -> 0x00010001 (ret=0)
+2025-10-22 06:51:46.898 AVPU WREG [0x83f4] <- 0x00010000
+2025-10-22 06:51:46.955 AVPU RREG [0x83f4] -> 0x00000000 (ret=0)
+2025-10-22 06:51:46.958 AVPU WREG [0x83f4] <- 0x00000001
+2025-10-22 06:51:46.982 AVPU WREG [0x83f0] <- 0x00000001
+2025-10-22 06:51:46.989 AVPU WREG [0x83f0] <- 0x00000002
+2025-10-22 06:51:46.990 AVPU WREG [0x83f0] <- 0x00000004
+2025-10-22 06:51:46.991 AVPU RREG [0x8014] -> 0x00000000 (ret=0)
+2025-10-22 06:51:46.993 AVPU WREG [0x8014] <- 0x00000001
+2025-10-22 06:51:46.995 AVPU RREG [0x83f8] -> 0x00000000 (ret=0)
+2025-10-22 06:51:47.003 AVPU WREG [0x83e0] <- 0x068afe00
+2025-10-22 06:51:47.014 AVPU WREG [0x83e4] <- 0x00000002
+2025-10-22 06:51:47.027 AVPU RREG [0x8014] -> 0x00000001 (ret=0)
+2025-10-22 06:51:47.028 AVPU WREG [0x8014] <- 0x00000000
+2025-10-22 06:51:47.029 AVPU RREG [0x83f4] -> 0x00010001 (ret=0)
+2025-10-22 06:51:47.030 AVPU WREG [0x83f4] <- 0x00010000
+2025-10-22 06:51:47.076 AVPU RREG [0x83f4] -> 0x00000000 (ret=0)
+2025-10-22 06:51:47.077 AVPU WREG [0x83f4] <- 0x00000001
+2025-10-22 06:51:47.078 AVPU WREG [0x83f0] <- 0x00000001
+2025-10-22 06:51:47.078 AVPU WREG [0x83f0] <- 0x00000002
+2025-10-22 06:51:47.079 AVPU WREG [0x83f0] <- 0x00000004
+2025-10-22 06:51:47.080 AVPU RREG [0x8014] -> 0x00000000 (ret=0)
+2025-10-22 06:51:47.083 AVPU WREG [0x8014] <- 0x00000001
+2025-10-22 06:51:47.086 AVPU RREG [0x83f8] -> 0x00000000 (ret=0)
+2025-10-22 06:51:47.087 AVPU WREG [0x83e0] <- 0x068b0000
+2025-10-22 06:51:47.092 AVPU WREG [0x83e4] <- 0x00000002
+2025-10-22 06:51:47.105 AVPU RREG [0x8014] -> 0x00000001 (ret=0)
+2025-10-22 06:51:47.106 AVPU WREG [0x8014] <- 0x00000000
+2025-10-22 06:51:47.107 AVPU RREG [0x83f4] -> 0x00010001 (ret=0)
+2025-10-22 06:51:47.108 AVPU WREG [0x83f4] <- 0x00010000
+2025-10-22 06:51:47.156 AVPU RREG [0x83f4] -> 0x00000000 (ret=0)
+2025-10-22 06:51:47.156 AVPU WREG [0x83f4] <- 0x00000001
+2025-10-22 06:51:47.157 AVPU WREG [0x83f0] <- 0x00000001
+2025-10-22 06:51:47.158 AVPU WREG [0x83f0] <- 0x00000002
+2025-10-22 06:51:47.158 AVPU WREG [0x83f0] <- 0x00000004
+2025-10-22 06:51:47.164 AVPU RREG [0x8014] -> 0x00000000 (ret=0)
+2025-10-22 06:51:47.167 AVPU WREG [0x8014] <- 0x00000001
+2025-10-22 06:51:47.172 AVPU RREG [0x83f8] -> 0x00000000 (ret=0)
+2025-10-22 06:51:47.172 AVPU WREG [0x83e0] <- 0x068b0200
+2025-10-22 06:51:47.175 AVPU WREG [0x83e4] <- 0x00000002
+2025-10-22 06:51:47.187 AVPU RREG [0x8014] -> 0x00000001 (ret=0)
+2025-10-22 06:51:47.188 AVPU WREG [0x8014] <- 0x00000000
+2025-10-22 06:51:47.189 AVPU RREG [0x83f4] -> 0x00010001 (ret=0)
+2025-10-22 06:51:47.190 AVPU WREG [0x83f4] <- 0x00010000
+2025-10-22 06:51:47.235 AVPU RREG [0x83f4] -> 0x00000000 (ret=0)
+2025-10-22 06:51:47.236 AVPU WREG [0x83f4] <- 0x00000001
+2025-10-22 06:51:47.237 AVPU WREG [0x83f0] <- 0x00000001
+2025-10-22 06:51:47.238 AVPU WREG [0x83f0] <- 0x00000002
+2025-10-22 06:51:47.242 AVPU WREG [0x83f0] <- 0x00000004
+2025-10-22 06:51:47.243 AVPU RREG [0x8014] -> 0x00000000 (ret=0)
+2025-10-22 06:51:47.265 AVPU WREG [0x8014] <- 0x00000001
+2025-10-22 06:51:47.266 AVPU RREG [0x83f8] -> 0x00000000 (ret=0)
+2025-10-22 06:51:47.267 AVPU WREG [0x83e0] <- 0x068b0400
+2025-10-22 06:51:47.269 AVPU WREG [0x83e4] <- 0x00000002
+2025-10-22 06:51:47.285 AVPU RREG [0x8014] -> 0x00000001 (ret=0)
+2025-10-22 06:51:47.286 AVPU WREG [0x8014] <- 0x00000000
+2025-10-22 06:51:47.287 AVPU RREG [0x83f4] -> 0x00010001 (ret=0)
+2025-10-22 06:51:47.288 AVPU WREG [0x83f4] <- 0x00010000
+2025-10-22 06:51:47.355 AVPU RREG [0x83f4] -> 0x00000000 (ret=0)
+2025-10-22 06:51:47.357 AVPU WREG [0x83f4] <- 0x00000001
+2025-10-22 06:51:47.358 AVPU WREG [0x83f0] <- 0x00000001
+2025-10-22 06:51:47.358 AVPU WREG [0x83f0] <- 0x00000002
+2025-10-22 06:51:47.359 AVPU WREG [0x83f0] <- 0x00000004
+2025-10-22 06:51:47.360 AVPU RREG [0x8014] -> 0x00000000 (ret=0)
+2025-10-22 06:51:47.361 AVPU WREG [0x8014] <- 0x00000001
+2025-10-22 06:51:47.362 AVPU RREG [0x83f8] -> 0x00000000 (ret=0)
+2025-10-22 06:51:47.363 AVPU WREG [0x83e0] <- 0x068b0600
+2025-10-22 06:51:47.365 AVPU WREG [0x83e4] <- 0x00000002
+2025-10-22 06:51:47.380 AVPU RREG [0x8014] -> 0x00000001 (ret=0)
+2025-10-22 06:51:47.381 AVPU WREG [0x8014] <- 0x00000000
+2025-10-22 06:51:47.383 AVPU RREG [0x83f4] -> 0x00010001 (ret=0)
+2025-10-22 06:51:47.384 AVPU WREG [0x83f4] <- 0x00010000
+root@ing-wyze-cam3-a000 opt# 

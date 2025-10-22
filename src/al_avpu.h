@@ -75,12 +75,10 @@ typedef struct ALAvpuContext {
 
 
     /* Simple IRQ queue to mirror vendor's FIFO wakeups */
-    int irq_queue[32];
-    int irq_q_head;
-    int irq_q_tail;
-    void *irq_mutex;          /* opaque ptr to pthread_mutex_t allocated in C file */
-    void *irq_cond;           /* opaque ptr to pthread_cond_t allocated in C file */
-    long irq_thread;          /* pthread_t stored as long to avoid header deps */
+    /* WaitInterruptThread support (OEM parity: 0x35e28) */
+    long irq_callbacks[60];       /* 20 IRQs * 3 ints each: [callback_fn, user_data, flag] */
+    void *irq_mutex;              /* pthread_mutex_t* for callback access */
+    long irq_thread;              /* pthread_t stored as long */
     int irq_thread_running;
 
     /* TODO: buffer pool/FIFO/meta structures ala AL_BufPool_Init / Fifo_Init */
