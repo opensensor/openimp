@@ -23,6 +23,14 @@
 #include <sys/ioctl.h>
 #include <errno.h>
 #include <sys/mman.h>
+#include <sys/syscall.h> /* for SYS_ioctl */
+
+static inline int avpu_sys_ioctl(int fd, unsigned long cmd, void *arg)
+{
+    /* Bypass libc varargs to avoid any ABI/shim issues on MIPS o32 */
+    return (int)syscall(SYS_ioctl, fd, cmd, arg);
+}
+
 
 /* AVPU ioctl definitions (OEM parity - direct driver access) */
 #ifndef AVPU_IOC_MAGIC
@@ -34,7 +42,7 @@ struct avpu_dma_info {
     uint32_t fd;      /* offset for mmap (page-aligned) */
     uint32_t size;    /* requested/returned size */
     uint32_t phy_addr;/* physical address of allocation */
-};
+} __attribute__((aligned(4)));
 
 #define GET_DMA_MMAP      _IOWR(AVPU_IOC_MAGIC, 26, struct avpu_dma_info)
 #define GET_DMA_FD        _IOWR(AVPU_IOC_MAGIC, 13, struct avpu_dma_info)
@@ -83,37 +91,41 @@ static int avpu_write_reg(int fd, unsigned int off, unsigned int val)
 {
     if (fd < 0 || (off & 3) != 0) return -1;
 
-    /* Ensure struct is on stack with proper alignment (MIPS requirement) */
-    struct avpu_reg r __attribute__((aligned(4)));
-    r.id = off;
-    r.value = val;
-
-    /* Verify alignment before ioctl */
-    if (((uintptr_t)&r & 3) != 0) {
-        LOG_CODEC("ERROR: avpu_reg struct not 4-byte aligned: %p", (void*)&r);
+    /* Some kernel builds copy more than sizeof(struct avpu_reg). Provide slack. */
+    size_t buf_sz = sizeof(struct avpu_reg) + 0x400;
+    void *raw = NULL;
+    if (posix_memalign(&raw, 16, buf_sz) != 0 || !raw) {
         return -1;
     }
+    memset(raw, 0, buf_sz);
+    struct avpu_reg *p = (struct avpu_reg*)raw;
+    p->id = off;
+    p->value = val;
 
-    return ioctl(fd, AL_CMD_IP_WRITE_REG, &r);
+    LOG_CODEC("AVPU write_reg: off=0x%08x val=0x%08x argp=%p", off, val, (void*)p);
+    int ret = avpu_sys_ioctl(fd, AL_CMD_IP_WRITE_REG, p);
+    free(raw);
+    return ret;
 }
 
 static int avpu_read_reg(int fd, unsigned int off, unsigned int *out)
 {
     if (fd < 0 || (off & 3) != 0) return -1;
 
-    /* Ensure struct is on stack with proper alignment (MIPS requirement) */
-    struct avpu_reg r __attribute__((aligned(4)));
-    r.id = off;
-    r.value = 0;
-
-    /* Verify alignment before ioctl */
-    if (((uintptr_t)&r & 3) != 0) {
-        LOG_CODEC("ERROR: avpu_reg struct not 4-byte aligned: %p", (void*)&r);
+    size_t buf_sz = sizeof(struct avpu_reg) + 0x400;
+    void *raw = NULL;
+    if (posix_memalign(&raw, 16, buf_sz) != 0 || !raw) {
         return -1;
     }
+    memset(raw, 0, buf_sz);
+    struct avpu_reg *p = (struct avpu_reg*)raw;
+    p->id = off;
+    p->value = 0;
 
-    int ret = ioctl(fd, AL_CMD_IP_READ_REG, &r);
-    if (ret == 0 && out) *out = r.value;
+    LOG_CODEC("AVPU read_reg: off=0x%08x argp=%p", off, (void*)p);
+    int ret = avpu_sys_ioctl(fd, AL_CMD_IP_READ_REG, p);
+    if (ret == 0 && out) *out = p->value;
+    free(raw);
     return ret;
 }
 
@@ -121,18 +133,37 @@ static int avpu_read_reg(int fd, unsigned int off, unsigned int *out)
 static int avpu_alloc_mmap(int fd, size_t size, AvpuDMABuf* out)
 {
     if (fd < 0 || !out || size == 0) return -1;
-    struct avpu_dma_info info;
+    struct avpu_dma_info info __attribute__((aligned(4)));
     memset(&info, 0, sizeof(info));
     info.size = (uint32_t)size;
+    LOG_CODEC("AVPU: about to GET_DMA_MMAP size=%zu info_ptr=%p", size, (void*)&info);
     if (ioctl(fd, GET_DMA_MMAP, &info) != 0) {
         LOG_CODEC("AVPU GET_DMA_MMAP failed: %s", strerror(errno));
         return -1;
     }
-    void* map = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, (off_t)info.fd);
-    if (map == MAP_FAILED) {
+
+    void* map = MAP_FAILED;
+    int tries = 0;
+    while (tries < 2) {
+        map = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, (off_t)info.fd);
+        if (map != MAP_FAILED)
+            break;
         LOG_CODEC("AVPU mmap failed off=0x%x size=%zu: %s", info.fd, size, strerror(errno));
+        /* Some kernels reject offset==0; allocate another buffer to skip id 0 */
+        if (errno == EINVAL && info.fd == 0 && tries == 0) {
+            memset(&info, 0, sizeof(info));
+            info.size = (uint32_t)size;
+            LOG_CODEC("AVPU: retry GET_DMA_MMAP to avoid offset 0");
+            if (ioctl(fd, GET_DMA_MMAP, &info) != 0) {
+                LOG_CODEC("AVPU GET_DMA_MMAP (retry) failed: %s", strerror(errno));
+                return -1;
+            }
+            tries++;
+            continue;
+        }
         return -1;
     }
+
     out->phy_addr = info.phy_addr;
     out->mmap_off = info.fd;
     out->dmabuf_fd = -1;
@@ -142,6 +173,37 @@ static int avpu_alloc_mmap(int fd, size_t size, AvpuDMABuf* out)
     LOG_CODEC("AVPU: dma-mmap ok phys=0x%08x off=0x%x size=%zu map=%p", info.phy_addr, info.fd, size, map);
     return 0;
 }
+
+
+/* Allocate a DMA buffer via IMP_Alloc (OEM parity path) */
+static int avpu_alloc_imp(size_t size, const char* tag, AvpuDMABuf* out)
+{
+    if (!out || size == 0) return -1;
+    /* DMABuffer is 0x94 bytes; we only rely on offsets 0x80 (virt) and 0x84 (phys) */
+    unsigned char info[0x94];
+    memset(info, 0, sizeof(info));
+    if (IMP_Alloc((char*)info, (int)size, (char*)(tag ? tag : "AVPU")) != 0) {
+        LOG_CODEC("AVPU: IMP_Alloc failed (size=%zu, tag=%s)", size, tag ? tag : "AVPU");
+        return -1;
+    }
+    void* virt = NULL;
+    uint32_t phys = 0;
+    memcpy(&virt, info + 0x80, sizeof(void*));
+    memcpy(&phys, info + 0x84, sizeof(uint32_t));
+    if (!virt || phys == 0) {
+        LOG_CODEC("AVPU: IMP_Alloc returned invalid addresses virt=%p phys=0x%08x", virt, phys);
+        return -1;
+    }
+    out->phy_addr = phys;
+    out->mmap_off = 0;
+    out->dmabuf_fd = -1;
+    out->map = virt;
+    out->size = size;
+    out->from_rmem = 1; /* prevent munmap in destroy; allocator owns lifetime */
+    LOG_CODEC("AVPU: imp-alloc ok phys=0x%08x size=%zu virt=%p", phys, size, virt);
+    return 0;
+}
+
 
 /* Fill Enc1 command registers (OEM parity: from SliceParamToCmdRegsEnc1) */
 static void fill_cmd_regs_enc1(const ALAvpuContext* ctx, uint32_t* cmd)
@@ -189,26 +251,17 @@ static void fill_cmd_regs_enc1(const ALAvpuContext* ctx, uint32_t* cmd)
 /* Enable interrupts for core (OEM parity: AL_EncCore_EnableInterrupts at 0x6cf78) */
 static void avpu_enable_interrupts(int fd, int core)
 {
-    unsigned m = 0;
-    if (avpu_read_reg(fd, AVPU_INTERRUPT_MASK, &m) < 0) {
-        LOG_CODEC("AVPU: failed to read INTERRUPT_MASK");
-        return;
-    }
-
-    /* OEM: Enable bits for core: bit (core*4) and bit (core*4 + 2) */
+    /* Avoid read_reg path (problematic on some kernels). Program mask directly. */
     unsigned b0 = 1u << (((unsigned)core << 2) & 0x1F);
     unsigned b2 = 1u << ((((unsigned)core << 2) + 2) & 0x1F);
-    unsigned new_m = m | (b0 | b2);
+    unsigned new_m = (b0 | b2);
 
-    LOG_CODEC("AVPU: enable_interrupts core=%d, old_mask=0x%08x, new_mask=0x%08x (bits: 0x%x | 0x%x)",
-             core, m, new_m, b0, b2);
+    /* Ack any stale pending interrupts before enabling */
+    avpu_write_reg(fd, AVPU_INTERRUPT, 0xFFFFFFFFu);
 
-    if (new_m != m) {
-        avpu_write_reg(fd, AVPU_INTERRUPT_MASK, new_m);
-        LOG_CODEC("AVPU: ✓ wrote INTERRUPT_MASK=0x%08x", new_m);
-    } else {
-        LOG_CODEC("AVPU: interrupts already enabled (mask unchanged)");
-    }
+    LOG_CODEC("AVPU: enable_interrupts core=%d, mask=0x%08x (bits: 0x%x | 0x%x)", core, new_m, b0, b2);
+    avpu_write_reg(fd, AVPU_INTERRUPT_MASK, new_m);
+    LOG_CODEC("AVPU: ✓ wrote INTERRUPT_MASK=0x%08x", new_m);
 }
 
 /* Fifo_Init - based on decompilation at 0x7af28 */
@@ -392,22 +445,35 @@ static void* avpu_irq_thread(void* arg)
     LOG_CODEC("IRQ thread: started for fd=%d", fd);
 
     while (ctx->irq_thread_running) {
-        int irq_id = -1;
+        /* Use heap buffer with slack for WAIT_IRQ return value to avoid over-copy issues */
+        size_t buf_sz = sizeof(uint32_t) + 0x40;
+        void *raw = NULL;
+        if (posix_memalign(&raw, 16, buf_sz) != 0 || !raw) {
+            LOG_CODEC("IRQ thread: posix_memalign failed");
+            break;
+        }
+        memset(raw, 0xFF, buf_sz);
+        uint32_t *p_irq = (uint32_t*)raw;
+        *p_irq = 0xFFFFFFFFu;
 
         /* ioctl($a0_2, 0xc004710c, &var_28) - AL_CMD_IP_WAIT_IRQ */
-        if (ioctl(fd, AL_CMD_IP_WAIT_IRQ, &irq_id) == -1) {
+        if (avpu_sys_ioctl(fd, AL_CMD_IP_WAIT_IRQ, p_irq) == -1) {
             if (errno == EINTR) {
+                free(raw);
                 continue; /* interrupted by signal, retry */
             }
-            /* OEM: if (*__errno_location() != 4) perror("IOCTL0 failed with ") */
             if (errno != EINTR) {
                 LOG_CODEC("IRQ thread: WAIT_IRQ failed: %s", strerror(errno));
             }
+            free(raw);
             break;
         }
 
+        uint32_t irq_id = *p_irq;
+        free(raw);
+
         /* OEM: if (var_28 u>= 0x14) fprintf(stderr, ...) */
-        if (irq_id < 0 || irq_id >= 20) {
+        if (irq_id >= 20) {
             LOG_CODEC("IRQ thread: invalid IRQ ID %d", irq_id);
             continue;
         }
@@ -769,12 +835,20 @@ int AL_Codec_Encode_Destroy(void *codec) {
                 }
                 enc->avpu.stream_bufs[i].map = NULL;
             }
+            if (enc->avpu.stream_bufs[i].dmabuf_fd >= 0) {
+                close(enc->avpu.stream_bufs[i].dmabuf_fd);
+                enc->avpu.stream_bufs[i].dmabuf_fd = -1;
+            }
         }
         if (enc->avpu.cl_ring.map) {
             if (!enc->avpu.cl_ring.from_rmem) {
                 munmap(enc->avpu.cl_ring.map, enc->avpu.cl_ring.size);
             }
             enc->avpu.cl_ring.map = NULL;
+        }
+        if (enc->avpu.cl_ring.dmabuf_fd >= 0) {
+            close(enc->avpu.cl_ring.dmabuf_fd);
+            enc->avpu.cl_ring.dmabuf_fd = -1;
         }
 
         /* Signal IRQ thread to exit and close device via device pool */
@@ -970,42 +1044,44 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
                         enc->avpu.qp = 26; /* default QP */
                         enc->avpu.gop_length = enc->hw_params.gop_length;
 
-                        /* Allocate stream buffers via AVPU GET_DMA_MMAP (driver-backed DMA) */
+                        /* Allocate stream buffers via IMP_Alloc (OEM parity) */
                         enc->avpu.stream_buf_count = 4;
                         enc->avpu.stream_buf_size = 128 * 1024;
                         enc->avpu.stream_bufs_used = 0;
                         int filled = 0;
                         for (int i = 0; i < enc->avpu.stream_buf_count; ++i) {
-                            AvpuDMABuf tmp = {0};
-                            if (avpu_alloc_mmap(fd, (size_t)enc->avpu.stream_buf_size, &tmp) == 0) {
+                            LOG_CODEC("AVPU: alloc stream buf[%d] size=%d (IMP_Alloc)", i, enc->avpu.stream_buf_size);
+                            AvpuDMABuf tmp = (AvpuDMABuf){0};
+                            if (avpu_alloc_imp((size_t)enc->avpu.stream_buf_size, "AVPU_STRM", &tmp) == 0) {
                                 enc->avpu.stream_bufs[filled] = tmp;
                                 enc->avpu.stream_in_hw[filled] = 0;
                                 memset(enc->avpu.stream_bufs[filled].map, 0, enc->avpu.stream_buf_size);
-                                LOG_CODEC("AVPU: stream buf[%d] phys=0x%08x size=%d (dma-mmap)", filled, enc->avpu.stream_bufs[filled].phy_addr, enc->avpu.stream_buf_size);
+                                LOG_CODEC("AVPU: stream buf[%d] phys=0x%08x size=%d (imp-alloc)", filled, enc->avpu.stream_bufs[filled].phy_addr, enc->avpu.stream_buf_size);
                                 filled++;
                             } else {
-                                LOG_CODEC("AVPU: failed to allocate stream buf[%d] via dma-mmap", i);
+                                LOG_CODEC("AVPU: failed to allocate stream buf[%d] via IMP_Alloc", i);
                             }
                         }
                         enc->avpu.stream_bufs_used = filled;
 
-                        /* Allocate command-list ring via AVPU GET_DMA_MMAP (0x13 entries x 512B) */
+                        /* Allocate command-list ring via IMP_Alloc (0x13 entries x 512B) */
                         enc->avpu.cl_entry_size = 0x200;
                         enc->avpu.cl_count = 0x13;
                         size_t cl_bytes = enc->avpu.cl_entry_size * enc->avpu.cl_count;
-                        if (avpu_alloc_mmap(fd, cl_bytes, &enc->avpu.cl_ring) == 0) {
+                        int cl_ok = 0;
+                        if (avpu_alloc_imp(cl_bytes, "AVPU_CL", &enc->avpu.cl_ring) == 0) {
+                            cl_ok = 1;
                             void *virt = enc->avpu.cl_ring.map;
                             uint32_t phys = enc->avpu.cl_ring.phy_addr;
-                            /* Verify alignment (MIPS requires 4-byte alignment for 32-bit access) */
                             if ((phys & 3) != 0 || ((uintptr_t)virt & 3) != 0) {
                                 LOG_CODEC("ERROR: cmdlist buffer not 4-byte aligned: phys=0x%08x virt=%p", phys, virt);
                             } else {
                                 enc->avpu.cl_idx = 0;
                                 memset(virt, 0, cl_bytes);
-                                LOG_CODEC("AVPU: cmdlist ring phys=0x%08x size=%zu entries=%u (dma-mmap)", phys, cl_bytes, enc->avpu.cl_count);
+                                LOG_CODEC("AVPU: cmdlist ring phys=0x%08x size=%zu entries=%u (imp-alloc)", phys, cl_bytes, enc->avpu.cl_count);
                             }
                         } else {
-                            LOG_CODEC("AVPU: failed to allocate cmdlist ring via dma-mmap (size=%zu)", cl_bytes);
+                            LOG_CODEC("AVPU: failed to allocate cmdlist ring via IMP_Alloc (size=%zu)", cl_bytes);
                         }
 
                         /* T31 uses absolute addressing (offset mode causes kernel crashes) */
@@ -1042,17 +1118,6 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
                             enc->avpu.irq_mutex = mutex;
                         }
 
-                        /* Start IRQ thread */
-                        enc->avpu.irq_thread_running = 1;
-                        enc->avpu.frames_encoded = 0;
-                        pthread_t tid;
-                        if (pthread_create(&tid, NULL, avpu_irq_thread, &enc->avpu) == 0) {
-                            enc->avpu.irq_thread = (long)tid;
-                            LOG_CODEC("AVPU: IRQ thread started");
-                        } else {
-                            LOG_CODEC("AVPU: failed to start IRQ thread");
-                            enc->avpu.irq_thread_running = 0;
-                        }
 
                         /* Register EndEncoding callbacks (OEM parity: AL_EncCore_EnableInterrupts at 0x6cf78)
                          * OEM enables two interrupts per channel/core: base bit (ch*4) and base+2.
@@ -1134,17 +1199,19 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
 
         /* AL_EncCore_Init: from decompilation at 0x6c8d8 */
         if (!ctx->session_ready) {
-            /* ResetCore.isra.27(*arg1, &arg1[3]) */
-            /* This writes to CORE_RESET register */
-            avpu_write_reg(fd, AVPU_REG_CORE_RESET(0), 0x00000001);
+            /* Reset core sequence per OEM ResetCore: only writes 2, then 4 */
             avpu_write_reg(fd, AVPU_REG_CORE_RESET(0), 0x00000002);
+            usleep(100);
             avpu_write_reg(fd, AVPU_REG_CORE_RESET(0), 0x00000004);
+            usleep(100);
 
-            /* (*(*arg3 + 8))(arg3, 0x8054, 0x80) */
-            /* Write 0x80 to TOP_CTRL (0x8054) */
+            /* Proactively ack any stale interrupts before enabling anything */
+            avpu_write_reg(fd, AVPU_INTERRUPT, 0xFFFFFFFFu);
+
+            /* TOP_CTRL per OEM */
             avpu_write_reg(fd, AVPU_REG_TOP_CTRL, 0x00000080);
 
-            /* Optional: ensure AXI offset is 0 (no IP offset) */
+            /* Ensure AXI offset is 0 (no IP offset) */
             avpu_write_reg(fd, AVPU_REG_AXI_ADDR_OFFSET_IP, 0x00000000);
 
             /* Enable encoder engines (OEM toggles these in some flows) */
@@ -1152,12 +1219,15 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
             avpu_write_reg(fd, AVPU_REG_ENC_EN_B, 0x00000001);
             avpu_write_reg(fd, AVPU_REG_ENC_EN_C, 0x00000001);
 
+            /* Ack again after enabling blocks to drop spurious IRQs */
+            avpu_write_reg(fd, AVPU_INTERRUPT, 0xFFFFFFFFu);
+
             ctx->session_ready = 1;
 
-            /* Enable interrupts after HW init (OEM parity: AL_EncCore_EnableInterrupts) */
+            /* Enable only our core interrupts without readback */
             avpu_enable_interrupts(fd, 0);
 
-            /* OEM parity: Pre-queue ALL stream buffers so hardware always has space */
+            /* Pre-queue ALL stream buffers so hardware always has space */
             if (ctx->stream_bufs_used > 0) {
                 for (int i = 0; i < ctx->stream_bufs_used; ++i) {
                     if (!ctx->stream_in_hw[i] && ctx->stream_bufs[i].phy_addr) {
@@ -1169,6 +1239,21 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
             }
 
             LOG_CODEC("AVPU: HW initialized (AL_EncCore_Init)");
+
+            /* Start IRQ thread after enabling interrupts and pre-queue (safer ordering) */
+            if (!ctx->irq_thread_running) {
+                ctx->irq_thread_running = 1;
+                ctx->frames_encoded = 0;
+                pthread_t tid;
+                if (pthread_create(&tid, NULL, avpu_irq_thread, ctx) == 0) {
+                    ctx->irq_thread = (long)tid;
+                    LOG_CODEC("AVPU: IRQ thread started");
+                } else {
+                    LOG_CODEC("AVPU: failed to start IRQ thread");
+                    ctx->irq_thread_running = 0;
+                }
+            }
+
         }
 
         /* Prepare command-list entry (OEM parity: SetCommandListBuffer) */
@@ -1180,6 +1265,8 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
             if (((uintptr_t)entry & 3) != 0) {
                 LOG_CODEC("ERROR: CL entry not 4-byte aligned: %p", (void*)entry);
                 free(hw_stream);
+
+
                 return -1;
             }
 
@@ -1188,14 +1275,7 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
             /* Fill Enc1 command registers (includes memset) */
             fill_cmd_regs_enc1(ctx, cmd);
 
-            /* Flush CL entry to device (OEM: Rtos_FlushCacheMemory) */
-            struct avpu_flush_cache_info fci = {0};
-            fci.addr = (unsigned int)(uintptr_t)entry;
-            fci.len  = (unsigned int)ctx->cl_entry_size;
-            fci.dir  = 1; /* WBACK: DMA_TO_DEVICE */
-            if (ioctl(fd, JZ_CMD_FLUSH_CACHE, &fci) != 0) {
-                LOG_CODEC("CL cache flush failed: %s", strerror(errno));
-            }
+            /* CL entry mapped via dma_alloc_coherent-backed mmap; flushing not required on T31 */
 
             /* StartEnc1WithCommandList.isra.25: (*(**arg1 + 8))() */
             /* This triggers the hardware via function pointer */
@@ -1285,12 +1365,7 @@ int AL_Codec_Encode_GetStream(void *codec, void **stream, void **user_data) {
                     if (ctx->stream_in_hw[i]) {
                         const uint8_t *virt = (const uint8_t*)ctx->stream_bufs[i].map;
 
-                        /* Invalidate cache before CPU reads device-written buffer */
-                        struct avpu_flush_cache_info inv = {0};
-                        inv.addr = (unsigned int)(uintptr_t)virt;
-                        inv.len  = (unsigned int)ctx->stream_buf_size;
-                        inv.dir  = 2; /* INV: DMA_FROM_DEVICE */
-                        (void)ioctl(ctx->fd, JZ_CMD_FLUSH_CACHE, &inv);
+                        /* Streams are coherent; no invalidate needed on T31 */
                         /* Check for AnnexB start code */
                         size_t eff = annexb_effective_size(virt, ctx->stream_buf_size);
                         if (eff > 0) {

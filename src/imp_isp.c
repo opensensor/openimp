@@ -305,29 +305,29 @@ static void tuning_contrastjudge(void* arg)
     unsigned char contrast = st->contrast_byte;
 
     /* BN MCP: ioctl 0xc008561c expects { id (V4L2_CID_*), value } where id=0x00980901 (CONTRAST) */
-    struct {
-        uint32_t id;     /* 0x00980901 = V4L2_CID_CONTRAST */
-        uint32_t value;  /* contrast value (lower 8 bits used) */
-    } cmd;
-
-    cmd.id = 0x00980901u;
-    cmd.value = (uint32_t)contrast;
+    typedef struct { uint32_t id; int32_t value; } v4l2_control_compat_t;
+    v4l2_control_compat_t *cmd = NULL;
+    if (posix_memalign((void**)&cmd, 4, sizeof(*cmd)) != 0 || !cmd) {
+        return;
+    }
+    cmd->id = 0x00980901u;
+    cmd->value = (int32_t)contrast;
 
     static int cj_disabled = 0;
     if (cj_disabled)
         return;
 
-    if (ioctl(gISPdev->tisp_fd, 0xc008561c, &cmd) < 0) {
+    if (ioctl(gISPdev->tisp_fd, 0xc008561c, cmd) < 0) {
         int e = errno;
-        /* On EPERM/ENOTTY, disable this function quietly to avoid log spam */
         if (e == EPERM || e == ENOTTY) {
             cj_disabled = 1;
-            /* Do not modify tuning_mask here; cj_disabled will skip future calls */
         } else {
             LOG_ISP("contrastjudge: ioctl(0x%08x) failed: %s", 0xc008561c, strerror(e));
         }
+        free(cmd);
         return;
     }
+    free(cmd);
 
     st->last_total_gain = st->total_gain;
 }
@@ -953,7 +953,7 @@ int IMP_ISP_EnableTuning(void) {
     char tisp_dev[32];
     snprintf(tisp_dev, sizeof(tisp_dev), "/dev/isp-m0");
 
-    gISPdev->tisp_fd = open(tisp_dev, O_RDWR | O_NONBLOCK);
+    gISPdev->tisp_fd = open(tisp_dev, O_RDWR);
     if (gISPdev->tisp_fd < 0) {
         LOG_ISP("EnableTuning: failed to open %s: %s", tisp_dev, strerror(errno));
         return -1;
@@ -978,24 +978,29 @@ int IMP_ISP_EnableTuning(void) {
     }
 
     /* Call ioctl 0xc00c56c6 to initialize tuning with default FPS */
-    struct {
-        uint32_t cmd;
-        uint32_t subcmd;
-        uint32_t value;  /* fps_num << 16 | fps_den */
-    } tuning_init;
-
-    tuning_init.cmd = 1;
-    tuning_init.subcmd = 0x80000e0;
-    tuning_init.value = (25 << 16) | 1;  /* Default 25/1 fps */
-
-    if (ioctl(gISPdev->tisp_fd, 0xc00c56c6, &tuning_init) != 0) {
-        LOG_ISP("EnableTuning: ioctl 0xc00c56c6 failed: %s", strerror(errno));
+    typedef struct { uint32_t cmd; uint32_t subcmd; uint32_t value; } tuning_msg_t;
+    tuning_msg_t *tuning_init = NULL;
+    if (posix_memalign((void**)&tuning_init, 4, sizeof(*tuning_init)) != 0 || !tuning_init) {
         close(gISPdev->tisp_fd);
         gISPdev->tisp_fd = -1;
         free(gISPdev->tuning);
         gISPdev->tuning = NULL;
         return -1;
     }
+    tuning_init->cmd = 1;
+    tuning_init->subcmd = 0x80000e0;
+    tuning_init->value = (25 << 16) | 1;  /* Default 25/1 fps */
+
+    if (ioctl(gISPdev->tisp_fd, 0xc00c56c6, tuning_init) != 0) {
+        LOG_ISP("EnableTuning: ioctl 0xc00c56c6 failed: %s", strerror(errno));
+        free(tuning_init);
+        close(gISPdev->tisp_fd);
+        gISPdev->tisp_fd = -1;
+        free(gISPdev->tuning);
+        gISPdev->tuning = NULL;
+        return -1;
+    }
+    free(tuning_init);
 
     LOG_ISP("EnableTuning: tuning initialized successfully");
     tuning_enabled = 1;
@@ -1053,21 +1058,22 @@ int IMP_ISP_Tuning_SetSensorFPS(uint32_t fps_num, uint32_t fps_den) {
 
     LOG_ISP("SetSensorFPS: %u/%u", fps_num, fps_den);
 
-    /* Call ioctl 0xc00c56c6 with FPS parameters */
-    struct {
-        uint32_t cmd;
-        uint32_t subcmd;
-        uint32_t value;  /* fps_num << 16 | fps_den */
-    } fps_cmd;
-
-    fps_cmd.cmd = 0;
-    fps_cmd.subcmd = 0x80000e0;
-    fps_cmd.value = (fps_num << 16) | fps_den;
-
-    if (ioctl(gISPdev->tisp_fd, 0xc00c56c6, &fps_cmd) != 0) {
-        LOG_ISP("SetSensorFPS: ioctl 0xc00c56c6 failed: %s", strerror(errno));
+    /* Call ioctl 0xc00c56c6 with FPS parameters (heap-aligned arg) */
+    typedef struct { uint32_t cmd; uint32_t subcmd; uint32_t value; } tuning_msg_t;
+    tuning_msg_t *fps_cmd = NULL;
+    if (posix_memalign((void**)&fps_cmd, 4, sizeof(*fps_cmd)) != 0 || !fps_cmd) {
         return -1;
     }
+    fps_cmd->cmd = 0;
+    fps_cmd->subcmd = 0x80000e0;
+    fps_cmd->value = (fps_num << 16) | fps_den;
+
+    if (ioctl(gISPdev->tisp_fd, 0xc00c56c6, fps_cmd) != 0) {
+        LOG_ISP("SetSensorFPS: ioctl 0xc00c56c6 failed: %s", strerror(errno));
+        free(fps_cmd);
+        return -1;
+    }
+    free(fps_cmd);
 
     LOG_ISP("SetSensorFPS: FPS set successfully to %u/%u", fps_num, fps_den);
     return 0;
@@ -1098,23 +1104,22 @@ int IMP_ISP_Tuning_SetISPRunningMode(IMPISPRunningMode mode) {
 
     LOG_ISP("SetISPRunningMode: %d", mode);
 
-    /* Call ioctl 0xc00c56c6 with running mode
-     * CRITICAL: Field order must be cmd, subcmd, value (same as other tuning ioctls)
-     */
-    struct {
-        uint32_t cmd;
-        uint32_t subcmd;
-        uint32_t value;
-    } mode_cmd;
-
-    mode_cmd.cmd = 0;
-    mode_cmd.subcmd = 0x80000e1;
-    mode_cmd.value = mode;
-
-    if (ioctl(gISPdev->tisp_fd, 0xc00c56c6, &mode_cmd) != 0) {
-        LOG_ISP("SetISPRunningMode: ioctl 0xc00c56c6 failed: %s", strerror(errno));
+    /* Call ioctl 0xc00c56c6 with running mode (heap-aligned arg) */
+    typedef struct { uint32_t cmd; uint32_t subcmd; uint32_t value; } tuning_msg_t;
+    tuning_msg_t *mode_cmd = NULL;
+    if (posix_memalign((void**)&mode_cmd, 4, sizeof(*mode_cmd)) != 0 || !mode_cmd) {
         return -1;
     }
+    mode_cmd->cmd = 0;
+    mode_cmd->subcmd = 0x80000e1;
+    mode_cmd->value = mode;
+
+    if (ioctl(gISPdev->tisp_fd, 0xc00c56c6, mode_cmd) != 0) {
+        LOG_ISP("SetISPRunningMode: ioctl 0xc00c56c6 failed: %s", strerror(errno));
+        free(mode_cmd);
+        return -1;
+    }
+    free(mode_cmd);
 
     LOG_ISP("SetISPRunningMode: mode set successfully to %d", mode);
     return 0;
@@ -1311,22 +1316,24 @@ int IMP_ISP_Tuning_GetTotalGain(uint32_t *pgain) {
     if (pgain == NULL) return -1;
     if (gISPdev == NULL || gISPdev->tisp_fd < 0) return -1;
 
-    struct {
-        uint32_t cmd;     /* 1 = read */
-        uint32_t subcmd;  /* 0x8000027 per vendor */
-        uint32_t value;   /* out: total gain */
-    } req;
-
-    req.cmd = 1;
-    req.subcmd = 0x8000027u;
-    req.value = 0;
-
-    if (ioctl(gISPdev->tisp_fd, 0xc00c56c6, &req) < 0) {
-        LOG_ISP("GetTotalGain: ioctl failed: %s", strerror(errno));
+    typedef struct { uint32_t cmd; uint32_t subcmd; uint32_t value; } tuning_msg_t;
+    tuning_msg_t *req = NULL;
+    if (posix_memalign((void**)&req, 4, sizeof(*req)) != 0 || !req) {
         return -1;
     }
 
-    *pgain = req.value;
+    req->cmd = 1;
+    req->subcmd = 0x8000027u;
+    req->value = 0;
+
+    if (ioctl(gISPdev->tisp_fd, 0xc00c56c6, req) < 0) {
+        LOG_ISP("GetTotalGain: ioctl failed: %s", strerror(errno));
+        free(req);
+        return -1;
+    }
+
+    *pgain = req->value;
+    free(req);
     return 0;
 }
 

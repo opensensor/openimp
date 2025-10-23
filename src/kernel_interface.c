@@ -454,18 +454,25 @@ struct v4l2_buf32 {
 /* Query buffer to get the exact length the driver expects */
 int fs_querybuf(int fd, int index, unsigned int *length_out) {
     if (fd < 0 || index < 0) return -1;
-    struct v4l2_buf32 b;
-    memset(&b, 0, sizeof(b));
-    b.index = (uint32_t)index;
-    b.type = 1; /* V4L2_BUF_TYPE_VIDEO_CAPTURE */
-    b.memory = 2; /* USERPTR */
-    b.field = 4;  /* match vendor */
-    int ret = ioctl(fd, VIDIOC_QUERYBUF, &b);
-    if (ret < 0) {
-        fprintf(stderr, "[KernelIF] QUERYBUF failed: idx=%d err=%s\n", index, strerror(errno));
+    size_t buf_sz = sizeof(struct v4l2_buf32) + 0x400; /* tolerate driver over-copy */
+    void *raw = NULL;
+    if (posix_memalign(&raw, 16, buf_sz) != 0 || !raw) {
         return -1;
     }
-    if (length_out) *length_out = b.length;
+    memset(raw, 0, buf_sz);
+    struct v4l2_buf32 *b = (struct v4l2_buf32 *)raw;
+    b->index = (uint32_t)index;
+    b->type = 1; /* V4L2_BUF_TYPE_VIDEO_CAPTURE */
+    b->memory = 2; /* USERPTR */
+    b->field = 4;  /* match vendor */
+    int ret = ioctl(fd, VIDIOC_QUERYBUF, b);
+    if (ret < 0) {
+        fprintf(stderr, "[KernelIF] QUERYBUF failed: idx=%d err=%s\n", index, strerror(errno));
+        free(raw);
+        return -1;
+    }
+    if (length_out) *length_out = b->length;
+    free(raw);
     return 0;
 }
 
@@ -475,40 +482,55 @@ int fs_querybuf(int fd, int index, unsigned int *length_out) {
 int fs_qbuf(int fd, int index, unsigned long phys, unsigned int length) {
     if (fd < 0 || index < 0) return -1;
 
-    struct v4l2_buf32 b;
-    memset(&b, 0, sizeof(b));
-    b.index = (uint32_t)index;
-    b.type = 1;            /* V4L2_BUF_TYPE_VIDEO_CAPTURE */
-    b.memory = 2;          /* Must match REQBUFS memory type (USERPTR) */
-    b.field = 4;           /* Driver expects specific field value (vendor used 4) */
-    b.flags = 0;
-    b.sequence = 0;
-    b.m = (uint32_t)phys;  /* USERPTR carries DMA phys on this T31 variant */
-    b.length = length;     /* Must equal kernel expected length */
-    b.bytesused = length;  /* some variants require non-zero to mark valid buffer */
-
-    int ret = ioctl(fd, VIDIOC_QBUF, &b);
-    if (ret < 0) {
-        fprintf(stderr, "[KernelIF] QBUF failed: idx=%d phys=0x%lx len=%u err=%s\n", index, phys, length, strerror(errno));
+    size_t buf_sz = sizeof(struct v4l2_buf32) + 0x400; /* large slack to tolerate driver over-copy */
+    void *raw = NULL;
+    if (posix_memalign(&raw, 16, buf_sz) != 0 || !raw) {
         return -1;
     }
+    memset(raw, 0, buf_sz);
+    struct v4l2_buf32 *b = (struct v4l2_buf32 *)raw;
+    b->index = (uint32_t)index;
+    b->type = 1;            /* V4L2_BUF_TYPE_VIDEO_CAPTURE */
+    b->memory = 2;          /* Must match REQBUFS memory type (USERPTR) */
+    b->field = 4;           /* Driver expects specific field value (vendor used 4) */
+    b->flags = 0;
+    b->sequence = 0;
+    b->m = (uint32_t)phys;  /* USERPTR carries DMA phys on this T31 variant */
+    b->length = length;     /* Must equal kernel expected length */
+    b->bytesused = length;  /* some variants require non-zero to mark valid buffer */
+
+    int ret = ioctl(fd, VIDIOC_QBUF, b);
+    if (ret < 0) {
+        fprintf(stderr, "[KernelIF] QBUF failed: idx=%d phys=0x%lx len=%u err=%s\n", index, phys, length, strerror(errno));
+        free(raw);
+        return -1;
+    }
+    free(raw);
     return 0;
 }
 /* Dequeue using plain VIDIOC_DQBUF (non-blocking fd). Return -2 on EAGAIN. */
 int fs_dqbuf_plain(int fd, int *index_out) {
     if (fd < 0 || !index_out) return -1;
-    struct v4l2_buf32 b; memset(&b, 0, sizeof(b));
-    b.type = 1; b.memory = 2; b.field = 4;
-    fprintf(stderr, "[KernelIF] DQBUF ioctl ENTER\n");
-    int ret = ioctl(fd, VIDIOC_DQBUF, &b);
+    size_t buf_sz = sizeof(struct v4l2_buf32) + 0x400;
+    void *raw = NULL;
+    if (posix_memalign(&raw, 16, buf_sz) != 0 || !raw) {
+        return -1;
+    }
+    memset(raw, 0, buf_sz);
+    struct v4l2_buf32 *b = (struct v4l2_buf32 *)raw;
+    b->type = 1; b->memory = 2; b->field = 4;
+    fprintf(stderr, "[KernelIF] DQBUF ioctl ENTER arg=%p\n", (void*)b);
+    int ret = ioctl(fd, VIDIOC_DQBUF, b);
     int errsv = errno;
     fprintf(stderr, "[KernelIF] DQBUF ioctl LEAVE ret=%d errno=%d\n", ret, errsv);
     if (ret < 0) {
-        if (errsv == EAGAIN) return -2;
+        if (errsv == EAGAIN) { free(raw); return -2; }
         fprintf(stderr, "[KernelIF] DQBUF failed: %s\n", strerror(errsv));
+        free(raw);
         return -1;
     }
-    *index_out = (int)b.index;
+    *index_out = (int)b->index;
+    free(raw);
     return 0;
 }
 
@@ -517,19 +539,26 @@ int fs_dqbuf_plain(int fd, int *index_out) {
 int fs_dqbuf(int fd, int *index_out) {
     if (fd < 0 || !index_out) return -1;
 
-    struct v4l2_buf32 b;
-    memset(&b, 0, sizeof(b));
-    b.type   = 1;   /* V4L2_BUF_TYPE_VIDEO_CAPTURE */
-    b.memory = 2;   /* V4L2_MEMORY_USERPTR */
-    b.field  = 4;   /* Match vendor value to avoid silent DQ issues */
-
-    int ret = ioctl(fd, VIDIOC_DQBUF, &b);
-    if (ret < 0) {
-        if (errno == EAGAIN) return -2; /* non-blocking */
-        fprintf(stderr, "[KernelIF] DQBUF failed: %s\n", strerror(errno));
+    size_t buf_sz = sizeof(struct v4l2_buf32) + 0x400;
+    void *raw = NULL;
+    if (posix_memalign(&raw, 16, buf_sz) != 0 || !raw) {
         return -1;
     }
-    *index_out = (int)b.index;
+    memset(raw, 0, buf_sz);
+    struct v4l2_buf32 *b = (struct v4l2_buf32 *)raw;
+    b->type   = 1;   /* V4L2_BUF_TYPE_VIDEO_CAPTURE */
+    b->memory = 2;   /* V4L2_MEMORY_USERPTR */
+    b->field  = 4;   /* Match vendor value to avoid silent DQ issues */
+
+    int ret = ioctl(fd, VIDIOC_DQBUF, b);
+    if (ret < 0) {
+        if (errno == EAGAIN) { free(raw); return -2; } /* non-blocking */
+        fprintf(stderr, "[KernelIF] DQBUF failed: %s\n", strerror(errno));
+        free(raw);
+        return -1;
+    }
+    *index_out = (int)b->index;
+    free(raw);
     return 0;
 }
 
