@@ -730,14 +730,15 @@ int VBMCreatePool(int chn, void *fmt, void *ops, void *priv) {
         frame_count = 4;
     }
 
-    /* Allocate pool structure */
+    /* Allocate pool structure with proper alignment for MIPS */
     size_t pool_size = frame_count * VBM_FRAME_SIZE + 0x180;
     fprintf(stderr, "[VBM] CreatePool: allocating pool_size=%zu (frame_count=%d * 0x%x + 0x180)\n",
             pool_size, frame_count, VBM_FRAME_SIZE);
 
-    VBMPool *pool = (VBMPool*)malloc(pool_size);
-    if (pool == NULL) {
-        fprintf(stderr, "[VBM] CreatePool: malloc failed (size=%zu): %s\n",
+    VBMPool *pool = NULL;
+    /* Use posix_memalign to ensure 16-byte alignment for MIPS */
+    if (posix_memalign((void**)&pool, 16, pool_size) != 0 || pool == NULL) {
+        fprintf(stderr, "[VBM] CreatePool: posix_memalign failed (size=%zu): %s\n",
                 pool_size, strerror(errno));
         return -1;
     }
@@ -783,10 +784,13 @@ int VBMCreatePool(int chn, void *fmt, void *ops, void *priv) {
 
     /* Calculate frame size and honor requested size from SET_FMT (kernel sizeimage) */
     int calc_size = calculate_frame_size(width, height, pixfmt);
-    pool->frame_size = (req_size > 0) ? req_size : calc_size;
+    int raw_size = (req_size > 0) ? req_size : calc_size;
 
-    fprintf(stderr, "[VBM] CreatePool: chn=%d, %dx%d fmt=0x%x, %d frames, size=%d (req=%d calc=%d)\n",
-            chn, width, height, pixfmt, frame_count, pool->frame_size, req_size, calc_size);
+    /* Align frame size to 32-byte boundary for DMA (MIPS cache line alignment) */
+    pool->frame_size = (raw_size + 31) & ~31;
+
+    fprintf(stderr, "[VBM] CreatePool: chn=%d, %dx%d fmt=0x%x, %d frames, size=%d (req=%d calc=%d aligned=%d)\n",
+            chn, width, height, pixfmt, frame_count, pool->frame_size, req_size, calc_size, pool->frame_size);
 
     /* Try to get pool from FrameSource */
     pool->pool_id = IMP_FrameSource_GetPool(chn);
