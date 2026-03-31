@@ -1,4 +1,4 @@
-#!/bin/bash
+o#!/bin/bash
 # Build script for cross-compiling OpenIMP for Ingenic T23/T31 devices
 # This script sets up the cross-compilation environment and builds the libraries
 
@@ -19,13 +19,13 @@ echo ""
 CROSS_COMPILE=mipsel-linux-
 
 # Choose platform from first argument (T31 or T23). Default: T23.
-PLATFORM_INPUT=${1:-T23}
+PLATFORM_INPUT=${1:-T31}
 PLATFORM=$(echo "$PLATFORM_INPUT" | tr '[:lower:]' '[:upper:]')
 
 # Select toolchain per platform (adjust these paths for your environment)
 case "$PLATFORM" in
   T31)
-    TOOLCHAIN_PATH=/home/matteius/output-stable/wyze_cam3_t31x_gc2053_rtl8189ftv/host/bin/
+    TOOLCHAIN_PATH=/home/matteius//ingenic-linux/thingino-firmware/output/master/wyze_cam3_t31x_gc2053_rtl8189ftv-3.10.14-uclibc/host/bin/
     ;;
   T23)
     TOOLCHAIN_PATH=/home/matteius/output-openimp-override/cinnado_d1_t23n_sc2336_atbm6012bx/per-package/toolchain-buildroot/host/bin/

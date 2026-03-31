@@ -458,3 +458,11 @@ int DMA_Is_RMEM(void)
 {
     return (g_is_rmem && g_rmem_virt_base != NULL) ? 1 : 0;
 }
+
+/* IMP_FlushCache - flush CPU cache for DMA coherency
+ * Stub: on MIPS with coherent DMA, this is often a no-op */
+int IMP_FlushCache(void *virt_addr, uint32_t size) {
+    (void)virt_addr;
+    (void)size;
+    return 0;
+}

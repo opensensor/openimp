@@ -366,3 +366,30 @@ void IMP_IVS_DestroyMoveInterface(IMPIVSInterface *interface) {
     LOG_IVS("DestroyMoveInterface");
 }
 
+/* ========== Missing IVS functions needed by raptor-hal ========== */
+
+int IMP_IVS_GetParam(int chnNum, void *param) {
+    if (chnNum < 0 || chnNum >= MAX_IVS_CHANNELS || !param) return -1;
+    IVSChn *c = &g_ivs_chn[chnNum];
+    if (!c->iface || !c->iface->param) return -1;
+    *(void**)param = c->iface->param;
+    return 0;
+}
+
+int IMP_IVS_SetParam(int chnNum, void *param) {
+    if (chnNum < 0 || chnNum >= MAX_IVS_CHANNELS || !param) return -1;
+    IVSChn *c = &g_ivs_chn[chnNum];
+    if (!c->iface) return -1;
+    c->iface->param = param;
+    return 0;
+}
+
+int IMP_IVS_ReleaseData(int chnNum, void *data) {
+    (void)chnNum; (void)data;
+    return 0;
+}
+
+int IVSInterfaceInit(void *param, void *itf) {
+    (void)param; (void)itf;
+    return 0;
+}

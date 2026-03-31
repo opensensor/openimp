@@ -78,6 +78,31 @@ uint64_t IMP_System_GetTimeStamp(void);
  */
 int IMP_System_RebaseTimeStamp(uint64_t basets);
 
+/**
+ * Get source cell bound to a destination cell
+ */
+int IMP_System_GetBindbyDest(IMPCell *dstCell, IMPCell *srcCell);
+
+/**
+ * Read a 32-bit hardware register
+ */
+uint32_t IMP_System_ReadReg32(uint32_t addr);
+
+/**
+ * Write a 32-bit hardware register
+ */
+void IMP_System_WriteReg32(uint32_t addr, uint32_t val);
+
+/**
+ * Translate physical address to virtual address
+ */
+void *IMP_System_PhysToVirt(uint32_t phys_addr);
+
+/**
+ * Translate virtual address to physical address
+ */
+uint32_t IMP_System_VirtToPhys(void *virt_addr);
+
 #ifdef __cplusplus
 }
 #endif

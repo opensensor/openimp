@@ -1571,7 +1571,161 @@ int32_t IMP_ISP_GetISPBypass(int num, IMPISPTuningOpsMode *enable)
 {
     (void)num;
     if (enable == NULL) return -1;
-    /* We enforce non-bypass by default */
     *enable = 0;
+    return 0;
+}
+
+/* ========== Missing ISP Tuning functions needed by raptor-hal ========== */
+
+int IMP_ISP_Tuning_GetISPHflip(IMPISPTuningOpsMode *pmode) {
+    if (!pmode) return -1;
+    *pmode = 0;
+    return 0;
+}
+
+int IMP_ISP_Tuning_GetISPVflip(IMPISPTuningOpsMode *pmode) {
+    if (!pmode) return -1;
+    *pmode = 0;
+    return 0;
+}
+
+int IMP_ISP_Tuning_GetAntiFlickerAttr(IMPISPAntiflickerAttr *pattr) {
+    if (!pattr) return -1;
+    *pattr = 0;
+    return 0;
+}
+
+int IMP_ISP_Tuning_GetMaxAgain(uint32_t *pgain) {
+    if (!pgain) return -1;
+    *pgain = 0;
+    return 0;
+}
+
+int IMP_ISP_Tuning_GetMaxDgain(uint32_t *pgain) {
+    if (!pgain) return -1;
+    *pgain = 0;
+    return 0;
+}
+
+int IMP_ISP_Tuning_GetSinterStrength(uint32_t *pratio) {
+    if (!pratio) return -1;
+    *pratio = 128;
+    return 0;
+}
+
+int IMP_ISP_Tuning_GetTemperStrength(uint32_t *pratio) {
+    if (!pratio) return -1;
+    *pratio = 128;
+    return 0;
+}
+
+int IMP_ISP_Tuning_GetDPC_Strength(uint32_t *pratio) {
+    if (!pratio) return -1;
+    *pratio = 128;
+    return 0;
+}
+
+int IMP_ISP_Tuning_GetDRC_Strength(uint32_t *pratio) {
+    if (!pratio) return -1;
+    *pratio = 128;
+    return 0;
+}
+
+int IMP_ISP_Tuning_GetDefog_Strength(uint32_t *pstrength) {
+    if (!pstrength) return -1;
+    *pstrength = 0;
+    return 0;
+}
+
+int IMP_ISP_Tuning_SetSensorRegister(uint32_t reg, uint32_t val) {
+    (void)reg; (void)val;
+    return 0;
+}
+
+int IMP_ISP_Tuning_GetSensorRegister(uint32_t reg, uint32_t *val) {
+    (void)reg;
+    if (val) *val = 0;
+    return 0;
+}
+
+int IMP_ISP_Tuning_SetAeWeight(void *weight) {
+    (void)weight;
+    return 0;
+}
+
+int IMP_ISP_Tuning_GetAeWeight(void *weight) {
+    if (weight) memset(weight, 0, 15 * 15);
+    return 0;
+}
+
+int IMP_ISP_Tuning_SetAeROI(void *roi) {
+    (void)roi;
+    return 0;
+}
+
+int IMP_ISP_Tuning_GetAeROI(void *roi) {
+    if (roi) memset(roi, 0, 15 * 15);
+    return 0;
+}
+
+int IMP_ISP_Tuning_SetAeHist(void *hist) {
+    (void)hist;
+    return 0;
+}
+
+int IMP_ISP_Tuning_GetAeHist(void *hist) {
+    if (hist) memset(hist, 0, 256);
+    return 0;
+}
+
+int IMP_ISP_Tuning_SetAwbWeight(void *weight) {
+    (void)weight;
+    return 0;
+}
+
+int IMP_ISP_Tuning_GetAwbWeight(void *weight) {
+    if (weight) memset(weight, 0, 15 * 15);
+    return 0;
+}
+
+int IMP_ISP_Tuning_SetGamma(void *gamma) {
+    (void)gamma;
+    return 0;
+}
+
+int IMP_ISP_Tuning_GetGamma(void *gamma) {
+    if (gamma) memset(gamma, 0, 129 * sizeof(uint16_t));
+    return 0;
+}
+
+int IMP_ISP_Tuning_WaitFrame(int timeout_ms) {
+    (void)timeout_ms;
+    return 0;
+}
+
+int IMP_ISP_Tuning_GetSensorAttr(uint32_t *width, uint32_t *height) {
+    if (width) *width = 1920;
+    if (height) *height = 1080;
+    return 0;
+}
+
+int IMP_ISP_Tuning_GetAeAttr(void *ae_attr) {
+    if (ae_attr) memset(ae_attr, 0, 256);
+    return 0;
+}
+
+int IMP_ISP_Tuning_SetAeAttr(void *ae_attr) {
+    (void)ae_attr;
+    return 0;
+}
+
+int IMP_ISP_Tuning_GetModuleControl(uint32_t *modules) {
+    if (!modules) return -1;
+    *modules = 0xFFFFFFFF; /* All modules enabled */
+    return 0;
+}
+
+int IMP_ISP_Tuning_SetModuleControl(uint32_t modules) {
+    (void)modules;
     return 0;
 }

@@ -656,4 +656,60 @@ int IMP_System_BindIfNeeded(IMPCell *srcCell, IMPCell *dstCell) {
     return IMP_System_Bind(srcCell, dstCell);
 }
 
+/* IMP_System_GetBindbyDest - get the source cell bound to a destination
+ * Based on OEM decompilation */
+int IMP_System_GetBindbyDest(IMPCell *dstCell, IMPCell *srcCell) {
+    if (!dstCell || !srcCell) return -1;
 
+    /* Search all modules for an observer pointing to dstCell's module */
+    Module *dst_mod = get_module(dstCell->deviceID, dstCell->groupID);
+    if (!dst_mod) return -1;
+
+    for (int d = 0; d < MAX_DEVICES; d++) {
+        for (int g = 0; g < MAX_GROUPS; g++) {
+            Module *src = g_modules[d][g];
+            if (!src) continue;
+            Observer *obs = (Observer*)src->observer_list;
+            while (obs) {
+                if (obs->module == (void*)dst_mod) {
+                    srcCell->deviceID = d;
+                    srcCell->groupID = g;
+                    srcCell->outputID = obs->output_index;
+                    return 0;
+                }
+                obs = obs->next;
+            }
+        }
+    }
+    return -1;
+}
+
+/* IMP_System_ReadReg32 - read a 32-bit hardware register via /dev/mem
+ * Stub: returns 0 (used by HAL for register access) */
+uint32_t IMP_System_ReadReg32(uint32_t addr) {
+    (void)addr;
+    fprintf(stderr, "[System] ReadReg32(0x%08x) stub\n", addr);
+    return 0;
+}
+
+/* IMP_System_WriteReg32 - write a 32-bit hardware register via /dev/mem
+ * Stub: no-op */
+void IMP_System_WriteReg32(uint32_t addr, uint32_t val) {
+    (void)addr;
+    (void)val;
+    fprintf(stderr, "[System] WriteReg32(0x%08x, 0x%08x) stub\n", addr, val);
+}
+
+/* IMP_System_PhysToVirt - translate physical address to virtual
+ * Stub: returns NULL */
+void *IMP_System_PhysToVirt(uint32_t phys_addr) {
+    (void)phys_addr;
+    return NULL;
+}
+
+/* IMP_System_VirtToPhys - translate virtual address to physical
+ * Stub: returns 0 */
+uint32_t IMP_System_VirtToPhys(void *virt_addr) {
+    (void)virt_addr;
+    return 0;
+}

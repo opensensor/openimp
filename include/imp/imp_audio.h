@@ -494,6 +494,47 @@ int IMP_ADEC_GetStream(int adChn, IMPAudioStream *stream, IMPBlock block);
  * @return 0 on success, negative on error
  */
 int IMP_ADEC_ReleaseStream(int adChn, IMPAudioStream *stream);
+int IMP_ADEC_ClearChnBuf(int adChn);
+int IMP_ADEC_PollingStream(int adChn, uint32_t timeoutMs);
+
+/* Additional AI functions (raptor-hal parity) */
+int IMP_AI_EnableAec(int aiDevId, int aiChn, int aoDevId, int aoChn);
+int IMP_AI_DisableAec(int aiDevId, int aiChn);
+int IMP_AI_SetVolMute(int audioDevId, int aiChn, int mute);
+int IMP_AI_GetAlcGain(int audioDevId, int aiChn, int *gain);
+int IMP_AI_SetHpfCoFreq(int freq);
+int IMP_AI_SetAgcMode(int mode);
+int IMP_AI_EnableAecRefFrame(int aiDevId, int aiChn, int aoDevId, int aoChn);
+int IMP_AI_DisableAecRefFrame(int aiDevId, int aiChn);
+int IMP_AI_GetFrameAndRef(int audioDevId, int aiChn, IMPAudioFrame *frame,
+                          IMPAudioFrame *ref, IMPBlock block);
+
+/* Audio Output (AO) functions */
+int IMP_AO_SetPubAttr(int audioDevId, IMPAudioIOAttr *attr);
+int IMP_AO_GetPubAttr(int audioDevId, IMPAudioIOAttr *attr);
+int IMP_AO_Enable(int audioDevId);
+int IMP_AO_Disable(int audioDevId);
+int IMP_AO_EnableChn(int audioDevId, int aoChn);
+int IMP_AO_DisableChn(int audioDevId, int aoChn);
+int IMP_AO_SendFrame(int audioDevId, int aoChn, IMPAudioFrame *frame, IMPBlock block);
+int IMP_AO_PauseChn(int audioDevId, int aoChn);
+int IMP_AO_ResumeChn(int audioDevId, int aoChn);
+int IMP_AO_ClearChnBuf(int audioDevId, int aoChn);
+int IMP_AO_FlushChnBuf(int audioDevId, int aoChn);
+int IMP_AO_SetVol(int audioDevId, int aoChn, int vol);
+int IMP_AO_GetVol(int audioDevId, int aoChn, int *vol);
+int IMP_AO_SetGain(int audioDevId, int aoChn, int gain);
+int IMP_AO_GetGain(int audioDevId, int aoChn, int *gain);
+int IMP_AO_SetVolMute(int audioDevId, int aoChn, int mute);
+int IMP_AO_SoftMute(int audioDevId, int aoChn);
+int IMP_AO_SoftUNMute(int audioDevId, int aoChn);
+int IMP_AO_CacheSwitch(int audioDevId, int aoChn, int enable);
+int IMP_AO_QueryChnStat(int audioDevId, int aoChn, void *stat);
+int IMP_AO_EnableHpf(int audioDevId, int aoChn);
+int IMP_AO_DisableHpf(int audioDevId, int aoChn);
+int IMP_AO_EnableAgc(int audioDevId, int aoChn);
+int IMP_AO_DisableAgc(int audioDevId, int aoChn);
+int IMP_AO_SetHpfCoFreq(int audioDevId, int aoChn, int freq);
 
 #ifdef __cplusplus
 }

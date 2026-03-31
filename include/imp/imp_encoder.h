@@ -562,6 +562,18 @@ int IMP_Encoder_SetMaxStreamCnt(int encChn, int cnt);
  */
 int IMP_Encoder_SetStreamBufSize(int encChn, int size);
 
+/* Additional encoder functions (raptor-hal parity) */
+int IMP_Encoder_GetStreamBufSize(int encChn, int *size);
+int IMP_Encoder_GetMaxStreamCnt(int encChn, int *cnt);
+int IMP_Encoder_SetChnFrmRate(int encChn, IMPEncoderFrmRate *in, IMPEncoderFrmRate *out);
+int IMP_Encoder_GetChnFrmRate(int encChn, IMPEncoderFrmRate *in, IMPEncoderFrmRate *out);
+int IMP_Encoder_SetChnRcAttr(int encChn, void *rcAttr);
+int IMP_Encoder_GetChnRcAttr(int encChn, void *rcAttr);
+int IMP_Encoder_GetChnGopAttr(int encChn, IMPEncoderGopAttr *gopAttr);
+int IMP_Encoder_SetChnGopAttr(int encChn, IMPEncoderGopAttr *gopAttr);
+int IMP_Encoder_SetPool(int encChn, int poolId);
+int IMP_Encoder_GetPool(int encChn);
+
 #ifdef __cplusplus
 }
 #endif

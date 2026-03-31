@@ -1197,6 +1197,87 @@ int IMP_Encoder_SetStreamBufSize(int encChn, int size) {
     return 0;
 }
 
+/* ========== Missing Encoder functions needed by raptor-hal ========== */
+
+int IMP_Encoder_GetStreamBufSize(int encChn, int *size) {
+    if (encChn < 0 || encChn >= MAX_ENC_CHANNELS || !size) return -1;
+    *size = g_EncChannel[encChn].stream_buf_size;
+    return 0;
+}
+
+int IMP_Encoder_GetMaxStreamCnt(int encChn, int *cnt) {
+    if (encChn < 0 || encChn >= MAX_ENC_CHANNELS || !cnt) return -1;
+    *cnt = 1; /* Default: 1 stream */
+    return 0;
+}
+
+int IMP_Encoder_SetChnFrmRate(int encChn, IMPEncoderFrmRate *in, IMPEncoderFrmRate *out) {
+    if (encChn < 0 || encChn >= MAX_ENC_CHANNELS) return -1;
+    EncChannel *chn = &g_EncChannel[encChn];
+    if (in) {
+        chn->attr.rcAttr.outFrmRate.frmRateNum = in->frmRateNum;
+        chn->attr.rcAttr.outFrmRate.frmRateDen = in->frmRateDen;
+    }
+    if (out) {
+        chn->attr.rcAttr.outFrmRate.frmRateNum = out->frmRateNum;
+        chn->attr.rcAttr.outFrmRate.frmRateDen = out->frmRateDen;
+    }
+    LOG_ENC("SetChnFrmRate: chn=%d", encChn);
+    return 0;
+}
+
+int IMP_Encoder_GetChnFrmRate(int encChn, IMPEncoderFrmRate *in, IMPEncoderFrmRate *out) {
+    if (encChn < 0 || encChn >= MAX_ENC_CHANNELS) return -1;
+    EncChannel *chn = &g_EncChannel[encChn];
+    if (in) {
+        in->frmRateNum = chn->attr.rcAttr.outFrmRate.frmRateNum;
+        in->frmRateDen = chn->attr.rcAttr.outFrmRate.frmRateDen;
+    }
+    if (out) {
+        out->frmRateNum = chn->attr.rcAttr.outFrmRate.frmRateNum;
+        out->frmRateDen = chn->attr.rcAttr.outFrmRate.frmRateDen;
+    }
+    return 0;
+}
+
+int IMP_Encoder_SetChnRcAttr(int encChn, void *rcAttr) {
+    if (encChn < 0 || encChn >= MAX_ENC_CHANNELS || !rcAttr) return -1;
+    memcpy(&g_EncChannel[encChn].attr.rcAttr, rcAttr, sizeof(IMPEncoderRcAttr));
+    LOG_ENC("SetChnRcAttr: chn=%d", encChn);
+    return 0;
+}
+
+int IMP_Encoder_GetChnRcAttr(int encChn, void *rcAttr) {
+    if (encChn < 0 || encChn >= MAX_ENC_CHANNELS || !rcAttr) return -1;
+    memcpy(rcAttr, &g_EncChannel[encChn].attr.rcAttr, sizeof(IMPEncoderRcAttr));
+    return 0;
+}
+
+int IMP_Encoder_GetChnGopAttr(int encChn, IMPEncoderGopAttr *gopAttr) {
+    if (encChn < 0 || encChn >= MAX_ENC_CHANNELS || !gopAttr) return -1;
+    memcpy(gopAttr, &g_EncChannel[encChn].attr.rcAttr.attrGop, sizeof(IMPEncoderGopAttr));
+    return 0;
+}
+
+int IMP_Encoder_SetChnGopAttr(int encChn, IMPEncoderGopAttr *gopAttr) {
+    if (encChn < 0 || encChn >= MAX_ENC_CHANNELS || !gopAttr) return -1;
+    memcpy(&g_EncChannel[encChn].attr.rcAttr.attrGop, gopAttr, sizeof(IMPEncoderGopAttr));
+    LOG_ENC("SetChnGopAttr: chn=%d, gopLen=%u", encChn, gopAttr->gopLength);
+    return 0;
+}
+
+int IMP_Encoder_SetPool(int encChn, int poolId) {
+    if (encChn < 0 || encChn >= MAX_ENC_CHANNELS) return -1;
+    (void)poolId;
+    LOG_ENC("SetPool: chn=%d, pool=%d stub", encChn, poolId);
+    return 0;
+}
+
+int IMP_Encoder_GetPool(int encChn) {
+    if (encChn < 0 || encChn >= MAX_ENC_CHANNELS) return -1;
+    return 0; /* Default pool */
+}
+
 /* ========== Helper Functions ========== */
 
 /* channel_encoder_init - based on decompilation at 0x8098c */

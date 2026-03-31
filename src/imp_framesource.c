@@ -1036,3 +1036,76 @@ int IMP_FrameSource_ReleaseFrame(int chnNum, void *frame) {
     return 0;
 }
 
+/* ========== Missing FrameSource functions needed by raptor-hal ========== */
+
+int IMP_FrameSource_GetFrameDepth(int chnNum, int *depth) {
+    if (chnNum < 0 || chnNum >= MAX_FS_CHANNELS || !depth) return -1;
+    *depth = 0;
+    LOG_FS("GetFrameDepth(chn=%d) stub => 0", chnNum);
+    return 0;
+}
+
+int IMP_FrameSource_SetDelay(int chnNum, int delay_ms) {
+    if (chnNum < 0 || chnNum >= MAX_FS_CHANNELS) return -1;
+    (void)delay_ms;
+    LOG_FS("SetDelay(chn=%d, delay=%d) stub", chnNum, delay_ms);
+    return 0;
+}
+
+int IMP_FrameSource_GetDelay(int chnNum, int *delay_ms) {
+    if (chnNum < 0 || chnNum >= MAX_FS_CHANNELS || !delay_ms) return -1;
+    *delay_ms = 0;
+    return 0;
+}
+
+int IMP_FrameSource_SetMaxDelay(int chnNum, int max_delay_ms) {
+    if (chnNum < 0 || chnNum >= MAX_FS_CHANNELS) return -1;
+    (void)max_delay_ms;
+    LOG_FS("SetMaxDelay(chn=%d, max=%d) stub", chnNum, max_delay_ms);
+    return 0;
+}
+
+int IMP_FrameSource_GetMaxDelay(int chnNum, int *max_delay_ms) {
+    if (chnNum < 0 || chnNum >= MAX_FS_CHANNELS || !max_delay_ms) return -1;
+    *max_delay_ms = 0;
+    return 0;
+}
+
+int IMP_FrameSource_SetPool(int chnNum, int poolId) {
+    if (chnNum < 0 || chnNum >= MAX_FS_CHANNELS) return -1;
+    (void)poolId;
+    LOG_FS("SetPool(chn=%d, pool=%d) stub", chnNum, poolId);
+    return 0;
+}
+
+int IMP_FrameSource_ChnStatQuery(int chnNum, void *stat) {
+    if (chnNum < 0 || chnNum >= MAX_FS_CHANNELS || !stat) return -1;
+    memset(stat, 0, 64); /* Zero out stat struct */
+    return 0;
+}
+
+int IMP_FrameSource_EnableChnUndistort(int chnNum) {
+    if (chnNum < 0 || chnNum >= MAX_FS_CHANNELS) return -1;
+    LOG_FS("EnableChnUndistort(chn=%d) stub", chnNum);
+    return 0;
+}
+
+int IMP_FrameSource_DisableChnUndistort(int chnNum) {
+    if (chnNum < 0 || chnNum >= MAX_FS_CHANNELS) return -1;
+    LOG_FS("DisableChnUndistort(chn=%d) stub", chnNum);
+    return 0;
+}
+
+int IMP_FrameSource_GetTimedFrame(int chnNum, void *framets, int block,
+                                   void *framedata, void *frame) {
+    (void)chnNum; (void)framets; (void)block; (void)framedata; (void)frame;
+    LOG_FS("GetTimedFrame(chn=%d) stub", chnNum);
+    return -1; /* Not supported */
+}
+
+int IMP_FrameSource_SetFrameOffset(int chnNum, int offset) {
+    if (chnNum < 0 || chnNum >= MAX_FS_CHANNELS) return -1;
+    (void)offset;
+    LOG_FS("SetFrameOffset(chn=%d, offset=%d) stub", chnNum, offset);
+    return 0;
+}

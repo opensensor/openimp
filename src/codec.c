@@ -1097,16 +1097,9 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
                         }
                         pthread_mutex_unlock(&g_avpu_owner_mutex);
 
-                        /* Initialize FIFOs (OEM parity: Fifo_Init at 0x7af28)
-                         * OEM uses FIFOs at encoder+0x7f8 (streams) and encoder+0x81c (metadata)
-                         */
-                        if (!fifo_init(enc->avpu.fifo_streams, 16)) {
-                            LOG_CODEC("AVPU: failed to init stream FIFO");
-                        }
-                        if (!fifo_init(enc->avpu.fifo_metadata, 16)) {
-                            LOG_CODEC("AVPU: failed to init metadata FIFO");
-                        }
-                        LOG_CODEC("AVPU: initialized FIFOs (streams + metadata)");
+                        /* FIFOs already initialized at AL_CodecEncode create time
+                         * (enc->fifo_frames, enc->fifo_streams at lines 767-778).
+                         * OEM uses FIFOs at encoder+0x7f8 (streams) and encoder+0x81c (metadata). */
 
                         /* Initialize IRQ callback system (OEM parity: WaitInterruptThread at 0x35e28) */
                         memset(enc->avpu.irq_callbacks, 0, sizeof(enc->avpu.irq_callbacks));

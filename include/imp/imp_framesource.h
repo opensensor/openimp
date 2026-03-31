@@ -162,6 +162,20 @@ int IMP_FrameSource_SnapFrame(int chnNum, IMPPixelFormat fmt, int width, int hei
  */
 int IMP_FrameSource_SetChnRotate(int chnNum, int rotation, int height, int width);
 
+/* Additional framesource functions (raptor-hal parity) */
+int IMP_FrameSource_GetFrameDepth(int chnNum, int *depth);
+int IMP_FrameSource_SetDelay(int chnNum, int delay_ms);
+int IMP_FrameSource_GetDelay(int chnNum, int *delay_ms);
+int IMP_FrameSource_SetMaxDelay(int chnNum, int max_delay_ms);
+int IMP_FrameSource_GetMaxDelay(int chnNum, int *max_delay_ms);
+int IMP_FrameSource_SetPool(int chnNum, int poolId);
+int IMP_FrameSource_ChnStatQuery(int chnNum, void *stat);
+int IMP_FrameSource_EnableChnUndistort(int chnNum);
+int IMP_FrameSource_DisableChnUndistort(int chnNum);
+int IMP_FrameSource_GetTimedFrame(int chnNum, void *framets, int block,
+                                   void *framedata, void *frame);
+int IMP_FrameSource_SetFrameOffset(int chnNum, int offset);
+
 #ifdef __cplusplus
 }
 #endif

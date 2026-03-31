@@ -689,3 +689,16 @@ int IMP_OSD_Stop(int grpNum) {
     return 0;
 }
 
+
+/* ========== Missing OSD functions needed by raptor-hal ========== */
+
+int IMP_OSD_SetRgnAttrWithTimestamp(int handle, IMPOSDRgnAttr *attr, uint64_t timestamp) {
+    (void)timestamp;
+    if (!attr) return -1;
+    return IMP_OSD_SetRgnAttr(handle, attr);
+}
+
+int IMP_OSD_AttachToGroup(int handle, int grpNum) {
+    /* Same as RegisterRgn */
+    return IMP_OSD_RegisterRgn(handle, grpNum, NULL);
+}

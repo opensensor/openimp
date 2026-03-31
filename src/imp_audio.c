@@ -632,3 +632,196 @@ int IMP_ADEC_ReleaseStream(int adChn, IMPAudioStream *stream) {
     return 0;
 }
 
+int IMP_ADEC_ClearChnBuf(int adChn) {
+    (void)adChn;
+    return 0;
+}
+
+int IMP_ADEC_PollingStream(int adChn, uint32_t timeoutMs) {
+    (void)adChn; (void)timeoutMs;
+    return -1; /* No stream available */
+}
+
+/* ========== Missing AI functions needed by raptor-hal ========== */
+
+int IMP_AI_EnableAec(int aiDevId, int aiChn, int aoDevId, int aoChn) {
+    (void)aiDevId; (void)aiChn; (void)aoDevId; (void)aoChn;
+    LOG_AUD("EnableAec stub");
+    return 0;
+}
+
+int IMP_AI_DisableAec(int aiDevId, int aiChn) {
+    (void)aiDevId; (void)aiChn;
+    LOG_AUD("DisableAec stub");
+    return 0;
+}
+
+int IMP_AI_SetVolMute(int audioDevId, int aiChn, int mute) {
+    (void)audioDevId; (void)aiChn; (void)mute;
+    return 0;
+}
+
+int IMP_AI_GetAlcGain(int audioDevId, int aiChn, int *gain) {
+    (void)audioDevId; (void)aiChn;
+    if (gain) *gain = 0;
+    return 0;
+}
+
+int IMP_AI_SetHpfCoFreq(int freq) {
+    (void)freq;
+    return 0;
+}
+
+int IMP_AI_SetAgcMode(int mode) {
+    (void)mode;
+    return 0;
+}
+
+int IMP_AI_EnableAecRefFrame(int aiDevId, int aiChn, int aoDevId, int aoChn) {
+    (void)aiDevId; (void)aiChn; (void)aoDevId; (void)aoChn;
+    return 0;
+}
+
+int IMP_AI_DisableAecRefFrame(int aiDevId, int aiChn) {
+    (void)aiDevId; (void)aiChn;
+    return 0;
+}
+
+int IMP_AI_GetFrameAndRef(int audioDevId, int aiChn, IMPAudioFrame *frame,
+                          IMPAudioFrame *ref, IMPBlock block) {
+    (void)audioDevId; (void)aiChn; (void)frame; (void)ref; (void)block;
+    return -1; /* Not supported */
+}
+
+/* ========== IMP_AO (Audio Output) functions needed by raptor-hal ========== */
+
+int IMP_AO_SetPubAttr(int audioDevId, IMPAudioIOAttr *attr) {
+    (void)audioDevId; (void)attr;
+    LOG_AUD("AO_SetPubAttr stub");
+    return 0;
+}
+
+int IMP_AO_GetPubAttr(int audioDevId, IMPAudioIOAttr *attr) {
+    (void)audioDevId;
+    if (attr) memset(attr, 0, sizeof(*attr));
+    return 0;
+}
+
+int IMP_AO_Enable(int audioDevId) {
+    (void)audioDevId;
+    LOG_AUD("AO_Enable stub");
+    return 0;
+}
+
+int IMP_AO_Disable(int audioDevId) {
+    (void)audioDevId;
+    return 0;
+}
+
+int IMP_AO_EnableChn(int audioDevId, int aoChn) {
+    (void)audioDevId; (void)aoChn;
+    return 0;
+}
+
+int IMP_AO_DisableChn(int audioDevId, int aoChn) {
+    (void)audioDevId; (void)aoChn;
+    return 0;
+}
+
+int IMP_AO_SendFrame(int audioDevId, int aoChn, IMPAudioFrame *frame, IMPBlock block) {
+    (void)audioDevId; (void)aoChn; (void)frame; (void)block;
+    return 0;
+}
+
+int IMP_AO_PauseChn(int audioDevId, int aoChn) {
+    (void)audioDevId; (void)aoChn;
+    return 0;
+}
+
+int IMP_AO_ResumeChn(int audioDevId, int aoChn) {
+    (void)audioDevId; (void)aoChn;
+    return 0;
+}
+
+int IMP_AO_ClearChnBuf(int audioDevId, int aoChn) {
+    (void)audioDevId; (void)aoChn;
+    return 0;
+}
+
+int IMP_AO_FlushChnBuf(int audioDevId, int aoChn) {
+    (void)audioDevId; (void)aoChn;
+    return 0;
+}
+
+int IMP_AO_SetVol(int audioDevId, int aoChn, int vol) {
+    (void)audioDevId; (void)aoChn; (void)vol;
+    return 0;
+}
+
+int IMP_AO_GetVol(int audioDevId, int aoChn, int *vol) {
+    (void)audioDevId; (void)aoChn;
+    if (vol) *vol = 0;
+    return 0;
+}
+
+int IMP_AO_SetGain(int audioDevId, int aoChn, int gain) {
+    (void)audioDevId; (void)aoChn; (void)gain;
+    return 0;
+}
+
+int IMP_AO_GetGain(int audioDevId, int aoChn, int *gain) {
+    (void)audioDevId; (void)aoChn;
+    if (gain) *gain = 0;
+    return 0;
+}
+
+int IMP_AO_SetVolMute(int audioDevId, int aoChn, int mute) {
+    (void)audioDevId; (void)aoChn; (void)mute;
+    return 0;
+}
+
+int IMP_AO_SoftMute(int audioDevId, int aoChn) {
+    (void)audioDevId; (void)aoChn;
+    return 0;
+}
+
+int IMP_AO_SoftUNMute(int audioDevId, int aoChn) {
+    (void)audioDevId; (void)aoChn;
+    return 0;
+}
+
+int IMP_AO_CacheSwitch(int audioDevId, int aoChn, int enable) {
+    (void)audioDevId; (void)aoChn; (void)enable;
+    return 0;
+}
+
+int IMP_AO_QueryChnStat(int audioDevId, int aoChn, void *stat) {
+    (void)audioDevId; (void)aoChn;
+    if (stat) memset(stat, 0, 32);
+    return 0;
+}
+
+int IMP_AO_EnableHpf(int audioDevId, int aoChn) {
+    (void)audioDevId; (void)aoChn;
+    return 0;
+}
+
+int IMP_AO_DisableHpf(int audioDevId, int aoChn) {
+    (void)audioDevId; (void)aoChn;
+    return 0;
+}
+
+int IMP_AO_EnableAgc(int audioDevId, int aoChn) {
+    (void)audioDevId; (void)aoChn;
+    return 0;
+}
+
+int IMP_AO_DisableAgc(int audioDevId, int aoChn) {
+    (void)audioDevId; (void)aoChn;
+    return 0;
+}
+
+int IMP_AO_SetHpfCoFreq(int audioDevId, int aoChn, int freq) {
+    (void)audioDevId; (void)aoChn; (void)freq;
+    return 0;
+}
