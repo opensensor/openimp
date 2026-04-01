@@ -1337,6 +1337,11 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
         if (!ctx->session_ready) {
             LOG_CODEC("AVPU: AL_EncCore_Init (OEM-exact sequence)");
 
+            /* Step 0: MISC_CTRL — OEM writes 0x1000 during scheduler init.
+             * This enables the AVPU's AXI/DMA master. Without it, the hardware
+             * receives CL_PUSH but cannot read the command list from RAM. */
+            avpu_write_reg(fd, AVPU_REG_MISC_CTRL, 0x00001000);
+
             /* Step 1: ResetCore — rapid back-to-back writes, NO sleeps */
             LOG_CODEC("AVPU: ResetCore (1,2,4) to reg 0x%x", AVPU_REG_CORE_RESET(0));
             avpu_write_reg(fd, AVPU_REG_CORE_RESET(0), 0x00000001);
