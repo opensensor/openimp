@@ -313,6 +313,7 @@ static void encoder_init(void) {
     for (int i = 0; i < MAX_ENC_CHANNELS; i++) {
         memset(&g_EncChannel[i], 0, ENC_CHANNEL_SIZE);
         g_EncChannel[i].chn_id = -1;
+        g_EncChannel[i].entropy_mode = -1;
 
         /* Register module with system for each channel */
         void *module = IMP_System_GetModule(DEV_ID_ENC, i);
@@ -655,6 +656,7 @@ int IMP_Encoder_DestroyChn(int encChn) {
     /* Clear the channel */
     memset(&g_EncChannel[encChn], 0, ENC_CHANNEL_SIZE);
     g_EncChannel[encChn].chn_id = -1;
+    g_EncChannel[encChn].entropy_mode = -1;
 
     pthread_mutex_unlock(&encoder_mutex);
 
@@ -1373,12 +1375,24 @@ static int channel_encoder_init(EncChannel *chn) {
     *(uint32_t*)(codec_params + 0x80) = fps_den;     /* FPS denominator at offset 0x80 */
     *(uint32_t*)(codec_params + 0xb0) = gop;         /* GOP length at offset 0xb0 */
 
+    if (channel_encoder_set_rc_param(codec_params, &chn->attr.rcAttr) < 0) {
+        LOG_ENC("channel_encoder_init: failed to map RC params");
+        return -1;
+    }
+
     LOG_ENC("channel_encoder_init: %dx%d, profile=0x%x->0x%x, fps=%d/%d, gop=%d, bitrate=%d",
             width, height, profile_enum, profile_idc, fps_num, fps_den, gop, bitrate);
 
     /* Create codec instance */
     if (AL_Codec_Encode_Create(&chn->codec, codec_params) < 0 || chn->codec == NULL) {
         LOG_ENC("channel_encoder_init: AL_Codec_Encode_Create failed");
+        return -1;
+    }
+
+    if (chn->entropy_mode >= 0 && AL_Codec_Encode_SetEntropyMode(chn->codec, chn->entropy_mode) < 0) {
+        LOG_ENC("channel_encoder_init: failed to set entropy mode");
+        AL_Codec_Encode_Destroy(chn->codec);
+        chn->codec = NULL;
         return -1;
     }
 

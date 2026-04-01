@@ -84,6 +84,14 @@ int AL_Codec_Encode_ReleaseStream(void *codec, void *stream, void *user_data);
  */
 int AL_Codec_Encode_SetQp(void *codec, void *qp);
 
+/**
+ * Set entropy mode for encoder
+ * @param codec Codec instance
+ * @param mode 0=CAVLC, 1=CABAC
+ * @return 0 on success, -1 on failure
+ */
+int AL_Codec_Encode_SetEntropyMode(void *codec, int mode);
+
 #ifdef __cplusplus
 }
 #endif

@@ -142,11 +142,12 @@ int main(void) {
     printf("  IMP_OSD_CreateGroup: %s\n", ret == 0 ? "OK" : "FAIL");
     
     IMPOSDRgnAttr osd_attr;
+    IMPRgnHandle osd_rgn;
     memset(&osd_attr, 0, sizeof(osd_attr));
     osd_attr.type = OSD_REG_BITMAP;
     
-    ret = IMP_OSD_CreateRgn(0, &osd_attr);
-    printf("  IMP_OSD_CreateRgn: %s\n", ret == 0 ? "OK" : "FAIL");
+    osd_rgn = IMP_OSD_CreateRgn(&osd_attr);
+    printf("  IMP_OSD_CreateRgn: %s\n", osd_rgn >= 0 ? "OK" : "FAIL");
     
     /* Test IVS Module */
     printf("\nTesting IMP_IVS...\n");
@@ -156,6 +157,11 @@ int main(void) {
     
     /* Cleanup */
     printf("\nCleaning up...\n");
+
+    if (osd_rgn >= 0) {
+        ret = IMP_OSD_DestroyRgn(osd_rgn);
+        printf("  IMP_OSD_DestroyRgn: %s\n", ret == 0 ? "OK" : "FAIL");
+    }
     
     ret = IMP_System_Exit();
     printf("  IMP_System_Exit: %s\n", ret == 0 ? "OK" : "FAIL");

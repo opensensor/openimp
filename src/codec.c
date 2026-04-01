@@ -31,6 +31,11 @@ static inline int avpu_sys_ioctl(int fd, unsigned long cmd, void *arg)
     return (int)syscall(SYS_ioctl, fd, cmd, arg);
 }
 
+static inline uint32_t clamp_qp_u32(uint32_t qp)
+{
+    return qp > 51u ? 51u : qp;
+}
+
 
 /* AVPU ioctl definitions (OEM parity - direct driver access) */
 #ifndef AVPU_IOC_MAGIC
@@ -248,8 +253,15 @@ static void fill_cmd_regs_enc1(const ALAvpuContext* ctx, uint32_t* cmd, uint32_t
     /* Initialize entire command buffer to zero first (512 bytes = 128 uint32_t) */
     memset(cmd, 0, 512);
 
-    /* cmd[0]: base flags and formats */
-    uint32_t c0 = 0x11 | (1u << 8) | (1u << 31); /* 4:2:0, Baseline, entry valid */
+    /* cmd[0]: OEM-critical base flags.
+     * - bits[7:0]   : 0x11 base flags
+     * - bits[9:8]   : ((codec - 2) & 3), AVC => 0
+     * - bits[11:10] : profile-like mode; map baseline/main/high as 0/1/2
+     * - bits[26:24] : log2_lcu_size_minus4, AVC 16x16 => 0
+     * - bit[31]     : valid/enable
+     */
+    uint32_t c0 = 0x11u | (1u << 31);
+    c0 |= ((uint32_t)ctx->profile & 0x3u) << 10;
     cmd[0] = c0;
 
     /* cmd[1]: picture dimensions: ((h-1)<<12 | (w-1)) */
@@ -257,8 +269,10 @@ static void fill_cmd_regs_enc1(const ALAvpuContext* ctx, uint32_t* cmd, uint32_t
         cmd[1] = (((ctx->enc_h - 1) & 0x7FF) << 12) | ((ctx->enc_w - 1) & 0x7FF);
     }
 
-    /* cmd[2]: set fixed 0x2000 bit per OEM */
-    cmd[2] = 0x2000u;
+    /* cmd[2]: fixed OEM bit plus discovered entropy bit.
+     * Low 3 bits appear slice-type-like; use I on the first frame, P after. */
+    cmd[2] = 0x2000u | ((ctx->entropy_mode & 1u) << 10);
+    cmd[2] |= (ctx->cl_idx == 0) ? 2u : 0u;
 
     /* cmd[3]: NAL/slice flags: IDR for first frame, else non-IDR */
     uint32_t nalu = (ctx->cl_idx == 0) ? 5u : 1u;
@@ -287,34 +301,27 @@ static void fill_cmd_regs_enc1(const ALAvpuContext* ctx, uint32_t* cmd, uint32_t
     if (ctx->enc_w && ctx->enc_h) {
         uint32_t y_plane_sz = ctx->enc_w * ctx->enc_h;
 
-        /* ---- OEM SliceParamToCmdRegsEnc1 mapping (lines 73425-73432 in HLIL) ----
-         *
-         * cmd[0x0a] = stride (lower 16 bits from SliceParam+0x74)
-         * cmd[0x0b] = stride/config
-         * cmd[0x0c] = SliceParam+0x84 = source UV phys addr
-         * cmd[0x0d] = SliceParam+0x88 = rec Y phys addr (or second source plane)
-         * cmd[0x0e] = SliceParam+0x90 = rec Y phys addr
-         * cmd[0x0f] = SliceParam+0x98 = rec UV / ref config
-         * cmd[0x10] = SliceParam+0xa0 = ref Y phys addr
-         * cmd[0x11] = SliceParam+0xa4 = ref UV phys addr
-         *
-         * OEM cmd[0x64-0x69,0x6f] come from RecBuffer context (arg3).
+        /* ---- OEM SliceParamToCmdRegsEnc1 address window ----
+         * HLIL confirms cmd[0x0c..0x11] are copied from SliceParam+0x84..0xa4.
+         * Our reverse-engineering points to rec/ref DMA descriptors living in
+         * these slots; keep source addresses in the middle pair so all six words
+         * stay non-zero and plausible for the current AVC/NV12 path.
          */
 
         /* cmd[0x0a..0x0b]: source strides (OEM: SliceParam+0x74) */
         cmd[0x0a] = ctx->enc_w;                  /* Source Y stride (lower 16 bits) */
         cmd[0x0b] = ctx->enc_w;                  /* Source UV stride */
 
-        /* cmd[0x0c..0x0d]: source frame physical addresses */
-        if (src_phys) {
-            cmd[0x0c] = src_phys;                    /* Source Y phys addr */
-            cmd[0x0d] = src_phys + y_plane_sz;       /* Source UV phys addr (NV12) */
+        /* cmd[0x0c..0x0d]: reconstruction buffer */
+        if (ctx->rec_buf.phy_addr) {
+            cmd[0x0c] = ctx->rec_buf.phy_addr;                /* Rec Y */
+            cmd[0x0d] = ctx->rec_buf.phy_addr + y_plane_sz;   /* Rec UV */
         }
 
-        /* cmd[0x0e..0x0f]: reconstruction buffer */
-        if (ctx->rec_buf.phy_addr) {
-            cmd[0x0e] = ctx->rec_buf.phy_addr;                /* Rec Y */
-            cmd[0x0f] = ctx->rec_buf.phy_addr + y_plane_sz;   /* Rec UV */
+        /* cmd[0x0e..0x0f]: source frame physical addresses */
+        if (src_phys) {
+            cmd[0x0e] = src_phys;                    /* Source Y phys addr */
+            cmd[0x0f] = src_phys + y_plane_sz;       /* Source UV phys addr (NV12) */
         }
 
         /* cmd[0x10..0x11]: reference frame buffer */
@@ -327,8 +334,9 @@ static void fill_cmd_regs_enc1(const ALAvpuContext* ctx, uint32_t* cmd, uint32_t
          * OEM fills this from (src_stride >> 6 - 1) and (uv_stride >> 3 - 1) */
         uint32_t stride_y = ctx->enc_w;
         uint32_t stride_uv = ctx->enc_w;
-        cmd[0x12] = (((stride_y >> 6) - 1) & 0x3FF)
-                  | ((((stride_uv >> 3) - 1) & 0x3FF) << 12);
+        uint32_t stride_y_64 = stride_y >= 64 ? ((stride_y >> 6) - 1) : 0;
+        uint32_t stride_uv_8 = stride_uv >= 8 ? ((stride_uv >> 3) - 1) : 0;
+        cmd[0x12] = (stride_y_64 & 0x3FF) | ((stride_uv_8 & 0x3FF) << 12);
 
         /* ---- RecBuffer context addresses (OEM: arg3 offsets) ---- */
         if (ctx->rec_buf.phy_addr && ctx->ref_buf.phy_addr) {
@@ -669,6 +677,7 @@ typedef struct {
     int hw_encoder_fd;              /* Hardware encoder file descriptor */
     HWEncoderParams hw_params;      /* Hardware encoder parameters */
     int use_hardware;               /* Flag: 1=hardware, 0=software */
+    uint32_t entropy_mode;          /* 0=CAVLC, 1=CABAC */
     ALAvpuContext avpu;            /* Vendor-like AL over /dev/avpu (scaffolding) */
 } AL_CodecEncode;
 
@@ -848,6 +857,10 @@ int AL_Codec_Encode_Create(void **codec, void *params) {
     /* Initialize from parameters */
     enc->g_pCodec = g_pCodec;
     memcpy(enc->codec_param, params, 0x794);
+    {
+        uint32_t profile_idc = *(uint32_t*)(enc->codec_param + 0x24);
+        enc->entropy_mode = (profile_idc == IMP_ENC_AVC_PROFILE_IDC_BASELINE) ? 0u : 1u;
+    }
 
     /* OEM-like callback placeholders and event */
     enc->callback = NULL;
@@ -1079,8 +1092,13 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
             uint32_t bitrate = *(uint32_t*)(enc->codec_param + 0x30);
             uint32_t fps_num = *(uint32_t*)(enc->codec_param + 0x7c);
             uint32_t fps_den = *(uint32_t*)(enc->codec_param + 0x80);
-            uint32_t gop = *(uint32_t*)(enc->codec_param + 0xb0);
+            uint32_t gop = *(uint32_t*)(enc->codec_param + 0x44);
             uint32_t profile_idc = *(uint32_t*)(enc->codec_param + 0x24);
+            uint32_t rc_mode = *(uint32_t*)(enc->codec_param + 0x2c);
+            uint32_t init_qp = (*(uint32_t*)(enc->codec_param + 0x38)) & 0xFFu;
+            uint32_t max_qp = *(uint32_t*)(enc->codec_param + 0x3c);
+            uint32_t min_qp = *(uint32_t*)(enc->codec_param + 0x40);
+            if (!gop) gop = *(uint32_t*)(enc->codec_param + 0xb0);
 
             memset(&enc->hw_params, 0, sizeof(enc->hw_params));
             enc->hw_params.codec_type = HW_CODEC_H264; /* prudynt-t default */
@@ -1089,8 +1107,29 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
             enc->hw_params.fps_num = fps_num ? fps_num : 25;
             enc->hw_params.fps_den = fps_den ? fps_den : 1;
             enc->hw_params.gop_length = gop ? gop : 25;
-            enc->hw_params.rc_mode = HW_RC_MODE_CBR;
+            switch (rc_mode) {
+                case 0: enc->hw_params.rc_mode = HW_RC_MODE_FIXQP; break;
+                case 2: enc->hw_params.rc_mode = HW_RC_MODE_VBR; break;
+                case 1:
+                default:
+                    enc->hw_params.rc_mode = HW_RC_MODE_CBR;
+                    break;
+            }
             enc->hw_params.bitrate = bitrate ? bitrate : 2*1000*1000;
+            enc->hw_params.max_qp = clamp_qp_u32(max_qp);
+            enc->hw_params.min_qp = clamp_qp_u32(min_qp);
+            if (enc->hw_params.min_qp > enc->hw_params.max_qp) {
+                uint32_t tmp = enc->hw_params.min_qp;
+                enc->hw_params.min_qp = enc->hw_params.max_qp;
+                enc->hw_params.max_qp = tmp;
+            }
+            if (init_qp <= 51u) {
+                enc->hw_params.qp = init_qp;
+            } else if (enc->hw_params.min_qp <= 51u && enc->hw_params.max_qp <= 51u) {
+                enc->hw_params.qp = (enc->hw_params.min_qp + enc->hw_params.max_qp) / 2u;
+            } else {
+                enc->hw_params.qp = 26u;
+            }
             /* Map profile_idc to HW profile */
             switch (profile_idc) {
                 case 66: enc->hw_params.profile = HW_PROFILE_BASELINE; break; /* Baseline */
@@ -1139,7 +1178,8 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
                         enc->avpu.fps_den = enc->hw_params.fps_den;
                         enc->avpu.profile = enc->hw_params.profile;
                         enc->avpu.rc_mode = enc->hw_params.rc_mode;
-                        enc->avpu.qp = 26; /* default QP */
+                        enc->avpu.qp = enc->hw_params.qp;
+                        enc->avpu.entropy_mode = enc->entropy_mode;
                         enc->avpu.gop_length = enc->hw_params.gop_length;
 
                         /* Allocate stream buffers via IMP_Alloc (OEM parity) */
@@ -1606,9 +1646,30 @@ int AL_Codec_Encode_SetQp(void *codec, void *qp) {
 
     AL_CodecEncode *enc = (AL_CodecEncode*)codec;
 
-    /* In a real implementation, this would configure the encoder's QP settings */
-    /* For now, just log and return success */
-    LOG_CODEC("SetQp: codec=%p, qp=%p", codec, qp);
+    IMPEncoderQp *imp_qp = (IMPEncoderQp*)qp;
+    uint32_t new_qp = imp_qp->qp_p ? imp_qp->qp_p : imp_qp->qp_i;
+    new_qp = clamp_qp_u32(new_qp);
+
+    enc->hw_params.qp = new_qp;
+    enc->avpu.qp = new_qp;
+
+    LOG_CODEC("SetQp: codec=%p, qp_i=%u qp_p=%u -> active_qp=%u",
+              codec, imp_qp->qp_i, imp_qp->qp_p, new_qp);
+
+    return 0;
+}
+
+int AL_Codec_Encode_SetEntropyMode(void *codec, int mode) {
+    if (codec == NULL) {
+        LOG_CODEC("SetEntropyMode: NULL codec");
+        return -1;
+    }
+
+    AL_CodecEncode *enc = (AL_CodecEncode*)codec;
+    enc->entropy_mode = mode ? 1u : 0u;
+    enc->avpu.entropy_mode = enc->entropy_mode;
+
+    LOG_CODEC("SetEntropyMode: codec=%p, mode=%u", codec, enc->entropy_mode);
 
     return 0;
 }
