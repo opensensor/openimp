@@ -1907,6 +1907,8 @@ static int encoder_update(void *module, void *frame) {
 
     int frame_processed = 0;
     int frame_held = 0;
+    int frame_released = 0;
+    int tried_specific_channel = 0;
 
     /* Determine destination encoder channel directly from module->group_id (offset 0x130) */
     int dst_chn = -1;
@@ -1919,6 +1921,7 @@ static int encoder_update(void *module, void *frame) {
 
     /* Queue to the specific channel if valid; otherwise fall back to search */
     if (dst_chn >= 0) {
+        tried_specific_channel = 1;
         EncChannel *chn = &g_EncChannel[dst_chn];
         if (chn->chn_id >= 0 && chn->recv_pic_started && chn->codec != NULL) {
             void *queued_frame = NULL;
@@ -1936,17 +1939,19 @@ static int encoder_update(void *module, void *frame) {
                 } else {
                     uint32_t vaddr = 0;
                     memcpy(&vaddr, (uint8_t*)queued_frame + 0x1c, sizeof(vaddr));
-                    VBMUnlockFrameByVaddr(vaddr);
+                    if (VBMUnlockFrameByVaddr(vaddr) == 0) {
+                        frame_released = 1;
+                    }
                     encoder_release_frame_slot(chn, queued_frame);
                 }
             }
         }
         if (!frame_processed) {
-            LOG_ENC("encoder_update: Failed to queue via group_id=%d, falling back to scan", dst_chn);
+            LOG_ENC("encoder_update: Failed to queue via group_id=%d; not falling back to unrelated channels", dst_chn);
         }
     }
 
-    if (!frame_processed) {
+    if (!frame_processed && !tried_specific_channel) {
         for (int i = 0; i < MAX_ENC_CHANNELS; i++) {
             EncChannel *chn = &g_EncChannel[i];
             if (chn->chn_id >= 0 && chn->recv_pic_started && chn->codec != NULL) {
@@ -1966,7 +1971,9 @@ static int encoder_update(void *module, void *frame) {
                     } else {
                         uint32_t vaddr = 0;
                         memcpy(&vaddr, (uint8_t*)queued_frame + 0x1c, sizeof(vaddr));
-                        VBMUnlockFrameByVaddr(vaddr);
+                        if (VBMUnlockFrameByVaddr(vaddr) == 0) {
+                            frame_released = 1;
+                        }
                         encoder_release_frame_slot(chn, queued_frame);
                     }
                 }
@@ -1974,7 +1981,7 @@ static int encoder_update(void *module, void *frame) {
         }
     }
 
-    if (!frame_held) {
+    if (!frame_held && !frame_released) {
         extern int IMP_FrameSource_ReleaseFrame(int chnNum, void *frame);
         int src_chn = -1;
         if (VBMFrame_GetChannel(frame, &src_chn) == 0 && src_chn >= 0) {
@@ -1986,6 +1993,8 @@ static int encoder_update(void *module, void *frame) {
         } else {
             LOG_ENC("encoder_update: WARNING - could not determine source channel for frame %p", frame);
         }
+    } else if (frame_released) {
+        LOG_ENC("encoder_update: source frame %p already released via VBM unlock path", frame);
     } else {
         LOG_ENC("encoder_update: holding source frame %p until stream release (OEM parity)", frame);
     }

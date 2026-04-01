@@ -234,6 +234,29 @@ static int avpu_alloc_imp(size_t size, const char* tag, AvpuDMABuf* out)
     return 0;
 }
 
+static uint32_t avpu_align_up_u32(uint32_t value, uint32_t alignment)
+{
+    if (alignment == 0)
+        return value;
+    return (value + alignment - 1u) & ~(alignment - 1u);
+}
+
+static uint32_t avpu_get_nv12_luma_lines(uint32_t height)
+{
+    /* T31 NV12 uses 16-line luma alignment: 1080p occupies 1088 Y lines. */
+    return avpu_align_up_u32(height, 16u);
+}
+
+static uint32_t avpu_get_nv12_luma_plane_size(uint32_t width, uint32_t height)
+{
+    return width * avpu_get_nv12_luma_lines(height);
+}
+
+static size_t avpu_get_nv12_frame_size(uint32_t width, uint32_t height)
+{
+    return ((size_t)avpu_get_nv12_luma_plane_size(width, height) * 3u) / 2u;
+}
+
 
 /* Fill Enc1 command registers (OEM parity: from SliceParamToCmdRegsEnc1)
  *
@@ -340,12 +363,12 @@ static void fill_cmd_regs_enc1(const ALAvpuContext* ctx, uint32_t* cmd, uint32_t
      *
      * OEM fills these from SliceParam offsets 0x84..0xa4, which in turn are
      * filled by AL_EncRecBuffer_FillPlaneDesc with physical addresses.
-     * Layout (NV12): Y plane at base, UV plane at base + width * height.
+     * Layout (NV12): Y plane at base, UV plane at base + width * align16(height).
      *
      * Without valid addresses here the AVPU DMAs to 0x0 → AXI hang.
      */
     if (ctx->enc_w && ctx->enc_h) {
-        uint32_t y_plane_sz = ctx->enc_w * ctx->enc_h;
+        uint32_t y_plane_sz = avpu_get_nv12_luma_plane_size(ctx->enc_w, ctx->enc_h);
 
         /* ---- OEM SliceParamToCmdRegsEnc1 address window ----
          * HLIL confirms cmd[0x0c..0x11] are copied from SliceParam+0x84..0xa4.
@@ -404,6 +427,9 @@ static void log_first_enc1_cmd_window(const ALAvpuContext* ctx, uint32_t idx, co
     if (!ctx || !cmd) return;
     if (idx != 0 || ctx->frames_encoded != 0) return;
 
+    LOG_CODEC("Process: first Enc1 CL[%u] NV12 luma height %u->%u y_plane=0x%08x",
+              idx, ctx->enc_h, avpu_get_nv12_luma_lines(ctx->enc_h),
+              avpu_get_nv12_luma_plane_size(ctx->enc_w, ctx->enc_h));
     LOG_CODEC("Process: first Enc1 CL[%u] fmt=0x%08x cmd[0]=0x%08x cmd[1]=0x%08x cmd[2]=0x%08x cmd[3]=0x%08x",
               idx, ctx->format_word, cmd[0], cmd[1], cmd[2], cmd[3]);
     LOG_CODEC("Process: first Enc1 CL[%u] cmd[0x0a]=0x%08x cmd[0x0b]=0x%08x cmd[0x0c]=0x%08x cmd[0x0d]=0x%08x",
@@ -1372,8 +1398,9 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
                          * reference frames via physical addresses in the command list.
                          * Without valid addresses the AVPU DMAs to 0x0 → AXI hang. */
                         {
-                            /* NV12: Y + UV = width * height * 3/2, round up to page */
-                            size_t nv12_sz = (size_t)width * height * 3 / 2;
+                            /* T31 NV12 uses 16-line luma alignment; match the
+                             * FrameSource/kernel sizeimage (e.g. 1920x1080 -> 3133440). */
+                            size_t nv12_sz = avpu_get_nv12_frame_size(width, height);
                             nv12_sz = (nv12_sz + 0xFFF) & ~(size_t)0xFFF; /* page-align */
 
                             memset(&enc->avpu.rec_buf, 0, sizeof(AvpuDMABuf));
