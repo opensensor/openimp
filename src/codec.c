@@ -1221,9 +1221,21 @@ static void avpu_log_busy_snapshot(ALAvpuContext *ctx, uint32_t idx, unsigned in
     unsigned int irq_mask = 0;
     unsigned int irq_pending = 0;
     unsigned int clkcmd = 0;
+    unsigned int misc_ctrl = 0;
+    unsigned int top_ctrl = 0;
+    unsigned int axi_off = 0;
+    unsigned int enc_en_a = 0;
+    unsigned int enc_en_b = 0;
+    unsigned int enc_en_c = 0;
     int have_irq_mask = (avpu_read_reg_quiet(ctx->fd, AVPU_INTERRUPT_MASK, &irq_mask) == 0);
     int have_irq_pending = (avpu_read_reg_quiet(ctx->fd, AVPU_INTERRUPT, &irq_pending) == 0);
     int have_clkcmd = (avpu_read_reg_quiet(ctx->fd, AVPU_REG_CORE_CLKCMD(0), &clkcmd) == 0);
+    int have_misc_ctrl = (avpu_read_reg_quiet(ctx->fd, AVPU_REG_MISC_CTRL, &misc_ctrl) == 0);
+    int have_top_ctrl = (avpu_read_reg_quiet(ctx->fd, AVPU_REG_TOP_CTRL, &top_ctrl) == 0);
+    int have_axi_off = (avpu_read_reg_quiet(ctx->fd, AVPU_REG_AXI_ADDR_OFFSET_IP, &axi_off) == 0);
+    int have_enc_en_a = (avpu_read_reg_quiet(ctx->fd, AVPU_REG_ENC_EN_A, &enc_en_a) == 0);
+    int have_enc_en_b = (avpu_read_reg_quiet(ctx->fd, AVPU_REG_ENC_EN_B, &enc_en_b) == 0);
+    int have_enc_en_c = (avpu_read_reg_quiet(ctx->fd, AVPU_REG_ENC_EN_C, &enc_en_c) == 0);
     int wait_errno = ctx->irq_wait_errno;
 
     LOG_CODEC(
@@ -1241,6 +1253,15 @@ static void avpu_log_busy_snapshot(ALAvpuContext *ctx, uint32_t idx, unsigned in
         ctx->last_irq_id,
         wait_errno,
         wait_errno ? strerror(wait_errno) : "ok");
+
+    LOG_CODEC(
+        "AVPU: busy gates misc_ctrl=%s0x%08x top_ctrl=%s0x%08x axi_off=%s0x%08x enc_en_a=%s0x%08x enc_en_b=%s0x%08x enc_en_c=%s0x%08x",
+        have_misc_ctrl ? "" : "ERR:", misc_ctrl,
+        have_top_ctrl ? "" : "ERR:", top_ctrl,
+        have_axi_off ? "" : "ERR:", axi_off,
+        have_enc_en_a ? "" : "ERR:", enc_en_a,
+        have_enc_en_b ? "" : "ERR:", enc_en_b,
+        have_enc_en_c ? "" : "ERR:", enc_en_c);
 }
 
 /* OEM parity: IsEnc1AlreadyRunning() reads (core<<9)+0x83f8 and checks bit 1.
