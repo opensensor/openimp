@@ -303,6 +303,38 @@ static size_t avpu_get_enc1_mv_region_size(uint32_t width, uint32_t height)
     return (lcu_count + 0x10u) << 4;
 }
 
+static uint32_t avpu_get_enc1_max_bitdepth(uint32_t format_word);
+
+static uint32_t avpu_get_enc1_src_pitch(uint32_t width, uint32_t format_word)
+{
+    uint32_t max_bitdepth = avpu_get_enc1_max_bitdepth(format_word);
+    uint32_t pitch = width;
+
+    /* OEM AL_EncGetMinPitch(width, bitdepth, AL_GetSrcStorageMode(...)) uses
+     * ComputeRndPitch(..., burst_alignment=16). On our current linear NV12 path
+     * AL_GetSrcStorageMode() resolves to 0, so the helper reduces to a 16-byte
+     * burst alignment on byte pitch, doubling only for >8-bit sources. */
+    if (max_bitdepth != 8u)
+        pitch <<= 1;
+
+    return avpu_align_up_u32(pitch, 16u);
+}
+
+static uint32_t avpu_get_enc1_rec_pitch(uint32_t width, uint32_t format_word)
+{
+    uint32_t max_bitdepth = avpu_get_enc1_max_bitdepth(format_word);
+
+    if (max_bitdepth < 9u)
+        return ((width + 0x3fu) >> 6) << 8;
+
+    return ((width + 0x3fu) >> 6) * 0x140u;
+}
+
+static uint32_t avpu_get_enc1_fbc_map_pitch(uint32_t width)
+{
+    return ((width + 0xfffu) >> 12) * 0x20u;
+}
+
 static uint32_t avpu_get_enc1_max_bitdepth(uint32_t format_word)
 {
     uint32_t luma_bitdepth = format_word & 0xFu;
@@ -556,6 +588,34 @@ static uint32_t avpu_pack_enc1_lcu_pos(uint32_t pos, uint32_t lcu_w)
     return (pos % lcu_w) | (((pos / lcu_w) & 0x3ffu) << 12);
 }
 
+static uint32_t avpu_get_enc1_stream_part_offset(const ALAvpuContext *ctx)
+{
+    uint32_t lcu_w;
+    uint32_t lcu_h;
+    uint32_t stream_part_size;
+
+    if (!ctx || ctx->stream_buf_size <= 0 || ctx->enc_w == 0u || ctx->enc_h == 0u)
+        return 0u;
+
+    /* OEM GetStreamBuffers.part.72 reserves a tail stream-part region with:
+     *   iStreamPartSize = align128((max(numSliceRows, lcu_h) * lcu_w + 0x10) << 4)
+     *   iStreamPartOffset = iMaxSize - iStreamPartSize
+     * For the current single-slice AVC/NV12 path we do not have the full runtime
+     * stream-part state, but the first-slice shape reduces conservatively to the
+     * picture LCU geometry. This is the only recovered cmd[0x30..0x32]/0x36 word
+     * whose producer can be modeled from existing openimp state without guessing. */
+    lcu_w = (ctx->enc_w + 15u) >> 4;
+    lcu_h = (ctx->enc_h + 15u) >> 4;
+    if (lcu_w == 0u || lcu_h == 0u)
+        return 0u;
+
+    stream_part_size = avpu_align_up_u32(((lcu_w * lcu_h) + 0x10u) << 4, 128u);
+    if (stream_part_size >= (uint32_t)ctx->stream_buf_size)
+        return 0u;
+
+    return (uint32_t)ctx->stream_buf_size - stream_part_size;
+}
+
 
 /* Fill Enc1 command registers (OEM parity: from SliceParamToCmdRegsEnc1)
  *
@@ -743,10 +803,22 @@ static void fill_cmd_regs_enc1(const ALAvpuContext* ctx, uint32_t* cmd, uint32_t
 
             /* OEM encode1 later mirrors a small subset of the AL_IntermMngr family
              * into the middle Enc1 command window.  Keep only the unambiguous base
-             * addresses here for the current single-slice AVC/NV12 path and leave
-             * the packed/dynamic WPP-or-slice offset words untouched for now. */
+             * addresses here for the current single-slice AVC/NV12 path.
+             *
+             * RE update:
+             *   req+0x2f8 = AL_IntermMngr_GetWppAddr(...)
+             *   cmd[0x2f] = req[0x2f8] + GetWPPOrSliceSizeOffset(...)
+             *   cmd[0x2d] = var_64 + req[0x300]
+             *
+             * For our first-slice AVC path, the most conservative live shape is:
+             *   - cmd[0x2f] uses the WPP base with zero dynamic offset
+             *   - cmd[0x2d] uses the end of the contiguous WPP region, which is
+             *     exactly the EP2 base in our modeled interm layout. */
             cmd[0x23] = ep2_addr;
             cmd[0x27] = ep1_addr;
+            cmd[0x2d] = ep2_addr;
+            cmd[0x2f] = wpp_addr;
+            cmd[0x32] = avpu_get_enc1_stream_part_offset(ctx);
             cmd[0x34] = map_addr;
             cmd[0x35] = data_addr;
         }
@@ -775,6 +847,10 @@ static void fill_cmd_regs_enc1(const ALAvpuContext* ctx, uint32_t* cmd, uint32_t
             uint32_t rec_map_sz = (uint32_t)avpu_get_enc1_map_region_size(ctx->enc_w, ctx->enc_h);
             uint32_t comp_data_sz = (uint32_t)avpu_get_enc1_comp_data_size(ctx->enc_w, ctx->enc_h,
                                                                             ctx->format_word);
+            uint32_t src_pitch = avpu_get_enc1_src_pitch(ctx->enc_w, ctx->format_word);
+            uint32_t rec_pitch = avpu_get_enc1_rec_pitch(ctx->enc_w, ctx->format_word);
+            uint32_t rec_map_pitch = avpu_get_enc1_fbc_map_pitch(ctx->enc_w);
+            uint32_t max_bitdepth = avpu_get_enc1_max_bitdepth(ctx->format_word);
             uint32_t rec_map_addr = ctx->rec_buf.phy_addr + rec_ref_sz;
             uint32_t rec_map_end = rec_map_addr + rec_map_sz;
             uint32_t rec_mv_addr = rec_map_end + 0x100u;
@@ -792,8 +868,28 @@ static void fill_cmd_regs_enc1(const ALAvpuContext* ctx, uint32_t* cmd, uint32_t
              * slots carry current/ref picture descriptors and FBC map bases, not
              * slice-control words. For our simplified DPB, mirror the same single
              * live ref backing store into both ref slots when present. */
+            if (src_phys) {
+                /* OEM SetSourceBuffer() packs cmd[0x22] from request+0x2a0/+0x2a4
+                 * (pitch/map pitch) and +0x2a8/+0x2a9 (storage mode/bitdepth).
+                 * For the current linear NV12 path there is no source map/table
+                 * allocation, so keep map pitch and storage mode at zero. */
+                cmd[0x22] = src_pitch & 0x3ffffu;
+                cmd[0x22] |= (max_bitdepth >= 9u ? 1u : 0u) << 31;
+            }
+
             cmd[0x24] = ctx->rec_buf.phy_addr;
             cmd[0x25] = ctx->rec_buf.phy_addr + y_plane_sz;
+            /* OEM AL_RefMngr_GetFrmBufAddrs() packs cmd[0x26] from the current
+             * reconstruction descriptor helper:
+             *   bit31     = high-bitdepth flag
+             *   bits17:0  = AL_GetRecPitch(bitdepth, width)
+             *   bits30:28 = 2
+             *   bits26:19 = AL_GetEncoderFbcMapPitch(width)
+             * The recovered NV12 8-bit path keeps the top flag clear. */
+            cmd[0x26] = rec_pitch & 0x3ffffu;
+            cmd[0x26] |= (2u & 0x7u) << 28;
+            cmd[0x26] |= (rec_map_pitch & 0xffu) << 19;
+            cmd[0x26] |= (max_bitdepth >= 9u ? 1u : 0u) << 31;
             cmd[0x2e] = rec_mv_addr;
             cmd[0x37] = rec_map_addr;
 
