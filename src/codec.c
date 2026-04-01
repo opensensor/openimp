@@ -52,6 +52,7 @@ struct avpu_dma_info {
 #define GET_DMA_MMAP      _IOWR(AVPU_IOC_MAGIC, 26, struct avpu_dma_info)
 #define GET_DMA_FD        _IOWR(AVPU_IOC_MAGIC, 13, struct avpu_dma_info)
 #define GET_DMA_PHY       _IOWR(AVPU_IOC_MAGIC, 18, struct avpu_dma_info)
+#define AL_CMD_UNBLOCK_CHANNEL _IO(AVPU_IOC_MAGIC, 1)
 
 /* Cache flush ioctl and struct (mirrors driver) */
 #ifndef JZ_CMD_FLUSH_CACHE
@@ -90,6 +91,7 @@ struct avpu_reg {
 static inline unsigned AVPU_CORE_BASE(int core) { return (AVPU_BASE_OFFSET + 0x3F0) + ((unsigned)core << 9); }
 #define AVPU_REG_CORE_RESET(c)   (AVPU_CORE_BASE(c) + 0x00)
 #define AVPU_REG_CORE_CLKCMD(c)  (AVPU_CORE_BASE(c) + 0x04)
+#define AVPU_REG_CORE_STATUS(c)  (AVPU_CORE_BASE(c) + 0x08)
 
 /* Cache flush via /dev/avpu JZ_CMD_FLUSH_CACHE ioctl.
  * rmem mappings are CACHED — the AVPU reads from physical RAM, not CPU cache.
@@ -244,6 +246,9 @@ static void fill_cmd_regs_enc1(const ALAvpuContext* ctx, uint32_t* cmd, uint32_t
 {
     if (!ctx || !cmd) return;
 
+    const int has_reference = (ctx->reference_valid != 0) && (ctx->ref_buf.phy_addr != 0);
+    const int is_idr = !has_reference;
+
     /* Ensure cmd pointer is 4-byte aligned (MIPS requirement) */
     if (((uintptr_t)cmd & 3) != 0) {
         LOG_CODEC("ERROR: cmd buffer not 4-byte aligned: %p", (void*)cmd);
@@ -253,15 +258,32 @@ static void fill_cmd_regs_enc1(const ALAvpuContext* ctx, uint32_t* cmd, uint32_t
     /* Initialize entire command buffer to zero first (512 bytes = 128 uint32_t) */
     memset(cmd, 0, 512);
 
-    /* cmd[0]: OEM-critical base flags.
-     * - bits[7:0]   : 0x11 base flags
-     * - bits[9:8]   : ((codec - 2) & 3), AVC => 0
-     * - bits[11:10] : profile-like mode; map baseline/main/high as 0/1/2
-     * - bits[26:24] : log2_lcu_size_minus4, AVC 16x16 => 0
-     * - bit[31]     : valid/enable
+    /* cmd[0]: OEM SliceParamToCmdRegsEnc1 at 0x6dd5c.
+     *
+     * The OEM stores internal SliceParam values and then packs:
+     *   bits[7:0]   = 0x11
+     *   bits[9:8]   = ((codec - 2) & 3)
+     *   bits[11:10] = ((profile - 2) & 3)
+     *   bits[22:20] = ((lcu_size - 4) & 7)
+     *   bits[25:24] = picture format / chroma mode from SliceParam[3]
+     *   bits[29:28] = codec submode from SliceParam+4
+     *   bit[31]     = valid/enable
+     *
+     * For the current AVC/NV12 path we can match the known OEM math exactly:
+     *   codec    = 2 (AVC => ((2 - 2) & 3) == 0)
+     *   profile  = local profile enum 0/1/2 mapped to OEM 2/3/4
+     *   lcu_size = 4 for AVC 16x16 macroblocks
+     *   picfmt   = 1 for 4:2:0
      */
+    uint32_t codec_field = 2u;
+    uint32_t profile_field = ((uint32_t)ctx->profile & 0x3u) + 2u;
+    uint32_t lcu_size_field = 4u;
+    uint32_t pic_fmt_field = 1u;
     uint32_t c0 = 0x11u | (1u << 31);
-    c0 |= ((uint32_t)ctx->profile & 0x3u) << 10;
+    c0 |= ((codec_field - 2u) & 0x3u) << 8;
+    c0 |= ((profile_field - 2u) & 0x3u) << 10;
+    c0 |= ((lcu_size_field - 4u) & 0x7u) << 20;
+    c0 |= (pic_fmt_field & 0x3u) << 24;
     cmd[0] = c0;
 
     /* cmd[1]: picture dimensions: ((h-1)<<12 | (w-1)) */
@@ -270,12 +292,12 @@ static void fill_cmd_regs_enc1(const ALAvpuContext* ctx, uint32_t* cmd, uint32_t
     }
 
     /* cmd[2]: fixed OEM bit plus discovered entropy bit.
-     * Low 3 bits appear slice-type-like; use I on the first frame, P after. */
+     * Picture type must follow actual reference availability, not CL ring slot. */
     cmd[2] = 0x2000u | ((ctx->entropy_mode & 1u) << 10);
-    cmd[2] |= (ctx->cl_idx == 0) ? 2u : 0u;
+    cmd[2] |= is_idr ? 2u : 0u;
 
-    /* cmd[3]: NAL/slice flags: IDR for first frame, else non-IDR */
-    uint32_t nalu = (ctx->cl_idx == 0) ? 5u : 1u;
+    /* cmd[3]: NAL/slice flags: IDR until a completed reference picture exists. */
+    uint32_t nalu = is_idr ? 5u : 1u;
     cmd[3] = (nalu & 0x1Fu) | (1u << 31) | (1u << 30);
 
     /* cmd[4]: QP in low 5 bits */
@@ -324,8 +346,9 @@ static void fill_cmd_regs_enc1(const ALAvpuContext* ctx, uint32_t* cmd, uint32_t
             cmd[0x0f] = src_phys + y_plane_sz;       /* Source UV phys addr (NV12) */
         }
 
-        /* cmd[0x10..0x11]: reference frame buffer */
-        if (ctx->ref_buf.phy_addr) {
+        /* cmd[0x10..0x11]: reference frame buffer.
+         * OEM obtains these from RefMngr/DPB only when a ref picture exists. */
+        if (has_reference) {
             cmd[0x10] = ctx->ref_buf.phy_addr;                /* Ref Y */
             cmd[0x11] = ctx->ref_buf.phy_addr + y_plane_sz;   /* Ref UV */
         }
@@ -338,8 +361,10 @@ static void fill_cmd_regs_enc1(const ALAvpuContext* ctx, uint32_t* cmd, uint32_t
         uint32_t stride_uv_8 = stride_uv >= 8 ? ((stride_uv >> 3) - 1) : 0;
         cmd[0x12] = (stride_y_64 & 0x3FF) | ((stride_uv_8 & 0x3FF) << 12);
 
-        /* ---- RecBuffer context addresses (OEM: arg3 offsets) ---- */
-        if (ctx->rec_buf.phy_addr && ctx->ref_buf.phy_addr) {
+        /* ---- RecBuffer context addresses (OEM: arg3 offsets) ----
+         * Keep ref-side descriptors zero until EndEncoding promotes the first
+         * reconstructed picture into reference state. */
+        if (ctx->rec_buf.phy_addr && has_reference) {
             cmd[0x64] = ctx->rec_buf.phy_addr;                   /* arg3+0x14: rec Y */
             cmd[0x65] = ctx->rec_buf.phy_addr + y_plane_sz;      /* arg3+0x18: rec UV */
             cmd[0x67] = ctx->ref_buf.phy_addr + y_plane_sz;      /* arg3+0x54: ref UV */
@@ -348,6 +373,21 @@ static void fill_cmd_regs_enc1(const ALAvpuContext* ctx, uint32_t* cmd, uint32_t
             cmd[0x6f] = ctx->ref_buf.phy_addr;                   /* arg3+0x94: ref base */
         }
     }
+}
+
+static void avpu_promote_reference(ALAvpuContext *ctx)
+{
+    if (!ctx || !ctx->rec_buf.phy_addr || !ctx->ref_buf.phy_addr)
+        return;
+
+    AvpuDMABuf prev_ref = ctx->ref_buf;
+    ctx->ref_buf = ctx->rec_buf;
+    ctx->rec_buf = prev_ref;
+    __sync_synchronize();
+    ctx->reference_valid = 1;
+
+    LOG_CODEC("EndEncoding: promoted rec->ref ref=0x%08x next_rec=0x%08x",
+              ctx->ref_buf.phy_addr, ctx->rec_buf.phy_addr);
 }
 
 /* OEM uses 24-bit interrupt clear (0xFFFFFF), not 32-bit.
@@ -499,9 +539,34 @@ static void avpu_end_encoding_callback(void *user_data)
      * The GetStream function will check stream buffers and queue to FIFO
      * This avoids touching stream buffers from the callback thread
      */
+    avpu_promote_reference(ctx);
     __sync_fetch_and_add(&ctx->frames_encoded, 1);
 
     LOG_CODEC("EndEncoding: frames_encoded=%d", ctx->frames_encoded);
+}
+
+/* EndAvcEntropy callback - separate OEM IRQ slot (core*4+2).
+ * We keep this side-effect free until the exact entropy-completion bookkeeping
+ * is recovered; critically, it must NOT be treated as EndEncoding. */
+static void avpu_end_avc_entropy_callback(void *user_data)
+{
+    ALAvpuContext *ctx = (ALAvpuContext*)user_data;
+    (void)ctx;
+    LOG_CODEC("EndAvcEntropy callback");
+}
+
+/* OEM parity: IsEnc1AlreadyRunning() reads (core<<9)+0x83f8 and checks bit 1.
+ * If this bit is set, AL_EncCore_Encode1() does not push a new command list. */
+static int avpu_is_enc1_running(int fd, int core)
+{
+    unsigned int status = 0;
+
+    if (avpu_read_reg(fd, AVPU_REG_CORE_STATUS(core), &status) != 0) {
+        LOG_CODEC("AVPU: failed to read Enc1 running state for core %d", core);
+        return 0;
+    }
+
+    return (status & 0x2u) ? 1 : 0;
 }
 
 /* LinuxIpCtrl_RegisterCallBack - based on decompilation at 0x35fd0
@@ -639,7 +704,6 @@ static size_t annexb_effective_size(const uint8_t *buf, size_t maxlen)
     }
     return (end > first) ? (end - first) : 0;
 }
-
 
 /* Codec structure - based on decompilation at 0x7950c */
 /* Size: 0x924 bytes */
@@ -962,8 +1026,11 @@ int AL_Codec_Encode_Destroy(void *codec) {
             enc->avpu.cl_ring.dmabuf_fd = -1;
         }
 
-        /* Signal IRQ thread to exit and close device via device pool */
+        /* OEM parity: unblock WaitInterruptThread before close/join */
         enc->avpu.irq_thread_running = 0;
+        if (enc->avpu.fd >= 0) {
+            avpu_sys_ioctl(enc->avpu.fd, AL_CMD_UNBLOCK_CHANNEL, NULL);
+        }
         AL_DevicePool_Close(enc->avpu.fd);
         enc->avpu.fd = -1;
 
@@ -1170,6 +1237,29 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
                         memset(&enc->avpu, 0, sizeof(enc->avpu));
                         enc->avpu.fd = fd;
                         enc->avpu.event_fd = enc->event ? (int)(uintptr_t)enc->event : -1;
+                        enc->avpu.frames_encoded = 0;
+                        enc->avpu.reference_valid = 0;
+
+                        /* OEM parity: AL_Board_Create allocates mutex and starts
+                         * WaitInterruptThread immediately after opening /dev/avpu. */
+                        pthread_mutex_t *mutex = (pthread_mutex_t*)malloc(sizeof(pthread_mutex_t));
+                        if (mutex) {
+                            pthread_mutex_init(mutex, NULL);
+                            enc->avpu.irq_mutex = mutex;
+                        }
+                        memset(enc->avpu.irq_callbacks, 0, sizeof(enc->avpu.irq_callbacks));
+
+                        if (enc->avpu.irq_mutex) {
+                            enc->avpu.irq_thread_running = 1;
+                            pthread_t tid;
+                            if (pthread_create(&tid, NULL, avpu_irq_thread, &enc->avpu) == 0) {
+                                enc->avpu.irq_thread = (long)tid;
+                                LOG_CODEC("AVPU: WaitInterruptThread started during open");
+                            } else {
+                                LOG_CODEC("AVPU: failed to start WaitInterruptThread during open");
+                                enc->avpu.irq_thread_running = 0;
+                            }
+                        }
 
                         /* Cache encoding parameters for command-list population */
                         enc->avpu.enc_w = width;
@@ -1270,20 +1360,10 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
                          * (enc->fifo_frames, enc->fifo_streams at lines 767-778).
                          * OEM uses FIFOs at encoder+0x7f8 (streams) and encoder+0x81c (metadata). */
 
-                        /* Initialize IRQ callback system (OEM parity: WaitInterruptThread at 0x35e28) */
-                        memset(enc->avpu.irq_callbacks, 0, sizeof(enc->avpu.irq_callbacks));
-
-                        /* Allocate and initialize mutex for callback access */
-                        pthread_mutex_t *mutex = (pthread_mutex_t*)malloc(sizeof(pthread_mutex_t));
-                        if (mutex) {
-                            pthread_mutex_init(mutex, NULL);
-                            enc->avpu.irq_mutex = mutex;
-                        }
-
-
-                        /* Register EndEncoding callbacks (OEM parity: AL_EncCore_EnableInterrupts at 0x6cf78)
-                         * OEM enables two interrupts per channel/core: base bit (ch*4) and base+2.
-                         * For channel 0: IRQ 0 and IRQ 2; for channel 1: IRQ 4 and IRQ 6, etc.
+                        /* Register OEM callbacks (AL_EncCore_Init / AL_EncCore_EnableInterrupts).
+                         * OEM uses base bit (ch*4) for EndEncoding and base+2 for
+                         * EndAvcEntropy. For channel 0: IRQ 0 and IRQ 2; for
+                         * channel 1: IRQ 4 and IRQ 6, etc.
                          */
                         int channel = enc->channel_id - 1; /* 0-based */
                         int base_bit = (channel * 4) & 0x1f;
@@ -1293,10 +1373,10 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
                         avpu_register_callback(&enc->avpu, avpu_end_encoding_callback, &enc->avpu, irq_id0);
                         LOG_CODEC("AVPU: registered EndEncoding callback for channel %d (IRQ %d)", channel, irq_id0);
 
-                        /* Also register the +2 interrupt used by OEM for encode-done */
+                        /* OEM maps the +2 interrupt to EndAvcEntropy, not EndEncoding. */
                         if (irq_id2 < 20) {
-                            avpu_register_callback(&enc->avpu, avpu_end_encoding_callback, &enc->avpu, irq_id2);
-                            LOG_CODEC("AVPU: registered EndEncoding callback for channel %d (IRQ %d)", channel, irq_id2);
+                            avpu_register_callback(&enc->avpu, avpu_end_avc_entropy_callback, &enc->avpu, irq_id2);
+                            LOG_CODEC("AVPU: registered EndAvcEntropy callback for channel %d (IRQ %d)", channel, irq_id2);
                         }
 
                         enc->use_hardware = 2; /* 2 = AL/AVPU path */
@@ -1412,20 +1492,6 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
 
             LOG_CODEC("AVPU: HW initialized (AL_EncCore_Init)");
 
-            /* Start IRQ thread after enabling interrupts and pre-queue */
-            if (!ctx->irq_thread_running) {
-                ctx->irq_thread_running = 1;
-                ctx->frames_encoded = 0;
-                pthread_t tid;
-                if (pthread_create(&tid, NULL, avpu_irq_thread, ctx) == 0) {
-                    ctx->irq_thread = (long)tid;
-                    LOG_CODEC("AVPU: IRQ thread started");
-                } else {
-                    LOG_CODEC("AVPU: failed to start IRQ thread");
-                    ctx->irq_thread_running = 0;
-                }
-            }
-
         }
 
         /* Prepare command-list entry (OEM parity: SetCommandListBuffer) */
@@ -1447,24 +1513,30 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
             /* Fill Enc1 command registers — source addr goes INTO the CL entry */
             fill_cmd_regs_enc1(ctx, cmd, phys_addr);
 
+            /* OEM AL_EncCore_Encode1() checks IsEnc1AlreadyRunning() before
+             * flushing/pushing a new Enc1 command list. Our simplified path
+             * uses a single effective rec/ref pair, so matching this gate is
+             * important before submitting the next frame. */
+            if (avpu_is_enc1_running(fd, 0)) {
+                LOG_CODEC("Process: Enc1 already running; skipping CL[%u] submit to match OEM gating", idx);
+                free(hw_stream);
+                return 0;
+            }
+
             /* Flush CL entry from CPU cache to physical RAM.
              * rmem mappings are CACHED — without this the AVPU reads stale data.
              * OEM: Rtos_FlushCacheMemory(cmdlist_entry, 0x100000) before CL_PUSH.
              * dir=1 = DMA_TO_DEVICE (writeback, CPU→RAM). */
             avpu_flush_cache(fd, cmd, ctx->cl_entry_size, 1 /*WBACK*/);
 
-            /* StartEnc1WithCommandList: write CL_ADDR then CL_PUSH to trigger
-             * the AVPU. Source address is in cmd[0x0c..0x0d] AND pushed via
-             * SRC_PUSH register (belt-and-suspenders for T31 firmware). */
+            /* OEM StartEnc1WithCommandList: write CL_ADDR then CL_PUSH only. */
             uint32_t cl_phys = ctx->cl_ring.phy_addr + (idx * ctx->cl_entry_size);
+            uint32_t ref_phys = ctx->reference_valid ? ctx->ref_buf.phy_addr : 0;
             LOG_CODEC("Process: CL_ADDR=0x%08x src=0x%08x rec=0x%08x ref=0x%08x CL[%u]",
                       cl_phys, phys_addr,
-                      ctx->rec_buf.phy_addr, ctx->ref_buf.phy_addr, idx);
+                      ctx->rec_buf.phy_addr, ref_phys, idx);
             avpu_write_reg(fd, AVPU_REG_CL_ADDR, cl_phys);
             avpu_write_reg(fd, AVPU_REG_CL_PUSH, 0x00000002);
-
-            /* Also push source frame via SRC_PUSH register */
-            avpu_write_reg(fd, AVPU_REG_SRC_PUSH, phys_addr);
 
             /* Advance to next CL slot */
             ctx->cl_idx = (idx + 1) % ctx->cl_count;
@@ -1537,13 +1609,9 @@ int AL_Codec_Encode_GetStream(void *codec, void **stream, void **user_data) {
 
         for (int retry = 0; retry < 200; ++retry) {
             if (ctx->frames_encoded > initial_count) {
-                /* Frame is ready - check stream buffers */
                 for (int i = 0; i < ctx->stream_bufs_used; ++i) {
                     if (ctx->stream_in_hw[i]) {
                         const uint8_t *virt = (const uint8_t*)ctx->stream_bufs[i].map;
-
-                        /* Streams are coherent; no invalidate needed on T31 */
-                        /* Check for AnnexB start code */
                         size_t eff = annexb_effective_size(virt, ctx->stream_buf_size);
                         if (eff > 0) {
                             HWStreamBuffer *s = (HWStreamBuffer*)malloc(sizeof(HWStreamBuffer));
@@ -1564,6 +1632,7 @@ int AL_Codec_Encode_GetStream(void *codec, void **stream, void **user_data) {
                 }
                 LOG_CODEC("GetStream[AVPU]: frames_encoded incremented but no valid data found");
             }
+
             nanosleep(&nap, NULL);
         }
 
@@ -1666,7 +1735,8 @@ int AL_Codec_Encode_SetEntropyMode(void *codec, int mode) {
     }
 
     AL_CodecEncode *enc = (AL_CodecEncode*)codec;
-    enc->entropy_mode = mode ? 1u : 0u;
+    /* OEM public API uses 1=CAVLC, 2=CABAC; internal command packing uses 0/1. */
+    enc->entropy_mode = (mode == 2) ? 1u : 0u;
     enc->avpu.entropy_mode = enc->entropy_mode;
 
     LOG_CODEC("SetEntropyMode: codec=%p, mode=%u", codec, enc->entropy_mode);
