@@ -291,14 +291,28 @@ static void fill_cmd_regs_enc1(const ALAvpuContext* ctx, uint32_t* cmd, uint32_t
         cmd[1] = (((ctx->enc_h - 1) & 0x7FF) << 12) | ((ctx->enc_w - 1) & 0x7FF);
     }
 
-    /* cmd[2]: fixed OEM bit plus discovered entropy bit.
-     * Picture type must follow actual reference availability, not CL ring slot. */
+    /* cmd[2]: OEM SliceParamToCmdRegsEnc1 packs many slice-param fields here.
+     * The confirmed first-picture AVC path comes from FillSliceParamFromPicParam:
+     *   - fixed bit 13 (0x2000)
+     *   - entropy/CABAC bit at 10
+     *   - SliceParam[0x0f] = 3 for the first coded picture, which packs to bits[6:4]
+     * Our prior low-bit IDR marker was guessed and has no OEM backing. */
     cmd[2] = 0x2000u | ((ctx->entropy_mode & 1u) << 10);
-    cmd[2] |= is_idr ? 2u : 0u;
+    if (is_idr) {
+        cmd[2] |= 3u << 4;
+    }
 
-    /* cmd[3]: NAL/slice flags: IDR until a completed reference picture exists. */
+    /* cmd[3]: OEM first-picture AVC path special-cases arg3[0xc] == 7 and sets:
+     *   SliceParam[0x28] = 0x1a  -> bits[23:16]
+     *   SliceParam[0x30] = 1     -> bits[29:28]
+     * Keep the confirmed AVC NAL unit type in bits[4:0].  Do not force the
+     * previously guessed top bits for the first picture. */
     uint32_t nalu = is_idr ? 5u : 1u;
-    cmd[3] = (nalu & 0x1Fu) | (1u << 31) | (1u << 30);
+    if (is_idr) {
+        cmd[3] = (nalu & 0x1Fu) | (0x1au << 16) | (1u << 28);
+    } else {
+        cmd[3] = (nalu & 0x1Fu) | (1u << 31) | (1u << 30);
+    }
 
     /* cmd[4]: QP in low 5 bits */
     cmd[4] = (ctx->qp ? ctx->qp : 26) & 0x1F;
