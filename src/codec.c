@@ -257,6 +257,84 @@ static size_t avpu_get_nv12_frame_size(uint32_t width, uint32_t height)
     return ((size_t)avpu_get_nv12_luma_plane_size(width, height) * 3u) / 2u;
 }
 
+static uint32_t avpu_default_enc1_cmd12_a8(uint32_t enc_w)
+{
+    return avpu_align_up_u32(enc_w, 64u);
+}
+
+static uint32_t avpu_default_enc1_cmd12_aa(uint32_t enc_w)
+{
+    uint32_t width_64 = (enc_w + 63u) >> 6;
+
+    if (width_64 >= 0x1fu)
+        return 0x1f7u;
+    if (width_64 >= 0x15u)
+        return 0xf7u;
+    if (width_64 >= 0x0bu)
+        return 0x77u;
+    return 0x37u;
+}
+
+static void avpu_init_enc1_slice_words(ALAvpuContext *ctx, const uint8_t *codec_param)
+{
+    if (!ctx)
+        return;
+
+    ctx->enc1_cmd_0a_74 = codec_param ? *(const uint32_t*)(codec_param + 0x74) : 0u;
+    if (ctx->enc1_cmd_0a_74 == 0u)
+        ctx->enc1_cmd_0a_74 = 0x41eb0u;
+
+    ctx->enc1_cmd_0b_7a = codec_param ? *(const uint16_t*)(codec_param + 0x7a) : 0u;
+    if (ctx->enc1_cmd_0b_7a == 0u)
+        ctx->enc1_cmd_0b_7a = 0x3e8u;
+
+    /* OEM sources SliceParam+0x7c from the picture-reference path.  Our current
+     * AVPU path only tracks a single promoted reference, so seed the first-picture
+     * value to 0 and promote to 1 once a real reference exists. */
+    ctx->enc1_cmd_0b_7c = 0u;
+    ctx->enc1_cmd_0b_7e = 1u; /* single-core Enc1 path */
+    ctx->enc1_cmd_0b_7f = 0u;
+    ctx->enc1_cmd_0b_80 = 0u;
+
+    ctx->enc1_cmd_12_a8 = avpu_default_enc1_cmd12_a8(ctx->enc_w);
+    ctx->enc1_cmd_12_aa = avpu_default_enc1_cmd12_aa(ctx->enc_w);
+    ctx->enc1_cmd_12_ac = 0u;
+
+    LOG_CODEC("AVPU: OEM Enc1 words seed 0x74=0x%08x 0x7a=0x%03x 0x7c=%u 0x7e=%u 0xa8=0x%03x 0xaa=0x%03x 0xac=%u",
+              ctx->enc1_cmd_0a_74, ctx->enc1_cmd_0b_7a, ctx->enc1_cmd_0b_7c,
+              ctx->enc1_cmd_0b_7e, ctx->enc1_cmd_12_a8, ctx->enc1_cmd_12_aa,
+              ctx->enc1_cmd_12_ac);
+}
+
+static uint32_t avpu_pack_enc1_cmd0b(const ALAvpuContext *ctx, int has_reference)
+{
+    uint32_t slice_7a = ctx->enc1_cmd_0b_7a & 0x3ffu;
+    uint32_t slice_7c = ctx->enc1_cmd_0b_7c & 0x3ffu;
+    uint32_t slice_7e = ctx->enc1_cmd_0b_7e ? ctx->enc1_cmd_0b_7e : 1u;
+    uint32_t slice_7f = ctx->enc1_cmd_0b_7f & 1u;
+    uint32_t slice_80 = ctx->enc1_cmd_0b_80 & 1u;
+
+    if (has_reference && slice_7c == 0u)
+        slice_7c = 1u;
+
+    return slice_7a
+        | (((slice_7c == 0u ? 0x3ffu : (slice_7c - 1u)) & 0x3ffu) << 12)
+        | ((((slice_7e - 1u)) & 0x3u) << 24)
+        | (slice_7f << 30)
+        | (slice_80 << 31);
+}
+
+static uint32_t avpu_pack_enc1_cmd12(const ALAvpuContext *ctx)
+{
+    uint32_t slice_a8 = ctx->enc1_cmd_12_a8 ? ctx->enc1_cmd_12_a8 : avpu_default_enc1_cmd12_a8(ctx->enc_w);
+    uint32_t slice_aa = ctx->enc1_cmd_12_aa ? ctx->enc1_cmd_12_aa : avpu_default_enc1_cmd12_aa(ctx->enc_w);
+    uint32_t slice_ac = ctx->enc1_cmd_12_ac & 1u;
+    uint32_t packed_a8 = (slice_a8 >= 64u) ? (((slice_a8 >> 6) - 1u) & 0x3ffu) : 0u;
+    uint32_t packed_aa = (slice_aa >= 8u) ? (((slice_aa >> 3) - 1u) & 0x3ffu) : 0u;
+
+    return packed_a8 | (packed_aa << 12) | (slice_ac << 30);
+}
+
 
 /* Fill Enc1 command registers (OEM parity: from SliceParamToCmdRegsEnc1)
  *
@@ -377,9 +455,10 @@ static void fill_cmd_regs_enc1(const ALAvpuContext* ctx, uint32_t* cmd, uint32_t
          * stay non-zero and plausible for the current AVC/NV12 path.
          */
 
-        /* cmd[0x0a..0x0b]: source strides (OEM: SliceParam+0x74) */
-        cmd[0x0a] = ctx->enc_w;                  /* Source Y stride (lower 16 bits) */
-        cmd[0x0b] = ctx->enc_w;                  /* Source UV stride */
+        /* cmd[0x0a..0x0b]: OEM packs SliceParam+0x74 and +0x7a/+0x7c/+0x7e/+0x7f/+0x80,
+         * not raw width/stride words. */
+        cmd[0x0a] = ctx->enc1_cmd_0a_74;
+        cmd[0x0b] = avpu_pack_enc1_cmd0b(ctx, has_reference);
 
         /* cmd[0x0c..0x0d]: reconstruction buffer */
         if (ctx->rec_buf.phy_addr) {
@@ -400,13 +479,9 @@ static void fill_cmd_regs_enc1(const ALAvpuContext* ctx, uint32_t* cmd, uint32_t
             cmd[0x11] = ctx->ref_buf.phy_addr + y_plane_sz;   /* Ref UV */
         }
 
-        /* cmd[0x12]: stream buffer config — set from STRM_PUSH context
-         * OEM fills this from (src_stride >> 6 - 1) and (uv_stride >> 3 - 1) */
-        uint32_t stride_y = ctx->enc_w;
-        uint32_t stride_uv = ctx->enc_w;
-        uint32_t stride_y_64 = stride_y >= 64 ? ((stride_y >> 6) - 1) : 0;
-        uint32_t stride_uv_8 = stride_uv >= 8 ? ((stride_uv >> 3) - 1) : 0;
-        cmd[0x12] = (stride_y_64 & 0x3FF) | ((stride_uv_8 & 0x3FF) << 12);
+        /* cmd[0x12]: OEM packs SliceParam+0xa8/+0xaa/+0xac from the encoder's
+         * internal group-update state, not direct source-buffer stride heuristics. */
+        cmd[0x12] = avpu_pack_enc1_cmd12(ctx);
 
         /* ---- RecBuffer context addresses (OEM: arg3 offsets) ----
          * Reconstruction-side descriptors still exist on the first picture;
@@ -1359,6 +1434,7 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
                         enc->avpu.entropy_mode = enc->entropy_mode;
                         enc->avpu.gop_length = enc->hw_params.gop_length;
                         enc->avpu.format_word = *(uint32_t*)(enc->codec_param + 0x10);
+                        avpu_init_enc1_slice_words(&enc->avpu, enc->codec_param);
 
                         /* Allocate stream buffers via IMP_Alloc (OEM parity) */
                         enc->avpu.stream_buf_count = 4;

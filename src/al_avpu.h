@@ -156,6 +156,17 @@ typedef struct ALAvpuContext {
     uint32_t entropy_mode;
     uint32_t gop_length;
     uint32_t format_word;
+    /* OEM Enc1 slice-param words threaded into the AVPU context so command-list
+     * packing can match SliceParamToCmdRegsEnc1 instead of width heuristics. */
+    uint32_t enc1_cmd_0a_74;
+    uint32_t enc1_cmd_0b_7a;
+    uint32_t enc1_cmd_0b_7c;
+    uint32_t enc1_cmd_0b_7e;
+    uint32_t enc1_cmd_0b_7f;
+    uint32_t enc1_cmd_0b_80;
+    uint32_t enc1_cmd_12_a8;
+    uint32_t enc1_cmd_12_aa;
+    uint32_t enc1_cmd_12_ac;
     uint32_t cl_idx;
     volatile int reference_valid;
 
