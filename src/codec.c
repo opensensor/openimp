@@ -116,6 +116,20 @@ static int avpu_flush_cache(int fd, void *virt_addr, unsigned int size, unsigned
     return avpu_sys_ioctl(fd, JZ_CMD_FLUSH_CACHE_IOCTL, &info);
 }
 
+static int avpu_flush_dma_buf(int fd, const char *tag, const AvpuDMABuf *buf, size_t size)
+{
+    int ret;
+
+    if (fd < 0 || !buf || !buf->map || size == 0) {
+        return -1;
+    }
+
+    ret = avpu_flush_cache(fd, buf->map, (unsigned int)size, 1 /*WBACK*/);
+    LOG_CODEC("AVPU: flush %s phys=0x%08x size=0x%08x ret=%d",
+              tag ? tag : "dma", buf->phy_addr, (unsigned int)size, ret);
+    return ret;
+}
+
 /* Direct ioctl helpers (OEM parity - no wrapper functions) */
 static int avpu_write_reg(int fd, unsigned int off, unsigned int val)
 {
@@ -633,6 +647,16 @@ static void fill_cmd_regs_enc1(const ALAvpuContext* ctx, uint32_t* cmd, uint32_t
     const int has_reference = (ctx->reference_valid != 0) && (ctx->ref_buf.phy_addr != 0);
     const int has_ref_desc = (ctx->ref_buf.phy_addr != 0);
     const int is_idr = !has_reference;
+    const uint32_t stream_part_offset = avpu_get_enc1_stream_part_offset(ctx);
+    const uint32_t stream_desc_offset = 0u;
+    uint32_t stream_desc_phys = 0u;
+    uint32_t stream_desc_virt = 0u;
+
+    if (ctx->stream_bufs_used > 0) {
+        stream_desc_phys = ctx->stream_bufs[0].phy_addr;
+        if (ctx->stream_bufs[0].map)
+            stream_desc_virt = (uint32_t)(uintptr_t)ctx->stream_bufs[0].map;
+    }
 
     /* Ensure cmd pointer is 4-byte aligned (MIPS requirement) */
     if (((uintptr_t)cmd & 3) != 0) {
@@ -801,27 +825,33 @@ static void fill_cmd_regs_enc1(const ALAvpuContext* ctx, uint32_t* cmd, uint32_t
             cmd[0x17] = data_addr;
             cmd[0x18] = avpu_pack_enc1_cmd18(map_addr, data_addr);
 
-            /* OEM encode1 later mirrors a small subset of the AL_IntermMngr family
-             * into the middle Enc1 command window.  Keep only the unambiguous base
-             * addresses here for the current single-slice AVC/NV12 path.
-             *
-             * RE update:
-             *   req+0x2f8 = AL_IntermMngr_GetWppAddr(...)
-             *   cmd[0x2f] = req[0x2f8] + GetWPPOrSliceSizeOffset(...)
-             *   cmd[0x2d] = var_64 + req[0x300]
-             *
-             * For our first-slice AVC path, the most conservative live shape is:
-             *   - cmd[0x2f] uses the WPP base with zero dynamic offset
-             *   - cmd[0x2d] uses the end of the contiguous WPP region, which is
-             *     exactly the EP2 base in our modeled interm layout. */
+            /* OEM keeps the intermediate scratch family visible in the late Enc1
+             * window, but the adjacent cmd[0x30]/cmd[0x31] pair is sourced from
+             * SetSourceBuffer()->request+0x18/+0x1c rather than directly from the
+             * interm manager. For the current linear NV12 path those request words
+             * come from source-descriptor slots +0x40/+0x44, which remain zero
+             * unless the source is compressed and map planes are populated. Keep
+             * the recovered EP anchors and interm map base, but do not alias the
+             * interm data address into cmd[0x30] on this path. */
             cmd[0x23] = ep2_addr;
             cmd[0x27] = ep1_addr;
-            cmd[0x2d] = ep2_addr;
-            cmd[0x2f] = wpp_addr;
-            cmd[0x32] = avpu_get_enc1_stream_part_offset(ctx);
-            cmd[0x34] = map_addr;
-            cmd[0x35] = data_addr;
+            cmd[0x2f] = map_addr;
+            cmd[0x30] = 0u;
+            cmd[0x31] = 0u;
+            cmd[0x32] = stream_part_offset;
         }
+
+        /* OEM FillEncTrace copies the per-slice stream descriptor pointed to by
+         * req+0x318 into cmd[0x34..0x37]: base phys, mapped/CPU-visible address,
+         * stream-part offset, and current stream write offset (iOffset).
+         * openimp's direct-AVPU path does not maintain the OEM stream-manager
+         * record or any pre-submit write position; fresh stream buffers are
+         * zeroed before queueing, so the least-assumptive first-submit match is
+         * iOffset == 0 rather than forcing the buffer-size limit here. */
+        cmd[0x34] = stream_desc_phys;
+        cmd[0x35] = stream_desc_virt;
+        cmd[0x36] = stream_part_offset;
+        cmd[0x37] = stream_desc_offset;
 
         /* OEM also packs the later slice words at cmd[0x19]/cmd[0x1a]. Leaving
          * them zero diverges from both SliceParamToCmdRegsEnc1 and UpdateCommand. */
@@ -891,16 +921,27 @@ static void fill_cmd_regs_enc1(const ALAvpuContext* ctx, uint32_t* cmd, uint32_t
             cmd[0x26] |= (rec_map_pitch & 0xffu) << 19;
             cmd[0x26] |= (max_bitdepth >= 9u ? 1u : 0u) << 31;
             cmd[0x2e] = rec_mv_addr;
-            cmd[0x37] = rec_map_addr;
 
             if (has_ref_desc) {
+                uint32_t ref_trace_addr = ctx->ref_trace_buf.phy_addr;
+                uint32_t rec_trace_addr = ctx->rec_trace_buf.phy_addr;
+
                 cmd[0x28] = ctx->ref_buf.phy_addr;
                 cmd[0x29] = ctx->ref_buf.phy_addr + y_plane_sz;
-                cmd[0x2a] = ctx->ref_buf.phy_addr;
-                cmd[0x2b] = ctx->ref_buf.phy_addr + y_plane_sz;
-                cmd[0x2c] = ref_mv_addr;
+                /* OEM InitTracedBuffers seeds the adjacent late Enc1 slots from
+                 * trace-buffer helpers rather than aliasing the main ref planes.
+                 * For the current simplified DPB keep the single live trace backing
+                 * store mirrored into both ref trace slots, and use the current rec
+                 * trace backing for the current-picture entry. */
+                cmd[0x2a] = ref_trace_addr ? ref_trace_addr : ctx->ref_buf.phy_addr;
+                cmd[0x2b] = ref_trace_addr ? ref_trace_addr : (ctx->ref_buf.phy_addr + y_plane_sz);
+                cmd[0x2c] = rec_trace_addr ? rec_trace_addr : ref_mv_addr;
+                cmd[0x2d] = ref_mv_addr;
+                cmd[0x2e] = rec_mv_addr;
                 cmd[0x38] = ref_map_addr;
                 cmd[0x39] = ref_map_addr;
+            } else {
+                cmd[0x2e] = rec_mv_addr;
             }
 
             cmd[0x64] = src_phys ? (src_phys + y_plane_sz) : 0u; /* arg3+0x14: srcC */
@@ -1209,6 +1250,64 @@ static void avpu_end_avc_entropy_callback(void *user_data)
     LOG_CODEC("EndAvcEntropy callback");
 }
 
+static void avpu_log_gate_regs(ALAvpuContext *ctx, const char *tag)
+{
+    unsigned int misc_ctrl = 0;
+    unsigned int top_ctrl = 0;
+    unsigned int axi_off = 0;
+    unsigned int enc_en_a = 0;
+    unsigned int enc_en_b = 0;
+    unsigned int enc_en_c = 0;
+    int have_misc_ctrl;
+    int have_top_ctrl;
+    int have_axi_off;
+    int have_enc_en_a;
+    int have_enc_en_b;
+    int have_enc_en_c;
+
+    if (!ctx || !tag)
+        return;
+
+    have_misc_ctrl = (avpu_read_reg_quiet(ctx->fd, AVPU_REG_MISC_CTRL, &misc_ctrl) == 0);
+    have_top_ctrl = (avpu_read_reg_quiet(ctx->fd, AVPU_REG_TOP_CTRL, &top_ctrl) == 0);
+    have_axi_off = (avpu_read_reg_quiet(ctx->fd, AVPU_REG_AXI_ADDR_OFFSET_IP, &axi_off) == 0);
+    have_enc_en_a = (avpu_read_reg_quiet(ctx->fd, AVPU_REG_ENC_EN_A, &enc_en_a) == 0);
+    have_enc_en_b = (avpu_read_reg_quiet(ctx->fd, AVPU_REG_ENC_EN_B, &enc_en_b) == 0);
+    have_enc_en_c = (avpu_read_reg_quiet(ctx->fd, AVPU_REG_ENC_EN_C, &enc_en_c) == 0);
+
+    LOG_CODEC(
+        "AVPU: %s gates misc_ctrl=%s0x%08x top_ctrl=%s0x%08x axi_off=%s0x%08x enc_en_a=%s0x%08x enc_en_b=%s0x%08x enc_en_c=%s0x%08x",
+        tag,
+        have_misc_ctrl ? "" : "ERR:", misc_ctrl,
+        have_top_ctrl ? "" : "ERR:", top_ctrl,
+        have_axi_off ? "" : "ERR:", axi_off,
+        have_enc_en_a ? "" : "ERR:", enc_en_a,
+        have_enc_en_b ? "" : "ERR:", enc_en_b,
+        have_enc_en_c ? "" : "ERR:", enc_en_c);
+}
+
+static void avpu_probe_reg_write(int fd, const char *tag, unsigned int off, unsigned int expected)
+{
+    unsigned int read_val = 0;
+    int write_ret;
+    int read_ret;
+
+    if (fd < 0 || !tag)
+        return;
+
+    write_ret = avpu_write_reg(fd, off, expected);
+    read_ret = avpu_read_reg_quiet(fd, off, &read_val);
+
+    LOG_CODEC(
+        "AVPU: %s off=0x%08x write_ret=%d expected=0x%08x read_ret=%d read_val=0x%08x",
+        tag,
+        off,
+        write_ret,
+        expected,
+        read_ret,
+        read_val);
+}
+
 static void avpu_log_busy_snapshot(ALAvpuContext *ctx, uint32_t idx, unsigned int core_status)
 {
     /* Emit every requested stuck-path snapshot. The earlier one-shot guard caused
@@ -1221,30 +1320,21 @@ static void avpu_log_busy_snapshot(ALAvpuContext *ctx, uint32_t idx, unsigned in
     unsigned int irq_mask = 0;
     unsigned int irq_pending = 0;
     unsigned int clkcmd = 0;
-    unsigned int misc_ctrl = 0;
-    unsigned int top_ctrl = 0;
-    unsigned int axi_off = 0;
-    unsigned int enc_en_a = 0;
-    unsigned int enc_en_b = 0;
-    unsigned int enc_en_c = 0;
+    unsigned int cl_addr = 0;
     int have_irq_mask = (avpu_read_reg_quiet(ctx->fd, AVPU_INTERRUPT_MASK, &irq_mask) == 0);
     int have_irq_pending = (avpu_read_reg_quiet(ctx->fd, AVPU_INTERRUPT, &irq_pending) == 0);
     int have_clkcmd = (avpu_read_reg_quiet(ctx->fd, AVPU_REG_CORE_CLKCMD(0), &clkcmd) == 0);
-    int have_misc_ctrl = (avpu_read_reg_quiet(ctx->fd, AVPU_REG_MISC_CTRL, &misc_ctrl) == 0);
-    int have_top_ctrl = (avpu_read_reg_quiet(ctx->fd, AVPU_REG_TOP_CTRL, &top_ctrl) == 0);
-    int have_axi_off = (avpu_read_reg_quiet(ctx->fd, AVPU_REG_AXI_ADDR_OFFSET_IP, &axi_off) == 0);
-    int have_enc_en_a = (avpu_read_reg_quiet(ctx->fd, AVPU_REG_ENC_EN_A, &enc_en_a) == 0);
-    int have_enc_en_b = (avpu_read_reg_quiet(ctx->fd, AVPU_REG_ENC_EN_B, &enc_en_b) == 0);
-    int have_enc_en_c = (avpu_read_reg_quiet(ctx->fd, AVPU_REG_ENC_EN_C, &enc_en_c) == 0);
+    int have_cl_addr = (avpu_read_reg_quiet(ctx->fd, AVPU_REG_CL_ADDR, &cl_addr) == 0);
     int wait_errno = ctx->irq_wait_errno;
 
     LOG_CODEC(
-        "AVPU: busy snapshot CL[%u] core_status=0x%08x irq_mask=%s0x%08x irq_pending=%s0x%08x clkcmd=%s0x%08x session_ready=%d frames_encoded=%d irq_thread_running=%d irq_thread_started=%d irq_thread_exited=%d last_irq=%d wait_irq_errno=%d (%s)",
+        "AVPU: busy snapshot CL[%u] core_status=0x%08x irq_mask=%s0x%08x irq_pending=%s0x%08x clkcmd=%s0x%08x cl_addr=%s0x%08x session_ready=%d frames_encoded=%d irq_thread_running=%d irq_thread_started=%d irq_thread_exited=%d last_irq=%d wait_irq_errno=%d (%s) init_trace=%d stream_flush_failures=%d interm_flush_ret=%d cl_flush_ret=%d",
         idx,
         core_status,
         have_irq_mask ? "" : "ERR:", irq_mask,
         have_irq_pending ? "" : "ERR:", irq_pending,
         have_clkcmd ? "" : "ERR:", clkcmd,
+        have_cl_addr ? "" : "ERR:", cl_addr,
         ctx->session_ready,
         ctx->frames_encoded,
         ctx->irq_thread_running,
@@ -1252,16 +1342,59 @@ static void avpu_log_busy_snapshot(ALAvpuContext *ctx, uint32_t idx, unsigned in
         ctx->irq_thread_exited,
         ctx->last_irq_id,
         wait_errno,
-        wait_errno ? strerror(wait_errno) : "ok");
+        wait_errno ? strerror(wait_errno) : "ok",
+        ctx->init_trace_completed,
+        ctx->init_stream_flush_failures,
+        ctx->init_interm_flush_ret,
+        ctx->init_cl_flush_ret);
 
     LOG_CODEC(
-        "AVPU: busy gates misc_ctrl=%s0x%08x top_ctrl=%s0x%08x axi_off=%s0x%08x enc_en_a=%s0x%08x enc_en_b=%s0x%08x enc_en_c=%s0x%08x",
-        have_misc_ctrl ? "" : "ERR:", misc_ctrl,
-        have_top_ctrl ? "" : "ERR:", top_ctrl,
-        have_axi_off ? "" : "ERR:", axi_off,
-        have_enc_en_a ? "" : "ERR:", enc_en_a,
-        have_enc_en_b ? "" : "ERR:", enc_en_b,
-        have_enc_en_c ? "" : "ERR:", enc_en_c);
+        "AVPU: busy sticky CL[%u] core_status=0x%08x cl_addr=%s0x%08x frames_encoded=%d last_irq=%d wait_irq_errno=%d init_trace=%d stream_flush_failures=%d interm_flush_ret=%d cl_flush_ret=%d",
+        idx,
+        core_status,
+        have_cl_addr ? "" : "ERR:", cl_addr,
+        ctx->frames_encoded,
+        ctx->last_irq_id,
+        wait_errno,
+        ctx->init_trace_completed,
+        ctx->init_stream_flush_failures,
+        ctx->init_interm_flush_ret,
+        ctx->init_cl_flush_ret);
+
+    avpu_log_gate_regs(ctx, "busy");
+}
+
+static void avpu_log_submit_snapshot(ALAvpuContext *ctx, uint32_t idx, const char *tag)
+{
+    unsigned int core_status = 0;
+    unsigned int irq_mask = 0;
+    unsigned int irq_pending = 0;
+    unsigned int clkcmd = 0;
+    unsigned int cl_addr = 0;
+    int have_status;
+    int have_irq_mask;
+    int have_irq_pending;
+    int have_clkcmd;
+    int have_cl_addr;
+
+    if (!ctx || !tag)
+        return;
+
+    have_status = (avpu_read_reg_quiet(ctx->fd, AVPU_REG_CORE_STATUS(0), &core_status) == 0);
+    have_irq_mask = (avpu_read_reg_quiet(ctx->fd, AVPU_INTERRUPT_MASK, &irq_mask) == 0);
+    have_irq_pending = (avpu_read_reg_quiet(ctx->fd, AVPU_INTERRUPT, &irq_pending) == 0);
+    have_clkcmd = (avpu_read_reg_quiet(ctx->fd, AVPU_REG_CORE_CLKCMD(0), &clkcmd) == 0);
+    have_cl_addr = (avpu_read_reg_quiet(ctx->fd, AVPU_REG_CL_ADDR, &cl_addr) == 0);
+
+    LOG_CODEC(
+        "AVPU: submit snapshot %s CL[%u] core_status=%s0x%08x irq_mask=%s0x%08x irq_pending=%s0x%08x clkcmd=%s0x%08x cl_addr=%s0x%08x",
+        tag,
+        idx,
+        have_status ? "" : "ERR:", core_status,
+        have_irq_mask ? "" : "ERR:", irq_mask,
+        have_irq_pending ? "" : "ERR:", irq_pending,
+        have_clkcmd ? "" : "ERR:", clkcmd,
+        have_cl_addr ? "" : "ERR:", cl_addr);
 }
 
 /* OEM parity: IsEnc1AlreadyRunning() reads (core<<9)+0x83f8 and checks bit 1.
@@ -1990,6 +2123,10 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
                         enc->avpu.busy_skip_count = 0;
                         enc->avpu.busy_snapshot_emitted = 0;
                         enc->avpu.first_submit_logged = 0;
+                        enc->avpu.init_trace_completed = 0;
+                        enc->avpu.init_stream_flush_failures = 0;
+                        enc->avpu.init_interm_flush_ret = 0;
+                        enc->avpu.init_cl_flush_ret = 0;
                         enc->avpu.irq_thread_started = 0;
                         enc->avpu.irq_thread_exited = 0;
                         enc->avpu.irq_wait_errno = 0;
@@ -2042,6 +2179,11 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
                                 enc->avpu.stream_bufs[filled] = tmp;
                                 enc->avpu.stream_in_hw[filled] = 0;
                                 memset(enc->avpu.stream_bufs[filled].map, 0, enc->avpu.stream_buf_size);
+                                if (avpu_flush_dma_buf(fd, "stream_buf",
+                                                       &enc->avpu.stream_bufs[filled],
+                                                       (size_t)enc->avpu.stream_buf_size) != 0) {
+                                    enc->avpu.init_stream_flush_failures++;
+                                }
                                 LOG_CODEC("AVPU: stream buf[%d] phys=0x%08x size=%d (imp-alloc)", filled, enc->avpu.stream_bufs[filled].phy_addr, enc->avpu.stream_buf_size);
                                 filled++;
                             } else {
@@ -2105,6 +2247,7 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
 
                                 if (avpu_alloc_imp(interm_total_sz, "AVPU_ITM", &enc->avpu.interm_buf) == 0) {
                                     memset(enc->avpu.interm_buf.map, 0, interm_total_sz);
+                                    enc->avpu.init_interm_flush_ret = avpu_flush_dma_buf(fd, "interm_buf", &enc->avpu.interm_buf, interm_total_sz);
                                     LOG_CODEC("AVPU: interm_buf phys=0x%08x size=%zu (ep1=%u wpp=%u ep2=%u map=%u data=%u)",
                                               enc->avpu.interm_buf.phy_addr, interm_total_sz,
                                               enc->avpu.interm_ep1_size, enc->avpu.interm_wpp_size,
@@ -2268,7 +2411,7 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
             /* Step 0: MISC_CTRL — OEM writes 0x1000 during scheduler init.
              * This enables the AVPU's AXI/DMA master. Without it, the hardware
              * receives CL_PUSH but cannot read the command list from RAM. */
-            avpu_write_reg(fd, AVPU_REG_MISC_CTRL, 0x00001000);
+            avpu_probe_reg_write(fd, "probe misc_ctrl", AVPU_REG_MISC_CTRL, 0x00001000);
 
             /* Step 1: ResetCore — rapid back-to-back writes, NO sleeps */
             LOG_CODEC("AVPU: ResetCore (1,2,4) to reg 0x%x", AVPU_REG_CORE_RESET(0));
@@ -2280,12 +2423,14 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
             avpu_write_reg(fd, AVPU_INTERRUPT, 0x00FFFFFF);
 
             /* Step 3: TOP_CTRL per OEM */
-            avpu_write_reg(fd, AVPU_REG_TOP_CTRL, 0x00000080);
+            avpu_probe_reg_write(fd, "probe top_ctrl", AVPU_REG_TOP_CTRL, 0x00000080);
 
             /* Step 4: Turn on core gate clock (OEM: AL_EncCore_TurnOnGC).
              * Without this, T31 can accept the first CL push but never retire it,
              * leaving CORE_STATUS bit1 stuck "running" forever. */
             avpu_turn_on_gc(fd, 0);
+
+            avpu_log_gate_regs(ctx, "init");
 
             ctx->session_ready = 1;
 
@@ -2352,23 +2497,47 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
              * mapped ring rather than just the current 0x200-byte entry.
              * dir=1 = DMA_TO_DEVICE (writeback, CPU→RAM). */
             size_t cl_flush_size = ctx->cl_ring.size ? ctx->cl_ring.size : ctx->cl_entry_size;
-            avpu_flush_cache(fd, ctx->cl_ring.map, (unsigned int)cl_flush_size, 1 /*WBACK*/);
+            int cl_flush_ret = avpu_flush_cache(fd, ctx->cl_ring.map, (unsigned int)cl_flush_size, 1 /*WBACK*/);
 
             /* OEM encode1 enables interrupts before AL_EncCore_Encode1 starts
              * the command list. Match that ordering here instead of unmasking
              * after the source FIFO push. */
             avpu_enable_interrupts(fd, 0);
 
-            /* OEM-aligned submit path: program command list, trigger Enc1, then
-             * push the source frame address into the AVPU source FIFO. */
+            /* OEM-aligned submit path: program the command-list address and
+             * trigger Enc1 via CL_PUSH. Stream buffers are pre-queued via
+             * STRM_PUSH separately; the OEM StartEnc1WithCommandList helper does
+             * not issue an extra SRC_PUSH on the Enc1 command-list path. */
             uint32_t cl_phys = ctx->cl_ring.phy_addr + (idx * ctx->cl_entry_size);
             uint32_t ref_phys = ctx->reference_valid ? ctx->ref_buf.phy_addr : 0;
+            int trace_submit = (idx == 0 && ctx->frames_encoded == 0);
+            int cl_addr_ret;
+            int cl_push_ret;
+            if (trace_submit || cl_flush_ret != 0) {
+                LOG_CODEC("AVPU: submit flush CL[%u] ring_phys=0x%08x size=0x%08x ret=%d",
+                          idx, ctx->cl_ring.phy_addr, (unsigned int)cl_flush_size, cl_flush_ret);
+            }
+            if (trace_submit) {
+                ctx->init_cl_flush_ret = cl_flush_ret;
+                ctx->init_trace_completed = 1;
+            }
             LOG_CODEC("Process: CL_ADDR=0x%08x src=0x%08x rec=0x%08x ref=0x%08x CL[%u]",
                       cl_phys, phys_addr,
                       ctx->rec_buf.phy_addr, ref_phys, idx);
-            avpu_write_reg(fd, AVPU_REG_CL_ADDR, cl_phys);
-            avpu_write_reg(fd, AVPU_REG_CL_PUSH, 0x00000002);
-            avpu_write_reg(fd, AVPU_REG_SRC_PUSH, phys_addr);
+            if (trace_submit)
+                avpu_log_submit_snapshot(ctx, idx, "pre");
+
+            cl_addr_ret = avpu_write_reg(fd, AVPU_REG_CL_ADDR, cl_phys);
+            if (trace_submit) {
+                LOG_CODEC("AVPU: submit write CL[%u] CL_ADDR ret=%d", idx, cl_addr_ret);
+                avpu_log_submit_snapshot(ctx, idx, "post_cl_addr");
+            }
+
+            cl_push_ret = avpu_write_reg(fd, AVPU_REG_CL_PUSH, 0x00000002);
+            if (trace_submit) {
+                LOG_CODEC("AVPU: submit write CL[%u] CL_PUSH ret=%d val=0x00000002", idx, cl_push_ret);
+                avpu_log_submit_snapshot(ctx, idx, "post_cl_push");
+            }
 
             /* Advance to next CL slot */
             ctx->cl_idx = (idx + 1) % ctx->cl_count;
