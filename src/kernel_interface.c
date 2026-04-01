@@ -519,12 +519,18 @@ int fs_dqbuf_plain(int fd, int *index_out) {
     memset(raw, 0, buf_sz);
     struct v4l2_buf32 *b = (struct v4l2_buf32 *)raw;
     b->type = 1; b->memory = 2; b->field = 4;
-    fprintf(stderr, "[KernelIF] DQBUF ioctl ENTER arg=%p\n", (void*)b);
+    static int dqbuf_call_count = 0;
+    int call_id = ++dqbuf_call_count;
+    if (call_id <= 5) {
+        fprintf(stderr, "[KernelIF] DQBUF ioctl ENTER #%d arg=%p\n", call_id, (void*)b);
+    }
     int ret = ioctl(fd, VIDIOC_DQBUF, b);
     int errsv = errno;
-    fprintf(stderr, "[KernelIF] DQBUF ioctl LEAVE ret=%d errno=%d\n", ret, errsv);
+    if (call_id <= 5) {
+        fprintf(stderr, "[KernelIF] DQBUF ioctl LEAVE #%d ret=%d errno=%d\n", call_id, ret, errsv);
+    }
     if (ret < 0) {
-        if (errsv == EAGAIN) { free(raw); return -2; }
+        if (errsv == EAGAIN || errsv == EINTR) { free(raw); return -2; }
         fprintf(stderr, "[KernelIF] DQBUF failed: %s\n", strerror(errsv));
         free(raw);
         return -1;
@@ -532,6 +538,92 @@ int fs_dqbuf_plain(int fd, int *index_out) {
     *index_out = (int)b->index;
     free(raw);
     return 0;
+}
+
+/* --- Timed DQBUF wrapper --- */
+/* The T31 framechan driver may ignore O_NONBLOCK on DQBUF and block
+ * indefinitely in wait_event_interruptible.  We run the ioctl in a
+ * helper thread and wait with a timeout so the capture loop isn't stuck. */
+#include <signal.h>
+
+typedef struct {
+    int fd;
+    int index;
+    int result;       /* 0=ok, -1=error, -2=EAGAIN */
+    int done;
+    pthread_mutex_t mtx;
+    pthread_cond_t  cond;
+} dqbuf_ctx_t;
+
+static void *dqbuf_helper(void *arg) {
+    dqbuf_ctx_t *ctx = (dqbuf_ctx_t *)arg;
+    /* Allow cancellation while blocked in ioctl */
+    pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, NULL);
+    pthread_setcanceltype(PTHREAD_CANCEL_ASYNCHRONOUS, NULL);
+
+    ctx->result = fs_dqbuf_plain(ctx->fd, &ctx->index);
+
+    pthread_mutex_lock(&ctx->mtx);
+    ctx->done = 1;
+    pthread_cond_signal(&ctx->cond);
+    pthread_mutex_unlock(&ctx->mtx);
+    return NULL;
+}
+
+int fs_dqbuf_timed(int fd, int *index_out, int timeout_ms) {
+    if (fd < 0 || !index_out) return -1;
+
+    dqbuf_ctx_t ctx;
+    ctx.fd = fd;
+    ctx.index = -1;
+    ctx.result = -1;
+    ctx.done = 0;
+    pthread_mutex_init(&ctx.mtx, NULL);
+    pthread_cond_init(&ctx.cond, NULL);
+
+    pthread_t tid;
+    pthread_attr_t attr;
+    pthread_attr_init(&attr);
+    pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
+    if (pthread_create(&tid, &attr, dqbuf_helper, &ctx) != 0) {
+        pthread_attr_destroy(&attr);
+        pthread_mutex_destroy(&ctx.mtx);
+        pthread_cond_destroy(&ctx.cond);
+        return -1;
+    }
+    pthread_attr_destroy(&attr);
+
+    struct timespec ts;
+    clock_gettime(CLOCK_REALTIME, &ts);
+    ts.tv_sec  += timeout_ms / 1000;
+    ts.tv_nsec += (timeout_ms % 1000) * 1000000L;
+    if (ts.tv_nsec >= 1000000000L) { ts.tv_sec++; ts.tv_nsec -= 1000000000L; }
+
+    int timed_out = 0;
+    pthread_mutex_lock(&ctx.mtx);
+    while (!ctx.done) {
+        if (pthread_cond_timedwait(&ctx.cond, &ctx.mtx, &ts) == ETIMEDOUT) {
+            timed_out = 1;
+            break;
+        }
+    }
+    pthread_mutex_unlock(&ctx.mtx);
+
+    if (timed_out) {
+        /* Cancel the helper thread stuck in ioctl */
+        pthread_cancel(tid);
+        pthread_join(tid, NULL);
+        pthread_mutex_destroy(&ctx.mtx);
+        pthread_cond_destroy(&ctx.cond);
+        return -3;  /* timeout */
+    }
+
+    pthread_join(tid, NULL);
+    pthread_mutex_destroy(&ctx.mtx);
+    pthread_cond_destroy(&ctx.cond);
+
+    *index_out = ctx.index;
+    return ctx.result;
 }
 
 
@@ -1005,18 +1097,29 @@ int VBMKernelDequeue(int chn, int fd, void **frame_out) {
     static int eagain_count[MAX_VBM_POOLS] = {0};
     static int err_count[MAX_VBM_POOLS] = {0};
     static int dbg_count[MAX_VBM_POOLS] = {0};
+    static int timeout_count[MAX_VBM_POOLS] = {0};
 
     int idx = -1;
     if (dbg_count[chn] < 3) {
-        fprintf(stderr, "[VBM] VBMKernelDequeue chn=%d: attempting DQBUF...\n", chn);
+        fprintf(stderr, "[VBM] VBMKernelDequeue chn=%d: attempting timed DQBUF...\n", chn);
     }
 
-    int ret = fs_dqbuf_plain(fd, &idx);
+    /* Use timed wrapper (500ms) to avoid blocking indefinitely.
+     * The T31 framechan driver may ignore O_NONBLOCK on DQBUF. */
+    int ret = fs_dqbuf_timed(fd, &idx, 500);
     if (dbg_count[chn] < 3) {
         fprintf(stderr, "[VBM] VBMKernelDequeue chn=%d: DQBUF ret=%d idx=%d\n", chn, ret, idx);
         dbg_count[chn]++;
     }
 
+    if (ret == -3) {
+        /* Timed out - driver blocked */
+        int c = ++timeout_count[chn];
+        if (c <= 5 || (c % 20) == 0) {
+            fprintf(stderr, "[VBM] VBMKernelDequeue chn=%d: DQBUF TIMEOUT (count=%d) - driver blocked\n", chn, c);
+        }
+        return -2; /* treat like EAGAIN for caller */
+    }
     if (ret == -2) {
         int c = ++eagain_count[chn];
         if (c <= 5 || (c % 50) == 0) {

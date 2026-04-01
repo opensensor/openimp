@@ -24,7 +24,7 @@ extern void* IMP_System_GetModule(int deviceID, int groupID);
 extern int IMP_System_RegisterModule(int deviceID, int groupID, void *module);
 extern int notify_observers(void *module, void *frame);
 
-#define LOG_FS(fmt, ...) fprintf(stderr, "[FrameSource] " fmt "\n", ##__VA_ARGS__)
+#include "imp_log_int.h"
 
 /* FrameSource channel structure - 0x2e8 bytes per channel */
 #define MAX_FS_CHANNELS 5
@@ -828,11 +828,20 @@ static void *frame_capture_thread(void *arg) {
                 frame_count++;
                 if (frame_count <= 5 || frame_count % 100 == 0) {
                     LOG_FS("frame_capture_thread chn=%d: got frame #%d (%p) from kernel", chn_num, frame_count, frame);
+                    fflush(stderr);
                 }
                 /* Notify observers (bound modules like Encoder) */
                 void *module = IMP_System_GetModule(DEV_ID_FS, chn_num);
                 if (module != NULL) {
+                    if (frame_count <= 5) {
+                        LOG_FS("frame_capture_thread chn=%d: about to notify_observers module=%p", chn_num, module);
+                        fflush(stderr);
+                    }
                     notify_observers(module, frame);
+                    if (frame_count <= 5) {
+                        LOG_FS("frame_capture_thread chn=%d: notify_observers returned", chn_num);
+                        fflush(stderr);
+                    }
                 }
                 /* keep draining */
                 continue;

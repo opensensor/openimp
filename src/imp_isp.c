@@ -31,7 +31,7 @@ int IMP_ISP_Tuning_GetTotalGain(uint32_t *pgain);
 int IMP_Log_Get_Option(void);
 void imp_log_fun(int level, int option, int type, ...);
 
-#define LOG_ISP(fmt, ...) fprintf(stderr, "[IMP_ISP] " fmt "\n", ##__VA_ARGS__)
+#include "imp_log_int.h"
 
 
 
@@ -1529,10 +1529,81 @@ int IMP_ISP_Tuning_GetBcshHue(unsigned char *phue) {
 
 int IMP_ISP_Tuning_GetEVAttr(IMPISPEVAttr *attr) {
     if (attr == NULL) return -1;
-    /* Return default EV attributes */
-    memset(attr, 0, sizeof(IMPISPEVAttr));
-    LOG_ISP("GetEVAttr");
-    return 0;
+    if (gISPdev == NULL || gISPdev->tisp_fd < 0 || gISPdev->tuning == NULL) {
+        LOG_ISP("GetEVAttr: tuning not enabled");
+        return -1;
+    }
+
+    /* OEM pattern from HLIL decompilation at 0x91a2c:
+     * Stack struct is {cmd=1, subcmd=0x8000026, ptr_to_response_buffer}.
+     * The third field is a POINTER to a separate 24-byte response area.
+     * The kernel follows that pointer and writes 6 x uint32_t there.
+     * ioctl number is 0xc00c56c6 (12 bytes copied from userspace). */
+
+    /* Response buffer — 6 words the kernel writes to */
+    uint32_t *ev_buf = NULL;
+    if (posix_memalign((void**)&ev_buf, 8, 6 * sizeof(uint32_t)) != 0 || !ev_buf) {
+        LOG_ISP("GetEVAttr: alloc ev_buf failed");
+        return -1;
+    }
+    memset(ev_buf, 0, 6 * sizeof(uint32_t));
+
+    /* Request struct — exactly 12 bytes: {cmd, subcmd, pointer} */
+    typedef struct {
+        uint32_t cmd;       /* 1 = get */
+        uint32_t subcmd;    /* 0x8000026 */
+        uint32_t *resp;     /* pointer to response buffer */
+    } ev_req_t;
+
+    ev_req_t *req = NULL;
+    if (posix_memalign((void**)&req, 4, sizeof(*req)) != 0 || !req) {
+        LOG_ISP("GetEVAttr: alloc req failed");
+        free(ev_buf);
+        return -1;
+    }
+    req->cmd = 1;
+    req->subcmd = 0x8000026u;
+    req->resp = ev_buf;
+
+    int ret = ioctl(gISPdev->tisp_fd, 0xc00c56c6, req);
+    if (ret != 0) {
+        LOG_ISP("GetEVAttr: ioctl failed: %s (returning defaults)", strerror(errno));
+        free(req);
+        free(ev_buf);
+        attr->ev[0] = 16384;     /* ev */
+        attr->ev[1] = 16666;     /* expr_us (~16.7ms) */
+        attr->ev[2] = 14;        /* ev_log2 */
+        attr->ev[3] = 256;       /* again (1x) */
+        attr->ev[4] = 256;       /* dgain (1x) */
+        attr->ev[5] = 8;         /* gain_log2 */
+        return 0;
+    }
+
+    /* Validate: reject obviously garbage values */
+    int valid = 1;
+    for (int i = 0; i < 6; i++) {
+        if (ev_buf[i] > 0x10000000) { valid = 0; break; }
+    }
+
+    if (valid && (ev_buf[3] > 0 || ev_buf[4] > 0)) {
+        memcpy(attr->ev, ev_buf, 6 * sizeof(uint32_t));
+    } else {
+        LOG_ISP("GetEVAttr: suspect values [%u,%u,%u,%u,%u,%u], using defaults",
+                ev_buf[0], ev_buf[1], ev_buf[2], ev_buf[3], ev_buf[4], ev_buf[5]);
+        attr->ev[0] = 16384;
+        attr->ev[1] = 16666;
+        attr->ev[2] = 14;
+        attr->ev[3] = 256;
+        attr->ev[4] = 256;
+        attr->ev[5] = 8;
+    }
+
+    LOG_ISP("GetEVAttr: ev=%u expr_us=%u ev_log2=%u again=%u dgain=%u gain_log2=%u",
+            attr->ev[0], attr->ev[1], attr->ev[2], attr->ev[3], attr->ev[4], attr->ev[5]);
+
+    free(req);
+    free(ev_buf);
+    return ret;
 }
 
 int IMP_ISP_Tuning_GetWB_Statis(IMPISPWB *wb) {
@@ -1674,7 +1745,19 @@ int IMP_ISP_Tuning_SetAeHist(void *hist) {
 }
 
 int IMP_ISP_Tuning_GetAeHist(void *hist) {
-    if (hist) memset(hist, 0, 256);
+    /* OEM: passes pointer through ioctl {1, 0x800002e, ptr}.
+     * We zero only what the struct actually holds (~512 bytes for 256×u16).
+     * The caller allocates IMPISPAEHist which is typically 256 uint16 bins.
+     * Use ioctl if tuning is available, otherwise zero. */
+    if (!hist) return -1;
+    if (gISPdev && gISPdev->tisp_fd >= 0 && gISPdev->tuning) {
+        typedef struct { uint32_t cmd; uint32_t subcmd; void *ptr; } req_t;
+        req_t req = {1, 0x800002e, hist};
+        if (ioctl(gISPdev->tisp_fd, 0xc00c56c6, &req) == 0)
+            return 0;
+    }
+    /* Fallback: zero only 256 uint16 bins = 512 bytes (actual struct size) */
+    memset(hist, 0, 256 * sizeof(uint16_t));
     return 0;
 }
 
@@ -1710,7 +1793,15 @@ int IMP_ISP_Tuning_GetSensorAttr(uint32_t *width, uint32_t *height) {
 }
 
 int IMP_ISP_Tuning_GetAeAttr(void *ae_attr) {
-    if (ae_attr) memset(ae_attr, 0, 256);
+    /* OEM: ioctl {1, 0x8000020, ptr}. IMPISPAEAttr is ~64 bytes. */
+    if (!ae_attr) return -1;
+    if (gISPdev && gISPdev->tisp_fd >= 0 && gISPdev->tuning) {
+        typedef struct { uint32_t cmd; uint32_t subcmd; void *ptr; } req_t;
+        req_t req = {1, 0x8000020, ae_attr};
+        if (ioctl(gISPdev->tisp_fd, 0xc00c56c6, &req) == 0)
+            return 0;
+    }
+    memset(ae_attr, 0, 64); /* Safe fallback — IMPISPAEAttr is ~64 bytes */
     return 0;
 }
 
@@ -1727,5 +1818,95 @@ int IMP_ISP_Tuning_GetModuleControl(uint32_t *modules) {
 
 int IMP_ISP_Tuning_SetModuleControl(uint32_t modules) {
     (void)modules;
+    return 0;
+}
+
+/* ========== Additional missing ISP Tuning symbols (prudynt parity) ========== */
+
+int IMP_ISP_Tuning_SetAutoZoom(void *zoom_attr) {
+    (void)zoom_attr;
+    return 0;
+}
+
+int IMP_ISP_Tuning_AE_SetROI(void *roi) {
+    (void)roi;
+    return 0;
+}
+
+int IMP_ISP_Tuning_AE_GetROI(void *roi) {
+    if (roi) memset(roi, 0, 15 * 15);
+    return 0;
+}
+
+int IMP_ISP_Tuning_GetAeHist_Origin(void *hist) {
+    /* OEM: ioctl {1, subcmd, ptr}. AE hist origin is 256 uint32 bins = 1024 bytes.
+     * This struct IS large, but use ioctl first. */
+    if (!hist) return -1;
+    if (gISPdev && gISPdev->tisp_fd >= 0 && gISPdev->tuning) {
+        typedef struct { uint32_t cmd; uint32_t subcmd; void *ptr; } req_t;
+        req_t req = {1, 0x800002f, hist};
+        if (ioctl(gISPdev->tisp_fd, 0xc00c56c6, &req) == 0)
+            return 0;
+    }
+    memset(hist, 0, 256 * sizeof(uint32_t));
+    return 0;
+}
+
+int IMP_ISP_Tuning_GetAE_IT_MAX(uint32_t *it_max) {
+    if (!it_max) return -1;
+    *it_max = 0;
+    return 0;
+}
+
+int IMP_ISP_Tuning_SetAe_IT_MAX(uint32_t it_max) {
+    (void)it_max;
+    return 0;
+}
+
+int IMP_ISP_Tuning_GetAeLuma(void *luma) {
+    if (luma) memset(luma, 0, 64);
+    return 0;
+}
+
+int IMP_ISP_Tuning_GetAeMin(int *min_it, int *min_again) {
+    if (min_it) *min_it = 0;
+    if (min_again) *min_again = 0;
+    return 0;
+}
+
+int IMP_ISP_Tuning_SetAeMin(int min_it, int min_again) {
+    (void)min_it; (void)min_again;
+    return 0;
+}
+
+int IMP_ISP_Tuning_GetAeZone(void *zone) {
+    if (zone) memset(zone, 0, 15 * 15 * sizeof(uint32_t));
+    return 0;
+}
+
+int IMP_ISP_Tuning_GetAwbZone(void *zone_r, void *zone_g, void *zone_b) {
+    if (zone_r) memset(zone_r, 0, 225);
+    if (zone_g) memset(zone_g, 0, 225);
+    if (zone_b) memset(zone_b, 0, 225);
+    return 0;
+}
+
+int IMP_ISP_Tuning_GetAwbHist(void *hist) {
+    /* OEM: ioctl {1, 0x8000007, ptr} — kernel fills IMPISPAWBHist (~24 bytes). */
+    if (!hist) return -1;
+    if (gISPdev && gISPdev->tisp_fd >= 0 && gISPdev->tuning) {
+        typedef struct { uint32_t cmd; uint32_t subcmd; void *ptr; } req_t;
+        req_t req = {1, 0x8000007, hist};
+        if (ioctl(gISPdev->tisp_fd, 0xc00c56c6, &req) == 0)
+            return 0;
+    }
+    /* Safe fallback: zero only 24 bytes (actual struct size) */
+    memset(hist, 0, sizeof(uint32_t) * 6);
+    return 0;
+}
+
+int IMP_ISP_Tuning_GetAWBCt(uint32_t *ct) {
+    if (!ct) return -1;
+    *ct = 5000; /* Default: daylight ~5000K */
     return 0;
 }

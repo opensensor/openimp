@@ -15,7 +15,7 @@
 #include <errno.h>
 #include <pthread.h>
 
-#define LOG_DMA(fmt, ...) fprintf(stderr, "[DMA] " fmt "\n", ##__VA_ARGS__)
+#include "imp_log_int.h"
 
 /* Best-effort check that a pointer looks like a C string within max bytes */
 static int is_probably_cstring(const char *p, size_t max)

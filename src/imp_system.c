@@ -10,6 +10,7 @@
 #include <pthread.h>
 #include <semaphore.h>
 #include <imp/imp_system.h>
+#include "imp_log_int.h"
 
 #define IMP_VERSION "1.1.6"
 
@@ -567,6 +568,7 @@ int notify_observers(Module *module, void *frame) {
                 /* Call update function with module and frame */
                 fprintf(stderr, "[System] notify: calling update %p on %s (frame=%p)\n",
                         (void*)update_fn, dst_module->name, frame);
+                fflush(stderr);
                 if (update_fn(dst_module, frame) < 0) {
                     fprintf(stderr, "[System] Observer update failed for %s\n",
                             dst_module->name);

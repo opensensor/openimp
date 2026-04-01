@@ -21,7 +21,7 @@
 /* External system functions */
 extern void* IMP_System_GetModule(int deviceID, int groupID);
 
-#define LOG_ENC(fmt, ...) fprintf(stderr, "[Encoder] " fmt "\n", ##__VA_ARGS__)
+#include "imp_log_int.h"
 #define FIFO_SIZE 64  /* Size of Fifo structure */
 
 /* Encoder channel structure - 0x308 bytes per channel */
@@ -858,24 +858,24 @@ int IMP_Encoder_GetStream(int encChn, IMPEncoderStream *stream, int block) {
         return -1;
     }
 
-    /* Check if recv_pic is started */
-    if (!chn->recv_pic_started) {
-        return 2; /* No stream available */
+    /* OEM: if recv_pic not started and non-blocking, return 2 */
+    pthread_mutex_lock(&chn->mutex_450);
+    if (!chn->recv_pic_started && !block) {
+        pthread_mutex_unlock(&chn->mutex_450);
+        return 2;
     }
+    pthread_mutex_unlock(&chn->mutex_450);
 
-    /* Wait for stream availability if blocking */
+    /* Wait for stream availability — use sem_418 (GetStream semaphore).
+     * OEM GetStream_Impl acquires sem_418 to get the stream permit. */
     if (block) {
-        /* Wait on semaphore with timeout */
-        struct timespec ts;
-        clock_gettime(CLOCK_REALTIME, &ts);
-        ts.tv_sec += 1; /* 1 second timeout */
-
-        if (sem_timedwait(&chn->sem_408, &ts) < 0) {
-            return -1; /* Timeout or error */
+        /* Blocking: wait on sem_418 */
+        if (sem_wait(&chn->sem_418) < 0) {
+            return -1;
         }
     } else {
-        /* Try to get semaphore without blocking */
-        if (sem_trywait(&chn->sem_408) < 0) {
+        /* Non-blocking: try to acquire */
+        if (sem_trywait(&chn->sem_418) < 0) {
             return -1; /* No stream available */
         }
     }
@@ -950,8 +950,9 @@ int IMP_Encoder_ReleaseStream(int encChn, IMPEncoderStream *stream) {
         /* Free stream buffer */
         free(stream_buf);
         chn->current_stream = NULL;
-        /* Signal producer that a slot is now available */
-        sem_post(&chn->sem_418);
+        /* Signal producer (stream_thread) that a slot is now available.
+         * stream_thread waits on sem_408 when the slot is occupied. */
+        sem_post(&chn->sem_408);
 
         LOG_ENC("ReleaseStream: freed stream buffer");
     }
@@ -968,37 +969,35 @@ int IMP_Encoder_PollingStream(int encChn, uint32_t timeoutMsec) {
 
     EncChannel *chn = &g_EncChannel[encChn];
 
-    /* Check if channel is registered */
+    /* OEM checks channel created AND registered flags */
     if (chn->chn_id < 0) {
         return -1;
     }
+    if (!chn->registered) {
+        return -1;
+    }
 
-    /* Wait for stream with timeout using sem_timedwait */
+    /* OEM pattern from HLIL at 0x85724:
+     * If timeout == 0: sem_wait (block forever)
+     * If timeout > 0:  video_sem_timedwait (sem_timedwait wrapper)
+     * OEM does NOT re-post — PollingStream consumes the permit,
+     * and GetStream does NOT acquire it again. */
+    if (timeoutMsec == 0) {
+        return sem_wait(&chn->sem_428);
+    }
+
     struct timespec ts;
     if (clock_gettime(CLOCK_REALTIME, &ts) < 0) {
         return -1;
     }
-
-    /* Add timeout */
     ts.tv_sec += timeoutMsec / 1000;
-    ts.tv_nsec += (timeoutMsec % 1000) * 1000000;
-    if (ts.tv_nsec >= 1000000000) {
+    ts.tv_nsec += (timeoutMsec % 1000) * 1000000L;
+    if (ts.tv_nsec >= 1000000000L) {
         ts.tv_sec++;
-        ts.tv_nsec -= 1000000000;
+        ts.tv_nsec -= 1000000000L;
     }
 
-    /* Wait for stream availability */
-    if (sem_timedwait(&chn->sem_408, &ts) < 0) {
-        if (errno == ETIMEDOUT) {
-            return -1; /* Timeout */
-        }
-        return -1; /* Error */
-    }
-
-    /* Stream is available, post back to semaphore so GetStream can retrieve it */
-    sem_post(&chn->sem_408);
-
-    return 0; /* Stream available */
+    return sem_timedwait(&chn->sem_428, &ts) < 0 ? -1 : 0;
 }
 
 int IMP_Encoder_Query(int encChn, IMPEncoderCHNStat *stat) {
@@ -1056,8 +1055,16 @@ int IMP_Encoder_SetDefaultParam(IMPEncoderChnAttr *attr, IMPEncoderProfile profi
 
 int IMP_Encoder_GetChnAttr(int encChn, IMPEncoderChnAttr *attr) {
     if (attr == NULL) return -1;
-    LOG_ENC("GetChnAttr: chn=%d", encChn);
-    memset(attr, 0, sizeof(*attr));
+    if (encChn < 0 || encChn >= MAX_ENC_CHANNELS) return -1;
+    EncChannel *chn = &g_EncChannel[encChn];
+    if (chn->chn_id < 0) {
+        LOG_ENC("GetChnAttr: channel %d not registered", encChn);
+        memset(attr, 0, sizeof(*attr));
+        return -1;
+    }
+    memcpy(attr, &chn->attr, sizeof(IMPEncoderCHNAttr));
+    LOG_ENC("GetChnAttr: chn=%d, %ux%u", encChn,
+            attr->encAttr.attrH264.maxPicWidth, attr->encAttr.attrH264.maxPicHeight);
     return 0;
 }
 
@@ -1276,6 +1283,39 @@ int IMP_Encoder_SetPool(int encChn, int poolId) {
 int IMP_Encoder_GetPool(int encChn) {
     if (encChn < 0 || encChn >= MAX_ENC_CHANNELS) return -1;
     return 0; /* Default pool */
+}
+
+/* ========== Additional missing Encoder symbols (prudynt parity) ========== */
+
+int IMP_Encoder_SetChnBitRate(int encChn, int bitrate) {
+    if (encChn < 0 || encChn >= MAX_ENC_CHANNELS) return -1;
+    LOG_ENC("SetChnBitRate: chn=%d, bitrate=%d", encChn, bitrate);
+    return 0;
+}
+
+int IMP_Encoder_SetChnQpBounds(int encChn, int minQp, int maxQp) {
+    if (encChn < 0 || encChn >= MAX_ENC_CHANNELS) return -1;
+    LOG_ENC("SetChnQpBounds: chn=%d, min=%d, max=%d", encChn, minQp, maxQp);
+    return 0;
+}
+
+int IMP_Encoder_SetChnQpIPDelta(int encChn, int delta) {
+    if (encChn < 0 || encChn >= MAX_ENC_CHANNELS) return -1;
+    LOG_ENC("SetChnQpIPDelta: chn=%d, delta=%d", encChn, delta);
+    return 0;
+}
+
+int IMP_Encoder_GetChnAttrRcMode(int encChn, void *rcMode) {
+    if (encChn < 0 || encChn >= MAX_ENC_CHANNELS || !rcMode) return -1;
+    memcpy(rcMode, &g_EncChannel[encChn].attr.rcAttr, sizeof(IMPEncoderRcAttr));
+    return 0;
+}
+
+int IMP_Encoder_SetChnAttrRcMode(int encChn, void *rcMode) {
+    if (encChn < 0 || encChn >= MAX_ENC_CHANNELS || !rcMode) return -1;
+    memcpy(&g_EncChannel[encChn].attr.rcAttr, rcMode, sizeof(IMPEncoderRcAttr));
+    LOG_ENC("SetChnAttrRcMode: chn=%d", encChn);
+    return 0;
 }
 
 /* ========== Helper Functions ========== */
@@ -1501,43 +1541,13 @@ static void *encoder_thread(void *arg) {
 
     LOG_ENC("encoder_thread: started for channel %d", chn->chn_id);
 
-    /* Main encoding loop */
+    /* In OEM libimp, encoding is triggered directly from the observer callback
+     * (encoder_update → AL_Codec_Encode_Process).  This thread exists only as a
+     * placeholder to keep the pthread handle valid; it does NOT drive encoding
+     * and does NOT spam eventfd. */
     while (1) {
-        /* Check for thread cancellation */
         pthread_testcancel();
-
-        /* Wait for recv_pic to be enabled */
-        if (!chn->recv_pic_enabled) {
-            usleep(10000); /* 10ms */
-            continue;
-        }
-
-        /* Wait for recv_pic to be started */
-        if (!chn->recv_pic_started) {
-            usleep(10000); /* 10ms */
-            continue;
-        }
-
-        /* Frames are received via observer pattern in encoder_update()
-         * The update callback queues frames to the input FIFO
-         * This thread processes frames from the FIFO */
-
-        /* Wait for frame arrival (~30fps) */
-        usleep(33000);
-
-        /* Frames come from FrameSource via observer pattern (encoder_update)
-         * They are queued to enc->fifo_input and processed here
-         * The actual frame processing happens in encoder_update() which calls
-         * AL_Codec_Encode_Process() with the real frame data */
-
-        /* This thread primarily signals the stream thread via eventfd */
-
-        /* Signal eventfd to wake up stream thread */
-        if (chn->eventfd >= 0) {
-            uint64_t val = 1;
-            ssize_t n = write(chn->eventfd, &val, sizeof(val));
-            (void)n; /* Suppress unused warning */
-        }
+        sleep(1);
     }
 
     return NULL;
@@ -1719,8 +1729,10 @@ static void *stream_thread(void *arg) {
                     pthread_mutex_lock(&chn->mutex_450);
                     if (chn->current_stream == NULL) {
                         chn->current_stream = stream_buf;
-                        /* Signal semaphore that stream is available */
-                        sem_post(&chn->sem_408);
+                        /* Signal sem_428 (PollingStream waits on this) */
+                        sem_post(&chn->sem_428);
+                        /* Signal sem_418 (GetStream waits on this) */
+                        sem_post(&chn->sem_418);
                         /* Also notify via eventfd for apps using GetFd/poll */
                         if (chn->eventfd >= 0) {
                             uint64_t val = 1;
@@ -1735,13 +1747,14 @@ static void *stream_thread(void *arg) {
                     if (!posted) {
                         LOG_ENC("stream_thread: waiting (not dropping) because previous stream not yet released");
                         while (!posted) {
-                            /* Wait for ReleaseStream to signal availability */
-                            sem_wait(&chn->sem_418);
+                            /* Wait for ReleaseStream to signal slot available */
+                            sem_wait(&chn->sem_408);
                             /* Try again to post */
                             pthread_mutex_lock(&chn->mutex_450);
                             if (chn->current_stream == NULL) {
                                 chn->current_stream = stream_buf;
-                                sem_post(&chn->sem_408);
+                                sem_post(&chn->sem_428);
+                                sem_post(&chn->sem_418);
                                 if (chn->eventfd >= 0) {
                                     uint64_t val = 1;
                                     ssize_t n = write(chn->eventfd, &val, sizeof(val));

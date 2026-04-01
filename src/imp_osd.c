@@ -10,7 +10,7 @@
 #include <semaphore.h>
 #include <imp/imp_osd.h>
 
-#define LOG_OSD(fmt, ...) fprintf(stderr, "[OSD] " fmt "\n", ##__VA_ARGS__)
+#include "imp_log_int.h"
 
 /* OSD Region structure - 0x38 bytes */
 #define MAX_OSD_REGIONS 512

@@ -16,7 +16,7 @@
 #include <imp/imp_ivs.h>
 #include <imp/imp_ivs_move.h>
 
-#define LOG_IVS(fmt, ...) fprintf(stderr, "[IMP_IVS] " fmt "\n", ##__VA_ARGS__)
+#include "imp_log_int.h"
 
 /* Opaque interface layout (indexes match vendor usage) */
 typedef struct IMPIVSInterface {

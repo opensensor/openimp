@@ -169,6 +169,14 @@ typedef struct ALAvpuContext {
     /* Session state */
     int session_ready;
     int hw_prepared;
+
+    /* Reconstruction and reference frame DMA buffers (OEM parity).
+     * The AVPU hardware writes reconstructed frames to rec_buf and reads
+     * reference frames from ref_buf.  Without valid physical addresses in
+     * the command-list, the AVPU DMAs to/from address 0x0, hanging the
+     * AXI bus and crashing the SoC. */
+    AvpuDMABuf rec_buf;     /* reconstruction buffer (Y + UV planes) */
+    AvpuDMABuf ref_buf;     /* reference frame buffer (Y + UV planes) */
 } ALAvpuContext;
 
 /* ---- Board / IP Controller API (OEM parity) ---- */

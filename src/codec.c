@@ -18,7 +18,7 @@
 #include "al_avpu.h"
 #include "device_pool.h"
 #include "dma_alloc.h"
-#define LOG_CODEC(fmt, ...) fprintf(stderr, "[Codec] " fmt "\n", ##__VA_ARGS__)
+#include "imp_log_int.h"
 #include <sys/eventfd.h>
 #include <sys/ioctl.h>
 #include <errno.h>
@@ -205,7 +205,14 @@ static int avpu_alloc_imp(size_t size, const char* tag, AvpuDMABuf* out)
 }
 
 
-/* Fill Enc1 command registers (OEM parity: from SliceParamToCmdRegsEnc1) */
+/* Fill Enc1 command registers (OEM parity: from SliceParamToCmdRegsEnc1)
+ *
+ * The OEM fills cmd[0x00..0x1a], cmd[0x60..0x61], cmd[0x64..0x69], cmd[0x6e..0x6f].
+ * Critical entries at cmd[0x0c..0x11] hold physical addresses for reconstruction
+ * and reference buffers.  Entries at cmd[0x64..0x69,0x6f] hold additional buffer
+ * addresses from the RecBuffer context.  Leaving these at zero causes the AVPU
+ * to DMA to physical address 0x0 → AXI bus hang → hard SoC crash.
+ */
 static void fill_cmd_regs_enc1(const ALAvpuContext* ctx, uint32_t* cmd)
 {
     if (!ctx || !cmd) return;
@@ -246,7 +253,48 @@ static void fill_cmd_regs_enc1(const ALAvpuContext* ctx, uint32_t* cmd)
         cmd[5] = (1u << 12) | 0u; /* single slice */
         cmd[6] = (1u << 12) | 0u;
     }
+
+    /* ---- Reconstruction & reference buffer addresses (OEM: SliceParamToCmdRegsEnc1) ----
+     *
+     * OEM fills these from SliceParam offsets 0x84..0xa4, which in turn are
+     * filled by AL_EncRecBuffer_FillPlaneDesc with physical addresses.
+     * Layout (NV12): Y plane at base, UV plane at base + width * height.
+     *
+     * Without valid addresses here the AVPU DMAs to 0x0 → AXI hang.
+     */
+    if (ctx->rec_buf.phy_addr && ctx->ref_buf.phy_addr && ctx->enc_w && ctx->enc_h) {
+        uint32_t y_plane_sz = ctx->enc_w * ctx->enc_h;
+
+        /* cmd[0x0c..0x0d]: reconstruction buffer (Y, UV) */
+        cmd[0x0c] = ctx->rec_buf.phy_addr;
+        cmd[0x0d] = ctx->rec_buf.phy_addr + y_plane_sz;
+
+        /* cmd[0x0e..0x0f]: reference frame 0 (Y, UV) */
+        cmd[0x0e] = ctx->ref_buf.phy_addr;
+        cmd[0x0f] = ctx->ref_buf.phy_addr + y_plane_sz;
+
+        /* cmd[0x10..0x11]: reference frame 1 — same as ref0 for I-frame / first GOP */
+        cmd[0x10] = ctx->ref_buf.phy_addr;
+        cmd[0x11] = ctx->ref_buf.phy_addr + y_plane_sz;
+
+        /* ---- Buffer addresses from RecBuffer context (OEM: arg3 offsets) ----
+         * These map to various plane descriptors the AVPU reads.
+         * Using rec_buf/ref_buf addresses to satisfy hardware DMA targets. */
+        cmd[0x64] = ctx->rec_buf.phy_addr;                   /* arg3+0x14: rec Y */
+        cmd[0x65] = ctx->rec_buf.phy_addr + y_plane_sz;      /* arg3+0x18: rec UV */
+        cmd[0x67] = ctx->ref_buf.phy_addr + y_plane_sz;      /* arg3+0x54: ref UV */
+        cmd[0x68] = ctx->ref_buf.phy_addr;                   /* arg3+0x34: ref Y */
+        cmd[0x69] = ctx->ref_buf.phy_addr + y_plane_sz;      /* arg3+0x44: ref UV alt */
+        cmd[0x6f] = ctx->ref_buf.phy_addr;                   /* arg3+0x94: ref base */
+    }
+
+    /* cmd[0x0a]: source luma physical address placeholder (zero = from SRC_PUSH) */
+    /* cmd[0x12]: stream buffer config — filled implicitly by hardware from STRM_PUSH */
 }
+
+/* OEM uses 24-bit interrupt clear (0xFFFFFF), not 32-bit.
+ * Writing to non-existent upper bits can hang the bus on T31. */
+#define AVPU_IRQ_CLEAR_MASK 0x00FFFFFFu
 
 /* Enable interrupts for core (OEM parity: AL_EncCore_EnableInterrupts at 0x6cf78) */
 static void avpu_enable_interrupts(int fd, int core)
@@ -257,11 +305,11 @@ static void avpu_enable_interrupts(int fd, int core)
     unsigned new_m = (b0 | b2);
 
     /* Ack any stale pending interrupts before enabling */
-    avpu_write_reg(fd, AVPU_INTERRUPT, 0xFFFFFFFFu);
+    avpu_write_reg(fd, AVPU_INTERRUPT, AVPU_IRQ_CLEAR_MASK);
 
     LOG_CODEC("AVPU: enable_interrupts core=%d, mask=0x%08x (bits: 0x%x | 0x%x)", core, new_m, b0, b2);
     avpu_write_reg(fd, AVPU_INTERRUPT_MASK, new_m);
-    LOG_CODEC("AVPU: ✓ wrote INTERRUPT_MASK=0x%08x", new_m);
+    LOG_CODEC("AVPU: wrote INTERRUPT_MASK=0x%08x", new_m);
 }
 
 /* Fifo_Init - based on decompilation at 0x7af28 */
@@ -1084,6 +1132,33 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
                             LOG_CODEC("AVPU: failed to allocate cmdlist ring via IMP_Alloc (size=%zu)", cl_bytes);
                         }
 
+                        /* Allocate reconstruction and reference frame DMA buffers.
+                         * The AVPU hardware writes reconstructed frames and reads
+                         * reference frames via physical addresses in the command list.
+                         * Without valid addresses the AVPU DMAs to 0x0 → AXI hang. */
+                        {
+                            /* NV12: Y + UV = width * height * 3/2, round up to page */
+                            size_t nv12_sz = (size_t)width * height * 3 / 2;
+                            nv12_sz = (nv12_sz + 0xFFF) & ~(size_t)0xFFF; /* page-align */
+
+                            memset(&enc->avpu.rec_buf, 0, sizeof(AvpuDMABuf));
+                            memset(&enc->avpu.ref_buf, 0, sizeof(AvpuDMABuf));
+
+                            if (avpu_alloc_imp(nv12_sz, "AVPU_REC", &enc->avpu.rec_buf) == 0) {
+                                memset(enc->avpu.rec_buf.map, 0, nv12_sz);
+                                LOG_CODEC("AVPU: rec_buf phys=0x%08x size=%zu", enc->avpu.rec_buf.phy_addr, nv12_sz);
+                            } else {
+                                LOG_CODEC("AVPU: WARNING - failed to allocate rec_buf (%zu bytes)", nv12_sz);
+                            }
+
+                            if (avpu_alloc_imp(nv12_sz, "AVPU_REF", &enc->avpu.ref_buf) == 0) {
+                                memset(enc->avpu.ref_buf.map, 0, nv12_sz);
+                                LOG_CODEC("AVPU: ref_buf phys=0x%08x size=%zu", enc->avpu.ref_buf.phy_addr, nv12_sz);
+                            } else {
+                                LOG_CODEC("AVPU: WARNING - failed to allocate ref_buf (%zu bytes)", nv12_sz);
+                            }
+                        }
+
                         /* T31 uses absolute addressing (offset mode causes kernel crashes) */
                         enc->avpu.axi_base = 0;
                         enc->avpu.use_offsets = 0;
@@ -1190,30 +1265,35 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
         ALAvpuContext *ctx = &enc->avpu;
         int fd = ctx->fd;
 
-        /* AL_EncCore_Init: from decompilation at 0x6c8d8 */
+        /* AL_EncCore_Init: exact OEM sequence from decompilation at 0x6c8d8.
+         *
+         * OEM order (confirmed from BinaryNinja):
+         *   1. Register EndEncoding callback (IRQ slot for core*4)
+         *   2. Register EndAvcEntropy callback (IRQ slot for core*4+2)
+         *   3. ResetCore: write 1, 2, 4 to (core<<9)+0x83F0 — NO delays
+         *   4. Clear interrupts: write 0xFFFFFF to 0x8018
+         *   5. Set TOP_CTRL: write 0x80 to 0x8054
+         *   6. Set state = 1
+         *
+         * CRITICAL: The reset writes (1,2,4) MUST be back-to-back with NO
+         * usleep between them.  Leaving the core in intermediate reset state
+         * while the IRQ handler or other threads access AVPU registers hangs
+         * the AXI bus on T31.
+         */
         if (!ctx->session_ready) {
-            /* Reset core sequence per OEM ResetCore: only writes 2, then 4 */
+            LOG_CODEC("AVPU: AL_EncCore_Init (OEM-exact sequence)");
+
+            /* Step 1: ResetCore — rapid back-to-back writes, NO sleeps */
+            LOG_CODEC("AVPU: ResetCore (1,2,4) to reg 0x%x", AVPU_REG_CORE_RESET(0));
+            avpu_write_reg(fd, AVPU_REG_CORE_RESET(0), 0x00000001);
             avpu_write_reg(fd, AVPU_REG_CORE_RESET(0), 0x00000002);
-            usleep(100);
             avpu_write_reg(fd, AVPU_REG_CORE_RESET(0), 0x00000004);
-            usleep(100);
 
-            /* Proactively ack any stale interrupts before enabling anything */
-            avpu_write_reg(fd, AVPU_INTERRUPT, 0xFFFFFFFFu);
+            /* Step 2: Clear interrupts (OEM: 0xFFFFFF — 24-bit, NOT 32-bit) */
+            avpu_write_reg(fd, AVPU_INTERRUPT, 0x00FFFFFF);
 
-            /* TOP_CTRL per OEM */
+            /* Step 3: TOP_CTRL per OEM */
             avpu_write_reg(fd, AVPU_REG_TOP_CTRL, 0x00000080);
-
-            /* Ensure AXI offset is 0 (no IP offset) */
-            avpu_write_reg(fd, AVPU_REG_AXI_ADDR_OFFSET_IP, 0x00000000);
-
-            /* Enable encoder engines (OEM toggles these in some flows) */
-            avpu_write_reg(fd, AVPU_REG_ENC_EN_A, 0x00000001);
-            avpu_write_reg(fd, AVPU_REG_ENC_EN_B, 0x00000001);
-            avpu_write_reg(fd, AVPU_REG_ENC_EN_C, 0x00000001);
-
-            /* Ack again after enabling blocks to drop spurious IRQs */
-            avpu_write_reg(fd, AVPU_INTERRUPT, 0xFFFFFFFFu);
 
             ctx->session_ready = 1;
 
@@ -1233,7 +1313,7 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
 
             LOG_CODEC("AVPU: HW initialized (AL_EncCore_Init)");
 
-            /* Start IRQ thread after enabling interrupts and pre-queue (safer ordering) */
+            /* Start IRQ thread after enabling interrupts and pre-queue */
             if (!ctx->irq_thread_running) {
                 ctx->irq_thread_running = 1;
                 ctx->frames_encoded = 0;

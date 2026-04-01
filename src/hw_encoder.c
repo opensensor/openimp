@@ -13,7 +13,7 @@
 #include <sys/ioctl.h>
 #include "hw_encoder.h"
 
-#define LOG_HW(fmt, ...) fprintf(stderr, "[HW_Encoder] " fmt "\n", ##__VA_ARGS__)
+#include "imp_log_int.h"
 
 /* Global flag to force next frame to be IDR */
 static int g_force_idr = 0;
