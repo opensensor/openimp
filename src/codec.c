@@ -86,6 +86,28 @@ static inline unsigned AVPU_CORE_BASE(int core) { return (AVPU_BASE_OFFSET + 0x3
 #define AVPU_REG_CORE_RESET(c)   (AVPU_CORE_BASE(c) + 0x00)
 #define AVPU_REG_CORE_CLKCMD(c)  (AVPU_CORE_BASE(c) + 0x04)
 
+/* Cache flush via /dev/avpu JZ_CMD_FLUSH_CACHE ioctl.
+ * rmem mappings are CACHED — the AVPU reads from physical RAM, not CPU cache.
+ * Without flushing, the AVPU reads stale/zeroed data → hang or corrupt output.
+ * OEM calls Rtos_FlushCacheMemory → AL_DmaAlloc_FlushCache → IMP_FlushCache
+ * which does ioctl(rmem_fd, 0xc00c7200, {phys, size, dir=1}).
+ * We use the AVPU's JZ_CMD_FLUSH_CACHE which takes {virt_addr, size, dir}. */
+#define JZ_CMD_FLUSH_CACHE_IOCTL _IOWR('q', 14, int)
+struct flush_cache_info {
+    unsigned int addr;
+    unsigned int len;
+    unsigned int dir;   /* 1=WBACK(DMA_TO_DEVICE), 2=INV(DMA_FROM_DEVICE), 0=WBACK_INV */
+};
+static int avpu_flush_cache(int fd, void *virt_addr, unsigned int size, unsigned int dir)
+{
+    if (fd < 0 || !virt_addr || size == 0) return -1;
+    struct flush_cache_info info;
+    info.addr = (unsigned int)(uintptr_t)virt_addr;
+    info.len = size;
+    info.dir = dir;
+    return avpu_sys_ioctl(fd, JZ_CMD_FLUSH_CACHE_IOCTL, &info);
+}
+
 /* Direct ioctl helpers (OEM parity - no wrapper functions) */
 static int avpu_write_reg(int fd, unsigned int off, unsigned int val)
 {
@@ -213,7 +235,7 @@ static int avpu_alloc_imp(size_t size, const char* tag, AvpuDMABuf* out)
  * addresses from the RecBuffer context.  Leaving these at zero causes the AVPU
  * to DMA to physical address 0x0 → AXI bus hang → hard SoC crash.
  */
-static void fill_cmd_regs_enc1(const ALAvpuContext* ctx, uint32_t* cmd)
+static void fill_cmd_regs_enc1(const ALAvpuContext* ctx, uint32_t* cmd, uint32_t src_phys)
 {
     if (!ctx || !cmd) return;
 
@@ -262,34 +284,62 @@ static void fill_cmd_regs_enc1(const ALAvpuContext* ctx, uint32_t* cmd)
      *
      * Without valid addresses here the AVPU DMAs to 0x0 → AXI hang.
      */
-    if (ctx->rec_buf.phy_addr && ctx->ref_buf.phy_addr && ctx->enc_w && ctx->enc_h) {
+    if (ctx->enc_w && ctx->enc_h) {
         uint32_t y_plane_sz = ctx->enc_w * ctx->enc_h;
 
-        /* cmd[0x0c..0x0d]: reconstruction buffer (Y, UV) */
-        cmd[0x0c] = ctx->rec_buf.phy_addr;
-        cmd[0x0d] = ctx->rec_buf.phy_addr + y_plane_sz;
+        /* ---- OEM SliceParamToCmdRegsEnc1 mapping (lines 73425-73432 in HLIL) ----
+         *
+         * cmd[0x0a] = stride (lower 16 bits from SliceParam+0x74)
+         * cmd[0x0b] = stride/config
+         * cmd[0x0c] = SliceParam+0x84 = source UV phys addr
+         * cmd[0x0d] = SliceParam+0x88 = rec Y phys addr (or second source plane)
+         * cmd[0x0e] = SliceParam+0x90 = rec Y phys addr
+         * cmd[0x0f] = SliceParam+0x98 = rec UV / ref config
+         * cmd[0x10] = SliceParam+0xa0 = ref Y phys addr
+         * cmd[0x11] = SliceParam+0xa4 = ref UV phys addr
+         *
+         * OEM cmd[0x64-0x69,0x6f] come from RecBuffer context (arg3).
+         */
 
-        /* cmd[0x0e..0x0f]: reference frame 0 (Y, UV) */
-        cmd[0x0e] = ctx->ref_buf.phy_addr;
-        cmd[0x0f] = ctx->ref_buf.phy_addr + y_plane_sz;
+        /* cmd[0x0a..0x0b]: source strides (OEM: SliceParam+0x74) */
+        cmd[0x0a] = ctx->enc_w;                  /* Source Y stride (lower 16 bits) */
+        cmd[0x0b] = ctx->enc_w;                  /* Source UV stride */
 
-        /* cmd[0x10..0x11]: reference frame 1 — same as ref0 for I-frame / first GOP */
-        cmd[0x10] = ctx->ref_buf.phy_addr;
-        cmd[0x11] = ctx->ref_buf.phy_addr + y_plane_sz;
+        /* cmd[0x0c..0x0d]: source frame physical addresses */
+        if (src_phys) {
+            cmd[0x0c] = src_phys;                    /* Source Y phys addr */
+            cmd[0x0d] = src_phys + y_plane_sz;       /* Source UV phys addr (NV12) */
+        }
 
-        /* ---- Buffer addresses from RecBuffer context (OEM: arg3 offsets) ----
-         * These map to various plane descriptors the AVPU reads.
-         * Using rec_buf/ref_buf addresses to satisfy hardware DMA targets. */
-        cmd[0x64] = ctx->rec_buf.phy_addr;                   /* arg3+0x14: rec Y */
-        cmd[0x65] = ctx->rec_buf.phy_addr + y_plane_sz;      /* arg3+0x18: rec UV */
-        cmd[0x67] = ctx->ref_buf.phy_addr + y_plane_sz;      /* arg3+0x54: ref UV */
-        cmd[0x68] = ctx->ref_buf.phy_addr;                   /* arg3+0x34: ref Y */
-        cmd[0x69] = ctx->ref_buf.phy_addr + y_plane_sz;      /* arg3+0x44: ref UV alt */
-        cmd[0x6f] = ctx->ref_buf.phy_addr;                   /* arg3+0x94: ref base */
+        /* cmd[0x0e..0x0f]: reconstruction buffer */
+        if (ctx->rec_buf.phy_addr) {
+            cmd[0x0e] = ctx->rec_buf.phy_addr;                /* Rec Y */
+            cmd[0x0f] = ctx->rec_buf.phy_addr + y_plane_sz;   /* Rec UV */
+        }
+
+        /* cmd[0x10..0x11]: reference frame buffer */
+        if (ctx->ref_buf.phy_addr) {
+            cmd[0x10] = ctx->ref_buf.phy_addr;                /* Ref Y */
+            cmd[0x11] = ctx->ref_buf.phy_addr + y_plane_sz;   /* Ref UV */
+        }
+
+        /* cmd[0x12]: stream buffer config — set from STRM_PUSH context
+         * OEM fills this from (src_stride >> 6 - 1) and (uv_stride >> 3 - 1) */
+        uint32_t stride_y = ctx->enc_w;
+        uint32_t stride_uv = ctx->enc_w;
+        cmd[0x12] = (((stride_y >> 6) - 1) & 0x3FF)
+                  | ((((stride_uv >> 3) - 1) & 0x3FF) << 12);
+
+        /* ---- RecBuffer context addresses (OEM: arg3 offsets) ---- */
+        if (ctx->rec_buf.phy_addr && ctx->ref_buf.phy_addr) {
+            cmd[0x64] = ctx->rec_buf.phy_addr;                   /* arg3+0x14: rec Y */
+            cmd[0x65] = ctx->rec_buf.phy_addr + y_plane_sz;      /* arg3+0x18: rec UV */
+            cmd[0x67] = ctx->ref_buf.phy_addr + y_plane_sz;      /* arg3+0x54: ref UV */
+            cmd[0x68] = ctx->ref_buf.phy_addr;                   /* arg3+0x34: ref Y */
+            cmd[0x69] = ctx->ref_buf.phy_addr + y_plane_sz;      /* arg3+0x44: ref UV alt */
+            cmd[0x6f] = ctx->ref_buf.phy_addr;                   /* arg3+0x94: ref base */
+        }
     }
-
-    /* cmd[0x0a]: source luma physical address placeholder (zero = from SRC_PUSH) */
-    /* cmd[0x12]: stream buffer config — filled implicitly by hardware from STRM_PUSH */
 }
 
 /* OEM uses 24-bit interrupt clear (0xFFFFFF), not 32-bit.
@@ -1145,14 +1195,18 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
                             memset(&enc->avpu.ref_buf, 0, sizeof(AvpuDMABuf));
 
                             if (avpu_alloc_imp(nv12_sz, "AVPU_REC", &enc->avpu.rec_buf) == 0) {
-                                memset(enc->avpu.rec_buf.map, 0, nv12_sz);
+                                /* Do NOT memset — rec_buf is AVPU output (reconstruction),
+                                 * and zeroing 3MB of uncached DMA memory can stall/hang
+                                 * the AXI bus on cold boot. */
                                 LOG_CODEC("AVPU: rec_buf phys=0x%08x size=%zu", enc->avpu.rec_buf.phy_addr, nv12_sz);
                             } else {
                                 LOG_CODEC("AVPU: WARNING - failed to allocate rec_buf (%zu bytes)", nv12_sz);
                             }
 
                             if (avpu_alloc_imp(nv12_sz, "AVPU_REF", &enc->avpu.ref_buf) == 0) {
-                                memset(enc->avpu.ref_buf.map, 0, nv12_sz);
+                                /* Do NOT memset — ref_buf content is irrelevant for the
+                                 * first IDR frame (intra-only), and subsequent frames will
+                                 * have valid reconstruction data copied in by the AVPU. */
                                 LOG_CODEC("AVPU: ref_buf phys=0x%08x size=%zu", enc->avpu.ref_buf.phy_addr, nv12_sz);
                             } else {
                                 LOG_CODEC("AVPU: WARNING - failed to allocate ref_buf (%zu bytes)", nv12_sz);
@@ -1345,21 +1399,26 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
 
             uint32_t* cmd = (uint32_t*)entry;
 
-            /* Fill Enc1 command registers (includes memset) */
-            fill_cmd_regs_enc1(ctx, cmd);
+            /* Fill Enc1 command registers — source addr goes INTO the CL entry */
+            fill_cmd_regs_enc1(ctx, cmd, phys_addr);
 
-            /* CL entry mapped via dma_alloc_coherent-backed mmap; flushing not required on T31 */
+            /* Flush CL entry from CPU cache to physical RAM.
+             * rmem mappings are CACHED — without this the AVPU reads stale data.
+             * OEM: Rtos_FlushCacheMemory(cmdlist_entry, 0x100000) before CL_PUSH.
+             * dir=1 = DMA_TO_DEVICE (writeback, CPU→RAM). */
+            avpu_flush_cache(fd, cmd, ctx->cl_entry_size, 1 /*WBACK*/);
 
-            /* StartEnc1WithCommandList.isra.25: (*(**arg1 + 8))() */
-            /* This triggers the hardware via function pointer */
-            /* Based on trace, this writes CL_ADDR and CL_PUSH */
+            /* StartEnc1WithCommandList: write CL_ADDR then CL_PUSH to trigger
+             * the AVPU. Source address is in cmd[0x0c..0x0d] AND pushed via
+             * SRC_PUSH register (belt-and-suspenders for T31 firmware). */
             uint32_t cl_phys = ctx->cl_ring.phy_addr + (idx * ctx->cl_entry_size);
-            LOG_CODEC("Process: Programming CL_ADDR=0x%08x CL_PUSH=0x2", cl_phys);
+            LOG_CODEC("Process: CL_ADDR=0x%08x src=0x%08x rec=0x%08x ref=0x%08x CL[%u]",
+                      cl_phys, phys_addr,
+                      ctx->rec_buf.phy_addr, ctx->ref_buf.phy_addr, idx);
             avpu_write_reg(fd, AVPU_REG_CL_ADDR, cl_phys);
             avpu_write_reg(fd, AVPU_REG_CL_PUSH, 0x00000002);
 
-            /* Push source frame: this is separate from CL trigger */
-            LOG_CODEC("Process: Programming SRC_PUSH=0x%08x", phys_addr);
+            /* Also push source frame via SRC_PUSH register */
             avpu_write_reg(fd, AVPU_REG_SRC_PUSH, phys_addr);
 
             /* Advance to next CL slot */
