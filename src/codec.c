@@ -409,11 +409,14 @@ static void fill_cmd_regs_enc1(const ALAvpuContext* ctx, uint32_t* cmd, uint32_t
         cmd[0x12] = (stride_y_64 & 0x3FF) | ((stride_uv_8 & 0x3FF) << 12);
 
         /* ---- RecBuffer context addresses (OEM: arg3 offsets) ----
-         * Keep ref-side descriptors zero until EndEncoding promotes the first
-         * reconstructed picture into reference state. */
-        if (ctx->rec_buf.phy_addr && has_reference) {
+         * Reconstruction-side descriptors still exist on the first picture;
+         * only the reference-side descriptors should stay zero until a real
+         * reference picture has been promoted on EndEncoding. */
+        if (ctx->rec_buf.phy_addr) {
             cmd[0x64] = ctx->rec_buf.phy_addr;                   /* arg3+0x14: rec Y */
             cmd[0x65] = ctx->rec_buf.phy_addr + y_plane_sz;      /* arg3+0x18: rec UV */
+        }
+        if (has_reference) {
             cmd[0x67] = ctx->ref_buf.phy_addr + y_plane_sz;      /* arg3+0x54: ref UV */
             cmd[0x68] = ctx->ref_buf.phy_addr;                   /* arg3+0x34: ref Y */
             cmd[0x69] = ctx->ref_buf.phy_addr + y_plane_sz;      /* arg3+0x44: ref UV alt */
@@ -436,6 +439,10 @@ static void log_first_enc1_cmd_window(const ALAvpuContext* ctx, uint32_t idx, co
               idx, cmd[0x0a], cmd[0x0b], cmd[0x0c], cmd[0x0d]);
     LOG_CODEC("Process: first Enc1 CL[%u] cmd[0x0e]=0x%08x cmd[0x0f]=0x%08x cmd[0x10]=0x%08x cmd[0x11]=0x%08x cmd[0x12]=0x%08x",
               idx, cmd[0x0e], cmd[0x0f], cmd[0x10], cmd[0x11], cmd[0x12]);
+    LOG_CODEC("Process: first Enc1 CL[%u] cmd[0x64]=0x%08x cmd[0x65]=0x%08x cmd[0x67]=0x%08x cmd[0x68]=0x%08x",
+              idx, cmd[0x64], cmd[0x65], cmd[0x67], cmd[0x68]);
+    LOG_CODEC("Process: first Enc1 CL[%u] cmd[0x69]=0x%08x cmd[0x6f]=0x%08x",
+              idx, cmd[0x69], cmd[0x6f]);
 }
 
 static void avpu_promote_reference(ALAvpuContext *ctx)
