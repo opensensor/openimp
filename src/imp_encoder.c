@@ -1569,8 +1569,10 @@ static int channel_encoder_init(EncChannel *chn) {
     }
 
     /* Create encoder thread (from decompilation at 0x80b40) */
-    if (pthread_create(&chn->thread_encoder, NULL, encoder_thread, chn) < 0) {
-        LOG_ENC("channel_encoder_init: failed to create encoder thread");
+    int ret = pthread_create(&chn->thread_encoder, NULL, encoder_thread, chn);
+    if (ret != 0) {
+        LOG_ENC("channel_encoder_init: failed to create encoder thread: %s (%d)",
+                strerror(ret), ret);
         Fifo_Deinit(chn->fifo);
         free(chn->frame_buffers);
         AL_Codec_Encode_Destroy(chn->codec);
@@ -1578,8 +1580,10 @@ static int channel_encoder_init(EncChannel *chn) {
     }
 
     /* Create stream thread (from decompilation at 0x80b60) */
-    if (pthread_create(&chn->thread_stream, NULL, stream_thread, chn) < 0) {
-        LOG_ENC("channel_encoder_init: failed to create stream thread");
+    ret = pthread_create(&chn->thread_stream, NULL, stream_thread, chn);
+    if (ret != 0) {
+        LOG_ENC("channel_encoder_init: failed to create stream thread: %s (%d)",
+                strerror(ret), ret);
         pthread_cancel(chn->thread_encoder);
         pthread_join(chn->thread_encoder, NULL);
         Fifo_Deinit(chn->fifo);

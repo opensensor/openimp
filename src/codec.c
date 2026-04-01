@@ -138,7 +138,7 @@ static int avpu_write_reg(int fd, unsigned int off, unsigned int val)
     return ret;
 }
 
-static int avpu_read_reg(int fd, unsigned int off, unsigned int *out)
+static int avpu_read_reg_internal(int fd, unsigned int off, unsigned int *out, int verbose)
 {
     if (fd < 0 || (off & 3) != 0) return -1;
 
@@ -152,11 +152,23 @@ static int avpu_read_reg(int fd, unsigned int off, unsigned int *out)
     p->id = off;
     p->value = 0;
 
-    LOG_CODEC("AVPU read_reg: off=0x%08x argp=%p", off, (void*)p);
+    if (verbose) {
+        LOG_CODEC("AVPU read_reg: off=0x%08x argp=%p", off, (void*)p);
+    }
     int ret = avpu_sys_ioctl(fd, AL_CMD_IP_READ_REG, p);
     if (ret == 0 && out) *out = p->value;
     free(raw);
     return ret;
+}
+
+static int avpu_read_reg(int fd, unsigned int off, unsigned int *out)
+{
+    return avpu_read_reg_internal(fd, off, out, 1);
+}
+
+static int avpu_read_reg_quiet(int fd, unsigned int off, unsigned int *out)
+{
+    return avpu_read_reg_internal(fd, off, out, 0);
 }
 
 /* Allocate a coherent DMA buffer from AVPU driver via GET_DMA_MMAP and mmap it */
@@ -557,6 +569,23 @@ static void avpu_enable_interrupts(int fd, int core)
     LOG_CODEC("AVPU: wrote INTERRUPT_MASK=0x%08x", new_m);
 }
 
+/* OEM parity: TurnOnGC.constprop.36 → SetClockCommand(ip_ctrl, core, 1)
+ * which read-modify-writes bits[1:0] of (core<<9)+0x83F4. */
+static void avpu_turn_on_gc(int fd, int core)
+{
+    unsigned int old = 0;
+    unsigned int new_val = 1u;
+
+    if (avpu_read_reg(fd, AVPU_REG_CORE_CLKCMD(core), &old) == 0) {
+        new_val = ((old ^ 1u) & 0x3u) ^ old;
+        LOG_CODEC("AVPU: TurnOnGC core=%d clkcmd old=0x%08x new=0x%08x", core, old, new_val);
+    } else {
+        LOG_CODEC("AVPU: TurnOnGC core=%d clkcmd read failed; forcing 0x00000001", core);
+    }
+
+    avpu_write_reg(fd, AVPU_REG_CORE_CLKCMD(core), new_val);
+}
+
 /* Fifo_Init - based on decompilation at 0x7af28 */
 static int fifo_init(long *fifo, int max_elements)
 {
@@ -702,15 +731,50 @@ static void avpu_end_avc_entropy_callback(void *user_data)
     LOG_CODEC("EndAvcEntropy callback");
 }
 
+static void avpu_log_busy_snapshot(ALAvpuContext *ctx, uint32_t idx, unsigned int core_status)
+{
+    if (!ctx || __sync_lock_test_and_set(&ctx->busy_snapshot_emitted, 1) != 0) {
+        return;
+    }
+
+    unsigned int irq_mask = 0;
+    unsigned int irq_pending = 0;
+    unsigned int clkcmd = 0;
+    int have_irq_mask = (avpu_read_reg_quiet(ctx->fd, AVPU_INTERRUPT_MASK, &irq_mask) == 0);
+    int have_irq_pending = (avpu_read_reg_quiet(ctx->fd, AVPU_INTERRUPT, &irq_pending) == 0);
+    int have_clkcmd = (avpu_read_reg_quiet(ctx->fd, AVPU_REG_CORE_CLKCMD(0), &clkcmd) == 0);
+    int wait_errno = ctx->irq_wait_errno;
+
+    LOG_CODEC(
+        "AVPU: busy snapshot CL[%u] core_status=0x%08x irq_mask=%s0x%08x irq_pending=%s0x%08x clkcmd=%s0x%08x session_ready=%d frames_encoded=%d irq_thread_running=%d irq_thread_started=%d irq_thread_exited=%d last_irq=%d wait_irq_errno=%d (%s)",
+        idx,
+        core_status,
+        have_irq_mask ? "" : "ERR:", irq_mask,
+        have_irq_pending ? "" : "ERR:", irq_pending,
+        have_clkcmd ? "" : "ERR:", clkcmd,
+        ctx->session_ready,
+        ctx->frames_encoded,
+        ctx->irq_thread_running,
+        ctx->irq_thread_started,
+        ctx->irq_thread_exited,
+        ctx->last_irq_id,
+        wait_errno,
+        wait_errno ? strerror(wait_errno) : "ok");
+}
+
 /* OEM parity: IsEnc1AlreadyRunning() reads (core<<9)+0x83f8 and checks bit 1.
  * If this bit is set, AL_EncCore_Encode1() does not push a new command list. */
-static int avpu_is_enc1_running(int fd, int core)
+static int avpu_is_enc1_running(int fd, int core, unsigned int *out_status)
 {
     unsigned int status = 0;
 
-    if (avpu_read_reg(fd, AVPU_REG_CORE_STATUS(core), &status) != 0) {
+    if (avpu_read_reg_quiet(fd, AVPU_REG_CORE_STATUS(core), &status) != 0) {
         LOG_CODEC("AVPU: failed to read Enc1 running state for core %d", core);
         return 0;
+    }
+
+    if (out_status) {
+        *out_status = status;
     }
 
     return (status & 0x2u) ? 1 : 0;
@@ -760,6 +824,11 @@ static void* avpu_irq_thread(void* arg)
     ALAvpuContext* ctx = (ALAvpuContext*)arg;
     int fd = ctx->fd;
 
+    ctx->irq_thread_started = 1;
+    ctx->irq_thread_exited = 0;
+    ctx->irq_wait_errno = 0;
+    ctx->last_irq_id = -1;
+
     LOG_CODEC("IRQ thread: started for fd=%d", fd);
 
     while (ctx->irq_thread_running) {
@@ -781,7 +850,8 @@ static void* avpu_irq_thread(void* arg)
                 continue; /* interrupted by signal, retry */
             }
             if (errno != EINTR) {
-                LOG_CODEC("IRQ thread: WAIT_IRQ failed: %s", strerror(errno));
+                ctx->irq_wait_errno = errno;
+                LOG_CODEC("IRQ thread: WAIT_IRQ failed: %s (%d)", strerror(errno), errno);
             }
             free(raw);
             break;
@@ -789,6 +859,7 @@ static void* avpu_irq_thread(void* arg)
 
         uint32_t irq_id = *p_irq;
         free(raw);
+        ctx->irq_wait_errno = 0;
 
         /* OEM: if (var_28 u>= 0x14) fprintf(stderr, ...) */
         if (irq_id >= 20) {
@@ -796,6 +867,7 @@ static void* avpu_irq_thread(void* arg)
             continue;
         }
 
+        ctx->last_irq_id = (int)irq_id;
         LOG_CODEC("IRQ thread: IRQ %d received", irq_id);
 
         /* OEM: Rtos_GetMutex(*(arg1 + 0xc)) */
@@ -821,6 +893,7 @@ static void* avpu_irq_thread(void* arg)
         pthread_mutex_unlock((pthread_mutex_t*)ctx->irq_mutex);
     }
 
+    ctx->irq_thread_exited = 1;
     LOG_CODEC("IRQ thread: exiting");
     return NULL;
 }
@@ -1402,6 +1475,12 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
                         enc->avpu.fd = fd;
                         enc->avpu.event_fd = enc->event ? (int)(uintptr_t)enc->event : -1;
                         enc->avpu.frames_encoded = 0;
+                        enc->avpu.busy_skip_count = 0;
+                        enc->avpu.busy_snapshot_emitted = 0;
+                        enc->avpu.irq_thread_started = 0;
+                        enc->avpu.irq_thread_exited = 0;
+                        enc->avpu.irq_wait_errno = 0;
+                        enc->avpu.last_irq_id = -1;
                         enc->avpu.reference_valid = 0;
 
                         /* OEM parity: AL_Board_Create allocates mutex and starts
@@ -1642,6 +1721,11 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
             /* Step 3: TOP_CTRL per OEM */
             avpu_write_reg(fd, AVPU_REG_TOP_CTRL, 0x00000080);
 
+            /* Step 4: Turn on core gate clock (OEM: AL_EncCore_TurnOnGC).
+             * Without this, T31 can accept the first CL push but never retire it,
+             * leaving CORE_STATUS bit1 stuck "running" forever. */
+            avpu_turn_on_gc(fd, 0);
+
             ctx->session_ready = 1;
 
             /* Enable only our core interrupts without readback */
@@ -1686,11 +1770,20 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
              * flushing/pushing a new Enc1 command list. Our simplified path
              * uses a single effective rec/ref pair, so matching this gate is
              * important before submitting the next frame. */
-            if (avpu_is_enc1_running(fd, 0)) {
-                LOG_CODEC("Process: Enc1 already running; skipping CL[%u] submit to match OEM gating", idx);
+            unsigned int core_status = 0;
+            if (avpu_is_enc1_running(fd, 0, &core_status)) {
+                unsigned int skip_count = __sync_add_and_fetch(&ctx->busy_skip_count, 1u);
+                if (skip_count == 1u || (skip_count % 30u) == 0u) {
+                    LOG_CODEC("Process: Enc1 already running; skipping CL[%u] submit to match OEM gating (skip_count=%u core_status=0x%08x)",
+                              idx, skip_count, core_status);
+                }
+                if (skip_count == 1u) {
+                    avpu_log_busy_snapshot(ctx, idx, core_status);
+                }
                 free(hw_stream);
                 return -1;
             }
+            ctx->busy_skip_count = 0;
 
             /* Flush CL entry from CPU cache to physical RAM.
              * rmem mappings are CACHED — without this the AVPU reads stale data.
@@ -1698,7 +1791,8 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
              * dir=1 = DMA_TO_DEVICE (writeback, CPU→RAM). */
             avpu_flush_cache(fd, cmd, ctx->cl_entry_size, 1 /*WBACK*/);
 
-            /* OEM StartEnc1WithCommandList: write CL_ADDR then CL_PUSH only. */
+            /* OEM-aligned submit path: program command list, trigger Enc1, then
+             * push the source frame address into the AVPU source FIFO. */
             uint32_t cl_phys = ctx->cl_ring.phy_addr + (idx * ctx->cl_entry_size);
             uint32_t ref_phys = ctx->reference_valid ? ctx->ref_buf.phy_addr : 0;
             LOG_CODEC("Process: CL_ADDR=0x%08x src=0x%08x rec=0x%08x ref=0x%08x CL[%u]",
@@ -1706,6 +1800,7 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
                       ctx->rec_buf.phy_addr, ref_phys, idx);
             avpu_write_reg(fd, AVPU_REG_CL_ADDR, cl_phys);
             avpu_write_reg(fd, AVPU_REG_CL_PUSH, 0x00000002);
+            avpu_write_reg(fd, AVPU_REG_SRC_PUSH, phys_addr);
 
             /* Advance to next CL slot */
             ctx->cl_idx = (idx + 1) % ctx->cl_count;

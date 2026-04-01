@@ -172,6 +172,16 @@ typedef struct ALAvpuContext {
     volatile int reference_valid;
 
     volatile int frames_encoded;
+    volatile unsigned int busy_skip_count;
+    volatile int busy_snapshot_emitted;
+
+    /* Sticky diagnostics for the direct codec.c IRQ path. These let us tell
+     * whether WaitInterruptThread ever started, whether WAIT_IRQ failed, and
+     * whether any IRQ IDs were ever observed before the encoder got stuck. */
+    volatile int irq_thread_started;
+    volatile int irq_thread_exited;
+    volatile int irq_wait_errno;
+    volatile int last_irq_id;
 
     /* Legacy IRQ state (used by codec.c WaitInterruptThread directly)
      * TODO: migrate codec.c to use Board/IpCtrl abstraction, then remove these.
