@@ -12,6 +12,7 @@ extern "C" {
 #endif
 
 #include "imp_common.h"
+#include <stdbool.h>
 
 /**
  * ISP running mode
@@ -61,6 +62,59 @@ typedef struct {
 typedef struct {
     uint32_t ev[6];                     /**< EV values */
 } IMPISPEVAttr;
+
+typedef struct {
+    unsigned int at_list[10];
+} IMPISPAETargetList;
+
+typedef union {
+    unsigned int key;
+    struct {
+        unsigned int bitBypassBLC : 1;
+        unsigned int bitBypassGIB : 1;
+        unsigned int bitBypassAG : 1;
+        unsigned int bitBypassWDR : 1;
+        unsigned int bitBypassDPC : 1;
+        unsigned int bitBypassRDNS : 1;
+        unsigned int bitBypassLSC : 1;
+        unsigned int bitBypassADR : 1;
+        unsigned int bitBypassDMSC : 1;
+        unsigned int bitBypassCCM : 1;
+        unsigned int bitBypassGAMMA : 1;
+        unsigned int bitBypassDEFOG : 1;
+        unsigned int bitBypassCSC : 1;
+        unsigned int bitBypassCLM : 1;
+        unsigned int bitBypassSP : 1;
+        unsigned int bitBypassYDNS : 1;
+        unsigned int bitBypassBCSH : 1;
+        unsigned int bitBypassSDNS : 1;
+        unsigned int bitBypassHLDC : 1;
+        unsigned int bitRsv : 12;
+        unsigned int bitBypassMDNS : 1;
+    };
+} IMPISPModuleCtl;
+
+typedef struct {
+    bool fcrop_enable;
+    unsigned int fcrop_top;
+    unsigned int fcrop_left;
+    unsigned int fcrop_width;
+    unsigned int fcrop_height;
+} IMPISPFrontCrop;
+
+typedef enum {
+    IMPISP_FLIP_NORMAL_MODE = 0,
+    IMPISP_FLIP_H_MODE = 1,
+    IMPISP_FLIP_V_MODE = 2,
+    IMPISP_FLIP_HV_MODE = 3,
+    IMPISP_FLIP_MODE_BUTT,
+} IMPISPHVFLIP;
+
+typedef struct {
+    unsigned int fps;
+    unsigned int width;
+    unsigned int height;
+} IMPISPSENSORAttr;
 
 /**
  * Open ISP module
@@ -452,6 +506,22 @@ int IMP_ISP_Tuning_GetWB_Statis(IMPISPWB *wb);
  * @return 0 on success, negative on error
  */
 int IMP_ISP_Tuning_GetWB_GOL_Statis(IMPISPWB *wb);
+int IMP_ISP_Tuning_GetAeAttr(void *ae_attr);
+int IMP_ISP_Tuning_SetAeAttr(void *ae_attr);
+int IMP_ISP_Tuning_SetHVFLIP(IMPISPHVFLIP hvflip);
+int IMP_ISP_Tuning_GetHVFlip(IMPISPHVFLIP *hvflip);
+int IMP_ISP_Tuning_GetHVFLIP(IMPISPHVFLIP *hvflip);
+int IMP_ISP_Tuning_GetSensorAttr(IMPISPSENSORAttr *attr);
+int IMP_ISP_Tuning_SetAeTargetList(IMPISPAETargetList *at_list);
+int IMP_ISP_Tuning_GetAeTargetList(IMPISPAETargetList *at_list);
+int IMP_ISP_Tuning_SetModuleControl(IMPISPModuleCtl *ispmodule);
+int IMP_ISP_Tuning_GetModuleControl(IMPISPModuleCtl *ispmodule);
+int IMP_ISP_Tuning_SetFrontCrop(IMPISPFrontCrop *ispfrontcrop);
+int IMP_ISP_Tuning_GetFrontCrop(IMPISPFrontCrop *ispfrontcrop);
+int IMP_ISP_Tuning_SetISPCustomMode(IMPISPTuningOpsMode mode);
+int IMP_ISP_Tuning_GetISPCustomMode(IMPISPTuningOpsMode *mode);
+int IMP_ISP_Tuning_EnableDRC(IMPISPTuningOpsMode mode);
+int IMP_ISP_Tuning_GetAeLuma(int *luma);
 
 #ifdef __cplusplus
 }

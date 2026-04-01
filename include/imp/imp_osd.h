@@ -13,6 +13,8 @@ extern "C" {
 
 #include "imp_common.h"
 
+typedef struct IMPIspOsdAttrAsm IMPIspOsdAttrAsm;
+
 /**
  * OSD region type
  */
@@ -232,6 +234,15 @@ int IMP_OSD_Start(int grpNum);
  * @return 0 on success, negative on error
  */
 int IMP_OSD_Stop(int grpNum);
+
+int IMP_OSD_Init_ISP(void);
+void IMP_OSD_Exit_ISP(void);
+int IMP_OSD_SetPoolSize_ISP(int size);
+IMPRgnHandle IMP_OSD_CreateRgn_ISP(int chn, IMPIspOsdAttrAsm *attr);
+int IMP_OSD_DestroyRgn_ISP(int chn, IMPRgnHandle handle);
+int IMP_OSD_SetRgnAttr_PicISP(int chn, IMPRgnHandle handle, IMPIspOsdAttrAsm *attr);
+int IMP_OSD_GetRgnAttr_ISPPic(int chn, IMPRgnHandle handle, IMPIspOsdAttrAsm *attr);
+int IMP_OSD_ShowRgn_ISP(int chn, IMPRgnHandle handle, int showFlag);
 
 #ifdef __cplusplus
 }

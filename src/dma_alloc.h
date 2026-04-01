@@ -6,37 +6,47 @@
 #ifndef DMA_ALLOC_H
 #define DMA_ALLOC_H
 
+#include <stddef.h>
 #include <stdint.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-/**
- * Allocate DMA buffer
- * @param name Buffer name (also used to return buffer info)
- * @param size Buffer size in bytes
- * @param tag Tag string for debugging
- * @return 0 on success, -1 on failure
- */
-int IMP_Alloc(char *name, int size, char *tag);
+typedef struct {
+    char name[96];
+    char tag[32];
+    uint32_t virt_addr;
+    uint32_t phys_addr;
+    uint32_t size;
+    uint32_t flags;
+    uint32_t pool_id;
+} IMPDMABufferInfo;
 
 /**
- * Allocate DMA buffer from a specific pool
- * @param pool_id Pool ID
- * @param name Buffer name (also used to return buffer info)
- * @param size Buffer size in bytes
- * @param tag Tag string for debugging
- * @return 0 on success, -1 on failure
+ * Allocate DMA buffer and return the OEM 0x94-byte descriptor.
  */
-int IMP_PoolAlloc(int pool_id, char *name, int size, char *tag);
+int DMA_AllocDescriptor(IMPDMABufferInfo *info_out, int size, const char *tag);
 
 /**
- * Free DMA buffer
- * @param phys_addr Physical address of buffer to free
- * @return 0 on success, -1 on failure
+ * Allocate DMA buffer from a specific pool and return the OEM descriptor.
  */
-int IMP_Free(uint32_t phys_addr);
+int DMA_PoolAllocDescriptor(int pool_id, IMPDMABufferInfo *info_out, int size, const char *tag);
+
+/**
+ * Free DMA buffer by physical address.
+ */
+int DMA_FreePhys(uint32_t phys_addr);
+
+/**
+ * Translate DMA physical address to virtual address.
+ */
+void *DMA_PhysToVirt(uint32_t phys_addr);
+
+/**
+ * Translate DMA virtual address to physical address.
+ */
+uint32_t DMA_VirtToPhys(const void *virt_addr);
 
 /**
  * Get buffer information

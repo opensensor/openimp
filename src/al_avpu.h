@@ -164,6 +164,7 @@ typedef struct ALAvpuContext {
     uint32_t enc1_cmd_0b_7e;
     uint32_t enc1_cmd_0b_7f;
     uint32_t enc1_cmd_0b_80;
+    uint32_t enc1_slice_10;
     uint32_t enc1_cmd_12_a8;
     uint32_t enc1_cmd_12_aa;
     uint32_t enc1_cmd_12_ac;

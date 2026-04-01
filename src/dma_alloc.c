@@ -15,6 +15,7 @@
 #include <errno.h>
 #include <pthread.h>
 
+#include "dma_alloc.h"
 #include "imp_log_int.h"
 
 /* Best-effort check that a pointer looks like a C string within max bytes */
@@ -29,17 +30,16 @@ static int is_probably_cstring(const char *p, size_t max)
     return 0;
 }
 
-/* DMA buffer structure - based on decompilation */
-/* Size: 0x94 bytes (148 bytes) */
+/* Internal DMA buffer record. Exported/OEM-facing info uses IMPDMABufferInfo. */
 typedef struct {
     char name[96];              /* 0x00-0x5f: Buffer name */
     char tag[32];               /* 0x60-0x7f: Tag */
-    void *virt_addr;            /* 0x80: Virtual address */
+    void *virt_addr;            /* Native virtual address */
     uint32_t phys_addr;         /* 0x84: Physical address */
     uint32_t size;              /* 0x88: Buffer size */
     uint32_t flags;             /* 0x8c: Flags */
     uint32_t pool_id;           /* 0x90: Pool ID */
-} DMABuffer;
+} DMABufferRecord;
 
 /* ioctl commands for memory allocation */
 #define IOCTL_MEM_ALLOC     0xc0104d01  /* Allocate memory */
@@ -57,7 +57,7 @@ typedef struct {
 
 /* Global buffer registry */
 #define MAX_DMA_BUFFERS 128
-static DMABuffer *g_buffer_registry[MAX_DMA_BUFFERS] = {NULL};
+static DMABufferRecord *g_buffer_registry[MAX_DMA_BUFFERS] = {NULL};
 static pthread_mutex_t g_registry_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 /* Global state */
@@ -74,10 +74,14 @@ static void *g_rmem_virt_base = NULL;
 static size_t g_rmem_offset = 0; /* bump pointer */
 static char g_chosen_dev_path[64] = {0};
 
+static const uint32_t kCompatMaxAllocSize = 256u * 1024u * 1024u;
+
+int IMP_FlushCache(void *virt_addr, uint32_t size);
+
 /**
  * Register buffer in global registry
  */
-static int register_buffer(DMABuffer *buf) {
+static int register_buffer(DMABufferRecord *buf) {
     pthread_mutex_lock(&g_registry_mutex);
 
     for (int i = 0; i < MAX_DMA_BUFFERS; i++) {
@@ -96,7 +100,7 @@ static int register_buffer(DMABuffer *buf) {
 /**
  * Unregister buffer from global registry
  */
-static void unregister_buffer(DMABuffer *buf) {
+static void unregister_buffer(DMABufferRecord *buf) {
     pthread_mutex_lock(&g_registry_mutex);
 
     for (int i = 0; i < MAX_DMA_BUFFERS; i++) {
@@ -112,13 +116,13 @@ static void unregister_buffer(DMABuffer *buf) {
 /**
  * Lookup buffer by physical address
  */
-static DMABuffer* lookup_buffer_by_phys(uint32_t phys_addr) {
+static DMABufferRecord* lookup_buffer_by_phys(uint32_t phys_addr) {
     pthread_mutex_lock(&g_registry_mutex);
 
     for (int i = 0; i < MAX_DMA_BUFFERS; i++) {
         if (g_buffer_registry[i] != NULL &&
             g_buffer_registry[i]->phys_addr == phys_addr) {
-            DMABuffer *buf = g_buffer_registry[i];
+            DMABufferRecord *buf = g_buffer_registry[i];
             pthread_mutex_unlock(&g_registry_mutex);
             return buf;
         }
@@ -126,6 +130,101 @@ static DMABuffer* lookup_buffer_by_phys(uint32_t phys_addr) {
 
     pthread_mutex_unlock(&g_registry_mutex);
     return NULL;
+}
+
+static DMABufferRecord* lookup_buffer_containing_phys(uint32_t phys_addr, uint32_t *offset_out) {
+    pthread_mutex_lock(&g_registry_mutex);
+
+    for (int i = 0; i < MAX_DMA_BUFFERS; i++) {
+        DMABufferRecord *buf = g_buffer_registry[i];
+        if (buf == NULL) {
+            continue;
+        }
+        if (phys_addr >= buf->phys_addr && phys_addr < buf->phys_addr + buf->size) {
+            if (offset_out != NULL) {
+                *offset_out = phys_addr - buf->phys_addr;
+            }
+            pthread_mutex_unlock(&g_registry_mutex);
+            return buf;
+        }
+    }
+
+    pthread_mutex_unlock(&g_registry_mutex);
+    return NULL;
+}
+
+static DMABufferRecord* lookup_buffer_containing_virt(const void *virt_addr, uint32_t *offset_out) {
+    uintptr_t virt = (uintptr_t)virt_addr;
+
+    pthread_mutex_lock(&g_registry_mutex);
+
+    for (int i = 0; i < MAX_DMA_BUFFERS; i++) {
+        DMABufferRecord *buf = g_buffer_registry[i];
+        if (buf == NULL || buf->virt_addr == NULL) {
+            continue;
+        }
+
+        uintptr_t base = (uintptr_t)buf->virt_addr;
+        uintptr_t end = base + buf->size;
+        if (virt >= base && virt < end) {
+            if (offset_out != NULL) {
+                *offset_out = (uint32_t)(virt - base);
+            }
+            pthread_mutex_unlock(&g_registry_mutex);
+            return buf;
+        }
+    }
+
+    pthread_mutex_unlock(&g_registry_mutex);
+    return NULL;
+}
+
+static void fill_dma_info(IMPDMABufferInfo *info_out, const DMABufferRecord *buf)
+{
+    if (info_out == NULL || buf == NULL) {
+        return;
+    }
+
+    memset(info_out, 0, sizeof(*info_out));
+    memcpy(info_out->name, buf->name, sizeof(info_out->name));
+    memcpy(info_out->tag, buf->tag, sizeof(info_out->tag));
+    info_out->virt_addr = (uint32_t)(uintptr_t)buf->virt_addr;
+    info_out->phys_addr = buf->phys_addr;
+    info_out->size = buf->size;
+    info_out->flags = buf->flags;
+    info_out->pool_id = buf->pool_id;
+}
+
+static int size_arg_is_reasonable(intptr_t size)
+{
+    return size > 0 && (uint64_t)size <= kCompatMaxAllocSize;
+}
+
+static int tag_arg_looks_valid(const char *tag)
+{
+    return tag != NULL && is_probably_cstring(tag, 32);
+}
+
+static int looks_like_pointer_style_alloc(uintptr_t arg1, intptr_t arg2, const char *arg3)
+{
+    if (arg1 == 0 || arg1 > kCompatMaxAllocSize) {
+        return 0;
+    }
+    if (!size_arg_is_reasonable(arg2)) {
+        return 1;
+    }
+    return !tag_arg_looks_valid(arg3);
+}
+
+static int looks_like_pointer_style_pool_alloc(uintptr_t arg2, intptr_t arg3, const char *arg4)
+{
+    if (arg2 == 0 || arg2 > kCompatMaxAllocSize) {
+        return 0;
+    }
+    if (!size_arg_is_reasonable(arg3)) {
+        return 1;
+    }
+    return !tag_arg_looks_valid(arg4);
 }
 
 /**
@@ -222,12 +321,39 @@ static int dma_init(void) {
     return 0;
 }
 
-/**
- * IMP_Alloc - Allocate DMA buffer
- * Based on decompilation at 0x16d2c
- */
-int IMP_Alloc(char *name, int size, char *tag) {
-    if (name == NULL || size <= 0) {
+static int dma_free_buffer(DMABufferRecord *buf)
+{
+    if (buf == NULL) {
+        return -1;
+    }
+
+    LOG_DMA("Free: phys=0x%x virt=%p", buf->phys_addr, buf->virt_addr);
+
+    if (buf->virt_addr != NULL) {
+        if ((buf->flags & 0x2) && g_is_rmem) {
+            /* RMEM bump allocations are not individually freed (no-op) */
+        } else if ((buf->flags & 0x1) && g_rmem_supported && g_mem_fd >= 0) {
+            mem_alloc_req_t req;
+            munmap(buf->virt_addr, buf->size);
+            memset(&req, 0, sizeof(req));
+            req.size = buf->size;
+            req.phys_addr = buf->phys_addr;
+            if (ioctl(g_mem_fd, IOCTL_MEM_FREE, &req) != 0) {
+                LOG_DMA("Free: IOCTL_MEM_FREE failed for phys=0x%x (%s)", buf->phys_addr, strerror(errno));
+            }
+        } else {
+            free(buf->virt_addr);
+        }
+    }
+
+    unregister_buffer(buf);
+    free(buf);
+    return 0;
+}
+
+static int dma_alloc_descriptor_internal(int pool_id, IMPDMABufferInfo *info_out, int size, const char *tag)
+{
+    if (info_out == NULL || size <= 0) {
         LOG_DMA("Alloc: invalid parameters");
         return -1;
     }
@@ -237,33 +363,29 @@ int IMP_Alloc(char *name, int size, char *tag) {
         return -1;
     }
 
-    /* Allocate DMA buffer structure */
-    DMABuffer *buf = (DMABuffer*)calloc(1, sizeof(DMABuffer));
+    DMABufferRecord *buf = (DMABufferRecord*)calloc(1, sizeof(DMABufferRecord));
     if (buf == NULL) {
         LOG_DMA("Alloc: calloc failed");
         return -1;
     }
 
-    /* Copy tag; treat 'name' as OUTPUT buffer per OEM, so do not trust it as input string */
-    if (tag && is_probably_cstring(tag, sizeof(buf->tag)-1)) {
+    if (tag_arg_looks_valid(tag)) {
         strncpy(buf->tag, tag, sizeof(buf->tag) - 1);
     } else {
         buf->tag[0] = '\0';
     }
-    /* Keep buf->name empty or default; many callers pass non-string output buffers here */
     buf->name[0] = '\0';
-    buf->size = size;
+    buf->size = (uint32_t)size;
+    buf->pool_id = (pool_id >= 0) ? (uint32_t)pool_id : 0;
 
-    /* Try kernel DMA path first if available */
     if (g_rmem_supported && g_mem_fd >= 0) {
         if (g_is_rmem && g_rmem_virt_base != NULL) {
-            /* Bump allocate from /dev/rmem mapping */
             size_t align = 4096;
             size_t off = (g_rmem_offset + (align - 1)) & ~(align - 1);
             if (off + (size_t)size <= g_rmem_size) {
                 buf->virt_addr = (void*)((uintptr_t)g_rmem_virt_base + off);
                 buf->phys_addr = g_rmem_base_phys + (uint32_t)off;
-                buf->flags |= 0x2; /* RMEM_BUMP */
+                buf->flags |= 0x2;
                 g_rmem_offset = off + (size_t)size;
                 LOG_DMA("Alloc: %s size=%d phys=0x%x virt=%p (rmem off=0x%zx)",
                         buf->name[0] ? buf->name : "(unnamed)", size, buf->phys_addr, buf->virt_addr, off);
@@ -272,7 +394,6 @@ int IMP_Alloc(char *name, int size, char *tag) {
                         size, g_rmem_offset, g_rmem_size);
             }
         } else {
-            /* Generic kernel allocator path (if present) */
             mem_alloc_req_t req;
             memset(&req, 0, sizeof(req));
             req.size = (uint32_t)size;
@@ -282,8 +403,9 @@ int IMP_Alloc(char *name, int size, char *tag) {
                 if (virt != MAP_FAILED) {
                     buf->virt_addr = virt;
                     buf->phys_addr = req.phys_addr;
-                    buf->flags |= 0x1; /* KERNEL_MMAP */
-                    LOG_DMA("Alloc: %s size=%d phys=0x%x virt=%p (kernel)", buf->name[0] ? buf->name : "(unnamed)", size, buf->phys_addr, buf->virt_addr);
+                    buf->flags |= 0x1;
+                    LOG_DMA("Alloc: %s size=%d phys=0x%x virt=%p (kernel)",
+                            buf->name[0] ? buf->name : "(unnamed)", size, buf->phys_addr, buf->virt_addr);
                 } else {
                     LOG_DMA("Alloc: mmap failed for phys=0x%x (%s); falling back", req.phys_addr, strerror(errno));
                 }
@@ -293,103 +415,87 @@ int IMP_Alloc(char *name, int size, char *tag) {
         }
     }
 
-    /* Fallback allocation if kernel path unavailable or failed */
     if (buf->virt_addr == NULL) {
-        if (posix_memalign(&buf->virt_addr, 4096, size) != 0) {
+        if (posix_memalign(&buf->virt_addr, 4096, (size_t)size) != 0) {
             LOG_DMA("Alloc: posix_memalign failed");
             free(buf);
             return -1;
         }
-        /* For fallback, physical address is same as virtual (not real DMA) */
         buf->phys_addr = (uint32_t)(uintptr_t)buf->virt_addr;
         LOG_DMA("Alloc: %s size=%d virt=%p (fallback)", buf->name[0] ? buf->name : "(unnamed)", size, buf->virt_addr);
     }
 
-    /* Register buffer in global registry */
     if (register_buffer(buf) < 0) {
         LOG_DMA("Alloc: failed to register buffer");
-        free(buf->virt_addr);
+        if ((buf->flags & 0x2) && g_is_rmem) {
+            /* RMEM bump allocations cannot be individually rolled back. */
+        } else if ((buf->flags & 0x1) && g_rmem_supported && g_mem_fd >= 0) {
+            munmap(buf->virt_addr, buf->size);
+        } else {
+            free(buf->virt_addr);
+        }
         free(buf);
         return -1;
     }
 
-    /* Store buffer info */
-    memcpy(name, buf, sizeof(DMABuffer));
-
+    fill_dma_info(info_out, buf);
     return 0;
 }
 
-/**
- * IMP_PoolAlloc - Allocate from a specific pool
- * Based on decompilation
- */
-int IMP_PoolAlloc(int pool_id, char *name, int size, char *tag) {
-    if (name == NULL || size <= 0) {
-        return -1;
+uintptr_t IMP_Alloc(void *name_or_size, intptr_t size, char *tag) {
+    uintptr_t arg1 = (uintptr_t)name_or_size;
+
+    if (looks_like_pointer_style_alloc(arg1, size, tag)) {
+        IMPDMABufferInfo info;
+        memset(&info, 0, sizeof(info));
+        if (dma_alloc_descriptor_internal(-1, &info, (int)arg1, "compat") != 0) {
+            return (uintptr_t)NULL;
+        }
+        LOG_DMA("Alloc compat: size=%u virt=0x%08x phys=0x%08x", (unsigned)arg1, info.virt_addr, info.phys_addr);
+        return (uintptr_t)info.virt_addr;
     }
 
-    LOG_DMA("PoolAlloc: pool=%d size=%d", pool_id, size);
-
-    /* Pool-based allocation uses the same underlying allocator as IMP_Alloc
-     * The pool_id is just metadata to track which pool the buffer belongs to
-     * This allows the system to manage buffers by pool for cleanup/tracking */
-    int ret = IMP_Alloc(name, size, tag);
-
-    if (ret == 0) {
-        /* Set pool ID in buffer for tracking */
-        DMABuffer *buf = (DMABuffer*)name;
-        buf->pool_id = pool_id;
-        LOG_DMA("PoolAlloc: assigned to pool %d", pool_id);
-    }
-
-    return ret;
+    return (uintptr_t)dma_alloc_descriptor_internal(-1, (IMPDMABufferInfo*)name_or_size, (int)size, tag);
 }
 
-/**
- * IMP_Free - Free DMA buffer
- * Based on decompilation
- */
-int IMP_Free(uint32_t phys_addr) {
-    if (phys_addr == 0) {
+uintptr_t IMP_PoolAlloc(int pool_id, void *name_or_size, intptr_t size, char *tag) {
+    uintptr_t arg2 = (uintptr_t)name_or_size;
+
+    if (looks_like_pointer_style_pool_alloc(arg2, size, tag)) {
+        IMPDMABufferInfo info;
+        memset(&info, 0, sizeof(info));
+        if (dma_alloc_descriptor_internal(pool_id, &info, (int)arg2, "compat_pool") != 0) {
+            return (uintptr_t)NULL;
+        }
+        LOG_DMA("PoolAlloc compat: pool=%d size=%u virt=0x%08x phys=0x%08x", pool_id, (unsigned)arg2, info.virt_addr, info.phys_addr);
+        return (uintptr_t)info.virt_addr;
+    }
+
+    return (uintptr_t)dma_alloc_descriptor_internal(pool_id, (IMPDMABufferInfo*)name_or_size, (int)size, tag);
+}
+
+int IMP_Free(uintptr_t phys_or_virt_addr) {
+    DMABufferRecord *buf = NULL;
+
+    if (phys_or_virt_addr == 0) {
         return -1;
     }
 
-    LOG_DMA("Free: phys=0x%x", phys_addr);
-
-    /* Look up buffer by physical address */
-    DMABuffer *buf = lookup_buffer_by_phys(phys_addr);
+    if (phys_or_virt_addr <= UINT32_MAX) {
+        buf = lookup_buffer_by_phys((uint32_t)phys_or_virt_addr);
+    }
     if (buf == NULL) {
-        LOG_DMA("Free: buffer not found in registry");
+        buf = lookup_buffer_containing_virt((const void*)phys_or_virt_addr, NULL);
+    }
+    if (buf == NULL && phys_or_virt_addr <= UINT32_MAX) {
+        buf = lookup_buffer_containing_phys((uint32_t)phys_or_virt_addr, NULL);
+    }
+    if (buf == NULL) {
+        LOG_DMA("Free: buffer not found in registry (arg=%p)", (void*)phys_or_virt_addr);
         return 0;
     }
 
-    /* Unmap/free virtual memory */
-    if (buf->virt_addr != NULL) {
-        if ((buf->flags & 0x2) && g_is_rmem) {
-            /* RMEM bump allocations are not individually freed (no-op) */
-        } else if ((buf->flags & 0x1) && g_rmem_supported && g_mem_fd >= 0) {
-            /* Kernel-mapped buffer with allocator ioctls */
-            munmap(buf->virt_addr, buf->size);
-            /* Attempt to free in kernel */
-            mem_alloc_req_t req;
-            memset(&req, 0, sizeof(req));
-            req.size = buf->size;
-            req.phys_addr = buf->phys_addr;
-            if (ioctl(g_mem_fd, IOCTL_MEM_FREE, &req) != 0) {
-                LOG_DMA("Free: IOCTL_MEM_FREE failed for phys=0x%x (%s)", buf->phys_addr, strerror(errno));
-            }
-        } else {
-            /* Fallback allocation - just free */
-            free(buf->virt_addr);
-        }
-    }
-
-    /* Unregister and free buffer structure */
-    unregister_buffer(buf);
-    free(buf);
-
-    LOG_DMA("Free: freed buffer phys=0x%x", phys_addr);
-    return 0;
+    return dma_free_buffer(buf);
 }
 
 /**
@@ -402,14 +508,13 @@ int IMP_Get_Info(void *info_out, uint32_t phys_addr) {
     }
 
     /* Look up buffer by physical address */
-    DMABuffer *buf = lookup_buffer_by_phys(phys_addr);
+    DMABufferRecord *buf = lookup_buffer_by_phys(phys_addr);
     if (buf == NULL) {
         LOG_DMA("Get_Info: buffer not found for phys=0x%x", phys_addr);
         return -1;
     }
 
-    /* Copy buffer info to output */
-    memcpy(info_out, buf, sizeof(DMABuffer));
+    fill_dma_info((IMPDMABufferInfo*)info_out, buf);
 
     LOG_DMA("Get_Info: phys=0x%x, virt=%p, size=%u",
             phys_addr, buf->virt_addr, buf->size);
@@ -437,8 +542,72 @@ int IMP_Flush_Cache(uint32_t phys_addr, uint32_t size) {
         return -1;
     }
 
-    /* No-op: kernel cache flush ioctl not used in fallback mode */
-    return 0;
+    return IMP_FlushCache(DMA_PhysToVirt(phys_addr), size);
+}
+
+int DMA_AllocDescriptor(IMPDMABufferInfo *info_out, int size, const char *tag)
+{
+    return dma_alloc_descriptor_internal(-1, info_out, size, tag);
+}
+
+int DMA_PoolAllocDescriptor(int pool_id, IMPDMABufferInfo *info_out, int size, const char *tag)
+{
+    return dma_alloc_descriptor_internal(pool_id, info_out, size, tag);
+}
+
+int DMA_FreePhys(uint32_t phys_addr)
+{
+    return IMP_Free((uintptr_t)phys_addr);
+}
+
+void *DMA_PhysToVirt(uint32_t phys_addr)
+{
+    uint32_t offset = 0;
+    DMABufferRecord *buf;
+
+    if (phys_addr == 0) {
+        return NULL;
+    }
+
+    buf = lookup_buffer_containing_phys(phys_addr, &offset);
+    if (buf != NULL && buf->virt_addr != NULL) {
+        return (void*)((uintptr_t)buf->virt_addr + offset);
+    }
+
+    if (dma_init() == 0 && g_is_rmem && g_rmem_virt_base != NULL &&
+        phys_addr >= g_rmem_base_phys &&
+        phys_addr < g_rmem_base_phys + g_rmem_size) {
+        return (void*)((uintptr_t)g_rmem_virt_base + (phys_addr - g_rmem_base_phys));
+    }
+
+    return NULL;
+}
+
+uint32_t DMA_VirtToPhys(const void *virt_addr)
+{
+    uint32_t offset = 0;
+    DMABufferRecord *buf;
+    uintptr_t virt;
+
+    if (virt_addr == NULL) {
+        return 0;
+    }
+
+    buf = lookup_buffer_containing_virt(virt_addr, &offset);
+    if (buf != NULL) {
+        return buf->phys_addr + offset;
+    }
+
+    virt = (uintptr_t)virt_addr;
+    if (dma_init() == 0 && g_is_rmem && g_rmem_virt_base != NULL) {
+        uintptr_t base = (uintptr_t)g_rmem_virt_base;
+        uintptr_t end = base + g_rmem_size;
+        if (virt >= base && virt < end) {
+            return g_rmem_base_phys + (uint32_t)(virt - base);
+        }
+    }
+
+    return (uint32_t)virt;
 }
 
 
@@ -462,7 +631,52 @@ int DMA_Is_RMEM(void)
 /* IMP_FlushCache - flush CPU cache for DMA coherency
  * Stub: on MIPS with coherent DMA, this is often a no-op */
 int IMP_FlushCache(void *virt_addr, uint32_t size) {
-    (void)virt_addr;
-    (void)size;
+    if (virt_addr == NULL || size == 0) {
+        return -1;
+    }
+
+    if (dma_init() == 0 && g_rmem_supported && !g_is_rmem && g_mem_fd >= 0) {
+        uint32_t phys_addr = DMA_VirtToPhys(virt_addr);
+        if (phys_addr != 0) {
+            mem_alloc_req_t req;
+            memset(&req, 0, sizeof(req));
+            req.phys_addr = phys_addr;
+            req.size = size;
+            if (ioctl(g_mem_fd, IOCTL_MEM_FLUSH, &req) != 0) {
+                LOG_DMA("FlushCache: ioctl failed for phys=0x%x (%s)", phys_addr, strerror(errno));
+            }
+        }
+    }
+
     return 0;
+}
+
+void *IMP_Phys_to_Virt(uint32_t phys_addr)
+{
+    return DMA_PhysToVirt(phys_addr);
+}
+
+uint32_t IMP_Virt_to_Phys(void *virt_addr)
+{
+    return DMA_VirtToPhys(virt_addr);
+}
+
+void IMP_PoolFree(void *ptr)
+{
+    (void)IMP_Free((uintptr_t)ptr);
+}
+
+int IMP_PoolFlushCache(void *ptr, uint32_t size)
+{
+    return IMP_FlushCache(ptr, size);
+}
+
+void *IMP_PoolPhys_to_Virt(uint32_t phys_addr)
+{
+    return DMA_PhysToVirt(phys_addr);
+}
+
+uint32_t IMP_PoolVirt_to_Phys(void *virt_addr)
+{
+    return DMA_VirtToPhys(virt_addr);
 }

@@ -16,12 +16,8 @@
 #include <pthread.h>
 #include <sys/ioctl.h>
 #include <imp/imp_isp.h>
+#include "dma_alloc.h"
 #include "isp_ioctl_compat.h"
-
-
-/* Forward declarations for DMA allocation */
-int IMP_Alloc(char *name, int size, char *tag);
-int IMP_Free(uint32_t phys_addr);
 
 /* Forward declarations for logging (vendor functions) */
 
@@ -110,6 +106,12 @@ typedef struct ISPTuningState {
     unsigned video_drop_status;               /* consecutive same-count detections */
     unsigned video_drop_notify_c;             /* notifications emitted (limited) */
     void (*video_drop_cb)(void);              /* optional callback hook */
+    IMPISPModuleCtl module_ctl;               /* cached T31 module-control state */
+    IMPISPAETargetList ae_target_list;        /* cached T31 AE target list */
+    IMPISPFrontCrop front_crop;               /* cached T31 front-crop state */
+    IMPISPHVFLIP hvflip;                      /* cached T31 HV flip state */
+    IMPISPTuningOpsMode custom_mode;          /* cached T31 custom-mode state */
+    IMPISPTuningOpsMode drc_enable;           /* cached T31 DRC enable state */
 } ISPTuningState;
 
 static void* isp_tuning_deamon_thread(void* arg)
@@ -582,14 +584,14 @@ int IMP_ISP_Close(void) {
 
     /* Free ISP buffer if allocated */
     if (gISPdev->isp_buffer_phys != 0) {
-        IMP_Free(gISPdev->isp_buffer_phys);
+        DMA_FreePhys(gISPdev->isp_buffer_phys);
         gISPdev->isp_buffer_virt = NULL;
         gISPdev->isp_buffer_phys = 0;
         gISPdev->isp_buffer_size = 0;
     }
     /* Free optional secondary ISP buffer if allocated */
     if (gISPdev->isp_buffer2_phys != 0) {
-        IMP_Free(gISPdev->isp_buffer2_phys);
+        DMA_FreePhys(gISPdev->isp_buffer2_phys);
         gISPdev->isp_buffer2_virt = NULL;
         gISPdev->isp_buffer2_phys = 0;
         gISPdev->isp_buffer2_size = 0;
@@ -704,28 +706,17 @@ int IMP_ISP_AddSensor(IMPSensorInfo *pinfo) {
             (unsigned)TXISP_BUF_GET_SIZE(buf_info), sizeof(buf_info));
 
     /* CRITICAL: Allocate DMA buffer for ISP RAW data */
-    char isp_buf_info[0x94];
-    memset(isp_buf_info, 0, sizeof(isp_buf_info));
+    IMPDMABufferInfo isp_buf_info;
+    memset(&isp_buf_info, 0, sizeof(isp_buf_info));
 
-    if (IMP_Alloc(isp_buf_info, buf_info.size, "isp_raw") != 0) {
+    if (DMA_AllocDescriptor(&isp_buf_info, buf_info.size, "isp_raw") != 0) {
         LOG_ISP("AddSensor: failed to allocate ISP buffer of size %u", buf_info.size);
         return -1;
     }
 
-    typedef struct {
-        char name[96];
-        char tag[32];
-        void *virt_addr;
-        uint32_t phys_addr;
-        uint32_t size;
-        uint32_t flags;
-        uint32_t pool_id;
-    } DMABuffer;
-
-    DMABuffer *dma_buf = (DMABuffer*)isp_buf_info;
-    gISPdev->isp_buffer_virt = dma_buf->virt_addr;
-    gISPdev->isp_buffer_phys = dma_buf->phys_addr;
-    gISPdev->isp_buffer_size = dma_buf->size;
+    gISPdev->isp_buffer_virt = (void*)(uintptr_t)isp_buf_info.virt_addr;
+    gISPdev->isp_buffer_phys = isp_buf_info.phys_addr;
+    gISPdev->isp_buffer_size = isp_buf_info.size;
 
     LOG_ISP("AddSensor: allocated ISP buffer: virt=%p phys=0x%lx size=%u",
             gISPdev->isp_buffer_virt, gISPdev->isp_buffer_phys, gISPdev->isp_buffer_size);
@@ -742,7 +733,7 @@ int IMP_ISP_AddSensor(IMPSensorInfo *pinfo) {
 
     if (ioctl(gISPdev->fd, TX_ISP_SET_BUF, &set_buf) != 0) {
         LOG_ISP("AddSensor: TX_ISP_SET_BUF failed: %s", strerror(errno));
-        IMP_Free(gISPdev->isp_buffer_phys);
+        DMA_FreePhys(gISPdev->isp_buffer_phys);
         gISPdev->isp_buffer_virt = NULL;
         gISPdev->isp_buffer_phys = 0;
         gISPdev->isp_buffer_size = 0;
@@ -756,20 +747,19 @@ int IMP_ISP_AddSensor(IMPSensorInfo *pinfo) {
     memset(&buf2_info, 0, sizeof(buf2_info));
     if (ioctl(gISPdev->fd, 0x800856d7, &buf2_info) == 0 && buf2_info.size > 0) {
         LOG_ISP("AddSensor: secondary ISP buffer requested: size=%u", buf2_info.size);
-        char isp_buf2_info[0x94];
-        memset(isp_buf2_info, 0, sizeof(isp_buf2_info));
-        if (IMP_Alloc(isp_buf2_info, buf2_info.size, "ISP RAW2") == 0) {
-            DMABuffer *dma2 = (DMABuffer*)isp_buf2_info;
-            gISPdev->isp_buffer2_virt = dma2->virt_addr;
-            gISPdev->isp_buffer2_phys = dma2->phys_addr;
-            gISPdev->isp_buffer2_size = dma2->size;
+        IMPDMABufferInfo isp_buf2_info;
+        memset(&isp_buf2_info, 0, sizeof(isp_buf2_info));
+        if (DMA_AllocDescriptor(&isp_buf2_info, buf2_info.size, "ISP RAW2") == 0) {
+            gISPdev->isp_buffer2_virt = (void*)(uintptr_t)isp_buf2_info.virt_addr;
+            gISPdev->isp_buffer2_phys = isp_buf2_info.phys_addr;
+            gISPdev->isp_buffer2_size = isp_buf2_info.size;
 
             struct { uint32_t addr; uint32_t size; } set_buf2;
             set_buf2.addr = gISPdev->isp_buffer2_phys;
             set_buf2.size = buf2_info.size;
             if (ioctl(gISPdev->fd, 0x800856d6, &set_buf2) != 0) {
                 LOG_ISP("AddSensor: TX_ISP_SET_BUF(2) failed: %s", strerror(errno));
-                IMP_Free(gISPdev->isp_buffer2_phys);
+                DMA_FreePhys(gISPdev->isp_buffer2_phys);
                 gISPdev->isp_buffer2_virt = NULL;
                 gISPdev->isp_buffer2_phys = 0;
                 gISPdev->isp_buffer2_size = 0;
@@ -975,6 +965,13 @@ int IMP_ISP_EnableTuning(void) {
         if (IMP_ISP_Tuning_GetContrast(&c) == 0) {
             gISPdev->tuning->contrast_byte = c;
         }
+        gISPdev->tuning->module_ctl.key = 0xFFFFFFFFu;
+        for (size_t i = 0; i < 10; ++i) {
+            gISPdev->tuning->ae_target_list.at_list[i] = 55;
+        }
+        gISPdev->tuning->hvflip = IMPISP_FLIP_NORMAL_MODE;
+        gISPdev->tuning->custom_mode = IMPISP_TUNING_OPS_MODE_DISABLE;
+        gISPdev->tuning->drc_enable = IMPISP_TUNING_OPS_MODE_DISABLE;
     }
 
     /* Call ioctl 0xc00c56c6 to initialize tuning with default FPS */
@@ -1203,11 +1200,21 @@ int IMP_ISP_Tuning_SetISPBypass(IMPISPTuningOpsMode enable) {
 }
 
 int IMP_ISP_Tuning_SetISPHflip(IMPISPTuningOpsMode mode) {
+    ISPTuningState *st = (gISPdev ? gISPdev->tuning : NULL);
+    if (st) {
+        int vflip = (((int)st->hvflip) & 0x2) ? 1 : 0;
+        st->hvflip = (IMPISPHVFLIP)((mode == IMPISP_TUNING_OPS_MODE_ENABLE ? 1 : 0) | (vflip ? 2 : 0));
+    }
     LOG_ISP("SetISPHflip: %d", mode);
     return 0;
 }
 
 int IMP_ISP_Tuning_SetISPVflip(IMPISPTuningOpsMode mode) {
+    ISPTuningState *st = (gISPdev ? gISPdev->tuning : NULL);
+    if (st) {
+        int hflip = (((int)st->hvflip) & 0x1) ? 1 : 0;
+        st->hvflip = (IMPISPHVFLIP)((hflip ? 1 : 0) | (mode == IMPISP_TUNING_OPS_MODE_ENABLE ? 2 : 0));
+    }
     LOG_ISP("SetISPVflip: %d", mode);
     return 0;
 }
@@ -1786,9 +1793,12 @@ int IMP_ISP_Tuning_WaitFrame(int timeout_ms) {
     return 0;
 }
 
-int IMP_ISP_Tuning_GetSensorAttr(uint32_t *width, uint32_t *height) {
-    if (width) *width = 1920;
-    if (height) *height = 1080;
+int IMP_ISP_Tuning_GetSensorAttr(IMPISPSENSORAttr *attr) {
+    if (!attr) return -1;
+    memset(attr, 0, sizeof(*attr));
+    attr->fps = 25;
+    attr->width = 1920;
+    attr->height = 1080;
     return 0;
 }
 
@@ -1810,14 +1820,21 @@ int IMP_ISP_Tuning_SetAeAttr(void *ae_attr) {
     return 0;
 }
 
-int IMP_ISP_Tuning_GetModuleControl(uint32_t *modules) {
-    if (!modules) return -1;
-    *modules = 0xFFFFFFFF; /* All modules enabled */
+int IMP_ISP_Tuning_GetModuleControl(IMPISPModuleCtl *ispmodule) {
+    if (!ispmodule) return -1;
+    if (gISPdev && gISPdev->tuning) {
+        *ispmodule = gISPdev->tuning->module_ctl;
+    } else {
+        ispmodule->key = 0xFFFFFFFFu;
+    }
     return 0;
 }
 
-int IMP_ISP_Tuning_SetModuleControl(uint32_t modules) {
-    (void)modules;
+int IMP_ISP_Tuning_SetModuleControl(IMPISPModuleCtl *ispmodule) {
+    if (!ispmodule) return -1;
+    if (gISPdev && gISPdev->tuning) {
+        gISPdev->tuning->module_ctl = *ispmodule;
+    }
     return 0;
 }
 
@@ -1826,6 +1843,42 @@ int IMP_ISP_Tuning_SetModuleControl(uint32_t modules) {
 int IMP_ISP_Tuning_SetAutoZoom(void *zoom_attr) {
     (void)zoom_attr;
     return 0;
+}
+
+int IMP_ISP_Tuning_SetAeTargetList(IMPISPAETargetList *at_list) {
+    if (!at_list) return -1;
+    if (gISPdev && gISPdev->tuning) {
+        gISPdev->tuning->ae_target_list = *at_list;
+    }
+    return 0;
+}
+
+int IMP_ISP_Tuning_GetAeTargetList(IMPISPAETargetList *at_list) {
+    if (!at_list) return -1;
+    if (gISPdev && gISPdev->tuning) {
+        *at_list = gISPdev->tuning->ae_target_list;
+    } else {
+        for (size_t i = 0; i < 10; ++i) at_list->at_list[i] = 55;
+    }
+    return 0;
+}
+
+int IMP_ISP_Tuning_SetHVFLIP(IMPISPHVFLIP hvflip) {
+    if (gISPdev && gISPdev->tuning) {
+        gISPdev->tuning->hvflip = hvflip;
+    }
+    LOG_ISP("SetHVFLIP: %d", hvflip);
+    return 0;
+}
+
+int IMP_ISP_Tuning_GetHVFlip(IMPISPHVFLIP *hvflip) {
+    if (!hvflip) return -1;
+    *hvflip = (gISPdev && gISPdev->tuning) ? gISPdev->tuning->hvflip : IMPISP_FLIP_NORMAL_MODE;
+    return 0;
+}
+
+int IMP_ISP_Tuning_GetHVFLIP(IMPISPHVFLIP *hvflip) {
+    return IMP_ISP_Tuning_GetHVFlip(hvflip);
 }
 
 int IMP_ISP_Tuning_AE_SetROI(void *roi) {
@@ -1863,8 +1916,47 @@ int IMP_ISP_Tuning_SetAe_IT_MAX(uint32_t it_max) {
     return 0;
 }
 
-int IMP_ISP_Tuning_GetAeLuma(void *luma) {
-    if (luma) memset(luma, 0, 64);
+int IMP_ISP_Tuning_GetAeLuma(int *luma) {
+    if (!luma) return -1;
+    *luma = 0;
+    return 0;
+}
+
+int IMP_ISP_Tuning_SetFrontCrop(IMPISPFrontCrop *ispfrontcrop) {
+    if (!ispfrontcrop) return -1;
+    if (gISPdev && gISPdev->tuning) {
+        gISPdev->tuning->front_crop = *ispfrontcrop;
+    }
+    return 0;
+}
+
+int IMP_ISP_Tuning_GetFrontCrop(IMPISPFrontCrop *ispfrontcrop) {
+    if (!ispfrontcrop) return -1;
+    if (gISPdev && gISPdev->tuning) {
+        *ispfrontcrop = gISPdev->tuning->front_crop;
+    } else {
+        memset(ispfrontcrop, 0, sizeof(*ispfrontcrop));
+    }
+    return 0;
+}
+
+int IMP_ISP_Tuning_SetISPCustomMode(IMPISPTuningOpsMode mode) {
+    if (gISPdev && gISPdev->tuning) {
+        gISPdev->tuning->custom_mode = mode;
+    }
+    return 0;
+}
+
+int IMP_ISP_Tuning_GetISPCustomMode(IMPISPTuningOpsMode *mode) {
+    if (!mode) return -1;
+    *mode = (gISPdev && gISPdev->tuning) ? gISPdev->tuning->custom_mode : IMPISP_TUNING_OPS_MODE_DISABLE;
+    return 0;
+}
+
+int IMP_ISP_Tuning_EnableDRC(IMPISPTuningOpsMode mode) {
+    if (gISPdev && gISPdev->tuning) {
+        gISPdev->tuning->drc_enable = mode;
+    }
     return 0;
 }
 

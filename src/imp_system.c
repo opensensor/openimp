@@ -10,6 +10,7 @@
 #include <pthread.h>
 #include <semaphore.h>
 #include <imp/imp_system.h>
+#include "dma_alloc.h"
 #include "imp_log_int.h"
 
 #define IMP_VERSION "1.1.6"
@@ -64,6 +65,15 @@ static Module *g_modules[MAX_DEVICES][MAX_GROUPS];
 static int system_initialized = 0;
 static uint64_t timestamp_base = 0;
 static pthread_mutex_t system_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+#define MAX_MEM_POOLS 16
+typedef struct {
+    int requested;
+    size_t size;
+    char name[32];
+} SystemMemPool;
+
+static SystemMemPool g_mem_pools[MAX_MEM_POOLS];
 
 /* CPU ID detection - based on get_cpu_id() */
 static int get_cpu_id(void) {
@@ -686,6 +696,39 @@ int IMP_System_GetBindbyDest(IMPCell *dstCell, IMPCell *srcCell) {
     return -1;
 }
 
+int IMP_System_MemPoolRequest(int poolId, size_t size, const char *name) {
+    if (poolId < 0 || poolId >= MAX_MEM_POOLS || size == 0) {
+        LOG_SYS("MemPoolRequest: invalid args pool=%d size=%zu", poolId, size);
+        return -1;
+    }
+
+    pthread_mutex_lock(&system_mutex);
+    g_mem_pools[poolId].requested = 1;
+    g_mem_pools[poolId].size = size;
+    memset(g_mem_pools[poolId].name, 0, sizeof(g_mem_pools[poolId].name));
+    if (name != NULL) {
+        strncpy(g_mem_pools[poolId].name, name, sizeof(g_mem_pools[poolId].name) - 1);
+    }
+    pthread_mutex_unlock(&system_mutex);
+
+    LOG_SYS("MemPoolRequest: pool=%d size=%zu name=%s", poolId, size, name ? name : "(null)");
+    return 0;
+}
+
+int IMP_System_MemPoolFree(int poolId) {
+    if (poolId < 0 || poolId >= MAX_MEM_POOLS) {
+        LOG_SYS("MemPoolFree: invalid pool=%d", poolId);
+        return -1;
+    }
+
+    pthread_mutex_lock(&system_mutex);
+    memset(&g_mem_pools[poolId], 0, sizeof(g_mem_pools[poolId]));
+    pthread_mutex_unlock(&system_mutex);
+
+    LOG_SYS("MemPoolFree: pool=%d", poolId);
+    return 0;
+}
+
 /* IMP_System_ReadReg32 - read a 32-bit hardware register via /dev/mem
  * Stub: returns 0 (used by HAL for register access) */
 uint32_t IMP_System_ReadReg32(uint32_t addr) {
@@ -703,15 +746,13 @@ void IMP_System_WriteReg32(uint32_t addr, uint32_t val) {
 }
 
 /* IMP_System_PhysToVirt - translate physical address to virtual
- * Stub: returns NULL */
+ * Route through DMA allocator registry / RMEM mapping. */
 void *IMP_System_PhysToVirt(uint32_t phys_addr) {
-    (void)phys_addr;
-    return NULL;
+    return DMA_PhysToVirt(phys_addr);
 }
 
 /* IMP_System_VirtToPhys - translate virtual address to physical
- * Stub: returns 0 */
+ * Route through DMA allocator registry / RMEM mapping. */
 uint32_t IMP_System_VirtToPhys(void *virt_addr) {
-    (void)virt_addr;
-    return 0;
+    return DMA_VirtToPhys(virt_addr);
 }

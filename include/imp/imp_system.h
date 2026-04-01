@@ -11,6 +11,7 @@
 extern "C" {
 #endif
 
+#include <stddef.h>
 #include "imp_common.h"
 
 /**
@@ -82,6 +83,16 @@ int IMP_System_RebaseTimeStamp(uint64_t basets);
  * Get source cell bound to a destination cell
  */
 int IMP_System_GetBindbyDest(IMPCell *dstCell, IMPCell *srcCell);
+
+/**
+ * Request a named memory pool from reserved media memory.
+ */
+int IMP_System_MemPoolRequest(int poolId, size_t size, const char *name);
+
+/**
+ * Free a previously requested memory pool.
+ */
+int IMP_System_MemPoolFree(int poolId);
 
 /**
  * Read a 32-bit hardware register

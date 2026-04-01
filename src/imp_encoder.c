@@ -96,6 +96,9 @@ typedef struct {
     int entropy_mode;              /* Entropy mode (offset 0x3fc) */
     int max_stream_cnt;            /* Max stream count (offset 0x4c0) */
     int stream_buf_size;           /* Stream buffer size (offset 0x4c4) */
+    int resize_mode;               /* T31 resize-mode flag */
+    int qp_ip_delta;               /* T31 IP delta cache */
+    int last_qp;                   /* Last fixed QP applied */
     /* OpenIMP tracking to ensure early IDR without GetStream-time injection */
     int idr_requested_once;        /* 0=no request yet, 1=requested due to missing SPS/PPS */
     int param_sets_seen;           /* 1 once SPS and PPS observed in packs */
@@ -1160,7 +1163,23 @@ int IMP_Encoder_GetFd(int encChn) {
 
 /* Additional Encoder Functions - based on Binary Ninja decompilations */
 
-int IMP_Encoder_SetChnQp(int encChn, IMPEncoderQp *qp) {
+static int encoder_channel_has_pending_stream(int encChn) {
+    if (encChn < 0 || encChn >= MAX_ENC_CHANNELS) {
+        return 0;
+    }
+
+    EncChannel *chn = &g_EncChannel[encChn];
+    if (chn->chn_id < 0 || !chn->recv_pic_started) {
+        return 0;
+    }
+
+    pthread_mutex_lock(&chn->mutex_450);
+    int pending = (chn->current_stream != NULL);
+    pthread_mutex_unlock(&chn->mutex_450);
+    return pending;
+}
+
+int IMP_Encoder_SetChnQp(int encChn, int iQP) {
     if (encChn < 0 || encChn >= MAX_ENC_CHANNELS) {
         LOG_ENC("SetChnQp failed: invalid channel %d", encChn);
         return -1;
@@ -1174,15 +1193,25 @@ int IMP_Encoder_SetChnQp(int encChn, IMPEncoderQp *qp) {
 
     pthread_mutex_lock(&chn->mutex_450);
 
+    if (iQP < 0) iQP = 0;
+    if (iQP > 51) iQP = 51;
+
+    IMPEncoderQp qp = {
+        .qp_i = (uint32_t)iQP,
+        .qp_p = (uint32_t)iQP,
+        .qp_b = (uint32_t)iQP,
+    };
+    chn->last_qp = iQP;
+
     /* Call codec SetQp if codec is active */
     int ret = 0;
     if (chn->codec != NULL) {
-        ret = AL_Codec_Encode_SetQp(chn->codec, qp);
+        ret = AL_Codec_Encode_SetQp(chn->codec, &qp);
     }
 
     pthread_mutex_unlock(&chn->mutex_450);
 
-    LOG_ENC("SetChnQp: chn=%d, ret=%d", encChn, ret);
+    LOG_ENC("SetChnQp: chn=%d, qp=%d, ret=%d", encChn, iQP, ret);
     return ret;
 }
 
@@ -1207,7 +1236,7 @@ int IMP_Encoder_SetChnGopLength(int encChn, int gopLength) {
     return 0;
 }
 
-int IMP_Encoder_SetChnEntropyMode(int encChn, int mode) {
+int IMP_Encoder_SetChnEntropyMode(int encChn, IMPEncoderEntropyMode mode) {
     if (encChn < 0 || encChn >= MAX_ENC_CHANNELS) {
         LOG_ENC("SetChnEntropyMode failed: invalid channel %d", encChn);
         return -1;
@@ -1264,6 +1293,62 @@ int IMP_Encoder_SetStreamBufSize(int encChn, int size) {
     return 0;
 }
 
+int IMP_Encoder_PollingModuleStream(uint32_t *encChnBitmap, uint32_t timeoutMsec) {
+    if (encChnBitmap == NULL) return -1;
+
+    const uint32_t sleep_step_us = 1000;
+    uint32_t waited_us = 0;
+
+    do {
+        uint32_t bitmap = 0;
+        for (int encChn = 0; encChn < MAX_ENC_CHANNELS && encChn < 32; encChn++) {
+            if (encoder_channel_has_pending_stream(encChn)) {
+                bitmap |= (1u << encChn);
+            }
+        }
+
+        *encChnBitmap = bitmap;
+        if (bitmap != 0 || timeoutMsec == 0) {
+            return 0;
+        }
+
+        usleep(sleep_step_us);
+        waited_us += sleep_step_us;
+    } while (waited_us < (timeoutMsec * 1000u));
+
+    *encChnBitmap = 0;
+    return 0;
+}
+
+int IMP_Encoder_SetChnResizeMode(int encChn, int en) {
+    if (encChn < 0 || encChn >= MAX_ENC_CHANNELS) return -1;
+
+    EncChannel *chn = &g_EncChannel[encChn];
+    if (chn->chn_id >= 0) {
+        LOG_ENC("SetChnResizeMode failed: channel %d already created", encChn);
+        return -1;
+    }
+
+    chn->resize_mode = en ? 1 : 0;
+    LOG_ENC("SetChnResizeMode: chn=%d, en=%d", encChn, chn->resize_mode);
+    return 0;
+}
+
+int IMP_Encoder_GetChnEvalInfo(int encChn, void *info) {
+    if (encChn < 0 || encChn >= MAX_ENC_CHANNELS || info == NULL) return -1;
+
+    EncChannel *chn = &g_EncChannel[encChn];
+    uint32_t *words = (uint32_t *)info;
+    words[0] = chn->stream_seq;
+    words[1] = (uint32_t)chn->last_qp;
+    words[2] = (uint32_t)chn->stream_buf_size;
+    words[3] = encoder_channel_has_pending_stream(encChn) ? 1u : 0u;
+
+    LOG_ENC("GetChnEvalInfo: chn=%d seq=%u qp=%d pending=%u",
+            encChn, words[0], chn->last_qp, words[3]);
+    return 0;
+}
+
 /* ========== Missing Encoder functions needed by raptor-hal ========== */
 
 int IMP_Encoder_GetStreamBufSize(int encChn, int *size) {
@@ -1274,7 +1359,7 @@ int IMP_Encoder_GetStreamBufSize(int encChn, int *size) {
 
 int IMP_Encoder_GetMaxStreamCnt(int encChn, int *cnt) {
     if (encChn < 0 || encChn >= MAX_ENC_CHANNELS || !cnt) return -1;
-    *cnt = 1; /* Default: 1 stream */
+    *cnt = g_EncChannel[encChn].max_stream_cnt > 0 ? g_EncChannel[encChn].max_stream_cnt : 1;
     return 0;
 }
 
@@ -1361,6 +1446,7 @@ int IMP_Encoder_SetChnQpBounds(int encChn, int minQp, int maxQp) {
 
 int IMP_Encoder_SetChnQpIPDelta(int encChn, int delta) {
     if (encChn < 0 || encChn >= MAX_ENC_CHANNELS) return -1;
+    g_EncChannel[encChn].qp_ip_delta = delta;
     LOG_ENC("SetChnQpIPDelta: chn=%d, delta=%d", encChn, delta);
     return 0;
 }

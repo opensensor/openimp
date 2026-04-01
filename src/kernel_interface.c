@@ -731,9 +731,6 @@ static VBMVolume *vbm_find_volume_by_vaddr(uint32_t vaddr)
 
 /* External functions */
 extern int IMP_FrameSource_GetPool(int chn);
-extern int IMP_Alloc(char *name, int size, char *tag);
-extern int IMP_PoolAlloc(int pool_id, char *name, int size, char *tag);
-extern int IMP_Free(uint32_t phys_addr);
 
 /* Calculate frame size based on pixel format */
 static int calculate_frame_size(int width, int height, int pixfmt) {
@@ -899,14 +896,14 @@ int VBMCreatePool(int chn, void *fmt, void *ops, void *priv) {
 
     /* Allocate memory for frames via DMA allocator */
     int total_size = pool->frame_size * frame_count;
-    char alloc_name[256];
-    memset(alloc_name, 0, sizeof(alloc_name)); /* Ensure DMABuffer return area is zero-initialized */
+    IMPDMABufferInfo alloc_info;
+    memset(&alloc_info, 0, sizeof(alloc_info));
     int ret;
 
     if (pool->pool_id < 0) {
-        ret = IMP_Alloc(alloc_name, total_size, pool->name);
+        ret = DMA_AllocDescriptor(&alloc_info, total_size, pool->name);
     } else {
-        ret = IMP_PoolAlloc(pool->pool_id, alloc_name, total_size, pool->name);
+        ret = DMA_PoolAllocDescriptor(pool->pool_id, &alloc_info, total_size, pool->name);
     }
 
     if (ret < 0) {
@@ -915,11 +912,8 @@ int VBMCreatePool(int chn, void *fmt, void *ops, void *priv) {
         return -1;
     }
 
-    /* Get physical and virtual addresses from DMA buffer */
-    /* DMA buffer structure is returned in alloc_name */
-    uint32_t phys_base, virt_base;
-    memcpy(&virt_base, alloc_name + 0x80, sizeof(uint32_t));
-    memcpy(&phys_base, alloc_name + 0x84, sizeof(uint32_t));
+    uint32_t phys_base = alloc_info.phys_addr;
+    uint32_t virt_base = alloc_info.virt_addr;
 
     pool->phys_base = phys_base;
     pool->virt_base = virt_base;
@@ -982,7 +976,7 @@ int VBMCreatePool(int chn, void *fmt, void *ops, void *priv) {
     pool->available_queue = (int*)calloc(frame_count, sizeof(int));
     if (pool->available_queue == NULL) {
         fprintf(stderr, "[VBM] CreatePool: failed to allocate queue\n");
-        IMP_Free(pool->phys_base);
+        DMA_FreePhys(pool->phys_base);
         free(pool);
         return -1;
     }
@@ -1034,7 +1028,7 @@ int VBMDestroyPool(int chn) {
 
     /* Free allocated memory */
     if (pool->phys_base != 0) {
-        IMP_Free(pool->phys_base);
+        DMA_FreePhys(pool->phys_base);
     }
 
     /* Free pool structure */

@@ -209,17 +209,14 @@ static int avpu_alloc_mmap(int fd, size_t size, AvpuDMABuf* out)
 static int avpu_alloc_imp(size_t size, const char* tag, AvpuDMABuf* out)
 {
     if (!out || size == 0) return -1;
-    /* DMABuffer is 0x94 bytes; we only rely on offsets 0x80 (virt) and 0x84 (phys) */
-    unsigned char info[0x94];
-    memset(info, 0, sizeof(info));
-    if (IMP_Alloc((char*)info, (int)size, (char*)(tag ? tag : "AVPU")) != 0) {
+    IMPDMABufferInfo info;
+    memset(&info, 0, sizeof(info));
+    if (DMA_AllocDescriptor(&info, (int)size, tag ? tag : "AVPU") != 0) {
         LOG_CODEC("AVPU: IMP_Alloc failed (size=%zu, tag=%s)", size, tag ? tag : "AVPU");
         return -1;
     }
-    void* virt = NULL;
-    uint32_t phys = 0;
-    memcpy(&virt, info + 0x80, sizeof(void*));
-    memcpy(&phys, info + 0x84, sizeof(uint32_t));
+    void* virt = (void*)(uintptr_t)info.virt_addr;
+    uint32_t phys = info.phys_addr;
     if (!virt || phys == 0) {
         LOG_CODEC("AVPU: IMP_Alloc returned invalid addresses virt=%p phys=0x%08x", virt, phys);
         return -1;
@@ -295,14 +292,18 @@ static void avpu_init_enc1_slice_words(ALAvpuContext *ctx, const uint8_t *codec_
     ctx->enc1_cmd_0b_7e = 1u; /* single-core Enc1 path */
     ctx->enc1_cmd_0b_7f = 0u;
     ctx->enc1_cmd_0b_80 = 0u;
+    /* OEM request initialization seeds state+0x12e to 1, and later copies that
+     * to SliceParam+0x10 before SliceParamToCmdRegsEnc1 packs cmd[2] bits[9:8]. */
+    ctx->enc1_slice_10 = 1u;
 
     ctx->enc1_cmd_12_a8 = avpu_default_enc1_cmd12_a8(ctx->enc_w);
     ctx->enc1_cmd_12_aa = avpu_default_enc1_cmd12_aa(ctx->enc_w);
     ctx->enc1_cmd_12_ac = 0u;
 
-    LOG_CODEC("AVPU: OEM Enc1 words seed 0x74=0x%08x 0x7a=0x%03x 0x7c=%u 0x7e=%u 0xa8=0x%03x 0xaa=0x%03x 0xac=%u",
+    LOG_CODEC("AVPU: OEM Enc1 words seed 0x74=0x%08x 0x7a=0x%03x 0x7c=%u 0x7e=%u 0x10=%u 0xa8=0x%03x 0xaa=0x%03x 0xac=%u",
               ctx->enc1_cmd_0a_74, ctx->enc1_cmd_0b_7a, ctx->enc1_cmd_0b_7c,
-              ctx->enc1_cmd_0b_7e, ctx->enc1_cmd_12_a8, ctx->enc1_cmd_12_aa,
+              ctx->enc1_cmd_0b_7e, ctx->enc1_slice_10,
+              ctx->enc1_cmd_12_a8, ctx->enc1_cmd_12_aa,
               ctx->enc1_cmd_12_ac);
 }
 
@@ -408,7 +409,8 @@ static void fill_cmd_regs_enc1(const ALAvpuContext* ctx, uint32_t* cmd, uint32_t
      *   - entropy/CABAC bit at 10
      *   - SliceParam[0x0f] = 3 for the first coded picture, which packs to bits[6:4]
      * Our prior low-bit IDR marker was guessed and has no OEM backing. */
-    cmd[2] = 0x2000u | ((ctx->entropy_mode & 1u) << 10);
+    uint32_t slice_10 = is_idr ? (ctx->enc1_slice_10 & 0x3u) : 0u;
+    cmd[2] = 0x2000u | (slice_10 << 8) | ((ctx->entropy_mode & 1u) << 10);
     if (is_idr) {
         cmd[2] |= 3u << 4;
     }

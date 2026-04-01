@@ -62,6 +62,14 @@ typedef enum {
 } IMPEncoderGopMode;
 
 /**
+ * Entropy coding mode (T31 OEM naming)
+ */
+typedef enum {
+    IMP_ENC_ENTROPY_MODE_CAVLC = 0x1,
+    IMP_ENC_ENTROPY_MODE_CABAC = 0x2,
+} IMPEncoderEntropyMode;
+
+/**
  * Frame rate control
  */
 typedef struct {
@@ -521,10 +529,10 @@ int IMP_Encoder_GetFd(int encChn);
  * Set channel QP (Quantization Parameter)
  *
  * @param encChn Encoder channel number
- * @param qp QP structure
+ * @param iQP Fixed QP value
  * @return 0 on success, negative on error
  */
-int IMP_Encoder_SetChnQp(int encChn, IMPEncoderQp *qp);
+int IMP_Encoder_SetChnQp(int encChn, int iQP);
 
 /**
  * Set channel GOP length
@@ -539,10 +547,10 @@ int IMP_Encoder_SetChnGopLength(int encChn, int gopLength);
  * Set channel entropy mode
  *
  * @param encChn Encoder channel number
- * @param mode Entropy mode (0=CAVLC, 1=CABAC)
+ * @param mode Entropy mode
  * @return 0 on success, negative on error
  */
-int IMP_Encoder_SetChnEntropyMode(int encChn, int mode);
+int IMP_Encoder_SetChnEntropyMode(int encChn, IMPEncoderEntropyMode mode);
 
 /**
  * Set maximum stream count
@@ -562,6 +570,10 @@ int IMP_Encoder_SetMaxStreamCnt(int encChn, int cnt);
  */
 int IMP_Encoder_SetStreamBufSize(int encChn, int size);
 
+int IMP_Encoder_PollingModuleStream(uint32_t *encChnBitmap, uint32_t timeoutMsec);
+int IMP_Encoder_SetChnResizeMode(int encChn, int en);
+int IMP_Encoder_GetChnEvalInfo(int encChn, void *info);
+
 /* Additional encoder functions (raptor-hal parity) */
 int IMP_Encoder_GetStreamBufSize(int encChn, int *size);
 int IMP_Encoder_GetMaxStreamCnt(int encChn, int *cnt);
@@ -573,6 +585,7 @@ int IMP_Encoder_GetChnGopAttr(int encChn, IMPEncoderGopAttr *gopAttr);
 int IMP_Encoder_SetChnGopAttr(int encChn, IMPEncoderGopAttr *gopAttr);
 int IMP_Encoder_SetPool(int encChn, int poolId);
 int IMP_Encoder_GetPool(int encChn);
+int IMP_Encoder_SetChnQpIPDelta(int encChn, int delta);
 
 #ifdef __cplusplus
 }

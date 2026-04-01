@@ -60,6 +60,20 @@ static pthread_mutex_t osd_mutex = PTHREAD_MUTEX_INITIALIZER;
 static int osd_initialized = 0;
 static int next_region_handle = 0;
 
+#define MAX_ISP_OSD_REGIONS 32
+
+typedef struct {
+    int allocated;
+    int chn;
+    int visible;
+} ISPOSDRegion;
+
+static struct {
+    int initialized;
+    int pool_size;
+    ISPOSDRegion regions[MAX_ISP_OSD_REGIONS];
+} g_isp_osd;
+
 /* External system functions */
 extern int notify_observers(void *module, void *frame);
 
@@ -701,4 +715,117 @@ int IMP_OSD_SetRgnAttrWithTimestamp(int handle, IMPOSDRgnAttr *attr, uint64_t ti
 int IMP_OSD_AttachToGroup(int handle, int grpNum) {
     /* Same as RegisterRgn */
     return IMP_OSD_RegisterRgn(handle, grpNum, NULL);
+}
+
+static int isp_osd_validate_region(int chn, IMPRgnHandle handle) {
+    if (handle < 0 || handle >= MAX_ISP_OSD_REGIONS) {
+        return -1;
+    }
+    if (!g_isp_osd.regions[handle].allocated) {
+        return -1;
+    }
+    if (g_isp_osd.regions[handle].chn != chn) {
+        return -1;
+    }
+    return 0;
+}
+
+int IMP_OSD_Init_ISP(void) {
+    pthread_mutex_lock(&osd_mutex);
+    memset(&g_isp_osd, 0, sizeof(g_isp_osd));
+    g_isp_osd.initialized = 1;
+    pthread_mutex_unlock(&osd_mutex);
+    LOG_OSD("Init_ISP");
+    return 0;
+}
+
+void IMP_OSD_Exit_ISP(void) {
+    pthread_mutex_lock(&osd_mutex);
+    memset(&g_isp_osd, 0, sizeof(g_isp_osd));
+    pthread_mutex_unlock(&osd_mutex);
+    LOG_OSD("Exit_ISP");
+}
+
+int IMP_OSD_SetPoolSize_ISP(int size) {
+    pthread_mutex_lock(&osd_mutex);
+    if (!g_isp_osd.initialized) {
+        memset(&g_isp_osd, 0, sizeof(g_isp_osd));
+        g_isp_osd.initialized = 1;
+    }
+    g_isp_osd.pool_size = size;
+    pthread_mutex_unlock(&osd_mutex);
+    LOG_OSD("SetPoolSize_ISP: %d", size);
+    return 0;
+}
+
+IMPRgnHandle IMP_OSD_CreateRgn_ISP(int chn, IMPIspOsdAttrAsm *attr) {
+    (void)attr;
+
+    pthread_mutex_lock(&osd_mutex);
+    if (!g_isp_osd.initialized) {
+        memset(&g_isp_osd, 0, sizeof(g_isp_osd));
+        g_isp_osd.initialized = 1;
+    }
+
+    for (int i = 0; i < MAX_ISP_OSD_REGIONS; ++i) {
+        if (!g_isp_osd.regions[i].allocated) {
+            g_isp_osd.regions[i].allocated = 1;
+            g_isp_osd.regions[i].chn = chn;
+            g_isp_osd.regions[i].visible = 0;
+            pthread_mutex_unlock(&osd_mutex);
+            LOG_OSD("CreateRgn_ISP: chn=%d handle=%d", chn, i);
+            return i;
+        }
+    }
+
+    pthread_mutex_unlock(&osd_mutex);
+    return -1;
+}
+
+int IMP_OSD_DestroyRgn_ISP(int chn, IMPRgnHandle handle) {
+    pthread_mutex_lock(&osd_mutex);
+    if (isp_osd_validate_region(chn, handle) != 0) {
+        pthread_mutex_unlock(&osd_mutex);
+        return -1;
+    }
+    memset(&g_isp_osd.regions[handle], 0, sizeof(g_isp_osd.regions[handle]));
+    pthread_mutex_unlock(&osd_mutex);
+    LOG_OSD("DestroyRgn_ISP: chn=%d handle=%d", chn, handle);
+    return 0;
+}
+
+int IMP_OSD_SetRgnAttr_PicISP(int chn, IMPRgnHandle handle, IMPIspOsdAttrAsm *attr) {
+    (void)attr;
+    pthread_mutex_lock(&osd_mutex);
+    int ret = isp_osd_validate_region(chn, handle);
+    pthread_mutex_unlock(&osd_mutex);
+    if (ret != 0) {
+        return -1;
+    }
+    LOG_OSD("SetRgnAttr_PicISP: chn=%d handle=%d", chn, handle);
+    return 0;
+}
+
+int IMP_OSD_GetRgnAttr_ISPPic(int chn, IMPRgnHandle handle, IMPIspOsdAttrAsm *attr) {
+    (void)attr;
+    pthread_mutex_lock(&osd_mutex);
+    int ret = isp_osd_validate_region(chn, handle);
+    pthread_mutex_unlock(&osd_mutex);
+    if (ret != 0) {
+        return -1;
+    }
+    LOG_OSD("GetRgnAttr_ISPPic: chn=%d handle=%d", chn, handle);
+    return 0;
+}
+
+int IMP_OSD_ShowRgn_ISP(int chn, IMPRgnHandle handle, int showFlag) {
+    pthread_mutex_lock(&osd_mutex);
+    if (isp_osd_validate_region(chn, handle) != 0) {
+        pthread_mutex_unlock(&osd_mutex);
+        return -1;
+    }
+    g_isp_osd.regions[handle].visible = showFlag ? 1 : 0;
+    pthread_mutex_unlock(&osd_mutex);
+    LOG_OSD("ShowRgn_ISP: chn=%d handle=%d show=%d", chn, handle, showFlag);
+    return 0;
 }
