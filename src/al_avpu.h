@@ -155,6 +155,7 @@ typedef struct ALAvpuContext {
     uint32_t qp;
     uint32_t entropy_mode;
     uint32_t gop_length;
+    uint32_t format_word;
     uint32_t cl_idx;
     volatile int reference_valid;
 

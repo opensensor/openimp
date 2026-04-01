@@ -320,7 +320,11 @@ int IMP_FrameSource_EnableChn(int chnNum) {
                     cur.width, cur.height, cur.pixelformat, cur.bytesperline, chnNum);
             fmt.width = cur.width;
             fmt.height = cur.height;
-            fmt.pixelformat = cur.pixelformat;
+            /* Keep the requested IMP pixel format. GET_FMT may report the
+             * sensor/capture-side fourcc (for example RG12), but the encoder
+             * path and VBM layout are negotiated from chn->attr.pixFmt. If we
+             * overwrite fmt.pixelformat here, SET_FMT inherits the wrong input
+             * layout and the AVPU source-plane assumptions no longer match. */
             /* Leave bytesperline=0 so driver computes bpl during SET_FMT (OEM parity) */
         } else {
             fprintf(stderr, "[FrameSource] EnableChn: pre-SET_FMT GET_FMT failed for ch0\n");
@@ -336,18 +340,15 @@ int IMP_FrameSource_EnableChn(int chnNum) {
         return -1;
     }
 
-    /* Determine sizeimage. For ch0 without scaler, prefer GET_FMT sizeimage if provided */
+    /* Determine sizeimage from SET_FMT. kernel_interface.c already documents that
+     * a follow-up GET_FMT can return stale/garbage values from the remote ISP
+     * core (for example RG12-sized 4147200 after an NV12 SET_FMT that negotiated
+     * 3133440). Trust the in-place SET_FMT result here; later QBUF paths already
+     * use QUERYBUF for the exact kernel-advertised queue length. */
     int kernel_sizeimage = fmt.sizeimage;
     if (chnNum == 0 && chn->attr.scaler.enable == 0) {
-        fs_format_t gfmt = {0};
-        if (fs_get_format(chn->fd, &gfmt) == 0 && gfmt.sizeimage > 0) {
-            fprintf(stderr, "[FrameSource] EnableChn: ch0: GET_FMT sizeimage=%d (SET_FMT=%d)\n",
-                    gfmt.sizeimage, fmt.sizeimage);
-            kernel_sizeimage = gfmt.sizeimage;
-        } else {
-            fprintf(stderr, "[FrameSource] EnableChn: ch0: GET_FMT sizeimage unavailable, using SET_FMT sizeimage=%d\n",
-                    kernel_sizeimage);
-        }
+        fprintf(stderr, "[FrameSource] EnableChn: ch0: using SET_FMT sizeimage=%d\n",
+                kernel_sizeimage);
     } else {
         fprintf(stderr, "[FrameSource] EnableChn: using sizeimage=%d from SET_FMT for chn=%d\n",
                 kernel_sizeimage, chnNum);

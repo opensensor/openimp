@@ -719,6 +719,16 @@ typedef struct {
 static VBMPool *vbm_instance[MAX_VBM_POOLS] = {NULL};
 static VBMVolume g_framevolumes[30]; /* Global frame volumes array */
 
+static VBMVolume *vbm_find_volume_by_vaddr(uint32_t vaddr)
+{
+    for (int i = 0; i < 30; ++i) {
+        if (g_framevolumes[i].frame != NULL && g_framevolumes[i].virt_addr == vaddr) {
+            return &g_framevolumes[i];
+        }
+    }
+    return NULL;
+}
+
 /* External functions */
 extern int IMP_FrameSource_GetPool(int chn);
 extern int IMP_Alloc(char *name, int size, char *tag);
@@ -1304,6 +1314,62 @@ int VBMReleaseFrame(int chn, void *frame) {
             frame_idx, pool->queue_count);
 
     return 0;
+}
+
+int VBMLockFrameByVaddr(uint32_t vaddr)
+{
+    VBMVolume *vol = vbm_find_volume_by_vaddr(vaddr);
+    if (vol == NULL) {
+        fprintf(stderr, "[VBM] LockFrameByVaddr: vaddr=0x%x not found\n", vaddr);
+        return -1;
+    }
+
+    pthread_mutex_lock(&vol->mutex);
+    vol->ref_count++;
+    fprintf(stderr, "[VBM] LockFrameByVaddr: vaddr=0x%x ref=%d\n", vaddr, vol->ref_count);
+    pthread_mutex_unlock(&vol->mutex);
+    return 0;
+}
+
+int VBMUnlockFrameByVaddr(uint32_t vaddr)
+{
+    VBMVolume *vol = vbm_find_volume_by_vaddr(vaddr);
+    if (vol == NULL) {
+        fprintf(stderr, "[VBM] UnlockFrameByVaddr: vaddr=0x%x not found\n", vaddr);
+        return -1;
+    }
+
+    pthread_mutex_lock(&vol->mutex);
+    if (vol->ref_count <= 0) {
+        fprintf(stderr, "[VBM] UnlockFrameByVaddr: vaddr=0x%x already unlocked\n", vaddr);
+        pthread_mutex_unlock(&vol->mutex);
+        return -1;
+    }
+
+    vol->ref_count--;
+    int ref_count = vol->ref_count;
+    VBMFrame *frame = vol->frame;
+    pthread_mutex_unlock(&vol->mutex);
+
+    fprintf(stderr, "[VBM] UnlockFrameByVaddr: vaddr=0x%x ref=%d\n", vaddr, ref_count);
+
+    if (ref_count == 0 && frame != NULL) {
+        return VBMReleaseFrame(frame->chn, frame);
+    }
+
+    return 0;
+}
+
+int VBMLockFrame(void *frame)
+{
+    if (frame == NULL) return -1;
+    return VBMLockFrameByVaddr(((VBMFrame*)frame)->virt_addr);
+}
+
+int VBMUnLockFrame(void *frame)
+{
+    if (frame == NULL) return -1;
+    return VBMUnlockFrameByVaddr(((VBMFrame*)frame)->virt_addr);
 }
 
 

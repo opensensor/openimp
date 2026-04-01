@@ -71,6 +71,10 @@ int VBMFillPool(int chn);
 int VBMFlushFrame(int chn);
 int VBMGetFrame(int chn, void **frame);
 int VBMReleaseFrame(int chn, void *frame);
+int VBMLockFrame(void *frame);
+int VBMUnLockFrame(void *frame);
+int VBMLockFrameByVaddr(uint32_t vaddr);
+int VBMUnlockFrameByVaddr(uint32_t vaddr);
 int VBMFrame_GetBuffer(void *frame, void **virt, int *size);
 /* Get originating channel from VBM frame (reads offset 0x04) */
 int VBMFrame_GetChannel(void *frame, int *chn_out);

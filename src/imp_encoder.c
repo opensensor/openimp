@@ -17,6 +17,7 @@
 #include <imp/imp_system.h>
 #include "fifo.h"
 #include "codec.h"
+#include "kernel_interface.h"
 
 /* External system functions */
 extern void* IMP_System_GetModule(int deviceID, int groupID);
@@ -39,6 +40,7 @@ typedef struct {
     uint32_t seq;               /* Sequence number */
     int streamEnd;              /* Stream end flag */
     void *codec_stream;         /* Pointer to codec stream data */
+    void *codec_user_data;      /* Returned metadata associated with codec_stream */
     void *injected_buf;         /* If non-NULL, malloc'd buffer we must free */
     /* Base addresses for the full frame buffer (for IMPEncoderStream top-level) */
     uint32_t base_phy;          /* Physical base address */
@@ -126,6 +128,48 @@ static int channel_encoder_set_rc_param(void *dst, IMPEncoderRcAttr *src);
 static void *encoder_thread(void *arg);
 static void *stream_thread(void *arg);
 static int encoder_update(void *module, void *frame);
+
+#define OEM_FRAME_CLONE_BYTES 0x30
+#define OEM_FRAME_SLOT_BYTES  0x458
+
+static void *encoder_acquire_frame_slot(EncChannel *chn)
+{
+    if (chn == NULL) return NULL;
+    return Fifo_Dequeue(chn->fifo, 0);
+}
+
+static void encoder_release_frame_slot(EncChannel *chn, void *slot)
+{
+    if (chn == NULL || slot == NULL) return;
+    Fifo_Queue(chn->fifo, slot, -1);
+}
+
+static int encoder_clone_source_frame(EncChannel *chn, void *src_frame, void **slot_out)
+{
+    if (slot_out == NULL) return -1;
+    *slot_out = NULL;
+    if (chn == NULL || src_frame == NULL) return -1;
+
+    void *slot = encoder_acquire_frame_slot(chn);
+    if (slot == NULL) {
+        LOG_ENC("encoder_update: no free encoder frame slot for chn=%d", chn->chn_id);
+        return -1;
+    }
+
+    memset(slot, 0, OEM_FRAME_SLOT_BYTES);
+    memcpy(slot, src_frame, OEM_FRAME_CLONE_BYTES);
+
+    uint32_t vaddr = 0;
+    memcpy(&vaddr, (uint8_t*)slot + 0x1c, sizeof(vaddr));
+    if (VBMLockFrameByVaddr(vaddr) < 0) {
+        LOG_ENC("encoder_update: failed to lock source frame vaddr=0x%x", vaddr);
+        encoder_release_frame_slot(chn, slot);
+        return -1;
+    }
+
+    *slot_out = slot;
+    return 0;
+}
 /* H.264 SPS/PPS caching and minimal Annex B parsing for prefix injection */
 #define MAX_PARAM_SET_SIZE 256
 static uint8_t g_last_sps[MAX_ENC_CHANNELS][MAX_PARAM_SET_SIZE];
@@ -933,9 +977,23 @@ int IMP_Encoder_ReleaseStream(int encChn, IMPEncoderStream *stream) {
     if (chn->current_stream != NULL) {
         StreamBuffer *stream_buf = chn->current_stream;
 
+        if (stream_buf->codec_user_data != NULL) {
+            uint32_t vaddr = 0;
+            memcpy(&vaddr, (uint8_t*)stream_buf->codec_user_data + 0x1c, sizeof(vaddr));
+            if (VBMUnlockFrameByVaddr(vaddr) < 0) {
+                LOG_ENC("ReleaseStream: WARNING - failed to unlock source frame vaddr=0x%x", vaddr);
+            }
+        }
+
         /* Release codec stream back to codec */
         if (chn->codec != NULL && stream_buf->codec_stream != NULL) {
-            AL_Codec_Encode_ReleaseStream(chn->codec, stream_buf->codec_stream, NULL);
+            AL_Codec_Encode_ReleaseStream(chn->codec, stream_buf->codec_stream,
+                                          stream_buf->codec_user_data);
+        }
+
+        if (stream_buf->codec_user_data != NULL) {
+            encoder_release_frame_slot(chn, stream_buf->codec_user_data);
+            stream_buf->codec_user_data = NULL;
         }
 
         /* Free injected buffer if we allocated one */
@@ -1653,6 +1711,7 @@ static void *stream_thread(void *arg) {
 
                     /* Initialize stream buffer */
                     stream_buf->codec_stream = codec_stream;
+                    stream_buf->codec_user_data = codec_user_data;
                     stream_buf->seq = chn->stream_seq++;
                     stream_buf->streamEnd = 0;
 
@@ -1847,6 +1906,7 @@ static int encoder_update(void *module, void *frame) {
      */
 
     int frame_processed = 0;
+    int frame_held = 0;
 
     /* Determine destination encoder channel directly from module->group_id (offset 0x130) */
     int dst_chn = -1;
@@ -1861,14 +1921,24 @@ static int encoder_update(void *module, void *frame) {
     if (dst_chn >= 0) {
         EncChannel *chn = &g_EncChannel[dst_chn];
         if (chn->chn_id >= 0 && chn->recv_pic_started && chn->codec != NULL) {
-            if (AL_Codec_Encode_Process(chn->codec, frame, NULL) == 0) {
-                LOG_ENC("encoder_update: Queued frame to channel %d (by module group_id)", dst_chn);
-                if (chn->eventfd >= 0) {
-                    uint64_t val = 1;
-                    ssize_t n = write(chn->eventfd, &val, sizeof(val));
-                    (void)n;
+            void *queued_frame = NULL;
+            if (encoder_clone_source_frame(chn, frame, &queued_frame) == 0) {
+                if (AL_Codec_Encode_Process(chn->codec, queued_frame, queued_frame) == 0) {
+                    LOG_ENC("encoder_update: Queued frame to channel %d (by module group_id) via encoder slot %p",
+                            dst_chn, queued_frame);
+                    if (chn->eventfd >= 0) {
+                        uint64_t val = 1;
+                        ssize_t n = write(chn->eventfd, &val, sizeof(val));
+                        (void)n;
+                    }
+                    frame_processed = 1;
+                    frame_held = 1;
+                } else {
+                    uint32_t vaddr = 0;
+                    memcpy(&vaddr, (uint8_t*)queued_frame + 0x1c, sizeof(vaddr));
+                    VBMUnlockFrameByVaddr(vaddr);
+                    encoder_release_frame_slot(chn, queued_frame);
                 }
-                frame_processed = 1;
             }
         }
         if (!frame_processed) {
@@ -1880,32 +1950,44 @@ static int encoder_update(void *module, void *frame) {
         for (int i = 0; i < MAX_ENC_CHANNELS; i++) {
             EncChannel *chn = &g_EncChannel[i];
             if (chn->chn_id >= 0 && chn->recv_pic_started && chn->codec != NULL) {
-                if (AL_Codec_Encode_Process(chn->codec, frame, NULL) == 0) {
-                    LOG_ENC("encoder_update: Queued frame to channel %d (fallback)", i);
-                    if (chn->eventfd >= 0) {
-                        uint64_t val = 1;
-                        ssize_t n = write(chn->eventfd, &val, sizeof(val));
-                        (void)n;
+                void *queued_frame = NULL;
+                if (encoder_clone_source_frame(chn, frame, &queued_frame) == 0) {
+                    if (AL_Codec_Encode_Process(chn->codec, queued_frame, queued_frame) == 0) {
+                        LOG_ENC("encoder_update: Queued frame to channel %d (fallback) via encoder slot %p",
+                                i, queued_frame);
+                        if (chn->eventfd >= 0) {
+                            uint64_t val = 1;
+                            ssize_t n = write(chn->eventfd, &val, sizeof(val));
+                            (void)n;
+                        }
+                        frame_processed = 1;
+                        frame_held = 1;
+                        break;  /* Only process frame in one channel */
+                    } else {
+                        uint32_t vaddr = 0;
+                        memcpy(&vaddr, (uint8_t*)queued_frame + 0x1c, sizeof(vaddr));
+                        VBMUnlockFrameByVaddr(vaddr);
+                        encoder_release_frame_slot(chn, queued_frame);
                     }
-                    frame_processed = 1;
-                    break;  /* Only process frame in one channel */
                 }
             }
         }
     }
 
-    /* Release the frame back to its originating FrameSource channel only */
-    extern int IMP_FrameSource_ReleaseFrame(int chnNum, void *frame);
-    extern int VBMFrame_GetChannel(void *frame, int *chn_out);
-    int src_chn = -1;
-    if (VBMFrame_GetChannel(frame, &src_chn) == 0 && src_chn >= 0) {
-        if (IMP_FrameSource_ReleaseFrame(src_chn, frame) == 0) {
-            LOG_ENC("encoder_update: Released frame %p back to its source channel %d", frame, src_chn);
+    if (!frame_held) {
+        extern int IMP_FrameSource_ReleaseFrame(int chnNum, void *frame);
+        int src_chn = -1;
+        if (VBMFrame_GetChannel(frame, &src_chn) == 0 && src_chn >= 0) {
+            if (IMP_FrameSource_ReleaseFrame(src_chn, frame) == 0) {
+                LOG_ENC("encoder_update: Released frame %p back to its source channel %d", frame, src_chn);
+            } else {
+                LOG_ENC("encoder_update: WARNING - ReleaseFrame failed for source channel %d", src_chn);
+            }
         } else {
-            LOG_ENC("encoder_update: WARNING - ReleaseFrame failed for source channel %d", src_chn);
+            LOG_ENC("encoder_update: WARNING - could not determine source channel for frame %p", frame);
         }
     } else {
-        LOG_ENC("encoder_update: WARNING - could not determine source channel for frame %p", frame);
+        LOG_ENC("encoder_update: holding source frame %p until stream release (OEM parity)", frame);
     }
 
     return frame_processed ? 0 : -1;

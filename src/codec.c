@@ -19,6 +19,7 @@
 #include "device_pool.h"
 #include "dma_alloc.h"
 #include "imp_log_int.h"
+#include "kernel_interface.h"
 #include <sys/eventfd.h>
 #include <sys/ioctl.h>
 #include <errno.h>
@@ -260,35 +261,44 @@ static void fill_cmd_regs_enc1(const ALAvpuContext* ctx, uint32_t* cmd, uint32_t
 
     /* cmd[0]: OEM SliceParamToCmdRegsEnc1 at 0x6dd5c.
      *
-     * The OEM stores internal SliceParam values and then packs:
-     *   bits[7:0]   = 0x11
-     *   bits[9:8]   = ((codec - 2) & 3)
-     *   bits[11:10] = ((profile - 2) & 3)
-     *   bits[22:20] = ((lcu_size - 4) & 7)
-     *   bits[25:24] = picture format / chroma mode from SliceParam[3]
-     *   bits[29:28] = codec submode from SliceParam+4
-     *   bit[31]     = valid/enable
+     * Confirmed from the OEM setup path at 0x6730c:
+     *   slice_param[0] = 2                 (AVC codec enum)
+     *   slice_param[1] = profile enum      (2/3/4)
+     *   slice_param[2] = fixed AVC value   (packs to bits[22:20])
+     *   slice_param[3] = log2_lcu_size     (packs to bits[26:24])
      *
-     * For the current AVC/NV12 path we can match the known OEM math exactly:
-     *   codec    = 2 (AVC => ((2 - 2) & 3) == 0)
-     *   profile  = local profile enum 0/1/2 mapped to OEM 2/3/4
-     *   lcu_size = 4 for AVC 16x16 macroblocks
-     *   picfmt   = 1 for 4:2:0
+     * CmdRegsEnc1ToSliceParam decodes bits[26:24] back to slice_param[3] and
+     * uses it for the 1 << log2_lcu_size geometry math, so this is not a
+     * generic picture-format field. For AVC both OEM fields are 4, which pack
+     * to zero in their respective bitfields.
      */
     uint32_t codec_field = 2u;
     uint32_t profile_field = ((uint32_t)ctx->profile & 0x3u) + 2u;
+    uint32_t min_cu_field = 4u;
     uint32_t lcu_size_field = 4u;
-    uint32_t pic_fmt_field = 1u;
     uint32_t c0 = 0x11u | (1u << 31);
     c0 |= ((codec_field - 2u) & 0x3u) << 8;
     c0 |= ((profile_field - 2u) & 0x3u) << 10;
-    c0 |= ((lcu_size_field - 4u) & 0x7u) << 20;
-    c0 |= (pic_fmt_field & 0x3u) << 24;
+    c0 |= ((min_cu_field - 4u) & 0x7u) << 20;
+    c0 |= ((lcu_size_field - 4u) & 0x7u) << 24;
     cmd[0] = c0;
 
-    /* cmd[1]: picture dimensions: ((h-1)<<12 | (w-1)) */
+    /* cmd[1]: OEM packs SliceParam[0x0a]/[0x0c], not raw pixels.
+     * The setup path stores these as (width + 7) >> 3 and (height + 7) >> 3
+     * before SliceParamToCmdRegsEnc1 applies the final -1 packing.
+     *
+     * OEM also fills bits[27:24] and bits[31:28] from SliceParam[0x19]/[0x1a].
+     * For the current openimp AVC path those come from the packed source format
+     * word at codec_param+0x10, which is 0x188 for NV12 8-bit 4:2:0.
+     */
     if (ctx->enc_w && ctx->enc_h) {
-        cmd[1] = (((ctx->enc_h - 1) & 0x7FF) << 12) | ((ctx->enc_w - 1) & 0x7FF);
+        uint32_t enc_w_8 = (ctx->enc_w + 7u) >> 3;
+        uint32_t enc_h_8 = (ctx->enc_h + 7u) >> 3;
+        uint32_t bitdepth_luma = ctx->format_word & 0xFu;
+        uint32_t bitdepth_chroma = (ctx->format_word >> 4) & 0xFu;
+        cmd[1] = (((enc_h_8 - 1u) & 0x7FFu) << 12) | ((enc_w_8 - 1u) & 0x7FFu);
+        cmd[1] |= (bitdepth_luma & 0xFu) << 24;
+        cmd[1] |= (bitdepth_chroma & 0xFu) << 28;
     }
 
     /* cmd[2]: OEM SliceParamToCmdRegsEnc1 packs many slice-param fields here.
@@ -387,6 +397,19 @@ static void fill_cmd_regs_enc1(const ALAvpuContext* ctx, uint32_t* cmd, uint32_t
             cmd[0x6f] = ctx->ref_buf.phy_addr;                   /* arg3+0x94: ref base */
         }
     }
+}
+
+static void log_first_enc1_cmd_window(const ALAvpuContext* ctx, uint32_t idx, const uint32_t* cmd)
+{
+    if (!ctx || !cmd) return;
+    if (idx != 0 || ctx->frames_encoded != 0) return;
+
+    LOG_CODEC("Process: first Enc1 CL[%u] fmt=0x%08x cmd[0]=0x%08x cmd[1]=0x%08x cmd[2]=0x%08x cmd[3]=0x%08x",
+              idx, ctx->format_word, cmd[0], cmd[1], cmd[2], cmd[3]);
+    LOG_CODEC("Process: first Enc1 CL[%u] cmd[0x0a]=0x%08x cmd[0x0b]=0x%08x cmd[0x0c]=0x%08x cmd[0x0d]=0x%08x",
+              idx, cmd[0x0a], cmd[0x0b], cmd[0x0c], cmd[0x0d]);
+    LOG_CODEC("Process: first Enc1 CL[%u] cmd[0x0e]=0x%08x cmd[0x0f]=0x%08x cmd[0x10]=0x%08x cmd[0x11]=0x%08x cmd[0x12]=0x%08x",
+              idx, cmd[0x0e], cmd[0x0f], cmd[0x10], cmd[0x11], cmd[0x12]);
 }
 
 static void avpu_promote_reference(ALAvpuContext *ctx)
@@ -721,7 +744,9 @@ static size_t annexb_effective_size(const uint8_t *buf, size_t maxlen)
 
 /* Codec structure - based on decompilation at 0x7950c */
 /* Size: 0x924 bytes */
-typedef struct {
+typedef struct AL_CodecEncode AL_CodecEncode;
+
+struct AL_CodecEncode {
     void *g_pCodec;                 /* 0x000: Global codec pointer */
     uint8_t codec_param[0x794];     /* 0x004: Codec parameters */
     void *encoder;                  /* 0x798: AL_Encoder handle */
@@ -757,7 +782,21 @@ typedef struct {
     int use_hardware;               /* Flag: 1=hardware, 0=software */
     uint32_t entropy_mode;          /* 0=CAVLC, 1=CABAC */
     ALAvpuContext avpu;            /* Vendor-like AL over /dev/avpu (scaffolding) */
-} AL_CodecEncode;
+};
+
+static void codec_queue_frame_metadata(AL_CodecEncode *enc, void *user_data)
+{
+    if (enc == NULL || user_data == NULL || enc->fifo_frames == NULL) return;
+    if (Fifo_Queue(enc->fifo_frames, user_data, -1) == 0) {
+        LOG_CODEC("Process: failed to queue frame metadata %p", user_data);
+    }
+}
+
+static void *codec_dequeue_frame_metadata(AL_CodecEncode *enc)
+{
+    if (enc == NULL || enc->fifo_frames == NULL) return NULL;
+    return Fifo_Dequeue(enc->fifo_frames, 0);
+}
 
 /* Global codec state */
 static void *g_pCodec = NULL;
@@ -787,6 +826,7 @@ int AL_Codec_Encode_SetDefaultParam(void *param) {
     /* Basic settings */
     *(int32_t*)(p + 0x00) = 0;          /* codec type */
     *(int32_t*)(p + 0x04) = 0;          /* reserved */
+    *(int32_t*)(p + 0x10) = 0x188;      /* NV12 8-bit 4:2:0 format word */
     *(int32_t*)(p + 0x14) = 0x188;      /* width default */
     *(int32_t*)(p + 0x1c) = 8;          /* bit depth */
     *(int32_t*)(p + 0x20) = 0x1000001;  /* H264 codec */
@@ -1285,6 +1325,7 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
                         enc->avpu.qp = enc->hw_params.qp;
                         enc->avpu.entropy_mode = enc->entropy_mode;
                         enc->avpu.gop_length = enc->hw_params.gop_length;
+                        enc->avpu.format_word = *(uint32_t*)(enc->codec_param + 0x10);
 
                         /* Allocate stream buffers via IMP_Alloc (OEM parity) */
                         enc->avpu.stream_buf_count = 4;
@@ -1452,6 +1493,7 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
         /* OEM parity: Direct ioctl calls (AL_Common_Encoder_Process) - no ALAvpu_QueueFrame wrapper */
         ALAvpuContext *ctx = &enc->avpu;
         int fd = ctx->fd;
+        int submitted = 0;
 
         /* AL_EncCore_Init: exact OEM sequence from decompilation at 0x6c8d8.
          *
@@ -1526,6 +1568,7 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
 
             /* Fill Enc1 command registers — source addr goes INTO the CL entry */
             fill_cmd_regs_enc1(ctx, cmd, phys_addr);
+            log_first_enc1_cmd_window(ctx, idx, cmd);
 
             /* OEM AL_EncCore_Encode1() checks IsEnc1AlreadyRunning() before
              * flushing/pushing a new Enc1 command list. Our simplified path
@@ -1534,7 +1577,7 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
             if (avpu_is_enc1_running(fd, 0)) {
                 LOG_CODEC("Process: Enc1 already running; skipping CL[%u] submit to match OEM gating", idx);
                 free(hw_stream);
-                return 0;
+                return -1;
             }
 
             /* Flush CL entry from CPU cache to physical RAM.
@@ -1554,13 +1597,15 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
 
             /* Advance to next CL slot */
             ctx->cl_idx = (idx + 1) % ctx->cl_count;
+            codec_queue_frame_metadata(enc, user_data);
+            submitted = 1;
 
             LOG_CODEC("Process: AVPU queued frame %ux%u phys=0x%x CL[%u] - encoding triggered", width, height, phys_addr, idx);
         }
 
         /* Do not dequeue here; GetStream() will handle stream retrieval */
         free(hw_stream);
-        return 0;
+        return submitted ? 0 : -1;
     } else {
         /* Software fallback */
         HWFrameBuffer hw_frame;
@@ -1584,6 +1629,7 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
         free(hw_stream);
         return -1;
     }
+    codec_queue_frame_metadata(enc, user_data);
 
     LOG_CODEC("Process: encoded and queued stream, length=%u", hw_stream->length);
     return 0;
@@ -1600,7 +1646,6 @@ int AL_Codec_Encode_GetStream(void *codec, void **stream, void **user_data) {
 
     AL_CodecEncode *enc = (AL_CodecEncode*)codec;
 
-    /* No metadata in openimp path; match libimp by providing a separate pointer */
     *user_data = NULL;
 
     if (enc->use_hardware == 2 && enc->avpu.fd >= 0) {
@@ -1638,6 +1683,7 @@ int AL_Codec_Encode_GetStream(void *codec, void **stream, void **user_data) {
                             s->slice_type = 0;
                             ctx->stream_in_hw[i] = 0;
                             *stream = s;
+                            *user_data = codec_dequeue_frame_metadata(enc);
                             LOG_CODEC("GetStream[AVPU]: ✓ got stream buf[%d] phys=0x%08x len=%u",
                                      i, s->phys_addr, s->length);
                             return 0;
@@ -1663,6 +1709,7 @@ int AL_Codec_Encode_GetStream(void *codec, void **stream, void **user_data) {
     }
 
     *stream = s;
+    *user_data = codec_dequeue_frame_metadata(enc);
     LOG_CODEC("GetStream: got stream %p", s);
     return 0;
 }
