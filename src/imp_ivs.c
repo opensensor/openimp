@@ -14,6 +14,7 @@
 #include <imp/imp_common.h>
 #include <imp/imp_system.h>
 #include <imp/imp_ivs.h>
+#include <imp/imp_ivs_base_move.h>
 #include <imp/imp_ivs_move.h>
 
 #include "imp_log_int.h"
@@ -336,25 +337,62 @@ static int move_release_result(IMPIVSInterface *itf, void *res) { (void)itf; (vo
 static int move_get_param(IMPIVSInterface *itf) { (void)itf; return 0; }
 static void move_flush(IMPIVSInterface *itf) { (void)itf; }
 
-IMPIVSInterface *IMP_IVS_CreateMoveInterface(IMP_IVS_MoveParam *param) {
+static int base_move_process(IMPIVSInterface *itf, void *frame) {
+    (void)frame;
+    if (!itf) return -1;
+    IMP_IVS_BaseMoveOutput *out = (IMP_IVS_BaseMoveOutput*)itf->reserved2;
+    if (out) {
+        out->ret = 0;
+        out->data = NULL;
+        out->datalen = 0;
+    }
+    return 0;
+}
+
+static IMPIVSInterface *ivs_create_interface_common(const void *param,
+                                                    size_t param_size,
+                                                    size_t result_size,
+                                                    int (*process)(IMPIVSInterface *, void *),
+                                                    const char *tag) {
     IMPIVSInterface *itf = (IMPIVSInterface*)calloc(1, sizeof(IMPIVSInterface));
     if (!itf) return NULL;
-    /* Copy params into internal buffer */
-    if (param) {
-        itf->param_size = sizeof(*param);
-        itf->param = malloc(itf->param_size);
-        if (itf->param) memcpy(itf->param, param, itf->param_size);
+
+    if (param && param_size > 0) {
+        itf->param_size = param_size;
+        itf->param = malloc(param_size);
+        if (!itf->param) {
+            free(itf);
+            return NULL;
+        }
+        memcpy(itf->param, param, param_size);
     }
-    itf->reserved2 = calloc(1, sizeof(IMP_IVS_MoveOutput));
+
+    if (result_size > 0) {
+        itf->reserved2 = calloc(1, result_size);
+        if (!itf->reserved2) {
+            free(itf->param);
+            free(itf);
+            return NULL;
+        }
+    }
+
     itf->init = move_init;
     itf->exit = move_exit;
-    itf->process = move_process;
+    itf->process = process;
     itf->get_result = move_get_result;
     itf->release_result = move_release_result;
     itf->get_param = move_get_param;
     itf->flush = move_flush;
-    LOG_IVS("CreateMoveInterface");
+    LOG_IVS("%s", tag);
     return itf;
+}
+
+IMPIVSInterface *IMP_IVS_CreateMoveInterface(IMP_IVS_MoveParam *param) {
+    return ivs_create_interface_common(param,
+                                       param ? sizeof(*param) : 0,
+                                       sizeof(IMP_IVS_MoveOutput),
+                                       move_process,
+                                       "CreateMoveInterface");
 }
 
 void IMP_IVS_DestroyMoveInterface(IMPIVSInterface *interface) {
@@ -364,6 +402,19 @@ void IMP_IVS_DestroyMoveInterface(IMPIVSInterface *interface) {
     free(interface->param);
     free(interface);
     LOG_IVS("DestroyMoveInterface");
+}
+
+IMPIVSInterface *IMP_IVS_CreateBaseMoveInterface(IMP_IVS_BaseMoveParam *param) {
+    return ivs_create_interface_common(param,
+                                       param ? sizeof(*param) : 0,
+                                       sizeof(IMP_IVS_BaseMoveOutput),
+                                       base_move_process,
+                                       "CreateBaseMoveInterface");
+}
+
+void IMP_IVS_DestroyBaseMoveInterface(IMPIVSInterface *interface) {
+    IMP_IVS_DestroyMoveInterface(interface);
+    LOG_IVS("DestroyBaseMoveInterface");
 }
 
 /* ========== Missing IVS functions needed by raptor-hal ========== */
@@ -384,8 +435,8 @@ int IMP_IVS_SetParam(int chnNum, void *param) {
     return 0;
 }
 
-int IMP_IVS_ReleaseData(int chnNum, void *data) {
-    (void)chnNum; (void)data;
+int IMP_IVS_ReleaseData(void *data) {
+    (void)data;
     return 0;
 }
 

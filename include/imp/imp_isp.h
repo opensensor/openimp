@@ -63,6 +63,31 @@ typedef struct {
     uint32_t ev[6];                     /**< EV values */
 } IMPISPEVAttr;
 
+enum isp_core_expr_mode {
+    ISP_CORE_EXPR_MODE_AUTO = 0,
+    ISP_CORE_EXPR_MODE_MANUAL = 1,
+};
+
+enum isp_core_expr_unit {
+    ISP_CORE_EXPR_UNIT_LINE = 0,
+    ISP_CORE_EXPR_UNIT_US = 1,
+};
+
+typedef union isp_core_expr_attr {
+    struct {
+        enum isp_core_expr_mode mode;
+        enum isp_core_expr_unit unit;
+        uint16_t time;
+    } s_attr;
+    struct {
+        enum isp_core_expr_mode mode;
+        uint16_t integration_time;
+        uint16_t integration_time_min;
+        uint16_t integration_time_max;
+        uint16_t one_line_expr_in_us;
+    } g_attr;
+} IMPISPExpr;
+
 typedef struct {
     unsigned int at_list[10];
 } IMPISPAETargetList;
@@ -490,6 +515,8 @@ int IMP_ISP_Tuning_GetBcshHue(unsigned char *phue);
  * @return 0 on success, negative on error
  */
 int IMP_ISP_Tuning_GetEVAttr(IMPISPEVAttr *attr);
+int IMP_ISP_Tuning_SetExpr(IMPISPExpr *expr);
+int IMP_ISP_Tuning_GetExpr(IMPISPExpr *expr);
 
 /**
  * Get white balance statistics

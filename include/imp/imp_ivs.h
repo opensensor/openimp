@@ -114,6 +114,10 @@ int IMP_IVS_GetResult(int chnNum, void **result);
  */
 int IMP_IVS_ReleaseResult(int chnNum, void *result);
 
+int IMP_IVS_ReleaseData(void *vaddr);
+int IMP_IVS_GetParam(int chnNum, void *param);
+int IMP_IVS_SetParam(int chnNum, void *param);
+
 #ifdef __cplusplus
 }
 #endif

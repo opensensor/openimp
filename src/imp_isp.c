@@ -1344,6 +1344,68 @@ int IMP_ISP_Tuning_GetTotalGain(uint32_t *pgain) {
     return 0;
 }
 
+int IMP_ISP_Tuning_SetExpr(IMPISPExpr *expr) {
+    if (expr == NULL) return -1;
+    if (gISPdev == NULL || gISPdev->tisp_fd < 0 || gISPdev->tuning == NULL) {
+        LOG_ISP("SetExpr: tuning not enabled");
+        return -1;
+    }
+    if (gISPdev->opened < 2) {
+        LOG_ISP("SetExpr: sensor/link not enabled yet");
+        return -1;
+    }
+
+    typedef struct { uint32_t cmd; uint32_t subcmd; IMPISPExpr *expr; } expr_req_t;
+    expr_req_t req = {.cmd = 0, .subcmd = 0x8000025u, .expr = expr};
+
+    if (ioctl(gISPdev->tisp_fd, 0xc00c56c6, &req) != 0) {
+        LOG_ISP("SetExpr: ioctl failed: %s", strerror(errno));
+        return -1;
+    }
+    return 0;
+}
+
+int IMP_ISP_Tuning_GetExpr(IMPISPExpr *expr) {
+    if (expr == NULL) return -1;
+    memset(expr, 0, sizeof(*expr));
+    expr->g_attr.mode = ISP_CORE_EXPR_MODE_AUTO;
+
+    if (gISPdev && gISPdev->tisp_fd >= 0 && gISPdev->tuning && gISPdev->opened >= 2) {
+        typedef struct { uint32_t cmd; uint32_t subcmd; IMPISPExpr *expr; } expr_req_t;
+        expr_req_t req = {.cmd = 1, .subcmd = 0x8000025u, .expr = expr};
+
+        if (ioctl(gISPdev->tisp_fd, 0xc00c56c6, &req) == 0) {
+            if (expr->g_attr.one_line_expr_in_us == 0)
+                expr->g_attr.one_line_expr_in_us = 1;
+            if (expr->g_attr.integration_time_max < expr->g_attr.integration_time)
+                expr->g_attr.integration_time_max = expr->g_attr.integration_time;
+            if (expr->g_attr.integration_time_min == 0)
+                expr->g_attr.integration_time_min = 1;
+            return 0;
+        }
+
+        LOG_ISP("GetExpr: ioctl failed: %s (returning fallback)", strerror(errno));
+    }
+
+    IMPISPEVAttr ev_attr;
+    memset(&ev_attr, 0, sizeof(ev_attr));
+    uint32_t expr_us = 16666;
+    if (IMP_ISP_Tuning_GetEVAttr(&ev_attr) == 0 && ev_attr.ev[1] > 0) {
+        expr_us = ev_attr.ev[1];
+    }
+
+    if (expr_us == 0)
+        expr_us = 1;
+    if (expr_us > 0xFFFFu)
+        expr_us = 0xFFFFu;
+
+    expr->g_attr.integration_time = (uint16_t)expr_us;
+    expr->g_attr.integration_time_min = 1;
+    expr->g_attr.integration_time_max = (uint16_t)expr_us;
+    expr->g_attr.one_line_expr_in_us = 1;
+    return 0;
+}
+
 
 int IMP_ISP_Tuning_SetDPC_Strength(uint32_t ratio) {
     LOG_ISP("SetDPC_Strength: %u", ratio);
