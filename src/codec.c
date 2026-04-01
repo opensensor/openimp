@@ -311,12 +311,21 @@ static void avpu_init_enc1_slice_words(ALAvpuContext *ctx, const uint8_t *codec_
     ctx->enc1_cmd_12_a8 = avpu_default_enc1_cmd12_a8(ctx->enc_w);
     ctx->enc1_cmd_12_aa = avpu_default_enc1_cmd12_aa(ctx->enc_w);
     ctx->enc1_cmd_12_ac = 0u;
+    ctx->enc1_cmd_60_110_112 = codec_param ? *(const uint16_t*)(codec_param + 0x110) : 0u;
+    ctx->enc1_cmd_60_110_112 |= codec_param ? ((uint32_t)*(const uint16_t*)(codec_param + 0x112) << 16) : 0u;
+    ctx->enc1_cmd_61_114_116 = codec_param ? *(const uint16_t*)(codec_param + 0x114) : 0u;
+    ctx->enc1_cmd_61_114_116 |= codec_param ? ((uint32_t)*(const uint16_t*)(codec_param + 0x116) << 16) : 0u;
+    ctx->enc1_cmd_6e_118_11a = codec_param ? (*(const uint8_t*)(codec_param + 0x11a)) : 0u;
+    ctx->enc1_cmd_6e_118_11a |= codec_param ? (((uint32_t)*(const uint8_t*)(codec_param + 0x118) & 1u) << 28) : 0u;
 
-    LOG_CODEC("AVPU: OEM Enc1 words seed 0x74=0x%08x 0x7a=0x%03x 0x7c=%u 0x7e=%u 0x10=%u 0xa8=0x%03x 0xaa=0x%03x 0xac=%u",
+    LOG_CODEC("AVPU: OEM Enc1 words seed 0x74=0x%08x 0x7a=0x%03x 0x7c=%u 0x7e=%u 0x10=%u 0xa8=0x%03x 0xaa=0x%03x 0xac=%u 0x60=0x%08x 0x61=0x%08x 0x6e=0x%08x",
               ctx->enc1_cmd_0a_74, ctx->enc1_cmd_0b_7a, ctx->enc1_cmd_0b_7c,
               ctx->enc1_cmd_0b_7e, ctx->enc1_slice_10,
               ctx->enc1_cmd_12_a8, ctx->enc1_cmd_12_aa,
-              ctx->enc1_cmd_12_ac);
+              ctx->enc1_cmd_12_ac,
+              ctx->enc1_cmd_60_110_112,
+              ctx->enc1_cmd_61_114_116,
+              ctx->enc1_cmd_6e_118_11a);
 }
 
 static uint32_t avpu_pack_enc1_cmd0b(const ALAvpuContext *ctx, int has_reference)
@@ -497,6 +506,13 @@ static void fill_cmd_regs_enc1(const ALAvpuContext* ctx, uint32_t* cmd, uint32_t
          * internal group-update state, not direct source-buffer stride heuristics. */
         cmd[0x12] = avpu_pack_enc1_cmd12(ctx);
 
+        /* OEM SliceParamToCmdRegsEnc1 also copies pre-packed words at 0x60/0x61
+         * and the low-byte/top-nibble control word at 0x6e. Our handcrafted CL
+         * previously left them at zero, but the OEM command builder never does. */
+        cmd[0x60] = ctx->enc1_cmd_60_110_112;
+        cmd[0x61] = ctx->enc1_cmd_61_114_116;
+        cmd[0x6e] = ctx->enc1_cmd_6e_118_11a;
+
         /* ---- RecBuffer context addresses (OEM: arg3 offsets) ----
          * Reconstruction-side descriptors still exist on the first picture;
          * only the reference-side descriptors should stay zero until a real
@@ -528,6 +544,8 @@ static void log_first_enc1_cmd_window(const ALAvpuContext* ctx, uint32_t idx, co
               idx, cmd[0x0a], cmd[0x0b], cmd[0x0c], cmd[0x0d]);
     LOG_CODEC("Process: first Enc1 CL[%u] cmd[0x0e]=0x%08x cmd[0x0f]=0x%08x cmd[0x10]=0x%08x cmd[0x11]=0x%08x cmd[0x12]=0x%08x",
               idx, cmd[0x0e], cmd[0x0f], cmd[0x10], cmd[0x11], cmd[0x12]);
+    LOG_CODEC("Process: first Enc1 CL[%u] cmd[0x60]=0x%08x cmd[0x61]=0x%08x cmd[0x6e]=0x%08x",
+              idx, cmd[0x60], cmd[0x61], cmd[0x6e]);
     LOG_CODEC("Process: first Enc1 CL[%u] cmd[0x64]=0x%08x cmd[0x65]=0x%08x cmd[0x67]=0x%08x cmd[0x68]=0x%08x",
               idx, cmd[0x64], cmd[0x65], cmd[0x67], cmd[0x68]);
     LOG_CODEC("Process: first Enc1 CL[%u] cmd[0x69]=0x%08x cmd[0x6f]=0x%08x",
@@ -556,15 +574,20 @@ static void avpu_promote_reference(ALAvpuContext *ctx)
 /* Enable interrupts for core (OEM parity: AL_EncCore_EnableInterrupts at 0x6cf78) */
 static void avpu_enable_interrupts(int fd, int core)
 {
-    /* Avoid read_reg path (problematic on some kernels). Program mask directly. */
+    /* OEM AL_EncCore_EnableInterrupts only updates 0x8014. It does not clear
+     * 0x8018 here; pending IRQ clear is part of init/reset, not mask enable. */
     unsigned b0 = 1u << (((unsigned)core << 2) & 0x1F);
     unsigned b2 = 1u << ((((unsigned)core << 2) + 2) & 0x1F);
-    unsigned new_m = (b0 | b2);
+    unsigned add_m = (b0 | b2);
+    unsigned old_m = 0;
+    unsigned new_m = add_m;
 
-    /* Ack any stale pending interrupts before enabling */
-    avpu_write_reg(fd, AVPU_INTERRUPT, AVPU_IRQ_CLEAR_MASK);
+    if (avpu_read_reg_quiet(fd, AVPU_INTERRUPT_MASK, &old_m) == 0) {
+        new_m = old_m | add_m;
+    }
 
-    LOG_CODEC("AVPU: enable_interrupts core=%d, mask=0x%08x (bits: 0x%x | 0x%x)", core, new_m, b0, b2);
+    LOG_CODEC("AVPU: enable_interrupts core=%d old=0x%08x add=0x%08x new=0x%08x (bits: 0x%x | 0x%x)",
+              core, old_m, add_m, new_m, b0, b2);
     avpu_write_reg(fd, AVPU_INTERRUPT_MASK, new_m);
     LOG_CODEC("AVPU: wrote INTERRUPT_MASK=0x%08x", new_m);
 }
@@ -1728,9 +1751,6 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
 
             ctx->session_ready = 1;
 
-            /* Enable only our core interrupts without readback */
-            avpu_enable_interrupts(fd, 0);
-
             /* Pre-queue ALL stream buffers so hardware always has space */
             if (ctx->stream_bufs_used > 0) {
                 for (int i = 0; i < ctx->stream_bufs_used; ++i) {
@@ -1785,11 +1805,19 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
             }
             ctx->busy_skip_count = 0;
 
-            /* Flush CL entry from CPU cache to physical RAM.
-             * rmem mappings are CACHED — without this the AVPU reads stale data.
-             * OEM: Rtos_FlushCacheMemory(cmdlist_entry, 0x100000) before CL_PUSH.
+            /* Flush the mapped command-list region from CPU cache to RAM.
+             * OEM AL_EncCore_Encode1 flushes a much larger 0x100000 window
+             * before StartEnc1WithCommandList. Our CL ring allocation is only
+             * 0x2600 bytes, so the closest safe equivalent is to flush the full
+             * mapped ring rather than just the current 0x200-byte entry.
              * dir=1 = DMA_TO_DEVICE (writeback, CPU→RAM). */
-            avpu_flush_cache(fd, cmd, ctx->cl_entry_size, 1 /*WBACK*/);
+            size_t cl_flush_size = ctx->cl_ring.size ? ctx->cl_ring.size : ctx->cl_entry_size;
+            avpu_flush_cache(fd, ctx->cl_ring.map, (unsigned int)cl_flush_size, 1 /*WBACK*/);
+
+            /* OEM encode1 enables interrupts before AL_EncCore_Encode1 starts
+             * the command list. Match that ordering here instead of unmasking
+             * after the source FIFO push. */
+            avpu_enable_interrupts(fd, 0);
 
             /* OEM-aligned submit path: program command list, trigger Enc1, then
              * push the source frame address into the AVPU source FIFO. */

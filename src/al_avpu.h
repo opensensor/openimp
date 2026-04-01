@@ -168,6 +168,9 @@ typedef struct ALAvpuContext {
     uint32_t enc1_cmd_12_a8;
     uint32_t enc1_cmd_12_aa;
     uint32_t enc1_cmd_12_ac;
+    uint32_t enc1_cmd_60_110_112;
+    uint32_t enc1_cmd_61_114_116;
+    uint32_t enc1_cmd_6e_118_11a;
     uint32_t cl_idx;
     volatile int reference_valid;
 
