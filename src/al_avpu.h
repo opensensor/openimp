@@ -168,6 +168,10 @@ typedef struct ALAvpuContext {
     uint32_t enc1_cmd_12_a8;
     uint32_t enc1_cmd_12_aa;
     uint32_t enc1_cmd_12_ac;
+    uint32_t enc1_cmd_19_ec;
+    uint32_t enc1_cmd_19_ee;
+    uint32_t enc1_cmd_1a_f0;
+    uint32_t enc1_cmd_1a_f4;
     uint32_t enc1_cmd_60_110_112;
     uint32_t enc1_cmd_61_114_116;
     uint32_t enc1_cmd_6e_118_11a;
@@ -177,6 +181,7 @@ typedef struct ALAvpuContext {
     volatile int frames_encoded;
     volatile unsigned int busy_skip_count;
     volatile int busy_snapshot_emitted;
+    volatile int first_submit_logged;
 
     /* Sticky diagnostics for the direct codec.c IRQ path. These let us tell
      * whether WaitInterruptThread ever started, whether WAIT_IRQ failed, and
