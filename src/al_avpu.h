@@ -203,13 +203,26 @@ typedef struct ALAvpuContext {
     int session_ready;
     int hw_prepared;
 
-    /* Reconstruction and reference frame DMA buffers (OEM parity).
-     * The AVPU hardware writes reconstructed frames to rec_buf and reads
-     * reference frames from ref_buf.  Without valid physical addresses in
-     * the command-list, the AVPU DMAs to/from address 0x0, hanging the
-     * AXI bus and crashing the SoC. */
-    AvpuDMABuf rec_buf;     /* reconstruction buffer (Y + UV planes) */
-    AvpuDMABuf ref_buf;     /* reference frame buffer (Y + UV planes) */
+    /* Reconstruction/reference frame DMA buffers plus the OEM-style traced
+     * shadow pair. The ref manager keeps a secondary per-frame base used to
+     * derive traced MV-side addresses, so preserve a separate allocation for
+     * that late Enc1 command-list window instead of aliasing the main MV base. */
+    AvpuDMABuf rec_buf;        /* reconstruction buffer (Y + UV planes + aux) */
+    AvpuDMABuf ref_buf;        /* reference frame buffer (Y + UV planes + aux) */
+    AvpuDMABuf rec_trace_buf;  /* traced/shadow reconstruction sideband buffer */
+    AvpuDMABuf ref_trace_buf;  /* traced/shadow reference sideband buffer */
+
+    /* OEM AL_IntermMngr-style contiguous scratch family used by Enc1.
+     * Layout on T31 AVC/NV12 is modeled as:
+     *   EP1 | WPP | EP2 | Map | Data
+     * The command-list window later reorders those subregion addresses when
+     * writing cmd[0x13..0x17]. */
+    AvpuDMABuf interm_buf;
+    uint32_t interm_ep1_size;
+    uint32_t interm_wpp_size;
+    uint32_t interm_ep2_size;
+    uint32_t interm_map_size;
+    uint32_t interm_data_size;
 } ALAvpuContext;
 
 /* ---- Board / IP Controller API (OEM parity) ---- */

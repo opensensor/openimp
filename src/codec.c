@@ -335,6 +335,49 @@ static size_t avpu_get_enc1_comp_data_size(uint32_t width, uint32_t height, uint
     return (size_t)lcu_count * (size_t)comp_lcu_size;
 }
 
+static uint32_t avpu_get_enc1_ep1_size(void)
+{
+    /* OEM AL_GetAllocSizeEP1() is fixed-size on this path. */
+    return 0x6400u;
+}
+
+static uint32_t avpu_get_enc1_ep2_size(uint32_t width, uint32_t height)
+{
+    uint32_t blk16 = ((width + 15u) >> 4) * ((height + 15u) >> 4);
+
+    /* OEM AVC path: AL_GetAllocSizeEP2(width, height, codec=AVC)
+     * = align128(GetBlk16x16(width, height)) + 0x40. */
+    return avpu_align_up_u32(blk16, 128u) + 0x40u;
+}
+
+static uint32_t avpu_get_enc1_comp_map_size(uint32_t width, uint32_t height)
+{
+    /* For the current AVC/NV12 8-bit path, the recovered OEM
+     * AL_GetAllocSize_EncCompMap(..., 1) reduces to the same byte count as the
+     * encoder FBC map-size helper already modeled by avpu_get_enc1_map_region_size(). */
+    return (uint32_t)avpu_get_enc1_map_region_size(width, height);
+}
+
+static uint32_t avpu_get_enc1_wpp_size(uint32_t width, uint32_t height)
+{
+    uint32_t lcu_h = 16u;
+    uint32_t lcu_w = (width + 15u) >> 4;
+    uint32_t row_count;
+    uint32_t row_groups;
+    uint32_t group_bytes;
+
+    if (lcu_w == 0u)
+        return 0u;
+
+    /* OEM AL_GetAllocSize_WPP(height, 16, lcu_w):
+     *   return lcu_w * align128((ceil(ceil(height / 16) / lcu_w) << 2)) * 16;
+     * recovered from Binary Ninja decompilation of AL_GetAllocSize_WPP(). */
+    row_count = (height + lcu_h - 1u) / lcu_h;
+    row_groups = (row_count + lcu_w - 1u) / lcu_w;
+    group_bytes = avpu_align_up_u32(row_groups << 2, 128u);
+    return lcu_w * group_bytes * lcu_h;
+}
+
 static size_t avpu_get_enc1_frame_buf_size(uint32_t width, uint32_t height)
 {
     size_t ref_sz = avpu_get_enc1_ref_region_size(width, height);
@@ -351,7 +394,14 @@ static size_t avpu_get_enc1_frame_buf_size(uint32_t width, uint32_t height)
 
 static uint32_t avpu_default_enc1_cmd12_a8(uint32_t enc_w)
 {
-    return avpu_align_up_u32(enc_w, 64u);
+    (void)enc_w;
+
+    /* OEM UpdateCommand fallback seeds group_update+0x48/+0x4a to 0x780 when
+     * the late runtime producer is absent, and SliceParamToCmdRegsEnc1 later
+     * copies group_update+0x48 into SliceParam+0xa8 -> cmd[0x12] low field.
+     * Our earlier width-aligned 0x280 heuristic for 640-wide streams was too
+     * small and did not match the OEM default path. */
+    return 0x780u;
 }
 
 static uint32_t avpu_default_enc1_cmd12_aa(uint32_t enc_w)
@@ -369,6 +419,26 @@ static uint32_t avpu_default_enc1_cmd12_aa(uint32_t enc_w)
 
 static uint32_t avpu_pack_enc1_cmd19(const ALAvpuContext *ctx);
 static uint32_t avpu_pack_enc1_cmd1a(const ALAvpuContext *ctx);
+
+static uint32_t avpu_pack_enc1_cmd18(uint32_t map_addr, uint32_t data_addr)
+{
+    if (map_addr == 0u || data_addr == 0u)
+        return 0u;
+
+    /* OEM SliceParamToCmdRegsEnc1 packs cmd[0x18] from slice fields at
+     * +0xcc/+0xcd/+0xd0/+0xd4. We do not fully recover that local slice object
+     * yet, but the only late-built runtime values that match this split on Enc1
+     * are the intermediate map/data pointers:
+     *   bit31    <- map_addr[31]
+     *   bit30    <- map_addr[30]
+     *   bits27:20 <- data_addr[27:20]
+     *   bits15:0  <- map_addr[18:3]
+     * This preserves the OEM bit layout while avoiding the all-zero control word
+     * that currently leaves the core stuck in state 0x3. */
+    return (map_addr & 0xc0000000u)
+        | (data_addr & 0x0ff00000u)
+        | ((map_addr >> 3) & 0x0000ffffu);
+}
 
 static void avpu_init_enc1_slice_words(ALAvpuContext *ctx, const uint8_t *codec_param)
 {
@@ -396,7 +466,12 @@ static void avpu_init_enc1_slice_words(ALAvpuContext *ctx, const uint8_t *codec_
 
     ctx->enc1_cmd_12_a8 = avpu_default_enc1_cmd12_a8(ctx->enc_w);
     ctx->enc1_cmd_12_aa = avpu_default_enc1_cmd12_aa(ctx->enc_w);
-    ctx->enc1_cmd_12_ac = 0u;
+    /* OEM threads state+0x2d4 into SliceParam+0xac, which packs to cmd[0x12]
+     * bit 30. We still do not have a named in-tree producer for that init-time
+     * capability query, but all address-window and WPP sizing fixes now land and
+     * the core remains stuck in state 0x3 with zero IRQs. Use a controlled probe
+     * of the remaining unresolved OEM bit for the current AVC/NV12 path. */
+    ctx->enc1_cmd_12_ac = 1u;
     /* OEM UpdateCommand populates SliceParam+0xec/+0xee before the final
      * SliceParamToCmdRegsEnc1 packer runs. Our current path does not recover
      * that runtime producer yet, so seed the nearest in-tree OEM default and
@@ -486,15 +561,17 @@ static uint32_t avpu_pack_enc1_lcu_pos(uint32_t pos, uint32_t lcu_w)
  *
  * The OEM fills cmd[0x00..0x1a], cmd[0x60..0x61], cmd[0x64..0x69], cmd[0x6e..0x6f].
  * Critical entries at cmd[0x0c..0x11] hold physical addresses for reconstruction
- * and reference buffers.  Entries at cmd[0x64..0x69,0x6f] hold additional buffer
- * addresses from the RecBuffer context.  Leaving these at zero causes the AVPU
- * to DMA to physical address 0x0 → AXI bus hang → hard SoC crash.
+ * and reference buffers.  Entries at cmd[0x64..0x65] come from the OEM source
+ * descriptor (srcC/tab), while cmd[0x67..0x69,0x6f] come from the late
+ * RecBuffer context. Leaving the required DMA words at zero causes the AVPU to
+ * DMA to physical address 0x0 → AXI bus hang → hard SoC crash.
  */
 static void fill_cmd_regs_enc1(const ALAvpuContext* ctx, uint32_t* cmd, uint32_t src_phys)
 {
     if (!ctx || !cmd) return;
 
     const int has_reference = (ctx->reference_valid != 0) && (ctx->ref_buf.phy_addr != 0);
+    const int has_ref_desc = (ctx->ref_buf.phy_addr != 0);
     const int is_idr = !has_reference;
 
     /* Ensure cmd pointer is 4-byte aligned (MIPS requirement) */
@@ -623,11 +700,21 @@ static void fill_cmd_regs_enc1(const ALAvpuContext* ctx, uint32_t* cmd, uint32_t
         if (src_phys) {
             cmd[0x0e] = src_phys;                    /* Source Y phys addr */
             cmd[0x0f] = src_phys + y_plane_sz;       /* Source UV phys addr (NV12) */
+
+            /* OEM encode1 later mirrors the live source-plane descriptor into the
+             * middle window request block at request+0x298. Keep only the direct
+             * Y/C addresses here and leave the tab/packed source words untouched. */
+            cmd[0x20] = src_phys;
+            cmd[0x21] = src_phys + y_plane_sz;
         }
 
-        /* cmd[0x10..0x11]: reference frame buffer.
-         * OEM obtains these from RefMngr/DPB only when a ref picture exists. */
-        if (has_reference) {
+        /* cmd[0x10..0x11]: reference-picture backing buffer.
+         * OEM bulk-copies this descriptor window from prebuilt picture buffers;
+         * the semantic "real reference available" state is carried elsewhere
+         * (e.g. cmd[0x0b] and later slice-control words). Keep those controls on
+         * has_reference, but do not leave the descriptor addresses themselves at
+         * zero when the physical ref backing store already exists. */
+        if (has_ref_desc) {
             cmd[0x10] = ctx->ref_buf.phy_addr;                /* Ref Y */
             cmd[0x11] = ctx->ref_buf.phy_addr + y_plane_sz;   /* Ref UV */
         }
@@ -635,6 +722,34 @@ static void fill_cmd_regs_enc1(const ALAvpuContext* ctx, uint32_t* cmd, uint32_t
         /* cmd[0x12]: OEM packs SliceParam+0xa8/+0xaa/+0xac from the encoder's
          * internal group-update state, not direct source-buffer stride heuristics. */
         cmd[0x12] = avpu_pack_enc1_cmd12(ctx);
+
+        /* cmd[0x13..0x17]: OEM intermediate scratch family (AL_IntermMngr).
+         * The underlying DMA block is laid out as EP1 | WPP | EP2 | Map | Data,
+         * but SliceParamToCmdRegsEnc1 exposes it to the CL as:
+         *   0x13 = EP1, 0x14 = EP2, 0x15 = WPP, 0x16 = Map, 0x17 = Data. */
+        if (ctx->interm_buf.phy_addr != 0u) {
+            uint32_t ep1_addr = ctx->interm_buf.phy_addr;
+            uint32_t wpp_addr = ep1_addr + ctx->interm_ep1_size;
+            uint32_t ep2_addr = wpp_addr + ctx->interm_wpp_size;
+            uint32_t map_addr = ep2_addr + ctx->interm_ep2_size;
+            uint32_t data_addr = map_addr + ctx->interm_map_size;
+
+            cmd[0x13] = ep1_addr;
+            cmd[0x14] = ep2_addr;
+            cmd[0x15] = wpp_addr;
+            cmd[0x16] = map_addr;
+            cmd[0x17] = data_addr;
+            cmd[0x18] = avpu_pack_enc1_cmd18(map_addr, data_addr);
+
+            /* OEM encode1 later mirrors a small subset of the AL_IntermMngr family
+             * into the middle Enc1 command window.  Keep only the unambiguous base
+             * addresses here for the current single-slice AVC/NV12 path and leave
+             * the packed/dynamic WPP-or-slice offset words untouched for now. */
+            cmd[0x23] = ep2_addr;
+            cmd[0x27] = ep1_addr;
+            cmd[0x34] = map_addr;
+            cmd[0x35] = data_addr;
+        }
 
         /* OEM also packs the later slice words at cmd[0x19]/cmd[0x1a]. Leaving
          * them zero diverges from both SliceParamToCmdRegsEnc1 and UpdateCommand. */
@@ -648,29 +763,68 @@ static void fill_cmd_regs_enc1(const ALAvpuContext* ctx, uint32_t* cmd, uint32_t
         cmd[0x61] = ctx->enc1_cmd_61_114_116;
         cmd[0x6e] = ctx->enc1_cmd_6e_118_11a;
 
-        /* ---- RecBuffer context addresses (OEM: arg3 offsets) ----
-         * The OEM late window comes from the current frame-buffer descriptor block,
-         * not from reusing the promoted reference Y/UV pair. AL_RefMngr_Init shows
-         * each frame buffer is laid out as reference storage followed by auxiliary
-         * map/MV regions, so keep these slots tied to the current reconstruction
-         * allocation even on the first picture. */
+        /* ---- Source/RecBuffer context addresses (OEM: arg3 offsets) ----
+         * HLIL for SetSourceBuffer/SliceParamToCmdRegsEnc1 shows:
+         *   arg3+0x14 -> cmd[0x64] = srcC (source chroma plane)
+         *   arg3+0x18 -> cmd[0x65] = tab  (source map/table)
+         * For the current openimp linear NV12 path there is no separate source-map
+         * allocation, so keep tab at zero. The later 0x67..0x69/0x6f words still
+         * come from the reconstruction-frame descriptor block. */
         if (ctx->rec_buf.phy_addr) {
             uint32_t rec_ref_sz = (uint32_t)avpu_get_enc1_ref_region_size(ctx->enc_w, ctx->enc_h);
             uint32_t rec_map_sz = (uint32_t)avpu_get_enc1_map_region_size(ctx->enc_w, ctx->enc_h);
             uint32_t comp_data_sz = (uint32_t)avpu_get_enc1_comp_data_size(ctx->enc_w, ctx->enc_h,
                                                                             ctx->format_word);
             uint32_t rec_map_addr = ctx->rec_buf.phy_addr + rec_ref_sz;
-            uint32_t rec_mv_addr = rec_map_addr + rec_map_sz;
+            uint32_t rec_map_end = rec_map_addr + rec_map_sz;
+            uint32_t rec_mv_addr = rec_map_end + 0x100u;
+            uint32_t ref_map_addr = 0;
+            uint32_t ref_map_end = 0;
+            uint32_t ref_mv_addr = 0;
 
-            cmd[0x64] = ctx->rec_buf.phy_addr;                   /* arg3+0x14: rec Y */
-            cmd[0x65] = ctx->rec_buf.phy_addr + y_plane_sz;      /* arg3+0x18: rec UV */
+            if (has_ref_desc) {
+                ref_map_addr = ctx->ref_buf.phy_addr + rec_ref_sz;
+                ref_map_end = ref_map_addr + rec_map_sz;
+                ref_mv_addr = ref_map_end + 0x100u;
+            }
 
-            /* Best current OEM-backed mapping from the recovered ref-manager helper
-             * set: one distinct map address plus MV-backed auxiliary slots, all from
-             * the current frame-buffer layout instead of ref Y/UV aliases. */
-            cmd[0x67] = rec_mv_addr;                             /* arg3+0x54 */
-            cmd[0x68] = rec_map_addr;                            /* arg3+0x34 */
-            cmd[0x69] = rec_mv_addr;                             /* arg3+0x44 */
+            /* Recovered from SetPictureRefBuffers() + encode1(): these later Enc1
+             * slots carry current/ref picture descriptors and FBC map bases, not
+             * slice-control words. For our simplified DPB, mirror the same single
+             * live ref backing store into both ref slots when present. */
+            cmd[0x24] = ctx->rec_buf.phy_addr;
+            cmd[0x25] = ctx->rec_buf.phy_addr + y_plane_sz;
+            cmd[0x2e] = rec_mv_addr;
+            cmd[0x37] = rec_map_addr;
+
+            if (has_ref_desc) {
+                cmd[0x28] = ctx->ref_buf.phy_addr;
+                cmd[0x29] = ctx->ref_buf.phy_addr + y_plane_sz;
+                cmd[0x2a] = ctx->ref_buf.phy_addr;
+                cmd[0x2b] = ctx->ref_buf.phy_addr + y_plane_sz;
+                cmd[0x2c] = ref_mv_addr;
+                cmd[0x38] = ref_map_addr;
+                cmd[0x39] = ref_map_addr;
+            }
+
+            cmd[0x64] = src_phys ? (src_phys + y_plane_sz) : 0u; /* arg3+0x14: srcC */
+            cmd[0x65] = 0u;                                      /* arg3+0x18: tab (linear NV12) */
+
+            /* OEM SetPictureRefBuffers() fills these descriptor words from FBC map-buffer
+             * END addresses, not MV/trace addresses:
+             *   arg3+0x54 = current picture map end
+             *   arg3+0x34 = reference picture #1 map end
+             *   arg3+0x44 = reference picture #2 map end
+             * Our simplified DPB currently has at most one live backing buffer, so mirror the
+             * same ref-map end into both ref slots when that buffer exists. Semantic "is this
+             * an actual reference picture yet" control remains in the non-address words. */
+            /* OEM FillCmdRegsEnc1 also writes cmd[0x33] unconditionally from the same
+             * comp-data sizing path that feeds cmd[0x6f], but rounded to the 32-byte
+             * companion size stored in local `a1_31` before the middle-window copy. */
+            cmd[0x33] = comp_data_sz & ~0x1fu;
+            cmd[0x67] = rec_map_end;                             /* arg3+0x54 */
+            cmd[0x68] = ref_map_end;                             /* arg3+0x34 */
+            cmd[0x69] = ref_map_end;                             /* arg3+0x44 */
             cmd[0x6f] = comp_data_sz;                            /* arg3+0x94 */
         }
     }
@@ -692,8 +846,24 @@ static void log_first_enc1_cmd_window(ALAvpuContext* ctx, uint32_t idx, const ui
               idx, cmd[0x0a], cmd[0x0b], cmd[0x0c], cmd[0x0d]);
     LOG_CODEC("Process: first Enc1 CL[%u] cmd[0x0e]=0x%08x cmd[0x0f]=0x%08x cmd[0x10]=0x%08x cmd[0x11]=0x%08x cmd[0x12]=0x%08x",
               idx, cmd[0x0e], cmd[0x0f], cmd[0x10], cmd[0x11], cmd[0x12]);
-    LOG_CODEC("Process: first Enc1 CL[%u] cmd[0x19]=0x%08x cmd[0x1a]=0x%08x",
-              idx, cmd[0x19], cmd[0x1a]);
+    LOG_CODEC("Process: first Enc1 CL[%u] cmd[0x13]=0x%08x cmd[0x14]=0x%08x cmd[0x15]=0x%08x cmd[0x16]=0x%08x",
+              idx, cmd[0x13], cmd[0x14], cmd[0x15], cmd[0x16]);
+    LOG_CODEC("Process: first Enc1 CL[%u] cmd[0x17]=0x%08x cmd[0x18]=0x%08x cmd[0x19]=0x%08x cmd[0x1a]=0x%08x",
+              idx, cmd[0x17], cmd[0x18], cmd[0x19], cmd[0x1a]);
+    LOG_CODEC("Process: first Enc1 CL[%u] cmd[0x20]=0x%08x cmd[0x21]=0x%08x cmd[0x22]=0x%08x cmd[0x23]=0x%08x",
+              idx, cmd[0x20], cmd[0x21], cmd[0x22], cmd[0x23]);
+    LOG_CODEC("Process: first Enc1 CL[%u] cmd[0x24]=0x%08x cmd[0x25]=0x%08x cmd[0x26]=0x%08x cmd[0x27]=0x%08x",
+              idx, cmd[0x24], cmd[0x25], cmd[0x26], cmd[0x27]);
+    LOG_CODEC("Process: first Enc1 CL[%u] cmd[0x28]=0x%08x cmd[0x29]=0x%08x cmd[0x2a]=0x%08x cmd[0x2b]=0x%08x",
+              idx, cmd[0x28], cmd[0x29], cmd[0x2a], cmd[0x2b]);
+    LOG_CODEC("Process: first Enc1 CL[%u] cmd[0x2c]=0x%08x cmd[0x2d]=0x%08x cmd[0x2e]=0x%08x cmd[0x2f]=0x%08x",
+              idx, cmd[0x2c], cmd[0x2d], cmd[0x2e], cmd[0x2f]);
+    LOG_CODEC("Process: first Enc1 CL[%u] cmd[0x30]=0x%08x cmd[0x31]=0x%08x cmd[0x32]=0x%08x cmd[0x33]=0x%08x",
+              idx, cmd[0x30], cmd[0x31], cmd[0x32], cmd[0x33]);
+    LOG_CODEC("Process: first Enc1 CL[%u] cmd[0x34]=0x%08x cmd[0x35]=0x%08x cmd[0x36]=0x%08x cmd[0x37]=0x%08x",
+              idx, cmd[0x34], cmd[0x35], cmd[0x36], cmd[0x37]);
+    LOG_CODEC("Process: first Enc1 CL[%u] cmd[0x38]=0x%08x cmd[0x39]=0x%08x",
+              idx, cmd[0x38], cmd[0x39]);
     LOG_CODEC("Process: first Enc1 CL[%u] cmd[0x60]=0x%08x cmd[0x61]=0x%08x cmd[0x6e]=0x%08x",
               idx, cmd[0x60], cmd[0x61], cmd[0x6e]);
     LOG_CODEC("Process: first Enc1 CL[%u] cmd[0x64]=0x%08x cmd[0x65]=0x%08x cmd[0x67]=0x%08x cmd[0x68]=0x%08x",
@@ -712,8 +882,26 @@ static void log_busy_enc1_cmd_window(ALAvpuContext* ctx, uint32_t active_idx, un
 
     LOG_CODEC("Process: busy CL[%u] replay skip_count=%u cmd[0x0c]=0x%08x cmd[0x0d]=0x%08x cmd[0x0e]=0x%08x cmd[0x0f]=0x%08x",
               active_idx, skip_count, cmd[0x0c], cmd[0x0d], cmd[0x0e], cmd[0x0f]);
+    LOG_CODEC("Process: busy CL[%u] replay skip_count=%u cmd[0x10]=0x%08x cmd[0x11]=0x%08x cmd[0x12]=0x%08x cmd[0x13]=0x%08x",
+              active_idx, skip_count, cmd[0x10], cmd[0x11], cmd[0x12], cmd[0x13]);
+    LOG_CODEC("Process: busy CL[%u] replay skip_count=%u cmd[0x14]=0x%08x cmd[0x15]=0x%08x cmd[0x16]=0x%08x cmd[0x17]=0x%08x cmd[0x18]=0x%08x",
+              active_idx, skip_count, cmd[0x14], cmd[0x15], cmd[0x16], cmd[0x17], cmd[0x18]);
     LOG_CODEC("Process: busy CL[%u] replay skip_count=%u cmd[0x19]=0x%08x cmd[0x1a]=0x%08x cmd[0x60]=0x%08x cmd[0x61]=0x%08x cmd[0x6e]=0x%08x",
               active_idx, skip_count, cmd[0x19], cmd[0x1a], cmd[0x60], cmd[0x61], cmd[0x6e]);
+    LOG_CODEC("Process: busy CL[%u] replay skip_count=%u cmd[0x20]=0x%08x cmd[0x21]=0x%08x cmd[0x22]=0x%08x cmd[0x23]=0x%08x",
+              active_idx, skip_count, cmd[0x20], cmd[0x21], cmd[0x22], cmd[0x23]);
+    LOG_CODEC("Process: busy CL[%u] replay skip_count=%u cmd[0x24]=0x%08x cmd[0x25]=0x%08x cmd[0x26]=0x%08x cmd[0x27]=0x%08x",
+              active_idx, skip_count, cmd[0x24], cmd[0x25], cmd[0x26], cmd[0x27]);
+    LOG_CODEC("Process: busy CL[%u] replay skip_count=%u cmd[0x28]=0x%08x cmd[0x29]=0x%08x cmd[0x2a]=0x%08x cmd[0x2b]=0x%08x",
+              active_idx, skip_count, cmd[0x28], cmd[0x29], cmd[0x2a], cmd[0x2b]);
+    LOG_CODEC("Process: busy CL[%u] replay skip_count=%u cmd[0x2c]=0x%08x cmd[0x2d]=0x%08x cmd[0x2e]=0x%08x cmd[0x2f]=0x%08x",
+              active_idx, skip_count, cmd[0x2c], cmd[0x2d], cmd[0x2e], cmd[0x2f]);
+    LOG_CODEC("Process: busy CL[%u] replay skip_count=%u cmd[0x30]=0x%08x cmd[0x31]=0x%08x cmd[0x32]=0x%08x cmd[0x33]=0x%08x",
+              active_idx, skip_count, cmd[0x30], cmd[0x31], cmd[0x32], cmd[0x33]);
+    LOG_CODEC("Process: busy CL[%u] replay skip_count=%u cmd[0x34]=0x%08x cmd[0x35]=0x%08x cmd[0x36]=0x%08x cmd[0x37]=0x%08x",
+              active_idx, skip_count, cmd[0x34], cmd[0x35], cmd[0x36], cmd[0x37]);
+    LOG_CODEC("Process: busy CL[%u] replay skip_count=%u cmd[0x38]=0x%08x cmd[0x39]=0x%08x",
+              active_idx, skip_count, cmd[0x38], cmd[0x39]);
     LOG_CODEC("Process: busy CL[%u] replay skip_count=%u cmd[0x64]=0x%08x cmd[0x65]=0x%08x cmd[0x67]=0x%08x cmd[0x68]=0x%08x cmd[0x69]=0x%08x cmd[0x6f]=0x%08x",
               active_idx, skip_count, cmd[0x64], cmd[0x65], cmd[0x67], cmd[0x68], cmd[0x69], cmd[0x6f]);
 }
@@ -724,13 +912,18 @@ static void avpu_promote_reference(ALAvpuContext *ctx)
         return;
 
     AvpuDMABuf prev_ref = ctx->ref_buf;
+    AvpuDMABuf prev_trace_ref = ctx->ref_trace_buf;
+
     ctx->ref_buf = ctx->rec_buf;
     ctx->rec_buf = prev_ref;
+    ctx->ref_trace_buf = ctx->rec_trace_buf;
+    ctx->rec_trace_buf = prev_trace_ref;
     __sync_synchronize();
     ctx->reference_valid = 1;
 
-    LOG_CODEC("EndEncoding: promoted rec->ref ref=0x%08x next_rec=0x%08x",
-              ctx->ref_buf.phy_addr, ctx->rec_buf.phy_addr);
+    LOG_CODEC("EndEncoding: promoted rec->ref ref=0x%08x next_rec=0x%08x trace_ref=0x%08x next_trace=0x%08x",
+              ctx->ref_buf.phy_addr, ctx->rec_buf.phy_addr,
+              ctx->ref_trace_buf.phy_addr, ctx->rec_trace_buf.phy_addr);
 }
 
 /* OEM uses 24-bit interrupt clear (0xFFFFFF), not 32-bit.
@@ -922,7 +1115,10 @@ static void avpu_end_avc_entropy_callback(void *user_data)
 
 static void avpu_log_busy_snapshot(ALAvpuContext *ctx, uint32_t idx, unsigned int core_status)
 {
-    if (!ctx || __sync_lock_test_and_set(&ctx->busy_snapshot_emitted, 1) != 0) {
+    /* Emit every requested stuck-path snapshot. The earlier one-shot guard caused
+     * the most useful snapshot to age out of the device ring buffer before the
+     * retained logs were collected, leaving only the CL replay lines. */
+    if (!ctx) {
         return;
     }
 
@@ -1451,6 +1647,16 @@ int AL_Codec_Encode_Destroy(void *codec) {
             close(enc->avpu.cl_ring.dmabuf_fd);
             enc->avpu.cl_ring.dmabuf_fd = -1;
         }
+        if (enc->avpu.interm_buf.map) {
+            if (!enc->avpu.interm_buf.from_rmem) {
+                munmap(enc->avpu.interm_buf.map, enc->avpu.interm_buf.size);
+            }
+            enc->avpu.interm_buf.map = NULL;
+        }
+        if (enc->avpu.interm_buf.dmabuf_fd >= 0) {
+            close(enc->avpu.interm_buf.dmabuf_fd);
+            enc->avpu.interm_buf.dmabuf_fd = -1;
+        }
 
         /* OEM parity: unblock WaitInterruptThread before close/join */
         enc->avpu.irq_thread_running = 0;
@@ -1762,6 +1968,35 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
 
                             memset(&enc->avpu.rec_buf, 0, sizeof(AvpuDMABuf));
                             memset(&enc->avpu.ref_buf, 0, sizeof(AvpuDMABuf));
+                            memset(&enc->avpu.rec_trace_buf, 0, sizeof(AvpuDMABuf));
+                            memset(&enc->avpu.ref_trace_buf, 0, sizeof(AvpuDMABuf));
+                            memset(&enc->avpu.interm_buf, 0, sizeof(AvpuDMABuf));
+
+                            enc->avpu.interm_ep1_size = avpu_get_enc1_ep1_size();
+                            enc->avpu.interm_wpp_size = avpu_get_enc1_wpp_size(width, height);
+                            enc->avpu.interm_ep2_size = avpu_get_enc1_ep2_size(width, height);
+                            enc->avpu.interm_map_size = avpu_get_enc1_comp_map_size(width, height);
+                            enc->avpu.interm_data_size = (uint32_t)avpu_get_enc1_comp_data_size(width, height,
+                                                                                                 enc->avpu.format_word);
+
+                            {
+                                size_t interm_total_sz = (size_t)enc->avpu.interm_ep1_size
+                                                       + (size_t)enc->avpu.interm_wpp_size
+                                                       + (size_t)enc->avpu.interm_ep2_size
+                                                       + (size_t)enc->avpu.interm_map_size
+                                                       + (size_t)enc->avpu.interm_data_size;
+
+                                if (avpu_alloc_imp(interm_total_sz, "AVPU_ITM", &enc->avpu.interm_buf) == 0) {
+                                    memset(enc->avpu.interm_buf.map, 0, interm_total_sz);
+                                    LOG_CODEC("AVPU: interm_buf phys=0x%08x size=%zu (ep1=%u wpp=%u ep2=%u map=%u data=%u)",
+                                              enc->avpu.interm_buf.phy_addr, interm_total_sz,
+                                              enc->avpu.interm_ep1_size, enc->avpu.interm_wpp_size,
+                                              enc->avpu.interm_ep2_size, enc->avpu.interm_map_size,
+                                              enc->avpu.interm_data_size);
+                                } else {
+                                    LOG_CODEC("AVPU: WARNING - failed to allocate interm_buf (%zu bytes)", interm_total_sz);
+                                }
+                            }
 
                             if (avpu_alloc_imp(aux_frame_sz, "AVPU_REC", &enc->avpu.rec_buf) == 0) {
                                 /* Do NOT memset — rec_buf is AVPU output (reconstruction),
@@ -1783,6 +2018,18 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
                                 LOG_CODEC("AVPU: ref_buf phys=0x%08x size=%zu", enc->avpu.ref_buf.phy_addr, aux_frame_sz);
                             } else {
                                 LOG_CODEC("AVPU: WARNING - failed to allocate ref_buf (%zu bytes)", aux_frame_sz);
+                            }
+
+                            if (avpu_alloc_imp(aux_frame_sz, "AVPU_TRC_REC", &enc->avpu.rec_trace_buf) == 0) {
+                                LOG_CODEC("AVPU: rec_trace_buf phys=0x%08x size=%zu", enc->avpu.rec_trace_buf.phy_addr, aux_frame_sz);
+                            } else {
+                                LOG_CODEC("AVPU: WARNING - failed to allocate rec_trace_buf (%zu bytes)", aux_frame_sz);
+                            }
+
+                            if (avpu_alloc_imp(aux_frame_sz, "AVPU_TRC_REF", &enc->avpu.ref_trace_buf) == 0) {
+                                LOG_CODEC("AVPU: ref_trace_buf phys=0x%08x size=%zu", enc->avpu.ref_trace_buf.phy_addr, aux_frame_sz);
+                            } else {
+                                LOG_CODEC("AVPU: WARNING - failed to allocate ref_trace_buf (%zu bytes)", aux_frame_sz);
                             }
                         }
 
@@ -1974,8 +2221,6 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
                         uint32_t active_idx = (idx + ctx->cl_count - 1u) % ctx->cl_count;
                         log_busy_enc1_cmd_window(ctx, active_idx, skip_count);
                     }
-                }
-                if (skip_count == 1u) {
                     avpu_log_busy_snapshot(ctx, idx, core_status);
                 }
                 free(hw_stream);
