@@ -3196,16 +3196,24 @@ int AL_Codec_Encode_GetStream(void *codec, void **stream, void **user_data) {
                     frame_size = end;
                 }
 
-                /* Debug: check ALL stream buffers for AVPU-written data */
-                if (frame_size <= 48) {
-                    for (int si = 0; si < ctx->stream_bufs_used; si++) {
-                        if (!ctx->stream_bufs[si].map) continue;
-                        avpu_flush_cache(ctx->fd, ctx->stream_bufs[si].map,
+                /* Debug: check stream buf AND intermediate buf for encoded data */
+                if (frame_size <= 48 && ctx->frames_consumed < 3) {
+                    /* Stream buffer */
+                    if (ctx->stream_bufs[0].map) {
+                        avpu_flush_cache(ctx->fd, ctx->stream_bufs[0].map,
                                          (unsigned int)ctx->stream_buf_size, 2);
-                        const uint32_t *sw = (const uint32_t*)ctx->stream_bufs[si].map;
-                        /* Check words at offsets 0, 12, 64 for any non-zero data */
-                        LOG_CODEC("GetStream[AVPU]: buf[%d] w0=%08x w12=%08x w64=%08x w128=%08x",
-                                  si, sw[0], sw[12], sw[64], sw[128]);
+                        const uint32_t *sw = (const uint32_t*)ctx->stream_bufs[0].map;
+                        LOG_CODEC("GetStream[AVPU]: STRM w0=%08x w12=%08x w64=%08x", sw[0], sw[12], sw[64]);
+                    }
+                    /* Intermediate data buffer (where cmd[0x30] points) */
+                    if (ctx->interm_buf.map) {
+                        uint32_t data_off = ctx->interm_ep1_size + ctx->interm_wpp_size
+                                           + ctx->interm_ep2_size + ctx->interm_map_size;
+                        avpu_flush_cache(ctx->fd, ctx->interm_buf.map,
+                                         (unsigned int)(data_off + 4096), 2);
+                        const uint32_t *iw = (const uint32_t*)((uint8_t*)ctx->interm_buf.map + data_off);
+                        LOG_CODEC("GetStream[AVPU]: INTERM @%u w0=%08x w1=%08x w2=%08x w3=%08x",
+                                  data_off, iw[0], iw[1], iw[2], iw[3]);
                     }
                 }
                 LOG_CODEC("GetStream[AVPU]: stream_buf[%d] frame_size=%u",
