@@ -1082,6 +1082,40 @@ static void fill_cmd_regs_enc1(const ALAvpuContext* ctx, uint32_t* cmd,
         cmd[5] = avpu_pack_enc1_lcu_pos(0u, lcu_w);
         cmd[6] = avpu_pack_enc1_lcu_pos(last_lcu, lcu_w);
         cmd[7] = (((lcu_h - 1u) & 0x3ffu) << 12) | ((lcu_w - 1u) & 0x3ffu);
+
+        /* cmd[8]: OEM SliceParamToCmdRegsEnc1 packs slice position + DMA stride
+         * control. CmdRegsEnc1ToSliceParam decodes:
+         *   bits[9:0]   + bits[21:12] = slice-start LCU position / LcuWidth
+         *   bits[26:24] = ((SliceParam+0x58 >> 3) - 1) & 7  → DMA burst size
+         *   bit 27      = SliceParam+0x5c (deblocking flag)
+         *   bits[30:28] = ((SliceParam+0x5a >> 3) - 1) & 7  → DMA alignment
+         *
+         * SliceParam+0x58 = source transfer stride (min 8, typically 16 for AVC)
+         * SliceParam+0x5a = reconstruction transfer stride (same)
+         * For AVC 4:2:0 8-bit: both are 16 → ((16>>3)-1)&7 = 1 */
+        {
+            uint32_t src_xfer = 16u;  /* AVC 4:2:0 8-bit: 16-byte DMA burst */
+            uint32_t rec_xfer = 16u;
+            uint32_t deblock_flag = 0u; /* no cross-slice deblocking on first IDR */
+
+            cmd[8] = avpu_pack_enc1_lcu_pos(0u, lcu_w) /* slice start at 0 */
+                   | ((((src_xfer >> 3) - 1u) & 7u) << 24)
+                   | ((deblock_flag & 1u) << 27)
+                   | ((((rec_xfer >> 3) - 1u) & 7u) << 28);
+        }
+
+        /* cmd[9]: OEM SliceParamToCmdRegsEnc1 packs ~15 1-bit flags and small
+         * fields controlling transform, quantization, deblocking, and reference
+         * list behavior. CmdRegsEnc1ToSliceParam decodes:
+         *   bits[4:0]   = SliceParam+0x5d (deblock_alpha_offset / 2)
+         *   bits[9:5]   = SliceParam+0x5e (deblock_beta_offset / 2)
+         *   bit 16      = SliceParam+0x63 (constrained_intra_pred)
+         *   bit 17      = SliceParam+0x64 (chroma_qp_offset flag)
+         *   ...and many more 1-bit fields at higher positions.
+         *
+         * For the minimal AVC Baseline IDR path, most flags are 0.
+         * The critical ones are the deblock offsets (default 0 = centered). */
+        cmd[9] = 0u;
     }
 
     /* ---- Reconstruction & reference buffer addresses (OEM: SliceParamToCmdRegsEnc1) ----
@@ -1496,6 +1530,10 @@ static void log_first_enc1_cmd_window(ALAvpuContext* ctx, uint32_t idx, const ui
               avpu_get_nv12_luma_plane_size(ctx->enc_w, ctx->enc_h));
     LOG_CODEC("Process: first Enc1 CL[%u] fmt=0x%08x cmd[0]=0x%08x cmd[1]=0x%08x cmd[2]=0x%08x cmd[3]=0x%08x",
               idx, ctx->format_word, cmd[0], cmd[1], cmd[2], cmd[3]);
+    LOG_CODEC("Process: first Enc1 CL[%u] cmd[0x04]=0x%08x cmd[0x05]=0x%08x cmd[0x06]=0x%08x cmd[0x07]=0x%08x cmd[0x08]=0x%08x cmd[0x09]=0x%08x",
+              idx, cmd[0x04], cmd[0x05], cmd[0x06], cmd[0x07], cmd[0x08], cmd[0x09]);
+    LOG_CODEC("Process: first Enc1 CL[%u] cmd[0x1b]=0x%08x cmd[0x1c]=0x%08x cmd[0x1d]=0x%08x cmd[0x1e]=0x%08x cmd[0x1f]=0x%08x",
+              idx, cmd[0x1b], cmd[0x1c], cmd[0x1d], cmd[0x1e], cmd[0x1f]);
     LOG_CODEC("Process: first Enc1 CL[%u] cmd[0x04]=0x%08x cmd[0x05]=0x%08x cmd[0x06]=0x%08x cmd[0x07]=0x%08x",
               idx, cmd[0x04], cmd[0x05], cmd[0x06], cmd[0x07]);
     LOG_CODEC("Process: first Enc1 CL[%u] cmd[0x0a]=0x%08x cmd[0x0b]=0x%08x cmd[0x0c]=0x%08x cmd[0x0d]=0x%08x",
