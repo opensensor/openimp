@@ -1178,7 +1178,7 @@ static void fill_cmd_regs_enc1(const ALAvpuContext* ctx, uint32_t* cmd,
             uint32_t map_addr = ep2_addr + ctx->interm_ep2_size;
             uint32_t data_addr = map_addr + ctx->interm_map_size;
 
-            cmd[0x30] = data_addr;                     /* intermediate data buffer */
+            cmd[0x30] = stream_desc_phys;               /* stream buffer — must match STRM_PUSH */
             cmd[0x31] = stream_part_offset;            /* stock: 0x00027780 */
             cmd[0x32] = stream_offset;                 /* stock: 0x00000220 */
             cmd[0x33] = stream_part_offset > stream_offset
@@ -3046,8 +3046,12 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
                 avpu_write_reg(fd, 0x840c, (uint32_t)width);
                 avpu_write_reg(fd, 0x8410, phys_addr);        /* source Y */
                 avpu_write_reg(fd, 0x8414, phys_addr + y_plane_sz); /* source UV */
-                avpu_write_reg(fd, 0x8418, interm_data_addr);
-                avpu_write_reg(fd, 0x841c, interm_map_addr);
+                /* Stock 0x8418/0x841c values are buffer addresses that don't
+                 * obviously match intermediate regions. Try EP1/WPP addresses
+                 * which are the working buffers the entropy coder reads from. */
+                avpu_write_reg(fd, 0x8418, ctx->interm_buf.phy_addr
+                               + ctx->interm_ep1_size); /* WPP buffer */
+                avpu_write_reg(fd, 0x841c, ctx->interm_buf.phy_addr); /* EP1 buffer */
                 avpu_write_reg(fd, 0x8420, stream_part_offset);
                 avpu_write_reg(fd, 0x8424, hdr_offset);
                 avpu_write_reg(fd, 0x8428,
