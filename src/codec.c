@@ -3169,40 +3169,24 @@ int AL_Codec_Encode_GetStream(void *codec, void **stream, void **user_data) {
                  * where the AVPU stopped writing in the stream buffer.
                  * We also check CL[0x104/4] & 0x3FFFFFFF for entropy-reported bits. */
 
-                /* DMA-invalidate CL entry 0 (first submitted) to read status.
-                 * The AVPU overwrites ALL 128 words with status data after encode.
-                 * Key status offsets (from OEM EncodingStatusRegsToSliceStatus):
-                 *   word 65 (0x104): entropy status — bits & 0x3FFFFFFF = encoded bits
-                 *   word 76 (0x130): total encoded bits (main accumulator)
-                 * Also invalidate the stream buffer to read the encoded data. */
-                avpu_flush_cache(ctx->fd, ctx->cl_ring.map,
-                                 (unsigned int)(ctx->cl_entry_size * ctx->cl_count), 2 /*INV*/);
-
-                uint32_t *cw = (uint32_t *)ctx->cl_ring.map; /* entry 0 */
-                uint32_t entropy_word = cw[0x104 / 4]; /* word 65 */
-                uint32_t total_bits_word = cw[0x130 / 4]; /* word 76 */
-                uint32_t encoded_bits = entropy_word & 0x3FFFFFFFu;
-                int encode_error = (entropy_word >> 31) & 1;
+                /* CL cache invalidate doesn't work (MIPS cache coherency issue
+                 * with rmem mappings). But the stream buffer invalidate DOES work.
+                 * Read frame size directly from stream buffer by scanning for
+                 * valid Annex-B data. */
+                int buf_idx = 0;
                 uint32_t frame_size = 0;
 
-                /* Use total_bits if available, else entropy bits */
-                if (total_bits_word > 0)
-                    frame_size = ctx->stream_header_offset + (total_bits_word + 7u) / 8u;
-                else if (encoded_bits > 0)
-                    frame_size = ctx->stream_header_offset + (encoded_bits + 7u) / 8u;
-
-                LOG_CODEC("GetStream[AVPU]: CL[0x104]=0x%08x CL[0x130]=0x%08x enc_bits=%u total_bits=%u err=%d hdr=%u frame_size=%u",
-                          entropy_word, total_bits_word, encoded_bits, total_bits_word, encode_error,
-                          ctx->stream_header_offset, frame_size);
-
-                /* DMA-invalidate the stream buffer to read encoded data */
-                int buf_idx = 0; /* TODO: track which buffer was used per frame */
                 if (buf_idx < ctx->stream_bufs_used && ctx->stream_bufs[buf_idx].map) {
                     avpu_flush_cache(ctx->fd, ctx->stream_bufs[buf_idx].map,
                                      (unsigned int)ctx->stream_buf_size, 2 /*INV*/);
+                    const uint8_t *sb = (const uint8_t*)ctx->stream_bufs[buf_idx].map;
+                    frame_size = (uint32_t)annexb_effective_size(sb, ctx->stream_buf_size);
                 }
 
-                if (frame_size > 0 && !encode_error) {
+                LOG_CODEC("GetStream[AVPU]: stream_buf[%d] frame_size=%u",
+                          buf_idx, frame_size);
+
+                if (frame_size > 0) {
                     const uint8_t *virt = (const uint8_t*)ctx->stream_bufs[buf_idx].map;
                     HWStreamBuffer *s = (HWStreamBuffer*)malloc(sizeof(HWStreamBuffer));
                     if (!s) return -1;
