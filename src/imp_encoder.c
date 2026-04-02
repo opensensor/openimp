@@ -29,6 +29,7 @@ extern void* IMP_System_GetModule(int deviceID, int groupID);
 #define MAX_ENC_CHANNELS 9
 #define ENC_CHANNEL_SIZE 0x308
 #define MAX_ENC_GROUPS 3
+#define MAX_CHANNELS_PER_GROUP MAX_ENC_CHANNELS
 
 /* Internal stream buffer structure */
 typedef struct {
@@ -109,7 +110,7 @@ typedef struct {
     int group_id;               /* 0x00: Group ID */
     uint32_t field_04;          /* 0x04: Field */
     uint32_t chn_count;         /* 0x08: Number of registered channels */
-    EncChannel *channels[3];    /* 0x0c-0x14: Up to 3 channels per group */
+    EncChannel *channels[MAX_CHANNELS_PER_GROUP];
 } EncGroup;
 
 /* Global encoder state */
@@ -123,6 +124,23 @@ static EncoderState *gEncoder = NULL;
 static EncChannel g_EncChannel[MAX_ENC_CHANNELS];
 static pthread_mutex_t encoder_mutex = PTHREAD_MUTEX_INITIALIZER;
 static int encoder_initialized = 0;
+
+static void enc_group_clear_slots(EncGroup *grp)
+{
+    if (grp == NULL) return;
+    for (int i = 0; i < MAX_CHANNELS_PER_GROUP; ++i) {
+        grp->channels[i] = NULL;
+    }
+}
+
+static int enc_group_has_channels(const EncGroup *grp)
+{
+    if (grp == NULL) return 0;
+    for (int i = 0; i < MAX_CHANNELS_PER_GROUP; ++i) {
+        if (grp->channels[i] != NULL) return 1;
+    }
+    return 0;
+}
 
 /* Forward declarations for helper functions */
 static int channel_encoder_init(EncChannel *chn);
@@ -391,9 +409,7 @@ int EncoderInit(void) {
         for (int i = 0; i < 6; i++) {
             gEncoder->groups[i].group_id = -1;
             gEncoder->groups[i].chn_count = 0;
-            gEncoder->groups[i].channels[0] = NULL;
-            gEncoder->groups[i].channels[1] = NULL;
-            gEncoder->groups[i].channels[2] = NULL;
+            enc_group_clear_slots(&gEncoder->groups[i]);
         }
     }
     pthread_mutex_unlock(&encoder_mutex);
@@ -426,9 +442,7 @@ int IMP_Encoder_CreateGroup(int encGroup) {
         for (int i = 0; i < 6; i++) {
             gEncoder->groups[i].group_id = -1;
             gEncoder->groups[i].chn_count = 0;
-            gEncoder->groups[i].channels[0] = NULL;
-            gEncoder->groups[i].channels[1] = NULL;
-            gEncoder->groups[i].channels[2] = NULL;
+            enc_group_clear_slots(&gEncoder->groups[i]);
         }
     }
 
@@ -488,9 +502,7 @@ int IMP_Encoder_DestroyGroup(int encGroup) {
     }
 
     /* Check if any channels are still registered */
-    if (gEncoder->groups[encGroup].channels[0] != NULL ||
-        gEncoder->groups[encGroup].channels[1] != NULL ||
-        gEncoder->groups[encGroup].channels[2] != NULL) {
+    if (enc_group_has_channels(&gEncoder->groups[encGroup])) {
         LOG_ENC("DestroyGroup failed: group %d still has channels", encGroup);
         pthread_mutex_unlock(&encoder_mutex);
         return -1;
@@ -738,9 +750,7 @@ int IMP_Encoder_RegisterChn(int encGroup, int encChn) {
         for (int i = 0; i < 6; i++) {
             gEncoder->groups[i].group_id = -1;
             gEncoder->groups[i].chn_count = 0;
-            gEncoder->groups[i].channels[0] = NULL;
-            gEncoder->groups[i].channels[1] = NULL;
-            gEncoder->groups[i].channels[2] = NULL;
+            enc_group_clear_slots(&gEncoder->groups[i]);
         }
     }
 
@@ -752,22 +762,29 @@ int IMP_Encoder_RegisterChn(int encGroup, int encChn) {
     }
 
     /* OEM: RegisterChn does not require CreateGroup; proceed to use group slots */
-    /* Find empty slot in group (max 3 channels per group) */
     EncGroup *grp = &gEncoder->groups[encGroup];
+    int slot = -1;
+    for (int i = 0; i < MAX_CHANNELS_PER_GROUP; ++i) {
+        if (grp->channels[i] == &g_EncChannel[encChn]) {
+            slot = i;
+            break;
+        }
+        if (slot < 0 && grp->channels[i] == NULL) {
+            slot = i;
+        }
+    }
 
-    if (grp->channels[0] == NULL) {
-        grp->channels[0] = &g_EncChannel[encChn];
-    } else if (grp->channels[1] == NULL) {
-        grp->channels[1] = &g_EncChannel[encChn];
-    } else if (grp->channels[2] == NULL) {
-        grp->channels[2] = &g_EncChannel[encChn];
-    } else {
+    if (slot < 0) {
         LOG_ENC("RegisterChn failed: group %d is full", encGroup);
         pthread_mutex_unlock(&encoder_mutex);
         return -1;
     }
 
-    grp->chn_count++;
+    if (grp->channels[slot] != &g_EncChannel[encChn]) {
+        grp->channels[slot] = &g_EncChannel[encChn];
+        grp->chn_count++;
+    }
+
     g_EncChannel[encChn].group_ptr = grp;
     g_EncChannel[encChn].registered = 1;
 
@@ -801,16 +818,18 @@ int IMP_Encoder_UnRegisterChn(int encChn) {
     }
 
     /* Remove from group */
-    if (grp->channels[0] == &g_EncChannel[encChn]) {
-        grp->channels[0] = NULL;
-    } else if (grp->channels[1] == &g_EncChannel[encChn]) {
-        grp->channels[1] = NULL;
-    } else if (grp->channels[2] == &g_EncChannel[encChn]) {
-        grp->channels[2] = NULL;
+    for (int i = 0; i < MAX_CHANNELS_PER_GROUP; ++i) {
+        if (grp->channels[i] == &g_EncChannel[encChn]) {
+            grp->channels[i] = NULL;
+            if (grp->chn_count > 0) {
+                grp->chn_count--;
+            }
+            break;
+        }
     }
 
-    grp->chn_count--;
     g_EncChannel[encChn].registered = 0;
+    g_EncChannel[encChn].group_ptr = NULL;
 
     pthread_mutex_unlock(&encoder_mutex);
 
@@ -1509,7 +1528,7 @@ static int channel_encoder_init(EncChannel *chn) {
     /* Override codec parameters with values from channel attributes */
     *(uint32_t*)(codec_params + 0x14) = width;       /* Width at offset 0x14 */
     *(uint32_t*)(codec_params + 0x18) = height;      /* Height at offset 0x18 */
-    *(uint32_t*)(codec_params + 0x1f) = codec_type;  /* Codec type at offset 0x1f */
+    codec_params[0x1f] = (uint8_t)codec_type;        /* Codec type at offset 0x1f */
     *(uint32_t*)(codec_params + 0x24) = profile_idc; /* Profile at offset 0x24 */
     *(uint32_t*)(codec_params + 0x30) = bitrate;     /* Bitrate at offset 0x30 */
     *(uint32_t*)(codec_params + 0x7c) = fps_num;     /* FPS numerator at offset 0x7c */
@@ -2010,12 +2029,15 @@ static int encoder_update(void *module, void *frame) {
 
     /* Queue to each started channel registered in the target group. */
     if (enc_group >= 0) {
-        int group_channels[3] = { -1, -1, -1 };
+        int group_channels[MAX_CHANNELS_PER_GROUP];
+        for (int i = 0; i < MAX_CHANNELS_PER_GROUP; ++i) {
+            group_channels[i] = -1;
+        }
 
         pthread_mutex_lock(&encoder_mutex);
         if (gEncoder != NULL && gEncoder->groups[enc_group].group_id >= 0) {
             EncGroup *grp = &gEncoder->groups[enc_group];
-            for (int i = 0; i < 3; ++i) {
+            for (int i = 0; i < MAX_CHANNELS_PER_GROUP; ++i) {
                 if (grp->channels[i] != NULL) {
                     group_channels[i] = grp->channels[i]->chn_id;
                 }
@@ -2028,7 +2050,7 @@ static int encoder_update(void *module, void *frame) {
         pthread_mutex_unlock(&encoder_mutex);
 
         if (tried_group) {
-            for (int i = 0; i < 3; ++i) {
+            for (int i = 0; i < MAX_CHANNELS_PER_GROUP; ++i) {
                 int chn_id = group_channels[i];
                 if (chn_id < 0 || chn_id >= MAX_ENC_CHANNELS) {
                     continue;

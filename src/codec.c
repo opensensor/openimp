@@ -2587,16 +2587,17 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
             uint32_t fps_den = *(uint32_t*)(enc->codec_param + 0x80);
             uint32_t gop = *(uint32_t*)(enc->codec_param + 0x44);
             uint32_t profile_idc = *(uint32_t*)(enc->codec_param + 0x24);
+            uint32_t codec_type = (uint32_t)*((uint8_t*)enc->codec_param + 0x1f);
             uint32_t rc_mode = *(uint32_t*)(enc->codec_param + 0x2c);
-            LOG_CODEC("Process: lazy-init channel_id=%d %ux%u profile_idc=%u entropy_mode=%u",
-                      enc->channel_id, width, height, profile_idc, enc->entropy_mode);
+            LOG_CODEC("Process: lazy-init channel_id=%d %ux%u codec_type=%u profile_idc=%u entropy_mode=%u",
+                      enc->channel_id, width, height, codec_type, profile_idc, enc->entropy_mode);
             uint32_t init_qp = (*(uint32_t*)(enc->codec_param + 0x38)) & 0xFFu;
             uint32_t max_qp = *(uint32_t*)(enc->codec_param + 0x3c);
             uint32_t min_qp = *(uint32_t*)(enc->codec_param + 0x40);
             if (!gop) gop = *(uint32_t*)(enc->codec_param + 0xb0);
 
             memset(&enc->hw_params, 0, sizeof(enc->hw_params));
-            enc->hw_params.codec_type = HW_CODEC_H264; /* prudynt-t default */
+            enc->hw_params.codec_type = codec_type;
             enc->hw_params.width = width;
             enc->hw_params.height = height;
             enc->hw_params.fps_num = fps_num ? fps_num : 25;
@@ -2641,6 +2642,10 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
                 skip_avpu = 1;
             }
             pthread_mutex_unlock(&g_avpu_owner_mutex);
+
+            if (codec_type != IMP_ENC_TYPE_AVC) {
+                skip_avpu = 1;
+            }
 
             if (!skip_avpu) {
                 if (enc->avpu.fd > 2) {
@@ -3064,34 +3069,45 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
              * previous encoded output before GetStream drains it. */
             int buf_idx = 0;
             unsigned int core_status = 0;
-            if (ctx->frames_encoded > ctx->frames_consumed) {
-                unsigned int skip_count = __sync_add_and_fetch(&ctx->busy_skip_count, 1u);
-                if (skip_count == 1u || (skip_count % 30u) == 0u) {
-                    LOG_CODEC("Process: pending AVPU stream not yet drained; skipping CL[%u] submit (skip_count=%u enc=%d cons=%d)",
-                              idx, skip_count, ctx->frames_encoded, ctx->frames_consumed);
-                }
-                free(hw_stream);
-                return -1;
-            }
 
-            if (avpu_is_enc1_running(fd, 0, &core_status)) {
-                if (avpu_try_recover_sticky_completion(ctx, core_status, "Process[AVPU]")) {
+            /* The earlier local state that produced continuously ticking AVPU
+             * interrupts allowed further submissions after the first real IRQ,
+             * even though the core-status running bit remained latched. Keep
+             * the stricter "don't touch the pending buffer" behavior only
+             * before we have observed any real AVPU completion IRQ. */
+            if (ctx->last_irq_id < 0) {
+                if (ctx->frames_encoded > ctx->frames_consumed) {
+                    unsigned int skip_count = __sync_add_and_fetch(&ctx->busy_skip_count, 1u);
+                    if (skip_count == 1u || (skip_count % 30u) == 0u) {
+                        LOG_CODEC("Process: pending AVPU stream not yet drained; skipping CL[%u] submit (skip_count=%u enc=%d cons=%d)",
+                                  idx, skip_count, ctx->frames_encoded, ctx->frames_consumed);
+                    }
                     free(hw_stream);
                     return -1;
                 }
 
-                unsigned int skip_count = __sync_add_and_fetch(&ctx->busy_skip_count, 1u);
-                if (skip_count == 1u || (skip_count % 30u) == 0u) {
-                    LOG_CODEC("Process: Enc1 already running; skipping CL[%u] submit to match OEM gating (skip_count=%u core_status=0x%08x)",
-                              idx, skip_count, core_status);
-                    if (ctx->cl_count != 0) {
-                        uint32_t active_idx = (idx + ctx->cl_count - 1u) % ctx->cl_count;
-                        log_busy_enc1_cmd_window(ctx, active_idx, skip_count);
+                if (avpu_is_enc1_running(fd, 0, &core_status)) {
+                    if (avpu_try_recover_sticky_completion(ctx, core_status, "Process[AVPU]")) {
+                        free(hw_stream);
+                        return -1;
                     }
-                    avpu_log_busy_snapshot(ctx, idx, core_status);
+
+                    unsigned int skip_count = __sync_add_and_fetch(&ctx->busy_skip_count, 1u);
+                    if (skip_count == 1u || (skip_count % 30u) == 0u) {
+                        LOG_CODEC("Process: Enc1 already running; skipping CL[%u] submit to match OEM gating (skip_count=%u core_status=0x%08x)",
+                                  idx, skip_count, core_status);
+                        if (ctx->cl_count != 0) {
+                            uint32_t active_idx = (idx + ctx->cl_count - 1u) % ctx->cl_count;
+                            log_busy_enc1_cmd_window(ctx, active_idx, skip_count);
+                        }
+                        avpu_log_busy_snapshot(ctx, idx, core_status);
+                    }
+                    free(hw_stream);
+                    return -1;
                 }
-                free(hw_stream);
-                return -1;
+            } else if (ctx->busy_skip_count != 0) {
+                LOG_CODEC("Process: allowing AVPU resubmit after IRQ %d despite latched core state (enc=%d cons=%d)",
+                          ctx->last_irq_id, ctx->frames_encoded, ctx->frames_consumed);
             }
             ctx->busy_skip_count = 0;
 
@@ -3181,11 +3197,37 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
                 avpu_log_submit_snapshot(ctx, idx, "post_cl_push");
             }
 
-            /* Safety rollback: the speculative post-CL register block
-             * (ENC_EN_A/B/C + 0x8400..0x8428) is where the target now hangs.
-             * Stock AL_EncCore_Encode1 itself only flushes cache and pushes the
-             * command list(s); until the exact caller-side sequencing for these
-             * extra registers is recovered, do not program them here. */
+            /* The last local state that produced real AVPU IRQ activity on target
+             * programmed the stock post-CL encoder bring-up block immediately
+             * after CL_PUSH. Keep this sequence matched to that known-good state
+             * so the hardware actually advances far enough to raise completion
+             * interrupts instead of remaining stuck with enc_en_a/b/c == 0. */
+            {
+                uint32_t y_plane_sz = avpu_get_nv12_luma_plane_size(width, height);
+                uint32_t stream_part_offset = avpu_get_enc1_stream_part_offset(ctx);
+
+                avpu_write_reg(fd, AVPU_REG_ENC_EN_B, 0x00000001);
+                avpu_write_reg(fd, AVPU_REG_ENC_EN_A, 0x00000001);
+
+                avpu_write_reg(fd, 0x8400, 0x00000131u);
+                avpu_write_reg(fd, 0x8404,
+                    (((uint32_t)width - 1u) << 16) | ((uint32_t)height - 1u));
+                avpu_write_reg(fd, 0x8408, 0x00010001u);
+                avpu_write_reg(fd, 0x840c, (uint32_t)width);
+                avpu_write_reg(fd, 0x8410, phys_addr);
+                avpu_write_reg(fd, 0x8414, phys_addr + y_plane_sz);
+                avpu_write_reg(fd, 0x8418, ctx->interm_buf.phy_addr + ctx->interm_ep1_size);
+                avpu_write_reg(fd, 0x841c, ctx->interm_buf.phy_addr);
+                avpu_write_reg(fd, 0x8420, stream_part_offset);
+                avpu_write_reg(fd, 0x8424, hdr_offset);
+                avpu_write_reg(fd, 0x8428,
+                    stream_part_offset > hdr_offset
+                        ? (stream_part_offset - hdr_offset) & ~0x1fu : 0u);
+
+                avpu_write_reg(fd, AVPU_REG_ENC_EN_C, 0x00000001);
+
+                LOG_CODEC("AVPU: post-CL encoder config written (ENC_EN_A/B/C + 0x8400-0x8428)");
+            }
 
             /* OEM parity: For AVC, the Enc2 slice parameters are embedded in the
              * Enc1 CL (at cmd[0x1b]-cmd[0x1f], filled above in fill_cmd_regs_enc1).
