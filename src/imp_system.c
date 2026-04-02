@@ -602,6 +602,12 @@ Module* IMP_System_AllocModule(const char *name, int groupID) {
     Module *mod = AllocModule(name, 0);
     if (mod != NULL) {
         mod->group_id = groupID;
+        /* CRITICAL: Also write group_id at the hardcoded OEM offset 0x130.
+         * The C struct layout may not match the MIPS32 binary layout due to
+         * different sizeof(sem_t)/sizeof(pthread_mutex_t) across toolchains.
+         * encoder_update reads group_id from the hardcoded offset 0x130, so
+         * we must ensure the value is written there regardless of struct layout. */
+        *((uint32_t*)((char*)mod + 0x130)) = (uint32_t)groupID;
     }
     return mod;
 }
