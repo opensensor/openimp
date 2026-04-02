@@ -337,10 +337,56 @@ static long jz_cmd_flush_cache(long arg)
 		return -EFAULT;
 	}
 
-	printk(KERN_INFO "[AVPU] FLUSH_CACHE: addr=0x%08x len=%u dir=%u\n",
-	       info.addr, info.len, info.dir);
+	/* The userspace address cannot be used directly with dma_cache_sync.
+	 * Instead, use the MIPS KSEG0 cached kernel address for the physical
+	 * page to flush both L1 and L2 caches properly.
+	 * For rmem region (phys < 512MB), CKSEG0_ADDR works directly. */
+	{
+		struct vm_area_struct *vma;
+		unsigned long uaddr = (unsigned long)info.addr;
+		unsigned long end = uaddr + info.len;
+		unsigned long addr;
 
-	dma_cache_sync(NULL, (void *)info.addr, info.len, info.dir);
+		/* Walk pages and flush each one via kernel address */
+		down_read(&current->mm->mmap_sem);
+		for (addr = uaddr & PAGE_MASK; addr < end; addr += PAGE_SIZE) {
+			pgd_t *pgd = pgd_offset(current->mm, addr);
+			pud_t *pud;
+			pmd_t *pmd;
+			pte_t *pte;
+			unsigned long phys;
+			void *kaddr;
+			unsigned long flush_start, flush_len;
+
+			if (pgd_none(*pgd)) continue;
+			pud = pud_offset(pgd, addr);
+			if (pud_none(*pud)) continue;
+			pmd = pmd_offset(pud, addr);
+			if (pmd_none(*pmd)) continue;
+			pte = pte_offset_map(pmd, addr);
+			if (!pte || !pte_present(*pte)) {
+				if (pte) pte_unmap(pte);
+				continue;
+			}
+			phys = (pte_pfn(*pte) << PAGE_SHIFT) | (addr & ~PAGE_MASK);
+			pte_unmap(pte);
+
+			/* Use KSEG0 address for proper L1+L2 cache flush */
+			kaddr = (void *)CKSEG0ADDR(phys);
+			flush_start = (addr < uaddr) ? (uaddr - addr) : 0;
+			flush_len = PAGE_SIZE - flush_start;
+			if (addr + flush_start + flush_len > end)
+				flush_len = end - (addr + flush_start);
+
+			if (info.dir == 1) /* DMA_TO_DEVICE = writeback */
+				dma_cache_wback((unsigned long)kaddr + flush_start, flush_len);
+			else if (info.dir == 2) /* DMA_FROM_DEVICE = invalidate */
+				dma_cache_inv((unsigned long)kaddr + flush_start, flush_len);
+			else /* bidirectional */
+				dma_cache_wback_inv((unsigned long)kaddr + flush_start, flush_len);
+		}
+		up_read(&current->mm->mmap_sem);
+	}
 
 	return ret;
 }

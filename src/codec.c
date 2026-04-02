@@ -109,14 +109,20 @@ static inline unsigned AVPU_CORE_BASE(int core) { return (AVPU_BASE_OFFSET + 0x3
  * CRITICAL: The previous path using the AVPU driver's JZ_CMD_FLUSH_CACHE
  * (ioctl 0xc004710e → dma_cache_sync(NULL,...)) does NOT reliably flush the
  * MIPS data cache. The rmem driver's flush is the only proven path on T31. */
-/* Cache flush via OEM-compatible /dev/rmem ioctl 0xc00c7200.
- * OEM: Rtos_FlushCacheMemory → alloc_kmem_flush_cache → ioctl(rmem_fd, ...)
- * CRITICAL: The rmem mmap MUST use offset=kmem_paddr (not 0) for the
- * flush ioctl to find the correct pages. Fixed in dma_alloc.c. */
+/* Cache flush via AVPU driver's JZ_CMD_FLUSH_CACHE ioctl.
+ * The avpu.ko handler walks page tables to find physical addresses,
+ * then uses MIPS KSEG0 kernel addresses for proper L1+L2 cache flush.
+ * rmem has NO flush ioctl — it's just reserved memory with mmap. */
+#define JZ_CMD_FLUSH_CACHE_IOCTL _IOWR('q', 14, int)
+struct avpu_flush_info { unsigned int addr; unsigned int len; unsigned int dir; };
 static int avpu_flush_cache(int fd, void *virt_addr, unsigned int size, unsigned int dir)
 {
-    (void)fd;
-    return DMA_RmemFlushCache(virt_addr, size, (int)dir);
+    if (fd < 0 || !virt_addr || size == 0) return -1;
+    struct avpu_flush_info info;
+    info.addr = (unsigned int)(uintptr_t)virt_addr;
+    info.len = size;
+    info.dir = dir;
+    return ioctl(fd, JZ_CMD_FLUSH_CACHE_IOCTL, &info);
 }
 
 static int avpu_flush_dma_buf(int fd, const char *tag, const AvpuDMABuf *buf, size_t size)
