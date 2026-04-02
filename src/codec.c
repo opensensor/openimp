@@ -1178,7 +1178,7 @@ static void fill_cmd_regs_enc1(const ALAvpuContext* ctx, uint32_t* cmd,
             uint32_t map_addr = ep2_addr + ctx->interm_ep2_size;
             uint32_t data_addr = map_addr + ctx->interm_map_size;
 
-            cmd[0x30] = stream_desc_phys;               /* stream buffer phys base */
+            cmd[0x30] = data_addr;                     /* intermediate data buffer */
             cmd[0x31] = stream_part_offset;            /* stock: 0x00027780 */
             cmd[0x32] = stream_offset;                 /* stock: 0x00000220 */
             cmd[0x33] = stream_part_offset > stream_offset
@@ -2873,10 +2873,17 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
             LOG_CODEC("AVPU: init complete (stock-matched sequence)");
             ctx->session_ready = 1;
 
-            /* NOTE: Stock libimp does NOT write STRM_PUSH (0x8094) during init.
-             * Stream buffer addresses are provided via the CL (cmd[0x30]) and the
-             * encoder config registers (0x8420-0x8428) instead. Removed STRM_PUSH
-             * to match stock register sequence exactly. */
+            /* Push stream buffers via STRM_PUSH so the hardware DMA engine
+             * knows they're available. The CL (cmd[0x30]) specifies where to
+             * write, but STRM_PUSH registers the buffer with the DMA controller. */
+            if (ctx->stream_bufs_used > 0) {
+                for (int i = 0; i < ctx->stream_bufs_used; ++i) {
+                    if (ctx->stream_bufs[i].phy_addr) {
+                        avpu_write_reg(fd, AVPU_REG_STRM_PUSH, ctx->stream_bufs[i].phy_addr);
+                        LOG_CODEC("AVPU: STRM_PUSH buf[%d] phys=0x%08x", i, ctx->stream_bufs[i].phy_addr);
+                    }
+                }
+            }
 
             LOG_CODEC("AVPU: HW initialized (AL_EncCore_Init)");
 
@@ -3189,6 +3196,18 @@ int AL_Codec_Encode_GetStream(void *codec, void **stream, void **user_data) {
                     frame_size = end;
                 }
 
+                /* Debug: check ALL stream buffers for AVPU-written data */
+                if (frame_size <= 48) {
+                    for (int si = 0; si < ctx->stream_bufs_used; si++) {
+                        if (!ctx->stream_bufs[si].map) continue;
+                        avpu_flush_cache(ctx->fd, ctx->stream_bufs[si].map,
+                                         (unsigned int)ctx->stream_buf_size, 2);
+                        const uint32_t *sw = (const uint32_t*)ctx->stream_bufs[si].map;
+                        /* Check words at offsets 0, 12, 64 for any non-zero data */
+                        LOG_CODEC("GetStream[AVPU]: buf[%d] w0=%08x w12=%08x w64=%08x w128=%08x",
+                                  si, sw[0], sw[12], sw[64], sw[128]);
+                    }
+                }
                 LOG_CODEC("GetStream[AVPU]: stream_buf[%d] frame_size=%u",
                           buf_idx, frame_size);
 
