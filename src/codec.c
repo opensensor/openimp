@@ -2727,16 +2727,20 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
                          *   EndAvcEntropy:  core*4 + 2 = 2 for core 0
                          * T31 has a single AVPU core (core 0). */
                         int core = 0; /* T31: single AVPU core */
-                        int irq_id0 = core * 4;           /* IRQ 0: EndEncoding */
-                        int irq_id2 = core * 4 + 2;       /* IRQ 2: EndAvcEntropy */
+                        /* Stock fires IRQ 4 (not 0) for encode completion.
+                         * Stock IRQ mask = 0x11 (bits 0+4). Register callbacks
+                         * at BOTH slots 0 and 4 to handle whichever fires. */
+                        int irq_id0 = 0;                  /* IRQ 0 */
+                        int irq_id4 = 4;                  /* IRQ 4: stock EndEncoding */
+                        int irq_id2 = 2;                  /* IRQ 2: EndAvcEntropy */
 
                         avpu_register_callback(&enc->avpu, avpu_end_encoding_callback, &enc->avpu, irq_id0);
-                        LOG_CODEC("AVPU: registered EndEncoding callback for core %d (IRQ %d)", core, irq_id0);
+                        avpu_register_callback(&enc->avpu, avpu_end_encoding_callback, &enc->avpu, irq_id4);
+                        LOG_CODEC("AVPU: registered EndEncoding callback at IRQ %d and %d", irq_id0, irq_id4);
 
-                        /* OEM maps the +2 interrupt to EndAvcEntropy, not EndEncoding. */
                         if (irq_id2 < 20) {
                             avpu_register_callback(&enc->avpu, avpu_end_avc_entropy_callback, &enc->avpu, irq_id2);
-                            LOG_CODEC("AVPU: registered EndAvcEntropy callback for core %d (IRQ %d)", core, irq_id2);
+                            LOG_CODEC("AVPU: registered EndAvcEntropy callback at IRQ %d", irq_id2);
                         }
 
                         enc->use_hardware = 2; /* 2 = AL/AVPU path */
