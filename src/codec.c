@@ -3169,36 +3169,31 @@ int AL_Codec_Encode_GetStream(void *codec, void **stream, void **user_data) {
                  * where the AVPU stopped writing in the stream buffer.
                  * We also check CL[0x104/4] & 0x3FFFFFFF for entropy-reported bits. */
 
-                /* DMA-invalidate the ENTIRE CL ring to read status from all entries */
+                /* DMA-invalidate CL entry 0 (first submitted) to read status.
+                 * The AVPU overwrites ALL 128 words with status data after encode.
+                 * Key status offsets (from OEM EncodingStatusRegsToSliceStatus):
+                 *   word 65 (0x104): entropy status — bits & 0x3FFFFFFF = encoded bits
+                 *   word 76 (0x130): total encoded bits (main accumulator)
+                 * Also invalidate the stream buffer to read the encoded data. */
                 avpu_flush_cache(ctx->fd, ctx->cl_ring.map,
                                  (unsigned int)(ctx->cl_entry_size * ctx->cl_count), 2 /*INV*/);
 
-                /* Scan CL entries for the one with valid status.
-                 * The AVPU writes encoded size to CL[0xC8/4] after completion. */
+                uint32_t *cw = (uint32_t *)ctx->cl_ring.map; /* entry 0 */
+                uint32_t entropy_word = cw[0x104 / 4]; /* word 65 */
+                uint32_t total_bits_word = cw[0x130 / 4]; /* word 76 */
+                uint32_t encoded_bits = entropy_word & 0x3FFFFFFFu;
+                int encode_error = (entropy_word >> 31) & 1;
                 uint32_t frame_size = 0;
-                uint32_t entropy_status = 0;
-                uint32_t encoded_bits = 0;
-                int encode_error = 0;
-                int found_idx = -1;
 
-                for (uint32_t ci = 0; ci < ctx->cl_count && ci < 19u; ci++) {
-                    uint32_t *cw = (uint32_t *)((uint8_t*)ctx->cl_ring.map + ci * ctx->cl_entry_size);
-                    uint32_t seo = cw[0xC8 / 4];
-                    uint32_t es = cw[0x104 / 4];
-                    if (seo != 0 || (es & 0x3FFFFFFFu) != 0) {
-                        frame_size = seo;
-                        entropy_status = es;
-                        encoded_bits = es & 0x3FFFFFFFu;
-                        encode_error = (es >> 31) & 1;
-                        found_idx = (int)ci;
-                        if (frame_size == 0 && encoded_bits > 0)
-                            frame_size = ctx->stream_header_offset + (encoded_bits + 7u) / 8u;
-                        break;
-                    }
-                }
+                /* Use total_bits if available, else entropy bits */
+                if (total_bits_word > 0)
+                    frame_size = ctx->stream_header_offset + (total_bits_word + 7u) / 8u;
+                else if (encoded_bits > 0)
+                    frame_size = ctx->stream_header_offset + (encoded_bits + 7u) / 8u;
 
-                LOG_CODEC("GetStream[AVPU]: found_cl=%d CL[0xC8]=0x%x CL[0x104]=0x%x bits=%u err=%d frame_size=%u",
-                          found_idx, frame_size, entropy_status, encoded_bits, encode_error, frame_size);
+                LOG_CODEC("GetStream[AVPU]: CL[0x104]=0x%08x CL[0x130]=0x%08x enc_bits=%u total_bits=%u err=%d hdr=%u frame_size=%u",
+                          entropy_word, total_bits_word, encoded_bits, total_bits_word, encode_error,
+                          ctx->stream_header_offset, frame_size);
 
                 /* DMA-invalidate the stream buffer to read encoded data */
                 int buf_idx = 0; /* TODO: track which buffer was used per frame */
