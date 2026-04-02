@@ -1600,14 +1600,22 @@ static void avpu_end_encoding_callback(void *user_data)
      * - Merges status into result structure
      */
 
-    /* For now, just signal that data is ready by incrementing a counter
-     * The GetStream function will check stream buffers and queue to FIFO
-     * This avoids touching stream buffers from the callback thread
-     */
     avpu_promote_reference(ctx);
     __sync_fetch_and_add(&ctx->frames_encoded, 1);
 
-    LOG_CODEC("EndEncoding: frames_encoded=%d", ctx->frames_encoded);
+    /* Stock resets the core between encodes to clear core_status.
+     * Without this, core_status stays at 0x3 and the busy check
+     * prevents submitting the next frame.
+     * Stock sequence: clock gate OFF → ON → ResetCore(1,2,4) */
+    if (ctx->fd >= 0) {
+        avpu_write_reg(ctx->fd, AVPU_REG_CORE_CLKCMD(0), 0x00010000u); /* gate OFF */
+        avpu_write_reg(ctx->fd, AVPU_REG_CORE_CLKCMD(0), 0x00000001u); /* gate ON */
+        avpu_write_reg(ctx->fd, AVPU_REG_CORE_RESET(0), 0x00000001u);
+        avpu_write_reg(ctx->fd, AVPU_REG_CORE_RESET(0), 0x00000002u);
+        avpu_write_reg(ctx->fd, AVPU_REG_CORE_RESET(0), 0x00000004u);
+    }
+
+    LOG_CODEC("EndEncoding: frames_encoded=%d (core reset for next frame)", ctx->frames_encoded);
 }
 
 /* EndAvcEntropy callback - separate OEM IRQ slot (core*4+2).
