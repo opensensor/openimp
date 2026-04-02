@@ -1471,6 +1471,57 @@ static void avpu_promote_reference(ALAvpuContext *ctx)
               ctx->ref_trace_buf.phy_addr, ctx->rec_trace_buf.phy_addr);
 }
 
+static void avpu_complete_frame(ALAvpuContext *ctx, const char *source)
+{
+    int frames_encoded;
+
+    if (!ctx)
+        return;
+
+    avpu_promote_reference(ctx);
+    frames_encoded = __sync_add_and_fetch(&ctx->frames_encoded, 1);
+
+    LOG_CODEC("%s: frames_encoded=%d frame_number=%u frames_consumed=%d",
+              source ? source : "EndEncoding",
+              frames_encoded, ctx->frame_number, ctx->frames_consumed);
+}
+
+static int avpu_try_recover_sticky_completion(ALAvpuContext *ctx,
+                                              unsigned int core_status,
+                                              const char *source)
+{
+    int frames_encoded;
+    int frames_consumed;
+    unsigned int submitted_frames;
+
+    if (!ctx || !ctx->session_ready)
+        return 0;
+
+    if ((core_status & 0x3u) != 0x3u)
+        return 0;
+
+    frames_encoded = ctx->frames_encoded;
+    frames_consumed = ctx->frames_consumed;
+    submitted_frames = ctx->frame_number;
+
+    if (submitted_frames <= (unsigned int)frames_encoded)
+        return 0;
+
+    if (frames_encoded != frames_consumed)
+        return 0;
+
+    LOG_CODEC("%s: recovering sticky completion core_status=0x%08x submitted=%u enc=%d cons=%d last_irq=%d",
+              source ? source : "AVPU",
+              core_status,
+              submitted_frames,
+              frames_encoded,
+              frames_consumed,
+              ctx->last_irq_id);
+
+    avpu_complete_frame(ctx, source ? source : "EndEncoding[sticky]");
+    return 1;
+}
+
 /* OEM uses 24-bit interrupt clear (0xFFFFFF), not 32-bit.
  * Writing to non-existent upper bits can hang the bus on T31. */
 #define AVPU_IRQ_CLEAR_MASK 0x00FFFFFFu
@@ -1656,14 +1707,11 @@ static void avpu_end_encoding_callback(void *user_data)
      * - Merges status into result structure
      */
 
-    avpu_promote_reference(ctx);
-    __sync_fetch_and_add(&ctx->frames_encoded, 1);
+    avpu_complete_frame(ctx, "EndEncoding callback");
 
     /* Do NOT reset from callback — writing registers from IRQ thread context
      * while hardware is still active causes a hard lockup. The reset is done
      * in the submission path (Process) before the next CL_PUSH instead. */
-
-    LOG_CODEC("EndEncoding: frames_encoded=%d", ctx->frames_encoded);
 }
 
 /* EndAvcEntropy callback - separate OEM IRQ slot (core*4+2).
@@ -2970,7 +3018,45 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
                 }
             }
 
+            /* OEM AL_EncCore_Encode1() checks IsEnc1AlreadyRunning() before
+             * flushing/pushing a new Enc1 command list. Our simplified path
+             * uses a single effective rec/ref pair plus a single actively-used
+             * stream buffer, so matching this gate BEFORE touching buf[0] is
+             * important: otherwise a busy/sticky core can cause us to erase the
+             * previous encoded output before GetStream drains it. */
             int buf_idx = 0;
+            unsigned int core_status = 0;
+            if (ctx->frames_encoded > ctx->frames_consumed) {
+                unsigned int skip_count = __sync_add_and_fetch(&ctx->busy_skip_count, 1u);
+                if (skip_count == 1u || (skip_count % 30u) == 0u) {
+                    LOG_CODEC("Process: pending AVPU stream not yet drained; skipping CL[%u] submit (skip_count=%u enc=%d cons=%d)",
+                              idx, skip_count, ctx->frames_encoded, ctx->frames_consumed);
+                }
+                free(hw_stream);
+                return -1;
+            }
+
+            if (avpu_is_enc1_running(fd, 0, &core_status)) {
+                if (avpu_try_recover_sticky_completion(ctx, core_status, "Process[AVPU]")) {
+                    free(hw_stream);
+                    return -1;
+                }
+
+                unsigned int skip_count = __sync_add_and_fetch(&ctx->busy_skip_count, 1u);
+                if (skip_count == 1u || (skip_count % 30u) == 0u) {
+                    LOG_CODEC("Process: Enc1 already running; skipping CL[%u] submit to match OEM gating (skip_count=%u core_status=0x%08x)",
+                              idx, skip_count, core_status);
+                    if (ctx->cl_count != 0) {
+                        uint32_t active_idx = (idx + ctx->cl_count - 1u) % ctx->cl_count;
+                        log_busy_enc1_cmd_window(ctx, active_idx, skip_count);
+                    }
+                    avpu_log_busy_snapshot(ctx, idx, core_status);
+                }
+                free(hw_stream);
+                return -1;
+            }
+            ctx->busy_skip_count = 0;
+
             if (buf_idx < ctx->stream_bufs_used && ctx->stream_bufs[buf_idx].map) {
                 memset(ctx->stream_bufs[buf_idx].map, 0, (size_t)ctx->stream_buf_size);
                 avpu_flush_cache(fd, ctx->stream_bufs[buf_idx].map,
@@ -2990,34 +3076,6 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
             /* Fill Enc1 command registers — source addr and header offset go INTO the CL entry */
             fill_cmd_regs_enc1(ctx, cmd, buf_idx, phys_addr, hdr_offset, is_idr);
             log_first_enc1_cmd_window(ctx, idx, cmd);
-
-            /* OEM AL_EncCore_Encode1() checks IsEnc1AlreadyRunning() before
-             * flushing/pushing a new Enc1 command list. Our simplified path
-             * uses a single effective rec/ref pair, so matching this gate is
-             * important before submitting the next frame. */
-            /* Bypass busy check if a previous encode completed — the hardware
-             * latches core_status=0x3 after completion. Without draining via
-             * GetStream + ReleaseStream, we can't reset yet. Allow submission
-             * to continue so the pipeline keeps producing frames. */
-            unsigned int core_status = 0;
-            if (ctx->frames_encoded > 0) {
-                ctx->busy_skip_count = 0;
-                /* fall through to submit */
-            } else if (avpu_is_enc1_running(fd, 0, &core_status)) {
-                unsigned int skip_count = __sync_add_and_fetch(&ctx->busy_skip_count, 1u);
-                if (skip_count == 1u || (skip_count % 30u) == 0u) {
-                    LOG_CODEC("Process: Enc1 already running; skipping CL[%u] submit to match OEM gating (skip_count=%u core_status=0x%08x)",
-                              idx, skip_count, core_status);
-                    if (ctx->cl_count != 0) {
-                        uint32_t active_idx = (idx + ctx->cl_count - 1u) % ctx->cl_count;
-                        log_busy_enc1_cmd_window(ctx, active_idx, skip_count);
-                    }
-                    avpu_log_busy_snapshot(ctx, idx, core_status);
-                }
-                free(hw_stream);
-                return -1;
-            }
-            ctx->busy_skip_count = 0;
 
             /* Flush the mapped command-list region from CPU cache to RAM.
              * OEM AL_EncCore_Encode1 flushes a much larger 0x100000 window
@@ -3209,6 +3267,14 @@ int AL_Codec_Encode_GetStream(void *codec, void **stream, void **user_data) {
         struct timespec nap = {0, 10000000L}; /* 10ms */
 
         for (int retry = 0; retry < 200; ++retry) {
+            if (ctx->frames_encoded <= ctx->frames_consumed) {
+                unsigned int core_status = 0;
+
+                if (avpu_read_reg_quiet(ctx->fd, AVPU_REG_CORE_STATUS(0), &core_status) == 0) {
+                    avpu_try_recover_sticky_completion(ctx, core_status, "GetStream[AVPU]");
+                }
+            }
+
             if (ctx->frames_encoded > ctx->frames_consumed) {
                 /* OEM reads encoded size from CL status at offset +0xC8.
                  * After the AVPU writes encoded data, CL[0xC8/4] = byte offset
