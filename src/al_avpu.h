@@ -179,6 +179,7 @@ typedef struct ALAvpuContext {
     volatile int reference_valid;
 
     volatile int frames_encoded;
+    volatile int frames_consumed;
     volatile unsigned int busy_skip_count;
     volatile int busy_snapshot_emitted;
     volatile int first_submit_logged;

@@ -1475,6 +1475,19 @@ static void avpu_turn_on_gc(int fd, int core)
     avpu_write_reg(fd, AVPU_REG_CORE_CLKCMD(core), new_val);
 }
 
+/* OEM SetClockCommand(ip, core, 0) — turn OFF clock gate via read-modify-write */
+static void avpu_turn_off_gc(int fd, int core)
+{
+    unsigned int old = 0;
+    unsigned int new_val = 0u;
+
+    if (avpu_read_reg_quiet(fd, AVPU_REG_CORE_CLKCMD(core), &old) == 0) {
+        new_val = ((old ^ 0u) & 0x3u) ^ old; /* clear bits[1:0] */
+    }
+
+    avpu_write_reg(fd, AVPU_REG_CORE_CLKCMD(core), new_val);
+}
+
 /* Fifo_Init - based on decompilation at 0x7af28 */
 static int fifo_init(long *fifo, int max_elements)
 {
@@ -2920,16 +2933,14 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
              * flushing/pushing a new Enc1 command list. Our simplified path
              * uses a single effective rec/ref pair, so matching this gate is
              * important before submitting the next frame. */
-            /* After an encode completes, core_status stays 0x3 (latched).
-             * Resetting the core while in this state crashes the SoC.
-             * Instead: if the EndEncoding callback already fired (frames_encoded
-             * incremented), skip the busy check — the hardware is done and will
-             * accept a new CL_PUSH. */
+            /* Bypass busy check if a previous encode completed — the hardware
+             * latches core_status=0x3 after completion. Without draining via
+             * GetStream + ReleaseStream, we can't reset yet. Allow submission
+             * to continue so the pipeline keeps producing frames. */
             unsigned int core_status = 0;
             if (ctx->frames_encoded > 0) {
-                /* Previous encode completed — hardware is ready for next CL.
-                 * Clear the latched status by just proceeding. */
                 ctx->busy_skip_count = 0;
+                /* fall through to submit */
             } else if (avpu_is_enc1_running(fd, 0, &core_status)) {
                 unsigned int skip_count = __sync_add_and_fetch(&ctx->busy_skip_count, 1u);
                 if (skip_count == 1u || (skip_count % 30u) == 0u) {
@@ -3134,47 +3145,60 @@ int AL_Codec_Encode_GetStream(void *codec, void **stream, void **user_data) {
 
     *user_data = NULL;
 
+    LOG_CODEC("GetStream: use_hw=%d avpu.fd=%d", enc->use_hardware, enc->avpu.fd);
+
     if (enc->use_hardware == 2 && enc->avpu.fd >= 0) {
-        /* OEM parity: Poll for encoded data, then check stream buffers
-         * The EndEncoding callback increments frames_encoded counter.
-         * We poll for the counter, then safely check stream buffers.
-         */
         ALAvpuContext *ctx = &enc->avpu;
+
+        LOG_CODEC("GetStream[AVPU]: enc=%d cons=%d session=%d",
+                  ctx->frames_encoded, ctx->frames_consumed, ctx->session_ready);
 
         if (!ctx->session_ready) {
             errno = EAGAIN;
             return -1;
         }
 
-        /* Poll for frames_encoded to increment (max 2 seconds) */
-        int initial_count = ctx->frames_encoded;
+        /* Wait for at least one frame to be encoded, then return data.
+         * Track frames_consumed separately so we drain all produced frames. */
         struct timespec nap = {0, 10000000L}; /* 10ms */
 
         for (int retry = 0; retry < 200; ++retry) {
-            if (ctx->frames_encoded > initial_count) {
+            if (ctx->frames_encoded > ctx->frames_consumed) {
                 /* OEM reads encoded size from CL status at offset +0xC8.
                  * After the AVPU writes encoded data, CL[0xC8/4] = byte offset
                  * where the AVPU stopped writing in the stream buffer.
                  * We also check CL[0x104/4] & 0x3FFFFFFF for entropy-reported bits. */
 
-                /* DMA-invalidate the CL entry to read hardware-written status */
-                uint32_t completed_idx = (ctx->cl_idx + ctx->cl_count - 1u) % ctx->cl_count;
-                uint8_t *cl_entry = (uint8_t*)ctx->cl_ring.map + (size_t)completed_idx * ctx->cl_entry_size;
-                avpu_flush_cache(ctx->fd, cl_entry, ctx->cl_entry_size, 2 /*INV*/);
+                /* DMA-invalidate the ENTIRE CL ring to read status from all entries */
+                avpu_flush_cache(ctx->fd, ctx->cl_ring.map,
+                                 (unsigned int)(ctx->cl_entry_size * ctx->cl_count), 2 /*INV*/);
 
-                uint32_t *cl_words = (uint32_t *)cl_entry;
-                uint32_t stream_end_offset = cl_words[0xC8 / 4]; /* byte offset in stream buf */
-                uint32_t entropy_status = cl_words[0x104 / 4];
-                uint32_t encoded_bits = entropy_status & 0x3FFFFFFFu;
-                int encode_error = (entropy_status >> 31) & 1;
+                /* Scan CL entries for the one with valid status.
+                 * The AVPU writes encoded size to CL[0xC8/4] after completion. */
+                uint32_t frame_size = 0;
+                uint32_t entropy_status = 0;
+                uint32_t encoded_bits = 0;
+                int encode_error = 0;
+                int found_idx = -1;
 
-                /* Use stream_end_offset as primary size, fall back to entropy bits */
-                uint32_t frame_size = stream_end_offset;
-                if (frame_size == 0 && encoded_bits > 0)
-                    frame_size = ctx->stream_header_offset + (encoded_bits + 7u) / 8u;
+                for (uint32_t ci = 0; ci < ctx->cl_count && ci < 19u; ci++) {
+                    uint32_t *cw = (uint32_t *)((uint8_t*)ctx->cl_ring.map + ci * ctx->cl_entry_size);
+                    uint32_t seo = cw[0xC8 / 4];
+                    uint32_t es = cw[0x104 / 4];
+                    if (seo != 0 || (es & 0x3FFFFFFFu) != 0) {
+                        frame_size = seo;
+                        entropy_status = es;
+                        encoded_bits = es & 0x3FFFFFFFu;
+                        encode_error = (es >> 31) & 1;
+                        found_idx = (int)ci;
+                        if (frame_size == 0 && encoded_bits > 0)
+                            frame_size = ctx->stream_header_offset + (encoded_bits + 7u) / 8u;
+                        break;
+                    }
+                }
 
-                LOG_CODEC("GetStream[AVPU]: CL[0xC8]=0x%x CL[0x104]=0x%x bits=%u err=%d frame_size=%u",
-                          stream_end_offset, entropy_status, encoded_bits, encode_error, frame_size);
+                LOG_CODEC("GetStream[AVPU]: found_cl=%d CL[0xC8]=0x%x CL[0x104]=0x%x bits=%u err=%d frame_size=%u",
+                          found_idx, frame_size, entropy_status, encoded_bits, encode_error, frame_size);
 
                 /* DMA-invalidate the stream buffer to read encoded data */
                 int buf_idx = 0; /* TODO: track which buffer was used per frame */
@@ -3195,8 +3219,9 @@ int AL_Codec_Encode_GetStream(void *codec, void **stream, void **user_data) {
                     s->slice_type = 0;
                     *stream = s;
                     *user_data = codec_dequeue_frame_metadata(enc);
-                    LOG_CODEC("GetStream[AVPU]: got stream buf[%d] phys=0x%08x len=%u frames=%d",
-                             buf_idx, s->phys_addr, s->length, ctx->frames_encoded);
+                    ctx->frames_consumed++;
+                    LOG_CODEC("GetStream[AVPU]: got stream buf[%d] phys=0x%08x len=%u enc=%d cons=%d",
+                             buf_idx, s->phys_addr, s->length, ctx->frames_encoded, ctx->frames_consumed);
                     return 0;
                 }
 
@@ -3211,8 +3236,11 @@ int AL_Codec_Encode_GetStream(void *codec, void **stream, void **user_data) {
         return -1;
     }
 
-    /* Legacy/SW path: dequeue from our FIFO (wait indefinitely) */
-    void *s = Fifo_Dequeue(enc->fifo_streams, -1);
+    /* Legacy/SW path: dequeue from our FIFO.
+     * Use 100ms timeout instead of blocking forever — the stream_thread
+     * needs to retry so it can see use_hardware transition from 1→2
+     * when the AVPU path activates on the first frame. */
+    void *s = Fifo_Dequeue(enc->fifo_streams, 100);
     if (s == NULL) {
         return -1;
     }
