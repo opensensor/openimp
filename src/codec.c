@@ -3146,50 +3146,67 @@ int AL_Codec_Encode_GetStream(void *codec, void **stream, void **user_data) {
             return -1;
         }
 
-        LOG_CODEC("GetStream[AVPU]: polling for encoded frame (frames_encoded=%d)...", ctx->frames_encoded);
-
         /* Poll for frames_encoded to increment (max 2 seconds) */
         int initial_count = ctx->frames_encoded;
         struct timespec nap = {0, 10000000L}; /* 10ms */
 
         for (int retry = 0; retry < 200; ++retry) {
             if (ctx->frames_encoded > initial_count) {
-                for (int i = 0; i < ctx->stream_bufs_used; ++i) {
-                    if (ctx->stream_in_hw[i]) {
-                        /* DMA-invalidate: the AVPU wrote to this buffer via DMA.
-                         * dir=2 = DMA_FROM_DEVICE (invalidate CPU cache). */
-                        if (ctx->stream_bufs[i].map) {
-                            avpu_flush_cache(ctx->fd, ctx->stream_bufs[i].map,
-                                             (unsigned int)ctx->stream_buf_size, 2 /*INV*/);
-                        }
-                        const uint8_t *virt = (const uint8_t*)ctx->stream_bufs[i].map;
-                        size_t eff = annexb_effective_size(virt, ctx->stream_buf_size);
-                        if (eff > 0) {
-                            HWStreamBuffer *s = (HWStreamBuffer*)malloc(sizeof(HWStreamBuffer));
-                            if (!s) return -1;
-                            s->phys_addr = ctx->stream_bufs[i].phy_addr;
-                            s->virt_addr = (uint32_t)(uintptr_t)virt;
-                            s->length = (uint32_t)eff;
-                            s->timestamp = 0;
-                            s->frame_type = 0;
-                            s->slice_type = 0;
-                            ctx->stream_in_hw[i] = 0;
-                            *stream = s;
-                            *user_data = codec_dequeue_frame_metadata(enc);
-                            LOG_CODEC("GetStream[AVPU]: ✓ got stream buf[%d] phys=0x%08x len=%u",
-                                     i, s->phys_addr, s->length);
-                            return 0;
-                        }
-                    }
+                /* OEM reads encoded size from CL status at offset +0xC8.
+                 * After the AVPU writes encoded data, CL[0xC8/4] = byte offset
+                 * where the AVPU stopped writing in the stream buffer.
+                 * We also check CL[0x104/4] & 0x3FFFFFFF for entropy-reported bits. */
+
+                /* DMA-invalidate the CL entry to read hardware-written status */
+                uint32_t completed_idx = (ctx->cl_idx + ctx->cl_count - 1u) % ctx->cl_count;
+                uint8_t *cl_entry = (uint8_t*)ctx->cl_ring.map + (size_t)completed_idx * ctx->cl_entry_size;
+                avpu_flush_cache(ctx->fd, cl_entry, ctx->cl_entry_size, 2 /*INV*/);
+
+                uint32_t *cl_words = (uint32_t *)cl_entry;
+                uint32_t stream_end_offset = cl_words[0xC8 / 4]; /* byte offset in stream buf */
+                uint32_t entropy_status = cl_words[0x104 / 4];
+                uint32_t encoded_bits = entropy_status & 0x3FFFFFFFu;
+                int encode_error = (entropy_status >> 31) & 1;
+
+                /* Use stream_end_offset as primary size, fall back to entropy bits */
+                uint32_t frame_size = stream_end_offset;
+                if (frame_size == 0 && encoded_bits > 0)
+                    frame_size = ctx->stream_header_offset + (encoded_bits + 7u) / 8u;
+
+                LOG_CODEC("GetStream[AVPU]: CL[0xC8]=0x%x CL[0x104]=0x%x bits=%u err=%d frame_size=%u",
+                          stream_end_offset, entropy_status, encoded_bits, encode_error, frame_size);
+
+                /* DMA-invalidate the stream buffer to read encoded data */
+                int buf_idx = 0; /* TODO: track which buffer was used per frame */
+                if (buf_idx < ctx->stream_bufs_used && ctx->stream_bufs[buf_idx].map) {
+                    avpu_flush_cache(ctx->fd, ctx->stream_bufs[buf_idx].map,
+                                     (unsigned int)ctx->stream_buf_size, 2 /*INV*/);
                 }
-                LOG_CODEC("GetStream[AVPU]: frames_encoded incremented but no valid data found");
+
+                if (frame_size > 0 && !encode_error) {
+                    const uint8_t *virt = (const uint8_t*)ctx->stream_bufs[buf_idx].map;
+                    HWStreamBuffer *s = (HWStreamBuffer*)malloc(sizeof(HWStreamBuffer));
+                    if (!s) return -1;
+                    s->phys_addr = ctx->stream_bufs[buf_idx].phy_addr;
+                    s->virt_addr = (uint32_t)(uintptr_t)virt;
+                    s->length = frame_size;
+                    s->timestamp = 0;
+                    s->frame_type = 0;
+                    s->slice_type = 0;
+                    *stream = s;
+                    *user_data = codec_dequeue_frame_metadata(enc);
+                    LOG_CODEC("GetStream[AVPU]: got stream buf[%d] phys=0x%08x len=%u frames=%d",
+                             buf_idx, s->phys_addr, s->length, ctx->frames_encoded);
+                    return 0;
+                }
+
+                LOG_CODEC("GetStream[AVPU]: encode completed but frame_size=0 or error");
             }
 
             nanosleep(&nap, NULL);
         }
 
-        /* Timeout */
-        LOG_CODEC("GetStream[AVPU]: ✗ TIMEOUT - no stream data after 2s (frames_encoded=%d)", ctx->frames_encoded);
+        LOG_CODEC("GetStream[AVPU]: TIMEOUT (frames_encoded=%d)", ctx->frames_encoded);
         errno = EAGAIN;
         return -1;
     }
