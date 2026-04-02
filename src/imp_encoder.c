@@ -833,20 +833,11 @@ int IMP_Encoder_StartRecvPic(int encChn) {
         return -1;
     }
 
-    /* Injection path removed: rely on guaranteed IDR+SPS+PPS at StartRecvPic */
-    g_inject_warmup[encChn] = 0;
-
-    /* Set flags at offsets 0x404 and 0x400 */
+    /* Stock behavior: set recv/start flags only. */
     g_EncChannel[encChn].recv_pic_started = 1;
     g_EncChannel[encChn].recv_pic_enabled = 1;
-    /* Reset pack-state tracking for this start */
-    g_EncChannel[encChn].idr_requested_once = 0;
-    g_EncChannel[encChn].param_sets_seen = 0;
 
     pthread_mutex_unlock(&encoder_mutex);
-
-    /* Ensure a quick lock for new consumers: request an IDR on start */
-    IMP_Encoder_RequestIDR(encChn);
 
     LOG_ENC("StartRecvPic: chn=%d", encChn);
     return 0;
@@ -1071,13 +1062,19 @@ int IMP_Encoder_Query(int encChn, IMPEncoderCHNStat *stat) {
 }
 
 int IMP_Encoder_RequestIDR(int encChn) {
+    if (encChn < 0 || encChn >= MAX_ENC_CHANNELS) {
+        return -1;
+    }
+
+    EncChannel *chn = &g_EncChannel[encChn];
     LOG_ENC("RequestIDR: chn=%d", encChn);
 
-    /* Request IDR frame from software encoder */
-    extern void HW_Encoder_RequestIDR(void);
-    HW_Encoder_RequestIDR();
+    if (chn->chn_id < 0 || chn->codec == NULL) {
+        LOG_ENC("RequestIDR: channel %d not ready", encChn);
+        return -1;
+    }
 
-    return 0;
+    return AL_Codec_Encode_RequestIDR(chn->codec);
 }
 
 int IMP_Encoder_FlushStream(int encChn) {
@@ -1998,27 +1995,56 @@ static int encoder_update(void *module, void *frame) {
     int frame_processed = 0;
     int frame_held = 0;
     int frame_released = 0;
-    int tried_specific_channel = 0;
+    int tried_group = 0;
 
-    /* Determine destination encoder channel directly from module->group_id (offset 0x130) */
-    int dst_chn = -1;
+    /* OEM module offset 0x130 is the encoder group ID, not a direct channel ID. */
+    int enc_group = -1;
     if (module != NULL) {
         uint32_t group_id = *((uint32_t*)((char*)module + 0x130));
-        if (group_id < (uint32_t)MAX_ENC_CHANNELS) {
-            dst_chn = (int)group_id;
+        if (group_id < 6u) {
+            enc_group = (int)group_id;
         }
     }
 
-    /* Queue to the specific channel if valid; otherwise fall back to search */
-    if (dst_chn >= 0) {
-        tried_specific_channel = 1;
-        EncChannel *chn = &g_EncChannel[dst_chn];
-        if (chn->chn_id >= 0 && chn->recv_pic_started && chn->codec != NULL) {
-            void *queued_frame = NULL;
-            if (encoder_clone_source_frame(chn, frame, &queued_frame) == 0) {
+    /* Queue to each started channel registered in the target group. */
+    if (enc_group >= 0) {
+        int group_channels[3] = { -1, -1, -1 };
+
+        pthread_mutex_lock(&encoder_mutex);
+        if (gEncoder != NULL && gEncoder->groups[enc_group].group_id >= 0) {
+            EncGroup *grp = &gEncoder->groups[enc_group];
+            for (int i = 0; i < 3; ++i) {
+                if (grp->channels[i] != NULL) {
+                    group_channels[i] = grp->channels[i]->chn_id;
+                }
+            }
+            tried_group = 1;
+        }
+        if (!frame_processed) {
+            /* handled below after we actually try the copied channel list */
+        }
+        pthread_mutex_unlock(&encoder_mutex);
+
+        if (tried_group) {
+            for (int i = 0; i < 3; ++i) {
+                int chn_id = group_channels[i];
+                if (chn_id < 0 || chn_id >= MAX_ENC_CHANNELS) {
+                    continue;
+                }
+
+                EncChannel *chn = &g_EncChannel[chn_id];
+                if (chn->chn_id < 0 || !chn->recv_pic_started || chn->codec == NULL) {
+                    continue;
+                }
+
+                void *queued_frame = NULL;
+                if (encoder_clone_source_frame(chn, frame, &queued_frame) != 0) {
+                    continue;
+                }
+
                 if (AL_Codec_Encode_Process(chn->codec, queued_frame, queued_frame) == 0) {
-                    LOG_ENC("encoder_update: Queued frame to channel %d (by module group_id) via encoder slot %p",
-                            dst_chn, queued_frame);
+                    LOG_ENC("encoder_update: Queued frame to group %d channel %d via encoder slot %p",
+                            enc_group, chn_id, queued_frame);
                     if (chn->eventfd >= 0) {
                         uint64_t val = 1;
                         ssize_t n = write(chn->eventfd, &val, sizeof(val));
@@ -2026,22 +2052,24 @@ static int encoder_update(void *module, void *frame) {
                     }
                     frame_processed = 1;
                     frame_held = 1;
-                } else {
-                    uint32_t vaddr = 0;
-                    memcpy(&vaddr, (uint8_t*)queued_frame + 0x1c, sizeof(vaddr));
-                    if (VBMUnlockFrameByVaddr(vaddr) == 0) {
-                        frame_released = 1;
-                    }
-                    encoder_release_frame_slot(chn, queued_frame);
+                    continue;
                 }
+
+                uint32_t vaddr = 0;
+                memcpy(&vaddr, (uint8_t*)queued_frame + 0x1c, sizeof(vaddr));
+                if (VBMUnlockFrameByVaddr(vaddr) == 0) {
+                    frame_released = 1;
+                }
+                encoder_release_frame_slot(chn, queued_frame);
             }
-        }
-        if (!frame_processed) {
-            LOG_ENC("encoder_update: Failed to queue via group_id=%d; not falling back to unrelated channels", dst_chn);
+
+            if (!frame_processed) {
+                LOG_ENC("encoder_update: No started encoder channels accepted frame for group %d", enc_group);
+            }
         }
     }
 
-    if (!frame_processed && !tried_specific_channel) {
+    if (!frame_processed && !tried_group) {
         for (int i = 0; i < MAX_ENC_CHANNELS; i++) {
             EncChannel *chn = &g_EncChannel[i];
             if (chn->chn_id >= 0 && chn->recv_pic_started && chn->codec != NULL) {

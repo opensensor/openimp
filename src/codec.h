@@ -92,6 +92,13 @@ int AL_Codec_Encode_SetQp(void *codec, void *qp);
  */
 int AL_Codec_Encode_SetEntropyMode(void *codec, int mode);
 
+/**
+ * Request an IDR frame on the next encode for this codec instance
+ * @param codec Codec instance
+ * @return 0 on success, -1 on failure
+ */
+int AL_Codec_Encode_RequestIDR(void *codec);
+
 #ifdef __cplusplus
 }
 #endif

@@ -1008,12 +1008,11 @@ static uint32_t avpu_get_enc1_stream_part_offset(const ALAvpuContext *ctx)
  * DMA to physical address 0x0 → AXI bus hang → hard SoC crash.
  */
 static void fill_cmd_regs_enc1(const ALAvpuContext* ctx, uint32_t* cmd,
-                               uint32_t src_phys, uint32_t hdr_offset)
+                               uint32_t src_phys, uint32_t hdr_offset,
+                               int is_idr)
 {
     if (!ctx || !cmd) return;
 
-    const int has_reference = (ctx->reference_valid != 0) && (ctx->ref_buf.phy_addr != 0);
-    const int is_idr = !has_reference;
     const uint32_t stream_part_offset = avpu_get_enc1_stream_part_offset(ctx);
     const uint32_t stream_offset = hdr_offset;
     uint32_t stream_desc_phys = 0u;
@@ -1246,13 +1245,12 @@ static void fill_cmd_regs_enc1(const ALAvpuContext* ctx, uint32_t* cmd,
  * stream buffer starting at the header offset.
  */
 static void fill_cmd_regs_enc2(const ALAvpuContext *ctx, uint32_t *cmd,
-                               uint32_t hdr_offset)
+                               uint32_t hdr_offset, int is_idr)
 {
     if (!ctx || !cmd) return;
 
     memset(cmd, 0, 512);
 
-    const int is_idr = !(ctx->reference_valid && ctx->ref_buf.phy_addr);
     const uint32_t stream_part_offset = avpu_get_enc1_stream_part_offset(ctx);
     uint32_t stream_desc_phys = 0u;
     if (ctx->stream_bufs_used > 0)
@@ -2048,6 +2046,7 @@ struct AL_CodecEncode {
     HWEncoderParams hw_params;      /* Hardware encoder parameters */
     int use_hardware;               /* Flag: 1=hardware, 0=software */
     uint32_t entropy_mode;          /* 0=CAVLC, 1=CABAC */
+    int force_next_idr;             /* Per-codec RequestIDR latch */
     ALAvpuContext avpu;            /* Vendor-like AL over /dev/avpu (scaffolding) */
 };
 
@@ -2848,6 +2847,7 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
         ALAvpuContext *ctx = &enc->avpu;
         int fd = ctx->fd;
         int submitted = 0;
+        int force_idr = __sync_lock_test_and_set(&enc->force_next_idr, 0);
 
         /* AL_EncCore_Init: exact OEM sequence from decompilation at 0x6c8d8.
          *
@@ -2941,7 +2941,13 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
              * The OEM encode1() calls GenerateAvcSliceHeader() before building the CL,
              * writing SPS+PPS+slice header into the stream buffer. The returned byte
              * count becomes cmd[0x32]/cmd[0x36] so the AVPU writes encoded data after. */
-            int is_idr = !(ctx->reference_valid && ctx->ref_buf.phy_addr);
+            int has_reference = (!force_idr)
+                && (ctx->reference_valid != 0)
+                && (ctx->ref_buf.phy_addr != 0);
+            int is_idr = !has_reference;
+            if (force_idr) {
+                LOG_CODEC("Process: channel=%d forcing next AVPU frame to IDR", enc->channel_id - 1);
+            }
 
             /* Defensive: Baseline profile (66) MUST use CAVLC. If entropy_mode
              * got corrupted to CABAC, force it back. The AVPU may hang on
@@ -2954,18 +2960,25 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
                 }
             }
 
-            uint32_t hdr_offset = avpu_prewrite_stream_headers(ctx, 0, is_idr);
+            int buf_idx = 0;
+            if (buf_idx < ctx->stream_bufs_used && ctx->stream_bufs[buf_idx].map) {
+                memset(ctx->stream_bufs[buf_idx].map, 0, (size_t)ctx->stream_buf_size);
+                avpu_flush_cache(fd, ctx->stream_bufs[buf_idx].map,
+                                 (unsigned int)ctx->stream_buf_size, 1 /*WBACK*/);
+            }
+
+            uint32_t hdr_offset = avpu_prewrite_stream_headers(ctx, buf_idx, is_idr);
 
             /* DMA-flush the stream buffer region containing pre-written headers.
              * dir=1 = DMA_TO_DEVICE (CPU writeback to RAM).
              * The AVPU reads headers from RAM (or at least the stream buffer must be
              * coherent with what the AVPU DMAs to/from). */
-            if (hdr_offset > 0 && ctx->stream_bufs[0].map) {
-                avpu_flush_cache(fd, ctx->stream_bufs[0].map, hdr_offset, 1 /*WBACK*/);
+            if (hdr_offset > 0 && buf_idx < ctx->stream_bufs_used && ctx->stream_bufs[buf_idx].map) {
+                avpu_flush_cache(fd, ctx->stream_bufs[buf_idx].map, hdr_offset, 1 /*WBACK*/);
             }
 
             /* Fill Enc1 command registers — source addr and header offset go INTO the CL entry */
-            fill_cmd_regs_enc1(ctx, cmd, phys_addr, hdr_offset);
+            fill_cmd_regs_enc1(ctx, cmd, phys_addr, hdr_offset, is_idr);
             log_first_enc1_cmd_window(ctx, idx, cmd);
 
             /* OEM AL_EncCore_Encode1() checks IsEnc1AlreadyRunning() before
@@ -3033,7 +3046,7 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
              * STRM_PUSH separately; the OEM StartEnc1WithCommandList helper does
              * not issue an extra SRC_PUSH on the Enc1 command-list path. */
             uint32_t cl_phys = ctx->cl_ring.phy_addr + (idx * ctx->cl_entry_size);
-            uint32_t ref_phys = ctx->reference_valid ? ctx->ref_buf.phy_addr : 0;
+            uint32_t ref_phys = has_reference ? ctx->ref_buf.phy_addr : 0;
             int cl_addr_ret;
             int cl_push_ret;
             if (trace_submit || cl_flush_ret != 0) {
@@ -3117,14 +3130,14 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
              * When references exist, encode1 fills a separate Enc2 CL via
              * FillCmdRegsEnc2 + SliceParamToCmdRegsEnc2 and submits CL_PUSH=8.
              */
-            if (ctx->reference_valid && ctx->ref_buf.phy_addr) {
+            if (has_reference) {
                 /* P/B frame: submit separate Enc2 CL */
                 uint32_t enc2_idx = (idx + 1) % ctx->cl_count;
                 uint8_t *enc2_entry = (uint8_t *)ctx->cl_ring.map + (size_t)enc2_idx * ctx->cl_entry_size;
                 uint32_t *enc2_cmd = (uint32_t *)enc2_entry;
                 uint32_t enc2_phys = ctx->cl_ring.phy_addr + (enc2_idx * ctx->cl_entry_size);
 
-                fill_cmd_regs_enc2(ctx, enc2_cmd, hdr_offset);
+                fill_cmd_regs_enc2(ctx, enc2_cmd, hdr_offset, is_idr);
 
                 /* Flush CL ring again (includes the new Enc2 entry) */
                 avpu_flush_cache(fd, ctx->cl_ring.map, (unsigned int)cl_flush_size, 1 /*WBACK*/);
@@ -3160,6 +3173,7 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
         return submitted ? 0 : -1;
     } else {
         /* Software fallback */
+        int force_idr = __sync_lock_test_and_set(&enc->force_next_idr, 0);
         HWFrameBuffer hw_frame;
         memset(&hw_frame, 0, sizeof(HWFrameBuffer));
         hw_frame.phys_addr = phys_addr;
@@ -3167,6 +3181,10 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
         hw_frame.width = width;
         hw_frame.height = height;
         hw_frame.timestamp = timestamp;
+        if (force_idr) {
+            LOG_CODEC("Process: channel=%d forcing next SW frame to IDR", enc->channel_id - 1);
+            HW_Encoder_RequestIDR();
+        }
         LOG_CODEC("Process: SW encode frame %ux%u", width, height);
         if (HW_Encoder_Encode_Software(&hw_frame, hw_stream) < 0) {
             LOG_CODEC("Process: software encoding failed");
@@ -3233,15 +3251,17 @@ int AL_Codec_Encode_GetStream(void *codec, void **stream, void **user_data) {
 
                 /* Read encoded data from stream buffer.
                  * Use rmem flush with dir=1 (WBACK) to push any cached writes,
-                 * then scan backwards for actual frame end. */
+                 * then size the Annex-B payload from the actual buffer contents. */
                 if (buf_idx < ctx->stream_bufs_used && ctx->stream_bufs[buf_idx].map) {
                     avpu_flush_cache(ctx->fd, ctx->stream_bufs[buf_idx].map,
                                      (unsigned int)ctx->stream_buf_size, 1 /*WBACK*/);
                     const uint8_t *sb = (const uint8_t*)ctx->stream_bufs[buf_idx].map;
-                    uint32_t spo = avpu_get_enc1_stream_part_offset(ctx);
-                    uint32_t end = spo > 0 ? spo : (uint32_t)ctx->stream_buf_size;
+                    uint32_t end = (uint32_t)ctx->stream_buf_size;
                     while (end > 0 && sb[end - 1] == 0) end--;
-                    frame_size = end;
+                    if (end > 0) {
+                        size_t annexb = annexb_effective_size(sb, end);
+                        frame_size = annexb > 0 ? (uint32_t)annexb : end;
+                    }
                 }
 
                 /* Debug removed — was using dir=2 (INV) which can crash */
@@ -3379,6 +3399,20 @@ int AL_Codec_Encode_SetEntropyMode(void *codec, int mode) {
     enc->avpu.entropy_mode = enc->entropy_mode;
 
     LOG_CODEC("SetEntropyMode: codec=%p, mode=%u", codec, enc->entropy_mode);
+
+    return 0;
+}
+
+int AL_Codec_Encode_RequestIDR(void *codec) {
+    if (codec == NULL) {
+        LOG_CODEC("RequestIDR: NULL codec");
+        return -1;
+    }
+
+    AL_CodecEncode *enc = (AL_CodecEncode*)codec;
+    __sync_lock_test_and_set(&enc->force_next_idr, 1);
+
+    LOG_CODEC("RequestIDR: codec=%p channel=%d pending=1", codec, enc->channel_id - 1);
 
     return 0;
 }
