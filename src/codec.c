@@ -109,24 +109,31 @@ static inline unsigned AVPU_CORE_BASE(int core) { return (AVPU_BASE_OFFSET + 0x3
  * (ioctl 0xc004710e → dma_cache_sync(NULL,...)) does NOT reliably flush the
  * MIPS data cache. The rmem driver's flush is the only proven path on T31. */
 /* Cache flush for DMA coherency.
- * Both rmem ioctl and AVPU ioctl return success but DON'T actually flush
- * (confirmed: CPU virt shows command data, physical RAM shows stale AVPU status).
- * Use the MIPS cacheflush() syscall which is a direct kernel trap. */
-#include <sys/cachectl.h>  /* cacheflush() on MIPS Linux */
-#ifndef DCACHE
-#define DCACHE 2
-#endif
+ * rmem ioctl, AVPU ioctl, AND cacheflush() syscall all return success
+ * but DON'T push CPU cache to physical RAM (confirmed via avpu.ko ioremap).
+ * Try ALL methods including msync() to force writeback. */
+#include <sys/mman.h>
+#include <sys/cachectl.h>
 #ifndef BCACHE
 #define BCACHE 3
 #endif
+#define JZ_CMD_FLUSH_CACHE_IOCTL _IOWR('q', 14, int)
+struct avpu_flush_info { unsigned int addr; unsigned int len; unsigned int dir; };
 static int avpu_flush_cache(int fd, void *virt_addr, unsigned int size, unsigned int dir)
 {
-    (void)fd;
     if (!virt_addr || size == 0) return -1;
-    /* MIPS cacheflush syscall: flushes data cache lines for the given range.
-     * BCACHE=3 flushes both instruction and data cache.
-     * This is a direct syscall — not an ioctl — so it always works. */
-    return cacheflush(virt_addr, (int)size, BCACHE);
+    /* Try everything: msync + cacheflush + rmem ioctl + AVPU ioctl */
+    msync(virt_addr, size, MS_SYNC | MS_INVALIDATE);
+    cacheflush(virt_addr, (int)size, BCACHE);
+    DMA_RmemFlushCache(virt_addr, size, (int)dir);
+    if (fd >= 0) {
+        struct avpu_flush_info info;
+        info.addr = (unsigned int)(uintptr_t)virt_addr;
+        info.len = size;
+        info.dir = dir;
+        ioctl(fd, JZ_CMD_FLUSH_CACHE_IOCTL, &info);
+    }
+    return 0;
 }
 
 static int avpu_flush_dma_buf(int fd, const char *tag, const AvpuDMABuf *buf, size_t size)

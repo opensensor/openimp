@@ -1,0 +1,165 @@
+root@ing-wyze-cam3-a000 opt# vi streamer.json 
+root@ing-wyze-cam3-a000 opt# ./prudynt 
+[INFO:Config.cpp]: Loaded configuration from /etc/prudynt.json
+[INFO:main.cpp]: PRUDYNT-T Next-Gen Video Daemon: prudynt-t vOct 12 2025 14:37:09 [b3ef6b2-dev1760294228]
+[DEBUG:Logger.cpp]: Logger Init.
+[INFO:main.cpp]: Starting Prudynt Video Server.
+[DEBUG:IMPSystem.cpp]: IMPSystem::init()
+[DEBUG:IMPSystem.cpp]: IMP_OSD_SetPoolSize(1228800)
+[INFO:IMPSystem.cpp]: LIBIMP Version IMP-1.1.6
+[INFO:IMPSystem.cpp]: SYSUTILS Version: SYSUTILS-1.1.6
+[INFO:IMPSystem.cpp]: CPU Information: T31-X
+[DEBUG:IMPSystem.cpp]: IMP_ISP_Open() = 0
+[INFO:IMPSystem.cpp]: Sensor: gc2053
+[DEBUG:IMPSystem.cpp]: IMP_ISP_AddSensor(&sinfo) = 0
+[DEBUG:IMPSystem.cpp]: IMP_ISP_EnableSensor() = 0
+---- FPGA board is ready ----
+  Board UID : 30AB6E51
+  Board HW ID : 72000460
+  Board rev.  : 5DE5A975
+  Board date  : 20190326
+-----------------------------
+[DEBUG:IMPSystem.cpp]: IMP_System_Init() = 0
+[DEBUG:IMPSystem.cpp]: IMP_ISP_EnableTuning() = 0
+[DEBUG:IMPSystem.cpp]: IMP_ISP_Tuning_SetContrast(128)
+[DEBUG:IMPSystem.cpp]: IMP_ISP_Tuning_SetSharpness(128)
+[DEBUG:IMPSystem.cpp]: IMP_ISP_Tuning_SetSaturation(128)
+[DEBUG:IMPSystem.cpp]: IMP_ISP_Tuning_SetBrightness(128)
+[DEBUG:IMPSystem.cpp]: IMP_ISP_Tuning_SetContrast(128)
+[DEBUG:IMPSystem.cpp]: IMP_ISP_Tuning_SetSharpness(128)
+[DEBUG:IMPSystem.cpp]: IMP_ISP_Tuning_SetSaturation(128)
+[DEBUG:IMPSystem.cpp]: IMP_ISP_Tuning_SetBrightness(128)
+[DEBUG:IMPSystem.cpp]: IMP_ISP_Tuning_SetSinterStrength(128)
+[DEBUG:IMPSystem.cpp]: IMP_ISP_Tuning_SetTemperStrength(128)
+[DEBUG:IMPSystem.cpp]: IMP_ISP_Tuning_SetISPHflip(0)
+[DEBUG:IMPSystem.cpp]: IMP_ISP_Tuning_SetISPVflip(0)
+[DEBUG:IMPSystem.cpp]: IMP_ISP_Tuning_SetISPRunningMode(0)
+[DEBUG:IMPSystem.cpp]: IMP_ISP_Tuning_SetISPBypass(1)
+[DEBUG:IMPSystem.cpp]: IMP_ISP_Tuning_SetAntiFlickerAttr(2)
+[DEBUG:IMPSystem.cpp]: IMP_ISP_Tuning_SetAeComp(128)
+[DEBUG:IMPSystem.cpp]: IMP_ISP_Tuning_SetMaxAgain(160)
+[DEBUG:IMPSystem.cpp]: IMP_ISP_Tuning_SetMaxDgain(80)
+[DEBUG:IMPSystem.cpp]: Set white balance. Mode: 0, rgain: 0, bgain: 0
+[DEBUG:IMPSystem.cpp]: IMP_ISP_Tuning_SetBcshHue(128)
+[DEBUG:IMPSystem.cpp]: IMP_ISP_Tuning_SetDefog_Strength(128)
+[DEBUG:IMPSystem.cpp]: IMP_ISP_Tuning_SetDPC_Strength(128)
+[DEBUG:IMPSystem.cpp]: IMP_ISP_Tuning_SetDRC_Strength(128)
+[DEBUG:IMPSystem.cpp]: ISP Tuning Defaults set
+[DEBUG:IMPSystem.cpp]: IMP_ISP_Tuning_SetSensorFPS(25, 1) = 0
+[DEBUG:IMPSystem.cpp]: IMP_ISP_Tuning_SetISPRunningMode(0) = 0
+[DEBUG:IMPSystem.hpp]: IMP_System_RebaseTimeStamp(21522652007);
+[DEBUG:main.cpp]: create video[0] thread
+[DEBUG:VideoWorker.cpp]: Start stream_grabber thread for stream 0
+[DEBUG:IMPFramesource.cpp]: IMPFramesource::init()
+[DEBUG:IMPFramesource.cpp]: Channel 0 configuration (post-attr):
+[DEBUG:IMPFramesource.cpp]:   pic: 1920x1080
+[DEBUG:IMPFramesource.cpp]:   crop.enable=0 crop=1920x1080
+[DEBUG:IMPFramesource.cpp]:   scaler.enable=0 out=1920x1080
+[DEBUG:IMPFramesource.cpp]:   fps=25/1 nrVBs=1 pixFmt=10
+[DEBUG:IMPFramesource.cpp]: IMP_FrameSource_CreateChn(0, &chnAttr)
+[DEBUG:IMPFramesource.cpp]: IMP_FrameSource_SetChnAttr(0, &chnAttr)
+[DEBUG:IMPFramesource.cpp]: IMP_FrameSource_GetChnFifoAttr(0, &fifo)
+[DEBUG:WS.cpp]: Reusing boot-session token: 'jdnxoA6go6IVo9k7JWGaaQjglZ0zKpWI'
+[INFO:WS.cpp]: libwebsockets version: 4.3.5-v4.3.6-1-gb9c3ed4c
+[INFO:WS.cpp]: WS context: port=8089 iface=<any>
+[DEBUG:WS.cpp]: [lws] [2025/10/13 07:42:44:7503] N: lws_create_context: LWS: 4.3.5-v4.3.6-1-gb9c3ed4c, NET CLI SRV H1 H2 WS ConMon IPV6-on
+
+[DEBUG:ConfigWatcher.cpp]: Starting config watch thread.
+[DEBUG:ConfigWatcher.cpp]: ConfigWatcher created.
+[DEBUG:ConfigWatcher.cpp]: Monitoring file for changes: /etc/prudynt.json
+[DEBUG:WS.cpp]: [lws] [2025/10/13 07:42:44:7521] N: __lws_lc_tag:  ++ [wsi|0|pipe] (1)
+
+[DEBUG:WS.cpp]: [lws] [2025/10/13 07:42:44:7537] N: __lws_lc_tag:  ++ [vh|0|netlink] (1)
+
+[DEBUG:WS.cpp]: [lws] [2025/10/13 07:42:44:7544] N: __lws_lc_tag:  ++ [vh|1|default||8089] (2)
+
+[DEBUG:WS.cpp]: [lws] [2025/10/13 07:42:44:7555] N: [vh|1|default||8089]: lws_socket_bind: source ads 0.0.0.0
+
+[DEBUG:WS.cpp]: [lws] [2025/10/13 07:42:44:7566] N: __lws_lc_tag:  ++ [wsi|1|listen|default||8089] (2)
+
+[DEBUG:IMPFramesource.cpp]: IMP_FrameSource_SetChnFifoAttr(0, &fifo)
+[DEBUG:IMPFramesource.cpp]: IMP_FrameSource_SetFrameDepth(0, 0)
+[DEBUG:IMPEncoder.cpp]: IMPEncoder::init(0, 0)
+[DEBUG:IMPEncoder.cpp]: STREAM PROFILE ch0, fps:25, bps:3000, gop:20, profile:2, 1920x1080
+[DEBUG:IMPEncoder.cpp]: IMP_Encoder_SetbufshareChn(2, 0) = 0
+[DEBUG:WS.cpp]: [lws] [2025/10/13 07:42:44:7598] N: [vh|1|default||8089]: lws_socket_bind: source ads ::
+
+[DEBUG:WS.cpp]: [lws] [2025/10/13 07:42:44:7610] N: __lws_lc_tag:  ++ [wsi|2|listen|default||8089] (3)
+
+[INFO:WS.cpp]: Server started on port 8089
+[DEBUG:IMPEncoder.cpp]: IMP_Encoder_CreateChn(0, chnAttr) = 0
+[DEBUG:IMPEncoder.cpp]: IMP_Encoder_RegisterChn(0, 0) = 0
+[DEBUG:IMPEncoder.cpp]: IMP_Encoder_CreateGroup(0) = 0
+[DEBUG:OSD.cpp]: OSD init for begin
+[DEBUG:OSD.cpp]: IMP_OSD_SetPoolSize(1228800)
+[DEBUG:OSD.cpp]: OSD pool size (1200KB) is adequate for 1920x1080 resolution
+[DEBUG:OSD.cpp]: IMP_Encoder_GetChnAttr read. Stream resolution: 1920x1080
+[DEBUG:OSD.cpp]: OSD::libschrift_init()
+[DEBUG:IMPEncoder.cpp]: IMP_System_Bind(&fs, &osd_cell) = 0
+[DEBUG:IMPEncoder.cpp]: IMP_System_Bind(&osd_cell, &enc) = 0
+[DEBUG:IMPFramesource.cpp]: IMP_FrameSource_EnableChn(0) = 0
+[DEBUG:main.cpp]: create video[1] thread
+[DEBUG:VideoWorker.cpp]: IMP_Encoder_StartRecvPic(0)
+[DEBUG:VideoWorker.cpp]: VideoWorker created for channel 0
+[DEBUG:VideoWorker.cpp]: Start video processing run loop for stream 0
+[DEBUG:VideoWorker.cpp]: Start stream_grabber thread for stream 1
+[DEBUG:IMPFramesource.cpp]: IMPFramesource::init()
+[DEBUG:IMPFramesource.cpp]: Channel 1 configuration (post-attr):
+[DEBUG:IMPFramesource.cpp]:   pic: 640x360
+[DEBUG:IMPFramesource.cpp]:   crop.enable=0 crop=1920x1080
+[DEBUG:IMPFramesource.cpp]:   scaler.enable=1 out=640x360
+[DEBUG:IMPFramesource.cpp]:   fps=25/1 nrVBs=1 pixFmt=10
+[DEBUG:IMPFramesource.cpp]: IMP_FrameSource_CreateChn(1, &chnAttr)
+[DEBUG:IMPFramesource.cpp]: IMP_FrameSource_SetChnAttr(1, &chnAttr)
+[DEBUG:IMPFramesource.cpp]: IMP_FrameSource_GetChnFifoAttr(1, &fifo)
+[DEBUG:IMPFramesource.cpp]: IMP_FrameSource_SetChnFifoAttr(1, &fifo)
+[DEBUG:IMPFramesource.cpp]: IMP_FrameSource_SetFrameDepth(1, 0)
+[DEBUG:IMPEncoder.cpp]: IMPEncoder::init(1, 1)
+[DEBUG:IMPEncoder.cpp]: STREAM PROFILE ch1, fps:25, bps:1000, gop:20, profile:2, 640x360
+[DEBUG:IMPEncoder.cpp]: IMP_Encoder_CreateChn(1, chnAttr) = 0
+[DEBUG:IMPEncoder.cpp]: IMP_Encoder_RegisterChn(1, 1) = 0
+[DEBUG:IMPEncoder.cpp]: IMP_Encoder_CreateGroup(1) = 0
+[DEBUG:OSD.cpp]: OSD init for begin
+[DEBUG:OSD.cpp]: IMP_OSD_SetPoolSize(1228800)
+[DEBUG:OSD.cpp]: OSD pool size (1200KB) is adequate for 640x360 resolution
+[DEBUG:OSD.cpp]: IMP_Encoder_GetChnAttr read. Stream resolution: 640x360
+[DEBUG:OSD.cpp]: OSD::libschrift_init()
+[DEBUG:IMPEncoder.cpp]: IMP_System_Bind(&fs, &osd_cell) = 0
+[DEBUG:IMPEncoder.cpp]: IMP_System_Bind(&osd_cell, &enc) = 0
+[DEBUG:IMPFramesource.cpp]: IMP_FrameSource_EnableChn(1) = 0
+[DEBUG:main.cpp]: create jpeg thread
+[DEBUG:VideoWorker.cpp]: IMP_Encoder_StartRecvPic(1)
+[DEBUG:VideoWorker.cpp]: VideoWorker created for channel 1
+[DEBUG:VideoWorker.cpp]: Start video processing run loop for stream 1
+[DEBUG:JPEGWorker.cpp]: Start jpeg_grabber thread.
+[DEBUG:IMPEncoder.cpp]: IMPEncoder::init(2, 0)
+[DEBUG:IMPEncoder.cpp]: STREAM PROFILE 2, 0, JPEG, 24fps, profile:0, 1920x1080
+set jpeg streamMngCtx suceess
+[DEBUG:IMPEncoder.cpp]: IMP_Encoder_CreateChn(2, chnAttr) = 0
+[DEBUG:IMPEncoder.cpp]: IMP_Encoder_RegisterChn(0, 2) = 0
+[DEBUG:main.cpp]: create osd thread
+[DEBUG:main.cpp]: create rtsp thread
+[DEBUG:JPEGWorker.cpp]: IMP_Encoder_StartRecvPic(2)
+[DEBUG:JPEGWorker.cpp]: JPEGWorker created for JPEG channel index 0 (IMP Encoder Channel 2)
+[DEBUG:JPEGWorker.cpp]: Start JPEG processing run loop for index 0 (IMP Encoder Channel 2)
+[DEBUG:RTSP.cpp]: identify stream 0
+[DEBUG:IMPDeviceSource.cpp]: IMPDeviceSource video/pps/sps/vps constructed, encoder channel:0
+[DEBUG:OSD.cpp]: start osd update thread.
+[DEBUG:OSD.cpp]: IMP_OSD_Start(0)
+[DEBUG:OSD.cpp]: IMP_OSD_SetPoolSize(1228800)
+[DEBUG:OSD.cpp]: IMP_OSD_Start(1)
+[DEBUG:OSD.cpp]: IMP_OSD_SetPoolSize(1228800)
+[DEBUG:main.cpp]: main thread is going to sleep
+[DEBUG:RTSP.cpp]: Got SPS (H264)
+[DEBUG:RTSP.cpp]: Got PPS (H264)
+[DEBUG:IMPDeviceSource.cpp]: IMPDeviceSource video/pps/sps/vps destructed, encoder channel:0
+[DEBUG:RTSP.cpp]: Got necessary NAL Units.
+[INFO:RTSP.cpp]: stream 0 available at: rtsp://192.168.50.211/ch0
+[DEBUG:RTSP.cpp]: identify stream 1
+[DEBUG:IMPDeviceSource.cpp]: IMPDeviceSource video/pps/sps/vps constructed, encoder channel:1
+[DEBUG:RTSP.cpp]: Got SPS (H264)
+[DEBUG:RTSP.cpp]: Got PPS (H264)
+[DEBUG:IMPDeviceSource.cpp]: IMPDeviceSource video/pps/sps/vps destructed, encoder channel:1
+[DEBUG:RTSP.cpp]: Got necessary NAL Units.
+[INFO:RTSP.cpp]: stream 1 available at: rtsp://192.168.50.211/ch1
+^C
