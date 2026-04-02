@@ -84,6 +84,17 @@ int DMA_Get_RMEM_Base(uint32_t *base_phys_out);
  */
 int DMA_Is_RMEM(void);
 
+/**
+ * OEM-compatible cache flush via /dev/rmem ioctl 0xc00c7200.
+ * This is the exact path the stock libimp uses:
+ *   Rtos_FlushCacheMemory → alloc_kmem_flush_cache → ioctl(rmem_fd, 0xc00c7200, {vaddr, size, dir})
+ * @param virt_addr  Virtual (mmap'd) address
+ * @param size       Size in bytes to flush
+ * @param dir        1=WBACK (DMA_TO_DEVICE), 2=INV (DMA_FROM_DEVICE)
+ * @return 0 on success, -1 on failure
+ */
+int DMA_RmemFlushCache(void *virt_addr, uint32_t size, int dir);
+
 #ifdef __cplusplus
 }
 #endif

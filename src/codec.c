@@ -98,26 +98,20 @@ static inline unsigned AVPU_CORE_BASE(int core) { return (AVPU_BASE_OFFSET + 0x3
 #define AVPU_REG_CORE_CLKCMD(c)  (AVPU_CORE_BASE(c) + 0x04)
 #define AVPU_REG_CORE_STATUS(c)  (AVPU_CORE_BASE(c) + 0x08)
 
-/* Cache flush via /dev/avpu JZ_CMD_FLUSH_CACHE ioctl.
+/* Cache flush via OEM-compatible /dev/rmem ioctl 0xc00c7200.
  * rmem mappings are CACHED — the AVPU reads from physical RAM, not CPU cache.
  * Without flushing, the AVPU reads stale/zeroed data → hang or corrupt output.
- * OEM calls Rtos_FlushCacheMemory → AL_DmaAlloc_FlushCache → IMP_FlushCache
- * which does ioctl(rmem_fd, 0xc00c7200, {phys, size, dir=1}).
- * We use the AVPU's JZ_CMD_FLUSH_CACHE which takes {virt_addr, size, dir}. */
-#define JZ_CMD_FLUSH_CACHE_IOCTL _IOWR('q', 14, int)
-struct flush_cache_info {
-    unsigned int addr;
-    unsigned int len;
-    unsigned int dir;   /* 1=WBACK(DMA_TO_DEVICE), 2=INV(DMA_FROM_DEVICE), 0=WBACK_INV */
-};
+ *
+ * OEM call chain: Rtos_FlushCacheMemory → alloc_kmem_flush_cache
+ *   → ioctl(rmem_fd, 0xc00c7200, {vaddr, size, dir=1})
+ *
+ * CRITICAL: The previous path using the AVPU driver's JZ_CMD_FLUSH_CACHE
+ * (ioctl 0xc004710e → dma_cache_sync(NULL,...)) does NOT reliably flush the
+ * MIPS data cache. The rmem driver's flush is the only proven path on T31. */
 static int avpu_flush_cache(int fd, void *virt_addr, unsigned int size, unsigned int dir)
 {
-    if (fd < 0 || !virt_addr || size == 0) return -1;
-    struct flush_cache_info info;
-    info.addr = (unsigned int)(uintptr_t)virt_addr;
-    info.len = size;
-    info.dir = dir;
-    return avpu_sys_ioctl(fd, JZ_CMD_FLUSH_CACHE_IOCTL, &info);
+    (void)fd; /* no longer using AVPU fd for flush */
+    return DMA_RmemFlushCache(virt_addr, size, (int)dir);
 }
 
 static int avpu_flush_dma_buf(int fd, const char *tag, const AvpuDMABuf *buf, size_t size)
@@ -444,14 +438,16 @@ static size_t avpu_get_enc1_frame_buf_size(uint32_t width, uint32_t height)
 
 static uint32_t avpu_default_enc1_cmd12_a8(uint32_t enc_w)
 {
-    (void)enc_w;
-
-    /* OEM UpdateCommand fallback seeds group_update+0x48/+0x4a to 0x780 when
-     * the late runtime producer is absent, and SliceParamToCmdRegsEnc1 later
-     * copies group_update+0x48 into SliceParam+0xa8 -> cmd[0x12] low field.
-     * Our earlier width-aligned 0x280 heuristic for 640-wide streams was too
-     * small and did not match the OEM default path. */
-    return 0x780u;
+    /* OEM UpdateCommand at 0x63c30 sources SliceParam+0xa8 from
+     * group_update+0x48 indexed by slice type. For non-I-slices the runtime
+     * producer seeds this from the actual encoding width (64-byte aligned).
+     * For I-slices / first picture, UpdateCommand sets +0xa8 = 0 which packs
+     * to cmd[0x12] bits[9:0] = 0x3ff.
+     *
+     * Use the width-aligned value so the AVPU's internal stride calculations
+     * match the actual buffer layout. The previous hardcoded 0x780 (1920)
+     * told the AVPU to use 1920-byte strides even for 640-wide frames. */
+    return ((enc_w + 63u) & ~63u);
 }
 
 static uint32_t avpu_default_enc1_cmd12_aa(uint32_t enc_w)
@@ -3037,8 +3033,13 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
              * before StartEnc1WithCommandList. Our CL ring allocation is only
              * 0x2600 bytes, so the closest safe equivalent is to flush the full
              * mapped ring rather than just the current 0x200-byte entry.
-             * dir=1 = DMA_TO_DEVICE (writeback, CPU→RAM). */
-            size_t cl_flush_size = ctx->cl_ring.size ? ctx->cl_ring.size : ctx->cl_entry_size;
+             * dir=1 = DMA_TO_DEVICE (writeback, CPU→RAM).
+             *
+             * OEM parity: AL_EncCore_Encode1 calls Rtos_FlushCacheMemory(cl_base, 0x100000)
+             * which flushes 1MB — on MIPS T31 with ~16-32KB L1 D-cache this effectively
+             * flushes the ENTIRE cache. This ensures all DMA buffers (CL, stream headers,
+             * intermediate, rec/ref) are coherent. Match that by flushing 1MB. */
+            size_t cl_flush_size = 0x100000; /* OEM: 1MB flush → full cache writeback */
             int cl_flush_ret = avpu_flush_cache(fd, ctx->cl_ring.map, (unsigned int)cl_flush_size, 1 /*WBACK*/);
             int trace_submit = (idx == 0 && ctx->frames_encoded == 0);
 

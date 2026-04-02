@@ -680,3 +680,26 @@ uint32_t IMP_PoolVirt_to_Phys(void *virt_addr)
 {
     return DMA_VirtToPhys(virt_addr);
 }
+
+/* OEM-compatible rmem cache flush: ioctl(rmem_fd, 0xc00c7200, {vaddr, size, dir})
+ * This is the exact ioctl the stock libimp's alloc_kmem_flush_cache() uses.
+ * The rmem kernel module handles MIPS cache maintenance correctly for DMA. */
+#define RMEM_IOCTL_FLUSH_CACHE  0xc00c7200  /* _IOWR('r', 0, 12-byte-struct) */
+
+struct rmem_flush_info {
+    unsigned int addr;   /* virtual address */
+    unsigned int size;   /* size in bytes */
+    unsigned int dir;    /* 1=WBACK, 2=INV */
+};
+
+int DMA_RmemFlushCache(void *virt_addr, uint32_t size, int dir)
+{
+    if (!virt_addr || size == 0) return -1;
+    if (dma_init() != 0 || g_mem_fd < 0) return -1;
+
+    struct rmem_flush_info info;
+    info.addr = (unsigned int)(uintptr_t)virt_addr;
+    info.size = size;
+    info.dir = (unsigned int)dir;
+    return ioctl(g_mem_fd, RMEM_IOCTL_FLUSH_CACHE, &info);
+}
