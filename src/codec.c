@@ -2929,23 +2929,22 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
                          * (enc->fifo_frames, enc->fifo_streams at lines 767-778).
                          * OEM uses FIFOs at encoder+0x7f8 (streams) and encoder+0x81c (metadata). */
 
-                        /* Register OEM callbacks (AL_EncCore_Init / AL_EncCore_EnableInterrupts).
-                         * OEM uses base bit (ch*4) for EndEncoding and base+2 for
-                         * EndAvcEntropy. For channel 0: IRQ 0 and IRQ 2; for
-                         * channel 1: IRQ 4 and IRQ 6, etc.
-                         */
-                        int channel = enc->channel_id - 1; /* 0-based */
-                        int base_bit = (channel * 4) & 0x1f;
-                        int irq_id0 = base_bit;               /* e.g., 0, 4, 8, ... */
-                        int irq_id2 = (base_bit + 2) & 0x1f;   /* e.g., 2, 6, 10, ... */
+                        /* Register OEM callbacks (AL_EncCore_Init at 0x6c8d8).
+                         * OEM uses CORE index (not channel) for IRQ slots:
+                         *   EndEncoding:    core*4     = 0 for core 0
+                         *   EndAvcEntropy:  core*4 + 2 = 2 for core 0
+                         * T31 has a single AVPU core (core 0). */
+                        int core = 0; /* T31: single AVPU core */
+                        int irq_id0 = core * 4;           /* IRQ 0: EndEncoding */
+                        int irq_id2 = core * 4 + 2;       /* IRQ 2: EndAvcEntropy */
 
                         avpu_register_callback(&enc->avpu, avpu_end_encoding_callback, &enc->avpu, irq_id0);
-                        LOG_CODEC("AVPU: registered EndEncoding callback for channel %d (IRQ %d)", channel, irq_id0);
+                        LOG_CODEC("AVPU: registered EndEncoding callback for core %d (IRQ %d)", core, irq_id0);
 
                         /* OEM maps the +2 interrupt to EndAvcEntropy, not EndEncoding. */
                         if (irq_id2 < 20) {
                             avpu_register_callback(&enc->avpu, avpu_end_avc_entropy_callback, &enc->avpu, irq_id2);
-                            LOG_CODEC("AVPU: registered EndAvcEntropy callback for channel %d (IRQ %d)", channel, irq_id2);
+                            LOG_CODEC("AVPU: registered EndAvcEntropy callback for core %d (IRQ %d)", core, irq_id2);
                         }
 
                         enc->use_hardware = 2; /* 2 = AL/AVPU path */
