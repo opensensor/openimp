@@ -496,8 +496,14 @@ static void avpu_init_enc1_slice_words(ALAvpuContext *ctx, const uint8_t *codec_
         ctx->enc1_cmd_0a_74 = 0x41eb0u;
 
     ctx->enc1_cmd_0b_7a = codec_param ? *(const uint16_t*)(codec_param + 0x7a) : 0u;
-    if (ctx->enc1_cmd_0b_7a == 0u)
-        ctx->enc1_cmd_0b_7a = 0x3e8u;
+    /* OEM sets SliceParam+0x7a = (width + 7) >> 3 at encode time.
+     * The codec_param+0x7a offset is NOT the same field — it may be zero or
+     * stale.  Compute from the actual encoder width to match OEM parity.
+     * CRITICAL: The previous default of 0x3e8 (1000) made the AVPU think the
+     * frame was 8000 pixels wide, causing it to read past the source frame
+     * buffer and stall the AXI bus → permanent core_status=0x3 hang. */
+    if (ctx->enc1_cmd_0b_7a == 0u || ctx->enc1_cmd_0b_7a > ((ctx->enc_w + 7u) >> 3))
+        ctx->enc1_cmd_0b_7a = (ctx->enc_w + 7u) >> 3;
 
     /* OEM sources SliceParam+0x7c from the picture-reference path.  Our current
      * AVPU path only tracks a single promoted reference, so seed the first-picture
