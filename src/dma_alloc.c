@@ -306,7 +306,11 @@ static int dma_init(void) {
         LOG_DMA("DMA init: no DMA device found; using malloc fallback only");
     } else if (strcmp(g_chosen_dev_path, "/dev/rmem") == 0) {
         /* rmem requires mmap; set up a single mapping and bump allocator */
-        void *base = mmap(NULL, g_rmem_size, PROT_READ | PROT_WRITE, MAP_SHARED, g_mem_fd, 0);
+        /* OEM alloc_kmem_init: mmap(0, size, PROT_RW, MAP_SHARED, fd, kmem_paddr)
+         * The offset MUST be the physical base (0x06300000). With offset=0,
+         * the driver maps physical page 0 instead of the rmem region! */
+        void *base = mmap(NULL, g_rmem_size, PROT_READ | PROT_WRITE, MAP_SHARED,
+                          g_mem_fd, (off_t)g_rmem_base_phys);
         if (base == MAP_FAILED) {
             LOG_DMA("DMA init: mmap of /dev/rmem failed (%s); will fall back per-alloc", strerror(errno));
         } else {
