@@ -186,6 +186,12 @@ typedef struct ALAvpuContext {
     volatile int init_stream_flush_failures;
     volatile int init_interm_flush_ret;
     volatile int init_cl_flush_ret;
+    volatile int init_misc_write_ret;
+    volatile int init_misc_read_ret;
+    volatile uint32_t init_misc_read_val;
+    volatile int init_top_write_ret;
+    volatile int init_top_read_ret;
+    volatile uint32_t init_top_read_val;
 
     /* Sticky diagnostics for the direct codec.c IRQ path. These let us tell
      * whether WaitInterruptThread ever started, whether WAIT_IRQ failed, and
@@ -194,6 +200,13 @@ typedef struct ALAvpuContext {
     volatile int irq_thread_exited;
     volatile int irq_wait_errno;
     volatile int last_irq_id;
+
+    /* OEM parity: frame counter and stream header tracking.
+     * The OEM pre-writes SPS/PPS/slice headers into the stream buffer
+     * before each AVPU submit, then feeds the byte offset into cmd[0x32]
+     * and cmd[0x36] so the AVPU writes encoded data after the headers. */
+    uint32_t frame_number;          /* monotonic frame counter */
+    uint32_t stream_header_offset;  /* bytes of header pre-written into current stream buf */
 
     /* Legacy IRQ state (used by codec.c WaitInterruptThread directly)
      * TODO: migrate codec.c to use Board/IpCtrl abstraction, then remove these.

@@ -89,6 +89,10 @@ struct avpu_reg {
 #define AVPU_REG_ENC_EN_B      (AVPU_BASE_OFFSET + 0x5F4)
 #define AVPU_REG_ENC_EN_C      (AVPU_BASE_OFFSET + 0x5E4)
 #define AVPU_REG_AXI_ADDR_OFFSET_IP (AVPU_BASE_OFFSET + 0x1208)
+#define AVPU_REG_WPP_CORE0_RESET(c) ((AVPU_BASE_OFFSET + 0x20C) + ((unsigned)(c) << 9))
+#define AVPU_REG_CORE_STATUS_8230(c) ((AVPU_BASE_OFFSET + 0x230) + ((unsigned)(c) << 9))
+#define AVPU_REG_CORE_STATUS_8234(c) ((AVPU_BASE_OFFSET + 0x234) + ((unsigned)(c) << 9))
+#define AVPU_REG_CORE_STATUS_8238(c) ((AVPU_BASE_OFFSET + 0x238) + ((unsigned)(c) << 9))
 static inline unsigned AVPU_CORE_BASE(int core) { return (AVPU_BASE_OFFSET + 0x3F0) + ((unsigned)core << 9); }
 #define AVPU_REG_CORE_RESET(c)   (AVPU_CORE_BASE(c) + 0x00)
 #define AVPU_REG_CORE_CLKCMD(c)  (AVPU_CORE_BASE(c) + 0x04)
@@ -602,6 +606,333 @@ static uint32_t avpu_pack_enc1_lcu_pos(uint32_t pos, uint32_t lcu_w)
     return (pos % lcu_w) | (((pos / lcu_w) & 0x3ffu) << 12);
 }
 
+/* ---- OEM-parity: H.264 header pre-write into stream buffer ----
+ *
+ * The OEM software (GenerateAvcSliceHeader -> FlushNAL) writes SPS, PPS, and
+ * slice header NALUs into the stream buffer BEFORE submitting the command list
+ * to the AVPU. The AVPU then writes encoded macroblock data starting at the
+ * byte offset past the headers (cmd[0x32] / cmd[0x36]).
+ *
+ * This matches the Allegro IP architecture:
+ *   - Host writes: [AUD][SPS][PPS][slice header]  (NAL framing for decoder)
+ *   - AVPU writes: [encoded macroblock bitstream]  (starting at cmd[0x32])
+ */
+
+/* --- Bitstream writing helpers (duplicated from hw_encoder.c for AVPU path) --- */
+
+static void bs_write_bit(uint8_t *buf, int *bit_pos, int value)
+{
+    int byte_pos = (*bit_pos) / 8;
+    int bit_off = 7 - ((*bit_pos) % 8);
+    if (value)
+        buf[byte_pos] |= (1 << bit_off);
+    else
+        buf[byte_pos] &= ~(1 << bit_off);
+    (*bit_pos)++;
+}
+
+static void bs_write_bits(uint8_t *buf, int *bit_pos, uint32_t value, int n)
+{
+    for (int i = n - 1; i >= 0; i--)
+        bs_write_bit(buf, bit_pos, (value >> i) & 1);
+}
+
+static void bs_write_ue(uint8_t *buf, int *bit_pos, uint32_t value)
+{
+    uint32_t v = value + 1;
+    int lz = 0;
+    uint32_t t = v;
+    while (t > 1) { t >>= 1; lz++; }
+    for (int i = 0; i < lz; i++)
+        bs_write_bit(buf, bit_pos, 0);
+    for (int i = lz; i >= 0; i--)
+        bs_write_bit(buf, bit_pos, (v >> i) & 1);
+}
+
+static void bs_write_se(uint8_t *buf, int *bit_pos, int32_t value)
+{
+    uint32_t mapped;
+    if (value > 0)
+        mapped = (uint32_t)(2 * value - 1);
+    else
+        mapped = (uint32_t)(-2 * value);
+    bs_write_ue(buf, bit_pos, mapped);
+}
+
+static void bs_trailing_bits(uint8_t *buf, int *bit_pos)
+{
+    bs_write_bit(buf, bit_pos, 1);
+    while ((*bit_pos) % 8 != 0)
+        bs_write_bit(buf, bit_pos, 0);
+}
+
+/* Write NAL unit with emulation prevention bytes (OEM: FlushNAL) */
+static int avpu_write_nal_epb(uint8_t *dst, uint8_t nal_header,
+                               const uint8_t *rbsp, int rbsp_len)
+{
+    int pos = 0;
+    /* Annex B 4-byte start code */
+    dst[pos++] = 0x00;
+    dst[pos++] = 0x00;
+    dst[pos++] = 0x00;
+    dst[pos++] = 0x01;
+    /* NAL header byte */
+    dst[pos++] = nal_header;
+    /* RBSP with emulation prevention: insert 0x03 before {00,01,02,03} after 00 00 */
+    int zeros = 0;
+    for (int i = 0; i < rbsp_len; i++) {
+        uint8_t b = rbsp[i];
+        if (zeros >= 2 && b <= 0x03) {
+            dst[pos++] = 0x03;
+            zeros = 0;
+        }
+        dst[pos++] = b;
+        zeros = (b == 0x00) ? (zeros + 1) : 0;
+    }
+    return pos;
+}
+
+/* Generate SPS RBSP for current encoder config (no start code / NAL header) */
+static int avpu_generate_sps_rbsp(uint8_t *rbsp, const ALAvpuContext *ctx)
+{
+    int bp = 0;
+    memset(rbsp, 0, 128);
+
+    /* profile_idc: Baseline=66, Main=77, High=100 */
+    uint8_t profile_idc;
+    switch (ctx->profile) {
+    case 1:  profile_idc = 77;  break; /* Main */
+    case 2:  profile_idc = 100; break; /* High */
+    default: profile_idc = 66;  break; /* Baseline */
+    }
+    bs_write_bits(rbsp, &bp, profile_idc, 8);
+
+    /* constraint_set flags + reserved */
+    bs_write_bit(rbsp, &bp, (profile_idc == 66) ? 1 : 0); /* constraint_set0 */
+    bs_write_bit(rbsp, &bp, (profile_idc <= 77) ? 1 : 0); /* constraint_set1 */
+    bs_write_bit(rbsp, &bp, 0);
+    bs_write_bit(rbsp, &bp, 0);
+    bs_write_bits(rbsp, &bp, 0, 4); /* reserved */
+
+    /* level_idc = 31 (Level 3.1 — covers 1280x720@30) */
+    bs_write_bits(rbsp, &bp, 31, 8);
+
+    /* seq_parameter_set_id = 0 */
+    bs_write_ue(rbsp, &bp, 0);
+
+    /* High profile needs chroma_format_idc etc */
+    if (profile_idc == 100) {
+        bs_write_ue(rbsp, &bp, 1); /* chroma_format_idc = 1 (4:2:0) */
+        bs_write_ue(rbsp, &bp, 0); /* bit_depth_luma_minus8 */
+        bs_write_ue(rbsp, &bp, 0); /* bit_depth_chroma_minus8 */
+        bs_write_bit(rbsp, &bp, 0); /* qpprime_y_zero_transform_bypass */
+        bs_write_bit(rbsp, &bp, 0); /* seq_scaling_matrix_present */
+    }
+
+    bs_write_ue(rbsp, &bp, 0); /* log2_max_frame_num_minus4 */
+    bs_write_ue(rbsp, &bp, 0); /* pic_order_cnt_type */
+    bs_write_ue(rbsp, &bp, 0); /* log2_max_pic_order_cnt_lsb_minus4 */
+    bs_write_ue(rbsp, &bp, 1); /* max_num_ref_frames */
+    bs_write_bit(rbsp, &bp, 0); /* gaps_in_frame_num_allowed */
+
+    int mb_w = (ctx->enc_w + 15) / 16;
+    int mb_h = (ctx->enc_h + 15) / 16;
+    bs_write_ue(rbsp, &bp, mb_w - 1);
+    bs_write_ue(rbsp, &bp, mb_h - 1);
+    bs_write_bit(rbsp, &bp, 1); /* frame_mbs_only */
+    bs_write_bit(rbsp, &bp, 1); /* direct_8x8_inference */
+
+    /* Cropping if not multiple of 16 */
+    int crop_r = (mb_w * 16 - ctx->enc_w) / 2;
+    int crop_b = (mb_h * 16 - ctx->enc_h) / 2;
+    int need_crop = (crop_r > 0 || crop_b > 0);
+    bs_write_bit(rbsp, &bp, need_crop);
+    if (need_crop) {
+        bs_write_ue(rbsp, &bp, 0);      /* left */
+        bs_write_ue(rbsp, &bp, crop_r);  /* right */
+        bs_write_ue(rbsp, &bp, 0);      /* top */
+        bs_write_ue(rbsp, &bp, crop_b);  /* bottom */
+    }
+
+    /* VUI: timing info only */
+    bs_write_bit(rbsp, &bp, 1); /* vui_parameters_present */
+    bs_write_bit(rbsp, &bp, 0); /* aspect_ratio_info */
+    bs_write_bit(rbsp, &bp, 0); /* overscan_info */
+    bs_write_bit(rbsp, &bp, 0); /* video_signal_type */
+    bs_write_bit(rbsp, &bp, 0); /* chroma_loc_info */
+    bs_write_bit(rbsp, &bp, 1); /* timing_info_present */
+    uint32_t fps = (ctx->fps_num && ctx->fps_den) ? (ctx->fps_num / ctx->fps_den) : 25;
+    if (fps == 0) fps = 25;
+    bs_write_bits(rbsp, &bp, 1, 32);       /* num_units_in_tick */
+    bs_write_bits(rbsp, &bp, fps * 2, 32); /* time_scale */
+    bs_write_bit(rbsp, &bp, 1);            /* fixed_frame_rate */
+    bs_write_bit(rbsp, &bp, 0); /* nal_hrd_parameters_present */
+    bs_write_bit(rbsp, &bp, 0); /* vcl_hrd_parameters_present */
+    bs_write_bit(rbsp, &bp, 0); /* pic_struct_present */
+    bs_write_bit(rbsp, &bp, 0); /* bitstream_restriction */
+
+    bs_trailing_bits(rbsp, &bp);
+    return bp / 8;
+}
+
+/* Generate PPS RBSP */
+static int avpu_generate_pps_rbsp(uint8_t *rbsp, const ALAvpuContext *ctx)
+{
+    int bp = 0;
+    memset(rbsp, 0, 64);
+
+    bs_write_ue(rbsp, &bp, 0); /* pps_id */
+    bs_write_ue(rbsp, &bp, 0); /* sps_id */
+    bs_write_bit(rbsp, &bp, ctx->entropy_mode & 1); /* entropy_coding_mode (0=CAVLC, 1=CABAC) */
+    bs_write_bit(rbsp, &bp, 0); /* bottom_field_pic_order */
+    bs_write_ue(rbsp, &bp, 0); /* num_slice_groups_minus1 */
+    bs_write_ue(rbsp, &bp, 0); /* num_ref_idx_l0_minus1 */
+    bs_write_ue(rbsp, &bp, 0); /* num_ref_idx_l1_minus1 */
+    bs_write_bit(rbsp, &bp, 0); /* weighted_pred */
+    bs_write_bits(rbsp, &bp, 0, 2); /* weighted_bipred_idc */
+    bs_write_se(rbsp, &bp, 0); /* pic_init_qp_minus26 */
+    bs_write_se(rbsp, &bp, 0); /* pic_init_qs_minus26 */
+    bs_write_se(rbsp, &bp, 0); /* chroma_qp_index_offset */
+    bs_write_bit(rbsp, &bp, 1); /* deblocking_filter_control */
+    bs_write_bit(rbsp, &bp, 0); /* constrained_intra_pred */
+    bs_write_bit(rbsp, &bp, 0); /* redundant_pic_cnt_present */
+
+    /* High profile: transform_8x8_mode etc */
+    if (ctx->profile == 2) {
+        bs_write_bit(rbsp, &bp, 0); /* transform_8x8_mode */
+        bs_write_bit(rbsp, &bp, 0); /* pic_scaling_matrix_present */
+        bs_write_se(rbsp, &bp, 0);  /* second_chroma_qp_index_offset */
+    }
+
+    bs_trailing_bits(rbsp, &bp);
+    return bp / 8;
+}
+
+/* Generate AUD (Access Unit Delimiter) - 2-byte RBSP */
+static int avpu_write_aud_nal(uint8_t *dst, int is_idr)
+{
+    int pos = 0;
+    dst[pos++] = 0x00; dst[pos++] = 0x00; dst[pos++] = 0x00; dst[pos++] = 0x01;
+    dst[pos++] = 0x09; /* nal_unit_type = 9 (AUD) */
+    /* primary_pic_type: 0=I (IDR), 1=I/P — 3 bits + trailing 1 + 4 pad = 1 byte */
+    dst[pos++] = is_idr ? 0x10 : 0x30;
+    return pos;
+}
+
+/* Generate slice header RBSP (without macroblock data or trailing bits).
+ * The AVPU writes the entropy-coded macroblock data after this.
+ * Returns RBSP byte count.  The caller wraps this in a NAL via avpu_write_nal_epb.
+ *
+ * IMPORTANT: The last byte may carry sub-byte alignment.  We byte-align with
+ * trailing bits here because the OEM GenerateAvcSliceHeader does the same when
+ * writing the header for the Enc1-only path (arg6 = 1).  The AVPU's command
+ * list offset (cmd[0x32]) is a byte offset, so byte alignment is required. */
+static int avpu_generate_slice_header_rbsp(uint8_t *rbsp, const ALAvpuContext *ctx,
+                                            int is_idr)
+{
+    int bp = 0;
+    memset(rbsp, 0, 64);
+
+    bs_write_ue(rbsp, &bp, 0); /* first_mb_in_slice = 0 */
+    bs_write_ue(rbsp, &bp, is_idr ? 7 : 5); /* slice_type: 7=all-I, 5=all-P */
+    bs_write_ue(rbsp, &bp, 0); /* pic_parameter_set_id = 0 */
+
+    /* frame_num: log2_max_frame_num_minus4 = 0 → log2_max = 4 → 4 bits */
+    bs_write_bits(rbsp, &bp, ctx->frame_number & 0xF, 4);
+
+    if (is_idr) {
+        bs_write_ue(rbsp, &bp, 0); /* idr_pic_id */
+    }
+
+    /* pic_order_cnt_lsb: log2_max_poc_lsb_minus4 = 0 → 4 bits */
+    bs_write_bits(rbsp, &bp, (ctx->frame_number * 2) & 0xF, 4);
+
+    if (!is_idr) {
+        /* num_ref_idx_active_override_flag = 0 (use PPS default) */
+        bs_write_bit(rbsp, &bp, 0);
+        /* ref_pic_list_modification_flag_l0 = 0 */
+        bs_write_bit(rbsp, &bp, 0);
+        /* dec_ref_pic_marking: adaptive_ref_pic_marking_mode_flag = 0 */
+        bs_write_bit(rbsp, &bp, 0);
+    } else {
+        /* IDR: dec_ref_pic_marking */
+        bs_write_bit(rbsp, &bp, 0); /* no_output_of_prior_pics */
+        bs_write_bit(rbsp, &bp, 0); /* long_term_reference */
+    }
+
+    /* CABAC: cabac_init_idc */
+    if (ctx->entropy_mode) {
+        bs_write_ue(rbsp, &bp, 0);
+    }
+
+    /* slice_qp_delta = 0 (use PPS default) */
+    bs_write_se(rbsp, &bp, 0);
+
+    /* deblocking_filter_control (deblocking enabled): disable_deblocking = 0 */
+    bs_write_ue(rbsp, &bp, 0);
+
+    /* Byte-align: the OEM GenerateAvcSliceHeader calls
+     * AL_BitStreamLite_AlignWithBits(1) to pad the last byte.
+     * The AVPU starts writing at the next byte boundary. */
+    bs_trailing_bits(rbsp, &bp);
+
+    return bp / 8;
+}
+
+/* Pre-write H.264 NAL headers into stream buffer before AVPU submit.
+ *
+ * OEM parity: encode1() -> GenerateAvcSliceHeader() -> FlushNAL()
+ * writes AUD + SPS + PPS (for IDR) + slice header into the stream buffer.
+ * Returns total bytes written — this becomes cmd[0x32] / cmd[0x36].
+ */
+static uint32_t avpu_prewrite_stream_headers(ALAvpuContext *ctx, int buf_idx, int is_idr)
+{
+    uint8_t rbsp[256];
+    int rbsp_len;
+
+    if (!ctx || buf_idx < 0 || buf_idx >= ctx->stream_bufs_used)
+        return 0;
+    if (!ctx->stream_bufs[buf_idx].map)
+        return 0;
+
+    uint8_t *buf = (uint8_t *)ctx->stream_bufs[buf_idx].map;
+    uint32_t pos = 0;
+    uint32_t budget = (uint32_t)ctx->stream_buf_size / 4; /* max 25% for headers */
+
+    /* AUD */
+    pos += avpu_write_aud_nal(buf + pos, is_idr);
+
+    if (is_idr) {
+        /* SPS (NAL type 7, nal_ref_idc=3 → 0x67) */
+        rbsp_len = avpu_generate_sps_rbsp(rbsp, ctx);
+        if (rbsp_len > 0 && pos + (uint32_t)rbsp_len + 16 < budget)
+            pos += avpu_write_nal_epb(buf + pos, 0x67, rbsp, rbsp_len);
+
+        /* PPS (NAL type 8, nal_ref_idc=3 → 0x68) */
+        rbsp_len = avpu_generate_pps_rbsp(rbsp, ctx);
+        if (rbsp_len > 0 && pos + (uint32_t)rbsp_len + 16 < budget)
+            pos += avpu_write_nal_epb(buf + pos, 0x68, rbsp, rbsp_len);
+    }
+
+    /* Slice header NAL (IDR=0x65 nal_ref_idc=3 type=5, P=0x41 nal_ref_idc=2 type=1) */
+    rbsp_len = avpu_generate_slice_header_rbsp(rbsp, ctx, is_idr);
+    if (rbsp_len > 0 && pos + (uint32_t)rbsp_len + 16 < budget) {
+        uint8_t nal_hdr = is_idr ? 0x65 : 0x41;
+        pos += avpu_write_nal_epb(buf + pos, nal_hdr, rbsp, rbsp_len);
+    }
+
+    /* Align to 32-byte boundary (OEM: align_down_32 for stream offsets) */
+    /* Actually DON'T align up — the AVPU expects the exact byte offset.
+     * The stream_part_offset handles the tail reservation. */
+
+    ctx->stream_header_offset = pos;
+    LOG_CODEC("AVPU: prewrite headers buf[%d] %s pos=%u (AUD+%s+slice_hdr) frame=%u",
+              buf_idx, is_idr ? "IDR SPS+PPS" : "P",
+              pos, is_idr ? "SPS+PPS" : "none", ctx->frame_number);
+
+    return pos;
+}
+
 static uint32_t avpu_get_enc1_stream_part_offset(const ALAvpuContext *ctx)
 {
     uint32_t lcu_w;
@@ -640,7 +971,8 @@ static uint32_t avpu_get_enc1_stream_part_offset(const ALAvpuContext *ctx)
  * RecBuffer context. Leaving the required DMA words at zero causes the AVPU to
  * DMA to physical address 0x0 → AXI bus hang → hard SoC crash.
  */
-static void fill_cmd_regs_enc1(const ALAvpuContext* ctx, uint32_t* cmd, uint32_t src_phys)
+static void fill_cmd_regs_enc1(const ALAvpuContext* ctx, uint32_t* cmd,
+                               uint32_t src_phys, uint32_t hdr_offset)
 {
     if (!ctx || !cmd) return;
 
@@ -648,14 +980,13 @@ static void fill_cmd_regs_enc1(const ALAvpuContext* ctx, uint32_t* cmd, uint32_t
     const int has_ref_desc = (ctx->ref_buf.phy_addr != 0);
     const int is_idr = !has_reference;
     const uint32_t stream_part_offset = avpu_get_enc1_stream_part_offset(ctx);
-    const uint32_t stream_desc_offset = 0u;
+    /* OEM parity: stream_offset = bytes of pre-written headers.
+     * The AVPU writes encoded data starting at this offset. */
+    const uint32_t stream_offset = hdr_offset;
     uint32_t stream_desc_phys = 0u;
-    uint32_t stream_desc_virt = 0u;
 
     if (ctx->stream_bufs_used > 0) {
         stream_desc_phys = ctx->stream_bufs[0].phy_addr;
-        if (ctx->stream_bufs[0].map)
-            stream_desc_virt = (uint32_t)(uintptr_t)ctx->stream_bufs[0].map;
     }
 
     /* Ensure cmd pointer is 4-byte aligned (MIPS requirement) */
@@ -825,33 +1156,32 @@ static void fill_cmd_regs_enc1(const ALAvpuContext* ctx, uint32_t* cmd, uint32_t
             cmd[0x17] = data_addr;
             cmd[0x18] = avpu_pack_enc1_cmd18(map_addr, data_addr);
 
-            /* OEM keeps the intermediate scratch family visible in the late Enc1
-             * window, but the adjacent cmd[0x30]/cmd[0x31] pair is sourced from
-             * SetSourceBuffer()->request+0x18/+0x1c rather than directly from the
-             * interm manager. For the current linear NV12 path those request words
-             * come from source-descriptor slots +0x40/+0x44, which remain zero
-             * unless the source is compressed and map planes are populated. Keep
-             * the recovered EP anchors and interm map base, but do not alias the
-             * interm data address into cmd[0x30] on this path. */
+            /* OEM FillCmdRegsEnc1 copies the late middle window from two different
+             * helper families:
+             *   cmd[0x30] <- *(req+0x318 + 0x0c) = stream physical base
+             *   cmd[0x31] <- *(req+0x318 + 0x10) = iStreamPartOffset
+             *   cmd[0x32] <- *(req+0x318 + 0x14) + t7_2 = iOffset + per-slice delta
+             *   cmd[0x34..0x35] <- interm map/data pointers (req+0x304/+0x308)
+             *
+             * openimp currently only models the first-submit single-slice path, so
+             * the OEM running bitstream offset (`iOffset + t7_2`) conservatively
+             * reduces to zero here. The critical parity fix is that cmd[0x31] must
+             * carry the reserved stream-part offset, not a CPU virtual pointer. */
             cmd[0x23] = ep2_addr;
             cmd[0x27] = ep1_addr;
             cmd[0x2f] = map_addr;
-            cmd[0x30] = 0u;
-            cmd[0x31] = 0u;
-            cmd[0x32] = stream_part_offset;
+            cmd[0x30] = stream_desc_phys;
+            cmd[0x31] = stream_part_offset;
+            cmd[0x32] = stream_offset;
+            cmd[0x34] = map_addr;
+            cmd[0x35] = data_addr;
         }
 
-        /* OEM FillEncTrace copies the per-slice stream descriptor pointed to by
-         * req+0x318 into cmd[0x34..0x37]: base phys, mapped/CPU-visible address,
-         * stream-part offset, and current stream write offset (iOffset).
-         * openimp's direct-AVPU path does not maintain the OEM stream-manager
-         * record or any pre-submit write position; fresh stream buffers are
-         * zeroed before queueing, so the least-assumptive first-submit match is
-         * iOffset == 0 rather than forcing the buffer-size limit here. */
-        cmd[0x34] = stream_desc_phys;
-        cmd[0x35] = stream_desc_virt;
-        cmd[0x36] = stream_part_offset;
-        cmd[0x37] = stream_desc_offset;
+        /* OEM writes cmd[0x36] from the running slice bitstream offset (`var_70_1`)
+         * accumulated across earlier slices. openimp currently only submits a fresh
+         * first-slice command, so keep the first-submit value at zero until the
+         * multi-slice / WPP path is recovered end-to-end. */
+        cmd[0x36] = stream_offset;
 
         /* OEM also packs the later slice words at cmd[0x19]/cmd[0x1a]. Leaving
          * them zero diverges from both SliceParamToCmdRegsEnc1 and UpdateCommand. */
@@ -944,6 +1274,15 @@ static void fill_cmd_regs_enc1(const ALAvpuContext* ctx, uint32_t* cmd, uint32_t
                 cmd[0x2e] = rec_mv_addr;
             }
 
+            /* OEM encode1 writes the remaining late window map bases directly from
+             * the request block built by SetPictureRefBuffers():
+             *   cmd[0x37] <- current picture map base   (req+0x2e8)
+             *   cmd[0x38] <- ref picture #1 map base    (req+0x2c8)
+             *   cmd[0x39] <- ref picture #2 map base    (req+0x2d8)
+             * The current openimp DPB has a single live ref backing store, so keep
+             * both ref-map slots mirrored when a ref buffer exists. */
+            cmd[0x37] = rec_map_addr;
+
             cmd[0x64] = src_phys ? (src_phys + y_plane_sz) : 0u; /* arg3+0x14: srcC */
             cmd[0x65] = 0u;                                      /* arg3+0x18: tab (linear NV12) */
 
@@ -955,10 +1294,25 @@ static void fill_cmd_regs_enc1(const ALAvpuContext* ctx, uint32_t* cmd, uint32_t
              * Our simplified DPB currently has at most one live backing buffer, so mirror the
              * same ref-map end into both ref slots when that buffer exists. Semantic "is this
              * an actual reference picture yet" control remains in the non-address words. */
-            /* OEM FillCmdRegsEnc1 also writes cmd[0x33] unconditionally from the same
-             * comp-data sizing path that feeds cmd[0x6f], but rounded to the 32-byte
-             * companion size stored in local `a1_31` before the middle-window copy. */
-            cmd[0x33] = comp_data_sz & ~0x1fu;
+            /* OEM FillCmdRegsEnc1 bounds cmd[0x33] by the remaining room before the
+             * reserved stream-part tail:
+             *   a2_22 = iStreamPartOffset - (iOffset + t7_2)
+             *   a1_31 = align_down_32(min(comp_data_sz, a2_22))
+             *
+             * openimp still models the first-submit single-slice path with
+             * iOffset+t7_2 == 0, so the recovered OEM cap reduces to the reserved
+             * stream-part boundary at cmd[0x31]. */
+            {
+                uint32_t comp_data_budget = comp_data_sz;
+                uint32_t stream_space = 0u;
+
+                if (stream_part_offset > stream_offset)
+                    stream_space = stream_part_offset - stream_offset;
+                if (stream_space < comp_data_budget)
+                    comp_data_budget = stream_space;
+
+                cmd[0x33] = comp_data_budget & ~0x1fu;
+            }
             cmd[0x67] = rec_map_end;                             /* arg3+0x54 */
             cmd[0x68] = ref_map_end;                             /* arg3+0x34 */
             cmd[0x69] = ref_map_end;                             /* arg3+0x44 */
@@ -1067,14 +1421,17 @@ static void avpu_promote_reference(ALAvpuContext *ctx)
  * Writing to non-existent upper bits can hang the bus on T31. */
 #define AVPU_IRQ_CLEAR_MASK 0x00FFFFFFu
 
-/* Enable interrupts for core (OEM parity: AL_EncCore_EnableInterrupts at 0x6cf78) */
+/* Enable Encode1 interrupt for core.
+ * OEM encode1 calls AL_EncCore_EnableInterrupts(..., num_cores, 0), while the
+ * separate Encode2 path explicitly uses AL_EncCore_EnableEnc2Interrupt(). Keep
+ * the submit path limited to the base Enc1 bit until the remaining arguments of
+ * AL_EncCore_EnableInterrupts are fully recovered. */
 static void avpu_enable_interrupts(int fd, int core)
 {
     /* OEM AL_EncCore_EnableInterrupts only updates 0x8014. It does not clear
      * 0x8018 here; pending IRQ clear is part of init/reset, not mask enable. */
     unsigned b0 = 1u << (((unsigned)core << 2) & 0x1F);
-    unsigned b2 = 1u << ((((unsigned)core << 2) + 2) & 0x1F);
-    unsigned add_m = (b0 | b2);
+    unsigned add_m = b0;
     unsigned old_m = 0;
     unsigned new_m = add_m;
 
@@ -1082,8 +1439,8 @@ static void avpu_enable_interrupts(int fd, int core)
         new_m = old_m | add_m;
     }
 
-    LOG_CODEC("AVPU: enable_interrupts core=%d old=0x%08x add=0x%08x new=0x%08x (bits: 0x%x | 0x%x)",
-              core, old_m, add_m, new_m, b0, b2);
+    LOG_CODEC("AVPU: enable_interrupts core=%d old=0x%08x add=0x%08x new=0x%08x (enc1_bit=0x%x)",
+              core, old_m, add_m, new_m, b0);
     avpu_write_reg(fd, AVPU_INTERRUPT_MASK, new_m);
     LOG_CODEC("AVPU: wrote INTERRUPT_MASK=0x%08x", new_m);
 }
@@ -1286,7 +1643,9 @@ static void avpu_log_gate_regs(ALAvpuContext *ctx, const char *tag)
         have_enc_en_c ? "" : "ERR:", enc_en_c);
 }
 
-static void avpu_probe_reg_write(int fd, const char *tag, unsigned int off, unsigned int expected)
+static void avpu_probe_reg_write(int fd, const char *tag, unsigned int off, unsigned int expected,
+                                 volatile int *out_write_ret, volatile int *out_read_ret,
+                                 volatile unsigned int *out_read_val)
 {
     unsigned int read_val = 0;
     int write_ret;
@@ -1297,6 +1656,13 @@ static void avpu_probe_reg_write(int fd, const char *tag, unsigned int off, unsi
 
     write_ret = avpu_write_reg(fd, off, expected);
     read_ret = avpu_read_reg_quiet(fd, off, &read_val);
+
+    if (out_write_ret)
+        *out_write_ret = write_ret;
+    if (out_read_ret)
+        *out_read_ret = read_ret;
+    if (out_read_val)
+        *out_read_val = read_val;
 
     LOG_CODEC(
         "AVPU: %s off=0x%08x write_ret=%d expected=0x%08x read_ret=%d read_val=0x%08x",
@@ -1321,20 +1687,32 @@ static void avpu_log_busy_snapshot(ALAvpuContext *ctx, uint32_t idx, unsigned in
     unsigned int irq_pending = 0;
     unsigned int clkcmd = 0;
     unsigned int cl_addr = 0;
+    unsigned int wpp_core0_reset = 0;
+    unsigned int status_8230 = 0;
+    unsigned int status_8234 = 0;
+    unsigned int status_8238 = 0;
     int have_irq_mask = (avpu_read_reg_quiet(ctx->fd, AVPU_INTERRUPT_MASK, &irq_mask) == 0);
     int have_irq_pending = (avpu_read_reg_quiet(ctx->fd, AVPU_INTERRUPT, &irq_pending) == 0);
     int have_clkcmd = (avpu_read_reg_quiet(ctx->fd, AVPU_REG_CORE_CLKCMD(0), &clkcmd) == 0);
     int have_cl_addr = (avpu_read_reg_quiet(ctx->fd, AVPU_REG_CL_ADDR, &cl_addr) == 0);
+    int have_wpp_core0_reset = (avpu_read_reg_quiet(ctx->fd, AVPU_REG_WPP_CORE0_RESET(0), &wpp_core0_reset) == 0);
+    int have_status_8230 = (avpu_read_reg_quiet(ctx->fd, AVPU_REG_CORE_STATUS_8230(0), &status_8230) == 0);
+    int have_status_8234 = (avpu_read_reg_quiet(ctx->fd, AVPU_REG_CORE_STATUS_8234(0), &status_8234) == 0);
+    int have_status_8238 = (avpu_read_reg_quiet(ctx->fd, AVPU_REG_CORE_STATUS_8238(0), &status_8238) == 0);
     int wait_errno = ctx->irq_wait_errno;
 
     LOG_CODEC(
-        "AVPU: busy snapshot CL[%u] core_status=0x%08x irq_mask=%s0x%08x irq_pending=%s0x%08x clkcmd=%s0x%08x cl_addr=%s0x%08x session_ready=%d frames_encoded=%d irq_thread_running=%d irq_thread_started=%d irq_thread_exited=%d last_irq=%d wait_irq_errno=%d (%s) init_trace=%d stream_flush_failures=%d interm_flush_ret=%d cl_flush_ret=%d",
+        "AVPU: busy snapshot CL[%u] core_status=0x%08x irq_mask=%s0x%08x irq_pending=%s0x%08x clkcmd=%s0x%08x cl_addr=%s0x%08x wpp_reset=%s0x%08x stat8230=%s0x%08x stat8234=%s0x%08x stat8238=%s0x%08x session_ready=%d frames_encoded=%d irq_thread_running=%d irq_thread_started=%d irq_thread_exited=%d last_irq=%d wait_irq_errno=%d (%s) init_trace=%d stream_flush_failures=%d interm_flush_ret=%d cl_flush_ret=%d",
         idx,
         core_status,
         have_irq_mask ? "" : "ERR:", irq_mask,
         have_irq_pending ? "" : "ERR:", irq_pending,
         have_clkcmd ? "" : "ERR:", clkcmd,
         have_cl_addr ? "" : "ERR:", cl_addr,
+        have_wpp_core0_reset ? "" : "ERR:", wpp_core0_reset,
+        have_status_8230 ? "" : "ERR:", status_8230,
+        have_status_8234 ? "" : "ERR:", status_8234,
+        have_status_8238 ? "" : "ERR:", status_8238,
         ctx->session_ready,
         ctx->frames_encoded,
         ctx->irq_thread_running,
@@ -1349,7 +1727,7 @@ static void avpu_log_busy_snapshot(ALAvpuContext *ctx, uint32_t idx, unsigned in
         ctx->init_cl_flush_ret);
 
     LOG_CODEC(
-        "AVPU: busy sticky CL[%u] core_status=0x%08x cl_addr=%s0x%08x frames_encoded=%d last_irq=%d wait_irq_errno=%d init_trace=%d stream_flush_failures=%d interm_flush_ret=%d cl_flush_ret=%d",
+        "AVPU: busy sticky CL[%u] core_status=0x%08x cl_addr=%s0x%08x frames_encoded=%d last_irq=%d wait_irq_errno=%d init_trace=%d stream_flush_failures=%d interm_flush_ret=%d cl_flush_ret=%d init_misc={w:%d r:%d val:0x%08x} init_top={w:%d r:%d val:0x%08x} status_regs={820c:%s0x%08x 8230:%s0x%08x 8234:%s0x%08x 8238:%s0x%08x}",
         idx,
         core_status,
         have_cl_addr ? "" : "ERR:", cl_addr,
@@ -1359,7 +1737,17 @@ static void avpu_log_busy_snapshot(ALAvpuContext *ctx, uint32_t idx, unsigned in
         ctx->init_trace_completed,
         ctx->init_stream_flush_failures,
         ctx->init_interm_flush_ret,
-        ctx->init_cl_flush_ret);
+        ctx->init_cl_flush_ret,
+        ctx->init_misc_write_ret,
+        ctx->init_misc_read_ret,
+        ctx->init_misc_read_val,
+        ctx->init_top_write_ret,
+        ctx->init_top_read_ret,
+        ctx->init_top_read_val,
+        have_wpp_core0_reset ? "" : "ERR:", wpp_core0_reset,
+        have_status_8230 ? "" : "ERR:", status_8230,
+        have_status_8234 ? "" : "ERR:", status_8234,
+        have_status_8238 ? "" : "ERR:", status_8238);
 
     avpu_log_gate_regs(ctx, "busy");
 }
@@ -2120,6 +2508,8 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
                         enc->avpu.fd = fd;
                         enc->avpu.event_fd = enc->event ? (int)(uintptr_t)enc->event : -1;
                         enc->avpu.frames_encoded = 0;
+                        enc->avpu.frame_number = 0;
+                        enc->avpu.stream_header_offset = 0;
                         enc->avpu.busy_skip_count = 0;
                         enc->avpu.busy_snapshot_emitted = 0;
                         enc->avpu.first_submit_logged = 0;
@@ -2127,6 +2517,12 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
                         enc->avpu.init_stream_flush_failures = 0;
                         enc->avpu.init_interm_flush_ret = 0;
                         enc->avpu.init_cl_flush_ret = 0;
+                        enc->avpu.init_misc_write_ret = -999;
+                        enc->avpu.init_misc_read_ret = -999;
+                        enc->avpu.init_misc_read_val = 0;
+                        enc->avpu.init_top_write_ret = -999;
+                        enc->avpu.init_top_read_ret = -999;
+                        enc->avpu.init_top_read_val = 0;
                         enc->avpu.irq_thread_started = 0;
                         enc->avpu.irq_thread_exited = 0;
                         enc->avpu.irq_wait_errno = 0;
@@ -2411,7 +2807,9 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
             /* Step 0: MISC_CTRL — OEM writes 0x1000 during scheduler init.
              * This enables the AVPU's AXI/DMA master. Without it, the hardware
              * receives CL_PUSH but cannot read the command list from RAM. */
-            avpu_probe_reg_write(fd, "probe misc_ctrl", AVPU_REG_MISC_CTRL, 0x00001000);
+            avpu_probe_reg_write(fd, "probe misc_ctrl", AVPU_REG_MISC_CTRL, 0x00001000,
+                                 &ctx->init_misc_write_ret, &ctx->init_misc_read_ret,
+                                 &ctx->init_misc_read_val);
 
             /* Step 1: ResetCore — rapid back-to-back writes, NO sleeps */
             LOG_CODEC("AVPU: ResetCore (1,2,4) to reg 0x%x", AVPU_REG_CORE_RESET(0));
@@ -2423,7 +2821,9 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
             avpu_write_reg(fd, AVPU_INTERRUPT, 0x00FFFFFF);
 
             /* Step 3: TOP_CTRL per OEM */
-            avpu_probe_reg_write(fd, "probe top_ctrl", AVPU_REG_TOP_CTRL, 0x00000080);
+            avpu_probe_reg_write(fd, "probe top_ctrl", AVPU_REG_TOP_CTRL, 0x00000080,
+                                 &ctx->init_top_write_ret, &ctx->init_top_read_ret,
+                                 &ctx->init_top_read_val);
 
             /* Step 4: Turn on core gate clock (OEM: AL_EncCore_TurnOnGC).
              * Without this, T31 can accept the first CL push but never retire it,
@@ -2465,8 +2865,23 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
 
             uint32_t* cmd = (uint32_t*)entry;
 
-            /* Fill Enc1 command registers — source addr goes INTO the CL entry */
-            fill_cmd_regs_enc1(ctx, cmd, phys_addr);
+            /* OEM parity: determine IDR status and pre-write headers into stream buffer.
+             * The OEM encode1() calls GenerateAvcSliceHeader() before building the CL,
+             * writing SPS+PPS+slice header into the stream buffer. The returned byte
+             * count becomes cmd[0x32]/cmd[0x36] so the AVPU writes encoded data after. */
+            int is_idr = !(ctx->reference_valid && ctx->ref_buf.phy_addr);
+            uint32_t hdr_offset = avpu_prewrite_stream_headers(ctx, 0, is_idr);
+
+            /* DMA-flush the stream buffer region containing pre-written headers.
+             * dir=1 = DMA_TO_DEVICE (CPU writeback to RAM).
+             * The AVPU reads headers from RAM (or at least the stream buffer must be
+             * coherent with what the AVPU DMAs to/from). */
+            if (hdr_offset > 0 && ctx->stream_bufs[0].map) {
+                avpu_flush_cache(fd, ctx->stream_bufs[0].map, hdr_offset, 1 /*WBACK*/);
+            }
+
+            /* Fill Enc1 command registers — source addr and header offset go INTO the CL entry */
+            fill_cmd_regs_enc1(ctx, cmd, phys_addr, hdr_offset);
             log_first_enc1_cmd_window(ctx, idx, cmd);
 
             /* OEM AL_EncCore_Encode1() checks IsEnc1AlreadyRunning() before
@@ -2498,6 +2913,7 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
              * dir=1 = DMA_TO_DEVICE (writeback, CPU→RAM). */
             size_t cl_flush_size = ctx->cl_ring.size ? ctx->cl_ring.size : ctx->cl_entry_size;
             int cl_flush_ret = avpu_flush_cache(fd, ctx->cl_ring.map, (unsigned int)cl_flush_size, 1 /*WBACK*/);
+            int trace_submit = (idx == 0 && ctx->frames_encoded == 0);
 
             /* OEM encode1 enables interrupts before AL_EncCore_Encode1 starts
              * the command list. Match that ordering here instead of unmasking
@@ -2510,7 +2926,6 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
              * not issue an extra SRC_PUSH on the Enc1 command-list path. */
             uint32_t cl_phys = ctx->cl_ring.phy_addr + (idx * ctx->cl_entry_size);
             uint32_t ref_phys = ctx->reference_valid ? ctx->ref_buf.phy_addr : 0;
-            int trace_submit = (idx == 0 && ctx->frames_encoded == 0);
             int cl_addr_ret;
             int cl_push_ret;
             if (trace_submit || cl_flush_ret != 0) {
@@ -2539,12 +2954,14 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
                 avpu_log_submit_snapshot(ctx, idx, "post_cl_push");
             }
 
-            /* Advance to next CL slot */
+            /* Advance to next CL slot and frame counter */
             ctx->cl_idx = (idx + 1) % ctx->cl_count;
+            ctx->frame_number++;
             codec_queue_frame_metadata(enc, user_data);
             submitted = 1;
 
-            LOG_CODEC("Process: AVPU queued frame %ux%u phys=0x%x CL[%u] - encoding triggered", width, height, phys_addr, idx);
+            LOG_CODEC("Process: AVPU queued frame %ux%u phys=0x%x CL[%u] hdr=%u - encoding triggered",
+                      width, height, phys_addr, idx, hdr_offset);
         }
 
         /* Do not dequeue here; GetStream() will handle stream retrieval */
