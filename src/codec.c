@@ -292,12 +292,11 @@ static size_t avpu_get_enc1_map_region_size(uint32_t width, uint32_t height)
     uint32_t width_4k_tiles = (aligned_w + 0xFFFu) >> 12;
     uint32_t height_quads = (aligned_h + 3u) >> 2;
 
-    /* OEM AL_GetEncoderFbcMapSize(0, w, h, 16) aligns 8-bit dimensions to 16 and
-     * then calls GetFbcMapSize(..., mode=3), which for arg1=0 collapses to:
-     *   (64 * ceil(width / 4096)) * ceil(height / 4)
-     * Keep the exact byte count here instead of the earlier page-aligned estimate
-     * so the derived map/MV offsets match the ref-manager layout more closely. */
-    return (size_t)(width_4k_tiles * 64u) * (size_t)height_quads;
+    /* OEM AL_GetEncoderFbcMapSize(0, w, h, 16) for 8-bit NV12:
+     *   (32 * ceil(width / 4096)) * ceil(height / 4)
+     * This must match avpu_get_enc1_fbc_map_pitch() which uses 0x20 (32) per
+     * 4K tile. Stock CL has map_sz=0xb80=2944 for 640x360 (32*1*92). */
+    return (size_t)(width_4k_tiles * 32u) * (size_t)height_quads;
 }
 
 static size_t avpu_get_enc1_mv_region_size(uint32_t width, uint32_t height)
@@ -1103,8 +1102,24 @@ static void fill_cmd_regs_enc1(const ALAvpuContext* ctx, uint32_t* cmd,
     cmd[0x1b] = 0x00070c80u;
     cmd[0x1c] = 0x211e0904u;
     cmd[0x1d] = 0x00027000u;
-    cmd[0x1e] = 0x14000397u;
-    cmd[0x1f] = 0x0400045bu;
+    /* cmd[0x1e]-cmd[0x1f]: These MUST be computed from OUR actual header,
+     * not hardcoded from stock. The stock has a 544-byte header (920-bit
+     * slice header), but our minimal header is ~47 bytes. Using the stock
+     * values causes the entropy coder to read past our header into garbage. */
+    if (hdr_offset > 0) {
+        uint32_t hdr_bits = hdr_offset * 8u;
+        uint32_t frac = (hdr_bits >= 24u) ? 0x14u : 0u; /* stock uses 0x14 */
+        cmd[0x1e] = ((hdr_bits > 0 ? hdr_bits - 1u : 0u) & 0xfffffu)
+                   | ((frac & 0x1fu) << 24);
+    }
+    if (hdr_offset >= 4 && ctx->stream_bufs_used > 0 && ctx->stream_bufs[0].map) {
+        const uint8_t *hdr = (const uint8_t *)ctx->stream_bufs[0].map;
+        uint32_t off = hdr_offset;
+        cmd[0x1f] = ((uint32_t)hdr[off-1])
+                   | ((uint32_t)hdr[off-2] << 8)
+                   | ((uint32_t)hdr[off-3] << 16)
+                   | ((uint32_t)hdr[off-4] << 24);
+    }
 
     /* ---- cmd[0x20]-cmd[0x37]: Buffer addresses ----
      * These are the only address-dependent words. Substitute our allocations
