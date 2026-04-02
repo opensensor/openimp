@@ -1321,6 +1321,125 @@ static void fill_cmd_regs_enc1(const ALAvpuContext* ctx, uint32_t* cmd,
     }
 }
 
+/* Fill Enc2 (entropy) command registers.
+ *
+ * OEM parity: encode1() builds a separate 512-byte CL for Enc2 via
+ * FillCmdRegsEnc2 + SliceParamToCmdRegsEnc2.  The key fields are:
+ *   0x6c..0x7c : slice parameter pack (from SliceParamToCmdRegsEnc2)
+ *   0xe8..0xfc : stream buffer + intermediate buffer addresses
+ *
+ * After Enc1 completes (motion estimation + transform), Enc2 reads the
+ * intermediate results and produces entropy-coded H.264 bitstream into the
+ * stream buffer starting at the header offset.
+ */
+static void fill_cmd_regs_enc2(const ALAvpuContext *ctx, uint32_t *cmd,
+                               uint32_t hdr_offset)
+{
+    if (!ctx || !cmd) return;
+
+    memset(cmd, 0, 512);
+
+    const int is_idr = !(ctx->reference_valid && ctx->ref_buf.phy_addr);
+    const uint32_t stream_part_offset = avpu_get_enc1_stream_part_offset(ctx);
+    uint32_t stream_desc_phys = 0u;
+    if (ctx->stream_bufs_used > 0)
+        stream_desc_phys = ctx->stream_bufs[0].phy_addr;
+
+    uint32_t lcu_w = (ctx->enc_w + 15u) >> 4;
+    uint32_t lcu_h = (ctx->enc_h + 15u) >> 4;
+
+    /* --- cmd[0x1b] (byte offset 0x6c): SliceParamToCmdRegsEnc2 word 1 ---
+     * bits[12:0]  = SliceParam+0x74 (packed width in 8-pel units)
+     * bits[25:16] = SliceParam+0x78 (packed height in 8-pel units)
+     * bits[29:28] = nal_type derived
+     * bits[31:30] = nal_ref_idc derived */
+    {
+        uint32_t w8 = (ctx->enc_w + 7u) >> 3;
+        uint32_t h8 = (ctx->enc_h + 7u) >> 3;
+        uint32_t nal_type_bits = is_idr ? 0u : 1u; /* simplified */
+        cmd[0x1b] = (w8 & 0x1fffu)
+                   | ((h8 & 0x3ffu) << 16)
+                   | ((nal_type_bits & 0x3u) << 28);
+    }
+
+    /* --- cmd[0x1c] (byte offset 0x70): SliceParamToCmdRegsEnc2 word 2 ---
+     * Complex bit-packed slice parameters. Minimal AVC single-slice path:
+     *   bit1  = (codec != AVC) → 0
+     *   bit2  = slice_param+0xf6 → 0
+     *   bit3  = slice_param+0x66 → 0
+     *   bits[5:4] = (num_ref_idx-1) & 3
+     *   bits[9:8] = slice_type_enc → 0 for I, 0 for P first
+     *   bit10 = entropy_coding_mode
+     *   bit11 = slice_param+0x12 → 0
+     *   bits[21:16] = QP & 0x3f
+     *   bits[25:24] = cabac_init_idc & 3
+     *   bits[29:28] = slice_type_for_ref & 3  */
+    {
+        uint32_t qp = ctx->qp ? ctx->qp : 26u;
+        cmd[0x1c] = ((ctx->entropy_mode & 1u) << 10)
+                   | ((qp & 0x3fu) << 16);
+        if (!is_idr) {
+            cmd[0x1c] |= (1u << 28); /* P slice type for ref */
+        }
+    }
+
+    /* --- cmd[0x1d] (byte offset 0x74): LCU grid and slice info ---
+     * bits[9:0]   = numSliceRows / numLcuPerRow
+     * bits[21:12] = (numLcuPerRow+1)/2 - 1 (half-row count)
+     * bits[27:24] = lcu_h (row count)
+     * bits[31:28] = lcu_w (col count for decode) */
+    if (lcu_w && lcu_h) {
+        uint32_t slices_per_row = lcu_w ? ((lcu_w * lcu_h) / lcu_w) : 1;
+        cmd[0x1d] = (slices_per_row & 0x3ffu)
+                   | ((((lcu_w + 1u) / 2u) & 0x3ffu) << 12);
+    }
+
+    /* --- cmd[0x1e] (byte offset 0x78): alignment + header offset info ---
+     * bits[19:0]  = (header_size_bits - 1) & 0xfffff
+     * bits[28:24] = alignment bits from slice header */
+    if (hdr_offset > 0) {
+        uint32_t hdr_bits = hdr_offset * 8u;
+        cmd[0x1e] = ((hdr_bits > 0 ? hdr_bits - 1u : 0u) & 0xfffffu);
+    }
+
+    /* --- cmd[0x1f] (byte offset 0x7c): first 32 bits of slice header data ---
+     * The OEM stores the packed leading bits of the slice header here so the
+     * entropy coder can splice them into the output stream. For the initial
+     * implementation, leave as zero — the pre-written header in the stream
+     * buffer already contains this data. */
+    cmd[0x1f] = 0;
+
+    /* --- Intermediate buffer addresses (OEM: FillCmdRegsEnc2) ---
+     * The Enc2 stage reads from the intermediate map/data produced by Enc1. */
+    if (ctx->interm_buf.phy_addr) {
+        uint32_t map_addr = ctx->interm_buf.phy_addr
+                           + ctx->interm_ep1_size
+                           + ctx->interm_wpp_size
+                           + ctx->interm_ep2_size;
+        uint32_t data_addr = map_addr + ctx->interm_map_size;
+
+        cmd[0x3a] = map_addr;  /* byte offset 0xe8: interm map */
+        cmd[0x3b] = data_addr; /* byte offset 0xec: interm data */
+    }
+
+    /* --- Stream buffer addresses --- */
+    cmd[0x3c] = stream_desc_phys;       /* byte offset 0xf0: stream phys base */
+    cmd[0x3d] = stream_part_offset;     /* byte offset 0xf4: stream part offset */
+    cmd[0x3e] = hdr_offset;             /* byte offset 0xf8: iOffset (after headers) */
+
+    /* Comp data budget: same calculation as Enc1 cmd[0x33] */
+    {
+        uint32_t comp_data_sz = (uint32_t)avpu_get_enc1_comp_data_size(
+            ctx->enc_w, ctx->enc_h, ctx->format_word);
+        uint32_t stream_space = 0u;
+        if (stream_part_offset > hdr_offset)
+            stream_space = stream_part_offset - hdr_offset;
+        if (stream_space < comp_data_sz)
+            comp_data_sz = stream_space;
+        cmd[0x3f] = comp_data_sz & ~0x1fu; /* byte offset 0xfc: budget (32-byte aligned) */
+    }
+}
+
 static void log_first_enc1_cmd_window(ALAvpuContext* ctx, uint32_t idx, const uint32_t* cmd)
 {
     if (!ctx || !cmd) return;
@@ -1428,10 +1547,18 @@ static void avpu_promote_reference(ALAvpuContext *ctx)
  * AL_EncCore_EnableInterrupts are fully recovered. */
 static void avpu_enable_interrupts(int fd, int core)
 {
-    /* OEM AL_EncCore_EnableInterrupts only updates 0x8014. It does not clear
-     * 0x8018 here; pending IRQ clear is part of init/reset, not mask enable. */
-    unsigned b0 = 1u << (((unsigned)core << 2) & 0x1F);
-    unsigned add_m = b0;
+    /* OEM AL_EncCore_EnableInterrupts enables BOTH Enc1 and Enc2 interrupt bits.
+     * For channel N on core C: base_bit = (C << 2) & 0x1F
+     *   Enc1 (EndEncoding): bit at base_bit
+     *   Enc2 (EndAvcEntropy): bit at base_bit + 2
+     *
+     * Without the Enc2 bit enabled, the AVPU completes Enc2 but the interrupt
+     * is masked, so the EndAvcEntropy callback never fires and the pipeline
+     * appears stuck. */
+    unsigned base_bit = ((unsigned)core << 2) & 0x1Fu;
+    unsigned enc1_bit = 1u << base_bit;
+    unsigned enc2_bit = 1u << ((base_bit + 2u) & 0x1Fu);
+    unsigned add_m = enc1_bit | enc2_bit;
     unsigned old_m = 0;
     unsigned new_m = add_m;
 
@@ -1439,8 +1566,8 @@ static void avpu_enable_interrupts(int fd, int core)
         new_m = old_m | add_m;
     }
 
-    LOG_CODEC("AVPU: enable_interrupts core=%d old=0x%08x add=0x%08x new=0x%08x (enc1_bit=0x%x)",
-              core, old_m, add_m, new_m, b0);
+    LOG_CODEC("AVPU: enable_interrupts core=%d old=0x%08x add=0x%08x new=0x%08x (enc1=0x%x enc2=0x%x)",
+              core, old_m, add_m, new_m, enc1_bit, enc2_bit);
     avpu_write_reg(fd, AVPU_INTERRUPT_MASK, new_m);
     LOG_CODEC("AVPU: wrote INTERRUPT_MASK=0x%08x", new_m);
 }
@@ -2954,8 +3081,41 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
                 avpu_log_submit_snapshot(ctx, idx, "post_cl_push");
             }
 
-            /* Advance to next CL slot and frame counter */
-            ctx->cl_idx = (idx + 1) % ctx->cl_count;
+            /* OEM parity: Submit Enc2 (entropy) command list immediately after Enc1.
+             *
+             * The OEM AL_EncCore_Encode1 with combined mode submits both stages:
+             *   StartEnc1WithCommandList(core, Enc1_CL, 2)  // motion est + transform
+             *   StartEnc1WithCommandList(core, Enc2_CL, 8)  // entropy coding
+             *
+             * Without Enc2, the AVPU's Enc1 completes its stage but the overall
+             * pipeline stalls waiting for Enc2 — core_status stays 0x3 forever and
+             * no interrupt fires. This is confirmed by the device logs showing
+             * core_status=0x3 stuck after CL_PUSH=2.
+             */
+            {
+                uint32_t enc2_idx = (idx + 1) % ctx->cl_count;
+                uint8_t *enc2_entry = (uint8_t *)ctx->cl_ring.map + (size_t)enc2_idx * ctx->cl_entry_size;
+                uint32_t *enc2_cmd = (uint32_t *)enc2_entry;
+                uint32_t enc2_phys = ctx->cl_ring.phy_addr + (enc2_idx * ctx->cl_entry_size);
+
+                fill_cmd_regs_enc2(ctx, enc2_cmd, hdr_offset);
+
+                /* Flush CL ring again (includes the new Enc2 entry) */
+                avpu_flush_cache(fd, ctx->cl_ring.map, (unsigned int)cl_flush_size, 1 /*WBACK*/);
+
+                int enc2_addr_ret = avpu_write_reg(fd, AVPU_REG_CL_ADDR, enc2_phys);
+                int enc2_push_ret = avpu_write_reg(fd, AVPU_REG_CL_PUSH, 0x00000008);
+
+                if (trace_submit) {
+                    LOG_CODEC("AVPU: Enc2 CL[%u] phys=0x%08x CL_ADDR ret=%d CL_PUSH=8 ret=%d",
+                              enc2_idx, enc2_phys, enc2_addr_ret, enc2_push_ret);
+                    avpu_log_submit_snapshot(ctx, enc2_idx, "post_enc2_push");
+                }
+                LOG_CODEC("Process: Enc2 submitted CL[%u] phys=0x%08x hdr=%u", enc2_idx, enc2_phys, hdr_offset);
+            }
+
+            /* Advance past both Enc1 and Enc2 CL slots */
+            ctx->cl_idx = (idx + 2) % ctx->cl_count;
             ctx->frame_number++;
             codec_queue_frame_metadata(enc, user_data);
             submitted = 1;
