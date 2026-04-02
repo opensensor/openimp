@@ -1178,7 +1178,7 @@ static void fill_cmd_regs_enc1(const ALAvpuContext* ctx, uint32_t* cmd,
             uint32_t map_addr = ep2_addr + ctx->interm_ep2_size;
             uint32_t data_addr = map_addr + ctx->interm_map_size;
 
-            cmd[0x30] = data_addr;                     /* stock: 0x07135600 */
+            cmd[0x30] = stream_desc_phys;               /* stream buffer phys base */
             cmd[0x31] = stream_part_offset;            /* stock: 0x00027780 */
             cmd[0x32] = stream_offset;                 /* stock: 0x00000220 */
             cmd[0x33] = stream_part_offset > stream_offset
@@ -3179,8 +3179,14 @@ int AL_Codec_Encode_GetStream(void *codec, void **stream, void **user_data) {
                 if (buf_idx < ctx->stream_bufs_used && ctx->stream_bufs[buf_idx].map) {
                     avpu_flush_cache(ctx->fd, ctx->stream_bufs[buf_idx].map,
                                      (unsigned int)ctx->stream_buf_size, 2 /*INV*/);
+                    /* Scan backwards from stream_part_offset to find last non-zero byte.
+                     * The AVPU writes encoded data after the header; the remainder
+                     * of the buffer is zero-filled from our init memset. */
                     const uint8_t *sb = (const uint8_t*)ctx->stream_bufs[buf_idx].map;
-                    frame_size = (uint32_t)annexb_effective_size(sb, ctx->stream_buf_size);
+                    uint32_t spo = avpu_get_enc1_stream_part_offset(ctx);
+                    uint32_t end = spo > 0 ? spo : (uint32_t)ctx->stream_buf_size;
+                    while (end > 0 && sb[end - 1] == 0) end--;
+                    frame_size = end;
                 }
 
                 LOG_CODEC("GetStream[AVPU]: stream_buf[%d] frame_size=%u",
