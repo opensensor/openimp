@@ -1603,19 +1603,11 @@ static void avpu_end_encoding_callback(void *user_data)
     avpu_promote_reference(ctx);
     __sync_fetch_and_add(&ctx->frames_encoded, 1);
 
-    /* Stock resets the core between encodes to clear core_status.
-     * Without this, core_status stays at 0x3 and the busy check
-     * prevents submitting the next frame.
-     * Stock sequence: clock gate OFF → ON → ResetCore(1,2,4) */
-    if (ctx->fd >= 0) {
-        avpu_write_reg(ctx->fd, AVPU_REG_CORE_CLKCMD(0), 0x00010000u); /* gate OFF */
-        avpu_write_reg(ctx->fd, AVPU_REG_CORE_CLKCMD(0), 0x00000001u); /* gate ON */
-        avpu_write_reg(ctx->fd, AVPU_REG_CORE_RESET(0), 0x00000001u);
-        avpu_write_reg(ctx->fd, AVPU_REG_CORE_RESET(0), 0x00000002u);
-        avpu_write_reg(ctx->fd, AVPU_REG_CORE_RESET(0), 0x00000004u);
-    }
+    /* Do NOT reset from callback — writing registers from IRQ thread context
+     * while hardware is still active causes a hard lockup. The reset is done
+     * in the submission path (Process) before the next CL_PUSH instead. */
 
-    LOG_CODEC("EndEncoding: frames_encoded=%d (core reset for next frame)", ctx->frames_encoded);
+    LOG_CODEC("EndEncoding: frames_encoded=%d", ctx->frames_encoded);
 }
 
 /* EndAvcEntropy callback - separate OEM IRQ slot (core*4+2).
@@ -2928,7 +2920,19 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
              * flushing/pushing a new Enc1 command list. Our simplified path
              * uses a single effective rec/ref pair, so matching this gate is
              * important before submitting the next frame. */
+            /* After a completed encode, core_status stays 0x3 until reset.
+             * The stock does a full reset cycle between encodes (clock toggle +
+             * ResetCore). For safety, use the same init sequence we do at
+             * session_ready: ResetCore + clear IRQ + clock gate. */
             unsigned int core_status = 0;
+            if (ctx->frames_encoded > 0) {
+                /* Re-init the core for the next encode (stock-matched) */
+                avpu_write_reg(fd, AVPU_REG_CORE_RESET(0), 0x00000001u);
+                avpu_write_reg(fd, AVPU_REG_CORE_RESET(0), 0x00000002u);
+                avpu_write_reg(fd, AVPU_REG_CORE_RESET(0), 0x00000004u);
+                avpu_write_reg(fd, AVPU_INTERRUPT, 0x00FFFFFFu);
+                avpu_turn_on_gc(fd, 0);
+            }
             if (avpu_is_enc1_running(fd, 0, &core_status)) {
                 unsigned int skip_count = __sync_add_and_fetch(&ctx->busy_skip_count, 1u);
                 if (skip_count == 1u || (skip_count % 30u) == 0u) {
