@@ -1190,6 +1190,50 @@ static void fill_cmd_regs_enc1(const ALAvpuContext* ctx, uint32_t* cmd,
         cmd[0x19] = avpu_pack_enc1_cmd19(ctx);
         cmd[0x1a] = avpu_pack_enc1_cmd1a(ctx);
 
+        /* OEM parity: For AVC (codec type 0), encode1() calls
+         * SliceParamToCmdRegsEnc2() on the Enc1 CL itself, embedding the Enc2
+         * slice parameters at byte offsets 0x6c-0x7c (cmd[0x1b]-cmd[0x1f]).
+         * The hardware reads these from the Enc1 CL to perform entropy coding
+         * as part of the single CL_PUSH=2 submission. Without these fields,
+         * the AVPU hangs at core_status=0x3 waiting for entropy config. */
+        {
+            uint32_t lcu_w_enc2 = (ctx->enc_w + 15u) >> 4;
+            uint32_t lcu_h_enc2 = (ctx->enc_h + 15u) >> 4;
+            uint32_t w8 = (ctx->enc_w + 7u) >> 3;
+            uint32_t h8 = (ctx->enc_h + 7u) >> 3;
+            uint32_t qp = ctx->qp ? ctx->qp : 26u;
+            uint32_t nal_type_bits = is_idr ? 0u : 1u;
+
+            /* cmd[0x1b] (byte 0x6c): SliceParamToCmdRegsEnc2 word 1 */
+            cmd[0x1b] = (w8 & 0x1fffu)
+                       | ((h8 & 0x3ffu) << 16)
+                       | ((nal_type_bits & 0x3u) << 28);
+
+            /* cmd[0x1c] (byte 0x70): SliceParamToCmdRegsEnc2 word 2 */
+            cmd[0x1c] = ((ctx->entropy_mode & 1u) << 10)
+                       | ((qp & 0x3fu) << 16);
+            if (!is_idr)
+                cmd[0x1c] |= (1u << 28);
+
+            /* cmd[0x1d] (byte 0x74): LCU grid info for entropy coder */
+            if (lcu_w_enc2 && lcu_h_enc2) {
+                uint32_t slices = lcu_h_enc2;
+                cmd[0x1d] = (slices & 0x3ffu)
+                           | ((((lcu_w_enc2 + 1u) / 2u) & 0x3ffu) << 12);
+            }
+
+            /* cmd[0x1e] (byte 0x78): header bit count for entropy splicing */
+            if (hdr_offset > 0) {
+                uint32_t hdr_bits = hdr_offset * 8u;
+                cmd[0x1e] = ((hdr_bits > 0 ? hdr_bits - 1u : 0u) & 0xfffffu);
+            }
+
+            /* cmd[0x1f] (byte 0x7c): OEM stores packed slice header bits here.
+             * Leave as 0 for now — the pre-written header in the stream buffer
+             * provides the data. */
+            cmd[0x1f] = 0u;
+        }
+
         /* OEM SliceParamToCmdRegsEnc1 also copies pre-packed words at 0x60/0x61
          * and the low-byte/top-nibble control word at 0x6e. Our handcrafted CL
          * previously left them at zero, but the OEM command builder never does. */
@@ -3088,18 +3132,17 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
                 avpu_log_submit_snapshot(ctx, idx, "post_cl_push");
             }
 
-            /* OEM parity: Submit Enc2 (entropy) command list immediately after Enc1.
+            /* OEM parity: For AVC, the Enc2 slice parameters are embedded in the
+             * Enc1 CL (at cmd[0x1b]-cmd[0x1f], filled above in fill_cmd_regs_enc1).
+             * The OEM only submits a separate CL_PUSH=8 for P/B frames that have
+             * reference buffers ($s3_3 != 0 in encode1). For the first IDR frame
+             * (no references), only CL_PUSH=2 is submitted.
              *
-             * The OEM AL_EncCore_Encode1 with combined mode submits both stages:
-             *   StartEnc1WithCommandList(core, Enc1_CL, 2)  // motion est + transform
-             *   StartEnc1WithCommandList(core, Enc2_CL, 8)  // entropy coding
-             *
-             * Without Enc2, the AVPU's Enc1 completes its stage but the overall
-             * pipeline stalls waiting for Enc2 — core_status stays 0x3 forever and
-             * no interrupt fires. This is confirmed by the device logs showing
-             * core_status=0x3 stuck after CL_PUSH=2.
+             * When references exist, encode1 fills a separate Enc2 CL via
+             * FillCmdRegsEnc2 + SliceParamToCmdRegsEnc2 and submits CL_PUSH=8.
              */
-            {
+            if (ctx->reference_valid && ctx->ref_buf.phy_addr) {
+                /* P/B frame: submit separate Enc2 CL */
                 uint32_t enc2_idx = (idx + 1) % ctx->cl_count;
                 uint8_t *enc2_entry = (uint8_t *)ctx->cl_ring.map + (size_t)enc2_idx * ctx->cl_entry_size;
                 uint32_t *enc2_cmd = (uint32_t *)enc2_entry;
@@ -3119,10 +3162,15 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
                     avpu_log_submit_snapshot(ctx, enc2_idx, "post_enc2_push");
                 }
                 LOG_CODEC("Process: Enc2 submitted CL[%u] phys=0x%08x hdr=%u", enc2_idx, enc2_phys, hdr_offset);
+                ctx->cl_idx = (idx + 2) % ctx->cl_count;
+            } else {
+                /* IDR/I frame (no references): Enc2 params are in Enc1 CL,
+                 * only CL_PUSH=2 was submitted. No separate Enc2 needed. */
+                LOG_CODEC("Process: IDR frame — Enc2 params embedded in Enc1 CL, no CL_PUSH=8");
+                ctx->cl_idx = (idx + 1) % ctx->cl_count;
             }
 
-            /* Advance past both Enc1 and Enc2 CL slots */
-            ctx->cl_idx = (idx + 2) % ctx->cl_count;
+            /* Advance CL index (already set above based on IDR vs P frame) */
             ctx->frame_number++;
             codec_queue_frame_metadata(enc, user_data);
             submitted = 1;
