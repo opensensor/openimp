@@ -1439,18 +1439,12 @@ static void avpu_promote_reference(ALAvpuContext *ctx)
  * AL_EncCore_EnableInterrupts are fully recovered. */
 static void avpu_enable_interrupts(int fd, int core)
 {
-    /* OEM AL_EncCore_EnableInterrupts enables BOTH Enc1 and Enc2 interrupt bits.
-     * For channel N on core C: base_bit = (C << 2) & 0x1F
-     *   Enc1 (EndEncoding): bit at base_bit
-     *   Enc2 (EndAvcEntropy): bit at base_bit + 2
-     *
-     * Without the Enc2 bit enabled, the AVPU completes Enc2 but the interrupt
-     * is masked, so the EndAvcEntropy callback never fires and the pipeline
-     * appears stuck. */
-    unsigned base_bit = ((unsigned)core << 2) & 0x1Fu;
-    unsigned enc1_bit = 1u << base_bit;
-    unsigned enc2_bit = 1u << ((base_bit + 2u) & 0x1Fu);
-    unsigned add_m = enc1_bit | enc2_bit;
+    /* Stock libimp uses IRQ mask 0x11 (bits 0 + 4), NOT 0x05 (bits 0 + 2).
+     * Bit 0 = Enc1 complete for core 0
+     * Bit 4 = Enc1 complete for core 1 (or Enc2 on some configs)
+     * The stock NEVER uses bit 2. Match stock exactly. */
+    unsigned add_m = 0x11u; /* stock value */
+    (void)core;
     unsigned old_m = 0;
     unsigned new_m = add_m;
 
@@ -2824,34 +2818,42 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
         if (!ctx->session_ready) {
             LOG_CODEC("AVPU: AL_EncCore_Init (OEM-exact sequence)");
 
-            /* Step 0: MISC_CTRL — OEM writes 0x1000 during scheduler init.
-             * This enables the AVPU's AXI/DMA master. Without it, the hardware
-             * receives CL_PUSH but cannot read the command list from RAM. */
-            avpu_probe_reg_write(fd, "probe misc_ctrl", AVPU_REG_MISC_CTRL, 0x00001000,
-                                 &ctx->init_misc_write_ret, &ctx->init_misc_read_ret,
-                                 &ctx->init_misc_read_val);
+            /* Stock register write sequence (captured via patched avpu.ko):
+             *
+             * Phase 1: Init (AL_EncCore_Init)
+             *   WR 0x8010 = 0x00001000   MISC_CTRL
+             *   WR 0x83f0 = 1,2,4        ResetCore
+             *   WR 0x8018 = 0x00ffffff   Clear IRQ
+             *   WR 0x8054 = 0x00000080   TOP_CTRL
+             *
+             * Phase 2: Pre-encode setup
+             *   WR 0x83f4 = 0x00000001   Clock gate ON
+             *   WR 0x83f0 = 1,2,4        ResetCore AGAIN
+             *   WR 0x8014 = 0x00000011   IRQ mask (bits 0+4)
+             *   WR 0x83e0/83e4           CL_ADDR + CL_PUSH
+             *
+             * Phase 3: Post-CL encoder config (CRITICAL - we were missing this!)
+             *   WR 0x85f4 = 0x00000001   ENC_EN_B
+             *   WR 0x85f0 = 0x00000001   ENC_EN_A
+             *   WR 0x8400-0x8428         Encoder config block
+             *   WR 0x85e4 = 0x00000001   ENC_EN_C
+             */
 
-            /* Step 1: ResetCore — rapid back-to-back writes, NO sleeps */
-            LOG_CODEC("AVPU: ResetCore (1,2,4) to reg 0x%x", AVPU_REG_CORE_RESET(0));
+            /* Phase 1: Init */
+            avpu_write_reg(fd, AVPU_REG_MISC_CTRL, 0x00001000);
+            avpu_write_reg(fd, AVPU_REG_CORE_RESET(0), 0x00000001);
+            avpu_write_reg(fd, AVPU_REG_CORE_RESET(0), 0x00000002);
+            avpu_write_reg(fd, AVPU_REG_CORE_RESET(0), 0x00000004);
+            avpu_write_reg(fd, AVPU_INTERRUPT, 0x00FFFFFF);
+            avpu_write_reg(fd, AVPU_REG_TOP_CTRL, 0x00000080);
+
+            /* Phase 2: Clock + second reset (stock does this before CL_PUSH) */
+            avpu_turn_on_gc(fd, 0);
             avpu_write_reg(fd, AVPU_REG_CORE_RESET(0), 0x00000001);
             avpu_write_reg(fd, AVPU_REG_CORE_RESET(0), 0x00000002);
             avpu_write_reg(fd, AVPU_REG_CORE_RESET(0), 0x00000004);
 
-            /* Step 2: Clear interrupts (OEM: 0xFFFFFF — 24-bit, NOT 32-bit) */
-            avpu_write_reg(fd, AVPU_INTERRUPT, 0x00FFFFFF);
-
-            /* Step 3: TOP_CTRL per OEM */
-            avpu_probe_reg_write(fd, "probe top_ctrl", AVPU_REG_TOP_CTRL, 0x00000080,
-                                 &ctx->init_top_write_ret, &ctx->init_top_read_ret,
-                                 &ctx->init_top_read_val);
-
-            /* Step 4: Turn on core gate clock (OEM: AL_EncCore_TurnOnGC).
-             * Without this, T31 can accept the first CL push but never retire it,
-             * leaving CORE_STATUS bit1 stuck "running" forever. */
-            avpu_turn_on_gc(fd, 0);
-
-            avpu_log_gate_regs(ctx, "init");
-
+            LOG_CODEC("AVPU: init complete (stock-matched sequence)");
             ctx->session_ready = 1;
 
             /* Pre-queue ALL stream buffers so hardware always has space */
@@ -2989,6 +2991,47 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
             if (trace_submit) {
                 LOG_CODEC("AVPU: submit write CL[%u] CL_PUSH ret=%d val=0x00000002", idx, cl_push_ret);
                 avpu_log_submit_snapshot(ctx, idx, "post_cl_push");
+            }
+
+            /* CRITICAL: Stock writes encoder config registers AFTER CL_PUSH.
+             * Without these, the AVPU hangs at core_status=0x3.
+             * Captured from stock libimp register trace via patched avpu.ko. */
+            {
+                uint32_t y_plane_sz = avpu_get_nv12_luma_plane_size(width, height);
+                uint32_t interm_map_addr = 0, interm_data_addr = 0;
+                if (ctx->interm_buf.phy_addr) {
+                    uint32_t ep1 = ctx->interm_buf.phy_addr;
+                    uint32_t wpp = ep1 + ctx->interm_ep1_size;
+                    uint32_t ep2 = wpp + ctx->interm_wpp_size;
+                    interm_map_addr = ep2 + ctx->interm_ep2_size;
+                    interm_data_addr = interm_map_addr + ctx->interm_map_size;
+                }
+
+                /* ENC_EN_B */
+                avpu_write_reg(fd, AVPU_REG_ENC_EN_B, 0x00000001);
+                /* ENC_EN_A */
+                avpu_write_reg(fd, AVPU_REG_ENC_EN_A, 0x00000001);
+
+                /* Encoder config register block 0x8400-0x8428 */
+                avpu_write_reg(fd, 0x8400, 0x00000131u);
+                avpu_write_reg(fd, 0x8404,
+                    (((uint32_t)width - 1u) << 16) | ((uint32_t)height - 1u));
+                avpu_write_reg(fd, 0x8408, 0x00010001u);
+                avpu_write_reg(fd, 0x840c, (uint32_t)width);
+                avpu_write_reg(fd, 0x8410, src_phys);         /* source Y */
+                avpu_write_reg(fd, 0x8414, src_phys + y_plane_sz); /* source UV */
+                avpu_write_reg(fd, 0x8418, interm_data_addr);
+                avpu_write_reg(fd, 0x841c, interm_map_addr);
+                avpu_write_reg(fd, 0x8420, stream_part_offset);
+                avpu_write_reg(fd, 0x8424, hdr_offset);
+                avpu_write_reg(fd, 0x8428,
+                    stream_part_offset > hdr_offset
+                        ? (stream_part_offset - hdr_offset) & ~0x1fu : 0u);
+
+                /* ENC_EN_C */
+                avpu_write_reg(fd, AVPU_REG_ENC_EN_C, 0x00000001);
+
+                LOG_CODEC("AVPU: post-CL encoder config written (ENC_EN_A/B/C + 0x8400-0x8428)");
             }
 
             /* OEM parity: For AVC, the Enc2 slice parameters are embedded in the
