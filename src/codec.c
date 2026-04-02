@@ -1452,8 +1452,8 @@ static void avpu_enable_interrupts(int fd, int core)
         new_m = old_m | add_m;
     }
 
-    LOG_CODEC("AVPU: enable_interrupts core=%d old=0x%08x add=0x%08x new=0x%08x (enc1=0x%x enc2=0x%x)",
-              core, old_m, add_m, new_m, enc1_bit, enc2_bit);
+    LOG_CODEC("AVPU: enable_interrupts core=%d old=0x%08x add=0x%08x new=0x%08x",
+              core, old_m, add_m, new_m);
     avpu_write_reg(fd, AVPU_INTERRUPT_MASK, new_m);
     LOG_CODEC("AVPU: wrote INTERRUPT_MASK=0x%08x", new_m);
 }
@@ -2856,16 +2856,10 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
             LOG_CODEC("AVPU: init complete (stock-matched sequence)");
             ctx->session_ready = 1;
 
-            /* Pre-queue ALL stream buffers so hardware always has space */
-            if (ctx->stream_bufs_used > 0) {
-                for (int i = 0; i < ctx->stream_bufs_used; ++i) {
-                    if (!ctx->stream_in_hw[i] && ctx->stream_bufs[i].phy_addr) {
-                        avpu_write_reg(fd, AVPU_REG_STRM_PUSH, ctx->stream_bufs[i].phy_addr);
-                        ctx->stream_in_hw[i] = 1;
-                        LOG_CODEC("AVPU: pre-queued stream buf[%d] phys=0x%08x", i, ctx->stream_bufs[i].phy_addr);
-                    }
-                }
-            }
+            /* NOTE: Stock libimp does NOT write STRM_PUSH (0x8094) during init.
+             * Stream buffer addresses are provided via the CL (cmd[0x30]) and the
+             * encoder config registers (0x8420-0x8428) instead. Removed STRM_PUSH
+             * to match stock register sequence exactly. */
 
             LOG_CODEC("AVPU: HW initialized (AL_EncCore_Init)");
 
@@ -2998,6 +2992,7 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
              * Captured from stock libimp register trace via patched avpu.ko. */
             {
                 uint32_t y_plane_sz = avpu_get_nv12_luma_plane_size(width, height);
+                uint32_t stream_part_offset = avpu_get_enc1_stream_part_offset(ctx);
                 uint32_t interm_map_addr = 0, interm_data_addr = 0;
                 if (ctx->interm_buf.phy_addr) {
                     uint32_t ep1 = ctx->interm_buf.phy_addr;
