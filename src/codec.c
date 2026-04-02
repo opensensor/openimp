@@ -1017,11 +1017,23 @@ static void fill_cmd_regs_enc1(const ALAvpuContext* ctx, uint32_t* cmd,
     uint32_t profile_field = ((uint32_t)ctx->profile & 0x3u) + 2u;
     uint32_t min_cu_field = 4u;
     uint32_t lcu_size_field = 4u;
-    uint32_t c0 = 0x11u | (1u << 31);
+    /* OEM SliceParamToCmdRegsEnc1 packs:
+     *   bits[7:0]   = 0x11 (fixed)
+     *   bits[9:8]   = (codec - 2) & 3
+     *   bits[11:10] = (profile - 2) & 3
+     *   bits[22:20] = (min_cu - 4) & 7
+     *   bits[26:24] = (lcu_size - 4) & 7
+     *   bits[29:28] = chroma_format & 3  (1 for NV12 4:2:0)
+     *   bit 31      = constrained_intra_pred flag (0 for Baseline default)
+     * Previous code had bit31=1 always and bits[29:28]=0, both wrong. */
+    uint32_t chroma_format = (ctx->format_word >> 8) & 0xFu; /* 1 for NV12 4:2:0 */
+    uint32_t c0 = 0x11u;
     c0 |= ((codec_field - 2u) & 0x3u) << 8;
     c0 |= ((profile_field - 2u) & 0x3u) << 10;
     c0 |= ((min_cu_field - 4u) & 0x7u) << 20;
     c0 |= ((lcu_size_field - 4u) & 0x7u) << 24;
+    c0 |= (chroma_format & 0x3u) << 28;
+    /* bit 31 = constrained_intra_pred: 0 for normal Baseline */
     cmd[0] = c0;
 
     /* cmd[1]: OEM packs SliceParam[0x0a]/[0x0c], not raw pixels.
@@ -1066,8 +1078,15 @@ static void fill_cmd_regs_enc1(const ALAvpuContext* ctx, uint32_t* cmd,
         cmd[3] = (nalu & 0x1Fu) | (1u << 31) | (1u << 30);
     }
 
-    /* cmd[4]: QP in low 5 bits */
-    cmd[4] = (ctx->qp ? ctx->qp : 26) & 0x1F;
+    /* cmd[4]: OEM SliceParamToCmdRegsEnc1 packs deblock filter parameters here:
+     *   bits[4:0]  = SliceParam+0x36 (deblock_alpha_c0_offset_div2) & 0x1f
+     *   bits[13:8] = SliceParam+0x37 (deblock_beta_offset_div2) & 0x3f
+     *   bit 18     = SliceParam+0x38 (deblock_filter_flag)
+     *   bit 19     = SliceParam+0x39 (deblock_filter_override)
+     *   bits[21:20]= SliceParam+0x3a (deblock_filter_type) & 3
+     * NOTE: QP goes in cmd[3] bits[23:16], NOT here. Previous code
+     * incorrectly put QP in cmd[4] causing deblock alpha=26 (out of range). */
+    cmd[4] = 0u; /* default deblocking: alpha=0, beta=0, enabled */
 
     /* cmd[5..7]: OEM packs slice start/end positions and picture LCU grid.
      * CmdRegsEnc1ToSliceParam decodes cmd[5]/cmd[6] back to SliceParam+0x3c
@@ -1256,16 +1275,35 @@ static void fill_cmd_regs_enc1(const ALAvpuContext* ctx, uint32_t* cmd,
                            | ((((lcu_w_enc2 + 1u) / 2u) & 0x3ffu) << 12);
             }
 
-            /* cmd[0x1e] (byte 0x78): header bit count for entropy splicing */
+            /* cmd[0x1e] (byte 0x78): OEM SliceParamToCmdRegsEnc2 packs:
+             *   bits[19:0]  = (total_header_bits - 1) & 0xfffff
+             *   bits[28:24] = fractional_bit_offset (from SliceParam+0xf8)
+             * The fractional offset tells the entropy coder where within
+             * the last header byte to start splicing encoded data. */
             if (hdr_offset > 0) {
                 uint32_t hdr_bits = hdr_offset * 8u;
-                cmd[0x1e] = ((hdr_bits > 0 ? hdr_bits - 1u : 0u) & 0xfffffu);
+                /* For byte-aligned headers (our case after bs_trailing_bits),
+                 * the fractional offset is 0. OEM sets it to (bits & 7) + 0x10
+                 * when total >= 24 bits, or just (bits & 7) otherwise.
+                 * Since our header is byte-aligned, bits & 7 = 0, so frac = 0x10. */
+                uint32_t frac = (hdr_bits >= 24u) ? 0x10u : 0u;
+                cmd[0x1e] = ((hdr_bits > 0 ? hdr_bits - 1u : 0u) & 0xfffffu)
+                           | ((frac & 0x1fu) << 24);
             }
 
-            /* cmd[0x1f] (byte 0x7c): OEM stores packed slice header bits here.
-             * Leave as 0 for now — the pre-written header in the stream buffer
-             * provides the data. */
-            cmd[0x1f] = 0u;
+            /* cmd[0x1f] (byte 0x7c): OEM GenerateAvcSliceHeader packs the
+             * last 4 bytes of the NAL-encoded slice header, shifted by the
+             * fractional bit offset. The entropy coder uses this to splice
+             * the hardware-encoded data with the pre-written header.
+             * For byte-aligned headers, extract the last 4 bytes directly. */
+            if (hdr_offset >= 4 && ctx->stream_bufs[0].map) {
+                const uint8_t *hdr = (const uint8_t *)ctx->stream_bufs[0].map;
+                uint32_t off = hdr_offset;
+                cmd[0x1f] = ((uint32_t)hdr[off-1])
+                           | ((uint32_t)hdr[off-2] << 8)
+                           | ((uint32_t)hdr[off-3] << 16)
+                           | ((uint32_t)hdr[off-4] << 24);
+            }
         }
 
         /* OEM SliceParamToCmdRegsEnc1 also copies pre-packed words at 0x60/0x61
