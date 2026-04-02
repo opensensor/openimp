@@ -2920,20 +2920,17 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
              * flushing/pushing a new Enc1 command list. Our simplified path
              * uses a single effective rec/ref pair, so matching this gate is
              * important before submitting the next frame. */
-            /* After a completed encode, core_status stays 0x3 until reset.
-             * The stock does a full reset cycle between encodes (clock toggle +
-             * ResetCore). For safety, use the same init sequence we do at
-             * session_ready: ResetCore + clear IRQ + clock gate. */
+            /* After an encode completes, core_status stays 0x3 (latched).
+             * Resetting the core while in this state crashes the SoC.
+             * Instead: if the EndEncoding callback already fired (frames_encoded
+             * incremented), skip the busy check — the hardware is done and will
+             * accept a new CL_PUSH. */
             unsigned int core_status = 0;
             if (ctx->frames_encoded > 0) {
-                /* Re-init the core for the next encode (stock-matched) */
-                avpu_write_reg(fd, AVPU_REG_CORE_RESET(0), 0x00000001u);
-                avpu_write_reg(fd, AVPU_REG_CORE_RESET(0), 0x00000002u);
-                avpu_write_reg(fd, AVPU_REG_CORE_RESET(0), 0x00000004u);
-                avpu_write_reg(fd, AVPU_INTERRUPT, 0x00FFFFFFu);
-                avpu_turn_on_gc(fd, 0);
-            }
-            if (avpu_is_enc1_running(fd, 0, &core_status)) {
+                /* Previous encode completed — hardware is ready for next CL.
+                 * Clear the latched status by just proceeding. */
+                ctx->busy_skip_count = 0;
+            } else if (avpu_is_enc1_running(fd, 0, &core_status)) {
                 unsigned int skip_count = __sync_add_and_fetch(&ctx->busy_skip_count, 1u);
                 if (skip_count == 1u || (skip_count % 30u) == 0u) {
                     LOG_CODEC("Process: Enc1 already running; skipping CL[%u] submit to match OEM gating (skip_count=%u core_status=0x%08x)",
