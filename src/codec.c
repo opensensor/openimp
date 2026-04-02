@@ -2065,6 +2065,44 @@ static size_t annexb_effective_size(const uint8_t *buf, size_t maxlen)
     return (end > first) ? (end - first) : 0;
 }
 
+static uint32_t avpu_stream_buffer_effective_size(ALAvpuContext *ctx, int buf_idx,
+                                                  int *flush_ret_out)
+{
+    const uint8_t *sb;
+    uint32_t end;
+    size_t annexb;
+
+    if (flush_ret_out) {
+        *flush_ret_out = -1;
+    }
+
+    if (!ctx || buf_idx < 0 || buf_idx >= ctx->stream_bufs_used)
+        return 0;
+    if (!ctx->stream_bufs[buf_idx].map)
+        return 0;
+
+    if (flush_ret_out) {
+        *flush_ret_out = avpu_flush_cache(ctx->fd,
+                                          ctx->stream_bufs[buf_idx].map,
+                                          (unsigned int)ctx->stream_buf_size,
+                                          2 /*INV*/);
+    } else {
+        avpu_flush_cache(ctx->fd,
+                         ctx->stream_bufs[buf_idx].map,
+                         (unsigned int)ctx->stream_buf_size,
+                         2 /*INV*/);
+    }
+
+    sb = (const uint8_t *)ctx->stream_bufs[buf_idx].map;
+    end = (uint32_t)ctx->stream_buf_size;
+    while (end > 0 && sb[end - 1] == 0) end--;
+    if (end == 0)
+        return 0;
+
+    annexb = annexb_effective_size(sb, end);
+    return annexb > 0 ? (uint32_t)annexb : end;
+}
+
 /* Codec structure - based on decompilation at 0x7950c */
 /* Size: 0x924 bytes */
 typedef struct AL_CodecEncode AL_CodecEncode;
@@ -3285,29 +3323,30 @@ int AL_Codec_Encode_GetStream(void *codec, void **stream, void **user_data) {
                  * with rmem mappings). But the stream buffer invalidate DOES work.
                  * Read frame size directly from stream buffer by scanning for
                  * valid Annex-B data. */
-                int buf_idx = 0;
+                int buf_idx = -1;
+                int flush_ret = -1;
                 uint32_t frame_size = 0;
 
-                /* Read encoded data from stream buffer.
-                 * Use rmem flush with dir=1 (WBACK) to push any cached writes,
-                 * then size the Annex-B payload from the actual buffer contents. */
-                if (buf_idx < ctx->stream_bufs_used && ctx->stream_bufs[buf_idx].map) {
-                    avpu_flush_cache(ctx->fd, ctx->stream_bufs[buf_idx].map,
-                                     (unsigned int)ctx->stream_buf_size, 1 /*WBACK*/);
-                    const uint8_t *sb = (const uint8_t*)ctx->stream_bufs[buf_idx].map;
-                    uint32_t end = (uint32_t)ctx->stream_buf_size;
-                    while (end > 0 && sb[end - 1] == 0) end--;
-                    if (end > 0) {
-                        size_t annexb = annexb_effective_size(sb, end);
-                        frame_size = annexb > 0 ? (uint32_t)annexb : end;
+                /* Read encoded data from whichever stream buffer actually contains
+                 * the completed Annex-B payload. The AVPU session pre-queues a pool
+                 * of buffers, so do not assume buf[0] is always the one that came
+                 * back with output. */
+                for (int i = 0; i < ctx->stream_bufs_used; ++i) {
+                    int candidate_flush_ret = -1;
+                    uint32_t candidate_size = avpu_stream_buffer_effective_size(ctx, i,
+                                                                                &candidate_flush_ret);
+                    if (candidate_size > 0) {
+                        buf_idx = i;
+                        flush_ret = candidate_flush_ret;
+                        frame_size = candidate_size;
+                        break;
                     }
                 }
 
-                /* Debug removed — was using dir=2 (INV) which can crash */
-                LOG_CODEC("GetStream[AVPU]: stream_buf[%d] frame_size=%u",
-                          buf_idx, frame_size);
+                LOG_CODEC("GetStream[AVPU]: selected stream_buf[%d] flush_ret=%d frame_size=%u",
+                          buf_idx, flush_ret, frame_size);
 
-                if (frame_size > 0) {
+                if (buf_idx >= 0 && frame_size > 0) {
                     const uint8_t *virt = (const uint8_t*)ctx->stream_bufs[buf_idx].map;
                     HWStreamBuffer *s = (HWStreamBuffer*)malloc(sizeof(HWStreamBuffer));
                     if (!s) return -1;
@@ -3325,7 +3364,7 @@ int AL_Codec_Encode_GetStream(void *codec, void **stream, void **user_data) {
                     return 0;
                 }
 
-                LOG_CODEC("GetStream[AVPU]: encode completed but frame_size=0 or error");
+                LOG_CODEC("GetStream[AVPU]: encode completed but no AVPU stream buffer contained payload");
             }
 
             nanosleep(&nap, NULL);
