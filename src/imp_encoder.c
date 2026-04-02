@@ -1996,6 +1996,8 @@ static int encoder_update(void *module, void *frame) {
     int frame_held = 0;
     int frame_released = 0;
     int tried_group = 0;
+    int failed_unlock_count = 0;
+    uint32_t failed_unlock_vaddr = 0;
 
     /* OEM module offset 0x130 is the encoder group ID, not a direct channel ID. */
     int enc_group = -1;
@@ -2057,8 +2059,14 @@ static int encoder_update(void *module, void *frame) {
 
                 uint32_t vaddr = 0;
                 memcpy(&vaddr, (uint8_t*)queued_frame + 0x1c, sizeof(vaddr));
-                if (VBMUnlockFrameByVaddr(vaddr) == 0) {
-                    frame_released = 1;
+                if (vaddr != 0) {
+                    if (failed_unlock_count == 0) {
+                        failed_unlock_vaddr = vaddr;
+                    } else if (failed_unlock_vaddr != vaddr) {
+                        LOG_ENC("encoder_update: WARNING - mismatched failed clone vaddr 0x%x (expected 0x%x)",
+                                vaddr, failed_unlock_vaddr);
+                    }
+                    failed_unlock_count++;
                 }
                 encoder_release_frame_slot(chn, queued_frame);
             }
@@ -2089,8 +2097,14 @@ static int encoder_update(void *module, void *frame) {
                     } else {
                         uint32_t vaddr = 0;
                         memcpy(&vaddr, (uint8_t*)queued_frame + 0x1c, sizeof(vaddr));
-                        if (VBMUnlockFrameByVaddr(vaddr) == 0) {
-                            frame_released = 1;
+                        if (vaddr != 0) {
+                            if (failed_unlock_count == 0) {
+                                failed_unlock_vaddr = vaddr;
+                            } else if (failed_unlock_vaddr != vaddr) {
+                                LOG_ENC("encoder_update: WARNING - mismatched failed clone vaddr 0x%x (expected 0x%x)",
+                                        vaddr, failed_unlock_vaddr);
+                            }
+                            failed_unlock_count++;
                         }
                         encoder_release_frame_slot(chn, queued_frame);
                     }
@@ -2099,7 +2113,23 @@ static int encoder_update(void *module, void *frame) {
         }
     }
 
-    if (!frame_held && !frame_released) {
+    if (failed_unlock_count > 0 && failed_unlock_vaddr != 0) {
+        for (int i = 0; i < failed_unlock_count; ++i) {
+            if (VBMUnlockFrameByVaddr(failed_unlock_vaddr) < 0) {
+                LOG_ENC("encoder_update: WARNING - failed to drop deferred clone ref %d/%d vaddr=0x%x",
+                        i + 1, failed_unlock_count, failed_unlock_vaddr);
+                break;
+            }
+        }
+
+        if (!frame_held) {
+            frame_released = 1;
+        }
+    }
+
+    if (frame_held) {
+        LOG_ENC("encoder_update: holding source frame %p until stream release (OEM parity)", frame);
+    } else if (!frame_released) {
         extern int IMP_FrameSource_ReleaseFrame(int chnNum, void *frame);
         int src_chn = -1;
         if (VBMFrame_GetChannel(frame, &src_chn) == 0 && src_chn >= 0) {
@@ -2111,10 +2141,8 @@ static int encoder_update(void *module, void *frame) {
         } else {
             LOG_ENC("encoder_update: WARNING - could not determine source channel for frame %p", frame);
         }
-    } else if (frame_released) {
-        LOG_ENC("encoder_update: source frame %p already released via VBM unlock path", frame);
     } else {
-        LOG_ENC("encoder_update: holding source frame %p until stream release (OEM parity)", frame);
+        LOG_ENC("encoder_update: source frame %p already released via VBM unlock path", frame);
     }
 
     return frame_processed ? 0 : -1;

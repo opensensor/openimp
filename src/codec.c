@@ -1008,7 +1008,7 @@ static uint32_t avpu_get_enc1_stream_part_offset(const ALAvpuContext *ctx)
  * DMA to physical address 0x0 → AXI bus hang → hard SoC crash.
  */
 static void fill_cmd_regs_enc1(const ALAvpuContext* ctx, uint32_t* cmd,
-                               uint32_t src_phys, uint32_t hdr_offset,
+                               int stream_buf_idx, uint32_t src_phys, uint32_t hdr_offset,
                                int is_idr)
 {
     if (!ctx || !cmd) return;
@@ -1017,8 +1017,8 @@ static void fill_cmd_regs_enc1(const ALAvpuContext* ctx, uint32_t* cmd,
     const uint32_t stream_offset = hdr_offset;
     uint32_t stream_desc_phys = 0u;
 
-    if (ctx->stream_bufs_used > 0)
-        stream_desc_phys = ctx->stream_bufs[0].phy_addr;
+    if (stream_buf_idx >= 0 && stream_buf_idx < ctx->stream_bufs_used)
+        stream_desc_phys = ctx->stream_bufs[stream_buf_idx].phy_addr;
 
     if (((uintptr_t)cmd & 3) != 0) {
         LOG_CODEC("ERROR: cmd buffer not 4-byte aligned: %p", (void*)cmd);
@@ -1146,8 +1146,9 @@ static void fill_cmd_regs_enc1(const ALAvpuContext* ctx, uint32_t* cmd,
         cmd[0x1e] = ((hdr_bits > 0 ? hdr_bits - 1u : 0u) & 0xfffffu)
                    | ((frac & 0x1fu) << 24);
     }
-    if (hdr_offset >= 4 && ctx->stream_bufs_used > 0 && ctx->stream_bufs[0].map) {
-        const uint8_t *hdr = (const uint8_t *)ctx->stream_bufs[0].map;
+    if (hdr_offset >= 4 && stream_buf_idx >= 0 && stream_buf_idx < ctx->stream_bufs_used
+        && ctx->stream_bufs[stream_buf_idx].map) {
+        const uint8_t *hdr = (const uint8_t *)ctx->stream_bufs[stream_buf_idx].map;
         uint32_t off = hdr_offset;
         cmd[0x1f] = ((uint32_t)hdr[off-1])
                    | ((uint32_t)hdr[off-2] << 8)
@@ -1245,7 +1246,7 @@ static void fill_cmd_regs_enc1(const ALAvpuContext* ctx, uint32_t* cmd,
  * stream buffer starting at the header offset.
  */
 static void fill_cmd_regs_enc2(const ALAvpuContext *ctx, uint32_t *cmd,
-                               uint32_t hdr_offset, int is_idr)
+                               int stream_buf_idx, uint32_t hdr_offset, int is_idr)
 {
     if (!ctx || !cmd) return;
 
@@ -1253,8 +1254,8 @@ static void fill_cmd_regs_enc2(const ALAvpuContext *ctx, uint32_t *cmd,
 
     const uint32_t stream_part_offset = avpu_get_enc1_stream_part_offset(ctx);
     uint32_t stream_desc_phys = 0u;
-    if (ctx->stream_bufs_used > 0)
-        stream_desc_phys = ctx->stream_bufs[0].phy_addr;
+    if (stream_buf_idx >= 0 && stream_buf_idx < ctx->stream_bufs_used)
+        stream_desc_phys = ctx->stream_bufs[stream_buf_idx].phy_addr;
 
     uint32_t lcu_w = (ctx->enc_w + 15u) >> 4;
     uint32_t lcu_h = (ctx->enc_h + 15u) >> 4;
@@ -1310,15 +1311,24 @@ static void fill_cmd_regs_enc2(const ALAvpuContext *ctx, uint32_t *cmd,
      * bits[28:24] = alignment bits from slice header */
     if (hdr_offset > 0) {
         uint32_t hdr_bits = hdr_offset * 8u;
-        cmd[0x1e] = ((hdr_bits > 0 ? hdr_bits - 1u : 0u) & 0xfffffu);
+        uint32_t frac = (hdr_bits >= 24u) ? 0x14u : 0u;
+        cmd[0x1e] = ((hdr_bits > 0 ? hdr_bits - 1u : 0u) & 0xfffffu)
+                   | ((frac & 0x1fu) << 24);
     }
 
     /* --- cmd[0x1f] (byte offset 0x7c): first 32 bits of slice header data ---
      * The OEM stores the packed leading bits of the slice header here so the
-     * entropy coder can splice them into the output stream. For the initial
-     * implementation, leave as zero — the pre-written header in the stream
-     * buffer already contains this data. */
-    cmd[0x1f] = 0;
+     * entropy coder can splice them into the output stream. Mirror the Enc1
+     * path by sourcing the tail bytes from the actual pre-written header. */
+    if (hdr_offset >= 4 && stream_buf_idx >= 0 && stream_buf_idx < ctx->stream_bufs_used
+        && ctx->stream_bufs[stream_buf_idx].map) {
+        const uint8_t *hdr = (const uint8_t *)ctx->stream_bufs[stream_buf_idx].map;
+        uint32_t off = hdr_offset;
+        cmd[0x1f] = ((uint32_t)hdr[off-1])
+                   | ((uint32_t)hdr[off-2] << 8)
+                   | ((uint32_t)hdr[off-3] << 16)
+                   | ((uint32_t)hdr[off-4] << 24);
+    }
 
     /* --- Intermediate buffer addresses (OEM: FillCmdRegsEnc2) ---
      * The Enc2 stage reads from the intermediate map/data produced by Enc1. */
@@ -2978,7 +2988,7 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
             }
 
             /* Fill Enc1 command registers — source addr and header offset go INTO the CL entry */
-            fill_cmd_regs_enc1(ctx, cmd, phys_addr, hdr_offset, is_idr);
+            fill_cmd_regs_enc1(ctx, cmd, buf_idx, phys_addr, hdr_offset, is_idr);
             log_first_enc1_cmd_window(ctx, idx, cmd);
 
             /* OEM AL_EncCore_Encode1() checks IsEnc1AlreadyRunning() before
@@ -3075,51 +3085,11 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
                 avpu_log_submit_snapshot(ctx, idx, "post_cl_push");
             }
 
-            /* CRITICAL: Stock writes encoder config registers AFTER CL_PUSH.
-             * Without these, the AVPU hangs at core_status=0x3.
-             * Captured from stock libimp register trace via patched avpu.ko. */
-            {
-                uint32_t y_plane_sz = avpu_get_nv12_luma_plane_size(width, height);
-                uint32_t stream_part_offset = avpu_get_enc1_stream_part_offset(ctx);
-                uint32_t interm_map_addr = 0, interm_data_addr = 0;
-                if (ctx->interm_buf.phy_addr) {
-                    uint32_t ep1 = ctx->interm_buf.phy_addr;
-                    uint32_t wpp = ep1 + ctx->interm_ep1_size;
-                    uint32_t ep2 = wpp + ctx->interm_wpp_size;
-                    interm_map_addr = ep2 + ctx->interm_ep2_size;
-                    interm_data_addr = interm_map_addr + ctx->interm_map_size;
-                }
-
-                /* ENC_EN_B */
-                avpu_write_reg(fd, AVPU_REG_ENC_EN_B, 0x00000001);
-                /* ENC_EN_A */
-                avpu_write_reg(fd, AVPU_REG_ENC_EN_A, 0x00000001);
-
-                /* Encoder config register block 0x8400-0x8428 */
-                avpu_write_reg(fd, 0x8400, 0x00000131u);
-                avpu_write_reg(fd, 0x8404,
-                    (((uint32_t)width - 1u) << 16) | ((uint32_t)height - 1u));
-                avpu_write_reg(fd, 0x8408, 0x00010001u);
-                avpu_write_reg(fd, 0x840c, (uint32_t)width);
-                avpu_write_reg(fd, 0x8410, phys_addr);        /* source Y */
-                avpu_write_reg(fd, 0x8414, phys_addr + y_plane_sz); /* source UV */
-                /* Stock 0x8418/0x841c values are buffer addresses that don't
-                 * obviously match intermediate regions. Try EP1/WPP addresses
-                 * which are the working buffers the entropy coder reads from. */
-                avpu_write_reg(fd, 0x8418, ctx->interm_buf.phy_addr
-                               + ctx->interm_ep1_size); /* WPP buffer */
-                avpu_write_reg(fd, 0x841c, ctx->interm_buf.phy_addr); /* EP1 buffer */
-                avpu_write_reg(fd, 0x8420, stream_part_offset);
-                avpu_write_reg(fd, 0x8424, hdr_offset);
-                avpu_write_reg(fd, 0x8428,
-                    stream_part_offset > hdr_offset
-                        ? (stream_part_offset - hdr_offset) & ~0x1fu : 0u);
-
-                /* ENC_EN_C */
-                avpu_write_reg(fd, AVPU_REG_ENC_EN_C, 0x00000001);
-
-                LOG_CODEC("AVPU: post-CL encoder config written (ENC_EN_A/B/C + 0x8400-0x8428)");
-            }
+            /* Safety rollback: the speculative post-CL register block
+             * (ENC_EN_A/B/C + 0x8400..0x8428) is where the target now hangs.
+             * Stock AL_EncCore_Encode1 itself only flushes cache and pushes the
+             * command list(s); until the exact caller-side sequencing for these
+             * extra registers is recovered, do not program them here. */
 
             /* OEM parity: For AVC, the Enc2 slice parameters are embedded in the
              * Enc1 CL (at cmd[0x1b]-cmd[0x1f], filled above in fill_cmd_regs_enc1).
@@ -3137,9 +3107,12 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
                 uint32_t *enc2_cmd = (uint32_t *)enc2_entry;
                 uint32_t enc2_phys = ctx->cl_ring.phy_addr + (enc2_idx * ctx->cl_entry_size);
 
-                fill_cmd_regs_enc2(ctx, enc2_cmd, hdr_offset, is_idr);
+                fill_cmd_regs_enc2(ctx, enc2_cmd, buf_idx, hdr_offset, is_idr);
 
-                /* Flush CL ring again (includes the new Enc2 entry) */
+                /* Temporary safety fallback: flushing the real Enc2 entry makes the
+                 * AVPU consume our still-incomplete P-frame Enc2 CL and hard-hang the
+                 * target. Keep the previous non-hanging behavior until the remaining
+                 * Enc2/Enc1 P-frame reference registers are fully aligned to stock. */
                 avpu_flush_cache(fd, ctx->cl_ring.map, (unsigned int)cl_flush_size, 1 /*WBACK*/);
 
                 int enc2_addr_ret = avpu_write_reg(fd, AVPU_REG_CL_ADDR, enc2_phys);
