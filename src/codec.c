@@ -1156,8 +1156,10 @@ static void fill_cmd_regs_enc1(const ALAvpuContext* ctx, uint32_t* cmd,
          */
 
         /* cmd[0x0a..0x0b]: OEM packs SliceParam+0x74 and +0x7a/+0x7c/+0x7e/+0x7f/+0x80,
-         * not raw width/stride words. */
-        cmd[0x0a] = ctx->enc1_cmd_0a_74;
+         * not raw width/stride words.
+         * OEM SliceParamToCmdRegsEnc1: cmd[0xa] = zx.d(*(arg1+0x74)) | (cmd[0xa] & 0xffff0000)
+         * Only low 16 bits come from SliceParam+0x74; high bits must be 0 (from memset). */
+        cmd[0x0a] = ctx->enc1_cmd_0a_74 & 0xFFFFu;
         cmd[0x0b] = avpu_pack_enc1_cmd0b(ctx, has_reference);
 
         /* cmd[0x0c..0x0d]: reconstruction buffer */
