@@ -3191,6 +3191,12 @@ int AL_Codec_Encode_GetStream(void *codec, void **stream, void **user_data) {
             if (ctx->frames_encoded > initial_count) {
                 for (int i = 0; i < ctx->stream_bufs_used; ++i) {
                     if (ctx->stream_in_hw[i]) {
+                        /* DMA-invalidate: the AVPU wrote to this buffer via DMA.
+                         * dir=2 = DMA_FROM_DEVICE (invalidate CPU cache). */
+                        if (ctx->stream_bufs[i].map) {
+                            avpu_flush_cache(ctx->fd, ctx->stream_bufs[i].map,
+                                             (unsigned int)ctx->stream_buf_size, 2 /*INV*/);
+                        }
                         const uint8_t *virt = (const uint8_t*)ctx->stream_bufs[i].map;
                         size_t eff = annexb_effective_size(virt, ctx->stream_buf_size);
                         if (eff > 0) {
