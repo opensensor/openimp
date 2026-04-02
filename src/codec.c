@@ -108,10 +108,25 @@ static inline unsigned AVPU_CORE_BASE(int core) { return (AVPU_BASE_OFFSET + 0x3
  * CRITICAL: The previous path using the AVPU driver's JZ_CMD_FLUSH_CACHE
  * (ioctl 0xc004710e → dma_cache_sync(NULL,...)) does NOT reliably flush the
  * MIPS data cache. The rmem driver's flush is the only proven path on T31. */
+/* Cache flush for DMA coherency.
+ * Both rmem ioctl and AVPU ioctl return success but DON'T actually flush
+ * (confirmed: CPU virt shows command data, physical RAM shows stale AVPU status).
+ * Use the MIPS cacheflush() syscall which is a direct kernel trap. */
+#include <sys/cachectl.h>  /* cacheflush() on MIPS Linux */
+#ifndef DCACHE
+#define DCACHE 2
+#endif
+#ifndef BCACHE
+#define BCACHE 3
+#endif
 static int avpu_flush_cache(int fd, void *virt_addr, unsigned int size, unsigned int dir)
 {
-    (void)fd; /* no longer using AVPU fd for flush */
-    return DMA_RmemFlushCache(virt_addr, size, (int)dir);
+    (void)fd;
+    if (!virt_addr || size == 0) return -1;
+    /* MIPS cacheflush syscall: flushes data cache lines for the given range.
+     * BCACHE=3 flushes both instruction and data cache.
+     * This is a direct syscall — not an ioctl — so it always works. */
+    return cacheflush(virt_addr, (int)size, BCACHE);
 }
 
 static int avpu_flush_dma_buf(int fd, const char *tag, const AvpuDMABuf *buf, size_t size)
@@ -2975,8 +2990,16 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
              * which flushes 1MB — on MIPS T31 with ~16-32KB L1 D-cache this effectively
              * flushes the ENTIRE cache. This ensures all DMA buffers (CL, stream headers,
              * intermediate, rec/ref) are coherent. Match that by flushing 1MB. */
-            size_t cl_flush_size = 0x100000; /* OEM: 1MB flush → full cache writeback */
-            int cl_flush_ret = avpu_flush_cache(fd, ctx->cl_ring.map, (unsigned int)cl_flush_size, 1 /*WBACK*/);
+            /* Flush ONLY the current CL entry (512 bytes) — the 1MB flush was
+             * confirmed broken via avpu.ko CL dump (physical RAM shows stale
+             * AVPU status data, not our command words). Small flushes work
+             * (stream buffer header 47 bytes flushes correctly). */
+            size_t cl_flush_size = ctx->cl_entry_size; /* 512 bytes */
+            /* Verify data in CPU cache, then flush */
+            LOG_CODEC("Process: CL[%u] pre-flush virt_w0=0x%08x w1=0x%08x entry=%p size=%u",
+                      idx, cmd[0], cmd[1], (void*)entry, (unsigned)cl_flush_size);
+            int cl_flush_ret = avpu_flush_cache(fd, entry, (unsigned int)cl_flush_size, 1 /*WBACK*/);
+            LOG_CODEC("Process: CL[%u] flush ret=%d (rmem+avpu)", idx, cl_flush_ret);
             int trace_submit = (idx == 0 && ctx->frames_encoded == 0);
 
             /* OEM encode1 enables interrupts before AL_EncCore_Encode1 starts
