@@ -3013,8 +3013,8 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
                     (((uint32_t)width - 1u) << 16) | ((uint32_t)height - 1u));
                 avpu_write_reg(fd, 0x8408, 0x00010001u);
                 avpu_write_reg(fd, 0x840c, (uint32_t)width);
-                avpu_write_reg(fd, 0x8410, src_phys);         /* source Y */
-                avpu_write_reg(fd, 0x8414, src_phys + y_plane_sz); /* source UV */
+                avpu_write_reg(fd, 0x8410, phys_addr);        /* source Y */
+                avpu_write_reg(fd, 0x8414, phys_addr + y_plane_sz); /* source UV */
                 avpu_write_reg(fd, 0x8418, interm_data_addr);
                 avpu_write_reg(fd, 0x841c, interm_map_addr);
                 avpu_write_reg(fd, 0x8420, stream_part_offset);
