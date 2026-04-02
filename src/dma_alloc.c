@@ -306,7 +306,11 @@ static int dma_init(void) {
         LOG_DMA("DMA init: no DMA device found; using malloc fallback only");
     } else if (strcmp(g_chosen_dev_path, "/dev/rmem") == 0) {
         /* rmem requires mmap; set up a single mapping and bump allocator */
-        void *base = mmap(NULL, g_rmem_size, PROT_READ | PROT_WRITE, MAP_SHARED, g_mem_fd, 0);
+        /* OEM: mmap(0, size, PROT_READ|PROT_WRITE, MAP_SHARED, rmem_fd, kmem_paddr)
+         * The offset MUST be the physical base address — the rmem driver uses this
+         * to associate the mapping with the physical region. Without it, the flush
+         * ioctl (0xc00c7200) cannot find the correct pages to flush. */
+        void *base = mmap(NULL, g_rmem_size, PROT_READ | PROT_WRITE, MAP_SHARED, g_mem_fd, (off_t)g_rmem_base_phys);
         if (base == MAP_FAILED) {
             LOG_DMA("DMA init: mmap of /dev/rmem failed (%s); will fall back per-alloc", strerror(errno));
         } else {

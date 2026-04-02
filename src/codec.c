@@ -10,6 +10,7 @@
 #include <stdint.h>
 #include <pthread.h>
 #include <unistd.h>
+#include <fcntl.h>
 #include <imp/imp_encoder.h>
 #include <imp/imp_system.h>
 #include "fifo.h"
@@ -108,32 +109,14 @@ static inline unsigned AVPU_CORE_BASE(int core) { return (AVPU_BASE_OFFSET + 0x3
  * CRITICAL: The previous path using the AVPU driver's JZ_CMD_FLUSH_CACHE
  * (ioctl 0xc004710e → dma_cache_sync(NULL,...)) does NOT reliably flush the
  * MIPS data cache. The rmem driver's flush is the only proven path on T31. */
-/* Cache flush for DMA coherency.
- * rmem ioctl, AVPU ioctl, AND cacheflush() syscall all return success
- * but DON'T push CPU cache to physical RAM (confirmed via avpu.ko ioremap).
- * Try ALL methods including msync() to force writeback. */
-#include <sys/mman.h>
-#include <sys/cachectl.h>
-#ifndef BCACHE
-#define BCACHE 3
-#endif
-#define JZ_CMD_FLUSH_CACHE_IOCTL _IOWR('q', 14, int)
-struct avpu_flush_info { unsigned int addr; unsigned int len; unsigned int dir; };
+/* Cache flush via OEM-compatible /dev/rmem ioctl 0xc00c7200.
+ * OEM: Rtos_FlushCacheMemory → alloc_kmem_flush_cache → ioctl(rmem_fd, ...)
+ * CRITICAL: The rmem mmap MUST use offset=kmem_paddr (not 0) for the
+ * flush ioctl to find the correct pages. Fixed in dma_alloc.c. */
 static int avpu_flush_cache(int fd, void *virt_addr, unsigned int size, unsigned int dir)
 {
-    if (!virt_addr || size == 0) return -1;
-    /* Try everything: msync + cacheflush + rmem ioctl + AVPU ioctl */
-    msync(virt_addr, size, MS_SYNC | MS_INVALIDATE);
-    cacheflush(virt_addr, (int)size, BCACHE);
-    DMA_RmemFlushCache(virt_addr, size, (int)dir);
-    if (fd >= 0) {
-        struct avpu_flush_info info;
-        info.addr = (unsigned int)(uintptr_t)virt_addr;
-        info.len = size;
-        info.dir = dir;
-        ioctl(fd, JZ_CMD_FLUSH_CACHE_IOCTL, &info);
-    }
-    return 0;
+    (void)fd;
+    return DMA_RmemFlushCache(virt_addr, size, (int)dir);
 }
 
 static int avpu_flush_dma_buf(int fd, const char *tag, const AvpuDMABuf *buf, size_t size)
@@ -275,6 +258,29 @@ static int avpu_alloc_imp(size_t size, const char* tag, AvpuDMABuf* out)
     out->from_rmem = 1; /* prevent munmap in destroy; allocator owns lifetime */
     LOG_CODEC("AVPU: imp-alloc ok phys=0x%08x size=%zu virt=%p", phys, size, virt);
     return 0;
+}
+
+/* Re-map a DMA buffer as UNCACHED via /dev/mem.
+ * The rmem cached mapping's cache flush is broken on T31.
+ * /dev/mem with MAP_SHARED + O_SYNC gives an uncached mapping on MIPS. */
+static void *avpu_remap_uncached(uint32_t phys_addr, size_t size)
+{
+    int fd = open("/dev/mem", O_RDWR | O_SYNC);
+    if (fd < 0) {
+        LOG_CODEC("AVPU: /dev/mem open failed: %s", strerror(errno));
+        return NULL;
+    }
+    void *p = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED,
+                   fd, (off_t)phys_addr);
+    close(fd);
+    if (p == MAP_FAILED) {
+        LOG_CODEC("AVPU: /dev/mem mmap failed for phys=0x%08x size=%zu: %s",
+                  phys_addr, size, strerror(errno));
+        return NULL;
+    }
+    LOG_CODEC("AVPU: /dev/mem uncached remap OK phys=0x%08x -> virt=%p size=%zu",
+              phys_addr, p, size);
+    return p;
 }
 
 static uint32_t avpu_align_up_u32(uint32_t value, uint32_t alignment)
@@ -2625,12 +2631,9 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
                                 enc->avpu.stream_bufs[filled] = tmp;
                                 enc->avpu.stream_in_hw[filled] = 0;
                                 memset(enc->avpu.stream_bufs[filled].map, 0, enc->avpu.stream_buf_size);
-                                if (avpu_flush_dma_buf(fd, "stream_buf",
-                                                       &enc->avpu.stream_bufs[filled],
-                                                       (size_t)enc->avpu.stream_buf_size) != 0) {
-                                    enc->avpu.init_stream_flush_failures++;
-                                }
-                                LOG_CODEC("AVPU: stream buf[%d] phys=0x%08x size=%d (imp-alloc)", filled, enc->avpu.stream_bufs[filled].phy_addr, enc->avpu.stream_buf_size);
+                                avpu_flush_cache(fd, enc->avpu.stream_bufs[filled].map,
+                                                 (unsigned int)enc->avpu.stream_buf_size, 1);
+                                LOG_CODEC("AVPU: stream buf[%d] phys=0x%08x size=%d", filled, enc->avpu.stream_bufs[filled].phy_addr, enc->avpu.stream_buf_size);
                                 filled++;
                             } else {
                                 LOG_CODEC("AVPU: failed to allocate stream buf[%d] via IMP_Alloc", i);
@@ -2652,7 +2655,7 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
                             } else {
                                 enc->avpu.cl_idx = 0;
                                 memset(virt, 0, cl_bytes);
-                                LOG_CODEC("AVPU: cmdlist ring phys=0x%08x size=%zu entries=%u (imp-alloc)", phys, cl_bytes, enc->avpu.cl_count);
+                                LOG_CODEC("AVPU: cmdlist ring phys=0x%08x size=%zu entries=%u", phys, cl_bytes, enc->avpu.cl_count);
                             }
                         } else {
                             LOG_CODEC("AVPU: failed to allocate cmdlist ring via IMP_Alloc (size=%zu)", cl_bytes);
