@@ -1525,9 +1525,19 @@ static void log_first_enc1_cmd_window(ALAvpuContext* ctx, uint32_t idx, const ui
     if (!ctx || !cmd) return;
     if (__sync_lock_test_and_set(&ctx->first_submit_logged, 1) != 0) return;
 
+    /* Full 512-byte (128-word) CL hex dump for byte-by-byte OEM comparison */
+    for (int row = 0; row < 128; row += 8) {
+        LOG_CODEC("CL[%u] %03x: %08x %08x %08x %08x %08x %08x %08x %08x",
+                  idx, row,
+                  cmd[row+0], cmd[row+1], cmd[row+2], cmd[row+3],
+                  cmd[row+4], cmd[row+5], cmd[row+6], cmd[row+7]);
+    }
+
     LOG_CODEC("Process: first Enc1 CL[%u] NV12 luma height %u->%u y_plane=0x%08x",
               idx, ctx->enc_h, avpu_get_nv12_luma_lines(ctx->enc_h),
               avpu_get_nv12_luma_plane_size(ctx->enc_w, ctx->enc_h));
+    LOG_CODEC("Process: first Enc1 CL[%u] profile=%u entropy_mode=%u fmt=0x%08x",
+              idx, ctx->profile, ctx->entropy_mode, ctx->format_word);
     LOG_CODEC("Process: first Enc1 CL[%u] fmt=0x%08x cmd[0]=0x%08x cmd[1]=0x%08x cmd[2]=0x%08x cmd[3]=0x%08x",
               idx, ctx->format_word, cmd[0], cmd[1], cmd[2], cmd[3]);
     LOG_CODEC("Process: first Enc1 CL[%u] cmd[0x04]=0x%08x cmd[0x05]=0x%08x cmd[0x06]=0x%08x cmd[0x07]=0x%08x cmd[0x08]=0x%08x cmd[0x09]=0x%08x",
@@ -2643,6 +2653,8 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
             uint32_t gop = *(uint32_t*)(enc->codec_param + 0x44);
             uint32_t profile_idc = *(uint32_t*)(enc->codec_param + 0x24);
             uint32_t rc_mode = *(uint32_t*)(enc->codec_param + 0x2c);
+            LOG_CODEC("Process: lazy-init channel_id=%d %ux%u profile_idc=%u entropy_mode=%u",
+                      enc->channel_id, width, height, profile_idc, enc->entropy_mode);
             uint32_t init_qp = (*(uint32_t*)(enc->codec_param + 0x38)) & 0xFFu;
             uint32_t max_qp = *(uint32_t*)(enc->codec_param + 0x3c);
             uint32_t min_qp = *(uint32_t*)(enc->codec_param + 0x40);
@@ -3081,6 +3093,18 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
              * writing SPS+PPS+slice header into the stream buffer. The returned byte
              * count becomes cmd[0x32]/cmd[0x36] so the AVPU writes encoded data after. */
             int is_idr = !(ctx->reference_valid && ctx->ref_buf.phy_addr);
+
+            /* Defensive: Baseline profile (66) MUST use CAVLC. If entropy_mode
+             * got corrupted to CABAC, force it back. The AVPU may hang on
+             * contradictory Baseline+CABAC configuration. */
+            if (ctx->profile == 0 || ctx->profile == 66) {
+                if (ctx->entropy_mode != 0) {
+                    LOG_CODEC("AVPU: WARN forcing entropy_mode %u->0 (CAVLC) for Baseline profile=%u",
+                              ctx->entropy_mode, ctx->profile);
+                    ctx->entropy_mode = 0;
+                }
+            }
+
             uint32_t hdr_offset = avpu_prewrite_stream_headers(ctx, 0, is_idr);
 
             /* DMA-flush the stream buffer region containing pre-written headers.
