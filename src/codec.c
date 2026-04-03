@@ -1490,12 +1490,13 @@ static void fill_cmd_regs_enc1(const ALAvpuContext* ctx, uint32_t* cmd,
     if (ctx->entropy_mode)
         cmd[0x02] = 0x4010ad50u; /* High CABAC */
 
-    /* cmd[0x03]: OEM SliceParamToCmdRegsEnc1 packs QP at bits[23:16] plus
-     * deblocking filter offsets at bits[4:0] and bits[12:8], slice type at
-     * bits[29:28], and various flags.  Stock 640x360 = 0x211e0005. */
+    /* cmd[0x03]: Stock IDR=0x211e0000, Stock P=0x11220000.
+     * bits[29:28] = slice_type (2=I, 1=P). bits[23:16] = QP.
+     * bits[4:0] and bits[12:8] = deblocking offsets (stock=0). */
     {
         uint32_t qp = ctx->qp ? ctx->qp : 30u;
-        cmd[0x03] = (qp << 16) | 0x21000005u; /* 0x05 = stock deblocking offsets */
+        uint32_t slice_type_bits = is_idr ? (2u << 28) : (1u << 28);
+        cmd[0x03] = (qp << 16) | slice_type_bits | 0x01000000u;
     }
 
     /* cmd[0x04]: Stock=0x00083f1f. Deblock + QP control word. */
@@ -1528,8 +1529,13 @@ static void fill_cmd_regs_enc1(const ALAvpuContext* ctx, uint32_t* cmd,
      * SliceParam+0x74 onto the template word. */
     cmd[0x0a] = (cmd[0x0a] & 0xffff0000u) | (ctx->enc1_cmd_0a_74 & 0xffffu);
 
-    /* cmd[0x0b]: OEM pack from SliceParam+0x7a/+0x7c/+0x7e/+0x7f/+0x80. */
-    cmd[0x0b] = avpu_pack_enc1_cmd0b(ctx, !is_idr);
+    /* cmd[0x0b]: Stock IDR=0x00027000, Stock P=0x00027000.
+     * bits[21:12] = lcu_w-1 = 39. bits[6:0] = 0 (stock).
+     * Our avpu_pack_enc1_cmd0b produces wrong values — use stock formula. */
+    if (ctx->enc_w) {
+        uint32_t lcu_w_m1 = ((ctx->enc_w + 15u) >> 4) - 1u;
+        cmd[0x0b] = (lcu_w_m1 & 0x3ffu) << 12;  /* stock: 39 << 12 = 0x27000 */
+    }
 
     /* cmd[0x0c]-cmd[0x11]: Reference frame addresses.
      * IDR: cmd[0x0c..0x0f]=0, cmd[0x10..0x11]=0xFFFFFFFF (sentinel: no ref).
@@ -1548,18 +1554,32 @@ static void fill_cmd_regs_enc1(const ALAvpuContext* ctx, uint32_t* cmd,
         cmd[0x11] = 0xFFFFFFFFu;
     }
 
-    /* cmd[0x12]: OEM pack from SliceParam+0xa8/+0xaa/+0xac. */
-    cmd[0x12] = avpu_pack_enc1_cmd12(ctx);
+    /* cmd[0x12]: Stock IDR=0x003FF3FF (saturated/disabled groups),
+     * Stock P=0x0001B01D. Our avpu_pack_enc1_cmd12 produces wrong values.
+     * Use stock pattern: IDR=0x3FF in both sub-fields, bit30=0. */
+    if (is_idr) {
+        cmd[0x12] = 0x003FF3FFu;
+    } else {
+        /* Stock P: bits[9:0]=0x1D=29, bits[21:12]=0x1B=27, bit30=0.
+         * These are motion search range parameters. Use stock values. */
+        cmd[0x12] = 0x0001B01Du;
+    }
 
     /* cmd[0x13]: Stock=0 (NOT an intermediate buffer address) */
 
-    /* cmd[0x14]-cmd[0x18]: Stock has control/parameter words, NOT buffer addresses!
-     * These differ between resolutions. Use stock 640x360 values. */
+    /* cmd[0x14]-cmd[0x18]: Stock control/parameter words — differ between IDR and P.
+     * Values from stock_logs.txt 640x360 Baseline CL dumps. */
     cmd[0x14] = 0xf4000107u;
-    cmd[0x15] = 0x00000664u;
+    if (is_idr) {
+        cmd[0x15] = 0x00000664u;
+        cmd[0x17] = 0x101e2d1eu;
+        cmd[0x18] = 0xc210000cu;
+    } else {
+        cmd[0x15] = 0x0000005cu;      /* stock P: search range params */
+        cmd[0x17] = 0x101e2d22u;      /* stock P: low byte = P-frame QP */
+        cmd[0x18] = 0xc2100000u;      /* stock P: low nybble = 0 */
+    }
     cmd[0x16] = 0x3f00006cu;
-    cmd[0x17] = 0x101e2d1eu; /* contains QP-related fields */
-    cmd[0x18] = 0xc210000cu;
 
     /* cmd[0x19]-cmd[0x1a]: OEM pack from SliceParam+0xec/+0xee/+0xf0/+0xf4. */
     cmd[0x19] = avpu_pack_enc1_cmd19(ctx);
@@ -1673,8 +1693,9 @@ static void fill_cmd_regs_enc1(const ALAvpuContext* ctx, uint32_t* cmd,
             cmd[0x32] = stream_offset;                 /* stock: 0x00000220 */
             cmd[0x33] = stream_part_offset > stream_offset
                        ? (stream_part_offset - stream_offset) & ~0x1fu : 0u;
-            cmd[0x34] = map_addr;                       /* OEM: interm map (*(ctx+0x304)) */
-            cmd[0x35] = data_addr;                      /* OEM: interm data (*(ctx+0x308)) */
+            /* cmd[0x34]-cmd[0x35]: Stock CL has ZEROS here for both IDR and P.
+             * The intermediate map/data addresses go in the Enc2 CL at
+             * cmd[0x3a]/cmd[0x3b], not in the Enc1 CL. */
         }
 
         /* Map buffer addresses — from stock CL comparison:
