@@ -1534,14 +1534,30 @@ static void fill_cmd_regs_enc1(const ALAvpuContext* ctx, uint32_t* cmd,
         uint32_t rec_map_addr = ctx->rec_buf.phy_addr + rec_ref_sz;
         uint32_t rec_map_end = rec_map_addr + rec_map_sz;
 
-        /* Source frame */
-        if (src_phys) {
-            cmd[0x20] = src_phys;                     /* src Y */
-            cmd[0x21] = src_phys + y_plane_sz;        /* src UV */
-            cmd[0x22] = src_pitch & 0x3ffffu;         /* src pitch */
+        /* OEM FillCmdRegsEnc1 (encode1 at 0x671b8) address layout:
+         *   cmd[0x20] = Reconstruction Y  (ctx+0x298)
+         *   cmd[0x21] = Reconstruction UV (ctx+0x29c)
+         *   cmd[0x22] = Reconstruction pitch/FBC control
+         *   cmd[0x23] = Intermediate EP2  (ctx+0x2b4)
+         *   cmd[0x24] = Source Y          (ctx+0x2e0)
+         *   cmd[0x25] = Source UV         (ctx+0x2e4)
+         *   cmd[0x26] = Source pitch control
+         *   cmd[0x27] = Intermediate EP1  (ctx+0x2fc)
+         * The AVPU reads the source frame from cmd[0x24] and writes the
+         * reconstructed frame to cmd[0x20].  These were previously SWAPPED
+         * in OpenIMP, causing the encoder to read an empty rec buffer as
+         * its "source" and produce zero-residual (header-only) output. */
+
+        /* Reconstruction buffer → cmd[0x20]-cmd[0x22] */
+        if (ctx->rec_buf.phy_addr) {
+            cmd[0x20] = ctx->rec_buf.phy_addr;        /* rec Y */
+            cmd[0x21] = ctx->rec_buf.phy_addr + y_plane_sz; /* rec UV */
+            cmd[0x22] = (rec_pitch & 0x3ffffu)
+                       | ((2u & 0x7u) << 28)
+                       | ((rec_map_pitch & 0xffu) << 19);
         }
 
-        /* Intermediate buffers */
+        /* Intermediate buffers → cmd[0x23], cmd[0x27] */
         if (ctx->interm_buf.phy_addr) {
             uint32_t ep1_addr = ctx->interm_buf.phy_addr;
             uint32_t wpp_addr = ep1_addr + ctx->interm_ep1_size;
@@ -1549,24 +1565,13 @@ static void fill_cmd_regs_enc1(const ALAvpuContext* ctx, uint32_t* cmd,
 
             cmd[0x23] = ep2_addr;                     /* stock: 0x07135180 */
             cmd[0x27] = ep1_addr;                     /* stock: 0x0712ed00 */
-
-            /* OEM FillCmdRegsEnc1 (encode1 at 0x671b8) sets cmd[0x2c] and
-             * cmd[0x2e] to intermediate sub-buffer addresses + 0x100.  The
-             * +0x100 skip accounts for a 256-byte metadata header region.
-             * OEM sources: cmd[0x2c] = *(ctx+0x2f0)+0x100,
-             *              cmd[0x2e] = *(ctx+0x2f4)+0x100.
-             * Map these to our EP1 and WPP sub-buffers respectively. */
-            cmd[0x2c] = ep1_addr + 0x100u;            /* OEM: EP buffer + metadata */
-            cmd[0x2e] = wpp_addr + 0x100u;            /* OEM: WPP buffer + metadata */
         }
 
-        /* Reconstruction buffer */
-        if (ctx->rec_buf.phy_addr) {
-            cmd[0x24] = ctx->rec_buf.phy_addr;        /* rec Y */
-            cmd[0x25] = ctx->rec_buf.phy_addr + y_plane_sz; /* rec UV */
-            cmd[0x26] = (rec_pitch & 0x3ffffu)
-                       | ((2u & 0x7u) << 28)
-                       | ((rec_map_pitch & 0xffu) << 19);
+        /* Source frame → cmd[0x24]-cmd[0x26] */
+        if (src_phys) {
+            cmd[0x24] = src_phys;                     /* src Y */
+            cmd[0x25] = src_phys + y_plane_sz;        /* src UV */
+            cmd[0x26] = src_pitch & 0x3ffffu;         /* src pitch */
         }
 
         /* Reference frame addresses — OEM FillCmdRegsEnc1 sets these from
@@ -1586,6 +1591,7 @@ static void fill_cmd_regs_enc1(const ALAvpuContext* ctx, uint32_t* cmd,
         /* MV/map addresses */
         if (ctx->rec_buf.phy_addr) {
             cmd[0x2d] = rec_map_addr;                  /* stock: 0x07066500 */
+            cmd[0x2e] = rec_map_end;                   /* stock: 0x070c5400 */
         }
 
         /* Stream buffer + intermediate data */
