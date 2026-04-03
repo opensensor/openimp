@@ -2390,11 +2390,117 @@ static size_t annexb_effective_size(const uint8_t *buf, size_t maxlen)
     return (end > first) ? (end - first) : 0;
 }
 
+static uint32_t avpu_stream_buffer_raw_end(const uint8_t *buf, size_t maxlen)
+{
+    size_t end = maxlen;
+
+    if (!buf)
+        return 0;
+
+    while (end > 0 && buf[end - 1] == 0)
+        end--;
+
+    return (uint32_t)end;
+}
+
+static void avpu_format_hex_preview(const uint8_t *buf, size_t len, char *out, size_t out_sz)
+{
+    size_t pos = 0;
+
+    if (!out || out_sz == 0)
+        return;
+
+    out[0] = '\0';
+    if (!buf || len == 0)
+        return;
+
+    for (size_t i = 0; i < len && pos + 3 < out_sz; ++i) {
+        int wrote = snprintf(out + pos, out_sz - pos, "%02x", buf[i]);
+        if (wrote < 0 || (size_t)wrote >= out_sz - pos)
+            break;
+        pos += (size_t)wrote;
+        if (i + 1 < len && pos + 2 < out_sz)
+            out[pos++] = ' ';
+        out[pos] = '\0';
+    }
+}
+
+static void avpu_log_suspicious_stream_size(ALAvpuContext *ctx, int buf_idx,
+                                            const char *source, uint32_t raw_end,
+                                            uint32_t annexb, uint32_t chosen)
+{
+    const uint8_t *sb;
+    uint32_t hdr;
+    uint32_t nz_after_hdr = 0;
+    int32_t first_nz_after_hdr = -1;
+    uint32_t preview_off;
+    size_t preview_len;
+    char preview[3 * 16];
+    unsigned int core_status = 0;
+    unsigned int irq_pending = 0;
+    unsigned int cl_addr = 0;
+    unsigned int status_8230 = 0;
+    unsigned int status_8234 = 0;
+    unsigned int status_8238 = 0;
+    int have_core;
+    int have_irq_pending;
+    int have_cl_addr;
+    int have_status_8230;
+    int have_status_8234;
+    int have_status_8238;
+
+    if (!ctx || buf_idx < 0 || buf_idx >= ctx->stream_bufs_used)
+        return;
+    if (!ctx->stream_bufs[buf_idx].map)
+        return;
+
+    sb = (const uint8_t *)ctx->stream_bufs[buf_idx].map;
+    hdr = ctx->stream_header_offset;
+
+    if (hdr < raw_end) {
+        for (uint32_t i = hdr; i < raw_end; ++i) {
+            if (sb[i] != 0) {
+                nz_after_hdr++;
+                if (first_nz_after_hdr < 0)
+                    first_nz_after_hdr = (int32_t)i;
+            }
+        }
+    }
+
+    preview_off = hdr < (uint32_t)ctx->stream_buf_size ? hdr : raw_end;
+    preview_len = 0;
+    if (preview_off < raw_end) {
+        preview_len = (size_t)(raw_end - preview_off);
+        if (preview_len > 16)
+            preview_len = 16;
+    }
+    avpu_format_hex_preview(sb + preview_off, preview_len, preview, sizeof(preview));
+
+    have_core = (avpu_read_reg_quiet(ctx->fd, AVPU_REG_CORE_STATUS(0), &core_status) == 0);
+    have_irq_pending = (avpu_read_reg_quiet(ctx->fd, AVPU_INTERRUPT, &irq_pending) == 0);
+    have_cl_addr = (avpu_read_reg_quiet(ctx->fd, AVPU_REG_CL_ADDR, &cl_addr) == 0);
+    have_status_8230 = (avpu_read_reg_quiet(ctx->fd, AVPU_REG_CORE_STATUS_8230(0), &status_8230) == 0);
+    have_status_8234 = (avpu_read_reg_quiet(ctx->fd, AVPU_REG_CORE_STATUS_8234(0), &status_8234) == 0);
+    have_status_8238 = (avpu_read_reg_quiet(ctx->fd, AVPU_REG_CORE_STATUS_8238(0), &status_8238) == 0);
+
+    LOG_CODEC("%s: suspicious stream buf[%d] hdr=%u raw_end=%u annexb=%u chosen=%u nz_after_hdr=%u first_nz=%d preview_off=%u preview=%s core=%s0x%08x irq=%s0x%08x cl=%s0x%08x stat8230=%s0x%08x stat8234=%s0x%08x stat8238=%s0x%08x",
+              source ? source : "EndEncoding",
+              buf_idx, hdr, raw_end, annexb, chosen, nz_after_hdr, first_nz_after_hdr,
+              preview_off, preview_len ? preview : "<none>",
+              have_core ? "" : "ERR:", core_status,
+              have_irq_pending ? "" : "ERR:", irq_pending,
+              have_cl_addr ? "" : "ERR:", cl_addr,
+              have_status_8230 ? "" : "ERR:", status_8230,
+              have_status_8234 ? "" : "ERR:", status_8234,
+              have_status_8238 ? "" : "ERR:", status_8238);
+}
+
 static uint32_t avpu_stream_buffer_effective_size(ALAvpuContext *ctx, int buf_idx,
                                                   int *flush_ret_out)
 {
     const uint8_t *sb;
-    uint32_t end;
+    uint32_t raw_end;
+    uint32_t frame_size;
     size_t annexb;
 
     if (flush_ret_out) {
@@ -2419,13 +2525,19 @@ static uint32_t avpu_stream_buffer_effective_size(ALAvpuContext *ctx, int buf_id
     }
 
     sb = (const uint8_t *)ctx->stream_bufs[buf_idx].map;
-    end = (uint32_t)ctx->stream_buf_size;
-    while (end > 0 && sb[end - 1] == 0) end--;
-    if (end == 0)
+    raw_end = avpu_stream_buffer_raw_end(sb, (size_t)ctx->stream_buf_size);
+    if (raw_end == 0)
         return 0;
 
-    annexb = annexb_effective_size(sb, end);
-    return annexb > 0 ? (uint32_t)annexb : end;
+    annexb = annexb_effective_size(sb, raw_end);
+    frame_size = annexb > 0 ? (uint32_t)annexb : raw_end;
+
+    if (frame_size <= ctx->stream_header_offset) {
+        avpu_log_suspicious_stream_size(ctx, buf_idx, "EndEncoding",
+                                        raw_end, (uint32_t)annexb, frame_size);
+    }
+
+    return frame_size;
 }
 
 /* Codec structure - based on decompilation at 0x7950c */

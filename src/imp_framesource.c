@@ -854,7 +854,7 @@ static void *frame_capture_thread(void *arg) {
         if (drained == 0) {
             /* No frames dequeued; avoid busy loop */
             no_frame_cycles++;
-            if ((no_frame_cycles % 50) == 0) {
+            if (no_frame_cycles <= 5 || (no_frame_cycles % 50) == 0) {
                 LOG_FS("frame_capture_thread chn=%d: DQBUF yielded no frames x%d", chn_num, no_frame_cycles);
             }
             if (no_frame_cycles >= NO_FRAME_THRESHOLD) {
