@@ -164,6 +164,21 @@ static void avpu_write_phys(uint32_t phys_addr, const void *data, size_t size)
     }
 }
 
+static void avpu_zero_phys(uint32_t phys_addr, size_t size)
+{
+    int memfd = avpu_devmem_fd();
+    if (memfd < 0) return;
+    uint32_t page_offset = phys_addr & 0xFFFu;
+    uint32_t page_base = phys_addr & ~0xFFFu;
+    size_t map_size = size + page_offset;
+    void *p = mmap(NULL, map_size, PROT_READ | PROT_WRITE, MAP_SHARED,
+                   memfd, (off_t)page_base);
+    if (p != MAP_FAILED) {
+        memset((uint8_t *)p + page_offset, 0, size);
+        munmap(p, map_size);
+    }
+}
+
 static void avpu_read_phys(uint32_t phys_addr, void *dst, size_t size)
 {
     int memfd = avpu_devmem_fd();
@@ -4018,16 +4033,11 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
 
             if (buf_idx < ctx->stream_bufs_used && ctx->stream_bufs[buf_idx].map) {
                 /* Zero the stream buffer in both cached mapping AND physical RAM.
-                 * The rmem flush is broken, so we write zeros via /dev/mem too. */
+                 * avpu_zero_phys uses /dev/mem mmap+memset — no calloc needed. */
                 memset(ctx->stream_bufs[buf_idx].map, 0, (size_t)ctx->stream_buf_size);
-                if (ctx->stream_bufs[buf_idx].phy_addr) {
-                    void *zeros = calloc(1, (size_t)ctx->stream_buf_size);
-                    if (zeros) {
-                        avpu_write_phys(ctx->stream_bufs[buf_idx].phy_addr,
-                                        zeros, (size_t)ctx->stream_buf_size);
-                        free(zeros);
-                    }
-                }
+                if (ctx->stream_bufs[buf_idx].phy_addr)
+                    avpu_zero_phys(ctx->stream_bufs[buf_idx].phy_addr,
+                                   (size_t)ctx->stream_buf_size);
             }
 
             uint32_t hdr_offset = avpu_prewrite_stream_headers(ctx, buf_idx, is_idr);
