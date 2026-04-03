@@ -900,18 +900,23 @@ static uint32_t avpu_pack_enc2_cmd1d(const ALAvpuContext *ctx)
 
 static uint32_t avpu_pack_enc2_cmd1e(const ALAvpuContext *ctx)
 {
-    uint32_t slice_fc;
+    uint32_t lcu_w, lcu_h, total_lcu;
     uint32_t slice_f8;
 
-    if (!ctx)
+    if (!ctx || !ctx->enc_w || !ctx->enc_h)
         return 0u;
 
-    slice_fc = ctx->slice_header_nal_bytes;
+    /* OEM SliceParam+0xfc = total LCU count for the slice, set by UpdateCommand
+     * as slice_height_lcu * lcu_width.  For single-slice this is the full frame.
+     * cmd[0x1e] bits[19:0] = (total_lcu - 1).  The hardware uses this to know
+     * how many LCUs to entropy-encode. */
+    lcu_w = (ctx->enc_w + 15u) >> 4;
+    lcu_h = (ctx->enc_h + 15u) >> 4;
+    total_lcu = lcu_w * lcu_h;
+
     slice_f8 = ctx->slice_header_prefix_bits & 0x1fu;
-    if (slice_fc == 0u)
-        return 0u;
 
-    return ((slice_fc - 1u) & 0x000fffffu) | (slice_f8 << 24);
+    return ((total_lcu - 1u) & 0x000fffffu) | (slice_f8 << 24);
 }
 
 static uint32_t avpu_pack_enc2_cmd1f(const ALAvpuContext *ctx)

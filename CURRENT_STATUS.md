@@ -3,10 +3,153 @@
 ## Overview
 Reverse-engineered implementation of Ingenic Media Platform (IMP) libraries based on Binary Ninja MCP decompilations of libimp.so v1.1.6 for T31 platform.
 
+## Current OEM Parity Status (2026-04-03)
+
+### Executive Summary
+
+OpenIMP is no longer blocked on basic pipeline plumbing. The active blocker is
+now narrow and specific:
+
+- the AVPU runs
+- interrupts fire
+- frames advance
+- streams are queued and released correctly
+- periodic IDRs appear
+- but the hardware still writes **no entropy-coded payload bytes** after the
+  software-prewritten H.264 headers
+
+Current symptom on device:
+
+- **P-frames**: `len=14`, `NALs: 9 1`, `nz_after_hdr=0`
+- **IDR frames**: `len=47`, `NALs: 9 7 8 5`, `nz_after_hdr=0`
+
+This means the header path is substantially closer to OEM, but the final
+entropy/payload-write stage is still not at parity.
+
+### Latest Log Verdict
+
+From the latest `logs.txt` capture:
+
+- live Enc2 CL logging is working
+- repeated P-frame Enc2 submissions show stable values:
+  - `cmd[0x1b]=0x00070c80`
+  - `cmd[0x1c]=0x21230904`
+  - `cmd[0x1d]=0x00027000`
+  - `cmd[0x1e]=0x14000007`
+- P-frames still end as header-only stubs:
+  - `raw_end=14`, `annexb=14`, `nz_after_hdr=0`
+- GOP-based periodic IDR cadence is working:
+  - example: frame `200` emits `NALs: 9 7 8 5`
+  - but the IDR is still header-only: `len=47`, `nz_after_hdr=0`
+
+### What Is Known
+
+#### High confidence
+
+1. **The old capture/refcount stall is fixed**
+   - frames continue advancing far past the earlier stall point
+   - interrupts/completions remain live
+
+2. **Stream lifecycle bugs are no longer the main blocker**
+   - completed stream buffers rotate correctly
+   - the exact completed buffer is returned and released
+
+3. **Periodic IDR scheduling now works**
+   - logs show scheduled refresh points and `NALs: 9 7 8 5`
+
+4. **Header generation and splice bookkeeping are at least partially correct**
+   - P path: `AUD + slice header`
+   - IDR path: `AUD + SPS + PPS + IDR slice header`
+
+5. **The remaining failure is specifically “no payload after header”**
+   - `nz_after_hdr=0`
+   - `raw_end == hdr_offset`
+   - no nonzero bytes appear after the software-prewritten header window
+
+#### Medium confidence
+
+6. **Enc2 word structure is closer to OEM than before**
+   - `SliceParamToCmdRegsEnc2` was decompiled and the code now uses OEM-shaped
+     packers for `cmd[0x1b]`, `cmd[0x1c]`, and `cmd[0x1d]`
+
+7. **`cmd[0x1d]` is likely no longer the main bug**
+   - current submitted value matches the recovered 640x360 OEM shape:
+     `0x00027000`
+
+8. **`cmd[0x1b]` is probably okay for the current baseline case**
+   - live submitted value matches the known-good stock value:
+     `0x00070c80`
+
+#### Low confidence / still unresolved
+
+9. **All runtime slice fields feeding `cmd[0x1c]` are correct**
+   - layout is improved, but some late OEM field producers are still inferred
+     rather than fully recovered
+
+10. **Post-CL register block parity is complete**
+   - `0x8400`–`0x8428` is much closer to OEM, but still not proven complete for
+     active P-frame entropy submission
+
+### Confidence Matrix
+
+| Topic | Confidence | Why |
+|---|---|---|
+| Capture/refcount stall fixed | High | Frames advance; IRQ/completion path stays live |
+| Stream buffer ownership/lifecycle fixed | High | Completed buffers rotate and release correctly |
+| Periodic IDR cadence fixed | High | Logs show `NALs: 9 7 8 5` |
+| Header generation/splice path mostly correct | High | AU headers are structured correctly for P and IDR |
+| Failure is payload-write specific | High | `nz_after_hdr=0` and `raw_end==hdr_offset` repeatedly |
+| `cmd[0x1b]` parity for 640x360 baseline | Medium-High | Live value matches stock shape |
+| `cmd[0x1d]` parity | Medium-High | Live value matches recovered OEM formula |
+| `cmd[0x1c]` fully correct | Medium-Low | Some late field producers remain inferred |
+| `0x8400`–`0x8428` post-CL parity complete | Low-Medium | Still a plausible remaining mismatch area |
+| Working AVPU H.264 parity is close | Medium | The remaining failure surface is much smaller, but still blocking payload |
+
+### What’s Next
+
+#### Highest-signal next step
+
+Recover the remaining **runtime-produced slice fields** that feed Enc2,
+especially the fields that ultimately land in `cmd[0x1c]` and any unresolved
+height/row-group producer behind `cmd[0x1b]`.
+
+Most likely OEM sources:
+
+- `UpdateCommand`
+- `GenerateAvcSliceHeader`
+- `CmdRegsEnc1ToSliceParam`
+- `SliceParamToCmdRegsEnc2`
+
+#### Second-highest-signal step
+
+Re-check the post-CL register/config block for the active P-frame entropy path,
+especially around:
+
+- `0x8400`–`0x8428`
+- header offset alignment
+- stream-part windowing
+- ordering relative to `CL_PUSH=8`
+
+#### Success criteria
+
+We should consider the AVPU path meaningfully unblocked when logs show:
+
+- `nz_after_hdr > 0`
+- `raw_end > hdr_offset`
+- P-frames longer than 14 bytes
+- IDRs longer than header-only 47 bytes
+- decoder-visible payload rather than only `NALs: 9 1` or header-only `9 7 8 5`
+
+### Note on the rest of this document
+
+The remainder of `CURRENT_STATUS.md` is older, broader implementation history.
+It is still useful for module-level context, but the section above is the most
+accurate summary of the **current** OEM-parity blocker.
+
 ## Build Statistics
 - **Library Size**: 125KB (libimp.a), 88KB (libimp.so)
 - **Total Lines**: 4,313 lines of implementation code
-- **Last Updated**: 2025-10-11
+- **Last Updated**: 2026-04-03
 - **Build Status**: ✅ Compiles cleanly with minor warnings
 - **Modules**: 10 modules implemented
 - **Build Status**: ✅ Compiles cleanly with only minor warnings
