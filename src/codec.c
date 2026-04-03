@@ -136,13 +136,23 @@ static int avpu_flush_cache(int fd, void *virt_addr, unsigned int size, unsigned
     return DMA_RmemFlushCache(virt_addr, size, (int)dir);
 }
 
-/* Write data directly to physical RAM via /dev/mem O_SYNC, bypassing CPU cache.
- * Used for CL submission where the rmem cache flush doesn't work. */
+/* Access physical RAM directly via /dev/mem O_SYNC, bypassing CPU cache.
+ * The rmem allocator's cache flush/invalidate ioctls are broken on T31 —
+ * kernel CL dumps proved that flushed data never reaches physical RAM.
+ * These helpers use /dev/mem with O_SYNC which gives uncached access on MIPS. */
+static int g_devmem_fd = -1;
+
+static int avpu_devmem_fd(void)
+{
+    if (g_devmem_fd >= 0) return g_devmem_fd;
+    g_devmem_fd = open("/dev/mem", O_RDWR | O_SYNC);
+    return g_devmem_fd;
+}
+
 static void avpu_write_phys(uint32_t phys_addr, const void *data, size_t size)
 {
-    int memfd = open("/dev/mem", O_RDWR | O_SYNC);
+    int memfd = avpu_devmem_fd();
     if (memfd < 0) return;
-    /* Align to page boundary for mmap */
     uint32_t page_offset = phys_addr & 0xFFFu;
     uint32_t page_base = phys_addr & ~0xFFFu;
     size_t map_size = size + page_offset;
@@ -152,7 +162,21 @@ static void avpu_write_phys(uint32_t phys_addr, const void *data, size_t size)
         memcpy((uint8_t *)p + page_offset, data, size);
         munmap(p, map_size);
     }
-    close(memfd);
+}
+
+static void avpu_read_phys(uint32_t phys_addr, void *dst, size_t size)
+{
+    int memfd = avpu_devmem_fd();
+    if (memfd < 0) return;
+    uint32_t page_offset = phys_addr & 0xFFFu;
+    uint32_t page_base = phys_addr & ~0xFFFu;
+    size_t map_size = size + page_offset;
+    void *p = mmap(NULL, map_size, PROT_READ, MAP_SHARED,
+                   memfd, (off_t)page_base);
+    if (p != MAP_FAILED) {
+        memcpy(dst, (const uint8_t *)p + page_offset, size);
+        munmap(p, map_size);
+    }
 }
 
 static int avpu_flush_dma_buf(int fd, const char *tag, const AvpuDMABuf *buf, size_t size)
@@ -2737,9 +2761,11 @@ static uint32_t avpu_read_hw_stream_end(ALAvpuContext *ctx, int buf_idx)
     if (!cl_entry)
         return 0;
 
-    /* Cache-invalidate the CL entry so we read HW-updated values */
-    if (!ctx->cl_ring.uncached_map)
-        avpu_flush_cache(ctx->fd, cl_entry, (unsigned int)ctx->cl_entry_size, 2 /*INV*/);
+    /* Read the CL entry from physical RAM (rmem cache invalidate is broken) */
+    {
+        uint32_t cl_phys = ctx->cl_ring.phy_addr + (cl_idx * ctx->cl_entry_size);
+        avpu_read_phys(cl_phys, cl_entry, ctx->cl_entry_size);
+    }
 
     cmd = (const uint32_t *)cl_entry;
 
@@ -2776,22 +2802,20 @@ static uint32_t avpu_stream_buffer_effective_size(ALAvpuContext *ctx, int buf_id
     if (!ctx->stream_bufs[buf_idx].map)
         return 0;
 
-    /* Invalidate stream buffer cache so we see HW-written data */
-    if (flush_ret_out) {
-        *flush_ret_out = avpu_flush_cache(ctx->fd,
-                                          ctx->stream_bufs[buf_idx].map,
-                                          (unsigned int)ctx->stream_buf_size,
-                                          2 /*INV*/);
-    } else {
-        avpu_flush_cache(ctx->fd,
-                         ctx->stream_bufs[buf_idx].map,
-                         (unsigned int)ctx->stream_buf_size,
-                         2 /*INV*/);
+    /* Read the stream buffer directly from physical RAM via /dev/mem.
+     * The rmem cache invalidate ioctl is broken on T31 (same as the flush),
+     * so the CPU's cached mapping shows stale zeros even after the AVPU DMA
+     * has written encoded payload to physical RAM.  Copy from phys to the
+     * cached mapping so all downstream code sees the real data. */
+    if (ctx->stream_bufs[buf_idx].phy_addr) {
+        avpu_read_phys(ctx->stream_bufs[buf_idx].phy_addr,
+                       ctx->stream_bufs[buf_idx].map,
+                       (size_t)ctx->stream_buf_size);
     }
+    if (flush_ret_out)
+        *flush_ret_out = 0;
 
-    /* OEM parity: read the hardware-updated stream end position from the CL.
-     * This is the authoritative byte count — it matches exactly what the OEM
-     * OutputSlice reads at *(cl + 0xf8) or *(cl + 0xc8). */
+    /* OEM parity: read the hardware-updated stream end position from the CL. */
     hw_end = avpu_read_hw_stream_end(ctx, buf_idx);
 
     sb = (const uint8_t *)ctx->stream_bufs[buf_idx].map;
@@ -3986,9 +4010,17 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
             }
 
             if (buf_idx < ctx->stream_bufs_used && ctx->stream_bufs[buf_idx].map) {
+                /* Zero the stream buffer in both cached mapping AND physical RAM.
+                 * The rmem flush is broken, so we write zeros via /dev/mem too. */
                 memset(ctx->stream_bufs[buf_idx].map, 0, (size_t)ctx->stream_buf_size);
-                avpu_flush_cache(fd, ctx->stream_bufs[buf_idx].map,
-                                 (unsigned int)ctx->stream_buf_size, 1 /*WBACK*/);
+                if (ctx->stream_bufs[buf_idx].phy_addr) {
+                    void *zeros = calloc(1, (size_t)ctx->stream_buf_size);
+                    if (zeros) {
+                        avpu_write_phys(ctx->stream_bufs[buf_idx].phy_addr,
+                                        zeros, (size_t)ctx->stream_buf_size);
+                        free(zeros);
+                    }
+                }
             }
 
             uint32_t hdr_offset = avpu_prewrite_stream_headers(ctx, buf_idx, is_idr);
@@ -3998,7 +4030,11 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
              * The AVPU reads headers from RAM (or at least the stream buffer must be
              * coherent with what the AVPU DMAs to/from). */
             if (hdr_offset > 0 && buf_idx < ctx->stream_bufs_used && ctx->stream_bufs[buf_idx].map) {
-                avpu_flush_cache(fd, ctx->stream_bufs[buf_idx].map, hdr_offset, 1 /*WBACK*/);
+                /* Write prewritten H.264 headers to physical RAM via /dev/mem.
+                 * The rmem cache flush is broken on T31, so headers written to
+                 * the cached mapping never reach physical RAM otherwise. */
+                avpu_write_phys(ctx->stream_bufs[buf_idx].phy_addr,
+                                ctx->stream_bufs[buf_idx].map, hdr_offset);
             }
 
             /* Fill Enc1 command registers — source addr and header offset go INTO the CL entry */
