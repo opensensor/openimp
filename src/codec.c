@@ -136,6 +136,25 @@ static int avpu_flush_cache(int fd, void *virt_addr, unsigned int size, unsigned
     return DMA_RmemFlushCache(virt_addr, size, (int)dir);
 }
 
+/* Write data directly to physical RAM via /dev/mem O_SYNC, bypassing CPU cache.
+ * Used for CL submission where the rmem cache flush doesn't work. */
+static void avpu_write_phys(uint32_t phys_addr, const void *data, size_t size)
+{
+    int memfd = open("/dev/mem", O_RDWR | O_SYNC);
+    if (memfd < 0) return;
+    /* Align to page boundary for mmap */
+    uint32_t page_offset = phys_addr & 0xFFFu;
+    uint32_t page_base = phys_addr & ~0xFFFu;
+    size_t map_size = size + page_offset;
+    void *p = mmap(NULL, map_size, PROT_READ | PROT_WRITE, MAP_SHARED,
+                   memfd, (off_t)page_base);
+    if (p != MAP_FAILED) {
+        memcpy((uint8_t *)p + page_offset, data, size);
+        munmap(p, map_size);
+    }
+    close(memfd);
+}
+
 static int avpu_flush_dma_buf(int fd, const char *tag, const AvpuDMABuf *buf, size_t size)
 {
     int ret;
@@ -4005,15 +4024,15 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
             /* Verify data in CPU cache, then flush */
             LOG_CODEC("Process: CL[%u] pre-flush virt_w0=0x%08x w1=0x%08x entry=%p size=%u",
                       idx, cmd[0], cmd[1], (void*)entry, (unsigned)cl_flush_size);
-            /* Flush CL from CPU cache to physical RAM so the AVPU DMA sees our
-             * command words.  The rmem ioctl flush (both dir=1 and dir=3) was
-             * proven broken by kernel CL dumps showing stale AVPU output data
-             * instead of our freshly written cmd words.  Use msync + rmem as
-             * belt-and-suspenders. */
-            msync(entry, cl_flush_size, MS_SYNC);
-            int cl_flush_ret = ctx->cl_ring.uncached_map
-                             ? 0
-                             : avpu_flush_cache(fd, entry, (unsigned int)cl_flush_size, 3 /*WBACK_INV*/);
+            /* Write CL data directly to physical RAM via /dev/mem O_SYNC mapping,
+             * bypassing CPU cache entirely.  The rmem ioctl cache flush (dir=1
+             * and dir=3) was proven broken by kernel CL dumps showing stale AVPU
+             * output data instead of our freshly written command words. */
+            {
+                uint32_t cl_phys_addr = ctx->cl_ring.phy_addr + (idx * ctx->cl_entry_size);
+                avpu_write_phys(cl_phys_addr, entry, cl_flush_size);
+            }
+            int cl_flush_ret = 0;
             LOG_CODEC("Process: CL[%u] flush ret=%d (rmem+avpu)", idx, cl_flush_ret);
             int trace_submit = (idx == 0 && ctx->frames_encoded == 0);
 
@@ -4131,9 +4150,10 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
                  * stale in RAM, which matches the current symptom where AVPU
                  * completes and IRQs fire but only the pre-written headers are
                  * visible in the stream buffer. */
-                msync(enc2_entry, cl_flush_size, MS_SYNC);
-                if (!ctx->cl_ring.uncached_map)
-                    avpu_flush_cache(fd, enc2_entry, (unsigned int)cl_flush_size, 3 /*WBACK_INV*/);
+                {
+                    uint32_t enc2_phys_addr = ctx->cl_ring.phy_addr + (enc2_idx * ctx->cl_entry_size);
+                    avpu_write_phys(enc2_phys_addr, enc2_entry, cl_flush_size);
+                }
 
                 int enc2_addr_ret = avpu_write_reg(fd, AVPU_REG_CL_ADDR, enc2_phys);
                 int enc2_push_ret = avpu_write_reg(fd, AVPU_REG_CL_PUSH, 0x00000008);
