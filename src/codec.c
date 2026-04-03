@@ -27,6 +27,16 @@
 #include <sys/mman.h>
 #include <sys/syscall.h> /* for SYS_ioctl */
 
+enum {
+    AVPU_STREAM_BUF_FREE = 0,
+    AVPU_STREAM_BUF_IN_FLIGHT = 1,
+    AVPU_STREAM_BUF_READY = 2,
+};
+
+static int avpu_queue_completed_stream(ALAvpuContext *ctx, int buf_idx, void *user_data,
+                                       const char *source, uint32_t *frame_size_out,
+                                       int *flush_ret_out);
+
 static inline int avpu_sys_ioctl(int fd, unsigned long cmd, void *arg)
 {
     /* Bypass libc varargs to avoid any ABI/shim issues on MIPS o32 */
@@ -307,11 +317,131 @@ static inline uint8_t *avpu_cl_entry_ptr(ALAvpuContext *ctx, uint32_t idx)
     return base + ((size_t)(idx % ctx->cl_count) * ctx->cl_entry_size);
 }
 
+static void avpu_log_dma_range(const char *name, const AvpuDMABuf *buf)
+{
+    uint64_t start;
+    uint64_t end;
+
+    if (!name || !buf || buf->phy_addr == 0 || buf->size == 0)
+        return;
+
+    start = (uint64_t)buf->phy_addr;
+    end = start + (uint64_t)buf->size;
+    LOG_CODEC("AVPU: dma range %s phys=[0x%08x..0x%08x) size=0x%zx virt=%p uncached=%p rmem=%d",
+              name, buf->phy_addr, (uint32_t)end, buf->size,
+              buf->map, buf->uncached_map, buf->from_rmem);
+}
+
+static int avpu_dma_ranges_overlap(const AvpuDMABuf *a, const AvpuDMABuf *b)
+{
+    uint64_t a_start;
+    uint64_t a_end;
+    uint64_t b_start;
+    uint64_t b_end;
+
+    if (!a || !b || a->phy_addr == 0 || b->phy_addr == 0 || a->size == 0 || b->size == 0)
+        return 0;
+
+    a_start = (uint64_t)a->phy_addr;
+    a_end = a_start + (uint64_t)a->size;
+    b_start = (uint64_t)b->phy_addr;
+    b_end = b_start + (uint64_t)b->size;
+    return (a_start < b_end) && (b_start < a_end);
+}
+
+static void avpu_log_dma_overlap(const char *name_a, const AvpuDMABuf *a,
+                                 const char *name_b, const AvpuDMABuf *b)
+{
+    if (!name_a || !name_b || !a || !b)
+        return;
+
+    if (!avpu_dma_ranges_overlap(a, b))
+        return;
+
+    LOG_CODEC("AVPU: WARNING DMA overlap %s [0x%08x..0x%08x) with %s [0x%08x..0x%08x)",
+              name_a,
+              a->phy_addr, (uint32_t)((uint64_t)a->phy_addr + (uint64_t)a->size),
+              name_b,
+              b->phy_addr, (uint32_t)((uint64_t)b->phy_addr + (uint64_t)b->size));
+}
+
+static void avpu_log_dma_layout(ALAvpuContext *ctx)
+{
+    struct NamedBuf {
+        const char *name;
+        const AvpuDMABuf *buf;
+    } named[24];
+    int named_count = 0;
+    int i;
+    int j;
+    char stream_name[16][24];
+
+    if (!ctx)
+        return;
+
+    LOG_CODEC("AVPU: DMA layout begin (stream_bufs_used=%d cl_count=%u cl_entry_size=%u)",
+              ctx->stream_bufs_used, ctx->cl_count, ctx->cl_entry_size);
+
+    for (i = 0; i < ctx->stream_bufs_used && i < 16; ++i) {
+        snprintf(stream_name[i], sizeof(stream_name[i]), "stream_buf[%d]", i);
+        avpu_log_dma_range(stream_name[i], &ctx->stream_bufs[i]);
+        named[named_count].name = stream_name[i];
+        named[named_count].buf = &ctx->stream_bufs[i];
+        named_count++;
+    }
+
+    avpu_log_dma_range("cl_ring", &ctx->cl_ring);
+    named[named_count].name = "cl_ring";
+    named[named_count].buf = &ctx->cl_ring;
+    named_count++;
+
+    avpu_log_dma_range("interm_buf", &ctx->interm_buf);
+    named[named_count].name = "interm_buf";
+    named[named_count].buf = &ctx->interm_buf;
+    named_count++;
+
+    avpu_log_dma_range("rec_buf", &ctx->rec_buf);
+    named[named_count].name = "rec_buf";
+    named[named_count].buf = &ctx->rec_buf;
+    named_count++;
+
+    avpu_log_dma_range("ref_buf", &ctx->ref_buf);
+    named[named_count].name = "ref_buf";
+    named[named_count].buf = &ctx->ref_buf;
+    named_count++;
+
+    avpu_log_dma_range("rec_trace_buf", &ctx->rec_trace_buf);
+    named[named_count].name = "rec_trace_buf";
+    named[named_count].buf = &ctx->rec_trace_buf;
+    named_count++;
+
+    avpu_log_dma_range("ref_trace_buf", &ctx->ref_trace_buf);
+    named[named_count].name = "ref_trace_buf";
+    named[named_count].buf = &ctx->ref_trace_buf;
+    named_count++;
+
+    for (i = 0; i < named_count; ++i) {
+        for (j = i + 1; j < named_count; ++j) {
+            avpu_log_dma_overlap(named[i].name, named[i].buf,
+                                 named[j].name, named[j].buf);
+        }
+    }
+
+    LOG_CODEC("AVPU: DMA layout end");
+}
+
 static uint32_t avpu_align_up_u32(uint32_t value, uint32_t alignment)
 {
     if (alignment == 0)
         return value;
     return (value + alignment - 1u) & ~(alignment - 1u);
+}
+
+static uint32_t avpu_align_down_u32(uint32_t value, uint32_t alignment)
+{
+    if (alignment == 0)
+        return value;
+    return value & ~(alignment - 1u);
 }
 
 static uint32_t avpu_get_nv12_luma_lines(uint32_t height)
@@ -501,6 +631,15 @@ static uint32_t avpu_default_enc1_cmd12_a8(uint32_t enc_w)
     return ((enc_w + 63u) & ~63u);
 }
 
+static uint32_t avpu_default_enc1_cmd0a_74(uint32_t enc_w)
+{
+    /* Stock 640-wide captures carry cmd[0x0a] = 0x0c80, i.e. 640 * 5.
+     * The older 0x41eb0 seed is far outside the working OEM range and is a
+     * strong candidate for later DMA/budget corruption. Keep the fallback tied
+     * to the live encoding width until SliceParam+0x74 is fully recovered. */
+    return enc_w ? (enc_w * 5u) : 0x0c80u;
+}
+
 static uint32_t avpu_default_enc1_cmd12_aa(uint32_t enc_w)
 {
     uint32_t width_64 = (enc_w + 63u) >> 6;
@@ -539,12 +678,16 @@ static uint32_t avpu_pack_enc1_cmd18(uint32_t map_addr, uint32_t data_addr)
 
 static void avpu_init_enc1_slice_words(ALAvpuContext *ctx, const uint8_t *codec_param)
 {
+    uint32_t fallback_74;
+
     if (!ctx)
         return;
 
+    fallback_74 = avpu_default_enc1_cmd0a_74(ctx->enc_w);
+
     ctx->enc1_cmd_0a_74 = codec_param ? *(const uint32_t*)(codec_param + 0x74) : 0u;
-    if (ctx->enc1_cmd_0a_74 == 0u)
-        ctx->enc1_cmd_0a_74 = 0x41eb0u;
+    if (ctx->enc1_cmd_0a_74 == 0u || ctx->enc1_cmd_0a_74 > 0xffffu)
+        ctx->enc1_cmd_0a_74 = fallback_74;
 
     ctx->enc1_cmd_0b_7a = codec_param ? *(const uint16_t*)(codec_param + 0x7a) : 0u;
     /* OEM sets SliceParam+0x7a = (width + 7) >> 3 at encode time.
@@ -649,6 +792,14 @@ static uint32_t avpu_pack_enc1_cmd1a(const ALAvpuContext *ctx)
     uint32_t slice_f4 = ctx->enc1_cmd_1a_f4 & 0x3ffu;
 
     return slice_f4 | (slice_f0 << 28);
+}
+
+static uint32_t avpu_get_hw_hdr_offset(uint32_t hdr_offset)
+{
+    /* Stock keeps the exact byte count in the CL (cmd[0x32]/cmd[0x3e]) but
+     * writes the 0x8424/0x8428 register pair with a 32-byte aligned-down view
+     * of that offset: e.g. CL=0x220 while WR 0x8424=0x200. */
+    return avpu_align_down_u32(hdr_offset, 32u);
 }
 
 static uint32_t avpu_pack_enc1_lcu_pos(uint32_t pos, uint32_t lcu_w)
@@ -1115,13 +1266,12 @@ static void fill_cmd_regs_enc1(const ALAvpuContext* ctx, uint32_t* cmd,
     if (ctx->entropy_mode) /* High/CABAC */
         cmd[0x09] = 0xfc010000u;
 
-    /* cmd[0x0a]: Stock=0x00000c80. NOT our seed value.
-     * 0xc80 = 3200 = 640*5 or some rate-control parameter. */
-    cmd[0x0a] = 0x00000c80u;
+    /* cmd[0x0a]: OEM SliceParamToCmdRegsEnc1 overlays the low 16 bits from
+     * SliceParam+0x74 onto the template word. */
+    cmd[0x0a] = (cmd[0x0a] & 0xffff0000u) | (ctx->enc1_cmd_0a_74 & 0xffffu);
 
-    /* cmd[0x0b]: Stock=0x00027000. NOT our packed value.
-     * 0x27000 = 159744. Likely stream/buffer size related. */
-    cmd[0x0b] = 0x00027000u;
+    /* cmd[0x0b]: OEM pack from SliceParam+0x7a/+0x7c/+0x7e/+0x7f/+0x80. */
+    cmd[0x0b] = avpu_pack_enc1_cmd0b(ctx, !is_idr);
 
     /* cmd[0x0c]-cmd[0x0f]: Stock has ALL ZEROS for IDR (no early-window addrs) */
     /* cmd[0x0c] = cmd[0x0d] = cmd[0x0e] = cmd[0x0f] = 0 (from memset) */
@@ -1132,8 +1282,8 @@ static void fill_cmd_regs_enc1(const ALAvpuContext* ctx, uint32_t* cmd,
         cmd[0x11] = 0xFFFFFFFFu;
     }
 
-    /* cmd[0x12]: Stock=0x003ff3ff. NOT our stride-packed value. */
-    cmd[0x12] = 0x003ff3ffu;
+    /* cmd[0x12]: OEM pack from SliceParam+0xa8/+0xaa/+0xac. */
+    cmd[0x12] = avpu_pack_enc1_cmd12(ctx);
 
     /* cmd[0x13]: Stock=0 (NOT an intermediate buffer address) */
 
@@ -1145,8 +1295,9 @@ static void fill_cmd_regs_enc1(const ALAvpuContext* ctx, uint32_t* cmd,
     cmd[0x17] = 0x101e2d1eu; /* contains QP-related fields */
     cmd[0x18] = 0xc210000cu;
 
-    /* cmd[0x19]-cmd[0x1a]: Stock=0. NOT our packed seed words. */
-    /* (zeros from memset) */
+    /* cmd[0x19]-cmd[0x1a]: OEM pack from SliceParam+0xec/+0xee/+0xf0/+0xf4. */
+    cmd[0x19] = avpu_pack_enc1_cmd19(ctx);
+    cmd[0x1a] = avpu_pack_enc1_cmd1a(ctx);
 
     /* ---- cmd[0x1b]-cmd[0x1f]: Enc2 (entropy) parameters ----
      * Stock values for 640x360 Baseline IDR. */
@@ -1198,8 +1349,6 @@ static void fill_cmd_regs_enc1(const ALAvpuContext* ctx, uint32_t* cmd,
             uint32_t ep1_addr = ctx->interm_buf.phy_addr;
             uint32_t wpp_addr = ep1_addr + ctx->interm_ep1_size;
             uint32_t ep2_addr = wpp_addr + ctx->interm_wpp_size;
-            uint32_t map_addr = ep2_addr + ctx->interm_ep2_size;
-            uint32_t data_addr = map_addr + ctx->interm_map_size;
 
             cmd[0x23] = ep2_addr;                     /* stock: 0x07135180 */
             cmd[0x27] = ep1_addr;                     /* stock: 0x0712ed00 */
@@ -1226,9 +1375,6 @@ static void fill_cmd_regs_enc1(const ALAvpuContext* ctx, uint32_t* cmd,
         if (ctx->interm_buf.phy_addr) {
             uint32_t ep1_addr = ctx->interm_buf.phy_addr;
             uint32_t wpp_addr = ep1_addr + ctx->interm_ep1_size;
-            uint32_t ep2_addr = wpp_addr + ctx->interm_wpp_size;
-            uint32_t map_addr = ep2_addr + ctx->interm_ep2_size;
-            uint32_t data_addr = map_addr + ctx->interm_map_size;
 
             cmd[0x30] = stream_desc_phys;               /* stream buffer — must match STRM_PUSH */
             cmd[0x31] = stream_part_offset;            /* stock: 0x00027780 */
@@ -1241,14 +1387,17 @@ static void fill_cmd_regs_enc1(const ALAvpuContext* ctx, uint32_t* cmd,
         if (ctx->rec_buf.phy_addr)
             cmd[0x37] = rec_map_addr;                  /* stock: 0x070c4100 */
 
-        /* Late-window addresses */
-        if (ctx->rec_buf.phy_addr) {
-            cmd[0x63] = rec_map_end;                   /* stock: 0x070c4c80 */
-            /* Stock has small offsets at 0x68/0x69, not full addresses */
-            cmd[0x68] = rec_map_sz;                    /* stock: 0x00000b80 */
-            cmd[0x69] = rec_map_sz;                    /* stock: 0x00000b80 */
-        }
+        /* Late-window words. The OEM packer sources cmd[0x60]/0x61/0x6e from
+         * slice fields while several neighboring words still come from runtime
+         * scheduler state we have not fully recovered. Only wire the fields
+         * whose source offsets are already known. */
+        cmd[0x60] = ctx->enc1_cmd_60_110_112;
+        cmd[0x61] = ctx->enc1_cmd_61_114_116;
+        cmd[0x68] = rec_map_sz;                        /* still closest known fit */
+        cmd[0x69] = rec_map_sz;                        /* still closest known fit */
     }
+
+    cmd[0x6e] = ctx->enc1_cmd_6e_118_11a & 0x100000ffu;
 }
 
 /* Fill Enc2 (entropy) command registers.
@@ -1283,10 +1432,11 @@ static void fill_cmd_regs_enc2(const ALAvpuContext *ctx, uint32_t *cmd,
      * bits[29:28] = nal_type derived
      * bits[31:30] = nal_ref_idc derived */
     {
-        uint32_t w8 = (ctx->enc_w + 7u) >> 3;
+        uint32_t slice_74 = ctx->enc1_cmd_0a_74 ? ctx->enc1_cmd_0a_74
+                                                : avpu_default_enc1_cmd0a_74(ctx->enc_w);
         uint32_t h8 = (ctx->enc_h + 7u) >> 3;
         uint32_t nal_type_bits = is_idr ? 0u : 1u; /* simplified */
-        cmd[0x1b] = (w8 & 0x1fffu)
+        cmd[0x1b] = (slice_74 & 0x1fffu)
                    | ((h8 & 0x3ffu) << 16)
                    | ((nal_type_bits & 0x3u) << 28);
     }
@@ -1304,9 +1454,12 @@ static void fill_cmd_regs_enc2(const ALAvpuContext *ctx, uint32_t *cmd,
      *   bits[25:24] = cabac_init_idc & 3
      *   bits[29:28] = slice_type_for_ref & 3  */
     {
-        uint32_t qp = ctx->qp ? ctx->qp : 26u;
-        cmd[0x1c] = ((ctx->entropy_mode & 1u) << 10)
-                   | ((qp & 0x3fu) << 16);
+        uint32_t qp = ctx->qp ? ctx->qp : 30u;
+        uint32_t slice_7e = ctx->enc1_cmd_0b_7e ? ctx->enc1_cmd_0b_7e : 1u;
+        cmd[0x1c] = ((((slice_7e - 1u) & 0x3u) << 4)
+                   | ((ctx->enc1_slice_10 & 0x3u) << 8)
+                   | ((ctx->entropy_mode & 1u) << 10)
+                   | ((qp & 0x3fu) << 16));
         if (!is_idr) {
             cmd[0x1c] |= (1u << 28); /* P slice type for ref */
         }
@@ -1488,19 +1641,174 @@ static void avpu_promote_reference(ALAvpuContext *ctx)
               ctx->ref_trace_buf.phy_addr, ctx->rec_trace_buf.phy_addr);
 }
 
+static pthread_mutex_t *avpu_stream_queue_mutex(ALAvpuContext *ctx)
+{
+    return (ctx && ctx->stream_queue_mutex)
+        ? (pthread_mutex_t *)ctx->stream_queue_mutex
+        : NULL;
+}
+
+static int avpu_pending_push_locked(ALAvpuContext *ctx, int buf_idx, void *user_data)
+{
+    int write_idx;
+
+    if (!ctx || ctx->pending_stream_count >= (int)(sizeof(ctx->pending_streams) / sizeof(ctx->pending_streams[0])))
+        return 0;
+
+    write_idx = ctx->pending_stream_write;
+    ctx->pending_streams[write_idx].buf_idx = buf_idx;
+    ctx->pending_streams[write_idx].user_data = user_data;
+    ctx->pending_stream_write = (write_idx + 1) % (int)(sizeof(ctx->pending_streams) / sizeof(ctx->pending_streams[0]));
+    ctx->pending_stream_count++;
+    return 1;
+}
+
+static int avpu_pending_pop_locked(ALAvpuContext *ctx, int *buf_idx_out, void **user_data_out)
+{
+    int read_idx;
+
+    if (buf_idx_out)
+        *buf_idx_out = -1;
+    if (user_data_out)
+        *user_data_out = NULL;
+
+    if (!ctx || ctx->pending_stream_count <= 0)
+        return 0;
+
+    read_idx = ctx->pending_stream_read;
+    if (buf_idx_out)
+        *buf_idx_out = ctx->pending_streams[read_idx].buf_idx;
+    if (user_data_out)
+        *user_data_out = ctx->pending_streams[read_idx].user_data;
+    ctx->pending_streams[read_idx].buf_idx = -1;
+    ctx->pending_streams[read_idx].user_data = NULL;
+    ctx->pending_stream_read = (read_idx + 1) % (int)(sizeof(ctx->pending_streams) / sizeof(ctx->pending_streams[0]));
+    ctx->pending_stream_count--;
+    return 1;
+}
+
+static int avpu_acquire_stream_buffer(ALAvpuContext *ctx)
+{
+    pthread_mutex_t *mutex;
+    int buf_idx = -1;
+
+    if (!ctx || ctx->stream_bufs_used <= 0)
+        return -1;
+
+    mutex = avpu_stream_queue_mutex(ctx);
+    if (!mutex)
+        return -1;
+
+    pthread_mutex_lock(mutex);
+    for (int n = 0; n < ctx->stream_bufs_used; ++n) {
+        int i = (ctx->next_stream_submit + n) % ctx->stream_bufs_used;
+        if (ctx->stream_buf_state[i] == AVPU_STREAM_BUF_FREE) {
+            ctx->stream_buf_state[i] = AVPU_STREAM_BUF_IN_FLIGHT;
+            ctx->stream_in_hw[i] = 0;
+            ctx->next_stream_submit = (i + 1) % ctx->stream_bufs_used;
+            buf_idx = i;
+            break;
+        }
+    }
+    pthread_mutex_unlock(mutex);
+
+    return buf_idx;
+}
+
+static int avpu_track_submitted_stream(ALAvpuContext *ctx, int buf_idx, void *user_data)
+{
+    pthread_mutex_t *mutex;
+    int ok = 0;
+
+    if (!ctx || buf_idx < 0 || buf_idx >= ctx->stream_bufs_used)
+        return 0;
+
+    mutex = avpu_stream_queue_mutex(ctx);
+    if (!mutex)
+        return 0;
+
+    pthread_mutex_lock(mutex);
+    if (ctx->stream_buf_state[buf_idx] == AVPU_STREAM_BUF_IN_FLIGHT)
+        ok = avpu_pending_push_locked(ctx, buf_idx, user_data);
+    if (!ok) {
+        ctx->stream_buf_state[buf_idx] = AVPU_STREAM_BUF_FREE;
+        ctx->stream_in_hw[buf_idx] = 1;
+    }
+    pthread_mutex_unlock(mutex);
+
+    return ok;
+}
+
+static int avpu_complete_next_stream(ALAvpuContext *ctx, int *buf_idx_out, void **user_data_out)
+{
+    pthread_mutex_t *mutex;
+    int buf_idx = -1;
+    void *user_data = NULL;
+    int ok;
+
+    if (!ctx)
+        return 0;
+
+    mutex = avpu_stream_queue_mutex(ctx);
+    if (!mutex)
+        return 0;
+
+    pthread_mutex_lock(mutex);
+    ok = avpu_pending_pop_locked(ctx, &buf_idx, &user_data);
+    if (ok && buf_idx >= 0 && buf_idx < ctx->stream_bufs_used)
+        ctx->stream_buf_state[buf_idx] = AVPU_STREAM_BUF_READY;
+    pthread_mutex_unlock(mutex);
+
+    if (buf_idx_out)
+        *buf_idx_out = buf_idx;
+    if (user_data_out)
+        *user_data_out = user_data;
+    return ok;
+}
+
+static void avpu_mark_stream_buffer_released(ALAvpuContext *ctx, int buf_idx)
+{
+    pthread_mutex_t *mutex;
+
+    if (!ctx || buf_idx < 0 || buf_idx >= ctx->stream_bufs_used)
+        return;
+
+    mutex = avpu_stream_queue_mutex(ctx);
+    if (!mutex)
+        return;
+
+    pthread_mutex_lock(mutex);
+    ctx->stream_buf_state[buf_idx] = AVPU_STREAM_BUF_FREE;
+    ctx->stream_in_hw[buf_idx] = 1;
+    pthread_mutex_unlock(mutex);
+}
+
 static void avpu_complete_frame(ALAvpuContext *ctx, const char *source)
 {
+    int buf_idx = -1;
+    void *frame_user_data = NULL;
     int frames_encoded;
+    uint32_t frame_size = 0;
+    int flush_ret = -1;
 
     if (!ctx)
         return;
 
+    if (!avpu_complete_next_stream(ctx, &buf_idx, &frame_user_data)) {
+        LOG_CODEC("%s: completion without pending stream (frame_number=%u enc=%d cons=%d)",
+                  source ? source : "EndEncoding",
+                  ctx->frame_number, ctx->frames_encoded, ctx->frames_consumed);
+    }
+
     avpu_promote_reference(ctx);
+    if (buf_idx >= 0)
+        avpu_queue_completed_stream(ctx, buf_idx, frame_user_data, source, &frame_size, &flush_ret);
     frames_encoded = __sync_add_and_fetch(&ctx->frames_encoded, 1);
 
-    LOG_CODEC("%s: frames_encoded=%d frame_number=%u frames_consumed=%d",
+    LOG_CODEC("%s: frames_encoded=%d frame_number=%u frames_consumed=%d buf_idx=%d frame_size=%u flush_ret=%d",
               source ? source : "EndEncoding",
-              frames_encoded, ctx->frame_number, ctx->frames_consumed);
+              frames_encoded, ctx->frame_number, ctx->frames_consumed,
+              buf_idx, frame_size, flush_ret);
 }
 
 static int avpu_try_recover_sticky_completion(ALAvpuContext *ctx,
@@ -2177,6 +2485,101 @@ static void *codec_dequeue_frame_metadata(AL_CodecEncode *enc)
     return Fifo_Dequeue(enc->fifo_frames, 0);
 }
 
+static void avpu_hw_stream_set_user_data(HWStreamBuffer *hw_stream, void *user_data)
+{
+    uintptr_t bits;
+
+    if (!hw_stream) return;
+
+    bits = (uintptr_t)user_data;
+    hw_stream->reserved[0] = (uint32_t)(bits & 0xffffffffu);
+#if UINTPTR_MAX > 0xffffffffu
+    hw_stream->reserved[1] = (uint32_t)((bits >> 32) & 0xffffffffu);
+#else
+    hw_stream->reserved[1] = 0;
+#endif
+}
+
+static void *avpu_hw_stream_get_user_data(const HWStreamBuffer *hw_stream)
+{
+    uintptr_t bits;
+
+    if (!hw_stream) return NULL;
+
+    bits = (uintptr_t)hw_stream->reserved[0];
+#if UINTPTR_MAX > 0xffffffffu
+    bits |= ((uintptr_t)hw_stream->reserved[1] << 32);
+#endif
+    return (void *)bits;
+}
+
+static int avpu_queue_completed_stream(ALAvpuContext *ctx, int buf_idx, void *user_data,
+                                       const char *source, uint32_t *frame_size_out,
+                                       int *flush_ret_out)
+{
+    AL_CodecEncode *enc;
+    HWStreamBuffer *hw_stream;
+    uint32_t frame_size;
+    uint32_t phys_addr;
+    uint32_t virt_addr;
+    int flush_ret = -1;
+
+    if (frame_size_out)
+        *frame_size_out = 0;
+    if (flush_ret_out)
+        *flush_ret_out = -1;
+
+    if (!ctx || buf_idx < 0 || buf_idx >= ctx->stream_bufs_used)
+        return 0;
+
+    enc = (AL_CodecEncode *)ctx->codec_owner;
+    if (!enc || !enc->fifo_streams)
+        return 0;
+
+    frame_size = avpu_stream_buffer_effective_size(ctx, buf_idx, &flush_ret);
+    if (frame_size_out)
+        *frame_size_out = frame_size;
+    if (flush_ret_out)
+        *flush_ret_out = flush_ret;
+
+    if (frame_size == 0) {
+        LOG_CODEC("%s: completed stream buf[%d] phys=0x%08x has no payload (flush_ret=%d)",
+                  source ? source : "EndEncoding",
+                  buf_idx, ctx->stream_bufs[buf_idx].phy_addr, flush_ret);
+        return 0;
+    }
+
+    hw_stream = (HWStreamBuffer *)calloc(1, sizeof(HWStreamBuffer));
+    if (!hw_stream) {
+        LOG_CODEC("%s: failed to allocate HWStreamBuffer for completed buf[%d]",
+                  source ? source : "EndEncoding", buf_idx);
+        return 0;
+    }
+
+    phys_addr = ctx->stream_bufs[buf_idx].phy_addr;
+    virt_addr = (uint32_t)(uintptr_t)ctx->stream_bufs[buf_idx].map;
+    hw_stream->phys_addr = phys_addr;
+    hw_stream->virt_addr = virt_addr;
+    hw_stream->length = frame_size;
+    avpu_hw_stream_set_user_data(hw_stream, user_data);
+
+    LOG_CODEC("%s: queue completed stream buf[%d] stream=%p phys=0x%08x virt=0x%08x len=%u flush_ret=%d user=%p",
+              source ? source : "EndEncoding",
+              buf_idx, (void *)hw_stream, phys_addr, virt_addr, frame_size,
+              flush_ret, user_data);
+
+    if (Fifo_Queue(enc->fifo_streams, hw_stream, -1) == 0) {
+        LOG_CODEC("%s: failed to queue completed stream buf[%d]", source ? source : "EndEncoding", buf_idx);
+        free(hw_stream);
+        return 0;
+    }
+
+    LOG_CODEC("%s: queued completed stream buf[%d] stream=%p phys=0x%08x virt=0x%08x len=%u flush_ret=%d",
+              source ? source : "EndEncoding",
+              buf_idx, (void *)hw_stream, phys_addr, virt_addr, frame_size, flush_ret);
+    return 1;
+}
+
 /* Global codec state */
 static void *g_pCodec = NULL;
 static pthread_mutex_t g_codec_mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -2498,6 +2901,11 @@ int AL_Codec_Encode_Destroy(void *codec) {
             free(enc->avpu.irq_mutex);
             enc->avpu.irq_mutex = NULL;
         }
+        if (enc->avpu.stream_queue_mutex) {
+            pthread_mutex_destroy((pthread_mutex_t*)enc->avpu.stream_queue_mutex);
+            free(enc->avpu.stream_queue_mutex);
+            enc->avpu.stream_queue_mutex = NULL;
+        }
 
         pthread_mutex_lock(&g_avpu_owner_mutex);
         if (g_avpu_owner_channel == enc->channel_id) {
@@ -2671,6 +3079,11 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
                 skip_avpu = 1;
             }
 
+            if (skip_avpu && codec_type == IMP_ENC_TYPE_AVC) {
+                LOG_CODEC("AVPU: channel=%d skipped because owner channel=%d already holds AVPU",
+                          enc->channel_id - 1, current_owner > 0 ? (current_owner - 1) : -1);
+            }
+
             if (!skip_avpu) {
                 if (enc->avpu.fd > 2) {
                     /* Already open for this channel; do not re-open */
@@ -2715,6 +3128,11 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
                         enc->avpu.irq_wait_errno = 0;
                         enc->avpu.last_irq_id = -1;
                         enc->avpu.reference_valid = 0;
+                        enc->avpu.codec_owner = enc;
+                        enc->avpu.next_stream_submit = 0;
+                        enc->avpu.pending_stream_read = 0;
+                        enc->avpu.pending_stream_write = 0;
+                        enc->avpu.pending_stream_count = 0;
 
                         /* OEM parity: AL_Board_Create allocates mutex and starts
                          * WaitInterruptThread immediately after opening /dev/avpu. */
@@ -2722,6 +3140,11 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
                         if (mutex) {
                             pthread_mutex_init(mutex, NULL);
                             enc->avpu.irq_mutex = mutex;
+                        }
+                        pthread_mutex_t *stream_mutex = (pthread_mutex_t*)malloc(sizeof(pthread_mutex_t));
+                        if (stream_mutex) {
+                            pthread_mutex_init(stream_mutex, NULL);
+                            enc->avpu.stream_queue_mutex = stream_mutex;
                         }
                         memset(enc->avpu.irq_callbacks, 0, sizeof(enc->avpu.irq_callbacks));
 
@@ -2761,6 +3184,7 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
                             if (avpu_alloc_imp((size_t)enc->avpu.stream_buf_size, "AVPU_STRM", &tmp) == 0) {
                                 enc->avpu.stream_bufs[filled] = tmp;
                                 enc->avpu.stream_in_hw[filled] = 0;
+                                enc->avpu.stream_buf_state[filled] = AVPU_STREAM_BUF_FREE;
                                 memset(enc->avpu.stream_bufs[filled].map, 0, enc->avpu.stream_buf_size);
                                 avpu_flush_cache(fd, enc->avpu.stream_bufs[filled].map,
                                                  (unsigned int)enc->avpu.stream_buf_size, 1);
@@ -2876,6 +3300,8 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
                             } else {
                                 LOG_CODEC("AVPU: WARNING - failed to allocate ref_trace_buf (%zu bytes)", aux_frame_sz);
                             }
+
+                            avpu_log_dma_layout(&enc->avpu);
                         }
 
                         /* T31 uses absolute addressing (offset mode causes kernel crashes) */
@@ -3042,6 +3468,8 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
                 for (int i = 0; i < ctx->stream_bufs_used; ++i) {
                     if (ctx->stream_bufs[i].phy_addr) {
                         avpu_write_reg(fd, AVPU_REG_STRM_PUSH, ctx->stream_bufs[i].phy_addr);
+                        ctx->stream_in_hw[i] = 1;
+                        ctx->stream_buf_state[i] = AVPU_STREAM_BUF_FREE;
                         LOG_CODEC("AVPU: STRM_PUSH buf[%d] phys=0x%08x", i, ctx->stream_bufs[i].phy_addr);
                     }
                 }
@@ -3096,7 +3524,7 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
              * stream buffer, so matching this gate BEFORE touching buf[0] is
              * important: otherwise a busy/sticky core can cause us to erase the
              * previous encoded output before GetStream drains it. */
-            int buf_idx = 0;
+            int buf_idx = -1;
             unsigned int core_status = 0;
 
             /* The earlier local state that produced continuously ticking AVPU
@@ -3139,6 +3567,16 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
                           ctx->last_irq_id, ctx->frames_encoded, ctx->frames_consumed);
             }
             ctx->busy_skip_count = 0;
+
+            buf_idx = avpu_acquire_stream_buffer(ctx);
+            if (buf_idx < 0) {
+                LOG_CODEC("Process: no free AVPU stream buffer (enc=%d cons=%d pending=%d used=%d)",
+                          ctx->frames_encoded, ctx->frames_consumed,
+                          ctx->pending_stream_count, ctx->stream_bufs_used);
+                free(hw_stream);
+                errno = EAGAIN;
+                return -1;
+            }
 
             if (buf_idx < ctx->stream_bufs_used && ctx->stream_bufs[buf_idx].map) {
                 memset(ctx->stream_bufs[buf_idx].map, 0, (size_t)ctx->stream_buf_size);
@@ -3189,6 +3627,14 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
             LOG_CODEC("Process: CL[%u] flush ret=%d (rmem+avpu)", idx, cl_flush_ret);
             int trace_submit = (idx == 0 && ctx->frames_encoded == 0);
 
+            if (!avpu_track_submitted_stream(ctx, buf_idx, user_data)) {
+                LOG_CODEC("Process: failed to track submitted AVPU stream buf[%d]", buf_idx);
+                avpu_mark_stream_buffer_released(ctx, buf_idx);
+                free(hw_stream);
+                errno = EAGAIN;
+                return -1;
+            }
+
             /* OEM encode1 enables interrupts before AL_EncCore_Encode1 starts
              * the command list. Match that ordering here instead of unmasking
              * after the source FIFO push. */
@@ -3236,6 +3682,7 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
             {
                 uint32_t y_plane_sz = avpu_get_nv12_luma_plane_size(width, height);
                 uint32_t stream_part_offset = avpu_get_enc1_stream_part_offset(ctx);
+                uint32_t hw_hdr_offset = avpu_get_hw_hdr_offset(hdr_offset);
 
                 avpu_write_reg(fd, AVPU_REG_ENC_EN_B, 0x00000001);
                 avpu_write_reg(fd, AVPU_REG_ENC_EN_A, 0x00000001);
@@ -3250,14 +3697,15 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
                 avpu_write_reg(fd, 0x8418, ctx->interm_buf.phy_addr + ctx->interm_ep1_size);
                 avpu_write_reg(fd, 0x841c, ctx->interm_buf.phy_addr);
                 avpu_write_reg(fd, 0x8420, stream_part_offset);
-                avpu_write_reg(fd, 0x8424, hdr_offset);
+                avpu_write_reg(fd, 0x8424, hw_hdr_offset);
                 avpu_write_reg(fd, 0x8428,
-                    stream_part_offset > hdr_offset
-                        ? (stream_part_offset - hdr_offset) & ~0x1fu : 0u);
+                    stream_part_offset > hw_hdr_offset
+                        ? (stream_part_offset - hw_hdr_offset) : 0u);
 
                 avpu_write_reg(fd, AVPU_REG_ENC_EN_C, 0x00000001);
 
-                LOG_CODEC("AVPU: post-CL encoder config written (ENC_EN_A/B/C + 0x8400-0x8428)");
+                LOG_CODEC("AVPU: post-CL encoder config written (ENC_EN_A/B/C + 0x8400-0x8428 hdr=%u hw_hdr=%u)",
+                          hdr_offset, hw_hdr_offset);
             }
 
             /* OEM parity: For AVC, the Enc2 slice parameters are embedded in the
@@ -3305,7 +3753,6 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
 
             /* Advance CL index (already set above based on IDR vs P frame) */
             ctx->frame_number++;
-            codec_queue_frame_metadata(enc, user_data);
             submitted = 1;
 
             LOG_CODEC("Process: AVPU queued frame %ux%u phys=0x%x CL[%u] hdr=%u - encoding triggered",
@@ -3376,77 +3823,27 @@ int AL_Codec_Encode_GetStream(void *codec, void **stream, void **user_data) {
             return -1;
         }
 
-        /* Wait for at least one frame to be encoded, then return data.
-         * Track frames_consumed separately so we drain all produced frames. */
-        struct timespec nap = {0, 10000000L}; /* 10ms */
-
-        for (int retry = 0; retry < 200; ++retry) {
-            if (ctx->frames_encoded <= ctx->frames_consumed) {
-                unsigned int core_status = 0;
-
-                if (avpu_read_reg_quiet(ctx->fd, AVPU_REG_CORE_STATUS(0), &core_status) == 0) {
-                    avpu_try_recover_sticky_completion(ctx, core_status, "GetStream[AVPU]");
-                }
+        for (int retry = 0; retry < 20; ++retry) {
+            void *s = Fifo_Dequeue(enc->fifo_streams, 100);
+            if (s != NULL) {
+                HWStreamBuffer *hw_stream = (HWStreamBuffer *)s;
+                *stream = s;
+                *user_data = avpu_hw_stream_get_user_data(hw_stream);
+                ctx->frames_consumed++;
+                LOG_CODEC("GetStream[AVPU]: got queued stream stream=%p phys=0x%08x virt=0x%08x len=%u enc=%d cons=%d user=%p",
+                          (void *)hw_stream, hw_stream->phys_addr,
+                          hw_stream->virt_addr, hw_stream->length,
+                          ctx->frames_encoded, ctx->frames_consumed, *user_data);
+                return 0;
             }
 
-            if (ctx->frames_encoded > ctx->frames_consumed) {
-                /* OEM reads encoded size from CL status at offset +0xC8.
-                 * After the AVPU writes encoded data, CL[0xC8/4] = byte offset
-                 * where the AVPU stopped writing in the stream buffer.
-                 * We also check CL[0x104/4] & 0x3FFFFFFF for entropy-reported bits. */
-
-                /* CL cache invalidate doesn't work (MIPS cache coherency issue
-                 * with rmem mappings). But the stream buffer invalidate DOES work.
-                 * Read frame size directly from stream buffer by scanning for
-                 * valid Annex-B data. */
-                int buf_idx = -1;
-                int flush_ret = -1;
-                uint32_t frame_size = 0;
-
-                /* Read encoded data from whichever stream buffer actually contains
-                 * the completed Annex-B payload. The AVPU session pre-queues a pool
-                 * of buffers, so do not assume buf[0] is always the one that came
-                 * back with output. */
-                for (int i = 0; i < ctx->stream_bufs_used; ++i) {
-                    int candidate_flush_ret = -1;
-                    uint32_t candidate_size = avpu_stream_buffer_effective_size(ctx, i,
-                                                                                &candidate_flush_ret);
-                    if (candidate_size > 0) {
-                        buf_idx = i;
-                        flush_ret = candidate_flush_ret;
-                        frame_size = candidate_size;
-                        break;
-                    }
-                }
-
-                LOG_CODEC("GetStream[AVPU]: selected stream_buf[%d] flush_ret=%d frame_size=%u",
-                          buf_idx, flush_ret, frame_size);
-
-                if (buf_idx >= 0 && frame_size > 0) {
-                    const uint8_t *virt = (const uint8_t*)ctx->stream_bufs[buf_idx].map;
-                    HWStreamBuffer *s = (HWStreamBuffer*)malloc(sizeof(HWStreamBuffer));
-                    if (!s) return -1;
-                    s->phys_addr = ctx->stream_bufs[buf_idx].phy_addr;
-                    s->virt_addr = (uint32_t)(uintptr_t)virt;
-                    s->length = frame_size;
-                    s->timestamp = 0;
-                    s->frame_type = 0;
-                    s->slice_type = 0;
-                    *stream = s;
-                    *user_data = codec_dequeue_frame_metadata(enc);
-                    ctx->frames_consumed++;
-                    LOG_CODEC("GetStream[AVPU]: got stream buf[%d] phys=0x%08x len=%u enc=%d cons=%d",
-                             buf_idx, s->phys_addr, s->length, ctx->frames_encoded, ctx->frames_consumed);
-                    return 0;
-                }
-
-                LOG_CODEC("GetStream[AVPU]: encode completed but no AVPU stream buffer contained payload");
-            }
-
-            nanosleep(&nap, NULL);
+            unsigned int core_status = 0;
+            if (avpu_read_reg_quiet(ctx->fd, AVPU_REG_CORE_STATUS(0), &core_status) == 0)
+                avpu_try_recover_sticky_completion(ctx, core_status, "GetStream[AVPU]");
         }
 
-        LOG_CODEC("GetStream[AVPU]: TIMEOUT (frames_encoded=%d)", ctx->frames_encoded);
+        LOG_CODEC("GetStream[AVPU]: TIMEOUT (frames_encoded=%d frames_consumed=%d)",
+                  ctx->frames_encoded, ctx->frames_consumed);
         errno = EAGAIN;
         return -1;
     }
@@ -3481,6 +3878,7 @@ int AL_Codec_Encode_ReleaseStream(void *codec, void *stream, void *user_data) {
         /* OEM parity: Direct ioctl to return buffer (no ALAvpu_ReleaseStream wrapper) */
         HWStreamBuffer *hw_stream = (HWStreamBuffer*)stream;
         ALAvpuContext *ctx = &enc->avpu;
+        int matched = 0;
         (void)user_data;
 
         if (ctx->session_ready) {
@@ -3488,10 +3886,18 @@ int AL_Codec_Encode_ReleaseStream(void *codec, void *stream, void *user_data) {
             for (int i = 0; i < ctx->stream_bufs_used; ++i) {
                 if (ctx->stream_bufs[i].phy_addr == hw_stream->phys_addr) {
                     avpu_write_reg(ctx->fd, AVPU_REG_STRM_PUSH, hw_stream->phys_addr);
-                    ctx->stream_in_hw[i] = 1;
-                    LOG_CODEC("ReleaseStream[AVPU]: requeued stream buf[%d] phys=0x%x", i, hw_stream->phys_addr);
+                    avpu_mark_stream_buffer_released(ctx, i);
+                    LOG_CODEC("ReleaseStream[AVPU]: requeued stream buf[%d] stream=%p phys=0x%08x virt=0x%08x len=%u",
+                              i, (void *)hw_stream, hw_stream->phys_addr,
+                              hw_stream->virt_addr, hw_stream->length);
+                    matched = 1;
                     break;
                 }
+            }
+            if (!matched) {
+                LOG_CODEC("ReleaseStream[AVPU]: WARNING unmatched stream=%p phys=0x%08x virt=0x%08x len=%u",
+                          (void *)hw_stream, hw_stream->phys_addr,
+                          hw_stream->virt_addr, hw_stream->length);
             }
         }
 

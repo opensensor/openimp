@@ -119,6 +119,11 @@ typedef struct {
     uint32_t ret_val;           /* [0x10]: return value (2) */
 } AL_EncCoreCtx;
 
+typedef struct {
+    int buf_idx;
+    void *user_data;
+} AvpuPendingStream;
+
 /* ---- ALAvpuContext: combined state for our implementation ---- */
 typedef struct ALAvpuContext {
     int fd;                   /* /dev/avpu fd (from AL_DevicePool_Open) */
@@ -136,6 +141,14 @@ typedef struct ALAvpuContext {
     AvpuDMABuf stream_bufs[16];
     int stream_bufs_used;
     unsigned char stream_in_hw[16];
+    unsigned char stream_buf_state[16];
+    int next_stream_submit;
+    void *codec_owner;
+    void *stream_queue_mutex;
+    AvpuPendingStream pending_streams[16];
+    int pending_stream_read;
+    int pending_stream_write;
+    int pending_stream_count;
 
     /* Addressing */
     uint32_t axi_base;

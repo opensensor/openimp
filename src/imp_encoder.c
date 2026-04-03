@@ -2232,6 +2232,11 @@ static int encoder_update(void *module, void *frame) {
         pthread_mutex_unlock(&encoder_mutex);
 
         if (tried_group) {
+            LOG_ENC("encoder_update: group %d slots=[%d,%d,%d,%d,%d,%d,%d,%d,%d]",
+                    enc_group,
+                    group_channels[0], group_channels[1], group_channels[2],
+                    group_channels[3], group_channels[4], group_channels[5],
+                    group_channels[6], group_channels[7], group_channels[8]);
             for (int i = 0; i < MAX_CHANNELS_PER_GROUP; ++i) {
                 int chn_id = group_channels[i];
                 if (chn_id < 0 || chn_id >= MAX_ENC_CHANNELS) {
