@@ -3987,19 +3987,21 @@ int AL_Codec_Encode_ReleaseStream(void *codec, void *stream, void *user_data) {
     AL_CodecEncode *enc = (AL_CodecEncode*)codec;
 
     if (enc->use_hardware == 2 && enc->avpu.fd >= 0) {
-        /* OEM parity: Direct ioctl to return buffer (no ALAvpu_ReleaseStream wrapper) */
+        /* OEM parity: stock AL_Codec_Encode_ReleaseStream does not poke AVPU
+         * registers directly here; it returns the stream buffer through the
+         * encoder-side stream manager path. In our direct-AVPU scaffolding,
+         * the closest equivalent is to mark the completed buffer reusable in
+         * local bookkeeping without issuing a second STRM_PUSH/QBUF. */
         HWStreamBuffer *hw_stream = (HWStreamBuffer*)stream;
         ALAvpuContext *ctx = &enc->avpu;
         int matched = 0;
         (void)user_data;
 
         if (ctx->session_ready) {
-            /* Return buffer to hardware via direct ioctl */
             for (int i = 0; i < ctx->stream_bufs_used; ++i) {
                 if (ctx->stream_bufs[i].phy_addr == hw_stream->phys_addr) {
-                    avpu_write_reg(ctx->fd, AVPU_REG_STRM_PUSH, hw_stream->phys_addr);
                     avpu_mark_stream_buffer_released(ctx, i);
-                    LOG_CODEC("ReleaseStream[AVPU]: requeued stream buf[%d] stream=%p phys=0x%08x virt=0x%08x len=%u",
+                    LOG_CODEC("ReleaseStream[AVPU]: released stream buf[%d] stream=%p phys=0x%08x virt=0x%08x len=%u",
                               i, (void *)hw_stream, hw_stream->phys_addr,
                               hw_stream->virt_addr, hw_stream->length);
                     matched = 1;
