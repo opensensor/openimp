@@ -4005,13 +4005,15 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
             /* Verify data in CPU cache, then flush */
             LOG_CODEC("Process: CL[%u] pre-flush virt_w0=0x%08x w1=0x%08x entry=%p size=%u",
                       idx, cmd[0], cmd[1], (void*)entry, (unsigned)cl_flush_size);
-            /* Use dir=0 (DMA_BIDIRECTIONAL = writeback + INVALIDATE) so cache
-             * lines are REMOVED after flush. dir=1 (DMA_TO_DEVICE) only writes
-             * back but keeps lines in cache as "clean" — then AVPU DMA writes
-             * go to RAM but CPU reads stale cached data. */
+            /* Flush CL from CPU cache to physical RAM so the AVPU DMA sees our
+             * command words.  The rmem ioctl flush (both dir=1 and dir=3) was
+             * proven broken by kernel CL dumps showing stale AVPU output data
+             * instead of our freshly written cmd words.  Use msync + rmem as
+             * belt-and-suspenders. */
+            msync(entry, cl_flush_size, MS_SYNC);
             int cl_flush_ret = ctx->cl_ring.uncached_map
                              ? 0
-                             : avpu_flush_cache(fd, entry, (unsigned int)cl_flush_size, 1 /*WBACK*/);
+                             : avpu_flush_cache(fd, entry, (unsigned int)cl_flush_size, 3 /*WBACK_INV*/);
             LOG_CODEC("Process: CL[%u] flush ret=%d (rmem+avpu)", idx, cl_flush_ret);
             int trace_submit = (idx == 0 && ctx->frames_encoded == 0);
 
@@ -4129,8 +4131,9 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
                  * stale in RAM, which matches the current symptom where AVPU
                  * completes and IRQs fire but only the pre-written headers are
                  * visible in the stream buffer. */
+                msync(enc2_entry, cl_flush_size, MS_SYNC);
                 if (!ctx->cl_ring.uncached_map)
-                    avpu_flush_cache(fd, enc2_entry, (unsigned int)cl_flush_size, 1 /*WBACK*/);
+                    avpu_flush_cache(fd, enc2_entry, (unsigned int)cl_flush_size, 3 /*WBACK_INV*/);
 
                 int enc2_addr_ret = avpu_write_reg(fd, AVPU_REG_CL_ADDR, enc2_phys);
                 int enc2_push_ret = avpu_write_reg(fd, AVPU_REG_CL_PUSH, 0x00000008);
