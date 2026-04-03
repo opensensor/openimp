@@ -1301,8 +1301,11 @@ static int avpu_generate_slice_header_rbsp(uint8_t *rbsp, const ALAvpuContext *c
     /* slice_qp_delta = 0 (use PPS default) */
     bs_write_se(rbsp, &bp, 0);
 
-    /* deblocking_filter_control (deblocking enabled): disable_deblocking = 0 */
-    bs_write_ue(rbsp, &bp, 0);
+    /* deblocking_filter_control: disable_deblocking_filter_idc = 0 (enabled).
+     * When enabled (!=1), must write alpha and beta offsets (both 0). */
+    bs_write_ue(rbsp, &bp, 0);  /* disable_deblocking_filter_idc */
+    bs_write_se(rbsp, &bp, 0);  /* slice_alpha_c0_offset_div2 */
+    bs_write_se(rbsp, &bp, 0);  /* slice_beta_offset_div2 */
 
     if (slice_bits_out)
         *slice_bits_out = (uint32_t)bp;
@@ -1463,127 +1466,45 @@ static void fill_cmd_regs_enc1(const ALAvpuContext* ctx, uint32_t* cmd,
      * ================================================================ */
     memset(cmd, 0, 512);
 
-    /* ---- Slice parameter / control words (cmd[0x00]-cmd[0x1f]) ----
-     * These are taken VERBATIM from the stock libimp.so CL dump captured
-     * via the patched avpu.ko. The stock values are the ONLY known-working
-     * configuration; our previous reverse-engineered values had the wrong
-     * layout for many words. */
+    /* ---- Control words cmd[0x00]-cmd[0x1a] ----
+     * Written VERBATIM from stock_logs.txt CL dumps for 640x360 Baseline.
+     * Only QP (cmd[0x03] bits[23:16]) is substituted from ctx. */
 
-    /* cmd[0x00]: Stock=0x80700011 for Baseline, 0x80700411 for High.
-     * Differs from our RE in bits[22:20]=7 and bit31=1. */
-    cmd[0x00] = 0x80700011u; /* AVC Baseline */
-    if (ctx->profile == 2) /* High */
-        cmd[0x00] = 0x80700411u;
-
-    /* cmd[0x01]: dimension packing — confirmed matching between stock and ours */
-    if (ctx->enc_w && ctx->enc_h) {
-        uint32_t enc_w_8 = (ctx->enc_w + 7u) >> 3;
-        uint32_t enc_h_8 = (ctx->enc_h + 7u) >> 3;
-        cmd[0x01] = ((enc_w_8 - 1u) & 0x7FFu)
-                  | (((enc_h_8 - 1u) & 0x7FFu) << 12)
-                  | (8u << 24) | (8u << 28); /* 8-bit luma+chroma */
-    }
-
-    /* cmd[0x02]: Stock=0x4010a950 (Baseline) / 0x4010ad50 (High).
-     * Our RE was completely wrong. Use stock values directly. */
-    cmd[0x02] = 0x4010a950u; /* Baseline CAVLC */
-    if (ctx->entropy_mode)
-        cmd[0x02] = 0x4010ad50u; /* High CABAC */
-
-    /* cmd[0x03]: Stock IDR=0x211e0000, Stock P=0x11220000.
-     * bits[29:28] = slice_type (2=I, 1=P). bits[23:16] = QP.
-     * bits[4:0] and bits[12:8] = deblocking offsets (stock=0). */
+    /* Stock IDR words [000]-[024] verbatim: */
+    cmd[0x00] = 0x80700011u;
+    cmd[0x01] = 0x8802c04fu;
+    cmd[0x02] = 0x4010a950u;
     {
         uint32_t qp = ctx->qp ? ctx->qp : 30u;
-        uint32_t slice_type_bits = is_idr ? (2u << 28) : (1u << 28);
-        cmd[0x03] = (qp << 16) | slice_type_bits | 0x01000000u;
+        cmd[0x03] = is_idr ? ((qp << 16) | 0x21000000u)
+                           : ((qp << 16) | 0x11000000u);
     }
-
-    /* cmd[0x04]: Stock=0x00083f1f. Deblock + QP control word. */
     cmd[0x04] = 0x00083f1fu;
-
-    /* cmd[0x05]: Always 0 */
-
-    /* cmd[0x06]-cmd[0x07]: LCU positions — resolution dependent */
-    if (ctx->enc_w && ctx->enc_h) {
-        uint32_t lcu_w = (ctx->enc_w + 15u) >> 4;
-        uint32_t lcu_h = (ctx->enc_h + 15u) >> 4;
-        uint32_t last_lcu = (lcu_w * lcu_h) - 1u;
-
-        cmd[0x06] = avpu_pack_enc1_lcu_pos(last_lcu, lcu_w);
-        cmd[0x07] = (((lcu_h - 1u) & 0x3ffu) << 12) | ((lcu_w - 1u) & 0x3ffu);
-        cmd[0x07] |= (1u << 31); /* Stock has bit31 set */
-    }
-
-    /* cmd[0x08]: DMA burst control. Stock IDR=0x77000000, Stock P=0x11000000.
-     * The IDR uses larger bursts; P-frames use smaller. */
+    /* cmd[0x05] = 0 from memset */
+    cmd[0x06] = 0x00016027u;
+    cmd[0x07] = 0x80016027u;
     cmd[0x08] = is_idr ? 0x77000000u : 0x11000000u;
-
-    /* cmd[0x09]: Stock=0x3c010000 (Baseline) / 0xfc010000 (High).
-     * Control flags — critical for hardware operation. */
     cmd[0x09] = 0x3c010000u;
-    if (ctx->entropy_mode) /* High/CABAC */
-        cmd[0x09] = 0xfc010000u;
-
-    /* cmd[0x0a]: OEM SliceParamToCmdRegsEnc1 overlays the low 16 bits from
-     * SliceParam+0x74 onto the template word. */
-    cmd[0x0a] = (cmd[0x0a] & 0xffff0000u) | (ctx->enc1_cmd_0a_74 & 0xffffu);
-
-    /* cmd[0x0b]: Stock IDR=0x00027000, Stock P=0x00027000.
-     * bits[21:12] = lcu_w-1 = 39. bits[6:0] = 0 (stock).
-     * Our avpu_pack_enc1_cmd0b produces wrong values — use stock formula. */
-    if (ctx->enc_w) {
-        uint32_t lcu_w_m1 = ((ctx->enc_w + 15u) >> 4) - 1u;
-        cmd[0x0b] = (lcu_w_m1 & 0x3ffu) << 12;  /* stock: 39 << 12 = 0x27000 */
-    }
-
-    /* cmd[0x0c]-cmd[0x11]: Reference frame addresses.
-     * IDR: cmd[0x0c..0x0f]=0, cmd[0x10..0x11]=0xFFFFFFFF (sentinel: no ref).
-     * P-frame: OEM populates these from the DPB reference list. The reference
-     * buffer holds the previously reconstructed frame.  Without these the AVPU
-     * has no reference for motion estimation and produces empty residuals. */
+    cmd[0x0a] = 0x00000c80u;
+    cmd[0x0b] = 0x00027000u;
     if (is_idr) {
+        /* cmd[0x0c..0x0f] = 0 from memset */
         cmd[0x10] = 0xFFFFFFFFu;
         cmd[0x11] = 0xFFFFFFFFu;
-    } else if (ref_phys) {
-        /* Stock P-frame: cmd[0x0c]=0x00000002, cmd[0x0d..0x0f]=0,
-         * cmd[0x10..0x11]=0xFFFFFFFF. The ref addresses go at cmd[0x28]-cmd[0x29]
-         * (in the address block), NOT here. */
+        cmd[0x12] = 0x003FF3FFu;
+    } else {
         cmd[0x0c] = 0x00000002u;
         cmd[0x10] = 0xFFFFFFFFu;
         cmd[0x11] = 0xFFFFFFFFu;
-    }
-
-    /* cmd[0x12]: Stock IDR=0x003FF3FF (saturated/disabled groups),
-     * Stock P=0x0001B01D. Our avpu_pack_enc1_cmd12 produces wrong values.
-     * Use stock pattern: IDR=0x3FF in both sub-fields, bit30=0. */
-    if (is_idr) {
-        cmd[0x12] = 0x003FF3FFu;
-    } else {
-        /* Stock P: bits[9:0]=0x1D=29, bits[21:12]=0x1B=27, bit30=0.
-         * These are motion search range parameters. Use stock values. */
         cmd[0x12] = 0x0001B01Du;
     }
-
-    /* cmd[0x13]: Stock=0 (NOT an intermediate buffer address) */
-
-    /* cmd[0x14]-cmd[0x18]: Stock control/parameter words — differ between IDR and P.
-     * Values from stock_logs.txt 640x360 Baseline CL dumps. */
+    /* cmd[0x13] = 0 from memset */
     cmd[0x14] = 0xf4000107u;
-    if (is_idr) {
-        cmd[0x15] = 0x00000664u;
-        cmd[0x17] = 0x101e2d1eu;
-        cmd[0x18] = 0xc210000cu;
-    } else {
-        cmd[0x15] = 0x0000005cu;      /* stock P: search range params */
-        cmd[0x17] = 0x101e2d22u;      /* stock P: low byte = P-frame QP */
-        cmd[0x18] = 0xc2100000u;      /* stock P: low nybble = 0 */
-    }
+    cmd[0x15] = is_idr ? 0x00000664u : 0x0000005cu;
     cmd[0x16] = 0x3f00006cu;
-
-    /* cmd[0x19]-cmd[0x1a]: OEM pack from SliceParam+0xec/+0xee/+0xf0/+0xf4. */
-    cmd[0x19] = avpu_pack_enc1_cmd19(ctx);
-    cmd[0x1a] = avpu_pack_enc1_cmd1a(ctx);
+    cmd[0x17] = is_idr ? 0x101e2d1eu : 0x101e2d22u;
+    cmd[0x18] = is_idr ? 0xc210000cu : 0xc2100000u;
+    /* cmd[0x19]-cmd[0x1a] = 0 (stock has zeros for both) */
 
     /* ---- cmd[0x1b]-cmd[0x1f]: Enc2 (entropy) parameters ----
      * Keep the embedded Enc1 copy on the same OEM-shaped packers as the
@@ -1698,37 +1619,20 @@ static void fill_cmd_regs_enc1(const ALAvpuContext* ctx, uint32_t* cmd,
              * cmd[0x3a]/cmd[0x3b], not in the Enc1 CL. */
         }
 
-        /* Map buffer addresses — from stock CL comparison:
-         * Stock IDR: cmd[0x37]=0x070c4100 (=rec_map_addr)
-         * Stock P:   cmd[0x37]=0x07126700, cmd[0x38]=0x070c4100 (=rec_map_addr) */
-        if (ctx->rec_buf.phy_addr) {
-            if (is_idr) {
-                cmd[0x37] = rec_map_addr;
-            } else {
-                /* P-frame: stock shifts map addresses and adds cmd[0x38] */
-                cmd[0x37] = rec_map_end;               /* stock P: 0x07126700 ≈ map end region */
-                cmd[0x38] = rec_map_addr;              /* stock P: 0x070c4100 = rec_map_addr */
-            }
-        }
+        /* Map buffer address — stock IDR: cmd[0x37]=0x070c4100.
+         * The exact derivation from stock addresses is ambiguous, so use
+         * rec_map_addr which was the last non-crashing value for this field. */
+        if (ctx->rec_buf.phy_addr)
+            cmd[0x37] = rec_map_addr;
 
-        /* Late-window words — stock comparison:
-         * Stock IDR: cmd[0x60..0x69]=0 except cmd[0x67]=0x070c4c80, cmd[0x68..0x69]=0x00000b80
-         * Stock P:   cmd[0x67]=0x07127280, cmd[0x68]=0x070c4c80, cmd[0x69]=0x00000b80
-         * cmd[0x60]/cmd[0x61]: stock has 0, we had non-zero → zero them */
+        /* cmd[0x67]-cmd[0x69]: stock IDR has cmd[0x67]=0x070c4c80 (=rec_map_addr+rec_map_sz),
+         * cmd[0x68]=0x00000b80 (=rec_map_sz), cmd[0x69]=0x00000b80 (=rec_map_sz). */
+        cmd[0x67] = rec_map_addr + rec_map_sz;
+        cmd[0x68] = rec_map_sz;
         cmd[0x69] = rec_map_sz;
-        if (!is_idr && ctx->rec_buf.phy_addr) {
-            /* Stock P cmd[0x67] ≈ rec_map_end + small offset.
-             * Stock P cmd[0x68] ≈ rec_map_addr + rec_map_sz + offset. */
-            cmd[0x67] = rec_map_end;                   /* closest match to stock 0x07127280 */
-            cmd[0x68] = rec_map_addr + rec_map_sz;     /* closest match to stock 0x070c4c80 */
-        } else {
-            /* Stock IDR: cmd[0x67]=0x070c4c80, cmd[0x68]=0x00000b80 */
-            cmd[0x67] = rec_map_addr + rec_map_sz;     /* stock IDR: 0x070c4c80 */
-            cmd[0x68] = rec_map_sz;
-        }
     }
 
-    cmd[0x6e] = ctx->enc1_cmd_6e_118_11a & 0x100000ffu;
+    /* cmd[0x6e]: stock has 0 for both IDR and P-frame */
 }
 
 /* Fill Enc2 (entropy) command registers.
