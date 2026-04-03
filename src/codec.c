@@ -2007,26 +2007,6 @@ static void avpu_complete_frame(ALAvpuContext *ctx, const char *source)
     if (!ctx)
         return;
 
-    /* Peek at the pending stream buffer to check if Enc2 has written payload.
-     * Each frame submits Enc1 (CL_PUSH=2) then Enc2 (CL_PUSH=8). The hardware
-     * fires an IRQ for each. The first IRQ (Enc1) arrives before Enc2 writes
-     * payload. If we pop and deliver at that point, the frame has only headers.
-     * Wait for the second IRQ (Enc2 done) which has the full payload. */
-    {
-        pthread_mutex_t *peek_mutex = avpu_stream_queue_mutex(ctx);
-        if (peek_mutex && ctx->pending_stream_count > 0) {
-            int peek_idx = ctx->pending_streams[ctx->pending_stream_read].buf_idx;
-            if (peek_idx >= 0 && peek_idx < ctx->stream_bufs_used) {
-                uint32_t peek_size = avpu_stream_buffer_effective_size(ctx, peek_idx, NULL);
-                /* If payload is tiny (< hdr + 256), Enc2 probably hasn't written yet */
-                if (peek_size > 0 && peek_size < ctx->stream_header_offset + 256u) {
-                    /* Don't pop — let the next IRQ handle it */
-                    return;
-                }
-            }
-        }
-    }
-
     if (!avpu_complete_next_stream(ctx, &buf_idx, &frame_user_data)) {
         LOG_CODEC("%s: completion without pending stream (frame_number=%u enc=%d cons=%d)",
                   source ? source : "EndEncoding",
@@ -4143,17 +4123,14 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
                           hdr_offset, hw_hdr_offset);
             }
 
-            /* OEM parity: The Enc2 (entropy coding) stage requires a separate
-             * CL_PUSH=8 submission to produce entropy-coded bitstream output.
-             * Without Enc2, the stream buffer only contains prewritten headers
-             * and the AVPU produces no encoded payload.
+            /* OEM parity: The stock NEVER submits CL_PUSH=8 for Baseline CAVLC.
+             * Verified from stock_logs.txt — only CL_PUSH=2 appears.
+             * The Enc1 stage does ME + transform + quantize + CAVLC entropy in
+             * a single pass. CL_PUSH=8 (Enc2) is only for CABAC or multi-core.
              *
-             * The OEM submits Enc2 for ALL frames where the Enc2 core exists
-             * ($s3_3 != 0 in encode1).  On T31 with a single AVPU core,
-             * Enc2 is always needed — even for IDR frames.  Previously
-             * OpenIMP skipped Enc2 for IDR, resulting in header-only IDR
-             * output and corrupt P-frames (no valid reference). */
-            {
+             * Submitting CL_PUSH=8 for CAVLC OVERWRITES the valid bitstream
+             * that Enc1 already produced, destroying the NAL start codes. */
+            if (ctx->entropy_mode) { /* CABAC only — skip for CAVLC */
                 /* P/B frame: submit separate Enc2 CL */
                 uint32_t enc2_idx = (idx + 1) % ctx->cl_count;
                 uint8_t *enc2_entry = avpu_cl_entry_ptr(ctx, enc2_idx);
@@ -4187,6 +4164,9 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
                 LOG_CODEC("Process: Enc2 submitted CL[%u] phys=0x%08x hdr=%u %s",
                           enc2_idx, enc2_phys, hdr_offset, is_idr ? "IDR" : "P");
                 ctx->cl_idx = (idx + 2) % ctx->cl_count;
+            } else {
+                /* CAVLC: Enc1 does everything, no separate Enc2 CL needed */
+                ctx->cl_idx = (idx + 1) % ctx->cl_count;
             }
 
             /* Advance CL index (already set above based on IDR vs P frame) */
