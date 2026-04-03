@@ -83,8 +83,6 @@ int VBMFrame_GetChannel(void *frame, int *chn_out);
 int fs_querybuf(int fd, int index, unsigned int *length_out);
 int fs_qbuf(int fd, int index, unsigned long phys, unsigned int length);
 int fs_dqbuf(int fd, int *index_out);
-int fs_dqbuf_plain(int fd, int *index_out);
-int fs_dqbuf_timed(int fd, int *index_out, int timeout_ms);
 
 /* Bridge between VBM and kernel queue */
 int VBMPrimeKernelQueue(int chn, int fd, int limit);

@@ -561,6 +561,8 @@ int notify_observers(Module *module, void *frame) {
         return -1;
     }
 
+    extern int VBMUnLockFrame(void *frame);
+
     Observer *obs = (Observer*)module->observer_list;
 
     while (obs != NULL) {
@@ -582,7 +584,10 @@ int notify_observers(Module *module, void *frame) {
                 if (update_fn(dst_module, frame) < 0) {
                     fprintf(stderr, "[System] Observer update failed for %s\n",
                             dst_module->name);
-                    /* Frame will be released by the observer when done processing */
+                    if (frame != NULL && VBMUnLockFrame(frame) < 0) {
+                        fprintf(stderr, "[System] Observer update failed and VBMUnLockFrame also failed for frame=%p\n",
+                                frame);
+                    }
                 }
             }
         }
