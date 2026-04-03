@@ -2337,7 +2337,25 @@ static int encoder_update(void *module, void *frame) {
     }
 
     if (frame_held) {
-        LOG_ENC("encoder_update: holding source frame %p until stream release (OEM parity)", frame);
+        /* OEM VBM refcount parity: encoder_clone_source_frame() already took an
+         * extra VBM lock on the underlying source frame via its cloned slot.
+         * Release the original FrameSource-owned frame immediately here, then
+         * let IMP_Encoder_ReleaseStream drop the clone-held ref later. Holding
+         * the original frame until stream release leaks one ref per frame and
+         * stalls capture after the small source-frame pool is exhausted. */
+        extern int IMP_FrameSource_ReleaseFrame(int chnNum, void *frame);
+        int src_chn = -1;
+        if (VBMFrame_GetChannel(frame, &src_chn) == 0 && src_chn >= 0) {
+            if (IMP_FrameSource_ReleaseFrame(src_chn, frame) == 0) {
+                frame_released = 1;
+                LOG_ENC("encoder_update: released source frame %p after clone queue on channel %d (OEM refcount parity)",
+                        frame, src_chn);
+            } else {
+                LOG_ENC("encoder_update: WARNING - ReleaseFrame failed for queued source channel %d", src_chn);
+            }
+        } else {
+            LOG_ENC("encoder_update: WARNING - could not determine source channel for queued frame %p", frame);
+        }
     } else if (!frame_released) {
         extern int IMP_FrameSource_ReleaseFrame(int chnNum, void *frame);
         int src_chn = -1;
