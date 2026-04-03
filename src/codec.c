@@ -1475,11 +1475,12 @@ static void fill_cmd_regs_enc1(const ALAvpuContext* ctx, uint32_t* cmd,
     if (ctx->entropy_mode)
         cmd[0x02] = 0x4010ad50u; /* High CABAC */
 
-    /* cmd[0x03]: Stock=0x211e0000. QP at bits[23:16]=0x1e=30, not our 0x1a=26.
-     * The stock uses QP 30 as the initial QP. */
+    /* cmd[0x03]: OEM SliceParamToCmdRegsEnc1 packs QP at bits[23:16] plus
+     * deblocking filter offsets at bits[4:0] and bits[12:8], slice type at
+     * bits[29:28], and various flags.  Stock 640x360 = 0x211e0005. */
     {
         uint32_t qp = ctx->qp ? ctx->qp : 30u;
-        cmd[0x03] = (qp << 16) | 0x21000000u;
+        cmd[0x03] = (qp << 16) | 0x21000005u; /* 0x05 = stock deblocking offsets */
     }
 
     /* cmd[0x04]: Stock=0x00083f1f. Deblock + QP control word. */
@@ -1617,11 +1618,15 @@ static void fill_cmd_regs_enc1(const ALAvpuContext* ctx, uint32_t* cmd,
             cmd[0x27] = ep1_addr;                     /* stock: 0x0712ed00 */
         }
 
-        /* Source frame → cmd[0x24]-cmd[0x26] */
+        /* Source frame → cmd[0x24]-cmd[0x26]
+         * OEM: cmd[0x26] has the same format as cmd[0x22] — pitch in bits[17:0]
+         * plus chroma format in bits[30:28].  Without the format bits the
+         * hardware treats the source as monochrome, producing garbage ME. */
         if (src_phys) {
             cmd[0x24] = src_phys;                     /* src Y */
             cmd[0x25] = src_phys + y_plane_sz;        /* src UV */
-            cmd[0x26] = src_pitch & 0x3ffffu;         /* src pitch */
+            cmd[0x26] = (src_pitch & 0x3ffffu)
+                       | ((2u & 0x7u) << 28);         /* NV12 4:2:0 */
         }
 
         /* Reference frame addresses — OEM FillCmdRegsEnc1 sets these from
