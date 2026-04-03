@@ -1585,27 +1585,21 @@ static void fill_cmd_regs_enc1(const ALAvpuContext* ctx, uint32_t* cmd,
         uint32_t rec_map_addr = ctx->rec_buf.phy_addr + rec_ref_sz;
         uint32_t rec_map_end = rec_map_addr + rec_map_sz;
 
-        /* OEM FillCmdRegsEnc1 (encode1 at 0x671b8) address layout:
-         *   cmd[0x20] = Reconstruction Y  (ctx+0x298)
-         *   cmd[0x21] = Reconstruction UV (ctx+0x29c)
-         *   cmd[0x22] = Reconstruction pitch/FBC control
-         *   cmd[0x23] = Intermediate EP2  (ctx+0x2b4)
-         *   cmd[0x24] = Source Y          (ctx+0x2e0)
-         *   cmd[0x25] = Source UV         (ctx+0x2e4)
-         *   cmd[0x26] = Source pitch control
-         *   cmd[0x27] = Intermediate EP1  (ctx+0x2fc)
-         * The AVPU reads the source frame from cmd[0x24] and writes the
-         * reconstructed frame to cmd[0x20].  These were previously SWAPPED
-         * in OpenIMP, causing the encoder to read an empty rec buffer as
-         * its "source" and produce zero-residual (header-only) output. */
+        /* CL address layout — stat8230 showed cmd[0x20] value in the AVPU
+         * status register, indicating the hardware reads cmd[0x20] as a
+         * primary control input (source), not reconstruction.
+         *
+         * Layout: cmd[0x20]=src, cmd[0x24]=rec matches the pre-swap behavior
+         * that produced header-only output (before /dev/mem fix made CLs
+         * actually reach hardware).  Now that CLs are coherent, this layout
+         * should produce valid encoding with the real source data. */
 
-        /* Reconstruction buffer → cmd[0x20]-cmd[0x22] */
-        if (ctx->rec_buf.phy_addr) {
-            cmd[0x20] = ctx->rec_buf.phy_addr;        /* rec Y */
-            cmd[0x21] = ctx->rec_buf.phy_addr + y_plane_sz; /* rec UV */
-            cmd[0x22] = (rec_pitch & 0x3ffffu)
-                       | ((2u & 0x7u) << 28)
-                       | ((rec_map_pitch & 0xffu) << 19);
+        /* Source frame → cmd[0x20]-cmd[0x22] */
+        if (src_phys) {
+            cmd[0x20] = src_phys;                     /* src Y */
+            cmd[0x21] = src_phys + y_plane_sz;        /* src UV */
+            cmd[0x22] = (src_pitch & 0x3ffffu)
+                       | ((2u & 0x7u) << 28);         /* NV12 4:2:0 */
         }
 
         /* Intermediate buffers → cmd[0x23], cmd[0x27] */
@@ -1618,15 +1612,13 @@ static void fill_cmd_regs_enc1(const ALAvpuContext* ctx, uint32_t* cmd,
             cmd[0x27] = ep1_addr;                     /* stock: 0x0712ed00 */
         }
 
-        /* Source frame → cmd[0x24]-cmd[0x26]
-         * OEM: cmd[0x26] has the same format as cmd[0x22] — pitch in bits[17:0]
-         * plus chroma format in bits[30:28].  Without the format bits the
-         * hardware treats the source as monochrome, producing garbage ME. */
-        if (src_phys) {
-            cmd[0x24] = src_phys;                     /* src Y */
-            cmd[0x25] = src_phys + y_plane_sz;        /* src UV */
-            cmd[0x26] = (src_pitch & 0x3ffffu)
-                       | ((2u & 0x7u) << 28);         /* NV12 4:2:0 */
+        /* Reconstruction buffer → cmd[0x24]-cmd[0x26] */
+        if (ctx->rec_buf.phy_addr) {
+            cmd[0x24] = ctx->rec_buf.phy_addr;        /* rec Y */
+            cmd[0x25] = ctx->rec_buf.phy_addr + y_plane_sz; /* rec UV */
+            cmd[0x26] = (rec_pitch & 0x3ffffu)
+                       | ((2u & 0x7u) << 28)
+                       | ((rec_map_pitch & 0xffu) << 19);
         }
 
         /* Reference frame addresses — OEM FillCmdRegsEnc1 sets these from
