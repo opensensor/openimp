@@ -1514,9 +1514,9 @@ static void fill_cmd_regs_enc1(const ALAvpuContext* ctx, uint32_t* cmd,
         cmd[0x07] |= (1u << 31); /* Stock has bit31 set */
     }
 
-    /* cmd[0x08]: Stock=0x77000000. DMA burst control.
-     * Our 0x11000000 was wrong. Stock uses 0x77 = much larger bursts. */
-    cmd[0x08] = 0x77000000u;
+    /* cmd[0x08]: DMA burst control. Stock IDR=0x77000000, Stock P=0x11000000.
+     * The IDR uses larger bursts; P-frames use smaller. */
+    cmd[0x08] = is_idr ? 0x77000000u : 0x11000000u;
 
     /* cmd[0x09]: Stock=0x3c010000 (Baseline) / 0xfc010000 (High).
      * Control flags — critical for hardware operation. */
@@ -1539,22 +1539,13 @@ static void fill_cmd_regs_enc1(const ALAvpuContext* ctx, uint32_t* cmd,
     if (is_idr) {
         cmd[0x10] = 0xFFFFFFFFu;
         cmd[0x11] = 0xFFFFFFFFu;
-    } else if (ref_phys && ctx->enc_w && ctx->enc_h) {
-        uint32_t y_sz = avpu_get_nv12_luma_plane_size(ctx->enc_w, ctx->enc_h);
-        uint32_t r_pitch = avpu_get_enc1_rec_pitch(ctx->enc_w, ctx->format_word);
-        uint32_t r_map_pitch = avpu_get_enc1_fbc_map_pitch(ctx->enc_w);
-        /* OEM: cmd[0x0c..0x0f] mirror cmd[0x24..0x27] layout but for ref */
-        cmd[0x0c] = ref_phys;                              /* ref Y */
-        cmd[0x0d] = ref_phys + y_sz;                       /* ref UV */
-        cmd[0x0e] = (r_pitch & 0x3ffffu)
-                   | ((2u & 0x7u) << 28)
-                   | ((r_map_pitch & 0xffu) << 19);        /* ref pitch */
-        /* cmd[0x0f] = ref EP1 — use same EP1 addr for ref decode buffer */
-        if (ctx->interm_buf.phy_addr)
-            cmd[0x0f] = ctx->interm_buf.phy_addr;
-
-        cmd[0x10] = ref_phys;                              /* ref Y (again) */
-        cmd[0x11] = ref_phys + y_sz;                       /* ref UV (again) */
+    } else if (ref_phys) {
+        /* Stock P-frame: cmd[0x0c]=0x00000002, cmd[0x0d..0x0f]=0,
+         * cmd[0x10..0x11]=0xFFFFFFFF. The ref addresses go at cmd[0x28]-cmd[0x29]
+         * (in the address block), NOT here. */
+        cmd[0x0c] = 0x00000002u;
+        cmd[0x10] = 0xFFFFFFFFu;
+        cmd[0x11] = 0xFFFFFFFFu;
     }
 
     /* cmd[0x12]: OEM pack from SliceParam+0xa8/+0xaa/+0xac. */
@@ -1609,12 +1600,21 @@ static void fill_cmd_regs_enc1(const ALAvpuContext* ctx, uint32_t* cmd,
          * actually reach hardware).  Now that CLs are coherent, this layout
          * should produce valid encoding with the real source data. */
 
-        /* Source frame → cmd[0x20]-cmd[0x22] */
+        /* Stock CL address layout (from stock_logs.txt 640x360 Baseline IDR):
+         *   cmd[0x20] = Source Y           (stock: 0x07a9cf00)
+         *   cmd[0x21] = Source UV          (stock: 0x07ad6700)
+         *   cmd[0x22] = Source pitch       (stock: 0x00000280 = plain 640)
+         *   cmd[0x23] = EP2 intermediate   (stock: 0x07135180)
+         *   cmd[0x24] = Reconstruction Y   (stock: 0x0706a100)
+         *   cmd[0x25] = Reconstruction UV  (stock: 0x070a6100)
+         *   cmd[0x26] = Rec pitch+FBC ctrl (stock: 0x21000a00)
+         *   cmd[0x27] = EP1 intermediate   (stock: 0x0712ed00) */
+
+        /* Source frame → cmd[0x20]-cmd[0x22] (plain pitch, no FBC) */
         if (src_phys) {
-            cmd[0x20] = src_phys;                     /* src Y */
-            cmd[0x21] = src_phys + y_plane_sz;        /* src UV */
-            cmd[0x22] = (src_pitch & 0x3ffffu)
-                       | ((2u & 0x7u) << 28);         /* NV12 4:2:0 */
+            cmd[0x20] = src_phys;
+            cmd[0x21] = src_phys + y_plane_sz;
+            cmd[0x22] = src_pitch & 0x3ffffu;         /* stock: 0x00000280 */
         }
 
         /* Intermediate buffers → cmd[0x23], cmd[0x27] */
@@ -1623,37 +1623,33 @@ static void fill_cmd_regs_enc1(const ALAvpuContext* ctx, uint32_t* cmd,
             uint32_t wpp_addr = ep1_addr + ctx->interm_ep1_size;
             uint32_t ep2_addr = wpp_addr + ctx->interm_wpp_size;
 
-            cmd[0x23] = ep2_addr;                     /* stock: 0x07135180 */
-            cmd[0x27] = ep1_addr;                     /* stock: 0x0712ed00 */
+            cmd[0x23] = ep2_addr;
+            cmd[0x27] = ep1_addr;
         }
 
-        /* Reconstruction buffer → cmd[0x24]-cmd[0x26] */
+        /* Reconstruction buffer → cmd[0x24]-cmd[0x26] (FBC pitch) */
         if (ctx->rec_buf.phy_addr) {
-            cmd[0x24] = ctx->rec_buf.phy_addr;        /* rec Y */
-            cmd[0x25] = ctx->rec_buf.phy_addr + y_plane_sz; /* rec UV */
-            cmd[0x26] = (rec_pitch & 0x3ffffu)
+            cmd[0x24] = ctx->rec_buf.phy_addr;
+            cmd[0x25] = ctx->rec_buf.phy_addr + y_plane_sz;
+            cmd[0x26] = (rec_pitch & 0x3ffffu)        /* stock: 0x21000a00 */
                        | ((2u & 0x7u) << 28)
                        | ((rec_map_pitch & 0xffu) << 19);
         }
 
-        /* Reference frame addresses — OEM FillCmdRegsEnc1 sets these from
-         * the DPB reference list.  For P-frames, the reference buffer is the
-         * previously reconstructed frame.  IDR: zeros (no reference). */
+        /* Reference frame addresses — from stock P-frame CL comparison.
+         * Stock P: cmd[0x28]=ref Y, cmd[0x29]=ref UV, cmd[0x2a..0x2b]=0,
+         *          cmd[0x2c]=rec_map_end, cmd[0x2d]=ref_map_addr, cmd[0x2e]=??? */
         if (!is_idr && ref_phys) {
-            cmd[0x28] = ref_phys;                          /* ref Y */
-            cmd[0x29] = ref_phys + y_plane_sz;             /* ref UV */
-            cmd[0x2a] = (rec_pitch & 0x3ffffu)
-                       | ((2u & 0x7u) << 28)
-                       | ((rec_map_pitch & 0xffu) << 19);  /* ref pitch */
-            /* cmd[0x2b]: ref map base — use the same rec_map region for ref */
-            if (rec_map_addr)
-                cmd[0x2b] = rec_map_addr;
+            cmd[0x28] = ref_phys;                          /* stock: 0x0706a100 = prev rec Y */
+            cmd[0x29] = ref_phys + y_plane_sz;             /* stock: 0x070a6100 = prev rec UV */
+            /* cmd[0x2a], cmd[0x2b]: stock P has 0x00000000 for both */
+            cmd[0x2c] = rec_map_end;                       /* stock: 0x070c5400 */
         }
 
-        /* MV/map addresses */
+        /* Map/buffer addresses */
         if (ctx->rec_buf.phy_addr) {
-            cmd[0x2d] = rec_map_addr;                  /* stock: 0x07066500 */
-            cmd[0x2e] = rec_map_end;                   /* stock: 0x070c5400 */
+            cmd[0x2d] = rec_map_addr;                      /* stock IDR: 0x07066500 */
+            cmd[0x2e] = rec_map_end;                       /* stock IDR: 0x070c5400 */
         }
 
         /* Stream buffer + intermediate data */
@@ -1681,18 +1677,34 @@ static void fill_cmd_regs_enc1(const ALAvpuContext* ctx, uint32_t* cmd,
             cmd[0x35] = data_addr;                      /* OEM: interm data (*(ctx+0x308)) */
         }
 
-        /* Map buffer address */
-        if (ctx->rec_buf.phy_addr)
-            cmd[0x37] = rec_map_addr;                  /* stock: 0x070c4100 */
+        /* Map buffer addresses — from stock CL comparison:
+         * Stock IDR: cmd[0x37]=0x070c4100 (=rec_map_addr)
+         * Stock P:   cmd[0x37]=0x07126700, cmd[0x38]=0x070c4100 (=rec_map_addr) */
+        if (ctx->rec_buf.phy_addr) {
+            if (is_idr) {
+                cmd[0x37] = rec_map_addr;
+            } else {
+                /* P-frame: stock shifts map addresses and adds cmd[0x38] */
+                cmd[0x37] = rec_map_end;               /* stock P: 0x07126700 ≈ map end region */
+                cmd[0x38] = rec_map_addr;              /* stock P: 0x070c4100 = rec_map_addr */
+            }
+        }
 
-        /* Late-window words. The OEM packer sources cmd[0x60]/0x61/0x6e from
-         * slice fields while several neighboring words still come from runtime
-         * scheduler state we have not fully recovered. Only wire the fields
-         * whose source offsets are already known. */
-        cmd[0x60] = ctx->enc1_cmd_60_110_112;
-        cmd[0x61] = ctx->enc1_cmd_61_114_116;
-        cmd[0x68] = rec_map_sz;                        /* still closest known fit */
-        cmd[0x69] = rec_map_sz;                        /* still closest known fit */
+        /* Late-window words — stock comparison:
+         * Stock IDR: cmd[0x60..0x69]=0 except cmd[0x67]=0x070c4c80, cmd[0x68..0x69]=0x00000b80
+         * Stock P:   cmd[0x67]=0x07127280, cmd[0x68]=0x070c4c80, cmd[0x69]=0x00000b80
+         * cmd[0x60]/cmd[0x61]: stock has 0, we had non-zero → zero them */
+        cmd[0x69] = rec_map_sz;
+        if (!is_idr && ctx->rec_buf.phy_addr) {
+            /* Stock P cmd[0x67] ≈ rec_map_end + small offset.
+             * Stock P cmd[0x68] ≈ rec_map_addr + rec_map_sz + offset. */
+            cmd[0x67] = rec_map_end;                   /* closest match to stock 0x07127280 */
+            cmd[0x68] = rec_map_addr + rec_map_sz;     /* closest match to stock 0x070c4c80 */
+        } else {
+            /* Stock IDR: cmd[0x67]=0x070c4c80, cmd[0x68]=0x00000b80 */
+            cmd[0x67] = rec_map_addr + rec_map_sz;     /* stock IDR: 0x070c4c80 */
+            cmd[0x68] = rec_map_sz;
+        }
     }
 
     cmd[0x6e] = ctx->enc1_cmd_6e_118_11a & 0x100000ffu;
