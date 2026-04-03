@@ -222,6 +222,9 @@ typedef struct ALAvpuContext {
      * and cmd[0x36] so the AVPU writes encoded data after the headers. */
     uint32_t frame_number;          /* monotonic frame counter */
     uint32_t stream_header_offset;  /* bytes of header pre-written into current stream buf */
+    uint32_t slice_header_nal_bytes;/* OEM SliceParam+0xfc → Enc2 cmd[0x1e] low20 (+1) */
+    uint32_t slice_header_prefix_bits; /* OEM SliceParam+0xf8 → Enc2 cmd[0x1e] bits[28:24] */
+    uint32_t slice_header_splice_word; /* OEM SliceParam+0x100 → Enc2 cmd[0x1f] */
 
     /* Legacy IRQ state (used by codec.c WaitInterruptThread directly)
      * TODO: migrate codec.c to use Board/IpCtrl abstraction, then remove these.

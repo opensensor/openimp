@@ -802,6 +802,74 @@ static uint32_t avpu_get_hw_hdr_offset(uint32_t hdr_offset)
     return avpu_align_down_u32(hdr_offset, 32u);
 }
 
+static uint32_t avpu_pack_enc2_cmd1e(const ALAvpuContext *ctx)
+{
+    uint32_t slice_fc;
+    uint32_t slice_f8;
+
+    if (!ctx)
+        return 0u;
+
+    slice_fc = ctx->slice_header_nal_bytes;
+    slice_f8 = ctx->slice_header_prefix_bits & 0x1fu;
+    if (slice_fc == 0u)
+        return 0u;
+
+    return ((slice_fc - 1u) & 0x000fffffu) | (slice_f8 << 24);
+}
+
+static uint32_t avpu_pack_enc2_cmd1f(const ALAvpuContext *ctx)
+{
+    return ctx ? ctx->slice_header_splice_word : 0u;
+}
+
+static uint32_t avpu_get_slice_prefix_bits(uint32_t slice_bits)
+{
+    uint32_t aligned_bits;
+
+    if (slice_bits == 0u)
+        return 0u;
+
+    aligned_bits = slice_bits & ~7u;
+    if (aligned_bits >= 24u)
+        return 16u + (slice_bits & 7u);
+
+    return slice_bits & 0xffu;
+}
+
+static uint32_t avpu_get_slice_splice_word(const uint8_t *buf,
+                                           uint32_t slice_end,
+                                           uint32_t slice_bits)
+{
+    uint32_t rem_bits;
+    uint32_t shift;
+    uint32_t b0 = 0u;
+    uint32_t b1 = 0u;
+    uint32_t b2 = 0u;
+    uint32_t b3 = 0u;
+
+    if (!buf || slice_end == 0u)
+        return 0u;
+
+    if (slice_end >= 4u) {
+        b0 = buf[slice_end - 4u];
+        b1 = buf[slice_end - 3u];
+        b2 = buf[slice_end - 2u];
+        b3 = buf[slice_end - 1u];
+    } else {
+        if (slice_end > 0u)
+            b3 = buf[slice_end - 1u];
+        if (slice_end > 1u)
+            b2 = buf[slice_end - 2u];
+        if (slice_end > 2u)
+            b1 = buf[slice_end - 3u];
+    }
+
+    rem_bits = slice_bits & 7u;
+    shift = (8u - rem_bits) & 31u;
+    return ((b0 << 24) | (b1 << 16) | (b2 << 8) | b3) >> shift;
+}
+
 static uint32_t avpu_pack_enc1_lcu_pos(uint32_t pos, uint32_t lcu_w)
 {
     if (lcu_w == 0u)
@@ -1032,7 +1100,7 @@ static int avpu_write_aud_nal(uint8_t *dst, int is_idr)
  * writing the header for the Enc1-only path (arg6 = 1).  The AVPU's command
  * list offset (cmd[0x32]) is a byte offset, so byte alignment is required. */
 static int avpu_generate_slice_header_rbsp(uint8_t *rbsp, const ALAvpuContext *ctx,
-                                            int is_idr)
+                                            int is_idr, uint32_t *slice_bits_out)
 {
     int bp = 0;
     memset(rbsp, 0, 64);
@@ -1075,9 +1143,12 @@ static int avpu_generate_slice_header_rbsp(uint8_t *rbsp, const ALAvpuContext *c
     /* deblocking_filter_control (deblocking enabled): disable_deblocking = 0 */
     bs_write_ue(rbsp, &bp, 0);
 
+    if (slice_bits_out)
+        *slice_bits_out = (uint32_t)bp;
+
     /* Byte-align: the OEM GenerateAvcSliceHeader calls
-     * AL_BitStreamLite_AlignWithBits(1) to pad the last byte.
-     * The AVPU starts writing at the next byte boundary. */
+     * AL_BitStreamLite_AlignWithBits(1) before FlushNAL, but Enc2 splice
+     * metadata still comes from the pre-alignment bit count. Keep both. */
     bs_trailing_bits(rbsp, &bp);
 
     return bp / 8;
@@ -1093,6 +1164,9 @@ static uint32_t avpu_prewrite_stream_headers(ALAvpuContext *ctx, int buf_idx, in
 {
     uint8_t rbsp[256];
     int rbsp_len;
+    uint32_t slice_bits;
+    uint32_t slice_nal_pos;
+    uint32_t slice_nal_bytes;
 
     if (!ctx || buf_idx < 0 || buf_idx >= ctx->stream_bufs_used)
         return 0;
@@ -1102,6 +1176,10 @@ static uint32_t avpu_prewrite_stream_headers(ALAvpuContext *ctx, int buf_idx, in
     uint8_t *buf = (uint8_t *)ctx->stream_bufs[buf_idx].map;
     uint32_t pos = 0;
     uint32_t budget = (uint32_t)ctx->stream_buf_size / 4; /* max 25% for headers */
+
+    ctx->slice_header_nal_bytes = 0u;
+    ctx->slice_header_prefix_bits = 0u;
+    ctx->slice_header_splice_word = 0u;
 
     /* AUD */
     pos += avpu_write_aud_nal(buf + pos, is_idr);
@@ -1119,20 +1197,28 @@ static uint32_t avpu_prewrite_stream_headers(ALAvpuContext *ctx, int buf_idx, in
     }
 
     /* Slice header NAL (IDR=0x65 nal_ref_idc=3 type=5, P=0x41 nal_ref_idc=2 type=1) */
-    rbsp_len = avpu_generate_slice_header_rbsp(rbsp, ctx, is_idr);
+    slice_nal_pos = pos;
+    slice_bits = 0u;
+    rbsp_len = avpu_generate_slice_header_rbsp(rbsp, ctx, is_idr, &slice_bits);
     if (rbsp_len > 0 && pos + (uint32_t)rbsp_len + 16 < budget) {
         uint8_t nal_hdr = is_idr ? 0x65 : 0x41;
         pos += avpu_write_nal_epb(buf + pos, nal_hdr, rbsp, rbsp_len);
     }
+    slice_nal_bytes = pos - slice_nal_pos;
+    ctx->slice_header_nal_bytes = slice_nal_bytes;
+    ctx->slice_header_prefix_bits = avpu_get_slice_prefix_bits(slice_bits);
+    ctx->slice_header_splice_word = avpu_get_slice_splice_word(buf, pos, slice_bits);
 
     /* Align to 32-byte boundary (OEM: align_down_32 for stream offsets) */
     /* Actually DON'T align up — the AVPU expects the exact byte offset.
      * The stream_part_offset handles the tail reservation. */
 
     ctx->stream_header_offset = pos;
-    LOG_CODEC("AVPU: prewrite headers buf[%d] %s pos=%u (AUD+%s+slice_hdr) frame=%u",
+    LOG_CODEC("AVPU: prewrite headers buf[%d] %s pos=%u slice_nal=%u slice_bits=%u f8=0x%x splice=0x%08x (AUD+%s+slice_hdr) frame=%u",
               buf_idx, is_idr ? "IDR SPS+PPS" : "P",
-              pos, is_idr ? "SPS+PPS" : "none", ctx->frame_number);
+              pos, slice_nal_bytes, slice_bits,
+              ctx->slice_header_prefix_bits, ctx->slice_header_splice_word,
+              is_idr ? "SPS+PPS" : "none", ctx->frame_number);
 
     return pos;
 }
@@ -1304,25 +1390,12 @@ static void fill_cmd_regs_enc1(const ALAvpuContext* ctx, uint32_t* cmd,
     cmd[0x1b] = 0x00070c80u;
     cmd[0x1c] = 0x211e0904u;
     cmd[0x1d] = 0x00027000u;
-    /* cmd[0x1e]-cmd[0x1f]: These MUST be computed from OUR actual header,
-     * not hardcoded from stock. The stock has a 544-byte header (920-bit
-     * slice header), but our minimal header is ~47 bytes. Using the stock
-     * values causes the entropy coder to read past our header into garbage. */
-    if (hdr_offset > 0) {
-        uint32_t hdr_bits = hdr_offset * 8u;
-        uint32_t frac = (hdr_bits >= 24u) ? 0x14u : 0u; /* stock uses 0x14 */
-        cmd[0x1e] = ((hdr_bits > 0 ? hdr_bits - 1u : 0u) & 0xfffffu)
-                   | ((frac & 0x1fu) << 24);
-    }
-    if (hdr_offset >= 4 && stream_buf_idx >= 0 && stream_buf_idx < ctx->stream_bufs_used
-        && ctx->stream_bufs[stream_buf_idx].map) {
-        const uint8_t *hdr = (const uint8_t *)ctx->stream_bufs[stream_buf_idx].map;
-        uint32_t off = hdr_offset;
-        cmd[0x1f] = ((uint32_t)hdr[off-1])
-                   | ((uint32_t)hdr[off-2] << 8)
-                   | ((uint32_t)hdr[off-3] << 16)
-                   | ((uint32_t)hdr[off-4] << 24);
-    }
+    /* cmd[0x1e]-cmd[0x1f]: OEM SliceParamToCmdRegsEnc2 consumes dedicated
+     * slice-header bookkeeping fields (+0xf8/+0xfc/+0x100), not the tail bytes
+     * of the full pre-written AU. Track those separately from the total header
+     * offset so the entropy stage sees the same shape as stock. */
+    cmd[0x1e] = avpu_pack_enc2_cmd1e(ctx);
+    cmd[0x1f] = avpu_pack_enc2_cmd1f(ctx);
 
     /* ---- cmd[0x20]-cmd[0x37]: Buffer addresses ----
      * These are the only address-dependent words. Substitute our allocations
@@ -1436,9 +1509,11 @@ static void fill_cmd_regs_enc2(const ALAvpuContext *ctx, uint32_t *cmd,
                                                 : avpu_default_enc1_cmd0a_74(ctx->enc_w);
         uint32_t h8 = (ctx->enc_h + 7u) >> 3;
         uint32_t nal_type_bits = is_idr ? 0u : 1u; /* simplified */
+        uint32_t nal_ref_idc_bits = is_idr ? 3u : 2u;
         cmd[0x1b] = (slice_74 & 0x1fffu)
                    | ((h8 & 0x3ffu) << 16)
-                   | ((nal_type_bits & 0x3u) << 28);
+                   | ((nal_type_bits & 0x3u) << 28)
+                   | ((nal_ref_idc_bits & 0x3u) << 30);
     }
 
     /* --- cmd[0x1c] (byte offset 0x70): SliceParamToCmdRegsEnc2 word 2 ---
@@ -1471,34 +1546,20 @@ static void fill_cmd_regs_enc2(const ALAvpuContext *ctx, uint32_t *cmd,
      * bits[27:24] = lcu_h (row count)
      * bits[31:28] = lcu_w (col count for decode) */
     if (lcu_w && lcu_h) {
-        uint32_t slices_per_row = lcu_w ? ((lcu_w * lcu_h) / lcu_w) : 1;
-        cmd[0x1d] = (slices_per_row & 0x3ffu)
-                   | ((((lcu_w + 1u) / 2u) & 0x3ffu) << 12);
+        uint32_t slice_rows = lcu_h;
+        uint32_t half_row_count = ((lcu_w + 1u) / 2u);
+        if (half_row_count > 0u)
+            half_row_count -= 1u;
+
+        cmd[0x1d] = (slice_rows & 0x3ffu)
+                   | ((half_row_count & 0x3ffu) << 12);
     }
 
-    /* --- cmd[0x1e] (byte offset 0x78): alignment + header offset info ---
-     * bits[19:0]  = (header_size_bits - 1) & 0xfffff
-     * bits[28:24] = alignment bits from slice header */
-    if (hdr_offset > 0) {
-        uint32_t hdr_bits = hdr_offset * 8u;
-        uint32_t frac = (hdr_bits >= 24u) ? 0x14u : 0u;
-        cmd[0x1e] = ((hdr_bits > 0 ? hdr_bits - 1u : 0u) & 0xfffffu)
-                   | ((frac & 0x1fu) << 24);
-    }
-
-    /* --- cmd[0x1f] (byte offset 0x7c): first 32 bits of slice header data ---
-     * The OEM stores the packed leading bits of the slice header here so the
-     * entropy coder can splice them into the output stream. Mirror the Enc1
-     * path by sourcing the tail bytes from the actual pre-written header. */
-    if (hdr_offset >= 4 && stream_buf_idx >= 0 && stream_buf_idx < ctx->stream_bufs_used
-        && ctx->stream_bufs[stream_buf_idx].map) {
-        const uint8_t *hdr = (const uint8_t *)ctx->stream_bufs[stream_buf_idx].map;
-        uint32_t off = hdr_offset;
-        cmd[0x1f] = ((uint32_t)hdr[off-1])
-                   | ((uint32_t)hdr[off-2] << 8)
-                   | ((uint32_t)hdr[off-3] << 16)
-                   | ((uint32_t)hdr[off-4] << 24);
-    }
+    /* --- cmd[0x1e]-cmd[0x1f]: slice-header splice metadata.
+     * OEM Source: SliceParam+0xf8/+0xfc/+0x100. These are not simply the total
+     * AU header size or the last 4 bytes of the stream buffer. */
+    cmd[0x1e] = avpu_pack_enc2_cmd1e(ctx);
+    cmd[0x1f] = avpu_pack_enc2_cmd1f(ctx);
 
     /* --- Intermediate buffer addresses (OEM: FillCmdRegsEnc2) ---
      * The Enc2 stage reads from the intermediate map/data produced by Enc1. */
