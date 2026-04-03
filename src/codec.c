@@ -839,10 +839,12 @@ static uint32_t avpu_pack_enc1_cmd1a(const ALAvpuContext *ctx)
 
 static uint32_t avpu_get_hw_hdr_offset(uint32_t hdr_offset)
 {
-    /* Stock keeps the exact byte count in the CL (cmd[0x32]/cmd[0x3e]) but
-     * writes the 0x8424/0x8428 register pair with a 32-byte aligned-down view
-     * of that offset: e.g. CL=0x220 while WR 0x8424=0x200. */
-    return avpu_align_down_u32(hdr_offset, 32u);
+    /* The stock firmware always has headers > 32 bytes (larger SPS/PPS), so
+     * its align_down(hdr_offset, 32) always produces a non-zero value.
+     * OpenIMP P-frame headers are only 14 bytes — align_down(14, 32) = 0,
+     * which tells the AVPU to start writing at offset 0, overwriting the
+     * prewritten H.264 headers.  Use the exact offset instead. */
+    return hdr_offset;
 }
 
 static uint32_t avpu_default_enc2_slice78(uint32_t enc_h)
@@ -1328,7 +1330,12 @@ static uint32_t avpu_prewrite_stream_headers(ALAvpuContext *ctx, int buf_idx, in
     /* AUD */
     pos += avpu_write_aud_nal(buf + pos, is_idr);
 
-    if (is_idr) {
+    /* Always include SPS+PPS, not just for IDR.  The periodic IDR logic
+     * has a gap where no IDR frames are generated after the initial few,
+     * so the decoder never receives SPS/PPS.  Including them in every AU
+     * is bandwidth-wasteful but ensures decodability until the IDR cadence
+     * is fully OEM-matched. */
+    {
         /* SPS (NAL type 7, nal_ref_idc=3 → 0x67) */
         rbsp_len = avpu_generate_sps_rbsp(rbsp, ctx);
         if (rbsp_len > 0 && pos + (uint32_t)rbsp_len + 16 < budget)
@@ -2027,6 +2034,8 @@ static void avpu_mark_stream_buffer_released(ALAvpuContext *ctx, int buf_idx)
     pthread_mutex_unlock(mutex);
 }
 
+static uint32_t avpu_stream_buffer_effective_size(ALAvpuContext *ctx, int buf_idx, int *flush_ret_out);
+
 static void avpu_complete_frame(ALAvpuContext *ctx, const char *source)
 {
     int buf_idx = -1;
@@ -2037,6 +2046,27 @@ static void avpu_complete_frame(ALAvpuContext *ctx, const char *source)
 
     if (!ctx)
         return;
+
+    /* Peek at the pending stream's buf_idx to check if the AVPU has written
+     * payload yet.  For P-frames with separate Enc2, the first IRQ (Enc1
+     * completion) fires before Enc2 writes entropy data.  If the stream
+     * buffer only has prewritten headers, skip this completion — the next
+     * IRQ (after Enc2) will find the payload. */
+    {
+        pthread_mutex_t *mutex = avpu_stream_queue_mutex(ctx);
+        if (mutex && ctx->pending_stream_count > 0) {
+            int peek_idx = ctx->pending_streams[ctx->pending_stream_read].buf_idx;
+            if (peek_idx >= 0 && peek_idx < ctx->stream_bufs_used) {
+                uint32_t peek_size = avpu_stream_buffer_effective_size(ctx, peek_idx, NULL);
+                if (peek_size == 0) {
+                    /* No payload yet — Enc2 hasn't written.  Skip. */
+                    LOG_CODEC("%s: skipping early completion buf[%d] (no payload yet, waiting for Enc2)",
+                              source ? source : "EndEncoding", peek_idx);
+                    return;
+                }
+            }
+        }
+    }
 
     if (!avpu_complete_next_stream(ctx, &buf_idx, &frame_user_data)) {
         LOG_CODEC("%s: completion without pending stream (frame_number=%u enc=%d cons=%d)",
@@ -2789,7 +2819,6 @@ static uint32_t avpu_stream_buffer_effective_size(ALAvpuContext *ctx, int buf_id
 {
     const uint8_t *sb;
     uint32_t raw_end;
-    uint32_t hw_end;
     uint32_t frame_size;
     size_t annexb;
 
@@ -2815,27 +2844,34 @@ static uint32_t avpu_stream_buffer_effective_size(ALAvpuContext *ctx, int buf_id
     if (flush_ret_out)
         *flush_ret_out = 0;
 
-    /* OEM parity: read the hardware-updated stream end position from the CL. */
-    hw_end = avpu_read_hw_stream_end(ctx, buf_idx);
+    /* The AVPU overwrites CL fields with status data after processing, so
+     * hw_end readback produces garbage (physical addresses, not stream offsets).
+     * Use the trailing-zero scan within the valid stream region instead.
+     * The stream_part_offset is the maximum valid byte offset in the buffer. */
+    {
+        uint32_t scan_limit = avpu_get_enc1_stream_part_offset(ctx);
+        if (scan_limit == 0 || scan_limit > (uint32_t)ctx->stream_buf_size)
+            scan_limit = (uint32_t)ctx->stream_buf_size;
 
-    sb = (const uint8_t *)ctx->stream_bufs[buf_idx].map;
-    raw_end = avpu_stream_buffer_raw_end(sb, (size_t)ctx->stream_buf_size);
-
-    /* Use the HW-reported end if it's sane; fall back to trailing-zero scan */
-    if (hw_end > ctx->stream_header_offset &&
-        hw_end <= (uint32_t)ctx->stream_buf_size) {
-        frame_size = hw_end;
-    } else {
-        if (raw_end == 0)
-            return 0;
-        annexb = annexb_effective_size(sb, raw_end);
-        frame_size = annexb > 0 ? (uint32_t)annexb : raw_end;
+        sb = (const uint8_t *)ctx->stream_bufs[buf_idx].map;
+        raw_end = avpu_stream_buffer_raw_end(sb, (size_t)scan_limit);
     }
 
+    if (raw_end == 0)
+        return 0;
+
+    annexb = annexb_effective_size(sb, raw_end);
+    frame_size = annexb > 0 ? (uint32_t)annexb : raw_end;
+
     if (frame_size <= ctx->stream_header_offset) {
+        /* No AVPU payload beyond the prewritten headers.  This happens when
+         * the Enc1 IRQ fires before the Enc2 entropy stage has written its
+         * output.  Return 0 so the caller skips this completion — the next
+         * IRQ (after Enc2) will pick up the same stream buffer with payload. */
         avpu_log_suspicious_stream_size(ctx, buf_idx, "EndEncoding",
                                         raw_end, (uint32_t)annexb_effective_size(sb, raw_end),
                                         frame_size);
+        return 0;
     }
 
     return frame_size;
