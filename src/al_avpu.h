@@ -197,6 +197,7 @@ typedef struct ALAvpuContext {
     volatile unsigned int busy_skip_count;
     volatile int busy_snapshot_emitted;
     volatile int first_submit_logged;
+    volatile int first_enc2_submit_logged;
     volatile int init_trace_completed;
     volatile int init_stream_flush_failures;
     volatile int init_interm_flush_ret;

@@ -802,6 +802,102 @@ static uint32_t avpu_get_hw_hdr_offset(uint32_t hdr_offset)
     return avpu_align_down_u32(hdr_offset, 32u);
 }
 
+static uint32_t avpu_default_enc2_slice78(uint32_t enc_h)
+{
+    uint32_t enc_h_8;
+
+    if (enc_h == 0u)
+        return 7u;
+
+    /* Stock 640x360 Baseline captures carry SliceParam+0x78 = 7 while the raw
+     * 8-pel picture height is 45. Until UpdateCommand's runtime producer for
+     * +0x78 is recovered, keep the value on the same OEM-shaped row-group curve
+     * instead of feeding the full height directly into cmd[0x1b]. */
+    enc_h_8 = (enc_h + 7u) >> 3;
+    return ((enc_h_8 + 7u) >> 3) + 1u;
+}
+
+static uint32_t avpu_pack_enc2_cmd1b(const ALAvpuContext *ctx)
+{
+    uint32_t slice_74;
+    uint32_t slice_78;
+    uint32_t slice_19 = 0u;
+    uint32_t slice_1a = 0u;
+
+    if (!ctx)
+        return 0u;
+
+    slice_74 = ctx->enc1_cmd_0a_74 ? ctx->enc1_cmd_0a_74
+                                   : avpu_default_enc1_cmd0a_74(ctx->enc_w);
+    slice_78 = avpu_default_enc2_slice78(ctx->enc_h);
+
+    return (slice_74 & 0x1fffu)
+        | ((slice_78 & 0x3ffu) << 16)
+        | ((slice_19 & 0x3u) << 28)
+        | ((slice_1a & 0x3u) << 30);
+}
+
+static uint32_t avpu_pack_enc2_cmd1c(const ALAvpuContext *ctx)
+{
+    uint32_t qp;
+    uint32_t slice_7e;
+    uint32_t slice_10;
+    uint32_t slice_11;
+    uint32_t slice_f6 = 1u;
+    uint32_t slice_66 = 0u;
+    uint32_t slice_12 = 1u;
+    uint32_t slice_1c = 1u;
+    uint32_t slice_30 = 2u;
+
+    if (!ctx)
+        return 0u;
+
+    qp = ctx->qp ? ctx->qp : 30u;
+    slice_7e = ctx->enc1_cmd_0b_7e ? ctx->enc1_cmd_0b_7e : 1u;
+    slice_10 = ctx->enc1_slice_10 & 0x3u;
+    slice_11 = ctx->entropy_mode & 1u;
+
+    /* OEM SliceParamToCmdRegsEnc2 consumes several slice fields that are still
+     * produced by UpdateCommand on the stock path (+0xf6/+0x12/+0x1c/+0x30).
+     * Seed them from the captured 640x360 Baseline stock word so both the
+     * embedded Enc1 path and the standalone Enc2 path stop zeroing those bits. */
+    return ((slice_f6 & 0x1u) << 2)
+        | ((slice_66 & 0x1u) << 3)
+        | ((((slice_7e - 1u)) & 0x3u) << 4)
+        | (slice_10 << 8)
+        | (slice_11 << 10)
+        | ((slice_12 & 0x1u) << 11)
+        | ((qp & 0x3fu) << 16)
+        | ((slice_1c & 0x3u) << 24)
+        | ((slice_30 & 0x3u) << 28);
+}
+
+static uint32_t avpu_pack_enc2_cmd1d(const ALAvpuContext *ctx)
+{
+    uint32_t pic_w_8;
+    uint32_t lcu_w;
+    uint32_t lcu_width_from_pic;
+    uint32_t slice_start_lcu = 0u;
+    uint32_t slice_row_group = 0u;
+    uint32_t slice_col_group = 0u;
+
+    if (!ctx)
+        return 0u;
+
+    pic_w_8 = ctx->enc1_cmd_0b_7a ? ctx->enc1_cmd_0b_7a : ((ctx->enc_w + 7u) >> 3);
+    lcu_w = (ctx->enc_w + 15u) >> 4;
+    lcu_width_from_pic = (pic_w_8 + 1u) >> 1;
+    if (lcu_width_from_pic == 0u)
+        lcu_width_from_pic = lcu_w;
+    if (lcu_width_from_pic == 0u)
+        return 0u;
+
+    return (slice_start_lcu & 0x3ffu)
+        | (((lcu_width_from_pic - 1u) & 0x3ffu) << 12)
+        | ((slice_row_group & 0xfu) << 24)
+        | ((slice_col_group & 0xfu) << 28);
+}
+
 static uint32_t avpu_pack_enc2_cmd1e(const ALAvpuContext *ctx)
 {
     uint32_t slice_fc;
@@ -1391,10 +1487,11 @@ static void fill_cmd_regs_enc1(const ALAvpuContext* ctx, uint32_t* cmd,
     cmd[0x1a] = avpu_pack_enc1_cmd1a(ctx);
 
     /* ---- cmd[0x1b]-cmd[0x1f]: Enc2 (entropy) parameters ----
-     * Stock values for 640x360 Baseline IDR. */
-    cmd[0x1b] = 0x00070c80u;
-    cmd[0x1c] = 0x211e0904u;
-    cmd[0x1d] = 0x00027000u;
+     * Keep the embedded Enc1 copy on the same OEM-shaped packers as the
+     * standalone Enc2 CL so IDR and P-frame slice words stay aligned. */
+    cmd[0x1b] = avpu_pack_enc2_cmd1b(ctx);
+    cmd[0x1c] = avpu_pack_enc2_cmd1c(ctx);
+    cmd[0x1d] = avpu_pack_enc2_cmd1d(ctx);
     /* cmd[0x1e]-cmd[0x1f]: OEM SliceParamToCmdRegsEnc2 consumes dedicated
      * slice-header bookkeeping fields (+0xf8/+0xfc/+0x100), not the tail bytes
      * of the full pre-written AU. Track those separately from the total header
@@ -1501,64 +1598,30 @@ static void fill_cmd_regs_enc2(const ALAvpuContext *ctx, uint32_t *cmd,
     if (stream_buf_idx >= 0 && stream_buf_idx < ctx->stream_bufs_used)
         stream_desc_phys = ctx->stream_bufs[stream_buf_idx].phy_addr;
 
-    uint32_t lcu_w = (ctx->enc_w + 15u) >> 4;
-    uint32_t lcu_h = (ctx->enc_h + 15u) >> 4;
-
     /* --- cmd[0x1b] (byte offset 0x6c): SliceParamToCmdRegsEnc2 word 1 ---
-     * bits[12:0]  = SliceParam+0x74 (packed width in 8-pel units)
-     * bits[25:16] = SliceParam+0x78 (packed height in 8-pel units)
-     * bits[29:28] = nal_type derived
-     * bits[31:30] = nal_ref_idc derived */
-    {
-        uint32_t slice_74 = ctx->enc1_cmd_0a_74 ? ctx->enc1_cmd_0a_74
-                                                : avpu_default_enc1_cmd0a_74(ctx->enc_w);
-        uint32_t h8 = (ctx->enc_h + 7u) >> 3;
-        uint32_t nal_type_bits = is_idr ? 0u : 1u; /* simplified */
-        uint32_t nal_ref_idc_bits = is_idr ? 3u : 2u;
-        cmd[0x1b] = (slice_74 & 0x1fffu)
-                   | ((h8 & 0x3ffu) << 16)
-                   | ((nal_type_bits & 0x3u) << 28)
-                   | ((nal_ref_idc_bits & 0x3u) << 30);
-    }
+     * bits[12:0]  = SliceParam+0x74
+     * bits[25:16] = SliceParam+0x78
+     * bits[29:28] = SliceParam+0x19
+     * bits[31:30] = SliceParam+0x1a */
+    cmd[0x1b] = avpu_pack_enc2_cmd1b(ctx);
 
     /* --- cmd[0x1c] (byte offset 0x70): SliceParamToCmdRegsEnc2 word 2 ---
-     * Complex bit-packed slice parameters. Minimal AVC single-slice path:
-     *   bit1  = (codec != AVC) → 0
-     *   bit2  = slice_param+0xf6 → 0
-     *   bit3  = slice_param+0x66 → 0
-     *   bits[5:4] = (num_ref_idx-1) & 3
-     *   bits[9:8] = slice_type_enc → 0 for I, 0 for P first
-     *   bit10 = entropy_coding_mode
-     *   bit11 = slice_param+0x12 → 0
-     *   bits[21:16] = QP & 0x3f
-     *   bits[25:24] = cabac_init_idc & 3
-     *   bits[29:28] = slice_type_for_ref & 3  */
-    {
-        uint32_t qp = ctx->qp ? ctx->qp : 30u;
-        uint32_t slice_7e = ctx->enc1_cmd_0b_7e ? ctx->enc1_cmd_0b_7e : 1u;
-        cmd[0x1c] = ((((slice_7e - 1u) & 0x3u) << 4)
-                   | ((ctx->enc1_slice_10 & 0x3u) << 8)
-                   | ((ctx->entropy_mode & 1u) << 10)
-                   | ((qp & 0x3fu) << 16));
-        if (!is_idr) {
-            cmd[0x1c] |= (1u << 28); /* P slice type for ref */
-        }
-    }
+     * Exact field layout recovered from the OEM SliceParamToCmdRegsEnc2 packer:
+     * +0xf6/+0x66/+0x7e/+0x10/+0x11/+0x12/+0x28/+0x1c/+0x30. */
+    (void)is_idr;
+    cmd[0x1c] = avpu_pack_enc2_cmd1c(ctx);
 
-    /* --- cmd[0x1d] (byte offset 0x74): LCU grid and slice info ---
-     * bits[9:0]   = numSliceRows / numLcuPerRow
-     * bits[21:12] = (numLcuPerRow+1)/2 - 1 (half-row count)
-     * bits[27:24] = lcu_h (row count)
-     * bits[31:28] = lcu_w (col count for decode) */
-    if (lcu_w && lcu_h) {
-        uint32_t slice_rows = lcu_h;
-        uint32_t half_row_count = ((lcu_w + 1u) / 2u);
-        if (half_row_count > 0u)
-            half_row_count -= 1u;
-
-        cmd[0x1d] = (slice_rows & 0x3ffu)
-                   | ((half_row_count & 0x3ffu) << 12);
-    }
+    /* --- cmd[0x1d] (byte offset 0x74): OEM SliceParamToCmdRegsEnc2 ---
+     * low10      = SliceParam+0x3c / SliceParam+0x108
+     * bits[21:12]= ((SliceParam+0x0a + 1) >> 1) - 1
+     * bits[27:24]= SliceParam+0x41
+     * bits[31:28]= SliceParam+0x40
+     *
+     * For the current single-slice AVC path the runtime slice start stays at 0,
+     * while +0x0a comes from the picture width in 8-pel units (confirmed via
+     * GetPicDimFromCmdRegsEnc1).  That yields the known stock 640x360 value
+     * 0x00027000 instead of the previous lcu_h/half-row heuristic. */
+    cmd[0x1d] = avpu_pack_enc2_cmd1d(ctx);
 
     /* --- cmd[0x1e]-cmd[0x1f]: slice-header splice metadata.
      * OEM Source: SliceParam+0xf8/+0xfc/+0x100. These are not simply the total
@@ -1595,6 +1658,17 @@ static void fill_cmd_regs_enc2(const ALAvpuContext *ctx, uint32_t *cmd,
             comp_data_sz = stream_space;
         cmd[0x3f] = comp_data_sz & ~0x1fu; /* byte offset 0xfc: budget (32-byte aligned) */
     }
+}
+
+static void log_first_enc2_cmd_window(ALAvpuContext* ctx, uint32_t idx, const uint32_t* cmd)
+{
+    if (!ctx || !cmd) return;
+    if (__sync_lock_test_and_set(&ctx->first_enc2_submit_logged, 1) != 0) return;
+
+    LOG_CODEC("Process: first Enc2 CL[%u] cmd[0x1b]=0x%08x cmd[0x1c]=0x%08x cmd[0x1d]=0x%08x cmd[0x1e]=0x%08x cmd[0x1f]=0x%08x",
+              idx, cmd[0x1b], cmd[0x1c], cmd[0x1d], cmd[0x1e], cmd[0x1f]);
+    LOG_CODEC("Process: first Enc2 CL[%u] cmd[0x3a]=0x%08x cmd[0x3b]=0x%08x cmd[0x3c]=0x%08x cmd[0x3d]=0x%08x cmd[0x3e]=0x%08x cmd[0x3f]=0x%08x",
+              idx, cmd[0x3a], cmd[0x3b], cmd[0x3c], cmd[0x3d], cmd[0x3e], cmd[0x3f]);
 }
 
 static void log_first_enc1_cmd_window(ALAvpuContext* ctx, uint32_t idx, const uint32_t* cmd)
@@ -3291,6 +3365,7 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
                         enc->avpu.busy_skip_count = 0;
                         enc->avpu.busy_snapshot_emitted = 0;
                         enc->avpu.first_submit_logged = 0;
+                        enc->avpu.first_enc2_submit_logged = 0;
                         enc->avpu.init_trace_completed = 0;
                         enc->avpu.init_stream_flush_failures = 0;
                         enc->avpu.init_interm_flush_ret = 0;
@@ -3679,12 +3754,26 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
              * The OEM encode1() calls GenerateAvcSliceHeader() before building the CL,
              * writing SPS+PPS+slice header into the stream buffer. The returned byte
              * count becomes cmd[0x32]/cmd[0x36] so the AVPU writes encoded data after. */
+            int periodic_idr = 0;
+            if (!force_idr
+                && ctx->gop_length > 0u
+                && ctx->frame_number != 0u
+                && ((ctx->frame_number % ctx->gop_length) == 0u)
+                && (ctx->reference_valid != 0)
+                && (ctx->ref_buf.phy_addr != 0)) {
+                periodic_idr = 1;
+            }
+
             int has_reference = (!force_idr)
+                && (!periodic_idr)
                 && (ctx->reference_valid != 0)
                 && (ctx->ref_buf.phy_addr != 0);
             int is_idr = !has_reference;
             if (force_idr) {
                 LOG_CODEC("Process: channel=%d forcing next AVPU frame to IDR", enc->channel_id - 1);
+            } else if (periodic_idr) {
+                LOG_CODEC("Process: channel=%d scheduling periodic AVPU IDR at frame=%u gop=%u",
+                          enc->channel_id - 1, ctx->frame_number, ctx->gop_length);
             }
 
             /* Defensive: Baseline profile (66) MUST use CAVLC. If entropy_mode
@@ -3905,6 +3994,10 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
                 uint32_t enc2_phys = ctx->cl_ring.phy_addr + (enc2_idx * ctx->cl_entry_size);
 
                 fill_cmd_regs_enc2(ctx, enc2_cmd, buf_idx, hdr_offset, is_idr);
+                LOG_CODEC("Process: Enc2 CL[%u] cmd[0x1b]=0x%08x cmd[0x1c]=0x%08x cmd[0x1d]=0x%08x cmd[0x1e]=0x%08x cmd[0x1f]=0x%08x",
+                          enc2_idx, enc2_cmd[0x1b], enc2_cmd[0x1c], enc2_cmd[0x1d],
+                          enc2_cmd[0x1e], enc2_cmd[0x1f]);
+                log_first_enc2_cmd_window(ctx, enc2_idx, enc2_cmd);
 
                 /* Flush the actual Enc2 command entry we just populated.
                  * Flushing the ring base here leaves most enc2_idx submissions
