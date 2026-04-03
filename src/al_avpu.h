@@ -142,6 +142,7 @@ typedef struct ALAvpuContext {
     int stream_bufs_used;
     unsigned char stream_in_hw[16];
     unsigned char stream_buf_state[16];
+    uint32_t stream_enc2_cl_idx[16];  /* Enc2 CL index used for each stream buf */
     int next_stream_submit;
     void *codec_owner;
     void *stream_queue_mutex;

@@ -2640,11 +2640,55 @@ static void avpu_log_suspicious_stream_size(ALAvpuContext *ctx, int buf_idx,
               have_status_8238 ? "" : "ERR:", status_8238);
 }
 
+/* OEM parity: read the hardware-updated iOffset from the CL entry to determine
+ * the actual encoded byte count.  The AVPU writes the final stream position
+ * back into the CL at cmd[0x3e] (Enc2) or cmd[0x32] (Enc1).  This is how the
+ * OEM OutputSlice (0x65484) determines frame size — it reads *(cl + 0xf8)
+ * for Enc2 or *(cl + 0xc8) for Enc1, not by scanning for trailing zeros. */
+static uint32_t avpu_read_hw_stream_end(ALAvpuContext *ctx, int buf_idx)
+{
+    uint32_t cl_idx;
+    uint8_t *cl_entry;
+    const uint32_t *cmd;
+    uint32_t hw_end;
+
+    if (!ctx || buf_idx < 0 || buf_idx >= 16)
+        return 0;
+    if (!avpu_cl_ring_base(ctx) || ctx->cl_entry_size == 0)
+        return 0;
+
+    cl_idx = ctx->stream_enc2_cl_idx[buf_idx];
+    cl_entry = avpu_cl_entry_ptr(ctx, cl_idx);
+    if (!cl_entry)
+        return 0;
+
+    /* Cache-invalidate the CL entry so we read HW-updated values */
+    if (!ctx->cl_ring.uncached_map)
+        avpu_flush_cache(ctx->fd, cl_entry, (unsigned int)ctx->cl_entry_size, 2 /*INV*/);
+
+    cmd = (const uint32_t *)cl_entry;
+
+    /* Determine whether this was an Enc2 CL (cmd[0x3e] = byte offset 0xf8)
+     * or an Enc1-only CL (cmd[0x32] = byte offset 0xc8).
+     * Enc2 CLs have cmd[0x1b]-cmd[0x1f] populated; Enc1-only CLs have
+     * cmd[0x00] with the full control word.  Use CL_PUSH type as indicator:
+     * Enc2 entries have cmd[0x3c] set (stream phys base), Enc1-only don't
+     * use cmd[0x3c]-cmd[0x3e] the same way.  Simplest: check if cmd[0x3c]
+     * is non-zero — Enc2 sets it to stream_desc_phys. */
+    if (cmd[0x3c] != 0)
+        hw_end = cmd[0x3e];  /* Enc2: iOffset at word 0x3e */
+    else
+        hw_end = cmd[0x32];  /* Enc1: iOffset at word 0x32 */
+
+    return hw_end;
+}
+
 static uint32_t avpu_stream_buffer_effective_size(ALAvpuContext *ctx, int buf_idx,
                                                   int *flush_ret_out)
 {
     const uint8_t *sb;
     uint32_t raw_end;
+    uint32_t hw_end;
     uint32_t frame_size;
     size_t annexb;
 
@@ -2657,6 +2701,7 @@ static uint32_t avpu_stream_buffer_effective_size(ALAvpuContext *ctx, int buf_id
     if (!ctx->stream_bufs[buf_idx].map)
         return 0;
 
+    /* Invalidate stream buffer cache so we see HW-written data */
     if (flush_ret_out) {
         *flush_ret_out = avpu_flush_cache(ctx->fd,
                                           ctx->stream_bufs[buf_idx].map,
@@ -2669,17 +2714,29 @@ static uint32_t avpu_stream_buffer_effective_size(ALAvpuContext *ctx, int buf_id
                          2 /*INV*/);
     }
 
+    /* OEM parity: read the hardware-updated stream end position from the CL.
+     * This is the authoritative byte count — it matches exactly what the OEM
+     * OutputSlice reads at *(cl + 0xf8) or *(cl + 0xc8). */
+    hw_end = avpu_read_hw_stream_end(ctx, buf_idx);
+
     sb = (const uint8_t *)ctx->stream_bufs[buf_idx].map;
     raw_end = avpu_stream_buffer_raw_end(sb, (size_t)ctx->stream_buf_size);
-    if (raw_end == 0)
-        return 0;
 
-    annexb = annexb_effective_size(sb, raw_end);
-    frame_size = annexb > 0 ? (uint32_t)annexb : raw_end;
+    /* Use the HW-reported end if it's sane; fall back to trailing-zero scan */
+    if (hw_end > ctx->stream_header_offset &&
+        hw_end <= (uint32_t)ctx->stream_buf_size) {
+        frame_size = hw_end;
+    } else {
+        if (raw_end == 0)
+            return 0;
+        annexb = annexb_effective_size(sb, raw_end);
+        frame_size = annexb > 0 ? (uint32_t)annexb : raw_end;
+    }
 
     if (frame_size <= ctx->stream_header_offset) {
         avpu_log_suspicious_stream_size(ctx, buf_idx, "EndEncoding",
-                                        raw_end, (uint32_t)annexb, frame_size);
+                                        raw_end, (uint32_t)annexb_effective_size(sb, raw_end),
+                                        frame_size);
     }
 
     return frame_size;
@@ -3900,6 +3957,13 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
                              : avpu_flush_cache(fd, entry, (unsigned int)cl_flush_size, 1 /*WBACK*/);
             LOG_CODEC("Process: CL[%u] flush ret=%d (rmem+avpu)", idx, cl_flush_ret);
             int trace_submit = (idx == 0 && ctx->frames_encoded == 0);
+
+            /* Record which CL entry holds the iOffset that the hardware will
+             * update — needed by the dqbuf path to read back the actual
+             * encoded byte count instead of scanning for trailing zeros. */
+            ctx->stream_enc2_cl_idx[buf_idx] = has_reference
+                ? (idx + 1) % ctx->cl_count   /* Enc2 CL: read cmd[0x3e] */
+                : idx;                         /* IDR Enc1-only: read cmd[0x32] */
 
             if (!avpu_track_submitted_stream(ctx, buf_idx, user_data)) {
                 LOG_CODEC("Process: failed to track submitted AVPU stream buf[%d]", buf_idx);
