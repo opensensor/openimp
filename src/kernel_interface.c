@@ -586,6 +586,7 @@ typedef struct {
     int queue_count;        /* Number of frames in queue */
     pthread_mutex_t queue_mutex; /* Mutex for queue access */
     int fd;                 /* Kernel framechan fd for qbuf/dqbuf (-1 if unused) */
+    uint8_t *buf_in_userspace; /* Per-buffer: 1 if DQBUF'd, 0 if in kernel queue */
 } VBMPool;
 
 /* Global VBM state */
@@ -862,6 +863,11 @@ int VBMCreatePool(int chn, void *fmt, void *ops, void *priv) {
         return -1;
     }
 
+    /* Per-buffer kernel ownership tracking: prevents double-QBUF when
+     * VBMReleaseFrame is called multiple times for the same buffer
+     * (OEM uses AL_Buffer refcounting; we track explicitly). */
+    pool->buf_in_userspace = (uint8_t*)calloc(frame_count, sizeof(uint8_t));
+
     pool->queue_head = 0;
     pool->queue_tail = 0;
     pool->queue_count = 0;
@@ -905,6 +911,9 @@ int VBMDestroyPool(int chn) {
     /* Free queue */
     if (pool->available_queue != NULL) {
         free(pool->available_queue);
+    }
+    if (pool->buf_in_userspace != NULL) {
+        free(pool->buf_in_userspace);
     }
 
     /* Free allocated memory */
@@ -1012,6 +1021,10 @@ int VBMKernelDequeue(int chn, int fd, void **frame_out) {
         fprintf(stderr, "[VBM] VBMKernelDequeue chn=%d: invalid idx=%d (frame_count=%d)\n", chn, idx, pool->frame_count);
         return -1;
     }
+    /* Mark buffer as in userspace — VBMReleaseFrame will only QBUF it back
+     * if this flag is set, preventing double-QBUF. */
+    if (pool->buf_in_userspace)
+        pool->buf_in_userspace[idx] = 1;
     *frame_out = &pool->frames[idx];
     return 0;
 }
@@ -1155,10 +1168,15 @@ int VBMReleaseFrame(int chn, void *frame) {
         fprintf(stderr, "[VBM] ReleaseFrame: queue full, dropped idx=%d to make room\n", dropped_idx);
     }
 
-    /* If kernel-backed, re-queue to kernel immediately (QBUF) */
-    if (pool->fd >= 0) {
+    /* If kernel-backed, re-queue to kernel immediately (QBUF) — but only
+     * if the buffer was actually DQBUF'd into userspace.  The OEM uses
+     * AL_Buffer refcounting so the actual release (and QBUF) only happens
+     * once when refcount drops to zero.  Without refcounting, multiple
+     * release paths (encoder_update + ReleaseStream) can double-release
+     * the same buffer, causing "qbuf: buffer already in use" kernel errors. */
+    if (pool->fd >= 0 && frame_idx >= 0 && frame_idx < pool->frame_count
+        && pool->buf_in_userspace && pool->buf_in_userspace[frame_idx]) {
         unsigned long phys = vbm_frame->phys_addr;
-        /* Query expected length from driver for this index, fallback to our size */
         unsigned int qlen = 0;
         if (fs_querybuf(pool->fd, frame_idx, &qlen) < 0 || qlen == 0) {
             qlen = (unsigned int)vbm_frame->size;
@@ -1166,6 +1184,7 @@ int VBMReleaseFrame(int chn, void *frame) {
         if (fs_qbuf(pool->fd, frame_idx, phys, qlen) < 0) {
             fprintf(stderr, "[VBM] ReleaseFrame: fs_qbuf failed for idx=%d (len=%u)\n", frame_idx, qlen);
         }
+        pool->buf_in_userspace[frame_idx] = 0;
     }
 
     pool->available_queue[pool->queue_tail] = frame_idx;

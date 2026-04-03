@@ -1369,7 +1369,7 @@ static uint32_t avpu_get_enc1_stream_part_offset(const ALAvpuContext *ctx)
  */
 static void fill_cmd_regs_enc1(const ALAvpuContext* ctx, uint32_t* cmd,
                                int stream_buf_idx, uint32_t src_phys, uint32_t hdr_offset,
-                               int is_idr)
+                               int is_idr, uint32_t ref_phys)
 {
     if (!ctx || !cmd) return;
 
@@ -1465,13 +1465,30 @@ static void fill_cmd_regs_enc1(const ALAvpuContext* ctx, uint32_t* cmd,
     /* cmd[0x0b]: OEM pack from SliceParam+0x7a/+0x7c/+0x7e/+0x7f/+0x80. */
     cmd[0x0b] = avpu_pack_enc1_cmd0b(ctx, !is_idr);
 
-    /* cmd[0x0c]-cmd[0x0f]: Stock has ALL ZEROS for IDR (no early-window addrs) */
-    /* cmd[0x0c] = cmd[0x0d] = cmd[0x0e] = cmd[0x0f] = 0 (from memset) */
-
-    /* cmd[0x10]-cmd[0x11]: Stock=0xFFFFFFFF for IDR (no reference sentinel) */
+    /* cmd[0x0c]-cmd[0x11]: Reference frame addresses.
+     * IDR: cmd[0x0c..0x0f]=0, cmd[0x10..0x11]=0xFFFFFFFF (sentinel: no ref).
+     * P-frame: OEM populates these from the DPB reference list. The reference
+     * buffer holds the previously reconstructed frame.  Without these the AVPU
+     * has no reference for motion estimation and produces empty residuals. */
     if (is_idr) {
         cmd[0x10] = 0xFFFFFFFFu;
         cmd[0x11] = 0xFFFFFFFFu;
+    } else if (ref_phys && ctx->enc_w && ctx->enc_h) {
+        uint32_t y_sz = avpu_get_nv12_luma_plane_size(ctx->enc_w, ctx->enc_h);
+        uint32_t r_pitch = avpu_get_enc1_rec_pitch(ctx->enc_w, ctx->format_word);
+        uint32_t r_map_pitch = avpu_get_enc1_fbc_map_pitch(ctx->enc_w);
+        /* OEM: cmd[0x0c..0x0f] mirror cmd[0x24..0x27] layout but for ref */
+        cmd[0x0c] = ref_phys;                              /* ref Y */
+        cmd[0x0d] = ref_phys + y_sz;                       /* ref UV */
+        cmd[0x0e] = (r_pitch & 0x3ffffu)
+                   | ((2u & 0x7u) << 28)
+                   | ((r_map_pitch & 0xffu) << 19);        /* ref pitch */
+        /* cmd[0x0f] = ref EP1 — use same EP1 addr for ref decode buffer */
+        if (ctx->interm_buf.phy_addr)
+            cmd[0x0f] = ctx->interm_buf.phy_addr;
+
+        cmd[0x10] = ref_phys;                              /* ref Y (again) */
+        cmd[0x11] = ref_phys + y_sz;                       /* ref UV (again) */
     }
 
     /* cmd[0x12]: OEM pack from SliceParam+0xa8/+0xaa/+0xac. */
@@ -1532,6 +1549,15 @@ static void fill_cmd_regs_enc1(const ALAvpuContext* ctx, uint32_t* cmd,
 
             cmd[0x23] = ep2_addr;                     /* stock: 0x07135180 */
             cmd[0x27] = ep1_addr;                     /* stock: 0x0712ed00 */
+
+            /* OEM FillCmdRegsEnc1 (encode1 at 0x671b8) sets cmd[0x2c] and
+             * cmd[0x2e] to intermediate sub-buffer addresses + 0x100.  The
+             * +0x100 skip accounts for a 256-byte metadata header region.
+             * OEM sources: cmd[0x2c] = *(ctx+0x2f0)+0x100,
+             *              cmd[0x2e] = *(ctx+0x2f4)+0x100.
+             * Map these to our EP1 and WPP sub-buffers respectively. */
+            cmd[0x2c] = ep1_addr + 0x100u;            /* OEM: EP buffer + metadata */
+            cmd[0x2e] = wpp_addr + 0x100u;            /* OEM: WPP buffer + metadata */
         }
 
         /* Reconstruction buffer */
@@ -1543,24 +1569,48 @@ static void fill_cmd_regs_enc1(const ALAvpuContext* ctx, uint32_t* cmd,
                        | ((rec_map_pitch & 0xffu) << 19);
         }
 
-        /* Reference: zeros for IDR (cmd[0x28]-cmd[0x2c] stay 0 from memset) */
+        /* Reference frame addresses — OEM FillCmdRegsEnc1 sets these from
+         * the DPB reference list.  For P-frames, the reference buffer is the
+         * previously reconstructed frame.  IDR: zeros (no reference). */
+        if (!is_idr && ref_phys) {
+            cmd[0x28] = ref_phys;                          /* ref Y */
+            cmd[0x29] = ref_phys + y_plane_sz;             /* ref UV */
+            cmd[0x2a] = (rec_pitch & 0x3ffffu)
+                       | ((2u & 0x7u) << 28)
+                       | ((rec_map_pitch & 0xffu) << 19);  /* ref pitch */
+            /* cmd[0x2b]: ref map base — use the same rec_map region for ref */
+            if (rec_map_addr)
+                cmd[0x2b] = rec_map_addr;
+        }
 
         /* MV/map addresses */
         if (ctx->rec_buf.phy_addr) {
             cmd[0x2d] = rec_map_addr;                  /* stock: 0x07066500 */
-            cmd[0x2e] = rec_map_end;                   /* stock: 0x070c5400 */
         }
 
         /* Stream buffer + intermediate data */
         if (ctx->interm_buf.phy_addr) {
             uint32_t ep1_addr = ctx->interm_buf.phy_addr;
             uint32_t wpp_addr = ep1_addr + ctx->interm_ep1_size;
+            /* OEM FillCmdRegsEnc1 (encode1 at 0x671b8) puts the intermediate
+             * MAP and DATA addresses at cmd[0x34] (byte 0xd0) and cmd[0x35]
+             * (byte 0xd4).  These are the SAME map/data addresses that the
+             * Enc2 CL uses at cmd[0x3a]/cmd[0x3b].  Without these, Enc1
+             * doesn't write intermediate data and Enc2 has nothing to
+             * entropy-encode — producing header-only frames. */
+            uint32_t map_addr = ctx->interm_buf.phy_addr
+                              + ctx->interm_ep1_size
+                              + ctx->interm_wpp_size
+                              + ctx->interm_ep2_size;
+            uint32_t data_addr = map_addr + ctx->interm_map_size;
 
             cmd[0x30] = stream_desc_phys;               /* stream buffer — must match STRM_PUSH */
             cmd[0x31] = stream_part_offset;            /* stock: 0x00027780 */
             cmd[0x32] = stream_offset;                 /* stock: 0x00000220 */
             cmd[0x33] = stream_part_offset > stream_offset
                        ? (stream_part_offset - stream_offset) & ~0x1fu : 0u;
+            cmd[0x34] = map_addr;                       /* OEM: interm map (*(ctx+0x304)) */
+            cmd[0x35] = data_addr;                      /* OEM: interm data (*(ctx+0x308)) */
         }
 
         /* Map buffer address */
@@ -3831,6 +3881,7 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
                 && (ctx->reference_valid != 0)
                 && (ctx->ref_buf.phy_addr != 0);
             int is_idr = !has_reference;
+            uint32_t ref_phys = has_reference ? ctx->ref_buf.phy_addr : 0;
             if (force_idr) {
                 LOG_CODEC("Process: channel=%d forcing next AVPU frame to IDR", enc->channel_id - 1);
             } else if (periodic_idr) {
@@ -3926,7 +3977,7 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
             }
 
             /* Fill Enc1 command registers — source addr and header offset go INTO the CL entry */
-            fill_cmd_regs_enc1(ctx, cmd, buf_idx, phys_addr, hdr_offset, is_idr);
+            fill_cmd_regs_enc1(ctx, cmd, buf_idx, phys_addr, hdr_offset, is_idr, ref_phys);
             log_first_enc1_cmd_window(ctx, idx, cmd);
 
             /* Flush the mapped command-list region from CPU cache to RAM.
@@ -3983,7 +4034,6 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
              * STRM_PUSH separately; the OEM StartEnc1WithCommandList helper does
              * not issue an extra SRC_PUSH on the Enc1 command-list path. */
             uint32_t cl_phys = ctx->cl_ring.phy_addr + (idx * ctx->cl_entry_size);
-            uint32_t ref_phys = has_reference ? ctx->ref_buf.phy_addr : 0;
             int cl_addr_ret;
             int cl_push_ret;
             if (trace_submit || cl_flush_ret != 0) {
