@@ -4169,16 +4169,17 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
                           hdr_offset, hw_hdr_offset);
             }
 
-            /* OEM parity: For AVC, the Enc2 slice parameters are embedded in the
-             * Enc1 CL (at cmd[0x1b]-cmd[0x1f], filled above in fill_cmd_regs_enc1).
-             * The OEM only submits a separate CL_PUSH=8 for P/B frames that have
-             * reference buffers ($s3_3 != 0 in encode1). For the first IDR frame
-             * (no references), only CL_PUSH=2 is submitted.
+            /* OEM parity: The Enc2 (entropy coding) stage requires a separate
+             * CL_PUSH=8 submission to produce entropy-coded bitstream output.
+             * Without Enc2, the stream buffer only contains prewritten headers
+             * and the AVPU produces no encoded payload.
              *
-             * When references exist, encode1 fills a separate Enc2 CL via
-             * FillCmdRegsEnc2 + SliceParamToCmdRegsEnc2 and submits CL_PUSH=8.
-             */
-            if (has_reference) {
+             * The OEM submits Enc2 for ALL frames where the Enc2 core exists
+             * ($s3_3 != 0 in encode1).  On T31 with a single AVPU core,
+             * Enc2 is always needed — even for IDR frames.  Previously
+             * OpenIMP skipped Enc2 for IDR, resulting in header-only IDR
+             * output and corrupt P-frames (no valid reference). */
+            {
                 /* P/B frame: submit separate Enc2 CL */
                 uint32_t enc2_idx = (idx + 1) % ctx->cl_count;
                 uint8_t *enc2_entry = avpu_cl_entry_ptr(ctx, enc2_idx);
@@ -4209,13 +4210,9 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
                               enc2_idx, enc2_phys, enc2_addr_ret, enc2_push_ret);
                     avpu_log_submit_snapshot(ctx, enc2_idx, "post_enc2_push");
                 }
-                LOG_CODEC("Process: Enc2 submitted CL[%u] phys=0x%08x hdr=%u", enc2_idx, enc2_phys, hdr_offset);
+                LOG_CODEC("Process: Enc2 submitted CL[%u] phys=0x%08x hdr=%u %s",
+                          enc2_idx, enc2_phys, hdr_offset, is_idr ? "IDR" : "P");
                 ctx->cl_idx = (idx + 2) % ctx->cl_count;
-            } else {
-                /* IDR/I frame (no references): Enc2 params are in Enc1 CL,
-                 * only CL_PUSH=2 was submitted. No separate Enc2 needed. */
-                LOG_CODEC("Process: IDR frame — Enc2 params embedded in Enc1 CL, no CL_PUSH=8");
-                ctx->cl_idx = (idx + 1) % ctx->cl_count;
             }
 
             /* Advance CL index (already set above based on IDR vs P frame) */
