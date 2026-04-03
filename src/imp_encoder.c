@@ -100,6 +100,7 @@ typedef struct {
     int resize_mode;               /* T31 resize-mode flag */
     int qp_ip_delta;               /* T31 IP delta cache */
     int last_qp;                   /* Last fixed QP applied */
+    int bufshare_chn;              /* OEM SetbufshareChn(encChn, shareChn) cache */
     /* OpenIMP tracking to ensure early IDR without GetStream-time injection */
     int idr_requested_once;        /* 0=no request yet, 1=requested due to missing SPS/PPS */
     int param_sets_seen;           /* 1 once SPS and PPS observed in packs */
@@ -133,6 +134,19 @@ static void enc_group_clear_slots(EncGroup *grp)
     }
 }
 
+static uint32_t enc_group_count_slots(const EncGroup *grp)
+{
+    if (grp == NULL) return 0;
+
+    uint32_t count = 0;
+    for (int i = 0; i < MAX_CHANNELS_PER_GROUP; ++i) {
+        if (grp->channels[i] != NULL) {
+            count++;
+        }
+    }
+    return count;
+}
+
 static int enc_group_has_channels(const EncGroup *grp)
 {
     if (grp == NULL) return 0;
@@ -140,6 +154,67 @@ static int enc_group_has_channels(const EncGroup *grp)
         if (grp->channels[i] != NULL) return 1;
     }
     return 0;
+}
+
+static uint32_t imp_encoder_profile_type(IMPEncoderProfile profile)
+{
+    return ((uint32_t)profile >> 24) & 0xffu;
+}
+
+static int imp_encoder_rc_mode_valid(IMPEncoderRcMode rc_mode)
+{
+    switch (rc_mode) {
+    case IMP_ENC_RC_MODE_FIXQP:
+    case IMP_ENC_RC_MODE_CBR:
+    case IMP_ENC_RC_MODE_VBR:
+    case IMP_ENC_RC_MODE_CAPPED_VBR:
+    case IMP_ENC_RC_MODE_CAPPED_QUALITY:
+        return 1;
+    default:
+        return 0;
+    }
+}
+
+static uint32_t imp_encoder_codec_rc_mode(IMPEncoderRcMode rc_mode)
+{
+    switch (rc_mode) {
+    case IMP_ENC_RC_MODE_FIXQP:
+        return 0;
+    case IMP_ENC_RC_MODE_CBR:
+        return 1;
+    case IMP_ENC_RC_MODE_VBR:
+    case IMP_ENC_RC_MODE_CAPPED_VBR:
+    case IMP_ENC_RC_MODE_CAPPED_QUALITY:
+        return 2;
+    default:
+        return UINT32_MAX;
+    }
+}
+
+static uint32_t imp_encoder_default_qp(uint32_t codec_type, int qp)
+{
+    if (qp > 0)
+        return (uint32_t)qp;
+    return (codec_type == IMP_ENC_TYPE_JPEG) ? 75u : 35u;
+}
+
+static uint32_t imp_encoder_default_bitrate_kbps(int bitrate)
+{
+    return (bitrate > 0) ? (uint32_t)bitrate : 2000u;
+}
+
+static void imp_encoder_apply_jpeg_codec_defaults(uint8_t *codec_params)
+{
+    if (codec_params == NULL)
+        return;
+
+    *(uint16_t*)(codec_params + 0x4e) = 4;
+    *(uint16_t*)(codec_params + 0x82) = 1;
+    *(uint16_t*)(codec_params + 0x84) = 0x64;
+    *(uint32_t*)(codec_params + 0xa8) = 2;
+    *(uint32_t*)(codec_params + 0xac) = 1;
+    *(uint16_t*)(codec_params + 0xae) = 0;
+    *(uint32_t*)(codec_params + 0xfc) = 4;
 }
 
 /* Forward declarations for helper functions */
@@ -376,9 +451,10 @@ static void encoder_init(void) {
 
     /* Initialize all channels as unused */
     for (int i = 0; i < MAX_ENC_CHANNELS; i++) {
-        memset(&g_EncChannel[i], 0, ENC_CHANNEL_SIZE);
+        memset(&g_EncChannel[i], 0, sizeof(g_EncChannel[i]));
         g_EncChannel[i].chn_id = -1;
         g_EncChannel[i].entropy_mode = -1;
+        g_EncChannel[i].bufshare_chn = -1;
 
         /* Register module with system for each channel */
         void *module = IMP_System_GetModule(DEV_ID_ENC, i);
@@ -453,9 +529,11 @@ int IMP_Encoder_CreateGroup(int encGroup) {
         return 0;
     }
 
-    /* Initialize the group */
+    /* Initialize the group. Preserve channels that may have been registered
+     * before CreateGroup(), but recompute the visible channel count from the
+     * current slot table so stale counts do not leak across lifecycles. */
     gEncoder->groups[encGroup].group_id = encGroup;
-    gEncoder->groups[encGroup].chn_count = 0;
+    gEncoder->groups[encGroup].chn_count = enc_group_count_slots(&gEncoder->groups[encGroup]);
 
     /* Register Encoder module with system (DEV_ID_ENC = 1) */
     /* Allocate a proper Module structure for this encoder group */
@@ -511,6 +589,7 @@ int IMP_Encoder_DestroyGroup(int encGroup) {
     /* Destroy the group */
     gEncoder->groups[encGroup].group_id = -1;
     gEncoder->groups[encGroup].chn_count = 0;
+    enc_group_clear_slots(&gEncoder->groups[encGroup]);
 
     pthread_mutex_unlock(&encoder_mutex);
 
@@ -544,17 +623,49 @@ int IMP_Encoder_CreateChn(int encChn, IMPEncoderCHNAttr *attr) {
         return -1;
     }
 
-    /* Clear channel structure (from decompilation: memset 0x308 bytes) */
-    memset(chn, 0, ENC_CHANNEL_SIZE);
+    uint32_t codec_type = imp_encoder_profile_type(attr->encAttr.profile);
+    int saved_entropy_mode = chn->entropy_mode;
+    int saved_max_stream_cnt = chn->max_stream_cnt;
+    int saved_stream_buf_size = chn->stream_buf_size;
+    int saved_resize_mode = chn->resize_mode;
+    int saved_qp_ip_delta = chn->qp_ip_delta;
+    int saved_last_qp = chn->last_qp;
+    int saved_bufshare_chn = chn->bufshare_chn;
+
+    if (codec_type == IMP_ENC_TYPE_JPEG) {
+        if (saved_bufshare_chn < 0) {
+            LOG_ENC("CreateChn: Jpeg channel will not share buff");
+        } else if (saved_bufshare_chn >= MAX_ENC_CHANNELS ||
+                   g_EncChannel[saved_bufshare_chn].chn_id < 0 ||
+                   g_EncChannel[saved_bufshare_chn].codec == NULL) {
+            LOG_ENC("CreateChn failed: Jpeg channel need create after channel 0");
+            pthread_mutex_unlock(&encoder_mutex);
+            return -1;
+        }
+    }
+
+    /* Clear the full OpenIMP channel state so stale bookkeeping does not
+     * survive across channel reuse. */
+    memset(chn, 0, sizeof(*chn));
+
+    chn->entropy_mode = saved_entropy_mode;
+    chn->max_stream_cnt = saved_max_stream_cnt;
+    chn->stream_buf_size = saved_stream_buf_size;
+    chn->resize_mode = saved_resize_mode;
+    chn->qp_ip_delta = saved_qp_ip_delta;
+    chn->last_qp = saved_last_qp;
+    chn->bufshare_chn = saved_bufshare_chn;
 
     /* Copy attributes */
     memcpy(&chn->attr, attr, sizeof(IMPEncoderCHNAttr));
 
     /* Set channel ID and flags */
     chn->chn_id = encChn;
-    chn->registered = 1;  /* Mark as created (offset 0x3ac in decompilation) */
+    chn->registered = 0;
     chn->enabled = 0;
-    chn->started = 1;     /* Mark as initialized (offset 0x404 in decompilation) */
+    chn->started = 1;
+    chn->recv_pic_enabled = 0;
+    chn->recv_pic_started = 1;
 
     /* Initialize semaphores (from decompilation at 0x83d18) */
     /* sem_init at offset 0x418 with value 0 */
@@ -647,7 +758,8 @@ int IMP_Encoder_CreateChn(int encChn, IMPEncoderCHNAttr *attr) {
 
     pthread_mutex_unlock(&encoder_mutex);
 
-    LOG_ENC("CreateChn: chn=%d, profile=%d created successfully", encChn, attr->encAttr.profile);
+    LOG_ENC("CreateChn: chn=%d, profile=0x%x, share=%d created successfully",
+            encChn, attr->encAttr.profile, chn->bufshare_chn);
     return 0;
 }
 
@@ -713,7 +825,7 @@ int IMP_Encoder_DestroyChn(int encChn) {
     }
 
     /* Clear the channel */
-    memset(&g_EncChannel[encChn], 0, ENC_CHANNEL_SIZE);
+    memset(&g_EncChannel[encChn], 0, sizeof(g_EncChannel[encChn]));
     g_EncChannel[encChn].chn_id = -1;
     g_EncChannel[encChn].entropy_mode = -1;
 
@@ -1103,32 +1215,77 @@ int IMP_Encoder_FlushStream(int encChn) {
 
 int IMP_Encoder_SetDefaultParam(IMPEncoderChnAttr *attr, IMPEncoderProfile profile,
                                  IMPEncoderRcMode rcMode, int width, int height,
-                                 int fpsNum, int fpsDen, int gopLen, int gopMode,
+                                 int fpsNum, int fpsDen, int gopLen, int maxSameSceneCnt,
                                  int quality, int bitrate) {
-    if (attr == NULL) return -1;
-    LOG_ENC("SetDefaultParam: %dx%d, %d/%d fps, profile=%d, rc=%d",
-            width, height, fpsNum, fpsDen, profile, rcMode);
+    if (attr == NULL) {
+        return -1;
+    }
+
+    uint32_t codec_type = imp_encoder_profile_type(profile);
+    if (codec_type != IMP_ENC_TYPE_AVC && codec_type != IMP_ENC_TYPE_HEVC &&
+        codec_type != IMP_ENC_TYPE_JPEG) {
+        LOG_ENC("SetDefaultParam failed: unsupported encode type %u", codec_type);
+        return -1;
+    }
+
+    if (fpsDen == 0) {
+        LOG_ENC("SetDefaultParam failed: invalid fps %d/%d", fpsNum, fpsDen);
+        return -1;
+    }
+
+    if (codec_type != IMP_ENC_TYPE_JPEG && !imp_encoder_rc_mode_valid(rcMode)) {
+        LOG_ENC("SetDefaultParam failed: unsupported rc mode %d", rcMode);
+        return -1;
+    }
 
     memset(attr, 0, sizeof(*attr));
     attr->encAttr.profile = profile;
 
-    /* Set basic parameters based on profile */
-    if (profile == IMP_ENC_PROFILE_JPEG) {
-        attr->encAttr.attrJpeg.maxPicWidth = width;
-        attr->encAttr.attrJpeg.maxPicHeight = height;
-        attr->encAttr.attrJpeg.bufSize = width * height * 2;
+    if (codec_type == IMP_ENC_TYPE_JPEG) {
+        attr->encAttr.attrJpeg.maxPicWidth = (uint32_t)width;
+        attr->encAttr.attrJpeg.maxPicHeight = (uint32_t)height;
+        attr->encAttr.attrJpeg.bufSize = (uint32_t)((width > 0 && height > 0) ? (width * height * 2) : 0);
+        attr->rcAttr.attrRcMode.rcMode = IMP_ENC_RC_MODE_FIXQP;
+        attr->rcAttr.attrRcMode.attrH264FixQp.qp = imp_encoder_default_qp(codec_type, quality);
     } else {
-        attr->encAttr.attrH264.maxPicWidth = width;
-        attr->encAttr.attrH264.maxPicHeight = height;
-        attr->encAttr.attrH264.bufSize = width * height * 2;
-        attr->encAttr.attrH264.profile = profile;
+        attr->encAttr.attrH264.maxPicWidth = (uint32_t)width;
+        attr->encAttr.attrH264.maxPicHeight = (uint32_t)height;
+        attr->encAttr.attrH264.bufSize = (uint32_t)((width > 0 && height > 0) ? (width * height * 2) : 0);
+        attr->encAttr.attrH264.profile = (uint32_t)profile;
+        attr->rcAttr.attrRcMode.rcMode = rcMode;
+
+        switch (rcMode) {
+        case IMP_ENC_RC_MODE_FIXQP:
+            attr->rcAttr.attrRcMode.attrH264FixQp.qp = imp_encoder_default_qp(codec_type, quality);
+            break;
+        case IMP_ENC_RC_MODE_CBR:
+            attr->rcAttr.attrRcMode.attrH264Cbr.outFrmRate = (uint32_t)fpsNum;
+            attr->rcAttr.attrRcMode.attrH264Cbr.maxGop = imp_encoder_default_bitrate_kbps(bitrate);
+            attr->rcAttr.attrRcMode.attrH264Cbr.maxQp = 45;
+            attr->rcAttr.attrRcMode.attrH264Cbr.minQp = 15;
+            break;
+        case IMP_ENC_RC_MODE_VBR:
+        case IMP_ENC_RC_MODE_CAPPED_VBR:
+        case IMP_ENC_RC_MODE_CAPPED_QUALITY:
+            attr->rcAttr.attrRcMode.attrH264Vbr.outFrmRate = (uint32_t)fpsNum;
+            attr->rcAttr.attrRcMode.attrH264Vbr.maxGop = imp_encoder_default_bitrate_kbps(bitrate);
+            attr->rcAttr.attrRcMode.attrH264Vbr.maxQp = 45;
+            attr->rcAttr.attrRcMode.attrH264Vbr.minQp = 15;
+            break;
+        default:
+            break;
+        }
     }
 
-    attr->rcAttr.attrRcMode.rcMode = rcMode;
-    attr->rcAttr.outFrmRate.frmRateNum = fpsNum;
-    attr->rcAttr.outFrmRate.frmRateDen = fpsDen;
-    attr->rcAttr.attrGop.gopLength = gopLen;
+    attr->rcAttr.outFrmRate.frmRateNum = (uint32_t)fpsNum;
+    attr->rcAttr.outFrmRate.frmRateDen = (uint32_t)fpsDen;
+    attr->rcAttr.attrGop.gopLength = (uint32_t)gopLen;
+    attr->rcAttr.attrGop.ipQpDelta = 2;
+    attr->rcAttr.attrGop.gopMode = IMP_ENC_GOP_MODE_NORMALP;
 
+    LOG_ENC("SetDefaultParam: profile=0x%x type=%u %dx%d fps=%d/%d gop=%d scene=%d rc=%d quality=%d bitrate=%d",
+            profile, codec_type, width, height, fpsNum, fpsDen, gopLen, maxSameSceneCnt,
+            attr->rcAttr.attrRcMode.rcMode, quality, bitrate);
     return 0;
 }
 
@@ -1153,8 +1310,22 @@ int IMP_Encoder_SetJpegeQl(int encChn, IMPEncoderJpegeQl *attr) {
     return 0;
 }
 
-int IMP_Encoder_SetbufshareChn(int srcChn, int dstChn) {
-    LOG_ENC("SetbufshareChn: src=%d, dst=%d", srcChn, dstChn);
+int IMP_Encoder_SetbufshareChn(int encChn, int shareChn) {
+    if (encChn < 0 || encChn >= MAX_ENC_CHANNELS) {
+        LOG_ENC("SetbufshareChn failed: invalid encChn %d", encChn);
+        return -1;
+    }
+    if (shareChn < 0 || shareChn >= MAX_ENC_CHANNELS) {
+        LOG_ENC("SetbufshareChn failed: invalid shareChn %d", shareChn);
+        return -1;
+    }
+
+    pthread_mutex_lock(&encoder_mutex);
+    encoder_init();
+    g_EncChannel[encChn].bufshare_chn = shareChn;
+    pthread_mutex_unlock(&encoder_mutex);
+
+    LOG_ENC("SetbufshareChn: encChn=%d, shareChn=%d", encChn, shareChn);
     return 0;
 }
 
@@ -1489,16 +1660,18 @@ static int channel_encoder_init(EncChannel *chn) {
     }
 
     /* Initialize codec parameters with defaults */
-    uint8_t codec_params[0x7c0];
+    uint8_t codec_params[0x794];
     AL_Codec_Encode_SetDefaultParam(codec_params);
 
     /* Extract encoder attributes - note: width/height are in the union members */
     IMPEncoderProfile profile_enum = chn->attr.encAttr.profile;
     uint32_t width = 0;
     uint32_t height = 0;
+    uint32_t bitrate_kbps = 0;
+    IMPEncoderRcMode rc_mode = chn->attr.rcAttr.attrRcMode.rcMode;
 
     /* Get width/height from the appropriate union member based on profile */
-    uint32_t codec_type = (profile_enum >> 24) & 0xFF;
+    uint32_t codec_type = imp_encoder_profile_type(profile_enum);
     if (codec_type == IMP_ENC_TYPE_AVC || codec_type == IMP_ENC_TYPE_HEVC) {
         width = chn->attr.encAttr.attrH264.maxPicWidth;
         height = chn->attr.encAttr.attrH264.maxPicHeight;
@@ -1511,37 +1684,57 @@ static int channel_encoder_init(EncChannel *chn) {
     uint32_t fps_num = chn->attr.rcAttr.outFrmRate.frmRateNum;
     uint32_t fps_den = chn->attr.rcAttr.outFrmRate.frmRateDen;
     uint32_t gop = chn->attr.rcAttr.attrGop.gopLength;
-    uint32_t bitrate = 0;
+    uint32_t initial_qp = imp_encoder_default_qp(codec_type, -1);
 
-    /* Get bitrate based on RC mode - check the union for the correct member */
-    /* Note: We need to determine RC mode from the attrRcMode union somehow.
-     * For now, try to extract from CBR attributes as that's most common */
-    bitrate = chn->attr.rcAttr.attrRcMode.attrH264Cbr.maxGop * 1000; /* Rough estimate */
+    switch (rc_mode) {
+    case IMP_ENC_RC_MODE_FIXQP:
+        initial_qp = imp_encoder_default_qp(codec_type,
+                                            (int)chn->attr.rcAttr.attrRcMode.attrH264FixQp.qp);
+        break;
+    case IMP_ENC_RC_MODE_CBR:
+        bitrate_kbps = chn->attr.rcAttr.attrRcMode.attrH264Cbr.maxGop;
+        break;
+    case IMP_ENC_RC_MODE_VBR:
+    case IMP_ENC_RC_MODE_CAPPED_VBR:
+    case IMP_ENC_RC_MODE_CAPPED_QUALITY:
+        bitrate_kbps = chn->attr.rcAttr.attrRcMode.attrH264Vbr.maxGop;
+        break;
+    default:
+        break;
+    }
+    if (bitrate_kbps == 0)
+        bitrate_kbps = imp_encoder_default_bitrate_kbps(0);
 
     /* The profile enum already contains the vendor format:
      * - Lower byte is the profile IDC (66/77/100 for AVC, 1 for HEVC)
      * - Upper byte is the encoder type (0=AVC, 1=HEVC, 4=JPEG)
-     * We just need to extract the lower byte for offset 0x24
+     * OEM codec params also keep the full profile word at offset 0x20.
      */
     uint32_t profile_idc = profile_enum & 0xFF;
 
     /* Override codec parameters with values from channel attributes */
+    *(uint32_t*)(codec_params + 0x20) = (uint32_t)profile_enum;
     *(uint32_t*)(codec_params + 0x14) = width;       /* Width at offset 0x14 */
     *(uint32_t*)(codec_params + 0x18) = height;      /* Height at offset 0x18 */
-    codec_params[0x1f] = (uint8_t)codec_type;        /* Codec type at offset 0x1f */
     *(uint32_t*)(codec_params + 0x24) = profile_idc; /* Profile at offset 0x24 */
-    *(uint32_t*)(codec_params + 0x30) = bitrate;     /* Bitrate at offset 0x30 */
+    *(uint32_t*)(codec_params + 0x30) = bitrate_kbps;/* OEM SetDefaultParam uses kbps */
     *(uint32_t*)(codec_params + 0x7c) = fps_num;     /* FPS numerator at offset 0x7c */
     *(uint32_t*)(codec_params + 0x80) = fps_den;     /* FPS denominator at offset 0x80 */
     *(uint32_t*)(codec_params + 0xb0) = gop;         /* GOP length at offset 0xb0 */
+    *(uint32_t*)(codec_params + 0x38) = initial_qp;
+
+    if (codec_type == IMP_ENC_TYPE_JPEG) {
+        imp_encoder_apply_jpeg_codec_defaults(codec_params);
+    }
 
     if (channel_encoder_set_rc_param(codec_params, &chn->attr.rcAttr) < 0) {
         LOG_ENC("channel_encoder_init: failed to map RC params");
         return -1;
     }
 
-    LOG_ENC("channel_encoder_init: %dx%d, profile=0x%x->0x%x, fps=%d/%d, gop=%d, bitrate=%d",
-            width, height, profile_enum, profile_idc, fps_num, fps_den, gop, bitrate);
+    LOG_ENC("channel_encoder_init: %dx%d, profile=0x%x->0x%x, fps=%d/%d, gop=%d, bitrate=%u kbps, share=%d",
+            width, height, profile_enum, profile_idc, fps_num, fps_den, gop,
+            bitrate_kbps, chn->bufshare_chn);
 
     /* Create codec instance */
     if (AL_Codec_Encode_Create(&chn->codec, codec_params) < 0 || chn->codec == NULL) {
@@ -1657,26 +1850,9 @@ static int channel_encoder_set_rc_param(void *dst, IMPEncoderRcAttr *src) {
     uint8_t *codec_param = (uint8_t*)dst;
 
     /* Set rate control mode at offset 0x2c */
-    uint32_t rc_mode = 0;
-    switch (src->attrRcMode.rcMode) {
-        case IMP_ENC_RC_MODE_FIXQP:
-            rc_mode = 0;
-            break;
-        case IMP_ENC_RC_MODE_CBR:
-            rc_mode = 1;
-            break;
-        case IMP_ENC_RC_MODE_VBR:
-            rc_mode = 2;
-            break;
-        case IMP_ENC_RC_MODE_CAPPED_VBR:
-            rc_mode = 3;
-            break;
-        case IMP_ENC_RC_MODE_CAPPED_QUALITY:
-            rc_mode = 4;
-            break;
-        default:
-            rc_mode = 1; /* Default to CBR */
-            break;
+    uint32_t rc_mode = imp_encoder_codec_rc_mode(src->attrRcMode.rcMode);
+    if (rc_mode == UINT32_MAX) {
+        return -1;
     }
     memcpy(codec_param + 0x2c, &rc_mode, sizeof(uint32_t));
 
@@ -1686,6 +1862,10 @@ static int channel_encoder_set_rc_param(void *dst, IMPEncoderRcAttr *src) {
         max_qp = src->attrRcMode.attrH264Cbr.maxQp;
         min_qp = src->attrRcMode.attrH264Cbr.minQp;
     } else if (src->attrRcMode.rcMode == IMP_ENC_RC_MODE_VBR) {
+        max_qp = src->attrRcMode.attrH264Vbr.maxQp;
+        min_qp = src->attrRcMode.attrH264Vbr.minQp;
+    } else if (src->attrRcMode.rcMode == IMP_ENC_RC_MODE_CAPPED_VBR ||
+               src->attrRcMode.rcMode == IMP_ENC_RC_MODE_CAPPED_QUALITY) {
         max_qp = src->attrRcMode.attrH264Vbr.maxQp;
         min_qp = src->attrRcMode.attrH264Vbr.minQp;
     } else if (src->attrRcMode.rcMode == IMP_ENC_RC_MODE_FIXQP) {
@@ -1700,7 +1880,7 @@ static int channel_encoder_set_rc_param(void *dst, IMPEncoderRcAttr *src) {
 
     /* Set GOP length */
     uint32_t gop_len = src->attrGop.gopLength;
-    memcpy(codec_param + 0x44, &gop_len, sizeof(uint32_t));
+    memcpy(codec_param + 0xb0, &gop_len, sizeof(uint32_t));
 
     LOG_ENC("set_rc_param: mode=%d, qp_range=[%u,%u], gop=%u",
             rc_mode, min_qp, max_qp, gop_len);
@@ -1848,8 +2028,10 @@ static void *stream_thread(void *arg) {
                         stream_buf->pack.timestamp = (int64_t)timestamp;
                         stream_buf->pack.frameEnd = 1;
                         memset(&stream_buf->pack.nalType, 0, sizeof(stream_buf->pack.nalType));
-                        /* Heuristic based on frame_type */
-                        stream_buf->pack.nalType.h264NalType = (frame_type == 0) ? 5 : 1;
+                        if (codec_type == IMP_ENC_TYPE_AVC) {
+                            /* Heuristic based on frame_type */
+                            stream_buf->pack.nalType.h264NalType = (frame_type == 0) ? 5 : 1;
+                        }
                         stream_buf->pack.sliceType = (IMPEncoderSliceType)slice_type;
                     } else {
                         stream_buf->packs = (IMPEncoderPack*)calloc((size_t)count, sizeof(IMPEncoderPack));
@@ -1883,7 +2065,7 @@ static void *stream_thread(void *arg) {
                     }
 
                     /* If no SPS/PPS observed yet on this channel, request an IDR once */
-                    if (!chn->param_sets_seen) {
+                    if (codec_type == IMP_ENC_TYPE_AVC && !chn->param_sets_seen) {
                         int saw_sps = 0, saw_pps = 0;
                         if (stream_buf->packs && stream_buf->packCount > 0) {
                             for (uint32_t ii = 0; ii < stream_buf->packCount; ++ii) {

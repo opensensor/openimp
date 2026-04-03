@@ -658,12 +658,17 @@ static int repack_with_epb(uint8_t *dst, const uint8_t *src_nal, int src_len) {
 /**
  * Software fallback encoder with BN MCP-like AU sequencing and EPB insertion
  */
-int HW_Encoder_Encode_Software(HWFrameBuffer *frame, HWStreamBuffer *stream) {
+int HW_Encoder_Encode_Software(HWFrameBuffer *frame, HWStreamBuffer *stream, uint32_t codec_type) {
     if (frame == NULL || stream == NULL) {
         return -1;
     }
 
     static uint32_t frame_counter = 0;
+
+    if (codec_type != HW_CODEC_H264) {
+        LOG_HW("Software encoding: unsupported codec_type=%u in OEM-first mode", codec_type);
+        return -1;
+    }
 
     /* Allocate buffer for NAL units */
     uint8_t *nal_buffer = (uint8_t*)malloc(8192);

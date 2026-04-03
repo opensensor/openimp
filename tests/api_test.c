@@ -17,6 +17,25 @@
 #include <imp/imp_ivs.h>
 #include <sysutils/su_base.h>
 
+static void test_jpeg_channel_smoke(void) {
+    int ret;
+    IMPEncoderChnAttr jpeg_attr;
+
+    ret = IMP_Encoder_SetDefaultParam(&jpeg_attr, IMP_ENC_PROFILE_JPEG,
+                                      IMP_ENC_RC_MODE_FIXQP, 640, 360,
+                                      24, 1, 0, 0, 75, 0);
+    printf("  IMP_Encoder_SetDefaultParam (JPEG): %s\n", ret == 0 ? "OK" : "FAIL");
+
+    ret = IMP_Encoder_SetbufshareChn(4, 0);
+    printf("  IMP_Encoder_SetbufshareChn (JPEG->0): %s\n", ret == 0 ? "OK" : "FAIL");
+
+    ret = IMP_Encoder_CreateChn(4, (IMPEncoderCHNAttr*)&jpeg_attr);
+    printf("  IMP_Encoder_CreateChn (JPEG): %s\n", ret == 0 ? "OK" : "FAIL");
+
+    ret = IMP_Encoder_RegisterChn(0, 4);
+    printf("  IMP_Encoder_RegisterChn (JPEG): %s\n", ret == 0 ? "OK" : "FAIL");
+}
+
 int main(void) {
     int ret;
     printf("OpenIMP API Surface Test\n");
@@ -113,6 +132,8 @@ int main(void) {
     
     ret = IMP_Encoder_RegisterChn(0, 0);
     printf("  IMP_Encoder_RegisterChn: %s\n", ret == 0 ? "OK" : "FAIL");
+
+    test_jpeg_channel_smoke();
     
     /* Test Audio Module */
     printf("\nTesting IMP_Audio...\n");

@@ -140,9 +140,10 @@ int HW_Encoder_SetParams(int fd, HWEncoderParams *params);
  * Used when hardware encoder is not available
  * @param frame Frame buffer
  * @param stream Stream buffer (output)
+ * @param codec_type Codec type (H264/H265/JPEG)
  * @return 0 on success, -1 on failure
  */
-int HW_Encoder_Encode_Software(HWFrameBuffer *frame, HWStreamBuffer *stream);
+int HW_Encoder_Encode_Software(HWFrameBuffer *frame, HWStreamBuffer *stream, uint32_t codec_type);
 
 /**
  * Request IDR frame on next encode (software encoder)

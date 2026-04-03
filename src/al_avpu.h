@@ -36,6 +36,7 @@ typedef struct AvpuDMABuf {
     int mmap_off;        /* page-aligned offset for mmap (driver-provided) */
     int dmabuf_fd;       /* optional dmabuf fd from GET_DMA_FD */
     void *map;           /* mapped CPU pointer (or rmem virtual) */
+    void *uncached_map;  /* optional /dev/mem uncached mirror mapping */
     size_t size;         /* size in bytes */
     int from_rmem;       /* 1 if allocated via rmem/IMP_Alloc (do not munmap) */
 } AvpuDMABuf;

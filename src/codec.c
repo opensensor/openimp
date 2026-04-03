@@ -234,6 +234,7 @@ static int avpu_alloc_mmap(int fd, size_t size, AvpuDMABuf* out)
     out->mmap_off = info.fd;
     out->dmabuf_fd = -1;
     out->map = map;
+    out->uncached_map = NULL;
     out->size = size;
     out->from_rmem = 0;
     LOG_CODEC("AVPU: dma-mmap ok phys=0x%08x off=0x%x size=%zu map=%p", info.phy_addr, info.fd, size, map);
@@ -261,6 +262,7 @@ static int avpu_alloc_imp(size_t size, const char* tag, AvpuDMABuf* out)
     out->mmap_off = 0;
     out->dmabuf_fd = -1;
     out->map = virt;
+    out->uncached_map = NULL;
     out->size = size;
     out->from_rmem = 1; /* prevent munmap in destroy; allocator owns lifetime */
     LOG_CODEC("AVPU: imp-alloc ok phys=0x%08x size=%zu virt=%p", phys, size, virt);
@@ -288,6 +290,21 @@ static void *avpu_remap_uncached(uint32_t phys_addr, size_t size)
     LOG_CODEC("AVPU: /dev/mem uncached remap OK phys=0x%08x -> virt=%p size=%zu",
               phys_addr, p, size);
     return p;
+}
+
+static inline void *avpu_cl_ring_base(ALAvpuContext *ctx)
+{
+    if (!ctx)
+        return NULL;
+    return ctx->cl_ring.uncached_map ? ctx->cl_ring.uncached_map : ctx->cl_ring.map;
+}
+
+static inline uint8_t *avpu_cl_entry_ptr(ALAvpuContext *ctx, uint32_t idx)
+{
+    uint8_t *base = (uint8_t *)avpu_cl_ring_base(ctx);
+    if (!base || ctx->cl_entry_size == 0 || ctx->cl_count == 0)
+        return NULL;
+    return base + ((size_t)(idx % ctx->cl_count) * ctx->cl_entry_size);
 }
 
 static uint32_t avpu_align_up_u32(uint32_t value, uint32_t alignment)
@@ -1419,10 +1436,10 @@ static void log_first_enc1_cmd_window(ALAvpuContext* ctx, uint32_t idx, const ui
 
 static void log_busy_enc1_cmd_window(ALAvpuContext* ctx, uint32_t active_idx, unsigned int skip_count)
 {
-    if (!ctx || !ctx->cl_ring.map || ctx->cl_entry_size == 0 || ctx->cl_count == 0)
+    if (!ctx || !avpu_cl_ring_base(ctx) || ctx->cl_entry_size == 0 || ctx->cl_count == 0)
         return;
 
-    const uint8_t *entry = (const uint8_t*)ctx->cl_ring.map + ((size_t)active_idx * ctx->cl_entry_size);
+    const uint8_t *entry = avpu_cl_entry_ptr(ctx, active_idx);
     const uint32_t *cmd = (const uint32_t*)entry;
 
     LOG_CODEC("Process: busy CL[%u] replay skip_count=%u cmd[0x0c]=0x%08x cmd[0x0d]=0x%08x cmd[0x0e]=0x%08x cmd[0x0f]=0x%08x",
@@ -2426,6 +2443,10 @@ int AL_Codec_Encode_Destroy(void *codec) {
                 }
                 enc->avpu.stream_bufs[i].map = NULL;
             }
+            if (enc->avpu.stream_bufs[i].uncached_map) {
+                munmap(enc->avpu.stream_bufs[i].uncached_map, enc->avpu.stream_bufs[i].size);
+                enc->avpu.stream_bufs[i].uncached_map = NULL;
+            }
             if (enc->avpu.stream_bufs[i].dmabuf_fd >= 0) {
                 close(enc->avpu.stream_bufs[i].dmabuf_fd);
                 enc->avpu.stream_bufs[i].dmabuf_fd = -1;
@@ -2436,6 +2457,10 @@ int AL_Codec_Encode_Destroy(void *codec) {
                 munmap(enc->avpu.cl_ring.map, enc->avpu.cl_ring.size);
             }
             enc->avpu.cl_ring.map = NULL;
+        }
+        if (enc->avpu.cl_ring.uncached_map) {
+            munmap(enc->avpu.cl_ring.uncached_map, enc->avpu.cl_ring.size);
+            enc->avpu.cl_ring.uncached_map = NULL;
         }
         if (enc->avpu.cl_ring.dmabuf_fd >= 0) {
             close(enc->avpu.cl_ring.dmabuf_fd);
@@ -2582,20 +2607,19 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
         /* Lazy-init hardware encoder on first frame */
         if (enc->hw_encoder_fd < 0) {
             /* Build parameters from codec_param (written by channel_encoder_init) */
-            uint32_t bitrate = *(uint32_t*)(enc->codec_param + 0x30);
+            uint32_t bitrate_kbps = *(uint32_t*)(enc->codec_param + 0x30);
             uint32_t fps_num = *(uint32_t*)(enc->codec_param + 0x7c);
             uint32_t fps_den = *(uint32_t*)(enc->codec_param + 0x80);
-            uint32_t gop = *(uint32_t*)(enc->codec_param + 0x44);
+            uint32_t gop = *(uint32_t*)(enc->codec_param + 0xb0);
+            uint32_t profile_word = *(uint32_t*)(enc->codec_param + 0x20);
             uint32_t profile_idc = *(uint32_t*)(enc->codec_param + 0x24);
-            uint32_t codec_type = (uint32_t)*((uint8_t*)enc->codec_param + 0x1f);
+            uint32_t codec_type = (profile_word >> 24) & 0xffu;
             uint32_t rc_mode = *(uint32_t*)(enc->codec_param + 0x2c);
             LOG_CODEC("Process: lazy-init channel_id=%d %ux%u codec_type=%u profile_idc=%u entropy_mode=%u",
                       enc->channel_id, width, height, codec_type, profile_idc, enc->entropy_mode);
             uint32_t init_qp = (*(uint32_t*)(enc->codec_param + 0x38)) & 0xFFu;
             uint32_t max_qp = *(uint32_t*)(enc->codec_param + 0x3c);
             uint32_t min_qp = *(uint32_t*)(enc->codec_param + 0x40);
-            if (!gop) gop = *(uint32_t*)(enc->codec_param + 0xb0);
-
             memset(&enc->hw_params, 0, sizeof(enc->hw_params));
             enc->hw_params.codec_type = codec_type;
             enc->hw_params.width = width;
@@ -2611,7 +2635,7 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
                     enc->hw_params.rc_mode = HW_RC_MODE_CBR;
                     break;
             }
-            enc->hw_params.bitrate = bitrate ? bitrate : 2*1000*1000;
+            enc->hw_params.bitrate = bitrate_kbps ? (bitrate_kbps * 1000u) : 2*1000*1000u;
             enc->hw_params.max_qp = clamp_qp_u32(max_qp);
             enc->hw_params.min_qp = clamp_qp_u32(min_qp);
             if (enc->hw_params.min_qp > enc->hw_params.max_qp) {
@@ -2761,6 +2785,11 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
                                 LOG_CODEC("ERROR: cmdlist buffer not 4-byte aligned: phys=0x%08x virt=%p", phys, virt);
                             } else {
                                 enc->avpu.cl_idx = 0;
+                                /* NOTE: A /dev/mem uncached mirror for the CL ring was
+                                 * experimentally tried here, but it caused hard hangs on
+                                 * target before useful logs could be collected. Keep the
+                                 * proven cached RMEM mapping until we have a safer way to
+                                 * validate CL coherency on-device. */
                                 memset(virt, 0, cl_bytes);
                                 LOG_CODEC("AVPU: cmdlist ring phys=0x%08x size=%zu entries=%u", phys, cl_bytes, enc->avpu.cl_count);
                             }
@@ -3023,9 +3052,9 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
         }
 
         /* Prepare command-list entry (OEM parity: SetCommandListBuffer) */
-        if (ctx->cl_ring.phy_addr && ctx->cl_ring.map && ctx->cl_entry_size) {
+        if (ctx->cl_ring.phy_addr && avpu_cl_ring_base(ctx) && ctx->cl_entry_size) {
             uint32_t idx = ctx->cl_idx % ctx->cl_count;
-            uint8_t* entry = (uint8_t*)ctx->cl_ring.map + (size_t)idx * ctx->cl_entry_size;
+            uint8_t* entry = avpu_cl_entry_ptr(ctx, idx);
 
             /* Verify entry alignment */
             if (((uintptr_t)entry & 3) != 0) {
@@ -3154,7 +3183,9 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
              * lines are REMOVED after flush. dir=1 (DMA_TO_DEVICE) only writes
              * back but keeps lines in cache as "clean" — then AVPU DMA writes
              * go to RAM but CPU reads stale cached data. */
-            int cl_flush_ret = avpu_flush_cache(fd, entry, (unsigned int)cl_flush_size, 1 /*WBACK*/);
+            int cl_flush_ret = ctx->cl_ring.uncached_map
+                             ? 0
+                             : avpu_flush_cache(fd, entry, (unsigned int)cl_flush_size, 1 /*WBACK*/);
             LOG_CODEC("Process: CL[%u] flush ret=%d (rmem+avpu)", idx, cl_flush_ret);
             int trace_submit = (idx == 0 && ctx->frames_encoded == 0);
 
@@ -3241,17 +3272,19 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
             if (has_reference) {
                 /* P/B frame: submit separate Enc2 CL */
                 uint32_t enc2_idx = (idx + 1) % ctx->cl_count;
-                uint8_t *enc2_entry = (uint8_t *)ctx->cl_ring.map + (size_t)enc2_idx * ctx->cl_entry_size;
+                uint8_t *enc2_entry = avpu_cl_entry_ptr(ctx, enc2_idx);
                 uint32_t *enc2_cmd = (uint32_t *)enc2_entry;
                 uint32_t enc2_phys = ctx->cl_ring.phy_addr + (enc2_idx * ctx->cl_entry_size);
 
                 fill_cmd_regs_enc2(ctx, enc2_cmd, buf_idx, hdr_offset, is_idr);
 
-                /* Temporary safety fallback: flushing the real Enc2 entry makes the
-                 * AVPU consume our still-incomplete P-frame Enc2 CL and hard-hang the
-                 * target. Keep the previous non-hanging behavior until the remaining
-                 * Enc2/Enc1 P-frame reference registers are fully aligned to stock. */
-                avpu_flush_cache(fd, ctx->cl_ring.map, (unsigned int)cl_flush_size, 1 /*WBACK*/);
+                /* Flush the actual Enc2 command entry we just populated.
+                 * Flushing the ring base here leaves most enc2_idx submissions
+                 * stale in RAM, which matches the current symptom where AVPU
+                 * completes and IRQs fire but only the pre-written headers are
+                 * visible in the stream buffer. */
+                if (!ctx->cl_ring.uncached_map)
+                    avpu_flush_cache(fd, enc2_entry, (unsigned int)cl_flush_size, 1 /*WBACK*/);
 
                 int enc2_addr_ret = avpu_write_reg(fd, AVPU_REG_CL_ADDR, enc2_phys);
                 int enc2_push_ret = avpu_write_reg(fd, AVPU_REG_CL_PUSH, 0x00000008);
@@ -3284,6 +3317,7 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
         return submitted ? 0 : -1;
     } else {
         /* Software fallback */
+        uint32_t codec_type = (*(uint32_t*)(enc->codec_param + 0x20) >> 24) & 0xffu;
         int force_idr = __sync_lock_test_and_set(&enc->force_next_idr, 0);
         HWFrameBuffer hw_frame;
         memset(&hw_frame, 0, sizeof(HWFrameBuffer));
@@ -3296,8 +3330,8 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
             LOG_CODEC("Process: channel=%d forcing next SW frame to IDR", enc->channel_id - 1);
             HW_Encoder_RequestIDR();
         }
-        LOG_CODEC("Process: SW encode frame %ux%u", width, height);
-        if (HW_Encoder_Encode_Software(&hw_frame, hw_stream) < 0) {
+        LOG_CODEC("Process: SW encode frame %ux%u codec_type=%u", width, height, codec_type);
+        if (HW_Encoder_Encode_Software(&hw_frame, hw_stream, codec_type) < 0) {
             LOG_CODEC("Process: software encoding failed");
             free(hw_stream);
             return -1;

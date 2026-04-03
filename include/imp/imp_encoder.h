@@ -49,8 +49,8 @@ typedef enum {
     IMP_ENC_RC_MODE_FIXQP = 0,          /**< Fixed QP */
     IMP_ENC_RC_MODE_CBR = 1,            /**< Constant bitrate */
     IMP_ENC_RC_MODE_VBR = 2,            /**< Variable bitrate */
-    IMP_ENC_RC_MODE_CAPPED_VBR = 3,     /**< Capped VBR */
-    IMP_ENC_RC_MODE_CAPPED_QUALITY = 4  /**< Capped quality */
+    IMP_ENC_RC_MODE_CAPPED_VBR = 4,     /**< Capped VBR */
+    IMP_ENC_RC_MODE_CAPPED_QUALITY = 8  /**< Capped quality */
 } IMPEncoderRcMode;
 
 /**
@@ -471,14 +471,14 @@ int IMP_Encoder_FlushStream(int encChn);
  * @param fpsNum FPS numerator
  * @param fpsDen FPS denominator
  * @param gopLen GOP length
- * @param gopMode GOP mode (2 for normal)
- * @param quality Quality (-1 for default, or JPEG quality)
+ * @param maxSameSceneCnt T31/T40/T41 max-same-scene count (vendor API name)
+ * @param quality Initial QP for video, or JPEG quality for JPEG profile
  * @param bitrate Target bitrate
  * @return 0 on success, negative on error
  */
 int IMP_Encoder_SetDefaultParam(IMPEncoderChnAttr *attr, IMPEncoderProfile profile,
                                  IMPEncoderRcMode rcMode, int width, int height,
-                                 int fpsNum, int fpsDen, int gopLen, int gopMode,
+                                 int fpsNum, int fpsDen, int gopLen, int maxSameSceneCnt,
                                  int quality, int bitrate);
 
 /**
@@ -502,11 +502,11 @@ int IMP_Encoder_SetJpegeQl(int encChn, IMPEncoderJpegeQl *attr);
 /**
  * Set buffer sharing between channels (T31/C100/T40/T41)
  * 
- * @param srcChn Source channel
- * @param dstChn Destination channel
+ * @param encChn JPEG channel being configured
+ * @param shareChn Shared H264/H265 channel
  * @return 0 on success, negative on error
  */
-int IMP_Encoder_SetbufshareChn(int srcChn, int dstChn);
+int IMP_Encoder_SetbufshareChn(int encChn, int shareChn);
 
 /**
  * Enable/disable fisheye (T31)
