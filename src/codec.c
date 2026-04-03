@@ -1227,24 +1227,29 @@ static uint32_t avpu_get_enc1_stream_part_offset(const ALAvpuContext *ctx)
 {
     uint32_t lcu_w;
     uint32_t lcu_h;
+    uint32_t stream_part_rows;
     uint32_t stream_part_size;
 
     if (!ctx || ctx->stream_buf_size <= 0 || ctx->enc_w == 0u || ctx->enc_h == 0u)
         return 0u;
 
     /* OEM GetStreamBuffers.part.72 reserves a tail stream-part region with:
-     *   iStreamPartSize = align128((max(numSliceRows, lcu_h) * lcu_w + 0x10) << 4)
+     *   iStreamPartSize = align128((max(numSliceRows, ceil(lcu_h / 8)) * lcu_w + 0x10) << 4)
      *   iStreamPartOffset = iMaxSize - iStreamPartSize
-     * For the current single-slice AVC/NV12 path we do not have the full runtime
-     * stream-part state, but the first-slice shape reduces conservatively to the
-     * picture LCU geometry. This is the only recovered cmd[0x30..0x32]/0x36 word
-     * whose producer can be modeled from existing openimp state without guessing. */
+     * For 640x360 this yields the stock-known 0x880 tail reservation and
+     * 0x27780 offset when iMaxSize is 0x28000. Our earlier lcu_h-based model
+     * reserved far too much tail space (0x3a80), which pushed 0x8420/0xf4 well
+     * away from the OEM shape and plausibly left no valid room for payload. */
     lcu_w = (ctx->enc_w + 15u) >> 4;
     lcu_h = (ctx->enc_h + 15u) >> 4;
     if (lcu_w == 0u || lcu_h == 0u)
         return 0u;
 
-    stream_part_size = avpu_align_up_u32(((lcu_w * lcu_h) + 0x10u) << 4, 128u);
+    stream_part_rows = (lcu_h + 7u) >> 3; /* stock ceil(lcu_h / 8) branch for current AVC path */
+    if (stream_part_rows == 0u)
+        stream_part_rows = 1u;
+
+    stream_part_size = avpu_align_up_u32(((lcu_w * stream_part_rows) + 0x10u) << 4, 128u);
     if (stream_part_size >= (uint32_t)ctx->stream_buf_size)
         return 0u;
 
@@ -2945,7 +2950,7 @@ int AL_Codec_Encode_Create(void **codec, void *params) {
     enc->frame_buf_count = 4;           /* Default frame buffer count */
     enc->frame_buf_size = 0x100000;     /* 1MB per frame */
     enc->stream_buf_count = 7;          /* Default stream buffer count */
-    enc->stream_buf_size = 0x20000;     /* 128KB stream buffer size (for encoded H.264 data) */
+    enc->stream_buf_size = 0x28000;     /* OEM-parity default: 160KB stream buffer */
 
     /* Allocate and initialize FIFO control structures safely */
     int fifo_size = Fifo_SizeOf();
@@ -3348,7 +3353,9 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
 
                         /* Allocate stream buffers via IMP_Alloc (OEM parity) */
                         enc->avpu.stream_buf_count = 4;
-                        enc->avpu.stream_buf_size = 128 * 1024;
+                        enc->avpu.stream_buf_size = enc->stream_buf_size > 0
+                            ? enc->stream_buf_size
+                            : 0x28000;
                         enc->avpu.stream_bufs_used = 0;
                         int filled = 0;
                         for (int i = 0; i < enc->avpu.stream_buf_count; ++i) {
