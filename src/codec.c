@@ -2047,27 +2047,6 @@ static void avpu_complete_frame(ALAvpuContext *ctx, const char *source)
     if (!ctx)
         return;
 
-    /* Peek at the pending stream's buf_idx to check if the AVPU has written
-     * payload yet.  For P-frames with separate Enc2, the first IRQ (Enc1
-     * completion) fires before Enc2 writes entropy data.  If the stream
-     * buffer only has prewritten headers, skip this completion — the next
-     * IRQ (after Enc2) will find the payload. */
-    {
-        pthread_mutex_t *mutex = avpu_stream_queue_mutex(ctx);
-        if (mutex && ctx->pending_stream_count > 0) {
-            int peek_idx = ctx->pending_streams[ctx->pending_stream_read].buf_idx;
-            if (peek_idx >= 0 && peek_idx < ctx->stream_bufs_used) {
-                uint32_t peek_size = avpu_stream_buffer_effective_size(ctx, peek_idx, NULL);
-                if (peek_size == 0) {
-                    /* No payload yet — Enc2 hasn't written.  Skip. */
-                    LOG_CODEC("%s: skipping early completion buf[%d] (no payload yet, waiting for Enc2)",
-                              source ? source : "EndEncoding", peek_idx);
-                    return;
-                }
-            }
-        }
-    }
-
     if (!avpu_complete_next_stream(ctx, &buf_idx, &frame_user_data)) {
         LOG_CODEC("%s: completion without pending stream (frame_number=%u enc=%d cons=%d)",
                   source ? source : "EndEncoding",
@@ -2864,14 +2843,9 @@ static uint32_t avpu_stream_buffer_effective_size(ALAvpuContext *ctx, int buf_id
     frame_size = annexb > 0 ? (uint32_t)annexb : raw_end;
 
     if (frame_size <= ctx->stream_header_offset) {
-        /* No AVPU payload beyond the prewritten headers.  This happens when
-         * the Enc1 IRQ fires before the Enc2 entropy stage has written its
-         * output.  Return 0 so the caller skips this completion — the next
-         * IRQ (after Enc2) will pick up the same stream buffer with payload. */
         avpu_log_suspicious_stream_size(ctx, buf_idx, "EndEncoding",
                                         raw_end, (uint32_t)annexb_effective_size(sb, raw_end),
                                         frame_size);
-        return 0;
     }
 
     return frame_size;
