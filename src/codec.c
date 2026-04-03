@@ -1612,8 +1612,16 @@ static void fill_cmd_regs_enc1(const ALAvpuContext* ctx, uint32_t* cmd,
             cmd[0x30] = stream_desc_phys;               /* stream buffer — must match STRM_PUSH */
             cmd[0x31] = stream_part_offset;            /* stock: 0x00027780 */
             cmd[0x32] = stream_offset;                 /* stock: 0x00000220 */
-            cmd[0x33] = stream_part_offset > stream_offset
-                       ? (stream_part_offset - stream_offset) & ~0x1fu : 0u;
+            {
+                uint32_t budget = stream_part_offset > stream_offset
+                               ? (stream_part_offset - stream_offset) & ~0x1fu : 0u;
+                /* Cap the budget to 20KB for debugging — if the AVPU still
+                 * fills it, the entropy data is corrupt. If frames become
+                 * reasonable size, the encoding works but size detection is broken. */
+                if (budget > 20480u)
+                    budget = 20480u;
+                cmd[0x33] = budget;
+            }
             /* cmd[0x34]-cmd[0x35]: Stock CL has ZEROS here for both IDR and P.
              * The intermediate map/data addresses go in the Enc2 CL at
              * cmd[0x3a]/cmd[0x3b], not in the Enc1 CL. */
@@ -1716,7 +1724,10 @@ static void fill_cmd_regs_enc2(const ALAvpuContext *ctx, uint32_t *cmd,
             stream_space = stream_part_offset - hdr_offset;
         if (stream_space < comp_data_sz)
             comp_data_sz = stream_space;
-        cmd[0x3f] = comp_data_sz & ~0x1fu; /* byte offset 0xfc: budget (32-byte aligned) */
+        comp_data_sz = comp_data_sz & ~0x1fu;
+        if (comp_data_sz > 20480u)
+            comp_data_sz = 20480u;
+        cmd[0x3f] = comp_data_sz;
     }
 }
 
@@ -1995,6 +2006,26 @@ static void avpu_complete_frame(ALAvpuContext *ctx, const char *source)
 
     if (!ctx)
         return;
+
+    /* Peek at the pending stream buffer to check if Enc2 has written payload.
+     * Each frame submits Enc1 (CL_PUSH=2) then Enc2 (CL_PUSH=8). The hardware
+     * fires an IRQ for each. The first IRQ (Enc1) arrives before Enc2 writes
+     * payload. If we pop and deliver at that point, the frame has only headers.
+     * Wait for the second IRQ (Enc2 done) which has the full payload. */
+    {
+        pthread_mutex_t *peek_mutex = avpu_stream_queue_mutex(ctx);
+        if (peek_mutex && ctx->pending_stream_count > 0) {
+            int peek_idx = ctx->pending_streams[ctx->pending_stream_read].buf_idx;
+            if (peek_idx >= 0 && peek_idx < ctx->stream_bufs_used) {
+                uint32_t peek_size = avpu_stream_buffer_effective_size(ctx, peek_idx, NULL);
+                /* If payload is tiny (< hdr + 256), Enc2 probably hasn't written yet */
+                if (peek_size > 0 && peek_size < ctx->stream_header_offset + 256u) {
+                    /* Don't pop — let the next IRQ handle it */
+                    return;
+                }
+            }
+        }
+    }
 
     if (!avpu_complete_next_stream(ctx, &buf_idx, &frame_user_data)) {
         LOG_CODEC("%s: completion without pending stream (frame_number=%u enc=%d cons=%d)",
@@ -2772,13 +2803,12 @@ static uint32_t avpu_stream_buffer_effective_size(ALAvpuContext *ctx, int buf_id
     if (flush_ret_out)
         *flush_ret_out = 0;
 
-    /* The AVPU overwrites CL fields with status data after processing, so
-     * hw_end readback produces garbage (physical addresses, not stream offsets).
-     * Use the trailing-zero scan within the valid stream region instead.
-     * The stream_part_offset is the maximum valid byte offset in the buffer. */
+    /* Scan for trailing zeros to find the actual end of AVPU-written data.
+     * Cap the scan to hdr_offset + budget (20KB) to avoid finding stale data
+     * beyond what the AVPU could have written with the capped budget. */
     {
-        uint32_t scan_limit = avpu_get_enc1_stream_part_offset(ctx);
-        if (scan_limit == 0 || scan_limit > (uint32_t)ctx->stream_buf_size)
+        uint32_t scan_limit = ctx->stream_header_offset + 20480u + 512u; /* hdr + budget + margin */
+        if (scan_limit > (uint32_t)ctx->stream_buf_size)
             scan_limit = (uint32_t)ctx->stream_buf_size;
 
         sb = (const uint8_t *)ctx->stream_bufs[buf_idx].map;
