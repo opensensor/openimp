@@ -15,9 +15,51 @@
 
 #define IMP_VERSION "1.1.6"
 
-/* Forward declarations for subsystem init (to match OEM SystemInit) */
+/* Forward declarations for subsystem init/exit (to match OEM sys_funcs table).
+ * Functions not yet implemented in their respective modules get weak stubs below. */
 extern int FrameSourceInit(void);
 extern int EncoderInit(void);
+
+/* Weak stubs for subsystem init/exit functions not yet implemented.
+ * These will be overridden by real implementations when they are added
+ * to their respective source files (imp_framesource.c, imp_osd.c, etc.). */
+__attribute__((weak)) void FrameSourceExit(void) {}
+__attribute__((weak)) int IVSInit(void) { return 0; }
+__attribute__((weak)) void IVSExit(void) {}
+__attribute__((weak)) int OSDInit(void) { return 0; }
+__attribute__((weak)) void OSDExit(void) {}
+__attribute__((weak)) int FBInit(void) { return 0; }
+__attribute__((weak)) void FBExit(void) {}
+__attribute__((weak)) int DsystemInit(void) { return 0; }
+__attribute__((weak)) void DsystemExit(void) {}
+
+/* EncoderExit in imp_encoder.c returns int; wrap it for the void exit table */
+extern int EncoderExit(void);
+static void EncoderExit_wrapper(void) { EncoderExit(); }
+
+/* OEM modify_phyclk_strength - hardware PHY clock strength config
+ * Reads/writes hardware registers to configure clock strength.
+ * Stubbed here; real implementation uses read_reg_32/write_reg_32. */
+static void modify_phyclk_strength(void) {
+    /* TODO: implement hardware register access for PHY clock strength */
+}
+
+/* sys_funcs table: 6 entries of {name[8], init_func, exit_func}
+ * Matches OEM sys_funcs which iterates 6 subsystems in system_init/system_exit */
+typedef struct {
+    char name[8];
+    int (*init)(void);
+    void (*exit)(void);
+} SysFunc;
+
+static SysFunc sys_funcs[6] = {
+    { "FS",     FrameSourceInit, FrameSourceExit },
+    { "Enc",    EncoderInit,     EncoderExit_wrapper },
+    { "IVS",    IVSInit,         IVSExit },
+    { "OSD",    OSDInit,         OSDExit },
+    { "FB",     FBInit,          FBExit },
+    { "DSys",   DsystemInit,     DsystemExit },
+};
 
 
 /* Observer structure for module binding */
@@ -62,7 +104,6 @@ typedef struct Module {
 static Module *g_modules[MAX_DEVICES][MAX_GROUPS];
 
 /* Global state */
-static int system_initialized = 0;
 static uint64_t timestamp_base = 0;
 static pthread_mutex_t system_mutex = PTHREAD_MUTEX_INITIALIZER;
 
@@ -75,10 +116,13 @@ typedef struct {
 
 static SystemMemPool g_mem_pools[MAX_MEM_POOLS];
 
-/* CPU ID detection - based on get_cpu_id() */
+/* CPU ID detection - based on get_cpu_id()
+ * OEM reads hardware registers: soc_id (0x1300002c), cppsr (0x10000034),
+ * subsoctype (0x13540238), subremark (0x13540231) via get_cpuinfo().
+ * Returns an integer 0-0x17 identifying the exact SoC variant. */
 static int get_cpu_id(void) {
-    /* In real implementation, this reads from hardware register
-     * For now, return T31 (ID 6) based on platform define */
+    /* In real implementation, this reads from hardware registers.
+     * For now, return a constant based on platform define. */
 #if defined(PLATFORM_T31)
     return 6;
 #elif defined(PLATFORM_T40)
@@ -96,20 +140,12 @@ static int get_cpu_id(void) {
 #endif
 }
 
-/* Internal functions - based on decompilations */
-static uint64_t get_monotonic_time_us(void) {
-    struct timespec ts;
-    if (clock_gettime(CLOCK_MONOTONIC, &ts) < 0) {
-        return 0;
-    }
-    return (uint64_t)ts.tv_sec * 1000000ULL + (uint64_t)ts.tv_nsec / 1000ULL;
-}
-
 /* Forward declarations */
 static Module* get_module(int deviceID, int groupID);
 Module* IMP_System_GetModule(int deviceID, int groupID);
 int remove_observer_from_module(void *src_module, void *dst_module);
 static int add_observer(Module *module, Observer *observer);
+int system_get_bind_src(IMPCell *dstCell, IMPCell *srcCell);
 
 /* get_module - returns module pointer from g_modules array
  * Based on: return *(((arg1 * 6 + arg2) << 2) + &g_modules) */
@@ -171,128 +207,169 @@ static void FreeModule(Module *mod) {
     free(mod);
 }
 
-/* default_bind_func - Default bind implementation
- * Creates an observer and adds it to the source module's observer list */
-static int default_bind_func(Module *src, Module *dst, void *output_ptr) {
-    (void)output_ptr;  /* Unused in default implementation */
-
-    /* Allocate observer */
-    Observer *obs = (Observer*)calloc(1, sizeof(Observer));
-    if (obs == NULL) {
-        fprintf(stderr, "[System] Failed to allocate observer\n");
-        return -1;
-    }
-
-    obs->module = dst;
-    obs->frame = NULL;
-    obs->output_index = 0;
-    obs->next = NULL;
-
-    /* Add to source module's observer list */
-    if (add_observer(src, obs) < 0) {
-        fprintf(stderr, "[System] Failed to add observer\n");
-        free(obs);
-        return -1;
-    }
-
-    fprintf(stderr, "[System] Bound %s -> %s (observer added)\n",
-            src->name, dst->name);
-    return 0;
-}
-
 /* BindObserverToSubject - binds two modules together
- * Based on decompilation at 0x1b388 */
+ * Based on decompilation at 0x1b388
+ * OEM: unconditionally jumps to *(arg1 + 0x40), no NULL fallback */
 static int BindObserverToSubject(Module *src, Module *dst, void *output_ptr) {
     if (src == NULL) {
-        fprintf(stderr, "module_src is NULL!\n");
+        puts("module_src is NULL!");
         return -1;
     }
     if (dst == NULL) {
-        fprintf(stderr, "module_dst is NULL!\n");
+        puts("module_dst is NULL!");
         return -1;
     }
 
-    /* Call the bind function pointer at offset 0x40 */
-    if (src->bind_func != NULL) {
-        int (*bind_fn)(Module*, Module*, void*) = (int (*)(Module*, Module*, void*))src->bind_func;
-        return bind_fn(src, dst, output_ptr);
+    /* OEM unconditionally calls bind_func at offset 0x40.
+     * Guard against NULL here since not all our modules set bind_func yet. */
+    int (*bind_fn)(Module*, Module*, void*) = (int (*)(Module*, Module*, void*))src->bind_func;
+    if (bind_fn == NULL) {
+        IMP_LOG_ERR("System", "BindObserverToSubject: %s has no bind_func!\n", src->name);
+        return -1;
+    }
+    return bind_fn(src, dst, output_ptr);
+}
+
+/* UnBindObserverFromSubject - unbinds two modules
+ * Based on decompilation at 0x1b3c8
+ * OEM: unconditionally jumps to *(arg1 + 0x44), only passes src and dst */
+static int UnBindObserverFromSubject(Module *src, Module *dst) {
+    if (src == NULL) {
+        puts("module_src is NULL!");
+        return -1;
+    }
+    if (dst == NULL) {
+        puts("module_dst is NULL!");
+        return -1;
     }
 
-    /* No bind function - use default */
-    return default_bind_func(src, dst, output_ptr);
+    /* OEM unconditionally calls unbind_func at offset 0x44.
+     * Guard against NULL since not all our modules set unbind_func yet. */
+    int (*unbind_fn)(Module*, Module*) = (int (*)(Module*, Module*))src->unbind_func;
+    if (unbind_fn == NULL) {
+        IMP_LOG_ERR("System", "UnBindObserverFromSubject: %s has no unbind_func!\n", src->name);
+        return -1;
+    }
+    return unbind_fn(src, dst);
 }
 
 /* system_bind - internal bind implementation
  * Based on decompilation at 0x1bfe0 */
 static int system_bind(IMPCell *srcCell, IMPCell *dstCell) {
-    fprintf(stderr, "[System] Bind request: [%d,%d,%d] -> [%d,%d,%d]\n",
-            srcCell->deviceID, srcCell->groupID, srcCell->outputID,
-            dstCell->deviceID, dstCell->groupID, dstCell->outputID);
-
     Module *src_module = get_module(srcCell->deviceID, srcCell->groupID);
     Module *dst_module = get_module(dstCell->deviceID, dstCell->groupID);
 
     if (src_module == NULL) {
-        fprintf(stderr, "[System] Bind failed: source module [%d,%d] not found\n",
-                srcCell->deviceID, srcCell->groupID);
+        IMP_LOG_ERR("System", "%s() error: invalid src channel(%d.%d.%d)\n",
+                "system_bind", srcCell->deviceID, srcCell->groupID, srcCell->outputID);
         return -1;
     }
 
     if (dst_module == NULL) {
-        fprintf(stderr, "[System] Bind failed: destination module [%d,%d] not found\n",
-                dstCell->deviceID, dstCell->groupID);
+        IMP_LOG_ERR("System", "%s() error: invalid dst channel(%d.%d.%d)\n",
+                "system_bind", dstCell->deviceID, dstCell->groupID, dstCell->outputID);
         return -1;
     }
 
-    fprintf(stderr, "[System] Binding [%d,%d,%d] -> [%d,%d,%d]\n",
-            srcCell->deviceID, srcCell->groupID, srcCell->outputID,
-            dstCell->deviceID, dstCell->groupID, dstCell->outputID);
+    IMP_LOG_DBG("System", "%s(): bind DST-%s(%d.%d.%d) to SRC-%s(%d.%d.%d)\n",
+            "system_bind", dst_module->name,
+            dstCell->deviceID, dstCell->groupID, dstCell->outputID,
+            src_module->name,
+            srcCell->deviceID, srcCell->groupID, srcCell->outputID);
 
     /* Check output ID bounds - from decompilation:
-     * if (outputID < *(src_module + 0x134)) */
+     * if (outputID >= *(src_module + 0x134)) */
     int output_id = srcCell->outputID;
     if (output_id >= (int)src_module->output_count) {
-        fprintf(stderr, "[System] Bind failed: invalid output ID %d (max %u)\n",
-                output_id, src_module->output_count);
+        IMP_LOG_ERR("System", "%s() error: invalid SRC:%s()\n",
+                "system_bind", src_module->name);
         return -1;
-    }
-
-    /* Avoid duplicate observers: if already bound, no-op */
-    for (Observer *o = (Observer*)src_module->observer_list; o; o = o->next) {
-        if (o->module == (void*)dst_module) {
-            fprintf(stderr, "[System] Bind skipped: already bound %s -> %s\n",
-                    src_module->name, dst_module->name);
-            return 0;
-        }
     }
 
     /* Calculate output pointer - from decompilation:
      * src_module + 0x128 + ((output_id + 4) << 2) */
     void *output_ptr = (void*)((char*)src_module + 0x128 + ((output_id + 4) << 2));
 
-    return BindObserverToSubject(src_module, dst_module, output_ptr);
+    /* OEM calls BindObserverToSubject and always returns 0 */
+    BindObserverToSubject(src_module, dst_module, output_ptr);
+    return 0;
 }
 
-/* Public API */
+/* system_unbind - internal unbind implementation
+ * Based on decompilation at 0x1c278 */
+static int system_unbind(IMPCell *srcCell, IMPCell *dstCell) {
+    Module *src_module = get_module(srcCell->deviceID, srcCell->groupID);
+    Module *dst_module = get_module(dstCell->deviceID, dstCell->groupID);
 
-int IMP_System_Init(void) {
-    pthread_mutex_lock(&system_mutex);
+    if (src_module == NULL) {
+        IMP_LOG_ERR("System", "%s() error: invalid src channel(%d.%d.%d)\n",
+                "system_unbind", srcCell->deviceID, srcCell->groupID, srcCell->outputID);
+        return -1;
+    }
 
-    if (system_initialized) {
-        pthread_mutex_unlock(&system_mutex);
+    if (dst_module == NULL) {
+        IMP_LOG_ERR("System", "%s() error: invalid dst channel(%d.%d.%d)\n",
+                "system_unbind", dstCell->deviceID, dstCell->groupID, dstCell->outputID);
+        return -1;
+    }
+
+    IMP_LOG_DBG("System", "%s(): unbind DST-%s(%d.%d.%d) from SRC-%s(%d.%d.%d)\n",
+            "system_unbind", dst_module->name,
+            dstCell->deviceID, dstCell->groupID, dstCell->outputID,
+            src_module->name,
+            srcCell->deviceID, srcCell->groupID, srcCell->outputID);
+
+    /* OEM calls UnBindObserverFromSubject with just src and dst, returns 0 */
+    UnBindObserverFromSubject(src_module, dst_module);
+    return 0;
+}
+
+/* system_gettime - internal time implementation
+ * Based on decompilation at 0x1bcc4
+ * arg: 0 = CLOCK_MONOTONIC(4), 1 = CLOCK_REALTIME(2), 2 = CLOCK_MONOTONIC_RAW(3) */
+static uint64_t system_gettime(int clock_type) {
+    clockid_t clk;
+    switch (clock_type) {
+        case 0: clk = CLOCK_MONOTONIC; break;
+        case 1: clk = CLOCK_REALTIME;  break;
+        case 2: clk = CLOCK_MONOTONIC_RAW; break;
+        default: return (uint64_t)-1;
+    }
+
+    struct timespec ts;
+    if (clock_gettime(clk, &ts) < 0) {
         return 0;
     }
 
-    fprintf(stderr, "[System] Initializing...\n");
+    uint64_t current = (uint64_t)ts.tv_sec * 1000000ULL + (uint64_t)ts.tv_nsec / 1000ULL;
+    return current - timestamp_base;
+}
 
-    /* Initialize module registry */
-    memset(g_modules, 0, sizeof(g_modules));
-
-    /* Initialize timestamp base - from system_init decompilation */
+/* system_rebasetime - internal rebase implementation
+ * Based on decompilation at 0x1bf1c
+ * OEM: gets current monotonic time and sets timestamp_base = current_time - arg */
+static int system_rebasetime(uint64_t basets) {
     struct timespec ts;
     if (clock_gettime(CLOCK_MONOTONIC, &ts) < 0) {
-        fprintf(stderr, "[System] Failed to get time\n");
-        pthread_mutex_unlock(&system_mutex);
+        return -1;
+    }
+
+    uint64_t current = (uint64_t)ts.tv_sec * 1000000ULL + (uint64_t)ts.tv_nsec / 1000ULL;
+    timestamp_base = current - basets;
+    return 0;
+}
+
+/* system_init - internal init implementation
+ * Based on decompilation at 0x1d2ac
+ * Iterates sys_funcs table (6 entries), calls each init.
+ * On failure, rolls back previously-initialized subsystems. */
+static int system_init(void) {
+    IMP_LOG_DBG("System", "%s()\n", "system_init");
+
+    /* Initialize timestamp base */
+    struct timespec ts;
+    if (clock_gettime(CLOCK_MONOTONIC, &ts) < 0) {
+        IMP_LOG_ERR("System", "Time init error\n");
         return -1;
     }
 
@@ -301,118 +378,95 @@ int IMP_System_Init(void) {
     /* Get CPU ID */
     get_cpu_id();
 
-    /* Initialize subsystem modules eagerly to match OEM behavior */
-    int ret_fs = FrameSourceInit();
-    if (ret_fs < 0) {
-        pthread_mutex_unlock(&system_mutex);
-        fprintf(stderr, "[System] FrameSourceInit failed\n");
-        return -1;
+    /* Iterate sys_funcs table - 6 subsystems */
+    int result = 0;
+    for (int i = 0; i < 6; i++) {
+        IMP_LOG_DBG("System", "Calling %s\n", sys_funcs[i].name);
+        result = sys_funcs[i].init();
+
+        if (result < 0) {
+            IMP_LOG_ERR("System", "%s failed\n", sys_funcs[i].name);
+
+            /* Rollback: call exit on previously initialized subsystems */
+            for (int j = i - 1; j >= 0; j--) {
+                sys_funcs[j].exit();
+            }
+            return result;
+        }
     }
-    int ret_enc = EncoderInit();
-    if (ret_enc < 0) {
-        pthread_mutex_unlock(&system_mutex);
-        fprintf(stderr, "[System] EncoderInit failed\n");
-        return -1;
+
+    return result;
+}
+
+/* system_exit - internal exit implementation
+ * Based on decompilation at 0x1d544
+ * Iterates sys_funcs table calling each exit function */
+static int system_exit(void) {
+    IMP_LOG_DBG("System", "%s\n", "system_exit");
+
+    get_cpu_id();
+
+    for (int i = 0; i < 6; i++) {
+        IMP_LOG_DBG("System", "Calling %s\n", sys_funcs[i].name);
+        sys_funcs[i].exit();
     }
 
-    fprintf(stderr, "[System] Subsystems initialized\n");
-
-    system_initialized = 1;
-    pthread_mutex_unlock(&system_mutex);
-
-    fprintf(stderr, "[System] Initialized (IMP-%s)\n", IMP_VERSION);
     return 0;
 }
 
+/* Public API */
+
+int IMP_System_Init(void) {
+    IMP_LOG_DBG("System", "%s SDK Version:%s-%s built: %s %s\n",
+            "IMP_System_Init", IMP_VERSION, "openimp", __DATE__, __TIME__);
+
+    modify_phyclk_strength();
+    return system_init();
+}
+
 int IMP_System_Exit(void) {
-    pthread_mutex_lock(&system_mutex);
-
-    if (!system_initialized) {
-        pthread_mutex_unlock(&system_mutex);
-        return 0;
-    }
-
-    /* Clear module registry */
-    memset(g_modules, 0, sizeof(g_modules));
-
-    /* Cleanup subsystem modules
-     * Each subsystem is responsible for its own cleanup
-     * when their Destroy/Exit functions are called */
-
-    fprintf(stderr, "[System] Subsystems cleaned up\n");
-
-    system_initialized = 0;
-    pthread_mutex_unlock(&system_mutex);
-
-    fprintf(stderr, "[System] Exited\n");
-    return 0;
+    IMP_LOG_DBG("System", "%s\n", "IMP_System_Exit");
+    return system_exit();
 }
 
 /* IMP_System_Bind - based on decompilation at 0x1ddbc */
 int IMP_System_Bind(IMPCell *srcCell, IMPCell *dstCell) {
     if (srcCell == NULL) {
-        fprintf(stderr, "[System] Bind failed: srcCell is NULL\n");
+        IMP_LOG_ERR("System", "%s(): src channel is NULL\n", "IMP_System_Bind");
         return -1;
     }
 
     if (dstCell == NULL) {
-        fprintf(stderr, "[System] Bind failed: dstCell is NULL\n");
+        IMP_LOG_ERR("System", "%s(): dst channel is NULL\n", "IMP_System_Bind");
         return -1;
     }
 
-    // Assuming system_bind is a function that handles the actual binding logic
     return system_bind(srcCell, dstCell);
 }
 
-/* IMP_System_UnBind - unbind two modules */
+/* IMP_System_UnBind - based on decompilation at 0x1de8c */
 int IMP_System_UnBind(IMPCell *srcCell, IMPCell *dstCell) {
-    if (srcCell == NULL || dstCell == NULL) {
-        fprintf(stderr, "[System] UnBind failed: NULL cell\n");
+    if (srcCell == NULL) {
+        IMP_LOG_ERR("System", "%s(): src channel is NULL\n", "IMP_System_UnBind");
         return -1;
     }
 
-    fprintf(stderr, "[System] UnBind: [%d,%d,%d] -> [%d,%d,%d]\n",
-            srcCell->deviceID, srcCell->groupID, srcCell->outputID,
-            dstCell->deviceID, dstCell->groupID, dstCell->outputID);
-
-    /* Get source and destination modules */
-    Module *src_module = (Module*)IMP_System_GetModule(srcCell->deviceID, srcCell->groupID);
-    Module *dst_module = (Module*)IMP_System_GetModule(dstCell->deviceID, dstCell->groupID);
-
-    if (src_module == NULL || dst_module == NULL) {
-        fprintf(stderr, "[System] UnBind: module not found\n");
+    if (dstCell == NULL) {
+        IMP_LOG_ERR("System", "%s(): dst channel is NULL\n", "IMP_System_UnBind");
         return -1;
     }
 
-    /* Call unbind function if it exists */
-    if (src_module->unbind_func != NULL) {
-        int (*unbind_fn)(void*, void*, void*) = src_module->unbind_func;
-
-        /* Calculate output pointer */
-        void *output_ptr = (void*)((char*)src_module + 0x128 + ((srcCell->outputID + 4) << 2));
-
-        if (unbind_fn(src_module, dst_module, output_ptr) < 0) {
-            fprintf(stderr, "[System] UnBind: unbind function failed\n");
-            return -1;
-        }
-    } else {
-        /* No unbind function - just remove observer */
-        if (remove_observer_from_module(src_module, dst_module) < 0) {
-            fprintf(stderr, "[System] UnBind: failed to remove observer\n");
-            return -1;
-        }
-    }
-
-    fprintf(stderr, "[System] UnBind: success\n");
-    return 0;
+    return system_unbind(srcCell, dstCell);
 }
 
+/* IMP_System_GetVersion - based on decompilation at 0x1dd70
+ * OEM uses sprintf, not snprintf */
 int IMP_System_GetVersion(IMPVersion *pstVersion) {
     if (pstVersion == NULL) {
         return -1;
     }
 
-    snprintf(pstVersion->aVersion, sizeof(pstVersion->aVersion), "IMP-%s", IMP_VERSION);
+    sprintf(pstVersion->aVersion, "IMP-%s", IMP_VERSION);
     return 0;
 }
 
@@ -421,49 +475,59 @@ int IMP_System_GetVersion(IMPVersion *pstVersion) {
 const char *IMP_System_GetCPUInfo(void) {
     int cpu_id = get_cpu_id();
 
-    /* Switch statement from decompilation */
+    /* Switch statement from OEM decompilation */
     switch (cpu_id) {
         case 0:  return "T10";
         case 1:
-        case 2:  return "T20";
-        case 3:  return "T21";
-        case 4:  return "T23";
-        case 5:  return "T30";
-        case 6:  return "T31";
-        case 7:  return "T40";
-        case 8:  return "T41";
-        case 9:  return "C100";
-        case 10: return "T15";
-        case 11: return "T20L";
-        case 12: return "T20X";
-        case 13: return "T21L";
-        case 14: return "T21N";
-        case 15: return "T21Z";
-        case 16: return "T30A";
-        case 17: return "T30L";
-        case 18: return "T30N";
-        case 19: return "T30X";
-        case 20: return "T31A";
-        case 21: return "T31L";
-        case 22: return "T31N";
-        case 23: return "T31X";
+        case 2:  return "T10-Lite";
+        case 3:  return "T20";
+        case 4:  return "T20-Lite";
+        case 5:  return "T20-X";
+        case 6:  return "T30-Lite";
+        case 7:  return "T30-N";
+        case 8:  return "T30-X";
+        case 9:  return "T30-A";
+        case 0xa: return "T30-Z";
+        case 0xb: return "T21-L";
+        case 0xc: return "T21-N";
+        case 0xd: return "T21-X";
+        case 0xe: return "T21-Z";
+        case 0xf: return "T31-L";
+        case 0x10: return "T31-N";
+        case 0x11: return "T31-X";
+        case 0x12: return "T31-A";
+        case 0x13: return "T31-AL";
+        case 0x14: return "T31-ZL";
+        case 0x15: return "T31-ZC";
+        case 0x16: return "T31-LC";
+        case 0x17: return "T31-ZX";
         default: return "Unknown";
     }
 }
 
 uint64_t IMP_System_GetTimeStamp(void) {
-    uint64_t current_time = get_monotonic_time_us();
-    return current_time - timestamp_base;
+    /* OEM: return system_gettime(0) -- CLOCK_MONOTONIC */
+    return system_gettime(0);
 }
 
 int IMP_System_RebaseTimeStamp(uint64_t basets) {
-    pthread_mutex_lock(&system_mutex);
-    timestamp_base = basets;
-    pthread_mutex_unlock(&system_mutex);
+    /* OEM: return system_rebasetime(basets) */
+    return system_rebasetime(basets);
+}
 
-    fprintf(stderr, "[IMP_System] Timestamp rebased to %llu us\n",
-            (unsigned long long)basets);
-    return 0;
+/* IMP_System_GetBindbyDest - based on decompilation at 0x1df5c */
+int IMP_System_GetBindbyDest(IMPCell *dstCell, IMPCell *srcCell) {
+    if (dstCell == NULL) {
+        IMP_LOG_ERR("System", "%s(): dst channel is NULL\n", "IMP_System_GetBindbyDest");
+        return -1;
+    }
+
+    if (srcCell == NULL) {
+        IMP_LOG_ERR("System", "%s(): src channel is NULL\n", "IMP_System_GetBindbyDest");
+        return -1;
+    }
+
+    return system_get_bind_src(dstCell, srcCell);
 }
 
 /* ========== Observer Pattern Implementation ========== */
@@ -577,15 +641,11 @@ int notify_observers(Module *module, void *frame) {
                 /* Update function signature: int update(Module *module, void *frame) */
                 int (*update_fn)(Module*, void*) = (int (*)(Module*, void*))dst_module->func_4c;
 
-                /* Call update function with module and frame */
-                fprintf(stderr, "[System] notify: calling update %p on %s (frame=%p)\n",
-                        (void*)update_fn, dst_module->name, frame);
-                fflush(stderr);
                 if (update_fn(dst_module, frame) < 0) {
-                    fprintf(stderr, "[System] Observer update failed for %s\n",
+                    IMP_LOG_ERR("System", "Observer update failed for %s\n",
                             dst_module->name);
                     if (frame != NULL && VBMUnLockFrame(frame) < 0) {
-                        fprintf(stderr, "[System] Observer update failed and VBMUnLockFrame also failed for frame=%p\n",
+                        IMP_LOG_ERR("System", "Observer update failed and VBMUnLockFrame also failed for frame=%p\n",
                                 frame);
                     }
                 }
@@ -596,6 +656,48 @@ int notify_observers(Module *module, void *frame) {
     }
 
     return 0;
+}
+
+/* system_get_bind_src - internal get-bind-source implementation
+ * Based on decompilation at 0x1c474
+ * OEM uses module->field_10 (subject pointer) to find source module */
+int system_get_bind_src(IMPCell *dstCell, IMPCell *srcCell) {
+    Module *dst_mod = get_module(dstCell->deviceID, dstCell->groupID);
+    if (dst_mod == NULL) {
+        IMP_LOG_ERR("System", "%s() error: invalid dst channel\n", "system_get_bind_src");
+        return -1;
+    }
+
+    /* OEM checks field_10 (subject pointer at offset 0x10) */
+    void *subject = (void*)(uintptr_t)dst_mod->field_10;
+    if (subject == NULL) {
+        IMP_LOG_ERR("System", "%s() error: dst channel(%s) has not been binded\n",
+                "system_get_bind_src", dst_mod->name);
+        return -1;
+    }
+
+    /* OEM searches the subject's observer list (at subject+0x3c count, subject+0x14 first entry)
+     * to find which output index points to dst_mod */
+    /* For now, fall back to linear search across all modules */
+    for (int d = 0; d < MAX_DEVICES; d++) {
+        for (int g = 0; g < MAX_GROUPS; g++) {
+            Module *src = g_modules[d][g];
+            if (!src) continue;
+            Observer *obs = (Observer*)src->observer_list;
+            int idx = 0;
+            while (obs) {
+                if (obs->module == (void*)dst_mod) {
+                    srcCell->deviceID = d;
+                    srcCell->groupID = g;
+                    srcCell->outputID = idx;
+                    return 0;
+                }
+                obs = obs->next;
+                idx++;
+            }
+        }
+    }
+    return -1;
 }
 
 /* Export for use by other modules */
@@ -633,7 +735,7 @@ int IMP_System_RegisterModule(int deviceID, int groupID, Module *module) {
 
     pthread_mutex_unlock(&system_mutex);
 
-    fprintf(stderr, "[System] Registered module [%d,%d]: %s\n",
+    IMP_LOG_DBG("System", "Registered module [%d,%d]: %s\n",
             deviceID, groupID, module ? module->name : "NULL");
 
     return 0;
@@ -659,6 +761,7 @@ int IMP_System_ModuleGetGroupID(void *module) {
     Module *m = (Module*)module;
     return (int)m->group_id;
 }
+
 /* Safe bind helpers to avoid duplicate observers */
 int IMP_System_IsBound(IMPCell *srcCell, IMPCell *dstCell) {
     if (!srcCell || !dstCell) return 0;
@@ -679,34 +782,7 @@ int IMP_System_BindIfNeeded(IMPCell *srcCell, IMPCell *dstCell) {
     return IMP_System_Bind(srcCell, dstCell);
 }
 
-/* IMP_System_GetBindbyDest - get the source cell bound to a destination
- * Based on OEM decompilation */
-int IMP_System_GetBindbyDest(IMPCell *dstCell, IMPCell *srcCell) {
-    if (!dstCell || !srcCell) return -1;
-
-    /* Search all modules for an observer pointing to dstCell's module */
-    Module *dst_mod = get_module(dstCell->deviceID, dstCell->groupID);
-    if (!dst_mod) return -1;
-
-    for (int d = 0; d < MAX_DEVICES; d++) {
-        for (int g = 0; g < MAX_GROUPS; g++) {
-            Module *src = g_modules[d][g];
-            if (!src) continue;
-            Observer *obs = (Observer*)src->observer_list;
-            while (obs) {
-                if (obs->module == (void*)dst_mod) {
-                    srcCell->deviceID = d;
-                    srcCell->groupID = g;
-                    srcCell->outputID = obs->output_index;
-                    return 0;
-                }
-                obs = obs->next;
-            }
-        }
-    }
-    return -1;
-}
-
+/* IMP_System_MemPoolRequest - OEM just tail-calls IMP_MemPool_InitPool */
 int IMP_System_MemPoolRequest(int poolId, size_t size, const char *name) {
     if (poolId < 0 || poolId >= MAX_MEM_POOLS || size == 0) {
         LOG_SYS("MemPoolRequest: invalid args pool=%d size=%zu", poolId, size);
@@ -726,6 +802,7 @@ int IMP_System_MemPoolRequest(int poolId, size_t size, const char *name) {
     return 0;
 }
 
+/* IMP_System_MemPoolFree - OEM calls IMP_MemPool_Release, then clears pool IDs */
 int IMP_System_MemPoolFree(int poolId) {
     if (poolId < 0 || poolId >= MAX_MEM_POOLS) {
         LOG_SYS("MemPoolFree: invalid pool=%d", poolId);
@@ -740,20 +817,21 @@ int IMP_System_MemPoolFree(int poolId) {
     return 0;
 }
 
-/* IMP_System_ReadReg32 - read a 32-bit hardware register via /dev/mem
- * Stub: returns 0 (used by HAL for register access) */
+/* IMP_System_ReadReg32 - read a 32-bit hardware register
+ * OEM: calls read_reg_32(addr, &result), returns result on success, 0 on failure */
 uint32_t IMP_System_ReadReg32(uint32_t addr) {
     (void)addr;
-    fprintf(stderr, "[System] ReadReg32(0x%08x) stub\n", addr);
+    /* TODO: implement via read_reg_32() using /dev/mem mmap */
+    IMP_LOG_ERR("System", "%s(): failed\n", "IMP_System_ReadReg32");
     return 0;
 }
 
-/* IMP_System_WriteReg32 - write a 32-bit hardware register via /dev/mem
- * Stub: no-op */
+/* IMP_System_WriteReg32 - write a 32-bit hardware register
+ * OEM: calls write_reg_32(addr, val), logs on failure */
 void IMP_System_WriteReg32(uint32_t addr, uint32_t val) {
     (void)addr;
     (void)val;
-    fprintf(stderr, "[System] WriteReg32(0x%08x, 0x%08x) stub\n", addr, val);
+    /* TODO: implement via write_reg_32() using /dev/mem mmap */
 }
 
 /* IMP_System_PhysToVirt - translate physical address to virtual

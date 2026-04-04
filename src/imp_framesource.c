@@ -118,13 +118,26 @@ int FrameSourceInit(void) {
 
 /* IMP_FrameSource_CreateChn - based on decompilation at 0x9d5d4 */
 int IMP_FrameSource_CreateChn(int chnNum, IMPFSChnAttr *chn_attr) {
+    /* OEM validation order: chnNum >= 5 first, then NULL check, then alignment */
+    if (chnNum < 0 || chnNum >= MAX_FS_CHANNELS) {
+        LOG_FS("CreateChn failed: invalid channel %d", chnNum);
+        return -1;
+    }
+
     if (chn_attr == NULL) {
         LOG_FS("CreateChn failed: NULL attr");
         return -1;
     }
 
-    if (chnNum < 0 || chnNum >= MAX_FS_CHANNELS) {
-        LOG_FS("CreateChn failed: invalid channel %d", chnNum);
+    /* OEM checks picWidth alignment to 16 (unless RAW format 0x22) */
+    if (chn_attr->pixFmt != PIX_FMT_RAW && (chn_attr->picWidth & 0xf) != 0) {
+        LOG_FS("CreateChn failed: picWidth %d not aligned to 16", chn_attr->picWidth);
+        return -1;
+    }
+
+    /* OEM: channel 0 must be FS_PHY_CHANNEL type */
+    if (chnNum == 0 && chn_attr->type != FS_PHY_CHANNEL) {
+        LOG_FS("CreateChn failed: channel 0 must be FS_PHY_CHANNEL");
         return -1;
     }
 
@@ -137,31 +150,22 @@ int IMP_FrameSource_CreateChn(int chnNum, IMPFSChnAttr *chn_attr) {
         return -1;
     }
 
-    /* Set attributes */
-    memcpy(&gFramesource->channels[chnNum].attr, chn_attr, sizeof(IMPFSChnAttr));
-    gFramesource->channels[chnNum].state = 0; /* Disabled */
-    gFramesource->channels[chnNum].fd = -1;
+    FSChannel *chn = &gFramesource->channels[chnNum];
 
-    /* Open /dev/framechanN device */
-    char dev_path[32];
-    snprintf(dev_path, sizeof(dev_path), "/dev/framechan%d", chnNum);
-    int fd = open(dev_path, O_RDWR | O_NONBLOCK);
-    if (fd < 0) {
-        LOG_FS("CreateChn: Failed to open %s: %s", dev_path, strerror(errno));
-        /* Continue anyway - device may not exist on all platforms */
-    } else {
-        gFramesource->channels[chnNum].fd = fd;
-        LOG_FS("CreateChn: Opened %s (fd=%d, nonblock)", dev_path, fd);
-    }
+    /* Set attributes at offset 0x20 in channel struct */
+    memcpy(&chn->attr, chn_attr, sizeof(IMPFSChnAttr));
+    chn->fd = -1;
 
     /* Initialize readiness semaphore so we can gate STREAM_ON until thread is ready */
-    sem_init(&gFramesource->channels[chnNum].sem, 0, 0);
+    sem_init(&chn->sem, 0, 0);
 
-    /* Do NOT create VBM pool here. The pool is created during EnableChn
-     * after the kernel format is negotiated, to match OEM behavior. */
+    /* OEM: initialize frame depth and copy type to 0 */
+    g_frame_depth[chnNum] = 0;
+
+    /* OEM does NOT open device or create VBM pool in CreateChn.
+     * Device open and VBM pool creation happen in EnableChn. */
 
     /* Register FrameSource channel as module (DEV_ID_FS = 0) */
-    /* Allocate a proper Module structure for this channel */
     extern void* IMP_System_AllocModule(const char *name, int groupID);
     void *fs_module = IMP_System_AllocModule("FrameSource", chnNum);
     if (fs_module == NULL) {
@@ -171,16 +175,17 @@ int IMP_FrameSource_CreateChn(int chnNum, IMPFSChnAttr *chn_attr) {
     }
 
     /* Set output_count to 1 (FrameSource has 1 output per channel) */
-    /* Module structure has output_count at offset 0x134 */
     uint32_t *output_count_ptr = (uint32_t*)((char*)fs_module + 0x134);
     *output_count_ptr = 1;
 
     /* Store module pointer in channel */
-    gFramesource->channels[chnNum].module_ptr = fs_module;
+    chn->module_ptr = fs_module;
 
     extern int IMP_System_RegisterModule(int deviceID, int groupID, void *module);
     IMP_System_RegisterModule(0, chnNum, fs_module);  /* DEV_ID_FS = 0 */
-    LOG_FS("CreateChn: registered FrameSource module [0,%d] with 1 output", chnNum);
+
+    /* OEM sets state to 1 (created), not 0 */
+    chn->state = 1;
 
     pthread_mutex_unlock(&fs_mutex);
 
@@ -203,25 +208,25 @@ int IMP_FrameSource_DestroyChn(int chnNum) {
         return 0;
     }
 
-    /* Disable if enabled */
-    if (gFramesource->channels[chnNum].state != 0) {
+    /* OEM requires state==1 (created but disabled). If state==2 (enabled), error out. */
+    if (gFramesource->channels[chnNum].state == 2) {
+        LOG_FS("DestroyChn: channel %d is busy, please disable it firstly", chnNum);
         pthread_mutex_unlock(&fs_mutex);
-        IMP_FrameSource_DisableChn(chnNum);
-        pthread_mutex_lock(&fs_mutex);
+        return -1;
     }
 
-    /* Close device */
-    if (gFramesource->channels[chnNum].fd >= 0) {
-        close(gFramesource->channels[chnNum].fd);
-        LOG_FS("DestroyChn: Closed device fd=%d", gFramesource->channels[chnNum].fd);
+    if (gFramesource->channels[chnNum].state == 0) {
+        LOG_FS("DestroyChn: channel %d not created", chnNum);
+        pthread_mutex_unlock(&fs_mutex);
+        return -1;
     }
 
-    /* Destroy VBM pool */
-    if (VBMDestroyPool(chnNum) < 0) {
-        LOG_FS("DestroyChn: Failed to destroy VBM pool");
-    }
+    /* OEM: reset frame depth and copy type */
+    g_frame_depth[chnNum] = 0;
 
-    memset(&gFramesource->channels[chnNum], 0, FS_CHANNEL_SIZE);
+    /* OEM does NOT close fd here - fd is closed in DisableChn.
+     * Destroy the module/group and clear channel state. */
+    gFramesource->channels[chnNum].state = 0;
     gFramesource->channels[chnNum].fd = -1;
 
     pthread_mutex_unlock(&fs_mutex);
@@ -249,6 +254,12 @@ int IMP_FrameSource_EnableChn(int chnNum) {
         LOG_FS("EnableChn: channel %d already enabled", chnNum);
         pthread_mutex_unlock(&fs_mutex);
         return 0;
+    }
+
+    if (gFramesource->channels[chnNum].state != 1) {
+        LOG_FS("EnableChn: channel %d not created (state=%d)", chnNum, gFramesource->channels[chnNum].state);
+        pthread_mutex_unlock(&fs_mutex);
+        return -1;
     }
 
     FSChannel *chn = &gFramesource->channels[chnNum];
@@ -555,16 +566,15 @@ int IMP_FrameSource_SetChnAttr(int chnNum, IMPFSChnAttr *chn_attr) {
         return -1;
     }
 
-    /* Check format - must be aligned and valid */
-    /* Accept known IMPPixelFormat enum range; format conversion to fourcc occurs later */
-    if (chn_attr->pixFmt > PIX_FMT_RAW) {
-        LOG_FS("SetChnAttr failed: invalid pixFmt enum %d", chn_attr->pixFmt);
+    /* OEM: check picWidth alignment to 16 (unless RAW format 0x22) */
+    if (chn_attr->pixFmt != PIX_FMT_RAW && (chn_attr->picWidth & 0xf) != 0) {
+        LOG_FS("SetChnAttr failed: picWidth %d not aligned to 16", chn_attr->picWidth);
         return -1;
     }
 
-    /* Channel 0 cannot have crop enabled */
-    if (chnNum == 0 && chn_attr->crop.enable != 0) {
-        LOG_FS("SetChnAttr failed: channel 0 cannot have crop enabled");
+    /* OEM: channel 0 must be FS_PHY_CHANNEL type */
+    if (chnNum == 0 && chn_attr->type != FS_PHY_CHANNEL) {
+        LOG_FS("SetChnAttr failed: channel 0 must be FS_PHY_CHANNEL");
         return -1;
     }
 
@@ -628,8 +638,16 @@ int IMP_FrameSource_SetChnFifoAttr(int chnNum, IMPFSChnFifoAttr *attr) {
     if (attr == NULL) return -1;
     if (chnNum < 0 || chnNum >= MAX_FS_CHANNELS) return -1;
     pthread_mutex_lock(&fs_mutex);
+    /* OEM: channel must be created (state==1) but not enabled */
+    if (gFramesource && gFramesource->channels[chnNum].state != 1) {
+        LOG_FS("SetChnFifoAttr: channel %d not in created state", chnNum);
+        pthread_mutex_unlock(&fs_mutex);
+        return -1;
+    }
     g_fifo_attrs[chnNum] = *attr;
     pthread_mutex_unlock(&fs_mutex);
+    /* OEM calls SetMaxDelay with first field of fifo attr */
+    IMP_FrameSource_SetMaxDelay(chnNum, attr->maxdepth);
     LOG_FS("SetChnFifoAttr: chn=%d, maxdepth=%d, depth=%d", chnNum, attr->maxdepth, attr->depth);
     return 0;
 }
@@ -638,6 +656,12 @@ int IMP_FrameSource_GetChnFifoAttr(int chnNum, IMPFSChnFifoAttr *attr) {
     if (attr == NULL) return -1;
     if (chnNum < 0 || chnNum >= MAX_FS_CHANNELS) return -1;
     pthread_mutex_lock(&fs_mutex);
+    /* OEM: channel must be created (state != 0) */
+    if (gFramesource && gFramesource->channels[chnNum].state == 0) {
+        LOG_FS("GetChnFifoAttr: channel %d not created", chnNum);
+        pthread_mutex_unlock(&fs_mutex);
+        return -1;
+    }
     *attr = g_fifo_attrs[chnNum];
     pthread_mutex_unlock(&fs_mutex);
     LOG_FS("GetChnFifoAttr: chn=%d -> maxdepth=%d, depth=%d", chnNum, attr->maxdepth, attr->depth);
@@ -1050,8 +1074,7 @@ int IMP_FrameSource_ReleaseFrame(int chnNum, void *frame) {
 
 int IMP_FrameSource_GetFrameDepth(int chnNum, int *depth) {
     if (chnNum < 0 || chnNum >= MAX_FS_CHANNELS || !depth) return -1;
-    *depth = 0;
-    LOG_FS("GetFrameDepth(chn=%d) stub => 0", chnNum);
+    *depth = g_frame_depth[chnNum];
     return 0;
 }
 

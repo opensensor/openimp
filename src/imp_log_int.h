@@ -36,6 +36,15 @@ static inline void imp_log_ensure_init(void) {
     fprintf(stderr, "[%s] " fmt "\n", (tag), ##__VA_ARGS__);      \
 } while (0)
 
+/*
+ * OEM-compatible logging macros matching imp_log_fun() severity levels:
+ *   Level 3 = DBG, Level 5 = WARN, Level 6 = ERR
+ */
+#define IMP_LOG_DBG(tag, fmt, ...)  IMP_LOG(LOG_DEBUG,   tag, fmt, ##__VA_ARGS__)
+#define IMP_LOG_WARN(tag, fmt, ...) IMP_LOG(LOG_WARNING, tag, fmt, ##__VA_ARGS__)
+#define IMP_LOG_ERR(tag, fmt, ...)  IMP_LOG(LOG_ERR,     tag, fmt, ##__VA_ARGS__)
+#define IMP_LOG_INFO(tag, fmt, ...) IMP_LOG(LOG_INFO,    tag, fmt, ##__VA_ARGS__)
+
 /* Convenience per-module macros -- drop-in replacements */
 #define LOG_ISP(fmt, ...)    IMP_LOG(LOG_INFO, "IMP_ISP", fmt, ##__VA_ARGS__)
 #define LOG_SYS(fmt, ...)    IMP_LOG(LOG_INFO, "System",  fmt, ##__VA_ARGS__)

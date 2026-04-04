@@ -492,6 +492,16 @@ int EncoderInit(void) {
     return 0;
 }
 
+/* EncoderExit - OEM at 0x825c4: tears down encoder subsystem */
+int EncoderExit(void) {
+    pthread_mutex_lock(&encoder_mutex);
+    if (gEncoder != NULL) {
+        free(gEncoder);
+        gEncoder = NULL;
+    }
+    pthread_mutex_unlock(&encoder_mutex);
+    return 0;
+}
 
 /* IMP_Encoder_CreateGroup - based on decompilation at 0x82658 */
 int IMP_Encoder_CreateGroup(int encGroup) {
@@ -506,20 +516,11 @@ int IMP_Encoder_CreateGroup(int encGroup) {
     /* Initialize encoder module */
     encoder_init();
 
-    /* Initialize gEncoder if needed */
+    /* OEM: gEncoder must already exist from EncoderInit; error if NULL */
     if (gEncoder == NULL) {
-        gEncoder = (EncoderState*)calloc(1, sizeof(EncoderState));
-        if (gEncoder == NULL) {
-            pthread_mutex_unlock(&encoder_mutex);
-            return -1;
-        }
-
-        /* Initialize all groups */
-        for (int i = 0; i < 6; i++) {
-            gEncoder->groups[i].group_id = -1;
-            gEncoder->groups[i].chn_count = 0;
-            enc_group_clear_slots(&gEncoder->groups[i]);
-        }
+        LOG_ENC("CreateGroup: gEncoder is NULL, EncoderInit not called");
+        pthread_mutex_unlock(&encoder_mutex);
+        return -1;
     }
 
     /* Check if group already exists */
@@ -1393,7 +1394,7 @@ int IMP_Encoder_SetChnQp(int encChn, int iQP) {
     /* Call codec SetQp if codec is active */
     int ret = 0;
     if (chn->codec != NULL) {
-        ret = AL_Codec_Encode_SetQp(chn->codec, &qp);
+        ret = AL_Codec_Encode_SetQp(chn->codec, (int16_t)iQP);
     }
 
     pthread_mutex_unlock(&chn->mutex_450);
@@ -1605,16 +1606,41 @@ int IMP_Encoder_SetChnGopAttr(int encChn, IMPEncoderGopAttr *gopAttr) {
     return 0;
 }
 
+/* OEM: g_pools is a lazily-allocated array of 32 ints (0x80 bytes), init to -1.
+ * Each slot maps an encoder channel to a memory pool ID. */
+static int *g_enc_pools = NULL;
+#define MAX_ENC_POOL_SLOTS 32
+
 int IMP_Encoder_SetPool(int encChn, int poolId) {
-    if (encChn < 0 || encChn >= MAX_ENC_CHANNELS) return -1;
-    (void)poolId;
-    LOG_ENC("SetPool: chn=%d, pool=%d stub", encChn, poolId);
+    if (encChn < 0 || encChn >= MAX_ENC_POOL_SLOTS) return -1;
+    /* Lazily allocate g_enc_pools */
+    if (g_enc_pools == NULL) {
+        g_enc_pools = (int*)malloc(MAX_ENC_POOL_SLOTS * sizeof(int));
+        if (g_enc_pools == NULL) return -1;
+        memset(g_enc_pools, 0xff, MAX_ENC_POOL_SLOTS * sizeof(int)); /* all -1 */
+    }
+    /* OEM: only set if slot is currently unbound (-1) */
+    if (g_enc_pools[encChn] != -1) {
+        LOG_ENC("SetPool: chn=%d already bound to pool %d", encChn, g_enc_pools[encChn]);
+        return -1;
+    }
+    g_enc_pools[encChn] = poolId;
+    LOG_ENC("SetPool: chn=%d, pool=%d", encChn, poolId);
     return 0;
 }
 
 int IMP_Encoder_GetPool(int encChn) {
-    if (encChn < 0 || encChn >= MAX_ENC_CHANNELS) return -1;
-    return 0; /* Default pool */
+    if (encChn < 0 || encChn >= MAX_ENC_POOL_SLOTS) return -1;
+    if (g_enc_pools == NULL) return -1;
+    return g_enc_pools[encChn];
+}
+
+int IMP_Encoder_ClearPoolId(void) {
+    if (g_enc_pools != NULL) {
+        free(g_enc_pools);
+        g_enc_pools = NULL;
+    }
+    return 0;
 }
 
 /* ========== Additional missing Encoder symbols (prudynt parity) ========== */

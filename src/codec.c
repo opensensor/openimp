@@ -2801,6 +2801,18 @@ static uint32_t avpu_stream_buffer_effective_size(ALAvpuContext *ctx, int buf_id
     annexb = annexb_effective_size(sb, raw_end);
     frame_size = annexb > 0 ? (uint32_t)annexb : raw_end;
 
+    /* Hex dump first 64 bytes for debugging NAL structure */
+    {
+        char hex[200];
+        int hpos = 0;
+        int dump_len = raw_end < 64 ? (int)raw_end : 64;
+        for (int i = 0; i < dump_len && hpos + 3 < (int)sizeof(hex); i++)
+            hpos += snprintf(hex + hpos, sizeof(hex) - hpos, "%02x ", sb[i]);
+        hex[hpos] = '\0';
+        LOG_CODEC("EndEncoding: buf[%d] raw_end=%u frame_size=%u hex: %s",
+                  buf_idx, raw_end, frame_size, hex);
+    }
+
     if (frame_size <= ctx->stream_header_offset) {
         avpu_log_suspicious_stream_size(ctx, buf_idx, "EndEncoding",
                                         raw_end, (uint32_t)annexb_effective_size(sb, raw_end),
@@ -3078,7 +3090,7 @@ int AL_Codec_Encode_SetDefaultParam(void *param) {
     *(uint32_t*)(p + 0x784) = 0;
 
     LOG_CODEC("SetDefaultParam: initialized (OEM-aligned)");
-    return 0;
+    return 0x10;  /* OEM returns 0x10 (16) */
 }
 
 /**
@@ -4099,8 +4111,22 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
                 uint32_t stream_part_offset = avpu_get_enc1_stream_part_offset(ctx);
                 uint32_t hw_hdr_offset = avpu_get_hw_hdr_offset(hdr_offset);
 
-                avpu_write_reg(fd, AVPU_REG_ENC_EN_B, 0x00000001);
+                /* Stock OEM sequence (from stock_logs.txt):
+                 *   WR 0x85f0 = 0x01  (ENC_EN_A — no ENC_EN_B for Baseline!)
+                 *   WR 0x8400 = 0x131
+                 *   WR 0x8404 = dimensions
+                 *   WR 0x8408 = 0x00010001
+                 *   WR 0x840c = width
+                 *   WR 0x8410 = src Y
+                 *   WR 0x8414 = src UV
+                 *   WR 0x8418 = interm EP1 offset
+                 *   WR 0x841c = interm EP1 base
+                 *   WR 0x8420 = stream_part_offset
+                 *   WR 0x8424 = hdr_offset ALIGNED DOWN to 512 (stock=0x200)
+                 *   WR 0x8428 = stream_part_offset - aligned_hdr
+                 *   WR 0x85e4 = 0x01  (ENC_EN_C) */
                 avpu_write_reg(fd, AVPU_REG_ENC_EN_A, 0x00000001);
+                /* Stock does NOT write ENC_EN_B for Baseline CAVLC */
 
                 avpu_write_reg(fd, 0x8400, 0x00000131u);
                 avpu_write_reg(fd, 0x8404,
@@ -4112,10 +4138,15 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
                 avpu_write_reg(fd, 0x8418, ctx->interm_buf.phy_addr + ctx->interm_ep1_size);
                 avpu_write_reg(fd, 0x841c, ctx->interm_buf.phy_addr);
                 avpu_write_reg(fd, 0x8420, stream_part_offset);
-                avpu_write_reg(fd, 0x8424, hw_hdr_offset);
-                avpu_write_reg(fd, 0x8428,
-                    stream_part_offset > hw_hdr_offset
-                        ? (stream_part_offset - hw_hdr_offset) : 0u);
+                /* Stock aligns hdr_offset DOWN to 512: stock hdr=544 → 0x200=512.
+                 * Our hdr=47 → align_down(47, 512) = 0. Use 0 like stock formula. */
+                {
+                    uint32_t aligned_hdr = hw_hdr_offset & ~0x1FFu; /* align to 512 */
+                    avpu_write_reg(fd, 0x8424, aligned_hdr);
+                    avpu_write_reg(fd, 0x8428,
+                        stream_part_offset > aligned_hdr
+                            ? (stream_part_offset - aligned_hdr) : 0u);
+                }
 
                 avpu_write_reg(fd, AVPU_REG_ENC_EN_C, 0x00000001);
 
@@ -4346,23 +4377,21 @@ int AL_Codec_Encode_ReleaseStream(void *codec, void *stream, void *user_data) {
  * AL_Codec_Encode_SetQp - Set QP (Quantization Parameter)
  * Based on decompilation pattern
  */
-int AL_Codec_Encode_SetQp(void *codec, void *qp) {
-    if (codec == NULL || qp == NULL) {
-        LOG_CODEC("SetQp: NULL parameter");
+int AL_Codec_Encode_SetQp(void *codec, int16_t qp) {
+    if (codec == NULL) {
+        LOG_CODEC("SetQp: NULL codec");
         return -1;
     }
 
     AL_CodecEncode *enc = (AL_CodecEncode*)codec;
 
-    IMPEncoderQp *imp_qp = (IMPEncoderQp*)qp;
-    uint32_t new_qp = imp_qp->qp_p ? imp_qp->qp_p : imp_qp->qp_i;
-    new_qp = clamp_qp_u32(new_qp);
+    /* OEM: passes QP directly as sign-extended int16 to AL_Encoder_SetQP */
+    uint32_t new_qp = clamp_qp_u32((uint32_t)(int32_t)qp);
 
     enc->hw_params.qp = new_qp;
     enc->avpu.qp = new_qp;
 
-    LOG_CODEC("SetQp: codec=%p, qp_i=%u qp_p=%u -> active_qp=%u",
-              codec, imp_qp->qp_i, imp_qp->qp_p, new_qp);
+    LOG_CODEC("SetQp: codec=%p, qp=%d -> active_qp=%u", codec, (int)qp, new_qp);
 
     return 0;
 }

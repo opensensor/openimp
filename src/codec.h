@@ -79,10 +79,10 @@ int AL_Codec_Encode_ReleaseStream(void *codec, void *stream, void *user_data);
 /**
  * Set QP (Quantization Parameter) for encoder
  * @param codec Codec instance
- * @param qp QP structure pointer
+ * @param qp QP value (sign-extended int16)
  * @return 0 on success, -1 on failure
  */
-int AL_Codec_Encode_SetQp(void *codec, void *qp);
+int AL_Codec_Encode_SetQp(void *codec, int16_t qp);
 
 /**
  * Set entropy mode for encoder
