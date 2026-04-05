@@ -23,6 +23,7 @@
 
 /* Forward declarations for vendor-like tuning getters used internally */
 int IMP_ISP_Tuning_GetTotalGain(uint32_t *pgain);
+int IMP_Encoder_RequestIDR(int encChn);
 
 int IMP_Log_Get_Option(void);
 void imp_log_fun(int level, int option, int type, ...);
@@ -60,6 +61,103 @@ static int sensor_enabled = 0;
 static int tuning_enabled = 0;
 static int isp_stream_started = 0; /* Deferred ISP streaming flag */
 static int bypass_link_setup_done = 0;  /* Track if SetISPBypass already did LINK_SETUP */
+static int wdr_mode = 0;               /* WDR mode cached state (OEM offset gISPdev+0xb0) */
+static char *bpath = NULL;             /* ISP bin file path (max 64 chars) */
+
+/* ========== ISP tuning ioctl helpers (from OEM decompilation) ==========
+ *
+ * Pattern 1 — Tuning message ioctl (0xc00c56c6) on tisp_fd:
+ *   struct { uint32_t cmd; uint32_t subcmd; uintptr_t data; }
+ *   cmd=0 → SET, cmd=1 → GET, subcmd=IMAGE_TUNING_CID_*, data=value or ptr
+ *
+ * Pattern 2 — V4L2 control ioctl (0xc008561c) on tisp_fd:
+ *   struct { uint32_t id; int32_t value; }
+ *   id = V4L2_CID_* or IMAGE_TUNING_CID_*
+ */
+
+/* Tuning msg SET with scalar value: {0, subcmd, value} */
+static int isp_tuning_set_val(uint32_t subcmd, uintptr_t value) {
+    if (!gISPdev || !gISPdev->tuning || gISPdev->opened < 2) return -1;
+    struct { uint32_t cmd; uint32_t subcmd; uintptr_t data; } req = {0, subcmd, value};
+    return ioctl(gISPdev->tisp_fd, 0xc00c56c6, &req);
+}
+
+/* Tuning msg GET with scalar value: {1, subcmd, &out} */
+static int isp_tuning_get_val(uint32_t subcmd, uintptr_t *out) {
+    if (!gISPdev || !gISPdev->tuning || gISPdev->opened < 2) return -1;
+    struct { uint32_t cmd; uint32_t subcmd; uintptr_t data; } req = {1, subcmd, 0};
+    int ret = ioctl(gISPdev->tisp_fd, 0xc00c56c6, &req);
+    if (ret == 0 && out) *out = req.data;
+    return ret;
+}
+
+/* Tuning msg SET with pointer data: {0, subcmd, ptr} */
+static int isp_tuning_set_ptr(uint32_t subcmd, void *ptr) {
+    if (!gISPdev || !gISPdev->tuning || gISPdev->opened < 2) return -1;
+    struct { uint32_t cmd; uint32_t subcmd; uintptr_t data; } req = {0, subcmd, (uintptr_t)ptr};
+    return ioctl(gISPdev->tisp_fd, 0xc00c56c6, &req);
+}
+
+/* Tuning msg GET with pointer data: {1, subcmd, ptr} */
+static int isp_tuning_get_ptr(uint32_t subcmd, void *ptr) {
+    if (!gISPdev || !gISPdev->tuning || gISPdev->opened < 2) return -1;
+    struct { uint32_t cmd; uint32_t subcmd; uintptr_t data; } req = {1, subcmd, (uintptr_t)ptr};
+    return ioctl(gISPdev->tisp_fd, 0xc00c56c6, &req);
+}
+
+/* V4L2 control SET: {cid, value} via 0xc008561c */
+static int isp_v4l2_set(uint32_t cid, int32_t value) {
+    if (!gISPdev || gISPdev->tisp_fd < 0 || gISPdev->opened < 2) return -1;
+    struct { uint32_t id; int32_t value; } ctrl = {cid, value};
+    return ioctl(gISPdev->tisp_fd, 0xc008561c, &ctrl);
+}
+
+/*
+ * OEM IMAGE_TUNING_CID subcmd IDs (from Binary Ninja decompilation):
+ */
+#define CID_WB_ATTR         0x8000004
+#define CID_AWB_WEIGHT      0x8000006
+#define CID_AWB_HIST        0x8000007
+#define CID_AWB_CWF_SHIFT   0x8000008  /* Awb_RgbCoefft */
+#define CID_WB_ALGO         0x800000c
+#define CID_AWB_CT           0x800000d
+#define CID_AWB_CLUSTER      0x800000e
+#define CID_AWB_CT_TREND     0x800000f
+#define CID_AE_COMP          0x8000023
+#define CID_EXPR             0x8000025
+#define CID_TOTAL_GAIN       0x8000027
+#define CID_MAX_AGAIN        0x8000028
+#define CID_MAX_DGAIN        0x8000029
+#define CID_HILIGHT_DEPRESS  0x800002a
+#define CID_GAMMA            0x800002b
+#define CID_MOVESTATE        0x800002c
+#define CID_AE_WEIGHT        0x800002d
+#define CID_AE_FREEZE        0x8000034
+#define CID_AE_STATE         0x8000036
+#define CID_BACKLIGHT_COMP   0x8000037
+#define CID_DEFOG_STRENGTH   0x8000039
+#define CID_AF_METRICES      0x8000043
+#define CID_AF_WEIGHT        0x8000044
+#define CID_AF_HIST          0x8000045  /* extrapolated from AF sequence */
+#define CID_DPC_RATIO        0x8000062
+#define CID_NCU_INFO         0x8000084
+#define CID_3DNS_RATIO       0x8000085  /* TemperStrength */
+#define CID_2DNS_RATIO       0x8000086  /* SinterStrength */
+#define CID_DRC_RATIO        0x80000a2
+#define CID_ENABLE_DEFOG     0x80000a4
+#define CID_BLC_ATTR         0x80000a5
+#define CID_CSC_ATTR         0x80000a6
+#define CID_MASK             0x80000e5
+#define CID_SCALER_LV        0x80000e9
+#define CID_WDR_OUTPUT_MODE  0x80000ea
+#define CID_CCM_ATTR         0x8000100
+#define CID_BCSH_HUE         0x8000101
+/* V4L2 CIDs */
+#define V4L2_CID_BRIGHTNESS  0x980900
+#define V4L2_CID_CONTRAST    0x980901
+#define CID_ISP_PROCESS      0x8000164
+#define CID_FW_FREEZE        0x8000165
+#define CID_SHADING          0x8000166
 
 /* Expose streaming state for other modules (e.g., AVPU) to gate init safely */
 int ISP_IsStreaming(void) {
@@ -1220,103 +1318,56 @@ int IMP_ISP_Tuning_SetISPVflip(IMPISPTuningOpsMode mode) {
 }
 
 int IMP_ISP_Tuning_SetBrightness(unsigned char bright) {
-    LOG_ISP("SetBrightness: %u", bright);
-
-    // Assuming gISPdev is a global pointer to the ISPDevice structure
-    if (gISPdev == NULL) {
-        LOG_ISP("SetBrightness: ISP not opened");
-        return -1;
-    }
-
-    // Assuming there is a mechanism to set brightness in the ISP device
-    // This could involve an ioctl call or direct register manipulation
-    // Example (pseudo-code):
-    // int ret = ioctl(gISPdev->fd, IOCTL_SET_BRIGHTNESS, &bright);
-    // if (ret != 0) {
-    //     LOG_ISP("SetBrightness: ioctl failed: %s", strerror(errno));
-    //     return -1;
-    // }
-
-    return 0;
+    int ret = isp_v4l2_set(V4L2_CID_BRIGHTNESS, (int32_t)bright);
+    if (ret) LOG_ISP("SetBrightness: ioctl failed: %s", strerror(errno));
+    return ret;
 }
 
 int IMP_ISP_Tuning_SetContrast(unsigned char contrast) {
-    LOG_ISP("SetContrast: %u", contrast);
-
-    if (gISPdev == NULL) {
-        LOG_ISP("SetContrast: ISP not opened");
-        return -1;
-    }
-
-    if (gISPdev->tuning == NULL) {
-        LOG_ISP("SetContrast: Tuning structure not initialized");
-        return -1;
-    }
-
-    gISPdev->tuning->contrast_byte = contrast;
-    return 0;
+    int ret = isp_v4l2_set(V4L2_CID_CONTRAST, (int32_t)contrast);
+    if (ret) LOG_ISP("SetContrast: ioctl failed: %s", strerror(errno));
+    /* Also cache for contrastjudge */
+    if (gISPdev && gISPdev->tuning)
+        gISPdev->tuning->contrast_byte = contrast;
+    return ret;
 }
 
 int IMP_ISP_Tuning_SetSharpness(unsigned char sharpness) {
-    LOG_ISP("SetSharpness: %u", sharpness);
-
-    // Assuming gISPdev is a global pointer to the ISPDevice structure
-    if (gISPdev == NULL) {
-        LOG_ISP("SetSharpness: ISP not opened");
-        return -1;
-    }
-
-    // Assuming there is a mechanism to set sharpness in the ISP device
-    // This could involve an ioctl call or direct register manipulation
-    // Example (pseudo-code):
-    // int ret = ioctl(gISPdev->fd, IOCTL_SET_SHARPNESS, &sharpness);
-    // if (ret != 0) {
-    //     LOG_ISP("SetSharpness: ioctl failed: %s", strerror(errno));
-    //     return -1;
-    // }
-
-    return 0;
+    /* V4L2_CID_SHARPNESS = 0x98091b */
+    int ret = isp_v4l2_set(0x98091b, (int32_t)sharpness);
+    if (ret) LOG_ISP("SetSharpness: ioctl failed: %s", strerror(errno));
+    return ret;
 }
 
 int IMP_ISP_Tuning_SetSaturation(unsigned char sat) {
-    LOG_ISP("SetSaturation: %u", sat);
-
-    // Assuming gISPdev is a global pointer to the ISPDevice structure
-    if (gISPdev == NULL) {
-        LOG_ISP("SetSaturation: ISP not opened");
-        return -1;
-    }
-
-    // Assuming there is a mechanism to set saturation in the ISP device
-    // This could involve an ioctl call or direct register manipulation
-    // Example (pseudo-code):
-    // int ret = ioctl(gISPdev->fd, IOCTL_SET_SATURATION, &sat);
-    // if (ret != 0) {
-    //     LOG_ISP("SetSaturation: ioctl failed: %s", strerror(errno));
-    //     return -1;
-    // }
-
-    return 0;
+    /* V4L2_CID_SATURATION = 0x980902 */
+    int ret = isp_v4l2_set(0x980902, (int32_t)sat);
+    if (ret) LOG_ISP("SetSaturation: ioctl failed: %s", strerror(errno));
+    return ret;
 }
 
 int IMP_ISP_Tuning_SetAeComp(int comp) {
-    LOG_ISP("SetAeComp: %d", comp);
-    return 0;
+    int ret = isp_tuning_set_val(CID_AE_COMP, (uintptr_t)comp);
+    if (ret) LOG_ISP("SetAeComp: ioctl failed: %s", strerror(errno));
+    return ret;
 }
 
 int IMP_ISP_Tuning_SetMaxAgain(uint32_t gain) {
-    LOG_ISP("SetMaxAgain: %u", gain);
-    return 0;
+    int ret = isp_tuning_set_val(CID_MAX_AGAIN, gain);
+    if (ret) LOG_ISP("SetMaxAgain: ioctl failed: %s", strerror(errno));
+    return ret;
 }
 
 int IMP_ISP_Tuning_SetMaxDgain(uint32_t gain) {
-    LOG_ISP("SetMaxDgain: %u", gain);
-    return 0;
+    int ret = isp_tuning_set_val(CID_MAX_DGAIN, gain);
+    if (ret) LOG_ISP("SetMaxDgain: ioctl failed: %s", strerror(errno));
+    return ret;
 }
 
 int IMP_ISP_Tuning_SetBacklightComp(uint32_t strength) {
-    LOG_ISP("SetBacklightComp: %u", strength);
-    return 0;
+    int ret = isp_tuning_set_val(CID_BACKLIGHT_COMP, strength);
+    if (ret) LOG_ISP("SetBacklightComp: ioctl failed: %s", strerror(errno));
+    return ret;
 }
 
 int IMP_ISP_Tuning_GetTotalGain(uint32_t *pgain) {
@@ -1408,157 +1459,127 @@ int IMP_ISP_Tuning_GetExpr(IMPISPExpr *expr) {
 
 
 int IMP_ISP_Tuning_SetDPC_Strength(uint32_t ratio) {
-    LOG_ISP("SetDPC_Strength: %u", ratio);
-    return 0;
+    int ret = isp_tuning_set_val(CID_DPC_RATIO, ratio);
+    if (ret) LOG_ISP("SetDPC_Strength: ioctl failed: %s", strerror(errno));
+    return ret;
 }
 
 int IMP_ISP_Tuning_SetDRC_Strength(uint32_t ratio) {
-    LOG_ISP("SetDRC_Strength: %u", ratio);
-    return 0;
+    int ret = isp_tuning_set_val(CID_DRC_RATIO, ratio);
+    if (ret) LOG_ISP("SetDRC_Strength: ioctl failed: %s", strerror(errno));
+    return ret;
 }
 
 int IMP_ISP_Tuning_SetHiLightDepress(uint32_t strength) {
-    LOG_ISP("SetHiLightDepress: %u", strength);
-    return 0;
+    int ret = isp_tuning_set_val(CID_HILIGHT_DEPRESS, strength);
+    if (ret) LOG_ISP("SetHiLightDepress: ioctl failed: %s", strerror(errno));
+    return ret;
 }
 
 int IMP_ISP_Tuning_SetTemperStrength(uint32_t ratio) {
-    LOG_ISP("SetTemperStrength: %u", ratio);
-    return 0;
+    int ret = isp_tuning_set_val(CID_3DNS_RATIO, ratio);
+    if (ret) LOG_ISP("SetTemperStrength: ioctl failed: %s", strerror(errno));
+    return ret;
 }
 
 int IMP_ISP_Tuning_SetSinterStrength(uint32_t ratio) {
-    LOG_ISP("SetSinterStrength: %u", ratio);
-    return 0;
+    int ret = isp_tuning_set_val(CID_2DNS_RATIO, ratio);
+    if (ret) LOG_ISP("SetSinterStrength: ioctl failed: %s", strerror(errno));
+    return ret;
 }
 
 int IMP_ISP_Tuning_SetBcshHue(unsigned char hue) {
-    LOG_ISP("SetBcshHue: %u", hue);
-    return 0;
+    int ret = isp_tuning_set_val(CID_BCSH_HUE, (uintptr_t)hue);
+    if (ret) LOG_ISP("SetBcshHue: ioctl failed: %s", strerror(errno));
+    return ret;
 }
 
 int IMP_ISP_Tuning_SetDefog_Strength(uint32_t strength) {
-    LOG_ISP("SetDefog_Strength: %u", strength);
-    return 0;
+    int ret = isp_tuning_set_val(CID_DEFOG_STRENGTH, (uintptr_t)strength);
+    if (ret) LOG_ISP("SetDefog_Strength: ioctl failed: %s", strerror(errno));
+    return ret;
 }
 
 int IMP_ISP_Tuning_SetWB(IMPISPWB *wb) {
     if (wb == NULL) return -1;
-    LOG_ISP("SetWB: mode=%d, rgain=%u, bgain=%u", wb->mode, wb->rgain, wb->bgain);
-    return 0;
+    int ret = isp_tuning_set_ptr(CID_WB_ATTR, wb);
+    if (ret) LOG_ISP("SetWB: ioctl failed: %s", strerror(errno));
+    return ret;
 }
 
 int IMP_ISP_Tuning_GetWB(IMPISPWB *wb) {
     if (wb == NULL) return -1;
-    wb->mode = IMPISP_WB_MODE_AUTO;
-    wb->rgain = 256;
-    wb->bgain = 256;
+    int ret = isp_tuning_get_ptr(CID_WB_ATTR, wb);
+    if (ret) {
+        LOG_ISP("GetWB: ioctl failed: %s, using defaults", strerror(errno));
+        wb->mode = IMPISP_WB_MODE_AUTO;
+        wb->rgain = 256;
+        wb->bgain = 256;
+    }
     return 0;
 }
 
 /* ISP Tuning Get Functions - based on Binary Ninja decompilations */
 
 int IMP_ISP_Tuning_GetBrightness(unsigned char *pbright) {
-    if (pbright == NULL) {
-        LOG_ISP("GetBrightness: NULL pointer provided");
-        return -1;
+    if (pbright == NULL) return -1;
+    if (gISPdev == NULL || gISPdev->tisp_fd < 0) {
+        *pbright = 128;
+        return 0;
     }
-
-    // Assuming gISPdev is a global pointer to the ISPDevice structure
-    if (gISPdev == NULL) {
-        LOG_ISP("GetBrightness: ISP not opened");
-        return -1;
+    struct { uint32_t id; int32_t value; } ctrl = {V4L2_CID_BRIGHTNESS, 0};
+    if (ioctl(gISPdev->tisp_fd, 0xc008561b, &ctrl) == 0) {
+        *pbright = (unsigned char)ctrl.value;
+    } else {
+        *pbright = 128;
     }
-
-    // Assuming there is a mechanism to get brightness from the ISP device
-    // This could involve an ioctl call or direct register access
-    // Example (pseudo-code):
-    // int ret = ioctl(gISPdev->fd, IOCTL_GET_BRIGHTNESS, pbright);
-    // if (ret != 0) {
-    //     LOG_ISP("GetBrightness: ioctl failed: %s", strerror(errno));
-    //     return -1;
-    // }
-
-    *pbright = 128;  /* Default middle value */
-    LOG_ISP("GetBrightness: %u", *pbright);
     return 0;
 }
 
 int IMP_ISP_Tuning_GetContrast(unsigned char *pcontrast) {
-    if (pcontrast == NULL) {
-        LOG_ISP("GetContrast: NULL pointer provided");
-        return -1;
+    if (pcontrast == NULL) return -1;
+    if (gISPdev == NULL || gISPdev->tisp_fd < 0) {
+        *pcontrast = 128;
+        return 0;
     }
-
-    // Assuming gISPdev is a global pointer to the ISPDevice structure
-    if (gISPdev == NULL) {
-        LOG_ISP("GetContrast: ISP not opened");
-        return -1;
+    struct { uint32_t id; int32_t value; } ctrl = {V4L2_CID_CONTRAST, 0};
+    if (ioctl(gISPdev->tisp_fd, 0xc008561b, &ctrl) == 0) {
+        *pcontrast = (unsigned char)ctrl.value;
+    } else {
+        *pcontrast = 128;
     }
-
-    // Assuming there is a mechanism to get contrast from the ISP device
-    // This could involve an ioctl call or direct register access
-    // Example (pseudo-code):
-    // int ret = ioctl(gISPdev->fd, IOCTL_GET_CONTRAST, pcontrast);
-    // if (ret != 0) {
-    //     LOG_ISP("GetContrast: ioctl failed: %s", strerror(errno));
-    //     return -1;
-    // }
-
-    *pcontrast = 128;  /* Default middle value */
-    LOG_ISP("GetContrast: %u", *pcontrast);
     return 0;
 }
 
 int IMP_ISP_Tuning_GetSharpness(unsigned char *psharpness) {
-    if (psharpness == NULL) {
-        LOG_ISP("GetSharpness: NULL pointer provided");
-        return -1;
+    if (psharpness == NULL) return -1;
+    if (gISPdev == NULL || gISPdev->tisp_fd < 0) {
+        *psharpness = 128;
+        return 0;
     }
-
-    // Assuming gISPdev is a global pointer to the ISPDevice structure
-    if (gISPdev == NULL) {
-        LOG_ISP("GetSharpness: ISP not opened");
-        return -1;
+    /* V4L2_CID_SHARPNESS = 0x98091b */
+    struct { uint32_t id; int32_t value; } ctrl = {0x98091b, 0};
+    if (ioctl(gISPdev->tisp_fd, 0xc008561b, &ctrl) == 0) {
+        *psharpness = (unsigned char)ctrl.value;
+    } else {
+        *psharpness = 128;
     }
-
-    // Assuming there is a mechanism to get sharpness from the ISP device
-    // This could involve an ioctl call or direct register access
-    // Example (pseudo-code):
-    // int ret = ioctl(gISPdev->fd, IOCTL_GET_SHARPNESS, psharpness);
-    // if (ret != 0) {
-    //     LOG_ISP("GetSharpness: ioctl failed: %s", strerror(errno));
-    //     return -1;
-    // }
-
-    *psharpness = 128;  /* Default middle value */
-    LOG_ISP("GetSharpness: %u", *psharpness);
     return 0;
 }
 
 int IMP_ISP_Tuning_GetSaturation(unsigned char *psat) {
-    if (psat == NULL) {
-        LOG_ISP("GetSaturation: NULL pointer provided");
-        return -1;
+    if (psat == NULL) return -1;
+    if (gISPdev == NULL || gISPdev->tisp_fd < 0) {
+        *psat = 128;
+        return 0;
     }
-
-    // Assuming gISPdev is a global pointer to the ISPDevice structure
-    if (gISPdev == NULL) {
-        LOG_ISP("GetSaturation: ISP not opened");
-        return -1;
+    /* V4L2_CID_SATURATION = 0x980902 */
+    struct { uint32_t id; int32_t value; } ctrl = {0x980902, 0};
+    if (ioctl(gISPdev->tisp_fd, 0xc008561b, &ctrl) == 0) {
+        *psat = (unsigned char)ctrl.value;
+    } else {
+        *psat = 128;
     }
-
-    // Assuming there is a mechanism to get saturation from the ISP device
-    // This could involve an ioctl call or direct register access
-    // Example (pseudo-code):
-    // int ret = ioctl(gISPdev->fd, IOCTL_GET_SATURATION, psat);
-    // if (ret != 0) {
-    //     LOG_ISP("GetSaturation: ioctl failed: %s", strerror(errno));
-    //     return -1;
-    // }
-
-    *psat = 128;  /* Default middle value */
-    LOG_ISP("GetSaturation: %u", *psat);
     return 0;
 }
 
@@ -1570,29 +1591,45 @@ int IMP_ISP_Tuning_SetVideoDropCallback(void (*cb)(void)) {
 
 int IMP_ISP_Tuning_GetAeComp(int *pcomp) {
     if (pcomp == NULL) return -1;
-    *pcomp = 0;  /* Default no compensation */
-    LOG_ISP("GetAeComp: %d", *pcomp);
+    uintptr_t val = 0;
+    if (isp_tuning_get_val(CID_AE_COMP, &val) == 0) {
+        *pcomp = (int)val;
+    } else {
+        *pcomp = 0;
+    }
     return 0;
 }
 
 int IMP_ISP_Tuning_GetBacklightComp(uint32_t *pstrength) {
     if (pstrength == NULL) return -1;
-    *pstrength = 0;  /* Default off */
-    LOG_ISP("GetBacklightComp: %u", *pstrength);
+    uintptr_t val = 0;
+    if (isp_tuning_get_val(CID_BACKLIGHT_COMP, &val) == 0) {
+        *pstrength = (uint32_t)val;
+    } else {
+        *pstrength = 0;
+    }
     return 0;
 }
 
 int IMP_ISP_Tuning_GetHiLightDepress(uint32_t *pstrength) {
     if (pstrength == NULL) return -1;
-    *pstrength = 0;  /* Default off */
-    LOG_ISP("GetHiLightDepress: %u", *pstrength);
+    uintptr_t val = 0;
+    if (isp_tuning_get_val(CID_HILIGHT_DEPRESS, &val) == 0) {
+        *pstrength = (uint32_t)val;
+    } else {
+        *pstrength = 0;
+    }
     return 0;
 }
 
 int IMP_ISP_Tuning_GetBcshHue(unsigned char *phue) {
     if (phue == NULL) return -1;
-    *phue = 128;  /* Default middle value */
-    LOG_ISP("GetBcshHue: %u", *phue);
+    uintptr_t val = 0;
+    if (isp_tuning_get_val(CID_BCSH_HUE, &val) == 0) {
+        *phue = (unsigned char)val;
+    } else {
+        *phue = 128;
+    }
     return 0;
 }
 
@@ -1677,21 +1714,23 @@ int IMP_ISP_Tuning_GetEVAttr(IMPISPEVAttr *attr) {
 
 int IMP_ISP_Tuning_GetWB_Statis(IMPISPWB *wb) {
     if (wb == NULL) return -1;
-    /* Return default WB statistics */
-    wb->mode = IMPISP_WB_MODE_AUTO;
-    wb->rgain = 256;
-    wb->bgain = 256;
-    LOG_ISP("GetWB_Statis");
+    int ret = isp_tuning_get_ptr(CID_WB_ATTR, wb);
+    if (ret) {
+        wb->mode = IMPISP_WB_MODE_AUTO;
+        wb->rgain = 256;
+        wb->bgain = 256;
+    }
     return 0;
 }
 
 int IMP_ISP_Tuning_GetWB_GOL_Statis(IMPISPWB *wb) {
     if (wb == NULL) return -1;
-    /* Return default WB GOL statistics */
-    wb->mode = IMPISP_WB_MODE_AUTO;
-    wb->rgain = 256;
-    wb->bgain = 256;
-    LOG_ISP("GetWB_GOL_Statis");
+    int ret = isp_tuning_get_ptr(CID_WB_ATTR, wb);
+    if (ret) {
+        wb->mode = IMPISP_WB_MODE_AUTO;
+        wb->rgain = 256;
+        wb->bgain = 256;
+    }
     return 0;
 }
 
@@ -1737,64 +1776,117 @@ int IMP_ISP_Tuning_GetAntiFlickerAttr(IMPISPAntiflickerAttr *pattr) {
 
 int IMP_ISP_Tuning_GetMaxAgain(uint32_t *pgain) {
     if (!pgain) return -1;
-    *pgain = 0;
+    uintptr_t val = 0;
+    if (isp_tuning_get_val(CID_MAX_AGAIN, &val) == 0) {
+        *pgain = (uint32_t)val;
+    } else {
+        *pgain = 0;
+    }
     return 0;
 }
 
 int IMP_ISP_Tuning_GetMaxDgain(uint32_t *pgain) {
     if (!pgain) return -1;
-    *pgain = 0;
+    uintptr_t val = 0;
+    if (isp_tuning_get_val(CID_MAX_DGAIN, &val) == 0) {
+        *pgain = (uint32_t)val;
+    } else {
+        *pgain = 0;
+    }
     return 0;
 }
 
 int IMP_ISP_Tuning_GetSinterStrength(uint32_t *pratio) {
     if (!pratio) return -1;
-    *pratio = 128;
+    uintptr_t val = 0;
+    if (isp_tuning_get_val(CID_2DNS_RATIO, &val) == 0) {
+        *pratio = (uint32_t)val;
+    } else {
+        *pratio = 128;
+    }
     return 0;
 }
 
 int IMP_ISP_Tuning_GetTemperStrength(uint32_t *pratio) {
     if (!pratio) return -1;
-    *pratio = 128;
+    uintptr_t val = 0;
+    if (isp_tuning_get_val(CID_3DNS_RATIO, &val) == 0) {
+        *pratio = (uint32_t)val;
+    } else {
+        *pratio = 128;
+    }
     return 0;
 }
 
 int IMP_ISP_Tuning_GetDPC_Strength(uint32_t *pratio) {
     if (!pratio) return -1;
-    *pratio = 128;
+    uintptr_t val = 0;
+    if (isp_tuning_get_val(CID_DPC_RATIO, &val) == 0) {
+        *pratio = (uint32_t)val;
+    } else {
+        *pratio = 128;
+    }
     return 0;
 }
 
 int IMP_ISP_Tuning_GetDRC_Strength(uint32_t *pratio) {
     if (!pratio) return -1;
-    *pratio = 128;
+    uintptr_t val = 0;
+    if (isp_tuning_get_val(CID_DRC_RATIO, &val) == 0) {
+        *pratio = (uint32_t)val;
+    } else {
+        *pratio = 128;
+    }
     return 0;
 }
 
 int IMP_ISP_Tuning_GetDefog_Strength(uint32_t *pstrength) {
     if (!pstrength) return -1;
-    *pstrength = 0;
+    uintptr_t val = 0;
+    if (isp_tuning_get_val(CID_DEFOG_STRENGTH, &val) == 0) {
+        *pstrength = (uint32_t)val;
+    } else {
+        *pstrength = 0;
+    }
     return 0;
 }
 
 int IMP_ISP_Tuning_SetSensorRegister(uint32_t reg, uint32_t val) {
-    (void)reg; (void)val;
-    return 0;
+    if (!gISPdev || gISPdev->fd < 0) return -1;
+    /* OEM: ioctl on ISP fd, VIDIOC_TISP_SET_SENSOR_REG = 0xc00856c3
+     * Struct: { uint32_t reg; uint32_t value; } */
+    struct { uint32_t reg; uint32_t value; } cmd = {reg, val};
+    int ret = ioctl(gISPdev->fd, 0xc00856c3, &cmd);
+    if (ret) LOG_ISP("SetSensorRegister: ioctl failed for reg 0x%x: %s", reg, strerror(errno));
+    return ret;
 }
 
 int IMP_ISP_Tuning_GetSensorRegister(uint32_t reg, uint32_t *val) {
-    (void)reg;
-    if (val) *val = 0;
+    if (!val) return -1;
+    if (!gISPdev || gISPdev->fd < 0) { *val = 0; return -1; }
+    /* OEM: ioctl on ISP fd, VIDIOC_TISP_GET_SENSOR_REG = 0xc00856c4 */
+    struct { uint32_t reg; uint32_t value; } cmd = {reg, 0};
+    int ret = ioctl(gISPdev->fd, 0xc00856c4, &cmd);
+    if (ret) {
+        LOG_ISP("GetSensorRegister: ioctl failed for reg 0x%x: %s", reg, strerror(errno));
+        *val = 0;
+        return ret;
+    }
+    *val = cmd.value;
     return 0;
 }
 
 int IMP_ISP_Tuning_SetAeWeight(void *weight) {
-    (void)weight;
-    return 0;
+    if (!weight) return -1;
+    int ret = isp_tuning_set_ptr(CID_AE_WEIGHT, weight);
+    if (ret) LOG_ISP("SetAeWeight: ioctl failed: %s", strerror(errno));
+    return ret;
 }
 
 int IMP_ISP_Tuning_GetAeWeight(void *weight) {
-    if (weight) memset(weight, 0, 15 * 15);
+    if (!weight) return -1;
+    int ret = isp_tuning_get_ptr(CID_AE_WEIGHT, weight);
+    if (ret) memset(weight, 0, 15 * 15);
     return 0;
 }
 
@@ -1809,8 +1901,11 @@ int IMP_ISP_Tuning_GetAeROI(void *roi) {
 }
 
 int IMP_ISP_Tuning_SetAeHist(void *hist) {
-    (void)hist;
-    return 0;
+    if (!hist) return -1;
+    /* CID 0x800002e — same as GetAeHist but cmd=0 (SET) */
+    int ret = isp_tuning_set_ptr(0x800002e, hist);
+    if (ret) LOG_ISP("SetAeHist: ioctl failed: %s", strerror(errno));
+    return ret;
 }
 
 int IMP_ISP_Tuning_GetAeHist(void *hist) {
@@ -1831,22 +1926,30 @@ int IMP_ISP_Tuning_GetAeHist(void *hist) {
 }
 
 int IMP_ISP_Tuning_SetAwbWeight(void *weight) {
-    (void)weight;
-    return 0;
+    if (!weight) return -1;
+    int ret = isp_tuning_set_ptr(CID_AWB_WEIGHT, weight);
+    if (ret) LOG_ISP("SetAwbWeight: ioctl failed: %s", strerror(errno));
+    return ret;
 }
 
 int IMP_ISP_Tuning_GetAwbWeight(void *weight) {
-    if (weight) memset(weight, 0, 15 * 15);
+    if (!weight) return -1;
+    int ret = isp_tuning_get_ptr(CID_AWB_WEIGHT, weight);
+    if (ret) memset(weight, 0, 15 * 15);
     return 0;
 }
 
 int IMP_ISP_Tuning_SetGamma(void *gamma) {
-    (void)gamma;
-    return 0;
+    if (!gamma) return -1;
+    int ret = isp_tuning_set_ptr(CID_GAMMA, gamma);
+    if (ret) LOG_ISP("SetGamma: ioctl failed: %s", strerror(errno));
+    return ret;
 }
 
 int IMP_ISP_Tuning_GetGamma(void *gamma) {
-    if (gamma) memset(gamma, 0, 129 * sizeof(uint16_t));
+    if (!gamma) return -1;
+    int ret = isp_tuning_get_ptr(CID_GAMMA, gamma);
+    if (ret) memset(gamma, 0, 129 * sizeof(uint16_t));
     return 0;
 }
 
@@ -1878,8 +1981,15 @@ int IMP_ISP_Tuning_GetAeAttr(void *ae_attr) {
 }
 
 int IMP_ISP_Tuning_SetAeAttr(void *ae_attr) {
-    (void)ae_attr;
-    return 0;
+    if (!ae_attr) return -1;
+    if (gISPdev && gISPdev->tisp_fd >= 0 && gISPdev->tuning) {
+        typedef struct { uint32_t cmd; uint32_t subcmd; void *ptr; } req_t;
+        req_t req = {0, 0x8000020, ae_attr};
+        int ret = ioctl(gISPdev->tisp_fd, 0xc00c56c6, &req);
+        if (ret) LOG_ISP("SetAeAttr: ioctl failed: %s", strerror(errno));
+        return ret;
+    }
+    return -1;
 }
 
 int IMP_ISP_Tuning_GetModuleControl(IMPISPModuleCtl *ispmodule) {
@@ -1903,8 +2013,11 @@ int IMP_ISP_Tuning_SetModuleControl(IMPISPModuleCtl *ispmodule) {
 /* ========== Additional missing ISP Tuning symbols (prudynt parity) ========== */
 
 int IMP_ISP_Tuning_SetAutoZoom(void *zoom_attr) {
-    (void)zoom_attr;
-    return 0;
+    if (!zoom_attr) return -1;
+    /* CID 0x80000e8 — AutoZoom sits in the scaler CID block (0xe9=ScalerLv) */
+    int ret = isp_tuning_set_ptr(0x80000e8, zoom_attr);
+    if (ret) LOG_ISP("SetAutoZoom: ioctl failed: %s", strerror(errno));
+    return ret;
 }
 
 int IMP_ISP_Tuning_SetAeTargetList(IMPISPAETargetList *at_list) {
@@ -1944,12 +2057,17 @@ int IMP_ISP_Tuning_GetHVFLIP(IMPISPHVFLIP *hvflip) {
 }
 
 int IMP_ISP_Tuning_AE_SetROI(void *roi) {
-    (void)roi;
-    return 0;
+    if (!roi) return -1;
+    /* CID 0x8000035 — AE ROI (between AE_FREEZE=0x34 and AE_STATE=0x36) */
+    int ret = isp_tuning_set_ptr(0x8000035, roi);
+    if (ret) LOG_ISP("AE_SetROI: ioctl failed: %s", strerror(errno));
+    return ret;
 }
 
 int IMP_ISP_Tuning_AE_GetROI(void *roi) {
-    if (roi) memset(roi, 0, 15 * 15);
+    if (!roi) return -1;
+    int ret = isp_tuning_get_ptr(0x8000035, roi);
+    if (ret) memset(roi, 0, 15 * 15);
     return 0;
 }
 
@@ -1969,18 +2087,24 @@ int IMP_ISP_Tuning_GetAeHist_Origin(void *hist) {
 
 int IMP_ISP_Tuning_GetAE_IT_MAX(uint32_t *it_max) {
     if (!it_max) return -1;
-    *it_max = 0;
+    uintptr_t val = 0;
+    int ret = isp_tuning_get_val(0x8000032, &val);
+    *it_max = (ret == 0) ? (uint32_t)val : 0;
     return 0;
 }
 
 int IMP_ISP_Tuning_SetAe_IT_MAX(uint32_t it_max) {
-    (void)it_max;
-    return 0;
+    int ret = isp_tuning_set_val(0x8000032, (uintptr_t)it_max);
+    if (ret) LOG_ISP("SetAe_IT_MAX: ioctl failed: %s", strerror(errno));
+    return ret;
 }
 
 int IMP_ISP_Tuning_GetAeLuma(int *luma) {
     if (!luma) return -1;
-    *luma = 0;
+    uintptr_t val = 0;
+    /* CID 0x8000031 — AE luma (between AE_ZONE=0x30 and AE_IT_MAX=0x32) */
+    int ret = isp_tuning_get_val(0x8000031, &val);
+    *luma = (ret == 0) ? (int)val : 0;
     return 0;
 }
 
@@ -2023,25 +2147,44 @@ int IMP_ISP_Tuning_EnableDRC(IMPISPTuningOpsMode mode) {
 }
 
 int IMP_ISP_Tuning_GetAeMin(int *min_it, int *min_again) {
-    if (min_it) *min_it = 0;
-    if (min_again) *min_again = 0;
+    if (!min_it || !min_again) return -1;
+    /* CID 0x8000033 — AE min params. OEM passes a struct with {min_it, min_again} */
+    struct { int min_it; int min_again; } ae_min = {0, 0};
+    int ret = isp_tuning_get_ptr(0x8000033, &ae_min);
+    if (ret == 0) {
+        *min_it = ae_min.min_it;
+        *min_again = ae_min.min_again;
+    } else {
+        *min_it = 0;
+        *min_again = 0;
+    }
     return 0;
 }
 
 int IMP_ISP_Tuning_SetAeMin(int min_it, int min_again) {
-    (void)min_it; (void)min_again;
-    return 0;
+    struct { int min_it; int min_again; } ae_min = {min_it, min_again};
+    int ret = isp_tuning_set_ptr(0x8000033, &ae_min);
+    if (ret) LOG_ISP("SetAeMin: ioctl failed: %s", strerror(errno));
+    return ret;
 }
 
 int IMP_ISP_Tuning_GetAeZone(void *zone) {
-    if (zone) memset(zone, 0, 15 * 15 * sizeof(uint32_t));
+    if (!zone) return -1;
+    /* CID 0x8000030 — AE zone stats (15x15 grid) */
+    int ret = isp_tuning_get_ptr(0x8000030, zone);
+    if (ret) memset(zone, 0, 15 * 15 * sizeof(uint32_t));
     return 0;
 }
 
 int IMP_ISP_Tuning_GetAwbZone(void *zone_r, void *zone_g, void *zone_b) {
-    if (zone_r) memset(zone_r, 0, 225);
-    if (zone_g) memset(zone_g, 0, 225);
-    if (zone_b) memset(zone_b, 0, 225);
+    /* OEM passes a combined struct for AWB zone data; CID 0x8000009 */
+    struct { void *r; void *g; void *b; } awb_zone = {zone_r, zone_g, zone_b};
+    int ret = isp_tuning_get_ptr(0x8000009, &awb_zone);
+    if (ret) {
+        if (zone_r) memset(zone_r, 0, 225);
+        if (zone_g) memset(zone_g, 0, 225);
+        if (zone_b) memset(zone_b, 0, 225);
+    }
     return 0;
 }
 
@@ -2061,6 +2204,362 @@ int IMP_ISP_Tuning_GetAwbHist(void *hist) {
 
 int IMP_ISP_Tuning_GetAWBCt(uint32_t *ct) {
     if (!ct) return -1;
-    *ct = 5000; /* Default: daylight ~5000K */
+    uintptr_t val = 0;
+    if (isp_tuning_get_val(CID_AWB_CT, &val) == 0) {
+        *ct = (uint32_t)val;
+    } else {
+        *ct = 5000;
+    }
     return 0;
+}
+
+/* ========== Missing OEM ISP core functions (from BN audit) ========== */
+
+int IMP_ISP_WDR_ENABLE(int mode) {
+    if (!gISPdev || gISPdev->fd < 0) return -1;
+    int ret;
+    if (mode) {
+        ret = ioctl(gISPdev->fd, 0x800456d8, 0);
+    } else {
+        ret = ioctl(gISPdev->fd, 0x800456d9, 0);
+    }
+    if (ret) {
+        LOG_ISP("WDR_ENABLE(%d): ioctl failed: %s", mode, strerror(errno));
+    } else {
+        wdr_mode = mode;
+    }
+    return ret;
+}
+
+int IMP_ISP_WDR_ENABLE_Get(int *mode) {
+    if (!mode) return -1;
+    *mode = wdr_mode;
+    return 0;
+}
+
+int IMP_ISP_SetDefaultBinPath(const char *path) {
+    if (!path) return -1;
+    if (!bpath) {
+        bpath = (char *)malloc(64);
+        if (!bpath) return -1;
+    }
+    strncpy(bpath, path, 63);
+    bpath[63] = '\0';
+    return 0;
+}
+
+int IMP_ISP_GetDefaultBinPath(char *path) {
+    if (!path) return -1;
+    if (!gISPdev || gISPdev->fd < 0) {
+        /* Fallback: return cached path if available */
+        if (bpath) {
+            strncpy(path, bpath, 63);
+            path[63] = '\0';
+        } else {
+            path[0] = '\0';
+        }
+        return 0;
+    }
+    memset(path, 0, 64);
+    if (ioctl(gISPdev->fd, 0xc00456c8, path) != 0) {
+        LOG_ISP("GetDefaultBinPath: ioctl failed: %s", strerror(errno));
+        if (bpath) {
+            strncpy(path, bpath, 63);
+            path[63] = '\0';
+        }
+    }
+    return 0;
+}
+
+int IMP_ISP_SetFrameDrop(void *attr) {
+    if (!attr || !gISPdev || gISPdev->fd < 0) return -1;
+    int ret = ioctl(gISPdev->fd, 0xc00456e6, attr);
+    if (ret) LOG_ISP("SetFrameDrop: ioctl failed: %s", strerror(errno));
+    return ret;
+}
+
+int IMP_ISP_GetFrameDrop(void *attr) {
+    if (!attr || !gISPdev || gISPdev->fd < 0) return -1;
+    int ret = ioctl(gISPdev->fd, 0xc00456e7, attr);
+    if (ret) LOG_ISP("GetFrameDrop: ioctl failed: %s", strerror(errno));
+    return ret;
+}
+
+int IMP_ISP_SetFixedContraster(int mode) {
+    (void)mode;
+    return 0;
+}
+
+int IMP_ISP_SetAwbAlgoFunc(void *func) {
+    (void)func;
+    return 0;
+}
+
+int IMP_ISP_SetAeAlgoFunc(void *func) {
+    (void)func;
+    return 0;
+}
+
+int IMP_ISP_SET_GPIO_STA(int gpio, int value) {
+    (void)gpio; (void)value;
+    return 0;
+}
+
+int IMP_ISP_SET_GPIO_INIT_OR_FREE(int gpio, int init) {
+    (void)gpio; (void)init;
+    return 0;
+}
+
+/* ========== Missing OEM ISP Tuning functions (from BN audit) ========== */
+
+int IMP_ISP_Tuning_SetVideoDrop(void *attr) {
+    /* OEM stores callback ptr under g_isp_deamon_mutex */
+    if (!gISPdev || !gISPdev->tuning) return -1;
+    pthread_mutex_lock(&g_isp_deamon_mutex);
+    gISPdev->tuning->video_drop_cb = (void (*)(void))attr;
+    pthread_mutex_unlock(&g_isp_deamon_mutex);
+    return 0;
+}
+
+int IMP_ISP_Tuning_SetShading(void *attr) {
+    int ret = isp_v4l2_set(CID_SHADING, (int32_t)(intptr_t)attr);
+    if (ret) LOG_ISP("SetShading: ioctl failed: %s", strerror(errno));
+    return ret;
+}
+
+int IMP_ISP_Tuning_SetScalerLv(int chn, int level) {
+    (void)chn;
+    int ret = isp_tuning_set_val(CID_SCALER_LV, (uintptr_t)level);
+    if (ret) LOG_ISP("SetScalerLv: ioctl failed: %s", strerror(errno));
+    return ret;
+}
+
+int IMP_ISP_Tuning_SetMask(void *attr) {
+    if (!attr) return -1;
+    int ret = isp_tuning_set_ptr(CID_MASK, attr);
+    if (ret) LOG_ISP("SetMask: ioctl failed: %s", strerror(errno));
+    return ret;
+}
+
+int IMP_ISP_Tuning_GetMask(void *attr) {
+    if (!attr) return -1;
+    int ret = isp_tuning_get_ptr(CID_MASK, attr);
+    if (ret) LOG_ISP("GetMask: ioctl failed: %s", strerror(errno));
+    return ret;
+}
+
+int IMP_ISP_Tuning_SetISPProcess(void *attr) {
+    int ret = isp_v4l2_set(CID_ISP_PROCESS, (int32_t)(intptr_t)attr);
+    if (ret) LOG_ISP("SetISPProcess: ioctl failed: %s", strerror(errno));
+    return ret;
+}
+
+int IMP_ISP_Tuning_SetFWFreeze(int enable) {
+    int ret = isp_v4l2_set(CID_FW_FREEZE, (int32_t)enable);
+    if (ret) LOG_ISP("SetFWFreeze: ioctl failed: %s", strerror(errno));
+    return ret;
+}
+
+int IMP_ISP_Tuning_SetCsc_Attr(void *attr) {
+    if (!attr) return -1;
+    int ret = isp_tuning_set_ptr(CID_CSC_ATTR, attr);
+    if (ret) LOG_ISP("SetCsc_Attr: ioctl failed: %s", strerror(errno));
+    return ret;
+}
+
+int IMP_ISP_Tuning_GetCsc_Attr(void *attr) {
+    if (!attr) return -1;
+    int ret = isp_tuning_get_ptr(CID_CSC_ATTR, attr);
+    if (ret) LOG_ISP("GetCsc_Attr: ioctl failed: %s", strerror(errno));
+    return ret;
+}
+
+int IMP_ISP_Tuning_SetCCMAttr(void *attr) {
+    if (!attr) return -1;
+    int ret = isp_tuning_set_ptr(CID_CCM_ATTR, attr);
+    if (ret) LOG_ISP("SetCCMAttr: ioctl failed: %s", strerror(errno));
+    return ret;
+}
+
+int IMP_ISP_Tuning_GetCCMAttr(void *attr) {
+    if (!attr) return -1;
+    int ret = isp_tuning_get_ptr(CID_CCM_ATTR, attr);
+    if (ret) LOG_ISP("GetCCMAttr: ioctl failed: %s", strerror(errno));
+    return ret;
+}
+
+int IMP_ISP_Tuning_SetWB_ALGO(int mode) {
+    int ret = isp_tuning_set_val(CID_WB_ALGO, (uintptr_t)mode);
+    if (ret) LOG_ISP("SetWB_ALGO: ioctl failed: %s", strerror(errno));
+    return ret;
+}
+
+int IMP_ISP_Tuning_SetWdr_OutputMode(int mode) {
+    int ret = isp_tuning_set_ptr(CID_WDR_OUTPUT_MODE, (void *)(intptr_t)mode);
+    if (ret) LOG_ISP("SetWdr_OutputMode: ioctl failed: %s", strerror(errno));
+    return ret;
+}
+
+int IMP_ISP_Tuning_GetWdr_OutputMode(int *mode) {
+    if (!mode) return -1;
+    uintptr_t val = 0;
+    if (isp_tuning_get_val(CID_WDR_OUTPUT_MODE, &val) == 0) {
+        *mode = (int)val;
+    } else {
+        *mode = 0;
+    }
+    return 0;
+}
+
+int IMP_ISP_Tuning_SetAwbCtTrend(void *attr) {
+    if (!attr) return -1;
+    int ret = isp_tuning_set_ptr(CID_AWB_CT_TREND, attr);
+    if (ret) LOG_ISP("SetAwbCtTrend: ioctl failed: %s", strerror(errno));
+    return ret;
+}
+
+int IMP_ISP_Tuning_GetAwbCtTrend(void *attr) {
+    if (!attr) return -1;
+    int ret = isp_tuning_get_ptr(CID_AWB_CT_TREND, attr);
+    if (ret) LOG_ISP("GetAwbCtTrend: ioctl failed: %s", strerror(errno));
+    return ret;
+}
+
+int IMP_ISP_Tuning_SetAwbCt(void *attr) {
+    if (!attr) return -1;
+    int ret = isp_tuning_set_ptr(CID_AWB_CT, attr);
+    if (ret) LOG_ISP("SetAwbCt: ioctl failed: %s", strerror(errno));
+    return ret;
+}
+
+int IMP_ISP_Tuning_SetAwbClust(void *attr) {
+    if (!attr) return -1;
+    int ret = isp_tuning_set_ptr(CID_AWB_CLUSTER, attr);
+    if (ret) LOG_ISP("SetAwbClust: ioctl failed: %s", strerror(errno));
+    return ret;
+}
+
+int IMP_ISP_Tuning_GetAwbClust(void *attr) {
+    if (!attr) return -1;
+    int ret = isp_tuning_get_ptr(CID_AWB_CLUSTER, attr);
+    if (ret) LOG_ISP("GetAwbClust: ioctl failed: %s", strerror(errno));
+    return ret;
+}
+
+int IMP_ISP_Tuning_SetAwbHist(void *attr) {
+    if (!attr) return -1;
+    int ret = isp_tuning_set_ptr(CID_AWB_HIST, attr);
+    if (ret) LOG_ISP("SetAwbHist: ioctl failed: %s", strerror(errno));
+    return ret;
+}
+
+int IMP_ISP_Tuning_SetAfWeight(void *attr) {
+    if (!attr) return -1;
+    int ret = isp_tuning_set_ptr(CID_AF_WEIGHT, attr);
+    if (ret) LOG_ISP("SetAfWeight: ioctl failed: %s", strerror(errno));
+    return ret;
+}
+
+int IMP_ISP_Tuning_GetAfWeight(void *attr) {
+    if (!attr) return -1;
+    int ret = isp_tuning_get_ptr(CID_AF_WEIGHT, attr);
+    if (ret) LOG_ISP("GetAfWeight: ioctl failed: %s", strerror(errno));
+    return ret;
+}
+
+int IMP_ISP_Tuning_SetAfHist(void *attr) {
+    if (!attr) return -1;
+    int ret = isp_tuning_set_ptr(CID_AF_HIST, attr);
+    if (ret) LOG_ISP("SetAfHist: ioctl failed: %s", strerror(errno));
+    return ret;
+}
+
+int IMP_ISP_Tuning_GetAfHist(void *attr) {
+    if (!attr) return -1;
+    int ret = isp_tuning_get_ptr(CID_AF_HIST, attr);
+    if (ret) LOG_ISP("GetAfHist: ioctl failed: %s", strerror(errno));
+    return ret;
+}
+
+int IMP_ISP_Tuning_SetAeFreeze(int enable) {
+    int ret = isp_tuning_set_val(CID_AE_FREEZE, (uintptr_t)enable);
+    if (ret) LOG_ISP("SetAeFreeze: ioctl failed: %s", strerror(errno));
+    return ret;
+}
+
+int IMP_ISP_Tuning_GetNCUInfo(void *info) {
+    if (!info) return -1;
+    int ret = isp_tuning_get_ptr(CID_NCU_INFO, info);
+    if (ret) LOG_ISP("GetNCUInfo: ioctl failed: %s", strerror(errno));
+    return ret;
+}
+
+int IMP_ISP_Tuning_GetNCUAlloc(void *info) {
+    if (!info) return -1;
+    int ret = isp_tuning_get_ptr(CID_NCU_INFO, info);
+    if (ret) LOG_ISP("GetNCUAlloc: ioctl failed: %s", strerror(errno));
+    return ret;
+}
+
+int IMP_ISP_Tuning_GetBlcAttr(void *attr) {
+    if (!attr) return -1;
+    int ret = isp_tuning_get_ptr(CID_BLC_ATTR, attr);
+    if (ret) LOG_ISP("GetBlcAttr: ioctl failed: %s", strerror(errno));
+    return ret;
+}
+
+int IMP_ISP_Tuning_GetAfZone(void *zone) {
+    if (!zone) return -1;
+    int ret = isp_tuning_get_ptr(CID_AF_HIST, zone);
+    if (ret) LOG_ISP("GetAfZone: ioctl failed: %s", strerror(errno));
+    return ret;
+}
+
+int IMP_ISP_Tuning_GetAeState(void *state) {
+    if (!state) return -1;
+    int ret = isp_tuning_get_ptr(CID_AE_STATE, state);
+    if (ret) LOG_ISP("GetAeState: ioctl failed: %s", strerror(errno));
+    return ret;
+}
+
+int IMP_ISP_Tuning_GetAFMetrices(void *metrices) {
+    if (!metrices) return -1;
+    int ret = isp_tuning_get_ptr(CID_AF_METRICES, metrices);
+    if (ret) LOG_ISP("GetAFMetrices: ioctl failed: %s", strerror(errno));
+    return ret;
+}
+
+int IMP_ISP_Tuning_EnableMovestate(void) {
+    /* Simplified: SET CID_MOVESTATE with enable=1 */
+    int ret = isp_tuning_set_val(CID_MOVESTATE, 1);
+    if (ret) LOG_ISP("EnableMovestate: ioctl failed: %s", strerror(errno));
+    return ret;
+}
+
+int IMP_ISP_Tuning_EnableDefog(void) {
+    int ret = isp_tuning_set_val(CID_ENABLE_DEFOG, 1);
+    if (ret) LOG_ISP("EnableDefog: ioctl failed: %s", strerror(errno));
+    return ret;
+}
+
+int IMP_ISP_Tuning_DisableMovestate(void) {
+    /* Simplified: SET CID_MOVESTATE with disable=0, then request IDR */
+    int ret = isp_tuning_set_val(CID_MOVESTATE, 0);
+    if (ret) LOG_ISP("DisableMovestate: ioctl failed: %s", strerror(errno));
+    IMP_Encoder_RequestIDR(0);
+    return ret;
+}
+
+int IMP_ISP_Tuning_Awb_SetRgbCoefft(void *attr) {
+    if (!attr) return -1;
+    int ret = isp_tuning_set_ptr(CID_AWB_CWF_SHIFT, attr);
+    if (ret) LOG_ISP("Awb_SetRgbCoefft: ioctl failed: %s", strerror(errno));
+    return ret;
+}
+
+int IMP_ISP_Tuning_Awb_GetRgbCoefft(void *attr) {
+    if (!attr) return -1;
+    int ret = isp_tuning_get_ptr(CID_AWB_CWF_SHIFT, attr);
+    if (ret) LOG_ISP("Awb_GetRgbCoefft: ioctl failed: %s", strerror(errno));
+    return ret;
 }

@@ -287,7 +287,7 @@ static int read_reg(struct avpu_codec_chan *chan, unsigned long arg)
 	if (copy_to_user((struct avpu_reg *)arg, &reg, sizeof(struct avpu_reg)))
 		return -EFAULT;
 
-	avpu_dbg("Reg read: 0x%.4X: 0x%.8x\n", reg.id, reg.value);
+	printk(KERN_INFO "[AVPU] RD 0x%04x = 0x%08x\n", reg.id, reg.value);
 
 	return 0;
 }
@@ -299,9 +299,7 @@ static int write_reg(struct avpu_codec_chan *chan, unsigned long arg)
 
 	if (copy_from_user(&reg, (struct avpu_reg *)arg, sizeof(struct avpu_reg)))
 		return -EFAULT;
-		avpu_dbg("Reg write: 0x%.4X: 0x%.8x\n", reg.id, reg.value);
-	if (reg.id == 0x8084 || reg.id == 0x8094)
-		avpu_dbg("Reg write: 0x%.4X: 0x%.8x\n", reg.id, reg.value);
+	printk(KERN_INFO "[AVPU] WR 0x%04x = 0x%08x\n", reg.id, reg.value);
 
 	if (reg.id % 4) {
 		avpu_err("Unaligned register access: 0x%.4X\n",
@@ -332,21 +330,14 @@ static int write_reg(struct avpu_codec_chan *chan, unsigned long arg)
 static long jz_cmd_flush_cache(long arg)
 {
 	struct flush_cache_info info;
-
-	if (copy_from_user(&info, (void *)arg, sizeof(info)))
+	long ret = 0;
+	if (copy_from_user(&info, (void *)arg, sizeof(info))) {
 		return -EFAULT;
+	}
 
-	/* info.addr = userspace virtual address or physical address
-	 * info.len = size
-	 * info.dir: 0=copy from userspace vaddr to phys via ioremap
-	 *           (info.addr=phys, data comes from a second copy_from_user)
-	 *           other=dma_cache_sync with userspace vaddr */
-	if (info.len == 0 || info.len > 0x200000)
-		return -EINVAL;
+	dma_cache_sync(NULL, (void *)info.addr, info.len, info.dir);
 
-	dma_cache_sync(NULL, (void *)(unsigned long)info.addr, info.len, info.dir);
-
-	return 0;
+	return ret;
 }
 #endif
 static long avpu_codec_ioctl(struct file *filp, unsigned int cmd,
@@ -354,43 +345,33 @@ static long avpu_codec_ioctl(struct file *filp, unsigned int cmd,
 {
 	struct avpu_codec_chan *chan = filp->private_data;
 	struct avpu_codec_desc *codec = chan->codec;
-	long ret;
-
-	/* Log all ioctl calls for debugging */
-	printk(KERN_INFO "[AVPU] ioctl cmd=0x%08x arg=0x%08lx\n", cmd, arg);
 
 	switch (cmd) {
 	case GET_DMA_MMAP:
-		ret = avpu_ioctl_get_dma_mmap(codec->device, chan, arg);
-		break;
+		printk(KERN_INFO "[AVPU] ioctl GET_DMA_MMAP\n");
+		return avpu_ioctl_get_dma_mmap(codec->device, chan, arg);
 	case GET_DMA_FD:
-		ret = avpu_ioctl_get_dma_fd(codec->device, arg);
-		break;
+		printk(KERN_INFO "[AVPU] ioctl GET_DMA_FD\n");
+		return avpu_ioctl_get_dma_fd(codec->device, arg);
 	case GET_DMA_PHY:
-		ret = avpu_ioctl_get_dmabuf_dma_addr(codec->device, arg);
-		break;
+		printk(KERN_INFO "[AVPU] ioctl GET_DMA_PHY\n");
+		return avpu_ioctl_get_dmabuf_dma_addr(codec->device, arg);
 	case AL_CMD_UNBLOCK_CHANNEL:
-		ret = unblock_channel(chan);
-		break;
+		printk(KERN_INFO "[AVPU] ioctl UNBLOCK_CHANNEL\n");
+		return unblock_channel(chan);
 	case AL_CMD_IP_WAIT_IRQ:
-		ret = wait_irq(chan, arg);
-		break;
+		return wait_irq(chan, arg);
 	case AL_CMD_IP_READ_REG:
-		ret = read_reg(chan, arg);
-		break;
+		return read_reg(chan, arg);
 	case AL_CMD_IP_WRITE_REG:
-		ret = write_reg(chan, arg);
-		break;
+		return write_reg(chan, arg);
 	case JZ_CMD_FLUSH_CACHE:
-		ret = jz_cmd_flush_cache(arg);
-		break;
+		return jz_cmd_flush_cache(arg);
 	default:
+		printk(KERN_INFO "[AVPU] ioctl cmd=0x%08x arg=0x%lx\n", cmd, arg);
 		avpu_err("Unknown ioctl: 0x%.8X\n", cmd);
 		return -EINVAL;
 	}
-
-	printk(KERN_INFO "[AVPU] ioctl cmd=0x%08x ret=%ld\n", cmd, ret);
-	return ret;
 }
 
 const struct file_operations avpu_codec_fops = {

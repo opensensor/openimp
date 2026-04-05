@@ -18,14 +18,15 @@
 
 typedef struct OSDRegion {
     int handle;                 /* 0x00: Region handle */
-    IMPOSDRgnAttr attr;         /* 0x04: Region attributes (0x20 bytes) */
-    uint8_t data_24[0x4];       /* 0x24: Padding */
-    void *data_ptr;             /* 0x28: Data pointer */
-    struct OSDRegion *prev;     /* 0x2c: Previous in list */
-    struct OSDRegion *next;     /* 0x30: Next in list */
-    uint8_t allocated;          /* 0x34: Allocation flag */
-    uint8_t registered;         /* 0x35: Registration flag */
-    uint8_t data_36[0x2];       /* 0x36-0x37: Padding */
+    IMPOSDRgnAttr attr;         /* 0x04: Region attributes */
+    IMPOSDGrpRgnAttr grp_attr;  /* Per-region group attributes (show, offset, alpha, layer) */
+    void *data_ptr;             /* 0x28: Allocated bitmap/picture data pointer */
+    size_t data_size;           /* Size of allocated data_ptr buffer */
+    struct OSDRegion *prev;     /* Previous in list */
+    struct OSDRegion *next;     /* Next in list */
+    uint8_t allocated;          /* Allocation flag */
+    uint8_t registered;         /* Registration flag */
+    int grp_num;                /* Group this region is registered to (-1 if none) */
 } OSDRegion;
 
 /* OSD Group structure - 0x9014 bytes per group */
@@ -76,6 +77,47 @@ static struct {
 
 /* External system functions */
 extern int notify_observers(void *module, void *frame);
+
+/* Forward declarations for observer management (same as FrameSource) */
+extern int add_observer_to_module(void *module, void *observer);
+extern int remove_observer_from_module(void *src_module, void *dst_module);
+
+typedef struct OSDObserver {
+    struct OSDObserver *next;
+    void *module;
+    void *frame;
+    int output_index;
+} OSDObserver;
+
+/**
+ * osd_bind - Bind OSD to a downstream module (e.g., Encoder)
+ * Sets up the observer chain so frames flow through OSD to the next module.
+ */
+static int osd_bind(void *src_module, void *dst_module, void *output_ptr) {
+    (void)output_ptr;
+    if (src_module == NULL || dst_module == NULL) return -1;
+
+    OSDObserver *obs = (OSDObserver*)calloc(1, sizeof(OSDObserver));
+    if (obs == NULL) return -1;
+
+    obs->next = NULL;
+    obs->module = dst_module;
+    obs->frame = NULL;
+    obs->output_index = 0;
+
+    if (add_observer_to_module(src_module, obs) < 0) {
+        LOG_OSD("osd_bind: add_observer_to_module failed");
+        free(obs);
+        return -1;
+    }
+    LOG_OSD("osd_bind: bound OSD to downstream module");
+    return 0;
+}
+
+static int osd_unbind(void *src_module, void *dst_module) {
+    if (src_module == NULL || dst_module == NULL) return -1;
+    return remove_observer_from_module(src_module, dst_module);
+}
 
 /**
  * osd_update - Called by observer pattern when a frame is available from FrameSource
@@ -202,6 +244,12 @@ int IMP_OSD_CreateGroup(int grpNum) {
     /* Set update callback (func_4c at offset 0x4c) */
     void **update_ptr = (void**)((char*)osd_module + 0x4c);
     *update_ptr = (void*)osd_update;
+
+    /* Set bind/unbind function pointers at offsets 0x40 and 0x44 */
+    void **bind_ptr = (void**)((char*)osd_module + 0x40);
+    void **unbind_ptr = (void**)((char*)osd_module + 0x44);
+    *bind_ptr = (void*)osd_bind;
+    *unbind_ptr = (void*)osd_unbind;
 
     extern int IMP_System_RegisterModule(int deviceID, int groupID, void *module);
     IMP_System_RegisterModule(4, grpNum, osd_module);  /* DEV_ID_OSD = 4 */
@@ -584,29 +632,152 @@ int IMP_OSD_UnRegisterRgn(IMPRgnHandle handle, int grpNum) {
     return 0;
 }
 
+/* Compute data size for bitmap/picture region based on rect and type */
+static size_t osd_compute_data_size(IMPOSDRgnType type, IMPRect *rect, IMPPixelFormat fmt) {
+    if (!rect) return 0;
+    int w = rect->width;
+    int h = rect->height;
+    if (w <= 0 || h <= 0) return 0;
+
+    size_t pixels = (size_t)w * (size_t)h;
+
+    if (type == OSD_REG_BITMAP) {
+        /* Bitmap: 1 byte per pixel (monochrome index) */
+        return pixels;
+    }
+
+    /* Picture: bytes-per-pixel depends on pixel format */
+    switch ((int)fmt) {
+    case PIX_FMT_NV12:
+        return (pixels * 3) / 2; /* NV12: 12bpp */
+    default:
+        return pixels * 4; /* BGRA or default: 32bpp */
+    }
+}
+
 int IMP_OSD_SetRgnAttr(IMPRgnHandle handle, IMPOSDRgnAttr *prAttr) {
     if (prAttr == NULL) return -1;
-    LOG_OSD("SetRgnAttr: handle=%d", handle);
+    if (handle < 0 || handle >= MAX_OSD_REGIONS) {
+        LOG_OSD("SetRgnAttr: invalid handle %d", handle);
+        return -1;
+    }
+
+    pthread_mutex_lock(&osd_mutex);
+    if (gosd == NULL || !gosd->regions[handle].allocated) {
+        pthread_mutex_unlock(&osd_mutex);
+        LOG_OSD("SetRgnAttr: region %d not created", handle);
+        return -1;
+    }
+
+    sem_wait(&gosd->sem);
+
+    OSDRegion *rgn = &gosd->regions[handle];
+    IMPOSDRgnType new_type = prAttr->type;
+    IMPOSDRgnType old_type = rgn->attr.type;
+
+    /* OEM SetRgnAttr only attempts bitmap/picture data copy when the NEW type
+     * is BITMAP(3) or PIC(5) AND the data.type field ALSO matches (indicating
+     * the caller has populated the data union for that type). For other types
+     * (INV, LINE, RECT, COVER) the bitmapData union member is garbage — the
+     * caller fills lineRectData or coverData instead. Never dereference
+     * bitmapData unless the data payload is explicitly for bitmap/pic. */
+    int data_is_bitmap = (new_type == OSD_REG_BITMAP && prAttr->data.type == OSD_REG_BITMAP);
+    int data_is_pic = (new_type == OSD_REG_PIC && prAttr->data.type == OSD_REG_PIC);
+
+    if (data_is_bitmap || data_is_pic) {
+        size_t needed = osd_compute_data_size(new_type, &prAttr->rect, prAttr->fmt);
+
+        if (needed > 0) {
+            if (rgn->data_ptr == NULL || rgn->data_size != needed) {
+                void *new_buf = realloc(rgn->data_ptr, needed);
+                if (new_buf == NULL) {
+                    LOG_OSD("SetRgnAttr: malloc data size=%zu failed", needed);
+                    sem_post(&gosd->sem);
+                    pthread_mutex_unlock(&osd_mutex);
+                    return -1;
+                }
+                rgn->data_ptr = new_buf;
+                rgn->data_size = needed;
+            }
+
+            /* Only copy if the data union actually has a valid pointer for this type */
+            void *src = data_is_bitmap ? prAttr->data.data.bitmapData
+                                       : prAttr->data.data.picData.pData;
+            if (src != NULL) {
+                memcpy(rgn->data_ptr, src, needed);
+            } else {
+                memset(rgn->data_ptr, 0, needed);
+            }
+        }
+    } else {
+        /* Non-bitmap/pic types: free old data if transitioning */
+        if ((old_type == OSD_REG_BITMAP || old_type == OSD_REG_PIC) && rgn->data_ptr != NULL) {
+            free(rgn->data_ptr);
+            rgn->data_ptr = NULL;
+            rgn->data_size = 0;
+        }
+    }
+
+    /* Copy the full attribute struct (OEM copies all 0x20 bytes) */
+    rgn->attr = *prAttr;
+
+    sem_post(&gosd->sem);
+    pthread_mutex_unlock(&osd_mutex);
     return 0;
 }
 
 int IMP_OSD_GetRgnAttr(IMPRgnHandle handle, IMPOSDRgnAttr *prAttr) {
     if (prAttr == NULL) return -1;
-    LOG_OSD("GetRgnAttr: handle=%d", handle);
-    memset(prAttr, 0, sizeof(*prAttr));
+    if (handle < 0 || handle >= MAX_OSD_REGIONS) return -1;
+
+    pthread_mutex_lock(&osd_mutex);
+    if (gosd == NULL || !gosd->regions[handle].allocated) {
+        pthread_mutex_unlock(&osd_mutex);
+        memset(prAttr, 0, sizeof(*prAttr));
+        return -1;
+    }
+
+    OSDRegion *rgn = &gosd->regions[handle];
+    *prAttr = rgn->attr;
+    /* Point data.bitmapData to our allocated buffer so caller can read it */
+    if (rgn->data_ptr != NULL) {
+        prAttr->data.data.bitmapData = rgn->data_ptr;
+    }
+
+    pthread_mutex_unlock(&osd_mutex);
     return 0;
 }
 
 int IMP_OSD_SetGrpRgnAttr(IMPRgnHandle handle, int grpNum, IMPOSDGrpRgnAttr *pgrAttr) {
     if (pgrAttr == NULL) return -1;
-    LOG_OSD("SetGrpRgnAttr: handle=%d, grp=%d", handle, grpNum);
+    if (handle < 0 || handle >= MAX_OSD_REGIONS) return -1;
+    if (grpNum < 0 || grpNum >= MAX_OSD_GROUPS) return -1;
+
+    pthread_mutex_lock(&osd_mutex);
+    if (gosd == NULL || !gosd->regions[handle].allocated) {
+        pthread_mutex_unlock(&osd_mutex);
+        return -1;
+    }
+
+    gosd->regions[handle].grp_attr = *pgrAttr;
+    pthread_mutex_unlock(&osd_mutex);
     return 0;
 }
 
 int IMP_OSD_GetGrpRgnAttr(IMPRgnHandle handle, int grpNum, IMPOSDGrpRgnAttr *pgrAttr) {
     if (pgrAttr == NULL) return -1;
-    LOG_OSD("GetGrpRgnAttr: handle=%d, grp=%d", handle, grpNum);
-    memset(pgrAttr, 0, sizeof(*pgrAttr));
+    if (handle < 0 || handle >= MAX_OSD_REGIONS) return -1;
+    if (grpNum < 0 || grpNum >= MAX_OSD_GROUPS) return -1;
+
+    pthread_mutex_lock(&osd_mutex);
+    if (gosd == NULL || !gosd->regions[handle].allocated) {
+        pthread_mutex_unlock(&osd_mutex);
+        memset(pgrAttr, 0, sizeof(*pgrAttr));
+        return -1;
+    }
+
+    *pgrAttr = gosd->regions[handle].grp_attr;
+    pthread_mutex_unlock(&osd_mutex);
     return 0;
 }
 
@@ -659,7 +830,17 @@ int IMP_OSD_UpdateRgnAttrData(IMPRgnHandle handle, IMPOSDRgnAttrData *prAttrData
 }
 
 int IMP_OSD_ShowRgn(IMPRgnHandle handle, int grpNum, int showFlag) {
-    LOG_OSD("ShowRgn: handle=%d, grp=%d, show=%d", handle, grpNum, showFlag);
+    if (handle < 0 || handle >= MAX_OSD_REGIONS) return -1;
+    if (grpNum < 0 || grpNum >= MAX_OSD_GROUPS) return -1;
+
+    pthread_mutex_lock(&osd_mutex);
+    if (gosd == NULL || !gosd->regions[handle].allocated) {
+        pthread_mutex_unlock(&osd_mutex);
+        return -1;
+    }
+
+    gosd->regions[handle].grp_attr.show = showFlag;
+    pthread_mutex_unlock(&osd_mutex);
     return 0;
 }
 

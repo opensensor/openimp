@@ -40,9 +40,11 @@ typedef struct {
     pthread_t thread;           /* 0x1c0: Channel thread */
     int fd;                     /* 0x1c4: File descriptor for /dev/framechanN */
     void *module_ptr;           /* 0x1c8: Pointer to module */
-    uint8_t data_1cc[0x70];     /* 0x1cc-0x23b: More data */
+    int nocopy_depth;           /* 0x1cc: No-copy frame depth */
+    int copy_type;              /* 0x1d0: Copy type flag (0=copy, 1=nocopy) */
+    uint8_t data_1d4[0x68];    /* 0x1d4-0x23b: More data */
     void *special_data;         /* 0x23c: Special mode data */
-    uint8_t data_240[0x4];      /* 0x240-0x243: Padding */
+    int source_chn;             /* 0x240: Source channel for extended channels */
     sem_t sem;                  /* 0x244: Semaphore */
     uint8_t data_254[0x94];     /* 0x254-end: Rest of structure */
 } FSChannel;
@@ -184,6 +186,17 @@ int IMP_FrameSource_CreateChn(int chnNum, IMPFSChnAttr *chn_attr) {
     extern int IMP_System_RegisterModule(int deviceID, int groupID, void *module);
     IMP_System_RegisterModule(0, chnNum, fs_module);  /* DEV_ID_FS = 0 */
 
+    /* Set bind/unbind function pointers at offsets 0x40 and 0x44 on the module.
+     * These must be set AFTER the module is allocated (framesource_init runs
+     * before modules exist, so the bind setup there never fires). */
+    {
+        uint8_t *mod_bytes = (uint8_t*)fs_module;
+        void **bind_ptr = (void**)(mod_bytes + 0x40);
+        void **unbind_ptr = (void**)(mod_bytes + 0x44);
+        *bind_ptr = (void*)framesource_bind;
+        *unbind_ptr = (void*)framesource_unbind;
+    }
+
     /* OEM sets state to 1 (created), not 0 */
     chn->state = 1;
 
@@ -274,8 +287,20 @@ int IMP_FrameSource_EnableChn(int chnNum) {
         }
     }
 
-    /* Prepare format structure - copy all fields from IMPFSChnAttr
-     * Based on decompilation at 0x9ecf8, the entire structure is copied */
+    /* Prepare format structure — OEM-exact layout from do_reset_channel_attr
+     * decompilation at 0x9ecf8.
+     *
+     * CRITICAL: The OEM memsets the 0x70-byte format buffer to zero and then
+     * fills ONLY the V4L2 header fields (type, width, height, pixelformat,
+     * colorspace) and two overrides (fps_num=1, picheight=0).  All Ingenic
+     * extended attributes (enable, attr_width, crop, scaler, picwidth, etc.)
+     * are left ZERO.  Setting enable=1 or non-zero picwidth/picheight causes
+     * tisp_channel_attr_set in the stock kernel to configure the ISP channel
+     * differently, which breaks the DQBUF path for PHY_CHANNEL (channel 0).
+     *
+     * The OEM only calls GET_FMT before SET_FMT for RAW format (0x22), never
+     * for NV12/NV21. Doing so corrupts width/height with sensor-side values.
+     */
     fs_format_t fmt;
     memset(&fmt, 0, sizeof(fmt));
 
@@ -290,57 +315,16 @@ int IMP_FrameSource_EnableChn(int chnNum) {
     fmt.colorspace = 8;     /* V4L2_COLORSPACE_SRGB like OEM */
     fmt.priv = 0;
 
-    /* Ingenic imp_channel_attr fields (for tisp_channel_attr_set) */
-    fmt.enable = 1; /* Enable explicit channel dimensions like prudynt */
-    fmt.attr_width = chn->attr.picWidth;
-    fmt.attr_height = chn->attr.picHeight;
-
-    /* Copy crop settings */
-    fmt.crop_enable = chn->attr.crop.enable;
-    fmt.crop_x = chn->attr.crop.left;
-    fmt.crop_y = chn->attr.crop.top;
-    fmt.crop_width = chn->attr.crop.width;
-    fmt.crop_height = chn->attr.crop.height;
-
-    /* Copy scaler settings */
-    fmt.scaler_enable = chn->attr.scaler.enable;
-    fmt.scaler_outwidth = chn->attr.scaler.outwidth;
-    fmt.scaler_outheight = chn->attr.scaler.outheight;
-
-    /* Picture dimensions (same as channel dimensions) */
-    fmt.picwidth = chn->attr.picWidth;
-    fmt.picheight = chn->attr.picHeight;
-
-    /* Copy FPS settings */
-    fmt.fps_num = chn->attr.outFrmRateNum;
-    fmt.fps_den = chn->attr.outFrmRateDen;
-
-    /* Normalize scaler: if enabled but output dims equal input, disable scaler (BN/OEM do not scale in this case) */
-    if (fmt.scaler_enable && fmt.scaler_outwidth == fmt.picwidth && fmt.scaler_outheight == fmt.picheight) {
-        fprintf(stderr, "[FrameSource] EnableChn: disabling redundant scaler (out==in %dx%d)\n", fmt.picwidth, fmt.picheight);
-        fmt.scaler_enable = 0;
-        fmt.scaler_outwidth = fmt.picwidth;
-        fmt.scaler_outheight = fmt.picheight;
-    }
-
-    /* OEM-like: for ch0 without scaler, pre-SET_FMT GET_FMT to seed negotiated fields */
-    if (chnNum == 0 && chn->attr.scaler.enable == 0) {
-        fs_format_t cur = {0};
-        if (fs_get_format(chn->fd, &cur) == 0) {
-            fprintf(stderr, "[FrameSource] EnableChn: pre-SET_FMT GET_FMT %dx%d fmt=0x%x bpl=%d chn=%d\n",
-                    cur.width, cur.height, cur.pixelformat, cur.bytesperline, chnNum);
-            fmt.width = cur.width;
-            fmt.height = cur.height;
-            /* Keep the requested IMP pixel format. GET_FMT may report the
-             * sensor/capture-side fourcc (for example RG12), but the encoder
-             * path and VBM layout are negotiated from chn->attr.pixFmt. If we
-             * overwrite fmt.pixelformat here, SET_FMT inherits the wrong input
-             * layout and the AVPU source-plane assumptions no longer match. */
-            /* Leave bytesperline=0 so driver computes bpl during SET_FMT (OEM parity) */
-        } else {
-            fprintf(stderr, "[FrameSource] EnableChn: pre-SET_FMT GET_FMT failed for ch0\n");
-        }
-    }
+    /* Ingenic extended attributes — OEM leaves these at zero for both
+     * PHY_CHANNEL and EXT_CHANNEL in the initial SET_FMT.  The only
+     * overrides the OEM applies (at label_9eef8) are:
+     *   picheight = 0   (already zero from memset)
+     *   fps_num   = 1
+     * Everything else (enable, attr_width/height, crop, scaler, picwidth,
+     * fps_den) stays zero. */
+    fmt.enable = 0;
+    fmt.fps_num = 1;
+    /* All other extended fields remain 0 from memset — OEM parity */
 
     /* Set format via ioctl - this updates fmt.sizeimage with kernel's value */
     if (fs_set_format(chn->fd, &fmt) < 0) {
@@ -374,10 +358,11 @@ int IMP_FrameSource_EnableChn(int chnNum) {
     memcpy(vbm_fmt + 0x04, &chn->attr.picHeight, sizeof(int));
     memcpy(vbm_fmt + 0x08, &chn->attr.pixFmt, sizeof(int));
     memcpy(vbm_fmt + 0x0c, &kernel_sizeimage, sizeof(int));
-    /* OEM prudynt-t defaults to 2 buffers minimum (verified via BN MCP and prudynt-t source).
-     * Kernel driver requires at least 2 buffers for double-buffering. Enforce min=2 here. */
+    /* OEM passes nrVBs directly to VBMCreatePool — no minimum enforcement.
+     * The stock kernel REQBUFS for ch0 may reject count>=2 when
+     * isp_ch0_pre_dequeue is active, so we must not inflate the count. */
     int vbm_count = chn->attr.nrVBs;
-    if (vbm_count < 2) vbm_count = 2;
+    if (vbm_count < 1) vbm_count = 1; /* sanity: at least 1 buffer */
     memcpy(vbm_fmt + 0x34, &vbm_count, sizeof(int));
 
     /* Create VBM pool using kernel-computed size and requested buffer count */
@@ -389,9 +374,11 @@ int IMP_FrameSource_EnableChn(int chnNum) {
         return -1;
     }
 
-    /* Set REQBUFS before STREAM_ON (driver requires this), tolerate reductions */
+    /* REQBUFS before STREAM_ON — OEM uses nrVBs directly (no inflation).
+     * The stock kernel's REQBUFS for ch0 with isp_ch0_pre_dequeue can
+     * reject count>=2, so we must match the OEM's count exactly. */
     int requested_bufcnt = chn->attr.nrVBs + (g_frame_depth[chnNum] > 0 ? g_frame_depth[chnNum] : 0);
-    if (requested_bufcnt < 2) requested_bufcnt = 2;  /* Kernel requires minimum 2 buffers */
+    if (requested_bufcnt < 1) requested_bufcnt = 1;
     int bufcnt = fs_set_buffer_count(chn->fd, requested_bufcnt);
     if (bufcnt < 0) {
         LOG_FS("EnableChn failed: cannot set buffer count");
@@ -406,7 +393,7 @@ int IMP_FrameSource_EnableChn(int chnNum) {
                requested_bufcnt, bufcnt);
     }
 
-    /* Fill VBM pool and prime only up to the kernel's buffer count */
+    /* Fill VBM pool (marks buffers as available in userspace queue) */
     if (VBMFillPool(chnNum) < 0) {
         LOG_FS("EnableChn failed: cannot fill VBM pool");
         VBMDestroyPool(chnNum);
@@ -415,24 +402,6 @@ int IMP_FrameSource_EnableChn(int chnNum) {
         pthread_mutex_unlock(&fs_mutex);
         return -1;
     }
-    extern int VBMPrimeKernelQueue(int chn, int fd, int limit);
-    if (VBMPrimeKernelQueue(chnNum, chn->fd, bufcnt) < 0) {
-        LOG_FS("EnableChn failed: cannot prime kernel queue");
-        VBMDestroyPool(chnNum);
-        fs_close_device(chn->fd);
-        chn->fd = -1;
-        pthread_mutex_unlock(&fs_mutex);
-        return -1;
-    }
-
-
-    /* OEM parity: do NOT flush the userspace queue here for kernel-backed capture.
-     * Kernel will drive buffer ownership via QBUF/DQBUF; local queue is unused. */
-
-    /* Small guard delay before STREAM_ON to mirror vendor pacing */
-    usleep(5000); /* 5ms */
-
-    /* Do not DQBUF before STREAM_ON; some drivers return EINVAL and may abort later */
 
     /* Match OEM: ensure kernel frame depth is configured before STREAM_ON
      * OEM only calls SET_DEPTH when depth > 0 (verified via BN MCP decompilation) */
@@ -446,17 +415,24 @@ int IMP_FrameSource_EnableChn(int chnNum) {
         }
     }
 
+    /* Mark running and start capture thread; it will block on select() */
+    /* QBUF before STREAM_ON (standard V4L2 order) */
+    extern int VBMPrimeKernelQueue(int chn, int fd, int limit);
+    if (VBMPrimeKernelQueue(chnNum, chn->fd, bufcnt) < 0) {
+        LOG_FS("EnableChn warning: prime kernel queue had errors, continuing");
+    }
 
+    usleep(5000); /* 5ms guard */
 
-    /* Mark running and start capture thread (post-STREAM_ON) */
-    chn->state = 2; /* Running */
-    gFramesource->active_count++;
+    /* Ensure ISP global stream is active */
+    {
+        extern int ISP_EnsureLinkStreamOn(int sensor_idx);
+        ISP_EnsureLinkStreamOn(0);
+    }
 
-    /* Start capture thread before enabling streaming; it will block on select() */
-    if (pthread_create(&chn->thread, NULL, frame_capture_thread, chn) != 0) {
-        LOG_FS("EnableChn failed: cannot create capture thread");
-        chn->state = 0;
-        gFramesource->active_count--;
+    /* STREAM_ON */
+    if (fs_stream_on(chn->fd) < 0) {
+        LOG_FS("EnableChn failed: cannot start streaming");
         VBMFlushFrame(chnNum);
         VBMDestroyPool(chnNum);
         fs_close_device(chn->fd);
@@ -465,21 +441,13 @@ int IMP_FrameSource_EnableChn(int chnNum) {
         return -1;
     }
 
-    /* Ensure ISP global stream is active before per-channel STREAM_ON */
-    {
-        extern int ISP_EnsureLinkStreamOn(int sensor_idx);
-        int isp_ok = ISP_EnsureLinkStreamOn(0);  /* sensor_idx=0 (already called in EnableSensor, this is idempotent) */
-        if (isp_ok < 0) {
-            LOG_FS("EnableChn warning: ISP EnsureLinkStreamOn failed; proceeding may cause no frames");
-        }
-    }
+    /* Start capture thread AFTER STREAM_ON */
+    chn->state = 2; /* Running */
+    gFramesource->active_count++;
 
-    /* Start streaming now that thread is running */
-    if (fs_stream_on(chn->fd) < 0) {
-        LOG_FS("EnableChn failed: cannot start streaming");
-        /* Stop and join capture thread before teardown */
-        pthread_cancel(chn->thread);
-        pthread_join(chn->thread, NULL);
+    if (pthread_create(&chn->thread, NULL, frame_capture_thread, chn) != 0) {
+        LOG_FS("EnableChn failed: cannot create capture thread");
+        fs_stream_off(chn->fd);
         chn->state = 0;
         gFramesource->active_count--;
         VBMFlushFrame(chnNum);
@@ -1140,5 +1108,74 @@ int IMP_FrameSource_SetFrameOffset(int chnNum, int offset) {
     if (chnNum < 0 || chnNum >= MAX_FS_CHANNELS) return -1;
     (void)offset;
     LOG_FS("SetFrameOffset(chn=%d, offset=%d) stub", chnNum, offset);
+    return 0;
+}
+
+/* ========== Missing OEM framesource functions (from BN decompilation) ========== */
+
+int IMP_FrameSource_SetSource(int extchnNum, int sourcechnNum) {
+    if (extchnNum < 0 || extchnNum >= MAX_FS_CHANNELS) {
+        LOG_FS("SetSource(): Invalid extchnNum %d", extchnNum);
+        return -1;
+    }
+    if (sourcechnNum < 0 || sourcechnNum >= 3) {
+        LOG_FS("SetSource(): Invalid sourcechnNum %d", sourcechnNum);
+        return -1;
+    }
+    if (gFramesource == NULL) {
+        LOG_FS("SetSource(): FrameSource is invalid,maybe system was not inited yet.");
+        return -1;
+    }
+    gFramesource->channels[extchnNum].source_chn = sourcechnNum;
+    return 0;
+}
+
+int IMP_FrameSource_SetFrameDepthCopyType(int chnNum, int bNoCopy) {
+    if (chnNum < 0 || chnNum >= MAX_FS_CHANNELS) {
+        LOG_FS("SetFrameDepthCopyType(): Invalid chnNum %d", chnNum);
+        return -1;
+    }
+    if (gFramesource == NULL) return -1;
+    FSChannel *ch = &gFramesource->channels[chnNum];
+
+    pthread_mutex_lock(&fs_mutex);
+
+    int cur_depth = ch->nocopy_depth;
+    if (cur_depth != 0) {
+        if (bNoCopy != 0) {
+            LOG_FS("SetFrameDepthCopyType(): Please use before IMP_FrameSource_SetFrameDepth(%d,%d) when b_nocopy_depth(%d) != 0",
+                   chnNum, cur_depth, bNoCopy);
+        } else {
+            LOG_FS("SetFrameDepthCopyType(): Please use after IMP_FrameSource_SetFrameDepth(%d, 0) when b_nocopy_depth == 0",
+                   chnNum);
+        }
+        pthread_mutex_unlock(&fs_mutex);
+        return -1;
+    }
+
+    ch->copy_type = (bNoCopy > 0) ? 1 : 0;
+    pthread_mutex_unlock(&fs_mutex);
+    return 0;
+}
+
+int IMP_FrameSource_CloseNCUInfo(void) {
+    extern void *VBMGetInstance(void);
+    void *vbm = VBMGetInstance();
+    if (vbm == NULL) {
+        LOG_FS("CloseNCUInfo(): VBMGetInstance failed");
+        return -1;
+    }
+    /* Set NCU close flag at VBM instance offset 0x14 */
+    *((int*)((uint8_t*)vbm + 0x14)) = 1;
+    return 0;
+}
+
+static void *g_fs_pools = NULL;
+
+int IMP_FrameSource_ClearPoolId(void) {
+    if (g_fs_pools != NULL) {
+        free(g_fs_pools);
+    }
+    g_fs_pools = NULL;
     return 0;
 }

@@ -793,6 +793,15 @@ int IMP_AO_SoftUNMute(int audioDevId, int aoChn) {
     return 0;
 }
 
+/* OEM naming aliases (funcs.txt uses underscore-separated names) */
+int IMP_AO_Soft_Mute(int audioDevId, int aoChn) {
+    return IMP_AO_SoftMute(audioDevId, aoChn);
+}
+
+int IMP_AO_Soft_UNMute(int audioDevId, int aoChn) {
+    return IMP_AO_SoftUNMute(audioDevId, aoChn);
+}
+
 int IMP_AO_CacheSwitch(int audioDevId, int aoChn, int enable) {
     (void)audioDevId; (void)aoChn; (void)enable;
     return 0;
@@ -837,5 +846,25 @@ int IMP_AI_SetHpfCoFrequency(int freq) {
 
 int IMP_AO_SetHpfCoFrequency(int audioDevId, int aoChn, int freq) {
     (void)audioDevId; (void)aoChn; (void)freq;
+    return 0;
+}
+
+/* ========== Missing OEM audio functions (from BN audit) ========== */
+
+int IMP_AI_Set_WebrtcProfileIni_Path(const char *path) {
+    (void)path;
+    /* OEM stores path to webrtc profile INI for noise suppression config */
+    return 0;
+}
+
+int IMP_AI_IMPDBG_Init(int devId) {
+    (void)devId;
+    /* OEM debug init for AI — registers debug handlers */
+    return 0;
+}
+
+int IMP_AO_IMPDBG_Init(int devId) {
+    (void)devId;
+    /* OEM debug init for AO — registers debug handlers */
     return 0;
 }

@@ -7,6 +7,10 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include <errno.h>
+#include <sys/mman.h>
 #include <pthread.h>
 #include <semaphore.h>
 #include <imp/imp_system.h>
@@ -641,14 +645,10 @@ int notify_observers(Module *module, void *frame) {
                 /* Update function signature: int update(Module *module, void *frame) */
                 int (*update_fn)(Module*, void*) = (int (*)(Module*, void*))dst_module->func_4c;
 
-                if (update_fn(dst_module, frame) < 0) {
-                    IMP_LOG_ERR("System", "Observer update failed for %s\n",
-                            dst_module->name);
-                    if (frame != NULL && VBMUnLockFrame(frame) < 0) {
-                        IMP_LOG_ERR("System", "Observer update failed and VBMUnLockFrame also failed for frame=%p\n",
-                                frame);
-                    }
-                }
+                update_fn(dst_module, frame);
+                /* OEM does NOT unlock frames on update failure — the caller
+                 * (FrameSource capture thread) owns the frame lifecycle.
+                 * Unlocking here caused double-free / use-after-free. */
             }
         }
 
@@ -817,21 +817,49 @@ int IMP_System_MemPoolFree(int poolId) {
     return 0;
 }
 
-/* IMP_System_ReadReg32 - read a 32-bit hardware register
- * OEM: calls read_reg_32(addr, &result), returns result on success, 0 on failure */
-uint32_t IMP_System_ReadReg32(uint32_t addr) {
-    (void)addr;
-    /* TODO: implement via read_reg_32() using /dev/mem mmap */
-    IMP_LOG_ERR("System", "%s(): failed\n", "IMP_System_ReadReg32");
-    return 0;
+/* /dev/mem register access — OEM uses read_reg_32/write_reg_32 which mmap
+ * a single page around the target physical address via /dev/mem. */
+static uint32_t reg_read_write(uint32_t phys_addr, uint32_t *write_val) {
+    int fd = open("/dev/mem", O_RDWR | O_SYNC);
+    if (fd < 0) {
+        IMP_LOG_ERR("System", "reg_rw: open /dev/mem failed: %s\n", strerror(errno));
+        return 0;
+    }
+
+    uint32_t page_size = (uint32_t)sysconf(_SC_PAGESIZE);
+    uint32_t page_base = phys_addr & ~(page_size - 1);
+    uint32_t page_off = phys_addr & (page_size - 1);
+
+    void *map = mmap(NULL, page_size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, page_base);
+    if (map == MAP_FAILED) {
+        IMP_LOG_ERR("System", "reg_rw: mmap failed for 0x%08x: %s\n", phys_addr, strerror(errno));
+        close(fd);
+        return 0;
+    }
+
+    volatile uint32_t *reg = (volatile uint32_t *)((uint8_t *)map + page_off);
+    uint32_t result;
+
+    if (write_val != NULL) {
+        *reg = *write_val;
+        result = *write_val;
+    } else {
+        result = *reg;
+    }
+
+    munmap(map, page_size);
+    close(fd);
+    return result;
 }
 
-/* IMP_System_WriteReg32 - write a 32-bit hardware register
- * OEM: calls write_reg_32(addr, val), logs on failure */
+/* IMP_System_ReadReg32 - read a 32-bit hardware register via /dev/mem */
+uint32_t IMP_System_ReadReg32(uint32_t addr) {
+    return reg_read_write(addr, NULL);
+}
+
+/* IMP_System_WriteReg32 - write a 32-bit hardware register via /dev/mem */
 void IMP_System_WriteReg32(uint32_t addr, uint32_t val) {
-    (void)addr;
-    (void)val;
-    /* TODO: implement via write_reg_32() using /dev/mem mmap */
+    reg_read_write(addr, &val);
 }
 
 /* IMP_System_PhysToVirt - translate physical address to virtual

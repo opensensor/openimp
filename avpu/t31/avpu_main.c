@@ -287,7 +287,7 @@ static int read_reg(struct avpu_codec_chan *chan, unsigned long arg)
 	if (copy_to_user((struct avpu_reg *)arg, &reg, sizeof(struct avpu_reg)))
 		return -EFAULT;
 
-	avpu_dbg("Reg read: 0x%.4X: 0x%.8x\n", reg.id, reg.value);
+	printk(KERN_INFO "[AVPU] RD 0x%04x = 0x%08x\n", reg.id, reg.value);
 
 	return 0;
 }
@@ -299,9 +299,7 @@ static int write_reg(struct avpu_codec_chan *chan, unsigned long arg)
 
 	if (copy_from_user(&reg, (struct avpu_reg *)arg, sizeof(struct avpu_reg)))
 		return -EFAULT;
-		avpu_dbg("Reg write: 0x%.4X: 0x%.8x\n", reg.id, reg.value);
-	if (reg.id == 0x8084 || reg.id == 0x8094)
-		avpu_dbg("Reg write: 0x%.4X: 0x%.8x\n", reg.id, reg.value);
+	printk(KERN_INFO "[AVPU] WR 0x%04x = 0x%08x\n", reg.id, reg.value);
 
 	if (reg.id % 4) {
 		avpu_err("Unaligned register access: 0x%.4X\n",
@@ -350,12 +348,16 @@ static long avpu_codec_ioctl(struct file *filp, unsigned int cmd,
 
 	switch (cmd) {
 	case GET_DMA_MMAP:
+		printk(KERN_INFO "[AVPU] ioctl GET_DMA_MMAP\n");
 		return avpu_ioctl_get_dma_mmap(codec->device, chan, arg);
 	case GET_DMA_FD:
+		printk(KERN_INFO "[AVPU] ioctl GET_DMA_FD\n");
 		return avpu_ioctl_get_dma_fd(codec->device, arg);
 	case GET_DMA_PHY:
+		printk(KERN_INFO "[AVPU] ioctl GET_DMA_PHY\n");
 		return avpu_ioctl_get_dmabuf_dma_addr(codec->device, arg);
 	case AL_CMD_UNBLOCK_CHANNEL:
+		printk(KERN_INFO "[AVPU] ioctl UNBLOCK_CHANNEL\n");
 		return unblock_channel(chan);
 	case AL_CMD_IP_WAIT_IRQ:
 		return wait_irq(chan, arg);
@@ -366,6 +368,7 @@ static long avpu_codec_ioctl(struct file *filp, unsigned int cmd,
 	case JZ_CMD_FLUSH_CACHE:
 		return jz_cmd_flush_cache(arg);
 	default:
+		printk(KERN_INFO "[AVPU] ioctl cmd=0x%08x arg=0x%lx\n", cmd, arg);
 		avpu_err("Unknown ioctl: 0x%.8X\n", cmd);
 		return -EINVAL;
 	}

@@ -86,16 +86,6 @@ int avpu_codec_read_register(struct avpu_codec_chan *chan,
 	return 0;
 }
 
-/*
- * CL_ADDR register: libimp writes the physical address of the 512-byte
- * command list here before triggering CL_PUSH.
- * CL_PUSH register: writing value 2 triggers the AVPU to process the CL.
- */
-#define AVPU_REG_CL_ADDR  0x83E0
-#define AVPU_REG_CL_PUSH  0x83E4
-#define CL_SIZE_BYTES     512
-#define CL_WORDS          (CL_SIZE_BYTES / sizeof(u32))
-
 void avpu_codec_write_register(struct avpu_codec_chan *chan,
 			       struct avpu_reg *reg)
 {
@@ -105,57 +95,6 @@ void avpu_codec_write_register(struct avpu_codec_chan *chan,
 		avpu_err("Registers not mapped\n");
 		return;
 	}
-
-	/* Log ALL register writes for stock vs openimp comparison */
-	printk(KERN_INFO "[AVPU] WR 0x%04x = 0x%08x\n", reg->id, reg->value);
-
-	/* Intercept CL_PUSH writes to dump the command list */
-	if (reg->id == AVPU_REG_CL_PUSH) {
-		u32 cl_phys_addr;
-		void __iomem *cl_virt;
-		int i;
-
-		/* Read back the CL_ADDR that was written earlier */
-		cl_phys_addr = ioread32(chan->codec->regs + AVPU_REG_CL_ADDR);
-
-		printk(KERN_INFO "[AVPU] CL_PUSH=0x%08x CL_ADDR=0x%08x\n",
-		       reg->value, cl_phys_addr);
-
-		if (cl_phys_addr) {
-			/*
-			 * Map the physical address of the command list.
-			 * This is in the DMA rmem region (0x06300000-0x08000000).
-			 * Use ioremap to get a safe kernel mapping.
-			 */
-			cl_virt = ioremap(cl_phys_addr, CL_SIZE_BYTES);
-			if (cl_virt) {
-				u32 words[CL_WORDS];
-
-				/* Read all 128 words first */
-				for (i = 0; i < CL_WORDS; i++)
-					words[i] = ioread32(cl_virt + i * 4);
-
-				iounmap(cl_virt);
-
-				/* Print 8 words per line */
-				printk(KERN_INFO "[AVPU] === CL DUMP (%u bytes @ phys 0x%08x) ===\n",
-				       CL_SIZE_BYTES, cl_phys_addr);
-				for (i = 0; i < CL_WORDS; i += 8) {
-					printk(KERN_INFO "[AVPU] CL[%03d]: %08x %08x %08x %08x %08x %08x %08x %08x\n",
-					       i,
-					       words[i+0], words[i+1],
-					       words[i+2], words[i+3],
-					       words[i+4], words[i+5],
-					       words[i+6], words[i+7]);
-				}
-				printk(KERN_INFO "[AVPU] === CL DUMP END ===\n");
-			} else {
-				printk(KERN_ERR "[AVPU] Failed to ioremap CL at phys 0x%08x\n",
-				       cl_phys_addr);
-			}
-		}
-	}
-
 	iowrite32(reg->value, chan->codec->regs + reg->id);
 
 }
@@ -175,9 +114,10 @@ irqreturn_t avpu_hardirq_handler(int irq, void *data)
 	unmasked_irq_bitfield = ioread32(codec->regs + AVPU_INTERRUPT);
 	irq_bitfield = unmasked_irq_bitfield & mask;
 	if (irq_bitfield == 0) {
-		avpu_dbg("bitfield is 0\n");
 		return IRQ_NONE;
 	}
+	printk(KERN_INFO "[AVPU] IRQ mask=0x%08x pending=0x%08x active=0x%08x\n",
+		mask, unmasked_irq_bitfield, irq_bitfield);
 	iowrite32(unmasked_irq_bitfield, codec->regs + AVPU_INTERRUPT);
 	ioread32(codec->regs + AVPU_INTERRUPT);
 

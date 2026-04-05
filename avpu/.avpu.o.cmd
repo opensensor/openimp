@@ -1,1 +1,0 @@
-cmd_/home/matteius/openimp/avpu/avpu.o := mipsel-linux-ld -m elf32ltsmip  -r -o /home/matteius/openimp/avpu/avpu.o /home/matteius/openimp/avpu/avpu_main.o /home/matteius/openimp/avpu/avpu_ip.o /home/matteius/openimp/avpu/avpu_alloc.o /home/matteius/openimp/avpu/avpu_alloc_ioctl.o /home/matteius/openimp/avpu/avpu_dmabuf.o 

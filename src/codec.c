@@ -25,7 +25,18 @@
 #include <sys/ioctl.h>
 #include <errno.h>
 #include <sys/mman.h>
+#ifdef __mips__
+#include <sys/cachectl.h>
+#endif
 #include <sys/syscall.h> /* for SYS_ioctl */
+#ifndef BCACHE
+#define BCACHE 3
+#endif
+#ifndef __mips__
+static inline int cacheflush(void *addr, int nbytes, int cache) {
+    (void)addr; (void)nbytes; (void)cache; return 0;
+}
+#endif
 
 enum {
     AVPU_STREAM_BUF_FREE = 0,
@@ -131,9 +142,20 @@ struct avpu_flush_info { unsigned int addr; unsigned int len; unsigned int dir; 
 struct rmem_flush_info_codec { unsigned int addr; unsigned int size; unsigned int dir; };
 static int avpu_flush_cache(int fd, void *virt_addr, unsigned int size, unsigned int dir)
 {
-    (void)fd; /* OEM uses rmem_fd, not avpu_fd */
     if (!virt_addr || size == 0) return -1;
-    return DMA_RmemFlushCache(virt_addr, size, (int)dir);
+    /* Use ALL available flush methods — the T31 MIPS cache is notoriously
+     * difficult to flush. The working commit (bc7c4cb) used all four. */
+    msync(virt_addr, size, MS_SYNC | MS_INVALIDATE);
+    cacheflush(virt_addr, (int)size, BCACHE);
+    DMA_RmemFlushCache(virt_addr, size, (int)dir);
+    if (fd >= 0) {
+        struct avpu_flush_info info;
+        info.addr = (unsigned int)(uintptr_t)virt_addr;
+        info.len = size;
+        info.dir = dir;
+        ioctl(fd, JZ_CMD_FLUSH_CACHE_IOCTL, &info);
+    }
+    return 0;
 }
 
 /* Access physical RAM directly via /dev/mem O_SYNC, bypassing CPU cache.
@@ -3393,8 +3415,6 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
     uint8_t *frame_bytes = (uint8_t*)frame;
     uint32_t width, height, pixfmt, size, phys_addr, virt_addr;
 
-    LOG_CODEC("Process: frame=%p, extracting metadata", frame);
-
     memcpy(&width, frame_bytes + 0x08, sizeof(uint32_t));
     memcpy(&height, frame_bytes + 0x0c, sizeof(uint32_t));
     memcpy(&pixfmt, frame_bytes + 0x10, sizeof(uint32_t));
@@ -3402,10 +3422,351 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
     memcpy(&phys_addr, frame_bytes + 0x18, sizeof(uint32_t));
     memcpy(&virt_addr, frame_bytes + 0x1c, sizeof(uint32_t));
 
-    /* Get current timestamp */
     uint64_t timestamp = IMP_System_GetTimeStamp();
 
-    if (enc->use_hardware) {
+    static int proc_log_count = 0;
+    if (proc_log_count < 5) {
+        LOG_CODEC("Process: frame=%p %ux%u phys=0x%x virt=0x%x size=%u hw_fd=%d",
+                  frame, width, height, phys_addr, virt_addr, size, enc->hw_encoder_fd);
+        proc_log_count++;
+    }
+
+    /* OEM-matched encoding path (from BN decompilation of AL_Codec_Encode_Process):
+     *   1. Lazy-init hw encoder on first frame via HW_Encoder_Init (ioctl-based)
+     *   2. If hw_encoder_fd >= 0: HW_Encoder_Encode + HW_Encoder_GetStream
+     *   3. Else: HW_Encoder_Encode_Software
+     *   4. Queue result to fifo_streams
+     * The AVPU is controlled via register read/write ioctls on /dev/avpu.
+     * The OEM register sequence was captured from a traced avpu.ko driver. */
+
+    /* ========== New simplified AVPU path — DISABLED (causes HW lockup) ========== */
+    if (0 && enc->use_hardware == 2 && enc->avpu.fd >= 0) {
+        ALAvpuContext *ctx = &enc->avpu;
+        int fd = ctx->fd;
+
+        /* --- OEM Phase A: Per-frame clock gate + reset + IRQ enable --- */
+        /* OEM does this EVERY frame, not just at init */
+        {
+            unsigned int clkcmd = 0;
+            avpu_read_reg_quiet(fd, AVPU_REG_CORE_CLKCMD(0), &clkcmd);
+            avpu_write_reg(fd, AVPU_REG_CORE_CLKCMD(0), 0x00000001); /* clock gate ON */
+        }
+        avpu_write_reg(fd, AVPU_REG_CORE_RESET(0), 0x00000001);
+        avpu_write_reg(fd, AVPU_REG_CORE_RESET(0), 0x00000002);
+        avpu_write_reg(fd, AVPU_REG_CORE_RESET(0), 0x00000004);
+        {
+            unsigned int mask = 0;
+            avpu_read_reg_quiet(fd, AVPU_INTERRUPT_MASK, &mask);
+            avpu_write_reg(fd, AVPU_INTERRUPT_MASK, 0x00000011); /* enable IRQ bits 0+4 */
+        }
+        {
+            unsigned int core_status = 0;
+            avpu_read_reg_quiet(fd, AVPU_REG_CORE_STATUS(0), &core_status);
+            /* OEM reads status to confirm core is ready after reset */
+        }
+
+        /* --- Determine IDR vs P --- */
+        int force_idr = __sync_lock_test_and_set(&enc->force_next_idr, 0);
+        int is_idr = force_idr || (ctx->frame_number == 0)
+                     || (ctx->gop_length > 0 && (ctx->frame_number % ctx->gop_length) == 0);
+        int has_reference = !is_idr && ctx->reference_valid && ctx->ref_buf.phy_addr;
+        uint32_t ref_phys = has_reference ? ctx->ref_buf.phy_addr : 0;
+
+        /* --- Acquire stream buffer --- */
+        int buf_idx = avpu_acquire_stream_buffer(ctx);
+        if (buf_idx < 0) {
+            LOG_CODEC("Process[AVPU]: no free stream buffer");
+            free(hw_stream);
+            return -1;
+        }
+
+        /* Zero and flush stream buffer */
+        if (buf_idx < ctx->stream_bufs_used && ctx->stream_bufs[buf_idx].map) {
+            memset(ctx->stream_bufs[buf_idx].map, 0, (size_t)ctx->stream_buf_size);
+            avpu_flush_cache(fd, ctx->stream_bufs[buf_idx].map,
+                             (unsigned int)ctx->stream_buf_size, 1);
+        }
+
+        /* --- Fill command list --- */
+        uint32_t cl_idx = ctx->cl_idx % ctx->cl_count;
+        uint8_t *entry = avpu_cl_entry_ptr(ctx, cl_idx);
+        uint32_t *cmd = (uint32_t *)entry;
+        uint32_t hdr_offset = 0; /* No pre-written headers in our minimal path */
+        fill_cmd_regs_enc1(ctx, cmd, buf_idx, phys_addr, hdr_offset, is_idr, ref_phys);
+
+        /* Flush CL to physical memory */
+        avpu_flush_cache(fd, entry, ctx->cl_entry_size, 1);
+
+        /* --- OEM Phase A continued: CL_ADDR + CL_PUSH --- */
+        uint32_t cl_phys = ctx->cl_ring.phy_addr + (cl_idx * ctx->cl_entry_size);
+        avpu_write_reg(fd, AVPU_REG_CL_ADDR, cl_phys);
+        avpu_write_reg(fd, AVPU_REG_CL_PUSH, 0x00000002); /* CL_PUSH=2 (Enc1) */
+
+        /* --- OEM Phase B: Post-CL encoder config block --- */
+        /* ENC_EN_B (first frame only, per OEM trace) */
+        if (ctx->frame_number == 0) {
+            unsigned int enc_en_b = 0;
+            avpu_read_reg_quiet(fd, AVPU_REG_ENC_EN_B, &enc_en_b);
+            avpu_write_reg(fd, AVPU_REG_ENC_EN_B, 0x00000001);
+        }
+
+        /* Re-read/write IRQ mask (OEM does this between ENC_EN_B and ENC_EN_A) */
+        {
+            unsigned int mask = 0;
+            avpu_read_reg_quiet(fd, AVPU_INTERRUPT_MASK, &mask);
+            avpu_write_reg(fd, AVPU_INTERRUPT_MASK, 0x00000011);
+        }
+
+        /* ENC_EN_A */
+        avpu_write_reg(fd, AVPU_REG_ENC_EN_A, 0x00000001);
+
+        /* Encoder config block 0x8400-0x8428 */
+        {
+            uint32_t src_y_phys = phys_addr;
+            uint32_t stride = (width + 15) & ~15u;
+            uint32_t src_uv_phys = src_y_phys + stride * height;
+            uint32_t interm_phys = ctx->interm_buf.phy_addr;
+            uint32_t interm_ep1_off = ctx->interm_ep1_size;
+            uint32_t stream_phys = ctx->stream_bufs[buf_idx].phy_addr;
+            uint32_t stream_part_offset = avpu_get_enc1_stream_part_offset(ctx);
+            uint32_t aligned_hdr = 0x200; /* OEM always uses 512 */
+
+            avpu_write_reg(fd, 0x8400, 0x00000131);
+            avpu_write_reg(fd, 0x8404, ((width - 1) << 16) | (height - 1));
+            avpu_write_reg(fd, 0x8408, 0x00010001);
+            avpu_write_reg(fd, 0x840c, stride);
+            avpu_write_reg(fd, 0x8410, src_y_phys);
+            avpu_write_reg(fd, 0x8414, src_uv_phys);
+            avpu_write_reg(fd, 0x8418, interm_phys + interm_ep1_off);
+            avpu_write_reg(fd, 0x841c, interm_phys);
+            avpu_write_reg(fd, 0x8420, stream_part_offset);
+            avpu_write_reg(fd, 0x8424, aligned_hdr);
+            avpu_write_reg(fd, 0x8428, stream_part_offset - aligned_hdr);
+        }
+
+        /* ENC_EN_C */
+        avpu_write_reg(fd, AVPU_REG_ENC_EN_C, 0x00000001);
+
+        /* --- Wait for IRQ bit 4 (Enc1 completion) --- */
+        {
+            struct timespec ts;
+            ts.tv_sec = 0;
+            ts.tv_nsec = 100 * 1000000; /* 100ms timeout */
+
+            /* Use WAIT_IRQ ioctl to block for interrupt */
+            int irq_result = -1;
+            int wait_arg = 100; /* timeout ms */
+            irq_result = ioctl(fd, _IOWR('q', 12, int), &wait_arg);
+
+            if (irq_result < 0) {
+                LOG_CODEC("Process[AVPU]: WAIT_IRQ failed: %s", strerror(errno));
+                avpu_mark_stream_buffer_released(ctx, buf_idx);
+                free(hw_stream);
+                return -1;
+            }
+        }
+
+        /* --- OEM Phase C: Read encoded output --- */
+        {
+            unsigned int enc_bytes1 = 0, enc_bytes2 = 0, enc_status = 0;
+            avpu_read_reg(fd, 0x8430, &enc_bytes1);
+            avpu_read_reg(fd, 0x8434, &enc_bytes2);
+            avpu_read_reg(fd, 0x8438, &enc_status);
+
+            if (proc_log_count < 10) {
+                LOG_CODEC("Process[AVPU]: enc_bytes1=0x%x enc_bytes2=0x%x status=0x%x",
+                          enc_bytes1, enc_bytes2, enc_status);
+            }
+
+            /* Populate stream buffer from AVPU output */
+            uint32_t encoded_len = enc_bytes1;
+            if (encoded_len > 0 && encoded_len < (uint32_t)ctx->stream_buf_size) {
+                /* Invalidate cache to read AVPU-written data */
+                avpu_flush_cache(fd, ctx->stream_bufs[buf_idx].map,
+                                 (unsigned int)encoded_len, 2 /* INV */);
+
+                hw_stream->virt_addr = (uint32_t)(uintptr_t)ctx->stream_bufs[buf_idx].map;
+                hw_stream->phys_addr = ctx->stream_bufs[buf_idx].phy_addr;
+                hw_stream->length = encoded_len;
+                hw_stream->timestamp = timestamp;
+                hw_stream->frame_type = is_idr ? HW_FRAME_TYPE_I : HW_FRAME_TYPE_P;
+                hw_stream->slice_type = is_idr ? 0 : 1;
+            } else {
+                LOG_CODEC("Process[AVPU]: bad encoded_len=%u (stream_buf_size=%d)",
+                          encoded_len, ctx->stream_buf_size);
+                avpu_mark_stream_buffer_released(ctx, buf_idx);
+                free(hw_stream);
+                return -1;
+            }
+        }
+
+        /* --- OEM Phase D: Post-completion acknowledgment --- */
+        /* Wait for bit-0 IRQ (CL completion) */
+        {
+            int wait_arg = 50;
+            ioctl(fd, _IOWR('q', 12, int), &wait_arg);
+        }
+        /* Disable bit 0, keep bit 4 */
+        {
+            unsigned int mask = 0;
+            avpu_read_reg_quiet(fd, AVPU_INTERRUPT_MASK, &mask);
+            avpu_write_reg(fd, AVPU_INTERRUPT_MASK, 0x00000010);
+        }
+        /* Acknowledge CLKCMD done */
+        {
+            unsigned int clkcmd = 0;
+            avpu_read_reg_quiet(fd, AVPU_REG_CORE_CLKCMD(0), &clkcmd);
+            if (clkcmd == 0x00010001) {
+                avpu_write_reg(fd, AVPU_REG_CORE_CLKCMD(0), 0x00010000);
+            }
+        }
+
+        /* Swap rec/ref for next frame */
+        if (ctx->rec_buf.phy_addr && ctx->ref_buf.phy_addr) {
+            AvpuDMABuf tmp = ctx->ref_buf;
+            ctx->ref_buf = ctx->rec_buf;
+            ctx->rec_buf = tmp;
+            ctx->reference_valid = 1;
+        }
+
+        ctx->frame_number++;
+        ctx->frames_encoded++;
+        ctx->cl_idx++;
+        avpu_mark_stream_buffer_released(ctx, buf_idx);
+
+        if (proc_log_count < 10) {
+            LOG_CODEC("Process[AVPU]: frame %u encoded (%s), len=%u",
+                      ctx->frame_number - 1, is_idr ? "IDR" : "P", hw_stream->length);
+        }
+
+        goto queue_stream;
+    }
+
+    /* ========== New simplified AVPU Lazy Init — DISABLED ========== */
+    if (0 && enc->use_hardware && enc->avpu.fd <= 2) {
+        uint32_t profile_word = *(uint32_t*)(enc->codec_param + 0x20);
+        uint32_t codec_type = (profile_word >> 24) & 0xffu;
+
+        /* Only H.264 via AVPU; only one channel owns the AVPU at a time */
+        int skip_avpu = 0;
+        pthread_mutex_lock(&g_avpu_owner_mutex);
+        if (g_avpu_owner_channel != 0 && g_avpu_owner_channel != enc->channel_id)
+            skip_avpu = 1;
+        pthread_mutex_unlock(&g_avpu_owner_mutex);
+
+        if (codec_type == IMP_ENC_TYPE_AVC && !skip_avpu) {
+            int fd = AL_DevicePool_Open("/dev/avpu");
+            if (fd >= 0) {
+                memset(&enc->avpu, 0, sizeof(enc->avpu));
+                enc->avpu.fd = fd;
+                enc->avpu.enc_w = width;
+                enc->avpu.enc_h = height;
+                enc->avpu.qp = (*(uint32_t*)(enc->codec_param + 0x38)) & 0x3Fu;
+                if (enc->avpu.qp == 0) enc->avpu.qp = 30;
+                enc->avpu.gop_length = *(uint32_t*)(enc->codec_param + 0xb0);
+                if (enc->avpu.gop_length == 0) enc->avpu.gop_length = 30;
+                enc->avpu.entropy_mode = enc->entropy_mode;
+                enc->avpu.codec_owner = enc;
+                enc->avpu.format_word = *(uint32_t*)(enc->codec_param + 0x10);
+                avpu_init_enc1_slice_words(&enc->avpu, enc->codec_param);
+
+                /* Allocate mutexes (required by avpu_acquire_stream_buffer) */
+                {
+                    pthread_mutex_t *sm = (pthread_mutex_t*)malloc(sizeof(pthread_mutex_t));
+                    if (sm) { pthread_mutex_init(sm, NULL); enc->avpu.stream_queue_mutex = sm; }
+                    pthread_mutex_t *im = (pthread_mutex_t*)malloc(sizeof(pthread_mutex_t));
+                    if (im) { pthread_mutex_init(im, NULL); enc->avpu.irq_mutex = im; }
+                }
+
+                /* Allocate stream buffers */
+                enc->avpu.stream_buf_count = 4;
+                enc->avpu.stream_buf_size = enc->stream_buf_size > 0
+                    ? enc->stream_buf_size : 0x28000;
+                enc->avpu.stream_bufs_used = 0;
+                for (int i = 0; i < enc->avpu.stream_buf_count; ++i) {
+                    AvpuDMABuf tmp = {0};
+                    if (avpu_alloc_imp((size_t)enc->avpu.stream_buf_size, "AVPU_STRM", &tmp) == 0) {
+                        enc->avpu.stream_bufs[enc->avpu.stream_bufs_used] = tmp;
+                        enc->avpu.stream_buf_state[enc->avpu.stream_bufs_used] = AVPU_STREAM_BUF_FREE;
+                        enc->avpu.stream_bufs_used++;
+                    }
+                }
+
+                /* Allocate command list ring */
+                enc->avpu.cl_entry_size = 0x200;
+                enc->avpu.cl_count = 0x13;
+                size_t cl_bytes = enc->avpu.cl_entry_size * enc->avpu.cl_count;
+                if (avpu_alloc_imp(cl_bytes, "AVPU_CL", &enc->avpu.cl_ring) == 0) {
+                    memset(enc->avpu.cl_ring.map, 0, cl_bytes);
+                    enc->avpu.cl_idx = 0;
+                }
+
+                /* Allocate rec/ref frame buffers */
+                size_t aux_sz = avpu_get_enc1_frame_buf_size(width, height);
+                avpu_alloc_imp(aux_sz, "AVPU_REC", &enc->avpu.rec_buf);
+                avpu_alloc_imp(aux_sz, "AVPU_REF", &enc->avpu.ref_buf);
+
+                /* Allocate intermediate buffer */
+                enc->avpu.interm_ep1_size = avpu_get_enc1_ep1_size();
+                enc->avpu.interm_wpp_size = avpu_get_enc1_wpp_size(width, height);
+                size_t interm_sz = (size_t)enc->avpu.interm_ep1_size
+                                 + (size_t)enc->avpu.interm_wpp_size
+                                 + (size_t)avpu_get_enc1_ep2_size(width, height)
+                                 + (size_t)avpu_get_enc1_comp_map_size(width, height)
+                                 + (size_t)avpu_get_enc1_comp_data_size(width, height, enc->avpu.format_word);
+                avpu_alloc_imp(interm_sz, "AVPU_ITM", &enc->avpu.interm_buf);
+                if (enc->avpu.interm_buf.map)
+                    memset(enc->avpu.interm_buf.map, 0, interm_sz);
+
+                /* OEM Phase 1: One-time init (MISC_CTRL, reset, clear IRQ, TOP_CTRL) */
+                avpu_write_reg(fd, AVPU_REG_MISC_CTRL, 0x00001000);
+                avpu_write_reg(fd, AVPU_REG_CORE_RESET(0), 0x00000001);
+                avpu_write_reg(fd, AVPU_REG_CORE_RESET(0), 0x00000002);
+                avpu_write_reg(fd, AVPU_REG_CORE_RESET(0), 0x00000004);
+                avpu_write_reg(fd, AVPU_INTERRUPT, 0x00FFFFFF);
+                avpu_write_reg(fd, AVPU_REG_TOP_CTRL, 0x00000080);
+
+                /* NO STRM_PUSH — OEM never uses it (fix #3) */
+
+                enc->use_hardware = 2;
+                enc->avpu.session_ready = 1;
+                pthread_mutex_lock(&g_avpu_owner_mutex);
+                g_avpu_owner_channel = enc->channel_id;
+                pthread_mutex_unlock(&g_avpu_owner_mutex);
+                LOG_CODEC("Process[AVPU]: initialized fd=%d %ux%u qp=%u gop=%u (owner chn=%d)",
+                          fd, width, height, enc->avpu.qp, enc->avpu.gop_length, enc->channel_id - 1);
+            } else {
+                enc->use_hardware = 0;
+                LOG_CODEC("Process: /dev/avpu open failed, using SW fallback");
+            }
+        } else {
+            enc->use_hardware = 0; /* non-H264 uses SW */
+        }
+    }
+
+    /* ========== Software Fallback ========== */
+    {
+        HWFrameBuffer sw_frame;
+        memset(&sw_frame, 0, sizeof(sw_frame));
+        sw_frame.phys_addr = phys_addr;
+        sw_frame.virt_addr = virt_addr;
+        sw_frame.size = size;
+        sw_frame.width = width;
+        sw_frame.height = height;
+        sw_frame.pixfmt = pixfmt;
+        sw_frame.timestamp = timestamp;
+
+        uint32_t codec_type = (*(uint32_t*)(enc->codec_param + 0x20) >> 24) & 0xffu;
+        if (HW_Encoder_Encode_Software(&sw_frame, hw_stream, codec_type) < 0) {
+            LOG_CODEC("Process: software encoding failed");
+            free(hw_stream);
+            return -1;
+        }
+    }
+
+    /* Original AVPU path from bc7c4cb — DISABLED (still causes HW lockup).
+     * The stream0 fix is more important — get both channels working with SW first. */
+    if (0 && enc->use_hardware) {
         /* Lazy-init hardware encoder on first frame */
         if (enc->hw_encoder_fd < 0) {
             /* Build parameters from codec_param (written by channel_encoder_init) */
@@ -4234,6 +4595,7 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
         }
     }
 
+queue_stream:
     /* Queue encoded stream to FIFO */
     if (Fifo_Queue(enc->fifo_streams, hw_stream, -1) == 0) {
         LOG_CODEC("Process: failed to queue stream");
@@ -4259,7 +4621,12 @@ int AL_Codec_Encode_GetStream(void *codec, void **stream, void **user_data) {
 
     *user_data = NULL;
 
-    LOG_CODEC("GetStream: use_hw=%d avpu.fd=%d", enc->use_hardware, enc->avpu.fd);
+    /* Rate-limit GetStream logging — this is called at polling rate (~10/sec) */
+    static int gs_log_count = 0;
+    if (gs_log_count < 3)  {
+        LOG_CODEC("GetStream: use_hw=%d avpu.fd=%d", enc->use_hardware, enc->avpu.fd);
+        gs_log_count++;
+    }
 
     if (enc->use_hardware == 2 && enc->avpu.fd >= 0) {
         ALAvpuContext *ctx = &enc->avpu;
@@ -4423,6 +4790,42 @@ int AL_Codec_Encode_RequestIDR(void *codec) {
 
     LOG_CODEC("RequestIDR: codec=%p channel=%d pending=1", codec, enc->channel_id - 1);
 
+    return 0;
+}
+
+int AL_Codec_Encode_SetQpBounds(void *codec, int minQp, int maxQp) {
+    if (codec == NULL) {
+        LOG_CODEC("SetQpBounds: NULL codec");
+        return -1;
+    }
+
+    AL_CodecEncode *enc = (AL_CodecEncode*)codec;
+
+    /* Clamp to valid QP range */
+    if (minQp < 0) minQp = 0;
+    if (maxQp > 51) maxQp = 51;
+    if (minQp > maxQp) minQp = maxQp;
+
+    /* Store in codec params - offsets match OEM SetQpCtrl path */
+    *(int16_t*)(enc->codec_param + 0x8c) = (int16_t)minQp;
+    *(int16_t*)(enc->codec_param + 0x8e) = (int16_t)maxQp;
+
+    LOG_CODEC("SetQpBounds: codec=%p min=%d max=%d", codec, minQp, maxQp);
+    return 0;
+}
+
+int AL_Codec_Encode_SetBitRate(void *codec, int targetBitrate, int maxBitrate) {
+    if (codec == NULL) {
+        LOG_CODEC("SetBitRate: NULL codec");
+        return -1;
+    }
+
+    AL_CodecEncode *enc = (AL_CodecEncode*)codec;
+
+    *(uint32_t*)(enc->codec_param + 0x84) = (uint32_t)targetBitrate;
+    *(uint32_t*)(enc->codec_param + 0x88) = (uint32_t)maxBitrate;
+
+    LOG_CODEC("SetBitRate: codec=%p target=%d max=%d", codec, targetBitrate, maxBitrate);
     return 0;
 }
 

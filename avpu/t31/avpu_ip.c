@@ -114,9 +114,10 @@ irqreturn_t avpu_hardirq_handler(int irq, void *data)
 	unmasked_irq_bitfield = ioread32(codec->regs + AVPU_INTERRUPT);
 	irq_bitfield = unmasked_irq_bitfield & mask;
 	if (irq_bitfield == 0) {
-		avpu_dbg("bitfield is 0\n");
 		return IRQ_NONE;
 	}
+	printk(KERN_INFO "[AVPU] IRQ mask=0x%08x pending=0x%08x active=0x%08x\n",
+		mask, unmasked_irq_bitfield, irq_bitfield);
 	iowrite32(unmasked_irq_bitfield, codec->regs + AVPU_INTERRUPT);
 	ioread32(codec->regs + AVPU_INTERRUPT);
 

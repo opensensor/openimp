@@ -704,3 +704,236 @@ int DMA_RmemFlushCache(void *virt_addr, uint32_t size, int dir)
     info.dir = (unsigned int)dir;
     return ioctl(g_mem_fd, RMEM_IOCTL_FLUSH_CACHE, &info);
 }
+
+/* ========== IMP_MemPool — Pool management (from OEM BN audit) ========== */
+
+#define MAX_MEM_POOLS 16
+
+typedef struct {
+    int in_use;
+    int pool_id;
+    uint32_t size;
+    uint32_t phys_base;
+    void *virt_base;
+} MemPoolEntry;
+
+static MemPoolEntry g_mem_pools[MAX_MEM_POOLS];
+static pthread_mutex_t mempool_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+int IMP_MemPool_InitPool(int pool_id, uint32_t size, int flags) {
+    if (pool_id < 0 || pool_id >= MAX_MEM_POOLS) {
+        LOG_DMA("MemPool_InitPool: invalid pool_id %d", pool_id);
+        return -1;
+    }
+    if (size == 0) {
+        LOG_DMA("MemPool_InitPool: size is 0");
+        return -1;
+    }
+
+    pthread_mutex_lock(&mempool_mutex);
+
+    MemPoolEntry *pool = &g_mem_pools[pool_id];
+    if (pool->in_use) {
+        LOG_DMA("MemPool_InitPool: pool %d already in use", pool_id);
+        pthread_mutex_unlock(&mempool_mutex);
+        return -1;
+    }
+
+    /* Allocate the pool's backing memory via DMA */
+    uintptr_t phys = IMP_Alloc(NULL, (intptr_t)size, "mempool");
+    if (phys == 0) {
+        LOG_DMA("MemPool_InitPool: IMP_Alloc failed for pool %d, size %u", pool_id, size);
+        pthread_mutex_unlock(&mempool_mutex);
+        return -1;
+    }
+
+    pool->in_use = 1;
+    pool->pool_id = pool_id;
+    pool->size = size;
+    pool->phys_base = (uint32_t)phys;
+    extern void *IMP_Phys_to_Virt(uint32_t);
+    pool->virt_base = IMP_Phys_to_Virt((uint32_t)phys);
+    (void)flags;
+
+    pthread_mutex_unlock(&mempool_mutex);
+    LOG_DMA("MemPool_InitPool: pool=%d size=%u phys=0x%x", pool_id, size, (uint32_t)phys);
+    return 0;
+}
+
+int IMP_MemPool_Release(int pool_id) {
+    if (pool_id < 0 || pool_id >= MAX_MEM_POOLS) {
+        LOG_DMA("MemPool_Release: invalid pool_id %d", pool_id);
+        return -1;
+    }
+
+    pthread_mutex_lock(&mempool_mutex);
+
+    MemPoolEntry *pool = &g_mem_pools[pool_id];
+    if (!pool->in_use) {
+        pthread_mutex_unlock(&mempool_mutex);
+        return 0;
+    }
+
+    if (pool->phys_base != 0) {
+        IMP_Free((uintptr_t)pool->phys_base);
+    }
+
+    memset(pool, 0, sizeof(*pool));
+    pthread_mutex_unlock(&mempool_mutex);
+    LOG_DMA("MemPool_Release: pool=%d freed", pool_id);
+    return 0;
+}
+
+int IMP_MemPool_GetById(int pool_id, void *info_out) {
+    if (pool_id < 0 || pool_id >= MAX_MEM_POOLS || info_out == NULL) {
+        return -1;
+    }
+
+    pthread_mutex_lock(&mempool_mutex);
+
+    MemPoolEntry *pool = &g_mem_pools[pool_id];
+    if (!pool->in_use) {
+        pthread_mutex_unlock(&mempool_mutex);
+        return -1;
+    }
+
+    /* OEM returns pool info — fill a generic struct with phys/virt/size */
+    IMPDMABufferInfo *out = (IMPDMABufferInfo *)info_out;
+    memset(out, 0, sizeof(*out));
+    snprintf(out->name, sizeof(out->name), "mempool_%d", pool_id);
+    out->phys_addr = pool->phys_base;
+    out->virt_addr = (uint32_t)(uintptr_t)pool->virt_base;
+    out->size = pool->size;
+    out->pool_id = (uint32_t)pool_id;
+
+    pthread_mutex_unlock(&mempool_mutex);
+    return 0;
+}
+
+/* ========== IMP_Alloc debug/attr functions (from OEM BN audit) ========== */
+
+/* Per-buffer allocation attributes (OEM stores alignment, cache policy, etc.) */
+typedef struct {
+    uint32_t alignment;
+    uint32_t cache_policy;  /* 0=cached, 1=uncached */
+} AllocAttr;
+
+static AllocAttr g_alloc_attr = {0x1000, 0}; /* Default: 4K alignment, cached */
+static AllocAttr g_pool_alloc_attr = {0x1000, 0};
+
+uintptr_t IMP_Sp_Alloc(int size, char *tag) {
+    /* OEM: special-purpose allocation — same as IMP_Alloc but with specific flags.
+     * Routes through the same DMA allocator. */
+    if (size <= 0) return 0;
+    return IMP_Alloc(NULL, (intptr_t)size, tag);
+}
+
+int IMP_Alloc_Set_Attr(uint32_t alignment, uint32_t cache_policy) {
+    g_alloc_attr.alignment = (alignment > 0) ? alignment : 0x1000;
+    g_alloc_attr.cache_policy = cache_policy;
+    LOG_DMA("Alloc_Set_Attr: align=%u, cache=%u", g_alloc_attr.alignment, g_alloc_attr.cache_policy);
+    return 0;
+}
+
+int IMP_Alloc_Get_Attr(uint32_t *alignment, uint32_t *cache_policy) {
+    if (alignment) *alignment = g_alloc_attr.alignment;
+    if (cache_policy) *cache_policy = g_alloc_attr.cache_policy;
+    return 0;
+}
+
+int IMP_Alloc_Dump(void) {
+    pthread_mutex_lock(&g_registry_mutex);
+    int count = 0;
+    size_t total_size = 0;
+
+    LOG_DMA("===== IMP_Alloc_Dump =====");
+    for (int i = 0; i < MAX_DMA_BUFFERS; i++) {
+        DMABufferRecord *buf = g_buffer_registry[i];
+        if (buf != NULL) {
+            LOG_DMA("  [%d] phys=0x%08x virt=%p size=%u tag=%s",
+                    i, buf->phys_addr, buf->virt_addr, buf->size, buf->tag);
+            total_size += buf->size;
+            count++;
+        }
+    }
+    LOG_DMA("  Total: %d buffers, %zu bytes", count, total_size);
+    LOG_DMA("==========================");
+
+    pthread_mutex_unlock(&g_registry_mutex);
+    return 0;
+}
+
+int IMP_Alloc_Dump_To_File(const char *path) {
+    if (!path) return -1;
+
+    FILE *fp = fopen(path, "w");
+    if (!fp) {
+        LOG_DMA("Alloc_Dump_To_File: cannot open %s: %s", path, strerror(errno));
+        return -1;
+    }
+
+    pthread_mutex_lock(&g_registry_mutex);
+    int count = 0;
+    size_t total_size = 0;
+
+    fprintf(fp, "===== IMP_Alloc_Dump =====\n");
+    for (int i = 0; i < MAX_DMA_BUFFERS; i++) {
+        DMABufferRecord *buf = g_buffer_registry[i];
+        if (buf != NULL) {
+            fprintf(fp, "[%d] phys=0x%08x virt=%p size=%u pool=%u tag=%s name=%s\n",
+                    i, buf->phys_addr, buf->virt_addr, buf->size,
+                    buf->pool_id, buf->tag, buf->name);
+            total_size += buf->size;
+            count++;
+        }
+    }
+    fprintf(fp, "Total: %d buffers, %zu bytes\n", count, total_size);
+
+    pthread_mutex_unlock(&g_registry_mutex);
+    fclose(fp);
+    return 0;
+}
+
+int IMP_PoolAlloc_Set_Attr(uint32_t alignment, uint32_t cache_policy) {
+    g_pool_alloc_attr.alignment = (alignment > 0) ? alignment : 0x1000;
+    g_pool_alloc_attr.cache_policy = cache_policy;
+    LOG_DMA("PoolAlloc_Set_Attr: align=%u, cache=%u",
+            g_pool_alloc_attr.alignment, g_pool_alloc_attr.cache_policy);
+    return 0;
+}
+
+int IMP_PoolAlloc_Get_Attr(uint32_t *alignment, uint32_t *cache_policy) {
+    if (alignment) *alignment = g_pool_alloc_attr.alignment;
+    if (cache_policy) *cache_policy = g_pool_alloc_attr.cache_policy;
+    return 0;
+}
+
+int IMP_PoolAlloc_Dump(void) {
+    LOG_DMA("===== IMP_PoolAlloc_Dump =====");
+
+    pthread_mutex_lock(&mempool_mutex);
+    for (int i = 0; i < MAX_MEM_POOLS; i++) {
+        MemPoolEntry *pool = &g_mem_pools[i];
+        if (pool->in_use) {
+            LOG_DMA("  Pool[%d]: phys=0x%08x virt=%p size=%u",
+                    i, pool->phys_base, pool->virt_base, pool->size);
+        }
+    }
+    pthread_mutex_unlock(&mempool_mutex);
+
+    /* Also dump pool-allocated buffers from the registry */
+    pthread_mutex_lock(&g_registry_mutex);
+    int count = 0;
+    for (int i = 0; i < MAX_DMA_BUFFERS; i++) {
+        DMABufferRecord *buf = g_buffer_registry[i];
+        if (buf != NULL && buf->pool_id > 0) {
+            LOG_DMA("  Buf[%d] pool=%u phys=0x%08x size=%u tag=%s",
+                    i, buf->pool_id, buf->phys_addr, buf->size, buf->tag);
+            count++;
+        }
+    }
+    LOG_DMA("  Pool buffers: %d", count);
+    LOG_DMA("==============================");
+    pthread_mutex_unlock(&g_registry_mutex);
+    return 0;
+}

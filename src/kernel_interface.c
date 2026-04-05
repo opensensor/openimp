@@ -12,6 +12,7 @@
 #include <sys/ioctl.h>
 #include <pthread.h>
 #include <errno.h>
+#include <syslog.h>
 #include "dma_alloc.h"
 
 /* ioctl command definitions from decompilation */
@@ -216,11 +217,12 @@ int fs_set_format(int fd, fs_format_t *fmt) {
         return -1;
     }
 
-    /* Use v4l2-like 0x70 struct for SET as well (matches driver expectations)
-     * IMPORTANT: The driver expects Ingenic IMP channel attributes packed
-     * immediately after the 0x24-byte v4l2-like header. BN MCP shows the OEM lib
-     * fills these fields before issuing 0xc07056c3. If we leave them zero, the
-     * remote handler computes bogus sizeimage/stride, causing QBUF to fail.
+    /* Use v4l2-like 0x70 struct for SET as well (matches driver expectations).
+     * IMPORTANT: The OEM leaves ALL Ingenic extended attributes at zero for the
+     * initial SET_FMT (except fps_num=1). The remote ISP (tisp_channel_attr_set)
+     * uses enable=0 to fall back to default/negotiated channel configuration.
+     * Setting enable=1 with explicit dimensions causes a different ISP channel
+     * configuration that breaks the DQBUF path for PHY_CHANNEL (channel 0).
      */
     struct __attribute__((packed)) fs_format70_t {
         /* v4l2-like header (0x00..0x23) */
@@ -263,24 +265,16 @@ int fs_set_format(int fd, fs_format_t *fmt) {
     s.pixelformat = fourcc;
     s.field = 0;         /* V4L2_FIELD_NONE (driver forces to 4) */
 
-    /* Compute sizeimage explicitly. T31 capture validates QBUF length against an
-     * internally stored sizeimage that reflects alignment. Empirically, height is
-     * aligned to 16 while width remains native for NV12/NV21.
-     */
-    uint32_t calc_sizeimage = 0;
-    if (fourcc == 0x3231564e || fourcc == 0x3132564e) {  /* NV12 or NV21 */
-        uint32_t aligned_h = (uint32_t)((fmt->height + 15) & ~15); /* align height to 16 */
-        calc_sizeimage = (uint32_t)fmt->width * aligned_h * 3 / 2;
-    } else if (fourcc == 0x56595559 || fourcc == 0x59565955) {  /* YUYV or UYVY */
-        calc_sizeimage = (uint32_t)fmt->width * (uint32_t)fmt->height * 2;
-    } else {
-        /* Fallback: conservative height-align for planar formats */
-        uint32_t aligned_h = (uint32_t)((fmt->height + 15) & ~15);
-        calc_sizeimage = (uint32_t)fmt->width * aligned_h * 3 / 2;
+    /* Compute NV12 sizeimage and bytesperline explicitly.
+     * The kernel's QBUF handler checks: length == sizeimage. If sizeimage
+     * is 0 in the kernel's channel state (because SET_FMT didn't store it),
+     * ALL QBUFs are rejected with "invalid memory size". This was the root
+     * cause of channel 0 (1920x1080) never getting frames. */
+    {
+        uint32_t stride = (s.width + 15) & ~15u; /* 16-byte aligned stride */
+        s.bytesperline = stride;
+        s.sizeimage = (stride * s.height * 3) / 2; /* NV12: Y + UV/2 */
     }
-
-    s.bytesperline = 0;  /* Let driver compute */
-    s.sizeimage = calc_sizeimage;  /* set explicitly to avoid 0 in driver */
     s.colorspace = 8;    /* V4L2_COLORSPACE_SRGB */
     s.priv = 0;
 
@@ -304,9 +298,12 @@ int fs_set_format(int fd, fs_format_t *fmt) {
     /* Debug: dump structure before ioctl */
     fprintf(stderr, "[KernelIF] SET_FMT before ioctl:\n");
     fprintf(stderr, "[KernelIF]   width=%u height=%u pixelformat=0x%x\n", s.width, s.height, s.pixelformat);
+    fprintf(stderr, "[KernelIF]   enable=%u attr_width=%u attr_height=%u\n",
+            s.enable, s.attr_width, s.attr_height);
     fprintf(stderr, "[KernelIF]   scaler_enable=%u scaler_outwidth=%u scaler_outheight=%u\n",
             s.scaler_enable, s.scaler_outwidth, s.scaler_outheight);
-    fprintf(stderr, "[KernelIF]   picwidth=%u picheight=%u\n", s.picwidth, s.picheight);
+    fprintf(stderr, "[KernelIF]   picwidth=%u picheight=%u fps_num=%u fps_den=%u\n",
+            s.picwidth, s.picheight, s.fps_num, s.fps_den);
     fprintf(stderr, "[KernelIF]   crop_enable=%u crop=%ux%u+%u+%u\n",
             s.crop_enable, s.crop_width, s.crop_height, s.crop_x, s.crop_y);
 
@@ -330,9 +327,9 @@ int fs_set_format(int fd, fs_format_t *fmt) {
      * We MUST read these modified values from 's' after the ioctl returns.
      * DO NOT call GET_FMT here - it queries the remote ISP again and may return garbage.
      */
-    fprintf(stderr, "[KernelIF] Set format: %dx%d fmt=0x%x (fourcc=0x%x) sizeimage=%u->%u bytesperline=%u colorspace=%d\n",
+    fprintf(stderr, "[KernelIF] Set format: %dx%d fmt=0x%x (fourcc=0x%x) sizeimage=%u bytesperline=%u colorspace=%d\n",
             fmt->width, fmt->height, fmt->pixelformat, fourcc,
-            calc_sizeimage, s.sizeimage, s.bytesperline, s.colorspace);
+            s.sizeimage, s.bytesperline, s.colorspace);
 
     /* Update fmt with kernel-modified values */
     fmt->sizeimage = (int)s.sizeimage;
@@ -355,7 +352,7 @@ int fs_set_buffer_count(int fd, int count) {
     req.count = (uint32_t)count;
     req.type = 1;            /* V4L2_BUF_TYPE_VIDEO_CAPTURE */
     req.memory = 2;          /* V4L2_MEMORY_USERPTR (matches earlier success) */
-    req.capabilities = 1;    /* OEM sets capabilities=1; required by some driver builds */
+    req.capabilities = 0;    /* OEM uses 0 — verified via BN MCP decompilation */
     req.reserved[0] = 0;
 
     int ret = ioctl(fd, VIDIOC_SET_BUFCNT, &req);
@@ -464,7 +461,7 @@ int fs_querybuf(int fd, int index, unsigned int *length_out) {
     b->index = (uint32_t)index;
     b->type = 1; /* V4L2_BUF_TYPE_VIDEO_CAPTURE */
     b->memory = 2; /* USERPTR */
-    b->field = 4;  /* match vendor */
+    b->field = 0;  /* OEM uses 0 (from memset) */
     int ret = ioctl(fd, VIDIOC_QUERYBUF, b);
     if (ret < 0) {
         fprintf(stderr, "[KernelIF] QUERYBUF failed: idx=%d err=%s\n", index, strerror(errno));
@@ -492,18 +489,30 @@ int fs_qbuf(int fd, int index, unsigned long phys, unsigned int length) {
     b->index = (uint32_t)index;
     b->type = 1;            /* V4L2_BUF_TYPE_VIDEO_CAPTURE */
     b->memory = 2;          /* Must match REQBUFS memory type (USERPTR) */
-    b->field = 4;           /* Driver expects specific field value (vendor used 4) */
+    b->field = 0;           /* OEM uses 0 (from memset); field=4 broke PHY_CHANNEL DQBUF */
     b->flags = 0;
     b->sequence = 0;
     b->m = (uint32_t)phys;  /* USERPTR carries DMA phys on this T31 variant */
     b->length = length;     /* Must equal kernel expected length */
-    b->bytesused = length;  /* some variants require non-zero to mark valid buffer */
+    b->bytesused = 0;       /* OEM leaves bytesused=0 (from memset) */
 
     int ret = ioctl(fd, VIDIOC_QBUF, b);
     if (ret < 0) {
-        fprintf(stderr, "[KernelIF] QBUF failed: idx=%d phys=0x%lx len=%u err=%s\n", index, phys, length, strerror(errno));
+        syslog(LOG_ERR, "[KernelIF] QBUF FAILED: idx=%d phys=0x%lx len=%u err=%s",
+               index, phys, length, strerror(errno));
+        fprintf(stderr, "[KernelIF] QBUF failed: idx=%d phys=0x%lx len=%u err=%s\n",
+                index, phys, length, strerror(errno));
         free(raw);
         return -1;
+    }
+    /* Log first few successful QBUFs to syslog for debugging */
+    {
+        static int qbuf_log_count = 0;
+        if (qbuf_log_count < 6) {
+            syslog(LOG_INFO, "[KernelIF] QBUF OK: fd=%d idx=%d phys=0x%lx len=%u",
+                   fd, index, phys, length);
+            qbuf_log_count++;
+        }
     }
     free(raw);
     return 0;
@@ -521,16 +530,40 @@ int fs_dqbuf(int fd, int *index_out) {
     struct v4l2_buf32 *b = (struct v4l2_buf32 *)raw;
     b->type   = 1;   /* V4L2_BUF_TYPE_VIDEO_CAPTURE */
     b->memory = 2;   /* V4L2_MEMORY_USERPTR */
-    b->field  = 4;   /* Match vendor value to avoid silent DQ issues */
+    b->field  = 0;   /* OEM uses 0 (from memset); field=4 is wrong */
 
+    /* Log first DQBUF attempt per channel to syslog */
+    {
+        static int dqbuf_log_count = 0;
+        if (dqbuf_log_count < 6) {
+            syslog(LOG_INFO, "[KernelIF] DQBUF: fd=%d attempting...", fd);
+            dqbuf_log_count++;
+        }
+    }
     int ret = ioctl(fd, VIDIOC_DQBUF, b);
     if (ret < 0) {
-        if (errno == EAGAIN) { free(raw); return -2; } /* non-blocking */
+        if (errno == EAGAIN) {
+            static int eagain_log = 0;
+            if (eagain_log < 4) {
+                syslog(LOG_INFO, "[KernelIF] DQBUF: fd=%d EAGAIN", fd);
+                eagain_log++;
+            }
+            free(raw);
+            return -2;
+        }
+        syslog(LOG_ERR, "[KernelIF] DQBUF: fd=%d FAILED: %s", fd, strerror(errno));
         fprintf(stderr, "[KernelIF] DQBUF failed: %s\n", strerror(errno));
         free(raw);
         return -1;
     }
     *index_out = (int)b->index;
+    {
+        static int dqbuf_ok_log = 0;
+        if (dqbuf_ok_log < 6) {
+            syslog(LOG_INFO, "[KernelIF] DQBUF: fd=%d OK idx=%d", fd, *index_out);
+            dqbuf_ok_log++;
+        }
+    }
     free(raw);
     return 0;
 }
@@ -943,10 +976,15 @@ int VBMPrimeKernelQueue(int chn, int fd, int limit) {
      * Instead, use QUERYBUF to get the kernel's expected length for each buffer,
      * and fall back to NV12 calculation if QUERYBUF returns 0.
      *
-     * IMPORTANT: Pop indices from the available_queue when priming the kernel so
-     * they are no longer considered 'available' by the pool. This prevents the
-     * queue from being full when releasing the first DQBUF frame.
+     * Pop indices from the available_queue when priming the kernel so they are
+     * no longer considered 'available' by the pool. If a QBUF fails, put the
+     * frame back into the available queue so VBMGetFrame can still use it (the
+     * capture thread's software fallback depends on this).
      */
+    const char* ev = getenv("OPENIMP_QBUF_USE_VIRT");
+    int use_virt = (ev && ev[0] != '\0') ? 1 : 0;
+    int queued_ok = 0;
+
     pthread_mutex_lock(&pool->queue_mutex);
     for (int j = 0; j < to_queue; j++) {
         if (pool->queue_count <= 0) {
@@ -957,28 +995,37 @@ int VBMPrimeKernelQueue(int chn, int fd, int limit) {
         pool->queue_count--;
 
         VBMFrame *f = &pool->frames[idx];
-        /* Choose address to put into .m: default to DMA PHYS per T31 driver semantics.
-         * Allow forcing VIRT via OPENIMP_QBUF_USE_VIRT for debugging/variants. */
-        unsigned long addr_m = (unsigned long)f->phys_addr; /* default: PHYS (T31 driver semantics) */
-        /* If needed for other variants, OPENIMP_QBUF_USE_VIRT can be set to force VIRT */
-        const char* ev = getenv("OPENIMP_QBUF_USE_VIRT");
-        int use_virt = (ev && ev[0] != '\0') ? 1 : 0;
-        fprintf(stderr, "[VBM] PrimeKernelQueue: QBUF using %s address in .m\n", use_virt?"VIRT":"PHYS");
-        if (use_virt) addr_m = (unsigned long)f->virt_addr;
-        /* Prefer the kernel-advertised buffer length via QUERYBUF */
-        unsigned int qlen = 0;
-        if (fs_querybuf(fd, idx, &qlen) < 0 || qlen == 0) {
-            qlen = (unsigned int)f->size; /* fallback: use our frame size */
+        unsigned long addr_m = use_virt ? (unsigned long)f->virt_addr
+                                        : (unsigned long)f->phys_addr;
+        if (j == 0) {
+            fprintf(stderr, "[VBM] PrimeKernelQueue: QBUF using %s address in .m\n",
+                    use_virt ? "VIRT" : "PHYS");
         }
+
+        /* Use VBM frame size directly — do NOT call fs_querybuf (ioctl 0xc0445609)
+         * because the custom tx-isp driver maps that ioctl to DQBUF, not QUERYBUF.
+         * Calling it here corrupts the driver's buffer state. */
+        unsigned int qlen = (unsigned int)f->size;
         if (fs_qbuf(fd, idx, addr_m, qlen) < 0) {
-            pthread_mutex_unlock(&pool->queue_mutex);
-            fprintf(stderr, "[VBM] PrimeKernelQueue: qbuf failed for idx=%d (len=%u)\n", idx, qlen);
-            return -1;
+            /* QBUF failed — return frame to the available queue so the software
+             * fallback path (VBMGetFrame) can still use it.  Do NOT abort the
+             * entire prime operation; some kernels reject pre-STREAMON QBUFs
+             * but the capture thread can still fall back to software mode. */
+            pool->available_queue[pool->queue_tail] = idx;
+            pool->queue_tail = (pool->queue_tail + 1) % pool->frame_count;
+            pool->queue_count++;
+            fprintf(stderr, "[VBM] PrimeKernelQueue: qbuf failed for idx=%d (len=%u), returned to avail queue\n", idx, qlen);
+            continue;
         }
+        queued_ok++;
     }
     pthread_mutex_unlock(&pool->queue_mutex);
 
-    fprintf(stderr, "[VBM] PrimeKernelQueue: queued %d frames to kernel for chn=%d (limit=%d)\n", to_queue, chn, limit);
+    fprintf(stderr, "[VBM] PrimeKernelQueue: queued %d/%d frames to kernel for chn=%d (limit=%d)\n",
+            queued_ok, to_queue, chn, limit);
+    /* Return 0 even if some/all QBUFs failed — the capture thread has a software
+     * fallback that uses VBMGetFrame, and frames were returned to the available
+     * queue on failure. */
     return 0;
 }
 

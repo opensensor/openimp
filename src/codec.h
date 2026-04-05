@@ -93,6 +93,24 @@ int AL_Codec_Encode_SetQp(void *codec, int16_t qp);
 int AL_Codec_Encode_SetEntropyMode(void *codec, int mode);
 
 /**
+ * Set QP bounds (min/max) for encoder
+ * @param codec Codec instance
+ * @param minQp Minimum QP value
+ * @param maxQp Maximum QP value
+ * @return 0 on success, -1 on failure
+ */
+int AL_Codec_Encode_SetQpBounds(void *codec, int minQp, int maxQp);
+
+/**
+ * Set bitrate for encoder
+ * @param codec Codec instance
+ * @param targetBitrate Target bitrate in kbps
+ * @param maxBitrate Maximum bitrate in kbps
+ * @return 0 on success, -1 on failure
+ */
+int AL_Codec_Encode_SetBitRate(void *codec, int targetBitrate, int maxBitrate);
+
+/**
  * Request an IDR frame on the next encode for this codec instance
  * @param codec Codec instance
  * @return 0 on success, -1 on failure
