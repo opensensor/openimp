@@ -936,7 +936,7 @@ static uint32_t avpu_pack_enc2_cmd1c(const ALAvpuContext *ctx)
 
     qp = ctx->qp ? ctx->qp : 30u;
     slice_7e = ctx->enc1_cmd_0b_7e ? ctx->enc1_cmd_0b_7e : 1u;
-    slice_10 = ctx->enc1_slice_10 & 0x3u;
+    slice_10 = ctx->enc1_slice_10 ? (ctx->enc1_slice_10 & 0x3u) : 1u; /* stock 640x360 has bit8=1 */
     slice_11 = ctx->entropy_mode & 1u;
 
     /* OEM SliceParamToCmdRegsEnc2 consumes several slice fields that are still
