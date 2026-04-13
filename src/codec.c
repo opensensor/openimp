@@ -1491,8 +1491,16 @@ static void fill_cmd_regs_enc1(const ALAvpuContext* ctx, uint32_t* cmd,
         cmd[0x11] = ref_phys + y_sz;                       /* ref UV (again) */
     }
 
-    /* cmd[0x12]: OEM pack from SliceParam+0xa8/+0xaa/+0xac. */
-    cmd[0x12] = avpu_pack_enc1_cmd12(ctx);
+    /* cmd[0x12]: OEM pack from SliceParam+0xa8/+0xaa/+0xac.
+     * CRITICAL: For IDR frames, OEM sets this to 0x003FF3FF (all-sentinel).
+     * These are reference frame stride fields — IDR has no reference so the
+     * hardware expects sentinel values. Computing width-based defaults for
+     * IDR causes the AVPU to write encoded data to wrong addresses. */
+    if (is_idr) {
+        cmd[0x12] = 0x003FF3FFu;
+    } else {
+        cmd[0x12] = avpu_pack_enc1_cmd12(ctx);
+    }
 
     /* cmd[0x13]: Stock=0 (NOT an intermediate buffer address) */
 
@@ -1504,9 +1512,13 @@ static void fill_cmd_regs_enc1(const ALAvpuContext* ctx, uint32_t* cmd,
     cmd[0x17] = 0x101e2d1eu; /* contains QP-related fields */
     cmd[0x18] = 0xc210000cu;
 
-    /* cmd[0x19]-cmd[0x1a]: OEM pack from SliceParam+0xec/+0xee/+0xf0/+0xf4. */
-    cmd[0x19] = avpu_pack_enc1_cmd19(ctx);
-    cmd[0x1a] = avpu_pack_enc1_cmd1a(ctx);
+    /* cmd[0x19]-cmd[0x1a]: OEM pack from SliceParam+0xec/+0xee/+0xf0/+0xf4.
+     * Stock IDR has ZEROS for both — these are P-frame-only reference metadata. */
+    if (!is_idr) {
+        cmd[0x19] = avpu_pack_enc1_cmd19(ctx);
+        cmd[0x1a] = avpu_pack_enc1_cmd1a(ctx);
+    }
+    /* else: 0 from memset */
 
     /* ---- cmd[0x1b]-cmd[0x1f]: Enc2 (entropy) parameters ----
      * Keep the embedded Enc1 copy on the same OEM-shaped packers as the
@@ -1550,14 +1562,13 @@ static void fill_cmd_regs_enc1(const ALAvpuContext* ctx, uint32_t* cmd,
             cmd[0x23] = ep2_addr;                     /* stock: 0x07135180 */
             cmd[0x27] = ep1_addr;                     /* stock: 0x0712ed00 */
 
-            /* OEM FillCmdRegsEnc1 (encode1 at 0x671b8) sets cmd[0x2c] and
-             * cmd[0x2e] to intermediate sub-buffer addresses + 0x100.  The
-             * +0x100 skip accounts for a 256-byte metadata header region.
-             * OEM sources: cmd[0x2c] = *(ctx+0x2f0)+0x100,
-             *              cmd[0x2e] = *(ctx+0x2f4)+0x100.
-             * Map these to our EP1 and WPP sub-buffers respectively. */
-            cmd[0x2c] = ep1_addr + 0x100u;            /* OEM: EP buffer + metadata */
-            cmd[0x2e] = wpp_addr + 0x100u;            /* OEM: WPP buffer + metadata */
+            /* cmd[0x2c]/cmd[0x2e]: Stock IDR CL has ZEROS here.
+             * These are P-frame intermediate buffer pointers (EP1+0x100,
+             * WPP+0x100). Only populate for P-frames. */
+            if (!is_idr) {
+                cmd[0x2c] = ep1_addr + 0x100u;
+                cmd[0x2e] = wpp_addr + 0x100u;
+            }
         }
 
         /* Reconstruction buffer */
@@ -1609,8 +1620,14 @@ static void fill_cmd_regs_enc1(const ALAvpuContext* ctx, uint32_t* cmd,
             cmd[0x32] = stream_offset;                 /* stock: 0x00000220 */
             cmd[0x33] = stream_part_offset > stream_offset
                        ? (stream_part_offset - stream_offset) & ~0x1fu : 0u;
-            cmd[0x34] = map_addr;                       /* OEM: interm map (*(ctx+0x304)) */
-            cmd[0x35] = data_addr;                      /* OEM: interm data (*(ctx+0x308)) */
+            /* cmd[0x34]/cmd[0x35]: Stock IDR CL has ZEROS. These are
+             * intermediate map/data addresses only needed for P-frames
+             * (Enc2 entropy coding). Setting them for IDR may confuse
+             * the AVPU DMA engine. */
+            if (!is_idr) {
+                cmd[0x34] = map_addr;
+                cmd[0x35] = data_addr;
+            }
         }
 
         /* Map buffer address */
@@ -2751,18 +2768,25 @@ static uint32_t avpu_stream_buffer_effective_size(ALAvpuContext *ctx, int buf_id
     if (!ctx->stream_bufs[buf_idx].map)
         return 0;
 
-    /* Invalidate stream buffer cache so we see HW-written data */
-    if (flush_ret_out) {
-        *flush_ret_out = avpu_flush_cache(ctx->fd,
-                                          ctx->stream_bufs[buf_idx].map,
-                                          (unsigned int)ctx->stream_buf_size,
-                                          2 /*INV*/);
-    } else {
-        avpu_flush_cache(ctx->fd,
-                         ctx->stream_bufs[buf_idx].map,
-                         (unsigned int)ctx->stream_buf_size,
-                         2 /*INV*/);
+    /* Read stream buffer from physical RAM via /dev/mem O_SYNC, bypassing
+     * the CPU cache entirely.  The rmem cache invalidate ioctls are broken
+     * on T31 — the AVPU writes via DMA but the CPU cache retains stale
+     * data (all zeros after our pre-written headers).
+     *
+     * Create an uncached mapping on first use, then memcpy from it into
+     * the cached map so downstream code can read it normally. */
+    if (!ctx->stream_bufs[buf_idx].uncached_map) {
+        ctx->stream_bufs[buf_idx].uncached_map =
+            avpu_remap_uncached(ctx->stream_bufs[buf_idx].phy_addr,
+                                (size_t)ctx->stream_buf_size);
     }
+    if (ctx->stream_bufs[buf_idx].uncached_map) {
+        memcpy(ctx->stream_bufs[buf_idx].map,
+               ctx->stream_bufs[buf_idx].uncached_map,
+               (size_t)ctx->stream_buf_size);
+    }
+    if (flush_ret_out)
+        *flush_ret_out = 0;
 
     /* OEM parity: read the hardware-updated stream end position from the CL.
      * This is the authoritative byte count — it matches exactly what the OEM
