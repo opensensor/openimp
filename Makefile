@@ -22,7 +22,7 @@ INSTALL_INC_DIR = $(PREFIX)/include
 INSTALL_LIB_DIR = $(PREFIX)/lib
 
 # Compiler flags
-CFLAGS = -Wall -Wextra -O2 -fPIC -I$(INC_DIR)
+CFLAGS = -Wall -Wextra -O2 -fPIC -fno-stack-protector -I$(INC_DIR)
 LDFLAGS = -shared -lpthread -lrt
 
 # Platform detection (can be overridden)
@@ -33,6 +33,7 @@ CFLAGS += -DPLATFORM_$(PLATFORM)
 
 # Source files
 IMP_SOURCES = \
+	$(SRC_DIR)/time64_shim.c \
 	$(SRC_DIR)/imp_system.c \
 	$(SRC_DIR)/imp_isp.c \
 	$(SRC_DIR)/imp_framesource.c \
