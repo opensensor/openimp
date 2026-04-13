@@ -1526,12 +1526,15 @@ static void fill_cmd_regs_enc1(const ALAvpuContext* ctx, uint32_t* cmd,
     cmd[0x1b] = avpu_pack_enc2_cmd1b(ctx);
     cmd[0x1c] = avpu_pack_enc2_cmd1c(ctx);
     cmd[0x1d] = avpu_pack_enc2_cmd1d(ctx);
-    /* cmd[0x1e]-cmd[0x1f]: OEM SliceParamToCmdRegsEnc2 consumes dedicated
-     * slice-header bookkeeping fields (+0xf8/+0xfc/+0x100), not the tail bytes
-     * of the full pre-written AU. Track those separately from the total header
-     * offset so the entropy stage sees the same shape as stock. */
-    cmd[0x1e] = avpu_pack_enc2_cmd1e(ctx);
-    cmd[0x1f] = avpu_pack_enc2_cmd1f(ctx);
+    /* cmd[0x1e]/cmd[0x1f]: Stock IDR has near-zero values for these Enc2
+     * splice fields. Our computed values (0x17000397, 0x32c44207) told
+     * the AVPU a wrong splice position, causing zero encoded bytes output.
+     * For IDR: zero both (stock parity). P-frames need splice info. */
+    if (!is_idr) {
+        cmd[0x1e] = avpu_pack_enc2_cmd1e(ctx);
+        cmd[0x1f] = avpu_pack_enc2_cmd1f(ctx);
+    }
+    /* else: 0 from memset */
 
     /* ---- cmd[0x20]-cmd[0x37]: Buffer addresses ----
      * These are the only address-dependent words. Substitute our allocations
@@ -1634,12 +1637,12 @@ static void fill_cmd_regs_enc1(const ALAvpuContext* ctx, uint32_t* cmd,
         if (ctx->rec_buf.phy_addr)
             cmd[0x37] = rec_map_addr;                  /* stock: 0x070c4100 */
 
-        /* Late-window words. The OEM packer sources cmd[0x60]/0x61/0x6e from
-         * slice fields while several neighboring words still come from runtime
-         * scheduler state we have not fully recovered. Only wire the fields
-         * whose source offsets are already known. */
-        cmd[0x60] = ctx->enc1_cmd_60_110_112;
-        cmd[0x61] = ctx->enc1_cmd_61_114_116;
+        /* Late-window words. Stock 1920x1080 IDR has cmd[0x60]=0, cmd[0x61]=0.
+         * Our non-zero values may confuse the AVPU scheduler. Only set for P-frames. */
+        if (!is_idr) {
+            cmd[0x60] = ctx->enc1_cmd_60_110_112;
+            cmd[0x61] = ctx->enc1_cmd_61_114_116;
+        }
         cmd[0x68] = rec_map_sz;                        /* still closest known fit */
         cmd[0x69] = rec_map_sz;                        /* still closest known fit */
     }
