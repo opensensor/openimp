@@ -3997,19 +3997,37 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
             }
 
             if (buf_idx < ctx->stream_bufs_used && ctx->stream_bufs[buf_idx].map) {
-                memset(ctx->stream_bufs[buf_idx].map, 0, (size_t)ctx->stream_buf_size);
-                avpu_flush_cache(fd, ctx->stream_bufs[buf_idx].map,
-                                 (unsigned int)ctx->stream_buf_size, 1 /*WBACK*/);
+                /* Zero stream buffer via UNCACHED mapping so zeros actually
+                 * reach physical RAM. The cached memset + broken rmem flush
+                 * left physical RAM with garbage from previous allocations,
+                 * causing the AVPU to appear to produce 163840-byte frames
+                 * (the entire buffer was non-zero garbage). */
+                if (!ctx->stream_bufs[buf_idx].uncached_map) {
+                    ctx->stream_bufs[buf_idx].uncached_map =
+                        avpu_remap_uncached(ctx->stream_bufs[buf_idx].phy_addr,
+                                            (size_t)ctx->stream_buf_size);
+                }
+                if (ctx->stream_bufs[buf_idx].uncached_map) {
+                    memset(ctx->stream_bufs[buf_idx].uncached_map, 0, (size_t)ctx->stream_buf_size);
+                } else {
+                    memset(ctx->stream_bufs[buf_idx].map, 0, (size_t)ctx->stream_buf_size);
+                    avpu_flush_cache(fd, ctx->stream_bufs[buf_idx].map,
+                                     (unsigned int)ctx->stream_buf_size, 1 /*WBACK*/);
+                }
             }
 
             uint32_t hdr_offset = avpu_prewrite_stream_headers(ctx, buf_idx, is_idr);
 
-            /* DMA-flush the stream buffer region containing pre-written headers.
-             * dir=1 = DMA_TO_DEVICE (CPU writeback to RAM).
-             * The AVPU reads headers from RAM (or at least the stream buffer must be
-             * coherent with what the AVPU DMAs to/from). */
-            if (hdr_offset > 0 && buf_idx < ctx->stream_bufs_used && ctx->stream_bufs[buf_idx].map) {
-                avpu_flush_cache(fd, ctx->stream_bufs[buf_idx].map, hdr_offset, 1 /*WBACK*/);
+            /* Flush pre-written headers to physical RAM via uncached mapping.
+             * The headers were written to the cached map by prewrite_stream_headers;
+             * copy them to the uncached map so the AVPU sees them. */
+            if (hdr_offset > 0 && buf_idx < ctx->stream_bufs_used) {
+                if (ctx->stream_bufs[buf_idx].uncached_map) {
+                    memcpy(ctx->stream_bufs[buf_idx].uncached_map,
+                           ctx->stream_bufs[buf_idx].map, hdr_offset);
+                } else {
+                    avpu_flush_cache(fd, ctx->stream_bufs[buf_idx].map, hdr_offset, 1);
+                }
             }
 
             /* Fill Enc1 command registers — source addr and header offset go INTO the CL entry */
