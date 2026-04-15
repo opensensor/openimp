@@ -12,7 +12,6 @@
 #include <sys/ioctl.h>
 #include <pthread.h>
 #include <errno.h>
-#include <syslog.h>
 #include "dma_alloc.h"
 
 /* ioctl command definitions from decompilation */
@@ -498,19 +497,16 @@ int fs_qbuf(int fd, int index, unsigned long phys, unsigned int length) {
 
     int ret = ioctl(fd, VIDIOC_QBUF, b);
     if (ret < 0) {
-        syslog(LOG_ERR, "[KernelIF] QBUF FAILED: idx=%d phys=0x%lx len=%u err=%s",
-               index, phys, length, strerror(errno));
         fprintf(stderr, "[KernelIF] QBUF failed: idx=%d phys=0x%lx len=%u err=%s\n",
                 index, phys, length, strerror(errno));
         free(raw);
         return -1;
     }
-    /* Log first few successful QBUFs to syslog for debugging */
     {
         static int qbuf_log_count = 0;
         if (qbuf_log_count < 6) {
-            syslog(LOG_INFO, "[KernelIF] QBUF OK: fd=%d idx=%d phys=0x%lx len=%u",
-                   fd, index, phys, length);
+            fprintf(stderr, "[KernelIF] QBUF OK: fd=%d idx=%d phys=0x%lx len=%u\n",
+                    fd, index, phys, length);
             qbuf_log_count++;
         }
     }
@@ -532,27 +528,17 @@ int fs_dqbuf(int fd, int *index_out) {
     b->memory = 2;   /* V4L2_MEMORY_USERPTR */
     b->field  = 0;   /* OEM uses 0 (from memset); field=4 is wrong */
 
-    /* Log first DQBUF attempt per channel to syslog */
     {
         static int dqbuf_log_count = 0;
         if (dqbuf_log_count < 6) {
-            syslog(LOG_INFO, "[KernelIF] DQBUF: fd=%d attempting...", fd);
+            fprintf(stderr, "[KernelIF] DQBUF: fd=%d attempting...\n", fd);
             dqbuf_log_count++;
         }
     }
     int ret = ioctl(fd, VIDIOC_DQBUF, b);
     if (ret < 0) {
-        if (errno == EAGAIN) {
-            static int eagain_log = 0;
-            if (eagain_log < 4) {
-                syslog(LOG_INFO, "[KernelIF] DQBUF: fd=%d EAGAIN", fd);
-                eagain_log++;
-            }
-            free(raw);
-            return -2;
-        }
-        syslog(LOG_ERR, "[KernelIF] DQBUF: fd=%d FAILED: %s", fd, strerror(errno));
-        fprintf(stderr, "[KernelIF] DQBUF failed: %s\n", strerror(errno));
+        if (errno == EAGAIN) { free(raw); return -2; }
+        fprintf(stderr, "[KernelIF] DQBUF failed: fd=%d %s\n", fd, strerror(errno));
         free(raw);
         return -1;
     }
@@ -560,7 +546,7 @@ int fs_dqbuf(int fd, int *index_out) {
     {
         static int dqbuf_ok_log = 0;
         if (dqbuf_ok_log < 6) {
-            syslog(LOG_INFO, "[KernelIF] DQBUF: fd=%d OK idx=%d", fd, *index_out);
+            fprintf(stderr, "[KernelIF] DQBUF: fd=%d OK idx=%d\n", fd, *index_out);
             dqbuf_ok_log++;
         }
     }
@@ -1212,25 +1198,22 @@ int VBMReleaseFrame(int chn, void *frame) {
         int dropped_idx = pool->available_queue[pool->queue_head];
         pool->queue_head = (pool->queue_head + 1) % pool->frame_count;
         pool->queue_count--;
-        fprintf(stderr, "[VBM] ReleaseFrame: queue full, dropped idx=%d to make room\n", dropped_idx);
     }
 
     /* If kernel-backed, re-queue to kernel immediately (QBUF) — but only
-     * if the buffer was actually DQBUF'd into userspace.  The OEM uses
-     * AL_Buffer refcounting so the actual release (and QBUF) only happens
-     * once when refcount drops to zero.  Without refcounting, multiple
-     * release paths (encoder_update + ReleaseStream) can double-release
-     * the same buffer, causing "qbuf: buffer already in use" kernel errors. */
+     * if the buffer was actually DQBUF'd into userspace. */
     if (pool->fd >= 0 && frame_idx >= 0 && frame_idx < pool->frame_count
         && pool->buf_in_userspace && pool->buf_in_userspace[frame_idx]) {
         unsigned long phys = vbm_frame->phys_addr;
-        unsigned int qlen = 0;
-        if (fs_querybuf(pool->fd, frame_idx, &qlen) < 0 || qlen == 0) {
-            qlen = (unsigned int)vbm_frame->size;
-        }
+        unsigned int qlen = (unsigned int)vbm_frame->size;
         if (fs_qbuf(pool->fd, frame_idx, phys, qlen) < 0) {
             fprintf(stderr, "[VBM] ReleaseFrame: fs_qbuf failed for idx=%d (len=%u)\n", frame_idx, qlen);
         }
+        /* The tx-isp kernel driver needs time to register the re-queued buffer
+         * before the capture thread's next DQBUF. Without this delay, DQBUF
+         * blocks indefinitely because the driver hasn't finished processing
+         * the QBUF internally. 100us is sufficient and negligible at 25fps. */
+        usleep(100);
         pool->buf_in_userspace[frame_idx] = 0;
     }
 
@@ -1240,8 +1223,7 @@ int VBMReleaseFrame(int chn, void *frame) {
 
     pthread_mutex_unlock(&pool->queue_mutex);
 
-    fprintf(stderr, "[VBM] ReleaseFrame: returned frame idx=%d (%d available)\n",
-            frame_idx, pool->queue_count);
+    /* fprintf throttled — high-frequency per-frame path */
 
     return 0;
 }
@@ -1256,7 +1238,7 @@ int VBMLockFrameByVaddr(uint32_t vaddr)
 
     pthread_mutex_lock(&vol->mutex);
     vol->ref_count++;
-    fprintf(stderr, "[VBM] LockFrameByVaddr: vaddr=0x%x ref=%d\n", vaddr, vol->ref_count);
+    /* fprintf throttled — high-frequency per-frame path */
     pthread_mutex_unlock(&vol->mutex);
     return 0;
 }

@@ -1079,6 +1079,7 @@ int IMP_Encoder_GetStream(int encChn, IMPEncoderStream *stream, int block) {
     stream->isVI = 0;
 
     /* Log using internal buffer to avoid dereferencing app-provided pointer */
+    if (stream_buf->seq % 50 == 0)
     LOG_ENC("GetStream: returning stream seq=%u, packs=%u, total_len=%u",
             stream_buf->seq, stream_buf->packs ? stream_buf->packCount : 1, stream_buf->base_size);
 
@@ -1102,6 +1103,7 @@ int IMP_Encoder_ReleaseStream(int encChn, IMPEncoderStream *stream) {
         return -1;
     }
 
+    if (stream->seq % 50 == 0)
     LOG_ENC("ReleaseStream: chn=%d, seq=%u", encChn, stream->seq);
 
     /* Lock mutex to access current_stream */
@@ -1147,7 +1149,7 @@ int IMP_Encoder_ReleaseStream(int encChn, IMPEncoderStream *stream) {
          * stream_thread waits on sem_408 when the slot is occupied. */
         sem_post(&chn->sem_408);
 
-        LOG_ENC("ReleaseStream: freed stream buffer");
+        /* Throttled: per-frame freed log suppressed */
     }
 
     pthread_mutex_unlock(&chn->mutex_450);
@@ -1206,7 +1208,8 @@ int IMP_Encoder_RequestIDR(int encChn) {
     }
 
     EncChannel *chn = &g_EncChannel[encChn];
-    LOG_ENC("RequestIDR: chn=%d", encChn);
+    { static int idr_log = 0; if (++idr_log <= 3 || (idr_log % 50) == 0)
+        LOG_ENC("RequestIDR: chn=%d [#%d]", encChn, idr_log); }
 
     if (chn->chn_id < 0 || chn->codec == NULL) {
         LOG_ENC("RequestIDR: channel %d not ready", encChn);
@@ -2110,7 +2113,8 @@ static void *stream_thread(void *arg) {
                     continue;
                 }
 
-                LOG_ENC("stream_thread: got stream %p", codec_stream);
+                if (chn->stream_seq % 50 == 0)
+                LOG_ENC("stream_thread: got stream %p (seq=%u)", codec_stream, chn->stream_seq);
 
                 /* Create StreamBuffer structure */
                 StreamBuffer *stream_buf = (StreamBuffer*)calloc(1, sizeof(StreamBuffer));
@@ -2259,7 +2263,10 @@ static void *stream_thread(void *arg) {
 
                     /* If consumer hasn't released previous stream yet, wait until it is released, then post */
                     if (!posted) {
-                        LOG_ENC("stream_thread: waiting (not dropping) because previous stream not yet released");
+                        { static unsigned int wait_count = 0; unsigned int c = __sync_add_and_fetch(&wait_count, 1);
+                          if (c <= 5 || (c % 50) == 0)
+                            LOG_ENC("stream_thread: waiting (not dropping) because previous stream not yet released [#%u]", c);
+                        }
                         while (!posted) {
                             /* Wait for ReleaseStream to signal slot available */
                             sem_wait(&chn->sem_408);
@@ -2281,6 +2288,7 @@ static void *stream_thread(void *arg) {
                     }
 
                     /* Log final posted stream */
+                    if (stream_buf->seq % 50 == 0)
                     LOG_ENC("stream_thread: stream seq=%u, packs=%u, total_len=%u, type=%s",
                             stream_buf->seq, stream_buf->packs ? stream_buf->packCount : 1, stream_buf->base_size,
                             frame_type == 0 ? "I" : (frame_type == 1 ? "P" : "B"));
@@ -2304,6 +2312,7 @@ static void *stream_thread(void *arg) {
                             i = nx;
                             sc = sc2;
                         }
+                        if (stream_buf->seq % 50 == 0)
                         LOG_ENC("stream_thread: %s", nal_str);
                     }
 
@@ -2359,30 +2368,33 @@ static int encoder_update(void *module, void *frame) {
     if (enc_group < 0)
         return 0;
 
-    /* Clone frame and submit to codec (now safe — codec uses ioctl/SW, no
-     * direct AVPU register writes that were causing hardware lockups). */
+    /* FIX: Match 93de1a9 behavior — submit frame to ONE channel only (the
+     * one matching enc_group, i.e. module->group_id). The old code used
+     * dst_chn = group_id as a direct channel index, not as a group with
+     * multiple sub-channels. Iterating ALL channels in the group causes
+     * multiple VBMLockFrameByVaddr calls (ref_count > 1), and if any
+     * channel's ReleaseStream path fails to call VBMUnlockFrameByVaddr,
+     * the frame is never returned to the kernel → DQBUF blocks forever.
+     *
+     * Also: on Process failure, must VBMUnlock the frame (93de1a9 did this). */
     pthread_mutex_lock(&encoder_mutex);
-    if (gEncoder != NULL && gEncoder->groups[enc_group].group_id >= 0) {
-        EncGroup *grp = &gEncoder->groups[enc_group];
-        for (int i = 0; i < MAX_CHANNELS_PER_GROUP; ++i) {
-            EncChannel *chn = grp->channels[i];
-            if (chn == NULL || chn->chn_id < 0 || !chn->recv_pic_started || chn->codec == NULL)
-                continue;
-
-            /* Clone source frame into an encoder frame slot */
+    if (enc_group >= 0 && enc_group < MAX_ENC_CHANNELS) {
+        EncChannel *chn = &g_EncChannel[enc_group];
+        if (chn->chn_id >= 0 && chn->recv_pic_started && chn->codec != NULL) {
             void *queued_frame = NULL;
-            if (encoder_clone_source_frame(chn, frame, &queued_frame) != 0)
-                continue;
-
-            /* Submit to codec (HW ioctl or software fallback) */
-            if (AL_Codec_Encode_Process(chn->codec, queued_frame, queued_frame) == 0) {
-                /* Signal stream_thread that encoded data may be ready */
-                if (chn->eventfd >= 0) {
-                    uint64_t val = 1;
-                    write(chn->eventfd, &val, sizeof(val));
+            if (encoder_clone_source_frame(chn, frame, &queued_frame) == 0) {
+                if (AL_Codec_Encode_Process(chn->codec, queued_frame, queued_frame) == 0) {
+                    if (chn->eventfd >= 0) {
+                        uint64_t val = 1;
+                        write(chn->eventfd, &val, sizeof(val));
+                    }
+                } else {
+                    /* Process failed — unlock VBM frame + release slot (93de1a9 parity) */
+                    uint32_t vaddr = 0;
+                    memcpy(&vaddr, (uint8_t*)queued_frame + 0x1c, sizeof(vaddr));
+                    VBMUnlockFrameByVaddr(vaddr);
+                    encoder_release_frame_slot(chn, queued_frame);
                 }
-            } else {
-                encoder_release_frame_slot(chn, queued_frame);
             }
         }
     }
