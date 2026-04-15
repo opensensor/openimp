@@ -4306,10 +4306,10 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
                     avpu_write_reg(fd, 0x841c, interm_map_addr);
                 }
                 avpu_write_reg(fd, 0x8420, stream_part_offset);
-                /* NOTE: Stock OEM writes 0x8424=0x200 when CL cmd[0x32]=0x220.
-                 * Aligning down to 256 bytes broke continuous IRQs for our
-                 * 0x208 header, so keep the exact offset for now.
-                 * TODO: investigate why stock alignment pattern differs. */
+                /* Keep exact hdr_offset for 0x8424 — aligning to 256 bytes
+                 * causes AXI bus hang/reboot on this hardware despite matching
+                 * the stock value pattern. The AVPU encoding output issue
+                 * must be solved elsewhere (CL content, not register values). */
                 avpu_write_reg(fd, 0x8424, hdr_offset);
                 avpu_write_reg(fd, 0x8428,
                     stream_part_offset > hdr_offset
