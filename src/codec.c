@@ -4232,18 +4232,59 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
             }
 
             /* OEM per-frame pre-submit: TurnOnGC + IRQ re-arm before CL_PUSH.
-             * NOTE: Stock also does ResetCore (0x83f0=1,2,4) per-frame, but
-             * issuing that here causes AXI bus hangs — the core reset hits
-             * while DMA from the previous frame hasn't fully quiesced.
-             * The init sequence already does the initial reset; per-frame
-             * we only re-arm the clock gate and interrupts. */
+             * The per-frame ResetCore (0x83f0=1,2,4) seen in the stock trace
+             * is done by the avpu.ko KERNEL DRIVER's IRQ handler, NOT by
+             * userspace libimp. Adding it here races with the driver and
+             * causes AXI bus hangs.
+             *
+             * OEM libimp per-frame sequence (from HLIL at 0x671b8):
+             * 1. SetClockCommand (TurnOnGC)
+             * 2. EnableInterrupts
+             * 3. Callback +0x42c (FillSourceConfig)
+             * 4. Callback +0x430
+             * 5. AL_EncCore_Encode1 → Rtos_FlushCacheMemory + CL_PUSH */
             avpu_turn_on_gc(fd, 0);
             avpu_enable_interrupts(fd, 0);
 
-            /* OEM-aligned submit path: program the command-list address and
-             * trigger Enc1 via CL_PUSH. Stream buffers are pre-queued via
-             * STRM_PUSH separately; the OEM StartEnc1WithCommandList helper does
-             * not issue an extra SRC_PUSH on the Enc1 command-list path. */
+            /* HLIL analysis of encode1() reveals the OEM order:
+             * 1. FillSourceConfig callback → ENC_EN + 0x8400 block
+             * 2. Rtos_FlushCacheMemory(CL, 0x100000)
+             * 3. CL_ADDR + CL_PUSH
+             *
+             * We were writing 0x8400 block AFTER CL_PUSH. The OEM writes
+             * it BEFORE. This could be why the AVPU processes the CL but
+             * produces zero encoded output — the source config registers
+             * aren't programmed when the hardware starts. */
+            {
+                uint32_t y_plane_sz = avpu_get_nv12_luma_plane_size(width, height);
+                uint32_t stream_part_offset = avpu_get_enc1_stream_part_offset(ctx);
+
+                avpu_write_reg(fd, AVPU_REG_ENC_EN_B, 0x00000001);
+                avpu_write_reg(fd, AVPU_REG_ENC_EN_A, 0x00000001);
+
+                avpu_write_reg(fd, 0x8400, 0x00000131u);
+                avpu_write_reg(fd, 0x8404,
+                    (((uint32_t)width - 1u) << 16) | ((uint32_t)height - 1u));
+                avpu_write_reg(fd, 0x8408, 0x00010001u);
+                avpu_write_reg(fd, 0x840c, (uint32_t)width);
+                avpu_write_reg(fd, 0x8410, phys_addr);
+                avpu_write_reg(fd, 0x8414, phys_addr + y_plane_sz);
+                avpu_write_reg(fd, 0x8418, ctx->interm_buf.phy_addr
+                    + ctx->interm_ep1_size); /* WPP start */
+                avpu_write_reg(fd, 0x841c, ctx->interm_buf.phy_addr); /* EP1 base */
+                avpu_write_reg(fd, 0x8420, stream_part_offset);
+                avpu_write_reg(fd, 0x8424, hdr_offset);
+                avpu_write_reg(fd, 0x8428,
+                    stream_part_offset > hdr_offset
+                        ? (stream_part_offset - hdr_offset) & ~0x1fu : 0u);
+
+                avpu_write_reg(fd, AVPU_REG_ENC_EN_C, 0x00000001);
+
+                if (ctx->frame_number % 50 == 0)
+                LOG_CODEC("AVPU: encoder config BEFORE CL_PUSH (hdr=%u)", hdr_offset);
+            }
+
+            /* NOW do CL_ADDR + CL_PUSH (after encoder config is programmed) */
             uint32_t cl_phys = ctx->cl_ring.phy_addr + (idx * ctx->cl_entry_size);
             int cl_addr_ret;
             int cl_push_ret;
@@ -4272,47 +4313,6 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
             if (trace_submit) {
                 LOG_CODEC("AVPU: submit write CL[%u] CL_PUSH ret=%d val=0x00000002", idx, cl_push_ret);
                 avpu_log_submit_snapshot(ctx, idx, "post_cl_push");
-            }
-
-            /* Post-CL encoder config block (0x8400-0x8428).
-             * HLIL shows encode1() writes this AFTER CL_PUSH via callbacks,
-             * not inside AL_EncCore_Encode1. The hardware REQUIRES these
-             * registers — removing them causes an immediate AXI bus hang.
-             *
-             * The 0x8418/0x841c values need further investigation to match
-             * OEM stock values. Current values: interm_data/map addresses. */
-            {
-                uint32_t y_plane_sz = avpu_get_nv12_luma_plane_size(width, height);
-                uint32_t stream_part_offset = avpu_get_enc1_stream_part_offset(ctx);
-
-                avpu_write_reg(fd, AVPU_REG_ENC_EN_B, 0x00000001);
-                avpu_write_reg(fd, AVPU_REG_ENC_EN_A, 0x00000001);
-
-                avpu_write_reg(fd, 0x8400, 0x00000131u);
-                avpu_write_reg(fd, 0x8404,
-                    (((uint32_t)width - 1u) << 16) | ((uint32_t)height - 1u));
-                avpu_write_reg(fd, 0x8408, 0x00010001u);
-                avpu_write_reg(fd, 0x840c, (uint32_t)width);
-                avpu_write_reg(fd, 0x8410, phys_addr);
-                avpu_write_reg(fd, 0x8414, phys_addr + y_plane_sz);
-                /* 0x8418/0x841c: intermediate buffer pointers.
-                 * Stock trace shows these point into the WPP/EP1 region, NOT
-                 * the deeper MAP/DATA offsets. The OEM callback computes these
-                 * from the encoder context's intermediate buffer layout.
-                 * Try WPP start → 0x8418, EP1 base → 0x841c (simplest match). */
-                avpu_write_reg(fd, 0x8418, ctx->interm_buf.phy_addr
-                    + ctx->interm_ep1_size); /* WPP start */
-                avpu_write_reg(fd, 0x841c, ctx->interm_buf.phy_addr); /* EP1 base */
-                avpu_write_reg(fd, 0x8420, stream_part_offset);
-                avpu_write_reg(fd, 0x8424, hdr_offset);
-                avpu_write_reg(fd, 0x8428,
-                    stream_part_offset > hdr_offset
-                        ? (stream_part_offset - hdr_offset) & ~0x1fu : 0u);
-
-                avpu_write_reg(fd, AVPU_REG_ENC_EN_C, 0x00000001);
-
-                if (ctx->frame_number % 50 == 0)
-                LOG_CODEC("AVPU: post-CL encoder config (hdr=%u)", hdr_offset);
             }
 
             /* OEM decompilation confirms: AL_EncCore_Encode1 at 0x6cbf0
