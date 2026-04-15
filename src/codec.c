@@ -1597,12 +1597,11 @@ static void fill_cmd_regs_enc1(const ALAvpuContext* ctx, uint32_t* cmd,
     cmd[0x1b] = avpu_pack_enc2_cmd1b(ctx);
     cmd[0x1c] = avpu_pack_enc2_cmd1c(ctx);
     cmd[0x1d] = avpu_pack_enc2_cmd1d(ctx);
-    /* cmd[0x1e]: bits[19:0] = (total_lcu - 1), bits[28:24] = slice_f8 (splice prefix bits).
-     * cmd[0x1f]: splice word (last bytes of slice header for Enc2 splicing).
-     * CRITICAL: Stock sets BOTH for ALL frames including IDR. The splice
-     * metadata tells Enc2 WHERE in the slice header to insert encoded
-     * macroblock data. Without these, Enc2 has no splice point → 0 output.
-     * Stock 640x360 IDR: cmd[0x1e]=0x14000397, cmd[0x1f]=0x0400045b. */
+    /* cmd[0x1e]/cmd[0x1f]: splice metadata for Enc2.
+     * Computed from the actual slice header bit position and trailing bytes.
+     * Changed slice_type from 7 (all-I) to 2 (I) to reduce bit count closer
+     * to stock's 20 bits. The splice word and prefix bits must be self-
+     * consistent with the actual header bytes at the splice position. */
     cmd[0x1e] = avpu_pack_enc2_cmd1e(ctx);
     cmd[0x1f] = avpu_pack_enc2_cmd1f(ctx);
 
