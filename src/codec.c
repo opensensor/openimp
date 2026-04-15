@@ -3569,8 +3569,10 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
             uint32_t profile_idc = *(uint32_t*)(enc->codec_param + 0x24);
             uint32_t codec_type = (profile_word >> 24) & 0xffu;
             uint32_t rc_mode = *(uint32_t*)(enc->codec_param + 0x2c);
-            LOG_CODEC("Process: lazy-init channel_id=%d %ux%u codec_type=%u profile_idc=%u entropy_mode=%u",
-                      enc->channel_id, width, height, codec_type, profile_idc, enc->entropy_mode);
+            { static int li_log = 0; if (++li_log <= 3)
+                LOG_CODEC("Process: lazy-init channel_id=%d %ux%u codec_type=%u profile_idc=%u entropy_mode=%u",
+                          enc->channel_id, width, height, codec_type, profile_idc, enc->entropy_mode);
+            }
             uint32_t init_qp = (*(uint32_t*)(enc->codec_param + 0x38)) & 0xFFu;
             uint32_t max_qp = *(uint32_t*)(enc->codec_param + 0x3c);
             uint32_t min_qp = *(uint32_t*)(enc->codec_param + 0x40);
@@ -3644,7 +3646,9 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
                     if (enc->event) {
                         enc->avpu.event_fd = (int)(uintptr_t)enc->event;
                     }
-                    LOG_CODEC("AVPU: channel=%d already open (fd=%d); skipping re-open", enc->channel_id - 1, enc->avpu.fd);
+                    { static int ao_log = 0; if (++ao_log <= 2)
+                        LOG_CODEC("AVPU: channel=%d already open (fd=%d); skipping re-open", enc->channel_id - 1, enc->avpu.fd);
+                    }
                 } else {
                     /* Open device via device pool (OEM parity: AL_DevicePool_Open at 0x362dc) */
                     int fd = AL_DevicePool_Open("/dev/avpu");
