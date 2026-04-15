@@ -1328,14 +1328,13 @@ static uint32_t avpu_prewrite_stream_headers(ALAvpuContext *ctx, int buf_idx, in
             pos += avpu_write_nal_epb(buf + pos, 0x68, rbsp, rbsp_len);
     }
 
-    /* Pad header area to stock-compatible minimum (0x200 = 512 bytes) before
-     * the slice header.  The AVPU's inline Enc2 appears to require cmd[0x32]
-     * >= ~0x200 to engage the entropy engine.  Stock achieves this with VUI
-     * parameters and SEI messages; we use H.264 filler NALs (type 12).
-     * The filler must come BEFORE the slice header so splice metadata stays
-     * correct at the end of the header area. */
+    /* Pad header area to match stock total of 0x220 (544 bytes).
+     * Stock achieves this with VUI/SEI; we use filler NALs (type 12).
+     * The slice header adds ~8 bytes, so pad pre-slice to 0x218.
+     * Matching cmd[0x32]=0x220 exactly may be required for the AVPU's
+     * Enc2 entropy engine to find the correct write position. */
     {
-        uint32_t min_pre_slice = 0x200u; /* stock minimum before slice header */
+        uint32_t min_pre_slice = 0x218u; /* target: total = 0x220 after slice hdr */
         while (pos < min_pre_slice && pos + 6 < budget) {
             /* Filler NAL: start code + nal_type=12 + 0xFF padding + 0x80 stop */
             buf[pos++] = 0x00;
@@ -2846,9 +2845,11 @@ static uint32_t avpu_read_hw_stream_end(ALAvpuContext *ctx, int buf_idx)
     if (!cl_entry)
         return 0;
 
-    /* Cache-invalidate the CL entry so we read HW-updated values */
+    /* Cache-invalidate the CL entry so we read HW-updated values.
+     * Use dir=0 (BIDIRECTIONAL) with full cache flush — dir=2 may
+     * not reliably invalidate on T31's rmem driver. */
     if (!ctx->cl_ring.uncached_map)
-        avpu_flush_cache(ctx->fd, cl_entry, (unsigned int)ctx->cl_entry_size, 2 /*INV*/);
+        avpu_flush_cache(ctx->fd, ctx->cl_ring.map, 0x100000, 0 /*BIDIRECTIONAL*/);
 
     cmd = (const uint32_t *)cl_entry;
 
@@ -2885,12 +2886,15 @@ static uint32_t avpu_stream_buffer_effective_size(ALAvpuContext *ctx, int buf_id
     if (!ctx->stream_bufs[buf_idx].map)
         return 0;
 
-    /* OEM parity: invalidate CPU cache for the stream buffer so we read
-     * fresh data written by AVPU DMA.  Use the rmem ioctl (0xc00c7200)
-     * with dir=2 (INV / DMA_FROM_DEVICE), same as Rtos_InvalidateCacheMemory. */
+    /* Invalidate CPU cache for the stream buffer so we read fresh data
+     * written by AVPU DMA. Use dir=0 (DMA_BIDIRECTIONAL = writeback +
+     * invalidate) with a 1MB size to flush the ENTIRE L1 D-cache on
+     * T31's MIPS core (~32KB). dir=2 (invalidate-only) may not work
+     * reliably on this kernel; dir=0 with large size is the proven
+     * full-cache-flush path from the pre-submit code. */
     {
         int inv_ret = avpu_flush_cache(ctx->fd, ctx->stream_bufs[buf_idx].map,
-                                       (unsigned int)ctx->stream_buf_size, 2 /*INV*/);
+                                       0x100000, 0 /*BIDIRECTIONAL*/);
         if (flush_ret_out)
             *flush_ret_out = inv_ret;
     }
