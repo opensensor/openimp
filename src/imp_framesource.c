@@ -11,6 +11,7 @@
 #include <fcntl.h>
 #include <sys/ioctl.h>
 #include <sys/select.h>
+#include <sched.h>
 
 #include <sys/time.h>
 #include <pthread.h>
@@ -358,11 +359,13 @@ int IMP_FrameSource_EnableChn(int chnNum) {
     memcpy(vbm_fmt + 0x04, &chn->attr.picHeight, sizeof(int));
     memcpy(vbm_fmt + 0x08, &chn->attr.pixFmt, sizeof(int));
     memcpy(vbm_fmt + 0x0c, &kernel_sizeimage, sizeof(int));
-    /* OEM passes nrVBs directly to VBMCreatePool — no minimum enforcement.
-     * The stock kernel REQBUFS for ch0 may reject count>=2 when
-     * isp_ch0_pre_dequeue is active, so we must not inflate the count. */
+    /* Triple buffering minimum: with synchronous encoder_update on the
+     * capture thread and 2 buffers, the capture thread exhausts both before
+     * the stream_thread can QBUF either back. 3 buffers ensures there's
+     * always one in the kernel queue. The OEM avoids this via async encode
+     * threads; our synchronous path needs the extra buffer. */
     int vbm_count = chn->attr.nrVBs;
-    if (vbm_count < 1) vbm_count = 1; /* sanity: at least 1 buffer */
+    if (vbm_count < 3) vbm_count = 3;
     memcpy(vbm_fmt + 0x34, &vbm_count, sizeof(int));
 
     /* Create VBM pool using kernel-computed size and requested buffer count */
@@ -374,11 +377,9 @@ int IMP_FrameSource_EnableChn(int chnNum) {
         return -1;
     }
 
-    /* REQBUFS before STREAM_ON — OEM uses nrVBs directly (no inflation).
-     * The stock kernel's REQBUFS for ch0 with isp_ch0_pre_dequeue can
-     * reject count>=2, so we must match the OEM's count exactly. */
-    int requested_bufcnt = chn->attr.nrVBs + (g_frame_depth[chnNum] > 0 ? g_frame_depth[chnNum] : 0);
-    if (requested_bufcnt < 1) requested_bufcnt = 1;
+    /* REQBUFS before STREAM_ON — match the VBM pool count (min 3 for
+     * triple buffering). Add frame_depth if configured. */
+    int requested_bufcnt = vbm_count + (g_frame_depth[chnNum] > 0 ? g_frame_depth[chnNum] : 0);
     int bufcnt = fs_set_buffer_count(chn->fd, requested_bufcnt);
     if (bufcnt < 0) {
         LOG_FS("EnableChn failed: cannot set buffer count");

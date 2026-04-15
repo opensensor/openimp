@@ -12,6 +12,7 @@
 #include <sys/ioctl.h>
 #include <pthread.h>
 #include <errno.h>
+#include <sched.h>
 #include "dma_alloc.h"
 
 /* ioctl command definitions from decompilation */
@@ -1209,11 +1210,8 @@ int VBMReleaseFrame(int chn, void *frame) {
         if (fs_qbuf(pool->fd, frame_idx, phys, qlen) < 0) {
             fprintf(stderr, "[VBM] ReleaseFrame: fs_qbuf failed for idx=%d (len=%u)\n", frame_idx, qlen);
         }
-        /* The tx-isp kernel driver needs time to register the re-queued buffer
-         * before the capture thread's next DQBUF. Without this delay, DQBUF
-         * blocks indefinitely because the driver hasn't finished processing
-         * the QBUF internally. 100us is sufficient and negligible at 25fps. */
-        usleep(100);
+        /* No delay needed — triple buffering (min 3 VBM buffers) ensures
+         * there's always a buffer in the kernel queue for the next DQBUF. */
         pool->buf_in_userspace[frame_idx] = 0;
     }
 

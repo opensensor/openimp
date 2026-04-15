@@ -1724,10 +1724,11 @@ static void fill_cmd_regs_enc1(const ALAvpuContext* ctx, uint32_t* cmd,
         }
 
         /* Enc2 embedded stream buffer section (cmd[0x50]-[0x57]).
-         * Stock 1920x1080 IDR CL has these as a copy of cmd[0x30]-[0x37].
-         * For IDR, only CL_PUSH=2 (Enc1) is submitted — no separate Enc2
-         * CL_PUSH=8. The AVPU reads Enc2 stream addresses from this
-         * embedded section. Without these, Enc2 has no output target → 0 bytes. */
+         * Required for inline Enc2 within CL_PUSH=2 — the hardware reads
+         * stream addresses from this section for the entropy engine output.
+         * Stock 640x360 CL shows zeros here in the kernel dump, but this may
+         * be a post-completion state. Without these, continuous AVPU IRQs
+         * regress to only 2. */
         cmd[0x50] = cmd[0x30];   /* stream buffer phys */
         cmd[0x51] = cmd[0x31];   /* stream_part_offset */
         cmd[0x52] = cmd[0x32];   /* hdr_offset */
@@ -4301,7 +4302,10 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
                     avpu_write_reg(fd, 0x841c, interm_map_addr);
                 }
                 avpu_write_reg(fd, 0x8420, stream_part_offset);
-                /* TEST: Restore 93de1a9 exact hdr_offset (no 32-byte align-down) */
+                /* NOTE: Stock OEM writes 0x8424=0x200 when CL cmd[0x32]=0x220.
+                 * Aligning down to 256 bytes broke continuous IRQs for our
+                 * 0x208 header, so keep the exact offset for now.
+                 * TODO: investigate why stock alignment pattern differs. */
                 avpu_write_reg(fd, 0x8424, hdr_offset);
                 avpu_write_reg(fd, 0x8428,
                     stream_part_offset > hdr_offset
@@ -4310,8 +4314,7 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
                 avpu_write_reg(fd, AVPU_REG_ENC_EN_C, 0x00000001);
 
                 if (ctx->frame_number % 50 == 0)
-                LOG_CODEC("AVPU: post-CL encoder config written (ENC_EN_A/B/C + 0x8400-0x8428 hdr=%u [93de1a9-style])",
-                          hdr_offset);
+                LOG_CODEC("AVPU: post-CL encoder config (hdr=%u)", hdr_offset);
 
                 }
 
