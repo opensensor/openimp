@@ -4271,11 +4271,13 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
                 avpu_log_submit_snapshot(ctx, idx, "post_cl_push");
             }
 
-            /* The last local state that produced real AVPU IRQ activity on target
-             * programmed the stock post-CL encoder bring-up block immediately
-             * after CL_PUSH. Keep this sequence matched to that known-good state
-             * so the hardware actually advances far enough to raise completion
-             * interrupts instead of remaining stuck with enc_en_a/b/c == 0. */
+            /* Post-CL encoder config block (0x8400-0x8428).
+             * HLIL shows encode1() writes this AFTER CL_PUSH via callbacks,
+             * not inside AL_EncCore_Encode1. The hardware REQUIRES these
+             * registers — removing them causes an immediate AXI bus hang.
+             *
+             * The 0x8418/0x841c values need further investigation to match
+             * OEM stock values. Current values: interm_data/map addresses. */
             {
                 uint32_t y_plane_sz = avpu_get_nv12_luma_plane_size(width, height);
                 uint32_t stream_part_offset = avpu_get_enc1_stream_part_offset(ctx);
@@ -4290,26 +4292,15 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
                 avpu_write_reg(fd, 0x840c, (uint32_t)width);
                 avpu_write_reg(fd, 0x8410, phys_addr);
                 avpu_write_reg(fd, 0x8414, phys_addr + y_plane_sz);
-                /* TEST: Restore 93de1a9 intermediate buffer addressing.
-                 * Old code wrote interm_data_addr/interm_map_addr (deeper offsets),
-                 * not ep1_addr/base_addr. */
-                {
-                    uint32_t interm_map_addr = 0, interm_data_addr = 0;
-                    if (ctx->interm_buf.phy_addr) {
-                        uint32_t ep1 = ctx->interm_buf.phy_addr;
-                        uint32_t wpp = ep1 + ctx->interm_ep1_size;
-                        uint32_t ep2 = wpp + ctx->interm_wpp_size;
-                        interm_map_addr = ep2 + ctx->interm_ep2_size;
-                        interm_data_addr = interm_map_addr + ctx->interm_map_size;
-                    }
-                    avpu_write_reg(fd, 0x8418, interm_data_addr);
-                    avpu_write_reg(fd, 0x841c, interm_map_addr);
-                }
+                /* 0x8418/0x841c: intermediate buffer pointers.
+                 * Stock trace shows these point into the WPP/EP1 region, NOT
+                 * the deeper MAP/DATA offsets. The OEM callback computes these
+                 * from the encoder context's intermediate buffer layout.
+                 * Try WPP start → 0x8418, EP1 base → 0x841c (simplest match). */
+                avpu_write_reg(fd, 0x8418, ctx->interm_buf.phy_addr
+                    + ctx->interm_ep1_size); /* WPP start */
+                avpu_write_reg(fd, 0x841c, ctx->interm_buf.phy_addr); /* EP1 base */
                 avpu_write_reg(fd, 0x8420, stream_part_offset);
-                /* Keep exact hdr_offset for 0x8424 — aligning to 256 bytes
-                 * causes AXI bus hang/reboot on this hardware despite matching
-                 * the stock value pattern. The AVPU encoding output issue
-                 * must be solved elsewhere (CL content, not register values). */
                 avpu_write_reg(fd, 0x8424, hdr_offset);
                 avpu_write_reg(fd, 0x8428,
                     stream_part_offset > hdr_offset
@@ -4319,8 +4310,7 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
 
                 if (ctx->frame_number % 50 == 0)
                 LOG_CODEC("AVPU: post-CL encoder config (hdr=%u)", hdr_offset);
-
-                }
+            }
 
             /* OEM decompilation confirms: AL_EncCore_Encode1 at 0x6cbf0
              * For IDR (arg4=0): CL_PUSH=2 only — inline Enc2 runs within CL_PUSH=2
