@@ -53,4 +53,12 @@ extern AL_TLogger g_RtosLog;
 extern AL_TLogger g_AL_Logger;
 extern AL_THardwareDriver *g_pHardwareDriver;
 
+/* Encoder trace-buffer dump toggle. Set by AL_Common_Encoder_SetTraces
+ * (lib_encode/Com_Encoder.c, T44 wave) and read by AL_IntermMngr_GetBuffer
+ * (lib_buf_mngt/IntermMngr.c, T32) + AL_CleanupMemory
+ * (lib_common/AllocatorDefault.c, T10). Stock ELF exports this as a
+ * single .bss global — keep as one definition in src/core/globals.c.
+ */
+extern uint32_t AL_CLEAN_BUFFERS;
+
 #endif

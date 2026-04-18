@@ -60,7 +60,10 @@ static AL_TAllocator s_WrapperAllocator = {
     (const AL_TAllocatorVtable *)&s_WrapperAllocatorVtable,
 };
 
-static uint32_t AL_CLEAN_BUFFERS = 0;
+/* AL_CLEAN_BUFFERS is defined once in src/core/globals.c (T0 foundation)
+ * and consumed here + in AL_IntermMngr_GetBuffer. Set by
+ * AL_Common_Encoder_SetTraces (T44) at runtime. */
+extern uint32_t AL_CLEAN_BUFFERS;
 
 uint32_t AL_CleanupMemory(int32_t arg1, int32_t arg2)
 {

@@ -46,3 +46,4 @@ AL_TAllocator g_AllocatorWrapper = { &g_wrapper_allocator_vtable };
 AL_TLogger g_RtosLog = {0};
 AL_TLogger g_AL_Logger = {0};
 AL_THardwareDriver *g_pHardwareDriver = 0;
+uint32_t AL_CLEAN_BUFFERS = 0;
