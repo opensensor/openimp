@@ -1210,3 +1210,944 @@ int32_t AL_Common_Encoder_SetGopParam(int32_t *arg1, void *arg2)
 
     return 1;
 }
+
+int32_t AL_GetAllocSize_MV(int32_t arg1, int32_t arg2, char arg3, int32_t arg4); /* forward decl */
+int32_t AL_GetAllocSize_CompData(int32_t arg1, int32_t arg2, char arg3, char arg4, int32_t arg5,
+                                 int32_t arg6); /* forward decl */
+int32_t AL_GetAllocSize_EncCompMap(int32_t arg1, int32_t arg2, char arg3, char arg4, char arg5); /* forward decl */
+int32_t AL_GetAllocSize_WPP(int32_t arg1, int32_t arg2, char arg3); /* forward decl */
+int32_t AL_GetAllocSize_SliceSize(int32_t arg1, int32_t arg2, int32_t arg3, int32_t arg4); /* forward decl */
+int32_t AL_GetAllocSizeEP1(void); /* forward decl */
+int32_t AL_GetAllocSizeEP2(int32_t arg1, int32_t arg2, int32_t arg3); /* forward decl */
+int32_t AL_GetAllocSizeEP3PerCore(void); /* forward decl */
+int32_t AL_GetAllocSizeSRD(int32_t arg1, int16_t arg2, char arg3); /* forward decl */
+int32_t *GetPicDimFromCmdRegsEnc1(int32_t *arg1, void *arg2); /* forward decl */
+uint32_t AL_PixMapBuffer_GetPlanePhysicalAddress(AL_TBuffer *arg1, int32_t arg2); /* forward decl */
+int32_t AL_PixMapBuffer_GetPlanePitch(AL_TBuffer *arg1, int32_t arg2); /* forward decl */
+uint32_t AL_PixMapBuffer_GetFourCC(AL_TBuffer *arg1); /* forward decl */
+uint32_t AL_IsCompressed(uint32_t tFourCC); /* forward decl */
+int32_t AL_Fifo_Init(int32_t *arg1, int32_t arg2); /* forward decl */
+int32_t AL_Fifo_Dequeue(int32_t *arg1, int32_t arg2); /* forward decl */
+int32_t AL_Fifo_Queue(int32_t *arg1, void *arg2, int32_t arg3); /* forward decl */
+void *Rtos_CreateSemaphore(int32_t initial_count); /* forward decl */
+int32_t Rtos_ReleaseSemaphore(void *sem); /* forward decl */
+void *Rtos_CreateMutex(void); /* forward decl */
+uint32_t AL_CleanupMemory(int32_t arg1, int32_t arg2); /* forward decl */
+int32_t LoadLambdaFromFile(char *arg1, int32_t *arg2); /* forward decl */
+int32_t LoadCustomLda(int32_t *arg1); /* forward decl */
+void *watermark_init(void); /* forward decl */
+int32_t MemDesc_AllocNamed(void *arg1, void *arg2, int32_t arg3, char *arg4); /* forward decl */
+int32_t AL_SrcBuffersChecker_CanBeUsed(void *arg1); /* forward decl */
+void AL_SrcBuffersChecker_Init(void *arg1, void *arg2); /* forward decl */
+void AL_HDRSEIs_Reset(uint8_t *arg1); /* forward decl */
+int32_t IMP_Log_Get_Option(void); /* forward decl */
+void imp_log_fun(int32_t level, int32_t option, int32_t type, ...); /* forward decl */
+void *memset(void *s, int c, size_t n); /* forward decl */
+int32_t AL_EncTrace_TraceInputsFifo(char *arg1, char *arg2, int32_t arg3, char arg4, char arg5, char arg6, int32_t arg7,
+                                    int32_t arg8, int32_t arg9, void *arg10); /* forward decl */
+uint32_t AL_EncTrace_TraceOutputsFifo(char *arg1, char *arg2, int32_t arg3, char arg4, char arg5, char arg6, char arg7,
+                                      int32_t arg8, int32_t arg9, int32_t arg10, int32_t arg11, void *arg12); /* forward decl */
+int32_t AL_EncTrace_TraceStatus(char *arg1, char *arg2, int32_t arg3, char arg4, char arg5, char arg6, char arg7,
+                                int32_t arg8, int32_t arg9, int32_t arg10, int32_t arg11, void *arg12); /* forward decl */
+int32_t AL_EncTrace_TraceJpeg(char *arg1, char *arg2, void *arg3, int32_t *arg4); /* forward decl */
+int32_t AL_EncTrace_TraceJpegStatus(char *arg1, char *arg2, int32_t arg3, void *arg4); /* forward decl */
+
+static int32_t TracedBufferToSliceBuffer(int32_t *arg1, void *arg2, int32_t *arg3, int32_t arg4)
+{
+    int32_t var_40 = 0;
+    int32_t var_3c = 0;
+    int32_t var_58;
+    int32_t var_54;
+    int32_t var_50;
+    int32_t var_4c;
+    int32_t *(*fill_rec)(int32_t *, void *, int32_t, int32_t, int32_t);
+    void *s3;
+    int32_t v0_3;
+    int32_t s5;
+    int32_t s4_1;
+    void *s0_1;
+    int32_t s7_1;
+    int32_t s6_1;
+    int32_t v1_2;
+    int32_t t0;
+    int32_t v0_6;
+    int32_t a3_5;
+    int32_t t0_2;
+    int32_t v1_4;
+    int32_t v0_8;
+    int32_t t1;
+    int32_t a3_7;
+    uint32_t t0_6;
+    int32_t var_38_3;
+    int32_t v0_10;
+    int32_t a0_9;
+    int32_t t1_1;
+    int32_t t2_1;
+    int32_t v0_13;
+    int32_t a0_12;
+    int32_t s0_2;
+    int32_t s6_2;
+    int32_t v0_14;
+    int32_t v1_9;
+    int32_t v0_15;
+    void *s0_4;
+    int32_t v0_16;
+    int32_t a1_12;
+    int32_t s4_2;
+    void *s3_1;
+    int32_t s3_2;
+    int32_t s0_8;
+    int32_t v0_27;
+    int32_t a0_16;
+    int32_t v1_15;
+    int32_t a0_17;
+    int32_t result;
+    int32_t v1_16;
+    int32_t a2_10;
+    int32_t a1_14;
+    uint32_t i;
+
+    Rtos_Memset(arg3, 0, 0x108);
+    s3 = READ_PTR(arg1[0x1e], 0x14);
+    GetPicDimFromCmdRegsEnc1(&var_40, *(void **)((uint8_t *)READ_PTR(arg2, 8) + (READ_U8(arg2, 0x11) << 2)));
+    v0_3 = READ_S32(arg2, 0xd0);
+    s5 = arg4 << 4;
+    s4_1 = arg4 << 8;
+    s0_1 = (uint8_t *)s3 + s4_1 - s5;
+    s7_1 = var_40 << 3;
+    s6_1 = var_3c << 3;
+    arg3[0] = READ_S32(arg2, 0xc0);
+    fill_rec = (int32_t *(*)(int32_t *, void *, int32_t, int32_t, int32_t))(intptr_t)FillRec;
+    var_40 = s7_1;
+    FillRec(&arg3[0x11], s0_1, s7_1, s6_1, v0_3);
+    fill_rec(&arg3[1], s0_1, var_40, s6_1, READ_S32(arg2, 0xc8));
+    var_58 = s7_1;
+    var_54 = s6_1;
+    fill_rec(&arg3[9], s0_1, s7_1, s6_1, READ_S32(arg2, 0xcc));
+    v1_2 = READ_S32(arg2, 0xd4);
+    t0 = READ_S32(arg2, 0x78);
+    var_50 = s7_1;
+    var_4c = s6_1;
+    v0_6 = AL_GetAllocSize_MV(s7_1, s6_1, READ_U8(s0_1, 0x4e), READ_U32(s0_1, 0x1c) >> 0x18);
+    a3_5 = READ_S32(s0_1, 0x1c);
+    arg3[0x1a] = t0;
+    arg3[0x19] = v1_2;
+    t0_2 = READ_S32(arg2, 0x7c);
+    v1_4 = READ_S32(arg2, 0xd8);
+    arg3[0x1b] = v0_6;
+    arg3[0x20] = AL_GetAllocSize_MV(s7_1, s6_1, READ_U8(s0_1, 0x4e), (uint32_t)a3_5 >> 0x18);
+    arg3[0x1e] = v1_4;
+    arg3[0x1f] = t0_2;
+    v0_8 = READ_S32(s0_1, 0x10);
+    t1 = v0_8 & 0xf;
+    a3_7 = ((uint32_t)v0_8 >> 4) & 0xf;
+    t0_6 = (uint32_t)(uint8_t)(1 << (READ_U8(s0_1, 0x4e) & 0x1f));
+    if (a3_7 < t1)
+        a3_7 = t1;
+    var_38_3 = 1;
+    v0_10 = AL_GetAllocSize_CompData(var_40, s6_1, (char)t0_6, (char)a3_7, (v0_8 >> 8) & 0xf, 1);
+    a0_9 = READ_S32(arg2, 0x90);
+    t1_1 = READ_S32(arg2, 0xdc);
+    arg3[0x23] = READ_S32(arg2, 0xe0);
+    arg3[0x24] = a0_9;
+    t2_1 = READ_S32(arg2, 0x8c);
+    arg3[0x25] = v0_10;
+    arg3[0x2a] = AL_GetAllocSize_EncCompMap(var_40, s6_1, (char)t0_6, READ_U8(arg2, 0x13), (char)var_38_3);
+    arg3[0x29] = t2_1;
+    arg3[0x28] = t1_1;
+    if (READ_U8(s0_1, 0x3e) == 0) {
+        uint32_t a0_18 = READ_U8(s0_1, 0x4e);
+
+        v0_13 = AL_GetAllocSize_WPP(((var_38_3 << (a0_18 & 0x1f)) + s6_1 - 1) >> (a0_18 & 0x1f),
+                                    READ_U8(arg2, 0x14), READ_U8(arg2, 0x13));
+    } else {
+        v0_13 = AL_GetAllocSize_SliceSize(s7_1, s6_1, READ_U8(arg2, 0x14), READ_U8(s0_1, 0x4e));
+    }
+    a0_12 = READ_S32(arg2, 0xa8);
+    arg1[0xd] = READ_S32(arg2, 0x80);
+    arg1[0xc] = a0_12;
+    arg1[0xe] = v0_13;
+    arg3[0x2d] = (int32_t)(intptr_t)&arg1[0xc];
+    s0_2 = READ_S32(arg2, 0xb0);
+    s6_2 = READ_S32(arg2, 0x84);
+    v0_14 = AL_GetAllocSizeEP1();
+    v1_9 = READ_S32(s3, 0x10c);
+    arg1[1] = s6_2;
+    arg1[0] = s0_2;
+    arg1[2] = v0_14;
+    arg3[0x2e] = (int32_t)(intptr_t)arg1;
+    arg1[5] = v1_9 != 0 ? 0x11 : 1;
+    v0_15 = READ_S32(arg2, 0x3c);
+    arg1[6] = READ_S32(arg2, 0x40);
+    s0_4 = (uint8_t *)s3 + s4_1 - s5;
+    arg1[7] = v0_15;
+    v0_16 = AL_GetAllocSizeEP2(var_40, s6_1, READ_U8(s0_4, 0x1f));
+    a1_12 = READ_S32(s0_4, 0x68);
+    arg1[8] = v0_16;
+    arg3[0x2f] = (int32_t)(intptr_t)&arg1[6];
+
+    if (a1_12 == 3 || READ_S32(s0_4, 0xa4) != 0 || READ_S32(s0_4, 0xa0) != 0 || READ_S32(s0_4, 0x9c) != 0) {
+        i = 0;
+        if (READ_U8(arg2, 0x13) != 0) {
+            do {
+                int32_t v0_20 = (int32_t)i * AL_GetAllocSizeEP3PerCore();
+                uint8_t *s0_7 = (uint8_t *)&arg3[i * 6];
+
+                i = (uint8_t)i + 1;
+                WRITE_S32(s0_7, 0xc0, READ_S32(arg2, 0xac) + v0_20);
+                WRITE_S32(s0_7, 0xc4, READ_S32(arg2, 0x88) + v0_20);
+                WRITE_S32(s0_7, 0xc8, AL_GetAllocSizeEP3PerCore());
+                WRITE_S32(s0_7, 0xd4, 3);
+            } while (i < READ_U8(arg2, 0x13));
+        }
+        s4_2 = s4_1 - s5;
+    } else {
+        s4_2 = s4_1 - s5;
+    }
+
+    s3_1 = (uint8_t *)s3 + s4_2;
+    if ((READ_S32(s3_1, 0x2c) & 0x8000) != 0) {
+        s3_2 = READ_S32(arg2, 0xb8);
+        s0_8 = READ_S32(arg2, 0xb4);
+        v0_27 = AL_GetAllocSizeSRD(var_40, (int16_t)s6_1, READ_U8(s3_1, 0x4e));
+        a0_16 = arg1[0x22];
+        v1_15 = arg1[0x23];
+        arg1[0x20] = s0_8;
+        arg1[0x1f] = s3_2;
+        arg1[0x21] = v0_27;
+        arg3[0x36] = s3_2;
+        arg3[0x37] = s0_8;
+        arg3[0x38] = v0_27;
+        arg3[0x39] = a0_16;
+        arg3[0x3a] = v1_15;
+    }
+
+    a0_17 = READ_S32(arg2, 0xf0);
+    result = READ_S32(arg2, 0xf8);
+    v1_16 = READ_S32(arg2, 0xf4);
+    a2_10 = arg1[0x1a];
+    a1_14 = arg1[0x1b];
+    arg1[0x18] = v1_16;
+    arg1[0x17] = a0_17;
+    arg1[0x19] = result;
+    arg1[0x1d] = result;
+    arg1[0x1c] = 0;
+    arg3[0x3b] = a0_17;
+    arg3[0x3c] = v1_16;
+    arg3[0x3d] = result;
+    arg3[0x3e] = a2_10;
+    arg3[0x3f] = a1_14;
+    arg3[0x40] = 0;
+    arg3[0x41] = result;
+    return result;
+}
+
+static uint32_t trace(int32_t *arg1, int32_t arg2)
+{
+    int32_t s1 = arg1[0];
+    int32_t v1 = READ_S32((void *)(intptr_t)s1, 0xf240);
+    int32_t a0 = arg1[7];
+    int32_t s2_1 = arg1[6] & 8;
+    int32_t s3_1;
+    int32_t var_1b0[0x42];
+    int32_t var_a8[0x0f];
+    uint32_t result;
+
+    if (v1 == 3) {
+        s3_1 = a0 | 0x10000000;
+    } else {
+        s3_1 = a0;
+        if (v1 == 4) {
+            if (a0 == READ_S32((void *)(intptr_t)s1, 0xf244))
+                s3_1 = a0 | 0x10000000;
+        } else if (v1 == 5) {
+            s3_1 = a0 | 0x20000000;
+        }
+    }
+
+    TracedBufferToSliceBuffer(var_a8, arg1, var_1b0, arg2);
+    if (arg1[6] != 0) {
+        if (s2_1 == 0) {
+            int32_t v1_1 = s3_1 & 0xf0000000;
+
+            if (v1_1 == 0x10000000) {
+                int32_t var_1c0 = arg1[2];
+                int32_t var_1c4 = (uint32_t)arg1[6] >> 2 & 1;
+
+                AL_EncTrace_TraceOutputsFifo((char *)(intptr_t)READ_S32((void *)(intptr_t)s1, 0xf24c),
+                                             (char *)(intptr_t)READ_S32((void *)(intptr_t)s1, 0xf250),
+                                             s3_1 & 0x0fffffff, (char)arg1[4], (char)arg1[0x11], (char)arg1[0x13],
+                                             (char)arg1[0x12], (uint16_t)arg1[5], ((uint32_t)arg1[6] >> 1) & 1, var_1c4,
+                                             var_1c0, var_1b0);
+                if ((arg1[6] & 4) != 0) {
+                    AL_EncTrace_TraceStatus((char *)(intptr_t)READ_S32((void *)(intptr_t)s1, 0xf24c),
+                                            (char *)(intptr_t)READ_S32((void *)(intptr_t)s1, 0xf250),
+                                            s3_1 & 0x0fffffff, (char)arg1[4], (char)arg1[0x11], (char)arg1[0x13],
+                                            (char)arg1[0x12], (uint16_t)arg1[5], arg1[2], var_1c4, var_1c0, var_1b0);
+                }
+            } else if (v1_1 == 0x20000000) {
+                int32_t var_1c0 = arg1[2];
+                int32_t var_1c4 = (uint32_t)arg1[6] >> 2 & 1;
+
+                if ((arg1[6] & 4) != 0) {
+                    AL_EncTrace_TraceStatus((char *)(intptr_t)READ_S32((void *)(intptr_t)s1, 0xf24c),
+                                            (char *)(intptr_t)READ_S32((void *)(intptr_t)s1, 0xf250),
+                                            s3_1 & 0x0fffffff, (char)arg1[4], (char)arg1[0x11], (char)arg1[0x13],
+                                            (char)arg1[0x12], (uint16_t)arg1[5], arg1[2], var_1c4, var_1c0, var_1b0);
+                }
+            } else if (arg1[6] == 9) {
+                int32_t v0_7 = s3_1 & 0xf0000000;
+
+                if (v0_7 == 0x10000000) {
+                    AL_EncTrace_TraceJpeg((char *)(intptr_t)READ_S32((void *)(intptr_t)s1, 0xf24c),
+                                          (char *)(intptr_t)READ_S32((void *)(intptr_t)s1, 0xf250),
+                                          (void *)(intptr_t)*((int32_t *)(intptr_t)arg1[2]), var_1b0);
+                } else if (v0_7 == 0x20000000) {
+                    AL_EncTrace_TraceJpegStatus((char *)(intptr_t)READ_S32((void *)(intptr_t)s1, 0xf24c),
+                                                (char *)(intptr_t)READ_S32((void *)(intptr_t)s1, 0xf250),
+                                                s3_1 & 0x0fffffff, (void *)(intptr_t)*((int32_t *)(intptr_t)arg1[2]));
+                } else {
+                    result = READ_U8((void *)(intptr_t)s1, 0xf248);
+                    if (result != 0)
+                        return (uint32_t)puts("end_frame,");
+                }
+            }
+        } else if ((s3_1 & 0xf0000000) == 0x10000000) {
+            AL_EncTrace_TraceInputsFifo((char *)(intptr_t)READ_S32((void *)(intptr_t)s1, 0xf24c),
+                                        (char *)(intptr_t)READ_S32((void *)(intptr_t)s1, 0xf250),
+                                        s3_1 & 0x0fffffff, (char)arg1[4], (char)arg1[0x11], (char)arg1[0x13],
+                                        (uint16_t)arg1[5], arg1[2], arg1[3], var_1b0);
+        }
+
+        result = READ_U8((void *)(intptr_t)s1, 0xf248);
+        if (result != 0) {
+            int32_t v0_4 = arg1[6];
+
+            if ((v0_4 & 1) == 0)
+                goto label_start;
+            if (s2_1 != 0)
+                return (uint32_t)puts("end_frame,");
+            if ((v0_4 & 4) != 0) {
+                result = (uint16_t)arg1[5] - 1;
+                if ((uint32_t)arg1[0x12] == result)
+                    return (uint32_t)puts("end_frame,");
+            }
+        }
+    } else {
+        result = READ_U8((void *)(intptr_t)s1, 0xf248);
+        if (result != 0) {
+label_start:
+            if (s2_1 == 0)
+                result = (uint32_t)arg1[0x11];
+            if (s2_1 != 0 || result == 0)
+                return (uint32_t)puts("start_frame,");
+        }
+    }
+
+    return result;
+}
+
+static int32_t EndEncoding(int32_t *arg1, int32_t *arg2, int32_t arg3)
+{
+    int32_t *s1 = (int32_t *)(intptr_t)arg1[0];
+    int32_t s2 = arg1[1];
+    char const *var_68 = NULL;
+    int32_t var_64 = 0;
+    char const *var_60 = NULL;
+    char const *var_5c = NULL;
+    char const *var_58 = NULL;
+    int32_t var_54 = 0;
+    int32_t var_50 = 0;
+    int32_t var_4c = 0;
+    uint32_t var_48 = 0;
+    uint32_t var_44 = 0;
+    int32_t s7_1;
+    int32_t s5_1;
+    void *a3_8 = NULL;
+    int32_t s3_8;
+    int32_t s4_1;
+    int32_t s6_1;
+    int32_t fp_1;
+    void *v0_11;
+    void *v0_12;
+    void *v0_13;
+    int32_t s5_4;
+
+    if (arg2 == NULL) {
+        intptr_t v1_20 = (intptr_t)(s2 * 0x3bf);
+        return ((int32_t (*)(int32_t, int32_t *, int32_t, int32_t))(intptr_t)READ_S32(s1, v1_20 * 0x3c + 0xe0d4))(
+            READ_S32(s1, v1_20 * 0x3c + 0xe0d8), arg2, 0, s2);
+    }
+
+    if ((uint32_t)arg3 >= 0x140) {
+        __assert("streamId >= 0 && streamId < (32 * 10)",
+                 "/home/user/git/proj/sdk-lv3/src/imp/video/alcodec/lib_encode/Com_Encoder.c", 0x5fb, "EndEncoding");
+    }
+
+    s7_1 = s2 << 4;
+    s5_1 = s2 << 8;
+    if (READ_U8(READ_PTR(s1, 0x14), s5_1 - s7_1 + 0x1f) == 4)
+        a3_8 = READ_PTR(s1, 0xf27c);
+
+    if (READ_U8(READ_PTR(s1, 0x14), s5_1 - s7_1 + 0x1f) != 4 || a3_8 == NULL) {
+        s6_1 = s2 << 6;
+        s4_1 = s2 << 0xa;
+        Rtos_GetMutex(READ_PTR(s1, 0xf254));
+        {
+            intptr_t s3_3 = (intptr_t)((s4_1 - s6_1 - s2) * 0xf);
+            int32_t a1 = arg2[0x27];
+
+            AL_Common_SetError(s1, a1);
+            WRITE_S32(s1, s3_3 * 4 + 0xdbb4, (READ_S32(s1, s3_3 * 4 + 0xdbb4) + 1) % 0x140);
+            s3_8 = READ_S32(s1, (s3_3 + arg3 + 0x36ee) * 4);
+        }
+        Rtos_ReleaseMutex(READ_PTR(s1, 0xf254));
+    } else {
+        s6_1 = s2 << 6;
+        s4_1 = s2 << 0xa;
+        Rtos_GetMutex(READ_PTR(a3_8, 0xf254));
+        {
+            intptr_t s3_11 = (intptr_t)((s4_1 - s6_1 - s2) * 0xf);
+            int32_t a1_6 = arg2[0x27];
+            int32_t a2_14 = (READ_S32(a3_8, (s3_11 << 2) + 0xdbb4) + 1) % 0x140;
+
+            WRITE_S32(a3_8, (s3_11 << 2) + 0xdbb4, a2_14);
+            AL_Common_SetError((int32_t *)a3_8, a1_6);
+            s3_8 = READ_S32(a3_8, ((s3_11 + arg3 + 0x36ec) << 2) + 8);
+        }
+        Rtos_ReleaseMutex(READ_PTR(a3_8, 0xf254));
+    }
+
+    fp_1 = arg2[0];
+    if ((uint32_t)arg2[0x27] < 0x80) {
+        var_68 = (char const *)(intptr_t)s2;
+        ((void (*)(int32_t *, int32_t *, void *, int32_t, char const *))(intptr_t)s1[4])(s1, arg2,
+                                                                                           (uint8_t *)s1 + fp_1 * 0x30 + 0xedb4,
+                                                                                           s3_8, var_68);
+    } else {
+        int32_t v0_10 = IMP_Log_Get_Option();
+        void *s5_3 = (uint8_t *)READ_PTR(s1, 0x14) + s5_1 - s7_1;
+
+        var_44 = READ_U8(s5_3, 6);
+        var_48 = READ_U8(s5_3, 4);
+        var_50 = arg2[0x27];
+        var_4c = READ_S32(s5_3, 0x1c);
+        var_5c = "%s(%d):errorCode = %x, eProfile = %x, uEncWidth = %d, uEncHeight = %d\n";
+        var_54 = 0x61d;
+        var_60 = "EndEncoding";
+        var_64 = 0x61d;
+        var_58 = "/home/user/git/proj/sdk-lv3/src/imp/video/alcodec/lib_encode/Com_Encoder.c";
+        var_68 = "/home/user/git/proj/sdk-lv3/src/imp/video/alcodec/lib_encode/Com_Encoder.c";
+        imp_log_fun(6, v0_10, 2, "Encoder",
+                    "/home/user/git/proj/sdk-lv3/src/imp/video/alcodec/lib_encode/Com_Encoder.c",
+                    0x61d, "EndEncoding",
+                    "%s(%d):errorCode = %x, eProfile = %x, uEncWidth = %d, uEncHeight = %d\n",
+                    "/home/user/git/proj/sdk-lv3/src/imp/video/alcodec/lib_encode/Com_Encoder.c", 0x61d,
+                    var_50, var_4c, var_48, var_44, &_gp);
+    }
+
+    v0_11 = AL_Buffer_GetMetaData((AL_TBuffer *)(intptr_t)s3_8, 3);
+    if (v0_11 != NULL)
+        WRITE_S32(v0_11, 0xc, arg2[0x28]);
+
+    v0_12 = AL_Buffer_GetMetaData((AL_TBuffer *)(intptr_t)s3_8, 1);
+    if (v0_12 != NULL)
+        WRITE_U8(v0_12, 0xc, READ_U8(arg2, 0xb4));
+
+    s5_4 = arg2[2];
+    v0_13 = AL_Buffer_GetMetaData((AL_TBuffer *)(intptr_t)s3_8, 7);
+    if (v0_13 == NULL) {
+        return AL_Common_Encoder_IsInitialQpProvided(
+            (int32_t *)(intptr_t)__assert("pStreamMeta",
+                                          "/home/user/git/proj/sdk-lv3/src/imp/video/alcodec/lib_encode/Com_Encoder.c",
+                                          0x626, "EndEncoding", var_68, var_64, var_60, var_5c, var_58, var_54,
+                                          var_50, var_4c, var_48, var_44, &_gp));
+    }
+
+    WRITE_U8(v0_13, 0xc, READ_U8(arg2, 0xaa));
+    if (READ_U8(arg2, 0xaa) != 0) {
+        int32_t *i = &arg2[0x2e];
+        int32_t *v0_14 = (int32_t *)((uint8_t *)v0_13 + 0x10);
+
+        do {
+            int32_t t0_3 = i[0];
+            int32_t a3_4 = i[1];
+            int32_t a2_4 = i[2];
+            int32_t a1_2 = i[3];
+
+            i += 4;
+            v0_14[0] = t0_3;
+            v0_14[1] = a3_4;
+            v0_14[2] = a2_4;
+            v0_14[3] = a1_2;
+            v0_14 += 4;
+        } while (i != &arg2[0x36]);
+
+        v0_14[0] = i[0];
+        v0_14[1] = i[1];
+    }
+
+    {
+        intptr_t v0_16 = (intptr_t)(s4_1 - s6_1 - s2);
+
+        ((void (*)(int32_t, int32_t, int32_t, int32_t))(intptr_t)READ_S32(s1, v0_16 * 0x3c + 0xe0d4))(
+            READ_S32(s1, v0_16 * 0x3c + 0xe0d8), s3_8, s5_4, s2);
+    }
+
+    if (READ_U8(arg2, 0xaa) != 0) {
+        int32_t (*done_cb)(int32_t *) = (int32_t (*)(int32_t *))(intptr_t)READ_S32(s1, 0);
+
+        if (done_cb(arg2) != 0)
+            releaseSource(s1, s5_4, (uint8_t *)s1 + fp_1 * 0x30 + 0xed90);
+
+        Rtos_GetMutex(READ_PTR(s1, 0xf254));
+        WRITE_S32(s1, 0xed88, READ_S32(s1, 0xed88) + 1);
+        if (done_cb(arg2) != 0)
+            AL_Fifo_Queue((int32_t *)((uint8_t *)s1 + 0xf0f0), (void *)(intptr_t)(fp_1 + 1), 0);
+        Rtos_ReleaseMutex(READ_PTR(s1, 0xf254));
+        Rtos_ReleaseSemaphore(READ_PTR(s1, 0xf258));
+        return 0;
+    }
+
+    Rtos_GetMutex(READ_PTR(s1, 0xf254));
+    AL_Buffer_Unref((AL_TBuffer *)(intptr_t)s3_8);
+    return Rtos_ReleaseMutex(READ_PTR(s1, 0xf254));
+}
+
+int32_t AL_Common_Encoder_Process(int32_t *arg1, int32_t arg2, int32_t arg3, int32_t arg4)
+{
+    int32_t *s7 = (int32_t *)(intptr_t)*arg1;
+    int32_t str = 0;
+    int32_t var_5c_1 = 0;
+    int32_t var_54_1 = 0;
+    int32_t var_50 = 0;
+    int32_t var_58 = 0;
+    int32_t var_4c_1 = 0;
+    int32_t var_48_1 = 0;
+    int32_t var_44_1 = 0;
+    int32_t var_40_1 = 0;
+    int32_t var_3c_1 = 0;
+    int32_t var_38_1 = 0;
+    int32_t *s4_2 = NULL;
+    int32_t s6_1 = 0;
+    int32_t s2_1;
+    int32_t s3_1;
+    int32_t result;
+
+    (void)_gp;
+    if (READ_U8(s7, arg4 + 0xed4c) == 0) {
+        if (arg2 == 0) {
+            if (arg4 < 0 || READ_U8(s7, 0xed4c) != 0)
+                return 1;
+
+            {
+                int32_t *a0_36 = (int32_t *)READ_PTR(s7, 0xf25c);
+
+                WRITE_U8(s7, 0xed4c, 1);
+                return (*(int32_t (**)(int32_t *, int32_t, int32_t, int32_t, int32_t))(intptr_t)READ_S32(a0_36, 0xc))(
+                    a0_36, READ_S32(s7, 0x18), 0, 0, 0);
+            }
+        }
+
+        s2_1 = arg4 << 6;
+        s3_1 = arg4 << 0xa;
+        if (AL_SrcBuffersChecker_CanBeUsed((uint8_t *)s7 + (s3_1 - s2_1 - arg4) * 0x3c + 0xdaf0) != 0) {
+            if ((uint32_t)(READ_S32(READ_PTR(s7, 0x14), 0x11c) - 1) >= 2) {
+                AL_Common_Encoder_WaitReadiness(s7);
+                {
+                    int32_t a3 = AL_Fifo_Dequeue((int32_t *)((uint8_t *)s7 + 0xf0f0), 0) - 1;
+                    int32_t v0_11 = a3 << 6;
+                    int32_t v0_12;
+
+                    s6_1 = a3 << 4;
+                    var_38_1 = v0_11;
+                    v0_12 = v0_11 - s6_1;
+                    WRITE_S32(s7, 0xf10c, a3);
+                    s4_2 = (int32_t *)((uint8_t *)s7 + v0_12 + 0xed90);
+                    WRITE_S32(s7, v0_12 + 0xeda4, a3 >> 0x1f);
+                    WRITE_S32(s7, v0_12 + 0xeda0, a3);
+                    WRITE_S32(s7, v0_12 + 0xed94, 0x1a);
+                    __builtin_memset(&str, 0, 0x28);
+                    AL_Common_Encoder_SetEncodingOptions(s7, (uint32_t *)s4_2);
+                    WRITE_S32(s7, v0_12 + 0xedb0, arg3);
+                    if (arg3 == 0) {
+                        var_40_1 = 0;
+                        var_3c_1 = 0;
+                        var_44_1 = 0;
+                        goto label_53d78;
+                    }
+                }
+            } else if (arg3 != 0) {
+                AL_Common_Encoder_WaitReadiness(s7);
+                {
+                    int32_t a3_2 = AL_Fifo_Dequeue((int32_t *)((uint8_t *)s7 + 0xf0f0), 0) - 1;
+                    int32_t t0_1 = a3_2 * 0x30;
+
+                    WRITE_S32(s7, 0xf10c, a3_2);
+                    var_38_1 = a3_2 << 6;
+                    s6_1 = a3_2 << 4;
+                    memset(&str, 0, 0x28);
+                    WRITE_S32(s7, t0_1 + 0xeda4, a3_2 >> 0x1f);
+                    s4_2 = (int32_t *)((uint8_t *)s7 + t0_1 + 0xed90);
+                    WRITE_S32(s7, t0_1 + 0xeda0, a3_2);
+                    WRITE_S32(s7, t0_1 + 0xed94, 0x1a);
+                    AL_Common_Encoder_SetEncodingOptions(s7, (uint32_t *)s4_2);
+                    WRITE_S32(s7, t0_1 + 0xedb0, arg3);
+                }
+            } else {
+                return 0;
+            }
+
+            ((int32_t (*)(AL_TBuffer *))(intptr_t)AL_Buffer_Ref)((AL_TBuffer *)(intptr_t)arg3);
+            var_44_1 = (int32_t)AL_Buffer_GetPhysicalAddress((AL_TBuffer *)(intptr_t)arg3);
+            var_40_1 = (int32_t)(intptr_t)AL_Buffer_GetData((AL_TBuffer *)(intptr_t)arg3);
+            var_3c_1 = 0;
+            WRITE_S32(s7, var_38_1 - s6_1 + 0xed90, READ_S32(s7, var_38_1 - s6_1 + 0xed90) | 1);
+
+label_53d78:
+            str = (int32_t)AL_PixMapBuffer_GetPlanePhysicalAddress((AL_TBuffer *)(intptr_t)arg2, 0);
+            var_5c_1 = (int32_t)AL_PixMapBuffer_GetPlanePhysicalAddress((AL_TBuffer *)(intptr_t)arg2, 1);
+            var_54_1 = AL_PixMapBuffer_GetPlanePitch((AL_TBuffer *)(intptr_t)arg2, 0);
+            {
+                void *fp_2 = READ_PTR(s7, 0x14);
+                int32_t v0_21 = (int32_t)AL_PixMapBuffer_GetFourCC((AL_TBuffer *)(intptr_t)arg2);
+
+                if (AL_IsCompressed((uint32_t)v0_21) != 0) {
+                    var_4c_1 = (int32_t)AL_PixMapBuffer_GetPlanePhysicalAddress((AL_TBuffer *)(intptr_t)arg2, 2);
+                    var_48_1 = (int32_t)AL_PixMapBuffer_GetPlanePhysicalAddress((AL_TBuffer *)(intptr_t)arg2, 3);
+                    var_50 = AL_PixMapBuffer_GetPlanePitch((AL_TBuffer *)(intptr_t)arg2, 2) & 0xff;
+                }
+
+                var_58 = (((uint32_t (*)(uint32_t))(intptr_t)AL_GetBitDepth)((uint32_t)v0_21) < 9U) ^ 1U;
+                var_50 = (var_50 & ~0xff) | ((READ_U32(fp_2, arg4 * 0xf0 + 0x14) >> 1) & 7);
+            }
+
+            ((int32_t (*)(AL_TBuffer *))(intptr_t)AL_Buffer_Ref)((AL_TBuffer *)(intptr_t)arg2);
+            WRITE_S32(s7, var_38_1 - s6_1 + 0xeda8, arg2);
+            WRITE_S32(s7, var_38_1 - s6_1 + 0xedac, 0);
+            Rtos_GetMutex(READ_PTR(s7, 0xf254));
+            {
+                int32_t *v1_9 = (int32_t *)((uint8_t *)s7 + 0xf114);
+                int32_t v0_30 = 0;
+
+                while (1) {
+                    v0_30 += 1;
+                    if (*v1_9 == 0) {
+                        int32_t v0_39;
+                        int32_t a1_1;
+
+                        WRITE_S32(s7, ((v0_30 - 1) << 3) + 0xf114, arg2);
+                        WRITE_PTR(s7, ((v0_30 - 1) << 3) + 0xf110, s4_2);
+                        Rtos_ReleaseMutex(READ_PTR(s7, 0xf254));
+                        v0_39 = (s3_1 - s2_1 - arg4) * 0x3c;
+                        WRITE_S32(s7, var_38_1 - s6_1 + 0xedb4, 0);
+                        WRITE_S32(s7, var_38_1 - s6_1 + 0xedb8, 0);
+                        a1_1 = READ_S32(s7, v0_39 + 0xdb1c);
+                        if ((a1_1 & 0x200) != 0) {
+                            WRITE_U8(s7, var_38_1 - s6_1 + 0xedb4, 1);
+                            WRITE_U8(s7, var_38_1 - s6_1 + 0xedb5, READ_U8(s7, v0_39 + 0xdb8c));
+                        }
+                        if ((a1_1 & 0x400) != 0) {
+                            int32_t a0_30 = s3_1 - s2_1 - arg4;
+
+                            WRITE_U8(s7, var_38_1 - s6_1 + 0xedb6, 1);
+                            WRITE_U8(s7, var_38_1 - s6_1 + 0xedb7, READ_U8(s7, a0_30 * 0x3c + 0xdb82));
+                            WRITE_U8(s7, var_38_1 - s6_1 + 0xedb8, READ_U8(s7, a0_30 * 0x3c + 0xdb83));
+                        }
+                        if (READ_U8(s7, 0xed84) == 0)
+                            WRITE_U8(s7, 0xed84, 1);
+
+                        {
+                            int32_t *a0_32 = (int32_t *)READ_PTR(s7, 0xf25c);
+
+                            result = (*(int32_t (**)(int32_t *, int32_t, int32_t *, void *, void *))(intptr_t)READ_S32(a0_32, 0xc))(
+                                a0_32, READ_S32(s7, (s3_1 - s2_1 - arg4) * 0x3c + 0x18), s4_2,
+                                (uint8_t *)s7 + v0_39 + 0xdb1c, &str);
+                        }
+                        if (result == 0)
+                            releaseSource(s7, arg2, s4_2);
+                        Rtos_Memset((uint8_t *)s7 + v0_39 + 0xdb1c, 0, 0x7c);
+                        Rtos_Memset(s4_2, 0, 0x20);
+                        break;
+                    }
+                    v1_9 = &v1_9[2];
+                    if (v0_30 == 0x26) {
+                        __assert("0", "/home/user/git/proj/sdk-lv3/src/imp/video/alcodec/lib_encode/Com_Encoder.c",
+                                 0x24b, "AddSourceSent");
+                        var_40_1 = 0;
+                        var_3c_1 = 0;
+                        var_44_1 = 0;
+                        goto label_53d78;
+                    }
+                }
+            }
+
+            return result;
+        }
+    }
+
+    return 1;
+}
+
+int32_t AL_Common_Encoder_CreateChannel(int32_t *arg1, int32_t arg2, int32_t arg3, int32_t *arg4)
+{
+    int32_t *s2_1;
+    int32_t *i;
+    int32_t result;
+
+    (void)_gp;
+    if (arg4[0x49] <= 0) {
+        __assert("pSettings->NumLayer > 0",
+                 "/home/user/git/proj/sdk-lv3/src/imp/video/alcodec/lib_encode/Com_Encoder.c", 0x64e,
+                 "AL_Common_Encoder_CreateChannel");
+    }
+
+    s2_1 = (int32_t *)(intptr_t)*arg1;
+    i = arg4;
+    if (READ_PTR(s2_1, 8) == NULL) {
+label_55d0c:
+        result = 0x80;
+        goto label_55c1c;
+    }
+
+    {
+        int32_t *v1_1 = (int32_t *)READ_PTR(s2_1, 0x14);
+
+        do {
+            int32_t t0_1 = i[0];
+            int32_t a3 = i[1];
+            int32_t a2 = i[2];
+            int32_t a1 = i[3];
+
+            i += 4;
+            v1_1[0] = t0_1;
+            v1_1[1] = a3;
+            v1_1[2] = a2;
+            v1_1[3] = a1;
+            v1_1 += 4;
+        } while (i != &arg4[0x1d4]);
+        *v1_1 = *i;
+    }
+
+    {
+        void *s1_1 = READ_PTR(s2_1, 0x14);
+        int32_t v0_4;
+        int32_t a0_2;
+        int32_t v1_6;
+        int32_t a0_4 = 2;
+        int32_t v1_11 = 0;
+
+        if (READ_S32(s1_1, 0xe8) != 0) {
+            WRITE_PTR(s1_1, 0xec, watermark_init());
+            s1_1 = READ_PTR(s2_1, 0x14);
+            if (READ_PTR(s1_1, 0xec) == NULL) {
+                fwrite("watermark_init failed\n", 1, 0x16, stderr);
+                s1_1 = READ_PTR(s2_1, 0x14);
+                WRITE_S32(s1_1, 0xe8, 0);
+            }
+        }
+
+        v0_4 = READ_S32(s1_1, 0x2c);
+        if (((uint32_t)v0_4 >> 0x11 & 1) == 0) {
+            a0_2 = arg4[0x46];
+            WRITE_S16(s1_1, 0x44, 0);
+            WRITE_S16(s1_1, 0x42, 0);
+            if ((uint32_t)(a0_2 - 1) < 2) {
+                if (a0_2 == 2)
+                    v0_4 |= 0x18;
+                else
+                    v0_4 |= 8;
+                WRITE_S32(s1_1, 0x2c, v0_4);
+            }
+        } else {
+            WRITE_S16(s1_1, 0x42, (int16_t)arg4[0x45]);
+            a0_2 = arg4[0x46];
+            WRITE_S16(s1_1, 0x44, *(int16_t *)((uint8_t *)arg4 + 0x116));
+            if ((uint32_t)(a0_2 - 1) < 2) {
+                if (a0_2 == 2)
+                    v0_4 |= 0x18;
+                else
+                    v0_4 |= 8;
+                WRITE_S32(s1_1, 0x2c, v0_4);
+            }
+        }
+
+        if (arg4[0x47] == 1) {
+            v0_4 |= 1;
+            WRITE_S32(s1_1, 0x2c, v0_4);
+        }
+
+        v1_6 = READ_S32(s1_1, 0xc8);
+        if (v1_6 == 3) {
+            if (READ_S32(s1_1, 0x68) == 0) {
+                v1_11 = READ_S32(s1_1, 0xa8);
+                a0_4 = v1_11 & 2;
+                if ((a0_4 != 0 && READ_U8(s1_1, 0xac) >= 2 && !(READ_U8(s1_1, 0xae) != 0 && v1_11 != 8)) ||
+                    (a0_4 == 0 && v1_11 == 8)) {
+                    WRITE_S32(s1_1, 0xc8, 2);
+                    WRITE_S32(s1_1, 0x2c, v0_4 | 4);
+                    WRITE_U8(s1_1, 0xaf, 0);
+                    goto label_55b9c;
+                }
+            }
+            WRITE_S32(s1_1, 0xc8, 0);
+            WRITE_S32(s1_1, 0x2c, v0_4 | 4);
+            WRITE_U8(s1_1, 0xaf, 0);
+            if (READ_U8(s1_1, 0x8a) != 0)
+                goto label_55b9c;
+        } else {
+            WRITE_S32(s1_1, 0x2c, v0_4 | 4);
+            WRITE_U8(s1_1, 0xaf, 0);
+            if (v1_6 == 2 || READ_U8(s1_1, 0x8a) != 0) {
+label_55b9c:
+                int32_t v0_8;
+
+                v1_11 = READ_S32(s1_1, 0xa8);
+                a0_4 = v1_11 & 2;
+                if (a0_4 == 0) {
+                    if (v1_11 == 8) {
+                        v0_8 = READ_S8(s1_1, 0x8e);
+                        if (v0_8 >= -1)
+                            WRITE_U8(s1_1, 0xaf, (uint8_t)v0_8);
+                        else
+                            WRITE_U8(s1_1, 0xaf, 5);
+                    }
+                } else if (READ_U8(s1_1, 0xae) == 0) {
+                    v0_8 = READ_S8(s1_1, 0x8e);
+                    if (v0_8 < -1)
+                        WRITE_U8(s1_1, 0xaf, 4);
+                    else
+                        WRITE_U8(s1_1, 0xaf, (uint8_t)v0_8);
+                }
+            }
+        }
+
+        WRITE_S32(s2_1, 0xf25c, arg2);
+        if (MemDesc_AllocNamed((uint8_t *)s2_1 + 0xdb98, (void *)(intptr_t)arg3, AL_GetAllocSizeEP1(),
+                               "CompData") == 0) {
+            result = 0x87;
+            goto label_55c1c;
+        }
+
+        WRITE_S32(s2_1, 0xdbac, 0);
+        WRITE_S32(s2_1, 0xf10c, 0);
+        AL_SrcBuffersChecker_Init((uint8_t *)s2_1 + 0xdaf0, s1_1);
+        WRITE_S32(s2_1, 0xf244, -1);
+        WRITE_S32(s2_1, 0xed54, READ_S32(s1_1, 0x6c));
+        WRITE_S32(s2_1, 0xf24c, 0);
+        WRITE_S32(s2_1, 0xf250, 0);
+        WRITE_S32(s2_1, 0xf240, 0);
+        WRITE_S32(s2_1, 0xed50, 0);
+        WRITE_S32(s2_1, 0xed4c, 0);
+        WRITE_S32(s2_1, 0xed58, 0);
+        AL_HDRSEIs_Reset((uint8_t *)s2_1 + 0xed5c);
+        WRITE_S32(s2_1, 0xdbb0, 0);
+        WRITE_S32(s2_1, 0xdbb4, 0);
+        WRITE_S32(s2_1, 0xed88, 0);
+        WRITE_S32(s2_1, 0xed8c, 0);
+        Rtos_Memset((uint8_t *)s2_1 + 0xed90, 0, 0x360);
+        Rtos_Memset((uint8_t *)s2_1 + 0xf110, 0, 0x130);
+        WRITE_PTR(s2_1, 0xf254, Rtos_CreateMutex());
+        if (READ_PTR(s2_1, 0xf254) != NULL) {
+            int32_t i_1 = 0;
+            int32_t *v1_14;
+            int32_t v0_23;
+            uint32_t a1_9;
+            uint32_t a3_2;
+            int32_t (*var_28)(int32_t *, int32_t *, int32_t);
+
+            if (AL_Fifo_Init((int32_t *)((uint8_t *)s2_1 + 0xf0f0), 0x12) == 0) {
+                result = 0x87;
+                goto label_55c1c;
+            }
+            do {
+                i_1 += 1;
+                AL_Fifo_Queue((int32_t *)((uint8_t *)s2_1 + 0xf0f0), (void *)(intptr_t)i_1, 0);
+            } while (i_1 != 0x12);
+
+            (*(void (**)(int32_t *, void *, int32_t *))(intptr_t)READ_S32(s2_1, 8))(s2_1, s1_1, arg4);
+            WRITE_PTR(s2_1, 0xe0cc, s2_1);
+            WRITE_S32(s2_1, 0xe0d0, 0);
+            var_28 = EndEncoding;
+            a1_9 = READ_U8(s1_1, 4);
+            a3_2 = READ_U8(s1_1, 6);
+            v1_14 = (int32_t *)((uint8_t *)s2_1 + 0xe0dc);
+            v0_23 = 0;
+            while (1) {
+                int32_t a0_14 = *v1_14;
+
+                if (a0_14 != 0) {
+                    if ((uint32_t)a1_9 != (uint32_t)a0_14) {
+                        v0_23 += 1;
+                    } else {
+                        v0_23 += 1;
+                        if ((uint32_t)a3_2 == (uint32_t)v1_14[1])
+                            break;
+                    }
+                    v1_14 += 2;
+                    if (v0_23 == 0xf)
+                        v0_23 = 0;
+                    else
+                        continue;
+                }
+
+                {
+                    void *v0_34 = (uint8_t *)s2_1 + ((v0_23 + 0x1c1a) << 3);
+
+                    WRITE_S32(v0_34, 0xc, a1_9);
+                    WRITE_S32(v0_34, 0x10, a3_2);
+                }
+                break;
+            }
+
+            (*(void (**)(int32_t *, int32_t, int32_t))(intptr_t)READ_S32(s2_1, 0xc))(s2_1, 0, 1);
+            {
+                void *s3_2 = READ_PTR(s2_1, 0x14);
+                int32_t a1_10 = READ_S32(s2_1, 0xdba0);
+                int32_t a0_17 = READ_S32(s2_1, 0xdb98);
+                int32_t v0_25;
+                int32_t *a1_12;
+
+                WRITE_S32(s2_1, 0xdbac, 0);
+                AL_CleanupMemory(a0_17, a1_10);
+                v0_25 = READ_S32(s3_2, 0xc8);
+                if (v0_25 == 0x80) {
+                    if (LoadLambdaFromFile("./Lambdas.hex", (int32_t *)((uint8_t *)s2_1 + 0xdb98)) == 0)
+                        goto label_55d0c;
+                } else if (v0_25 == 1) {
+                    LoadCustomLda((int32_t *)((uint8_t *)s2_1 + 0xdb98));
+                    WRITE_S32(s3_2, 0xc8, 0x80);
+                }
+
+                (*(void (**)(int32_t *, void *))(intptr_t)READ_S32(s2_1, 4))(s2_1, (uint8_t *)s2_1 + 0xdb98);
+                a1_12 = (int32_t *)READ_PTR(s2_1, 0xf25c);
+                result = (*(int32_t (**)(void *, int32_t *, void *, void *, void *))(intptr_t)READ_S32(a1_12, 4))(
+                    (uint8_t *)s2_1 + 0x18, a1_12, (uint8_t *)s2_1 + 0xe0b8, (uint8_t *)s2_1 + 0xdb98, &var_28);
+                if ((uint32_t)result >= 0x80)
+                    goto label_55c1c;
+                if ((*(int32_t (**)(int32_t *, int32_t, uint32_t (*)(int32_t *, int32_t), int32_t *))(intptr_t)READ_S32(a1_12, 0x1c))(
+                        a1_12, READ_S32(s2_1, 0x18), trace, s2_1) == 0)
+                    goto label_55c1c;
+
+                WRITE_PTR(s2_1, 0xf258, Rtos_CreateSemaphore(0x11));
+                WRITE_S32(s2_1, 0xed80, (READ_U32(s1_1, 0x28) >> 4) & 0xf);
+                (*(void (**)(int32_t *, int32_t, int32_t))(intptr_t)READ_S32(s2_1, 0xc))(s2_1, 0, 1);
+                WRITE_S32(s2_1, 0xf260, READ_U8(s1_1, 0xae));
+                WRITE_S32(s2_1, 0xf264, READ_S16(s1_1, 0x74));
+                return result;
+            }
+        }
+    }
+
+label_55c1c:
+    {
+        void *v0_11 = READ_PTR(s2_1, 0x14);
+
+        if (v0_11 != NULL) {
+            if (READ_S32(v0_11, 0x124) == 0)
+                return result;
+            destroyChannels_part_6(s2_1);
+        }
+    }
+    return result;
+}
