@@ -276,3 +276,319 @@ int Fifo_GetMaxElements(void *fifo_ptr) {
     return fifo->max_elements - 1;  /* -1 because we store max+1 */
 }
 
+typedef struct ImpFifoNode {
+    struct ImpFifoNode *next;
+    void *data;
+} ImpFifoNode;
+
+typedef struct ImpFifo {
+    uint32_t magic;
+    int32_t max_count;
+    int32_t count;
+    int32_t element_size;
+    ImpFifoNode *head;
+    ImpFifoNode *tail;
+    ImpFifoNode *free_head;
+    ImpFifoNode *free_tail;
+} ImpFifo;
+
+void *fifo_alloc(int count, int element_size) {
+    void *result = calloc((element_size + 8) * count + 0x20, 1);
+
+    if (result == NULL) {
+        printf("err(%s,%d): malloc err\n", "fifo_alloc", 0x27);
+        return NULL;
+    }
+
+    int32_t a3_2 = (count + 4) << 3;
+    void *a0_3 = (uint8_t *)result + 0x20;
+
+    strncpy((char *)result, "OFIF", 4);
+    *(int32_t *)((uint8_t *)result + 4) = count;
+    *(int32_t *)((uint8_t *)result + 8) = 0;
+    *(void **)((uint8_t *)result + 0x24) = (uint8_t *)result + a3_2;
+    *(void **)((uint8_t *)result + 0x18) = a0_3;
+    *(void **)((uint8_t *)result + 0x1c) = a0_3;
+
+    if (count >= 2) {
+        void *v1_1 = (uint8_t *)result + 0x28;
+        void *a1_2 = (uint8_t *)result + a3_2 + element_size;
+        int32_t a2_2 = 1;
+
+        do {
+            a0_3 = (uint8_t *)a0_3 + 8;
+            a2_2 += 1;
+            *(void **)((uint8_t *)v1_1 + 4) = a1_2;
+            *(void **)((uint8_t *)a0_3 - 8) = v1_1;
+            a1_2 = (uint8_t *)a1_2 + element_size;
+            v1_1 = (uint8_t *)v1_1 + 8;
+        } while (count != a2_2);
+
+        *(void **)((uint8_t *)result + 0x1c) = (uint8_t *)result + a3_2 - 8;
+    }
+
+    *(int32_t *)((uint8_t *)result + 0xc) = element_size;
+    return result;
+}
+
+int fifo_free(void *fifo) {
+    if (*(uint32_t *)fifo == 0x4649464f) {
+        free(fifo);
+        return 0;
+    }
+
+    return printf("err(%s,%d): fifo magic  err\n", "fifo_free", 0x41);
+}
+
+int fifo_put(void *fifo, const void *data) {
+    ImpFifo *arg1 = (ImpFifo *)fifo;
+
+    if (arg1->magic != 0x4649464f) {
+        printf("err(%s,%d): fifo magic  err\n", "fifo_put", 0x4e);
+        return -1;
+    }
+
+    ImpFifoNode *s1_1 = arg1->free_head;
+
+    if (s1_1 == NULL) {
+        printf("err(%s,%d): fifo empty null\n", "fifo_put", 0x52);
+        return -1;
+    }
+
+    if (s1_1 == arg1->free_tail) {
+        arg1->free_head = NULL;
+        arg1->free_tail = NULL;
+    } else {
+        arg1->free_head = s1_1->next;
+    }
+
+    memcpy(s1_1->data, data, arg1->element_size);
+    ImpFifoNode *v0_2 = arg1->head;
+    s1_1->next = NULL;
+
+    if (v0_2 == NULL || arg1->tail == NULL) {
+        arg1->head = s1_1;
+        arg1->tail = s1_1;
+    } else {
+        arg1->tail->next = s1_1;
+        arg1->tail = s1_1;
+    }
+
+    arg1->count += 1;
+    return 0;
+}
+
+int fifo_get(void *fifo, void *data) {
+    ImpFifo *arg1 = (ImpFifo *)fifo;
+
+    if (arg1->magic != 0x4649464f) {
+        printf("err(%s,%d): fifo magic  err\n", "fifo_get", 0x70);
+        return -1;
+    }
+
+    ImpFifoNode *s1_1 = arg1->head;
+
+    if (s1_1 == NULL) {
+        return -1;
+    }
+
+    if (s1_1 == arg1->tail) {
+        arg1->head = NULL;
+        arg1->tail = NULL;
+    } else {
+        arg1->head = s1_1->next;
+    }
+
+    if (data != NULL) {
+        memcpy(data, s1_1->data, arg1->element_size);
+    }
+
+    memset(s1_1->data, 0, arg1->element_size);
+    ImpFifoNode *v0_2 = arg1->free_head;
+    s1_1->next = NULL;
+
+    if (v0_2 == NULL || arg1->free_tail == NULL) {
+        arg1->free_head = s1_1;
+        arg1->free_tail = s1_1;
+    } else {
+        arg1->free_tail->next = s1_1;
+        arg1->free_tail = s1_1;
+    }
+
+    arg1->count -= 1;
+    return 0;
+}
+
+int fifo_clear(void *fifo) {
+    ImpFifo *arg1 = (ImpFifo *)fifo;
+
+    if (arg1->magic != 0x4649464f) {
+        printf("err(%s,%d): fifo magic  err\n", "fifo_clear", 0x94);
+        return -1;
+    }
+
+    ImpFifoNode *s1_1 = arg1->head;
+
+    if (s1_1 == NULL) {
+        return 0;
+    }
+
+    while (1) {
+        memset(s1_1->data, 0, arg1->element_size);
+
+        if (arg1->free_head != NULL) {
+            ImpFifoNode *v0_2 = arg1->free_tail;
+
+            if (v0_2 != NULL) {
+                v0_2->next = s1_1;
+                int32_t v0_3 = arg1->count;
+                arg1->free_tail = s1_1;
+                s1_1 = s1_1->next;
+                arg1->count = v0_3 - 1;
+
+                if (s1_1 == NULL) {
+                    break;
+                }
+
+                continue;
+            }
+        }
+
+        int32_t v0_6 = arg1->count;
+        arg1->free_head = s1_1;
+        arg1->free_tail = s1_1;
+        s1_1 = s1_1->next;
+        arg1->count = v0_6 - 1;
+
+        if (s1_1 == NULL) {
+            break;
+        }
+    }
+
+    arg1->head = NULL;
+    arg1->tail = NULL;
+    return 0;
+}
+
+int fifo_pre_get(void *fifo, void *data) {
+    ImpFifo *arg1 = (ImpFifo *)fifo;
+
+    if (arg1->magic != 0x4649464f) {
+        printf("err(%s,%d): fifo magic  err\n", "fifo_pre_get", 0xb4);
+        return -1;
+    }
+
+    ImpFifoNode *v0 = arg1->head;
+
+    if (v0 == NULL) {
+        printf("err(%s,%d): fifo busy null\n", "fifo_pre_get", 0xb8);
+        return -1;
+    }
+
+    memcpy(data, v0->data, arg1->element_size);
+    return 0;
+}
+
+int fifo_pre_get_ptr(void *fifo, int index, void **data_ptr) {
+    ImpFifo *arg1 = (ImpFifo *)fifo;
+
+    if (arg1->magic != 0x4649464f) {
+        printf("err(%s,%d): fifo magic  err\n", "fifo_pre_get_ptr", 0xc7);
+        return -1;
+    }
+
+    ImpFifoNode *v0 = arg1->head;
+
+    if (v0 == NULL) {
+        return -1;
+    }
+
+    int32_t v1_1 = 0;
+
+    if (index != 0) {
+        do {
+            v0 = v0->next;
+            v1_1 += 1;
+
+            if (v0 == NULL) {
+                return -1;
+            }
+        } while (v1_1 != index);
+    }
+
+    *data_ptr = v0->data;
+    return 0;
+}
+
+int fifo_num(void *fifo) {
+    ImpFifo *arg1 = (ImpFifo *)fifo;
+
+    if (arg1->magic == 0x4649464f) {
+        return arg1->count;
+    }
+
+    printf("err(%s,%d): fifo magic  err\n", "fifo_num", 0xe4);
+    return -1;
+}
+
+int fifo_print(void *fifo) {
+    ImpFifo *arg1 = (ImpFifo *)fifo;
+
+    puts("----------------------");
+
+    if (arg1->magic != 0x4649464f) {
+        return printf("err(%s,%d): fifo magic  err\n", "fifo_print", 0xf0);
+    }
+
+    int32_t result = printf("cnt = %d\n", arg1->count);
+
+    for (ImpFifoNode *i = arg1->head; i != NULL; i = i->next) {
+        result = printf("data = 0x%x\n", *(int32_t *)i->data);
+    }
+
+    return result;
+}
+
+int fifo_head(void *fifo, void **node, void **data_ptr) {
+    ImpFifo *arg1 = (ImpFifo *)fifo;
+
+    if (arg1->magic != 0x4649464f) {
+        printf("err(%s,%d): fifo magic  err\n", "fifo_head", 0x100);
+        return -1;
+    }
+
+    ImpFifoNode *v0 = arg1->head;
+    *node = v0;
+
+    if (v0 == NULL) {
+        return 0;
+    }
+
+    *data_ptr = v0->data;
+    return 0;
+}
+
+int fifo_node_next(void *fifo, void **node, void **data_ptr) {
+    ImpFifo *arg1 = (ImpFifo *)fifo;
+
+    if (arg1->magic != 0x4649464f) {
+        printf("err(%s,%d): fifo magic  err\n", "fifo_node_next", 0x110);
+        return -1;
+    }
+
+    ImpFifoNode *v0 = *(ImpFifoNode **)node;
+
+    if (v0 == NULL) {
+        return -1;
+    }
+
+    ImpFifoNode *v0_1 = v0->next;
+    *node = v0_1;
+
+    if (v0_1 == NULL) {
+        return 0;
+    }
+
+    *data_ptr = v0_1->data;
+    return 0;
+}
