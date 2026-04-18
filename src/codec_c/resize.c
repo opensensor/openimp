@@ -993,3 +993,478 @@ static int32_t sub_3296c(int32_t arg1, int16_t *arg2, char *arg3, int16_t *arg4,
     }
     return 0;
 }
+
+static int32_t sub_32514(
+    int32_t arg1, int32_t arg2, int32_t arg3, int32_t arg4, int32_t arg5,
+    int16_t *arg6, int16_t *arg7, int16_t *arg8, int16_t *arg9, int16_t *arg10,
+    void *arg11, double arg12, double arg13, double arg14, double arg15,
+    double arg16, double arg17, double arg18)
+{
+    int16_t frac = (int16_t)trunc_s32(arg12);
+
+    (void)arg1;
+    while (1) {
+        int16_t base = (int16_t)(arg2 << 1);
+        int32_t v1 = arg5 << 2;
+        int32_t has_next = arg2 < rd32(arg11, 0x1c0);
+
+        arg8[arg4 >> 1] = frac;
+        arg8[arg3 >> 1] = frac;
+        arg9[arg4 >> 1] = (int16_t)(0x10 - frac);
+        arg9[arg3 >> 1] = (int16_t)(0x10 - frac);
+        arg10[v1 >> 1] = base;
+        arg10[(v1 >> 1) + 1] = (int16_t)(base + 1);
+        arg7[arg4 >> 1] = 1;
+        arg6[v1 >> 1] = (int16_t)(base + (has_next ? 2 : 0));
+        arg6[(v1 >> 1) + 1] = (int16_t)(base + (has_next ? 3 : 1));
+        arg7[(arg2 << 1)] = 1;
+
+        ++arg5;
+        if (arg5 == rd32(arg11, 0x1b0)) {
+            break;
+        }
+
+        arg2 = trunc_s32((float)arg5);
+        arg3 = arg2 << 2;
+        arg4 = arg3 + 2;
+        arg12 = ((((double)((float)arg13) + arg15) * arg16) - arg15 - (double)((float)arg14)) * arg17 + arg15;
+        if (arg16 <= arg12) {
+            arg12 -= arg16;
+        }
+        frac = (int16_t)trunc_s32(arg12);
+    }
+
+    if (rd32(arg11, 0x210) > 0) {
+        int16_t *idx0 = (int16_t *)rdptr(arg11, 0x208);
+        int16_t *idx1 = (int16_t *)rdptr(arg11, 0x20c);
+        int16_t *w0 = (int16_t *)(intptr_t)rd32(arg11, 0x1d8);
+        int16_t *w1 = (int16_t *)(intptr_t)rd32(arg11, 0x1dc);
+        int32_t limit = rd32(arg11, 0x210);
+        int32_t i = 0;
+        double pos_seed = arg13;
+
+        wr32(arg11, 0x1a0, rd32(arg11, 0x204));
+        while (i != limit) {
+            int32_t sample = trunc_s32((float)i);
+            double pos = ((((double)((float)pos_seed) + arg15) * arg18) - arg15 - (double)((float)arg14)) * arg17 + arg15;
+            int16_t frac2;
+
+            if (arg16 <= pos) {
+                pos -= arg16;
+            }
+            frac2 = (int16_t)trunc_s32(pos);
+            *w1++ = frac2;
+            *w0++ = (int16_t)(0x10 - frac2);
+            *idx0++ = (int16_t)sample;
+            *idx1++ = (sample < (limit - 1)) ? (int16_t)(sample + 1) : (int16_t)sample;
+            ++i;
+            pos_seed = pos;
+        }
+
+        return sub_3296c(limit - 1, (int16_t *)rdptr(arg11, 0x21c), (char *)rdptr(arg11, 0x218), arg7, arg11);
+    }
+
+    wr32(arg11, 0x210, rd32(arg11, 0x210) - 1);
+    return 0;
+}
+
+static int32_t sub_324c0(
+    int16_t *arg1, int16_t *arg2, char *arg3, int16_t *arg4, int32_t arg5,
+    int16_t *arg6, int16_t *arg7, int16_t *arg8, int32_t arg9, void *arg10,
+    double arg11, double arg12, double arg13, double arg14, double arg15,
+    double arg16, double arg17)
+{
+    int32_t count = rd32(arg10, 0x1b0);
+    double scale = arg17;
+    int32_t i;
+
+    wr32(arg10, 0x1f0, arg5);
+    wrptr(arg10, 0x200, arg7);
+    wr32(arg10, 0x1c0, count - 1);
+    wr32(arg10, 0x1e0, arg9);
+    wrptr(arg10, 0x204, arg1);
+    wrptr(arg10, 0x218, arg3);
+    wrptr(arg10, 0x21c, arg2);
+
+    for (i = 0; i != count; ++i) {
+        int32_t sample = trunc_s32((float)i);
+        int32_t off = sample << 2;
+        double pos = ((((double)((float)arg11) + arg14) * scale) - arg14 - (double)((float)arg12)) * arg16 + arg14;
+        int16_t frac;
+        int16_t base = (int16_t)(sample << 1);
+        int32_t has_next;
+
+        if (arg15 <= pos) {
+            pos -= arg15;
+            frac = (int16_t)trunc_s32(pos);
+        } else {
+            return sub_32514(base, sample, off, off + 2, i, arg4, arg8, arg6, arg7, arg6, arg10,
+                pos, arg12, arg14, arg15, scale, arg16, arg17);
+        }
+
+        has_next = sample < rd32(arg10, 0x1c0);
+        arg6[(off >> 1) + 1] = frac;
+        arg6[off >> 1] = frac;
+        arg7[(off >> 1) + 1] = (int16_t)(0x10 - frac);
+        arg7[off >> 1] = (int16_t)(0x10 - frac);
+        arg8[i * 2] = base + (has_next ? 2 : 0);
+        arg8[i * 2 + 1] = base + (has_next ? 3 : 1);
+        arg4[i * 2] = base;
+        arg4[i * 2 + 1] = (int16_t)(base + 1);
+        arg6[sample * 2] = 1;
+    }
+
+    if (rd32(arg10, 0x210) > 0) {
+        int16_t *idx0 = (int16_t *)rdptr(arg10, 0x208);
+        int16_t *idx1 = (int16_t *)rdptr(arg10, 0x20c);
+        int16_t *w0 = (int16_t *)(intptr_t)rd32(arg10, 0x1d8);
+        int16_t *w1 = (int16_t *)(intptr_t)rd32(arg10, 0x1dc);
+        int32_t limit = rd32(arg10, 0x210);
+
+        wr32(arg10, 0x1a0, rd32(arg10, 0x204));
+        for (i = 0; i != limit; ++i) {
+            int32_t sample = trunc_s32((float)i);
+            double pos = ((((double)((float)arg11) + arg14) * arg17) - arg14 - (double)((float)arg12)) * arg16 + arg14;
+            int16_t frac;
+
+            if (arg15 <= pos) {
+                pos -= arg15;
+            }
+            frac = (int16_t)trunc_s32(pos);
+            *w1++ = frac;
+            *w0++ = (int16_t)(0x10 - frac);
+            *idx0++ = (int16_t)sample;
+            *idx1++ = (sample < (limit - 1)) ? (int16_t)(sample + 1) : (int16_t)sample;
+        }
+        return sub_3296c(limit - 1, (int16_t *)rdptr(arg10, 0x21c), (char *)rdptr(arg10, 0x218), arg6, arg10);
+    }
+
+    wr32(arg10, 0x210, rd32(arg10, 0x210) - 1);
+    return 0;
+}
+
+static int32_t sub_32750(
+    uint8_t *arg1, uint8_t *arg2, int16_t *arg3, int16_t *arg4, uint8_t *arg5,
+    int16_t *arg6, int16_t *arg7, int16_t *arg8, int16_t *arg9, int16_t *arg10,
+    int32_t arg11, int32_t arg12, int32_t arg13, int32_t arg14, int32_t arg15,
+    int16_t *arg16, void *arg17, int32_t arg18)
+{
+    uint32_t y0 = (uint16_t)*arg7;
+    uint32_t y1 = (uint16_t)*arg8;
+    uint32_t src_y = (uint16_t)*arg16;
+    uint32_t off = src_y << 1;
+    uint32_t w0 = (uint16_t)arg10[y0];
+    uint32_t w1 = (uint16_t)arg9[y0];
+    uint32_t a = arg5[y1];
+    uint32_t b = arg5[y0];
+    uint32_t c = arg2[src_y];
+    uint32_t d = arg1[y1];
+    uint32_t e = arg1[y0];
+
+    (void)arg3;
+    (void)arg4;
+    (void)arg6;
+    (void)arg7;
+    (void)arg8;
+    (void)arg11;
+    (void)arg12;
+    (void)arg13;
+    (void)arg14;
+    arg6[0] = (uint8_t)((a * w0 + b * w1 + c * (uint16_t)arg4[off >> 1] + d * (uint16_t)arg3[off >> 1] + arg18) >> 8);
+    if (arg16 + 1 == (int16_t *)rdptr(arg17, 0x1c0)) {
+        return sub_32458(arg17);
+    }
+    return 0;
+}
+
+static int32_t sub_3271c(
+    uint8_t *arg1, int16_t *arg2, uint8_t *arg3, int16_t *arg4, int32_t arg5,
+    int16_t *arg6, void *arg7)
+{
+    uint32_t row = (uint16_t)*arg6;
+    uint8_t *src0 = arg3 + ((uint16_t)*arg2) * arg5;
+    uint8_t *src1 = arg3 + row * arg5;
+
+    if (rd32(arg7, 0x1e0) != 0) {
+        return sub_32750(arg1, src0, arg2, arg4, src1, (int16_t *)rdptr(arg7, 0x200),
+            (int16_t *)rdptr(arg7, 0x204), (int16_t *)rdptr(arg7, 0x204), arg1 ? arg4 : arg4,
+            arg4, 0, 0, 0, 0, arg5, arg6, arg7, 0);
+    }
+
+    ++arg6;
+    arg3 += rd32(arg7, 0x270);
+    ++arg2;
+    if (arg6 == (int16_t *)rdptr(arg7, 0x1c0)) {
+        return sub_32458(arg7);
+    }
+    return 0;
+}
+
+static int32_t sub_3274c(int16_t *arg1)
+{
+    return sub_32750(0, 0, 0, 0, 0, 0, arg1, arg1, 0, 0, 0, 0, 0, 0, 0, arg1, 0, 0);
+}
+
+static int32_t sub_32d64(
+    uint8_t *arg1, uint8_t *arg2, int16_t *arg3, uint8_t *arg4, int32_t arg5,
+    int16_t *arg6, int16_t *arg7, void *arg8)
+{
+    int32_t base = (((uint16_t)*arg3) + rd32(arg8, 0x27c)) * rd32(arg8, 0x278) + rd32(arg8, 0x260);
+
+    if (arg5 < rd32(arg8, 0x270)) {
+        int32_t off = arg5 << 1;
+        int16_t *idx0 = (int16_t *)((uint8_t *)rdptr(arg8, 0x1d0) + off);
+        int16_t *idx1 = (int16_t *)((uint8_t *)rdptr(arg8, 0x1d4) + off);
+        int16_t *idx_end = (int16_t *)((uint8_t *)rdptr(arg8, 0x1d0) + (rd32(arg8, 0x270) << 1));
+
+        while (idx0 != idx_end) {
+            uint32_t s0 = (uint16_t)*idx0++;
+            uint32_t s1 = (uint16_t)*idx1++;
+            uint32_t a = (uint16_t)arg7[s0];
+            uint32_t b = (uint16_t)arg6[s0];
+            *arg4++ = (uint8_t)(((uint8_t)*(arg2 + s0) * a + (uint8_t)*(arg2 + s1) * b) >> 4);
+        }
+    }
+
+    (void)arg1;
+    return base;
+}
+
+static int32_t sub_3316c(
+    int32_t arg1, uint8_t *arg2, int16_t *arg3, int32_t arg4, uint8_t *arg5,
+    uint8_t *arg6, int32_t arg7, int16_t *arg8, int16_t *arg9, void *arg10,
+    int32_t arg11)
+{
+    int32_t off = arg7 << 1;
+    int16_t *idx0 = (int16_t *)((uint8_t *)rdptr(arg10, 0x1d0) + off);
+    int16_t *idx1 = (int16_t *)((uint8_t *)rdptr(arg10, 0x1d4) + off);
+    int16_t *idx_end = (int16_t *)((uint8_t *)rdptr(arg10, 0x1d0) + (arg4 << 1));
+    int16_t *vw0 = (int16_t *)rdptr(arg10, 0x1d8);
+    int16_t *vw1 = (int16_t *)rdptr(arg10, 0x1dc);
+
+    while (idx0 != idx_end) {
+        uint32_t x0 = (uint16_t)*idx0++;
+        uint32_t x1 = (uint16_t)*idx1++;
+        uint32_t voff = (uint32_t)arg1 << 1;
+        uint32_t hoff = x0 << 1;
+        uint32_t hw0 = (uint16_t)arg9[hoff >> 1];
+        uint32_t hw1 = (uint16_t)arg8[hoff >> 1];
+        uint32_t p00 = (uint8_t)arg5[x0];
+        uint32_t p01 = (uint8_t)arg5[x1];
+        uint32_t p10 = (uint8_t)arg2[x0];
+        uint32_t p11 = (uint8_t)arg2[x1];
+        uint32_t vw0v = (uint16_t)*(int16_t *)((uint8_t *)vw0 + voff);
+        uint32_t vw1v = (uint16_t)*(int16_t *)((uint8_t *)vw1 + voff);
+
+        *arg6++ = (uint8_t)((p01 * hw0 + p00 * hw1 + p10 * vw0v + p11 * vw1v + arg11) >> 8);
+        arg1 = (uint16_t)*arg3;
+    }
+
+    return 0;
+}
+
+static int32_t sub_33108(
+    int32_t arg1, uint8_t *arg2, int16_t *arg3, int32_t arg4, uint8_t *arg5,
+    uint8_t *arg6, int32_t arg7, int16_t *arg8, int16_t *arg9, void *arg10,
+    int32_t arg11)
+{
+    (void)*arg9;
+    return sub_3316c(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10, arg11);
+}
+
+static int32_t sub_32c6c(
+    int32_t arg1, int32_t arg2, int32_t arg3, int16_t *arg4, void *arg5)
+{
+    int16_t *idx = (int16_t *)((uint8_t *)rdptr(arg5, 0x208) + arg1);
+    uint32_t row = (uint16_t)*idx;
+
+    if ((uint16_t)*(int16_t *)((uint8_t *)rdptr(arg5, 0x1dc) + (row << 1)) == 0) {
+        return sub_32d64(0, 0, idx, (uint8_t *)rdptr(arg5, 0x228), arg2, arg4,
+            (int16_t *)rdptr(arg5, 0x204), arg5);
+    }
+
+    if (arg2 != 0) {
+        return sub_33108(
+            row,
+            (uint8_t *)(intptr_t)((((uint16_t)*(int16_t *)((uint8_t *)rdptr(arg5, 0x20c) + arg1)) + rd32(arg5, 0x27c)) * rd32(arg5, 0x278) + rd32(arg5, 0x260)),
+            idx,
+            rd32(arg5, 0x270),
+            (uint8_t *)(intptr_t)(((row + rd32(arg5, 0x27c)) * rd32(arg5, 0x278)) + rd32(arg5, 0x260)),
+            (uint8_t *)(intptr_t)(((rd32(arg5, 0x274) + rd32(arg5, 0x210)) * rd32(arg5, 0x270)) + rd32(arg5, 0x264)),
+            arg3,
+            (int16_t *)rdptr(arg5, 0x204),
+            (int16_t *)rdptr(arg5, 0x1dc),
+            arg5,
+            0);
+    }
+
+    return sub_32d64(0, 0, idx, (uint8_t *)rdptr(arg5, 0x228), 0, arg4, (int16_t *)rdptr(arg5, 0x204), arg5);
+}
+
+static int32_t sub_32bc8(
+    uint8_t *arg1, int16_t *arg2, int16_t *arg3, int16_t *arg4, int32_t arg5,
+    int32_t arg6, int16_t *arg7, int16_t *arg8, int32_t arg9, void *arg10)
+{
+    int32_t row = (((uint16_t)*arg4) + arg9) * arg6 + arg5;
+    int16_t *idx1 = (int16_t *)rdptr(arg10, 0x214);
+
+    if (rd32(arg10, 0x1f0) != 0) {
+        int16_t *idx0 = (int16_t *)rdptr(arg10, 0x218);
+
+        while (idx0 != arg3) {
+            uint32_t x0 = (uint16_t)*idx0++;
+            uint32_t x1 = (uint16_t)*idx1++;
+            uint32_t off = x0 << 1;
+            uint32_t w0 = (uint16_t)arg7[off >> 1];
+            uint32_t w1 = (uint16_t)arg8[off >> 1];
+            *arg1++ = (uint8_t)(((uint8_t)*(uint8_t *)(intptr_t)(row + x0) * w0 +
+                (uint8_t)*(uint8_t *)(intptr_t)(row + x1) * w1) >> 4);
+        }
+    }
+
+    ++arg4;
+    arg2 = (int16_t *)((uint8_t *)arg2 + rd32(arg10, 0x270));
+    wrptr(arg10, 0x1b0, (uint8_t *)rdptr(arg10, 0x1b0) + 2);
+    if (arg4 == (int16_t *)rdptr(arg10, 0x1e0)) {
+        return sub_32c6c(rd32(arg10, 0x21c), rd32(arg10, 0x220), rd32(arg10, 0x224), arg7, arg10);
+    }
+
+    return 0;
+}
+
+static int32_t sub_32ba8(
+    uint8_t *arg1, int16_t *arg2, int16_t *arg3, int16_t *arg4, int32_t arg5,
+    int32_t arg6, int16_t *arg7, int16_t *arg8, int32_t arg9, void *arg10)
+{
+    return sub_32bc8(arg1 + 0x20, arg2 + 0x10, arg3 + 1, arg4 + 8, arg5, arg6,
+        arg7, arg8, arg9, arg10);
+}
+
+static int32_t sub_32d44(
+    uint8_t *arg1, uint8_t *arg2, int16_t *arg3, uint8_t *arg4, int32_t arg5,
+    int16_t *arg6, int16_t *arg7, int16_t *arg8, void *arg9)
+{
+    return sub_32d64(arg1 + 0x20, arg2 + 0x20, arg3, arg4 + (uint16_t)*arg8, arg5,
+        arg6, arg7, arg9);
+}
+
+static int32_t sub_32f24(
+    uint8_t *arg1, int16_t *arg2, int16_t *arg3, int16_t *arg4, int32_t arg5,
+    int32_t arg6, int16_t *arg7, int16_t *arg8, int32_t arg9, void *arg10,
+    int32_t arg11)
+{
+    uint32_t row0 = (uint16_t)*arg4;
+    int32_t base0 = (row0 + arg9) * arg6 + arg5;
+    int32_t base1 = (((uint16_t)**(int16_t **)rdptr(arg10, 0x1b0)) + arg9) * arg6 + arg5;
+    int16_t *idx1 = (int16_t *)rdptr(arg10, 0x214);
+
+    if (rd32(arg10, 0x1f0) != 0) {
+        int16_t *idx0 = (int16_t *)rdptr(arg10, 0x218);
+        uint32_t src_row = row0;
+
+        while (1) {
+            uint32_t x0 = (uint16_t)*idx0++;
+            uint32_t x1 = (uint16_t)*idx1++;
+            uint32_t soff = src_row << 1;
+            uint32_t hoff = x0 << 1;
+            uint32_t hw0 = (uint16_t)arg8[hoff >> 1];
+            uint32_t hw1 = (uint16_t)arg7[hoff >> 1];
+            uint32_t p00 = (uint8_t)*(uint8_t *)(intptr_t)(base0 + x0);
+            uint32_t p01 = (uint8_t)*(uint8_t *)(intptr_t)(base0 + x1);
+            uint32_t p10 = (uint8_t)*(uint8_t *)(intptr_t)(base1 + x0);
+            uint32_t p11 = (uint8_t)*(uint8_t *)(intptr_t)(base1 + x1);
+            uint32_t vw0 = (uint16_t)*(int16_t *)((uint8_t *)arg8 + soff);
+            uint32_t vw1 = (uint16_t)*(int16_t *)((uint8_t *)arg7 + soff);
+
+            *arg1++ = (uint8_t)((p01 * hw0 + p00 * hw1 + p10 * vw0 + p11 * vw1 + arg11) >> 8);
+            if (idx0 == arg3) {
+                break;
+            }
+            src_row = (uint16_t)*arg4;
+        }
+    }
+
+    ++arg4;
+    arg2 = (int16_t *)((uint8_t *)arg2 + rd32(arg10, 0x270));
+    wrptr(arg10, 0x1b0, (uint8_t *)rdptr(arg10, 0x1b0) + 2);
+    if (arg4 == (int16_t *)rdptr(arg10, 0x1e0)) {
+        return sub_32c6c(rd32(arg10, 0x21c), rd32(arg10, 0x220), rd32(arg10, 0x224), arg7, arg10);
+    }
+
+    return 0;
+}
+
+static int32_t sub_329f4(
+    int16_t *arg1, void *arg2, int16_t *arg3, int16_t *arg4, int32_t arg5,
+    void *arg6)
+{
+    int32_t pitch = (rd32(arg6, 0x260) == rd32(arg6, 0x264)) ? rd32(arg6, 0x270) : rd32(arg6, 0x268);
+    int32_t last_idx = 0;
+    int32_t last_sum = 0;
+    int32_t accum = 0;
+    int32_t i = 0;
+    int16_t *scan = arg1;
+
+    if (arg5 > 0) {
+        i = 1;
+        while (i < arg5) {
+            uint32_t n = (uint16_t)*scan++;
+            pitch -= (int32_t)n;
+            accum += (int32_t)n;
+            if (pitch >= 0x10) {
+                last_idx = i;
+                last_sum = accum;
+            }
+            ++i;
+        }
+    }
+
+    if (rd32(arg6, 0x260) == rd32(arg6, 0x264)) {
+        accum = last_sum;
+        arg5 = last_idx;
+    }
+
+    if (rd32(arg6, 0x210) <= 0) {
+        wr32(arg6, 0x210, 0);
+        return sub_32c6c(0, last_idx, last_sum, arg3, arg6);
+    }
+
+    wr32(arg6, 0x21c, rd32(arg6, 0x210) << 1);
+    wrptr(arg6, 0x200, arg3);
+    wrptr(arg6, 0x228, arg2);
+    wrptr(arg6, 0x1e0, (uint8_t *)rdptr(arg6, 0x208) + rd32(arg6, 0x210));
+    wrptr(arg6, 0x1c0, arg4);
+    wrptr(arg6, 0x218, (uint8_t *)rdptr(arg6, 0x1d0) + (accum << 1));
+    wrptr(arg6, 0x214, (uint8_t *)rdptr(arg6, 0x1d4) + (accum << 1));
+    wrptr(arg6, 0x204, arg1);
+    wrptr(arg6, 0x1b0, rdptr(arg6, 0x20c));
+    wr32(arg6, 0x200, arg5);
+    wr32(arg6, 0x1f0, accum < rd32(arg6, 0x270));
+    wr32(arg6, 0x220, last_idx);
+    wr32(arg6, 0x224, last_sum);
+    return 0;
+}
+
+static int32_t sub_333e0(int32_t arg1, int32_t arg2, void *arg3, void *arg4)
+{
+    (void)arg1;
+    (void)arg2;
+    (void)arg3;
+    (void)arg4;
+    return c_resize_simd_nv12_up();
+}
+
+static int32_t sub_33444(
+    int32_t arg1, int32_t arg2, int32_t arg3, int32_t arg4, int32_t arg5,
+    void *arg6, void *arg7)
+{
+    if (arg4 == 0x5a0 && arg1 == 0x440) {
+        wr32(arg7, 0x68, 0xee030);
+    }
+    (void)arg2;
+    (void)arg3;
+    (void)arg4;
+    (void)arg5;
+    (void)arg6;
+    return c_resize_simd_nv12_down();
+}
