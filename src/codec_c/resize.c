@@ -1468,3 +1468,387 @@ static int32_t sub_33444(
     (void)arg6;
     return c_resize_simd_nv12_down();
 }
+
+static int32_t sub_351e8(
+    int32_t arg1, int32_t arg2, int32_t arg3, int32_t arg4, char *arg5,
+    int32_t arg6, int32_t arg7, int32_t arg8, int32_t arg9, int32_t arg10,
+    int32_t arg11, int32_t arg12, int32_t arg13);
+static int32_t sub_3529c(int32_t arg1, int32_t arg2, int32_t arg3, int32_t arg4, int32_t arg5);
+static int32_t sub_352d8(
+    int32_t arg1, int32_t arg2, int32_t arg3, int32_t arg4, char *arg5,
+    int32_t arg6, int32_t arg7, int32_t arg8, int32_t arg9, int32_t arg10,
+    int32_t arg11, int32_t arg12);
+static int32_t sub_35500(
+    int32_t arg1, int32_t arg2, void *arg3, int32_t arg4, int32_t arg5,
+    int32_t arg6, int32_t arg7);
+static int32_t sub_356d0(
+    void *arg1, int32_t arg2, int32_t arg3, int32_t arg4, int32_t arg5,
+    int32_t arg6);
+static int32_t sub_35768(int32_t arg1, uint8_t *arg2, int16_t *arg3, void *arg4);
+
+static int32_t sub_31474(
+    uint8_t *arg1, int16_t *arg2, uint8_t *arg3, uint8_t *arg4, int32_t arg5,
+    int32_t arg6, int16_t *arg7, int16_t *arg8, int32_t arg9, void *arg10,
+    int16_t *arg11, int16_t *arg12, int16_t *arg13, void *arg14, int32_t arg15)
+{
+    int32_t off = arg6 << 1;
+    int16_t *idx0 = (int16_t *)((uint8_t *)arg7 + off);
+    int16_t *idx1 = (int16_t *)((uint8_t *)arg2 + off);
+    int16_t *idx2 = (int16_t *)((uint8_t *)arg8 + off);
+    int16_t *w = (int16_t *)((uint8_t *)rdptr(arg14, 0x248) + off);
+    uint8_t *out = arg4;
+    uint8_t *out_end = out + rd32(arg14, 0x280);
+    uint32_t vw0 = (uint16_t)arg12[0];
+    uint32_t vw1 = (arg13 != 0) ? (uint16_t)arg13[0] : (uint16_t)(0x100 - vw0);
+
+    wr32(arg14, 0x2cc, arg5);
+    while (out != out_end) {
+        uint32_t s0 = (uint16_t)*idx2++;
+        uint32_t hw0 = (uint16_t)*w++;
+        uint32_t s1 = (uint16_t)*idx0++;
+        uint32_t hw1 = (uint16_t)*idx1++;
+        uint32_t p00 = (uint8_t)arg1[s0];
+        uint32_t p01 = (uint8_t)arg1[s1];
+        uint32_t p10 = (uint8_t)arg3[s0];
+        uint32_t p11 = (uint8_t)arg3[s1];
+        uint32_t top = p00 * hw0 + p01 * hw1;
+        uint32_t bot = p10 * hw0 + p11 * hw1;
+        *out++ = (uint8_t)((top * vw0 + bot * vw1 + (uint32_t)arg15) >> 8);
+    }
+
+    (void)arg9;
+    (void)arg10;
+    (void)arg11;
+    if (arg13 + 2 == (int16_t *)rdptr(arg14, 0x2a0)) {
+        return sub_31180(arg14);
+    }
+
+    return 0;
+}
+
+static int32_t sub_34228(
+    int32_t arg1, int32_t arg2, int32_t arg3, int32_t arg4, int32_t arg5,
+    int32_t arg6, int32_t arg7, int32_t arg8, int32_t arg9, int32_t arg10,
+    int32_t arg11, int32_t arg12, int32_t arg13, int32_t arg14, int32_t arg15,
+    int32_t arg16, int32_t arg17, int32_t arg18, int32_t arg19, int32_t arg20,
+    int32_t arg21, void *arg22)
+{
+    wr32(arg22, 0x6c, arg5);
+    wr32(arg22, 0x50, rd32(arg22, 0x50) + 0xff00);
+    (void)arg1;
+    (void)arg2;
+    (void)arg3;
+    (void)arg4;
+    (void)arg6;
+    (void)arg7;
+    (void)arg8;
+    (void)arg9;
+    (void)arg10;
+    (void)arg11;
+    (void)arg12;
+    (void)arg13;
+    (void)arg14;
+    (void)arg15;
+    (void)arg16;
+    (void)arg17;
+    (void)arg18;
+    (void)arg19;
+    (void)arg20;
+    (void)arg21;
+    return 0;
+}
+
+static int32_t sub_350a4(
+    int32_t arg1, int32_t arg2, int32_t arg3, int32_t arg4, int32_t arg5,
+    int32_t arg6, int32_t arg7, int32_t arg8, int32_t arg9, int32_t arg10,
+    int32_t arg11, int32_t arg12, int32_t arg13, int32_t arg14, int32_t arg15,
+    int32_t arg16, int32_t arg17, int32_t arg18, int32_t arg19, int32_t arg20,
+    void *arg21)
+{
+    wr32(arg21, 0x50, rd32(arg21, 0x50) + 0xff00);
+    wrptr(arg21, 0x70, (uint8_t *)rdptr(arg21, 0x70) + 2);
+    (void)arg1;
+    (void)arg2;
+    (void)arg3;
+    (void)arg4;
+    (void)arg5;
+    (void)arg6;
+    (void)arg7;
+    (void)arg8;
+    (void)arg9;
+    (void)arg10;
+    (void)arg11;
+    (void)arg12;
+    (void)arg13;
+    (void)arg14;
+    (void)arg15;
+    (void)arg16;
+    (void)arg17;
+    (void)arg18;
+    (void)arg19;
+    (void)arg20;
+    return 0;
+}
+
+static int32_t sub_351ac(int32_t arg1, int32_t arg2, int32_t arg3, int32_t arg4, int32_t arg5)
+{
+    (void)arg2;
+    (void)arg3;
+    (void)arg4;
+    if (arg5 >= arg1) {
+        return 0;
+    }
+    return 0;
+}
+
+static int32_t sub_351e8(
+    int32_t arg1, int32_t arg2, int32_t arg3, int32_t arg4, char *arg5,
+    int32_t arg6, int32_t arg7, int32_t arg8, int32_t arg9, int32_t arg10,
+    int32_t arg11, int32_t arg12, int32_t arg13)
+{
+    char *dst = (char *)(intptr_t)(arg1 + arg13);
+
+    for (int32_t i = 0; i < arg7; ++i) {
+        dst[i] = arg5[i];
+    }
+
+    (void)arg2;
+    (void)arg3;
+    (void)arg4;
+    (void)arg6;
+    (void)arg8;
+    (void)arg9;
+    (void)arg10;
+    (void)arg11;
+    (void)arg12;
+    return 0;
+}
+
+static int32_t sub_35288(int32_t arg1, int32_t arg2, int32_t arg3, int32_t arg4)
+{
+    if (arg1 + 4 < arg4) {
+        return 0;
+    }
+    return sub_3529c(arg1, arg2, arg3, arg4, 0);
+}
+
+static int32_t sub_3529c(int32_t arg1, int32_t arg2, int32_t arg3, int32_t arg4, int32_t arg5)
+{
+    (void)arg2;
+    (void)arg4;
+    if (arg3 >= arg1) {
+        return 0;
+    }
+    return (arg5 != 0) ? 0 : 0;
+}
+
+static int32_t sub_352d8(
+    int32_t arg1, int32_t arg2, int32_t arg3, int32_t arg4, char *arg5,
+    int32_t arg6, int32_t arg7, int32_t arg8, int32_t arg9, int32_t arg10,
+    int32_t arg11, int32_t arg12)
+{
+    char *dst = (char *)(intptr_t)(arg1 + arg9);
+
+    for (int32_t i = 0; i < arg7; ++i) {
+        dst[i] = arg5[i];
+    }
+
+    (void)arg2;
+    (void)arg3;
+    (void)arg4;
+    (void)arg6;
+    (void)arg8;
+    (void)arg10;
+    (void)arg11;
+    (void)arg12;
+    return 0;
+}
+
+static int32_t sub_3536c(
+    int16_t *arg1, int16_t *arg2, void *arg3, int64_t arg4, double arg5,
+    double arg6)
+{
+    double cur = (double)(float)arg4;
+    int16_t *uv = (int16_t *)rdptr(arg3, 0x68);
+    uint8_t *lut = (uint8_t *)arg3 + 0x30;
+    uint8_t *lut_vals = (uint8_t *)arg3 + 0x40;
+    int16_t count = 0;
+
+    for (int32_t i = 0; i < 0x2d0; ++i) {
+        cur = (((double)(float)cur) + arg5) * arg6 - arg5;
+        int32_t idx = trunc_s32((double)(float)cur);
+        arg1[i] = (int16_t)idx;
+        arg2[idx] = 1;
+    }
+
+    for (int32_t i = 0; i < 0x240; ++i) {
+        cur = (((double)(float)cur) + arg5) * arg6 - arg5;
+        uv[i] = (int16_t)trunc_s32((double)(float)cur);
+    }
+
+    for (int32_t i = 0; i < 0x11; ++i) {
+        lut[i] = 0;
+    }
+    lut_vals[0] = 0;
+    for (int32_t i = 1; i < 0x10; ++i) {
+        lut_vals[i] = (uint8_t)(i << 1);
+    }
+
+    for (int32_t i = 0; i < 0x10; ++i) {
+        if (arg2[i] != 0) {
+            lut[count++] = lut_vals[i];
+        }
+    }
+
+    return 0;
+}
+
+static int32_t sub_354f0(
+    int32_t arg1, int32_t arg2, void *arg3, int32_t arg4, int32_t arg5,
+    int16_t *arg6)
+{
+    if (arg4 + 0x10 != arg2) {
+        return 0;
+    }
+
+    return sub_35500((uint16_t)*arg6, arg2, arg3, arg4, arg5, 0, 0);
+}
+
+static int32_t sub_35500(
+    int32_t arg1, int32_t arg2, void *arg3, int32_t arg4, int32_t arg5,
+    int32_t arg6, int32_t arg7)
+{
+    (void)arg1;
+    (void)arg2;
+    (void)arg3;
+    (void)arg4;
+    (void)arg5;
+    (void)arg6;
+    (void)arg7;
+    return 0;
+}
+
+static int32_t sub_35540(
+    uint16_t *arg1, int16_t *arg2, int16_t *arg3, void *arg4, int64_t arg5,
+    double arg6, double arg7)
+{
+    double cur = (double)(float)arg5;
+    int16_t *uv = (int16_t *)rdptr(arg4, 0x6c);
+    uint8_t *src_lut = (uint8_t *)rdptr(arg4, 0x68);
+    uint8_t *dst_lut = (uint8_t *)rdptr(arg4, 0x54);
+
+    for (int32_t i = 0; i < 0x168; ++i) {
+        cur = (((double)(float)cur) + arg6) * arg7 - arg6;
+        int32_t idx = trunc_s32((double)(float)cur);
+        uint16_t off = (uint16_t)(idx << 1);
+        arg1[i << 1] = off;
+        arg1[(i << 1) + 1] = (uint16_t)(off + 1);
+        arg2[idx << 1] = 1;
+        arg2[(idx << 1) + 1] = 1;
+    }
+
+    for (int32_t i = 0; i < 0x120; ++i) {
+        cur = (((double)(float)cur) + arg6) * arg7 - arg6;
+        uv[i] = (int16_t)trunc_s32((double)(float)cur);
+    }
+
+    *arg3 = 0;
+    for (int32_t i = 0; i < 0x18; ++i) {
+        if (arg2[i] != 0) {
+            dst_lut[*arg3] = src_lut[i];
+            *arg3 = (int16_t)(*arg3 + 1);
+        }
+    }
+
+    return 0;
+}
+
+static int32_t sub_356b8(
+    int32_t arg1, int32_t arg2, int32_t arg3, int32_t arg4, int32_t arg5,
+    int16_t *arg6)
+{
+    if (arg5 + 0x10 != arg4) {
+        return 0;
+    }
+
+    return sub_356d0((void *)(intptr_t)(arg1 + 0x10), arg2 + (uint16_t)*arg6, arg3, arg4, arg5, 0);
+}
+
+static int32_t sub_356d0(
+    void *arg1, int32_t arg2, int32_t arg3, int32_t arg4, int32_t arg5,
+    int32_t arg6)
+{
+    (void)arg1;
+    (void)arg2;
+    (void)arg3;
+    (void)arg4;
+    (void)arg5;
+    (void)arg6;
+    return 0;
+}
+
+static int32_t sub_3570c(uint8_t *arg1, int32_t arg2, int16_t *arg3)
+{
+    uint32_t idx = (uint16_t)*arg3;
+
+    if ((int32_t)idx < 0x2c1 || (int32_t)idx >= 0x2d0) {
+        return 0;
+    }
+
+    (void)arg1;
+    (void)arg2;
+    return 0;
+}
+
+static int32_t sub_35768(int32_t arg1, uint8_t *arg2, int16_t *arg3, void *arg4)
+{
+    int16_t *scan = arg3 + arg1;
+    uint8_t *dst = (uint8_t *)rdptr(arg4, 0xbc) + arg1 + 0x97b30;
+    uint8_t result = 0;
+
+    do {
+        uint32_t x0 = (uint16_t)scan[0];
+        uint32_t x1 = (uint16_t)scan[1];
+        dst[0] = arg2[x0];
+        result = arg2[x1];
+        dst[1] = result;
+        dst += 2;
+        scan += 2;
+        arg1 += 2;
+    } while (arg1 < 0x2d0);
+
+    return result;
+}
+
+static uint32_t *sub_357c8(uint32_t *arg1, void *arg2, int32_t arg3, float arg4)
+{
+    uint32_t *dst = (uint32_t *)rdptr(arg2, 0xbc);
+    uint32_t *tail = dst;
+
+    (void)arg3;
+    for (uint32_t i = 0; i != 0x3c0; ++i) {
+        int32_t row = trunc_s32((double)((float)i * arg4));
+        uint32_t *src = (uint32_t *)((uint8_t *)arg1 + row * 0x500);
+
+        for (uint32_t j = 0; j != 0x140; ++j) {
+            dst[j] = src[j];
+        }
+
+        dst += 0x140;
+    }
+
+    dst = (uint32_t *)((uint8_t *)rdptr(arg2, 0xbc) + 0x12c000);
+    for (uint32_t i = 0; i != 0x1e0; ++i) {
+        int32_t row = trunc_s32((double)((float)i * arg4));
+        uint32_t *src = (uint32_t *)((uint8_t *)arg1 + row * 0x500 + 0xe1000);
+
+        for (uint32_t j = 0; j != 0x140; ++j) {
+            dst[j] = src[j];
+        }
+
+        tail = dst + 0x140;
+        dst += 0x140;
+    }
+
+    return tail;
+}
