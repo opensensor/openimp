@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
+#include <fcntl.h>
 
 #include "alcodec/al_buffer.h"
 #include "alcodec/al_fourcc.h"
@@ -894,11 +895,14 @@ label_896d8:
             }
         }
 
+        { int kfd = open("/dev/kmsg", O_WRONLY); if (kfd >= 0) { const char *m = "libimp/ENC: reached ValidateRcParam\n"; write(kfd, m, strlen(m)); close(kfd); } }
         if (AL_Codec_Encode_ValidateRcParam_isra_1((int32_t *)(s0_1 + 0x120), (int32_t *)(s0_1 + 0x124), s0_1 + 8, (int32_t *)(s0_1 + 0x70), 0.0, 1.2, read_s32(s0_1, 0x768)) < 0) {
+            { int kfd = open("/dev/kmsg", O_WRONLY); if (kfd >= 0) { const char *m = "libimp/ENC: FAIL rcParam\n"; write(kfd, m, strlen(m)); close(kfd); } }
             fwrite("valid rcParam failed\n", 1, 0x15, stderr);
             goto label_897e8;
         }
         if (AL_Codec_Encode_ValidateGopParam(s0_1 + 8, (int32_t *)(s0_1 + 0xb0)) < 0) {
+            { int kfd = open("/dev/kmsg", O_WRONLY); if (kfd >= 0) { const char *m = "libimp/ENC: FAIL gopParam\n"; write(kfd, m, strlen(m)); close(kfd); } }
             fwrite("valid gopParam failed\n", 1, 0x16, stderr);
             goto label_897e8;
         }
@@ -907,6 +911,7 @@ label_896d8:
             int32_t i = 0;
             do {
                 if (AL_Settings_CheckCoherency(s0_1 + 8, s1_1, read_s32(s0_1, 0x768), stderr) == -1) {
+                    { int kfd = open("/dev/kmsg", O_WRONLY); if (kfd >= 0) { const char *m = "libimp/ENC: FAIL coherency\n"; write(kfd, m, strlen(m)); close(kfd); } }
                     fwrite("Fatal coherency error in settings\n", 1, 0x22, stderr);
                     goto label_897e8;
                 }
@@ -915,6 +920,7 @@ label_896d8:
             } while (i < read_s32(s0_1, 0x12c));
         }
         if (AL_Settings_CheckValidity(s0_1 + 8, s0_1 + 8, stderr) != 0) {
+            { int kfd = open("/dev/kmsg", O_WRONLY); if (kfd >= 0) { const char *m = "libimp/ENC: FAIL CheckValidity\n"; write(kfd, m, strlen(m)); close(kfd); } }
             fwrite("AL_Settings_CheckValidity failed\n", 1, 0x21, stderr);
             goto label_897e8;
         }
@@ -934,6 +940,7 @@ label_896d8:
                 s1_2 = AL_DmaAlloc_GetAllocator(v0_31);
 
             if ((uint32_t)AL_Encoder_Create((int32_t **)(s0_1 + 0x798), (int32_t)(intptr_t)read_ptr(g_pCodec, 8), (int32_t)(intptr_t)s1_2, s0_1 + 8, (int32_t)(intptr_t)read_ptr(s0_1, 0x7a0), (int32_t)(intptr_t)read_ptr(s0_1, 0x7a4)) >= 0x80U) {
+                { int kfd = open("/dev/kmsg", O_WRONLY); if (kfd >= 0) { char b[128]; int n = snprintf(b, sizeof(b), "libimp/ENC: FAIL AL_Encoder_Create errorCode=0x%x\n", read_s32(s0_1, 0x798)); if (n>0) write(kfd, b, n); close(kfd); } }
                 fprintf(stderr, "AL_Encoder_Create failed, errorCode=%x:%s\n", read_s32(s0_1, 0x798), AL_Encoder_ErrorToString(read_s32(s0_1, 0x798)));
                 Rtos_DeleteEvent(read_ptr(s0_1, 0x79c));
                 Rtos_Free(s0_1);
