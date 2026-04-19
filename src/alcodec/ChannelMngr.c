@@ -1266,6 +1266,16 @@ int32_t AL_SchedulerEnc_CreateChannel2(int32_t *arg1, void *arg2, int32_t arg3, 
              (void*)arg1[0x4bd], s1[1]);
     CMG_KMSG("SchEnc.CC2 pre-Rtos_GetMutex");
     Rtos_GetMutex((void *)(intptr_t)arg1[0x4bd]);
+    /* Dump scheduler's core-capability region [s1+0xac..s1+0xdc] to see
+     * whether profile table + count fields are populated. getCompatibleCores
+     * reads s4_1 = &s1[0x2c] (byte 0xb0) with stride 0x44, profile[0] at
+     * s4_1-4 (byte 0xac), count at s4_1+0x1c (byte 0xcc). */
+    {
+        uint32_t *sb = (uint32_t *)((uint8_t *)s1 + 0xac);
+        CMG_KMSG("SchEnc.CC2 CoreTbl@s1+0xac: %08x %08x %08x %08x %08x %08x %08x %08x %08x %08x %08x %08x",
+                 sb[0], sb[1], sb[2], sb[3], sb[4], sb[5], sb[6], sb[7],
+                 sb[8], sb[9], sb[10], sb[11]);
+    }
     CMG_KMSG("SchEnc.CC2 pre-CoreConstraintEnc_Init");
     AL_CoreConstraintEnc_Init(var_48, s1[1], (uint32_t)READ_U8(arg2, 0x1f));
     CMG_KMSG("SchEnc.CC2 pre-filterCoresCount");
