@@ -307,21 +307,142 @@ int32_t channel_encoder_init(void *arg1)
     return 0;
 }
 
+/* ----- channel_encoder_exit — binary-accurate port -------------------- */
+#include <semaphore.h>
+
+int32_t AL_Codec_Encode_Commit_FilledFifo(void *codec);
+int32_t AL_Codec_Encode_GetStream(void *codec, int32_t *out_id, void **out_buf);
+int32_t AL_Codec_Encode_ReleaseStream(void *codec, int32_t id, void *buf);
+int32_t AL_Codec_Encode_Destroy(void *codec);
+int32_t Fifo_Queue(void *fifo, void *item, int32_t timeout_ms);
+void Fifo_Deinit(void *fifo);
+
 int32_t channel_encoder_exit(void *arg1)
 {
-    (void)arg1;
+    uint8_t *p = (uint8_t *)arg1;
+    if (!p) return -1;
+
+    AL_Codec_Encode_Commit_FilledFifo(*(void **)(p + 8));
+    pthread_cancel(*(pthread_t *)(p + 0x3c));
+    pthread_join(*(pthread_t *)(p + 0x3c), NULL);
+    pthread_cancel(*(pthread_t *)(p + 0x68));
+    pthread_join(*(pthread_t *)(p + 0x68), NULL);
+    pthread_mutex_destroy((pthread_mutex_t *)(p + 0x50));
+    sem_destroy((sem_t *)(p + 0x40));
+
+    pthread_mutex_lock((pthread_mutex_t *)(p + 0x1a8));
+    {
+        int32_t total_frames = *(int32_t *)(p + 0x7c);
+        int32_t complete_hi  = *(int32_t *)(p + 0x84);
+        void *fifo_ctx = (void *)(p + 0x18);
+
+        while (complete_hi < total_frames ||
+               (complete_hi == total_frames &&
+                *(uint32_t *)(p + 0x80) < *(uint32_t *)(p + 0x78))) {
+            void *buf = NULL;
+            int32_t stream_id = 0;
+            if (AL_Codec_Encode_GetStream(*(void **)(p + 8), &stream_id, &buf) < 0)
+                break;
+            pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, NULL);
+            *(uint32_t *)(p + 0x80) += 1;
+            if (*(uint32_t *)(p + 0x80) == 0) *(int32_t *)(p + 0x84) += 1;
+            AL_Codec_Encode_ReleaseStream(*(void **)(p + 8), stream_id, buf);
+            Fifo_Queue(fifo_ctx, (uint8_t *)buf + 0x24, -1);
+            pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, NULL);
+            total_frames = *(int32_t *)(p + 0x7c);
+            complete_hi  = *(int32_t *)(p + 0x84);
+        }
+    }
+    pthread_mutex_unlock((pthread_mutex_t *)(p + 0x1a8));
+
+    Fifo_Deinit((void *)(p + 0x18));
+    free(*(void **)(p + 0x14));
+    AL_Codec_Encode_Destroy(*(void **)(p + 8));
     return 0;
 }
 
+/* ----- channel_encoder_set_rc_param — binary-accurate port ------------ */
 int32_t channel_encoder_set_rc_param(void *arg1, void *arg2)
 {
-    (void)arg1; (void)arg2;
-    return 0;
+    int32_t *dst = (int32_t *)arg1;
+    int32_t *src = (int32_t *)arg2;
+    if (!dst || !src) return -1;
+
+    uint8_t *dst_b = (uint8_t *)arg1;
+    uint8_t *src_b = (uint8_t *)arg2;
+    int32_t mode = src[0];
+
+    switch (mode) {
+    case 0: /* FixQp */
+        dst[0] = 0;
+        *(int16_t *)(dst_b + 0x18) = *(int16_t *)(src_b + 4);
+        return 0;
+    case 1: /* Cbr */
+        dst[0] = 1;
+        dst[4] = src[1] * 1000;
+        dst[5] = src[1] * 1000;
+        *(int16_t *)(dst_b + 0x18) = *(int16_t *)(src_b + 8);
+        *(int8_t  *)(dst_b + 0x1a) = *(int8_t  *)(src_b + 0xa);
+        *(int16_t *)(dst_b + 0x1c) = *(int16_t *)(src_b + 0xc);
+        *(int8_t  *)(dst_b + 0x1e) = *(int8_t  *)(src_b + 0xe);
+        *(int16_t *)(dst_b + 0x20) = *(int16_t *)(src_b + 0x10);
+        dst[10] = src[5];
+        dst[15] = src[6] * 1000;
+        return 0;
+    case 2: /* Vbr */
+        dst[0] = 2;
+        dst[4] = src[1] * 1000;
+        dst[5] = src[2] * 1000;
+        *(int16_t *)(dst_b + 0x18) = *(int16_t *)(src_b + 0xc);
+        *(int8_t  *)(dst_b + 0x1a) = *(int8_t  *)(src_b + 0xe);
+        *(int16_t *)(dst_b + 0x1c) = *(int16_t *)(src_b + 0x10);
+        *(int8_t  *)(dst_b + 0x1e) = *(int8_t  *)(src_b + 0x12);
+        *(int16_t *)(dst_b + 0x20) = *(int16_t *)(src_b + 0x14);
+        dst[10] = src[6];
+        dst[15] = src[7] * 1000;
+        return 0;
+    case 4: /* CappedVbr */
+    case 8: /* CappedQuality */
+        dst[0] = mode;
+        dst[4] = src[1] * 1000;
+        dst[5] = src[2] * 1000;
+        *(int16_t *)(dst_b + 0x18) = *(int16_t *)(src_b + 0xc);
+        *(int8_t  *)(dst_b + 0x1a) = *(int8_t  *)(src_b + 0xe);
+        *(int16_t *)(dst_b + 0x1c) = *(int16_t *)(src_b + 0x10);
+        *(int8_t  *)(dst_b + 0x1e) = *(int8_t  *)(src_b + 0x12);
+        *(int16_t *)(dst_b + 0x20) = *(int16_t *)(src_b + 0x14);
+        dst[10] = src[6];
+        dst[15] = src[7] * 1000;
+        {
+            uint32_t scale = (uint32_t)(uint16_t)src[8] * 0x14;
+            *(int16_t *)(dst_b + 0x30) = (int16_t)(scale + (scale << 2));
+        }
+        return 0;
+    default:
+        return -1;
+    }
 }
 
+/* ----- release_used_framestream — binary-accurate port ---------------- */
 int32_t release_used_framestream(void *arg1, int32_t arg2)
 {
-    (void)arg1; (void)arg2;
+    uint8_t *p = (uint8_t *)arg1;
+    if (!p) return -1;
+
+    int32_t max = *(int32_t *)(p + 0x230);
+    int32_t hd  = *(int32_t *)(p + 0x244);
+    int32_t idx = *(int32_t *)(p + 0x248);
+
+    if (max == 0) return -1;
+    int32_t expected = hd + ((idx % max) * 0x188);
+    if (arg2 != expected) {
+        return -1;
+    }
+
+    pthread_mutex_lock((pthread_mutex_t *)(p + 0x1a8));
+    *(int32_t *)(p + 0x248) += 1;
+    pthread_mutex_unlock((pthread_mutex_t *)(p + 0x1a8));
+    sem_post((sem_t *)(p + 0x178));
     return 0;
 }
 
