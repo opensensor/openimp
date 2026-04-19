@@ -1676,20 +1676,27 @@ int32_t channel_encoder_init(void *arg1)
     /* -- (5) Create codec handle --------------------------------------- */
     void *codec_handle = NULL;
     {
-        /* Hard trace: dump codec_params key fields to dmesg so failure is debuggable */
+        /* Dump the exact offsets AL_Codec_Encode_Create reads. */
         int kfd = open("/dev/kmsg", O_WRONLY);
         if (kfd >= 0) {
-            char buf[256];
-            int32_t *cp = (int32_t *)codec_params;
+            char buf[320];
+            uint8_t *cb = codec_params;
             int n = snprintf(buf, sizeof(buf),
-                "libimp/ENC: Codec_Encode_Create entry codec_params=%p "
-                "profile=0x%x w=%d h=%d fmt=0x%x level=%u\n",
+                "libimp/ENC: cp@%p  "
+                "[0x00]=0x%08x [0x08]=%u [0x0a]=%u [0x14]=0x%08x "
+                "[0x20]=0x%08x [0x24]=%u [0x25]=%u "
+                "[0x30]=0x%08x [0x34]=0x%08x fourcc@0x764=%c%c%c%c\n",
                 codec_params,
-                cp ? cp[9] : 0,
-                cp ? (int)(cp[3] & 0xffff) : 0,
-                cp ? (int)((uint32_t)cp[3] >> 16) : 0,
-                cp ? cp[10] : 0,
-                cp ? (unsigned)(((uint8_t *)codec_params)[0x28]) : 0);
+                *(uint32_t *)(cb + 0x00),
+                (unsigned)*(uint16_t *)(cb + 0x08),
+                (unsigned)*(uint16_t *)(cb + 0x0a),
+                *(uint32_t *)(cb + 0x14),   /* ePicFormat ← consumer reads here */
+                *(uint32_t *)(cb + 0x20),   /* profile */
+                cb[0x24],                    /* uLevel */
+                cb[0x25],                    /* uTier */
+                *(uint32_t *)(cb + 0x30),
+                *(uint32_t *)(cb + 0x34),
+                cb[0x764], cb[0x765], cb[0x766], cb[0x767]);
             if (n > 0) write(kfd, buf, (size_t)n);
             close(kfd);
         }
