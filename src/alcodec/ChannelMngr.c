@@ -1290,12 +1290,17 @@ int32_t AL_SchedulerEnc_CreateChannel2(int32_t *arg1, void *arg2, int32_t arg3, 
         return 0xff;
     }
 
-    v1_1 = (uint32_t)READ_U8(arg2, 4);
-    v0_3 = (uint32_t)READ_U8(arg2, 6);
+    /* Stock uses lhu (U16) for width/height/fps_n/fps_d — not lbu (U8).
+     * The port's U8 reads collapsed width 0x780 -> 0x80 and produced a
+     * bogus GetResources ~= 0xf52 instead of the true value (~1M). */
+    v1_1 = (uint32_t)READ_U16(arg2, 4);
+    v0_3 = (uint32_t)READ_U16(arg2, 6);
     var_38_1 = v1_1;
     var_34_1 = v0_3;
-    v0_4 = AL_CoreConstraintEnc_GetResources(var_48, READ_S32(arg2, 0x2c), v1_1, v0_3, (uint32_t)READ_U8(arg2, 0x74),
-                                             (uint32_t)READ_U8(arg2, 0x76), (uint32_t)READ_U8(arg2, 0x3c));
+    v0_4 = AL_CoreConstraintEnc_GetResources(var_48, READ_S32(arg2, 0x2c), v1_1, v0_3,
+                                             (uint32_t)READ_U16(arg2, 0x74),
+                                             (uint32_t)READ_U16(arg2, 0x76),
+                                             (uint32_t)READ_U8(arg2, 0x3c));
     CMG_KMSG("SchEnc.CC2 GetResources=0x%x", v0_4);
     v0_5 = ChannelResourcesAreAvailable(s1, arg2, v0_4);
     CMG_KMSG("SchEnc.CC2 ChRscAvail=%d", v0_5);
@@ -1470,12 +1475,17 @@ int32_t AL_SchedulerEnc_CreateChannel(int32_t *arg1, void *arg2, int32_t arg3, i
         return 0xff;
     }
 
-    v1_1 = (uint32_t)READ_U8(arg2, 4);
-    v0_3 = (uint32_t)READ_U8(arg2, 6);
+    /* Stock uses lhu (U16) for width/height/fps_n/fps_d — not lbu (U8).
+     * The port's U8 reads collapsed width 0x780 -> 0x80 and produced a
+     * bogus GetResources ~= 0xf52 instead of the true value (~1M). */
+    v1_1 = (uint32_t)READ_U16(arg2, 4);
+    v0_3 = (uint32_t)READ_U16(arg2, 6);
     var_38_1 = v1_1;
     var_34_1 = v0_3;
-    v0_4 = AL_CoreConstraintEnc_GetResources(var_48, READ_S32(arg2, 0x2c), v1_1, v0_3, (uint32_t)READ_U8(arg2, 0x74),
-                                             (uint32_t)READ_U8(arg2, 0x76), (uint32_t)READ_U8(arg2, 0x3c));
+    v0_4 = AL_CoreConstraintEnc_GetResources(var_48, READ_S32(arg2, 0x2c), v1_1, v0_3,
+                                             (uint32_t)READ_U16(arg2, 0x74),
+                                             (uint32_t)READ_U16(arg2, 0x76),
+                                             (uint32_t)READ_U8(arg2, 0x3c));
     v0_5 = ChannelResourcesAreAvailable(s1, arg2, v0_4);
     s0_1 = arg2;
     if (v0_5 == 0) {
