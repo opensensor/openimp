@@ -1,4 +1,5 @@
 #include <stdint.h>
+#include <stdarg.h>
 #include <stddef.h>
 #include <stdlib.h>
 #include <string.h>
@@ -2516,21 +2517,34 @@ int IMP_ISP_DelSensor(IMPSensorInfo *pinfo)
     return 0;
 }
 
+/* Diagnostic trace — writes to /dev/kmsg which ALWAYS appears in `dmesg`.
+ * Stock libsysutils' imp_log_fun routes to a sink we can't see, and rvd
+ * doesn't capture stderr, so /dev/kmsg is the only reliable debug path. */
+static void kmsg_trace(const char *fmt, ...)
+{
+    static int kfd = -2;
+    if (kfd == -2) kfd = open("/dev/kmsg", O_WRONLY);
+    if (kfd < 0) return;
+    char buf[256];
+    va_list ap;
+    va_start(ap, fmt);
+    int n = vsnprintf(buf, sizeof(buf), fmt, ap);
+    va_end(ap);
+    if (n > 0) write(kfd, buf, (size_t)n);
+}
+
 int IMP_ISP_EnableTuning(void)
 {
     ISPDevice *isp = (ISPDevice *)gISP;
     uint8_t *isp_b = (uint8_t *)isp;
 
-    /* Hard-traced diagnostic — bypass imp_log_fun so output shows even if
-     * libsysutils log shim didn't get loaded. Goes to stderr which rvd's
-     * init script tees into syslog. */
-    fprintf(stderr, "[libimp/ISP] EnableTuning: gISP=%p\n", (void *)isp);
+    kmsg_trace("libimp/ISP: EnableTuning entry gISP=%p\n", (void *)isp);
     if (isp != NULL)
-        fprintf(stderr, "[libimp/ISP] EnableTuning: opened=%u tuning=%p\n",
-                isp->opened, *(void **)(isp_b + 0x9c));
+        kmsg_trace("libimp/ISP: opened=%u tuning=%p\n",
+                   isp->opened, *(void **)(isp_b + 0x9c));
 
     if (isp == NULL) {
-        fprintf(stderr, "[libimp/ISP] EnableTuning: gISP is NULL — IMP_ISP_Open was not called\n");
+        kmsg_trace("libimp/ISP: EnableTuning FAILED — gISP NULL (Open not called)\n");
         return -1;
     }
     if (*(void **)(isp_b + 0x9c) != NULL) return 0;  /* already enabled */
@@ -2544,27 +2558,22 @@ int IMP_ISP_EnableTuning(void)
     strcpy((char *)(isp_b + 0x78), "/dev/isp-m0");
     int32_t tfd = open((char *)(isp_b + 0x78), O_RDWR);
     int32_t err1 = (tfd < 0) ? errno : 0;
-    fprintf(stderr, "[libimp/ISP] open(/dev/isp-m0, O_RDWR) = %d (errno=%d %s)\n",
-            tfd, err1, err1 ? strerror(err1) : "ok");
+    kmsg_trace("libimp/ISP: open(/dev/isp-m0, O_RDWR) = %d (errno=%d %s)\n",
+               tfd, err1, err1 ? strerror(err1) : "ok");
     if (tfd < 0) {
         strcpy((char *)(isp_b + 0x78), "/dev/isp-w02");
         tfd = open((char *)(isp_b + 0x78), O_RDWR);
         int32_t err2 = (tfd < 0) ? errno : 0;
-        fprintf(stderr, "[libimp/ISP] open(/dev/isp-w02, O_RDWR) = %d (errno=%d %s)\n",
-                tfd, err2, err2 ? strerror(err2) : "ok");
+        kmsg_trace("libimp/ISP: open(/dev/isp-w02, O_RDWR) = %d (errno=%d %s)\n",
+                   tfd, err2, err2 ? strerror(err2) : "ok");
     }
     *(int32_t *)(isp_b + 0x98) = tfd;
     if (tfd < 0) {
-        fprintf(stderr, "[libimp/ISP] EnableTuning: FAILED — could not open any tuning node\n");
-        imp_log_fun(6, IMP_Log_Get_Option(), 2, "IMP-ISP",
-            "/home/user/git/proj/sdk-lv3/src/imp/isp/isp_tseries.c", 0x476,
-            "IMP_ISP_EnableTuning",
-            "Cannot open %s (errno=%d): %s\n",
-            isp_b + 0x78, errno, strerror(errno));
+        kmsg_trace("libimp/ISP: EnableTuning FAILED — could not open any tuning node\n");
         return -1;
     }
-    fprintf(stderr, "[libimp/ISP] EnableTuning: opened %s as fd=%d\n",
-            (char *)(isp_b + 0x78), tfd);
+    kmsg_trace("libimp/ISP: EnableTuning opened %s as fd=%d\n",
+               (char *)(isp_b + 0x78), tfd);
     void *tune = calloc(0x1c, 1);
     if (tune == NULL) { close(tfd); return -1; }
     *(void **)(isp_b + 0x9c) = tune;
