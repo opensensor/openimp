@@ -518,13 +518,21 @@ int32_t IMP_Encoder_SetDefaultParam(int32_t *arg1, uint32_t arg2, int32_t arg3,
 
     arg1[3] = 0x188;
     arg1[4] = 0x40028;
-    /* Stock decomp: *(arg1 + 6) = arg4 (width) — 32-bit at offset 0x18.
-     * Earlier port mistakenly cast to (int8_t *), truncating 1920→0x80.
-     * channel_encoder_init then saw width=0 on the encAttr halfword and
-     * AL_Codec_Encode_Create rejected the resolution. Write all 32 bits. */
-    arg1[6] = arg4;
-    /* arg1[2].w = height (16-bit). 32-bit write also works for height≤65535. */
-    arg1[2] = arg5;
+    /* Stock decomp `*(arg1 + 6) = arg4` is a uint16_t store at BYTE
+     * offset 6, not a 32-bit store at int-index 6. channel_encoder_init
+     * reads width via *(arg1 + 0x9e) where arg1 there is channel_state
+     * and encAttr starts at 0x98, so encAttr[6] must hold width as u16.
+     *
+     * Layout of chnAttr (first 20 bytes):
+     *   [0..3] profile (u32)
+     *   [4]    uLevel (u8)
+     *   [5]    uTier (u8)
+     *   [6..7] width (u16)   ← THIS is what SetDefaultParam sets
+     *   [8..9] height (u16)  ← arg1[2].w = arg5
+     *   ...
+     */
+    *(uint16_t *)((char *)arg1 + 6) = (uint16_t)arg4;   /* width */
+    *(uint16_t *)((char *)arg1 + 8) = (uint16_t)arg5;   /* height */
     arg1[5] = 0x9c;
     if (s7_1 != 0) {
         arg1[0xb] = (int32_t)s1_1;
