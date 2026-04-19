@@ -1299,20 +1299,25 @@ int32_t channel_encoder_init(void *arg1)
     memset(codec_params, 0, sizeof(codec_params));
     AL_Codec_Encode_SetDefaultParam(codec_params);
 
-    /* Copy the encAttr fields the decomp packs at var_7c0..var_6d4. */
-    *(int32_t *)(codec_params + 0x00) = *(int32_t *)(p + 0x00);
-    *(uint16_t *)(codec_params + 0x10) = *(uint16_t *)(p + 0x9e);
-    *(uint16_t *)(codec_params + 0x12) = *(uint16_t *)(p + 0x28 * 4);
-    *(uint16_t *)(codec_params + 0x14) = *(uint16_t *)(p + 0x9e);
-    *(uint16_t *)(codec_params + 0x16) = *(uint16_t *)(p + 0x28 * 4);
-    *(int32_t *)(codec_params + 0x28) = *(int32_t *)(p + 0x26 * 4);
-    *(uint8_t  *)(codec_params + 0x2c) = *(uint8_t  *)(p + 0x27 * 4);
-    *(uint8_t  *)(codec_params + 0x2d) = *(uint8_t  *)(p + 0x9d);
-    *(int32_t *)(codec_params + 0x20) = *(int32_t *)(p + 0x29 * 4);
-    *(int32_t *)(codec_params + 0x38) = *(int32_t *)(p + 0x2a * 4);
-    *(int32_t *)(codec_params + 0x3c) = *(int32_t *)(p + 0x2b * 4);
-    *(int32_t *)(codec_params + 0x44) = *(int32_t *)(p + 0x8c * 4);
-    memcpy(codec_params + 0x50, "NV12", 4);
+    /* Copy the encAttr fields into codec_params with the offset layout
+     * AL_Codec_Encode_Create actually reads (arg2[0x8]=width,
+     * arg2[0xa]=height, arg2[0x20]=profile, arg2[0x24]=level etc.).
+     * My earlier offsets (0x10/0x12/0x28/0x2c) were off by 8 — stock's
+     * var_7c0..var_6d4 names are FP-relative but the layout from
+     * codec_params[0] starts 8 bytes lower than I assumed. */
+    *(int32_t  *)(codec_params + 0x00) = *(int32_t  *)(p + 0x26 * 4);   /* profile */
+    *(uint16_t *)(codec_params + 0x08) = *(uint16_t *)(p + 0x9e);       /* width */
+    *(uint16_t *)(codec_params + 0x0a) = *(uint16_t *)(p + 0x28 * 4);   /* height */
+    *(uint16_t *)(codec_params + 0x0c) = *(uint16_t *)(p + 0x9e);       /* width dup */
+    *(uint16_t *)(codec_params + 0x0e) = *(uint16_t *)(p + 0x28 * 4);   /* height dup */
+    *(int32_t  *)(codec_params + 0x18) = *(int32_t  *)(p + 0x29 * 4);   /* picFormat */
+    *(int32_t  *)(codec_params + 0x20) = *(int32_t  *)(p + 0x26 * 4);   /* profile */
+    *(uint8_t  *)(codec_params + 0x24) = *(uint8_t  *)(p + 0x27 * 4);   /* uLevel */
+    *(uint8_t  *)(codec_params + 0x25) = *(uint8_t  *)(p + 0x9d);       /* uTier */
+    *(int32_t  *)(codec_params + 0x30) = *(int32_t  *)(p + 0x2a * 4);   /* encOptions */
+    *(int32_t  *)(codec_params + 0x34) = *(int32_t  *)(p + 0x2b * 4);   /* encTools */
+    *(int32_t  *)(codec_params + 0x3c) = *(int32_t  *)(p + 0x8c * 4);
+    memcpy(codec_params + 0x48, "NV12", 4);
 
     /* -- (2) + (3) FPS reduce + fraction pack --------------------------- */
     c_reduce_fraction((int32_t *)(p + 0x3a * 4), (int32_t *)(p + 0x3b * 4));
