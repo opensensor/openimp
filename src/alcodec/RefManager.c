@@ -278,7 +278,7 @@ int32_t AL_RefMngr_PushBuffer(void *arg1, int32_t arg2, int32_t arg3, uint32_t a
 
         if (v0 == 0x14) {
             result = 0;
-        } else if (arg4 >= (uint32_t)*(int32_t *)(ctx + 0x778U)) {
+        } else if (arg4 < (uint32_t)*(int32_t *)(ctx + 0x778U)) {
             result = 0;
         } else {
             int32_t a0_1 = v0 << 3;

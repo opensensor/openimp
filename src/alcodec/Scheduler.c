@@ -1,5 +1,8 @@
 #include <stdint.h>
+#include <stdio.h>
 #include <string.h>
+#include <unistd.h>
+#include <fcntl.h>
 
 #include "alcodec/al_buffer.h"
 #include "alcodec/al_rtos.h"
@@ -27,6 +30,16 @@ typedef struct StaticFifoCompat {
 #define WRITE_U16(base, off, val) (*(uint16_t *)((uint8_t *)(base) + (off)) = (uint16_t)(val))
 #define WRITE_U32(base, off, val) (*(uint32_t *)((uint8_t *)(base) + (off)) = (uint32_t)(val))
 #define WRITE_S32(base, off, val) (*(int32_t *)((uint8_t *)(base) + (off)) = (int32_t)(val))
+
+#define ENC_KMSG(fmt, ...) do { \
+    int _kfd = open("/dev/kmsg", O_WRONLY); \
+    if (_kfd >= 0) { \
+        char _b[224]; \
+        int _n = snprintf(_b, sizeof(_b), "libimp/ENC: " fmt "\n", ##__VA_ARGS__); \
+        if (_n > 0) { write(_kfd, _b, _n > (int)sizeof(_b) ? (int)sizeof(_b) : _n); } \
+        close(_kfd); \
+    } \
+} while (0)
 
 void StaticFifo_Init(StaticFifoCompat *arg1, int32_t *arg2, int32_t arg3); /* forward decl, ported by T<N> later */
 int32_t StaticFifo_Queue(StaticFifoCompat *arg1, int32_t arg2); /* forward decl, ported by T<N> later */
@@ -65,6 +78,11 @@ int32_t AL_SrcReorder_EndSrcBuffer(void *arg1, int32_t arg2); /* forward decl, p
 extern void AL_SrcReorder_Cancel(void *arg1, int32_t arg2);
 int32_t AL_IntermMngr_ReleaseBuffer(void *arg1, void *arg2); /* forward decl, ported by T<N> later */
 extern int32_t AL_EncCore_SetJpegInterrupt(void *arg1);
+
+typedef struct AL_TIntermBufferCompat {
+    int32_t addr;
+    int32_t location;
+} AL_TIntermBufferCompat;
 
 uint32_t InitMERange(int32_t arg1, void *arg2)
 {
@@ -820,7 +838,8 @@ uint32_t AL_CoreConstraintEnc_GetExpectedNumberOfCores(void *arg1, void *arg2); 
 int32_t AL_CoreConstraintEnc_GetResources(void *arg1, int32_t arg2, uint32_t arg3, uint32_t arg4, uint32_t arg5,
                                           uint32_t arg6, uint32_t arg7); /* forward decl */
 int32_t AL_SrcReorder_GetWaitingSrcBufferCount(void *arg1); /* forward decl, ported by T<N> later */
-int32_t AL_RefMngr_PushBuffer(void *arg1); /* forward decl, ported by T<N> later */
+int32_t AL_RefMngr_PushBuffer(void *arg1, int32_t arg2, int32_t arg3, uint32_t arg4, int32_t arg5,
+                              int32_t arg6); /* forward decl, ported by T<N> later */
 int32_t AL_StreamMngr_AddBuffer(void *arg1, void *arg2); /* forward decl, ported by T<N> later */
 int32_t AL_IntermMngr_GetEp1Location(void *arg1, void *arg2); /* forward decl, ported by T<N> later */
 int32_t AL_GetAllocSizeEP1(void); /* forward decl, ported by T<N> later */
@@ -1656,9 +1675,11 @@ int32_t AL_EncChannel_GetBufResources(int32_t *arg1, void *arg2)
     return (int32_t)(intptr_t)arg1;
 }
 
-int32_t AL_EncChannel_PushRefBuffer(void *arg1)
+int32_t AL_EncChannel_PushRefBuffer(void *arg1, int32_t arg2, int32_t arg3, int32_t arg4, int32_t arg5,
+                                    int32_t arg6, void *arg7)
 {
-    return AL_RefMngr_PushBuffer((uint8_t *)arg1 + 0x22c8);
+    (void)arg7;
+    return AL_RefMngr_PushBuffer((uint8_t *)arg1 + 0x22c8, arg2, arg3, (uint32_t)arg4, arg5, arg6);
 }
 
 int32_t AL_EncChannel_PushStreamBuffer(void *arg1, int32_t arg2, int32_t arg3, int32_t arg4, int32_t arg5,
@@ -1700,21 +1721,27 @@ int32_t AL_EncChannel_PushStreamBuffer(void *arg1, int32_t arg2, int32_t arg3, i
 int32_t AL_EncChannel_PushIntermBuffer(void *arg1, int32_t arg2, int32_t arg3)
 {
     void *var_28 = &_gp;
-    int32_t var_20 = arg2;
-    int32_t var_1c = arg3;
+    AL_TIntermBufferCompat interm = { arg2, arg3 };
     int32_t v0;
     int32_t s2_1;
+    int32_t ep1_size;
 
     (void)var_28;
-    v0 = AL_IntermMngr_GetEp1Location((uint8_t *)arg1 + 0x2a54, &var_20);
+    v0 = AL_IntermMngr_GetEp1Location((uint8_t *)arg1 + 0x2a54, &interm);
     s2_1 = READ_S32(arg1, 0x35c0);
+    ep1_size = AL_GetAllocSizeEP1();
+    ENC_KMSG("PushInterm chctx=%p in_phys=0x%x in_virt=0x%x ep1_dst=0x%x tpl=0x%x ep1_size=%d",
+             arg1, arg2, arg3, v0, s2_1, ep1_size);
     if (s2_1 == 0) {
-        Rtos_Memset((void *)(intptr_t)v0, 0, AL_GetAllocSizeEP1());
+        ENC_KMSG("PushInterm memset dst=0x%x size=%d", v0, ep1_size);
+        Rtos_Memset((void *)(intptr_t)v0, 0, ep1_size);
     } else {
-        Rtos_Memcpy((void *)(intptr_t)v0, (void *)(intptr_t)s2_1, AL_GetAllocSizeEP1());
+        ENC_KMSG("PushInterm memcpy dst=0x%x src=0x%x size=%d", v0, s2_1, ep1_size);
+        Rtos_Memcpy((void *)(intptr_t)v0, (void *)(intptr_t)s2_1, ep1_size);
     }
 
-    return AL_IntermMngr_AddBuffer((uint8_t *)arg1 + 0x2a54, &var_20);
+    ENC_KMSG("PushInterm post-copy addbuf phys=0x%x virt=0x%x", interm.addr, interm.location);
+    return AL_IntermMngr_AddBuffer((uint8_t *)arg1 + 0x2a54, &interm);
 }
 
 int32_t AL_EncChannel_PushNewFrame(void *arg1, int32_t *arg2, int32_t *arg3, int32_t *arg4)

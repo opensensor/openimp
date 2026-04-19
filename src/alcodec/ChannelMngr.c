@@ -393,7 +393,20 @@ void *GetChMngrCtx(int32_t *arg1, char arg2)
     if (a1_3 < 0x20 && arg1[(a1_3 << 2 >> 2) + 3] != 0) {
         ChMngrFactoryCompat *factory = (ChMngrFactoryCompat *)(intptr_t)arg1[0x12e8 / 4];
 
-        return factory->vtable->get(factory, a1_3);
+        if (factory != NULL && factory->vtable != NULL && factory->vtable->get != NULL) {
+            void *ctx = factory->vtable->get(factory, a1_3);
+
+            if (ctx != NULL) {
+                return ctx;
+            }
+        }
+
+        /* Fallback for the partially-ported scheduler: the stock path goes
+         * through a channel-manager factory, but the translated tree does not
+         * currently provide a working implementation. The scheduler also keeps
+         * a per-channel slot array at arg1[3..], so if the factory is absent
+         * or returns NULL, treat that slot as the direct channel context. */
+        return (void *)(intptr_t)arg1[(a1_3 << 2 >> 2) + 3];
     }
 
     return 0;
@@ -1091,15 +1104,24 @@ static void *CreateChMngrCtx(int32_t *arg1, int32_t arg2)
 {
     ChMngrFactoryCompat *a0 = (ChMngrFactoryCompat *)(intptr_t)arg1[0x12e8 / 4];
     void *var_18 = &_gp;
-    void *t9 = (void *)a0->vtable->create;
+    void *t9 = NULL;
 
     (void)var_18;
-    if (t9 == 0) {
-        arg1[(arg2 << 2 >> 2) + 3] = 0;
-        return GetChMngrCtx(arg1, (char)arg2);
+    if (a0 != NULL && a0->vtable != NULL) {
+        t9 = (void *)a0->vtable->create;
     }
 
-    arg1[(arg2 << 2 >> 2) + 3] = (int32_t)(intptr_t)a0->vtable->create(a0, (void *)0x12fd8);
+    if (t9 != 0) {
+        arg1[(arg2 << 2 >> 2) + 3] = (int32_t)(intptr_t)a0->vtable->create(a0, (void *)0x12fd8);
+        if (arg1[(arg2 << 2 >> 2) + 3] != 0) {
+            return GetChMngrCtx(arg1, (char)arg2);
+        }
+    }
+
+    arg1[(arg2 << 2 >> 2) + 3] = (int32_t)(intptr_t)Rtos_Malloc(0x12fd8);
+    if (arg1[(arg2 << 2 >> 2) + 3] != 0) {
+        Rtos_Memset((void *)(intptr_t)arg1[(arg2 << 2 >> 2) + 3], 0, 0x12fd8);
+    }
     return GetChMngrCtx(arg1, (char)arg2);
 }
 
@@ -1176,7 +1198,13 @@ int32_t AL_SchedulerEnc_Init(int32_t *arg1, int32_t *arg2, int32_t *arg3, int32_
             int32_t s6_1 = (int32_t)i_3 << 2;
 
             AL_CoreState_Init((AL_CoreStateCompat *)&arg1[(i_3 * 0xf + s6_1) * 2 + 0x175], VAR_38, VAR_3C);
-            AL_EncCore_Init(&arg1[s6_1 + (i_3 << 6) + 0x8c], &var_30, (void *)(intptr_t)arg1[2], (char)i_3,
+            /* Core-manager records live in the compact 0x44-byte table at
+             * scheduler+0x8c. Most runtime paths (getCompatibleCores,
+             * AL_EncChannel_Init, Process, DeInit) index that region with
+             * byte stride 0x44. The earlier port mirrored HLIL's typed
+             * `arg1 + ... + 0x8c` expression literally as int32_t indexing,
+             * which shifted init to 0x230 and left the real core table zero. */
+            AL_EncCore_Init((uint8_t *)arg1 + 0x8c + i_3 * 0x44, &var_30, (void *)(intptr_t)arg1[2], (char)i_3,
                             (int32_t)(intptr_t)s2_2);
             addClock(arg1, (int32_t)i_3);
             i_1 = (uint32_t)((uint8_t)i_1 + 1U);
@@ -1195,7 +1223,7 @@ int32_t AL_SchedulerEnc_Init(int32_t *arg1, int32_t *arg2, int32_t *arg3, int32_
         (void)var_50_2;
         (void)var_4c_1;
         AL_CoreState_Init((AL_CoreStateCompat *)&arg1[(s4_1 * 0xf + s5_1) * 2 + 0x175], VAR_38, VAR_3C);
-        AL_EncJpegCore_Init(&arg1[s5_1 + (s4_1 << 6) + 0x8c], &var_30, (void *)(intptr_t)arg1[2], 0, (char)s4_1,
+        AL_EncJpegCore_Init((uint8_t *)arg1 + 0x8c + s4_1 * 0x44, &var_30, (void *)(intptr_t)arg1[2], 0, (char)s4_1,
                             (int32_t)(intptr_t)s2_2);
         addClock(arg1, s4_1);
     }

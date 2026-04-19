@@ -180,14 +180,19 @@ int32_t allocateBuffers(void *arg1, AL_TAllocator *arg2, int32_t arg3, int32_t a
             const AL_TAllocatorVtable *v0_2 = arg2->vtable;
             void *v0_1;
 
+            SCH_KMSG("allocBuffers[%s] iter=%d/%d size=%d next_slot=%d", arg5, s0_1 + 1, arg3, arg4,
+                     READ_S32(arg1, 0x50));
+
             if (v0_2->AllocNamed != NULL) {
                 s0_1 += 1;
                 v0_1 = ((void *(*)(AL_TAllocator *, int32_t, char *))(intptr_t)v0_2->AllocNamed)(arg2, arg4, arg5);
+                SCH_KMSG("allocBuffers[%s] AllocNamed -> %p", arg5, v0_1);
                 if (v0_1 == NULL)
                     return 0;
             } else {
                 s0_1 += 1;
                 v0_1 = ((void *(*)(AL_TAllocator *, int32_t, char *))(intptr_t)v0_2->Alloc)(arg2, arg4, arg5);
+                SCH_KMSG("allocBuffers[%s] Alloc -> %p", arg5, v0_1);
                 if (v0_1 == NULL)
                     return 0;
             }
@@ -197,10 +202,12 @@ int32_t allocateBuffers(void *arg1, AL_TAllocator *arg2, int32_t arg3, int32_t a
 
                 WRITE_S32(arg1, 0x50, v1_1 + 1);
                 *(int32_t *)((uint8_t *)arg1 + ((uint32_t)v1_1 << 2)) = (int32_t)(intptr_t)v0_1;
+                SCH_KMSG("allocBuffers[%s] stored slot=%d ptr=%p new_count=%d", arg5, v1_1, v0_1, v1_1 + 1);
             }
         } while (arg3 != s0_1);
     }
 
+    SCH_KMSG("allocBuffers[%s] complete count=%d", arg5, arg3);
     return 1;
 }
 
@@ -446,6 +453,7 @@ int32_t AL_SchedulerCpu_CreateChannel(int32_t **arg1, int32_t *arg2, void *arg3,
                 var_70_2 = "interm";
                 SCH_KMSG("SchCpu.CC pre-alloc(interm)");
                 if (var_38_1(s3_2, (AL_TAllocator *)s6_1, var_50, var_4c, "interm") != 0) {
+                    SCH_KMSG("SchCpu.CC post-alloc(interm)");
                     int32_t v1_6 = v0[0];
                     int32_t v0_14 = var_50 + s7_1;
                     AL_TAllocator *s6_2 = (AL_TAllocator *)READ_S32(arg2, 0x12f0);
@@ -454,12 +462,16 @@ int32_t AL_SchedulerCpu_CreateChannel(int32_t **arg1, int32_t *arg2, void *arg3,
                     if (v0_14 > 0) {
                         do {
                             int32_t fp_2 = *s3_2;
+                            SCH_KMSG("SchCpu.CC buf-loop idx=%d/%d raw=%p", s2_1, v0_14, (void *)(intptr_t)fp_2);
                             int32_t v0_16 =
                                 (int32_t)s6_2->vtable->GetPhysicalAddr(s6_2, (void *)(intptr_t)fp_2);
                             int32_t v0_17 = (int32_t)s6_2->vtable->GetVirtualAddr(s6_2, (void *)(intptr_t)fp_2);
+                            SCH_KMSG("SchCpu.CC buf-loop idx=%d phys=0x%x virt=0x%x", s2_1, v0_16, v0_17);
 
                             if (s2_1 >= s7_1) {
+                                SCH_KMSG("SchCpu.CC pre-PutInterm idx=%d chan=%d", s2_1, v1_6);
                                 AL_SchedulerEnc_PutIntermBuffer(arg2 + 1, (char)v1_6, v0_16, v0_17);
+                                SCH_KMSG("SchCpu.CC post-PutInterm idx=%d chan=%d", s2_1, v1_6);
                             } else {
                                 int32_t var_68_2 = fp_2;
                                 int32_t var_64_1 = 0;
@@ -467,8 +479,10 @@ int32_t AL_SchedulerCpu_CreateChannel(int32_t **arg1, int32_t *arg2, void *arg3,
                                 (void)var_68_2;
                                 (void)var_64_1;
                                 var_70_2 = (char *)(intptr_t)var_54;
+                                SCH_KMSG("SchCpu.CC pre-PutRef idx=%d chan=%d stride=%d", s2_1, v1_6, var_54);
                                 AL_SchedulerEnc_PutRefBuffer(arg2 + 1, (char)v1_6, v0_16, v0_17, (int32_t)var_70_2,
                                                              0);
+                                SCH_KMSG("SchCpu.CC post-PutRef idx=%d chan=%d", s2_1, v1_6);
                             }
 
                             s2_1 += 1;
@@ -521,7 +535,13 @@ int32_t *AL_SchedulerCpu_Create(int32_t arg1, int32_t *arg2)
 
     result[0] = (int32_t)(intptr_t)CpuEncSchedulerVtable;
     Rtos_Memset(result + 0x4c0, 0, 0xa80);
-    if (AL_SchedulerEnc_Init(result + 1, (int32_t *)AL_GetDefaultAllocator(), arg2, (int32_t *)(intptr_t)arg1, 1,
+    /* The decompiler shows a literal `1` here, but the live scheduler state
+     * demonstrates that a single instantiated core cannot satisfy the stock
+     * resource model for 1080p25 AVC on this AVPU: expected cores=5,
+     * per-core budget=211764, requested budget=1000000. The board is also
+     * created with `5` AVPU IRQ slots. Use 5 scheduler cores so the compact
+     * core table and budget accounting reflect the hardware topology. */
+    if (AL_SchedulerEnc_Init(result + 1, (int32_t *)AL_GetDefaultAllocator(), arg2, (int32_t *)(intptr_t)arg1, 5,
                              0x2faf0800) >= 0) {
         return result;
     }
