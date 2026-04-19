@@ -226,36 +226,26 @@ int32_t g_HwTimer = 0;
 
 /* ----- halfword pack/unpack helpers ---------------------------------
  *
- * Thingino's stock libsysutils.so on this board does NOT export
- * _setLeftPart32/_setRightPart32/_getLeftPart32/_getRightPart32. The
- * dynamic loader leaves those GOT slots NULL, so any call through them
- * jumps to PC=0 and the process dies with SIGSEGV. On-device test:
- * rvd's IMP_Encoder_CreateChn crashed at libimp.so+0x31994 (the
- * instruction after a jalr t9 dispatching one of these helpers).
+ * Thingino's stock libsysutils.so doesn't export these; define inside
+ * libimp.so so we don't depend on stock.
  *
- * Define them INSIDE libimp.so so they're self-contained. Pure shifts
- * match the semantics every caller in the port expects.
- */
+ * IMPORTANT: These are IDENTITY passthrough in the stock binary, not
+ * shifts. Call sites look like:
+ *    _setLeftPart32(arg1[0]);       // side-effect only, result discarded
+ *    v = _setRightPart32(arg1[0]);  // v = arg1[0] (full 32-bit)
+ * then v gets stored as a 32-bit word. The "halfword" naming is a
+ * misnomer from the stock SDK's MIPS ext/ins intrinsic prototypes —
+ * the actual semantics are pass-through.
+ *
+ * Earlier implementations used (x & 0xFFFF) which truncated 32-bit
+ * encAttr values on the way through IMP_Encoder_CreateChn's copy loop.
+ * Constants like 0x40028 and width=1920 got mangled; AL_Codec_Encode_
+ * Create then rejected the codec_params with "invalid resolution". */
 
-uint32_t _setLeftPart32(uint32_t half)
-{
-    return (half & 0xFFFF) << 16;
-}
-
-uint32_t _setRightPart32(uint32_t half)
-{
-    return half & 0xFFFF;
-}
-
-uint32_t _getLeftPart32(uint32_t word)
-{
-    return (word >> 16) & 0xFFFF;
-}
-
-uint32_t _getRightPart32(uint32_t word)
-{
-    return word & 0xFFFF;
-}
+uint32_t _setLeftPart32(uint32_t x)  { return x; }
+uint32_t _setRightPart32(uint32_t x) { return x; }
+uint32_t _getLeftPart32(uint32_t x)  { return x; }
+uint32_t _getRightPart32(uint32_t x) { return x; }
 
 /* =====================================================================
  * Encoder internal helpers — ported from libimp.so HLIL (T95 follow-up)
