@@ -2,6 +2,8 @@
 #include <stddef.h>
 #include <stdio.h>
 #include <string.h>
+#include <fcntl.h>
+#include <unistd.h>
 
 #include "alcodec/al_fourcc.h"
 #include "alcodec/al_rtos.h"
@@ -1062,6 +1064,30 @@ label_4ea68:
         if (arg3 != NULL) {
             fwrite("!! Invalid parameter: VideoMode\r\n", 1, 0x21,
                    (FILE *)arg3);
+        }
+    }
+    {
+        int kfd = open("/dev/kmsg", O_WRONLY);
+        if (kfd >= 0) {
+            char b[256];
+            int n = snprintf(b, sizeof(b),
+                "libimp/ENC: CheckValidity return s1=%d  "
+                "profile@0x1c=0x%x level@0x20=%u MaxCuSize@0x4e=%u "
+                "MinCuSize@0x4f=%u v0_5@0x1f=%u pic@0x10=0x%x "
+                "bitdepth_a0b=%u,%u w@0x04=%u w@0x08=%u\n",
+                (int)s1,
+                (unsigned)read_s32(arg2, 0x1c),
+                (unsigned)read_u8(arg2, 0x20),
+                (unsigned)read_u8(arg2, 0x4e),
+                (unsigned)read_u8(arg2, 0x4f),
+                (unsigned)read_u8(arg2, 0x1f),
+                (unsigned)read_s32(arg2, 0x10),
+                (unsigned)((read_s32(arg2, 0x10) >> 4) & 0xf),
+                (unsigned)(read_s32(arg2, 0x10) & 0xf),
+                (unsigned)read_u16(arg2, 0x04),
+                (unsigned)read_u16(arg2, 0x08));
+            if (n > 0) write(kfd, b, n);
+            close(kfd);
         }
     }
     return s1;
