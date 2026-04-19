@@ -43,9 +43,31 @@ int IMP_ISP_Open(void)
 {
     int32_t result = 0;
 
+    /* Early kmsg trace — confirm this port's IMP_ISP_Open is the one invoked. */
+    {
+        int kfd = open("/dev/kmsg", O_WRONLY);
+        if (kfd >= 0) {
+            char buf[128];
+            int n = snprintf(buf, sizeof(buf),
+                "libimp/ISP: Open entry, gISP=%p (before)\n", (void *)gISP);
+            if (n > 0) write(kfd, buf, (size_t)n);
+            close(kfd);
+        }
+    }
+
     if (gISP == NULL) {
         void *v0_2 = calloc(0xe0, 1);
         gISP = v0_2;
+        {
+            int kfd = open("/dev/kmsg", O_WRONLY);
+            if (kfd >= 0) {
+                char buf[128];
+                int n = snprintf(buf, sizeof(buf),
+                    "libimp/ISP: Open calloc'd gISP=%p\n", (void *)v0_2);
+                if (n > 0) write(kfd, buf, (size_t)n);
+                close(kfd);
+            }
+        }
         if (v0_2 == NULL) {
             result = -1;
             imp_log_fun(6, IMP_Log_Get_Option(), 2, "IMP-ISP",
@@ -2221,7 +2243,9 @@ int IMP_ISP_EnableSensor(void)
     ISPDevice *isp;
     int32_t sensor_index = -1;
 
+    kmsg_trace("libimp/ISP: EnableSensor entry gISP=%p\n", (void *)gISP);
     if (tseries_get_isp(&isp) != 0) {
+        kmsg_trace("libimp/ISP: EnableSensor tseries_get_isp failed\n");
         return -1;
     }
 
@@ -2338,6 +2362,7 @@ int IMP_ISP_AddSensor(IMPSensorInfo *pinfo)
 {
     ISPDevice *isp = (ISPDevice *)gISP;
     uint8_t *isp_b = (uint8_t *)isp;
+    kmsg_trace("libimp/ISP: AddSensor entry gISP=%p\n", (void *)isp);
     char *name = (char *)pinfo;
 
     if (isp == NULL) {
