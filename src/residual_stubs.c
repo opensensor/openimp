@@ -1289,25 +1289,43 @@ int32_t channel_encoder_init(void *arg1)
     memset(codec_params, 0, sizeof(codec_params));
     AL_Codec_Encode_SetDefaultParam(codec_params);
 
-    /* Copy the encAttr fields into codec_params with the offset layout
-     * AL_Codec_Encode_Create actually reads (arg2[0x8]=width,
-     * arg2[0xa]=height, arg2[0x20]=profile, arg2[0x24]=level etc.).
-     * My earlier offsets (0x10/0x12/0x28/0x2c) were off by 8 — stock's
-     * var_7c0..var_6d4 names are FP-relative but the layout from
-     * codec_params[0] starts 8 bytes lower than I assumed. */
-    *(int32_t  *)(codec_params + 0x00) = *(int32_t  *)(p + 0x26 * 4);   /* profile */
-    *(uint16_t *)(codec_params + 0x08) = *(uint16_t *)(p + 0x9e);       /* width */
-    *(uint16_t *)(codec_params + 0x0a) = *(uint16_t *)(p + 0x28 * 4);   /* height */
-    *(uint16_t *)(codec_params + 0x0c) = *(uint16_t *)(p + 0x9e);       /* width dup */
-    *(uint16_t *)(codec_params + 0x0e) = *(uint16_t *)(p + 0x28 * 4);   /* height dup */
-    *(int32_t  *)(codec_params + 0x18) = *(int32_t  *)(p + 0x29 * 4);   /* picFormat */
-    *(int32_t  *)(codec_params + 0x20) = *(int32_t  *)(p + 0x26 * 4);   /* profile */
-    *(uint8_t  *)(codec_params + 0x24) = *(uint8_t  *)(p + 0x27 * 4);   /* uLevel */
-    *(uint8_t  *)(codec_params + 0x25) = *(uint8_t  *)(p + 0x9d);       /* uTier */
-    *(int32_t  *)(codec_params + 0x30) = *(int32_t  *)(p + 0x2a * 4);   /* encOptions */
-    *(int32_t  *)(codec_params + 0x34) = *(int32_t  *)(p + 0x2b * 4);   /* encTools */
-    *(int32_t  *)(codec_params + 0x3c) = *(int32_t  *)(p + 0x8c * 4);
-    memcpy(codec_params + 0x48, "NV12", 4);
+    /* Copy encAttr fields into codec_params. Offsets derived from stock
+     * channel_encoder_init HLIL var_7c0 (= codec_params[0]) relative
+     * naming; mapping is `offset_in_cp = 0x7c0 - var_X`:
+     *   var_7c0 (0x00)  profile
+     *   var_7b8 (0x08)  width      var_7b6 (0x0a)  height
+     *   var_7b4 (0x0c)  width dup  var_7b2 (0x0e)  height dup
+     *   var_7ac (0x14)  ePicFormat  <-- NOT 0x18 (earlier bug)
+     *   var_7a0 (0x20)  profile
+     *   var_79c (0x24)  uLevel
+     *   var_79b (0x25)  uTier
+     *   var_790 (0x30)  encOptions
+     *   var_78c (0x34)  encTools
+     *   var_6d4 (0xec)  arg1[0x8c] field
+     *   var_68  (0x758) (misc)
+     *   var_60  (0x760) = 1
+     *   var_5c  (0x764) "NV12"  <-- NOT 0x48 (earlier bug)
+     *   var_58  (0x768) = 1
+     *   var_57  (0x769) = 0
+     *   var_54  (0x76c) = 0x10
+     */
+    *(int32_t  *)(codec_params + 0x00)  = *(int32_t  *)(p + 0x26 * 4); /* profile */
+    *(uint16_t *)(codec_params + 0x08)  = *(uint16_t *)(p + 0x9e);     /* width */
+    *(uint16_t *)(codec_params + 0x0a)  = *(uint16_t *)(p + 0x28 * 4); /* height */
+    *(uint16_t *)(codec_params + 0x0c)  = *(uint16_t *)(p + 0x9e);     /* width dup */
+    *(uint16_t *)(codec_params + 0x0e)  = *(uint16_t *)(p + 0x28 * 4); /* height dup */
+    *(int32_t  *)(codec_params + 0x14)  = *(int32_t  *)(p + 0x29 * 4); /* ePicFormat */
+    *(int32_t  *)(codec_params + 0x20)  = *(int32_t  *)(p + 0x26 * 4); /* profile dup */
+    *(uint8_t  *)(codec_params + 0x24)  = *(uint8_t  *)(p + 0x27 * 4); /* uLevel */
+    *(uint8_t  *)(codec_params + 0x25)  = *(uint8_t  *)(p + 0x9d);     /* uTier */
+    *(int32_t  *)(codec_params + 0x30)  = *(int32_t  *)(p + 0x2a * 4); /* encOptions */
+    *(int32_t  *)(codec_params + 0x34)  = *(int32_t  *)(p + 0x2b * 4); /* encTools */
+    *(int32_t  *)(codec_params + 0xec)  = *(int32_t  *)(p + 0x8c * 4);
+    *(uint8_t  *)(codec_params + 0x760) = 1;
+    *(uint8_t  *)(codec_params + 0x768) = 1;
+    *(uint8_t  *)(codec_params + 0x769) = 0;
+    *(int32_t  *)(codec_params + 0x76c) = 0x10;
+    memcpy(codec_params + 0x764, "NV12", 4);
 
     /* -- (2) + (3) FPS reduce + fraction pack --------------------------- */
     c_reduce_fraction((int32_t *)(p + 0x3a * 4), (int32_t *)(p + 0x3b * 4));
