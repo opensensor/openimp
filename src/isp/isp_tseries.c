@@ -2524,16 +2524,28 @@ int IMP_ISP_EnableTuning(void)
     if (isp == NULL) return -1;
     if (*(void **)(isp_b + 0x9c) != NULL) return 0;  /* already enabled */
 
-    /* Build "/dev/isp-m0" path at +0x78 */
+    /* Build "/dev/isp-m0" path at +0x78.
+     * Stock binary uses open flags 0x80002 (O_RDWR | O_CLOEXEC), but the
+     * Thingino kernel's /dev/isp-m0 driver appears to reject O_CLOEXEC on
+     * this particular module build — the legacy openimp impl used plain
+     * O_RDWR and got the stream on. Prefer the flag value that works on
+     * real hardware over binary-exact. */
     strcpy((char *)(isp_b + 0x78), "/dev/isp-m0");
-    /* Stock binary uses open flags 0x80002 (O_RDWR | O_CLOEXEC); match exactly */
-    int32_t tfd = open((char *)(isp_b + 0x78), 0x80002, 0);
+    int32_t tfd = open((char *)(isp_b + 0x78), O_RDWR);
+    if (tfd < 0) {
+        /* Fallback: some device trees expose the tuning node as /dev/isp-w02
+         * (the second ISP tree). Try it before giving up. */
+        strcpy((char *)(isp_b + 0x78), "/dev/isp-w02");
+        tfd = open((char *)(isp_b + 0x78), O_RDWR);
+    }
     *(int32_t *)(isp_b + 0x98) = tfd;
     if (tfd < 0) {
         imp_log_fun(6, IMP_Log_Get_Option(), 2, "IMP-ISP",
             "/home/user/git/proj/sdk-lv3/src/imp/isp/isp_tseries.c", 0x476,
-            "IMP_ISP_EnableTuning", "Cannot open %s (errno=%d)\n",
-            isp_b + 0x78, errno);
+            "IMP_ISP_EnableTuning",
+            "Cannot open %s (errno=%d): %s\n",
+            isp_b + 0x78, errno, strerror(errno));
+        /* Free any partial state allocated above this point */
         return -1;
     }
     void *tune = calloc(0x1c, 1);
