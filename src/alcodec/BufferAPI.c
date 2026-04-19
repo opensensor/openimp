@@ -255,7 +255,7 @@ void AL_Buffer_Destroy(AL_TBuffer *arg1)
 
     Rtos_GetMutex(buffer_get_mutex(arg1));
     if (*(int32_t *)((uint8_t *)arg1 + BUFFER_REFCOUNT_OFFSET) != 0) {
-        __assert_fail("pBuf->iRefCount == 0", "/home/user/git/proj/sdk-lv3/src/imp/video/alcodec/lib_common/BufferAPI.c", 0xba, "AL_Buffer_Destroy");
+        __assert("pBuf->iRefCount == 0", "/home/user/git/proj/sdk-lv3/src/imp/video/alcodec/lib_common/BufferAPI.c", 0xba, "AL_Buffer_Destroy");
         __builtin_unreachable();
     }
 
@@ -382,7 +382,7 @@ int32_t AL_Buffer_Unref(AL_TBuffer *arg1)
     int32_t result = Rtos_AtomicDecrement(buffer_get_refcount_ptr(arg1));
 
     if (result < 0) {
-        __assert_fail("iRefCount >= 0", "/home/user/git/proj/sdk-lv3/src/imp/video/alcodec/lib_common/BufferAPI.c", 0xf2, "AL_Buffer_Unref");
+        __assert("iRefCount >= 0", "/home/user/git/proj/sdk-lv3/src/imp/video/alcodec/lib_common/BufferAPI.c", 0xf2, "AL_Buffer_Unref");
         __builtin_unreachable();
     }
 

@@ -559,7 +559,7 @@ int32_t reconstruct(int32_t arg1, int32_t arg2, int32_t arg3)
     }
 }
 
-int32_t update(G726State *arg1, int32_t arg2, int32_t arg3, int32_t arg4, int32_t arg5, int32_t arg6, int32_t arg7)
+static int32_t update(G726State *arg1, int32_t arg2, int32_t arg3, int32_t arg4, int32_t arg5, int32_t arg6, int32_t arg7)
 {
     int32_t t5_11 = arg1->yl;
     int32_t t7 = (int32_t)(int16_t)(t5_11 >> 0xf);

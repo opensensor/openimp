@@ -32,7 +32,7 @@ extern char _gp;
 int32_t IMP_Log_Get_Option(void);
 int32_t imp_log_fun(int32_t level, int32_t option, int32_t type, ...);
 
-int32_t continuous_dump_info(void *arg1);
+static int32_t continuous_dump_info(void *arg1);
 int32_t mempool_continuous_dump_info_to_file(void *arg1, char *arg2);
 void *mempool_continuous_init(void *arg1, size_t arg2, char *arg3);
 int32_t mempool_continuous_alloc(void *arg1, int32_t arg2, char *arg3);
@@ -41,7 +41,7 @@ int32_t mempool_continuous_dump(void *arg1);
 int32_t mempool_continuous_dump_to_file(void *arg1);
 int32_t mempool_continuous_deinit(void *arg1);
 
-int32_t continuous_dump_info(void *arg1)
+static int32_t continuous_dump_info(void *arg1)
 {
     ContinuousInfo *s5 = (ContinuousInfo *)arg1;
     int32_t fp = 0;

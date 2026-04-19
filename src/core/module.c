@@ -138,7 +138,7 @@ int32_t add_observer(Module *arg1, Module *arg2, void *arg3)
     return -1;
 }
 
-int32_t update(Module *arg1, void *arg2)
+static int32_t update(Module *arg1, void *arg2)
 {
     int32_t value = *(int32_t *)arg2;
 

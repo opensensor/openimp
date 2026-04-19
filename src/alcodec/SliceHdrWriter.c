@@ -79,7 +79,7 @@ static int32_t writeStartCode(AL_BitStreamLite *arg1, int32_t arg2, int32_t arg3
     return AL_BitStreamLite_PutBits(arg1, 8, 1);
 }
 
-int32_t FlushNAL(AL_BitStreamLite *arg1, int32_t arg2, char arg3, char *arg4, char *arg5, int32_t arg6)
+static int32_t FlushNAL(AL_BitStreamLite *arg1, int32_t arg2, char arg3, char *arg4, char *arg5, int32_t arg6)
 {
     char *s0;
     int32_t result;

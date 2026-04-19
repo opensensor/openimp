@@ -188,7 +188,7 @@ int32_t IsEnc2AlreadyRunning(AL_IpCtrl *arg1, int32_t arg2)
         0x57, "IsEnc2AlreadyRunning"), arg2);
 }
 
-void WriteZoneRegisters(AL_IpCtrl *arg1, int32_t arg2, int32_t arg3, const ZoneDescCompat *arg4)
+static void WriteZoneRegisters(AL_IpCtrl *arg1, int32_t arg2, int32_t arg3, const ZoneDescCompat *arg4)
 {
     uint32_t v1 = arg4->reg_count;
     int32_t s0_1 = arg2 + (int32_t)arg4->reg_base;

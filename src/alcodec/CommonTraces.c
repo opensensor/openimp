@@ -225,7 +225,7 @@ int32_t AL_TraceBuffer(const char *arg1, const char *arg2, const int32_t *arg3, 
     return fclose(stream);
 }
 
-uint32_t WriteZoneRegisters(FILE *arg1, void *arg2, const void *arg3)
+static uint32_t WriteZoneRegisters(FILE *arg1, void *arg2, const void *arg3)
 {
     uint32_t i = ((const ZoneDesc *)arg3)->reg_count;
     int32_t *s0_2 = (int32_t *)((char *)arg2 + (((const ZoneDesc *)arg3)->reg_offset << 2));

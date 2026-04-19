@@ -79,7 +79,7 @@ int32_t c_mc_type(int32_t arg1, int32_t arg2)
     return result;
 }
 
-int32_t get_kmem_info(void)
+static int32_t get_kmem_info(void)
 {
     int32_t var_14 = 0;
     int32_t var_18 = 0;

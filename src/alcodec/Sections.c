@@ -43,7 +43,7 @@ typedef int32_t (*SeiCllWriterFunc)(AL_BitStreamLite *arg1, int16_t *arg2);
 typedef int32_t (*SeiUduWriterFunc)(AL_BitStreamLite *arg1, char *arg2, int8_t arg3);
 
 int32_t writeStartCode(AL_BitStreamLite *arg1, int32_t arg2, int32_t arg3);
-int32_t FlushNAL(AL_BitStreamLite *arg1, int32_t arg2, char arg3, char *arg4, char *arg5, int32_t arg6);
+static int32_t FlushNAL(AL_BitStreamLite *arg1, int32_t arg2, char arg3, char *arg4, char *arg5, int32_t arg6);
 int32_t WriteNal(void *arg1, AL_BitStreamLite *arg2, int32_t arg3, uintptr_t *arg4);
 int32_t GenerateSections(void *arg1, CreateNutHeaderFunc arg2, int32_t arg3, int32_t arg4, uint32_t arg5,
                          int32_t arg6, int32_t arg7, uintptr_t *arg8, uintptr_t *arg9, AL_TBuffer *arg10,
@@ -184,7 +184,7 @@ int32_t writeStartCode(AL_BitStreamLite *arg1, int32_t arg2, int32_t arg3)
     return AL_BitStreamLite_PutBits(arg1, 8, 1);
 }
 
-int32_t FlushNAL(AL_BitStreamLite *arg1, int32_t arg2, char arg3, char *arg4, char *arg5, int32_t arg6)
+static int32_t FlushNAL(AL_BitStreamLite *arg1, int32_t arg2, char arg3, char *arg4, char *arg5, int32_t arg6)
 {
     char *s0;
     int32_t result;

@@ -23,7 +23,7 @@ int32_t buddy_alloc(int32_t arg1);
 /* forward decl, ported by T<N> later */
 int32_t buddy_free(int32_t arg1);
 
-int32_t continuous_dump_info(void *arg1);
+static int32_t continuous_dump_info(void *arg1);
 int32_t continuous_dump_info_to_file(void *arg1);
 int32_t continuous_init(void *arg1, int32_t arg2);
 int32_t continuous_alloc(int32_t arg1);
@@ -33,7 +33,7 @@ int32_t continuous_dump_to_file(void);
 
 static ContinuousInfo *head;
 
-int32_t continuous_dump_info(void *arg1)
+static int32_t continuous_dump_info(void *arg1)
 {
     ContinuousInfo *s5 = (ContinuousInfo *)arg1;
     int32_t fp = 0;

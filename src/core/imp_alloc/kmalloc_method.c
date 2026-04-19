@@ -19,7 +19,7 @@ static uint32_t kmem_length = 0;
 static uint32_t kmem_paddr = 0;
 static uint32_t kmem_vaddr = 0;
 
-int32_t get_kmem_info(void)
+static int32_t get_kmem_info(void)
 {
     struct {
         int32_t haystack;
