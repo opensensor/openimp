@@ -1731,8 +1731,38 @@ int32_t channel_encoder_init(void *arg1)
 
     /* -- (5) Create codec handle --------------------------------------- */
     void *codec_handle = NULL;
-    if (AL_Codec_Encode_Create(&codec_handle, codec_params) < 0 ||
-        codec_handle == NULL) {
+    {
+        /* Hard trace: dump codec_params key fields to dmesg so failure is debuggable */
+        int kfd = open("/dev/kmsg", O_WRONLY);
+        if (kfd >= 0) {
+            char buf[256];
+            int32_t *cp = (int32_t *)codec_params;
+            int n = snprintf(buf, sizeof(buf),
+                "libimp/ENC: Codec_Encode_Create entry codec_params=%p "
+                "profile=0x%x w=%d h=%d fmt=0x%x level=%u\n",
+                codec_params,
+                cp ? cp[9] : 0,
+                cp ? (int)(cp[3] & 0xffff) : 0,
+                cp ? (int)((uint32_t)cp[3] >> 16) : 0,
+                cp ? cp[10] : 0,
+                cp ? (unsigned)(((uint8_t *)codec_params)[0x28]) : 0);
+            if (n > 0) write(kfd, buf, (size_t)n);
+            close(kfd);
+        }
+    }
+    int32_t cec_ret = AL_Codec_Encode_Create(&codec_handle, codec_params);
+    {
+        int kfd = open("/dev/kmsg", O_WRONLY);
+        if (kfd >= 0) {
+            char buf[160];
+            int n = snprintf(buf, sizeof(buf),
+                "libimp/ENC: Codec_Encode_Create returned %d, handle=%p\n",
+                cec_ret, codec_handle);
+            if (n > 0) write(kfd, buf, (size_t)n);
+            close(kfd);
+        }
+    }
+    if (cec_ret < 0 || codec_handle == NULL) {
         int32_t opt = IMP_Log_Get_Option();
         imp_log_fun(6, opt, 2, "Encoder",
             "/home/user/git/proj/sdk-lv3/src/imp/video/imp_encoder.c",
