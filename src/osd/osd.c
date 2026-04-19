@@ -1022,6 +1022,7 @@ int32_t OSDInit(void)
 int32_t OSDExit(void)
 {
     uintptr_t gosd_1 = gosd;
+    if (gosd_1 == 0) return 0;  /* OSDInit never succeeded — nothing to tear down */
     sem_destroy((sem_t *)(gosd_1 + 0x2b060));
     sem_destroy((sem_t *)(gosd_1 + 0x2b050));
     free_osd_isra_3((int32_t *)(gosd_1 + 0x2b080),

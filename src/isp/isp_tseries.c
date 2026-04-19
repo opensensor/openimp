@@ -2364,15 +2364,24 @@ int IMP_ISP_AddSensor(IMPSensorInfo *pinfo)
         if (bp_ret != 0) return bp_ret;
     }
 
-    /* Enumerate sensors, match by name */
+    /* Enumerate sensors, match by name.
+     * ioctl 0xc050561a writes a 0x50-byte struct: first 4 bytes are the
+     * query index (in/out), remaining bytes receive the sensor name.
+     * The struct layout matches libimp's stock sensor enum record. */
     int32_t sensor_idx = -1;
-    int32_t i = 0;
-    char enum_buf[0x4c];
+    struct {
+        int32_t index;
+        char    name[0x4c];
+    } enum_rec;
+    memset(&enum_rec, 0, sizeof(enum_rec));
     while (1) {
-        int32_t probe = i;
-        if (ioctl(isp->fd, 0xc050561a, &probe) != 0) break;
-        if (strcmp(name, enum_buf) == 0) { sensor_idx = probe; break; }
-        i = probe + 1;
+        if (ioctl(isp->fd, 0xc050561a, &enum_rec) != 0) break;
+        if (strcmp(name, enum_rec.name) == 0) {
+            sensor_idx = enum_rec.index;
+            break;
+        }
+        enum_rec.index += 1;
+        memset(enum_rec.name, 0, sizeof(enum_rec.name));
     }
     if (sensor_idx == -1) {
         imp_log_fun(6, IMP_Log_Get_Option(), 2, "IMP-ISP",
