@@ -116,7 +116,15 @@ int32_t alloc_kmem_init(void *arg1)
     fd = open("/dev/rmem", 2);
     _fdata = fd;
     if (fd > 0) {
-        map = (int32_t)(intptr_t)mmap(0, kmem_length, 3, 1, fd, kmem_paddr);
+        /* /dev/rmem is a reserved-memory character device whose mmap expects
+         * offset 0 (the driver knows its own base phys addr). Stock libimp
+         * passes kmem_paddr as the mmap offset, which only works for /dev/mem.
+         * Legacy openimp uses offset 0 and that works; match the legacy. */
+        map = (int32_t)(intptr_t)mmap(0, kmem_length, PROT_READ | PROT_WRITE,
+                                      MAP_SHARED, fd, 0);
+        if (map == (int32_t)(intptr_t)MAP_FAILED) {
+            map = 0;
+        }
         kmem_vaddr = (uint32_t)map;
         if (map != 0) {
             /* offset 0x60: mem_alloc.paddr */
