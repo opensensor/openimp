@@ -395,10 +395,10 @@ label_8df84:
                     if (*(void **)((char *)j + 8) == NULL) {
                         goto label_8df84;
                     }
-                    if (*(void (**)(void))((char *)j + 0x10) == NULL) {
+                    if ((void (*)(void))((char *)j + 0x10) == NULL) {
                         goto label_8df84;
                     }
-                    (*(void (**)(void))((char *)j + 0x10))();
+                    ((void (*)(void))((char *)j + 0x10))();
                     {
                         ImpVideoListElem *j_2 = j_1;
 

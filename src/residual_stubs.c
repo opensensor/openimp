@@ -1676,6 +1676,23 @@ int32_t channel_encoder_init(void *arg1)
     /* Stock passes &var_754 where var_754 = codec_params[0x6c]
      * (0x7c0 - 0x754 = 0x6c). My earlier port used 0x80 which was
      * wrong by 0x14 — RC validation downstream saw uninitialized bits. */
+    {
+        int kfd = open("/dev/kmsg", O_WRONLY);
+        if (kfd >= 0) {
+            char buf[256];
+            int32_t *rc = (int32_t *)(p + 0x31 * 4);
+            int n = snprintf(buf, sizeof(buf),
+                "libimp/ENC: user rcAttr: mode=%d br=%d br2=%d qp=%d "
+                "fld3=%d fld4=%d fld5=%d fld6=%d fld7=%d fld8=%d "
+                "fps@0x3a=%d/%d\n",
+                rc[0], rc[1], rc[2], rc[3],
+                rc[4], rc[5], rc[6], rc[7], rc[8], rc[9],
+                *(int32_t *)(p + 0x3a * 4),
+                *(int32_t *)(p + 0x3b * 4));
+            if (n > 0) write(kfd, buf, (size_t)n);
+            close(kfd);
+        }
+    }
     if (channel_encoder_set_rc_param(codec_params + 0x6c,
                                      p + 0x31 * 4) < 0) {
         int32_t opt = IMP_Log_Get_Option();
@@ -1703,24 +1720,39 @@ int32_t channel_encoder_init(void *arg1)
         /* Dump the exact offsets AL_Codec_Encode_Create reads. */
         int kfd = open("/dev/kmsg", O_WRONLY);
         if (kfd >= 0) {
-            char buf[320];
+            char buf[512];
             uint8_t *cb = codec_params;
             int n = snprintf(buf, sizeof(buf),
-                "libimp/ENC: cp@%p  "
-                "[0x00]=0x%08x [0x08]=%u [0x0a]=%u [0x14]=0x%08x "
-                "[0x20]=0x%08x [0x24]=%u [0x25]=%u "
-                "[0x30]=0x%08x [0x34]=0x%08x fourcc@0x764=%c%c%c%c\n",
+                "libimp/ENC: cp@%p w=%u h=%u pic=0x%08x prof=0x%08x lvl=%u "
+                "rc@0x68=%d rc@0x6c=%d 0x70=%d 0x74=%d 0x7c=%d 0x80=%d "
+                "sc@0x78=0x%08x "
+                "a8=0x%08x ac@0xac=%u ae@0xae=%u 0x4e=%u 0x4f=%u "
+                "0x1f=%u 0x3c=%u 0x40=%u sqp@0x80=%d "
+                "a1@0x114=%u a1@0x116=%u\n",
                 codec_params,
-                *(uint32_t *)(cb + 0x00),
                 (unsigned)*(uint16_t *)(cb + 0x08),
                 (unsigned)*(uint16_t *)(cb + 0x0a),
-                *(uint32_t *)(cb + 0x14),   /* ePicFormat ← consumer reads here */
-                *(uint32_t *)(cb + 0x20),   /* profile */
-                cb[0x24],                    /* uLevel */
-                cb[0x25],                    /* uTier */
-                *(uint32_t *)(cb + 0x30),
-                *(uint32_t *)(cb + 0x34),
-                cb[0x764], cb[0x765], cb[0x766], cb[0x767]);
+                *(uint32_t *)(cb + 0x14),
+                *(uint32_t *)(cb + 0x20),
+                (unsigned)cb[0x24],
+                *(int32_t *)(cb + 0x68),
+                *(int32_t *)(cb + 0x6c),
+                *(int32_t *)(cb + 0x70),
+                *(int32_t *)(cb + 0x74),
+                *(int32_t *)(cb + 0x7c),
+                *(int32_t *)(cb + 0x80),
+                *(uint32_t *)(cb + 0x78),
+                *(uint32_t *)(cb + 0xa8),
+                (unsigned)*(uint16_t *)(cb + 0xac),
+                (unsigned)cb[0xae],
+                (unsigned)cb[0x4e],
+                (unsigned)cb[0x4f],
+                (unsigned)cb[0x1f],
+                (unsigned)cb[0x3c],
+                (unsigned)*(uint16_t *)(cb + 0x40),
+                (int)*(int8_t *)(cb + 0x80),
+                (unsigned)*(uint16_t *)((uint8_t*)arg1 + 0x114),
+                (unsigned)*(uint16_t *)((uint8_t*)arg1 + 0x116));
             if (n > 0) write(kfd, buf, (size_t)n);
             close(kfd);
         }
@@ -1979,3 +2011,29 @@ int32_t IMP_IVS_ReleaseData(void *vaddr)
     VBMUnlockFrameByVaddr(vaddr);
     return 0;
 }
+
+/* ----- Pool-id stubs --------------------------------------------------- *
+ * BUILD=ported excludes src/video/imp_mempool.c (allocator conflict) and
+ * the legacy src/imp_encoder.c is also out. Without a definition, the
+ * dynamic linker resolves the external call to NULL and we PC=0 crash.
+ * Return -1 (= "no pool bound") which the callers already handle by
+ * falling back to the global DmaAllocator. */
+int32_t IMP_Encoder_GetPool(int32_t encChn)
+{
+    (void)encChn;
+    return -1;
+}
+
+int32_t IMP_Encoder_SetPool(int32_t encChn, int32_t poolId)
+{
+    (void)encChn;
+    (void)poolId;
+    return 0;
+}
+
+int32_t IMP_Encoder_ClearPoolId(void)
+{
+    return 0;
+}
+
+/* IMP_FrameSource_* pool helpers live in src/dma_alloc.c (legacy). */

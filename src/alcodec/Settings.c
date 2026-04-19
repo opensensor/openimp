@@ -472,8 +472,54 @@ uint32_t AL_Settings_SetDefaultParam(void *arg1)
 
 int32_t AL_Settings_CheckValidity(void *arg1, void *arg2, void *arg3)
 {
+    /* Entry kmsg trace — dump the fields the validator reads */
+    {
+        int kfd = open("/dev/kmsg", O_WRONLY);
+        if (kfd >= 0) {
+            char b[320];
+            uint8_t *cb = (uint8_t *)arg2;
+            int n = snprintf(b, sizeof(b),
+                "libimp/ENC: CheckValidity ENTRY arg1=%p arg2=%p arg3=%p "
+                "prof=0x%08x lvl=%u 0x4e=%u 0x4f=%u 0x1f=%u "
+                "rc@0x68=%d rc@0x6c=%d sc@0x78=0x%08x "
+                "a8=0x%08x ac=%u ae=%u 0x38=%u 0x39=%u 0x40=%u 0x80=%d "
+                "a1@0x114=%u a1@0x116=%u\n",
+                arg1, arg2, arg3,
+                *(uint32_t *)(cb + 0x1c),
+                (unsigned)cb[0x20],
+                (unsigned)cb[0x4e],
+                (unsigned)cb[0x4f],
+                (unsigned)cb[0x1f],
+                *(int32_t *)(cb + 0x68),
+                *(int32_t *)(cb + 0x6c),
+                *(uint32_t *)(cb + 0x78),
+                *(uint32_t *)(cb + 0xa8),
+                (unsigned)*(uint16_t *)(cb + 0xac),
+                (unsigned)cb[0xae],
+                (unsigned)cb[0x38],
+                (unsigned)cb[0x39],
+                (unsigned)*(uint16_t *)(cb + 0x40),
+                (int)*(int8_t *)(cb + 0x80),
+                arg1 ? (unsigned)*(uint16_t *)((uint8_t *)arg1 + 0x114) : 0,
+                arg1 ? (unsigned)*(uint16_t *)((uint8_t *)arg1 + 0x116) : 0);
+            if (n > 0) write(kfd, b, (size_t)n);
+            close(kfd);
+        }
+    }
     int32_t v0 = read_s32(arg2, 0x1c);
-    int32_t s1;
+    /* Force s1 to always hit memory — avoids gcc -O2 slot reuse that
+     * was making the returned value look like a garbage heap pointer. */
+    volatile int32_t s1 = 0;
+    #define S1_TRACE() do { \
+        int _kfd = open("/dev/kmsg", O_WRONLY); \
+        if (_kfd >= 0) { \
+            char _b[40]; \
+            int _n = snprintf(_b, sizeof(_b), \
+                "libimp/ENC chk hit L%d s1=%d\n", __LINE__, (int)s1); \
+            if (_n > 0) write(_kfd, _b, _n); \
+            close(_kfd); \
+        } \
+    } while (0)
     int32_t v1_4;
     int32_t v1_12;
     uint32_t v0_5;
@@ -614,12 +660,14 @@ label_4e500:
                        1, 0x31, (FILE *)arg3);
             }
             s1 = s4_1;
+            S1_TRACE();
         }
     }
 
 label_4e548:
     if (((uint32_t)v1_12 >> 8 & 0xfU) == 3U) {
         s1 += 1;
+        S1_TRACE();
         if (arg3 != NULL) {
 label_4eda4:
             fwrite("The specified ChromaMode is not supported by the IP\r\n",
@@ -628,6 +676,7 @@ label_4eda4:
     }
     if (read_u16(arg2, 0x08) != read_u16(arg2, 0x04)) {
         s1 += 1;
+        S1_TRACE();
         if (arg3 != NULL) {
 label_4e57c:
             fwrite("Different input and output resolutions are not supported by the IP\r\n",
@@ -639,6 +688,7 @@ label_4e244:
     v0 = read_s32(arg2, 0x1c);
     if (AL_sSettings_CheckLevel(v0, read_u8(arg2, 0x20)) == 0) {
         s1 += 1;
+        S1_TRACE();
         if (arg3 != NULL) {
 label_4e5bc:
             fwrite("Invalid parameter: Level\r\n", 1, 0x1a, (FILE *)arg3);
@@ -668,11 +718,13 @@ label_4e5f8:
                    (FILE *)arg3);
         }
         s1 = s4_4;
+        S1_TRACE();
     }
 
 label_4e290:
     if (read_u8(arg2, 0x4f) != 3U) {
         s1 += 1;
+        S1_TRACE();
         if (arg3 != NULL) {
             fwrite("Invalid parameter: MinCuSize\r\n", 1, 0x1e,
                    (FILE *)arg3);
@@ -685,6 +737,7 @@ label_4e290:
             goto label_4e320;
         }
         s1 += 1;
+        S1_TRACE();
         if (arg3 != NULL) {
             fwrite("Invalid parameter: MaxCuSize\r\n", 1, 0x1e,
                    (FILE *)arg3);
@@ -699,6 +752,7 @@ label_4e2d0:
             goto label_4eb94;
         }
         s1 += 1;
+        S1_TRACE();
         if (arg3 != NULL) {
             fwrite("Invalid parameter: MaxCuSize\r\n", 1, 0x1e,
                    (FILE *)arg3);
@@ -711,6 +765,7 @@ label_4e2d0:
     }
     if (a2_1 != v0_5) {
         s1 += 1;
+        S1_TRACE();
         if (arg3 != NULL) {
             fwrite("Invalid parameter: MaxCuSize\r\n", 1, 0x1e,
                    (FILE *)arg3);
@@ -738,11 +793,13 @@ label_4ebb0:
                    (FILE *)arg3);
         }
         s1 = s5_1;
+        S1_TRACE();
     }
 
 label_4e68c:
     if (read_u8(arg2, 0x39) + 0xcU >= 0x19U) {
         s1 += 1;
+        S1_TRACE();
         if (arg3 != NULL) {
 label_4e6b0:
             fwrite("Invalid parameter: CrQpOffset\r\n", 1, 0x1f,
@@ -751,6 +808,7 @@ label_4e6b0:
     }
     if (read_u8(arg2, 0x38) + 0xcU >= 0x19U) {
         s1 += 1;
+        S1_TRACE();
         if (arg3 != NULL) {
 label_4e6e8:
             fwrite("Invalid parameter: CbQpOffset\r\n", 1, 0x1f,
@@ -765,6 +823,7 @@ label_4e700:
     v0_18 = read_s32(arg2, 0x68);
     if ((uint32_t)(v0_18 - 1) < 2U) {
         s1 += 1;
+        S1_TRACE();
         if (arg3 != NULL) {
             fwrite("Invalid parameter: BitRate\r\n", 1, 0x1c,
                    (FILE *)arg3);
@@ -782,17 +841,21 @@ label_4e3b4:
                        0x2b, (FILE *)arg3);
             }
             s1 = s5_3;
+            S1_TRACE();
             if (read_u8(arg2, 0xc4) != 0U) {
                 s1 += 1;
+                S1_TRACE();
             }
         } else if (read_u8(arg2, 0xc4) != 0U) {
             s1 += 1;
+            S1_TRACE();
         }
     }
 
 label_4e3c0:
     if (read_u8(arg2, 0xc4) != 0U && read_u8(arg2, 0xae) != 0U) {
         s1 += 1;
+        S1_TRACE();
         if (arg3 != NULL) {
             fwrite("B Picture not allowed in subframe latency\r\n", 1, 0x2b,
                    (FILE *)arg3);
@@ -806,6 +869,7 @@ label_4e3c0:
             s5_2 = s1 + 2;
             if (read_u8(arg2, 0xae) >= 5U) {
                 s1 += 1;
+                S1_TRACE();
             }
         } else {
             fwrite("Invalid parameter: Gop.Length\r\n", 1, 0x1f,
@@ -816,7 +880,12 @@ label_4e3c0:
             }
             goto label_4ed48;
         }
-    } else if (read_u8(arg2, 0xae) >= 5U) {
+    } else {
+        /* gop.length < 0x3e9 */
+        if (read_u8(arg2, 0xae) < 5U) {
+            /* HLIL: if (ae u< 5) goto label_3e780  -- skip s5_2 setup */
+            goto label_4e780;
+        }
         s5_2 = s1 + 1;
         if (arg3 != NULL) {
 label_4e468:
@@ -829,18 +898,21 @@ label_4e468:
                 __builtin_trap();
             }
             s1 = s5_2;
+            S1_TRACE();
             s4_3 = (read_u16(arg2, 0x06) +
                      ((((uint32_t)s4_2 >> 0x1f) + s4_2) >> 1)) /
                     s4_2;
             goto label_4e7ac;
         }
         s1 = s5_2;
+        S1_TRACE();
         goto label_4ee98;
     }
 
 label_4ed48:
     a0_5 = read_u16(arg2, 0x40);
     s1 += 2;
+    S1_TRACE();
     if (a0_5 != 0U) {
         if (s4_2 == 0) {
             __builtin_trap();
@@ -850,8 +922,10 @@ label_4ed48:
                 s4_2 >=
             (int32_t)a0_5) {
             s1 = s5_2;
+            S1_TRACE();
         } else {
             s1 = s5_2 + 1;
+            S1_TRACE();
         }
     }
 
@@ -877,6 +951,7 @@ label_4e7ac:
 
 label_4e7c8:
     s1 += 1;
+    S1_TRACE();
     if (arg3 != NULL) {
         fwrite("Invalid parameter: NumSlices\r\n", 1, 0x1e,
                (FILE *)arg3);
@@ -887,7 +962,15 @@ label_4ee98:
         goto label_4e7c8;
     }
 
+    /* HLIL @ 0x3e7f4:
+     *   if ((*(arg2+0x2c) u>> 0x11 & 1) == 0)  → goto label_3e910 (bypass)
+     *   else                                    → NumCore v0_55 check
+     * My earlier port had this INVERTED, making every valid encOptions
+     * (bit 17 clear) fail the NumCore guard. */
     if ((read_u32(arg2, 0x2c) >> 0x11 & 1U) == 0U) {
+        a3_17 = read_u16(arg2, 0x06);
+        goto label_4e910;
+    } else {
         uint32_t v0_55 = read_u16(arg1, 0x114);
 
         if (v0_55 >= 0x40U && read_u16(arg2, 0x04) >= v0_55) {
@@ -898,18 +981,17 @@ label_4ee98:
             }
         } else {
             s1 += 1;
+            S1_TRACE();
             if (arg3 != NULL) {
                 goto label_4e8c0;
             }
             goto label_4e858;
         }
-    } else {
-        a3_17 = read_u16(arg2, 0x06);
-        goto label_4e910;
     }
 
 label_4e840:
     s1 += 1;
+    S1_TRACE();
     if (arg3 != NULL) {
 label_4e8c0:
         fwrite("Vertical clipping range must be between 8 and Picture Height! \r\n",
@@ -924,6 +1006,7 @@ label_4e858:
         goto label_4e928;
     }
     s1 += 1;
+    S1_TRACE();
     if (arg3 != NULL) {
         fwrite("Width shall be multiple of 2 on 420 or 422 chroma mode!\r\n",
                1, 0x39, (FILE *)arg3);
@@ -944,6 +1027,7 @@ label_4e910:
         read_u16(arg2, 0x04), a3_17);
     if (v0_59 == 1 || v0_59 == 2) {
         s1 += 1;
+        S1_TRACE();
         if (arg3 != NULL) {
             fwrite("Width shall be multiple of 2 on 420 or 422 chroma mode!\r\n",
                    1, 0x39, (FILE *)arg3);
@@ -969,6 +1053,7 @@ label_4e938:
             goto label_4eaf0;
         }
         s1 += 1;
+        S1_TRACE();
         if (arg3 != NULL) {
             fwrite("!! PYRAMIDAL GOP pattern only allows 3, 5, 7, 15 B Frames !!\r\n",
                    1, 0x3e, (FILE *)arg3);
@@ -983,8 +1068,10 @@ label_4eaf0:
             0x19U) {
             if (arg3 == NULL) {
                 s1 += 1;
+                S1_TRACE();
             } else {
                 s1 += 1;
+                S1_TRACE();
                 fwrite("Invalid parameter: CrQpOffset\r\n", 1, 0x1f,
                        (FILE *)arg3);
             }
@@ -992,6 +1079,7 @@ label_4eaf0:
         if ((uint32_t)(read_s8(arg2, 0x38) + read_s8(arg2, 0x36) + 0xc) >=
             0x19U) {
             s1 += 1;
+            S1_TRACE();
             if (arg3 != NULL) {
                 fwrite("Invalid parameter: CbQpOffset\r\n", 1, 0x1f,
                        (FILE *)arg3);
@@ -1012,6 +1100,7 @@ label_4e988:
             if (a0_11 == 0 &&
                 (uint32_t)(read_s8(arg2, 0x37) + v0_65_local) >= 0x34U) {
                 s1 += 1;
+                S1_TRACE();
                 if (arg3 != NULL) {
                     fwrite("Invalid parameter: SliceQP, CrQpOffset\r\n", 1,
                            0x28, (FILE *)arg3);
@@ -1023,6 +1112,7 @@ label_4e988:
 label_4ea10:
                 if (a0_11 == 0 && (uint32_t)v0_67 >= 0x34U) {
                     s1 += 1;
+                    S1_TRACE();
                     if (arg3 != NULL) {
                         fwrite("Invalid parameter: SliceQP, CbQpOffset\r\n",
                                1, 0x28, (FILE *)arg3);
@@ -1039,6 +1129,7 @@ label_4ea48:
 
 label_4ee6c:
     s1 += 1;
+    S1_TRACE();
     if (arg3 != NULL) {
         fwrite("!! PYRAMIDAL GOP pattern doesn't allows baseline profile !!\r\n",
                1, 0x3d, (FILE *)arg3);
@@ -1052,45 +1143,39 @@ label_4ea50:
     s3_1 = s1 + 1;
     if (arg3 == NULL) {
         s1 = s3_1;
+        S1_TRACE();
     } else {
         fwrite("!! QP control mode not allowed !!\r\n", 1, 0x23,
                (FILE *)arg3);
         s1 = s3_1;
+        S1_TRACE();
     }
 
 label_4ea68:
     if (read_s32(arg2, 0x0c) != 0) {
         s1 += 1;
+        S1_TRACE();
         if (arg3 != NULL) {
             fwrite("!! Invalid parameter: VideoMode\r\n", 1, 0x21,
                    (FILE *)arg3);
         }
     }
     {
+        /* memcpy the volatile slot into a fresh local to defeat any
+         * register-spill / slot-reuse theories. */
+        int32_t s1_final;
+        memcpy(&s1_final, (const void *)&s1, sizeof(s1_final));
         int kfd = open("/dev/kmsg", O_WRONLY);
         if (kfd >= 0) {
-            char b[256];
+            char b[128];
             int n = snprintf(b, sizeof(b),
-                "libimp/ENC: CheckValidity return s1=%d  "
-                "profile@0x1c=0x%x level@0x20=%u MaxCuSize@0x4e=%u "
-                "MinCuSize@0x4f=%u v0_5@0x1f=%u pic@0x10=0x%x "
-                "bitdepth_a0b=%u,%u w@0x04=%u w@0x08=%u\n",
-                (int)s1,
-                (unsigned)read_s32(arg2, 0x1c),
-                (unsigned)read_u8(arg2, 0x20),
-                (unsigned)read_u8(arg2, 0x4e),
-                (unsigned)read_u8(arg2, 0x4f),
-                (unsigned)read_u8(arg2, 0x1f),
-                (unsigned)read_s32(arg2, 0x10),
-                (unsigned)((read_s32(arg2, 0x10) >> 4) & 0xf),
-                (unsigned)(read_s32(arg2, 0x10) & 0xf),
-                (unsigned)read_u16(arg2, 0x04),
-                (unsigned)read_u16(arg2, 0x08));
+                "libimp/ENC: CheckValidity return s1=%d &s1=%p\n",
+                (int)s1_final, (void *)&s1);
             if (n > 0) write(kfd, b, n);
             close(kfd);
         }
+        return s1_final;
     }
-    return s1;
 
 label_4e53c:
     v1_12 = read_s32(arg2, 0x10);
@@ -1118,6 +1203,7 @@ label_4ebf0:
     if (AL_Constraint_NumCoreIsSane(read_u16(arg2, 0x04), a1_11, a2_1,
                                     &core_scratch[0]) == 0) {
         s1 += 1;
+        S1_TRACE();
         if (arg3 != NULL) {
             fprintf((FILE *)arg3,
                     "Invalid parameter: NumCore. The width should at least be %d CTB per core. With the specified number of core, it is %d CTB per core. (Multi core alignement constraint might be the reason of this error if the CTB are equal)\r\n",
@@ -1130,6 +1216,7 @@ label_4ebf0:
         v1_33 = (int32_t)(v0_87 ^ 4U);
         if (v0_87 == 1U && read_u16(arg2, 0x04) < (uint32_t)(a1_11 << 8)) {
             s1 += 1;
+            S1_TRACE();
             if (arg3 != NULL) {
                 fwrite("Invalid parameter: NumCore. The width should at least be 256 pixels per core for HEVC conformance.\r\n",
                        1, 0x64, (FILE *)arg3);

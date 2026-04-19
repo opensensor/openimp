@@ -24,6 +24,7 @@
 #define VIDIOC_SET_DEPTH    0x800456c5  /* Set frame depth */
 #define VIDIOC_STREAM_ON    0x80045612  /* Start streaming */
 #define VIDIOC_STREAM_OFF   0x80045613  /* Stop streaming */
+#define VIDIOC_POLL_FRAME   0x400456bf  /* OEM frame-ready wait */
 /* Buffer queue/dequeue ioctls (from decompilation notes) */
 #define VIDIOC_QBUF         0xc044560f  /* Queue buffer */
 #define VIDIOC_QUERYBUF     0xc0445609  /* Query buffer */
@@ -430,6 +431,27 @@ int fs_stream_off(int fd) {
     return 0;
 }
 
+int fs_poll_frame(int fd, unsigned int *ready_out)
+{
+    uint32_t ready = 0xffffffffu;
+    int ret;
+
+    if (fd < 0)
+        return -1;
+
+    ret = ioctl(fd, VIDIOC_POLL_FRAME, &ready);
+    if (ret < 0) {
+        if (errno == EINTR)
+            return -2;
+        fprintf(stderr, "[KernelIF] POLL_FRAME failed: fd=%d %s\n", fd, strerror(errno));
+        return -1;
+    }
+
+    if (ready_out)
+        *ready_out = ready;
+    return 0;
+}
+
 /* 32-bit v4l2_buffer layout used by this driver */
 struct v4l2_buf32 {
     uint32_t index;        /* 0x00 */
@@ -517,6 +539,15 @@ int fs_qbuf(int fd, int index, unsigned long phys, unsigned int length) {
 /* Dequeue a filled buffer from the framechan driver */
 int fs_dqbuf(int fd, int *index_out) {
     if (fd < 0 || !index_out) return -1;
+
+    {
+        int flags = fcntl(fd, F_GETFL, 0);
+        if (flags >= 0 && !(flags & O_NONBLOCK)) {
+            if (fcntl(fd, F_SETFL, flags | O_NONBLOCK) == 0) {
+                fprintf(stderr, "[KernelIF] DQBUF: re-enabled O_NONBLOCK on fd=%d\n", fd);
+            }
+        }
+    }
 
     size_t buf_sz = sizeof(struct v4l2_buf32) + 0x400;
     void *raw = NULL;
@@ -1010,10 +1041,7 @@ int VBMPrimeKernelQueue(int chn, int fd, int limit) {
 
     fprintf(stderr, "[VBM] PrimeKernelQueue: queued %d/%d frames to kernel for chn=%d (limit=%d)\n",
             queued_ok, to_queue, chn, limit);
-    /* Return 0 even if some/all QBUFs failed — the capture thread has a software
-     * fallback that uses VBMGetFrame, and frames were returned to the available
-     * queue on failure. */
-    return 0;
+    return queued_ok;
 }
 
 /* Dequeue a kernel-filled frame and map to VBM frame pointer */

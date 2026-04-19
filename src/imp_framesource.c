@@ -68,9 +68,6 @@ static IMPFSChnFifoAttr g_fifo_attrs[MAX_FS_CHANNELS];
 static int g_frame_depth[MAX_FS_CHANNELS];
 
 
-/* ioctl command for frame polling - from decompilation at 0x99acc */
-#define VIDIOC_POLL_FRAME   0x400456bf  /* Poll for frame availability */
-
 /* Forward declarations */
 static void *frame_capture_thread(void *arg);
 static int framesource_bind(void *src_module, void *dst_module, void *output_ptr);
@@ -419,8 +416,24 @@ int IMP_FrameSource_EnableChn(int chnNum) {
     /* Mark running and start capture thread; it will block on select() */
     /* QBUF before STREAM_ON (standard V4L2 order) */
     extern int VBMPrimeKernelQueue(int chn, int fd, int limit);
-    if (VBMPrimeKernelQueue(chnNum, chn->fd, bufcnt) < 0) {
+    int queued_ok = VBMPrimeKernelQueue(chnNum, chn->fd, bufcnt);
+    if (queued_ok < 0) {
         LOG_FS("EnableChn warning: prime kernel queue had errors, continuing");
+    }
+    LOG_FS("EnableChn: chn=%d primed kernel queue with %d/%d buffers",
+           chnNum, queued_ok, bufcnt);
+
+    /* The PHY channel is not useful if the kernel never accepted any userptr
+     * buffers, and ch0 has been observed to wedge in DQBUF forever in exactly
+     * that state. Fail fast instead of entering a no-frame drain loop. */
+    if (chnNum == 0 && queued_ok <= 0) {
+        LOG_FS("EnableChn failed: ch0 kernel prime accepted no buffers");
+        VBMFlushFrame(chnNum);
+        VBMDestroyPool(chnNum);
+        fs_close_device(chn->fd);
+        chn->fd = -1;
+        pthread_mutex_unlock(&fs_mutex);
+        return -1;
     }
 
     usleep(5000); /* 5ms guard */
@@ -807,6 +820,38 @@ static void *frame_capture_thread(void *arg) {
             fflush(stderr);
         }
 
+        {
+            unsigned int ready = 0;
+            int poll_ret = fs_poll_frame(chn->fd, &ready);
+            if (poll_ret == -2) {
+                if (poll_count <= 5) {
+                    LOG_FS("frame_capture_thread chn=%d: POLL_FRAME interrupted", chn_num);
+                    fflush(stderr);
+                }
+                continue;
+            }
+            if (poll_ret < 0) {
+                if (poll_count <= 5 || (poll_count % 50) == 0) {
+                    LOG_FS("frame_capture_thread chn=%d: POLL_FRAME failed before DQBUF", chn_num);
+                    fflush(stderr);
+                }
+                usleep(1000);
+                continue;
+            }
+            if (ready == 0) {
+                if (poll_count <= 5 || (poll_count % 50) == 0) {
+                    LOG_FS("frame_capture_thread chn=%d: POLL_FRAME reported 0 ready frames", chn_num);
+                    fflush(stderr);
+                }
+                usleep(1000);
+                continue;
+            }
+            if (poll_count <= 5) {
+                LOG_FS("frame_capture_thread chn=%d: POLL_FRAME ready=%u", chn_num, ready);
+                fflush(stderr);
+            }
+        }
+
         /* Enforce non-blocking on fd in case driver cleared O_NONBLOCK */
         int __fl = fcntl(chn->fd, F_GETFL, 0);
         if (__fl != -1 && !(__fl & O_NONBLOCK)) {
@@ -817,7 +862,8 @@ static void *frame_capture_thread(void *arg) {
         while (1) {
             void *frame = NULL;
             extern int VBMKernelDequeue(int chn, int fd, void **frame_out);
-            if (VBMKernelDequeue(chn_num, chn->fd, &frame) == 0 && frame != NULL) {
+            int dq_ret = VBMKernelDequeue(chn_num, chn->fd, &frame);
+            if (dq_ret == 0 && frame != NULL) {
                 drained++;
                 frame_count++;
                 if (frame_count <= 5 || frame_count % 100 == 0) {
@@ -839,6 +885,11 @@ static void *frame_capture_thread(void *arg) {
                 }
                 /* keep draining */
                 continue;
+            }
+            if (dq_ret < 0 && poll_count <= 5) {
+                LOG_FS("frame_capture_thread chn=%d: DQBUF drain ret=%d frame=%p",
+                       chn_num, dq_ret, frame);
+                fflush(stderr);
             }
             break;
         }

@@ -1,5 +1,8 @@
 #include <stdint.h>
 #include <string.h>
+#include <stdio.h>
+#include <unistd.h>
+#include <fcntl.h>
 
 #include "alcodec/BitStreamLite.h"
 #include "alcodec/al_buffer.h"
@@ -8,6 +11,16 @@
 
 extern char _gp;
 extern void *__assert(const char *expression, const char *file, int32_t line, const char *function, ...);
+
+#define CMG_KMSG(fmt, ...) do { \
+    int _kfd = open("/dev/kmsg", O_WRONLY); \
+    if (_kfd >= 0) { \
+        char _b[192]; \
+        int _n = snprintf(_b, sizeof(_b), "libimp/SCH: " fmt "\n", ##__VA_ARGS__); \
+        if (_n > 0) { write(_kfd, _b, _n > (int)sizeof(_b) ? (int)sizeof(_b) : _n); } \
+        close(_kfd); \
+    } \
+} while (0)
 
 #define READ_U8(base, off) (*(uint8_t *)((uint8_t *)(base) + (off)))
 #define READ_S8(base, off) (*(int8_t *)((uint8_t *)(base) + (off)))
@@ -169,10 +182,15 @@ label_712cc:
     }
 
 copy_out:
+    /* Stock unrolls an 8-iteration copy of 4 int32s each (32 int32s), then
+     * one final int32 — total 33 int32s (the full var_a8[0x21] contents).
+     * Stock's termination was i_1 != &var_28 which only worked because the
+     * compiler placed var_28 exactly at &var_a8[32] on its stack. gcc makes
+     * no such guarantee, so use a bounded counter. */
     {
-        int32_t var_28;
+        int iter;
 
-        while (i_1 != &var_28) {
+        for (iter = 0; iter < 8; iter++) {
             int32_t a3_1 = i_1[0];
             int32_t a2_1 = i_1[1];
             int32_t a1_1 = i_1[2];
@@ -1223,12 +1241,21 @@ int32_t AL_SchedulerEnc_CreateChannel2(int32_t *arg1, void *arg2, int32_t arg3, 
     int32_t a3_3;
     int32_t result;
 
+    CMG_KMSG("SchEnc.CC2 ENTRY s1=%p arg2=%p prof=%u s1[0x4bd]=%p s1[1]=0x%x",
+             (void*)s1, arg2, (uint32_t)READ_U8(arg2, 0x1f),
+             (void*)arg1[0x4bd], s1[1]);
+    CMG_KMSG("SchEnc.CC2 pre-Rtos_GetMutex");
     Rtos_GetMutex((void *)(intptr_t)arg1[0x4bd]);
+    CMG_KMSG("SchEnc.CC2 pre-CoreConstraintEnc_Init");
     AL_CoreConstraintEnc_Init(var_48, s1[1], (uint32_t)READ_U8(arg2, 0x1f));
+    CMG_KMSG("SchEnc.CC2 pre-filterCoresCount");
     v0 = (int32_t)filterCoresCount(var_48, arg2);
+    CMG_KMSG("SchEnc.CC2 filterCores=%d", v0);
     WRITE_U8(arg2, 0x3c, (uint8_t)v0);
     *arg6 = AL_EncChannel_CheckAndAdjustParam(arg2);
+    CMG_KMSG("SchEnc.CC2 CheckAndAdjustParam=0x%x", *arg6);
     if ((uint32_t)*arg6 >= 0x80U) {
+        CMG_KMSG("SchEnc.CC2 CheckAndAdjustParam fail -> 0xff");
         Rtos_ReleaseMutex((void *)(intptr_t)s1[0x4bd]);
         return 0xff;
     }
@@ -1239,16 +1266,20 @@ int32_t AL_SchedulerEnc_CreateChannel2(int32_t *arg1, void *arg2, int32_t arg3, 
     var_34_1 = v0_3;
     v0_4 = AL_CoreConstraintEnc_GetResources(var_48, READ_S32(arg2, 0x2c), v1_1, v0_3, (uint32_t)READ_U8(arg2, 0x74),
                                              (uint32_t)READ_U8(arg2, 0x76), (uint32_t)READ_U8(arg2, 0x3c));
+    CMG_KMSG("SchEnc.CC2 GetResources=0x%x", v0_4);
     v0_5 = ChannelResourcesAreAvailable(s1, arg2, v0_4);
+    CMG_KMSG("SchEnc.CC2 ChRscAvail=%d", v0_5);
     s0_1 = arg2;
     if (v0_5 == 0) {
         *arg6 = 0x8e;
+        CMG_KMSG("SchEnc.CC2 no resources -> 0xff err=0x8e");
         Rtos_ReleaseMutex((void *)(intptr_t)s1[0x4bd]);
         return 0xff;
     }
 
     s2_1 = (uint32_t)READ_U8(s0_1, 0x3c);
     if (*s1 < (int32_t)s2_1) {
+        CMG_KMSG("SchEnc.CC2 s1[0]=%d < s2_1=%u -> 73210", *s1, s2_1);
         goto label_73210;
     }
 
@@ -1260,12 +1291,15 @@ int32_t AL_SchedulerEnc_CreateChannel2(int32_t *arg1, void *arg2, int32_t arg3, 
         }
         s2_1 += 1;
         if (*s1 < (int32_t)s2_1) {
+            CMG_KMSG("SchEnc.CC2 no core found -> 73210_1");
             goto label_73210_1;
         }
     }
+    CMG_KMSG("SchEnc.CC2 findCoresAvailable=%d s2_1=%u", v0_10, s2_1);
 
     WRITE_U8(s0_1, 0x3c, (uint8_t)s2_1);
     if (v0_10 < 0) {
+        CMG_KMSG("SchEnc.CC2 v0_10 s< 0 -> 73210");
         goto label_73210;
     }
 
@@ -1273,12 +1307,14 @@ int32_t AL_SchedulerEnc_CreateChannel2(int32_t *arg1, void *arg2, int32_t arg3, 
         *arg6 = AL_EncChannel_CheckAndAdjustParam(s0_1);
         a3_3 = v0_10;
         if ((uint32_t)*arg6 >= 0x80U) {
+            CMG_KMSG("SchEnc.CC2 2nd CheckAndAdjust fail=0x%x -> 73210", *arg6);
             goto label_73210;
         }
     }
 
     if (s1[0x133] == 0) {
         *arg6 = 0x8d;
+        CMG_KMSG("SchEnc.CC2 s1[0x133]==0 -> 0xff err=0x8d");
         goto label_fail_release;
     }
 
@@ -1287,12 +1323,15 @@ int32_t AL_SchedulerEnc_CreateChannel2(int32_t *arg1, void *arg2, int32_t arg3, 
     if (s1[0x133] == 0 || (uint32_t)result >= 0x20U) {
         *arg6 = 0x8d;
     }
+    CMG_KMSG("SchEnc.CC2 alloc chan_id=%d a3_3=%d v0_4=0x%x", result, a3_3, v0_4);
 
     {
         int32_t *v0_14 = CreateChMngrCtx(s1, result);
 
+        CMG_KMSG("SchEnc.CC2 CreateChMngrCtx=%p", (void*)v0_14);
         if (v0_14 == 0) {
             *arg6 = 0x87;
+            CMG_KMSG("SchEnc.CC2 CreateChMngrCtx=NULL -> err=0x87 return_channel");
             goto label_return_channel;
         }
 
@@ -1304,12 +1343,17 @@ int32_t AL_SchedulerEnc_CreateChannel2(int32_t *arg1, void *arg2, int32_t arg3, 
             int32_t var_54_1 = arg5;
             int32_t (*var_50_1)(int32_t *, int32_t *) = EndFrameEncoding;
             int32_t *var_4c_1 = s1;
+            int32_t _init_ok;
 
             (void)var_50_1;
             (void)var_4c_1;
             WRITE_PTR(v0_14, 0x40, &s1[0x4b6]);
-            if (AL_EncChannel_Init(v0_14, s0_1, &s1[a3_3 * 0x11 + 0x23], (uint8_t)a3_3, (uint8_t)result, (uint8_t)v0_4,
-                                   (void *)(intptr_t)a0_11, (void *)(intptr_t)arg7, &var_58, arg3, a1_7, t0_2, 1) != 0) {
+            CMG_KMSG("SchEnc.CC2 pre-EncChn_Init ctx=%p s0_1=%p core=%p a3_3=%d result=%d",
+                     (void*)v0_14, s0_1, (void*)&s1[a3_3 * 0x11 + 0x23], a3_3, result);
+            _init_ok = AL_EncChannel_Init(v0_14, s0_1, &s1[a3_3 * 0x11 + 0x23], (uint8_t)a3_3, (uint8_t)result, (uint8_t)v0_4,
+                                   (void *)(intptr_t)a0_11, (void *)(intptr_t)arg7, &var_58, arg3, a1_7, t0_2, 1);
+            CMG_KMSG("SchEnc.CC2 EncChn_Init=%d *arg6=0x%x", _init_ok, *arg6);
+            if (_init_ok != 0) {
                 uint32_t i = READ_U8(v0_14, 0x79);
                 uint32_t v1_8 = READ_U8(v0_14, 0x78);
 
@@ -1329,18 +1373,21 @@ int32_t AL_SchedulerEnc_CreateChannel2(int32_t *arg1, void *arg2, int32_t arg3, 
 
                 IntVector_Add(&s1[0x154], result);
                 if ((uint32_t)*arg6 >= 0x80U) {
+                    CMG_KMSG("SchEnc.CC2 post-EncChn_Init *arg6=0x%x -> assert", *arg6);
                     return AL_SchedulerEnc_CreateChannel((int32_t *)(intptr_t)__assert(
                         "!AL_IS_ERROR_CODE(*eErrorCode)",
                         "/home/user/git/proj/sdk-lv3/src/imp/video/alcodec/lib_scheduler_enc/Scheduler.c", 0x355,
                         "AL_SchedulerEnc_CreateChannel2"), 0, 0, 0, 0, 0);
                 }
 
+                CMG_KMSG("SchEnc.CC2 SUCCESS return chan=%d", result);
                 Rtos_ReleaseMutex((void *)(intptr_t)s1[0x4bd]);
                 return result;
             }
         }
 
         *arg6 = 0x87;
+        CMG_KMSG("SchEnc.CC2 EncChn_Init failed -> err=0x87 return_channel");
 label_return_channel:
         IntVector_Add(&s1[0x133], result);
         {
@@ -1354,12 +1401,14 @@ label_return_channel:
     }
 
 label_fail_release:
+    CMG_KMSG("SchEnc.CC2 fail_release -> 0xff *arg6=0x%x", *arg6);
     Rtos_ReleaseMutex((void *)(intptr_t)s1[0x4bd]);
     return 0xff;
 
 label_73210_1:
 label_73210:
     *arg6 = 0x8f;
+    CMG_KMSG("SchEnc.CC2 73210 -> err=0x8f");
     goto label_fail_release;
 }
 

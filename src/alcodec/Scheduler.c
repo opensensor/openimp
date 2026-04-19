@@ -2326,26 +2326,37 @@ int32_t AL_EncChannel_CheckAndAdjustParam(void *arg1)
     uint32_t num_core;
     int32_t width = READ_U16(arg1, 6);
 
-    if ((flags & 0xd) == 8) {
+    if ((flags & 0xd) != 8) {
         return 0x90;
     }
-    if ((ch_flags & 1) != 0 && READ_S32(arg1, 0xc4) != 0) {
+    if ((ch_flags & 1) != 0 && READ_U8(arg1, 0xc4) != 0) {
         return 0x90;
     }
-    if (((flags >> 4) & 0xd) == 8) {
+    if (((flags >> 4) & 0xd) != 8) {
         return 0x90;
     }
-    if (((uint32_t)flags >> 8 & 0xfU) < 4U) {
+    if (((uint32_t)flags >> 8 & 0xfU) >= 4U) {
         return 0x90;
     }
-    if (lcu < 7U) {
+    if (lcu >= 7U) {
         return 0x90;
     }
     if (lcu < READ_U8(arg1, 0x4f) || READ_U8(arg1, 0x4f) < 3U) {
         return 0x90;
     }
-    if (codec == 4U && READ_U16(arg1, 4) < 0x4001U && READ_S32(arg1, 0xc4) == 0) {
-        return 0x90;
+    if (codec == 4U) {
+        if (READ_U16(arg1, 4) >= 0x4001U) {
+            return 0x90;
+        }
+        if (READ_U8(arg1, 0xc4) != 0) {
+            return 0x90;
+        }
+    } else if (codec == 0U) {
+        /* AVC-specific: stock reads num_core + *(arg1+0x3e). If num_core >= 2
+         * AND *(arg1+0x3e) != 0, FAIL. Stock path via 0x695b8. */
+        if ((int32_t)READ_U8(arg1, 0x3c) >= 2 && READ_U16(arg1, 0x3e) != 0U) {
+            return 0x90;
+        }
     }
     if (READ_U32(arg1, 0xc8) >= 4U && READ_U32(arg1, 0xc8) != 0x80U) {
         return 0x90;

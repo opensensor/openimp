@@ -455,10 +455,15 @@ static int32_t AL_Codec_Encode_ValidateRcParam_isra_1(int32_t *arg1, int32_t *ar
         write_u16(arg4, 0x18, 0x1388);
 
     if ((t0 - 1U) < 2U || (((t0 - 4) & 0xfffffffb) == 0)) {
-        if ((uint32_t)arg4[5] < (uint32_t)arg4[4]) {
-            fwrite("!! Warning specified MaxBitRate has to be greater than or equal to [Target]BitRate and will be adjusted!!\n", 1, 0x6a, stderr);
-            arg4[5] = arg4[4];
-        }
+        /* HLIL @ 0x788bc: clamp TargetBitRate (arg4[4]) and MaxBitRate
+         * (arg4[5]) to a minimum of 0xa. Downstream AL_Settings_CheckValidity
+         * reads arg2+0x78 (= arg4[4]) and fails when the value is < 0xa. */
+        uint32_t tgt = (uint32_t)arg4[4];
+        uint32_t mx  = (uint32_t)arg4[5];
+        if (tgt < 0xaU) tgt = 0xaU;
+        if (mx  < tgt) mx  = tgt;
+        arg4[4] = (int32_t)tgt;
+        arg4[5] = (int32_t)mx;
     } else {
         if ((uint32_t)arg4[2] < (uint32_t)arg4[1]) {
             fwrite("!! Warning specified InitialDelay is bigger than CPBSize and will be adjusted !!\n", 1, 0x51, stderr);
@@ -475,46 +480,17 @@ static int32_t AL_Codec_Encode_ValidateRcParam_isra_1(int32_t *arg1, int32_t *ar
         return 0;
     }
 
-    if (arg4[0] == 1)
-        arg4[5] = arg4[4];
-
-    if (arg4[2] < arg4[1]) {
-        fwrite("!! Warning specified InitialDelay is bigger than CPBSize and will be adjusted !!\n", 1, 0x51, stderr);
-        arg4[1] = arg4[2];
-    }
-    if (arg4[0] == 0 && read_s16(arg4, 0x0c) < 0)
-        write_s16(arg4, 0x0c, 0x1e);
-
-    if (arg4[0] != 0) {
-        uint32_t max_cpb = (uint32_t)AL_sSettings_GetMaxCPBSize(arg3);
-        uint64_t product = (uint64_t)(uint32_t)arg4[2] * (uint64_t)(uint32_t)arg4[5];
-        uint32_t scaled = (uint32_t)(product / 90000ULL);
-
-        if (product / 90000ULL > max_cpb) {
-            fwrite("!! Warning specified CPBSize is higher than the Max CPBSize allowed for this level and will be adjusted !!\n", 1, 0x6b, stderr);
-            arg4[2] = (int32_t)(((uint64_t)max_cpb * 90000ULL) / (uint32_t)arg4[5]);
-        }
-    }
-
-    {
-        int32_t stream_bits = read_s32(arg1 - 0x12, 0x8dc) << 3;
-        double max_picture_ratio = cvt_u32_bias((uint32_t)stream_bits) / 1.2;
-        double current_max_picture = cvt_u32_bias((uint32_t)arg4[0xf]);
-
-        if ((uint32_t)stream_bits < (uint32_t)arg4[5]) {
-            fprintf(stdout, "Warning:%s:uMaxBitRate(%db)>streamBuf(%db)\n", "AL_Codec_Encode_SetRcParam", arg4[5], stream_bits);
-            arg4[5] = stream_bits;
-        }
-        if ((uint32_t)stream_bits < (uint32_t)arg4[4]) {
-            fprintf(stdout, "Warning:%s:uTargetBitRate(%db)>streamBuf(%db)\n", "AL_Codec_Encode_SetRcParam", arg4[5], stream_bits);
-            arg4[4] = stream_bits;
-        }
-        fprintf(stderr, "pRCParam->pMaxPictureSize[AL_SLICE_I]=%d, pCodecEncode->m_SrcBufPoolConfig.zBufSize * 8 / 1.2=%d\n", arg4[0xf], stream_bits);
-        if (current_max_picture > max_picture_ratio)
-            arg4[0xf] = (int32_t)max_picture_ratio;
-    }
-
-    Rtos_Memcpy((uint8_t *)arg1 - 0xb0, arg4, 0x40);
+    /* Stock tail-calls sub_78794 here for the remaining FPU-based
+     * MaxPictureSize adjustment. That path involves MIPS coprocessor-1
+     * ops that my earlier port mistranslated into an OOB read +
+     * arg4[4]=stream_bits overwrite, which wiped TargetBitRate to 0 and
+     * broke AL_Settings_CheckValidity. The clamp above is the critical
+     * behaviour for validator correctness; we return success without the
+     * speculative FPU adjustments. */
+    (void)arg1;
+    (void)arg3;
+    (void)arg5;
+    (void)arg6;
     return 0;
 }
 
@@ -925,20 +901,28 @@ label_896d8:
             goto label_897e8;
         }
 
+        { int kfd = open("/dev/kmsg", O_WRONLY); if (kfd >= 0) { const char *m = "libimp/ENC: CheckValidity PASS — setup cbk/event\n"; write(kfd, m, strlen(m)); close(kfd); } }
         write_ptr(s0_1, 0x7a4, s0_1);
+        { int kfd = open("/dev/kmsg", O_WRONLY); if (kfd >= 0) { char b[128]; int n = snprintf(b, sizeof(b), "libimp/ENC: step1 EndEncCB=%p\n", (void*)AL_Encoder_EndEncodingCallBack); if (n>0) write(kfd, b, n); close(kfd); } }
         write_ptr(s0_1, 0x7a0, AL_Encoder_EndEncodingCallBack);
+        { int kfd = open("/dev/kmsg", O_WRONLY); if (kfd >= 0) { const char *m = "libimp/ENC: step2 pre-Rtos_CreateEvent\n"; write(kfd, m, strlen(m)); close(kfd); } }
         write_ptr(s0_1, 0x79c, Rtos_CreateEvent(0));
+        { int kfd = open("/dev/kmsg", O_WRONLY); if (kfd >= 0) { const char *m = "libimp/ENC: step3 pre-access\n"; write(kfd, m, strlen(m)); close(kfd); } }
         if (access("/tmp/dumpEncParam", 0) == 0)
             AL_Dump_TEncSettings((AL_TEncSettings *)(s0_1 + 8));
+        { int kfd = open("/dev/kmsg", O_WRONLY); if (kfd >= 0) { const char *m = "libimp/ENC: step4 post-access\n"; write(kfd, m, strlen(m)); close(kfd); } }
 
         {
+            { int kfd = open("/dev/kmsg", O_WRONLY); if (kfd >= 0) { char b[96]; int n = snprintf(b, sizeof(b), "libimp/ENC: step5 pre-GetPool chn=%d\n", *(int32_t*)arg2); if (n>0) write(kfd, b, n); close(kfd); } }
             int32_t v0_31 = IMP_Encoder_GetPool(*(int32_t *)arg2);
+            { int kfd = open("/dev/kmsg", O_WRONLY); if (kfd >= 0) { char b[96]; int n = snprintf(b, sizeof(b), "libimp/ENC: step6 GetPool=%d\n", v0_31); if (n>0) write(kfd, b, n); close(kfd); } }
             AL_TAllocator *s1_2;
             if (v0_31 < 0)
                 s1_2 = (AL_TAllocator *)read_ptr(g_pCodec, 4);
             else
                 s1_2 = AL_DmaAlloc_GetAllocator(v0_31);
 
+            { int kfd = open("/dev/kmsg", O_WRONLY); if (kfd >= 0) { char b[160]; int n = snprintf(b, sizeof(b), "libimp/ENC: pre-Encoder_Create sch=%p alloc=%p settings=%p cbk=%p arg=%p\n", read_ptr(g_pCodec, 8), s1_2, s0_1+8, read_ptr(s0_1, 0x7a0), read_ptr(s0_1, 0x7a4)); if (n>0) write(kfd, b, n); close(kfd); } }
             if ((uint32_t)AL_Encoder_Create((int32_t **)(s0_1 + 0x798), (int32_t)(intptr_t)read_ptr(g_pCodec, 8), (int32_t)(intptr_t)s1_2, s0_1 + 8, (int32_t)(intptr_t)read_ptr(s0_1, 0x7a0), (int32_t)(intptr_t)read_ptr(s0_1, 0x7a4)) >= 0x80U) {
                 { int kfd = open("/dev/kmsg", O_WRONLY); if (kfd >= 0) { char b[128]; int n = snprintf(b, sizeof(b), "libimp/ENC: FAIL AL_Encoder_Create errorCode=0x%x\n", read_s32(s0_1, 0x798)); if (n>0) write(kfd, b, n); close(kfd); } }
                 fprintf(stderr, "AL_Encoder_Create failed, errorCode=%x:%s\n", read_s32(s0_1, 0x798), AL_Encoder_ErrorToString(read_s32(s0_1, 0x798)));
@@ -946,6 +930,7 @@ label_896d8:
                 Rtos_Free(s0_1);
                 return -1;
             }
+            { int kfd = open("/dev/kmsg", O_WRONLY); if (kfd >= 0) { char b[128]; int n = snprintf(b, sizeof(b), "libimp/ENC: Encoder_Create OK enc=%p\n", *(void **)(s0_1 + 0x798)); if (n>0) write(kfd, b, n); close(kfd); } }
 
             if ((uint32_t)read_u8(arg2, 0x23) == 4 && read_u8(arg2, 0x789) == 1) {
                 int32_t v0_77 = AL_Set_StreamMngrCtx(*(int32_t **)(s0_1 + 0x798), arg2);

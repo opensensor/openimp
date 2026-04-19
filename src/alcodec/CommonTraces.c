@@ -152,11 +152,11 @@ int32_t getTime(void *arg1)
     int32_t result;
 
     while (1) {
-        result = (*(int32_t (**)(void *, int32_t))(*(intptr_t *)s0 + 4))(s0, 0x8030);
+        result = ((int32_t (*)(void *, int32_t))(*(intptr_t *)s0 + 4))(s0, 0x8030);
         if (result != 0) {
             break;
         }
-        (*(int32_t (**)(void *, int32_t, int32_t))(*(intptr_t *)s0 + 8))(s0, 0x8028, ((*(int32_t (**)(void *, int32_t))(*(intptr_t *)s0 + 4))(s0, 0x8028) & 0xfffffff3) | 4);
+        ((int32_t (*)(void *, int32_t, int32_t))(*(intptr_t *)s0 + 8))(s0, 0x8028, (((int32_t (*)(void *, int32_t))(*(intptr_t *)s0 + 4))(s0, 0x8028) & 0xfffffff3) | 4);
     }
     return result;
 }

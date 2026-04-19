@@ -1030,16 +1030,16 @@ uint32_t AL_CoreConstraintEnc_GetExpectedNumberOfCores(int32_t *arg1, void *arg2
         return (uint32_t)v0_1;
     }
 
-    if (a0 == 0) {
-        __builtin_trap();
-    }
     return (uint32_t)v0_1;
 }
 
-uint32_t AL_CoreConstraintEnc_GetResources(int32_t arg3, int32_t arg4, char arg5, char arg6)
+uint32_t AL_CoreConstraintEnc_GetResources(void *arg1, int32_t arg2, uint32_t arg3, uint32_t arg4,
+                                           uint32_t arg5, uint32_t arg6, uint32_t arg7)
 {
-    return AL_GetResources(arg3, arg4, (uint32_t)(uint8_t)arg5 * 0x3e8,
-                           (uint32_t)(uint8_t)arg6);
+    (void)arg1;
+    (void)arg2;
+    (void)arg7;
+    return AL_GetResources((int32_t)arg3, (int32_t)arg4, arg5 * 0x3e8, arg6);
 }
 
 void *AL_GmvMngr_Init(uint8_t *arg1)

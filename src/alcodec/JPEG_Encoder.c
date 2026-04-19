@@ -16,11 +16,11 @@ extern int32_t __assert(const char *expression, const char *file, int32_t line, 
 
 uint32_t AL_CleanupMemory(int32_t arg1, int32_t arg2); /* forward decl, ported by T<N> later */
 
-int32_t shouldReleaseSource(void);
-int32_t generateNals(void);
-int32_t preprocessEp1(void *arg1, int32_t *arg2);
-int32_t updateHlsAndWriteSections(int32_t arg1, void *arg2, int32_t arg3, AL_TBuffer *arg4);
-int32_t ConfigureChannel(int32_t arg1, void *arg2, void *arg3);
+static int32_t shouldReleaseSource(void);
+static int32_t generateNals(void);
+static int32_t preprocessEp1(void *arg1, int32_t *arg2);
+static int32_t updateHlsAndWriteSections(int32_t arg1, void *arg2, int32_t arg3, AL_TBuffer *arg4);
+static int32_t ConfigureChannel(int32_t arg1, void *arg2, void *arg3);
 int32_t (*AL_CreateJpegEncoder(int32_t (**arg1)()))();
 int32_t JpegTables_InitQuant(int32_t arg1, char arg2, int32_t *arg3);
 void *JpegTables_InitHuffman(char arg1, char arg2, int32_t *arg3, char *const arg4);
@@ -135,17 +135,17 @@ static const uint8_t HUFFMAN_TABLE_AC_CHROMA[0x288] = {
     0xf6, 0xf7, 0xff, 0x0f, 0xf8, 0xf9, 0xff, 0x0f, 0xfa, 0x00, 0x00, 0x00,
 };
 
-int32_t shouldReleaseSource(void)
+static int32_t shouldReleaseSource(void)
 {
     return 1;
 }
 
-int32_t generateNals(void)
+static int32_t generateNals(void)
 {
     return 0;
 }
 
-int32_t preprocessEp1(void *arg1, int32_t *arg2)
+static int32_t preprocessEp1(void *arg1, int32_t *arg2)
 {
     void *s2 = *(void **)((uint8_t *)arg1 + 0x14); /* +0x14 encoder settings pointer */
     int32_t a1 = arg2[2];
@@ -171,7 +171,7 @@ int32_t preprocessEp1(void *arg1, int32_t *arg2)
     return result;
 }
 
-int32_t updateHlsAndWriteSections(int32_t arg1, void *arg2, int32_t arg3, AL_TBuffer *arg4)
+static int32_t updateHlsAndWriteSections(int32_t arg1, void *arg2, int32_t arg3, AL_TBuffer *arg4)
 {
     void *v0 = AL_Buffer_GetMetaData(arg4, 1);
     int32_t *v0_2 = (int32_t *)((uint8_t *)AL_Buffer_GetData(arg4) + READ_S32(arg2, 0x34)); /* +0x34 section desc offset */
@@ -190,7 +190,7 @@ int32_t updateHlsAndWriteSections(int32_t arg1, void *arg2, int32_t arg3, AL_TBu
     return 0;
 }
 
-int32_t ConfigureChannel(int32_t arg1, void *arg2, void *arg3)
+static int32_t ConfigureChannel(int32_t arg1, void *arg2, void *arg3)
 {
     int32_t v1 = READ_S32(arg3, 0xfc); /* +0xfc JPEG density selector */
 

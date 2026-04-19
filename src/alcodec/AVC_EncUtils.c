@@ -1,5 +1,9 @@
 #include <stdint.h>
 #include <stddef.h>
+#include <stdio.h>
+#include <string.h>
+#include <unistd.h>
+#include <fcntl.h>
 
 #include "alcodec/al_buffer.h"
 #include "alcodec/al_fourcc.h"
@@ -522,6 +526,7 @@ static int32_t generateNals(uint8_t *arg1, int32_t arg2)
 static int32_t ConfigureChannel(int32_t arg1, uint8_t *arg2, uint8_t *arg3)
 {
     void *var_18 = &_gp;
+    { int kfd = open("/dev/kmsg", O_WRONLY); if (kfd >= 0) { char b[128]; int n = snprintf(b, sizeof(b), "libimp/ENC: AVC.ConfigureChannel ENTRY a2=%p a3=%p\n", (void*)arg2, (void*)arg3); if (n>0) write(kfd, b, n); close(kfd); } }
     int32_t v0_1 = *(int32_t *)(arg2 + 0x90) & 8;
     int32_t a1 = 0x0a;
     int32_t v0_3;
@@ -551,10 +556,14 @@ static int32_t ConfigureChannel(int32_t arg1, uint8_t *arg2, uint8_t *arg3)
     }
     *(int32_t *)(arg2 + 0x24) = v0_4;
     *(int32_t *)(arg2 + 0x28) = 4;
+    { int kfd = open("/dev/kmsg", O_WRONLY); if (kfd >= 0) { const char *m = "libimp/ENC: CC-pre-SetHlsParam\n"; write(kfd, m, strlen(m)); close(kfd); } }
     AL_Common_Encoder_SetHlsParam(arg2);
+    { int kfd = open("/dev/kmsg", O_WRONLY); if (kfd >= 0) { const char *m = "libimp/ENC: CC-pre-SetME\n"; write(kfd, m, strlen(m)); close(kfd); } }
     AL_Common_Encoder_SetME(0x10, 0x10, 8, 8, (int8_t *)arg2);
+    { int kfd = open("/dev/kmsg", O_WRONLY); if (kfd >= 0) { const char *m = "libimp/ENC: CC-pre-ComputeRCParam\n"; write(kfd, m, strlen(m)); close(kfd); } }
     AL_Common_Encoder_ComputeRCParam((int32_t)*(int8_t *)(arg2 + 0x38), (int32_t)*(int8_t *)(arg2 + 0x39), 0, 0x0c,
                                      (int16_t *)arg2);
+    { int kfd = open("/dev/kmsg", O_WRONLY); if (kfd >= 0) { const char *m = "libimp/ENC: CC-post-ComputeRCParam\n"; write(kfd, m, strlen(m)); close(kfd); } }
     if (*(int32_t *)(arg3 + 0x10c) != 0) {
         int32_t result = *(int32_t *)(arg2 + 0x30) | 0x20;
 
@@ -575,6 +584,7 @@ static int32_t preprocessEp1(uint8_t *arg1)
 
 int32_t (*AL_CreateAvcEncoder(int32_t (**arg1)(void)))(void)
 {
+    { int kfd = open("/dev/kmsg", O_WRONLY); if (kfd >= 0) { char b[192]; int n = snprintf(b, sizeof(b), "libimp/ENC: AL_CreateAvcEncoder arg1=%p fns[0..4]=%p,%p,%p,%p,%p\n", (void*)arg1, (void*)shouldReleaseSource, (void*)preprocessEp1, (void*)ConfigureChannel, (void*)generateNals, (void*)updateHlsAndWriteSections); if (n>0) write(kfd, b, n); close(kfd); } }
     *arg1 = shouldReleaseSource;
     arg1[1] = (int32_t (*)(void))preprocessEp1;
     arg1[2] = (int32_t (*)(void))ConfigureChannel;

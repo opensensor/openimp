@@ -1,5 +1,9 @@
 #include <stdint.h>
 #include <stddef.h>
+#include <stdio.h>
+#include <string.h>
+#include <unistd.h>
+#include <fcntl.h>
 
 #include "alcodec/al_allocator.h"
 #include "alcodec/al_buffer.h"
@@ -9,6 +13,16 @@
 
 extern char _gp;
 extern int32_t __assert(const char *expression, const char *file, int32_t line, const char *function, ...);
+
+#define SCH_KMSG(fmt, ...) do { \
+    int _kfd = open("/dev/kmsg", O_WRONLY); \
+    if (_kfd >= 0) { \
+        char _b[192]; \
+        int _n = snprintf(_b, sizeof(_b), "libimp/SCH: " fmt "\n", ##__VA_ARGS__); \
+        if (_n > 0) { write(_kfd, _b, _n > (int)sizeof(_b) ? (int)sizeof(_b) : _n); } \
+        close(_kfd); \
+    } \
+} while (0)
 
 #define READ_U8(base, off) (*(uint8_t *)((uint8_t *)(base) + (off)))
 #define READ_S32(base, off) (*(int32_t *)((uint8_t *)(base) + (off)))
@@ -367,17 +381,22 @@ int32_t AL_SchedulerCpu_CreateChannel(int32_t **arg1, int32_t *arg2, void *arg3,
     int32_t var_40;
 
     (void)var_60;
+    var_40 = 0;
+    SCH_KMSG("SchCpu.CC ENTRY arg2=%p arg3=%p arg4=%p arg5=%p", (void*)arg2, (void*)arg3, (void*)arg4, (void*)arg5);
     s4 = *(int32_t *)arg3;
     v0 = (int32_t *)Rtos_Malloc(0x24);
+    SCH_KMSG("SchCpu.CC s4=0x%x v0(obj)=%p pool_arg=%p", s4, (void*)v0, (void*)((int32_t *)arg3)[3]);
     v0[8] = AllocatorPoolGetPoolId((AL_TAllocator *)((int32_t *)arg3)[3]);
     v0[1] = (int32_t)(intptr_t)Rtos_CreateEvent(0);
     if (v0[1] == 0) {
+        SCH_KMSG("SchCpu.CC Rtos_CreateEvent=0 -> fail_free_obj");
         var_40 = 0x87;
         goto fail_free_obj;
     }
 
     v0[2] = (int32_t)(intptr_t)Rtos_CreateMutex();
     if (v0[2] == 0) {
+        SCH_KMSG("SchCpu.CC Rtos_CreateMutex=0 -> fail_delete_event");
         var_40 = 0x87;
         goto fail_delete_event;
     }
@@ -394,8 +413,11 @@ int32_t AL_SchedulerCpu_CreateChannel(int32_t **arg1, int32_t *arg2, void *arg3,
 
         (void)var_44_1;
         (void)var_48_1;
+        SCH_KMSG("SchCpu.CC pre-SchEnc.CC2 schEnc=%p s4=0x%x a2=0x%x s6=%p v0=%p",
+                 (void*)(arg2 + 1), s4, a2, (void*)s6_1, (void*)v0);
         v0_4 = AL_SchedulerEnc_CreateChannel2(arg2 + 1, (void *)(intptr_t)s4, a2, (int32_t)EndEncodingCallBack,
                                               (int32_t)(intptr_t)v0, &var_40, (int32_t)(intptr_t)s6_1);
+        SCH_KMSG("SchCpu.CC post-SchEnc.CC2 v0_4=0x%x var_40=0x%x", v0_4, var_40);
         v0[0] = v0_4;
         if (v0_4 != 0xff) {
             int32_t var_58[4];
@@ -409,16 +431,20 @@ int32_t AL_SchedulerCpu_CreateChannel(int32_t **arg1, int32_t *arg2, void *arg3,
             int32_t var_50;
             int32_t var_4c;
 
+            SCH_KMSG("SchCpu.CC pre-GetBufRes chan=%d", v0_4);
             AL_SchedulerEnc_GetChannelBufResources(var_58, arg2 + 1, (char)v0_4);
             s7_1 = var_58[0];
             var_54 = var_58[1];
             var_50 = var_58[2];
             var_4c = var_58[3];
+            SCH_KMSG("SchCpu.CC bufRes s7=%d var54=%d var50=%d var4c=%d", s7_1, var_54, var_50, var_4c);
             v0_7 = v0[0] * 0x54;
             WRITE_S32(arg2, v0_7 + 0x1350, 0);
             s3_2 = arg2 + v0_7 + 0x4c0;
+            SCH_KMSG("SchCpu.CC pre-alloc(ref+rec+mv) s3=%p", (void*)s3_2);
             if (allocateBuffers(s3_2, (AL_TAllocator *)s6_1, s7_1, var_54, "ref + rec + mv") != 0) {
                 var_70_2 = "interm";
+                SCH_KMSG("SchCpu.CC pre-alloc(interm)");
                 if (var_38_1(s3_2, (AL_TAllocator *)s6_1, var_50, var_4c, "interm") != 0) {
                     int32_t v1_6 = v0[0];
                     int32_t v0_14 = var_50 + s7_1;
@@ -450,12 +476,15 @@ int32_t AL_SchedulerCpu_CreateChannel(int32_t **arg1, int32_t *arg2, void *arg3,
                         } while (s2_1 != v0_14);
                     }
 
+                    SCH_KMSG("SchCpu.CC pre-SetChannelInfo v0[5]=%p s4=0x%x", (void*)&v0[5], s4);
                     SetChannelInfo(&v0[5], (void *)(intptr_t)s4);
                     *arg1 = v0;
+                    SCH_KMSG("SchCpu.CC SUCCESS return var_40=0x%x", var_40);
                     return var_40;
                 }
             }
 
+            SCH_KMSG("SchCpu.CC alloc failed -> FreeChannelBuffers2");
             {
                 int32_t a1_3 = v0[0];
                 int32_t a2_3 = v0[8];
@@ -464,10 +493,13 @@ int32_t AL_SchedulerCpu_CreateChannel(int32_t **arg1, int32_t *arg2, void *arg3,
                 var_40 = 0x87;
             }
         } else if (var_40 == 0) {
+            SCH_KMSG("SchCpu.CC CC2 returned 0xff and var_40=0 -> __assert");
             __assert("!AL_IS_SUCCESS_CODE(errorCode)",
                      "/home/user/git/proj/sdk-lv3/src/imp/video/alcodec/lib_encode/EncSchedulerCpu.c",
                      0x9f, "AL_SchedulerCpu_CreateChannel");
             var_40 = 0x87;
+        } else {
+            SCH_KMSG("SchCpu.CC CC2 returned 0xff var_40=0x%x -> error path", var_40);
         }
     }
 

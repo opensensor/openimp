@@ -115,7 +115,7 @@ int32_t rc_I0l(void *arg1)
 {
     void *allocator = *(void **)((char *)arg1 + 0x40);
     void (*free_fn)(void *allocator, void *buffer) =
-        (*(void (**)(void *, void *))(*(intptr_t *)allocator + 8));
+        ((void (*)(void *, void *))(*(intptr_t *)allocator + 8));
 
     free_fn(allocator, *(void **)((char *)arg1 + 0x44));
     return 0;

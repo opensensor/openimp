@@ -264,7 +264,7 @@ void AL_Buffer_Destroy(AL_TBuffer *arg1)
         do {
             void *a0_1 = buffer_get_metadata_list(arg1)[i];
             i += 1;
-            (*(void (**)(void *))((uint8_t *)a0_1 + 4))(a0_1);
+            ((void (*)(void *))((uint8_t *)a0_1 + 4))(a0_1);
         } while (i < (int32_t)buffer_get_metadata_count(arg1));
     }
 

@@ -108,6 +108,7 @@ typedef struct {
     void *frame_release_cb;        /* Frame release callback (OEM offset 0xFC) */
     void *frame_release_arg;       /* Frame release callback argument (OEM offset 0x100) */
     uint8_t enc_type;              /* Encoding type: 0=H264, 1=H265, 2=JPEG (OEM offset 0x2B) */
+    void *pending_frame;           /* Async frame handed from encoder_update -> encoder_thread */
 } EncChannel;
 
 /* Encoder group structure */
@@ -242,6 +243,19 @@ static void encoder_release_frame_slot(EncChannel *chn, void *slot)
 {
     if (chn == NULL || slot == NULL) return;
     Fifo_Queue(chn->fifo, slot, -1);
+}
+
+static void encoder_unlock_and_release_frame(EncChannel *chn, void *slot)
+{
+    uint32_t vaddr = 0;
+
+    if (chn == NULL || slot == NULL)
+        return;
+
+    memcpy(&vaddr, (uint8_t *)slot + 0x1c, sizeof(vaddr));
+    if (vaddr != 0)
+        VBMUnlockFrameByVaddr(vaddr);
+    encoder_release_frame_slot(chn, slot);
 }
 
 static int encoder_clone_source_frame(EncChannel *chn, void *src_frame, void **slot_out)
@@ -679,8 +693,15 @@ int IMP_Encoder_CreateChn(int encChn, IMPEncoderCHNAttr *attr) {
     /* sem_init at offset 0x418 with value 0 */
     sem_init(&chn->sem_418, 0, 0);
 
-    /* Initialize stream-available semaphore with 0 (posted when stream is ready) */
-    sem_init(&chn->sem_408, 0, 0);
+    /* OEM CreateChn seeds the stream-manager semaphore from the cached
+     * max-stream count field at channel+0x4c0. This semaphore is distinct
+     * from sem_418 (GetStream wait) and sem_428 (PollingStream wait). */
+    {
+        unsigned int stream_slots = (chn->max_stream_cnt > 0)
+            ? (unsigned int)chn->max_stream_cnt
+            : 0u;
+        sem_init(&chn->sem_408, 0, stream_slots);
+    }
 
     /* Initialize mutexes (from decompilation at 0x83d30) */
     if (pthread_mutex_init(&chn->mutex_438, NULL) < 0) {
@@ -732,10 +753,14 @@ int IMP_Encoder_CreateChn(int encChn, IMPEncoderCHNAttr *attr) {
         return -1;
     }
 
-    /* Allocate stream buffers (from decompilation at 0x83e10) */
+    /* OEM CreateChn allocates the per-channel frame-stream metadata ring as:
+     *   calloc(max_stream_cnt * 0x38 * 7, 1)
+     * i.e. 0x188 bytes per entry. This is NOT the encoded payload buffer size;
+     * stream_buf_size controls the hardware/software bitstream buffers
+     * elsewhere in the pipeline. */
     int stream_cnt = (chn->max_stream_cnt > 0) ? chn->max_stream_cnt : 4;
-    int stream_size = (chn->stream_buf_size > 0) ? chn->stream_buf_size : 0x188; /* Size per stream buffer metadata structure */
-    size_t total_size = (size_t)stream_cnt * (size_t)stream_size;
+    const int frame_stream_meta_size = 0x188;
+    size_t total_size = (size_t)stream_cnt * (size_t)frame_stream_meta_size;
 
     void **buf_ptr = (void**)&chn->data_298[0];
     *buf_ptr = calloc(total_size, 1);
@@ -766,8 +791,9 @@ int IMP_Encoder_CreateChn(int encChn, IMPEncoderCHNAttr *attr) {
 
     pthread_mutex_unlock(&encoder_mutex);
 
-    LOG_ENC("CreateChn: chn=%d, profile=0x%x, share=%d created successfully",
-            encChn, attr->encAttr.profile, chn->bufshare_chn);
+    LOG_ENC("CreateChn: chn=%d, profile=0x%x, share=%d created successfully (frame_stream_meta=%d x %d)",
+            encChn, attr->encAttr.profile, chn->bufshare_chn,
+            stream_cnt, frame_stream_meta_size);
     return 0;
 }
 
@@ -822,6 +848,14 @@ int IMP_Encoder_DestroyChn(int encChn) {
         close(chn->eventfd);
         chn->eventfd = -1;
     }
+
+    if (chn->pending_frame != NULL) {
+        encoder_unlock_and_release_frame(chn, chn->pending_frame);
+        chn->pending_frame = NULL;
+    }
+
+    pthread_cond_destroy(&chn->cond_1f0);
+    pthread_mutex_destroy(&chn->mutex_1d8);
 
     /* Free current stream buffer if any */
     if (chn->current_stream != NULL) {
@@ -1418,7 +1452,7 @@ int IMP_Encoder_SetChnQp(int encChn, int iQP) {
     /* Call codec SetQp if codec is active */
     int ret = 0;
     if (chn->codec != NULL) {
-        ret = AL_Codec_Encode_SetQp(chn->codec, (int16_t)iQP);
+        ret = AL_Codec_Encode_SetQp(chn->codec, &qp);
     }
 
     pthread_mutex_unlock(&chn->mutex_450);
@@ -1949,12 +1983,18 @@ static int channel_encoder_exit(EncChannel *chn) {
     /* Cancel threads */
     if (chn->thread_encoder) {
         pthread_cancel(chn->thread_encoder);
+        pthread_cond_broadcast(&chn->cond_1f0);
         pthread_join(chn->thread_encoder, NULL);
     }
 
     if (chn->thread_stream) {
         pthread_cancel(chn->thread_stream);
         pthread_join(chn->thread_stream, NULL);
+    }
+
+    if (chn->pending_frame != NULL) {
+        encoder_unlock_and_release_frame(chn, chn->pending_frame);
+        chn->pending_frame = NULL;
     }
 
     /* Cleanup fifo */
@@ -2035,32 +2075,24 @@ static void *encoder_thread(void *arg) {
 
     LOG_ENC("encoder_thread: started for channel %d", chn->chn_id);
 
-    /* TODO: This thread should drive AL_Codec_Encode_Process with real
-     * sensor frames (physical DMA addresses from VBM). Currently the AVPU
-     * hardware integration requires the full frame clone path to provide
-     * valid phys_addr pointers — submitting empty frame slots crashes the
-     * AVPU bus and locks up the system.
-     *
-     * For now this thread is a placeholder. The stream_thread's GetStream
-     * will return -1 (no encoded data) and rvd handles the timeout. */
     while (1) {
-        pthread_testcancel();
+        void *queued_frame = NULL;
 
-        /* Drain eventfd signals from encoder_update to prevent fd overflow */
-        if (chn->eventfd >= 0) {
-            uint64_t val;
-            fd_set rfds;
-            struct timeval tv;
-            FD_ZERO(&rfds);
-            FD_SET(chn->eventfd, &rfds);
-            tv.tv_sec = 1;
-            tv.tv_usec = 0;
-            int ret = select(chn->eventfd + 1, &rfds, NULL, NULL, &tv);
-            if (ret > 0) {
-                read(chn->eventfd, &val, sizeof(val));
-            }
-        } else {
-            sleep(1);
+        pthread_testcancel();
+        pthread_mutex_lock(&chn->mutex_1d8);
+        while (chn->pending_frame == NULL) {
+            pthread_cond_wait(&chn->cond_1f0, &chn->mutex_1d8);
+        }
+        queued_frame = chn->pending_frame;
+        chn->pending_frame = NULL;
+        pthread_mutex_unlock(&chn->mutex_1d8);
+
+        if (queued_frame == NULL)
+            continue;
+
+        if (AL_Codec_Encode_Process(chn->codec, queued_frame, queued_frame) != 0) {
+            LOG_ENC("encoder_thread: AL_Codec_Encode_Process failed on chn=%d", chn->chn_id);
+            encoder_unlock_and_release_frame(chn, queued_frame);
         }
     }
 
@@ -2340,15 +2372,10 @@ static int encoder_update(void *module, void *frame) {
         return -1;
     }
 
-    /* SAFETY: encoder_update runs synchronously on the FS capture thread.
-     * The full implementation (clone frame, DMA alloc, AL_Codec_Encode_Process,
-     * VBM unlock, FrameSource_ReleaseFrame) was causing hard kernel lockups
-     * because AL_Codec_Encode_Process blocks waiting on AVPU hardware that
-     * isn't ready, freezing the entire capture pipeline.
-     *
-     * For now: just queue the frame to the encoder thread via the FIFO and
-     * signal it — let the encoder thread do the heavy lifting asynchronously.
-     * This matches OEM behavior where encoder_update is lightweight. */
+    /* OEM shape: encoder_update should stay lightweight and hand frames off to
+     * the per-channel encoder thread. Running AL_Codec_Encode_Process inline on
+     * the FS capture thread stalls capture and has been a reliable path to
+     * main-stream starvation and eventual reboot. */
 
     static int update_log_count = 0;
     int should_log = (update_log_count < 5);
@@ -2383,18 +2410,14 @@ static int encoder_update(void *module, void *frame) {
         if (chn->chn_id >= 0 && chn->recv_pic_started && chn->codec != NULL) {
             void *queued_frame = NULL;
             if (encoder_clone_source_frame(chn, frame, &queued_frame) == 0) {
-                if (AL_Codec_Encode_Process(chn->codec, queued_frame, queued_frame) == 0) {
-                    if (chn->eventfd >= 0) {
-                        uint64_t val = 1;
-                        write(chn->eventfd, &val, sizeof(val));
-                    }
-                } else {
-                    /* Process failed — unlock VBM frame + release slot (93de1a9 parity) */
-                    uint32_t vaddr = 0;
-                    memcpy(&vaddr, (uint8_t*)queued_frame + 0x1c, sizeof(vaddr));
-                    VBMUnlockFrameByVaddr(vaddr);
-                    encoder_release_frame_slot(chn, queued_frame);
+                pthread_mutex_lock(&chn->mutex_1d8);
+                if (chn->pending_frame != NULL) {
+                    LOG_ENC("encoder_update: replacing pending frame on chn=%d", chn->chn_id);
+                    encoder_unlock_and_release_frame(chn, chn->pending_frame);
                 }
+                chn->pending_frame = queued_frame;
+                pthread_cond_signal(&chn->cond_1f0);
+                pthread_mutex_unlock(&chn->mutex_1d8);
             }
         }
     }

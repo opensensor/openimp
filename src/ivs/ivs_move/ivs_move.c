@@ -51,19 +51,19 @@ typedef struct MoveContext {
     uint8_t pad48[8];
 } MoveContext;
 
-typedef struct MoveHandle {
-    int32_t state;
-    MoveContext *ctx;
-    uint8_t param_storage[0x450];
-    int32_t *results;
-    int32_t (*release_data)(void *vaddr);
-} MoveHandle;
-
 typedef struct MoveResultRing {
     int32_t read_idx;
     int32_t write_idx;
     int32_t results;
 } MoveResultRing;
+
+typedef struct MoveHandle {
+    int32_t state;
+    MoveContext *ctx;
+    uint8_t param_storage[0x450];
+    MoveResultRing *result_ring;
+    int32_t (*release_data)(void *vaddr);
+} MoveHandle;
 
 int32_t *CreateImage(int32_t *arg1, int32_t arg2, int32_t arg3, int32_t arg4, char arg5); /* forward decl, ported by T<N> later */
 int32_t sub_da8dc(void); /* forward decl */
@@ -76,6 +76,8 @@ int32_t imp_move_process(void *arg1, void *arg2, int32_t arg3); /* forward decl 
 int32_t imp_get_move_param(void *arg1, uint32_t *arg2); /* forward decl */
 int32_t imp_set_move_param(void *arg1, uint32_t *arg2); /* forward decl */
 int32_t imp_flush_frame(void *arg1); /* forward decl */
+static IMPIVSInterface *sub_da058(uint32_t *arg1, int32_t arg2, int32_t arg3);
+static void sub_da1c4(IMPIVSInterface *arg1);
 
 static void copy_u32_block(uint32_t *dst, const uint32_t *src, uint32_t words)
 {
@@ -396,7 +398,7 @@ int32_t MovePreprocessSync(IMPIVSMoveInterface *arg1, void *arg2)
     return sub_d9fa8(arg1, (int32_t)(intptr_t)&arg2, 0);
 }
 
-IMPIVSInterface *sub_da058(uint32_t *arg1, int32_t arg2, int32_t arg3)
+static IMPIVSInterface *sub_da058(uint32_t *arg1, int32_t arg2, int32_t arg3)
 {
     void *result_raw = calloc(1, 0x484);
     IMPIVSMoveInterface *result = (IMPIVSMoveInterface *)result_raw;
@@ -432,7 +434,7 @@ IMPIVSInterface *IMP_IVS_CreateMoveInterface(IMP_IVS_MoveParam *param)
     return sub_da058((uint32_t *)param, (int32_t)(intptr_t)&_gp, 0);
 }
 
-void sub_da1c4(IMPIVSInterface *arg1)
+static void sub_da1c4(IMPIVSInterface *arg1)
 {
     if (arg1 == NULL) {
         return;
@@ -1215,7 +1217,7 @@ int32_t imp_move_process(void *arg1, void *arg2, int32_t arg3)
         }
 
         if (arg3 != 0) {
-            void *a0_1 = *(void **)((char *)arg1 + 4);
+            int32_t *a0_1 = *(int32_t **)((char *)arg1 + 4);
 
             if (*(int32_t *)((char *)a0_1 + 0x18) == 0) {
                 return update_mhi(a0_1, arg1, *(int32_t *)((char *)a0_1 + 0x44), (void *)(intptr_t)arg3);

@@ -1,7 +1,9 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <stdio.h>
+#include <string.h>
 #include <unistd.h>
+#include <fcntl.h>
 
 #include "alcodec/al_buffer.h"
 #include "alcodec/al_rtos.h"
@@ -248,7 +250,7 @@ static int32_t destroyChannels_part_6(int32_t *arg1)
     if (READ_S32(READ_PTR(arg1, 0x14), 0x124) > 0) {
         int32_t *a0_6 = (int32_t *)READ_PTR(arg1, 0xf25c);
 
-        (*(void (**)(int32_t *, int32_t))(intptr_t)READ_S32(*(void **)a0_6, 8))(a0_6, READ_S32(arg1, 0x18));
+        ((void (*)(int32_t *, int32_t))(intptr_t)READ_S32(*(void **)a0_6, 8))(a0_6, READ_S32(arg1, 0x18));
     }
 
     if (READ_U8(READ_PTR(arg1, 0x14), 0x1f) != 4 || READ_PTR(arg1, 0xf27c) == NULL) {
@@ -389,7 +391,7 @@ int32_t AL_Common_Encoder_PutStreamBuffer(int32_t *arg1, AL_TBuffer *arg2, int32
                     var_3c_1 = s2_1 >> 0x1f;
                     var_38_1 = 0x200;
                     var_40_1 = s2_1;
-                    (*(void (**)(int32_t *, int32_t, AL_TBuffer *))(intptr_t)READ_S32(*(void **)a0_10, 0x10))(
+                    ((void (*)(int32_t *, int32_t, AL_TBuffer *))(intptr_t)READ_S32(*(void **)a0_10, 0x10))(
                         a0_10, READ_S32(s6_2, 0x18), arg2);
                     Rtos_ReleaseMutex(READ_PTR(s5_2, 0xf254));
                     return 1;
@@ -423,7 +425,7 @@ int32_t AL_Common_Encoder_PutStreamBuffer(int32_t *arg1, AL_TBuffer *arg2, int32
                 var_3c = s7 >> 0x1f;
                 var_38 = s1_3;
                 var_40 = s7;
-                (*(void (**)(int32_t *, int32_t, AL_TBuffer *))(intptr_t)READ_S32(*(void **)a0_5, 0x10))(
+                ((void (*)(int32_t *, int32_t, AL_TBuffer *))(intptr_t)READ_S32(*(void **)a0_5, 0x10))(
                     a0_5, READ_S32(s3_2, 0x18), arg2);
                 Rtos_ReleaseMutex(READ_PTR(s2, 0xf254));
                 return 1;
@@ -449,7 +451,7 @@ int32_t AL_Common_Encoder_GetRecPicture(int32_t *arg1, int32_t *arg2, int32_t ar
         return 0;
     }
 
-    (*(void (**)(void))(intptr_t)READ_S32(*(void **)READ_PTR(v1, 0xf25c), 0x14))();
+    ((void (*)(void))(intptr_t)READ_S32(*(void **)READ_PTR(v1, 0xf25c), 0x14))();
     (void)READ_S32(v1, arg3 * 0xe0c4 + 0x18);
     (void)arg2;
     return 0;
@@ -470,7 +472,7 @@ int32_t AL_Common_Encoder_ReleaseRecPicture(int32_t *arg1, int32_t *arg2, int32_
         void *a0_2;
         int32_t v0_4;
 
-        (*(void (**)(int32_t *, int32_t, int32_t *))(intptr_t)READ_S32(*(void **)a0_1, 0x18))(
+        ((void (*)(int32_t *, int32_t, int32_t *))(intptr_t)READ_S32(*(void **)a0_1, 0x18))(
             a0_1, READ_S32(v1, arg3 * 0xe0c4 + 0x18), arg2);
         a0_2 = (void *)(intptr_t)*arg2;
         v0_4 = READ_S32(a0_2, 4);
@@ -767,34 +769,43 @@ int32_t AL_Common_Encoder_Destroy(int32_t **arg1)
     return 0;
 }
 
-int32_t AL_Common_Encoder_Create(int32_t **result, int32_t arg1)
+/* Stock signature: int32_t AL_Common_Encoder_Create(int32_t arg1)
+ * Returns an int32_t (pointer-to-wrapper). The wrapper is a 4-byte heap
+ * block whose first word points at the 0xf280-byte encoder state.
+ * Callers read (*result) as the state pointer. */
+int32_t AL_Common_Encoder_Create(int32_t arg1)
 {
     (void)_gp;
-    *result = Rtos_Malloc(4);
-    if (*result == NULL)
+
+    { int kfd = open("/dev/kmsg", O_WRONLY); if (kfd >= 0) { char b[96]; int n = snprintf(b, sizeof(b), "libimp/ENC: Com_Encoder_Create ENTRY alloc=0x%x\n", arg1); if (n>0) write(kfd, b, n); close(kfd); } }
+    int32_t **wrapper = (int32_t **)Rtos_Malloc(4);
+    if (wrapper == NULL)
         return 0;
+    Rtos_Memset(wrapper, 0, 4);
 
-    Rtos_Memset(*result, 0, 4);
-    *result = Rtos_Malloc(0xf280);
-    if (*result != NULL) {
-        Rtos_Memset(*result, 0, 0xf280);
-        if (MemDesc_Alloc((uint8_t *)*result + 0xf268, arg1, 0x754) != 0) {
-            void *v1_1 = *result;
-            int32_t a0_5 = READ_S32(v1_1, 0xf268);
-            int32_t t0_1 = READ_S32(v1_1, 0xf274);
-            int32_t a3_1 = READ_S32(v1_1, 0xf26c);
-            int32_t a2_1 = READ_S32(v1_1, 0xf270);
+    int32_t *v0 = (int32_t *)Rtos_Malloc(0xf280);
+    *wrapper = v0;
+    if (v0 != NULL) {
+        Rtos_Memset(v0, 0, 0xf280);
+        { int kfd = open("/dev/kmsg", O_WRONLY); if (kfd >= 0) { char b[96]; int n = snprintf(b, sizeof(b), "libimp/ENC: pre-MemDesc_Alloc v0=%p\n", (void*)v0); if (n>0) write(kfd, b, n); close(kfd); } }
+        if (MemDesc_Alloc((uint8_t *)v0 + 0xf268, arg1, 0x754) != 0) {
+            { int kfd = open("/dev/kmsg", O_WRONLY); if (kfd >= 0) { const char *m = "libimp/ENC: MemDesc_Alloc OK\n"; write(kfd, m, strlen(m)); close(kfd); } }
+            int32_t a0_5 = READ_S32(v0, 0xf268);
+            int32_t t0_1 = READ_S32(v0, 0xf274);
+            int32_t a3_1 = READ_S32(v0, 0xf26c);
+            int32_t a2_1 = READ_S32(v0, 0xf270);
 
-            WRITE_S32(v1_1, 0x14, a0_5);
-            WRITE_S32(v1_1, 0xe0c4, t0_1);
-            WRITE_S32(v1_1, 0xe0b8, a0_5);
-            WRITE_S32(v1_1, 0xe0bc, a3_1);
-            WRITE_S32(v1_1, 0xe0c0, 0x754);
+            WRITE_S32(v0, 0x14,   a0_5);
+            WRITE_S32(v0, 0xe0c4, t0_1);
+            WRITE_S32(v0, 0xe0b8, a0_5);
+            WRITE_S32(v0, 0xe0bc, a3_1);
+            WRITE_S32(v0, 0xe0c0, 0x754);
             Rtos_Memset((void *)(intptr_t)a0_5, 0, (size_t)a2_1);
-            return (int32_t)(intptr_t)result;
+            { int kfd = open("/dev/kmsg", O_WRONLY); if (kfd >= 0) { char b[96]; int n = snprintf(b, sizeof(b), "libimp/ENC: Com_Encoder_Create OK wrap=%p\n", (void*)wrapper); if (n>0) write(kfd, b, n); close(kfd); } }
+            return (int32_t)(intptr_t)wrapper;
         }
-
-        AL_Common_Encoder_Destroy(result);
+        { int kfd = open("/dev/kmsg", O_WRONLY); if (kfd >= 0) { const char *m = "libimp/ENC: MemDesc_Alloc FAIL\n"; write(kfd, m, strlen(m)); close(kfd); } }
+        AL_Common_Encoder_Destroy((int32_t **)wrapper);
     }
 
     return 0;
@@ -1744,7 +1755,7 @@ int32_t AL_Common_Encoder_Process(int32_t *arg1, int32_t arg2, int32_t arg3, int
                 int32_t *a0_36 = (int32_t *)READ_PTR(s7, 0xf25c);
 
                 WRITE_U8(s7, 0xed4c, 1);
-                return (*(int32_t (**)(int32_t *, int32_t, int32_t, int32_t, int32_t))(intptr_t)READ_S32(a0_36, 0xc))(
+                return ((int32_t (*)(int32_t *, int32_t, int32_t, int32_t, int32_t))(intptr_t)READ_S32(a0_36, 0xc))(
                     a0_36, READ_S32(s7, 0x18), 0, 0, 0);
             }
         }
@@ -1860,7 +1871,7 @@ label_53d78:
                         {
                             int32_t *a0_32 = (int32_t *)READ_PTR(s7, 0xf25c);
 
-                            result = (*(int32_t (**)(int32_t *, int32_t, int32_t *, void *, void *))(intptr_t)READ_S32(a0_32, 0xc))(
+                            result = ((int32_t (*)(int32_t *, int32_t, int32_t *, void *, void *))(intptr_t)READ_S32(a0_32, 0xc))(
                                 a0_32, READ_S32(s7, (s3_1 - s2_1 - arg4) * 0x3c + 0x18), s4_2,
                                 (uint8_t *)s7 + v0_39 + 0xdb1c, &str);
                         }
@@ -1896,6 +1907,7 @@ int32_t AL_Common_Encoder_CreateChannel(int32_t *arg1, int32_t arg2, int32_t arg
     int32_t result;
 
     (void)_gp;
+    { int kfd = open("/dev/kmsg", O_WRONLY); if (kfd >= 0) { char b[128]; int n = snprintf(b, sizeof(b), "libimp/ENC: CreateChannel ENTRY wrap=%p NumLayer=%d\n", (void*)arg1, arg4[0x49]); if (n>0) write(kfd, b, n); close(kfd); } }
     if (arg4[0x49] <= 0) {
         __assert("pSettings->NumLayer > 0",
                  "/home/user/git/proj/sdk-lv3/src/imp/video/alcodec/lib_encode/Com_Encoder.c", 0x64e,
@@ -1906,10 +1918,12 @@ int32_t AL_Common_Encoder_CreateChannel(int32_t *arg1, int32_t arg2, int32_t arg
     i = arg4;
     if (READ_PTR(s2_1, 8) == NULL) {
 label_55d0c:
+        { int kfd = open("/dev/kmsg", O_WRONLY); if (kfd >= 0) { const char *m = "libimp/ENC: CreateChannel FAIL s2+8 is NULL\n"; write(kfd, m, strlen(m)); close(kfd); } }
         result = 0x80;
         goto label_55c1c;
     }
 
+    { int kfd = open("/dev/kmsg", O_WRONLY); if (kfd >= 0) { char b[96]; int n = snprintf(b, sizeof(b), "libimp/ENC: CC-s2+14 ptr=%p\n", READ_PTR(s2_1, 0x14)); if (n>0) write(kfd, b, n); close(kfd); } }
     {
         int32_t *v1_1 = (int32_t *)READ_PTR(s2_1, 0x14);
 
@@ -1928,6 +1942,7 @@ label_55d0c:
         } while (i != &arg4[0x1d4]);
         *v1_1 = *i;
     }
+    { int kfd = open("/dev/kmsg", O_WRONLY); if (kfd >= 0) { const char *m = "libimp/ENC: CC-post-settings-copy\n"; write(kfd, m, strlen(m)); close(kfd); } }
 
     {
         void *s1_1 = READ_PTR(s2_1, 0x14);
@@ -2023,11 +2038,14 @@ label_55b9c:
         }
 
         WRITE_S32(s2_1, 0xf25c, arg2);
+        { int kfd = open("/dev/kmsg", O_WRONLY); if (kfd >= 0) { char b[96]; int n = snprintf(b, sizeof(b), "libimp/ENC: CC-pre-MemDesc_AllocNamed size=%d\n", AL_GetAllocSizeEP1()); if (n>0) write(kfd, b, n); close(kfd); } }
         if (MemDesc_AllocNamed((uint8_t *)s2_1 + 0xdb98, (void *)(intptr_t)arg3, AL_GetAllocSizeEP1(),
                                "CompData") == 0) {
+            { int kfd = open("/dev/kmsg", O_WRONLY); if (kfd >= 0) { const char *m = "libimp/ENC: CC FAIL MemDesc_AllocNamed\n"; write(kfd, m, strlen(m)); close(kfd); } }
             result = 0x87;
             goto label_55c1c;
         }
+        { int kfd = open("/dev/kmsg", O_WRONLY); if (kfd >= 0) { const char *m = "libimp/ENC: CC-post-MemDesc_AllocNamed\n"; write(kfd, m, strlen(m)); close(kfd); } }
 
         WRITE_S32(s2_1, 0xdbac, 0);
         WRITE_S32(s2_1, 0xf10c, 0);
@@ -2048,6 +2066,7 @@ label_55b9c:
         Rtos_Memset((uint8_t *)s2_1 + 0xed90, 0, 0x360);
         Rtos_Memset((uint8_t *)s2_1 + 0xf110, 0, 0x130);
         WRITE_PTR(s2_1, 0xf254, Rtos_CreateMutex());
+        { int kfd = open("/dev/kmsg", O_WRONLY); if (kfd >= 0) { char b[96]; int n = snprintf(b, sizeof(b), "libimp/ENC: CC mutex=%p\n", READ_PTR(s2_1, 0xf254)); if (n>0) write(kfd, b, n); close(kfd); } }
         if (READ_PTR(s2_1, 0xf254) != NULL) {
             int32_t i_1 = 0;
             int32_t *v1_14;
@@ -2065,7 +2084,19 @@ label_55b9c:
                 AL_Fifo_Queue((int32_t *)((uint8_t *)s2_1 + 0xf0f0), (void *)(intptr_t)i_1, 0);
             } while (i_1 != 0x12);
 
-            (*(void (**)(int32_t *, void *, int32_t *))(intptr_t)READ_S32(s2_1, 8))(s2_1, s1_1, arg4);
+            {
+                int kfd = open("/dev/kmsg", O_WRONLY);
+                if (kfd >= 0) {
+                    char b[160];
+                    int32_t fn8 = READ_S32(s2_1, 8);
+                    uint32_t first = fn8 ? *(uint32_t *)(intptr_t)fn8 : 0;
+                    uint32_t second = fn8 ? *(uint32_t *)(intptr_t)(fn8+4) : 0;
+                    int n = snprintf(b, sizeof(b), "libimp/ENC: CC pre-vfn[8] fn=0x%x first-instr=0x%08x next=0x%08x\n", fn8, first, second);
+                    if (n>0) write(kfd, b, n); close(kfd);
+                }
+            }
+            ((void (*)(int32_t *, void *, int32_t *))(intptr_t)READ_S32(s2_1, 8))(s2_1, s1_1, arg4);
+            { int kfd = open("/dev/kmsg", O_WRONLY); if (kfd >= 0) { const char *m = "libimp/ENC: CC post-vfn[8] (ConfigureChannel)\n"; write(kfd, m, strlen(m)); close(kfd); } }
             WRITE_PTR(s2_1, 0xe0cc, s2_1);
             WRITE_S32(s2_1, 0xe0d0, 0);
             var_28 = EndEncoding;
@@ -2100,7 +2131,9 @@ label_55b9c:
                 break;
             }
 
-            (*(void (**)(int32_t *, int32_t, int32_t))(intptr_t)READ_S32(s2_1, 0xc))(s2_1, 0, 1);
+            { int kfd = open("/dev/kmsg", O_WRONLY); if (kfd >= 0) { char b[96]; int n = snprintf(b, sizeof(b), "libimp/ENC: CC pre-vfn[c]#1 fn=0x%x\n", READ_S32(s2_1, 0xc)); if (n>0) write(kfd, b, n); close(kfd); } }
+            ((void (*)(int32_t *, int32_t, int32_t))(intptr_t)READ_S32(s2_1, 0xc))(s2_1, 0, 1);
+            { int kfd = open("/dev/kmsg", O_WRONLY); if (kfd >= 0) { const char *m = "libimp/ENC: CC post-vfn[c]#1\n"; write(kfd, m, strlen(m)); close(kfd); } }
             {
                 void *s3_2 = READ_PTR(s2_1, 0x14);
                 int32_t a1_10 = READ_S32(s2_1, 0xdba0);
@@ -2109,7 +2142,9 @@ label_55b9c:
                 int32_t *a1_12;
 
                 WRITE_S32(s2_1, 0xdbac, 0);
+                { int kfd = open("/dev/kmsg", O_WRONLY); if (kfd >= 0) { char b[96]; int n = snprintf(b, sizeof(b), "libimp/ENC: CC pre-CleanupMemory a0=%d a1=%d\n", a0_17, a1_10); if (n>0) write(kfd, b, n); close(kfd); } }
                 AL_CleanupMemory(a0_17, a1_10);
+                { int kfd = open("/dev/kmsg", O_WRONLY); if (kfd >= 0) { char b[64]; int n = snprintf(b, sizeof(b), "libimp/ENC: CC post-Cleanup v0_25=0x%x\n", READ_S32(s3_2, 0xc8)); if (n>0) write(kfd, b, n); close(kfd); } }
                 v0_25 = READ_S32(s3_2, 0xc8);
                 if (v0_25 == 0x80) {
                     if (LoadLambdaFromFile("./Lambdas.hex", (int32_t *)((uint8_t *)s2_1 + 0xdb98)) == 0)
@@ -2118,22 +2153,35 @@ label_55b9c:
                     LoadCustomLda((int32_t *)((uint8_t *)s2_1 + 0xdb98));
                     WRITE_S32(s3_2, 0xc8, 0x80);
                 }
-
-                (*(void (**)(int32_t *, void *))(intptr_t)READ_S32(s2_1, 4))(s2_1, (uint8_t *)s2_1 + 0xdb98);
+                { int kfd = open("/dev/kmsg", O_WRONLY); if (kfd >= 0) { char b[96]; int n = snprintf(b, sizeof(b), "libimp/ENC: CC pre-vfn[4] fn=0x%x\n", READ_S32(s2_1, 4)); if (n>0) write(kfd, b, n); close(kfd); } }
+                ((void (*)(int32_t *, void *))(intptr_t)READ_S32(s2_1, 4))(s2_1, (uint8_t *)s2_1 + 0xdb98);
+                { int kfd = open("/dev/kmsg", O_WRONLY); if (kfd >= 0) { const char *m = "libimp/ENC: CC post-vfn[4] (preprocessEp1)\n"; write(kfd, m, strlen(m)); close(kfd); } }
                 a1_12 = (int32_t *)READ_PTR(s2_1, 0xf25c);
-                result = (*(int32_t (**)(void *, int32_t *, void *, void *, void *))(intptr_t)READ_S32(a1_12, 4))(
-                    (uint8_t *)s2_1 + 0x18, a1_12, (uint8_t *)s2_1 + 0xe0b8, (uint8_t *)s2_1 + 0xdb98, &var_28);
+                /* HLIL: (*(*a1_12 + 4))(...) — a1_12 points to a struct whose
+                 * first field is the scheduler vtable; +4 is the 2nd vtable slot. */
+                {
+                    int32_t *vtbl = (int32_t *)(intptr_t)READ_S32(a1_12, 0);
+                    { int kfd = open("/dev/kmsg", O_WRONLY); if (kfd >= 0) { char b[160]; int n = snprintf(b, sizeof(b), "libimp/ENC: CC a1_12=%p vtbl=%p pre-sched[4] fn=0x%x\n", (void*)a1_12, (void*)vtbl, vtbl ? READ_S32(vtbl, 4) : 0); if (n>0) write(kfd, b, n); close(kfd); } }
+                    result = ((int32_t (*)(void *, int32_t *, void *, void *, void *))(intptr_t)READ_S32(vtbl, 4))(
+                        (uint8_t *)s2_1 + 0x18, a1_12, (uint8_t *)s2_1 + 0xe0b8, (uint8_t *)s2_1 + 0xdb98, &var_28);
+                }
+                { int kfd = open("/dev/kmsg", O_WRONLY); if (kfd >= 0) { char b[96]; int n = snprintf(b, sizeof(b), "libimp/ENC: CC post-sched[4] result=0x%x\n", result); if (n>0) write(kfd, b, n); close(kfd); } }
                 if ((uint32_t)result >= 0x80)
                     goto label_55c1c;
-                if ((*(int32_t (**)(int32_t *, int32_t, uint32_t (*)(int32_t *, int32_t), int32_t *))(intptr_t)READ_S32(a1_12, 0x1c))(
-                        a1_12, READ_S32(s2_1, 0x18), trace, s2_1) == 0)
-                    goto label_55c1c;
+                {
+                    int32_t *vtbl = (int32_t *)(intptr_t)READ_S32(a1_12, 0);
+                    if (((int32_t (*)(int32_t *, int32_t, uint32_t (*)(int32_t *, int32_t), int32_t *))(intptr_t)READ_S32(vtbl, 0x1c))(
+                            a1_12, READ_S32(s2_1, 0x18), trace, s2_1) == 0)
+                        goto label_55c1c;
+                }
+                { int kfd = open("/dev/kmsg", O_WRONLY); if (kfd >= 0) { const char *m = "libimp/ENC: CC post-sched[1c]\n"; write(kfd, m, strlen(m)); close(kfd); } }
 
                 WRITE_PTR(s2_1, 0xf258, Rtos_CreateSemaphore(0x11));
                 WRITE_S32(s2_1, 0xed80, (READ_U32(s1_1, 0x28) >> 4) & 0xf);
-                (*(void (**)(int32_t *, int32_t, int32_t))(intptr_t)READ_S32(s2_1, 0xc))(s2_1, 0, 1);
+                ((void (*)(int32_t *, int32_t, int32_t))(intptr_t)READ_S32(s2_1, 0xc))(s2_1, 0, 1);
                 WRITE_S32(s2_1, 0xf260, READ_U8(s1_1, 0xae));
                 WRITE_S32(s2_1, 0xf264, READ_S16(s1_1, 0x74));
+                { int kfd = open("/dev/kmsg", O_WRONLY); if (kfd >= 0) { const char *m = "libimp/ENC: CC SUCCESS return\n"; write(kfd, m, strlen(m)); close(kfd); } }
                 return result;
             }
         }
@@ -2144,10 +2192,13 @@ label_55c1c:
         void *v0_11 = READ_PTR(s2_1, 0x14);
 
         if (v0_11 != NULL) {
-            if (READ_S32(v0_11, 0x124) == 0)
+            if (READ_S32(v0_11, 0x124) == 0) {
+                { int kfd = open("/dev/kmsg", O_WRONLY); if (kfd >= 0) { char b[96]; int n = snprintf(b, sizeof(b), "libimp/ENC: CreateChannel EXIT result=0x%x\n", result); if (n>0) write(kfd, b, n); close(kfd); } }
                 return result;
+            }
             destroyChannels_part_6(s2_1);
         }
     }
+    { int kfd = open("/dev/kmsg", O_WRONLY); if (kfd >= 0) { char b[96]; int n = snprintf(b, sizeof(b), "libimp/ENC: CreateChannel EXIT2 result=0x%x\n", result); if (n>0) write(kfd, b, n); close(kfd); } }
     return result;
 }

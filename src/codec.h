@@ -79,10 +79,10 @@ int AL_Codec_Encode_ReleaseStream(void *codec, void *stream, void *user_data);
 /**
  * Set QP (Quantization Parameter) for encoder
  * @param codec Codec instance
- * @param qp QP value (sign-extended int16)
+ * @param qp QP structure pointer
  * @return 0 on success, -1 on failure
  */
-int AL_Codec_Encode_SetQp(void *codec, int16_t qp);
+int AL_Codec_Encode_SetQp(void *codec, void *qp);
 
 /**
  * Set entropy mode for encoder
@@ -110,16 +110,28 @@ int AL_Codec_Encode_SetQpBounds(void *codec, int minQp, int maxQp);
  */
 int AL_Codec_Encode_SetBitRate(void *codec, int targetBitrate, int maxBitrate);
 
+int AL_Codec_Encode_GetRcParam(void *codec, void *rcAttr);
+int AL_Codec_Encode_SetRcParam(void *codec, void *rcAttr);
+int AL_Codec_Encode_GetFrameRate(void *codec, void *fps);
+int AL_Codec_Encode_SetFrameRate(void *codec, void *fps);
+int AL_Codec_Encode_SetQpIPDelta(void *codec, int delta);
+int AL_Codec_Encode_RestartGop(void *codec);
+int AL_Codec_Encode_GetGopParam(void *codec, void *gopAttr);
+int AL_Codec_Encode_SetGopParam(void *codec, void *gopAttr);
+int AL_Codec_Encode_SetGopLength(void *codec, int gopLength);
+int AL_Codec_Encode_SetInputResolution(void *codec, int width, int height);
+int AL_Codec_Encode_SetLoopFilterBetaOffset(void *codec, int offset);
+int AL_Codec_Encode_SetLoopFilterTcOffset(void *codec, int offset);
+int AL_Codec_Encode_GetLastError(void *codec);
+int AL_Codec_Encode_RequestIDR(void *codec);
+
 /**
  * Request an IDR frame on the next encode for this codec instance
  * @param codec Codec instance
  * @return 0 on success, -1 on failure
  */
-int AL_Codec_Encode_RequestIDR(void *codec);
-
 #ifdef __cplusplus
 }
 #endif
 
 #endif /* CODEC_H */
-

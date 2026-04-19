@@ -62,6 +62,7 @@ int fs_set_buffer_count(int fd, int count);
 int fs_set_depth(int fd, int depth);
 int fs_stream_on(int fd);
 int fs_stream_off(int fd);
+int fs_poll_frame(int fd, unsigned int *ready_out);
 void fs_close_device(int fd);
 
 /* VBM (Video Buffer Manager) operations */
@@ -93,4 +94,3 @@ int VBMKernelDequeue(int chn, int fd, void **frame_out);
 #endif
 
 #endif /* KERNEL_INTERFACE_H */
-

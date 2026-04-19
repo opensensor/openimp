@@ -3,7 +3,7 @@
 ## Overview
 Reverse-engineered implementation of Ingenic Media Platform (IMP) libraries based on Binary Ninja MCP decompilations of libimp.so v1.1.6 for T31 platform.
 
-## Current OEM Parity Status (2026-04-03)
+## Current OEM Parity Status (2026-04-18)
 
 ### Executive Summary
 
@@ -83,12 +83,23 @@ From the latest `logs.txt` capture:
 #### Low confidence / still unresolved
 
 9. **All runtime slice fields feeding `cmd[0x1c]` are correct**
-   - layout is improved, but some late OEM field producers are still inferred
+   - layout is improved and the 640x360 baseline P-frame word now matches the
+     stock/live shape, but some late OEM field producers are still inferred
      rather than fully recovered
 
 10. **Post-CL register block parity is complete**
    - `0x8400`–`0x8428` is much closer to OEM, but still not proven complete for
      active P-frame entropy submission
+
+11. **`cmd[0x1e]` is not fully explained yet**
+   - `SliceParamToCmdRegsEnc2` and `GenerateAvcSliceHeader` recovered the word
+     layout and the `+0xf8/+0x100` producers, but `UpdateCommand` still owns a
+     late runtime producer for `SliceParam+0xfc`
+
+12. **`SliceParam+0x66` is likely picture-command-driven**
+   - `AL_ApplyPictCommands` copies command payload bytes at offsets `0x66` and
+     `0x67` into encoder runtime state under picture-command flag `0x400`,
+     which is a stronger lead than the older static entropy-mode guesses
 
 ### Confidence Matrix
 
@@ -101,7 +112,9 @@ From the latest `logs.txt` capture:
 | Failure is payload-write specific | High | `nz_after_hdr=0` and `raw_end==hdr_offset` repeatedly |
 | `cmd[0x1b]` parity for 640x360 baseline | Medium-High | Live value matches stock shape |
 | `cmd[0x1d]` parity | Medium-High | Live value matches recovered OEM formula |
-| `cmd[0x1c]` fully correct | Medium-Low | Some late field producers remain inferred |
+| `cmd[0x1c]` fully correct | Medium-Low | P-frame shape matches stock/live, but some producers remain inferred |
+| `cmd[0x1e]` fully explained | Low | `+0xf8/+0x100` are proven; `+0xfc` still depends on UpdateCommand |
+| `SliceParam+0x66` source identified | Low-Medium | `AL_ApplyPictCommands` points to picture-command state, but the exact state slot is still unmapped |
 | `0x8400`–`0x8428` post-CL parity complete | Low-Medium | Still a plausible remaining mismatch area |
 | Working AVPU H.264 parity is close | Medium | The remaining failure surface is much smaller, but still blocking payload |
 
@@ -110,8 +123,9 @@ From the latest `logs.txt` capture:
 #### Highest-signal next step
 
 Recover the remaining **runtime-produced slice fields** that feed Enc2,
-especially the fields that ultimately land in `cmd[0x1c]` and any unresolved
-height/row-group producer behind `cmd[0x1b]`.
+especially the fields that ultimately land in `cmd[0x1c]`, the picture-command
+state behind `SliceParam+0x66`, and the unresolved `UpdateCommand ->
+SliceParam+0xfc` producer behind `cmd[0x1e]`.
 
 Most likely OEM sources:
 
@@ -119,6 +133,7 @@ Most likely OEM sources:
 - `GenerateAvcSliceHeader`
 - `CmdRegsEnc1ToSliceParam`
 - `SliceParamToCmdRegsEnc2`
+- `AL_ApplyPictCommands`
 
 #### Second-highest-signal step
 
@@ -496,4 +511,3 @@ accurate summary of the **current** OEM-parity blocker.
 We have successfully implemented the core infrastructure and most API functions based on actual binary decompilations. The architecture is correct, data structures match the binary exactly, and the API is fully compatible. The remaining work is primarily hardware integration and actual encoding logic.
 
 **This is a true reverse-engineered implementation, not a stub library!** 🎯
-

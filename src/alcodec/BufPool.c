@@ -303,7 +303,7 @@ void AL_BufPool_Deinit(void *arg1)
         void *a0_1 = read_ptr(arg1, 0x10);
 
         if (a0_1 != NULL)
-            (*(void (**)(void *))((uint8_t *)a0_1 + 4))(a0_1);
+            ((void (*)(void *))((uint8_t *)a0_1 + 4))(a0_1);
     }
 
     Fifo_Deinit((uint8_t *)arg1 + 0x14);
@@ -419,7 +419,7 @@ int32_t AL_BufPool_Init(void *arg1, AL_TAllocator **arg2, int32_t *arg3)
                     } else {
                         a1_1 = v0_7;
                         if (AL_Buffer_AddMetaData(v0_7, v0_1) == 0) {
-                            (*(void (**)(void *, AL_TBuffer *))((uint8_t *)v0_1 + 4))(v0_1, a1_1);
+                            ((void (*)(void *, AL_TBuffer *))((uint8_t *)v0_1 + 4))(v0_1, a1_1);
                             AL_Buffer_Destroy(v0_7);
                             a1_1 = NULL;
                         }
