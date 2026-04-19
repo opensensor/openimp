@@ -123,8 +123,10 @@ $(BUILD_DIR)/%.o: $(SRC_DIR)/%.c
 	$(CC) $(CFLAGS) $(EXTRA_CFLAGS) -c $< -o $@
 
 # Build libimp shared library
-$(LIBIMP_SO): $(IMP_OBJECTS) | $(LIB_DIR)
-	$(CC) $(LDFLAGS) -o $@ $^
+# Links against libsysutils.so so imp_log_fun / IMP_Log_Get_Option resolve
+# via DT_NEEDED at load time (the stock firmware's libimp does the same).
+$(LIBIMP_SO): $(IMP_OBJECTS) $(LIBSU_SO) | $(LIB_DIR)
+	$(CC) $(LDFLAGS) -L$(LIB_DIR) -o $@ $(IMP_OBJECTS) -lsysutils
 
 # Build libimp static library
 $(LIBIMP_A): $(IMP_OBJECTS) | $(LIB_DIR)
