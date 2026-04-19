@@ -793,11 +793,37 @@ int32_t system_init(void)
     timestamp_base = (uint64_t)var_38.tv_sec * 1000000ULL + (uint64_t)(var_38.tv_nsec / 1000);
     get_cpu_id();
 
+    extern struct ISPDevice *gISP;
     do {
+        /* Diagnostic: trace each sys_funcs init call to /dev/kmsg along with
+         * the current value of gISP — if gISP becomes NULL mid-iteration, we
+         * can see exactly which init zeroed it. */
+        {
+            int kfd = open("/dev/kmsg", O_WRONLY);
+            if (kfd >= 0) {
+                char buf[160];
+                int n = snprintf(buf, sizeof(buf),
+                    "libimp/SYS: before sys_funcs[%d]=%s init, gISP=%p\n",
+                    i, sys_funcs[i].name, (void *)gISP);
+                if (n > 0) write(kfd, buf, (size_t)n);
+                close(kfd);
+            }
+        }
         imp_log_fun(3, IMP_Log_Get_Option(), 2, "System",
             "/home/user/git/proj/sdk-lv3/src/imp/core/sys_core.c", 0xac,
             "system_init", "Calling %s\n", sys_funcs[i].name);
         result = sys_funcs[i].init();
+        {
+            int kfd = open("/dev/kmsg", O_WRONLY);
+            if (kfd >= 0) {
+                char buf[160];
+                int n = snprintf(buf, sizeof(buf),
+                    "libimp/SYS: after  sys_funcs[%d]=%s init=%d, gISP=%p\n",
+                    i, sys_funcs[i].name, result, (void *)gISP);
+                if (n > 0) write(kfd, buf, (size_t)n);
+                close(kfd);
+            }
+        }
         if (result < 0) {
             int32_t j = i - 1;
 
