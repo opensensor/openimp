@@ -351,3 +351,57 @@ int32_t Rtos_FlushCacheMemory(int32_t addr, int32_t size)
 {
     return AL_DmaAlloc_FlushCache(addr, size, 1);
 }
+
+/* ----- Thin memory / driver / thread wrappers -----
+ * The stock binary routes these through libsysutils.so; we
+ * provide POSIX-backed equivalents so the port is self-contained.
+ */
+
+#include <string.h>
+
+void *Rtos_Malloc(size_t size)
+{
+    return malloc(size);
+}
+
+void Rtos_Free(void *ptr)
+{
+    free(ptr);
+}
+
+void *Rtos_Memcpy(void *dst, const void *src, size_t size)
+{
+    return memcpy(dst, src, size);
+}
+
+void *Rtos_Memmove(void *dst, const void *src, size_t size)
+{
+    return memmove(dst, src, size);
+}
+
+void *Rtos_Memset(void *dst, int32_t c, size_t size)
+{
+    return memset(dst, c, size);
+}
+
+int32_t Rtos_Memcmp(const void *a, const void *b, size_t size)
+{
+    return memcmp(a, b, size);
+}
+
+void Rtos_DeleteThread(void *ptr)
+{
+    if (ptr == NULL) return;
+    pthread_t tid = *(pthread_t *)ptr;
+    pthread_join(tid, NULL);
+}
+
+int32_t Rtos_DriverClose(void)
+{
+    return 0;
+}
+
+int32_t Rtos_DriverIoctl(void)
+{
+    return 0;
+}
