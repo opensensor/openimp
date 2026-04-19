@@ -39,6 +39,9 @@ static uint32_t global_mode;
 int IMP_ISP_Tuning_SetContrast_internal(uint32_t arg1, int32_t arg2);
 int IMP_ISP_Tuning_SetSharpness_internal(uint32_t arg1, int32_t arg2);
 
+/* Early forward decl for the kmsg trace helper (defined later in file). */
+static void kmsg_trace(const char *fmt, ...);
+
 int IMP_ISP_Open(void)
 {
     int32_t result = 0;
