@@ -518,7 +518,12 @@ int32_t IMP_Encoder_SetDefaultParam(int32_t *arg1, uint32_t arg2, int32_t arg3,
 
     arg1[3] = 0x188;
     arg1[4] = 0x40028;
-    *(int8_t *)((char *)arg1 + 0x18) = (int8_t)arg4; /* width lane 0 */
+    /* Stock decomp: *(arg1 + 6) = arg4 (width) — 32-bit at offset 0x18.
+     * Earlier port mistakenly cast to (int8_t *), truncating 1920→0x80.
+     * channel_encoder_init then saw width=0 on the encAttr halfword and
+     * AL_Codec_Encode_Create rejected the resolution. Write all 32 bits. */
+    arg1[6] = arg4;
+    /* arg1[2].w = height (16-bit). 32-bit write also works for height≤65535. */
     arg1[2] = arg5;
     arg1[5] = 0x9c;
     if (s7_1 != 0) {
