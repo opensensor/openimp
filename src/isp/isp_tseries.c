@@ -2521,7 +2521,18 @@ int IMP_ISP_EnableTuning(void)
     ISPDevice *isp = (ISPDevice *)gISP;
     uint8_t *isp_b = (uint8_t *)isp;
 
-    if (isp == NULL) return -1;
+    /* Hard-traced diagnostic — bypass imp_log_fun so output shows even if
+     * libsysutils log shim didn't get loaded. Goes to stderr which rvd's
+     * init script tees into syslog. */
+    fprintf(stderr, "[libimp/ISP] EnableTuning: gISP=%p\n", (void *)isp);
+    if (isp != NULL)
+        fprintf(stderr, "[libimp/ISP] EnableTuning: opened=%u tuning=%p\n",
+                isp->opened, *(void **)(isp_b + 0x9c));
+
+    if (isp == NULL) {
+        fprintf(stderr, "[libimp/ISP] EnableTuning: gISP is NULL — IMP_ISP_Open was not called\n");
+        return -1;
+    }
     if (*(void **)(isp_b + 0x9c) != NULL) return 0;  /* already enabled */
 
     /* Build "/dev/isp-m0" path at +0x78.
@@ -2532,22 +2543,28 @@ int IMP_ISP_EnableTuning(void)
      * real hardware over binary-exact. */
     strcpy((char *)(isp_b + 0x78), "/dev/isp-m0");
     int32_t tfd = open((char *)(isp_b + 0x78), O_RDWR);
+    int32_t err1 = (tfd < 0) ? errno : 0;
+    fprintf(stderr, "[libimp/ISP] open(/dev/isp-m0, O_RDWR) = %d (errno=%d %s)\n",
+            tfd, err1, err1 ? strerror(err1) : "ok");
     if (tfd < 0) {
-        /* Fallback: some device trees expose the tuning node as /dev/isp-w02
-         * (the second ISP tree). Try it before giving up. */
         strcpy((char *)(isp_b + 0x78), "/dev/isp-w02");
         tfd = open((char *)(isp_b + 0x78), O_RDWR);
+        int32_t err2 = (tfd < 0) ? errno : 0;
+        fprintf(stderr, "[libimp/ISP] open(/dev/isp-w02, O_RDWR) = %d (errno=%d %s)\n",
+                tfd, err2, err2 ? strerror(err2) : "ok");
     }
     *(int32_t *)(isp_b + 0x98) = tfd;
     if (tfd < 0) {
+        fprintf(stderr, "[libimp/ISP] EnableTuning: FAILED — could not open any tuning node\n");
         imp_log_fun(6, IMP_Log_Get_Option(), 2, "IMP-ISP",
             "/home/user/git/proj/sdk-lv3/src/imp/isp/isp_tseries.c", 0x476,
             "IMP_ISP_EnableTuning",
             "Cannot open %s (errno=%d): %s\n",
             isp_b + 0x78, errno, strerror(errno));
-        /* Free any partial state allocated above this point */
         return -1;
     }
+    fprintf(stderr, "[libimp/ISP] EnableTuning: opened %s as fd=%d\n",
+            (char *)(isp_b + 0x78), tfd);
     void *tune = calloc(0x1c, 1);
     if (tune == NULL) { close(tfd); return -1; }
     *(void **)(isp_b + 0x9c) = tune;
