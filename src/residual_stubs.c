@@ -293,6 +293,39 @@ int32_t sub_dcf40(void *a, void *b, void *c) { (void)a; (void)b; (void)c; return
 int32_t g_block_info_addr = 0;
 int32_t g_HwTimer = 0;
 
+/* ----- halfword pack/unpack helpers ---------------------------------
+ *
+ * Thingino's stock libsysutils.so on this board does NOT export
+ * _setLeftPart32/_setRightPart32/_getLeftPart32/_getRightPart32. The
+ * dynamic loader leaves those GOT slots NULL, so any call through them
+ * jumps to PC=0 and the process dies with SIGSEGV. On-device test:
+ * rvd's IMP_Encoder_CreateChn crashed at libimp.so+0x31994 (the
+ * instruction after a jalr t9 dispatching one of these helpers).
+ *
+ * Define them INSIDE libimp.so so they're self-contained. Pure shifts
+ * match the semantics every caller in the port expects.
+ */
+
+uint32_t _setLeftPart32(uint32_t half)
+{
+    return (half & 0xFFFF) << 16;
+}
+
+uint32_t _setRightPart32(uint32_t half)
+{
+    return half & 0xFFFF;
+}
+
+uint32_t _getLeftPart32(uint32_t word)
+{
+    return (word >> 16) & 0xFFFF;
+}
+
+uint32_t _getRightPart32(uint32_t word)
+{
+    return word & 0xFFFF;
+}
+
 /* =====================================================================
  * Encoder internal helpers — ported from libimp.so HLIL (T95 follow-up)
  * =====================================================================
