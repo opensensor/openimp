@@ -284,7 +284,12 @@ int32_t func_init(void)
         return -1;
     }
     if (v0 != 1) {
-        memset(funcs, 0, 0x2fd0);
+        /* Stock memset size is 0x2fd0 = 180 entries × 0x44 bytes. Our
+         * FuncEntry is 0x40 bytes (a missing 4-byte field), so the stock
+         * literal would overflow by 720 bytes and corrupt adjacent BSS
+         * (gISP, gOSD, gFrameSource). Use sizeof to match our actual
+         * array size. */
+        memset(funcs, 0, sizeof(funcs));
     }
     if (shm_register_cb((ShmDispatchCb)func_dispatch) == 0) {
         return 0;
