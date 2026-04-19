@@ -906,3 +906,1415 @@ int IMP_ISP_Tuning_GetAeComp(int *arg1)
         return result;
     }
 }
+
+enum {
+    TISP_V4L2_CID_BRIGHTNESS = 0x980900,
+    TISP_V4L2_CID_CONTRAST = 0x980901,
+    TISP_V4L2_CID_SATURATION = 0x980902,
+    TISP_V4L2_CID_HFLIP = 0x980914,
+    TISP_V4L2_CID_VFLIP = 0x980915,
+    TISP_V4L2_CID_SHARPNESS = 0x98091b,
+    TISP_VIDIOC_ENABLE_SENSOR = 0x80045612,
+    TISP_VIDIOC_DISABLE_SENSOR = 0x80045613,
+    TISP_VIDIOC_GET_SENSOR_INDEX = 0x40045626,
+    TISP_VIDIOC_CREATE_LINKS = 0x800456d0,
+    TISP_VIDIOC_DESTROY_LINKS = 0x800456d1,
+    TISP_VIDIOC_ENABLE_LINKS = 0x800456d2,
+    TISP_VIDIOC_DISABLE_LINKS = 0x800456d3,
+    TISP_VIDIOC_OPEN_AE_ALGO = 0x800456dd,
+    TISP_VIDIOC_CLOSE_AE_ALGO = 0x800456de,
+    TISP_VIDIOC_OPEN_AWB_ALGO = 0xc00456e3,
+    TISP_VIDIOC_CLOSE_AWB_ALGO = 0xc00456e4,
+    TISP_VIDIOC_SET_FRAME_DROP = 0xc00456e6,
+    TISP_VIDIOC_GET_FRAME_DROP = 0xc00456e7,
+    TISP_VIDIOC_GPIO_INIT_OR_FREE = 0xc00456e8,
+    TISP_VIDIOC_GPIO_STA = 0xc00456e9,
+    TISP_VIDIOC_TUNING = 0xc00c56c6,
+    TISP_VIDIOC_G_CTRL = 0xc008561b,
+    TISP_VIDIOC_S_CTRL = 0xc008561c,
+    TISP_CID_WB_ATTR = 0x8000004,
+    TISP_CID_AWB_WEIGHT = 0x8000006,
+    TISP_CID_AWB_HIST = 0x8000007,
+    TISP_CID_AWB_CWF_SHIFT = 0x8000008,
+    TISP_CID_AWB_ZONE = 0x8000009,
+    TISP_CID_WB_ALGO = 0x800000c,
+    TISP_CID_AWB_CT = 0x800000d,
+    TISP_CID_AWB_CLUSTER = 0x800000e,
+    TISP_CID_AWB_CT_TREND = 0x800000f,
+    TISP_CID_AE_ATTR = 0x8000020,
+    TISP_CID_AE_COMP = 0x8000023,
+    TISP_CID_EXPR = 0x8000025,
+    TISP_CID_EV_ATTR = 0x8000026,
+    TISP_CID_TOTAL_GAIN = 0x8000027,
+    TISP_CID_MAX_AGAIN = 0x8000028,
+    TISP_CID_MAX_DGAIN = 0x8000029,
+    TISP_CID_HILIGHT_DEPRESS = 0x800002a,
+    TISP_CID_GAMMA = 0x800002b,
+    TISP_CID_MOVESTATE = 0x800002c,
+    TISP_CID_AE_WEIGHT = 0x800002d,
+    TISP_CID_AE_HIST = 0x800002e,
+    TISP_CID_AE_HIST_ORIGIN = 0x800002f,
+    TISP_CID_AE_ZONE = 0x8000030,
+    TISP_CID_AE_LUMA = 0x8000031,
+    TISP_CID_AE_IT_MAX = 0x8000032,
+    TISP_CID_AE_MIN = 0x8000033,
+    TISP_CID_AE_FREEZE = 0x8000034,
+    TISP_CID_AE_ROI = 0x8000035,
+    TISP_CID_AE_STATE = 0x8000036,
+    TISP_CID_BACKLIGHT_COMP = 0x8000037,
+    TISP_CID_DEFOG_STRENGTH = 0x8000039,
+    TISP_CID_AF_METRICES = 0x8000043,
+    TISP_CID_AF_WEIGHT = 0x8000044,
+    TISP_CID_AF_HIST = 0x8000045,
+    TISP_CID_DPC_RATIO = 0x8000062,
+    TISP_CID_NCU_INFO = 0x8000084,
+    TISP_CID_3DNS_RATIO = 0x8000085,
+    TISP_CID_2DNS_RATIO = 0x8000086,
+    TISP_CID_DRC_RATIO = 0x80000a2,
+    TISP_CID_ENABLE_DEFOG = 0x80000a4,
+    TISP_CID_BLC_ATTR = 0x80000a5,
+    TISP_CID_CSC_ATTR = 0x80000a6,
+    TISP_CID_SENSOR_FPS = 0x80000e0,
+    TISP_CID_RUNNING_MODE = 0x80000e1,
+    TISP_CID_MASK = 0x80000e5,
+    TISP_CID_AUTO_ZOOM = 0x80000e8,
+    TISP_CID_SCALER_LV = 0x80000e9,
+    TISP_CID_WDR_OUTPUT_MODE = 0x80000ea,
+    TISP_CID_CCM_ATTR = 0x8000100,
+    TISP_CID_BCSH_HUE = 0x8000101,
+    TISP_CID_ISP_PROCESS = 0x8000164,
+    TISP_CID_FW_FREEZE = 0x8000165,
+    TISP_CID_SHADING = 0x8000166
+};
+
+typedef struct TSeriesTuningValReq {
+    int32_t cmd;
+    int32_t subcmd;
+    int32_t value;
+} TSeriesTuningValReq;
+
+typedef struct TSeriesTuningPtrReq {
+    int32_t cmd;
+    int32_t subcmd;
+    void *ptr;
+} TSeriesTuningPtrReq;
+
+typedef struct TSeriesV4L2Ctrl {
+    int32_t id;
+    int32_t value;
+} TSeriesV4L2Ctrl;
+
+typedef struct TSeriesAlgoFunc {
+    void *priv;
+    void (*open)(void);
+    int (*close)(void *);
+    void *reserved0;
+    void *reserved1;
+} TSeriesAlgoFunc;
+
+static uint32_t tseries_sensor_fps_num = 25;
+static uint32_t tseries_sensor_fps_den = 1;
+static IMPISPHVFLIP tseries_hvflip;
+static IMPISPRunningMode tseries_running_mode;
+static IMPISPTuningOpsMode tseries_custom_mode;
+static IMPISPTuningOpsMode tseries_drc_enable;
+static IMPISPAntiflickerAttr tseries_antiflicker_attr;
+static IMPISPModuleCtl tseries_module_ctl;
+static IMPISPFrontCrop tseries_front_crop;
+static IMPISPAETargetList tseries_ae_target_list;
+static void *tseries_ae_func_tmp;
+static void *tseries_awb_func_tmp;
+static int32_t tseries_ae_algo_en;
+static int32_t tseries_awb_algo_en;
+
+static int tseries_get_isp(ISPDevice **out);
+static int tseries_tuning_set_val(int32_t subcmd, int32_t value);
+static int tseries_tuning_get_val(int32_t subcmd, int32_t *value);
+static int tseries_tuning_set_ptr(int32_t subcmd, void *ptr);
+static int tseries_tuning_get_ptr(int32_t subcmd, void *ptr);
+static int tseries_v4l2_set(int32_t id, int32_t value);
+static int tseries_v4l2_get(int32_t id, int32_t *value);
+
+static int tseries_get_isp(ISPDevice **out)
+{
+    ISPDevice *isp = gISP;
+
+    if (out != NULL) {
+        *out = isp;
+    }
+
+    if (isp == NULL) {
+        return -1;
+    }
+
+    return 0;
+}
+
+static int tseries_tuning_set_val(int32_t subcmd, int32_t value)
+{
+    ISPDevice *isp;
+
+    if (tseries_get_isp(&isp) != 0 || isp->tuning == NULL || isp->tuning_state != 2) {
+        return -1;
+    }
+
+    {
+        TSeriesTuningValReq req = { 0, subcmd, value };
+        return ioctl(isp->tuning_fd, TISP_VIDIOC_TUNING, &req);
+    }
+}
+
+static int tseries_tuning_get_val(int32_t subcmd, int32_t *value)
+{
+    ISPDevice *isp;
+
+    if (value == NULL) {
+        return -1;
+    }
+
+    if (tseries_get_isp(&isp) != 0 || isp->tuning == NULL || isp->tuning_state != 2) {
+        return -1;
+    }
+
+    {
+        TSeriesTuningValReq req = { 1, subcmd, 0 };
+        int result = ioctl(isp->tuning_fd, TISP_VIDIOC_TUNING, &req);
+
+        if (result == 0) {
+            *value = req.value;
+        }
+
+        return result;
+    }
+}
+
+static int tseries_tuning_set_ptr(int32_t subcmd, void *ptr)
+{
+    ISPDevice *isp;
+
+    if (ptr == NULL) {
+        return -1;
+    }
+
+    if (tseries_get_isp(&isp) != 0 || isp->tuning == NULL || isp->tuning_state != 2) {
+        return -1;
+    }
+
+    {
+        TSeriesTuningPtrReq req = { 0, subcmd, ptr };
+        return ioctl(isp->tuning_fd, TISP_VIDIOC_TUNING, &req);
+    }
+}
+
+static int tseries_tuning_get_ptr(int32_t subcmd, void *ptr)
+{
+    ISPDevice *isp;
+
+    if (ptr == NULL) {
+        return -1;
+    }
+
+    if (tseries_get_isp(&isp) != 0 || isp->tuning == NULL || isp->tuning_state != 2) {
+        return -1;
+    }
+
+    {
+        TSeriesTuningPtrReq req = { 1, subcmd, ptr };
+        return ioctl(isp->tuning_fd, TISP_VIDIOC_TUNING, &req);
+    }
+}
+
+static int tseries_v4l2_set(int32_t id, int32_t value)
+{
+    ISPDevice *isp;
+
+    if (tseries_get_isp(&isp) != 0 || isp->tuning == NULL || isp->tuning_state != 2) {
+        return -1;
+    }
+
+    {
+        TSeriesV4L2Ctrl ctrl = { id, value };
+        return ioctl(isp->tuning_fd, TISP_VIDIOC_S_CTRL, &ctrl);
+    }
+}
+
+static int tseries_v4l2_get(int32_t id, int32_t *value)
+{
+    ISPDevice *isp;
+
+    if (value == NULL) {
+        return -1;
+    }
+
+    if (tseries_get_isp(&isp) != 0 || isp->tuning == NULL || isp->tuning_state != 2) {
+        return -1;
+    }
+
+    {
+        TSeriesV4L2Ctrl ctrl = { id, -1 };
+        int result = ioctl(isp->tuning_fd, TISP_VIDIOC_G_CTRL, &ctrl);
+
+        if (result == 0) {
+            *value = ctrl.value;
+        }
+
+        return result;
+    }
+}
+
+int IMP_ISP_Tuning_SetSensorFPS(uint32_t fps_num, uint32_t fps_den)
+{
+    int result;
+
+    if (fps_den == 0) {
+        return -1;
+    }
+
+    result = tseries_tuning_set_val(TISP_CID_SENSOR_FPS,
+        ((int32_t)fps_num << 16) | (fps_den & 0xffff));
+    if (result == 0) {
+        tseries_sensor_fps_num = fps_num;
+        tseries_sensor_fps_den = fps_den;
+    }
+    return result;
+}
+
+int IMP_ISP_Tuning_GetSensorFPS(uint32_t *fps_num, uint32_t *fps_den)
+{
+    int32_t value = 0;
+    int result;
+
+    if (fps_num == NULL || fps_den == NULL) {
+        return -1;
+    }
+
+    result = tseries_tuning_get_val(TISP_CID_SENSOR_FPS, &value);
+    if (result == 0) {
+        tseries_sensor_fps_num = ((uint32_t)value >> 16) & 0xffff;
+        tseries_sensor_fps_den = (uint32_t)value & 0xffff;
+    }
+
+    *fps_num = tseries_sensor_fps_num;
+    *fps_den = tseries_sensor_fps_den;
+    return result;
+}
+
+int IMP_ISP_Tuning_SetAntiFlickerAttr(IMPISPAntiflickerAttr attr)
+{
+    tseries_antiflicker_attr = attr;
+    return 0;
+}
+
+int IMP_ISP_Tuning_GetAntiFlickerAttr(IMPISPAntiflickerAttr *pattr)
+{
+    if (pattr == NULL) {
+        return -1;
+    }
+
+    *pattr = tseries_antiflicker_attr;
+    return 0;
+}
+
+int IMP_ISP_Tuning_SetISPRunningMode(IMPISPRunningMode mode)
+{
+    int result = tseries_tuning_set_val(TISP_CID_RUNNING_MODE, mode);
+
+    if (result == 0) {
+        tseries_running_mode = mode;
+        global_mode = mode;
+    }
+    return result;
+}
+
+int IMP_ISP_Tuning_GetISPRunningMode(IMPISPRunningMode *pmode)
+{
+    int32_t value = 0;
+    int result;
+
+    if (pmode == NULL) {
+        return -1;
+    }
+
+    result = tseries_tuning_get_val(TISP_CID_RUNNING_MODE, &value);
+    if (result == 0) {
+        tseries_running_mode = value;
+        global_mode = value;
+    }
+
+    *pmode = tseries_running_mode;
+    return result;
+}
+
+int IMP_ISP_Tuning_SetISPBypass(IMPISPTuningOpsMode enable)
+{
+    ISPDevice *isp;
+    int32_t sensor_index;
+    int32_t bypass_mode;
+
+    if (tseries_get_isp(&isp) != 0) {
+        return -1;
+    }
+
+    if (ioctl(isp->fd, TISP_VIDIOC_DISABLE_LINKS, 0) != 0) {
+        return -1;
+    }
+
+    sensor_index = -1;
+    if (ioctl(isp->fd, TISP_VIDIOC_DESTROY_LINKS, &sensor_index) != 0) {
+        return -1;
+    }
+
+    if (tseries_v4l2_set(TISP_CID_ISP_PROCESS, enable) != 0) {
+        return -1;
+    }
+
+    bypass_mode = (enable == 0) ? 1 : 0;
+    if (ioctl(isp->fd, TISP_VIDIOC_CREATE_LINKS, &bypass_mode) != 0) {
+        return -1;
+    }
+
+    if (ioctl(isp->fd, TISP_VIDIOC_ENABLE_LINKS, 0) != 0) {
+        return -1;
+    }
+
+    return 0;
+}
+
+int IMP_ISP_Tuning_SetISPHflip(IMPISPTuningOpsMode mode)
+{
+    int result = tseries_v4l2_set(TISP_V4L2_CID_HFLIP, mode);
+
+    if (result == 0) {
+        tseries_hvflip = (tseries_hvflip & 2) | (mode ? 1 : 0);
+    }
+    return result;
+}
+
+int IMP_ISP_Tuning_GetISPHflip(IMPISPTuningOpsMode *pmode)
+{
+    int32_t value = 0;
+    int result;
+
+    if (pmode == NULL) {
+        return -1;
+    }
+
+    result = tseries_v4l2_get(TISP_V4L2_CID_HFLIP, &value);
+    if (result == 0) {
+        tseries_hvflip = (tseries_hvflip & 2) | (value ? 1 : 0);
+    }
+
+    *pmode = (tseries_hvflip & 1) ? IMPISP_TUNING_OPS_MODE_ENABLE
+                                  : IMPISP_TUNING_OPS_MODE_DISABLE;
+    return result;
+}
+
+int IMP_ISP_Tuning_SetISPVflip(IMPISPTuningOpsMode mode)
+{
+    int result = tseries_v4l2_set(TISP_V4L2_CID_VFLIP, mode);
+
+    if (result == 0) {
+        tseries_hvflip = (tseries_hvflip & 1) | (mode ? 2 : 0);
+    }
+    return result;
+}
+
+int IMP_ISP_Tuning_GetISPVflip(IMPISPTuningOpsMode *pmode)
+{
+    int32_t value = 0;
+    int result;
+
+    if (pmode == NULL) {
+        return -1;
+    }
+
+    result = tseries_v4l2_get(TISP_V4L2_CID_VFLIP, &value);
+    if (result == 0) {
+        tseries_hvflip = (tseries_hvflip & 1) | (value ? 2 : 0);
+    }
+
+    *pmode = (tseries_hvflip & 2) ? IMPISP_TUNING_OPS_MODE_ENABLE
+                                  : IMPISP_TUNING_OPS_MODE_DISABLE;
+    return result;
+}
+
+int IMP_ISP_Tuning_SetMaxAgain(uint32_t gain)
+{
+    return tseries_tuning_set_val(TISP_CID_MAX_AGAIN, gain);
+}
+
+int IMP_ISP_Tuning_GetMaxAgain(uint32_t *pgain)
+{
+    int32_t value = 0;
+    int result;
+
+    if (pgain == NULL) {
+        return -1;
+    }
+
+    result = tseries_tuning_get_val(TISP_CID_MAX_AGAIN, &value);
+    *pgain = value;
+    return result;
+}
+
+int IMP_ISP_Tuning_SetMaxDgain(uint32_t gain)
+{
+    return tseries_tuning_set_val(TISP_CID_MAX_DGAIN, gain);
+}
+
+int IMP_ISP_Tuning_GetMaxDgain(uint32_t *pgain)
+{
+    int32_t value = 0;
+    int result;
+
+    if (pgain == NULL) {
+        return -1;
+    }
+
+    result = tseries_tuning_get_val(TISP_CID_MAX_DGAIN, &value);
+    *pgain = value;
+    return result;
+}
+
+int IMP_ISP_Tuning_SetBacklightComp(uint32_t strength)
+{
+    return tseries_tuning_set_val(TISP_CID_BACKLIGHT_COMP, strength);
+}
+
+int IMP_ISP_Tuning_GetBacklightComp(uint32_t *pstrength)
+{
+    int32_t value = 0;
+    int result;
+
+    if (pstrength == NULL) {
+        return -1;
+    }
+
+    result = tseries_tuning_get_val(TISP_CID_BACKLIGHT_COMP, &value);
+    *pstrength = value;
+    return result;
+}
+
+int IMP_ISP_Tuning_SetDPC_Strength(uint32_t ratio)
+{
+    return tseries_tuning_set_val(TISP_CID_DPC_RATIO, ratio);
+}
+
+int IMP_ISP_Tuning_GetDPC_Strength(uint32_t *pratio)
+{
+    int32_t value = 0;
+    int result;
+
+    if (pratio == NULL) {
+        return -1;
+    }
+
+    result = tseries_tuning_get_val(TISP_CID_DPC_RATIO, &value);
+    *pratio = value;
+    return result;
+}
+
+int IMP_ISP_Tuning_SetDRC_Strength(uint32_t ratio)
+{
+    return tseries_tuning_set_val(TISP_CID_DRC_RATIO, ratio);
+}
+
+int IMP_ISP_Tuning_GetDRC_Strength(uint32_t *pratio)
+{
+    int32_t value = 0;
+    int result;
+
+    if (pratio == NULL) {
+        return -1;
+    }
+
+    result = tseries_tuning_get_val(TISP_CID_DRC_RATIO, &value);
+    *pratio = value;
+    return result;
+}
+
+int IMP_ISP_Tuning_SetHiLightDepress(uint32_t strength)
+{
+    return tseries_tuning_set_val(TISP_CID_HILIGHT_DEPRESS, strength);
+}
+
+int IMP_ISP_Tuning_GetHiLightDepress(uint32_t *pstrength)
+{
+    int32_t value = 0;
+    int result;
+
+    if (pstrength == NULL) {
+        return -1;
+    }
+
+    result = tseries_tuning_get_val(TISP_CID_HILIGHT_DEPRESS, &value);
+    *pstrength = value;
+    return result;
+}
+
+int IMP_ISP_Tuning_SetTemperStrength(uint32_t ratio)
+{
+    return tseries_tuning_set_val(TISP_CID_3DNS_RATIO, ratio);
+}
+
+int IMP_ISP_Tuning_GetTemperStrength(uint32_t *pratio)
+{
+    int32_t value = 0;
+    int result;
+
+    if (pratio == NULL) {
+        return -1;
+    }
+
+    result = tseries_tuning_get_val(TISP_CID_3DNS_RATIO, &value);
+    *pratio = value;
+    return result;
+}
+
+int IMP_ISP_Tuning_SetSinterStrength(uint32_t ratio)
+{
+    return tseries_tuning_set_val(TISP_CID_2DNS_RATIO, ratio);
+}
+
+int IMP_ISP_Tuning_GetSinterStrength(uint32_t *pratio)
+{
+    int32_t value = 0;
+    int result;
+
+    if (pratio == NULL) {
+        return -1;
+    }
+
+    result = tseries_tuning_get_val(TISP_CID_2DNS_RATIO, &value);
+    *pratio = value;
+    return result;
+}
+
+int IMP_ISP_Tuning_SetBcshHue(unsigned char hue)
+{
+    return tseries_tuning_set_val(TISP_CID_BCSH_HUE, hue);
+}
+
+int IMP_ISP_Tuning_GetBcshHue(unsigned char *phue)
+{
+    int32_t value = 0;
+    int result;
+
+    if (phue == NULL) {
+        return -1;
+    }
+
+    result = tseries_tuning_get_val(TISP_CID_BCSH_HUE, &value);
+    *phue = value;
+    return result;
+}
+
+int IMP_ISP_Tuning_SetDefog_Strength(uint32_t strength)
+{
+    return tseries_tuning_set_val(TISP_CID_DEFOG_STRENGTH, strength);
+}
+
+int IMP_ISP_Tuning_GetDefog_Strength(uint32_t *pstrength)
+{
+    int32_t value = 0;
+    int result;
+
+    if (pstrength == NULL) {
+        return -1;
+    }
+
+    result = tseries_tuning_get_val(TISP_CID_DEFOG_STRENGTH, &value);
+    *pstrength = value;
+    return result;
+}
+
+int IMP_ISP_Tuning_SetWB(IMPISPWB *wb)
+{
+    return tseries_tuning_set_ptr(TISP_CID_WB_ATTR, wb);
+}
+
+int IMP_ISP_Tuning_GetWB(IMPISPWB *wb)
+{
+    return tseries_tuning_get_ptr(TISP_CID_WB_ATTR, wb);
+}
+
+int IMP_ISP_Tuning_GetWB_Statis(IMPISPWB *wb)
+{
+    return IMP_ISP_Tuning_GetWB(wb);
+}
+
+int IMP_ISP_Tuning_GetWB_GOL_Statis(IMPISPWB *wb)
+{
+    return IMP_ISP_Tuning_GetWB(wb);
+}
+
+int IMP_ISP_Tuning_SetExpr(IMPISPExpr *expr)
+{
+    return tseries_tuning_set_ptr(TISP_CID_EXPR, expr);
+}
+
+int IMP_ISP_Tuning_GetExpr(IMPISPExpr *expr)
+{
+    return tseries_tuning_get_ptr(TISP_CID_EXPR, expr);
+}
+
+int IMP_ISP_Tuning_GetEVAttr(IMPISPEVAttr *attr)
+{
+    return tseries_tuning_get_ptr(TISP_CID_EV_ATTR, attr);
+}
+
+int IMP_ISP_Tuning_SetAeWeight(void *weight)
+{
+    return tseries_tuning_set_ptr(TISP_CID_AE_WEIGHT, weight);
+}
+
+int IMP_ISP_Tuning_GetAeWeight(void *weight)
+{
+    return tseries_tuning_get_ptr(TISP_CID_AE_WEIGHT, weight);
+}
+
+int IMP_ISP_Tuning_AE_SetROI(void *roi)
+{
+    return tseries_tuning_set_ptr(TISP_CID_AE_ROI, roi);
+}
+
+int IMP_ISP_Tuning_AE_GetROI(void *roi)
+{
+    return tseries_tuning_get_ptr(TISP_CID_AE_ROI, roi);
+}
+
+int IMP_ISP_Tuning_SetGamma(void *gamma)
+{
+    return tseries_tuning_set_ptr(TISP_CID_GAMMA, gamma);
+}
+
+int IMP_ISP_Tuning_GetGamma(void *gamma)
+{
+    return tseries_tuning_get_ptr(TISP_CID_GAMMA, gamma);
+}
+
+int IMP_ISP_Tuning_SetAeHist(void *hist)
+{
+    return tseries_tuning_set_ptr(TISP_CID_AE_HIST, hist);
+}
+
+int IMP_ISP_Tuning_GetAeHist(void *hist)
+{
+    return tseries_tuning_get_ptr(TISP_CID_AE_HIST, hist);
+}
+
+int IMP_ISP_Tuning_GetAeHist_Origin(void *hist)
+{
+    return tseries_tuning_get_ptr(TISP_CID_AE_HIST_ORIGIN, hist);
+}
+
+int IMP_ISP_Tuning_SetAwbWeight(void *weight)
+{
+    return tseries_tuning_set_ptr(TISP_CID_AWB_WEIGHT, weight);
+}
+
+int IMP_ISP_Tuning_GetAwbWeight(void *weight)
+{
+    return tseries_tuning_get_ptr(TISP_CID_AWB_WEIGHT, weight);
+}
+
+int IMP_ISP_Tuning_WaitFrame(int timeout_ms)
+{
+    (void)timeout_ms;
+    return 0;
+}
+
+int IMP_ISP_Tuning_GetSensorAttr(IMPISPSENSORAttr *attr)
+{
+    if (attr == NULL) {
+        return -1;
+    }
+
+    memset(attr, 0, sizeof(*attr));
+    attr->fps = tseries_sensor_fps_num;
+    return 0;
+}
+
+int IMP_ISP_Tuning_SetAeAttr(void *ae_attr)
+{
+    return tseries_tuning_set_ptr(TISP_CID_AE_ATTR, ae_attr);
+}
+
+int IMP_ISP_Tuning_GetAeAttr(void *ae_attr)
+{
+    return tseries_tuning_get_ptr(TISP_CID_AE_ATTR, ae_attr);
+}
+
+int IMP_ISP_Tuning_SetModuleControl(IMPISPModuleCtl *ispmodule)
+{
+    if (ispmodule == NULL) {
+        return -1;
+    }
+
+    tseries_module_ctl = *ispmodule;
+    return 0;
+}
+
+int IMP_ISP_Tuning_GetModuleControl(IMPISPModuleCtl *ispmodule)
+{
+    if (ispmodule == NULL) {
+        return -1;
+    }
+
+    *ispmodule = tseries_module_ctl;
+    return 0;
+}
+
+int IMP_ISP_Tuning_SetFrontCrop(IMPISPFrontCrop *ispfrontcrop)
+{
+    if (ispfrontcrop == NULL) {
+        return -1;
+    }
+
+    tseries_front_crop = *ispfrontcrop;
+    return 0;
+}
+
+int IMP_ISP_Tuning_GetFrontCrop(IMPISPFrontCrop *ispfrontcrop)
+{
+    if (ispfrontcrop == NULL) {
+        return -1;
+    }
+
+    *ispfrontcrop = tseries_front_crop;
+    return 0;
+}
+
+int IMP_ISP_Tuning_SetAutoZoom(void *zoom_attr)
+{
+    return tseries_tuning_set_ptr(TISP_CID_AUTO_ZOOM, zoom_attr);
+}
+
+int IMP_ISP_Tuning_SetAeTargetList(IMPISPAETargetList *at_list)
+{
+    if (at_list == NULL) {
+        return -1;
+    }
+
+    tseries_ae_target_list = *at_list;
+    return 0;
+}
+
+int IMP_ISP_Tuning_GetAeTargetList(IMPISPAETargetList *at_list)
+{
+    if (at_list == NULL) {
+        return -1;
+    }
+
+    *at_list = tseries_ae_target_list;
+    return 0;
+}
+
+int IMP_ISP_Tuning_SetISPCustomMode(IMPISPTuningOpsMode mode)
+{
+    tseries_custom_mode = mode;
+    return 0;
+}
+
+int IMP_ISP_Tuning_GetISPCustomMode(IMPISPTuningOpsMode *mode)
+{
+    if (mode == NULL) {
+        return -1;
+    }
+
+    *mode = tseries_custom_mode;
+    return 0;
+}
+
+int IMP_ISP_Tuning_EnableDRC(IMPISPTuningOpsMode mode)
+{
+    tseries_drc_enable = mode;
+    return 0;
+}
+
+int IMP_ISP_Tuning_GetAeLuma(int *luma)
+{
+    int32_t value = 0;
+    int result;
+
+    if (luma == NULL) {
+        return -1;
+    }
+
+    result = tseries_tuning_get_val(TISP_CID_AE_LUMA, &value);
+    *luma = value;
+    return result;
+}
+
+int IMP_ISP_Tuning_SetHVFLIP(IMPISPHVFLIP hvflip)
+{
+    int result;
+
+    result = tseries_v4l2_set(TISP_V4L2_CID_HFLIP, hvflip & 1);
+    if (result != 0) {
+        return result;
+    }
+
+    result = tseries_v4l2_set(TISP_V4L2_CID_VFLIP, (hvflip >> 1) & 1);
+    if (result == 0) {
+        tseries_hvflip = hvflip;
+    }
+    return result;
+}
+
+int IMP_ISP_Tuning_GetHVFlip(IMPISPHVFLIP *hvflip)
+{
+    int32_t hflip = 0;
+    int32_t vflip = 0;
+    int result;
+
+    if (hvflip == NULL) {
+        return -1;
+    }
+
+    result = tseries_v4l2_get(TISP_V4L2_CID_HFLIP, &hflip);
+    if (result != 0) {
+        return result;
+    }
+
+    result = tseries_v4l2_get(TISP_V4L2_CID_VFLIP, &vflip);
+    if (result != 0) {
+        return result;
+    }
+
+    tseries_hvflip = (hflip ? 1 : 0) | (vflip ? 2 : 0);
+    *hvflip = tseries_hvflip;
+    return 0;
+}
+
+int IMP_ISP_Tuning_GetHVFLIP(IMPISPHVFLIP *hvflip)
+{
+    return IMP_ISP_Tuning_GetHVFlip(hvflip);
+}
+
+int IMP_ISP_Tuning_SetAe_IT_MAX(uint32_t it_max)
+{
+    return tseries_tuning_set_val(TISP_CID_AE_IT_MAX, it_max);
+}
+
+int IMP_ISP_Tuning_GetAE_IT_MAX(uint32_t *it_max)
+{
+    int32_t value = 0;
+    int result;
+
+    if (it_max == NULL) {
+        return -1;
+    }
+
+    result = tseries_tuning_get_val(TISP_CID_AE_IT_MAX, &value);
+    *it_max = value;
+    return result;
+}
+
+int IMP_ISP_Tuning_SetAeMin(int min_it, int min_again)
+{
+    struct {
+        int min_it;
+        int min_again;
+    } params = { min_it, min_again };
+
+    return tseries_tuning_set_ptr(TISP_CID_AE_MIN, &params);
+}
+
+int IMP_ISP_Tuning_GetAeMin(int *min_it, int *min_again)
+{
+    struct {
+        int min_it;
+        int min_again;
+    } params = { 0, 0 };
+    int result;
+
+    if (min_it == NULL || min_again == NULL) {
+        return -1;
+    }
+
+    result = tseries_tuning_get_ptr(TISP_CID_AE_MIN, &params);
+    *min_it = params.min_it;
+    *min_again = params.min_again;
+    return result;
+}
+
+int IMP_ISP_Tuning_GetAeZone(void *zone)
+{
+    return tseries_tuning_get_ptr(TISP_CID_AE_ZONE, zone);
+}
+
+int IMP_ISP_Tuning_GetAeState(void *state)
+{
+    return tseries_tuning_get_ptr(TISP_CID_AE_STATE, state);
+}
+
+int IMP_ISP_Tuning_GetAwbZone(void *zone_r, void *zone_g, void *zone_b)
+{
+    struct {
+        void *zone_r;
+        void *zone_g;
+        void *zone_b;
+    } zones = { zone_r, zone_g, zone_b };
+
+    return tseries_tuning_get_ptr(TISP_CID_AWB_ZONE, &zones);
+}
+
+int IMP_ISP_Tuning_SetAwbHist(void *attr)
+{
+    return tseries_tuning_set_ptr(TISP_CID_AWB_HIST, attr);
+}
+
+int IMP_ISP_Tuning_GetAwbHist(void *hist)
+{
+    return tseries_tuning_get_ptr(TISP_CID_AWB_HIST, hist);
+}
+
+int IMP_ISP_Tuning_SetAwbCt(void *attr)
+{
+    return tseries_tuning_set_ptr(TISP_CID_AWB_CT, attr);
+}
+
+int IMP_ISP_Tuning_GetAWBCt(uint32_t *ct)
+{
+    int32_t value = 0;
+    int result;
+
+    if (ct == NULL) {
+        return -1;
+    }
+
+    result = tseries_tuning_get_val(TISP_CID_AWB_CT, &value);
+    *ct = value;
+    return result;
+}
+
+int IMP_ISP_Tuning_SetCCMAttr(void *attr)
+{
+    return tseries_tuning_set_ptr(TISP_CID_CCM_ATTR, attr);
+}
+
+int IMP_ISP_Tuning_GetCCMAttr(void *attr)
+{
+    return tseries_tuning_get_ptr(TISP_CID_CCM_ATTR, attr);
+}
+
+int IMP_ISP_Tuning_SetWB_ALGO(int mode)
+{
+    return tseries_tuning_set_val(TISP_CID_WB_ALGO, mode);
+}
+
+int IMP_ISP_Tuning_SetVideoDrop(void *attr)
+{
+    ISPDevice *isp;
+
+    if (attr == NULL) {
+        return -1;
+    }
+
+    if (tseries_get_isp(&isp) != 0 || isp->tuning == NULL) {
+        return -1;
+    }
+
+    *(void **)isp->tuning = attr;
+    return 0;
+}
+
+int IMP_ISP_Tuning_SetShading(void *attr)
+{
+    return tseries_tuning_set_ptr(TISP_CID_SHADING, attr);
+}
+
+int IMP_ISP_Tuning_SetScalerLv(int chn, int level)
+{
+    (void)chn;
+    return tseries_tuning_set_val(TISP_CID_SCALER_LV, level);
+}
+
+int IMP_ISP_Tuning_SetMask(void *attr)
+{
+    return tseries_tuning_set_ptr(TISP_CID_MASK, attr);
+}
+
+int IMP_ISP_Tuning_GetMask(void *attr)
+{
+    return tseries_tuning_get_ptr(TISP_CID_MASK, attr);
+}
+
+int IMP_ISP_Tuning_SetISPProcess(void *attr)
+{
+    return tseries_tuning_set_ptr(TISP_CID_ISP_PROCESS, attr);
+}
+
+int IMP_ISP_Tuning_SetFWFreeze(int enable)
+{
+    return tseries_tuning_set_val(TISP_CID_FW_FREEZE, enable);
+}
+
+int IMP_ISP_Tuning_SetCsc_Attr(void *attr)
+{
+    return tseries_tuning_set_ptr(TISP_CID_CSC_ATTR, attr);
+}
+
+int IMP_ISP_Tuning_GetCsc_Attr(void *attr)
+{
+    return tseries_tuning_get_ptr(TISP_CID_CSC_ATTR, attr);
+}
+
+int IMP_ISP_Tuning_SetWdr_OutputMode(int mode)
+{
+    return tseries_tuning_set_val(TISP_CID_WDR_OUTPUT_MODE, mode);
+}
+
+int IMP_ISP_Tuning_GetWdr_OutputMode(int *mode)
+{
+    int32_t value = 0;
+    int result;
+
+    if (mode == NULL) {
+        return -1;
+    }
+
+    result = tseries_tuning_get_val(TISP_CID_WDR_OUTPUT_MODE, &value);
+    *mode = value;
+    return result;
+}
+
+int IMP_ISP_Tuning_SetAwbCtTrend(void *attr)
+{
+    return tseries_tuning_set_ptr(TISP_CID_AWB_CT_TREND, attr);
+}
+
+int IMP_ISP_Tuning_GetAwbCtTrend(void *attr)
+{
+    return tseries_tuning_get_ptr(TISP_CID_AWB_CT_TREND, attr);
+}
+
+int IMP_ISP_Tuning_SetAwbClust(void *attr)
+{
+    return tseries_tuning_set_ptr(TISP_CID_AWB_CLUSTER, attr);
+}
+
+int IMP_ISP_Tuning_GetAwbClust(void *attr)
+{
+    return tseries_tuning_get_ptr(TISP_CID_AWB_CLUSTER, attr);
+}
+
+int IMP_ISP_Tuning_SetAfWeight(void *attr)
+{
+    return tseries_tuning_set_ptr(TISP_CID_AF_WEIGHT, attr);
+}
+
+int IMP_ISP_Tuning_GetAfWeight(void *attr)
+{
+    return tseries_tuning_get_ptr(TISP_CID_AF_WEIGHT, attr);
+}
+
+int IMP_ISP_Tuning_SetAfHist(void *attr)
+{
+    return tseries_tuning_set_ptr(TISP_CID_AF_HIST, attr);
+}
+
+int IMP_ISP_Tuning_GetAfHist(void *attr)
+{
+    return tseries_tuning_get_ptr(TISP_CID_AF_HIST, attr);
+}
+
+int IMP_ISP_Tuning_SetAeFreeze(int enable)
+{
+    return tseries_tuning_set_val(TISP_CID_AE_FREEZE, enable);
+}
+
+int IMP_ISP_Tuning_GetNCUInfo(void *info)
+{
+    return tseries_tuning_get_ptr(TISP_CID_NCU_INFO, info);
+}
+
+int IMP_ISP_Tuning_GetNCUAlloc(void *info)
+{
+    return tseries_tuning_get_ptr(TISP_CID_NCU_INFO, info);
+}
+
+int IMP_ISP_Tuning_GetBlcAttr(void *attr)
+{
+    return tseries_tuning_get_ptr(TISP_CID_BLC_ATTR, attr);
+}
+
+int IMP_ISP_Tuning_GetAfZone(void *zone)
+{
+    return tseries_tuning_get_ptr(TISP_CID_AF_HIST, zone);
+}
+
+int IMP_ISP_Tuning_GetAFMetrices(void *metrices)
+{
+    return tseries_tuning_get_ptr(TISP_CID_AF_METRICES, metrices);
+}
+
+int IMP_ISP_Tuning_EnableMovestate(void)
+{
+    return tseries_tuning_set_val(TISP_CID_MOVESTATE, 1);
+}
+
+int IMP_ISP_Tuning_DisableMovestate(void)
+{
+    return tseries_tuning_set_val(TISP_CID_MOVESTATE, 0);
+}
+
+int IMP_ISP_Tuning_EnableDefog(void)
+{
+    return tseries_tuning_set_val(TISP_CID_ENABLE_DEFOG, 1);
+}
+
+int IMP_ISP_Tuning_Awb_SetRgbCoefft(void *attr)
+{
+    return tseries_tuning_set_ptr(TISP_CID_AWB_CWF_SHIFT, attr);
+}
+
+int IMP_ISP_Tuning_Awb_GetRgbCoefft(void *attr)
+{
+    return tseries_tuning_get_ptr(TISP_CID_AWB_CWF_SHIFT, attr);
+}
+
+int IMP_ISP_SetFrameDrop(void *attr)
+{
+    ISPDevice *isp;
+
+    if (attr == NULL || tseries_get_isp(&isp) != 0) {
+        return -1;
+    }
+
+    return ioctl(isp->fd, TISP_VIDIOC_SET_FRAME_DROP, attr);
+}
+
+int IMP_ISP_GetFrameDrop(void *attr)
+{
+    ISPDevice *isp;
+
+    if (attr == NULL || tseries_get_isp(&isp) != 0) {
+        return -1;
+    }
+
+    return ioctl(isp->fd, TISP_VIDIOC_GET_FRAME_DROP, attr);
+}
+
+int IMP_ISP_SetFixedContraster(int mode)
+{
+    (void)mode;
+    return 0;
+}
+
+int IMP_ISP_SetAeAlgoFunc(void *func)
+{
+    if (func == NULL) {
+        return -1;
+    }
+
+    if (tseries_ae_func_tmp != NULL) {
+        free(tseries_ae_func_tmp);
+    }
+
+    tseries_ae_func_tmp = malloc(sizeof(TSeriesAlgoFunc));
+    if (tseries_ae_func_tmp == NULL) {
+        return -1;
+    }
+
+    memcpy(tseries_ae_func_tmp, func, sizeof(TSeriesAlgoFunc));
+    tseries_ae_algo_en = 1;
+    return 0;
+}
+
+int IMP_ISP_SetAeAlgoFunc_internal(void *func)
+{
+    ISPDevice *isp;
+
+    if (func == NULL) {
+        return -1;
+    }
+
+    if (tseries_get_isp(&isp) != 0 || isp->opened >= 2) {
+        return -1;
+    }
+
+    if (ioctl(isp->fd, TISP_VIDIOC_OPEN_AE_ALGO, func) != 0) {
+        return -1;
+    }
+
+    return IMP_ISP_SetAeAlgoFunc(func);
+}
+
+int IMP_ISP_SetAeAlgoFunc_close(void)
+{
+    ISPDevice *isp;
+
+    if (tseries_get_isp(&isp) != 0) {
+        return -1;
+    }
+
+    tseries_ae_algo_en = 0;
+    if (ioctl(isp->fd, TISP_VIDIOC_CLOSE_AE_ALGO, 0) != 0) {
+        return -1;
+    }
+
+    return 0;
+}
+
+int IMP_ISP_SetAwbAlgoFunc(void *func)
+{
+    if (func == NULL) {
+        return -1;
+    }
+
+    if (tseries_awb_func_tmp != NULL) {
+        free(tseries_awb_func_tmp);
+    }
+
+    tseries_awb_func_tmp = malloc(sizeof(TSeriesAlgoFunc));
+    if (tseries_awb_func_tmp == NULL) {
+        return -1;
+    }
+
+    memcpy(tseries_awb_func_tmp, func, sizeof(TSeriesAlgoFunc));
+    tseries_awb_algo_en = 1;
+    return 0;
+}
+
+int IMP_ISP_SetAwbAlgoFunc_internal(void *func)
+{
+    ISPDevice *isp;
+
+    if (func == NULL) {
+        return -1;
+    }
+
+    if (tseries_get_isp(&isp) != 0 || isp->opened >= 2) {
+        return -1;
+    }
+
+    if (ioctl(isp->fd, TISP_VIDIOC_OPEN_AWB_ALGO, 0) != 0) {
+        return -1;
+    }
+
+    return IMP_ISP_SetAwbAlgoFunc(func);
+}
+
+int IMP_ISP_SetAwbAlgoFunc_close(void)
+{
+    ISPDevice *isp;
+
+    if (tseries_get_isp(&isp) != 0) {
+        return -1;
+    }
+
+    tseries_awb_algo_en = 0;
+    if (ioctl(isp->fd, TISP_VIDIOC_CLOSE_AWB_ALGO, 0) != 0) {
+        return -1;
+    }
+
+    return 0;
+}
+
+int IMP_ISP_EnableSensor(void)
+{
+    ISPDevice *isp;
+    int32_t sensor_index = -1;
+
+    if (tseries_get_isp(&isp) != 0) {
+        return -1;
+    }
+
+    if (tseries_ae_algo_en != 0 && tseries_ae_func_tmp != NULL) {
+        IMP_ISP_SetAeAlgoFunc_internal(tseries_ae_func_tmp);
+    }
+
+    if (tseries_awb_algo_en != 0 && tseries_awb_func_tmp != NULL) {
+        IMP_ISP_SetAwbAlgoFunc_internal(tseries_awb_func_tmp);
+    }
+
+    if (ioctl(isp->fd, TISP_VIDIOC_GET_SENSOR_INDEX, &sensor_index) != 0) {
+        return -1;
+    }
+
+    if (sensor_index == -1) {
+        return -1;
+    }
+
+    if (ioctl(isp->fd, TISP_VIDIOC_ENABLE_SENSOR, 0) != 0) {
+        return -1;
+    }
+
+    sensor_index = 0;
+    if (ioctl(isp->fd, TISP_VIDIOC_CREATE_LINKS, &sensor_index) != 0) {
+        return -1;
+    }
+
+    if (ioctl(isp->fd, TISP_VIDIOC_ENABLE_LINKS, 0) != 0) {
+        return -1;
+    }
+
+    isp->opened += 2;
+    return 0;
+}
+
+int IMP_ISP_DisableSensor(void)
+{
+    ISPDevice *isp;
+    int32_t sensor_index = -1;
+
+    if (tseries_get_isp(&isp) != 0) {
+        return -1;
+    }
+
+    if (ioctl(isp->fd, TISP_VIDIOC_GET_SENSOR_INDEX, &sensor_index) != 0) {
+        return -1;
+    }
+
+    if (sensor_index == -1) {
+        return -1;
+    }
+
+    if (tseries_ae_algo_en != 0) {
+        IMP_ISP_SetAeAlgoFunc_close();
+    }
+
+    if (tseries_awb_algo_en != 0) {
+        IMP_ISP_SetAwbAlgoFunc_close();
+    }
+
+    if (ioctl(isp->fd, TISP_VIDIOC_DISABLE_LINKS, 0) != 0) {
+        return -1;
+    }
+
+    sensor_index = -1;
+    if (ioctl(isp->fd, TISP_VIDIOC_DESTROY_LINKS, &sensor_index) != 0) {
+        return -1;
+    }
+
+    if (ioctl(isp->fd, TISP_VIDIOC_DISABLE_SENSOR, 0) != 0) {
+        return -1;
+    }
+
+    isp->opened -= 2;
+    return 0;
+}
+
+int IMP_ISP_SET_GPIO_INIT_OR_FREE(int *gpio)
+{
+    ISPDevice *isp;
+
+    if (gpio == NULL || tseries_get_isp(&isp) != 0) {
+        return -1;
+    }
+
+    return ioctl(isp->fd, TISP_VIDIOC_GPIO_INIT_OR_FREE, gpio);
+}
+
+int IMP_ISP_SET_GPIO_STA(int *gpio)
+{
+    ISPDevice *isp;
+
+    if (gpio == NULL || tseries_get_isp(&isp) != 0) {
+        return -1;
+    }
+
+    return ioctl(isp->fd, TISP_VIDIOC_GPIO_STA, gpio);
+}
