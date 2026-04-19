@@ -45,22 +45,42 @@ ifeq ($(BUILD),ported)
 
 # Every ported .c under src/, excluding the legacy flat files so the two
 # builds don't collide at link time.
+# ALSO excluded: the reverse-engineered allocator chain under
+# src/core/imp_alloc/ and src/core/mempool/ — on this Thingino T31
+# kernel, the ported continuous_init's 30MB memset on /dev/rmem hangs
+# the device. The legacy src/dma_alloc.c + src/kernel_interface.c +
+# src/al_avpu.c have been confirmed by the user to get actual streams
+# flowing. Use the legacy allocator/mempool/kernel-interface under the
+# ported build too.
 LEGACY_FILES := \
 	src/imp_system.c src/imp_isp.c src/imp_framesource.c \
 	src/imp_encoder.c src/imp_audio.c src/imp_dmic.c src/imp_osd.c \
 	src/imp_ivs.c src/dma_alloc.c src/fifo.c src/hw_encoder.c \
 	src/device_pool.c src/al_avpu.c src/kernel_interface.c \
 	src/time64_shim.c src/codec.c src/al_encoder_compat.c src/su_base.c
-IMP_SOURCES := $(filter-out $(LEGACY_FILES), $(shell find src -name '*.c'))
 
-# Foundation / glue from the legacy tree that the port relies on.
-# Excluded because the ported subdirs already provide these:
-#   dma_alloc.c        → src/core/imp_alloc/ + src/core/mempool/
-#   fifo.c             → src/alcodec/BufPool.c (Fifo_*)
-#   al_avpu.c          → src/alcodec/CoreManager.c (AL_EncCore_*)
-#   kernel_interface.c → src/core/vbm.c (VBM*) and src/core/sys_core.c (write_reg_32)
+# Ported files we EXCLUDE from BUILD=ported because they conflict with
+# the legacy allocator or have caused runtime issues:
+PORTED_DISABLED := \
+	$(wildcard src/core/imp_alloc/*.c) \
+	$(wildcard src/core/mempool/*.c) \
+	src/video/imp_mempool.c \
+	src/core/vbm.c
+
+IMP_SOURCES := $(filter-out $(LEGACY_FILES) $(PORTED_DISABLED), \
+                            $(shell find src -name '*.c'))
+
+# Pull in the legacy allocator + kernel-interface + fifo etc. that the
+# port's upper layers rely on. These provide:
+#   dma_alloc.c        → IMP_Alloc / IMP_Free / IMP_PoolAlloc / IMP_Get_Info
+#                        via direct /dev/rmem bump allocator (known working)
+#   kernel_interface.c → VBM* frame pool + write_reg_32
+#   fifo.c             → legacy fifo_* and Fifo_* dual API
+#   al_avpu.c          → AL_EncCore_* ioctl wrappers
 IMP_SOURCES += \
-	$(SRC_DIR)/time64_shim.c
+	$(SRC_DIR)/time64_shim.c \
+	$(SRC_DIR)/kernel_interface.c \
+	$(SRC_DIR)/dma_alloc.c
 
 else
 

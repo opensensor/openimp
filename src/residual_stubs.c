@@ -23,85 +23,16 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
-/* ----- framesource kernel-interface thunks ------------------------------ */
+/* fs_* framesource kernel-interface thunks are provided by legacy
+ * src/kernel_interface.c (included in BUILD=ported since it has the
+ * real V4L2 ioctl plumbing). */
 
-int32_t fs_open_device(const char *path)
-{
-    return open(path ? path : "/dev/isp-m0", O_RDWR);
-}
-
-int32_t fs_close_device(int32_t fd)
-{
-    if (fd < 0) return -1;
-    return close(fd);
-}
-
-int32_t fs_set_buffer_count(int32_t fd, int32_t count)
-{
-    (void)fd; (void)count;
-    return 0;
-}
-
-int32_t fs_set_depth(int32_t fd, int32_t chan, int32_t depth)
-{
-    (void)fd; (void)chan; (void)depth;
-    return 0;
-}
-
-int32_t fs_set_format(int32_t fd, void *attr)
-{
-    (void)fd; (void)attr;
-    return 0;
-}
-
-int32_t fs_stream_on(int32_t fd)
-{
-    (void)fd;
-    return 0;
-}
-
-int32_t fs_stream_off(int32_t fd)
-{
-    (void)fd;
-    return 0;
-}
-
-int32_t fs_poll_frame(int32_t fd, int32_t timeout_ms)
-{
-    (void)fd; (void)timeout_ms;
-    return 0;
-}
-
-/* ----- VBM variants (not in binary; convenience wrappers) --------------- */
-
-/* Forward decls — provided by T71 core/vbm.c */
+/* VBM* functions now provided by legacy src/kernel_interface.c in
+ * BUILD=ported (the legacy allocator works end-to-end on real hardware,
+ * the ported T71 vbm.c + ported allocator chain caused rvd to hang the
+ * kernel when continuous_init memset'd 30MB on /dev/rmem). */
 void *VBMLockFrameByVaddr(void *vaddr);
 void VBMUnlockFrameByVaddr(void *vaddr);
-
-void *VBMFrame_GetBuffer(void *frame)
-{
-    return frame;
-}
-
-int32_t VBMReleaseFrame(void *frame)
-{
-    if (frame == NULL) return -1;
-    VBMUnlockFrameByVaddr(frame);
-    return 0;
-}
-
-int32_t VBMKernelDequeue(int32_t fd, void **out_frame, int32_t timeout_ms)
-{
-    (void)fd; (void)timeout_ms;
-    if (out_frame) *out_frame = NULL;
-    return -1;
-}
-
-int32_t VBMPrimeKernelQueue(int32_t fd, int32_t count)
-{
-    (void)fd; (void)count;
-    return 0;
-}
 
 /* ----- osd-style fifo helpers ------------------------------------------ */
 
