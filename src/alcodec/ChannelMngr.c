@@ -254,9 +254,7 @@ static int32_t addClock(int32_t *arg1, int32_t arg2)
 static int32_t NotEnoughResources(int32_t *arg1, int32_t *arg2, int32_t arg3)
 {
     int32_t var_240[0x21];
-    int32_t (*var_30)[0x21] = &var_240;
-    uint8_t var_1bc[0x84];
-    int32_t var_1b8;
+    int32_t var_1bc[0x21];
     int32_t s4;
     int32_t s7;
     int32_t s3;
@@ -270,14 +268,21 @@ static int32_t NotEnoughResources(int32_t *arg1, int32_t *arg2, int32_t arg3)
             (void *)arg2, arg3);
     }
 
-    getCompatibleCores((int32_t *)var_1bc, arg1, *arg2);
-    memcpy(&var_1b8, var_1bc + 0x80, sizeof(var_1b8));
-    s4 = var_1b8;
+    /* Stock HLIL reads var_1b8 (frame offset 0x1b8) which in stock's stack
+     * layout is var_1bc[1] — the first compatible core index after the
+     * IntVector count at [0]. The port author had this as a memcpy from
+     * +0x80 which read var_1bc[32] (last slot). */
+    getCompatibleCores(var_1bc, arg1, *arg2);
+    CMG_KMSG("NotEnoughRes: var_240[0]=%d var_1bc[0]=%d var_1bc[1]=%d arg3=%d",
+             var_240[0], var_1bc[0], var_1bc[1], arg3);
+    s4 = var_1bc[1];
     s7 = 0;
     s3 = 0;
 
     while (1) {
         int32_t var_b4[0x21];
+        int32_t var_138[0x21];
+        int32_t v1_2;
 
         getCompatibleCores(var_b4, arg1, *arg2);
         if (s7 >= var_b4[0]) {
@@ -285,21 +290,29 @@ static int32_t NotEnoughResources(int32_t *arg1, int32_t *arg2, int32_t arg3)
         }
 
         s7 += 1;
-        s3 += arg1[s4 * 0x26 + 0x176];
-
         {
-            int32_t var_138[0x21];
-            int32_t v1_2;
-
-            getCompatibleCores(var_138, arg1, *arg2);
-            v1_2 = 0x1f;
-            if (s7 < 0x20) {
-                v1_2 = s7;
-            }
-            s4 = (*var_30)[v1_2 + 0x43];
+            int32_t bump = arg1[s4 * 0x26 + 0x176];
+            CMG_KMSG("NotEnoughRes iter: s7=%d s4=%d budget=%d s3_before=%d",
+                     s7, s4, bump, s3);
+            s3 += bump;
         }
+
+        /* Stock HLIL `$s4 = (*var_30)[v1_2 + 0x43]` is OOB for var_240
+         * (sized 0x21) — stock's stack layout placed var_138 immediately
+         * after var_1bc, which itself followed var_240. Frame offset
+         * arithmetic lands at var_138[v1_2 + 1]. That is the real
+         * semantic: pick the (v1_2+1)-th compatible core from this
+         * iteration's freshly-filled core list. */
+        getCompatibleCores(var_138, arg1, *arg2);
+        v1_2 = 0x1f;
+        if (s7 < 0x20) {
+            v1_2 = s7;
+        }
+        s4 = var_138[v1_2 + 1];
     }
 
+    CMG_KMSG("NotEnoughRes return: s3=%d arg3=%d -> %s", s3, arg3,
+             ((uint32_t)s3 < (uint32_t)arg3) ? "NOT_ENOUGH" : "ENOUGH");
     return ((uint32_t)s3 < (uint32_t)arg3) ? 1 : 0;
 }
 
@@ -1095,11 +1108,18 @@ int32_t AL_SchedulerEnc_Init(int32_t *arg1, int32_t *arg2, int32_t *arg3, int32_
     void *var_48 = &_gp;
     int32_t i;
     uint8_t var_40[0x30];
-    int32_t var_3c;
-    int32_t var_38;
     int32_t (*var_30)(int32_t *, int32_t, int32_t);
     int32_t *var_2c_1 = arg1;
     void *s2_2;
+
+    /* Stock HLIL references `var_3c` and `var_38` as scalar reads — but in
+     * stock's stack frame they alias `var_40[1]` (byte 4) and `var_40[2]`
+     * (byte 8) respectively, both populated by AL_CoreConstraint_Init's
+     * `arg1[1]=arg6` and `arg1[2]=computed`. Reading them through separate
+     * C locals leaves them uninitialized; the resulting garbage budget
+     * propagates into CoreState and fails NotEnoughResources downstream. */
+#   define VAR_38 (((int32_t *)var_40)[2])  /* budget: (arg2 - result*0xa)/arg4 */
+#   define VAR_3C (((int32_t *)var_40)[1])  /* weight: v0 from CoreConstraintEnc */
 
     (void)var_48;
     (void)var_2c_1;
@@ -1155,7 +1175,7 @@ int32_t AL_SchedulerEnc_Init(int32_t *arg1, int32_t *arg2, int32_t *arg3, int32_
         do {
             int32_t s6_1 = (int32_t)i_3 << 2;
 
-            AL_CoreState_Init((AL_CoreStateCompat *)&arg1[(i_3 * 0xf + s6_1) * 2 + 0x175], var_38, var_3c);
+            AL_CoreState_Init((AL_CoreStateCompat *)&arg1[(i_3 * 0xf + s6_1) * 2 + 0x175], VAR_38, VAR_3C);
             AL_EncCore_Init(&arg1[s6_1 + (i_3 << 6) + 0x8c], &var_30, (void *)(intptr_t)arg1[2], (char)i_3,
                             (int32_t)(intptr_t)s2_2);
             addClock(arg1, (int32_t)i_3);
@@ -1174,7 +1194,7 @@ int32_t AL_SchedulerEnc_Init(int32_t *arg1, int32_t *arg2, int32_t *arg3, int32_
 
         (void)var_50_2;
         (void)var_4c_1;
-        AL_CoreState_Init((AL_CoreStateCompat *)&arg1[(s4_1 * 0xf + s5_1) * 2 + 0x175], var_38, var_3c);
+        AL_CoreState_Init((AL_CoreStateCompat *)&arg1[(s4_1 * 0xf + s5_1) * 2 + 0x175], VAR_38, VAR_3C);
         AL_EncJpegCore_Init(&arg1[s5_1 + (s4_1 << 6) + 0x8c], &var_30, (void *)(intptr_t)arg1[2], 0, (char)s4_1,
                             (int32_t)(intptr_t)s2_2);
         addClock(arg1, s4_1);
