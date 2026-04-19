@@ -10,6 +10,7 @@
  */
 
 #include <stdarg.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -97,4 +98,30 @@ void imp_log_fun(int level, int option, int type,
         fprintf(stderr, "[%s] %s", module, buf);
         if (buf[0] == '\0' || buf[strlen(buf) - 1] != '\n') fputc('\n', stderr);
     }
+}
+
+/* ----- 32-bit halfword pack/unpack helpers ---------------------------
+ *
+ * Called from many ports (aenc/adec/ao/ai/codec_c/osd/vbm). The stock
+ * libsysutils provides these as plain shifts/packs.
+ */
+
+uint32_t _setLeftPart32(uint32_t half)
+{
+    return (half & 0xFFFF) << 16;
+}
+
+uint32_t _setRightPart32(uint32_t half)
+{
+    return half & 0xFFFF;
+}
+
+uint32_t _getLeftPart32(uint32_t word)
+{
+    return (word >> 16) & 0xFFFF;
+}
+
+uint32_t _getRightPart32(uint32_t word)
+{
+    return word & 0xFFFF;
 }

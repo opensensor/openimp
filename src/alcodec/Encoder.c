@@ -30,6 +30,14 @@ int32_t AL_Common_Encoder_SetLoopFilterTcOffset(int32_t *arg1,
                                                 int8_t arg2); /* forward decl, ported by T<N> later */
 uint32_t *AL_Common_Encoder_SetTraceMode(int32_t *arg1, int32_t arg2, int32_t arg3,
                                          char arg4); /* forward decl, ported by T<N> later */
+int32_t AL_Common_Encoder_GetLastError(int32_t *arg1);
+int32_t AL_Common_Encoder_RestartGop(int32_t *arg1);
+int32_t AL_Common_Encoder_SetGopLength(int32_t *arg1, int32_t arg2);
+int32_t AL_Common_Encoder_GetFrameRate(int32_t *arg1, int16_t *arg2, int16_t *arg3);
+int32_t AL_Common_Encoder_GetRcParam(int32_t *arg1, void *arg2);
+int32_t AL_Common_Encoder_SetRcParam(int32_t *arg1, void *arg2);
+int32_t AL_Common_Encoder_GetGopParam(int32_t *arg1, void *arg2);
+int32_t AL_Common_Encoder_SetGopParam(int32_t *arg1, void *arg2);
 int32_t (*AL_CreateAvcEncoder(int32_t (**arg1)(void)))(void); /* forward decl, ported by T<N> later */
 int32_t AL_CreateHevcEncoder(int32_t (**arg1)()); /* forward decl, ported by T<N> later */
 int32_t (*AL_CreateJpegEncoder(int32_t (**arg1)()))(); /* forward decl, ported by T<N> later */
@@ -147,4 +155,49 @@ int32_t AL_Encoder_SetLoopFilterTcOffset(int32_t *arg1, int32_t arg2)
 uint32_t *AL_Encoder_SetTraceMode(int32_t *arg1, int32_t arg2, int32_t arg3, int32_t arg4)
 {
     return AL_Common_Encoder_SetTraceMode(arg1, arg2, arg3, (char)arg4);
+}
+
+int32_t AL_Encoder_Destroy(int32_t **arg1)
+{
+    return AL_Common_Encoder_Destroy(arg1);
+}
+
+int32_t AL_Encoder_GetLastError(int32_t *arg1)
+{
+    return AL_Common_Encoder_GetLastError(arg1);
+}
+
+int32_t AL_Encoder_RestartGop(int32_t *arg1)
+{
+    return AL_Common_Encoder_RestartGop(arg1);
+}
+
+int32_t AL_Encoder_SetGopLength(int32_t *arg1, int32_t arg2)
+{
+    return AL_Common_Encoder_SetGopLength(arg1, arg2);
+}
+
+int32_t AL_Encoder_GetFrameRate(int32_t *arg1, int16_t *arg2, int16_t *arg3)
+{
+    return AL_Common_Encoder_GetFrameRate(arg1, arg2, arg3);
+}
+
+int32_t AL_Encoder_GetRcParam(int32_t *arg1, void *arg2)
+{
+    return AL_Common_Encoder_GetRcParam(arg1, arg2);
+}
+
+int32_t AL_Encoder_SetRcParam(int32_t *arg1, void *arg2)
+{
+    return AL_Common_Encoder_SetRcParam(arg1, arg2);
+}
+
+int32_t AL_Encoder_GetGopParam(int32_t *arg1, void *arg2)
+{
+    return AL_Common_Encoder_GetGopParam(arg1, arg2);
+}
+
+int32_t AL_Encoder_SetGopParam(int32_t *arg1, void *arg2)
+{
+    return AL_Common_Encoder_SetGopParam(arg1, arg2);
 }

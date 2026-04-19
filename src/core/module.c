@@ -619,3 +619,30 @@ char *dump_ob_modules(Module *arg1, int32_t arg2)
 
     return result;
 }
+
+/* ---- Public observer wrappers ------------------------------------------
+ *
+ * Forwarded declarations were sprinkled throughout the port without an
+ * owning file. The stock binary dispatches via Module.observer_add_fn
+ * (offset 0x40) and notify_fn (0x48). These wrappers route through the
+ * vtable so the calling sites keep working.
+ */
+
+int32_t add_observer_to_module(Module *module, Observer *observer)
+{
+    if (module == NULL || observer == NULL) return -1;
+    int32_t (*fn)(Module *, Observer *) = module->observer_add_fn;
+    if (fn == NULL) return -1;
+    return fn(module, observer);
+}
+
+int32_t remove_observer_from_module(Module *src, Module *dst)
+{
+    if (src == NULL || dst == NULL) return -1;
+    /* Build a minimal observer that matches the dst module — the
+     * Module observer_remove_fn walks the list by module pointer. */
+    Observer probe = { NULL, dst, NULL, 0 };
+    int32_t (*fn)(Module *, Observer *) = src->observer_remove_fn;
+    if (fn == NULL) return -1;
+    return fn(src, &probe);
+}
