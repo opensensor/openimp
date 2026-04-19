@@ -317,6 +317,13 @@ int32_t AL_EncCore_Init(AL_EncCoreCtxCompat *arg1, int32_t *arg2, AL_IpCtrl *arg
 
 void AL_EncCore_Deinit(AL_EncCoreCtxCompat *arg1)
 {
+    /* Guard: rvd-style cleanup paths call Deinit even when Init was
+     * never reached (e.g. when IMP_ISP_EnableTuning failed upstream).
+     * The stock binary appears to be called only after Init so its
+     * decomp doesn't show this check — but the defensive guard matches
+     * how all other Deinit paths in libimp handle NULL state. */
+    if (arg1 == NULL || arg1->ip_ctrl == NULL) return;
+
     uint32_t v0_1 = (uint32_t)arg1->core_id << 2;
     AL_IpCtrl *a0 = arg1->ip_ctrl;
     int32_t a1 = 1 << (v0_1 & 0x1f);

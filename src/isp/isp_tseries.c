@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
+#include <errno.h>
 #include <fcntl.h>
 #include <unistd.h>
 #include <sys/ioctl.h>
@@ -2525,12 +2526,14 @@ int IMP_ISP_EnableTuning(void)
 
     /* Build "/dev/isp-m0" path at +0x78 */
     strcpy((char *)(isp_b + 0x78), "/dev/isp-m0");
-    int32_t tfd = open((char *)(isp_b + 0x78), O_RDWR, 0);
+    /* Stock binary uses open flags 0x80002 (O_RDWR | O_CLOEXEC); match exactly */
+    int32_t tfd = open((char *)(isp_b + 0x78), 0x80002, 0);
     *(int32_t *)(isp_b + 0x98) = tfd;
     if (tfd < 0) {
         imp_log_fun(6, IMP_Log_Get_Option(), 2, "IMP-ISP",
             "/home/user/git/proj/sdk-lv3/src/imp/isp/isp_tseries.c", 0x476,
-            "IMP_ISP_EnableTuning", "Cannot open %s\n", isp_b + 0x78);
+            "IMP_ISP_EnableTuning", "Cannot open %s (errno=%d)\n",
+            isp_b + 0x78, errno);
         return -1;
     }
     void *tune = calloc(0x1c, 1);
