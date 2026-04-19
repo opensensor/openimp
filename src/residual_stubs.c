@@ -334,6 +334,8 @@ int32_t g_HwTimer = 0;
 
 int32_t IMP_Log_Get_Option(void);
 int32_t imp_log_fun(int32_t level, int32_t option, int32_t type, ...);
+int32_t __assert(const char *expression, const char *file, int32_t line,
+                 const char *function, ...); /* forward decl, ported by T<N> later */
 
 /* AL_Codec_Encode_* — in src/alcodec/lib_codec.c */
 int32_t AL_Codec_Encode_SetDefaultParam(void *param);
@@ -346,13 +348,21 @@ int32_t AL_Codec_Encode_Process(void *codec, void *frame, void *user_data);
 int32_t AL_Codec_Encode_SetFrameRate(void *codec, void *fps);
 int32_t AL_Codec_Encode_Commit_FilledFifo(int32_t *codec);
 
-/* AL_Encoder_* — not yet ported; keep our own local prototype. */
+/* AL_Encoder_* — tail-call forwards to AL_Common_Encoder_NotifyUseLongTerm
+ * (defined in src/alcodec/Com_Encoder.c, sig: void*(int32_t *)). */
+void *AL_Common_Encoder_NotifyUseLongTerm(int32_t *arg1);
 int32_t AL_Encoder_NotifyUseLongTerm(void *enc);
 
 /* Fifo — in src/fifo.c (legacy) / src/alcodec/BufPool.c (ported). */
 int32_t Fifo_Init(void *fifo_ptr, int32_t size);
 void    Fifo_Deinit(void *fifo_ptr);
 int32_t Fifo_Queue(void *fifo_ptr, void *item, int32_t timeout_ms);
+
+/* AL_Buffer / meta / system timestamp helpers used by update_one_frmstrm. */
+uint32_t AL_Buffer_GetSize(void *buffer);
+void    *AL_Buffer_GetData(void *buffer);
+void    *AL_Buffer_GetMetaData(void *buffer, int32_t type);
+uint64_t IMP_System_GetTimeStamp(void);
 
 /* Misc helpers */
 void c_reduce_fraction(int32_t *num, int32_t *den);
@@ -374,28 +384,314 @@ int32_t release_used_framestream(void *arg1, int32_t arg2);
 void    do_release_frame(void *chn, void *srcFrame, int32_t flag);
 int32_t update_one_frmstrm(void *arg1);
 
-/* Weak fallbacks — the real bodies land in a later task.  Having them
- * weak here guarantees the shared library always links; if a
- * bit-exact port appears in another translation unit it overrides
- * these automatically. */
-__attribute__((weak)) void do_release_frame(void *chn, void *srcFrame, int32_t flag)
+/* ===== do_release_frame @ 0x8e6e4 ====================================
+ * Source-frame release accountant.  Called from release_frame_thread
+ * for every NV12 source that came out of the ISP.  The HLIL reads the
+ * frame's "refcount slot" at +0x44c (arg2), increments it, and if this
+ * is a "flush" invocation (arg3 != 0) updates the rolling max-delay
+ * record at enc+0x298/+0x29c.  The jitter math is a 64-bit timestamp
+ * subtraction + 1.25x inflation (<<2 + original, then /4) to bound
+ * the next-pacing target. */
+void do_release_frame(void *chn, void *srcFrame, int32_t flag)
 {
-    (void)chn; (void)srcFrame; (void)flag;
+    uint8_t *arg1 = (uint8_t *)chn;
+    uint8_t *arg2 = (uint8_t *)srcFrame;
+    if (arg2 != NULL) {
+        pthread_mutex_t *lk = *(pthread_mutex_t **)(arg2 + 0x448);
+        int32_t v0_1;
+
+        pthread_mutex_lock(lk);
+        v0_1 = *(int32_t *)(arg2 + 0x44c);
+        if (v0_1 == 0) {
+            if (*(int32_t *)(arg1 + 0x250) == 0 &&
+                *(int32_t *)(arg1 + 0x258) == 0 &&
+                *(int32_t *)(arg1 + 0x25c) == 0) {
+                v0_1 = *(int32_t *)(arg1 + 0x254);
+                if (*(int32_t *)(arg1 + 0x254) == 0 || v0_1 != 0) {
+                    VBMUnlockFrameByVaddr(*(void **)(arg2 + 0x1c));
+                }
+                v0_1 = *(int32_t *)(arg2 + 0x44c);
+            } else {
+                v0_1 = *(int32_t *)(arg1 + 0x254);
+                if (v0_1 != 0) {
+                    VBMUnlockFrameByVaddr(*(void **)(arg2 + 0x1c));
+                    v0_1 = *(int32_t *)(arg2 + 0x44c);
+                }
+            }
+        }
+        *(int32_t *)(arg2 + 0x44c) = v0_1 + 1;
+        pthread_mutex_unlock(lk);
+
+        pthread_mutex_lock(lk);
+        if (flag != 0 && *(int32_t *)(arg2 + 0x430) != 0) {
+            uint64_t t64 = (uint64_t)(uint32_t)Rtos_GetTime();
+            uint32_t v0_4 = (uint32_t)t64;
+            int32_t v1_1 = (int32_t)(t64 >> 32);
+            int32_t a1 = *(int32_t *)(arg1 + 0x284);
+            uint32_t a0_3 = *(uint32_t *)(arg1 + 0x280);
+            int32_t v0_5;
+            uint32_t a0_4;
+            int32_t a2_2;
+            uint32_t a3_1;
+
+            *(uint32_t *)(arg1 + 0x288) = v0_4;
+            *(int32_t *)(arg1 + 0x28c) = v1_1;
+            if (a1 < v1_1 || (v1_1 == a1 && a0_3 < v0_4)) {
+                a0_4 = v0_4 - a0_3;
+                a2_2 = *(int32_t *)(arg1 + 0x29c);
+                v0_5 = v1_1 - a1 - (v0_4 < a0_4 ? 1 : 0);
+                *(uint32_t *)(arg1 + 0x290) = a0_4;
+                *(int32_t *)(arg1 + 0x294) = v0_5;
+                a3_1 = *(uint32_t *)(arg1 + 0x298);
+            } else {
+                v0_5 = *(int32_t *)(arg1 + 0x294);
+                a2_2 = *(int32_t *)(arg1 + 0x29c);
+                a0_4 = *(uint32_t *)(arg1 + 0x290);
+                a3_1 = *(uint32_t *)(arg1 + 0x298);
+            }
+
+            if (a2_2 >= v0_5) {
+                if (v0_5 == a2_2) {
+                    if (a3_1 < a0_4) {
+                        uint32_t v1_4 = a0_4 << 2;
+                        uint32_t a0_5 = v1_4 + a0_4;
+                        int32_t v0_7 = (a0_5 < v1_4 ? 1 : 0) +
+                                       ((int32_t)(a0_4 >> 30) | (v0_5 << 2)) + v0_5;
+                        int32_t v1_7 = (v0_7 >> 31) & 3;
+                        uint32_t a0_6 = (uint32_t)v1_7 + a0_5;
+                        int32_t v0_8 = (a0_6 < (uint32_t)v1_7 ? 1 : 0) + v0_7;
+                        int32_t v1_9 = v0_8 >> 2;
+                        uint32_t a0_8 = ((uint32_t)v0_8 << 30) | (a0_6 >> 2);
+
+                        if (v1_9 < a2_2 ||
+                            (v1_9 == a2_2 && a0_8 < a3_1)) {
+                            *(uint32_t *)(arg1 + 0x298) = a0_8;
+                            *(int32_t *)(arg1 + 0x29c) = v1_9;
+                        } else {
+                            *(uint32_t *)(arg1 + 0x298) = a0_4;
+                            *(int32_t *)(arg1 + 0x29c) = v0_5;
+                        }
+                    }
+                } else {
+                    *(uint32_t *)(arg1 + 0x298) = a0_4;
+                    *(int32_t *)(arg1 + 0x29c) = v0_5;
+                }
+            }
+        }
+        pthread_mutex_unlock(lk);
+    }
 }
 
-__attribute__((weak)) int32_t update_one_frmstrm(void *arg1)
+/* ===== update_one_frmstrm @ 0x92a1c =================================
+ * Consumer thread iteration: pulls one encoded stream from the codec,
+ * copies the 8-word section descriptors into the public-frame struct,
+ * signals the dequeue semaphore, and feeds the public stream-FIFO at
+ * p+0x18.  Returns 0 on success, -1 if GetStream fails. */
+int32_t update_one_frmstrm(void *arg1_in)
 {
-    (void)arg1;
-    /* Returning < 0 would terminate update_frmstrm's loop, so pace by
-     * sleeping to avoid a tight spin when the helper is unported. */
-    usleep(10000);
+    uint8_t *arg1 = (uint8_t *)arg1_in;
+    if (arg1 == NULL) return -1;
+
+    void *var_40 = NULL;
+    void *var_44 = NULL;
+    pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, NULL);
+
+    if (AL_Codec_Encode_GetStream(*(void **)(arg1 + 8),
+                                  &var_44, &var_40) < 0) {
+        int32_t opt = IMP_Log_Get_Option();
+        imp_log_fun(6, opt, 2, "Encoder",
+            "/home/user/git/proj/sdk-lv3/src/imp/video/imp_encoder.c",
+            0x4f6, "update_one_frmstrm",
+            "Codec_Encode_GetStream pStream=%p, pSrc=%p\n",
+            var_44, var_40);
+        pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, NULL);
+        return -1;
+    }
+
+    pthread_mutex_lock((pthread_mutex_t *)(arg1 + 0x1a8));
+    {
+        uint32_t v0_1 = *(uint32_t *)(arg1 + 0x80);
+        uint32_t v0_3 = ((v0_1 + 1U < v0_1) ? 1U : 0U)
+                      + *(uint32_t *)(arg1 + 0x84);
+        *(uint32_t *)(arg1 + 0x80) = v0_1 + 1U;
+        *(uint32_t *)(arg1 + 0x84) = v0_3;
+    }
+    pthread_mutex_unlock((pthread_mutex_t *)(arg1 + 0x1a8));
+
+    /* $s7_1 = var_40[0x24/4]  (public frame struct inside user-data). */
+    int32_t *s7_1 = *(int32_t **)((uint8_t *)var_40 + 0x24);
+    uint64_t ts = (uint64_t)(uint32_t)Rtos_GetTime();
+    s7_1[0x108] = (int32_t)(uint32_t)ts;
+    s7_1[0x109] = (int32_t)(uint32_t)(ts >> 32);
+
+    /* When in PASS-THROUGH mode (+0x2d4 set) or slot mode=4, skip the
+     * 8-word "ENCODE TIME" log and the setRight copy of &str[0x59..0x5d]. */
+    int32_t *str;
+    if (*(uint8_t *)(arg1 + 0x2d4) != 0) {
+        str = (int32_t *)(uintptr_t)s7_1[0x10a];
+    } else if (*(uint8_t *)(arg1 + 0x9b * 4) == 4) {
+        str = (int32_t *)(uintptr_t)s7_1[0x10a];
+    } else {
+        /* Copy the 10-word ENCODE-TIME block (str[0x59..0x62]) into the
+         * public-frame struct at arg1+0x2e0..+0x308 via setLeft+setRight
+         * permute — the stock idiom for 32-bit word stores on MIPS. */
+        str = (int32_t *)(uintptr_t)s7_1[0x10a];
+        int32_t *dst = (int32_t *)(arg1 + 0x2e0);
+        for (int i = 0; i < 10; i++) {
+            (void)_setLeftPart32((uint32_t)str[0x59 + i]);
+            dst[i] = (int32_t)_setRightPart32((uint32_t)str[0x59 + i]);
+        }
+    }
+
+    /* Copy per-frame timestamps (stream[0x59..0x5a]) into the public
+     * frame's timestamp slots — common tail for all paths. */
+    {
+        uint32_t a1_21 = _setRightPart32((uint32_t)str[0x59]);
+        uint32_t a0_32 = _setRightPart32((uint32_t)str[0x5a]);
+        (void)_getLeftPart32(a1_21);
+        *(uint32_t *)(arg1 + 0x2e0) = _getRightPart32(a1_21);
+        (void)_getLeftPart32(a0_32);
+        *(uint32_t *)(arg1 + 0x2e4) = _getRightPart32(a0_32);
+    }
+
+    /* -- Build public stream descriptor ------------------------------- */
+    memset(str, 0, 0x188);
+    str[4] = (int32_t)(intptr_t)var_44;
+    int32_t sz = (int32_t)AL_Buffer_GetSize(var_44);
+    str[5] = (int32_t)(intptr_t)var_40;
+    str[2] = sz;
+
+    void *meta = AL_Buffer_GetMetaData(var_44, 1);
+    int32_t data = (int32_t)(intptr_t)AL_Buffer_GetData(var_44);
+    uint32_t s0_2 = *(uint32_t *)((uint8_t *)meta + 0x14);   /* section cnt */
+    str[0] = 0;
+    str[1] = data;
+
+    uint32_t s6_1 = 0;   /* accumulated payload bytes */
+    uint32_t s5_1 = 0;   /* running offset */
+    int32_t  t0_2 = 0;   /* non-empty-section count */
+
+    if (s0_2 != 0) {
+        int32_t  s2_2 = (int32_t)(s0_2 - 1) * 0x14;
+        int32_t *s0_4 = (int32_t *)((uint8_t *)str + (size_t)s0_2 * 8 * 4);
+        for (int32_t i = (int32_t)s0_2 - 1; i >= 0; i--,
+             s2_2 -= 0x14, s0_4 -= 8) {
+            int32_t *v0_17 = (int32_t *)((uint8_t *)
+                *(void **)((uint8_t *)meta + 0x10) + s2_2);
+            uint32_t n = (uint32_t)v0_17[1];
+            if (n == 0) continue;
+            int32_t t3_1 = v0_17[4];
+            int32_t t2_1 = v0_17[2];
+            s0_4[1] = (int32_t)n;
+            int32_t a1_5 = s7_1[9];
+            int32_t t4_1 = v0_17[3];
+            s0_4[2] = s7_1[8];
+            s0_4[3] = a1_5;
+            *((uint8_t *)&s0_4[4]) = (uint8_t)((uint32_t)t2_1 >> 0x1d) & 1U;
+            s0_4[5] = t4_1;
+            s0_4[6] = t3_1;
+            if ((uint32_t)(t3_1 - 1) < 2U ||
+                *(uint8_t *)(arg1 + 0x9b * 4) == 4) {
+                s5_1 = (uint32_t)v0_17[0];
+                t0_2++;
+                s0_4[0] = (int32_t)s5_1;
+                uint32_t v0_18 = *(uint32_t *)(arg1 + 0x90);
+                uint32_t v1_9 = ((v0_18 + 1U < v0_18) ? 1U : 0U)
+                              + *(uint32_t *)(arg1 + 0x94);
+                *(uint32_t *)(arg1 + 0x90) = v0_18 + 1U;
+                *(uint32_t *)(arg1 + 0x94) = v1_9;
+                str[3] = (int32_t)v0_18;
+            } else {
+                s5_1 -= n;
+                s0_4[0] = (int32_t)s5_1;
+                uint8_t *dbase = (uint8_t *)(intptr_t)str[1];
+                memmove(dbase + s5_1, dbase + (uint32_t)v0_17[0], n);
+            }
+            str[6] += 1;
+            s6_1 += (uint32_t)s0_4[1];
+        }
+    }
+
+    if (t0_2 == 1) {
+        /* When a single section was extracted, shift it to the base and
+         * relocate all "nalu" offsets to form a contiguous stream. */
+        int32_t a1_7 = str[6];
+        str[1] += (int32_t)s5_1;
+        if (a1_7 != 0) {
+            int32_t *it = &str[0];
+            uint32_t v1_10 = 0;
+            for (int32_t k = 0; k < a1_7; k++, it += 8) {
+                int32_t len = it[9];
+                it[8] = (int32_t)v1_10;
+                v1_10 += (uint32_t)len;
+            }
+        }
+    } else {
+        __assert("iNumFrame == 1",
+                 "/home/user/git/proj/sdk-lv3/src/imp/video/imp_encoder.c",
+                 0x53b, "update_one_frmstrm");
+    }
+
+    *(uint32_t *)(arg1 + 0x2a4) += s6_1;
+    *(uint32_t *)(arg1 + 0x2a8) += 1U;
+
+    /* Periodic bitrate stats flush (every >= 4000 us window). */
+    {
+        uint64_t now_us = IMP_System_GetTimeStamp() / 1000ULL;
+        int64_t prev = ((int64_t)*(int32_t *)(arg1 + 0x2c4) << 32) |
+                       (uint32_t)*(int32_t *)(arg1 + 0x2c0);
+        if (prev <= 0) {
+            *(int32_t *)(arg1 + 0x2c0) = (int32_t)(uint32_t)now_us;
+            *(int32_t *)(arg1 + 0x2c4) = (int32_t)(uint32_t)(now_us >> 32);
+        } else {
+            int64_t delta = (int64_t)now_us - prev;
+            if (delta >= 4000) {
+                /* Snapshot prev-window counts then zero. */
+                *(uint32_t *)(arg1 + 0x2a8) = 0U;
+                *(int32_t  *)(arg1 + 0x2c0) = (int32_t)(uint32_t)now_us;
+                *(int32_t  *)(arg1 + 0x2c4) = (int32_t)(uint32_t)(now_us >> 32);
+                *(uint32_t *)(arg1 + 0x2a4) = 0U;
+            }
+        }
+    }
+
+    /* Hand the public-frame record to the consumer fifo. */
+    Fifo_Queue(arg1 + 0x18, s7_1, -1);
+    pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, NULL);
+
+    *(int32_t *)(arg1 + 0x118) = str[6];
+    {
+        int32_t qdepth = 0;
+        sem_getvalue((sem_t *)(arg1 + 0x188), &qdepth);
+        int32_t s6_2 = *(int32_t *)(arg1 + 0x234) - (int32_t)s6_1;
+        *(int32_t *)(arg1 + 0x114) = qdepth;
+        *(int32_t *)(arg1 + 0x110) = s6_2;
+    }
+
+    /* Signal stream-ready + cond wake. */
+    {
+        uint64_t one = 1;
+        pthread_mutex_lock((pthread_mutex_t *)(arg1 + 0x1d8));
+        (void)write(*(int32_t *)(arg1 + 0x220), &one, 8);
+        uint32_t v0_28 = *(uint32_t *)(arg1 + 0x228);
+        uint32_t v0_30 = ((v0_28 + 1U < v0_28) ? 1U : 0U)
+                       + *(uint32_t *)(arg1 + 0x22c);
+        *(uint32_t *)(arg1 + 0x228) = v0_28 + 1U;
+        *(uint32_t *)(arg1 + 0x22c) = v0_30;
+        sem_post((sem_t *)(arg1 + 0x188));
+        sem_post((sem_t *)(arg1 + 0x198));
+        pthread_cond_signal((pthread_cond_t *)(arg1 + 0x1f0));
+        pthread_mutex_unlock((pthread_mutex_t *)(arg1 + 0x1d8));
+    }
     return 0;
 }
 
-__attribute__((weak)) int32_t AL_Encoder_NotifyUseLongTerm(void *enc)
+/* ===== AL_Encoder_NotifyUseLongTerm @ 0x5825c =======================
+ * Single tail-call: forwards to AL_Common_Encoder_NotifyUseLongTerm
+ * with the same register-passed argument (the common-encoder handle). */
+int32_t AL_Encoder_NotifyUseLongTerm(void *enc)
 {
-    (void)enc;
-    return 0;
+    return (int32_t)(intptr_t)AL_Common_Encoder_NotifyUseLongTerm((int32_t *)enc);
 }
 
 /* Thread entries ported in this file. */
@@ -591,10 +887,29 @@ static int32_t sub_8f550_impl(uint8_t *s0_slot, int32_t i, uint8_t *frame,
         }
     }
 
-    /* Remaining work (read timing tuples at enc+0xe4/+0xf4, fold into
-     * per-frame budget +0x10c and +0x11c) is performed by the caller's
-     * follow-up loop in imp_encoder.c.  Preserve the observable side
-     * effect: mark the stream record ready for dequeue. */
+    /* Timing-budget update (HLIL 0x8f580..0x8f5d8):
+     *   $s4         = *(stream + 4)          // stream's meta root
+     *   get_val32($s4 + 0xf4, &arg_11c)      // reads per-stream delay-lo
+     *   get_val32($s4 + 0xe4, &arg_50)       // reads per-stream delay-hi
+     *   v0_3 = max(0x10 - arg_11c, arg_50)
+     *   enc[+0x10c] = v0_3
+     *   enc[+0x11c] = 1
+     *
+     * The two get_val32 calls are indirected through a function-pointer
+     * table in rodata (arg13 - 0x7a50).  In our port we read the raw
+     * words directly — the helper is a straight word-load on the
+     * real-hardware path. */
+    if (frame != NULL) {
+        uint8_t *meta_root = *(uint8_t **)(frame + 4);
+        if (meta_root != NULL) {
+            int32_t v_lo = *(int32_t *)(meta_root + 0xf4);   /* arg_11c */
+            int32_t v_hi = *(int32_t *)(meta_root + 0xe4);   /* arg_50  */
+            int32_t budget = 0x10 - v_lo;
+            if (budget < v_hi) budget = v_hi;
+            *(int32_t *)(frame + 0x10c) = budget;
+            *(int32_t *)(frame + 0x11c) = 1;
+        }
+    }
     return 0;
 }
 
@@ -686,15 +1001,55 @@ static int32_t sub_8eea0_impl(uint8_t *s0_slot, int32_t i, uint8_t *frame,
                           (int32_t *)(enc + 0x4c * 4));
     }
 
-    /* Compute effective fps as float-ratio of GOP×frameRate. */
+    /* ----------------------------------------------------------------
+     * MIPS-FPU aspect-ratio math (HLIL 0x8ef3c..0x8f090):
+     *   $v1_6   = arg13[0x3b]                   // outFrmRateDen
+     *   $a0_2   = arg13[0x3d].w                 // uGopLength
+     *   $v0_4   = arg13[0x3a]                   // outFrmRateNum
+     *   $a1_3   = $a0_2 * $v1_6                 // gop * den
+     *   $f0     = (float)(int32_t)$a1_3         // with sign-bit +2^32 fix
+     *   $f2     = (float)(int32_t)$v0_4
+     *   $f22    = $f0 / $f2                     // ratio = (gop*den)/num
+     *   ...iteration updates arg13[0x3a/3b] and recomputes $f22
+     *      based on arg13[0x50] (last-written packed fps).
+     *   trunc.w.s $f0, $f22  -> arg13[0x50].w
+     * The truncation drives QP-delta table selection (writing a signed
+     * 16-bit word to enc[0x50]). */
     {
         int32_t v1_6 = *(int32_t *)(enc + 0x3b * 4);
         int32_t a0_2 = (int32_t)*(uint16_t *)(enc + 0x3d * 4);
         int32_t v0_4 = *(int32_t *)(enc + 0x3a * 4);
-        (void)v1_6; (void)a0_2; (void)v0_4;
-        /* Ratio-math (arg14/arg16) drives QP-delta tables; encoder-
-         * internal and handled by lib_rtos / RC module.  No observable
-         * state mutation from here. */
+
+        /* lwc1 / cvt.s.w with MIPS sign-bit fixup (add 2^32 when the
+         * integer is negative viewed as signed). */
+        uint32_t a1_3 = (uint32_t)a0_2 * (uint32_t)v1_6;
+        float f0 = (float)(int32_t)a1_3;
+        if ((int32_t)a1_3 < 0) f0 += 4294967296.0f;     /* $f0 f+ arg16 */
+        float f2 = (float)(int32_t)v0_4;
+        if (v0_4 < 0) f2 += 4294967296.0f;               /* $f2 f+ arg17 */
+
+        float f22 = (v0_4 != 0) ? (f0 / f2) : 0.0f;     /* $f22_1 */
+
+        /* Secondary recompute when arg13[0x50] != gop (HLIL label
+         * 0x8f028 branch): use the previously stored truncated value
+         * arg13[0x50] as numerator scale. */
+        uint32_t prev_trunc = (uint32_t)*(uint16_t *)(enc + 0x50 * 4);
+        if (prev_trunc != 0 && (uint32_t)a0_2 != prev_trunc) {
+            uint32_t v1_9 = (uint32_t)*(int32_t *)(enc + 0x3a * 4);
+            uint32_t a0_3 = (uint32_t)*(int32_t *)(enc + 0x3b * 4);
+            uint32_t v0_8 = prev_trunc * a0_3;
+            float f2_2 = (float)(int32_t)v1_9;
+            if ((int32_t)v1_9 < 0) f2_2 += 4294967296.0f;
+            float f2_3 = (float)(int32_t)v0_8;
+            if ((int32_t)v0_8 < 0) f2_3 += 4294967296.0f;
+            if (v1_9 == 0) __builtin_trap();
+            f22 = f2_3 / f2_2;
+            if (v0_8 % v1_9 != 0) f22 += 1.0f;          /* round-up on remainder */
+        }
+
+        /* trunc.w.s into the 16-bit slot at arg13[0x50]. */
+        int32_t truncated = (int32_t)f22;               /* toward zero */
+        *(uint16_t *)(enc + 0x50 * 4) = (uint16_t)truncated;
     }
 
     /* Commit the new fps to the codec.  The fps arg is a packed
@@ -1009,6 +1364,315 @@ int32_t channel_encoder_init(void *arg1)
     *(int32_t *)(p + 0x52 * 4) = _setRightPart32(*(uint32_t *)(p + 0x3f * 4));
     *(int32_t *)(p + 0x53 * 4) = _setRightPart32(*(uint32_t *)(p + 0x40 * 4));
     *(int32_t *)(p + 0x54 * 4) = _setRightPart32(*(uint32_t *)(p + 0x41 * 4));
+
+    if (access("/tmp/encattr", 0) == 0) {
+        int32_t s7_1 = *(int32_t *)p;
+
+        imp_log_fun(3, IMP_Log_Get_Option(), 2, "Encoder",
+            "/home/user/git/proj/sdk-lv3/src/imp/video/imp_encoder.c",
+            0x58d, "dump_encoder_chn_attr",
+            "-----------------------%s(%d) start---------------------------------------\n",
+            "channel_encoder_init", 0x620);
+        imp_log_fun(3, IMP_Log_Get_Option(), 2, "Encoder",
+            "/home/user/git/proj/sdk-lv3/src/imp/video/imp_encoder.c",
+            0x58f, "dump_encoder_chn_attr",
+            "enc[%d]attr->encAttr.eProfile = 0x%08x\n",
+            s7_1, *(int32_t *)(p + 0x26 * 4));
+        imp_log_fun(3, IMP_Log_Get_Option(), 2, "Encoder",
+            "/home/user/git/proj/sdk-lv3/src/imp/video/imp_encoder.c",
+            0x590, "dump_encoder_chn_attr",
+            "enc[%d]attr->encAttr.uLevel = %u\n",
+            s7_1, (uint32_t)*(uint8_t *)(p + 0x27 * 4));
+        imp_log_fun(3, IMP_Log_Get_Option(), 2, "Encoder",
+            "/home/user/git/proj/sdk-lv3/src/imp/video/imp_encoder.c",
+            0x591, "dump_encoder_chn_attr",
+            "enc[%d]attr->encAttr.uTier = %u\n",
+            s7_1, (uint32_t)*(uint8_t *)(p + 0x9d));
+        imp_log_fun(3, IMP_Log_Get_Option(), 2, "Encoder",
+            "/home/user/git/proj/sdk-lv3/src/imp/video/imp_encoder.c",
+            0x592, "dump_encoder_chn_attr",
+            "enc[%d]attr->encAttr.uWidth = %u\n",
+            s7_1, (uint32_t)*(uint16_t *)(p + 0x9e));
+        imp_log_fun(3, IMP_Log_Get_Option(), 2, "Encoder",
+            "/home/user/git/proj/sdk-lv3/src/imp/video/imp_encoder.c",
+            0x593, "dump_encoder_chn_attr",
+            "enc[%d]attr->encAttr.uHeight = %u\n",
+            s7_1, (uint32_t)*(uint16_t *)(p + 0x28 * 4));
+        imp_log_fun(3, IMP_Log_Get_Option(), 2, "Encoder",
+            "/home/user/git/proj/sdk-lv3/src/imp/video/imp_encoder.c",
+            0x594, "dump_encoder_chn_attr",
+            "enc[%d]attr->encAttr.ePicFormat = 0x%08x\n",
+            s7_1, *(int32_t *)(p + 0x29 * 4));
+        imp_log_fun(3, IMP_Log_Get_Option(), 2, "Encoder",
+            "/home/user/git/proj/sdk-lv3/src/imp/video/imp_encoder.c",
+            0x595, "dump_encoder_chn_attr",
+            "enc[%d]attr->encAttr.eEncOptions = 0x%08x\n",
+            s7_1, *(int32_t *)(p + 0x2a * 4));
+        imp_log_fun(3, IMP_Log_Get_Option(), 2, "Encoder",
+            "/home/user/git/proj/sdk-lv3/src/imp/video/imp_encoder.c",
+            0x596, "dump_encoder_chn_attr",
+            "enc[%d]attr->encAttr.eEncTools = 0x%08x\n",
+            s7_1, *(int32_t *)(p + 0x2b * 4));
+        imp_log_fun(3, IMP_Log_Get_Option(), 2, "Encoder",
+            "/home/user/git/proj/sdk-lv3/src/imp/video/imp_encoder.c",
+            0x598, "dump_encoder_chn_attr",
+            "enc[%d]attr->rcAttr.attrRcMode.rcMode=%u\n",
+            s7_1, *(int32_t *)(p + 0x31 * 4));
+
+        switch (*(int32_t *)(p + 0x31 * 4)) {
+        case 0:
+            imp_log_fun(3, IMP_Log_Get_Option(), 2, "Encoder",
+                "/home/user/git/proj/sdk-lv3/src/imp/video/imp_encoder.c",
+                0x59a, "dump_encoder_chn_attr",
+                "enc[%d]attr->rcAttr.attrRcMode.attrFixQp.iInitialQP=%u\n",
+                s7_1, (int32_t)*(int16_t *)(p + 0x32 * 4));
+            break;
+        case 1:
+            imp_log_fun(3, IMP_Log_Get_Option(), 2, "Encoder",
+                "/home/user/git/proj/sdk-lv3/src/imp/video/imp_encoder.c",
+                0x59c, "dump_encoder_chn_attr",
+                "enc[%d]attr->rcAttr.attrRcMode.attrCbr.uTargetBitRate = %u\n",
+                s7_1, *(int32_t *)(p + 0x32 * 4));
+            imp_log_fun(3, IMP_Log_Get_Option(), 2, "Encoder",
+                "/home/user/git/proj/sdk-lv3/src/imp/video/imp_encoder.c",
+                0x59d, "dump_encoder_chn_attr",
+                "enc[%d]attr->rcAttr.attrRcMode.attrCbr.iInitialQP = %d\n",
+                s7_1, (int32_t)*(int16_t *)(p + 0x33 * 4));
+            imp_log_fun(3, IMP_Log_Get_Option(), 2, "Encoder",
+                "/home/user/git/proj/sdk-lv3/src/imp/video/imp_encoder.c",
+                0x59e, "dump_encoder_chn_attr",
+                "enc[%d]attr->rcAttr.attrRcMode.attrCbr.iMinQP = %d\n",
+                s7_1, (int32_t)*(int16_t *)(p + 0xce));
+            imp_log_fun(3, IMP_Log_Get_Option(), 2, "Encoder",
+                "/home/user/git/proj/sdk-lv3/src/imp/video/imp_encoder.c",
+                0x59f, "dump_encoder_chn_attr",
+                "enc[%d]attr->rcAttr.attrRcMode.attrCbr.iMaxQP = %d\n",
+                s7_1, (int32_t)*(int16_t *)(p + 0x34 * 4));
+            imp_log_fun(3, IMP_Log_Get_Option(), 2, "Encoder",
+                "/home/user/git/proj/sdk-lv3/src/imp/video/imp_encoder.c",
+                0x5a0, "dump_encoder_chn_attr",
+                "enc[%d]attr->rcAttr.attrRcMode.attrCbr.iIPDelta = %d\n",
+                s7_1, (int32_t)*(int16_t *)(p + 0xd2));
+            imp_log_fun(3, IMP_Log_Get_Option(), 2, "Encoder",
+                "/home/user/git/proj/sdk-lv3/src/imp/video/imp_encoder.c",
+                0x5a1, "dump_encoder_chn_attr",
+                "enc[%d]attr->rcAttr.attrRcMode.attrCbr.iPBDelta = %d\n",
+                s7_1, (int32_t)*(int16_t *)(p + 0x35 * 4));
+            imp_log_fun(3, IMP_Log_Get_Option(), 2, "Encoder",
+                "/home/user/git/proj/sdk-lv3/src/imp/video/imp_encoder.c",
+                0x5a2, "dump_encoder_chn_attr",
+                "enc[%d]attr->rcAttr.attrRcMode.attrCbr.eRcOptions = 0x%08x\n",
+                s7_1, *(int32_t *)(p + 0x36 * 4));
+            imp_log_fun(3, IMP_Log_Get_Option(), 2, "Encoder",
+                "/home/user/git/proj/sdk-lv3/src/imp/video/imp_encoder.c",
+                0x5a3, "dump_encoder_chn_attr",
+                "enc[%d]attr->rcAttr.attrRcMode.attrCbr.uMaxPictureSize = %u\n",
+                s7_1, *(int32_t *)(p + 0x37 * 4));
+            break;
+        case 2:
+            imp_log_fun(3, IMP_Log_Get_Option(), 2, "Encoder",
+                "/home/user/git/proj/sdk-lv3/src/imp/video/imp_encoder.c",
+                0x5a5, "dump_encoder_chn_attr",
+                "enc[%d]attr->rcAttr.attrRcMode.attrVbr.uTargetBitRate = %u\n",
+                s7_1, *(int32_t *)(p + 0x32 * 4));
+            imp_log_fun(3, IMP_Log_Get_Option(), 2, "Encoder",
+                "/home/user/git/proj/sdk-lv3/src/imp/video/imp_encoder.c",
+                0x5a6, "dump_encoder_chn_attr",
+                "enc[%d]attr->rcAttr.attrRcMode.attrVbr.uMaxBitRate = %u\n",
+                s7_1, *(int32_t *)(p + 0x33 * 4));
+            imp_log_fun(3, IMP_Log_Get_Option(), 2, "Encoder",
+                "/home/user/git/proj/sdk-lv3/src/imp/video/imp_encoder.c",
+                0x5a7, "dump_encoder_chn_attr",
+                "enc[%d]attr->rcAttr.attrRcMode.attrVbr.iInitialQP = %d\n",
+                s7_1, (int32_t)*(int16_t *)(p + 0x34 * 4));
+            imp_log_fun(3, IMP_Log_Get_Option(), 2, "Encoder",
+                "/home/user/git/proj/sdk-lv3/src/imp/video/imp_encoder.c",
+                0x5a8, "dump_encoder_chn_attr",
+                "enc[%d]attr->rcAttr.attrRcMode.attrVbr.iMinQP = %d\n",
+                s7_1, (int32_t)*(int16_t *)(p + 0xd2));
+            imp_log_fun(3, IMP_Log_Get_Option(), 2, "Encoder",
+                "/home/user/git/proj/sdk-lv3/src/imp/video/imp_encoder.c",
+                0x5a9, "dump_encoder_chn_attr",
+                "enc[%d]attr->rcAttr.attrRcMode.attrVbr.iMaxQP = %d\n",
+                s7_1, (int32_t)*(int16_t *)(p + 0x35 * 4));
+            imp_log_fun(3, IMP_Log_Get_Option(), 2, "Encoder",
+                "/home/user/git/proj/sdk-lv3/src/imp/video/imp_encoder.c",
+                0x5aa, "dump_encoder_chn_attr",
+                "enc[%d]attr->rcAttr.attrRcMode.attrVbr.iIPDelta = %d\n",
+                s7_1, (int32_t)*(int16_t *)(p + 0xd6));
+            imp_log_fun(3, IMP_Log_Get_Option(), 2, "Encoder",
+                "/home/user/git/proj/sdk-lv3/src/imp/video/imp_encoder.c",
+                0x5ab, "dump_encoder_chn_attr",
+                "enc[%d]attr->rcAttr.attrRcMode.attrVbr.iPBDelta = %d\n",
+                s7_1, (int32_t)*(int16_t *)(p + 0x36 * 4));
+            imp_log_fun(3, IMP_Log_Get_Option(), 2, "Encoder",
+                "/home/user/git/proj/sdk-lv3/src/imp/video/imp_encoder.c",
+                0x5ac, "dump_encoder_chn_attr",
+                "enc[%d]attr->rcAttr.attrRcMode.attrVbr.eRcOptions = 0x%08x\n",
+                s7_1, *(int32_t *)(p + 0x37 * 4));
+            imp_log_fun(3, IMP_Log_Get_Option(), 2, "Encoder",
+                "/home/user/git/proj/sdk-lv3/src/imp/video/imp_encoder.c",
+                0x5ad, "dump_encoder_chn_attr",
+                "enc[%d]attr->rcAttr.attrRcMode.attrVbr.uMaxPictureSize = %u\n",
+                s7_1, *(int32_t *)(p + 0x38 * 4));
+            break;
+        case 4:
+            imp_log_fun(3, IMP_Log_Get_Option(), 2, "Encoder",
+                "/home/user/git/proj/sdk-lv3/src/imp/video/imp_encoder.c",
+                0x5af, "dump_encoder_chn_attr",
+                "enc[%d]attr->rcAttr.attrRcMode.attrCappedVbr.uTargetBitRate = %u\n",
+                s7_1, *(int32_t *)(p + 0x32 * 4));
+            imp_log_fun(3, IMP_Log_Get_Option(), 2, "Encoder",
+                "/home/user/git/proj/sdk-lv3/src/imp/video/imp_encoder.c",
+                0x5b0, "dump_encoder_chn_attr",
+                "enc[%d]attr->rcAttr.attrRcMode.attrCappedVbr.uMaxBitRate = %u\n",
+                s7_1, *(int32_t *)(p + 0x33 * 4));
+            imp_log_fun(3, IMP_Log_Get_Option(), 2, "Encoder",
+                "/home/user/git/proj/sdk-lv3/src/imp/video/imp_encoder.c",
+                0x5b1, "dump_encoder_chn_attr",
+                "enc[%d]attr->rcAttr.attrRcMode.attrCappedVbr.iInitialQP = %d\n",
+                s7_1, (int32_t)*(int16_t *)(p + 0x34 * 4));
+            imp_log_fun(3, IMP_Log_Get_Option(), 2, "Encoder",
+                "/home/user/git/proj/sdk-lv3/src/imp/video/imp_encoder.c",
+                0x5b2, "dump_encoder_chn_attr",
+                "enc[%d]attr->rcAttr.attrRcMode.attrCappedVbr.iMinQP = %d\n",
+                s7_1, (int32_t)*(int16_t *)(p + 0xd2));
+            imp_log_fun(3, IMP_Log_Get_Option(), 2, "Encoder",
+                "/home/user/git/proj/sdk-lv3/src/imp/video/imp_encoder.c",
+                0x5b3, "dump_encoder_chn_attr",
+                "enc[%d]attr->rcAttr.attrRcMode.attrCappedVbr.iMaxQP = %d\n",
+                s7_1, (int32_t)*(int16_t *)(p + 0x35 * 4));
+            imp_log_fun(3, IMP_Log_Get_Option(), 2, "Encoder",
+                "/home/user/git/proj/sdk-lv3/src/imp/video/imp_encoder.c",
+                0x5b4, "dump_encoder_chn_attr",
+                "enc[%d]attr->rcAttr.attrRcMode.attrCappedVbr.iIPDelta = %d\n",
+                s7_1, (int32_t)*(int16_t *)(p + 0xd6));
+            imp_log_fun(3, IMP_Log_Get_Option(), 2, "Encoder",
+                "/home/user/git/proj/sdk-lv3/src/imp/video/imp_encoder.c",
+                0x5b5, "dump_encoder_chn_attr",
+                "enc[%d]attr->rcAttr.attrRcMode.attrCappedVbr.iPBDelta = %d\n",
+                s7_1, (int32_t)*(int16_t *)(p + 0x36 * 4));
+            imp_log_fun(3, IMP_Log_Get_Option(), 2, "Encoder",
+                "/home/user/git/proj/sdk-lv3/src/imp/video/imp_encoder.c",
+                0x5b6, "dump_encoder_chn_attr",
+                "enc[%d]attr->rcAttr.attrRcMode.attrCappedVbr.eRcOptions = 0x%08x\n",
+                s7_1, *(int32_t *)(p + 0x37 * 4));
+            imp_log_fun(3, IMP_Log_Get_Option(), 2, "Encoder",
+                "/home/user/git/proj/sdk-lv3/src/imp/video/imp_encoder.c",
+                0x5b7, "dump_encoder_chn_attr",
+                "enc[%d]attr->rcAttr.attrRcMode.attrCappedVbr.uMaxPictureSize = %u\n",
+                s7_1, *(int32_t *)(p + 0x38 * 4));
+            imp_log_fun(3, IMP_Log_Get_Option(), 2, "Encoder",
+                "/home/user/git/proj/sdk-lv3/src/imp/video/imp_encoder.c",
+                0x5b8, "dump_encoder_chn_attr",
+                "enc[%d]attr->rcAttr.attrRcMode.attrCappedVbr.uMaxPSNR = %u\n",
+                s7_1, (uint32_t)*(uint16_t *)(p + 0x39 * 4));
+            break;
+        case 8:
+            imp_log_fun(3, IMP_Log_Get_Option(), 2, "Encoder",
+                "/home/user/git/proj/sdk-lv3/src/imp/video/imp_encoder.c",
+                0x5ba, "dump_encoder_chn_attr",
+                "enc[%d]attr->rcAttr.attrRcMode.attrCappedQuality.uTargetBitRate = %u\n",
+                s7_1, *(int32_t *)(p + 0x32 * 4));
+            imp_log_fun(3, IMP_Log_Get_Option(), 2, "Encoder",
+                "/home/user/git/proj/sdk-lv3/src/imp/video/imp_encoder.c",
+                0x5bb, "dump_encoder_chn_attr",
+                "enc[%d]attr->rcAttr.attrRcMode.attrCappedQuality.uMaxBitRate = %u\n",
+                s7_1, *(int32_t *)(p + 0x33 * 4));
+            imp_log_fun(3, IMP_Log_Get_Option(), 2, "Encoder",
+                "/home/user/git/proj/sdk-lv3/src/imp/video/imp_encoder.c",
+                0x5bc, "dump_encoder_chn_attr",
+                "enc[%d]attr->rcAttr.attrRcMode.attrCappedQuality.iInitialQP = %d\n",
+                s7_1, (int32_t)*(int16_t *)(p + 0x34 * 4));
+            imp_log_fun(3, IMP_Log_Get_Option(), 2, "Encoder",
+                "/home/user/git/proj/sdk-lv3/src/imp/video/imp_encoder.c",
+                0x5bd, "dump_encoder_chn_attr",
+                "enc[%d]attr->rcAttr.attrRcMode.attrCappedQuality.iMinQP = %d\n",
+                s7_1, (int32_t)*(int16_t *)(p + 0xd2));
+            imp_log_fun(3, IMP_Log_Get_Option(), 2, "Encoder",
+                "/home/user/git/proj/sdk-lv3/src/imp/video/imp_encoder.c",
+                0x5be, "dump_encoder_chn_attr",
+                "enc[%d]attr->rcAttr.attrRcMode.attrCappedQuality.iMaxQP = %d\n",
+                s7_1, (int32_t)*(int16_t *)(p + 0x35 * 4));
+            imp_log_fun(3, IMP_Log_Get_Option(), 2, "Encoder",
+                "/home/user/git/proj/sdk-lv3/src/imp/video/imp_encoder.c",
+                0x5bf, "dump_encoder_chn_attr",
+                "enc[%d]attr->rcAttr.attrRcMode.attrCappedQuality.iIPDelta = %d\n",
+                s7_1, (int32_t)*(int16_t *)(p + 0xd6));
+            imp_log_fun(3, IMP_Log_Get_Option(), 2, "Encoder",
+                "/home/user/git/proj/sdk-lv3/src/imp/video/imp_encoder.c",
+                0x5c0, "dump_encoder_chn_attr",
+                "enc[%d]attr->rcAttr.attrRcMode.attrCappedQuality.iPBDelta = %d\n",
+                s7_1, (int32_t)*(int16_t *)(p + 0x36 * 4));
+            imp_log_fun(3, IMP_Log_Get_Option(), 2, "Encoder",
+                "/home/user/git/proj/sdk-lv3/src/imp/video/imp_encoder.c",
+                0x5c1, "dump_encoder_chn_attr",
+                "enc[%d]attr->rcAttr.attrRcMode.attrCappedQuality.eRcOptions = 0x%08x\n",
+                s7_1, *(int32_t *)(p + 0x37 * 4));
+            imp_log_fun(3, IMP_Log_Get_Option(), 2, "Encoder",
+                "/home/user/git/proj/sdk-lv3/src/imp/video/imp_encoder.c",
+                0x5c2, "dump_encoder_chn_attr",
+                "enc[%d]attr->rcAttr.attrRcMode.attrCappedQuality.uMaxPictureSize = %u\n",
+                s7_1, *(int32_t *)(p + 0x38 * 4));
+            imp_log_fun(3, IMP_Log_Get_Option(), 2, "Encoder",
+                "/home/user/git/proj/sdk-lv3/src/imp/video/imp_encoder.c",
+                0x5c3, "dump_encoder_chn_attr",
+                "enc[%d]attr->rcAttr.attrRcMode.attrCappedQuality.uMaxPSNR = %u\n",
+                s7_1, (uint32_t)*(uint16_t *)(p + 0x39 * 4));
+            break;
+        }
+
+        imp_log_fun(3, IMP_Log_Get_Option(), 2, "Encoder",
+            "/home/user/git/proj/sdk-lv3/src/imp/video/imp_encoder.c",
+            0x5c6, "dump_encoder_chn_attr",
+            "enc[%d]attr->rcAttr.outFrmRate.frmRateNum=%u\n",
+            s7_1, *(int32_t *)(p + 0x3a * 4));
+        imp_log_fun(3, IMP_Log_Get_Option(), 2, "Encoder",
+            "/home/user/git/proj/sdk-lv3/src/imp/video/imp_encoder.c",
+            0x5c7, "dump_encoder_chn_attr",
+            "enc[%d]attr->rcAttr.outFrmRate.frmRateDen=%u\n",
+            s7_1, *(int32_t *)(p + 0x3b * 4));
+        imp_log_fun(3, IMP_Log_Get_Option(), 2, "Encoder",
+            "/home/user/git/proj/sdk-lv3/src/imp/video/imp_encoder.c",
+            0x5c9, "dump_encoder_chn_attr",
+            "enc[%d]attr->gopAttr.uGopCtrlMode = %u\n",
+            s7_1, *(int32_t *)(p + 0x3c * 4));
+        imp_log_fun(3, IMP_Log_Get_Option(), 2, "Encoder",
+            "/home/user/git/proj/sdk-lv3/src/imp/video/imp_encoder.c",
+            0x5ca, "dump_encoder_chn_attr",
+            "enc[%d]attr->gopAttr.uGopLength = %u\n",
+            s7_1, (uint32_t)*(uint16_t *)(p + 0x3d * 4));
+        imp_log_fun(3, IMP_Log_Get_Option(), 2, "Encoder",
+            "/home/user/git/proj/sdk-lv3/src/imp/video/imp_encoder.c",
+            0x5cb, "dump_encoder_chn_attr",
+            "enc[%d]attr->gopAttr.uNotifyUserLTInter = %u\n",
+            s7_1, (uint32_t)*(uint8_t *)(p + 0xf6));
+        imp_log_fun(3, IMP_Log_Get_Option(), 2, "Encoder",
+            "/home/user/git/proj/sdk-lv3/src/imp/video/imp_encoder.c",
+            0x5cc, "dump_encoder_chn_attr",
+            "enc[%d]attr->gopAttr.uMaxSameSenceCnt = %u\n",
+            s7_1, *(int32_t *)(p + 0x3e * 4));
+        imp_log_fun(3, IMP_Log_Get_Option(), 2, "Encoder",
+            "/home/user/git/proj/sdk-lv3/src/imp/video/imp_encoder.c",
+            0x5cd, "dump_encoder_chn_attr",
+            "enc[%d]attr->gopAttr.bEnableLT = %u\n",
+            s7_1, (uint32_t)*(uint8_t *)(p + 0x3f * 4));
+        imp_log_fun(3, IMP_Log_Get_Option(), 2, "Encoder",
+            "/home/user/git/proj/sdk-lv3/src/imp/video/imp_encoder.c",
+            0x5ce, "dump_encoder_chn_attr",
+            "enc[%d]attr->gopAttr.uFreqLT = %u\n",
+            s7_1, *(int32_t *)(p + 0x40 * 4));
+        imp_log_fun(3, IMP_Log_Get_Option(), 2, "Encoder",
+            "/home/user/git/proj/sdk-lv3/src/imp/video/imp_encoder.c",
+            0x5cf, "dump_encoder_chn_attr",
+            "enc[%d]attr->gopAttr.bLTRC = %u\n",
+            s7_1, (uint32_t)*(uint8_t *)(p + 0x41 * 4));
+        imp_log_fun(3, IMP_Log_Get_Option(), 2, "Encoder",
+            "/home/user/git/proj/sdk-lv3/src/imp/video/imp_encoder.c",
+            0x5d1, "dump_encoder_chn_attr",
+            "-----------------------%s(%d) end---------------------------------------\n",
+            "channel_encoder_init", 0x620);
+    }
 
     /* -- (4) rate-control attrs -> codec_params ------------------------- */
     if (channel_encoder_set_rc_param(codec_params + 0x80,

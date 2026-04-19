@@ -6,6 +6,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <sys/ioctl.h>
+#include <sys/mman.h>
 
 #include "core/globals.h"
 #include "imp/imp_isp.h"
@@ -2317,4 +2318,260 @@ int IMP_ISP_SET_GPIO_STA(int *gpio)
     }
 
     return ioctl(isp->fd, TISP_VIDIOC_GPIO_STA, gpio);
+}
+
+/* ----- Missing symbols required by rvd hal_init() -----
+ * Ported from libimp.so decomps at 0x9bd84 / 0x9c69c / 0x9e0f8 / 0x9cd40.
+ * The struct layout uses raw byte offsets because the ISPDevice struct
+ * in this file doesn't fully match the binary's internal layout
+ * (fields +0xac=ncu_buf pointer and +0xb4=wdr_buf pointer are unsplit
+ * in the struct).
+ */
+
+/* T68 forward decls */
+int32_t IMP_Alloc(void *info, int32_t size, const char *name);
+int32_t IMP_Free(void *info, int32_t phys);
+
+int IMP_ISP_AddSensor(IMPSensorInfo *pinfo)
+{
+    ISPDevice *isp = (ISPDevice *)gISP;
+    uint8_t *isp_b = (uint8_t *)isp;
+    char *name = (char *)pinfo;
+
+    if (isp == NULL) {
+        imp_log_fun(6, IMP_Log_Get_Option(), 2, "IMP-ISP",
+            "/home/user/git/proj/sdk-lv3/src/imp/isp/isp_tseries.c", 0x19d,
+            "IMP_ISP_AddSensor", "ISPDEV cannot open\n");
+        return -1;
+    }
+    if (isp->opened >= 2) {
+        imp_log_fun(6, IMP_Log_Get_Option(), 2, "IMP-ISP",
+            "/home/user/git/proj/sdk-lv3/src/imp/isp/isp_tseries.c", 0x1a2,
+            "IMP_ISP_AddSensor",
+            "Sensor is runing, please Call 'EmuISP_DisableSensor' firstly\n");
+        return -1;
+    }
+    if (ioctl(isp->fd, 0x805056c1, pinfo) != 0) {
+        imp_log_fun(6, IMP_Log_Get_Option(), 2, "IMP-ISP",
+            "/home/user/git/proj/sdk-lv3/src/imp/isp/isp_tseries.c", 0x1a7,
+            "IMP_ISP_AddSensor", "VIDIOC_REGISTER_SENSOR(%s) error!\n", pinfo);
+        return -1;
+    }
+    if (bpath != NULL) {
+        int32_t bp_ret = ioctl(isp->fd, 0xc00456c7, bpath);
+        free(bpath);
+        bpath = NULL;
+        if (bp_ret != 0) return bp_ret;
+    }
+
+    /* Enumerate sensors, match by name */
+    int32_t sensor_idx = -1;
+    int32_t i = 0;
+    char enum_buf[0x4c];
+    while (1) {
+        int32_t probe = i;
+        if (ioctl(isp->fd, 0xc050561a, &probe) != 0) break;
+        if (strcmp(name, enum_buf) == 0) { sensor_idx = probe; break; }
+        i = probe + 1;
+    }
+    if (sensor_idx == -1) {
+        imp_log_fun(6, IMP_Log_Get_Option(), 2, "IMP-ISP",
+            "/home/user/git/proj/sdk-lv3/src/imp/isp/isp_tseries.c", 0x1c0,
+            "IMP_ISP_AddSensor", "sensor[%s] hasn't been added!\n", name);
+        return -1;
+    }
+    if (ioctl(isp->fd, 0xc0045627, &sensor_idx) != 0) {
+        imp_log_fun(6, IMP_Log_Get_Option(), 2, "IMP-ISP",
+            "/home/user/git/proj/sdk-lv3/src/imp/isp/isp_tseries.c", 0x1c6,
+            "IMP_ISP_AddSensor", "Failed to select sensor[%s]!\n", name);
+        return -1;
+    }
+
+    /* Copy 0x50 bytes of sensor-info into gISP +0x28 via halfword pack */
+    memcpy(isp_b + 0x28, pinfo, 0x50);
+
+    /* VIDIOC_GET_BUF_INFO: read ncu buffer size */
+    struct { int32_t paddr; int32_t size; } buf_info = {0, 0};
+    if (ioctl(isp->fd, 0x800856d5, &buf_info) != 0) {
+        imp_log_fun(6, IMP_Log_Get_Option(), 2, "IMP-ISP",
+            "/home/user/git/proj/sdk-lv3/src/imp/isp/isp_tseries.c", 0x1dc,
+            "IMP_ISP_AddSensor", "VIDIOC_GET_BUF_INFO() error!\n");
+        return -1;
+    }
+    imp_log_fun(4, IMP_Log_Get_Option(), 2, "IMP-ISP",
+        "/home/user/git/proj/sdk-lv3/src/imp/isp/isp_tseries.c", 0x1e0,
+        "IMP_ISP_AddSensor", "%s,%d: paddr = 0x%x, size = 0x%x\n",
+        "IMP_ISP_AddSensor", 0x1e0, buf_info.paddr, buf_info.size);
+
+    void *ncu_alloc = malloc(0x94);
+    if (ncu_alloc == NULL) {
+        printf("error(%s,%d): maloc err\n", "IMP_ISP_AddSensor", 0x1e3);
+        return -1;
+    }
+    if (IMP_Alloc(ncu_alloc, buf_info.size, "ncubuf") != 0) {
+        printf("error(%s,%d): IMP_Alloc\n", "IMP_ISP_AddSensor", 0x1e8);
+        return -1;
+    }
+    *(void **)(isp_b + 0xac) = ncu_alloc;
+    int32_t ncu_phys = *(int32_t *)((char *)ncu_alloc + 0x84);
+    int32_t set_buf = ncu_phys;
+    if (ioctl(isp->fd, 0x800856d4, &set_buf) != 0) {
+        imp_log_fun(6, IMP_Log_Get_Option(), 2, "IMP-ISP",
+            "/home/user/git/proj/sdk-lv3/src/imp/isp/isp_tseries.c", 0x1ee,
+            "IMP_ISP_AddSensor", "VIDIOC_SET_BUF_INFO() error!\n");
+        return -1;
+    }
+
+    /* WDR path only if WDR mode flag (+0xb0) is set */
+    if (*(int32_t *)(isp_b + 0xb0) != 1) return 0;
+
+    struct { int32_t paddr; int32_t size; } wdr_info = {0, 0};
+    if (ioctl(isp->fd, 0x800856d7, &wdr_info) != 0) {
+        imp_log_fun(6, IMP_Log_Get_Option(), 2, "IMP-ISP",
+            "/home/user/git/proj/sdk-lv3/src/imp/isp/isp_tseries.c", 0x1f6,
+            "IMP_ISP_AddSensor", "VIDIOC_GET_WDR_BUF_INFO() error!\n");
+        return -1;
+    }
+    imp_log_fun(4, IMP_Log_Get_Option(), 2, "IMP-ISP",
+        "/home/user/git/proj/sdk-lv3/src/imp/isp/isp_tseries.c", 0x1fa,
+        "IMP_ISP_AddSensor", "%s,%d: paddr = 0x%x, size = 0x%x\n",
+        "IMP_ISP_AddSensor", 0x1fa, wdr_info.paddr, wdr_info.size);
+    void *wdr_alloc = malloc(0x94);
+    if (wdr_alloc == NULL) {
+        printf("error(%s,%d): maloc err\n", "IMP_ISP_AddSensor", 0x1fd);
+        return -1;
+    }
+    if (IMP_Alloc(wdr_alloc, wdr_info.size, "wdrbuf") != 0) {
+        printf("error(%s,%d): IMP_Alloc\n", "IMP_ISP_AddSensor", 0x202);
+        return -1;
+    }
+    *(void **)(isp_b + 0xb4) = wdr_alloc;
+    int32_t wdr_phys = *(int32_t *)((char *)wdr_alloc + 0x84);
+    int32_t set_wdr = wdr_phys;
+    if (ioctl(isp->fd, 0x800856d6, &set_wdr) != 0) {
+        imp_log_fun(6, IMP_Log_Get_Option(), 2, "IMP-ISP",
+            "/home/user/git/proj/sdk-lv3/src/imp/isp/isp_tseries.c", 0x208,
+            "IMP_ISP_AddSensor", "VIDIOC_SET_WDR_BUF_INFO() error!\n");
+        return -1;
+    }
+    return 0;
+}
+
+int IMP_ISP_DelSensor(IMPSensorInfo *pinfo)
+{
+    ISPDevice *isp = (ISPDevice *)gISP;
+    uint8_t *isp_b = (uint8_t *)isp;
+
+    if (isp == NULL) {
+        imp_log_fun(6, IMP_Log_Get_Option(), 2, "IMP-ISP",
+            "/home/user/git/proj/sdk-lv3/src/imp/isp/isp_tseries.c", 0x2ab,
+            "IMP_ISP_DelSensor", "ISPDEV cannot open\n");
+        return -1;
+    }
+    if (isp->opened >= 2) {
+        imp_log_fun(6, IMP_Log_Get_Option(), 2, "IMP-ISP",
+            "/home/user/git/proj/sdk-lv3/src/imp/isp/isp_tseries.c", 0x2b0,
+            "IMP_ISP_DelSensor",
+            "Sensor is runing, please Call 'EmuISP_DisableSensor' firstly\n");
+        return -1;
+    }
+    int32_t sel = -1;
+    if (ioctl(isp->fd, 0xc0045627, &sel) != 0) {
+        imp_log_fun(6, IMP_Log_Get_Option(), 2, "IMP-ISP",
+            "/home/user/git/proj/sdk-lv3/src/imp/isp/isp_tseries.c", 0x2b7,
+            "IMP_ISP_DelSensor", "Failed to select sensor[%s]!\n", pinfo);
+        return -1;
+    }
+    int32_t r = ioctl(isp->fd, 0x805056c2, pinfo);
+    if (r != 0) {
+        imp_log_fun(6, IMP_Log_Get_Option(), 2, "IMP-ISP",
+            "/home/user/git/proj/sdk-lv3/src/imp/isp/isp_tseries.c", 0x2bc,
+            "IMP_ISP_DelSensor", "VIDIOC_REGISTER_SENSOR(%s) error!\n", pinfo);
+        return r;
+    }
+
+    memset(isp_b + 0x28, 0, 0x50);
+    void *ncu = *(void **)(isp_b + 0xac);
+    if (ncu != NULL) {
+        IMP_Free(ncu, *(int32_t *)((char *)ncu + 0x80));
+        free(ncu);
+        *(void **)(isp_b + 0xac) = NULL;
+    }
+    void *wdr = *(void **)(isp_b + 0xb4);
+    if (wdr != NULL) {
+        IMP_Free(wdr, *(int32_t *)((char *)wdr + 0x80));
+        free(wdr);
+        *(void **)(isp_b + 0xb4) = NULL;
+    }
+    return 0;
+}
+
+int IMP_ISP_EnableTuning(void)
+{
+    ISPDevice *isp = (ISPDevice *)gISP;
+    uint8_t *isp_b = (uint8_t *)isp;
+
+    if (isp == NULL) return -1;
+    if (*(void **)(isp_b + 0x9c) != NULL) return 0;  /* already enabled */
+
+    /* Build "/dev/isp-m0" path at +0x78 */
+    strcpy((char *)(isp_b + 0x78), "/dev/isp-m0");
+    int32_t tfd = open((char *)(isp_b + 0x78), O_RDWR, 0);
+    *(int32_t *)(isp_b + 0x98) = tfd;
+    if (tfd < 0) {
+        imp_log_fun(6, IMP_Log_Get_Option(), 2, "IMP-ISP",
+            "/home/user/git/proj/sdk-lv3/src/imp/isp/isp_tseries.c", 0x476,
+            "IMP_ISP_EnableTuning", "Cannot open %s\n", isp_b + 0x78);
+        return -1;
+    }
+    void *tune = calloc(0x1c, 1);
+    if (tune == NULL) { close(tfd); return -1; }
+    *(void **)(isp_b + 0x9c) = tune;
+    *(int32_t *)(isp_b + 0xa8) = 2;
+
+    int32_t mem_fd = open("/dev/mem", O_RDWR | O_SYNC);
+    *(int32_t *)(isp_b + 0xa0) = mem_fd;
+    if (mem_fd <= 0) {
+        imp_log_fun(6, IMP_Log_Get_Option(), 2, "IMP-ISP",
+            "/home/user/git/proj/sdk-lv3/src/imp/isp/isp_tseries.c", 0x485,
+            "IMP_ISP_EnableTuning", "Failed to open %s\n", "/dev/mem");
+    }
+    void *base = mmap(0, 0x10000, PROT_READ | PROT_WRITE, MAP_SHARED,
+                      mem_fd, 0x13380000);
+    *(void **)(isp_b + 0xa4) = base;
+    if (base == NULL || base == MAP_FAILED) {
+        imp_log_fun(6, IMP_Log_Get_Option(), 2, "IMP-ISP",
+            "/home/user/git/proj/sdk-lv3/src/imp/isp/isp_tseries.c", 0x489,
+            "IMP_ISP_EnableTuning", "Failed to mmap isp base addr\n");
+    }
+
+    int32_t fps_pack[3] = { 1, 0, 0x80000e0 };
+    if (ioctl(*(int32_t *)(isp_b + 0x98), 0xc00c56c6, fps_pack) == 0) {
+        *(int32_t *)((char *)tune + 0xc) = (uint32_t)fps_pack[2] >> 16;
+        *(int32_t *)((char *)tune + 0x10) = fps_pack[2] & 0xffff;
+    }
+    *(uint8_t *)((char *)tune + 9) = custom_contrast;
+    return 0;
+}
+
+int IMP_ISP_DisableTuning(void)
+{
+    ISPDevice *isp = (ISPDevice *)gISP;
+    uint8_t *isp_b = (uint8_t *)isp;
+    if (isp == NULL) return 0;
+
+    void *tune = *(void **)(isp_b + 0x9c);
+    if (tune != NULL) free(tune);
+    int32_t tfd = *(int32_t *)(isp_b + 0x98);
+    *(void **)(isp_b + 0x9c) = NULL;
+    if (tfd > 0) close(tfd);
+
+    void *base = *(void **)(isp_b + 0xa4);
+    if (base != NULL) munmap(base, 0x10000);
+    int32_t mem_fd = *(int32_t *)(isp_b + 0xa0);
+    if (mem_fd > 0) close(mem_fd);
+    *(void **)(isp_b + 0xa4) = NULL;
+    *(int32_t *)(isp_b + 0xa0) = 0;
+    *(int32_t *)(isp_b + 0xa8) = 0;
+    return 0;
 }
