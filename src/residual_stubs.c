@@ -1309,23 +1309,44 @@ int32_t channel_encoder_init(void *arg1)
      *   var_57  (0x769) = 0
      *   var_54  (0x76c) = 0x10
      */
-    *(int32_t  *)(codec_params + 0x00)  = *(int32_t  *)(p + 0x26 * 4); /* profile */
-    *(uint16_t *)(codec_params + 0x08)  = *(uint16_t *)(p + 0x9e);     /* width */
-    *(uint16_t *)(codec_params + 0x0a)  = *(uint16_t *)(p + 0x28 * 4); /* height */
-    *(uint16_t *)(codec_params + 0x0c)  = *(uint16_t *)(p + 0x9e);     /* width dup */
-    *(uint16_t *)(codec_params + 0x0e)  = *(uint16_t *)(p + 0x28 * 4); /* height dup */
-    *(int32_t  *)(codec_params + 0x14)  = *(int32_t  *)(p + 0x29 * 4); /* ePicFormat */
-    *(int32_t  *)(codec_params + 0x20)  = *(int32_t  *)(p + 0x26 * 4); /* profile dup */
-    *(uint8_t  *)(codec_params + 0x24)  = *(uint8_t  *)(p + 0x27 * 4); /* uLevel */
-    *(uint8_t  *)(codec_params + 0x25)  = *(uint8_t  *)(p + 0x9d);     /* uTier */
-    *(int32_t  *)(codec_params + 0x30)  = *(int32_t  *)(p + 0x2a * 4); /* encOptions */
-    *(int32_t  *)(codec_params + 0x34)  = *(int32_t  *)(p + 0x2b * 4); /* encTools */
-    *(int32_t  *)(codec_params + 0xec)  = *(int32_t  *)(p + 0x8c * 4);
+    /* var_7c0 = $t7 = *arg1 (channel_state[0], typically chn_id).
+     * Earlier I had codec_params[0] = profile (WRONG). Stock actually
+     * stores profile at [0x20] (var_7a0) and chn_id/word0 at [0x00]. */
+    *(int32_t  *)(codec_params + 0x00)  = *(int32_t  *)(p + 0x00);      /* channel[0] */
+    *(int32_t  *)(codec_params + 0x758) = *(int32_t  *)(p + 0x8c * 4);  /* var_68 */
+    *(int32_t  *)(codec_params + 0x75c) = *(int32_t  *)(p + 0x8d * 4);  /* var_64 */
     *(uint8_t  *)(codec_params + 0x760) = 1;
     *(uint8_t  *)(codec_params + 0x768) = 1;
     *(uint8_t  *)(codec_params + 0x769) = 0;
     *(int32_t  *)(codec_params + 0x76c) = 0x10;
     memcpy(codec_params + 0x764, "NV12", 4);
+    *(uint16_t *)(codec_params + 0x08)  = *(uint16_t *)(p + 0x9e);     /* width */
+    *(uint16_t *)(codec_params + 0x0a)  = *(uint16_t *)(p + 0x28 * 4); /* height */
+    *(uint16_t *)(codec_params + 0x0c)  = *(uint16_t *)(p + 0x9e);     /* width dup */
+    *(uint16_t *)(codec_params + 0x0e)  = *(uint16_t *)(p + 0x28 * 4); /* height dup */
+    *(int32_t  *)(codec_params + 0x14)  = *(int32_t  *)(p + 0x29 * 4); /* ePicFormat */
+    *(int32_t  *)(codec_params + 0x20)  = *(int32_t  *)(p + 0x26 * 4); /* profile */
+    *(uint8_t  *)(codec_params + 0x24)  = *(uint8_t  *)(p + 0x27 * 4); /* uLevel */
+    *(uint8_t  *)(codec_params + 0x25)  = *(uint8_t  *)(p + 0x9d);     /* uTier */
+    *(int32_t  *)(codec_params + 0x30)  = *(int32_t  *)(p + 0x2a * 4); /* encOptions */
+    *(int32_t  *)(codec_params + 0x34)  = *(int32_t  *)(p + 0x2b * 4); /* encTools */
+    *(int32_t  *)(codec_params + 0xec)  = *(int32_t  *)(p + 0x8e * 4); /* var_6d4 */
+
+    /* var_6b0 = 0; then conditional var_768 for specific arg1[0x5b] values */
+    *(int32_t *)(codec_params + 0x110) = 0;                              /* var_6b0 */
+    int32_t t_0x5b = *(int32_t *)(p + 0x5b * 4);
+    if (t_0x5b == 1) {
+        *(int32_t *)(codec_params + 0x58) = 0;                            /* var_768 */
+    } else if (t_0x5b == 2) {
+        *(int32_t *)(codec_params + 0x58) = 1;
+    }
+
+    /* JPEG-specific: if profile == 0x4000000 copy fields from arg1[0xb2..0xb4]. */
+    if (*(int32_t *)(p + 0x26 * 4) == 0x4000000) {
+        *(uint8_t *)(codec_params + 0xcc) = *(uint8_t *)(p + 0xb3);
+        *(int32_t *)(codec_params + 0xd0) = *(int32_t *)(p + 0xb2 * 4);
+        *(int32_t *)(codec_params + 0xd4) = *(int32_t *)(p + 0xb4 * 4);
+    }
 
     /* -- (2) + (3) FPS reduce + fraction pack --------------------------- */
     c_reduce_fraction((int32_t *)(p + 0x3a * 4), (int32_t *)(p + 0x3b * 4));
@@ -1652,7 +1673,10 @@ int32_t channel_encoder_init(void *arg1)
     }
 
     /* -- (4) rate-control attrs -> codec_params ------------------------- */
-    if (channel_encoder_set_rc_param(codec_params + 0x80,
+    /* Stock passes &var_754 where var_754 = codec_params[0x6c]
+     * (0x7c0 - 0x754 = 0x6c). My earlier port used 0x80 which was
+     * wrong by 0x14 — RC validation downstream saw uninitialized bits. */
+    if (channel_encoder_set_rc_param(codec_params + 0x6c,
                                      p + 0x31 * 4) < 0) {
         int32_t opt = IMP_Log_Get_Option();
         imp_log_fun(6, opt, 2, "Encoder",
