@@ -1,6 +1,7 @@
 #include <fcntl.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <stdarg.h>
 #include <string.h>
 #include <sys/mman.h>
 #include <sys/syscall.h>
@@ -23,6 +24,21 @@ static int32_t soc_id_8648 = -1;
 static int32_t cppsr_8647 = -1;
 static int32_t subsoctype_8649 = -1;
 static int32_t subremark_8651 = -1;
+
+static void sysbind_trace(const char *fmt, ...)
+{
+    int fd = open("/dev/kmsg", O_WRONLY);
+    if (fd < 0) return;
+
+    char buf[512];
+    va_list ap;
+    va_start(ap, fmt);
+    int n = vsnprintf(buf, sizeof(buf), fmt, ap);
+    va_end(ap);
+
+    if (n > 0) write(fd, buf, (size_t)n);
+    close(fd);
+}
 
 static const char *const fmt_str_8579[0x24] = {
     "YUV420Planar",
@@ -251,6 +267,11 @@ int32_t system_bind(IMPCell *arg1, IMPCell *arg2)
     }
 
     if (dst_module != NULL) {
+        sysbind_trace("libimp/BIND: system_bind src=%s(%p) %d.%d.%d dst=%s(%p) %d.%d.%d outcnt=%d outptr=%p\n",
+            src_module, src_module, arg1->deviceID, arg1->groupID, arg1->outputID,
+            dst_module, dst_module, arg2->deviceID, arg2->groupID, arg2->outputID,
+            *(int32_t *)((char *)src_module + 0x134),
+            (char *)src_module + 0x128 + ((arg1->outputID + 4) << 2));
         imp_log_fun(3, IMP_Log_Get_Option(), 2, "System",
             "/home/user/git/proj/sdk-lv3/src/imp/core/sys_core.c", 0x126,
             "system_bind", "%s(): bind DST-%s(%d.%d.%d) to SRC-%s(%d.%d.%d)\n",
@@ -265,8 +286,17 @@ int32_t system_bind(IMPCell *arg1, IMPCell *arg2)
             return -1;
         }
 
+        sysbind_trace("libimp/BIND: system_bind pre-dispatch src=%s(%p) dst=%s(%p) bindfn=%p outptr=%p count=%d\n",
+            src_module->name, src_module, dst_module->name, dst_module,
+            *(void **)((char *)src_module + 0x40),
+            (char *)src_module + 0x128 + ((arg1->outputID + 4) << 2),
+            *(int32_t *)((char *)src_module + 0x3c));
         BindObserverToSubject(src_module, dst_module,
             (char *)src_module + 0x128 + ((arg1->outputID + 4) << 2));
+        sysbind_trace("libimp/BIND: system_bind post-dispatch src=%s(%p) dst=%s(%p) count=%d dst_subject=%p\n",
+            src_module->name, src_module, dst_module->name, dst_module,
+            *(int32_t *)((char *)src_module + 0x3c),
+            *(void **)((char *)dst_module + 0x10));
         return 0;
     }
 

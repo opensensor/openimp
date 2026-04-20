@@ -61,7 +61,7 @@ int32_t PixMapBufPollInit(void *arg1, AL_TAllocator *arg2, int32_t *arg3); /* fo
 AL_TBuffer *AL_BufPool_GetBuffer(void *arg1, int32_t arg2); /* forward decl, ported by T<N> later */
 int32_t AL_BufPool_Init(void *arg1, AL_TAllocator *arg2, int32_t *arg3); /* forward decl, ported by T<N> later */
 void AL_BufPool_Deinit(void *arg1); /* forward decl, ported by T<N> later */
-AL_TPicFormat *AL_EncGetSrcPicFormat(AL_TPicFormat *arg1, int32_t arg2, uint8_t arg3, int32_t arg4, uint8_t arg5, int32_t arg6, int32_t arg7); /* forward decl, ported by T<N> later */
+AL_TPicFormat *AL_EncGetSrcPicFormat(AL_TPicFormat *arg1, int32_t arg2, uint8_t arg3, int32_t arg4, uint8_t arg5); /* forward decl, ported by T<N> later */
 int32_t AL_GetSrcStorageMode(int32_t arg1); /* forward decl, ported by T<N> later */
 int32_t AL_IsSrcCompressed(int32_t arg1); /* forward decl, ported by T<N> later */
 int32_t AL_sSettings_GetMaxCPBSize(void *arg1); /* forward decl, ported by T<N> later */
@@ -123,6 +123,33 @@ static inline void write_u32(void *ptr, uint32_t offset, uint32_t value)
 static inline void write_u16(void *ptr, uint32_t offset, uint16_t value)
 {
     *(uint16_t *)((uint8_t *)ptr + offset) = value;
+}
+
+int32_t AL_Codec_Encode_PrimeStreamBuffers(int32_t *arg1)
+{
+    int32_t idx = 0;
+
+    if (arg1 == NULL)
+        return -1;
+
+    if (read_s32(arg1, 0x7ac) <= 0)
+        return 0;
+
+    while (idx < read_s32(arg1, 0x7ac)) {
+        AL_TBuffer *buf = AL_BufPool_GetBuffer((uint8_t *)arg1 + 0x7c0, 1);
+        { int kfd = open("/dev/kmsg", O_WRONLY); if (kfd >= 0) { char b[128]; int n = snprintf(b, sizeof(b), "libimp/ENC: deferred-PutStreamBuffer idx=%d buf=%p\n", idx, buf); if (n>0) write(kfd, b, n); close(kfd); } }
+        if (buf == NULL)
+            return -1;
+        if (AL_Encoder_PutStreamBuffer(*(int32_t **)((uint8_t *)arg1 + 0x798), buf, 0) == 0) {
+            AL_Buffer_Unref(buf);
+            return -1;
+        }
+        AL_Buffer_Unref(buf);
+        idx += 1;
+    }
+
+    { int kfd = open("/dev/kmsg", O_WRONLY); if (kfd >= 0) { const char *m = "libimp/ENC: deferred-PutStreamBuffer done\n"; write(kfd, m, strlen(m)); close(kfd); } }
+    return 0;
 }
 
 static inline void write_s16(void *ptr, uint32_t offset, int16_t value)
@@ -701,27 +728,45 @@ int32_t AL_Codec_Encode_SetDefaultParam(void *arg1)
 
 int32_t AL_Get_StreamMngrCtx(int32_t *arg1)
 {
-    void *v0 = *(void **)arg1;
-    return read_s32(GetChMngrCtx((int32_t *)(intptr_t)(read_s32(v0, 0xf25c) + 4), (char)read_u8(*(void **)read_ptr(v0, 0x18), 0)), 0x2a50);
+    int32_t *enc = (int32_t *)(intptr_t)*arg1;
+    int32_t sched = read_s32(enc, 0xf25c);
+    int32_t *chctx = (int32_t *)(intptr_t)read_s32(enc, 0x18);
+    int32_t chan = chctx ? read_s32(chctx, 0) : -1;
+    int32_t *sched_enc = (int32_t *)(intptr_t)(sched + 4);
+    void *ctx = GetChMngrCtx(sched_enc, (char)chan);
+
+    { int kfd = open("/dev/kmsg", O_WRONLY); if (kfd >= 0) { char b[256]; int n = snprintf(b, sizeof(b), "libimp/ENC: GetStreamMngrCtx wrap=%p enc=%p chctx=%p sched=%p sched_enc=%p chan=%d ctx=%p\n", arg1, enc, chctx, (void *)(intptr_t)sched, sched_enc, chan, ctx); if (n>0) write(kfd, b, n); close(kfd); } }
+    if (ctx == NULL) {
+        return 0;
+    }
+    return read_s32(ctx, 0x2a50);
 }
 
 int32_t AL_Get_StreampCtx(int32_t *arg1)
 {
-    return *arg1;
+    return read_s32((void *)(intptr_t)*arg1, 0xf27c);
 }
 
 int32_t AL_Set_StreampCtx(int32_t *arg1, void *arg2)
 {
+    int32_t *enc = (int32_t *)(intptr_t)*arg1;
     int32_t a1 = read_s32(arg2, 0x790);
-    write_s32(*(void **)arg1, 0xf27c, a1);
+    write_s32(enc, 0xf27c, a1);
     return -(a1 < 1);
 }
 
 int32_t AL_Set_StreamMngrCtx(int32_t *arg1, void *arg2)
 {
-    void *v0 = *(void **)arg1;
-    void *v0_2 = GetChMngrCtx((int32_t *)(intptr_t)(read_s32(v0, 0xf25c) + 4), (char)read_u8(*(void **)read_ptr(v0, 0x18), 0));
+    int32_t *enc = (int32_t *)(intptr_t)*arg1;
+    int32_t sched = read_s32(enc, 0xf25c);
+    int32_t *chctx = (int32_t *)(intptr_t)read_s32(enc, 0x18);
+    int32_t chan = chctx ? read_s32(chctx, 0) : -1;
+    void *v0_2 = GetChMngrCtx((int32_t *)(intptr_t)(sched + 4), (char)chan);
     int32_t v1_1 = read_s32(arg2, 0x78c);
+    { int kfd = open("/dev/kmsg", O_WRONLY); if (kfd >= 0) { char b[256]; int n = snprintf(b, sizeof(b), "libimp/ENC: SetStreamMngrCtx wrap=%p enc=%p chctx=%p sched=%p chan=%d ctx=%p new=0x%x\n", arg1, enc, chctx, (void *)(intptr_t)sched, chan, v0_2, v1_1); if (n>0) write(kfd, b, n); close(kfd); } }
+    if (v0_2 == NULL) {
+        return -1;
+    }
     write_s32(v0_2, 0x2a50, v1_1);
     return -(v1_1 < 1);
 }
@@ -945,6 +990,7 @@ label_896d8:
             } else {
                 ((int32_t *)arg2)[0x1e3] = AL_Get_StreamMngrCtx(*(int32_t **)(s0_1 + 0x798));
                 ((int32_t *)arg2)[0x1e4] = AL_Get_StreampCtx(*(int32_t **)(s0_1 + 0x798));
+                { int kfd = open("/dev/kmsg", O_WRONLY); if (kfd >= 0) { char b[160]; int n = snprintf(b, sizeof(b), "libimp/ENC: codec create streamCtx=0x%x streamp=0x%x\n", ((int32_t *)arg2)[0x1e3], ((int32_t *)arg2)[0x1e4]); if (n>0) write(kfd, b, n); close(kfd); } }
             }
 
             if (read_u32(**(void ***)((uint8_t *)g_pCodec + 4), 0x18) == 0 || read_u32(**(void ***)((uint8_t *)g_pCodec + 4), 0x1c) == 0 || read_u32(**(void ***)((uint8_t *)g_pCodec + 4), 0x20) == 0) {
@@ -955,6 +1001,7 @@ label_896d8:
             var_84 = read_s32(s0_1, 0x760);
             var_88 = read_s32(s0_1, 0x75c);
             GetStreamBufPoolConfig((int32_t *)(s0_1 + 0x7ac), s0_1 + 8, 0, read_u8(s0_1, 0x76d), (double)var_88, (double)var_84, 1.2, 0, 0);
+            { int kfd = open("/dev/kmsg", O_WRONLY); if (kfd >= 0) { char b[160]; int n = snprintf(b, sizeof(b), "libimp/ENC: pre-BufPool_Init cfg cnt=%d size=%d aux=%d\n", read_s32(s0_1, 0x7ac), read_s32(s0_1, 0x7b0), read_s32(s0_1, 0x7b4)); if (n>0) write(kfd, b, n); close(kfd); } }
             if (AL_BufPool_Init(s0_1 + 0x7c0, s1_2, (int32_t *)(s0_1 + 0x7ac)) == 0) {
                 fwrite("AL_BufPool_Init failed\n", 1, 0x17, stderr);
                 AL_Encoder_Destroy(*(int32_t **)(s0_1 + 0x798));
@@ -962,6 +1009,7 @@ label_896d8:
                 Rtos_Free(s0_1);
                 return -1;
             }
+            { int kfd = open("/dev/kmsg", O_WRONLY); if (kfd >= 0) { const char *m = "libimp/ENC: post-BufPool_Init\n"; write(kfd, m, strlen(m)); close(kfd); } }
         }
 
         {
@@ -969,12 +1017,14 @@ label_896d8:
             if (read_s32(s0_1, 0x7ac) > 0) {
                 while (1) {
                     AL_TBuffer *v0_47 = AL_BufPool_GetBuffer(s0_1 + 0x7c0, 1);
+                    { int kfd = open("/dev/kmsg", O_WRONLY); if (kfd >= 0) { char b[128]; int n = snprintf(b, sizeof(b), "libimp/ENC: stream-pool loop idx=%d buf=%p flags=0x%x\n", s1_3, v0_47, v0_47 ? read_u32(v0_47, 0x20) : 0); if (n>0) write(kfd, b, n); close(kfd); } }
                     if (v0_47 == NULL) {
                         a2_16 = 0x370;
                         __assert("pStream", "/home/user/git/proj/sdk-lv3/src/imp/video/alcodec/lib_codec/lib_codec.c", a2_16, "AL_Codec_Encode_Create", var_88, var_84, var_80);
                     }
                     if (read_u32(v0_47, 0x20) != 0) {
                         void *v0_49 = (void *)(intptr_t)AL_PictureMetaData_Create();
+                        { int kfd = open("/dev/kmsg", O_WRONLY); if (kfd >= 0) { char b[128]; int n = snprintf(b, sizeof(b), "libimp/ENC: stream-pool meta=%p\n", v0_49); if (n>0) write(kfd, b, n); close(kfd); } }
                         if (v0_49 == NULL)
                             __assert("pMeta", "/home/user/git/proj/sdk-lv3/src/imp/video/alcodec/lib_codec/lib_codec.c", 0x377, "AL_Codec_Encode_Create", var_88, var_84, var_80);
                         if (AL_Buffer_AddMetaData(v0_47, v0_49) == 0)
@@ -986,14 +1036,17 @@ label_896d8:
                         break;
                 }
             }
+            { int kfd = open("/dev/kmsg", O_WRONLY); if (kfd >= 0) { const char *m = "libimp/ENC: post-stream-pool-prime\n"; write(kfd, m, strlen(m)); close(kfd); } }
         }
 
+        { int kfd = open("/dev/kmsg", O_WRONLY); if (kfd >= 0) { char b[96]; int n = snprintf(b, sizeof(b), "libimp/ENC: pre-Fifo_Init depth=%d\n", read_s32(s0_1, 0x75c)); if (n>0) write(kfd, b, n); close(kfd); } }
         if (Fifo_Init(s0_1 + 0x7f8, read_s32(s0_1, 0x75c)) == 0)
             while (1)
                 __assert("bRet == 1", "/home/user/git/proj/sdk-lv3/src/imp/video/alcodec/lib_codec/lib_codec.c", 0, "AL_Codec_Encode_Create");
         if (Fifo_Init(s0_1 + 0x81c, read_s32(s0_1, 0x75c)) == 0)
             while (1)
                 __assert("bRet == 1", "/home/user/git/proj/sdk-lv3/src/imp/video/alcodec/lib_codec/lib_codec.c", 0, "AL_Codec_Encode_Create");
+        { int kfd = open("/dev/kmsg", O_WRONLY); if (kfd >= 0) { const char *m = "libimp/ENC: post-Fifo_Init\n"; write(kfd, m, strlen(m)); close(kfd); } }
 
         {
             uint32_t var_5c[4];
@@ -1006,6 +1059,7 @@ label_896d8:
                 var_84 = (read_s32(s0_1, 0x770) - 1 + var_58) & -read_s32(s0_1, 0x770);
             var_80 = read_u8(s0_1, 0x76c);
             GetPixMapBufPollConfig((int32_t *)(s0_1 + 0x840), (int32_t *)var_5c, read_s32(s0_1, 0x1c), read_s32(s0_1, 0x91c), var_84, -1, (char)var_80);
+            { int kfd = open("/dev/kmsg", O_WRONLY); if (kfd >= 0) { char b[160]; int n = snprintf(b, sizeof(b), "libimp/ENC: pre-PixMapBufPoolInit cnt=%d size=%d\n", read_s32(s0_1, 0x840), read_s32(s0_1, 0x844)); if (n>0) write(kfd, b, n); close(kfd); } }
             if (PixMapBufPollInit(s0_1 + 0x8e0, read_ptr(g_pCodec, 4), (int32_t *)(s0_1 + 0x840)) == 0) {
                 fwrite("PixMapBufPollInit failed\n", 1, 0x19, stderr);
                 AL_BufPool_Deinit(s0_1 + 0x7c0);
@@ -1014,39 +1068,21 @@ label_896d8:
                 Rtos_Free(s0_1);
                 return -1;
             }
+            { int kfd = open("/dev/kmsg", O_WRONLY); if (kfd >= 0) { const char *m = "libimp/ENC: post-PixMapBufPoolInit\n"; write(kfd, m, strlen(m)); close(kfd); } }
             {
                 AL_TPicFormat var_70;
-                int32_t var_6c;
-                int32_t var_68;
-                int32_t var_64;
-                int32_t var_60;
-                char var_54;
-                int32_t var_50;
+                int32_t src_chroma = (int32_t)var_5c[3];
+                uint8_t src_bitdepth = ((uint8_t *)var_5c)[8];
 
-                AL_EncGetSrcPicFormat(&var_70, var_50, (uint8_t)var_54, AL_GetSrcStorageMode(read_s32(s0_1, 0x1c)), AL_IsSrcCompressed(read_s32(s0_1, 0x1c)), var_84, var_80);
-                var_88 = var_60;
+                AL_EncGetSrcPicFormat(&var_70, src_chroma, src_bitdepth,
+                                      AL_GetSrcStorageMode(read_s32(s0_1, 0x1c)),
+                                      AL_IsSrcCompressed(read_s32(s0_1, 0x1c)));
                 write_u32(s0_1, 0x918, AL_GetFourCC(var_70));
+                { int kfd = open("/dev/kmsg", O_WRONLY); if (kfd >= 0) { char b[160]; int n = snprintf(b, sizeof(b), "libimp/ENC: src fmt chroma=%d bitdepth=%u fourcc=0x%x\n", src_chroma, (unsigned)src_bitdepth, read_u32(s0_1, 0x918)); if (n>0) write(kfd, b, n); close(kfd); } }
             }
         }
 
-        if ((uint32_t)read_u8(arg2, 0x23) != 4 || read_u8(arg2, 0x789) == 0) {
-            int32_t s2_5 = 0;
-            if (read_s32(s0_1, 0x7ac) > 0) {
-                while (1) {
-                    AL_TBuffer *v0_68 = AL_BufPool_GetBuffer(s0_1 + 0x7c0, 1);
-                    if (v0_68 == NULL) {
-                        a2_16 = 0x396;
-                        __assert("pStream", "/home/user/git/proj/sdk-lv3/src/imp/video/alcodec/lib_codec/lib_codec.c", a2_16, "AL_Codec_Encode_Create", var_88, var_84, var_80);
-                    }
-                    if (AL_Encoder_PutStreamBuffer(*(int32_t **)(s0_1 + 0x798), v0_68, 0) == 0)
-                        __assert("bRet", "/home/user/git/proj/sdk-lv3/src/imp/video/alcodec/lib_codec/lib_codec.c", 0x399, "AL_Codec_Encode_Create");
-                    s2_5 += 1;
-                    AL_Buffer_Unref(v0_68);
-                    if (s2_5 >= read_s32(s0_1, 0x7ac))
-                        break;
-                }
-            }
-        }
+        { int kfd = open("/dev/kmsg", O_WRONLY); if (kfd >= 0) { const char *m = "libimp/ENC: defer-initial-PutStreamBuffer-until-StartRecvPic\n"; write(kfd, m, strlen(m)); close(kfd); } }
 
         write_s32(s0_1, 0x920, read_u32(s0_1, 0x774) != 0 ? 9 : -1);
         if (g_pCodec != NULL) {
@@ -1062,6 +1098,7 @@ label_896d8:
                         write_s32(s0_1, 0x7a8, i_1 + 1);
                         Rtos_AtomicIncrement((int32_t *)(pCodec_4 + 0x2c));
                         Rtos_ReleaseMutex(read_ptr(g_pCodec, 0x10));
+                        { int kfd = open("/dev/kmsg", O_WRONLY); if (kfd >= 0) { char b[128]; int n = snprintf(b, sizeof(b), "libimp/ENC: codec register slot=%d handle=%p\n", i_1 + 1, s0_1); if (n>0) write(kfd, b, n); close(kfd); } }
                         *arg1 = s0_1;
                         return 0;
                     }
@@ -1139,9 +1176,33 @@ int32_t AL_Codec_Encode_Process(int32_t *arg1, void *arg2, void *arg3)
 {
     (void)arg3;
 
+    {
+        int kfd = open("/dev/kmsg", O_WRONLY);
+        if (kfd >= 0) {
+            char b[160];
+            int n = snprintf(b, sizeof(b),
+                             "libimp/LCOD: Encode_Process entry codec=%p frame=%p user=%p enc=%p src_pool=%p\n",
+                             arg1, arg2, arg3,
+                             arg1 ? (void *)(intptr_t)arg1[0x1e6] : NULL,
+                             arg1 ? (void *)&arg1[0x238] : NULL);
+            if (n > 0) write(kfd, b, n);
+            close(kfd);
+        }
+    }
+
     if (g_pCodec == NULL)
         __assert("g_pCodec", "/home/user/git/proj/sdk-lv3/src/imp/video/alcodec/lib_codec/lib_codec.c", 0x3d3, "AL_Codec_Encode_Process");
     if (arg2 == NULL) {
+        {
+            int kfd = open("/dev/kmsg", O_WRONLY);
+            if (kfd >= 0) {
+                char b[128];
+                int n = snprintf(b, sizeof(b), "libimp/LCOD: Encode_Process null-frame -> AL_Encoder_Process enc=%p\n",
+                                 (void *)(intptr_t)arg1[0x1e6]);
+                if (n > 0) write(kfd, b, n);
+                close(kfd);
+            }
+        }
         AL_Encoder_Process((int32_t *)(intptr_t)arg1[0x1e6], (int32_t)(intptr_t)arg2, 0);
         return 0;
     }
@@ -1149,6 +1210,16 @@ int32_t AL_Codec_Encode_Process(int32_t *arg1, void *arg2, void *arg3)
         __assert("pCodecEncode->m_SrcFourCC == pCodecFrame->frameInfo.pixfmt", "/home/user/git/proj/sdk-lv3/src/imp/video/alcodec/lib_codec/lib_codec.c", 0x3da, "AL_Codec_Encode_Process");
     {
         AL_TBuffer *v0_2 = AL_BufPool_GetBuffer(&arg1[0x238], 0);
+        {
+            int kfd = open("/dev/kmsg", O_WRONLY);
+            if (kfd >= 0) {
+                char b[160];
+                int n = snprintf(b, sizeof(b), "libimp/LCOD: Encode_Process got-srcbuf=%p frame_size=%u pixfmt=0x%x\n",
+                                 v0_2, *(uint32_t *)((uint8_t *)arg2 + 0x14), *(uint32_t *)((uint8_t *)arg2 + 0x10));
+                if (n > 0) write(kfd, b, n);
+                close(kfd);
+            }
+        }
         if (read_u32(v0_2, 0x20) != 0) {
             int32_t v1_4 = *(int32_t *)((uint8_t *)arg2 + 0x14);
             int32_t a1_3 = read_s32(v0_2, 0x14);
@@ -1166,6 +1237,16 @@ int32_t AL_Codec_Encode_Process(int32_t *arg1, void *arg2, void *arg3)
                 if (read_u32(v0_2, 8) < *(uint32_t *)((uint8_t *)arg2 + 0x14))
                     return AL_Codec_Encode_Commit_FilledFifo((int32_t *)(intptr_t)__assert("pCodecFrame->frameInfo.size <= pSrc->zSizes[0]", "/home/user/git/proj/sdk-lv3/src/imp/video/alcodec/lib_codec/lib_codec.c", 0x3e5, "AL_Codec_Encode_Process"));
                 Rtos_Memcpy((void *)(intptr_t)v0_6, *(void **)((uint8_t *)arg2 + 0x1c), *(uint32_t *)((uint8_t *)arg2 + 0x14));
+            }
+        }
+        {
+            int kfd = open("/dev/kmsg", O_WRONLY);
+            if (kfd >= 0) {
+                char b[128];
+                int n = snprintf(b, sizeof(b), "libimp/LCOD: Encode_Process -> AL_Encoder_Process enc=%p srcbuf=%p\n",
+                                 (void *)(intptr_t)arg1[0x1e6], v0_2);
+                if (n > 0) write(kfd, b, n);
+                close(kfd);
             }
         }
         AL_Encoder_Process((int32_t *)(intptr_t)arg1[0x1e6], (int32_t)(intptr_t)v0_2, 0);

@@ -1,4 +1,8 @@
 #include <stdint.h>
+#include <fcntl.h>
+#include <stdio.h>
+#include <string.h>
+#include <unistd.h>
 
 #include "alcodec/al_rtos.h"
 
@@ -12,6 +16,19 @@ typedef struct AL_TAllocatorVtableCompat {
     void (*Free)(void *allocator, void *buffer);
     void *(*GetVirtualAddr)(void *allocator, void *buffer);
 } AL_TAllocatorVtableCompat;
+
+#define RC_KMSG(fmt, ...)                                                                         \
+    do {                                                                                          \
+        int _kfd = open("/dev/kmsg", O_WRONLY);                                                   \
+        if (_kfd >= 0) {                                                                          \
+            char _buf[256];                                                                       \
+            int _n = snprintf(_buf, sizeof(_buf), "libimp/RC: " fmt "\n", ##__VA_ARGS__);        \
+            if (_n > 0) {                                                                         \
+                write(_kfd, _buf, (size_t)_n);                                                    \
+            }                                                                                     \
+            close(_kfd);                                                                          \
+        }                                                                                         \
+    } while (0)
 
 /* Placement:
  * - AL_RateCtrl_Init @ RateCtrl_11.c
@@ -102,12 +119,15 @@ int32_t AL_RateCtrl_Init(void *arg1, void *arg2, uint32_t arg3, char arg4)
     int32_t a2_2;
     int32_t result;
 
+    RC_KMSG("Init entry rc=%p alloc=%p mode=%u arg4=%u", arg1, arg2, arg3, (unsigned)(uint8_t)arg4);
+
     if (arg1 == NULL) {
         __assert("pRCCtx",
                  "/home/user/git/proj/sdk-lv3/src/imp/video/alcodec/lib_rate_ctrl/RateCtrl_11.c",
                  0x5c, "AL_RateCtrl_Init", &_gp);
     }
     if (arg2 == NULL) {
+        RC_KMSG("Init null allocator rc=%p", arg1);
         return AL_RateCtrl_Deinit((void *)(intptr_t)__assert(
             "pAllocator",
             "/home/user/git/proj/sdk-lv3/src/imp/video/alcodec/lib_rate_ctrl/RateCtrl_11.c",
@@ -118,6 +138,7 @@ int32_t AL_RateCtrl_Init(void *arg1, void *arg2, uint32_t arg3, char arg4)
     *(int32_t *)((char *)arg1 + 0x28) = 0;
     *(int32_t *)((char *)arg1 + 0x20) = 0;
     if (arg3 >= 0xa) {
+        RC_KMSG("Init unsupported mode=%u rc=%p", arg3, arg1);
         return 0;
     }
 
@@ -159,6 +180,9 @@ int32_t AL_RateCtrl_Init(void *arg1, void *arg2, uint32_t arg3, char arg4)
     if (result != 0) {
         *(void **)((char *)arg1 + 0x2c) = Rtos_CreateMutex();
     }
+    RC_KMSG("Init exit rc=%p result=%d fn=%p alloc=%p state=%p mutex=%p",
+            arg1, result, *(void **)((char *)arg1 + 0x20), *(void **)((char *)arg1 + 0x24),
+            *(void **)((char *)arg1 + 0x28), *(void **)((char *)arg1 + 0x2c));
     return result;
 }
 
@@ -174,19 +198,40 @@ uint32_t AL_RateCtrl_Deinit(void *arg1)
         a1_2 = NULL;
         return (uint32_t)AL_RateCtrl_ExtractStatistics(a0_3, a1_2);
     }
+    RC_KMSG("Deinit entry rc=%p fn=%p alloc=%p state=%p mutex=%p",
+            arg1, *(void **)((char *)arg1 + 0x20), *(void **)((char *)arg1 + 0x24),
+            *(void **)((char *)arg1 + 0x28), *(void **)((char *)arg1 + 0x2c));
+
     {
         int32_t (*t9)(void) = *(int32_t (**)(void))((char *)arg1 + 0x20);
 
         if (t9 != NULL) {
+            RC_KMSG("Deinit callback rc=%p cb=%p", arg1, t9);
             t9();
         }
     }
     Rtos_DeleteMutex(*(void **)((char *)arg1 + 0x2c));
     {
         void *a0_1 = *(void **)((char *)arg1 + 0x24);
-        AL_TAllocatorVtableCompat *vtable = *(AL_TAllocatorVtableCompat **)a0_1;
+        void *state = *(void **)((char *)arg1 + 0x28);
 
-        vtable->Free(a0_1, *(void **)((char *)arg1 + 0x28));
+        if (a0_1 == NULL) {
+            RC_KMSG("Deinit skip null allocator rc=%p state=%p", arg1, state);
+            return 0;
+        }
+
+        {
+            AL_TAllocatorVtableCompat *vtable = *(AL_TAllocatorVtableCompat **)a0_1;
+
+            if (vtable == NULL || vtable->Free == NULL) {
+                RC_KMSG("Deinit skip bad vtable rc=%p alloc=%p vtbl=%p state=%p",
+                        arg1, a0_1, vtable, state);
+                return 0;
+            }
+
+            RC_KMSG("Deinit free rc=%p alloc=%p state=%p", arg1, a0_1, state);
+            vtable->Free(a0_1, state);
+        }
         return 0;
     }
 }

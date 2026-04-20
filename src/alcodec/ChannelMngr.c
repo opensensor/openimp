@@ -35,6 +35,10 @@ extern void *__assert(const char *expression, const char *file, int32_t line, co
 #define WRITE_S32(base, off, val) (*(int32_t *)((uint8_t *)(base) + (off)) = (int32_t)(val))
 #define WRITE_PTR(base, off, val) (*(void **)((uint8_t *)(base) + (off)) = (void *)(val))
 
+#define CH_CORE_COUNT(ctx) READ_U8((ctx), 0x3c)
+#define CH_CORE_BASE(ctx) READ_U8((ctx), 0x3d)
+#define CH_RES_BUDGET(ctx) READ_S32((ctx), 0x2c)
+
 typedef struct AL_ClockCompat {
     int32_t field_00;
     int32_t core_0;
@@ -103,7 +107,7 @@ int32_t AL_EncChannel_ListModulesNeeded(void *arg1, void *arg2); /* forward decl
 int32_t AL_EncChannel_Encode(void *arg1, void *arg2); /* forward decl, ported by T<N> later */
 int32_t AL_EncChannel_EndEncoding(void *arg1, uint8_t arg2, int32_t arg3); /* forward decl, ported by T<N> later */
 int32_t AL_EncChannel_DeInit(void *arg1); /* forward decl, ported by T<N> later */
-int32_t AL_EncChannel_Init(int32_t *arg1, int32_t *arg2, void *arg3, uint8_t arg4, uint8_t arg5, uint8_t arg6,
+int32_t AL_EncChannel_Init(int32_t *arg1, int32_t *arg2, void *arg3, uint8_t arg4, uint8_t arg5, int32_t arg6,
                            void *arg7, void *arg8, int32_t *arg9, int32_t arg10, int32_t arg11, int32_t arg12,
                            uint8_t arg13); /* forward decl, ported by T<N> later */
 int32_t AL_EncChannel_CheckAndAdjustParam(void *arg1); /* forward decl, ported by T<N> later */
@@ -208,22 +212,23 @@ copy_out:
     }
 }
 
-int32_t IsChannelIdle(int32_t *arg1, uint8_t *arg2)
+int32_t IsChannelIdle(int32_t *arg1, uint8_t *arg2, uint8_t ch_id)
 {
     void *var_18 = &_gp;
-    uint32_t i = (uint32_t)READ_U8(arg2, 0x79);
+    uint32_t i = (uint32_t)CH_CORE_BASE(arg2);
+    uint32_t count = (uint32_t)CH_CORE_COUNT(arg2);
 
     (void)var_18;
-    if ((int32_t)i < (int32_t)(READ_U8(arg2, 0x78) + i)) {
+    if ((int32_t)i < (int32_t)(count + i)) {
         int32_t s2_5 = (int32_t)(intptr_t)((uint8_t *)arg1 + i * 0x98 + 0x5d4);
 
         do {
             i += 1;
-            if (AL_CoreState_IsChannelRunning((AL_CoreStateCompat *)(intptr_t)s2_5, (int32_t)READ_U8(arg2, 0x79)) != 0) {
+            if (AL_CoreState_IsChannelRunning((AL_CoreStateCompat *)(intptr_t)s2_5, (int32_t)ch_id) != 0) {
                 return 0;
             }
             s2_5 += 0x98;
-        } while ((int32_t)i < (int32_t)(READ_U8(arg2, 0x79) + READ_U8(arg2, 0x78)));
+        } while ((int32_t)i < (int32_t)(CH_CORE_BASE(arg2) + CH_CORE_COUNT(arg2)));
     }
 
     return 1;
@@ -527,8 +532,6 @@ static int32_t CheckAndEncode(int32_t *arg1)
 {
     uint8_t str[0x88];
     int32_t i_1[0x21];
-    int32_t *i = &arg1[0x550 / 4];
-    int32_t *v1 = &i_1[1];
     int32_t var_40 = 0x70000;
     int32_t var_254[0x21];
     int32_t *var_3c = var_254;
@@ -538,20 +541,8 @@ static int32_t CheckAndEncode(int32_t *arg1)
     int32_t *var_34 = var_150;
 
     memset(str, 0, sizeof(str));
-    while (i != &arg1[0x5d0 / 4]) {
-        int32_t t1_1 = i[0];
-        int32_t t0_1 = i[1];
-        int32_t a2_1 = i[2];
-        int32_t a1_1 = i[3];
-
-        i += 4;
-        v1[0] = t1_1;
-        v1[1] = t0_1;
-        v1[2] = a2_1;
-        v1[3] = a1_1;
-        v1 += 4;
-    }
-    *v1 = *i;
+    IntVector_Copy(&arg1[0x550 / 4], i_1);
+    CMG_KMSG("CheckAndEncode entry pending=%d", i_1[0]);
 
     while (i_1[0] > 0) {
         int32_t str_3 = *(int32_t *)&str[0];
@@ -559,14 +550,20 @@ static int32_t CheckAndEncode(int32_t *arg1)
         while (1) {
             int32_t s2_1 = str_3 & 0xff;
             uint8_t *v0_3 = GetChMngrCtx(arg1, (char)s2_1);
+            int idle = (v0_3 != 0) ? IsChannelIdle(arg1, v0_3, (uint8_t)s2_1) : 0;
+            int can_launch = (v0_3 != 0) ? AL_EncChannel_ChannelCanBeLaunched(v0_3) : 0;
 
-            if (IsChannelIdle(arg1, v0_3) != 0 && AL_EncChannel_ChannelCanBeLaunched(v0_3) != 0) {
+            CMG_KMSG("CheckAndEncode scan ch=%d ctx=%p idle=%d can_launch=%d", s2_1, v0_3, idle, can_launch);
+
+            if (idle != 0 && can_launch != 0) {
                 int32_t var_1d4;
 
                 Rtos_Memset(str, 0, 0x88);
+                Rtos_Memset(var_3c, 0, sizeof(var_254));
                 *(int32_t *)&str[0] = str_3;
                 AL_EncChannel_ListModulesNeeded(v0_3, var_3c);
-                memcpy(&var_1d4, str + 0x80, sizeof(var_1d4));
+                var_1d4 = READ_S32(var_3c, 0x80);
+                CMG_KMSG("CheckAndEncode modules ch=%d needed=%d", s2_1, var_1d4);
 
                 if (var_1d4 > 0) {
                     int32_t s3_2 = 0;
@@ -578,6 +575,7 @@ static int32_t CheckAndEncode(int32_t *arg1)
                             s3_2 += 1;
                             s1_1 = &s1_1[2];
                             if (s3_2 >= var_1d4) {
+                                CMG_KMSG("CheckAndEncode all-modules-idle ch=%d needed=%d", s2_1, var_1d4);
                                 goto label_71e98;
                             }
                         }
@@ -695,18 +693,23 @@ label_71da0:
 
                         str_3 = *(int32_t *)&str[0];
                         if (i_1[0] <= 0) {
+                            CMG_KMSG("CheckAndEncode concurrent-filter exhausted");
                             return (int32_t)(intptr_t)Rtos_Memset(str, 0, 0x88);
                         }
+                        CMG_KMSG("CheckAndEncode concurrent-filter retry pending=%d next=0x%x", i_1[0], str_3);
                         continue;
                     }
                 }
+                CMG_KMSG("CheckAndEncode no-modules ch=%d", s2_1);
             }
 
+            CMG_KMSG("CheckAndEncode remove ch=%d token=0x%x", s2_1, str_3);
             IntVector_Remove(i_1, str_3);
             break;
         }
     }
 
+    CMG_KMSG("CheckAndEncode exit no-launch");
     return (int32_t)(intptr_t)Rtos_Memset(str, 0, 0x88);
 
 label_71e98:
@@ -714,10 +717,12 @@ label_71e98:
         int32_t str_2 = *(int32_t *)&str[0];
 
         if (str_2 == 0xff) {
+            CMG_KMSG("CheckAndEncode label_71e98 invalid-token");
             return 0xff;
         }
 
         IntVector_MoveBack(&arg1[0x550 / 4], str_2);
+        CMG_KMSG("CheckAndEncode moveback token=0x%x", str_2);
 
         {
             uint32_t v0_25 = (uint32_t)str[0];
@@ -734,7 +739,7 @@ label_71e98:
                 }
 
                 memset(str_1, 0, sizeof(str_1));
-                memcpy(&var_1d4, str + 0x80, sizeof(var_1d4));
+                var_1d4 = READ_S32(var_3c, 0x80);
                 if (var_1d4 > 0) {
                     int32_t fp_1 = 0;
                     int32_t *s7_3 = var_3c;
@@ -771,7 +776,7 @@ label_71e98:
             Rtos_GetMutex((void *)(intptr_t)arg1[0x12f4 / 4]);
             str_4 = *(int32_t *)&str[0];
             s1_3 = var_3c;
-            memcpy(&var_1d4, str + 0x80, sizeof(var_1d4));
+            var_1d4 = READ_S32(var_3c, 0x80);
             if (var_1d4 > 0) {
                 do {
                     AL_CoreState_SetChannelRunState((uint8_t *)arg1 + *s1_3 * 0x98 + 0x5d4, (uint8_t)str_4, s1_3[1], 1);
@@ -782,7 +787,11 @@ label_71e98:
             Rtos_ReleaseMutex((void *)(intptr_t)arg1[0x12f4 / 4]);
         }
 
-        return AL_EncChannel_Encode(GetChMngrCtx(arg1, (char)str[0]), var_3c);
+        {
+            uint8_t *launch_ctx = GetChMngrCtx(arg1, (char)str[0]);
+            CMG_KMSG("CheckAndEncode launch ch=%u ctx=%p", (unsigned)(uint8_t)str[0], launch_ctx);
+            return AL_EncChannel_Encode(launch_ctx, var_3c);
+        }
     }
 }
 
@@ -793,14 +802,19 @@ static int32_t OutputFrames(int32_t *arg1)
     int32_t s1_1;
 
     (void)var_1a8;
+    CMG_KMSG("OutputFrames entry sch=%p count=%d", arg1, *arg1);
     Rtos_GetMutex((void *)(intptr_t)arg1[0x12f4 / 4]);
     IntVector_Copy(&arg1[0x550 / 4], var_a0);
+    CMG_KMSG("OutputFrames copied pending=%d", var_a0[0]);
     if (var_a0[0] > 0) {
         s1_1 = 0;
 
         while (1) {
             int32_t var_1a0[0x38];
-            uint8_t *v0_7 = GetChMngrCtx(arg1, (char)((uint8_t *)var_1a0)[s1_1 + 0x104]);
+            uint8_t raw_ch = (uint8_t)var_a0[s1_1 + 1];
+            uint8_t *v0_7 = GetChMngrCtx(arg1, (char)raw_ch);
+
+            CMG_KMSG("OutputFrames loop idx=%d raw_ch=%u ctx=%p", s1_1, (unsigned)raw_ch, v0_7);
 
             if (v0_7 != 0 && AL_EncChannel_GetNextFrameToOutput(v0_7, var_1a0) != 0) {
                 int32_t (*cb)(int32_t, int32_t, void *);
@@ -829,14 +843,18 @@ static int32_t OutputFrames(int32_t *arg1)
         }
     }
 
+    CMG_KMSG("OutputFrames exit sch=%p", arg1);
     return (int32_t)(intptr_t)Rtos_ReleaseMutex((void *)(intptr_t)arg1[0x12f4 / 4]);
 }
 
 static int32_t Process(int32_t *arg1)
 {
+    CMG_KMSG("Process entry sch=%p status=%d count=%d", arg1, arg1[0x4bc], *arg1);
     Rtos_GetMutex((void *)(intptr_t)arg1[0x4bd]);
+    CMG_KMSG("Process post-lock status=%d count=%d", arg1[0x4bc], *arg1);
     if (arg1[0x4bc] != 0) {
         arg1[0x4bc] = 2;
+        CMG_KMSG("Process reentry set status=2");
     } else {
         int32_t var_44_1 = 0x70000;
         int32_t var_3c_1 = 0x70000;
@@ -847,11 +865,15 @@ static int32_t Process(int32_t *arg1)
         (void)var_3c_1;
         (void)var_2c_1;
         arg1[0x4bc] = 1;
+        CMG_KMSG("Process set status=1");
 
         while (1) {
             Rtos_ReleaseMutex((void *)(intptr_t)arg1[0x4bd]);
+            CMG_KMSG("Process pre-OutputFrames");
             var_34_1(arg1);
+            CMG_KMSG("Process post-OutputFrames");
             Rtos_GetMutex((void *)(intptr_t)arg1[0x4bd]);
+            CMG_KMSG("Process relock after OutputFrames status=%d count=%d", arg1[0x4bc], *arg1);
 
             if (*arg1 > 0) {
                 uint8_t *s6_1 = (uint8_t *)&arg1[0x23];
@@ -863,16 +885,22 @@ static int32_t Process(int32_t *arg1)
                     int32_t *s2_1 = var_48_1;
                     int32_t j = 0;
 
+                    CMG_KMSG("Process turnoff-scan core=%d active=%d", i, *arg1);
                     memset(str, 0, sizeof(str));
                     while (j != 2) {
                         uint8_t *fp_1 = (uint8_t *)(intptr_t)(*s2_1);
 
+                        CMG_KMSG("Process turnoff-scan core=%d slot=%d fp=%p enabled=%u jobs=%d",
+                                 i, j, fp_1, fp_1 ? (unsigned)(*fp_1) : 0U,
+                                 fp_1 ? READ_S32(fp_1, 0x14) : -1);
                         if ((uint32_t)(*fp_1) != 0U) {
                             if (READ_S32(fp_1, 0x14) > 0) {
                                 int32_t *s7_1 = (int32_t *)&fp_1[4];
                                 int32_t k = 0;
 
                                 do {
+                                    CMG_KMSG("Process turnoff-check core=%d slot=%d dep_idx=%d dep_core=%d",
+                                             i, j, k, *s7_1);
                                     if (AL_CoreState_IsRunning((AL_CoreStateCompat *)&arg1[*s7_1 * 0x26 + 0x175]) != 0) {
                                         goto label_723c4;
                                     }
@@ -890,7 +918,9 @@ label_723c4:
                         s2_1 = &s2_1[1];
                     }
 
+                    CMG_KMSG("Process pre-TurnOffGC core=%d", i);
                     AL_EncCore_TurnOffGC(s6_1, str);
+                    CMG_KMSG("Process post-TurnOffGC core=%d", i);
                     i += 1;
                     s6_1 += 0x44;
                     var_48_1 += 0x26;
@@ -901,15 +931,24 @@ label_723c4:
                 int32_t *s1_1 = &arg1[3];
                 int32_t s6_2 = 0;
 
+                CMG_KMSG("Process pre-deinit-scan");
+
                 while (1) {
                     uint8_t *v0_14 = GetChMngrCtx(arg1, (char)s6_2);
 
-                    if (v0_14 != 0 && READ_U16(v0_14, 0x7a) != 0 && IsChannelIdle(arg1, v0_14) != 0) {
+                    if ((s6_2 & 7) == 0) {
+                        CMG_KMSG("Process deinit-scan ch=%d ctx=%p", s6_2, v0_14);
+                    }
+
+                    if (v0_14 != 0 && READ_U16(v0_14, 0x1ae6) != 0 && IsChannelIdle(arg1, v0_14, (uint8_t)s6_2) != 0) {
+                        CMG_KMSG("Process deinit-path ch=%d ctx=%p destroy_flag=0x%x core_base=%u core_count=%u stream=%p",
+                                 s6_2, v0_14, READ_U16(v0_14, 0x1ae6), CH_CORE_BASE(v0_14),
+                                 CH_CORE_COUNT(v0_14), READ_PTR(v0_14, 0x2a50));
                         uint8_t *v0_17 = GetChMngrCtx(arg1, (char)s6_2);
 
                         if (v0_17 != 0) {
-                            uint32_t i_1 = READ_U8(v0_17, 0x79);
-                            uint32_t a1_6 = READ_U8(v0_17, 0x78);
+                            uint32_t i_1 = CH_CORE_BASE(v0_17);
+                            uint32_t a1_6 = CH_CORE_COUNT(v0_17);
 
                             if ((int32_t)i_1 < (int32_t)(a1_6 + i_1)) {
                                 uint8_t *s7_7 = (uint8_t *)arg1 + i_1 * 0x98 + 0x5d4;
@@ -920,10 +959,10 @@ label_723c4:
                                     }
                                     i_1 += 1;
                                     AL_CoreState_RemoveChannel((AL_CoreStateCompat *)s7_7, s6_2,
-                                                               READ_U16(v0_17, 0x7c) / a1_6);
-                                    a1_6 = READ_U8(v0_17, 0x78);
+                                                               CH_RES_BUDGET(v0_17) / (int32_t)a1_6);
+                                    a1_6 = CH_CORE_COUNT(v0_17);
                                     s7_7 += 0x98;
-                                } while ((int32_t)i_1 < (int32_t)(READ_U8(v0_17, 0x79) + a1_6));
+                                } while ((int32_t)i_1 < (int32_t)(CH_CORE_BASE(v0_17) + a1_6));
                             }
                         }
 
@@ -950,21 +989,34 @@ label_723c4:
                         break;
                     }
                 }
+
+                CMG_KMSG("Process post-deinit-scan");
             }
 
             {
                 int32_t fp_2 = 0;
                 int32_t v0_43;
 
+                CMG_KMSG("Process pre-shift-scan");
+
                 while (1) {
                     uint8_t *v0_25 = GetChMngrCtx(arg1, (char)fp_2);
 
+                    if ((fp_2 & 7) == 0) {
+                        CMG_KMSG("Process shift-scan ch=%d ctx=%p", fp_2, v0_25);
+                    }
+
                     if (v0_25 != 0) {
-                        if (IsChannelIdle(arg1, v0_25) != 0) {
-                            uint32_t a3_2 = READ_U8(v0_25, 0x78);
-                            int32_t a2_3 = READ_U16(v0_25, 0x7c);
-                            uint32_t s7_8 = READ_U8(v0_25, 0x79);
-                            uint32_t s3_1 = READ_U8(v0_25, 0x78);
+                        {
+                            int idle = IsChannelIdle(arg1, v0_25, (uint8_t)fp_2);
+                            CMG_KMSG("Process shift-scan ch=%d idle=%d core_count=%u core_base=%u res=%d legacy78=%u legacy79=%u legacy7c=%u",
+                                     fp_2, idle, CH_CORE_COUNT(v0_25), CH_CORE_BASE(v0_25), CH_RES_BUDGET(v0_25),
+                                     READ_U8(v0_25, 0x78), READ_U8(v0_25, 0x79), READ_U16(v0_25, 0x7c));
+                            if (idle != 0) {
+                            uint32_t a3_2 = CH_CORE_COUNT(v0_25);
+                            int32_t a2_3 = CH_RES_BUDGET(v0_25);
+                            uint32_t s7_8 = CH_CORE_BASE(v0_25);
+                            uint32_t s3_1 = (uint32_t)fp_2;
 
                             if (a3_2 == 0) {
                                 __builtin_trap();
@@ -977,6 +1029,8 @@ label_723c4:
                                     uint8_t *s6_8 = (uint8_t *)arg1 + s7_8 * 0x98 + 0x5d4;
 
                                     do {
+                                        CMG_KMSG("Process shift-remove ch=%d core_idx=%u run_ch=%u per_core=%d",
+                                                 fp_2, s7_8, s3_1, a2_3 / a3_2);
                                         s7_8 += 1;
                                         AL_CoreState_RemoveChannel((AL_CoreStateCompat *)s6_8, s3_1, a2_3 / a3_2);
                                         s6_8 += 0x98;
@@ -984,25 +1038,27 @@ label_723c4:
                                 }
                             }
 
-                            a2_3 = READ_U16(v0_25, 0x7c);
-                            a3_2 = READ_U8(v0_25, 0x78);
+                            a2_3 = CH_RES_BUDGET(v0_25);
+                            a3_2 = CH_CORE_COUNT(v0_25);
+                            CMG_KMSG("Process shift-find ch=%d need=%d cores=%u", fp_2, a2_3, a3_2);
 
                             {
                                 int32_t v0_30 = findCoresAvailable(arg1, v0_25, a2_3, a3_2);
+                                CMG_KMSG("Process shift-found ch=%d newCore=%d", fp_2, v0_30);
 
                                 if (v0_30 != -1) {
-                                    uint32_t a0_29 = READ_U8(v0_25, 0x78);
+                                    uint32_t a0_29 = CH_CORE_COUNT(v0_25);
                                     int32_t s4_3 = v0_30 & 0xff;
                                     int32_t s1_3 = a0_29 + s4_3;
                                     uint32_t lo_3;
-                                    uint32_t s6_9 = READ_U8(v0_25, 0x78);
+                                    uint32_t s6_9 = (uint32_t)fp_2;
                                     int32_t v0_32 = s4_3 << 2;
                                     int32_t var_40_2;
 
                                     if (a0_29 == 0) {
                                         __builtin_trap();
                                     }
-                                    lo_3 = READ_U16(v0_25, 0x7c) / a0_29;
+                                    lo_3 = (uint32_t)(CH_RES_BUDGET(v0_25) / (int32_t)a0_29);
                                     if (s4_3 >= s1_3) {
                                         var_40_2 = v0_32;
                                     } else {
@@ -1013,21 +1069,25 @@ label_723c4:
                                         i_2 = (uint8_t *)arg1 + ((s4_3 * 0xf + v0_32) << 3) + 0x5d4;
                                         i_3 = i_2;
                                         do {
+                                            CMG_KMSG("Process shift-add ch=%d dst_core=%d per_core=%u", fp_2, s4_3, lo_3);
                                             i_2 += 0x98;
                                             AL_CoreState_AddChannel((AL_CoreStateCompat *)i_3, s6_9, lo_3);
                                             i_3 = i_2;
                                         } while ((uint8_t *)arg1 + s1_3 * 0x98 + 0x5d4 != i_2);
                                     }
 
-                                    WRITE_U8(v0_25, 0x79, (uint8_t)(v0_30 & 0xff));
+                                    WRITE_U8(v0_25, 0x3d, (uint8_t)(v0_30 & 0xff));
                                     /* +0x7c stores the per-core state base pointer */
                                     WRITE_PTR(v0_25, 0x80, (uint8_t *)arg1 + var_40_2 + (s4_3 << 6) + 0x8c);
+                                    CMG_KMSG("Process shift-commit ch=%d core_base=%d core_ptr=%p",
+                                             fp_2, v0_30 & 0xff, READ_PTR(v0_25, 0x80));
                                 } else {
                                     __assert("newCore != -1",
                                              "/home/user/git/proj/sdk-lv3/src/imp/video/alcodec/lib_scheduler_enc/Scheduler.c",
                                              0x1b2, "TryToShiftChannels", &_gp);
                                     return EndFrameEncoding((int32_t *)(intptr_t)arg1, &arg1[0x4bd]);
                                 }
+                            }
                             }
                         }
                     }
@@ -1038,11 +1098,15 @@ label_723c4:
                     }
                 }
 
+                CMG_KMSG("Process post-shift-scan");
+
+                CMG_KMSG("Process pre-CheckAndEncode status=%d count=%d", arg1[0x4bc], *arg1);
                 CheckAndEncode(arg1);
                 Rtos_ReleaseMutex((void *)(intptr_t)arg1[0x4bd]);
                 var_34_1(arg1);
                 Rtos_GetMutex((void *)(intptr_t)arg1[0x4bd]);
                 v0_43 = arg1[0x4bc];
+                CMG_KMSG("Process loop-post status=%d count=%d", v0_43, *arg1);
                 if (v0_43 != 0) {
                     if (v0_43 != 2) {
                         __assert("pCtx->eProcessStatus != AL_SCHEDULER_NO_PROCESS",
@@ -1050,6 +1114,7 @@ label_723c4:
                                  0x24e, "Process", &_gp);
                     }
                     arg1[0x4bc] = 0;
+                    CMG_KMSG("Process exit-reset status=%d count=%d", arg1[0x4bc], *arg1);
                     return (int32_t)(intptr_t)Rtos_ReleaseMutex((void *)(intptr_t)arg1[0x4bd]);
                 }
                 arg1[0x4bc] = 1;
@@ -1057,6 +1122,7 @@ label_723c4:
         }
     }
 
+    CMG_KMSG("Process exit status=%d count=%d", arg1[0x4bc], *arg1);
     return (int32_t)(intptr_t)Rtos_ReleaseMutex((void *)(intptr_t)arg1[0x4bd]);
 }
 
@@ -1413,12 +1479,12 @@ int32_t AL_SchedulerEnc_CreateChannel2(int32_t *arg1, void *arg2, int32_t arg3, 
             WRITE_PTR(v0_14, 0x40, &s1[0x4b6]);
             CMG_KMSG("SchEnc.CC2 pre-EncChn_Init ctx=%p s0_1=%p core=%p a3_3=%d result=%d",
                      (void*)v0_14, s0_1, (void*)&s1[a3_3 * 0x11 + 0x23], a3_3, result);
-            _init_ok = AL_EncChannel_Init(v0_14, s0_1, &s1[a3_3 * 0x11 + 0x23], (uint8_t)a3_3, (uint8_t)result, (uint8_t)v0_4,
+            _init_ok = AL_EncChannel_Init(v0_14, s0_1, &s1[a3_3 * 0x11 + 0x23], (uint8_t)a3_3, (uint8_t)s2_1, v0_4,
                                    (void *)(intptr_t)a0_11, (void *)(intptr_t)arg7, &var_58, arg3, a1_7, t0_2, 1);
             CMG_KMSG("SchEnc.CC2 EncChn_Init=%d *arg6=0x%x", _init_ok, *arg6);
             if (_init_ok != 0) {
-                uint32_t i = READ_U8(v0_14, 0x79);
-                uint32_t v1_8 = READ_U8(v0_14, 0x78);
+                uint32_t i = CH_CORE_BASE(v0_14);
+                uint32_t v1_8 = CH_CORE_COUNT(v0_14);
 
                 if ((int32_t)i < (int32_t)(v1_8 + i)) {
                     uint8_t *s4_2 = (uint8_t *)s1 + i * 0x98 + 0x5d4;
@@ -1428,10 +1494,10 @@ int32_t AL_SchedulerEnc_CreateChannel2(int32_t *arg1, void *arg2, int32_t arg3, 
                             __builtin_trap();
                         }
                         i += 1;
-                        AL_CoreState_AddChannel((AL_CoreStateCompat *)s4_2, result, READ_U16(v0_14, 0x7c) / v1_8);
-                        v1_8 = READ_U8(v0_14, 0x78);
+                        AL_CoreState_AddChannel((AL_CoreStateCompat *)s4_2, result, CH_RES_BUDGET(v0_14) / (int32_t)v1_8);
+                        v1_8 = CH_CORE_COUNT(v0_14);
                         s4_2 += 0x98;
-                    } while ((int32_t)i < (int32_t)(READ_U8(v0_14, 0x79) + v1_8));
+                    } while ((int32_t)i < (int32_t)(CH_CORE_BASE(v0_14) + v1_8));
                 }
 
                 IntVector_Add(&s1[0x154], result);
@@ -1584,10 +1650,10 @@ int32_t AL_SchedulerEnc_CreateChannel(int32_t *arg1, void *arg2, int32_t arg3, i
             (void)var_50_1;
             (void)var_4c_1;
             WRITE_PTR(v0_14, 0x40, &s1[0x4b6]);
-            if (AL_EncChannel_Init(v0_14, s0_1, &s1[a3_3 * 0x11 + 0x23], (uint8_t)a3_3, (uint8_t)result, (uint8_t)v0_4,
+            if (AL_EncChannel_Init(v0_14, s0_1, &s1[a3_3 * 0x11 + 0x23], (uint8_t)a3_3, (uint8_t)s2_1, v0_4,
                                    (void *)(intptr_t)a0_11, (void *)(intptr_t)a1_7, &var_58, arg3, t0_2, t1_2, 1) != 0) {
-                uint32_t i = READ_U8(v0_14, 0x79);
-                uint32_t v1_7 = READ_U8(v0_14, 0x78);
+                uint32_t i = CH_CORE_BASE(v0_14);
+                uint32_t v1_7 = CH_CORE_COUNT(v0_14);
 
                 if ((int32_t)i < (int32_t)(v1_7 + i)) {
                     uint8_t *s4_2 = (uint8_t *)s1 + i * 0x98 + 0x5d4;
@@ -1597,10 +1663,10 @@ int32_t AL_SchedulerEnc_CreateChannel(int32_t *arg1, void *arg2, int32_t arg3, i
                             __builtin_trap();
                         }
                         i += 1;
-                        AL_CoreState_AddChannel((AL_CoreStateCompat *)s4_2, result, READ_U16(v0_14, 0x7c) / v1_7);
-                        v1_7 = READ_U8(v0_14, 0x78);
+                        AL_CoreState_AddChannel((AL_CoreStateCompat *)s4_2, result, CH_RES_BUDGET(v0_14) / (int32_t)v1_7);
+                        v1_7 = CH_CORE_COUNT(v0_14);
                         s4_2 += 0x98;
-                    } while ((int32_t)i < (int32_t)(READ_U8(v0_14, 0x79) + v1_7));
+                    } while ((int32_t)i < (int32_t)(CH_CORE_BASE(v0_14) + v1_7));
                 }
 
                 IntVector_Add(&s1[0x154], result);
@@ -1684,13 +1750,23 @@ int32_t AL_SchedulerEnc_PutStreamBuffer(int32_t *arg1, char arg2, int32_t arg3, 
     uint8_t *v0;
 
     (void)var_30;
+    CMG_KMSG("PutStreamBuffer entry sch=%p ch=%u phys=0x%x virt=%p size=%d off=%d arg7=%d arg8=%d arg9=%d mutex=%p",
+             arg1, (unsigned)(uint8_t)arg2, (unsigned)arg3, (void *)(intptr_t)arg4, arg5, arg6, arg7, arg8, arg9,
+             (void *)(intptr_t)arg1[0x4bd]);
     Rtos_GetMutex((void *)(intptr_t)arg1[0x4bd]);
     v0 = GetChMngrCtx(arg1, arg2);
+    CMG_KMSG("PutStreamBuffer ctx=%p", v0);
     if (v0 != 0 && AL_EncChannel_PushStreamBuffer(v0, arg3, arg4, arg5, arg6, arg5 - arg6, arg7, arg8, arg9) != 0) {
+        CMG_KMSG("PutStreamBuffer push ok ctx=%p", v0);
         Rtos_ReleaseMutex((void *)(intptr_t)arg1[0x4bd]);
-        return Process(arg1);
+        {
+            int32_t ret = Process(arg1);
+            CMG_KMSG("PutStreamBuffer post-Process ret=%d sch=%p ctx=%p", ret, arg1, v0);
+            return ret;
+        }
     }
 
+    CMG_KMSG("PutStreamBuffer push failed/null ctx=%p", v0);
     return (int32_t)(intptr_t)Rtos_ReleaseMutex((void *)(intptr_t)arg1[0x4bd]);
 }
 
@@ -1706,14 +1782,32 @@ int32_t AL_SchedulerEnc_EncodeOneFrame(int32_t *arg1, char arg2, int32_t *arg3, 
 {
     uint8_t *v0;
 
+    CMG_KMSG("EncodeOneFrame entry sch=%p ch=%u src=%p stream=%p meta=%p mutex=%p",
+             arg1,
+             (unsigned)(uint8_t)arg2,
+             arg3,
+             arg4,
+             arg5,
+             (void *)(intptr_t)arg1[0x4bd]);
     Rtos_GetMutex((void *)(intptr_t)arg1[0x4bd]);
     v0 = GetChMngrCtx(arg1, arg2);
+    CMG_KMSG("EncodeOneFrame ctx=%p", v0);
     if (v0 == 0) {
+        CMG_KMSG("EncodeOneFrame null-ctx");
         return (int32_t)(intptr_t)Rtos_ReleaseMutex((void *)(intptr_t)arg1[0x4bd]);
     }
 
+    CMG_KMSG("EncodeOneFrame pre-PushNewFrame ctx=%p src=%p stream=%p meta=%p",
+             v0, arg3, arg4, arg5);
     AL_EncChannel_PushNewFrame(v0, arg3, arg4, arg5);
+    CMG_KMSG("EncodeOneFrame post-PushNewFrame ctx=%p lane0_r=%d lane0_w=%d lane1_r=%d lane1_w=%d",
+             v0,
+             READ_S32(v0, 0x3d8),
+             READ_S32(v0, 0x3dc),
+             READ_S32(v0, 0x434),
+             READ_S32(v0, 0x438));
     Rtos_ReleaseMutex((void *)(intptr_t)arg1[0x4bd]);
+    CMG_KMSG("EncodeOneFrame pre-Process sch=%p", arg1);
     return Process(arg1);
 }
 

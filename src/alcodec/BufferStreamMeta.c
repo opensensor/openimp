@@ -1,5 +1,9 @@
 #include <stdint.h>
 #include <stddef.h>
+#include <stdio.h>
+#include <string.h>
+#include <unistd.h>
+#include <fcntl.h>
 
 #include "alcodec/al_allocator.h"
 #include "alcodec/al_buffer.h"
@@ -9,6 +13,16 @@
 extern char _gp;
 extern int32_t __assert(const char *expression, const char *file, int32_t line, const char *function,
                         void *caller);
+
+#define BSM_KMSG(fmt, ...) do { \
+    int _kfd = open("/dev/kmsg", O_WRONLY); \
+    if (_kfd >= 0) { \
+        char _b[192]; \
+        int _n = snprintf(_b, sizeof(_b), "libimp/BSM: " fmt "\n", ##__VA_ARGS__); \
+        if (_n > 0) write(_kfd, _b, _n > (int)sizeof(_b) ? (int)sizeof(_b) : _n); \
+        close(_kfd); \
+    } \
+} while (0)
 
 AL_TBuffer *AL_Buffer_Create_And_Allocate(AL_TAllocator *arg1, int32_t arg2, char arg3, uint32_t arg4,
                                           void *arg5); /* forward decl, ported by T16 later */
@@ -60,6 +74,26 @@ static inline void meta_write_u8(void *ptr, uint32_t offset, uint8_t value)
 static inline void meta_write_ptr(void *ptr, uint32_t offset, const void *value)
 {
     meta_write_u32(ptr, offset, (uint32_t)(uintptr_t)value);
+}
+
+static inline uint16_t stream_meta_get_used(const void *ptr)
+{
+    return meta_read_u16(ptr, 0x14);
+}
+
+static inline void stream_meta_set_used(void *ptr, uint16_t value)
+{
+    meta_write_u16(ptr, 0x14, value);
+}
+
+static inline uint16_t stream_meta_get_max(const void *ptr)
+{
+    return meta_read_u16(ptr, 0x16);
+}
+
+static inline void stream_meta_set_max(void *ptr, uint16_t value)
+{
+    meta_write_u16(ptr, 0x16, value);
 }
 
 static void *clone_circ(void *arg1);
@@ -122,6 +156,8 @@ void *AL_StreamMetaData_Create(int32_t arg1)
 {
     uint32_t s1 = (uint32_t)arg1;
 
+    BSM_KMSG("StreamMeta_Create req=%u", s1);
+
     if (s1 != 0U) {
         void *result = Rtos_Malloc(0x18);
 
@@ -132,16 +168,24 @@ void *AL_StreamMetaData_Create(int32_t arg1)
             meta_write_ptr(result, 0x4, StreamMeta_Destroy);
             meta_write_ptr(result, 0x8, StreamMeta_Clone);
             meta_write_u32(result, 0xc, 0);
-            meta_write_u16(result, 0x16, (uint16_t)s1);
-            meta_write_u32(result, 0x14, 0);
+            stream_meta_set_used(result, 0);
+            stream_meta_set_max(result, (uint16_t)s1);
             v0_1 = Rtos_Malloc((size_t)(s1 * 0x14));
             meta_write_ptr(result, 0x10, v0_1);
             if (v0_1 != NULL) {
+                BSM_KMSG("StreamMeta_Create ok meta=%p sections=%p max=%u", result, v0_1, s1);
                 return result;
             }
 
+            BSM_KMSG("StreamMeta_Create sections alloc failed meta=%p max=%u bytes=%u", result, s1, s1 * 0x14);
             Rtos_Free(result);
         }
+        else {
+            BSM_KMSG("StreamMeta_Create header alloc failed");
+        }
+    }
+    else {
+        BSM_KMSG("StreamMeta_Create zero-size request");
     }
 
     return NULL;
@@ -149,13 +193,17 @@ void *AL_StreamMetaData_Create(int32_t arg1)
 
 void *AL_StreamMetaData_Clone(void *arg1)
 {
-    void *result = AL_StreamMetaData_Create(meta_read_u16(arg1, 0x16));
+    BSM_KMSG("StreamMeta_Clone src=%p max=%u used=%u sections=%p",
+             arg1, stream_meta_get_max(arg1), stream_meta_get_used(arg1), meta_read_ptr(arg1, 0x10));
+    void *result = AL_StreamMetaData_Create(stream_meta_get_max(arg1));
     uint32_t v1_2;
 
+    BSM_KMSG("StreamMeta_Clone created dst=%p", result);
+
     meta_write_u32(result, 0xc, meta_read_u32(arg1, 0xc));
-    meta_write_u32(result, 0x14, meta_read_u32(arg1, 0x14));
-    v1_2 = meta_read_u32(arg1, 0x14);
-    meta_write_u16(result, 0x16, meta_read_u16(arg1, 0x16));
+    stream_meta_set_used(result, stream_meta_get_used(arg1));
+    v1_2 = stream_meta_get_used(arg1);
+    stream_meta_set_max(result, stream_meta_get_max(arg1));
     if (v1_2 != 0U) {
         int32_t *i = (int32_t *)meta_read_ptr(arg1, 0x10);
         int32_t *a0_2 = (int32_t *)meta_read_ptr(result, 0x10);
@@ -188,9 +236,9 @@ static void *StreamMeta_Clone(void *arg1)
 uint32_t AL_StreamMetaData_AddSection(void *arg1, int32_t arg2, int32_t arg3, int32_t arg4, int32_t arg5,
                                       int32_t arg6)
 {
-    uint32_t result = meta_read_u32(arg1, 0x14);
+    uint32_t result = stream_meta_get_used(arg1);
 
-    if (result >= (uint32_t)meta_read_u16(arg1, 0x16)) {
+    if (result >= (uint32_t)stream_meta_get_max(arg1)) {
         return 0xffffffffU;
     }
 
@@ -202,7 +250,7 @@ uint32_t AL_StreamMetaData_AddSection(void *arg1, int32_t arg2, int32_t arg3, in
         v1_4[2] = arg6;
         v1_4[3] = arg4;
         v1_4[4] = arg5;
-        meta_write_u32(arg1, 0x14, (uint32_t)((uint16_t)result + 1U));
+        stream_meta_set_used(arg1, (uint16_t)(result + 1U));
     }
 
     return result;
@@ -213,7 +261,7 @@ int32_t AL_StreamMetaData_ChangeSection(void *arg1, int32_t arg2, int32_t arg3, 
 {
     uint32_t a1 = (uint32_t)arg2;
 
-    if (arg1 == NULL || a1 >= meta_read_u32(arg1, 0x14)) {
+    if (arg1 == NULL || a1 >= (uint32_t)stream_meta_get_used(arg1)) {
         int32_t a0 = __assert("pMetaData && uSectionID < pMetaData->uNumSection",
                               "/home/user/git/proj/sdk-lv3/src/imp/video/alcodec/lib_common/BufferStreamMeta.c",
                               0x57, "AL_StreamMetaData_ChangeSection", &_gp);
@@ -237,7 +285,7 @@ void *AL_StreamMetaData_SetSectionFlags(void *arg1, int32_t arg2, int32_t arg3)
 {
     uint32_t a1 = (uint32_t)arg2;
 
-    if (arg1 == NULL || a1 >= meta_read_u32(arg1, 0x14)) {
+    if (arg1 == NULL || a1 >= (uint32_t)stream_meta_get_used(arg1)) {
         AL_StreamMetaData_ClearAllSections((void *)(intptr_t)__assert(
             "pMetaData && uSectionID < pMetaData->uNumSection",
             "/home/user/git/proj/sdk-lv3/src/imp/video/alcodec/lib_common/BufferStreamMeta.c",
@@ -256,7 +304,7 @@ void *AL_StreamMetaData_SetSectionFlags(void *arg1, int32_t arg2, int32_t arg3)
 void AL_StreamMetaData_ClearAllSections(void *arg1)
 {
     if (arg1 != NULL) {
-        meta_write_u32(arg1, 0x14, 0);
+        stream_meta_set_used(arg1, 0);
         return;
     }
 
@@ -280,7 +328,7 @@ int32_t AL_StreamMetaData_GetLastSectionOfFlag(void *arg1, int32_t arg2)
     }
 
     {
-        uint32_t a2 = meta_read_u32(arg1, 0x14);
+        uint32_t a2 = stream_meta_get_used(arg1);
         void *v1 = meta_read_ptr(arg1, 0x10);
         int32_t result = (int32_t)(a2 - 1U);
 
@@ -310,12 +358,12 @@ int32_t AL_StreamMetaData_AddSeiSection(void *arg1, char arg2, int32_t arg3, int
 
     {
         int16_t v0_1 = (int16_t)AL_StreamMetaData_GetLastSectionOfFlag(arg1, 0x10000000);
-        uint32_t t7_1 = meta_read_u32(arg1, 0x14);
+        uint32_t t7_1 = stream_meta_get_used(arg1);
         uint8_t *t5_1 = (uint8_t *)meta_read_ptr(arg1, 0x10);
         uint32_t result;
         uint32_t t8;
 
-        if (t7_1 >= (uint32_t)meta_read_u16(arg1, 0x16)) {
+        if (t7_1 >= (uint32_t)stream_meta_get_max(arg1)) {
             return -1;
         }
 
@@ -351,7 +399,7 @@ int32_t AL_StreamMetaData_AddSeiSection(void *arg1, char arg2, int32_t arg3, int
             *t5_2 = arg3;
             t5_2[1] = arg4;
             t5_2[4] = -1;
-            meta_write_u32(arg1, 0x14, (uint32_t)((uint16_t)t7_1 + 1U));
+            stream_meta_set_used(arg1, (uint16_t)(t7_1 + 1U));
         }
 
         return (int32_t)result;
@@ -360,7 +408,7 @@ int32_t AL_StreamMetaData_AddSeiSection(void *arg1, char arg2, int32_t arg3, int
 
 int32_t AL_StreamMetaData_GetUnusedStreamPart(void *arg1)
 {
-    uint32_t v0_2 = meta_read_u32(arg1, 0x14);
+    uint32_t v0_2 = stream_meta_get_used(arg1);
     int32_t *i = (int32_t *)meta_read_ptr(arg1, 0x10);
 
     if (v0_2 == 0U) {

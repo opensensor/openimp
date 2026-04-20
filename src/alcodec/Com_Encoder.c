@@ -29,6 +29,16 @@ extern int32_t access(const char *pathname, int mode);
 #define WRITE_S32(base, off, val) (*(int32_t *)((uint8_t *)(base) + (off)) = (int32_t)(val))
 #define WRITE_PTR(base, off, val) (*(void **)((uint8_t *)(base) + (off)) = (void *)(val))
 
+#define CENC_KMSG(fmt, ...) do { \
+    int _kfd = open("/dev/kmsg", O_WRONLY); \
+    if (_kfd >= 0) { \
+        char _b[256]; \
+        int _n = snprintf(_b, sizeof(_b), "libimp/CENC: " fmt "\n", ##__VA_ARGS__); \
+        if (_n > 0) write(_kfd, _b, _n > (int)sizeof(_b) ? (int)sizeof(_b) : _n); \
+        close(_kfd); \
+    } \
+} while (0)
+
 int32_t AL_EncRecBuffer_FillPlaneDesc(int32_t *arg1, int32_t arg2, int32_t arg3, int32_t arg4, int32_t arg5,
                                       int32_t arg6, void *arg7); /* forward decl, ported by T<N> later */
 int32_t AL_GetEncoderFbcMapSize(int32_t arg1, int32_t arg2, int32_t arg3, int32_t arg4); /* forward decl */
@@ -361,13 +371,20 @@ int32_t AL_Common_Encoder_PutStreamBuffer(int32_t *arg1, AL_TBuffer *arg2, int32
     (void)_gp;
     s2 = (void *)(intptr_t)*arg1;
     v0 = (int32_t)(intptr_t)AL_Buffer_GetMetaData(arg2, 1);
+    CENC_KMSG("PutStreamBuffer arg1=%p ctx=%p buf=%p meta=%p layer=%d", arg1, s2, arg2, (void *)(intptr_t)v0, arg3);
     if (v0 != 0) {
         AL_StreamMetaData_ClearAllSections((void *)(intptr_t)v0);
         if (s2 != NULL) {
+            void *mode_base = READ_PTR(s2, 0x14);
+            void *stream_mutex = READ_PTR(s2, 0xf254);
+            void *stream_vtbl_obj = READ_PTR(s2, 0xf25c);
             s1 = arg3 << 4;
             s6 = arg3 << 8;
-            if (READ_U8((uint8_t *)READ_PTR(s2, 0x14) + s6 - s1, 0x1f) == 4) {
+            CENC_KMSG("PutStreamBuffer ctx=%p mode_base=%p stream_mutex=%p stream_vtbl_obj=%p slot_off=0x%x",
+                      s2, mode_base, stream_mutex, stream_vtbl_obj, s6 - s1);
+            if (READ_U8((uint8_t *)mode_base + s6 - s1, 0x1f) == 4) {
                 void *s5_2 = READ_PTR(s2, 0xf27c);
+                CENC_KMSG("PutStreamBuffer special alt_ctx=%p", s5_2);
 
                 if (s5_2 != NULL) {
                     int32_t s3_4;
@@ -391,6 +408,8 @@ int32_t AL_Common_Encoder_PutStreamBuffer(int32_t *arg1, AL_TBuffer *arg2, int32
                     var_3c_1 = s2_1 >> 0x1f;
                     var_38_1 = 0x200;
                     var_40_1 = s2_1;
+                    CENC_KMSG("PutStreamBuffer special dispatch obj=%p vtbl=%p chn=%d",
+                              a0_10, a0_10 ? *(void **)a0_10 : NULL, READ_S32(s6_2, 0x18));
                     ((void (*)(int32_t *, int32_t, AL_TBuffer *))(intptr_t)READ_S32(*(void **)a0_10, 0x10))(
                         a0_10, READ_S32(s6_2, 0x18), arg2);
                     Rtos_ReleaseMutex(READ_PTR(s5_2, 0xf254));
@@ -415,19 +434,26 @@ int32_t AL_Common_Encoder_PutStreamBuffer(int32_t *arg1, AL_TBuffer *arg2, int32
                 a1_1 = (s7 + 1) % 0x140;
                 WRITE_S32(s3_2, 0xdbb0, a1_1);
                 AL_Buffer_Ref(arg2, a1_1);
-                if (READ_U8((uint8_t *)READ_PTR(s2, 0x14) + s6 - s1, 0x1f) == 4)
+                if (READ_U8((uint8_t *)mode_base + s6 - s1, 0x1f) == 4)
                     s1_3 = 0;
                 if (AL_Buffer_GetSize(arg2) < 0x200U) {
                     Rtos_ReleaseMutex(READ_PTR(s2, 0xf254));
                     return 0;
                 }
                 a0_5 = (int32_t *)READ_PTR(s2, 0xf25c);
+                CENC_KMSG("PutStreamBuffer normal dispatch obj=%p vtbl=%p chn=%d size=%u",
+                          a0_5, a0_5 ? *(void **)a0_5 : NULL, READ_S32(s3_2, 0x18), (unsigned)AL_Buffer_GetSize(arg2));
                 var_3c = s7 >> 0x1f;
                 var_38 = s1_3;
                 var_40 = s7;
+                CENC_KMSG("PutStreamBuffer pre-vtbl-call obj=%p fn=%p slot=%d next=%d",
+                          a0_5, a0_5 ? (void *)(intptr_t)READ_S32(*(void **)a0_5, 0x10) : NULL, s7, a1_1);
                 ((void (*)(int32_t *, int32_t, AL_TBuffer *))(intptr_t)READ_S32(*(void **)a0_5, 0x10))(
                     a0_5, READ_S32(s3_2, 0x18), arg2);
+                CENC_KMSG("PutStreamBuffer post-vtbl-call obj=%p chn=%d",
+                          a0_5, READ_S32(s3_2, 0x18));
                 Rtos_ReleaseMutex(READ_PTR(s2, 0xf254));
+                CENC_KMSG("PutStreamBuffer post-release ctx=%p", s2);
                 return 1;
             }
         }
@@ -1746,6 +1772,18 @@ int32_t AL_Common_Encoder_Process(int32_t *arg1, int32_t arg2, int32_t arg3, int
     int32_t result;
 
     (void)_gp;
+    {
+        int kfd = open("/dev/kmsg", O_WRONLY);
+        if (kfd >= 0) {
+            char b[160];
+            int n = snprintf(b, sizeof(b),
+                             "libimp/CENC: Process entry wrap=%p enc=%p frame=%p stream=%p layer=%d active=%u\n",
+                             arg1, s7, (void *)(intptr_t)arg2, (void *)(intptr_t)arg3, arg4,
+                             s7 ? (unsigned)READ_U8(s7, arg4 + 0xed4c) : 0U);
+            if (n > 0) write(kfd, b, n);
+            close(kfd);
+        }
+    }
     if (READ_U8(s7, arg4 + 0xed4c) == 0) {
         if (arg2 == 0) {
             if (arg4 < 0 || READ_U8(s7, 0xed4c) != 0)
@@ -1870,10 +1908,42 @@ label_53d78:
 
                         {
                             int32_t *a0_32 = (int32_t *)READ_PTR(s7, 0xf25c);
+                            int32_t *vtbl_1 = a0_32 ? (int32_t *)(intptr_t)READ_S32(a0_32, 0) : NULL;
+                            int32_t encode_one_frame_fn = vtbl_1 ? READ_S32(vtbl_1, 0xc) : 0;
 
-                            result = ((int32_t (*)(int32_t *, int32_t, int32_t *, void *, void *))(intptr_t)READ_S32(a0_32, 0xc))(
-                                a0_32, READ_S32(s7, (s3_1 - s2_1 - arg4) * 0x3c + 0x18), s4_2,
-                                (uint8_t *)s7 + v0_39 + 0xdb1c, &str);
+                            {
+                                int kfd = open("/dev/kmsg", O_WRONLY);
+                                if (kfd >= 0) {
+                                    char b[224];
+                                    int n = snprintf(b, sizeof(b),
+                                                     "libimp/CENC: Process dispatch sched=%p vtbl=%p fn=%p chn=%d src=%p opts=%p stream_meta=%p\n",
+                                                     a0_32, vtbl_1, (void *)(intptr_t)encode_one_frame_fn,
+                                                     READ_S32(s7, (s3_1 - s2_1 - arg4) * 0x3c + 0x18),
+                                                     s4_2, (uint8_t *)s7 + v0_39 + 0xdb1c, &str);
+                                    if (n > 0) write(kfd, b, n);
+                                    close(kfd);
+                                }
+                            }
+
+                            if (encode_one_frame_fn == 0) {
+                                __assert("pScheduler && pScheduler->vtable && pScheduler->vtable->EncodeOneFrame",
+                                         "/home/user/git/proj/sdk-lv3/src/imp/video/alcodec/lib_encode/Com_Encoder.c",
+                                         0x242, "AddSourceSent");
+                            }
+
+                            result =
+                                ((int32_t (*)(int32_t *, int32_t, int32_t *, void *, void *))(intptr_t)encode_one_frame_fn)(
+                                    a0_32, READ_S32(s7, (s3_1 - s2_1 - arg4) * 0x3c + 0x18), s4_2,
+                                    (uint8_t *)s7 + v0_39 + 0xdb1c, &str);
+                        }
+                        {
+                            int kfd = open("/dev/kmsg", O_WRONLY);
+                            if (kfd >= 0) {
+                                char b[96];
+                                int n = snprintf(b, sizeof(b), "libimp/CENC: Process dispatch result=%d\n", result);
+                                if (n > 0) write(kfd, b, n);
+                                close(kfd);
+                            }
                         }
                         if (result == 0)
                             releaseSource(s7, arg2, s4_2);

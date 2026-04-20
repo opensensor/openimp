@@ -61,6 +61,14 @@ static inline AL_TAllocator *buffer_get_allocator(const AL_TBuffer *buffer)
     return (AL_TAllocator *)buffer_read_ptr(buffer, BUFFER_ALLOCATOR_OFFSET);
 }
 
+static inline const AL_TAllocatorVtable *allocator_get_vtable(const AL_TAllocator *allocator)
+{
+    /* OEM allocator handles are frequently passed around as `&vtable`, not as
+     * a wrapper object containing a vtable pointer. Treat the allocator value
+     * itself as a pointer to the leading vtable pointer slot. */
+    return *(const AL_TAllocatorVtable * const *)allocator;
+}
+
 static inline int32_t buffer_get_chunk_count(const AL_TBuffer *buffer)
 {
     return (int32_t)(int8_t)buffer_read_u8(buffer, BUFFER_CHUNK_COUNT_OFFSET);
@@ -201,7 +209,7 @@ int32_t AL_Buffer_AllocateChunk(AL_TBuffer *arg1, int32_t arg2, char arg3, uint3
 
     s3 = (uint32_t)(uint8_t)arg3;
     a0 = buffer_get_allocator(arg1);
-    vtable = a0->vtable;
+    vtable = allocator_get_vtable(a0);
     if (s3 != 0) {
         v0_2 = vtable->AllocNamedEmpty(a0, arg2, (char *)(uintptr_t)arg5);
         if (arg2 != 0) {
@@ -272,11 +280,12 @@ void AL_Buffer_Destroy(AL_TBuffer *arg1)
     if (buffer_get_chunk_count(arg1) > 0) {
         for (i_1 = 0; i_1 < buffer_get_chunk_count(arg1); ++i_1) {
             AL_TAllocator *a0_3 = buffer_get_allocator(arg1);
+            const AL_TAllocatorVtable *vtable = allocator_get_vtable(a0_3);
 
             if (buffer_get_chunk_mode(arg1, i_1) == 0)
-                a0_3->vtable->Free(a0_3, buffer_get_chunk_handle(arg1, i_1));
+                vtable->Free(a0_3, buffer_get_chunk_handle(arg1, i_1));
             else
-                a0_3->vtable->FreeEmpty(a0_3, (int32_t)(uintptr_t)buffer_get_chunk_handle(arg1, i_1));
+                vtable->FreeEmpty(a0_3, (int32_t)(uintptr_t)buffer_get_chunk_handle(arg1, i_1));
         }
     }
 
@@ -322,7 +331,7 @@ AL_TBuffer *AL_Buffer_Create(AL_TAllocator *arg1, void *arg2, int32_t arg3, char
 AL_TBuffer *AL_Buffer_Create_And_AllocateNamed(AL_TAllocator *arg1, int32_t arg2, char arg3, uint32_t arg4, void *arg5, int32_t arg6)
 {
     uint32_t s1 = (uint32_t)(uint8_t)arg3;
-    const AL_TAllocatorVtable *vtable = arg1->vtable;
+    const AL_TAllocatorVtable *vtable = allocator_get_vtable(arg1);
     void *s2;
     AL_TBuffer *result;
 
@@ -511,7 +520,7 @@ void *AL_Buffer_GetDataChunk(AL_TBuffer *arg1, int32_t arg2)
         return NULL;
 
     allocator = buffer_get_allocator(arg1);
-    return (void *)(uintptr_t)allocator->vtable->GetVirtualAddr(allocator, buffer_get_chunk_handle(arg1, arg2));
+    return (void *)(uintptr_t)allocator_get_vtable(allocator)->GetVirtualAddr(allocator, buffer_get_chunk_handle(arg1, arg2));
 }
 
 void *AL_Buffer_GetData(AL_TBuffer *arg1)
@@ -528,7 +537,7 @@ uint32_t AL_Buffer_GetPhysicalAddressChunk(AL_TBuffer *arg1, int32_t arg2)
         return 0;
 
     allocator = buffer_get_allocator(arg1);
-    return (uint32_t)allocator->vtable->GetPhysicalAddr(allocator, buffer_get_chunk_handle(arg1, arg2));
+    return (uint32_t)allocator_get_vtable(allocator)->GetPhysicalAddr(allocator, buffer_get_chunk_handle(arg1, arg2));
 }
 
 uint32_t AL_Buffer_GetPhysicalAddress(AL_TBuffer *arg1)

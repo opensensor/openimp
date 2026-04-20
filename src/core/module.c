@@ -8,6 +8,8 @@
 #include <string.h>
 #include <sys/prctl.h>
 #include <unistd.h>
+#include <fcntl.h>
+#include <stdarg.h>
 
 #include "core/module.h"
 
@@ -92,6 +94,21 @@ static inline uint64_t module_make_u64(uint32_t lo, uint32_t hi)
     return ((uint64_t)hi << 32) | lo;
 }
 
+static void module_trace(const char *fmt, ...)
+{
+    int fd = open("/dev/kmsg", O_WRONLY);
+    if (fd < 0) return;
+
+    char buf[512];
+    va_list ap;
+    va_start(ap, fmt);
+    int n = vsnprintf(buf, sizeof(buf), fmt, ap);
+    va_end(ap);
+
+    if (n > 0) write(fd, buf, (size_t)n);
+    close(fd);
+}
+
 int32_t remove_observer(Module *arg1, Module *arg2)
 {
     Module **slot = (Module **)((char *)arg1 + 0x14);
@@ -129,6 +146,9 @@ int32_t add_observer(Module *arg1, Module *arg2, void *arg3)
             *(void **)((char *)slot_base + 4) = arg3;
             *(int32_t *)((char *)arg1 + 0x3c) += 1;
             *(Module **)((char *)arg2 + 0x10) = arg1;
+            module_trace("libimp/BIND: add_observer src=%s(%p) dst=%s(%p) slot=%d outptr=%p count=%d\n",
+                         arg1->name, arg1, arg2->name, arg2, i, arg3,
+                         *(int32_t *)((char *)arg1 + 0x3c));
             return 0;
         }
         i += 1;
@@ -142,6 +162,12 @@ static int32_t update(Module *arg1, void *arg2)
 {
     int32_t value = *(int32_t *)arg2;
 
+    module_trace("libimp/BIND: update module=%s(%p) frame_slot=%p frame_val=%p\n",
+                 arg1 ? arg1->name : "?",
+                 arg1,
+                 arg2,
+                 (void *)(uintptr_t)value);
+
     if (value != 0) {
         sem_wait(module_sem_outputs(arg1));
         pthread_mutex_lock(module_mutex(arg1));
@@ -153,6 +179,14 @@ static int32_t update(Module *arg1, void *arg2)
         node->value = value;
         *module_queue_free_ptr(arg1) = next;
         *module_queue_count_ptr(arg1) = count;
+
+        module_trace("libimp/BIND: update queued module=%s(%p) node=%p next=%p queued=%d val=%p\n",
+                     arg1 ? arg1->name : "?",
+                     arg1,
+                     node,
+                     next,
+                     count,
+                     (void *)(uintptr_t)value);
 
         pthread_mutex_unlock(module_mutex(arg1));
         sem_post(module_sem_inputs(arg1));
@@ -166,6 +200,9 @@ int32_t notify_observers(Module *arg1, void *arg2)
     int32_t count = *(int32_t *)((char *)arg1 + 0x3c);
     (void)arg2;
 
+    module_trace("libimp/BIND: notify src=%s(%p) count=%d frame=%p\n",
+                 arg1->name, arg1, count, arg2);
+
     if (count <= 0) {
         return 0;
     }
@@ -175,9 +212,14 @@ int32_t notify_observers(Module *arg1, void *arg2)
 
     do {
         int32_t *frame_slot = (int32_t *)*slot;
+        Module *observer = *(Module **)((char *)slot - 4);
+        module_trace("libimp/BIND: notify slot=%d src=%s obs=%p(%s) frame_slot=%p frame_val=%p\n",
+                     i, arg1->name, observer,
+                     observer ? observer->name : "?",
+                     frame_slot,
+                     frame_slot ? (void *)(uintptr_t)*frame_slot : NULL);
 
         if (frame_slot != NULL && *frame_slot != 0) {
-            Module *observer = *(Module **)((char *)slot - 4);
             int32_t (*update_cb)(Module *module, void *frame) =
                 *(int32_t (**)(Module *, void *))((char *)observer + 0x4c);
 
@@ -237,15 +279,27 @@ void *module_thread(void *arg1)
         int32_t count = *module_queue_count_ptr(module);
         int32_t message;
 
+        module_trace("libimp/BIND: module_thread wake module=%s(%p) queued=%d read=%p free=%p dispatch=%p notify=%p\n",
+                     module->name, module, count,
+                     *module_queue_read_ptr(module),
+                     *module_queue_free_ptr(module),
+                     *module_update_dispatch_fn_slot(module),
+                     module->notify_fn);
+
         if (count != 0) {
             ModuleQueueNode *node = *module_queue_read_ptr(module);
             message = node->value;
             *module_queue_read_ptr(module) = node->next;
             *module_queue_count_ptr(module) = count - 1;
+            module_trace("libimp/BIND: module_thread pop module=%s(%p) node=%p msg=%p remain=%d next=%p\n",
+                         module->name, module, node, (void *)(uintptr_t)message,
+                         count - 1, node ? node->next : NULL);
             pthread_mutex_unlock(module_mutex(module));
             sem_post(module_sem_outputs(module));
 
             if (*module_update_dispatch_fn_slot(module) == NULL) {
+                module_trace("libimp/BIND: module_thread skip-dispatch module=%s(%p) dispatch=NULL\n",
+                             module->name, module);
                 continue;
             }
         } else {
@@ -263,6 +317,8 @@ void *module_thread(void *arg1)
                 var_88, var_84, var_80, var_7c, var_78, var_74, NULL);
             pthread_mutex_unlock(module_mutex(module));
             if (*module_update_dispatch_fn_slot(module) == NULL) {
+                module_trace("libimp/BIND: module_thread empty module=%s(%p) dispatch=NULL\n",
+                             module->name, module);
                 continue;
             }
         }
@@ -330,11 +386,19 @@ void *module_thread(void *arg1)
                 prev_active_hi = module_time_hi(active_end);
             }
         } else {
+            module_trace("libimp/BIND: module_thread dispatch module=%s(%p) subject=%p msg=%p cb=%p\n",
+                         module->name, module, &module->subject_node,
+                         (void *)(uintptr_t)message,
+                         *(void **)((char *)module + 0x50));
             callback_result =
                 (*(int32_t (**)(Subject *, int32_t))((char *)module + 0x50))(&module->subject_node, message);
         }
 
+        module_trace("libimp/BIND: module_thread dispatch-done module=%s(%p) msg=%p result=%d notify=%p\n",
+                     module->name, module, (void *)(uintptr_t)message, callback_result, module->notify_fn);
         if (callback_result >= 0) {
+            module_trace("libimp/BIND: module_thread notify module=%s(%p) result=%p\n",
+                         module->name, module, (void *)(intptr_t)callback_result);
             module->notify_fn(module, (void *)(intptr_t)callback_result);
         }
 
@@ -481,6 +545,10 @@ int32_t BindObserverToSubject(Module *arg1, Module *arg2, void *arg3)
         return puts("module_dst is NULL!");
     }
 
+    module_trace("libimp/BIND: BindObserverToSubject src=%s(%p) dst=%s(%p) outptr=%p add_fn=%p count=%d\n",
+                 arg1->name, arg1, arg2->name, arg2, arg3,
+                 *(void **)((char *)arg1 + 0x40),
+                 *(int32_t *)((char *)arg1 + 0x3c));
     return (*(int32_t (**)(Module *, Module *, void *))((char *)arg1 + 0x40))(arg1, arg2, arg3);
 }
 

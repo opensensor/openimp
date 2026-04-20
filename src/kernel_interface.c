@@ -13,7 +13,65 @@
 #include <pthread.h>
 #include <errno.h>
 #include <sched.h>
+#include <time.h>
+#include <stdarg.h>
 #include "dma_alloc.h"
+
+static void ki_trace(const char *fmt, ...)
+{
+    int fd = open("/dev/kmsg", O_WRONLY);
+    if (fd < 0) return;
+
+    char buf[256];
+    va_list ap;
+    va_start(ap, fmt);
+    int n = vsnprintf(buf, sizeof(buf), fmt, ap);
+    va_end(ap);
+    if (n > 0) write(fd, buf, (size_t)n);
+    close(fd);
+}
+
+struct fs_poll_wait {
+    int fd;
+    uint32_t ready;
+    int ret;
+    int err;
+    int done;
+    pthread_mutex_t lock;
+    pthread_cond_t cond;
+};
+
+static long long ki_mono_ms(void)
+{
+    struct timespec now;
+    clock_gettime(CLOCK_MONOTONIC, &now);
+    return (long long)now.tv_sec * 1000LL + (long long)now.tv_nsec / 1000000LL;
+}
+
+static void ki_timespec_add_ms(struct timespec *ts, long ms)
+{
+    ts->tv_sec += ms / 1000;
+    ts->tv_nsec += (ms % 1000) * 1000000L;
+    if (ts->tv_nsec >= 1000000000L) {
+        ts->tv_sec += 1;
+        ts->tv_nsec -= 1000000000L;
+    }
+}
+
+static void *fs_poll_worker(void *arg)
+{
+    struct fs_poll_wait *wait = (struct fs_poll_wait *)arg;
+    int ret = ioctl(wait->fd, 0x400456bf, &wait->ready);
+    int err = errno;
+
+    pthread_mutex_lock(&wait->lock);
+    wait->ret = ret;
+    wait->err = err;
+    wait->done = 1;
+    pthread_cond_signal(&wait->cond);
+    pthread_mutex_unlock(&wait->lock);
+    return NULL;
+}
 
 /* ioctl command definitions from decompilation */
 
@@ -433,22 +491,74 @@ int fs_stream_off(int fd) {
 
 int fs_poll_frame(int fd, unsigned int *ready_out)
 {
-    uint32_t ready = 0xffffffffu;
-    int ret;
+    struct fs_poll_wait wait = {
+        .fd = fd,
+        .ready = 0xffffffffu,
+        .ret = -1,
+        .err = 0,
+        .done = 0,
+        .lock = PTHREAD_MUTEX_INITIALIZER,
+        .cond = PTHREAD_COND_INITIALIZER,
+    };
+    pthread_t tid;
+    int create_ret;
+    struct timespec ts;
+    long long start_ms;
+    long long last_log_ms = 0;
 
     if (fd < 0)
         return -1;
 
-    ret = ioctl(fd, VIDIOC_POLL_FRAME, &ready);
-    if (ret < 0) {
-        if (errno == EINTR)
+    create_ret = pthread_create(&tid, NULL, fs_poll_worker, &wait);
+    if (create_ret != 0) {
+        uint32_t ready = 0xffffffffu;
+        int ret = ioctl(fd, VIDIOC_POLL_FRAME, &ready);
+        if (ret < 0) {
+            if (errno == EINTR)
+                return -2;
+            fprintf(stderr, "[KernelIF] POLL_FRAME failed: fd=%d %s\n", fd, strerror(errno));
+            return -1;
+        }
+        if (ready_out)
+            *ready_out = ready;
+        return 0;
+    }
+
+    start_ms = ki_mono_ms();
+    ki_trace("libimp/KI: POLL_FRAME enter fd=%d\n", fd);
+
+    pthread_mutex_lock(&wait.lock);
+    while (!wait.done) {
+        clock_gettime(CLOCK_REALTIME, &ts);
+        ki_timespec_add_ms(&ts, 10);
+        if (pthread_cond_timedwait(&wait.cond, &wait.lock, &ts) == ETIMEDOUT) {
+            long long elapsed_ms = ki_mono_ms() - start_ms;
+            if (elapsed_ms >= 10 && elapsed_ms - last_log_ms >= 100) {
+                ki_trace("libimp/KI: POLL_FRAME still-waiting fd=%d elapsed_ms=%lld\n",
+                         fd, elapsed_ms);
+                last_log_ms = elapsed_ms;
+            }
+        }
+    }
+    pthread_mutex_unlock(&wait.lock);
+
+    pthread_join(tid, NULL);
+    pthread_cond_destroy(&wait.cond);
+    pthread_mutex_destroy(&wait.lock);
+
+    if (wait.ret < 0) {
+        if (wait.err == EINTR)
             return -2;
-        fprintf(stderr, "[KernelIF] POLL_FRAME failed: fd=%d %s\n", fd, strerror(errno));
+        fprintf(stderr, "[KernelIF] POLL_FRAME failed: fd=%d %s\n", fd, strerror(wait.err));
+        ki_trace("libimp/KI: POLL_FRAME exit fd=%d ret=%d errno=%d ready=%u\n",
+                 fd, wait.ret, wait.err, wait.ready);
         return -1;
     }
 
+    ki_trace("libimp/KI: POLL_FRAME exit fd=%d ret=%d errno=%d ready=%u\n",
+             fd, wait.ret, wait.err, wait.ready);
     if (ready_out)
-        *ready_out = ready;
+        *ready_out = wait.ready;
     return 0;
 }
 
@@ -538,27 +648,23 @@ int fs_qbuf(int fd, int index, unsigned long phys, unsigned int length) {
 }
 /* Dequeue a filled buffer from the framechan driver */
 int fs_dqbuf(int fd, int *index_out) {
+    void *raw = NULL;
+    struct v4l2_buf32 *b;
+    int ret;
+    int saved_errno;
+    int saved_flags = -1;
+    size_t buf_sz;
+
     if (fd < 0 || !index_out) return -1;
 
-    {
-        int flags = fcntl(fd, F_GETFL, 0);
-        if (flags >= 0 && !(flags & O_NONBLOCK)) {
-            if (fcntl(fd, F_SETFL, flags | O_NONBLOCK) == 0) {
-                fprintf(stderr, "[KernelIF] DQBUF: re-enabled O_NONBLOCK on fd=%d\n", fd);
-            }
-        }
-    }
-
-    size_t buf_sz = sizeof(struct v4l2_buf32) + 0x400;
-    void *raw = NULL;
-    if (posix_memalign(&raw, 16, buf_sz) != 0 || !raw) {
+    buf_sz = sizeof(struct v4l2_buf32) + 0x400;
+    if (posix_memalign(&raw, 16, buf_sz) != 0 || raw == NULL)
         return -1;
-    }
     memset(raw, 0, buf_sz);
-    struct v4l2_buf32 *b = (struct v4l2_buf32 *)raw;
-    b->type   = 1;   /* V4L2_BUF_TYPE_VIDEO_CAPTURE */
-    b->memory = 2;   /* V4L2_MEMORY_USERPTR */
-    b->field  = 0;   /* OEM uses 0 (from memset); field=4 is wrong */
+    b = (struct v4l2_buf32 *)raw;
+    b->type   = 1;
+    b->memory = 2;
+    b->field  = 0;
 
     {
         static int dqbuf_log_count = 0;
@@ -567,14 +673,45 @@ int fs_dqbuf(int fd, int *index_out) {
             dqbuf_log_count++;
         }
     }
-    int ret = ioctl(fd, VIDIOC_DQBUF, b);
+    ki_trace("libimp/KI: DQBUF enter fd=%d raw=%p\n", fd, raw);
+
+    saved_flags = fcntl(fd, F_GETFL, 0);
+    if (saved_flags >= 0 && (saved_flags & O_NONBLOCK)) {
+        if (fcntl(fd, F_SETFL, saved_flags & ~O_NONBLOCK) < 0) {
+            fprintf(stderr, "[KernelIF] DQBUF: failed to clear O_NONBLOCK on fd=%d: %s\n",
+                    fd, strerror(errno));
+            free(raw);
+            return -1;
+        }
+    }
+
+    ki_trace("libimp/KI: DQBUF blocking-call fd=%d\n", fd);
+    ret = ioctl(fd, VIDIOC_DQBUF, raw);
+    saved_errno = errno;
+    ki_trace("libimp/KI: DQBUF blocking-ret fd=%d ret=%d errno=%d\n", fd, ret, saved_errno);
+
+    if (saved_flags >= 0 && (saved_flags & O_NONBLOCK)) {
+        if (fcntl(fd, F_SETFL, saved_flags) < 0) {
+            fprintf(stderr, "[KernelIF] DQBUF: failed to restore O_NONBLOCK on fd=%d: %s\n",
+                    fd, strerror(errno));
+        }
+    }
+
     if (ret < 0) {
-        if (errno == EAGAIN) { free(raw); return -2; }
-        fprintf(stderr, "[KernelIF] DQBUF failed: fd=%d %s\n", fd, strerror(errno));
+        ki_trace("libimp/KI: DQBUF exit fd=%d ret=%d idx=-1 errno=%d\n",
+                 fd, ret, saved_errno);
+        if (saved_errno == EAGAIN || saved_errno == EINTR) {
+            free(raw);
+            return -2;
+        }
+        fprintf(stderr, "[KernelIF] DQBUF failed: fd=%d %s\n", fd, strerror(saved_errno));
         free(raw);
         return -1;
     }
+
     *index_out = (int)b->index;
+    ki_trace("libimp/KI: DQBUF exit fd=%d ret=%d idx=%d errno=%d\n",
+             fd, ret, *index_out, saved_errno);
     {
         static int dqbuf_ok_log = 0;
         if (dqbuf_ok_log < 6) {
@@ -585,7 +722,6 @@ int fs_dqbuf(int fd, int *index_out) {
     free(raw);
     return 0;
 }
-
 
 
 /**
@@ -999,8 +1135,18 @@ int VBMPrimeKernelQueue(int chn, int fd, int limit) {
      * frame back into the available queue so VBMGetFrame can still use it (the
      * capture thread's software fallback depends on this).
      */
-    const char* ev = getenv("OPENIMP_QBUF_USE_VIRT");
-    int use_virt = (ev && ev[0] != '\0') ? 1 : 0;
+    /* The open-tx-isp frame-channel driver expects V4L2_MEMORY_USERPTR
+     * buffers to carry a physical DMA address in buffer.m.userptr:
+     * tx-isp-module.c QBUF stores `buffer_phys_addr = buffer.m.userptr`.
+     * Keep the virtual-address mode only as an explicit experiment. */
+    const char* force_phys_ev = getenv("OPENIMP_QBUF_FORCE_PHYS");
+    const char* force_virt_ev = getenv("OPENIMP_QBUF_USE_VIRT");
+    int use_virt = 0;
+    if (force_virt_ev && force_virt_ev[0] != '\0' && force_virt_ev[0] != '0') {
+        use_virt = 1;
+    } else if (force_phys_ev && force_phys_ev[0] == '0') {
+        use_virt = 1;
+    }
     int queued_ok = 0;
 
     pthread_mutex_lock(&pool->queue_mutex);
@@ -1055,11 +1201,14 @@ int VBMKernelDequeue(int chn, int fd, void **frame_out) {
     static int dbg_count[MAX_VBM_POOLS] = {0};
 
     int idx = -1;
+    ki_trace("libimp/VBM: KernelDequeue enter ch=%d fd=%d pool=%p\n", chn, fd, pool);
     if (dbg_count[chn] < 3) {
         fprintf(stderr, "[VBM] VBMKernelDequeue chn=%d: attempting DQBUF...\n", chn);
     }
 
     int ret = fs_dqbuf(fd, &idx);
+    ki_trace("libimp/VBM: KernelDequeue post-dq ch=%d fd=%d ret=%d idx=%d\n",
+             chn, fd, ret, idx);
     if (dbg_count[chn] < 3) {
         fprintf(stderr, "[VBM] VBMKernelDequeue chn=%d: DQBUF ret=%d idx=%d\n", chn, ret, idx);
         dbg_count[chn]++;

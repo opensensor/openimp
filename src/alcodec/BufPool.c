@@ -2,6 +2,8 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
+#include <unistd.h>
+#include <fcntl.h>
 
 #include "alcodec/al_buffer.h"
 #include "alcodec/al_fourcc.h"
@@ -13,6 +15,16 @@
 extern char _gp;
 extern int32_t __assert(const char *expression, const char *file, int32_t line, const char *function,
                         void *caller);
+
+#define BPF_KMSG(fmt, ...) do { \
+    int _kfd = open("/dev/kmsg", O_WRONLY); \
+    if (_kfd >= 0) { \
+        char _b[192]; \
+        int _n = snprintf(_b, sizeof(_b), "libimp/BUF: " fmt "\n", ##__VA_ARGS__); \
+        if (_n > 0) write(_kfd, _b, _n > (int)sizeof(_b) ? (int)sizeof(_b) : _n); \
+        close(_kfd); \
+    } \
+} while (0)
 
 AL_TBuffer *AL_Buffer_Create_And_AllocateNamed(AL_TAllocator *arg1, int32_t arg2, char arg3, uint32_t arg4,
                                                void *arg5,
@@ -147,7 +159,10 @@ int32_t Fifo_Queue(void *arg1, AL_TBuffer *arg2, int32_t arg3)
 
     (void)var_18;
 
-    if (result != 0)
+    BPF_KMSG("Fifo_Queue entry fifo=%p elem=%p wait=%d sem=%d head=%d tail=%d count=%d",
+             arg1, arg2, arg3, result, read_s32(arg1, 0x04), read_s32(arg1, 0x08), read_s32(arg1, 0x18));
+
+    if (result == 0)
         return result;
 
     Rtos_GetMutex(read_ptr(arg1, 0x10));
@@ -170,6 +185,8 @@ int32_t Fifo_Queue(void *arg1, AL_TBuffer *arg2, int32_t arg3)
     }
 
     Rtos_ReleaseMutex(read_ptr(arg1, 0x10));
+    BPF_KMSG("Fifo_Queue ok fifo=%p elem=%p head=%d tail=%d count=%d",
+             arg1, arg2, read_s32(arg1, 0x04), read_s32(arg1, 0x08), read_s32(arg1, 0x18));
     return result;
 }
 
@@ -181,6 +198,8 @@ AL_TBuffer *Fifo_Dequeue(void *arg1, int32_t arg2)
 
     (void)var_18;
 
+    BPF_KMSG("Fifo_Dequeue entry fifo=%p wait=%d head=%d tail=%d count=%d decommit=%d",
+             arg1, arg2, read_s32(arg1, 0x04), read_s32(arg1, 0x08), read_s32(arg1, 0x18), read_u8(arg1, 0x1c));
     Rtos_GetMutex(read_ptr(arg1, 0x10));
     v0 = read_s32(arg1, 0x18);
     if (v0 <= 0) {
@@ -202,6 +221,7 @@ AL_TBuffer *Fifo_Dequeue(void *arg1, int32_t arg2)
             }
 
             Rtos_ReleaseMutex(read_ptr(arg1, 0x10));
+            BPF_KMSG("Fifo_Dequeue empty fifo=%p", arg1);
             return NULL;
         }
     } else {
@@ -224,6 +244,8 @@ AL_TBuffer *Fifo_Dequeue(void *arg1, int32_t arg2)
         write_u32(arg1, 0x08, hi);
         Rtos_ReleaseMutex(a0_6);
         Rtos_ReleaseSemaphore(read_ptr(arg1, 0x20));
+        BPF_KMSG("Fifo_Dequeue ok fifo=%p elem=%p head=%d tail=%d count=%d",
+                 arg1, result, read_s32(arg1, 0x04), read_s32(arg1, 0x08), read_s32(arg1, 0x18));
         return result;
     }
 }
@@ -385,15 +407,21 @@ int32_t AL_sBufPool_AddBuf(void *arg1, AL_TBuffer *arg2)
 
         write_u32(arg1, 0x08, (uint32_t)(v0_2 + 1));
         *v1_1 = arg2;
+        BPF_KMSG("BufPool_AddBuf pool=%p buf=%p slot=%d pool_count=%d",
+                 arg1, arg2, v0_2, read_s32(arg1, 0x08));
     }
 
-    Fifo_Queue((uint8_t *)arg1 + 0x14, arg2, 0xffffffff);
-    return 1;
+    {
+        int32_t qret = Fifo_Queue((uint8_t *)arg1 + 0x14, arg2, 0xffffffff);
+        BPF_KMSG("BufPool_AddBuf queue_ret=%d pool=%p fifo_count=%d",
+                 qret, arg1, read_s32((uint8_t *)arg1 + 0x14, 0x18));
+        return qret;
+    }
 }
 
-int32_t AL_BufPool_Init(void *arg1, AL_TAllocator **arg2, int32_t *arg3)
+int32_t AL_BufPool_Init(void *arg1, AL_TAllocator *arg2, int32_t *arg3)
 {
-    int32_t result_1 = AL_sBufPool_InitStructure(arg1, *arg2, arg3[0], (void *)(intptr_t)arg3[3], (char)read_u8(arg3, 0x10));
+    int32_t result_1 = AL_sBufPool_InitStructure(arg1, arg2, arg3[0], (void *)(intptr_t)arg3[3], (char)read_u8(arg3, 0x10));
     int32_t result = result_1;
 
     if (result_1 != 0) {
@@ -473,6 +501,8 @@ AL_TBuffer *AL_BufPool_GetBuffer(void *arg1, int32_t arg2)
 
     (void)var_18;
 
+    BPF_KMSG("BufPool_GetBuffer pool=%p mode=%d result=%p pool_count=%d",
+             arg1, arg2, result, read_s32(arg1, 0x08));
     if (result == 0)
         return result;
 
@@ -509,7 +539,7 @@ int32_t ComputeYPitch(int32_t arg1, uint32_t arg2, int32_t arg3)
 {
     int32_t v0_2 = AL_EncGetMinPitch(arg1, (char)AL_GetBitDepth(arg2), AL_GetStorageMode(arg2));
 
-    if (arg3 == 0xffffffff)
+    if (arg3 == 0 || arg3 == 0xffffffff)
         return v0_2;
 
     if (arg3 >= v0_2)
@@ -560,9 +590,15 @@ int32_t GetPixMapBufPollConfig(int32_t *arg1, int32_t *arg2, int32_t arg3, int32
 
     (void)var_48;
 
+    BPF_KMSG("GetPixMapCfg entry out=%p info=%p storage=0x%x count=%d extPitch=%d arg6=%d cache=%d",
+             arg1, arg2, arg3, arg4, arg5, arg6, (int)arg7);
     Rtos_Memset(arg1, 0, 0xa0);
+    BPF_KMSG("GetPixMapCfg info w=%d h=%d bitdepth=%u chroma=%d",
+             arg2[0], arg2[1], read_u8(arg2, 0x08), arg2[3]);
     AL_EncGetSrcPicFormat(&var_40, arg2[3], read_u8(arg2, 0x08), AL_GetSrcStorageMode(arg3), (uint8_t)AL_IsSrcCompressed(arg3));
+    BPF_KMSG("GetPixMapCfg post-EncGetSrcPicFormat");
     v0_3 = AL_GetFourCC(var_40);
+    BPF_KMSG("GetPixMapCfg fourcc=0x%x", v0_3);
     a0_4 = arg2[0];
     arg1[3] = arg2[1];
     *(uint8_t *)((uint8_t *)arg1 + 0x14) = (uint8_t)arg7;
@@ -571,10 +607,12 @@ int32_t GetPixMapBufPollConfig(int32_t *arg1, int32_t *arg2, int32_t arg3, int32
     arg1[2] = a0_4;
     arg1[0] = arg4;
     v0_4 = ComputeYPitch(a0_4, v0_3, arg5);
+    BPF_KMSG("GetPixMapCfg ypitch=%d", v0_4);
     if (s1 == 0xffffffff)
         s1 = ((arg2[1] + 7) >> 3) << 3;
 
     v0_5 = AL_GetAllocSizeSrc_Y(arg3, v0_4, s1);
+    BPF_KMSG("GetPixMapCfg planeY size=%d lines=%d", v0_5, s1);
     a0_6 = arg1[0x26];
     a3_2 = arg2[3];
     v1_2 = (uint8_t *)&arg1[a0_6 * 4];
@@ -586,6 +624,7 @@ int32_t GetPixMapBufPollConfig(int32_t *arg1, int32_t *arg2, int32_t arg3, int32
     arg1[0x26] = a0_6 + 1;
     arg1[0x27] = v0_6;
     v0_7 = (int32_t)AL_GetAllocSizeSrc_UV(arg3, v0_4, s1, a3_2);
+    BPF_KMSG("GetPixMapCfg planeUV size=%d total=%d", v0_7, v0_6);
     s1_3 = (uint8_t *)&arg1[arg1[0x26] * 4];
     *(int32_t *)(void *)(s1_3 + 0x18) = 1;
     *(int32_t *)(void *)(s1_3 + 0x1c) = arg1[0x27];
@@ -596,6 +635,8 @@ int32_t GetPixMapBufPollConfig(int32_t *arg1, int32_t *arg2, int32_t arg3, int32
     arg1[v0_10 * 4 + 5] = v0_7;
     arg1[0x27] = v1_6;
     arg1[0x26] = v0_10;
+    BPF_KMSG("GetPixMapCfg post-planes count=%d bytes=%d compressed=%d",
+             arg1[0x26], arg1[0x27], AL_IsCompressed((uint32_t)a0_9));
     result = (int32_t)AL_IsCompressed((uint32_t)a0_9);
     if (result != 0) {
         int32_t v0_12 = GetFbcMapPitch(arg2[0], AL_GetStorageMode((uint32_t)arg1[4]));
@@ -620,6 +661,7 @@ int32_t GetPixMapBufPollConfig(int32_t *arg1, int32_t *arg2, int32_t arg3, int32
         a1_11 = arg1[3];
         arg1[0x26] = a2_6 + 1;
         arg1[0x27] = v0_13 + t0_1;
+        BPF_KMSG("GetPixMapCfg mapY pitch=%d size=%d total=%d", v0_12, v0_13, arg1[0x27]);
         result = AL_GetAllocSizeSrc_MapUV(a0_13, a1_11, arg3, a3_3);
         a0_14 = arg1[0x26];
         v1_10 = (uint8_t *)&arg1[a0_14 * 4];
@@ -630,8 +672,10 @@ int32_t GetPixMapBufPollConfig(int32_t *arg1, int32_t *arg2, int32_t arg3, int32
         *(int32_t *)(void *)(v1_10 + 0x24) = result;
         arg1[0x27] = result + a1_12;
         arg1[0x26] = a0_14 + 1;
+        BPF_KMSG("GetPixMapCfg mapUV size=%d final_count=%d final_bytes=%d", result, arg1[0x26], arg1[0x27]);
     }
 
+    BPF_KMSG("GetPixMapCfg exit count=%d bytes=%d fourcc=0x%x", arg1[0x26], arg1[0x27], arg1[4]);
     return result;
 }
 
@@ -683,15 +727,8 @@ int32_t PixMapBufPollInit(void *arg1, AL_TAllocator *arg2, int32_t *arg3)
 int32_t GetStreamBufPoolConfig(int32_t *arg1, void *arg2, int32_t arg3, char arg4, double arg5, double arg6,
                                double arg7, int32_t arg8, int32_t arg9)
 {
-    uint32_t v0 = read_u32(arg2, 0xa4);
     void *var_38 = &_gp;
-    uint32_t s1 = (uint32_t)read_u8(arg2, 0xae);
-    int32_t s1_1 = (int32_t)s1 + arg8;
-    uint32_t a0 = read_u32(arg2, 0x7c);
-    double f0 = cvt_u32_with_bias(v0, arg6);
-    double f2 = cvt_u32_with_bias(a0, arg7);
-    double f0_1 = f0 * arg7;
-    uint32_t s0 = a0;
+    int32_t stream_count = (int32_t)arg5 + arg8;
     int32_t v1_1;
     uint8_t *v0_4;
     int32_t a0_1;
@@ -699,15 +736,13 @@ int32_t GetStreamBufPoolConfig(int32_t *arg1, void *arg2, int32_t arg3, char arg
     uint32_t s7;
     int32_t v0_5;
     int32_t v0_6;
-    uint32_t a0_3;
-    double f0_2;
-    double f2_1;
-    double f0_3;
 
     (void)var_38;
 
-    if (!(f0_1 < f2))
-        s0 = (uint32_t)(int32_t)f0_1;
+    if (stream_count <= 0)
+        stream_count = (int32_t)read_u8(arg2, 0xae) + arg8;
+    if (stream_count <= 0)
+        stream_count = 1;
 
     v1_1 = read_s32(arg2, 0x10);
     v0_4 = (uint8_t *)arg2 + (arg3 * 0xf0);
@@ -719,25 +754,21 @@ int32_t GetStreamBufPoolConfig(int32_t *arg1, void *arg2, int32_t arg3, char arg
         v0_5 = a0_1;
 
     v0_6 = AL_GetMitigatedMaxNalSize((int32_t)s7, (int32_t)s6, (v1_1 >> 8) & 0xf, v0_5);
-    a0_3 = read_u32(arg2, 0x78);
-    f0_2 = cvt_u32_with_bias(a0_3, f2);
-    f2_1 = (double)s0;
-    f0_3 = f0_2 * f2;
-    if (!(f0_3 < f2_1))
-        s0 = (uint32_t)(int32_t)f0_3;
 
     {
-        uint32_t a0_5 = s0 + 7;
+        uint32_t pixels = s7 * s6;
+        int32_t min_size = 0x10000;
         int32_t v1_4;
         int32_t s0_2;
-        uint32_t a0_10;
         uint32_t v1_7 = 1;
         int32_t s0_6;
 
-        if ((int32_t)s0 >= 0)
-            a0_5 = s0;
+        if (pixels >= 1280U * 720U)
+            min_size = 0x20000;
+        if (pixels >= 1920U * 1080U)
+            min_size = 0x40000;
 
-        v1_4 = (int32_t)(a0_5 >> 3) + 0x200 + ((((int32_t)s6 + 0xf) >> 4) << 9);
+        v1_4 = (v0_6 >> 3) + 0x200 + ((((int32_t)s6 + 0xf) >> 4) << 9);
         if (v1_4 >= v0_6)
             v0_6 = v1_4;
 
@@ -749,7 +780,7 @@ int32_t GetStreamBufPoolConfig(int32_t *arg1, void *arg2, int32_t arg3, char arg
             if (a0_9 == 0)
                 __builtin_trap();
 
-            s1_1 *= (int32_t)a0_9;
+            stream_count *= (int32_t)a0_9;
             if (lo_1 + 0x2000 < 0) {
                 s0_2 = ((lo_1 + 0x201f) >> 5) << 5;
             } else {
@@ -762,17 +793,20 @@ int32_t GetStreamBufPoolConfig(int32_t *arg1, void *arg2, int32_t arg3, char arg
             }
         }
 
-        a0_10 = s7 * s6;
-        if ((int32_t)a0_10 >= 0x1fe000)
-            v1_7 = (uint32_t)(int32_t)log10((double)a0_10);
+        if ((int32_t)pixels >= 0x1fe000)
+            v1_7 = (uint32_t)(int32_t)log10((double)pixels);
 
         s0_6 = ((int32_t)v1_7 * s0_2 + 0x1f) >> 5 << 5;
+        if (s0_6 < min_size)
+            s0_6 = min_size;
         if ((uint32_t)arg9 >= (uint32_t)s0_6 || arg9 != 0)
             s0_6 = arg9;
 
+        BPF_KMSG("GetStreamCfg count=%d size=%d w=%u h=%u mitigated=%d min=%d slice_split=%u",
+                 stream_count, s0_6, s7, s6, v0_6, min_size, read_u8(arg2, 0xc4));
         GetBufPoolConfig(arg1, (int32_t)(intptr_t)"stream",
                          (int32_t)(intptr_t)((void *(*)(int32_t))(void *)AL_StreamMetaData_Create)(0x194), s0_6,
-                         s1_1, arg4);
+                         stream_count, arg4);
     }
 
     return (int32_t)(intptr_t)arg1;

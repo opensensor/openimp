@@ -1,4 +1,7 @@
 #include <stdint.h>
+#include <stdio.h>
+#include <unistd.h>
+#include <fcntl.h>
 
 extern char _gp;
 
@@ -99,11 +102,42 @@ int32_t AL_Encoder_ReleaseRecPicture(int32_t *arg1, int32_t *arg2)
 int32_t AL_Encoder_PutStreamBuffer(int32_t *arg1, void *arg2, int32_t arg3)
 {
     (void)arg3;
-    return AL_Common_Encoder_PutStreamBuffer(arg1, arg2, 0);
+    {
+        int kfd = open("/dev/kmsg", O_WRONLY);
+        if (kfd >= 0) {
+            char b[128];
+            int n = snprintf(b, sizeof(b), "libimp/ENC: AL_Encoder_PutStreamBuffer entry enc=%p buf=%p\n",
+                             arg1, arg2);
+            if (n > 0) write(kfd, b, n);
+            close(kfd);
+        }
+    }
+    {
+        int32_t ret = AL_Common_Encoder_PutStreamBuffer(arg1, arg2, 0);
+        int kfd = open("/dev/kmsg", O_WRONLY);
+        if (kfd >= 0) {
+            char b[128];
+            int n = snprintf(b, sizeof(b), "libimp/ENC: AL_Encoder_PutStreamBuffer exit ret=%d enc=%p buf=%p\n",
+                             ret, arg1, arg2);
+            if (n > 0) write(kfd, b, n);
+            close(kfd);
+        }
+        return ret;
+    }
 }
 
 int32_t AL_Encoder_Process(int32_t *arg1, int32_t arg2, int32_t arg3)
 {
+    {
+        int kfd = open("/dev/kmsg", O_WRONLY);
+        if (kfd >= 0) {
+            char b[128];
+            int n = snprintf(b, sizeof(b), "libimp/ENC: AL_Encoder_Process entry enc=%p frame=%p stream=%p\n",
+                             arg1, (void *)(intptr_t)arg2, (void *)(intptr_t)arg3);
+            if (n > 0) write(kfd, b, n);
+            close(kfd);
+        }
+    }
     return AL_Common_Encoder_Process(arg1, arg2, arg3, 0);
 }
 

@@ -12,6 +12,7 @@
 #include <sys/ioctl.h>
 #include <sys/select.h>
 #include <sched.h>
+#include <stdarg.h>
 
 #include <sys/time.h>
 #include <pthread.h>
@@ -72,6 +73,34 @@ static int g_frame_depth[MAX_FS_CHANNELS];
 static void *frame_capture_thread(void *arg);
 static int framesource_bind(void *src_module, void *dst_module, void *output_ptr);
 static int framesource_unbind(void *src_module, void *dst_module, void *output_ptr);
+
+static void fs_bind_trace(const char *fmt, ...)
+{
+    int fd = open("/dev/kmsg", O_WRONLY);
+    if (fd < 0) return;
+
+    char buf[512];
+    va_list ap;
+    va_start(ap, fmt);
+    int n = vsnprintf(buf, sizeof(buf), fmt, ap);
+    va_end(ap);
+
+    if (n > 0) write(fd, buf, (size_t)n);
+    close(fd);
+}
+
+static void framesource_publish_outputs(void *module, void *frame)
+{
+    if (module == NULL) return;
+
+    uint32_t count = *(uint32_t *)((char *)module + 0x134);
+    if (count == 0) count = 1;
+    if (count > 3) count = 3;
+
+    for (uint32_t i = 0; i < count; i++) {
+        *(void **)((char *)module + 0x138 + (i * sizeof(void *))) = frame;
+    }
+}
 
 /* Initialize framesource module */
 static void framesource_init(void) {
@@ -766,6 +795,7 @@ static void *frame_capture_thread(void *arg) {
                 /* Notify observers (bound modules like Encoder) */
                 void *module = IMP_System_GetModule(DEV_ID_FS, chn_num);
                 if (module != NULL) {
+                    framesource_publish_outputs(module, frame);
                     notify_observers(module, frame);
                 } else {
                     LOG_FS("frame_capture_thread chn=%d: WARNING - no module found for FrameSource", chn_num);
@@ -877,6 +907,7 @@ static void *frame_capture_thread(void *arg) {
                         LOG_FS("frame_capture_thread chn=%d: about to notify_observers module=%p", chn_num, module);
                         fflush(stderr);
                     }
+                    framesource_publish_outputs(module, frame);
                     notify_observers(module, frame);
                     if (frame_count <= 5) {
                         LOG_FS("frame_capture_thread chn=%d: notify_observers returned", chn_num);
@@ -935,14 +966,16 @@ extern int remove_observer_from_module(void *src_module, void *dst_module);
  * This is called when IMP_System_Bind() is invoked
  */
 static int framesource_bind(void *src_module, void *dst_module, void *output_ptr) {
-    (void)output_ptr;
-
     if (src_module == NULL || dst_module == NULL) {
         LOG_FS("bind: NULL module");
+        fs_bind_trace("libimp/FSB: bind src=%p dst=%p outptr=%p invalid\n",
+                      src_module, dst_module, output_ptr);
         return -1;
     }
 
     LOG_FS("bind: Binding FrameSource to module");
+    fs_bind_trace("libimp/FSB: bind src=%p dst=%p outptr=%p\n",
+                  src_module, dst_module, output_ptr);
 
     /* Create observer structure */
     Observer *observer = (Observer*)calloc(1, sizeof(Observer));
@@ -956,15 +989,21 @@ static int framesource_bind(void *src_module, void *dst_module, void *output_ptr
     observer->module = dst_module;
     observer->frame = NULL;
     observer->output_index = 0;
+    fs_bind_trace("libimp/FSB: bind observer=%p dst=%p outidx=%d\n",
+                  observer, observer->module, observer->output_index);
 
     /* Add observer to source module's observer list */
     if (add_observer_to_module(src_module, observer) < 0) {
         LOG_FS("bind: Failed to add observer");
+        fs_bind_trace("libimp/FSB: bind add_observer failed src=%p obs=%p\n",
+                      src_module, observer);
         free(observer);
         return -1;
     }
 
     LOG_FS("bind: Successfully bound FrameSource to module");
+    fs_bind_trace("libimp/FSB: bind success src=%p dst=%p obs=%p\n",
+                  src_module, dst_module, observer);
     return 0;
 }
 

@@ -10,6 +10,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <errno.h>
+#include <stdarg.h>
 #include <sys/mman.h>
 #include <pthread.h>
 #include <semaphore.h>
@@ -109,6 +110,21 @@ static Module *g_modules[MAX_DEVICES][MAX_GROUPS];
 
 /* Global state */
 static uint64_t timestamp_base = 0;
+
+static void sys2_trace(const char *fmt, ...)
+{
+    int fd = open("/dev/kmsg", O_WRONLY);
+    if (fd < 0) return;
+
+    char buf[512];
+    va_list ap;
+    va_start(ap, fmt);
+    int n = vsnprintf(buf, sizeof(buf), fmt, ap);
+    va_end(ap);
+
+    if (n > 0) write(fd, buf, (size_t)n);
+    close(fd);
+}
 static pthread_mutex_t system_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 #define MAX_MEM_POOLS 16
@@ -228,9 +244,13 @@ static int BindObserverToSubject(Module *src, Module *dst, void *output_ptr) {
      * Guard against NULL here since not all our modules set bind_func yet. */
     int (*bind_fn)(Module*, Module*, void*) = (int (*)(Module*, Module*, void*))src->bind_func;
     if (bind_fn == NULL) {
+        sys2_trace("libimp/BIND2: BindObserverToSubject src=%p(%s) dst=%p(%s) outptr=%p bind_fn=NULL\n",
+                   src, src->name, dst, dst->name, output_ptr);
         IMP_LOG_ERR("System", "BindObserverToSubject: %s has no bind_func!\n", src->name);
         return -1;
     }
+    sys2_trace("libimp/BIND2: BindObserverToSubject src=%p(%s) dst=%p(%s) outptr=%p bind_fn=%p\n",
+               src, src->name, dst, dst->name, output_ptr, bind_fn);
     return bind_fn(src, dst, output_ptr);
 }
 
@@ -293,6 +313,13 @@ static int system_bind(IMPCell *srcCell, IMPCell *dstCell) {
     /* Calculate output pointer - from decompilation:
      * src_module + 0x128 + ((output_id + 4) << 2) */
     void *output_ptr = (void*)((char*)src_module + 0x128 + ((output_id + 4) << 2));
+
+    sys2_trace("libimp/BIND2: system_bind src=%p(%s) %d.%d.%d dst=%p(%s) %d.%d.%d outcnt=%u outptr=%p\n",
+               src_module, src_module->name,
+               srcCell->deviceID, srcCell->groupID, srcCell->outputID,
+               dst_module, dst_module->name,
+               dstCell->deviceID, dstCell->groupID, dstCell->outputID,
+               src_module->output_count, output_ptr);
 
     /* OEM calls BindObserverToSubject and always returns 0 */
     BindObserverToSubject(src_module, dst_module, output_ptr);
@@ -548,6 +575,9 @@ static int add_observer(Module *module, Observer *observer) {
     /* Add to head of list */
     observer->next = (Observer*)module->observer_list;
     module->observer_list = observer;
+    sys2_trace("libimp/BIND2: add_observer src=%p(%s) obs=%p dst=%p outidx=%d frame=%p next=%p\n",
+               module, module->name, observer, observer->module,
+               observer->output_index, observer->frame, observer->next);
 
     return 0;
 }
@@ -632,6 +662,8 @@ int notify_observers(Module *module, void *frame) {
     extern int VBMUnLockFrame(void *frame);
 
     Observer *obs = (Observer*)module->observer_list;
+    sys2_trace("libimp/BIND2: notify src=%p(%s) frame=%p first=%p\n",
+               module, module->name, frame, obs);
 
     while (obs != NULL) {
         if (obs->module != NULL) {
@@ -639,6 +671,9 @@ int notify_observers(Module *module, void *frame) {
 
             /* Store frame in observer */
             obs->frame = frame;
+            sys2_trace("libimp/BIND2: notify iter obs=%p dst=%p(%s) update=%p frame=%p outidx=%d\n",
+                       obs, dst_module, dst_module->name, dst_module->func_4c,
+                       frame, obs->output_index);
 
             /* Call the update function at offset 0x4c */
             if (dst_module->func_4c != NULL) {
@@ -646,6 +681,9 @@ int notify_observers(Module *module, void *frame) {
                 int (*update_fn)(Module*, void*) = (int (*)(Module*, void*))dst_module->func_4c;
 
                 update_fn(dst_module, frame);
+            } else {
+                sys2_trace("libimp/BIND2: notify skip dst=%p(%s) update=NULL frame=%p\n",
+                           dst_module, dst_module->name, frame);
                 /* OEM does NOT unlock frames on update failure — the caller
                  * (FrameSource capture thread) owns the frame lifecycle.
                  * Unlocking here caused double-free / use-after-free. */

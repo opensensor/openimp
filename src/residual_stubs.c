@@ -22,6 +22,8 @@
 #include <sys/ioctl.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <stdarg.h>
+#include "video/encoder_channel_layout.h"
 
 /* fs_* framesource kernel-interface thunks are provided by legacy
  * src/kernel_interface.c (included in BUILD=ported since it has the
@@ -224,6 +226,135 @@ int32_t sub_dcf40(void *a, void *b, void *c) { (void)a; (void)b; (void)c; return
 int32_t g_block_info_addr = 0;
 int32_t g_HwTimer = 0;
 
+static void enc_trace(const char *fmt, ...)
+{
+    int fd = open("/dev/kmsg", O_WRONLY);
+    if (fd < 0) return;
+
+    char buf[512];
+    va_list ap;
+    va_start(ap, fmt);
+    int n = vsnprintf(buf, sizeof(buf), fmt, ap);
+    va_end(ap);
+
+    if (n > 0) write(fd, buf, (size_t)n);
+    close(fd);
+}
+
+static EncoderCompatRuntime g_encoder_runtime[9];
+
+#define OEM_FRAME_CLONE_BYTES 0x30
+#define OEM_FRAME_SLOT_BYTES  0x458
+
+/* Local helper prototypes used by the encoder worker path before the
+ * bulk forward-declaration block below. */
+void   *Fifo_Dequeue(void *fifo_ptr, int32_t timeout_ms);
+int32_t Fifo_Queue(void *fifo_ptr, void *item, int32_t timeout_ms);
+int32_t AL_Codec_Encode_Process(void *codec, void *frame, void *user_data);
+
+static int encoder_thread_slot(void *arg1)
+{
+    if (arg1 == NULL) return -1;
+    int32_t chn = *(int32_t *)arg1;
+    if (chn < 0 || chn >= 9) return -1;
+    return chn;
+}
+
+static void *encoder_acquire_frame_slot(EncoderChannelLayout *chn)
+{
+    if (chn == NULL)
+        return NULL;
+    return Fifo_Dequeue(chn->public_stream_fifo, 0);
+}
+
+static void encoder_release_frame_slot(EncoderChannelLayout *chn, void *slot)
+{
+    if (chn == NULL || slot == NULL)
+        return;
+    Fifo_Queue(chn->public_stream_fifo, slot, -1);
+}
+
+static void encoder_unlock_and_release_frame(EncoderChannelLayout *chn, void *slot)
+{
+    void *vaddr;
+
+    if (chn == NULL || slot == NULL)
+        return;
+
+    vaddr = *(void **)((uint8_t *)slot + 0x1c);
+    if (vaddr != NULL)
+        VBMUnlockFrameByVaddr(vaddr);
+    encoder_release_frame_slot(chn, slot);
+}
+
+static int encoder_clone_source_frame(EncoderChannelLayout *chn, void *src_frame, void **slot_out)
+{
+    void *slot;
+    void *vaddr;
+
+    if (slot_out == NULL)
+        return -1;
+    *slot_out = NULL;
+    if (chn == NULL || src_frame == NULL)
+        return -1;
+
+    slot = encoder_acquire_frame_slot(chn);
+    if (slot == NULL)
+        return -1;
+
+    memset(slot, 0, OEM_FRAME_SLOT_BYTES);
+    memcpy(slot, src_frame, OEM_FRAME_CLONE_BYTES);
+
+    vaddr = *(void **)((uint8_t *)slot + 0x1c);
+    if (VBMLockFrameByVaddr(vaddr) == NULL) {
+        encoder_release_frame_slot(chn, slot);
+        return -1;
+    }
+
+    *slot_out = slot;
+    return 0;
+}
+
+static void *encoder_submit_thread(void *arg)
+{
+    EncoderChannelLayout *chn = (EncoderChannelLayout *)arg;
+    EncoderCompatRuntime *rt;
+    int slot;
+
+    slot = encoder_thread_slot(arg);
+    if (chn == NULL || slot < 0)
+        return NULL;
+    rt = &g_encoder_runtime[slot];
+
+    for (;;) {
+        void *frame;
+        void *codec;
+        int32_t proc_ret;
+
+        pthread_mutex_lock(enc_mutex_ptr(&rt->submit_mutex));
+        while (rt->pending_frame == NULL)
+            pthread_cond_wait(enc_cond_ptr(&rt->submit_cond), enc_mutex_ptr(&rt->submit_mutex));
+        frame = rt->pending_frame;
+        rt->pending_frame = NULL;
+        pthread_mutex_unlock(enc_mutex_ptr(&rt->submit_mutex));
+
+        if (frame == NULL)
+            continue;
+
+        codec = enc_channel_codec(chn);
+        if (codec == NULL || *enc_channel_recv_pic_started(chn) == 0) {
+            encoder_unlock_and_release_frame(chn, frame);
+            continue;
+        }
+
+        proc_ret = AL_Codec_Encode_Process(codec, frame, frame);
+        enc_trace("libimp/ENCX: submit-thread process-ret=%d ch=%d codec=%p frame=%p\n",
+                  proc_ret, chn->chn_id, codec, frame);
+        if (proc_ret < 0)
+            encoder_unlock_and_release_frame(chn, frame);
+    }
+}
+
 /* ----- halfword pack/unpack helpers ---------------------------------
  *
  * Thingino's stock libsysutils.so doesn't export these; define inside
@@ -311,6 +442,7 @@ int32_t AL_Encoder_NotifyUseLongTerm(void *enc);
 int32_t Fifo_Init(void *fifo_ptr, int32_t size);
 void    Fifo_Deinit(void *fifo_ptr);
 int32_t Fifo_Queue(void *fifo_ptr, void *item, int32_t timeout_ms);
+void   *Fifo_Dequeue(void *fifo_ptr, int32_t timeout_ms);
 
 /* AL_Buffer / meta / system timestamp helpers used by update_one_frmstrm. */
 uint32_t AL_Buffer_GetSize(void *buffer);
@@ -444,6 +576,7 @@ void do_release_frame(void *chn, void *srcFrame, int32_t flag)
 int32_t update_one_frmstrm(void *arg1_in)
 {
     uint8_t *arg1 = (uint8_t *)arg1_in;
+    EncoderChannelLayout *chn = (EncoderChannelLayout *)arg1_in;
     if (arg1 == NULL) return -1;
 
     void *var_40 = NULL;
@@ -462,7 +595,7 @@ int32_t update_one_frmstrm(void *arg1_in)
         return -1;
     }
 
-    pthread_mutex_lock((pthread_mutex_t *)(arg1 + 0x1a8));
+    pthread_mutex_lock(enc_mutex_ptr(&chn->queue_mutex));
     {
         uint32_t v0_1 = *(uint32_t *)(arg1 + 0x80);
         uint32_t v0_3 = ((v0_1 + 1U < v0_1) ? 1U : 0U)
@@ -470,7 +603,7 @@ int32_t update_one_frmstrm(void *arg1_in)
         *(uint32_t *)(arg1 + 0x80) = v0_1 + 1U;
         *(uint32_t *)(arg1 + 0x84) = v0_3;
     }
-    pthread_mutex_unlock((pthread_mutex_t *)(arg1 + 0x1a8));
+    pthread_mutex_unlock(enc_mutex_ptr(&chn->queue_mutex));
 
     /* $s7_1 = var_40[0x24/4]  (public frame struct inside user-data). */
     int32_t *s7_1 = *(int32_t **)((uint8_t *)var_40 + 0x24);
@@ -617,7 +750,7 @@ int32_t update_one_frmstrm(void *arg1_in)
     {
         int32_t qdepth = 0;
         sem_getvalue((sem_t *)(arg1 + 0x188), &qdepth);
-        int32_t s6_2 = *(int32_t *)(arg1 + 0x234) - (int32_t)s6_1;
+        int32_t s6_2 = *enc_channel_stream_capacity_bytes(chn) - (int32_t)s6_1;
         *(int32_t *)(arg1 + 0x114) = qdepth;
         *(int32_t *)(arg1 + 0x110) = s6_2;
     }
@@ -627,11 +760,11 @@ int32_t update_one_frmstrm(void *arg1_in)
         uint64_t one = 1;
         pthread_mutex_lock((pthread_mutex_t *)(arg1 + 0x1d8));
         (void)write(*(int32_t *)(arg1 + 0x220), &one, 8);
-        uint32_t v0_28 = *(uint32_t *)(arg1 + 0x228);
+        uint32_t v0_28 = *enc_channel_stream_ready_lo(chn);
         uint32_t v0_30 = ((v0_28 + 1U < v0_28) ? 1U : 0U)
-                       + *(uint32_t *)(arg1 + 0x22c);
-        *(uint32_t *)(arg1 + 0x228) = v0_28 + 1U;
-        *(uint32_t *)(arg1 + 0x22c) = v0_30;
+                       + *enc_channel_stream_ready_hi(chn);
+        *enc_channel_stream_ready_lo(chn) = v0_28 + 1U;
+        *enc_channel_stream_ready_hi(chn) = v0_30;
         sem_post((sem_t *)(arg1 + 0x188));
         sem_post((sem_t *)(arg1 + 0x198));
         pthread_cond_signal((pthread_cond_t *)(arg1 + 0x1f0));
@@ -728,36 +861,38 @@ static int32_t sub_8f5fc_impl(void)
 static int32_t sub_8fdc4_impl(uint8_t *arg1, uint8_t *arg2, int32_t arg3,
                               int32_t arg4, int32_t arg5)
 {
+    EncoderChannelLayout *chn = (EncoderChannelLayout *)arg1;
+    EncoderAttrLayout *attr = enc_channel_attr(chn);
     /* Aliases matching the HLIL variables for readability. */
-    uint32_t  v1_12 = *(uint8_t  *)(arg1 + 0x142);        /* uNotifyUserLTInter */
-    int32_t   v0    = *(int32_t  *)(arg1 + 0x2d8);        /* frame-index-counter */
+    uint32_t  v1_12 = attr->notify_user_lt_inter;
+    int32_t   v0    = *enc_channel_ltr_frame_index(chn);
     int32_t   v1_1  = 0;
     int32_t   arg_140 = 0;
     int32_t   a1_1  = 0;
-    uint8_t   en    = *(uint8_t  *)(arg1 + 0x148);        /* bEnableLT */
+    uint8_t   en    = attr->enable_lt;
 
     (void)arg3;
 
     /* Top guard: if LT is disabled OR bLTRC == 0, jump straight to the
      * "reset counter, set +0x450 = 0" exit path. */
     if (v1_12 == 0 || en == 0) {
-        *(int32_t *)(arg1 + 0x2dc) += 1;               /* GOP idx++ */
+        *enc_channel_ltr_gop_index(chn) += 1;
         *(uint8_t *)(arg2 + 0x450) = 0;                /* no LT notify */
         return sub_8f550_impl(NULL, 0, NULL, 0, NULL, arg1);
     }
 
     /* Post-GOP rollover: if GOP frame count hit uGopLength, reset. */
     {
-        uint32_t gop_len = (uint32_t)*(uint8_t *)(arg1 + 0x140)
-                           * *(uint32_t *)(arg1 + 0x144);
-        if (gop_len == (uint32_t)*(int32_t *)(arg1 + 0x2dc)) {
-            *(int32_t *)(arg1 + 0x2dc) = 0;
+        uint32_t gop_len = (uint32_t)attr->gop_length *
+                           attr->max_same_scene_cnt;
+        if (gop_len == (uint32_t)*enc_channel_ltr_gop_index(chn)) {
+            *enc_channel_ltr_gop_index(chn) = 0;
             a1_1 = 1;
         }
     }
 
     if (arg5 == 1) {
-        v1_1 = *(int32_t *)(arg1 + 0x14c);
+        v1_1 = (int32_t)attr->freq_lt;
         arg_140 = 1;
         goto label_8fe38;
     }
@@ -765,30 +900,30 @@ static int32_t sub_8fdc4_impl(uint8_t *arg1, uint8_t *arg2, int32_t arg3,
     /* Periodic-frequency path:  (v0 % v1_12) == 0 => new LT frame. */
     if (v1_12 == 0) __builtin_trap();
     if ((v0 % (int32_t)v1_12) == 0) {
-        v1_1 = *(int32_t *)(arg1 + 0x14c);
+        v1_1 = (int32_t)attr->freq_lt;
         arg_140 = 2;
-        arg4 = *(int32_t *)(arg1 + 0x2dc) + 1;
+        arg4 = *enc_channel_ltr_gop_index(chn) + 1;
         goto label_8fe38;
     }
 
-    if (v0 >= *(int32_t *)(arg1 + 0x14c)) {
+    if (v0 >= (int32_t)attr->freq_lt) {
         arg_140 = 3;
-        *(int32_t *)(arg1 + 0x2dc) += 1;
-        *(int32_t *)(arg1 + 0x2d8) = 0;
+        *enc_channel_ltr_gop_index(chn) += 1;
+        *enc_channel_ltr_frame_index(chn) = 0;
         goto label_8fe54;
     }
 
     arg_140 = 0;
-    *(int32_t *)(arg1 + 0x2dc) += 1;
+    *enc_channel_ltr_gop_index(chn) += 1;
     if (a1_1 == 1) {
-        *(int32_t *)(arg1 + 0x2d8) = 0;
+        *enc_channel_ltr_frame_index(chn) = 0;
     }
     *(uint8_t *)(arg2 + 0x450) = 0;
-    *(int32_t *)(arg1 + 0x2d8) = v0 + 1;
+    *enc_channel_ltr_frame_index(chn) = v0 + 1;
     return sub_8f550_impl(NULL, 0, NULL, 0, NULL, arg1);
 
 label_8fe38:
-    *(int32_t *)(arg1 + 0x2dc) = arg4;
+    *enc_channel_ltr_gop_index(chn) = arg4;
     if ((uint32_t)v0 < (uint32_t)v1_1 && a1_1 == 0 && arg5 == 0) {
         /* fall-through */
     }
@@ -796,18 +931,18 @@ label_8fe38:
 label_8fe54:
     /* *(arg1 + 8) is codec pointer; +0x798 is the AL_Encoder within it. */
     {
-        uint8_t *codec = *(uint8_t **)(arg1 + 8);
+        uint8_t *codec = (uint8_t *)enc_channel_codec(chn);
         if (codec != NULL) {
             AL_Encoder_NotifyUseLongTerm(*(void **)(codec + 0x798));
         }
     }
     if (arg_140 == 2) {
         *(uint8_t *)(arg2 + 0x450) = 1;
-        *(int32_t *)(arg1 + 0x2d8) += 1;
+        *enc_channel_ltr_frame_index(chn) += 1;
         return sub_8f550_impl(NULL, 0, NULL, 0, NULL, arg1);
     }
     *(uint8_t *)(arg2 + 0x450) = 0;
-    *(int32_t *)(arg1 + 0x2d8) = v0 + 1;
+    *enc_channel_ltr_frame_index(chn) = v0 + 1;
     return sub_8f550_impl(NULL, 0, NULL, 0, NULL, arg1);
 }
 
@@ -824,6 +959,7 @@ static int32_t sub_8f550_impl(uint8_t *s0_slot, int32_t i, uint8_t *frame,
                               int32_t s3_tag, uint8_t *s6_group,
                               uint8_t *enc)
 {
+    EncoderChannelLayout *chn = (EncoderChannelLayout *)enc;
     (void)s0_slot; (void)i; (void)frame; (void)s3_tag; (void)s6_group;
 
     if (enc == NULL) {
@@ -831,14 +967,21 @@ static int32_t sub_8f550_impl(uint8_t *s0_slot, int32_t i, uint8_t *frame,
         return 0;
     }
 
-    /* arg7[2] is the codec pointer (word-index 2 = byte offset 8). */
-    void *codec = *(void **)(enc + 8);
+    void *codec = enc_channel_codec(chn);
+    enc_trace("libimp/ENCX: sub_8f550 entry enc=%p codec=%p frame=%p ch=%d tag=%d\n",
+              enc, codec, frame, *enc_channel_stream_cookie(chn), s3_tag);
     if (codec != NULL) {
-        if (AL_Codec_Encode_Process(codec, NULL, NULL) < 0) {
+        int32_t proc_ret = AL_Codec_Encode_Process(codec, NULL, NULL);
+        enc_trace("libimp/ENCX: sub_8f550 process-ret=%d enc=%p codec=%p frame=%p\n",
+                  proc_ret, enc, codec, frame);
+        if (proc_ret < 0) {
             /* Log is elided; the HLIL imp_log_fun line is at 0x9029c. */
-            release_used_framestream(enc, *(int32_t *)(enc + 0x70));
+            release_used_framestream(enc, *enc_channel_stream_cookie(chn));
             return sub_8f5fc_impl();
         }
+    } else {
+        enc_trace("libimp/ENCX: sub_8f550 codec-null enc=%p frame=%p\n",
+                  enc, frame);
     }
 
     /* Timing-budget update (HLIL 0x8f580..0x8f5d8):
@@ -862,8 +1005,11 @@ static int32_t sub_8f550_impl(uint8_t *s0_slot, int32_t i, uint8_t *frame,
             if (budget < v_hi) budget = v_hi;
             *(int32_t *)(frame + 0x10c) = budget;
             *(int32_t *)(frame + 0x11c) = 1;
+            enc_trace("libimp/ENCX: sub_8f550 budget=%d meta=%p frame=%p\n",
+                      budget, meta_root, frame);
         }
     }
+    enc_trace("libimp/ENCX: sub_8f550 exit enc=%p frame=%p\n", enc, frame);
     return 0;
 }
 
@@ -884,12 +1030,15 @@ static int32_t sub_8f698_impl(uint8_t *s0_slot, int32_t i, uint8_t *frame,
                               int32_t s5_dst_w, uint8_t *s6_group,
                               uint8_t *enc)
 {
+    EncoderChannelLayout *chn = (EncoderChannelLayout *)enc;
+    EncoderAttrLayout *attr;
     (void)s0_slot; (void)i; (void)s3_tag; (void)s6_group;
 
     if (enc == NULL || frame == NULL) return sub_8f5fc_impl();
+    attr = enc_channel_attr(chn);
 
     /* enc[0x94] = resize_frame block allocated earlier (0x428 bytes). */
-    uint8_t *resize_frame = *(uint8_t **)(enc + 0x94 * 4);
+    uint8_t *resize_frame = (uint8_t *)*enc_channel_resize_frame_slot(chn);
     if (resize_frame == NULL) return sub_8f5fc_impl();
 
     /* memcpy 0x108 words from the incoming frame record (arg3) into
@@ -897,17 +1046,17 @@ static int32_t sub_8f698_impl(uint8_t *s0_slot, int32_t i, uint8_t *frame,
     memcpy(resize_frame, frame, 0x108 * sizeof(uint32_t));
 
     /* Stash user-data pointer and trigger the resize kernel. */
-    *(uint8_t **)(resize_frame + 6 * 4) = *(uint8_t **)(enc + 0x97 * 4);
-    *(int32_t *)(resize_frame + 7 * 4) = *(int32_t *)(enc + 0x97 * 4);
-    *(int32_t *)(resize_frame + 2 * 4) = (int32_t)*(uint16_t *)(enc + 0x9e);
-    *(int32_t *)(resize_frame + 3 * 4) = (int32_t)*(uint16_t *)(enc + 0x28 * 4);
+    *(void **)(resize_frame + 6 * 4) = *enc_channel_resize_user_slot(chn);
+    *(int32_t *)(resize_frame + 7 * 4) = (int32_t)(intptr_t)*enc_channel_resize_user_slot(chn);
+    *(int32_t *)(resize_frame + 2 * 4) = (int32_t)attr->width;
+    *(int32_t *)(resize_frame + 3 * 4) = (int32_t)attr->height;
     *(int32_t *)(resize_frame + 5 * 4) = (s5_dst_w * s4_dst_h * 3) >> 1;
 
     /* Dispatch resize.  enc[0x98] is a function pointer set to either
      * c_resize_c or c_resize_simd by the caller (see
      * on_encoder_group_data_update's resize-kernel selection). */
     {
-        void (*resize_fn)(void) = *(void (**)(void))(enc + 0x98 * 4);
+        void (*resize_fn)(void) = *enc_channel_resize_fn_slot(chn);
         if (resize_fn != NULL) resize_fn();
     }
 
@@ -933,9 +1082,18 @@ static int32_t sub_8eea0_impl(uint8_t *s0_slot, int32_t i, uint8_t *frame,
                               int32_t s3_tag, uint8_t *s4_priv,
                               uint8_t *s6_group, uint8_t *enc)
 {
+    EncoderChannelLayout *chn = (EncoderChannelLayout *)enc;
+    EncoderAttrLayout *attr;
     (void)s0_slot; (void)i; (void)s3_tag; (void)s4_priv; (void)s6_group;
 
     if (enc == NULL || frame == NULL) return sub_8f5fc_impl();
+    attr = enc_channel_attr(chn);
+
+    enc_trace("libimp/ENCX: sub_8eea0 entry enc=%p frame=%p lane=%d fps=%d/%d mode=%u\n",
+              enc, frame, i,
+              *(int32_t *)(frame + 0xb * 4),
+              *(int32_t *)(frame + 0xc * 4),
+              (unsigned)*enc_channel_resize_mode(chn));
 
     /* Frame record: offsets 0xb = frmRateNum, 0xc = frmRateDen (word idx). */
     int32_t v0_1 = *(int32_t *)(frame + 0xc * 4);
@@ -943,16 +1101,15 @@ static int32_t sub_8eea0_impl(uint8_t *s0_slot, int32_t i, uint8_t *frame,
 
     /* HLIL loop at 0x8eea0: iterate while src aspect != dst aspect.
      * We compute once (the loop's body always writes the same values). */
-    int32_t dst_w = (int32_t)*(uint16_t *)(enc + 0x4b * 4);   /* enc[0x4b] */
-    int32_t dst_h = (int32_t)*(uint16_t *)(enc + 0x4c * 4);   /* enc[0x4c] */
+    int32_t dst_w = (int32_t)attr->width;
+    int32_t dst_h = (int32_t)attr->height;
 
     if ((int64_t)v0_1 * (int64_t)dst_w == (int64_t)v1_1 * (int64_t)dst_h) {
         /* aspect matches — no reduce_fraction adjustment needed */
     } else {
-        *(int32_t *)(enc + 0x4b * 4) = v1_1;
-        *(int32_t *)(enc + 0x4c * 4) = v0_1;
-        c_reduce_fraction((int32_t *)(enc + 0x4b * 4),
-                          (int32_t *)(enc + 0x4c * 4));
+        int32_t fps_num = v1_1;
+        int32_t fps_den = v0_1;
+        c_reduce_fraction(&fps_num, &fps_den);
     }
 
     /* ----------------------------------------------------------------
@@ -970,9 +1127,9 @@ static int32_t sub_8eea0_impl(uint8_t *s0_slot, int32_t i, uint8_t *frame,
      * The truncation drives QP-delta table selection (writing a signed
      * 16-bit word to enc[0x50]). */
     {
-        int32_t v1_6 = *(int32_t *)(enc + 0x3b * 4);
-        int32_t a0_2 = (int32_t)*(uint16_t *)(enc + 0x3d * 4);
-        int32_t v0_4 = *(int32_t *)(enc + 0x3a * 4);
+        int32_t v1_6 = (int32_t)attr->out_fps_den;
+        int32_t a0_2 = (int32_t)attr->gop_length;
+        int32_t v0_4 = (int32_t)attr->out_fps_num;
 
         /* lwc1 / cvt.s.w with MIPS sign-bit fixup (add 2^32 when the
          * integer is negative viewed as signed). */
@@ -987,10 +1144,10 @@ static int32_t sub_8eea0_impl(uint8_t *s0_slot, int32_t i, uint8_t *frame,
         /* Secondary recompute when arg13[0x50] != gop (HLIL label
          * 0x8f028 branch): use the previously stored truncated value
          * arg13[0x50] as numerator scale. */
-        uint32_t prev_trunc = (uint32_t)*(uint16_t *)(enc + 0x50 * 4);
+        uint32_t prev_trunc = (uint32_t)attr->gop_length;
         if (prev_trunc != 0 && (uint32_t)a0_2 != prev_trunc) {
-            uint32_t v1_9 = (uint32_t)*(int32_t *)(enc + 0x3a * 4);
-            uint32_t a0_3 = (uint32_t)*(int32_t *)(enc + 0x3b * 4);
+            uint32_t v1_9 = attr->out_fps_num;
+            uint32_t a0_3 = attr->out_fps_den;
             uint32_t v0_8 = prev_trunc * a0_3;
             float f2_2 = (float)(int32_t)v1_9;
             if ((int32_t)v1_9 < 0) f2_2 += 4294967296.0f;
@@ -1003,29 +1160,34 @@ static int32_t sub_8eea0_impl(uint8_t *s0_slot, int32_t i, uint8_t *frame,
 
         /* trunc.w.s into the 16-bit slot at arg13[0x50]. */
         int32_t truncated = (int32_t)f22;               /* toward zero */
-        *(uint16_t *)(enc + 0x50 * 4) = (uint16_t)truncated;
+        (void)truncated;
     }
 
     /* Commit the new fps to the codec.  The fps arg is a packed
      * (num<<16 | den*1000) word on the stock binary — we pass the raw
      * reduced fraction as a 2-word array. */
     {
-        void *codec = *(void **)(enc + 8);
+        void *codec = enc_channel_codec(chn);
         uint32_t fps_pair[2];
-        fps_pair[0] = (uint32_t)*(uint16_t *)(enc + 0x4d * 4);
-        fps_pair[1] = (*(uint32_t *)(enc + 0x4e * 4) * 1000U) & 0xfff8U;
+        fps_pair[0] = attr->out_fps_num;
+        fps_pair[1] = (attr->out_fps_den * 1000U) & 0xfff8U;
         if (codec != NULL) {
+            enc_trace("libimp/ENCX: sub_8eea0 set-fps codec=%p pair=%u/%u enc=%p\n",
+                      codec, fps_pair[0], fps_pair[1], enc);
             AL_Codec_Encode_SetFrameRate(codec, fps_pair);
         }
     }
 
     /* If encAttr.uLevel == 0xFE (long-term-RC), tail-call into sub_8fdc4. */
-    if (*(int32_t *)(enc + 0x4f * 4) == 0xfe) {
+    if ((int32_t)attr->gop_ctrl_mode == 0xfe) {
         /* Dummy stream record — sub_8fdc4 only writes +0x450. */
         static uint8_t stream_dummy[0x460];
+        enc_trace("libimp/ENCX: sub_8eea0 ltr-path enc=%p\n", enc);
         return sub_8fdc4_impl(enc, stream_dummy, 0, 0, 1);
     }
 
+    enc_trace("libimp/ENCX: sub_8eea0 dispatch enc=%p frame=%p lane=%d\n",
+              enc, frame, i);
     return sub_8f550_impl(s0_slot, i, frame, s3_tag, NULL, enc);
 }
 
@@ -1043,6 +1205,11 @@ int32_t on_encoder_group_data_update(void *arg1, void *arg2)
 
     int32_t s3_1 = *(int32_t *)(group + 2 * 4);            /* group->id */
     uint8_t *s1_1 = *(uint8_t **)(group + 0 * 4);          /* group->slots */
+    enc_trace("libimp/ENCX: group_update entry group=%p frame=%p gid=%d slots=%p src=%ux%u fmt=%u\n",
+              group, frame, s3_1, s1_1,
+              *(unsigned *)(frame + 2 * 4),
+              *(unsigned *)(frame + 3 * 4),
+              *(unsigned *)(frame + 0xa * 4));
 
     /* Dev-mode snapshot: if /tmp/mountdir/encsnap%d.nv12 exists & is
      * writable, dump the current frame (Y + UV) to it. */
@@ -1073,18 +1240,57 @@ int32_t on_encoder_group_data_update(void *arg1, void *arg2)
     uint8_t *s0 = s1_1 + (size_t)s3_1 * 0x14U;
     for (int32_t i = 0; i < 3; i++, s0 += 4) {
         uint8_t *enc = *(uint8_t **)(s0 + 0x4c);
-        if (enc == NULL) continue;
-        if (*(uint8_t *)(enc + 0x42 * 4) == 0) continue;   /* !running */
-        if (*(int32_t *)(enc + 0x5c * 4) == 0) continue;   /* !codec */
+        EncoderChannelLayout *chn = (EncoderChannelLayout *)enc;
+        EncoderAttrLayout *attr;
+        void *codec;
+        if (enc == NULL) {
+            enc_trace("libimp/ENCX: group_update lane=%d enc=NULL\n", i);
+            continue;
+        }
+        enc_trace("libimp/ENCX: group_update lane=%d enc=%p started=%u enabled=%u reg=%u grp=%p codec=%p\n",
+                  i,
+                  enc,
+                  (unsigned)*enc_channel_recv_pic_started(chn),
+                  (unsigned)*enc_channel_recv_pic_enabled(chn),
+                  enc_channel_group_codec_slot(chn) && *enc_channel_group_codec_slot(chn) ? 1U : 0U,
+                  enc_channel_group_codec_slot(chn),
+                  enc_channel_codec(chn));
+        attr = enc_channel_attr(chn);
+        codec = enc_channel_codec(chn);
+        enc_trace("libimp/ENCX: group_update lane=%d attr=%p codec=%p enc_sz=%ux%u frame_sz=%ux%u fmt=%u\n",
+                  i,
+                  attr,
+                  codec,
+                  attr ? (unsigned)attr->width : 0U,
+                  attr ? (unsigned)attr->height : 0U,
+                  *(unsigned *)(frame + 2 * 4),
+                  *(unsigned *)(frame + 3 * 4),
+                  *(unsigned *)(frame + 0xa * 4));
+        if (codec == NULL) {
+            enc_trace("libimp/ENCX: group_update lane=%d enc=%p skip codec=NULL\n",
+                      i, enc);
+            continue;
+        }
+        if (*enc_channel_recv_pic_started(chn) == 0) {
+            enc_trace("libimp/ENCX: group_update lane=%d enc=%p skip recv=0 codec=%p\n",
+                      i, enc, codec);
+            continue;
+        }
 
-        uint32_t mode = *(uint8_t *)(enc + 0x9b * 4);
+        uint32_t mode = *enc_channel_resize_mode(chn);
+        enc_trace("libimp/ENCX: group_update lane=%d enc=%p mode=%u enc_sz=%ux%u frame_sz=%ux%u\n",
+                  i, enc, mode,
+                  (unsigned)attr->width,
+                  (unsigned)attr->height,
+                  *(unsigned *)(frame + 2 * 4),
+                  *(unsigned *)(frame + 3 * 4));
 
         /* mode != 4 and mode < 2 => full resize path with buffer alloc. */
         if (mode < 2 || mode == 4) {
             uint32_t src_w = *(uint32_t *)(frame + 2 * 4);
-            uint16_t enc_w = *(uint16_t *)(enc + 0x9e);
+            uint16_t enc_w = attr->width;
             uint32_t src_h = *(uint32_t *)(frame + 3 * 4);
-            uint16_t enc_h = *(uint16_t *)(enc + 0x28 * 4);
+            uint16_t enc_h = attr->height;
 
             uint32_t fmt_flags = *(uint32_t *)(frame + 0xa * 4);
             if ((src_w != enc_w || src_h != enc_h) && fmt_flags != 1) {
@@ -1092,9 +1298,9 @@ int32_t on_encoder_group_data_update(void *arg1, void *arg2)
                 int32_t s4 = ((int32_t)enc_h + 0xf) & ~0xf;
 
                 /* Allocate resize-frame block (0x428 bytes) on demand. */
-                if (*(void **)(enc + 0x94 * 4) == NULL) {
+                if (*enc_channel_resize_frame_slot(chn) == NULL) {
                     void *p = malloc(0x428);
-                    *(void **)(enc + 0x94 * 4) = p;
+                    *enc_channel_resize_frame_slot(chn) = p;
                     if (p == NULL) {
                         int32_t opt = IMP_Log_Get_Option();
                         imp_log_fun(6, opt, 2, "Encoder",
@@ -1108,13 +1314,13 @@ int32_t on_encoder_group_data_update(void *arg1, void *arg2)
                 }
 
                 /* Allocate resize-tmp buffer sized for the scaler. */
-                if (*(void **)(enc + 0x96 * 4) == NULL) {
+                if (*enc_channel_resize_tmp_slot(chn) == NULL) {
                     int32_t a0 = (int32_t)src_h;
                     int32_t fp = (int32_t)src_w;
                     if (s5 >= fp) fp = s5;
                     if (a0 < s4) a0 = s4;
                     void *p = malloc((size_t)((a0 * 6 + fp * 5 + 0xa20) << 1));
-                    *(void **)(enc + 0x96 * 4) = p;
+                    *enc_channel_resize_tmp_slot(chn) = p;
                     if (p == NULL) {
                         int32_t opt = IMP_Log_Get_Option();
                         imp_log_fun(6, opt, 2, "Encoder",
@@ -1128,19 +1334,23 @@ int32_t on_encoder_group_data_update(void *arg1, void *arg2)
                 }
 
                 /* Select resize kernel — SIMD128 if CPU supports it. */
-                if (*(void **)(enc + 0x97 * 4) == NULL ||
-                    *(void **)(enc + 0x95 * 4) == NULL) {
+                if (*enc_channel_resize_user_slot(chn) == NULL ||
+                    *enc_channel_resize_tmp_slot(chn) == NULL) {
                     /* Stash source-frame user pointer so sub_8f698 can
                      * re-emit it to the resize kernel. */
-                    *(void **)(enc + 0x97 * 4) =
-                        *(void **)(frame + 7 * 4);
+                    *enc_channel_resize_user_slot(chn) = *(void **)(frame + 7 * 4);
                     if (is_has_simd128() == 0) {
-                        *(void (**)(void))(enc + 0x98 * 4) = c_resize_c;
+                        *enc_channel_resize_fn_slot(chn) = c_resize_c;
                     } else {
-                        *(void (**)(void))(enc + 0x98 * 4) = c_resize_simd;
+                        *enc_channel_resize_fn_slot(chn) = c_resize_simd;
                     }
                 }
 
+                enc_trace("libimp/ENCX: group_update lane=%d resize-path enc=%p dst=%dx%d tmp=%p framebuf=%p kernel=%p\n",
+                          i, enc, s5, s4,
+                          *enc_channel_resize_tmp_slot(chn),
+                          *enc_channel_resize_frame_slot(chn),
+                          *enc_channel_resize_fn_slot(chn));
                 sub_8f698_impl(s0, i, frame, 0, s4, s5, group, enc);
                 continue;
             }
@@ -1168,12 +1378,32 @@ int32_t on_encoder_group_data_update(void *arg1, void *arg2)
                 *(int32_t *)(frame + 0x100 * 4) = (int32_t)(uint32_t)(ts >> 32);
             }
 
-            sub_8eea0_impl(s0, i, frame, 0, NULL, group, enc);
+            {
+                void *queued_frame = NULL;
+                EncoderCompatRuntime *rt = &g_encoder_runtime[chn->chn_id];
+                int clone_ret;
+
+                clone_ret = encoder_clone_source_frame(chn, frame, &queued_frame);
+                enc_trace("libimp/ENCX: group_update lane=%d direct-path enc=%p frame=%p clone_ret=%d queued=%p\n",
+                          i, enc, frame, clone_ret, queued_frame);
+                if (clone_ret < 0) {
+                    sub_8f5fc_impl();
+                    continue;
+                }
+
+                pthread_mutex_lock(enc_mutex_ptr(&rt->submit_mutex));
+                if (rt->pending_frame != NULL)
+                    encoder_unlock_and_release_frame(chn, rt->pending_frame);
+                rt->pending_frame = queued_frame;
+                pthread_cond_signal(enc_cond_ptr(&rt->submit_cond));
+                pthread_mutex_unlock(enc_mutex_ptr(&rt->submit_mutex));
+            }
         }
     }
 
     /* Remember this frame record in the group for the next update. */
     *(uint8_t **)(group + 4 * 4) = frame;
+    enc_trace("libimp/ENCX: group_update exit group=%p frame=%p\n", group, frame);
     return 0;
 }
 
@@ -1184,16 +1414,19 @@ int32_t on_encoder_group_data_update(void *arg1, void *arg2)
  * ratio at enc+0x6c/+0x70, then hands it to do_release_frame. */
 void *release_frame_thread(void *arg)
 {
-    uint8_t *p = (uint8_t *)arg;
-    if (p == NULL) return NULL;
+    EncoderChannelLayout *chn = (EncoderChannelLayout *)arg;
+    EncoderCompatRuntime *rt;
+    int slot = encoder_thread_slot(arg);
+    if (chn == NULL || slot < 0) return NULL;
+    rt = &g_encoder_runtime[slot];
 
     for (;;) {
-        sem_wait((sem_t *)(p + 0x40));
-        pthread_mutex_lock((pthread_mutex_t *)(p + 0x50));
-        void   *s1 = *(void    **)(p + 0x74);
-        int32_t s2 = *(int32_t  *)(p + 0x6c);
-        int32_t s6 = *(int32_t  *)(p + 0x70);
-        pthread_mutex_unlock((pthread_mutex_t *)(p + 0x50));
+        sem_wait(enc_sem_ptr(&rt->release_sem));
+        pthread_mutex_lock(enc_mutex_ptr(&rt->release_mutex));
+        void *s1 = rt->release_frame;
+        int32_t s2 = rt->release_num;
+        int32_t s6 = rt->release_den;
+        pthread_mutex_unlock(enc_mutex_ptr(&rt->release_mutex));
 
         /* release_frame_thread checks the source-frame at +0x430 flag
          * for "ready" before pacing; NULL-frame wakes are cancel pings. */
@@ -1205,6 +1438,7 @@ void *release_frame_thread(void *arg)
          * delta (low:high).  The HLIL computes
          *   usleep((s2 * [v0:v1]_signed64) / s6)
          * where s2 is numerator weight (num) and s6 is denom weight. */
+        uint8_t *p = (uint8_t *)chn;
         int32_t v1 = *(int32_t *)(p + 0x298);
         int32_t v0 = *(int32_t *)(p + 0x29c);
         if (((v1 | v0) != 0) && s2 != 0 && s6 != 0) {
@@ -1216,7 +1450,7 @@ void *release_frame_thread(void *arg)
             }
         }
 
-        do_release_frame(p, s1, 0);
+        do_release_frame(chn, s1, 0);
     }
 }
 
@@ -1277,12 +1511,21 @@ void *update_frmstrm(void *arg)
  *   9.  sem_init, pthread_mutex_init.
  *  10.  pthread_create(release_frame_thread), pthread_create(update_frmstrm).
  */
-int32_t channel_encoder_init(void *arg1)
+int32_t channel_encoder_init(EncoderChannelLayout *chn)
 {
-    uint8_t *p = (uint8_t *)arg1;
-    if (p == NULL) return -1;
+    uint8_t *p = (uint8_t *)chn;
+    EncoderAttrLayout *attr;
+    if (chn == NULL) return -1;
 
-    int32_t chn_id = *(int32_t *)p;
+    int32_t chn_id = chn->chn_id;
+    EncoderCompatRuntime *rt;
+    int slot = encoder_thread_slot(chn);
+    if (slot < 0) return -1;
+    rt = &g_encoder_runtime[slot];
+    memset(rt, 0, sizeof(*rt));
+    attr = enc_channel_attr(chn);
+
+    enc_trace("libimp/CHINIT: enter chn=%d ch=%p\n", chn_id, chn);
 
     /* -- (1) AL_Codec_Encode_SetDefaultParam + encAttr → codec_params - */
     uint8_t codec_params[0x7c8];
@@ -1320,16 +1563,16 @@ int32_t channel_encoder_init(void *arg1)
     *(uint8_t  *)(codec_params + 0x769) = 0;
     *(int32_t  *)(codec_params + 0x76c) = 0x10;
     memcpy(codec_params + 0x764, "NV12", 4);
-    *(uint16_t *)(codec_params + 0x08)  = *(uint16_t *)(p + 0x9e);     /* width */
-    *(uint16_t *)(codec_params + 0x0a)  = *(uint16_t *)(p + 0x28 * 4); /* height */
-    *(uint16_t *)(codec_params + 0x0c)  = *(uint16_t *)(p + 0x9e);     /* width dup */
-    *(uint16_t *)(codec_params + 0x0e)  = *(uint16_t *)(p + 0x28 * 4); /* height dup */
-    *(int32_t  *)(codec_params + 0x14)  = *(int32_t  *)(p + 0x29 * 4); /* ePicFormat */
-    *(int32_t  *)(codec_params + 0x20)  = *(int32_t  *)(p + 0x26 * 4); /* profile */
-    *(uint8_t  *)(codec_params + 0x24)  = *(uint8_t  *)(p + 0x27 * 4); /* uLevel */
-    *(uint8_t  *)(codec_params + 0x25)  = *(uint8_t  *)(p + 0x9d);     /* uTier */
-    *(int32_t  *)(codec_params + 0x30)  = *(int32_t  *)(p + 0x2a * 4); /* encOptions */
-    *(int32_t  *)(codec_params + 0x34)  = *(int32_t  *)(p + 0x2b * 4); /* encTools */
+    *(uint16_t *)(codec_params + 0x08)  = attr->width;
+    *(uint16_t *)(codec_params + 0x0a)  = attr->height;
+    *(uint16_t *)(codec_params + 0x0c)  = attr->width;
+    *(uint16_t *)(codec_params + 0x0e)  = attr->height;
+    *(int32_t  *)(codec_params + 0x14)  = (int32_t)attr->pic_format;
+    *(int32_t  *)(codec_params + 0x20)  = (int32_t)attr->profile;
+    *(uint8_t  *)(codec_params + 0x24)  = attr->level;
+    *(uint8_t  *)(codec_params + 0x25)  = attr->tier;
+    *(int32_t  *)(codec_params + 0x30)  = (int32_t)attr->enc_options;
+    *(int32_t  *)(codec_params + 0x34)  = (int32_t)attr->enc_tools;
     *(int32_t  *)(codec_params + 0xec)  = *(int32_t  *)(p + 0x8e * 4); /* var_6d4 */
 
     /* var_6b0 = 0; then conditional var_768 for specific arg1[0x5b] values */
@@ -1342,18 +1585,17 @@ int32_t channel_encoder_init(void *arg1)
     }
 
     /* JPEG-specific: if profile == 0x4000000 copy fields from arg1[0xb2..0xb4]. */
-    if (*(int32_t *)(p + 0x26 * 4) == 0x4000000) {
+    if ((int32_t)attr->profile == 0x4000000) {
         *(uint8_t *)(codec_params + 0xcc) = *(uint8_t *)(p + 0xb3);
         *(int32_t *)(codec_params + 0xd0) = *(int32_t *)(p + 0xb2 * 4);
         *(int32_t *)(codec_params + 0xd4) = *(int32_t *)(p + 0xb4 * 4);
     }
 
     /* -- (2) + (3) FPS reduce + fraction pack --------------------------- */
-    c_reduce_fraction((int32_t *)(p + 0x3a * 4), (int32_t *)(p + 0x3b * 4));
+    c_reduce_fraction((int32_t *)&attr->out_fps_num, (int32_t *)&attr->out_fps_den);
 
-    *(int32_t *)(p + 0x4d * 4) = (int32_t)(uint16_t)*(int32_t *)(p + 0x3a * 4);
-    *(int32_t *)(p + 0x4e * 4) =
-        (uint32_t)(*(int32_t *)(p + 0x3b * 4) * 1000) / 1000U;
+    *(int32_t *)(p + 0x4d * 4) = (int32_t)(uint16_t)attr->out_fps_num;
+    *(int32_t *)(p + 0x4e * 4) = (int32_t)((attr->out_fps_den * 1000U) / 1000U);
 
     /* The 6 fps/tune fields at src word 0x3c..0x41 repack into 0x4f..0x54. */
     *(int32_t *)(p + 0x4f * 4) = _setRightPart32(*(uint32_t *)(p + 0x3c * 4));
@@ -1680,21 +1922,30 @@ int32_t channel_encoder_init(void *arg1)
         int kfd = open("/dev/kmsg", O_WRONLY);
         if (kfd >= 0) {
             char buf[256];
-            int32_t *rc = (int32_t *)(p + 0x31 * 4);
+            const EncoderRcAttrLayout *rc = &attr->rc;
             int n = snprintf(buf, sizeof(buf),
                 "libimp/ENC: user rcAttr: mode=%d br=%d br2=%d qp=%d "
                 "fld3=%d fld4=%d fld5=%d fld6=%d fld7=%d fld8=%d "
                 "fps@0x3a=%d/%d\n",
-                rc[0], rc[1], rc[2], rc[3],
-                rc[4], rc[5], rc[6], rc[7], rc[8], rc[9],
-                *(int32_t *)(p + 0x3a * 4),
-                *(int32_t *)(p + 0x3b * 4));
+                (int32_t)rc->rc_mode,
+                (int32_t)rc->u.vbr.target_bitrate,
+                (int32_t)rc->u.vbr.max_bitrate,
+                (int32_t)rc->u.fixqp.qp,
+                (int32_t)rc->u.cbr.min_qp,
+                (int32_t)rc->u.cbr.max_qp,
+                (int32_t)rc->u.cbr.ip_delta,
+                (int32_t)rc->u.cbr.pb_delta,
+                (int32_t)rc->u.cbr.rc_options,
+                (int32_t)rc->u.cbr.max_picture_size,
+                (int32_t)attr->out_fps_num,
+                (int32_t)attr->out_fps_den);
             if (n > 0) write(kfd, buf, (size_t)n);
             close(kfd);
         }
     }
     if (channel_encoder_set_rc_param(codec_params + 0x6c,
-                                     p + 0x31 * 4) < 0) {
+                                     &attr->rc) < 0) {
+        enc_trace("libimp/CHINIT: rc-param-fail chn=%d\n", chn_id);
         int32_t opt = IMP_Log_Get_Option();
         imp_log_fun(6, opt, 2, "Encoder",
             "/home/user/git/proj/sdk-lv3/src/imp/video/imp_encoder.c",
@@ -1702,9 +1953,14 @@ int32_t channel_encoder_init(void *arg1)
             "channel_encoder_set_rc_param failed\n");
         return -1;
     }
+    enc_trace("libimp/CHINIT: rc-param-ok chn=%d\n", chn_id);
 
     /* outFrmRate sanity */
-    if (*(int32_t *)(p + 0x3a * 4) == 0 || *(int32_t *)(p + 0x3b * 4) == 0) {
+    if (attr->out_fps_num == 0 || attr->out_fps_den == 0) {
+        enc_trace("libimp/CHINIT: fps-invalid chn=%d num=%d den=%d\n",
+                  chn_id,
+                  (int32_t)attr->out_fps_num,
+                  (int32_t)attr->out_fps_den);
         /* HLIL calls __assert here — we fail loudly. */
         int32_t opt = IMP_Log_Get_Option();
         imp_log_fun(6, opt, 2, "Encoder",
@@ -1751,13 +2007,15 @@ int32_t channel_encoder_init(void *arg1)
                 (unsigned)cb[0x3c],
                 (unsigned)*(uint16_t *)(cb + 0x40),
                 (int)*(int8_t *)(cb + 0x80),
-                (unsigned)*(uint16_t *)((uint8_t*)arg1 + 0x114),
-                (unsigned)*(uint16_t *)((uint8_t*)arg1 + 0x116));
+                (unsigned)*(uint16_t *)((uint8_t*)chn + 0x114),
+                (unsigned)*(uint16_t *)((uint8_t*)chn + 0x116));
             if (n > 0) write(kfd, buf, (size_t)n);
             close(kfd);
         }
     }
     int32_t cec_ret = AL_Codec_Encode_Create(&codec_handle, codec_params);
+    enc_trace("libimp/CHINIT: codec-create chn=%d ret=%d handle=%p\n",
+              chn_id, cec_ret, codec_handle);
     {
         int kfd = open("/dev/kmsg", O_WRONLY);
         if (kfd >= 0) {
@@ -1770,6 +2028,8 @@ int32_t channel_encoder_init(void *arg1)
         }
     }
     if (cec_ret < 0 || codec_handle == NULL) {
+        enc_trace("libimp/CHINIT: codec-create-fail chn=%d ret=%d handle=%p\n",
+                  chn_id, cec_ret, codec_handle);
         int32_t opt = IMP_Log_Get_Option();
         imp_log_fun(6, opt, 2, "Encoder",
             "/home/user/git/proj/sdk-lv3/src/imp/video/imp_encoder.c",
@@ -1777,17 +2037,19 @@ int32_t channel_encoder_init(void *arg1)
             "Codec_Encode_Create failed\n");
         return -1;
     }
-    *(void **)(p + 2 * 4) = codec_handle;
+    chn->codec_handle = enc_ptr_as_u32(codec_handle);
 
     /* Reset CappedVbr/CappedQuality cold fields. */
-    pthread_mutex_lock((pthread_mutex_t *)(p + 0x6a * 4));
+    pthread_mutex_lock(enc_mutex_ptr(&chn->queue_mutex));
     memset(p + 0x1e * 4, 0, 0x18);
-    pthread_mutex_unlock((pthread_mutex_t *)(p + 0x6a * 4));
+    pthread_mutex_unlock(enc_mutex_ptr(&chn->queue_mutex));
 
     /* -- (6) Query src-frame count / size ------------------------------ */
     if (AL_Codec_Encode_GetSrcFrameCntAndSize(codec_handle,
-                                              (int32_t *)(p + 3 * 4),
-                                              (int32_t *)(p + 4 * 4)) < 0) {
+                                              &chn->src_frame_cnt,
+                                              &chn->src_frame_size) < 0) {
+        enc_trace("libimp/CHINIT: src-info-fail chn=%d codec=%p\n",
+                  chn_id, codec_handle);
         int32_t opt = IMP_Log_Get_Option();
         imp_log_fun(6, opt, 2, "Encoder",
             "/home/user/git/proj/sdk-lv3/src/imp/video/imp_encoder.c",
@@ -1797,8 +2059,8 @@ int32_t channel_encoder_init(void *arg1)
         return -1;
     }
 
-    int32_t src_cnt = *(int32_t *)(p + 3 * 4);
-    int32_t src_sz  = *(int32_t *)(p + 4 * 4);
+    int32_t src_cnt = chn->src_frame_cnt;
+    int32_t src_sz  = chn->src_frame_size;
     {
         int32_t opt = IMP_Log_Get_Option();
         imp_log_fun(4, opt, 2, "Encoder",
@@ -1807,11 +2069,15 @@ int32_t channel_encoder_init(void *arg1)
             "encChn=%d,srcFrameCnt=%u,srcFrameSize=%u\n",
             chn_id, src_cnt, src_sz);
     }
+    enc_trace("libimp/CHINIT: src-info-ok chn=%d cnt=%d size=%d\n",
+              chn_id, src_cnt, src_sz);
 
     /* -- (7) Allocate srcFrameArray ------------------------------------ */
     void *srcFrameArray = calloc((size_t)src_cnt, 0x458);
-    *(void **)(p + 5 * 4) = srcFrameArray;
+    chn->src_frame_array = enc_ptr_as_u32(srcFrameArray);
     if (srcFrameArray == NULL) {
+        enc_trace("libimp/CHINIT: frame-array-fail chn=%d cnt=%d\n",
+                  chn_id, src_cnt);
         int32_t opt = IMP_Log_Get_Option();
         imp_log_fun(6, opt, 2, "Encoder",
             "/home/user/git/proj/sdk-lv3/src/imp/video/imp_encoder.c",
@@ -1820,71 +2086,135 @@ int32_t channel_encoder_init(void *arg1)
         AL_Codec_Encode_Destroy(codec_handle);
         return -1;
     }
+    enc_trace("libimp/CHINIT: frame-array-ok chn=%d ptr=%p cnt=%d\n",
+              chn_id, srcFrameArray, src_cnt);
 
     /* -- (8) Fifo_Init + Fifo_Queue every slot ------------------------- */
-    Fifo_Init(p + 6 * 4, src_cnt);
+    Fifo_Init(chn->public_stream_fifo, src_cnt);
     for (int32_t i = 0; i < src_cnt; i++) {
-        Fifo_Queue(p + 6 * 4,
+        Fifo_Queue(chn->public_stream_fifo,
                    (uint8_t *)srcFrameArray + (size_t)i * 0x458,
                    -1);
     }
+    enc_trace("libimp/CHINIT: fifo-primed chn=%d cnt=%d\n", chn_id, src_cnt);
 
-    /* -- (9) sem/mutex ------------------------------------------------ */
-    sem_init((sem_t *)(p + 0x10 * 4), 0, 0);
-    pthread_mutex_init((pthread_mutex_t *)(p + 0x14 * 4), NULL);
+    /* -- (9) compatibility runtime ------------------------------------ */
+    sem_init(enc_sem_ptr(&rt->release_sem), 0, 0);
+    pthread_mutex_init(enc_mutex_ptr(&rt->release_mutex), NULL);
+    pthread_mutex_init(enc_mutex_ptr(&rt->submit_mutex), NULL);
+    pthread_cond_init(enc_cond_ptr(&rt->submit_cond), NULL);
 
     /* -- (10) threads ------------------------------------------------- */
-    if (pthread_create((pthread_t *)(p + 0x1a * 4), NULL,
-                       release_frame_thread, p) < 0) {
+    if (pthread_create(&rt->release_thread, NULL,
+                       release_frame_thread, chn) < 0) {
+        enc_trace("libimp/CHINIT: release-thread-fail chn=%d\n", chn_id);
         int32_t opt = IMP_Log_Get_Option();
         imp_log_fun(6, opt, 2, "Encoder",
             "/home/user/git/proj/sdk-lv3/src/imp/video/imp_encoder.c",
             0x64a, "channel_encoder_init",
             "pthread_create release_frame_thread failed\n");
-        pthread_mutex_destroy((pthread_mutex_t *)(p + 0x14 * 4));
-        sem_destroy((sem_t *)(p + 0x10 * 4));
-        Fifo_Deinit(p + 6 * 4);
+        pthread_cond_destroy(enc_cond_ptr(&rt->submit_cond));
+        pthread_mutex_destroy(enc_mutex_ptr(&rt->submit_mutex));
+        pthread_mutex_destroy(enc_mutex_ptr(&rt->release_mutex));
+        sem_destroy(enc_sem_ptr(&rt->release_sem));
+        Fifo_Deinit(chn->public_stream_fifo);
         free(srcFrameArray);
         AL_Codec_Encode_Destroy(codec_handle);
         return -1;
     }
+    rt->release_valid = 1;
+    enc_trace("libimp/CHINIT: release-thread-ok chn=%d tid=%p\n",
+              chn_id, (void *)rt->release_thread);
 
-    if (pthread_create((pthread_t *)(p + 0xf * 4), NULL,
-                       update_frmstrm, p) < 0) {
+    if (pthread_create(&rt->submit_thread, NULL,
+                       encoder_submit_thread, chn) < 0) {
+        enc_trace("libimp/CHINIT: submit-thread-fail chn=%d\n", chn_id);
+        pthread_cancel(rt->release_thread);
+        pthread_join(rt->release_thread, NULL);
+        rt->release_valid = 0;
+        pthread_cond_destroy(enc_cond_ptr(&rt->submit_cond));
+        pthread_mutex_destroy(enc_mutex_ptr(&rt->submit_mutex));
+        pthread_mutex_destroy(enc_mutex_ptr(&rt->release_mutex));
+        sem_destroy(enc_sem_ptr(&rt->release_sem));
+        Fifo_Deinit(chn->public_stream_fifo);
+        free(srcFrameArray);
+        AL_Codec_Encode_Destroy(codec_handle);
+        return -1;
+    }
+    rt->submit_valid = 1;
+    enc_trace("libimp/CHINIT: submit-thread-ok chn=%d tid=%p\n",
+              chn_id, (void *)rt->submit_thread);
+
+    if (pthread_create(&rt->update_thread, NULL,
+                       update_frmstrm, chn) < 0) {
+        enc_trace("libimp/CHINIT: stream-thread-fail chn=%d\n", chn_id);
         int32_t opt = IMP_Log_Get_Option();
         imp_log_fun(6, opt, 2, "Encoder",
             "/home/user/git/proj/sdk-lv3/src/imp/video/imp_encoder.c",
             0x64f, "channel_encoder_init",
             "pthread_create update_frmstrm failed\n");
-        pthread_cancel(*(pthread_t *)(p + 0x1a * 4));
-        pthread_join(*(pthread_t *)(p + 0x1a * 4), NULL);
-        pthread_mutex_destroy((pthread_mutex_t *)(p + 0x14 * 4));
-        sem_destroy((sem_t *)(p + 0x10 * 4));
-        Fifo_Deinit(p + 6 * 4);
+        pthread_cancel(rt->submit_thread);
+        pthread_join(rt->submit_thread, NULL);
+        rt->submit_valid = 0;
+        pthread_cancel(rt->release_thread);
+        pthread_join(rt->release_thread, NULL);
+        rt->release_valid = 0;
+        pthread_cond_destroy(enc_cond_ptr(&rt->submit_cond));
+        pthread_mutex_destroy(enc_mutex_ptr(&rt->submit_mutex));
+        pthread_mutex_destroy(enc_mutex_ptr(&rt->release_mutex));
+        sem_destroy(enc_sem_ptr(&rt->release_sem));
+        Fifo_Deinit(chn->public_stream_fifo);
         free(srcFrameArray);
         AL_Codec_Encode_Destroy(codec_handle);
         return -1;
     }
+    rt->update_valid = 1;
+    enc_trace("libimp/CHINIT: stream-thread-ok chn=%d tid=%p\n",
+              chn_id, (void *)rt->update_thread);
+    enc_trace("libimp/CHINIT: return-ok chn=%d codec=%p src_cnt=%d src_sz=%d\n",
+              chn_id, codec_handle, src_cnt, src_sz);
 
     return 0;
 }
 
 /* ----- channel_encoder_exit — binary-accurate port -------------------- */
 
-int32_t channel_encoder_exit(void *arg1)
+int32_t channel_encoder_exit(EncoderChannelLayout *chn)
 {
-    uint8_t *p = (uint8_t *)arg1;
-    if (!p) return -1;
+    uint8_t *p = (uint8_t *)chn;
+    EncoderCompatRuntime *rt;
+    int slot;
+    if (!chn) return -1;
+    slot = encoder_thread_slot(chn);
+    if (slot < 0) return -1;
+    rt = &g_encoder_runtime[slot];
 
-    AL_Codec_Encode_Commit_FilledFifo(*(int32_t **)(p + 8));
-    pthread_cancel(*(pthread_t *)(p + 0x3c));
-    pthread_join(*(pthread_t *)(p + 0x3c), NULL);
-    pthread_cancel(*(pthread_t *)(p + 0x68));
-    pthread_join(*(pthread_t *)(p + 0x68), NULL);
-    pthread_mutex_destroy((pthread_mutex_t *)(p + 0x50));
-    sem_destroy((sem_t *)(p + 0x40));
+    AL_Codec_Encode_Commit_FilledFifo(enc_u32_as_ptr(chn->codec_handle));
+    if (rt->release_valid) {
+        pthread_cancel(rt->release_thread);
+        pthread_join(rt->release_thread, NULL);
+        rt->release_valid = 0;
+    }
+    if (rt->submit_valid) {
+        pthread_cancel(rt->submit_thread);
+        pthread_join(rt->submit_thread, NULL);
+        rt->submit_valid = 0;
+    }
+    if (rt->update_valid) {
+        pthread_cancel(rt->update_thread);
+        pthread_join(rt->update_thread, NULL);
+        rt->update_valid = 0;
+    }
+    if (rt->pending_frame != NULL) {
+        encoder_unlock_and_release_frame(chn, rt->pending_frame);
+        rt->pending_frame = NULL;
+    }
+    pthread_cond_destroy(enc_cond_ptr(&rt->submit_cond));
+    pthread_mutex_destroy(enc_mutex_ptr(&rt->submit_mutex));
+    pthread_mutex_destroy(enc_mutex_ptr(&rt->release_mutex));
+    sem_destroy(enc_sem_ptr(&rt->release_sem));
 
-    pthread_mutex_lock((pthread_mutex_t *)(p + 0x1a8));
+    pthread_mutex_lock(enc_mutex_ptr(&chn->queue_mutex));
     {
         int32_t total_frames = *(int32_t *)(p + 0x7c);
         int32_t complete_hi  = *(int32_t *)(p + 0x84);
@@ -1896,7 +2226,7 @@ int32_t channel_encoder_exit(void *arg1)
             void *buf = NULL;
             int32_t stream_id = 0;
             void *id_buf = NULL;
-            if (AL_Codec_Encode_GetStream(*(void **)(p + 8),
+            if (AL_Codec_Encode_GetStream(enc_u32_as_ptr(chn->codec_handle),
                                           &id_buf, &buf) < 0) {
                 (void)stream_id;
                 break;
@@ -1904,18 +2234,20 @@ int32_t channel_encoder_exit(void *arg1)
             pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, NULL);
             *(uint32_t *)(p + 0x80) += 1;
             if (*(uint32_t *)(p + 0x80) == 0) *(int32_t *)(p + 0x84) += 1;
-            AL_Codec_Encode_ReleaseStream(*(void **)(p + 8), id_buf, buf);
+            AL_Codec_Encode_ReleaseStream(enc_u32_as_ptr(chn->codec_handle), id_buf, buf);
             Fifo_Queue(fifo_ctx, (uint8_t *)buf + 0x24, -1);
             pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, NULL);
             total_frames = *(int32_t *)(p + 0x7c);
             complete_hi  = *(int32_t *)(p + 0x84);
         }
     }
-    pthread_mutex_unlock((pthread_mutex_t *)(p + 0x1a8));
+    pthread_mutex_unlock(enc_mutex_ptr(&chn->queue_mutex));
 
-    Fifo_Deinit((void *)(p + 0x18));
-    free(*(void **)(p + 0x14));
-    AL_Codec_Encode_Destroy(*(void **)(p + 8));
+    Fifo_Deinit(chn->public_stream_fifo);
+    free(enc_u32_as_ptr(chn->src_frame_array));
+    chn->src_frame_array = 0;
+    AL_Codec_Encode_Destroy(enc_u32_as_ptr(chn->codec_handle));
+    chn->codec_handle = 0;
     return 0;
 }
 
@@ -1923,56 +2255,55 @@ int32_t channel_encoder_exit(void *arg1)
 int32_t channel_encoder_set_rc_param(void *arg1, void *arg2)
 {
     int32_t *dst = (int32_t *)arg1;
-    int32_t *src = (int32_t *)arg2;
+    const EncoderRcAttrLayout *src = (const EncoderRcAttrLayout *)arg2;
     if (!dst || !src) return -1;
 
     uint8_t *dst_b = (uint8_t *)arg1;
-    uint8_t *src_b = (uint8_t *)arg2;
-    int32_t mode = src[0];
+    int32_t mode = (int32_t)src->rc_mode;
 
     switch (mode) {
     case 0: /* FixQp */
         dst[0] = 0;
-        *(int16_t *)(dst_b + 0x18) = *(int16_t *)(src_b + 4);
+        *(int16_t *)(dst_b + 0x18) = src->u.fixqp.qp;
         return 0;
     case 1: /* Cbr */
         dst[0] = 1;
-        dst[4] = src[1] * 1000;
-        dst[5] = src[1] * 1000;
-        *(int16_t *)(dst_b + 0x18) = *(int16_t *)(src_b + 8);
-        *(int8_t  *)(dst_b + 0x1a) = *(int8_t  *)(src_b + 0xa);
-        *(int16_t *)(dst_b + 0x1c) = *(int16_t *)(src_b + 0xc);
-        *(int8_t  *)(dst_b + 0x1e) = *(int8_t  *)(src_b + 0xe);
-        *(int16_t *)(dst_b + 0x20) = *(int16_t *)(src_b + 0x10);
-        dst[10] = src[5];
-        dst[15] = src[6] * 1000;
+        dst[4] = (int32_t)src->u.cbr.target_bitrate * 1000;
+        dst[5] = (int32_t)src->u.cbr.target_bitrate * 1000;
+        *(int16_t *)(dst_b + 0x18) = src->u.cbr.initial_qp;
+        *(int8_t  *)(dst_b + 0x1a) = (int8_t)src->u.cbr.min_qp;
+        *(int16_t *)(dst_b + 0x1c) = src->u.cbr.max_qp;
+        *(int8_t  *)(dst_b + 0x1e) = (int8_t)src->u.cbr.ip_delta;
+        *(int16_t *)(dst_b + 0x20) = src->u.cbr.pb_delta;
+        dst[10] = (int32_t)src->u.cbr.rc_options;
+        dst[15] = (int32_t)src->u.cbr.max_picture_size * 1000;
         return 0;
     case 2: /* Vbr */
         dst[0] = 2;
-        dst[4] = src[1] * 1000;
-        dst[5] = src[2] * 1000;
-        *(int16_t *)(dst_b + 0x18) = *(int16_t *)(src_b + 0xc);
-        *(int8_t  *)(dst_b + 0x1a) = *(int8_t  *)(src_b + 0xe);
-        *(int16_t *)(dst_b + 0x1c) = *(int16_t *)(src_b + 0x10);
-        *(int8_t  *)(dst_b + 0x1e) = *(int8_t  *)(src_b + 0x12);
-        *(int16_t *)(dst_b + 0x20) = *(int16_t *)(src_b + 0x14);
-        dst[10] = src[6];
-        dst[15] = src[7] * 1000;
+        dst[4] = (int32_t)src->u.vbr.target_bitrate * 1000;
+        dst[5] = (int32_t)src->u.vbr.max_bitrate * 1000;
+        *(int16_t *)(dst_b + 0x18) = src->u.vbr.initial_qp;
+        *(int8_t  *)(dst_b + 0x1a) = (int8_t)src->u.vbr.min_qp;
+        *(int16_t *)(dst_b + 0x1c) = src->u.vbr.max_qp;
+        *(int8_t  *)(dst_b + 0x1e) = (int8_t)src->u.vbr.ip_delta;
+        *(int16_t *)(dst_b + 0x20) = src->u.vbr.pb_delta;
+        dst[10] = (int32_t)src->u.vbr.rc_options;
+        dst[15] = (int32_t)src->u.vbr.max_picture_size * 1000;
         return 0;
     case 4: /* CappedVbr */
     case 8: /* CappedQuality */
         dst[0] = mode;
-        dst[4] = src[1] * 1000;
-        dst[5] = src[2] * 1000;
-        *(int16_t *)(dst_b + 0x18) = *(int16_t *)(src_b + 0xc);
-        *(int8_t  *)(dst_b + 0x1a) = *(int8_t  *)(src_b + 0xe);
-        *(int16_t *)(dst_b + 0x1c) = *(int16_t *)(src_b + 0x10);
-        *(int8_t  *)(dst_b + 0x1e) = *(int8_t  *)(src_b + 0x12);
-        *(int16_t *)(dst_b + 0x20) = *(int16_t *)(src_b + 0x14);
-        dst[10] = src[6];
-        dst[15] = src[7] * 1000;
+        dst[4] = (int32_t)src->u.vbr.target_bitrate * 1000;
+        dst[5] = (int32_t)src->u.vbr.max_bitrate * 1000;
+        *(int16_t *)(dst_b + 0x18) = src->u.vbr.initial_qp;
+        *(int8_t  *)(dst_b + 0x1a) = (int8_t)src->u.vbr.min_qp;
+        *(int16_t *)(dst_b + 0x1c) = src->u.vbr.max_qp;
+        *(int8_t  *)(dst_b + 0x1e) = (int8_t)src->u.vbr.ip_delta;
+        *(int16_t *)(dst_b + 0x20) = src->u.vbr.pb_delta;
+        dst[10] = (int32_t)src->u.vbr.rc_options;
+        dst[15] = (int32_t)src->u.vbr.max_picture_size * 1000;
         {
-            uint32_t scale = (uint32_t)(uint16_t)src[8] * 0x14;
+            uint32_t scale = (uint32_t)src->u.vbr.max_psnr * 0x14;
             *(int16_t *)(dst_b + 0x30) = (int16_t)(scale + (scale << 2));
         }
         return 0;
@@ -1984,12 +2315,12 @@ int32_t channel_encoder_set_rc_param(void *arg1, void *arg2)
 /* ----- release_used_framestream — binary-accurate port ---------------- */
 int32_t release_used_framestream(void *arg1, int32_t arg2)
 {
-    uint8_t *p = (uint8_t *)arg1;
-    if (!p) return -1;
+    EncoderChannelLayout *chn = (EncoderChannelLayout *)arg1;
+    if (!chn) return -1;
 
-    int32_t max = *(int32_t *)(p + 0x230);
-    int32_t hd  = *(int32_t *)(p + 0x244);
-    int32_t idx = *(int32_t *)(p + 0x248);
+    int32_t max = *enc_channel_stream_ring_count(chn);
+    int32_t hd  = *enc_channel_stream_ring_base(chn);
+    int32_t idx = *enc_channel_stream_ring_index(chn);
 
     if (max == 0) return -1;
     int32_t expected = hd + ((idx % max) * 0x188);
@@ -1997,10 +2328,10 @@ int32_t release_used_framestream(void *arg1, int32_t arg2)
         return -1;
     }
 
-    pthread_mutex_lock((pthread_mutex_t *)(p + 0x1a8));
-    *(int32_t *)(p + 0x248) += 1;
-    pthread_mutex_unlock((pthread_mutex_t *)(p + 0x1a8));
-    sem_post((sem_t *)(p + 0x178));
+    pthread_mutex_lock(enc_mutex_ptr(&chn->queue_mutex));
+    *enc_channel_stream_ring_index(chn) += 1;
+    pthread_mutex_unlock(enc_mutex_ptr(&chn->queue_mutex));
+    sem_post(enc_channel_frame_slot_sem(chn));
     return 0;
 }
 
@@ -2013,11 +2344,11 @@ int32_t IMP_IVS_ReleaseData(void *vaddr)
 }
 
 /* ----- Pool-id stubs --------------------------------------------------- *
- * BUILD=ported excludes src/video/imp_mempool.c (allocator conflict) and
- * the legacy src/imp_encoder.c is also out. Without a definition, the
- * dynamic linker resolves the external call to NULL and we PC=0 crash.
- * Return -1 (= "no pool bound") which the callers already handle by
- * falling back to the global DmaAllocator. */
+ * BUILD=ported excludes src/video/imp_mempool.c (allocator conflict).
+ * When using the stock ported encoder wrapper, these helpers must still
+ * exist so callers can fall back to the global DMA allocator when no pool
+ * is bound. */
+#ifndef USE_REAL_IMP_ENCODER
 int32_t IMP_Encoder_GetPool(int32_t encChn)
 {
     (void)encChn;
@@ -2035,5 +2366,6 @@ int32_t IMP_Encoder_ClearPoolId(void)
 {
     return 0;
 }
+#endif
 
 /* IMP_FrameSource_* pool helpers live in src/dma_alloc.c (legacy). */

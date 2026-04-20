@@ -1,5 +1,8 @@
 #include <stdint.h>
 #include <stdio.h>
+#include <fcntl.h>
+#include <stdarg.h>
+#include <unistd.h>
 
 #include "imp/imp_common.h"
 
@@ -23,6 +26,21 @@ int32_t IMP_MemPool_InitPool(int32_t arg1, int32_t arg2, int32_t arg3); /* forwa
 int32_t IMP_MemPool_Release(int32_t arg1); /* forward decl, ported by T<N> later */
 int32_t IMP_FrameSource_ClearPoolId(void); /* forward decl, ported by T<N> later */
 int32_t IMP_Encoder_ClearPoolId(void); /* forward decl, ported by T<N> later */
+
+static void sysif_trace(const char *fmt, ...)
+{
+    int fd = open("/dev/kmsg", O_WRONLY);
+    if (fd < 0) return;
+
+    char buf[512];
+    va_list ap;
+    va_start(ap, fmt);
+    int n = vsnprintf(buf, sizeof(buf), fmt, ap);
+    va_end(ap);
+
+    if (n > 0) write(fd, buf, (size_t)n);
+    close(fd);
+}
 
 int32_t IMP_System_Init(void)
 {
@@ -97,6 +115,15 @@ int32_t IMP_System_Bind(IMPCell *arg1, IMPCell *arg2)
     int32_t v0_1;
     int32_t v1_1;
 
+    sysif_trace("libimp/BIND: IMP_System_Bind enter src_ptr=%p dst_ptr=%p src=%d.%d.%d dst=%d.%d.%d\n",
+                arg1, arg2,
+                arg1 ? arg1->deviceID : -1,
+                arg1 ? arg1->groupID : -1,
+                arg1 ? arg1->outputID : -1,
+                arg2 ? arg2->deviceID : -1,
+                arg2 ? arg2->groupID : -1,
+                arg2 ? arg2->outputID : -1);
+
     if (arg1 == NULL) {
         v0_1 = IMP_Log_Get_Option();
         var_1c = "%s(): src channel is NULL\n";
@@ -123,6 +150,15 @@ int32_t IMP_System_UnBind(IMPCell *arg1, IMPCell *arg2)
     int32_t v0_1;
     int32_t v1_1;
 
+    sysif_trace("libimp/BIND: IMP_System_UnBind enter src_ptr=%p dst_ptr=%p src=%d.%d.%d dst=%d.%d.%d\n",
+                arg1, arg2,
+                arg1 ? arg1->deviceID : -1,
+                arg1 ? arg1->groupID : -1,
+                arg1 ? arg1->outputID : -1,
+                arg2 ? arg2->deviceID : -1,
+                arg2 ? arg2->groupID : -1,
+                arg2 ? arg2->outputID : -1);
+
     if (arg1 == NULL) {
         v0_1 = IMP_Log_Get_Option();
         var_1c = "%s(): src channel is NULL\n";
@@ -141,6 +177,40 @@ int32_t IMP_System_UnBind(IMPCell *arg1, IMPCell *arg2)
         "/home/user/git/proj/sdk-lv3/src/imp/core/sys_interface.c", v1_1,
         "IMP_System_UnBind", var_1c, "IMP_System_UnBind");
     return -1;
+}
+
+int32_t IMP_System_BindIfNeeded(IMPCell *arg1, IMPCell *arg2)
+{
+    IMPCell src;
+
+    sysif_trace("libimp/BIND: IMP_System_BindIfNeeded enter src_ptr=%p dst_ptr=%p src=%d.%d.%d dst=%d.%d.%d\n",
+                arg1, arg2,
+                arg1 ? arg1->deviceID : -1,
+                arg1 ? arg1->groupID : -1,
+                arg1 ? arg1->outputID : -1,
+                arg2 ? arg2->deviceID : -1,
+                arg2 ? arg2->groupID : -1,
+                arg2 ? arg2->outputID : -1);
+
+    if (arg1 == NULL || arg2 == NULL) {
+        sysif_trace("libimp/BIND: IMP_System_BindIfNeeded null-arg\n");
+        return -1;
+    }
+
+    if (system_get_bind_src(arg2, &src) == 0) {
+        sysif_trace("libimp/BIND: IMP_System_BindIfNeeded existing src=%d.%d.%d dst=%d.%d.%d\n",
+                    src.deviceID, src.groupID, src.outputID,
+                    arg2->deviceID, arg2->groupID, arg2->outputID);
+        if (src.deviceID == arg1->deviceID &&
+            src.groupID == arg1->groupID &&
+            src.outputID == arg1->outputID) {
+            sysif_trace("libimp/BIND: IMP_System_BindIfNeeded already-bound\n");
+            return 0;
+        }
+    }
+
+    sysif_trace("libimp/BIND: IMP_System_BindIfNeeded call-bind\n");
+    return IMP_System_Bind(arg1, arg2);
 }
 
 int32_t IMP_System_GetBindbyDest(IMPCell *arg1, IMPCell *arg2)

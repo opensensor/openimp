@@ -1,6 +1,10 @@
 #include <stdint.h>
 #include <string.h>
 #include <sys/prctl.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include <stdio.h>
+#include <stdarg.h>
 
 #include "core/globals.h"
 #include "core/module.h"
@@ -12,12 +16,36 @@ Module *AllocModule(char *arg1, int32_t arg2); /* forward decl, ported by T<N> l
 void FreeModule(Module *arg1); /* forward decl, ported by T<N> later */
 extern uint32_t g_block_info_addr; /* forward decl, ported by T<N> later */
 
+static void group_trace(const char *fmt, ...)
+{
+    int fd = open("/dev/kmsg", O_WRONLY);
+    if (fd < 0) return;
+
+    char buf[256];
+    va_list ap;
+    va_start(ap, fmt);
+    int n = vsnprintf(buf, sizeof(buf), fmt, ap);
+    va_end(ap);
+
+    if (n > 0) write(fd, buf, (size_t)n);
+    close(fd);
+}
+
 int32_t group_update(Subject *arg1, int32_t *arg2)
 {
     prctl(0xf, "group_update");
 
     {
+        group_trace("libimp/GRP: group_update subject=%p module=%p frame_slot=%p frame=%p cb=%p\n",
+                    arg1,
+                    arg1 ? arg1->next : NULL,
+                    arg2,
+                    arg2 ? (void *)(uintptr_t)*arg2 : NULL,
+                    arg1 ? *(void **)((char *)arg1 + 0x1c) : NULL);
         int32_t result = (*(int32_t (**)(Subject *, int32_t *))((char *)arg1 + 0x1c))(arg1, arg2);
+        group_trace("libimp/GRP: group_update result=%d observers=%d\n",
+                    result,
+                    arg1 && arg1->next ? *(int32_t *)((char *)arg1->next + 0x3c) : -1);
 
         if (result < 0 || *(int32_t *)((char *)arg1->next + 0x3c) == 0) {
             int32_t device_id = *(int32_t *)((char *)arg1->data + 0x20);

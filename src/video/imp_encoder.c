@@ -30,12 +30,31 @@
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdarg.h>
 #include <string.h>
 #include <sys/eventfd.h>
 #include <time.h>
 #include <unistd.h>
 
 extern char _gp;
+
+static void video_enc_trace(const char *fmt, ...)
+{
+    int fd = open("/dev/kmsg", O_WRONLY | O_CLOEXEC);
+    if (fd < 0) {
+        return;
+    }
+
+    char msg[256];
+    va_list ap;
+    va_start(ap, fmt);
+    int n = vsnprintf(msg, sizeof(msg), fmt, ap);
+    va_end(ap);
+    if (n > 0) {
+        dprintf(fd, "libimp/ENCW2: %s\n", msg);
+    }
+    close(fd);
+}
 
 /* ===== forward-declared external helpers ===== */
 
@@ -68,6 +87,9 @@ int32_t dsys_func_share_mem_register(int32_t arg1, int32_t arg2, const char *nam
                                      int32_t (*fn)(void *)); /* forward decl, ported by T<N> later */
 int32_t dsys_func_unregister(int32_t arg1, int32_t arg2); /* forward decl, ported by T<N> later */
 int32_t get_cpu_id(void); /* forward decl, ported by T<N> later */
+int32_t IMP_FrameSource_EnableChn(int32_t chnNum); /* forward decl, ported by T<N> later */
+typedef struct IMPCell IMPCell;
+int32_t IMP_System_BindIfNeeded(IMPCell *srcCell, IMPCell *dstCell); /* forward decl, ported by T<N> later */
 
 /* AL_Codec_Encode_* — T52 */
 int32_t AL_Codec_Encode_Create(void **codec, void *params); /* forward decl, ported by T<N> later */
@@ -109,6 +131,7 @@ int32_t channel_encoder_init(void *chn); /* forward decl, ported by T<N> later *
 int32_t channel_encoder_exit(void *chn); /* forward decl, ported by T<N> later */
 int32_t channel_encoder_set_rc_param(void *out, int32_t *rcAttr); /* forward decl, ported by T<N> later */
 int32_t release_used_framestream(void *chn, void *frm); /* forward decl, ported by T<N> later */
+int32_t AL_Codec_Encode_PrimeStreamBuffers(int32_t *codec_handle); /* forward decl, ported by T<N> later */
 
 /* forward decls for functions within this file referenced in stop/flush paths */
 int32_t IMP_Encoder_Query(int32_t arg1, void *arg2);
@@ -116,7 +139,9 @@ int32_t IMP_Encoder_PollingStream(int32_t arg1, uint32_t arg2);
 int32_t IMP_Encoder_GetStream_Impl(int32_t arg1, void *arg2, uint32_t arg3, int32_t arg4);
 int32_t IMP_Encoder_GetStream(int32_t arg1, void *arg2, uint32_t arg3);
 int32_t IMP_Encoder_ReleaseStream(int32_t arg1, void *arg2);
+int32_t IMP_Encoder_RegisterChn(int32_t arg1, int32_t arg2);
 int32_t IMP_Encoder_RequestIDR(int32_t arg1);
+int32_t IMP_Encoder_StartRecvPic(int32_t arg1);
 int32_t IMP_Encoder_StopRecvPic(int32_t arg1);
 int32_t IMP_Encoder_UnRegisterChn(int32_t arg1);
 
@@ -282,6 +307,21 @@ static inline uint8_t *enc_ptr(int32_t chn, uint32_t abs_addr)
 /* The first four bytes of each channel slot hold chn_id == -1 when free. */
 #define ENC_CHN_VALID(n)  (ENC_CHN_ID((n)) >= 0)
 
+struct IMPCell {
+    int32_t deviceID;
+    int32_t groupID;
+    int32_t outputID;
+};
+
+static inline int32_t enc_group_id_from_channel(int32_t chn)
+{
+    int32_t *group_ptr = (int32_t *)CH_PTR(chn, ENC_F_GROUPPTR);
+    if (group_ptr == NULL) {
+        return -1;
+    }
+    return group_ptr[0];
+}
+
 /* ===== RC-Mode debug/GETSTREAM bitrate tables (module-level static state) ===== */
 static uint32_t s_frmcnt[IMP_ENC_MAX_CHN];
 static uint32_t s_bitrate[IMP_ENC_MAX_CHN];
@@ -381,6 +421,7 @@ int32_t IMP_Encoder_CreateGroup(int32_t arg1)
 {
     char var_28[0x14];
     (void)_gp;
+    video_enc_trace("CreateGroup enter grp=%d gEncoder=%p", arg1, gEncoder);
     if (arg1 >= 6) {
         imp_log_fun(6, IMP_Log_Get_Option(), 2, "Encoder",
             "/home/user/git/proj/sdk-lv3/src/imp/video/imp_encoder.c", 0x492,
@@ -405,6 +446,13 @@ int32_t IMP_Encoder_CreateGroup(int32_t arg1)
                 *(int32_t *)((char *)v0_1 + 0xc) = 1;
                 *(int32_t **)((char *)s3_1 + ((arg1 + 8) << 2) + 8) = v0_1;
                 gEncoder_1[arg1 * 5 + 1] = arg1;
+                video_enc_trace("CreateGroup ok grp=%d group=%p owner=%p", arg1, v0_1, s3_1);
+                if (arg1 < 5) {
+                    IMPCell src = { .deviceID = 0, .groupID = arg1, .outputID = 0 };
+                    IMPCell dst = { .deviceID = 1, .groupID = arg1, .outputID = 0 };
+                    int32_t bind_rc = IMP_System_BindIfNeeded(&src, &dst);
+                    video_enc_trace("CreateGroup bind grp=%d rc=%d", arg1, bind_rc);
+                }
                 return 0;
             }
         }
@@ -588,6 +636,8 @@ int32_t IMP_Encoder_SetbufshareChn(int32_t arg1, int32_t arg2)
 int32_t IMP_Encoder_CreateChn(int32_t arg1, int32_t *arg2)
 {
     (void)_gp;
+    video_enc_trace("CreateChn enter chn=%d attr=%p prof=0x%x", arg1, arg2,
+                    arg2 != 0 ? *arg2 : 0);
     if (arg1 >= 9) {
         imp_log_fun(6, IMP_Log_Get_Option(), 2, "Encoder",
             "/home/user/git/proj/sdk-lv3/src/imp/video/imp_encoder.c", 0x780,
@@ -765,6 +815,14 @@ int32_t IMP_Encoder_CreateChn(int32_t arg1, int32_t *arg2)
             ENC_CHN_ID(arg1) = -1;
             return result;
         }
+
+        video_enc_trace("CreateChn ready chn=%d registered=%d started=%d enabled=%d group=%p",
+                        arg1,
+                        CH_S32(arg1, ENC_F_REGISTERED),
+                        CH_S32(arg1, ENC_F_STARTED),
+                        CH_S32(arg1, ENC_F_ENABLED),
+                        CH_PTR(arg1, ENC_F_GROUPPTR));
+
     }
 
     /* channel_buffer_init: allocate pack storage & register eventfd */
@@ -824,6 +882,10 @@ int32_t IMP_Encoder_CreateChn(int32_t arg1, int32_t *arg2)
     CH_U32(arg1, ENC_F_PEND_BYTES) = 0;
     CH_U8(arg1, ENC_F_DUMP_TIME) =
         (uint8_t)(access("/tmp/dumpEncTime", 0) < 1 ? 1 : 0);
+    video_enc_trace("CreateChn ready chn=%d started=%d enabled=%d registered=%d codec=%p group=%p",
+                    arg1, CH_S32(arg1, ENC_F_STARTED), CH_S32(arg1, ENC_F_ENABLED),
+                    CH_S32(arg1, ENC_F_REGISTERED), CH_PTR(arg1, ENC_F_CODEC_HANDLE),
+                    CH_PTR(arg1, ENC_F_GROUPPTR));
     return 0;
 }
 
@@ -899,6 +961,13 @@ int32_t IMP_Encoder_RegisterChn(int32_t arg1, int32_t arg2)
         int32_t a3_1 = arg1 << 2;
         uintptr_t gEncoder_1 = (uintptr_t)genc_i32();
         void *v0_9 = (char *)gEncoder_1 + a3_1 + (arg1 << 4);
+        int32_t start_rc = 0;
+
+        video_enc_trace("RegisterChn enter grp=%d chn=%d gEncoder=%p group=%p registered=%d started=%d enabled=%d",
+                        arg1, arg2, gEncoder, v0_9,
+                        CH_S32(arg2, ENC_F_REGISTERED),
+                        CH_S32(arg2, ENC_F_STARTED),
+                        CH_S32(arg2, ENC_F_ENABLED));
 
         /* Assign channel pointer to the first empty slot of [+8, +0xc, +0x10] */
         if (*(int32_t *)((char *)v0_9 + 0xc) == 0) {
@@ -914,7 +983,18 @@ int32_t IMP_Encoder_RegisterChn(int32_t arg1, int32_t arg2)
         *(int32_t *)((char *)v0_9 + 8) += 1;
         CH_PTR(arg2, ENC_F_GROUPPTR) = (char *)v0_9 + 4;
         CH_S32(arg2, ENC_F_REGISTERED) = 1;
-        return 0;
+        video_enc_trace("RegisterChn linked grp=%d chn=%d group=%p slots=%d started=%d enabled=%d",
+                        arg1, arg2, v0_9,
+                        *(int32_t *)((char *)v0_9 + 8),
+                        CH_S32(arg2, ENC_F_STARTED),
+                        CH_S32(arg2, ENC_F_ENABLED));
+
+        start_rc = IMP_Encoder_StartRecvPic(arg2);
+        video_enc_trace("RegisterChn auto-start grp=%d chn=%d rc=%d started=%d enabled=%d",
+                        arg1, arg2, start_rc,
+                        CH_S32(arg2, ENC_F_STARTED),
+                        CH_S32(arg2, ENC_F_ENABLED));
+        return start_rc;
     }
 }
 
@@ -1086,6 +1166,9 @@ int32_t IMP_Encoder_Query(int32_t arg1, void *arg2)
 
 int32_t IMP_Encoder_StartRecvPic(int32_t arg1)
 {
+    int32_t group_id;
+    int32_t fs_rc = 0;
+
     if (arg1 >= 9) {
         imp_log_fun(6, IMP_Log_Get_Option(), 2, "Encoder",
             "/home/user/git/proj/sdk-lv3/src/imp/video/imp_encoder.c", 0x8b4,
@@ -1100,8 +1183,33 @@ int32_t IMP_Encoder_StartRecvPic(int32_t arg1)
             "IMP_Encoder_StartRecvPic", arg1, &_gp);
         return -1;
     }
+
+    group_id = enc_group_id_from_channel(arg1);
+    video_enc_trace("StartRecvPic enter chn=%d grp=%d started=%d enabled=%d recv_enabled=%u recv_started=%u",
+                    arg1, group_id,
+                    CH_S32(arg1, ENC_F_STARTED), CH_S32(arg1, ENC_F_ENABLED),
+                    CH_U8(arg1, ENC_F_ENABLED), CH_U8(arg1, ENC_F_STARTED));
+    if (group_id >= 0 && group_id < 5) {
+        fs_rc = IMP_FrameSource_EnableChn(group_id);
+        video_enc_trace("StartRecvPic fs_enable chn=%d grp=%d rc=%d", arg1, group_id, fs_rc);
+        if (fs_rc < 0) {
+            return fs_rc;
+        }
+    }
+
+    if (CH_PTR(arg1, ENC_F_CODEC_HANDLE) != NULL) {
+        int32_t prime_rc = AL_Codec_Encode_PrimeStreamBuffers(CH_PTR(arg1, ENC_F_CODEC_HANDLE));
+        video_enc_trace("StartRecvPic prime-stream-buffers chn=%d rc=%d codec=%p",
+                        arg1, prime_rc, CH_PTR(arg1, ENC_F_CODEC_HANDLE));
+        if (prime_rc < 0) {
+            return prime_rc;
+        }
+    }
+
     CH_S32(arg1, ENC_F_STARTED) = 1;
     CH_S32(arg1, ENC_F_ENABLED) = 1;
+    video_enc_trace("StartRecvPic exit chn=%d grp=%d started=%d enabled=%d",
+                    arg1, group_id, CH_S32(arg1, ENC_F_STARTED), CH_S32(arg1, ENC_F_ENABLED));
     return 0;
 }
 
@@ -2504,4 +2612,3 @@ int32_t dbg_enc_rc_s(void *arg1)
  * ============================================================================ */
 
 /* End of src/video/imp_encoder.c */
-

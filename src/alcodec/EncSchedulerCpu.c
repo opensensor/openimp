@@ -267,19 +267,30 @@ int32_t AL_SchedulerCpu_PutStreamBuffer(int32_t arg1, int32_t *arg2, AL_TBuffer 
     void *var_20 = &_gp;
     void *v0;
     int32_t s4;
+    uint32_t phys;
+    void *virt;
+    uint32_t size;
 
     (void)var_20;
+    SCH_KMSG("Cpu.PutStreamBuffer entry sched=%p chctx=%p buf=%p arg4=%d arg5=%d arg6=%d ch_id=%u",
+             (void *)(intptr_t)arg1, arg2, arg3, arg4, arg5, arg6, arg2 ? (unsigned)(uint8_t)*arg2 : 0);
     v0 = AL_Buffer_GetMetaData(arg3, 7);
+    SCH_KMSG("Cpu.PutStreamBuffer meta7=%p", v0);
     if (v0 == NULL) {
         s4 = 0;
     } else {
         s4 = (int32_t)(intptr_t)AL_Buffer_GetData(*(AL_TBuffer **)((uint8_t *)v0 + 0x38));
+        SCH_KMSG("Cpu.PutStreamBuffer meta7 payload=%p", (void *)(intptr_t)s4);
     }
 
+    phys = AL_Buffer_GetPhysicalAddress(arg3);
+    virt = AL_Buffer_GetData(arg3);
+    size = AL_Buffer_GetSize(arg3);
+    SCH_KMSG("Cpu.PutStreamBuffer phys=0x%x virt=%p size=%u side=%p",
+             (unsigned)phys, virt, (unsigned)size, (void *)(intptr_t)s4);
     return AL_SchedulerEnc_PutStreamBuffer((int32_t *)(intptr_t)(arg1 + 4), (char)*arg2,
-                                           (int32_t)AL_Buffer_GetPhysicalAddress(arg3),
-                                           (int32_t)(intptr_t)AL_Buffer_GetData(arg3), (int32_t)AL_Buffer_GetSize(arg3),
-                                           arg6, arg4, arg5, s4);
+                                           (int32_t)phys, (int32_t)(intptr_t)virt, (int32_t)size,
+                                           0, 0, 0, s4);
 }
 
 int32_t AL_SchedulerCpu_EncodeOneFrame(int32_t arg1, int32_t *arg2, int32_t arg3)
@@ -292,7 +303,14 @@ int32_t AL_SchedulerCpu_EncodeOneFrame(int32_t arg1, int32_t *arg2, int32_t arg3
         int32_t var_18 = arg3;
 
         (void)var_10;
+        SCH_KMSG("Cpu.EncodeOneFrame entry cpu=%p msg=%p meta=%p ch=%u src=%p opts=%p",
+                 (void *)(intptr_t)arg1, arg2, (void *)(intptr_t)arg3,
+                 (unsigned)(uint8_t)*arg2, &arg2[1], &arg2[9]);
+        SCH_KMSG("Cpu.EncodeOneFrame payload src[0..3]=0x%x 0x%x 0x%x 0x%x stream[0..3]=0x%x 0x%x 0x%x 0x%x",
+                 arg2[1], arg2[2], arg2[3], arg2[4],
+                 arg2[9], arg2[10], arg2[11], arg2[12]);
         AL_SchedulerEnc_EncodeOneFrame((int32_t *)(intptr_t)(arg1 + 4), (char)*arg2, &arg2[1], &arg2[9], &var_18);
+        SCH_KMSG("Cpu.EncodeOneFrame exit meta_local=%d", var_18);
         return 1;
     }
 }

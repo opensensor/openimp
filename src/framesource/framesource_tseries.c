@@ -34,9 +34,12 @@
 #include <sys/stat.h>
 #include <sys/time.h>
 #include <sys/types.h>
+#include <time.h>
 #include <unistd.h>
+#include <stdarg.h>
 
 #include "imp/imp_common.h"
+#include "imp/imp_encoder.h"
 #include "imp/imp_framesource.h"
 #include "imp/imp_system.h"
 #include "core/module.h"
@@ -70,7 +73,6 @@ extern int     add_observer_to_module(void *module, Observer *observer);
 extern int     remove_observer_from_module(void *src_module, void *dst_module);
 extern Subject *create_group(int32_t arg1, int32_t arg2, char *arg3, void *arg4);
 extern int32_t destroy_group(Subject *subject, int32_t dev_id);
-
 /* ISP hook, only used by the existing capture fallback path. */
 extern int ISP_EnsureLinkStreamOn(int sensor_idx);
 
@@ -78,6 +80,24 @@ extern int ISP_EnsureLinkStreamOn(int sensor_idx);
 /* kernel_interface.h already declares fs_* wrappers; we re-include it above. */
 
 extern char _gp;
+
+static void *fs_retaddr(void)
+{
+    return __builtin_return_address(0);
+}
+
+/* Bind callbacks are defined later in the file but are needed during
+ * CreateChn so the module can be bindable before EnableChn runs. */
+int IMP_FrameSource_CreateChn(int chnNum, IMPFSChnAttr *chn_attr);
+int IMP_FrameSource_EnableChn(int chnNum);
+int32_t on_framesource_group_data_update(int32_t *arg1);
+static void *frame_pooling_thread(void *arg);
+static int framesource_bind(void *src_module, void *dst_module, void *output_ptr);
+static int framesource_unbind(void *src_module, void *dst_module, void *output_ptr);
+static void fs_bind_trace(const char *fmt, ...);
+static inline int32_t fs_chan_get_state(int chn);
+
+#define fs_trace fs_bind_trace
 
 /* Debug hook registration (T81-ish); declare here so we only take their
  * addresses in FrameSourceInit. If the dsys_func_* symbols are not linked
@@ -169,6 +189,44 @@ static inline uint8_t *fs_channel_base(int chn)
 {
     if (gFrameSource == NULL) return NULL;
     return (uint8_t *)gFrameSource + chn * FS_CHANNEL_SIZE;
+}
+
+static void fs_hal_promote_channel(int chnNum, const IMPFSChnAttr *chn_attr)
+{
+    int rc;
+
+    if (chnNum < 0 || chnNum >= FS_MAX_CHANNELS) return;
+    if (chn_attr == NULL) return;
+    if (chn_attr->type != FS_PHY_CHANNEL) return;
+    if (gFrameSource == NULL) return;
+    if (fs_chan_get_state(chnNum) != 1) return;
+
+    fs_bind_trace("libimp/FSB: auto-promote enter ch=%d state=%d type=%u\n",
+                  chnNum, fs_chan_get_state(chnNum), (unsigned)chn_attr->type);
+    rc = IMP_FrameSource_EnableChn(chnNum);
+    fs_bind_trace("libimp/FSB: auto-promote exit ch=%d rc=%d state=%d\n",
+                  chnNum, rc, fs_chan_get_state(chnNum));
+}
+
+static void fs_direct_encoder_fallback(int chn, void *frame)
+{
+    Module *enc;
+    int32_t frame_slot;
+    int32_t rc;
+
+    if (chn < 0 || chn >= FS_MAX_CHANNELS || frame == NULL) return;
+
+    enc = g_modules[1][chn];
+    if (enc == NULL || enc->update_fn == NULL) {
+        return;
+    }
+
+    frame_slot = (int32_t)(intptr_t)frame;
+    fs_bind_trace("libimp/FSB: direct-enc-dispatch ch=%d enc=%p update=%p frame=%p\n",
+                  chn, enc, enc->update_fn, frame);
+    rc = enc->update_fn(enc, &frame_slot);
+    fs_bind_trace("libimp/FSB: direct-enc-dispatch-done ch=%d enc=%p rc=%d frame=%p\n",
+                  chn, enc, rc, frame);
 }
 
 /* ---------------------------------------------------------------------
@@ -653,6 +711,46 @@ typedef struct FsChnCtx {
 static FsChnCtx g_fs_ctx[FS_MAX_CHANNELS];
 static pthread_mutex_t g_fs_lock = PTHREAD_MUTEX_INITIALIZER;
 
+static void fs_bind_trace(const char *fmt, ...)
+{
+    int fd = open("/dev/kmsg", O_WRONLY);
+    if (fd < 0) return;
+
+    char buf[512];
+    va_list ap;
+    va_start(ap, fmt);
+    int n = vsnprintf(buf, sizeof(buf), fmt, ap);
+    va_end(ap);
+
+    if (n > 0) write(fd, buf, (size_t)n);
+    close(fd);
+}
+
+__attribute__((constructor))
+static void framesource_ctor_trace(void)
+{
+    fs_bind_trace("libimp/FSB: ctor v2 CreateChn=%p EnableChn=%p group_cb=%p pool_thread=%p bind=%p unbind=%p\n",
+                  (void *)IMP_FrameSource_CreateChn,
+                  (void *)IMP_FrameSource_EnableChn,
+                  (void *)on_framesource_group_data_update,
+                  (void *)frame_pooling_thread,
+                  (void *)framesource_bind,
+                  (void *)framesource_unbind);
+}
+
+static void framesource_publish_outputs(Module *module, void *frame)
+{
+    if (module == NULL) return;
+
+    uint32_t count = *(uint32_t *)((char *)module + 0x134);
+    if (count == 0) count = 1;
+    if (count > 3) count = 3;
+
+    for (uint32_t i = 0; i < count; i++) {
+        *(void **)((char *)module + 0x138 + (i * sizeof(void *))) = frame;
+    }
+}
+
 /* Local: read/write a channel field in the stock byte layout. */
 static inline void fs_chan_set_state(int chn, int32_t state)
 {
@@ -684,6 +782,8 @@ int32_t on_framesource_group_data_update(int32_t *arg1)
     int chn = (int)arg1[2];
     void *frame = NULL;
 
+    fs_bind_trace("libimp/FSB: group-cb enter arg=%p ch=%d ra=%p\n", arg1, chn, fs_retaddr());
+
     if (chn < 0 || chn >= FS_MAX_CHANNELS || gFrameSource == NULL) {
         return -1;
     }
@@ -698,7 +798,12 @@ int32_t on_framesource_group_data_update(int32_t *arg1)
     {
         Module *m = g_modules[0][chn]; /* DEV_ID_FS == 0 */
         if (m != NULL) {
+            fs_trace("libimp/FS: update_one ch=%d module=%p frame=%p notify start\n",
+                     chn, m, frame);
+            framesource_publish_outputs(m, frame);
             notify_observers(m, frame);
+            fs_trace("libimp/FS: update_one ch=%d module=%p frame=%p notify done\n",
+                     chn, m, frame);
         }
     }
     return 0;
@@ -717,67 +822,119 @@ static void *frame_pooling_thread(void *arg)
     int chn = *(int *)arg;
     FsChnCtx *ctx;
     char name[0x20];
+    int poll_count = 0;
+    int no_frame_cycles = 0;
+    int state_wait_count = 0;
+    int ioctl_fail_count = 0;
+    int software_mode = 0;
+    int initial_hw_settle = 1;
 
     if (chn < 0 || chn >= FS_MAX_CHANNELS) {
         return NULL;
     }
     ctx = &g_fs_ctx[chn];
 
+    fs_bind_trace("libimp/FSB: pooling-thread start ch=%d ctx=%p arg=%p ra=%p\n",
+                  chn, ctx, arg, fs_retaddr());
+
     snprintf(name, sizeof(name), "FS(%d)-tick", chn);
     prctl(PR_SET_NAME, name);
 
     sem_post(&ctx->ready_sem);
+    fs_trace("libimp/FS: pooling startup-ready ch=%d fd=%d after-streamon\n",
+             chn, ctx->fd);
 
     while (ctx->running) {
-        pthread_testcancel();
+        void *frame = NULL;
+        Module *m;
+        int ch_state;
 
-        if (ctx->fd < 0) {
+        pthread_testcancel();
+        poll_count++;
+        ch_state = fs_chan_get_state(chn);
+
+        if (poll_count == 1 || poll_count == 5 || poll_count == 10 || (poll_count % 50) == 0) {
+            fs_trace("libimp/FS: pooling loop ch=%d iter=%d state=%d fd=%d software=%d running=%d\n",
+                     chn, poll_count, ch_state, ctx->fd, software_mode, ctx->running);
+        }
+
+        if (ch_state != 2) {
+            state_wait_count++;
+            if (state_wait_count <= 5 || (state_wait_count % 100) == 0) {
+                fs_trace("libimp/FS: pooling wait-state ch=%d state=%d waited=%d\n",
+                         chn, ch_state, state_wait_count);
+            }
             usleep(10000);
             continue;
         }
+        state_wait_count = 0;
 
-        {
-            fd_set rfds;
-            struct timeval tv;
-            int rc;
-
-            FD_ZERO(&rfds);
-            FD_SET(ctx->fd, &rfds);
-            tv.tv_sec = 0;
-            tv.tv_usec = 25000;
-
-            rc = select(ctx->fd + 1, &rfds, NULL, NULL, &tv);
-            if (rc < 0 && errno != EINTR) {
-                usleep(5000);
-                continue;
-            }
-            if (rc == 0) {
-                continue;
-            }
-        }
-
-        {
-            unsigned int ready = 0;
-            int poll_ret = fs_poll_frame(ctx->fd, &ready);
-            if (poll_ret < 0 || ready == 0) {
-                usleep(1000);
-                continue;
-            }
-        }
-
-        while (1) {
-            void *frame = NULL;
-            int dq_ret = VBMKernelDequeue(chn, ctx->fd, &frame);
-            if (dq_ret != 0 || frame == NULL) {
-                break;
+        if (!software_mode) {
+            if (initial_hw_settle) {
+                initial_hw_settle = 0;
+                fs_trace("libimp/FS: pooling direct-dq-start ch=%d fd=%d iter=%d\n",
+                         chn, ctx->fd, poll_count);
             }
 
-            {
-                Module *m = g_modules[0][chn];
+            while (1) {
+                fs_trace("libimp/FS: pooling dequeue-enter ch=%d fd=%d\n",
+                         chn, ctx->fd);
+                int dq_ret = VBMKernelDequeue(chn, ctx->fd, &frame);
+                fs_trace("libimp/FS: pooling dequeue ch=%d fd=%d ret=%d frame=%p\n",
+                         chn, ctx->fd, dq_ret, frame);
+                if (dq_ret != 0 || frame == NULL) {
+                    if (dq_ret == -2 || dq_ret == 0) {
+                        no_frame_cycles++;
+                        if (poll_count <= 5 || (poll_count % 50) == 0) {
+                            fs_trace("libimp/FS: pooling dequeue-empty ch=%d fd=%d idle=%d\n",
+                                     chn, ctx->fd, no_frame_cycles);
+                        }
+                        usleep(5000);
+                    }
+                    break;
+                }
+                ioctl_fail_count = 0;
+                no_frame_cycles = 0;
+
+                m = g_modules[0][chn];
                 if (m != NULL) {
+                    fs_trace("libimp/FS: pooling ch=%d fd=%d module=%p frame=%p notify start\n",
+                             chn, ctx->fd, m, frame);
+                    framesource_publish_outputs(m, frame);
                     notify_observers(m, frame);
+                    if (*(int32_t *)((char *)m + 0x3c) == 0) {
+                        fs_trace("libimp/FS: pooling ch=%d fd=%d module=%p frame=%p notify-empty direct-enc\n",
+                                 chn, ctx->fd, m, frame);
+                        fs_direct_encoder_fallback(chn, frame);
+                    }
+                    fs_trace("libimp/FS: pooling ch=%d fd=%d module=%p frame=%p notify done\n",
+                             chn, ctx->fd, m, frame);
                 }
             }
+            continue;
+        }
+
+        usleep(50000);
+        if (VBMGetFrame(chn, &frame) < 0 || frame == NULL) {
+            if (poll_count <= 5 || (poll_count % 50) == 0) {
+                fs_trace("libimp/FS: pooling software ch=%d no frame available\n", chn);
+            }
+            continue;
+        }
+
+        m = g_modules[0][chn];
+        if (m != NULL) {
+            fs_trace("libimp/FS: pooling software ch=%d module=%p frame=%p notify start\n",
+                     chn, m, frame);
+            framesource_publish_outputs(m, frame);
+            notify_observers(m, frame);
+            if (*(int32_t *)((char *)m + 0x3c) == 0) {
+                fs_trace("libimp/FS: pooling software ch=%d module=%p frame=%p notify-empty direct-enc\n",
+                         chn, m, frame);
+                fs_direct_encoder_fallback(chn, frame);
+            }
+            fs_trace("libimp/FS: pooling software ch=%d module=%p frame=%p notify done\n",
+                     chn, m, frame);
         }
     }
 
@@ -1015,15 +1172,6 @@ int IMP_FrameSource_SetFrameDepth(int chnNum, int depth)
             return 0;
         }
 
-        if (state != 2) {
-            imp_log_fun(6, IMP_Log_Get_Option(), 2, "Framesource",
-                "/home/user/git/proj/sdk-lv3/src/imp/framesource/framesource_tseries.c",
-                0x558, tag,
-                "%s(): Please use IMP_FrameSource_EnableChn first when depth(%d) > 0 \n",
-                tag, depth);
-            return -1;
-        }
-
         /* BLOCKED (partial): stock allocates three 0xc-byte list heads and
          * `depth` nodes + calloc(0x30) per-node state + calloc(size) for
          * the buffer at +0x1c when copy_type==0. For openimp we store the
@@ -1033,7 +1181,7 @@ int IMP_FrameSource_SetFrameDepth(int chnNum, int depth)
         g_fs_ctx[chnNum].frame_depth = depth;
         *(int32_t *)(chan + 0x1cc) = depth;
         pthread_mutex_unlock(chan_lock);
-        if (g_fs_ctx[chnNum].fd >= 0) {
+        if (state == 2 && g_fs_ctx[chnNum].fd >= 0) {
             fs_set_depth(g_fs_ctx[chnNum].fd, depth);
         }
         return 0;
@@ -1059,6 +1207,14 @@ int IMP_FrameSource_CreateChn(int chnNum, IMPFSChnAttr *chn_attr)
 {
     const char *tag = "IMP_FrameSource_CreateChn";
     uint8_t *chan;
+
+    fs_bind_trace("libimp/FSB: CreateChn enter ch=%d attr=%p type=%u size=%dx%d fmt=0x%x ra=%p\n",
+                  chnNum, chn_attr,
+                  chn_attr ? (unsigned)chn_attr->type : 0u,
+                  chn_attr ? chn_attr->picWidth : -1,
+                  chn_attr ? chn_attr->picHeight : -1,
+                  chn_attr ? (unsigned)chn_attr->pixFmt : 0u,
+                  fs_retaddr());
 
     if (gFrameSource == NULL) {
         if (FrameSourceInit() < 0) {
@@ -1134,6 +1290,24 @@ int IMP_FrameSource_CreateChn(int chnNum, IMPFSChnAttr *chn_attr)
                 }
             }
 
+            {
+                Module *m = g_modules[0][chnNum];
+                if (m != NULL) {
+                    /* system_bind validates outputID against module+0x134.
+                     * FrameSource exposes exactly one output per channel. */
+                    *(uint32_t *)((char *)m + 0x134) = 1;
+                    *(void **)((char *)m + 0x138) = NULL;
+                    *(void **)((char *)m + 0x40) = (void *)framesource_bind;
+                    *(void **)((char *)m + 0x44) = (void *)framesource_unbind;
+                    fs_bind_trace("libimp/FSB: createchn set-bind ch=%d module=%p outcnt=%u bind=%p unbind=%p\n",
+                                  chnNum, m, *(uint32_t *)((char *)m + 0x134),
+                                  framesource_bind, framesource_unbind);
+                } else {
+                    fs_bind_trace("libimp/FSB: createchn missing-module ch=%d subject=%p self=%p\n",
+                                  chnNum, g_fs_ctx[chnNum].subject, module_self);
+                }
+            }
+
             memcpy(chan + 0x20, chn_attr, sizeof(IMPFSChnAttr));
             memset(chan + 0x258, 0, 0x18);
             *(int32_t *)(chan + 0x1c) = 1;
@@ -1154,6 +1328,10 @@ int IMP_FrameSource_CreateChn(int chnNum, IMPFSChnAttr *chn_attr)
     g_fs_ctx[chnNum].created = 1;
     g_fs_ctx[chnNum].fd = -1;
     pthread_mutex_unlock(&g_fs_lock);
+    if (chn_attr->type == FS_PHY_CHANNEL) {
+        fs_bind_trace("libimp/FSB: defer-promote ch=%d state=%d type=%u until consumer-ready\n",
+                      chnNum, fs_chan_get_state(chnNum), (unsigned)chn_attr->type);
+    }
     return 0;
 }
 
@@ -1228,14 +1406,19 @@ int IMP_FrameSource_GetDelay(int chnNum, int *delay)
 
 int IMP_FrameSource_SetChnFifoAttr(int chnNum, IMPFSChnFifoAttr *attr)
 {
+    int state;
+
     if (chnNum < 0 || chnNum >= FS_MAX_CHANNELS || attr == NULL) return -1;
     pthread_mutex_lock(&g_fs_lock);
-    if (fs_chan_get_state(chnNum) != 1) {
+    state = fs_chan_get_state(chnNum);
+    if (state != 1 && state != 2) {
         pthread_mutex_unlock(&g_fs_lock);
         return -1;
     }
     g_fs_ctx[chnNum].fifo = *attr;
     pthread_mutex_unlock(&g_fs_lock);
+    fs_trace("libimp/FS: SetChnFifoAttr ch=%d state=%d maxdepth=%d depth=%d\n",
+             chnNum, state, attr->maxdepth, attr->depth);
     IMP_FrameSource_SetMaxDelay(chnNum, attr->maxdepth);
     return 0;
 }
@@ -1265,19 +1448,69 @@ int IMP_FrameSource_CloseNCUInfo(void)
 /* Bind/unbind callbacks registered on the module (offsets +0x40/+0x44). */
 static int framesource_bind(void *src_module, void *dst_module, void *output_ptr)
 {
-    Observer *obs;
-    (void)output_ptr;
-    if (src_module == NULL || dst_module == NULL) return -1;
+    Module *src;
+    Module *dst;
+    Module **slot_module;
+    void **slot_frame;
+    int chn;
+    int i;
 
-    obs = (Observer *)calloc(1, sizeof(Observer));
-    if (obs == NULL) return -1;
-    obs->module = (Module *)dst_module;
-
-    if (add_observer_to_module(src_module, obs) < 0) {
-        free(obs);
+    if (src_module == NULL || dst_module == NULL) {
+        fs_bind_trace("libimp/FSB: bind src=%p dst=%p outptr=%p invalid\n",
+                      src_module, dst_module, output_ptr);
         return -1;
     }
-    return 0;
+
+    src = (Module *)src_module;
+    dst = (Module *)dst_module;
+    chn = src->channel;
+    fs_bind_trace("libimp/FSB: bind src=%p dst=%p outptr=%p\n",
+                  src_module, dst_module, output_ptr);
+
+    /* The ported core/module.c observer path uses the raw vendor slot
+     * array at +0x14/+0x18 and observer count at +0x3c.  Do not recurse
+     * back through add_observer_to_module(); that routes through the
+     * module's bind vtable again and never populates the slots that
+     * notify_observers() actually scans. */
+    slot_module = (Module **)((char *)src + 0x14);
+    slot_frame = (void **)((char *)src + 0x18);
+
+    for (i = 0; i < 5; i++) {
+        if (*slot_module == dst) {
+            *slot_frame = output_ptr;
+            *(Module **)((char *)dst + 0x10) = src;
+            fs_bind_trace("libimp/FSB: bind refresh src=%p dst=%p slot=%d outptr=%p count=%d\n",
+                          src, dst, i, output_ptr,
+                          *(int32_t *)((char *)src + 0x3c));
+            return 0;
+        }
+
+        if (*slot_module == NULL) {
+            *slot_module = dst;
+            *slot_frame = output_ptr;
+            *(int32_t *)((char *)src + 0x3c) += 1;
+            *(Module **)((char *)dst + 0x10) = src;
+            fs_bind_trace("libimp/FSB: bind success src=%p dst=%p slot=%d outptr=%p count=%d\n",
+                          src, dst, i, output_ptr,
+                          *(int32_t *)((char *)src + 0x3c));
+            if (chn >= 0 &&
+                chn < FS_MAX_CHANNELS &&
+                g_fs_ctx[chn].created &&
+                g_fs_ctx[chn].attr.type == FS_PHY_CHANNEL &&
+                fs_chan_get_state(chn) == 1) {
+                fs_bind_trace("libimp/FSB: bind ready ch=%d dst=%s state=%d defer-enable-until-StartRecvPic\n",
+                              chn, dst->name, fs_chan_get_state(chn));
+            }
+            return 0;
+        }
+
+        slot_module = (Module **)((char *)slot_module + 8);
+        slot_frame = (void **)((char *)slot_frame + 8);
+    }
+
+    fs_bind_trace("libimp/FSB: bind src=%p dst=%p outptr=%p full count=%d\n",
+                  src, dst, output_ptr, *(int32_t *)((char *)src + 0x3c));
+    return -1;
 }
 
 static int framesource_unbind(void *src_module, void *dst_module, void *output_ptr)
@@ -1298,9 +1531,13 @@ int IMP_FrameSource_EnableChn(int chnNum)
     int bufcnt;
     int vbm_count;
     int queued_ok;
+    int thread_started = 0;
 
     if (chnNum < 0 || chnNum >= FS_MAX_CHANNELS) return -1;
     if (gFrameSource == NULL) return -1;
+
+    fs_bind_trace("libimp/FSB: EnableChn enter ch=%d gFrameSource=%p ra=%p\n",
+                  chnNum, gFrameSource, fs_retaddr());
 
     pthread_mutex_lock(&g_fs_lock);
     if (fs_chan_get_state(chnNum) == 2) {
@@ -1314,13 +1551,19 @@ int IMP_FrameSource_EnableChn(int chnNum)
 
     ctx = &g_fs_ctx[chnNum];
     chan = fs_channel_base(chnNum);
+    fs_trace("libimp/FS: enable start ch=%d state=%d ctx=%p fd=%d attr=%dx%d fmt=0x%x nrVBs=%d depth=%d\n",
+             chnNum, fs_chan_get_state(chnNum), ctx, ctx->fd,
+             ctx->attr.picWidth, ctx->attr.picHeight, ctx->attr.pixFmt,
+             ctx->attr.nrVBs, ctx->frame_depth);
 
     if (ctx->fd < 0) {
         ctx->fd = fs_open_device(chnNum);
         if (ctx->fd < 0) {
+            fs_trace("libimp/FS: enable open-fail ch=%d\n", chnNum);
             pthread_mutex_unlock(&g_fs_lock);
             return -1;
         }
+        fs_trace("libimp/FS: enable open-ok ch=%d fd=%d\n", chnNum, ctx->fd);
     }
 
     memset(&fmt, 0, sizeof(fmt));
@@ -1332,11 +1575,14 @@ int IMP_FrameSource_EnableChn(int chnNum)
     fmt.fps_num = 1;
 
     if (fs_set_format(ctx->fd, &fmt) < 0) {
+        fs_trace("libimp/FS: enable set-format-fail ch=%d fd=%d\n", chnNum, ctx->fd);
         fs_close_device(ctx->fd);
         ctx->fd = -1;
         pthread_mutex_unlock(&g_fs_lock);
         return -1;
     }
+    fs_trace("libimp/FS: enable set-format-ok ch=%d fd=%d sizeimage=%d\n",
+             chnNum, ctx->fd, fmt.sizeimage);
     kernel_sizeimage = fmt.sizeimage;
 
     memset(vbm_fmt, 0, sizeof(vbm_fmt));
@@ -1349,6 +1595,7 @@ int IMP_FrameSource_EnableChn(int chnNum)
     memcpy(vbm_fmt + 0x34, &vbm_count, sizeof(int));
 
     if (VBMCreatePool(chnNum, vbm_fmt, NULL, NULL) < 0) {
+        fs_trace("libimp/FS: enable VBMCreatePool-fail ch=%d\n", chnNum);
         fs_close_device(ctx->fd);
         ctx->fd = -1;
         pthread_mutex_unlock(&g_fs_lock);
@@ -1358,14 +1605,18 @@ int IMP_FrameSource_EnableChn(int chnNum)
     requested_bufcnt = vbm_count + (ctx->frame_depth > 0 ? ctx->frame_depth : 0);
     bufcnt = fs_set_buffer_count(ctx->fd, requested_bufcnt);
     if (bufcnt < 0) {
+        fs_trace("libimp/FS: enable set-bufcnt-fail ch=%d req=%d\n", chnNum, requested_bufcnt);
         VBMDestroyPool(chnNum);
         fs_close_device(ctx->fd);
         ctx->fd = -1;
         pthread_mutex_unlock(&g_fs_lock);
         return -1;
     }
+    fs_trace("libimp/FS: enable set-bufcnt-ok ch=%d req=%d got=%d\n",
+             chnNum, requested_bufcnt, bufcnt);
 
     if (VBMFillPool(chnNum) < 0) {
+        fs_trace("libimp/FS: enable VBMFillPool-fail ch=%d\n", chnNum);
         VBMDestroyPool(chnNum);
         fs_close_device(ctx->fd);
         ctx->fd = -1;
@@ -1378,37 +1629,34 @@ int IMP_FrameSource_EnableChn(int chnNum)
     }
 
     queued_ok = VBMPrimeKernelQueue(chnNum, ctx->fd, bufcnt);
+    fs_trace("libimp/FS: enable prime-queue ch=%d queued_ok=%d bufcnt=%d\n",
+             chnNum, queued_ok, bufcnt);
+    ctx->running = 1;
+    fs_chan_set_state(chnNum, 2);
+    *(int32_t *)(chan + 0x1c4) = ctx->fd;
+
     usleep(5000);
     ISP_EnsureLinkStreamOn(0);
 
     if (fs_stream_on(ctx->fd) < 0) {
+        fs_trace("libimp/FS: enable stream-on-fail ch=%d fd=%d\n", chnNum, ctx->fd);
         VBMFlushFrame(chnNum);
         VBMDestroyPool(chnNum);
         fs_close_device(ctx->fd);
         ctx->fd = -1;
+        ctx->running = 0;
+        fs_chan_set_state(chnNum, 1);
         pthread_mutex_unlock(&g_fs_lock);
         return -1;
     }
-
-    if (chnNum == 0 && queued_ok <= 0) {
-        fs_stream_off(ctx->fd);
-        VBMFlushFrame(chnNum);
-        VBMDestroyPool(chnNum);
-        fs_close_device(ctx->fd);
-        ctx->fd = -1;
-        pthread_mutex_unlock(&g_fs_lock);
-        return -1;
-    }
-
-    fs_chan_set_state(chnNum, 2);
-    ctx->running = 1;
-    *(int32_t *)(chan + 0x1c4) = ctx->fd;
+    fs_trace("libimp/FS: enable stream-on-ok ch=%d fd=%d\n", chnNum, ctx->fd);
 
     {
         static int chn_id_storage[FS_MAX_CHANNELS];
         chn_id_storage[chnNum] = chnNum;
         if (pthread_create(&ctx->thread, NULL, frame_pooling_thread,
                            &chn_id_storage[chnNum]) != 0) {
+            fs_trace("libimp/FS: enable pthread-create-fail ch=%d fd=%d\n", chnNum, ctx->fd);
             fs_stream_off(ctx->fd);
             VBMFlushFrame(chnNum);
             VBMDestroyPool(chnNum);
@@ -1419,17 +1667,69 @@ int IMP_FrameSource_EnableChn(int chnNum)
             pthread_mutex_unlock(&g_fs_lock);
             return -1;
         }
+        thread_started = 1;
+        fs_trace("libimp/FS: enable pthread-create-ok ch=%d tid=%p arg=%p\n",
+                 chnNum, (void *)ctx->thread, &chn_id_storage[chnNum]);
+    }
+
+    {
+        struct timespec ts;
+        if (clock_gettime(CLOCK_REALTIME, &ts) == 0) {
+            ts.tv_sec += 1;
+            if (sem_timedwait(&ctx->ready_sem, &ts) != 0) {
+                fs_trace("libimp/FS: enable thread-ready-timeout ch=%d errno=%d\n",
+                         chnNum, errno);
+                pthread_cancel(ctx->thread);
+                pthread_join(ctx->thread, NULL);
+                ctx->thread = 0;
+                thread_started = 0;
+                fs_stream_off(ctx->fd);
+                VBMFlushFrame(chnNum);
+                VBMDestroyPool(chnNum);
+                fs_close_device(ctx->fd);
+                ctx->fd = -1;
+                ctx->running = 0;
+                fs_chan_set_state(chnNum, 1);
+                pthread_mutex_unlock(&g_fs_lock);
+                return -1;
+            }
+            fs_trace("libimp/FS: enable thread-ready-ok ch=%d\n", chnNum);
+        }
+    }
+
+    if (chnNum == 0 && queued_ok <= 0) {
+        fs_stream_off(ctx->fd);
+        if (thread_started) {
+            pthread_cancel(ctx->thread);
+            pthread_join(ctx->thread, NULL);
+            ctx->thread = 0;
+        }
+        VBMFlushFrame(chnNum);
+        VBMDestroyPool(chnNum);
+        fs_close_device(ctx->fd);
+        ctx->fd = -1;
+        ctx->running = 0;
+        fs_chan_set_state(chnNum, 1);
+        pthread_mutex_unlock(&g_fs_lock);
+        return -1;
     }
 
     /* Ensure bind/unbind function pointers on the module. */
     {
         Module *m = g_modules[0][chnNum];
         if (m != NULL) {
+            *(uint32_t *)((char *)m + 0x134) = 1;
+            *(void **)((char *)m + 0x138) = NULL;
             *(void **)((char *)m + 0x40) = (void *)framesource_bind;
             *(void **)((char *)m + 0x44) = (void *)framesource_unbind;
+            fs_bind_trace("libimp/FSB: enable set-bind ch=%d module=%p outcnt=%u bind=%p unbind=%p\n",
+                          chnNum, m, *(uint32_t *)((char *)m + 0x134),
+                          framesource_bind, framesource_unbind);
         }
     }
 
+    fs_trace("libimp/FS: enable done ch=%d state=%d fd=%d\n",
+             chnNum, fs_chan_get_state(chnNum), ctx->fd);
     pthread_mutex_unlock(&g_fs_lock);
     return 0;
 }
@@ -1589,4 +1889,3 @@ int IMP_FrameSource_ChnStatQuery(int chnNum, void *stat)
 
 /* IMP_FrameSource_SetPool / IMP_FrameSource_ClearPoolId live in
  * src/video/imp_mempool.c (T77); no duplicate definition here. */
-
