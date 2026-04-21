@@ -726,15 +726,16 @@ label_71e98:
 
         {
             uint32_t v0_25 = (uint32_t)str[0];
-            uint32_t s1_2 = READ_U8(GetChMngrCtx(arg1, (char)v0_25), 0x79);
+            uint8_t *launch_ctx = GetChMngrCtx(arg1, (char)v0_25);
+            uint32_t s1_2 = (uint32_t)CH_CORE_BASE(launch_ctx);
             uint8_t *s2_5 = (uint8_t *)arg1 + s1_2 * 0x44 + 0x8c;
 
             while (1) {
-                uint32_t s7_2 = READ_U8(GetChMngrCtx(arg1, (char)v0_25), 0x79);
+                uint32_t s7_2 = (uint32_t)CH_CORE_BASE(launch_ctx);
                 int32_t var_1d4;
                 uint8_t str_1[0x84];
 
-                if ((int32_t)s1_2 >= (int32_t)(READ_U8(GetChMngrCtx(arg1, (char)v0_25), 0x78) + s7_2)) {
+                if ((int32_t)s1_2 >= (int32_t)((uint32_t)CH_CORE_COUNT(launch_ctx) + s7_2)) {
                     break;
                 }
 
@@ -745,8 +746,10 @@ label_71e98:
                     int32_t *s7_3 = var_3c;
 
                     while (1) {
-                        uint8_t *s4_2 =
-                            READ_PTR(arg1, (((s1_2 * 0x26 + s7_3[1] + 0x198) << 2) + 4));
+                        uint8_t *s4_2 = READ_PTR(arg1, (((s1_2 * 0x26 + s7_3[1] + 0x198) << 2) + 4));
+
+                        CMG_KMSG("CheckAndEncode gc-scan core=%u mod=%d flag_ptr=%p flag=%u",
+                                 s1_2, s7_3[1], s4_2, (unsigned)*s4_2);
 
                         if ((uint32_t)(*s4_2) != 0U) {
                             AL_ModuleArray_AddModule(str_1, (int32_t)s1_2, 0);

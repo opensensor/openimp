@@ -769,6 +769,18 @@ int32_t AddNewRequest(int32_t arg1)
     v0 = (int32_t)(intptr_t)RequestsBuffer_Pop((void *)(intptr_t)(arg1 + 0x3de8));
     ENC_KMSG("AddNewRequest pop chctx=%p req=%p", (void *)(intptr_t)arg1, (void *)(intptr_t)v0);
     Rtos_Memset((void *)(intptr_t)v0, 0, 0xc58);
+    /*
+     * Request-local module tables mirror the channel step template exactly:
+     * channel 0x18c0..0x1adf -> request 0x84c..0xa6b and channel 0x1ae0 -> request 0xa6c.
+     * Without this copy, freshly queued requests never advertise any modules to
+     * CheckAndEncode, so they are prepared and then dropped before AVPU launch.
+     */
+    Rtos_Memcpy((void *)(intptr_t)(v0 + 0x84c), (void *)(intptr_t)(arg1 + 0x18c0), 0x220);
+    WRITE_S32((void *)(intptr_t)v0, 0xa6c, READ_S32((void *)(intptr_t)arg1, 0x1ae0));
+    ENC_KMSG("AddNewRequest seeded req=%p grp_cnt=%d lane0_mods=%d lane0_slices=%d lane1_mods=%d lane1_slices=%d",
+             (void *)(intptr_t)v0, READ_S32((void *)(intptr_t)v0, 0xa6c),
+             READ_S32((void *)(intptr_t)v0, 0x8cc), READ_S32((void *)(intptr_t)v0, 0x958),
+             READ_S32((void *)(intptr_t)v0, 0x9dc), READ_S32((void *)(intptr_t)v0, 0xa68));
     PopCommandListAddresses((void *)(intptr_t)(arg1 + 0x2c20), (void *)(intptr_t)(v0 + 0xa78));
     ENC_KMSG("AddNewRequest ready req=%p lane=%d cmdlist=%p", (void *)(intptr_t)v0,
              READ_S32((void *)(intptr_t)v0, 0xa70), (void *)(intptr_t)(v0 + 0xa78));
@@ -2793,7 +2805,20 @@ int32_t AL_EncChannel_ListModulesNeeded(void *arg1, void *arg2)
                         SetPictureReferences(arg1, req);
                         ENC_KMSG("ListModulesNeeded lane=%d after-set-picture-refs req=%p", lane, req);
                     }
+                    WRITE_U8(req, 0xa74, 1);
                     WRITE_U8(req, 0xa75, 1);
+                    {
+                        int32_t *grp = (int32_t *)((uint8_t *)req + lane * 0x110 + 0x84c);
+                        int32_t i;
+                        int32_t mod_count = READ_S32(req, lane * 0x110 + 0x8cc);
+
+                        for (i = 0; i < mod_count; ++i) {
+                            ENC_KMSG("ListModulesNeeded lane=%d add-prepared core=%d mod=%d idx=%d",
+                                     lane, READ_U8(arg1, 0x3d) + grp[0], grp[1], i);
+                            AL_ModuleArray_AddModule(arg2, READ_U8(arg1, 0x3d) + grp[0], grp[1]);
+                            grp += 2;
+                        }
+                    }
                     ENC_KMSG("ListModulesNeeded lane=%d prepared req=%p a74=%u a75=%u lane_mods=%d lane_slices=%d out_count=%d",
                              lane, req, (unsigned)READ_U8(req, 0xa74), (unsigned)READ_U8(req, 0xa75),
                              READ_S32(req, lane * 0x110 + 0x8cc), READ_S32(req, lane * 0x110 + 0x958),
