@@ -1,10 +1,26 @@
 #include <stdint.h>
+#include <fcntl.h>
+#include <stdio.h>
+#include <unistd.h>
 
 #include "alcodec/al_rtos.h"
 
 extern char _gp;
 extern int32_t __assert(const char *expression, const char *file, int32_t line,
                         const char *function, void *caller);
+
+#define RC16_KMSG(fmt, ...)                                                                       \
+    do {                                                                                          \
+        int _kfd = open("/dev/kmsg", O_WRONLY);                                                   \
+        if (_kfd >= 0) {                                                                          \
+            char _buf[256];                                                                       \
+            int _n = snprintf(_buf, sizeof(_buf), "libimp/RC16: " fmt "\n", ##__VA_ARGS__);      \
+            if (_n > 0) {                                                                         \
+                write(_kfd, _buf, (size_t)_n);                                                    \
+            }                                                                                     \
+            close(_kfd);                                                                          \
+        }                                                                                         \
+    } while (0)
 
 /* Placement:
  * - lI1i/Il1i/llli/l01i/o11i/oiii @ RateCtrl_16.c
@@ -539,6 +555,12 @@ int32_t rc_Il1i(void *arg1, void *arg2, int16_t *arg3)
 {
     char *ctx = *(char **)((char *)arg1 + 0x30);
 
+    RC16_KMSG("Il1i entry rc=%p ctx=%p pic=%p out=%p pic_flags=0x%x pic_type=%d forced=%u delta=%d qp_cur=%d qp_bounds=%d..%d",
+              arg1, ctx, arg2, arg3, *(int32_t *)((char *)arg2 + 4), *(int32_t *)((char *)arg2 + 0x10),
+              (unsigned)*(uint8_t *)((char *)arg2 + 0x2c), (int)*(int8_t *)((char *)arg2 + 0x2d),
+              ctx ? *(int16_t *)(ctx + 0x20) : -1, ctx ? *(int16_t *)(ctx + 0x18) : -1,
+              ctx ? *(int16_t *)(ctx + 0x1a) : -1);
+
     if (*(uint8_t *)((char *)arg2 + 0x2c) != 0) {
         int32_t value = *(int8_t *)((char *)arg2 + 0x2d);
 
@@ -623,16 +645,19 @@ int32_t rc_Il1i(void *arg1, void *arg2, int16_t *arg3)
                 }
             }
 
-            {
-                int32_t result = qp + *(int8_t *)((char *)arg2 + 0x25);
+        {
+            int32_t result = qp + *(int8_t *)((char *)arg2 + 0x25);
 
-                if (result < *(int16_t *)(ctx + 0x18)) {
-                    result = *(int16_t *)(ctx + 0x18);
+            if (result < *(int16_t *)(ctx + 0x18)) {
+                result = *(int16_t *)(ctx + 0x18);
                 }
                 if (*(int16_t *)(ctx + 0x1a) < result) {
                     result = *(int16_t *)(ctx + 0x1a);
                 }
                 *arg3 = (int16_t)result;
+                RC16_KMSG("Il1i exit rc=%p ctx=%p qp=%d raw=%d frame_type=%d target=%d",
+                          arg1, ctx, result, qp + *(int8_t *)((char *)arg2 + 0x25), frame_type,
+                          rc_OOlo(ctx + 0x48));
                 return qp + *(int8_t *)((char *)arg2 + 0x25);
             }
         }

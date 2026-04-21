@@ -222,10 +222,15 @@ label_641f0:
             int32_t a0_2 = arg1[0x48];
 
             WRITE_S32(arg2, 0x30, v0_1);
+            ENC_KMSG("FillSliceParam rc_pre ch=%p rc_cb=%p rc_mutex=%p pic=%p slice=%p pict_type=%d scene=%u",
+                     arg1, (void *)(intptr_t)arg1[0x41], (void *)(uintptr_t)a0_2, &arg3[8], arg2,
+                     v0_1, (unsigned)READ_U8(arg3, 0x364));
             Rtos_GetMutex((void *)(uintptr_t)a0_2);
             ((void (*)(void *, void *, void *))(intptr_t)arg1[0x41])(&arg1[0x3d], &arg3[8],
                                                                       (uint8_t *)arg2 + 0x28);
             Rtos_ReleaseMutex((void *)(uintptr_t)arg1[0x48]);
+            ENC_KMSG("FillSliceParam rc_post ch=%p pic=%p slice=%p rc_type=%d qp=%d",
+                     arg1, &arg3[8], arg2, READ_S32(arg2, 0x30), READ_S16((uint8_t *)arg2 + 0x28, 4));
             t2 = READ_S32(arg2, 0x30);
         }
     } else {
@@ -2547,8 +2552,7 @@ int32_t AL_EncChannel_Init(int32_t *arg1, int32_t *arg2, void *arg3, uint8_t arg
         return 0;
     }
 
-    if ((READ_U16(arg2, 0x76) != 0U) && (READ_U16(arg2, 0x74) != 0U) && (READ_U8(arg2, 0x78) != 0U) &&
-        READ_U8(arg2, 0x1f) != 0U) {
+    if ((READ_U16(arg2, 0x76) != 0U) && (READ_U16(arg2, 0x74) != 0U) && (READ_U8(arg2, 0x78) != 0U)) {
         switch (arg2[0x1a]) {
             case 0: rc_mode = 2; break;
             case 1: rc_mode = 0; break;
@@ -2559,6 +2563,10 @@ int32_t AL_EncChannel_Init(int32_t *arg1, int32_t *arg2, void *arg3, uint8_t arg
             case 0x3f: rc_mode = 5; break;
             default: rc_mode = -1; break;
         }
+        ENC_KMSG("AL_EncChannel_Init rc_gate w=%u h=%u codec_mode=%u rc_sel=%d rc74=0x%x rc76=0x%x rc78=0x%x",
+                 width, height, (unsigned)READ_U8(arg2, 0x1f), rc_mode,
+                 (unsigned)READ_U16(arg2, 0x74), (unsigned)READ_U16(arg2, 0x76),
+                 (unsigned)READ_U8(arg2, 0x78));
         result = AL_RateCtrl_Init(&arg1[0x3d], arg7, rc_mode, 0);
         if (result == 0) {
             AL_IntermMngr_Deinit(&arg1[0xa95]);
@@ -2568,9 +2576,18 @@ int32_t AL_EncChannel_Init(int32_t *arg1, int32_t *arg2, void *arg3, uint8_t arg
             AL_GopMngr_Deinit(&arg1[0x4a]);
             return 0;
         }
+        ENC_KMSG("AL_EncChannel_Init rc_ready init=%p cfg=%p mutex=%p state=%p",
+                 (void *)(intptr_t)arg1[0x3d], (void *)(intptr_t)arg1[0x3e], READ_PTR(arg1, 0x120),
+                 READ_PTR(arg1, 0x11c));
+        ENC_KMSG("AL_EncChannel_Init rc_init_call rc=%p width=%u height=%u",
+                 &arg1[0x3d], width, height);
         ((void (*)(void *, uint32_t, uint32_t))(intptr_t)arg1[0x3d])(&arg1[0x3d], width, height);
+        ENC_KMSG("AL_EncChannel_Init rc_init_done rc=%p", &arg1[0x3d]);
         Rtos_GetMutex(READ_PTR(arg1, 0x120));
+        ENC_KMSG("AL_EncChannel_Init rc_cfg_call rc=%p rcAttr=%p gop=%p",
+                 &arg1[0x3d], &arg2[0x1a], &arg2[0x2a]);
         ((void (*)(void *, void *, void *))(intptr_t)arg1[0x3e])(&arg1[0x3d], &arg2[0x1a], &arg2[0x2a]);
+        ENC_KMSG("AL_EncChannel_Init rc_cfg_done rc=%p", &arg1[0x3d]);
         Rtos_ReleaseMutex(READ_PTR(arg1, 0x120));
     }
 
@@ -2861,6 +2878,9 @@ int32_t encode1(void *arg1)
     }
     StaticFifo_Queue((StaticFifoCompat *)((uint8_t *)ch + 0x12a6c + READ_S32(req, 0xa70) * 0x5c),
                      (int32_t)(intptr_t)req);
+    ENC_KMSG("encode1 dequeued req=%p grp=%d slice_count=%d mod_count=%d core_off=%u",
+             req, READ_S32(req, 0xa70), READ_S32(req, 0x958), READ_S32(req, 0x8cc),
+             (unsigned)core_offset);
     WRITE_U8(req, 0x182, (READ_U8(ch, 0x1f) == 0U) ? (READ_U8(ch, 0x3c) < 2U) : 1U);
     WRITE_S32(ch, 0x30, 0);
     WRITE_U8(req, 0x170, 2);
@@ -2872,11 +2892,25 @@ int32_t encode1(void *arg1)
     WRITE_U16(req, 0x17c, (READ_U16(ch, 6) + 7U) >> 3);
     WRITE_U16(req, 0x278, (READ_U16(ch, 4) + (1U << (READ_U8(ch, 0x4e) & 0x1fU)) - 1U) >> (READ_U8(ch, 0x4e) & 0x1fU));
     WRITE_U16(req, 0x27a, (READ_U16(ch, 6) + (1U << (READ_U8(ch, 0x4e) & 0x1fU)) - 1U) >> (READ_U8(ch, 0x4e) & 0x1fU));
+    ENC_KMSG("encode1 pre-FillSliceParam req=%p mode=%u chroma=%u cores=%u dual=%u",
+             req, (unsigned)READ_U8(ch, 0x1f), (unsigned)READ_U8(ch, 0x4), (unsigned)READ_U8(ch, 0x3c),
+             (unsigned)READ_U8(req, 0x182));
     FillSliceParamFromPicParam(ch, (uint8_t *)req + 0x170, req);
+    ENC_KMSG("encode1 post-FillSliceParam req=%p slice_type=%u pic_order=%d cmd318=%p",
+             req, (unsigned)READ_U8(req, 0x170), READ_S32(req, 0x184), READ_PTR(req, 0x318));
+    ENC_KMSG("encode1 pre-UpdateCommand req=%p slice=%p", req, (uint8_t *)req + 0x170);
     UpdateCommand(ch, req, (uint8_t *)req + 0x170, 0);
+    ENC_KMSG("encode1 post-UpdateCommand req=%p cmd318=%p cmd1[0]=0x%x",
+             req, READ_PTR(req, 0x318), READ_S32(req, 0xa78));
+    ENC_KMSG("encode1 pre-handleInputTraces req=%p", req);
     handleInputTraces(ch, req, (uint8_t *)req + 0x170, 0);
+    ENC_KMSG("encode1 post-handleInputTraces req=%p", req);
+    ENC_KMSG("encode1 pre-TurnOnRAM cores=%u", (unsigned)READ_U8(ch, 0x3c));
     AL_EncCore_TurnOnRAM(READ_PTR(ch, 0x164), READ_U8(ch, 0x1f), READ_U8(ch, 0x3c), 0, 0);
+    ENC_KMSG("encode1 post-TurnOnRAM");
+    ENC_KMSG("encode1 pre-EnableInterrupts cores=%u", (unsigned)READ_U8(ch, 0x3c));
     AL_EncCore_EnableInterrupts(READ_PTR(ch, 0x164), READ_U8(ch, 0x3c), 0);
+    ENC_KMSG("encode1 post-EnableInterrupts");
     for (core = 0; core < (int32_t)READ_U8(ch, 0x3c); ++core) {
         void *enc1 = (uint8_t *)READ_PTR(ch, 0x164) + core * 0x44;
         int32_t cmd1 = READ_S32(req, 0xa78 + core * 4);
