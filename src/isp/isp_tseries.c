@@ -12,6 +12,7 @@
 
 #include "core/globals.h"
 #include "imp/imp_isp.h"
+#include "isp_ioctl_compat.h"
 
 int IMP_Log_Get_Option(void);
 void imp_log_fun(int level, int option, int type, ...);
@@ -1276,34 +1277,51 @@ int IMP_ISP_Tuning_GetISPRunningMode(IMPISPRunningMode *pmode)
 int IMP_ISP_Tuning_SetISPBypass(IMPISPTuningOpsMode enable)
 {
     ISPDevice *isp;
-    int32_t sensor_index;
+    int32_t destroy_arg;
     int32_t bypass_mode;
 
     if (tseries_get_isp(&isp) != 0) {
         return -1;
     }
 
-    if (ioctl(isp->fd, TISP_VIDIOC_DISABLE_LINKS, 0) != 0) {
-        return -1;
-    }
+    kmsg_trace("libimp/ISP: SetISPBypass enter enable=%d isp=%p fd=%d tuning_fd=%d\n",
+               enable, (void *)isp, isp->fd, isp->tuning_fd);
 
-    sensor_index = -1;
-    if (ioctl(isp->fd, TISP_VIDIOC_DESTROY_LINKS, &sensor_index) != 0) {
+    if (ioctl(isp->fd, TISP_VIDIOC_DISABLE_LINKS, 0) != 0) {
+        kmsg_trace("libimp/ISP: SetISPBypass DISABLE_LINKS failed errno=%d\n", errno);
         return -1;
     }
+    kmsg_trace("libimp/ISP: SetISPBypass DISABLE_LINKS ok\n");
+
+    /* OEM sets DESTROY_LINKS arg to -1 before rebuilding the link graph. */
+    destroy_arg = -1;
+    if (ioctl(isp->fd, TISP_VIDIOC_DESTROY_LINKS, &destroy_arg) != 0) {
+        kmsg_trace("libimp/ISP: SetISPBypass DESTROY_LINKS failed arg=%d errno=%d\n",
+                   destroy_arg, errno);
+        return -1;
+    }
+    kmsg_trace("libimp/ISP: SetISPBypass DESTROY_LINKS ok arg=%d\n", destroy_arg);
 
     if (tseries_v4l2_set(TISP_CID_ISP_PROCESS, enable) != 0) {
+        kmsg_trace("libimp/ISP: SetISPBypass S_CTRL ISP_PROCESS failed value=%d errno=%d\n",
+                   enable, errno);
         return -1;
     }
+    kmsg_trace("libimp/ISP: SetISPBypass S_CTRL ISP_PROCESS ok value=%d\n", enable);
 
     bypass_mode = (enable == 0) ? 1 : 0;
     if (ioctl(isp->fd, TISP_VIDIOC_CREATE_LINKS, &bypass_mode) != 0) {
+        kmsg_trace("libimp/ISP: SetISPBypass CREATE_LINKS failed arg=%d errno=%d\n",
+                   bypass_mode, errno);
         return -1;
     }
+    kmsg_trace("libimp/ISP: SetISPBypass CREATE_LINKS ok arg=%d\n", bypass_mode);
 
     if (ioctl(isp->fd, TISP_VIDIOC_ENABLE_LINKS, 0) != 0) {
+        kmsg_trace("libimp/ISP: SetISPBypass ENABLE_LINKS failed errno=%d\n", errno);
         return -1;
     }
+    kmsg_trace("libimp/ISP: SetISPBypass ENABLE_LINKS ok arg=%d\n", bypass_mode);
 
     return 0;
 }
@@ -2261,25 +2279,35 @@ int IMP_ISP_EnableSensor(void)
     }
 
     if (ioctl(isp->fd, TISP_VIDIOC_GET_SENSOR_INDEX, &sensor_index) != 0) {
+        kmsg_trace("libimp/ISP: EnableSensor GET_SENSOR_INDEX failed errno=%d\n", errno);
         return -1;
     }
+    kmsg_trace("libimp/ISP: EnableSensor GET_SENSOR_INDEX=%d\n", sensor_index);
 
     if (sensor_index == -1) {
+        kmsg_trace("libimp/ISP: EnableSensor sensor not selected yet\n");
         return -1;
     }
 
     if (ioctl(isp->fd, TISP_VIDIOC_ENABLE_SENSOR, 0) != 0) {
+        kmsg_trace("libimp/ISP: EnableSensor ENABLE_SENSOR failed errno=%d\n", errno);
         return -1;
     }
+    kmsg_trace("libimp/ISP: EnableSensor ENABLE_SENSOR ok\n");
 
     sensor_index = 0;
     if (ioctl(isp->fd, TISP_VIDIOC_CREATE_LINKS, &sensor_index) != 0) {
+        kmsg_trace("libimp/ISP: EnableSensor CREATE_LINKS failed arg=%d errno=%d\n",
+                   sensor_index, errno);
         return -1;
     }
+    kmsg_trace("libimp/ISP: EnableSensor CREATE_LINKS ok arg=%d\n", sensor_index);
 
     if (ioctl(isp->fd, TISP_VIDIOC_ENABLE_LINKS, 0) != 0) {
+        kmsg_trace("libimp/ISP: EnableSensor ENABLE_LINKS failed errno=%d\n", errno);
         return -1;
     }
+    kmsg_trace("libimp/ISP: EnableSensor ENABLE_LINKS ok\n");
 
     isp->opened += 2;
     return 0;
@@ -2295,10 +2323,13 @@ int IMP_ISP_DisableSensor(void)
     }
 
     if (ioctl(isp->fd, TISP_VIDIOC_GET_SENSOR_INDEX, &sensor_index) != 0) {
+        kmsg_trace("libimp/ISP: DisableSensor GET_SENSOR_INDEX failed errno=%d\n", errno);
         return -1;
     }
+    kmsg_trace("libimp/ISP: DisableSensor GET_SENSOR_INDEX=%d\n", sensor_index);
 
     if (sensor_index == -1) {
+        kmsg_trace("libimp/ISP: DisableSensor sensor not selected yet\n");
         return -1;
     }
 
@@ -2311,17 +2342,23 @@ int IMP_ISP_DisableSensor(void)
     }
 
     if (ioctl(isp->fd, TISP_VIDIOC_DISABLE_LINKS, 0) != 0) {
+        kmsg_trace("libimp/ISP: DisableSensor DISABLE_LINKS failed errno=%d\n", errno);
         return -1;
     }
+    kmsg_trace("libimp/ISP: DisableSensor DISABLE_LINKS ok\n");
 
-    sensor_index = -1;
     if (ioctl(isp->fd, TISP_VIDIOC_DESTROY_LINKS, &sensor_index) != 0) {
+        kmsg_trace("libimp/ISP: DisableSensor DESTROY_LINKS failed arg=%d errno=%d\n",
+                   sensor_index, errno);
         return -1;
     }
+    kmsg_trace("libimp/ISP: DisableSensor DESTROY_LINKS ok arg=%d\n", sensor_index);
 
     if (ioctl(isp->fd, TISP_VIDIOC_DISABLE_SENSOR, 0) != 0) {
+        kmsg_trace("libimp/ISP: DisableSensor DISABLE_SENSOR failed errno=%d\n", errno);
         return -1;
     }
+    kmsg_trace("libimp/ISP: DisableSensor DISABLE_SENSOR ok\n");
 
     isp->opened -= 2;
     return 0;
@@ -2429,32 +2466,41 @@ int IMP_ISP_AddSensor(IMPSensorInfo *pinfo)
     /* Copy 0x50 bytes of sensor-info into gISP +0x28 via halfword pack */
     memcpy(isp_b + 0x28, pinfo, 0x50);
 
-    /* VIDIOC_GET_BUF_INFO: read ncu buffer size */
-    struct { int32_t paddr; int32_t size; } buf_info = {0, 0};
-    if (ioctl(isp->fd, 0x800856d5, &buf_info) != 0) {
+    /* Read required ISP buffer size using the platform-specific ABI. */
+    tx_isp_buf_t buf_info;
+    TXISP_BUF_INIT(buf_info);
+    TXISP_BUF_SET_INDEX(buf_info, sensor_idx);
+    if (ioctl(isp->fd, TX_ISP_GET_BUF, &buf_info) != 0) {
         imp_log_fun(6, IMP_Log_Get_Option(), 2, "IMP-ISP",
             "/home/user/git/proj/sdk-lv3/src/imp/isp/isp_tseries.c", 0x1dc,
             "IMP_ISP_AddSensor", "VIDIOC_GET_BUF_INFO() error!\n");
         return -1;
     }
+    kmsg_trace("libimp/ISP: AddSensor GET_BUF idx=%d size=%u struct_sz=%u\n",
+        sensor_idx, (unsigned)TXISP_BUF_GET_SIZE(buf_info), (unsigned)sizeof(buf_info));
     imp_log_fun(4, IMP_Log_Get_Option(), 2, "IMP-ISP",
         "/home/user/git/proj/sdk-lv3/src/imp/isp/isp_tseries.c", 0x1e0,
-        "IMP_ISP_AddSensor", "%s,%d: paddr = 0x%x, size = 0x%x\n",
-        "IMP_ISP_AddSensor", 0x1e0, buf_info.paddr, buf_info.size);
+        "IMP_ISP_AddSensor", "%s,%d: size = 0x%x\n",
+        "IMP_ISP_AddSensor", 0x1e0, TXISP_BUF_GET_SIZE(buf_info));
 
     void *ncu_alloc = malloc(0x94);
     if (ncu_alloc == NULL) {
         printf("error(%s,%d): maloc err\n", "IMP_ISP_AddSensor", 0x1e3);
         return -1;
     }
-    if (IMP_Alloc(ncu_alloc, buf_info.size, "ncubuf") != 0) {
+    if (IMP_Alloc(ncu_alloc, TXISP_BUF_GET_SIZE(buf_info), "ncubuf") != 0) {
         printf("error(%s,%d): IMP_Alloc\n", "IMP_ISP_AddSensor", 0x1e8);
         return -1;
     }
     *(void **)(isp_b + 0xac) = ncu_alloc;
     int32_t ncu_phys = *(int32_t *)((char *)ncu_alloc + 0x84);
-    int32_t set_buf = ncu_phys;
-    if (ioctl(isp->fd, 0x800856d4, &set_buf) != 0) {
+    tx_isp_buf_t set_buf;
+    TXISP_BUF_INIT(set_buf);
+    TXISP_BUF_SET_INDEX(set_buf, sensor_idx);
+    TXISP_BUF_SET_PHYS_SIZE(set_buf, (uint32_t)ncu_phys, TXISP_BUF_GET_SIZE(buf_info));
+    kmsg_trace("libimp/ISP: AddSensor SET_BUF phys=0x%x size=%u struct_sz=%u\n",
+        (unsigned)ncu_phys, (unsigned)TXISP_BUF_GET_SIZE(buf_info), (unsigned)sizeof(set_buf));
+    if (ioctl(isp->fd, TX_ISP_SET_BUF, &set_buf) != 0) {
         imp_log_fun(6, IMP_Log_Get_Option(), 2, "IMP-ISP",
             "/home/user/git/proj/sdk-lv3/src/imp/isp/isp_tseries.c", 0x1ee,
             "IMP_ISP_AddSensor", "VIDIOC_SET_BUF_INFO() error!\n");
@@ -2464,7 +2510,7 @@ int IMP_ISP_AddSensor(IMPSensorInfo *pinfo)
     /* WDR path only if WDR mode flag (+0xb0) is set */
     if (*(int32_t *)(isp_b + 0xb0) != 1) return 0;
 
-    struct { int32_t paddr; int32_t size; } wdr_info = {0, 0};
+    struct { uint32_t addr; uint32_t size; } wdr_info = {0, 0};
     if (ioctl(isp->fd, 0x800856d7, &wdr_info) != 0) {
         imp_log_fun(6, IMP_Log_Get_Option(), 2, "IMP-ISP",
             "/home/user/git/proj/sdk-lv3/src/imp/isp/isp_tseries.c", 0x1f6,
@@ -2474,7 +2520,7 @@ int IMP_ISP_AddSensor(IMPSensorInfo *pinfo)
     imp_log_fun(4, IMP_Log_Get_Option(), 2, "IMP-ISP",
         "/home/user/git/proj/sdk-lv3/src/imp/isp/isp_tseries.c", 0x1fa,
         "IMP_ISP_AddSensor", "%s,%d: paddr = 0x%x, size = 0x%x\n",
-        "IMP_ISP_AddSensor", 0x1fa, wdr_info.paddr, wdr_info.size);
+        "IMP_ISP_AddSensor", 0x1fa, wdr_info.addr, wdr_info.size);
     void *wdr_alloc = malloc(0x94);
     if (wdr_alloc == NULL) {
         printf("error(%s,%d): maloc err\n", "IMP_ISP_AddSensor", 0x1fd);
@@ -2486,7 +2532,11 @@ int IMP_ISP_AddSensor(IMPSensorInfo *pinfo)
     }
     *(void **)(isp_b + 0xb4) = wdr_alloc;
     int32_t wdr_phys = *(int32_t *)((char *)wdr_alloc + 0x84);
-    int32_t set_wdr = wdr_phys;
+    struct { uint32_t addr; uint32_t size; } set_wdr;
+    set_wdr.addr = (uint32_t)wdr_phys;
+    set_wdr.size = wdr_info.size;
+    kmsg_trace("libimp/ISP: AddSensor SET_WDR_BUF phys=0x%x size=%u\n",
+        (unsigned)wdr_phys, (unsigned)wdr_info.size);
     if (ioctl(isp->fd, 0x800856d6, &set_wdr) != 0) {
         imp_log_fun(6, IMP_Log_Get_Option(), 2, "IMP-ISP",
             "/home/user/git/proj/sdk-lv3/src/imp/isp/isp_tseries.c", 0x208,

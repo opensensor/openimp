@@ -11,7 +11,7 @@
 
 int IMP_Log_Get_Option(void); /* forward decl, ported by T<N> later */
 void imp_log_fun(int level, int option, int type, ...); /* forward decl, ported by T<N> later */
-int32_t VBMReleaseFrame(void *arg1); /* forward decl, ported by T<N> later */
+int32_t VBMReleaseFrame(int chn, void *frame); /* forward decl, ported by T<N> later */
 Module *AllocModule(char *arg1, int32_t arg2); /* forward decl, ported by T<N> later */
 void FreeModule(Module *arg1); /* forward decl, ported by T<N> later */
 extern uint32_t g_block_info_addr; /* forward decl, ported by T<N> later */
@@ -49,13 +49,17 @@ int32_t group_update(Subject *arg1, int32_t *arg2)
 
         if (result < 0 || *(int32_t *)((char *)arg1->next + 0x3c) == 0) {
             int32_t device_id = *(int32_t *)((char *)arg1->data + 0x20);
+            void *frame = arg2 ? (void *)(uintptr_t)*arg2 : NULL;
 
-            if (device_id != 0 && device_id != 6 && VBMReleaseFrame(arg2) < 0) {
+            if (device_id != 0 && device_id != 6 &&
+                frame != NULL && VBMReleaseFrame(device_id, frame) < 0) {
                 imp_log_fun(6, IMP_Log_Get_Option(), 2, "Group",
                     "/home/user/git/proj/sdk-lv3/src/imp/core/group.c", 0x51,
                     "group_update",
                     "%s(%d)VBMReleaseFrame failed, group->module->name = %s, frame->pool_idx=%d, frame->index=%d\n",
-                    "group_update", 0x51, arg1->next, arg2[1], *arg2);
+                    "group_update", 0x51,
+                    arg1 && arg1->next ? ((Module *)arg1->next)->name : "?",
+                    arg2[1], *arg2);
             }
         }
 

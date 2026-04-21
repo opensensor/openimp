@@ -24,6 +24,7 @@
 #include <pthread.h>
 #include <sched.h>
 #include <semaphore.h>
+#include <signal.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -86,6 +87,34 @@ static void *fs_retaddr(void)
     return __builtin_return_address(0);
 }
 
+static void fs_thread_trace(const char *fmt, ...)
+{
+    int fd = open("/dev/kmsg", O_WRONLY | O_CLOEXEC);
+    if (fd < 0) return;
+
+    char buf[256];
+    va_list ap;
+    va_start(ap, fmt);
+    int n = vsnprintf(buf, sizeof(buf), fmt, ap);
+    va_end(ap);
+    if (n > 0) write(fd, buf, (size_t)n);
+    close(fd);
+}
+
+static void fs_user_trace(const char *fmt, ...)
+{
+    char buf[256];
+    va_list ap;
+
+    va_start(ap, fmt);
+    vsnprintf(buf, sizeof(buf), fmt, ap);
+    va_end(ap);
+
+    imp_log_fun(4, IMP_Log_Get_Option(), 2, "Framesource",
+        "/home/user/git/proj/sdk-lv3/src/imp/framesource/framesource_tseries.c",
+        0x3f0, "frame_pooling_thread", "%s\n", buf);
+}
+
 /* Bind callbacks are defined later in the file but are needed during
  * CreateChn so the module can be bindable before EnableChn runs. */
 int IMP_FrameSource_CreateChn(int chnNum, IMPFSChnAttr *chn_attr);
@@ -96,6 +125,12 @@ static int framesource_bind(void *src_module, void *dst_module, void *output_ptr
 static int framesource_unbind(void *src_module, void *dst_module, void *output_ptr);
 static void fs_bind_trace(const char *fmt, ...);
 static inline int32_t fs_chan_get_state(int chn);
+int32_t release_Frame(int32_t *arg1, void *arg2);
+int32_t get_frame(int32_t *arg1, void *arg2);
+static void *g_fs_vbm_ops[2] = {
+    (void *)get_frame,
+    (void *)release_Frame,
+};
 
 #define fs_trace fs_bind_trace
 
@@ -710,6 +745,8 @@ typedef struct FsChnCtx {
 
 static FsChnCtx g_fs_ctx[FS_MAX_CHANNELS];
 static pthread_mutex_t g_fs_lock = PTHREAD_MUTEX_INITIALIZER;
+static volatile int g_fs_thread_entered[FS_MAX_CHANNELS];
+static volatile int g_fs_thread_enabled_seen[FS_MAX_CHANNELS];
 
 static void fs_bind_trace(const char *fmt, ...)
 {
@@ -810,11 +847,10 @@ int32_t on_framesource_group_data_update(int32_t *arg1)
 }
 
 /* ---------------------------------------------------------------------
- * frame_pooling_thread — stock thread body does an IOCTL wake loop and
- * then dispatches a cached update_fn. We keep an equivalent select()+
- * VBM dequeue loop (from existing imp_framesource.c) because the IOCTL
- * semantics for /dev/framechanN on the openimp port differ from vendor.
- * BLOCKED for byte-exact reproduction of the vendor VIDIOC_* wake path.
+ * frame_pooling_thread — tx-isp-module capture is driven by
+ * REQBUFS/QBUF/DQBUF. We still spawn the worker before STREAMON to match
+ * OEM sequencing, but the worker must not touch the frame fd until the
+ * channel state is promoted to ENABLED by EnableChn().
  * ------------------------------------------------------------------- */
 
 static void *frame_pooling_thread(void *arg)
@@ -825,25 +861,25 @@ static void *frame_pooling_thread(void *arg)
     int poll_count = 0;
     int no_frame_cycles = 0;
     int state_wait_count = 0;
-    int ioctl_fail_count = 0;
     int software_mode = 0;
-    int initial_hw_settle = 1;
+    int last_state = -1;
+    int first_enabled_seen = 0;
 
     if (chn < 0 || chn >= FS_MAX_CHANNELS) {
         return NULL;
     }
     ctx = &g_fs_ctx[chn];
+    g_fs_thread_entered[chn] = 1;
+    write(2, "FSDBG thread_entry\n", 19);
 
     fs_bind_trace("libimp/FSB: pooling-thread start ch=%d ctx=%p arg=%p ra=%p\n",
                   chn, ctx, arg, fs_retaddr());
+    fs_thread_trace("libimp/FS: thread-mark ch=%d step=start ctx=%p fd=%d running=%d\n",
+                    chn, ctx, ctx->fd, ctx->running);
 
     snprintf(name, sizeof(name), "FS(%d)-tick", chn);
     prctl(PR_SET_NAME, name);
-
-    sem_post(&ctx->ready_sem);
-    fs_trace("libimp/FS: pooling startup-ready ch=%d fd=%d after-streamon\n",
-             chn, ctx->fd);
-
+    dprintf(2, "FSDBG ch=%d step=post_prctl fd=%d running=%d\n", chn, ctx->fd, ctx->running);
     while (ctx->running) {
         void *frame = NULL;
         Module *m;
@@ -851,53 +887,127 @@ static void *frame_pooling_thread(void *arg)
 
         pthread_testcancel();
         poll_count++;
+        if (poll_count <= 2) {
+            fs_thread_trace("libimp/FS: thread-mark ch=%d step=loop-top iter=%d fd=%d running=%d\n",
+                            chn, poll_count, ctx->fd, ctx->running);
+            dprintf(2, "FSDBG ch=%d step=loop_top iter=%d fd=%d running=%d\n",
+                    chn, poll_count, ctx->fd, ctx->running);
+        }
         ch_state = fs_chan_get_state(chn);
-
-        if (poll_count == 1 || poll_count == 5 || poll_count == 10 || (poll_count % 50) == 0) {
-            fs_trace("libimp/FS: pooling loop ch=%d iter=%d state=%d fd=%d software=%d running=%d\n",
-                     chn, poll_count, ch_state, ctx->fd, software_mode, ctx->running);
+        if (ch_state != last_state) {
+            fs_trace("libimp/FS: thread-state ch=%d iter=%d state=%d fd=%d running=%d\n",
+                     chn, poll_count, ch_state, ctx->fd, ctx->running);
+            last_state = ch_state;
         }
 
-        if (ch_state != 2) {
+        if (ch_state != 2 || ctx->fd < 0) {
             state_wait_count++;
-            if (state_wait_count <= 5 || (state_wait_count % 100) == 0) {
-                fs_trace("libimp/FS: pooling wait-state ch=%d state=%d waited=%d\n",
-                         chn, ch_state, state_wait_count);
+            if (state_wait_count <= 3 || (state_wait_count % 50) == 0) {
+                fs_trace("libimp/FS: thread-wait-enabled ch=%d iter=%d state=%d fd=%d waits=%d\n",
+                         chn, poll_count, ch_state, ctx->fd, state_wait_count);
             }
             usleep(10000);
             continue;
         }
         state_wait_count = 0;
+        if (!first_enabled_seen) {
+            first_enabled_seen = 1;
+            g_fs_thread_enabled_seen[chn] = 1;
+            fs_trace("libimp/FS: thread-enabled ch=%d iter=%d state=%d fd=%d\n",
+                     chn, poll_count, ch_state, ctx->fd);
+        }
 
         if (!software_mode) {
-            if (initial_hw_settle) {
-                initial_hw_settle = 0;
-                fs_trace("libimp/FS: pooling direct-dq-start ch=%d fd=%d iter=%d\n",
-                         chn, ctx->fd, poll_count);
+            int flags;
+            fd_set rfds;
+            struct timeval tv;
+            int select_ret;
+
+            if (poll_count <= 2) {
+                fs_thread_trace("libimp/FS: thread-mark ch=%d step=select iter=%d fd=%d state=%d errno=%d\n",
+                                chn, poll_count, ctx->fd, ch_state, errno);
+                dprintf(2, "FSDBG ch=%d step=before_select iter=%d fd=%d state=%d\n",
+                        chn, poll_count, ctx->fd, ch_state);
+            }
+
+            FD_ZERO(&rfds);
+            FD_SET(ctx->fd, &rfds);
+            tv.tv_sec = 0;
+            tv.tv_usec = 25000;
+            select_ret = select(ctx->fd + 1, &rfds, NULL, NULL, &tv);
+            fs_trace("libimp/FS: pooling select ch=%d fd=%d ret=%d errno=%d\n",
+                     chn, ctx->fd, select_ret, errno);
+            if (select_ret < 0) {
+                if (errno == EINTR) {
+                    continue;
+                }
+                no_frame_cycles++;
+                if (no_frame_cycles <= 5 || (no_frame_cycles % 50) == 0) {
+                    fs_trace("libimp/FS: pooling select-fail ch=%d fd=%d idle=%d\n",
+                             chn, ctx->fd, no_frame_cycles);
+                }
+                usleep(1000);
+                continue;
+            }
+            if (select_ret == 0) {
+                no_frame_cycles++;
+                if (no_frame_cycles <= 5 || (no_frame_cycles % 50) == 0) {
+                    fs_trace("libimp/FS: pooling select-timeout ch=%d fd=%d idle=%d\n",
+                             chn, ctx->fd, no_frame_cycles);
+                }
+                continue;
+            }
+
+            /* tx-isp's capture contract is driven by STREAM_ON + REQBUFS/QBUF/
+             * DQBUF. select() already told us the fd is readable, and some
+             * open-tx-isp variants leave the private POLL_FRAME ioctl parked
+             * indefinitely here, which prevents any frame from ever reaching
+             * the encoder path. */
+            fs_trace("libimp/FS: pooling select-ready ch=%d fd=%d state=%d\n",
+                     chn, ctx->fd, ch_state);
+            fs_trace("libimp/FS: pooling dq-path ch=%d fd=%d mode=select-then-dq\n",
+                     chn, ctx->fd);
+
+            flags = fcntl(ctx->fd, F_GETFL, 0);
+            if (flags >= 0 && (flags & O_NONBLOCK) == 0) {
+                if (fcntl(ctx->fd, F_SETFL, flags | O_NONBLOCK) == 0) {
+                    fs_trace("libimp/FS: pooling set-nonblock ch=%d fd=%d old=0x%x\n",
+                             chn, ctx->fd, flags);
+                }
             }
 
             while (1) {
+                if (poll_count <= 2) {
+                    fs_thread_trace("libimp/FS: thread-mark ch=%d step=dq-drain iter=%d fd=%d state=%d errno=%d\n",
+                                    chn, poll_count, ctx->fd, ch_state, errno);
+                    dprintf(2, "FSDBG ch=%d step=before_dq iter=%d fd=%d state=%d\n",
+                            chn, poll_count, ctx->fd, ch_state);
+                }
                 fs_trace("libimp/FS: pooling dequeue-enter ch=%d fd=%d\n",
                          chn, ctx->fd);
-                int dq_ret = VBMKernelDequeue(chn, ctx->fd, &frame);
-                fs_trace("libimp/FS: pooling dequeue ch=%d fd=%d ret=%d frame=%p\n",
-                         chn, ctx->fd, dq_ret, frame);
-                if (dq_ret != 0 || frame == NULL) {
-                    if (dq_ret == -2 || dq_ret == 0) {
-                        no_frame_cycles++;
-                        if (poll_count <= 5 || (poll_count % 50) == 0) {
-                            fs_trace("libimp/FS: pooling dequeue-empty ch=%d fd=%d idle=%d\n",
-                                     chn, ctx->fd, no_frame_cycles);
-                        }
-                        usleep(5000);
+                {
+                    int dq_ret = VBMKernelDequeue(chn, ctx->fd, &frame);
+                    fs_trace("libimp/FS: pooling dequeue ch=%d fd=%d ret=%d frame=%p\n",
+                             chn, ctx->fd, dq_ret, frame);
+                    if (dq_ret == 0 && frame != NULL) {
+                        fs_user_trace("pooling dequeue-ok ch=%d fd=%d frame=%p", chn, ctx->fd, frame);
                     }
-                    break;
+                    if (dq_ret != 0 || frame == NULL) {
+                        if (dq_ret == -2 || dq_ret == 0) {
+                            if (no_frame_cycles <= 5 || (no_frame_cycles % 50) == 0) {
+                                fs_trace("libimp/FS: pooling dequeue-empty ch=%d fd=%d idle=%d state=%d\n",
+                                         chn, ctx->fd, no_frame_cycles, ch_state);
+                            }
+                        }
+                        break;
+                    }
                 }
-                ioctl_fail_count = 0;
                 no_frame_cycles = 0;
 
                 m = g_modules[0][chn];
                 if (m != NULL) {
+                    fs_user_trace("pooling notify ch=%d module=%p frame=%p observers=%d",
+                                  chn, m, frame, *(int32_t *)((char *)m + 0x3c));
                     fs_trace("libimp/FS: pooling ch=%d fd=%d module=%p frame=%p notify start\n",
                              chn, ctx->fd, m, frame);
                     framesource_publish_outputs(m, frame);
@@ -938,6 +1048,8 @@ static void *frame_pooling_thread(void *arg)
         }
     }
 
+    fs_trace("libimp/FS: pooling-thread exit ch=%d fd=%d running=%d state=%d\n",
+             chn, ctx->fd, ctx->running, fs_chan_get_state(chn));
     return NULL;
 }
 
@@ -949,12 +1061,50 @@ static void *frame_pooling_thread(void *arg)
 
 int32_t release_Frame(int32_t *arg1, void *arg2)
 {
-    int chn = arg1[1];
+    int chn;
+    int fd;
+    int idx;
+    unsigned long phys;
+    unsigned int len;
+    uint8_t *fs_base = (uint8_t *)arg2;
+
+    if (arg1 == NULL) return -1;
+
+    chn = arg1[1];
     if (chn < 0 || chn >= FS_MAX_CHANNELS) return -1;
-    (void)arg2;
-    /* BLOCKED: stock issues VIDIOC_QBUF via ioctl(fd, 0xc044560f, &str).
-     * openimp runs the same transition through VBMReleaseFrame which
-     * covers both software and kernel-backed buffers. */
+
+    fd = -1;
+    if (fs_base != NULL) {
+        fd = *(int32_t *)(fs_base + (chn * FS_CHANNEL_SIZE) + 0x1c4);
+    }
+    if (fd < 0) {
+        fd = g_fs_ctx[chn].fd;
+    }
+    if (fd < 0) {
+        fs_trace("libimp/FS: release_frame invalid-fd ch=%d frame=%p\n", chn, arg1);
+        return -1;
+    }
+
+    idx = arg1[0];
+    phys = (unsigned long)(uint32_t)arg1[6];
+    len = (unsigned int)arg1[5];
+    if (len == 0) {
+        fs_trace("libimp/FS: release_frame zero-len ch=%d fd=%d idx=%d\n",
+                 chn, fd, idx);
+        return -1;
+    }
+
+    fs_trace("libimp/FS: release_frame qbuf ch=%d fd=%d idx=%d phys=0x%lx len=%u\n",
+             chn, fd, idx, phys, len);
+    if (fs_qbuf(fd, idx, phys, len) < 0) {
+        fs_trace("libimp/FS: release_frame qbuf-fail ch=%d fd=%d idx=%d\n",
+                 chn, fd, idx);
+        return -1;
+    }
+
+    if (fs_base != NULL) {
+        *(int32_t *)(fs_base + (chn * FS_CHANNEL_SIZE) + 0x22c) += 1;
+    }
     return 0;
 }
 
@@ -1328,10 +1478,7 @@ int IMP_FrameSource_CreateChn(int chnNum, IMPFSChnAttr *chn_attr)
     g_fs_ctx[chnNum].created = 1;
     g_fs_ctx[chnNum].fd = -1;
     pthread_mutex_unlock(&g_fs_lock);
-    if (chn_attr->type == FS_PHY_CHANNEL) {
-        fs_bind_trace("libimp/FSB: defer-promote ch=%d state=%d type=%u until consumer-ready\n",
-                      chnNum, fs_chan_get_state(chnNum), (unsigned)chn_attr->type);
-    }
+    fs_hal_promote_channel(chnNum, chn_attr);
     return 0;
 }
 
@@ -1591,10 +1738,16 @@ int IMP_FrameSource_EnableChn(int chnNum)
     memcpy(vbm_fmt + 0x08, &ctx->attr.pixFmt, sizeof(int));
     memcpy(vbm_fmt + 0x0c, &kernel_sizeimage, sizeof(int));
     vbm_count = ctx->attr.nrVBs;
-    if (vbm_count < 3) vbm_count = 3;
+    /* OEM T31 path honors the channel's requested VB count here.
+     * Raptor configures nrVBs=2 and the stock driver/libimp sequence
+     * uses REQBUFS(2). Forcing 3 changes both the VBM pool geometry and
+     * the frame-channel REQBUFS depth, which is a concrete divergence from
+     * the working path. Keep a minimum of 2 so invalid/zero configs still
+     * produce a usable queue, but do not silently inflate 2 -> 3. */
+    if (vbm_count < 2) vbm_count = 2;
     memcpy(vbm_fmt + 0x34, &vbm_count, sizeof(int));
 
-    if (VBMCreatePool(chnNum, vbm_fmt, NULL, NULL) < 0) {
+    if (VBMCreatePool(chnNum, vbm_fmt, g_fs_vbm_ops, gFrameSource) < 0) {
         fs_trace("libimp/FS: enable VBMCreatePool-fail ch=%d\n", chnNum);
         fs_close_device(ctx->fd);
         ctx->fd = -1;
@@ -1615,7 +1768,35 @@ int IMP_FrameSource_EnableChn(int chnNum)
     fs_trace("libimp/FS: enable set-bufcnt-ok ch=%d req=%d got=%d\n",
              chnNum, requested_bufcnt, bufcnt);
 
-    if (VBMFillPool(chnNum) < 0) {
+    *(int32_t *)(chan + 0x1c4) = ctx->fd;
+
+    /* OEM sequence includes 0x800456c5 during channel enable. The HLIL for
+     * frame_channel_unlocked_ioctl shows this path dispatching a remote event
+     * as part of the enable flow, so openimp should not gate it on an explicit
+     * frame-depth setting from the app. Use nrVBs as the bank count because it
+     * matches the pool shape we just configured with REQBUFS. */
+    {
+        int banks = ctx->attr.nrVBs;
+        if (banks < 1) {
+            banks = 1;
+        }
+        if (fs_set_depth(ctx->fd, banks) < 0) {
+            fs_trace("libimp/FS: enable set-banks-fail ch=%d fd=%d banks=%d depth=%d\n",
+                     chnNum, ctx->fd, banks, ctx->frame_depth);
+            VBMFlushFrame(chnNum);
+            VBMDestroyPool(chnNum);
+            fs_close_device(ctx->fd);
+            ctx->fd = -1;
+            ctx->running = 0;
+            pthread_mutex_unlock(&g_fs_lock);
+            return -1;
+        }
+        fs_trace("libimp/FS: enable set-banks-ok ch=%d fd=%d banks=%d depth=%d\n",
+                 chnNum, ctx->fd, banks, ctx->frame_depth);
+    }
+
+    queued_ok = VBMFillPool(chnNum);
+    if (queued_ok < 0) {
         fs_trace("libimp/FS: enable VBMFillPool-fail ch=%d\n", chnNum);
         VBMDestroyPool(chnNum);
         fs_close_device(ctx->fd);
@@ -1623,37 +1804,15 @@ int IMP_FrameSource_EnableChn(int chnNum)
         pthread_mutex_unlock(&g_fs_lock);
         return -1;
     }
+    fs_trace("libimp/FS: enable fill-pool-ok ch=%d queued_ok=%d\n", chnNum, queued_ok);
 
-    if (ctx->frame_depth > 0) {
-        fs_set_depth(ctx->fd, ctx->frame_depth);
-    }
-
-    queued_ok = VBMPrimeKernelQueue(chnNum, ctx->fd, bufcnt);
-    fs_trace("libimp/FS: enable prime-queue ch=%d queued_ok=%d bufcnt=%d\n",
-             chnNum, queued_ok, bufcnt);
     ctx->running = 1;
-    fs_chan_set_state(chnNum, 2);
-    *(int32_t *)(chan + 0x1c4) = ctx->fd;
-
-    usleep(5000);
-    ISP_EnsureLinkStreamOn(0);
-
-    if (fs_stream_on(ctx->fd) < 0) {
-        fs_trace("libimp/FS: enable stream-on-fail ch=%d fd=%d\n", chnNum, ctx->fd);
-        VBMFlushFrame(chnNum);
-        VBMDestroyPool(chnNum);
-        fs_close_device(ctx->fd);
-        ctx->fd = -1;
-        ctx->running = 0;
-        fs_chan_set_state(chnNum, 1);
-        pthread_mutex_unlock(&g_fs_lock);
-        return -1;
-    }
-    fs_trace("libimp/FS: enable stream-on-ok ch=%d fd=%d\n", chnNum, ctx->fd);
 
     {
         static int chn_id_storage[FS_MAX_CHANNELS];
         chn_id_storage[chnNum] = chnNum;
+        g_fs_thread_entered[chnNum] = 0;
+        g_fs_thread_enabled_seen[chnNum] = 0;
         if (pthread_create(&ctx->thread, NULL, frame_pooling_thread,
                            &chn_id_storage[chnNum]) != 0) {
             fs_trace("libimp/FS: enable pthread-create-fail ch=%d fd=%d\n", chnNum, ctx->fd);
@@ -1670,31 +1829,53 @@ int IMP_FrameSource_EnableChn(int chnNum)
         thread_started = 1;
         fs_trace("libimp/FS: enable pthread-create-ok ch=%d tid=%p arg=%p\n",
                  chnNum, (void *)ctx->thread, &chn_id_storage[chnNum]);
+        usleep(20000);
+        fs_trace("libimp/FS: enable thread-probe ch=%d entered=%d kill0=%d errno=%d\n",
+                 chnNum, g_fs_thread_entered[chnNum], pthread_kill(ctx->thread, 0), errno);
     }
 
-    {
-        struct timespec ts;
-        if (clock_gettime(CLOCK_REALTIME, &ts) == 0) {
-            ts.tv_sec += 1;
-            if (sem_timedwait(&ctx->ready_sem, &ts) != 0) {
-                fs_trace("libimp/FS: enable thread-ready-timeout ch=%d errno=%d\n",
-                         chnNum, errno);
-                pthread_cancel(ctx->thread);
-                pthread_join(ctx->thread, NULL);
-                ctx->thread = 0;
-                thread_started = 0;
-                fs_stream_off(ctx->fd);
-                VBMFlushFrame(chnNum);
-                VBMDestroyPool(chnNum);
-                fs_close_device(ctx->fd);
-                ctx->fd = -1;
-                ctx->running = 0;
-                fs_chan_set_state(chnNum, 1);
-                pthread_mutex_unlock(&g_fs_lock);
-                return -1;
-            }
-            fs_trace("libimp/FS: enable thread-ready-ok ch=%d\n", chnNum);
+    fs_trace("libimp/FS: enable thread-ready-skip ch=%d fd=%d\n", chnNum, ctx->fd);
+
+    usleep(5000);
+    ISP_EnsureLinkStreamOn(0);
+
+    if (fs_stream_on(ctx->fd) < 0) {
+        fs_trace("libimp/FS: enable stream-on-fail ch=%d fd=%d\n", chnNum, ctx->fd);
+        if (thread_started) {
+            pthread_cancel(ctx->thread);
+            pthread_join(ctx->thread, NULL);
+            ctx->thread = 0;
+            thread_started = 0;
         }
+        VBMFlushFrame(chnNum);
+        VBMDestroyPool(chnNum);
+        fs_close_device(ctx->fd);
+        ctx->fd = -1;
+        ctx->running = 0;
+        fs_chan_set_state(chnNum, 1);
+        pthread_mutex_unlock(&g_fs_lock);
+        return -1;
+    }
+    fs_trace("libimp/FS: enable stream-on-ok ch=%d fd=%d\n", chnNum, ctx->fd);
+
+    /* The open tx-isp path can accept pre-STREAMON QBUFs without making them
+     * deliverable to DQBUF immediately. Replay the pool after STREAMON so the
+     * hardware path has active buffers in its final streaming state. */
+    queued_ok = VBMFillPool(chnNum);
+    fs_trace("libimp/FS: enable post-stream-fill ch=%d queued_ok=%d\n",
+             chnNum, queued_ok);
+
+    fs_chan_set_state(chnNum, 2);
+    fs_trace("libimp/FS: enable state-promote ch=%d state=%d fd=%d\n",
+             chnNum, fs_chan_get_state(chnNum), ctx->fd);
+    {
+        int spins = 0;
+        while (spins < 100 && g_fs_thread_enabled_seen[chnNum] == 0) {
+            usleep(1000);
+            spins++;
+        }
+        fs_trace("libimp/FS: enable worker-sync ch=%d enabled_seen=%d spins=%d\n",
+                 chnNum, g_fs_thread_enabled_seen[chnNum], spins);
     }
 
     if (chnNum == 0 && queued_ok <= 0) {

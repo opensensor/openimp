@@ -109,6 +109,20 @@ static void module_trace(const char *fmt, ...)
     close(fd);
 }
 
+static void module_user_trace(const char *fmt, ...)
+{
+    char buf[256];
+    va_list ap;
+
+    va_start(ap, fmt);
+    vsnprintf(buf, sizeof(buf), fmt, ap);
+    va_end(ap);
+
+    imp_log_fun(4, IMP_Log_Get_Option(), 2, "Module",
+        "/home/user/git/proj/sdk-lv3/src/imp/core/module.c", 0x50,
+        "notify_observers", "%s\n", buf);
+}
+
 int32_t remove_observer(Module *arg1, Module *arg2)
 {
     Module **slot = (Module **)((char *)arg1 + 0x14);
@@ -204,6 +218,8 @@ int32_t notify_observers(Module *arg1, void *arg2)
                  arg1->name, arg1, count, arg2);
 
     if (count <= 0) {
+        module_user_trace("notify src=%s count=0 frame=%p",
+                          arg1 ? arg1->name : "?", arg2);
         return 0;
     }
 
@@ -222,8 +238,15 @@ int32_t notify_observers(Module *arg1, void *arg2)
         if (frame_slot != NULL && *frame_slot != 0) {
             int32_t (*update_cb)(Module *module, void *frame) =
                 *(int32_t (**)(Module *, void *))((char *)observer + 0x4c);
+            int32_t update_rc;
 
-            if (update_cb(observer, frame_slot) < 0) {
+            module_user_trace("notify src=%s slot=%d obs=%s frame=%p cb=%p",
+                              arg1->name, i,
+                              observer ? observer->name : "?",
+                              (void *)(uintptr_t)*frame_slot, update_cb);
+
+            update_rc = update_cb(observer, frame_slot);
+            if (update_rc < 0) {
                 VBMUnLockFrame(*(void **)frame_slot);
                 i += 1;
 
@@ -234,9 +257,14 @@ int32_t notify_observers(Module *arg1, void *arg2)
                         "notify_observers",
                         "%s update failed, frame->pool_idx=%d, frame->index = %d\n",
                         observer->name, frame[1], frame[0]);
+                    module_user_trace("notify src=%s slot=%d obs=%s rc=%d",
+                                      arg1->name, i - 1, observer->name, update_rc);
                     count = *(int32_t *)((char *)arg1 + 0x3c);
                 }
             } else {
+                module_user_trace("notify src=%s slot=%d obs=%s rc=%d",
+                                  arg1->name, i, observer ? observer->name : "?",
+                                  update_rc);
                 count = *(int32_t *)((char *)arg1 + 0x3c);
                 i += 1;
             }

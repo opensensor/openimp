@@ -96,13 +96,8 @@ static void *fs_poll_worker(void *arg)
 #define ISP_INIT            0x50000000  /* Placeholder */
 #define ISP_SET_SENSOR      0x50000001  /* Placeholder */
 
-/* V4L2 format structure with Ingenic extensions for VIDIOC_SET_FMT ioctl
- * This is a 0xc8 (200 byte) structure that gets passed to ioctl 0xc07056c3
- * Based on kernel driver tx-isp-module.c line 3896
- *
- * The raw_data area contains a copy of imp_channel_attr starting at offset 0x24
- * which the kernel extracts and passes to tisp_channel_attr_set
- */
+/* High-level userspace format description used by openimp callers.
+ * The raw ioctl payload is marshaled separately below. */
 typedef struct {
     /* V4L2 standard header */
     int type;                   /* 0x00: Buffer type (V4L2_BUF_TYPE_VIDEO_CAPTURE = 1) */
@@ -139,6 +134,47 @@ typedef struct {
     int fps_den;                /* 0x5c: FPS denominator (arg2[14]) */
     char padding[0x68];         /* 0x60-0xc7: Padding to 200 bytes */
 } fs_format_t;
+
+/* open-tx-isp expects struct frame_image_format (0x70 bytes), not the older
+ * attr-slice layout that OEM libimp uses on other stacks.  Keep the ABI-local
+ * ioctl struct here so callers can continue to use fs_format_t unchanged. */
+struct fs_ioctl_pix_format {
+    uint32_t width;         /* 0x04 */
+    uint32_t height;        /* 0x08 */
+    uint32_t pixelformat;   /* 0x0c */
+    uint32_t field;         /* 0x10 */
+    uint32_t bytesperline;  /* 0x14 */
+    uint32_t sizeimage;     /* 0x18 */
+    uint32_t colorspace;    /* 0x1c */
+    uint32_t priv;          /* 0x20 */
+    uint32_t flags;         /* 0x24 */
+    uint32_t ycbcr_enc;     /* 0x28 */
+    uint32_t quantization;  /* 0x2c */
+    uint32_t xfer_func;     /* 0x30 */
+};
+
+struct fs_ioctl_format70 {
+    uint32_t type;                  /* 0x00 */
+    struct fs_ioctl_pix_format pix; /* 0x04..0x33 */
+    uint32_t crop_enable;           /* 0x34 */
+    uint32_t crop_top;              /* 0x38 */
+    uint32_t crop_left;             /* 0x3c */
+    uint32_t crop_width;            /* 0x40 */
+    uint32_t crop_height;           /* 0x44 */
+    uint32_t scaler_enable;         /* 0x48 */
+    uint32_t scaler_out_width;      /* 0x4c */
+    uint32_t scaler_out_height;     /* 0x50 */
+    uint32_t rate_bits;             /* 0x54 */
+    uint32_t rate_mask;             /* 0x58 */
+    uint32_t fcrop_enable;          /* 0x5c */
+    uint32_t fcrop_top;             /* 0x60 */
+    uint32_t fcrop_left;            /* 0x64 */
+    uint32_t fcrop_width;           /* 0x68 */
+    uint32_t fcrop_height;          /* 0x6c */
+};
+
+_Static_assert(sizeof(struct fs_ioctl_pix_format) == 0x30, "fs ioctl pix format size");
+_Static_assert(sizeof(struct fs_ioctl_format70) == 0x70, "fs ioctl format size");
 
 /* v4l2_requestbuffers (driver expects 5 x u32 = 0x14 bytes):
  * count, type, memory, capabilities, reserved[1]
@@ -194,36 +230,7 @@ int fs_get_format(int fd, fs_format_t *fmt) {
         return -1;
     }
 
-    /* Use the same 0x70-byte structure as SET_FMT - the kernel expects this exact layout */
-    struct __attribute__((packed)) fs_format70_t {
-        /* v4l2-like header (0x00..0x23) */
-        uint32_t type;         /* 0x00 */
-        uint32_t width;        /* 0x04 */
-        uint32_t height;       /* 0x08 */
-        uint32_t pixelformat;  /* 0x0c */
-        uint32_t field;        /* 0x10 */
-        uint32_t bytesperline; /* 0x14 */
-        uint32_t sizeimage;    /* 0x18 */
-        uint32_t colorspace;   /* 0x1c */
-        uint32_t priv;         /* 0x20 */
-        /* Ingenic IMPFSChnAttr slice (0x24..0x6F) - kernel may read/write these */
-        uint32_t enable;           /* 0x24 */
-        uint32_t attr_width;       /* 0x28 */
-        uint32_t attr_height;      /* 0x2c */
-        uint32_t crop_enable;      /* 0x30 */
-        uint32_t crop_x;           /* 0x34 */
-        uint32_t crop_y;           /* 0x38 */
-        uint32_t crop_width;       /* 0x3c */
-        uint32_t crop_height;      /* 0x40 */
-        uint32_t scaler_enable;    /* 0x44 */
-        uint32_t scaler_outwidth;  /* 0x48 */
-        uint32_t scaler_outheight; /* 0x4c */
-        uint32_t picwidth;         /* 0x50 */
-        uint32_t picheight;        /* 0x54 */
-        uint32_t fps_num;          /* 0x58 */
-        uint32_t fps_den;          /* 0x5c */
-        uint8_t  pad[0x70 - 0x24 - 15 * 4]; /* 16 bytes padding to 0x70 */
-    } g = {0};
+    struct fs_ioctl_format70 g = {0};
 
     g.type = 1; /* V4L2_BUF_TYPE_VIDEO_CAPTURE */
     int ret = ioctl(fd, VIDIOC_GET_FMT, &g);
@@ -234,12 +241,21 @@ int fs_get_format(int fd, fs_format_t *fmt) {
 
     /* Copy relevant fields back out */
     fmt->type = (int)g.type;
-    fmt->width = (int)g.width;
-    fmt->height = (int)g.height;
-    fmt->pixelformat = (int)g.pixelformat;
-    fmt->bytesperline = (int)g.bytesperline;
-    fmt->sizeimage = (int)g.sizeimage;
-    fmt->colorspace = (int)g.colorspace;
+    fmt->width = (int)g.pix.width;
+    fmt->height = (int)g.pix.height;
+    fmt->pixelformat = (int)g.pix.pixelformat;
+    fmt->field = (int)g.pix.field;
+    fmt->bytesperline = (int)g.pix.bytesperline;
+    fmt->sizeimage = (int)g.pix.sizeimage;
+    fmt->colorspace = (int)g.pix.colorspace;
+    fmt->crop_enable = (int)g.crop_enable;
+    fmt->crop_x = (int)g.crop_left;
+    fmt->crop_y = (int)g.crop_top;
+    fmt->crop_width = (int)g.crop_width;
+    fmt->crop_height = (int)g.crop_height;
+    fmt->scaler_enable = (int)g.scaler_enable;
+    fmt->scaler_outwidth = (int)g.scaler_out_width;
+    fmt->scaler_outheight = (int)g.scaler_out_height;
 
     fprintf(stderr, "[KernelIF] Got format: %dx%d fmt=0x%x sizeimage=%d bytesperline=%d\n",
             fmt->width, fmt->height, fmt->pixelformat, fmt->sizeimage, fmt->bytesperline);
@@ -276,53 +292,23 @@ int fs_set_format(int fd, fs_format_t *fmt) {
         return -1;
     }
 
-    /* Use v4l2-like 0x70 struct for SET as well (matches driver expectations).
-     * IMPORTANT: The OEM leaves ALL Ingenic extended attributes at zero for the
-     * initial SET_FMT (except fps_num=1). The remote ISP (tisp_channel_attr_set)
-     * uses enable=0 to fall back to default/negotiated channel configuration.
-     * Setting enable=1 with explicit dimensions causes a different ISP channel
-     * configuration that breaks the DQBUF path for PHY_CHANNEL (channel 0).
-     */
-    struct __attribute__((packed)) fs_format70_t {
-        /* v4l2-like header (0x00..0x23) */
-        uint32_t type;         /* 0x00 */
-        uint32_t width;        /* 0x04 */
-        uint32_t height;       /* 0x08 */
-        uint32_t pixelformat;  /* 0x0c */
-        uint32_t field;        /* 0x10 */
-        uint32_t bytesperline; /* 0x14 */
-        uint32_t sizeimage;    /* 0x18 */
-        uint32_t colorspace;   /* 0x1c */
-        uint32_t priv;         /* 0x20 */
-        /* Ingenic IMPFSChnAttr slice (0x24..0x6F) */
-        uint32_t enable;           /* 0x24 */
-        uint32_t attr_width;       /* 0x28 */
-        uint32_t attr_height;      /* 0x2c */
-        uint32_t crop_enable;      /* 0x30 */
-        uint32_t crop_x;           /* 0x34 */
-        uint32_t crop_y;           /* 0x38 */
-        uint32_t crop_width;       /* 0x3c */
-        uint32_t crop_height;      /* 0x40 */
-        uint32_t scaler_enable;    /* 0x44 */
-        uint32_t scaler_outwidth;  /* 0x48 */
-        uint32_t scaler_outheight; /* 0x4c */
-        uint32_t picwidth;         /* 0x50 */
-        uint32_t picheight;        /* 0x54 */
-        uint32_t fps_num;          /* 0x58 */
-        uint32_t fps_den;          /* 0x5c */
-        uint8_t  pad[0x70 - 0x24 - 15 * 4]; /* 16 bytes padding to 0x70 */
-    } s = {0};
+    struct fs_ioctl_format70 s = {0};
+    uint32_t expected_bytesperline = 0;
+    uint32_t expected_sizeimage = 0;
+    int is_nv12_family = 0;
 
     /* Header */
     s.type = 1; /* V4L2_BUF_TYPE_VIDEO_CAPTURE */
-    s.width = (uint32_t)fmt->width;
-    s.height = (uint32_t)fmt->height;
+    s.pix.width = (uint32_t)fmt->width;
+    s.pix.height = (uint32_t)fmt->height;
 
     /* Convert enum pixfmt to fourcc if needed */
     uint32_t fourcc = (fmt->pixelformat < 0x100) ? pixfmt_to_fourcc(fmt->pixelformat)
                                                  : (uint32_t)fmt->pixelformat;
-    s.pixelformat = fourcc;
-    s.field = 0;         /* V4L2_FIELD_NONE (driver forces to 4) */
+    s.pix.pixelformat = fourcc;
+    s.pix.field = 0;         /* V4L2_FIELD_NONE */
+    is_nv12_family = (fmt->pixelformat == 0xa || fmt->pixelformat == 0xb ||
+                      fourcc == 0x3231564e || fourcc == 0x3132564e);
 
     /* Compute NV12 sizeimage and bytesperline explicitly.
      * The kernel's QBUF handler checks: length == sizeimage. If sizeimage
@@ -330,56 +316,64 @@ int fs_set_format(int fd, fs_format_t *fmt) {
      * ALL QBUFs are rejected with "invalid memory size". This was the root
      * cause of channel 0 (1920x1080) never getting frames. */
     {
-        uint32_t stride = (s.width + 15) & ~15u; /* 16-byte aligned stride */
-        s.bytesperline = stride;
-        s.sizeimage = (stride * s.height * 3) / 2; /* NV12: Y + UV/2 */
+        uint32_t stride = s.pix.width;
+        uint32_t aligned_height = (s.pix.height + 15) & ~15u;
+        s.pix.bytesperline = stride;
+        s.pix.sizeimage = (stride * aligned_height * 3) / 2; /* NV12: Y + UV/2 */
+        expected_bytesperline = stride;
+        expected_sizeimage = (stride * s.pix.height * 3) / 2; /* OEM encoder-visible size */
     }
-    s.colorspace = 8;    /* V4L2_COLORSPACE_SRGB */
-    s.priv = 0;
+    s.pix.colorspace = 8;    /* V4L2_COLORSPACE_SRGB */
+    s.pix.priv = 0;
+    s.pix.flags = 0;
+    s.pix.ycbcr_enc = 0;
+    s.pix.quantization = 0;
+    s.pix.xfer_func = 0;
 
-    /* Extended IMP attributes (match fs_format_t layout in kernel_interface.h) */
-    s.enable           = (uint32_t)fmt->enable;
-    s.attr_width       = (uint32_t)fmt->attr_width;
-    s.attr_height      = (uint32_t)fmt->attr_height;
-    s.crop_enable      = (uint32_t)fmt->crop_enable;
-    s.crop_x           = (uint32_t)fmt->crop_x;
-    s.crop_y           = (uint32_t)fmt->crop_y;
-    s.crop_width       = (uint32_t)fmt->crop_width;
-    s.crop_height      = (uint32_t)fmt->crop_height;
-    s.scaler_enable    = (uint32_t)fmt->scaler_enable;
-    s.scaler_outwidth  = (uint32_t)fmt->scaler_outwidth;
-    s.scaler_outheight = (uint32_t)fmt->scaler_outheight;
-    s.picwidth         = (uint32_t)fmt->picwidth;
-    s.picheight        = (uint32_t)fmt->picheight;
-    s.fps_num          = (uint32_t)fmt->fps_num;
-    s.fps_den          = (uint32_t)fmt->fps_den;
+    /* Map the high-level crop/scaler knobs onto frame_image_format. Leave the
+     * rate/front-crop words zeroed unless a caller explicitly grows fs_format_t
+     * to drive them later. */
+    s.crop_enable = (uint32_t)fmt->crop_enable;
+    s.crop_top = (uint32_t)fmt->crop_y;
+    s.crop_left = (uint32_t)fmt->crop_x;
+    s.crop_width = (uint32_t)fmt->crop_width;
+    s.crop_height = (uint32_t)fmt->crop_height;
+    s.scaler_enable = (uint32_t)fmt->scaler_enable;
+    s.scaler_out_width = (uint32_t)fmt->scaler_outwidth;
+    s.scaler_out_height = (uint32_t)fmt->scaler_outheight;
+    s.rate_bits = 0;
+    s.rate_mask = 0;
+    s.fcrop_enable = 0;
+    s.fcrop_top = 0;
+    s.fcrop_left = 0;
+    s.fcrop_width = 0;
+    s.fcrop_height = 0;
 
     /* Debug: dump structure before ioctl */
     fprintf(stderr, "[KernelIF] SET_FMT before ioctl:\n");
-    fprintf(stderr, "[KernelIF]   width=%u height=%u pixelformat=0x%x\n", s.width, s.height, s.pixelformat);
-    fprintf(stderr, "[KernelIF]   enable=%u attr_width=%u attr_height=%u\n",
-            s.enable, s.attr_width, s.attr_height);
-    fprintf(stderr, "[KernelIF]   scaler_enable=%u scaler_outwidth=%u scaler_outheight=%u\n",
-            s.scaler_enable, s.scaler_outwidth, s.scaler_outheight);
-    fprintf(stderr, "[KernelIF]   picwidth=%u picheight=%u fps_num=%u fps_den=%u\n",
-            s.picwidth, s.picheight, s.fps_num, s.fps_den);
+    fprintf(stderr, "[KernelIF]   width=%u height=%u pixelformat=0x%x\n",
+            s.pix.width, s.pix.height, s.pix.pixelformat);
+    fprintf(stderr, "[KernelIF]   bytesperline=%u sizeimage=%u colorspace=%u\n",
+            s.pix.bytesperline, s.pix.sizeimage, s.pix.colorspace);
     fprintf(stderr, "[KernelIF]   crop_enable=%u crop=%ux%u+%u+%u\n",
-            s.crop_enable, s.crop_width, s.crop_height, s.crop_x, s.crop_y);
+            s.crop_enable, s.crop_width, s.crop_height, s.crop_left, s.crop_top);
+    fprintf(stderr, "[KernelIF]   scaler_enable=%u scaler_outwidth=%u scaler_outheight=%u\n",
+            s.scaler_enable, s.scaler_out_width, s.scaler_out_height);
 
     int ret = ioctl(fd, VIDIOC_SET_FMT, &s);
     if (ret < 0) {
         fprintf(stderr, "[KernelIF] VIDIOC_SET_FMT failed: %s\n", strerror(errno));
         fprintf(stderr, "[KernelIF]   Requested: %dx%d fmt=0x%x (fourcc=0x%x) colorspace=%d\n",
-                fmt->width, fmt->height, fmt->pixelformat, fourcc, s.colorspace);
+                fmt->width, fmt->height, fmt->pixelformat, fourcc, s.pix.colorspace);
         return -1;
     }
 
     /* Debug: dump structure after ioctl */
     fprintf(stderr, "[KernelIF] SET_FMT after ioctl:\n");
     fprintf(stderr, "[KernelIF]   width=%u height=%u sizeimage=%u bytesperline=%u\n",
-            s.width, s.height, s.sizeimage, s.bytesperline);
+            s.pix.width, s.pix.height, s.pix.sizeimage, s.pix.bytesperline);
     fprintf(stderr, "[KernelIF]   scaler_enable=%u scaler_outwidth=%u scaler_outheight=%u\n",
-            s.scaler_enable, s.scaler_outwidth, s.scaler_outheight);
+            s.scaler_enable, s.scaler_out_width, s.scaler_out_height);
 
     /* CRITICAL: The kernel modifies the structure in-place during SET_FMT and copies it back.
      * The remote ISP core may update sizeimage, bytesperline, and other fields.
@@ -388,12 +382,35 @@ int fs_set_format(int fd, fs_format_t *fmt) {
      */
     fprintf(stderr, "[KernelIF] Set format: %dx%d fmt=0x%x (fourcc=0x%x) sizeimage=%u bytesperline=%u colorspace=%d\n",
             fmt->width, fmt->height, fmt->pixelformat, fourcc,
-            s.sizeimage, s.bytesperline, s.colorspace);
+            s.pix.sizeimage, s.pix.bytesperline, s.pix.colorspace);
 
     /* Update fmt with kernel-modified values */
-    fmt->sizeimage = (int)s.sizeimage;
-    fmt->bytesperline = (int)s.bytesperline;
-    fmt->field = (int)s.field;
+    fmt->width = (int)s.pix.width;
+    fmt->height = (int)s.pix.height;
+    fmt->sizeimage = (int)s.pix.sizeimage;
+    fmt->bytesperline = (int)s.pix.bytesperline;
+    fmt->field = (int)s.pix.field;
+    fmt->colorspace = (int)s.pix.colorspace;
+    fmt->crop_enable = (int)s.crop_enable;
+    fmt->crop_x = (int)s.crop_left;
+    fmt->crop_y = (int)s.crop_top;
+    fmt->crop_width = (int)s.crop_width;
+    fmt->crop_height = (int)s.crop_height;
+    fmt->scaler_enable = (int)s.scaler_enable;
+    fmt->scaler_outwidth = (int)s.scaler_out_width;
+    fmt->scaler_outheight = (int)s.scaler_out_height;
+
+    if (is_nv12_family) {
+        if ((uint32_t)fmt->bytesperline != expected_bytesperline ||
+            (uint32_t)fmt->sizeimage != expected_sizeimage) {
+            fprintf(stderr,
+                    "[KernelIF] SET_FMT override NV12 geometry: driver bytesperline=%d sizeimage=%d -> expected bytesperline=%u sizeimage=%u\n",
+                    fmt->bytesperline, fmt->sizeimage,
+                    expected_bytesperline, expected_sizeimage);
+        }
+        fmt->bytesperline = (int)expected_bytesperline;
+        fmt->sizeimage = (int)expected_sizeimage;
+    }
 
     return 0;
 }
@@ -652,7 +669,6 @@ int fs_dqbuf(int fd, int *index_out) {
     struct v4l2_buf32 *b;
     int ret;
     int saved_errno;
-    int saved_flags = -1;
     size_t buf_sz;
 
     if (fd < 0 || !index_out) return -1;
@@ -675,27 +691,10 @@ int fs_dqbuf(int fd, int *index_out) {
     }
     ki_trace("libimp/KI: DQBUF enter fd=%d raw=%p\n", fd, raw);
 
-    saved_flags = fcntl(fd, F_GETFL, 0);
-    if (saved_flags >= 0 && (saved_flags & O_NONBLOCK)) {
-        if (fcntl(fd, F_SETFL, saved_flags & ~O_NONBLOCK) < 0) {
-            fprintf(stderr, "[KernelIF] DQBUF: failed to clear O_NONBLOCK on fd=%d: %s\n",
-                    fd, strerror(errno));
-            free(raw);
-            return -1;
-        }
-    }
-
-    ki_trace("libimp/KI: DQBUF blocking-call fd=%d\n", fd);
+    ki_trace("libimp/KI: DQBUF ioctl-call fd=%d\n", fd);
     ret = ioctl(fd, VIDIOC_DQBUF, raw);
     saved_errno = errno;
-    ki_trace("libimp/KI: DQBUF blocking-ret fd=%d ret=%d errno=%d\n", fd, ret, saved_errno);
-
-    if (saved_flags >= 0 && (saved_flags & O_NONBLOCK)) {
-        if (fcntl(fd, F_SETFL, saved_flags) < 0) {
-            fprintf(stderr, "[KernelIF] DQBUF: failed to restore O_NONBLOCK on fd=%d: %s\n",
-                    fd, strerror(errno));
-        }
-    }
+    ki_trace("libimp/KI: DQBUF ioctl-ret fd=%d ret=%d errno=%d\n", fd, ret, saved_errno);
 
     if (ret < 0) {
         ki_trace("libimp/KI: DQBUF exit fd=%d ret=%d idx=-1 errno=%d\n",
@@ -945,10 +944,15 @@ int VBMCreatePool(int chn, void *fmt, void *ops, void *priv) {
      * The decompilation shows pool offsets, not format structure offsets
      */
     int width, height, pixfmt, req_size;
+    int fps_num, fps_den;
     memcpy(&width, fmt_bytes + 0x0, sizeof(int));
     memcpy(&height, fmt_bytes + 0x4, sizeof(int));
     memcpy(&pixfmt, fmt_bytes + 0x8, sizeof(int));
     memcpy(&req_size, fmt_bytes + 0xc, sizeof(int));
+    memcpy(&fps_num, fmt_bytes + 0x2c, sizeof(int));
+    memcpy(&fps_den, fmt_bytes + 0x30, sizeof(int));
+    if (fps_num <= 0) fps_num = 1;
+    if (fps_den <= 0) fps_den = 1;
 
     /* Calculate frame size and honor requested size from SET_FMT (kernel sizeimage) */
     int calc_size = calculate_frame_size(width, height, pixfmt);
@@ -957,8 +961,9 @@ int VBMCreatePool(int chn, void *fmt, void *ops, void *priv) {
     /* Align frame size to 32-byte boundary for DMA (MIPS cache line alignment) */
     pool->frame_size = (raw_size + 31) & ~31;
 
-    fprintf(stderr, "[VBM] CreatePool: chn=%d, %dx%d fmt=0x%x, %d frames, size=%d (req=%d calc=%d aligned=%d)\n",
-            chn, width, height, pixfmt, frame_count, pool->frame_size, req_size, calc_size, pool->frame_size);
+    fprintf(stderr, "[VBM] CreatePool: chn=%d, %dx%d fmt=0x%x, fps=%d/%d, %d frames, size=%d (req=%d calc=%d aligned=%d)\n",
+            chn, width, height, pixfmt, fps_num, fps_den,
+            frame_count, pool->frame_size, req_size, calc_size, pool->frame_size);
 
     /* Try to get pool from FrameSource */
     pool->pool_id = IMP_FrameSource_GetPool(chn);
@@ -1025,8 +1030,15 @@ int VBMCreatePool(int chn, void *fmt, void *ops, void *priv) {
         uint32_t virt = pool->virt_base + (i * pool->frame_size);
         memcpy(frame_bytes + 0x1c, &virt, sizeof(uint32_t));
 
-        fprintf(stderr, "[VBM] Frame %d: phys=0x%x virt=0x%x\n",
-                i, phys, virt);
+        /* OEM encoder callback reads framePriv->i_fps_num/den from
+         * words 0xb/0xc (byte offsets 0x2c/0x30). Seed those fields
+         * directly in the public frame record so on_encoder_group_data_update
+         * can enter sub_8eea0 instead of rejecting the frame. */
+        memcpy(frame_bytes + 0x2c, &fps_num, sizeof(int));
+        memcpy(frame_bytes + 0x30, &fps_den, sizeof(int));
+
+        fprintf(stderr, "[VBM] Frame %d: phys=0x%x virt=0x%x fps=%d/%d\n",
+                i, phys, virt, fps_num, fps_den);
 
         /* Register in global frame volumes */
         for (int j = 0; j < 30; j++) {
@@ -1253,7 +1265,31 @@ int VBMFillPool(int chn) {
 
     fprintf(stderr, "[VBM] FillPool: chn=%d, filling %d frames\n", chn, pool->frame_count);
 
-    /* Queue all frames as available */
+    pthread_mutex_lock(&pool->queue_mutex);
+    pool->queue_head = 0;
+    pool->queue_tail = 0;
+    pool->queue_count = 0;
+    pthread_mutex_unlock(&pool->queue_mutex);
+
+    if (pool->ops[1] != NULL) {
+        int queued_ok = 0;
+
+        for (int i = 0; i < pool->frame_count; i++) {
+            int ret = ((int (*)(void *, void *))pool->ops[1])(&pool->frames[i], pool->priv);
+            if (ret == 0) {
+                queued_ok++;
+            } else {
+                fprintf(stderr, "[VBM] FillPool: release callback failed chn=%d idx=%d ret=%d\n",
+                        chn, i, ret);
+            }
+        }
+
+        fprintf(stderr, "[VBM] FillPool: seeded %d/%d frames via release callback\n",
+                queued_ok, pool->frame_count);
+        return queued_ok;
+    }
+
+    /* Queue all frames as available for the software/non-callback path. */
     pthread_mutex_lock(&pool->queue_mutex);
 
     for (int i = 0; i < pool->frame_count; i++) {
@@ -1266,7 +1302,7 @@ int VBMFillPool(int chn) {
 
     fprintf(stderr, "[VBM] FillPool: queued %d frames\n", pool->queue_count);
 
-    return 0;
+    return pool->queue_count;
 }
 
 int VBMFlushFrame(int chn) {

@@ -1206,8 +1206,22 @@ int32_t AL_Codec_Encode_Process(int32_t *arg1, void *arg2, void *arg3)
         AL_Encoder_Process((int32_t *)(intptr_t)arg1[0x1e6], (int32_t)(intptr_t)arg2, 0);
         return 0;
     }
-    if (arg1[0x246] != *(int32_t *)((uint8_t *)arg2 + 0x10))
-        __assert("pCodecEncode->m_SrcFourCC == pCodecFrame->frameInfo.pixfmt", "/home/user/git/proj/sdk-lv3/src/imp/video/alcodec/lib_codec/lib_codec.c", 0x3da, "AL_Codec_Encode_Process");
+    {
+        uint32_t expect_fourcc = (uint32_t)arg1[0x246];
+        uint32_t frame_fourcc = *(uint32_t *)((uint8_t *)arg2 + 0x10);
+        uint32_t frame_size = *(uint32_t *)((uint8_t *)arg2 + 0x14);
+        int kfd = open("/dev/kmsg", O_WRONLY);
+        if (kfd >= 0) {
+            char b[160];
+            int n = snprintf(b, sizeof(b),
+                             "libimp/LCOD: Encode_Process precheck expect_fourcc=0x%x frame_fourcc=0x%x frame_size=%u\n",
+                             expect_fourcc, frame_fourcc, frame_size);
+            if (n > 0) write(kfd, b, n);
+            close(kfd);
+        }
+        if (expect_fourcc != frame_fourcc)
+            __assert("pCodecEncode->m_SrcFourCC == pCodecFrame->frameInfo.pixfmt", "/home/user/git/proj/sdk-lv3/src/imp/video/alcodec/lib_codec/lib_codec.c", 0x3da, "AL_Codec_Encode_Process");
+    }
     {
         AL_TBuffer *v0_2 = AL_BufPool_GetBuffer(&arg1[0x238], 0);
         {

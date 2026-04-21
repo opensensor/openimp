@@ -36,6 +36,8 @@
 #include <time.h>
 #include <unistd.h>
 
+#include "video/encoder_channel_layout.h"
+
 extern char _gp;
 
 static void video_enc_trace(const char *fmt, ...)
@@ -301,7 +303,7 @@ static inline uint8_t *enc_ptr(int32_t chn, uint32_t abs_addr)
 #define ENC_F_EVAL_BEGIN    0x119570u
 #define ENC_F_EVAL_EXTRA    0x119574u
 
-#define ENC_F_STREAM_FSIZE  0x119234u /* set by channel_buffer_init */
+#define ENC_F_STREAM_FSIZE  0x1194c4u /* OEM stream_frame_size field */
 #define ENC_F_DUMP_TIME     0x1192d4u
 
 /* The first four bytes of each channel slot hold chn_id == -1 when free. */
@@ -961,7 +963,6 @@ int32_t IMP_Encoder_RegisterChn(int32_t arg1, int32_t arg2)
         int32_t a3_1 = arg1 << 2;
         uintptr_t gEncoder_1 = (uintptr_t)genc_i32();
         void *v0_9 = (char *)gEncoder_1 + a3_1 + (arg1 << 4);
-        int32_t start_rc = 0;
 
         video_enc_trace("RegisterChn enter grp=%d chn=%d gEncoder=%p group=%p registered=%d started=%d enabled=%d",
                         arg1, arg2, gEncoder, v0_9,
@@ -983,18 +984,20 @@ int32_t IMP_Encoder_RegisterChn(int32_t arg1, int32_t arg2)
         *(int32_t *)((char *)v0_9 + 8) += 1;
         CH_PTR(arg2, ENC_F_GROUPPTR) = (char *)v0_9 + 4;
         CH_S32(arg2, ENC_F_REGISTERED) = 1;
+        /* Raptor's current pipeline registers channels but does not call
+         * enc_start/IMP_Encoder_StartRecvPic before frames begin arriving.
+         * Arm the receive gate here so the encoder callback path can run. */
+        CH_S32(arg2, ENC_F_ENABLED) = 1;
+        if ((EncoderChannelLayout *)enc_ptr(arg2, IMP_ENC_BASE_ADDR) != NULL) {
+            EncoderChannelLayout *chn = (EncoderChannelLayout *)enc_ptr(arg2, IMP_ENC_BASE_ADDR);
+            *enc_channel_recv_pic_enabled(chn) = 1;
+        }
         video_enc_trace("RegisterChn linked grp=%d chn=%d group=%p slots=%d started=%d enabled=%d",
                         arg1, arg2, v0_9,
                         *(int32_t *)((char *)v0_9 + 8),
                         CH_S32(arg2, ENC_F_STARTED),
                         CH_S32(arg2, ENC_F_ENABLED));
-
-        start_rc = IMP_Encoder_StartRecvPic(arg2);
-        video_enc_trace("RegisterChn auto-start grp=%d chn=%d rc=%d started=%d enabled=%d",
-                        arg1, arg2, start_rc,
-                        CH_S32(arg2, ENC_F_STARTED),
-                        CH_S32(arg2, ENC_F_ENABLED));
-        return start_rc;
+        return 0;
     }
 }
 
@@ -1166,8 +1169,8 @@ int32_t IMP_Encoder_Query(int32_t arg1, void *arg2)
 
 int32_t IMP_Encoder_StartRecvPic(int32_t arg1)
 {
-    int32_t group_id;
     int32_t fs_rc = 0;
+    EncoderChannelLayout *chn = (EncoderChannelLayout *)enc_ptr(arg1, IMP_ENC_BASE_ADDR);
 
     if (arg1 >= 9) {
         imp_log_fun(6, IMP_Log_Get_Option(), 2, "Encoder",
@@ -1184,32 +1187,21 @@ int32_t IMP_Encoder_StartRecvPic(int32_t arg1)
         return -1;
     }
 
-    group_id = enc_group_id_from_channel(arg1);
     video_enc_trace("StartRecvPic enter chn=%d grp=%d started=%d enabled=%d recv_enabled=%u recv_started=%u",
-                    arg1, group_id,
+                    arg1, enc_group_id_from_channel(arg1),
                     CH_S32(arg1, ENC_F_STARTED), CH_S32(arg1, ENC_F_ENABLED),
-                    CH_U8(arg1, ENC_F_ENABLED), CH_U8(arg1, ENC_F_STARTED));
-    if (group_id >= 0 && group_id < 5) {
-        fs_rc = IMP_FrameSource_EnableChn(group_id);
-        video_enc_trace("StartRecvPic fs_enable chn=%d grp=%d rc=%d", arg1, group_id, fs_rc);
-        if (fs_rc < 0) {
-            return fs_rc;
-        }
-    }
-
-    if (CH_PTR(arg1, ENC_F_CODEC_HANDLE) != NULL) {
-        int32_t prime_rc = AL_Codec_Encode_PrimeStreamBuffers(CH_PTR(arg1, ENC_F_CODEC_HANDLE));
-        video_enc_trace("StartRecvPic prime-stream-buffers chn=%d rc=%d codec=%p",
-                        arg1, prime_rc, CH_PTR(arg1, ENC_F_CODEC_HANDLE));
-        if (prime_rc < 0) {
-            return prime_rc;
-        }
-    }
+                    chn ? (unsigned)*enc_channel_recv_pic_enabled(chn) : 0U,
+                    chn ? (unsigned)*enc_channel_recv_pic_started(chn) : 0U);
 
     CH_S32(arg1, ENC_F_STARTED) = 1;
     CH_S32(arg1, ENC_F_ENABLED) = 1;
+    if (chn != NULL) {
+        *enc_channel_recv_pic_started(chn) = 1;
+        *enc_channel_recv_pic_enabled(chn) = 1;
+    }
     video_enc_trace("StartRecvPic exit chn=%d grp=%d started=%d enabled=%d",
-                    arg1, group_id, CH_S32(arg1, ENC_F_STARTED), CH_S32(arg1, ENC_F_ENABLED));
+                    arg1, enc_group_id_from_channel(arg1),
+                    CH_S32(arg1, ENC_F_STARTED), CH_S32(arg1, ENC_F_ENABLED));
     return 0;
 }
 
@@ -1217,6 +1209,8 @@ int32_t IMP_Encoder_StartRecvPic(int32_t arg1)
 
 int32_t IMP_Encoder_StopRecvPic(int32_t arg1)
 {
+    EncoderChannelLayout *chn = (EncoderChannelLayout *)enc_ptr(arg1, IMP_ENC_BASE_ADDR);
+
     if (arg1 >= 9) {
         imp_log_fun(6, IMP_Log_Get_Option(), 2, "Encoder",
             "/home/user/git/proj/sdk-lv3/src/imp/video/imp_encoder.c", 0x8c8,
@@ -1238,6 +1232,10 @@ int32_t IMP_Encoder_StopRecvPic(int32_t arg1)
         int32_t s2_1 = 0xb;
         pthread_mutex_lock((pthread_mutex_t *)enc_ptr(arg1, ENC_F_MTX_GETREL));
         CH_S32(arg1, ENC_F_ENABLED) = 0;
+        if (chn != NULL) {
+            *enc_channel_recv_pic_enabled(chn) = 0;
+            *enc_channel_recv_pic_started(chn) = 0;
+        }
 
         while (s2_1 != 0) {
             int32_t v1_8 = CH_S32(arg1, ENC_F_STREAMCNT_LO2);
@@ -1292,6 +1290,8 @@ retry_sleep:
 
 int32_t IMP_Encoder_RequestIDR(int32_t arg1)
 {
+    EncoderChannelLayout *chn = (EncoderChannelLayout *)enc_ptr(arg1, IMP_ENC_BASE_ADDR);
+
     if (arg1 >= 9) {
         imp_log_fun(6, IMP_Log_Get_Option(), 2, "Encoder",
             "/home/user/git/proj/sdk-lv3/src/imp/video/imp_encoder.c", 0x9d6,
@@ -1307,6 +1307,9 @@ int32_t IMP_Encoder_RequestIDR(int32_t arg1)
         return -1;
     }
     CH_S32(arg1, ENC_F_STARTED) = 1;
+    if (chn != NULL) {
+        *enc_channel_recv_pic_started(chn) = 1;
+    }
     return 0;
 }
 

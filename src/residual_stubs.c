@@ -251,6 +251,7 @@ static EncoderCompatRuntime g_encoder_runtime[9];
 void   *Fifo_Dequeue(void *fifo_ptr, int32_t timeout_ms);
 int32_t Fifo_Queue(void *fifo_ptr, void *item, int32_t timeout_ms);
 int32_t AL_Codec_Encode_Process(void *codec, void *frame, void *user_data);
+int32_t AL_Get_StreamMngrCtx(int32_t *arg1);
 
 static int encoder_thread_slot(void *arg1)
 {
@@ -971,7 +972,7 @@ static int32_t sub_8f550_impl(uint8_t *s0_slot, int32_t i, uint8_t *frame,
     enc_trace("libimp/ENCX: sub_8f550 entry enc=%p codec=%p frame=%p ch=%d tag=%d\n",
               enc, codec, frame, *enc_channel_stream_cookie(chn), s3_tag);
     if (codec != NULL) {
-        int32_t proc_ret = AL_Codec_Encode_Process(codec, NULL, NULL);
+        int32_t proc_ret = AL_Codec_Encode_Process(codec, frame, frame);
         enc_trace("libimp/ENCX: sub_8f550 process-ret=%d enc=%p codec=%p frame=%p\n",
                   proc_ret, enc, codec, frame);
         if (proc_ret < 0) {
@@ -1243,17 +1244,21 @@ int32_t on_encoder_group_data_update(void *arg1, void *arg2)
         EncoderChannelLayout *chn = (EncoderChannelLayout *)enc;
         EncoderAttrLayout *attr;
         void *codec;
+        uint8_t active;
+        uint32_t enabled_word;
         if (enc == NULL) {
             enc_trace("libimp/ENCX: group_update lane=%d enc=NULL\n", i);
             continue;
         }
-        enc_trace("libimp/ENCX: group_update lane=%d enc=%p started=%u enabled=%u reg=%u grp=%p codec=%p\n",
+        active = *enc_channel_active_flag(chn);
+        enabled_word = enc_channel_enabled_word(chn) ? *enc_channel_enabled_word(chn) : 0;
+        enc_trace("libimp/ENCX: group_update lane=%d enc=%p active=%u enabled=0x%x recv_started=%u recv_enabled=%u codec=%p\n",
                   i,
                   enc,
+                  (unsigned)active,
+                  enabled_word,
                   (unsigned)*enc_channel_recv_pic_started(chn),
                   (unsigned)*enc_channel_recv_pic_enabled(chn),
-                  enc_channel_group_codec_slot(chn) && *enc_channel_group_codec_slot(chn) ? 1U : 0U,
-                  enc_channel_group_codec_slot(chn),
                   enc_channel_codec(chn));
         attr = enc_channel_attr(chn);
         codec = enc_channel_codec(chn);
@@ -1271,8 +1276,13 @@ int32_t on_encoder_group_data_update(void *arg1, void *arg2)
                       i, enc);
             continue;
         }
-        if (*enc_channel_recv_pic_started(chn) == 0) {
-            enc_trace("libimp/ENCX: group_update lane=%d enc=%p skip recv=0 codec=%p\n",
+        if (active == 0) {
+            enc_trace("libimp/ENCX: group_update lane=%d enc=%p skip active=0 codec=%p\n",
+                      i, enc, codec);
+            continue;
+        }
+        if (enabled_word == 0) {
+            enc_trace("libimp/ENCX: group_update lane=%d enc=%p skip enabled=0 codec=%p\n",
                       i, enc, codec);
             continue;
         }
@@ -1371,32 +1381,25 @@ int32_t on_encoder_group_data_update(void *arg1, void *arg2)
                 continue;
             }
 
-            /* Store Rtos timestamps on the frame, then kick encode. */
+            /* OEM direct path: stamp the live frame and enter the channel
+             * processing chain immediately under the channel queue mutex. */
             {
                 int64_t ts = (int64_t)Rtos_GetTime();
+                int32_t proc_ret;
+
                 *(int32_t *)(frame + 0xff * 4) = (int32_t)(uint32_t)ts;
                 *(int32_t *)(frame + 0x100 * 4) = (int32_t)(uint32_t)(ts >> 32);
-            }
 
-            {
-                void *queued_frame = NULL;
-                EncoderCompatRuntime *rt = &g_encoder_runtime[chn->chn_id];
-                int clone_ret;
+                pthread_mutex_lock(enc_mutex_ptr(&chn->queue_mutex));
+                proc_ret = sub_8eea0_impl(s0, i, frame, 0, NULL, group, enc);
+                pthread_mutex_unlock(enc_mutex_ptr(&chn->queue_mutex));
 
-                clone_ret = encoder_clone_source_frame(chn, frame, &queued_frame);
-                enc_trace("libimp/ENCX: group_update lane=%d direct-path enc=%p frame=%p clone_ret=%d queued=%p\n",
-                          i, enc, frame, clone_ret, queued_frame);
-                if (clone_ret < 0) {
+                enc_trace("libimp/ENCX: group_update lane=%d direct-path enc=%p frame=%p proc_ret=%d\n",
+                          i, enc, frame, proc_ret);
+                if (proc_ret < 0) {
                     sub_8f5fc_impl();
                     continue;
                 }
-
-                pthread_mutex_lock(enc_mutex_ptr(&rt->submit_mutex));
-                if (rt->pending_frame != NULL)
-                    encoder_unlock_and_release_frame(chn, rt->pending_frame);
-                rt->pending_frame = queued_frame;
-                pthread_cond_signal(enc_cond_ptr(&rt->submit_cond));
-                pthread_mutex_unlock(enc_mutex_ptr(&rt->submit_mutex));
             }
         }
     }
@@ -2038,7 +2041,6 @@ int32_t channel_encoder_init(EncoderChannelLayout *chn)
         return -1;
     }
     chn->codec_handle = enc_ptr_as_u32(codec_handle);
-
     /* Reset CappedVbr/CappedQuality cold fields. */
     pthread_mutex_lock(enc_mutex_ptr(&chn->queue_mutex));
     memset(p + 0x1e * 4, 0, 0x18);
