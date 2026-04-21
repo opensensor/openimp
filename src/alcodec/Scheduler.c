@@ -1875,7 +1875,7 @@ int32_t GetWPPOffset(void *arg1, void *arg2, int32_t arg3, int32_t arg4,
 int32_t UpdateCommand(void *arg1, void *arg2, void *arg3, int32_t arg4); /* forward decl */
 int32_t AL_GetCompLcuSize(uint32_t arg1, uint32_t arg2, int32_t arg3, int32_t arg4); /* forward decl */
 int32_t AL_EncCore_Reset(void *arg1); /* forward decl */
-void AL_EncCore_EnableInterrupts(void *arg1, int32_t arg2, int32_t arg3); /* forward decl */
+int32_t AL_EncCore_EnableInterrupts(void *arg1, uint8_t *arg2, char arg3, char arg4, char arg5); /* forward decl */
 void AL_EncCore_TurnOnRAM(void *arg1, int32_t arg2, int32_t arg3, int32_t arg4, int32_t arg5); /* forward decl */
 void AL_EncCore_Encode1(void *arg1, int32_t arg2, int32_t arg3, int32_t arg4, int32_t arg5); /* forward decl */
 void AL_EncCore_ReadStatusRegsEnc(void *arg1, void *arg2); /* forward decl */
@@ -2910,8 +2910,9 @@ int32_t encode1(void *arg1)
     ENC_KMSG("encode1 pre-TurnOnRAM cores=%u", (unsigned)READ_U8(ch, 0x3c));
     AL_EncCore_TurnOnRAM(READ_PTR(ch, 0x164), READ_U8(ch, 0x1f), READ_U8(ch, 0x3c), 0, 0);
     ENC_KMSG("encode1 post-TurnOnRAM");
-    ENC_KMSG("encode1 pre-EnableInterrupts cores=%u", (unsigned)READ_U8(ch, 0x3c));
-    AL_EncCore_EnableInterrupts(READ_PTR(ch, 0x164), READ_U8(ch, 0x3c), 0);
+    ENC_KMSG("encode1 pre-EnableInterrupts cores=%u core_tbl=%p",
+             (unsigned)READ_U8(ch, 0x3c), (uint8_t *)ch + 0x3c);
+    AL_EncCore_EnableInterrupts(READ_PTR(ch, 0x164), (uint8_t *)ch + 0x3c, 0, 0, 0);
     ENC_KMSG("encode1 post-EnableInterrupts");
     for (core = 0; core < (int32_t)READ_U8(ch, 0x3c); ++core) {
         void *enc1 = (uint8_t *)READ_PTR(ch, 0x164) + core * 0x44;
