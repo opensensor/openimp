@@ -78,6 +78,7 @@ int32_t AL_SrcReorder_EndSrcBuffer(void *arg1, int32_t arg2); /* forward decl, p
 extern void AL_SrcReorder_Cancel(void *arg1, int32_t arg2);
 int32_t AL_IntermMngr_ReleaseBuffer(void *arg1, void *arg2); /* forward decl, ported by T<N> later */
 extern int32_t AL_EncCore_SetJpegInterrupt(void *arg1);
+extern int32_t rc_Iol(void);
 
 typedef struct AL_TIntermBufferCompat {
     int32_t addr;
@@ -2773,6 +2774,12 @@ int32_t AL_EncChannel_ListModulesNeeded(void *arg1, void *arg2)
                         AL_ApplyPictCommands(arg1, pict_cmd, (void *)(intptr_t)pict_id);
                     }
                     ENC_KMSG("ListModulesNeeded lane=%d after-apply-pict pict=%d", lane, pict_id);
+                    if (READ_U8(arg1, 0x1f) == 0U && READ_U8(arg1, 0x3c) > 1U &&
+                        READ_PTR(arg1, 0x138) != (void *)(intptr_t)rc_Iol) {
+                        ENC_KMSG("ListModulesNeeded lane=%d repair-update-fn old=%p new=%p",
+                                 lane, READ_PTR(arg1, 0x138), (void *)(intptr_t)rc_Iol);
+                        WRITE_S32(arg1, 0x138, (int32_t)(intptr_t)rc_Iol);
+                    }
                     ENC_KMSG("ListModulesNeeded lane=%d before-update-fn req=%p fn=%p req20=%p w0=0x%x w1=0x%x w2=0x%x w3=0x%x",
                              lane, req, READ_PTR(arg1, 0x138), (uint8_t *)req + 0x20,
                              READ_S32(req, 0x20), READ_S32(req, 0x24), READ_S32(req, 0x28), READ_S32(req, 0x2c));
