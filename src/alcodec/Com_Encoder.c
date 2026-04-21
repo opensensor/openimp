@@ -1791,9 +1791,27 @@ int32_t AL_Common_Encoder_Process(int32_t *arg1, int32_t arg2, int32_t arg3, int
 
             {
                 int32_t *a0_36 = (int32_t *)READ_PTR(s7, 0xf25c);
+                int32_t *vtbl = a0_36 ? (int32_t *)(intptr_t)READ_S32(a0_36, 0) : NULL;
+                int32_t encode_one_frame_fn = vtbl ? READ_S32(vtbl, 0xc) : 0;
 
                 WRITE_U8(s7, 0xed4c, 1);
-                return ((int32_t (*)(int32_t *, int32_t, int32_t, int32_t, int32_t))(intptr_t)READ_S32(a0_36, 0xc))(
+                {
+                    int kfd = open("/dev/kmsg", O_WRONLY);
+                    if (kfd >= 0) {
+                        char b[160];
+                        int n = snprintf(b, sizeof(b),
+                                         "libimp/CENC: Activate dispatch sched=%p vtbl=%p fn=%p chn=%d\n",
+                                         a0_36, vtbl, (void *)(intptr_t)encode_one_frame_fn, READ_S32(s7, 0x18));
+                        if (n > 0) write(kfd, b, n);
+                        close(kfd);
+                    }
+                }
+                if (encode_one_frame_fn == 0) {
+                    __assert("pScheduler && pScheduler->vtable && pScheduler->vtable->EncodeOneFrame",
+                             "/home/user/git/proj/sdk-lv3/src/imp/video/alcodec/lib_encode/Com_Encoder.c",
+                             0x1c5, "AL_Common_Encoder_Process");
+                }
+                return ((int32_t (*)(int32_t *, int32_t, int32_t, int32_t, int32_t))(intptr_t)encode_one_frame_fn)(
                     a0_36, READ_S32(s7, 0x18), 0, 0, 0);
             }
         }

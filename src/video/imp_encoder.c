@@ -147,19 +147,6 @@ int32_t IMP_Encoder_StartRecvPic(int32_t arg1);
 int32_t IMP_Encoder_StopRecvPic(int32_t arg1);
 int32_t IMP_Encoder_UnRegisterChn(int32_t arg1);
 
-static void encoder_try_activate_codec(int32_t chn_num, const char *reason)
-{
-    void *codec = CH_PTR(chn_num, ENC_F_CODEC_HANDLE);
-
-    if (codec == NULL) {
-        video_enc_trace("activate-skip chn=%d reason=%s codec=(nil)", chn_num, reason);
-        return;
-    }
-
-    video_enc_trace("activate-codec chn=%d reason=%s codec=%p", chn_num, reason, codec);
-    AL_Codec_Encode_Process(codec, NULL, NULL);
-}
-
 /* ===== Global encoder channel array =====
  *
  * The stock library exports a BSS-resident table of 9 EncChannel structs at
@@ -318,6 +305,19 @@ static inline uint8_t *enc_ptr(int32_t chn, uint32_t abs_addr)
 
 #define ENC_F_STREAM_FSIZE  0x1194c4u /* OEM stream_frame_size field */
 #define ENC_F_DUMP_TIME     0x1192d4u
+
+static void encoder_try_activate_codec(int32_t chn_num, const char *reason)
+{
+    void *codec = CH_PTR(chn_num, ENC_F_CODEC_HANDLE);
+
+    if (codec == NULL) {
+        video_enc_trace("activate-skip chn=%d reason=%s codec=(nil)", chn_num, reason);
+        return;
+    }
+
+    video_enc_trace("activate-codec chn=%d reason=%s codec=%p", chn_num, reason, codec);
+    AL_Codec_Encode_Process(codec, NULL, NULL);
+}
 
 /* The first four bytes of each channel slot hold chn_id == -1 when free. */
 #define ENC_CHN_VALID(n)  (ENC_CHN_ID((n)) >= 0)
