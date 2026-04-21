@@ -1754,16 +1754,18 @@ static int32_t EndEncoding(int32_t *arg1, int32_t *arg2, int32_t arg3)
 int32_t AL_Common_Encoder_Process(int32_t *arg1, int32_t arg2, int32_t arg3, int32_t arg4)
 {
     int32_t *s7 = (int32_t *)(intptr_t)*arg1;
-    int32_t str = 0;
-    int32_t var_5c_1 = 0;
-    int32_t var_54_1 = 0;
-    int32_t var_50 = 0;
-    int32_t var_58 = 0;
-    int32_t var_4c_1 = 0;
-    int32_t var_48_1 = 0;
-    int32_t var_44_1 = 0;
-    int32_t var_40_1 = 0;
-    int32_t var_3c_1 = 0;
+    struct {
+        int32_t src_y_phys;
+        int32_t src_uv_phys;
+        int32_t src_pitch_y;
+        int32_t src_flags50;
+        int32_t src_flags58;
+        int32_t src_map_y_phys;
+        int32_t src_map_uv_phys;
+        int32_t stream_phys;
+        int32_t stream_virt;
+        int32_t stream_off;
+    } io = {0};
     int32_t var_38_1 = 0;
     int32_t *s4_2 = NULL;
     int32_t s6_1 = 0;
@@ -1854,13 +1856,14 @@ int32_t AL_Common_Encoder_Process(int32_t *arg1, int32_t arg2, int32_t arg3, int
                     WRITE_S32(s7, v0_12 + 0xeda4, a3 >> 0x1f);
                     WRITE_S32(s7, v0_12 + 0xeda0, a3);
                     WRITE_S32(s7, v0_12 + 0xed94, 0x1a);
-                    __builtin_memset(&str, 0, 0x28);
+                    __builtin_memset(&io, 0, sizeof(io));
                     AL_Common_Encoder_SetEncodingOptions(s7, (uint32_t *)s4_2);
                     WRITE_S32(s7, v0_12 + 0xedb0, arg3);
                     if (arg3 == 0) {
-                        var_40_1 = 0;
-                        var_3c_1 = 0;
-                        var_44_1 = 0;
+                        io.stream_virt = 0;
+                        io.stream_off = 0;
+                        io.stream_phys = 0;
+                        CENC_KMSG("Process null-stream path layer=%d slot=%d", arg4, a3);
                         CENC_KMSG("Process using null-stream metadata layer=%d slot=%d", arg4, a3);
                         goto label_53d78;
                     }
@@ -1877,7 +1880,7 @@ int32_t AL_Common_Encoder_Process(int32_t *arg1, int32_t arg2, int32_t arg3, int
                     WRITE_S32(s7, 0xf10c, a3_2);
                     var_38_1 = a3_2 << 6;
                     s6_1 = a3_2 << 4;
-                    memset(&str, 0, 0x28);
+                    memset(&io, 0, sizeof(io));
                     WRITE_S32(s7, t0_1 + 0xeda4, a3_2 >> 0x1f);
                     s4_2 = (int32_t *)((uint8_t *)s7 + t0_1 + 0xed90);
                     WRITE_S32(s7, t0_1 + 0xeda0, a3_2);
@@ -1892,33 +1895,40 @@ int32_t AL_Common_Encoder_Process(int32_t *arg1, int32_t arg2, int32_t arg3, int
             }
 
             ((int32_t (*)(AL_TBuffer *))(intptr_t)AL_Buffer_Ref)((AL_TBuffer *)(intptr_t)arg3);
-            var_44_1 = (int32_t)AL_Buffer_GetPhysicalAddress((AL_TBuffer *)(intptr_t)arg3);
-            var_40_1 = (int32_t)(intptr_t)AL_Buffer_GetData((AL_TBuffer *)(intptr_t)arg3);
-            var_3c_1 = 0;
+            io.stream_phys = (int32_t)AL_Buffer_GetPhysicalAddress((AL_TBuffer *)(intptr_t)arg3);
+            io.stream_virt = (int32_t)(intptr_t)AL_Buffer_GetData((AL_TBuffer *)(intptr_t)arg3);
+            io.stream_off = 0;
             WRITE_S32(s7, var_38_1 - s6_1 + 0xed90, READ_S32(s7, var_38_1 - s6_1 + 0xed90) | 1);
 
 label_53d78:
-            str = (int32_t)AL_PixMapBuffer_GetPlanePhysicalAddress((AL_TBuffer *)(intptr_t)arg2, 0);
-            var_5c_1 = (int32_t)AL_PixMapBuffer_GetPlanePhysicalAddress((AL_TBuffer *)(intptr_t)arg2, 1);
-            var_54_1 = AL_PixMapBuffer_GetPlanePitch((AL_TBuffer *)(intptr_t)arg2, 0);
+            io.src_y_phys = (int32_t)AL_PixMapBuffer_GetPlanePhysicalAddress((AL_TBuffer *)(intptr_t)arg2, 0);
+            io.src_uv_phys = (int32_t)AL_PixMapBuffer_GetPlanePhysicalAddress((AL_TBuffer *)(intptr_t)arg2, 1);
+            io.src_pitch_y = AL_PixMapBuffer_GetPlanePitch((AL_TBuffer *)(intptr_t)arg2, 0);
             {
                 void *fp_2 = READ_PTR(s7, 0x14);
                 int32_t v0_21 = (int32_t)AL_PixMapBuffer_GetFourCC((AL_TBuffer *)(intptr_t)arg2);
 
                 if (AL_IsCompressed((uint32_t)v0_21) != 0) {
-                    var_4c_1 = (int32_t)AL_PixMapBuffer_GetPlanePhysicalAddress((AL_TBuffer *)(intptr_t)arg2, 2);
-                    var_48_1 = (int32_t)AL_PixMapBuffer_GetPlanePhysicalAddress((AL_TBuffer *)(intptr_t)arg2, 3);
-                    var_50 = AL_PixMapBuffer_GetPlanePitch((AL_TBuffer *)(intptr_t)arg2, 2) & 0xff;
+                    io.src_map_y_phys = (int32_t)AL_PixMapBuffer_GetPlanePhysicalAddress((AL_TBuffer *)(intptr_t)arg2, 2);
+                    io.src_map_uv_phys = (int32_t)AL_PixMapBuffer_GetPlanePhysicalAddress((AL_TBuffer *)(intptr_t)arg2, 3);
+                    io.src_flags50 = AL_PixMapBuffer_GetPlanePitch((AL_TBuffer *)(intptr_t)arg2, 2) & 0xff;
                 }
 
-                var_58 = (((uint32_t (*)(uint32_t))(intptr_t)AL_GetBitDepth)((uint32_t)v0_21) < 9U) ^ 1U;
-                var_50 = (var_50 & ~0xff) | ((READ_U32(fp_2, arg4 * 0xf0 + 0x14) >> 1) & 7);
+                io.src_flags58 = (((uint32_t (*)(uint32_t))(intptr_t)AL_GetBitDepth)((uint32_t)v0_21) < 9U) ^ 1U;
+                io.src_flags50 = (io.src_flags50 & ~0xff) | ((READ_U32(fp_2, arg4 * 0xf0 + 0x14) >> 1) & 7);
             }
 
             ((int32_t (*)(AL_TBuffer *))(intptr_t)AL_Buffer_Ref)((AL_TBuffer *)(intptr_t)arg2);
             WRITE_S32(s7, var_38_1 - s6_1 + 0xeda8, arg2);
             WRITE_S32(s7, var_38_1 - s6_1 + 0xedac, 0);
+            CENC_KMSG("Process source planes frame=%p y=0x%x uv=0x%x pitch=%d mapY=0x%x mapUV=0x%x flags50=0x%x flags58=0x%x",
+                      (void *)(intptr_t)arg2, io.src_y_phys, io.src_uv_phys, io.src_pitch_y,
+                      io.src_map_y_phys, io.src_map_uv_phys, io.src_flags50, io.src_flags58);
+            CENC_KMSG("Process source-sent mutex enter mutex=%p frame=%p", READ_PTR(s7, 0xf254),
+                      (void *)(intptr_t)arg2);
             Rtos_GetMutex(READ_PTR(s7, 0xf254));
+            CENC_KMSG("Process source-sent mutex acquired mutex=%p frame=%p", READ_PTR(s7, 0xf254),
+                      (void *)(intptr_t)arg2);
             {
                 int32_t *v1_9 = (int32_t *)((uint8_t *)s7 + 0xf114);
                 int32_t v0_30 = 0;
@@ -1929,9 +1939,13 @@ label_53d78:
                         int32_t v0_39;
                         int32_t a1_1;
 
+                        CENC_KMSG("Process source-sent slot=%d frame=%p opts=%p", v0_30 - 1,
+                                  (void *)(intptr_t)arg2, s4_2);
                         WRITE_S32(s7, ((v0_30 - 1) << 3) + 0xf114, arg2);
                         WRITE_PTR(s7, ((v0_30 - 1) << 3) + 0xf110, s4_2);
                         Rtos_ReleaseMutex(READ_PTR(s7, 0xf254));
+                        CENC_KMSG("Process source-sent mutex released mutex=%p slot=%d", READ_PTR(s7, 0xf254),
+                                  v0_30 - 1);
                         v0_39 = (s3_1 - s2_1 - arg4) * 0x3c;
                         WRITE_S32(s7, var_38_1 - s6_1 + 0xedb4, 0);
                         WRITE_S32(s7, var_38_1 - s6_1 + 0xedb8, 0);
@@ -1963,7 +1977,7 @@ label_53d78:
                                                      "libimp/CENC: Process dispatch sched=%p vtbl=%p fn=%p chn=%d src=%p opts=%p stream_meta=%p\n",
                                                      a0_32, vtbl_1, (void *)(intptr_t)encode_one_frame_fn,
                                                      READ_S32(s7, (s3_1 - s2_1 - arg4) * 0x3c + 0x18),
-                                                     s4_2, (uint8_t *)s7 + v0_39 + 0xdb1c, &str);
+                                                     s4_2, (uint8_t *)s7 + v0_39 + 0xdb1c, &io);
                                     if (n > 0) write(kfd, b, n);
                                     close(kfd);
                                 }
@@ -1978,7 +1992,7 @@ label_53d78:
                             result =
                                 ((int32_t (*)(int32_t *, int32_t, int32_t *, void *, void *))(intptr_t)encode_one_frame_fn)(
                                     a0_32, READ_S32(s7, (s3_1 - s2_1 - arg4) * 0x3c + 0x18), s4_2,
-                                    (uint8_t *)s7 + v0_39 + 0xdb1c, &str);
+                                    (uint8_t *)s7 + v0_39 + 0xdb1c, &io);
                         }
                         {
                             int kfd = open("/dev/kmsg", O_WRONLY);
@@ -1999,9 +2013,9 @@ label_53d78:
                     if (v0_30 == 0x26) {
                         __assert("0", "/home/user/git/proj/sdk-lv3/src/imp/video/alcodec/lib_encode/Com_Encoder.c",
                                  0x24b, "AddSourceSent");
-                        var_40_1 = 0;
-                        var_3c_1 = 0;
-                        var_44_1 = 0;
+                        io.stream_virt = 0;
+                        io.stream_off = 0;
+                        io.stream_phys = 0;
                         goto label_53d78;
                     }
                 }

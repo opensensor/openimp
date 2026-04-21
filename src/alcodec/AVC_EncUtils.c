@@ -166,103 +166,99 @@ int32_t AL_SrcBuffersChecker_UpdateResolution(int32_t *arg1, int32_t arg2, int32
 
 int32_t AL_SrcBuffersChecker_CanBeUsed(int32_t *arg1, AL_TBuffer *arg2)
 {
-    PixMapDimension var_58;
-    PixMapDimension var_44;
-    int32_t var_50_1;
-    int32_t var_4c_1;
-    int32_t var_48_1;
-    int32_t var_40;
-    int32_t *s2_1;
-    int32_t s4_1;
-    int32_t v0_1;
-    int32_t v0_2;
-    int32_t v0_3;
-    int32_t v0_12;
-    int32_t v0_17;
-    int32_t i;
-    int32_t s1_1;
+    PixMapDimension actual_dim;
+    PixMapDimension alloc_dim;
+    uint32_t fourcc;
+    int32_t chroma_mode;
+    int32_t pitch_y;
+    int32_t pitch_uv = 0;
+    int32_t min_pitch;
+    int32_t alloc_pitch_y;
+    int32_t alloc_chroma_mode;
+    int32_t chunk_need[3];
+    int32_t plane;
+    int32_t chunk_idx;
 
     if (arg2 == NULL)
         return 0;
 
-    if (AL_Buffer_GetMetaData(arg2, 0) != NULL) {
-        s2_1 = &var_58.iWidth;
-        AL_PixMapBuffer_GetDimension(&var_58, arg2);
-        s4_1 = var_58.iWidth;
-        v0_1 = (int32_t)AL_PixMapBuffer_GetFourCC(arg2);
-        v0_2 = AL_GetChromaMode((uint32_t)v0_1);
-        v0_3 = AL_PixMapBuffer_GetPlanePitch(arg2, 0);
-        {
-            int32_t min_pitch = AL_EncGetMinPitch(s4_1, (char)AL_GetBitDepth((uint32_t)v0_1),
-                                                  AL_GetStorageMode((uint32_t)v0_1));
-            if (s4_1 == arg1[0] && var_58.iHeight == arg1[1] && v0_1 == arg1[0x0a] &&
-                v0_3 >= min_pitch && (v0_3 & 0xf) == 0) {
-            int32_t v0_26 = 0;
+    if (AL_Buffer_GetMetaData(arg2, 0) == NULL)
+        return 0;
 
-            if (v0_2 != 0)
-                v0_26 = AL_PixMapBuffer_GetPlanePitch(arg2, 1);
-            if (v0_2 == 0 || v0_3 == v0_26) {
-                AL_PixMapBuffer_GetDimension(&var_44, arg2);
-                i = 0;
-                v0_12 = AL_PixMapBuffer_GetPlanePitch(arg2, 0);
-                v0_17 = AL_GetChromaMode(AL_PixMapBuffer_GetFourCC(arg2));
-                var_58.iWidth = 0;
-                var_58.iHeight = 0;
-                var_50_1 = 0;
-                do {
-                    int32_t v0_18 = AL_PixMapBuffer_GetPlaneChunkIdx(arg2, i);
+    AL_PixMapBuffer_GetDimension(&actual_dim, arg2);
+    fourcc = AL_PixMapBuffer_GetFourCC(arg2);
+    chroma_mode = AL_GetChromaMode(fourcc);
+    pitch_y = AL_PixMapBuffer_GetPlanePitch(arg2, 0);
+    min_pitch = AL_EncGetMinPitch(actual_dim.iWidth, (char)AL_GetBitDepth(fourcc), AL_GetStorageMode(fourcc));
 
-                    if (v0_18 != -1) {
-                        int32_t v0_19 = var_44.iWidth;
-                        int32_t t1_1 = arg1[9];
-                        int32_t v0_20;
+    if (actual_dim.iWidth != arg1[0] || actual_dim.iHeight != arg1[1] || (int32_t)fourcc != arg1[0x0a] ||
+        pitch_y < min_pitch || (pitch_y & 0xf) != 0) {
+        srcchk_dump_layout(arg2, fourcc);
+        srcchk_kmsg("reject basic buf=%p fourcc=0x%x exp_fourcc=0x%x pitchY=%d min_pitch=%d dim=%dx%d exp=%dx%d",
+                    arg2, fourcc, arg1[0x0a], pitch_y, min_pitch,
+                    actual_dim.iWidth, actual_dim.iHeight, arg1[0], arg1[1]);
+        return 0;
+    }
 
-                        var_40 = var_44.iHeight;
-                        var_4c_1 = v0_19;
-                        var_48_1 = var_40;
-                        if (i == 2) {
-                            v0_20 = AL_GetAllocSizeSrc_MapY(v0_19, var_40, t1_1);
-                        } else if (i == 3) {
-                            v0_20 = AL_GetAllocSizeSrc_MapUV(v0_19, var_40, t1_1, v0_17);
-                        } else if (i == 1) {
-                            v0_20 = (int32_t)AL_GetAllocSizeSrc_UV(t1_1, v0_12, (var_40 + 7) >> 3 << 3, v0_17);
-                        } else {
-                            v0_20 = AL_GetAllocSizeSrc_Y(var_4c_1, var_48_1, v0_12);
-                        }
-                        s2_1[v0_18] += v0_20;
-                    }
-                    i += 1;
-                } while (i != 4);
+    if (chroma_mode != 0)
+        pitch_uv = AL_PixMapBuffer_GetPlanePitch(arg2, 1);
 
-                s1_1 = 0;
-                while (1) {
-                    int32_t s3_4 = *s2_1;
+    if (chroma_mode != 0 && pitch_y != pitch_uv) {
+        srcchk_dump_layout(arg2, fourcc);
+        srcchk_kmsg("reject uv-pitch buf=%p fourcc=0x%x pitchY=%d pitchUV=%d chroma=%d dim=%dx%d exp=%dx%d",
+                    arg2, fourcc, pitch_y, pitch_uv, chroma_mode,
+                    actual_dim.iWidth, actual_dim.iHeight, arg1[0], arg1[1]);
+        return 0;
+    }
 
-                    s2_1 = &s2_1[1];
-                    if (s3_4 != 0 && AL_Buffer_GetSizeChunk(arg2, s1_1) < (uint32_t)s3_4) {
-                        srcchk_dump_layout(arg2, (uint32_t)v0_1);
-                        srcchk_kmsg("reject chunk buf=%p idx=%d need=%d have=%u fourcc=0x%x pitchY=%d pitchUV=%d dim=%dx%d exp=%dx%d",
-                                    arg2, s1_1, s3_4, AL_Buffer_GetSizeChunk(arg2, s1_1), v0_1, v0_3, v0_26,
-                                    var_58.iWidth, var_58.iHeight, arg1[0], arg1[1]);
-                        break;
-                    }
-                    s1_1 += 1;
-                    if (s1_1 == 3)
-                        return 1;
-                }
-                return 0;
-            }
-            srcchk_dump_layout(arg2, (uint32_t)v0_1);
-            srcchk_kmsg("reject uv-pitch buf=%p fourcc=0x%x pitchY=%d pitchUV=%d chroma=%d dim=%dx%d exp=%dx%d",
-                        arg2, v0_1, v0_3, v0_26, v0_2, var_58.iWidth, var_58.iHeight, arg1[0], arg1[1]);
+    AL_PixMapBuffer_GetDimension(&alloc_dim, arg2);
+    alloc_pitch_y = AL_PixMapBuffer_GetPlanePitch(arg2, 0);
+    alloc_chroma_mode = AL_GetChromaMode(AL_PixMapBuffer_GetFourCC(arg2));
+    chunk_need[0] = 0;
+    chunk_need[1] = 0;
+    chunk_need[2] = 0;
+
+    for (plane = 0; plane != 4; ++plane) {
+        int32_t plane_need;
+
+        chunk_idx = AL_PixMapBuffer_GetPlaneChunkIdx(arg2, plane);
+        if (chunk_idx == -1)
+            continue;
+
+        if (chunk_idx < 0 || chunk_idx >= 3) {
+            srcchk_dump_layout(arg2, fourcc);
+            srcchk_kmsg("reject chunk-idx buf=%p plane=%d chunk=%d fourcc=0x%x dim=%dx%d",
+                        arg2, plane, chunk_idx, fourcc, alloc_dim.iWidth, alloc_dim.iHeight);
             return 0;
         }
-            srcchk_dump_layout(arg2, (uint32_t)v0_1);
-            srcchk_kmsg("reject basic buf=%p fourcc=0x%x exp_fourcc=0x%x pitchY=%d min_pitch=%d dim=%dx%d exp=%dx%d",
-                        arg2, v0_1, arg1[0x0a], v0_3, min_pitch, var_58.iWidth, var_58.iHeight, arg1[0], arg1[1]);
+
+        if (plane == 2) {
+            plane_need = AL_GetAllocSizeSrc_MapY(alloc_dim.iWidth, alloc_dim.iHeight, arg1[9]);
+        } else if (plane == 3) {
+            plane_need = AL_GetAllocSizeSrc_MapUV(alloc_dim.iWidth, alloc_dim.iHeight, arg1[9], alloc_chroma_mode);
+        } else if (plane == 1) {
+            plane_need = (int32_t)AL_GetAllocSizeSrc_UV(arg1[9], alloc_pitch_y,
+                                                        ((alloc_dim.iHeight + 7) >> 3) << 3,
+                                                        alloc_chroma_mode);
+        } else {
+            plane_need = AL_GetAllocSizeSrc_Y(alloc_dim.iWidth, alloc_dim.iHeight, alloc_pitch_y);
+        }
+
+        chunk_need[chunk_idx] += plane_need;
+    }
+
+    for (chunk_idx = 0; chunk_idx != 3; ++chunk_idx) {
+        if (chunk_need[chunk_idx] != 0 &&
+            AL_Buffer_GetSizeChunk(arg2, chunk_idx) < (uint32_t)chunk_need[chunk_idx]) {
+            srcchk_dump_layout(arg2, fourcc);
+            srcchk_kmsg("reject chunk buf=%p idx=%d need=%d have=%u fourcc=0x%x pitchY=%d pitchUV=%d dim=%dx%d exp=%dx%d",
+                        arg2, chunk_idx, chunk_need[chunk_idx], AL_Buffer_GetSizeChunk(arg2, chunk_idx),
+                        fourcc, pitch_y, pitch_uv, actual_dim.iWidth, actual_dim.iHeight, arg1[0], arg1[1]);
+            return 0;
         }
     }
-    return 0;
+
+    return 1;
 }
 
 static int32_t fillScalingList(uint8_t *arg1, uint8_t *arg2, int32_t arg3, int32_t arg4, int32_t arg5, uint8_t *arg6)
