@@ -2980,6 +2980,27 @@ int32_t encode1(void *arg1)
     FillSliceParamFromPicParam(ch, (uint8_t *)req + 0x170, req);
     ENC_KMSG("encode1 post-FillSliceParam req=%p slice_type=%u pic_order=%d cmd318=%p",
              req, (unsigned)READ_U8(req, 0x170), READ_S32(req, 0x184), READ_PTR(req, 0x318));
+    ENC_KMSG("encode1 req-win req=%p 298=%08x 29c=%08x 2a0=%08x 2a4=%08x 2a8=%08x 2ac=%08x 2b0=%08x 2b4=%08x",
+             req,
+             READ_S32(req, 0x298), READ_S32(req, 0x29c), READ_S32(req, 0x2a0), READ_S32(req, 0x2a4),
+             READ_S32(req, 0x2a8), READ_S32(req, 0x2ac), READ_S32(req, 0x2b0), READ_S32(req, 0x2b4));
+    ENC_KMSG("encode1 req-win2 req=%p 2c0=%08x 2c4=%08x 2c8=%08x 2d0=%08x 2d4=%08x 2d8=%08x 2e0=%08x 2e4=%08x 2e8=%08x",
+             req,
+             READ_S32(req, 0x2c0), READ_S32(req, 0x2c4), READ_S32(req, 0x2c8), READ_S32(req, 0x2d0),
+             READ_S32(req, 0x2d4), READ_S32(req, 0x2d8), READ_S32(req, 0x2e0), READ_S32(req, 0x2e4),
+             READ_S32(req, 0x2e8));
+    ENC_KMSG("encode1 req-win3 req=%p 2f0=%08x 2f4=%08x 2f8=%08x 2fc=%08x 300=%08x 304=%08x 308=%08x 30c=%08x 310=%08x 314=%08x",
+             req,
+             READ_S32(req, 0x2f0), READ_S32(req, 0x2f4), READ_S32(req, 0x2f8), READ_S32(req, 0x2fc),
+             READ_S32(req, 0x300), READ_S32(req, 0x304), READ_S32(req, 0x308), READ_S32(req, 0x30c),
+             READ_S32(req, 0x310), READ_S32(req, 0x314));
+    ENC_KMSG("encode1 req-win4 req=%p 315=%02x 318=%p meta0c=%08x meta10=%08x meta14=%08x meta18=%08x meta1c=%08x",
+             req, (unsigned)READ_U8(req, 0x315), READ_PTR(req, 0x318),
+             READ_PTR(req, 0x318) ? READ_S32(READ_PTR(req, 0x318), 0x0c) : 0,
+             READ_PTR(req, 0x318) ? READ_S32(READ_PTR(req, 0x318), 0x10) : 0,
+             READ_PTR(req, 0x318) ? READ_S32(READ_PTR(req, 0x318), 0x14) : 0,
+             READ_PTR(req, 0x318) ? READ_S32(READ_PTR(req, 0x318), 0x18) : 0,
+             READ_PTR(req, 0x318) ? READ_S32(READ_PTR(req, 0x318), 0x1c) : 0);
     ENC_KMSG("encode1 pre-UpdateCommand req=%p slice=%p cmd1[0]=0x%x cmd1[1]=0x%x cmd2[0]=0x%x cmd2[1]=0x%x",
              req, (uint8_t *)req + 0x170,
              READ_S32(req, 0xa78), READ_S32(req, 0xa7c),
