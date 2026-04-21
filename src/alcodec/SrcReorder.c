@@ -1,4 +1,8 @@
 #include <stdint.h>
+#include <fcntl.h>
+#include <stdio.h>
+#include <string.h>
+#include <unistd.h>
 
 #include "alcodec/al_rtos.h"
 
@@ -211,15 +215,75 @@ void *AL_SrcReorder_GetSrcBuffer(void *arg1, int32_t arg2)
 {
     void *v0;
 
+    {
+        int kfd = open("/dev/kmsg", O_WRONLY);
+        if (kfd >= 0) {
+            char b[160];
+            int n = snprintf(b, sizeof(b),
+                             "libimp/SRCRO: GetSrcBuffer entry ctx=%p order=%d mutex=%p\n",
+                             arg1, arg2, *(void **)((uint8_t *)arg1 + 0x2148));
+            if (n > 0)
+                write(kfd, b, n);
+            close(kfd);
+        }
+    }
     Rtos_GetMutex(*(void **)((uint8_t *)arg1 + 0x2148));
+    {
+        int kfd = open("/dev/kmsg", O_WRONLY);
+        if (kfd >= 0) {
+            char b[160];
+            int n = snprintf(b, sizeof(b),
+                             "libimp/SRCRO: GetSrcBuffer locked ctx=%p order=%d\n",
+                             arg1, arg2);
+            if (n > 0)
+                write(kfd, b, n);
+            close(kfd);
+        }
+    }
     v0 = findContainer(arg1, arg2);
+    {
+        int kfd = open("/dev/kmsg", O_WRONLY);
+        if (kfd >= 0) {
+            char b[160];
+            int n = snprintf(b, sizeof(b),
+                             "libimp/SRCRO: GetSrcBuffer container ctx=%p order=%d container=%p\n",
+                             arg1, arg2, v0);
+            if (n > 0)
+                write(kfd, b, n);
+            close(kfd);
+        }
+    }
     if (v0 == 0) {
         Rtos_ReleaseMutex(*(void **)((uint8_t *)arg1 + 0x2148));
+        {
+            int kfd = open("/dev/kmsg", O_WRONLY);
+            if (kfd >= 0) {
+                char b[160];
+                int n = snprintf(b, sizeof(b),
+                                 "libimp/SRCRO: GetSrcBuffer miss ctx=%p order=%d\n",
+                                 arg1, arg2);
+                if (n > 0)
+                    write(kfd, b, n);
+                close(kfd);
+            }
+        }
         return 0;
     }
 
     {
         void *result = SourceVector_Get(v0, arg2);
+        {
+            int kfd = open("/dev/kmsg", O_WRONLY);
+            if (kfd >= 0) {
+                char b[160];
+                int n = snprintf(b, sizeof(b),
+                                 "libimp/SRCRO: GetSrcBuffer result ctx=%p order=%d result=%p\n",
+                                 arg1, arg2, result);
+                if (n > 0)
+                    write(kfd, b, n);
+                close(kfd);
+            }
+        }
 
         Rtos_ReleaseMutex(*(void **)((uint8_t *)arg1 + 0x2148));
         return result;

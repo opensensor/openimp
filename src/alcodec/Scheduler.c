@@ -2913,33 +2913,49 @@ int32_t AL_EncChannel_ListModulesNeeded(void *arg1, void *arg2)
                         ENC_KMSG("ListModulesNeeded lane=%d after-set-source-buffer pict=%d req=%p srcY=0x%x srcUV=0x%x",
                                  lane, pict_id, req, READ_S32(req, 0x298), READ_S32(req, 0x29c));
                         {
+                            ENC_KMSG("ListModulesNeeded lane=%d before-get-src-buffer pict=%d reorder=%p",
+                                     lane, pict_id, (uint8_t *)arg1 + 0x178);
                             int32_t *src = (int32_t *)(intptr_t)AL_SrcReorder_GetSrcBuffer((uint8_t *)arg1 + 0x178,
                                                                                             pict_id);
 
+                            ENC_KMSG("ListModulesNeeded lane=%d after-get-src-buffer pict=%d src=%p",
+                                     lane, pict_id, src);
                             if (src != NULL) {
                                 WRITE_S32(req, 0x2b4, src[7]);
                                 WRITE_S32(req, 0x2b8, src[8]);
                                 WRITE_S32(req, 0x2bc, 0);
+                                ENC_KMSG("ListModulesNeeded lane=%d copied-src-stream pict=%d ep2phys=0x%x ep2virt=0x%x",
+                                         lane, pict_id, READ_S32(req, 0x2b4), READ_S32(req, 0x2b8));
                             }
                         }
+                        ENC_KMSG("ListModulesNeeded lane=%d before-get-ep1 pict=%d interm=%p",
+                                 lane, pict_id, READ_PTR(req, 0x838));
                         WRITE_S32(req, 0x2fc,
                                   AL_IntermMngr_GetEp1Addr((uint8_t *)arg1 + 0x2a54,
                                                            READ_PTR(req, 0x838), &req[0xca]));
+                        ENC_KMSG("ListModulesNeeded lane=%d after-get-ep1 pict=%d ep1phys=0x%x ep1virt=0x%x",
+                                 lane, pict_id, READ_S32(req, 0x2fc), READ_S32(req, 0x328));
                         if ((READ_S32(req, 0x2b8) | READ_S32(req, 0x2bc)) == 0 ||
                             READ_S32(req, 0x2b4) == 0) {
                             int32_t ep2_virt = 0;
 
+                            ENC_KMSG("ListModulesNeeded lane=%d before-fallback-ep2 pict=%d interm=%p",
+                                     lane, pict_id, READ_PTR(req, 0x838));
                             WRITE_S32(req, 0x2b4,
                                       AL_IntermMngr_GetEp2Addr((uint8_t *)arg1 + 0x2a54,
                                                                READ_PTR(req, 0x838), &ep2_virt));
                             WRITE_S32(req, 0x2b8, ep2_virt);
                             WRITE_S32(req, 0x2bc, 0);
+                            ENC_KMSG("ListModulesNeeded lane=%d after-fallback-ep2 pict=%d ep2phys=0x%x ep2virt=0x%x",
+                                     lane, pict_id, READ_S32(req, 0x2b4), READ_S32(req, 0x2b8));
                         }
                         WRITE_S32(req, 0x300, 0);
                         WRITE_S32(req, 0x324, 0);
                         WRITE_S32(req, 0x304, 0);
                         WRITE_S32(req, 0x308, 0);
                         if ((READ_U32(arg1, 0x1c) >> 0x18) == 0U && READ_U8(arg1, 0x3c) >= 2U) {
+                            ENC_KMSG("ListModulesNeeded lane=%d before-get-map-data pict=%d interm=%p",
+                                     lane, pict_id, READ_PTR(req, 0x838));
                             WRITE_S32(req, 0x304,
                                       AL_IntermMngr_GetMapAddr((uint8_t *)arg1 + 0x2a54,
                                                                READ_PTR(req, 0x838), 0));
@@ -2949,8 +2965,15 @@ int32_t AL_EncChannel_ListModulesNeeded(void *arg1, void *arg2)
                             WRITE_S32(req, 0x2f8,
                                       AL_IntermMngr_GetWppAddr((uint8_t *)arg1 + 0x2a54,
                                                                READ_PTR(req, 0x838), &req[0xc8]));
+                            ENC_KMSG("ListModulesNeeded lane=%d after-get-map-data pict=%d map=0x%x data=0x%x wpp=0x%x wppvirt=0x%x",
+                                     lane, pict_id, READ_S32(req, 0x304), READ_S32(req, 0x308),
+                                     READ_S32(req, 0x2f8), READ_S32(req, 0x320));
                         }
+                        ENC_KMSG("ListModulesNeeded lane=%d before-set-picture-ref-bufs pict=%d req=%p rec=%d",
+                                 lane, pict_id, req, rec);
                         SetPictureRefBuffers(arg1, req, arg1, req, (char)rec, &req[0xa6]);
+                        ENC_KMSG("ListModulesNeeded lane=%d after-set-picture-ref-bufs pict=%d req=%p",
+                                 lane, pict_id, req);
                         ENC_KMSG("ListModulesNeeded lane=%d prepared-bufs pict=%d rec=%d interm=%p stream=%p srcY=0x%x srcUV=0x%x ep1=0x%x ep2=0x%x stream_off=%d stream_part=%d",
                                  lane, pict_id, rec, READ_PTR(req, 0x838), READ_PTR(req, 0x318),
                                  READ_S32(req, 0x298), READ_S32(req, 0x29c),
