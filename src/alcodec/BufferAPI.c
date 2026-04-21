@@ -1,6 +1,10 @@
 #include <assert.h>
 #include <stdint.h>
 #include <stddef.h>
+#include <stdarg.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include <stdio.h>
 
 #include "alcodec/al_allocator.h"
 #include "alcodec/al_buffer.h"
@@ -49,6 +53,25 @@ static inline void *buffer_read_ptr(const AL_TBuffer *buffer, uint32_t offset)
 static inline void buffer_write_ptr(AL_TBuffer *buffer, uint32_t offset, const void *value)
 {
     buffer_write_u32(buffer, offset, (uint32_t)(uintptr_t)value);
+}
+
+static void bufferapi_kmsg(const char *fmt, ...)
+{
+    int kfd;
+    char buf[256];
+    va_list ap;
+    int n;
+
+    kfd = open("/dev/kmsg", O_WRONLY);
+    if (kfd < 0)
+        return;
+
+    va_start(ap, fmt);
+    n = vsnprintf(buf, sizeof(buf), fmt, ap);
+    va_end(ap);
+    if (n > 0)
+        write(kfd, buf, (size_t)(n < (int)sizeof(buf) ? n : (int)sizeof(buf)));
+    close(kfd);
 }
 
 static inline uint32_t buffer_chunk_offset(uint32_t base, int32_t chunk_idx)
@@ -411,10 +434,16 @@ void *AL_Buffer_GetMetaData(AL_TBuffer *arg1, int32_t arg2)
     void **v1_1;
     int32_t s1_1;
 
+    bufferapi_kmsg("libimp/BUFAPI: GetMetaData entry buf=%p type=%d mutex=%p ref=%d list=%p count=%u chunk_count=%d user=%p destroy=%p",
+                   arg1, arg2, buffer_get_mutex(arg1), *(int32_t *)((uint8_t *)arg1 + BUFFER_REFCOUNT_OFFSET),
+                   buffer_get_metadata_list(arg1), buffer_get_metadata_count(arg1), buffer_get_chunk_count(arg1),
+                   buffer_read_ptr(arg1, BUFFER_USER_DATA_OFFSET), buffer_get_destroy_cb(arg1));
+
     Rtos_GetMutex(buffer_get_mutex(arg1));
     a2 = (int32_t)buffer_get_metadata_count(arg1);
     if (a2 <= 0) {
         Rtos_ReleaseMutex(buffer_get_mutex(arg1));
+        bufferapi_kmsg("libimp/BUFAPI: GetMetaData empty buf=%p type=%d", arg1, arg2);
         return NULL;
     }
 
@@ -431,6 +460,8 @@ void *AL_Buffer_GetMetaData(AL_TBuffer *arg1, int32_t arg2)
             s1_1 = v0_3 << 2;
             if (v0_3 == a2) {
                 Rtos_ReleaseMutex(buffer_get_mutex(arg1));
+                bufferapi_kmsg("libimp/BUFAPI: GetMetaData miss buf=%p type=%d list=%p count=%d",
+                               arg1, arg2, v1_1, a2);
                 return NULL;
             }
             a0_2 = **(int32_t **)v1_2;
@@ -439,6 +470,9 @@ void *AL_Buffer_GetMetaData(AL_TBuffer *arg1, int32_t arg2)
     }
 
     Rtos_ReleaseMutex(buffer_get_mutex(arg1));
+    bufferapi_kmsg("libimp/BUFAPI: GetMetaData hit buf=%p type=%d meta=%p slot=%d",
+                   arg1, arg2, *(void **)((uint8_t *)buffer_get_metadata_list(arg1) + (uint32_t)s1_1),
+                   s1_1 >> 2);
     return *(void **)((uint8_t *)buffer_get_metadata_list(arg1) + (uint32_t)s1_1);
 }
 

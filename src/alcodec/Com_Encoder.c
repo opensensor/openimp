@@ -1274,7 +1274,7 @@ int32_t LoadLambdaFromFile(char *arg1, int32_t *arg2); /* forward decl */
 int32_t LoadCustomLda(int32_t *arg1); /* forward decl */
 void *watermark_init(void); /* forward decl */
 int32_t MemDesc_AllocNamed(void *arg1, void *arg2, int32_t arg3, char *arg4); /* forward decl */
-int32_t AL_SrcBuffersChecker_CanBeUsed(void *arg1); /* forward decl */
+int32_t AL_SrcBuffersChecker_CanBeUsed(int32_t *arg1, AL_TBuffer *arg2); /* forward decl */
 void AL_SrcBuffersChecker_Init(void *arg1, void *arg2); /* forward decl */
 void AL_HDRSEIs_Reset(uint8_t *arg1); /* forward decl */
 int32_t IMP_Log_Get_Option(void); /* forward decl */
@@ -1800,7 +1800,8 @@ int32_t AL_Common_Encoder_Process(int32_t *arg1, int32_t arg2, int32_t arg3, int
 
         s2_1 = arg4 << 6;
         s3_1 = arg4 << 0xa;
-        if (AL_SrcBuffersChecker_CanBeUsed((uint8_t *)s7 + (s3_1 - s2_1 - arg4) * 0x3c + 0xdaf0) != 0) {
+        if (AL_SrcBuffersChecker_CanBeUsed((int32_t *)((uint8_t *)s7 + (s3_1 - s2_1 - arg4) * 0x3c + 0xdaf0),
+                                           (AL_TBuffer *)(intptr_t)arg2) != 0) {
             if ((uint32_t)(READ_S32(READ_PTR(s7, 0x14), 0x11c) - 1) >= 2) {
                 AL_Common_Encoder_WaitReadiness(s7);
                 {

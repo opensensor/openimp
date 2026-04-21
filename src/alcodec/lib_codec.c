@@ -1227,9 +1227,16 @@ int32_t AL_Codec_Encode_Process(int32_t *arg1, void *arg2, void *arg3)
         {
             int kfd = open("/dev/kmsg", O_WRONLY);
             if (kfd >= 0) {
-                char b[160];
-                int n = snprintf(b, sizeof(b), "libimp/LCOD: Encode_Process got-srcbuf=%p frame_size=%u pixfmt=0x%x\n",
-                                 v0_2, *(uint32_t *)((uint8_t *)arg2 + 0x14), *(uint32_t *)((uint8_t *)arg2 + 0x10));
+                char b[256];
+                int n = snprintf(b, sizeof(b),
+                                 "libimp/LCOD: Encode_Process got-srcbuf=%p frame_size=%u pixfmt=0x%x hdr[14]=0x%x hdr[20]=0x%x mutex=%p list=%p count=%u user=%p\n",
+                                 v0_2, *(uint32_t *)((uint8_t *)arg2 + 0x14), *(uint32_t *)((uint8_t *)arg2 + 0x10),
+                                 v0_2 ? read_u32(v0_2, 0x14) : 0U,
+                                 v0_2 ? read_u32(v0_2, 0x20) : 0U,
+                                 v0_2 ? read_ptr(v0_2, 0x30) : NULL,
+                                 v0_2 ? read_ptr(v0_2, 0x38) : NULL,
+                                 v0_2 ? read_u32(v0_2, 0x3c) : 0U,
+                                 v0_2 ? read_ptr(v0_2, 0x40) : NULL);
                 if (n > 0) write(kfd, b, n);
                 close(kfd);
             }
@@ -1237,17 +1244,27 @@ int32_t AL_Codec_Encode_Process(int32_t *arg1, void *arg2, void *arg3)
         if (read_u32(v0_2, 0x20) != 0) {
             int32_t v1_4 = *(int32_t *)((uint8_t *)arg2 + 0x14);
             int32_t a1_3 = read_s32(v0_2, 0x14);
-            int32_t *a0_4 = *(int32_t **)(*(uint8_t **)arg1 + 4);
+            AL_TAllocator *a0_4 = *(AL_TAllocator **)(*(uint8_t **)arg1 + 4);
+            const void *vtable = a0_4 ? *(const void **)a0_4 : NULL;
             int32_t a3_1 = *(int32_t *)((uint8_t *)arg2 + 0x18);
             write_ptr(v0_2, 0x24, arg2);
-            ((void (*)(int32_t *, int32_t, int32_t, int32_t, int32_t))(*(int32_t *)*(void **)a0_4 + 0x20))(a0_4, a1_3, *(int32_t *)((uint8_t *)arg2 + 0x1c), a3_1, v1_4);
+            if (vtable == NULL || *(const void * const *)((const char *)vtable + 0x20) == NULL)
+                __assert("pAllocator && pAllocator->vtable && pAllocator->vtable->SetExtraMemory", "/home/user/git/proj/sdk-lv3/src/imp/video/alcodec/lib_codec/lib_codec.c", 0x3e0, "AL_Codec_Encode_Process");
+            ((int32_t (*)(AL_TAllocator *, int32_t, int32_t, int32_t, int32_t))
+                *(const void * const *)((const char *)vtable + 0x20))(
+                    a0_4, a1_3, *(int32_t *)((uint8_t *)arg2 + 0x1c), a3_1, v1_4);
         } else {
             void *v0_4 = *(void **)arg1;
             int32_t a1 = read_s32(v0_2, 0x14);
             write_ptr(v0_2, 0x24, arg2);
             {
-                int32_t *a0_1 = *(int32_t **)((uint8_t *)v0_4 + 4);
-                int32_t v0_6 = ((int32_t (*)(int32_t *, int32_t))(*(int32_t *)*(void **)a0_1 + 0xc))(a0_1, a1);
+                AL_TAllocator *a0_1 = *(AL_TAllocator **)((uint8_t *)v0_4 + 4);
+                const void *vtable = a0_1 ? *(const void **)a0_1 : NULL;
+                int32_t v0_6;
+                if (vtable == NULL || *(const void * const *)((const char *)vtable + 0x0c) == NULL)
+                    __assert("pAllocator && pAllocator->vtable && pAllocator->vtable->GetVirtualAddr", "/home/user/git/proj/sdk-lv3/src/imp/video/alcodec/lib_codec/lib_codec.c", 0x3e4, "AL_Codec_Encode_Process");
+                v0_6 = ((int32_t (*)(AL_TAllocator *, int32_t))
+                    *(const void * const *)((const char *)vtable + 0x0c))(a0_1, a1);
                 if (read_u32(v0_2, 8) < *(uint32_t *)((uint8_t *)arg2 + 0x14))
                     return AL_Codec_Encode_Commit_FilledFifo((int32_t *)(intptr_t)__assert("pCodecFrame->frameInfo.size <= pSrc->zSizes[0]", "/home/user/git/proj/sdk-lv3/src/imp/video/alcodec/lib_codec/lib_codec.c", 0x3e5, "AL_Codec_Encode_Process"));
                 Rtos_Memcpy((void *)(intptr_t)v0_6, *(void **)((uint8_t *)arg2 + 0x1c), *(uint32_t *)((uint8_t *)arg2 + 0x14));

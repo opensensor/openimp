@@ -945,12 +945,14 @@ int VBMCreatePool(int chn, void *fmt, void *ops, void *priv) {
      */
     int width, height, pixfmt, req_size;
     int fps_num, fps_den;
+    uint32_t frame_fourcc;
     memcpy(&width, fmt_bytes + 0x0, sizeof(int));
     memcpy(&height, fmt_bytes + 0x4, sizeof(int));
     memcpy(&pixfmt, fmt_bytes + 0x8, sizeof(int));
     memcpy(&req_size, fmt_bytes + 0xc, sizeof(int));
     memcpy(&fps_num, fmt_bytes + 0x2c, sizeof(int));
     memcpy(&fps_den, fmt_bytes + 0x30, sizeof(int));
+    frame_fourcc = (pixfmt < 0x100) ? pixfmt_to_fourcc(pixfmt) : (uint32_t)pixfmt;
     if (fps_num <= 0) fps_num = 1;
     if (fps_den <= 0) fps_den = 1;
 
@@ -961,8 +963,8 @@ int VBMCreatePool(int chn, void *fmt, void *ops, void *priv) {
     /* Align frame size to 32-byte boundary for DMA (MIPS cache line alignment) */
     pool->frame_size = (raw_size + 31) & ~31;
 
-    fprintf(stderr, "[VBM] CreatePool: chn=%d, %dx%d fmt=0x%x, fps=%d/%d, %d frames, size=%d (req=%d calc=%d aligned=%d)\n",
-            chn, width, height, pixfmt, fps_num, fps_den,
+    fprintf(stderr, "[VBM] CreatePool: chn=%d, %dx%d fmt=0x%x fourcc=0x%x, fps=%d/%d, %d frames, size=%d (req=%d calc=%d aligned=%d)\n",
+            chn, width, height, pixfmt, frame_fourcc, fps_num, fps_den,
             frame_count, pool->frame_size, req_size, calc_size, pool->frame_size);
 
     /* Try to get pool from FrameSource */
@@ -1015,8 +1017,10 @@ int VBMCreatePool(int chn, void *fmt, void *ops, void *priv) {
         /* Write height at offset 0x0c */
         memcpy(frame_bytes + 0x0c, &height, sizeof(int));
 
-        /* Write pixfmt at offset 0x10 */
-        memcpy(frame_bytes + 0x10, &pixfmt, sizeof(int));
+        /* OEM codec path checks frameInfo.pixfmt against m_SrcFourCC, so the
+         * public frame record must carry the source FOURCC here, not the IMP
+         * enum from IMPFSChnAttr. */
+        memcpy(frame_bytes + 0x10, &frame_fourcc, sizeof(uint32_t));
 
         /* Write size at offset 0x14 */
         int frame_size = pool->frame_size;
@@ -1037,8 +1041,8 @@ int VBMCreatePool(int chn, void *fmt, void *ops, void *priv) {
         memcpy(frame_bytes + 0x2c, &fps_num, sizeof(int));
         memcpy(frame_bytes + 0x30, &fps_den, sizeof(int));
 
-        fprintf(stderr, "[VBM] Frame %d: phys=0x%x virt=0x%x fps=%d/%d\n",
-                i, phys, virt, fps_num, fps_den);
+        fprintf(stderr, "[VBM] Frame %d: phys=0x%x virt=0x%x fourcc=0x%x fps=%d/%d\n",
+                i, phys, virt, frame_fourcc, fps_num, fps_den);
 
         /* Register in global frame volumes */
         for (int j = 0; j < 30; j++) {
