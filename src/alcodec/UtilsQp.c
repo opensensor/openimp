@@ -1,10 +1,23 @@
 #include <stdint.h>
+#include <stdio.h>
+#include <unistd.h>
+#include <fcntl.h>
 
 #include "alcodec/al_rtos.h"
 
 extern char _gp;
 extern int32_t __assert(const char *expression, const char *file, int32_t line,
                         const char *function, void *caller);
+
+#define UQP_KMSG(fmt, ...) do { \
+    int _kfd = open("/dev/kmsg", O_WRONLY); \
+    if (_kfd >= 0) { \
+        char _b[224]; \
+        int _n = snprintf(_b, sizeof(_b), "libimp/UQP: " fmt "\n", ##__VA_ARGS__); \
+        if (_n > 0) { write(_kfd, _b, _n > (int)sizeof(_b) ? (int)sizeof(_b) : _n); } \
+        close(_kfd); \
+    } \
+} while (0)
 
 /* Placement:
  * - AL_ApplyGopCommands / AL_ApplyPictCommands / AL_ApplyNewGOPAndRCParams /
@@ -137,48 +150,65 @@ uint32_t AL_ApplyPictCommands(void *arg1, int32_t *arg2, void *arg3)
     uint8_t *s0 = (uint8_t *)arg1;
     uint8_t *s3 = s0 + 0x128;
 
+    UQP_KMSG("ApplyPict entry chctx=%p cmd=%p pict=%p flags=0x%x b64=%u b66=%d b67=%d fn158=%p fn15c=%p fn160=%p",
+             arg1, arg2, arg3, v0, (unsigned)*((uint8_t *)arg2 + 0x64),
+             (int)*(int8_t *)((char *)arg2 + 0x66), (int)*(int8_t *)((char *)arg2 + 0x67),
+             *(void **)(s0 + 0x158), *(void **)(s0 + 0x15c), *(void **)(s0 + 0x160));
+
     if ((v0 & 2) != 0) {
         void (*fn)(void *) = *(void (**)(void *))(s0 + 0x158);
 
+        UQP_KMSG("ApplyPict bit0x2 pre fn=%p", fn);
         Rtos_GetMutex(*(void **)(s0 + 0x170));
         fn(s3);
         Rtos_ReleaseMutex(*(void **)(s0 + 0x170));
+        UQP_KMSG("ApplyPict bit0x2 post");
         v0 = *arg2;
     }
 
     if ((v0 & 4) != 0) {
         void (*fn)(void *) = *(void (**)(void *))(s0 + 0x15c);
 
+        UQP_KMSG("ApplyPict bit0x4 pre fn=%p", fn);
         Rtos_GetMutex(*(void **)(s0 + 0x170));
         fn(s3);
         Rtos_ReleaseMutex(*(void **)(s0 + 0x170));
+        UQP_KMSG("ApplyPict bit0x4 post");
         v0 = *arg2;
     }
 
     if ((v0 & 0x80) != 0) {
         void (*fn)(void *) = *(void (**)(void *))(s0 + 0x160);
 
+        UQP_KMSG("ApplyPict bit0x80 pre fn=%p", fn);
         Rtos_GetMutex(*(void **)(s0 + 0x170));
         fn(s3);
         Rtos_ReleaseMutex(*(void **)(s0 + 0x170));
+        UQP_KMSG("ApplyPict bit0x80 post");
         v0 = *arg2;
     }
 
     if ((v0 & 0x100) != 0) {
         uint8_t v0_1 = *((uint8_t *)arg2 + 0x64);
 
+        UQP_KMSG("ApplyPict bit0x100 pre pict=%p val=%u", arg3, (unsigned)v0_1);
         *((uint8_t *)arg3 + 0x2c) = 1;
         *((uint8_t *)arg3 + 0x2d) = v0_1;
+        UQP_KMSG("ApplyPict bit0x100 post pict=%p", arg3);
         v0 = *arg2;
     }
 
     if ((v0 & 0x400) != 0) {
+        UQP_KMSG("ApplyPict bit0x400 pre x66=%d x67=%d",
+                 (int)*(int8_t *)((char *)arg2 + 0x66), (int)*(int8_t *)((char *)arg2 + 0x67));
         /* +0x12fd0 */
         *(int8_t *)(s0 + 0x12fd0) = *(int8_t *)((char *)arg2 + 0x66);
         /* +0x12fd1 */
         *(int8_t *)(s0 + 0x12fd1) = *(int8_t *)((char *)arg2 + 0x67);
+        UQP_KMSG("ApplyPict bit0x400 post");
     }
 
+    UQP_KMSG("ApplyPict exit chctx=%p last=%d", arg1, (int)*(int8_t *)(s0 + 0x12fd1));
     return (uint32_t)(int32_t)*(int8_t *)(s0 + 0x12fd1);
 }
 

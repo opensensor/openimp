@@ -1779,7 +1779,7 @@ int32_t AL_EncChannel_PushNewFrame(void *arg1, int32_t *arg2, int32_t *arg3, int
 {
     void *var_e8 = &_gp;
     int32_t *i;
-    int32_t *s0_1;
+    uint8_t *s0_1;
 
     (void)var_e8;
     ENC_KMSG("PushNewFrame entry chctx=%p src=%p stream=%p meta=%p flags2c=0x%x eos=%u gate=0x%x freeze=%u",
@@ -1802,40 +1802,20 @@ int32_t AL_EncChannel_PushNewFrame(void *arg1, int32_t *arg2, int32_t *arg3, int
         s0_1 = 0;
         ENC_KMSG("PushNewFrame arm-only chctx=%p src=%p stream=%p meta=%p", arg1, arg2, arg3, arg4);
     } else {
-        int32_t var_e0 = arg4[0];
-        int32_t var_dc_1 = arg4[1];
-        int32_t var_d8_1 = arg4[2];
-        int32_t var_d4_1 = arg4[3];
-        int32_t var_d0_1 = arg4[4];
-        int32_t var_cc_1 = arg4[5];
-        int32_t var_c8_1 = arg4[6];
-        int32_t var_c4_1 = arg4[7];
-        int32_t var_c0_1 = arg4[8];
-        int32_t var_b8_1 = arg2[0];
-        int32_t var_b4_1 = arg2[1];
-        int32_t var_b0_1 = arg2[2];
-        int32_t var_ac_1 = arg2[3];
-        int32_t var_a8_1 = arg2[4];
-        int32_t var_a4_1 = arg2[5];
-        int32_t var_a0_1 = arg2[6];
-        int32_t var_9c_1 = arg2[7];
-        uint8_t var_98[0x74];
-        int32_t *v0_3 = (int32_t *)var_98;
+        uint8_t src_buf[0xc8];
 
-        do {
-            v0_3[0] = i[0];
-            v0_3[1] = i[1];
-            v0_3[2] = i[2];
-            v0_3[3] = i[3];
-            i += 4;
-            v0_3 += 4;
-        } while (i != &arg3[0x1c]);
-        v0_3[0] = i[0];
-        v0_3[1] = i[1];
-        v0_3[2] = i[2];
-        s0_1 = &var_e0;
+        /*
+         * SrcReorder copies a fixed 0xc8-byte payload and later exposes the
+         * command block at +0x48. Build that blob explicitly instead of
+         * relying on decompiler-derived stack layout.
+         */
+        Rtos_Memset(src_buf, 0, sizeof(src_buf));
+        Rtos_Memcpy(src_buf, arg4, 9 * sizeof(int32_t));
+        Rtos_Memcpy(src_buf + 0x28, arg2, 8 * sizeof(int32_t));
+        Rtos_Memcpy(src_buf + 0x48, arg3, 31 * sizeof(int32_t));
+        s0_1 = src_buf;
         ENC_KMSG("PushNewFrame prepared chctx=%p pict=%d src0=0x%x src1=0x%x",
-                 arg1, var_e0, arg2[0], arg2[1]);
+                 arg1, arg4[0], arg2[0], arg2[1]);
     }
 
     {
@@ -1894,7 +1874,7 @@ int32_t AL_SrcReorder_GetCommandAndMoveNext(void *arg1); /* forward decl */
 void AL_ApplyNewGOPAndRCParams(void *arg1, void *arg2); /* forward decl */
 void AL_ApplyGopCommands(void *arg1, void *arg2, int32_t arg3); /* forward decl */
 void AL_ApplyGmvCommands(void *arg1, void *arg2); /* forward decl */
-void AL_ApplyPictCommands(void *arg1, void *arg2, int32_t arg3); /* forward decl */
+void AL_ApplyPictCommands(void *arg1, void *arg2, void *arg3); /* forward decl */
 void *AL_SrcReorder_GetReadyCommand(void *arg1, int32_t arg2); /* forward decl */
 void AL_RefMngr_SetRecResolution(void *arg1, int32_t arg2, int32_t arg3); /* forward decl */
 int32_t AL_RefMngr_GetNewFrmBuffer(void *arg1); /* forward decl */
@@ -2784,9 +2764,18 @@ int32_t AL_EncChannel_ListModulesNeeded(void *arg1, void *arg2)
                         ((void (*)(void *))(intptr_t)READ_S32(arg1, 0x158))((uint8_t *)arg1 + 0x128);
                         Rtos_ReleaseMutex(READ_PTR(arg1, 0x170));
                     }
-                    ENC_KMSG("ListModulesNeeded lane=%d before-apply-pict pict=%d", lane, pict_id);
-                    AL_ApplyPictCommands(arg1, AL_SrcReorder_GetReadyCommand((uint8_t *)arg1 + 0x178, pict_id), pict_id);
+                    {
+                        int32_t *pict_src = (int32_t *)(intptr_t)AL_SrcReorder_GetSrcBuffer((uint8_t *)arg1 + 0x178, pict_id);
+                        int32_t *pict_cmd = pict_src ? pict_src + 0x12 : NULL;
+
+                        ENC_KMSG("ListModulesNeeded lane=%d before-apply-pict pict=%d src=%p cmd=%p",
+                                 lane, pict_id, pict_src, pict_cmd);
+                        AL_ApplyPictCommands(arg1, pict_cmd, (void *)(intptr_t)pict_id);
+                    }
                     ENC_KMSG("ListModulesNeeded lane=%d after-apply-pict pict=%d", lane, pict_id);
+                    ENC_KMSG("ListModulesNeeded lane=%d before-update-fn req=%p fn=%p req20=%p w0=0x%x w1=0x%x w2=0x%x w3=0x%x",
+                             lane, req, READ_PTR(arg1, 0x138), (uint8_t *)req + 0x20,
+                             READ_S32(req, 0x20), READ_S32(req, 0x24), READ_S32(req, 0x28), READ_S32(req, 0x2c));
                     Rtos_GetMutex(READ_PTR(arg1, 0x170));
                     ((void (*)(void *, void *))(intptr_t)READ_S32(arg1, 0x138))((uint8_t *)arg1 + 0x128,
                                                                                  (uint8_t *)req + 0x20);
