@@ -1,4 +1,7 @@
 #include <stdint.h>
+#include <fcntl.h>
+#include <stdio.h>
+#include <unistd.h>
 
 #include "alcodec/al_rtos.h"
 
@@ -35,11 +38,27 @@ static const int32_t rc_PreprocessHwRateCtrlDefaults[12] = {
     0x001ccccc, 0x001e0000, 0x001b9999, 0x001a6666, 0x00193333, 0x00180000,
 };
 
+#define RC21_KMSG(fmt, ...)                                                                       \
+    do {                                                                                          \
+        int _kfd = open("/dev/kmsg", O_WRONLY);                                                   \
+        if (_kfd >= 0) {                                                                          \
+            char _buf[256];                                                                       \
+            int _n = snprintf(_buf, sizeof(_buf), "libimp/RC21: " fmt "\n", ##__VA_ARGS__);      \
+            if (_n > 0) {                                                                         \
+                write(_kfd, _buf, (size_t)_n);                                                    \
+            }                                                                                     \
+            close(_kfd);                                                                          \
+        }                                                                                         \
+    } while (0)
+
 int32_t rc_l0io(void *arg1, int32_t arg2, int32_t arg3, int32_t arg4, int32_t arg5,
                 int32_t arg6, char arg7, char arg8)
 {
     int32_t *ctx = (int32_t *)arg1;
     uint8_t *bytes = (uint8_t *)arg1;
+
+    RC21_KMSG("l0io entry ctx=%p a2=%d a3=%d a4=%d a5=%d a6=%d a7=%d a8=%d",
+              arg1, arg2, arg3, arg4, arg5, arg6, (int)arg7, (int)arg8);
 
     ctx[0] = arg2;
     ctx[1] = arg3;
@@ -57,6 +76,9 @@ int32_t rc_l0io(void *arg1, int32_t arg2, int32_t arg3, int32_t arg4, int32_t ar
     ctx[13] = 0;
     ctx[14] = 0;
     ctx[15] = 0;
+    RC21_KMSG("l0io exit ctx=%p rate=%d floor=%d fps=%d period=%d max=%d flags=%u/%u",
+              arg1, ctx[0], ctx[1], ctx[2], ctx[3], ctx[4], (unsigned)bytes[0x14],
+              (unsigned)bytes[0x15]);
     return 0;
 }
 

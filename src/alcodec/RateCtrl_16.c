@@ -22,6 +22,12 @@ extern int32_t __assert(const char *expression, const char *file, int32_t line,
         }                                                                                         \
     } while (0)
 
+#define READ_U8(base, off) (*(uint8_t *)((uint8_t *)(base) + (off)))
+#define READ_U16(base, off) (*(uint16_t *)((uint8_t *)(base) + (off)))
+#define READ_S16(base, off) (*(int16_t *)((uint8_t *)(base) + (off)))
+#define READ_U32(base, off) (*(uint32_t *)((uint8_t *)(base) + (off)))
+#define READ_S32(base, off) (*(int32_t *)((uint8_t *)(base) + (off)))
+
 /* Placement:
  * - lI1i/Il1i/llli/l01i/o11i/oiii @ RateCtrl_16.c
  * - lo0i/lI0i/il0i/l11i/OOOI/oOOI/loli.isra.4/iili/IIIi/illi/ooIi @ RateCtrl_16.c
@@ -62,25 +68,73 @@ uint32_t rc_lI1i(void *arg1, int32_t *arg2, void *arg3, const char *arg4, int32_
 {
     char *ctx = *(char **)((char *)arg1 + 0x30);
     char *stats = (char *)arg3;
+    uint8_t *rc = (uint8_t *)arg2;
 
     (void)arg4;
     (void)arg5;
     (void)arg6;
 
+    RC16_KMSG("lI1i entry rc=%p ctx=%p rcAttr=%p stats=%p init=%u mode=%u bitrate=%d max=%d min=%d fps=%u/%u",
+              arg1, ctx, arg2, arg3, ctx ? (unsigned)*(uint8_t *)ctx : 0xffU,
+              rc ? (unsigned)READ_U32(rc, 0x00) : 0xffffffffU, rc ? READ_S32(rc, 0x08) : -1,
+              rc ? READ_S32(rc, 0x14) : -1, rc ? READ_S32(rc, 0x10) : -1,
+              rc ? (unsigned)READ_U16(rc, 0x0e) : 0U, rc ? (unsigned)READ_U16(rc, 0x0c) : 0U);
+    RC16_KMSG("lI1i raw rc=%p w0=%08x w1=%08x w2=%08x w3=%08x w4=%08x w5=%08x w6=%08x w7=%08x",
+              arg1, rc ? READ_U32(rc, 0x00) : 0U, rc ? READ_U32(rc, 0x04) : 0U,
+              rc ? READ_U32(rc, 0x08) : 0U, rc ? READ_U32(rc, 0x0c) : 0U,
+              rc ? READ_U32(rc, 0x10) : 0U, rc ? READ_U32(rc, 0x14) : 0U,
+              rc ? READ_U32(rc, 0x18) : 0U, rc ? READ_U32(rc, 0x1c) : 0U);
+
     if (*(uint8_t *)ctx == 0) {
-        uint32_t frame_rate = (uint32_t)*(uint16_t *)((char *)arg2 + 0x0e);
-        int32_t frame_period = *(int16_t *)(arg2 + 3) * 1000;
-        int32_t min_size = arg2[4] & ~0x3f;
-        int32_t max_size = arg2[5] & ~0x3f;
-        uint32_t bitrate = (uint32_t)arg2[2];
-        int16_t qp_min = *(int16_t *)((char *)arg2 + 0x1a);
-        int16_t qp_max = *(int16_t *)(arg2 + 7);
-        int16_t qp_init = *(int16_t *)(arg2 + 6);
-        uint32_t mode_bits = (uint32_t)arg2[0xa];
+        uint32_t mode = READ_U32(rc, 0x00);
+        uint32_t frame_rate = (uint32_t)READ_U16(rc, 0x0e);
+        int32_t frame_period = (int32_t)READ_U16(rc, 0x0c) * 1000;
+        int32_t min_size;
+        int32_t max_size;
+        uint32_t bitrate = READ_U32(rc, 0x08);
+        uint32_t floor = READ_U32(rc, 0x04);
         int32_t signed_a8;
         int32_t codec_mode;
 
-        if (bitrate < (uint32_t)arg2[1]) {
+        if (mode == 1U) {
+            min_size = READ_S32(rc, 0x10);
+            max_size = min_size;
+            if (READ_U32(rc, 0x14) != (uint32_t)min_size) {
+                return (uint32_t)rc_iili(
+                    (void *)(intptr_t)__assert("( Il0i && IIoi -> i0Oo == IIoi -> iiio ) || ( ! Il0i && IIoi -> i0Oo >= IIoi -> iiio )",
+                                               "/home/user/git/proj/sdk-lv3/src/imp/video/alcodec/lib_rate_ctrl/RateCtrl_16.c",
+                                               0x5d8, "lI1i", &_gp),
+                    NULL, 0);
+            }
+        } else {
+            min_size = READ_S32(rc, 0x10);
+            max_size = READ_S32(rc, 0x14);
+            if ((uint32_t)max_size < (uint32_t)min_size) {
+                return (uint32_t)rc_iili(
+                    (void *)(intptr_t)__assert("( Il0i && IIoi -> i0Oo == IIoi -> iiio ) || ( ! Il0i && IIoi -> i0Oo >= IIoi -> iiio )",
+                                               "/home/user/git/proj/sdk-lv3/src/imp/video/alcodec/lib_rate_ctrl/RateCtrl_16.c",
+                                               0x5d8, "lI1i", &_gp),
+                    NULL, 0);
+            }
+        }
+        min_size &= ~0x3f;
+        max_size &= ~0x3f;
+
+        *(int32_t *)(ctx + 0x9c) = min_size;
+        *(int32_t *)(ctx + 0xa0) = max_size;
+        RC16_KMSG("lI1i pre-memcpy ctx=%p stats=%p min=%d max=%d bitrate=%u floor=%u",
+                  ctx, stats, min_size, max_size, bitrate, floor);
+        Rtos_Memcpy(ctx + 0x28, stats, 0x1c);
+        RC16_KMSG("lI1i post-memcpy ctx=%p stats=%p", ctx, stats);
+        if (*(uint32_t *)(ctx + 0x2c) == 0) {
+            *(int32_t *)(ctx + 0x2c) = 1;
+        }
+
+        RC16_KMSG("lI1i pre-check rc=%p bitrate=%u floor=%u max=%u frame_rate=%u period=%d",
+                  arg1, bitrate, floor, (uint32_t)READ_U32(rc, 0x14), frame_rate, frame_period);
+        if (bitrate < floor) {
+            RC16_KMSG("lI1i assert-path rc=%p bitrate=%u floor=%u", arg1, bitrate,
+                      floor);
             return (uint32_t)rc_iili(
                 (void *)(intptr_t)__assert("IIoi -> IIio >= IIoi -> oilo",
                                            "/home/user/git/proj/sdk-lv3/src/imp/video/alcodec/lib_rate_ctrl/RateCtrl_16.c",
@@ -88,17 +142,16 @@ uint32_t rc_lI1i(void *arg1, int32_t *arg2, void *arg3, const char *arg4, int32_
                 NULL, 0);
         }
 
-        rc_l0io(ctx + 0x48, (int32_t)(((uint64_t)bitrate * (uint64_t)(uint32_t)arg2[5]) / 90000ULL),
-                arg2[1], (int32_t)frame_rate, frame_period, max_size, (char)(arg2[0] == 1),
-                (char)(arg2[0] != 9));
+        rc_l0io(ctx + 0x48, (int32_t)(((uint64_t)bitrate * (uint64_t)(uint32_t)READ_U32(rc, 0x14)) / 90000ULL),
+                (int32_t)floor, (int32_t)frame_rate, frame_period, max_size, (char)(mode == 1U),
+                (char)(mode != 9U));
+        RC16_KMSG("lI1i post-rc_l0io ctx=%p frame_rate=%u period=%d min=%d max=%d",
+                  ctx, frame_rate, frame_period, min_size, max_size);
 
-        *(int32_t *)(ctx + 0x9c) = min_size;
-        *(int32_t *)(ctx + 0xa0) = max_size;
-        Rtos_Memcpy(ctx + 0x28, stats, 0x1c);
-        if (*(uint32_t *)(ctx + 0x2c) == 0) {
-            *(int32_t *)(ctx + 0x2c) = 1;
-        }
-
+        int16_t qp_min = READ_S16(rc, 0x1a);
+        int16_t qp_max = READ_S16(rc, 0x1c);
+        int16_t qp_init = READ_S16(rc, 0x18);
+        uint32_t mode_bits = READ_U32(rc, 0x28);
         *(int16_t *)(ctx + 0x18) = qp_min;
         *(int16_t *)(ctx + 0x1a) = qp_max;
         *(int32_t *)(ctx + 4) = frame_period;
@@ -113,19 +166,19 @@ uint32_t rc_lI1i(void *arg1, int32_t *arg2, void *arg3, const char *arg4, int32_
         *(int32_t *)(ctx + 0x94) =
             (int32_t)(((uint64_t)frame_rate * (uint64_t)(uint32_t)max_size) / (uint64_t)frame_period);
 
-        if (*(uint8_t *)((char *)arg2 + 0x22) != 0) {
+        if (READ_U8(rc, 0x22) != 0) {
             *(uint8_t *)(ctx + 0x140) = 1;
-            *(uint8_t *)(ctx + 0x141) = *(uint8_t *)((char *)arg2 + 0x26);
-            *(int32_t *)(ctx + 0xac) =
-                (*(int16_t *)(arg2 + 9) < 0) ? (*(uint8_t *)(ctx + 0x12c) != 0 ? 0xa : 2)
-                                             : (int32_t)*(int16_t *)(arg2 + 9);
+            *(uint8_t *)(ctx + 0x141) = READ_U8(rc, 0x26);
+            *(int32_t *)(ctx + 0xac) = (READ_S16(rc, 0x24) < 0)
+                                           ? (*(uint8_t *)(ctx + 0x12c) != 0 ? 0xa : 2)
+                                           : (int32_t)READ_S16(rc, 0x24);
         } else {
             *(uint8_t *)(ctx + 0x140) = 0;
             *(uint8_t *)(ctx + 0x141) = 0;
         }
 
-        signed_a8 = *(int16_t *)((char *)arg2 + 0x1e);
-        codec_mode = arg2[0];
+        signed_a8 = READ_S16(rc, 0x1e);
+        codec_mode = (int32_t)mode;
         *(uint8_t *)(ctx + 0x12e) = (uint8_t)(signed_a8 < 0);
         if (*(uint32_t *)(ctx + 0x2c) < 2) {
             *(int32_t *)(ctx + 0xa4) = 0;
@@ -139,7 +192,7 @@ uint32_t rc_lI1i(void *arg1, int32_t *arg2, void *arg3, const char *arg4, int32_
         }
 
         {
-            int32_t value_a8 = *(int16_t *)(arg2 + 8);
+            int32_t value_a8 = READ_S16(rc, 0x20);
 
             if (value_a8 < 0) {
                 if (codec_mode == 9 || (codec_mode & 4) != 0) {
@@ -189,15 +242,20 @@ uint32_t rc_lI1i(void *arg1, int32_t *arg2, void *arg3, const char *arg4, int32_
             *(int32_t *)(ctx + 0x120) = 0;
         }
 
-        *(int32_t *)(ctx + 0x14) = (int32_t)*(uint16_t *)((char *)arg2 + 0x32);
-        *(int32_t *)(ctx + 0x10) = (int32_t)*(uint16_t *)(arg2 + 0xc);
-        *(int32_t *)(ctx + 0x0c) = arg2[0xb];
+        *(int32_t *)(ctx + 0x14) = (int32_t)READ_U16(rc, 0x32);
+        *(int32_t *)(ctx + 0x10) = (int32_t)READ_U16(rc, 0x30);
+        *(int32_t *)(ctx + 0x0c) = READ_S32(rc, 0x2c);
         *(uint8_t *)(ctx + 0x142) = (uint8_t)((mode_bits >> 1) & 1U);
         *(uint8_t *)(ctx + 0x143) = (uint8_t)((mode_bits >> 4) & 1U);
+        RC16_KMSG("lI1i pre-rc_lI0i ctx=%p qp=%d bounds=%d..%d mode_bits=0x%x gop=%d cpb=%d",
+                  ctx, *(int16_t *)(ctx + 0x1c), *(int16_t *)(ctx + 0x18), *(int16_t *)(ctx + 0x1a),
+                  mode_bits, *(int32_t *)(ctx + 0x14), *(int32_t *)(ctx + 0x10));
         {
             uint32_t result = (uint32_t)rc_lI0i(ctx);
 
             *(uint8_t *)ctx = 0;
+            RC16_KMSG("lI1i exit-init rc=%p ctx=%p result=%u qp=%d target=%d",
+                      arg1, ctx, result, *(int16_t *)(ctx + 0x1c), *(int16_t *)(ctx + 0x20));
             return result;
         }
     }
@@ -232,12 +290,16 @@ uint32_t rc_lI1i(void *arg1, int32_t *arg2, void *arg3, const char *arg4, int32_
             rc_iiIo(ctx + 0x48, (int32_t)frame_rate, new_period, max_size);
             *(int32_t *)(ctx + 4) = new_period;
             *(int32_t *)(ctx + 8) = (int32_t)frame_rate;
+            RC16_KMSG("lI1i reinit ctx=%p frame_rate=%u period=%d max=%d", ctx, frame_rate, new_period,
+                      max_size);
         } else if (prev_max_size != max_size) {
             uint32_t frame_rate = (uint32_t)*(uint16_t *)((char *)arg2 + 0x0e);
 
             *(int32_t *)(ctx + 0x94) =
                 (int32_t)(((uint64_t)frame_rate * (uint64_t)(uint32_t)max_size) / (uint64_t)new_period);
             rc_iiIo(ctx + 0x48, (int32_t)frame_rate, new_period, max_size);
+            RC16_KMSG("lI1i max-update ctx=%p frame_rate=%u period=%d max=%d", ctx, frame_rate,
+                      new_period, max_size);
         }
 
         {

@@ -2584,9 +2584,11 @@ int32_t AL_EncChannel_Init(int32_t *arg1, int32_t *arg2, void *arg3, uint8_t arg
         ((void (*)(void *, uint32_t, uint32_t))(intptr_t)arg1[0x3d])(&arg1[0x3d], width, height);
         ENC_KMSG("AL_EncChannel_Init rc_init_done rc=%p", &arg1[0x3d]);
         Rtos_GetMutex(READ_PTR(arg1, 0x120));
+        void *rc_attr = &arg2[0x1a];
+        void *gop_attr = &arg2[0x2a];
         ENC_KMSG("AL_EncChannel_Init rc_cfg_call rc=%p rcAttr=%p gop=%p",
-                 &arg1[0x3d], &arg2[0x1a], &arg2[0x2a]);
-        ((void (*)(void *, void *, void *))(intptr_t)arg1[0x3e])(&arg1[0x3d], &arg2[0x1a], &arg2[0x2a]);
+                 &arg1[0x3d], rc_attr, gop_attr);
+        ((void (*)(void *, void *, void *))(intptr_t)arg1[0x3e])(&arg1[0x3d], rc_attr, gop_attr);
         ENC_KMSG("AL_EncChannel_Init rc_cfg_done rc=%p", &arg1[0x3d]);
         Rtos_ReleaseMutex(READ_PTR(arg1, 0x120));
     }
