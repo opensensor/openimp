@@ -2995,7 +2995,7 @@ int32_t encode1(void *arg1)
     ENC_KMSG("encode1 post-TurnOnRAM");
     ENC_KMSG("encode1 pre-EnableInterrupts cores=%u core_tbl=%p",
              (unsigned)READ_U8(ch, 0x3c), (uint8_t *)ch + 0x3c);
-    AL_EncCore_EnableInterrupts(READ_PTR(ch, 0x164), (uint8_t *)ch + 0x3c, 0, 0, 0);
+    AL_EncCore_EnableInterrupts(READ_PTR(ch, 0x164), (uint8_t *)ch + 0x3c, 0, 1, 0);
     ENC_KMSG("encode1 post-EnableInterrupts");
     for (core = 0; core < (int32_t)READ_U8(ch, 0x3c); ++core) {
         void *enc1 = (uint8_t *)READ_PTR(ch, 0x164) + core * 0x44;

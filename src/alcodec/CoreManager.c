@@ -3,6 +3,7 @@
 
 #include "alcodec/al_buffer.h"
 #include "alcodec/al_rtos.h"
+#include "imp_log_int.h"
 
 typedef struct AL_IpCtrl AL_IpCtrl;
 typedef struct AL_IpCtrlVtable {
@@ -387,12 +388,46 @@ void AL_EncCore_Deinit(AL_EncCoreCtxCompat *arg1)
     }
 }
 
-void AL_EncCore_TurnOnRAM(void)
+void AL_EncCore_TurnOnRAM(AL_EncCoreCtxCompat *arg1, int32_t arg2, int32_t arg3, int32_t arg4, int32_t arg5)
 {
+    int32_t i;
+    AL_EncCoreCtxCompat *core = arg1;
+
+    (void)arg2;
+    (void)arg4;
+    (void)arg5;
+
+    if (core == NULL)
+        return;
+
+    if (arg3 <= 0)
+        arg3 = 1;
+
+    for (i = 0; i < arg3; ++i) {
+        TurnOnGC_constprop_36(core);
+        core = (AL_EncCoreCtxCompat *)((uint8_t *)core + 0x44);
+    }
 }
 
-void AL_EncCore_TurnOffRAM(void)
+void AL_EncCore_TurnOffRAM(AL_EncCoreCtxCompat *arg1, int32_t arg2, int32_t arg3, int32_t arg4, int32_t arg5)
 {
+    int32_t i;
+    AL_EncCoreCtxCompat *core = arg1;
+
+    (void)arg2;
+    (void)arg4;
+    (void)arg5;
+
+    if (core == NULL)
+        return;
+
+    if (arg3 <= 0)
+        arg3 = 1;
+
+    for (i = 0; i < arg3; ++i) {
+        TurnOffGC_constprop_35(core);
+        core = (AL_EncCoreCtxCompat *)((uint8_t *)core + 0x44);
+    }
 }
 
 int32_t AL_EncCore_Reset(AL_EncCoreCtxCompat *arg1)
@@ -476,6 +511,7 @@ int32_t AL_EncCore_EnableInterrupts(AL_EncCoreCtxCompat *arg1, uint8_t *arg2, ch
     uint32_t s0 = (uint32_t)arg1->core_id;
     uint32_t s5 = (uint32_t)(uint8_t)arg4;
     uint32_t s3 = (uint32_t)arg2[s0];
+    int32_t irq_mask_before = arg1->ip_ctrl->vtable->ReadRegister(arg1->ip_ctrl, 0x8014);
 
     if (s5 != 0 && s0 < s3) {
         uint32_t s1_1 = s0;
@@ -534,6 +570,13 @@ int32_t AL_EncCore_EnableInterrupts(AL_EncCoreCtxCompat *arg1, uint8_t *arg2, ch
                 s4_2->vtable->WriteRegister(s4_2, 0x8014, (uint32_t)(((s1_5 ^ v0_8) & s1_5) ^ v0_8));
             }
         }
+    }
+
+    {
+        int32_t irq_mask_after = arg1->ip_ctrl->vtable->ReadRegister(arg1->ip_ctrl, 0x8014);
+        IMP_LOG_INFO("ENC", "EnableInterrupts core=%u span=%u arg3=%u arg4=%u arg5=%u mask=0x%08x->0x%08x",
+                     (unsigned)arg1->core_id, (unsigned)s3, (unsigned)(uint8_t)arg3, (unsigned)(uint8_t)arg4,
+                     (unsigned)(uint8_t)arg5, (unsigned)irq_mask_before, (unsigned)irq_mask_after);
     }
 
     return 0;

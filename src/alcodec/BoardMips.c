@@ -6,6 +6,7 @@
 
 #include "alcodec/al_rtos.h"
 #include "alcodec/al_types.h"
+#include "imp_log_int.h"
 #include "../device_pool.h"
 
 #define BOARD_CTRL_SIZE 0x100
@@ -88,6 +89,20 @@ int32_t LinuxIpCtrl_WriteRegister(void *arg1, int32_t arg2, int32_t arg3)
         return result;
     }
 
+    switch ((uint32_t)arg2 & 0x1ffU) {
+    case 0x010:
+    case 0x014:
+    case 0x1f0:
+    case 0x1f4:
+    case 0x1e0:
+    case 0x1e4:
+    case 0x1f8:
+        IMP_LOG_INFO("AVPU", "wr fd=%d reg=0x%04x val=0x%08x", fd, (unsigned)arg2, (unsigned)arg3);
+        break;
+    default:
+        break;
+    }
+
     return result;
 }
 
@@ -99,6 +114,16 @@ int32_t LinuxIpCtrl_ReadRegister(void *arg1, int32_t arg2)
     reg_io.reg = arg2;
     reg_io.value = 0;
     if (ioctl(fd, 0xc008710b, &reg_io) >= 0) {
+        switch ((uint32_t)arg2 & 0x1ffU) {
+        case 0x010:
+        case 0x014:
+        case 0x1f4:
+        case 0x1f8:
+            IMP_LOG_INFO("AVPU", "rd fd=%d reg=0x%04x -> 0x%08x", fd, (unsigned)arg2, (unsigned)reg_io.value);
+            break;
+        default:
+            break;
+        }
         return reg_io.value;
     }
 
@@ -108,6 +133,7 @@ int32_t LinuxIpCtrl_ReadRegister(void *arg1, int32_t arg2)
 
 void *WaitInterruptThread(void *arg1)
 {
+    IMP_LOG_INFO("AVPU", "wait-thread start fd=%d", *(int32_t *)((uint8_t *)arg1 + BOARD_FD_OFFSET));
     while (1) {
         int32_t fd = *(int32_t *)((uint8_t *)arg1 + BOARD_FD_OFFSET);
         int32_t irq = -1;
@@ -115,8 +141,11 @@ void *WaitInterruptThread(void *arg1)
         BoardInterruptCallback callback;
 
         if (ioctl(fd, 0xc004710c, &irq) == -1) {
+            IMP_LOG_INFO("AVPU", "wait-thread ioctl WAIT_IRQ failed fd=%d errno=%d", fd, *__errno_location());
             break;
         }
+
+        IMP_LOG_INFO("AVPU", "wait-thread irq=%d", irq);
 
         if ((uint32_t)irq >= BOARD_MAX_IRQS) {
             fprintf(stderr, "Got %d, No interrupt to handle\n", irq);
@@ -155,14 +184,17 @@ int32_t LinuxIpCtrl_RegisterCallBack(void *arg1, BoardInterruptCallback arg2, vo
     slot = GetIrqSlot(arg1, irq);
     *(BoardInterruptCallback *)(void *)(slot + 0x00) = arg2; /* +0x00 callback */
     if (arg2 != NULL) {
+        *(uint32_t *)(void *)(slot + 0x04) = 0; /* +0x04 flag */
         mutex = *(void **)((uint8_t *)arg1 + BOARD_MUTEX_OFFSET);
         *(void **)(slot + 0x08) = arg3; /* +0x08 user_data */
+        IMP_LOG_INFO("AVPU", "register-callback irq=%u cb=%p user=%p flag=0", irq, arg2, arg3);
         return (int32_t)Rtos_ReleaseMutex(mutex);
     }
 
     mutex = *(void **)((uint8_t *)arg1 + BOARD_MUTEX_OFFSET);
     *(uint32_t *)(void *)(slot + 0x04) = 1; /* +0x04 flag */
     *(void **)(slot + 0x08) = arg3; /* +0x08 user_data */
+    IMP_LOG_INFO("AVPU", "register-callback irq=%u cb=%p user=%p flag=1", irq, arg2, arg3);
     return (int32_t)Rtos_ReleaseMutex(mutex);
 }
 
