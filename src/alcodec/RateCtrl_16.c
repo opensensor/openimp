@@ -27,6 +27,7 @@ extern int32_t __assert(const char *expression, const char *file, int32_t line,
 #define READ_S16(base, off) (*(int16_t *)((uint8_t *)(base) + (off)))
 #define READ_U32(base, off) (*(uint32_t *)((uint8_t *)(base) + (off)))
 #define READ_S32(base, off) (*(int32_t *)((uint8_t *)(base) + (off)))
+#define RC16_STDERR(fmt, ...) dprintf(2, "libimp/RC16: " fmt "\n", ##__VA_ARGS__)
 
 /* Placement:
  * - lI1i/Il1i/llli/l01i/o11i/oiii @ RateCtrl_16.c
@@ -124,8 +125,10 @@ uint32_t rc_lI1i(void *arg1, int32_t *arg2, void *arg3, const char *arg4, int32_
         *(int32_t *)(ctx + 0xa0) = max_size;
         RC16_KMSG("lI1i pre-memcpy ctx=%p stats=%p min=%d max=%d bitrate=%u floor=%u",
                   ctx, stats, min_size, max_size, bitrate, floor);
+        RC16_STDERR("lI1i pre-memcpy ctx=%p stats=%p", ctx, stats);
         Rtos_Memcpy(ctx + 0x28, stats, 0x1c);
         RC16_KMSG("lI1i post-memcpy ctx=%p stats=%p", ctx, stats);
+        RC16_STDERR("lI1i post-memcpy ctx=%p stats=%p", ctx, stats);
         if (*(uint32_t *)(ctx + 0x2c) == 0) {
             *(int32_t *)(ctx + 0x2c) = 1;
         }
@@ -147,6 +150,7 @@ uint32_t rc_lI1i(void *arg1, int32_t *arg2, void *arg3, const char *arg4, int32_
                 (char)(mode != 9U));
         RC16_KMSG("lI1i post-rc_l0io ctx=%p frame_rate=%u period=%d min=%d max=%d",
                   ctx, frame_rate, frame_period, min_size, max_size);
+        RC16_STDERR("lI1i post-rc_l0io ctx=%p", ctx);
 
         int16_t qp_min = READ_S16(rc, 0x1a);
         int16_t qp_max = READ_S16(rc, 0x1c);
@@ -262,15 +266,26 @@ uint32_t rc_lI1i(void *arg1, int32_t *arg2, void *arg3, const char *arg4, int32_
 
     {
         int32_t frame_period = *(int32_t *)(ctx + 4);
-        int32_t new_period = *(int16_t *)(arg2 + 3) * 1000;
-        int32_t min_size = arg2[4] & ~0x3f;
-        int32_t max_size = arg2[5] & ~0x3f;
+        int32_t new_period = (int32_t)READ_U16(rc, 0x0c) * 1000;
+        int32_t min_size = READ_S32(rc, 0x10) & ~0x3f;
+        int32_t max_size = READ_S32(rc, 0x14) & ~0x3f;
         int32_t prev_max_size = *(int32_t *)(ctx + 0xa0);
+        uint32_t frame_rate = (uint32_t)READ_U16(rc, 0x0e);
         int32_t need_reinit = 1;
 
+        RC16_KMSG("lI1i reconfig-entry ctx=%p codec=%d period=%d->%d min=%d max=%d fps=%u",
+                  ctx, *(int32_t *)(ctx + 0x28), frame_period, new_period, min_size, max_size, frame_rate);
+        if (frame_period == 0 && *(int32_t *)(ctx + 0x0c) == 0 && *(int32_t *)(ctx + 0x10) == 0) {
+            RC16_KMSG("lI1i cold-reconfig ctx=%p forcing init path", ctx);
+            *(uint8_t *)ctx = 0;
+            return rc_lI1i(arg1, arg2, arg3, arg4, arg5, arg6);
+        }
+
         if (frame_period == new_period) {
-            need_reinit = (*(int32_t *)(ctx + 0x9c) != min_size) ||
-                          (*(int32_t *)(ctx + 8) != (int32_t)(uint32_t)*(uint16_t *)((char *)arg2 + 0x0e));
+            need_reinit = (*(int32_t *)(ctx + 8) != (int32_t)frame_rate);
+            if (*(int32_t *)(ctx + 0x9c) != min_size) {
+                need_reinit = 1;
+            }
         }
 
         if (*(int32_t *)(ctx + 0x9c) != min_size) {
@@ -281,8 +296,6 @@ uint32_t rc_lI1i(void *arg1, int32_t *arg2, void *arg3, const char *arg4, int32_
         }
 
         if (need_reinit != 0) {
-            uint32_t frame_rate = (uint32_t)*(uint16_t *)((char *)arg2 + 0x0e);
-
             *(int32_t *)(ctx + 0x8c) =
                 (int32_t)(((uint64_t)frame_rate * (uint64_t)(uint32_t)min_size) / (uint64_t)new_period);
             *(int32_t *)(ctx + 0x94) =
@@ -290,21 +303,19 @@ uint32_t rc_lI1i(void *arg1, int32_t *arg2, void *arg3, const char *arg4, int32_
             rc_iiIo(ctx + 0x48, (int32_t)frame_rate, new_period, max_size);
             *(int32_t *)(ctx + 4) = new_period;
             *(int32_t *)(ctx + 8) = (int32_t)frame_rate;
-            RC16_KMSG("lI1i reinit ctx=%p frame_rate=%u period=%d max=%d", ctx, frame_rate, new_period,
-                      max_size);
+            RC16_KMSG("lI1i reconfig-reinit ctx=%p frame_rate=%u period=%d max=%d",
+                      ctx, frame_rate, new_period, max_size);
         } else if (prev_max_size != max_size) {
-            uint32_t frame_rate = (uint32_t)*(uint16_t *)((char *)arg2 + 0x0e);
-
             *(int32_t *)(ctx + 0x94) =
                 (int32_t)(((uint64_t)frame_rate * (uint64_t)(uint32_t)max_size) / (uint64_t)new_period);
             rc_iiIo(ctx + 0x48, (int32_t)frame_rate, new_period, max_size);
-            RC16_KMSG("lI1i max-update ctx=%p frame_rate=%u period=%d max=%d", ctx, frame_rate,
-                      new_period, max_size);
+            RC16_KMSG("lI1i reconfig-max-only ctx=%p frame_rate=%u period=%d max=%d",
+                      ctx, frame_rate, new_period, max_size);
         }
 
         {
-            int32_t qp_min = *(int16_t *)((char *)arg2 + 0x1a);
-            int32_t qp_max = *(int16_t *)(arg2 + 7);
+            int32_t qp_min = READ_S16(rc, 0x1a);
+            int32_t qp_max = READ_S16(rc, 0x1c);
             int32_t qp_target = *(int16_t *)(ctx + 0x20);
 
             *(int16_t *)(ctx + 0x18) = (int16_t)qp_min;
@@ -318,10 +329,11 @@ uint32_t rc_lI1i(void *arg1, int32_t *arg2, void *arg3, const char *arg4, int32_
             if (qp_target != *(int16_t *)(ctx + 0x20)) {
                 *(int16_t *)(ctx + 0x20) = (int16_t)qp_target;
                 rc_lo0i(ctx);
+                RC16_KMSG("lI1i reconfig-qptarget ctx=%p target=%d", ctx, qp_target);
             }
 
             {
-                int32_t signed_a4 = *(int16_t *)((char *)arg2 + 0x1e);
+                int32_t signed_a4 = READ_S16(rc, 0x1e);
                 int32_t desired_a4;
 
                 if (*(uint32_t *)(ctx + 0x2c) < 2) {
@@ -356,10 +368,10 @@ uint32_t rc_lI1i(void *arg1, int32_t *arg2, void *arg3, const char *arg4, int32_
             }
 
             {
-                int32_t desired_a8 = *(int16_t *)(arg2 + 8);
+                int32_t desired_a8 = READ_S16(rc, 0x20);
 
                 if (desired_a8 < 0) {
-                    int32_t codec_mode = arg2[0];
+                    int32_t codec_mode = *(int32_t *)(ctx + 0x28);
 
                     desired_a8 = (codec_mode == 9 || (codec_mode & 4) != 0)
                                      ? 0
@@ -394,6 +406,8 @@ uint32_t rc_lI1i(void *arg1, int32_t *arg2, void *arg3, const char *arg4, int32_
                 count = 1;
             }
             *(int32_t *)(ctx + 0x2c) = (int32_t)count;
+            RC16_KMSG("lI1i reconfig-exit ctx=%p count=%u stats4=%u stats6=%u",
+                      ctx, count, (unsigned)*(uint8_t *)(stats + 4), (unsigned)*(uint8_t *)(stats + 6));
             return count;
         }
     }
