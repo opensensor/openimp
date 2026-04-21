@@ -438,6 +438,7 @@ int32_t AL_EncCore_Reset(AL_EncCoreCtxCompat *arg1)
 int32_t AL_EncCore_Encode1(AL_EncCoreCtxCompat *arg1, int32_t arg2, int32_t arg3, int32_t arg4)
 {
     int32_t result;
+    uint32_t *cmd_regs_virt = (uint32_t *)(intptr_t)arg3;
 
     if (arg4 != 0)
         result = IsEnc2AlreadyRunning(arg1->ip_ctrl, (uint32_t)arg1->core_id);
@@ -449,6 +450,29 @@ int32_t AL_EncCore_Encode1(AL_EncCoreCtxCompat *arg1, int32_t arg2, int32_t arg3
         arg1->cmd_regs_1 = arg3;
         result = IsEnc1AlreadyRunning(a0_1, a1_1);
         if (result == 0) {
+            if (cmd_regs_virt != NULL) {
+                uint32_t cfg_8400 = (uint32_t)arg1->ip_ctrl->vtable->ReadRegister(arg1->ip_ctrl, 0x8400);
+                uint32_t cfg_8404 = (uint32_t)arg1->ip_ctrl->vtable->ReadRegister(arg1->ip_ctrl, 0x8404);
+                uint32_t cfg_8410 = (uint32_t)arg1->ip_ctrl->vtable->ReadRegister(arg1->ip_ctrl, 0x8410);
+                uint32_t cfg_8414 = (uint32_t)arg1->ip_ctrl->vtable->ReadRegister(arg1->ip_ctrl, 0x8414);
+                uint32_t cfg_8420 = (uint32_t)arg1->ip_ctrl->vtable->ReadRegister(arg1->ip_ctrl, 0x8420);
+                uint32_t cfg_8424 = (uint32_t)arg1->ip_ctrl->vtable->ReadRegister(arg1->ip_ctrl, 0x8424);
+                uint32_t cfg_8428 = (uint32_t)arg1->ip_ctrl->vtable->ReadRegister(arg1->ip_ctrl, 0x8428);
+                uint32_t cfg_85e4 = (uint32_t)arg1->ip_ctrl->vtable->ReadRegister(arg1->ip_ctrl, 0x85e4);
+
+                IMP_LOG_INFO("AVPU",
+                             "enc1-prelaunch core=%u cfg8400=%08x cfg8404=%08x cfg8410=%08x cfg8414=%08x cfg8420=%08x cfg8424=%08x cfg8428=%08x cfg85e4=%08x",
+                             (unsigned)arg1->core_id, cfg_8400, cfg_8404, cfg_8410, cfg_8414,
+                             cfg_8420, cfg_8424, cfg_8428, cfg_85e4);
+                IMP_LOG_INFO("AVPU",
+                             "enc1-cmd core=%u cl_phys=0x%08x cl_virt=%p w31=0x%08x w32=0x%08x w33=0x%08x "
+                             "w3d=0x%08x w3e=0x%08x w3f=0x%08x w64=0x%08x w65=0x%08x w67=0x%08x w68=0x%08x w69=0x%08x",
+                             (unsigned)arg1->core_id, (unsigned)arg2, cmd_regs_virt,
+                             cmd_regs_virt[0x31], cmd_regs_virt[0x32], cmd_regs_virt[0x33],
+                             cmd_regs_virt[0x3d], cmd_regs_virt[0x3e], cmd_regs_virt[0x3f],
+                             cmd_regs_virt[0x64], cmd_regs_virt[0x65], cmd_regs_virt[0x67],
+                             cmd_regs_virt[0x68], cmd_regs_virt[0x69]);
+            }
             Rtos_FlushCacheMemory(arg3, 0x100000);
             if (arg2 == 0)
                 return AL_EncCore_Encode1((AL_EncCoreCtxCompat *)(intptr_t)__assert("CmdRegs1_p",

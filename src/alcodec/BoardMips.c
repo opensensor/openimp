@@ -89,18 +89,18 @@ int32_t LinuxIpCtrl_WriteRegister(void *arg1, int32_t arg2, int32_t arg3)
         return result;
     }
 
-    switch ((uint32_t)arg2 & 0x1ffU) {
-    case 0x010:
-    case 0x014:
-    case 0x1f0:
-    case 0x1f4:
-    case 0x1e0:
-    case 0x1e4:
-    case 0x1f8:
-        IMP_LOG_INFO("AVPU", "wr fd=%d reg=0x%04x val=0x%08x", fd, (unsigned)arg2, (unsigned)arg3);
-        break;
-    default:
-        break;
+    {
+        uint32_t reg = (uint32_t)arg2;
+        uint32_t core_off = reg & 0x1ffU;
+
+        if (core_off == 0x010U || core_off == 0x014U || core_off == 0x1f0U || core_off == 0x1f4U ||
+            core_off == 0x1e0U || core_off == 0x1e4U || core_off == 0x1f8U ||
+            reg == 0x8400U || reg == 0x8404U || reg == 0x8408U || reg == 0x840cU ||
+            reg == 0x8410U || reg == 0x8414U || reg == 0x8418U || reg == 0x841cU ||
+            reg == 0x8420U || reg == 0x8424U || reg == 0x8428U ||
+            reg == 0x85e4U || reg == 0x85f0U || reg == 0x85f4U) {
+            IMP_LOG_INFO("AVPU", "wr fd=%d reg=0x%04x val=0x%08x", fd, reg, (unsigned)arg3);
+        }
     }
 
     return result;
@@ -114,15 +114,17 @@ int32_t LinuxIpCtrl_ReadRegister(void *arg1, int32_t arg2)
     reg_io.reg = arg2;
     reg_io.value = 0;
     if (ioctl(fd, 0xc008710b, &reg_io) >= 0) {
-        switch ((uint32_t)arg2 & 0x1ffU) {
-        case 0x010:
-        case 0x014:
-        case 0x1f4:
-        case 0x1f8:
-            IMP_LOG_INFO("AVPU", "rd fd=%d reg=0x%04x -> 0x%08x", fd, (unsigned)arg2, (unsigned)reg_io.value);
-            break;
-        default:
-            break;
+        {
+            uint32_t reg = (uint32_t)arg2;
+            uint32_t core_off = reg & 0x1ffU;
+
+            if (core_off == 0x010U || core_off == 0x014U || core_off == 0x1f4U || core_off == 0x1f8U ||
+                reg == 0x8400U || reg == 0x8404U || reg == 0x8408U || reg == 0x840cU ||
+                reg == 0x8410U || reg == 0x8414U || reg == 0x8418U || reg == 0x841cU ||
+                reg == 0x8420U || reg == 0x8424U || reg == 0x8428U ||
+                reg == 0x85e4U || reg == 0x85f0U || reg == 0x85f4U) {
+                IMP_LOG_INFO("AVPU", "rd fd=%d reg=0x%04x -> 0x%08x", fd, reg, (unsigned)reg_io.value);
+            }
         }
         return reg_io.value;
     }

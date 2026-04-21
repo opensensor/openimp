@@ -1969,6 +1969,11 @@ label_53d78:
                             int32_t *vtbl_1 = a0_32 ? (int32_t *)(intptr_t)READ_S32(a0_32, 0) : NULL;
                             int32_t encode_one_frame_fn = vtbl_1 ? READ_S32(vtbl_1, 0xc) : 0;
 
+                            CENC_KMSG("Process dispatch payload io srcY=0x%x srcUV=0x%x pitch=%d streamP=0x%x streamV=%p streamOff=%d db1c=0x%x db20=0x%x db24=0x%x db28=0x%x",
+                                      io.src_y_phys, io.src_uv_phys, io.src_pitch_y,
+                                      io.stream_phys, (void *)(intptr_t)io.stream_virt, io.stream_off,
+                                      READ_S32(s7, v0_39 + 0xdb1c), READ_S32(s7, v0_39 + 0xdb20),
+                                      READ_S32(s7, v0_39 + 0xdb24), READ_S32(s7, v0_39 + 0xdb28));
                             {
                                 int kfd = open("/dev/kmsg", O_WRONLY);
                                 if (kfd >= 0) {

@@ -1181,20 +1181,14 @@ static int32_t GetStreamBuffers_part_72(void *arg1, void *arg2, void *arg3)
         s7_1 = (int32_t *)((uint8_t *)arg2 + 0x348);
         fp_1 = 0;
         while (1) {
-            int32_t var_70[7];
-            int32_t var_50;
-            int32_t var_4c;
-            int32_t var_48;
-            int32_t var_44;
-            int32_t var_40;
-            int32_t var_3c;
-            int32_t var_38;
+            int32_t stream_entry[8];
+            int32_t push_back_entry[8];
             uint32_t shift = (uint32_t)READ_U16(arg3, 0x4e);
             uint32_t max_size = (uint32_t)READ_U16(arg3, 0x40);
             int32_t part_size;
             int32_t result_1;
 
-            result_1 = AL_StreamMngr_GetBuffer(arg1, &var_50);
+            result_1 = AL_StreamMngr_GetBuffer(arg1, stream_entry);
             result = result_1;
             if (result_1 == 0) {
                 int32_t s7_2 = fp_1 - 1;
@@ -1233,16 +1227,17 @@ static int32_t GetStreamBuffers_part_72(void *arg1, void *arg2, void *arg3)
                             break;
                         }
 
-                        var_70[0] = s5_1[-1];
-                        var_70[1] = s5_1[-2];
-                        var_70[2] = part_size;
-                        var_70[3] = s5_1[1];
-                        var_70[4] = s5_1[-4];
-                        var_70[5] = s5_1[-3];
-                        var_70[6] = s5_1[4];
+                        push_back_entry[0] = s5_1[-1];
+                        push_back_entry[1] = s5_1[-2];
+                        push_back_entry[2] = part_size;
+                        push_back_entry[3] = s5_1[1];
+                        push_back_entry[4] = s5_1[-4];
+                        push_back_entry[5] = s5_1[-3];
+                        push_back_entry[6] = s5_1[4];
+                        push_back_entry[7] = 0;
                         s5_1 -= 10;
                         s7_2 -= 1;
-                        AL_StreamMngr_AddBufferBack(arg1, var_70);
+                        AL_StreamMngr_AddBufferBack(arg1, push_back_entry);
                         s5_1[8] = 0;
                         if (s7_2 == -1) {
                             return result;
@@ -1253,14 +1248,14 @@ static int32_t GetStreamBuffers_part_72(void *arg1, void *arg2, void *arg3)
                 return result;
             }
 
-            s7_1[-4] = var_50;
-            s7_1[-2] = var_4c;
-            s7_1[-4 + 2] = var_40;
-            s7_1[-3 + 2] = var_3c;
-            s7_1[4] = var_38;
-            s7_1[0] = var_48;
-            s7_1[1] = var_44;
-            s7_1[3] = var_44;
+            s7_1[-4] = stream_entry[0];
+            s7_1[-2] = stream_entry[1];
+            s7_1[-4 + 2] = stream_entry[4];
+            s7_1[-3 + 2] = stream_entry[5];
+            s7_1[4] = stream_entry[6];
+            s7_1[0] = stream_entry[2];
+            s7_1[1] = stream_entry[3];
+            s7_1[3] = stream_entry[3];
 
             if (READ_U16(arg3, 0x3e) != 0U) {
                 max_size = 0xc8;
@@ -1274,14 +1269,14 @@ static int32_t GetStreamBuffers_part_72(void *arg1, void *arg2, void *arg3)
                          0x10)
                         << 4;
             part_size = ((part_size + 0x7f) >> 7) << 7;
-            if (part_size >= var_48) {
+            if (part_size >= stream_entry[2]) {
                 __assert("pStreamInfo->iMaxSize > iStreamPartSize",
                          "/home/user/git/proj/sdk-lv3/src/imp/video/alcodec/lib_scheduler_enc/ChannelMngr.c", 0x5ed,
                          "ReserveSpaceForStreamPart", &_gp);
             }
 
             {
-                int32_t v0_4 = var_48 - part_size;
+                int32_t v0_4 = stream_entry[2] - part_size;
 
                 s7_1[0] = v0_4;
                 s7_1[2] = v0_4;
@@ -1291,11 +1286,16 @@ static int32_t GetStreamBuffers_part_72(void *arg1, void *arg2, void *arg3)
                              "ReserveSpaceForStreamPart", &_gp);
                 }
 
-                if (var_44 >= v0_4) {
+                if (stream_entry[3] >= v0_4) {
                     __assert("pStreamInfo->iOffset < pStreamInfo->iStreamPartOffset",
                              "/home/user/git/proj/sdk-lv3/src/imp/video/alcodec/lib_scheduler_enc/ChannelMngr.c", 0x5f3,
                              "ReserveSpaceForStreamPart", &_gp);
                 }
+
+                ENC_KMSG("GetStreamBuffers lane_entry phys=0x%x virt=%p max=%d off=%d side0=%d side1=%d side2=%p part=%d part_off=%d",
+                         stream_entry[0], (void *)(intptr_t)stream_entry[1], stream_entry[2], stream_entry[3],
+                         stream_entry[4], stream_entry[5], (void *)(intptr_t)stream_entry[6],
+                         part_size, v0_4);
             }
 
             fp_1 += 1;
@@ -1740,13 +1740,7 @@ int32_t AL_EncChannel_PushStreamBuffer(void *arg1, int32_t arg2, int32_t arg3, i
 {
     void *var_30 = &_gp;
     int32_t v0_1 = arg5 + arg6;
-    int32_t var_28 = arg2;
-    int32_t var_24 = arg3;
-    int32_t var_20;
-    int32_t var_1c = arg5;
-    int32_t var_18 = arg7;
-    int32_t var_14 = arg8;
-    int32_t var_10 = arg9;
+    int32_t stream_entry[8];
     int32_t a0_1;
 
     (void)var_30;
@@ -1754,10 +1748,21 @@ int32_t AL_EncChannel_PushStreamBuffer(void *arg1, int32_t arg2, int32_t arg3, i
         v0_1 = arg4;
     }
 
-    var_20 = v0_1;
     if ((arg4 & 3) != 0) {
         return 0;
     }
+
+    /* OEM passes a contiguous stack record into AL_StreamMngr_AddBuffer.
+     * Recreate that record explicitly instead of relying on local-variable
+     * layout, which is not a valid C ABI contract. */
+    stream_entry[0] = arg2;
+    stream_entry[1] = arg3;
+    stream_entry[2] = v0_1;
+    stream_entry[3] = arg5;
+    stream_entry[4] = arg7;
+    stream_entry[5] = arg8;
+    stream_entry[6] = arg9;
+    stream_entry[7] = 0;
 
     if ((uint32_t)READ_U8(arg1, 0x1f) == 4U) {
         a0_1 = READ_S32(arg1, 0x1aa4);
@@ -1768,7 +1773,11 @@ int32_t AL_EncChannel_PushStreamBuffer(void *arg1, int32_t arg2, int32_t arg3, i
         a0_1 = READ_S32(arg1, 0x2a50);
     }
 
-    return AL_StreamMngr_AddBuffer((void *)(intptr_t)a0_1, &var_28);
+    ENC_KMSG("PushStreamBuffer queue chctx=%p mgr=%p phys=0x%x virt=%p limit=%d size=%d side0=%d side1=%d side2=%p",
+             arg1, (void *)(intptr_t)a0_1, (unsigned)stream_entry[0], (void *)(intptr_t)stream_entry[1],
+             stream_entry[2], stream_entry[3], stream_entry[4], stream_entry[5],
+             (void *)(intptr_t)stream_entry[6]);
+    return AL_StreamMngr_AddBuffer((void *)(intptr_t)a0_1, stream_entry);
 }
 
 int32_t AL_EncChannel_PushIntermBuffer(void *arg1, int32_t arg2, int32_t arg3)
