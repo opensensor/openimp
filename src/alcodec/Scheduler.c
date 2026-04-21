@@ -2823,8 +2823,10 @@ int32_t encode1(void *arg1)
     AL_EncCore_EnableInterrupts(READ_PTR(ch, 0x164), READ_U8(ch, 0x3c), 0);
     for (core = 0; core < (int32_t)READ_U8(ch, 0x3c); ++core) {
         void *enc1 = (uint8_t *)READ_PTR(ch, 0x164) + core * 0x44;
-        int32_t cmd1 = READ_S32(req, 0xa78 + core);
-        int32_t cmd2 = READ_S32(req, 0xab8 + core);
+        int32_t cmd1 = READ_S32(req, 0xa78 + core * 4);
+        int32_t cmd2 = READ_S32(req, 0xab8 + core * 4);
+        ENC_KMSG("encode1 launch core=%d enc=%p cmd1=0x%x cmd2=0x%x dual=%u",
+                 core, enc1, cmd1, cmd2, (unsigned)READ_U8(req, 0x182));
 
         AL_EncCore_Encode1(enc1, cmd2, cmd1, (READ_U8(req, 0x182) != 0U) ? cmd2 : 0,
                            (READ_U8(req, 0x182) != 0U) ? cmd1 : 0);
