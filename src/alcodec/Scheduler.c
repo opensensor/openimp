@@ -2871,6 +2871,83 @@ int32_t AL_EncChannel_ListModulesNeeded(void *arg1, void *arg2)
                     ENC_KMSG("ListModulesNeeded lane=%d before-mark-used pict=%d", lane, pict_id);
                     AL_SrcReorder_MarkSrcBufferAsUsed((uint8_t *)arg1 + 0x178, pict_id);
                     ENC_KMSG("ListModulesNeeded lane=%d after-mark-used pict=%d", lane, pict_id);
+                    if (READ_U8(arg1, 0x1f) != 4U) {
+                        int32_t rec = AL_RefMngr_GetNewFrmBuffer((uint8_t *)arg1 + 0x22c8);
+
+                        if (rec == 0xff) {
+                            ENC_KMSG("ListModulesNeeded lane=%d no-rec-buffer pict=%d", lane, pict_id);
+                            req = 0;
+                            continue;
+                        }
+
+                        WRITE_S32(req, 0x838,
+                                  AL_IntermMngr_GetBuffer((uint8_t *)arg1 + 0x2a54));
+                        if (READ_PTR(req, 0x838) == NULL) {
+                            ENC_KMSG("ListModulesNeeded lane=%d no-interm-buffer pict=%d rec=%d",
+                                     lane, pict_id, rec);
+                            AL_RefMngr_ReleaseFrmBuffer((uint8_t *)arg1 + 0x22c8, (char)rec);
+                            req = 0;
+                            continue;
+                        }
+
+                        WRITE_S32(req, 0x318, (int32_t)(intptr_t)((uint8_t *)req + 0x338));
+                        if (GetStreamBuffers_part_72(READ_PTR(arg1, 0x2a50), req, arg1) == 0) {
+                            ENC_KMSG("ListModulesNeeded lane=%d no-stream-buffers pict=%d rec=%d interm=%p",
+                                     lane, pict_id, rec, READ_PTR(req, 0x838));
+                            AL_IntermMngr_ReleaseBufferBack((uint8_t *)arg1 + 0x2a54, READ_PTR(req, 0x838));
+                            WRITE_S32(req, 0x838, 0);
+                            AL_RefMngr_ReleaseFrmBuffer((uint8_t *)arg1 + 0x22c8, (char)rec);
+                            req = 0;
+                            continue;
+                        }
+
+                        SetSourceBuffer_isra_74(arg1, req, pict_id, &req[0xa6]);
+                        {
+                            int32_t *src = (int32_t *)(intptr_t)AL_SrcReorder_GetSrcBuffer((uint8_t *)arg1 + 0x178,
+                                                                                            pict_id);
+
+                            if (src != NULL) {
+                                WRITE_S32(req, 0x2b4, src[7]);
+                                WRITE_S32(req, 0x2b8, src[8]);
+                                WRITE_S32(req, 0x2bc, 0);
+                            }
+                        }
+                        WRITE_S32(req, 0x2fc,
+                                  AL_IntermMngr_GetEp1Addr((uint8_t *)arg1 + 0x2a54,
+                                                           READ_PTR(req, 0x838), &req[0xca]));
+                        if ((READ_S32(req, 0x2b8) | READ_S32(req, 0x2bc)) == 0 ||
+                            READ_S32(req, 0x2b4) == 0) {
+                            int32_t ep2_virt = 0;
+
+                            WRITE_S32(req, 0x2b4,
+                                      AL_IntermMngr_GetEp2Addr((uint8_t *)arg1 + 0x2a54,
+                                                               READ_PTR(req, 0x838), &ep2_virt));
+                            WRITE_S32(req, 0x2b8, ep2_virt);
+                            WRITE_S32(req, 0x2bc, 0);
+                        }
+                        WRITE_S32(req, 0x300, 0);
+                        WRITE_S32(req, 0x324, 0);
+                        WRITE_S32(req, 0x304, 0);
+                        WRITE_S32(req, 0x308, 0);
+                        if ((READ_U32(arg1, 0x1c) >> 0x18) == 0U && READ_U8(arg1, 0x3c) >= 2U) {
+                            WRITE_S32(req, 0x304,
+                                      AL_IntermMngr_GetMapAddr((uint8_t *)arg1 + 0x2a54,
+                                                               READ_PTR(req, 0x838), 0));
+                            WRITE_S32(req, 0x308,
+                                      AL_IntermMngr_GetDataAddr((uint8_t *)arg1 + 0x2a54,
+                                                                READ_PTR(req, 0x838), 0));
+                            WRITE_S32(req, 0x2f8,
+                                      AL_IntermMngr_GetWppAddr((uint8_t *)arg1 + 0x2a54,
+                                                               READ_PTR(req, 0x838), &req[0xc8]));
+                        }
+                        SetPictureRefBuffers(arg1, req, arg1, req, (char)rec, &req[0xa6]);
+                        ENC_KMSG("ListModulesNeeded lane=%d prepared-bufs pict=%d rec=%d interm=%p stream=%p srcY=0x%x srcUV=0x%x ep1=0x%x ep2=0x%x stream_off=%d stream_part=%d",
+                                 lane, pict_id, rec, READ_PTR(req, 0x838), READ_PTR(req, 0x318),
+                                 READ_S32(req, 0x298), READ_S32(req, 0x29c),
+                                 READ_S32(req, 0x2fc), READ_S32(req, 0x2b4),
+                                 READ_PTR(req, 0x318) ? READ_S32(READ_PTR(req, 0x318), 0x0c) : 0,
+                                 READ_PTR(req, 0x318) ? READ_S32(READ_PTR(req, 0x318), 0x14) : 0);
+                    }
                     if (READ_S32(req, 0x30) == 2 && READ_U8(arg1, 0x2d4) != 0U) {
                         Rtos_GetMutex(READ_PTR(arg1, 0x170));
                         ((void (*)(void *))(intptr_t)READ_S32(arg1, 0x158))((uint8_t *)arg1 + 0x128);
@@ -2982,6 +3059,9 @@ int32_t encode1(void *arg1)
             WRITE_S32(req, 0x318, (int32_t)(intptr_t)((uint8_t *)src + 0x48));
         }
         ENC_KMSG("encode1 req source pict=%d src=%p cmd=%p", pict_id, src, READ_PTR(req, 0x318));
+    }
+    if (READ_U8(ch, 0x1f) != 4U) {
+        WRITE_S32(req, 0x318, (int32_t)(intptr_t)((uint8_t *)req + 0x338));
     }
     ENC_KMSG("encode1 pre-FillSliceParam req=%p mode=%u chroma=%u cores=%u dual=%u",
              req, (unsigned)READ_U8(ch, 0x1f), (unsigned)READ_U8(ch, 0x4), (unsigned)READ_U8(ch, 0x3c),
