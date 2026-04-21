@@ -1,5 +1,6 @@
 #include <stdint.h>
 #include <stddef.h>
+#include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
@@ -86,6 +87,22 @@ static const uint8_t AL_AVC_DefaultScalingLists4x4[0x20] = {
     0x0a, 0x0e, 0x14, 0x18, 0x0e, 0x14, 0x18, 0x1b, 0x14, 0x18, 0x1b, 0x1e, 0x18, 0x1b, 0x1e, 0x22,
 };
 
+static void srcchk_kmsg(const char *fmt, ...)
+{
+    int fd = open("/dev/kmsg", O_WRONLY | O_CLOEXEC);
+    if (fd < 0)
+        return;
+
+    char buf[256];
+    va_list ap;
+    va_start(ap, fmt);
+    int n = vsnprintf(buf, sizeof(buf), fmt, ap);
+    va_end(ap);
+    if (n > 0)
+        dprintf(fd, "libimp/SRCCHK: %s\n", buf);
+    close(fd);
+}
+
 int32_t AL_SrcBuffersChecker_Init(uint32_t *arg1, uint8_t *arg2)
 {
     uint32_t v1 = (uint32_t)*(uint16_t *)(arg2 + 8);
@@ -156,9 +173,11 @@ int32_t AL_SrcBuffersChecker_CanBeUsed(int32_t *arg1, AL_TBuffer *arg2)
         v0_1 = (int32_t)AL_PixMapBuffer_GetFourCC(arg2);
         v0_2 = AL_GetChromaMode((uint32_t)v0_1);
         v0_3 = AL_PixMapBuffer_GetPlanePitch(arg2, 0);
-        if (s4_1 == arg1[0] && var_58.iHeight == arg1[1] && v0_1 == arg1[0x0a] &&
-            v0_3 >= AL_EncGetMinPitch(s4_1, (char)AL_GetBitDepth((uint32_t)v0_1), AL_GetStorageMode((uint32_t)v0_1)) &&
-            (v0_3 & 0xf) == 0) {
+        {
+            int32_t min_pitch = AL_EncGetMinPitch(s4_1, (char)AL_GetBitDepth((uint32_t)v0_1),
+                                                  AL_GetStorageMode((uint32_t)v0_1));
+            if (s4_1 == arg1[0] && var_58.iHeight == arg1[1] && v0_1 == arg1[0x0a] &&
+                v0_3 >= min_pitch && (v0_3 & 0xf) == 0) {
             int32_t v0_26 = 0;
 
             if (v0_2 != 0)
@@ -201,14 +220,24 @@ int32_t AL_SrcBuffersChecker_CanBeUsed(int32_t *arg1, AL_TBuffer *arg2)
                     int32_t s3_4 = *s2_1;
 
                     s2_1 = &s2_1[1];
-                    if (s3_4 != 0 && AL_Buffer_GetSizeChunk(arg2, s1_1) < (uint32_t)s3_4)
+                    if (s3_4 != 0 && AL_Buffer_GetSizeChunk(arg2, s1_1) < (uint32_t)s3_4) {
+                        srcchk_kmsg("reject chunk buf=%p idx=%d need=%d have=%u fourcc=0x%x pitchY=%d pitchUV=%d dim=%dx%d exp=%dx%d",
+                                    arg2, s1_1, s3_4, AL_Buffer_GetSizeChunk(arg2, s1_1), v0_1, v0_3, v0_26,
+                                    var_58.iWidth, var_58.iHeight, arg1[0], arg1[1]);
                         break;
+                    }
                     s1_1 += 1;
                     if (s1_1 == 3)
                         return 1;
                 }
                 return 0;
             }
+            srcchk_kmsg("reject uv-pitch buf=%p fourcc=0x%x pitchY=%d pitchUV=%d chroma=%d dim=%dx%d exp=%dx%d",
+                        arg2, v0_1, v0_3, v0_26, v0_2, var_58.iWidth, var_58.iHeight, arg1[0], arg1[1]);
+            return 0;
+        }
+            srcchk_kmsg("reject basic buf=%p fourcc=0x%x exp_fourcc=0x%x pitchY=%d min_pitch=%d dim=%dx%d exp=%dx%d",
+                        arg2, v0_1, arg1[0x0a], v0_3, min_pitch, var_58.iWidth, var_58.iHeight, arg1[0], arg1[1]);
         }
     }
     return 0;

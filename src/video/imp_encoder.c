@@ -306,19 +306,6 @@ static inline uint8_t *enc_ptr(int32_t chn, uint32_t abs_addr)
 #define ENC_F_STREAM_FSIZE  0x1194c4u /* OEM stream_frame_size field */
 #define ENC_F_DUMP_TIME     0x1192d4u
 
-static void encoder_try_activate_codec(int32_t chn_num, const char *reason)
-{
-    void *codec = CH_PTR(chn_num, ENC_F_CODEC_HANDLE);
-
-    if (codec == NULL) {
-        video_enc_trace("activate-skip chn=%d reason=%s codec=(nil)", chn_num, reason);
-        return;
-    }
-
-    video_enc_trace("activate-codec chn=%d reason=%s codec=%p", chn_num, reason, codec);
-    AL_Codec_Encode_Process(codec, NULL, NULL);
-}
-
 /* The first four bytes of each channel slot hold chn_id == -1 when free. */
 #define ENC_CHN_VALID(n)  (ENC_CHN_ID((n)) >= 0)
 
@@ -997,16 +984,10 @@ int32_t IMP_Encoder_RegisterChn(int32_t arg1, int32_t arg2)
         *(int32_t *)((char *)v0_9 + 8) += 1;
         CH_PTR(arg2, ENC_F_GROUPPTR) = (char *)v0_9 + 4;
         CH_S32(arg2, ENC_F_REGISTERED) = 1;
-        /* Raptor's current pipeline registers channels but does not call
-         * enc_start/IMP_Encoder_StartRecvPic before frames begin arriving.
-         * Arm the receive gate here so the encoder callback path can run. */
         CH_S32(arg2, ENC_F_ENABLED) = 1;
         if ((EncoderChannelLayout *)enc_ptr(arg2, IMP_ENC_BASE_ADDR) != NULL) {
             EncoderChannelLayout *chn = (EncoderChannelLayout *)enc_ptr(arg2, IMP_ENC_BASE_ADDR);
             *enc_channel_recv_pic_enabled(chn) = 1;
-        }
-        if (CH_S32(arg2, ENC_F_STARTED) != 0 || CH_S32(arg2, ENC_F_ENABLED) != 0) {
-            encoder_try_activate_codec(arg2, "register-started");
         }
         video_enc_trace("RegisterChn linked grp=%d chn=%d group=%p slots=%d started=%d enabled=%d",
                         arg1, arg2, v0_9,
@@ -1215,7 +1196,6 @@ int32_t IMP_Encoder_StartRecvPic(int32_t arg1)
         *enc_channel_recv_pic_started(chn) = 1;
         *enc_channel_recv_pic_enabled(chn) = 1;
     }
-    encoder_try_activate_codec(arg1, "start-recv-pic");
     video_enc_trace("StartRecvPic exit chn=%d grp=%d started=%d enabled=%d",
                     arg1, enc_group_id_from_channel(arg1),
                     CH_S32(arg1, ENC_F_STARTED), CH_S32(arg1, ENC_F_ENABLED));
