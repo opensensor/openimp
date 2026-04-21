@@ -2736,38 +2736,66 @@ int32_t AL_EncChannel_ListModulesNeeded(void *arg1, void *arg2)
 
                         ENC_KMSG("ListModulesNeeded lane=%d ready=%p pict=%d", lane, ready, pict_id);
                         if (ready != 0 && (READ_S32(ready, 0) & 0x200) != 0) {
+                            int32_t check_rc;
+
+                            ENC_KMSG("ListModulesNeeded lane=%d ready-dynres req=%p w=%d h=%d core_hint=%u flags=0x%x",
+                                     lane, req, READ_S32(ready, 0x68), READ_S32(ready, 0x6c),
+                                     (unsigned)READ_U8(ready, 0x70), READ_S32(ready, 0));
                             WRITE_U16(arg1, 4, (uint16_t)READ_S32(ready, 0x68));
                             WRITE_U16(arg1, 6, (uint16_t)READ_S32(ready, 0x6c));
                             WRITE_U8(arg1, 0x44, READ_U8(ready, 0x70));
+                            ENC_KMSG("ListModulesNeeded lane=%d before-set-cores chctx=%p size=%ux%u core_hint=%u",
+                                     lane, arg1, (unsigned)READ_U16(arg1, 4), (unsigned)READ_U16(arg1, 6),
+                                     (unsigned)READ_U8(arg1, 0x44));
                             AL_EncChannel_SetNumberOfCores(arg1);
+                            ENC_KMSG("ListModulesNeeded lane=%d after-set-cores cores=%u core_base=%u active=%d need=%d",
+                                     lane, (unsigned)READ_U8(arg1, 0x3c), (unsigned)READ_U8(arg1, 0x3d),
+                                     READ_S32(arg1, 0x2c), READ_S32(arg1, 0x30));
                             SetChannelSteps(arg1, arg1);
-                            if ((uint32_t)AL_EncChannel_CheckAndAdjustParam(arg1) >= 0x80U) {
+                            ENC_KMSG("ListModulesNeeded lane=%d after-set-steps step4e=%u step4f=%u fmt=%u",
+                                     lane, (unsigned)READ_U8(arg1, 0x4e), (unsigned)READ_U8(arg1, 0x4f),
+                                     (unsigned)READ_U8(arg1, 0x1f));
+                            check_rc = AL_EncChannel_CheckAndAdjustParam(arg1);
+                            ENC_KMSG("ListModulesNeeded lane=%d check-adjust rc=0x%x", lane, check_rc);
+                            if ((uint32_t)check_rc >= 0x80U) {
                                 __assert("!AL_IS_ERROR_CODE(eErrorCode)",
                                          "/home/user/git/proj/sdk-lv3/src/imp/video/alcodec/lib_scheduler_enc/ChannelMngr.c",
                                          0xb62, "SetInputResolution", &_gp);
                             }
                             SetTileOffsets(arg1);
+                            ENC_KMSG("ListModulesNeeded lane=%d after-tile-offsets", lane);
                             InitMERange((int32_t)(intptr_t)arg1, arg1);
+                            ENC_KMSG("ListModulesNeeded lane=%d after-init-me-range", lane);
                             AL_RefMngr_SetRecResolution((uint8_t *)arg1 + 0x22c8, READ_U16(arg1, 4), READ_U16(arg1, 6));
+                            ENC_KMSG("ListModulesNeeded lane=%d after-set-rec-resolution", lane);
                             ((void (*)(void *, uint32_t, uint32_t))(intptr_t)READ_S32(arg1, 0xf4))
                                 ((uint8_t *)arg1 + 0xf4, READ_U16(arg1, 4), READ_U16(arg1, 6));
+                            ENC_KMSG("ListModulesNeeded lane=%d after-hw-fn", lane);
                             InitHwRC_Content(arg1, arg1);
+                            ENC_KMSG("ListModulesNeeded lane=%d after-init-hwrc", lane);
                         }
                     }
                     WRITE_U8(arg1, 0x177, 0);
+                    ENC_KMSG("ListModulesNeeded lane=%d before-mark-used pict=%d", lane, pict_id);
                     AL_SrcReorder_MarkSrcBufferAsUsed((uint8_t *)arg1 + 0x178, pict_id);
+                    ENC_KMSG("ListModulesNeeded lane=%d after-mark-used pict=%d", lane, pict_id);
                     if (READ_S32(req, 0x30) == 2 && READ_U8(arg1, 0x2d4) != 0U) {
                         Rtos_GetMutex(READ_PTR(arg1, 0x170));
                         ((void (*)(void *))(intptr_t)READ_S32(arg1, 0x158))((uint8_t *)arg1 + 0x128);
                         Rtos_ReleaseMutex(READ_PTR(arg1, 0x170));
                     }
+                    ENC_KMSG("ListModulesNeeded lane=%d before-apply-pict pict=%d", lane, pict_id);
                     AL_ApplyPictCommands(arg1, AL_SrcReorder_GetReadyCommand((uint8_t *)arg1 + 0x178, pict_id), pict_id);
+                    ENC_KMSG("ListModulesNeeded lane=%d after-apply-pict pict=%d", lane, pict_id);
                     Rtos_GetMutex(READ_PTR(arg1, 0x170));
                     ((void (*)(void *, void *))(intptr_t)READ_S32(arg1, 0x138))((uint8_t *)arg1 + 0x128,
                                                                                  (uint8_t *)req + 0x20);
                     Rtos_ReleaseMutex(READ_PTR(arg1, 0x170));
+                    ENC_KMSG("ListModulesNeeded lane=%d after-update-fn pict=%d", lane, pict_id);
                     if (READ_U8(arg1, 0x1f) != 4U) {
+                        ENC_KMSG("ListModulesNeeded lane=%d before-set-picture-refs req=%p", lane, req);
                         SetPictureReferences(arg1, req);
+                        ENC_KMSG("ListModulesNeeded lane=%d after-set-picture-refs req=%p", lane, req);
                     }
                     WRITE_U8(req, 0xa75, 1);
                     ENC_KMSG("ListModulesNeeded lane=%d prepared req=%p a74=%u a75=%u lane_mods=%d lane_slices=%d out_count=%d",

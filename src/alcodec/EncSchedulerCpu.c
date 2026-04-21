@@ -300,7 +300,6 @@ int32_t AL_SchedulerCpu_EncodeOneFrame(int32_t arg1, int32_t *arg2, int32_t *arg
 
     {
         void *var_10 = &_gp;
-        int32_t var_18 = (int32_t)(intptr_t)arg5;
 
         (void)var_10;
         SCH_KMSG("Cpu.EncodeOneFrame entry cpu=%p chctx=%p ch=%u src=%p opts=%p meta=%p",
@@ -312,8 +311,8 @@ int32_t AL_SchedulerCpu_EncodeOneFrame(int32_t arg1, int32_t *arg2, int32_t *arg
         } else {
             SCH_KMSG("Cpu.EncodeOneFrame arm-only call ch=%u", (unsigned)(uint8_t)*arg2);
         }
-        AL_SchedulerEnc_EncodeOneFrame((int32_t *)(intptr_t)(arg1 + 4), (char)*arg2, arg3, arg4, &var_18);
-        SCH_KMSG("Cpu.EncodeOneFrame exit meta_local=%d", var_18);
+        AL_SchedulerEnc_EncodeOneFrame((int32_t *)(intptr_t)(arg1 + 4), (char)*arg2, arg3, arg4, arg5);
+        SCH_KMSG("Cpu.EncodeOneFrame exit meta=%p", arg5);
         return 1;
     }
 }
