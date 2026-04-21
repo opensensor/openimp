@@ -23,6 +23,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #include <stdarg.h>
+#include "imp_log_int.h"
 #include "video/encoder_channel_layout.h"
 
 /* fs_* framesource kernel-interface thunks are provided by legacy
@@ -228,17 +229,16 @@ int32_t g_HwTimer = 0;
 
 static void enc_trace(const char *fmt, ...)
 {
-    int fd = open("/dev/kmsg", O_WRONLY);
-    if (fd < 0) return;
-
     char buf[512];
     va_list ap;
     va_start(ap, fmt);
     int n = vsnprintf(buf, sizeof(buf), fmt, ap);
     va_end(ap);
 
-    if (n > 0) write(fd, buf, (size_t)n);
-    close(fd);
+    if (n <= 0)
+        return;
+
+    IMP_LOG_INFO("ENCX", "%s", buf);
 }
 
 static EncoderCompatRuntime g_encoder_runtime[9];

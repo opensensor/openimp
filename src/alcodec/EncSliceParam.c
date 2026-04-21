@@ -67,16 +67,16 @@ int32_t PopCommandListAddresses(void *arg1, void *arg2)
 
     if (a3_2 > 0) {
         int32_t *v0_3 = (int32_t *)((uint8_t *)arg1 + ((t0 + 0x13) << 6));
-        int32_t *out = (int32_t *)((uint8_t *)arg2 + 4);
+        int32_t *out = (int32_t *)arg2;
         int32_t *a3_1 = (int32_t *)((uint8_t *)arg2 + (a3_2 << 2));
 
         do {
             int32_t v1_1 = *v0_3;
 
+            out = &out[1];
             *(out - 1) = *(v0_3 - 0x130);
             *(out + 0xf) = v1_1;
             v0_3 = &v0_3[1];
-            out = &out[1];
         } while (out != a3_1);
     }
 

@@ -23,6 +23,8 @@ int32_t IMP_PoolFree(int32_t arg1, void *arg2, int32_t arg3);
 void *IMP_MemPool_GetById(int32_t arg1);
 /* forward decl, ported by T<N> later */
 int32_t IMP_FlushCache(int32_t arg1, int32_t arg2, int32_t arg3);
+/* forward decl, implemented in dma_alloc.c */
+int DMA_RmemFlushCache(void *virt_addr, uint32_t size, int dir);
 
 typedef struct DevicePoolEntry {
     char *name;
@@ -486,6 +488,14 @@ void AL_DmaAlloc_Destroy(void)
 
 int32_t AL_DmaAlloc_FlushCache(int32_t arg1, int32_t arg2, int32_t arg3)
 {
+    int ret;
+
+    if (arg1 != 0 && arg2 > 0) {
+        ret = DMA_RmemFlushCache((void *)(intptr_t)arg1, (uint32_t)arg2, arg3);
+        if (ret == 0)
+            return 0;
+    }
+
     return IMP_FlushCache(arg1, arg2, arg3);
 }
 

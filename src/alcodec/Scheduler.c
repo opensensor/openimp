@@ -4,9 +4,11 @@
 #include <unistd.h>
 #include <fcntl.h>
 
+#include "alcodec/al_allocator.h"
 #include "alcodec/al_buffer.h"
 #include "alcodec/al_rtos.h"
 #include "alcodec/al_types.h"
+#include "imp_log_int.h"
 
 extern char _gp;
 extern int32_t __assert(const char *expression, const char *file, int32_t line, const char *function,
@@ -30,16 +32,9 @@ typedef struct StaticFifoCompat {
 #define WRITE_U16(base, off, val) (*(uint16_t *)((uint8_t *)(base) + (off)) = (uint16_t)(val))
 #define WRITE_U32(base, off, val) (*(uint32_t *)((uint8_t *)(base) + (off)) = (uint32_t)(val))
 #define WRITE_S32(base, off, val) (*(int32_t *)((uint8_t *)(base) + (off)) = (int32_t)(val))
+#define WRITE_PTR(base, off, val) (*(void **)((uint8_t *)(base) + (off)) = (void *)(val))
 
-#define ENC_KMSG(fmt, ...) do { \
-    int _kfd = open("/dev/kmsg", O_WRONLY); \
-    if (_kfd >= 0) { \
-        char _b[224]; \
-        int _n = snprintf(_b, sizeof(_b), "libimp/ENC: " fmt "\n", ##__VA_ARGS__); \
-        if (_n > 0) { write(_kfd, _b, _n > (int)sizeof(_b) ? (int)sizeof(_b) : _n); } \
-        close(_kfd); \
-    } \
-} while (0)
+#define ENC_KMSG(fmt, ...) IMP_LOG_INFO("ENC", fmt, ##__VA_ARGS__)
 
 void StaticFifo_Init(StaticFifoCompat *arg1, int32_t *arg2, int32_t arg3); /* forward decl, ported by T<N> later */
 int32_t StaticFifo_Queue(StaticFifoCompat *arg1, int32_t arg2); /* forward decl, ported by T<N> later */
@@ -787,10 +782,17 @@ int32_t AddNewRequest(int32_t arg1)
              READ_S32((void *)(intptr_t)v0, 0x8cc), READ_S32((void *)(intptr_t)v0, 0x958),
              READ_S32((void *)(intptr_t)v0, 0x9dc), READ_S32((void *)(intptr_t)v0, 0xa68));
     PopCommandListAddresses((void *)(intptr_t)(arg1 + 0x2c20), (void *)(intptr_t)(v0 + 0xa78));
-    ENC_KMSG("AddNewRequest ready req=%p lane=%d cmdlist=%p cmd1[0]=0x%x cmd1[1]=0x%x cmd2[0]=0x%x cmd2[1]=0x%x",
-             (void *)(intptr_t)v0, READ_S32((void *)(intptr_t)v0, 0xa70), (void *)(intptr_t)(v0 + 0xa78),
+    ENC_KMSG("AddNewRequest ready req=%p lane=%d cmdsrc_count=%d cmdsrc_next=%d cmdlist=%p"
+             " cmd1=%08x/%08x/%08x/%08x/%08x cmd2=%08x/%08x/%08x/%08x/%08x",
+             (void *)(intptr_t)v0, READ_S32((void *)(intptr_t)v0, 0xa70),
+             READ_S32((void *)(intptr_t)(arg1 + 0x2c20), 0x980), READ_S32((void *)(intptr_t)(arg1 + 0x2c20), 0x984),
+             (void *)(intptr_t)(v0 + 0xa78),
              READ_S32((void *)(intptr_t)v0, 0xa78), READ_S32((void *)(intptr_t)v0, 0xa7c),
-             READ_S32((void *)(intptr_t)v0, 0xab8), READ_S32((void *)(intptr_t)v0, 0xabc));
+             READ_S32((void *)(intptr_t)v0, 0xa80), READ_S32((void *)(intptr_t)v0, 0xa84),
+             READ_S32((void *)(intptr_t)v0, 0xa88),
+             READ_S32((void *)(intptr_t)v0, 0xab8), READ_S32((void *)(intptr_t)v0, 0xabc),
+             READ_S32((void *)(intptr_t)v0, 0xac0), READ_S32((void *)(intptr_t)v0, 0xac4),
+             READ_S32((void *)(intptr_t)v0, 0xac8));
     {
         StaticFifoCompat *fifo =
             (StaticFifoCompat *)(intptr_t)(arg1 + READ_S32((void *)(intptr_t)v0, 0xa70) * 0x5c + 0x129b4);
@@ -2487,6 +2489,14 @@ int32_t AL_EncChannel_Init(int32_t *arg1, int32_t *arg2, void *arg3, uint8_t arg
                            void *arg7, void *arg8, int32_t *arg9, int32_t arg10, int32_t arg11, int32_t arg12,
                            uint8_t arg13)
 {
+    AL_TAllocator *dma_alloc = (AL_TAllocator *)arg8;
+    void *cmdlist_handle = NULL;
+    void *cmdlist_mutex = NULL;
+    intptr_t cmdlist_vaddr;
+    intptr_t cmdlist_paddr;
+    int32_t cmdlist_alloc_size;
+    uint32_t cmdlist_align;
+    uint32_t cmdlist_size;
     int32_t result;
     uint32_t width = READ_U16(arg2, 4);
     uint32_t lcu = READ_U8(arg2, 0x4e);
@@ -2617,6 +2627,65 @@ int32_t AL_EncChannel_Init(int32_t *arg1, int32_t *arg2, void *arg3, uint8_t arg
     WRITE_U8(arg1, 0x58, 0);
     WRITE_U8(arg1, 0x59, 0);
     InitMERange((int32_t)(intptr_t)arg1, arg2);
+    cmdlist_mutex = Rtos_CreateMutex();
+    if (cmdlist_mutex == NULL) {
+        AL_RateCtrl_Deinit((uint8_t *)arg1 + 0xf4);
+        AL_IntermMngr_Deinit(&arg1[0xa95]);
+        AL_RefMngr_Deinit(&arg1[0x8b2]);
+        AL_StreamMngr_Deinit((void *)(intptr_t)arg1[0xa94]);
+        AL_SrcReorder_Deinit(&arg1[0x5e]);
+        AL_GopMngr_Deinit(&arg1[0x4a]);
+        return 0;
+    }
+    WRITE_PTR(arg1, 0x170, cmdlist_mutex);
+
+    cmdlist_size = (uint32_t)READ_U16(arg2, 0x40) * (uint32_t)READ_U8(arg2, 0x3c) * 0x2600U;
+    if (cmdlist_size != 0U) {
+        cmdlist_handle = (void *)(intptr_t)AlignedAlloc(dma_alloc, "cmdlist", (int32_t)cmdlist_size, 0x20,
+                                                        &cmdlist_alloc_size, &cmdlist_align);
+        if (cmdlist_handle == NULL) {
+            ENC_KMSG("AL_EncChannel_Init cmdlist alloc failed size=%u cores=%u blocks=%u",
+                     (unsigned)cmdlist_size, (unsigned)READ_U8(arg2, 0x3c), (unsigned)READ_U16(arg2, 0x40));
+            Rtos_DeleteMutex(cmdlist_mutex);
+            WRITE_PTR(arg1, 0x170, NULL);
+            AL_RateCtrl_Deinit((uint8_t *)arg1 + 0xf4);
+            AL_IntermMngr_Deinit(&arg1[0xa95]);
+            AL_RefMngr_Deinit(&arg1[0x8b2]);
+            AL_StreamMngr_Deinit((void *)(intptr_t)arg1[0xa94]);
+            AL_SrcReorder_Deinit(&arg1[0x5e]);
+            AL_GopMngr_Deinit(&arg1[0x4a]);
+            return 0;
+        }
+
+        cmdlist_vaddr = dma_alloc->vtable->GetVirtualAddr(dma_alloc, cmdlist_handle);
+        cmdlist_paddr = dma_alloc->vtable->GetPhysicalAddr(dma_alloc, cmdlist_handle);
+        if (cmdlist_vaddr == 0 || cmdlist_paddr == 0) {
+            ENC_KMSG("AL_EncChannel_Init cmdlist map failed handle=%p v=0x%lx p=0x%lx align=%d",
+                     cmdlist_handle, (unsigned long)cmdlist_vaddr, (unsigned long)cmdlist_paddr,
+                     (unsigned)cmdlist_align);
+            dma_alloc->vtable->Free(dma_alloc, cmdlist_handle);
+            Rtos_DeleteMutex(cmdlist_mutex);
+            WRITE_PTR(arg1, 0x170, NULL);
+            AL_RateCtrl_Deinit((uint8_t *)arg1 + 0xf4);
+            AL_IntermMngr_Deinit(&arg1[0xa95]);
+            AL_RefMngr_Deinit(&arg1[0x8b2]);
+            AL_StreamMngr_Deinit((void *)(intptr_t)arg1[0xa94]);
+            AL_SrcReorder_Deinit(&arg1[0x5e]);
+            AL_GopMngr_Deinit(&arg1[0x4a]);
+            return 0;
+        }
+
+        Rtos_Memset((void *)(cmdlist_vaddr + cmdlist_align), 0, (size_t)cmdlist_alloc_size);
+        SetCommandListBuffer((void *)(intptr_t)(arg1 + 0xb08), (uint32_t)READ_U8(arg2, 0x3c),
+                             (uint32_t)READ_U16(arg2, 0x40), (int32_t)(cmdlist_vaddr + cmdlist_align),
+                             (int32_t)(cmdlist_paddr + cmdlist_align));
+        WRITE_PTR(arg1, 0x35a8, cmdlist_handle);
+        ENC_KMSG("AL_EncChannel_Init cmdlist ready handle=%p v=0x%lx p=0x%lx align=%u count=%d next=%d cores=%u blocks=%u size=%u",
+                 cmdlist_handle, (unsigned long)(cmdlist_vaddr + cmdlist_align),
+                 (unsigned long)(cmdlist_paddr + cmdlist_align), (unsigned)cmdlist_align,
+                 READ_S32((uint8_t *)arg1 + 0x2c20, 0x980), READ_S32((uint8_t *)arg1 + 0x2c20, 0x984),
+                 (unsigned)READ_U8(arg2, 0x3c), (unsigned)READ_U16(arg2, 0x40), (unsigned)cmdlist_size);
+    }
     WRITE_S32(arg1, 0x35cc, 0);
     arg1[0xd71] = 0;
     arg1[0xd72] = 0;

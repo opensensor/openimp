@@ -37,25 +37,21 @@
 #include <unistd.h>
 
 #include "video/encoder_channel_layout.h"
+#include "imp_log_int.h"
 
 extern char _gp;
 
 static void video_enc_trace(const char *fmt, ...)
 {
-    int fd = open("/dev/kmsg", O_WRONLY | O_CLOEXEC);
-    if (fd < 0) {
-        return;
-    }
-
     char msg[256];
     va_list ap;
     va_start(ap, fmt);
     int n = vsnprintf(msg, sizeof(msg), fmt, ap);
     va_end(ap);
-    if (n > 0) {
-        dprintf(fd, "libimp/ENCW2: %s\n", msg);
+    if (n <= 0) {
+        return;
     }
-    close(fd);
+    IMP_LOG_INFO("ENCW2", "%s", msg);
 }
 
 /* ===== forward-declared external helpers ===== */
