@@ -1651,7 +1651,7 @@ uint32_t AL_EncChannel_SetNumberOfCores(void *arg1)
 
 uint32_t AL_EncChannel_ChannelCanBeLaunched(void *arg1)
 {
-    uint32_t result = (uint32_t)READ_U16(arg1, 0x2e);
+    uint32_t result = (uint32_t)READ_U16(arg1, 0x176);
     ENC_KMSG("ChannelCanBeLaunched chctx=%p gate=0x%x active=%d need=%d flags40=%d lane0_r=%d lane0_w=%d lane1_r=%d lane1_w=%d",
              arg1, result,
              READ_S32(arg1, 0x2c),
@@ -1666,7 +1666,7 @@ uint32_t AL_EncChannel_ChannelCanBeLaunched(void *arg1)
 
 int32_t endOfInput(void *arg1)
 {
-    if (READ_S32(arg1, 0x2c) == 0) {
+    if (READ_U8(arg1, 0x174) == 0U) {
         return 1;
     }
 
@@ -1782,11 +1782,13 @@ int32_t AL_EncChannel_PushNewFrame(void *arg1, int32_t *arg2, int32_t *arg3, int
     int32_t *s0_1;
 
     (void)var_e8;
-    ENC_KMSG("PushNewFrame entry chctx=%p src=%p stream=%p meta=%p active=%d eos=%d",
-             arg1, arg2, arg3, arg4, READ_S32(arg1, 0x2c), READ_S32(arg1, 0x30));
+    ENC_KMSG("PushNewFrame entry chctx=%p src=%p stream=%p meta=%p flags2c=0x%x eos=%u gate=0x%x freeze=%u",
+             arg1, arg2, arg3, arg4, READ_S32(arg1, 0x2c), (unsigned)READ_U8(arg1, 0x174),
+             (unsigned)READ_U16(arg1, 0x176), (unsigned)READ_U8(arg1, 0x177));
     Rtos_GetMutex(READ_PTR(arg1, 0x170));
-    if (READ_S32(arg1, 0x2c) != 0) {
-        ENC_KMSG("PushNewFrame reject-active chctx=%p active=%d", arg1, READ_S32(arg1, 0x2c));
+    if (READ_U8(arg1, 0x174) != 0U) {
+        ENC_KMSG("PushNewFrame reject-eos chctx=%p eos=%u flags2c=0x%x",
+                 arg1, (unsigned)READ_U8(arg1, 0x174), READ_S32(arg1, 0x2c));
         return Rtos_ReleaseMutex(READ_PTR(arg1, 0x170));
     }
 
@@ -1798,7 +1800,7 @@ int32_t AL_EncChannel_PushNewFrame(void *arg1, int32_t *arg2, int32_t *arg3, int
 
     if (arg2 == 0 || arg3 == 0 || arg4 == 0) {
         s0_1 = 0;
-        ENC_KMSG("PushNewFrame null-args chctx=%p src=%p stream=%p meta=%p", arg1, arg2, arg3, arg4);
+        ENC_KMSG("PushNewFrame arm-only chctx=%p src=%p stream=%p meta=%p", arg1, arg2, arg3, arg4);
     } else {
         int32_t var_e0 = arg4[0];
         int32_t var_dc_1 = arg4[1];
@@ -1832,15 +1834,15 @@ int32_t AL_EncChannel_PushNewFrame(void *arg1, int32_t *arg2, int32_t *arg3, int
         v0_3[1] = i[1];
         v0_3[2] = i[2];
         s0_1 = &var_e0;
-        ENC_KMSG("PushNewFrame pre-AddNewRequest chctx=%p pict=%d src0=0x%x src1=0x%x",
+        ENC_KMSG("PushNewFrame prepared chctx=%p pict=%d src0=0x%x src1=0x%x",
                  arg1, var_e0, arg2[0], arg2[1]);
-        {
-            int32_t req = AddNewRequest((int32_t)(intptr_t)arg1);
-            ENC_KMSG("PushNewFrame post-AddNewRequest chctx=%p req=%p pict=%d",
-                     arg1, (void *)(intptr_t)req, var_e0);
-        }
     }
 
+    {
+        int32_t req = AddNewRequest((int32_t)(intptr_t)arg1);
+        ENC_KMSG("PushNewFrame post-AddNewRequest chctx=%p req=%p srcbuf=%p",
+                 arg1, (void *)(intptr_t)req, s0_1);
+    }
     AL_SrcReorder_AddSrcBuffer((uint8_t *)arg1 + 0x178, s0_1);
     ENC_KMSG("PushNewFrame exit chctx=%p srcbuf=%p", arg1, s0_1);
     return Rtos_ReleaseMutex(READ_PTR(arg1, 0x170));
@@ -2212,7 +2214,7 @@ int32_t AL_EncChannel_GetNextFrameToOutput(void *arg1, int32_t *arg2)
 
     ENC_KMSG("GetNextFrameToOutput entry chctx=%p fifo=%p elems=%p r=%d w=%d cap=%d eos_field=%u done=%d flushed=%u",
              arg1, fifo, fifo->elems, fifo->read_idx, fifo->write_idx, fifo->capacity,
-             (unsigned)READ_U8(arg1, 0x2c), READ_S32(arg1, 0x35b0), (unsigned)READ_U8(arg1, 0x2d));
+             (unsigned)READ_U8(arg1, 0x174), READ_S32(arg1, 0x35b0), (unsigned)READ_U8(arg1, 0x175));
     Rtos_GetMutex(READ_PTR(arg1, 0x170));
     ENC_KMSG("GetNextFrameToOutput post-lock fifo r=%d w=%d cap=%d empty=%d",
              fifo->read_idx, fifo->write_idx, fifo->capacity, (int)StaticFifo_Empty(fifo));
@@ -2237,8 +2239,8 @@ int32_t AL_EncChannel_GetNextFrameToOutput(void *arg1, int32_t *arg2)
         return 1;
     }
 
-    if (0 && READ_U8(arg1, 0x2c) != 0U && READ_S32(arg1, 0x35b0) == READ_S32(arg1, 0x35b4) && READ_U8(arg1, 0x2d) == 0U) {
-        WRITE_U8(arg1, 0x2d, 1);
+    if (0 && READ_U8(arg1, 0x174) != 0U && READ_S32(arg1, 0x35b0) == READ_S32(arg1, 0x35b4) && READ_U8(arg1, 0x175) == 0U) {
+        WRITE_U8(arg1, 0x175, 1);
         AL_RefMngr_Flush((uint8_t *)arg1 + 0x22c8);
         memset(end_evt, 0, sizeof(end_evt));
         WRITE_S32(end_evt, 0, READ_S32(arg1, 0x44));
@@ -2582,17 +2584,22 @@ int32_t AL_EncChannel_Init(int32_t *arg1, int32_t *arg2, void *arg3, uint8_t arg
     WRITE_S32(arg1, 0x164, (int32_t)(intptr_t)arg3);
     ResetChannelParam(arg1);
     SetTileOffsets(arg1);
-    WRITE_U16(arg1, 0x2f, 0);
     WRITE_U8(arg1, 0x3c, arg5);
     WRITE_U8(arg1, 0x3d, arg4);
     WRITE_S32(arg1, 0x2c, arg6);
     WRITE_U8(arg1, 0x3f, READ_U8(arg2, 0xf));
-    WRITE_U8(arg1, 0x2e, arg13);
+    WRITE_S32(arg1, 0x1a80, arg12);
+    WRITE_S32(arg1, 0x1a84, arg6);
+    WRITE_U16(arg1, 0x1a88, (uint16_t)READ_U8(arg2, 0xf));
     WRITE_U8(arg1, 0x44, READ_U8(arg2, 0));
     WRITE_S32(arg1, 0x48, arg9[0]);
     WRITE_S32(arg1, 0x4c, arg9[1]);
     WRITE_S32(arg1, 0x50, arg9[2]);
     WRITE_S32(arg1, 0x54, arg9[3]);
+    WRITE_U8(arg1, 0x174, 0);
+    WRITE_U8(arg1, 0x175, 0);
+    WRITE_U16(arg1, 0x176, 1);
+    WRITE_U8(arg1, 0x177, 0);
     WRITE_U8(arg1, 0x58, 0);
     WRITE_U8(arg1, 0x59, 0);
     InitMERange((int32_t)(intptr_t)arg1, arg2);
@@ -2659,8 +2666,8 @@ int32_t AL_EncChannel_ListModulesNeeded(void *arg1, void *arg2)
     StaticFifoCompat *fifo;
 
     ENC_KMSG("ListModulesNeeded entry chctx=%p freeze=%u out_count=%d",
-             arg1, (unsigned)READ_U16(arg1, 0x2f), READ_S32(arg2, 0x80));
-    if (READ_U16(arg1, 0x2f) != 0U) {
+             arg1, (unsigned)READ_U8(arg1, 0x177), READ_S32(arg2, 0x80));
+    if (READ_U8(arg1, 0x177) != 0U) {
         ENC_KMSG("ListModulesNeeded early-freeze chctx=%p", arg1);
         return (int32_t)(intptr_t)arg1;
     }
@@ -2747,7 +2754,7 @@ int32_t AL_EncChannel_ListModulesNeeded(void *arg1, void *arg2)
                             InitHwRC_Content(arg1, arg1);
                         }
                     }
-                    WRITE_U8(arg1, 0x2f, 0);
+                    WRITE_U8(arg1, 0x177, 0);
                     AL_SrcReorder_MarkSrcBufferAsUsed((uint8_t *)arg1 + 0x178, pict_id);
                     if (READ_S32(req, 0x30) == 2 && READ_U8(arg1, 0x2d4) != 0U) {
                         Rtos_GetMutex(READ_PTR(arg1, 0x170));
