@@ -2075,6 +2075,10 @@ int32_t channel_encoder_init(EncoderChannelLayout *chn)
         return -1;
     }
     enc_trace("libimp/CHINIT: rc-param-ok chn=%d\n", chn_id);
+    enc_trace("libimp/CHINIT: pre-fps-sanity chn=%d num=%d den=%d\n",
+              chn_id,
+              (int32_t)attr->out_fps_num,
+              (int32_t)attr->out_fps_den);
 
     /* outFrmRate sanity */
     if (attr->out_fps_num == 0 || attr->out_fps_den == 0) {
@@ -2090,9 +2094,12 @@ int32_t channel_encoder_init(EncoderChannelLayout *chn)
             "pOutFrmRate->frmRateNum && pOutFrmRate->frmRateDen\n");
         return -1;
     }
+    enc_trace("libimp/CHINIT: fps-sanity-ok chn=%d\n", chn_id);
 
     /* -- (5) Create codec handle --------------------------------------- */
     void *codec_handle = NULL;
+    enc_trace("libimp/CHINIT: pre-codec-dump chn=%d cp=%p\n",
+              chn_id, codec_params);
     {
         /* Dump the exact offsets AL_Codec_Encode_Create reads. */
         int kfd = open("/dev/kmsg", O_WRONLY);
@@ -2134,6 +2141,10 @@ int32_t channel_encoder_init(EncoderChannelLayout *chn)
             close(kfd);
         }
     }
+    enc_trace("libimp/CHINIT: post-codec-dump chn=%d cp=%p\n",
+              chn_id, codec_params);
+    enc_trace("libimp/CHINIT: pre-codec-create chn=%d cp=%p\n",
+              chn_id, codec_params);
     int32_t cec_ret = AL_Codec_Encode_Create(&codec_handle, codec_params);
     enc_trace("libimp/CHINIT: codec-create chn=%d ret=%d handle=%p\n",
               chn_id, cec_ret, codec_handle);

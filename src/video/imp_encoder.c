@@ -54,6 +54,24 @@ static void video_enc_trace(const char *fmt, ...)
     IMP_LOG_INFO("ENCW2", "%s", msg);
 }
 
+static void video_enc_kmsg(const char *fmt, ...)
+{
+    int fd = open("/dev/kmsg", O_WRONLY);
+    if (fd < 0) {
+        return;
+    }
+
+    char msg[256];
+    va_list ap;
+    va_start(ap, fmt);
+    int n = vsnprintf(msg, sizeof(msg), fmt, ap);
+    va_end(ap);
+    if (n > 0) {
+        write(fd, msg, (size_t)n);
+    }
+    close(fd);
+}
+
 /* ===== forward-declared external helpers ===== */
 
 /* Logging */
@@ -799,6 +817,9 @@ int32_t IMP_Encoder_CreateChn(int32_t arg1, int32_t *arg2)
         result = channel_encoder_init(enc_ptr(arg1, IMP_ENC_BASE_ADDR));
         (void)s0_1;
         (void)s1_name;
+        video_enc_kmsg("libimp/ENCW2: CreateChn post-channel-init chn=%d ret=%d codec=%p max_stream_cnt=%d group=%p\n",
+                       arg1, result, CH_PTR(arg1, ENC_F_CODEC_HANDLE),
+                       CH_S32(arg1, ENC_F_MAX_STREAMCNT), CH_PTR(arg1, ENC_F_GROUPPTR));
         if (result < 0) {
             imp_log_fun(6, IMP_Log_Get_Option(), 2, "Encoder",
                 "/home/user/git/proj/sdk-lv3/src/imp/video/imp_encoder.c", 0x800,
@@ -820,6 +841,12 @@ int32_t IMP_Encoder_CreateChn(int32_t arg1, int32_t *arg2)
                         CH_S32(arg1, ENC_F_STARTED),
                         CH_S32(arg1, ENC_F_ENABLED),
                         CH_PTR(arg1, ENC_F_GROUPPTR));
+        video_enc_kmsg("libimp/ENCW2: CreateChn pre-buffer-init chn=%d registered=%d started=%d enabled=%d group=%p\n",
+                       arg1,
+                       CH_S32(arg1, ENC_F_REGISTERED),
+                       CH_S32(arg1, ENC_F_STARTED),
+                       CH_S32(arg1, ENC_F_ENABLED),
+                       CH_PTR(arg1, ENC_F_GROUPPTR));
 
     }
 
@@ -841,9 +868,14 @@ int32_t IMP_Encoder_CreateChn(int32_t arg1, int32_t *arg2)
                 "IMP_Encoder_CreateChn", "Channel%d stream buffer init failed\n", arg1);
             return -1;
         }
+        video_enc_kmsg("libimp/ENCW2: CreateChn pre-GetSrcStreamCnt chn=%d codec=%p pack_array=%p max_stream_cnt=%d\n",
+                       arg1, CH_PTR(arg1, ENC_F_CODEC_HANDLE), CH_PTR(arg1, ENC_F_PACK_ARRAY),
+                       CH_S32(arg1, ENC_F_MAX_STREAMCNT));
         AL_Codec_Encode_GetSrcStreamCntAndSize(CH_PTR(arg1, ENC_F_CODEC_HANDLE),
                                                &var_40,
                                                (int32_t *)enc_ptr(arg1, ENC_F_STREAM_FSIZE));
+        video_enc_kmsg("libimp/ENCW2: CreateChn post-GetSrcStreamCnt chn=%d src_cnt=%d stream_frame_size=%u\n",
+                       arg1, var_40, CH_U32(arg1, ENC_F_STREAM_BUFSZ));
         imp_log_fun(4, IMP_Log_Get_Option(), 2, "Encoder",
             "/home/user/git/proj/sdk-lv3/src/imp/video/imp_encoder.c", 0x6a2,
             "channel_buffer_init",
@@ -859,6 +891,7 @@ int32_t IMP_Encoder_CreateChn(int32_t arg1, int32_t *arg2)
     {
         int32_t v0_31 = eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC);
         CH_S32(arg1, ENC_F_EVENTFD) = v0_31;
+        video_enc_kmsg("libimp/ENCW2: CreateChn eventfd chn=%d fd=%d\n", arg1, v0_31);
         if (v0_31 < 0) {
             imp_log_fun(6, IMP_Log_Get_Option(), 2, "Encoder",
                 "/home/user/git/proj/sdk-lv3/src/imp/video/imp_encoder.c", 0x811,
@@ -884,6 +917,10 @@ int32_t IMP_Encoder_CreateChn(int32_t arg1, int32_t *arg2)
                     arg1, CH_S32(arg1, ENC_F_STARTED), CH_S32(arg1, ENC_F_ENABLED),
                     CH_S32(arg1, ENC_F_REGISTERED), CH_PTR(arg1, ENC_F_CODEC_HANDLE),
                     CH_PTR(arg1, ENC_F_GROUPPTR));
+    video_enc_kmsg("libimp/ENCW2: CreateChn return chn=%d started=%d enabled=%d registered=%d codec=%p group=%p eventfd=%d\n",
+                   arg1, CH_S32(arg1, ENC_F_STARTED), CH_S32(arg1, ENC_F_ENABLED),
+                   CH_S32(arg1, ENC_F_REGISTERED), CH_PTR(arg1, ENC_F_CODEC_HANDLE),
+                   CH_PTR(arg1, ENC_F_GROUPPTR), CH_S32(arg1, ENC_F_EVENTFD));
     return 0;
 }
 
@@ -965,6 +1002,11 @@ int32_t IMP_Encoder_RegisterChn(int32_t arg1, int32_t arg2)
                         CH_S32(arg2, ENC_F_REGISTERED),
                         CH_S32(arg2, ENC_F_STARTED),
                         CH_S32(arg2, ENC_F_ENABLED));
+        video_enc_kmsg("libimp/ENCW2: RegisterChn enter grp=%d chn=%d gEncoder=%p group=%p registered=%d started=%d enabled=%d\n",
+                       arg1, arg2, gEncoder, v0_9,
+                       CH_S32(arg2, ENC_F_REGISTERED),
+                       CH_S32(arg2, ENC_F_STARTED),
+                       CH_S32(arg2, ENC_F_ENABLED));
 
         /* Assign channel pointer to the first empty slot of [+8, +0xc, +0x10] */
         if (*(int32_t *)((char *)v0_9 + 0xc) == 0) {
@@ -985,6 +1027,13 @@ int32_t IMP_Encoder_RegisterChn(int32_t arg1, int32_t arg2)
             EncoderChannelLayout *chn = (EncoderChannelLayout *)enc_ptr(arg2, IMP_ENC_BASE_ADDR);
             *enc_channel_recv_pic_enabled(chn) = 1;
         }
+        video_enc_kmsg("libimp/ENCW2: RegisterChn linked grp=%d chn=%d group=%p slots=%d slot0=%p slot1=%p slot2=%p recv_enabled=%u\n",
+                       arg1, arg2, v0_9,
+                       *(int32_t *)((char *)v0_9 + 8),
+                       *(void **)((char *)v0_9 + 0xc),
+                       *(void **)((char *)v0_9 + 0x10),
+                       *(void **)((char *)v0_9 + 0x14),
+                       (unsigned)*enc_channel_recv_pic_enabled((EncoderChannelLayout *)enc_ptr(arg2, IMP_ENC_BASE_ADDR)));
         video_enc_trace("RegisterChn linked grp=%d chn=%d group=%p slots=%d started=%d enabled=%d",
                         arg1, arg2, v0_9,
                         *(int32_t *)((char *)v0_9 + 8),
@@ -1185,6 +1234,13 @@ int32_t IMP_Encoder_StartRecvPic(int32_t arg1)
                     CH_S32(arg1, ENC_F_STARTED), CH_S32(arg1, ENC_F_ENABLED),
                     chn ? (unsigned)*enc_channel_recv_pic_enabled(chn) : 0U,
                     chn ? (unsigned)*enc_channel_recv_pic_started(chn) : 0U);
+    video_enc_kmsg("libimp/ENCW2: StartRecvPic enter chn=%d grp=%d started=%d enabled=%d recv_enabled=%u recv_started=%u group=%p codec=%p\n",
+                   arg1, enc_group_id_from_channel(arg1),
+                   CH_S32(arg1, ENC_F_STARTED), CH_S32(arg1, ENC_F_ENABLED),
+                   chn ? (unsigned)*enc_channel_recv_pic_enabled(chn) : 0U,
+                   chn ? (unsigned)*enc_channel_recv_pic_started(chn) : 0U,
+                   CH_PTR(arg1, ENC_F_GROUPPTR),
+                   CH_PTR(arg1, ENC_F_CODEC_HANDLE));
 
     CH_S32(arg1, ENC_F_STARTED) = 1;
     CH_S32(arg1, ENC_F_ENABLED) = 1;
@@ -1192,9 +1248,24 @@ int32_t IMP_Encoder_StartRecvPic(int32_t arg1)
         *enc_channel_recv_pic_started(chn) = 1;
         *enc_channel_recv_pic_enabled(chn) = 1;
     }
+    if (CH_PTR(arg1, ENC_F_GROUPPTR) != NULL) {
+        int grp_id = enc_group_id_from_channel(arg1);
+        uint8_t *grp = (uint8_t *)CH_PTR(arg1, ENC_F_GROUPPTR) - 4;
+        uint8_t *slots = *(uint8_t **)grp;
+        video_enc_kmsg("libimp/ENCW2: StartRecvPic post-flags chn=%d grp=%d group=%p slots=%p slot0=%p slot1=%p slot2=%p\n",
+                       arg1, grp_id, grp, slots,
+                       slots ? *(void **)(slots + grp_id * 0x14 + 0x4c) : NULL,
+                       slots ? *(void **)(slots + grp_id * 0x14 + 0x50) : NULL,
+                       slots ? *(void **)(slots + grp_id * 0x14 + 0x54) : NULL);
+    }
     video_enc_trace("StartRecvPic exit chn=%d grp=%d started=%d enabled=%d",
                     arg1, enc_group_id_from_channel(arg1),
                     CH_S32(arg1, ENC_F_STARTED), CH_S32(arg1, ENC_F_ENABLED));
+    video_enc_kmsg("libimp/ENCW2: StartRecvPic exit chn=%d grp=%d started=%d enabled=%d recv_enabled=%u recv_started=%u\n",
+                   arg1, enc_group_id_from_channel(arg1),
+                   CH_S32(arg1, ENC_F_STARTED), CH_S32(arg1, ENC_F_ENABLED),
+                   chn ? (unsigned)*enc_channel_recv_pic_enabled(chn) : 0U,
+                   chn ? (unsigned)*enc_channel_recv_pic_started(chn) : 0U);
     return 0;
 }
 
