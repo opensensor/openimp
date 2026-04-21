@@ -128,6 +128,11 @@ static inline void write_u16(void *ptr, uint32_t offset, uint16_t value)
 int32_t AL_Codec_Encode_PrimeStreamBuffers(int32_t *arg1)
 {
     int32_t idx = 0;
+    int32_t *enc_wrap;
+    int32_t *enc_ctx;
+    int32_t *sched_obj;
+    int32_t *chctx;
+    void *stream_mutex;
 
     if (arg1 == NULL)
         return -1;
@@ -135,20 +140,60 @@ int32_t AL_Codec_Encode_PrimeStreamBuffers(int32_t *arg1)
     if (read_s32(arg1, 0x7ac) <= 0)
         return 0;
 
+    enc_wrap = (int32_t *)read_ptr(arg1, 0x798);
+    if (enc_wrap == NULL)
+        return -1;
+    enc_ctx = (int32_t *)(intptr_t)*enc_wrap;
+    if (enc_ctx == NULL)
+        return -1;
+    sched_obj = (int32_t *)read_ptr(enc_ctx, 0xf25c);
+    chctx = (int32_t *)read_ptr(enc_ctx, 0x18);
+    stream_mutex = read_ptr(enc_ctx, 0xf254);
+    if (sched_obj == NULL || chctx == NULL || stream_mutex == NULL)
+        return -1;
+
     while (idx < read_s32(arg1, 0x7ac)) {
         AL_TBuffer *buf = AL_BufPool_GetBuffer((uint8_t *)arg1 + 0x7c0, 1);
-        { int kfd = open("/dev/kmsg", O_WRONLY); if (kfd >= 0) { char b[128]; int n = snprintf(b, sizeof(b), "libimp/ENC: deferred-PutStreamBuffer idx=%d buf=%p\n", idx, buf); if (n>0) write(kfd, b, n); close(kfd); } }
+        void *meta = NULL;
+        { int kfd = open("/dev/kmsg", O_WRONLY); if (kfd >= 0) { char b[160]; int n = snprintf(b, sizeof(b), "libimp/ENC: linked-prime idx=%d buf=%p sched=%p chctx=%p\n", idx, buf, sched_obj, chctx); if (n>0) write(kfd, b, n); close(kfd); } }
         if (buf == NULL)
             return -1;
-        if (AL_Encoder_PutStreamBuffer(*(int32_t **)((uint8_t *)arg1 + 0x798), buf, 0) == 0) {
+
+        meta = (void *)(intptr_t)AL_Buffer_GetMetaData(buf, 1);
+        if (meta != NULL)
+            AL_StreamMetaData_ClearAllSections(meta);
+
+        if (AL_Buffer_GetSize(buf) < 0x200U) {
             AL_Buffer_Unref(buf);
             return -1;
+        }
+
+        Rtos_GetMutex(stream_mutex);
+        {
+            int32_t slot = read_s32(enc_ctx, 0xdbb0);
+            int32_t next = (slot + 1) % 0x140;
+
+            *(void **)((uint8_t *)enc_ctx + (((uint32_t)(slot + 0x36ec) << 2) + 8)) = buf;
+            write_s32(enc_ctx, 0xdbb0, next);
+            AL_Buffer_Ref(buf);
+            { int kfd = open("/dev/kmsg", O_WRONLY); if (kfd >= 0) { char b[160]; int n = snprintf(b, sizeof(b), "libimp/ENC: linked-prime slot=%d next=%d buf=%p\n", slot, next, buf); if (n>0) write(kfd, b, n); close(kfd); } }
+        }
+        Rtos_ReleaseMutex(stream_mutex);
+
+        {
+            void (*put_stream_fn)(int32_t *, int32_t *, AL_TBuffer *) =
+                (void (*)(int32_t *, int32_t *, AL_TBuffer *))(intptr_t)read_s32(*(void **)sched_obj, 0x10);
+            if (put_stream_fn == NULL) {
+                AL_Buffer_Unref(buf);
+                return -1;
+            }
+            put_stream_fn(sched_obj, chctx, buf);
         }
         AL_Buffer_Unref(buf);
         idx += 1;
     }
 
-    { int kfd = open("/dev/kmsg", O_WRONLY); if (kfd >= 0) { const char *m = "libimp/ENC: deferred-PutStreamBuffer done\n"; write(kfd, m, strlen(m)); close(kfd); } }
+    { int kfd = open("/dev/kmsg", O_WRONLY); if (kfd >= 0) { const char *m = "libimp/ENC: linked-prime done\n"; write(kfd, m, strlen(m)); close(kfd); } }
     return 0;
 }
 
@@ -1083,26 +1128,16 @@ label_896d8:
         }
 
         {
-            int32_t s2_5 = 0;
-
-            if (read_s32(s0_1, 0x7ac) > 0) {
-                while (1) {
-                    AL_TBuffer *v0_68 = AL_BufPool_GetBuffer(s0_1 + 0x7c0, 1);
-
-                    if (v0_68 == NULL)
-                        __assert("pStream", "/home/user/git/proj/sdk-lv3/src/imp/video/alcodec/lib_codec/lib_codec.c",
-                                 0x396, "AL_Codec_Encode_Create", var_88, var_84, var_80);
-                    { int kfd = open("/dev/kmsg", O_WRONLY); if (kfd >= 0) { char b[128]; int n = snprintf(b, sizeof(b), "libimp/ENC: initial-PutStreamBuffer idx=%d buf=%p\n", s2_5, v0_68); if (n>0) write(kfd, b, n); close(kfd); } }
-                    if (AL_Encoder_PutStreamBuffer(*(int32_t **)(s0_1 + 0x798), v0_68, 0) == 0)
-                        __assert("bRet", "/home/user/git/proj/sdk-lv3/src/imp/video/alcodec/lib_codec/lib_codec.c",
-                                 0x399, "AL_Codec_Encode_Create");
-                    AL_Buffer_Unref(v0_68);
-                    s2_5 += 1;
-                    if (s2_5 >= read_s32(s0_1, 0x7ac))
-                        break;
-                }
+            int kfd = open("/dev/kmsg", O_WRONLY);
+            if (kfd >= 0) {
+                char b[160];
+                int n = snprintf(b, sizeof(b),
+                                 "libimp/ENC: defer initial stream priming handle=%p stream_cnt=%d\n",
+                                 s0_1, read_s32(s0_1, 0x7ac));
+                if (n > 0)
+                    write(kfd, b, n);
+                close(kfd);
             }
-            { int kfd = open("/dev/kmsg", O_WRONLY); if (kfd >= 0) { const char *m = "libimp/ENC: initial-PutStreamBuffer done\n"; write(kfd, m, strlen(m)); close(kfd); } }
         }
 
         write_s32(s0_1, 0x920, read_u32(s0_1, 0x774) != 0 ? 9 : -1);

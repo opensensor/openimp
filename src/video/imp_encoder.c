@@ -1027,6 +1027,21 @@ int32_t IMP_Encoder_RegisterChn(int32_t arg1, int32_t arg2)
             EncoderChannelLayout *chn = (EncoderChannelLayout *)enc_ptr(arg2, IMP_ENC_BASE_ADDR);
             *enc_channel_recv_pic_enabled(chn) = 1;
         }
+        if (CH_PTR(arg2, ENC_F_CODEC_HANDLE) != NULL) {
+            int32_t prime_rc;
+            video_enc_kmsg("libimp/ENCW2: RegisterChn pre-prime grp=%d chn=%d codec=%p\n",
+                           arg1, arg2, CH_PTR(arg2, ENC_F_CODEC_HANDLE));
+            prime_rc = AL_Codec_Encode_PrimeStreamBuffers((int32_t *)CH_PTR(arg2, ENC_F_CODEC_HANDLE));
+            video_enc_kmsg("libimp/ENCW2: RegisterChn post-prime grp=%d chn=%d codec=%p rc=%d\n",
+                           arg1, arg2, CH_PTR(arg2, ENC_F_CODEC_HANDLE), prime_rc);
+            if (prime_rc < 0) {
+                imp_log_fun(6, IMP_Log_Get_Option(), 2, "Encoder",
+                    "/home/user/git/proj/sdk-lv3/src/imp/video/imp_encoder.c", 0x891,
+                    "IMP_Encoder_RegisterChn",
+                    "Channel%d prime stream buffers failed\n", arg2);
+                return -1;
+            }
+        }
         video_enc_kmsg("libimp/ENCW2: RegisterChn linked grp=%d chn=%d group=%p slots=%d slot0=%p slot1=%p slot2=%p recv_enabled=%u\n",
                        arg1, arg2, v0_9,
                        *(int32_t *)((char *)v0_9 + 8),

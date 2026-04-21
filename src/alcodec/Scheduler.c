@@ -2891,7 +2891,12 @@ int32_t AL_EncChannel_ListModulesNeeded(void *arg1, void *arg2)
                         }
 
                         WRITE_S32(req, 0x318, (int32_t)(intptr_t)((uint8_t *)req + 0x338));
-                        if (GetStreamBuffers_part_72(READ_PTR(arg1, 0x2a50), req, arg1) == 0) {
+                        {
+                            int32_t stream_ok = GetStreamBuffers_part_72(READ_PTR(arg1, 0x2a50), req, arg1);
+
+                            ENC_KMSG("ListModulesNeeded lane=%d post-get-stream-buffers pict=%d req=%p ok=%d stream=%p",
+                                     lane, pict_id, req, stream_ok, READ_PTR(req, 0x318));
+                            if (stream_ok == 0) {
                             ENC_KMSG("ListModulesNeeded lane=%d no-stream-buffers pict=%d rec=%d interm=%p",
                                      lane, pict_id, rec, READ_PTR(req, 0x838));
                             AL_IntermMngr_ReleaseBufferBack((uint8_t *)arg1 + 0x2a54, READ_PTR(req, 0x838));
@@ -2899,9 +2904,14 @@ int32_t AL_EncChannel_ListModulesNeeded(void *arg1, void *arg2)
                             AL_RefMngr_ReleaseFrmBuffer((uint8_t *)arg1 + 0x22c8, (char)rec);
                             req = 0;
                             continue;
+                            }
                         }
 
+                        ENC_KMSG("ListModulesNeeded lane=%d before-set-source-buffer pict=%d req=%p srcslot=%p",
+                                 lane, pict_id, req, &req[0xa6]);
                         SetSourceBuffer_isra_74(arg1, req, pict_id, &req[0xa6]);
+                        ENC_KMSG("ListModulesNeeded lane=%d after-set-source-buffer pict=%d req=%p srcY=0x%x srcUV=0x%x",
+                                 lane, pict_id, req, READ_S32(req, 0x298), READ_S32(req, 0x29c));
                         {
                             int32_t *src = (int32_t *)(intptr_t)AL_SrcReorder_GetSrcBuffer((uint8_t *)arg1 + 0x178,
                                                                                             pict_id);
