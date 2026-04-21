@@ -1082,7 +1082,28 @@ label_896d8:
             }
         }
 
-        { int kfd = open("/dev/kmsg", O_WRONLY); if (kfd >= 0) { const char *m = "libimp/ENC: defer-initial-PutStreamBuffer-until-StartRecvPic\n"; write(kfd, m, strlen(m)); close(kfd); } }
+        {
+            int32_t s2_5 = 0;
+
+            if (read_s32(s0_1, 0x7ac) > 0) {
+                while (1) {
+                    AL_TBuffer *v0_68 = AL_BufPool_GetBuffer(s0_1 + 0x7c0, 1);
+
+                    if (v0_68 == NULL)
+                        __assert("pStream", "/home/user/git/proj/sdk-lv3/src/imp/video/alcodec/lib_codec/lib_codec.c",
+                                 0x396, "AL_Codec_Encode_Create", var_88, var_84, var_80);
+                    { int kfd = open("/dev/kmsg", O_WRONLY); if (kfd >= 0) { char b[128]; int n = snprintf(b, sizeof(b), "libimp/ENC: initial-PutStreamBuffer idx=%d buf=%p\n", s2_5, v0_68); if (n>0) write(kfd, b, n); close(kfd); } }
+                    if (AL_Encoder_PutStreamBuffer(*(int32_t **)(s0_1 + 0x798), v0_68, 0) == 0)
+                        __assert("bRet", "/home/user/git/proj/sdk-lv3/src/imp/video/alcodec/lib_codec/lib_codec.c",
+                                 0x399, "AL_Codec_Encode_Create");
+                    AL_Buffer_Unref(v0_68);
+                    s2_5 += 1;
+                    if (s2_5 >= read_s32(s0_1, 0x7ac))
+                        break;
+                }
+            }
+            { int kfd = open("/dev/kmsg", O_WRONLY); if (kfd >= 0) { const char *m = "libimp/ENC: initial-PutStreamBuffer done\n"; write(kfd, m, strlen(m)); close(kfd); } }
+        }
 
         write_s32(s0_1, 0x920, read_u32(s0_1, 0x774) != 0 ? 9 : -1);
         if (g_pCodec != NULL) {
