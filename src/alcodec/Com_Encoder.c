@@ -1769,6 +1769,7 @@ int32_t AL_Common_Encoder_Process(int32_t *arg1, int32_t arg2, int32_t arg3, int
     int32_t s6_1 = 0;
     int32_t s2_1;
     int32_t s3_1;
+    int32_t can_use_src;
     int32_t result;
 
     (void)_gp;
@@ -1818,15 +1819,33 @@ int32_t AL_Common_Encoder_Process(int32_t *arg1, int32_t arg2, int32_t arg3, int
 
         s2_1 = arg4 << 6;
         s3_1 = arg4 << 0xa;
-        if (AL_SrcBuffersChecker_CanBeUsed((int32_t *)((uint8_t *)s7 + (s3_1 - s2_1 - arg4) * 0x3c + 0xdaf0),
-                                           (AL_TBuffer *)(intptr_t)arg2) != 0) {
+        can_use_src =
+            AL_SrcBuffersChecker_CanBeUsed((int32_t *)((uint8_t *)s7 + (s3_1 - s2_1 - arg4) * 0x3c + 0xdaf0),
+                                           (AL_TBuffer *)(intptr_t)arg2);
+        {
+            int kfd = open("/dev/kmsg", O_WRONLY);
+            if (kfd >= 0) {
+                char b[192];
+                int n = snprintf(b, sizeof(b),
+                                 "libimp/CENC: Process source-check can_use=%d frame=%p layer=%d checker=%p active=%u stream=%p\n",
+                                 can_use_src, (void *)(intptr_t)arg2, arg4,
+                                 (uint8_t *)s7 + (s3_1 - s2_1 - arg4) * 0x3c + 0xdaf0,
+                                 (unsigned)READ_U8(s7, arg4 + 0xed4c), (void *)(intptr_t)arg3);
+                if (n > 0) write(kfd, b, n);
+                close(kfd);
+            }
+        }
+        if (can_use_src != 0) {
             if ((uint32_t)(READ_S32(READ_PTR(s7, 0x14), 0x11c) - 1) >= 2) {
+                CENC_KMSG("Process wait-readiness multi-slot frame=%p layer=%d", (void *)(intptr_t)arg2, arg4);
                 AL_Common_Encoder_WaitReadiness(s7);
                 {
                     int32_t a3 = AL_Fifo_Dequeue((int32_t *)((uint8_t *)s7 + 0xf0f0), 0) - 1;
                     int32_t v0_11 = a3 << 6;
                     int32_t v0_12;
 
+                    CENC_KMSG("Process got-slot multi-slot idx=%d layer=%d stream=%p", a3, arg4,
+                              (void *)(intptr_t)arg3);
                     s6_1 = a3 << 4;
                     var_38_1 = v0_11;
                     v0_12 = v0_11 - s6_1;
@@ -1842,15 +1861,19 @@ int32_t AL_Common_Encoder_Process(int32_t *arg1, int32_t arg2, int32_t arg3, int
                         var_40_1 = 0;
                         var_3c_1 = 0;
                         var_44_1 = 0;
+                        CENC_KMSG("Process using null-stream metadata layer=%d slot=%d", arg4, a3);
                         goto label_53d78;
                     }
                 }
             } else if (arg3 != 0) {
+                CENC_KMSG("Process wait-readiness single-slot frame=%p layer=%d", (void *)(intptr_t)arg2, arg4);
                 AL_Common_Encoder_WaitReadiness(s7);
                 {
                     int32_t a3_2 = AL_Fifo_Dequeue((int32_t *)((uint8_t *)s7 + 0xf0f0), 0) - 1;
                     int32_t t0_1 = a3_2 * 0x30;
 
+                    CENC_KMSG("Process got-slot single-slot idx=%d layer=%d stream=%p", a3_2, arg4,
+                              (void *)(intptr_t)arg3);
                     WRITE_S32(s7, 0xf10c, a3_2);
                     var_38_1 = a3_2 << 6;
                     s6_1 = a3_2 << 4;
@@ -1863,6 +1886,8 @@ int32_t AL_Common_Encoder_Process(int32_t *arg1, int32_t arg2, int32_t arg3, int
                     WRITE_S32(s7, t0_1 + 0xedb0, arg3);
                 }
             } else {
+                CENC_KMSG("Process no-stream-buffer available layer=%d frame=%p -> return 0",
+                          arg4, (void *)(intptr_t)arg2);
                 return 0;
             }
 
@@ -1984,6 +2009,10 @@ label_53d78:
 
             return result;
         }
+
+        CENC_KMSG("Process source-check rejected frame=%p layer=%d checker=%p",
+                  (void *)(intptr_t)arg2, arg4,
+                  (uint8_t *)s7 + (s3_1 - s2_1 - arg4) * 0x3c + 0xdaf0);
     }
 
     return 1;

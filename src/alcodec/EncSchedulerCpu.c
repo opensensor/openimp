@@ -67,7 +67,7 @@ int32_t AL_SchedulerCpu_ReleaseRecPicture(int32_t arg1, int32_t *arg2, void *arg
 int32_t AL_SchedulerCpu_GetRecPicture(void *arg1, int32_t *arg2, int32_t *arg3);
 int32_t AL_SchedulerCpu_PutStreamBuffer(int32_t arg1, int32_t *arg2, AL_TBuffer *arg3, int32_t arg4, int32_t arg5,
                                         int32_t arg6);
-int32_t AL_SchedulerCpu_EncodeOneFrame(int32_t arg1, int32_t arg2, int32_t *arg3, int32_t *arg4, int32_t *arg5);
+int32_t AL_SchedulerCpu_EncodeOneFrame(int32_t arg1, int32_t *arg2, int32_t *arg3, int32_t *arg4, int32_t *arg5);
 int32_t AL_SchedulerCpu_DestroyChannel(void *arg1, int32_t *arg2);
 int32_t AL_SchedulerCpu_Deinit(int32_t arg1);
 int32_t AL_SchedulerCpu_CreateChannel(int32_t **arg1, int32_t *arg2, void *arg3, int32_t *arg4, int32_t *arg5);
@@ -293,9 +293,9 @@ int32_t AL_SchedulerCpu_PutStreamBuffer(int32_t arg1, int32_t *arg2, AL_TBuffer 
                                            0, 0, 0, s4);
 }
 
-int32_t AL_SchedulerCpu_EncodeOneFrame(int32_t arg1, int32_t arg2, int32_t *arg3, int32_t *arg4, int32_t *arg5)
+int32_t AL_SchedulerCpu_EncodeOneFrame(int32_t arg1, int32_t *arg2, int32_t *arg3, int32_t *arg4, int32_t *arg5)
 {
-    if (arg3 == NULL)
+    if (arg2 == NULL)
         return 0;
 
     {
@@ -303,12 +303,16 @@ int32_t AL_SchedulerCpu_EncodeOneFrame(int32_t arg1, int32_t arg2, int32_t *arg3
         int32_t var_18 = (int32_t)(intptr_t)arg5;
 
         (void)var_10;
-        SCH_KMSG("Cpu.EncodeOneFrame entry cpu=%p ch=%u src=%p opts=%p meta=%p",
-                 (void *)(intptr_t)arg1, (unsigned)(uint8_t)arg2, arg3, arg4, arg5);
-        SCH_KMSG("Cpu.EncodeOneFrame payload src[0..3]=0x%x 0x%x 0x%x 0x%x opts[0..3]=0x%x 0x%x 0x%x 0x%x",
-                 arg3[0], arg3[1], arg3[2], arg3[3],
-                 arg4 ? arg4[0] : 0, arg4 ? arg4[1] : 0, arg4 ? arg4[2] : 0, arg4 ? arg4[3] : 0);
-        AL_SchedulerEnc_EncodeOneFrame((int32_t *)(intptr_t)(arg1 + 4), (char)arg2, arg3, arg4, &var_18);
+        SCH_KMSG("Cpu.EncodeOneFrame entry cpu=%p chctx=%p ch=%u src=%p opts=%p meta=%p",
+                 (void *)(intptr_t)arg1, arg2, (unsigned)(uint8_t)*arg2, arg3, arg4, arg5);
+        if (arg3 != NULL || arg4 != NULL) {
+            SCH_KMSG("Cpu.EncodeOneFrame payload src[0..3]=0x%x 0x%x 0x%x 0x%x opts[0..3]=0x%x 0x%x 0x%x 0x%x",
+                     arg3 ? arg3[0] : 0, arg3 ? arg3[1] : 0, arg3 ? arg3[2] : 0, arg3 ? arg3[3] : 0,
+                     arg4 ? arg4[0] : 0, arg4 ? arg4[1] : 0, arg4 ? arg4[2] : 0, arg4 ? arg4[3] : 0);
+        } else {
+            SCH_KMSG("Cpu.EncodeOneFrame arm-only call ch=%u", (unsigned)(uint8_t)*arg2);
+        }
+        AL_SchedulerEnc_EncodeOneFrame((int32_t *)(intptr_t)(arg1 + 4), (char)*arg2, arg3, arg4, &var_18);
         SCH_KMSG("Cpu.EncodeOneFrame exit meta_local=%d", var_18);
         return 1;
     }
