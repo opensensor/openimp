@@ -29,6 +29,7 @@ PixMapDimension *AL_PixMapBuffer_GetDimension(PixMapDimension *arg1,
 uint32_t AL_PixMapBuffer_GetFourCC(AL_TBuffer *arg1); /* forward decl, ported by T<N> later */
 int32_t AL_PixMapBuffer_GetPlanePitch(AL_TBuffer *arg1, int32_t arg2); /* forward decl, ported by T<N> later */
 int32_t AL_PixMapBuffer_GetPlaneChunkIdx(AL_TBuffer *arg1, int32_t arg2); /* forward decl, ported by T<N> later */
+uint32_t AL_Buffer_GetSizeChunk(AL_TBuffer *arg1, int32_t arg2); /* forward decl, ported by T<N> later */
 int32_t AL_EncGetMinPitch(int32_t arg1, char arg2, int32_t arg3); /* forward decl, ported by T<N> later */
 int32_t AL_GetAllocSizeSrc_Y(int32_t arg1, int32_t arg2, int32_t arg3); /* forward decl, ported by T<N> later */
 uint32_t AL_GetAllocSizeSrc_UV(int32_t arg1, int32_t arg2, int32_t arg3,
@@ -101,6 +102,24 @@ static void srcchk_kmsg(const char *fmt, ...)
     if (n > 0)
         dprintf(fd, "libimp/SRCCHK: %s\n", buf);
     close(fd);
+}
+
+static void srcchk_dump_layout(AL_TBuffer *buf, uint32_t fourcc)
+{
+    srcchk_kmsg("layout buf=%p fourcc=0x%x plane_chunk=[%d,%d,%d,%d] plane_pitch=[%d,%d,%d,%d] chunk_size=[%u,%u,%u,%u]",
+                buf, fourcc,
+                AL_PixMapBuffer_GetPlaneChunkIdx(buf, 0),
+                AL_PixMapBuffer_GetPlaneChunkIdx(buf, 1),
+                AL_PixMapBuffer_GetPlaneChunkIdx(buf, 2),
+                AL_PixMapBuffer_GetPlaneChunkIdx(buf, 3),
+                AL_PixMapBuffer_GetPlanePitch(buf, 0),
+                AL_PixMapBuffer_GetPlanePitch(buf, 1),
+                AL_PixMapBuffer_GetPlanePitch(buf, 2),
+                AL_PixMapBuffer_GetPlanePitch(buf, 3),
+                AL_Buffer_GetSizeChunk(buf, 0),
+                AL_Buffer_GetSizeChunk(buf, 1),
+                AL_Buffer_GetSizeChunk(buf, 2),
+                AL_Buffer_GetSizeChunk(buf, 3));
 }
 
 int32_t AL_SrcBuffersChecker_Init(uint32_t *arg1, uint8_t *arg2)
@@ -221,6 +240,7 @@ int32_t AL_SrcBuffersChecker_CanBeUsed(int32_t *arg1, AL_TBuffer *arg2)
 
                     s2_1 = &s2_1[1];
                     if (s3_4 != 0 && AL_Buffer_GetSizeChunk(arg2, s1_1) < (uint32_t)s3_4) {
+                        srcchk_dump_layout(arg2, (uint32_t)v0_1);
                         srcchk_kmsg("reject chunk buf=%p idx=%d need=%d have=%u fourcc=0x%x pitchY=%d pitchUV=%d dim=%dx%d exp=%dx%d",
                                     arg2, s1_1, s3_4, AL_Buffer_GetSizeChunk(arg2, s1_1), v0_1, v0_3, v0_26,
                                     var_58.iWidth, var_58.iHeight, arg1[0], arg1[1]);
@@ -232,10 +252,12 @@ int32_t AL_SrcBuffersChecker_CanBeUsed(int32_t *arg1, AL_TBuffer *arg2)
                 }
                 return 0;
             }
+            srcchk_dump_layout(arg2, (uint32_t)v0_1);
             srcchk_kmsg("reject uv-pitch buf=%p fourcc=0x%x pitchY=%d pitchUV=%d chroma=%d dim=%dx%d exp=%dx%d",
                         arg2, v0_1, v0_3, v0_26, v0_2, var_58.iWidth, var_58.iHeight, arg1[0], arg1[1]);
             return 0;
         }
+            srcchk_dump_layout(arg2, (uint32_t)v0_1);
             srcchk_kmsg("reject basic buf=%p fourcc=0x%x exp_fourcc=0x%x pitchY=%d min_pitch=%d dim=%dx%d exp=%dx%d",
                         arg2, v0_1, arg1[0x0a], v0_3, min_pitch, var_58.iWidth, var_58.iHeight, arg1[0], arg1[1]);
         }
