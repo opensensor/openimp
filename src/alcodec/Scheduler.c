@@ -787,8 +787,10 @@ int32_t AddNewRequest(int32_t arg1)
              READ_S32((void *)(intptr_t)v0, 0x8cc), READ_S32((void *)(intptr_t)v0, 0x958),
              READ_S32((void *)(intptr_t)v0, 0x9dc), READ_S32((void *)(intptr_t)v0, 0xa68));
     PopCommandListAddresses((void *)(intptr_t)(arg1 + 0x2c20), (void *)(intptr_t)(v0 + 0xa78));
-    ENC_KMSG("AddNewRequest ready req=%p lane=%d cmdlist=%p", (void *)(intptr_t)v0,
-             READ_S32((void *)(intptr_t)v0, 0xa70), (void *)(intptr_t)(v0 + 0xa78));
+    ENC_KMSG("AddNewRequest ready req=%p lane=%d cmdlist=%p cmd1[0]=0x%x cmd1[1]=0x%x cmd2[0]=0x%x cmd2[1]=0x%x",
+             (void *)(intptr_t)v0, READ_S32((void *)(intptr_t)v0, 0xa70), (void *)(intptr_t)(v0 + 0xa78),
+             READ_S32((void *)(intptr_t)v0, 0xa78), READ_S32((void *)(intptr_t)v0, 0xa7c),
+             READ_S32((void *)(intptr_t)v0, 0xab8), READ_S32((void *)(intptr_t)v0, 0xabc));
     {
         StaticFifoCompat *fifo =
             (StaticFifoCompat *)(intptr_t)(arg1 + READ_S32((void *)(intptr_t)v0, 0xa70) * 0x5c + 0x129b4);
@@ -2868,6 +2870,7 @@ int32_t encode1(void *arg1)
     int32_t *ch = arg1;
     int32_t *req;
     int32_t core;
+    int32_t pict_id;
     uint32_t core_offset = READ_U8(ch, 0x3d);
 
     Rtos_GetMutex(READ_PTR(ch, 0x170));
@@ -2894,13 +2897,24 @@ int32_t encode1(void *arg1)
     WRITE_U16(req, 0x17c, (READ_U16(ch, 6) + 7U) >> 3);
     WRITE_U16(req, 0x278, (READ_U16(ch, 4) + (1U << (READ_U8(ch, 0x4e) & 0x1fU)) - 1U) >> (READ_U8(ch, 0x4e) & 0x1fU));
     WRITE_U16(req, 0x27a, (READ_U16(ch, 6) + (1U << (READ_U8(ch, 0x4e) & 0x1fU)) - 1U) >> (READ_U8(ch, 0x4e) & 0x1fU));
+    pict_id = READ_S32(req, 0x20);
+    if (READ_PTR(req, 0x318) == NULL) {
+        int32_t *src = (int32_t *)(intptr_t)AL_SrcReorder_GetSrcBuffer((uint8_t *)ch + 0x178, pict_id);
+        if (src != NULL) {
+            WRITE_S32(req, 0x318, (int32_t)(intptr_t)((uint8_t *)src + 0x48));
+        }
+        ENC_KMSG("encode1 req source pict=%d src=%p cmd=%p", pict_id, src, READ_PTR(req, 0x318));
+    }
     ENC_KMSG("encode1 pre-FillSliceParam req=%p mode=%u chroma=%u cores=%u dual=%u",
              req, (unsigned)READ_U8(ch, 0x1f), (unsigned)READ_U8(ch, 0x4), (unsigned)READ_U8(ch, 0x3c),
              (unsigned)READ_U8(req, 0x182));
     FillSliceParamFromPicParam(ch, (uint8_t *)req + 0x170, req);
     ENC_KMSG("encode1 post-FillSliceParam req=%p slice_type=%u pic_order=%d cmd318=%p",
              req, (unsigned)READ_U8(req, 0x170), READ_S32(req, 0x184), READ_PTR(req, 0x318));
-    ENC_KMSG("encode1 pre-UpdateCommand req=%p slice=%p", req, (uint8_t *)req + 0x170);
+    ENC_KMSG("encode1 pre-UpdateCommand req=%p slice=%p cmd1[0]=0x%x cmd1[1]=0x%x cmd2[0]=0x%x cmd2[1]=0x%x",
+             req, (uint8_t *)req + 0x170,
+             READ_S32(req, 0xa78), READ_S32(req, 0xa7c),
+             READ_S32(req, 0xab8), READ_S32(req, 0xabc));
     UpdateCommand(ch, req, (uint8_t *)req + 0x170, 0);
     ENC_KMSG("encode1 post-UpdateCommand req=%p cmd318=%p cmd1[0]=0x%x",
              req, READ_PTR(req, 0x318), READ_S32(req, 0xa78));
