@@ -1325,8 +1325,12 @@ int IMP_ISP_Tuning_SetISPBypass(IMPISPTuningOpsMode enable)
     }
     kmsg_trace("libimp/ISP: SetISPBypass ENABLE_LINKS ok arg=%d\n", bypass_mode);
 
-    tseries_bypass_link_setup_done = 1;
-    tseries_isp_stream_started = 1;
+    /* SetISPBypass reconfigures processing mode, but the later
+     * frame-source-triggered EnsureLinkStreamOn path still needs to replay the
+     * normal stream bring-up edge, including link setup, to match the OEM
+     * on/off/on cycle. */
+    tseries_bypass_link_setup_done = 0;
+    tseries_isp_stream_started = 0;
 
     return 0;
 }

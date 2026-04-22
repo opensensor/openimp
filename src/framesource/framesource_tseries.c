@@ -942,19 +942,12 @@ static void *frame_pooling_thread(void *arg)
                         chn, poll_count, ctx->fd, ch_state);
             }
 
-            /*
-             * OEM libimp blocks directly in the frame worker on ioctl
-             * 0x400456bf before draining DQBUF. The helper-thread wrapper we
-             * added around this wait has shown a worse failure mode after
-             * rebuilds: the worker reaches POLL_FRAME and then never advances
-             * to the dequeue path. Keep the sequencing OEM-like here.
-             */
             errno = 0;
             fs_trace("libimp/FS: pooling poll-enter ch=%d fd=%d\n", chn, ctx->fd);
-            poll_ret = ioctl(ctx->fd, 0x400456bf, &ready);
+            poll_ret = fs_poll_frame(ctx->fd, &ready);
             fs_trace("libimp/FS: pooling poll-exit ch=%d fd=%d ret=%d ready=%u errno=%d\n",
                      chn, ctx->fd, poll_ret, ready, errno);
-            if (poll_ret < 0 && errno == EINTR) {
+            if (poll_ret == -2) {
                 continue;
             }
             if (poll_ret < 0) {
@@ -976,7 +969,7 @@ static void *frame_pooling_thread(void *arg)
                 continue;
             }
 
-            fs_trace("libimp/FS: pooling dq-path ch=%d fd=%d mode=oem-poll-then-dq ready=%u\n",
+            fs_trace("libimp/FS: pooling dq-path ch=%d fd=%d mode=poll-frame-then-dq ready=%u\n",
                      chn, ctx->fd, ready);
 
             flags = fcntl(ctx->fd, F_GETFL, 0);
