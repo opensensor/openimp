@@ -657,8 +657,13 @@ void *SetPictureRefBuffers(void *arg1, void *arg2, void *arg3, void *arg4, char 
     uint32_t var_28;
 
     (void)var_30;
+    ENC_KMSG("SetPictureRefBuffers entry chctx=%p req=%p cur=%u info=%p work=%p rec=%u",
+             arg1, arg2, s5, arg4, arg6, (unsigned)READ_U8(arg2, 0x290));
     AL_RefMngr_GetFrmBufAddrs((uint8_t *)arg1 + 0x22c8, (char)s5, (int32_t *)((uint8_t *)arg6 + 0x48),
                               (int32_t *)((uint8_t *)arg6 + 0x4c), (uint8_t *)arg6 + 0x74);
+    ENC_KMSG("SetPictureRefBuffers cur-addrs rec=%u y=0x%x uv=0x%x trace=0x%x/0x%x/%u",
+             s5, READ_S32(arg6, 0x48), READ_S32(arg6, 0x4c),
+             READ_S32(arg6, 0x74), READ_S32(arg6, 0x78), (unsigned)READ_U8(arg6, 0x7c));
 
     {
         int32_t v0_1 = AL_RefMngr_GetMvBufAddr((uint8_t *)arg1 + 0x22c8, (char)s5, (int32_t *)((uint8_t *)arg6 + 0x84));
@@ -672,13 +677,23 @@ void *SetPictureRefBuffers(void *arg1, void *arg2, void *arg3, void *arg4, char 
         int32_t v1_2;
 
         WRITE_S32(arg6, 0x5c, v0_1);
+        ENC_KMSG("SetPictureRefBuffers cur-mv rec=%u mv=0x%x coloc=%p",
+                 s5, v0_1, (void *)(intptr_t)v1);
+        ENC_KMSG("SetPictureRefBuffers before-ref-info mode=0x%x", READ_S32(arg3, 0x1c));
         AL_RefMngr_GetRefInfo((int32_t)(intptr_t)((uint8_t *)arg1 + 0x22c8), a1_2, (uint8_t *)arg4 + 0x20,
                               (uint8_t *)arg4 + 0x54, (int32_t *)(intptr_t)v1);
+        ENC_KMSG("SetPictureRefBuffers after-ref-info pocL0=%d pocL1=%d coloc0=%d coloc1=%d",
+                 READ_S32(arg4, 0x5c), READ_S32(arg4, 0x70),
+                 READ_S32(arg4, 0x84), READ_S32(arg4, 0x88));
+        ENC_KMSG("SetPictureRefBuffers before-ref0-from-poc poc=%d", READ_S32(arg4, 0x5c));
         v0_2 = AL_RefMngr_GetRefBufferFromPOC((uint8_t *)arg1 + 0x22c8, READ_S32(arg4, 0x5c));
+        ENC_KMSG("SetPictureRefBuffers after-ref0-from-poc buf=%d", v0_2);
         AL_RefMngr_GetFrmBuffer((uint8_t *)arg1 + 0x22c8, (char)v0_2);
         WRITE_U8(arg2, 0x291, (uint8_t)v0_2);
         AL_RefMngr_GetFrmBufAddrs((uint8_t *)arg1 + 0x22c8, (char)v0_2, (int32_t *)((uint8_t *)arg6 + 0x28),
                                   (int32_t *)((uint8_t *)arg6 + 0x2c), 0);
+        ENC_KMSG("SetPictureRefBuffers ref0 buf=%d y=0x%x uv=0x%x",
+                 v0_2, READ_S32(arg6, 0x28), READ_S32(arg6, 0x2c));
         WRITE_U8(arg2, 0x290, (uint8_t)s5);
         a1_6 = READ_S32(arg4, 0x70);
         WRITE_S32(arg6, 0x50, 0);
@@ -687,15 +702,23 @@ void *SetPictureRefBuffers(void *arg1, void *arg2, void *arg3, void *arg4, char 
         WRITE_S32(arg6, 0x34, 0);
         WRITE_S32(arg6, 0x40, 0);
         WRITE_S32(arg6, 0x44, 0);
+        ENC_KMSG("SetPictureRefBuffers before-ref1-from-poc poc=%d", a1_6);
         v0_3 = AL_RefMngr_GetRefBufferFromPOC((uint8_t *)arg1 + 0x22c8, a1_6);
+        ENC_KMSG("SetPictureRefBuffers after-ref1-from-poc buf=%d", v0_3);
         AL_RefMngr_GetFrmBuffer((uint8_t *)arg1 + 0x22c8, (char)v0_3);
         WRITE_U8(arg2, 0x292, (uint8_t)v0_3);
         AL_RefMngr_GetFrmBufAddrs((uint8_t *)arg1 + 0x22c8, (char)v0_3, (int32_t *)((uint8_t *)arg6 + 0x38),
                                   (int32_t *)((uint8_t *)arg6 + 0x3c), 0);
+        ENC_KMSG("SetPictureRefBuffers ref1 buf=%d y=0x%x uv=0x%x",
+                 v0_3, READ_S32(arg6, 0x38), READ_S32(arg6, 0x3c));
+        ENC_KMSG("SetPictureRefBuffers before-coloc-from-poc poc=%d", READ_S32(arg4, 0x84));
         v0_4 = AL_RefMngr_GetRefBufferFromPOC((uint8_t *)arg1 + 0x22c8, READ_S32(arg4, 0x84));
+        ENC_KMSG("SetPictureRefBuffers after-coloc-from-poc buf=%d", v0_4);
         AL_RefMngr_GetFrmBuffer((uint8_t *)arg1 + 0x22c8, (char)v0_4);
         WRITE_U8(arg2, 0x293, (uint8_t)v0_4);
         v0_5 = AL_RefMngr_GetMvBufAddr((uint8_t *)arg1 + 0x22c8, (char)v0_4, (int32_t *)&var_28);
+        ENC_KMSG("SetPictureRefBuffers coloc buf=%d mv=0x%x trace=0x%x",
+                 v0_4, v0_5, var_28);
         v1_2 = READ_S32(arg3, 0x2c) & 0x20;
         WRITE_S32(arg6, 0x58, v0_5);
         if (v1_2 != 0) {
@@ -714,6 +737,9 @@ void *SetPictureRefBuffers(void *arg1, void *arg2, void *arg3, void *arg4, char 
             {
                 int32_t v0_7 = AL_GetEncoderFbcMapSize(0, (int32_t)v0_6, (int32_t)a2_6, v0_8);
 
+                ENC_KMSG("SetPictureRefBuffers fbc map-size=%d bitdepth=%d rec=%u ref0=%u ref1=%u",
+                         v0_7, v0_8, (unsigned)READ_U8(arg2, 0x290),
+                         (unsigned)READ_U8(arg2, 0x291), (unsigned)READ_U8(arg2, 0x292));
                 v0_9 = AL_RefMngr_GetMapBufAddr((uint8_t *)arg1 + 0x22c8, (char)READ_U8(arg2, 0x290));
                 WRITE_S32(arg6, 0x50, v0_9);
                 WRITE_S32(arg6, 0x54, v0_7 + v0_9);
@@ -740,6 +766,10 @@ void *SetPictureRefBuffers(void *arg1, void *arg2, void *arg3, void *arg4, char 
         {
             void *result = READ_PTR(arg6, 0x84);
 
+            ENC_KMSG("SetPictureRefBuffers done rec=%u ref0=%u ref1=%u coloc=%u result=%p map0=0x%x map1=0x%x map2=0x%x",
+                     (unsigned)READ_U8(arg2, 0x290), (unsigned)READ_U8(arg2, 0x291),
+                     (unsigned)READ_U8(arg2, 0x292), (unsigned)READ_U8(arg2, 0x293),
+                     result, READ_S32(arg6, 0x50), READ_S32(arg6, 0x30), READ_S32(arg6, 0x40));
             if (result != 0) {
                 WRITE_S32(result, 0x84, READ_S32(arg4, 0x5c));
                 WRITE_S32(result, 0x88, READ_S32(arg4, 0x70));
