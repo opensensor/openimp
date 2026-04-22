@@ -799,8 +799,9 @@ int32_t SliceParamToCmdRegsEnc1(char *arg1, int32_t *arg2, void *arg3, ...)
         __assert("pSP->LcuWidth != 0",
                  "/home/user/git/proj/sdk-lv3/src/imp/video/alcodec/lib_scheduler_enc/EncSliceParam.c",
                  0x57, "SliceParamToCmdRegsEnc1", &_gp);
+        return SliceParamToCmdRegsEnc2(arg1, arg2);
     }
-    return SliceParamToCmdRegsEnc2(arg1, arg2);
+    return 0;
 }
 
 int32_t SliceParamToCmdRegsEnc2(void *arg1, void *arg2)

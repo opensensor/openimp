@@ -1024,6 +1024,13 @@ int32_t IMP_Encoder_RegisterChn(int32_t arg1, int32_t arg2)
             EncoderChannelLayout *chn = (EncoderChannelLayout *)enc_ptr(arg2, IMP_ENC_BASE_ADDR);
             *enc_channel_recv_pic_enabled(chn) = 1;
         }
+        if (arg1 < 5) {
+            IMPCell src = { .deviceID = 0, .groupID = arg1, .outputID = 0 };
+            IMPCell dst = { .deviceID = 1, .groupID = arg1, .outputID = 0 };
+            int32_t bind_rc = IMP_System_BindIfNeeded(&src, &dst);
+            video_enc_kmsg("libimp/ENCW2: RegisterChn bind grp=%d chn=%d rc=%d\n",
+                           arg1, arg2, bind_rc);
+        }
         if (CH_PTR(arg2, ENC_F_CODEC_HANDLE) != NULL) {
             int32_t prime_rc;
             video_enc_kmsg("libimp/ENCW2: RegisterChn pre-prime grp=%d chn=%d codec=%p\n",
