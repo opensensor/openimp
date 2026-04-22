@@ -792,8 +792,18 @@ label_71e98:
 
         {
             uint8_t *launch_ctx = GetChMngrCtx(arg1, (char)str[0]);
+            int32_t encode_rc;
+
             CMG_KMSG("CheckAndEncode launch ch=%u ctx=%p", (unsigned)(uint8_t)str[0], launch_ctx);
-            return AL_EncChannel_Encode(launch_ctx, var_3c);
+            Rtos_ReleaseMutex((void *)(intptr_t)arg1[0x4bd]);
+            CMG_KMSG("CheckAndEncode released scheduler mutex before launch ch=%u", (unsigned)(uint8_t)str[0]);
+            encode_rc = AL_EncChannel_Encode(launch_ctx, var_3c);
+            Rtos_GetMutex((void *)(intptr_t)arg1[0x4bd]);
+            CMG_KMSG("CheckAndEncode reacquired scheduler mutex after launch ch=%u rc=%d",
+                     (unsigned)(uint8_t)str[0], encode_rc);
+            CMG_KMSG("CheckAndEncode launch-return ch=%u ctx=%p rc=%d", (unsigned)(uint8_t)str[0], launch_ctx,
+                     encode_rc);
+            return encode_rc;
         }
     }
 }
@@ -1105,6 +1115,7 @@ label_723c4:
 
                 CMG_KMSG("Process pre-CheckAndEncode status=%d count=%d", arg1[0x4bc], *arg1);
                 CheckAndEncode(arg1);
+                CMG_KMSG("Process post-CheckAndEncode status=%d count=%d", arg1[0x4bc], *arg1);
                 Rtos_ReleaseMutex((void *)(intptr_t)arg1[0x4bd]);
                 var_34_1(arg1);
                 Rtos_GetMutex((void *)(intptr_t)arg1[0x4bd]);
@@ -1157,8 +1168,10 @@ static int32_t HandleCoreInterrupt(int32_t *arg1, int32_t arg2, int32_t arg3)
     (void)var_20;
     (void)arg_8;
     (void)arg_4;
-    CMG_KMSG("HandleCoreInterrupt entry sch=%p core=%d lane=%d", arg1, arg2, arg3);
+    CMG_KMSG("HandleCoreInterrupt entry sch=%p core=%d lane=%d mutex=%p", arg1, arg2, arg3,
+             (void *)(intptr_t)arg1[0x4bd]);
     Rtos_GetMutex((void *)(intptr_t)arg1[0x4bd]);
+    CMG_KMSG("HandleCoreInterrupt post-lock sch=%p core=%d lane=%d", arg1, arg2, arg3);
     v0_6 = GetChMngrCtx(arg1, (char)READ_U8(&arg1[arg2 * 0x26], arg3 + 0x5d4));
     CMG_KMSG("HandleCoreInterrupt ctx=%p raw_ch=%u", v0_6,
              (unsigned)READ_U8(&arg1[arg2 * 0x26], arg3 + 0x5d4));
@@ -1206,7 +1219,7 @@ int32_t AL_SchedulerEnc_Init(int32_t *arg1, int32_t *arg2, int32_t *arg3, int32_
     void *var_48 = &_gp;
     int32_t i;
     uint8_t var_40[0x30];
-    int32_t (*var_30)(int32_t *, int32_t, int32_t);
+    int32_t (*var_30[2])(int32_t *, int32_t, int32_t);
     int32_t *var_2c_1 = arg1;
     void *s2_2;
 
@@ -1259,7 +1272,8 @@ int32_t AL_SchedulerEnc_Init(int32_t *arg1, int32_t *arg2, int32_t *arg3, int32_
         int32_t t9_1 = *(int32_t *)(intptr_t)(*a0_5 + 8);
 
         arg1[0x435] = 0;
-        var_30 = HandleCoreInterrupt;
+        var_30[0] = HandleCoreInterrupt;
+        var_30[1] = (int32_t (*)(int32_t *, int32_t, int32_t))arg1;
         ((int32_t (*)(int32_t *, int32_t, int32_t))(intptr_t)t9_1)(a0_5, 0x8010, 0x1000);
     }
 
@@ -1280,7 +1294,7 @@ int32_t AL_SchedulerEnc_Init(int32_t *arg1, int32_t *arg2, int32_t *arg3, int32_
              * byte stride 0x44. The earlier port mirrored HLIL's typed
              * `arg1 + ... + 0x8c` expression literally as int32_t indexing,
              * which shifted init to 0x230 and left the real core table zero. */
-            AL_EncCore_Init((uint8_t *)arg1 + 0x8c + i_3 * 0x44, &var_30, (void *)(intptr_t)arg1[2], (char)i_3,
+            AL_EncCore_Init((uint8_t *)arg1 + 0x8c + i_3 * 0x44, var_30, (void *)(intptr_t)arg1[2], (char)i_3,
                             (int32_t)(intptr_t)s2_2);
             addClock(arg1, (int32_t)i_3);
             i_1 = (uint32_t)((uint8_t)i_1 + 1U);
@@ -1299,8 +1313,8 @@ int32_t AL_SchedulerEnc_Init(int32_t *arg1, int32_t *arg2, int32_t *arg3, int32_
         (void)var_50_2;
         (void)var_4c_1;
         AL_CoreState_Init((AL_CoreStateCompat *)&arg1[(s4_1 * 0xf + s5_1) * 2 + 0x175], VAR_38, VAR_3C);
-        AL_EncJpegCore_Init((uint8_t *)arg1 + 0x8c + s4_1 * 0x44, &var_30, (void *)(intptr_t)arg1[2], 0, (char)s4_1,
-                            (int32_t)(intptr_t)s2_2);
+        AL_EncJpegCore_Init((uint8_t *)arg1 + 0x8c + s4_1 * 0x44, var_30, (void *)(intptr_t)arg1[2], 0, (char)s4_1,
+            (int32_t)(intptr_t)s2_2);
         addClock(arg1, s4_1);
     }
 

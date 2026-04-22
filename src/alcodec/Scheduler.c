@@ -3217,6 +3217,7 @@ int32_t encode1(void *arg1)
     int32_t core;
     int32_t pict_id;
     uint32_t core_offset = READ_U8(ch, 0x3d);
+    int released_for_launch = 0;
 
     Rtos_GetMutex(READ_PTR(ch, 0x170));
     req = (int32_t *)(intptr_t)StaticFifo_Dequeue((uint8_t *)ch + 0x129b4);
@@ -3381,6 +3382,12 @@ int32_t encode1(void *arg1)
              (unsigned)READ_U8(ch, 0x3c), (uint8_t *)ch + 0x3c);
     AL_EncCore_EnableInterrupts(READ_PTR(ch, 0x164), (uint8_t *)ch + 0x3c, 0, 1, 0);
     ENC_KMSG("encode1 post-EnableInterrupts");
+    /* The first AVPU IRQ can arrive before all cores are launched. Holding the
+     * channel mutex across AL_EncCore_Encode1 then blocks EndEncoding on the
+     * callback thread, which stalls the pipeline after the first interrupt. */
+    Rtos_ReleaseMutex(READ_PTR(ch, 0x170));
+    released_for_launch = 1;
+    ENC_KMSG("encode1 released mutex before launch req=%p", req);
     for (core = 0; core < (int32_t)READ_U8(ch, 0x3c); ++core) {
         void *enc1 = (uint8_t *)READ_PTR(ch, 0x164) + core * 0x44;
         int32_t cmd1 = READ_S32(req, 0xa78 + core * 4);
@@ -3402,7 +3409,9 @@ int32_t encode1(void *arg1)
         AL_EncCore_Encode1(enc1, cmd2, cmd1, (READ_U8(req, 0x182) != 0U) ? cmd2 : 0,
                            (READ_U8(req, 0x182) != 0U) ? cmd1 : 0);
     }
-    return Rtos_ReleaseMutex(READ_PTR(ch, 0x170));
+    if (!released_for_launch)
+        return Rtos_ReleaseMutex(READ_PTR(ch, 0x170));
+    return 0;
 }
 
 int32_t AL_EncChannel_Encode(void *arg1, void *arg2)
@@ -3582,7 +3591,102 @@ int32_t AL_EncChannel_EndEncoding(void *arg1, uint8_t arg2, int32_t arg3)
         return 0;
     }
 
-    return 1;
+    Rtos_GetMutex(READ_PTR(arg1, 0x170));
+    {
+        void *fifo = getFifoRunning(arg1, arg3);
+
+        if (fifo != 0) {
+            int32_t *req = (int32_t *)(intptr_t)StaticFifo_Front(fifo);
+            int32_t req_phase = READ_S32(req, 0xa70);
+            int32_t pending_off = 0x8d0 + ((req_phase * 0x44 + arg3) << 2);
+            int32_t pending = READ_S32(req, pending_off) - 1;
+
+            WRITE_S32(req, pending_off, pending);
+            ENC_KMSG("EndEncoding non-gate req=%p lane=%d phase=%d pending=%d a6c=%d",
+                     req, arg3, req_phase, pending, READ_S32(req, 0xa6c));
+
+            if (pending <= 0) {
+                int32_t req_phase_next;
+                int32_t done_cb;
+                uint8_t slice_status[0x78];
+                int32_t *evt;
+                int32_t *i;
+                int32_t *dst;
+                int32_t slice_count;
+                int32_t slice_idx;
+
+                StaticFifo_Dequeue(fifo);
+                req_phase_next = req_phase + 1;
+                WRITE_S32(req, 0xa70, req_phase_next);
+
+                AL_EncCore_TurnOffRAM(READ_PTR(arg1, 0x164), 0, READ_U8(arg1, 0x3c), 0, 0);
+
+                WRITE_S32(req, 0xaf8, READ_S32(req, 0x10));
+                WRITE_S32(req, 0xafc, READ_S32(req, 0x14));
+                WRITE_S32(req, 0xb00, READ_S32(req, 0x18));
+                WRITE_S32(req, 0xb04, READ_S32(req, 0x1c));
+                WRITE_S32(req, 0xb94, 0);
+                WRITE_S32(req, 0xb10, READ_S32(req, 0x40));
+                WRITE_S32(req, 0xb98, READ_S32(req, 0x30));
+                WRITE_S32(req, 0xb9c, READ_S32(req, 0x34));
+                WRITE_U8(req, 0xba0, READ_U8(req, 0x24) & 1U);
+                WRITE_U16(req, 0xba4, READ_U16(req, 4));
+                WRITE_S32(req, 0xba8, READ_S32(req, 0x48));
+                WRITE_U8(req, 0xbac, READ_U8(req, 0x3c));
+                WRITE_U8(req, 0xba1, 1);
+                WRITE_U8(req, 0xba2, 1);
+                WRITE_S32(req, 0xb2c, READ_S32(READ_PTR(req, 0x318), 0x18));
+
+                if (req_phase_next < READ_S32(req, 0xa6c)) {
+                    StaticFifo_Queue((StaticFifoCompat *)((uint8_t *)arg1 + req_phase_next * 0x5c + 0x17a8),
+                                     (int32_t)(intptr_t)req);
+                    ENC_KMSG("EndEncoding non-gate queued-next-phase req=%p next=%d total=%d",
+                             req, req_phase_next, READ_S32(req, 0xa6c));
+                    Rtos_ReleaseMutex(READ_PTR(arg1, 0x170));
+                    return 0;
+                }
+
+                InitSliceStatus(slice_status);
+                if (READ_S32(req, 0x30) == 7) {
+                    OutputSkippedPicture(arg1, req, slice_status);
+                } else {
+                    slice_count = READ_U16(arg1, 0x40);
+                    for (slice_idx = 0; slice_idx < slice_count; ++slice_idx) {
+                        OutputSlice(arg1, req, slice_idx, slice_status);
+                    }
+                }
+                UpdateStatus(req, (int32_t *)slice_status);
+                handleOutputTraces(arg1, req, (uint8_t)(READ_U8(arg1, 0x3c) - 1U),
+                                   (READ_S32(req, 0xa6c) >= 2) ? 5 : 7);
+                TerminateRequest(arg1, req, (int32_t *)slice_status);
+                ReleaseWorkBuffers(arg1, req);
+
+                evt = (int32_t *)(intptr_t)EndRequestsBuffer_Pop((uint8_t *)arg1 + 0x1604);
+                evt[0] = (int32_t)(intptr_t)READ_PTR(req, 0x318);
+                i = &req[0xaf8 / 4];
+                dst = evt + 2;
+                while ((uint8_t *)i != (uint8_t *)req + 0xbd8) {
+                    dst[0] = i[0];
+                    dst[1] = i[1];
+                    dst[2] = i[2];
+                    dst[3] = i[3];
+                    i += 4;
+                    dst += 4;
+                }
+                StaticFifo_Queue((StaticFifoCompat *)((uint8_t *)arg1 + 0x12b24), (int32_t)(intptr_t)evt);
+                WRITE_S32(arg1, 0x35b4, READ_S32(arg1, 0x35b4) + 1);
+                done_cb = READ_S32(arg1, 0x1aa8);
+                Rtos_ReleaseMutex(READ_PTR(arg1, 0x170));
+                ENC_KMSG("EndEncoding non-gate queued-output req=%p evt=%p phase=%d", req, evt, req_phase_next);
+                if (done_cb != 0) {
+                    ((void (*)(void *, void *))(intptr_t)done_cb)(READ_PTR(arg1, 0x1aac), (uint8_t *)req + 0x84c);
+                }
+                return 1;
+            }
+        }
+    }
+    Rtos_ReleaseMutex(READ_PTR(arg1, 0x170));
+    return 0;
 }
 
 int32_t AL_EncChannel_SetTraceCallBack(void *arg1, int32_t arg2, int32_t arg3)
