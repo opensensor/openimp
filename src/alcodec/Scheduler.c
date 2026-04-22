@@ -2169,6 +2169,7 @@ static int32_t UpdateRateCtrl_constprop_83(int32_t *arg1, int32_t *arg2, int32_t
     int32_t rounded_bits = ((arg3[1] + 7) >> 3) << 3;
     int32_t status = 0;
     int32_t max_bits;
+    int32_t produced;
     int32_t slice_budget;
     int32_t *rc = &arg1[0x3d];
     int32_t *frm = &arg2[8];
@@ -2215,7 +2216,7 @@ static int32_t UpdateRateCtrl_constprop_83(int32_t *arg1, int32_t *arg2, int32_t
             }
         }
     } else {
-        int32_t produced = arg3[0x44] << 3;
+        produced = READ_S32(arg3, 0x44) << 3;
 
         if (produced >= rounded_bits) {
             rounded_bits = produced;
@@ -2396,13 +2397,13 @@ int32_t TerminateRequest(void *arg1, int32_t *arg2, int32_t *arg3)
     if (do_cb != 0) {
         uint32_t skip = READ_U8(arg2, 0xb08);
 
-        Rtos_GetMutex(READ_PTR(arg1, 0x168));
+        Rtos_GetMutex(READ_PTR(arg1, 0x170));
         ((void (*)(void *, uint32_t, void *, void *, int32_t))(intptr_t)READ_S32(arg1, 0x14c))
             ((uint8_t *)arg1 + 0x128, skip, &arg2[8], arg3, stats[0]);
-        Rtos_ReleaseMutex(READ_PTR(arg1, 0x168));
-        Rtos_GetMutex(READ_PTR(arg1, 0x168));
+        Rtos_ReleaseMutex(READ_PTR(arg1, 0x170));
+        Rtos_GetMutex(READ_PTR(arg1, 0x170));
         ((void (*)(void *, void *, int32_t))(intptr_t)READ_S32(arg1, 0x144))((uint8_t *)arg1 + 0x128, &arg2[8], 0);
-        Rtos_ReleaseMutex(READ_PTR(arg1, 0x168));
+        Rtos_ReleaseMutex(READ_PTR(arg1, 0x170));
     }
 
     if (READ_U8(arg2, 0x1d3) != 0U) {
@@ -3661,8 +3662,12 @@ int32_t AL_EncChannel_EndEncoding(void *arg1, uint8_t arg2, int32_t arg3)
                      req, arg3, req_phase, pending, READ_S32(req, 0xa6c));
 
             if (pending <= 0) {
+                void *core_arr = READ_PTR(arg1, 0x164);
                 int32_t req_phase_next;
                 int32_t done_cb;
+                int32_t force_status;
+                int32_t active_cores;
+                int32_t core_idx;
                 uint8_t slice_status[0x78];
                 int32_t *evt;
                 int32_t *i;
@@ -3695,10 +3700,40 @@ int32_t AL_EncChannel_EndEncoding(void *arg1, uint8_t arg2, int32_t arg3)
                 if (req_phase_next < READ_S32(req, 0xa6c)) {
                     StaticFifo_Queue((StaticFifoCompat *)((uint8_t *)arg1 + req_phase_next * 0x5c + 0x17a8),
                                      (int32_t)(intptr_t)req);
-                    ENC_KMSG("EndEncoding non-gate queued-next-phase req=%p next=%d total=%d",
-                             req, req_phase_next, READ_S32(req, 0xa6c));
+                    InitSliceStatus(slice_status);
+                    active_cores = (int32_t)READ_U8(req, 0x1ee);
+                    for (core_idx = 0; core_idx < active_cores; ++core_idx) {
+                        AL_EncCore_ReadStatusRegsEnc((uint8_t *)core_arr + core_idx * 0x44, slice_status);
+                    }
+                    force_status = 0;
+                    if ((READ_S32(arg1, 0x90) & 8) != 0 &&
+                        READ_U8(arg1, 0x3de0) == 0U &&
+                        READ_U8(arg1, 0xc4) == 0U) {
+                        force_status = 1;
+                    }
+                    UpdateRateCtrl_constprop_83(arg1, req, (int32_t *)slice_status, 1, 1);
+                    Rtos_GetMutex(READ_PTR(arg1, 0x170));
+                    ((void (*)(void *, uint32_t, void *, void *, int32_t))(intptr_t)READ_S32(arg1, 0x14c))
+                        ((uint8_t *)arg1 + 0x128, READ_U8(req, 0xb08), (uint8_t *)req + 0x20, slice_status,
+                         force_status);
                     Rtos_ReleaseMutex(READ_PTR(arg1, 0x170));
-                    return 0;
+                    Rtos_GetMutex(READ_PTR(arg1, 0x170));
+                    ((void (*)(void *, void *, int32_t))(intptr_t)READ_S32(arg1, 0x144))
+                        ((uint8_t *)arg1 + 0x128, (uint8_t *)req + 0x20, 0);
+                    Rtos_ReleaseMutex(READ_PTR(arg1, 0x170));
+                    StorePicture((int32_t)(intptr_t)((uint8_t *)arg1 + 0x22c8), req);
+                    handleOutputTraces(arg1, req, (uint8_t)(READ_U8(arg1, 0x3c) - 1U), 3);
+                    done_cb = READ_S32(arg1, 0x1aa8);
+                    Rtos_ReleaseMutex(READ_PTR(arg1, 0x170));
+                    ENC_KMSG("EndEncoding non-gate queued-next-phase req=%p next=%d total=%d rc_bytes=%d skip=%u",
+                             req, req_phase_next, READ_S32(req, 0xa6c), READ_S32(slice_status, 4),
+                             (unsigned)READ_U8(req, 0xb08));
+                    if (done_cb != 0) {
+                        ((void (*)(void *, void *))(intptr_t)done_cb)
+                            (READ_PTR(arg1, 0x1aac),
+                             (uint8_t *)req + (READ_S32(req, 0xa70) - 1) * 0x110 + 0x84c);
+                    }
+                    return 1;
                 }
 
                 InitSliceStatus(slice_status);
