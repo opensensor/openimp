@@ -253,9 +253,9 @@ int32_t UpdateCommand(void *arg1, void *arg2, void *arg3, int32_t arg4)
         if (blocks == 0)
             blocks = 1;
         if (lcu_w <= 1U || lcu_h <= 1U) {
-            uint32_t pic_w = READ_U16(ch, 4);
-            uint32_t pic_h = READ_U16(ch, 6);
-            uint32_t lcu_shift = READ_U8(ch, 0x4e) & 0x1fU;
+            uint32_t pic_w8 = READ_U16(slice, 0x0a);
+            uint32_t pic_h8 = READ_U16(slice, 0x0c);
+            uint32_t lcu_shift = READ_U8(slice, 3) & 0x1fU;
             uint32_t lcu_span;
 
             if (lcu_shift == 0U || lcu_shift > 8U)
@@ -263,10 +263,10 @@ int32_t UpdateCommand(void *arg1, void *arg2, void *arg3, int32_t arg4)
 
             lcu_span = 1U << lcu_shift;
 
-            if (pic_w != 0U)
-                lcu_w = (pic_w + lcu_span - 1U) >> lcu_shift;
-            if (pic_h != 0U)
-                lcu_h = (pic_h + lcu_span - 1U) >> lcu_shift;
+            if (pic_w8 != 0U)
+                lcu_w = ((pic_w8 << 3) + lcu_span - 1U) >> lcu_shift;
+            if (pic_h8 != 0U)
+                lcu_h = ((pic_h8 << 3) + lcu_span - 1U) >> lcu_shift;
         }
         if (lcu_w == 0)
             lcu_w = (READ_U16(ch, 4) + 15U) >> 4;
