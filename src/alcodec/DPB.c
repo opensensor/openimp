@@ -1,7 +1,24 @@
+#include <fcntl.h>
 #include <stdint.h>
+#include <stdio.h>
+#include <string.h>
+#include <unistd.h>
 
 extern char _gp;
 extern void *__assert(const char *expression, const char *file, int32_t line, const char *function, ...);
+
+#define DPB_KMSG(fmt, ...)                                                                          \
+    do {                                                                                            \
+        int _kfd = open("/dev/kmsg", O_WRONLY);                                                     \
+        if (_kfd >= 0) {                                                                            \
+            char _buf[192];                                                                         \
+            int _n = snprintf(_buf, sizeof(_buf), "libimp/DPB: " fmt "\n", ##__VA_ARGS__);        \
+            if (_n > 0) {                                                                           \
+                write(_kfd, _buf, (size_t)_n);                                                      \
+            }                                                                                       \
+            close(_kfd);                                                                            \
+        }                                                                                           \
+    } while (0)
 
 int32_t AL_sDPB_HEVC_Reordering(void *arg1, int32_t *arg2, int32_t arg3,
                                 char *arg4, int16_t *arg5,
@@ -1258,8 +1275,6 @@ label_6e724:
     return -1;
 }
 
-/* Disabled broken local helper body; call sites in this file use AL_sDPB_BuildRefList.isra.7 directly. */
-#if 0
 uint32_t AL_sDPB_BuildRefList_isra_7(char *arg1, int32_t arg2, int32_t *arg3,
                                      uint8_t *arg4, int32_t *arg5, uint8_t *arg6,
                                      int32_t *arg7)
@@ -1376,11 +1391,27 @@ label_6e250:
                                 AL_sDPB_AddPicToList(s6_1, (int32_t)a1, 0xff, s0_1, s2, var_5c_1);
 
                                 if (s1_1 == 0) {
-                                    goto label_6e358;
+                                    i_6 = (uint32_t)fp_1[0];
+                                    v1_9 = i_6 << 3;
+
+                                    if (i_6 != 0xffU) {
+                                        goto label_6e250;
+                                    }
+
+                                    v0_23 = var_48;
+                                    goto label_6e2e4_check;
                                 }
 
                                 if (fp_1 != 0) {
-                                    goto label_6e3ac;
+                                    i_6 = (uint32_t)fp_1[1];
+                                    v1_9 = i_6 << 3;
+
+                                    if (i_6 != 0xffU) {
+                                        goto label_6e250;
+                                    }
+
+                                    v0_23 = var_48;
+                                    goto label_6e2e4_check;
                                 }
 
                                 v0_23 = var_48;
@@ -1397,7 +1428,15 @@ label_6e250:
                                     uint8_t *s5_4 = (uint8_t *)s6_1 + s5_1 * 0x18U;
 
                                     if (*(int32_t *)(fp_1 + 0x14U) < *(int32_t *)(s5_4 + 0x80U)) {
-                                        goto label_6e358;
+                                        i_6 = (uint32_t)fp_1[0];
+                                        v1_9 = i_6 << 3;
+
+                                        if (i_6 != 0xffU) {
+                                            goto label_6e250;
+                                        }
+
+                                        v0_23 = var_48;
+                                        goto label_6e2e4_check;
                                     }
 
                                     i_6 = (uint32_t)s5_4[0x6c];
@@ -1424,7 +1463,15 @@ label_6e250:
                                     uint8_t *s5_7 = (uint8_t *)s6_1 + s5_1 * 0x18U;
 
                                     if (*(int32_t *)(s5_7 + 0x80U) < *(int32_t *)(fp_1 + 0x14U)) {
-                                        goto label_6e3ac;
+                                        i_6 = (uint32_t)fp_1[1];
+                                        v1_9 = i_6 << 3;
+
+                                        if (i_6 != 0xffU) {
+                                            goto label_6e250;
+                                        }
+
+                                        v0_23 = var_48;
+                                        goto label_6e2e4_check;
                                     }
 
                                     i_6 = (uint32_t)s5_7[0x6d];
@@ -1438,6 +1485,7 @@ label_6e250:
                                 }
                             }
 
+label_6e2e4_check:
                             if (v0_23 != s1_1) {
                                 goto label_6e2ec;
                             }
@@ -1550,7 +1598,11 @@ label_6e2ec:
 
     return 0;
 }
-#endif
+
+/* Binja preserves the dotted symbol name; export the translated helper under
+ * the same alias so internal callers resolve to this OEM-shaped body. */
+__asm__(".globl AL_sDPB_BuildRefList.isra.7");
+__asm__("AL_sDPB_BuildRefList.isra.7 = AL_sDPB_BuildRefList_isra_7");
 
 int32_t AL_DPB_Init(void *arg1, int32_t arg2, int32_t arg3, int32_t arg4,
                     int32_t arg5, int32_t arg6, int32_t arg7, int32_t arg8,
@@ -3553,6 +3605,8 @@ int32_t AL_DPB_AVC_GetRefInfo(char *arg1, void *arg2, void *arg3, int32_t *arg4,
     arg4[0x35] = 0xff;
     v0_1 = *(int32_t *)((uint8_t *)arg2 + 0x10U);
     *((uint8_t *)arg3 + 0x85U) = 0;
+    DPB_KMSG("AVC_GetRefInfo entry mode=%d poc=%d poc_l1=%d", v0_1,
+             *(int32_t *)((uint8_t *)arg3 + 8U), *(int32_t *)((uint8_t *)arg3 + 0x1cU));
 
     if (v0_1 == 1) {
         int32_t var_2c_2 = 0x70000;
@@ -3598,6 +3652,9 @@ int32_t AL_DPB_AVC_GetRefInfo(char *arg1, void *arg2, void *arg3, int32_t *arg4,
                                     &var_58, var_118, var_114, var_110);
         a1_1 = (int32_t *)arg4[0];
     }
+
+    DPB_KMSG("AVC_GetRefInfo post-build l0=%d l1=%d first0=%u first1=%u", var_34, var_38,
+             (uint32_t)var_58, (uint32_t)var_78);
 
     {
         int16_t *t4_1 = *(int16_t **)a1_1;
@@ -3766,6 +3823,7 @@ int32_t AL_DPB_AVC_GetRefInfo(char *arg1, void *arg2, void *arg3, int32_t *arg4,
 
     if (a3_1 > 0) {
         uint32_t v0_2 = (uint32_t)var_58;
+        DPB_KMSG("AVC_GetRefInfo pre-l0-walk count=%d first=%u", a3_1, v0_2);
 
         if (v0_2 == 0xffU) {
             __assert("pPic",
@@ -3775,7 +3833,7 @@ int32_t AL_DPB_AVC_GetRefInfo(char *arg1, void *arg2, void *arg3, int32_t *arg4,
 
         {
             uint8_t *v0_6 = (uint8_t *)arg1 + v0_2 * 0x18U + 0x6cU;
-            uint8_t *a2_1 = &((uint8_t){0});
+            uint8_t *a2_1 = &(&var_58)[1];
             int32_t t4_2 = 0;
             uint32_t a0 = 0;
 
@@ -3877,6 +3935,7 @@ int32_t AL_DPB_AVC_GetRefInfo(char *arg1, void *arg2, void *arg3, int32_t *arg4,
                          0x6b8, "AL_DPB_AVC_GetRefInfo", var_118, var_114, var_110, var_10c, var_108);
             }
         }
+        DPB_KMSG("AVC_GetRefInfo post-l0-walk count=%d", a3_1);
     } else {
         {
             int32_t *v1_14 = *(int32_t **)&a1_1[1];
@@ -3943,6 +4002,7 @@ label_709f0:
         uint32_t v0_51;
         int32_t v1_17;
         int32_t *a0_10;
+        DPB_KMSG("AVC_GetRefInfo pre-l1 stage count=%d first=%u", a3_4, v0_26);
 
         if (a3_4 <= 0) {
             void *t2_1 = (void *)arg4[1];
@@ -3966,7 +4026,7 @@ label_709f0:
         } else {
             uint8_t *v0_30 = (uint8_t *)arg1 + v0_26 * 0x18U + 0x6cU;
             void *t2_1 = (void *)arg4[1];
-            uint8_t *a2_5 = &((uint8_t){0});
+            uint8_t *a2_5 = &(&var_78)[1];
             int32_t t3_1 = 0;
 
             v1_17 = 0;
@@ -4044,6 +4104,8 @@ label_709f0:
             }
         }
 
+        DPB_KMSG("AVC_GetRefInfo post-l1 stage count=%d first=%u", a3_4, v0_51);
+
 label_70bec:
         if (v0_51 != 0xffU) {
             uint32_t v0_54 = v0_51 * 0x18U;
@@ -4084,6 +4146,7 @@ label_70b10:
 
         a1_1[2] = var_34;
         *(int32_t *)((uint8_t *)t2_1 + 8U) = var_38;
+        DPB_KMSG("AVC_GetRefInfo exit l0=%d l1=%d", var_34, var_38);
         return 1;
     }
 }

@@ -306,18 +306,6 @@ int32_t rc_ol1(void *rc, int32_t a)              { (void)rc; (void)a; return 0; 
 int32_t rc_olI(void *rc)                         { (void)rc; return 0; }
 int32_t rc_Ooii(void *rc, int32_t a, int32_t b)  { (void)rc; (void)a; (void)b; return 0; }
 
-/* ----- DPB builder stub ----------------------------------------------- */
-
-int32_t AL_sDPB_BuildRefList_isra_7(void *dpb, void *slice)
-{
-    (void)dpb; (void)slice;
-    return 0;
-}
-/* Binja renders as "AL_sDPB_BuildRefList.isra.7"; provide alias so
- * references that preserve the dotted name also resolve. */
-__asm__(".globl AL_sDPB_BuildRefList.isra.7");
-__asm__("AL_sDPB_BuildRefList.isra.7 = AL_sDPB_BuildRefList_isra_7");
-
 /* ----- framesource/isp link helpers ----------------------------------- */
 
 int32_t ISP_EnsureLinkStreamOn(int32_t sensor_idx)
