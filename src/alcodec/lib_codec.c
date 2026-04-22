@@ -822,6 +822,17 @@ void AL_Encoder_EndEncodingCallBack(void *arg1, AL_TBuffer *arg2, AL_TBuffer *ar
         if (arg3 == NULL)
             return;
         {
+            int kfd = open("/dev/kmsg", O_WRONLY);
+            if (kfd >= 0) {
+                char b[192];
+                int n = snprintf(b, sizeof(b),
+                                 "libimp/LCOD: EndEncCB entry codec=%p stream=%p src=%p src_cookie=%p\n",
+                                 arg1, arg2, arg3, read_ptr(arg3, 0x24));
+                if (n > 0) write(kfd, b, n);
+                close(kfd);
+            }
+        }
+        {
             void *s3_1 = read_ptr(arg3, 0x24);
             int32_t v0_1;
             int32_t v1_1;
@@ -846,6 +857,21 @@ void AL_Encoder_EndEncodingCallBack(void *arg1, AL_TBuffer *arg2, AL_TBuffer *ar
                 int32_t a2 = read_s32(AL_Buffer_GetMetaData(arg2, 3), 0xc);
                 write_s32(arg1, 0x920, a2);
                 fprintf(stderr, "Picture Type %i\n", a2);
+            }
+            {
+                void *stream_meta = AL_Buffer_GetMetaData(arg2, 1);
+                uint32_t stream_size = AL_Buffer_GetSize(arg2);
+                int kfd = open("/dev/kmsg", O_WRONLY);
+                if (kfd >= 0) {
+                    char b[224];
+                    int n = snprintf(b, sizeof(b),
+                                     "libimp/LCOD: EndEncCB queue stream=%p src=%p size=%u meta=%p sections=%u data=%p\n",
+                                     arg2, arg3, stream_size, stream_meta,
+                                     stream_meta ? read_u16(stream_meta, 0x14) : 0U,
+                                     AL_Buffer_GetData(arg2));
+                    if (n > 0) write(kfd, b, n);
+                    close(kfd);
+                }
             }
             AL_Buffer_Ref(arg2);
             Fifo_Queue((uint8_t *)arg1 + 0x7f8, arg2, -1);

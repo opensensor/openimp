@@ -784,6 +784,9 @@ int32_t update_one_frmstrm(void *arg1_in)
         return -1;
     }
 
+    stub_kmsg("libimp/ENCX: update_one got stream=%p src=%p codec=%p",
+              var_44, var_40, *(void **)(arg1 + 8));
+
     pthread_mutex_lock(enc_mutex_ptr(&chn->queue_mutex));
     {
         uint32_t v0_1 = *(uint32_t *)(arg1 + 0x80);
@@ -842,6 +845,9 @@ int32_t update_one_frmstrm(void *arg1_in)
     uint32_t s0_2 = *(uint32_t *)((uint8_t *)meta + 0x14);   /* section cnt */
     str[0] = 0;
     str[1] = data;
+
+    stub_kmsg("libimp/ENCX: update_one meta stream=%p src=%p size=%d data=0x%x meta=%p sections=%u public=%p",
+              var_44, var_40, sz, (unsigned)data, meta, s0_2, s7_1);
 
     uint32_t s6_1 = 0;   /* accumulated payload bytes */
     uint32_t s5_1 = 0;   /* running offset */
@@ -903,6 +909,8 @@ int32_t update_one_frmstrm(void *arg1_in)
             }
         }
     } else {
+        stub_kmsg("libimp/ENCX: update_one unexpected frame-count=%d sections=%u stream=%p meta=%p",
+                  t0_2, s0_2, var_44, meta);
         __assert("iNumFrame == 1",
                  "/home/user/git/proj/sdk-lv3/src/imp/video/imp_encoder.c",
                  0x53b, "update_one_frmstrm");
@@ -959,6 +967,9 @@ int32_t update_one_frmstrm(void *arg1_in)
         pthread_cond_signal((pthread_cond_t *)(arg1 + 0x1f0));
         pthread_mutex_unlock((pthread_mutex_t *)(arg1 + 0x1d8));
     }
+    stub_kmsg("libimp/ENCX: update_one queued public=%p packs=%d bytes=%u ready_lo=%u ready_hi=%u",
+              s7_1, str[6], s6_1,
+              *enc_channel_stream_ready_lo(chn), *enc_channel_stream_ready_hi(chn));
     return 0;
 }
 
