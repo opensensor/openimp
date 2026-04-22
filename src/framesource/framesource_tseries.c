@@ -1679,6 +1679,7 @@ int IMP_FrameSource_EnableChn(int chnNum)
     int bufcnt;
     int vbm_count;
     int queued_ok;
+    int initial_queued_ok;
     int thread_started = 0;
 
     if (chnNum < 0 || chnNum >= FS_MAX_CHANNELS) return -1;
@@ -1805,6 +1806,7 @@ int IMP_FrameSource_EnableChn(int chnNum)
         pthread_mutex_unlock(&g_fs_lock);
         return -1;
     }
+    initial_queued_ok = queued_ok;
     fs_trace("libimp/FS: enable fill-pool-ok ch=%d queued_ok=%d\n", chnNum, queued_ok);
 
     ctx->running = 1;
@@ -1859,12 +1861,18 @@ int IMP_FrameSource_EnableChn(int chnNum)
     }
     fs_trace("libimp/FS: enable stream-on-ok ch=%d fd=%d\n", chnNum, ctx->fd);
 
-    /* The open tx-isp path can accept pre-STREAMON QBUFs without making them
-     * deliverable to DQBUF immediately. Replay the pool after STREAMON so the
-     * hardware path has active buffers in its final streaming state. */
-    queued_ok = VBMFillPool(chnNum);
-    fs_trace("libimp/FS: enable post-stream-fill ch=%d queued_ok=%d\n",
-             chnNum, queued_ok);
+    /* Only replay the pool if the pre-STREAMON prime queued nothing. Once the
+     * driver has already accepted those QBUFs, replaying the same buffers after
+     * STREAMON just hits "buffer already in use" and falsely demotes channel 0. */
+    if (initial_queued_ok <= 0) {
+        queued_ok = VBMFillPool(chnNum);
+        fs_trace("libimp/FS: enable post-stream-fill ch=%d queued_ok=%d initial=%d\n",
+                 chnNum, queued_ok, initial_queued_ok);
+    } else {
+        queued_ok = initial_queued_ok;
+        fs_trace("libimp/FS: enable post-stream-fill skip ch=%d queued_ok=%d initial=%d\n",
+                 chnNum, queued_ok, initial_queued_ok);
+    }
 
     fs_chan_set_state(chnNum, 2);
     fs_trace("libimp/FS: enable state-promote ch=%d state=%d fd=%d\n",
@@ -1879,7 +1887,7 @@ int IMP_FrameSource_EnableChn(int chnNum)
                  chnNum, g_fs_thread_enabled_seen[chnNum], spins);
     }
 
-    if (chnNum == 0 && queued_ok <= 0) {
+    if (chnNum == 0 && initial_queued_ok <= 0 && queued_ok <= 0) {
         fs_stream_off(ctx->fd);
         if (thread_started) {
             pthread_cancel(ctx->thread);

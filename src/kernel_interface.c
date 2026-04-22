@@ -402,14 +402,22 @@ int fs_set_format(int fd, fs_format_t *fmt) {
 
     if (is_nv12_family) {
         if ((uint32_t)fmt->bytesperline != expected_bytesperline ||
-            (uint32_t)fmt->sizeimage != expected_sizeimage) {
+            (uint32_t)fmt->sizeimage != s.pix.sizeimage) {
             fprintf(stderr,
-                    "[KernelIF] SET_FMT override NV12 geometry: driver bytesperline=%d sizeimage=%d -> expected bytesperline=%u sizeimage=%u\n",
+                    "[KernelIF] SET_FMT keep driver NV12 geometry: driver bytesperline=%d sizeimage=%d expected visible bytesperline=%u visible_size=%u\n",
                     fmt->bytesperline, fmt->sizeimage,
                     expected_bytesperline, expected_sizeimage);
         }
-        fmt->bytesperline = (int)expected_bytesperline;
-        fmt->sizeimage = (int)expected_sizeimage;
+
+        /* The frame-channel QBUF path validates length against the kernel's
+         * internal sizeimage, not the visible NV12 payload size. Keep the
+         * driver-returned geometry here so VBM allocates/QBUFs buffers the
+         * kernel will actually accept. The encoder-visible source size still
+         * comes from GetPixMapCfg and remains 1920*1080*3/2 for NV12. */
+        if (fmt->bytesperline <= 0)
+            fmt->bytesperline = (int)expected_bytesperline;
+        if (fmt->sizeimage <= 0)
+            fmt->sizeimage = (int)s.pix.sizeimage;
     }
 
     return 0;
@@ -572,10 +580,11 @@ int fs_poll_frame(int fd, unsigned int *ready_out)
         return -1;
     }
 
-    ki_trace("libimp/KI: POLL_FRAME exit fd=%d ret=%d errno=%d ready=%u\n",
-             fd, wait.ret, wait.err, wait.ready);
     if (ready_out)
         *ready_out = wait.ready;
+
+    ki_trace("libimp/KI: POLL_FRAME exit fd=%d ret=%d errno=%d ready=%u\n",
+             fd, wait.ret, wait.err, wait.ready);
     return 0;
 }
 
