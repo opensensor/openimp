@@ -306,6 +306,8 @@ int32_t UpdateCommand(void *arg1, void *arg2, void *arg3, int32_t arg4)
          * can build a usable command list from the corrected per-core slice. */
         if (READ_U16(slice, 0x7a) == 0)
             WRITE_U16(slice, 0x7a, (READ_U16(ch, 4) + 7U) >> 3);
+        if (READ_U16(slice, 0x7c) == 0)
+            WRITE_U16(slice, 0x7c, READ_U16(slice, 0x0c));
         if (READ_U16(slice, 0x58) == 0)
             WRITE_U16(slice, 0x58, 16);
         if (READ_U16(slice, 0x5a) == 0)
