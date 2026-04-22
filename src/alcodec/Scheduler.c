@@ -3489,6 +3489,8 @@ int32_t AL_EncChannel_Encode(void *arg1, void *arg2)
 
 int32_t AL_EncChannel_EndEncoding(void *arg1, uint8_t arg2, int32_t arg3)
 {
+    ENC_KMSG("EndEncoding entry chctx=%p core=%u lane=%d jpeg=%u gate=%u",
+             arg1, (unsigned)arg2, arg3, (unsigned)READ_U8(arg1, 0x1f), (unsigned)READ_U8(arg1, 0xc4));
     if (READ_U8(arg1, 0x1f) == 4U) {
         EndJpegEncoding(arg1);
         return 1;
@@ -3500,6 +3502,7 @@ int32_t AL_EncChannel_EndEncoding(void *arg1, uint8_t arg2, int32_t arg3)
             void *fifo = getFifoRunning(arg1, arg3);
 
             if (fifo == 0) {
+                ENC_KMSG("EndEncoding no-fifo chctx=%p core=%u lane=%d", arg1, (unsigned)arg2, arg3);
                 Rtos_ReleaseMutex(READ_PTR(arg1, 0x170));
                 return 0;
             }
@@ -3508,6 +3511,11 @@ int32_t AL_EncChannel_EndEncoding(void *arg1, uint8_t arg2, int32_t arg3)
                 int32_t *req = (int32_t *)(intptr_t)StaticFifo_Front(fifo);
                 int32_t *core = (int32_t *)((uint8_t *)req + arg2);
                 uint32_t done = READ_U8(core, 0x84a) + 1U;
+
+                ENC_KMSG("EndEncoding req=%p core_slot=%p done=%u req174=%u req848=%u core_base=%u core_count=%u",
+                         req, core, (unsigned)done, (unsigned)READ_U8(req, 0x174),
+                         (unsigned)READ_U16(req, 0x848), (unsigned)READ_U8(arg1, 0x3d),
+                         (unsigned)READ_U8(arg1, 0x3c));
 
                 WRITE_U8(core, 0x84a, (uint8_t)done);
                 WRITE_S32(req, req[0x29c] * 0x11 + arg3 + 0x234, READ_S32(req, req[0x29c] * 0x11 + arg3 + 0x234) - 1);
@@ -3520,6 +3528,9 @@ int32_t AL_EncChannel_EndEncoding(void *arg1, uint8_t arg2, int32_t arg3)
                     }
                     if ((uint32_t)arg2 == (uint32_t)(start + (READ_U16(req, 0x848) % num_core))) {
                         int32_t committed = CommitSlice(arg1, fifo, req, arg2, 0, arg3);
+
+                        ENC_KMSG("EndEncoding commit-single req=%p core=%u lane=%d committed=%d",
+                                 req, (unsigned)arg2, arg3, committed);
 
                         Rtos_ReleaseMutex(READ_PTR(arg1, 0x170));
                         if (committed == 0) {
@@ -3542,6 +3553,9 @@ int32_t AL_EncChannel_EndEncoding(void *arg1, uint8_t arg2, int32_t arg3)
                     if (ready != 0) {
                         int32_t committed = CommitSlice(arg1, fifo, req, arg2, 0, arg3);
 
+                        ENC_KMSG("EndEncoding commit-ready req=%p core=%u lane=%d committed=%d done=%u",
+                                 req, (unsigned)arg2, arg3, committed, (unsigned)done);
+
                         Rtos_ReleaseMutex(READ_PTR(arg1, 0x170));
                         if (committed == 0) {
                             return 0;
@@ -3559,6 +3573,8 @@ int32_t AL_EncChannel_EndEncoding(void *arg1, uint8_t arg2, int32_t arg3)
                                                          (uint8_t)READ_U8(arg1, 0x3c)) & 0x1f);
                     req[0x210] |= bit;
                     req[0x211] |= bit >> 31;
+                    ENC_KMSG("EndEncoding mark-pending req=%p bit=0x%x mask0=0x%x mask1=0x%x",
+                             req, bit, req[0x210], req[0x211]);
                 }
             }
         }

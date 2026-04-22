@@ -137,6 +137,8 @@ void EndEncoding(void *arg1)
 {
     int32_t t9 = *(int32_t *)((char *)arg1 + 0x14);
 
+    IMP_LOG_INFO("AVPU", "core EndEncoding ctx=%p fn=0x%x user=%p payload=%p mode=0",
+                 arg1, t9, *(void **)((char *)arg1 + 0x18), *(void **)((char *)arg1 + 0x10));
     if (t9 != 0)
         ((void (*)(void *, void *, int32_t))(intptr_t)t9)(*(void **)((char *)arg1 + 0x18), *(void **)((char *)arg1 + 0x10), 0);
 }
@@ -631,6 +633,9 @@ int32_t AL_EncCore_ReadStatusRegsEnc(void *arg1, void *arg2)
             *(int32_t *)((char *)arg2 + 4) += ((v0_1 >> 0xc) & 0x3ff) * (v0_1 & 0x3ff);
         }
         i = *(int32_t *)(intptr_t)(s0 - 0x200);
+        IMP_LOG_INFO("AVPU", "ReadStatusRegsEnc regs=0x%x state=0x%x bytes=%d done=%d",
+                     s0 - 0x200, *(int32_t *)(intptr_t)(s0 - 0x200),
+                     *(int32_t *)((char *)arg2 + 4), i);
     } while (i >= 0);
 
     return i;

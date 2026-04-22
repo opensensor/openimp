@@ -320,6 +320,8 @@ int32_t AL_SchedulerCpu_EncodeOneFrame(int32_t arg1, int32_t *arg2, int32_t *arg
 int32_t EndEncodingCallBack(void *arg1, int32_t arg2, int32_t arg3, int32_t arg4, int32_t arg5)
 {
     (void)arg2;
+    SCH_KMSG("EndEncodingCallBack entry ctx=%p fn=0x%x user=0x%x a3=%d a4=%d a5=%d",
+             arg1, READ_S32(arg1, 0xc), READ_S32(arg1, 0x10), arg3, arg4, arg5);
     Rtos_GetMutex(READ_PTR(arg1, 8));
     {
         int32_t t9 = READ_S32(arg1, 0xc);
@@ -328,6 +330,7 @@ int32_t EndEncodingCallBack(void *arg1, int32_t arg2, int32_t arg3, int32_t arg4
             ((void (*)(int32_t, int32_t, int32_t, int32_t, void *))(intptr_t)t9)(READ_S32(arg1, 0x10), arg3, arg4,
                                                                                    arg5, &_gp);
     }
+    SCH_KMSG("EndEncodingCallBack exit ctx=%p", arg1);
     return Rtos_ReleaseMutex(READ_PTR(arg1, 8));
 }
 

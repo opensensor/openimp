@@ -158,12 +158,18 @@ void *WaitInterruptThread(void *arg1)
         slot = GetIrqSlot(arg1, (uint32_t)irq);
         callback = *(BoardInterruptCallback *)(void *)(slot + 0x00); /* +0x00 callback */
         if (callback != NULL) {
+            IMP_LOG_INFO("AVPU", "wait-thread dispatch irq=%d cb=%p user=%p", irq, callback,
+                         *(void **)(slot + 0x08));
             callback(*(void **)(slot + 0x08)); /* +0x08 user_data */
+            IMP_LOG_INFO("AVPU", "wait-thread done irq=%d cb=%p", irq, callback);
         } else if (*(uint32_t *)(void *)(slot + 0x04) == 0) { /* +0x04 flag */
             fprintf(stderr, "Interrupt %d doesn't have an handler, signaling it was caught and returning\n", irq);
             callback = *(BoardInterruptCallback *)(void *)(slot + 0x00); /* +0x00 callback */
             if (callback != NULL) {
+                IMP_LOG_INFO("AVPU", "wait-thread late-dispatch irq=%d cb=%p user=%p", irq, callback,
+                             *(void **)(slot + 0x08));
                 callback(*(void **)(slot + 0x08)); /* +0x08 user_data */
+                IMP_LOG_INFO("AVPU", "wait-thread late-done irq=%d cb=%p", irq, callback);
             }
         }
         Rtos_ReleaseMutex(*(void **)((uint8_t *)arg1 + BOARD_MUTEX_OFFSET));

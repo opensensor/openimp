@@ -1157,15 +1157,22 @@ static int32_t HandleCoreInterrupt(int32_t *arg1, int32_t arg2, int32_t arg3)
     (void)var_20;
     (void)arg_8;
     (void)arg_4;
+    CMG_KMSG("HandleCoreInterrupt entry sch=%p core=%d lane=%d", arg1, arg2, arg3);
     Rtos_GetMutex((void *)(intptr_t)arg1[0x4bd]);
     v0_6 = GetChMngrCtx(arg1, (char)READ_U8(&arg1[arg2 * 0x26], arg3 + 0x5d4));
+    CMG_KMSG("HandleCoreInterrupt ctx=%p raw_ch=%u", v0_6,
+             (unsigned)READ_U8(&arg1[arg2 * 0x26], arg3 + 0x5d4));
     result = (int32_t)(intptr_t)Rtos_ReleaseMutex((void *)(intptr_t)arg1[0x4bd]);
     if (v0_6 != 0) {
+        CMG_KMSG("HandleCoreInterrupt pre-EndEncoding ctx=%p core=%d lane=%d", v0_6, arg2, arg3);
         result = AL_EncChannel_EndEncoding(v0_6, (uint8_t)arg2, arg3);
+        CMG_KMSG("HandleCoreInterrupt post-EndEncoding result=%d", result);
         if (result == 0) {
+            CMG_KMSG("HandleCoreInterrupt fallback-Process");
             return Process(arg1);
         }
     }
+    CMG_KMSG("HandleCoreInterrupt exit result=%d", result);
     return result;
 }
 
