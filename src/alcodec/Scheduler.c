@@ -1430,10 +1430,10 @@ static int32_t GetStreamBuffers_part_72(void *arg1, void *arg2, void *arg3)
                      (unsigned)READ_U16(arg3, 6), (unsigned)READ_U16(arg3, 0x3c),
                      (unsigned)READ_U16(arg3, 0x3e), (unsigned)READ_U16(arg3, 0x40),
                      (unsigned)READ_U16(arg3, 0x4e), (unsigned)READ_U16(arg3, 0x4f));
-            s7_1[-4] = stream_entry[0];
+            s7_1[-1] = stream_entry[0];
             s7_1[-2] = stream_entry[1];
-            s7_1[-4 + 2] = stream_entry[4];
-            s7_1[-3 + 2] = stream_entry[5];
+            s7_1[-4] = stream_entry[4];
+            s7_1[-3] = stream_entry[5];
             s7_1[4] = stream_entry[6];
             s7_1[0] = stream_entry[2];
             s7_1[1] = stream_entry[3];
@@ -1577,7 +1577,7 @@ int32_t handleInputTraces(void *arg1, void *arg2, void *arg3, uint8_t arg4)
 int32_t encode2(void *arg1)
 {
     void *var_28 = &_gp;
-    int32_t v0 = StaticFifo_Dequeue((uint8_t *)arg1 + 0x1748);
+    int32_t v0 = StaticFifo_Dequeue((uint8_t *)arg1 + 0x12a10);
     int32_t t0 = READ_S32((void *)(intptr_t)v0, 0xa68);
     int32_t *v0_1 = (int32_t *)(intptr_t)(v0 + 0x9e8);
     uint32_t a1 = (uint32_t)READ_U8(arg1, 0x1ae5);
@@ -1613,7 +1613,7 @@ int32_t encode2(void *arg1)
         }
     }
 
-    StaticFifo_Queue((StaticFifoCompat *)((uint8_t *)arg1 + READ_S32((void *)(intptr_t)v0, 0xa70) * 0x5c + 0x17a8), v0);
+    StaticFifo_Queue((StaticFifoCompat *)((uint8_t *)arg1 + READ_S32((void *)(intptr_t)v0, 0xa70) * 0x5c + 0x12a6c), v0);
     a0_6 = (uint32_t)READ_U16(arg1, 0x3c);
     v1_7 = (uint32_t)READ_U8((void *)(intptr_t)(v0 + READ_S32((void *)(intptr_t)v0, 0xa70) * 0x110 + 0x8d4), 0);
     s1 = 0;
@@ -1764,7 +1764,7 @@ int32_t EndJpegEncoding(void *arg1)
             i += 4;
             a0_13 += 4;
         } while ((intptr_t)i != v0 + 0xbd8);
-        StaticFifo_Queue((StaticFifoCompat *)((uint8_t *)arg1 + 0x18b0), v0_10);
+        StaticFifo_Queue((StaticFifoCompat *)((uint8_t *)arg1 + 0x12b24), v0_10);
     }
 
     Rtos_GetMutex(READ_PTR(arg1, 0x170));
@@ -2217,15 +2217,22 @@ static int32_t UpdateRateCtrl_constprop_83(int32_t *arg1, int32_t *arg2, int32_t
         }
     } else {
         produced = READ_S32(arg3, 0x44) << 3;
+        ENC_KMSG("UpdateRateCtrl arg4=1 frm=%p status=%p produced=%d rounded=%d type=%d skip=%u",
+                 frm, arg3, produced, rounded_bits, arg2[0xc], (unsigned)READ_U8(arg2, 0xb08));
 
         if (produced >= rounded_bits) {
             rounded_bits = produced;
         }
         max_bits = rounded_bits;
         if (arg2[0xc] != 7) {
+            ENC_KMSG("UpdateRateCtrl pre-lock rc=%p lock=%p cb3f=%p max_bits=%d",
+                     rc, (void *)(uintptr_t)arg1[0x48], (void *)(intptr_t)arg1[0x3f], max_bits);
             Rtos_GetMutex((void *)(uintptr_t)arg1[0x48]);
+            ENC_KMSG("UpdateRateCtrl post-lock rc=%p lock=%p", rc, (void *)(uintptr_t)arg1[0x48]);
             ((void (*)(void *, void *, void *, int32_t, int32_t *))(intptr_t)arg1[0x3f])(rc, frm, arg3, max_bits, &status);
+            ENC_KMSG("UpdateRateCtrl post-cb3f rc=%p status=%d", rc, status);
             Rtos_ReleaseMutex((void *)(uintptr_t)arg1[0x48]);
+            ENC_KMSG("UpdateRateCtrl post-unlock rc=%p", rc);
         } else {
             slice_budget = arg2[0xb2];
             goto final_update;
@@ -3698,31 +3705,54 @@ int32_t AL_EncChannel_EndEncoding(void *arg1, uint8_t arg2, int32_t arg3)
                 WRITE_S32(req, 0xb2c, READ_S32(READ_PTR(req, 0x318), 0x18));
 
                 if (req_phase_next < READ_S32(req, 0xa6c)) {
-                    StaticFifo_Queue((StaticFifoCompat *)((uint8_t *)arg1 + req_phase_next * 0x5c + 0x17a8),
+                    void *core_arr_164 = READ_PTR(arg1, 0x164);
+                    void *core_arr_168 = READ_PTR(arg1, 0x168);
+
+                    ENC_KMSG("EndEncoding non-gate phase-advance req=%p next=%d total=%d core164=%p core168=%p active=%u",
+                             req, req_phase_next, READ_S32(req, 0xa6c), core_arr_164, core_arr_168,
+                             (unsigned)READ_U8(req, 0x1ee));
+                    StaticFifo_Queue((StaticFifoCompat *)((uint8_t *)arg1 + req_phase_next * 0x5c + 0x12a6c),
                                      (int32_t)(intptr_t)req);
+                    ENC_KMSG("EndEncoding non-gate queued req=%p fifo_off=0x%x",
+                             req, req_phase_next * 0x5c + 0x12a6c);
                     InitSliceStatus(slice_status);
                     active_cores = (int32_t)READ_U8(req, 0x1ee);
+                    core_arr = core_arr_164;
                     for (core_idx = 0; core_idx < active_cores; ++core_idx) {
+                        ENC_KMSG("EndEncoding non-gate read-status req=%p core_idx=%d core=%p",
+                                 req, core_idx, (uint8_t *)core_arr + core_idx * 0x44);
                         AL_EncCore_ReadStatusRegsEnc((uint8_t *)core_arr + core_idx * 0x44, slice_status);
                     }
+                    ENC_KMSG("EndEncoding non-gate read-status-done req=%p rc_bytes=%d status1=%d status2=%d",
+                             req, READ_S32(slice_status, 4), READ_S32(slice_status, 0), READ_S32(slice_status, 8));
                     force_status = 0;
                     if ((READ_S32(arg1, 0x90) & 8) != 0 &&
                         READ_U8(arg1, 0x3de0) == 0U &&
                         READ_U8(arg1, 0xc4) == 0U) {
                         force_status = 1;
                     }
+                    ENC_KMSG("EndEncoding non-gate pre-rc req=%p force_status=%d skip=%u",
+                             req, force_status, (unsigned)READ_U8(req, 0xb08));
                     UpdateRateCtrl_constprop_83(arg1, req, (int32_t *)slice_status, 1, 1);
-                    Rtos_GetMutex(READ_PTR(arg1, 0x170));
+                    ENC_KMSG("EndEncoding non-gate post-rc req=%p rc_bytes=%d slice_budget=%d skip=%u",
+                             req, READ_S32(slice_status, 4), READ_S32(req, 0x2c8 * 4), (unsigned)READ_U8(req, 0xb08));
+                    ENC_KMSG("EndEncoding non-gate pre-cb14c req=%p cb=%p",
+                             req, (void *)(intptr_t)READ_S32(arg1, 0x14c));
                     ((void (*)(void *, uint32_t, void *, void *, int32_t))(intptr_t)READ_S32(arg1, 0x14c))
                         ((uint8_t *)arg1 + 0x128, READ_U8(req, 0xb08), (uint8_t *)req + 0x20, slice_status,
                          force_status);
-                    Rtos_ReleaseMutex(READ_PTR(arg1, 0x170));
-                    Rtos_GetMutex(READ_PTR(arg1, 0x170));
+                    ENC_KMSG("EndEncoding non-gate post-cb14c req=%p", req);
+                    ENC_KMSG("EndEncoding non-gate pre-cb144 req=%p cb=%p",
+                             req, (void *)(intptr_t)READ_S32(arg1, 0x144));
                     ((void (*)(void *, void *, int32_t))(intptr_t)READ_S32(arg1, 0x144))
                         ((uint8_t *)arg1 + 0x128, (uint8_t *)req + 0x20, 0);
-                    Rtos_ReleaseMutex(READ_PTR(arg1, 0x170));
+                    ENC_KMSG("EndEncoding non-gate post-cb144 req=%p", req);
+                    ENC_KMSG("EndEncoding non-gate pre-store req=%p", req);
                     StorePicture((int32_t)(intptr_t)((uint8_t *)arg1 + 0x22c8), req);
+                    ENC_KMSG("EndEncoding non-gate post-store req=%p", req);
+                    ENC_KMSG("EndEncoding non-gate pre-output-trace req=%p", req);
                     handleOutputTraces(arg1, req, (uint8_t)(READ_U8(arg1, 0x3c) - 1U), 3);
+                    ENC_KMSG("EndEncoding non-gate post-output-trace req=%p", req);
                     done_cb = READ_S32(arg1, 0x1aa8);
                     Rtos_ReleaseMutex(READ_PTR(arg1, 0x170));
                     ENC_KMSG("EndEncoding non-gate queued-next-phase req=%p next=%d total=%d rc_bytes=%d skip=%u",
