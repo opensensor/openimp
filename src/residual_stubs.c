@@ -1309,6 +1309,7 @@ int32_t on_encoder_group_data_update(void *arg1, void *arg2)
     uint8_t *group = (uint8_t *)arg1;
     uint8_t *frame = (uint8_t *)arg2;
     if (!group || !frame) return 0;
+    int consumed = 0;
 
     int32_t s3_1 = *(int32_t *)(group + 2 * 4);            /* group->id */
     uint8_t *s1_1 = *(uint8_t **)(group + 0 * 4);          /* group->slots */
@@ -1506,8 +1507,14 @@ int32_t on_encoder_group_data_update(void *arg1, void *arg2)
                     sub_8f5fc_impl();
                     continue;
                 }
+                consumed = 1;
             }
         }
+    }
+
+    if (!consumed) {
+        enc_trace("libimp/ENCX: group_update no-consumer group=%p frame=%p\n", group, frame);
+        return -1;
     }
 
     /* Remember this frame record in the group for the next update. */

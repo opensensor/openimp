@@ -3606,6 +3606,7 @@ label_60234:
 int32_t AL_DPB_AVC_GetRefInfo(char *arg1, void *arg2, void *arg3, int32_t *arg4, int32_t (*arg5)[0x20],
                               int32_t arg6)
 {
+    int32_t *out = (int32_t *)arg3;
     int32_t var_24 = arg6;
     int32_t var_34 = 0;
     int32_t var_38 = 0;
@@ -3624,9 +3625,9 @@ int32_t AL_DPB_AVC_GetRefInfo(char *arg1, void *arg2, void *arg3, int32_t *arg4,
 
     (void)var_24;
 
-    arg4[0x15] = 0xff;
-    arg4[0x25] = 0xff;
-    arg4[0x35] = 0xff;
+    out[0x15] = 0xff;
+    out[0x25] = 0xff;
+    out[0x35] = 0xff;
     v0_1 = *(int32_t *)((uint8_t *)arg2 + 0x10U);
     *((uint8_t *)arg3 + 0x85U) = 0;
     DPB_KMSG("AVC_GetRefInfo entry mode=%d poc=%d poc_l1=%d", v0_1,
@@ -3873,8 +3874,8 @@ int32_t AL_DPB_AVC_GetRefInfo(char *arg1, void *arg2, void *arg3, int32_t *arg4,
                 int32_t v1_4 = *(int32_t *)(v0_6 + 0x14U);
 
                 if (t4_2 == 0 && v1_4 == *(int32_t *)((uint8_t *)arg3 + 8U)) {
-                    arg4[2] = v1_4;
-                    *((uint8_t *)&arg4[5]) = (uint8_t)a0;
+                    out[2] = v1_4;
+                    *((uint8_t *)&out[5]) = (uint8_t)a0;
 
                     {
                         uint32_t t5_3 = (uint32_t)v0_6[2];
@@ -3883,18 +3884,18 @@ int32_t AL_DPB_AVC_GetRefInfo(char *arg1, void *arg2, void *arg3, int32_t *arg4,
                             uint8_t *t4_5 = (uint8_t *)arg1 + t5_3 * 5U;
 
                             if (t4_5 != 0) {
-                                arg4[0x15] = (int32_t)t4_5[4];
+                                out[0x15] = (int32_t)t4_5[4];
                             }
                         }
                     }
 
-                    arg4[4] = 0;
+                    out[4] = 0;
                     t4_2 = 1;
                 }
 
                 if (arg5 == 0 && v1_4 == *(int32_t *)((uint8_t *)arg3 + 0x1cU)) {
-                    *((uint8_t *)&arg4[9]) = (uint8_t)a0;
-                    arg4[6] = *(int32_t *)(v0_6 + 0x14U);
+                    *((uint8_t *)&out[9]) = (uint8_t)a0;
+                    out[6] = *(int32_t *)(v0_6 + 0x14U);
 
                     {
                         uint32_t t3 = (uint32_t)v0_6[2];
@@ -3903,12 +3904,12 @@ int32_t AL_DPB_AVC_GetRefInfo(char *arg1, void *arg2, void *arg3, int32_t *arg4,
                             uint8_t *v1_10 = (uint8_t *)arg1 + t3 * 5U;
 
                             if (v1_10 != 0) {
-                                arg4[0x25] = (int32_t)v1_10[4];
+                                out[0x25] = (int32_t)v1_10[4];
                             }
                         }
                     }
 
-                    arg4[8] = 0;
+                    out[8] = 0;
                     arg5 = (int32_t(*)[0x20])1;
                 }
 
@@ -3985,21 +3986,21 @@ label_70abc:
             uint8_t *v0_41 = (uint8_t *)arg1 + v0_40;
 
             if (v0_41 != (uint8_t *)0xffffff94) {
-                arg4[0x0d] = 0;
-                arg4[0x0a] = *(int32_t *)(v0_41 + 0x80U);
+                out[0x0d] = 0;
+                out[0x0a] = *(int32_t *)(v0_41 + 0x80U);
 
                 {
                     uint32_t v1_22 = (uint32_t)v0_41[0x6e];
 
                     if (v1_22 != 0xffU) {
-                        arg4[0x35] = (int32_t)*(uint8_t *)(arg1 + v1_22 * 5U + 4U);
+                        out[0x35] = (int32_t)*(uint8_t *)(arg1 + v1_22 * 5U + 4U);
                     }
                 }
 
                 {
                     int32_t v0_46 = *(int32_t *)((uint8_t *)s0 + 0x10U);
 
-                    arg4[0x0c] = 0;
+                    out[0x0c] = 0;
 
                     if (v0_46 != 0) {
                         goto label_70b10;
@@ -4066,8 +4067,8 @@ label_709f0:
                     int32_t a0_3 = *(int32_t *)(v0_30 + 0x14U);
 
                     if (a0_3 == *(int32_t *)((uint8_t *)arg3 + 0x1cU)) {
-                        arg4[6] = a0_3;
-                        *((uint8_t *)&arg4[9]) = (uint8_t)v1_17;
+                        out[6] = a0_3;
+                        *((uint8_t *)&out[9]) = (uint8_t)v1_17;
 
                         {
                             uint32_t t3_2 = (uint32_t)v0_30[2];
@@ -4076,12 +4077,12 @@ label_709f0:
                                 uint8_t *a0_8 = (uint8_t *)arg1 + t3_2 * 5U;
 
                                 if (a0_8 != 0) {
-                                    arg4[0x25] = (int32_t)a0_8[4];
+                                    out[0x25] = (int32_t)a0_8[4];
                                 }
                             }
                         }
 
-                        arg4[8] = 0;
+                        out[8] = 0;
                         t3_1 = 1;
                     }
                 }
@@ -4136,18 +4137,18 @@ label_70bec:
             uint8_t *v0_55 = (uint8_t *)arg1 + v0_54;
 
             if (v0_55 != (uint8_t *)0xffffff94) {
-                arg4[0x0d] = 0;
-                arg4[0x0a] = *(int32_t *)(v0_55 + 0x80U);
+                out[0x0d] = 0;
+                out[0x0a] = *(int32_t *)(v0_55 + 0x80U);
 
                 {
                     uint32_t v1_27 = (uint32_t)v0_55[0x6e];
 
                     if (v1_27 != 0xffU) {
-                        arg4[0x35] = (int32_t)*(uint8_t *)(arg1 + v1_27 * 5U + 4U);
+                        out[0x35] = (int32_t)*(uint8_t *)(arg1 + v1_27 * 5U + 4U);
                     }
                 }
 
-                arg4[0x0c] = 0;
+                out[0x0c] = 0;
             } else {
                 __assert("pPic",
                          "/home/user/git/proj/sdk-lv3/src/imp/video/alcodec/lib_buf_mngt/DPB.c",
