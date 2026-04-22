@@ -1280,7 +1280,7 @@ int IMP_ISP_Tuning_SetISPBypass(IMPISPTuningOpsMode enable)
 {
     ISPDevice *isp;
     int32_t destroy_arg;
-    int32_t bypass_mode;
+    int32_t sensor_index;
 
     if (tseries_get_isp(&isp) != 0) {
         return -1;
@@ -1311,26 +1311,34 @@ int IMP_ISP_Tuning_SetISPBypass(IMPISPTuningOpsMode enable)
     }
     kmsg_trace("libimp/ISP: SetISPBypass S_CTRL ISP_PROCESS ok value=%d\n", enable);
 
-    bypass_mode = (enable == 0) ? 1 : 0;
-    if (ioctl(isp->fd, TISP_VIDIOC_CREATE_LINKS, &bypass_mode) != 0) {
-        kmsg_trace("libimp/ISP: SetISPBypass CREATE_LINKS failed arg=%d errno=%d\n",
-                   bypass_mode, errno);
+    sensor_index = -1;
+    if (ioctl(isp->fd, TISP_VIDIOC_GET_SENSOR_INDEX, &sensor_index) != 0 ||
+        sensor_index < 0) {
+        kmsg_trace("libimp/ISP: SetISPBypass GET_SENSOR_INDEX failed errno=%d idx=%d\n",
+                   errno, sensor_index);
         return -1;
     }
-    kmsg_trace("libimp/ISP: SetISPBypass CREATE_LINKS ok arg=%d\n", bypass_mode);
+
+    if (ioctl(isp->fd, TISP_VIDIOC_CREATE_LINKS, &sensor_index) != 0) {
+        kmsg_trace("libimp/ISP: SetISPBypass CREATE_LINKS failed arg=%d errno=%d\n",
+                   sensor_index, errno);
+        return -1;
+    }
+    kmsg_trace("libimp/ISP: SetISPBypass CREATE_LINKS ok arg=%d\n", sensor_index);
 
     if (ioctl(isp->fd, TISP_VIDIOC_ENABLE_LINKS, 0) != 0) {
         kmsg_trace("libimp/ISP: SetISPBypass ENABLE_LINKS failed errno=%d\n", errno);
         return -1;
     }
-    kmsg_trace("libimp/ISP: SetISPBypass ENABLE_LINKS ok arg=%d\n", bypass_mode);
+    kmsg_trace("libimp/ISP: SetISPBypass ENABLE_LINKS ok arg=%d\n", sensor_index);
 
-    /* SetISPBypass reconfigures processing mode, but the later
-     * frame-source-triggered EnsureLinkStreamOn path still needs to replay the
-     * normal stream bring-up edge, including link setup, to match the OEM
-     * on/off/on cycle. */
-    tseries_bypass_link_setup_done = 0;
+    /* Rebuild the graph during bypass reconfiguration, then let the later
+     * EnsureLinkStreamOn replay only the STREAMON edge once the frame channels
+     * are primed. This matches the legacy/userspace path that previously
+     * reached AVPU interrupts without duplicating CREATE/ENABLE. */
+    tseries_bypass_link_setup_done = 1;
     tseries_isp_stream_started = 0;
+    kmsg_trace("libimp/ISP: SetISPBypass rearm-stream-only sensor=%d\n", sensor_index);
 
     return 0;
 }

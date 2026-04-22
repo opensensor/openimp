@@ -932,45 +932,52 @@ static void *frame_pooling_thread(void *arg)
 
         if (!software_mode) {
             int flags;
-            unsigned int ready = 0xffffffffu;
-            int poll_ret;
+            fd_set rfds;
+            struct timeval tv;
+            int select_ret;
 
             if (poll_count <= 2) {
-                fs_thread_trace("libimp/FS: thread-mark ch=%d step=poll-frame iter=%d fd=%d state=%d errno=%d\n",
+                fs_thread_trace("libimp/FS: thread-mark ch=%d step=select iter=%d fd=%d state=%d errno=%d\n",
                                 chn, poll_count, ctx->fd, ch_state, errno);
-                dprintf(2, "FSDBG ch=%d step=before_poll_frame iter=%d fd=%d state=%d\n",
+                dprintf(2, "FSDBG ch=%d step=before_select iter=%d fd=%d state=%d\n",
                         chn, poll_count, ctx->fd, ch_state);
             }
 
+            FD_ZERO(&rfds);
+            FD_SET(ctx->fd, &rfds);
+            tv.tv_sec = 0;
+            tv.tv_usec = 25000;
+
             errno = 0;
-            fs_trace("libimp/FS: pooling poll-enter ch=%d fd=%d\n", chn, ctx->fd);
-            poll_ret = fs_poll_frame(ctx->fd, &ready);
-            fs_trace("libimp/FS: pooling poll-exit ch=%d fd=%d ret=%d ready=%u errno=%d\n",
-                     chn, ctx->fd, poll_ret, ready, errno);
-            if (poll_ret == -2) {
-                continue;
-            }
-            if (poll_ret < 0) {
+            fs_trace("libimp/FS: pooling select-enter ch=%d fd=%d iter=%d\n",
+                     chn, ctx->fd, poll_count);
+            select_ret = select(ctx->fd + 1, &rfds, NULL, NULL, &tv);
+            fs_trace("libimp/FS: pooling select-exit ch=%d fd=%d iter=%d rc=%d errno=%d\n",
+                     chn, ctx->fd, poll_count, select_ret, errno);
+            if (select_ret < 0) {
+                if (errno == EINTR) {
+                    continue;
+                }
                 no_frame_cycles++;
                 if (no_frame_cycles <= 5 || (no_frame_cycles % 50) == 0) {
-                    fs_trace("libimp/FS: pooling poll-fail ch=%d fd=%d idle=%d errno=%d\n",
+                    fs_trace("libimp/FS: pooling select-fail ch=%d fd=%d idle=%d errno=%d\n",
                              chn, ctx->fd, no_frame_cycles, errno);
                 }
                 usleep(1000);
                 continue;
             }
-            if (ready == 0) {
+            if (select_ret == 0) {
                 no_frame_cycles++;
                 if (no_frame_cycles <= 5 || (no_frame_cycles % 50) == 0) {
-                    fs_trace("libimp/FS: pooling poll-empty ch=%d fd=%d idle=%d\n",
+                    fs_trace("libimp/FS: pooling select-timeout ch=%d fd=%d idle=%d\n",
                              chn, ctx->fd, no_frame_cycles);
                 }
                 usleep(1000);
                 continue;
             }
 
-            fs_trace("libimp/FS: pooling dq-path ch=%d fd=%d mode=poll-frame-then-dq ready=%u\n",
-                     chn, ctx->fd, ready);
+            fs_trace("libimp/FS: pooling dq-path ch=%d fd=%d mode=select-then-dq\n",
+                     chn, ctx->fd);
 
             flags = fcntl(ctx->fd, F_GETFL, 0);
             if (flags >= 0 && (flags & O_NONBLOCK) == 0) {
@@ -1743,13 +1750,12 @@ int IMP_FrameSource_EnableChn(int chnNum)
     memcpy(vbm_fmt + 0x08, &ctx->attr.pixFmt, sizeof(int));
     memcpy(vbm_fmt + 0x0c, &kernel_sizeimage, sizeof(int));
     vbm_count = ctx->attr.nrVBs;
-    /* OEM T31 path honors the channel's requested VB count here.
-     * Raptor configures nrVBs=2 and the stock driver/libimp sequence
-     * uses REQBUFS(2). Forcing 3 changes both the VBM pool geometry and
-     * the frame-channel REQBUFS depth, which is a concrete divergence from
-     * the working path. Keep a minimum of 2 so invalid/zero configs still
-     * produce a usable queue, but do not silently inflate 2 -> 3. */
-    if (vbm_count < 2) vbm_count = 2;
+    /* The earlier AVPU-positive runs were only stable with triple buffering.
+     * Two buffers leave no slack between the first capture completion and the
+     * first recycle path, which matches the current "readable fd, blocking
+     * first DQBUF" failure mode. Keep at least three kernel/VBM slots so the
+     * frame channel has one queued, one completing, and one recyclable buffer. */
+    if (vbm_count < 3) vbm_count = 3;
     memcpy(vbm_fmt + 0x34, &vbm_count, sizeof(int));
 
     if (VBMCreatePool(chnNum, vbm_fmt, g_fs_vbm_ops, gFrameSource) < 0) {
