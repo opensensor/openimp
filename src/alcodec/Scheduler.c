@@ -2784,7 +2784,7 @@ int32_t AL_EncChannel_DeInit(void *arg1)
 int32_t AL_EncChannel_ListModulesNeeded(void *arg1, void *arg2)
 {
     int32_t lane;
-    StaticFifoCompat *fifo;
+    StaticFifoCompat *fifo_base;
 
     ENC_KMSG("ListModulesNeeded entry chctx=%p freeze=%u out_count=%d",
              arg1, (unsigned)READ_U8(arg1, 0x177), READ_S32(arg2, 0x80));
@@ -2794,8 +2794,9 @@ int32_t AL_EncChannel_ListModulesNeeded(void *arg1, void *arg2)
     }
 
     Rtos_GetMutex(READ_PTR(arg1, 0x170));
-    fifo = (StaticFifoCompat *)((uint8_t *)arg1 + 0x129b4);
+    fifo_base = (StaticFifoCompat *)((uint8_t *)arg1 + 0x129b4);
     for (lane = 0; lane != 2; ++lane) {
+        StaticFifoCompat *fifo = (StaticFifoCompat *)((uint8_t *)fifo_base + lane * 0x5c);
         int32_t *req = (int32_t *)(intptr_t)StaticFifo_Front(fifo);
 
         ENC_KMSG("ListModulesNeeded lane=%d fifo=%p front=%p read=%d write=%d cap=%d",
@@ -3074,7 +3075,6 @@ int32_t AL_EncChannel_ListModulesNeeded(void *arg1, void *arg2)
         } else {
             ENC_KMSG("ListModulesNeeded lane=%d done out_count=%d", lane, READ_S32(arg2, 0x80));
         }
-        fifo = (StaticFifoCompat *)((uint8_t *)fifo + 0x5c);
     }
 
     Rtos_ReleaseMutex(READ_PTR(arg1, 0x170));

@@ -253,18 +253,20 @@ int32_t UpdateCommand(void *arg1, void *arg2, void *arg3, int32_t arg4)
         if (blocks == 0)
             blocks = 1;
         if (lcu_w <= 1U || lcu_h <= 1U) {
-            uint32_t pic_w_8 = READ_U16(slice, 0x0a);
-            uint32_t pic_h_8 = READ_U16(slice, 0x0c);
-            uint32_t lcu_shift = READ_U32(slice, 4) & 3U;
-            uint32_t lcu_span = 1U << lcu_shift;
+            uint32_t pic_w = READ_U16(ch, 4);
+            uint32_t pic_h = READ_U16(ch, 6);
+            uint32_t lcu_shift = READ_U8(ch, 0x4e) & 0x1fU;
+            uint32_t lcu_span;
 
-            if (lcu_span == 0U)
-                lcu_span = 1U;
+            if (lcu_shift == 0U || lcu_shift > 8U)
+                lcu_shift = 4U;
 
-            if (pic_w_8 != 0U)
-                lcu_w = ((pic_w_8 << 3) + lcu_span - 1U) >> lcu_shift;
-            if (pic_h_8 != 0U)
-                lcu_h = ((pic_h_8 << 3) + lcu_span - 1U) >> lcu_shift;
+            lcu_span = 1U << lcu_shift;
+
+            if (pic_w != 0U)
+                lcu_w = (pic_w + lcu_span - 1U) >> lcu_shift;
+            if (pic_h != 0U)
+                lcu_h = (pic_h + lcu_span - 1U) >> lcu_shift;
         }
         if (lcu_w == 0)
             lcu_w = (READ_U16(ch, 4) + 15U) >> 4;
@@ -304,8 +306,6 @@ int32_t UpdateCommand(void *arg1, void *arg2, void *arg3, int32_t arg4)
          * can build a usable command list from the corrected per-core slice. */
         if (READ_U16(slice, 0x7a) == 0)
             WRITE_U16(slice, 0x7a, (READ_U16(ch, 4) + 7U) >> 3);
-        if (READ_U16(slice, 0x7c) == 0)
-            WRITE_U16(slice, 0x7c, (uint16_t)lcu_w);
         if (READ_U16(slice, 0x58) == 0)
             WRITE_U16(slice, 0x58, 16);
         if (READ_U16(slice, 0x5a) == 0)

@@ -453,6 +453,24 @@ int32_t SliceParamToCmdRegsEnc1(char *arg1, int32_t *arg2, void *arg3, ...)
                  0x15, "SliceParamToCmdRegsEnc1", &_gp);
     }
 
+    if (READ_U16(arg1, 0x108) <= 1U || READ_U16(arg1, 0x10a) <= 1U) {
+        uint32_t pic_w8 = READ_U16(arg1, 0x0a);
+        uint32_t pic_h8 = READ_U16(arg1, 0x0c);
+        uint32_t lcu_shift = READ_U8(arg1, 3) & 0x1fU;
+        uint32_t lcu_span;
+
+        if (lcu_shift == 0U || lcu_shift > 8U)
+            lcu_shift = 4U;
+
+        lcu_span = 1U << lcu_shift;
+        if (READ_U16(arg1, 0x108) <= 1U && pic_w8 != 0U)
+            WRITE_U16(arg1, 0x108, (uint16_t)(((pic_w8 << 3) + lcu_span - 1U) >> lcu_shift));
+        if (READ_U16(arg1, 0x10a) <= 1U && pic_h8 != 0U)
+            WRITE_U16(arg1, 0x10a, (uint16_t)(((pic_h8 << 3) + lcu_span - 1U) >> lcu_shift));
+        if (READ_U16(arg1, 0x7c) <= 1U && pic_h8 != 0U)
+            WRITE_U16(arg1, 0x7c, (uint16_t)pic_h8);
+    }
+
     fprintf(stderr,
             "libimp/SLP: enc1-pack entry sp=%p cmd=%p meta=%p type=%u dim=%ux%u lcu=%ux%u 7a=%u 7c=%u a8=%u aa=%u ac=%u\n",
             arg1, arg2, arg3,
@@ -777,9 +795,11 @@ int32_t SliceParamToCmdRegsEnc1(char *arg1, int32_t *arg2, void *arg3, ...)
              arg2,
              (unsigned)arg2[0], (unsigned)arg2[1], (unsigned)arg2[2], (unsigned)arg2[3],
              (unsigned)arg2[0x18], (unsigned)arg2[0x19], (unsigned)arg2[0x1a]);
-    __assert("pSP->LcuWidth != 0",
-             "/home/user/git/proj/sdk-lv3/src/imp/video/alcodec/lib_scheduler_enc/EncSliceParam.c",
-             0x57, "SliceParamToCmdRegsEnc1", &_gp);
+    if (READ_U16(arg1, 0x108) == 0) {
+        __assert("pSP->LcuWidth != 0",
+                 "/home/user/git/proj/sdk-lv3/src/imp/video/alcodec/lib_scheduler_enc/EncSliceParam.c",
+                 0x57, "SliceParamToCmdRegsEnc1", &_gp);
+    }
     return SliceParamToCmdRegsEnc2(arg1, arg2);
 }
 
