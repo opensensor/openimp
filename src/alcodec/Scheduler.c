@@ -70,6 +70,7 @@ static void PrepareSourceConfigBeforeLaunch(AL_EncCoreCtxCompat *core, void *ch,
     uint32_t stream_part;
     uint32_t hdr_off;
     uint32_t stream_budget;
+    uint32_t core_base;
 
     if (core == NULL || ch == NULL || req == NULL || cmd_regs == NULL) {
         return;
@@ -89,6 +90,7 @@ static void PrepareSourceConfigBeforeLaunch(AL_EncCoreCtxCompat *core, void *ch,
     stream_part = cmd_regs[0x31];
     hdr_off = cmd_regs[0x32];
     stream_budget = cmd_regs[0x33];
+    core_base = ((uint32_t)core->core_id) << 9;
 
     if (width == 0 || height == 0 || src_y == 0 || src_uv == 0 || ep1 == 0) {
         ENC_KMSG("encode1 source-config skip core=%u w=%u h=%u srcY=0x%x srcUV=0x%x ep1=0x%x",
@@ -100,8 +102,7 @@ static void PrepareSourceConfigBeforeLaunch(AL_EncCoreCtxCompat *core, void *ch,
         wpp = ep1 + (uint32_t)AL_GetAllocSizeEP1();
     }
 
-    ip->vtable->WriteRegister(ip, 0x85f4, 1);
-    ip->vtable->WriteRegister(ip, 0x85f0, 1);
+    ip->vtable->WriteRegister(ip, core_base + 0x83f4, 1);
     ip->vtable->WriteRegister(ip, 0x8400, 0x00000131U);
     ip->vtable->WriteRegister(ip, 0x8404, (((width - 1U) & 0xffffU) << 16) | ((height - 1U) & 0xffffU));
     ip->vtable->WriteRegister(ip, 0x8408, 0x00010001U);
@@ -113,8 +114,6 @@ static void PrepareSourceConfigBeforeLaunch(AL_EncCoreCtxCompat *core, void *ch,
     ip->vtable->WriteRegister(ip, 0x8420, stream_part);
     ip->vtable->WriteRegister(ip, 0x8424, hdr_off);
     ip->vtable->WriteRegister(ip, 0x8428, stream_budget);
-    ip->vtable->WriteRegister(ip, 0x85e4, 1);
-
     ENC_KMSG("encode1 source-config core=%u srcY=0x%x srcUV=0x%x ep1=0x%x wpp=0x%x part=0x%x hdr=0x%x budget=0x%x",
              (unsigned)core->core_id, src_y, src_uv, ep1, wpp, stream_part, hdr_off, stream_budget);
 }
@@ -3405,7 +3404,6 @@ int32_t encode1(void *arg1)
                  req18_24 ? READ_S32(req18_24, 0x434) : 0,
                  req18_24 ? READ_PTR(req18_24, 0x43c) : NULL);
 
-        PrepareSourceConfigBeforeLaunch((AL_EncCoreCtxCompat *)enc1, ch, req, (uint32_t *)(intptr_t)cmd1);
         AL_EncCore_Encode1(enc1, cmd2, cmd1, (READ_U8(req, 0x182) != 0U) ? cmd2 : 0,
                            (READ_U8(req, 0x182) != 0U) ? cmd1 : 0);
     }

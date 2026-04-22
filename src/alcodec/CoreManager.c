@@ -86,13 +86,22 @@ static const uint64_t AL_ENCJPEG_CMD = 0x0b000000000000ULL;
 static int32_t StartEnc1WithCommandList_isra_25(AL_EncCoreCtxCompat *arg1, uint8_t *arg2, int32_t arg3, int32_t arg4)
 {
     AL_IpCtrl *a0 = arg1->ip_ctrl;
+    uint32_t core = (uint32_t)(*arg2);
+    uint32_t base = core << 9;
+    uint32_t status;
 
-    a0->vtable->WriteRegister(a0, ((uint32_t)(*arg2) << 9) + 0x83e0, (uint32_t)arg3);
+    IMP_LOG_INFO("AVPU", "startenc core=%u write 0x%04x=0x%08x 0x%04x=0x%08x",
+                 core, base + 0x83e0, (uint32_t)arg3, base + 0x83e4, (uint32_t)arg4);
+    a0->vtable->WriteRegister(a0, base + 0x83e0, (uint32_t)arg3);
 
     {
         AL_IpCtrl *a0_1 = arg1->ip_ctrl;
 
-        return a0_1->vtable->WriteRegister(a0_1, ((uint32_t)(*arg2) << 9) + 0x83e4, (uint32_t)arg4);
+        int32_t rc = a0_1->vtable->WriteRegister(a0_1, base + 0x83e4, (uint32_t)arg4);
+
+        status = (uint32_t)a0_1->vtable->ReadRegister(a0_1, base + 0x83f8);
+        IMP_LOG_INFO("AVPU", "startenc core=%u post reg83f8=0x%08x rc=%d", core, status, rc);
+        return rc;
     }
 }
 
@@ -173,7 +182,11 @@ int32_t AL_EncCore_TurnOffGC(AL_EncCoreCtxCompat *arg1, int32_t arg2)
 
 int32_t IsEnc1AlreadyRunning(AL_IpCtrl *arg1, int32_t arg2)
 {
-    if ((arg1->vtable->ReadRegister(arg1, (arg2 << 9) + 0x83f8) & 2) == 0)
+    uint32_t reg = (uint32_t)arg1->vtable->ReadRegister(arg1, (arg2 << 9) + 0x83f8);
+
+    IMP_LOG_INFO("AVPU", "enc1-busy core=%d reg83f8=0x%08x busy=%u",
+                 arg2, reg, (unsigned)((reg & 2U) != 0U));
+    if ((reg & 2U) == 0)
         return 0;
 
     return IsEnc1AlreadyRunning((AL_IpCtrl *)(intptr_t)__assert("0",
@@ -183,7 +196,11 @@ int32_t IsEnc1AlreadyRunning(AL_IpCtrl *arg1, int32_t arg2)
 
 int32_t IsEnc2AlreadyRunning(AL_IpCtrl *arg1, int32_t arg2)
 {
-    if ((arg1->vtable->ReadRegister(arg1, (arg2 << 9) + 0x83f8) & 0x10) == 0)
+    uint32_t reg = (uint32_t)arg1->vtable->ReadRegister(arg1, (arg2 << 9) + 0x83f8);
+
+    IMP_LOG_INFO("AVPU", "enc2-busy core=%d reg83f8=0x%08x busy=%u",
+                 arg2, reg, (unsigned)((reg & 0x10U) != 0U));
+    if ((reg & 0x10U) == 0)
         return 0;
 
     return IsEnc2AlreadyRunning((AL_IpCtrl *)(intptr_t)__assert("0",
