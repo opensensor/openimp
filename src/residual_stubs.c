@@ -252,10 +252,28 @@ int32_t UpdateCommand(void *arg1, void *arg2, void *arg3, int32_t arg4)
 
         if (blocks == 0)
             blocks = 1;
+        if (lcu_w <= 1U || lcu_h <= 1U) {
+            uint32_t pic_w_8 = READ_U16(slice, 0x0a);
+            uint32_t pic_h_8 = READ_U16(slice, 0x0c);
+            uint32_t lcu_shift = READ_U32(slice, 4) & 3U;
+            uint32_t lcu_span = 1U << lcu_shift;
+
+            if (lcu_span == 0U)
+                lcu_span = 1U;
+
+            if (pic_w_8 != 0U)
+                lcu_w = ((pic_w_8 << 3) + lcu_span - 1U) >> lcu_shift;
+            if (pic_h_8 != 0U)
+                lcu_h = ((pic_h_8 << 3) + lcu_span - 1U) >> lcu_shift;
+        }
         if (lcu_w == 0)
             lcu_w = (READ_U16(ch, 4) + 15U) >> 4;
         if (lcu_h == 0)
             lcu_h = (READ_U16(ch, 6) + 15U) >> 4;
+        if (READ_U16(slice, 0x108) <= 1U)
+            WRITE_U16(slice, 0x108, (uint16_t)lcu_w);
+        if (READ_U16(slice, 0x10a) <= 1U)
+            WRITE_U16(slice, 0x10a, (uint16_t)lcu_h);
 
         start_lcu_y = (core * lcu_h) / blocks;
         end_lcu_y = ((core + 1U) * lcu_h) / blocks;

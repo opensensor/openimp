@@ -1,6 +1,9 @@
 #include <stdint.h>
 #include <string.h>
 #include <stdio.h>
+#include <stdarg.h>
+#include <fcntl.h>
+#include <unistd.h>
 
 extern char _gp;
 extern int32_t __assert(const char *expression, const char *file, int32_t line,
@@ -20,6 +23,28 @@ int32_t CtrlRegsToJpegParam(int32_t *arg1, char *arg2); /* forward decl, ported 
 #define WRITE_U16(base, off, val) (*(uint16_t *)((uint8_t *)(base) + (off)) = (uint16_t)(val))
 #define WRITE_U32(base, off, val) (*(uint32_t *)((uint8_t *)(base) + (off)) = (uint32_t)(val))
 #define WRITE_S32(base, off, val) (*(int32_t *)((uint8_t *)(base) + (off)) = (int32_t)(val))
+
+static void slp_kmsg(const char *fmt, ...)
+{
+    int fd;
+    char buf[256];
+    va_list ap;
+    int len;
+
+    fd = open("/dev/kmsg", O_WRONLY | O_CLOEXEC);
+    if (fd < 0)
+        return;
+
+    va_start(ap, fmt);
+    len = vsnprintf(buf, sizeof(buf), fmt, ap);
+    va_end(ap);
+    if (len > 0) {
+        if (len >= (int)sizeof(buf))
+            len = (int)sizeof(buf) - 1;
+        write(fd, buf, (size_t)len);
+    }
+    close(fd);
+}
 
 static char g_dummy_elf_header;
 
@@ -437,6 +462,14 @@ int32_t SliceParamToCmdRegsEnc1(char *arg1, int32_t *arg2, void *arg3, ...)
             (unsigned)READ_U16(arg1, 0x7a), (unsigned)READ_U16(arg1, 0x7c),
             (unsigned)READ_U16(arg1, 0xa8), (unsigned)READ_U16(arg1, 0xaa),
             (unsigned)READ_U8(arg1, 0xac));
+    slp_kmsg("libimp/SLP: entry sp=%p cmd=%p meta=%p type=%u dim=%ux%u lcu=%ux%u 7a=%u 7c=%u a8=%u aa=%u ac=%u\n",
+             arg1, arg2, arg3,
+             (unsigned)READ_U8(arg1, 0x0f),
+             (unsigned)READ_U16(arg1, 0x0a), (unsigned)READ_U16(arg1, 0x0c),
+             (unsigned)READ_U16(arg1, 0x108), (unsigned)READ_U16(arg1, 0x10a),
+             (unsigned)READ_U16(arg1, 0x7a), (unsigned)READ_U16(arg1, 0x7c),
+             (unsigned)READ_U16(arg1, 0xa8), (unsigned)READ_U16(arg1, 0xaa),
+             (unsigned)READ_U8(arg1, 0xac));
 
     v1_1 = *arg2;
     *arg2 = (v1_1 & 0xffffff88) | 0x11;
@@ -515,6 +548,12 @@ int32_t SliceParamToCmdRegsEnc1(char *arg1, int32_t *arg2, void *arg3, ...)
     s0_1 = READ_U8(arg1, 0x108);
     arg2[4] = ((((uint32_t)READ_U8(arg1, 0x3a) & 3U) << 0x14) | (arg2[4] & 0xffcfffff));
     arg2[4] = (arg2[4] & 0xfff7ffffU) | ((uint32_t)READ_U8(arg1, 0x39) << 0x13);
+    slp_kmsg("libimp/SLP: pre-lcu cmd=%p w0=%08x w1=%08x w2=%08x w3=%08x w4=%08x lcu=%u/%u start=%d end=%d\n",
+             arg2,
+             (unsigned)arg2[0], (unsigned)arg2[1], (unsigned)arg2[2],
+             (unsigned)arg2[3], (unsigned)arg2[4],
+             (unsigned)READ_U16(arg1, 0x108), (unsigned)READ_U16(arg1, 0x10a),
+             READ_S32(arg1, 0x3c), READ_S32(arg1, 0x44));
     if (s0_1 != 0) {
         a3_21 = READ_S32(arg1, 0x3c);
         if (s0_1 == 0) {
@@ -651,6 +690,11 @@ int32_t SliceParamToCmdRegsEnc1(char *arg1, int32_t *arg2, void *arg3, ...)
                       (((((t1_24 >> 3) - 1U) & 0x3ffU) << 0xc))) &
                      0xbfffffffU;
         arg2[0x12] |= v0_96 << 0x1e;
+        slp_kmsg("libimp/SLP: post-refpack cmd=%p w0c=%08x w0d=%08x w0e=%08x w0f=%08x w10=%08x w11=%08x w12=%08x s7_5=%u\n",
+                 arg2,
+                 (unsigned)arg2[0xc], (unsigned)arg2[0xd], (unsigned)arg2[0xe],
+                 (unsigned)arg2[0xf], (unsigned)arg2[0x10], (unsigned)arg2[0x11],
+                 (unsigned)arg2[0x12], (unsigned)s7_5);
         if (s7_5 != 0) {
             t4_12 = ((((((uint32_t)READ_U8(arg1, 0xc6) - 1U) & 0x3fU) | ((uint32_t)arg2[0x14] & 0xffffffc0U)) &
                        0xffff003fU) |
@@ -715,6 +759,10 @@ int32_t SliceParamToCmdRegsEnc1(char *arg1, int32_t *arg2, void *arg3, ...)
                     arg2,
                     (unsigned)arg2[0], (unsigned)arg2[1], (unsigned)arg2[2], (unsigned)arg2[3],
                     (unsigned)arg2[0x18], (unsigned)arg2[0x19], (unsigned)arg2[0x1a], (unsigned)arg2[0x6f]);
+            slp_kmsg("libimp/SLP: exit-full cmd=%p w0=%08x w1=%08x w2=%08x w3=%08x w18=%08x w19=%08x w1a=%08x w6f=%08x\n",
+                     arg2,
+                     (unsigned)arg2[0], (unsigned)arg2[1], (unsigned)arg2[2], (unsigned)arg2[3],
+                     (unsigned)arg2[0x18], (unsigned)arg2[0x19], (unsigned)arg2[0x1a], (unsigned)arg2[0x6f]);
             arg2[0x6f] = result;
             return result;
         }
@@ -725,6 +773,10 @@ int32_t SliceParamToCmdRegsEnc1(char *arg1, int32_t *arg2, void *arg3, ...)
             arg2,
             (unsigned)arg2[0], (unsigned)arg2[1], (unsigned)arg2[2], (unsigned)arg2[3],
             (unsigned)arg2[0x18], (unsigned)arg2[0x19], (unsigned)arg2[0x1a]);
+    slp_kmsg("libimp/SLP: exit-basic cmd=%p w0=%08x w1=%08x w2=%08x w3=%08x w18=%08x w19=%08x w1a=%08x\n",
+             arg2,
+             (unsigned)arg2[0], (unsigned)arg2[1], (unsigned)arg2[2], (unsigned)arg2[3],
+             (unsigned)arg2[0x18], (unsigned)arg2[0x19], (unsigned)arg2[0x1a]);
     __assert("pSP->LcuWidth != 0",
              "/home/user/git/proj/sdk-lv3/src/imp/video/alcodec/lib_scheduler_enc/EncSliceParam.c",
              0x57, "SliceParamToCmdRegsEnc1", &_gp);
