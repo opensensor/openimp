@@ -1909,8 +1909,7 @@ int32_t findCurCoreSlice(void *arg1, uint8_t arg2, uint8_t arg3)
     return 0;
 }
 
-int32_t GetWPPOrSliceSizeOffset(void *arg1, void *arg2, int32_t arg3, int32_t arg4,
-                                void *arg5); /* forward decl, ported by T<N> later */
+int32_t GetWPPOrSliceSizeOffset(void *arg1, void *arg2, int32_t arg3, int32_t arg4); /* forward decl, ported by T<N> later */
 int32_t GetSliceSizeOffset(void *arg1, void *arg2, int32_t arg3, int32_t arg4,
                            void *arg5, int32_t arg6, int32_t arg7); /* forward decl */
 int32_t GetWPPOffset(void *arg1, void *arg2, int32_t arg3, int32_t arg4,
@@ -3160,6 +3159,87 @@ int32_t encode1(void *arg1)
     UpdateCommand(ch, req, (uint8_t *)req + 0x170, 0);
     ENC_KMSG("encode1 post-UpdateCommand req=%p cmd318=%p cmd1[0]=0x%x",
              req, READ_PTR(req, 0x318), READ_S32(req, 0xa78));
+    {
+        uint8_t *slice = (uint8_t *)req + 0x170;
+        void *src_meta = READ_PTR(req, 0x318);
+        int32_t slice_idx = 0;
+
+        ENC_KMSG("encode1 materialize-entry req=%p slice=%p meta=%p cores=%u",
+                 req, slice, src_meta, (unsigned)READ_U8(ch, 0x3c));
+        for (core = 0; core < (int32_t)READ_U8(ch, 0x3c); ++core) {
+            uint8_t *cmd_regs = (uint8_t *)(intptr_t)READ_S32(req, 0xa78 + core * 4);
+            int32_t stream_off = 0;
+            int32_t stream_avail = 0;
+            int32_t slice_off = 0;
+
+            if (cmd_regs == NULL) {
+                continue;
+            }
+
+            memset(cmd_regs, 0, 0x200);
+
+            if (src_meta != NULL) {
+                stream_off = READ_S32(src_meta, 0x14);
+                stream_avail = READ_S32(src_meta, 0x10) - stream_off;
+                if (stream_avail < 0) {
+                    stream_avail = 0;
+                }
+                stream_avail &= ~0x1f;
+            }
+
+            ENC_KMSG("encode1 materialize-core core=%d cmd=%p meta10=%08x meta14=%08x",
+                     core, cmd_regs,
+                     src_meta ? READ_S32(src_meta, 0x10) : 0,
+                     src_meta ? READ_S32(src_meta, 0x14) : 0);
+            slice_off = GetWPPOrSliceSizeOffset((uint8_t *)ch, slice, core, (uint8_t)slice_idx);
+            ENC_KMSG("encode1 materialize-off core=%d cmd=%p slice_off=%d", core, cmd_regs, slice_off);
+
+            WRITE_S32(cmd_regs, 0x80, READ_S32(req, 0x298));
+            WRITE_S32(cmd_regs, 0x84, READ_S32(req, 0x29c));
+            WRITE_S32(cmd_regs, 0x88, (READ_S32(cmd_regs, 0x88) & 0xfffc0000) | (READ_S32(req, 0x2a4) & 0x3ffff));
+            WRITE_S32(cmd_regs, 0x88, (READ_S32(cmd_regs, 0x88) & 0x7fffffff) | ((READ_S32(req, 0x2a0) & 1) << 31));
+            WRITE_S32(cmd_regs, 0x88, (READ_S32(cmd_regs, 0x88) & 0x87ffffff) | ((READ_U8(req, 0x2a8) & 0x7) << 27));
+            WRITE_S32(cmd_regs, 0x88, (READ_S32(cmd_regs, 0x88) & 0xf807ffff) | (READ_U8(req, 0x2a9) << 19));
+            WRITE_S32(cmd_regs, 0x8c, READ_S32(req, 0x2b4));
+            WRITE_S32(cmd_regs, 0x90, READ_S32(req, 0x2e0));
+            WRITE_S32(cmd_regs, 0x94, READ_S32(req, 0x2e4));
+            WRITE_S32(cmd_regs, 0x98, (READ_S32(cmd_regs, 0x98) & 0xfffc0000) | (READ_S32(req, 0x310) & 0x3ffff));
+            WRITE_S32(cmd_regs, 0x98, (READ_S32(cmd_regs, 0x98) & 0x7fffffff) | ((READ_U8(req, 0x30c) & 1) << 31));
+            WRITE_S32(cmd_regs, 0x98, (READ_S32(cmd_regs, 0x98) & 0xf807ffff) | (READ_U8(req, 0x315) << 19));
+            WRITE_S32(cmd_regs, 0x98, (READ_S32(cmd_regs, 0x98) & 0x8fffffff) | ((READ_U8(req, 0x314) & 0x7) << 28));
+            WRITE_S32(cmd_regs, 0x9c, READ_S32(req, 0x2fc));
+            WRITE_S32(cmd_regs, 0xa0, READ_S32(req, 0x2c0));
+            WRITE_S32(cmd_regs, 0xa4, READ_S32(req, 0x2c4));
+            WRITE_S32(cmd_regs, 0xa8, READ_S32(req, 0x2d0));
+            WRITE_S32(cmd_regs, 0xac, READ_S32(req, 0x2d4));
+            if (READ_S32(req, 0x2f0) != 0) {
+                WRITE_S32(cmd_regs, 0xb0, READ_S32(req, 0x2f0) + 0x100);
+            }
+            WRITE_S32(cmd_regs, 0xb4, READ_S32(req, 0x300));
+            WRITE_S32(cmd_regs, 0xb8, READ_S32(req, 0x2f4) + 0x100);
+            WRITE_S32(cmd_regs, 0xbc, READ_S32(req, 0x2f8) + slice_off);
+            WRITE_S32(cmd_regs, 0xc0, src_meta ? READ_S32(src_meta, 0x0c) : 0);
+            WRITE_S32(cmd_regs, 0xc4, src_meta ? READ_S32(src_meta, 0x10) : 0);
+            WRITE_S32(cmd_regs, 0xc8, src_meta ? stream_off : 0);
+            WRITE_S32(cmd_regs, 0xcc, stream_avail);
+            WRITE_S32(cmd_regs, 0xd0, READ_S32(req, 0x304));
+            WRITE_S32(cmd_regs, 0xd4, READ_S32(req, 0x308));
+            WRITE_S32(cmd_regs, 0xd8, 0);
+            WRITE_S32(cmd_regs, 0xdc, READ_S32(req, 0x2e8));
+            WRITE_S32(cmd_regs, 0xe0, READ_S32(req, 0x2c8));
+            WRITE_S32(cmd_regs, 0xe4, READ_S32(req, 0x2d8));
+
+            ENC_KMSG("encode1 materialize-prepack core=%d cmd=%p c0=%08x c4=%08x c8=%08x cc=%08x",
+                     core, cmd_regs,
+                     READ_S32(cmd_regs, 0xc0), READ_S32(cmd_regs, 0xc4),
+                     READ_S32(cmd_regs, 0xc8), READ_S32(cmd_regs, 0xcc));
+            SliceParamToCmdRegsEnc1(slice, cmd_regs, (uint8_t *)req + 0x298, READ_U8(ch, 0x4f));
+            ENC_KMSG("encode1 materialized core=%d cmd=%p slice_off=%d stream_off=%d stream_avail=%d w0=%08x w1=%08x w2=%08x w3=%08x",
+                     core, cmd_regs, slice_off, stream_off, stream_avail,
+                     READ_S32(cmd_regs, 0x00), READ_S32(cmd_regs, 0x04),
+                     READ_S32(cmd_regs, 0x08), READ_S32(cmd_regs, 0x0c));
+        }
+    }
     ENC_KMSG("encode1 pre-handleInputTraces req=%p", req);
     handleInputTraces(ch, req, (uint8_t *)req + 0x170, 0);
     ENC_KMSG("encode1 post-handleInputTraces req=%p", req);

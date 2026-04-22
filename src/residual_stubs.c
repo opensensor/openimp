@@ -337,36 +337,23 @@ int32_t UpdateCommand(void *arg1, void *arg2, void *arg3, int32_t arg4)
                     READ_S32(req, 0x2a4), READ_S32(req, 0x2b4), READ_S32(req, 0x2e0),
                     READ_S32(req, 0x2f4), READ_S32(req, 0x304), READ_S32(req, 0x308));
 
-        /* OEM UpdateCommand does not reject the slice on these translated
-         * fields being zero. The earlier stub-side guard prevented command-list
-         * population entirely, which matches the observed "launch succeeds,
-         * AVPU never does useful work" failure mode. Keep only the hard NULL
-         * guard and let SliceParamToCmdRegsEnc1 consume the slice as-is. */
-        if (src_meta == NULL || READ_U16(slice, 0x108) == 0 || READ_U16(slice, 0x10a) == 0) {
-            stub_kmsg("libimp/STUB: UpdateCommand skip core=%u meta=%p lcu108=%u lcu10a=%u",
-                      core, src_meta, (unsigned)READ_U16(slice, 0x108),
-                      (unsigned)READ_U16(slice, 0x10a));
-            stub_stderr("libimp/STUB: UpdateCommand skip core=%u meta=%p lcu108=%u lcu10a=%u",
-                        core, src_meta, (unsigned)READ_U16(slice, 0x108),
-                        (unsigned)READ_U16(slice, 0x10a));
-            continue;
-        }
-
-        memset(cmd_regs, 0, 0x200);
-        SliceParamToCmdRegsEnc1(slice, cmd_regs, src_meta);
         stub_kmsg("libimp/STUB: UpdateCommand post core=%u cmd=%p "
-                  "w0=0x%08x w1=0x%08x w2=0x%08x w3=0x%08x w0c=0x%08x w10=0x%08x "
-                  "w12=0x%08x w18=0x%08x w19=0x%08x w1a=0x%08x w64=0x%08x w65=0x%08x",
+                  "slice_08=%u start=%d end=%d span=%u 7a=%u 7c=%u a8=%u aa=%u ec=%u ee=%u fc=%u "
+                  "cmdw0=0x%08x cmdw1=0x%08x cmdw2=0x%08x cmdw3=0x%08x",
                   core, cmd_regs,
-                  (unsigned)cmd_regs[0], (unsigned)cmd_regs[1], (unsigned)cmd_regs[2],
-                  (unsigned)cmd_regs[3], (unsigned)cmd_regs[0x0c], (unsigned)cmd_regs[0x10],
-                  (unsigned)cmd_regs[0x12], (unsigned)cmd_regs[0x18], (unsigned)cmd_regs[0x19],
-                  (unsigned)cmd_regs[0x1a], (unsigned)cmd_regs[0x64], (unsigned)cmd_regs[0x65]);
-        stub_stderr("libimp/STUB: UpdateCommand post core=%u cmd=%p w32=%08x w33=%08x w34=%08x w35=%08x w36=%08x w37=%08x w38=%08x",
+                  (unsigned)READ_U8(slice, 0x08),
+                  READ_S32(slice, 0x3c), READ_S32(slice, 0x44), (unsigned)READ_U16(slice, 0x4c),
+                  (unsigned)READ_U16(slice, 0x7a), (unsigned)READ_U16(slice, 0x7c),
+                  (unsigned)READ_U16(slice, 0xa8), (unsigned)READ_U16(slice, 0xaa),
+                  (unsigned)READ_U16(slice, 0xec), (unsigned)READ_U8(slice, 0xee),
+                  (unsigned)READ_U32(slice, 0xfc),
+                  (unsigned)READ_U32(cmd_regs, 0x00), (unsigned)READ_U32(cmd_regs, 0x04),
+                  (unsigned)READ_U32(cmd_regs, 0x08), (unsigned)READ_U32(cmd_regs, 0x0c));
+        stub_stderr("libimp/STUB: UpdateCommand post core=%u cmd=%p start=%d end=%d span=%u cmdw0=%08x cmdw1=%08x cmdw2=%08x cmdw3=%08x",
                     core, cmd_regs,
-                    (unsigned)cmd_regs[0x20], (unsigned)cmd_regs[0x21], (unsigned)cmd_regs[0x22],
-                    (unsigned)cmd_regs[0x23], (unsigned)cmd_regs[0x24], (unsigned)cmd_regs[0x25],
-                    (unsigned)cmd_regs[0x26]);
+                    READ_S32(slice, 0x3c), READ_S32(slice, 0x44), (unsigned)READ_U16(slice, 0x4c),
+                    (unsigned)READ_U32(cmd_regs, 0x00), (unsigned)READ_U32(cmd_regs, 0x04),
+                    (unsigned)READ_U32(cmd_regs, 0x08), (unsigned)READ_U32(cmd_regs, 0x0c));
     }
 
     return 0;
