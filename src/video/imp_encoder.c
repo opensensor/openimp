@@ -1058,6 +1058,24 @@ int32_t IMP_Encoder_RegisterChn(int32_t arg1, int32_t arg2)
                         *(int32_t *)((char *)v0_9 + 8),
                         CH_S32(arg2, ENC_F_STARTED),
                         CH_S32(arg2, ENC_F_ENABLED));
+        {
+            EncoderChannelLayout *chn = (EncoderChannelLayout *)enc_ptr(arg2, IMP_ENC_BASE_ADDR);
+            if (chn != NULL && *enc_channel_recv_pic_started(chn) == 0) {
+            int32_t start_rc;
+            video_enc_kmsg("libimp/ENCW2: RegisterChn auto-start grp=%d chn=%d started=%u enabled=%u\n",
+                           arg1, arg2,
+                           (unsigned)*enc_channel_recv_pic_started(chn),
+                           (unsigned)*enc_channel_recv_pic_enabled(chn));
+            start_rc = IMP_Encoder_StartRecvPic(arg2);
+            video_enc_kmsg("libimp/ENCW2: RegisterChn auto-start-done grp=%d chn=%d rc=%d started=%u enabled=%u\n",
+                           arg1, arg2, start_rc,
+                           (unsigned)*enc_channel_recv_pic_started(chn),
+                           (unsigned)*enc_channel_recv_pic_enabled(chn));
+            if (start_rc < 0) {
+                return start_rc;
+            }
+        }
+        }
         return 0;
     }
 }
