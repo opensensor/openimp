@@ -189,9 +189,7 @@ int32_t IsEnc1AlreadyRunning(AL_IpCtrl *arg1, int32_t arg2)
     if ((reg & 2U) == 0)
         return 0;
 
-    return IsEnc1AlreadyRunning((AL_IpCtrl *)(intptr_t)__assert("0",
-        "/home/user/git/proj/sdk-lv3/src/imp/video/alcodec/lib_scheduler_enc/CoreManager.c",
-        0x4b, "IsEnc1AlreadyRunning"), arg2);
+    return 1;
 }
 
 int32_t IsEnc2AlreadyRunning(AL_IpCtrl *arg1, int32_t arg2)
@@ -203,9 +201,7 @@ int32_t IsEnc2AlreadyRunning(AL_IpCtrl *arg1, int32_t arg2)
     if ((reg & 0x10U) == 0)
         return 0;
 
-    return IsEnc2AlreadyRunning((AL_IpCtrl *)(intptr_t)__assert("0",
-        "/home/user/git/proj/sdk-lv3/src/imp/video/alcodec/lib_scheduler_enc/CoreManager.c",
-        0x57, "IsEnc2AlreadyRunning"), arg2);
+    return 1;
 }
 
 static void WriteZoneRegisters(AL_IpCtrl *arg1, int32_t arg2, int32_t arg3, const ZoneDescCompat *arg4)
@@ -468,6 +464,17 @@ int32_t AL_EncCore_Encode1(AL_EncCoreCtxCompat *arg1, int32_t arg2, int32_t arg3
 
         arg1->cmd_regs_1 = arg3;
         result = IsEnc1AlreadyRunning(a0_1, a1_1);
+        if (result != 0) {
+            uint32_t busy_before = (uint32_t)a0_1->vtable->ReadRegister(a0_1, (a1_1 << 9) + 0x83f8);
+
+            IMP_LOG_INFO("AVPU", "enc1 busy-before-reset core=%u reg83f8=0x%08x", (unsigned)a1_1, busy_before);
+            ResetCore_isra_27(a0_1, &arg1->core_id);
+            result = ((uint32_t)a0_1->vtable->ReadRegister(a0_1, (a1_1 << 9) + 0x83f8) & 2U) ? 1 : 0;
+            IMP_LOG_INFO("AVPU", "enc1 busy-after-reset core=%u reg83f8=0x%08x cleared=%u",
+                         (unsigned)a1_1,
+                         (unsigned)a0_1->vtable->ReadRegister(a0_1, (a1_1 << 9) + 0x83f8),
+                         (unsigned)(result == 0));
+        }
         if (result == 0) {
             if (cmd_regs_virt != NULL) {
                 uint32_t cfg_8400 = (uint32_t)arg1->ip_ctrl->vtable->ReadRegister(arg1->ip_ctrl, 0x8400);
@@ -519,6 +526,17 @@ int32_t AL_EncCore_Encode2(AL_EncCoreCtxCompat *arg1, int32_t arg2, int32_t arg3
 
     arg1->cmd_regs_2 = arg3;
     result = IsEnc2AlreadyRunning(a0, a1);
+    if (result != 0) {
+        uint32_t busy_before = (uint32_t)a0->vtable->ReadRegister(a0, (a1 << 9) + 0x83f8);
+
+        IMP_LOG_INFO("AVPU", "enc2 busy-before-reset core=%u reg83f8=0x%08x", (unsigned)a1, busy_before);
+        ResetCore_isra_27(a0, &arg1->core_id);
+        result = ((uint32_t)a0->vtable->ReadRegister(a0, (a1 << 9) + 0x83f8) & 0x10U) ? 1 : 0;
+        IMP_LOG_INFO("AVPU", "enc2 busy-after-reset core=%u reg83f8=0x%08x cleared=%u",
+                     (unsigned)a1,
+                     (unsigned)a0->vtable->ReadRegister(a0, (a1 << 9) + 0x83f8),
+                     (unsigned)(result == 0));
+    }
     if (result == 0)
         return StartEnc1WithCommandList_isra_25(arg1, &arg1->core_id, arg2, 8);
 

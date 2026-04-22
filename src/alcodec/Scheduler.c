@@ -71,6 +71,14 @@ static void PrepareSourceConfigBeforeLaunch(AL_EncCoreCtxCompat *core, void *ch,
     uint32_t hdr_off;
     uint32_t stream_budget;
     uint32_t core_base;
+    uint32_t reg_85f4;
+    uint32_t reg_85f0;
+    uint32_t reg_83f4;
+    uint32_t reg_8400;
+    uint32_t reg_8420;
+    uint32_t reg_8424;
+    uint32_t reg_8428;
+    uint32_t reg_85e4;
 
     if (core == NULL || ch == NULL || req == NULL || cmd_regs == NULL) {
         return;
@@ -117,8 +125,19 @@ static void PrepareSourceConfigBeforeLaunch(AL_EncCoreCtxCompat *core, void *ch,
     ip->vtable->WriteRegister(ip, 0x8424, hdr_off);
     ip->vtable->WriteRegister(ip, 0x8428, stream_budget);
     ip->vtable->WriteRegister(ip, 0x85e4, 1);
-    ENC_KMSG("encode1 source-config core=%u srcY=0x%x srcUV=0x%x ep1=0x%x wpp=0x%x part=0x%x hdr=0x%x budget=0x%x",
-             (unsigned)core->core_id, src_y, src_uv, ep1, wpp, stream_part, hdr_off, stream_budget);
+
+    reg_85f4 = (uint32_t)ip->vtable->ReadRegister(ip, 0x85f4);
+    reg_85f0 = (uint32_t)ip->vtable->ReadRegister(ip, 0x85f0);
+    reg_83f4 = (uint32_t)ip->vtable->ReadRegister(ip, core_base + 0x83f4);
+    reg_8400 = (uint32_t)ip->vtable->ReadRegister(ip, 0x8400);
+    reg_8420 = (uint32_t)ip->vtable->ReadRegister(ip, 0x8420);
+    reg_8424 = (uint32_t)ip->vtable->ReadRegister(ip, 0x8424);
+    reg_8428 = (uint32_t)ip->vtable->ReadRegister(ip, 0x8428);
+    reg_85e4 = (uint32_t)ip->vtable->ReadRegister(ip, 0x85e4);
+    ENC_KMSG("encode1 source-config core=%u srcY=0x%x srcUV=0x%x ep1=0x%x wpp=0x%x part=0x%x hdr=0x%x budget=0x%x"
+             " rb85f4=0x%x rb85f0=0x%x rb83f4=0x%x rb8400=0x%x rb8420=0x%x rb8424=0x%x rb8428=0x%x rb85e4=0x%x",
+             (unsigned)core->core_id, src_y, src_uv, ep1, wpp, stream_part, hdr_off, stream_budget,
+             reg_85f4, reg_85f0, reg_83f4, reg_8400, reg_8420, reg_8424, reg_8428, reg_85e4);
 }
 
 void StaticFifo_Init(StaticFifoCompat *arg1, int32_t *arg2, int32_t arg3); /* forward decl, ported by T<N> later */
