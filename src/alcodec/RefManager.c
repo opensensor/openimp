@@ -2,6 +2,7 @@
 #include <string.h>
 
 #include "alcodec/al_rtos.h"
+#include "imp_log_int.h"
 
 extern char _gp;
 extern void *__assert(const char *expression, const char *file, int32_t line, const char *function, ...);
@@ -45,6 +46,8 @@ int32_t AL_RefMngr_GetMvBufAddr(void *arg1, char arg2, int32_t *arg3);
 int32_t AL_RefMngr_GetColocRefPOC(int32_t arg1, void *arg2, void *arg3);
 int32_t AL_RefMngr_GetRefBufferFromPOC(void *arg1, int32_t arg2);
 int32_t AL_RefMngr_GetRefInfo(int32_t arg1, int32_t arg2, void *arg3, void *arg4, int32_t *arg5);
+
+#define REFM_KMSG(fmt, ...) IMP_LOG_INFO("REFM", fmt, ##__VA_ARGS__)
 
 int32_t AL_sRefMngr_IncrementBufPtr(void *arg1, char arg2)
 {
@@ -461,6 +464,11 @@ int32_t AL_RefMngr_GetFrmBufAddrs(void *arg1, char arg2, int32_t *arg3, int32_t 
     uint8_t *ctx = (uint8_t *)arg1;
     uint32_t a1 = (uint32_t)(uint8_t)arg2;
 
+    REFM_KMSG("GetFrmBufAddrs entry ctx=%p id=%u used=%d bitdepth=%u storage=%u comp=%u outY=%p outUV=%p outTrace=%p",
+              arg1, a1, *(int32_t *)(ctx + 0x698U), (unsigned)*(uint8_t *)(ctx + 0x774U),
+              (unsigned)*(uint8_t *)(ctx + 0x770U), (unsigned)*(uint8_t *)(ctx + 0x776U),
+              arg3, arg4, arg5);
+
     if (a1 >= (uint32_t)*(int32_t *)(ctx + 0x698U)) {
         if (arg3 != 0) {
             *arg3 = 0;
@@ -476,6 +484,7 @@ int32_t AL_RefMngr_GetFrmBufAddrs(void *arg1, char arg2, int32_t *arg3, int32_t 
             *(int32_t *)((uint8_t *)arg5 + 8U) = 0;
         }
 
+        REFM_KMSG("GetFrmBufAddrs invalid id=%u used=%d", a1, *(int32_t *)(ctx + 0x698U));
         return 0;
     }
 
@@ -489,17 +498,22 @@ int32_t AL_RefMngr_GetFrmBufAddrs(void *arg1, char arg2, int32_t *arg3, int32_t 
         int32_t a3 = *(int32_t *)(ctx + 0x770U);
         int32_t a2 = *(int32_t *)(s4_1 + 0x42cU);
         int32_t var_48 = 1;
-        int32_t var_44;
+        int32_t var_44 = 0;
         int32_t var_40 = 0;
         int32_t var_3c = 0;
-        int32_t var_38;
-        int32_t var_34;
-        int32_t var_30;
+        int32_t var_38 = 0;
+        int32_t var_34 = 0;
+        int32_t var_30 = 0;
 
-        memset(&var_44, 0, 0x1c);
+        REFM_KMSG("GetFrmBufAddrs slot id=%u phys=0x%x trace=0x%x dims=%dx%d mode=%d comp=%d",
+                  a1, *(int32_t *)(s4_1 + 0x418U), *(int32_t *)(s4_1 + 0x41cU), a1_1, a2, a3, v1);
+        REFM_KMSG("GetFrmBufAddrs before-fill-main id=%u kind=%d", a1, var_38);
         AL_EncRecBuffer_FillPlaneDesc(&var_38, a1_1, a2, (char)v0_3, (char)v1);
+        REFM_KMSG("GetFrmBufAddrs after-fill-main id=%u offY=%d pitch=%d", a1, var_34, var_38);
+        REFM_KMSG("GetFrmBufAddrs before-fill-aux id=%u kind=%d", a1, var_48);
         AL_EncRecBuffer_FillPlaneDesc(&var_48, *(int32_t *)(s4_1 + 0x428U), *(int32_t *)(s4_1 + 0x42cU),
                                       *(uint8_t *)(ctx + 0x770U), *(uint8_t *)(ctx + 0x776U));
+        REFM_KMSG("GetFrmBufAddrs after-fill-aux id=%u offUV=%d pitch=%d", a1, var_44, var_48);
 
         if (arg3 != 0) {
             *arg3 = *(int32_t *)(s4_1 + 0x418U) + var_34;
@@ -537,6 +551,8 @@ int32_t AL_RefMngr_GetFrmBufAddrs(void *arg1, char arg2, int32_t *arg3, int32_t 
             *((uint8_t *)arg5 + 9U) = s2_3;
         }
 
+        REFM_KMSG("GetFrmBufAddrs exit id=%u y=0x%x uv=0x%x trace=%p",
+                  a1, arg3 ? *arg3 : 0, arg4 ? *arg4 : 0, arg5);
         return 1;
     }
 }
@@ -651,6 +667,8 @@ int32_t AL_RefMngr_GetRefInfo(int32_t arg1, int32_t arg2, void *arg3, void *arg4
     int32_t *var_70[14];
     int32_t result;
 
+    REFM_KMSG("GetRefInfo entry ctx=%p mode=0x%x curInfo=%p out=%p coloc=%p",
+              (void *)(intptr_t)arg1, (unsigned)arg2, arg3, arg4, arg5);
     *(uint8_t *)((uint8_t *)arg4 + 0x8aU) = 0;
     *(uint8_t *)((uint8_t *)arg4 + 0xccU) = 0;
     Rtos_Memset(&var_70, 0, 0x38);
@@ -662,12 +680,18 @@ int32_t AL_RefMngr_GetRefInfo(int32_t arg1, int32_t arg2, void *arg3, void *arg4
         var_70[1] = (int32_t *)&var_38;
 
         if (a1 == 1U) {
+            REFM_KMSG("GetRefInfo before-hevc-dpb out=%p coloc=%p", arg4, arg5);
             AL_DPB_HEVC_GetRefInfo((char *)(uintptr_t)arg1, arg3, arg4, (int32_t *)var_70,
                                    (0U < ((uint32_t)(*(int32_t *)((uint8_t *)arg3 + 0x10U) ^ 2))) ? 1 : 0);
+            REFM_KMSG("GetRefInfo after-hevc-dpb out84=%d out70=%d", *(int32_t *)((uint8_t *)arg4 + 0x84U),
+                      *(int32_t *)((uint8_t *)arg4 + 0x70U));
         }
 
         if (a1 == 0U) {
+            REFM_KMSG("GetRefInfo before-avc-dpb out=%p coloc=%p", arg4, arg5);
             AL_DPB_AVC_GetRefInfo((char *)(uintptr_t)arg1, arg3, arg4, (int32_t *)var_70, var_34, var_24);
+            REFM_KMSG("GetRefInfo after-avc-dpb out84=%d out70=%d", *(int32_t *)((uint8_t *)arg4 + 0x84U),
+                      *(int32_t *)((uint8_t *)arg4 + 0x70U));
         }
     }
 
@@ -681,11 +705,16 @@ int32_t AL_RefMngr_GetRefInfo(int32_t arg1, int32_t arg2, void *arg3, void *arg4
         int32_t v0_5 = AL_RefMngr_GetRefBufferFromPOC((void *)(uintptr_t)arg1,
                                                       *(int32_t *)((uint8_t *)arg4 + 0x84U));
 
+        REFM_KMSG("GetRefInfo after-ref-from-poc buf=%d coloc_poc=%d", v0_5,
+                  *(int32_t *)((uint8_t *)arg4 + 0x84U));
         if (*(int32_t *)((uint8_t *)arg3 + 0x10U) != 2) {
             AL_RefMngr_GetMvBufAddr((void *)(uintptr_t)arg1, (char)v0_5, &var_20);
+            REFM_KMSG("GetRefInfo got-coloc-mv buf=%d mv=0x%x", v0_5, var_20);
         }
 
         AL_RefMngr_GetColocRefPOC(arg1, (void *)(uintptr_t)var_20, (uint8_t *)arg4 + 0x28U);
+        REFM_KMSG("GetRefInfo coloc-ref L0=%d L1=%d",
+                  *(int32_t *)((uint8_t *)arg4 + 0x34U), *(int32_t *)((uint8_t *)arg4 + 0x38U));
 
         {
             int32_t s2_2 = var_20;
@@ -723,6 +752,9 @@ int32_t AL_RefMngr_GetRefInfo(int32_t arg1, int32_t arg2, void *arg3, void *arg4
             }
 
             *(int32_t *)((uint8_t *)arg4 + 0x84U) = 0;
+            REFM_KMSG("GetRefInfo exit out84=%d out70=%d out34=%d out38=%d",
+                      *(int32_t *)((uint8_t *)arg4 + 0x84U), *(int32_t *)((uint8_t *)arg4 + 0x70U),
+                      *(int32_t *)((uint8_t *)arg4 + 0x34U), *(int32_t *)((uint8_t *)arg4 + 0x38U));
             return result;
         }
     }
