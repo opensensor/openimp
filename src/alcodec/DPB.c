@@ -38,6 +38,20 @@ static uint8_t *dpb_pic(void *arg1, uint32_t arg2)
     return (uint8_t *)arg1 + arg2 * 0x18U + 0x6cU;
 }
 
+static int32_t *dpb_validate_list_ptr(int32_t *ptr, const char *tag)
+{
+    uintptr_t addr = (uintptr_t)ptr;
+
+    if (ptr == NULL) {
+        return NULL;
+    }
+    if ((addr & 3U) != 0 || addr < 0x70000000U || addr >= 0x80000000U) {
+        DPB_KMSG("AVC_GetRefInfo invalid %s list ptr=%p", tag, ptr);
+        return NULL;
+    }
+    return ptr;
+}
+
 uintptr_t AL_sDPB_UpdateRefPtr(void *arg1)
 {
     uint8_t *ctx = (uint8_t *)arg1;
@@ -3914,7 +3928,7 @@ int32_t AL_DPB_AVC_GetRefInfo(char *arg1, void *arg2, void *arg3, int32_t *arg4,
                 }
 
                 {
-                    int32_t *v1_14 = *(int32_t **)&a1_1[1];
+                    int32_t *v1_14 = dpb_validate_list_ptr(*(int32_t **)&a1_1[1], "l0");
 
                     if (v1_14 != 0) {
                         v1_14[a0] = *(int32_t *)(v0_6 + 0x14U);
@@ -3963,7 +3977,7 @@ int32_t AL_DPB_AVC_GetRefInfo(char *arg1, void *arg2, void *arg3, int32_t *arg4,
         DPB_KMSG("AVC_GetRefInfo post-l0-walk count=%d", a3_1);
     } else {
         {
-            int32_t *v1_14 = *(int32_t **)&a1_1[1];
+            int32_t *v1_14 = dpb_validate_list_ptr(*(int32_t **)&a1_1[1], "l0-empty");
             uint32_t a0 = 0;
 
             if (v1_14 != 0) {
@@ -4032,7 +4046,7 @@ label_709f0:
         if (a3_4 <= 0) {
             void *t2_1 = (void *)arg4[1];
 
-            a0_10 = *(int32_t **)((uint8_t *)t2_1 + 4U);
+                    a0_10 = dpb_validate_list_ptr(*(int32_t **)((uint8_t *)t2_1 + 4U), "l1");
             v1_17 = 0;
 
             if (a0_10 != 0) {
@@ -4087,7 +4101,7 @@ label_709f0:
                     }
                 }
 
-                a0_10 = *(int32_t **)((uint8_t *)t2_1 + 4U);
+            a0_10 = dpb_validate_list_ptr(*(int32_t **)((uint8_t *)t2_1 + 4U), "l1-empty");
 
                 if (a0_10 != 0) {
                     a0_10[v1_17] = *(int32_t *)(v0_30 + 0x14U);

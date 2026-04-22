@@ -42,6 +42,7 @@
  * kernel when continuous_init memset'd 30MB on /dev/rmem). */
 void *VBMLockFrameByVaddr(void *vaddr);
 void VBMUnlockFrameByVaddr(void *vaddr);
+int VBMReleaseFrame(int chn, void *frame);
 
 /* ----- osd-style fifo helpers ------------------------------------------ */
 
@@ -1513,8 +1514,12 @@ int32_t on_encoder_group_data_update(void *arg1, void *arg2)
     }
 
     if (!consumed) {
-        enc_trace("libimp/ENCX: group_update no-consumer group=%p frame=%p\n", group, frame);
-        return -1;
+        int chn = *(int32_t *)(frame + 4);
+        int rel = VBMReleaseFrame(chn, frame);
+
+        enc_trace("libimp/ENCX: group_update no-consumer group=%p frame=%p chn=%d release=%d\n",
+                  group, frame, chn, rel);
+        return (rel < 0) ? -1 : 0;
     }
 
     /* Remember this frame record in the group for the next update. */
