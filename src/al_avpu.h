@@ -106,8 +106,8 @@ struct AL_IpCtrl {
  */
 typedef struct {
     AL_IpCtrl *ip_ctrl;         /* [0]: IP controller */
-    void *cmd_list;             /* [1]: current command list buffer */
-    uint32_t _reserved2;        /* [2] */
+    void *cmd_list;             /* [1]: current Enc1 status/readback block */
+    void *enc2_cmd_list;        /* [2]: current Enc2 status/readback block */
     uint8_t core_id;            /* [3].b: core number */
     uint32_t core_id_w;         /* [4]: core number (word) */
     uint32_t param0;            /* [5]: from init arg2[0] */
@@ -155,8 +155,12 @@ typedef struct ALAvpuContext {
     uint32_t axi_base;
     int use_offsets;
 
-    /* Command-list ring (OEM: 0x13 entries × 512B) */
+    /* Command-list rings (OEM request keeps paired pointer tables: stored/readback
+     * at +0xa78 and submit-side at +0xab8). We model that with two mirrored rings:
+     * cl_ring is the CPU-visible/readback copy, cl_submit_ring is the address pushed
+     * to hardware via CL_ADDR. */
     AvpuDMABuf cl_ring;
+    AvpuDMABuf cl_submit_ring;
     uint32_t cl_entry_size;   /* 512 */
     uint32_t cl_count;        /* 0x13 */
 
@@ -190,6 +194,7 @@ typedef struct ALAvpuContext {
     uint32_t enc1_cmd_60_110_112;
     uint32_t enc1_cmd_61_114_116;
     uint32_t enc1_cmd_6e_118_11a;
+    uint32_t enc1_cmd_6f_94;
     uint32_t cl_idx;
     volatile int reference_valid;
 
@@ -224,6 +229,7 @@ typedef struct ALAvpuContext {
      * and cmd[0x36] so the AVPU writes encoded data after the headers. */
     uint32_t frame_number;          /* monotonic frame counter */
     uint32_t stream_header_offset;  /* bytes of header pre-written into current stream buf */
+    uint32_t stream_header_offset_by_buf[16]; /* per-stream-buffer header bytes */
     uint32_t slice_header_nal_bytes;/* slice header NAL byte count (OEM sp+0x78 → cmd[0x1b] bits[25:16]) */
     uint32_t slice_header_prefix_bits; /* OEM SliceParam+0xf8 → Enc2 cmd[0x1e] bits[28:24] */
     uint32_t slice_header_splice_word; /* OEM SliceParam+0x100 → Enc2 cmd[0x1f] */
@@ -333,4 +339,3 @@ void AL_EncCore_TurnOffGC(AL_EncCoreCtx *ctx);
 #endif
 
 #endif /* OPENIMP_AL_AVPU_H */
-

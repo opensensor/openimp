@@ -22,7 +22,7 @@ INSTALL_INC_DIR = $(PREFIX)/include
 INSTALL_LIB_DIR = $(PREFIX)/lib
 
 # Compiler flags
-CFLAGS = -Wall -Wextra -O2 -fPIC -I$(INC_DIR)
+CFLAGS = -Wall -Wextra -O2 -fPIC -fno-stack-protector -I$(INC_DIR)
 LDFLAGS = -shared -lpthread -lrt
 
 # Platform detection (can be overridden)
@@ -32,7 +32,60 @@ PLATFORM ?= T31
 CFLAGS += -DPLATFORM_$(PLATFORM)
 
 # Source files
+#
+# Build mode:
+#   BUILD=legacy  (default) — original flat src/*.c stubs
+#   BUILD=ported            — reverse-engineered port under src/{alcodec,audio,
+#                             core,framesource,osd,ivs,isp,codec_c,fb,sys_wrap,
+#                             video}/
+#
+BUILD ?= legacy
+
+ifeq ($(BUILD),ported)
+
+# Every ported .c under src/, excluding the legacy flat files so the two
+# builds don't collide at link time.
+# ALSO excluded: the reverse-engineered allocator chain under
+# src/core/imp_alloc/ and src/core/mempool/ — on this Thingino T31
+# kernel, the ported continuous_init's 30MB memset on /dev/rmem hangs
+# the device. The legacy src/dma_alloc.c + src/kernel_interface.c +
+# src/al_avpu.c have been confirmed by the user to get actual streams
+# flowing. Use the legacy allocator/mempool/kernel-interface under the
+# ported build too.
+LEGACY_FILES := \
+	src/imp_system.c src/imp_isp.c src/imp_framesource.c \
+	src/imp_encoder.c src/imp_audio.c src/imp_dmic.c src/imp_osd.c \
+	src/imp_ivs.c src/dma_alloc.c src/fifo.c src/hw_encoder.c \
+	src/device_pool.c src/al_avpu.c src/kernel_interface.c \
+	src/time64_shim.c src/codec.c src/al_encoder_compat.c src/su_base.c
+
+# Ported files we EXCLUDE from BUILD=ported because they conflict with
+# the legacy allocator or have caused runtime issues:
+PORTED_DISABLED := \
+	$(wildcard src/core/imp_alloc/*.c) \
+	$(wildcard src/core/mempool/*.c) \
+	src/video/imp_mempool.c \
+	src/core/vbm.c
+
+IMP_SOURCES := $(filter-out $(LEGACY_FILES) $(PORTED_DISABLED), \
+                            $(shell find src -name '*.c'))
+
+# Pull in the legacy allocator + kernel-interface + fifo etc. that the
+# port's upper layers rely on. These provide:
+#   dma_alloc.c        → IMP_Alloc / IMP_Free / IMP_PoolAlloc / IMP_Get_Info
+#                        via direct /dev/rmem bump allocator (known working)
+#   kernel_interface.c → VBM* frame pool + write_reg_32
+#   fifo.c             → legacy fifo_* and Fifo_* dual API
+#   al_avpu.c          → AL_EncCore_* ioctl wrappers
+IMP_SOURCES += \
+	$(SRC_DIR)/time64_shim.c \
+	$(SRC_DIR)/kernel_interface.c \
+	$(SRC_DIR)/dma_alloc.c
+
+else
+
 IMP_SOURCES = \
+	$(SRC_DIR)/time64_shim.c \
 	$(SRC_DIR)/imp_system.c \
 	$(SRC_DIR)/imp_isp.c \
 	$(SRC_DIR)/imp_framesource.c \
@@ -44,17 +97,26 @@ IMP_SOURCES = \
 	$(SRC_DIR)/kernel_interface.c \
 	$(SRC_DIR)/fifo.c \
 	$(SRC_DIR)/al_avpu.c \
+	$(SRC_DIR)/al_encoder_compat.c \
 	$(SRC_DIR)/codec.c \
 	$(SRC_DIR)/dma_alloc.c \
 	$(SRC_DIR)/hw_encoder.c \
 	$(SRC_DIR)/device_pool.c
 
+endif
+
 SU_SOURCES = \
 	$(SRC_DIR)/su_base.c
 
-# Object files
-IMP_OBJECTS = $(IMP_SOURCES:$(SRC_DIR)/%.c=$(BUILD_DIR)/%.o)
+# Object files — mirror src/ tree under build/
+IMP_OBJECTS = $(patsubst $(SRC_DIR)/%.c,$(BUILD_DIR)/%.o,$(IMP_SOURCES))
 SU_OBJECTS = $(SU_SOURCES:$(SRC_DIR)/%.c=$(BUILD_DIR)/%.o)
+
+# ivs.c has a large GOT; compile with -mxgot to avoid R_MIPS_CALL16 overflow.
+$(BUILD_DIR)/ivs/ivs.o: EXTRA_CFLAGS = -mxgot
+
+# Allow -I src for files that include sibling headers like "kernel_interface.h"
+CFLAGS += -I$(SRC_DIR)
 
 # Library names
 LIBIMP_SO = $(LIB_DIR)/libimp.so
@@ -75,13 +137,16 @@ strip: all
 $(BUILD_DIR) $(LIB_DIR):
 	mkdir -p $@
 
-# Compile source files
-$(BUILD_DIR)/%.o: $(SRC_DIR)/%.c | $(BUILD_DIR)
-	$(CC) $(CFLAGS) -c $< -o $@
+# Compile source files — pattern rule creates parent dirs for nested sources
+$(BUILD_DIR)/%.o: $(SRC_DIR)/%.c
+	@mkdir -p $(dir $@)
+	$(CC) $(CFLAGS) $(EXTRA_CFLAGS) -c $< -o $@
 
 # Build libimp shared library
-$(LIBIMP_SO): $(IMP_OBJECTS) | $(LIB_DIR)
-	$(CC) $(LDFLAGS) -o $@ $^
+# Links against libsysutils.so so imp_log_fun / IMP_Log_Get_Option resolve
+# via DT_NEEDED at load time (the stock firmware's libimp does the same).
+$(LIBIMP_SO): $(IMP_OBJECTS) $(LIBSU_SO) | $(LIB_DIR)
+	$(CC) $(LDFLAGS) -L$(LIB_DIR) -o $@ $(IMP_OBJECTS) -lsysutils
 
 # Build libimp static library
 $(LIBIMP_A): $(IMP_OBJECTS) | $(LIB_DIR)
@@ -144,4 +209,3 @@ help:
 	@echo "  make PLATFORM=T23                       # Build for T23"
 	@echo "  make strip                              # Strip debug symbols"
 	@echo "  make install PREFIX=~/.local            # Install to home directory"
-

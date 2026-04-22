@@ -400,8 +400,8 @@
           "url": "https://api.augmentcode.com/mcp"
         },
         "smart-diff": {
-          "type": "sse",
-          "url": "http://127.0.0.1:8011/sse"
+          "type": "http",
+          "url": "http://127.0.0.1:8011/mcp"
         }
       },
       "enabledMcpjsonServers": [],
@@ -495,8 +495,8 @@
           "url": "https://api.augmentcode.com/mcp"
         },
         "smart-diff": {
-          "type": "sse",
-          "url": "http://127.0.0.1:8011/sse"
+          "type": "http",
+          "url": "http://127.0.0.1:8011/mcp"
         }
       },
       "enabledMcpjsonServers": [],

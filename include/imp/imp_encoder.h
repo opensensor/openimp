@@ -13,6 +13,7 @@ extern "C" {
 
 #include "imp_common.h"
 #include <stdbool.h>
+#include <stddef.h>
 
 /**
  * Encoder type
@@ -77,6 +78,155 @@ typedef struct {
     uint32_t frmRateDen;                /**< Frame rate denominator */
 } IMPEncoderFrmRate;
 
+#if defined(PLATFORM_T31) || defined(PLATFORM_T40) || defined(PLATFORM_T41)
+typedef uint32_t IMPEncoderRcOptions;
+
+typedef struct {
+    union {
+        int16_t iInitialQP;
+        int16_t qp;
+    };
+    int16_t _reserved0;
+} IMPEncoderAttrFixQp;
+
+typedef struct {
+    uint32_t uTargetBitRate;
+    int16_t iInitialQP;
+    int16_t iMinQP;
+    int16_t iMaxQP;
+    int16_t iIPDelta;
+    int16_t iPBDelta;
+    uint16_t _reserved0;
+    IMPEncoderRcOptions eRcOptions;
+    uint32_t uMaxPictureSize;
+} IMPEncoderAttrCbr;
+
+typedef struct {
+    uint32_t uTargetBitRate;
+    uint32_t uMaxBitRate;
+    int16_t iInitialQP;
+    int16_t iMinQP;
+    int16_t iMaxQP;
+    int16_t iIPDelta;
+    int16_t iPBDelta;
+    uint16_t _reserved0;
+    IMPEncoderRcOptions eRcOptions;
+    uint32_t uMaxPictureSize;
+    uint16_t uMaxPSNR;
+    uint16_t _reserved1;
+} IMPEncoderAttrVbr;
+
+typedef IMPEncoderAttrVbr IMPEncoderAttrCappedVbr;
+typedef IMPEncoderAttrVbr IMPEncoderAttrCappedQuality;
+typedef IMPEncoderAttrFixQp IMPEncoderAttrH264FixQp;
+typedef IMPEncoderAttrCbr IMPEncoderAttrH264Cbr;
+typedef IMPEncoderAttrVbr IMPEncoderAttrH264Vbr;
+typedef IMPEncoderAttrVbr IMPEncoderAttrH264Smart;
+
+typedef struct {
+    IMPEncoderRcMode rcMode;
+    union {
+        IMPEncoderAttrFixQp attrFixQp;
+        IMPEncoderAttrCbr attrCbr;
+        IMPEncoderAttrVbr attrVbr;
+        IMPEncoderAttrCappedVbr attrCappedVbr;
+        IMPEncoderAttrCappedQuality attrCappedQuality;
+        IMPEncoderAttrH264FixQp attrH264FixQp;
+        IMPEncoderAttrH264Cbr attrH264Cbr;
+        IMPEncoderAttrH264Vbr attrH264Vbr;
+        IMPEncoderAttrH264Smart attrH264Smart;
+    };
+} IMPEncoderAttrRcMode;
+
+typedef enum {
+    IMP_ENC_GOP_CTRL_MODE_DEFAULT = 0,
+    IMP_ENC_GOP_CTRL_MODE_SMARTP = 1,
+    IMP_ENC_GOP_CTRL_MODE_PYRAMIDAL = 2,
+} IMPEncoderGopCtrlMode;
+
+typedef struct {
+    union {
+        uint32_t uGopCtrlMode;
+        IMPEncoderGopCtrlMode gopMode;
+    };
+    union {
+        uint16_t uGopLength;
+        uint16_t gopLength;
+    };
+    uint8_t uNotifyUserLTInter;
+    uint8_t _reserved0;
+    uint32_t uMaxSameSenceCnt;
+    uint8_t bEnableLT;
+    uint8_t _reserved1[3];
+    uint32_t uFreqLT;
+    uint8_t bLTRC;
+    uint8_t _reserved2[3];
+} IMPEncoderGopAttr;
+
+typedef struct {
+    union {
+        IMPEncoderProfile eProfile;
+        IMPEncoderProfile profile;
+    };
+    union {
+        uint8_t uLevel;
+        uint8_t level;
+    };
+    union {
+        uint8_t uTier;
+        uint8_t tier;
+    };
+    union {
+        uint16_t uWidth;
+        uint16_t maxPicWidth;
+    };
+    union {
+        uint16_t uHeight;
+        uint16_t maxPicHeight;
+    };
+    uint16_t _reserved0;
+    union {
+        uint32_t ePicFormat;
+        uint32_t picFormat;
+    };
+    union {
+        uint32_t eEncOptions;
+        uint32_t encOptions;
+    };
+    union {
+        uint32_t eEncTools;
+        uint32_t encTools;
+    };
+    uint8_t _reserved1[0x14];
+} IMPEncoderAttr;
+
+typedef IMPEncoderAttr IMPEncoderAttrH264;
+typedef IMPEncoderAttr IMPEncoderAttrH265;
+typedef IMPEncoderAttr IMPEncoderAttrJpeg;
+
+typedef struct {
+    IMPEncoderAttrRcMode attrRcMode;
+    IMPEncoderFrmRate outFrmRate;
+} IMPEncoderRcAttr;
+
+typedef struct {
+    IMPEncoderAttr encAttr;
+    IMPEncoderRcAttr rcAttr;
+    IMPEncoderGopAttr gopAttr;
+    uint8_t bEnableIvdc;
+    uint8_t _reserved2[3];
+} IMPEncoderChnAttr;
+
+typedef IMPEncoderChnAttr IMPEncoderCHNAttr;
+
+_Static_assert(sizeof(IMPEncoderAttrRcMode) == 0x24, "IMPEncoderAttrRcMode ABI mismatch");
+_Static_assert(sizeof(IMPEncoderGopAttr) == 0x18, "IMPEncoderGopAttr ABI mismatch");
+_Static_assert(sizeof(IMPEncoderAttr) == 0x2c, "IMPEncoderAttr ABI mismatch");
+_Static_assert(offsetof(IMPEncoderChnAttr, encAttr) == 0x00, "IMPEncoderChnAttr.encAttr ABI mismatch");
+_Static_assert(offsetof(IMPEncoderChnAttr, rcAttr) == 0x2c, "IMPEncoderChnAttr.rcAttr ABI mismatch");
+_Static_assert(offsetof(IMPEncoderChnAttr, gopAttr) == 0x58, "IMPEncoderChnAttr.gopAttr ABI mismatch");
+_Static_assert(offsetof(IMPEncoderChnAttr, bEnableIvdc) == 0x70, "IMPEncoderChnAttr.bEnableIvdc ABI mismatch");
+#else
 /**
  * H264 CBR attributes
  */
@@ -193,6 +343,7 @@ typedef struct {
     IMPEncoderAttr encAttr;             /**< Encoder attributes */
     IMPEncoderRcAttr rcAttr;            /**< RC attributes */
 } IMPEncoderChnAttr;
+#endif
 
 /* NAL unit types (match vendor headers) */
 typedef enum {
@@ -581,15 +732,21 @@ int IMP_Encoder_SetChnFrmRate(int encChn, IMPEncoderFrmRate *in, IMPEncoderFrmRa
 int IMP_Encoder_GetChnFrmRate(int encChn, IMPEncoderFrmRate *in, IMPEncoderFrmRate *out);
 int IMP_Encoder_SetChnRcAttr(int encChn, void *rcAttr);
 int IMP_Encoder_GetChnRcAttr(int encChn, void *rcAttr);
+int IMP_Encoder_SetChnAttrRcMode(int encChn, IMPEncoderAttrRcMode *rcMode);
+int IMP_Encoder_GetChnAttrRcMode(int encChn, IMPEncoderAttrRcMode *rcMode);
 int IMP_Encoder_GetChnGopAttr(int encChn, IMPEncoderGopAttr *gopAttr);
 int IMP_Encoder_SetChnGopAttr(int encChn, IMPEncoderGopAttr *gopAttr);
+int IMP_Encoder_SetChnBitRate(int encChn, int bitrate, int bitrateMax);
 int IMP_Encoder_SetPool(int encChn, int poolId);
 int IMP_Encoder_GetPool(int encChn);
+int IMP_Encoder_ClearPoolId(int encChn);
+int IMP_Encoder_SetChnQpBounds(int encChn, int minQp, int maxQp);
 int IMP_Encoder_SetChnQpIPDelta(int encChn, int delta);
+int IMP_Encoder_GetChnEncType(int encChn, IMPEncoderEncType *encType);
+int IMP_Encoder_GetChnAveBitrate(int encChn, IMPEncoderStream *stream, int frames, int *bitrate);
 
 #ifdef __cplusplus
 }
 #endif
 
 #endif /* __IMP_ENCODER_H__ */
-

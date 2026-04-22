@@ -11,6 +11,8 @@
 #include <fcntl.h>
 #include <sys/ioctl.h>
 #include <sys/select.h>
+#include <sched.h>
+#include <stdarg.h>
 
 #include <sys/time.h>
 #include <pthread.h>
@@ -67,13 +69,38 @@ static IMPFSChnFifoAttr g_fifo_attrs[MAX_FS_CHANNELS];
 static int g_frame_depth[MAX_FS_CHANNELS];
 
 
-/* ioctl command for frame polling - from decompilation at 0x99acc */
-#define VIDIOC_POLL_FRAME   0x400456bf  /* Poll for frame availability */
-
 /* Forward declarations */
 static void *frame_capture_thread(void *arg);
 static int framesource_bind(void *src_module, void *dst_module, void *output_ptr);
 static int framesource_unbind(void *src_module, void *dst_module, void *output_ptr);
+
+static void fs_bind_trace(const char *fmt, ...)
+{
+    int fd = open("/dev/kmsg", O_WRONLY);
+    if (fd < 0) return;
+
+    char buf[512];
+    va_list ap;
+    va_start(ap, fmt);
+    int n = vsnprintf(buf, sizeof(buf), fmt, ap);
+    va_end(ap);
+
+    if (n > 0) write(fd, buf, (size_t)n);
+    close(fd);
+}
+
+static void framesource_publish_outputs(void *module, void *frame)
+{
+    if (module == NULL) return;
+
+    uint32_t count = *(uint32_t *)((char *)module + 0x134);
+    if (count == 0) count = 1;
+    if (count > 3) count = 3;
+
+    for (uint32_t i = 0; i < count; i++) {
+        *(void **)((char *)module + 0x138 + (i * sizeof(void *))) = frame;
+    }
+}
 
 /* Initialize framesource module */
 static void framesource_init(void) {
@@ -358,11 +385,13 @@ int IMP_FrameSource_EnableChn(int chnNum) {
     memcpy(vbm_fmt + 0x04, &chn->attr.picHeight, sizeof(int));
     memcpy(vbm_fmt + 0x08, &chn->attr.pixFmt, sizeof(int));
     memcpy(vbm_fmt + 0x0c, &kernel_sizeimage, sizeof(int));
-    /* OEM passes nrVBs directly to VBMCreatePool — no minimum enforcement.
-     * The stock kernel REQBUFS for ch0 may reject count>=2 when
-     * isp_ch0_pre_dequeue is active, so we must not inflate the count. */
+    /* Triple buffering minimum: with synchronous encoder_update on the
+     * capture thread and 2 buffers, the capture thread exhausts both before
+     * the stream_thread can QBUF either back. 3 buffers ensures there's
+     * always one in the kernel queue. The OEM avoids this via async encode
+     * threads; our synchronous path needs the extra buffer. */
     int vbm_count = chn->attr.nrVBs;
-    if (vbm_count < 1) vbm_count = 1; /* sanity: at least 1 buffer */
+    if (vbm_count < 3) vbm_count = 3;
     memcpy(vbm_fmt + 0x34, &vbm_count, sizeof(int));
 
     /* Create VBM pool using kernel-computed size and requested buffer count */
@@ -374,11 +403,9 @@ int IMP_FrameSource_EnableChn(int chnNum) {
         return -1;
     }
 
-    /* REQBUFS before STREAM_ON — OEM uses nrVBs directly (no inflation).
-     * The stock kernel's REQBUFS for ch0 with isp_ch0_pre_dequeue can
-     * reject count>=2, so we must match the OEM's count exactly. */
-    int requested_bufcnt = chn->attr.nrVBs + (g_frame_depth[chnNum] > 0 ? g_frame_depth[chnNum] : 0);
-    if (requested_bufcnt < 1) requested_bufcnt = 1;
+    /* REQBUFS before STREAM_ON — match the VBM pool count (min 3 for
+     * triple buffering). Add frame_depth if configured. */
+    int requested_bufcnt = vbm_count + (g_frame_depth[chnNum] > 0 ? g_frame_depth[chnNum] : 0);
     int bufcnt = fs_set_buffer_count(chn->fd, requested_bufcnt);
     if (bufcnt < 0) {
         LOG_FS("EnableChn failed: cannot set buffer count");
@@ -418,8 +445,24 @@ int IMP_FrameSource_EnableChn(int chnNum) {
     /* Mark running and start capture thread; it will block on select() */
     /* QBUF before STREAM_ON (standard V4L2 order) */
     extern int VBMPrimeKernelQueue(int chn, int fd, int limit);
-    if (VBMPrimeKernelQueue(chnNum, chn->fd, bufcnt) < 0) {
+    int queued_ok = VBMPrimeKernelQueue(chnNum, chn->fd, bufcnt);
+    if (queued_ok < 0) {
         LOG_FS("EnableChn warning: prime kernel queue had errors, continuing");
+    }
+    LOG_FS("EnableChn: chn=%d primed kernel queue with %d/%d buffers",
+           chnNum, queued_ok, bufcnt);
+
+    /* The PHY channel is not useful if the kernel never accepted any userptr
+     * buffers, and ch0 has been observed to wedge in DQBUF forever in exactly
+     * that state. Fail fast instead of entering a no-frame drain loop. */
+    if (chnNum == 0 && queued_ok <= 0) {
+        LOG_FS("EnableChn failed: ch0 kernel prime accepted no buffers");
+        VBMFlushFrame(chnNum);
+        VBMDestroyPool(chnNum);
+        fs_close_device(chn->fd);
+        chn->fd = -1;
+        pthread_mutex_unlock(&fs_mutex);
+        return -1;
     }
 
     usleep(5000); /* 5ms guard */
@@ -752,6 +795,7 @@ static void *frame_capture_thread(void *arg) {
                 /* Notify observers (bound modules like Encoder) */
                 void *module = IMP_System_GetModule(DEV_ID_FS, chn_num);
                 if (module != NULL) {
+                    framesource_publish_outputs(module, frame);
                     notify_observers(module, frame);
                 } else {
                     LOG_FS("frame_capture_thread chn=%d: WARNING - no module found for FrameSource", chn_num);
@@ -806,6 +850,38 @@ static void *frame_capture_thread(void *arg) {
             fflush(stderr);
         }
 
+        {
+            unsigned int ready = 0;
+            int poll_ret = fs_poll_frame(chn->fd, &ready);
+            if (poll_ret == -2) {
+                if (poll_count <= 5) {
+                    LOG_FS("frame_capture_thread chn=%d: POLL_FRAME interrupted", chn_num);
+                    fflush(stderr);
+                }
+                continue;
+            }
+            if (poll_ret < 0) {
+                if (poll_count <= 5 || (poll_count % 50) == 0) {
+                    LOG_FS("frame_capture_thread chn=%d: POLL_FRAME failed before DQBUF", chn_num);
+                    fflush(stderr);
+                }
+                usleep(1000);
+                continue;
+            }
+            if (ready == 0) {
+                if (poll_count <= 5 || (poll_count % 50) == 0) {
+                    LOG_FS("frame_capture_thread chn=%d: POLL_FRAME reported 0 ready frames", chn_num);
+                    fflush(stderr);
+                }
+                usleep(1000);
+                continue;
+            }
+            if (poll_count <= 5) {
+                LOG_FS("frame_capture_thread chn=%d: POLL_FRAME ready=%u", chn_num, ready);
+                fflush(stderr);
+            }
+        }
+
         /* Enforce non-blocking on fd in case driver cleared O_NONBLOCK */
         int __fl = fcntl(chn->fd, F_GETFL, 0);
         if (__fl != -1 && !(__fl & O_NONBLOCK)) {
@@ -816,7 +892,8 @@ static void *frame_capture_thread(void *arg) {
         while (1) {
             void *frame = NULL;
             extern int VBMKernelDequeue(int chn, int fd, void **frame_out);
-            if (VBMKernelDequeue(chn_num, chn->fd, &frame) == 0 && frame != NULL) {
+            int dq_ret = VBMKernelDequeue(chn_num, chn->fd, &frame);
+            if (dq_ret == 0 && frame != NULL) {
                 drained++;
                 frame_count++;
                 if (frame_count <= 5 || frame_count % 100 == 0) {
@@ -830,6 +907,7 @@ static void *frame_capture_thread(void *arg) {
                         LOG_FS("frame_capture_thread chn=%d: about to notify_observers module=%p", chn_num, module);
                         fflush(stderr);
                     }
+                    framesource_publish_outputs(module, frame);
                     notify_observers(module, frame);
                     if (frame_count <= 5) {
                         LOG_FS("frame_capture_thread chn=%d: notify_observers returned", chn_num);
@@ -838,6 +916,11 @@ static void *frame_capture_thread(void *arg) {
                 }
                 /* keep draining */
                 continue;
+            }
+            if (dq_ret < 0 && poll_count <= 5) {
+                LOG_FS("frame_capture_thread chn=%d: DQBUF drain ret=%d frame=%p",
+                       chn_num, dq_ret, frame);
+                fflush(stderr);
             }
             break;
         }
@@ -883,14 +966,16 @@ extern int remove_observer_from_module(void *src_module, void *dst_module);
  * This is called when IMP_System_Bind() is invoked
  */
 static int framesource_bind(void *src_module, void *dst_module, void *output_ptr) {
-    (void)output_ptr;
-
     if (src_module == NULL || dst_module == NULL) {
         LOG_FS("bind: NULL module");
+        fs_bind_trace("libimp/FSB: bind src=%p dst=%p outptr=%p invalid\n",
+                      src_module, dst_module, output_ptr);
         return -1;
     }
 
     LOG_FS("bind: Binding FrameSource to module");
+    fs_bind_trace("libimp/FSB: bind src=%p dst=%p outptr=%p\n",
+                  src_module, dst_module, output_ptr);
 
     /* Create observer structure */
     Observer *observer = (Observer*)calloc(1, sizeof(Observer));
@@ -904,15 +989,21 @@ static int framesource_bind(void *src_module, void *dst_module, void *output_ptr
     observer->module = dst_module;
     observer->frame = NULL;
     observer->output_index = 0;
+    fs_bind_trace("libimp/FSB: bind observer=%p dst=%p outidx=%d\n",
+                  observer, observer->module, observer->output_index);
 
     /* Add observer to source module's observer list */
     if (add_observer_to_module(src_module, observer) < 0) {
         LOG_FS("bind: Failed to add observer");
+        fs_bind_trace("libimp/FSB: bind add_observer failed src=%p obs=%p\n",
+                      src_module, observer);
         free(observer);
         return -1;
     }
 
     LOG_FS("bind: Successfully bound FrameSource to module");
+    fs_bind_trace("libimp/FSB: bind success src=%p dst=%p obs=%p\n",
+                  src_module, dst_module, observer);
     return 0;
 }
 

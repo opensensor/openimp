@@ -26,29 +26,15 @@ static DevicePoolEntry g_device_pool[MAX_DEVICES];
 static pthread_mutex_t g_device_pool_mutex = PTHREAD_MUTEX_INITIALIZER;
 static int g_device_pool_init = 0;
 
-/**
- * Cleanup function called at exit
+/*
+ * We used to register an atexit handler that walked the pool and closed
+ * any leaked fds. That proved fatal on the T31 target: the device libc
+ * leaves the `atexit` GOT slot unresolved at load time, and the first
+ * call from AL_DevicePool_Open (jalr t9 where t9==0) took a SIGSEGV in
+ * rvd before the AVPU ever opened. The kernel reaps device fds on
+ * process exit anyway, so there is no behavioural loss from dropping
+ * the registration; we simply no longer reference `atexit` at all.
  */
-static void AL_DevicePool_Deinit(void) {
-    pthread_mutex_lock(&g_device_pool_mutex);
-    
-    for (int i = 0; i < MAX_DEVICES; i++) {
-        if (g_device_pool[i].name != NULL) {
-            if (g_device_pool[i].fd >= 0) {
-                close(g_device_pool[i].fd);
-            }
-            free(g_device_pool[i].name);
-            g_device_pool[i].name = NULL;
-            g_device_pool[i].fd = -1;
-            g_device_pool[i].refcount = 0;
-        }
-    }
-    
-    g_device_pool_init = 0;
-    pthread_mutex_unlock(&g_device_pool_mutex);
-    
-    LOG_DEVPOOL("Deinit: device pool cleaned up");
-}
 
 /**
  * AL_DevicePool_Open - Open a device with reference counting
@@ -73,9 +59,7 @@ int AL_DevicePool_Open(const char *device_path) {
                 g_device_pool[i].refcount = 0;
             }
             
-            /* Register cleanup handler */
-            atexit(AL_DevicePool_Deinit);
-            
+            /* Intentionally no atexit() here — see note at top of file. */
             g_device_pool_init = 1;
             LOG_DEVPOOL("Init: device pool initialized");
         }
