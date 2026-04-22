@@ -300,6 +300,8 @@ uintptr_t AL_sDPB_AddPicToList(void *arg1, int32_t arg2, int32_t arg3, int32_t a
 {
     uintptr_t result;
 
+    DPB_KMSG("AddPicToList entry cur=%d pair=%d list=%d count=%ld", arg2, arg3, arg4,
+             (long)(arg6 ? (intptr_t)*arg6 : -1));
     result = (arg2 == 0xff) ? (uintptr_t)0 : (uintptr_t)((uint8_t *)arg1 + (uint32_t)arg2 * 0x18U + 0x6cU);
 
     if (arg3 == 0xff) {
@@ -379,6 +381,8 @@ label_6d534:
         }
 
 label_6d564:
+        DPB_KMSG("AddPicToList keep-existing cur=%d pair=%d list=%d count=%ld", arg2, arg3, arg4,
+                 (long)(arg6 ? (intptr_t)*arg6 : -1));
         return result;
 
 label_6d58c:
@@ -404,6 +408,8 @@ label_6d58c:
                 *((uint8_t *)arg5 + (uintptr_t)*arg6) = (uint8_t)arg3;
                 result = (uintptr_t)(*arg6 + 1);
                 *arg6 = (void *)result;
+                DPB_KMSG("AddPicToList push-pair cur=%d pair=%d list=%d new_count=%ld", arg2, arg3, arg4,
+                         (long)result);
                 return result;
             }
 
@@ -414,6 +420,8 @@ label_6d550:
         *((uint8_t *)arg5 + (uintptr_t)*arg6) = (uint8_t)arg2;
         result = (uintptr_t)(*arg6 + 1);
         *arg6 = (void *)result;
+        DPB_KMSG("AddPicToList push-cur cur=%d pair=%d list=%d new_count=%ld", arg2, arg3, arg4,
+                 (long)result);
         return result;
     }
 
@@ -1289,6 +1297,8 @@ uint32_t AL_sDPB_BuildRefList_isra_7(char *arg1, int32_t arg2, int32_t *arg3,
         v1 = 1;
     }
 
+    DPB_KMSG("BuildRefList entry poc=%d slice_type=%d head0=%u", arg2, *arg3, i_5);
+
     if (i_5 != 0xffU) {
         uint32_t a0 = i_5 << 3;
         uint32_t v0 = i_5 << 5;
@@ -1351,6 +1361,9 @@ uint32_t AL_sDPB_BuildRefList_isra_7(char *arg1, int32_t arg2, int32_t *arg3,
                     i_7 = (uint8_t)i_2;
                 }
 
+                DPB_KMSG("BuildRefList pass=%d start=%u alt=%u mode=%d", var_48,
+                         (uint32_t)i_7, (uint32_t)i_4, v0_12);
+
                 while (1) {
                     uint32_t i_6 = (uint32_t)i_7;
                     int32_t s1_1 = (0U < (uint32_t)v0_12) ? 1 : 0;
@@ -1386,6 +1399,8 @@ label_6e250:
                             }
 
                             s5_1 = (uint32_t)v0_19[3];
+                            DPB_KMSG("BuildRefList cand pass=%d pic=%u pair=%u list=%d next=%u", var_48,
+                                     a1, s5_1, s0_1, v1_10);
 
                             if (s5_1 == 0xffU) {
                                 AL_sDPB_AddPicToList(s6_1, (int32_t)a1, 0xff, s0_1, s2, var_5c_1);
@@ -1516,6 +1531,10 @@ label_6e2e4_check:
 
 label_6e2ec:
                     s0_1 += 1;
+
+                    if (s0_1 == 2) {
+                        break;
+                    }
                 }
 
                 fp = s6_1;
@@ -1525,6 +1544,9 @@ label_6e2ec:
                 } else {
                     *arg5 = (int32_t)(uintptr_t)var_50;
                 }
+
+                DPB_KMSG("BuildRefList pass-done pass=%d count=%ld first=%u", var_48,
+                         (long)(intptr_t)var_50, (uint32_t)*s2);
 
                 if ((int32_t)(uintptr_t)var_50 < 0x20) {
                     char *i_1 = s2 + (int32_t)(uintptr_t)var_50;
@@ -1596,6 +1618,8 @@ label_6e2ec:
         }
     }
 
+    DPB_KMSG("BuildRefList exit l0=%d l1=%d first0=%u first1=%u", *arg5, *arg7,
+             (uint32_t)arg4[0], (uint32_t)arg6[0]);
     return 0;
 }
 
