@@ -21,6 +21,26 @@ typedef struct StaticFifoCompat {
     int32_t capacity;
 } StaticFifoCompat;
 
+typedef struct AL_IpCtrl AL_IpCtrl;
+typedef struct AL_IpCtrlVtable {
+    void *Destroy;
+    int32_t (*ReadRegister)(AL_IpCtrl *self, uint32_t reg);
+    int32_t (*WriteRegister)(AL_IpCtrl *self, uint32_t reg, uint32_t value);
+    int32_t (*RegisterCallBack)(AL_IpCtrl *self, void (*cb)(void *), void *user_data, uint32_t irq_idx);
+} AL_IpCtrlVtable;
+
+struct AL_IpCtrl {
+    const AL_IpCtrlVtable *vtable;
+};
+
+typedef struct AL_EncCoreCtxCompat {
+    AL_IpCtrl *ip_ctrl;   /* +0x00 */
+    int32_t cmd_regs_1;   /* +0x04 */
+    int32_t cmd_regs_2;   /* +0x08 */
+    uint8_t core_id;      /* +0x0c */
+    uint8_t pad_0d[3];
+} AL_EncCoreCtxCompat;
+
 #define READ_U8(base, off) (*(uint8_t *)((uint8_t *)(base) + (off)))
 #define READ_S8(base, off) (*(int8_t *)((uint8_t *)(base) + (off)))
 #define READ_U16(base, off) (*(uint16_t *)((uint8_t *)(base) + (off)))
@@ -34,7 +54,70 @@ typedef struct StaticFifoCompat {
 #define WRITE_S32(base, off, val) (*(int32_t *)((uint8_t *)(base) + (off)) = (int32_t)(val))
 #define WRITE_PTR(base, off, val) (*(void **)((uint8_t *)(base) + (off)) = (void *)(val))
 
+int32_t AL_GetAllocSizeEP1(void); /* forward decl, ported by T<N> later */
+
 #define ENC_KMSG(fmt, ...) IMP_LOG_INFO("ENC", fmt, ##__VA_ARGS__)
+
+static void PrepareSourceConfigBeforeLaunch(AL_EncCoreCtxCompat *core, void *ch, void *req, uint32_t *cmd_regs)
+{
+    AL_IpCtrl *ip;
+    uint32_t width;
+    uint32_t height;
+    uint32_t src_y;
+    uint32_t src_uv;
+    uint32_t ep1;
+    uint32_t wpp;
+    uint32_t stream_part;
+    uint32_t hdr_off;
+    uint32_t stream_budget;
+
+    if (core == NULL || ch == NULL || req == NULL || cmd_regs == NULL) {
+        return;
+    }
+
+    ip = core->ip_ctrl;
+    if (ip == NULL || ip->vtable == NULL || ip->vtable->WriteRegister == NULL) {
+        return;
+    }
+
+    width = READ_U16(ch, 4);
+    height = READ_U16(ch, 6);
+    src_y = READ_U32(req, 0x298);
+    src_uv = READ_U32(req, 0x29c);
+    ep1 = READ_U32(req, 0x2fc);
+    wpp = READ_U32(req, 0x2f8);
+    stream_part = cmd_regs[0x31];
+    hdr_off = cmd_regs[0x32];
+    stream_budget = cmd_regs[0x33];
+
+    if (width == 0 || height == 0 || src_y == 0 || src_uv == 0 || ep1 == 0) {
+        ENC_KMSG("encode1 source-config skip core=%u w=%u h=%u srcY=0x%x srcUV=0x%x ep1=0x%x",
+                 (unsigned)core->core_id, width, height, src_y, src_uv, ep1);
+        return;
+    }
+
+    if (wpp == 0) {
+        wpp = ep1 + (uint32_t)AL_GetAllocSizeEP1();
+    }
+
+    ip->vtable->WriteRegister(ip, 0x85f4, 1);
+    ip->vtable->WriteRegister(ip, 0x85f0, 1);
+    ip->vtable->WriteRegister(ip, 0x8400, 0x00000131U);
+    ip->vtable->WriteRegister(ip, 0x8404, (((width - 1U) & 0xffffU) << 16) | ((height - 1U) & 0xffffU));
+    ip->vtable->WriteRegister(ip, 0x8408, 0x00010001U);
+    ip->vtable->WriteRegister(ip, 0x840c, width);
+    ip->vtable->WriteRegister(ip, 0x8410, src_y);
+    ip->vtable->WriteRegister(ip, 0x8414, src_uv);
+    ip->vtable->WriteRegister(ip, 0x8418, wpp);
+    ip->vtable->WriteRegister(ip, 0x841c, ep1);
+    ip->vtable->WriteRegister(ip, 0x8420, stream_part);
+    ip->vtable->WriteRegister(ip, 0x8424, hdr_off);
+    ip->vtable->WriteRegister(ip, 0x8428, stream_budget);
+    ip->vtable->WriteRegister(ip, 0x85e4, 1);
+
+    ENC_KMSG("encode1 source-config core=%u srcY=0x%x srcUV=0x%x ep1=0x%x wpp=0x%x part=0x%x hdr=0x%x budget=0x%x",
+             (unsigned)core->core_id, src_y, src_uv, ep1, wpp, stream_part, hdr_off, stream_budget);
+}
 
 void StaticFifo_Init(StaticFifoCompat *arg1, int32_t *arg2, int32_t arg3); /* forward decl, ported by T<N> later */
 int32_t StaticFifo_Queue(StaticFifoCompat *arg1, int32_t arg2); /* forward decl, ported by T<N> later */
@@ -3302,9 +3385,20 @@ int32_t encode1(void *arg1)
         void *enc1 = (uint8_t *)READ_PTR(ch, 0x164) + core * 0x44;
         int32_t cmd1 = READ_S32(req, 0xa78 + core * 4);
         int32_t cmd2 = READ_S32(req, 0xab8 + core * 4);
+        void *req18 = READ_PTR(req, 0x18);
+        void *req18_24 = req18 ? READ_PTR(req18, 0x24) : NULL;
+
         ENC_KMSG("encode1 launch core=%d enc=%p cmd1=0x%x cmd2=0x%x dual=%u",
                  core, enc1, cmd1, cmd2, (unsigned)READ_U8(req, 0x182));
+        ENC_KMSG("encode1 launch-ctx core=%d req18=%p req18+24=%p req18_24_428=%08x req18_24_42c=%08x req18_24_430=%08x req18_24_434=%08x req18_24_43c=%p",
+                 core, req18, req18_24,
+                 req18_24 ? READ_S32(req18_24, 0x428) : 0,
+                 req18_24 ? READ_S32(req18_24, 0x42c) : 0,
+                 req18_24 ? READ_S32(req18_24, 0x430) : 0,
+                 req18_24 ? READ_S32(req18_24, 0x434) : 0,
+                 req18_24 ? READ_PTR(req18_24, 0x43c) : NULL);
 
+        PrepareSourceConfigBeforeLaunch((AL_EncCoreCtxCompat *)enc1, ch, req, (uint32_t *)(intptr_t)cmd1);
         AL_EncCore_Encode1(enc1, cmd2, cmd1, (READ_U8(req, 0x182) != 0U) ? cmd2 : 0,
                            (READ_U8(req, 0x182) != 0U) ? cmd1 : 0);
     }
