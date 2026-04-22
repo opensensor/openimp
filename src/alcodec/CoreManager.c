@@ -657,8 +657,10 @@ int32_t AL_EncCore_ReadStatusRegsEnc(void *arg1, void *arg2)
     int32_t s0 = *(int32_t *)((char *)arg1 + 4);
     int32_t i;
     uint8_t var_88[0x88];
+    int32_t regs_base;
 
     do {
+        regs_base = s0;
         EncodingStatusRegsToSliceStatus((void *)(intptr_t)s0, var_88);
         s0 += 0x200;
         MergeEncodingStatus(arg2, var_88);
@@ -668,6 +670,22 @@ int32_t AL_EncCore_ReadStatusRegsEnc(void *arg1, void *arg2)
             *(int32_t *)((char *)arg2 + 4) += ((v0_1 >> 0xc) & 0x3ff) * (v0_1 & 0x3ff);
         }
         i = *(int32_t *)(intptr_t)(s0 - 0x200);
+        IMP_LOG_INFO(
+            "AVPU",
+            "ReadStatusRegsEnc raw regs=0x%x st104=0x%08x st108=0x%08x st114=%d st11c=%d st120=%d st124=%d st128=%d st12c=%d st1e4=0x%08x",
+            regs_base, *(int32_t *)(intptr_t)(regs_base + 0x104), *(int32_t *)(intptr_t)(regs_base + 0x108),
+            *(int32_t *)(intptr_t)(regs_base + 0x114), *(int32_t *)(intptr_t)(regs_base + 0x11c),
+            *(int32_t *)(intptr_t)(regs_base + 0x120), *(int32_t *)(intptr_t)(regs_base + 0x124),
+            *(int32_t *)(intptr_t)(regs_base + 0x128), *(uint16_t *)(intptr_t)(regs_base + 0x12c),
+            *(int32_t *)(intptr_t)(regs_base + 0x1e4));
+        IMP_LOG_INFO("AVPU",
+                     "ReadStatusRegsEnc slice regs=0x%x s10=%d s14=%d s18=%d s1c=%d s20=%d s24=%d s28=%d s2c=%d s30=%d done0=%u done1=%u",
+                     regs_base, *(int32_t *)((char *)var_88 + 0x10), *(int32_t *)((char *)var_88 + 0x14),
+                     *(int32_t *)((char *)var_88 + 0x18), *(int32_t *)((char *)var_88 + 0x1c),
+                     *(int32_t *)((char *)var_88 + 0x20), *(int32_t *)((char *)var_88 + 0x24),
+                     *(int32_t *)((char *)var_88 + 0x28), *(int32_t *)((char *)var_88 + 0x2c),
+                     *(int32_t *)((char *)var_88 + 0x30), (unsigned)*(uint8_t *)((char *)var_88 + 0),
+                     (unsigned)*(uint8_t *)((char *)var_88 + 1));
         IMP_LOG_INFO("AVPU", "ReadStatusRegsEnc regs=0x%x state=0x%x bytes=%d done=%d",
                      s0 - 0x200, *(int32_t *)(intptr_t)(s0 - 0x200),
                      *(int32_t *)((char *)arg2 + 4), i);

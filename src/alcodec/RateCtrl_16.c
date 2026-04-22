@@ -1016,34 +1016,68 @@ int32_t rc_l01i(void *arg1, int32_t arg2, int32_t arg3, int32_t arg4)
 int32_t rc_o11i(void *arg1, void *arg2, void *arg3, int32_t arg4, int32_t *arg5)
 {
     char *ctx = *(char **)((char *)arg1 + 0x30);
-    int32_t result = (int32_t)rc_IIIo((int32_t *)(ctx + 0x48), arg4);
+    int32_t result;
     int32_t frame_type = *(int32_t *)((char *)arg2 + 0x10);
     int32_t chosen_type = 2;
     int32_t total;
     int32_t percent_b;
+    int32_t ratio_gate;
+    int32_t stat_1c;
+    int32_t stat_20;
+    int32_t stat_24;
+    int32_t stat_28;
+    int32_t stat_2c;
+    int32_t stat_30;
 
+    RC16_KMSG("o11i entry rc=%p ctx=%p frm=%p stats=%p bits=%d frame_type=%d flags4=0x%x flags2c=0x%x",
+              arg1, ctx, arg2, arg3, arg4, frame_type,
+              *(int32_t *)((char *)arg2 + 4), *(int32_t *)((char *)arg2 + 0x2c));
+    result = (int32_t)rc_IIIo((int32_t *)(ctx + 0x48), arg4);
+    RC16_KMSG("o11i post-IIIo rc=%p result=%d", arg1, result);
     *arg5 = result;
 
     if (frame_type != 7) {
-        total = *(int32_t *)((char *)arg3 + 0x24) + (*(int32_t *)((char *)arg3 + 0x28) << 2) +
-                (*(int32_t *)((char *)arg3 + 0x2c) << 4) + (*(int32_t *)((char *)arg3 + 0x30) << 6);
+        stat_1c = *(int32_t *)((char *)arg3 + 0x1c);
+        stat_20 = *(int32_t *)((char *)arg3 + 0x20);
+        stat_24 = *(int32_t *)((char *)arg3 + 0x24);
+        stat_28 = *(int32_t *)((char *)arg3 + 0x28);
+        stat_2c = *(int32_t *)((char *)arg3 + 0x2c);
+        stat_30 = *(int32_t *)((char *)arg3 + 0x30);
+        total = stat_24 + (stat_28 << 2) + (stat_2c << 4) + (stat_30 << 6);
+        RC16_KMSG("o11i stats rc=%p s1c=%d s20=%d s24=%d s28=%d s2c=%d s30=%d total=%d",
+                  arg1, stat_1c, stat_20, stat_24, stat_28, stat_2c, stat_30, total);
         if (total == 0) {
             __builtin_trap();
         }
 
-        percent_b = *(int32_t *)((char *)arg3 + 0x1c) * 100 / total;
-        chosen_type = (percent_b < 0x51) ? frame_type : 2;
+        percent_b = stat_20 * 100 / total;
+        ratio_gate = stat_1c * 100 / total;
+        chosen_type = (ratio_gate < 0x51) ? frame_type : 2;
         if (*(uint8_t *)(ctx + 0x140) != 0 && (*(int32_t *)((char *)arg2 + 4) & 0x80) != 0) {
             chosen_type = 3;
         }
+        RC16_KMSG("o11i frame-select rc=%p total=%d percent_b=%d ratio_gate=%d chosen=%d frame_type=%d intra_bias=%u",
+                  arg1, total, percent_b, ratio_gate, chosen_type, frame_type,
+                  (unsigned)*(uint8_t *)(ctx + 0x140));
+    } else {
+        percent_b = 0;
+        ratio_gate = 0;
+        RC16_KMSG("o11i frame-type-7 rc=%p", arg1);
     }
 
     if (*(uint8_t *)((char *)arg2 + 0x2c) == 0 && result >= 0) {
+        RC16_KMSG("o11i pre-iili rc=%p qp_delta=%d", arg1,
+                  (int32_t)(*(int32_t *)((char *)arg3 + 0x3c) - *(int8_t *)((char *)arg2 + 0x25)));
         rc_iili(arg1, arg2, (int16_t)(*(int32_t *)((char *)arg3 + 0x3c) - *(int8_t *)((char *)arg2 + 0x25)));
+        RC16_KMSG("o11i post-iili rc=%p", arg1);
     }
 
     {
         int32_t qp = *(int16_t *)(ctx + 0x20) + rc_loli_isra_4(ctx, chosen_type);
+
+        RC16_KMSG("o11i pre-qp-clamp rc=%p base=%d chosen=%d qp=%d min=%d max=%d",
+                  arg1, *(int16_t *)(ctx + 0x20), chosen_type, qp,
+                  *(int16_t *)(ctx + 0x18), *(int16_t *)(ctx + 0x1a));
 
         if (qp < *(int16_t *)(ctx + 0x18)) {
             qp = *(int16_t *)(ctx + 0x18);
@@ -1053,7 +1087,10 @@ int32_t rc_o11i(void *arg1, void *arg2, void *arg3, int32_t arg4, int32_t *arg5)
         }
 
         if (percent_b < 0x5f) {
+            RC16_KMSG("o11i pre-l01i rc=%p chosen=%d bits=%d qp=%d percent_b=%d",
+                      arg1, chosen_type, arg4, qp, percent_b);
             rc_l01i(arg1, chosen_type, arg4, qp);
+            RC16_KMSG("o11i post-l01i rc=%p", arg1);
         }
 
         if (chosen_type == frame_type || chosen_type == 3) {
@@ -1098,6 +1135,8 @@ int32_t rc_o11i(void *arg1, void *arg2, void *arg3, int32_t arg4, int32_t *arg5)
             *(int32_t *)(ctx + 0xc0) = frame_type;
             *(int32_t *)(ctx + 0xc4) = result;
         }
+        RC16_KMSG("o11i exit rc=%p result=%d chosen=%d qp=%d frame_type=%d",
+                  arg1, result, chosen_type, qp, frame_type);
         return result;
     }
 }
