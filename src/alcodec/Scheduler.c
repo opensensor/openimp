@@ -102,6 +102,8 @@ static void PrepareSourceConfigBeforeLaunch(AL_EncCoreCtxCompat *core, void *ch,
         wpp = ep1 + (uint32_t)AL_GetAllocSizeEP1();
     }
 
+    ip->vtable->WriteRegister(ip, 0x85f4, 1);
+    ip->vtable->WriteRegister(ip, 0x85f0, 1);
     ip->vtable->WriteRegister(ip, core_base + 0x83f4, 1);
     ip->vtable->WriteRegister(ip, 0x8400, 0x00000131U);
     ip->vtable->WriteRegister(ip, 0x8404, (((width - 1U) & 0xffffU) << 16) | ((height - 1U) & 0xffffU));
@@ -114,6 +116,7 @@ static void PrepareSourceConfigBeforeLaunch(AL_EncCoreCtxCompat *core, void *ch,
     ip->vtable->WriteRegister(ip, 0x8420, stream_part);
     ip->vtable->WriteRegister(ip, 0x8424, hdr_off);
     ip->vtable->WriteRegister(ip, 0x8428, stream_budget);
+    ip->vtable->WriteRegister(ip, 0x85e4, 1);
     ENC_KMSG("encode1 source-config core=%u srcY=0x%x srcUV=0x%x ep1=0x%x wpp=0x%x part=0x%x hdr=0x%x budget=0x%x",
              (unsigned)core->core_id, src_y, src_uv, ep1, wpp, stream_part, hdr_off, stream_budget);
 }
@@ -1401,6 +1404,13 @@ static int32_t GetStreamBuffers_part_72(void *arg1, void *arg2, void *arg3)
                 return result;
             }
 
+            ENC_KMSG("GetStreamBuffers raw lane=%d entry=[%08x %08x %08x %08x %08x %08x %08x %08x] cfg6=%u cfg3c=%u cfg3e=%u cfg40=%u cfg4e=%u cfg4f=%u",
+                     fp_1,
+                     stream_entry[0], stream_entry[1], stream_entry[2], stream_entry[3],
+                     stream_entry[4], stream_entry[5], stream_entry[6], stream_entry[7],
+                     (unsigned)READ_U16(arg3, 6), (unsigned)READ_U16(arg3, 0x3c),
+                     (unsigned)READ_U16(arg3, 0x3e), (unsigned)READ_U16(arg3, 0x40),
+                     (unsigned)READ_U16(arg3, 0x4e), (unsigned)READ_U16(arg3, 0x4f));
             s7_1[-4] = stream_entry[0];
             s7_1[-2] = stream_entry[1];
             s7_1[-4 + 2] = stream_entry[4];
@@ -1449,6 +1459,11 @@ static int32_t GetStreamBuffers_part_72(void *arg1, void *arg2, void *arg3)
                          stream_entry[0], (void *)(intptr_t)stream_entry[1], stream_entry[2], stream_entry[3],
                          stream_entry[4], stream_entry[5], (void *)(intptr_t)stream_entry[6],
                          part_size, v0_4);
+                ENC_KMSG("GetStreamBuffers reserve lane=%d shift=%u min_lcu=%u max_cfg=%u rows=%u forced=%u part=%d part_off=%d limit=%d",
+                         fp_1, shift,
+                         (unsigned)((((1U << (shift & 0x1fU)) - 1U) + (uint32_t)READ_U16(arg3, 6)) >> (shift & 0x1fU)),
+                         max_size, (unsigned)READ_U16(arg3, 0x3c), (unsigned)READ_U16(arg3, 0x3e),
+                         part_size, v0_4, stream_entry[2]);
             }
 
             fp_1 += 1;
@@ -2000,6 +2015,12 @@ int32_t AL_EncChannel_PushNewFrame(void *arg1, int32_t *arg2, int32_t *arg3, int
         s0_1 = src_buf;
         ENC_KMSG("PushNewFrame prepared chctx=%p pict=%d src0=0x%x src1=0x%x",
                  arg1, arg4[0], arg2[0], arg2[1]);
+        ENC_KMSG("PushNewFrame packed meta0=%08x meta1=%08x meta2=%08x meta3=%08x src8=%08x src9=%08x src10=%08x src11=%08x",
+                 READ_S32(src_buf, 0x00), READ_S32(src_buf, 0x04), READ_S32(src_buf, 0x08), READ_S32(src_buf, 0x0c),
+                 READ_S32(src_buf, 0x48), READ_S32(src_buf, 0x4c), READ_S32(src_buf, 0x50), READ_S32(src_buf, 0x54));
+        ENC_KMSG("PushNewFrame packed streammeta cmd=%08x meta0c=%08x meta10=%08x meta14=%08x meta18=%08x meta1c=%08x tailc0=%08x tailc4=%08x",
+                 READ_S32(src_buf, 0x48), READ_S32(src_buf, 0x54), READ_S32(src_buf, 0x58), READ_S32(src_buf, 0x5c),
+                 READ_S32(src_buf, 0x60), READ_S32(src_buf, 0x64), READ_S32(src_buf, 0xc0), READ_S32(src_buf, 0xc4));
     }
 
     {
@@ -2126,28 +2147,22 @@ static int32_t SetSourceBuffer_isra_74(void *arg1, int32_t *arg2, int32_t arg3, 
 
 static int32_t UpdateRateCtrl_constprop_83(int32_t *arg1, int32_t *arg2, int32_t *arg3, int32_t arg4, uint8_t arg5)
 {
-    int32_t target_bits = ((arg3[1] + 7) >> 3) << 3;
+    int32_t rounded_bits = ((arg3[1] + 7) >> 3) << 3;
     int32_t status = 0;
-    int32_t max_bits = arg3[0x11] << 3;
+    int32_t max_bits;
+    int32_t slice_budget;
     int32_t *rc = &arg1[0x3d];
     int32_t *frm = &arg2[8];
 
     if (arg4 == 0) {
-        int32_t used_bits = arg3[0x11] << 3;
-        int32_t produced = arg1[3] << 3;
-
-        if (produced > target_bits) {
-            target_bits = produced;
-        }
-        max_bits = target_bits;
+        max_bits = arg1[3] << 3;
         if (arg2[0xc] != 7) {
             Rtos_GetMutex((void *)(uintptr_t)arg1[0x48]);
             ((void (*)(void *, void *, void *, int32_t, int32_t *))(intptr_t)arg1[0x3f])(rc, frm, arg3, max_bits, &status);
             Rtos_ReleaseMutex((void *)(uintptr_t)arg1[0x48]);
         } else {
-            Rtos_GetMutex((void *)(uintptr_t)arg1[0x48]);
-            ((void (*)(void *, void *, void *, int32_t, int32_t *))(intptr_t)arg1[0x3f])(rc, frm, arg3, used_bits, &status);
-            Rtos_ReleaseMutex((void *)(uintptr_t)arg1[0x48]);
+            slice_budget = arg2[0xb2];
+            goto final_update;
         }
 
         if ((uint32_t)arg5 != 0U && status < 0) {
@@ -2180,21 +2195,38 @@ static int32_t UpdateRateCtrl_constprop_83(int32_t *arg1, int32_t *arg2, int32_t
                 Rtos_ReleaseMutex((void *)(uintptr_t)arg1[0x48]);
             }
         }
+    } else {
+        int32_t produced = arg3[0x44] << 3;
+
+        if (produced >= rounded_bits) {
+            rounded_bits = produced;
+        }
+        max_bits = rounded_bits;
+        if (arg2[0xc] != 7) {
+            Rtos_GetMutex((void *)(uintptr_t)arg1[0x48]);
+            ((void (*)(void *, void *, void *, int32_t, int32_t *))(intptr_t)arg1[0x3f])(rc, frm, arg3, max_bits, &status);
+            Rtos_ReleaseMutex((void *)(uintptr_t)arg1[0x48]);
+        } else {
+            slice_budget = arg2[0xb2];
+            goto final_update;
+        }
     }
 
     if (status <= 0) {
-        int32_t clamp = 8;
-
+        slice_budget = arg2[0xb2];
+    } else {
+        slice_budget = 8;
         if (status >= 8) {
-            clamp = status;
+            slice_budget = status;
         }
-        arg2[0xb2] = clamp;
+        arg2[0xb2] = slice_budget;
     }
 
+final_update:
     Rtos_GetMutex((void *)(uintptr_t)arg1[0x48]);
     WRITE_U8(arg1, 0x3de0, 0);
     ((void (*)(void *, void *, void *, int32_t, uint32_t, int32_t, void *))(intptr_t)arg1[0x40])(
-        rc, frm, arg3, max_bits, (uint32_t)READ_U8(arg2, 0xb08), arg2[0xb2] << 3, &_gp);
+        rc, frm, arg3, max_bits, (uint32_t)READ_U8(arg2, 0xb08), slice_budget << 3, &_gp);
     return Rtos_ReleaseMutex((void *)(uintptr_t)arg1[0x48]);
 }
 
@@ -3253,15 +3285,20 @@ int32_t encode1(void *arg1)
     if (READ_U8(ch, 0x1f) != 4U) {
         WRITE_S32(req, 0x318, (int32_t)(intptr_t)((uint8_t *)req + 0x338));
     }
-    ENC_KMSG("encode1 pre-FillSliceParam req=%p mode=%u chroma=%u cores=%u dual=%u w8=%08x w9=%08x wa=%08x wb=%08x wc=%08x wd=%08x w12=%08x",
+    ENC_KMSG("encode1 pre-FillSliceParam req=%p mode=%u chroma=%u cores=%u dual=%u ch4e=%u ch4f=%u pre170=%u pre171=%u pre172=%u pre173=%u pre174=%u w8=%08x w9=%08x wa=%08x wb=%08x wc=%08x wd=%08x w12=%08x",
              req, (unsigned)READ_U8(ch, 0x1f), (unsigned)READ_U8(ch, 0x4), (unsigned)READ_U8(ch, 0x3c),
              (unsigned)READ_U8(req, 0x182),
+             (unsigned)READ_U8(ch, 0x4e), (unsigned)READ_U8(ch, 0x4f),
+             (unsigned)READ_U8(req, 0x170), (unsigned)READ_U8(req, 0x171), (unsigned)READ_U8(req, 0x172),
+             (unsigned)READ_U8(req, 0x173), (unsigned)READ_U8(req, 0x174),
              READ_S32(req, 0x20), READ_S32(req, 0x24), READ_S32(req, 0x28),
              READ_S32(req, 0x2c), READ_S32(req, 0x30), READ_S32(req, 0x34),
              READ_S32(req, 0x48));
     FillSliceParamFromPicParam(ch, (uint8_t *)req + 0x170, req);
-    ENC_KMSG("encode1 post-FillSliceParam req=%p slice_type=%u pic_order=%d cmd318=%p",
-             req, (unsigned)READ_U8(req, 0x170), READ_S32(req, 0x184), READ_PTR(req, 0x318));
+    ENC_KMSG("encode1 post-FillSliceParam req=%p slice_type=%u pic_order=%d cmd318=%p s170=%u s171=%u s172=%u s173=%u s174=%u",
+             req, (unsigned)READ_U8(req, 0x170), READ_S32(req, 0x184), READ_PTR(req, 0x318),
+             (unsigned)READ_U8(req, 0x170), (unsigned)READ_U8(req, 0x171), (unsigned)READ_U8(req, 0x172),
+             (unsigned)READ_U8(req, 0x173), (unsigned)READ_U8(req, 0x174));
     ENC_KMSG("encode1 req-win req=%p 298=%08x 29c=%08x 2a0=%08x 2a4=%08x 2a8=%08x 2ac=%08x 2b0=%08x 2b4=%08x",
              req,
              READ_S32(req, 0x298), READ_S32(req, 0x29c), READ_S32(req, 0x2a0), READ_S32(req, 0x2a4),
@@ -3403,6 +3440,7 @@ int32_t encode1(void *arg1)
                  req18_24 ? READ_S32(req18_24, 0x430) : 0,
                  req18_24 ? READ_S32(req18_24, 0x434) : 0,
                  req18_24 ? READ_PTR(req18_24, 0x43c) : NULL);
+        PrepareSourceConfigBeforeLaunch(enc1, ch, req, (uint32_t *)(uintptr_t)cmd1);
 
         AL_EncCore_Encode1(enc1, cmd2, cmd1, (READ_U8(req, 0x182) != 0U) ? cmd2 : 0,
                            (READ_U8(req, 0x182) != 0U) ? cmd1 : 0);
