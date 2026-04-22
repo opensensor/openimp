@@ -118,8 +118,8 @@ int32_t AL_StreamMngr_AddBuffer(AL_TStreamMngrCtx *arg1, int32_t *arg2)
                     v0_3[5] = t2;
                     v0_3[6] = t1;
                     v0_3[7] = t0;
-                    Rtos_ReleaseMutex(a0_2);
                     stream_mngr_write_s32(arg1, 0x2804, a1 + 1);
+                    Rtos_ReleaseMutex(a0_2);
                     return 1;
                 }
             }
@@ -175,8 +175,8 @@ int32_t AL_StreamMngr_AddBufferBack(AL_TStreamMngrCtx *arg1, int32_t *arg2)
             v0_3[5] = t0;
             v0_3[6] = a3;
             v0_3[7] = a2;
-            Rtos_ReleaseMutex(a0_2);
             stream_mngr_write_s32(arg1, 0x2804, a1 + 1);
+            Rtos_ReleaseMutex(a0_2);
             return 1;
         }
     }
