@@ -1,4 +1,5 @@
 #include <stdint.h>
+#include <stddef.h>
 
 extern char _gp;
 extern int32_t __assert(const char *expression, const char *file, int32_t line,
@@ -21,6 +22,11 @@ int32_t rc_ooIi(uint32_t arg1, int16_t arg2, int32_t arg3, int32_t arg4, int16_t
 int32_t Ioii(void *arg1, void *arg2, void *arg3, int32_t arg4, char arg5, int32_t arg6,
              int32_t *arg7, uint32_t *arg8, uint32_t *arg9);
 int32_t loii(void *arg1);
+
+static int32_t rc_OOoI_impl(void *arg1, void *arg2, void *arg3, int32_t arg4, char arg5,
+                            int32_t arg6);
+static int32_t rc_IIii_impl(void *arg1, void *arg2, void *arg3, int32_t arg4, char arg6,
+                            int32_t arg7);
 
 /* stock name: l0ii */
 int32_t rc_l0ii(void *arg1, char arg2)
@@ -225,8 +231,76 @@ int32_t rc_l1OI(void *arg1, int16_t arg2)
     return prev;
 }
 
+/* stock name: Ioii */
+int32_t Ioii(void *arg1, void *arg2, void *arg3, int32_t arg4, char arg5, int32_t arg6,
+             int32_t *arg7, uint32_t *arg8, uint32_t *arg9)
+{
+    char *ctx = *(char **)((char *)arg1 + 0x30);
+    int32_t total = 0;
+    uint32_t weight0 = 0;
+    uint32_t weight1 = 0;
+    uint32_t weight2 = 0;
+    uint32_t weight3 = 0;
+    int32_t frame_delta = arg4;
+    int32_t trend;
+
+    if (arg7 != NULL) {
+        *arg7 = 0;
+    }
+    if (arg8 != NULL) {
+        *arg8 = 0;
+    }
+    if (arg9 != NULL) {
+        *arg9 = 0;
+    }
+
+    rc_Ilii(arg3, arg4, &total, &weight0, &weight1, &weight2, &weight3);
+
+    if (*(int32_t *)((char *)arg2 + 0x10) == 1 && *(uint8_t *)(ctx + 0x12e) != 0) {
+        rc_O0ii(arg1, (int32_t)weight1);
+    }
+
+    trend = rc_i0ii(arg1, arg2, &frame_delta, arg6, (int32_t)weight0, (int32_t)weight2);
+    if (*(uint8_t *)(ctx + 0x12d) != 0) {
+        trend = 0;
+    }
+    if ((uint8_t)arg5 != 0) {
+        trend = rc_l0ii(arg1, trend);
+    }
+
+    if (arg7 != NULL) {
+        *arg7 = trend;
+    }
+    if (arg8 != NULL) {
+        *arg8 = (uint32_t)*(int32_t *)(ctx + 0x84);
+    }
+    if (arg9 != NULL) {
+        *arg9 = (uint32_t)*(int32_t *)(ctx + 0x84);
+    }
+    return trend;
+}
+
+/* stock name: loii */
+int32_t loii(void *arg1)
+{
+    char *ctx = *(char **)((char *)arg1 + 0x30);
+    int32_t result_1 = *(int16_t *)(ctx + 0x20);
+    int32_t result = *(int16_t *)(ctx + 0x18);
+
+    if (result_1 >= result) {
+        result = *(int16_t *)(ctx + 0x1a);
+        if (result_1 < result) {
+            result = result_1;
+        }
+    }
+
+    *(int16_t *)(ctx + 0x20) = (int16_t)result;
+    return result;
+}
+
 /* stock name: OOoI */
-int32_t rc_OOoI(void *arg1, void *arg2, void *arg3, int32_t arg4, char arg5, int32_t arg6)
+static int32_t rc_OOoI_impl(void *arg1, void *arg2, void *arg3, int32_t arg4, char arg5,
+                            int32_t arg6)
 {
     int32_t delta = 0;
     uint32_t low = 0;
@@ -237,8 +311,18 @@ int32_t rc_OOoI(void *arg1, void *arg2, void *arg3, int32_t arg4, char arg5, int
     return loii(arg1);
 }
 
+/* stock name: OOoI */
+int32_t rc_OOoI(void *arg1, void *arg2, void *arg3, int32_t arg4, int32_t *arg5)
+{
+    if (arg5 != NULL) {
+        *arg5 = 0;
+    }
+    return rc_OOoI_impl(arg1, arg2, arg3, arg4, 0, arg4);
+}
+
 /* stock name: IIii */
-int32_t rc_IIii(void *arg1, void *arg2, void *arg3, int32_t arg4, char arg6, int32_t arg7)
+static int32_t rc_IIii_impl(void *arg1, void *arg2, void *arg3, int32_t arg4, char arg6,
+                            int32_t arg7)
 {
     char *ctx = *(char **)((char *)arg1 + 0x30);
     int32_t total = 0;
@@ -658,4 +742,13 @@ int32_t rc_IIii(void *arg1, void *arg2, void *arg3, int32_t arg4, char arg6, int
     }
     *(int16_t *)(ctx + 0x20) = (int16_t)cur_qp;
     return cur_qp;
+}
+
+/* stock name: IIii */
+int32_t rc_IIii(void *arg1, void *arg2, void *arg3, int32_t arg4, int32_t *arg5)
+{
+    if (arg5 != NULL) {
+        *arg5 = 0;
+    }
+    return rc_IIii_impl(arg1, arg2, arg3, arg4, 0, arg4);
 }

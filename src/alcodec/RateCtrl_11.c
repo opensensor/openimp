@@ -52,9 +52,9 @@ static int32_t rc_ooOi(void *arg1, uint32_t arg2, uint32_t arg3);
 /* forward decl, ported by T<N> later */
 int32_t rc_oiii(void *arg1, uint32_t arg2, uint32_t arg3);
 /* forward decl, ported by T<N> later */
-int32_t rc_IIii(void *arg1, void *arg2, void *arg3, int32_t arg4, char arg6, int32_t arg7);
+int32_t rc_IIii(void *arg1, void *arg2, void *arg3, int32_t arg4, int32_t *arg5);
 /* forward decl, ported by T<N> later */
-int32_t rc_OOoI(void *arg1, void *arg2, void *arg3, int32_t arg4, char arg5, int32_t arg6);
+int32_t rc_OOoI(void *arg1, void *arg2, void *arg3, int32_t arg4, int32_t *arg5);
 /* forward decl, ported by T<N> later */
 int32_t rc_IlOI(void);
 /* forward decl, ported by T<N> later */

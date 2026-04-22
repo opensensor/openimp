@@ -160,8 +160,8 @@ void MorphColumnFilter(const uint8_t *src, uint8_t *dst, int32_t width, int32_t 
     (void)src; (void)dst; (void)width; (void)height; (void)ksize; (void)op;
 }
 
-int32_t Ioii(int32_t a, int32_t b) { return a + b; }
-int32_t loii(int32_t a, int32_t b) { return a - b; }
+static int32_t residual_stub_Ioii(int32_t a, int32_t b) { return a + b; }
+static int32_t residual_stub_loii(int32_t a, int32_t b) { return a - b; }
 
 const char *GetH26xBufferName_constprop_59(int32_t type)
 {
