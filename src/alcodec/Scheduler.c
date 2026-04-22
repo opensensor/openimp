@@ -2161,6 +2161,10 @@ static int32_t SetSourceBuffer_isra_74(void *arg1, int32_t *arg2, int32_t arg3, 
     arg2[5] = src[15];
     arg2[6] = src[16];
     arg2[7] = src[17];
+    ENC_KMSG("SetSourceBuffer pict=%d src=%p req=%p io=[%08x %08x %08x %08x %08x %08x %08x] aux=[%08x %08x %08x %08x %08x %08x %08x %08x]",
+             arg3, src, arg2,
+             arg4[0], arg4[1], arg4[2], arg4[3], arg4[4], arg4[5], arg4[6],
+             arg2[0], arg2[1], arg2[2], arg2[3], arg2[4], arg2[5], arg2[6], arg2[7]);
     return src[17];
 }
 
@@ -3340,6 +3344,11 @@ int32_t encode1(void *arg1)
              READ_S32(req, 0x2f0), READ_S32(req, 0x2f4), READ_S32(req, 0x2f8), READ_S32(req, 0x2fc),
              READ_S32(req, 0x300), READ_S32(req, 0x304), READ_S32(req, 0x308), READ_S32(req, 0x30c),
              READ_S32(req, 0x310), READ_S32(req, 0x314));
+    ENC_KMSG("encode1 req-win3b req=%p 2bc=%08x 2cc=%08x 2d8=%08x 2dc=%08x 2ec=%08x 320=%08x 324=%08x 328=%08x 32c=%08x",
+             req,
+             READ_S32(req, 0x2bc), READ_S32(req, 0x2cc), READ_S32(req, 0x2d8), READ_S32(req, 0x2dc),
+             READ_S32(req, 0x2ec), READ_S32(req, 0x320), READ_S32(req, 0x324), READ_S32(req, 0x328),
+             READ_S32(req, 0x32c));
     ENC_KMSG("encode1 req-win4 req=%p 315=%02x 318=%p meta0c=%08x meta10=%08x meta14=%08x meta18=%08x meta1c=%08x",
              req, (unsigned)READ_U8(req, 0x315), READ_PTR(req, 0x318),
              READ_PTR(req, 0x318) ? READ_S32(READ_PTR(req, 0x318), 0x0c) : 0,
@@ -3428,6 +3437,10 @@ int32_t encode1(void *arg1)
                      core, cmd_regs,
                      READ_S32(cmd_regs, 0xc0), READ_S32(cmd_regs, 0xc4),
                      READ_S32(cmd_regs, 0xc8), READ_S32(cmd_regs, 0xcc));
+            ENC_KMSG("encode1 prepack-meta core=%d req=%p srcblk14=%08x srcblk18=%08x srcblk34=%08x srcblk44=%08x srcblk54=%08x srcblk94=%08x",
+                     core, req,
+                     READ_S32(req, 0x2ac), READ_S32(req, 0x2b0), READ_S32(req, 0x2cc),
+                     READ_S32(req, 0x2dc), READ_S32(req, 0x2ec), READ_S32(req, 0x32c));
             SliceParamToCmdRegsEnc1(slice, cmd_regs, (uint8_t *)req + 0x298, READ_U8(ch, 0x4f));
             ENC_KMSG("encode1 materialized core=%d cmd=%p slice_off=%d stream_off=%d stream_avail=%d w0=%08x w1=%08x w2=%08x w3=%08x",
                      core, cmd_regs, slice_off, stream_off, stream_avail,
