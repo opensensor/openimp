@@ -396,14 +396,6 @@ int32_t rc_ol1(void *rc, int32_t a)              { (void)rc; (void)a; return 0; 
 int32_t rc_olI(void *rc)                         { (void)rc; return 0; }
 int32_t rc_Ooii(void *rc, int32_t a, int32_t b)  { (void)rc; (void)a; (void)b; return 0; }
 
-/* ----- framesource/isp link helpers ----------------------------------- */
-
-int32_t ISP_EnsureLinkStreamOn(int32_t sensor_idx)
-{
-    (void)sensor_idx;
-    return 0;
-}
-
 /* ----- audio helper ---------------------------------------------------- */
 
 int32_t _ao_get_buf_size(int32_t rate, int32_t sample_bits, int32_t chan_cnt, int32_t num_per_frm)

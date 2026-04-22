@@ -36,6 +36,8 @@ static char *bpath;
 static uint8_t custom_contrast;
 static uint8_t custom_sharpness;
 static uint32_t global_mode;
+static int tseries_isp_stream_started;
+static int tseries_bypass_link_setup_done;
 
 int IMP_ISP_Tuning_SetContrast_internal(uint32_t arg1, int32_t arg2);
 int IMP_ISP_Tuning_SetSharpness_internal(uint32_t arg1, int32_t arg2);
@@ -1323,6 +1325,54 @@ int IMP_ISP_Tuning_SetISPBypass(IMPISPTuningOpsMode enable)
     }
     kmsg_trace("libimp/ISP: SetISPBypass ENABLE_LINKS ok arg=%d\n", bypass_mode);
 
+    tseries_bypass_link_setup_done = 1;
+    tseries_isp_stream_started = 1;
+
+    return 0;
+}
+
+int ISP_EnsureLinkStreamOn(int32_t sensor_idx)
+{
+    ISPDevice *isp;
+
+    if (tseries_get_isp(&isp) != 0) {
+        kmsg_trace("libimp/ISP: EnsureLinkStreamOn tseries_get_isp failed\n");
+        return -1;
+    }
+
+    if (tseries_isp_stream_started != 0) {
+        kmsg_trace("libimp/ISP: EnsureLinkStreamOn already-started bypass_done=%d\n",
+                   tseries_bypass_link_setup_done);
+        return 0;
+    }
+
+    kmsg_trace("libimp/ISP: EnsureLinkStreamOn STREAMON sensor=%d fd=%d\n",
+               sensor_idx, isp->fd);
+    if (ioctl(isp->fd, 0x80045612, 0) != 0) {
+        kmsg_trace("libimp/ISP: EnsureLinkStreamOn STREAMON failed errno=%d\n", errno);
+        return -1;
+    }
+
+    if (tseries_bypass_link_setup_done == 0) {
+        int32_t link_arg = sensor_idx;
+
+        kmsg_trace("libimp/ISP: EnsureLinkStreamOn CREATE_LINKS sensor=%d\n", link_arg);
+        if (ioctl(isp->fd, TISP_VIDIOC_CREATE_LINKS, &link_arg) != 0) {
+            kmsg_trace("libimp/ISP: EnsureLinkStreamOn CREATE_LINKS failed errno=%d\n", errno);
+            return -1;
+        }
+
+        kmsg_trace("libimp/ISP: EnsureLinkStreamOn ENABLE_LINKS sensor=%d\n", link_arg);
+        if (ioctl(isp->fd, TISP_VIDIOC_ENABLE_LINKS, 0) != 0) {
+            kmsg_trace("libimp/ISP: EnsureLinkStreamOn ENABLE_LINKS failed errno=%d\n", errno);
+            return -1;
+        }
+    } else {
+        kmsg_trace("libimp/ISP: EnsureLinkStreamOn skip-link-setup bypass_done=1\n");
+    }
+
+    tseries_isp_stream_started = 1;
+    kmsg_trace("libimp/ISP: EnsureLinkStreamOn done sensor=%d\n", sensor_idx);
     return 0;
 }
 
@@ -2360,6 +2410,8 @@ int IMP_ISP_DisableSensor(void)
     }
     kmsg_trace("libimp/ISP: DisableSensor DISABLE_SENSOR ok\n");
 
+    tseries_isp_stream_started = 0;
+    tseries_bypass_link_setup_done = 0;
     isp->opened -= 2;
     return 0;
 }
