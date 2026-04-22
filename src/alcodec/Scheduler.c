@@ -292,6 +292,9 @@ label_641f0:
             int32_t t0 = arg3[0x23];
             int32_t a3 = arg3[0x14];
             int16_t a2_1 = READ_S16(arg3, 0x138);
+            uint32_t word9 = (uint32_t)arg3[9];
+            uint32_t word11 = (uint32_t)arg3[0xb];
+            uint32_t word12 = (uint32_t)arg3[0x12];
 
             if (~(uint32_t)a0_2 == 0U) {
                 a0_2 = 0;
@@ -308,6 +311,44 @@ label_641f0:
             WRITE_S32(arg2, 0xa4, t0);
             WRITE_S32(arg2, 0xf0, a3);
             WRITE_U16(arg2, 0xf4, (uint16_t)a2_1);
+
+            if (a3 == 0) {
+                WRITE_U8(arg2, 0x60, (uint8_t)((word9 >> 0xf) & 1U));
+                WRITE_U8(arg2, 0x61, (uint8_t)((word9 >> 0x12) & 1U));
+                WRITE_U8(arg2, 0x62, (uint8_t)((word9 >> 0xb) & 1U));
+            } else if (a3 == 1) {
+                WRITE_U8(arg2, 0x5f, (uint8_t)((word9 >> 0xf) & 1U));
+                WRITE_U8(arg2, 0x65, (uint8_t)((word9 >> 0x12) & 1U));
+            }
+
+            WRITE_U8(arg2, 0x63, (uint8_t)((word9 >> 0x10) & 1U));
+            WRITE_U8(arg2, 0x64, (uint8_t)((word9 >> 0x11) & 1U));
+            WRITE_U8(arg2, 0x66, (uint8_t)((word9 >> 0x13) & 1U));
+            WRITE_U8(arg2, 0x67, (uint8_t)((word9 >> 0x14) & 1U));
+            WRITE_U8(arg2, 0x69, (uint8_t)((word9 >> 0x16) & 1U));
+            WRITE_U8(arg2, 0x6a, (uint8_t)((word9 >> 0x17) & 1U));
+            WRITE_U8(arg2, 0x6b, (uint8_t)((word9 >> 0x18) & 1U));
+            WRITE_U8(arg2, 0x6c, (uint8_t)((word9 >> 0x19) & 1U));
+            WRITE_U8(arg2, 0x6d, (uint8_t)((word9 >> 0x1a) & 1U));
+            WRITE_U8(arg2, 0x6e, (uint8_t)((word9 >> 0x1b) & 1U));
+            WRITE_U8(arg2, 0x6f, (uint8_t)((word9 >> 0x1c) & 1U));
+            WRITE_U8(arg2, 0x70, (uint8_t)((word9 >> 0x1d) & 1U));
+            WRITE_U8(arg2, 0x71, (uint8_t)((word9 >> 0x1e) & 1U));
+            WRITE_U8(arg2, 0x72, (uint8_t)((word9 >> 0x1f) & 1U));
+            WRITE_U16(arg2, 0x74, (uint16_t)arg3[0xa]);
+            WRITE_U8(arg2, 0x7e, (uint8_t)(((word11 >> 0x18) & 3U) + 1U));
+            WRITE_U8(arg2, 0x7f, (uint8_t)((word11 >> 0x1e) & 1U));
+            WRITE_U8(arg2, 0x80, (uint8_t)((word11 >> 0x1f) & 1U));
+            WRITE_U16(arg2, 0x7a, (uint16_t)(word11 & 0x3ffU));
+            WRITE_U16(arg2, 0x7c, (uint16_t)(((word11 >> 0xc) & 0x3ffU) + 1U));
+            WRITE_U16(arg2, 0xa8, (uint16_t)((((word12 & 0x3ffU) + 1U) << 6) & 0xffffU));
+            WRITE_U16(arg2, 0xaa, (uint16_t)((((((word12 >> 0xc) & 0x3ffU) + 1U) << 3) & 0xffffU)));
+            WRITE_U8(arg2, 0xac, (uint8_t)((word12 >> 0x1e) & 1U));
+            ENC_KMSG("FillSliceParam slice_tail pic=%p slice=%p pic9=%08x picb=%08x pic12=%08x s63=%u 7a=%u 7c=%u a8=%u aa=%u ac=%u",
+                     arg3, arg2, (unsigned)word9, (unsigned)word11, (unsigned)word12,
+                     (unsigned)READ_U8(arg2, 0x63), (unsigned)READ_U16(arg2, 0x7a),
+                     (unsigned)READ_U16(arg2, 0x7c), (unsigned)READ_U16(arg2, 0xa8),
+                     (unsigned)READ_U16(arg2, 0xaa), (unsigned)READ_U8(arg2, 0xac));
         }
     }
 
