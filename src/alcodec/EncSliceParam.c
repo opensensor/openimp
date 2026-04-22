@@ -1,5 +1,6 @@
 #include <stdint.h>
 #include <string.h>
+#include <stdio.h>
 
 extern char _gp;
 extern int32_t __assert(const char *expression, const char *file, int32_t line,
@@ -427,6 +428,16 @@ int32_t SliceParamToCmdRegsEnc1(char *arg1, int32_t *arg2, void *arg3, ...)
                  0x15, "SliceParamToCmdRegsEnc1", &_gp);
     }
 
+    fprintf(stderr,
+            "libimp/SLP: enc1-pack entry sp=%p cmd=%p meta=%p type=%u dim=%ux%u lcu=%ux%u 7a=%u 7c=%u a8=%u aa=%u ac=%u\n",
+            arg1, arg2, arg3,
+            (unsigned)READ_U8(arg1, 0x0f),
+            (unsigned)READ_U16(arg1, 0x0a), (unsigned)READ_U16(arg1, 0x0c),
+            (unsigned)READ_U16(arg1, 0x108), (unsigned)READ_U16(arg1, 0x10a),
+            (unsigned)READ_U16(arg1, 0x7a), (unsigned)READ_U16(arg1, 0x7c),
+            (unsigned)READ_U16(arg1, 0xa8), (unsigned)READ_U16(arg1, 0xaa),
+            (unsigned)READ_U8(arg1, 0xac));
+
     v1_1 = *arg2;
     *arg2 = (v1_1 & 0xffffff88) | 0x11;
     v1_4 = ((((uint32_t)READ_U8(arg1, 0) - 2U) & 3U) << 8) | (*arg2 & 0xfffffc88) | 0x11;
@@ -699,11 +710,21 @@ int32_t SliceParamToCmdRegsEnc1(char *arg1, int32_t *arg2, void *arg3, ...)
             arg2[0x69] = READ_S32(arg3, 0x44);
             arg2[0x6e] = (((a3_84 & 0xefffffffU) | (v1_104 << 0x1c)) & 0xffffff00U) | t0_63;
             result = READ_S32(arg3, 0x94);
+            fprintf(stderr,
+                    "libimp/SLP: enc1-pack exit-full cmd=%p w0=%08x w1=%08x w2=%08x w3=%08x w18=%08x w19=%08x w1a=%08x w6f=%08x\n",
+                    arg2,
+                    (unsigned)arg2[0], (unsigned)arg2[1], (unsigned)arg2[2], (unsigned)arg2[3],
+                    (unsigned)arg2[0x18], (unsigned)arg2[0x19], (unsigned)arg2[0x1a], (unsigned)arg2[0x6f]);
             arg2[0x6f] = result;
             return result;
         }
     }
 
+    fprintf(stderr,
+            "libimp/SLP: enc1-pack exit-basic cmd=%p w0=%08x w1=%08x w2=%08x w3=%08x w18=%08x w19=%08x w1a=%08x\n",
+            arg2,
+            (unsigned)arg2[0], (unsigned)arg2[1], (unsigned)arg2[2], (unsigned)arg2[3],
+            (unsigned)arg2[0x18], (unsigned)arg2[0x19], (unsigned)arg2[0x1a]);
     __assert("pSP->LcuWidth != 0",
              "/home/user/git/proj/sdk-lv3/src/imp/video/alcodec/lib_scheduler_enc/EncSliceParam.c",
              0x57, "SliceParamToCmdRegsEnc1", &_gp);

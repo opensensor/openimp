@@ -206,8 +206,13 @@ static void stub_stderr(const char *fmt, ...)
 
 #define READ_U8(base, off) (*(uint8_t *)((uint8_t *)(base) + (off)))
 #define READ_U16(base, off) (*(uint16_t *)((uint8_t *)(base) + (off)))
+#define READ_U32(base, off) (*(uint32_t *)((uint8_t *)(base) + (off)))
 #define READ_S32(base, off) (*(int32_t *)((uint8_t *)(base) + (off)))
 #define READ_PTR(base, off) (*(void **)((uint8_t *)(base) + (off)))
+#define WRITE_U8(base, off, val) (*(uint8_t *)((uint8_t *)(base) + (off)) = (uint8_t)(val))
+#define WRITE_U16(base, off, val) (*(uint16_t *)((uint8_t *)(base) + (off)) = (uint16_t)(val))
+#define WRITE_U32(base, off, val) (*(uint32_t *)((uint8_t *)(base) + (off)) = (uint32_t)(val))
+#define WRITE_S32(base, off, val) (*(int32_t *)((uint8_t *)(base) + (off)) = (int32_t)(val))
 
 int32_t SliceParamToCmdRegsEnc1(char *arg1, int32_t *arg2, void *arg3, ...);
 
@@ -232,9 +237,81 @@ int32_t UpdateCommand(void *arg1, void *arg2, void *arg3, int32_t arg4)
 
     for (core = 0; core < core_count; ++core) {
         int32_t *cmd_regs = (int32_t *)(intptr_t)READ_S32(req, 0xa78 + (int32_t)core * 4);
+        uint32_t blocks = READ_U16(ch, 0x40);
+        uint32_t lcu_w = READ_U16(slice, 0x108);
+        uint32_t lcu_h = READ_U16(slice, 0x10a);
+        uint32_t start_lcu_y;
+        uint32_t end_lcu_y;
+        uint32_t span_lcu_y;
+        uint32_t start_lcu;
+        uint32_t last_lcu;
+        uint32_t total_lcu;
 
         if (cmd_regs == NULL)
             continue;
+
+        if (blocks == 0)
+            blocks = 1;
+        if (lcu_w == 0)
+            lcu_w = (READ_U16(ch, 4) + 15U) >> 4;
+        if (lcu_h == 0)
+            lcu_h = (READ_U16(ch, 6) + 15U) >> 4;
+
+        start_lcu_y = (core * lcu_h) / blocks;
+        end_lcu_y = ((core + 1U) * lcu_h) / blocks;
+        if (core + 1U == blocks || core + 1U == core_count)
+            end_lcu_y = lcu_h;
+        if (end_lcu_y < start_lcu_y)
+            end_lcu_y = start_lcu_y;
+        span_lcu_y = end_lcu_y - start_lcu_y;
+        start_lcu = lcu_w * start_lcu_y;
+        total_lcu = lcu_w * lcu_h;
+        last_lcu = (span_lcu_y * lcu_w + start_lcu);
+        if (last_lcu == total_lcu && total_lcu >= start_lcu)
+            last_lcu = total_lcu;
+
+        WRITE_U8(slice, 0x08, (core + 1U == blocks || core + 1U == core_count) ? 1U : 0U);
+        WRITE_U8(slice, 0x49, READ_U8(req, 0xd1));
+        WRITE_U8(slice, 0x35, (READ_U32(req, 0x00) >> 4) & 1U);
+        WRITE_U8(slice, 0x48, READ_U8(req, 0x34));
+        WRITE_S32(slice, 0x3c, (int32_t)start_lcu);
+        WRITE_S32(slice, 0x44, last_lcu > start_lcu ? (int32_t)(last_lcu - 1U) : (int32_t)start_lcu);
+        WRITE_U16(slice, 0x4c, (uint16_t)span_lcu_y);
+        WRITE_S32(slice, 0x54, (int32_t)start_lcu);
+        WRITE_U8(slice, 0x72, READ_U8(slice, 0x71) ? 1U : (start_lcu == 0U ? 1U : 0U));
+        WRITE_U8(slice, 0x7e, READ_U8(ch, 0x3c));
+
+        /* These fields are populated earlier in OEM, but our translated path still
+         * leaves them zero. Seed the known geometry defaults so the Enc1 packer
+         * can build a usable command list from the corrected per-core slice. */
+        if (READ_U16(slice, 0x7a) == 0)
+            WRITE_U16(slice, 0x7a, (READ_U16(ch, 4) + 7U) >> 3);
+        if (READ_U16(slice, 0x7c) == 0)
+            WRITE_U16(slice, 0x7c, (uint16_t)lcu_w);
+        if (READ_U16(slice, 0x58) == 0)
+            WRITE_U16(slice, 0x58, 16);
+        if (READ_U16(slice, 0x5a) == 0)
+            WRITE_U16(slice, 0x5a, 16);
+        if (READ_U16(slice, 0xa8) == 0 && READ_S32(slice, 0x30) != 2)
+            WRITE_U16(slice, 0xa8, (READ_U16(ch, 4) + 63U) & ~63U);
+        if (READ_U16(slice, 0xaa) == 0 && READ_S32(slice, 0x30) != 2) {
+            uint32_t width_64 = (READ_U16(ch, 4) + 63U) >> 6;
+            uint16_t aa = 0x37;
+
+            if (width_64 >= 0x1fU)
+                aa = 0x1f7;
+            else if (width_64 >= 0x15U)
+                aa = 0x0f7;
+            else if (width_64 >= 0x0bU)
+                aa = 0x077;
+            WRITE_U16(slice, 0xaa, aa);
+        }
+        if (READ_U8(slice, 0xee) == 0 && READ_U8(ch, 0x3e) != 0) {
+            WRITE_U16(slice, 0xec, READ_U8(ch, 0x3e));
+            WRITE_U8(slice, 0xee, 0x20);
+        }
+        if (READ_U32(slice, 0xfc) == 0)
+            WRITE_U32(slice, 0xfc, lcu_w * (READ_U32(slice, 0x4c) ? READ_U32(slice, 0x4c) : 1U));
 
         stub_kmsg("libimp/STUB: UpdateCommand pre core=%u req=%p slice=%p meta=%p cmd=%p "
                   "slice0f=%u dim=%ux%u lcu63=%u lcu108=%u lcu10a=%u "
