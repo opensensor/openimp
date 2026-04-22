@@ -3079,7 +3079,11 @@ int32_t AL_EncChannel_ListModulesNeeded(void *arg1, void *arg2)
                     ((void (*)(void *, void *))(intptr_t)READ_S32(arg1, 0x138))((uint8_t *)arg1 + 0x128,
                                                                                  (uint8_t *)req + 0x20);
                     Rtos_ReleaseMutex(READ_PTR(arg1, 0x170));
-                    ENC_KMSG("ListModulesNeeded lane=%d after-update-fn pict=%d", lane, pict_id);
+                    ENC_KMSG("ListModulesNeeded lane=%d after-update-fn pict=%d w8=%08x w9=%08x wa=%08x wb=%08x wc=%08x wd=%08x w12=%08x",
+                             lane, pict_id,
+                             READ_S32(req, 0x20), READ_S32(req, 0x24), READ_S32(req, 0x28),
+                             READ_S32(req, 0x2c), READ_S32(req, 0x30), READ_S32(req, 0x34),
+                             READ_S32(req, 0x48));
                     if (READ_U8(arg1, 0x1f) != 4U) {
                         ENC_KMSG("ListModulesNeeded lane=%d before-set-picture-refs req=%p", lane, req);
                         SetPictureReferences(arg1, req);
@@ -3166,9 +3170,12 @@ int32_t encode1(void *arg1)
     if (READ_U8(ch, 0x1f) != 4U) {
         WRITE_S32(req, 0x318, (int32_t)(intptr_t)((uint8_t *)req + 0x338));
     }
-    ENC_KMSG("encode1 pre-FillSliceParam req=%p mode=%u chroma=%u cores=%u dual=%u",
+    ENC_KMSG("encode1 pre-FillSliceParam req=%p mode=%u chroma=%u cores=%u dual=%u w8=%08x w9=%08x wa=%08x wb=%08x wc=%08x wd=%08x w12=%08x",
              req, (unsigned)READ_U8(ch, 0x1f), (unsigned)READ_U8(ch, 0x4), (unsigned)READ_U8(ch, 0x3c),
-             (unsigned)READ_U8(req, 0x182));
+             (unsigned)READ_U8(req, 0x182),
+             READ_S32(req, 0x20), READ_S32(req, 0x24), READ_S32(req, 0x28),
+             READ_S32(req, 0x2c), READ_S32(req, 0x30), READ_S32(req, 0x34),
+             READ_S32(req, 0x48));
     FillSliceParamFromPicParam(ch, (uint8_t *)req + 0x170, req);
     ENC_KMSG("encode1 post-FillSliceParam req=%p slice_type=%u pic_order=%d cmd318=%p",
              req, (unsigned)READ_U8(req, 0x170), READ_S32(req, 0x184), READ_PTR(req, 0x318));
