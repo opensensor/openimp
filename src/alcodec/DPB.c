@@ -3218,10 +3218,12 @@ label_60180:
             int32_t *i = *(int32_t **)((uint8_t *)t3_2 + 4U);
 
             if (i != 0) {
+                int32_t *end = &i[0x10];
+
                 do {
                     *i = -1;
                     i = &i[1];
-                } while (i != &i[0x10]);
+                } while (i != end);
             }
         }
 
@@ -3692,17 +3694,26 @@ int32_t AL_DPB_AVC_GetRefInfo(char *arg1, void *arg2, void *arg3, int32_t *arg4,
         a1_1 = (int32_t *)arg4[0];
     }
 
-    DPB_KMSG("AVC_GetRefInfo post-build l0=%d l1=%d first0=%u first1=%u", var_34, var_38,
-             (uint32_t)var_58, (uint32_t)var_78);
+    DPB_KMSG("AVC_GetRefInfo post-build l0=%d l1=%d first0=%u first1=%u desc0=%p desc1=%p",
+             var_34, var_38, (uint32_t)var_58, (uint32_t)var_78,
+             (void *)arg4[0], (void *)arg4[1]);
 
     {
         int16_t *t4_1 = *(int16_t **)a1_1;
 
+        DPB_KMSG("AVC_GetRefInfo pre-kind-write a1_1=%p kind0=%p", (void *)a1_1, (void *)t4_1);
         if (t4_1 != 0) {
             int32_t *v1_1 = (int32_t *)arg4[1];
+            int32_t *kind1 = (v1_1 != 0) ? *(int32_t **)v1_1 : 0;
 
+            DPB_KMSG("AVC_GetRefInfo pre-kind-write kind1_desc=%p kind1=%p",
+                     (void *)v1_1, (void *)kind1);
             *t4_1 = 3;
-            **(int32_t **)v1_1 = 3;
+            DPB_KMSG("AVC_GetRefInfo post-kind0-write kind0=%p", (void *)t4_1);
+            if (kind1 != 0) {
+                *kind1 = 3;
+            }
+            DPB_KMSG("AVC_GetRefInfo post-kind1-write kind1=%p", (void *)kind1);
         }
 
         v0_1 = *(int32_t *)((uint8_t *)s0 + 0x10U);
@@ -4177,10 +4188,12 @@ label_70b10:
         int32_t *i_1 = *(int32_t **)((uint8_t *)t2_1 + 4U);
 
         if (i_1 != 0) {
+            int32_t *end = &i_1[0x20];
+
             do {
                 *i_1 = -1;
                 i_1 = &i_1[1];
-            } while (i_1 != &i_1[0x20]);
+            } while (i_1 != end);
         }
 
         a1_1[2] = var_34;

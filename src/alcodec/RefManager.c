@@ -28,6 +28,12 @@ uint32_t AL_DPB_GetRefFromPOC(uint8_t *arg1, int32_t arg2); /* forward decl, por
 int32_t AL_DPB_Update(void *arg1, int32_t *arg2, uint32_t arg3); /* forward decl, ported by T<N> later */
 int32_t AL_DPB_GetAvailRef(void *arg1, void *arg2, int32_t *arg3); /* forward decl, ported by T<N> later */
 
+struct dpb_ref_list_desc {
+    uint16_t *kind;
+    int32_t *list;
+    int32_t count;
+};
+
 static int32_t AL_sRefMngr_IncrementBufID_part_0(void)
 {
     __assert("iRefCount > 0",
@@ -657,10 +663,18 @@ int32_t AL_RefMngr_GetRefInfo(int32_t arg1, int32_t arg2, void *arg3, void *arg4
 {
     int32_t var_24 = 0;
     int32_t var_20 = 0;
-    int32_t *var_2c = (int32_t *)((uint8_t *)arg4 + 0x8cU);
+    struct dpb_ref_list_desc l0_desc = {
+        .kind = (uint16_t *)((uint8_t *)arg4 + 0x8aU),
+        .list = (int32_t *)((uint8_t *)arg4 + 0x8cU),
+        .count = 0,
+    };
     uint8_t var_30 = 0;
     int32_t (*var_34)[0x20] = (int32_t (*)[0x20])((uint8_t *)arg5 + 0x10U);
-    int32_t *var_38 = (int32_t *)((uint8_t *)arg4 + 0xceU);
+    struct dpb_ref_list_desc l1_desc = {
+        .kind = (uint16_t *)((uint8_t *)arg4 + 0xccU),
+        .list = (int32_t *)((uint8_t *)arg4 + 0xd0U),
+        .count = 0,
+    };
     int32_t var_48 = 0;
     uint8_t var_4c = 0;
     uint8_t var_5c = 0;
@@ -672,18 +686,17 @@ int32_t AL_RefMngr_GetRefInfo(int32_t arg1, int32_t arg2, void *arg3, void *arg4
     *(uint8_t *)((uint8_t *)arg4 + 0x8aU) = 0;
     *(uint8_t *)((uint8_t *)arg4 + 0xccU) = 0;
     Rtos_Memset(&var_70, 0, 0x38);
-    /* The AVC/HEVC DPB helpers treat arg4[0]/arg4[1] as pointers to the
-     * output ref-list descriptors themselves: { type_ptr, list_ptr, count }.
-     * Passing the address of a stack local that merely stores the descriptor
-     * address leaves the helper walking unrelated stack slots for the second
-     * and third fields, which matches the invalid write we saw in
-     * AL_DPB_AVC_GetRefInfo. */
-    var_70[0] = var_2c;
+    /* DPB expects tiny descriptors shaped like { kind_ptr, list_ptr, count }.
+     * The original binary relied on stack-local layout; model it explicitly. */
+    var_70[0] = &l0_desc;
 
     {
         uint32_t a1 = (uint32_t)arg2 >> 0x18;
 
-        var_70[1] = var_38;
+        var_70[1] = &l1_desc;
+        REFM_KMSG("GetRefInfo desc l0 kind=%p list=%p l1 kind=%p list=%p",
+                  (void *)l0_desc.kind, (void *)l0_desc.list,
+                  (void *)l1_desc.kind, (void *)l1_desc.list);
 
         if (a1 == 1U) {
             REFM_KMSG("GetRefInfo before-hevc-dpb out=%p coloc=%p", arg4, arg5);
