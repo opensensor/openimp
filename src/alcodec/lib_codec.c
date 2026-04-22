@@ -54,6 +54,11 @@ int32_t AL_Encoder_SetGopParam(int32_t *arg1, int32_t *arg2); /* forward decl, p
 int32_t AL_Encoder_SetGopLength(int32_t *arg1); /* forward decl, ported by T<N> later */
 int32_t AL_Encoder_GetLastError(int32_t *arg1); /* forward decl, ported by T<N> later */
 int32_t AL_Encoder_PutStreamBuffer(int32_t *arg1, void *arg2, int32_t arg3); /* forward decl, ported by T<N> later */
+uint32_t AL_Buffer_GetPhysicalAddress(AL_TBuffer *arg1); /* forward decl */
+void *AL_Buffer_GetData(AL_TBuffer *arg1); /* forward decl */
+int32_t AL_EncChannel_PushStreamBuffer(void *arg1, int32_t arg2, int32_t arg3, int32_t arg4,
+                                       int32_t arg5, int32_t arg6, int32_t arg7,
+                                       int32_t arg8, int32_t arg9); /* forward decl */
 int32_t GetStreamBufPoolConfig(int32_t *arg1, void *arg2, int32_t arg3, char arg4, double arg5, double arg6, double arg7, int32_t arg8, int32_t arg9); /* forward decl, ported by T<N> later */
 int32_t GetPixMapBufPollConfig(int32_t *arg1, int32_t *arg2, int32_t arg3, int32_t arg4, int32_t arg5, int32_t arg6, char arg7); /* forward decl, ported by T<N> later */
 uint32_t *GetFrameInfo(uint32_t *arg1, void *arg2); /* forward decl, ported by T<N> later */
@@ -129,10 +134,14 @@ int32_t AL_Codec_Encode_PrimeStreamBuffers(int32_t *arg1)
 {
     int32_t idx = 0;
     int32_t *enc_wrap;
-    int32_t *enc_ctx;
-    int32_t *sched_obj;
-    int32_t *chctx;
+    uint8_t *enc_ctx;
+    uint8_t *lane_ctx;
+    int32_t sched;
+    int32_t *base_chctx;
+    int32_t chan;
+    int32_t *sched_enc;
     void *stream_mutex;
+    void *chctx;
 
     if (arg1 == NULL)
         return -1;
@@ -141,59 +150,58 @@ int32_t AL_Codec_Encode_PrimeStreamBuffers(int32_t *arg1)
         return 0;
 
     enc_wrap = (int32_t *)read_ptr(arg1, 0x798);
-    if (enc_wrap == NULL)
+    if (enc_wrap == NULL || *enc_wrap == 0)
         return -1;
-    enc_ctx = (int32_t *)(intptr_t)*enc_wrap;
-    if (enc_ctx == NULL)
-        return -1;
-    sched_obj = (int32_t *)read_ptr(enc_ctx, 0xf25c);
-    chctx = (int32_t *)read_ptr(enc_ctx, 0x18);
+
+    enc_ctx = (uint8_t *)(intptr_t)(*enc_wrap);
+    lane_ctx = enc_ctx;
+    sched = read_s32(enc_ctx, 0xf25c);
+    base_chctx = (int32_t *)(intptr_t)read_s32(enc_ctx, 0x18);
+    chan = base_chctx ? read_s32(base_chctx, 0) : -1;
+    sched_enc = (int32_t *)(intptr_t)(sched + 4);
     stream_mutex = read_ptr(enc_ctx, 0xf254);
-    if (sched_obj == NULL || chctx == NULL || stream_mutex == NULL)
+    chctx = GetChMngrCtx(sched_enc, (char)chan);
+    if (stream_mutex == NULL || chctx == NULL)
         return -1;
 
     while (idx < read_s32(arg1, 0x7ac)) {
         AL_TBuffer *buf = AL_BufPool_GetBuffer((uint8_t *)arg1 + 0x7c0, 1);
-        void *meta = NULL;
-        { int kfd = open("/dev/kmsg", O_WRONLY); if (kfd >= 0) { char b[160]; int n = snprintf(b, sizeof(b), "libimp/ENC: linked-prime idx=%d buf=%p sched=%p chctx=%p\n", idx, buf, sched_obj, chctx); if (n>0) write(kfd, b, n); close(kfd); } }
+        uint32_t phys;
+        void *virt;
+        uint32_t size;
+        int32_t slot;
+        int32_t next;
+        { int kfd = open("/dev/kmsg", O_WRONLY); if (kfd >= 0) { char b[128]; int n = snprintf(b, sizeof(b), "libimp/ENC: deferred-PutStreamBuffer idx=%d buf=%p\n", idx, buf); if (n>0) write(kfd, b, n); close(kfd); } }
         if (buf == NULL)
             return -1;
 
-        meta = (void *)(intptr_t)AL_Buffer_GetMetaData(buf, 1);
-        if (meta != NULL)
-            AL_StreamMetaData_ClearAllSections(meta);
-
-        if (AL_Buffer_GetSize(buf) < 0x200U) {
+        phys = AL_Buffer_GetPhysicalAddress(buf);
+        virt = AL_Buffer_GetData(buf);
+        size = AL_Buffer_GetSize(buf);
+        if (phys == 0 || virt == NULL || size < 0x200U) {
             AL_Buffer_Unref(buf);
             return -1;
         }
 
         Rtos_GetMutex(stream_mutex);
-        {
-            int32_t slot = read_s32(enc_ctx, 0xdbb0);
-            int32_t next = (slot + 1) % 0x140;
-
-            *(void **)((uint8_t *)enc_ctx + (((uint32_t)(slot + 0x36ec) << 2) + 8)) = buf;
-            write_s32(enc_ctx, 0xdbb0, next);
-            AL_Buffer_Ref(buf);
-            { int kfd = open("/dev/kmsg", O_WRONLY); if (kfd >= 0) { char b[160]; int n = snprintf(b, sizeof(b), "libimp/ENC: linked-prime slot=%d next=%d buf=%p\n", slot, next, buf); if (n>0) write(kfd, b, n); close(kfd); } }
-        }
+        slot = read_s32(lane_ctx, 0xdbb0);
+        next = (slot + 1) % 0x140;
+        *(void **)(enc_ctx + (((uint32_t)(slot + 0x36ec) << 2) + 8)) = buf;
+        *(int32_t *)(lane_ctx + 0xdbb0) = next;
+        AL_Buffer_Ref(buf);
         Rtos_ReleaseMutex(stream_mutex);
 
-        {
-            void (*put_stream_fn)(int32_t *, int32_t *, AL_TBuffer *) =
-                (void (*)(int32_t *, int32_t *, AL_TBuffer *))(intptr_t)read_s32(*(void **)sched_obj, 0x10);
-            if (put_stream_fn == NULL) {
-                AL_Buffer_Unref(buf);
-                return -1;
-            }
-            put_stream_fn(sched_obj, chctx, buf);
+        if (AL_EncChannel_PushStreamBuffer(chctx, (int32_t)phys, (int32_t)(intptr_t)virt,
+                                           (int32_t)size, 0, (int32_t)size, 0, 0, 0) == 0) {
+            AL_Buffer_Unref(buf);
+            return -1;
         }
+
         AL_Buffer_Unref(buf);
         idx += 1;
     }
 
-    { int kfd = open("/dev/kmsg", O_WRONLY); if (kfd >= 0) { const char *m = "libimp/ENC: linked-prime done\n"; write(kfd, m, strlen(m)); close(kfd); } }
+    { int kfd = open("/dev/kmsg", O_WRONLY); if (kfd >= 0) { const char *m = "libimp/ENC: deferred-PutStreamBuffer done\n"; write(kfd, m, strlen(m)); close(kfd); } }
     return 0;
 }
 

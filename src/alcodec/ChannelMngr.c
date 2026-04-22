@@ -792,9 +792,9 @@ label_71e98:
 
         {
             uint8_t *launch_ctx = GetChMngrCtx(arg1, (char)str[0]);
+            CMG_KMSG("CheckAndEncode launch ch=%u ctx=%p", (unsigned)(uint8_t)str[0], launch_ctx);
             int32_t encode_rc;
 
-            CMG_KMSG("CheckAndEncode launch ch=%u ctx=%p", (unsigned)(uint8_t)str[0], launch_ctx);
             Rtos_ReleaseMutex((void *)(intptr_t)arg1[0x4bd]);
             CMG_KMSG("CheckAndEncode released scheduler mutex before launch ch=%u", (unsigned)(uint8_t)str[0]);
             encode_rc = AL_EncChannel_Encode(launch_ctx, var_3c);
