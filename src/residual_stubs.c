@@ -260,13 +260,18 @@ int32_t UpdateCommand(void *arg1, void *arg2, void *arg3, int32_t arg4)
                     READ_S32(req, 0x2a4), READ_S32(req, 0x2b4), READ_S32(req, 0x2e0),
                     READ_S32(req, 0x2f4), READ_S32(req, 0x304), READ_S32(req, 0x308));
 
-        if (src_meta == NULL || READ_U8(slice, 0x63) == 0 || READ_U16(slice, 0x108) == 0 || READ_U16(slice, 0x7c) == 0) {
-            stub_kmsg("libimp/STUB: UpdateCommand skip core=%u missing-fields meta=%p lcu63=%u lcu108=%u 7c=%u",
-                      core, src_meta, (unsigned)READ_U8(slice, 0x63),
-                      (unsigned)READ_U16(slice, 0x108), (unsigned)READ_U16(slice, 0x7c));
-            stub_stderr("libimp/STUB: UpdateCommand skip core=%u meta=%p lcu63=%u lcu108=%u 7c=%u",
-                        core, src_meta, (unsigned)READ_U8(slice, 0x63),
-                        (unsigned)READ_U16(slice, 0x108), (unsigned)READ_U16(slice, 0x7c));
+        /* OEM UpdateCommand does not reject the slice on these translated
+         * fields being zero. The earlier stub-side guard prevented command-list
+         * population entirely, which matches the observed "launch succeeds,
+         * AVPU never does useful work" failure mode. Keep only the hard NULL
+         * guard and let SliceParamToCmdRegsEnc1 consume the slice as-is. */
+        if (src_meta == NULL || READ_U16(slice, 0x108) == 0 || READ_U16(slice, 0x10a) == 0) {
+            stub_kmsg("libimp/STUB: UpdateCommand skip core=%u meta=%p lcu108=%u lcu10a=%u",
+                      core, src_meta, (unsigned)READ_U16(slice, 0x108),
+                      (unsigned)READ_U16(slice, 0x10a));
+            stub_stderr("libimp/STUB: UpdateCommand skip core=%u meta=%p lcu108=%u lcu10a=%u",
+                        core, src_meta, (unsigned)READ_U16(slice, 0x108),
+                        (unsigned)READ_U16(slice, 0x10a));
             continue;
         }
 
