@@ -6,6 +6,7 @@
 #include <fcntl.h>
 
 #include "alcodec/al_buffer.h"
+#include "alcodec/al_fourcc.h"
 #include "alcodec/al_rtos.h"
 #include "alcodec/al_settings.h"
 #include "core/globals.h"
@@ -38,6 +39,8 @@ extern int32_t access(const char *pathname, int mode);
         close(_kfd); \
     } \
 } while (0)
+
+#define LIVE_T31_UNLOCK_STREAM_PUT_DISPATCH 1
 
 int32_t AL_EncRecBuffer_FillPlaneDesc(int32_t *arg1, int32_t arg2, int32_t arg3, int32_t arg4, int32_t arg5,
                                       int32_t arg6, void *arg7); /* forward decl, ported by T<N> later */
@@ -199,6 +202,10 @@ static int32_t setNewParams(int32_t *arg1, int32_t arg2)
     uint8_t *s2_2;
 
     (void)_gp;
+    CENC_KMSG("setNewParams entry enc=%p layer=%d state=%p cb=%p param=%p",
+              arg1, arg2, READ_PTR(arg1, 0x14),
+              (void *)(intptr_t)READ_S32(arg1, 0xc),
+              (uint8_t *)arg1 + v1 * 0x3c + 0xdb1c);
     WRITE_S32(arg1, v1 * 0x3c + 0xdb1c, READ_S32(arg1, v1 * 0x3c + 0xdb1c) | 0x10);
 
     if (access("/tmp/NewEncParam", 0) == 0) {
@@ -223,12 +230,16 @@ static int32_t setNewParams(int32_t *arg1, int32_t arg2)
     }
 
     cb = (void (*)(int32_t *, int32_t, int32_t))(intptr_t)t9;
+    CENC_KMSG("setNewParams pre-cb enc=%p layer=%d cb=%p", arg1, arg2, (void *)(intptr_t)t9);
     cb(arg1, arg2, 1);
+    CENC_KMSG("setNewParams post-cb enc=%p layer=%d", arg1, arg2);
     a1_1 = READ_PTR(arg1, 0x14);
     a0_2 = (uint8_t *)a1_1 + s2 - s3;
     i = (int32_t *)(a0_2 + 0x68);
     v0_12 = (int32_t *)((uint8_t *)arg1 + (s0 - s1 - arg2) * 0x3c + 0xdb24);
 
+    CENC_KMSG("setNewParams pre-rc-copy enc=%p layer=%d src=%p dst=%p",
+              arg1, arg2, i, v0_12);
     do {
         int32_t t1_1 = i[0];
         int32_t t0_1 = i[1];
@@ -252,6 +263,11 @@ static int32_t setNewParams(int32_t *arg1, int32_t arg2)
     WRITE_S32(arg1, s5_1 * 0x3c + 0xdb74, READ_S32(s2_2, 0xb8));
     WRITE_S32(arg1, s5_1 * 0x3c + 0xdb78, READ_S32(s2_2, 0xbc));
     WRITE_S32(arg1, s5_1 * 0x3c + 0xdb7c, READ_S32(s2_2, 0xc0));
+    CENC_KMSG("setNewParams exit enc=%p layer=%d db1c=0x%x db24=0x%x db30=0x%x db34=0x%x",
+              arg1, arg2, READ_S32(arg1, s5_1 * 0x3c + 0xdb1c),
+              READ_S32(arg1, s5_1 * 0x3c + 0xdb24),
+              READ_S32(arg1, s5_1 * 0x3c + 0xdb30),
+              READ_S32(arg1, s5_1 * 0x3c + 0xdb34));
     return 1;
 }
 
@@ -448,6 +464,23 @@ int32_t AL_Common_Encoder_PutStreamBuffer(int32_t *arg1, AL_TBuffer *arg2, int32
                 var_40 = s7;
                 CENC_KMSG("PutStreamBuffer pre-vtbl-call obj=%p fn=%p slot=%d next=%d",
                           a0_5, a0_5 ? (void *)(intptr_t)READ_S32(*(void **)a0_5, 0x10) : NULL, s7, a1_1);
+#if LIVE_T31_UNLOCK_STREAM_PUT_DISPATCH
+                /*
+                 * ReleaseStream can race the output callback's post-user
+                 * cleanup. Keep the ring-slot/ref updates protected, but do
+                 * not hold the encoder stream mutex while entering the
+                 * scheduler, which takes the scheduler mutex in the opposite
+                 * order.
+                 */
+                Rtos_ReleaseMutex(READ_PTR(s2, 0xf254));
+                CENC_KMSG("PutStreamBuffer dispatch-unlocked obj=%p chn=%d",
+                          a0_5, READ_S32(s3_2, 0x18));
+                ((void (*)(int32_t *, int32_t, AL_TBuffer *))(intptr_t)READ_S32(*(void **)a0_5, 0x10))(
+                    a0_5, READ_S32(s3_2, 0x18), arg2);
+                CENC_KMSG("PutStreamBuffer post-vtbl-call-unlocked obj=%p chn=%d",
+                          a0_5, READ_S32(s3_2, 0x18));
+                return 1;
+#else
                 ((void (*)(int32_t *, int32_t, AL_TBuffer *))(intptr_t)READ_S32(*(void **)a0_5, 0x10))(
                     a0_5, READ_S32(s3_2, 0x18), arg2);
                 CENC_KMSG("PutStreamBuffer post-vtbl-call obj=%p chn=%d",
@@ -455,6 +488,7 @@ int32_t AL_Common_Encoder_PutStreamBuffer(int32_t *arg1, AL_TBuffer *arg2, int32
                 Rtos_ReleaseMutex(READ_PTR(s2, 0xf254));
                 CENC_KMSG("PutStreamBuffer post-release ctx=%p", s2);
                 return 1;
+#endif
             }
         }
 
@@ -1610,8 +1644,16 @@ static int32_t EndEncoding(int32_t *arg1, int32_t *arg2, int32_t arg3)
     void *v0_13;
     int32_t s5_4;
 
+    CENC_KMSG("EndEncodingCB entry cookie=%p enc=%p layer=%d status=%p stream_id=%d st0=0x%x st2=0x%x err=0x%x st28=0x%x",
+              arg1, s1, s2, arg2, arg3,
+              arg2 ? arg2[0] : 0, arg2 ? arg2[2] : 0,
+              arg2 ? arg2[0x27] : 0, arg2 ? arg2[0x28] : 0);
+
     if (arg2 == NULL) {
         intptr_t v1_20 = (intptr_t)(s2 * 0x3bf);
+        CENC_KMSG("EndEncodingCB null-status cb=0x%x cb_ctx=0x%x layer=%d",
+                  READ_S32(s1, v1_20 * 0x3c + 0xe0d4),
+                  READ_S32(s1, v1_20 * 0x3c + 0xe0d8), s2);
         return ((int32_t (*)(int32_t, int32_t *, int32_t, int32_t))(intptr_t)READ_S32(s1, v1_20 * 0x3c + 0xe0d4))(
             READ_S32(s1, v1_20 * 0x3c + 0xe0d8), arg2, 0, s2);
     }
@@ -1629,6 +1671,8 @@ static int32_t EndEncoding(int32_t *arg1, int32_t *arg2, int32_t arg3)
     if (READ_U8(READ_PTR(s1, 0x14), s5_1 - s7_1 + 0x1f) != 4 || a3_8 == NULL) {
         s6_1 = s2 << 6;
         s4_1 = s2 << 0xa;
+        CENC_KMSG("EndEncodingCB pre-mutex enc=%p mutex=%p dbb0=%d dbb4=%d layer=%d",
+                  s1, READ_PTR(s1, 0xf254), READ_S32(s1, 0xdbb0), READ_S32(s1, 0xdbb4), s2);
         Rtos_GetMutex(READ_PTR(s1, 0xf254));
         {
             intptr_t s3_3 = (intptr_t)((s4_1 - s6_1 - s2) * 0xf);
@@ -1637,11 +1681,17 @@ static int32_t EndEncoding(int32_t *arg1, int32_t *arg2, int32_t arg3)
             AL_Common_SetError(s1, a1);
             WRITE_S32(s1, s3_3 * 4 + 0xdbb4, (READ_S32(s1, s3_3 * 4 + 0xdbb4) + 1) % 0x140);
             s3_8 = READ_S32(s1, (s3_3 + arg3 + 0x36ee) * 4);
+            CENC_KMSG("EndEncodingCB got-stream enc=%p stream=%p slot=%d err=0x%x dbb4=%d",
+                      s1, (void *)(intptr_t)s3_8, arg3, a1,
+                      READ_S32(s1, s3_3 * 4 + 0xdbb4));
         }
         Rtos_ReleaseMutex(READ_PTR(s1, 0xf254));
+        CENC_KMSG("EndEncodingCB post-mutex enc=%p stream=%p", s1, (void *)(intptr_t)s3_8);
     } else {
         s6_1 = s2 << 6;
         s4_1 = s2 << 0xa;
+        CENC_KMSG("EndEncodingCB pre-alt-mutex enc=%p alt=%p mutex=%p layer=%d",
+                  s1, a3_8, READ_PTR(a3_8, 0xf254), s2);
         Rtos_GetMutex(READ_PTR(a3_8, 0xf254));
         {
             intptr_t s3_11 = (intptr_t)((s4_1 - s6_1 - s2) * 0xf);
@@ -1651,16 +1701,22 @@ static int32_t EndEncoding(int32_t *arg1, int32_t *arg2, int32_t arg3)
             WRITE_S32(a3_8, (s3_11 << 2) + 0xdbb4, a2_14);
             AL_Common_SetError((int32_t *)a3_8, a1_6);
             s3_8 = READ_S32(a3_8, ((s3_11 + arg3 + 0x36ec) << 2) + 8);
+            CENC_KMSG("EndEncodingCB got-alt-stream alt=%p stream=%p slot=%d err=0x%x dbb4=%d",
+                      a3_8, (void *)(intptr_t)s3_8, arg3, a1_6, a2_14);
         }
         Rtos_ReleaseMutex(READ_PTR(a3_8, 0xf254));
+        CENC_KMSG("EndEncodingCB post-alt-mutex alt=%p stream=%p", a3_8, (void *)(intptr_t)s3_8);
     }
 
     fp_1 = arg2[0];
     if ((uint32_t)arg2[0x27] < 0x80) {
         var_68 = (char const *)(intptr_t)s2;
+        CENC_KMSG("EndEncodingCB pre-trace enc=%p trace_cb=0x%x stream=%p fp=%d",
+                  s1, s1[4], (void *)(intptr_t)s3_8, fp_1);
         ((void (*)(int32_t *, int32_t *, void *, int32_t, char const *))(intptr_t)s1[4])(s1, arg2,
                                                                                            (uint8_t *)s1 + fp_1 * 0x30 + 0xedb4,
                                                                                            s3_8, var_68);
+        CENC_KMSG("EndEncodingCB post-trace enc=%p stream=%p", s1, (void *)(intptr_t)s3_8);
     } else {
         int32_t v0_10 = IMP_Log_Get_Option();
         void *s5_3 = (uint8_t *)READ_PTR(s1, 0x14) + s5_1 - s7_1;
@@ -1683,16 +1739,22 @@ static int32_t EndEncoding(int32_t *arg1, int32_t *arg2, int32_t arg3)
                     var_50, var_4c, var_48, var_44, &_gp);
     }
 
+    CENC_KMSG("EndEncodingCB pre-meta3 stream=%p", (void *)(intptr_t)s3_8);
     v0_11 = AL_Buffer_GetMetaData((AL_TBuffer *)(intptr_t)s3_8, 3);
+    CENC_KMSG("EndEncodingCB post-meta3 stream=%p meta3=%p", (void *)(intptr_t)s3_8, v0_11);
     if (v0_11 != NULL)
         WRITE_S32(v0_11, 0xc, arg2[0x28]);
 
+    CENC_KMSG("EndEncodingCB pre-meta1 stream=%p", (void *)(intptr_t)s3_8);
     v0_12 = AL_Buffer_GetMetaData((AL_TBuffer *)(intptr_t)s3_8, 1);
+    CENC_KMSG("EndEncodingCB post-meta1 stream=%p meta1=%p", (void *)(intptr_t)s3_8, v0_12);
     if (v0_12 != NULL)
         WRITE_U8(v0_12, 0xc, READ_U8(arg2, 0xb4));
 
     s5_4 = arg2[2];
+    CENC_KMSG("EndEncodingCB pre-meta7 stream=%p src=%p", (void *)(intptr_t)s3_8, (void *)(intptr_t)s5_4);
     v0_13 = AL_Buffer_GetMetaData((AL_TBuffer *)(intptr_t)s3_8, 7);
+    CENC_KMSG("EndEncodingCB post-meta7 stream=%p meta7=%p", (void *)(intptr_t)s3_8, v0_13);
     if (v0_13 == NULL) {
         return AL_Common_Encoder_IsInitialQpProvided(
             (int32_t *)(intptr_t)__assert("pStreamMeta",
@@ -1726,9 +1788,13 @@ static int32_t EndEncoding(int32_t *arg1, int32_t *arg2, int32_t arg3)
 
     {
         intptr_t v0_16 = (intptr_t)(s4_1 - s6_1 - s2);
+        int32_t cb = READ_S32(s1, v0_16 * 0x3c + 0xe0d4);
+        int32_t cb_ctx = READ_S32(s1, v0_16 * 0x3c + 0xe0d8);
 
-        ((void (*)(int32_t, int32_t, int32_t, int32_t))(intptr_t)READ_S32(s1, v0_16 * 0x3c + 0xe0d4))(
-            READ_S32(s1, v0_16 * 0x3c + 0xe0d8), s3_8, s5_4, s2);
+        CENC_KMSG("EndEncodingCB pre-user cb=0x%x cb_ctx=0x%x stream=%p src=%p layer=%d",
+                  cb, cb_ctx, (void *)(intptr_t)s3_8, (void *)(intptr_t)s5_4, s2);
+        ((void (*)(int32_t, int32_t, int32_t, int32_t))(intptr_t)cb)(cb_ctx, s3_8, s5_4, s2);
+        CENC_KMSG("EndEncodingCB post-user cb=0x%x stream=%p src=%p", cb, (void *)(intptr_t)s3_8, (void *)(intptr_t)s5_4);
     }
 
     if (READ_U8(arg2, 0xaa) != 0) {
@@ -1914,7 +1980,7 @@ label_53d78:
                     io.src_flags50 = AL_PixMapBuffer_GetPlanePitch((AL_TBuffer *)(intptr_t)arg2, 2) & 0xff;
                 }
 
-                io.src_flags58 = (((uint32_t (*)(uint32_t))(intptr_t)AL_GetBitDepth)((uint32_t)v0_21) < 9U) ^ 1U;
+                io.src_flags58 = (AL_GetBitDepth((uint32_t)v0_21) < 9U) ^ 1U;
                 io.src_flags50 = (io.src_flags50 & ~0xff) | ((READ_U32(fp_2, arg4 * 0xf0 + 0x14) >> 1) & 7);
             }
 
@@ -1950,6 +2016,24 @@ label_53d78:
                         WRITE_S32(s7, var_38_1 - s6_1 + 0xedb4, 0);
                         WRITE_S32(s7, var_38_1 - s6_1 + 0xedb8, 0);
                         a1_1 = READ_S32(s7, v0_39 + 0xdb1c);
+                        if (READ_S32(s7, v0_39 + 0xdb24) == 0 &&
+                            READ_S32(s7, v0_39 + 0xdb28) == 0 &&
+                            READ_S32(s7, v0_39 + 0xdb30) == 0 &&
+                            READ_S32(s7, v0_39 + 0xdb34) == 0 &&
+                            READ_S32(s7, v0_39 + 0xdb50) == 0 &&
+                            READ_S32(s7, v0_39 + 0xdb60) == 0 &&
+                            READ_S32(s7, v0_39 + 0xdb70) == 0) {
+                            CENC_KMSG("Process seed-params layer=%d pre db1c=0x%x db24=0x%x db30=0x%x db34=0x%x db50=0x%x db60=0x%x db70=0x%x",
+                                      arg4, a1_1, READ_S32(s7, v0_39 + 0xdb24), READ_S32(s7, v0_39 + 0xdb30),
+                                      READ_S32(s7, v0_39 + 0xdb34), READ_S32(s7, v0_39 + 0xdb50),
+                                      READ_S32(s7, v0_39 + 0xdb60), READ_S32(s7, v0_39 + 0xdb70));
+                            setNewParams((int32_t *)s7, arg4);
+                            a1_1 = READ_S32(s7, v0_39 + 0xdb1c);
+                            CENC_KMSG("Process seed-params layer=%d post db1c=0x%x db24=0x%x db30=0x%x db34=0x%x db50=0x%x db60=0x%x db70=0x%x",
+                                      arg4, a1_1, READ_S32(s7, v0_39 + 0xdb24), READ_S32(s7, v0_39 + 0xdb30),
+                                      READ_S32(s7, v0_39 + 0xdb34), READ_S32(s7, v0_39 + 0xdb50),
+                                      READ_S32(s7, v0_39 + 0xdb60), READ_S32(s7, v0_39 + 0xdb70));
+                        }
                         if ((a1_1 & 0x200) != 0) {
                             WRITE_U8(s7, var_38_1 - s6_1 + 0xedb4, 1);
                             WRITE_U8(s7, var_38_1 - s6_1 + 0xedb5, READ_U8(s7, v0_39 + 0xdb8c));
@@ -2010,8 +2094,26 @@ label_53d78:
                         }
                         if (result == 0)
                             releaseSource(s7, arg2, s4_2);
-                        Rtos_Memset((uint8_t *)s7 + v0_39 + 0xdb1c, 0, 0x7c);
-                        Rtos_Memset(s4_2, 0, 0x20);
+                        if (arg3 == 0 && READ_U8(s7, 0x1f) == 0) {
+                            /*
+                             * Live T31 AVC keeps feeding null stream slots. Re-clearing this block
+                             * makes the next frame reseed via setNewParams(), which currently dies
+                             * in the RC/GOP copy path after the first successful encode.
+                             */
+                            CENC_KMSG("Process keep-live-params layer=%d db1c=0x%x db24=0x%x db30=0x%x db34=0x%x",
+                                      arg4, READ_S32(s7, v0_39 + 0xdb1c), READ_S32(s7, v0_39 + 0xdb24),
+                                      READ_S32(s7, v0_39 + 0xdb30), READ_S32(s7, v0_39 + 0xdb34));
+                        } else {
+                            CENC_KMSG("Process clear-params layer=%d opts=%p", arg4, s4_2);
+                            Rtos_Memset((uint8_t *)s7 + v0_39 + 0xdb1c, 0, 0x7c);
+                        }
+                        if (arg3 == 0 && READ_U8(s7, 0x1f) == 0) {
+                            CENC_KMSG("Process keep-live-opts layer=%d opts=%p", arg4, s4_2);
+                        } else {
+                            CENC_KMSG("Process clear-opts layer=%d opts=%p", arg4, s4_2);
+                            Rtos_Memset(s4_2, 0, 0x20);
+                        }
+                        CENC_KMSG("Process source-sent exit layer=%d result=%d", arg4, result);
                         break;
                     }
                     v1_9 = &v1_9[2];
@@ -2210,7 +2312,7 @@ label_55b9c:
             int32_t v0_23;
             uint32_t a1_9;
             uint32_t a3_2;
-            int32_t (*var_28)(int32_t *, int32_t *, int32_t);
+            int32_t var_28[2];
 
             if (AL_Fifo_Init((int32_t *)((uint8_t *)s2_1 + 0xf0f0), 0x12) == 0) {
                 result = 0x87;
@@ -2234,9 +2336,13 @@ label_55b9c:
             }
             ((void (*)(int32_t *, void *, int32_t *))(intptr_t)READ_S32(s2_1, 8))(s2_1, s1_1, arg4);
             { int kfd = open("/dev/kmsg", O_WRONLY); if (kfd >= 0) { const char *m = "libimp/ENC: CC post-vfn[8] (ConfigureChannel)\n"; write(kfd, m, strlen(m)); close(kfd); } }
+            /* Scheduler stores a function pointer and an opaque user pointer.
+             * The opaque pointer must be the legacy EndEncoding cookie:
+             * encoder state + layer index, stored at state+0xe0cc. */
             WRITE_PTR(s2_1, 0xe0cc, s2_1);
             WRITE_S32(s2_1, 0xe0d0, 0);
-            var_28 = EndEncoding;
+            var_28[0] = (int32_t)(intptr_t)EndEncoding;
+            var_28[1] = (int32_t)(intptr_t)((uint8_t *)s2_1 + 0xe0cc);
             a1_9 = READ_U8(s1_1, 4);
             a3_2 = READ_U8(s1_1, 6);
             v1_14 = (int32_t *)((uint8_t *)s2_1 + 0xe0dc);
@@ -2299,8 +2405,20 @@ label_55b9c:
                 {
                     int32_t *vtbl = (int32_t *)(intptr_t)READ_S32(a1_12, 0);
                     { int kfd = open("/dev/kmsg", O_WRONLY); if (kfd >= 0) { char b[160]; int n = snprintf(b, sizeof(b), "libimp/ENC: CC a1_12=%p vtbl=%p pre-sched[4] fn=0x%x\n", (void*)a1_12, (void*)vtbl, vtbl ? READ_S32(vtbl, 4) : 0); if (n>0) write(kfd, b, n); close(kfd); } }
+                    {
+                        int kfd = open("/dev/kmsg", O_WRONLY);
+                        if (kfd >= 0) {
+                            char b[160];
+                            int n = snprintf(b, sizeof(b),
+                                             "libimp/ENC: CC sched-cb pair fn=0x%x cookie=%p\n",
+                                             var_28[0], (void *)(intptr_t)var_28[1]);
+                            if (n > 0) write(kfd, b, n);
+                            close(kfd);
+                        }
+                    }
                     result = ((int32_t (*)(void *, int32_t *, void *, void *, void *))(intptr_t)READ_S32(vtbl, 4))(
-                        (uint8_t *)s2_1 + 0x18, a1_12, (uint8_t *)s2_1 + 0xe0b8, (uint8_t *)s2_1 + 0xdb98, &var_28);
+                        (uint8_t *)s2_1 + 0x18, a1_12, (uint8_t *)s2_1 + 0xe0b8, (uint8_t *)s2_1 + 0xdb98,
+                        var_28);
                 }
                 { int kfd = open("/dev/kmsg", O_WRONLY); if (kfd >= 0) { char b[96]; int n = snprintf(b, sizeof(b), "libimp/ENC: CC post-sched[4] result=0x%x\n", result); if (n>0) write(kfd, b, n); close(kfd); } }
                 if ((uint32_t)result >= 0x80)
@@ -2316,6 +2434,10 @@ label_55b9c:
                 WRITE_PTR(s2_1, 0xf258, Rtos_CreateSemaphore(0x11));
                 WRITE_S32(s2_1, 0xed80, (READ_U32(s1_1, 0x28) >> 4) & 0xf);
                 ((void (*)(int32_t *, int32_t, int32_t))(intptr_t)READ_S32(s2_1, 0xc))(s2_1, 0, 1);
+                CENC_KMSG("CreateChannel seed layer0 db1c=0x%x db24=0x%x db30=0x%x db34=0x%x db50=0x%x db60=0x%x db70=0x%x",
+                          READ_S32(s2_1, 0xdb1c), READ_S32(s2_1, 0xdb24), READ_S32(s2_1, 0xdb30),
+                          READ_S32(s2_1, 0xdb34), READ_S32(s2_1, 0xdb50), READ_S32(s2_1, 0xdb60),
+                          READ_S32(s2_1, 0xdb70));
                 WRITE_S32(s2_1, 0xf260, READ_U8(s1_1, 0xae));
                 WRITE_S32(s2_1, 0xf264, READ_S16(s1_1, 0x74));
                 { int kfd = open("/dev/kmsg", O_WRONLY); if (kfd >= 0) { const char *m = "libimp/ENC: CC SUCCESS return\n"; write(kfd, m, strlen(m)); close(kfd); } }

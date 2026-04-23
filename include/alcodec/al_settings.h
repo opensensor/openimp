@@ -9,7 +9,6 @@ int32_t AL_HEVC_GetLevelFromBitrate(void);
 int32_t AL_AVC_GetMaxNumberOfSlices(void);
 int32_t AL_DPBConstraint_GetMaxDPBSize(void);
 int32_t AL_GetRequiredLevel(void);
-int32_t AL_GetBitDepth(void);
 int32_t AL_Dump_TEncSettings(AL_TEncSettings *arg1);
 int32_t AL_Dump_TRCParam(AL_TRCParam *arg1);
 int32_t AL_Dump_TGopParam(AL_TGopParam *arg1);

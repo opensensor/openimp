@@ -29,9 +29,19 @@ PLATFORM=$(echo "$PLATFORM_INPUT" | tr '[:lower:]' '[:upper:]')
 BUILD=${2:-ported}
 
 # Select toolchain per platform (adjust these paths for your environment)
+TOOLCHAIN_PATH=
 case "$PLATFORM" in
   T31)
-    TOOLCHAIN_PATH=/home/matteius/thingino-firmware/output/master/wyze_cam3_t31x_gc2053_rtl8189ftv-3.10.14-uclibc-192.168.50.215/host/bin/
+    for candidate in \
+      /home/matteius/thingino-firmware-opensensor-master/output/master/wyze_cam3_t31x_gc2053_rtl8189ftv-3.10.14-uclibc/host/bin/ \
+      /home/matteius/thingino-firmware/output/master/wyze_cam3_t31x_gc2053_rtl8189ftv-3.10.14-uclibc/host/bin/ \
+      /home/matteius/thingino-firmware/output/master/wyze_cam3_t31x_gc2053_rtl8189ftv-3.10.14-uclibc-192.168.50.215/host/bin/
+    do
+      if [ -d "$candidate" ]; then
+        TOOLCHAIN_PATH=$candidate
+        break
+      fi
+    done
     ;;
   T23)
     TOOLCHAIN_PATH=/home/matteius/output-openimp-override/cinnado_d1_t23n_sc2336_atbm6012bx/per-package/toolchain-buildroot/host/bin/
@@ -95,4 +105,3 @@ echo -e "  ${YELLOW}lib/libimp.a${NC}       - Static IMP library"
 echo -e "  ${YELLOW}lib/libsysutils.so${NC} - SysUtils library"
 echo -e "  ${YELLOW}lib/libsysutils.a${NC}  - Static SysUtils library"
 echo -e "${GREEN}========================================${NC}"
-

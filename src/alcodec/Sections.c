@@ -1,5 +1,7 @@
 #include <stdint.h>
 #include <stdio.h>
+#include <unistd.h>
+#include <fcntl.h>
 
 #include "alcodec/BitStreamLite.h"
 #include "alcodec/al_buffer.h"
@@ -8,6 +10,16 @@
 
 extern char _gp;
 extern int32_t __assert(const char *expression, const char *file, int32_t line, const char *function, void *caller);
+
+#define SEC_KMSG(fmt, ...) do { \
+    int _kfd = open("/dev/kmsg", O_WRONLY); \
+    if (_kfd >= 0) { \
+        char _b[256]; \
+        int _n = snprintf(_b, sizeof(_b), "libimp/SEC: " fmt "\n", ##__VA_ARGS__); \
+        if (_n > 0) write(_kfd, _b, _n > (int)sizeof(_b) ? (int)sizeof(_b) : _n); \
+        close(_kfd); \
+    } \
+} while (0)
 
 void *AL_GetAvcRbspWriter(void); /* forward decl, ported by T15 already */
 void *AL_GetHevcRbspWriter(void); /* forward decl, ported by T15 already */
@@ -274,8 +286,13 @@ int32_t WriteNal(void *arg1, AL_BitStreamLite *arg2, int32_t arg3, uintptr_t *ar
 
     (void)arg3;
 
+    SEC_KMSG("WriteNal entry rbsp=%p bs=%p desc=%p fn=%p nal_type=%u payload=%p arg4=0x%x",
+             arg1, arg2, arg4, (void *)(uintptr_t)arg4[0], (unsigned)(uint8_t)arg4[2],
+             (void *)(uintptr_t)arg4[1], (unsigned)arg4[4]);
     AL_BitStreamLite_Init(&var_30, var_230, 0x200);
     ((NalWriteFunc)(uintptr_t)arg4[0])(arg1, &var_30, (void *)(uintptr_t)arg4[1], (int32_t)arg4[4]);
+    SEC_KMSG("WriteNal post-writer desc=%p bits=%d reset=%u", arg4, AL_BitStreamLite_GetBitsCount(&var_30),
+             (unsigned)var_30.reset_flag);
 
     if (var_30.reset_flag == 0) {
         v0_1 = AL_BitStreamLite_GetBitsCount(&var_30);
@@ -288,8 +305,12 @@ int32_t WriteNal(void *arg1, AL_BitStreamLite *arg2, int32_t arg3, uintptr_t *ar
                 v0_2 = a0_4;
             }
 
+            SEC_KMSG("WriteNal pre-flush desc=%p dst_bits=%d nal_bits=%d", arg4,
+                     AL_BitStreamLite_GetBitsCount(arg2), v0_1);
             FlushNAL(arg2, ((GetCodecFunc)*(void **)arg1)(), (char)(uint8_t)arg4[2], (char *)&arg4[6],
                      (char *)var_230, v0_1);
+            SEC_KMSG("WriteNal post-flush desc=%p dst_bits=%d reset=%u", arg4,
+                     AL_BitStreamLite_GetBitsCount(arg2), (unsigned)arg2->reset_flag);
             v0_4 = AL_BitStreamLite_GetBitsCount(arg2);
 
             if (v0_4 < 0) {
@@ -297,11 +318,14 @@ int32_t WriteNal(void *arg1, AL_BitStreamLite *arg2, int32_t arg3, uintptr_t *ar
             }
 
             if (arg2->reset_flag == 0) {
-                return (v0_4 >> 3) - (v0_2 >> 3);
+                int32_t result = (v0_4 >> 3) - (v0_2 >> 3);
+                SEC_KMSG("WriteNal exit desc=%p bytes=%d", arg4, result);
+                return result;
             }
         }
     }
 
+    SEC_KMSG("WriteNal fail desc=%p", arg4);
     return -1;
 }
 
@@ -333,18 +357,46 @@ int32_t GenerateSections(void *arg1, CreateNutHeaderFunc arg2, int32_t arg3, int
     v0 = (uint8_t)arg14;
     arg_4 = (int32_t)arg2;
     var_10 = arg5;
+    arg5 = 0;
     s2 = arg8;
     v0_2 = AL_Buffer_GetMetaData(arg10, 1);
     var_234 = 0;
     (void)arg_4;
     (void)var_10;
+    SEC_KMSG("GenerateSections entry rbsp=%p create=%p stream=%p meta=%p status=%p layer=%d arg12=%d arg13=%d arg14=%d flags=0x%x",
+             arg1, (void *)arg2, arg10, v0_2, arg11, arg12, (int)arg12, (int)arg13, (int)arg14,
+             (unsigned)arg9[7]);
+    SEC_KMSG("GenerateSections status a8=%u a9=%u aa=%u b0=%d b4=%u off34=%d cnt38=%d nal3=%u nal4=%u nal5=%u",
+             (unsigned)*(uint8_t *)((uint8_t *)arg11 + 0xa8),
+             (unsigned)*(uint8_t *)((uint8_t *)arg11 + 0xa9),
+             (unsigned)*(uint8_t *)((uint8_t *)arg11 + 0xaa),
+             *(int32_t *)((uint8_t *)arg11 + 0xb0),
+             (unsigned)*(uint8_t *)((uint8_t *)arg11 + 0xb4),
+             *(int32_t *)((uint8_t *)arg11 + 0x34),
+             *(int32_t *)((uint8_t *)arg11 + 0x38),
+             (unsigned)(uint8_t)arg9[3], (unsigned)(uint8_t)arg9[4], (unsigned)(uint8_t)arg9[5]);
+
+    if (*(uint8_t *)((uint8_t *)arg11 + 0xa9) != 0 &&
+        *(uint8_t *)((uint8_t *)arg11 + 0xa8) == 0 &&
+        *(int32_t *)((uint8_t *)arg11 + 0xb0) == 0 &&
+        *(int32_t *)((uint8_t *)arg11 + 0x38) <= 0 &&
+        (uint8_t)arg9[3] == 0 &&
+        (uint8_t)arg9[4] == 0 &&
+        (uint8_t)arg9[5] == 0 &&
+        arg9[7] == 0 &&
+        v0 == 0) {
+        SEC_KMSG("GenerateSections no-op return");
+        return 0;
+    }
 
     if (*(uint8_t *)((uint8_t *)arg11 + 0xa9) != 0) {
-        arg5 = 0;
-
         if ((uint8_t)arg9[3] != 0) {
             arg5 = 1;
+            SEC_KMSG("GenerateSections pre-AUD type=%d pic=%d struct=%u", arg6,
+                     *(int32_t *)((uint8_t *)arg11 + 0xa0),
+                     (unsigned)*(uint8_t *)((uint8_t *)arg11 + 0xb4));
             AL_CreateAud(var_70, arg6, *(int32_t *)((uint8_t *)arg11 + 0xa0), *(uint8_t *)((uint8_t *)arg11 + 0xb4));
+            SEC_KMSG("GenerateSections post-AUD");
             var_228[0] = var_70[0];
             var_228[1] = var_70[1];
             var_228[2] = var_70[2];
@@ -361,7 +413,9 @@ int32_t GenerateSections(void *arg1, CreateNutHeaderFunc arg2, int32_t arg3, int
         s7_1 = *(int32_t *)((uint8_t *)arg11 + 0xb0);
     } else {
         if (arg12 == 0 && ((void **)arg1)[2] != NULL) {
+            SEC_KMSG("GenerateSections pre-VPS count=%u", (unsigned)arg5);
             AL_CreateVps(var_70, (int32_t)arg9[0], *(uint8_t *)((uint8_t *)arg11 + 0xb4));
+            SEC_KMSG("GenerateSections post-VPS count=%u", (unsigned)arg5);
             {
                 uintptr_t *s4_13 = &var_228[arg5 * 8U];
 
@@ -378,7 +432,9 @@ int32_t GenerateSections(void *arg1, CreateNutHeaderFunc arg2, int32_t arg3, int
             }
         }
 
+        SEC_KMSG("GenerateSections pre-SPS direct count=%u sps=%p", (unsigned)arg5, (void *)(uintptr_t)arg9[1]);
         AL_CreateSps(var_70, arg3, (void *)(uintptr_t)arg9[1], arg12, *(uint8_t *)((uint8_t *)arg11 + 0xb4));
+        SEC_KMSG("GenerateSections post-SPS direct count=%u", (unsigned)arg5);
         {
             uintptr_t *s4_2 = &var_228[arg5 * 8U];
 
@@ -402,7 +458,9 @@ int32_t GenerateSections(void *arg1, CreateNutHeaderFunc arg2, int32_t arg3, int
     v0_30 = v0;
     if (*(uint8_t *)((uint8_t *)arg11 + 0xa8) != 0 || s7_1 != 0) {
         if (arg12 == 0 && ((void **)arg1)[2] != NULL) {
+            SEC_KMSG("GenerateSections pre-VPS branch count=%u", (unsigned)arg5);
             AL_CreateVps(var_70, (int32_t)arg9[0], *(uint8_t *)((uint8_t *)arg11 + 0xb4));
+            SEC_KMSG("GenerateSections post-VPS branch count=%u", (unsigned)arg5);
             {
                 uintptr_t *s4_13 = &var_228[arg5 * 8U];
 
@@ -419,7 +477,9 @@ int32_t GenerateSections(void *arg1, CreateNutHeaderFunc arg2, int32_t arg3, int
             }
         }
 
+        SEC_KMSG("GenerateSections pre-SPS branch count=%u sps=%p", (unsigned)arg5, (void *)(uintptr_t)arg9[1]);
         AL_CreateSps(var_70, arg3, (void *)(uintptr_t)arg9[1], arg12, *(uint8_t *)((uint8_t *)arg11 + 0xb4));
+        SEC_KMSG("GenerateSections post-SPS branch count=%u", (unsigned)arg5);
         {
             uintptr_t *s4_2 = &var_228[arg5 * 8U];
 
@@ -440,7 +500,9 @@ int32_t GenerateSections(void *arg1, CreateNutHeaderFunc arg2, int32_t arg3, int
 
 label_46578:
         var_238 = *(uint8_t *)((uint8_t *)arg11 + 0xb4);
+        SEC_KMSG("GenerateSections pre-PPS count=%u pps=%p", (unsigned)arg5, (void *)(uintptr_t)v0_12[2]);
         AL_CreatePps(var_70, arg4, (void *)(uintptr_t)v0_12[2], arg12, (int32_t)var_238);
+        SEC_KMSG("GenerateSections post-PPS count=%u", (unsigned)arg5);
         {
             int32_t a0_4 = (int32_t)arg9[7];
             uintptr_t *s4_4 = &var_228[arg5 * 8U];
@@ -759,6 +821,8 @@ label_46780:
         uintptr_t *s4_8 = var_228;
         int32_t s7_4 = 0;
 
+        SEC_KMSG("GenerateSections nal-build count=%u", (unsigned)arg5);
+
 label_467a4:
         var_238 = (uint8_t)s4_8[5];
         {
@@ -781,6 +845,7 @@ label_467a4:
         s5_3 = 0;
         AL_BitStreamLite_Init(&var_a4, AL_Buffer_GetData(arg10), 0x100);
         v0_2 = AL_Buffer_GetMetaData(arg10, 1);
+        SEC_KMSG("GenerateSections write-loop count=%u stream=%p meta=%p", (unsigned)arg5, arg10, v0_2);
 
 label_4683c:
         {
@@ -793,7 +858,11 @@ label_4683c:
                 s0_3 = v0_35;
             }
 
+            SEC_KMSG("GenerateSections pre-WriteNal idx=%d/%u flags=0x%x desc=%p", s5_3, (unsigned)arg5,
+                     fp_1, s2);
             v0_36 = WriteNal(arg1, &var_a4, 0x100, s2);
+            SEC_KMSG("GenerateSections post-WriteNal idx=%d bytes=%d bits=%d", s5_3, v0_36,
+                     AL_BitStreamLite_GetBitsCount(&var_a4));
 
             if (v0_36 < 0) {
                 return getUserSeiPrefixOffset((void *)(intptr_t)__assert(
@@ -803,7 +872,10 @@ label_4683c:
 
             var_234 = fp_1;
             var_238 = 0xffffffff;
+            SEC_KMSG("GenerateSections pre-add-section idx=%d off=%d len=%d handle=0x%x flags=0x%x",
+                     s5_3, s0_3 >> 3, v0_36, (unsigned)s2[2], fp_1);
             i = (int32_t)AL_StreamMetaData_AddSection(v0_2, s0_3 >> 3, v0_36, (int32_t)s2[2], -1, var_234);
+            SEC_KMSG("GenerateSections post-add-section idx=%d ret=%d", s5_3, i);
         }
 
         if (i < 0) {
@@ -819,6 +891,7 @@ label_4683c:
         }
     }
 
+    SEC_KMSG("GenerateSections exit ret=%d", i);
     return i;
 }
 

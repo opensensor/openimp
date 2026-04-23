@@ -82,6 +82,148 @@ int32_t IntVector_Remove(int32_t *arg1, int32_t arg2); /* forward decl, ported b
 int32_t AL_Buffer_Unref(AL_TBuffer *arg1); /* forward decl, ported by T<N> later */
 
 static const uint64_t AL_ENCJPEG_CMD = 0x0b000000000000ULL;
+#define AL_CMD_LIST_FLUSH_BYTES 0x200
+
+static void LogCoreIrqSnapshot(AL_EncCoreCtxCompat *core, const char *tag)
+{
+    AL_IpCtrl *ip;
+    uint32_t base;
+    uint32_t mask;
+    uint32_t pending;
+    uint32_t cl_addr;
+    uint32_t status;
+    uint32_t stat_8230;
+    uint32_t stat_8234;
+    uint32_t stat_8238;
+
+    if (core == NULL || core->ip_ctrl == NULL)
+        return;
+
+    ip = core->ip_ctrl;
+    base = (uint32_t)core->core_id << 9;
+    mask = (uint32_t)ip->vtable->ReadRegister(ip, 0x8014);
+    pending = (uint32_t)ip->vtable->ReadRegister(ip, 0x8018);
+    cl_addr = (uint32_t)ip->vtable->ReadRegister(ip, base + 0x83e0);
+    status = (uint32_t)ip->vtable->ReadRegister(ip, base + 0x83f8);
+    stat_8230 = (uint32_t)ip->vtable->ReadRegister(ip, base + 0x8230);
+    stat_8234 = (uint32_t)ip->vtable->ReadRegister(ip, base + 0x8234);
+    stat_8238 = (uint32_t)ip->vtable->ReadRegister(ip, base + 0x8238);
+
+    IMP_LOG_INFO("AVPU",
+                 "enc-snap tag=%s core=%u mask=0x%08x pending=0x%08x cl=0x%08x status=0x%08x 8230=0x%08x 8234=0x%08x 8238=0x%08x",
+                 tag ? tag : "?", (unsigned)core->core_id, mask, pending, cl_addr, status,
+                 stat_8230, stat_8234, stat_8238);
+}
+
+static void LogEnc2CommandWindow(AL_EncCoreCtxCompat *core, int32_t cmd_phys, int32_t cmd_virt)
+{
+    uint32_t *cmd = (uint32_t *)(intptr_t)cmd_virt;
+
+    if (cmd == NULL) {
+        IMP_LOG_INFO("AVPU", "enc2-cmd core=%u phys=0x%08x virt=(nil)",
+                     core ? (unsigned)core->core_id : 0U, (unsigned)cmd_phys);
+        return;
+    }
+
+    IMP_LOG_INFO("AVPU",
+                 "enc2-cmd core=%u phys=0x%08x virt=%p w00=%08x w01=%08x w1b=%08x w1c=%08x w1d=%08x w1e=%08x w1f=%08x w3a=%08x w3b=%08x w3c=%08x w3d=%08x w3e=%08x w3f=%08x",
+                 core ? (unsigned)core->core_id : 0U, (unsigned)cmd_phys, cmd,
+                 cmd[0], cmd[1], cmd[0x1b], cmd[0x1c], cmd[0x1d], cmd[0x1e], cmd[0x1f],
+                 cmd[0x3a], cmd[0x3b], cmd[0x3c], cmd[0x3d], cmd[0x3e], cmd[0x3f]);
+    IMP_LOG_INFO("AVPU",
+                 "enc2-body core=%u phys=0x%08x w20=%08x w21=%08x w22=%08x w23=%08x w24=%08x w25=%08x w26=%08x w27=%08x",
+                 core ? (unsigned)core->core_id : 0U, (unsigned)cmd_phys,
+                 cmd[0x20], cmd[0x21], cmd[0x22], cmd[0x23], cmd[0x24], cmd[0x25], cmd[0x26], cmd[0x27]);
+    IMP_LOG_INFO("AVPU",
+                 "enc2-body core=%u phys=0x%08x w28=%08x w29=%08x w2a=%08x w2b=%08x w2c=%08x w2d=%08x w2e=%08x w2f=%08x",
+                 core ? (unsigned)core->core_id : 0U, (unsigned)cmd_phys,
+                 cmd[0x28], cmd[0x29], cmd[0x2a], cmd[0x2b], cmd[0x2c], cmd[0x2d], cmd[0x2e], cmd[0x2f]);
+    IMP_LOG_INFO("AVPU",
+                 "enc2-body core=%u phys=0x%08x w30=%08x w31=%08x w32=%08x w33=%08x w34=%08x w35=%08x w36=%08x w37=%08x",
+                 core ? (unsigned)core->core_id : 0U, (unsigned)cmd_phys,
+                 cmd[0x30], cmd[0x31], cmd[0x32], cmd[0x33], cmd[0x34], cmd[0x35], cmd[0x36], cmd[0x37]);
+    IMP_LOG_INFO("AVPU",
+                 "enc2-body core=%u phys=0x%08x w38=%08x w39=%08x w3a=%08x w3b=%08x w3c=%08x w3d=%08x w3e=%08x w3f=%08x",
+                 core ? (unsigned)core->core_id : 0U, (unsigned)cmd_phys,
+                 cmd[0x38], cmd[0x39], cmd[0x3a], cmd[0x3b], cmd[0x3c], cmd[0x3d], cmd[0x3e], cmd[0x3f]);
+}
+
+static void ProbeEnc2Progress(AL_EncCoreCtxCompat *core)
+{
+    static const int32_t delays_ms[] = { 1, 10, 100 };
+    static const char *tags[] = { "enc2+1ms", "enc2+10ms", "enc2+100ms" };
+    AL_IpCtrl *ip;
+    uint32_t base;
+    int i;
+
+    if (core == NULL || core->ip_ctrl == NULL || core->ip_ctrl->vtable == NULL ||
+        core->ip_ctrl->vtable->ReadRegister == NULL) {
+        return;
+    }
+
+    ip = core->ip_ctrl;
+    base = ((uint32_t)core->core_id) << 9;
+    for (i = 0; i < (int)(sizeof(delays_ms) / sizeof(delays_ms[0])); ++i) {
+        if (((uint32_t)ip->vtable->ReadRegister(ip, base + 0x83f8) & 0x10U) == 0U) {
+            break;
+        }
+
+        Rtos_Sleep(delays_ms[i]);
+        LogCoreIrqSnapshot(core, tags[i]);
+    }
+}
+
+static int Enc2WritebackLooksIncomplete(AL_EncCoreCtxCompat *core, uint32_t *status_out,
+                                        uint32_t *end_out, uint32_t *st104_out, uint32_t *st1e4_out)
+{
+    uint32_t *cmd;
+    uint32_t status;
+    uint32_t end_off;
+    uint32_t enc_stat;
+    uint32_t ent_stat;
+
+    if (core == NULL || core->ip_ctrl == NULL || core->cmd_regs_2 == 0) {
+        return 0;
+    }
+
+    cmd = (uint32_t *)(intptr_t)core->cmd_regs_2;
+    status = (uint32_t)core->ip_ctrl->vtable->ReadRegister(core->ip_ctrl,
+                                                           ((uint32_t)core->core_id << 9) + 0x83f8);
+    end_off = cmd[0x3e];
+    enc_stat = cmd[0x41];
+    ent_stat = cmd[0x79];
+    if (status_out != NULL) {
+        *status_out = status;
+    }
+    if (end_out != NULL) {
+        *end_out = end_off;
+    }
+    if (st104_out != NULL) {
+        *st104_out = enc_stat;
+    }
+    if (st1e4_out != NULL) {
+        *st1e4_out = ent_stat;
+    }
+
+    return ((status & 0x10U) != 0U) && end_off == 0U && enc_stat == 0U && ent_stat == 0U;
+}
+
+static void LogEnc2WritebackStatus(AL_EncCoreCtxCompat *core, const char *tag)
+{
+    uint32_t status;
+    uint32_t end_off;
+    uint32_t enc_stat;
+    uint32_t ent_stat;
+
+    if (Enc2WritebackLooksIncomplete(core, &status, &end_off, &enc_stat, &ent_stat) == 0 &&
+        (core == NULL || core->ip_ctrl == NULL || core->cmd_regs_2 == 0)) {
+        return;
+    }
+
+    IMP_LOG_INFO("AVPU",
+                 "enc2-state tag=%s core=%u status=0x%08x end=0x%08x st104=0x%08x st1e4=0x%08x",
+                 tag ? tag : "?", (unsigned)core->core_id, status, end_off, enc_stat, ent_stat);
+}
 
 static int32_t StartEnc1WithCommandList_isra_25(AL_EncCoreCtxCompat *arg1, uint8_t *arg2, int32_t arg3, int32_t arg4)
 {
@@ -110,6 +252,22 @@ static int32_t ResetCore_isra_27(AL_IpCtrl *arg1, uint8_t *arg2)
     arg1->vtable->WriteRegister(arg1, ((uint32_t)(*arg2) << 9) + 0x83f0, 1);
     arg1->vtable->WriteRegister(arg1, ((uint32_t)(*arg2) << 9) + 0x83f0, 2);
     return arg1->vtable->WriteRegister(arg1, ((uint32_t)(*arg2) << 9) + 0x83f0, 4);
+}
+
+static void EnsureLiveT31PreEncodeInit(AL_EncCoreCtxCompat *core, const char *tag)
+{
+    AL_IpCtrl *ip;
+
+    if (core == NULL || core->ip_ctrl == NULL || core->core_id != 0U)
+        return;
+
+    ip = core->ip_ctrl;
+    ip->vtable->WriteRegister(ip, 0x8010, 0x1000);
+    ip->vtable->WriteRegister(ip, 0x8018, 0x00ffffff);
+    ip->vtable->WriteRegister(ip, 0x8054, 0x80);
+    IMP_LOG_INFO("AVPU",
+                 "live-preencode-init tag=%s core=%u reg8010=0x00001000 irqclear=0x00ffffff reg8054=0x00000080",
+                 tag ? tag : "?", (unsigned)core->core_id);
 }
 
 int32_t SetClockCommand(AL_EncCoreCtxCompat *arg1, int32_t arg2, int32_t arg3)
@@ -156,6 +314,9 @@ void EndAvcEntropy(void *arg1)
 {
     int32_t t9 = *(int32_t *)((char *)arg1 + 0x14);
 
+    LogEnc2WritebackStatus((AL_EncCoreCtxCompat *)arg1, "EndAvcEntropy");
+    IMP_LOG_INFO("AVPU", "core EndAvcEntropy ctx=%p fn=0x%x user=%p payload=%p mode=1",
+                 arg1, t9, *(void **)((char *)arg1 + 0x18), *(void **)((char *)arg1 + 0x10));
     if (t9 != 0)
         ((void (*)(void *, void *, int32_t))(intptr_t)t9)(*(void **)((char *)arg1 + 0x18), *(void **)((char *)arg1 + 0x10), 1);
 }
@@ -306,6 +467,7 @@ int32_t AL_EncCore_Init(AL_EncCoreCtxCompat *arg1, int32_t *arg2, AL_IpCtrl *arg
         int32_t v0_3;
         AL_IpCtrl *a0_3;
 
+        IMP_LOG_INFO("AVPU", "core-init core=%u enc1-irq=%u", (unsigned)arg1->core_id, (unsigned)a3_2);
         arg3->vtable->RegisterCallBack(arg3, EndEncoding, arg1, a3_2);
         a0_3 = arg1->ip_ctrl;
         a1_4 = 1 << ((((uint32_t)arg1->core_id << 2) + 2) & 0x1f);
@@ -314,9 +476,17 @@ int32_t AL_EncCore_Init(AL_EncCoreCtxCompat *arg1, int32_t *arg2, AL_IpCtrl *arg
             a3_4 += 1;
         } while ((a1_4 & v0_3) == 0);
 
-        if (a1_4 == v0_3)
+        if (a1_4 == v0_3) {
+            IMP_LOG_INFO("AVPU", "core-init core=%u enc2-irq=%u", (unsigned)arg1->core_id,
+                         (unsigned)(uint8_t)(a3_4 - 1));
             a0_3->vtable->RegisterCallBack(a0_3, EndAvcEntropy, arg1, (uint8_t)(a3_4 - 1));
+        }
 
+        if (arg1->core_id == 0U) {
+            arg1->ip_ctrl->vtable->WriteRegister(arg1->ip_ctrl, 0x8010, 0x1000);
+            IMP_LOG_INFO("AVPU", "core-init misc-ctrl core=%u reg8010=0x00001000",
+                         (unsigned)arg1->core_id);
+        }
         ResetCore_isra_27(arg1->ip_ctrl, &arg1->core_id);
         arg1->ip_ctrl->vtable->WriteRegister(arg1->ip_ctrl, 0x8018, 0xffffff);
         arg3->vtable->WriteRegister(arg3, 0x8054, 0x80);
@@ -447,6 +617,7 @@ void AL_EncCore_TurnOffRAM(AL_EncCoreCtxCompat *arg1, int32_t arg2, int32_t arg3
 
 int32_t AL_EncCore_Reset(AL_EncCoreCtxCompat *arg1)
 {
+    EnsureLiveT31PreEncodeInit(arg1, "reset");
     return ResetCore_isra_27(arg1->ip_ctrl, &arg1->core_id);
 }
 
@@ -465,10 +636,41 @@ int32_t AL_EncCore_Encode1(AL_EncCoreCtxCompat *arg1, int32_t arg2, int32_t arg3
         arg1->cmd_regs_1 = arg3;
         result = IsEnc1AlreadyRunning(a0_1, a1_1);
         if (result != 0) {
+            uint32_t core_base = a1_1 << 9;
             uint32_t busy_before = (uint32_t)a0_1->vtable->ReadRegister(a0_1, (a1_1 << 9) + 0x83f8);
+            uint32_t cfg_core_83f4 = (uint32_t)a0_1->vtable->ReadRegister(a0_1, core_base + 0x83f4);
+            uint32_t cfg_8400 = (uint32_t)a0_1->vtable->ReadRegister(a0_1, 0x8400);
+            uint32_t cfg_8404 = (uint32_t)a0_1->vtable->ReadRegister(a0_1, 0x8404);
+            uint32_t cfg_8408 = (uint32_t)a0_1->vtable->ReadRegister(a0_1, 0x8408);
+            uint32_t cfg_840c = (uint32_t)a0_1->vtable->ReadRegister(a0_1, 0x840c);
+            uint32_t cfg_8410 = (uint32_t)a0_1->vtable->ReadRegister(a0_1, 0x8410);
+            uint32_t cfg_8414 = (uint32_t)a0_1->vtable->ReadRegister(a0_1, 0x8414);
+            uint32_t cfg_8418 = (uint32_t)a0_1->vtable->ReadRegister(a0_1, 0x8418);
+            uint32_t cfg_841c = (uint32_t)a0_1->vtable->ReadRegister(a0_1, 0x841c);
+            uint32_t cfg_8420 = (uint32_t)a0_1->vtable->ReadRegister(a0_1, 0x8420);
+            uint32_t cfg_8424 = (uint32_t)a0_1->vtable->ReadRegister(a0_1, 0x8424);
+            uint32_t cfg_8428 = (uint32_t)a0_1->vtable->ReadRegister(a0_1, 0x8428);
 
             IMP_LOG_INFO("AVPU", "enc1 busy-before-reset core=%u reg83f8=0x%08x", (unsigned)a1_1, busy_before);
             ResetCore_isra_27(a0_1, &arg1->core_id);
+            if ((cfg_8400 | cfg_8404 | cfg_8410 | cfg_8414 | cfg_8420 | cfg_8428) != 0U) {
+                a0_1->vtable->WriteRegister(a0_1, core_base + 0x83f4, cfg_core_83f4);
+                a0_1->vtable->WriteRegister(a0_1, 0x8400, cfg_8400);
+                a0_1->vtable->WriteRegister(a0_1, 0x8404, cfg_8404);
+                a0_1->vtable->WriteRegister(a0_1, 0x8408, cfg_8408);
+                a0_1->vtable->WriteRegister(a0_1, 0x840c, cfg_840c);
+                a0_1->vtable->WriteRegister(a0_1, 0x8410, cfg_8410);
+                a0_1->vtable->WriteRegister(a0_1, 0x8414, cfg_8414);
+                a0_1->vtable->WriteRegister(a0_1, 0x8418, cfg_8418);
+                a0_1->vtable->WriteRegister(a0_1, 0x841c, cfg_841c);
+                a0_1->vtable->WriteRegister(a0_1, 0x8420, cfg_8420);
+                a0_1->vtable->WriteRegister(a0_1, 0x8424, cfg_8424);
+                a0_1->vtable->WriteRegister(a0_1, 0x8428, cfg_8428);
+                IMP_LOG_INFO("AVPU",
+                             "enc1 restore-config-after-reset core=%u cfg8400=%08x cfg8404=%08x cfg8410=%08x cfg8414=%08x cfg8420=%08x cfg8424=%08x cfg8428=%08x",
+                             (unsigned)a1_1, cfg_8400, cfg_8404, cfg_8410, cfg_8414,
+                             cfg_8420, cfg_8424, cfg_8428);
+            }
             result = ((uint32_t)a0_1->vtable->ReadRegister(a0_1, (a1_1 << 9) + 0x83f8) & 2U) ? 1 : 0;
             IMP_LOG_INFO("AVPU", "enc1 busy-after-reset core=%u reg83f8=0x%08x cleared=%u",
                          (unsigned)a1_1,
@@ -491,15 +693,46 @@ int32_t AL_EncCore_Encode1(AL_EncCoreCtxCompat *arg1, int32_t arg2, int32_t arg3
                              (unsigned)arg1->core_id, cfg_8400, cfg_8404, cfg_8410, cfg_8414,
                              cfg_8420, cfg_8424, cfg_8428, cfg_85e4);
                 IMP_LOG_INFO("AVPU",
-                             "enc1-cmd core=%u cl_phys=0x%08x cl_virt=%p w31=0x%08x w32=0x%08x w33=0x%08x "
-                             "w3d=0x%08x w3e=0x%08x w3f=0x%08x w64=0x%08x w65=0x%08x w67=0x%08x w68=0x%08x w69=0x%08x",
+                             "enc1-cmd-a core=%u cl_phys=0x%08x cl_virt=%p "
+                             "w1b=0x%08x w1c=0x%08x w1d=0x%08x w1e=0x%08x w1f=0x%08x",
                              (unsigned)arg1->core_id, (unsigned)arg2, cmd_regs_virt,
-                             cmd_regs_virt[0x31], cmd_regs_virt[0x32], cmd_regs_virt[0x33],
-                             cmd_regs_virt[0x3d], cmd_regs_virt[0x3e], cmd_regs_virt[0x3f],
+                             cmd_regs_virt[0x1b], cmd_regs_virt[0x1c], cmd_regs_virt[0x1d],
+                             cmd_regs_virt[0x1e], cmd_regs_virt[0x1f]);
+                IMP_LOG_INFO("AVPU",
+                             "enc1-cmd-b core=%u cl_phys=0x%08x "
+                             "w30=0x%08x w31=0x%08x w32=0x%08x w33=0x%08x "
+                             "w34=0x%08x w35=0x%08x w36=0x%08x w37=0x%08x",
+                             (unsigned)arg1->core_id, (unsigned)arg2,
+                             cmd_regs_virt[0x30], cmd_regs_virt[0x31], cmd_regs_virt[0x32],
+                             cmd_regs_virt[0x33], cmd_regs_virt[0x34], cmd_regs_virt[0x35],
+                             cmd_regs_virt[0x36], cmd_regs_virt[0x37]);
+                IMP_LOG_INFO("AVPU",
+                             "enc1-cmd-c core=%u cl_phys=0x%08x "
+                             "w3a=0x%08x w3b=0x%08x w3c=0x%08x w3d=0x%08x w3e=0x%08x w3f=0x%08x",
+                             (unsigned)arg1->core_id, (unsigned)arg2,
+                             cmd_regs_virt[0x3a], cmd_regs_virt[0x3b], cmd_regs_virt[0x3c],
+                             cmd_regs_virt[0x3d], cmd_regs_virt[0x3e], cmd_regs_virt[0x3f]);
+                IMP_LOG_INFO("AVPU",
+                             "enc1-cmd-d core=%u cl_phys=0x%08x "
+                             "w50=0x%08x w51=0x%08x w52=0x%08x w53=0x%08x "
+                             "w54=0x%08x w55=0x%08x w56=0x%08x w57=0x%08x",
+                             (unsigned)arg1->core_id, (unsigned)arg2,
+                             cmd_regs_virt[0x50], cmd_regs_virt[0x51], cmd_regs_virt[0x52],
+                             cmd_regs_virt[0x53], cmd_regs_virt[0x54], cmd_regs_virt[0x55],
+                             cmd_regs_virt[0x56], cmd_regs_virt[0x57]);
+                IMP_LOG_INFO("AVPU",
+                             "enc1-cmd-e core=%u cl_phys=0x%08x "
+                             "w64=0x%08x w65=0x%08x w67=0x%08x w68=0x%08x w69=0x%08x",
+                             (unsigned)arg1->core_id, (unsigned)arg2,
                              cmd_regs_virt[0x64], cmd_regs_virt[0x65], cmd_regs_virt[0x67],
                              cmd_regs_virt[0x68], cmd_regs_virt[0x69]);
             }
-            Rtos_FlushCacheMemory(arg3, 0x100000);
+            {
+                int flush_ret = Rtos_FlushCacheMemory(arg3, AL_CMD_LIST_FLUSH_BYTES);
+                IMP_LOG_INFO("AVPU", "enc1 flush-cl core=%u virt=%p bytes=0x%x ret=%d",
+                             (unsigned)arg1->core_id, (void *)(intptr_t)arg3,
+                             AL_CMD_LIST_FLUSH_BYTES, flush_ret);
+            }
             if (arg2 == 0)
                 return AL_EncCore_Encode1((AL_EncCoreCtxCompat *)(intptr_t)__assert("CmdRegs1_p",
                     "/home/user/git/proj/sdk-lv3/src/imp/video/alcodec/lib_scheduler_enc/CoreManager.c",
@@ -525,6 +758,8 @@ int32_t AL_EncCore_Encode2(AL_EncCoreCtxCompat *arg1, int32_t arg2, int32_t arg3
     int32_t result;
 
     arg1->cmd_regs_2 = arg3;
+    LogEnc2CommandWindow(arg1, arg2, arg3);
+    LogCoreIrqSnapshot(arg1, "enc2-pre");
     result = IsEnc2AlreadyRunning(a0, a1);
     if (result != 0) {
         uint32_t busy_before = (uint32_t)a0->vtable->ReadRegister(a0, (a1 << 9) + 0x83f8);
@@ -537,8 +772,20 @@ int32_t AL_EncCore_Encode2(AL_EncCoreCtxCompat *arg1, int32_t arg2, int32_t arg3
                      (unsigned)a0->vtable->ReadRegister(a0, (a1 << 9) + 0x83f8),
                      (unsigned)(result == 0));
     }
-    if (result == 0)
-        return StartEnc1WithCommandList_isra_25(arg1, &arg1->core_id, arg2, 8);
+    if (result == 0) {
+        if (arg3 != 0) {
+            {
+                int flush_ret = Rtos_FlushCacheMemory(arg3, AL_CMD_LIST_FLUSH_BYTES);
+                IMP_LOG_INFO("AVPU", "enc2 flush-cl core=%u virt=%p bytes=0x%x ret=%d",
+                             (unsigned)arg1->core_id, (void *)(intptr_t)arg3,
+                             AL_CMD_LIST_FLUSH_BYTES, flush_ret);
+            }
+        }
+        result = StartEnc1WithCommandList_isra_25(arg1, &arg1->core_id, arg2, 8);
+        LogCoreIrqSnapshot(arg1, "enc2-post");
+        ProbeEnc2Progress(arg1);
+        return result;
+    }
 
     return result;
 }
@@ -648,8 +895,15 @@ int32_t AL_EncCore_EnableEnc2Interrupt(AL_EncCoreCtxCompat *arg1)
     AL_IpCtrl *s0 = arg1->ip_ctrl;
     int32_t s1 = 1 << ((((uint32_t)arg1->core_id << 2) + 2) & 0x1f);
     int32_t v0_3 = s0->vtable->ReadRegister(s0, 0x8014);
+    uint32_t add_mask = (uint32_t)s1;
 
-    return s0->vtable->WriteRegister(s0, 0x8014, (uint32_t)(((s1 ^ v0_3) & s1) ^ v0_3));
+    if ((uint32_t)arg1->core_id == 0U)
+        add_mask |= 1U << 4;
+
+    IMP_LOG_INFO("AVPU", "EnableEnc2Interrupt core=%u mask=0x%08x add=0x%08x new=0x%08x",
+                 (unsigned)arg1->core_id, (unsigned)v0_3, (unsigned)add_mask,
+                 (unsigned)(v0_3 | add_mask));
+    return s0->vtable->WriteRegister(s0, 0x8014, v0_3 | add_mask);
 }
 
 int32_t AL_EncCore_ReadStatusRegsEnc(void *arg1, void *arg2)
@@ -661,6 +915,7 @@ int32_t AL_EncCore_ReadStatusRegsEnc(void *arg1, void *arg2)
 
     do {
         regs_base = s0;
+        Rtos_Memset(var_88, 0, sizeof(var_88));
         EncodingStatusRegsToSliceStatus((void *)(intptr_t)s0, var_88);
         s0 += 0x200;
         MergeEncodingStatus(arg2, var_88);

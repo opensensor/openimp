@@ -61,6 +61,11 @@ static inline uint32_t read_u32(const void *ptr, uint32_t offset)
     return *(const uint32_t *)((const uint8_t *)ptr + offset);
 }
 
+static inline uint16_t read_u16(const void *ptr, uint32_t offset)
+{
+    return *(const uint16_t *)((const uint8_t *)ptr + offset);
+}
+
 static inline uint8_t read_u8(const void *ptr, uint32_t offset)
 {
     return *(const uint8_t *)((const uint8_t *)ptr + offset);
@@ -747,8 +752,8 @@ int32_t GetStreamBufPoolConfig(int32_t *arg1, void *arg2, int32_t arg3, char arg
     v1_1 = read_s32(arg2, 0x10);
     v0_4 = (uint8_t *)arg2 + (arg3 * 0xf0);
     a0_1 = (v1_1 >> 4) & 0xf;
-    s6 = read_u8(v0_4, 0x06);
-    s7 = read_u8(v0_4, 0x04);
+    s6 = read_u16(v0_4, 0x06);
+    s7 = read_u16(v0_4, 0x04);
     v0_5 = v1_1 & 0xf;
     if (a0_1 >= v0_5)
         v0_5 = a0_1;

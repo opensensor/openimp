@@ -118,8 +118,12 @@ int32_t AL_RateCtrl_Init(void *arg1, void *arg2, uint32_t arg3, char arg4)
     uint32_t a3;
     int32_t a2_2;
     int32_t result;
+    void *vtable = arg2 ? *(void **)arg2 : NULL;
+    void *alloc_fn = vtable ? *(void **)((char *)vtable + 4) : NULL;
+    void *getvirt_fn = vtable ? *(void **)((char *)vtable + 0xc) : NULL;
 
-    RC_KMSG("Init entry rc=%p alloc=%p mode=%u arg4=%u", arg1, arg2, arg3, (unsigned)(uint8_t)arg4);
+    RC_KMSG("Init entry rc=%p alloc=%p vtbl=%p alloc_fn=%p getvirt=%p mode=%u arg4=%u",
+            arg1, arg2, vtable, alloc_fn, getvirt_fn, arg3, (unsigned)(uint8_t)arg4);
 
     if (arg1 == NULL) {
         __assert("pRCCtx",

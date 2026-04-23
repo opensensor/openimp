@@ -37,6 +37,49 @@ extern OSDState *gOSD;
 #define gosd ((uintptr_t)gOSD)
 #define gosd_set(v) (gOSD = (OSDState *)(uintptr_t)(v))
 
+#define OSD_RGN_BASE 0x24050u
+#define OSD_RGN_STRIDE 0x38u
+#define OSD_RGN_CREATED_OFF 0x24u
+#define OSD_MAX_RGN 0x200
+#define OSD_MAX_GRP 4
+#define OSD_GRP_STRIDE 0x9014u
+#define OSD_GRP_RGN_STRIDE 0x48u
+#define OSD_GRP_RGN_REGISTERED_OFF 0x08u
+#define OSD_GRP_RGN_ATTR_OFF 0x0cu
+#define OSD_REGISTER_LOCK_OFF 0x34u
+#define OSD_RGN_LIST_LOCK_OFF 0x2b060u
+
+static inline uintptr_t osd_rgn_node(int32_t handle)
+{
+    return gosd + OSD_RGN_BASE + (uintptr_t)handle * OSD_RGN_STRIDE;
+}
+
+static inline int32_t *osd_rgn_attr_words(int32_t handle)
+{
+    return (int32_t *)(osd_rgn_node(handle) + 4);
+}
+
+static inline int32_t osd_rgn_created(int32_t handle)
+{
+    return gosd != 0 && *(int32_t *)(osd_rgn_node(handle) + OSD_RGN_CREATED_OFF) != 0;
+}
+
+static inline int32_t osd_valid_handle(int32_t handle)
+{
+    return handle >= 0 && handle < OSD_MAX_RGN;
+}
+
+static inline int32_t osd_valid_group(int32_t group)
+{
+    return group >= 0 && group < OSD_MAX_GRP;
+}
+
+static inline uintptr_t osd_grp_rgn_entry(int32_t handle, int32_t group)
+{
+    return gosd + (uintptr_t)group * OSD_GRP_STRIDE
+        + (uintptr_t)handle * OSD_GRP_RGN_STRIDE;
+}
+
 /* ---- forward decls for cross-module helpers (ported by other tasks) ---- */
 int32_t IMP_Log_Get_Option(void); /* forward decl, ported by T<N> later */
 int32_t imp_log_fun(int32_t level, int32_t option, int32_t type, ...); /* forward decl, ported by T<N> later */
@@ -1023,8 +1066,8 @@ int32_t OSDExit(void)
 {
     uintptr_t gosd_1 = gosd;
     if (gosd_1 == 0) return 0;  /* OSDInit never succeeded — nothing to tear down */
-    sem_destroy((sem_t *)(gosd_1 + 0x2b060));
-    sem_destroy((sem_t *)(gosd_1 + 0x2b050));
+    sem_destroy((sem_t *)(gosd_1 + OSD_RGN_LIST_LOCK_OFF));
+    sem_destroy((sem_t *)(gosd_1 + OSD_REGISTER_LOCK_OFF));
     free_osd_isra_3((int32_t *)(gosd_1 + 0x2b080),
                     *(int32_t *)(gosd_1 + 0x2b084));
     gosd_set(0);
@@ -1188,6 +1231,28 @@ int32_t osd_process(int32_t *arg1, void *arg2, int32_t arg3)
 int32_t osd_update(int32_t *arg1, void *arg2)
 {
     void *v0 = (void *)(uintptr_t)arg1[1];
+
+    /*
+     * The overlay draw path is still incomplete in the port and currently
+     * faults on the first live frame. Preserve OSD as a pipeline stage by
+     * forwarding the frame to downstream observers without compositing.
+     */
+    if (arg2 != NULL) {
+        int32_t observer_count = *(int32_t *)((char *)v0 + 0x3c);
+        if (observer_count > 0) {
+            int32_t i = 1;
+            arg1[4] = (int32_t)(uintptr_t)arg2;
+            int32_t *slot = &arg1[5];
+
+            while (i < observer_count) {
+                *slot = (int32_t)(uintptr_t)arg2;
+                VBMLockFrame(arg2);
+                i += 1;
+                slot = &slot[1];
+            }
+        }
+    }
+    return 0;
 
     if (*(int32_t *)((char *)v0 + 0x54) == 0 &&
         *(uint8_t *)((char *)arg2 + 0x3e4) == 1 &&
@@ -1399,6 +1464,36 @@ int32_t IMP_OSD_CreateRgn(int32_t *arg1)
     uintptr_t gosd_1 = gosd;
 
     sem_wait((sem_t *)(gosd_1 + 0x2b060));
+
+    for (int32_t handle = 0; handle < OSD_MAX_RGN; handle++) {
+        if (osd_rgn_created(handle)) {
+            continue;
+        }
+
+        int32_t *node = (int32_t *)osd_rgn_node(handle);
+        memset(node, 0, OSD_RGN_STRIDE);
+        node[0] = handle;
+        if (arg1 != NULL) {
+            for (int i = 0; i < 8; i++) {
+                node[i + 1] = arg1[i];
+            }
+        }
+        node[9] = 1;
+        node[13] = 0;
+
+        sem_post((sem_t *)(gosd_1 + 0x2b060));
+        imp_log_fun(4, IMP_Log_Get_Option(), 2, OSD_MODULE_TAG, OSD_SRC_PATH,
+                    0x4cb, "IMP_OSD_CreateRgn",
+                    "%s(%d) create handle=%d success\n",
+                    "IMP_OSD_CreateRgn", 0x4cb, handle);
+        return handle;
+    }
+
+    imp_log_fun(6, IMP_Log_Get_Option(), 2, OSD_MODULE_TAG, OSD_SRC_PATH,
+                0x481, "IMP_OSD_CreateRgn",
+                "osd->freerlist is empty\n");
+    sem_post((sem_t *)(gosd_1 + 0x2b060));
+    return -1;
 
     int32_t *s1 = *(int32_t **)(gosd_1 + 0x2b070);
     if (s1 == NULL) {
@@ -1644,11 +1739,11 @@ int32_t IMP_OSD_RegisterRgn(int32_t arg1, int32_t arg2, int32_t *arg3)
     int32_t s2_5 = ((((s3_1 + v1 + arg2) << 2) + arg2) << 2);
     uintptr_t s4_3 = gosd_1 + fp_1 + s7_1 + s2_5;
 
-    sem_wait((sem_t *)(gosd_1 + 0x2b050));
+    sem_wait((sem_t *)(gosd_1 + OSD_REGISTER_LOCK_OFF));
 
     int32_t a1 = *(int32_t *)(s4_3 + 8);
     if (a1 == 1) {
-        sem_post((sem_t *)(gosd_1 + 0x2b050));
+        sem_post((sem_t *)(gosd_1 + OSD_REGISTER_LOCK_OFF));
         imp_log_fun(6, IMP_Log_Get_Option(), 2, OSD_MODULE_TAG, OSD_SRC_PATH,
                     0x516, "IMP_OSD_RegisterRgn",
                     "the region %d has been registed to group %d\n",
@@ -1673,7 +1768,11 @@ int32_t IMP_OSD_RegisterRgn(int32_t arg1, int32_t arg2, int32_t *arg3)
     *(int32_t *)(s0_2 + 8) = 1;
 
     *(int32_t *)(gosd_1 + (s7_1 - fp_1) + 0xb8) += 1;
-    sem_post((sem_t *)(gosd_1 + 0x2b050));
+    sem_post((sem_t *)(gosd_1 + OSD_REGISTER_LOCK_OFF));
+    imp_log_fun(4, IMP_Log_Get_Option(), 2, OSD_MODULE_TAG, OSD_SRC_PATH,
+                0x51b, "IMP_OSD_RegisterRgn",
+                "%s(%d) register handle=%d group=%d success\n",
+                "IMP_OSD_RegisterRgn", 0x51b, arg1, arg2);
 
     if (arg3 == NULL) {
         return 0;
@@ -1719,10 +1818,10 @@ int32_t IMP_OSD_UnRegisterRgn(int32_t arg1, int32_t arg2)
     int32_t s0_5 = ((((s1_1 + a1 + arg2) << 2) + arg2) << 2);
     uintptr_t s2_3 = gosd_1 + fp_1 + s6_1 + s0_5;
 
-    sem_wait((sem_t *)(gosd_1 + 0x2b050));
+    sem_wait((sem_t *)(gosd_1 + OSD_REGISTER_LOCK_OFF));
 
     if (*(int32_t *)(s2_3 + 8) == 0) {
-        sem_post((sem_t *)(gosd_1 + 0x2b050));
+        sem_post((sem_t *)(gosd_1 + OSD_REGISTER_LOCK_OFF));
         imp_log_fun(6, IMP_Log_Get_Option(), 2, OSD_MODULE_TAG, OSD_SRC_PATH,
                     0x53d, "IMP_OSD_UnRegisterRgn",
                     "the region %d hasn't been registed to group %d\n",
@@ -1751,7 +1850,7 @@ int32_t IMP_OSD_UnRegisterRgn(int32_t arg1, int32_t arg2)
     uintptr_t s0_9 = gosd_1 + fp_1 + s6_1 + ((((s1_1 + a1 + arg2) << 2) + arg2) << 2);
     *(int32_t *)(s0_9 + 8) = 0;
     *(int32_t *)(gosd_1 + (s6_1 - fp_1) + 0xb8) -= 1;
-    sem_post((sem_t *)(gosd_1 + 0x2b050));
+    sem_post((sem_t *)(gosd_1 + OSD_REGISTER_LOCK_OFF));
 
     memset((void *)(s0_9 + 0xc), 0, 0x24);
     return 0;
@@ -1766,6 +1865,18 @@ int32_t IMP_OSD_UpdateRgnAttrData(int32_t arg1, void **arg2)
                     "IMP_OSD_UpdateRgnAttrData");
         return -1;
     }
+    if (!osd_rgn_created(arg1)) {
+        imp_log_fun(6, IMP_Log_Get_Option(), 2, OSD_MODULE_TAG, OSD_SRC_PATH,
+                    0x585, "IMP_OSD_UpdateRgnAttrData",
+                    "%s, the region %d hasn't been created\n",
+                    "IMP_OSD_UpdateRgnAttrData", arg1);
+        return -1;
+    }
+    sem_wait((sem_t *)(gosd + 0x2b060));
+    int32_t *attr = osd_rgn_attr_words(arg1);
+    attr[6] = arg2 != NULL ? (int32_t)(uintptr_t)arg2[0] : 0;
+    sem_post((sem_t *)(gosd + 0x2b060));
+    return 0;
 
     int32_t s4 = arg1 << 3;
     int32_t s3_1 = arg1 << 6;
@@ -1833,7 +1944,7 @@ int32_t IMP_OSD_GetRgnAttr(int32_t arg1, int32_t *arg2)
     uintptr_t gosd_1 = gosd;
     int32_t a2_2 = arg1 * 0x38;
 
-    if (*(int32_t *)(gosd_1 + a2_2 + 0xb4) == 0) {
+    if (!osd_rgn_created(arg1)) {
         imp_log_fun(6, IMP_Log_Get_Option(), 2, OSD_MODULE_TAG, OSD_SRC_PATH,
                     0x5a7, "IMP_OSD_GetRgnAttr",
                     "%s, the region %d hasn't been created\n",
@@ -1856,6 +1967,27 @@ int32_t IMP_OSD_SetRgnAttr(int32_t arg1, int32_t *arg2)
                     "%s, Invalidate IMPRgnHandle\n", "IMP_OSD_SetRgnAttr");
         return -1;
     }
+    if (arg2 == NULL) {
+        return -1;
+    }
+    if (!osd_rgn_created(arg1)) {
+        imp_log_fun(6, IMP_Log_Get_Option(), 2, OSD_MODULE_TAG, OSD_SRC_PATH,
+                    0x63d, "IMP_OSD_SetRgnAttr",
+                    "%s, the region %d hasn't been created\n",
+                    "IMP_OSD_SetRgnAttr", arg1);
+        return -1;
+    }
+    sem_wait((sem_t *)(gosd + 0x2b060));
+    int32_t *dst = osd_rgn_attr_words(arg1);
+    for (int i = 0; i < 8; i++) {
+        dst[i] = arg2[i];
+    }
+    sem_post((sem_t *)(gosd + 0x2b060));
+    imp_log_fun(4, IMP_Log_Get_Option(), 2, OSD_MODULE_TAG, OSD_SRC_PATH,
+                0x63d, "IMP_OSD_SetRgnAttr",
+                "%s(%d) set handle=%d success\n",
+                "IMP_OSD_SetRgnAttr", 0x63d, arg1);
+    return 0;
 
     int32_t s6_1 = arg1 << 3;
     int32_t s4_1 = arg1 << 6;
@@ -2175,27 +2307,26 @@ int32_t IMP_OSD_GetGrpRgnAttr(int32_t arg1, int32_t arg2, int32_t *arg3)
 
 int32_t IMP_OSD_SetGrpRgnAttr(int32_t arg1, int32_t arg2, int32_t *arg3)
 {
-    if (arg1 >= 0x200) {
+    if (!osd_valid_handle(arg1)) {
         imp_log_fun(6, IMP_Log_Get_Option(), 2, OSD_MODULE_TAG, OSD_SRC_PATH,
                     0x693, "IMP_OSD_SetGrpRgnAttr",
                     "%s, Invalidate IMPRgnHandle\n", "IMP_OSD_SetGrpRgnAttr");
         return -1;
     }
-    if (arg2 >= 4) {
+    if (!osd_valid_group(arg2)) {
         imp_log_fun(6, IMP_Log_Get_Option(), 2, OSD_MODULE_TAG, OSD_SRC_PATH,
                     0x698, "IMP_OSD_SetGrpRgnAttr",
                     "%s, Invalidate Group Num\n", "IMP_OSD_SetGrpRgnAttr");
         return -1;
     }
+    if (arg3 == NULL) {
+        return -1;
+    }
 
-    int32_t s2_1 = arg2 << 8;
-    int32_t s1_1 = arg2 << 0xb;
     uintptr_t gosd_1 = gosd;
-    int32_t s4_1 = arg1 << 3;
-    int32_t s0_1 = arg1 << 6;
-    uintptr_t v0_8 = gosd_1 + s4_1 + s0_1 + ((((s2_1 + s1_1 + arg2) << 2) + arg2) << 2);
+    uintptr_t v0_8 = osd_grp_rgn_entry(arg1, arg2);
 
-    if (*(int32_t *)(v0_8 + 8) == 0) {
+    if (*(int32_t *)(v0_8 + OSD_GRP_RGN_REGISTERED_OFF) == 0) {
         imp_log_fun(6, IMP_Log_Get_Option(), 2, OSD_MODULE_TAG, OSD_SRC_PATH,
                     0x6a0, "IMP_OSD_SetGrpRgnAttr",
                     "%s, the region %d hasn't been registed to group %d\n",
@@ -2203,71 +2334,38 @@ int32_t IMP_OSD_SetGrpRgnAttr(int32_t arg1, int32_t arg2, int32_t *arg3)
         return -1;
     }
 
-    int32_t *dst = (int32_t *)(v0_8 + 0xc);
+    sem_wait((sem_t *)(gosd_1 + OSD_REGISTER_LOCK_OFF));
+    int32_t *dst = (int32_t *)(v0_8 + OSD_GRP_RGN_ATTR_OFF);
     for (int i = 0; i < 9; i++) {
         dst[i] = arg3[i];
     }
-
-    sem_wait((sem_t *)(gosd_1 + 0x2b050));
-
-    /* Re-link the region in the group's layer list based on its new
-     * layer value (field +0x2c of the region block). The stock uses an
-     * insertion-sort into the doubly-linked list at offsets 0x9004/0x9008
-     * via the layer value at 0x2c. */
-    int32_t a0_3 = ((((s2_1 + s1_1 + arg2) << 2) + arg2) << 2);
-    void *i_1 = *(void **)(gosd_1 + a0_3 + 0x9004);
-
-    if ((v0_8 + 4) == (uintptr_t)i_1) {
-        /* current list-head is us; no relink needed */
-    } else if ((v0_8 + 4) == *(uintptr_t *)(gosd_1 + a0_3 + 0x9008)) {
-        /* tail: relink */
-        void *v1_65 = (void *)(gosd_1 + s4_1 + s0_1 + a0_3);
-        *(void **)((char *)*(void **)((char *)v1_65 + 0x48) + 0x40) =
-            *(void **)((char *)v1_65 + 0x44);
-        *(void **)((char *)*(void **)((char *)v1_65 + 0x44) + 0x44) =
-            *(void **)((char *)v1_65 + 0x48);
-        *(uintptr_t *)((char *)i_1 + 0x40) = v0_8 + 4;
-        *(void **)((char *)v1_65 + 0x44) = NULL;
-        *(void **)((char *)v1_65 + 0x48) = i_1;
-        *(uintptr_t *)(gosd_1 + a0_3 + 0x9004) = v0_8 + 4;
-    } else {
-        /* middle: unlink and reinsert by sort key */
-        void *s3_5 = (void *)(gosd_1 + s4_1 + s0_1 + a0_3);
-        *(void **)((char *)*(void **)((char *)s3_5 + 0x48) + 0x40) =
-            *(void **)((char *)s3_5 + 0x44);
-        *(void **)((char *)*(void **)((char *)s3_5 + 0x44) + 0x44) =
-            *(void **)((char *)s3_5 + 0x48);
-        *(void **)((char *)s3_5 + 0x48) = i_1;
-        *(void **)((char *)s3_5 + 0x44) = *(void **)((char *)i_1 + 0x40);
-        *(uintptr_t *)((char *)*(void **)((char *)i_1 + 0x40) + 0x44) = v0_8 + 4;
-        *(uintptr_t *)((char *)i_1 + 0x40) = v0_8 + 4;
-    }
-
-    sem_post((sem_t *)(gosd_1 + 0x2b050));
+    sem_post((sem_t *)(gosd_1 + OSD_REGISTER_LOCK_OFF));
+    imp_log_fun(4, IMP_Log_Get_Option(), 2, OSD_MODULE_TAG, OSD_SRC_PATH,
+                0x6a9, "IMP_OSD_SetGrpRgnAttr",
+                "%s(%d) set handle=%d group=%d success\n",
+                "IMP_OSD_SetGrpRgnAttr", 0x6a9, arg1, arg2);
     return 0;
 }
 
 int32_t IMP_OSD_ShowRgn(int32_t arg1, int32_t arg2, int32_t arg3)
 {
-    if (arg1 >= 0x200) {
+    if (!osd_valid_handle(arg1)) {
         imp_log_fun(6, IMP_Log_Get_Option(), 2, OSD_MODULE_TAG, OSD_SRC_PATH,
                     0x71d, "IMP_OSD_ShowRgn",
                     "%s, Invalidate IMPRgnHandle\n", "IMP_OSD_ShowRgn");
         return -1;
     }
-    if (arg2 >= 4) {
+    if (!osd_valid_group(arg2)) {
         imp_log_fun(6, IMP_Log_Get_Option(), 2, OSD_MODULE_TAG, OSD_SRC_PATH,
                     0x722, "IMP_OSD_ShowRgn",
                     "%s, Invalidate Group Num\n", "IMP_OSD_ShowRgn");
         return -1;
     }
 
-    int32_t s5_1 = arg1 << 3;
     uintptr_t gosd_1 = gosd;
-    int32_t s2_1 = arg1 << 6;
-    uintptr_t s0_2 = gosd_1 + s5_1 + s2_1 + arg2 * 0x9014;
+    uintptr_t s0_2 = osd_grp_rgn_entry(arg1, arg2);
 
-    if (*(int32_t *)(s0_2 + 8) == 0) {
+    if (*(int32_t *)(s0_2 + OSD_GRP_RGN_REGISTERED_OFF) == 0) {
         imp_log_fun(6, IMP_Log_Get_Option(), 2, OSD_MODULE_TAG, OSD_SRC_PATH,
                     0x72b, "IMP_OSD_ShowRgn",
                     "%s, the region %d hasn't been registed to group %d\n",
@@ -2276,12 +2374,12 @@ int32_t IMP_OSD_ShowRgn(int32_t arg1, int32_t arg2, int32_t arg3)
     }
 
     sem_wait((sem_t *)(gosd_1 + 0x2b060));
-    int32_t a0_1 = *(int32_t *)(gosd_1 + (s2_1 - s5_1) + 0x4c);
-    *(int32_t *)(s0_2 + 0xc) = arg3;
-    if (a0_1 != 0 && arg3 == 0) {
-        fifo_clear(a0_1);
-    }
+    *(int32_t *)(s0_2 + OSD_GRP_RGN_ATTR_OFF) = arg3;
     sem_post((sem_t *)(gosd_1 + 0x2b060));
+    imp_log_fun(4, IMP_Log_Get_Option(), 2, OSD_MODULE_TAG, OSD_SRC_PATH,
+                0x72e, "IMP_OSD_ShowRgn",
+                "%s(%d) show handle=%d group=%d show=%d success\n",
+                "IMP_OSD_ShowRgn", 0x72e, arg1, arg2, arg3);
     return 0;
 }
 

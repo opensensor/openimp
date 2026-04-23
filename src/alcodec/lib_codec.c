@@ -34,6 +34,7 @@ uint32_t AL_Settings_SetDefaultParam(void *arg1); /* forward decl, ported by T<N
 int32_t AL_Settings_CheckValidity(void *arg1, void *arg2, void *arg3); /* forward decl, ported by T<N> later */
 int32_t AL_Settings_CheckCoherency(void *arg1, void *arg2, int32_t arg3, void *arg4); /* forward decl, ported by T<N> later */
 int32_t AL_PictureMetaData_Create(void); /* forward decl, ported by T<N> later */
+void *AL_RateCtrlMetaData_Create(AL_TAllocator *arg1, int32_t arg2, int32_t arg3, char arg4, int32_t arg5); /* forward decl */
 int32_t AL_Buffer_AddMetaData(AL_TBuffer *arg1, void *arg2); /* forward decl, ported by T<N> later */
 int32_t AL_Buffer_Ref(AL_TBuffer *arg1); /* forward decl, ported by T<N> later */
 int32_t AL_Buffer_Unref(AL_TBuffer *arg1); /* forward decl, ported by T<N> later */
@@ -169,6 +170,8 @@ int32_t AL_Codec_Encode_PrimeStreamBuffers(int32_t *arg1)
         uint32_t phys;
         void *virt;
         uint32_t size;
+        void *rate_meta;
+        int32_t side = 0;
         int32_t slot;
         int32_t next;
         { int kfd = open("/dev/kmsg", O_WRONLY); if (kfd >= 0) { char b[128]; int n = snprintf(b, sizeof(b), "libimp/ENC: deferred-PutStreamBuffer idx=%d buf=%p\n", idx, buf); if (n>0) write(kfd, b, n); close(kfd); } }
@@ -178,6 +181,9 @@ int32_t AL_Codec_Encode_PrimeStreamBuffers(int32_t *arg1)
         phys = AL_Buffer_GetPhysicalAddress(buf);
         virt = AL_Buffer_GetData(buf);
         size = AL_Buffer_GetSize(buf);
+        rate_meta = AL_Buffer_GetMetaData(buf, 7);
+        if (rate_meta != NULL)
+            side = (int32_t)(intptr_t)AL_Buffer_GetData(*(AL_TBuffer **)((uint8_t *)rate_meta + 0x38));
         if (phys == 0 || virt == NULL || size < 0x200U) {
             AL_Buffer_Unref(buf);
             return -1;
@@ -191,8 +197,9 @@ int32_t AL_Codec_Encode_PrimeStreamBuffers(int32_t *arg1)
         AL_Buffer_Ref(buf);
         Rtos_ReleaseMutex(stream_mutex);
 
+        { int kfd = open("/dev/kmsg", O_WRONLY); if (kfd >= 0) { char b[160]; int n = snprintf(b, sizeof(b), "libimp/ENC: deferred-PutStreamBuffer push phys=0x%x virt=%p size=%u meta7=%p side=%p\n", phys, virt, size, rate_meta, (void *)(intptr_t)side); if (n>0) write(kfd, b, n); close(kfd); } }
         if (AL_EncChannel_PushStreamBuffer(chctx, (int32_t)phys, (int32_t)(intptr_t)virt,
-                                           (int32_t)size, 0, (int32_t)size, 0, 0, 0) == 0) {
+                                           (int32_t)size, 0, (int32_t)size, 0, 0, side) == 0) {
             AL_Buffer_Unref(buf);
             return -1;
         }
@@ -861,7 +868,7 @@ void AL_Encoder_EndEncodingCallBack(void *arg1, AL_TBuffer *arg2, AL_TBuffer *ar
                 }
             }
 
-            if (read_s32(arg1, 0x920) == -1 || read_s32(arg1, 0x920) != -1) {
+            if (read_s32(arg1, 0x920) != -1) {
                 int32_t a2 = read_s32(AL_Buffer_GetMetaData(arg2, 3), 0xc);
                 write_s32(arg1, 0x920, a2);
                 fprintf(stderr, "Picture Type %i\n", a2);
@@ -906,6 +913,17 @@ int32_t AL_Codec_Encode_Create(void **arg1, void *arg2)
         __assert("pCodecParam", "/home/user/git/proj/sdk-lv3/src/imp/video/alcodec/lib_codec/lib_codec.c", 0x314, "AL_Codec_Encode_Create");
 
     {
+        int kfd = open("/dev/kmsg", O_WRONLY);
+        if (kfd >= 0) {
+            char b[160];
+            int n = snprintf(b, sizeof(b), "libimp/ENC: Create entry codec=%p param=%p g_pCodec=%p\n",
+                             arg1, arg2, g_pCodec);
+            if (n > 0) write(kfd, b, n);
+            close(kfd);
+        }
+    }
+
+    {
         uint8_t *s0_1 = Rtos_Malloc(0x924);
         if (s0_1 == NULL) {
             fwrite("malloc AL_CodecEncode failed\n", 1, 0x1d, stderr);
@@ -913,9 +931,34 @@ int32_t AL_Codec_Encode_Create(void **arg1, void *arg2)
         }
         *(void **)s0_1 = g_pCodec;
         Rtos_Memcpy(s0_1 + 4, arg2, 0x794);
+        {
+            int kfd = open("/dev/kmsg", O_WRONLY);
+            if (kfd >= 0) {
+                char b[192];
+                int n = snprintf(b, sizeof(b),
+                                 "libimp/ENC: Create post-copy ctx=%p prof=0x%x picfmt=0x%x layer_cnt=%d fps=%u/%u\n",
+                                 s0_1, read_s32(s0_1, 0x24), read_s32(s0_1, 0x18), read_s32(s0_1, 0x12c),
+                                 (unsigned)read_u16(s0_1, 0x7c), (unsigned)read_u16(s0_1, 0x7e));
+                if (n > 0) write(kfd, b, n);
+                close(kfd);
+            }
+        }
         if (read_s32(s0_1, 0x75c) <= 0)
             write_s32(s0_1, 0x75c, 1);
         AL_Settings_SetDefaultParam(s0_1 + 8);
+        {
+            int kfd = open("/dev/kmsg", O_WRONLY);
+            if (kfd >= 0) {
+                char b[192];
+                int n = snprintf(b, sizeof(b),
+                                 "libimp/ENC: Create post-defaults ctx=%p gop=%d rc=%d src=%ux%u streamBuf=%d\n",
+                                 s0_1, read_s32(s0_1, 0xac), read_s32(s0_1, 0x68),
+                                 (unsigned)read_u16(s0_1, 0x0c), (unsigned)read_u16(s0_1, 0x0e),
+                                 read_s32(s0_1, 0x8dc));
+                if (n > 0) write(kfd, b, n);
+                close(kfd);
+            }
+        }
 
         {
             uint32_t a2_1;
@@ -987,6 +1030,17 @@ label_896ac:
         }
 
 label_896d8:
+        {
+            int kfd = open("/dev/kmsg", O_WRONLY);
+            if (kfd >= 0) {
+                char b[160];
+                int n = snprintf(b, sizeof(b),
+                                 "libimp/ENC: Create post-basic-validate ctx=%p prof=0x%x picfmt=0x%x\n",
+                                 s0_1, read_s32(s0_1, 0x24), read_s32(s0_1, 0x18));
+                if (n > 0) write(kfd, b, n);
+                close(kfd);
+            }
+        }
         {
             int32_t a2_3 = read_s32(s0_1, 0x18);
             if ((a2_3 & 0xfffffeff) != 0x88 && a2_3 != 0x288) {
@@ -1101,7 +1155,20 @@ label_896d8:
                         a2_16 = 0x370;
                         __assert("pStream", "/home/user/git/proj/sdk-lv3/src/imp/video/alcodec/lib_codec/lib_codec.c", a2_16, "AL_Codec_Encode_Create", var_88, var_84, var_80);
                     }
-                    if (read_u32(v0_47, 0x20) != 0) {
+                    {
+                        uint8_t *settings = s0_1 + 8;
+                        void *v0_rate = AL_RateCtrlMetaData_Create((AL_TAllocator *)read_ptr(s0_1, 0x7c0),
+                                                                    read_u16(settings, 0x04),
+                                                                    read_u16(settings, 0x06),
+                                                                    read_u8(settings, 0x4e),
+                                                                    read_u8(settings, 0x1f));
+                        { int kfd = open("/dev/kmsg", O_WRONLY); if (kfd >= 0) { char b[160]; int n = snprintf(b, sizeof(b), "libimp/ENC: stream-pool rate-meta=%p buf=%p wh=%ux%u\n", v0_rate, v0_47, (unsigned)read_u16(settings, 0x04), (unsigned)read_u16(settings, 0x06)); if (n>0) write(kfd, b, n); close(kfd); } }
+                        if (v0_rate == NULL)
+                            __assert("pRateMeta", "/home/user/git/proj/sdk-lv3/src/imp/video/alcodec/lib_codec/lib_codec.c", 0x374, "AL_Codec_Encode_Create", var_88, var_84, var_80);
+                        if (AL_Buffer_AddMetaData(v0_47, v0_rate) == 0)
+                            __assert("attachedRate", "/home/user/git/proj/sdk-lv3/src/imp/video/alcodec/lib_codec/lib_codec.c", 0x375, "AL_Codec_Encode_Create", var_88, var_84, var_80);
+                    }
+                    if (read_u32(s0_1, 0x774) != 0) {
                         void *v0_49 = (void *)(intptr_t)AL_PictureMetaData_Create();
                         { int kfd = open("/dev/kmsg", O_WRONLY); if (kfd >= 0) { char b[128]; int n = snprintf(b, sizeof(b), "libimp/ENC: stream-pool meta=%p\n", v0_49); if (n>0) write(kfd, b, n); close(kfd); } }
                         if (v0_49 == NULL)

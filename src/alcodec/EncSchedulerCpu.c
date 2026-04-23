@@ -75,6 +75,7 @@ int32_t *AL_SchedulerCpu_Create(int32_t arg1, int32_t *arg2);
 int32_t AL_SchedulerCpu_Destroy(int32_t arg1);
 
 static int32_t AL_SchedulerCpu_DestroyChannelCB(void *arg1);
+static AL_TAllocator s_SchedulerDefaultAllocatorSnapshot;
 
 static void *CpuEncSchedulerVtable[] = {
     AL_SchedulerCpu_Deinit,
@@ -311,9 +312,12 @@ int32_t AL_SchedulerCpu_EncodeOneFrame(int32_t arg1, int32_t *arg2, int32_t *arg
         } else {
             SCH_KMSG("Cpu.EncodeOneFrame arm-only call ch=%u", (unsigned)(uint8_t)*arg2);
         }
-        AL_SchedulerEnc_EncodeOneFrame((int32_t *)(intptr_t)(arg1 + 4), (char)*arg2, arg3, arg4, arg5);
-        SCH_KMSG("Cpu.EncodeOneFrame exit meta=%p", arg5);
-        return 1;
+        {
+            int32_t ret = AL_SchedulerEnc_EncodeOneFrame((int32_t *)(intptr_t)(arg1 + 4),
+                                                         (char)*arg2, arg3, arg4, arg5);
+            SCH_KMSG("Cpu.EncodeOneFrame exit ret=%d meta=%p", ret, arg5);
+            return ret;
+        }
     }
 }
 
@@ -552,19 +556,37 @@ fail_free_obj:
 int32_t *AL_SchedulerCpu_Create(int32_t arg1, int32_t *arg2)
 {
     int32_t *result = (int32_t *)Rtos_Malloc(0x1d80);
+    AL_TAllocator *default_alloc;
+    AL_TAllocator *sched_alloc;
+    const AL_TAllocatorVtable *default_vtable;
 
     if (result == NULL)
         return NULL;
 
     result[0] = (int32_t)(intptr_t)CpuEncSchedulerVtable;
     Rtos_Memset(result + 0x4c0, 0, 0xa80);
+    default_alloc = AL_GetDefaultAllocator();
+    default_vtable = default_alloc ? default_alloc->vtable : NULL;
+    s_SchedulerDefaultAllocatorSnapshot.vtable = default_vtable;
+    sched_alloc = &s_SchedulerDefaultAllocatorSnapshot;
+    SCH_KMSG("SchCpu.Create default=%p vtbl=%p alloc_fn=%p getvirt=%p dma=%p dma_vtbl=%p",
+             (void *)default_alloc, (void *)default_vtable,
+             default_vtable ? (void *)default_vtable->Alloc : NULL,
+             default_vtable ? (void *)default_vtable->GetVirtualAddr : NULL,
+             (void *)arg2,
+             (void *)(((AL_TAllocator *)arg2) ? ((AL_TAllocator *)arg2)->vtable : NULL));
+    if (sched_alloc->vtable == NULL || sched_alloc->vtable->Alloc == NULL ||
+        sched_alloc->vtable->GetVirtualAddr == NULL) {
+        SCH_KMSG("SchCpu.Create default allocator invalid -> fallback dma=%p", (void *)arg2);
+        sched_alloc = (AL_TAllocator *)arg2;
+    }
     /* The decompiler shows a literal `1` here, but the live scheduler state
      * demonstrates that a single instantiated core cannot satisfy the stock
      * resource model for 1080p25 AVC on this AVPU: expected cores=5,
      * per-core budget=211764, requested budget=1000000. The board is also
      * created with `5` AVPU IRQ slots. Use 5 scheduler cores so the compact
      * core table and budget accounting reflect the hardware topology. */
-    if (AL_SchedulerEnc_Init(result + 1, (int32_t *)AL_GetDefaultAllocator(), arg2, (int32_t *)(intptr_t)arg1, 5,
+    if (AL_SchedulerEnc_Init(result + 1, (int32_t *)sched_alloc, arg2, (int32_t *)(intptr_t)arg1, 5,
                              0x2faf0800) >= 0) {
         return result;
     }

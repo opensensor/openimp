@@ -11,12 +11,16 @@ extern int32_t __assert(const char *expression, const char *file, int32_t line,
 
 #define RC16_KMSG(fmt, ...)                                                                       \
     do {                                                                                          \
-        int _kfd = open("/dev/kmsg", O_WRONLY);                                                   \
+        int _kfd = open("/dev/kmsg", O_WRONLY | O_NONBLOCK);                                      \
         if (_kfd >= 0) {                                                                          \
             char _buf[256];                                                                       \
             int _n = snprintf(_buf, sizeof(_buf), "libimp/RC16: " fmt "\n", ##__VA_ARGS__);      \
             if (_n > 0) {                                                                         \
-                write(_kfd, _buf, (size_t)_n);                                                    \
+                size_t _len = (size_t)_n;                                                         \
+                if (_len > sizeof(_buf)) {                                                        \
+                    _len = sizeof(_buf);                                                          \
+                }                                                                                 \
+                (void)write(_kfd, _buf, _len);                                                    \
             }                                                                                     \
             close(_kfd);                                                                          \
         }                                                                                         \
@@ -28,6 +32,9 @@ extern int32_t __assert(const char *expression, const char *file, int32_t line,
 #define READ_U32(base, off) (*(uint32_t *)((uint8_t *)(base) + (off)))
 #define READ_S32(base, off) (*(int32_t *)((uint8_t *)(base) + (off)))
 #define RC16_STDERR(fmt, ...) dprintf(2, "libimp/RC16: " fmt "\n", ##__VA_ARGS__)
+
+#define LIVE_T31_FAST_FRAME_QP 1
+#define LIVE_T31_SKIP_ZERO_BIT_L01I 1
 
 /* Placement:
  * - lI1i/Il1i/llli/l01i/o11i/oiii @ RateCtrl_16.c
@@ -275,7 +282,9 @@ uint32_t rc_lI1i(void *arg1, int32_t *arg2, void *arg3, const char *arg4, int32_
 
         RC16_KMSG("lI1i reconfig-entry ctx=%p codec=%d period=%d->%d min=%d max=%d fps=%u",
                   ctx, *(int32_t *)(ctx + 0x28), frame_period, new_period, min_size, max_size, frame_rate);
-        if (frame_period == 0 && *(int32_t *)(ctx + 0x0c) == 0 && *(int32_t *)(ctx + 0x10) == 0) {
+        if ((frame_period == 0 && *(int32_t *)(ctx + 0x0c) == 0 && *(int32_t *)(ctx + 0x10) == 0) ||
+            frame_period < 0 || frame_period > 1000000 || *(int32_t *)(ctx + 8) <= 0 ||
+            *(int32_t *)(ctx + 8) > 1000) {
             RC16_KMSG("lI1i cold-reconfig ctx=%p forcing init path", ctx);
             *(uint8_t *)ctx = 0;
             return rc_lI1i(arg1, arg2, arg3, arg4, arg5, arg6);
@@ -636,6 +645,24 @@ int32_t rc_Il1i(void *arg1, void *arg2, int16_t *arg3)
               (unsigned)*(uint8_t *)((char *)arg2 + 0x2c), (int)*(int8_t *)((char *)arg2 + 0x2d),
               ctx ? *(int16_t *)(ctx + 0x20) : -1, ctx ? *(int16_t *)(ctx + 0x18) : -1,
               ctx ? *(int16_t *)(ctx + 0x1a) : -1);
+
+#if LIVE_T31_FAST_FRAME_QP
+    if (ctx != NULL && arg2 != NULL && arg3 != NULL && *(uint8_t *)((char *)arg2 + 0x2c) == 0) {
+        int32_t raw = *(int16_t *)(ctx + 0x20) + *(int8_t *)((char *)arg2 + 0x25);
+        int32_t qp = raw;
+
+        if (qp < *(int16_t *)(ctx + 0x18)) {
+            qp = *(int16_t *)(ctx + 0x18);
+        }
+        if (*(int16_t *)(ctx + 0x1a) < qp) {
+            qp = *(int16_t *)(ctx + 0x1a);
+        }
+        *arg3 = (int16_t)qp;
+        RC16_KMSG("Il1i live-fast-exit rc=%p ctx=%p qp=%d raw=%d pic_type=%d",
+                  arg1, ctx, qp, raw, *(int32_t *)((char *)arg2 + 0x10));
+        return raw;
+    }
+#endif
 
     if (*(uint8_t *)((char *)arg2 + 0x2c) != 0) {
         int32_t value = *(int8_t *)((char *)arg2 + 0x2d);
@@ -1047,12 +1074,16 @@ int32_t rc_o11i(void *arg1, void *arg2, void *arg3, int32_t arg4, int32_t *arg5)
         RC16_KMSG("o11i stats rc=%p s1c=%d s20=%d s24=%d s28=%d s2c=%d s30=%d total=%d",
                   arg1, stat_1c, stat_20, stat_24, stat_28, stat_2c, stat_30, total);
         if (total == 0) {
-            __builtin_trap();
+            RC16_KMSG("o11i zero-total fallback rc=%p frame_type=%d flags4=0x%x",
+                      arg1, frame_type, *(int32_t *)((char *)arg2 + 4));
+            percent_b = 0;
+            ratio_gate = 0;
+            chosen_type = frame_type;
+        } else {
+            percent_b = stat_20 * 100 / total;
+            ratio_gate = stat_1c * 100 / total;
+            chosen_type = (ratio_gate < 0x51) ? frame_type : 2;
         }
-
-        percent_b = stat_20 * 100 / total;
-        ratio_gate = stat_1c * 100 / total;
-        chosen_type = (ratio_gate < 0x51) ? frame_type : 2;
         if (*(uint8_t *)(ctx + 0x140) != 0 && (*(int32_t *)((char *)arg2 + 4) & 0x80) != 0) {
             chosen_type = 3;
         }
@@ -1087,10 +1118,18 @@ int32_t rc_o11i(void *arg1, void *arg2, void *arg3, int32_t arg4, int32_t *arg5)
         }
 
         if (percent_b < 0x5f) {
+#if LIVE_T31_SKIP_ZERO_BIT_L01I
+            if (arg4 <= 0) {
+                RC16_KMSG("o11i skip-l01i-zero-bits rc=%p chosen=%d bits=%d qp=%d percent_b=%d",
+                          arg1, chosen_type, arg4, qp, percent_b);
+            } else
+#endif
+            {
             RC16_KMSG("o11i pre-l01i rc=%p chosen=%d bits=%d qp=%d percent_b=%d",
                       arg1, chosen_type, arg4, qp, percent_b);
             rc_l01i(arg1, chosen_type, arg4, qp);
             RC16_KMSG("o11i post-l01i rc=%p", arg1);
+            }
         }
 
         if (chosen_type == frame_type || chosen_type == 3) {
@@ -1145,7 +1184,21 @@ int32_t rc_o11i(void *arg1, void *arg2, void *arg3, int32_t arg4, int32_t *arg5)
 int32_t rc_oiii(void *arg1, uint32_t arg2, uint32_t arg3)
 {
     int32_t *ctx = *(int32_t **)((char *)arg1 + 0x24);
-    int32_t (*alloc_fn)(void *, int32_t) = *(int32_t (**)(void *, int32_t))(*(intptr_t *)ctx + 4);
+    intptr_t vtable = 0;
+    int32_t (*alloc_fn)(void *, int32_t);
+
+    if (ctx != NULL) {
+        vtable = *(intptr_t *)ctx;
+    }
+
+    RC16_KMSG("oiii entry rc=%p alloc=%p vtbl=%p mode=%u arg3=%u",
+              arg1, ctx, (void *)(intptr_t)vtable, (unsigned)arg2, (unsigned)arg3);
+    if (ctx == NULL || vtable == 0) {
+        *(int32_t *)((char *)arg1 + 0x28) = 0;
+        return 0;
+    }
+
+    alloc_fn = *(int32_t (**)(void *, int32_t))(vtable + 4);
 
     if (alloc_fn == NULL) {
         *(int32_t *)((char *)arg1 + 0x28) = 0;

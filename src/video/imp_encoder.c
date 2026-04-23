@@ -329,6 +329,11 @@ struct IMPCell {
     int32_t outputID;
 };
 
+typedef struct EncoderAutoStartWork {
+    int32_t group;
+    int32_t channel;
+} EncoderAutoStartWork;
+
 static inline int32_t enc_group_id_from_channel(int32_t chn)
 {
     int32_t *group_ptr = (int32_t *)CH_PTR(chn, ENC_F_GROUPPTR);
@@ -336,6 +341,72 @@ static inline int32_t enc_group_id_from_channel(int32_t chn)
         return -1;
     }
     return group_ptr[0];
+}
+
+static void *encoder_auto_start_worker(void *opaque)
+{
+    EncoderAutoStartWork *work = (EncoderAutoStartWork *)opaque;
+    int32_t group;
+    int32_t channel;
+    IMPCell src;
+    IMPCell dst;
+    int32_t bind_rc;
+    int32_t start_rc = 0;
+
+    if (work == NULL) {
+        return NULL;
+    }
+
+    group = work->group;
+    channel = work->channel;
+    free(work);
+
+    src.deviceID = 0;
+    src.groupID = group;
+    src.outputID = 0;
+    dst.deviceID = 1;
+    dst.groupID = group;
+    dst.outputID = 0;
+
+    bind_rc = IMP_System_BindIfNeeded(&src, &dst);
+    if (bind_rc >= 0 && CH_S32(channel, ENC_F_ENABLED) == 0) {
+        start_rc = IMP_Encoder_StartRecvPic(channel);
+    }
+
+    video_enc_kmsg("libimp/ENCW2: RegisterChn async-start grp=%d chn=%d bind=%d start=%d started=%d enabled=%d\n",
+                   group, channel, bind_rc, start_rc,
+                   CH_S32(channel, ENC_F_STARTED),
+                   CH_S32(channel, ENC_F_ENABLED));
+    return NULL;
+}
+
+static void encoder_schedule_auto_start(int32_t group, int32_t channel)
+{
+    pthread_t tid;
+    EncoderAutoStartWork *work;
+
+    if (group < 0 || group >= 5) {
+        return;
+    }
+
+    work = (EncoderAutoStartWork *)calloc(1, sizeof(*work));
+    if (work == NULL) {
+        video_enc_kmsg("libimp/ENCW2: RegisterChn async-start alloc-failed grp=%d chn=%d\n",
+                       group, channel);
+        return;
+    }
+
+    work->group = group;
+    work->channel = channel;
+    if (pthread_create(&tid, NULL, encoder_auto_start_worker, work) != 0) {
+        video_enc_kmsg("libimp/ENCW2: RegisterChn async-start pthread-failed grp=%d chn=%d errno=%d\n",
+                       group, channel, errno);
+        free(work);
+        return;
+    }
+    pthread_detach(tid);
+    video_enc_kmsg("libimp/ENCW2: RegisterChn async-start scheduled grp=%d chn=%d tid=0x%lx\n",
+                   group, channel, (unsigned long)tid);
 }
 
 /* ===== RC-Mode debug/GETSTREAM bitrate tables (module-level static state) ===== */
@@ -708,13 +779,14 @@ int32_t IMP_Encoder_CreateChn(int32_t arg1, int32_t *arg2)
             } else {
                 void *a0_25 = CH_PTR(shareChn, ENC_F_BUFSHARE_P1);
                 if (a0_25 == 0) {
-                    imp_log_fun(6, IMP_Log_Get_Option(), 2, "Encoder",
+                    CH_S32(arg1, ENC_F_BUFSHARE_CHN) = -1;
+                    CH_S32(arg1, ENC_F_BUFSHARE_P2) = 0;
+                    imp_log_fun(5, IMP_Log_Get_Option(), 2, "Encoder",
                         "/home/user/git/proj/sdk-lv3/src/imp/video/imp_encoder.c", 0x7ad,
                         "IMP_Encoder_CreateChn",
-                        "Jpeg channel need create after channel 0\n");
-                    return -1;
-                }
-                {
+                        "Jpeg bufshare source %d missing, creating without shared buff\n",
+                        shareChn);
+                } else {
                     int32_t v0_40 = CH_S32(shareChn, ENC_F_BUFSHARE_P3);
                     CH_PTR(arg1, ENC_F_BUFSHARE_P1) = a0_25;
                     CH_S32(arg1, ENC_F_BUFSHARE_P3) = v0_40;
@@ -768,6 +840,10 @@ int32_t IMP_Encoder_CreateChn(int32_t arg1, int32_t *arg2)
     }
 
     /* Initialize sync primitives */
+    if (CH_S32(arg1, ENC_F_MAX_STREAMCNT) <= 0) {
+        CH_S32(arg1, ENC_F_MAX_STREAMCNT) = 1;
+        video_enc_kmsg("libimp/ENCW2: CreateChn default max_stream_cnt chn=%d max=1\n", arg1);
+    }
     sem_init((sem_t *)enc_ptr(arg1, ENC_F_SEM_FILLED), 0, 0);
     sem_init((sem_t *)enc_ptr(arg1, ENC_F_SEM_POLL), 0,
              (unsigned)CH_S32(arg1, ENC_F_MAX_STREAMCNT));
@@ -1019,16 +1095,6 @@ int32_t IMP_Encoder_RegisterChn(int32_t arg1, int32_t arg2)
         *(int32_t *)((char *)v0_9 + 8) += 1;
         CH_PTR(arg2, ENC_F_GROUPPTR) = (char *)v0_9 + 4;
         CH_S32(arg2, ENC_F_REGISTERED) = 1;
-        if (arg1 < 5) {
-            IMPCell src = { .deviceID = 0, .groupID = arg1, .outputID = 0 };
-            IMPCell dst = { .deviceID = 1, .groupID = arg1, .outputID = 0 };
-            int32_t bind_rc = IMP_System_BindIfNeeded(&src, &dst);
-            video_enc_kmsg("libimp/ENCW2: RegisterChn bind grp=%d chn=%d rc=%d\n",
-                           arg1, arg2, bind_rc);
-            if (bind_rc < 0) {
-                return bind_rc;
-            }
-        }
         video_enc_kmsg("libimp/ENCW2: RegisterChn linked grp=%d chn=%d group=%p slots=%d slot0=%p slot1=%p slot2=%p recv_enabled=%u\n",
                        arg1, arg2, v0_9,
                        *(int32_t *)((char *)v0_9 + 8),
@@ -1043,18 +1109,14 @@ int32_t IMP_Encoder_RegisterChn(int32_t arg1, int32_t arg2)
                         *(int32_t *)((char *)v0_9 + 8),
                         CH_S32(arg2, ENC_F_STARTED),
                         CH_S32(arg2, ENC_F_ENABLED));
-        {
+        if (CH_S32(arg2, ENC_F_ENABLED) == 0) {
             int32_t start_rc = IMP_Encoder_StartRecvPic(arg2);
-            video_enc_trace("RegisterChn auto-start grp=%d chn=%d rc=%d started=%d enabled=%d",
-                            arg1, arg2, start_rc,
-                            CH_S32(arg2, ENC_F_STARTED),
-                            CH_S32(arg2, ENC_F_ENABLED));
-            video_enc_kmsg("libimp/ENCW2: RegisterChn auto-start grp=%d chn=%d rc=%d started=%d enabled=%d\n",
-                           arg1, arg2, start_rc,
-                           CH_S32(arg2, ENC_F_STARTED),
-                           CH_S32(arg2, ENC_F_ENABLED));
-            return start_rc;
+            video_enc_kmsg("libimp/ENCW2: RegisterChn start-recv grp=%d chn=%d rc=%d\n",
+                           arg1, arg2, start_rc);
         }
+        video_enc_kmsg("libimp/ENCW2: RegisterChn return grp=%d chn=%d started=%d enabled=%d\n",
+                       arg1, arg2, CH_S32(arg2, ENC_F_STARTED), CH_S32(arg2, ENC_F_ENABLED));
+        return 0;
     }
 }
 
@@ -2333,6 +2395,8 @@ int32_t IMP_Encoder_GetStream_Impl(int32_t arg1, void *arg2, uint32_t arg3, int3
 {
     int32_t *out = (int32_t *)arg2;
     (void)_gp;
+    video_enc_kmsg("libimp/ENCW2: GetStream_Impl enter chn=%d block=%u mode=%d out=%p\n",
+                   arg1, arg3, arg4, arg2);
     if (arg1 >= 9) {
         imp_log_fun(6, IMP_Log_Get_Option(), 2, "Encoder",
             "/home/user/git/proj/sdk-lv3/src/imp/video/imp_encoder.c", 0x904,
@@ -2354,38 +2418,56 @@ int32_t IMP_Encoder_GetStream_Impl(int32_t arg1, void *arg2, uint32_t arg3, int3
     }
     {
         int64_t var_50 = 0;
-        int32_t var_4c_1 = 0;
         pthread_mutex_lock((pthread_mutex_t *)enc_ptr(arg1, ENC_F_MTX_EVT));
         {
-            int32_t v0_3 = CH_S32(arg1, ENC_F_PEND_BYTES);
-            if (!(v0_3 > 0) &&
-                !(v0_3 == 0 && CH_S32(arg1, ENC_F_PEND_COUNT) == 0)) {
-                while (1) {
-                    pthread_cond_wait((pthread_cond_t *)enc_ptr(arg1, ENC_F_COND_EVT),
-                                      (pthread_mutex_t *)enc_ptr(arg1, ENC_F_MTX_EVT));
-                    {
-                        int32_t v0_4 = CH_S32(arg1, ENC_F_PEND_BYTES);
-                        if (v0_4 > 0) break;
-                        if (v0_4 == 0 && CH_S32(arg1, ENC_F_PEND_COUNT) != 0) break;
-                    }
-                }
+            uint32_t ready_lo = CH_U32(arg1, ENC_F_PEND_COUNT);
+            uint32_t ready_hi = CH_U32(arg1, ENC_F_PEND_BYTES);
+            video_enc_kmsg("libimp/ENCW2: GetStream_Impl pend chn=%d hi=%u lo=%u eventfd=%d\n",
+                           arg1, ready_hi, ready_lo, CH_S32(arg1, ENC_F_EVENTFD));
+            while (ready_hi == 0 && ready_lo == 0) {
+                video_enc_kmsg("libimp/ENCW2: GetStream_Impl wait-ready chn=%d\n", arg1);
+                pthread_cond_wait((pthread_cond_t *)enc_ptr(arg1, ENC_F_COND_EVT),
+                                  (pthread_mutex_t *)enc_ptr(arg1, ENC_F_MTX_EVT));
+                ready_lo = CH_U32(arg1, ENC_F_PEND_COUNT);
+                ready_hi = CH_U32(arg1, ENC_F_PEND_BYTES);
+                video_enc_kmsg("libimp/ENCW2: GetStream_Impl wake chn=%d hi=%u lo=%u\n",
+                               arg1, ready_hi, ready_lo);
             }
         }
-        read(CH_S32(arg1, ENC_F_EVENTFD), &var_50, 8);
         {
-            int32_t v0_8 = (int32_t)var_50;
-            if (!(var_4c_1 == 0 && (uint32_t)v0_8 >= 2u)) {
-                int32_t fd = CH_S32(arg1, ENC_F_EVENTFD);
-                var_50 = (int64_t)(v0_8 - 1);
-                var_4c_1 = ((uint32_t)(v0_8 - 1) < (uint32_t)v0_8 ? 1 : 0) + var_4c_1 - 1;
-                write(fd, &var_50, 8);
+            int32_t fd = CH_S32(arg1, ENC_F_EVENTFD);
+            int saved_errno = 0;
+            ssize_t rd = -1;
+            int flags = fcntl(fd, F_GETFL, 0);
+            if (flags >= 0 && (flags & O_NONBLOCK) == 0) {
+                (void)fcntl(fd, F_SETFL, flags | O_NONBLOCK);
             }
-            {
-                int32_t v0_11 = CH_S32(arg1, ENC_F_PEND_COUNT);
-                int32_t v0_13 = ((uint32_t)(v0_11 - 1) < (uint32_t)v0_11 ? 1 : 0) +
-                                CH_S32(arg1, ENC_F_PEND_BYTES) - 1;
-                CH_S32(arg1, ENC_F_PEND_COUNT) = v0_11 - 1;
-                CH_S32(arg1, ENC_F_PEND_BYTES) = v0_13;
+            errno = 0;
+            rd = read(fd, &var_50, 8);
+            saved_errno = errno;
+            if (rd == 8 && var_50 > 1) {
+                uint64_t give_back = (uint64_t)var_50 - 1U;
+                (void)write(fd, &give_back, 8);
+            }
+            video_enc_kmsg("libimp/ENCW2: GetStream_Impl event chn=%d fd=%d rd=%d errno=%d val=%lld\n",
+                           arg1, fd, (int)rd, saved_errno, (long long)var_50);
+        }
+        {
+            uint32_t ready_lo = CH_U32(arg1, ENC_F_PEND_COUNT);
+            uint32_t ready_hi = CH_U32(arg1, ENC_F_PEND_BYTES);
+            if (ready_lo != 0 || ready_hi != 0) {
+                if (ready_lo == 0) {
+                    CH_U32(arg1, ENC_F_PEND_COUNT) = UINT32_MAX;
+                    CH_U32(arg1, ENC_F_PEND_BYTES) = ready_hi - 1U;
+                } else {
+                    CH_U32(arg1, ENC_F_PEND_COUNT) = ready_lo - 1U;
+                    CH_U32(arg1, ENC_F_PEND_BYTES) = ready_hi;
+                }
+                video_enc_kmsg("libimp/ENCW2: GetStream_Impl ready-dec chn=%d hi=%u->%u lo=%u->%u\n",
+                               arg1, ready_hi, CH_U32(arg1, ENC_F_PEND_BYTES),
+                               ready_lo, CH_U32(arg1, ENC_F_PEND_COUNT));
+            } else {
+                video_enc_kmsg("libimp/ENCW2: GetStream_Impl ready-dec-skip chn=%d empty\n", arg1);
             }
         }
         pthread_mutex_unlock((pthread_mutex_t *)enc_ptr(arg1, ENC_F_MTX_EVT));
@@ -2393,6 +2475,7 @@ int32_t IMP_Encoder_GetStream_Impl(int32_t arg1, void *arg2, uint32_t arg3, int3
         /* Wait for a filled framestream slot */
         if (arg3 != 0) {
             sem_wait((sem_t *)enc_ptr(arg1, ENC_F_SEM_FILLED));
+            video_enc_kmsg("libimp/ENCW2: GetStream_Impl filled-wait-ok chn=%d\n", arg1);
         } else {
             int32_t retry = 1;
             while (sem_trywait((sem_t *)enc_ptr(arg1, ENC_F_SEM_FILLED)) < 0) {
@@ -2435,6 +2518,8 @@ int32_t IMP_Encoder_GetStream_Impl(int32_t arg1, void *arg2, uint32_t arg3, int3
                     out[4] = a0_13;
                     out[5] = a3_2;
                     out[3] = (int32_t)(uintptr_t)v0_23;
+                    video_enc_kmsg("libimp/ENCW2: GetStream_Impl stream chn=%d slot=%p pack=%p pack_count=%d phy=0x%x vir=0x%x size=%d seq=%d\n",
+                                   arg1, s5_8, v0_23, a0_13, out[0], out[1], out[2], out[5]);
                     if (a2 == 2) {
                         out[6] = *((uint8_t *)s5_8 + 0x58) & 0xff;
                     } else {
@@ -2495,6 +2580,8 @@ int32_t IMP_Encoder_GetStream_Impl(int32_t arg1, void *arg2, uint32_t arg3, int3
             }
         }
         pthread_mutex_unlock((pthread_mutex_t *)enc_ptr(arg1, ENC_F_MTX_GETREL));
+        video_enc_kmsg("libimp/ENCW2: GetStream_Impl return chn=%d pack_count=%d\n",
+                       arg1, out ? out[4] : -1);
         return 0;
     }
 }
@@ -2510,6 +2597,9 @@ int32_t IMP_Encoder_GetStream(int32_t arg1, void *arg2, uint32_t arg3)
 
 int32_t IMP_Encoder_ReleaseStream(int32_t arg1, void *arg2)
 {
+    video_enc_kmsg("libimp/ENCW2: ReleaseStream enter chn=%d stream=%p pack=%p count=%d\n",
+                   arg1, arg2, arg2 ? *(void **)((char *)arg2 + 0xc) : NULL,
+                   arg2 ? *(int32_t *)((char *)arg2 + 0x10) : -1);
     if (arg1 >= 9) {
         imp_log_fun(6, IMP_Log_Get_Option(), 2, "Encoder",
             "/home/user/git/proj/sdk-lv3/src/imp/video/imp_encoder.c", 0x97d,
@@ -2539,6 +2629,8 @@ int32_t IMP_Encoder_ReleaseStream(int32_t arg1, void *arg2)
                 while (1) {
                     v1_1 += 1;
                     if (a3_1 == v1_1) {
+                        video_enc_kmsg("libimp/ENCW2: ReleaseStream abort-no-slot chn=%d pack=%p base=%p max=%d\n",
+                                       arg1, t0_1, s0_1, a3_1);
                         abort();
                     }
                     if (t0_1 == (int32_t *)((char *)arg2_iter + 0x20)) {
@@ -2548,6 +2640,9 @@ int32_t IMP_Encoder_ReleaseStream(int32_t arg1, void *arg2)
                     arg2_iter = (int32_t *)((char *)arg2_iter + 0x188);
                 }
             }
+            video_enc_kmsg("libimp/ENCW2: ReleaseStream matched chn=%d slot=%p codec_stream=%p user=%p\n",
+                           arg1, s0_1, *(void **)((char *)s0_1 + 0x10),
+                           *(void **)((char *)s0_1 + 0x14));
             AL_Codec_Encode_ReleaseStream(CH_PTR(arg1, ENC_F_CODEC_HANDLE),
                                           *(void **)((char *)s0_1 + 0x10),
                                           *(void **)((char *)s0_1 + 0x14));
@@ -2561,6 +2656,7 @@ int32_t IMP_Encoder_ReleaseStream(int32_t arg1, void *arg2)
             }
             pthread_mutex_unlock((pthread_mutex_t *)enc_ptr(arg1, ENC_F_MTX_PACK));
             release_used_framestream(enc_ptr(arg1, IMP_ENC_BASE_ADDR), s0_1);
+            video_enc_kmsg("libimp/ENCW2: ReleaseStream return chn=%d\n", arg1);
             return 0;
         }
     }

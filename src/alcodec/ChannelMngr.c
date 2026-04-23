@@ -22,6 +22,9 @@ extern void *__assert(const char *expression, const char *file, int32_t line, co
     } \
 } while (0)
 
+#define LIVE_T31_NORMALIZE_REENTRY_BEFORE_LAUNCH 0
+#define LIVE_T31_EARLY_SINGLE_CORE_AVC 1
+
 #define READ_U8(base, off) (*(uint8_t *)((uint8_t *)(base) + (off)))
 #define READ_S8(base, off) (*(int8_t *)((uint8_t *)(base) + (off)))
 #define READ_U16(base, off) (*(uint16_t *)((uint8_t *)(base) + (off)))
@@ -134,6 +137,51 @@ int32_t AL_SchedulerEnc_CreateChannel(int32_t *arg1, void *arg2, int32_t arg3, i
 int32_t AL_SchedulerEnc_DestroyChannel(int32_t *arg1, char arg2, void *arg3, void *arg4); /* forward decl */
 int32_t AL_SchedulerEnc_PutStreamBuffer(int32_t *arg1, char arg2, int32_t arg3, int32_t arg4, int32_t arg5,
                                         int32_t arg6, int32_t arg7, int32_t arg8, int32_t arg9); /* forward decl */
+
+static int t31_allow_small_avc_overcommit(const uint8_t *ch_param, int32_t resources, int32_t core_count)
+{
+    uint32_t width = READ_U16(ch_param, 4);
+    uint32_t height = READ_U16(ch_param, 6);
+
+#if LIVE_T31_EARLY_SINGLE_CORE_AVC
+    if (READ_U8(ch_param, 0x1f) == 0
+        && core_count == 1
+        && width <= 1920U
+        && height <= 1080U
+        && resources <= 1000000) {
+        return 1;
+    }
+#endif
+
+    return READ_U8(ch_param, 0x1f) == 0
+        && core_count == 1
+        && width <= 640U
+        && height <= 480U
+        && resources <= 160000;
+}
+
+static int32_t t31_pick_overcommit_core(int32_t *scheduler, const uint8_t *ch_param)
+{
+    int32_t best = -1;
+    int32_t best_budget = INT32_MIN;
+
+    if (scheduler[0] > 0
+        && READ_U8(ch_param, 0x1f) == 0
+        && READ_U16(ch_param, 4) >= 1280U) {
+        return 0;
+    }
+
+    for (int32_t core = 0; core < scheduler[0]; ++core) {
+        int32_t budget = scheduler[core * 0x26 + 0x176];
+
+        if (budget > best_budget) {
+            best_budget = budget;
+            best = core;
+        }
+    }
+
+    return best;
+}
 
 static void getCompatibleCores(int32_t *arg1, int32_t *arg2, int32_t arg3)
 {
@@ -326,6 +374,12 @@ int32_t ChannelResourcesAreAvailable(int32_t *arg1, void *arg2, int32_t arg3)
     int32_t result = NotEnoughResources(arg1, (int32_t *)((uint8_t *)arg2 + 0x1c), arg3);
 
     if (result != 0) {
+        if (t31_allow_small_avc_overcommit((const uint8_t *)arg2, arg3, READ_U8(arg2, 0x3c))) {
+            CMG_KMSG("ChRscAvail overcommit-small-avc size=%ux%u cores=%u need=%d",
+                     (unsigned)READ_U16(arg2, 4), (unsigned)READ_U16(arg2, 6),
+                     (unsigned)READ_U8(arg2, 0x3c), arg3);
+            return 1;
+        }
         return 0;
     }
 
@@ -401,8 +455,12 @@ void *GetChMngrCtx(int32_t *arg1, char arg2)
         if (factory != NULL && factory->vtable != NULL && factory->vtable->get != NULL) {
             void *ctx = factory->vtable->get(factory, a1_3);
 
-            if (ctx != NULL) {
+            if ((uintptr_t)ctx > 0x10000U) {
                 return ctx;
+            }
+            if (ctx != NULL) {
+                CMG_KMSG("GetChMngrCtx factory get invalid ch=%u ctx=%p; using slot=%p",
+                         a1_3, ctx, (void *)(intptr_t)arg1[(a1_3 << 2 >> 2) + 3]);
             }
         }
 
@@ -521,6 +579,37 @@ label_71568:
                     t1_1 = &t1_1[1];
                     result_2 = (uint32_t)result;
                 }
+            }
+        }
+
+        if (t31_allow_small_avc_overcommit(arg2, arg3, arg4)) {
+            int32_t best = -1;
+            int32_t best_budget = INT32_MIN;
+
+            if (READ_U8(arg2, 0x1f) == 0 && READ_U16(arg2, 4) >= 1280U) {
+                for (int32_t i = 1; i <= var_a8[0] && i < 0x21; ++i) {
+                    if (var_a8[i] == 0) {
+                        CMG_KMSG("findCoresAvailable overcommit-main-avc-core0 need=%d size=%ux%u",
+                                 arg3, (unsigned)READ_U16(arg2, 4), (unsigned)READ_U16(arg2, 6));
+                        return 0;
+                    }
+                }
+            }
+
+            for (int32_t i = 1; i <= var_a8[0] && i < 0x21; ++i) {
+                int32_t core = var_a8[i];
+                int32_t budget = arg1[core * 0x26 + 0x176];
+
+                if (budget > best_budget) {
+                    best_budget = budget;
+                    best = core;
+                }
+            }
+
+            if (best >= 0) {
+                CMG_KMSG("findCoresAvailable overcommit-small-avc core=%d budget=%d need=%d size=%ux%u",
+                         best, best_budget, arg3, (unsigned)READ_U16(arg2, 4), (unsigned)READ_U16(arg2, 6));
+                return best;
             }
         }
 
@@ -751,7 +840,10 @@ label_71e98:
                         CMG_KMSG("CheckAndEncode gc-scan core=%u mod=%d flag_ptr=%p flag=%u",
                                  s1_2, s7_3[1], s4_2, (unsigned)*s4_2);
 
-                        if ((uint32_t)(*s4_2) != 0U) {
+                        /* Process() clears this shared per-core GC flag to 0 when it
+                         * turns the core clock off. Launch prep must flip it back to 1
+                         * and request TurnOnGC before the next submit. */
+                        if ((uint32_t)(*s4_2) == 0U) {
                             AL_ModuleArray_AddModule(str_1, (int32_t)s1_2, 0);
                             *s4_2 = 1;
                         }
@@ -792,13 +884,34 @@ label_71e98:
 
         {
             uint8_t *launch_ctx = GetChMngrCtx(arg1, (char)str[0]);
-            CMG_KMSG("CheckAndEncode launch ch=%u ctx=%p", (unsigned)(uint8_t)str[0], launch_ctx);
+            void *sched_mutex = (void *)(intptr_t)arg1[0x4bd];
+            int live_single_avc = (launch_ctx != NULL
+                                   && READ_U8(launch_ctx, 0x1f) == 0U
+                                   && CH_CORE_COUNT(launch_ctx) == 1U);
+            CMG_KMSG("CheckAndEncode launch ch=%u ctx=%p status=%d mutex=%p",
+                     (unsigned)(uint8_t)str[0], launch_ctx, arg1[0x4bc], sched_mutex);
             int32_t encode_rc;
 
-            Rtos_ReleaseMutex((void *)(intptr_t)arg1[0x4bd]);
-            CMG_KMSG("CheckAndEncode released scheduler mutex before launch ch=%u", (unsigned)(uint8_t)str[0]);
+            if (live_single_avc && arg1[0x4bc] == 1) {
+                arg1[0x4bc] = 2;
+                CMG_KMSG("CheckAndEncode launch-guard status=1->2 ch=%u ctx=%p",
+                         (unsigned)(uint8_t)str[0], launch_ctx);
+            }
+            if (live_single_avc) {
+                CMG_KMSG("CheckAndEncode launch-with-scheduler-held ch=%u status=%d",
+                         (unsigned)(uint8_t)str[0], arg1[0x4bc]);
+                encode_rc = AL_EncChannel_Encode(launch_ctx, var_3c);
+                CMG_KMSG("CheckAndEncode launch-held-return ch=%u ctx=%p rc=%d status=%d",
+                         (unsigned)(uint8_t)str[0], launch_ctx, encode_rc, arg1[0x4bc]);
+                return encode_rc;
+            }
+            CMG_KMSG("CheckAndEncode pre-release scheduler mutex ch=%u status=%d mutex=%p",
+                     (unsigned)(uint8_t)str[0], arg1[0x4bc], sched_mutex);
+            Rtos_ReleaseMutex(sched_mutex);
+            CMG_KMSG("CheckAndEncode released scheduler mutex before launch ch=%u status=%d",
+                     (unsigned)(uint8_t)str[0], arg1[0x4bc]);
             encode_rc = AL_EncChannel_Encode(launch_ctx, var_3c);
-            Rtos_GetMutex((void *)(intptr_t)arg1[0x4bd]);
+            Rtos_GetMutex(sched_mutex);
             CMG_KMSG("CheckAndEncode reacquired scheduler mutex after launch ch=%u rc=%d",
                      (unsigned)(uint8_t)str[0], encode_rc);
             CMG_KMSG("CheckAndEncode launch-return ch=%u ctx=%p rc=%d", (unsigned)(uint8_t)str[0], launch_ctx,
@@ -808,39 +921,60 @@ label_71e98:
     }
 }
 
-static int32_t OutputFrames(int32_t *arg1)
+static int32_t OutputFramesWithLockState(int32_t *arg1, int caller_holds_sched_mutex)
 {
     void *var_1a8 = &_gp;
     int32_t var_a0[0x21];
     int32_t s1_1;
+    void *sched_mutex = (void *)(intptr_t)arg1[0x12f4 / 4];
 
     (void)var_1a8;
-    CMG_KMSG("OutputFrames entry sch=%p count=%d", arg1, *arg1);
-    Rtos_GetMutex((void *)(intptr_t)arg1[0x12f4 / 4]);
+    CMG_KMSG("OutputFrames entry sch=%p count=%d caller_locked=%d", arg1, *arg1,
+             caller_holds_sched_mutex);
+    if (!caller_holds_sched_mutex) {
+        Rtos_GetMutex(sched_mutex);
+    }
     IntVector_Copy(&arg1[0x550 / 4], var_a0);
     CMG_KMSG("OutputFrames copied pending=%d", var_a0[0]);
     if (var_a0[0] > 0) {
         s1_1 = 0;
 
         while (1) {
-            int32_t var_1a0[0x38];
+            int32_t var_1a0[0x40];
             uint8_t raw_ch = (uint8_t)var_a0[s1_1 + 1];
             uint8_t *v0_7 = GetChMngrCtx(arg1, (char)raw_ch);
+            StaticFifoCompat *out_fifo = v0_7 ? (StaticFifoCompat *)(v0_7 + 0x12b24) : NULL;
+            int out_ready = (out_fifo != NULL
+                             && out_fifo->elems != NULL
+                             && out_fifo->capacity != 0
+                             && out_fifo->read_idx != out_fifo->write_idx);
 
-            CMG_KMSG("OutputFrames loop idx=%d raw_ch=%u ctx=%p", s1_1, (unsigned)raw_ch, v0_7);
+            CMG_KMSG("OutputFrames loop idx=%d raw_ch=%u ctx=%p out_ready=%d r=%d w=%d cap=%d",
+                     s1_1, (unsigned)raw_ch, v0_7, out_ready,
+                     out_fifo ? out_fifo->read_idx : -1,
+                     out_fifo ? out_fifo->write_idx : -1,
+                     out_fifo ? out_fifo->capacity : -1);
 
-            if (v0_7 != 0 && AL_EncChannel_GetNextFrameToOutput(v0_7, var_1a0) != 0) {
-                int32_t (*cb)(int32_t, int32_t, void *);
-                int32_t var_190[0x20];
-                void *v0_1 = var_190;
+            if (v0_7 != 0 && out_ready && AL_EncChannel_GetNextFrameToOutput(v0_7, var_1a0) != 0) {
+                int32_t (*cb)(int32_t, int32_t, void *, int32_t, int32_t);
+                void *v0_1 = (uint8_t *)var_1a0 + 0x10;
 
-                Rtos_ReleaseMutex((void *)(intptr_t)arg1[0x12f4 / 4]);
-                if ((uint32_t)((uint8_t *)var_1a0)[8] != 0U) {
+                CMG_KMSG("OutputFrames ready ch=%u ctx=%p cb=%p payload=%p flag=%u",
+                         (unsigned)raw_ch, v0_7, (void *)(intptr_t)var_1a0[0],
+                         (uint8_t *)var_1a0 + 0x10, (unsigned)((uint8_t *)var_1a0)[0xf8]);
+                Rtos_ReleaseMutex(sched_mutex);
+                if ((uint32_t)((uint8_t *)var_1a0)[0xf8] != 0U) {
                     v0_1 = 0;
                 }
-                cb = (int32_t (*)(int32_t, int32_t, void *))(intptr_t)var_1a0[0];
-                cb(var_1a0[1], var_1a0[2], v0_1);
-                Rtos_GetMutex((void *)(intptr_t)arg1[0x12f4 / 4]);
+                cb = (int32_t (*)(int32_t, int32_t, void *, int32_t, int32_t))(intptr_t)var_1a0[0];
+                if (cb == NULL) {
+                    CMG_KMSG("OutputFrames null-cb ch=%u ctx=%p arg1=0x%x arg2=0x%x tail0=0x%x tail1=0x%x",
+                             (unsigned)raw_ch, v0_7, var_1a0[1], var_1a0[2],
+                             var_1a0[0xf0 / 4], var_1a0[0xf4 / 4]);
+                } else {
+                    cb(var_1a0[1], var_1a0[2], v0_1, var_1a0[0xf0 / 4], var_1a0[0xf4 / 4]);
+                }
+                Rtos_GetMutex(sched_mutex);
                 if (s1_1 >= var_a0[0]) {
                     break;
                 }
@@ -848,8 +982,10 @@ static int32_t OutputFrames(int32_t *arg1)
             }
 
             s1_1 += 1;
-            Rtos_ReleaseMutex((void *)(intptr_t)arg1[0x12f4 / 4]);
-            Rtos_GetMutex((void *)(intptr_t)arg1[0x12f4 / 4]);
+            if (!caller_holds_sched_mutex) {
+                Rtos_ReleaseMutex(sched_mutex);
+                Rtos_GetMutex(sched_mutex);
+            }
             if (s1_1 >= var_a0[0]) {
                 break;
             }
@@ -857,7 +993,15 @@ static int32_t OutputFrames(int32_t *arg1)
     }
 
     CMG_KMSG("OutputFrames exit sch=%p", arg1);
-    return (int32_t)(intptr_t)Rtos_ReleaseMutex((void *)(intptr_t)arg1[0x12f4 / 4]);
+    if (!caller_holds_sched_mutex) {
+        return (int32_t)(intptr_t)Rtos_ReleaseMutex(sched_mutex);
+    }
+    return 1;
+}
+
+static int32_t OutputFrames(int32_t *arg1)
+{
+    return OutputFramesWithLockState(arg1, 0);
 }
 
 static int32_t Process(int32_t *arg1)
@@ -1059,6 +1203,27 @@ label_723c4:
                                 int32_t v0_30 = findCoresAvailable(arg1, v0_25, a2_3, a3_2);
                                 CMG_KMSG("Process shift-found ch=%d newCore=%d", fp_2, v0_30);
 
+                                if (v0_30 < 0 || v0_30 + (int32_t)CH_CORE_COUNT(v0_25) > *arg1) {
+                                    int32_t bad_core = v0_30;
+                                    int32_t picked = t31_pick_overcommit_core(arg1, v0_25);
+                                    int32_t current = (int32_t)CH_CORE_BASE(v0_25);
+
+                                    if (picked >= 0 && picked + (int32_t)CH_CORE_COUNT(v0_25) <= *arg1) {
+                                        CMG_KMSG("Process shift-fallback-picked ch=%d bad=%d picked=%d cores=%u need=%d",
+                                                 fp_2, bad_core, picked, CH_CORE_COUNT(v0_25), CH_RES_BUDGET(v0_25));
+                                        v0_30 = picked;
+                                    } else if (current >= 0 && current + (int32_t)CH_CORE_COUNT(v0_25) <= *arg1) {
+                                        CMG_KMSG("Process shift-fallback-current ch=%d bad=%d current=%d cores=%u need=%d",
+                                                 fp_2, bad_core, current, CH_CORE_COUNT(v0_25), CH_RES_BUDGET(v0_25));
+                                        v0_30 = current;
+                                    } else {
+                                        CMG_KMSG("Process shift-fallback-zero ch=%d bad=%d picked=%d current=%d cores=%u active=%d need=%d",
+                                                 fp_2, bad_core, picked, current, CH_CORE_COUNT(v0_25), *arg1,
+                                                 CH_RES_BUDGET(v0_25));
+                                        v0_30 = 0;
+                                    }
+                                }
+
                                 if (v0_30 != -1) {
                                     uint32_t a0_29 = CH_CORE_COUNT(v0_25);
                                     int32_t s4_3 = v0_30 & 0xff;
@@ -1114,21 +1279,49 @@ label_723c4:
                 CMG_KMSG("Process post-shift-scan");
 
                 CMG_KMSG("Process pre-CheckAndEncode status=%d count=%d", arg1[0x4bc], *arg1);
+#if LIVE_T31_NORMALIZE_REENTRY_BEFORE_LAUNCH
+                if (arg1[0x4bc] == 2) {
+                    CMG_KMSG("Process normalize-reentry-before-launch status=2->1 count=%d", *arg1);
+                    arg1[0x4bc] = 1;
+                }
+#endif
                 CheckAndEncode(arg1);
                 CMG_KMSG("Process post-CheckAndEncode status=%d count=%d", arg1[0x4bc], *arg1);
+                /*
+                 * T31 live AVC can complete during CheckAndEncode while this
+                 * thread owns the scheduler mutex. Drain the completed event
+                 * before letting queued frame producers run, but drop the
+                 * mutex around the output callback so ReleaseStream can return
+                 * the stream buffer.
+                 */
+                CMG_KMSG("Process post-CheckAndEncode pre-OutputFrames");
+                OutputFramesWithLockState(arg1, 1);
+                CMG_KMSG("Process post-CheckAndEncode post-OutputFrames");
                 Rtos_ReleaseMutex((void *)(intptr_t)arg1[0x4bd]);
                 var_34_1(arg1);
                 Rtos_GetMutex((void *)(intptr_t)arg1[0x4bd]);
                 v0_43 = arg1[0x4bc];
                 CMG_KMSG("Process loop-post status=%d count=%d", v0_43, *arg1);
                 if (v0_43 != 0) {
-                    if (v0_43 != 2) {
+                    if (v0_43 == 2) {
+                        /*
+                         * Live T31 AVC deliberately marks status=2 while
+                         * launching. Reentrant frame/stream-buffer callbacks
+                         * use the same marker to request another scheduler
+                         * pass, so keep the owner loop alive instead of
+                         * dropping queued requests until a later external kick.
+                         */
+                        arg1[0x4bc] = 1;
+                        CMG_KMSG("Process reentry-drain continue status=2->1 count=%d", *arg1);
+                        continue;
+                    }
+                    if (v0_43 != 1) {
                         __assert("pCtx->eProcessStatus != AL_SCHEDULER_NO_PROCESS",
                                  "/home/user/git/proj/sdk-lv3/src/imp/video/alcodec/lib_scheduler_enc/Scheduler.c",
                                  0x24e, "Process", &_gp);
                     }
                     arg1[0x4bc] = 0;
-                    CMG_KMSG("Process exit-reset status=%d count=%d", arg1[0x4bc], *arg1);
+                    CMG_KMSG("Process idle-reset status=%d count=%d", arg1[0x4bc], *arg1);
                     return (int32_t)(intptr_t)Rtos_ReleaseMutex((void *)(intptr_t)arg1[0x4bd]);
                 }
                 arg1[0x4bc] = 1;
@@ -1170,12 +1363,17 @@ static int32_t HandleCoreInterrupt(int32_t *arg1, int32_t arg2, int32_t arg3)
     (void)arg_4;
     CMG_KMSG("HandleCoreInterrupt entry sch=%p core=%d lane=%d mutex=%p", arg1, arg2, arg3,
              (void *)(intptr_t)arg1[0x4bd]);
-    Rtos_GetMutex((void *)(intptr_t)arg1[0x4bd]);
-    CMG_KMSG("HandleCoreInterrupt post-lock sch=%p core=%d lane=%d", arg1, arg2, arg3);
+    /*
+     * T31 live AVC completion can arrive while Process()->CheckAndEncode()
+     * still owns the non-recursive scheduler mutex. The core-state channel id
+     * is already latched before launch, so read it locklessly and let the
+     * channel-level mutex serialize EndEncoding.
+     */
+    CMG_KMSG("HandleCoreInterrupt lockless-read sch=%p core=%d lane=%d", arg1, arg2, arg3);
     v0_6 = GetChMngrCtx(arg1, (char)READ_U8(&arg1[arg2 * 0x26], arg3 + 0x5d4));
     CMG_KMSG("HandleCoreInterrupt ctx=%p raw_ch=%u", v0_6,
              (unsigned)READ_U8(&arg1[arg2 * 0x26], arg3 + 0x5d4));
-    result = (int32_t)(intptr_t)Rtos_ReleaseMutex((void *)(intptr_t)arg1[0x4bd]);
+    result = 1;
     if (v0_6 != 0) {
         CMG_KMSG("HandleCoreInterrupt pre-EndEncoding ctx=%p core=%d lane=%d", v0_6, arg2, arg3);
         result = AL_EncChannel_EndEncoding(v0_6, (uint8_t)arg2, arg3);
@@ -1201,17 +1399,40 @@ static void *CreateChMngrCtx(int32_t *arg1, int32_t arg2)
     }
 
     if (t9 != 0) {
-        arg1[(arg2 << 2 >> 2) + 3] = (int32_t)(intptr_t)a0->vtable->create(a0, (void *)0x12fd8);
-        if (arg1[(arg2 << 2 >> 2) + 3] != 0) {
-            return GetChMngrCtx(arg1, (char)arg2);
+        void *created = a0->vtable->create(a0, (void *)0x12fd8);
+
+        if ((uintptr_t)created > 0x10000U) {
+            void *ctx;
+
+            arg1[(arg2 << 2 >> 2) + 3] = (int32_t)(intptr_t)created;
+            if (a0->vtable->get != NULL) {
+                ctx = a0->vtable->get(a0, (uint32_t)(uint8_t)arg2);
+            } else {
+                ctx = created;
+            }
+            if ((uintptr_t)ctx > 0x10000U) {
+                return ctx;
+            }
+
+            CMG_KMSG("CreateChMngrCtx factory get invalid ch=%d created=%p ctx=%p; fallback malloc",
+                     arg2, created, ctx);
+        } else if (created != NULL) {
+            CMG_KMSG("CreateChMngrCtx factory create invalid ch=%d created=%p; fallback malloc",
+                     arg2, created);
         }
+
+        arg1[(arg2 << 2 >> 2) + 3] = 0;
     }
 
-    arg1[(arg2 << 2 >> 2) + 3] = (int32_t)(intptr_t)Rtos_Malloc(0x12fd8);
-    if (arg1[(arg2 << 2 >> 2) + 3] != 0) {
-        Rtos_Memset((void *)(intptr_t)arg1[(arg2 << 2 >> 2) + 3], 0, 0x12fd8);
+    {
+        void *ctx = Rtos_Malloc(0x12fd8);
+
+        arg1[(arg2 << 2 >> 2) + 3] = (int32_t)(intptr_t)ctx;
+        if (ctx != NULL) {
+            Rtos_Memset(ctx, 0, 0x12fd8);
+        }
+        return ctx;
     }
-    return GetChMngrCtx(arg1, (char)arg2);
 }
 
 int32_t AL_SchedulerEnc_Init(int32_t *arg1, int32_t *arg2, int32_t *arg3, int32_t *arg4, int32_t arg5, int32_t arg6)
@@ -1399,6 +1620,13 @@ int32_t AL_SchedulerEnc_CreateChannel2(int32_t *arg1, void *arg2, int32_t arg3, 
     CMG_KMSG("SchEnc.CC2 pre-filterCoresCount");
     v0 = (int32_t)filterCoresCount(var_48, arg2);
     CMG_KMSG("SchEnc.CC2 filterCores=%d", v0);
+#if LIVE_T31_EARLY_SINGLE_CORE_AVC
+    if (READ_U8(arg2, 0x1f) == 0U && READ_U16(arg2, 4) >= 1280U && v0 > 1) {
+        CMG_KMSG("SchEnc.CC2 force-early-single-core-avc old=%d size=%ux%u",
+                 v0, (unsigned)READ_U16(arg2, 4), (unsigned)READ_U16(arg2, 6));
+        v0 = 1;
+    }
+#endif
     WRITE_U8(arg2, 0x3c, (uint8_t)v0);
     *arg6 = AL_EncChannel_CheckAndAdjustParam(arg2);
     CMG_KMSG("SchEnc.CC2 CheckAndAdjustParam=0x%x", *arg6);
@@ -1439,6 +1667,16 @@ int32_t AL_SchedulerEnc_CreateChannel2(int32_t *arg1, void *arg2, int32_t arg3, 
     while (1) {
         v0_10 = findCoresAvailable(s1, s0_1, v0_4, (int32_t)s2_1);
         a3_3 = v0_10;
+        if (v0_10 >= *s1 && t31_allow_small_avc_overcommit((const uint8_t *)s0_1, v0_4, (int32_t)s2_1)) {
+            int32_t forced_core = t31_pick_overcommit_core(s1, (const uint8_t *)s0_1);
+
+            if (forced_core >= 0) {
+                CMG_KMSG("SchEnc.CC2 force-valid-core old=%d new=%d cores=%d need=0x%x",
+                         v0_10, forced_core, *s1, v0_4);
+                v0_10 = forced_core;
+                a3_3 = forced_core;
+            }
+        }
         if (v0_10 != -1) {
             break;
         }
@@ -1492,19 +1730,18 @@ int32_t AL_SchedulerEnc_CreateChannel2(int32_t *arg1, void *arg2, int32_t arg3, 
             int32_t a1_7 = *s1;
             int32_t a0_11 = s1[0x4ba];
             int32_t t0_2 = s1[1];
-            int32_t var_58 = arg4;
-            int32_t var_54_1 = arg5;
-            int32_t (*var_50_1)(int32_t *, int32_t *) = EndFrameEncoding;
-            int32_t *var_4c_1 = s1;
+            int32_t cb_bundle[4];
             int32_t _init_ok;
 
-            (void)var_50_1;
-            (void)var_4c_1;
+            cb_bundle[0] = arg4;
+            cb_bundle[1] = arg5;
+            cb_bundle[2] = (int32_t)(intptr_t)EndFrameEncoding;
+            cb_bundle[3] = (int32_t)(intptr_t)s1;
             WRITE_PTR(v0_14, 0x40, &s1[0x4b6]);
             CMG_KMSG("SchEnc.CC2 pre-EncChn_Init ctx=%p s0_1=%p core=%p a3_3=%d result=%d",
                      (void*)v0_14, s0_1, (void*)&s1[a3_3 * 0x11 + 0x23], a3_3, result);
             _init_ok = AL_EncChannel_Init(v0_14, s0_1, &s1[a3_3 * 0x11 + 0x23], (uint8_t)a3_3, (uint8_t)s2_1, v0_4,
-                                   (void *)(intptr_t)a0_11, (void *)(intptr_t)arg7, &var_58, arg3, a1_7, t0_2, 1);
+                                   (void *)(intptr_t)a0_11, (void *)(intptr_t)arg7, cb_bundle, arg3, a1_7, t0_2, 1);
             CMG_KMSG("SchEnc.CC2 EncChn_Init=%d *arg6=0x%x", _init_ok, *arg6);
             if (_init_ok != 0) {
                 uint32_t i = CH_CORE_BASE(v0_14);
@@ -1620,6 +1857,16 @@ int32_t AL_SchedulerEnc_CreateChannel(int32_t *arg1, void *arg2, int32_t arg3, i
     while (1) {
         v0_10 = findCoresAvailable(s1, s0_1, v0_4, (int32_t)s2_1);
         a3_3 = v0_10;
+        if (v0_10 >= *s1 && t31_allow_small_avc_overcommit((const uint8_t *)s0_1, v0_4, (int32_t)s2_1)) {
+            int32_t forced_core = t31_pick_overcommit_core(s1, (const uint8_t *)s0_1);
+
+            if (forced_core >= 0) {
+                CMG_KMSG("SchEnc.CC force-valid-core old=%d new=%d cores=%d need=0x%x",
+                         v0_10, forced_core, *s1, v0_4);
+                v0_10 = forced_core;
+                a3_3 = forced_core;
+            }
+        }
         if (v0_10 != -1) {
             break;
         }
@@ -1666,16 +1913,15 @@ int32_t AL_SchedulerEnc_CreateChannel(int32_t *arg1, void *arg2, int32_t arg3, i
             int32_t a0_11 = s1[0x4ba];
             int32_t t1_2 = s1[1];
             int32_t t0_2 = *s1;
-            int32_t var_58 = arg4;
-            int32_t var_54_1 = arg5;
-            int32_t (*var_50_1)(int32_t *, int32_t *) = EndFrameEncoding;
-            int32_t *var_4c_1 = s1;
+            int32_t cb_bundle[4];
 
-            (void)var_50_1;
-            (void)var_4c_1;
+            cb_bundle[0] = arg4;
+            cb_bundle[1] = arg5;
+            cb_bundle[2] = (int32_t)(intptr_t)EndFrameEncoding;
+            cb_bundle[3] = (int32_t)(intptr_t)s1;
             WRITE_PTR(v0_14, 0x40, &s1[0x4b6]);
             if (AL_EncChannel_Init(v0_14, s0_1, &s1[a3_3 * 0x11 + 0x23], (uint8_t)a3_3, (uint8_t)s2_1, v0_4,
-                                   (void *)(intptr_t)a0_11, (void *)(intptr_t)a1_7, &var_58, arg3, t0_2, t1_2, 1) != 0) {
+                                   (void *)(intptr_t)a0_11, (void *)(intptr_t)a1_7, cb_bundle, arg3, t0_2, t1_2, 1) != 0) {
                 uint32_t i = CH_CORE_BASE(v0_14);
                 uint32_t v1_7 = CH_CORE_COUNT(v0_14);
 
@@ -1820,16 +2066,33 @@ int32_t AL_SchedulerEnc_EncodeOneFrame(int32_t *arg1, char arg2, int32_t *arg3, 
         CMG_KMSG("EncodeOneFrame null-ctx");
         return (int32_t)(intptr_t)Rtos_ReleaseMutex((void *)(intptr_t)arg1[0x4bd]);
     }
+    if (arg3 != NULL && arg1[0x4bc] != 0) {
+        StaticFifoCompat *lane0 = (StaticFifoCompat *)(v0 + 0x129b4);
+        StaticFifoCompat *lane1 = (StaticFifoCompat *)(v0 + 0x12a10);
+        int32_t old_status = arg1[0x4bc];
+
+        CMG_KMSG("EncodeOneFrame queue-while-processing ch=%u ctx=%p status=%d src=%p stream=%p meta=%p",
+                 (unsigned)(uint8_t)arg2, v0, old_status, arg3, arg4, arg5);
+        AL_EncChannel_PushNewFrame(v0, arg3, arg4, arg5);
+        arg1[0x4bc] = 2;
+        CMG_KMSG("EncodeOneFrame queued-while-processing ctx=%p status=%d->2 q0=%p r/w/c=%d/%d/%d q1=%p r/w/c=%d/%d/%d",
+                 v0, old_status, lane0, lane0->read_idx, lane0->write_idx, lane0->capacity,
+                 lane1, lane1->read_idx, lane1->write_idx, lane1->capacity);
+        Rtos_ReleaseMutex((void *)(intptr_t)arg1[0x4bd]);
+        return 1;
+    }
 
     CMG_KMSG("EncodeOneFrame pre-PushNewFrame ctx=%p src=%p stream=%p meta=%p",
              v0, arg3, arg4, arg5);
     AL_EncChannel_PushNewFrame(v0, arg3, arg4, arg5);
-    CMG_KMSG("EncodeOneFrame post-PushNewFrame ctx=%p lane0_r=%d lane0_w=%d lane1_r=%d lane1_w=%d",
-             v0,
-             READ_S32(v0, 0x3d8),
-             READ_S32(v0, 0x3dc),
-             READ_S32(v0, 0x434),
-             READ_S32(v0, 0x438));
+    {
+        StaticFifoCompat *lane0 = (StaticFifoCompat *)(v0 + 0x129b4);
+        StaticFifoCompat *lane1 = (StaticFifoCompat *)(v0 + 0x12a10);
+
+        CMG_KMSG("EncodeOneFrame post-PushNewFrame ctx=%p q0=%p r/w/c=%d/%d/%d q1=%p r/w/c=%d/%d/%d",
+                 v0, lane0, lane0->read_idx, lane0->write_idx, lane0->capacity,
+                 lane1, lane1->read_idx, lane1->write_idx, lane1->capacity);
+    }
     Rtos_ReleaseMutex((void *)(intptr_t)arg1[0x4bd]);
     CMG_KMSG("EncodeOneFrame pre-Process sch=%p", arg1);
     return Process(arg1);

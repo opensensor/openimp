@@ -32,6 +32,8 @@
 #include "imp_log_int.h"
 #include "video/encoder_channel_layout.h"
 
+#define LIVE_T31_UNLOCK_DIRECT_ENCODE 1
+
 /* fs_* framesource kernel-interface thunks are provided by legacy
  * src/kernel_interface.c (included in BUILD=ported since it has the
  * real V4L2 ioctl plumbing). */
@@ -40,8 +42,8 @@
  * BUILD=ported (the legacy allocator works end-to-end on real hardware,
  * the ported T71 vbm.c + ported allocator chain caused rvd to hang the
  * kernel when continuous_init memset'd 30MB on /dev/rmem). */
-void *VBMLockFrameByVaddr(void *vaddr);
-void VBMUnlockFrameByVaddr(void *vaddr);
+int VBMLockFrameByVaddr(uint32_t vaddr);
+int VBMUnlockFrameByVaddr(uint32_t vaddr);
 int VBMReleaseFrame(int chn, void *frame);
 
 /* ----- osd-style fifo helpers ------------------------------------------ */
@@ -431,7 +433,7 @@ static void enc_trace(const char *fmt, ...)
 
 static EncoderCompatRuntime g_encoder_runtime[9];
 
-#define OEM_FRAME_CLONE_BYTES 0x30
+#define OEM_FRAME_CLONE_BYTES 0x428
 #define OEM_FRAME_SLOT_BYTES  0x458
 
 /* Local helper prototypes used by the encoder worker path before the
@@ -472,14 +474,33 @@ static void encoder_unlock_and_release_frame(EncoderChannelLayout *chn, void *sl
 
     vaddr = *(void **)((uint8_t *)slot + 0x1c);
     if (vaddr != NULL)
-        VBMUnlockFrameByVaddr(vaddr);
+        VBMUnlockFrameByVaddr((uint32_t)(uintptr_t)vaddr);
     encoder_release_frame_slot(chn, slot);
+}
+
+static void *encoder_current_pack_slot(EncoderChannelLayout *chn)
+{
+    uint8_t *base;
+    int32_t max;
+    int32_t idx;
+
+    if (chn == NULL)
+        return NULL;
+
+    base = (uint8_t *)(uintptr_t)*enc_channel_stream_ring_base(chn);
+    max = *enc_channel_stream_ring_count(chn);
+    idx = *enc_channel_stream_ring_index(chn);
+    if (base == NULL || max <= 0)
+        return NULL;
+
+    return base + (size_t)(idx % max) * 0x188U;
 }
 
 static int encoder_clone_source_frame(EncoderChannelLayout *chn, void *src_frame, void **slot_out)
 {
     void *slot;
     void *vaddr;
+    void *pack_slot;
 
     if (slot_out == NULL)
         return -1;
@@ -495,10 +516,16 @@ static int encoder_clone_source_frame(EncoderChannelLayout *chn, void *src_frame
     memcpy(slot, src_frame, OEM_FRAME_CLONE_BYTES);
 
     vaddr = *(void **)((uint8_t *)slot + 0x1c);
-    if (VBMLockFrameByVaddr(vaddr) == NULL) {
+    if (vaddr != NULL && VBMLockFrameByVaddr((uint32_t)(uintptr_t)vaddr) != 0) {
         encoder_release_frame_slot(chn, slot);
         return -1;
     }
+
+    pack_slot = encoder_current_pack_slot(chn);
+    *(void **)((uint8_t *)slot + 0x428) = pack_slot;
+    *(int32_t *)((uint8_t *)slot + 0x430) = 1;
+    *(void **)((uint8_t *)slot + 0x448) = enc_mutex_ptr(&chn->queue_mutex);
+    *(int32_t *)((uint8_t *)slot + 0x44c) = 0;
 
     *slot_out = slot;
     return 0;
@@ -683,13 +710,13 @@ void do_release_frame(void *chn, void *srcFrame, int32_t flag)
                 *(int32_t *)(arg1 + 0x25c) == 0) {
                 v0_1 = *(int32_t *)(arg1 + 0x254);
                 if (*(int32_t *)(arg1 + 0x254) == 0 || v0_1 != 0) {
-                    VBMUnlockFrameByVaddr(*(void **)(arg2 + 0x1c));
+                    VBMUnlockFrameByVaddr((uint32_t)(uintptr_t)*(void **)(arg2 + 0x1c));
                 }
                 v0_1 = *(int32_t *)(arg2 + 0x44c);
             } else {
                 v0_1 = *(int32_t *)(arg1 + 0x254);
                 if (v0_1 != 0) {
-                    VBMUnlockFrameByVaddr(*(void **)(arg2 + 0x1c));
+                    VBMUnlockFrameByVaddr((uint32_t)(uintptr_t)*(void **)(arg2 + 0x1c));
                     v0_1 = *(int32_t *)(arg2 + 0x44c);
                 }
             }
@@ -766,14 +793,30 @@ int32_t update_one_frmstrm(void *arg1_in)
 {
     uint8_t *arg1 = (uint8_t *)arg1_in;
     EncoderChannelLayout *chn = (EncoderChannelLayout *)arg1_in;
+    static int update_one_log_budget = 8;
+    int do_log;
     if (arg1 == NULL) return -1;
 
     void *var_40 = NULL;
     void *var_44 = NULL;
     pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, NULL);
 
-    if (AL_Codec_Encode_GetStream(*(void **)(arg1 + 8),
-                                  &var_44, &var_40) < 0) {
+    do_log = update_one_log_budget > 0;
+    if (do_log) {
+        update_one_log_budget--;
+        stub_kmsg("libimp/ENCX: update_one entry ch=%p codec=%p enabled=%u started=%u\n",
+                  arg1, *(void **)(arg1 + 8), *(uint32_t *)(arg1 + 0x170),
+                  *(uint32_t *)(arg1 + 0x174));
+    }
+
+    {
+        uint8_t *codec = *(uint8_t **)(arg1 + 8);
+        if (codec != NULL) {
+            var_44 = Fifo_Dequeue(codec + 0x7f8, -1);
+            var_40 = Fifo_Dequeue(codec + 0x81c, -1);
+        }
+    }
+    if (var_44 == NULL || var_40 == NULL) {
         int32_t opt = IMP_Log_Get_Option();
         imp_log_fun(6, opt, 2, "Encoder",
             "/home/user/git/proj/sdk-lv3/src/imp/video/imp_encoder.c",
@@ -783,10 +826,15 @@ int32_t update_one_frmstrm(void *arg1_in)
         pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, NULL);
         return -1;
     }
+    if (do_log) {
+        stub_kmsg("libimp/ENCX: update_one got stream=%p src=%p codec=%p\n",
+                  var_44, var_40, *(void **)(arg1 + 8));
+    }
 
-    stub_kmsg("libimp/ENCX: update_one got stream=%p src=%p codec=%p",
-              var_44, var_40, *(void **)(arg1 + 8));
-
+    if (do_log) {
+        stub_kmsg("libimp/ENCX: update_one pre-count-lock ch=%p lock=%p\n",
+                  arg1, enc_mutex_ptr(&chn->queue_mutex));
+    }
     pthread_mutex_lock(enc_mutex_ptr(&chn->queue_mutex));
     {
         uint32_t v0_1 = *(uint32_t *)(arg1 + 0x80);
@@ -796,30 +844,65 @@ int32_t update_one_frmstrm(void *arg1_in)
         *(uint32_t *)(arg1 + 0x84) = v0_3;
     }
     pthread_mutex_unlock(enc_mutex_ptr(&chn->queue_mutex));
+    if (do_log) {
+        stub_kmsg("libimp/ENCX: update_one post-count complete_lo=%u complete_hi=%u\n",
+                  *(uint32_t *)(arg1 + 0x80), *(uint32_t *)(arg1 + 0x84));
+    }
 
     /* $s7_1 = var_40[0x24/4]  (public frame struct inside user-data). */
     int32_t *s7_1 = *(int32_t **)((uint8_t *)var_40 + 0x24);
+    if (s7_1 == NULL) {
+        if (do_log)
+            stub_kmsg("libimp/ENCX: update_one missing frame-slot srcbuf=%p\n", var_40);
+        pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, NULL);
+        return -1;
+    }
     uint64_t ts = (uint64_t)(uint32_t)Rtos_GetTime();
     s7_1[0x108] = (int32_t)(uint32_t)ts;
     s7_1[0x109] = (int32_t)(uint32_t)(ts >> 32);
+    if (do_log) {
+        stub_kmsg("libimp/ENCX: update_one frame-slot srcbuf=%p frame=%p pack_field=%p fallback_pack=%p max=%d idx=%d\n",
+                  var_40, s7_1, s7_1 != NULL ? (void *)(uintptr_t)s7_1[0x10a] : NULL,
+                  encoder_current_pack_slot(chn),
+                  *enc_channel_stream_ring_count(chn), *enc_channel_stream_ring_index(chn));
+    }
 
     /* When in PASS-THROUGH mode (+0x2d4 set) or slot mode=4, skip the
      * 8-word "ENCODE TIME" log and the setRight copy of &str[0x59..0x5d]. */
-    int32_t *str;
+    int32_t *str = (int32_t *)encoder_current_pack_slot(chn);
     if (*(uint8_t *)(arg1 + 0x2d4) != 0) {
-        str = (int32_t *)(uintptr_t)s7_1[0x10a];
+        if (str == NULL)
+            str = (int32_t *)(uintptr_t)s7_1[0x10a];
     } else if (*(uint8_t *)(arg1 + 0x9b * 4) == 4) {
-        str = (int32_t *)(uintptr_t)s7_1[0x10a];
+        if (str == NULL)
+            str = (int32_t *)(uintptr_t)s7_1[0x10a];
     } else {
         /* Copy the 10-word ENCODE-TIME block (str[0x59..0x62]) into the
          * public-frame struct at arg1+0x2e0..+0x308 via setLeft+setRight
          * permute — the stock idiom for 32-bit word stores on MIPS. */
-        str = (int32_t *)(uintptr_t)s7_1[0x10a];
+        if (str == NULL)
+            str = (int32_t *)(uintptr_t)s7_1[0x10a];
+        if (str == NULL) {
+            if (do_log)
+                stub_kmsg("libimp/ENCX: update_one missing stream-record frame=%p ring_base=%p max=%d idx=%d\n",
+                          s7_1, (void *)(uintptr_t)*enc_channel_stream_ring_base(chn),
+                          *enc_channel_stream_ring_count(chn), *enc_channel_stream_ring_index(chn));
+            pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, NULL);
+            return -1;
+        }
         int32_t *dst = (int32_t *)(arg1 + 0x2e0);
         for (int i = 0; i < 10; i++) {
             (void)_setLeftPart32((uint32_t)str[0x59 + i]);
             dst[i] = (int32_t)_setRightPart32((uint32_t)str[0x59 + i]);
         }
+    }
+    if (str == NULL) {
+        if (do_log)
+            stub_kmsg("libimp/ENCX: update_one missing stream-record frame=%p ring_base=%p max=%d idx=%d\n",
+                      s7_1, (void *)(uintptr_t)*enc_channel_stream_ring_base(chn),
+                      *enc_channel_stream_ring_count(chn), *enc_channel_stream_ring_index(chn));
+        pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, NULL);
+        return -1;
     }
 
     /* Copy per-frame timestamps (stream[0x59..0x5a]) into the public
@@ -842,12 +925,13 @@ int32_t update_one_frmstrm(void *arg1_in)
 
     void *meta = AL_Buffer_GetMetaData(var_44, 1);
     int32_t data = (int32_t)(intptr_t)AL_Buffer_GetData(var_44);
-    uint32_t s0_2 = *(uint32_t *)((uint8_t *)meta + 0x14);   /* section cnt */
+    uint32_t s0_2 = *(uint16_t *)((uint8_t *)meta + 0x14);   /* section cnt */
     str[0] = 0;
     str[1] = data;
-
-    stub_kmsg("libimp/ENCX: update_one meta stream=%p src=%p size=%d data=0x%x meta=%p sections=%u public=%p",
-              var_44, var_40, sz, (unsigned)data, meta, s0_2, s7_1);
+    if (do_log) {
+        stub_kmsg("libimp/ENCX: update_one meta stream=%p src=%p public=%p str=%p data=0x%x size=%d meta=%p sections=%u\n",
+                  var_44, var_40, s7_1, str, (unsigned)data, sz, meta, s0_2);
+    }
 
     uint32_t s6_1 = 0;   /* accumulated payload bytes */
     uint32_t s5_1 = 0;   /* running offset */
@@ -909,11 +993,17 @@ int32_t update_one_frmstrm(void *arg1_in)
             }
         }
     } else {
-        stub_kmsg("libimp/ENCX: update_one unexpected frame-count=%d sections=%u stream=%p meta=%p",
-                  t0_2, s0_2, var_44, meta);
+        if (do_log) {
+            stub_kmsg("libimp/ENCX: update_one unexpected frame-count=%d sections=%u stream=%p meta=%p\n",
+                      t0_2, s0_2, var_44, meta);
+        }
         __assert("iNumFrame == 1",
                  "/home/user/git/proj/sdk-lv3/src/imp/video/imp_encoder.c",
                  0x53b, "update_one_frmstrm");
+    }
+    if (do_log) {
+        stub_kmsg("libimp/ENCX: update_one packed public=%p packs=%d payload=%u base=0x%x\n",
+                  s7_1, str[6], s6_1, (unsigned)str[1]);
     }
 
     *(uint32_t *)(arg1 + 0x2a4) += s6_1;
@@ -940,8 +1030,16 @@ int32_t update_one_frmstrm(void *arg1_in)
     }
 
     /* Hand the public-frame record to the consumer fifo. */
+    if (do_log) {
+        stub_kmsg("libimp/ENCX: update_one pre-public-queue fifo=%p public=%p\n",
+                  arg1 + 0x18, s7_1);
+    }
     Fifo_Queue(arg1 + 0x18, s7_1, -1);
     pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, NULL);
+    if (do_log) {
+        stub_kmsg("libimp/ENCX: update_one post-public-queue public=%p packs=%d\n",
+                  s7_1, str[6]);
+    }
 
     *(int32_t *)(arg1 + 0x118) = str[6];
     {
@@ -955,6 +1053,11 @@ int32_t update_one_frmstrm(void *arg1_in)
     /* Signal stream-ready + cond wake. */
     {
         uint64_t one = 1;
+        if (do_log) {
+            stub_kmsg("libimp/ENCX: update_one pre-signal eventfd=%d sem_ready=%p sem_avail=%p ready=%u/%u\n",
+                      *(int32_t *)(arg1 + 0x220), arg1 + 0x188, arg1 + 0x198,
+                      *enc_channel_stream_ready_lo(chn), *enc_channel_stream_ready_hi(chn));
+        }
         pthread_mutex_lock((pthread_mutex_t *)(arg1 + 0x1d8));
         (void)write(*(int32_t *)(arg1 + 0x220), &one, 8);
         uint32_t v0_28 = *enc_channel_stream_ready_lo(chn);
@@ -967,9 +1070,11 @@ int32_t update_one_frmstrm(void *arg1_in)
         pthread_cond_signal((pthread_cond_t *)(arg1 + 0x1f0));
         pthread_mutex_unlock((pthread_mutex_t *)(arg1 + 0x1d8));
     }
-    stub_kmsg("libimp/ENCX: update_one queued public=%p packs=%d bytes=%u ready_lo=%u ready_hi=%u",
-              s7_1, str[6], s6_1,
-              *enc_channel_stream_ready_lo(chn), *enc_channel_stream_ready_hi(chn));
+    if (do_log) {
+        stub_kmsg("libimp/ENCX: update_one queued public=%p packs=%d bytes=%u ready=%u/%u\n",
+                  s7_1, str[6], s6_1,
+                  *enc_channel_stream_ready_lo(chn), *enc_channel_stream_ready_hi(chn));
+    }
     return 0;
 }
 
@@ -1171,11 +1276,24 @@ static int32_t sub_8f550_impl(uint8_t *s0_slot, int32_t i, uint8_t *frame,
     enc_trace("libimp/ENCX: sub_8f550 entry enc=%p codec=%p frame=%p ch=%d tag=%d\n",
               enc, codec, frame, *enc_channel_stream_cookie(chn), s3_tag);
     if (codec != NULL) {
-        int32_t proc_ret = AL_Codec_Encode_Process(codec, frame, frame);
+        void *codec_frame = frame;
+        void *cloned_frame = NULL;
+        if (frame != NULL && encoder_clone_source_frame(chn, frame, &cloned_frame) == 0) {
+            codec_frame = cloned_frame;
+            enc_trace("libimp/ENCX: sub_8f550 cloned frame=%p -> slot=%p pack=%p\n",
+                      frame, cloned_frame, *(void **)((uint8_t *)cloned_frame + 0x428));
+        } else if (frame != NULL) {
+            enc_trace("libimp/ENCX: sub_8f550 clone-failed frame=%p fifo=%p pack=%p max=%d idx=%d\n",
+                      frame, chn->public_stream_fifo, encoder_current_pack_slot(chn),
+                      *enc_channel_stream_ring_count(chn), *enc_channel_stream_ring_index(chn));
+        }
+        int32_t proc_ret = AL_Codec_Encode_Process(codec, codec_frame, codec_frame);
         enc_trace("libimp/ENCX: sub_8f550 process-ret=%d enc=%p codec=%p frame=%p\n",
-                  proc_ret, enc, codec, frame);
+                  proc_ret, enc, codec, codec_frame);
         if (proc_ret < 0) {
             /* Log is elided; the HLIL imp_log_fun line is at 0x9029c. */
+            if (cloned_frame != NULL)
+                encoder_unlock_and_release_frame(chn, cloned_frame);
             release_used_framestream(enc, *enc_channel_stream_cookie(chn));
             return sub_8f5fc_impl();
         }
@@ -1590,9 +1708,21 @@ int32_t on_encoder_group_data_update(void *arg1, void *arg2)
                 *(int32_t *)(frame + 0xff * 4) = (int32_t)(uint32_t)ts;
                 *(int32_t *)(frame + 0x100 * 4) = (int32_t)(uint32_t)(ts >> 32);
 
+#if LIVE_T31_UNLOCK_DIRECT_ENCODE
+                /*
+                 * Completion publication takes queue_mutex in the stream
+                 * thread. Do not hold it across the synchronous scheduler /
+                 * hardware path, because AVPU can complete before this call
+                 * returns and then stall stream publication.
+                 */
+                enc_trace("libimp/ENCX: group_update lane=%d direct-path unlocked enc=%p frame=%p\n",
+                          i, enc, frame);
+                proc_ret = sub_8eea0_impl(s0, i, frame, 0, NULL, group, enc);
+#else
                 pthread_mutex_lock(enc_mutex_ptr(&chn->queue_mutex));
                 proc_ret = sub_8eea0_impl(s0, i, frame, 0, NULL, group, enc);
                 pthread_mutex_unlock(enc_mutex_ptr(&chn->queue_mutex));
+#endif
 
                 enc_trace("libimp/ENCX: group_update lane=%d direct-path enc=%p frame=%p proc_ret=%d\n",
                           i, enc, frame, proc_ret);
@@ -1691,7 +1821,6 @@ void *update_frmstrm(void *arg)
 #else
     (void)name;
 #endif
-
     int32_t result;
     for (;;) {
         if (*(uint8_t *)(p + 0x42 * 4) == 0) {
@@ -2562,7 +2691,7 @@ int32_t release_used_framestream(void *arg1, int32_t arg2)
 
 int32_t IMP_IVS_ReleaseData(void *vaddr)
 {
-    VBMUnlockFrameByVaddr(vaddr);
+    VBMUnlockFrameByVaddr((uint32_t)(uintptr_t)vaddr);
     return 0;
 }
 

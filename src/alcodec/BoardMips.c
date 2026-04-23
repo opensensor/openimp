@@ -9,13 +9,19 @@
 #include "imp_log_int.h"
 #include "../device_pool.h"
 
-#define BOARD_CTRL_SIZE 0x100
+#define BOARD_IRQ_SLOT_COUNT 0x15
+#define BOARD_CTRL_SIZE (BOARD_IRQ_BASE_OFFSET + BOARD_IRQ_SLOT_COUNT * BOARD_IRQ_SLOT_SIZE)
 #define BOARD_FD_OFFSET 0x04
 #define BOARD_THREAD_OFFSET 0x08
 #define BOARD_MUTEX_OFFSET 0x0c
 #define BOARD_IRQ_BASE_OFFSET 0x10
 #define BOARD_IRQ_SLOT_SIZE 0x0c
-#define BOARD_MAX_IRQS 0x14
+/* OEM WaitInterruptThread rejects IRQ ids >= 0x14, but core bring-up still
+ * registers a JPEG callback at slot 20. Reserve the extra slot so that
+ * registration does not scribble past the board-control allocation. */
+#define BOARD_WAIT_IRQ_LIMIT 0x14
+#define BOARD_WAIT_IRQ_TRACE_WORDS 4
+#define BOARD_WAIT_IRQ_BUFFER_WORDS 0x11
 
 typedef void (*BoardInterruptCallback)(void *);
 
@@ -95,7 +101,9 @@ int32_t LinuxIpCtrl_WriteRegister(void *arg1, int32_t arg2, int32_t arg3)
 
         if (core_off == 0x010U || core_off == 0x014U || core_off == 0x1f0U || core_off == 0x1f4U ||
             core_off == 0x1e0U || core_off == 0x1e4U || core_off == 0x1f8U ||
+            reg == 0x8010U || reg == 0x8018U || reg == 0x8054U ||
             reg == 0x8400U || reg == 0x8404U || reg == 0x8408U || reg == 0x840cU ||
+            reg == 0x8094U ||
             reg == 0x8410U || reg == 0x8414U || reg == 0x8418U || reg == 0x841cU ||
             reg == 0x8420U || reg == 0x8424U || reg == 0x8428U ||
             reg == 0x85e4U || reg == 0x85f0U || reg == 0x85f4U) {
@@ -119,7 +127,9 @@ int32_t LinuxIpCtrl_ReadRegister(void *arg1, int32_t arg2)
             uint32_t core_off = reg & 0x1ffU;
 
             if (core_off == 0x010U || core_off == 0x014U || core_off == 0x1f4U || core_off == 0x1f8U ||
+                reg == 0x8010U || reg == 0x8018U || reg == 0x8054U ||
                 reg == 0x8400U || reg == 0x8404U || reg == 0x8408U || reg == 0x840cU ||
+                reg == 0x8094U ||
                 reg == 0x8410U || reg == 0x8414U || reg == 0x8418U || reg == 0x841cU ||
                 reg == 0x8420U || reg == 0x8424U || reg == 0x8428U ||
                 reg == 0x85e4U || reg == 0x85f0U || reg == 0x85f4U) {
@@ -138,18 +148,36 @@ void *WaitInterruptThread(void *arg1)
     IMP_LOG_INFO("AVPU", "wait-thread start fd=%d", *(int32_t *)((uint8_t *)arg1 + BOARD_FD_OFFSET));
     while (1) {
         int32_t fd = *(int32_t *)((uint8_t *)arg1 + BOARD_FD_OFFSET);
-        int32_t irq = -1;
+        uint32_t irq_words[BOARD_WAIT_IRQ_BUFFER_WORDS];
+        int32_t irq;
         uint8_t *slot;
         BoardInterruptCallback callback;
+        uint32_t raw1;
+        uint32_t raw2;
+        uint32_t raw3;
+        int trace_raw;
 
-        if (ioctl(fd, 0xc004710c, &irq) == -1) {
+        for (size_t i = 0; i < BOARD_WAIT_IRQ_BUFFER_WORDS; ++i) {
+            irq_words[i] = 0xffffffffU;
+        }
+
+        if (ioctl(fd, 0xc004710c, irq_words) == -1) {
             IMP_LOG_INFO("AVPU", "wait-thread ioctl WAIT_IRQ failed fd=%d errno=%d", fd, *__errno_location());
             break;
         }
 
+        irq = (int32_t)irq_words[0];
+        raw1 = irq_words[1];
+        raw2 = irq_words[2];
+        raw3 = irq_words[3];
+        trace_raw = (raw1 != 0xffffffffU) || (raw2 != 0xffffffffU) || (raw3 != 0xffffffffU);
+        if (trace_raw) {
+            IMP_LOG_INFO("AVPU", "wait-thread irqraw w0=%08x w1=%08x w2=%08x w3=%08x",
+                         irq_words[0], raw1, raw2, raw3);
+        }
         IMP_LOG_INFO("AVPU", "wait-thread irq=%d", irq);
 
-        if ((uint32_t)irq >= BOARD_MAX_IRQS) {
+        if ((uint32_t)irq >= BOARD_WAIT_IRQ_LIMIT) {
             fprintf(stderr, "Got %d, No interrupt to handle\n", irq);
             return NULL;
         }

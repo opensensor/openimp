@@ -8,6 +8,7 @@
 
 #include "alcodec/al_buffer.h"
 #include "alcodec/al_fourcc.h"
+#include "alcodec/al_metadata.h"
 #include "alcodec/al_rtos.h"
 
 extern char _gp;
@@ -20,8 +21,8 @@ typedef struct PixMapDimension {
     int32_t iHeight;
 } PixMapDimension;
 
-int32_t AL_EncGetSrcPicFormat(AL_TPicFormat *pPicFormat, int32_t eChromaMode, int32_t uBitDepth,
-                              int32_t eStorageMode, int32_t bIsCompressed); /* forward decl, ported by T<N> later */
+AL_TPicFormat *AL_EncGetSrcPicFormat(AL_TPicFormat *pPicFormat, int32_t eChromaMode, uint8_t uBitDepth,
+                                     int32_t eStorageMode, uint8_t bIsCompressed); /* forward decl, ported by T<N> later */
 int32_t AL_GetSrcStorageMode(int32_t arg1); /* forward decl, ported by T<N> later */
 int32_t AL_IsSrcCompressed(int32_t arg1); /* forward decl, ported by T<N> later */
 PixMapDimension *AL_PixMapBuffer_GetDimension(PixMapDimension *arg1,
@@ -64,13 +65,24 @@ int32_t AL_AVC_UpdatePPS(uint8_t *arg1, uint8_t *arg2, uint8_t *arg3);
 
 static int32_t fillScalingList(uint8_t *arg1, uint8_t *arg2, int32_t arg3, int32_t arg4, int32_t arg5, uint8_t *arg6);
 static int32_t shouldReleaseSource(void);
-static int32_t updateHlsAndWriteSections(uint8_t *arg1, void *arg2, int32_t arg3, int32_t arg4, int32_t arg5);
+static int32_t updateHlsAndWriteSections(uint8_t *arg1, void *arg2, uint8_t *arg3, int32_t arg4, int32_t arg5);
 static int32_t generateNals(uint8_t *arg1, int32_t arg2);
 static int32_t ConfigureChannel(int32_t arg1, uint8_t *arg2, uint8_t *arg3);
 static int32_t preprocessEp1(uint8_t *arg1);
 static uint8_t *GetNalHeaderAvc(uint8_t *arg1, char arg2, int32_t arg3);
 static uint32_t *CreateAvcNuts(uint32_t *arg1);
 static int32_t AVC_GenerateSections(uint8_t *arg1, int32_t arg2, int32_t arg3, int32_t arg4);
+static int32_t TryUseLiveT31PrebuiltSection(void *status, AL_TBuffer *stream);
+
+#define AVC_KMSG(fmt, ...) do { \
+    int _kfd = open("/dev/kmsg", O_WRONLY); \
+    if (_kfd >= 0) { \
+        char _b[256]; \
+        int _n = snprintf(_b, sizeof(_b), "libimp/AVC: " fmt "\n", ##__VA_ARGS__); \
+        if (_n > 0) write(_kfd, _b, _n > (int)sizeof(_b) ? (int)sizeof(_b) : _n); \
+        close(_kfd); \
+    } \
+} while (0)
 
 static const uint8_t AL_AVC_DefaultScalingLists8x8[0x80] = {
     0x06, 0x0a, 0x0d, 0x10, 0x12, 0x17, 0x19, 0x1b, 0x0a, 0x0b, 0x10, 0x12, 0x17, 0x19, 0x1b, 0x1d,
@@ -87,6 +99,66 @@ static const uint8_t AL_AVC_DefaultScalingLists4x4[0x20] = {
     0x06, 0x0d, 0x14, 0x1c, 0x0d, 0x14, 0x1c, 0x20, 0x14, 0x1c, 0x20, 0x25, 0x1c, 0x20, 0x25, 0x2a,
     0x0a, 0x0e, 0x14, 0x18, 0x0e, 0x14, 0x18, 0x1b, 0x14, 0x18, 0x1b, 0x1e, 0x18, 0x1b, 0x1e, 0x22,
 };
+
+static int32_t avc_read_s32(const void *base, uint32_t off)
+{
+    int32_t value;
+
+    memcpy(&value, (const uint8_t *)base + off, sizeof(value));
+    return value;
+}
+
+static uint8_t avc_read_u8(const void *base, uint32_t off)
+{
+    return *((const uint8_t *)base + off);
+}
+
+static int32_t TryUseLiveT31PrebuiltSection(void *status, AL_TBuffer *stream)
+{
+    uint8_t *stream_data;
+    void *stream_meta;
+    int32_t desc_off;
+    int32_t desc_count;
+    int32_t *desc;
+    int32_t section_id;
+
+    if (status == NULL || stream == NULL)
+        return 0;
+
+    desc_off = avc_read_s32(status, 0x34);
+    desc_count = avc_read_s32(status, 0x38);
+    if (desc_count != 1 || desc_off < 0)
+        return 0;
+
+    stream_data = (uint8_t *)AL_Buffer_GetData(stream);
+    stream_meta = AL_Buffer_GetMetaData(stream, 1);
+    if (stream_data == NULL || stream_meta == NULL)
+        return 0;
+
+    desc = (int32_t *)(void *)(stream_data + desc_off);
+    AVC_KMSG("updateHls prebuilt-section probe status=%p stream=%p meta=%p off=%d cnt=%d desc=%d,%d,%d,%d aa=%u",
+             status, stream, stream_meta, desc_off, desc_count, desc[0], desc[1], desc[2], desc[3],
+             (unsigned)avc_read_u8(status, 0xaa));
+
+    if (desc[1] <= 0)
+        return 0;
+
+    AL_StreamMetaData_ClearAllSections(stream_meta);
+    section_id = (int32_t)AL_StreamMetaData_AddSection(stream_meta, desc[0], desc[1], desc[2], desc[3], 2);
+    AVC_KMSG("updateHls prebuilt-section add ret=%d offset=%d len=%d handle=%d user=%d flags=2",
+             section_id, desc[0], desc[1], desc[2], desc[3]);
+    if (section_id < 0)
+        return 0;
+
+    if (avc_read_u8(status, 0xaa) != 0) {
+        int32_t eos_id = (int32_t)AL_StreamMetaData_AddSection(stream_meta, 0, 0, -1, -1, 0x20000000);
+        AVC_KMSG("updateHls prebuilt-section eos ret=%d", eos_id);
+        if (eos_id < 0)
+            return 0;
+    }
+
+    return 1;
+}
 
 static void srcchk_kmsg(const char *fmt, ...)
 {
@@ -542,19 +614,38 @@ static int32_t shouldReleaseSource(void)
     return 1;
 }
 
-static int32_t updateHlsAndWriteSections(uint8_t *arg1, void *arg2, int32_t arg3, int32_t arg4, int32_t arg5)
+static int32_t updateHlsAndWriteSections(uint8_t *arg1, void *arg2, uint8_t *arg3, int32_t arg4, int32_t arg5)
 {
     int32_t s0_3 = arg5 * 0xe0c4;
     int32_t a1_3 = 0;
+    int32_t pps_updated;
+    void *pic_struct;
+    uint8_t pic_struct_idx;
     int32_t result;
 
-    AL_AVC_UpdateSPS(arg1 + s0_3 + 0x1c, *(uint8_t **)(arg1 + 0x14), arg2, (uint8_t *)&arg3);
-    AVC_GenerateSections(arg1, arg4, (int32_t)(intptr_t)arg2, AL_AVC_UpdatePPS(arg1 + s0_3 + 0x5a28, (uint8_t *)arg2,
-                                                                                (uint8_t *)&arg3));
+    AVC_KMSG("updateHls entry enc=%p status=%p hls=%p stream=%p layer=%d hls0=0x%x hls1=0x%x",
+             arg1, arg2, arg3, (void *)(intptr_t)arg4, arg5,
+             arg3 != NULL ? arg3[0] : 0, arg3 != NULL ? arg3[1] : 0);
+    AL_AVC_UpdateSPS(arg1 + s0_3 + 0x1c, *(uint8_t **)(arg1 + 0x14), arg2, arg3);
+    AVC_KMSG("updateHls post-sps enc=%p hls=%p", arg1, arg3);
+    pps_updated = AL_AVC_UpdatePPS(arg1 + s0_3 + 0x5a28, (uint8_t *)arg2, arg3);
+    AVC_KMSG("updateHls post-pps enc=%p pps=%d stream=%p", arg1, pps_updated, (void *)(intptr_t)arg4);
+    if (TryUseLiveT31PrebuiltSection(arg2, (AL_TBuffer *)(intptr_t)arg4) == 0) {
+        AVC_GenerateSections(arg1, arg4, (int32_t)(intptr_t)arg2, pps_updated);
+    } else {
+        AVC_KMSG("updateHls prebuilt-section bypassed GenerateSections enc=%p stream=%p",
+                 arg1, (void *)(intptr_t)arg4);
+    }
+    AVC_KMSG("updateHls post-sections enc=%p stream=%p", arg1, (void *)(intptr_t)arg4);
     if (*(int32_t *)((uint8_t *)arg2 + 0xa0) != 2)
         a1_3 = *(int32_t *)(arg1 + 0xed58);
-    result = (int32_t)PicStructToFieldNumber[*(uint8_t *)(uintptr_t)*(uint32_t *)((uint8_t *)arg2 + 0xa4)] + a1_3;
+    pic_struct = *(void **)((uint8_t *)arg2 + 0xa4);
+    pic_struct_idx = pic_struct != NULL ? *(uint8_t *)pic_struct : 0;
+    AVC_KMSG("updateHls pic-struct status=%p ptr=%p idx=%u accum=%d", arg2, pic_struct,
+             (unsigned)pic_struct_idx, a1_3);
+    result = (int32_t)PicStructToFieldNumber[pic_struct_idx] + a1_3;
     *(int32_t *)(arg1 + 0xed58) = result;
+    AVC_KMSG("updateHls exit enc=%p result=%d", arg1, result);
     return result;
 }
 

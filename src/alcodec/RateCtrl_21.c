@@ -404,11 +404,17 @@ int32_t rc_OOlo(void *arg1)
 int32_t PreprocessHwRateCtrl(int32_t *arg1, int32_t arg2, int32_t arg3, int32_t arg4, void *arg5)
 {
     uint8_t *dst = (uint8_t *)arg5;
-    int32_t s1_1 = (int32_t)GetTargetSize(arg1, (int32_t *)(intptr_t)arg2, arg4);
-    int32_t a0_3 = arg1[arg4 + 0xd];
+    int32_t s1_1;
+    int32_t a0_3;
     int32_t *cfg = (int32_t *)dst;
 
+    RC21_KMSG("Preprocess entry rc=%p stats=%p cores=%d idx=%d dst=%p mode=%d",
+              arg1, (void *)(intptr_t)arg2, arg3, arg4, arg5, arg1[0]);
     Rtos_Memset(dst + 0x500, 0, 0x20);
+    RC21_KMSG("Preprocess post-tail-clear idx=%d dst=%p", arg4, arg5);
+    s1_1 = (int32_t)GetTargetSize(arg1, (int32_t *)(intptr_t)arg2, arg4);
+    a0_3 = arg1[arg4 + 0xd];
+    RC21_KMSG("Preprocess size idx=%d target=%d a0_3=%d", arg4, s1_1, a0_3);
     if (*arg1 == 3 || a0_3 == 0) {
         Rtos_Memcpy(dst + 8, rc_PreprocessHwRateCtrlDefaults,
                     sizeof(rc_PreprocessHwRateCtrlDefaults));
@@ -418,6 +424,7 @@ int32_t PreprocessHwRateCtrl(int32_t *arg1, int32_t arg2, int32_t arg3, int32_t 
     }
 
     Rtos_Memset(dst, 0, 0x200);
+    RC21_KMSG("Preprocess post-head-clear idx=%d dst=%p", arg4, arg5);
     cfg[0] = (int32_t)((uint64_t)(uint32_t)(s1_1 * 0x9f) / 100ULL);
     cfg[1] = 6;
     cfg[2] = rc_PreprocessHwRateCtrlDefaults[0];
@@ -514,12 +521,16 @@ int32_t PreprocessHwRateCtrl(int32_t *arg1, int32_t arg2, int32_t arg3, int32_t 
     cfg[93] = 0;
     cfg[94] = 0;
     cfg[95] = 0;
+    RC21_KMSG("Preprocess pre-Ooio idx=%d dst=%p", arg4, arg5);
     Ooio(dst + 0x200, 0xa, 0xe);
+    RC21_KMSG("Preprocess post-Ooio idx=%d dst=%p", arg4, arg5);
     if (arg3 >= 2) {
         uint8_t *copy = dst + 0x508;
         int32_t i = 1;
 
         do {
+            RC21_KMSG("Preprocess copy idx=%d mirror=%d srcA=%p srcB=%p dst=%p",
+                      arg4, i, copy - 0x1420, copy - 0x1220, copy);
             Rtos_Memcpy(copy, copy - 0x1420, 0x200);
             Rtos_Memcpy(copy + 0x200, copy - 0x1220, 0x200);
             Rtos_Memset(copy + 0x1400, 0, 0x20);
@@ -527,5 +538,6 @@ int32_t PreprocessHwRateCtrl(int32_t *arg1, int32_t arg2, int32_t arg3, int32_t 
             ++i;
         } while (i != arg3);
     }
+    RC21_KMSG("Preprocess exit idx=%d dst=%p", arg4, arg5);
     return 1;
 }

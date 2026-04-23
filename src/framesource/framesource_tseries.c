@@ -921,7 +921,7 @@ static void *frame_pooling_thread(void *arg)
             Module *bound = g_modules[0][chn];
             int observer_count = bound ? *(int32_t *)((char *)bound + 0x3c) : 0;
             if (bound == NULL || observer_count <= 0) {
-                if (poll_count <= 5 || (poll_count % 50) == 0) {
+                if (poll_count <= 5 || (poll_count % 1000) == 0) {
                     fs_trace("libimp/FS: thread-wait-bind ch=%d iter=%d module=%p observers=%d\n",
                              chn, poll_count, bound, observer_count);
                 }

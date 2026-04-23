@@ -1,9 +1,29 @@
 #include <stdint.h>
 #include <stddef.h>
+#include <fcntl.h>
+#include <stdio.h>
+#include <unistd.h>
 
 extern char _gp;
 extern int32_t __assert(const char *expression, const char *file, int32_t line,
                         const char *function, void *caller);
+
+#define RC15_KMSG(fmt, ...)                                                                       \
+    do {                                                                                          \
+        int _kfd = open("/dev/kmsg", O_WRONLY | O_NONBLOCK);                                      \
+        if (_kfd >= 0) {                                                                          \
+            char _buf[256];                                                                       \
+            int _n = snprintf(_buf, sizeof(_buf), "libimp/RC15: " fmt "\n", ##__VA_ARGS__);      \
+            if (_n > 0) {                                                                         \
+                size_t _len = (size_t)_n;                                                         \
+                if (_len > sizeof(_buf)) {                                                        \
+                    _len = sizeof(_buf);                                                          \
+                }                                                                                 \
+                (void)write(_kfd, _buf, _len);                                                    \
+            }                                                                                     \
+            close(_kfd);                                                                          \
+        }                                                                                         \
+    } while (0)
 
 /* Placement:
  * - IIii/OOoI/l1OI @ RateCtrl_15.c
@@ -158,7 +178,20 @@ uint32_t rc_Ilii(void *arg1, int32_t arg2, int32_t *arg3, uint32_t *arg4, uint32
     uint32_t result;
 
     *arg3 = total;
-    if (total == 0 || arg2 == 0) {
+    if (total == 0) {
+        RC15_KMSG("Ilii zero-total fallback stats=%p arg2=%d s20=%d s1c=%d s14=%d s18=%d s24=%d s28=%d s2c=%d s30=%d total=%d",
+                  arg1, arg2, *(int32_t *)((char *)arg1 + 0x20), *(int32_t *)((char *)arg1 + 0x1c),
+                  *(int32_t *)((char *)arg1 + 0x14), *(int32_t *)((char *)arg1 + 0x18),
+                  *(int32_t *)((char *)arg1 + 0x24), *(int32_t *)((char *)arg1 + 0x28),
+                  *(int32_t *)((char *)arg1 + 0x2c), *(int32_t *)((char *)arg1 + 0x30), total);
+        *arg4 = 0;
+        *arg5 = 0;
+        *arg6 = 0;
+        *arg7 = 0;
+        return 0;
+    }
+    if (arg2 == 0) {
+        RC15_KMSG("Ilii zero-bits trap stats=%p total=%d", arg1, total);
         __builtin_trap();
     }
     *arg4 = (uint32_t)*(int32_t *)((char *)arg1 + 0x20) * 100U / (uint32_t)total;
@@ -334,7 +367,12 @@ static int32_t rc_IIii_impl(void *arg1, void *arg2, void *arg3, int32_t arg4, ch
     int32_t trend;
     int32_t cur_qp;
 
+    RC15_KMSG("IIii entry rc=%p ctx=%p frm=%p stats=%p bits=%d frame_type=%d flags4=0x%x flags2c=0x%x",
+              arg1, ctx, arg2, arg3, arg4, *(int32_t *)((char *)arg2 + 0x10),
+              *(int32_t *)((char *)arg2 + 4), *(int32_t *)((char *)arg2 + 0x2c));
     rc_Ilii(arg3, arg4, &total, &weight0, &weight1, &weight2, &weight3);
+    RC15_KMSG("IIii post-Ilii rc=%p total=%d w0=%u w1=%u w2=%u w3=%u",
+              arg1, total, weight0, weight1, weight2, weight3);
     if (*(int32_t *)((char *)arg2 + 0x10) == 2 || (*(int32_t *)((char *)arg2 + 4) & 2) == 0) {
         trend = (int32_t)weight3;
     } else {
@@ -741,6 +779,8 @@ static int32_t rc_IIii_impl(void *arg1, void *arg2, void *arg3, int32_t arg4, ch
         cur_qp = *(int16_t *)(ctx + 0x1a);
     }
     *(int16_t *)(ctx + 0x20) = (int16_t)cur_qp;
+    RC15_KMSG("IIii exit rc=%p qp=%d trend=%d frame_type=%d total=%d w1=%u w3=%u",
+              arg1, cur_qp, trend, *(int32_t *)((char *)arg2 + 0x10), total, weight1, weight3);
     return cur_qp;
 }
 
