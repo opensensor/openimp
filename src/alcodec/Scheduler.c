@@ -87,6 +87,10 @@ typedef struct AL_EncCoreCtxCompat {
 #define CH_CMD_TRACE_FLAGS_OFF 0x12fc0
 #define CH_TRACE_CB_OFF 0x12fc4
 #define CH_TRACE_CTX_OFF 0x12fc8
+#define CH_ENDREQ_STATE_OFF 0x12878
+#define CH_ENDREQ_RING_OFF 0x1604
+#define ENDREQ_INLINE_SLOT_SIZE 0xe8
+#define ENDREQ_INLINE_SLOT_COUNT 3
 
 #define LIVE_T31_FORCE_SINGLE_CORE_AVC 0
 #define LIVE_T31_FORCE_DUAL_PUSH_AVC 1
@@ -95,6 +99,126 @@ typedef struct AL_EncCoreCtxCompat {
 #define LIVE_T31_AVC_HEADER_BUDGET 512
 #define LIVE_T31_VERBOSE_REQ_WINDOW 0
 #define LIVE_T31_RECOVER_ZERO_BYTE_SECTIONS 1
+
+int32_t get_cpu_id(void); /* forward decl, ported by T<N> later */
+
+static int IsLiveT31AvcChannel(const void *ctx)
+{
+    int32_t cpu_id;
+
+    if (ctx == NULL) {
+        return 0;
+    }
+
+    cpu_id = get_cpu_id();
+    return ((uint32_t)(cpu_id - 0x0f) < 9U) && READ_U8(ctx, 0x1f) == 0U;
+}
+
+static uint8_t ClampLiveT31AvcCoreCount(const void *ctx, uint8_t count)
+{
+    if (IsLiveT31AvcChannel(ctx) && count > 1U) {
+        return 1U;
+    }
+
+    return count;
+}
+
+static int32_t GetChannelTraceCallback(const void *ctx)
+{
+    return READ_S32(ctx, CH_TRACE_CB_OFF);
+}
+
+static void *GetChannelTraceContext(const void *ctx)
+{
+    return READ_PTR(ctx, CH_TRACE_CTX_OFF);
+}
+
+static int32_t GetChannelFrameDoneCallback(const void *ctx)
+{
+    return READ_S32(ctx, CH_FRAME_DONE_CB_OFF);
+}
+
+static void *GetChannelFrameDoneContext(const void *ctx)
+{
+    return READ_PTR(ctx, CH_FRAME_DONE_CTX_OFF);
+}
+
+static int32_t RepairLiveT31AvcLaneCount(void *ch, int32_t *req, int lane, int32_t field_off, const char *tag)
+{
+    int32_t raw;
+
+    if (ch == NULL || req == NULL) {
+        return 0;
+    }
+
+    raw = READ_S32(req, lane * 0x110 + field_off);
+    if (!IsLiveT31AvcChannel(ch) || READ_U8(ch, CH_CORE_COUNT_OFF) != 1U) {
+        return raw;
+    }
+
+    if (raw != 1) {
+        IMP_LOG_INFO("ENC", "%s live-t31-avc repair req=%p lane=%d off=0x%x old=%d -> 1",
+                     tag, req, lane, field_off, raw);
+        WRITE_S32(req, lane * 0x110 + field_off, 1);
+        return 1;
+    }
+
+    return raw;
+}
+
+static int32_t RepairLiveT31AvcLaneModuleCount(void *ch, int32_t *req, int lane, const char *tag)
+{
+    return RepairLiveT31AvcLaneCount(ch, req, lane, 0x8cc, tag);
+}
+
+static int32_t RepairLiveT31AvcLaneSliceCount(void *ch, int32_t *req, int lane, const char *tag)
+{
+    return RepairLiveT31AvcLaneCount(ch, req, lane, 0x958, tag);
+}
+
+static void HealLiveT31SingleCoreReqTables(void *ch, int32_t *req, const char *tag)
+{
+    if (ch == NULL || req == NULL) {
+        return;
+    }
+
+    if (!IsLiveT31AvcChannel(ch) || READ_U8(ch, CH_CORE_COUNT_OFF) != 1U) {
+        return;
+    }
+
+    if (READ_S32(req, 0xa6c) == 1 &&
+        READ_S32(req, 0xa70) == 0 &&
+        READ_S32(req, 0x84c) == 0 && READ_S32(req, 0x850) == 0 &&
+        READ_S32(req, 0x8cc) == 1 &&
+        READ_S32(req, 0x8d0) == 1 &&
+        READ_S32(req, 0x8d8) == 0 && READ_S32(req, 0x8dc) == 0 &&
+        READ_S32(req, 0x958) == 1 &&
+        READ_S32(req, 0x9dc) == 0 &&
+        READ_S32(req, 0xa68) == 0) {
+        return;
+    }
+
+    IMP_LOG_INFO("ENC",
+                 "%s live-t31-avc heal req=%p phase=%d/%d"
+                 " mod0=[%d,%d cnt=%d] slice0=[%d,%d cnt=%d pending=%d]"
+                 " lane1_mods=%d lane1_slices=%d",
+                 tag, req, READ_S32(req, 0xa70), READ_S32(req, 0xa6c),
+                 READ_S32(req, 0x84c), READ_S32(req, 0x850), READ_S32(req, 0x8cc),
+                 READ_S32(req, 0x8d8), READ_S32(req, 0x8dc), READ_S32(req, 0x958),
+                 READ_S32(req, 0x8d0), READ_S32(req, 0x9dc), READ_S32(req, 0xa68));
+
+    WRITE_S32(req, 0xa6c, 1);
+    WRITE_S32(req, 0xa70, 0);
+    WRITE_S32(req, 0x84c, 0);
+    WRITE_S32(req, 0x850, 0);
+    WRITE_S32(req, 0x8cc, 1);
+    WRITE_S32(req, 0x8d0, 1);
+    WRITE_S32(req, 0x8d8, 0);
+    WRITE_S32(req, 0x8dc, 0);
+    WRITE_S32(req, 0x958, 1);
+    WRITE_S32(req, 0x9dc, 0);
+    WRITE_S32(req, 0xa68, 0);
+}
 
 int32_t AL_DmaAlloc_FlushCache(int32_t arg1, int32_t arg2, int32_t arg3); /* forward decl */
 
@@ -770,27 +894,75 @@ static void PrepareSourceConfigForLaunch(AL_EncCoreCtxCompat *core, void *ch, vo
              shadow_85f4, shadow_85f0, shadow_8400, shadow_8420, shadow_8424, shadow_8428, shadow_85e4);
 }
 
+static void WriteLiveT31IrqSlot(void *ip_ctrl, uint32_t irq, void (*cb)(void *), void *user, uint32_t flag)
+{
+    uint8_t *slot;
+
+    if (ip_ctrl == NULL) {
+        return;
+    }
+
+    slot = (uint8_t *)ip_ctrl + 0x10 + irq * 0x0c;
+    *(void (**)(void *))(void *)(slot + 0x00) = cb;
+    *(uint32_t *)(void *)(slot + 0x04) = flag;
+    *(void **)(void *)(slot + 0x08) = user;
+}
+
 static void RemapLiveT31Irq4(void *core_ctx, void (*cb)(void *), const char *tag)
 {
     AL_EncCoreCtxCompat *core = (AL_EncCoreCtxCompat *)core_ctx;
+    uint8_t *slot4;
+    void (*slot4_cb)(void *);
+    void *slot4_user;
+    uint32_t slot4_flag;
+    int slot0_retired = 1;
+    int slot2_retired = 1;
 
     if (core == NULL || core->ip_ctrl == NULL || core->ip_ctrl->vtable == NULL ||
         core->ip_ctrl->vtable->RegisterCallBack == NULL) {
         return;
     }
 
-    /*
-     * The OEM init path seeds core0 on IRQ slots 0/2, but the live T31 AVC
-     * path we are driving completes on slot 4. Leaving slot 0 armed causes
-     * a stray early EndEncoding on subsequent frames, so explicitly retire
-     * the legacy core0 callbacks before installing the remapped handler.
-     */
+    slot4 = (uint8_t *)core->ip_ctrl + 0x10 + 4 * 0x0c;
+    slot4_cb = *(void (**)(void *))(void *)(slot4 + 0x00);
+    slot4_flag = *(uint32_t *)(void *)(slot4 + 0x04);
+    slot4_user = *(void **)(void *)(slot4 + 0x08);
+
     if (core->core_id == 0U) {
-        core->ip_ctrl->vtable->RegisterCallBack(core->ip_ctrl, NULL, NULL, 0);
-        core->ip_ctrl->vtable->RegisterCallBack(core->ip_ctrl, NULL, NULL, 2);
+        uint8_t *slot0 = (uint8_t *)core->ip_ctrl + 0x10 + 0 * 0x0c;
+        uint8_t *slot2 = (uint8_t *)core->ip_ctrl + 0x10 + 2 * 0x0c;
+
+        slot0_retired = (*(void (**)(void *))(void *)(slot0 + 0x00) == NULL) &&
+                        (*(uint32_t *)(void *)(slot0 + 0x04) == 1U) &&
+                        (*(void **)(void *)(slot0 + 0x08) == NULL);
+        slot2_retired = (*(void (**)(void *))(void *)(slot2 + 0x00) == NULL) &&
+                        (*(uint32_t *)(void *)(slot2 + 0x04) == 1U) &&
+                        (*(void **)(void *)(slot2 + 0x08) == NULL);
     }
 
-    core->ip_ctrl->vtable->RegisterCallBack(core->ip_ctrl, cb, core_ctx, 4);
+    if (slot4_cb == cb && slot4_flag == 0U && slot4_user == core_ctx &&
+        slot0_retired && slot2_retired) {
+        ENC_KMSG("%s remap-irq4 skip core=%u ctx=%p cb=%p",
+                 tag ? tag : "irq4", (unsigned)core->core_id, core_ctx, cb);
+        return;
+    }
+
+    /*
+     * This live path can re-enter from EndEncoding while the board wait thread
+     * still holds the AVPU callback mutex. Calling RegisterCallBack here risks
+     * self-deadlock on later frames. Update the callback table directly instead:
+     * we are either still executing inside the IRQ callback or we are between
+     * frames before interrupts are re-enabled for the next launch.
+     *
+     * The OEM init path seeds core0 on IRQ slots 0/2, but the live T31 AVC
+     * path completes on slot 4. Retire the legacy slots before arming slot 4.
+     */
+    if (core->core_id == 0U) {
+        WriteLiveT31IrqSlot(core->ip_ctrl, 0, NULL, NULL, 1U);
+        WriteLiveT31IrqSlot(core->ip_ctrl, 2, NULL, NULL, 1U);
+    }
+
+    WriteLiveT31IrqSlot(core->ip_ctrl, 4, cb, core_ctx, 0U);
     ENC_KMSG("%s remap-irq4 core=%u ctx=%p cb=%p",
              tag ? tag : "irq4", (unsigned)core->core_id, core_ctx, cb);
 }
@@ -846,6 +1018,41 @@ static void RollbackPendingSrcOnPrepareAbort(void *ch, int32_t pict_id, const ch
 
     ENC_KMSG("ListModulesNeeded rollback-src pict=%d reason=%s", pict_id, reason ? reason : "?");
     AL_SrcReorder_Cancel((uint8_t *)ch + 0x178, pict_id);
+}
+
+static int EndReqEventUsesInlineStorage(const void *ch, const void *evt)
+{
+    uintptr_t base;
+    uintptr_t end;
+    uintptr_t ptr;
+
+    if (ch == NULL || evt == NULL) {
+        return 1;
+    }
+
+    base = (uintptr_t)ch + CH_ENDREQ_RING_OFF;
+    end = base + (ENDREQ_INLINE_SLOT_SIZE * ENDREQ_INLINE_SLOT_COUNT);
+    ptr = (uintptr_t)evt;
+    return ptr >= base && ptr < end;
+}
+
+void *EndRequestsBuffer_Pop(void *arg1); /* forward decl, ported by T<N> later */
+
+static int32_t *AllocEndReqEvent(void *ch, const char *tag)
+{
+    int32_t *evt;
+
+    evt = (int32_t *)Rtos_Malloc(ENDREQ_INLINE_SLOT_SIZE);
+    if (evt != NULL) {
+        ENC_KMSG("EndReqEvent alloc tag=%s chctx=%p evt=%p mode=heap",
+                 tag ? tag : "?", ch, evt);
+        return evt;
+    }
+
+    evt = (int32_t *)(intptr_t)EndRequestsBuffer_Pop((uint8_t *)ch + CH_ENDREQ_RING_OFF);
+    ENC_KMSG("EndReqEvent alloc tag=%s chctx=%p evt=%p mode=inline",
+             tag ? tag : "?", ch, evt);
+    return evt;
 }
 
 void StaticFifo_Init(StaticFifoCompat *arg1, int32_t *arg2, int32_t arg3); /* forward decl, ported by T<N> later */
@@ -1518,7 +1725,7 @@ int32_t ResetChannelParam(void *arg1)
     WRITE_S32(arg1, 0x35b4, 0);
     WRITE_S32(arg1, 0x3de0, 1);
     RequestsBuffer_Init((uint8_t *)arg1 + 0x3de8);
-    EndRequestsBuffer_Init((uint8_t *)arg1 + 0x12878);
+    EndRequestsBuffer_Init((uint8_t *)arg1 + CH_ENDREQ_STATE_OFF);
     return 0;
 }
 
@@ -1878,6 +2085,12 @@ int32_t AddNewRequest(int32_t arg1)
      */
     Rtos_Memcpy((void *)(intptr_t)(v0 + 0x84c), (void *)(intptr_t)(arg1 + 0x18c0), 0x220);
     WRITE_S32((void *)(intptr_t)v0, 0xa6c, READ_S32((void *)(intptr_t)arg1, 0x1ae0));
+    if (IsLiveT31AvcChannel((void *)(intptr_t)arg1) && READ_U8((void *)(intptr_t)arg1, CH_CORE_COUNT_OFF) == 1U) {
+        WRITE_S32((void *)(intptr_t)v0, 0x8cc, 1);
+        WRITE_S32((void *)(intptr_t)v0, 0x958, 1);
+        WRITE_S32((void *)(intptr_t)v0, 0x8d0, 1);
+    }
+    HealLiveT31SingleCoreReqTables((void *)(intptr_t)arg1, (int32_t *)(intptr_t)v0, "AddNewRequest");
     {
         int32_t pict_id = READ_S32((void *)(intptr_t)arg1, 0x22b8);
 
@@ -1890,6 +2103,12 @@ int32_t AddNewRequest(int32_t arg1)
              (void *)(intptr_t)v0, READ_S32((void *)(intptr_t)v0, 0xa6c),
              READ_S32((void *)(intptr_t)v0, 0x8cc), READ_S32((void *)(intptr_t)v0, 0x958),
              READ_S32((void *)(intptr_t)v0, 0x9dc), READ_S32((void *)(intptr_t)v0, 0xa68));
+    ENC_KMSG("AddNewRequest tables req=%p phase=%d mod0=[%d,%d cnt=%d] slice0=[%d,%d cnt=%d pending=%d]",
+             (void *)(intptr_t)v0, READ_S32((void *)(intptr_t)v0, 0xa70),
+             READ_S32((void *)(intptr_t)v0, 0x84c), READ_S32((void *)(intptr_t)v0, 0x850),
+             READ_S32((void *)(intptr_t)v0, 0x8cc), READ_S32((void *)(intptr_t)v0, 0x8d8),
+             READ_S32((void *)(intptr_t)v0, 0x8dc), READ_S32((void *)(intptr_t)v0, 0x958),
+             READ_S32((void *)(intptr_t)v0, 0x8d0));
     PopCommandListAddresses((void *)(intptr_t)(arg1 + 0x2c20), (void *)(intptr_t)(v0 + 0xa78));
     ENC_KMSG("AddNewRequest ready req=%p lane=%d cmdsrc_count=%d cmdsrc_next=%d cmdlist=%p"
              " cmd1=%08x/%08x/%08x/%08x/%08x cmd2=%08x/%08x/%08x/%08x/%08x",
@@ -2770,7 +2989,7 @@ int32_t FillEncTrace(int32_t *arg1, void *arg2, void *arg3)
 
 int32_t handleInputTraces(void *arg1, void *arg2, void *arg3, uint8_t arg4)
 {
-    int32_t cb = READ_S32(arg1, 0x1a9c);
+    int32_t cb = GetChannelTraceCallback(arg1);
     void *var_138 = &_gp;
 
     (void)var_138;
@@ -2785,7 +3004,7 @@ int32_t handleInputTraces(void *arg1, void *arg2, void *arg3, uint8_t arg4)
         WRITE_U8(trace, 0x11, READ_U8(arg3, 0));
         WRITE_U8(trace, 0x12, arg4);
         WRITE_S32(trace, 0x18, 0);
-        return ((int32_t (*)(void *, void *))(intptr_t)cb)(trace, READ_PTR(arg1, 0));
+        return ((int32_t (*)(void *, void *))(intptr_t)cb)(trace, GetChannelTraceContext(arg1));
     }
 
     return (uint32_t)cb;
@@ -2886,7 +3105,7 @@ int32_t encode2(void *arg1)
 
 int32_t handleJpegInputTrace(void *arg1, void *arg2)
 {
-    int32_t result = READ_S32(arg1, 0x1a9c);
+    int32_t result = GetChannelTraceCallback(arg1);
     void *var_130 = &_gp;
 
     (void)var_130;
@@ -2902,7 +3121,7 @@ int32_t handleJpegInputTrace(void *arg1, void *arg2)
         WRITE_S32(trace, 0x10, (int32_t)(intptr_t)((uint8_t *)arg2 + 0xa78));
         WRITE_S32(trace, 0x14, (int32_t)(intptr_t)((uint8_t *)arg2 + 0xab8));
         WRITE_S32(trace, 0x18, 8);
-        return ((int32_t (*)(void *, void *))(intptr_t)result)(trace, READ_PTR(arg1, 0));
+        return ((int32_t (*)(void *, void *))(intptr_t)result)(trace, GetChannelTraceContext(arg1));
     }
 }
 
@@ -2968,7 +3187,7 @@ int32_t EndJpegEncoding(void *arg1)
                                                                              (uint8_t *)(intptr_t)v0 + 0x20, 0);
     Rtos_ReleaseMutex(READ_PTR(arg1, 0x170));
 
-    cb = READ_S32(arg1, 0x1a9c);
+    cb = GetChannelTraceCallback(arg1);
     if (cb != 0) {
         uint8_t trace[0x1a0];
 
@@ -2978,13 +3197,13 @@ int32_t EndJpegEncoding(void *arg1)
         WRITE_S32(trace, 0x10, READ_S32((void *)(intptr_t)v0, 0xab8));
         WRITE_S32(trace, 0x14, READ_S32((void *)(intptr_t)v0, 0xa78));
         WRITE_S32(trace, 0x18, 9);
-        ((int32_t (*)(void *, void *))(intptr_t)cb)(trace, READ_PTR(arg1, 0));
+        ((int32_t (*)(void *, void *))(intptr_t)cb)(trace, GetChannelTraceContext(arg1));
     }
 
     ReleaseWorkBuffers(arg1, (void *)(intptr_t)v0);
 
     {
-        int32_t v0_10 = (int32_t)(intptr_t)EndRequestsBuffer_Pop((uint8_t *)arg1 + 0x1604);
+        int32_t v0_10 = (int32_t)(intptr_t)AllocEndReqEvent(arg1, "jpeg");
         int32_t *i = (int32_t *)(intptr_t)(v0 + 0xaf8);
         int32_t *a0_13;
 
@@ -3004,9 +3223,10 @@ int32_t EndJpegEncoding(void *arg1)
     Rtos_GetMutex(READ_PTR(arg1, 0x170));
     Rtos_ReleaseMutex(READ_PTR(arg1, 0x170));
     WRITE_S32(arg1, 0x35b4, READ_S32(arg1, 0x35b4) + 1);
-    t9_3 = READ_S32(arg1, 0x1aa8);
+    t9_3 = GetChannelFrameDoneCallback(arg1);
     if (t9_3 != 0) {
-        ((void (*)(void *, void *))(intptr_t)t9_3)(READ_PTR(arg1, 0x1aac), (uint8_t *)(intptr_t)v0 + 0x84c);
+        ((void (*)(void *, void *))(intptr_t)t9_3)(GetChannelFrameDoneContext(arg1),
+                                                   (uint8_t *)(intptr_t)v0 + 0x84c);
     }
 
     s0_1 = READ_PTR(READ_PTR((void *)(intptr_t)v0, 0x18), 0x24);
@@ -3036,8 +3256,9 @@ int32_t EndJpegEncoding(void *arg1)
 
 static void *SetChannelTraceCallBack_1a9c(void *arg1, void *arg2, void *arg3)
 {
-    (*(void **)((uint8_t *)arg1 + 0x1a9c)) = arg2;
-    (*(void **)((uint8_t *)arg1 + 0x1aa0)) = arg3;
+    ENC_KMSG("trace-callback suppressed chctx=%p cb=%p ctx=%p", arg1, arg2, arg3);
+    WRITE_PTR(arg1, CH_TRACE_CB_OFF, 0);
+    WRITE_PTR(arg1, CH_TRACE_CTX_OFF, 0);
     return (void *)&_gp;
 }
 
@@ -3047,9 +3268,8 @@ int32_t AL_EncChannel_ScheduleDestruction(void *arg1, void *arg2, void *arg3)
 
     (void)var_10;
     Rtos_GetMutex(READ_PTR(arg1, 0x170));
-    WRITE_U16(arg1, 0x1ae6, 1);
-    (*(void **)((uint8_t *)arg1 + 0x1a0c)) = arg2;
-    (*(void **)((uint8_t *)arg1 + 0x1aa8)) = arg3;
+    WRITE_PTR(arg1, CH_DESTROY_CB_OFF, arg2);
+    WRITE_PTR(arg1, CH_DESTROY_CTX_OFF, arg3);
     return Rtos_ReleaseMutex(READ_PTR(arg1, 0x170));
 }
 
@@ -3065,6 +3285,14 @@ uint32_t AL_EncChannel_SetNumberOfCores(void *arg1)
     uint32_t result;
 
     (void)var_38;
+    if (IsLiveT31AvcChannel(arg1)) {
+        WRITE_U8(arg1, CH_CORE_COUNT_OFF, 1);
+        WRITE_U8(arg1, CH_STABLE_CORE_COUNT_OFF, 1);
+        ENC_KMSG("SetNumberOfCores live-t31-avc clamp ctx=%p base=%u -> 1",
+                 arg1, (unsigned)READ_U8(arg1, CH_CORE_BASE_OFF));
+        return 1;
+    }
+
     memset(var_30, 0, sizeof(var_30));
     AL_CoreConstraintEnc_Init(var_30, READ_S32(arg1, 0x2c), (uint32_t)READ_U8(arg1, 0x1f));
     s2 = AL_CoreConstraintEnc_GetExpectedNumberOfCores(var_30, arg1);
@@ -3912,6 +4140,7 @@ int32_t TerminateRequest(void *arg1, int32_t *arg2, int32_t *arg3)
     int32_t do_cb = 1;
     int32_t use_rc = 1;
     int32_t stats[4];
+    uint8_t *tile_info = (uint8_t *)arg2 + 0x2be;
 
     (void)use_rc;
     if (READ_U8(arg1, 0x3c) != 0U) {
@@ -3921,7 +4150,7 @@ int32_t TerminateRequest(void *arg1, int32_t *arg2, int32_t *arg3)
     }
 
     WRITE_S32(arg1, 0x35bc, READ_S32(arg1, 0x35bc) + 1);
-    SetTileInfoIfNeeded(arg1, &arg2[0x2be], arg1, READ_U8(arg2, 0x19d));
+    SetTileInfoIfNeeded(arg1, tile_info, arg1, READ_U8(arg2, 0x19d));
     WRITE_U16(arg2, 0xb28, READ_U16(arg2, 0x198));
     WRITE_U16(arg3, 0x3c, READ_U16(arg2, 0x198));
     WRITE_U8(arg2, 0xbad, READ_U8(arg2, 0x17e));
@@ -3973,6 +4202,7 @@ int32_t AL_EncChannel_GetNextFrameToOutput(void *arg1, int32_t *arg2)
     void *stream_meta;
     uint8_t end_evt[0x100];
     StaticFifoCompat *fifo = (StaticFifoCompat *)((uint8_t *)arg1 + 0x12b24);
+    int free_entry = 0;
 
     ENC_KMSG("GetNextFrameToOutput entry chctx=%p fifo=%p elems=%p r=%d w=%d cap=%d eos_field=%u done=%d flushed=%u",
              arg1, fifo, fifo->elems, fifo->read_idx, fifo->write_idx, fifo->capacity,
@@ -3993,6 +4223,7 @@ int32_t AL_EncChannel_GetNextFrameToOutput(void *arg1, int32_t *arg2)
 
         entry = (int32_t *)(intptr_t)StaticFifo_Dequeue(fifo);
         stream_meta = entry ? (void *)(intptr_t)entry[0] : NULL;
+        free_entry = (entry != NULL && !EndReqEventUsesInlineStorage(arg1, entry));
         while (entry != NULL &&
                StaticFifo_Empty(fifo) == 0 &&
                (int32_t *)(intptr_t)StaticFifo_Front(fifo) == entry) {
@@ -4013,8 +4244,17 @@ int32_t AL_EncChannel_GetNextFrameToOutput(void *arg1, int32_t *arg2)
         if (entry != NULL) {
             memcpy((uint8_t *)arg2 + 0x10, entry + 2, 0xe0);
         }
+        if (entry != NULL) {
+            /*
+             * EncSchedulerCpu::EndEncodingCallBack forwards arg4 as the
+             * legacy Com_Encoder EndEncoding stream_id. Keep that id in the
+             * event record instead of reusing stream-meta words, otherwise
+             * every callback resolves slot 0 and only the first frame makes
+             * it through GetStream/ReleaseStream.
+             */
+            WRITE_S32(arg2, 0xf0, entry[1]);
+        }
         if (stream_meta != NULL) {
-            WRITE_S32(arg2, 0xf0, READ_S32(stream_meta, 0x00));
             WRITE_S32(arg2, 0xf4, READ_S32(stream_meta, 0x04));
         }
         WRITE_U8(arg2, 0xf8, 0);
@@ -4022,6 +4262,9 @@ int32_t AL_EncChannel_GetNextFrameToOutput(void *arg1, int32_t *arg2)
                  arg2, (void *)(intptr_t)READ_S32(arg2, 0x00), (void *)(intptr_t)READ_S32(arg2, 0x04),
                  READ_S32(arg2, 0x08), (uint8_t *)arg2 + 0x10,
                  READ_S32(arg2, 0xf0), READ_S32(arg2, 0xf4), (unsigned)READ_U8(arg2, 0xf8));
+        if (free_entry) {
+            Rtos_Free(entry);
+        }
         Rtos_ReleaseMutex(READ_PTR(arg1, 0x170));
         ENC_KMSG("GetNextFrameToOutput return queued");
         return 1;
@@ -4053,7 +4296,7 @@ int32_t handleOutputTraces(void *arg1, void *arg2, uint8_t arg3, char arg4)
     uint8_t trace[0x128];
     int32_t cb;
 
-    cb = READ_S32(arg1, 0x1a9c);
+    cb = GetChannelTraceCallback(arg1);
     if (cb == 0) {
         return (int32_t)(intptr_t)((uint8_t *)arg2 + 0xa78);
     }
@@ -4065,9 +4308,10 @@ int32_t handleOutputTraces(void *arg1, void *arg2, uint8_t arg3, char arg4)
     WRITE_U8(trace, 0x116, arg3);
     WRITE_U8(trace, 0x117, (uint8_t)arg4);
     ENC_KMSG("handleOutputTraces pre-cb chctx=%p req=%p cb=%p arg0=0x%x",
-             arg1, arg2, (void *)(intptr_t)cb, READ_S32(arg1, 0));
+             arg1, arg2, (void *)(intptr_t)cb, (unsigned)(uintptr_t)GetChannelTraceContext(arg1));
     {
-        int32_t rc = ((int32_t (*)(void *, int32_t))(intptr_t)cb)(trace, READ_S32(arg1, 0));
+        int32_t rc = ((int32_t (*)(void *, int32_t))(intptr_t)cb)(
+            trace, (int32_t)(intptr_t)GetChannelTraceContext(arg1));
 
         ENC_KMSG("handleOutputTraces post-cb chctx=%p req=%p rc=%d", arg1, arg2, rc);
         return rc;
@@ -4078,6 +4322,8 @@ int32_t CommitSlice(void *arg1, void *arg2, int32_t *arg3, int32_t arg4, int32_t
 {
     int32_t *slice_status = &arg3[0x2f6 / 4];
     int32_t cur;
+    uint8_t *slice_tile_info = (uint8_t *)arg3 + 0x2be;
+    size_t slice_tile_info_len;
 
     if (READ_U8(arg3, 0x174) == 0U) {
         cur = READ_U16(arg3, 0x848);
@@ -4127,7 +4373,7 @@ int32_t CommitSlice(void *arg1, void *arg2, int32_t *arg3, int32_t arg4, int32_t
     WRITE_U8(arg3, 0xba1, 1);
     OutputSlice(arg1, arg3, cur, slice_status);
     UpdateStatus(arg3, slice_status);
-    SetTileInfoIfNeeded(arg1, &arg3[0x2be], arg1, READ_U8(arg3, 0x19d));
+    SetTileInfoIfNeeded(arg1, slice_tile_info, arg1, READ_U8(arg3, 0x19d));
     WRITE_U8(arg3, 0xbad, READ_U8(arg3, 0x17e));
     WRITE_U16(arg3, 0xb28, READ_U16(arg3, 0x198));
     arg3[0x2c0] = arg3[6];
@@ -4142,10 +4388,11 @@ int32_t CommitSlice(void *arg1, void *arg2, int32_t *arg3, int32_t arg4, int32_t
     }
 
     {
-        int32_t *evt = (int32_t *)(intptr_t)EndRequestsBuffer_Pop((uint8_t *)arg1 + 0x1604);
+        int32_t *evt = AllocEndReqEvent(arg1, "slice");
 
+        slice_tile_info_len = (size_t)((uint8_t *)slice_status - slice_tile_info);
         evt[0] = arg3[0xc6];
-        memcpy(evt + 2, &arg3[0x2be], (uint8_t *)slice_status - (uint8_t *)&arg3[0x2be]);
+        memcpy(evt + 2, slice_tile_info, slice_tile_info_len);
         StaticFifo_Queue((StaticFifoCompat *)((uint8_t *)arg1 + 0x12b24), (int32_t)(intptr_t)evt);
     }
 
@@ -4437,18 +4684,27 @@ int32_t AL_EncChannel_Init(int32_t *arg1, int32_t *arg2, void *arg3, uint8_t arg
         Rtos_ReleaseMutex(READ_PTR(arg1, 0x120));
     }
 
-    WRITE_S32(arg1, 0x164, (int32_t)(intptr_t)arg3);
+    {
+        uint8_t init_core_count = ClampLiveT31AvcCoreCount(arg2, arg5);
+        uint8_t init_core_max = ClampLiveT31AvcCoreCount(arg2, READ_U8(arg2, 0xf));
+
+        WRITE_S32(arg1, 0x164, (int32_t)(intptr_t)arg3);
     ResetChannelParam(arg1);
-    WRITE_U8(arg1, CH_CORE_COUNT_OFF, arg5);
-    WRITE_U8(arg1, CH_CORE_BASE_OFF, arg4);
-    WRITE_S32(arg1, 0x2c, arg6);
-    WRITE_U8(arg1, 0x3f, READ_U8(arg2, 0xf));
-    WRITE_S32(arg1, 0x1a80, arg12);
-    WRITE_S32(arg1, 0x1a84, arg6);
-    WRITE_U16(arg1, 0x1a88, (uint16_t)READ_U8(arg2, 0xf));
-    WRITE_U8(arg1, 0x44, READ_U8(arg2, 0));
-    WRITE_U8(arg1, CH_STABLE_CORE_COUNT_OFF, arg5);
-    WRITE_U8(arg1, CH_STABLE_CORE_BASE_OFF, arg4);
+        WRITE_U8(arg1, CH_CORE_COUNT_OFF, init_core_count);
+        WRITE_U8(arg1, CH_CORE_BASE_OFF, arg4);
+        WRITE_S32(arg1, 0x2c, arg6);
+        WRITE_U8(arg1, 0x3f, init_core_max);
+        WRITE_S32(arg1, 0x1a80, arg12);
+        WRITE_S32(arg1, 0x1a84, arg6);
+        WRITE_U16(arg1, 0x1a88, init_core_max);
+        WRITE_U8(arg1, 0x44, READ_U8(arg2, 0));
+        WRITE_U8(arg1, CH_STABLE_CORE_COUNT_OFF, init_core_count);
+        WRITE_U8(arg1, CH_STABLE_CORE_BASE_OFF, arg4);
+        WRITE_U16(arg1, 0x1ae6, 0);
+        ENC_KMSG("AL_EncChannel_Init core-layout fmt=%u requested=%u base=%u clamped=%u max=%u",
+                 (unsigned)READ_U8(arg2, 0x1f), (unsigned)arg5, (unsigned)arg4,
+                 (unsigned)init_core_count, (unsigned)init_core_max);
+    }
     WRITE_S32(arg1, CH_OUT_CB_OFF, arg9[0]);
     WRITE_S32(arg1, CH_OUT_CTX_OFF, arg9[1]);
     WRITE_S32(arg1, CH_DESTROY_CB_OFF, 0);
@@ -4456,6 +4712,8 @@ int32_t AL_EncChannel_Init(int32_t *arg1, int32_t *arg2, void *arg3, uint8_t arg
     WRITE_S32(arg1, CH_FRAME_DONE_CB_OFF, arg9[2]);
     WRITE_S32(arg1, CH_FRAME_DONE_CTX_OFF, arg9[3]);
     WRITE_S32(arg1, CH_CMD_TRACE_FLAGS_OFF, 0);
+    WRITE_S32(arg1, CH_TRACE_CB_OFF, 0);
+    WRITE_S32(arg1, CH_TRACE_CTX_OFF, 0);
     WRITE_U8(arg1, CH_STARTED_OFF, 0);
     WRITE_U8(arg1, CH_DRAINED_OFF, 0);
     WRITE_U16(arg1, CH_GATE_OFF, 1);
@@ -4637,7 +4895,7 @@ int32_t AL_EncChannel_DeInit(void *arg1)
              READ_PTR((uint8_t *)arg1 + 0xf4, 0x24),
              READ_PTR((uint8_t *)arg1 + 0xf4, 0x28),
              READ_PTR((uint8_t *)arg1 + 0xf4, 0x2c),
-             READ_PTR(arg1, 0x2a50), READ_U16(arg1, 0x1ae6));
+             READ_PTR(arg1, 0x2a50), READ_S32(arg1, CH_DESTROY_CB_OFF));
 
     AL_RateCtrl_Deinit((uint8_t *)arg1 + 0xf4);
     AL_GopMngr_Deinit((uint8_t *)arg1 + 0x128);
@@ -4727,15 +4985,23 @@ int32_t AL_EncChannel_ListModulesNeeded(void *arg1, void *arg2)
                  lane, fifo, req, fifo->read_idx, fifo->write_idx, fifo->capacity);
 
         if (req != 0) {
-            ENC_KMSG("ListModulesNeeded lane=%d req=%p prep=%u armed=%u pict=%d type=%d lane_mods=%d lane_slices=%d",
-                     lane, req, (unsigned)READ_U8(req, 0xa74), (unsigned)READ_U8(req, 0xa75),
-                     READ_S32(req, 0x20), READ_S32(req, 0x30),
-                     READ_S32(req, lane * 0x110 + 0x8cc), READ_S32(req, lane * 0x110 + 0x958));
+            HealLiveT31SingleCoreReqTables(arg1, req, "ListModulesNeeded");
+            int32_t lane_mods = RepairLiveT31AvcLaneModuleCount(arg1, req, lane, "ListModulesNeeded");
+            int32_t lane_slices = RepairLiveT31AvcLaneSliceCount(arg1, req, lane, "ListModulesNeeded");
+
+            ENC_KMSG("ListModulesNeeded lane=%d req=%p phase=%d/%d prep=%u armed=%u pict=%d type=%d lane_mods=%d lane_slices=%d"
+                     " mod0=[%d,%d cnt=%d] slice0=[%d,%d cnt=%d pending=%d]",
+                     lane, req, READ_S32(req, 0xa70), READ_S32(req, 0xa6c),
+                     (unsigned)READ_U8(req, 0xa74), (unsigned)READ_U8(req, 0xa75),
+                     READ_S32(req, 0x20), READ_S32(req, 0x30), lane_mods, lane_slices,
+                     READ_S32(req, 0x84c), READ_S32(req, 0x850), READ_S32(req, 0x8cc),
+                     READ_S32(req, 0x8d8), READ_S32(req, 0x8dc), READ_S32(req, 0x958),
+                     READ_S32(req, 0x8d0));
             if (READ_U8(req, 0xa74) != 0U) {
                 int32_t *grp = (int32_t *)((uint8_t *)req + lane * 0x110 + 0x84c);
                 int32_t i;
 
-                for (i = 0; i < READ_S32(req, lane * 0x110 + 0x8cc); ++i) {
+                for (i = 0; i < lane_mods; ++i) {
                     ENC_KMSG("ListModulesNeeded lane=%d add core=%d mod=%d idx=%d",
                              lane, READ_U8(arg1, 0x3d) + grp[0], grp[1], i);
                     AL_ModuleArray_AddModule(arg2, READ_U8(arg1, 0x3d) + grp[0], grp[1]);
@@ -5028,7 +5294,8 @@ int32_t AL_EncChannel_ListModulesNeeded(void *arg1, void *arg2)
                     {
                         int32_t *grp = (int32_t *)((uint8_t *)req + lane * 0x110 + 0x84c);
                         int32_t i;
-                        int32_t mod_count = READ_S32(req, lane * 0x110 + 0x8cc);
+                        int32_t mod_count = RepairLiveT31AvcLaneModuleCount(arg1, req, lane,
+                                                                            "ListModulesNeeded-prepared");
 
                         for (i = 0; i < mod_count; ++i) {
                             ENC_KMSG("ListModulesNeeded lane=%d add-prepared core=%d mod=%d idx=%d",
@@ -5039,7 +5306,8 @@ int32_t AL_EncChannel_ListModulesNeeded(void *arg1, void *arg2)
                     }
                     ENC_KMSG("ListModulesNeeded lane=%d prepared req=%p a74=%u a75=%u lane_mods=%d lane_slices=%d out_count=%d",
                              lane, req, (unsigned)READ_U8(req, 0xa74), (unsigned)READ_U8(req, 0xa75),
-                             READ_S32(req, lane * 0x110 + 0x8cc), READ_S32(req, lane * 0x110 + 0x958),
+                             RepairLiveT31AvcLaneModuleCount(arg1, req, lane, "ListModulesNeeded-prepared-log"),
+                             RepairLiveT31AvcLaneSliceCount(arg1, req, lane, "ListModulesNeeded-prepared-log"),
                              READ_S32(arg2, 0x80));
                 }
             }
@@ -5050,7 +5318,8 @@ int32_t AL_EncChannel_ListModulesNeeded(void *arg1, void *arg2)
         if (req != 0) {
             ENC_KMSG("ListModulesNeeded lane=%d done out_count=%d req_a74=%u req_a75=%u lane_mods=%d lane_slices=%d",
                      lane, READ_S32(arg2, 0x80), (unsigned)READ_U8(req, 0xa74), (unsigned)READ_U8(req, 0xa75),
-                     READ_S32(req, lane * 0x110 + 0x8cc), READ_S32(req, lane * 0x110 + 0x958));
+                     RepairLiveT31AvcLaneModuleCount(arg1, req, lane, "ListModulesNeeded-done"),
+                     RepairLiveT31AvcLaneSliceCount(arg1, req, lane, "ListModulesNeeded-done"));
         } else {
             ENC_KMSG("ListModulesNeeded lane=%d done out_count=%d", lane, READ_S32(arg2, 0x80));
         }
@@ -5072,20 +5341,24 @@ int32_t encode1(void *arg1)
     int32_t *req;
     int32_t core;
     int32_t pict_id;
+    int32_t slice_count;
+    int32_t mod_count;
     uint32_t core_offset = READ_U8(ch, 0x3d);
 
     Rtos_GetMutex(READ_PTR(ch, 0x170));
     req = (int32_t *)(intptr_t)StaticFifo_Dequeue((uint8_t *)ch + 0x129b4);
-    for (core = 0; core < READ_S32(req, 0x958); ++core) {
+    slice_count = RepairLiveT31AvcLaneSliceCount(ch, req, 0, "encode1");
+    mod_count = RepairLiveT31AvcLaneModuleCount(ch, req, 0, "encode1");
+    for (core = 0; core < slice_count; ++core) {
         WRITE_S32(req, 0x8d8 + core * 8, READ_S32(req, 0x8d8 + core * 8) + core_offset);
     }
-    for (core = 0; core < READ_S32(req, 0x8cc); ++core) {
+    for (core = 0; core < mod_count; ++core) {
         WRITE_S32(req, 0x84c + core * 8, READ_S32(req, 0x84c + core * 8) + core_offset);
     }
     StaticFifo_Queue((StaticFifoCompat *)((uint8_t *)ch + 0x12a6c + READ_S32(req, 0xa70) * 0x5c),
                      (int32_t)(intptr_t)req);
     ENC_KMSG("encode1 dequeued req=%p grp=%d slice_count=%d mod_count=%d core_off=%u",
-             req, READ_S32(req, 0xa70), READ_S32(req, 0x958), READ_S32(req, 0x8cc),
+             req, READ_S32(req, 0xa70), slice_count, mod_count,
              (unsigned)core_offset);
     WRITE_U8(req, 0x182, (READ_U8(ch, 0x1f) == 0U && LIVE_T31_FORCE_DUAL_PUSH_AVC) ? 1U :
                           ((READ_U8(ch, 0x1f) == 0U) ? (READ_U8(ch, 0x3c) < 2U) : 1U));
@@ -5531,30 +5804,58 @@ int32_t AL_EncChannel_Encode(void *arg1, void *arg2)
         for (lane = 0; lane != 2; ++lane) {
             int32_t active = 0;
             int32_t *front = (int32_t *)(intptr_t)StaticFifo_Front(running);
+            int32_t module_count = READ_S32(arg2, 0x80);
 
-            if (READ_S32(arg2, 0x80) > 0) {
+            if (module_count > 0) {
                 int32_t *slot = (int32_t *)arg2;
                 int i;
 
-                for (i = 0; i < READ_S32(arg2, 0x80); ++i) {
+                for (i = 0; i < module_count; ++i) {
                     active += (lane == READ_S32(slot, 4));
                     slot += 2;
                 }
             }
             if (active != 0 && front != 0) {
-                int32_t ofs = READ_S32(front, 0xa70) * 0x110;
-                int32_t slice_count = READ_S32(front, ofs + 0x958);
+                int32_t phase;
+                int32_t phase_count;
+                int32_t ofs;
+                int32_t slice_count = RepairLiveT31AvcLaneSliceCount(arg1, front,
+                                                                     READ_S32(front, 0xa70),
+                                                                     "EncChannel_Encode");
                 int32_t i;
                 int32_t match = 0;
 
+                HealLiveT31SingleCoreReqTables(arg1, front, "EncChannel_Encode");
+                phase = READ_S32(front, 0xa70);
+                phase_count = READ_S32(front, 0xa6c);
+                ofs = phase * 0x110;
+                slice_count = RepairLiveT31AvcLaneSliceCount(arg1, front, phase, "EncChannel_Encode");
                 for (i = 0; i < slice_count; ++i) {
                     match += (lane == READ_S32(front, ofs + 0x8dc + i * 8));
                 }
                 if (match != 0) {
-                    ENC_KMSG("EncChannel_Encode lane=%d active=%d slice_match=%d front=%p", lane, active, match, front);
+                    ENC_KMSG("EncChannel_Encode lane=%d active=%d phase=%d/%d slice_match=%d front=%p"
+                             " mod0=[%d,%d cnt=%d] slice0=[%d,%d cnt=%d pending=%d]",
+                             lane, active, phase, phase_count, match, front,
+                             READ_S32(front, 0x84c), READ_S32(front, 0x850), READ_S32(front, 0x8cc),
+                             READ_S32(front, ofs + 0x8d8), READ_S32(front, ofs + 0x8dc),
+                             slice_count, READ_S32(front, ofs + 0x8d0));
                     result = workers[lane](arg1);
                     ENC_KMSG("EncChannel_Encode worker lane=%d result=%d", lane, result);
+                } else {
+                    ENC_KMSG("EncChannel_Encode skip lane=%d reason=no-slice-match active=%d module_count=%d front=%p"
+                             " phase=%d/%d slice_count=%d fifo=%p r/w/c=%d/%d/%d"
+                             " mod0=[%d,%d cnt=%d] slice0=[%d,%d] lane1_mods=%d lane1_slices=%d",
+                             lane, active, module_count, front, phase, phase_count, slice_count, running,
+                             running->read_idx, running->write_idx, running->capacity,
+                             READ_S32(front, 0x84c), READ_S32(front, 0x850), READ_S32(front, 0x8cc),
+                             READ_S32(front, ofs + 0x8d8), READ_S32(front, ofs + 0x8dc),
+                             READ_S32(front, 0x9dc), READ_S32(front, 0xa68));
                 }
+            } else {
+                ENC_KMSG("EncChannel_Encode skip lane=%d reason=%s active=%d module_count=%d front=%p fifo=%p r/w/c=%d/%d/%d",
+                         lane, (front == 0) ? "no-front" : "no-active", active, module_count, front, running,
+                         running->read_idx, running->write_idx, running->capacity);
             }
             running = (StaticFifoCompat *)((uint8_t *)running + 0x5c);
         }
@@ -5791,14 +6092,14 @@ int32_t AL_EncChannel_EndEncoding(void *arg1, uint8_t arg2, int32_t arg3)
                     handleOutputTraces(arg1, req, (uint8_t)(READ_U8(arg1, 0x3c) - 1U), 3);
                     ENC_KMSG("EndEncoding non-gate post-output-trace req=%p", req);
                     DisableCompletedPhaseInterrupts(arg1, req, req_phase);
-                    done_cb = READ_S32(arg1, 0x1aa8);
+                    done_cb = GetChannelFrameDoneCallback(arg1);
                     Rtos_ReleaseMutex(READ_PTR(arg1, 0x170));
                     ENC_KMSG("EndEncoding non-gate queued-next-phase req=%p next=%d total=%d rc_bytes=%d skip=%u",
                              req, req_phase_next, READ_S32(req, 0xa6c), READ_S32(slice_status, 4),
                              (unsigned)READ_U8(req, 0xb08));
                     if (done_cb != 0) {
                         ((void (*)(void *, void *))(intptr_t)done_cb)
-                            (READ_PTR(arg1, 0x1aac),
+                            (GetChannelFrameDoneContext(arg1),
                              (uint8_t *)req + (READ_S32(req, 0xa70) - 1) * 0x110 + 0x84c);
                     }
                     return 1;
@@ -5845,8 +6146,9 @@ int32_t AL_EncChannel_EndEncoding(void *arg1, uint8_t arg2, int32_t arg3)
                 ENC_KMSG("EndEncoding final post-release req=%p", req);
 
                 ENC_KMSG("EndEncoding final pre-pop req=%p", req);
-                evt = (int32_t *)(intptr_t)EndRequestsBuffer_Pop((uint8_t *)arg1 + 0x1604);
+                evt = AllocEndReqEvent(arg1, "final");
                 evt[0] = (int32_t)(intptr_t)READ_PTR(req, 0x318);
+                evt[1] = READ_S32(req, 0x10);
                 i = &req[0xaf8 / 4];
                 dst = evt + 2;
                 while ((uint8_t *)i != (uint8_t *)req + 0xbd8) {
@@ -5865,11 +6167,12 @@ int32_t AL_EncChannel_EndEncoding(void *arg1, uint8_t arg2, int32_t arg3)
                 ENC_KMSG("EndEncoding final pre-queue req=%p evt=%p", req, evt);
                 StaticFifo_Queue((StaticFifoCompat *)((uint8_t *)arg1 + 0x12b24), (int32_t)(intptr_t)evt);
                 WRITE_S32(arg1, 0x35b4, READ_S32(arg1, 0x35b4) + 1);
-                done_cb = READ_S32(arg1, 0x1aa8);
+                done_cb = GetChannelFrameDoneCallback(arg1);
                 Rtos_ReleaseMutex(READ_PTR(arg1, 0x170));
                 ENC_KMSG("EndEncoding non-gate queued-output req=%p evt=%p phase=%d", req, evt, req_phase_next);
                 if (done_cb != 0) {
-                    ((void (*)(void *, void *))(intptr_t)done_cb)(READ_PTR(arg1, 0x1aac), (uint8_t *)req + 0x84c);
+                    ((void (*)(void *, void *))(intptr_t)done_cb)(GetChannelFrameDoneContext(arg1),
+                                                                  (uint8_t *)req + 0x84c);
                 }
                 return 1;
             }
@@ -5881,7 +6184,9 @@ int32_t AL_EncChannel_EndEncoding(void *arg1, uint8_t arg2, int32_t arg3)
 
 int32_t AL_EncChannel_SetTraceCallBack(void *arg1, int32_t arg2, int32_t arg3)
 {
-    WRITE_S32(arg1, CH_TRACE_CB_OFF, arg2);
-    WRITE_S32(arg1, CH_TRACE_CTX_OFF, arg3);
+    ENC_KMSG("AL_EncChannel_SetTraceCallBack suppressed chctx=%p cb=%p ctx=%p",
+             arg1, (void *)(intptr_t)arg2, (void *)(intptr_t)arg3);
+    WRITE_S32(arg1, CH_TRACE_CB_OFF, 0);
+    WRITE_S32(arg1, CH_TRACE_CTX_OFF, 0);
     return 0;
 }

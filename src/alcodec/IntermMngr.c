@@ -1,4 +1,7 @@
 #include <stdint.h>
+#include <stdio.h>
+#include <unistd.h>
+#include <fcntl.h>
 
 #include "alcodec/al_rtos.h"
 #include "imp_log_int.h"
@@ -43,6 +46,17 @@ typedef struct AL_TIntermMngr {
 
 #define INTM_MIN_VALID_PTR 0x10000U
 #define INTM_KMSG(fmt, ...) IMP_LOG_INFO("INTM", fmt, ##__VA_ARGS__)
+#define INTM_DMSG(fmt, ...) do { \
+    int _kfd = open("/dev/kmsg", O_WRONLY); \
+    if (_kfd >= 0) { \
+        char _b[192]; \
+        int _n = snprintf(_b, sizeof(_b), "libimp/INTM: " fmt "\n", ##__VA_ARGS__); \
+        if (_n > 0) { \
+            write(_kfd, _b, _n > (int)sizeof(_b) ? (int)sizeof(_b) : _n); \
+        } \
+        close(_kfd); \
+    } \
+} while (0)
 
 static void *AL_IntermMngr_EnsureMutex(AL_TIntermMngr *arg1, const char *site)
 {
@@ -254,6 +268,9 @@ int32_t AL_IntermMngr_ReleaseBuffer(AL_TIntermMngr *arg1, AL_TIntermBuffer *arg2
         INTM_KMSG("ReleaseBuffer entry ctx=%p buf=%p addr=0x%x loc=0x%x head=%d size=%d cap=%d",
                   arg1, arg2, arg2 ? arg2->addr : 0, arg2 ? arg2->location : 0,
                   arg1->head, arg1->size, arg1->capacity);
+        INTM_DMSG("ReleaseBuffer entry ctx=%p buf=%p addr=0x%x loc=0x%x head=%d size=%d cap=%d",
+                  arg1, arg2, arg2 ? arg2->addr : 0, arg2 ? arg2->location : 0,
+                  arg1->head, arg1->size, arg1->capacity);
 
         if (a1 >= arg1->capacity) {
             __assert("pCtx->iSize < pCtx->iCapacity",
@@ -265,6 +282,8 @@ int32_t AL_IntermMngr_ReleaseBuffer(AL_TIntermMngr *arg1, AL_TIntermBuffer *arg2
         arg1->queue[(a1 + arg1->head) % 0x12] = arg2;
         arg1->size = a1 + 1;
         INTM_KMSG("ReleaseBuffer exit ctx=%p head=%d size=%d cap=%d slot=%d",
+                  arg1, arg1->head, arg1->size, arg1->capacity, (a1 + arg1->head) % 0x12);
+        INTM_DMSG("ReleaseBuffer exit ctx=%p head=%d size=%d cap=%d slot=%d",
                   arg1, arg1->head, arg1->size, arg1->capacity, (a1 + arg1->head) % 0x12);
         return AL_IntermMngr_Unlock(mutex);
     }
@@ -282,6 +301,9 @@ int32_t AL_IntermMngr_ReleaseBufferBack(AL_TIntermMngr *arg1, AL_TIntermBuffer *
         int32_t a2 = arg1->size;
 
         INTM_KMSG("ReleaseBufferBack entry ctx=%p buf=%p addr=0x%x loc=0x%x head=%d size=%d cap=%d",
+                  arg1, arg2, arg2 ? arg2->addr : 0, arg2 ? arg2->location : 0,
+                  arg1->head, arg1->size, arg1->capacity);
+        INTM_DMSG("ReleaseBufferBack entry ctx=%p buf=%p addr=0x%x loc=0x%x head=%d size=%d cap=%d",
                   arg1, arg2, arg2 ? arg2->addr : 0, arg2 ? arg2->location : 0,
                   arg1->head, arg1->size, arg1->capacity);
 
@@ -304,6 +326,8 @@ int32_t AL_IntermMngr_ReleaseBufferBack(AL_TIntermMngr *arg1, AL_TIntermBuffer *
             arg1->queue[v1] = arg2;
             arg1->size = a2 + 1;
             INTM_KMSG("ReleaseBufferBack exit ctx=%p head=%d size=%d cap=%d slot=%d",
+                      arg1, arg1->head, arg1->size, arg1->capacity, v1);
+            INTM_DMSG("ReleaseBufferBack exit ctx=%p head=%d size=%d cap=%d slot=%d",
                       arg1, arg1->head, arg1->size, arg1->capacity, v1);
             return AL_IntermMngr_Unlock(mutex);
         }
@@ -410,6 +434,7 @@ int32_t AL_IntermMngr_GetBuffer(AL_TIntermMngr *arg1)
         int32_t a2 = arg1->size;
 
         INTM_KMSG("GetBuffer entry ctx=%p head=%d size=%d cap=%d", arg1, arg1->head, arg1->size, arg1->capacity);
+        INTM_DMSG("GetBuffer entry ctx=%p head=%d size=%d cap=%d", arg1, arg1->head, arg1->size, arg1->capacity);
 
         if (a2 == 0) {
             result = 0;
@@ -438,6 +463,9 @@ int32_t AL_IntermMngr_GetBuffer(AL_TIntermMngr *arg1)
         }
         AL_IntermMngr_Unlock(mutex);
         INTM_KMSG("GetBuffer exit ctx=%p result=%p addr=0x%x loc=0x%x head=%d size=%d cap=%d",
+                  arg1, result, result ? result->addr : 0, result ? result->location : 0,
+                  arg1->head, arg1->size, arg1->capacity);
+        INTM_DMSG("GetBuffer exit ctx=%p result=%p addr=0x%x loc=0x%x head=%d size=%d cap=%d",
                   arg1, result, result ? result->addr : 0, result ? result->location : 0,
                   arg1->head, arg1->size, arg1->capacity);
     }
