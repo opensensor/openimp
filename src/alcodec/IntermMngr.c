@@ -211,6 +211,10 @@ int32_t AL_IntermMngr_AddBuffer(AL_TIntermMngr *arg1, AL_TIntermBuffer *arg2)
         int32_t a0_1 = arg1->capacity;
         int32_t result = 0;
 
+        INTM_KMSG("AddBuffer entry ctx=%p buf=%p addr=0x%x loc=0x%x head=%d size=%d cap=%d",
+                  arg1, arg2, arg2 ? arg2->addr : 0, arg2 ? arg2->location : 0,
+                  arg1->head, arg1->size, arg1->capacity);
+
         if (a0_1 < 0x12) {
             int32_t v0_1 = arg2->location;
             AL_TIntermBuffer *a1_1 = &arg1->buffers[a0_1];
@@ -226,6 +230,10 @@ int32_t AL_IntermMngr_AddBuffer(AL_TIntermMngr *arg1, AL_TIntermBuffer *arg2)
             arg1->queue[v0_3 % 0x12] = a1_1;
             arg1->size = a2_1 + 1;
         }
+
+        INTM_KMSG("AddBuffer exit ctx=%p result=%d head=%d size=%d cap=%d slot=%d",
+                  arg1, result, arg1->head, arg1->size, arg1->capacity,
+                  (a0_1 < 0x12) ? a0_1 : -1);
 
         AL_IntermMngr_Unlock(mutex);
         return result;
@@ -243,6 +251,10 @@ int32_t AL_IntermMngr_ReleaseBuffer(AL_TIntermMngr *arg1, AL_TIntermBuffer *arg2
     {
         int32_t a1 = arg1->size;
 
+        INTM_KMSG("ReleaseBuffer entry ctx=%p buf=%p addr=0x%x loc=0x%x head=%d size=%d cap=%d",
+                  arg1, arg2, arg2 ? arg2->addr : 0, arg2 ? arg2->location : 0,
+                  arg1->head, arg1->size, arg1->capacity);
+
         if (a1 >= arg1->capacity) {
             __assert("pCtx->iSize < pCtx->iCapacity",
                      "/home/user/git/proj/sdk-lv3/src/imp/video/alcodec/lib_buf_mngt/IntermMngr.c",
@@ -252,6 +264,8 @@ int32_t AL_IntermMngr_ReleaseBuffer(AL_TIntermMngr *arg1, AL_TIntermBuffer *arg2
 
         arg1->queue[(a1 + arg1->head) % 0x12] = arg2;
         arg1->size = a1 + 1;
+        INTM_KMSG("ReleaseBuffer exit ctx=%p head=%d size=%d cap=%d slot=%d",
+                  arg1, arg1->head, arg1->size, arg1->capacity, (a1 + arg1->head) % 0x12);
         return AL_IntermMngr_Unlock(mutex);
     }
 }
@@ -266,6 +280,10 @@ int32_t AL_IntermMngr_ReleaseBufferBack(AL_TIntermMngr *arg1, AL_TIntermBuffer *
 
     {
         int32_t a2 = arg1->size;
+
+        INTM_KMSG("ReleaseBufferBack entry ctx=%p buf=%p addr=0x%x loc=0x%x head=%d size=%d cap=%d",
+                  arg1, arg2, arg2 ? arg2->addr : 0, arg2 ? arg2->location : 0,
+                  arg1->head, arg1->size, arg1->capacity);
 
         if (a2 >= arg1->capacity) {
             __assert("pCtx->iSize < pCtx->iCapacity",
@@ -285,6 +303,8 @@ int32_t AL_IntermMngr_ReleaseBufferBack(AL_TIntermMngr *arg1, AL_TIntermBuffer *
             arg1->head = v1;
             arg1->queue[v1] = arg2;
             arg1->size = a2 + 1;
+            INTM_KMSG("ReleaseBufferBack exit ctx=%p head=%d size=%d cap=%d slot=%d",
+                      arg1, arg1->head, arg1->size, arg1->capacity, v1);
             return AL_IntermMngr_Unlock(mutex);
         }
     }
@@ -389,6 +409,8 @@ int32_t AL_IntermMngr_GetBuffer(AL_TIntermMngr *arg1)
     {
         int32_t a2 = arg1->size;
 
+        INTM_KMSG("GetBuffer entry ctx=%p head=%d size=%d cap=%d", arg1, arg1->head, arg1->size, arg1->capacity);
+
         if (a2 == 0) {
             result = 0;
         } else {
@@ -415,6 +437,9 @@ int32_t AL_IntermMngr_GetBuffer(AL_TIntermMngr *arg1)
             arg1->head = (a0_1 + 1) % 0x12;
         }
         AL_IntermMngr_Unlock(mutex);
+        INTM_KMSG("GetBuffer exit ctx=%p result=%p addr=0x%x loc=0x%x head=%d size=%d cap=%d",
+                  arg1, result, result ? result->addr : 0, result ? result->location : 0,
+                  arg1->head, arg1->size, arg1->capacity);
     }
     return (int32_t)(intptr_t)result;
 }

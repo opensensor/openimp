@@ -667,6 +667,13 @@ static void PrepareSourceConfigForLaunch(AL_EncCoreCtxCompat *core, void *ch, vo
     uint32_t reg_8424;
     uint32_t reg_8428;
     uint32_t reg_85e4;
+    uint32_t shadow_85f4 = 0;
+    uint32_t shadow_85f0 = 0;
+    uint32_t shadow_8400 = 0;
+    uint32_t shadow_8420 = 0;
+    uint32_t shadow_8424 = 0;
+    uint32_t shadow_8428 = 0;
+    uint32_t shadow_85e4 = 0;
 
     if (core == NULL || ch == NULL || req == NULL || cmd_regs == NULL) {
         return;
@@ -714,6 +721,30 @@ static void PrepareSourceConfigForLaunch(AL_EncCoreCtxCompat *core, void *ch, vo
     ip->vtable->WriteRegister(ip, 0x8428, stream_budget);
     ip->vtable->WriteRegister(ip, 0x85e4, 1);
 
+    /*
+     * Non-zero cores are launched through per-core 0x83e0/0x83e4 windows.
+     * Mirror the source-config registers into the matching per-core shadow
+     * window so we can verify whether T31 sub-stream launches are failing
+     * because only the global 0x8400 block is populated.
+     */
+    if (core_base != 0U) {
+        ip->vtable->WriteRegister(ip, core_base + 0x85f4, 1);
+        ip->vtable->WriteRegister(ip, core_base + 0x85f0, 1);
+        ip->vtable->WriteRegister(ip, core_base + 0x8400, 0x00000131U);
+        ip->vtable->WriteRegister(ip, core_base + 0x8404,
+                                  (((width - 1U) & 0xffffU) << 16) | ((height - 1U) & 0xffffU));
+        ip->vtable->WriteRegister(ip, core_base + 0x8408, 0x00010001U);
+        ip->vtable->WriteRegister(ip, core_base + 0x840c, width);
+        ip->vtable->WriteRegister(ip, core_base + 0x8410, src_y);
+        ip->vtable->WriteRegister(ip, core_base + 0x8414, src_uv);
+        ip->vtable->WriteRegister(ip, core_base + 0x8418, wpp);
+        ip->vtable->WriteRegister(ip, core_base + 0x841c, ep1);
+        ip->vtable->WriteRegister(ip, core_base + 0x8420, stream_part);
+        ip->vtable->WriteRegister(ip, core_base + 0x8424, hdr_off);
+        ip->vtable->WriteRegister(ip, core_base + 0x8428, stream_budget);
+        ip->vtable->WriteRegister(ip, core_base + 0x85e4, 1);
+    }
+
     reg_85f4 = (uint32_t)ip->vtable->ReadRegister(ip, 0x85f4);
     reg_85f0 = (uint32_t)ip->vtable->ReadRegister(ip, 0x85f0);
     reg_83f4 = (uint32_t)ip->vtable->ReadRegister(ip, core_base + 0x83f4);
@@ -722,10 +753,21 @@ static void PrepareSourceConfigForLaunch(AL_EncCoreCtxCompat *core, void *ch, vo
     reg_8424 = (uint32_t)ip->vtable->ReadRegister(ip, 0x8424);
     reg_8428 = (uint32_t)ip->vtable->ReadRegister(ip, 0x8428);
     reg_85e4 = (uint32_t)ip->vtable->ReadRegister(ip, 0x85e4);
+    if (core_base != 0U) {
+        shadow_85f4 = (uint32_t)ip->vtable->ReadRegister(ip, core_base + 0x85f4);
+        shadow_85f0 = (uint32_t)ip->vtable->ReadRegister(ip, core_base + 0x85f0);
+        shadow_8400 = (uint32_t)ip->vtable->ReadRegister(ip, core_base + 0x8400);
+        shadow_8420 = (uint32_t)ip->vtable->ReadRegister(ip, core_base + 0x8420);
+        shadow_8424 = (uint32_t)ip->vtable->ReadRegister(ip, core_base + 0x8424);
+        shadow_8428 = (uint32_t)ip->vtable->ReadRegister(ip, core_base + 0x8428);
+        shadow_85e4 = (uint32_t)ip->vtable->ReadRegister(ip, core_base + 0x85e4);
+    }
     ENC_KMSG("encode1 source-config-%s core=%u srcY=0x%x srcUV=0x%x ep1=0x%x wpp=0x%x part=0x%x hdr=0x%x budget=0x%x"
-             " rb85f4=0x%x rb85f0=0x%x rb83f4=0x%x rb8400=0x%x rb8420=0x%x rb8424=0x%x rb8428=0x%x rb85e4=0x%x",
+             " rb85f4=0x%x rb85f0=0x%x rb83f4=0x%x rb8400=0x%x rb8420=0x%x rb8424=0x%x rb8428=0x%x rb85e4=0x%x"
+             " sh85f4=0x%x sh85f0=0x%x sh8400=0x%x sh8420=0x%x sh8424=0x%x sh8428=0x%x sh85e4=0x%x",
              tag ? tag : "?", (unsigned)core->core_id, src_y, src_uv, ep1, wpp, stream_part, hdr_off, stream_budget,
-             reg_85f4, reg_85f0, reg_83f4, reg_8400, reg_8420, reg_8424, reg_8428, reg_85e4);
+             reg_85f4, reg_85f0, reg_83f4, reg_8400, reg_8420, reg_8424, reg_8428, reg_85e4,
+             shadow_85f4, shadow_85f0, shadow_8400, shadow_8420, shadow_8424, shadow_8428, shadow_85e4);
 }
 
 static void RemapLiveT31Irq4(void *core_ctx, void (*cb)(void *), const char *tag)
@@ -5388,9 +5430,15 @@ int32_t encode1(void *arg1)
 
         RemapLiveT31Irq4(core1_live, EndEncoding, "encode1");
     } else if (READ_U8(ch, 0x1f) == 0U &&
-               READ_PTR(ch, 0x164) != NULL &&
-               ((AL_EncCoreCtxCompat *)READ_PTR(ch, 0x164))->core_id == 0U) {
-        RemapLiveT31Irq4(READ_PTR(ch, 0x164), EndEncoding, "encode1-core0");
+               READ_PTR(ch, 0x164) != NULL) {
+        /*
+         * The T31 live path reports completion on slot 4 even when the
+         * scheduler has collapsed the channel onto a non-zero core base.
+         * Keep slot 4 following the active single-core channel context so
+         * sub-stream launches on core4 do not inherit the main stream's
+         * callback/user pointer.
+         */
+        RemapLiveT31Irq4(READ_PTR(ch, 0x164), EndEncoding, "encode1-single");
     }
     {
         uint8_t irq_span[0x20];
