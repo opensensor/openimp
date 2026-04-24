@@ -1302,30 +1302,20 @@ static int32_t sub_8f550_impl(uint8_t *s0_slot, int32_t i, uint8_t *frame,
                   enc, frame);
     }
 
-    /* Timing-budget update (HLIL 0x8f580..0x8f5d8):
-     *   $s4         = *(stream + 4)          // stream's meta root
-     *   get_val32($s4 + 0xf4, &arg_11c)      // reads per-stream delay-lo
-     *   get_val32($s4 + 0xe4, &arg_50)       // reads per-stream delay-hi
-     *   v0_3 = max(0x10 - arg_11c, arg_50)
-     *   enc[+0x10c] = v0_3
-     *   enc[+0x11c] = 1
+    /*
+     * The post-process timing-budget tail is still only partially mapped.
      *
-     * The two get_val32 calls are indirected through a function-pointer
-     * table in rodata (arg13 - 0x7a50).  In our port we read the raw
-     * words directly — the helper is a straight word-load on the
-     * real-hardware path. */
+     * In the live VBM frame layout, frame+0x04 is the originating channel id
+     * (see VBMReleaseFrame/VBMFrame_GetChannel), not a metadata pointer. The
+     * previous stub treated it as a pointer and crashed sub-stream immediately
+     * after `process-ret=0` because channel 1 looked like the invalid pointer
+     * 0x00000001. Skip this tail until the OEM data source is mapped exactly.
+     */
     if (frame != NULL) {
-        uint8_t *meta_root = *(uint8_t **)(frame + 4);
-        if (meta_root != NULL) {
-            int32_t v_lo = *(int32_t *)(meta_root + 0xf4);   /* arg_11c */
-            int32_t v_hi = *(int32_t *)(meta_root + 0xe4);   /* arg_50  */
-            int32_t budget = 0x10 - v_lo;
-            if (budget < v_hi) budget = v_hi;
-            *(int32_t *)(frame + 0x10c) = budget;
-            *(int32_t *)(frame + 0x11c) = 1;
-            enc_trace("libimp/ENCX: sub_8f550 budget=%d meta=%p frame=%p\n",
-                      budget, meta_root, frame);
-        }
+        int32_t frame_chn = *(int32_t *)(frame + 4);
+
+        enc_trace("libimp/ENCX: sub_8f550 skip-budget frame=%p chn=%d\n",
+                  frame, frame_chn);
     }
     enc_trace("libimp/ENCX: sub_8f550 exit enc=%p frame=%p\n", enc, frame);
     return 0;
@@ -2384,11 +2374,13 @@ int32_t channel_encoder_init(EncoderChannelLayout *chn)
         enc_trace("libimp/CHINIT: codec-create-fail chn=%d ret=%d handle=%p\n",
                   chn_id, cec_ret, codec_handle);
         int32_t opt = IMP_Log_Get_Option();
+        int32_t codec_err = cec_ret < 0 ? -cec_ret : cec_ret;
         imp_log_fun(6, opt, 2, "Encoder",
             "/home/user/git/proj/sdk-lv3/src/imp/video/imp_encoder.c",
             0x625, "channel_encoder_init",
-            "Codec_Encode_Create failed\n");
-        return -1;
+            "Codec_Encode_Create failed ret=%d rc=0x%x handle=%p\n",
+            cec_ret, codec_err, codec_handle);
+        return cec_ret < 0 ? cec_ret : -1;
     }
     chn->codec_handle = enc_ptr_as_u32(codec_handle);
     /* Reset CappedVbr/CappedQuality cold fields. */

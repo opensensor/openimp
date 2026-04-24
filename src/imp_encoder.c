@@ -266,6 +266,36 @@ static uint32_t imp_encoder_rc_max_qp(const IMPEncoderRcAttr *rc)
     }
 }
 
+static uint8_t imp_encoder_default_level(uint32_t codec_type)
+{
+    switch (codec_type) {
+    case IMP_ENC_TYPE_AVC:
+        return 0x33;
+    case IMP_ENC_TYPE_HEVC:
+    case IMP_ENC_TYPE_JPEG:
+    default:
+        return 0;
+    }
+}
+
+static uint32_t imp_encoder_default_pic_format(uint32_t codec_type)
+{
+    (void)codec_type;
+    return 0x188;
+}
+
+static uint32_t imp_encoder_default_enc_options(uint32_t codec_type)
+{
+    (void)codec_type;
+    return 0x40028;
+}
+
+static uint32_t imp_encoder_default_enc_tools(uint32_t codec_type)
+{
+    (void)codec_type;
+    return 0x9c;
+}
+
 static int imp_encoder_rc_mode_valid(IMPEncoderRcMode rc_mode)
 {
     switch (rc_mode) {
@@ -718,6 +748,32 @@ int IMP_Encoder_CreateChn(int encChn, IMPEncoderCHNAttr *attr) {
         return -1;
     }
 
+    if (encChn == 0 || encChn == 1) {
+        const uint32_t *w = (const uint32_t *)attr;
+        enc_kmsg("CreateChn raw chn=%d attr=%p sizeof=%zu", encChn, (void *)attr, sizeof(*attr));
+        enc_kmsg("CreateChn raw0 chn=%d w0=%08x w1=%08x w2=%08x w3=%08x w4=%08x w5=%08x w6=%08x",
+                 encChn, w[0], w[1], w[2], w[3], w[4], w[5], w[6]);
+        enc_kmsg("CreateChn raw1 chn=%d w7=%08x w8=%08x w9=%08x w10=%08x w11=%08x w12=%08x w13=%08x",
+                 encChn, w[7], w[8], w[9], w[10], w[11], w[12], w[13]);
+        enc_kmsg("CreateChn raw2 chn=%d prof=0x%x lvl=%u tier=%u width=%u height=%u picfmt=0x%x opts=0x%x tools=0x%x rc=%u fps=%u/%u gopMode=%u gopLen=%u sameScene=%u ivdc=%u",
+                 encChn,
+                 attr->encAttr.profile,
+                 attr->encAttr.level,
+                 attr->encAttr.tier,
+                 attr->encAttr.maxPicWidth,
+                 attr->encAttr.maxPicHeight,
+                 attr->encAttr.picFormat,
+                 attr->encAttr.encOptions,
+                 attr->encAttr.encTools,
+                 attr->rcAttr.attrRcMode.rcMode,
+                 attr->rcAttr.outFrmRate.frmRateNum,
+                 attr->rcAttr.outFrmRate.frmRateDen,
+                 attr->gopAttr.uGopCtrlMode,
+                 attr->gopAttr.uGopLength,
+                 attr->gopAttr.uMaxSameSenceCnt,
+                 attr->bEnableIvdc);
+    }
+
     pthread_mutex_lock(&encoder_mutex);
 
     /* Ensure encoder globals are initialized (sets chn_id = -1 for all) */
@@ -778,6 +834,16 @@ int IMP_Encoder_CreateChn(int encChn, IMPEncoderCHNAttr *attr) {
     chn->started = 1;
     chn->recv_pic_enabled = 0;
     chn->recv_pic_started = 1;
+
+    /* Raptor keeps the first encoded stream buffer live long enough that a
+     * single-slot default starves the second frame before userspace can
+     * recycle it. Keep the fallback at two slots: enough to avoid the
+     * one-frame stall, but below the 3/4-slot wedge threshold seen on live
+     * T31 smoke. */
+    if (chn->max_stream_cnt <= 0) {
+        chn->max_stream_cnt = 2;
+        enc_kmsg("CreateChn default max_stream_cnt chn=%d max=2", encChn);
+    }
 
     /* Initialize semaphores (from decompilation at 0x83d18) */
     /* sem_init at offset 0x418 with value 0 */
@@ -1379,6 +1445,11 @@ int IMP_Encoder_SetDefaultParam(IMPEncoderChnAttr *attr, IMPEncoderProfile profi
 
     memset(attr, 0, sizeof(*attr));
     attr->encAttr.profile = profile;
+    attr->encAttr.level = imp_encoder_default_level(codec_type);
+    attr->encAttr.tier = 0;
+    attr->encAttr.picFormat = imp_encoder_default_pic_format(codec_type);
+    attr->encAttr.encOptions = imp_encoder_default_enc_options(codec_type);
+    attr->encAttr.encTools = imp_encoder_default_enc_tools(codec_type);
 
     if (codec_type == IMP_ENC_TYPE_JPEG) {
         attr->encAttr.maxPicWidth = (uint16_t)width;
@@ -1952,6 +2023,12 @@ static int channel_encoder_init(EncChannel *chn) {
     uint32_t fps_den = chn->attr.rcAttr.outFrmRate.frmRateDen;
     uint32_t gop = chn->attr.gopAttr.gopLength;
     uint32_t initial_qp = imp_encoder_default_qp(codec_type, -1);
+    uint8_t level = chn->attr.encAttr.level;
+    uint8_t tier = chn->attr.encAttr.tier;
+    uint32_t pic_format = chn->attr.encAttr.picFormat;
+    uint32_t enc_options = chn->attr.encAttr.encOptions;
+    uint32_t enc_tools = chn->attr.encAttr.encTools;
+    uint32_t fps_clk = 0;
 
     switch (rc_mode) {
     case IMP_ENC_RC_MODE_FIXQP:
@@ -1969,40 +2046,69 @@ static int channel_encoder_init(EncChannel *chn) {
     }
     if (bitrate_kbps == 0)
         bitrate_kbps = imp_encoder_default_bitrate_kbps(0);
+    if (fps_num == 0)
+        fps_num = 25;
+    if (fps_den == 0)
+        fps_den = 1;
 
-    /* The profile enum already contains the vendor format:
-     * - Lower byte is the profile IDC (66/77/100 for AVC, 1 for HEVC)
-     * - Upper byte is the encoder type (0=AVC, 1=HEVC, 4=JPEG)
-     * OEM codec params also keep the full profile word at offset 0x20.
+    fps_clk = fps_den * 1000U;
+    if (fps_clk == 0)
+        fps_clk = 1000U;
+    if (fps_clk > 0xffffU)
+        fps_clk = 0xffffU;
+    if (level == 0)
+        level = imp_encoder_default_level(codec_type);
+    if (pic_format == 0)
+        pic_format = imp_encoder_default_pic_format(codec_type);
+    if (enc_options == 0)
+        enc_options = imp_encoder_default_enc_options(codec_type);
+    if (enc_tools == 0)
+        enc_tools = imp_encoder_default_enc_tools(codec_type);
+
+    /* OEM layout:
+     *   0x08/0x0c width, 0x0a/0x0e height
+     *   0x14 pic format
+     *   0x20 profile enum, 0x24 level, 0x25 tier
+     *   0x30 enc options, 0x34 enc tools
+     *   0x6c.. RC params
+     *   0x78 fps num, 0x7a fps denominator * 1000
+     *   0xac.. GOP block
      */
-    uint32_t profile_idc = profile_enum & 0xFF;
-
-    /* Override codec parameters with values from channel attributes */
-    *(uint32_t*)(codec_params + 0x20) = (uint32_t)profile_enum;
-    *(uint32_t*)(codec_params + 0x14) = width;       /* Width at offset 0x14 */
-    *(uint32_t*)(codec_params + 0x18) = height;      /* Height at offset 0x18 */
-    *(uint32_t*)(codec_params + 0x24) = profile_idc; /* Profile at offset 0x24 */
-    *(uint32_t*)(codec_params + 0x30) = bitrate_kbps;/* OEM SetDefaultParam uses kbps */
-    *(uint32_t*)(codec_params + 0x7c) = fps_num;     /* FPS numerator at offset 0x7c */
-    *(uint32_t*)(codec_params + 0x80) = fps_den;     /* FPS denominator at offset 0x80 */
-    *(uint32_t*)(codec_params + 0xb0) = gop;         /* GOP length at offset 0xb0 */
-    *(uint32_t*)(codec_params + 0x38) = initial_qp;
+    *(uint16_t *)(codec_params + 0x08) = (uint16_t)width;
+    *(uint16_t *)(codec_params + 0x0a) = (uint16_t)height;
+    *(uint16_t *)(codec_params + 0x0c) = (uint16_t)width;
+    *(uint16_t *)(codec_params + 0x0e) = (uint16_t)height;
+    *(uint32_t *)(codec_params + 0x14) = pic_format;
+    *(uint32_t *)(codec_params + 0x20) = (uint32_t)profile_enum;
+    *(uint8_t  *)(codec_params + 0x24) = level;
+    *(uint8_t  *)(codec_params + 0x25) = tier;
+    *(uint32_t *)(codec_params + 0x30) = enc_options;
+    *(uint32_t *)(codec_params + 0x34) = enc_tools;
+    *(uint16_t *)(codec_params + 0x78) = (uint16_t)fps_num;
+    *(uint16_t *)(codec_params + 0x7a) = (uint16_t)fps_clk;
+    memset(codec_params + 0xac, 0, 0x1c);
+    memcpy(codec_params + 0xac, &chn->attr.gopAttr,
+           sizeof(chn->attr.gopAttr) < 0x1c ? sizeof(chn->attr.gopAttr) : 0x1c);
+    if (gop != 0)
+        *(uint16_t *)(codec_params + 0xb0) = (uint16_t)gop;
+    *(uint16_t *)(codec_params + 0x84) = (uint16_t)initial_qp;
 
     if (codec_type == IMP_ENC_TYPE_JPEG) {
         imp_encoder_apply_jpeg_codec_defaults(codec_params);
     }
 
-    if (channel_encoder_set_rc_param(codec_params, &chn->attr.rcAttr) < 0) {
+    if (channel_encoder_set_rc_param(codec_params + 0x6c, &chn->attr.rcAttr) < 0) {
         LOG_ENC("channel_encoder_init: failed to map RC params");
         free(codec_params);
         return -1;
     }
 
-    LOG_ENC("channel_encoder_init: %dx%d, profile=0x%x->0x%x, fps=%d/%d, gop=%d, bitrate=%u kbps, share=%d",
-            width, height, profile_enum, profile_idc, fps_num, fps_den, gop,
-            bitrate_kbps, chn->bufshare_chn);
-    enc_kmsg("channel_encoder_init chn=%d %ux%u profile=0x%x fps=%u/%u gop=%u bitrate=%u",
-             chn->chn_id, width, height, profile_enum, fps_num, fps_den, gop, bitrate_kbps);
+    LOG_ENC("channel_encoder_init: %dx%d, profile=0x%x, lvl=%u, fmt=0x%x, fps=%u/%u, gop=%u, bitrate=%u kbps, share=%d",
+            width, height, profile_enum, level, pic_format, fps_num, fps_den,
+            gop, bitrate_kbps, chn->bufshare_chn);
+    enc_kmsg("channel_encoder_init chn=%d %ux%u profile=0x%x lvl=%u fmt=0x%x fps=%u/%u clk=%u gop=%u bitrate=%u",
+             chn->chn_id, width, height, profile_enum, level, pic_format,
+             fps_num, fps_den, fps_clk, gop, bitrate_kbps);
 
     /* Create codec instance */
     enc_kmsg("channel_encoder_init pre-create chn=%d codec_params=%p", chn->chn_id, codec_params);

@@ -10,6 +10,7 @@
 #include "alcodec/al_rtos.h"
 #include "alcodec/al_types.h"
 #include <imp/imp_encoder.h>
+#include "imp_log_int.h"
 
 extern char _gp;
 extern int32_t __assert(const char *expression, const char *file, int32_t line, const char *function, ...);
@@ -80,6 +81,7 @@ int32_t AL_Get_StreamMngrCtx(int32_t *arg1);
 int32_t AL_Get_StreampCtx(int32_t *arg1);
 int32_t AL_Set_StreampCtx(int32_t *arg1, void *arg2);
 int32_t AL_Set_StreamMngrCtx(int32_t *arg1, void *arg2);
+int32_t AL_StreamMngr_Init(void *arg1); /* forward decl, ported by T<N> later */
 int32_t AL_Codec_Encode_Commit_FilledFifo(int32_t *arg1);
 int32_t AL_Codec_Encode_GetStream(void *arg1, void **arg2, void **arg3);
 int32_t AL_Codec_Encode_ReleaseStream(void *arg1, void *arg2, void *arg3);
@@ -143,6 +145,7 @@ int32_t AL_Codec_Encode_PrimeStreamBuffers(int32_t *arg1)
     int32_t *sched_enc;
     void *stream_mutex;
     void *chctx;
+    int32_t stream_ctx;
 
     if (arg1 == NULL)
         return -1;
@@ -162,6 +165,35 @@ int32_t AL_Codec_Encode_PrimeStreamBuffers(int32_t *arg1)
     sched_enc = (int32_t *)(intptr_t)(sched + 4);
     stream_mutex = read_ptr(enc_ctx, 0xf254);
     chctx = GetChMngrCtx(sched_enc, (char)chan);
+    stream_ctx = (chctx != NULL) ? read_s32(chctx, 0x2a50) : 0;
+    {
+        int kfd = open("/dev/kmsg", O_WRONLY);
+        if (kfd >= 0) {
+            char b[224];
+            int n = snprintf(b, sizeof(b),
+                             "libimp/ENC: PrimeStreamBuffers ctx=%p chan=%d chctx=%p mgr=%p mutex=%p slot=%d\n",
+                             arg1, chan, chctx, (void *)(intptr_t)stream_ctx, stream_mutex,
+                             enc_ctx ? read_s32(enc_ctx, 0xdbb0) : -1);
+            if (n > 0) write(kfd, b, n);
+            close(kfd);
+        }
+    }
+    if (chctx != NULL && stream_ctx == 0) {
+        int32_t init_rc = AL_StreamMngr_Init((uint8_t *)chctx + 0x2a50);
+
+        stream_ctx = read_s32(chctx, 0x2a50);
+        {
+            int kfd = open("/dev/kmsg", O_WRONLY);
+            if (kfd >= 0) {
+                char b[192];
+                int n = snprintf(b, sizeof(b),
+                                 "libimp/ENC: PrimeStreamBuffers repair-mgr chctx=%p rc=%d new=%p\n",
+                                 chctx, init_rc, (void *)(intptr_t)stream_ctx);
+                if (n > 0) write(kfd, b, n);
+                close(kfd);
+            }
+        }
+    }
     if (stream_mutex == NULL || chctx == NULL)
         return -1;
 
@@ -172,6 +204,8 @@ int32_t AL_Codec_Encode_PrimeStreamBuffers(int32_t *arg1)
         uint32_t size;
         void *rate_meta;
         int32_t side = 0;
+        int32_t stream_off;
+        int32_t stream_avail;
         int32_t slot;
         int32_t next;
         { int kfd = open("/dev/kmsg", O_WRONLY); if (kfd >= 0) { char b[128]; int n = snprintf(b, sizeof(b), "libimp/ENC: deferred-PutStreamBuffer idx=%d buf=%p\n", idx, buf); if (n>0) write(kfd, b, n); close(kfd); } }
@@ -189,6 +223,9 @@ int32_t AL_Codec_Encode_PrimeStreamBuffers(int32_t *arg1)
             return -1;
         }
 
+        stream_off = 0x200;
+        stream_avail = size > 0x200U ? (int32_t)(size - 0x200U) : 0;
+
         Rtos_GetMutex(stream_mutex);
         slot = read_s32(lane_ctx, 0xdbb0);
         next = (slot + 1) % 0x140;
@@ -197,9 +234,9 @@ int32_t AL_Codec_Encode_PrimeStreamBuffers(int32_t *arg1)
         AL_Buffer_Ref(buf);
         Rtos_ReleaseMutex(stream_mutex);
 
-        { int kfd = open("/dev/kmsg", O_WRONLY); if (kfd >= 0) { char b[160]; int n = snprintf(b, sizeof(b), "libimp/ENC: deferred-PutStreamBuffer push phys=0x%x virt=%p size=%u meta7=%p side=%p\n", phys, virt, size, rate_meta, (void *)(intptr_t)side); if (n>0) write(kfd, b, n); close(kfd); } }
+        { int kfd = open("/dev/kmsg", O_WRONLY); if (kfd >= 0) { char b[192]; int n = snprintf(b, sizeof(b), "libimp/ENC: deferred-PutStreamBuffer push phys=0x%x virt=%p size=%u off=%d avail=%d meta7=%p side=%p\n", phys, virt, size, stream_off, stream_avail, rate_meta, (void *)(intptr_t)side); if (n>0) write(kfd, b, n); close(kfd); } }
         if (AL_EncChannel_PushStreamBuffer(chctx, (int32_t)phys, (int32_t)(intptr_t)virt,
-                                           (int32_t)size, 0, (int32_t)size, 0, 0, side) == 0) {
+                                           (int32_t)size, stream_off, stream_avail, 0, 0, side) == 0) {
             AL_Buffer_Unref(buf);
             return -1;
         }
@@ -903,6 +940,7 @@ int32_t AL_Codec_Encode_Create(void **arg1, void *arg2)
     int32_t a2_16;
     int32_t a2_17;
     const char *a3_20;
+    const char *fail_reason = "unknown";
 
     if (g_pCodec == NULL) {
         a2_17 = 0x313;
@@ -967,18 +1005,25 @@ int32_t AL_Codec_Encode_Create(void **arg1, void *arg2)
             if ((uint32_t)(get_cpu_id() - 0x15) >= 2U) {
                 a2_1 = read_u16(s0_1, 0xc);
                 if (a2_1 - 0x10 >= 0xa11U) {
+                    fail_reason = "invalid resolution";
 label_89f34:
                     a3_1 = read_u16(s0_1, 0xe);
 label_89ed8:
                     fprintf(stderr, "invalid resolution(%dx%d) to encode\n", a2_1, a3_1);
 label_897e8:
+                    LOG_CODEC("Create failed: %s profile=0x%x picfmt=0x%x size=%ux%u rc=0x%x br=%d gop=%d",
+                              fail_reason, read_s32(s0_1, 0x24), read_s32(s0_1, 0x18),
+                              (unsigned)read_u16(s0_1, 0x0c), (unsigned)read_u16(s0_1, 0x0e),
+                              read_s32(s0_1, 0x68), read_s32(s0_1, 0x7c), read_s32(s0_1, 0xac));
                     fwrite("ValidateParam failed\n", 1, 0x15, stderr);
                     Rtos_Free(s0_1);
                     return -1;
                 }
                 a3_1 = read_u16(s0_1, 0xe);
-                if ((a2_1 & 0xf) != 0 || a3_1 - 8 >= 0xff9U)
+                if ((a2_1 & 0xf) != 0 || a3_1 - 8 >= 0xff9U) {
+                    fail_reason = "invalid resolution alignment";
                     goto label_89ed8;
+                }
                 {
                     int32_t a2_2 = read_s32(s0_1, 0x24);
                     if (a2_2 == 0x42 || a2_2 == 0x4d || a2_2 == 0x64) {
@@ -994,6 +1039,7 @@ label_896ac:
                     } else if (a2_2 != 0x1000001) {
                         if (a2_2 == 0x4000000)
                             goto label_896d8;
+                        fail_reason = "invalid profile";
                         fprintf(stderr, "invalid profile(0x%x), only support avc baseline, avc main, avc high, hevc high, jpeg\n", a2_2);
                         goto label_897e8;
                     } else {
@@ -1016,13 +1062,18 @@ label_896ac:
                 int32_t v0_13 = read_s32(s0_1, 0x24);
                 if (v0_13 != 0x4000000) {
                     a2_1 = read_u16(s0_1, 0xc);
-                    if (a2_1 - 0x10 >= 0xff1U)
+                    if (a2_1 - 0x10 >= 0xff1U) {
+                        fail_reason = "invalid resolution";
                         goto label_89f34;
+                    }
                     a3_1 = read_u16(s0_1, 0xe);
-                    if ((a2_1 & 0xf) != 0 || a3_1 - 8 >= 0xff9U)
+                    if ((a2_1 & 0xf) != 0 || a3_1 - 8 >= 0xff9U) {
+                        fail_reason = "invalid resolution alignment";
                         goto label_89ed8;
+                    }
                     if (v0_13 == 0x42 || v0_13 == 0x4d || v0_13 == 0x64)
                         goto label_896ac;
+                    fail_reason = "invalid profile";
                     fprintf(stderr, "invalid profile(0x%x), only support avc baseline, avc main, avc high, jpeg\n", v0_13);
                     goto label_897e8;
                 }
@@ -1044,6 +1095,7 @@ label_896d8:
         {
             int32_t a2_3 = read_s32(s0_1, 0x18);
             if ((a2_3 & 0xfffffeff) != 0x88 && a2_3 != 0x288) {
+                fail_reason = "invalid picture format";
                 fprintf(stderr, "invalid ePicFormat(0x%x) to encode\n", a2_3);
                 goto label_897e8;
             }
@@ -1051,11 +1103,13 @@ label_896d8:
 
         { int kfd = open("/dev/kmsg", O_WRONLY); if (kfd >= 0) { const char *m = "libimp/ENC: reached ValidateRcParam\n"; write(kfd, m, strlen(m)); close(kfd); } }
         if (AL_Codec_Encode_ValidateRcParam_isra_1((int32_t *)(s0_1 + 0x120), (int32_t *)(s0_1 + 0x124), s0_1 + 8, (int32_t *)(s0_1 + 0x70), 0.0, 1.2, read_s32(s0_1, 0x768)) < 0) {
+            fail_reason = "invalid rc params";
             { int kfd = open("/dev/kmsg", O_WRONLY); if (kfd >= 0) { const char *m = "libimp/ENC: FAIL rcParam\n"; write(kfd, m, strlen(m)); close(kfd); } }
             fwrite("valid rcParam failed\n", 1, 0x15, stderr);
             goto label_897e8;
         }
         if (AL_Codec_Encode_ValidateGopParam(s0_1 + 8, (int32_t *)(s0_1 + 0xb0)) < 0) {
+            fail_reason = "invalid gop params";
             { int kfd = open("/dev/kmsg", O_WRONLY); if (kfd >= 0) { const char *m = "libimp/ENC: FAIL gopParam\n"; write(kfd, m, strlen(m)); close(kfd); } }
             fwrite("valid gopParam failed\n", 1, 0x16, stderr);
             goto label_897e8;
@@ -1065,6 +1119,7 @@ label_896d8:
             int32_t i = 0;
             do {
                 if (AL_Settings_CheckCoherency(s0_1 + 8, s1_1, read_s32(s0_1, 0x768), stderr) == -1) {
+                    fail_reason = "settings coherency";
                     { int kfd = open("/dev/kmsg", O_WRONLY); if (kfd >= 0) { const char *m = "libimp/ENC: FAIL coherency\n"; write(kfd, m, strlen(m)); close(kfd); } }
                     fwrite("Fatal coherency error in settings\n", 1, 0x22, stderr);
                     goto label_897e8;
@@ -1074,6 +1129,7 @@ label_896d8:
             } while (i < read_s32(s0_1, 0x12c));
         }
         if (AL_Settings_CheckValidity(s0_1 + 8, s0_1 + 8, stderr) != 0) {
+            fail_reason = "settings validity";
             { int kfd = open("/dev/kmsg", O_WRONLY); if (kfd >= 0) { const char *m = "libimp/ENC: FAIL CheckValidity\n"; write(kfd, m, strlen(m)); close(kfd); } }
             fwrite("AL_Settings_CheckValidity failed\n", 1, 0x21, stderr);
             goto label_897e8;
@@ -1101,12 +1157,23 @@ label_896d8:
                 s1_2 = AL_DmaAlloc_GetAllocator(v0_31);
 
             { int kfd = open("/dev/kmsg", O_WRONLY); if (kfd >= 0) { char b[160]; int n = snprintf(b, sizeof(b), "libimp/ENC: pre-Encoder_Create sch=%p alloc=%p settings=%p cbk=%p arg=%p\n", read_ptr(g_pCodec, 8), s1_2, s0_1+8, read_ptr(s0_1, 0x7a0), read_ptr(s0_1, 0x7a4)); if (n>0) write(kfd, b, n); close(kfd); } }
-            if ((uint32_t)AL_Encoder_Create((int32_t **)(s0_1 + 0x798), (int32_t)(intptr_t)read_ptr(g_pCodec, 8), (int32_t)(intptr_t)s1_2, s0_1 + 8, (int32_t)(intptr_t)read_ptr(s0_1, 0x7a0), (int32_t)(intptr_t)read_ptr(s0_1, 0x7a4)) >= 0x80U) {
-                { int kfd = open("/dev/kmsg", O_WRONLY); if (kfd >= 0) { char b[128]; int n = snprintf(b, sizeof(b), "libimp/ENC: FAIL AL_Encoder_Create errorCode=0x%x\n", read_s32(s0_1, 0x798)); if (n>0) write(kfd, b, n); close(kfd); } }
-                fprintf(stderr, "AL_Encoder_Create failed, errorCode=%x:%s\n", read_s32(s0_1, 0x798), AL_Encoder_ErrorToString(read_s32(s0_1, 0x798)));
+            int32_t enc_create_ret =
+                AL_Encoder_Create((int32_t **)(s0_1 + 0x798), (int32_t)(intptr_t)read_ptr(g_pCodec, 8),
+                                  (int32_t)(intptr_t)s1_2, s0_1 + 8,
+                                  (int32_t)(intptr_t)read_ptr(s0_1, 0x7a0),
+                                  (int32_t)(intptr_t)read_ptr(s0_1, 0x7a4));
+            if ((uint32_t)enc_create_ret >= 0x80U) {
+                { int kfd = open("/dev/kmsg", O_WRONLY); if (kfd >= 0) { char b[128]; int n = snprintf(b, sizeof(b), "libimp/ENC: FAIL AL_Encoder_Create errorCode=0x%x\n", enc_create_ret); if (n>0) write(kfd, b, n); close(kfd); } }
+                LOG_CODEC("Create failed: AL_Encoder_Create error=0x%x (%s) profile=0x%x size=%ux%u rc=0x%x br=%d gop=%d",
+                          enc_create_ret, AL_Encoder_ErrorToString(enc_create_ret),
+                          read_s32(s0_1, 0x24), (unsigned)read_u16(s0_1, 0x0c),
+                          (unsigned)read_u16(s0_1, 0x0e), read_s32(s0_1, 0x68),
+                          read_s32(s0_1, 0x7c), read_s32(s0_1, 0xac));
+                fprintf(stderr, "AL_Encoder_Create failed, errorCode=%x:%s\n", enc_create_ret,
+                        AL_Encoder_ErrorToString(enc_create_ret));
                 Rtos_DeleteEvent(read_ptr(s0_1, 0x79c));
                 Rtos_Free(s0_1);
-                return -1;
+                return -enc_create_ret;
             }
             { int kfd = open("/dev/kmsg", O_WRONLY); if (kfd >= 0) { char b[128]; int n = snprintf(b, sizeof(b), "libimp/ENC: Encoder_Create OK enc=%p\n", *(void **)(s0_1 + 0x798)); if (n>0) write(kfd, b, n); close(kfd); } }
 
@@ -1136,6 +1203,9 @@ label_896d8:
             GetStreamBufPoolConfig((int32_t *)(s0_1 + 0x7ac), s0_1 + 8, 0, read_u8(s0_1, 0x76d), (double)var_88, (double)var_84, 1.2, 0, 0);
             { int kfd = open("/dev/kmsg", O_WRONLY); if (kfd >= 0) { char b[160]; int n = snprintf(b, sizeof(b), "libimp/ENC: pre-BufPool_Init cfg cnt=%d size=%d aux=%d\n", read_s32(s0_1, 0x7ac), read_s32(s0_1, 0x7b0), read_s32(s0_1, 0x7b4)); if (n>0) write(kfd, b, n); close(kfd); } }
             if (AL_BufPool_Init(s0_1 + 0x7c0, s1_2, (int32_t *)(s0_1 + 0x7ac)) == 0) {
+                LOG_CODEC("Create failed: BufPool_Init profile=0x%x size=%ux%u stream_cnt=%d stream_sz=%d",
+                          read_s32(s0_1, 0x24), (unsigned)read_u16(s0_1, 0x0c),
+                          (unsigned)read_u16(s0_1, 0x0e), read_s32(s0_1, 0x7ac), read_s32(s0_1, 0x7b0));
                 fwrite("AL_BufPool_Init failed\n", 1, 0x17, stderr);
                 AL_Encoder_Destroy(*(int32_t **)(s0_1 + 0x798));
                 Rtos_DeleteEvent(read_ptr(s0_1, 0x79c));
@@ -1207,6 +1277,9 @@ label_896d8:
             GetPixMapBufPollConfig((int32_t *)(s0_1 + 0x840), (int32_t *)var_5c, read_s32(s0_1, 0x1c), read_s32(s0_1, 0x91c), var_84, -1, (char)var_80);
             { int kfd = open("/dev/kmsg", O_WRONLY); if (kfd >= 0) { char b[160]; int n = snprintf(b, sizeof(b), "libimp/ENC: pre-PixMapBufPoolInit cnt=%d size=%d\n", read_s32(s0_1, 0x840), read_s32(s0_1, 0x844)); if (n>0) write(kfd, b, n); close(kfd); } }
             if (PixMapBufPollInit(s0_1 + 0x8e0, read_ptr(g_pCodec, 4), (int32_t *)(s0_1 + 0x840)) == 0) {
+                LOG_CODEC("Create failed: PixMapBufPoolInit profile=0x%x size=%ux%u src_cnt=%d src_sz=%d",
+                          read_s32(s0_1, 0x24), (unsigned)read_u16(s0_1, 0x0c),
+                          (unsigned)read_u16(s0_1, 0x0e), read_s32(s0_1, 0x840), read_s32(s0_1, 0x844));
                 fwrite("PixMapBufPollInit failed\n", 1, 0x19, stderr);
                 AL_BufPool_Deinit(s0_1 + 0x7c0);
                 AL_Encoder_Destroy(*(int32_t **)(s0_1 + 0x798));
@@ -1599,6 +1672,15 @@ int32_t AL_Codec_Encode_SetBitRate(void *arg1, int32_t arg2, int32_t arg3)
 
 int32_t AL_Codec_Encode_RestartGop(void *arg1)
 {
+    AL_Encoder_RestartGop(*(int32_t **)((uint8_t *)arg1 + 0x798));
+    return 0;
+}
+
+int32_t AL_Codec_Encode_RequestIDR(void *arg1)
+{
+    if (arg1 == NULL)
+        return -1;
+
     AL_Encoder_RestartGop(*(int32_t **)((uint8_t *)arg1 + 0x798));
     return 0;
 }

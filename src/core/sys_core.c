@@ -1,4 +1,5 @@
 #include <fcntl.h>
+#include <signal.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdarg.h>
@@ -24,6 +25,90 @@ static int32_t soc_id_8648 = -1;
 static int32_t cppsr_8647 = -1;
 static int32_t subsoctype_8649 = -1;
 static int32_t subremark_8651 = -1;
+static int fatal_kmsg_fd = -1;
+
+static size_t fatal_append_str(char *buf, size_t pos, size_t cap, const char *str)
+{
+    while (*str != '\0' && pos < cap) {
+        buf[pos++] = *str++;
+    }
+    return pos;
+}
+
+static size_t fatal_append_hex(char *buf, size_t pos, size_t cap, uintptr_t value)
+{
+    static const char hex[] = "0123456789abcdef";
+    int shift;
+
+    pos = fatal_append_str(buf, pos, cap, "0x");
+    for (shift = (int)(sizeof(uintptr_t) * 8) - 4; shift >= 0 && pos < cap; shift -= 4) {
+        buf[pos++] = hex[(value >> shift) & 0xfU];
+    }
+    return pos;
+}
+
+static const char *fatal_sig_name(int sig)
+{
+    switch (sig) {
+    case SIGSEGV:
+        return "SIGSEGV";
+    case SIGBUS:
+        return "SIGBUS";
+    case SIGILL:
+        return "SIGILL";
+    case SIGABRT:
+        return "SIGABRT";
+    case SIGFPE:
+        return "SIGFPE";
+    default:
+        return "SIGNAL";
+    }
+}
+
+static void fatal_signal_handler(int sig, siginfo_t *info, void *ucontext)
+{
+    char buf[160];
+    size_t len = 0;
+
+    (void)ucontext;
+
+    len = fatal_append_str(buf, len, sizeof(buf), "libimp/FATAL: ");
+    len = fatal_append_str(buf, len, sizeof(buf), fatal_sig_name(sig));
+    if (info != NULL) {
+        len = fatal_append_str(buf, len, sizeof(buf), " code=");
+        len = fatal_append_hex(buf, len, sizeof(buf), (uintptr_t)(uint32_t)info->si_code);
+        len = fatal_append_str(buf, len, sizeof(buf), " addr=");
+        len = fatal_append_hex(buf, len, sizeof(buf), (uintptr_t)info->si_addr);
+    }
+    if (len < sizeof(buf)) {
+        buf[len++] = '\n';
+    }
+    if (fatal_kmsg_fd >= 0) {
+        write(fatal_kmsg_fd, buf, len);
+    }
+
+    _exit(128 + sig);
+}
+
+static __attribute__((constructor)) void install_fatal_signal_handlers(void)
+{
+    struct sigaction sa;
+
+    if (fatal_kmsg_fd < 0) {
+        fatal_kmsg_fd = open("/dev/kmsg", O_WRONLY | O_CLOEXEC);
+    }
+
+    memset(&sa, 0, sizeof(sa));
+    sa.sa_sigaction = fatal_signal_handler;
+    sigemptyset(&sa.sa_mask);
+    sa.sa_flags = SA_SIGINFO | SA_RESETHAND;
+
+    sigaction(SIGSEGV, &sa, NULL);
+    sigaction(SIGBUS, &sa, NULL);
+    sigaction(SIGILL, &sa, NULL);
+    sigaction(SIGABRT, &sa, NULL);
+    sigaction(SIGFPE, &sa, NULL);
+}
 
 static void sysbind_trace(const char *fmt, ...)
 {

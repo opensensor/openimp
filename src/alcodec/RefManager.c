@@ -54,6 +54,71 @@ int32_t AL_RefMngr_GetRefBufferFromPOC(void *arg1, int32_t arg2);
 int32_t AL_RefMngr_GetRefInfo(int32_t arg1, int32_t arg2, void *arg3, void *arg4, int32_t *arg5);
 
 #define REFM_KMSG(fmt, ...) IMP_LOG_INFO("REFM", fmt, ##__VA_ARGS__)
+#define REFM_MUTEX_OFFSET 0x784U
+#define REFM_MIN_VALID_PTR 0x10000U
+
+static void *AL_RefMngr_GetMutexPtr(uint8_t *ctx)
+{
+    return *(void **)(ctx + REFM_MUTEX_OFFSET);
+}
+
+static void *AL_RefMngr_EnsureMutex(uint8_t *ctx, const char *site)
+{
+    void *mutex = AL_RefMngr_GetMutexPtr(ctx);
+
+    if ((uintptr_t)mutex > REFM_MIN_VALID_PTR) {
+        return mutex;
+    }
+
+    REFM_KMSG("%s repair-mutex ctx=%p old=%p used=%d rec=%d out=%d free=%d",
+              site, ctx, mutex, *(int32_t *)(ctx + 0x698U), *(int32_t *)(ctx + 0x6b0U),
+              *(int32_t *)(ctx + 0x760U), *(int32_t *)(ctx + 0x6b8U));
+    mutex = Rtos_CreateMutex();
+    if ((uintptr_t)mutex <= REFM_MIN_VALID_PTR) {
+        REFM_KMSG("%s repair-mutex failed ctx=%p new=%p", site, ctx, mutex);
+        return NULL;
+    }
+
+    *(void **)(ctx + REFM_MUTEX_OFFSET) = mutex;
+    REFM_KMSG("%s repair-mutex new=%p ctx=%p", site, mutex, ctx);
+    return mutex;
+}
+
+static void *AL_RefMngr_Lock(uint8_t *ctx, const char *site)
+{
+    void *mutex = AL_RefMngr_EnsureMutex(ctx, site);
+
+    if (mutex != NULL) {
+        Rtos_GetMutex(mutex);
+    }
+
+    return mutex;
+}
+
+static uint32_t AL_RefMngr_Unlock(void *mutex)
+{
+    if (mutex == NULL) {
+        return 0;
+    }
+
+    return Rtos_ReleaseMutex(mutex);
+}
+
+static void AL_RefMngr_DeleteMutexSafe(uint8_t *ctx, const char *site)
+{
+    void *mutex = AL_RefMngr_GetMutexPtr(ctx);
+
+    if ((uintptr_t)mutex <= REFM_MIN_VALID_PTR) {
+        if (mutex != NULL) {
+            REFM_KMSG("%s skip-delete invalid mutex=%p ctx=%p", site, mutex, ctx);
+        }
+        *(void **)(ctx + REFM_MUTEX_OFFSET) = NULL;
+        return;
+    }
+
+    Rtos_DeleteMutex(mutex);
+    *(void **)(ctx + REFM_MUTEX_OFFSET) = NULL;
+}
 
 int32_t AL_sRefMngr_IncrementBufPtr(void *arg1, char arg2)
 {
@@ -76,6 +141,7 @@ uint32_t AL_sRefMngr_OutputBufPtr(void *arg1, char arg2, char arg3, int32_t arg4
 {
     uint8_t *ctx = (uint8_t *)arg1;
     uint32_t result = (uint32_t)*(int32_t *)(ctx + 0x764U);
+    void *mutex;
 
     if (result == 0U) {
         return result;
@@ -84,7 +150,10 @@ uint32_t AL_sRefMngr_OutputBufPtr(void *arg1, char arg2, char arg3, int32_t arg4
     {
         uint32_t s3 = (uint32_t)(uint8_t)arg2;
 
-        Rtos_GetMutex(*(void **)(ctx + 0x784U));
+        mutex = AL_RefMngr_Lock(ctx, "OutputBufPtr");
+        if (mutex == NULL) {
+            return 0;
+        }
 
         if (*(int32_t *)(ctx + 0x760U) >= *(int32_t *)(ctx + 0x698U)) {
             __assert("pRefCtx->iNumRecOut < pRefCtx->iNumFrm",
@@ -97,14 +166,12 @@ uint32_t AL_sRefMngr_OutputBufPtr(void *arg1, char arg2, char arg3, int32_t arg4
         if (Rtos_AtomicIncrement((int32_t *)(ctx + (((s3 + 0xbeU) << 3) + 8U))) > 0) {
             int32_t a2 = *(int32_t *)(ctx + 0x760U);
             uint8_t *v0_9 = ctx + (((uint32_t)((a2 + *(int32_t *)(ctx + 0x75cU)) % 0x14)) << 3) + 0x6bcU;
-            int32_t a0_8;
 
             v0_9[0] = (uint8_t)s3;
             v0_9[1] = (uint8_t)arg3;
             *(int32_t *)(v0_9 + 4) = arg4;
-            a0_8 = *(int32_t *)(ctx + 0x784U);
             *(int32_t *)(ctx + 0x760U) = a2 + 1;
-            return Rtos_ReleaseMutex((void *)(uintptr_t)a0_8);
+            return AL_RefMngr_Unlock(mutex);
         }
 
         AL_sRefMngr_IncrementBufID_part_0();
@@ -115,6 +182,7 @@ uint32_t AL_sRefMngr_OutputBufPtr(void *arg1, char arg2, char arg3, int32_t arg4
 int32_t AL_sRefMngr_ReleaseBufId(void *arg1, int32_t arg2)
 {
     uint8_t *ctx = (uint8_t *)arg1;
+    void *mutex;
 
     if (arg2 == 0xff) {
         return 0;
@@ -132,21 +200,22 @@ int32_t AL_sRefMngr_ReleaseBufId(void *arg1, int32_t arg2)
             return 1;
         }
 
-        Rtos_GetMutex(*(void **)(ctx + 0x784U));
+        mutex = AL_RefMngr_Lock(ctx, "ReleaseBufId");
+        if (mutex == NULL) {
+            return 0;
+        }
 
         {
             int32_t a1 = *(int32_t *)(ctx + 0x6b0U);
             int32_t v1 = *(int32_t *)(ctx + 0x6b8U);
             int32_t hi = (*(int32_t *)(ctx + 0x6b4U) + a1) % v1;
-            int32_t a0_5;
 
             if (v1 == 0) {
                 __builtin_trap();
             }
 
-            a0_5 = *(int32_t *)(ctx + 0x784U);
             *(int32_t *)(ctx + 0x6b0U) = a1 + 1;
-            Rtos_ReleaseMutex((void *)(uintptr_t)a0_5);
+            AL_RefMngr_Unlock(mutex);
             *(ctx + hi + 0x69cU) = (uint8_t)arg2;
             return 1;
         }
@@ -234,27 +303,29 @@ int32_t AL_RefMngr_Init(void *arg1, int32_t *arg2, int32_t arg3, int32_t arg4)
         *(int32_t *)(ctx + 0x75cU) = 0;
         *(int32_t *)(ctx + 0x760U) = 0;
         *(int32_t *)(ctx + 0x764U) = 0;
+        *(void **)(ctx + REFM_MUTEX_OFFSET) = NULL;
         AL_DPB_Init(arg1, (int32_t)a1_2, arg4, arg3, a0_3, (int32_t)(uintptr_t)arg1,
                     (int32_t)(uintptr_t)AL_sRefMngr_IncrementBufPtr,
                     (int32_t)(uintptr_t)AL_sRefMngr_ReleaseBufPtr,
                     (int32_t)(uintptr_t)AL_sRefMngr_OutputBufPtr);
-        *(void **)(ctx + 0x784U) = Rtos_CreateMutex();
-        return 1;
+        *(void **)(ctx + REFM_MUTEX_OFFSET) = Rtos_CreateMutex();
+        REFM_KMSG("Init ctx=%p mutex=%p rec=%dx%d size=%d mv=%d",
+                  ctx, AL_RefMngr_GetMutexPtr(ctx), *(int32_t *)(ctx + 0x768U), *(int32_t *)(ctx + 0x76cU),
+                  *(int32_t *)(ctx + 0x778U), *(int32_t *)(ctx + 0x780U));
+        return ((uintptr_t)AL_RefMngr_GetMutexPtr(ctx) > REFM_MIN_VALID_PTR) ? 1 : 0;
     }
 }
 
 int32_t AL_RefMngr_Deinit(void *arg1)
 {
     uint8_t *ctx = (uint8_t *)arg1;
-    int32_t a0;
 
     AL_DPB_Deinit(arg1);
-    a0 = *(int32_t *)(ctx + 0x784U);
     *(int32_t *)(ctx + 0x698U) = 0;
     *(int32_t *)(ctx + 0x6b0U) = 0;
     *(int32_t *)(ctx + 0x6b4U) = 0;
     *(int32_t *)(ctx + 0x6b8U) = 0;
-    Rtos_DeleteMutex((void *)(uintptr_t)a0);
+    AL_RefMngr_DeleteMutexSafe(ctx, "Deinit");
     return 0;
 }
 
@@ -278,8 +349,12 @@ int32_t AL_RefMngr_PushBuffer(void *arg1, int32_t arg2, int32_t arg3, uint32_t a
                               int32_t arg6)
 {
     uint8_t *ctx = (uint8_t *)arg1;
+    void *mutex;
 
-    Rtos_GetMutex(*(void **)(ctx + 0x784U));
+    mutex = AL_RefMngr_Lock(ctx, "PushBuffer");
+    if (mutex == NULL) {
+        return 0;
+    }
 
     {
         int32_t v0 = *(int32_t *)(ctx + 0x698U);
@@ -309,7 +384,7 @@ int32_t AL_RefMngr_PushBuffer(void *arg1, int32_t arg2, int32_t arg3, uint32_t a
             *(int32_t *)(ctx + 0x6b8U) += 1;
         }
 
-        Rtos_ReleaseMutex(*(void **)(ctx + 0x784U));
+        AL_RefMngr_Unlock(mutex);
         return result;
     }
 }
@@ -317,8 +392,12 @@ int32_t AL_RefMngr_PushBuffer(void *arg1, int32_t arg2, int32_t arg3, uint32_t a
 int32_t AL_RefMngr_GetNextRecPicture(void *arg1, int32_t *arg2)
 {
     uint8_t *ctx = (uint8_t *)arg1;
+    void *mutex;
 
-    Rtos_GetMutex(*(void **)(ctx + 0x784U));
+    mutex = AL_RefMngr_Lock(ctx, "GetNextRecPicture");
+    if (mutex == NULL) {
+        return 0;
+    }
 
     {
         int32_t t0 = *(int32_t *)(ctx + 0x760U);
@@ -356,7 +435,7 @@ int32_t AL_RefMngr_GetNextRecPicture(void *arg1, int32_t *arg2)
             }
         }
 
-        Rtos_ReleaseMutex(*(void **)(ctx + 0x784U));
+        AL_RefMngr_Unlock(mutex);
         return result;
     }
 }
@@ -365,8 +444,12 @@ int32_t AL_RefMngr_MarkAsReadyForOutput(void *arg1, char arg2)
 {
     uint8_t *ctx = (uint8_t *)arg1;
     uint32_t s0 = (uint32_t)(uint8_t)arg2;
+    void *mutex;
 
-    Rtos_GetMutex(*(void **)(ctx + 0x784U));
+    mutex = AL_RefMngr_Lock(ctx, "MarkAsReadyForOutput");
+    if (mutex == NULL) {
+        return 0;
+    }
 
     if (s0 != 0xffU) {
         uint8_t *v0_2 = ctx + (s0 << 3);
@@ -374,7 +457,7 @@ int32_t AL_RefMngr_MarkAsReadyForOutput(void *arg1, char arg2)
         *(int32_t *)(v0_2 + 0x5fcU) |= 0x80;
     }
 
-    Rtos_ReleaseMutex(*(void **)(ctx + 0x784U));
+    AL_RefMngr_Unlock(mutex);
     return (0U < (s0 ^ 0xffU)) ? 1 : 0;
 }
 
@@ -388,13 +471,16 @@ uint32_t AL_RefMngr_GetNewFrmBuffer(void *arg1)
 
     {
         uint32_t result = (uint32_t)*(uint8_t *)(ctx + *(int32_t *)(ctx + 0x6b4U) + 0x69cU);
+        void *mutex;
 
-        Rtos_GetMutex(*(void **)(ctx + 0x784U));
+        mutex = AL_RefMngr_Lock(ctx, "GetNewFrmBuffer");
+        if (mutex == NULL) {
+            return 0xffU;
+        }
 
         {
             uint8_t *s3_3 = ctx + (((result + 0xbeU) << 3));
             int32_t v1_1;
-            int32_t a0_2;
 
             Rtos_AtomicDecrement((int32_t *)(ctx + 0x6b0U));
             v1_1 = *(int32_t *)(ctx + 0x6b8U);
@@ -403,9 +489,8 @@ uint32_t AL_RefMngr_GetNewFrmBuffer(void *arg1)
                 __builtin_trap();
             }
 
-            a0_2 = *(int32_t *)(ctx + 0x784U);
             *(int32_t *)(ctx + 0x6b4U) = (*(int32_t *)(ctx + 0x6b4U) + 1) % v1_1;
-            Rtos_ReleaseMutex((void *)(uintptr_t)a0_2);
+            AL_RefMngr_Unlock(mutex);
             Rtos_AtomicIncrement((int32_t *)(s3_3 + 8));
             *(int32_t *)(s3_3 + 0xc) = 0;
 
@@ -457,11 +542,15 @@ int32_t AL_RefMngr_Flush(void *arg1)
 {
     uint8_t *ctx = (uint8_t *)arg1;
     int32_t result;
+    void *mutex;
 
-    Rtos_GetMutex(*(void **)(ctx + 0x784U));
+    mutex = AL_RefMngr_Lock(ctx, "Flush");
+    if (mutex == NULL) {
+        return 0;
+    }
     AL_DPB_Flush(arg1, 0x14 - *(int32_t *)(ctx + 0x760U));
     result = (0 < *(int32_t *)(ctx + 0x760U)) ? 1 : 0;
-    Rtos_ReleaseMutex(*(void **)(ctx + 0x784U));
+    AL_RefMngr_Unlock(mutex);
     return result;
 }
 
@@ -782,11 +871,13 @@ int32_t AL_RefMngr_GetRefInfo(int32_t arg1, int32_t arg2, void *arg3, void *arg4
 int32_t AL_RefMngr_SetRecResolution(void *arg1, int32_t arg2, int32_t arg3)
 {
     uint8_t *ctx = (uint8_t *)arg1;
-    int32_t a0_1;
+    void *mutex;
 
-    Rtos_GetMutex(*(void **)(ctx + 0x784U));
-    a0_1 = *(int32_t *)(ctx + 0x784U);
+    mutex = AL_RefMngr_Lock(ctx, "SetRecResolution");
+    if (mutex == NULL) {
+        return 0;
+    }
     *(int32_t *)(ctx + 0x768U) = arg2;
     *(int32_t *)(ctx + 0x76cU) = arg3;
-    return Rtos_ReleaseMutex((void *)(uintptr_t)a0_1);
+    return AL_RefMngr_Unlock(mutex);
 }

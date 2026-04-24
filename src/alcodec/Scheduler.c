@@ -33,6 +33,8 @@ struct AL_IpCtrl {
     const AL_IpCtrlVtable *vtable;
 };
 
+extern void AL_SrcReorder_Cancel(void *arg1, int32_t arg2);
+
 typedef struct AL_EncCoreCtxCompat {
     AL_IpCtrl *ip_ctrl;   /* +0x00 */
     int32_t cmd_regs_1;   /* +0x04 */
@@ -82,11 +84,13 @@ typedef struct AL_EncCoreCtxCompat {
 #define CH_TRACE_CB_OFF 0x12fc4
 #define CH_TRACE_CTX_OFF 0x12fc8
 
-#define LIVE_T31_FORCE_SINGLE_CORE_AVC 1
+#define LIVE_T31_FORCE_SINGLE_CORE_AVC 0
 #define LIVE_T31_FORCE_DUAL_PUSH_AVC 1
+#define LIVE_T31_SKIP_READY_DYNRES_LIVE 1
 #define LIVE_T31_DELAYED_POST_CL_PROBE 0
 #define LIVE_T31_AVC_HEADER_BUDGET 512
 #define LIVE_T31_VERBOSE_REQ_WINDOW 0
+#define LIVE_T31_RECOVER_ZERO_BYTE_SECTIONS 1
 
 int32_t AL_DmaAlloc_FlushCache(int32_t arg1, int32_t arg2, int32_t arg3); /* forward decl */
 
@@ -729,6 +733,17 @@ static void RemapLiveT31Irq4(void *core_ctx, void (*cb)(void *), const char *tag
         return;
     }
 
+    /*
+     * The OEM init path seeds core0 on IRQ slots 0/2, but the live T31 AVC
+     * path we are driving completes on slot 4. Leaving slot 0 armed causes
+     * a stray early EndEncoding on subsequent frames, so explicitly retire
+     * the legacy core0 callbacks before installing the remapped handler.
+     */
+    if (core->core_id == 0U) {
+        core->ip_ctrl->vtable->RegisterCallBack(core->ip_ctrl, NULL, NULL, 0);
+        core->ip_ctrl->vtable->RegisterCallBack(core->ip_ctrl, NULL, NULL, 2);
+    }
+
     core->ip_ctrl->vtable->RegisterCallBack(core->ip_ctrl, cb, core_ctx, 4);
     ENC_KMSG("%s remap-irq4 core=%u ctx=%p cb=%p",
              tag ? tag : "irq4", (unsigned)core->core_id, core_ctx, cb);
@@ -749,9 +764,9 @@ static void ApplyLiveT31Core0LegacyIrqMask(void *core_ctx, const char *tag)
 
     ip = core->ip_ctrl;
     before = (uint32_t)ip->vtable->ReadRegister(ip, 0x8014);
-    ip->vtable->WriteRegister(ip, 0x8014, 0x00000011U);
+    ip->vtable->WriteRegister(ip, 0x8014, 0x00000010U);
     after = (uint32_t)ip->vtable->ReadRegister(ip, 0x8014);
-    ENC_KMSG("%s legacy-core0-irq-mask old=0x%08x forced=0x00000011 rb=0x%08x",
+    ENC_KMSG("%s legacy-core0-irq-mask old=0x%08x forced=0x00000010 rb=0x%08x",
              tag ? tag : "irq", before, after);
 }
 
@@ -775,6 +790,16 @@ static void PushStreamBufferToAvpu(void *ch, uint32_t phys, const char *tag)
     ret = core->ip_ctrl->vtable->WriteRegister(core->ip_ctrl, 0x8094, phys);
     ENC_KMSG("strm-push-%s chctx=%p core=%p phys=0x%x ret=%d",
              tag ? tag : "?", ch, core, phys, ret);
+}
+
+static void RollbackPendingSrcOnPrepareAbort(void *ch, int32_t pict_id, const char *reason)
+{
+    if (ch == NULL || pict_id < 0) {
+        return;
+    }
+
+    ENC_KMSG("ListModulesNeeded rollback-src pict=%d reason=%s", pict_id, reason ? reason : "?");
+    AL_SrcReorder_Cancel((uint8_t *)ch + 0x178, pict_id);
 }
 
 void StaticFifo_Init(StaticFifoCompat *arg1, int32_t *arg2, int32_t arg3); /* forward decl, ported by T<N> later */
@@ -1933,6 +1958,18 @@ int32_t AL_DmaAlloc_FlushCache(int32_t arg1, int32_t arg2, int32_t arg3); /* for
 int32_t AL_DPBConstraint_GetMaxDPBSize(void *arg1); /* forward decl, ported by T<N> later */
 int32_t AL_RefMngr_GetBufferSize(void *arg1); /* forward decl, ported by T<N> later */
 int32_t AL_IntermMngr_GetBufferSize(void *arg1); /* forward decl, ported by T<N> later */
+uint32_t AL_GetAllocSize_EncReference(int32_t arg1, int32_t arg2, char arg3, int32_t arg4,
+                                      char arg5); /* forward decl, ported by T<N> later */
+int32_t AL_GetAllocSize_MV(int32_t arg1, int32_t arg2, char arg3,
+                           int32_t arg4); /* forward decl, ported by T<N> later */
+int32_t AL_GetAllocSize_CompData(int32_t arg1, int32_t arg2, char arg3, char arg4, int32_t arg5,
+                                 int32_t arg6); /* forward decl, ported by T<N> later */
+int32_t AL_GetAllocSize_EncCompMap(int32_t arg1, int32_t arg2, char arg3,
+                                   char arg4, int32_t arg5); /* forward decl, ported by T<N> later */
+int32_t AL_GetAllocSize_WPP(int32_t arg1, int32_t arg2, char arg3); /* forward decl, ported by T<N> later */
+int32_t AL_GetAllocSize_SliceSize(int32_t arg1, int32_t arg2, int32_t arg3,
+                                  int32_t arg4); /* forward decl, ported by T<N> later */
+int32_t AL_GetAllocSizeEP2(int32_t arg1, int32_t arg2, int32_t arg3); /* forward decl, ported by T<N> later */
 int32_t AL_SrcReorder_AddSrcBuffer(void *arg1, void *arg2); /* forward decl, ported by T<N> later */
 
 static void ProbeLane1WhileOutputEmpty(void *ch)
@@ -2370,6 +2407,8 @@ done:
 
 int32_t UpdateStatus(void *arg1, int32_t *arg2)
 {
+    uint8_t *status = (uint8_t *)arg2;
+
     if (READ_U8(arg1, 0x1de) != 0U) {
         WRITE_S32(arg1, 0xb34, arg2[0xd]);
     }
@@ -2381,17 +2420,17 @@ int32_t UpdateStatus(void *arg1, int32_t *arg2)
             return result;
         }
 
-        if ((uint32_t)arg2[2] != 0U) {
+        if (READ_U8(status, 2) != 0U) {
             WRITE_S32(arg1, 0xb94, 0x93);
             return 0x93;
         }
 
-        if ((uint32_t)arg2[1] != 0U) {
+        if (READ_U8(status, 1) != 0U) {
             WRITE_S32(arg1, 0xb94, 0x88);
             return 0x88;
         }
 
-        if ((uint32_t)arg2[0] != 0U) {
+        if (READ_U8(status, 0) != 0U) {
             WRITE_S32(arg1, 0xb94, 2);
             return 2;
         }
@@ -3034,6 +3073,70 @@ int32_t endOfInput(void *arg1)
     }
 }
 
+static int32_t RecomputeRefBufferSizeFromSettings(void *arg1)
+{
+    int32_t v0 = READ_S32(arg1, 0x10);
+    int32_t max_rec = ((uint32_t)v0 >> 4) & 0xf;
+    int32_t min_rec = v0 & 0xf;
+    int32_t bitdepth = ((uint32_t)v0 >> 8) & 0xf;
+    int32_t codec_flags = READ_S32(arg1, 0x2c);
+    int32_t storage = (codec_flags >> 5) & 1;
+    int32_t rec_lcus = (int32_t)READ_U8(arg1, 4);
+    int32_t rec_rows = (int32_t)READ_U8(arg1, 6);
+    int32_t mv_size;
+
+    if (max_rec < min_rec) {
+        max_rec = min_rec;
+    }
+
+    mv_size = AL_GetAllocSize_MV(rec_lcus, rec_rows, READ_U8(arg1, 0x4e), READ_U8(arg1, 0x1f));
+    return (int32_t)AL_GetAllocSize_EncReference(rec_lcus, rec_rows, (char)max_rec, bitdepth,
+                                                 (char)storage) + mv_size;
+}
+
+static int32_t RecomputeIntermBufferSizeFromSettings(void *arg1)
+{
+    uint32_t rec_lcus = (uint32_t)READ_U8(arg1, 4);
+    uint32_t codec = (uint32_t)READ_U8(arg1, 0x1f);
+    uint32_t rec_rows = (uint32_t)READ_U8(arg1, 6);
+    uint32_t rows = rec_rows;
+    int32_t data_size = 0;
+    int32_t map_size = 0;
+    int32_t wpp_size;
+    int32_t ep2_size;
+    int32_t ep1_size;
+
+    if (codec == 0 && (uint32_t)READ_U8(arg1, 0x3c) >= 2U) {
+        int32_t layout = READ_S32(arg1, 0x10);
+        int32_t min_rec = layout & 0xf;
+        int32_t max_rec = ((uint32_t)layout >> 4) & 0xf;
+        uint32_t split = (uint32_t)(uint8_t)(1U << (READ_U8(arg1, 0x4e) & 0x1f));
+
+        if (max_rec < min_rec) {
+            max_rec = min_rec;
+        }
+
+        data_size = AL_GetAllocSize_CompData((int32_t)rec_lcus, (int32_t)rec_rows, (char)split,
+                                             (char)max_rec, ((uint32_t)layout >> 8) & 0xf, 1);
+        map_size = AL_GetAllocSize_EncCompMap((int32_t)rec_lcus, (int32_t)rows, (char)split,
+                                              READ_U8(arg1, 0x3c), 1);
+        rec_rows = rows;
+    }
+
+    if (READ_U8(arg1, 0x3e) != 0U) {
+        wpp_size = AL_GetAllocSize_SliceSize((int32_t)rec_lcus, (int32_t)rec_rows, READ_S32(arg1, 0x40),
+                                             (int32_t)READ_U8(arg1, 0x4e));
+    } else {
+        uint32_t split = (uint32_t)READ_U8(arg1, 0x4e);
+        wpp_size = AL_GetAllocSize_WPP((int32_t)(((1U << (split & 0x1f)) + rec_rows - 1U) >> (split & 0x1f)),
+                                       (int32_t)READ_U8(arg1, 0x40), READ_U8(arg1, 0x3c));
+    }
+
+    ep2_size = AL_GetAllocSizeEP2((int32_t)rec_lcus, (int32_t)rows, (int32_t)codec);
+    ep1_size = AL_GetAllocSizeEP1();
+    return ep1_size + wpp_size + ep2_size + data_size + map_size;
+}
+
 int32_t AL_EncChannel_GetBufResources(int32_t *arg1, void *arg2)
 {
     void *var_20 = &_gp;
@@ -3042,20 +3145,36 @@ int32_t AL_EncChannel_GetBufResources(int32_t *arg1, void *arg2)
     int32_t v0_2;
     int32_t s0_2;
     int32_t s3_1;
+    int32_t interm_size;
 
     (void)var_20;
+    interm_size = AL_IntermMngr_GetBufferSize((uint8_t *)arg2 + 0x2a54);
+    s3_1 = READ_S32(arg2, 0x1adc);
+    if (interm_size <= 0 || interm_size < AL_GetAllocSizeEP1()) {
+        int32_t fallback = RecomputeIntermBufferSizeFromSettings(arg2);
+
+        if (fallback > interm_size) {
+            interm_size = fallback;
+        }
+        if (interm_size > 0 && (s3_1 <= 0 || s3_1 > 4)) {
+            s3_1 = 1;
+        }
+    }
+
     if ((uint32_t)READ_U8(arg2, 0x1f) == 1U) {
         s0 = v0;
     }
 
     v0_2 = AL_RefMngr_GetBufferSize((uint8_t *)arg2 + 0x22c8);
-    s0_2 = s0 + ((READ_S32(arg2, 0x1adc) < 2) ? 0 : 1) + ((READ_S32(arg2, 0x2c) >> 6) & 1);
+    if (v0_2 <= 0) {
+        v0_2 = RecomputeRefBufferSizeFromSettings(arg2);
+    }
+    s0_2 = s0 + ((s3_1 < 2) ? 0 : 1) + ((READ_S32(arg2, 0x2c) >> 6) & 1);
     if ((uint32_t)READ_U8(arg2, 0x1f) == 4U) {
         s0_2 = 0;
     }
 
-    s3_1 = READ_S32(arg2, 0x1adc);
-    arg1[3] = AL_IntermMngr_GetBufferSize((uint8_t *)arg2 + 0x2a54);
+    arg1[3] = interm_size;
     arg1[0] = s0_2;
     arg1[1] = v0_2;
     arg1[2] = s3_1;
@@ -3156,6 +3275,18 @@ int32_t AL_EncChannel_PushNewFrame(void *arg1, int32_t *arg2, int32_t *arg3, int
              arg1, arg2, arg3, arg4, READ_S32(arg1, 0x2c), (unsigned)READ_U8(arg1, CH_STARTED_OFF),
              (unsigned)READ_U16(arg1, CH_GATE_OFF), (unsigned)READ_U8(arg1, CH_FREEZE_OFF));
     Rtos_GetMutex(READ_PTR(arg1, 0x170));
+    if (READ_U8(arg1, CH_STARTED_OFF) > 1U && READ_U8(arg1, 0x1f) == 0U &&
+        arg2 != 0 && arg3 != 0 && arg4 != 0) {
+        ENC_KMSG("PushNewFrame heal-corrupt-live-state chctx=%p eos=%u gate=0x%x drained=%u step=0x%x core_base=%u core_count=%u tiles=%u",
+                 arg1, (unsigned)READ_U8(arg1, CH_STARTED_OFF), (unsigned)READ_U16(arg1, CH_GATE_OFF),
+                 (unsigned)READ_U8(arg1, CH_DRAINED_OFF), READ_S32(arg1, 0x1ae0),
+                 (unsigned)READ_U8(arg1, 0x3d), (unsigned)READ_U8(arg1, 0x3c), READ_U32(arg1, 0x1ae8));
+        WRITE_U8(arg1, CH_STARTED_OFF, 0);
+        WRITE_U8(arg1, CH_DRAINED_OFF, 0);
+        WRITE_U16(arg1, CH_GATE_OFF, 1);
+        ENC_KMSG("PushNewFrame healed-live-state chctx=%p eos=%u gate=0x%x",
+                 arg1, (unsigned)READ_U8(arg1, CH_STARTED_OFF), (unsigned)READ_U16(arg1, CH_GATE_OFF));
+    }
     if (READ_U8(arg1, CH_STARTED_OFF) != 0U) {
         ENC_KMSG("PushNewFrame reject-eos chctx=%p eos=%u flags2c=0x%x",
                  arg1, (unsigned)READ_U8(arg1, CH_STARTED_OFF), READ_S32(arg1, 0x2c));
@@ -3538,26 +3669,52 @@ void OutputSlice(void *arg1, void *arg2, int32_t arg3, void *arg4)
         WRITE_S32(READ_PTR(arg2, 0x318), 0x14, stream_end);
         ENC_KMSG("OutputSlice stream-end req=%p slice=%d cmd=%p off=0x%x end=0x%x",
                  arg2, arg3, cmd_regs_stream, stream_end_word, stream_end);
-        if (stream_end == 0 && stream_meta != NULL) {
+        if (stream_meta != NULL) {
             uint8_t *stream_base = (uint8_t *)READ_PTR(stream_meta, 8);
             int32_t stream_size = READ_S32(stream_meta, 0x10);
             int32_t stream_off = READ_S32(stream_meta, 0x14);
-            int32_t raw_end = ScanStreamBufferRawEnd(stream_base, stream_size);
-            int32_t first_nz = FindFirstNonZeroByte(stream_base, stream_off, stream_size);
+            if (stream_base != NULL && stream_size > 0) {
+                int32_t cmd_sync_ret = 0;
+                int32_t stream_sync_ret;
+                int32_t synced_end = stream_end;
 
-            ENC_KMSG("OutputSlice stream-probe req=%p slice=%d base=%p size=%d off=%d raw_end=%d first_nz=%d",
-                     arg2, arg3, stream_base, stream_size, stream_off, raw_end, first_nz);
-            if (first_nz >= 0 && first_nz + 16 <= stream_size) {
-                ENC_KMSG("OutputSlice stream-probe-bytes req=%p slice=%d @0x%x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x",
-                         arg2, arg3, first_nz,
-                         stream_base[first_nz + 0], stream_base[first_nz + 1],
-                         stream_base[first_nz + 2], stream_base[first_nz + 3],
-                         stream_base[first_nz + 4], stream_base[first_nz + 5],
-                         stream_base[first_nz + 6], stream_base[first_nz + 7],
-                         stream_base[first_nz + 8], stream_base[first_nz + 9],
-                         stream_base[first_nz + 10], stream_base[first_nz + 11],
-                         stream_base[first_nz + 12], stream_base[first_nz + 13],
-                         stream_base[first_nz + 14], stream_base[first_nz + 15]);
+                if (cmd_regs_stream != NULL) {
+                    cmd_sync_ret = AL_DmaAlloc_FlushCache((int32_t)(intptr_t)cmd_regs_stream, 0x100000, 0);
+                    synced_end = READ_S32(cmd_regs_stream, stream_end_word);
+                }
+                stream_sync_ret = AL_DmaAlloc_FlushCache((int32_t)(intptr_t)stream_base, 0x100000, 0);
+                stream_end = synced_end;
+                WRITE_S32(READ_PTR(arg2, 0x318), 0x14, stream_end);
+                WRITE_S32(stream_meta, 0x14, stream_end);
+                ENC_KMSG("OutputSlice stream-sync req=%p slice=%d cmd=%p cmd_sync=%d base=%p size=%d stream_sync=%d end=%d",
+                         arg2, arg3, cmd_regs_stream, cmd_sync_ret, stream_base, stream_size, stream_sync_ret, stream_end);
+            }
+            if (stream_end == 0 || (stream_end > 0 && stream_end <= LIVE_T31_AVC_HEADER_BUDGET)) {
+                int32_t raw_end = ScanStreamBufferRawEnd(stream_base, stream_size);
+                int32_t first_nz = FindFirstNonZeroByte(stream_base, stream_off, stream_size);
+                int32_t next_nz = FindFirstNonZeroByte(stream_base, stream_end, stream_size);
+
+                ENC_KMSG("OutputSlice stream-probe req=%p slice=%d base=%p size=%d off=%d raw_end=%d first_nz=%d next_nz=%d",
+                         arg2, arg3, stream_base, stream_size, stream_off, raw_end, first_nz, next_nz);
+                if (stream_end > 0 && raw_end > stream_end && raw_end <= stream_size &&
+                    next_nz >= 0 && next_nz <= (stream_end + 64)) {
+                    ENC_KMSG("OutputSlice recover-end req=%p slice=%d old_end=%d raw_end=%d next_nz=%d",
+                             arg2, arg3, stream_end, raw_end, next_nz);
+                    stream_end = raw_end;
+                    WRITE_S32(stream_meta, 0x14, stream_end);
+                }
+                if (first_nz >= 0 && first_nz + 16 <= stream_size) {
+                    ENC_KMSG("OutputSlice stream-probe-bytes req=%p slice=%d @0x%x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x",
+                             arg2, arg3, first_nz,
+                             stream_base[first_nz + 0], stream_base[first_nz + 1],
+                             stream_base[first_nz + 2], stream_base[first_nz + 3],
+                             stream_base[first_nz + 4], stream_base[first_nz + 5],
+                             stream_base[first_nz + 6], stream_base[first_nz + 7],
+                             stream_base[first_nz + 8], stream_base[first_nz + 9],
+                             stream_base[first_nz + 10], stream_base[first_nz + 11],
+                             stream_base[first_nz + 12], stream_base[first_nz + 13],
+                             stream_base[first_nz + 14], stream_base[first_nz + 15]);
+                }
             }
         }
     }
@@ -3605,14 +3762,24 @@ void OutputSlice(void *arg1, void *arg2, int32_t arg3, void *arg4)
         int32_t byte_count = READ_S32(arg4, 4);
         int32_t header_bytes = 0;
         uint32_t codec = (uint32_t)READ_U8(arg1, 0x1f);
+        int live_inline_dual = (codec == 0U && READ_U8(arg1, 0x3c) == 1U &&
+                                READ_U8(arg2, 0x182) != 0U);
+        int32_t cmd_budget_limit = 0;
+        int32_t cmd_budget_avail = 0;
 
-        if (codec == 0U) {
+            if (codec == 0U) {
             uint32_t core_count = (uint32_t)READ_U8(arg1, 0x3c);
 
             if (core_count != 0U) {
                 uint8_t *cmd = (uint8_t *)READ_PTR(arg2, (((arg3 % (int32_t)core_count) + 0x29c) << 2) + 8) +
                                ((uint32_t)GetSliceEnc2CmdOffset(core_count, READ_U16(arg1, 0x40), arg3) << 9);
                 header_bytes = (int32_t)(READ_U16(cmd, 0x6e) & 0x03ffU);
+                cmd_budget_limit = READ_S32(cmd, 0xf4);
+                cmd_budget_avail = READ_S32(cmd, 0xfc);
+                if (cmd_budget_limit <= cmd_budget_avail) {
+                    cmd_budget_limit = READ_S32(cmd, 0xc4);
+                    cmd_budget_avail = READ_S32(cmd, 0xcc);
+                }
             }
         }
 
@@ -3643,6 +3810,24 @@ void OutputSlice(void *arg1, void *arg2, int32_t arg3, void *arg4)
                          arg2, arg3, header_bytes, stream_end);
                 header_bytes = stream_end;
             }
+
+#if LIVE_T31_RECOVER_ZERO_BYTE_SECTIONS
+            if (live_inline_dual && byte_count == 0 && stream_base != NULL && stream_size > 0) {
+                int32_t old_end = stream_end;
+                int32_t produced = cmd_budget_limit - cmd_budget_avail;
+
+                if (cmd_budget_limit > cmd_budget_avail &&
+                    produced > 0 &&
+                    produced + header_bytes <= stream_size) {
+                    byte_count = produced;
+                    stream_end = produced + header_bytes;
+                    WRITE_S32(arg4, 4, byte_count);
+                    WRITE_S32(stream_meta, 0x14, stream_end);
+                }
+                ENC_KMSG("OutputSlice recover-zero-bytes req=%p slice=%d old_end=%d limit=%d avail=%d new_end=%d bytes=%d header=%d",
+                         arg2, arg3, old_end, cmd_budget_limit, cmd_budget_avail, stream_end, byte_count, header_bytes);
+            }
+#endif
 
             if (stream_base != NULL && section_count >= 0 && desc_pos >= 0 && desc_pos + 0x10 <= desc_limit) {
                 int32_t *desc = (int32_t *)(void *)(stream_base + desc_pos);
@@ -4196,7 +4381,6 @@ int32_t AL_EncChannel_Init(int32_t *arg1, int32_t *arg2, void *arg3, uint8_t arg
 
     WRITE_S32(arg1, 0x164, (int32_t)(intptr_t)arg3);
     ResetChannelParam(arg1);
-    SetTileOffsets(arg1);
     WRITE_U8(arg1, 0x3c, arg5);
     WRITE_U8(arg1, 0x3d, arg4);
     WRITE_S32(arg1, 0x2c, arg6);
@@ -4220,6 +4404,28 @@ int32_t AL_EncChannel_Init(int32_t *arg1, int32_t *arg2, void *arg3, uint8_t arg
     WRITE_U8(arg1, CH_FREEZE_OFF, 0);
     WRITE_U8(arg1, 0x58, 0);
     WRITE_U8(arg1, 0x59, 0);
+    /*
+     * Recompute the request step template from a sanitized channel-param view.
+     * The live channel context packs runtime core_count/core_base into the
+     * byte lanes at 0x3c/0x3d; feeding arg1 back into SetChannelSteps makes the
+     * sub-channel look like it has 0x00000401 entropy cores, which poisons the
+     * per-request module tables and aborts before AVPU launch.
+     */
+    {
+        uint8_t step_param[0xf0];
+
+        memcpy(step_param, arg2, sizeof(step_param));
+        WRITE_S32(step_param, 0x2c, READ_S32(arg1, 0x2c));
+        WRITE_S32(step_param, 0x3c, (int32_t)READ_U8(arg1, 0x3c));
+        WRITE_U16(step_param, 0x40, READ_U16(arg1, 0x40));
+        ENC_KMSG("AL_EncChannel_Init resync-step-template cores=%u base=%u active=%d slices=%u",
+                 (unsigned)READ_U8(arg1, 0x3c), (unsigned)READ_U8(arg1, 0x3d),
+                 READ_S32(arg1, 0x2c), (unsigned)READ_U16(arg1, 0x40));
+        SetChannelSteps(arg1, step_param);
+    }
+    ENC_KMSG("AL_EncChannel_Init resync-step-template-done fn=%p state=%d",
+             (void *)(intptr_t)READ_S32(arg1, 0xf0), READ_S32(arg1, 0x1ae0));
+    SetTileOffsets(arg1);
     InitMERange((int32_t)(intptr_t)arg1, arg2);
     ENC_KMSG("AL_EncChannel_Init cb-tail out=%p out_ctx=%p done=%p done_ctx=%p low48=0x%x low4c=0x%x ch_id=%u",
              (void *)(intptr_t)READ_S32(arg1, CH_OUT_CB_OFF),
@@ -4410,22 +4616,46 @@ int32_t AL_EncChannel_ListModulesNeeded(void *arg1, void *arg2)
     int32_t lane;
     int32_t order_idx;
     int32_t lane_order[2] = { 0, 1 };
+    void *channel_mutex;
     StaticFifoCompat *fifo_base;
+    StaticFifoCompat *lane0_fifo;
+    StaticFifoCompat *lane1_fifo;
+    int32_t lane1_front;
 
-    ENC_KMSG("ListModulesNeeded entry chctx=%p freeze=%u out_count=%d",
-             arg1, (unsigned)READ_U8(arg1, CH_FREEZE_OFF), READ_S32(arg2, 0x80));
+    ENC_KMSG("ListModulesNeeded entry raw chctx=%p out=%p", arg1, arg2);
+    ENC_KMSG("ListModulesNeeded entry chctx=%p out=%p freeze=%u out_count=%d",
+             arg1, arg2, (unsigned)READ_U8(arg1, CH_FREEZE_OFF), READ_S32(arg2, 0x80));
     if (READ_U8(arg1, CH_FREEZE_OFF) != 0U) {
         ENC_KMSG("ListModulesNeeded early-freeze chctx=%p", arg1);
         return (int32_t)(intptr_t)arg1;
     }
 
-    Rtos_GetMutex(READ_PTR(arg1, 0x170));
-    fifo_base = (StaticFifoCompat *)((uint8_t *)arg1 + 0x129b4);
-    if (StaticFifo_Front((StaticFifoCompat *)((uint8_t *)arg1 + 0x12a10)) != 0) {
+    channel_mutex = READ_PTR(arg1, 0x170);
+    lane0_fifo = (StaticFifoCompat *)((uint8_t *)arg1 + 0x129b4);
+    lane1_fifo = (StaticFifoCompat *)((uint8_t *)arg1 + 0x12a10);
+    ENC_KMSG("ListModulesNeeded pre-lock chctx=%p mutex=%p lane0=%p lane1=%p",
+             arg1, channel_mutex, lane0_fifo, lane1_fifo);
+    Rtos_GetMutex(channel_mutex);
+    ENC_KMSG("ListModulesNeeded post-lock chctx=%p mutex=%p lane0=%p lane1=%p",
+             arg1, channel_mutex, lane0_fifo, lane1_fifo);
+    fifo_base = lane0_fifo;
+    ENC_KMSG("ListModulesNeeded pre-priority lane1=%p", lane1_fifo);
+    ENC_KMSG("ListModulesNeeded pre-priority-state lane1=%p elems=%p read=%d write=%d cap=%d",
+             lane1_fifo, lane1_fifo->elems, lane1_fifo->read_idx, lane1_fifo->write_idx, lane1_fifo->capacity);
+    if (lane1_fifo->read_idx == lane1_fifo->write_idx) {
+        lane1_front = 0;
+        ENC_KMSG("ListModulesNeeded post-priority lane1=%p front=%p empty=1",
+                 lane1_fifo, (void *)(intptr_t)lane1_front);
+    } else {
+        lane1_front = StaticFifo_Front(lane1_fifo);
+        ENC_KMSG("ListModulesNeeded post-priority lane1=%p front=%p empty=0",
+                 lane1_fifo, (void *)(intptr_t)lane1_front);
+    }
+    if (lane1_front != 0) {
         lane_order[0] = 1;
         lane_order[1] = 0;
         ENC_KMSG("ListModulesNeeded priority phase1 front=%p",
-                 (void *)(intptr_t)StaticFifo_Front((StaticFifoCompat *)((uint8_t *)arg1 + 0x12a10)));
+                 (void *)(intptr_t)lane1_front);
     }
 
     for (order_idx = 0; order_idx != 2; ++order_idx) {
@@ -4456,42 +4686,90 @@ int32_t AL_EncChannel_ListModulesNeeded(void *arg1, void *arg2)
                 int32_t pict_id = READ_S32(req, 0x20);
 
                 if (READ_U8(req, 0xa75) == 0U) {
+                    int32_t eos_next;
+                    int32_t wait_count = 0;
+                    int32_t available;
+
                     ENC_KMSG("ListModulesNeeded lane=%d prepare req=%p pict=%d", lane, req, pict_id);
-                    if (AL_SrcReorder_IsEosNext((uint8_t *)arg1 + 0x178) != 0 &&
-                        AL_SrcReorder_GetWaitingSrcBufferCount((uint8_t *)arg1 + 0x178) == 0) {
+                    eos_next = AL_SrcReorder_IsEosNext((uint8_t *)arg1 + 0x178);
+                    if (eos_next != 0) {
+                        wait_count = AL_SrcReorder_GetWaitingSrcBufferCount((uint8_t *)arg1 + 0x178);
+                    }
+
+                    /* Stock calls the picture-update callback unless this is
+                     * the terminal EOS-with-no-waiting-buffer case. */
+                    if (eos_next == 0 || wait_count != 0) {
                         Rtos_GetMutex(READ_PTR(arg1, 0x170));
                         ((void (*)(void *, void *))(intptr_t)READ_S32(arg1, 0x134))((uint8_t *)arg1 + 0x128,
                                                                                      (uint8_t *)req + 0x20);
                         Rtos_ReleaseMutex(READ_PTR(arg1, 0x170));
                     }
-                    if (READ_S32(arg1, 0x22b8) != READ_S32(arg1, 0x22bc)) {
-                        while (AL_SrcReorder_IsAvailable((uint8_t *)arg1 + 0x178, pict_id) == 0) {
-                            int32_t wait = AL_SrcReorder_GetWaitingSrcBufferCount((uint8_t *)arg1 + 0x178);
-                            int32_t eos = AL_SrcReorder_IsEosNext((uint8_t *)arg1 + 0x178);
-                            void *cmd = (void *)(intptr_t)AL_SrcReorder_GetCommandAndMoveNext((uint8_t *)arg1 + 0x178);
+
+                    available = AL_SrcReorder_IsAvailable((uint8_t *)arg1 + 0x178, pict_id);
+                    if (READ_S32(req, 0x30) == 8 || READ_U8(arg1, CH_FREEZE_OFF) != 0U) {
+                        ENC_KMSG("ListModulesNeeded lane=%d prepare-short req=%p pict=%d type=%d freeze=%u avail=%d",
+                                 lane, req, pict_id, READ_S32(req, 0x30),
+                                 (unsigned)READ_U8(arg1, CH_FREEZE_OFF), available);
+                        if (available == 0) {
+                            req = 0;
+                            continue;
+                        }
+                    } else {
+                        while (available == 0) {
+                            int32_t wait;
+                            int32_t eos;
+                            void *cmd;
+
+                            if (READ_S32(arg1, 0x22b8) == READ_S32(arg1, 0x22bc)) {
+                                ENC_KMSG("ListModulesNeeded lane=%d prepare-await-empty req=%p pict=%d",
+                                         lane, req, pict_id);
+                                req = 0;
+                                break;
+                            }
+
+                            wait = AL_SrcReorder_GetWaitingSrcBufferCount((uint8_t *)arg1 + 0x178);
+                            eos = AL_SrcReorder_IsEosNext((uint8_t *)arg1 + 0x178);
+                            cmd = (void *)(intptr_t)AL_SrcReorder_GetCommandAndMoveNext((uint8_t *)arg1 + 0x178);
 
                             if (cmd != 0) {
                                 AL_ApplyNewGOPAndRCParams(arg1, cmd);
                                 AL_ApplyGopCommands((uint8_t *)arg1 + 0x128, cmd, wait);
                                 AL_ApplyGmvCommands((uint8_t *)arg1 + 0x2b50, cmd);
-                                if (eos != 0) {
-                                    Rtos_GetMutex(READ_PTR(arg1, 0x170));
-                                    ((void (*)(void *, int32_t))(intptr_t)READ_S32(arg1, 0x150))
-                                        ((uint8_t *)arg1 + 0x128, wait);
-                                    Rtos_ReleaseMutex(READ_PTR(arg1, 0x170));
-                                }
                             }
+                            if (eos != 0) {
+                                Rtos_GetMutex(READ_PTR(arg1, 0x170));
+                                ((void (*)(void *, int32_t))(intptr_t)READ_S32(arg1, 0x150))
+                                    ((uint8_t *)arg1 + 0x128, wait);
+                                Rtos_ReleaseMutex(READ_PTR(arg1, 0x170));
+                            }
+
                             Rtos_GetMutex(READ_PTR(arg1, 0x170));
                             ((void (*)(void *, void *))(intptr_t)READ_S32(arg1, 0x134))((uint8_t *)arg1 + 0x128,
                                                                                          (uint8_t *)req + 0x20);
                             Rtos_ReleaseMutex(READ_PTR(arg1, 0x170));
+                            available = AL_SrcReorder_IsAvailable((uint8_t *)arg1 + 0x178, pict_id);
+                        }
+                        if (req == 0) {
+                            continue;
                         }
                     }
                     if (READ_S32(req, 0x24) >= 0 && READ_S32(req, 0x30) != 8) {
                         void *ready = AL_SrcReorder_GetReadyCommand((uint8_t *)arg1 + 0x178, pict_id);
 
                         ENC_KMSG("ListModulesNeeded lane=%d ready=%p pict=%d", lane, ready, pict_id);
-                        if (ready != 0 && (READ_S32(ready, 0) & 0x200) != 0) {
+                        if (ready != 0
+#if LIVE_T31_SKIP_READY_DYNRES_LIVE
+                            && READ_U8(arg1, 0x1f) == 0U
+#endif
+                        ) {
+                            ENC_KMSG("ListModulesNeeded lane=%d ready-skip-live req=%p pict=%d ready=%p",
+                                     lane, req, pict_id, ready);
+                        }
+                        if (ready != 0
+#if LIVE_T31_SKIP_READY_DYNRES_LIVE
+                            && READ_U8(arg1, 0x1f) != 0U
+#endif
+                            && (READ_S32(ready, 0) & 0x200) != 0) {
                             int32_t check_rc;
 
                             ENC_KMSG("ListModulesNeeded lane=%d ready-dynres req=%p w=%d h=%d core_hint=%u flags=0x%x",
@@ -4540,6 +4818,7 @@ int32_t AL_EncChannel_ListModulesNeeded(void *arg1, void *arg2)
 
                         if (rec == 0xff) {
                             ENC_KMSG("ListModulesNeeded lane=%d no-rec-buffer pict=%d", lane, pict_id);
+                            RollbackPendingSrcOnPrepareAbort(arg1, pict_id, "no-rec-buffer");
                             req = 0;
                             continue;
                         }
@@ -4549,6 +4828,7 @@ int32_t AL_EncChannel_ListModulesNeeded(void *arg1, void *arg2)
                         if (READ_PTR(req, 0x838) == NULL) {
                             ENC_KMSG("ListModulesNeeded lane=%d no-interm-buffer pict=%d rec=%d",
                                      lane, pict_id, rec);
+                            RollbackPendingSrcOnPrepareAbort(arg1, pict_id, "no-interm-buffer");
                             AL_RefMngr_ReleaseFrmBuffer((uint8_t *)arg1 + 0x22c8, (char)rec);
                             req = 0;
                             continue;
@@ -4563,6 +4843,7 @@ int32_t AL_EncChannel_ListModulesNeeded(void *arg1, void *arg2)
                             if (stream_ok == 0) {
                             ENC_KMSG("ListModulesNeeded lane=%d no-stream-buffers pict=%d rec=%d interm=%p",
                                      lane, pict_id, rec, READ_PTR(req, 0x838));
+                            RollbackPendingSrcOnPrepareAbort(arg1, pict_id, "no-stream-buffers");
                             AL_IntermMngr_ReleaseBufferBack((uint8_t *)arg1 + 0x2a54, READ_PTR(req, 0x838));
                             WRITE_S32(req, 0x838, 0);
                             AL_RefMngr_ReleaseFrmBuffer((uint8_t *)arg1 + 0x22c8, (char)rec);
@@ -5090,7 +5371,20 @@ int32_t encode1(void *arg1)
     } else if (READ_U8(ch, 0x1f) == 0U) {
         RemapLiveT31Irq4(READ_PTR(ch, 0x164), EndEncoding, "encode1-core0");
     }
-    AL_EncCore_EnableInterrupts(READ_PTR(ch, 0x164), (uint8_t *)ch + 0x3c, 0, 1, 0);
+    {
+        uint8_t irq_span[0x20];
+        uint8_t core_base = READ_U8(ch, 0x3d);
+        uint8_t core_count = READ_U8(ch, 0x3c);
+
+        memset(irq_span, 0, sizeof(irq_span));
+        if ((uint32_t)core_base < sizeof(irq_span)) {
+            irq_span[core_base] = (uint8_t)(core_base + core_count);
+        }
+        ENC_KMSG("encode1 irq-span base=%u count=%u limit=%u",
+                 (unsigned)core_base, (unsigned)core_count,
+                 (unsigned)((uint32_t)core_base < sizeof(irq_span) ? irq_span[core_base] : 0U));
+        AL_EncCore_EnableInterrupts(READ_PTR(ch, 0x164), irq_span, 0, 1, 0);
+    }
     if (READ_U8(ch, 0x1f) == 0U && READ_U8(ch, 0x3c) == 1U) {
         ApplyLiveT31Core0LegacyIrqMask(READ_PTR(ch, 0x164), "encode1");
     }

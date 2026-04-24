@@ -14,6 +14,8 @@
 extern char _gp;
 extern int32_t __assert(const char *expression, const char *file, int32_t line, const char *function, ...);
 extern int32_t access(const char *pathname, int mode);
+int IMP_Log_Get_Option(void); /* forward decl */
+void imp_log_fun(int level, int option, int type, ...); /* forward decl */
 
 #define READ_U8(base, off) (*(uint8_t *)((uint8_t *)(base) + (off)))
 #define READ_S8(base, off) (*(int8_t *)((uint8_t *)(base) + (off)))
@@ -1710,13 +1712,17 @@ static int32_t EndEncoding(int32_t *arg1, int32_t *arg2, int32_t arg3)
 
     fp_1 = arg2[0];
     if ((uint32_t)arg2[0x27] < 0x80) {
-        var_68 = (char const *)(intptr_t)s2;
-        CENC_KMSG("EndEncodingCB pre-trace enc=%p trace_cb=0x%x stream=%p fp=%d",
-                  s1, s1[4], (void *)(intptr_t)s3_8, fp_1);
-        ((void (*)(int32_t *, int32_t *, void *, int32_t, char const *))(intptr_t)s1[4])(s1, arg2,
-                                                                                           (uint8_t *)s1 + fp_1 * 0x30 + 0xedb4,
-                                                                                           s3_8, var_68);
-        CENC_KMSG("EndEncodingCB post-trace enc=%p stream=%p", s1, (void *)(intptr_t)s3_8);
+        uint8_t *trace_hls = (uint8_t *)s1 + fp_1 * 0x30 + 0xedb4;
+        int32_t trace_rc;
+
+        CENC_KMSG("EndEncodingCB pre-trace enc=%p trace_cb=0x%x stream=%p fp=%d hls=%p b0=0x%x b1=0x%x b2=0x%x b3=0x%x",
+                  s1, s1[4], (void *)(intptr_t)s3_8, fp_1, trace_hls,
+                  trace_hls[0], trace_hls[1], trace_hls[2], trace_hls[3]);
+        trace_rc = ((int32_t (*)(int32_t *, int32_t *, void *, int32_t, int32_t))(intptr_t)s1[4])(s1, arg2,
+                                                                                                     trace_hls,
+                                                                                                     s3_8, s2);
+        CENC_KMSG("EndEncodingCB post-trace enc=%p stream=%p rc=%d fp=%d",
+                  s1, (void *)(intptr_t)s3_8, trace_rc, fp_1);
     } else {
         int32_t v0_10 = IMP_Log_Get_Option();
         void *s5_3 = (uint8_t *)READ_PTR(s1, 0x14) + s5_1 - s7_1;
@@ -2281,6 +2287,10 @@ label_55b9c:
         if (MemDesc_AllocNamed((uint8_t *)s2_1 + 0xdb98, (void *)(intptr_t)arg3, AL_GetAllocSizeEP1(),
                                "CompData") == 0) {
             { int kfd = open("/dev/kmsg", O_WRONLY); if (kfd >= 0) { const char *m = "libimp/ENC: CC FAIL MemDesc_AllocNamed\n"; write(kfd, m, strlen(m)); close(kfd); } }
+            imp_log_fun(6, IMP_Log_Get_Option(), 2, "Encoder",
+                        "/home/user/git/proj/sdk-lv3/src/imp/video/alcodec/lib_encode/Com_Encoder.c",
+                        0x6a2, "AL_Common_Encoder_CreateChannel",
+                        "CreateChannel: MemDesc_AllocNamed failed size=%d\n", AL_GetAllocSizeEP1());
             result = 0x87;
             goto label_55c1c;
         }
@@ -2421,8 +2431,13 @@ label_55b9c:
                         var_28);
                 }
                 { int kfd = open("/dev/kmsg", O_WRONLY); if (kfd >= 0) { char b[96]; int n = snprintf(b, sizeof(b), "libimp/ENC: CC post-sched[4] result=0x%x\n", result); if (n>0) write(kfd, b, n); close(kfd); } }
-                if ((uint32_t)result >= 0x80)
+                if ((uint32_t)result >= 0x80) {
+                    imp_log_fun(6, IMP_Log_Get_Option(), 2, "Encoder",
+                                "/home/user/git/proj/sdk-lv3/src/imp/video/alcodec/lib_encode/Com_Encoder.c",
+                                0x77b, "AL_Common_Encoder_CreateChannel",
+                                "CreateChannel: scheduler returned err=0x%x\n", result);
                     goto label_55c1c;
+                }
                 {
                     int32_t *vtbl = (int32_t *)(intptr_t)READ_S32(a1_12, 0);
                     if (((int32_t (*)(int32_t *, int32_t, uint32_t (*)(int32_t *, int32_t), int32_t *))(intptr_t)READ_S32(vtbl, 0x1c))(

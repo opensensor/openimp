@@ -841,8 +841,16 @@ int32_t IMP_Encoder_CreateChn(int32_t arg1, int32_t *arg2)
 
     /* Initialize sync primitives */
     if (CH_S32(arg1, ENC_F_MAX_STREAMCNT) <= 0) {
-        CH_S32(arg1, ENC_F_MAX_STREAMCNT) = 1;
-        video_enc_kmsg("libimp/ENCW2: CreateChn default max_stream_cnt chn=%d max=1\n", arg1);
+        /*
+         * Raptor drives the encoder continuously and does not immediately
+         * round-trip every public stream slot through GetStream/ReleaseStream.
+         * A single-slot default starves the second frame before userspace can
+         * recycle the first one, which shows up as exactly one AVPU interrupt.
+         * Keep the fallback at two slots: enough to stay past the first frame,
+         * but below the 3/4-slot wedge threshold seen on live T31 smoke.
+         */
+        CH_S32(arg1, ENC_F_MAX_STREAMCNT) = 2;
+        video_enc_kmsg("libimp/ENCW2: CreateChn default max_stream_cnt chn=%d max=2\n", arg1);
     }
     sem_init((sem_t *)enc_ptr(arg1, ENC_F_SEM_FILLED), 0, 0);
     sem_init((sem_t *)enc_ptr(arg1, ENC_F_SEM_POLL), 0,
@@ -893,7 +901,8 @@ int32_t IMP_Encoder_CreateChn(int32_t arg1, int32_t *arg2)
         if (result < 0) {
             imp_log_fun(6, IMP_Log_Get_Option(), 2, "Encoder",
                 "/home/user/git/proj/sdk-lv3/src/imp/video/imp_encoder.c", 0x800,
-                "IMP_Encoder_CreateChn", "Channel%d encoder init failed\n", arg1);
+                "IMP_Encoder_CreateChn", "Channel%d encoder init failed rc=0x%x\n",
+                arg1, result < 0 ? -result : result);
             {
                 void *a0_27 = CH_PTR(arg1, ENC_F_PACK_ARRAY);
                 if (a0_27 != 0) {
@@ -1288,7 +1297,9 @@ int32_t IMP_Encoder_Query(int32_t arg1, void *arg2)
 
 int32_t IMP_Encoder_StartRecvPic(int32_t arg1)
 {
-    int32_t fs_rc = 0;
+    int32_t idr_rc = 0;
+    int32_t prime_rc = 0;
+    int32_t was_enabled;
     EncoderChannelLayout *chn = (EncoderChannelLayout *)enc_ptr(arg1, IMP_ENC_BASE_ADDR);
 
     if (arg1 >= 9) {
@@ -1319,6 +1330,7 @@ int32_t IMP_Encoder_StartRecvPic(int32_t arg1)
                    CH_PTR(arg1, ENC_F_GROUPPTR),
                    CH_PTR(arg1, ENC_F_CODEC_HANDLE));
 
+    was_enabled = CH_S32(arg1, ENC_F_ENABLED);
     CH_S32(arg1, ENC_F_STARTED) = 1;
     CH_S32(arg1, ENC_F_ENABLED) = 1;
     if (chn != NULL) {
@@ -1336,12 +1348,27 @@ int32_t IMP_Encoder_StartRecvPic(int32_t arg1)
                        slots ? *(void **)(slots + grp_id * 0x14 + 0x54) : NULL);
     }
     if (CH_PTR(arg1, ENC_F_CODEC_HANDLE) != NULL) {
-        int32_t prime_rc = AL_Codec_Encode_PrimeStreamBuffers(CH_PTR(arg1, ENC_F_CODEC_HANDLE));
-        video_enc_trace("StartRecvPic prime chn=%d grp=%d rc=%d codec=%p",
-                        arg1, enc_group_id_from_channel(arg1), prime_rc,
+        /*
+         * Stock StartRecvPic only flips flags and requests an IDR, but this
+         * port still relies on an initial queueing pass to seed the scheduler's
+         * stream-buffer manager. Repeated StartRecvPic calls happen during the
+         * bind/shift churn, so only prime on the disabled->enabled transition.
+         */
+        if (was_enabled == 0) {
+            prime_rc = AL_Codec_Encode_PrimeStreamBuffers(CH_PTR(arg1, ENC_F_CODEC_HANDLE));
+            video_enc_trace("StartRecvPic prime chn=%d grp=%d rc=%d codec=%p",
+                            arg1, enc_group_id_from_channel(arg1), prime_rc,
+                            CH_PTR(arg1, ENC_F_CODEC_HANDLE));
+            video_enc_kmsg("libimp/ENCW2: StartRecvPic prime chn=%d grp=%d rc=%d codec=%p\n",
+                           arg1, enc_group_id_from_channel(arg1), prime_rc,
+                           CH_PTR(arg1, ENC_F_CODEC_HANDLE));
+        }
+        idr_rc = IMP_Encoder_RequestIDR(arg1);
+        video_enc_trace("StartRecvPic request-idr chn=%d grp=%d rc=%d codec=%p",
+                        arg1, enc_group_id_from_channel(arg1), idr_rc,
                         CH_PTR(arg1, ENC_F_CODEC_HANDLE));
-        video_enc_kmsg("libimp/ENCW2: StartRecvPic prime chn=%d grp=%d rc=%d codec=%p\n",
-                       arg1, enc_group_id_from_channel(arg1), prime_rc,
+        video_enc_kmsg("libimp/ENCW2: StartRecvPic request-idr chn=%d grp=%d rc=%d codec=%p\n",
+                       arg1, enc_group_id_from_channel(arg1), idr_rc,
                        CH_PTR(arg1, ENC_F_CODEC_HANDLE));
     }
     video_enc_trace("StartRecvPic exit chn=%d grp=%d started=%d enabled=%d",
@@ -1460,7 +1487,10 @@ int32_t IMP_Encoder_RequestIDR(int32_t arg1)
     if (chn != NULL) {
         *enc_channel_recv_pic_started(chn) = 1;
     }
-    return 0;
+    if (CH_PTR(arg1, ENC_F_CODEC_HANDLE) == NULL) {
+        return -1;
+    }
+    return AL_Codec_Encode_RequestIDR(CH_PTR(arg1, ENC_F_CODEC_HANDLE));
 }
 
 /* ===== IMP_Encoder_FlushStream ===== */

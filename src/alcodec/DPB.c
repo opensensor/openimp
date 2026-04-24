@@ -1364,6 +1364,8 @@ uint32_t AL_sDPB_BuildRefList_isra_7(char *arg1, int32_t arg2, int32_t *arg3,
                 int32_t s0_1 = 0;
                 uint8_t i_7;
                 char *s6_1 = fp;
+                uint8_t seen_pic[0x100] = {0};
+                uint32_t walk_steps = 0;
 
                 if (var_48 != 0) {
                     v0_12 = (0U < (i_4 ^ 0xffU)) ? 1 : 0;
@@ -1392,6 +1394,14 @@ uint32_t AL_sDPB_BuildRefList_isra_7(char *arg1, int32_t arg2, int32_t *arg3,
                     }
 
 label_6e240:
+                    if (i_6 != 0xffU) {
+                        if (walk_steps++ >= 0x100U || seen_pic[i_6] != 0U) {
+                            DPB_KMSG("BuildRefList cycle-break pass=%d list=%d pic=%u count=%ld",
+                                     var_48, s0_1, i_6, (long)(intptr_t)var_50);
+                            goto label_6e2ec;
+                        }
+                        seen_pic[i_6] = 1;
+                    }
                     v1_9 = i_6 << 3;
 
 label_6e250:

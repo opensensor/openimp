@@ -94,6 +94,83 @@ static inline uint64_t module_make_u64(uint32_t lo, uint32_t hi)
     return ((uint64_t)hi << 32) | lo;
 }
 
+static size_t module_append_str(char *buf, size_t pos, size_t cap, const char *str)
+{
+    while (*str != '\0' && pos < cap) {
+        buf[pos++] = *str++;
+    }
+    return pos;
+}
+
+static size_t module_append_hex(char *buf, size_t pos, size_t cap, uintptr_t value)
+{
+    static const char hex[] = "0123456789abcdef";
+    int shift;
+
+    pos = module_append_str(buf, pos, cap, "0x");
+    for (shift = (int)(sizeof(uintptr_t) * 8) - 4; shift >= 0 && pos < cap; shift -= 4) {
+        buf[pos++] = hex[(value >> shift) & 0xfU];
+    }
+    return pos;
+}
+
+static size_t module_append_dec(char *buf, size_t pos, size_t cap, int32_t value)
+{
+    char tmp[16];
+    size_t used = 0;
+    uint32_t uval;
+
+    if (value < 0) {
+        if (pos < cap) {
+            buf[pos++] = '-';
+        }
+        uval = (uint32_t)(-(value + 1)) + 1U;
+    } else {
+        uval = (uint32_t)value;
+    }
+
+    do {
+        tmp[used++] = (char)('0' + (uval % 10U));
+        uval /= 10U;
+    } while (uval != 0 && used < sizeof(tmp));
+
+    while (used > 0 && pos < cap) {
+        buf[pos++] = tmp[--used];
+    }
+    return pos;
+}
+
+static void module_trace_quick_state(const char *tag, Module *module, int32_t message,
+                                     int32_t result, void *dispatch_fn, void *notify_fn)
+{
+    int fd = open("/dev/kmsg", O_WRONLY);
+    char buf[256];
+    size_t len = 0;
+
+    if (fd < 0) {
+        return;
+    }
+
+    len = module_append_str(buf, len, sizeof(buf), "libimp/BIND: ");
+    len = module_append_str(buf, len, sizeof(buf), tag);
+    len = module_append_str(buf, len, sizeof(buf), " module=");
+    len = module_append_hex(buf, len, sizeof(buf), (uintptr_t)module);
+    len = module_append_str(buf, len, sizeof(buf), " msg=");
+    len = module_append_hex(buf, len, sizeof(buf), (uintptr_t)(uint32_t)message);
+    len = module_append_str(buf, len, sizeof(buf), " result=");
+    len = module_append_dec(buf, len, sizeof(buf), result);
+    len = module_append_str(buf, len, sizeof(buf), " dispatch=");
+    len = module_append_hex(buf, len, sizeof(buf), (uintptr_t)dispatch_fn);
+    len = module_append_str(buf, len, sizeof(buf), " notify=");
+    len = module_append_hex(buf, len, sizeof(buf), (uintptr_t)notify_fn);
+    if (len < sizeof(buf)) {
+        buf[len++] = '\n';
+    }
+
+    write(fd, buf, len);
+    close(fd);
+}
+
 static void module_trace(const char *fmt, ...)
 {
     int fd = open("/dev/kmsg", O_WRONLY);
@@ -422,12 +499,33 @@ void *module_thread(void *arg1)
                 (*(int32_t (**)(Subject *, int32_t))((char *)module + 0x50))(&module->subject_node, message);
         }
 
+        module_trace_quick_state("module_thread dispatch-return",
+                                 module, message, callback_result,
+                                 *module_update_dispatch_fn_slot(module),
+                                 module->notify_fn);
         module_trace("libimp/BIND: module_thread dispatch-done module=%s(%p) msg=%p result=%d notify=%p\n",
                      module->name, module, (void *)(uintptr_t)message, callback_result, module->notify_fn);
         if (callback_result >= 0) {
+            if (module->notify_fn == NULL) {
+                module_trace_quick_state("module_thread notify-null",
+                                         module, message, callback_result,
+                                         *module_update_dispatch_fn_slot(module),
+                                         NULL);
+            } else {
+                module_trace_quick_state("module_thread notify-enter",
+                                         module, message, callback_result,
+                                         *module_update_dispatch_fn_slot(module),
+                                         module->notify_fn);
+            }
             module_trace("libimp/BIND: module_thread notify module=%s(%p) result=%p\n",
                          module->name, module, (void *)(intptr_t)callback_result);
-            module->notify_fn(module, (void *)(intptr_t)callback_result);
+            if (module->notify_fn != NULL) {
+                module->notify_fn(module, (void *)(intptr_t)callback_result);
+                module_trace_quick_state("module_thread notify-return",
+                                         module, message, callback_result,
+                                         *module_update_dispatch_fn_slot(module),
+                                         module->notify_fn);
+            }
         }
 
         {
@@ -735,10 +833,11 @@ int32_t add_observer_to_module(Module *module, Observer *observer)
 int32_t remove_observer_from_module(Module *src, Module *dst)
 {
     if (src == NULL || dst == NULL) return -1;
-    /* Build a minimal observer that matches the dst module — the
-     * Module observer_remove_fn walks the list by module pointer. */
-    Observer probe = { NULL, dst, NULL, 0 };
-    int32_t (*fn)(Module *, Observer *) = src->observer_remove_fn;
+    /* The live vendor remover compares the raw destination module pointer
+     * stored in the slot array at +0x14; it does not expect an Observer
+     * wrapper. Passing a stack probe here guarantees the unbind miss and
+     * leaves stale slot entries behind during teardown. */
+    int32_t (*fn)(Module *, Module *) = (int32_t (*)(Module *, Module *))src->observer_remove_fn;
     if (fn == NULL) return -1;
-    return fn(src, &probe);
+    return fn(src, dst);
 }

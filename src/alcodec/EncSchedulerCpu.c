@@ -13,6 +13,8 @@
 
 extern char _gp;
 extern int32_t __assert(const char *expression, const char *file, int32_t line, const char *function, ...);
+int IMP_Log_Get_Option(void); /* forward decl */
+void imp_log_fun(int level, int option, int type, ...); /* forward decl */
 
 #define SCH_KMSG(fmt, ...) do { \
     int _kfd = open("/dev/kmsg", O_WRONLY); \
@@ -75,8 +77,6 @@ int32_t *AL_SchedulerCpu_Create(int32_t arg1, int32_t *arg2);
 int32_t AL_SchedulerCpu_Destroy(int32_t arg1);
 
 static int32_t AL_SchedulerCpu_DestroyChannelCB(void *arg1);
-static AL_TAllocator s_SchedulerDefaultAllocatorSnapshot;
-
 static void *CpuEncSchedulerVtable[] = {
     AL_SchedulerCpu_Deinit,
     AL_SchedulerCpu_CreateChannel,
@@ -268,6 +268,7 @@ int32_t AL_SchedulerCpu_PutStreamBuffer(int32_t arg1, int32_t *arg2, AL_TBuffer 
     void *var_20 = &_gp;
     void *v0;
     int32_t s4;
+    int32_t stream_off;
     uint32_t phys;
     void *virt;
     uint32_t size;
@@ -287,11 +288,12 @@ int32_t AL_SchedulerCpu_PutStreamBuffer(int32_t arg1, int32_t *arg2, AL_TBuffer 
     phys = AL_Buffer_GetPhysicalAddress(arg3);
     virt = AL_Buffer_GetData(arg3);
     size = AL_Buffer_GetSize(arg3);
-    SCH_KMSG("Cpu.PutStreamBuffer phys=0x%x virt=%p size=%u side=%p",
-             (unsigned)phys, virt, (unsigned)size, (void *)(intptr_t)s4);
+    stream_off = size >= 0x200U ? 0x200 : 0;
+    SCH_KMSG("Cpu.PutStreamBuffer phys=0x%x virt=%p size=%u off=%d side=%p",
+             (unsigned)phys, virt, (unsigned)size, stream_off, (void *)(intptr_t)s4);
     return AL_SchedulerEnc_PutStreamBuffer((int32_t *)(intptr_t)(arg1 + 4), (char)*arg2,
                                            (int32_t)phys, (int32_t)(intptr_t)virt, (int32_t)size,
-                                           0, 0, 0, s4);
+                                           stream_off, 0, 0, s4);
 }
 
 int32_t AL_SchedulerCpu_EncodeOneFrame(int32_t arg1, int32_t *arg2, int32_t *arg3, int32_t *arg4, int32_t *arg5)
@@ -324,8 +326,8 @@ int32_t AL_SchedulerCpu_EncodeOneFrame(int32_t arg1, int32_t *arg2, int32_t *arg
 int32_t EndEncodingCallBack(void *arg1, int32_t arg2, int32_t arg3, int32_t arg4, int32_t arg5)
 {
     (void)arg2;
-    SCH_KMSG("EndEncodingCallBack entry ctx=%p fn=0x%x user=0x%x a3=%d a4=%d a5=%d",
-             arg1, READ_S32(arg1, 0xc), READ_S32(arg1, 0x10), arg3, arg4, arg5);
+    SCH_KMSG("EndEncodingCallBack raw ctx=%p a2=0x%x a3=0x%x a4=0x%x a5=0x%x",
+             arg1, (unsigned)arg2, (unsigned)arg3, (unsigned)arg4, (unsigned)arg5);
     Rtos_GetMutex(READ_PTR(arg1, 8));
     {
         int32_t t9 = READ_S32(arg1, 0xc);
@@ -424,6 +426,10 @@ int32_t AL_SchedulerCpu_CreateChannel(int32_t **arg1, int32_t *arg2, void *arg3,
     v0[1] = (int32_t)(intptr_t)Rtos_CreateEvent(0);
     if (v0[1] == 0) {
         SCH_KMSG("SchCpu.CC Rtos_CreateEvent=0 -> fail_free_obj");
+        imp_log_fun(6, IMP_Log_Get_Option(), 2, "Encoder",
+                    "/home/user/git/proj/sdk-lv3/src/imp/video/alcodec/lib_encode/EncSchedulerCpu.c",
+                    0x84, "AL_SchedulerCpu_CreateChannel",
+                    "SchCpu CreateChannel: Rtos_CreateEvent failed\n");
         var_40 = 0x87;
         goto fail_free_obj;
     }
@@ -431,6 +437,10 @@ int32_t AL_SchedulerCpu_CreateChannel(int32_t **arg1, int32_t *arg2, void *arg3,
     v0[2] = (int32_t)(intptr_t)Rtos_CreateMutex();
     if (v0[2] == 0) {
         SCH_KMSG("SchCpu.CC Rtos_CreateMutex=0 -> fail_delete_event");
+        imp_log_fun(6, IMP_Log_Get_Option(), 2, "Encoder",
+                    "/home/user/git/proj/sdk-lv3/src/imp/video/alcodec/lib_encode/EncSchedulerCpu.c",
+                    0x8b, "AL_SchedulerCpu_CreateChannel",
+                    "SchCpu CreateChannel: Rtos_CreateMutex failed\n");
         var_40 = 0x87;
         goto fail_delete_event;
     }
@@ -447,11 +457,20 @@ int32_t AL_SchedulerCpu_CreateChannel(int32_t **arg1, int32_t *arg2, void *arg3,
 
         (void)var_44_1;
         (void)var_48_1;
+        SCH_KMSG("SchCpu.CC callbacks out=%p out_ctx=%p done=%p done_ctx=%p",
+                 (void *)(intptr_t)EndEncodingCallBack, (void *)(intptr_t)v0,
+                 (void *)(intptr_t)a2, (void *)(intptr_t)s6_1);
         SCH_KMSG("SchCpu.CC pre-SchEnc.CC2 schEnc=%p s4=0x%x a2=0x%x s6=%p v0=%p",
                  (void*)(arg2 + 1), s4, a2, (void*)s6_1, (void*)v0);
         v0_4 = AL_SchedulerEnc_CreateChannel2(arg2 + 1, (void *)(intptr_t)s4, a2, (int32_t)EndEncodingCallBack,
                                               (int32_t)(intptr_t)v0, &var_40, (int32_t)(intptr_t)s6_1);
         SCH_KMSG("SchCpu.CC post-SchEnc.CC2 v0_4=0x%x var_40=0x%x", v0_4, var_40);
+        if (v0_4 == 0xff && var_40 != 0) {
+            imp_log_fun(6, IMP_Log_Get_Option(), 2, "Encoder",
+                        "/home/user/git/proj/sdk-lv3/src/imp/video/alcodec/lib_encode/EncSchedulerCpu.c",
+                        0xa2, "AL_SchedulerCpu_CreateChannel",
+                        "SchCpu CreateChannel: scheduler create failed err=0x%x\n", var_40);
+        }
         v0[0] = v0_4;
         if (v0_4 != 0xff) {
             int32_t var_58[4];
@@ -472,6 +491,11 @@ int32_t AL_SchedulerCpu_CreateChannel(int32_t **arg1, int32_t *arg2, void *arg3,
             var_50 = var_58[2];
             var_4c = var_58[3];
             SCH_KMSG("SchCpu.CC bufRes s7=%d var54=%d var50=%d var4c=%d", s7_1, var_54, var_50, var_4c);
+            imp_log_fun(6, IMP_Log_Get_Option(), 2, "Encoder",
+                        "/home/user/git/proj/sdk-lv3/src/imp/video/alcodec/lib_encode/EncSchedulerCpu.c",
+                        0xbb, "AL_SchedulerCpu_CreateChannel",
+                        "SchCpu CreateChannel: buf resources chan=%d refcnt=%d refsize=%d intermcnt=%d intermsize=%d\n",
+                        v0_4, s7_1, var_54, var_50, var_4c);
             v0_7 = v0[0] * 0x54;
             WRITE_S32(arg2, v0_7 + 0x1350, 0);
             s3_2 = arg2 + v0_7 + 0x4c0;
@@ -523,9 +547,26 @@ int32_t AL_SchedulerCpu_CreateChannel(int32_t **arg1, int32_t *arg2, void *arg3,
                     SCH_KMSG("SchCpu.CC SUCCESS return var_40=0x%x", var_40);
                     return var_40;
                 }
+
+                imp_log_fun(6, IMP_Log_Get_Option(), 2, "Encoder",
+                            "/home/user/git/proj/sdk-lv3/src/imp/video/alcodec/lib_encode/EncSchedulerCpu.c",
+                            0xd0, "AL_SchedulerCpu_CreateChannel",
+                            "SchCpu CreateChannel: buffer allocation failed stage=interm chan=%d refcnt=%d refsize=%d intermcnt=%d intermsize=%d\n",
+                            v0[0], s7_1, var_54, var_50, var_4c);
+            } else {
+                imp_log_fun(6, IMP_Log_Get_Option(), 2, "Encoder",
+                            "/home/user/git/proj/sdk-lv3/src/imp/video/alcodec/lib_encode/EncSchedulerCpu.c",
+                            0xce, "AL_SchedulerCpu_CreateChannel",
+                            "SchCpu CreateChannel: buffer allocation failed stage=ref chan=%d refcnt=%d refsize=%d intermcnt=%d intermsize=%d\n",
+                            v0[0], s7_1, var_54, var_50, var_4c);
             }
 
             SCH_KMSG("SchCpu.CC alloc failed -> FreeChannelBuffers2");
+            imp_log_fun(6, IMP_Log_Get_Option(), 2, "Encoder",
+                        "/home/user/git/proj/sdk-lv3/src/imp/video/alcodec/lib_encode/EncSchedulerCpu.c",
+                        0xd1, "AL_SchedulerCpu_CreateChannel",
+                        "SchCpu CreateChannel: buffer allocation failed chan=%d ref=%d interm=%d\n",
+                        v0[0], s7_1, var_50);
             {
                 int32_t a1_3 = v0[0];
                 int32_t a2_3 = v0[8];
@@ -567,8 +608,7 @@ int32_t *AL_SchedulerCpu_Create(int32_t arg1, int32_t *arg2)
     Rtos_Memset(result + 0x4c0, 0, 0xa80);
     default_alloc = AL_GetDefaultAllocator();
     default_vtable = default_alloc ? default_alloc->vtable : NULL;
-    s_SchedulerDefaultAllocatorSnapshot.vtable = default_vtable;
-    sched_alloc = &s_SchedulerDefaultAllocatorSnapshot;
+    sched_alloc = default_alloc;
     SCH_KMSG("SchCpu.Create default=%p vtbl=%p alloc_fn=%p getvirt=%p dma=%p dma_vtbl=%p",
              (void *)default_alloc, (void *)default_vtable,
              default_vtable ? (void *)default_vtable->Alloc : NULL,

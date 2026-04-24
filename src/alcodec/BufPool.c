@@ -748,6 +748,8 @@ int32_t GetStreamBufPoolConfig(int32_t *arg1, void *arg2, int32_t arg3, char arg
         stream_count = (int32_t)read_u8(arg2, 0xae) + arg8;
     if (stream_count <= 0)
         stream_count = 1;
+    if (stream_count < 2)
+        stream_count = 2;
 
     v1_1 = read_s32(arg2, 0x10);
     v0_4 = (uint8_t *)arg2 + (arg3 * 0xf0);

@@ -1,9 +1,22 @@
 #include <stdint.h>
 #include <stddef.h>
+#include <stdio.h>
+#include <fcntl.h>
+#include <unistd.h>
 
 #include "alcodec/al_buffer.h"
 #include "alcodec/al_rtos.h"
 #include "imp_log_int.h"
+
+#define CORE_KMSG(fmt, ...) do { \
+    int _kfd = open("/dev/kmsg", O_WRONLY); \
+    if (_kfd >= 0) { \
+        char _b[192]; \
+        int _n = snprintf(_b, sizeof(_b), "libimp/CORE: " fmt "\n", ##__VA_ARGS__); \
+        if (_n > 0) { write(_kfd, _b, _n > (int)sizeof(_b) ? (int)sizeof(_b) : _n); } \
+        close(_kfd); \
+    } \
+} while (0)
 
 typedef struct AL_IpCtrl AL_IpCtrl;
 typedef struct AL_IpCtrlVtable {
@@ -1004,6 +1017,10 @@ int32_t AL_CoreState_Init(AL_CoreStateCompat *arg1, int32_t arg2, int32_t arg3)
     arg1->run_state_1 = 0;
     Rtos_Memset(&arg1->clocks[0x20], 0, 8);
     IntVector_Init(&arg1->channels);
+    CORE_KMSG("init state=%p budget=%d weight=%d post=[%u/%u %u/%u]",
+              arg1, arg2, arg3,
+              (unsigned)arg1->running_channel_0, (unsigned)arg1->run_state_0,
+              (unsigned)arg1->running_channel_1, (unsigned)arg1->run_state_1);
     return 0;
 }
 
@@ -1051,9 +1068,17 @@ uint32_t AL_CoreState_IsChannelRunning(AL_CoreStateCompat *arg1, int32_t arg2)
 void AL_CoreState_SetChannelRunState(uint8_t *arg1, uint8_t arg2, int32_t arg3, uint8_t arg4)
 {
     uint8_t *a0 = arg1 + arg3;
+    uint8_t pre_ch0 = arg1[0];
+    uint8_t pre_ch1 = arg1[1];
+    uint8_t pre_st0 = arg1[2];
+    uint8_t pre_st1 = arg1[3];
 
     a0[2] = arg4;
     a0[0] = arg2;
+    CORE_KMSG("set state=%p mod=%d ch=%u run=%u pre=[%u/%u %u/%u] post=[%u/%u %u/%u]",
+              arg1, arg3, (unsigned)arg2, (unsigned)arg4,
+              (unsigned)pre_ch0, (unsigned)pre_st0, (unsigned)pre_ch1, (unsigned)pre_st1,
+              (unsigned)arg1[0], (unsigned)arg1[2], (unsigned)arg1[1], (unsigned)arg1[3]);
 }
 
 void StaticFifo_Init(StaticFifoCompat *arg1, int32_t *arg2, int32_t arg3)

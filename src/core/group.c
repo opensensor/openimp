@@ -49,17 +49,35 @@ int32_t group_update(Subject *arg1, int32_t *arg2)
 
         if (result < 0 || *(int32_t *)((char *)arg1->next + 0x3c) == 0) {
             int32_t device_id = *(int32_t *)((char *)arg1->data + 0x20);
-            void *frame = arg2 ? (void *)(uintptr_t)*arg2 : NULL;
+            void *frame = arg2;
+            int32_t frame_chn = arg2 ? arg2[1] : -1;
+            int32_t frame_idx = arg2 ? arg2[0] : -1;
 
-            if (device_id != 0 && device_id != 6 &&
-                frame != NULL && VBMReleaseFrame(device_id, frame) < 0) {
-                imp_log_fun(6, IMP_Log_Get_Option(), 2, "Group",
-                    "/home/user/git/proj/sdk-lv3/src/imp/core/group.c", 0x51,
-                    "group_update",
-                    "%s(%d)VBMReleaseFrame failed, group->module->name = %s, frame->pool_idx=%d, frame->index=%d\n",
-                    "group_update", 0x51,
-                    arg1 && arg1->next ? ((Module *)arg1->next)->name : "?",
-                    arg2[1], *arg2);
+            if (frame != NULL) {
+                int32_t release_rc;
+
+                group_trace("libimp/GRP: group_update pre-release device=%d frame=%p frame_chn=%d frame_idx=%d module=%s\n",
+                            device_id,
+                            frame,
+                            frame_chn,
+                            frame_idx,
+                            arg1 && arg1->next ? ((Module *)arg1->next)->name : "?");
+                release_rc = VBMReleaseFrame(frame_chn, frame);
+                group_trace("libimp/GRP: group_update post-release device=%d rc=%d frame=%p frame_chn=%d frame_idx=%d\n",
+                            device_id,
+                            release_rc,
+                            frame,
+                            frame_chn,
+                            frame_idx);
+                if (release_rc < 0) {
+                    imp_log_fun(6, IMP_Log_Get_Option(), 2, "Group",
+                        "/home/user/git/proj/sdk-lv3/src/imp/core/group.c", 0x51,
+                        "group_update",
+                        "%s(%d)VBMReleaseFrame failed, group->module->name = %s, frame->pool_idx=%d, frame->index=%d\n",
+                        "group_update", 0x51,
+                        arg1 && arg1->next ? ((Module *)arg1->next)->name : "?",
+                        arg2[1], *arg2);
+                }
             }
         }
 

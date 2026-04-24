@@ -203,14 +203,12 @@ int32_t EntropyStatusRegsToSliceStatus(void *arg1, char *arg2, int32_t arg3)
 
 int32_t InitSliceStatus(char *arg1)
 {
+    __builtin_memset(arg1, 0, 4);
     WRITE_U16(arg1, 0x3e, 0x7fff);
     __builtin_memset(&arg1[4], 0, 0x38);
     __builtin_memset(&arg1[0x44], 0, 0x2c);
     WRITE_U16(arg1, 0x42, 0);
     WRITE_U16(arg1, 0x40, 0);
-    arg1[1] = 0;
-    arg1[0] = 0;
-    arg1[2] = 0;
     return 0;
 }
 

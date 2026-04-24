@@ -622,3 +622,132 @@ Focus on why the stream buffer remains untouched even with `w1e` restored:
 3. revisit cacheability / writeback assumptions for the stream destination and
    intermediate data, since the legacy `bc7c4cb` notes explicitly call out T31
    cache-flush failure as a stream-corruption root cause
+
+## 2026-04-23 Session Addendum
+
+### Current source state
+
+- `src/alcodec/ChannelMngr.c` keeps the callback protected when
+  `OutputFramesWithLockState(..., caller_holds_sched_mutex=1)` is used.
+- `Process()` still keeps the owner loop alive on `status=2` by converting
+  `status=2 -> 1` and continuing.
+- The queue-while-processing path no longer performs inline drain; the inline
+  drain was tested and caused a regression.
+- `src/video/imp_encoder.c` now defaults `max_stream_cnt` to `4`.
+- `src/alcodec/BufPool.c` now floors codec stream-pool count at `4`.
+
+### MCP/Binary Ninja findings
+
+Loaded MCP server:
+
+- `port_9009`
+- binary: `/home/matteius/output/wyze_cam3_t31x_gc2053_rtl8189ftv/target/usr/lib/libimp.so`
+
+Useful decompiler observations:
+
+- `AL_Codec_Encode_GetSrcStreamCntAndSize()` returns codec fields at
+  `codec+0x7ac` and `codec+0x7b0`.
+- `IMP_Encoder_SetMaxStreamCnt()` writes the encoder-side max stream count.
+- The decompiled encoder create path seeds a stream semaphore with `4`, which
+  supports using a 4-buffer baseline instead of the fragile 1-buffer state.
+
+### Smoke: stable one-frame recycle before stream-count change
+
+Log bundle:
+
+- `logs/20260423T092941Z-s31-no-inline-check-loop-top-release-12s-smoke.log`
+
+Signals:
+
+- `GetStream_Impl stream = 1`
+- `ReleaseStream return = 1`
+- `PutStreamBuffer post-Process = 1`
+- `queued-while-processing = 1`
+- `avpu.0 = 1`
+- `rvd` becomes zombie after first frame
+
+Meaning:
+
+- First frame can launch, complete, publish, and recycle.
+- The second frame is queued but the scheduler does not re-launch AVPU.
+
+### Smoke: 4 buffers plus inline status-1 drain regressed
+
+Log bundle:
+
+- `logs/20260423T093432Z-s31-stream4-status1-inline-drain-12s-smoke.log`
+
+Signals:
+
+- `GetStreamCfg count=4`
+- `encChn=0,srcStreamCnt=4`
+- `encChn=1,srcStreamCnt=4`
+- four deferred main stream buffers were primed
+- second main frame reached `ListModulesNeeded` with spare stream buffer
+- died before second `encode1 dequeued`
+- `s31_rc=1`, `rvd FAILED (no ring after 5s)`, `local_rc=139`
+- kernel tail included `BUG: sleeping function called from invalid context`
+
+Meaning:
+
+- The 4-buffer change itself materializes correctly.
+- Inline drain from the queued-frame path is unsafe and should remain removed.
+
+### Current blocker
+
+After the failed inline-drain smoke, the camera responds to ping but SSH stays
+refused:
+
+- `ping 192.168.50.215` succeeds
+- `ssh root@192.168.50.215` returns `Connection refused`
+
+Likely next action:
+
+1. Manually power-cycle the device if SSH does not come back.
+2. Stage the current buffer-only build:
+   - `lib/libimp.so`
+   - `lib/libsysutils.so`
+3. Run smoke label:
+   - `s31-stream4-no-inline-drain-12s-smoke`
+4. Confirm:
+   - `GetStreamCfg count=4`
+   - `encChn=0,srcStreamCnt=4`
+   - `encChn=1,srcStreamCnt=4`
+
+### Smoke: true stream-count 4 hard-wedges services
+
+Log bundle:
+
+- `logs/20260423T171827Z-s31-stream4-buffer-baseline-short-smoke.log`
+
+Signals:
+
+- staged hashes matched on-device:
+  - `ba9f84661a14c6a610ad81239327debb6da74d4c1c27d26164b5d9723ac6d7b2 /opt/libimp.so`
+  - `8587bb2184f3d0dd1da1da653f2443528e756738855cb981bce4a5e7451563ec /opt/libsysutils.so`
+- `LD_LIBRARY_PATH=/opt /opt/S31raptor start` returned `EXIT:0`
+- immediate follow-up collect failed with:
+  - `kex_exchange_identification: read: Connection reset by peer`
+  - then persistent `Connection refused`
+- during the refusal window:
+  - `ping 192.168.50.215` still worked
+  - ports `22`, `322`, `8554`, and `8443` all refused
+
+Meaning:
+
+- The real codec stream-pool increase is the threshold event:
+  - `count=1` starves after the first frame
+  - `count=4` hard-wedges the box before logs can be collected over a second SSH session
+- The next bisection target should be `count=2`, not another `count=4` retry.
+
+Next experiment setup:
+
+1. Power-cycle the device.
+2. Stage the `count=2` build now present in the worktree:
+   - `src/video/imp_encoder.c` default `max_stream_cnt = 2`
+   - `src/imp_encoder.c` default `max_stream_cnt = 2`
+   - `src/alcodec/BufPool.c` floor stream count at `2`
+3. Use a single SSH session for start plus collection so logs survive even if
+   dropbear stops accepting new connections mid-run.
+   - whether AVPU remains at 1 interrupt or reaches a second launch without
+     inline drain.

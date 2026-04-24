@@ -1,6 +1,7 @@
 #include <stdint.h>
 
 #include "alcodec/al_rtos.h"
+#include "imp_log_int.h"
 
 extern char _gp;
 extern int32_t __assert(const char *expression, const char *file, int32_t line, const char *function, void *caller);
@@ -39,6 +40,51 @@ typedef struct AL_TIntermMngr {
     int32_t ep2_size;               /* 0xf4 */
     void *mutex;                    /* 0xf8 */
 } AL_TIntermMngr;
+
+#define INTM_MIN_VALID_PTR 0x10000U
+#define INTM_KMSG(fmt, ...) IMP_LOG_INFO("INTM", fmt, ##__VA_ARGS__)
+
+static void *AL_IntermMngr_EnsureMutex(AL_TIntermMngr *arg1, const char *site)
+{
+    void *mutex = arg1->mutex;
+
+    if ((uintptr_t)mutex > INTM_MIN_VALID_PTR) {
+        return mutex;
+    }
+
+    INTM_KMSG("%s repair-mutex ctx=%p old=%p head=%d size=%d cap=%d ep1=%d wpp=%d ep2=%d",
+              site, arg1, mutex, arg1->head, arg1->size, arg1->capacity,
+              arg1->ep1_size, arg1->wpp_size, arg1->ep2_size);
+    mutex = Rtos_CreateMutex();
+    if ((uintptr_t)mutex <= INTM_MIN_VALID_PTR) {
+        INTM_KMSG("%s repair-mutex failed ctx=%p new=%p", site, arg1, mutex);
+        return NULL;
+    }
+
+    arg1->mutex = mutex;
+    INTM_KMSG("%s repair-mutex new=%p ctx=%p", site, mutex, arg1);
+    return mutex;
+}
+
+static void *AL_IntermMngr_Lock(AL_TIntermMngr *arg1, const char *site)
+{
+    void *mutex = AL_IntermMngr_EnsureMutex(arg1, site);
+
+    if (mutex != NULL) {
+        Rtos_GetMutex(mutex);
+    }
+
+    return mutex;
+}
+
+static int32_t AL_IntermMngr_Unlock(void *mutex)
+{
+    if (mutex == NULL) {
+        return 0;
+    }
+
+    return (int32_t)Rtos_ReleaseMutex(mutex);
+}
 
 int32_t AL_IntermMngr_ReleaseBufferBack(AL_TIntermMngr *arg1, AL_TIntermBuffer *arg2);
 int32_t AL_IntermMngr_GetEp1Addr(AL_TIntermMngr *arg1, AL_TIntermBuffer *arg2, int32_t *arg3);
@@ -128,17 +174,23 @@ int32_t AL_IntermMngr_Init(AL_TIntermMngr *arg1, const void *arg2)
     arg1->ep2_size = AL_GetAllocSizeEP2((int32_t)v1, (int32_t)var_1c, (int32_t)v0);
     arg1->ep1_size = AL_GetAllocSizeEP1();
     arg1->mutex = Rtos_CreateMutex();
+    INTM_KMSG("Init ctx=%p mutex=%p ep1=%d wpp=%d ep2=%d data=%d map=%d",
+              arg1, arg1->mutex, arg1->ep1_size, arg1->wpp_size, arg1->ep2_size,
+              arg1->data_size, arg1->map_size);
     (void)var_30;
     (void)var_2c;
-    return 1;
+    return ((uintptr_t)arg1->mutex > INTM_MIN_VALID_PTR) ? 1 : 0;
 }
 
 int32_t AL_IntermMngr_Deinit(AL_TIntermMngr *arg1)
 {
-    void *a0 = arg1->mutex;
-
     arg1->capacity = 0;
-    Rtos_DeleteMutex(a0);
+    if ((uintptr_t)arg1->mutex > INTM_MIN_VALID_PTR) {
+        Rtos_DeleteMutex(arg1->mutex);
+    } else if (arg1->mutex != NULL) {
+        INTM_KMSG("Deinit skip-delete invalid mutex=%p ctx=%p", arg1->mutex, arg1);
+    }
+    arg1->mutex = NULL;
     return 0;
 }
 
@@ -149,7 +201,11 @@ int32_t AL_IntermMngr_GetBufferSize(AL_TIntermMngr *arg1)
 
 int32_t AL_IntermMngr_AddBuffer(AL_TIntermMngr *arg1, AL_TIntermBuffer *arg2)
 {
-    Rtos_GetMutex(arg1->mutex);
+    void *mutex = AL_IntermMngr_Lock(arg1, "AddBuffer");
+
+    if (mutex == NULL) {
+        return 0;
+    }
 
     {
         int32_t a0_1 = arg1->capacity;
@@ -171,14 +227,18 @@ int32_t AL_IntermMngr_AddBuffer(AL_TIntermMngr *arg1, AL_TIntermBuffer *arg2)
             arg1->size = a2_1 + 1;
         }
 
-        Rtos_ReleaseMutex(arg1->mutex);
+        AL_IntermMngr_Unlock(mutex);
         return result;
     }
 }
 
 int32_t AL_IntermMngr_ReleaseBuffer(AL_TIntermMngr *arg1, AL_TIntermBuffer *arg2)
 {
-    Rtos_GetMutex(arg1->mutex);
+    void *mutex = AL_IntermMngr_Lock(arg1, "ReleaseBuffer");
+
+    if (mutex == NULL) {
+        return 0;
+    }
 
     {
         int32_t a1 = arg1->size;
@@ -192,13 +252,17 @@ int32_t AL_IntermMngr_ReleaseBuffer(AL_TIntermMngr *arg1, AL_TIntermBuffer *arg2
 
         arg1->queue[(a1 + arg1->head) % 0x12] = arg2;
         arg1->size = a1 + 1;
-        return (int32_t)Rtos_ReleaseMutex(arg1->mutex);
+        return AL_IntermMngr_Unlock(mutex);
     }
 }
 
 int32_t AL_IntermMngr_ReleaseBufferBack(AL_TIntermMngr *arg1, AL_TIntermBuffer *arg2)
 {
-    Rtos_GetMutex(arg1->mutex);
+    void *mutex = AL_IntermMngr_Lock(arg1, "ReleaseBufferBack");
+
+    if (mutex == NULL) {
+        return 0;
+    }
 
     {
         int32_t a2 = arg1->size;
@@ -221,7 +285,7 @@ int32_t AL_IntermMngr_ReleaseBufferBack(AL_TIntermMngr *arg1, AL_TIntermBuffer *
             arg1->head = v1;
             arg1->queue[v1] = arg2;
             arg1->size = a2 + 1;
-            return (int32_t)Rtos_ReleaseMutex(arg1->mutex);
+            return AL_IntermMngr_Unlock(mutex);
         }
     }
 }
@@ -317,8 +381,11 @@ int32_t AL_IntermMngr_GetDataAddr(AL_TIntermMngr *arg1, AL_TIntermBuffer *arg2, 
 int32_t AL_IntermMngr_GetBuffer(AL_TIntermMngr *arg1)
 {
     AL_TIntermBuffer *result;
+    void *mutex = AL_IntermMngr_Lock(arg1, "GetBuffer");
 
-    Rtos_GetMutex(arg1->mutex);
+    if (mutex == NULL) {
+        return 0;
+    }
     {
         int32_t a2 = arg1->size;
 
@@ -347,7 +414,7 @@ int32_t AL_IntermMngr_GetBuffer(AL_TIntermMngr *arg1)
             }
             arg1->head = (a0_1 + 1) % 0x12;
         }
-        Rtos_ReleaseMutex(arg1->mutex);
+        AL_IntermMngr_Unlock(mutex);
     }
     return (int32_t)(intptr_t)result;
 }

@@ -623,9 +623,12 @@ static int32_t updateHlsAndWriteSections(uint8_t *arg1, void *arg2, uint8_t *arg
     uint8_t pic_struct_idx;
     int32_t result;
 
-    AVC_KMSG("updateHls entry enc=%p status=%p hls=%p stream=%p layer=%d hls0=0x%x hls1=0x%x",
-             arg1, arg2, arg3, (void *)(intptr_t)arg4, arg5,
-             arg3 != NULL ? arg3[0] : 0, arg3 != NULL ? arg3[1] : 0);
+    AVC_KMSG("updateHls entry enc=%p status=%p hls=%p stream=%p layer=%d",
+             arg1, arg2, arg3, (void *)(intptr_t)arg4, arg5);
+    if (arg3 != NULL) {
+        AVC_KMSG("updateHls hls-bytes layer=%d b0=0x%x b1=0x%x b2=0x%x b3=0x%x",
+                 arg5, arg3[0], arg3[1], arg3[2], arg3[3]);
+    }
     AL_AVC_UpdateSPS(arg1 + s0_3 + 0x1c, *(uint8_t **)(arg1 + 0x14), arg2, arg3);
     AVC_KMSG("updateHls post-sps enc=%p hls=%p", arg1, arg3);
     pps_updated = AL_AVC_UpdatePPS(arg1 + s0_3 + 0x5a28, (uint8_t *)arg2, arg3);

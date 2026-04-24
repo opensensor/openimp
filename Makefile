@@ -97,7 +97,6 @@ IMP_SOURCES = \
 	$(SRC_DIR)/kernel_interface.c \
 	$(SRC_DIR)/fifo.c \
 	$(SRC_DIR)/al_avpu.c \
-	$(SRC_DIR)/al_encoder_compat.c \
 	$(SRC_DIR)/codec.c \
 	$(SRC_DIR)/dma_alloc.c \
 	$(SRC_DIR)/hw_encoder.c \
