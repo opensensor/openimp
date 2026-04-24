@@ -1118,11 +1118,6 @@ int32_t IMP_Encoder_RegisterChn(int32_t arg1, int32_t arg2)
                         *(int32_t *)((char *)v0_9 + 8),
                         CH_S32(arg2, ENC_F_STARTED),
                         CH_S32(arg2, ENC_F_ENABLED));
-        if (CH_S32(arg2, ENC_F_ENABLED) == 0) {
-            int32_t start_rc = IMP_Encoder_StartRecvPic(arg2);
-            video_enc_kmsg("libimp/ENCW2: RegisterChn start-recv grp=%d chn=%d rc=%d\n",
-                           arg1, arg2, start_rc);
-        }
         video_enc_kmsg("libimp/ENCW2: RegisterChn return grp=%d chn=%d started=%d enabled=%d\n",
                        arg1, arg2, CH_S32(arg2, ENC_F_STARTED), CH_S32(arg2, ENC_F_ENABLED));
         return 0;

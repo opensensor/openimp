@@ -71,8 +71,12 @@ typedef struct AL_EncCoreCtxCompat {
  * the high channel tail. The low 0x48..0x4f range remains copied codec settings
  * and must not be used for callbacks or ME-range state.
  */
-#define CH_OEM_CHANNEL_ID_OFF 0x12d58
-#define CH_OEM_CORE_BASE_OFF 0x12d59
+#define CH_CORE_COUNT_OFF 0x3c
+#define CH_CORE_BASE_OFF 0x3d
+#define CH_STABLE_CORE_COUNT_OFF 0x12d58
+#define CH_STABLE_CORE_BASE_OFF 0x12d59
+#define CH_OEM_CHANNEL_ID_OFF CH_STABLE_CORE_COUNT_OFF
+#define CH_OEM_CORE_BASE_OFF CH_STABLE_CORE_BASE_OFF
 #define CH_OUT_CB_OFF 0x12f9c
 #define CH_OUT_CTX_OFF 0x12fa0
 #define CH_DESTROY_CB_OFF 0x12fa4
@@ -3042,7 +3046,8 @@ uint32_t AL_EncChannel_SetNumberOfCores(void *arg1)
         result = result_1;
     }
 
-    WRITE_U8(arg1, 0x3c, (uint8_t)result);
+    WRITE_U8(arg1, CH_CORE_COUNT_OFF, (uint8_t)result);
+    WRITE_U8(arg1, CH_STABLE_CORE_COUNT_OFF, (uint8_t)result);
     return result;
 }
 
@@ -3938,16 +3943,27 @@ int32_t AL_EncChannel_GetNextFrameToOutput(void *arg1, int32_t *arg2)
         ENC_KMSG("GetNextFrameToOutput skip uninit fifo");
         return 0;
     }
-    if (StaticFifo_Empty((uint8_t *)arg1 + 0x12b24) == 0) {
+    if (StaticFifo_Empty(fifo) == 0) {
         int32_t out_cb = READ_S32(arg1, CH_OUT_CB_OFF);
         int32_t out_ctx = READ_S32(arg1, CH_OUT_CTX_OFF);
         int32_t out_arg2 = (int32_t)(uint32_t)READ_U8(arg1, CH_OEM_CHANNEL_ID_OFF);
+        int dup_count = 0;
 
-        entry = (int32_t *)(intptr_t)StaticFifo_Dequeue((uint8_t *)arg1 + 0x12b24);
+        entry = (int32_t *)(intptr_t)StaticFifo_Dequeue(fifo);
         stream_meta = entry ? (void *)(intptr_t)entry[0] : NULL;
+        while (entry != NULL &&
+               StaticFifo_Empty(fifo) == 0 &&
+               (int32_t *)(intptr_t)StaticFifo_Front(fifo) == entry) {
+            StaticFifo_Dequeue(fifo);
+            dup_count += 1;
+        }
         ENC_KMSG("GetNextFrameToOutput dequeued entry=%p stream_meta=%p cb=%p cb_ctx=%p low48=%p low4c=%p",
                  entry, stream_meta, (void *)(intptr_t)out_cb, (void *)(intptr_t)out_ctx,
                  (void *)(intptr_t)READ_S32(arg1, 0x48), (void *)(intptr_t)READ_S32(arg1, 0x4c));
+        if (dup_count != 0) {
+            ENC_KMSG("GetNextFrameToOutput dropped-duplicate-events entry=%p count=%d",
+                     entry, dup_count);
+        }
         memset(arg2, 0, 0x100);
         WRITE_S32(arg2, 0x00, out_cb);
         WRITE_S32(arg2, 0x04, out_ctx);
@@ -4381,16 +4397,16 @@ int32_t AL_EncChannel_Init(int32_t *arg1, int32_t *arg2, void *arg3, uint8_t arg
 
     WRITE_S32(arg1, 0x164, (int32_t)(intptr_t)arg3);
     ResetChannelParam(arg1);
-    WRITE_U8(arg1, 0x3c, arg5);
-    WRITE_U8(arg1, 0x3d, arg4);
+    WRITE_U8(arg1, CH_CORE_COUNT_OFF, arg5);
+    WRITE_U8(arg1, CH_CORE_BASE_OFF, arg4);
     WRITE_S32(arg1, 0x2c, arg6);
     WRITE_U8(arg1, 0x3f, READ_U8(arg2, 0xf));
     WRITE_S32(arg1, 0x1a80, arg12);
     WRITE_S32(arg1, 0x1a84, arg6);
     WRITE_U16(arg1, 0x1a88, (uint16_t)READ_U8(arg2, 0xf));
     WRITE_U8(arg1, 0x44, READ_U8(arg2, 0));
-    WRITE_U8(arg1, CH_OEM_CHANNEL_ID_OFF, arg5);
-    WRITE_U8(arg1, CH_OEM_CORE_BASE_OFF, arg4);
+    WRITE_U8(arg1, CH_STABLE_CORE_COUNT_OFF, arg5);
+    WRITE_U8(arg1, CH_STABLE_CORE_BASE_OFF, arg4);
     WRITE_S32(arg1, CH_OUT_CB_OFF, arg9[0]);
     WRITE_S32(arg1, CH_OUT_CTX_OFF, arg9[1]);
     WRITE_S32(arg1, CH_DESTROY_CB_OFF, 0);
@@ -4416,10 +4432,10 @@ int32_t AL_EncChannel_Init(int32_t *arg1, int32_t *arg2, void *arg3, uint8_t arg
 
         memcpy(step_param, arg2, sizeof(step_param));
         WRITE_S32(step_param, 0x2c, READ_S32(arg1, 0x2c));
-        WRITE_S32(step_param, 0x3c, (int32_t)READ_U8(arg1, 0x3c));
+        WRITE_S32(step_param, CH_CORE_COUNT_OFF, (int32_t)READ_U8(arg1, CH_CORE_COUNT_OFF));
         WRITE_U16(step_param, 0x40, READ_U16(arg1, 0x40));
         ENC_KMSG("AL_EncChannel_Init resync-step-template cores=%u base=%u active=%d slices=%u",
-                 (unsigned)READ_U8(arg1, 0x3c), (unsigned)READ_U8(arg1, 0x3d),
+                 (unsigned)READ_U8(arg1, CH_CORE_COUNT_OFF), (unsigned)READ_U8(arg1, CH_CORE_BASE_OFF),
                  READ_S32(arg1, 0x2c), (unsigned)READ_U16(arg1, 0x40));
         SetChannelSteps(arg1, step_param);
     }
@@ -4589,7 +4605,9 @@ int32_t AL_EncChannel_DeInit(void *arg1)
     AL_SrcReorder_Deinit((uint8_t *)arg1 + 0x178);
     WRITE_S32(arg1, 0x55, 0);
     WRITE_U16(arg1, 0x50, 0);
-    WRITE_U8(arg1, 0x3c, 0xff);
+    WRITE_U8(arg1, CH_CORE_COUNT_OFF, 0xff);
+    WRITE_U8(arg1, CH_STABLE_CORE_COUNT_OFF, 0xff);
+    WRITE_U8(arg1, CH_STABLE_CORE_BASE_OFF, 0xff);
     WRITE_S32(arg1, 0x48, 0);
     WRITE_S32(arg1, 0x4c, 0);
     ResetChannelParam(arg1);
@@ -5103,7 +5121,8 @@ int32_t encode1(void *arg1)
         ENC_KMSG("encode1 force-single-core-avc req=%p ch_cores=%u mods=%d slices=%d pending0=%d",
                  req, (unsigned)READ_U8(ch, 0x3c), READ_S32(req, 0x8cc),
                  READ_S32(req, 0x958), READ_S32(req, 0x8d0));
-        WRITE_U8(ch, 0x3c, 1);
+        WRITE_U8(ch, CH_CORE_COUNT_OFF, 1);
+        WRITE_U8(ch, CH_STABLE_CORE_COUNT_OFF, 1);
         WRITE_S32(req, 0x8cc, 1);
         WRITE_S32(req, 0x958, 1);
         WRITE_S32(req, 0x8d0, 1);
@@ -5368,7 +5387,9 @@ int32_t encode1(void *arg1)
         void *core1_live = (uint8_t *)READ_PTR(ch, 0x164) + 0x44;
 
         RemapLiveT31Irq4(core1_live, EndEncoding, "encode1");
-    } else if (READ_U8(ch, 0x1f) == 0U) {
+    } else if (READ_U8(ch, 0x1f) == 0U &&
+               READ_PTR(ch, 0x164) != NULL &&
+               ((AL_EncCoreCtxCompat *)READ_PTR(ch, 0x164))->core_id == 0U) {
         RemapLiveT31Irq4(READ_PTR(ch, 0x164), EndEncoding, "encode1-core0");
     }
     {

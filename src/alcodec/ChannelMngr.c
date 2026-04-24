@@ -42,8 +42,12 @@ void imp_log_fun(int level, int option, int type, ...); /* forward decl */
 #define WRITE_PTR(base, off, val) (*(void **)((uint8_t *)(base) + (off)) = (void *)(val))
 
 #define CH_GATE_OFF 0x1aee
-#define CH_CORE_COUNT(ctx) READ_U8((ctx), 0x3c)
-#define CH_CORE_BASE(ctx) READ_U8((ctx), 0x3d)
+#define CH_CORE_COUNT_OFF 0x3c
+#define CH_CORE_BASE_OFF 0x3d
+#define CH_STABLE_CORE_COUNT_OFF 0x12d58
+#define CH_STABLE_CORE_BASE_OFF 0x12d59
+#define CH_CORE_COUNT(ctx) ChCoreCountCompat((const uint8_t *)(ctx))
+#define CH_CORE_BASE(ctx) ChCoreBaseCompat((const uint8_t *)(ctx))
 #define CH_RES_BUDGET(ctx) READ_S32((ctx), 0x2c)
 
 typedef struct AL_ClockCompat {
@@ -103,6 +107,71 @@ typedef struct ChMngrFactoryVtable {
 typedef struct ChMngrFactoryCompat {
     const ChMngrFactoryVtable *vtable;
 } ChMngrFactoryCompat;
+
+static uint8_t ChCoreCountCompat(const uint8_t *ctx)
+{
+    uint8_t low;
+    uint8_t stable;
+
+    if (ctx == NULL) {
+        return 0;
+    }
+
+    low = READ_U8(ctx, CH_CORE_COUNT_OFF);
+    if (low != 0U && low != 0xffU) {
+        return low;
+    }
+
+    stable = READ_U8(ctx, CH_STABLE_CORE_COUNT_OFF);
+    if (stable != 0U && stable != 0xffU) {
+        return stable;
+    }
+
+    return low;
+}
+
+static uint8_t ChCoreBaseCompat(const uint8_t *ctx)
+{
+    if (ctx == NULL) {
+        return 0;
+    }
+
+    if (READ_U8(ctx, CH_CORE_COUNT_OFF) != 0U && READ_U8(ctx, CH_CORE_COUNT_OFF) != 0xffU) {
+        return READ_U8(ctx, CH_CORE_BASE_OFF);
+    }
+
+    return READ_U8(ctx, CH_STABLE_CORE_BASE_OFF);
+}
+
+static void RepairChannelCoreLayout(uint8_t *ctx, const char *tag)
+{
+    uint8_t low_count;
+    uint8_t stable_count;
+    uint8_t low_base;
+    uint8_t stable_base;
+
+    if (ctx == NULL) {
+        return;
+    }
+
+    low_count = READ_U8(ctx, CH_CORE_COUNT_OFF);
+    if (low_count != 0U && low_count != 0xffU) {
+        return;
+    }
+
+    stable_count = READ_U8(ctx, CH_STABLE_CORE_COUNT_OFF);
+    if (stable_count == 0U || stable_count == 0xffU) {
+        return;
+    }
+
+    low_base = READ_U8(ctx, CH_CORE_BASE_OFF);
+    stable_base = READ_U8(ctx, CH_STABLE_CORE_BASE_OFF);
+    WRITE_U8(ctx, CH_CORE_COUNT_OFF, stable_count);
+    WRITE_U8(ctx, CH_CORE_BASE_OFF, stable_base);
+    CMG_KMSG("RepairCoreLayout tag=%s ctx=%p low=%u/%u stable=%u/%u",
+             tag, ctx, (unsigned)low_base, (unsigned)low_count,
+             (unsigned)stable_base, (unsigned)stable_count);
+}
 
 void IntVector_Init(int32_t *arg1); /* forward decl, ported by T<N> later */
 int32_t IntVector_Add(int32_t *arg1, int32_t arg2); /* forward decl, ported by T<N> later */
@@ -724,6 +793,7 @@ static int32_t CheckAndEncode(int32_t *arg1)
 
             CMG_KMSG("CheckAndEncode scan-token ch=%d token=0x%x ctx=%p", s2_1, str_3, v0_3);
             if (v0_3 != 0) {
+                RepairChannelCoreLayout(v0_3, "CheckAndEncode");
                 CMG_KMSG("CheckAndEncode scan-ctx ch=%d base=%u count=%u mode=%u res=%d",
                          s2_1, CH_CORE_BASE(v0_3), CH_CORE_COUNT(v0_3), READ_U8(v0_3, 0x1f),
                          CH_RES_BUDGET(v0_3));
@@ -1036,6 +1106,9 @@ static int32_t OutputFramesWithLockState(int32_t *arg1, int caller_holds_sched_m
                              && out_fifo->capacity != 0
                              && out_fifo->read_idx != out_fifo->write_idx);
 
+            if (v0_7 != 0) {
+                RepairChannelCoreLayout(v0_7, "OutputFrames");
+            }
             CMG_KMSG("OutputFrames loop idx=%d raw_ch=%u ctx=%p out_ready=%d r=%d w=%d cap=%d",
                      s1_1, (unsigned)raw_ch, v0_7, out_ready,
                      out_fifo ? out_fifo->read_idx : -1,
@@ -1082,6 +1155,17 @@ static int32_t OutputFramesWithLockState(int32_t *arg1, int caller_holds_sched_m
                 Rtos_GetMutex(sched_mutex);
                 CMG_KMSG("OutputFrames cb-relock ch=%u caller_locked=%d status=%d idx=%d pending=%d",
                          (unsigned)raw_ch, caller_holds_sched_mutex, arg1[0x4bc], s1_1, var_a0[0]);
+                /*
+                 * Live T31 callbacks can queue more work while the scheduler is
+                 * still draining a stale pending snapshot. If the callback
+                 * changed process status, restart OutputFrames from the owner
+                 * loop instead of immediately walking the old snapshot again.
+                 */
+                if (arg1[0x4bc] != 1) {
+                    CMG_KMSG("OutputFrames restart-after-cb ch=%u status=%d idx=%d pending=%d",
+                             (unsigned)raw_ch, arg1[0x4bc], s1_1, var_a0[0]);
+                    break;
+                }
                 if (s1_1 >= var_a0[0]) {
                     break;
                 }
@@ -1376,7 +1460,8 @@ label_723c4:
                                         } while ((uint8_t *)arg1 + s1_3 * 0x98 + 0x5d4 != i_2);
                                     }
 
-                                    WRITE_U8(v0_25, 0x3d, (uint8_t)(v0_30 & 0xff));
+                                    WRITE_U8(v0_25, CH_CORE_BASE_OFF, (uint8_t)(v0_30 & 0xff));
+                                    WRITE_U8(v0_25, CH_STABLE_CORE_BASE_OFF, (uint8_t)(v0_30 & 0xff));
                                     /* +0x7c stores the per-core state base pointer */
                                     WRITE_PTR(v0_25, 0x80, (uint8_t *)arg1 + var_40_2 + (s4_3 << 6) + 0x8c);
                                     CMG_KMSG("Process shift-commit ch=%d core_base=%d core_ptr=%p",
@@ -1504,6 +1589,7 @@ static int32_t HandleCoreInterrupt(int32_t *arg1, int32_t arg2, int32_t arg3)
              (unsigned)READ_U8(&arg1[arg2 * 0x26], arg3 + 0x5d4));
     result = 1;
     if (v0_6 != 0) {
+        RepairChannelCoreLayout(v0_6, "HandleCoreInterrupt");
         CMG_KMSG("HandleCoreInterrupt pre-EndEncoding ctx=%p core=%d lane=%d", v0_6, arg2, arg3);
         result = AL_EncChannel_EndEncoding(v0_6, (uint8_t)arg2, arg3);
         CMG_KMSG("HandleCoreInterrupt post-EndEncoding result=%d", result);
@@ -2184,6 +2270,7 @@ int32_t AL_SchedulerEnc_PutStreamBuffer(int32_t *arg1, char arg2, int32_t arg3, 
              (void *)(intptr_t)arg1[0x4bd]);
     Rtos_GetMutex((void *)(intptr_t)arg1[0x4bd]);
     v0 = GetChMngrCtx(arg1, arg2);
+    RepairChannelCoreLayout(v0, "PutStreamBuffer");
     CMG_KMSG("PutStreamBuffer ctx=%p", v0);
     if (v0 != 0 && AL_EncChannel_PushStreamBuffer(v0, arg3, arg4, arg5, arg6, arg5 - arg6, arg7, arg8, arg9) != 0) {
         int32_t old_status = arg1[0x4bc];

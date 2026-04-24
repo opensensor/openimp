@@ -1543,10 +1543,39 @@ int32_t AL_Codec_Encode_GetStream(void *arg1, void **arg2, void **arg3)
 
 int32_t AL_Codec_Encode_ReleaseStream(void *arg1, void *arg2, void *arg3)
 {
-    (void)arg1;
+    int32_t src_ref = (arg3 != NULL) ? *(int32_t *)((uint8_t *)arg3 + 0x34) : -1;
+    int32_t stream_ref = (arg2 != NULL) ? *(int32_t *)((uint8_t *)arg2 + 0x34) : -1;
+
+    {
+        int kfd = open("/dev/kmsg", O_WRONLY);
+        if (kfd >= 0) {
+            char b[224];
+            int n = snprintf(b, sizeof(b),
+                             "libimp/LCOD: ReleaseStream pre codec=%p stream=%p stream_ref=%d src=%p src_ref=%d mgr=%p\n",
+                             arg1, arg2, stream_ref, arg3, src_ref,
+                             arg1 ? *(void **)((uint8_t *)arg1 + 0x798) : NULL);
+            if (n > 0)
+                write(kfd, b, n);
+            close(kfd);
+        }
+    }
+
     AL_Buffer_Unref(arg3);
     AL_Encoder_PutStreamBuffer(*(int32_t **)((uint8_t *)arg1 + 0x798), arg2, 0);
     AL_Buffer_Unref(arg2);
+
+    {
+        int kfd = open("/dev/kmsg", O_WRONLY);
+        if (kfd >= 0) {
+            char b[224];
+            int n = snprintf(b, sizeof(b),
+                             "libimp/LCOD: ReleaseStream post codec=%p stream=%p src=%p\n",
+                             arg1, arg2, arg3);
+            if (n > 0)
+                write(kfd, b, n);
+            close(kfd);
+        }
+    }
     return 0;
 }
 
