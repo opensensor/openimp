@@ -918,6 +918,7 @@ int32_t AL_EncCore_Encode2(AL_EncCoreCtxCompat *arg1, int32_t arg2, int32_t arg3
                              AL_CMD_LIST_FLUSH_BYTES, flush_ret);
             }
         }
+        StartEnc1WithCommandList_isra_25(arg1, &arg1->core_id, arg2, 2);
         result = StartEnc1WithCommandList_isra_25(arg1, &arg1->core_id, arg2, 8);
         LogCoreIrqSnapshot(arg1, "enc2-post");
         ProbeEnc2Progress(arg1);

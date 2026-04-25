@@ -1182,6 +1182,7 @@ static void ArmLiveT31EntropyIrqs(void *core_ctx, const char *tag)
 {
     AL_EncCoreCtxCompat *core = (AL_EncCoreCtxCompat *)core_ctx;
     uint32_t entropy_irq;
+    int mirror_irq4;
 
     if (core == NULL || core->ip_ctrl == NULL) {
         return;
@@ -1189,6 +1190,7 @@ static void ArmLiveT31EntropyIrqs(void *core_ctx, const char *tag)
 
     entropy_irq = (((uint32_t)core->core_id << 2) + 2U) & 0x1fU;
     WriteLiveT31IrqSlot(core->ip_ctrl, entropy_irq, EndAvcEntropy, core_ctx, 0U);
+    mirror_irq4 = (core->core_id == 0U);
 
     /*
      * The older live T31 grey-stream runs still saw phase-1 completions arrive
@@ -1196,13 +1198,16 @@ static void ArmLiveT31EntropyIrqs(void *core_ctx, const char *tag)
      * but also mirror core0 onto slot4 so we preserve the last known working
      * completion path without reviving the later dynamic remap experiment.
      */
-    if (core->core_id == 0U) {
+    if (tag != NULL && strcmp(tag, "encode2") == 0) {
+        mirror_irq4 = 0;
+    }
+    if (mirror_irq4 != 0) {
         WriteLiveT31IrqSlot(core->ip_ctrl, 4U, EndAvcEntropy, core_ctx, 0U);
     }
 
     ENC_KMSG("%s arm-entropy-irq core=%u slot=%u ctx=%p cb=%p mirror4=%u",
              tag ? tag : "irq", (unsigned)core->core_id, (unsigned)entropy_irq, core_ctx,
-             EndAvcEntropy, (unsigned)(core->core_id == 0U));
+             EndAvcEntropy, (unsigned)mirror_irq4);
 }
 
 static void ApplyLiveT31Core0LegacyIrqMask(void *core_ctx, const char *tag)
@@ -3011,6 +3016,69 @@ static int32_t AlignToStartCodePrefix(const uint8_t *buf, int32_t pos, int32_t f
     return pos;
 }
 
+static int32_t HasStartCodePrefixAt(const uint8_t *buf, int32_t pos, int32_t size)
+{
+    if (buf == NULL || pos < 0 || pos + 2 >= size) {
+        return 0;
+    }
+
+    if (buf[pos] != 0x00 || buf[pos + 1] != 0x00) {
+        return 0;
+    }
+
+    if (buf[pos + 2] == 0x01) {
+        return 1;
+    }
+
+    if (pos + 3 < size &&
+        buf[pos + 2] == 0x00 &&
+        buf[pos + 3] == 0x01) {
+        return 1;
+    }
+
+    return 0;
+}
+
+static int32_t FindForwardStartCodePrefix(const uint8_t *buf, int32_t start, int32_t size, int32_t max_ahead)
+{
+    int32_t pos;
+    int32_t limit;
+
+    if (buf == NULL || size <= 0) {
+        return -1;
+    }
+
+    if (start < 0) {
+        start = 0;
+    }
+    if (start >= size) {
+        return -1;
+    }
+    if (max_ahead < 0) {
+        max_ahead = size - start;
+    }
+
+    limit = start + max_ahead;
+    if (limit > size) {
+        limit = size;
+    }
+
+    for (pos = start; pos + 3 < limit; ++pos) {
+        if (buf[pos] == 0x00 && buf[pos + 1] == 0x00) {
+            if (buf[pos + 2] == 0x01) {
+                return pos;
+            }
+            if (pos + 3 < limit &&
+                buf[pos + 2] == 0x00 &&
+                buf[pos + 3] == 0x01) {
+                return pos;
+            }
+        }
+    }
+
+    return -1;
+}
+
 static void ProbeLivePhase1LateReadback(void *ch, void *req, int32_t slice_idx, const char *tag)
 {
     static const int32_t delays_ms[] = { 10, 20, 50, 100, 200 };
@@ -3131,7 +3199,16 @@ static int32_t FindFirstNonZeroNonPatternByte(const uint8_t *buf, int32_t start,
         int32_t pattern_end = SkipAlternatingPatternRun(buf, pos, size, 64);
 
         if (pattern_end <= pos) {
-            return AlignToStartCodePrefix(buf, pos, start);
+            int32_t aligned = AlignToStartCodePrefix(buf, pos, start);
+            int32_t forward = FindForwardStartCodePrefix(buf, pos, size, 16);
+
+            if (forward >= 0 &&
+                (aligned < 0 ||
+                 forward < aligned ||
+                 (aligned == pos && !HasStartCodePrefixAt(buf, pos, size)))) {
+                return forward;
+            }
+            return aligned;
         }
         pos = FindFirstNonZeroByte(buf, pattern_end, size);
     }
