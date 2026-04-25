@@ -227,6 +227,8 @@ static void HealLiveT31SingleCoreReqTables(void *ch, int32_t *req, const char *t
 
 static uint32_t GetLiveT31AvcCompatScratchCoreCount(const void *ctx);
 static uint32_t GetLiveT31AvcCompatLaunchCoreCount(const void *ctx);
+static uint32_t RepairLiveT31LaunchCoreState(void *ch, int32_t *req, int32_t phase,
+                                             const char *tag);
 int32_t SetChannelSteps(void *arg1, void *arg2);
 void EndAvcEntropy(void *arg1); /* CoreManager.c */
 
@@ -2547,6 +2549,49 @@ static uint32_t GetLiveT31AvcCompatLaunchCoreCount(const void *ctx)
     }
 
     return core_count;
+}
+
+static uint32_t RepairLiveT31LaunchCoreState(void *ch, int32_t *req, int32_t phase,
+                                             const char *tag)
+{
+    uint32_t old_core_count;
+    uint32_t old_stable_count;
+    uint32_t target_core_count;
+
+    if (ch == NULL) {
+        return 1U;
+    }
+
+    old_core_count = (uint32_t)READ_U8(ch, CH_CORE_COUNT_OFF);
+    old_stable_count = (uint32_t)READ_U8(ch, CH_STABLE_CORE_COUNT_OFF);
+    target_core_count = GetLiveT31AvcCompatLaunchCoreCount(ch);
+
+    if (IsLiveT31AvcChannel(ch) && req != NULL) {
+        int32_t slice_count = RepairLiveT31AvcLaneSliceCount(ch, req, phase,
+                                                             tag ? tag : "repair-live-core-state");
+
+        if (slice_count > 0) {
+            target_core_count = (uint32_t)slice_count;
+            if (target_core_count > LIVE_T31_MAX_LAUNCH_CORES) {
+                target_core_count = LIVE_T31_MAX_LAUNCH_CORES;
+            }
+        }
+    }
+
+    if (target_core_count == 0U || target_core_count == 0xffU) {
+        target_core_count = 1U;
+    }
+
+    if (old_core_count != target_core_count || old_stable_count != target_core_count) {
+        ENC_KMSG("%s repair-live-core-state ch=%p req=%p phase=%d old=%u stable=%u -> %u",
+                 tag ? tag : "repair-live-core-state", ch, req, phase,
+                 (unsigned)old_core_count, (unsigned)old_stable_count,
+                 (unsigned)target_core_count);
+        WRITE_U8(ch, CH_CORE_COUNT_OFF, (uint8_t)target_core_count);
+        WRITE_U8(ch, CH_STABLE_CORE_COUNT_OFF, (uint8_t)target_core_count);
+    }
+
+    return target_core_count;
 }
 int32_t AL_GetAllocSize_CompData(int32_t arg1, int32_t arg2, char arg3, char arg4, int32_t arg5,
                                  int32_t arg6); /* forward decl, ported by T<N> later */
@@ -6107,23 +6152,8 @@ int32_t encode1(void *arg1)
     req = (int32_t *)(intptr_t)StaticFifo_Dequeue((uint8_t *)ch + 0x129b4);
     slice_count = RepairLiveT31AvcLaneSliceCount(ch, req, 0, "encode1");
     mod_count = RepairLiveT31AvcLaneModuleCount(ch, req, 0, "encode1");
-    /*
-     * The live T31 path can reach encode1 with the channel core-count field
-     * cleared back to zero even though the phase tables still fan out work
-     * across multiple cores. When that happens, the main launch path silently
-     * skips materialization, TurnOnRAM, interrupt arming, and the Enc1 launch
-     * loop. Rebuild a launch-safe view from the phase metadata.
-     */
-    if (READ_U8(ch, 0x1f) == 0U && phase_core_count == 0U) {
-        phase_core_count = GetLiveT31AvcCompatLaunchCoreCount(ch);
-        if ((uint32_t)slice_count > 0U && phase_core_count > (uint32_t)slice_count) {
-            phase_core_count = (uint32_t)slice_count;
-        }
-        if (phase_core_count > 0U) {
-            ENC_KMSG("encode1 repair-live-core-count ch=%p old=%u -> %u",
-                     ch, (unsigned)READ_U8(ch, CH_CORE_COUNT_OFF), (unsigned)phase_core_count);
-            WRITE_U8(ch, CH_CORE_COUNT_OFF, (uint8_t)phase_core_count);
-        }
+    if (READ_U8(ch, 0x1f) == 0U) {
+        phase_core_count = RepairLiveT31LaunchCoreState(ch, req, READ_S32(req, 0xa70), "encode1");
     }
     if (phase_core_count == 0U && slice_count > 0) {
         phase_core_count = (uint32_t)slice_count;
@@ -6453,6 +6483,22 @@ int32_t encode1(void *arg1)
                 WRITE_S32(cmd_regs_enc2, 0xf8, core_stream_off);
                 WRITE_S32(cmd_regs_enc2, 0xfc, core_stream_avail);
                 SliceParamToCmdRegsEnc2(slice_enc2, cmd_regs_enc2);
+                if (cmd_regs_enc2 != cmd_regs) {
+                    /*
+                     * The live multi-core AVC launch still executes the
+                     * primary CL in cmd_regs, but the repaired standalone
+                     * Entropy packing above lands in cmd_regs_enc2. Mirror the
+                     * corrected late Enc2 tail back into the launched CL so
+                     * non-zero cores inherit the same OEM-stable w1b..w1f
+                     * fields that core0 gets through the alias path.
+                     */
+                    memcpy(cmd_regs + 0x6c, cmd_regs_enc2 + 0x6c, 0x14);
+                    ENC_KMSG("encode1 sync-inline-enc2-tail core=%d cmd=%p src=%p w1b=%08x w1c=%08x w1d=%08x w1e=%08x w1f=%08x",
+                             core, cmd_regs, cmd_regs_enc2,
+                             READ_S32(cmd_regs, 0x6c), READ_S32(cmd_regs, 0x70),
+                             READ_S32(cmd_regs, 0x74), READ_S32(cmd_regs, 0x78),
+                             READ_S32(cmd_regs, 0x7c));
+                }
                 ENC_KMSG("encode1 materialized-enc2 core=%d cmd=%p map=%08x data=%08x stream=%08x max=%08x off=%08x avail=%08x sp74=%04x sp78=%04x spf8=%02x sp100=%08x w1b=%08x w1c=%08x w1d=%08x w1e=%08x w1f=%08x",
                          core, cmd_regs_enc2,
                          READ_S32(cmd_regs_enc2, 0xe8), READ_S32(cmd_regs_enc2, 0xec),
@@ -6574,6 +6620,13 @@ int32_t AL_EncChannel_Encode(void *arg1, void *arg2)
     StaticFifoCompat *running = (StaticFifoCompat *)((uint8_t *)arg1 + 0x129b4);
     int lane;
     int32_t result = 0;
+    int32_t *front = (int32_t *)(intptr_t)StaticFifo_Front(running);
+
+    if (READ_U8(arg1, 0x1f) == 0U) {
+        int32_t phase = front != NULL ? READ_S32(front, 0xa70) : 0;
+
+        RepairLiveT31LaunchCoreState(arg1, front, phase, "EncChannel_Encode");
+    }
 
     ENC_KMSG("EncChannel_Encode entry chctx=%p modules=%p codec=%u cores=%u core_base=%u",
              arg1, arg2, (unsigned)READ_U8(arg1, 0x1f), (unsigned)READ_U8(arg1, 0x3c), (unsigned)READ_U8(arg1, 0x3d));
@@ -6587,7 +6640,7 @@ int32_t AL_EncChannel_Encode(void *arg1, void *arg2)
 
         for (lane = 0; lane != 2; ++lane) {
             int32_t active = 0;
-            int32_t *front = (int32_t *)(intptr_t)StaticFifo_Front(running);
+            front = (int32_t *)(intptr_t)StaticFifo_Front(running);
             int32_t module_count = READ_S32(arg2, 0x80);
 
             if (module_count > 0) {
