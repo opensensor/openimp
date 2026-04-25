@@ -421,23 +421,8 @@ void EndEncoding(void *arg1)
 
 void EndAvcEntropy(void *arg1)
 {
-    AL_EncCoreCtxCompat *blocking_core = (AL_EncCoreCtxCompat *)arg1;
     int32_t t9 = *(int32_t *)((char *)arg1 + 0x14);
-    uint32_t status = 0;
-    uint32_t end_off = 0;
-    uint32_t enc_stat = 0;
-    uint32_t ent_stat = 0;
 
-    WaitForEnc2Writeback((AL_EncCoreCtxCompat *)arg1, "EndAvcEntropy");
-    if (LivePhase1WritebackStillIncomplete((AL_EncCoreCtxCompat *)arg1, &blocking_core,
-                                           &status, &end_off, &enc_stat, &ent_stat) != 0) {
-        IMP_LOG_INFO("AVPU",
-                     "core EndAvcEntropy defer ctx=%p core=%u blocking=%u status=0x%08x end=0x%08x st104=0x%08x st1e4=0x%08x",
-                     arg1, (unsigned)((AL_EncCoreCtxCompat *)arg1)->core_id,
-                     blocking_core ? (unsigned)blocking_core->core_id : 0U,
-                     status, end_off, enc_stat, ent_stat);
-        return;
-    }
     LogEnc2WritebackStatus((AL_EncCoreCtxCompat *)arg1, "EndAvcEntropy");
     IMP_LOG_INFO("AVPU", "core EndAvcEntropy ctx=%p fn=0x%x user=%p payload=%p mode=1",
                  arg1, t9, *(void **)((char *)arg1 + 0x18), *(void **)((char *)arg1 + 0x10));

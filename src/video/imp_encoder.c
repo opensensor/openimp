@@ -130,6 +130,9 @@ int32_t AL_Codec_Encode_RestartGop(void *codec); /* forward decl, ported by T<N>
 int32_t AL_Codec_Encode_GetLastError(void *codec); /* forward decl, ported by T<N> later */
 int32_t AL_Codec_Encode_RequestIDR(void *codec); /* forward decl, ported by T<N> later */
 
+/* fifo helpers used by the live encoder clone-slot pool */
+int32_t Fifo_Queue(void *fifo_ptr, void *item, int32_t timeout_ms); /* forward decl, ported by T<N> later */
+
 /* T75 video_common helpers */
 int32_t video_sem_timedwait(sem_t *sem, int32_t *timeout_ms); /* forward decl, ported by T<N> later */
 int32_t video_vbm_free(int32_t vaddr); /* forward decl, ported by T<N> later */
@@ -2649,6 +2652,7 @@ int32_t IMP_Encoder_ReleaseStream(int32_t arg1, void *arg2)
             uint8_t *s0_1 = (uint8_t *)CH_PTR(arg1, ENC_F_PACK_ARRAY);
             int32_t *t0_1 = *(int32_t **)((char *)arg2 + 0xc);
             int32_t *arg2_iter = (int32_t *)(s0_1 + 0x188);
+            void *src_slot = NULL;
             if (t0_1 != (int32_t *)(s0_1 + 0x20)) {
                 int32_t v1_1 = 0;
                 while (1) {
@@ -2668,9 +2672,15 @@ int32_t IMP_Encoder_ReleaseStream(int32_t arg1, void *arg2)
             video_enc_kmsg("libimp/ENCW2: ReleaseStream matched chn=%d slot=%p codec_stream=%p user=%p\n",
                            arg1, s0_1, *(void **)((char *)s0_1 + 0x10),
                            *(void **)((char *)s0_1 + 0x14));
+            src_slot = *(void **)((char *)s0_1 + 0x14);
             AL_Codec_Encode_ReleaseStream(CH_PTR(arg1, ENC_F_CODEC_HANDLE),
                                           *(void **)((char *)s0_1 + 0x10),
                                           *(void **)((char *)s0_1 + 0x14));
+            if (src_slot != NULL) {
+                Fifo_Queue(enc_ptr(arg1, IMP_ENC_BASE_ADDR + 0x18), src_slot, -1);
+                video_enc_kmsg("libimp/ENCW2: ReleaseStream recycled-src chn=%d slot=%p fifo=%p\n",
+                               arg1, src_slot, enc_ptr(arg1, IMP_ENC_BASE_ADDR + 0x18));
+            }
             pthread_mutex_lock((pthread_mutex_t *)enc_ptr(arg1, ENC_F_MTX_PACK));
             {
                 int32_t v0_5 = CH_S32(arg1, ENC_F_STREAMCNT_HI);

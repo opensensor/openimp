@@ -1029,16 +1029,17 @@ int32_t update_one_frmstrm(void *arg1_in)
         }
     }
 
-    /* Hand the public-frame record to the consumer fifo. */
-    if (do_log) {
-        stub_kmsg("libimp/ENCX: update_one pre-public-queue fifo=%p public=%p\n",
-                  arg1 + 0x18, s7_1);
-    }
-    Fifo_Queue(arg1 + 0x18, s7_1, -1);
+    /*
+     * Do not recycle the cloned source-slot here. GetStream/ReleaseStream
+     * still hold `var_40` as the codec user-data for this public frame; the
+     * slot is only safe to return once IMP_Encoder_ReleaseStream completes.
+     * Queueing `s7_1` here also feeds the embedded cookie pointer back into
+     * the free-slot FIFO instead of the real slot base.
+     */
     pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, NULL);
     if (do_log) {
-        stub_kmsg("libimp/ENCX: update_one post-public-queue public=%p packs=%d\n",
-                  s7_1, str[6]);
+        stub_kmsg("libimp/ENCX: update_one defer-slot-recycle src=%p public=%p packs=%d\n",
+                  var_40, s7_1, str[6]);
     }
 
     *(int32_t *)(arg1 + 0x118) = str[6];

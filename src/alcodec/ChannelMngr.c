@@ -1682,14 +1682,8 @@ static int32_t EndFrameEncoding(int32_t *arg1, int32_t *arg2)
             uint8_t prev_run0 = state[2];
             uint8_t prev_run1 = state[3];
 
-            if (s0[1] == 0) {
-                state[2] = 0;
-            } else if (s0[1] == 1) {
-                state[3] = 0;
-            } else {
-                AL_CoreState_SetChannelRunState(state, 0xff, s0[1], 0);
-            }
-            CMG_KMSG("EndFrameEncoding clear-run-preserve core=%d mod=%d pre=[%u/%u %u/%u] post=[%u/%u %u/%u]",
+            AL_CoreState_SetChannelRunState(state, 0xff, s0[1], 0);
+            CMG_KMSG("EndFrameEncoding clear-run core=%d mod=%d pre=[%u/%u %u/%u] post=[%u/%u %u/%u]",
                      *s0, s0[1],
                      (unsigned)prev_ch0, (unsigned)prev_run0,
                      (unsigned)prev_ch1, (unsigned)prev_run1,

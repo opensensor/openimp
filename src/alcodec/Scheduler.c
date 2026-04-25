@@ -1190,9 +1190,19 @@ static void ArmLiveT31EntropyIrqs(void *core_ctx, const char *tag)
     entropy_irq = (((uint32_t)core->core_id << 2) + 2U) & 0x1fU;
     WriteLiveT31IrqSlot(core->ip_ctrl, entropy_irq, EndAvcEntropy, core_ctx, 0U);
 
+    /*
+     * The older live T31 grey-stream runs still saw phase-1 completions arrive
+     * on slot4 for core0. Keep the dedicated entropy slot armed for parity,
+     * but also mirror core0 onto slot4 so we preserve the last known working
+     * completion path without reviving the later dynamic remap experiment.
+     */
+    if (core->core_id == 0U) {
+        WriteLiveT31IrqSlot(core->ip_ctrl, 4U, EndAvcEntropy, core_ctx, 0U);
+    }
+
     ENC_KMSG("%s arm-entropy-irq core=%u slot=%u ctx=%p cb=%p mirror4=%u",
              tag ? tag : "irq", (unsigned)core->core_id, (unsigned)entropy_irq, core_ctx,
-             EndAvcEntropy, 0U);
+             EndAvcEntropy, (unsigned)(core->core_id == 0U));
 }
 
 static void ApplyLiveT31Core0LegacyIrqMask(void *core_ctx, const char *tag)
@@ -2352,7 +2362,6 @@ int32_t AddNewRequest(int32_t arg1)
         WRITE_S32((void *)(intptr_t)v0, 0x8d0, 1);
     }
     HealLiveT31SingleCoreReqTables((void *)(intptr_t)arg1, (int32_t *)(intptr_t)v0, "AddNewRequest");
-    ExpandLiveT31MultiCorePhase1ReqTables((void *)(intptr_t)arg1, (int32_t *)(intptr_t)v0, "AddNewRequest");
     {
         int32_t pict_id = READ_S32((void *)(intptr_t)arg1, 0x22b8);
 
@@ -3755,27 +3764,6 @@ int32_t encode2(void *arg1)
              (unsigned)READ_U8((void *)(intptr_t)(v0 + phase * 0x110 + 0x8d4), 0),
              (unsigned)callback_fanout, (unsigned)a0_6);
 
-    if (READ_U8(arg1, 0x1f) == 0U && v1_7 > 0U && READ_PTR(arg1, 0x164) != NULL) {
-        AL_EncCoreCtxCompat *base_core = (AL_EncCoreCtxCompat *)READ_PTR(arg1, 0x164);
-        void *irq4_core = (uint8_t *)READ_PTR(arg1, 0x164) + ((v1_7 - 1U) * 0x44U);
-
-        /*
-         * Live T31 AVC phase 1 still arrives through the legacy slot4 path on
-         * this board. The per-core entropy slots (2/6/...) do get armed, but
-         * in clean traces only slot4 actually dispatches. Keep slot4 on the
-         * last launched phase-1 core so the legacy completion path still
-         * fires, then let EndAvcEntropy wait across the whole live phase-1
-         * core range before handing control back to the scheduler.
-         */
-        if (base_core != NULL && base_core->ip_ctrl != NULL && base_core->ip_ctrl->vtable != NULL &&
-            base_core->ip_ctrl->vtable->WriteRegister != NULL) {
-            base_core->ip_ctrl->vtable->WriteRegister(base_core->ip_ctrl, 0x8018, 0x00ffffff);
-            ENC_KMSG("encode2 clear-pending core=%u mask=0x00ffffff",
-                     (unsigned)base_core->core_id);
-        }
-        RemapLiveT31Irq4(irq4_core, EndAvcEntropy, "encode2");
-    }
-
     if ((int32_t)v1_7 > 0) {
         do {
             int32_t s1_2 = v0 + ((int32_t)s1 << 2);
@@ -4952,14 +4940,10 @@ void OutputSlice(void *arg1, void *arg2, int32_t arg3, void *arg4)
                 int32_t raw_end;
                 int32_t first_nz;
                 int32_t next_nz;
-                int32_t first_data_nz;
-                int32_t next_data_nz;
-                int32_t last_data_nz;
                 int32_t pattern_end;
                 int32_t produced;
                 int32_t gap_break = -1;
                 int32_t gap_end = old_end;
-                int32_t gap_pattern_end = -1;
 
                 if (scan_from < 0) {
                     scan_from = stream_head_off;
@@ -4974,10 +4958,6 @@ void OutputSlice(void *arg1, void *arg2, int32_t arg3, void *arg4)
                 raw_end = ScanStreamBufferRawEnd(stream_base, stream_size);
                 first_nz = FindFirstNonZeroByte(stream_base, scan_from, stream_size);
                 next_nz = FindFirstNonZeroByte(stream_base, stream_end, stream_size);
-                first_data_nz = FindFirstNonZeroNonPatternByte(stream_base, scan_from, stream_size);
-                next_data_nz = FindFirstNonZeroNonPatternByte(stream_base, stream_end, stream_size);
-                last_data_nz = FindLastStartCodePrefix(stream_base, scan_from,
-                                                       (raw_end > 0 && raw_end <= stream_size) ? raw_end : stream_size);
                 pattern_end = ScanStreamBufferFillPatternEnd(stream_base,
                                                              first_nz >= 0 ? first_nz : scan_from,
                                                              stream_size);
@@ -5001,13 +4981,7 @@ void OutputSlice(void *arg1, void *arg2, int32_t arg3, void *arg4)
                     if (gap_break > header_bytes &&
                         gap_break < old_end &&
                         (first_nz < 0 || gap_break < first_nz)) {
-                        gap_pattern_end = SkipAlternatingPatternRun(stream_base, gap_break, stream_size, 64);
-                        if (gap_pattern_end <= gap_break) {
-                            first_nz = gap_break;
-                            if (first_data_nz < 0 || gap_break < first_data_nz) {
-                                first_data_nz = gap_break;
-                            }
-                        }
+                        first_nz = gap_break;
                         if (gap_break + 16 <= gap_end) {
                             ENC_KMSG("OutputSlice gap-break-bytes req=%p slice=%d @0x%x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x",
                                      arg2, arg3, gap_break,
@@ -5019,10 +4993,6 @@ void OutputSlice(void *arg1, void *arg2, int32_t arg3, void *arg4)
                                      stream_base[gap_break + 10], stream_base[gap_break + 11],
                                      stream_base[gap_break + 12], stream_base[gap_break + 13],
                                      stream_base[gap_break + 14], stream_base[gap_break + 15]);
-                        }
-                        if (gap_pattern_end > gap_break) {
-                            ENC_KMSG("OutputSlice gap-break-skip-pattern req=%p slice=%d start=%d end=%d",
-                                     arg2, arg3, gap_break, gap_pattern_end);
                         }
                     }
                 }
@@ -5061,40 +5031,27 @@ void OutputSlice(void *arg1, void *arg2, int32_t arg3, void *arg4)
                 }
                 if (live_multicore_avc &&
                     header_bytes > 0 &&
-                    last_data_nz > header_bytes &&
-                    last_data_nz < raw_end &&
-                    last_data_nz < stream_size) {
-                    int32_t tail_bytes = raw_end - last_data_nz;
+                    first_nz > header_bytes &&
+                    first_nz < stream_end &&
+                    first_nz < stream_size) {
+                    int32_t tail_bytes = stream_end - first_nz;
 
-                    if (tail_bytes > 0 && last_data_nz + tail_bytes <= stream_size) {
+                    if (tail_bytes > 0 && first_nz + tail_bytes <= stream_size) {
                         split_desc = 1;
-                        split_tail_start = last_data_nz;
+                        split_tail_start = first_nz;
                         split_tail_bytes = tail_bytes;
                         section_start = 0;
                         section_bytes = header_bytes;
                         byte_count = split_tail_bytes;
                         WRITE_S32(arg4, 4, byte_count);
                         WRITE_S32(arg4, 8, byte_count);
-                        ENC_KMSG("OutputSlice split-live-gap req=%p slice=%d hdr=%d tail_off=%d tail_bytes=%d raw_end=%d first_data=%d last_data=%d",
-                                 arg2, arg3, header_bytes, split_tail_start, split_tail_bytes, raw_end,
-                                 first_data_nz, last_data_nz);
+                        ENC_KMSG("OutputSlice split-live-gap req=%p slice=%d hdr=%d tail_off=%d tail_bytes=%d raw_end=%d",
+                                 arg2, arg3, header_bytes, split_tail_start, split_tail_bytes, raw_end);
                     }
                 }
-                if (first_data_nz >= 0 && first_data_nz + 16 <= stream_size) {
-                    ENC_KMSG("OutputSlice data-probe req=%p slice=%d @0x%x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x",
-                             arg2, arg3, first_data_nz,
-                             stream_base[first_data_nz + 0], stream_base[first_data_nz + 1],
-                             stream_base[first_data_nz + 2], stream_base[first_data_nz + 3],
-                             stream_base[first_data_nz + 4], stream_base[first_data_nz + 5],
-                             stream_base[first_data_nz + 6], stream_base[first_data_nz + 7],
-                             stream_base[first_data_nz + 8], stream_base[first_data_nz + 9],
-                             stream_base[first_data_nz + 10], stream_base[first_data_nz + 11],
-                             stream_base[first_data_nz + 12], stream_base[first_data_nz + 13],
-                             stream_base[first_data_nz + 14], stream_base[first_data_nz + 15]);
-                }
-                ENC_KMSG("OutputSlice recover-zero-bytes req=%p slice=%d old_end=%d start=%d total=%d raw_end=%d pattern_end=%d first_nz=%d next_nz=%d first_data=%d next_data=%d last_data=%d limit=%d avail=%d new_end=%d bytes=%d header=%d",
+                ENC_KMSG("OutputSlice recover-zero-bytes req=%p slice=%d old_end=%d start=%d total=%d raw_end=%d pattern_end=%d first_nz=%d next_nz=%d limit=%d avail=%d new_end=%d bytes=%d header=%d",
                          arg2, arg3, old_end, section_start, section_bytes, raw_end, pattern_end,
-                         first_nz, next_nz, first_data_nz, next_data_nz, last_data_nz, cmd_budget_limit, cmd_budget_avail,
+                         first_nz, next_nz, cmd_budget_limit, cmd_budget_avail,
                          stream_end, byte_count, header_bytes);
             }
 #endif
