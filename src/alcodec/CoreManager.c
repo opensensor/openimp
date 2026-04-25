@@ -98,6 +98,7 @@ int32_t AL_DmaAlloc_FlushCache(int32_t arg1, int32_t arg2, int32_t arg3); /* for
 static const uint64_t AL_ENCJPEG_CMD = 0x0b000000000000ULL;
 #define AL_CMD_LIST_FLUSH_BYTES 0x200
 #define LIVE_T31_POSTDMA_READ_FLUSH_DIR 2
+#define LIVE_T31_MAX_LAUNCH_CORES 2
 
 static void LogCoreIrqSnapshot(AL_EncCoreCtxCompat *core, const char *tag)
 {
@@ -231,22 +232,26 @@ static int LivePhase1WritebackStillIncomplete(AL_EncCoreCtxCompat *core,
     AL_EncCoreCtxCompat *base;
     AL_EncCoreCtxCompat *candidate;
     uint32_t idx;
+    uint32_t scan_limit;
 
     if (core == NULL || core->ip_ctrl == NULL) {
         return 0;
     }
 
-    if (core->core_id == 0U) {
-        if (blocking_core_out != NULL) {
-            *blocking_core_out = core;
-        }
-        return Enc2WritebackLooksIncomplete(core, status_out, end_out, st104_out, st1e4_out);
-    }
-
     base = core - core->core_id;
-    for (idx = 0; idx <= (uint32_t)core->core_id; ++idx) {
+    scan_limit = (uint32_t)core->core_id + 1U;
+    if (scan_limit < LIVE_T31_MAX_LAUNCH_CORES) {
+        scan_limit = LIVE_T31_MAX_LAUNCH_CORES;
+    }
+    for (idx = 0; idx < scan_limit; ++idx) {
         candidate = &base[idx];
         if (candidate->ip_ctrl == NULL || candidate->cmd_regs_2 == 0) {
+            continue;
+        }
+        if (candidate->ip_ctrl != core->ip_ctrl) {
+            continue;
+        }
+        if ((uint32_t)candidate->core_id != idx) {
             continue;
         }
 
@@ -423,6 +428,13 @@ void EndAvcEntropy(void *arg1)
 {
     int32_t t9 = *(int32_t *)((char *)arg1 + 0x14);
 
+    /*
+     * On live T31 runs the phase-1 IRQ can arrive before the command list
+     * writeback is visible in memory. Wait briefly for the status words to
+     * settle, but always continue into the scheduler callback even if the
+     * writeback still looks incomplete after the retries.
+     */
+    WaitForEnc2Writeback((AL_EncCoreCtxCompat *)arg1, "EndAvcEntropy");
     LogEnc2WritebackStatus((AL_EncCoreCtxCompat *)arg1, "EndAvcEntropy");
     IMP_LOG_INFO("AVPU", "core EndAvcEntropy ctx=%p fn=0x%x user=%p payload=%p mode=1",
                  arg1, t9, *(void **)((char *)arg1 + 0x18), *(void **)((char *)arg1 + 0x10));

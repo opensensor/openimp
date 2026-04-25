@@ -2472,6 +2472,7 @@ void AL_EncCore_EnableEnc2Interrupt(void *arg1); /* forward decl, ported by T<N>
 int32_t AL_EncCore_DisableEnc1Interrupt(void *arg1); /* forward decl */
 int32_t AL_EncCore_DisableEnc2Interrupt(void *arg1); /* forward decl */
 void AL_EncCore_Encode2(void *arg1, int32_t arg2, int32_t arg3); /* forward decl, ported by T<N> later */
+void AL_EncCore_TurnOnRAM(void *arg1, int32_t arg2, int32_t arg3, int32_t arg4, int32_t arg5); /* forward decl */
 void EndEncoding(void *arg1); /* CoreManager.c */
 void EndAvcEntropy(void *arg1); /* CoreManager.c */
 void AL_EncCore_TurnOffRAM(void *arg1, int32_t arg2, int32_t arg3, int32_t arg4, int32_t arg5); /* forward decl */
@@ -3010,6 +3011,79 @@ static int32_t AlignToStartCodePrefix(const uint8_t *buf, int32_t pos, int32_t f
     return pos;
 }
 
+static void ProbeLivePhase1LateReadback(void *ch, void *req, int32_t slice_idx, const char *tag)
+{
+    static const int32_t delays_ms[] = { 10, 20, 50, 100, 200 };
+    void *stream_meta;
+    uint8_t *stream_base;
+    int32_t stream_size;
+    uint32_t active_cores;
+    int32_t iter;
+
+    if (ch == NULL || req == NULL || !IsLiveT31AvcChannel(ch) || READ_S32(req, 0xa6c) < 2) {
+        return;
+    }
+
+    active_cores = (uint32_t)READ_U8(req, 0x1ee);
+    if (active_cores < 2U) {
+        return;
+    }
+
+    stream_meta = READ_PTR(req, 0x318);
+    stream_base = stream_meta ? (uint8_t *)READ_PTR(stream_meta, 8) : NULL;
+    stream_size = stream_meta ? READ_S32(stream_meta, 0x10) : 0;
+
+    for (iter = 0; iter < (int32_t)(sizeof(delays_ms) / sizeof(delays_ms[0])); ++iter) {
+        uint32_t core_idx;
+        int ready = 0;
+        int32_t raw_end = 0;
+        int32_t first_nz = -1;
+
+        if (iter != 0) {
+            Rtos_Sleep(delays_ms[iter]);
+        }
+
+        if (stream_base != NULL && stream_size > 0) {
+            AL_DmaAlloc_FlushCache((int32_t)(intptr_t)stream_base, 0x100000,
+                                   LIVE_T31_POSTDMA_READ_FLUSH_DIR);
+            raw_end = ScanStreamBufferRawEnd(stream_base, stream_size);
+            first_nz = FindFirstNonZeroByte(stream_base, LIVE_T31_AVC_HEADER_BUDGET, stream_size);
+        }
+
+        for (core_idx = 0; core_idx < active_cores; ++core_idx) {
+            uint8_t *cmd = (uint8_t *)READ_PTR(req, 0xa78 + core_idx * 4);
+            uint32_t cmd_off;
+
+            if (cmd == NULL) {
+                continue;
+            }
+
+            cmd_off = GetOutputCmdOffset(ch, req, active_cores, core_idx, slice_idx);
+            cmd += cmd_off;
+            AL_DmaAlloc_FlushCache((int32_t)(intptr_t)cmd, 0x100000,
+                                   LIVE_T31_POSTDMA_READ_FLUSH_DIR);
+
+            ENC_KMSG("%s iter=%d core=%u cmd=%p st104=%08x st108=%08x st1e4=%08x st1e8=%08x outc8=%08x outcc=%08x outf8=%08x outfc=%08x raw_end=%d first_nz=%d",
+                     tag ? tag : "late-readback", iter, (unsigned)core_idx, cmd,
+                     READ_S32(cmd, 0x104), READ_S32(cmd, 0x108),
+                     READ_S32(cmd, 0x1e4), READ_S32(cmd, 0x1e8),
+                     READ_S32(cmd, 0xc8), READ_S32(cmd, 0xcc),
+                     READ_S32(cmd, 0xf8), READ_S32(cmd, 0xfc),
+                     raw_end, first_nz);
+
+            if (READ_S32(cmd, 0x104) != 0 || READ_S32(cmd, 0x108) != 0 ||
+                READ_S32(cmd, 0x1e4) != 0 || READ_S32(cmd, 0x1e8) != 0) {
+                ready = 1;
+            }
+        }
+
+        if (ready != 0) {
+            ENC_KMSG("%s ready iter=%d slice=%d", tag ? tag : "late-readback", iter, slice_idx);
+            break;
+        }
+    }
+}
+
 static int32_t SkipAlternatingPatternRun(const uint8_t *buf, int32_t start, int32_t size, int32_t min_run)
 {
     int32_t run_start;
@@ -3063,6 +3137,95 @@ static int32_t FindFirstNonZeroNonPatternByte(const uint8_t *buf, int32_t start,
     }
 
     return -1;
+}
+
+static void ProbePhaseAdvanceStreamBuffer(void *req, int32_t rc_bytes, const char *tag)
+{
+    void *stream_meta;
+    uint8_t *stream_base;
+    uint8_t *cmd0;
+    int32_t stream_size;
+    int32_t stream_end;
+    int32_t header_bytes;
+    int32_t raw_end;
+    int32_t first_nz;
+    int32_t next_nz;
+    int32_t pattern_end;
+
+    if (req == NULL) {
+        return;
+    }
+
+    stream_meta = READ_PTR(req, 0x318);
+    if (stream_meta == NULL) {
+        return;
+    }
+
+    stream_base = (uint8_t *)READ_PTR(stream_meta, 8);
+    stream_size = READ_S32(stream_meta, 0x10);
+    stream_end = READ_S32(stream_meta, 0x14);
+    cmd0 = (uint8_t *)READ_PTR(req, 0xa78);
+    if (stream_base == NULL || stream_size <= 0) {
+        return;
+    }
+
+    header_bytes = 0;
+    if (cmd0 != NULL) {
+        header_bytes = (int32_t)(READ_U16(cmd0, 0x6e) & 0x03ffU);
+    }
+    if (header_bytes < 0) {
+        header_bytes = 0;
+    }
+    if (header_bytes > stream_size) {
+        header_bytes = stream_size;
+    }
+
+    raw_end = ScanStreamBufferRawEnd(stream_base, stream_size);
+    first_nz = FindFirstNonZeroByte(stream_base, header_bytes, stream_size);
+    next_nz = FindFirstNonZeroByte(stream_base, stream_end, stream_size);
+    pattern_end = ScanStreamBufferFillPatternEnd(stream_base,
+                                                 first_nz >= 0 ? first_nz : header_bytes,
+                                                 stream_size);
+
+    ENC_KMSG("PhaseAdvance stream-probe tag=%s req=%p meta=%p base=%p size=%d end=%d rc_bytes=%d header=%d raw_end=%d pattern_end=%d first_nz=%d next_nz=%d",
+             tag ? tag : "?", req, stream_meta, stream_base, stream_size, stream_end,
+             rc_bytes, header_bytes, raw_end, pattern_end, first_nz, next_nz);
+    if (header_bytes + 16 <= stream_size) {
+        ENC_KMSG("PhaseAdvance stream-probe-header tag=%s req=%p @0x%x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x",
+                 tag ? tag : "?", req, header_bytes,
+                 stream_base[header_bytes + 0], stream_base[header_bytes + 1],
+                 stream_base[header_bytes + 2], stream_base[header_bytes + 3],
+                 stream_base[header_bytes + 4], stream_base[header_bytes + 5],
+                 stream_base[header_bytes + 6], stream_base[header_bytes + 7],
+                 stream_base[header_bytes + 8], stream_base[header_bytes + 9],
+                 stream_base[header_bytes + 10], stream_base[header_bytes + 11],
+                 stream_base[header_bytes + 12], stream_base[header_bytes + 13],
+                 stream_base[header_bytes + 14], stream_base[header_bytes + 15]);
+    }
+    if (first_nz >= 0 && first_nz + 16 <= stream_size) {
+        ENC_KMSG("PhaseAdvance stream-probe-first tag=%s req=%p @0x%x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x",
+                 tag ? tag : "?", req, first_nz,
+                 stream_base[first_nz + 0], stream_base[first_nz + 1],
+                 stream_base[first_nz + 2], stream_base[first_nz + 3],
+                 stream_base[first_nz + 4], stream_base[first_nz + 5],
+                 stream_base[first_nz + 6], stream_base[first_nz + 7],
+                 stream_base[first_nz + 8], stream_base[first_nz + 9],
+                 stream_base[first_nz + 10], stream_base[first_nz + 11],
+                 stream_base[first_nz + 12], stream_base[first_nz + 13],
+                 stream_base[first_nz + 14], stream_base[first_nz + 15]);
+    }
+    if (next_nz >= 0 && next_nz + 16 <= stream_size) {
+        ENC_KMSG("PhaseAdvance stream-probe-next tag=%s req=%p @0x%x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x",
+                 tag ? tag : "?", req, next_nz,
+                 stream_base[next_nz + 0], stream_base[next_nz + 1],
+                 stream_base[next_nz + 2], stream_base[next_nz + 3],
+                 stream_base[next_nz + 4], stream_base[next_nz + 5],
+                 stream_base[next_nz + 6], stream_base[next_nz + 7],
+                 stream_base[next_nz + 8], stream_base[next_nz + 9],
+                 stream_base[next_nz + 10], stream_base[next_nz + 11],
+                 stream_base[next_nz + 12], stream_base[next_nz + 13],
+                 stream_base[next_nz + 14], stream_base[next_nz + 15]);
+    }
 }
 
 static void ProbeLiveT31AfterLaunch(void *ch, int32_t *req, int32_t core_idx, const char *tag)
@@ -3731,27 +3894,30 @@ int32_t encode2(void *arg1)
     if (v1_7 == 0U) {
         v1_7 = (uint32_t)READ_U8((void *)(intptr_t)(v0 + phase * 0x110 + 0x8d4), 0);
     }
-    callback_fanout = v1_7;
     s1 = 0;
     s0_1 = 0;
     i = ((int32_t)a0_6 < (int32_t)v1_7) ? 1 : 0;
     if (i != 0) {
         v1_7 = a0_6;
     }
+    callback_fanout = v1_7;
     if (READ_U8(arg1, 0x1f) == 0U && phase == 1 && callback_fanout > 0U) {
         uint32_t phase_mod_count = (uint32_t)READ_S32((void *)(intptr_t)v0, 0x9dc);
         int32_t pending_off = 0x8d0 + ((phase * 0x44 + 1) << 2);
 
         /*
-         * Phase 1 is represented as a single module in the scheduler tables
-         * even when the live AVC body spans multiple hardware cores. Fanning
-         * pending completions out to the active-core count strands the request
-         * waiting for a second completion that never maps back to a tracked
-         * phase-1 module. Keep the hardware launch width, but count only the
-         * completions the phase table actually expects.
+         * The live 1080p AVC phase-1 path can launch two hardware cores while
+         * the scheduler tables still describe a single entropy module. We now
+         * know the single-completion shortcut finalizes too early: core0 fires
+         * first, OutputSlice publishes filler, and a later live-multicore
+         * callback arrives after the bad frame is already queued. Keep the
+         * launch width and the pending width aligned so final output waits for
+         * the same number of phase-1 completions that were actually launched.
          */
-        if (phase_mod_count > 0U && phase_mod_count < callback_fanout) {
-            callback_fanout = phase_mod_count;
+        if (phase_mod_count > 0U && phase_mod_count != callback_fanout) {
+            ENC_KMSG("encode2 pending-override req=%p phase=%d table_mods=%u launched=%u",
+                     (void *)(intptr_t)v0, phase, (unsigned)phase_mod_count,
+                     (unsigned)callback_fanout);
         }
 
         WRITE_S32((void *)(intptr_t)v0, pending_off, (int32_t)callback_fanout);
@@ -3763,6 +3929,18 @@ int32_t encode2(void *arg1)
              (void *)(intptr_t)v0, (unsigned)READ_U8((void *)(intptr_t)v0, 0x1ee),
              (unsigned)READ_U8((void *)(intptr_t)(v0 + phase * 0x110 + 0x8d4), 0),
              (unsigned)callback_fanout, (unsigned)a0_6);
+
+    if (READ_U8(arg1, 0x1f) == 0U && v1_7 > 0U && READ_PTR(arg1, 0x164) != NULL) {
+        void *irq4_core = (uint8_t *)READ_PTR(arg1, 0x164) + ((v1_7 - 1U) * 0x44U);
+
+        /*
+         * On the live T31 board the phase-1 completion can still arrive
+         * through the legacy slot4 path. Route slot4 to the last launched
+         * entropy core so EndAvcEntropy tracks the same command window that
+         * phase1 actually wrote.
+         */
+        RemapLiveT31Irq4(irq4_core, EndAvcEntropy, "encode2");
+    }
 
     if ((int32_t)v1_7 > 0) {
         do {
@@ -4940,10 +5118,13 @@ void OutputSlice(void *arg1, void *arg2, int32_t arg3, void *arg4)
                 int32_t raw_end;
                 int32_t first_nz;
                 int32_t next_nz;
+                int32_t first_data_nz;
+                int32_t next_data_nz;
                 int32_t pattern_end;
                 int32_t produced;
                 int32_t gap_break = -1;
                 int32_t gap_end = old_end;
+                int32_t gap_pattern_end = -1;
 
                 if (scan_from < 0) {
                     scan_from = stream_head_off;
@@ -4958,6 +5139,8 @@ void OutputSlice(void *arg1, void *arg2, int32_t arg3, void *arg4)
                 raw_end = ScanStreamBufferRawEnd(stream_base, stream_size);
                 first_nz = FindFirstNonZeroByte(stream_base, scan_from, stream_size);
                 next_nz = FindFirstNonZeroByte(stream_base, stream_end, stream_size);
+                first_data_nz = FindFirstNonZeroNonPatternByte(stream_base, scan_from, stream_size);
+                next_data_nz = FindFirstNonZeroNonPatternByte(stream_base, stream_end, stream_size);
                 pattern_end = ScanStreamBufferFillPatternEnd(stream_base,
                                                              first_nz >= 0 ? first_nz : scan_from,
                                                              stream_size);
@@ -4981,7 +5164,13 @@ void OutputSlice(void *arg1, void *arg2, int32_t arg3, void *arg4)
                     if (gap_break > header_bytes &&
                         gap_break < old_end &&
                         (first_nz < 0 || gap_break < first_nz)) {
-                        first_nz = gap_break;
+                        gap_pattern_end = SkipAlternatingPatternRun(stream_base, gap_break, stream_size, 64);
+                        if (gap_pattern_end <= gap_break) {
+                            first_nz = gap_break;
+                            if (first_data_nz < 0 || gap_break < first_data_nz) {
+                                first_data_nz = gap_break;
+                            }
+                        }
                         if (gap_break + 16 <= gap_end) {
                             ENC_KMSG("OutputSlice gap-break-bytes req=%p slice=%d @0x%x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x",
                                      arg2, arg3, gap_break,
@@ -4993,6 +5182,10 @@ void OutputSlice(void *arg1, void *arg2, int32_t arg3, void *arg4)
                                      stream_base[gap_break + 10], stream_base[gap_break + 11],
                                      stream_base[gap_break + 12], stream_base[gap_break + 13],
                                      stream_base[gap_break + 14], stream_base[gap_break + 15]);
+                        }
+                        if (gap_pattern_end > gap_break) {
+                            ENC_KMSG("OutputSlice gap-break-skip-pattern req=%p slice=%d start=%d end=%d",
+                                     arg2, arg3, gap_break, gap_pattern_end);
                         }
                     }
                 }
@@ -5031,14 +5224,14 @@ void OutputSlice(void *arg1, void *arg2, int32_t arg3, void *arg4)
                 }
                 if (live_multicore_avc &&
                     header_bytes > 0 &&
-                    first_nz > header_bytes &&
-                    first_nz < stream_end &&
-                    first_nz < stream_size) {
-                    int32_t tail_bytes = stream_end - first_nz;
+                    first_data_nz > header_bytes &&
+                    first_data_nz < stream_end &&
+                    first_data_nz < stream_size) {
+                    int32_t tail_bytes = stream_end - first_data_nz;
 
-                    if (tail_bytes > 0 && first_nz + tail_bytes <= stream_size) {
+                    if (tail_bytes > 0 && first_data_nz + tail_bytes <= stream_size) {
                         split_desc = 1;
-                        split_tail_start = first_nz;
+                        split_tail_start = first_data_nz;
                         split_tail_bytes = tail_bytes;
                         section_start = 0;
                         section_bytes = header_bytes;
@@ -5049,9 +5242,21 @@ void OutputSlice(void *arg1, void *arg2, int32_t arg3, void *arg4)
                                  arg2, arg3, header_bytes, split_tail_start, split_tail_bytes, raw_end);
                     }
                 }
-                ENC_KMSG("OutputSlice recover-zero-bytes req=%p slice=%d old_end=%d start=%d total=%d raw_end=%d pattern_end=%d first_nz=%d next_nz=%d limit=%d avail=%d new_end=%d bytes=%d header=%d",
+                if (first_data_nz >= 0 && first_data_nz + 16 <= stream_size) {
+                    ENC_KMSG("OutputSlice data-probe req=%p slice=%d @0x%x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x",
+                             arg2, arg3, first_data_nz,
+                             stream_base[first_data_nz + 0], stream_base[first_data_nz + 1],
+                             stream_base[first_data_nz + 2], stream_base[first_data_nz + 3],
+                             stream_base[first_data_nz + 4], stream_base[first_data_nz + 5],
+                             stream_base[first_data_nz + 6], stream_base[first_data_nz + 7],
+                             stream_base[first_data_nz + 8], stream_base[first_data_nz + 9],
+                             stream_base[first_data_nz + 10], stream_base[first_data_nz + 11],
+                             stream_base[first_data_nz + 12], stream_base[first_data_nz + 13],
+                             stream_base[first_data_nz + 14], stream_base[first_data_nz + 15]);
+                }
+                ENC_KMSG("OutputSlice recover-zero-bytes req=%p slice=%d old_end=%d start=%d total=%d raw_end=%d pattern_end=%d first_nz=%d next_nz=%d first_data=%d next_data=%d limit=%d avail=%d new_end=%d bytes=%d header=%d",
                          arg2, arg3, old_end, section_start, section_bytes, raw_end, pattern_end,
-                         first_nz, next_nz, cmd_budget_limit, cmd_budget_avail,
+                         first_nz, next_nz, first_data_nz, next_data_nz, cmd_budget_limit, cmd_budget_avail,
                          stream_end, byte_count, header_bytes);
             }
 #endif
@@ -7090,6 +7295,7 @@ int32_t AL_EncChannel_EndEncoding(void *arg1, uint8_t arg2, int32_t arg3)
                     }
                     ENC_KMSG("EndEncoding non-gate read-status-done req=%p rc_bytes=%d status1=%d status2=%d",
                              req, READ_S32(slice_status, 4), READ_S32(slice_status, 0), READ_S32(slice_status, 8));
+                    ProbePhaseAdvanceStreamBuffer(req, READ_S32(slice_status, 4), "phase-advance");
                     force_status = 0;
                     if ((READ_S32(arg1, 0x90) & 8) != 0 &&
                         READ_U8(arg1, 0x3de0) == 0U &&
@@ -7147,6 +7353,10 @@ int32_t AL_EncChannel_EndEncoding(void *arg1, uint8_t arg2, int32_t arg3)
 
                 DisableCompletedPhaseInterrupts(arg1, req, req_phase);
                 ClearCompletedPhaseRunState(arg1, req, req_phase);
+
+                if (READ_U8(arg1, 0x1f) == 0U && req_phase > 0) {
+                    ProbeLivePhase1LateReadback(arg1, req, 0, "EndEncoding late-readback");
+                }
 
                 SyncCompletedCmdListCache(arg1, req, "final-output");
                 InitSliceStatus(slice_status);
