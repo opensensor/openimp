@@ -1173,18 +1173,9 @@ static void ArmLiveT31EntropyIrqs(void *core_ctx, const char *tag)
     entropy_irq = (((uint32_t)core->core_id << 2) + 2U) & 0x1fU;
     WriteLiveT31IrqSlot(core->ip_ctrl, entropy_irq, EndAvcEntropy, core_ctx, 0U);
 
-    /*
-     * T31 live runs also surface phase-1 wakeups on slot4 for core0. Keep the
-     * dedicated OEM entropy slot armed for all cores, and mirror core0 onto
-     * slot4 so either interrupt source reaches EndAvcEntropy.
-     */
-    if (core->core_id == 0U) {
-        WriteLiveT31IrqSlot(core->ip_ctrl, 4U, EndAvcEntropy, core_ctx, 0U);
-    }
-
     ENC_KMSG("%s arm-entropy-irq core=%u slot=%u ctx=%p cb=%p mirror4=%u",
              tag ? tag : "irq", (unsigned)core->core_id, (unsigned)entropy_irq, core_ctx,
-             EndAvcEntropy, (unsigned)(core->core_id == 0U));
+             EndAvcEntropy, 0U);
 }
 
 static void ApplyLiveT31Core0LegacyIrqMask(void *core_ctx, const char *tag)

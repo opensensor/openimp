@@ -354,8 +354,19 @@ void EndEncoding(void *arg1)
 void EndAvcEntropy(void *arg1)
 {
     int32_t t9 = *(int32_t *)((char *)arg1 + 0x14);
+    uint32_t status = 0;
+    uint32_t end_off = 0;
+    uint32_t enc_stat = 0;
+    uint32_t ent_stat = 0;
 
     WaitForEnc2Writeback((AL_EncCoreCtxCompat *)arg1, "EndAvcEntropy");
+    if (Enc2WritebackLooksIncomplete((AL_EncCoreCtxCompat *)arg1, &status, &end_off, &enc_stat, &ent_stat) != 0) {
+        IMP_LOG_INFO("AVPU",
+                     "core EndAvcEntropy defer ctx=%p core=%u status=0x%08x end=0x%08x st104=0x%08x st1e4=0x%08x",
+                     arg1, (unsigned)((AL_EncCoreCtxCompat *)arg1)->core_id,
+                     status, end_off, enc_stat, ent_stat);
+        return;
+    }
     LogEnc2WritebackStatus((AL_EncCoreCtxCompat *)arg1, "EndAvcEntropy");
     IMP_LOG_INFO("AVPU", "core EndAvcEntropy ctx=%p fn=0x%x user=%p payload=%p mode=1",
                  arg1, t9, *(void **)((char *)arg1 + 0x18), *(void **)((char *)arg1 + 0x10));
@@ -954,9 +965,6 @@ int32_t AL_EncCore_EnableEnc2Interrupt(AL_EncCoreCtxCompat *arg1)
     int32_t s1 = 1 << ((((uint32_t)arg1->core_id << 2) + 2) & 0x1f);
     int32_t v0_3 = s0->vtable->ReadRegister(s0, 0x8014);
     uint32_t add_mask = (uint32_t)s1;
-
-    if ((uint32_t)arg1->core_id == 0U)
-        add_mask |= 1U << 4;
 
     IMP_LOG_INFO("AVPU", "EnableEnc2Interrupt core=%u mask=0x%08x add=0x%08x new=0x%08x",
                  (unsigned)arg1->core_id, (unsigned)v0_3, (unsigned)add_mask,
