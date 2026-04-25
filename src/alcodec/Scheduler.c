@@ -2891,6 +2891,61 @@ static int32_t FindFirstAlternatingPatternBreak(const uint8_t *buf, int32_t star
     return -1;
 }
 
+static int32_t SkipAlternatingPatternRun(const uint8_t *buf, int32_t start, int32_t size, int32_t min_run)
+{
+    int32_t run_start;
+    int32_t pos;
+    uint8_t pattern0;
+    uint8_t pattern1;
+
+    if (buf == NULL || size <= 0 || min_run <= 0) {
+        return start;
+    }
+
+    if (start < 0) {
+        start = 0;
+    }
+    if (start + 1 >= size) {
+        return start;
+    }
+
+    pattern0 = buf[start];
+    pattern1 = buf[start + 1];
+    run_start = FindFirstPatternRun(buf, start, size, pattern0, pattern1, min_run);
+    if (run_start != start) {
+        return start;
+    }
+
+    pos = start + min_run;
+    while (pos < size) {
+        uint8_t expect = (((pos - start) & 1) == 0) ? pattern0 : pattern1;
+
+        if (buf[pos] != expect) {
+            break;
+        }
+        ++pos;
+    }
+
+    return pos;
+}
+
+static int32_t FindFirstNonZeroNonPatternByte(const uint8_t *buf, int32_t start, int32_t size)
+{
+    int32_t pos;
+
+    pos = FindFirstNonZeroByte(buf, start, size);
+    while (pos >= 0) {
+        int32_t pattern_end = SkipAlternatingPatternRun(buf, pos, size, 64);
+
+        if (pattern_end <= pos) {
+            return pos;
+        }
+        pos = FindFirstNonZeroByte(buf, pattern_end, size);
+    }
+
+    return -1;
+}
+
 static void ProbeLiveT31AfterLaunch(void *ch, int32_t *req, int32_t core_idx, const char *tag)
 {
     AL_EncCoreCtxCompat *core;
@@ -4750,10 +4805,13 @@ void OutputSlice(void *arg1, void *arg2, int32_t arg3, void *arg4)
                 int32_t raw_end;
                 int32_t first_nz;
                 int32_t next_nz;
+                int32_t first_data_nz;
+                int32_t next_data_nz;
                 int32_t pattern_end;
                 int32_t produced;
                 int32_t gap_break = -1;
                 int32_t gap_end = old_end;
+                int32_t gap_pattern_end = -1;
 
                 if (scan_from < 0) {
                     scan_from = stream_head_off;
@@ -4768,6 +4826,8 @@ void OutputSlice(void *arg1, void *arg2, int32_t arg3, void *arg4)
                 raw_end = ScanStreamBufferRawEnd(stream_base, stream_size);
                 first_nz = FindFirstNonZeroByte(stream_base, scan_from, stream_size);
                 next_nz = FindFirstNonZeroByte(stream_base, stream_end, stream_size);
+                first_data_nz = FindFirstNonZeroNonPatternByte(stream_base, scan_from, stream_size);
+                next_data_nz = FindFirstNonZeroNonPatternByte(stream_base, stream_end, stream_size);
                 pattern_end = ScanStreamBufferFillPatternEnd(stream_base,
                                                              first_nz >= 0 ? first_nz : scan_from,
                                                              stream_size);
@@ -4791,7 +4851,13 @@ void OutputSlice(void *arg1, void *arg2, int32_t arg3, void *arg4)
                     if (gap_break > header_bytes &&
                         gap_break < old_end &&
                         (first_nz < 0 || gap_break < first_nz)) {
-                        first_nz = gap_break;
+                        gap_pattern_end = SkipAlternatingPatternRun(stream_base, gap_break, stream_size, 64);
+                        if (gap_pattern_end <= gap_break) {
+                            first_nz = gap_break;
+                            if (first_data_nz < 0 || gap_break < first_data_nz) {
+                                first_data_nz = gap_break;
+                            }
+                        }
                         if (gap_break + 16 <= gap_end) {
                             ENC_KMSG("OutputSlice gap-break-bytes req=%p slice=%d @0x%x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x",
                                      arg2, arg3, gap_break,
@@ -4803,6 +4869,10 @@ void OutputSlice(void *arg1, void *arg2, int32_t arg3, void *arg4)
                                      stream_base[gap_break + 10], stream_base[gap_break + 11],
                                      stream_base[gap_break + 12], stream_base[gap_break + 13],
                                      stream_base[gap_break + 14], stream_base[gap_break + 15]);
+                        }
+                        if (gap_pattern_end > gap_break) {
+                            ENC_KMSG("OutputSlice gap-break-skip-pattern req=%p slice=%d start=%d end=%d",
+                                     arg2, arg3, gap_break, gap_pattern_end);
                         }
                     }
                 }
@@ -4841,14 +4911,14 @@ void OutputSlice(void *arg1, void *arg2, int32_t arg3, void *arg4)
                 }
                 if (live_multicore_avc &&
                     header_bytes > 0 &&
-                    first_nz > header_bytes &&
-                    first_nz < stream_end &&
-                    first_nz < stream_size) {
-                    int32_t tail_bytes = stream_end - first_nz;
+                    first_data_nz > header_bytes &&
+                    first_data_nz < stream_end &&
+                    first_data_nz < stream_size) {
+                    int32_t tail_bytes = stream_end - first_data_nz;
 
-                    if (tail_bytes > 0 && first_nz + tail_bytes <= stream_size) {
+                    if (tail_bytes > 0 && first_data_nz + tail_bytes <= stream_size) {
                         split_desc = 1;
-                        split_tail_start = first_nz;
+                        split_tail_start = first_data_nz;
                         split_tail_bytes = tail_bytes;
                         section_start = 0;
                         section_bytes = header_bytes;
@@ -4859,9 +4929,21 @@ void OutputSlice(void *arg1, void *arg2, int32_t arg3, void *arg4)
                                  arg2, arg3, header_bytes, split_tail_start, split_tail_bytes, raw_end);
                     }
                 }
-                ENC_KMSG("OutputSlice recover-zero-bytes req=%p slice=%d old_end=%d start=%d total=%d raw_end=%d pattern_end=%d first_nz=%d next_nz=%d limit=%d avail=%d new_end=%d bytes=%d header=%d",
+                if (first_data_nz >= 0 && first_data_nz + 16 <= stream_size) {
+                    ENC_KMSG("OutputSlice data-probe req=%p slice=%d @0x%x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x",
+                             arg2, arg3, first_data_nz,
+                             stream_base[first_data_nz + 0], stream_base[first_data_nz + 1],
+                             stream_base[first_data_nz + 2], stream_base[first_data_nz + 3],
+                             stream_base[first_data_nz + 4], stream_base[first_data_nz + 5],
+                             stream_base[first_data_nz + 6], stream_base[first_data_nz + 7],
+                             stream_base[first_data_nz + 8], stream_base[first_data_nz + 9],
+                             stream_base[first_data_nz + 10], stream_base[first_data_nz + 11],
+                             stream_base[first_data_nz + 12], stream_base[first_data_nz + 13],
+                             stream_base[first_data_nz + 14], stream_base[first_data_nz + 15]);
+                }
+                ENC_KMSG("OutputSlice recover-zero-bytes req=%p slice=%d old_end=%d start=%d total=%d raw_end=%d pattern_end=%d first_nz=%d next_nz=%d first_data=%d next_data=%d limit=%d avail=%d new_end=%d bytes=%d header=%d",
                          arg2, arg3, old_end, section_start, section_bytes, raw_end, pattern_end,
-                         first_nz, next_nz, cmd_budget_limit, cmd_budget_avail,
+                         first_nz, next_nz, first_data_nz, next_data_nz, cmd_budget_limit, cmd_budget_avail,
                          stream_end, byte_count, header_bytes);
             }
 #endif

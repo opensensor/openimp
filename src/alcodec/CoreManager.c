@@ -664,6 +664,21 @@ int32_t AL_EncCore_Encode1(AL_EncCoreCtxCompat *arg1, int32_t arg2, int32_t arg3
             uint32_t cfg_8424 = (uint32_t)a0_1->vtable->ReadRegister(a0_1, 0x8424);
             uint32_t cfg_8428 = (uint32_t)a0_1->vtable->ReadRegister(a0_1, 0x8428);
 
+            /*
+             * Live T31 nonzero cores can report 0x2 here before launch even
+             * though the core has not actually consumed the new command list
+             * yet. Resetting in that state clears the freshly programmed
+             * source config and the subsequent startenc falls through to 0.
+             * Let the launch proceed when the only active bit is enc1-ready.
+             */
+            if (a1_1 != 0U && busy_before == 0x00000002U) {
+                IMP_LOG_INFO("AVPU",
+                             "enc1 skip-reset core=%u reg83f8=0x%08x reason=live-ready",
+                             (unsigned)a1_1, busy_before);
+                result = 0;
+            }
+
+        if (result != 0) {
             IMP_LOG_INFO("AVPU", "enc1 busy-before-reset core=%u reg83f8=0x%08x", (unsigned)a1_1, busy_before);
             ResetCore_isra_27(a0_1, &arg1->core_id);
             if ((cfg_8400 | cfg_8404 | cfg_8410 | cfg_8414 | cfg_8420 | cfg_8428) != 0U) {
@@ -689,6 +704,7 @@ int32_t AL_EncCore_Encode1(AL_EncCoreCtxCompat *arg1, int32_t arg2, int32_t arg3
                          (unsigned)a1_1,
                          (unsigned)a0_1->vtable->ReadRegister(a0_1, (a1_1 << 9) + 0x83f8),
                          (unsigned)(result == 0));
+        }
         }
         if (result == 0) {
             if (cmd_regs_virt != NULL) {
