@@ -954,10 +954,26 @@ static void ClearCompletedPhaseRunState(void *ch, int32_t *req, int32_t phase)
 
             if (core >= 0 && mod >= 0) {
                 uint8_t *state = sched + core * 0x98 + 0x5d4;
+                uint8_t prev_ch0 = state[0];
+                uint8_t prev_ch1 = state[1];
+                uint8_t prev_run0 = state[2];
+                uint8_t prev_run1 = state[3];
 
                 ENC_KMSG("EndEncoding clear-run req=%p phase=%d idx=%d core=%d mod=%d state=%p",
                          req, phase, i, core, mod, state);
-                AL_CoreState_SetChannelRunState(state, 0xff, mod, 0);
+                if (mod == 0) {
+                    state[2] = 0;
+                } else if (mod == 1) {
+                    state[3] = 0;
+                } else {
+                    AL_CoreState_SetChannelRunState(state, 0xff, mod, 0);
+                }
+                ENC_KMSG("EndEncoding clear-run-preserve req=%p phase=%d idx=%d core=%d mod=%d pre=[%u/%u %u/%u] post=[%u/%u %u/%u]",
+                         req, phase, i, core, mod,
+                         (unsigned)prev_ch0, (unsigned)prev_run0,
+                         (unsigned)prev_ch1, (unsigned)prev_run1,
+                         (unsigned)state[0], (unsigned)state[2],
+                         (unsigned)state[1], (unsigned)state[3]);
             }
             grp += 2;
         }
@@ -2933,6 +2949,58 @@ static int32_t FindFirstAlternatingPatternBreak(const uint8_t *buf, int32_t star
     return -1;
 }
 
+static int32_t FindLastStartCodePrefix(const uint8_t *buf, int32_t start, int32_t end)
+{
+    int32_t pos;
+
+    if (buf == NULL || end <= 0) {
+        return -1;
+    }
+
+    if (start < 0) {
+        start = 0;
+    }
+    if (end < start + 3) {
+        return -1;
+    }
+
+    for (pos = end - 1; pos >= start + 2; --pos) {
+        if (buf[pos] == 0x01 &&
+            buf[pos - 1] == 0x00 &&
+            buf[pos - 2] == 0x00) {
+            if (pos >= start + 3 && buf[pos - 3] == 0x00) {
+                return pos - 3;
+            }
+            return pos - 2;
+        }
+    }
+
+    return -1;
+}
+
+static int32_t AlignToStartCodePrefix(const uint8_t *buf, int32_t pos, int32_t floor)
+{
+    if (buf == NULL || pos < 0) {
+        return pos;
+    }
+
+    if (floor < 0) {
+        floor = 0;
+    }
+
+    if (pos >= floor + 2 &&
+        buf[pos] == 0x01 &&
+        buf[pos - 1] == 0x00 &&
+        buf[pos - 2] == 0x00) {
+        if (pos >= floor + 3 && buf[pos - 3] == 0x00) {
+            return pos - 3;
+        }
+        return pos - 2;
+    }
+
+    return pos;
+}
+
 static int32_t SkipAlternatingPatternRun(const uint8_t *buf, int32_t start, int32_t size, int32_t min_run)
 {
     int32_t run_start;
@@ -2980,7 +3048,7 @@ static int32_t FindFirstNonZeroNonPatternByte(const uint8_t *buf, int32_t start,
         int32_t pattern_end = SkipAlternatingPatternRun(buf, pos, size, 64);
 
         if (pattern_end <= pos) {
-            return pos;
+            return AlignToStartCodePrefix(buf, pos, start);
         }
         pos = FindFirstNonZeroByte(buf, pattern_end, size);
     }
@@ -4877,6 +4945,7 @@ void OutputSlice(void *arg1, void *arg2, int32_t arg3, void *arg4)
                 int32_t next_nz;
                 int32_t first_data_nz;
                 int32_t next_data_nz;
+                int32_t last_data_nz;
                 int32_t pattern_end;
                 int32_t produced;
                 int32_t gap_break = -1;
@@ -4898,6 +4967,8 @@ void OutputSlice(void *arg1, void *arg2, int32_t arg3, void *arg4)
                 next_nz = FindFirstNonZeroByte(stream_base, stream_end, stream_size);
                 first_data_nz = FindFirstNonZeroNonPatternByte(stream_base, scan_from, stream_size);
                 next_data_nz = FindFirstNonZeroNonPatternByte(stream_base, stream_end, stream_size);
+                last_data_nz = FindLastStartCodePrefix(stream_base, scan_from,
+                                                       (raw_end > 0 && raw_end <= stream_size) ? raw_end : stream_size);
                 pattern_end = ScanStreamBufferFillPatternEnd(stream_base,
                                                              first_nz >= 0 ? first_nz : scan_from,
                                                              stream_size);
@@ -4981,22 +5052,23 @@ void OutputSlice(void *arg1, void *arg2, int32_t arg3, void *arg4)
                 }
                 if (live_multicore_avc &&
                     header_bytes > 0 &&
-                    first_data_nz > header_bytes &&
-                    first_data_nz < stream_end &&
-                    first_data_nz < stream_size) {
-                    int32_t tail_bytes = stream_end - first_data_nz;
+                    last_data_nz > header_bytes &&
+                    last_data_nz < raw_end &&
+                    last_data_nz < stream_size) {
+                    int32_t tail_bytes = raw_end - last_data_nz;
 
-                    if (tail_bytes > 0 && first_data_nz + tail_bytes <= stream_size) {
+                    if (tail_bytes > 0 && last_data_nz + tail_bytes <= stream_size) {
                         split_desc = 1;
-                        split_tail_start = first_data_nz;
+                        split_tail_start = last_data_nz;
                         split_tail_bytes = tail_bytes;
                         section_start = 0;
                         section_bytes = header_bytes;
                         byte_count = split_tail_bytes;
                         WRITE_S32(arg4, 4, byte_count);
                         WRITE_S32(arg4, 8, byte_count);
-                        ENC_KMSG("OutputSlice split-live-gap req=%p slice=%d hdr=%d tail_off=%d tail_bytes=%d raw_end=%d",
-                                 arg2, arg3, header_bytes, split_tail_start, split_tail_bytes, raw_end);
+                        ENC_KMSG("OutputSlice split-live-gap req=%p slice=%d hdr=%d tail_off=%d tail_bytes=%d raw_end=%d first_data=%d last_data=%d",
+                                 arg2, arg3, header_bytes, split_tail_start, split_tail_bytes, raw_end,
+                                 first_data_nz, last_data_nz);
                     }
                 }
                 if (first_data_nz >= 0 && first_data_nz + 16 <= stream_size) {
@@ -5011,9 +5083,9 @@ void OutputSlice(void *arg1, void *arg2, int32_t arg3, void *arg4)
                              stream_base[first_data_nz + 12], stream_base[first_data_nz + 13],
                              stream_base[first_data_nz + 14], stream_base[first_data_nz + 15]);
                 }
-                ENC_KMSG("OutputSlice recover-zero-bytes req=%p slice=%d old_end=%d start=%d total=%d raw_end=%d pattern_end=%d first_nz=%d next_nz=%d first_data=%d next_data=%d limit=%d avail=%d new_end=%d bytes=%d header=%d",
+                ENC_KMSG("OutputSlice recover-zero-bytes req=%p slice=%d old_end=%d start=%d total=%d raw_end=%d pattern_end=%d first_nz=%d next_nz=%d first_data=%d next_data=%d last_data=%d limit=%d avail=%d new_end=%d bytes=%d header=%d",
                          arg2, arg3, old_end, section_start, section_bytes, raw_end, pattern_end,
-                         first_nz, next_nz, first_data_nz, next_data_nz, cmd_budget_limit, cmd_budget_avail,
+                         first_nz, next_nz, first_data_nz, next_data_nz, last_data_nz, cmd_budget_limit, cmd_budget_avail,
                          stream_end, byte_count, header_bytes);
             }
 #endif
@@ -7009,7 +7081,6 @@ int32_t AL_EncChannel_EndEncoding(void *arg1, uint8_t arg2, int32_t arg3)
                 StaticFifo_Dequeue(fifo);
                 req_phase_next = req_phase + 1;
                 WRITE_S32(req, 0xa70, req_phase_next);
-                ClearCompletedPhaseRunState(arg1, req, req_phase);
 
                 AL_EncCore_TurnOffRAM(READ_PTR(arg1, 0x164), 0, READ_U8(arg1, 0x3c), 0, 0);
 
@@ -7082,6 +7153,7 @@ int32_t AL_EncChannel_EndEncoding(void *arg1, uint8_t arg2, int32_t arg3)
                     handleOutputTraces(arg1, req, (uint8_t)(READ_U8(arg1, 0x3c) - 1U), 3);
                     ENC_KMSG("EndEncoding non-gate post-output-trace req=%p", req);
                     DisableCompletedPhaseInterrupts(arg1, req, req_phase);
+                    ClearCompletedPhaseRunState(arg1, req, req_phase);
                     done_cb = GetChannelFrameDoneCallback(arg1);
                     Rtos_ReleaseMutex(READ_PTR(arg1, 0x170));
                     ENC_KMSG("EndEncoding non-gate queued-next-phase req=%p next=%d total=%d rc_bytes=%d skip=%u",
@@ -7108,6 +7180,7 @@ int32_t AL_EncChannel_EndEncoding(void *arg1, uint8_t arg2, int32_t arg3)
                 }
 
                 DisableCompletedPhaseInterrupts(arg1, req, req_phase);
+                ClearCompletedPhaseRunState(arg1, req, req_phase);
 
                 SyncCompletedCmdListCache(arg1, req, "final-output");
                 InitSliceStatus(slice_status);
