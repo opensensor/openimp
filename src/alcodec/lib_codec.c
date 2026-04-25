@@ -113,6 +113,24 @@ static inline uint8_t read_u8(const void *ptr, uint32_t offset)
     return *(const uint8_t *)((const uint8_t *)ptr + offset);
 }
 
+static int is_live_t31_multicore_avc(const void *ptr)
+{
+    int32_t cpu_id;
+    uint8_t low_core_count;
+    uint8_t stable_core_count;
+
+    if (ptr == NULL) {
+        return 0;
+    }
+
+    cpu_id = get_cpu_id();
+    low_core_count = read_u8(ptr, 0x3c);
+    stable_core_count = read_u8(ptr, 0x12d58);
+    return ((uint32_t)(cpu_id - 0x0f) < 9U) &&
+           read_u8(ptr, 0x1f) == 0U &&
+           ((low_core_count > 1U) || (stable_core_count > 1U));
+}
+
 static inline void *read_ptr(const void *ptr, uint32_t offset)
 {
     return *(void * const *)((const uint8_t *)ptr + offset);
@@ -223,8 +241,13 @@ int32_t AL_Codec_Encode_PrimeStreamBuffers(int32_t *arg1)
             return -1;
         }
 
-        stream_off = 0x200;
-        stream_avail = size > 0x200U ? (int32_t)(size - 0x200U) : 0;
+        if (is_live_t31_multicore_avc(chctx)) {
+            stream_off = 0;
+            stream_avail = (int32_t)size;
+        } else {
+            stream_off = 0x200;
+            stream_avail = size > 0x200U ? (int32_t)(size - 0x200U) : 0;
+        }
 
         Rtos_GetMutex(stream_mutex);
         slot = read_s32(lane_ctx, 0xdbb0);
@@ -1536,6 +1559,18 @@ int32_t AL_Codec_Encode_GetStream(void *arg1, void **arg2, void **arg3)
     }
     *arg2 = Fifo_Dequeue((uint8_t *)arg1 + 0x7f8, -1);
     *arg3 = Fifo_Dequeue((uint8_t *)arg1 + 0x81c, -1);
+    {
+        int kfd = open("/dev/kmsg", O_WRONLY);
+        if (kfd >= 0) {
+            char b[160];
+            int n = snprintf(b, sizeof(b),
+                             "libimp/LCOD: GetStream stream=%p src=%p codec=%p\n",
+                             *arg2, *arg3, arg1);
+            if (n > 0)
+                write(kfd, b, n);
+            close(kfd);
+        }
+    }
     if (*arg2 == NULL)
         return -1;
     return -((uintptr_t)(*arg3) < 1U);
@@ -1560,7 +1595,8 @@ int32_t AL_Codec_Encode_ReleaseStream(void *arg1, void *arg2, void *arg3)
         }
     }
 
-    AL_Buffer_Unref(arg3);
+    if (arg3 != NULL)
+        AL_Buffer_Unref(arg3);
     AL_Encoder_PutStreamBuffer(*(int32_t **)((uint8_t *)arg1 + 0x798), arg2, 0);
     AL_Buffer_Unref(arg2);
 

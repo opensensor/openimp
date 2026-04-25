@@ -5,6 +5,8 @@
 #include <fcntl.h>
 #include <unistd.h>
 
+#include "alcodec/al_rtos.h"
+
 extern char _gp;
 extern int32_t __assert(const char *expression, const char *file, int32_t line,
                         const char *function, void *caller);
@@ -47,6 +49,9 @@ static void slp_kmsg(const char *fmt, ...)
 }
 
 static char g_dummy_elf_header;
+
+#define ENDREQ_INLINE_SLOT_SIZE 0xe8
+#define ENDREQ_INLINE_SLOT_COUNT 3
 
 typedef int32_t (*SetStepsFn)(void *arg1, void *arg2);
 
@@ -1273,14 +1278,37 @@ void *RequestsBuffer_Pop(void *arg1)
 void EndRequestsBuffer_Init(void *arg1)
 {
     WRITE_S32(arg1, 0xe8, 0);
+    slp_kmsg("libimp/SLP: EndRequestsBuffer_Init state=%p head_addr=%p\n",
+             arg1, (uint8_t *)arg1 + 0xe8);
 }
 
 void *EndRequestsBuffer_Pop(void *arg1)
 {
-    int32_t v0_3 = READ_S32(arg1, 0xe8);
+    void *heap_slot = Rtos_Malloc(ENDREQ_INLINE_SLOT_SIZE);
 
-    WRITE_S32(arg1, 0xe8, 0);
-    return (uint8_t *)arg1 + v0_3 * 0xe8;
+    if (heap_slot != NULL) {
+        slp_kmsg("libimp/SLP: EndRequestsBuffer_Pop heap=%p size=0x%x\n",
+                 heap_slot, ENDREQ_INLINE_SLOT_SIZE);
+        return heap_slot;
+    }
+
+    /*
+     * The T31 live encoder only has room for three 0xe8-byte end-request
+     * payload slots before the step template at channel+0x18c0:
+     *   channel+0x1604, +0x16ec, +0x17d4
+     * The head still lives in scheduler tail state at channel+0x12960.
+     * Wrapping over 19 slots makes slot 3 land at channel+0x18bc and corrupt
+     * the step template; wrapping over 3 slots keeps payload recycling inside
+     * the physically available window.
+     */
+    int32_t v0_3 = READ_S32(arg1, 0x1135c);
+    int32_t next = (v0_3 + 1) % ENDREQ_INLINE_SLOT_COUNT;
+    void *slot = (uint8_t *)arg1 + v0_3 * ENDREQ_INLINE_SLOT_SIZE;
+
+    slp_kmsg("libimp/SLP: EndRequestsBuffer_Pop ring=%p head_addr=%p head=%d next=%d slot=%p\n",
+             arg1, (uint8_t *)arg1 + 0x1135c, v0_3, next, slot);
+    WRITE_S32(arg1, 0x1135c, next);
+    return slot;
 }
 
 int32_t AL_ModuleArray_AddModule(void *arg1, int32_t arg2, int32_t arg3)

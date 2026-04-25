@@ -1,5 +1,6 @@
 #include <stdint.h>
 #include <stdio.h>
+#include <string.h>
 #include <unistd.h>
 #include <fcntl.h>
 
@@ -20,6 +21,7 @@ int32_t AL_GetAllocSizeEP2(int32_t arg1, int32_t arg2, int32_t arg3); /* forward
 int32_t AL_GetAllocSizeEP1(void); /* forward decl, ported by T20 later */
 uint32_t AL_CleanupMemory(int32_t arg1, int32_t arg2); /* forward decl, ported by T1 later */
 void deregister_tm_clones(void); /* forward decl, ported by T<N> later */
+int32_t get_cpu_id(void); /* forward decl, ported by T<N> later */
 
 /* AL_CLEAN_BUFFERS is defined once in src/core/globals.c (T0 foundation)
  * and consumed here + by AL_CleanupMemory in AllocatorDefault.c. */
@@ -119,6 +121,47 @@ static uint8_t setting_read_u8(const void *base, uint32_t offset)
     return *(const uint8_t *)((const uint8_t *)base + offset);
 }
 
+static int AL_IntermMngr_IsLiveT31AvcParam(const void *base)
+{
+    int32_t cpu_id;
+
+    if (base == NULL || setting_read_u8(base, 0x1f) != 0U) {
+        return 0;
+    }
+
+    cpu_id = get_cpu_id();
+    return (uint32_t)(cpu_id - 0x0f) < 9U;
+}
+
+static uint32_t AL_IntermMngr_GetCompatCoreCount(const void *base)
+{
+    uint32_t core_count;
+
+    if (base == NULL) {
+        return 1U;
+    }
+
+    core_count = (uint32_t)(uint8_t)setting_read_u8(base, 0x3c);
+    if (core_count == 0U) {
+        core_count = 1U;
+    }
+
+    if (AL_IntermMngr_IsLiveT31AvcParam(base) && core_count == 1U) {
+        uint32_t width = (uint32_t)*(const uint16_t *)((const uint8_t *)base + 4);
+        uint32_t height = (uint32_t)*(const uint16_t *)((const uint8_t *)base + 6);
+
+        if (width >= 1920U && height >= 1080U) {
+            core_count = 5U;
+        } else if (width >= 1280U && height >= 720U) {
+            core_count = 3U;
+        } else if (width >= 960U && height >= 540U) {
+            core_count = 2U;
+        }
+    }
+
+    return core_count;
+}
+
 static int32_t AL_GetIntIdx_part_30(void)
 {
     __assert("uIntMask == (1u << iIntIdx)",
@@ -142,13 +185,14 @@ int32_t AL_IntermMngr_Init(AL_TIntermMngr *arg1, const void *arg2)
     uint32_t v0 = (uint32_t)(uint8_t)setting_read_u8(arg2, 0x1f);
     uint32_t a1 = (uint32_t)(uint8_t)setting_read_u8(arg2, 6);
     uint32_t var_1c = a1;
+    uint32_t scratch_cores = AL_IntermMngr_GetCompatCoreCount(arg2);
     int32_t var_30 = 0;
     int32_t var_2c = 0;
 
     arg1->data_size = 0;
     arg1->map_size = 0;
 
-    if (v0 == 0 && (uint32_t)setting_read_u8(arg2, 0x3c) >= 2U) {
+    if (v0 == 0 && scratch_cores >= 2U) {
         int32_t v0_3 = setting_read_s32(arg2, 0x10);
         int32_t t0_1 = v0_3 & 0xf;
         int32_t a3_1 = (int32_t)((uint32_t)v0_3 >> 4) & 0xf;
@@ -164,7 +208,7 @@ int32_t AL_IntermMngr_Init(AL_TIntermMngr *arg1, const void *arg2)
                                      (int32_t)((uint32_t)v0_3 >> 8) & 0xf, 1);
         var_30 = 1;
         arg1->map_size = AL_GetAllocSize_EncCompMap((int32_t)v1, (int32_t)var_1c, (char)s2_3,
-                                                    setting_read_u8(arg2, 0x3c), 1);
+                                                    (char)scratch_cores, 1);
         a1 = (uint32_t)(uint8_t)setting_read_u8(arg2, 6);
     }
 
@@ -181,16 +225,16 @@ int32_t AL_IntermMngr_Init(AL_TIntermMngr *arg1, const void *arg2)
 
         arg1->wpp_size = AL_GetAllocSize_WPP(
             (int32_t)(((1U << (a0_2 & 0x1f)) + a1 - 1U) >> (a0_2 & 0x1f)),
-            (int32_t)(uint32_t)(uint8_t)setting_read_u8(arg2, 0x40),
-            setting_read_u8(arg2, 0x3c));
+            (int32_t)(uint32_t)(uint8_t)setting_read_u8(arg2, 0x40), (char)scratch_cores);
     }
 
     arg1->ep2_size = AL_GetAllocSizeEP2((int32_t)v1, (int32_t)var_1c, (int32_t)v0);
     arg1->ep1_size = AL_GetAllocSizeEP1();
     arg1->mutex = Rtos_CreateMutex();
-    INTM_KMSG("Init ctx=%p mutex=%p ep1=%d wpp=%d ep2=%d data=%d map=%d",
+    INTM_KMSG("Init ctx=%p mutex=%p ep1=%d wpp=%d ep2=%d data=%d map=%d raw_cores=%u scratch_cores=%u",
               arg1, arg1->mutex, arg1->ep1_size, arg1->wpp_size, arg1->ep2_size,
-              arg1->data_size, arg1->map_size);
+              arg1->data_size, arg1->map_size,
+              (unsigned)setting_read_u8(arg2, 0x3c), (unsigned)scratch_cores);
     (void)var_30;
     (void)var_2c;
     return ((uintptr_t)arg1->mutex > INTM_MIN_VALID_PTR) ? 1 : 0;

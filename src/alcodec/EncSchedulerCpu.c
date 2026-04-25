@@ -15,6 +15,8 @@ extern char _gp;
 extern int32_t __assert(const char *expression, const char *file, int32_t line, const char *function, ...);
 int IMP_Log_Get_Option(void); /* forward decl */
 void imp_log_fun(int level, int option, int type, ...); /* forward decl */
+int32_t get_cpu_id(void); /* forward decl */
+void *GetChMngrCtx(int32_t *arg1, char arg2); /* forward decl */
 
 #define SCH_KMSG(fmt, ...) do { \
     int _kfd = open("/dev/kmsg", O_WRONLY); \
@@ -31,6 +33,24 @@ void imp_log_fun(int level, int option, int type, ...); /* forward decl */
 #define READ_PTR(base, off) (*(void **)((uint8_t *)(base) + (off)))
 #define WRITE_S32(base, off, val) (*(int32_t *)((uint8_t *)(base) + (off)) = (int32_t)(val))
 #define WRITE_PTR(base, off, val) (*(void **)((uint8_t *)(base) + (off)) = (void *)(val))
+
+static int IsLiveT31MulticoreAvcChannel(const void *ctx)
+{
+    int32_t cpu_id;
+    uint8_t low_core_count;
+    uint8_t stable_core_count;
+
+    if (ctx == NULL) {
+        return 0;
+    }
+
+    cpu_id = get_cpu_id();
+    low_core_count = READ_U8(ctx, 0x3c);
+    stable_core_count = READ_U8(ctx, 0x12d58);
+    return ((uint32_t)(cpu_id - 0x0f) < 9U) &&
+           READ_U8(ctx, 0x1f) == 0U &&
+           ((low_core_count > 1U) || (stable_core_count > 1U));
+}
 
 AL_TBuffer *AL_PixMapBuffer_Create(AL_TAllocator *arg1, void *arg2, int32_t arg3, int32_t arg4,
                                    uint32_t arg5); /* forward decl, ported by T<N> later */
@@ -267,6 +287,7 @@ int32_t AL_SchedulerCpu_PutStreamBuffer(int32_t arg1, int32_t *arg2, AL_TBuffer 
 {
     void *var_20 = &_gp;
     void *v0;
+    void *live_ctx;
     int32_t s4;
     int32_t stream_off;
     uint32_t phys;
@@ -288,9 +309,10 @@ int32_t AL_SchedulerCpu_PutStreamBuffer(int32_t arg1, int32_t *arg2, AL_TBuffer 
     phys = AL_Buffer_GetPhysicalAddress(arg3);
     virt = AL_Buffer_GetData(arg3);
     size = AL_Buffer_GetSize(arg3);
-    stream_off = size >= 0x200U ? 0x200 : 0;
-    SCH_KMSG("Cpu.PutStreamBuffer phys=0x%x virt=%p size=%u off=%d side=%p",
-             (unsigned)phys, virt, (unsigned)size, stream_off, (void *)(intptr_t)s4);
+    live_ctx = GetChMngrCtx((int32_t *)(intptr_t)(arg1 + 4), (char)*arg2);
+    stream_off = IsLiveT31MulticoreAvcChannel(live_ctx) ? 0 : (size >= 0x200U ? 0x200 : 0);
+    SCH_KMSG("Cpu.PutStreamBuffer phys=0x%x virt=%p size=%u off=%d side=%p live_ctx=%p",
+             (unsigned)phys, virt, (unsigned)size, stream_off, (void *)(intptr_t)s4, live_ctx);
     return AL_SchedulerEnc_PutStreamBuffer((int32_t *)(intptr_t)(arg1 + 4), (char)*arg2,
                                            (int32_t)phys, (int32_t)(intptr_t)virt, (int32_t)size,
                                            stream_off, 0, 0, s4);

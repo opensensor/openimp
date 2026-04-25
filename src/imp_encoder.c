@@ -22,8 +22,8 @@
 #include "codec.h"
 #include "kernel_interface.h"
 
-/* Internal core module helpers used by the ported build. */
-extern Module *AllocModule(char *name, int32_t arg2);
+/* Legacy build uses the system module allocator exported from imp_system.c. */
+extern Module *IMP_System_AllocModule(const char *name, int groupID);
 extern Module *g_modules[6][6];
 
 #include "imp_log_int.h"
@@ -683,7 +683,7 @@ int IMP_Encoder_CreateGroup(int encGroup) {
 
     /* Register Encoder module with system (DEV_ID_ENC = 1) */
     /* Allocate a proper Module structure for this encoder group */
-    Module *enc_module = AllocModule("Encoder", 0);
+    Module *enc_module = IMP_System_AllocModule("Encoder", encGroup);
     if (enc_module == NULL) {
         LOG_ENC("CreateGroup: Failed to allocate module");
         pthread_mutex_unlock(&encoder_mutex);
@@ -1276,6 +1276,13 @@ int IMP_Encoder_GetStream(int encChn, IMPEncoderStream *stream, int block) {
     if (stream_buf->seq % 50 == 0)
     LOG_ENC("GetStream: returning stream seq=%u, packs=%u, total_len=%u",
             stream_buf->seq, stream_buf->packs ? stream_buf->packCount : 1, stream_buf->base_size);
+    enc_kmsg("GetStream return seq=%u packs=%u total_len=%u base=0x%x first_off=%u first_len=%u",
+             stream_buf->seq,
+             stream_buf->packs ? stream_buf->packCount : 1,
+             stream_buf->base_size,
+             stream_buf->base_vir,
+             stream_buf->packs ? stream_buf->packs[0].offset : stream_buf->pack.offset,
+             stream_buf->packs ? stream_buf->packs[0].length : stream_buf->pack.length);
 
     /* Keep stream_buf in current_stream until ReleaseStream is called */
     /* Don't set current_stream to NULL here */
@@ -2581,6 +2588,14 @@ static void *stream_thread(void *arg) {
                     LOG_ENC("stream_thread: stream seq=%u, packs=%u, total_len=%u, type=%s",
                             stream_buf->seq, stream_buf->packs ? stream_buf->packCount : 1, stream_buf->base_size,
                             frame_type == 0 ? "I" : (frame_type == 1 ? "P" : "B"));
+                    enc_kmsg("stream_thread stream seq=%u packs=%u total_len=%u base=0x%x first_off=%u first_len=%u type=%s",
+                             stream_buf->seq,
+                             stream_buf->packs ? stream_buf->packCount : 1,
+                             stream_buf->base_size,
+                             stream_buf->base_vir,
+                             stream_buf->packs ? stream_buf->packs[0].offset : stream_buf->pack.offset,
+                             stream_buf->packs ? stream_buf->packs[0].length : stream_buf->pack.length,
+                             frame_type == 0 ? "I" : (frame_type == 1 ? "P" : "B"));
 
                     /* Debug: print first few NAL types from outgoing buffer */
                     if (stream_buf->base_size >= 6) {

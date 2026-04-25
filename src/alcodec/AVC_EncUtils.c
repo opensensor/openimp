@@ -121,13 +121,15 @@ static int32_t TryUseLiveT31PrebuiltSection(void *status, AL_TBuffer *stream)
     int32_t desc_count;
     int32_t *desc;
     int32_t section_id;
+    int32_t i;
+    int32_t added;
 
     if (status == NULL || stream == NULL)
         return 0;
 
     desc_off = avc_read_s32(status, 0x34);
     desc_count = avc_read_s32(status, 0x38);
-    if (desc_count != 1 || desc_off < 0)
+    if (desc_count <= 0 || desc_off < 0)
         return 0;
 
     stream_data = (uint8_t *)AL_Buffer_GetData(stream);
@@ -140,14 +142,25 @@ static int32_t TryUseLiveT31PrebuiltSection(void *status, AL_TBuffer *stream)
              status, stream, stream_meta, desc_off, desc_count, desc[0], desc[1], desc[2], desc[3],
              (unsigned)avc_read_u8(status, 0xaa));
 
-    if (desc[1] <= 0)
-        return 0;
-
     AL_StreamMetaData_ClearAllSections(stream_meta);
-    section_id = (int32_t)AL_StreamMetaData_AddSection(stream_meta, desc[0], desc[1], desc[2], desc[3], 2);
-    AVC_KMSG("updateHls prebuilt-section add ret=%d offset=%d len=%d handle=%d user=%d flags=2",
-             section_id, desc[0], desc[1], desc[2], desc[3]);
-    if (section_id < 0)
+    added = 0;
+    for (i = 0; i < desc_count; ++i) {
+        int32_t *cur = desc + (i << 2);
+
+        AVC_KMSG("updateHls prebuilt-section part idx=%d off=%d len=%d handle=%d user=%d",
+                 i, cur[0], cur[1], cur[2], cur[3]);
+        if (cur[1] <= 0)
+            continue;
+
+        section_id = (int32_t)AL_StreamMetaData_AddSection(stream_meta, cur[0], cur[1], cur[2], cur[3], 2);
+        AVC_KMSG("updateHls prebuilt-section add ret=%d idx=%d offset=%d len=%d handle=%d user=%d flags=2",
+                 section_id, i, cur[0], cur[1], cur[2], cur[3]);
+        if (section_id < 0)
+            return 0;
+        added += 1;
+    }
+
+    if (added == 0)
         return 0;
 
     if (avc_read_u8(status, 0xaa) != 0) {

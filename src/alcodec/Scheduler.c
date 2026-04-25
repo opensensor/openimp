@@ -229,6 +229,7 @@ static uint32_t GetLiveT31AvcCompatScratchCoreCount(const void *ctx);
 static uint32_t GetLiveT31AvcCompatLaunchCoreCount(const void *ctx);
 static uint32_t RepairLiveT31LaunchCoreState(void *ch, int32_t *req, int32_t phase,
                                              const char *tag);
+static void ExpandLiveT31MultiCorePhase1ReqTables(void *ch, int32_t *req, const char *tag);
 int32_t SetChannelSteps(void *arg1, void *arg2);
 void EndAvcEntropy(void *arg1); /* CoreManager.c */
 
@@ -2335,6 +2336,7 @@ int32_t AddNewRequest(int32_t arg1)
         WRITE_S32((void *)(intptr_t)v0, 0x8d0, 1);
     }
     HealLiveT31SingleCoreReqTables((void *)(intptr_t)arg1, (int32_t *)(intptr_t)v0, "AddNewRequest");
+    ExpandLiveT31MultiCorePhase1ReqTables((void *)(intptr_t)arg1, (int32_t *)(intptr_t)v0, "AddNewRequest");
     {
         int32_t pict_id = READ_S32((void *)(intptr_t)arg1, 0x22b8);
 
@@ -2584,6 +2586,55 @@ static uint32_t RepairLiveT31LaunchCoreState(void *ch, int32_t *req, int32_t pha
 
     return target_core_count;
 }
+
+static void ExpandLiveT31MultiCorePhase1ReqTables(void *ch, int32_t *req, const char *tag)
+{
+    uint8_t *phase1;
+    uint8_t *phase1_slices;
+    uint32_t target;
+    uint32_t slot;
+
+    if (ch == NULL || req == NULL || !IsLiveT31AvcChannel(ch)) {
+        return;
+    }
+
+    target = GetLiveT31AvcCompatLaunchCoreCount(ch);
+    if (target <= 1U) {
+        return;
+    }
+    if (target > 5U) {
+        target = 5U;
+    }
+    if (READ_S32(req, 0xa6c) < 2) {
+        return;
+    }
+
+    phase1 = (uint8_t *)req + 0x95c;
+    phase1_slices = (uint8_t *)req + 0x9e8;
+
+    ENC_KMSG("%s expand-phase1 req=%p old_mods=%d old_slices=%d target=%u",
+             tag ? tag : "expand-phase1", req,
+             READ_S32(req, 0x9dc), READ_S32(req, 0xa68), (unsigned)target);
+
+    for (slot = 0; slot < 5U; ++slot) {
+        WRITE_S32(phase1, slot * 8U + 0U, 0);
+        WRITE_S32(phase1, slot * 8U + 4U, 0);
+        WRITE_S32(phase1_slices, slot * 8U + 0U, 0);
+        WRITE_S32(phase1_slices, slot * 8U + 4U, 0);
+    }
+
+    for (slot = 0; slot < target; ++slot) {
+        WRITE_S32(phase1, slot * 8U + 0U, (int32_t)slot);
+        WRITE_S32(phase1, slot * 8U + 4U, 1);
+        WRITE_S32(phase1_slices, slot * 8U + 0U, (int32_t)slot);
+        WRITE_S32(phase1_slices, slot * 8U + 4U, 1);
+    }
+
+    WRITE_S32(req, 0x9dc, (int32_t)target);
+    WRITE_S32(req, 0xa68, (int32_t)target);
+    WRITE_S32(req, 0x9e4, 0);
+}
+
 int32_t AL_GetAllocSize_CompData(int32_t arg1, int32_t arg2, char arg3, char arg4, int32_t arg5,
                                  int32_t arg6); /* forward decl, ported by T<N> later */
 int32_t AL_GetAllocSize_EncCompMap(int32_t arg1, int32_t arg2, char arg3,
@@ -3555,19 +3606,21 @@ int32_t encode2(void *arg1)
     void *var_28 = &_gp;
     int32_t v0 = StaticFifo_Dequeue((uint8_t *)arg1 + 0x12a10);
     int32_t t0 = READ_S32((void *)(intptr_t)v0, 0xa68);
+    int32_t phase = READ_S32((void *)(intptr_t)v0, 0xa70);
     int32_t *v0_1 = (int32_t *)(intptr_t)(v0 + 0x9e8);
     uint32_t a1 = (uint32_t)READ_U8(arg1, 0x1ae5);
     intptr_t a3 = 0x9f0 - (intptr_t)v0_1;
     int32_t a0_1 = 0;
     uint32_t a0_6;
     uint32_t v1_7;
+    uint32_t callback_fanout;
     uint32_t s1;
     uint32_t s0_1;
     int32_t i;
 
     (void)var_28;
     ENC_KMSG("encode2 dequeued req=%p grp=%d slice_count=%d mod_count=%d core_off=%u core_tbl=%p",
-             (void *)(intptr_t)v0, READ_S32((void *)(intptr_t)v0, 0xa70),
+             (void *)(intptr_t)v0, phase,
              READ_S32((void *)(intptr_t)v0, 0xa68), READ_S32((void *)(intptr_t)v0, 0x9dc),
              (unsigned)READ_U8(arg1, 0x1ae5), READ_PTR(arg1, 0x164));
     if (t0 > 0) {
@@ -3593,45 +3646,55 @@ int32_t encode2(void *arg1)
         }
     }
 
-    StaticFifo_Queue((StaticFifoCompat *)((uint8_t *)arg1 + READ_S32((void *)(intptr_t)v0, 0xa70) * 0x5c + 0x12a6c), v0);
+    StaticFifo_Queue((StaticFifoCompat *)((uint8_t *)arg1 + phase * 0x5c + 0x12a6c), v0);
     ENC_KMSG("encode2 queued-running req=%p fifo_off=0x%x",
-             (void *)(intptr_t)v0, READ_S32((void *)(intptr_t)v0, 0xa70) * 0x5c + 0x12a6c);
+             (void *)(intptr_t)v0, phase * 0x5c + 0x12a6c);
     a0_6 = (uint32_t)READ_U16(arg1, 0x3c);
     v1_7 = (uint32_t)READ_U8((void *)(intptr_t)v0, 0x1ee);
     if (v1_7 == 0U) {
-        v1_7 = (uint32_t)READ_U8((void *)(intptr_t)(v0 + READ_S32((void *)(intptr_t)v0, 0xa70) * 0x110 + 0x8d4), 0);
+        v1_7 = (uint32_t)READ_U8((void *)(intptr_t)(v0 + phase * 0x110 + 0x8d4), 0);
     }
+    callback_fanout = v1_7;
     s1 = 0;
     s0_1 = 0;
     i = ((int32_t)a0_6 < (int32_t)v1_7) ? 1 : 0;
     if (i != 0) {
         v1_7 = a0_6;
     }
-    if (READ_U8(arg1, 0x1f) == 0U && READ_S32((void *)(intptr_t)v0, 0xa70) == 1 && v1_7 > 0U) {
-        int32_t pending_off = 0x8d0 + ((READ_S32((void *)(intptr_t)v0, 0xa70) * 0x44 + 1) << 2);
-
-        WRITE_S32((void *)(intptr_t)v0, pending_off, (int32_t)v1_7);
-        WRITE_U8((void *)(intptr_t)(v0 + READ_S32((void *)(intptr_t)v0, 0xa70) * 0x110 + 0x8d4), 0, (uint8_t)v1_7);
-        ENC_KMSG("encode2 pending-fanout req=%p phase=%d pending_off=0x%x launched=%u",
-                 (void *)(intptr_t)v0, READ_S32((void *)(intptr_t)v0, 0xa70),
-                 pending_off, (unsigned)v1_7);
-    }
-    ENC_KMSG("encode2 launch-count req=%p active_cores=%u lane_active=%u max_cores=%u",
-             (void *)(intptr_t)v0, (unsigned)READ_U8((void *)(intptr_t)v0, 0x1ee),
-             (unsigned)READ_U8((void *)(intptr_t)(v0 + READ_S32((void *)(intptr_t)v0, 0xa70) * 0x110 + 0x8d4), 0),
-             (unsigned)a0_6);
-
-    if (READ_U8(arg1, 0x1f) == 0U && v1_7 > 0U && READ_PTR(arg1, 0x164) != NULL) {
-        void *irq4_core = READ_PTR(arg1, 0x164);
+    if (READ_U8(arg1, 0x1f) == 0U && phase == 1 && callback_fanout > 0U) {
+        uint32_t phase_mod_count = (uint32_t)READ_S32((void *)(intptr_t)v0, 0x9dc);
+        int32_t pending_off = 0x8d0 + ((phase * 0x44 + 1) << 2);
 
         /*
-         * Live T31 AVC phase1 keeps surfacing on legacy slot4 even when the
-         * dedicated Enc2 IRQ slots stay silent. The pending bit is already set
-         * before the second core launch starts, so slot4 is surfacing the
-         * first/core0 phase1 completion. Route slot4 through EndAvcEntropy on
-         * core0 so that callback drains the core that actually raised the
-         * legacy interrupt instead of stranding core0 at status=0x10 behind a
-         * later core's context.
+         * Phase 1 is represented as a single module in the scheduler tables
+         * even when the live AVC body spans multiple hardware cores. Fanning
+         * pending completions out to the active-core count strands the request
+         * waiting for a second completion that never maps back to a tracked
+         * phase-1 module. Keep the hardware launch width, but count only the
+         * completions the phase table actually expects.
+         */
+        if (phase_mod_count > 0U && phase_mod_count < callback_fanout) {
+            callback_fanout = phase_mod_count;
+        }
+
+        WRITE_S32((void *)(intptr_t)v0, pending_off, (int32_t)callback_fanout);
+        WRITE_U8((void *)(intptr_t)(v0 + phase * 0x110 + 0x8d4), 0, (uint8_t)callback_fanout);
+        ENC_KMSG("encode2 pending-fanout req=%p phase=%d pending_off=0x%x launched=%u",
+                 (void *)(intptr_t)v0, phase, pending_off, (unsigned)callback_fanout);
+    }
+    ENC_KMSG("encode2 launch-count req=%p active_cores=%u lane_active=%u callback_fanout=%u max_cores=%u",
+             (void *)(intptr_t)v0, (unsigned)READ_U8((void *)(intptr_t)v0, 0x1ee),
+             (unsigned)READ_U8((void *)(intptr_t)(v0 + phase * 0x110 + 0x8d4), 0),
+             (unsigned)callback_fanout, (unsigned)a0_6);
+
+    if (READ_U8(arg1, 0x1f) == 0U && v1_7 > 0U && READ_PTR(arg1, 0x164) != NULL) {
+        void *irq4_core = (uint8_t *)READ_PTR(arg1, 0x164) + ((v1_7 - 1U) * 0x44U);
+
+        /*
+         * Live T31 AVC phase 1 still arrives through the legacy slot4 path on
+         * this board. The entropy body lands in the last launched core's
+         * command window, so route slot4 through that core's EndAvcEntropy
+         * context instead of the header-only core0 window.
          */
         RemapLiveT31Irq4(irq4_core, EndAvcEntropy, "encode2");
     }
@@ -3659,7 +3722,7 @@ int32_t encode2(void *arg1)
             a0_6 = (uint32_t)READ_U16(arg1, 0x3c);
             v1_7 = (uint32_t)READ_U8((void *)(intptr_t)v0, 0x1ee);
             if (v1_7 == 0U) {
-                v1_7 = (uint32_t)READ_U8((void *)(intptr_t)(v0 + READ_S32((void *)(intptr_t)v0, 0xa70) * 0x110 + 0x8d4), 0);
+                v1_7 = (uint32_t)READ_U8((void *)(intptr_t)(v0 + phase * 0x110 + 0x8d4), 0);
             }
             s0_1 = (uint32_t)((uint8_t)s0_1 + 1U);
             if ((int32_t)a0_6 < (int32_t)v1_7) {

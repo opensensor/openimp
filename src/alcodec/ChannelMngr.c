@@ -13,6 +13,7 @@ extern char _gp;
 extern void *__assert(const char *expression, const char *file, int32_t line, const char *function, ...);
 int IMP_Log_Get_Option(void); /* forward decl */
 void imp_log_fun(int level, int option, int type, ...); /* forward decl */
+int32_t get_cpu_id(void); /* forward decl, ported by T<N> later */
 
 #define CMG_KMSG(fmt, ...) do { \
     int _kfd = open("/dev/kmsg", O_WRONLY); \
@@ -26,6 +27,7 @@ void imp_log_fun(int level, int option, int type, ...); /* forward decl */
 
 #define LIVE_T31_NORMALIZE_REENTRY_BEFORE_LAUNCH 0
 #define LIVE_T31_EARLY_SINGLE_CORE_AVC 0
+#define LIVE_T31_CLAMP_REQUESTED_CORE_COUNT 0
 #define LIVE_T31_DEFER_UNLOCKED_OUTPUT_CB 1
 
 #define READ_U8(base, off) (*(uint8_t *)((uint8_t *)(base) + (off)))
@@ -46,6 +48,8 @@ void imp_log_fun(int level, int option, int type, ...); /* forward decl */
 #define CH_CORE_BASE_OFF 0x3d
 #define CH_STABLE_CORE_COUNT_OFF 0x12d58
 #define CH_STABLE_CORE_BASE_OFF 0x12d59
+#define CH_DESTROY_CB_OFF 0x12fa4
+#define CH_DESTROY_CTX_OFF 0x12fa8
 #define CH_CORE_COUNT(ctx) ChCoreCountCompat((const uint8_t *)(ctx))
 #define CH_CORE_BASE(ctx) ChCoreBaseCompat((const uint8_t *)(ctx))
 #define CH_RES_BUDGET(ctx) READ_S32((ctx), 0x2c)
@@ -173,6 +177,36 @@ static void RepairChannelCoreLayout(uint8_t *ctx, const char *tag)
              (unsigned)stable_base, (unsigned)stable_count);
 }
 
+static int IsT31FamilyCpu(void)
+{
+    int32_t cpu_id = get_cpu_id();
+
+    return (uint32_t)(cpu_id - 0x0f) < 9U;
+}
+
+static int IsLiveT31AvcParam(const uint8_t *ch_param)
+{
+    return ch_param != NULL && IsT31FamilyCpu() && READ_U8(ch_param, 0x1f) == 0U;
+}
+
+static uint8_t ClampLiveT31AvcRequestedCores(const uint8_t *ch_param, uint32_t requested)
+{
+    if (LIVE_T31_CLAMP_REQUESTED_CORE_COUNT && IsLiveT31AvcParam(ch_param) && requested > 1U) {
+        return 1U;
+    }
+
+    return (uint8_t)requested;
+}
+
+static int ChannelDestroyScheduledCompat(const uint8_t *ctx)
+{
+    if (ctx == NULL) {
+        return 0;
+    }
+
+    return READ_S32(ctx, CH_DESTROY_CB_OFF) != 0 || READ_PTR(ctx, CH_DESTROY_CTX_OFF) != NULL;
+}
+
 void IntVector_Init(int32_t *arg1); /* forward decl, ported by T<N> later */
 int32_t IntVector_Add(int32_t *arg1, int32_t arg2); /* forward decl, ported by T<N> later */
 void IntVector_MoveBack(int32_t *arg1, int32_t arg2); /* forward decl, ported by T<N> later */
@@ -274,6 +308,33 @@ static int32_t t31_pick_overcommit_core(int32_t *scheduler, const uint8_t *ch_pa
     }
 
     return best;
+}
+
+static void RollbackLaunchRunState(int32_t *scheduler, uint8_t ch_id, int32_t *modules, const char *tag)
+{
+    int32_t count;
+    int32_t *slot;
+    int32_t i;
+
+    if (scheduler == NULL || modules == NULL) {
+        return;
+    }
+
+    count = READ_S32(modules, 0x80);
+    if (count <= 0) {
+        return;
+    }
+
+    CMG_KMSG("RollbackLaunchRunState tag=%s ch=%u count=%d",
+             tag ? tag : "?", (unsigned)ch_id, count);
+    Rtos_GetMutex((void *)(intptr_t)scheduler[0x12f4 / 4]);
+    slot = modules;
+    for (i = 0; i < count; ++i) {
+        AL_CoreState_SetChannelRunState((uint8_t *)scheduler + slot[0] * 0x98 + 0x5d4,
+                                        ch_id, slot[1], 0);
+        slot += 2;
+    }
+    Rtos_ReleaseMutex((void *)(intptr_t)scheduler[0x12f4 / 4]);
 }
 
 static int t31_read_live_core_status(int32_t *scheduler, int32_t core_idx, uint32_t *status_out)
@@ -1025,17 +1086,45 @@ label_71e98:
             int32_t str_4;
             int32_t *s1_3;
             int32_t var_1d4;
+            uint8_t *mirror_ctx;
 
             Rtos_GetMutex((void *)(intptr_t)arg1[0x12f4 / 4]);
             str_4 = *(int32_t *)&str[0];
             s1_3 = var_3c;
             var_1d4 = READ_S32(var_3c, 0x80);
+            mirror_ctx = GetChMngrCtx(arg1, (char)str_4);
             if (var_1d4 > 0) {
                 do {
                     AL_CoreState_SetChannelRunState((uint8_t *)arg1 + *s1_3 * 0x98 + 0x5d4, (uint8_t)str_4, s1_3[1], 1);
                     s3_4 += 1;
                     s1_3 = &s1_3[2];
                 } while (s3_4 < var_1d4);
+            }
+
+            if (mirror_ctx != NULL &&
+                READ_U8(mirror_ctx, 0x1f) == 0U &&
+                CH_CORE_COUNT(mirror_ctx) > 1U &&
+                var_1d4 == 1 &&
+                READ_S32(var_3c, 4) == 1) {
+                uint32_t core_base = (uint32_t)CH_CORE_BASE(mirror_ctx);
+                uint32_t core_count = (uint32_t)CH_CORE_COUNT(mirror_ctx);
+                uint32_t core_idx;
+
+                /*
+                 * Live T31 AVC phase 1 is tracked as a single mod=1 launch in
+                 * the module array, but encode2 still arms the secondary core's
+                 * dedicated entropy IRQ slot. Mirror the run-state across the
+                 * remaining live cores so those lane=1 callbacks resolve the
+                 * owning channel instead of arriving as raw_ch=255.
+                 */
+                for (core_idx = 1U; core_idx < core_count; ++core_idx) {
+                    uint32_t mirrored_core = core_base + core_idx;
+
+                    AL_CoreState_SetChannelRunState((uint8_t *)arg1 + mirrored_core * 0x98 + 0x5d4,
+                                                    (uint8_t)str_4, 1, 1);
+                    CMG_KMSG("CheckAndEncode live-phase1 mirror-state ch=%d core=%u mod=1 base=%u count=%u",
+                             str_4, mirrored_core, core_base, core_count);
+                }
             }
             Rtos_ReleaseMutex((void *)(intptr_t)arg1[0x12f4 / 4]);
         }
@@ -1060,6 +1149,9 @@ label_71e98:
                 encode_rc = AL_EncChannel_Encode(launch_ctx, var_3c);
                 CMG_KMSG("CheckAndEncode launch-held-return ch=%u ctx=%p rc=%d status=%d",
                          (unsigned)(uint8_t)str[0], launch_ctx, encode_rc, arg1[0x4bc]);
+                if (encode_rc <= 0) {
+                    RollbackLaunchRunState(arg1, (uint8_t)str[0], var_3c, "live-launch-failed");
+                }
                 return encode_rc;
             }
             CMG_KMSG("CheckAndEncode pre-release scheduler mutex ch=%u status=%d mutex=%p",
@@ -1116,32 +1208,52 @@ static int32_t OutputFramesWithLockState(int32_t *arg1, int caller_holds_sched_m
                      out_fifo ? out_fifo->capacity : -1);
 
             if (v0_7 != 0 && out_ready && AL_EncChannel_GetNextFrameToOutput(v0_7, var_1a0) != 0) {
+                int32_t *evt_words = var_1a0;
+                uint8_t *evt_copy = (uint8_t *)Rtos_Malloc(0x100);
                 int32_t (*cb)(int32_t, int32_t, void *, int32_t, int32_t);
-                void *v0_1 = (uint8_t *)var_1a0 + 0x10;
+                void *v0_1;
+
+                /*
+                 * The live output callback can re-enter scheduling while the
+                 * scheduler mutex is dropped. Copy the composed event so a
+                 * nested OutputFrames walk cannot clobber the same stack slot
+                 * before the legacy EndEncoding callback finishes consuming it.
+                 */
+                if (evt_copy != NULL) {
+                    memcpy(evt_copy, var_1a0, 0x100);
+                    evt_words = (int32_t *)evt_copy;
+                } else {
+                    CMG_KMSG("OutputFrames evt-copy alloc failed ch=%u ctx=%p",
+                             (unsigned)raw_ch, v0_7);
+                }
+                v0_1 = (uint8_t *)evt_words + 0x10;
 
                 CMG_KMSG("OutputFrames ready ch=%u ctx=%p cb=%p payload=%p flag=%u",
-                         (unsigned)raw_ch, v0_7, (void *)(intptr_t)var_1a0[0],
-                         (uint8_t *)var_1a0 + 0x10, (unsigned)((uint8_t *)var_1a0)[0xf8]);
+                         (unsigned)raw_ch, v0_7, (void *)(intptr_t)evt_words[0],
+                         (uint8_t *)evt_words + 0x10, (unsigned)((uint8_t *)evt_words)[0xf8]);
                 CMG_KMSG("OutputFrames pre-release ch=%u sched_mutex=%p caller_locked=%d",
                          (unsigned)raw_ch, sched_mutex, caller_holds_sched_mutex);
                 Rtos_ReleaseMutex(sched_mutex);
                 CMG_KMSG("OutputFrames post-release ch=%u sched_mutex=%p",
                          (unsigned)raw_ch, sched_mutex);
-                if ((uint32_t)((uint8_t *)var_1a0)[0xf8] != 0U) {
+                if ((uint32_t)((uint8_t *)evt_words)[0xf8] != 0U) {
                     v0_1 = 0;
                 }
-                cb = (int32_t (*)(int32_t, int32_t, void *, int32_t, int32_t))(intptr_t)var_1a0[0];
+                cb = (int32_t (*)(int32_t, int32_t, void *, int32_t, int32_t))(intptr_t)evt_words[0];
                 if (cb == NULL) {
                     CMG_KMSG("OutputFrames null-cb ch=%u ctx=%p arg1=0x%x arg2=0x%x tail0=0x%x tail1=0x%x",
-                             (unsigned)raw_ch, v0_7, var_1a0[1], var_1a0[2],
-                             var_1a0[0xf0 / 4], var_1a0[0xf4 / 4]);
+                             (unsigned)raw_ch, v0_7, evt_words[1], evt_words[2],
+                             evt_words[0xf0 / 4], evt_words[0xf4 / 4]);
                 } else {
                     CMG_KMSG("OutputFrames pre-cb ch=%u cb=%p a0=%p a1=0x%x payload=%p a3=0x%x a4=0x%x flag=%u",
-                             (unsigned)raw_ch, (void *)(intptr_t)var_1a0[0],
-                             (void *)(intptr_t)var_1a0[1], (unsigned)var_1a0[2], v0_1,
-                             var_1a0[0xf0 / 4], var_1a0[0xf4 / 4],
-                             (unsigned)((uint8_t *)var_1a0)[0xf8]);
-                    cb(var_1a0[1], var_1a0[2], v0_1, var_1a0[0xf0 / 4], var_1a0[0xf4 / 4]);
+                             (unsigned)raw_ch, (void *)(intptr_t)evt_words[0],
+                             (void *)(intptr_t)evt_words[1], (unsigned)evt_words[2], v0_1,
+                             evt_words[0xf0 / 4], evt_words[0xf4 / 4],
+                             (unsigned)((uint8_t *)evt_words)[0xf8]);
+                    cb(evt_words[1], evt_words[2], v0_1, evt_words[0xf0 / 4], evt_words[0xf4 / 4]);
+                }
+                if (evt_copy != NULL) {
+                    Rtos_Free(evt_copy);
                 }
                 CMG_KMSG("OutputFrames cb-return ch=%u caller_locked=%d status=%d",
                          (unsigned)raw_ch, caller_holds_sched_mutex, arg1[0x4bc]);
@@ -1303,11 +1415,15 @@ label_723c4:
                         CMG_KMSG("Process deinit-scan ch=%d ctx=%p", s6_2, v0_14);
                     }
 
-                    if (v0_14 != 0 && READ_U16(v0_14, 0x1ae6) != 0 && IsChannelIdle(arg1, v0_14, (uint8_t)s6_2) != 0) {
-                        CMG_KMSG("Process deinit-path ch=%d ctx=%p destroy_flag=0x%x core_base=%u core_count=%u stream=%p",
-                                 s6_2, v0_14, READ_U16(v0_14, 0x1ae6), CH_CORE_BASE(v0_14),
+                    if (v0_14 != 0 && ChannelDestroyScheduledCompat(v0_14) != 0 &&
+                        IsChannelIdle(arg1, v0_14, (uint8_t)s6_2) != 0) {
+                        CMG_KMSG("Process deinit-path ch=%d ctx=%p destroy_cb=%p destroy_ctx=%p core_base=%u core_count=%u stream=%p",
+                                 s6_2, v0_14, (void *)(intptr_t)READ_S32(v0_14, CH_DESTROY_CB_OFF),
+                                 READ_PTR(v0_14, CH_DESTROY_CTX_OFF), CH_CORE_BASE(v0_14),
                                  CH_CORE_COUNT(v0_14), READ_PTR(v0_14, 0x2a50));
                         uint8_t *v0_17 = GetChMngrCtx(arg1, (char)s6_2);
+                        int32_t destroy_cb = (v0_17 != 0) ? READ_S32(v0_17, CH_DESTROY_CB_OFF) : 0;
+                        void *destroy_ctx = (v0_17 != 0) ? READ_PTR(v0_17, CH_DESTROY_CTX_OFF) : NULL;
 
                         if (v0_17 != 0) {
                             uint32_t i_1 = CH_CORE_BASE(v0_17);
@@ -1332,6 +1448,11 @@ label_723c4:
                         s1_1 += 1;
                         IntVector_Remove(&arg1[0x154], s6_2);
                         AL_EncChannel_DeInit(v0_17);
+                        if (destroy_cb != 0) {
+                            CMG_KMSG("Process deinit-cb ch=%d cb=%p ctx=%p",
+                                     s6_2, (void *)(intptr_t)destroy_cb, destroy_ctx);
+                            ((int32_t (*)(void *))(intptr_t)destroy_cb)(destroy_ctx);
+                        }
                         {
                             int32_t *a0_20 = (int32_t *)(intptr_t)arg1[0x4ba];
 
@@ -1841,6 +1962,16 @@ int32_t AL_SchedulerEnc_CreateChannel2(int32_t *arg1, void *arg2, int32_t arg3, 
     CMG_KMSG("SchEnc.CC2 pre-filterCoresCount");
     v0 = (int32_t)filterCoresCount(var_48, arg2);
     CMG_KMSG("SchEnc.CC2 filterCores=%d", v0);
+    {
+        uint8_t clamped = ClampLiveT31AvcRequestedCores((const uint8_t *)arg2, (uint32_t)v0);
+
+        if ((int32_t)clamped != v0) {
+            CMG_KMSG("SchEnc.CC2 live-t31-avc clamp cpu=0x%x old=%d new=%u size=%ux%u",
+                     get_cpu_id(), v0, (unsigned)clamped,
+                     (unsigned)READ_U16(arg2, 4), (unsigned)READ_U16(arg2, 6));
+            v0 = (int32_t)clamped;
+        }
+    }
 #if LIVE_T31_EARLY_SINGLE_CORE_AVC
     if (READ_U8(arg2, 0x1f) == 0U && READ_U16(arg2, 4) >= 1280U && v0 > 1) {
         CMG_KMSG("SchEnc.CC2 force-early-single-core-avc old=%d size=%ux%u",
@@ -1900,6 +2031,11 @@ int32_t AL_SchedulerEnc_CreateChannel2(int32_t *arg1, void *arg2, int32_t arg3, 
         }
         if (v0_10 != -1) {
             break;
+        }
+        if (IsLiveT31AvcParam((const uint8_t *)s0_1)) {
+            CMG_KMSG("SchEnc.CC2 keep-single-core live-t31-avc no-core need=0x%x",
+                     v0_4);
+            goto label_73210_1;
         }
         s2_1 += 1;
         if (*s1 < (int32_t)s2_1) {
@@ -2054,6 +2190,16 @@ int32_t AL_SchedulerEnc_CreateChannel(int32_t *arg1, void *arg2, int32_t arg3, i
     Rtos_GetMutex((void *)(intptr_t)arg1[0x4bd]);
     AL_CoreConstraintEnc_Init(var_48, s1[1], (uint32_t)READ_U8(arg2, 0x1f));
     v0 = (int32_t)filterCoresCount(var_48, arg2);
+    {
+        uint8_t clamped = ClampLiveT31AvcRequestedCores((const uint8_t *)arg2, (uint32_t)v0);
+
+        if ((int32_t)clamped != v0) {
+            CMG_KMSG("SchEnc.CC live-t31-avc clamp cpu=0x%x old=%d new=%u size=%ux%u",
+                     get_cpu_id(), v0, (unsigned)clamped,
+                     (unsigned)READ_U16(arg2, 4), (unsigned)READ_U16(arg2, 6));
+            v0 = (int32_t)clamped;
+        }
+    }
     WRITE_U8(arg2, 0x3c, (uint8_t)v0);
     *arg6 = AL_EncChannel_CheckAndAdjustParam(arg2);
     if ((uint32_t)*arg6 >= 0x80U) {
@@ -2100,6 +2246,11 @@ int32_t AL_SchedulerEnc_CreateChannel(int32_t *arg1, void *arg2, int32_t arg3, i
         }
         if (v0_10 != -1) {
             break;
+        }
+        if (IsLiveT31AvcParam((const uint8_t *)s0_1)) {
+            CMG_KMSG("SchEnc.CC keep-single-core live-t31-avc no-core need=0x%x",
+                     v0_4);
+            goto label_73610_1;
         }
         s2_1 += 1;
         if (*s1 < (int32_t)s2_1) {
