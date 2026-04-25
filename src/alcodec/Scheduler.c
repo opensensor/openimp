@@ -6074,11 +6074,28 @@ int32_t encode1(void *arg1)
     int32_t slice_count;
     int32_t mod_count;
     uint32_t core_offset = READ_U8(ch, 0x3d);
+    uint32_t phase_core_count = READ_U8(ch, 0x3c);
 
     Rtos_GetMutex(READ_PTR(ch, 0x170));
     req = (int32_t *)(intptr_t)StaticFifo_Dequeue((uint8_t *)ch + 0x129b4);
     slice_count = RepairLiveT31AvcLaneSliceCount(ch, req, 0, "encode1");
     mod_count = RepairLiveT31AvcLaneModuleCount(ch, req, 0, "encode1");
+    /*
+     * The live T31 path can reach encode1 with the channel core-count field
+     * cleared back to zero even though the phase tables still fan out work
+     * across multiple cores. When that happens, the main launch path silently
+     * skips materialization, TurnOnRAM, interrupt arming, and the Enc1 launch
+     * loop. Rebuild a launch-safe view from the phase metadata.
+     */
+    if (READ_U8(ch, 0x1f) == 0U && phase_core_count == 0U) {
+        phase_core_count = GetLiveT31AvcCompatScratchCoreCount(ch);
+        if ((uint32_t)slice_count > 0U && phase_core_count > (uint32_t)slice_count) {
+            phase_core_count = (uint32_t)slice_count;
+        }
+    }
+    if (phase_core_count == 0U && slice_count > 0) {
+        phase_core_count = (uint32_t)slice_count;
+    }
     for (core = 0; core < slice_count; ++core) {
         WRITE_S32(req, 0x8d8 + core * 8, READ_S32(req, 0x8d8 + core * 8) + core_offset);
     }
@@ -6114,7 +6131,7 @@ int32_t encode1(void *arg1)
         WRITE_S32(req, 0x318, (int32_t)(intptr_t)((uint8_t *)req + 0x338));
     }
     ENC_KMSG("encode1 pre-FillSliceParam req=%p mode=%u chroma=%u cores=%u dual=%u ch4e=%u ch4f=%u pre170=%u pre171=%u pre172=%u pre173=%u pre174=%u w8=%08x w9=%08x wa=%08x wb=%08x wc=%08x wd=%08x w12=%08x",
-             req, (unsigned)READ_U8(ch, 0x1f), (unsigned)READ_U8(ch, 0x4), (unsigned)READ_U8(ch, 0x3c),
+             req, (unsigned)READ_U8(ch, 0x1f), (unsigned)READ_U8(ch, 0x4), (unsigned)phase_core_count,
              (unsigned)READ_U8(req, 0x182),
              (unsigned)READ_U8(ch, 0x4e), (unsigned)READ_U8(ch, 0x4f),
              (unsigned)READ_U8(req, 0x170), (unsigned)READ_U8(req, 0x171), (unsigned)READ_U8(req, 0x172),
@@ -6162,9 +6179,9 @@ int32_t encode1(void *arg1)
     UpdateCommand(ch, req, (uint8_t *)req + 0x170, 0);
     ENC_KMSG("encode1 post-UpdateCommand req=%p cmd318=%p cmd1[0]=0x%x",
              req, READ_PTR(req, 0x318), READ_S32(req, 0xa78));
-    if (LIVE_T31_FORCE_SINGLE_CORE_AVC && READ_U8(ch, 0x1f) == 0U && READ_U8(ch, 0x3c) > 1U) {
+    if (LIVE_T31_FORCE_SINGLE_CORE_AVC && READ_U8(ch, 0x1f) == 0U && phase_core_count > 1U) {
         ENC_KMSG("encode1 force-single-core-avc req=%p ch_cores=%u mods=%d slices=%d pending0=%d",
-                 req, (unsigned)READ_U8(ch, 0x3c), READ_S32(req, 0x8cc),
+                 req, (unsigned)phase_core_count, READ_S32(req, 0x8cc),
                  READ_S32(req, 0x958), READ_S32(req, 0x8d0));
         WRITE_U8(ch, CH_CORE_COUNT_OFF, 1);
         WRITE_U8(ch, CH_STABLE_CORE_COUNT_OFF, 1);
@@ -6172,6 +6189,7 @@ int32_t encode1(void *arg1)
         WRITE_S32(req, 0x958, 1);
         WRITE_S32(req, 0x8d0, 1);
         WRITE_U8(req, 0x1ee, 1);
+        phase_core_count = 1U;
     }
     {
         uint8_t *slice = (uint8_t *)req + 0x170;
@@ -6179,10 +6197,10 @@ int32_t encode1(void *arg1)
         int32_t slice_idx = 0;
 
         ENC_KMSG("encode1 materialize-entry req=%p slice=%p meta=%p cores=%u",
-                 req, slice, src_meta, (unsigned)READ_U8(ch, 0x3c));
-        for (core = 0; core < (int32_t)READ_U8(ch, 0x3c); ++core) {
+                 req, slice, src_meta, (unsigned)phase_core_count);
+        for (core = 0; core < (int32_t)phase_core_count; ++core) {
             uint8_t *cmd_regs = (uint8_t *)(intptr_t)READ_S32(req, 0xa78 + core * 4);
-            uint32_t enc2_off = GetCoreFirstEnc2CmdOffset((char)READ_U8(ch, 0x3c),
+            uint32_t enc2_off = GetCoreFirstEnc2CmdOffset((char)phase_core_count,
                                                           (char)READ_U16(ch, 0x40),
                                                           (char)core) << 9;
             uint8_t *cmd_regs_enc2 = cmd_regs != NULL ? cmd_regs + enc2_off : NULL;
@@ -6211,7 +6229,7 @@ int32_t encode1(void *arg1)
                 }
                 stream_avail &= ~0x1f;
             }
-            if (READ_U8(ch, 0x1f) == 0U && READ_U8(ch, 0x3c) == 1U && src_meta != NULL) {
+            if (READ_U8(ch, 0x1f) == 0U && phase_core_count == 1U && src_meta != NULL) {
                 int32_t legacy_part = ComputeLiveT31StreamPartOffset(ch, READ_S32(src_meta, 0x10));
 
                 if (legacy_part > stream_off) {
@@ -6224,8 +6242,8 @@ int32_t encode1(void *arg1)
             }
             core_stream_off = stream_off;
             core_stream_avail = stream_avail;
-            if (stream_avail > 0 && READ_U8(ch, 0x3c) > 1U) {
-                int32_t core_count = (int32_t)READ_U8(ch, 0x3c);
+            if (stream_avail > 0 && phase_core_count > 1U) {
+                int32_t core_count = (int32_t)phase_core_count;
                 int32_t part = (stream_avail / core_count) & ~0x1f;
 
                 if (part > 0) {
@@ -6240,7 +6258,7 @@ int32_t encode1(void *arg1)
                      src_meta ? READ_S32(src_meta, 0x10) : 0,
                      src_meta ? READ_S32(src_meta, 0x14) : 0,
                      core_stream_off, core_stream_avail);
-            if (READ_U8(ch, 0x1f) == 0U && READ_U8(ch, 0x3c) == 1U) {
+            if (READ_U8(ch, 0x1f) == 0U && phase_core_count == 1U) {
                 slice_off = 0;
                 ENC_KMSG("encode1 materialize-off-single-avc core=%d cmd=%p slice_off=%d",
                          core, cmd_regs, slice_off);
@@ -6427,12 +6445,12 @@ int32_t encode1(void *arg1)
     ENC_KMSG("encode1 pre-handleInputTraces req=%p", req);
     handleInputTraces(ch, req, (uint8_t *)req + 0x170, 0);
     ENC_KMSG("encode1 post-handleInputTraces req=%p", req);
-    ENC_KMSG("encode1 pre-TurnOnRAM cores=%u", (unsigned)READ_U8(ch, 0x3c));
-    AL_EncCore_TurnOnRAM(READ_PTR(ch, 0x164), READ_U8(ch, 0x1f), READ_U8(ch, 0x3c), 0, 0);
+    ENC_KMSG("encode1 pre-TurnOnRAM cores=%u", (unsigned)phase_core_count);
+    AL_EncCore_TurnOnRAM(READ_PTR(ch, 0x164), READ_U8(ch, 0x1f), (int32_t)phase_core_count, 0, 0);
     ENC_KMSG("encode1 post-TurnOnRAM");
     ENC_KMSG("encode1 pre-EnableInterrupts cores=%u core_tbl=%p",
-             (unsigned)READ_U8(ch, 0x3c), (uint8_t *)ch + 0x3c);
-    if (READ_U8(ch, 0x3c) > 1) {
+             (unsigned)phase_core_count, (uint8_t *)ch + 0x3c);
+    if (phase_core_count > 1U) {
         void *core1_live = (uint8_t *)READ_PTR(ch, 0x164) + 0x44;
 
         RemapLiveT31Irq4(core1_live, EndEncoding, "encode1");
@@ -6450,7 +6468,7 @@ int32_t encode1(void *arg1)
     {
         uint8_t irq_span[0x20];
         uint8_t core_base = READ_U8(ch, 0x3d);
-        uint8_t core_count = READ_U8(ch, 0x3c);
+        uint8_t core_count = (uint8_t)phase_core_count;
 
         memset(irq_span, 0, sizeof(irq_span));
         if ((uint32_t)core_base < sizeof(irq_span)) {
@@ -6461,7 +6479,7 @@ int32_t encode1(void *arg1)
                  (unsigned)((uint32_t)core_base < sizeof(irq_span) ? irq_span[core_base] : 0U));
         AL_EncCore_EnableInterrupts(READ_PTR(ch, 0x164), irq_span, 0, 1, 0);
     }
-    if (READ_U8(ch, 0x1f) == 0U && READ_U8(ch, 0x3c) == 1U) {
+    if (READ_U8(ch, 0x1f) == 0U && phase_core_count == 1U) {
         ApplyLiveT31Core0LegacyIrqMask(READ_PTR(ch, 0x164), "encode1");
     }
     ENC_KMSG("encode1 post-EnableInterrupts");
@@ -6469,14 +6487,14 @@ int32_t encode1(void *arg1)
      * been submitted. The live T31 path is forced to single-core AVC, where the
      * IRQ can arrive immediately and must not deadlock on this channel mutex. */
     {
-        int unlock_before_launch = (READ_U8(ch, 0x1f) == 0U && READ_U8(ch, 0x3c) == 1U);
+        int unlock_before_launch = (READ_U8(ch, 0x1f) == 0U && phase_core_count == 1U);
 
         ENC_KMSG("encode1 launch mutex-held req=%p unlock_before_launch=%d", req, unlock_before_launch);
         if (unlock_before_launch) {
             ENC_KMSG("encode1 unlock-before-launch req=%p mutex=%p", req, READ_PTR(ch, 0x170));
             Rtos_ReleaseMutex(READ_PTR(ch, 0x170));
         }
-    for (core = 0; core < (int32_t)READ_U8(ch, 0x3c); ++core) {
+    for (core = 0; core < (int32_t)phase_core_count; ++core) {
         void *enc1 = (uint8_t *)READ_PTR(ch, 0x164) + core * 0x44;
         int32_t cmd1 = READ_S32(req, 0xa78 + core * 4);
         int32_t cmd2 = READ_S32(req, 0xab8 + core * 4);
