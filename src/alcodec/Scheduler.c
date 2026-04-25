@@ -93,12 +93,16 @@ typedef struct AL_EncCoreCtxCompat {
 #define ENDREQ_INLINE_SLOT_COUNT 3
 
 #define LIVE_T31_FORCE_SINGLE_CORE_AVC 0
+#define LIVE_T31_CLAMP_CORE_COUNT 0
 #define LIVE_T31_FORCE_DUAL_PUSH_AVC 1
 #define LIVE_T31_SKIP_READY_DYNRES_LIVE 1
 #define LIVE_T31_DELAYED_POST_CL_PROBE 0
 #define LIVE_T31_AVC_HEADER_BUDGET 512
 #define LIVE_T31_VERBOSE_REQ_WINDOW 0
 #define LIVE_T31_RECOVER_ZERO_BYTE_SECTIONS 1
+#define LIVE_T31_FORCE_ENC1_LATE_TAIL_REPACK 1
+#define LIVE_T31_POSTDMA_READ_FLUSH_DIR 2
+#define LIVE_T31_SKIP_INLINE_AVC_PHASE1_FINAL_OUTPUT 0
 
 int32_t get_cpu_id(void); /* forward decl, ported by T<N> later */
 
@@ -116,7 +120,7 @@ static int IsLiveT31AvcChannel(const void *ctx)
 
 static uint8_t ClampLiveT31AvcCoreCount(const void *ctx, uint8_t count)
 {
-    if (IsLiveT31AvcChannel(ctx) && count > 1U) {
+    if (LIVE_T31_CLAMP_CORE_COUNT && IsLiveT31AvcChannel(ctx) && count > 1U) {
         return 1U;
     }
 
@@ -220,6 +224,10 @@ static void HealLiveT31SingleCoreReqTables(void *ch, int32_t *req, const char *t
     WRITE_S32(req, 0xa68, 0);
 }
 
+static uint32_t GetLiveT31AvcCompatScratchCoreCount(const void *ctx);
+int32_t SetChannelSteps(void *arg1, void *arg2);
+void EndAvcEntropy(void *arg1); /* CoreManager.c */
+
 int32_t AL_DmaAlloc_FlushCache(int32_t arg1, int32_t arg2, int32_t arg3); /* forward decl */
 
 static uint32_t AlignUpPow2(uint32_t value, uint32_t align)
@@ -253,6 +261,75 @@ static int32_t ComputeLiveT31StreamPartOffset(void *ch, int32_t stream_size)
     }
 
     return (int32_t)((uint32_t)stream_size - part_size);
+}
+
+static void BuildSanitizedStepParamFromChannel(void *ch, uint8_t *step_param, const char *tag)
+{
+    uint32_t core_count;
+
+    if (ch == NULL || step_param == NULL) {
+        return;
+    }
+
+    core_count = (uint32_t)READ_U8(ch, CH_CORE_COUNT_OFF);
+    if (core_count == 0U || core_count == 0xffU) {
+        uint32_t stable_count = (uint32_t)READ_U8(ch, CH_STABLE_CORE_COUNT_OFF);
+
+        if (stable_count != 0U && stable_count != 0xffU) {
+            core_count = stable_count;
+        }
+    }
+    if (core_count == 0U || core_count == 0xffU) {
+        core_count = 1U;
+    }
+
+    memcpy(step_param, ch, 0xf0);
+    WRITE_S32(step_param, 0x2c, READ_S32(ch, 0x2c));
+    WRITE_S32(step_param, CH_CORE_COUNT_OFF, (int32_t)core_count);
+    WRITE_S32(step_param, 0x40, (int32_t)READ_U16(ch, 0x40));
+    IMP_LOG_INFO("ENC", "%s step-param ch=%p cores=%u core_base=%u slices=%u active=%d",
+                 tag ? tag : "step-param", ch,
+                 (unsigned)core_count,
+                 (unsigned)READ_U8(ch, CH_CORE_BASE_OFF),
+                 (unsigned)READ_U16(ch, 0x40),
+                 READ_S32(ch, 0x2c));
+}
+
+static void LogPhaseTableSnapshot(const char *tag, const void *base, int32_t phase_count)
+{
+    int phase;
+
+    if (base == NULL) {
+        return;
+    }
+
+    if (phase_count < 0) {
+        phase_count = 0;
+    }
+    if (phase_count > 2) {
+        phase_count = 2;
+    }
+
+    for (phase = 0; phase < phase_count; ++phase) {
+        const uint8_t *phase_base = (const uint8_t *)base + phase * 0x110;
+
+        IMP_LOG_INFO("ENC",
+                     "%s base=%p phase=%d mod_count=%d mods=[%d,%d][%d,%d][%d,%d][%d,%d][%d,%d] slice_count=%d slices=[%d,%d][%d,%d][%d,%d][%d,%d][%d,%d] pending=%d",
+                     tag ? tag : "phase-table", base, phase,
+                     READ_S32(phase_base, 0x80),
+                     READ_S32(phase_base, 0x00), READ_S32(phase_base, 0x04),
+                     READ_S32(phase_base, 0x08), READ_S32(phase_base, 0x0c),
+                     READ_S32(phase_base, 0x10), READ_S32(phase_base, 0x14),
+                     READ_S32(phase_base, 0x18), READ_S32(phase_base, 0x1c),
+                     READ_S32(phase_base, 0x20), READ_S32(phase_base, 0x24),
+                     READ_S32(phase_base, 0x18c),
+                     READ_S32(phase_base, 0x8c), READ_S32(phase_base, 0x90),
+                     READ_S32(phase_base, 0x94), READ_S32(phase_base, 0x98),
+                     READ_S32(phase_base, 0x9c), READ_S32(phase_base, 0xa0),
+                     READ_S32(phase_base, 0xa4), READ_S32(phase_base, 0xa8),
+                     READ_S32(phase_base, 0xac), READ_S32(phase_base, 0xb0),
+                     READ_S32(phase_base, 0x84));
+    }
 }
 
 static uint32_t PackLiveT31LcuPos(uint32_t pos, uint32_t lcu_w)
@@ -726,6 +803,129 @@ static void PatchLiveT31AvcIdrEnc1Control(void *ch, int32_t *req, uint8_t *cmd_r
                  cmd[0x0a], cmd[0x0b], cmd[0x12]);
 }
 
+int32_t CmdRegsEnc1ToSliceParam(void *arg1, void *arg2, int32_t arg3);
+void SliceParamToCmdRegsEnc1(void *arg1, void *arg2, void *arg3, int32_t arg4);
+
+static void RepackLiveT31AvcEnc1LateTail(void *ch, int32_t *req, uint8_t *slice_core, uint8_t *cmd_regs)
+{
+#if !LIVE_T31_FORCE_ENC1_LATE_TAIL_REPACK
+    (void)ch;
+    (void)req;
+    (void)slice_core;
+    (void)cmd_regs;
+    return;
+#else
+    if (ch == NULL || req == NULL || slice_core == NULL || cmd_regs == NULL) {
+        return;
+    }
+    if (READ_U8(ch, 0x1f) != 0U || READ_U8(ch, 0x3c) != 1U) {
+        return;
+    }
+
+    /* The live single-core AVC path keeps landing in the exit-basic packing
+     * path (`s63=0`), which leaves the late Enc1 tail words unset. Rehydrate
+     * the high slice fields from the just-packed command list and force one
+     * repack through the full-tail path so the hardware sees the same late
+     * control window layout the OEM path uses. */
+    CmdRegsEnc1ToSliceParam((int32_t *)cmd_regs, (char *)slice_core, READ_S32(ch, CH_CMD_TRACE_FLAGS_OFF));
+    WRITE_U8(slice_core, 0x63, 1);
+    SliceParamToCmdRegsEnc1((char *)slice_core, (int32_t *)cmd_regs, (uint8_t *)req + 0x298, READ_U8(ch, 0x4f));
+    PatchLiveT31AvcIdrEnc1Control(ch, req, cmd_regs);
+    IMP_LOG_INFO("ENC",
+                 "encode1 late-tail-repack req=%p cmd=%p s63=%u w14=%08x w15=%08x w16=%08x w17=%08x w18=%08x w19=%08x w1a=%08x w64=%08x w65=%08x w67=%08x w68=%08x w69=%08x w6f=%08x",
+                 req, cmd_regs, (unsigned)READ_U8(slice_core, 0x63),
+                 READ_S32(cmd_regs, 0x50), READ_S32(cmd_regs, 0x54), READ_S32(cmd_regs, 0x58),
+                 READ_S32(cmd_regs, 0x5c), READ_S32(cmd_regs, 0x60), READ_S32(cmd_regs, 0x64),
+                 READ_S32(cmd_regs, 0x68), READ_S32(cmd_regs, 0x190), READ_S32(cmd_regs, 0x194),
+                 READ_S32(cmd_regs, 0x19c), READ_S32(cmd_regs, 0x1a0), READ_S32(cmd_regs, 0x1a4),
+                 READ_S32(cmd_regs, 0x1bc));
+#endif
+}
+
+static void SeedLiveT31AvcEnc1LateWindow(void *ch, int32_t *req, uint8_t *slice_core,
+                                         uint8_t *cmd_regs, int32_t core)
+{
+    uint8_t *phase_base;
+    uint32_t pic_w;
+    uint32_t pic_h;
+    uint32_t map_cur_end;
+    uint32_t map_ref0_end;
+    uint32_t map_ref1_end;
+    uint32_t late60;
+    uint32_t late61;
+    uint32_t late6e;
+    uint32_t late6f;
+
+    if (req == NULL || cmd_regs == NULL) {
+        return;
+    }
+
+    phase_base = (uint8_t *)req + 0x298;
+    pic_w = READ_U32(phase_base, 0x14);
+    pic_h = READ_U32(phase_base, 0x18);
+    if (pic_w == 0U && slice_core != NULL) {
+        pic_w = (uint32_t)READ_U16(slice_core, 0x0a) << 3;
+    }
+    if (pic_h == 0U && slice_core != NULL) {
+        pic_h = (uint32_t)READ_U16(slice_core, 0x0c) << 3;
+    }
+    if (pic_w == 0U && ch != NULL) {
+        pic_w = (uint32_t)READ_U16(ch, 4);
+    }
+    if (pic_h == 0U && ch != NULL) {
+        pic_h = (uint32_t)READ_U16(ch, 6);
+    }
+
+    map_cur_end = READ_U32(phase_base, 0x54);
+    map_ref0_end = READ_U32(phase_base, 0x34);
+    map_ref1_end = READ_U32(phase_base, 0x44);
+    late60 = READ_U32(phase_base, 0x110);
+    late61 = READ_U32(phase_base, 0x114);
+    late6e = READ_U32(cmd_regs, 0x1b8);
+    late6e = (late6e & 0xefffffffU) | (((uint32_t)READ_U8(phase_base, 0x118) & 1U) << 28);
+    late6e = (late6e & 0xffffff00U) | (uint32_t)READ_U8(phase_base, 0x11a);
+    late6f = READ_U32(phase_base, 0x94);
+
+    if (late60 != 0U) {
+        WRITE_U32(cmd_regs, 0x180, late60);
+    }
+    if (late61 != 0U) {
+        WRITE_U32(cmd_regs, 0x184, late61);
+    }
+    WRITE_U32(cmd_regs, 0x1b8, late6e);
+    if (late6f != 0U) {
+        WRITE_U32(cmd_regs, 0x1bc, late6f);
+    }
+    if (pic_w != 0U) {
+        WRITE_U32(cmd_regs, 0x190, pic_w);
+    }
+    if (pic_h != 0U) {
+        WRITE_U32(cmd_regs, 0x194, pic_h);
+    }
+    if (map_cur_end != 0U) {
+        WRITE_U32(cmd_regs, 0x19c, map_cur_end);
+    }
+    if (map_ref0_end != 0U) {
+        WRITE_U32(cmd_regs, 0x1a0, map_ref0_end);
+    }
+    if (map_ref1_end != 0U) {
+        WRITE_U32(cmd_regs, 0x1a4, map_ref1_end);
+    }
+
+    IMP_LOG_INFO("ENC",
+                 "encode1 late-seed core=%d cmd=%p src14=%08x src18=%08x src34=%08x src44=%08x src54=%08x src94=%08x"
+                 " w60=%08x w61=%08x w64=%08x w65=%08x w67=%08x w68=%08x w69=%08x w6e=%08x w6f=%08x",
+                 core, cmd_regs,
+                 READ_U32(phase_base, 0x14), READ_U32(phase_base, 0x18),
+                 READ_U32(phase_base, 0x34), READ_U32(phase_base, 0x44),
+                 READ_U32(phase_base, 0x54), READ_U32(phase_base, 0x94),
+                 READ_U32(cmd_regs, 0x180), READ_U32(cmd_regs, 0x184),
+                 READ_U32(cmd_regs, 0x190), READ_U32(cmd_regs, 0x194),
+                 READ_U32(cmd_regs, 0x19c), READ_U32(cmd_regs, 0x1a0),
+                 READ_U32(cmd_regs, 0x1a4), READ_U32(cmd_regs, 0x1b8),
+                 READ_U32(cmd_regs, 0x1bc));
+}
+
 int32_t AL_GetAllocSizeEP1(void); /* forward decl, ported by T<N> later */
 void AL_CoreState_SetChannelRunState(uint8_t *arg1, uint8_t arg2, int32_t arg3, uint8_t arg4); /* CoreManager.c */
 
@@ -967,12 +1167,39 @@ static void RemapLiveT31Irq4(void *core_ctx, void (*cb)(void *), const char *tag
              tag ? tag : "irq4", (unsigned)core->core_id, core_ctx, cb);
 }
 
+static void ArmLiveT31EntropyIrqs(void *core_ctx, const char *tag)
+{
+    AL_EncCoreCtxCompat *core = (AL_EncCoreCtxCompat *)core_ctx;
+    uint32_t entropy_irq;
+
+    if (core == NULL || core->ip_ctrl == NULL) {
+        return;
+    }
+
+    entropy_irq = (((uint32_t)core->core_id << 2) + 2U) & 0x1fU;
+    WriteLiveT31IrqSlot(core->ip_ctrl, entropy_irq, EndAvcEntropy, core_ctx, 0U);
+
+    /*
+     * T31 live runs also surface phase-1 wakeups on slot4 for core0. Keep the
+     * dedicated OEM entropy slot armed for all cores, and mirror core0 onto
+     * slot4 so either interrupt source reaches EndAvcEntropy.
+     */
+    if (core->core_id == 0U) {
+        WriteLiveT31IrqSlot(core->ip_ctrl, 4U, EndAvcEntropy, core_ctx, 0U);
+    }
+
+    ENC_KMSG("%s arm-entropy-irq core=%u slot=%u ctx=%p cb=%p mirror4=%u",
+             tag ? tag : "irq", (unsigned)core->core_id, (unsigned)entropy_irq, core_ctx,
+             EndAvcEntropy, (unsigned)(core->core_id == 0U));
+}
+
 static void ApplyLiveT31Core0LegacyIrqMask(void *core_ctx, const char *tag)
 {
     AL_EncCoreCtxCompat *core = (AL_EncCoreCtxCompat *)core_ctx;
     AL_IpCtrl *ip;
     uint32_t before;
     uint32_t after;
+    uint32_t wanted;
 
     if (core == NULL || core->ip_ctrl == NULL || core->ip_ctrl->vtable == NULL ||
         core->ip_ctrl->vtable->ReadRegister == NULL || core->ip_ctrl->vtable->WriteRegister == NULL ||
@@ -982,10 +1209,19 @@ static void ApplyLiveT31Core0LegacyIrqMask(void *core_ctx, const char *tag)
 
     ip = core->ip_ctrl;
     before = (uint32_t)ip->vtable->ReadRegister(ip, 0x8014);
-    ip->vtable->WriteRegister(ip, 0x8014, 0x00000010U);
+    /*
+     * The live core0 path needs slot4 armed to receive the legacy combined
+     * interrupt, but masking down to 0x10 drops the original Enc2 slot2
+     * interrupt completely. That lets Enc1 completion drive final-output while
+     * Entropy never signals, yielding header-only IDRs with a filler tail.
+     * Keep both bits: slot4 for the live launch path and slot2 so
+     * EndAvcEntropy can still fire when the second pass finishes.
+     */
+    wanted = 0x00000014U;
+    ip->vtable->WriteRegister(ip, 0x8014, wanted);
     after = (uint32_t)ip->vtable->ReadRegister(ip, 0x8014);
-    ENC_KMSG("%s legacy-core0-irq-mask old=0x%08x forced=0x00000010 rb=0x%08x",
-             tag ? tag : "irq", before, after);
+    ENC_KMSG("%s legacy-core0-irq-mask old=0x%08x forced=0x%08x rb=0x%08x",
+             tag ? tag : "irq", before, wanted, after);
 }
 
 static void PushStreamBufferToAvpu(void *ch, uint32_t phys, const char *tag)
@@ -1264,7 +1500,17 @@ static void RepairStandaloneAvcEnc2Slice(void *ch, uint8_t *slice)
     WRITE_U8(slice, 0x19, 8U);
     WRITE_U8(slice, 0x1a, 8U);
     WRITE_U32(slice, 0x1c, 1U);
-    WRITE_U32(slice, 0x30, (READ_U32(slice, 0x24) & 1U) != 0U ? 2U : 1U);
+    /*
+     * The live single-core AVC path can leave the inline Enc2 slice in the
+     * CmdRegsEnc1ToSliceParam fallback personality: type=1 and QP-ish byte
+     * 0x28=0x1e. That produces w1c=0x111e0d06, and the AVPU only emits the
+     * prewritten AUD/SPS/PPS/IDR header block. Stock live runs that yield
+     * actual payload pack this word as 0x21330d06 instead, which maps back to
+     * slice[0x30]=2 and slice[0x28]=0x33. Force those OEM-stable values here
+     * for the repaired standalone inline-entropy path.
+     */
+    WRITE_U32(slice, 0x28, 0x33U);
+    WRITE_U32(slice, 0x30, 2U);
     WRITE_U8(slice, 0x66, 0U);
     WRITE_U8(slice, 0xf6, 1U);
 }
@@ -1933,6 +2179,7 @@ void *SetPictureRefBuffers(void *arg1, void *arg2, void *arg3, void *arg4, char 
     uint32_t s5 = (uint32_t)(uint8_t)arg5;
     void *var_30 = &_gp;
     uint32_t var_28;
+    int need_fbc_maps = 0;
 
     (void)var_30;
     ENC_KMSG("SetPictureRefBuffers entry chctx=%p req=%p cur=%u info=%p work=%p rec=%u",
@@ -1999,7 +2246,8 @@ void *SetPictureRefBuffers(void *arg1, void *arg2, void *arg3, void *arg4, char 
                  v0_4, v0_5, var_28);
         v1_2 = READ_S32(arg3, 0x2c) & 0x20;
         WRITE_S32(arg6, 0x58, v0_5);
-        if (v1_2 != 0) {
+        need_fbc_maps = (v1_2 != 0);
+        if (need_fbc_maps) {
             uint32_t v0_6 = (uint32_t)READ_U16(arg3, 4);
             uint32_t a3_4 = (uint32_t)READ_U8(arg3, 0x1f);
             uint32_t a2_6 = (uint32_t)READ_U16(arg3, 6);
@@ -2083,8 +2331,19 @@ int32_t AddNewRequest(int32_t arg1)
      * Without this copy, freshly queued requests never advertise any modules to
      * CheckAndEncode, so they are prepared and then dropped before AVPU launch.
      */
+    if (IsLiveT31AvcChannel((void *)(intptr_t)arg1) &&
+        GetLiveT31AvcCompatScratchCoreCount((void *)(intptr_t)arg1) > 1U) {
+        uint8_t step_param[0xf0];
+
+        BuildSanitizedStepParamFromChannel((void *)(intptr_t)arg1, step_param, "addreq-rebuild");
+        SetChannelSteps((void *)(intptr_t)arg1, step_param);
+    }
+    LogPhaseTableSnapshot("AddNewRequest template", (uint8_t *)(intptr_t)arg1 + 0x18c0,
+                          READ_S32((void *)(intptr_t)arg1, 0x1ae0));
     Rtos_Memcpy((void *)(intptr_t)(v0 + 0x84c), (void *)(intptr_t)(arg1 + 0x18c0), 0x220);
     WRITE_S32((void *)(intptr_t)v0, 0xa6c, READ_S32((void *)(intptr_t)arg1, 0x1ae0));
+    LogPhaseTableSnapshot("AddNewRequest copied", (uint8_t *)(intptr_t)v0 + 0x84c,
+                          READ_S32((void *)(intptr_t)v0, 0xa6c));
     if (IsLiveT31AvcChannel((void *)(intptr_t)arg1) && READ_U8((void *)(intptr_t)arg1, CH_CORE_COUNT_OFF) == 1U) {
         WRITE_S32((void *)(intptr_t)v0, 0x8cc, 1);
         WRITE_S32((void *)(intptr_t)v0, 0x958, 1);
@@ -2227,6 +2486,42 @@ uint32_t AL_GetAllocSize_EncReference(int32_t arg1, int32_t arg2, char arg3, int
                                       char arg5); /* forward decl, ported by T<N> later */
 int32_t AL_GetAllocSize_MV(int32_t arg1, int32_t arg2, char arg3,
                            int32_t arg4); /* forward decl, ported by T<N> later */
+
+static uint32_t GetLiveT31AvcCompatScratchCoreCount(const void *ctx)
+{
+    uint32_t core_count;
+
+    if (ctx == NULL) {
+        return 1U;
+    }
+
+    core_count = (uint32_t)READ_U8(ctx, CH_CORE_COUNT_OFF);
+    if (core_count == 0U || core_count == 0xffU) {
+        uint32_t stable_count = (uint32_t)READ_U8(ctx, CH_STABLE_CORE_COUNT_OFF);
+
+        if (stable_count != 0U && stable_count != 0xffU) {
+            core_count = stable_count;
+        }
+    }
+    if (core_count == 0U || core_count == 0xffU) {
+        core_count = 1U;
+    }
+
+    if (IsLiveT31AvcChannel(ctx) && core_count == 1U) {
+        uint32_t width = (uint32_t)READ_U16(ctx, 4);
+        uint32_t height = (uint32_t)READ_U16(ctx, 6);
+
+        if (width >= 1920U && height >= 1080U) {
+            core_count = 5U;
+        } else if (width >= 1280U && height >= 720U) {
+            core_count = 3U;
+        } else if (width >= 960U && height >= 540U) {
+            core_count = 2U;
+        }
+    }
+
+    return core_count;
+}
 int32_t AL_GetAllocSize_CompData(int32_t arg1, int32_t arg2, char arg3, char arg4, int32_t arg5,
                                  int32_t arg6); /* forward decl, ported by T<N> later */
 int32_t AL_GetAllocSize_EncCompMap(int32_t arg1, int32_t arg2, char arg3,
@@ -2354,10 +2649,10 @@ static void SyncCompletedCmdListCache(void *ch, int32_t *req, const char *tag)
             continue;
         }
 
-        /* T31 command/status rings are cached DMA mappings. Use a whole-ring
-         * bidirectional cache sync after the AVPU completes so subsequent
-         * CPU status reads don't see stale zeroed CL state. */
-        AL_DmaAlloc_FlushCache((int32_t)(intptr_t)cmd, 0x100000, 0);
+        /* T31 readback is sensitive to cache mode. Use the stronger
+         * post-DMA flush direction here so CPU reads see device-written CL
+         * status words, matching the proven direct AVPU path. */
+        AL_DmaAlloc_FlushCache((int32_t)(intptr_t)cmd, 0x100000, LIVE_T31_POSTDMA_READ_FLUSH_DIR);
         ENC_KMSG("SyncCmdCache tag=%s req=%p core=%d cmd=%p w00=%08x w02=%08x w1b=%08x w1c=%08x w1d=%08x w1e=%08x w1f=%08x",
                  tag ? tag : "?", req, core_idx, cmd,
                  READ_S32(cmd, 0x00), READ_S32(cmd, 0x08), READ_S32(cmd, 0x6c),
@@ -2375,6 +2670,40 @@ static void SyncCompletedCmdListCache(void *ch, int32_t *req, const char *tag)
     }
 }
 
+static uint32_t GetOutputCmdOffset(void *ch, void *req, uint32_t num_core, uint32_t core_idx, int32_t slice_idx)
+{
+    uint32_t core_count = num_core;
+
+    if (core_count == 0U) {
+        core_count = (uint32_t)READ_U8(ch, 0x3c);
+    }
+    if (core_count == 0U) {
+        return 0U;
+    }
+
+    if (READ_S32(req, 0xa6c) > 0) {
+        int32_t grp;
+
+        for (grp = 0; grp < READ_S32(req, 0xa6c); ++grp) {
+            uint8_t *base = (uint8_t *)req + 0x84c + grp * 0x110;
+            int32_t slice_cnt = READ_S32(base, 0x80);
+            int32_t j;
+            int32_t disabled = 0;
+
+            for (j = 0; j < slice_cnt; ++j) {
+                disabled += (READ_S32(base, 4 + j * 8) ^ 1) == 0;
+            }
+            if (disabled != 0) {
+                return GetCoreFirstEnc2CmdOffset((char)core_count,
+                                                (char)READ_U16(ch, 0x40),
+                                                (char)core_idx) << 9;
+            }
+        }
+    }
+
+    return ((uint32_t)GetSliceEnc2CmdOffset(core_count, READ_U16(ch, 0x40), slice_idx) << 9);
+}
+
 static int32_t ScanStreamBufferRawEnd(const uint8_t *buf, int32_t size)
 {
     int32_t pos;
@@ -2389,6 +2718,59 @@ static int32_t ScanStreamBufferRawEnd(const uint8_t *buf, int32_t size)
     }
 
     return pos;
+}
+
+static int32_t FindFirstPatternRun(const uint8_t *buf, int32_t start, int32_t size,
+                                   uint8_t pattern0, uint8_t pattern1, int32_t run_len)
+{
+    int32_t pos;
+    int32_t run = 0;
+
+    if (buf == NULL || size <= 0 || run_len <= 0) {
+        return -1;
+    }
+
+    if (start < 0) {
+        start = 0;
+    }
+    if (start >= size) {
+        return -1;
+    }
+
+    for (pos = start; pos < size; ++pos) {
+        uint8_t expect = ((pos & 1) == 0) ? pattern0 : pattern1;
+
+        if (buf[pos] == expect) {
+            ++run;
+            if (run >= run_len) {
+                return pos - run_len + 1;
+            }
+        } else {
+            run = 0;
+        }
+    }
+
+    return -1;
+}
+
+static int32_t ScanStreamBufferFillPatternEnd(const uint8_t *buf, int32_t start, int32_t size)
+{
+    int32_t run_start;
+
+    if (buf == NULL || size <= 0) {
+        return 0;
+    }
+
+    if (size == 1) {
+        return 1;
+    }
+
+    run_start = FindFirstPatternRun(buf, start, size, buf[0], buf[1], 64);
+    if (run_start >= 0) {
+        return run_start;
+    }
+
+    return size;
 }
 
 static int32_t FindFirstNonZeroByte(const uint8_t *buf, int32_t start, int32_t size)
@@ -2408,6 +2790,29 @@ static int32_t FindFirstNonZeroByte(const uint8_t *buf, int32_t start, int32_t s
 
     for (pos = start; pos < size; ++pos) {
         if (buf[pos] != 0) {
+            return pos;
+        }
+    }
+
+    return -1;
+}
+
+static int32_t FindFirstAlternatingPatternBreak(const uint8_t *buf, int32_t start, int32_t end)
+{
+    int32_t pos;
+    uint8_t pattern0;
+    uint8_t pattern1;
+
+    if (buf == NULL || start < 0 || end <= start) {
+        return -1;
+    }
+
+    pattern0 = buf[start];
+    pattern1 = (start + 1 < end) ? buf[start + 1] : pattern0;
+    for (pos = start; pos < end; ++pos) {
+        uint8_t expect = (((pos - start) & 1) == 0) ? pattern0 : pattern1;
+
+        if (buf[pos] != expect) {
             return pos;
         }
     }
@@ -2451,15 +2856,22 @@ static void ProbeLiveT31AfterLaunch(void *ch, int32_t *req, int32_t core_idx, co
     }
 
     if (cmd != NULL) {
-        AL_DmaAlloc_FlushCache((int32_t)(intptr_t)cmd, 0x100000, 0);
+        AL_DmaAlloc_FlushCache((int32_t)(intptr_t)cmd, 0x100000, LIVE_T31_POSTDMA_READ_FLUSH_DIR);
     }
     if (stream_meta != NULL && READ_PTR(stream_meta, 8) != NULL && READ_S32(stream_meta, 0x10) > 0) {
         uint8_t *stream_base = (uint8_t *)READ_PTR(stream_meta, 8);
         int32_t stream_size = READ_S32(stream_meta, 0x10);
         int32_t stream_off = READ_S32(stream_meta, 0x14);
+        int32_t pattern_end;
 
         raw_end = ScanStreamBufferRawEnd(stream_base, stream_size);
         first_nz = FindFirstNonZeroByte(stream_base, stream_off, stream_size);
+        pattern_end = ScanStreamBufferFillPatternEnd(stream_base,
+                                                    first_nz >= 0 ? first_nz : stream_off,
+                                                    stream_size);
+        if (pattern_end > 0 && pattern_end < raw_end) {
+            raw_end = pattern_end;
+        }
     }
 
     ip = core->ip_ctrl;
@@ -2665,7 +3077,17 @@ done:
     {
         void *s0 = (uint8_t *)arg3 + t8 * 0x78;
 
+        ENC_KMSG("MergeEntropyStatus core=%d slice=%u cmd=%p budget=%d w08=%08x st104=%08x st108=%08x st1e4=%08x st1e8=%08x offc8=%08x availcc=%08x offf8=%08x availfc=%08x",
+                 t8, (unsigned)arg6, a0_1, v1_3,
+                 READ_S32(a0_1, 0x08), READ_S32(a0_1, 0x104), READ_S32(a0_1, 0x108),
+                 READ_S32(a0_1, 0x1e4), READ_S32(a0_1, 0x1e8),
+                 READ_S32(a0_1, 0xc8), READ_S32(a0_1, 0xcc),
+                 READ_S32(a0_1, 0xf8), READ_S32(a0_1, 0xfc));
+
         EntropyStatusRegsToSliceStatus(a0_1, s0, v1_3);
+        ENC_KMSG("MergeEntropyStatus result core=%d slice=%u bytes=%d aux=%d err=%u full=%u overflow=%u",
+                 t8, (unsigned)arg6, READ_S32(s0, 8), READ_S32(s0, 0x0c),
+                 (unsigned)READ_U8(s0, 0), (unsigned)READ_U8(s0, 1), (unsigned)READ_U8(s0, 2));
         return MergeEntropyStatus(arg4, s0);
     }
 }
@@ -2770,6 +3192,7 @@ int32_t SetChannelSteps(void *arg1, void *arg2)
     result = ((int32_t (*)(void *, void *))(intptr_t)READ_S32(arg1, 0xf0))(arg2, s1);
     WRITE_S32(arg1, 0x1ae0, result);
     ENC_KMSG("SetChannelSteps done result=%d step_state=0x%x", result, READ_S32(arg1, 0x1ae0));
+    LogPhaseTableSnapshot("SetChannelSteps table", s1, result);
     return result;
 }
 
@@ -2793,7 +3216,7 @@ static int32_t GetStreamBuffers_part_72(void *arg1, void *arg2, void *arg3)
             int32_t push_back_entry[8];
             uint32_t shift = (uint32_t)READ_U8(arg3, 0x4e);
             uint32_t max_size = (uint32_t)READ_U16(arg3, 0x40);
-            uint32_t stream_rows = (uint32_t)READ_U8(arg3, 0x3c);
+            uint32_t stream_rows = GetLiveT31AvcCompatScratchCoreCount(arg3);
             uint32_t force_fixed_part = (uint32_t)READ_U8(arg3, 0x3e);
             int32_t part_size;
             int32_t result_1;
@@ -3057,13 +3480,29 @@ int32_t encode2(void *arg1)
     ENC_KMSG("encode2 queued-running req=%p fifo_off=0x%x",
              (void *)(intptr_t)v0, READ_S32((void *)(intptr_t)v0, 0xa70) * 0x5c + 0x12a6c);
     a0_6 = (uint32_t)READ_U16(arg1, 0x3c);
-    v1_7 = (uint32_t)READ_U8((void *)(intptr_t)(v0 + READ_S32((void *)(intptr_t)v0, 0xa70) * 0x110 + 0x8d4), 0);
+    v1_7 = (uint32_t)READ_U8((void *)(intptr_t)v0, 0x1ee);
+    if (v1_7 == 0U) {
+        v1_7 = (uint32_t)READ_U8((void *)(intptr_t)(v0 + READ_S32((void *)(intptr_t)v0, 0xa70) * 0x110 + 0x8d4), 0);
+    }
     s1 = 0;
     s0_1 = 0;
     i = ((int32_t)a0_6 < (int32_t)v1_7) ? 1 : 0;
     if (i != 0) {
         v1_7 = a0_6;
     }
+    if (READ_U8(arg1, 0x1f) == 0U && READ_S32((void *)(intptr_t)v0, 0xa70) == 1 && v1_7 > 0U) {
+        int32_t pending_off = 0x8d0 + ((READ_S32((void *)(intptr_t)v0, 0xa70) * 0x44 + 1) << 2);
+
+        WRITE_S32((void *)(intptr_t)v0, pending_off, (int32_t)v1_7);
+        WRITE_U8((void *)(intptr_t)(v0 + READ_S32((void *)(intptr_t)v0, 0xa70) * 0x110 + 0x8d4), 0, (uint8_t)v1_7);
+        ENC_KMSG("encode2 pending-fanout req=%p phase=%d pending_off=0x%x launched=%u",
+                 (void *)(intptr_t)v0, READ_S32((void *)(intptr_t)v0, 0xa70),
+                 pending_off, (unsigned)v1_7);
+    }
+    ENC_KMSG("encode2 launch-count req=%p active_cores=%u lane_active=%u max_cores=%u",
+             (void *)(intptr_t)v0, (unsigned)READ_U8((void *)(intptr_t)v0, 0x1ee),
+             (unsigned)READ_U8((void *)(intptr_t)(v0 + READ_S32((void *)(intptr_t)v0, 0xa70) * 0x110 + 0x8d4), 0),
+             (unsigned)a0_6);
 
     if ((int32_t)v1_7 > 0) {
         do {
@@ -3081,14 +3520,15 @@ int32_t encode2(void *arg1)
 
             PrepareSourceConfigForLaunch(core, arg1, (void *)(intptr_t)v0, (uint32_t *)(uintptr_t)cmd_virt,
                                          "encode2-pre-cl");
-            if ((unsigned)s0_1 == 0U) {
-                RemapLiveT31Irq4(core, EndAvcEntropy, "encode2");
-            }
+            ArmLiveT31EntropyIrqs(core, "encode2");
             AL_EncCore_EnableEnc2Interrupt(core);
             AL_EncCore_Encode2(core, cmd_phys, cmd_virt);
 
             a0_6 = (uint32_t)READ_U16(arg1, 0x3c);
-            v1_7 = (uint32_t)READ_U8((void *)(intptr_t)(v0 + READ_S32((void *)(intptr_t)v0, 0xa70) * 0x110 + 0x8d4), 0);
+            v1_7 = (uint32_t)READ_U8((void *)(intptr_t)v0, 0x1ee);
+            if (v1_7 == 0U) {
+                v1_7 = (uint32_t)READ_U8((void *)(intptr_t)(v0 + READ_S32((void *)(intptr_t)v0, 0xa70) * 0x110 + 0x8d4), 0);
+            }
             s0_1 = (uint32_t)((uint8_t)s0_1 + 1U);
             if ((int32_t)a0_6 < (int32_t)v1_7) {
                 v1_7 = a0_6;
@@ -3285,7 +3725,7 @@ uint32_t AL_EncChannel_SetNumberOfCores(void *arg1)
     uint32_t result;
 
     (void)var_38;
-    if (IsLiveT31AvcChannel(arg1)) {
+    if (LIVE_T31_CLAMP_CORE_COUNT && IsLiveT31AvcChannel(arg1)) {
         WRITE_U8(arg1, CH_CORE_COUNT_OFF, 1);
         WRITE_U8(arg1, CH_STABLE_CORE_COUNT_OFF, 1);
         ENC_KMSG("SetNumberOfCores live-t31-avc clamp ctx=%p base=%u -> 1",
@@ -3314,6 +3754,11 @@ uint32_t AL_EncChannel_SetNumberOfCores(void *arg1)
     result = v0_3 & 0xffU;
     if ((int32_t)result_1 < (int32_t)result) {
         result = result_1;
+    }
+
+    if (IsLiveT31AvcChannel(arg1)) {
+        ENC_KMSG("SetNumberOfCores live-t31-avc compute ctx=%p expected=%u resources=0x%x max=%u result=%u",
+                 arg1, (unsigned)s2, (unsigned)v0_1, (unsigned)result_1, (unsigned)result);
     }
 
     WRITE_U8(arg1, CH_CORE_COUNT_OFF, (uint8_t)result);
@@ -3374,6 +3819,7 @@ static int32_t RecomputeIntermBufferSizeFromSettings(void *arg1)
     uint32_t rec_lcus = (uint32_t)READ_U8(arg1, 4);
     uint32_t codec = (uint32_t)READ_U8(arg1, 0x1f);
     uint32_t rec_rows = (uint32_t)READ_U8(arg1, 6);
+    uint32_t scratch_cores = GetLiveT31AvcCompatScratchCoreCount(arg1);
     uint32_t rows = rec_rows;
     int32_t data_size = 0;
     int32_t map_size = 0;
@@ -3381,7 +3827,7 @@ static int32_t RecomputeIntermBufferSizeFromSettings(void *arg1)
     int32_t ep2_size;
     int32_t ep1_size;
 
-    if (codec == 0 && (uint32_t)READ_U8(arg1, 0x3c) >= 2U) {
+    if (codec == 0 && scratch_cores >= 2U) {
         int32_t layout = READ_S32(arg1, 0x10);
         int32_t min_rec = layout & 0xf;
         int32_t max_rec = ((uint32_t)layout >> 4) & 0xf;
@@ -3394,7 +3840,7 @@ static int32_t RecomputeIntermBufferSizeFromSettings(void *arg1)
         data_size = AL_GetAllocSize_CompData((int32_t)rec_lcus, (int32_t)rec_rows, (char)split,
                                              (char)max_rec, ((uint32_t)layout >> 8) & 0xf, 1);
         map_size = AL_GetAllocSize_EncCompMap((int32_t)rec_lcus, (int32_t)rows, (char)split,
-                                              READ_U8(arg1, 0x3c), 1);
+                                              (char)scratch_cores, 1);
         rec_rows = rows;
     }
 
@@ -3404,7 +3850,7 @@ static int32_t RecomputeIntermBufferSizeFromSettings(void *arg1)
     } else {
         uint32_t split = (uint32_t)READ_U8(arg1, 0x4e);
         wpp_size = AL_GetAllocSize_WPP((int32_t)(((1U << (split & 0x1f)) + rec_rows - 1U) >> (split & 0x1f)),
-                                       (int32_t)READ_U8(arg1, 0x40), READ_U8(arg1, 0x3c));
+                                       (int32_t)READ_U8(arg1, 0x40), (char)scratch_cores);
     }
 
     ep2_size = AL_GetAllocSizeEP2((int32_t)rec_lcus, (int32_t)rows, (int32_t)codec);
@@ -3869,7 +4315,11 @@ void OutputSlice(void *arg1, void *arg2, int32_t arg3, void *arg4)
     uint8_t merged[0x78];
     size_t enc_stat_buf_size;
     int32_t i;
+    int32_t stream_head_off = -1;
+    int32_t stream_payload_off = -1;
     uint32_t num_core;
+    uint32_t codec;
+    int live_multicore_avc;
 
     num_core = READ_U8(arg2, 0x1ee);
     if (num_core == 0U) {
@@ -3877,6 +4327,9 @@ void OutputSlice(void *arg1, void *arg2, int32_t arg3, void *arg4)
                  "/home/user/git/proj/sdk-lv3/src/imp/video/alcodec/lib_scheduler_enc/ChannelMngr.c",
                  0x1a4, "CmdList_MergeMultiSliceStatus", &_gp);
     }
+
+    codec = (uint32_t)READ_U8(arg1, 0x1f);
+    live_multicore_avc = (IsLiveT31AvcChannel(arg1) && num_core > 1U);
 
     enc_stat_buf_size = (size_t)num_core * 0x78U;
     enc_stat_buf = (uint8_t *)Rtos_Malloc(enc_stat_buf_size);
@@ -3897,19 +4350,23 @@ void OutputSlice(void *arg1, void *arg2, int32_t arg3, void *arg4)
         void *cmd_regs_stream;
         void *stream_meta = READ_PTR(arg2, 0x318);
         int32_t cmd_index = arg3 << 9;
+        int32_t stream_cmd_index = cmd_index;
         int32_t stream_end_word = 0xc8;
         int32_t stream_end;
 
         if (READ_S32(arg2, 0x174) == 0) {
             cmd_regs = (uint8_t *)READ_PTR(arg2, 0xa78) + cmd_index;
         } else {
-            uint32_t core_count = READ_U8(arg1, 0x3c);
+            uint32_t core_count = live_multicore_avc ? num_core : READ_U8(arg1, 0x3c);
+            uint32_t cmd_off;
 
             if (core_count == 0U) {
                 __builtin_trap();
             }
+            cmd_off = GetOutputCmdOffset(arg1, arg2, core_count,
+                                         (uint32_t)(arg3 % (int32_t)core_count), arg3);
             cmd_regs = (uint8_t *)READ_PTR(arg2, ((arg3 % (int32_t)core_count) + 0x29c) * 4 + 8) +
-                       ((uint32_t)GetSliceEnc2CmdOffset(core_count, READ_U16(arg1, 0x40), arg3) << 9);
+                       cmd_off;
         }
         cmd_regs_stream = cmd_regs;
 
@@ -3929,11 +4386,13 @@ void OutputSlice(void *arg1, void *arg2, int32_t arg3, void *arg4)
                     disabled += (READ_S32(base, 4 + j * 8) ^ 1) == 0;
                 }
                 if (disabled != 0) {
-                    uint32_t core_count = READ_U8(arg1, 0x3c);
+                    uint32_t core_count = live_multicore_avc ? num_core : READ_U8(arg1, 0x3c);
 
                     if (core_count != 0U) {
+                        stream_cmd_index = (int32_t)GetOutputCmdOffset(arg1, arg2, core_count,
+                                                                       (uint32_t)(arg3 % (int32_t)core_count), arg3);
                         cmd_regs_stream = (uint8_t *)READ_PTR(arg2, ((arg3 % (int32_t)core_count) + 0x29c) * 4 + 8) +
-                                          ((uint32_t)GetSliceEnc2CmdOffset(core_count, READ_U16(arg1, 0x40), arg3) << 9);
+                                          stream_cmd_index;
                         stream_end_word = 0xf8;
                     }
                     break;
@@ -3941,37 +4400,112 @@ void OutputSlice(void *arg1, void *arg2, int32_t arg3, void *arg4)
             }
             stream_end = READ_S32(cmd_regs_stream, stream_end_word);
         }
+        if (live_multicore_avc) {
+            void *best_cmd = cmd_regs_stream;
+            int32_t best_end = stream_end;
+            uint32_t core_idx;
+
+            for (core_idx = 0; core_idx < num_core; ++core_idx) {
+                uint8_t *candidate = (uint8_t *)READ_PTR(arg2, 0xa78 + core_idx * 4);
+                int32_t candidate_end;
+                uint32_t candidate_cmd_index = (uint32_t)stream_cmd_index;
+
+                if (candidate == NULL) {
+                    continue;
+                }
+                if (READ_S32(arg2, 0xa6c) > 0) {
+                    candidate_cmd_index = GetOutputCmdOffset(arg1, arg2, num_core, core_idx, arg3);
+                }
+                candidate += candidate_cmd_index;
+                candidate_end = READ_S32(candidate, stream_end_word);
+                if (candidate_end > best_end) {
+                    best_end = candidate_end;
+                    best_cmd = candidate;
+                }
+            }
+            cmd_regs_stream = best_cmd;
+            stream_end = best_end;
+            ENC_KMSG("OutputSlice live-max-end req=%p slice=%d cmd=%p off=0x%x end=%d cores=%u",
+                     arg2, arg3, cmd_regs_stream, stream_end_word, stream_end, (unsigned)num_core);
+        }
+        if (stream_meta != NULL && stream_head_off < 0) {
+            stream_head_off = READ_S32(stream_meta, 0x14);
+        }
+        stream_payload_off = stream_end;
         WRITE_S32(READ_PTR(arg2, 0x318), 0x14, stream_end);
         ENC_KMSG("OutputSlice stream-end req=%p slice=%d cmd=%p off=0x%x end=0x%x",
                  arg2, arg3, cmd_regs_stream, stream_end_word, stream_end);
         if (stream_meta != NULL) {
             uint8_t *stream_base = (uint8_t *)READ_PTR(stream_meta, 8);
             int32_t stream_size = READ_S32(stream_meta, 0x10);
-            int32_t stream_off = READ_S32(stream_meta, 0x14);
+            int32_t stream_off = stream_head_off;
             if (stream_base != NULL && stream_size > 0) {
                 int32_t cmd_sync_ret = 0;
                 int32_t stream_sync_ret;
                 int32_t synced_end = stream_end;
 
-                if (cmd_regs_stream != NULL) {
-                    cmd_sync_ret = AL_DmaAlloc_FlushCache((int32_t)(intptr_t)cmd_regs_stream, 0x100000, 0);
+                if (live_multicore_avc) {
+                    void *best_cmd = cmd_regs_stream;
+                    int32_t best_end = synced_end;
+                    uint32_t core_idx;
+
+                    for (core_idx = 0; core_idx < num_core; ++core_idx) {
+                        uint8_t *candidate = (uint8_t *)READ_PTR(arg2, 0xa78 + core_idx * 4);
+                        int32_t candidate_ret;
+                        int32_t candidate_end;
+                        uint32_t candidate_cmd_index = (uint32_t)stream_cmd_index;
+
+                        if (candidate == NULL) {
+                            continue;
+                        }
+                        if (READ_S32(arg2, 0xa6c) > 0) {
+                            candidate_cmd_index = GetOutputCmdOffset(arg1, arg2, num_core, core_idx, arg3);
+                        }
+                        candidate += candidate_cmd_index;
+                        candidate_ret = AL_DmaAlloc_FlushCache((int32_t)(intptr_t)candidate, 0x100000,
+                                                               LIVE_T31_POSTDMA_READ_FLUSH_DIR);
+                        candidate_end = READ_S32(candidate, stream_end_word);
+                        if (core_idx == 0 || candidate_end > best_end) {
+                            best_end = candidate_end;
+                            best_cmd = candidate;
+                            cmd_sync_ret = candidate_ret;
+                        }
+                    }
+                    cmd_regs_stream = best_cmd;
+                    synced_end = best_end;
+                } else if (cmd_regs_stream != NULL) {
+                    cmd_sync_ret = AL_DmaAlloc_FlushCache((int32_t)(intptr_t)cmd_regs_stream, 0x100000,
+                                                          LIVE_T31_POSTDMA_READ_FLUSH_DIR);
                     synced_end = READ_S32(cmd_regs_stream, stream_end_word);
                 }
-                stream_sync_ret = AL_DmaAlloc_FlushCache((int32_t)(intptr_t)stream_base, 0x100000, 0);
+                stream_sync_ret = AL_DmaAlloc_FlushCache((int32_t)(intptr_t)stream_base, 0x100000,
+                                                         LIVE_T31_POSTDMA_READ_FLUSH_DIR);
                 stream_end = synced_end;
+                stream_payload_off = synced_end;
                 WRITE_S32(READ_PTR(arg2, 0x318), 0x14, stream_end);
                 WRITE_S32(stream_meta, 0x14, stream_end);
                 ENC_KMSG("OutputSlice stream-sync req=%p slice=%d cmd=%p cmd_sync=%d base=%p size=%d stream_sync=%d end=%d",
                          arg2, arg3, cmd_regs_stream, cmd_sync_ret, stream_base, stream_size, stream_sync_ret, stream_end);
             }
             if (stream_end == 0 || (stream_end > 0 && stream_end <= LIVE_T31_AVC_HEADER_BUDGET)) {
+                if (live_multicore_avc && stream_payload_off > stream_off) {
+                    stream_off = stream_payload_off;
+                }
                 int32_t raw_end = ScanStreamBufferRawEnd(stream_base, stream_size);
                 int32_t first_nz = FindFirstNonZeroByte(stream_base, stream_off, stream_size);
                 int32_t next_nz = FindFirstNonZeroByte(stream_base, stream_end, stream_size);
+                int32_t pattern_end = ScanStreamBufferFillPatternEnd(stream_base,
+                                                                     first_nz >= 0 ? first_nz : stream_off,
+                                                                     stream_size);
 
-                ENC_KMSG("OutputSlice stream-probe req=%p slice=%d base=%p size=%d off=%d raw_end=%d first_nz=%d next_nz=%d",
-                         arg2, arg3, stream_base, stream_size, stream_off, raw_end, first_nz, next_nz);
-                if (stream_end > 0 && raw_end > stream_end && raw_end <= stream_size &&
+                ENC_KMSG("OutputSlice stream-probe req=%p slice=%d base=%p size=%d off=%d raw_end=%d pattern_end=%d first_nz=%d next_nz=%d",
+                         arg2, arg3, stream_base, stream_size, stream_off, raw_end, pattern_end, first_nz, next_nz);
+                if (pattern_end > stream_end && pattern_end < raw_end && pattern_end <= stream_size) {
+                    ENC_KMSG("OutputSlice recover-pattern-end req=%p slice=%d old_end=%d pattern_end=%d",
+                             arg2, arg3, stream_end, pattern_end);
+                    stream_end = pattern_end;
+                    WRITE_S32(stream_meta, 0x14, stream_end);
+                } else if (stream_end > 0 && raw_end > stream_end && raw_end <= stream_size &&
                     next_nz >= 0 && next_nz <= (stream_end + 64)) {
                     ENC_KMSG("OutputSlice recover-end req=%p slice=%d old_end=%d raw_end=%d next_nz=%d",
                              arg2, arg3, stream_end, raw_end, next_nz);
@@ -3995,7 +4529,9 @@ void OutputSlice(void *arg1, void *arg2, int32_t arg3, void *arg4)
     }
 
     for (i = 0; i < (int32_t)num_core; ++i) {
-        EncodingStatusRegsToSliceStatus((uint8_t *)READ_PTR(arg2, 0xa78 + i * 4) + (arg3 << 9), enc_stat_buf + i * 0x78);
+        uint32_t cmd_off = GetOutputCmdOffset(arg1, arg2, num_core, (uint32_t)i, arg3);
+
+        EncodingStatusRegsToSliceStatus((uint8_t *)READ_PTR(arg2, 0xa78 + i * 4) + cmd_off, enc_stat_buf + i * 0x78);
         MergeEncodingStatus(merged, enc_stat_buf + i * 0x78);
     }
 
@@ -4013,10 +4549,29 @@ void OutputSlice(void *arg1, void *arg2, int32_t arg3, void *arg4)
                 disabled += (READ_S32(base, 4 + j * 8) ^ 1) == 0;
             }
             if (disabled != 0) {
-                CmdList_MergeMultiSliceEntropyStatus(arg1, arg2, enc_stat_buf, merged,
-                                                     (uint8_t)(arg3 % (int32_t)READ_U8(arg1, 0x3c)),
-                                                     (uint8_t)GetSliceEnc2CmdOffset(READ_U8(arg1, 0x3c),
-                                                                                    READ_U16(arg1, 0x40), arg3));
+                uint32_t core_count = live_multicore_avc ? num_core : READ_U8(arg1, 0x3c);
+                uint8_t enc2_off = (uint8_t)(GetOutputCmdOffset(arg1, arg2, core_count,
+                                                                (uint32_t)(arg3 % (int32_t)core_count), arg3) >> 9);
+
+                ENC_KMSG("OutputSlice merge-phase1 req=%p slice=%d disabled=%d num_core=%u core_count=%u enc2_off=%u",
+                         arg2, arg3, disabled, (unsigned)num_core, (unsigned)core_count, (unsigned)enc2_off);
+
+                if (live_multicore_avc && core_count > 0U) {
+                    uint32_t core_idx;
+
+                    for (core_idx = 0; core_idx < core_count; ++core_idx) {
+                        uint8_t core_cmd_off = (uint8_t)(GetOutputCmdOffset(arg1, arg2, core_count, core_idx, arg3) >> 9);
+
+                        ENC_KMSG("OutputSlice merge-phase1 dispatch req=%p slice=%d core=%u cmd_off=%u",
+                                 arg2, arg3, (unsigned)core_idx, (unsigned)core_cmd_off);
+                        CmdList_MergeMultiSliceEntropyStatus(arg1, arg2, enc_stat_buf, merged,
+                                                             (uint8_t)core_idx, core_cmd_off);
+                    }
+                } else {
+                    CmdList_MergeMultiSliceEntropyStatus(arg1, arg2, enc_stat_buf, merged,
+                                                         (uint8_t)(arg3 % (int32_t)core_count),
+                                                         enc2_off);
+                }
                 merged_any = 1;
                 break;
             }
@@ -4034,20 +4589,22 @@ void OutputSlice(void *arg1, void *arg2, int32_t arg3, void *arg4)
     {
         void *stream_meta = READ_PTR(arg2, 0x318);
         int32_t section_count = READ_S32(arg2, 0xb30);
-        int32_t byte_count = READ_S32(arg4, 4);
+        int32_t byte_count = READ_S32(arg4, 8);
         int32_t header_bytes = 0;
-        uint32_t codec = (uint32_t)READ_U8(arg1, 0x1f);
-        int live_inline_dual = (codec == 0U && READ_U8(arg1, 0x3c) == 1U &&
-                                READ_U8(arg2, 0x182) != 0U);
         int32_t cmd_budget_limit = 0;
         int32_t cmd_budget_avail = 0;
 
-            if (codec == 0U) {
+        if (READ_S32(arg4, 4) != byte_count) {
+            WRITE_S32(arg4, 4, byte_count);
+        }
+
+        if (codec == 0U) {
             uint32_t core_count = (uint32_t)READ_U8(arg1, 0x3c);
 
             if (core_count != 0U) {
                 uint8_t *cmd = (uint8_t *)READ_PTR(arg2, (((arg3 % (int32_t)core_count) + 0x29c) << 2) + 8) +
-                               ((uint32_t)GetSliceEnc2CmdOffset(core_count, READ_U16(arg1, 0x40), arg3) << 9);
+                               GetOutputCmdOffset(arg1, arg2, core_count,
+                                                  (uint32_t)(arg3 % (int32_t)core_count), arg3);
                 header_bytes = (int32_t)(READ_U16(cmd, 0x6e) & 0x03ffU);
                 cmd_budget_limit = READ_S32(cmd, 0xf4);
                 cmd_budget_avail = READ_S32(cmd, 0xfc);
@@ -4064,6 +4621,11 @@ void OutputSlice(void *arg1, void *arg2, int32_t arg3, void *arg4)
             int32_t stream_end = READ_S32(stream_meta, 0x14);
             int32_t desc_off = READ_S32(stream_meta, 0x18);
             int32_t desc_pos = desc_off + (section_count << 4);
+            int32_t section_start = live_multicore_avc ? 0 : stream_head_off;
+            int32_t section_bytes = 0;
+            int split_desc = 0;
+            int32_t split_tail_start = -1;
+            int32_t split_tail_bytes = 0;
             uint32_t shift = (uint32_t)READ_U8(arg1, 0x4e);
             uint32_t min_lcu = ((((1U << (shift & 0x1fU)) - 1U) + (uint32_t)READ_U16(arg1, 6)) >>
                                 (shift & 0x1fU));
@@ -4086,32 +4648,194 @@ void OutputSlice(void *arg1, void *arg2, int32_t arg3, void *arg4)
                 header_bytes = stream_end;
             }
 
-#if LIVE_T31_RECOVER_ZERO_BYTE_SECTIONS
-            if (live_inline_dual && byte_count == 0 && stream_base != NULL && stream_size > 0) {
-                int32_t old_end = stream_end;
-                int32_t produced = cmd_budget_limit - cmd_budget_avail;
+            if (section_start < 0) {
+                section_start = stream_end - (header_bytes + byte_count);
+            }
+            if (section_start < 0) {
+                section_start = 0;
+            }
+            if (live_multicore_avc && stream_payload_off >= section_start && byte_count > 0) {
+                int32_t expected_end = section_start + header_bytes + byte_count;
 
-                if (cmd_budget_limit > cmd_budget_avail &&
+                if (expected_end > stream_end) {
+                    stream_end = expected_end;
+                }
+                WRITE_S32(stream_meta, 0x14, stream_end);
+            }
+            if (section_start > stream_end) {
+                section_start = stream_end;
+            }
+            section_bytes = stream_end - section_start;
+            if (section_start >= stream_size) {
+                section_bytes = 0;
+            } else if (section_start + section_bytes > stream_size) {
+                section_bytes = stream_size - section_start;
+            }
+
+#if LIVE_T31_RECOVER_ZERO_BYTE_SECTIONS
+            if (live_multicore_avc && byte_count == 0 && stream_base != NULL && stream_size > 0) {
+                int32_t old_end = stream_end;
+                int32_t scan_from = section_start;
+                int32_t raw_end;
+                int32_t first_nz;
+                int32_t next_nz;
+                int32_t pattern_end;
+                int32_t produced;
+                int32_t gap_break = -1;
+                int32_t gap_end = old_end;
+
+                if (scan_from < 0) {
+                    scan_from = stream_head_off;
+                }
+                if (scan_from < 0) {
+                    scan_from = 0;
+                }
+                if (live_multicore_avc && stream_payload_off > scan_from) {
+                    scan_from = stream_payload_off;
+                }
+
+                raw_end = ScanStreamBufferRawEnd(stream_base, stream_size);
+                first_nz = FindFirstNonZeroByte(stream_base, scan_from, stream_size);
+                next_nz = FindFirstNonZeroByte(stream_base, stream_end, stream_size);
+                pattern_end = ScanStreamBufferFillPatternEnd(stream_base,
+                                                             first_nz >= 0 ? first_nz : scan_from,
+                                                             stream_size);
+                if (gap_end > stream_size) {
+                    gap_end = stream_size;
+                }
+                if (header_bytes >= 0 && gap_end > header_bytes) {
+                    gap_break = FindFirstAlternatingPatternBreak(stream_base, header_bytes, gap_end);
+                    if (header_bytes + 16 <= gap_end) {
+                        ENC_KMSG("OutputSlice gap-probe req=%p slice=%d hdr=%d old_end=%d gap_break=%d bytes=%02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x",
+                                 arg2, arg3, header_bytes, old_end, gap_break,
+                                 stream_base[header_bytes + 0], stream_base[header_bytes + 1],
+                                 stream_base[header_bytes + 2], stream_base[header_bytes + 3],
+                                 stream_base[header_bytes + 4], stream_base[header_bytes + 5],
+                                 stream_base[header_bytes + 6], stream_base[header_bytes + 7],
+                                 stream_base[header_bytes + 8], stream_base[header_bytes + 9],
+                                 stream_base[header_bytes + 10], stream_base[header_bytes + 11],
+                                 stream_base[header_bytes + 12], stream_base[header_bytes + 13],
+                                 stream_base[header_bytes + 14], stream_base[header_bytes + 15]);
+                    }
+                    if (gap_break > header_bytes &&
+                        gap_break < old_end &&
+                        (first_nz < 0 || gap_break < first_nz)) {
+                        first_nz = gap_break;
+                        if (gap_break + 16 <= gap_end) {
+                            ENC_KMSG("OutputSlice gap-break-bytes req=%p slice=%d @0x%x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x",
+                                     arg2, arg3, gap_break,
+                                     stream_base[gap_break + 0], stream_base[gap_break + 1],
+                                     stream_base[gap_break + 2], stream_base[gap_break + 3],
+                                     stream_base[gap_break + 4], stream_base[gap_break + 5],
+                                     stream_base[gap_break + 6], stream_base[gap_break + 7],
+                                     stream_base[gap_break + 8], stream_base[gap_break + 9],
+                                     stream_base[gap_break + 10], stream_base[gap_break + 11],
+                                     stream_base[gap_break + 12], stream_base[gap_break + 13],
+                                     stream_base[gap_break + 14], stream_base[gap_break + 15]);
+                        }
+                    }
+                }
+
+                if (pattern_end > stream_end &&
+                    pattern_end <= raw_end &&
+                    pattern_end <= stream_size) {
+                    stream_end = pattern_end;
+                    WRITE_S32(stream_meta, 0x14, stream_end);
+                } else if (raw_end > stream_end &&
+                           raw_end <= stream_size &&
+                           next_nz >= 0 &&
+                           next_nz <= (stream_end + 128)) {
+                    stream_end = raw_end;
+                    WRITE_S32(stream_meta, 0x14, stream_end);
+                }
+
+                section_bytes = stream_end - section_start;
+                if (section_bytes < 0) {
+                    section_bytes = 0;
+                }
+                if (section_start >= stream_size) {
+                    section_bytes = 0;
+                } else if (section_start + section_bytes > stream_size) {
+                    section_bytes = stream_size - section_start;
+                }
+                produced = section_bytes - header_bytes;
+
+                if (section_start >= 0 &&
+                    section_bytes >= header_bytes &&
                     produced > 0 &&
-                    produced + header_bytes <= stream_size) {
+                    stream_end <= stream_size) {
                     byte_count = produced;
-                    stream_end = produced + header_bytes;
                     WRITE_S32(arg4, 4, byte_count);
                     WRITE_S32(stream_meta, 0x14, stream_end);
                 }
-                ENC_KMSG("OutputSlice recover-zero-bytes req=%p slice=%d old_end=%d limit=%d avail=%d new_end=%d bytes=%d header=%d",
-                         arg2, arg3, old_end, cmd_budget_limit, cmd_budget_avail, stream_end, byte_count, header_bytes);
+                if (live_multicore_avc &&
+                    header_bytes > 0 &&
+                    first_nz > header_bytes &&
+                    first_nz < stream_end &&
+                    first_nz < stream_size) {
+                    int32_t tail_bytes = stream_end - first_nz;
+
+                    if (tail_bytes > 0 && first_nz + tail_bytes <= stream_size) {
+                        split_desc = 1;
+                        split_tail_start = first_nz;
+                        split_tail_bytes = tail_bytes;
+                        section_start = 0;
+                        section_bytes = header_bytes;
+                        byte_count = split_tail_bytes;
+                        WRITE_S32(arg4, 4, byte_count);
+                        WRITE_S32(arg4, 8, byte_count);
+                        ENC_KMSG("OutputSlice split-live-gap req=%p slice=%d hdr=%d tail_off=%d tail_bytes=%d raw_end=%d",
+                                 arg2, arg3, header_bytes, split_tail_start, split_tail_bytes, raw_end);
+                    }
+                }
+                ENC_KMSG("OutputSlice recover-zero-bytes req=%p slice=%d old_end=%d start=%d total=%d raw_end=%d pattern_end=%d first_nz=%d next_nz=%d limit=%d avail=%d new_end=%d bytes=%d header=%d",
+                         arg2, arg3, old_end, section_start, section_bytes, raw_end, pattern_end,
+                         first_nz, next_nz, cmd_budget_limit, cmd_budget_avail,
+                         stream_end, byte_count, header_bytes);
             }
 #endif
 
-            if (stream_base != NULL && section_count >= 0 && desc_pos >= 0 && desc_pos + 0x10 <= desc_limit) {
+            if (live_multicore_avc && byte_count == 0 && section_start >= 0 &&
+                stream_end > section_start && stream_end <= stream_size) {
+                section_start = 0;
+                section_bytes = stream_end;
+                if (section_bytes >= header_bytes) {
+                    byte_count = section_bytes - header_bytes;
+                    WRITE_S32(arg4, 4, byte_count);
+                    WRITE_S32(arg4, 8, byte_count);
+                    ENC_KMSG("OutputSlice derive-live-bytes req=%p slice=%d start=%d end=%d total=%d bytes=%d header=%d",
+                             arg2, arg3, section_start, stream_end, section_bytes, byte_count, header_bytes);
+                }
+            }
+
+            if (stream_base != NULL && section_count >= 0 && desc_pos >= 0 &&
+                desc_pos + (split_desc ? 0x20 : 0x10) <= desc_limit) {
                 int32_t *desc = (int32_t *)(void *)(stream_base + desc_pos);
                 int32_t section_inc = 1;
 
-                desc[0] = stream_end - header_bytes;
-                desc[1] = byte_count + header_bytes;
+                desc[0] = section_start;
+                desc[1] = section_bytes;
                 desc[2] = READ_S32(arg2, 0x28c);
                 desc[3] = READ_S32(arg2, 0x1a0);
+                if (split_desc) {
+                    int32_t *tail_desc = desc + 4;
+
+                    /*
+                     * The public IMP stream flattener expects exactly one
+                     * "frame" section (user_data 1/2). Mark the prepended
+                     * AUD/SPS/PPS blob as auxiliary data so it gets folded
+                     * ahead of the single tail frame section instead of
+                     * looking like a second frame.
+                     */
+                    desc[3] = -1;
+                    tail_desc[0] = split_tail_start;
+                    tail_desc[1] = split_tail_bytes;
+                    tail_desc[2] = desc[2];
+                    tail_desc[3] = READ_S32(arg2, 0x1a0);
+                    section_inc = 2;
+                    ENC_KMSG("OutputSlice section-desc-tail req=%p slice=%d idx=%d off=%d len=%d qp=%d type=%d",
+                             arg2, arg3, section_count + 1, tail_desc[0], tail_desc[1], tail_desc[2], tail_desc[3]);
+                }
                 if (codec != 0U)
                     section_inc = (int32_t)READ_U8(arg1, 0x3c);
                 WRITE_S32(arg2, 0xb30, section_count + section_inc);
@@ -4733,7 +5457,7 @@ int32_t AL_EncChannel_Init(int32_t *arg1, int32_t *arg2, void *arg3, uint8_t arg
         memcpy(step_param, arg2, sizeof(step_param));
         WRITE_S32(step_param, 0x2c, READ_S32(arg1, 0x2c));
         WRITE_S32(step_param, CH_CORE_COUNT_OFF, (int32_t)READ_U8(arg1, CH_CORE_COUNT_OFF));
-        WRITE_U16(step_param, 0x40, READ_U16(arg1, 0x40));
+        WRITE_S32(step_param, 0x40, (int32_t)READ_U16(arg1, 0x40));
         ENC_KMSG("AL_EncChannel_Init resync-step-template cores=%u base=%u active=%d slices=%u",
                  (unsigned)READ_U8(arg1, CH_CORE_COUNT_OFF), (unsigned)READ_U8(arg1, CH_CORE_BASE_OFF),
                  READ_S32(arg1, 0x2c), (unsigned)READ_U16(arg1, 0x40));
@@ -5097,6 +5821,7 @@ int32_t AL_EncChannel_ListModulesNeeded(void *arg1, void *arg2)
 #endif
                             && (READ_S32(ready, 0) & 0x200) != 0) {
                             int32_t check_rc;
+                            uint8_t step_param[0xf0];
 
                             ENC_KMSG("ListModulesNeeded lane=%d ready-dynres req=%p w=%d h=%d core_hint=%u flags=0x%x",
                                      lane, req, READ_S32(ready, 0x68), READ_S32(ready, 0x6c),
@@ -5111,7 +5836,8 @@ int32_t AL_EncChannel_ListModulesNeeded(void *arg1, void *arg2)
                             ENC_KMSG("ListModulesNeeded lane=%d after-set-cores cores=%u core_base=%u active=%d need=%d",
                                      lane, (unsigned)READ_U8(arg1, 0x3c), (unsigned)READ_U8(arg1, 0x3d),
                                      READ_S32(arg1, 0x2c), READ_S32(arg1, 0x30));
-                            SetChannelSteps(arg1, arg1);
+                            BuildSanitizedStepParamFromChannel(arg1, step_param, "ready-dynres");
+                            SetChannelSteps(arg1, step_param);
                             ENC_KMSG("ListModulesNeeded lane=%d after-set-steps step4e=%u step4f=%u fmt=%u",
                                      lane, (unsigned)READ_U8(arg1, 0x4e), (unsigned)READ_U8(arg1, 0x4f),
                                      (unsigned)READ_U8(arg1, 0x1f));
@@ -5224,7 +5950,10 @@ int32_t AL_EncChannel_ListModulesNeeded(void *arg1, void *arg2)
                         WRITE_S32(req, 0x324, 0);
                         WRITE_S32(req, 0x304, 0);
                         WRITE_S32(req, 0x308, 0);
-                        if ((READ_U32(arg1, 0x1c) >> 0x18) == 0U && READ_U8(arg1, 0x3c) >= 2U) {
+                        {
+                            uint32_t scratch_cores = GetLiveT31AvcCompatScratchCoreCount(arg1);
+
+                            if ((READ_U32(arg1, 0x1c) >> 0x18) == 0U && scratch_cores >= 2U) {
                             ENC_KMSG("ListModulesNeeded lane=%d before-get-map-data pict=%d interm=%p",
                                      lane, pict_id, READ_PTR(req, 0x838));
                             WRITE_S32(req, 0x304,
@@ -5236,9 +5965,10 @@ int32_t AL_EncChannel_ListModulesNeeded(void *arg1, void *arg2)
                             WRITE_S32(req, 0x2f8,
                                       AL_IntermMngr_GetWppAddr((uint8_t *)arg1 + 0x2a54,
                                                                READ_PTR(req, 0x838), &req[0xc8]));
-                            ENC_KMSG("ListModulesNeeded lane=%d after-get-map-data pict=%d map=0x%x data=0x%x wpp=0x%x wppvirt=0x%x",
+                            ENC_KMSG("ListModulesNeeded lane=%d after-get-map-data pict=%d map=0x%x data=0x%x wpp=0x%x wppvirt=0x%x scratch_cores=%u",
                                      lane, pict_id, READ_S32(req, 0x304), READ_S32(req, 0x308),
-                                     READ_S32(req, 0x2f8), READ_S32(req, 0x320));
+                                     READ_S32(req, 0x2f8), READ_S32(req, 0x320), (unsigned)scratch_cores);
+                            }
                         }
                         ENC_KMSG("ListModulesNeeded lane=%d before-set-picture-ref-bufs pict=%d req=%p rec=%d",
                                  lane, pict_id, req, rec);
@@ -5592,6 +6322,8 @@ int32_t encode1(void *arg1)
                      (unsigned)READ_U16(slice_core, 0x108), (unsigned)READ_U16(slice_core, 0x10a));
             SliceParamToCmdRegsEnc1(slice_core, cmd_regs, (uint8_t *)req + 0x298, READ_U8(ch, 0x4f));
             PatchLiveT31AvcIdrEnc1Control(ch, req, cmd_regs);
+            RepackLiveT31AvcEnc1LateTail(ch, req, slice_core, cmd_regs);
+            SeedLiveT31AvcEnc1LateWindow(ch, req, slice_core, cmd_regs, core);
             if (READ_U8(ch, 0x1f) == 0U) {
                 avc_header_bytes = PrewriteLiveT31AvcHeaders(ch, req, src_meta, core_stream_off,
                                                              core == 0, core, READ_S32(slice_core, 0x3c),
@@ -5627,8 +6359,10 @@ int32_t encode1(void *arg1)
                      READ_S32(cmd_regs, 0x00), READ_S32(cmd_regs, 0x04),
                      READ_S32(cmd_regs, 0x08), READ_S32(cmd_regs, 0x0c),
                      READ_S32(cmd_regs, 0x28), READ_S32(cmd_regs, 0x2c));
-            if (READ_U8(ch, 0x1f) == 0U && cmd_regs_enc2 != NULL && READ_S32(req, 0xa6c) > 1 &&
-                READ_U8(req, 0x164) != 0U) {
+            if (READ_U8(ch, 0x1f) == 0U && cmd_regs_enc2 != NULL && READ_S32(req, 0xa6c) > 1) {
+                /* The live multi-core IDR path still launches Enc2. Populate the
+                 * standalone Entropy block even when refs==0 so the first IDR
+                 * does not run a blank second pass. */
                 uint8_t slice_enc2[SLICE_PARAM_COPY_SIZE];
                 uint32_t slice_cmd_fc;
                 uint32_t slice_live_fc;
@@ -6041,7 +6775,8 @@ int32_t AL_EncChannel_EndEncoding(void *arg1, uint8_t arg2, int32_t arg3)
                 WRITE_S32(req, 0xb2c, READ_S32(READ_PTR(req, 0x318), 0x18));
 
                 if (req_phase_next < READ_S32(req, 0xa6c) &&
-                    !(READ_U8(arg1, 0x1f) == 0U && req_phase == 0 && READ_U8(req, 0x164) == 0U)) {
+                    !(LIVE_T31_SKIP_INLINE_AVC_PHASE1_FINAL_OUTPUT &&
+                      READ_U8(arg1, 0x1f) == 0U && req_phase == 0 && READ_U8(req, 0x164) == 0U)) {
                     void *core_arr_164 = READ_PTR(arg1, 0x164);
                     void *core_arr_168 = READ_PTR(arg1, 0x168);
 
@@ -6105,11 +6840,16 @@ int32_t AL_EncChannel_EndEncoding(void *arg1, uint8_t arg2, int32_t arg3)
                     return 1;
                 }
 
-                if (req_phase_next < READ_S32(req, 0xa6c) &&
+                if (LIVE_T31_SKIP_INLINE_AVC_PHASE1_FINAL_OUTPUT &&
+                    req_phase_next < READ_S32(req, 0xa6c) &&
                     READ_U8(arg1, 0x1f) == 0U && req_phase == 0 && READ_U8(req, 0x164) == 0U) {
                     ENC_KMSG("EndEncoding inline-avc final-output req=%p next=%d total=%d refs=%u",
                              req, req_phase_next, READ_S32(req, 0xa6c), (unsigned)READ_U8(req, 0x164));
                     WRITE_S32(req, 0xa6c, req_phase_next);
+                } else if (req_phase_next < READ_S32(req, 0xa6c) &&
+                           READ_U8(arg1, 0x1f) == 0U && req_phase == 0 && READ_U8(req, 0x164) == 0U) {
+                    ENC_KMSG("EndEncoding inline-avc keep-phase1 req=%p next=%d total=%d refs=%u",
+                             req, req_phase_next, READ_S32(req, 0xa6c), (unsigned)READ_U8(req, 0x164));
                 }
 
                 DisableCompletedPhaseInterrupts(arg1, req, req_phase);
