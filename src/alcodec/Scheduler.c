@@ -3656,7 +3656,8 @@ int32_t encode2(void *arg1)
         } while (i != 0);
     }
 
-    ENC_KMSG("encode2 exit req=%p launched=%u", (void *)(intptr_t)v0, (unsigned)s0_1);
+    i = (s0_1 > 0U) ? 1 : 0;
+    ENC_KMSG("encode2 exit req=%p launched=%u rc=%d", (void *)(intptr_t)v0, (unsigned)s0_1, i);
     return i;
 }
 
