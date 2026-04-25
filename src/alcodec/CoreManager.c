@@ -93,9 +93,11 @@ int32_t IntVector_Add(int32_t *arg1, int32_t arg2); /* forward decl, ported by T
 void IntVector_Init(int32_t *arg1); /* forward decl, ported by T<N> later */
 int32_t IntVector_Remove(int32_t *arg1, int32_t arg2); /* forward decl, ported by T<N> later */
 int32_t AL_Buffer_Unref(AL_TBuffer *arg1); /* forward decl, ported by T<N> later */
+int32_t AL_DmaAlloc_FlushCache(int32_t arg1, int32_t arg2, int32_t arg3); /* forward decl, ported by T<N> later */
 
 static const uint64_t AL_ENCJPEG_CMD = 0x0b000000000000ULL;
 #define AL_CMD_LIST_FLUSH_BYTES 0x200
+#define LIVE_T31_POSTDMA_READ_FLUSH_DIR 2
 
 static void LogCoreIrqSnapshot(AL_EncCoreCtxCompat *core, const char *tag)
 {
@@ -218,7 +220,7 @@ static int Enc2WritebackLooksIncomplete(AL_EncCoreCtxCompat *core, uint32_t *sta
         *st1e4_out = ent_stat;
     }
 
-    return ((status & 0x10U) != 0U) && end_off == 0U && enc_stat == 0U && ent_stat == 0U;
+    return ((status & 0x10U) != 0U) && enc_stat == 0U && ent_stat == 0U;
 }
 
 static void LogEnc2WritebackStatus(AL_EncCoreCtxCompat *core, const char *tag)
@@ -236,6 +238,32 @@ static void LogEnc2WritebackStatus(AL_EncCoreCtxCompat *core, const char *tag)
     IMP_LOG_INFO("AVPU",
                  "enc2-state tag=%s core=%u status=0x%08x end=0x%08x st104=0x%08x st1e4=0x%08x",
                  tag ? tag : "?", (unsigned)core->core_id, status, end_off, enc_stat, ent_stat);
+}
+
+static void WaitForEnc2Writeback(AL_EncCoreCtxCompat *core, const char *tag)
+{
+    static const int32_t delays_ms[] = { 1, 2, 5, 10, 20 };
+    uint32_t status = 0;
+    uint32_t end_off = 0;
+    uint32_t enc_stat = 0;
+    uint32_t ent_stat = 0;
+    int i;
+
+    if (core == NULL || core->ip_ctrl == NULL || core->cmd_regs_2 == 0) {
+        return;
+    }
+
+    for (i = 0; i < (int)(sizeof(delays_ms) / sizeof(delays_ms[0])); ++i) {
+        AL_DmaAlloc_FlushCache(core->cmd_regs_2, 0x100000, LIVE_T31_POSTDMA_READ_FLUSH_DIR);
+        if (Enc2WritebackLooksIncomplete(core, &status, &end_off, &enc_stat, &ent_stat) == 0) {
+            break;
+        }
+
+        IMP_LOG_INFO("AVPU",
+                     "enc2-wait tag=%s core=%u iter=%d status=0x%08x end=0x%08x st104=0x%08x st1e4=0x%08x",
+                     tag ? tag : "?", (unsigned)core->core_id, i, status, end_off, enc_stat, ent_stat);
+        Rtos_Sleep(delays_ms[i]);
+    }
 }
 
 static int32_t StartEnc1WithCommandList_isra_25(AL_EncCoreCtxCompat *arg1, uint8_t *arg2, int32_t arg3, int32_t arg4)
@@ -327,6 +355,7 @@ void EndAvcEntropy(void *arg1)
 {
     int32_t t9 = *(int32_t *)((char *)arg1 + 0x14);
 
+    WaitForEnc2Writeback((AL_EncCoreCtxCompat *)arg1, "EndAvcEntropy");
     LogEnc2WritebackStatus((AL_EncCoreCtxCompat *)arg1, "EndAvcEntropy");
     IMP_LOG_INFO("AVPU", "core EndAvcEntropy ctx=%p fn=0x%x user=%p payload=%p mode=1",
                  arg1, t9, *(void **)((char *)arg1 + 0x18), *(void **)((char *)arg1 + 0x10));
