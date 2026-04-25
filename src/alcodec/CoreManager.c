@@ -223,6 +223,71 @@ static int Enc2WritebackLooksIncomplete(AL_EncCoreCtxCompat *core, uint32_t *sta
     return ((status & 0x10U) != 0U) && enc_stat == 0U && ent_stat == 0U;
 }
 
+static int LivePhase1WritebackStillIncomplete(AL_EncCoreCtxCompat *core,
+                                              AL_EncCoreCtxCompat **blocking_core_out,
+                                              uint32_t *status_out, uint32_t *end_out,
+                                              uint32_t *st104_out, uint32_t *st1e4_out)
+{
+    AL_EncCoreCtxCompat *base;
+    AL_EncCoreCtxCompat *candidate;
+    uint32_t idx;
+
+    if (core == NULL || core->ip_ctrl == NULL) {
+        return 0;
+    }
+
+    if (core->core_id == 0U) {
+        if (blocking_core_out != NULL) {
+            *blocking_core_out = core;
+        }
+        return Enc2WritebackLooksIncomplete(core, status_out, end_out, st104_out, st1e4_out);
+    }
+
+    base = core - core->core_id;
+    for (idx = 0; idx <= (uint32_t)core->core_id; ++idx) {
+        candidate = &base[idx];
+        if (candidate->ip_ctrl == NULL || candidate->cmd_regs_2 == 0) {
+            continue;
+        }
+
+        if (Enc2WritebackLooksIncomplete(candidate, status_out, end_out, st104_out, st1e4_out) != 0) {
+            if (blocking_core_out != NULL) {
+                *blocking_core_out = candidate;
+            }
+            return 1;
+        }
+    }
+
+    if (blocking_core_out != NULL) {
+        *blocking_core_out = core;
+    }
+    return 0;
+}
+
+static void FlushLivePhase1CmdCaches(AL_EncCoreCtxCompat *core)
+{
+    AL_EncCoreCtxCompat *base;
+    uint32_t idx;
+
+    if (core == NULL) {
+        return;
+    }
+
+    if (core->core_id == 0U) {
+        if (core->cmd_regs_2 != 0) {
+            AL_DmaAlloc_FlushCache(core->cmd_regs_2, 0x100000, LIVE_T31_POSTDMA_READ_FLUSH_DIR);
+        }
+        return;
+    }
+
+    base = core - core->core_id;
+    for (idx = 0; idx <= (uint32_t)core->core_id; ++idx) {
+        if (base[idx].cmd_regs_2 != 0) {
+            AL_DmaAlloc_FlushCache(base[idx].cmd_regs_2, 0x100000, LIVE_T31_POSTDMA_READ_FLUSH_DIR);
+        }
+    }
+}
+
 static void LogEnc2WritebackStatus(AL_EncCoreCtxCompat *core, const char *tag)
 {
     uint32_t status;
@@ -242,7 +307,8 @@ static void LogEnc2WritebackStatus(AL_EncCoreCtxCompat *core, const char *tag)
 
 static void WaitForEnc2Writeback(AL_EncCoreCtxCompat *core, const char *tag)
 {
-    static const int32_t delays_ms[] = { 1, 2, 5, 10, 20 };
+    static const int32_t delays_ms[] = { 1, 2, 5, 10, 20, 50, 100, 200, 500 };
+    AL_EncCoreCtxCompat *blocking_core = core;
     uint32_t status = 0;
     uint32_t end_off = 0;
     uint32_t enc_stat = 0;
@@ -254,14 +320,16 @@ static void WaitForEnc2Writeback(AL_EncCoreCtxCompat *core, const char *tag)
     }
 
     for (i = 0; i < (int)(sizeof(delays_ms) / sizeof(delays_ms[0])); ++i) {
-        AL_DmaAlloc_FlushCache(core->cmd_regs_2, 0x100000, LIVE_T31_POSTDMA_READ_FLUSH_DIR);
-        if (Enc2WritebackLooksIncomplete(core, &status, &end_off, &enc_stat, &ent_stat) == 0) {
+        FlushLivePhase1CmdCaches(core);
+        if (LivePhase1WritebackStillIncomplete(core, &blocking_core, &status, &end_off, &enc_stat, &ent_stat) == 0) {
             break;
         }
 
         IMP_LOG_INFO("AVPU",
-                     "enc2-wait tag=%s core=%u iter=%d status=0x%08x end=0x%08x st104=0x%08x st1e4=0x%08x",
-                     tag ? tag : "?", (unsigned)core->core_id, i, status, end_off, enc_stat, ent_stat);
+                     "enc2-wait tag=%s core=%u blocking=%u iter=%d status=0x%08x end=0x%08x st104=0x%08x st1e4=0x%08x",
+                     tag ? tag : "?", (unsigned)core->core_id,
+                     blocking_core ? (unsigned)blocking_core->core_id : 0U,
+                     i, status, end_off, enc_stat, ent_stat);
         Rtos_Sleep(delays_ms[i]);
     }
 }
@@ -353,6 +421,7 @@ void EndEncoding(void *arg1)
 
 void EndAvcEntropy(void *arg1)
 {
+    AL_EncCoreCtxCompat *blocking_core = (AL_EncCoreCtxCompat *)arg1;
     int32_t t9 = *(int32_t *)((char *)arg1 + 0x14);
     uint32_t status = 0;
     uint32_t end_off = 0;
@@ -360,10 +429,12 @@ void EndAvcEntropy(void *arg1)
     uint32_t ent_stat = 0;
 
     WaitForEnc2Writeback((AL_EncCoreCtxCompat *)arg1, "EndAvcEntropy");
-    if (Enc2WritebackLooksIncomplete((AL_EncCoreCtxCompat *)arg1, &status, &end_off, &enc_stat, &ent_stat) != 0) {
+    if (LivePhase1WritebackStillIncomplete((AL_EncCoreCtxCompat *)arg1, &blocking_core,
+                                           &status, &end_off, &enc_stat, &ent_stat) != 0) {
         IMP_LOG_INFO("AVPU",
-                     "core EndAvcEntropy defer ctx=%p core=%u status=0x%08x end=0x%08x st104=0x%08x st1e4=0x%08x",
+                     "core EndAvcEntropy defer ctx=%p core=%u blocking=%u status=0x%08x end=0x%08x st104=0x%08x st1e4=0x%08x",
                      arg1, (unsigned)((AL_EncCoreCtxCompat *)arg1)->core_id,
+                     blocking_core ? (unsigned)blocking_core->core_id : 0U,
                      status, end_off, enc_stat, ent_stat);
         return;
     }

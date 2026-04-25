@@ -1676,7 +1676,25 @@ static int32_t EndFrameEncoding(int32_t *arg1, int32_t *arg2)
     Rtos_GetMutex((void *)(intptr_t)arg1[0x4bd]);
     if (arg2[0x20] > 0) {
         do {
-            AL_CoreState_SetChannelRunState((uint8_t *)&arg1[*s0 * 0x26 + 0x175], 0xff, s0[1], 0);
+            uint8_t *state = (uint8_t *)&arg1[*s0 * 0x26 + 0x175];
+            uint8_t prev_ch0 = state[0];
+            uint8_t prev_ch1 = state[1];
+            uint8_t prev_run0 = state[2];
+            uint8_t prev_run1 = state[3];
+
+            if (s0[1] == 0) {
+                state[2] = 0;
+            } else if (s0[1] == 1) {
+                state[3] = 0;
+            } else {
+                AL_CoreState_SetChannelRunState(state, 0xff, s0[1], 0);
+            }
+            CMG_KMSG("EndFrameEncoding clear-run-preserve core=%d mod=%d pre=[%u/%u %u/%u] post=[%u/%u %u/%u]",
+                     *s0, s0[1],
+                     (unsigned)prev_ch0, (unsigned)prev_run0,
+                     (unsigned)prev_ch1, (unsigned)prev_run1,
+                     (unsigned)state[0], (unsigned)state[2],
+                     (unsigned)state[1], (unsigned)state[3]);
             i += 1;
             s0 = (int32_t *)((uint8_t *)arg2 + ((uint8_t *)s0 + 8 - (uint8_t *)arg2));
         } while (i < arg2[0x20]);

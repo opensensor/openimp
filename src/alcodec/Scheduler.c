@@ -3756,14 +3756,23 @@ int32_t encode2(void *arg1)
              (unsigned)callback_fanout, (unsigned)a0_6);
 
     if (READ_U8(arg1, 0x1f) == 0U && v1_7 > 0U && READ_PTR(arg1, 0x164) != NULL) {
+        AL_EncCoreCtxCompat *base_core = (AL_EncCoreCtxCompat *)READ_PTR(arg1, 0x164);
         void *irq4_core = (uint8_t *)READ_PTR(arg1, 0x164) + ((v1_7 - 1U) * 0x44U);
 
         /*
          * Live T31 AVC phase 1 still arrives through the legacy slot4 path on
-         * this board. The entropy body lands in the last launched core's
-         * command window, so route slot4 through that core's EndAvcEntropy
-         * context instead of the header-only core0 window.
+         * this board. The per-core entropy slots (2/6/...) do get armed, but
+         * in clean traces only slot4 actually dispatches. Keep slot4 on the
+         * last launched phase-1 core so the legacy completion path still
+         * fires, then let EndAvcEntropy wait across the whole live phase-1
+         * core range before handing control back to the scheduler.
          */
+        if (base_core != NULL && base_core->ip_ctrl != NULL && base_core->ip_ctrl->vtable != NULL &&
+            base_core->ip_ctrl->vtable->WriteRegister != NULL) {
+            base_core->ip_ctrl->vtable->WriteRegister(base_core->ip_ctrl, 0x8018, 0x00ffffff);
+            ENC_KMSG("encode2 clear-pending core=%u mask=0x00ffffff",
+                     (unsigned)base_core->core_id);
+        }
         RemapLiveT31Irq4(irq4_core, EndAvcEntropy, "encode2");
     }
 
