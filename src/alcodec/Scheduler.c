@@ -3621,6 +3621,21 @@ int32_t encode2(void *arg1)
              (unsigned)READ_U8((void *)(intptr_t)(v0 + READ_S32((void *)(intptr_t)v0, 0xa70) * 0x110 + 0x8d4), 0),
              (unsigned)a0_6);
 
+    if (READ_U8(arg1, 0x1f) == 0U && v1_7 > 0U && READ_PTR(arg1, 0x164) != NULL) {
+        void *irq4_core = READ_PTR(arg1, 0x164);
+
+        /*
+         * Live T31 AVC phase1 keeps surfacing on legacy slot4 even when the
+         * dedicated Enc2 IRQ slots stay silent. The pending bit is already set
+         * before the second core launch starts, so slot4 is surfacing the
+         * first/core0 phase1 completion. Route slot4 through EndAvcEntropy on
+         * core0 so that callback drains the core that actually raised the
+         * legacy interrupt instead of stranding core0 at status=0x10 behind a
+         * later core's context.
+         */
+        RemapLiveT31Irq4(irq4_core, EndAvcEntropy, "encode2");
+    }
+
     if ((int32_t)v1_7 > 0) {
         do {
             int32_t s1_2 = v0 + ((int32_t)s1 << 2);
