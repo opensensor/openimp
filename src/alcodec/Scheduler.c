@@ -103,6 +103,7 @@ typedef struct AL_EncCoreCtxCompat {
 #define LIVE_T31_FORCE_ENC1_LATE_TAIL_REPACK 1
 #define LIVE_T31_POSTDMA_READ_FLUSH_DIR 2
 #define LIVE_T31_SKIP_INLINE_AVC_PHASE1_FINAL_OUTPUT 0
+#define LIVE_T31_MAX_LAUNCH_CORES 2
 
 int32_t get_cpu_id(void); /* forward decl, ported by T<N> later */
 
@@ -225,6 +226,7 @@ static void HealLiveT31SingleCoreReqTables(void *ch, int32_t *req, const char *t
 }
 
 static uint32_t GetLiveT31AvcCompatScratchCoreCount(const void *ctx);
+static uint32_t GetLiveT31AvcCompatLaunchCoreCount(const void *ctx);
 int32_t SetChannelSteps(void *arg1, void *arg2);
 void EndAvcEntropy(void *arg1); /* CoreManager.c */
 
@@ -271,17 +273,7 @@ static void BuildSanitizedStepParamFromChannel(void *ch, uint8_t *step_param, co
         return;
     }
 
-    core_count = (uint32_t)READ_U8(ch, CH_CORE_COUNT_OFF);
-    if (core_count == 0U || core_count == 0xffU) {
-        uint32_t stable_count = (uint32_t)READ_U8(ch, CH_STABLE_CORE_COUNT_OFF);
-
-        if (stable_count != 0U && stable_count != 0xffU) {
-            core_count = stable_count;
-        }
-    }
-    if (core_count == 0U || core_count == 0xffU) {
-        core_count = 1U;
-    }
+    core_count = GetLiveT31AvcCompatLaunchCoreCount(ch);
 
     memcpy(step_param, ch, 0xf0);
     WRITE_S32(step_param, 0x2c, READ_S32(ch, 0x2c));
@@ -2518,6 +2510,40 @@ static uint32_t GetLiveT31AvcCompatScratchCoreCount(const void *ctx)
         } else if (width >= 960U && height >= 540U) {
             core_count = 2U;
         }
+    }
+
+    return core_count;
+}
+
+static uint32_t GetLiveT31AvcCompatLaunchCoreCount(const void *ctx)
+{
+    uint32_t core_count;
+
+    if (ctx == NULL) {
+        return 1U;
+    }
+
+    core_count = (uint32_t)READ_U8(ctx, CH_CORE_COUNT_OFF);
+    if (core_count == 0U || core_count == 0xffU) {
+        uint32_t stable_count = (uint32_t)READ_U8(ctx, CH_STABLE_CORE_COUNT_OFF);
+
+        if (stable_count != 0U && stable_count != 0xffU) {
+            core_count = stable_count;
+        }
+    }
+    if (core_count == 0U || core_count == 0xffU) {
+        core_count = 1U;
+    }
+
+    /*
+     * T31 live AVC still sizes scratch/state buffers as if 1080p can fan out
+     * wider, but the launch path only shows two responsive contexts in smoke:
+     * core0 is active and core1 retains a live CL/status window, while cores
+     * 2..4 remain inert. Keep the buffer heuristic separate and cap only the
+     * scheduler-facing launch table here.
+     */
+    if (IsLiveT31AvcChannel(ctx) && core_count > LIVE_T31_MAX_LAUNCH_CORES) {
+        core_count = LIVE_T31_MAX_LAUNCH_CORES;
     }
 
     return core_count;
@@ -5453,13 +5479,14 @@ int32_t AL_EncChannel_Init(int32_t *arg1, int32_t *arg2, void *arg3, uint8_t arg
      */
     {
         uint8_t step_param[0xf0];
+        uint32_t launch_cores = GetLiveT31AvcCompatLaunchCoreCount(arg1);
 
         memcpy(step_param, arg2, sizeof(step_param));
         WRITE_S32(step_param, 0x2c, READ_S32(arg1, 0x2c));
-        WRITE_S32(step_param, CH_CORE_COUNT_OFF, (int32_t)READ_U8(arg1, CH_CORE_COUNT_OFF));
+        WRITE_S32(step_param, CH_CORE_COUNT_OFF, (int32_t)launch_cores);
         WRITE_S32(step_param, 0x40, (int32_t)READ_U16(arg1, 0x40));
         ENC_KMSG("AL_EncChannel_Init resync-step-template cores=%u base=%u active=%d slices=%u",
-                 (unsigned)READ_U8(arg1, CH_CORE_COUNT_OFF), (unsigned)READ_U8(arg1, CH_CORE_BASE_OFF),
+                 (unsigned)launch_cores, (unsigned)READ_U8(arg1, CH_CORE_BASE_OFF),
                  READ_S32(arg1, 0x2c), (unsigned)READ_U16(arg1, 0x40));
         SetChannelSteps(arg1, step_param);
     }
@@ -6088,9 +6115,14 @@ int32_t encode1(void *arg1)
      * loop. Rebuild a launch-safe view from the phase metadata.
      */
     if (READ_U8(ch, 0x1f) == 0U && phase_core_count == 0U) {
-        phase_core_count = GetLiveT31AvcCompatScratchCoreCount(ch);
+        phase_core_count = GetLiveT31AvcCompatLaunchCoreCount(ch);
         if ((uint32_t)slice_count > 0U && phase_core_count > (uint32_t)slice_count) {
             phase_core_count = (uint32_t)slice_count;
+        }
+        if (phase_core_count > 0U) {
+            ENC_KMSG("encode1 repair-live-core-count ch=%p old=%u -> %u",
+                     ch, (unsigned)READ_U8(ch, CH_CORE_COUNT_OFF), (unsigned)phase_core_count);
+            WRITE_U8(ch, CH_CORE_COUNT_OFF, (uint8_t)phase_core_count);
         }
     }
     if (phase_core_count == 0U && slice_count > 0) {
