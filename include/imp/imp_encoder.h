@@ -743,7 +743,13 @@ int IMP_Encoder_ClearPoolId(int encChn);
 int IMP_Encoder_SetChnQpBounds(int encChn, int minQp, int maxQp);
 int IMP_Encoder_SetChnQpIPDelta(int encChn, int delta);
 int IMP_Encoder_GetChnEncType(int encChn, IMPEncoderEncType *encType);
-int IMP_Encoder_GetChnAveBitrate(int encChn, IMPEncoderStream *stream, int frames, int *bitrate);
+#if defined(PLATFORM_T31)
+int IMP_Encoder_GetChnAveBitrate(int encChn, IMPEncoderStream *stream,
+                                 int frames, double *bitrate);
+#else
+int IMP_Encoder_GetChnAveBitrate(int encChn, IMPEncoderStream *stream,
+                                 int frames, int *bitrate);
+#endif
 
 #ifdef __cplusplus
 }

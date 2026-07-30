@@ -226,23 +226,6 @@ static inline uint8_t *fs_channel_base(int chn)
     return (uint8_t *)gFrameSource + chn * FS_CHANNEL_SIZE;
 }
 
-static void fs_hal_promote_channel(int chnNum, const IMPFSChnAttr *chn_attr)
-{
-    int rc;
-
-    if (chnNum < 0 || chnNum >= FS_MAX_CHANNELS) return;
-    if (chn_attr == NULL) return;
-    if (chn_attr->type != FS_PHY_CHANNEL) return;
-    if (gFrameSource == NULL) return;
-    if (fs_chan_get_state(chnNum) != 1) return;
-
-    fs_bind_trace("libimp/FSB: auto-promote enter ch=%d state=%d type=%u\n",
-                  chnNum, fs_chan_get_state(chnNum), (unsigned)chn_attr->type);
-    rc = IMP_FrameSource_EnableChn(chnNum);
-    fs_bind_trace("libimp/FSB: auto-promote exit ch=%d rc=%d state=%d\n",
-                  chnNum, rc, fs_chan_get_state(chnNum));
-}
-
 static void fs_direct_encoder_fallback(int chn, void *frame)
 {
     Module *enc;
@@ -917,19 +900,6 @@ static void *frame_pooling_thread(void *arg)
                      chn, poll_count, ch_state, ctx->fd);
         }
 
-        {
-            Module *bound = g_modules[0][chn];
-            int observer_count = bound ? *(int32_t *)((char *)bound + 0x3c) : 0;
-            if (bound == NULL || observer_count <= 0) {
-                if (poll_count <= 5 || (poll_count % 1000) == 0) {
-                    fs_trace("libimp/FS: thread-wait-bind ch=%d iter=%d module=%p observers=%d\n",
-                             chn, poll_count, bound, observer_count);
-                }
-                usleep(1000);
-                continue;
-            }
-        }
-
         if (!software_mode) {
             int flags;
             fd_set rfds;
@@ -1489,7 +1459,6 @@ int IMP_FrameSource_CreateChn(int chnNum, IMPFSChnAttr *chn_attr)
     g_fs_ctx[chnNum].created = 1;
     g_fs_ctx[chnNum].fd = -1;
     pthread_mutex_unlock(&g_fs_lock);
-    fs_hal_promote_channel(chnNum, chn_attr);
     return 0;
 }
 
@@ -1732,6 +1701,14 @@ int IMP_FrameSource_EnableChn(int chnNum)
     fmt.pixelformat = ctx->attr.pixFmt;
     fmt.colorspace = 8;
     fmt.fps_num = 1;
+    fmt.crop_enable = ctx->attr.crop.enable;
+    fmt.crop_x = ctx->attr.crop.left;
+    fmt.crop_y = ctx->attr.crop.top;
+    fmt.crop_width = ctx->attr.crop.width;
+    fmt.crop_height = ctx->attr.crop.height;
+    fmt.scaler_enable = ctx->attr.scaler.enable;
+    fmt.scaler_outwidth = ctx->attr.scaler.outwidth;
+    fmt.scaler_outheight = ctx->attr.scaler.outheight;
 
     if (fs_set_format(ctx->fd, &fmt) < 0) {
         fs_trace("libimp/FS: enable set-format-fail ch=%d fd=%d\n", chnNum, ctx->fd);
@@ -1750,12 +1727,14 @@ int IMP_FrameSource_EnableChn(int chnNum)
     memcpy(vbm_fmt + 0x08, &ctx->attr.pixFmt, sizeof(int));
     memcpy(vbm_fmt + 0x0c, &kernel_sizeimage, sizeof(int));
     vbm_count = ctx->attr.nrVBs;
-    /* The earlier AVPU-positive runs were only stable with triple buffering.
-     * Two buffers leave no slack between the first capture completion and the
-     * first recycle path, which matches the current "readable fd, blocking
-     * first DQBUF" failure mode. Keep at least three kernel/VBM slots so the
-     * frame channel has one queued, one completing, and one recyclable buffer. */
-    if (vbm_count < 3) vbm_count = 3;
+    /*
+     * Preserve the application/OEM buffer count.  On the stock T31 frame
+     * channel the 640x360 pipeline requests and queues exactly two 0x56400
+     * USERPTR buffers.  Forcing a third slot makes the remote ISP DMA into
+     * memory beyond the supported address table and corrupts the allocator's
+     * next object (the encoder settings block).
+     */
+    if (vbm_count < 1) vbm_count = 1;
     memcpy(vbm_fmt + 0x34, &vbm_count, sizeof(int));
 
     if (VBMCreatePool(chnNum, vbm_fmt, g_fs_vbm_ops, gFrameSource) < 0) {

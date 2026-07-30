@@ -85,7 +85,9 @@ int DMA_Get_RMEM_Base(uint32_t *base_phys_out);
 int DMA_Is_RMEM(void);
 
 /**
- * OEM-compatible cache flush via /dev/rmem ioctl 0xc00c7200.
+ * OEM-compatible cache flush via /dev/rmem ioctl 0xc00c7200.  Callers pass
+ * the cached userspace alias required by the T31 3.10 kernel ABI.  The
+ * implementation also derives its physical address for range validation.
  * This is the exact path the stock libimp uses:
  *   Rtos_FlushCacheMemory → alloc_kmem_flush_cache → ioctl(rmem_fd, 0xc00c7200, {vaddr, size, dir})
  * @param virt_addr  Virtual (mmap'd) address
@@ -100,4 +102,3 @@ int DMA_RmemFlushCache(void *virt_addr, uint32_t size, int dir);
 #endif
 
 #endif /* DMA_ALLOC_H */
-

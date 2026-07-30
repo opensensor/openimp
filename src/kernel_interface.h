@@ -10,9 +10,9 @@
 extern "C" {
 #endif
 
-/* High-level frame-source format description matching the stock libimp
- * fs_set_format/fs_get_format argument layout. The live ioctl payload is a
- * 0x70-byte structure whose raw channel-attr words begin at offset 0x24. */
+/* High-level frame-source format description used by OpenIMP callers.
+ * fs_set_format marshals it into the stock 0x70-byte tisp_frame_format ABI:
+ * type + 12-word pixel format + crop/scaler/rate/fcrop fields. */
 typedef struct {
     int type;                   /* 0x00: Buffer type (V4L2_BUF_TYPE_VIDEO_CAPTURE = 1) */
     int width;                  /* 0x04: Width */
@@ -23,13 +23,7 @@ typedef struct {
     int sizeimage;              /* 0x18: Image size in bytes */
     int colorspace;             /* 0x1c: Colorspace (V4L2_COLORSPACE_SRGB = 8) */
     int priv;                   /* 0x20: Private data */
-    /* Ingenic imp_channel_attr in raw_data area (starting at 0x24)
-     * Layout must match tisp_channel_attr_set expected indices:
-     *   [0]=enable, [1]=width, [2]=height,
-     *   [3]=crop_enable, [4]=crop_x, [5]=crop_y, [6]=crop_width, [7]=crop_height,
-     *   [8]=scaler_enable, [9]=scaler_outwidth, [10]=scaler_outheight,
-     *   [11]=picwidth, [12]=picheight, [13]=fps_num, [14]=fps_den
-     * Note: pixel format is conveyed via the V4L2 pixelformat header field, not here. */
+    /* Semantic channel fields marshalled after the full pixel-format block. */
     int enable;                 /* 0x24: Enable (arg2[0]) */
     int attr_width;             /* 0x28: Width (arg2[1]) */
     int attr_height;            /* 0x2c: Height (arg2[2]) */

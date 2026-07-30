@@ -1,217 +1,23 @@
-# OpenIMP Makefile
-# Build system for libimp and libsysutils stub implementation
-
-# Cross-compilation support
-CROSS_COMPILE ?=
-
-# Toolchain
-CC = $(CROSS_COMPILE)gcc
-AR = $(CROSS_COMPILE)ar
-RANLIB = $(CROSS_COMPILE)ranlib
-STRIP = $(CROSS_COMPILE)strip
-
-# Directories
-SRC_DIR = src
-INC_DIR = include
-BUILD_DIR = build
-LIB_DIR = lib
-
-# Installation
 PREFIX ?= /usr/local
-INSTALL_INC_DIR = $(PREFIX)/include
-INSTALL_LIB_DIR = $(PREFIX)/lib
-
-# Compiler flags
-CFLAGS = -Wall -Wextra -O2 -fPIC -fno-stack-protector -I$(INC_DIR)
-LDFLAGS = -shared -lpthread -lrt
-
-# Platform detection (can be overridden)
 PLATFORM ?= T31
 
-# Add platform define
-CFLAGS += -DPLATFORM_$(PLATFORM)
+.PHONY: all t31 t40 clean install
 
-# Source files
-#
-# Build mode:
-#   BUILD=legacy  (default) — original flat src/*.c stubs
-#   BUILD=ported            — reverse-engineered port under src/{alcodec,audio,
-#                             core,framesource,osd,ivs,isp,codec_c,fb,sys_wrap,
-#                             video}/
-#
-BUILD ?= legacy
+all:
+	./build-for-device.sh $(PLATFORM)
 
-ifeq ($(BUILD),ported)
+t31:
+	./build-t31.sh
 
-# Every ported .c under src/, excluding the legacy flat files so the two
-# builds don't collide at link time.
-# ALSO excluded: the reverse-engineered allocator chain under
-# src/core/imp_alloc/ and src/core/mempool/ — on this Thingino T31
-# kernel, the ported continuous_init's 30MB memset on /dev/rmem hangs
-# the device. The legacy src/dma_alloc.c + src/kernel_interface.c +
-# src/al_avpu.c have been confirmed by the user to get actual streams
-# flowing. Use the legacy allocator/mempool/kernel-interface under the
-# ported build too.
-LEGACY_FILES := \
-	src/imp_system.c src/imp_isp.c src/imp_framesource.c \
-	src/imp_encoder.c src/imp_audio.c src/imp_dmic.c src/imp_osd.c \
-	src/imp_ivs.c src/dma_alloc.c src/fifo.c src/hw_encoder.c \
-	src/device_pool.c src/al_avpu.c src/kernel_interface.c \
-	src/time64_shim.c src/codec.c src/al_encoder_compat.c src/su_base.c
-
-# Ported files we EXCLUDE from BUILD=ported because they conflict with
-# the legacy allocator or have caused runtime issues:
-PORTED_DISABLED := \
-	$(wildcard src/core/imp_alloc/*.c) \
-	$(wildcard src/core/mempool/*.c) \
-	src/video/imp_mempool.c \
-	src/core/vbm.c
-
-IMP_SOURCES := $(filter-out $(LEGACY_FILES) $(PORTED_DISABLED), \
-                            $(shell find src -name '*.c'))
-
-# Pull in the legacy allocator + kernel-interface + fifo etc. that the
-# port's upper layers rely on. These provide:
-#   dma_alloc.c        → IMP_Alloc / IMP_Free / IMP_PoolAlloc / IMP_Get_Info
-#                        via direct /dev/rmem bump allocator (known working)
-#   kernel_interface.c → VBM* frame pool + write_reg_32
-#   fifo.c             → legacy fifo_* and Fifo_* dual API
-#   al_avpu.c          → AL_EncCore_* ioctl wrappers
-IMP_SOURCES += \
-	$(SRC_DIR)/time64_shim.c \
-	$(SRC_DIR)/kernel_interface.c \
-	$(SRC_DIR)/dma_alloc.c
-
-else
-
-IMP_SOURCES = \
-	$(SRC_DIR)/time64_shim.c \
-	$(SRC_DIR)/imp_system.c \
-	$(SRC_DIR)/imp_isp.c \
-	$(SRC_DIR)/imp_framesource.c \
-	$(SRC_DIR)/imp_encoder.c \
-	$(SRC_DIR)/imp_audio.c \
-	$(SRC_DIR)/imp_dmic.c \
-	$(SRC_DIR)/imp_osd.c \
-	$(SRC_DIR)/imp_ivs.c \
-	$(SRC_DIR)/kernel_interface.c \
-	$(SRC_DIR)/fifo.c \
-	$(SRC_DIR)/al_avpu.c \
-	$(SRC_DIR)/codec.c \
-	$(SRC_DIR)/dma_alloc.c \
-	$(SRC_DIR)/hw_encoder.c \
-	$(SRC_DIR)/device_pool.c
-
-endif
-
-SU_SOURCES = \
-	$(SRC_DIR)/su_base.c
-
-# Object files — mirror src/ tree under build/
-IMP_OBJECTS = $(patsubst $(SRC_DIR)/%.c,$(BUILD_DIR)/%.o,$(IMP_SOURCES))
-SU_OBJECTS = $(SU_SOURCES:$(SRC_DIR)/%.c=$(BUILD_DIR)/%.o)
-
-# ivs.c has a large GOT; compile with -mxgot to avoid R_MIPS_CALL16 overflow.
-$(BUILD_DIR)/ivs/ivs.o: EXTRA_CFLAGS = -mxgot
-
-# Allow -I src for files that include sibling headers like "kernel_interface.h"
-CFLAGS += -I$(SRC_DIR)
-
-# Library names
-LIBIMP_SO = $(LIB_DIR)/libimp.so
-LIBIMP_A = $(LIB_DIR)/libimp.a
-LIBSU_SO = $(LIB_DIR)/libsysutils.so
-LIBSU_A = $(LIB_DIR)/libsysutils.a
-
-# Targets
-.PHONY: all clean install test strip t40
-
-all: $(LIBIMP_SO) $(LIBIMP_A) $(LIBSU_SO) $(LIBSU_A)
-
-# The T40XP implementation has a distinct ABI/header set and deliberately
-# does not link libsysutils. Keep it isolated from the T31 legacy/ported
-# object graphs while exposing one repository-level build entry point.
 t40:
 	./build-t40.sh
 
-# Strip debug symbols for smaller binaries
-strip: all
-	$(STRIP) $(LIBIMP_SO) $(LIBSU_SO)
-
-# Create directories
-$(BUILD_DIR) $(LIB_DIR):
-	mkdir -p $@
-
-# Compile source files — pattern rule creates parent dirs for nested sources
-$(BUILD_DIR)/%.o: $(SRC_DIR)/%.c
-	@mkdir -p $(dir $@)
-	$(CC) $(CFLAGS) $(EXTRA_CFLAGS) -c $< -o $@
-
-# Build libimp shared library
-# Links against libsysutils.so so imp_log_fun / IMP_Log_Get_Option resolve
-# via DT_NEEDED at load time (the stock firmware's libimp does the same).
-$(LIBIMP_SO): $(IMP_OBJECTS) $(LIBSU_SO) | $(LIB_DIR)
-	$(CC) $(LDFLAGS) -L$(LIB_DIR) -o $@ $(IMP_OBJECTS) -lsysutils
-
-# Build libimp static library
-$(LIBIMP_A): $(IMP_OBJECTS) | $(LIB_DIR)
-	$(AR) rcs $@ $^
-	$(RANLIB) $@
-
-# Build libsysutils shared library
-$(LIBSU_SO): $(SU_OBJECTS) | $(LIB_DIR)
-	$(CC) $(LDFLAGS) -o $@ $^
-
-# Build libsysutils static library
-$(LIBSU_A): $(SU_OBJECTS) | $(LIB_DIR)
-	$(AR) rcs $@ $^
-	$(RANLIB) $@
-
-# Clean build artifacts
 clean:
-	rm -rf $(BUILD_DIR) $(LIB_DIR)
+	$(RM) -r build/t31 build/t40
 
-# Install libraries and headers
 install: all
-	install -d $(INSTALL_INC_DIR)/imp
-	install -d $(INSTALL_INC_DIR)/sysutils
-	install -d $(INSTALL_LIB_DIR)
-	install -m 644 $(INC_DIR)/imp/*.h $(INSTALL_INC_DIR)/imp/
-	install -m 644 $(INC_DIR)/sysutils/*.h $(INSTALL_INC_DIR)/sysutils/
-	install -m 755 $(LIBIMP_SO) $(INSTALL_LIB_DIR)/
-	install -m 644 $(LIBIMP_A) $(INSTALL_LIB_DIR)/
-	install -m 755 $(LIBSU_SO) $(INSTALL_LIB_DIR)/
-	install -m 644 $(LIBSU_A) $(INSTALL_LIB_DIR)/
-
-# Test target
-test: all
-	@echo "Building test..."
-	$(CC) $(CFLAGS) -L$(LIB_DIR) tests/api_test.c -o $(BUILD_DIR)/api_test -limp -lsysutils
-	@echo "Running test..."
-	LD_LIBRARY_PATH=$(LIB_DIR) $(BUILD_DIR)/api_test
-
-# Help target
-help:
-	@echo "OpenIMP Build System"
-	@echo ""
-	@echo "Targets:"
-	@echo "  all      - Build all libraries (default)"
-	@echo "  clean    - Remove build artifacts"
-	@echo "  strip    - Strip debug symbols from shared libraries"
-	@echo "  install  - Install libraries and headers"
-	@echo "  test     - Build and run tests"
-	@echo "  t40      - Cross-build the standalone T40XP libimp"
-	@echo "  help     - Show this help message"
-	@echo ""
-	@echo "Variables:"
-	@echo "  CROSS_COMPILE - Cross-compiler prefix (e.g., mipsel-linux-)"
-	@echo "  PREFIX        - Installation prefix (default: /usr/local)"
-	@echo "  PLATFORM      - Target platform (default: T31)"
-	@echo "                  Options: T21, T23, T31, C100, T40, T41"
-	@echo ""
-	@echo "Examples:"
-	@echo "  make                                    # Build for host"
-	@echo "  make CROSS_COMPILE=mipsel-linux-        # Cross-compile for MIPS"
-	@echo "  make PLATFORM=T23                       # Build for T23"
-	@echo "  make strip                              # Strip debug symbols"
-	@echo "  make install PREFIX=~/.local            # Install to home directory"
+	install -d "$(DESTDIR)$(PREFIX)/include/imp"
+	install -d "$(DESTDIR)$(PREFIX)/lib"
+	install -m 644 include/imp/*.h "$(DESTDIR)$(PREFIX)/include/imp/"
+	install -m 755 "build/$(shell printf '%s' '$(PLATFORM)' | tr '[:upper:]' '[:lower:]')/libimp.so" \
+		"$(DESTDIR)$(PREFIX)/lib/libimp.so"

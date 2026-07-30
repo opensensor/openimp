@@ -1,7 +1,9 @@
 /* Standalone T40 public encoder lifecycle built on the recovered AL backend. */
 
 #include <errno.h>
+#include <fcntl.h>
 #include <pthread.h>
+#include <stdarg.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -16,11 +18,14 @@
 #define P2_MAX_CHANNELS 8
 #define P2_MAX_BINDS 16
 #define P2_PARAM_SIZE 0x794
-/* The T40 1.3.1 public ABI ends IMPEncoderStream after isVI and pads the
- * structure to 28 bytes.  openimp's cross-platform compatibility header also
- * carries newer stream-info fields after isVI, so sizeof(IMPEncoderStream)
- * must not be used when writing into a T40 caller's stack object. */
-#define P2_T40_ENCODER_STREAM_ABI_SIZE 28u
+/* T40 1.3.1 ends IMPEncoderStream after isVI and pads it to 28 bytes. T31
+ * 1.1.6 includes the streamInfo/jpegInfo union, matching the compatibility
+ * header. Write exactly the ABI selected for the target caller. */
+#if defined(PLATFORM_T31)
+#define P2_ENCODER_STREAM_ABI_SIZE sizeof(IMPEncoderStream)
+#else
+#define P2_ENCODER_STREAM_ABI_SIZE 28u
+#endif
 
 typedef struct {
     uint32_t phys_addr;
@@ -74,6 +79,9 @@ typedef struct {
     uint32_t stream_buf_size;
     int max_stream_count;
     int pool_id;
+    int entropy_mode;
+    int entropy_mode_set;
+    int resize_mode;
     uint64_t next_frame_due_us;
     pthread_mutex_t lock;
 } P2EncoderChannel;
@@ -84,6 +92,29 @@ static P2EncoderChannel p2_channels[P2_MAX_CHANNELS];
 static P2Bind p2_binds[P2_MAX_BINDS];
 static pthread_mutex_t p2_state_lock = PTHREAD_MUTEX_INITIALIZER;
 static pthread_mutex_t p2_core_lock = PTHREAD_MUTEX_INITIALIZER;
+
+static void p2_trace(const char *format, ...)
+{
+    char message[256];
+    va_list arguments;
+    int fd;
+    int length;
+
+    fd = open("/dev/kmsg", O_WRONLY);
+    if (fd < 0)
+        return;
+    va_start(arguments, format);
+    length = vsnprintf(message, sizeof(message), format, arguments);
+    va_end(arguments);
+    if (length > 0) {
+        size_t size = (size_t)length;
+
+        if (size > sizeof(message))
+            size = sizeof(message);
+        write(fd, message, size);
+    }
+    close(fd);
+}
 
 static uint64_t p2_monotonic_us(void)
 {
@@ -146,6 +177,9 @@ extern int AL_Codec_Encode_SetBitRate(void *codec, int target_bitrate,
                                      int max_bitrate);
 extern int AL_Codec_Encode_SetRcParam(void *codec, void *rc_attr);
 extern int AL_Codec_Encode_SetQpBounds(void *codec, int min_qp, int max_qp);
+extern int AL_Codec_Encode_SetQpIPDelta(void *codec, int delta);
+extern int AL_Codec_Encode_SetQp(void *codec, void *qp);
+extern int AL_Codec_Encode_SetEntropyMode(void *codec, int mode);
 extern int AL_Codec_Encode_SetGopParam(void *codec, void *gop);
 extern int AL_Codec_Encode_SetGopLength(void *codec, int length);
 extern int AL_Codec_Encode_Destroy(void *codec);
@@ -321,6 +355,10 @@ int IMP_System_Bind(IMPCell *source, IMPCell *destination)
             p2_binds[i].source = *source;
             p2_binds[i].destination = *destination;
             pthread_mutex_unlock(&p2_state_lock);
+            p2_trace("openimp/P2: Bind %d.%d.%d -> %d.%d.%d\n",
+                     source->deviceID, source->groupID, source->outputID,
+                     destination->deviceID, destination->groupID,
+                     destination->outputID);
             return 0;
         }
     }
@@ -375,6 +413,7 @@ int IMP_Encoder_CreateGroup(int group)
     pthread_mutex_lock(&p2_state_lock);
     p2_groups[group] = 1;
     pthread_mutex_unlock(&p2_state_lock);
+    p2_trace("openimp/P2: CreateGroup group=%d\n", group);
     return 0;
 }
 
@@ -399,6 +438,10 @@ int IMP_Encoder_CreateChn(int channel, IMPEncoderCHNAttr *attr)
     if (!p2_valid_channel(channel) || !attr)
         return -1;
     EncoderInit();
+    p2_trace("openimp/P2: CreateChn begin ch=%d profile=0x%x size=%ux%u\n",
+             channel, (unsigned int)attr->encAttr.profile,
+             (unsigned int)attr->encAttr.maxPicWidth,
+             (unsigned int)attr->encAttr.maxPicHeight);
     ch = &p2_channels[channel];
     pthread_mutex_lock(&ch->lock);
     if (ch->created) {
@@ -423,7 +466,17 @@ int IMP_Encoder_CreateChn(int channel, IMPEncoderCHNAttr *attr)
     ch->created = 1;
     ch->group = -1;
     ch->source_channel = -1;
+    if (ch->entropy_mode_set &&
+        AL_Codec_Encode_SetEntropyMode(ch->codec, ch->entropy_mode) != 0) {
+        AL_Codec_Encode_Destroy(ch->codec);
+        ch->codec = NULL;
+        ch->created = 0;
+        pthread_mutex_unlock(&ch->lock);
+        return -1;
+    }
     pthread_mutex_unlock(&ch->lock);
+    p2_trace("openimp/P2: CreateChn done ch=%d codec=%p\n",
+             channel, ch->codec);
     return 0;
 }
 
@@ -466,6 +519,8 @@ int IMP_Encoder_RegisterChn(int group, int channel)
     ch->group = group;
     ch->source_channel = p2_find_source_channel(group);
     pthread_mutex_unlock(&ch->lock);
+    p2_trace("openimp/P2: RegisterChn group=%d ch=%d source=%d\n",
+             group, channel, ch->source_channel);
     return 0;
 }
 
@@ -504,6 +559,8 @@ int IMP_Encoder_StartRecvPic(int channel)
     ch->next_frame_due_us = 0;
     ch->receiving = 1;
     pthread_mutex_unlock(&ch->lock);
+    p2_trace("openimp/P2: StartRecv ch=%d source=%d\n",
+             channel, ch->source_channel);
     return 0;
 }
 
@@ -527,6 +584,7 @@ int IMP_Encoder_StopRecvPic(int channel)
 
 int IMP_Encoder_PollingStream(int channel, uint32_t timeout_ms)
 {
+    static unsigned int trace_count;
     P2EncoderChannel *ch;
     void *frame = NULL;
     void *stream = NULL;
@@ -543,6 +601,9 @@ int IMP_Encoder_PollingStream(int channel, uint32_t timeout_ms)
 
     if (!p2_valid_channel(channel))
         return -1;
+    if (__sync_add_and_fetch(&trace_count, 1u) <= 8u)
+        p2_trace("openimp/P2: PollingStream enter ch=%d timeout=%u\n",
+                 channel, timeout_ms);
     ch = &p2_channels[channel];
     pthread_mutex_lock(&ch->lock);
     if (ch->raw_stream) {
@@ -613,6 +674,9 @@ int IMP_Encoder_PollingStream(int channel, uint32_t timeout_ms)
     } else if (IMP_FrameSource_GetFrame(ch->source_channel, &frame) != 0) {
         goto done;
     }
+    if (trace_count <= 8u)
+        p2_trace("openimp/P2: PollingStream frame ch=%d source=%d frame=%p\n",
+                 channel, ch->source_channel, frame);
     if (AL_Codec_Encode_Process(ch->codec, frame, frame) != 0)
         goto done;
     /*
@@ -655,6 +719,46 @@ done:
     return result;
 }
 
+int IMP_Encoder_PollingModuleStream(uint32_t *channel_bitmap,
+                                    uint32_t timeout_ms)
+{
+    static unsigned int trace_count;
+    uint32_t ready = 0;
+    int channel;
+
+    if (!channel_bitmap)
+        return -1;
+    EncoderInit();
+    for (channel = 0; channel < P2_MAX_CHANNELS; channel++) {
+        P2EncoderChannel *ch = &p2_channels[channel];
+
+        pthread_mutex_lock(&ch->lock);
+        if (ch->raw_stream)
+            ready |= 1u << channel;
+        pthread_mutex_unlock(&ch->lock);
+    }
+    if (!ready) {
+        for (channel = 0; channel < P2_MAX_CHANNELS; channel++) {
+            P2EncoderChannel *ch = &p2_channels[channel];
+            int active;
+
+            pthread_mutex_lock(&ch->lock);
+            active = ch->created && ch->registered && ch->receiving;
+            pthread_mutex_unlock(&ch->lock);
+            if (active &&
+                IMP_Encoder_PollingStream(channel, timeout_ms) == 0) {
+                ready |= 1u << channel;
+                break;
+            }
+        }
+    }
+    *channel_bitmap = ready;
+    if (__sync_add_and_fetch(&trace_count, 1) <= 4)
+        p2_trace("openimp/P2: PollModule timeout=%u ready=0x%x\n",
+                 timeout_ms, ready);
+    return ready ? 0 : -1;
+}
+
 int IMP_Encoder_GetStream(int channel, IMPEncoderStream *stream, int block)
 {
     P2EncoderChannel *ch;
@@ -675,7 +779,7 @@ int IMP_Encoder_GetStream(int channel, IMPEncoderStream *stream, int block)
     is_idr = ch->codec_type != IMP_ENC_TYPE_JPEG &&
         p2_h264_stream_is_idr((const uint8_t *)(uintptr_t)raw->virt_addr,
                               raw->length);
-    memset(stream, 0, P2_T40_ENCODER_STREAM_ABI_SIZE);
+    memset(stream, 0, P2_ENCODER_STREAM_ABI_SIZE);
     memset(&ch->pack, 0, sizeof(ch->pack));
     ch->pack.offset = 0;
     ch->pack.length = raw->length;
@@ -1055,6 +1159,95 @@ int IMP_Encoder_SetChnQpBounds(int channel, int minimum, int maximum)
                      minimum, maximum);
     return AL_Codec_Encode_SetQpBounds(p2_channels[channel].codec,
                                        minimum, maximum);
+}
+
+int IMP_Encoder_SetChnQp(int channel, int qp_value)
+{
+    IMPEncoderQp qp;
+
+    if (!p2_valid_channel(channel) || qp_value < 0 || qp_value > 51 ||
+        !p2_channels[channel].created)
+        return -1;
+    qp.qp_i = (uint32_t)qp_value;
+    qp.qp_p = (uint32_t)qp_value;
+    qp.qp_b = (uint32_t)qp_value;
+    return AL_Codec_Encode_SetQp(p2_channels[channel].codec, &qp);
+}
+
+int IMP_Encoder_SetChnQpIPDelta(int channel, int delta)
+{
+    if (!p2_valid_channel(channel) || !p2_channels[channel].created)
+        return -1;
+    return AL_Codec_Encode_SetQpIPDelta(p2_channels[channel].codec, delta);
+}
+
+int IMP_Encoder_SetChnEntropyMode(int channel, IMPEncoderEntropyMode mode)
+{
+    P2EncoderChannel *ch;
+    int result = 0;
+
+    if (!p2_valid_channel(channel) ||
+        (mode != IMP_ENC_ENTROPY_MODE_CAVLC &&
+         mode != IMP_ENC_ENTROPY_MODE_CABAC))
+        return -1;
+    EncoderInit();
+    ch = &p2_channels[channel];
+    pthread_mutex_lock(&ch->lock);
+    ch->entropy_mode = (int)mode;
+    ch->entropy_mode_set = 1;
+    if (ch->created)
+        result = AL_Codec_Encode_SetEntropyMode(ch->codec, (int)mode);
+    pthread_mutex_unlock(&ch->lock);
+    return result;
+}
+
+int IMP_Encoder_SetChnResizeMode(int channel, int enabled)
+{
+    if (!p2_valid_channel(channel) || (enabled != 0 && enabled != 1))
+        return -1;
+    EncoderInit();
+    p2_channels[channel].resize_mode = enabled;
+    return 0;
+}
+
+int IMP_Encoder_GetChnEvalInfo(int channel, void *info)
+{
+    if (!p2_valid_channel(channel) || !info ||
+        !p2_channels[channel].created)
+        return -1;
+    errno = ENOTSUP;
+    return -1;
+}
+
+#if defined(PLATFORM_T31)
+int IMP_Encoder_GetChnAveBitrate(int channel, IMPEncoderStream *stream,
+                                 int frames, double *bitrate)
+#else
+int IMP_Encoder_GetChnAveBitrate(int channel, IMPEncoderStream *stream,
+                                 int frames, int *bitrate)
+#endif
+{
+    uint32_t fps_num;
+    uint32_t fps_den;
+    uint64_t bits_per_second;
+
+    if (!p2_valid_channel(channel) || !stream || frames <= 0 || !bitrate ||
+        !p2_channels[channel].created)
+        return -1;
+    fps_num = p2_channels[channel].attr.rcAttr.outFrmRate.frmRateNum;
+    fps_den = p2_channels[channel].attr.rcAttr.outFrmRate.frmRateDen;
+    if (!fps_num || !fps_den) {
+        fps_num = 25;
+        fps_den = 1;
+    }
+    bits_per_second = (uint64_t)stream->streamSize * 8u * fps_num / fps_den;
+#if defined(PLATFORM_T31)
+    *bitrate = (double)bits_per_second;
+#else
+    *bitrate = bits_per_second > INT32_MAX
+        ? INT32_MAX : (int)bits_per_second;
+#endif
+    return 0;
 }
 
 int IMP_Encoder_GetChnEncType(int channel, IMPEncoderEncType *type)

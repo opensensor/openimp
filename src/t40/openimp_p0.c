@@ -195,7 +195,11 @@ static void prepare_state(void)
         return;
     memset(&state, 0, sizeof(state));
     state.magic = OPENIMP_P0_MAGIC;
+#if defined(PLATFORM_T31)
+    state.cpu_id = 21; /* T31X */
+#else
     state.cpu_id = 22; /* T40-XP */
+#endif
     reset_isp();
     for (i = 0; i < OPENIMP_MAX_POOLS; i++)
         state.dsystem.pools[i].pool_id = -1;
@@ -341,7 +345,11 @@ int IMP_System_Exit(void)
 
 int IMP_System_GetVersion(char *version)
 {
+#if defined(PLATFORM_T31)
+    static const char text[] = "libimp.so T31 openimp";
+#else
     static const char text[] = "libimp.so T40 openimp-p0";
+#endif
 
     if (!version)
         return -1;
@@ -352,7 +360,11 @@ int IMP_System_GetVersion(char *version)
 
 const char *IMP_System_GetCPUInfo(void)
 {
+#if defined(PLATFORM_T31)
+    return "T31X";
+#else
     return "T40-XP";
+#endif
 }
 
 int64_t IMP_System_GetTimeStamp(void)

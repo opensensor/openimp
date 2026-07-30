@@ -915,7 +915,7 @@ static size_t avpu_get_enc1_frame_buf_size(uint32_t width, uint32_t height)
     return total;
 }
 
-#if defined(PLATFORM_T40)
+#if defined(PLATFORM_T40) || defined(PLATFORM_T31)
 #define AVPU_T40_EP3_SLOT_SIZE 0x1500u
 #define AVPU_T40_EP3_DATA_SIZE 0x14a0u
 #define AVPU_T40_EP3_SLOT_COUNT 3u
@@ -1893,7 +1893,7 @@ static int avpu_generate_slice_header_rbsp(uint8_t *rbsp, const ALAvpuContext *c
     return bp / 8;
 }
 
-#if defined(PLATFORM_T40)
+#if defined(PLATFORM_T40) || defined(PLATFORM_T31)
 static uint32_t avpu_t40_picture_qp(const ALAvpuContext *ctx, int is_idr)
 {
     uint64_t bits_per_lcu_q16;
@@ -2535,7 +2535,7 @@ static void fill_cmd_regs_enc1(const ALAvpuContext* ctx, uint32_t* cmd,
     cmd[0x6e] = ctx->enc1_cmd_6e_118_11a & 0x100000ffu;
     cmd[0x6f] = ctx->enc1_cmd_6f_94 & 0xffffu;
 
-#if defined(PLATFORM_T40)
+#if defined(PLATFORM_T40) || defined(PLATFORM_T31)
     {
         uint32_t width = ctx->enc_w;
         uint32_t height = ctx->enc_h;
@@ -2692,6 +2692,18 @@ static void fill_cmd_regs_enc1(const ALAvpuContext* ctx, uint32_t* cmd,
         cmd[0x69] = rec_map_size;
         cmd[0x6e] = 0u;
         cmd[0x6f] = 0u;
+
+#if defined(PLATFORM_T31)
+        /*
+         * The T31 and T40 command engines use the same inline AVC layout,
+         * but the current T31 OEM command oracle leaves these T40-only
+         * control bits clear.  Keep all address and picture-shape fields
+         * derived from the active channel above.
+         */
+        cmd[0x0a] = 0x00000c80u;
+        cmd[0x12] &= 0x7fffffffu;
+        cmd[0x13] = 0u;
+#endif
     }
 #endif
 }
@@ -3181,12 +3193,12 @@ static int avpu_try_recover_sticky_completion(ALAvpuContext *ctx,
  * AL_EncCore_EnableInterrupts are fully recovered. */
 static void avpu_enable_interrupts(int fd, int core)
 {
-    /* T31 AVPU on this path asserts bit 4 for the live completion interrupt.
-     * The 0x05 experiment (bits 0+2) suppresses all AVPU IRQ delivery on the
-     * target: irq_pending remains 0x10 and /proc/interrupts stops incrementing.
-     * Keep bit 4 enabled so we continue receiving the only observed hardware
-     * completion signal while investigating its exact semantic meaning. */
-    unsigned add_m = 0x11u; /* bits 0 + 4 */
+#if defined(PLATFORM_T31)
+    /* The T31 stock libimp audit enables Enc1 completion bit 0 only. */
+    unsigned add_m = 0x01u;
+#else
+    unsigned add_m = 0x11u; /* T40 Enc1 + entropy completion */
+#endif
     (void)core;
     unsigned old_m = 0;
     unsigned new_m = add_m;
@@ -5722,12 +5734,11 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
                             enc->avpu.interm_ep1_size = avpu_get_enc1_ep1_size();
                             enc->avpu.interm_wpp_size = avpu_get_enc1_wpp_size(width, height);
                             enc->avpu.interm_ep2_size = avpu_get_enc1_ep2_size(width, height);
-#if defined(PLATFORM_T40)
+#if defined(PLATFORM_T40) || defined(PLATFORM_T31)
                             /*
-                             * T40's inline AVC command consumes EP1, WPP and
-                             * EP2 only.  Compression-map/data storage belongs
-                             * to the reconstructed-frame manager, not this
-                             * intermediate allocation.
+                             * The inline T-series AVC command consumes EP1,
+                             * WPP and EP2 only. Compression-map/data storage
+                             * belongs to the reconstructed-frame manager.
                              */
                             enc->avpu.interm_map_size = 0u;
                             enc->avpu.interm_data_size = 0u;
@@ -5754,7 +5765,7 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
                                         LOG_CODEC("AVPU: initialized default AVC EP1 table (%u bytes)",
                                                   enc->avpu.interm_ep1_size);
                                     }
-#if defined(PLATFORM_T40)
+#if defined(PLATFORM_T40) || defined(PLATFORM_T31)
                                     if (avpu_t40_init_ep2(&enc->avpu) != 0)
                                         LOG_CODEC("AVPU: ERROR - default EP2 initialization failed");
                                     else
@@ -5795,7 +5806,7 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
                                 LOG_CODEC("AVPU: WARNING - failed to allocate ref_buf (%zu bytes)", aux_frame_sz);
                             }
 
-#if defined(PLATFORM_T40)
+#if defined(PLATFORM_T40) || defined(PLATFORM_T31)
                             /* The old trace-shadow allocations were based on a
                              * false interpretation of cmd[0x2d].  It is really
                              * the three-slot EP3 HW-rate-control ring. */
@@ -5838,22 +5849,24 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
                          * (enc->fifo_frames, enc->fifo_streams at lines 767-778).
                          * OEM uses FIFOs at encoder+0x7f8 (streams) and encoder+0x81c (metadata). */
 
-                        /* Register OEM callbacks (AL_EncCore_Init at 0x6c8d8).
-                         * T31 AVPU completion is delivered on bit 4 in practice,
-                         * while the stock stack also keeps the bit-0 slot wired.
-                         * Keep both completion callbacks registered and leave
-                         * entropy on bit 2. */
+                        /* Register OEM callbacks (AL_EncCore_Init at 0x6c8d8). */
                         int irq_id0 = 0;                  /* completion slot */
                         int irq_id2 = 2;                  /* AVC entropy slot */
+#if !defined(PLATFORM_T31)
                         int irq_id4 = 4;                  /* live T31 completion IRQ */
+#endif
 
                         avpu_register_callback(&enc->avpu, avpu_end_encoding_callback, &enc->avpu, irq_id0);
                         LOG_CODEC("AVPU: registered callback for IRQ %d (callback=%p, user_data=%p)",
                                   irq_id0, (void*)avpu_end_encoding_callback, (void*)&enc->avpu);
+#if !defined(PLATFORM_T31)
                         avpu_register_callback(&enc->avpu, avpu_end_encoding_callback, &enc->avpu, irq_id4);
                         LOG_CODEC("AVPU: registered callback for IRQ %d (callback=%p, user_data=%p)",
                                   irq_id4, (void*)avpu_end_encoding_callback, (void*)&enc->avpu);
                         LOG_CODEC("AVPU: registered EndEncoding callback at IRQ %d and %d", irq_id0, irq_id4);
+#else
+                        LOG_CODEC("AVPU: registered EndEncoding callback at IRQ %d", irq_id0);
+#endif
 
                         if (irq_id2 < 20) {
                             avpu_register_callback(&enc->avpu, avpu_end_avc_entropy_callback, &enc->avpu, irq_id2);
@@ -6004,12 +6017,8 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
                 avpu_write_reg(fd, AVPU_INTERRUPT_MASK,
                                irq_mask | 0x00000010u);
             }
-#else
+#elif defined(PLATFORM_T31)
             avpu_write_reg(fd, AVPU_REG_TOP_CTRL, 0x00000080);
-            avpu_turn_on_gc(fd, 0);
-            avpu_write_reg(fd, AVPU_REG_CORE_RESET(0), 0x00000001);
-            avpu_write_reg(fd, AVPU_REG_CORE_RESET(0), 0x00000002);
-            avpu_write_reg(fd, AVPU_REG_CORE_RESET(0), 0x00000004);
 #endif
 
             LOG_CODEC("AVPU: init complete (stock-matched sequence)");
@@ -6018,7 +6027,7 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
             /* Push stream buffers via STRM_PUSH so the hardware DMA engine
              * knows they're available. The CL (cmd[0x30]) specifies where to
              * write, but STRM_PUSH registers the buffer with the DMA controller. */
-#if !defined(PLATFORM_T40)
+#if !defined(PLATFORM_T40) && !defined(PLATFORM_T31)
             if (ctx->stream_bufs_used > 0) {
                 for (int i = 0; i < ctx->stream_bufs_used; ++i) {
                     if (ctx->stream_bufs[i].phy_addr) {
@@ -6228,8 +6237,8 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
             /* Record which CL entry holds the iOffset that the hardware will
              * update — needed by the dqbuf path to read back the actual
              * encoded byte count instead of scanning for trailing zeros. */
-#if defined(PLATFORM_T40)
-            /* Both T40 IDR and P pictures complete inline under CL_PUSH=2. */
+#if defined(PLATFORM_T40) || defined(PLATFORM_T31)
+            /* Both current T-series paths complete inline under CL_PUSH=2. */
             ctx->stream_enc2_cl_idx[buf_idx] = idx;
 #else
             ctx->stream_enc2_cl_idx[buf_idx] = has_reference
@@ -6245,11 +6254,9 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
                 return -1;
             }
 
-            /* OEM per-frame pre-submit: TurnOnGC + IRQ re-arm before CL_PUSH.
-             * The per-frame ResetCore (0x83f0=1,2,4) seen in the stock trace
-             * is done by the avpu.ko KERNEL DRIVER's IRQ handler, NOT by
-             * userspace libimp. Adding it here races with the driver and
-             * causes AXI bus hangs.
+            /* OEM per-frame pre-submit: TurnOnGC + ResetCore + IRQ re-arm
+             * before CL_PUSH. The ingenic-sdk driver only transports register
+             * ioctls and IRQ indices; it does not perform this reset.
              *
              * OEM libimp per-frame sequence (from HLIL at 0x671b8):
              * 1. SetClockCommand (TurnOnGC)
@@ -6258,7 +6265,7 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
              * 4. Callback +0x430
              * 5. AL_EncCore_Encode1 → Rtos_FlushCacheMemory + CL_PUSH */
             avpu_turn_on_gc(fd, 0);
-#if defined(PLATFORM_T40)
+#if defined(PLATFORM_T40) || defined(PLATFORM_T31)
             avpu_write_reg(fd, AVPU_REG_CORE_RESET(0), 0x00000001);
             avpu_write_reg(fd, AVPU_REG_CORE_RESET(0), 0x00000002);
             avpu_write_reg(fd, AVPU_REG_CORE_RESET(0), 0x00000004);
@@ -6276,7 +6283,7 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
              * it BEFORE. This could be why the AVPU processes the CL but
              * produces zero encoded output — the source config registers
              * aren't programmed when the hardware starts. */
-#if !defined(PLATFORM_T40)
+#if !defined(PLATFORM_T40) && !defined(PLATFORM_T31)
             {
                 uint32_t y_plane_sz = avpu_get_nv12_luma_plane_size(width, height);
 #if defined(PLATFORM_T40)
@@ -6375,8 +6382,8 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
             cl_push_ret = avpu_write_reg(fd, AVPU_REG_CL_PUSH, 0x00000002);
             if (trace_submit) {
                 LOG_CODEC("AVPU: submit write CL[%u] CL_PUSH ret=%d val=0x00000002", idx, cl_push_ret);
-#if !defined(PLATFORM_T40)
-                /* Do not probe live T40 AVPU registers immediately after
+#if !defined(PLATFORM_T40) && !defined(PLATFORM_T31)
+                /* Do not probe a live T-series AVPU immediately after
                  * CL_PUSH.  The OEM path returns directly after the write,
                  * and a userspace read while the core owns the register bus
                  * intermittently wedges the SoC before the completion IRQ. */
@@ -6386,14 +6393,14 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
             /* OEM decompilation confirms: AL_EncCore_Encode1 at 0x6cbf0
              * For IDR (arg4=0): CL_PUSH=2 only — inline Enc2 runs within CL_PUSH=2
              * For P-frame (arg4!=0): CL_PUSH=2 then CL_PUSH=8 back-to-back */
-#if defined(PLATFORM_T40)
-            /* Live OEM T40 captures show P pictures use the same single
+#if defined(PLATFORM_T40) || defined(PLATFORM_T31)
+            /* Live OEM captures show P pictures use the same single
              * CL_PUSH=2 transaction as IDR.  The separate CL_PUSH=8 Enc2
              * transaction is only used by the older backend path. */
             ctx->enc_core.enc2_cmd_list = entry;
             ctx->cl_idx = (idx + 1) % ctx->cl_count;
             if (ctx->frame_number % 50 == 0)
-                LOG_CODEC("Process: T40 %s frame -- inline Enc2 within CL_PUSH=2",
+                LOG_CODEC("Process: T-series %s frame -- inline Enc2 within CL_PUSH=2",
                           is_idr ? "IDR" : "P");
 #else
             if (has_reference) {

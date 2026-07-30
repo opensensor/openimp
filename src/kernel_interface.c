@@ -134,17 +134,34 @@ typedef struct {
 } fs_format_t;
 
 struct fs_ioctl_format70 {
-    uint32_t type;           /* 0x00 */
-    uint32_t width;          /* 0x04 */
-    uint32_t height;         /* 0x08 */
-    uint32_t pixelformat;    /* 0x0c */
-    uint32_t field;          /* 0x10 */
-    uint32_t bytesperline;   /* 0x14 */
-    uint32_t sizeimage;      /* 0x18 */
-    uint32_t colorspace;     /* 0x1c */
-    uint32_t priv;           /* 0x20 */
-    uint32_t raw_attr[15];   /* 0x24..0x5c */
-    uint8_t reserved[0x10];  /* 0x60..0x6f */
+    uint32_t type;             /* 0x00 */
+    uint32_t width;            /* 0x04: tisp_pix_format starts here */
+    uint32_t height;           /* 0x08 */
+    uint32_t pixelformat;      /* 0x0c */
+    uint32_t field;            /* 0x10 */
+    uint32_t bytesperline;     /* 0x14 */
+    uint32_t sizeimage;        /* 0x18 */
+    uint32_t colorspace;       /* 0x1c */
+    uint32_t priv;             /* 0x20 */
+    uint32_t flags;            /* 0x24 */
+    uint32_t ycbcr_enc;        /* 0x28 */
+    uint32_t quantization;     /* 0x2c */
+    uint32_t xfer_func;        /* 0x30 */
+    uint32_t crop_enable;      /* 0x34 */
+    uint32_t crop_top;         /* 0x38 */
+    uint32_t crop_left;        /* 0x3c */
+    uint32_t crop_width;       /* 0x40 */
+    uint32_t crop_height;      /* 0x44 */
+    uint32_t scaler_enable;    /* 0x48 */
+    uint32_t scaler_outwidth;  /* 0x4c */
+    uint32_t scaler_outheight; /* 0x50 */
+    uint32_t rate_bits;        /* 0x54 */
+    uint32_t rate_mask;        /* 0x58 */
+    uint32_t fcrop_enable;     /* 0x5c */
+    uint32_t fcrop_top;        /* 0x60 */
+    uint32_t fcrop_left;       /* 0x64 */
+    uint32_t fcrop_width;      /* 0x68 */
+    uint32_t fcrop_height;     /* 0x6c */
 };
 
 _Static_assert(sizeof(struct fs_ioctl_format70) == 0x70, "fs ioctl format size");
@@ -222,24 +239,14 @@ int fs_get_format(int fd, fs_format_t *fmt) {
     fmt->sizeimage = (int)g.sizeimage;
     fmt->colorspace = (int)g.colorspace;
     fmt->priv = (int)g.priv;
-    {
-        const uint32_t *raw = g.raw_attr;
-        fmt->enable = (int)raw[0];
-        fmt->attr_width = (int)raw[1];
-        fmt->attr_height = (int)raw[2];
-        fmt->crop_enable = (int)raw[3];
-        fmt->crop_x = (int)raw[4];
-        fmt->crop_y = (int)raw[5];
-        fmt->crop_width = (int)raw[6];
-        fmt->crop_height = (int)raw[7];
-        fmt->scaler_enable = (int)raw[8];
-        fmt->scaler_outwidth = (int)raw[9];
-        fmt->scaler_outheight = (int)raw[10];
-        fmt->picwidth = (int)raw[11];
-        fmt->picheight = (int)raw[12];
-        fmt->fps_num = (int)raw[13];
-        fmt->fps_den = (int)raw[14];
-    }
+    fmt->crop_enable = (int)g.crop_enable;
+    fmt->crop_x = (int)g.crop_left;
+    fmt->crop_y = (int)g.crop_top;
+    fmt->crop_width = (int)g.crop_width;
+    fmt->crop_height = (int)g.crop_height;
+    fmt->scaler_enable = (int)g.scaler_enable;
+    fmt->scaler_outwidth = (int)g.scaler_outwidth;
+    fmt->scaler_outheight = (int)g.scaler_outheight;
 
     fprintf(stderr, "[KernelIF] Got format: %dx%d fmt=0x%x sizeimage=%d bytesperline=%d\n",
             fmt->width, fmt->height, fmt->pixelformat, fmt->sizeimage, fmt->bytesperline);
@@ -294,28 +301,23 @@ int fs_set_format(int fd, fs_format_t *fmt) {
     s.colorspace = 8;    /* V4L2_COLORSPACE_SRGB */
     s.priv = 0;
 
-    /* The OEM marshaler copies the 15 semantic channel-attr words starting at
-     * fs_format_t+0x24 straight into the ioctl payload after the V4L2 pix
-     * block. Keep the raw order here instead of reinterpreting those words as
-     * a different crop/scaler/fcrop layout. */
-    {
-        uint32_t *raw = s.raw_attr;
-        raw[0] = (uint32_t)fmt->enable;
-        raw[1] = (uint32_t)fmt->attr_width;
-        raw[2] = (uint32_t)fmt->attr_height;
-        raw[3] = (uint32_t)fmt->crop_enable;
-        raw[4] = (uint32_t)fmt->crop_x;
-        raw[5] = (uint32_t)fmt->crop_y;
-        raw[6] = (uint32_t)fmt->crop_width;
-        raw[7] = (uint32_t)fmt->crop_height;
-        raw[8] = (uint32_t)fmt->scaler_enable;
-        raw[9] = (uint32_t)fmt->scaler_outwidth;
-        raw[10] = (uint32_t)fmt->scaler_outheight;
-        raw[11] = (uint32_t)fmt->picwidth;
-        raw[12] = (uint32_t)fmt->picheight;
-        raw[13] = (uint32_t)fmt->fps_num;
-        raw[14] = (uint32_t)fmt->fps_den;
-    }
+    /*
+     * The 0x70-byte ABI contains the full 12-word tisp_pix_format, followed
+     * by crop/scaler/rate/fcrop fields.  The prior nine-word pix header
+     * shifted scaler_enable by 16 bytes, so the driver advertised the scaled
+     * size while its DMA engine continued writing full-sensor frames.
+     */
+    s.crop_enable = (uint32_t)fmt->crop_enable;
+    s.crop_top = (uint32_t)fmt->crop_y;
+    s.crop_left = (uint32_t)fmt->crop_x;
+    s.crop_width = (uint32_t)fmt->crop_width;
+    s.crop_height = (uint32_t)fmt->crop_height;
+    s.scaler_enable = (uint32_t)fmt->scaler_enable;
+    s.scaler_outwidth = (uint32_t)fmt->scaler_outwidth;
+    s.scaler_outheight = (uint32_t)fmt->scaler_outheight;
+    /* These are mscaler loop/mask fields, not the public fps fraction. */
+    s.rate_bits = 0;
+    s.rate_mask = 1;
 
     /* Debug: dump structure before ioctl */
     fprintf(stderr, "[KernelIF] SET_FMT before ioctl:\n");
@@ -343,12 +345,11 @@ int fs_set_format(int fd, fs_format_t *fmt) {
     fprintf(stderr, "[KernelIF] SET_FMT after ioctl:\n");
     fprintf(stderr, "[KernelIF]   width=%u height=%u sizeimage=%u bytesperline=%u\n",
             s.width, s.height, s.sizeimage, s.bytesperline);
-    {
-        uint32_t *raw = s.raw_attr;
-        fprintf(stderr, "[KernelIF]   raw_attr[0..14]=%u %u %u %u %u %u %u %u %u %u %u %u %u %u %u\n",
-                raw[0], raw[1], raw[2], raw[3], raw[4], raw[5], raw[6], raw[7],
-                raw[8], raw[9], raw[10], raw[11], raw[12], raw[13], raw[14]);
-    }
+    fprintf(stderr,
+            "[KernelIF]   crop=%u %ux%u+%u+%u scaler=%u %ux%u rate=%u/0x%x\n",
+            s.crop_enable, s.crop_width, s.crop_height, s.crop_left, s.crop_top,
+            s.scaler_enable, s.scaler_outwidth, s.scaler_outheight,
+            s.rate_bits, s.rate_mask);
 
     /* CRITICAL: The kernel modifies the structure in-place during SET_FMT and copies it back.
      * The remote ISP core may update sizeimage, bytesperline, and other fields.
@@ -367,24 +368,14 @@ int fs_set_format(int fd, fs_format_t *fmt) {
     fmt->field = (int)s.field;
     fmt->colorspace = (int)s.colorspace;
     fmt->priv = (int)s.priv;
-    {
-        const uint32_t *raw = s.raw_attr;
-        fmt->enable = (int)raw[0];
-        fmt->attr_width = (int)raw[1];
-        fmt->attr_height = (int)raw[2];
-        fmt->crop_enable = (int)raw[3];
-        fmt->crop_x = (int)raw[4];
-        fmt->crop_y = (int)raw[5];
-        fmt->crop_width = (int)raw[6];
-        fmt->crop_height = (int)raw[7];
-        fmt->scaler_enable = (int)raw[8];
-        fmt->scaler_outwidth = (int)raw[9];
-        fmt->scaler_outheight = (int)raw[10];
-        fmt->picwidth = (int)raw[11];
-        fmt->picheight = (int)raw[12];
-        fmt->fps_num = (int)raw[13];
-        fmt->fps_den = (int)raw[14];
-    }
+    fmt->crop_enable = (int)s.crop_enable;
+    fmt->crop_x = (int)s.crop_left;
+    fmt->crop_y = (int)s.crop_top;
+    fmt->crop_width = (int)s.crop_width;
+    fmt->crop_height = (int)s.crop_height;
+    fmt->scaler_enable = (int)s.scaler_enable;
+    fmt->scaler_outwidth = (int)s.scaler_outwidth;
+    fmt->scaler_outheight = (int)s.scaler_outheight;
 
     if (fmt->bytesperline <= 0)
         fmt->bytesperline = (int)fmt->width;
@@ -1237,7 +1228,38 @@ int VBMKernelDequeue(int chn, int fd, void **frame_out) {
      * if this flag is set, preventing double-QBUF. */
     if (pool->buf_in_userspace)
         pool->buf_in_userspace[idx] = 1;
+
+    /*
+     * The shared encoder is a public-API pull consumer: PollingStream calls
+     * IMP_FrameSource_GetFrame, which in turn pops this ready queue.  The old
+     * experimental T31 graph delivered the pointer through a Module observer
+     * instead, so merely returning it to frame_pooling_thread stranded every
+     * capture buffer after DQBUF.  Publish the completed index here and let
+     * VBMReleaseFrame return it to the stock frame-channel driver after AVPU
+     * accepts the source address.
+     */
+    pthread_mutex_lock(&pool->queue_mutex);
+    if (pool->queue_count >= pool->frame_count) {
+        VBMFrame *captured = &pool->frames[idx];
+
+        pthread_mutex_unlock(&pool->queue_mutex);
+        ki_trace("libimp/VBM: ready-queue-full ch=%d idx=%d count=%d\n",
+                 chn, idx, pool->queue_count);
+        if (fs_qbuf(fd, idx, captured->phys_addr,
+                    (unsigned int)captured->size) == 0 &&
+            pool->buf_in_userspace)
+            pool->buf_in_userspace[idx] = 0;
+        *frame_out = NULL;
+        return -1;
+    }
+    pool->available_queue[pool->queue_tail] = idx;
+    pool->queue_tail = (pool->queue_tail + 1) % pool->frame_count;
+    pool->queue_count++;
+    pthread_mutex_unlock(&pool->queue_mutex);
+
     *frame_out = &pool->frames[idx];
+    ki_trace("libimp/VBM: ready ch=%d idx=%d count=%d frame=%p\n",
+             chn, idx, pool->queue_count, *frame_out);
     return 0;
 }
 

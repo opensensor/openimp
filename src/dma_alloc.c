@@ -306,7 +306,15 @@ static int dma_init(void) {
         LOG_DMA("DMA init: no DMA device found; using malloc fallback only");
     } else if (strcmp(g_chosen_dev_path, "/dev/rmem") == 0) {
         /* rmem requires mmap; set up a single mapping and bump allocator */
-        void *base = mmap(NULL, g_rmem_size, PROT_READ | PROT_WRITE, MAP_SHARED, g_mem_fd, 0);
+        /*
+         * /dev/rmem passes vm_pgoff straight to io_remap_pfn_range().  The
+         * offset therefore is the physical address of the reserved arena,
+         * not an allocator-relative file offset.  Mapping at zero creates a
+         * cached alias of physical RAM starting at address zero while the
+         * descriptors below still advertise g_rmem_base_phys to DMA users.
+         */
+        void *base = mmap(NULL, g_rmem_size, PROT_READ | PROT_WRITE,
+                          MAP_SHARED, g_mem_fd, (off_t)g_rmem_base_phys);
         if (base == MAP_FAILED) {
             LOG_DMA("DMA init: mmap of /dev/rmem failed (%s); will fall back per-alloc", strerror(errno));
         } else {
@@ -687,22 +695,64 @@ uint32_t IMP_PoolVirt_to_Phys(void *virt_addr)
 #define RMEM_IOCTL_FLUSH_CACHE  0xc00c7200  /* _IOWR('r', 0, 12-byte-struct) */
 
 struct rmem_flush_info {
-    unsigned int addr;   /* virtual address */
+    unsigned int addr;   /* cached userspace address in the mapped rmem arena */
     unsigned int size;   /* size in bytes */
     unsigned int dir;    /* 1=WBACK, 2=INV */
 };
 
 int DMA_RmemFlushCache(void *virt_addr, uint32_t size, int dir)
 {
+    uintptr_t address;
+    uintptr_t virtual_base;
+    uint32_t phys_addr;
+    static unsigned int flush_count;
+    unsigned int index;
+    int ret;
+
     if (!virt_addr || size == 0) return -1;
     if (dma_init() != 0 || g_mem_fd < 0) return -1;
 
-    /* OEM: ioctl(rmem_fd, 0xc00c7200, {vaddr, size, dir}) */
+    /*
+     * T31's 3.10 rmem driver passes info.addr straight to
+     * dma_cache_sync().  It therefore requires the cached userspace alias,
+     * not the physical DMA address.  Keep the physical translation below
+     * solely for validating that the requested range belongs to our arena
+     * and for diagnostics.
+     */
+    address = (uintptr_t)virt_addr;
+    virtual_base = (uintptr_t)g_rmem_virt_base;
+    if (g_is_rmem &&
+        address >= virtual_base &&
+        address - virtual_base < g_rmem_size) {
+        phys_addr = g_rmem_base_phys + (uint32_t)(address - virtual_base);
+    } else if (address >= g_rmem_base_phys &&
+               address - g_rmem_base_phys < g_rmem_size) {
+        /* Accept a physical address from legacy callers, but convert it back
+         * to the cached alias before issuing the ioctl. */
+        phys_addr = (uint32_t)address;
+        address = virtual_base + (address - g_rmem_base_phys);
+    } else {
+        LOG_DMA("RmemFlushCache: address %p is outside rmem mapping", virt_addr);
+        return -1;
+    }
+
+    if ((uint64_t)(phys_addr - g_rmem_base_phys) + size > g_rmem_size) {
+        LOG_DMA("RmemFlushCache: range phys=0x%08x size=0x%x exceeds rmem",
+                phys_addr, size);
+        return -1;
+    }
+
     struct rmem_flush_info info;
-    info.addr = (unsigned int)(uintptr_t)virt_addr;
+    info.addr = (unsigned int)address;
     info.size = size;
     info.dir = (unsigned int)dir;
-    return ioctl(g_mem_fd, RMEM_IOCTL_FLUSH_CACHE, &info);
+    ret = ioctl(g_mem_fd, RMEM_IOCTL_FLUSH_CACHE, &info);
+    index = __sync_add_and_fetch(&flush_count, 1);
+    if (index <= 12 || ret != 0) {
+        LOG_DMA("RmemFlushCache: virt=%p phys=0x%08x size=0x%x dir=%d ret=%d [#%u]",
+                virt_addr, phys_addr, size, dir, ret, index);
+    }
+    return ret;
 }
 
 /* ========== IMP_MemPool — Pool management (from OEM BN audit) ========== */
