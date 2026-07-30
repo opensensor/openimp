@@ -12,6 +12,7 @@ The source probes under `probes/` correspond to the P0-P2 bring-up gates:
 - `p2_public_probe.c`: public encoder lifecycle
 - `p2_backend_probe.c`: lower-level recovered codec backend
 
-Device runs require the matching open TX-ISP, sensor, and AVPU modules.
+Device runs require the target firmware's stock TX-ISP and sensor modules plus
+the matching AVPU module.
 The probe library path can be passed as the first argument; probes that also
 compare against the OEM implementation expect it at `/usr/lib/libimp.so`.

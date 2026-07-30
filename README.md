@@ -145,7 +145,7 @@ To use this library with prudynt-t:
 
 - [x] T31 API analysis and compatibility surface
 - [x] T31 legacy and ported build graphs
-- [x] T40XP open ISP/sensor/FrameSource pipeline
+- [x] T40XP stock ISP/sensor ABI and FrameSource pipeline
 - [x] T40XP open AVPU/DMA H.264 pipeline
 - [x] T40XP Raptor video/audio/control import coverage
 - [x] T40XP runtime with no OEM `libimp.so` dependency

@@ -1,7 +1,7 @@
 /* Clean standalone OpenIMP T40 ISP/FrameSource implementation.
  *
  * This unit intentionally has no runtime symbol bridge or OEM libimp dependency.
- * It speaks the T40 tx-isp and framechan ABI exposed by open-tx-isp directly.
+ * It speaks the stock T40 tx-isp and frame-channel ABI directly.
  */
 
 #include <errno.h>
@@ -32,6 +32,7 @@
 #define TISP_VIDIOC_STOP_SENSOR           0x8008540aU
 #define TISP_VIDIOC_ENABLE_SENSOR         0xc008540bU
 #define TISP_VIDIOC_DISABLE_SENSOR        0xc008540cU
+#define TISP_VIDIOC_SET_DEFAULT_BIN_PATH  0xc004542aU
 #define TISP_VIDIOC_SET_MDNS_BUF_INFO     0x800c540fU
 #define TISP_VIDIOC_GET_MDNS_BUF_INFO     0x800c5410U
 
@@ -45,9 +46,17 @@
 
 #define TISP_BUF_TYPE_VIDEO_CAPTURE 1U
 #define TISP_MEMORY_USERPTR         2U
-#define TISP_FIELD_NONE             1U
-#define TISP_COLORSPACE_REC709      3U
+/*
+ * The stock T40 module shipped on the Wyze Cam 3 Pro does not use the enum
+ * values published in the available T40 SDK headers.  Its
+ * frame_channel_vidioc_set_fmt() accepts field=4 and colorspace=8 (and
+ * normalizes a zero field to 4).  These are the values emitted by the OEM
+ * userspace ABI and must also be used in queued buffer descriptors.
+ */
+#define TISP_FIELD_STOCK_PROGRESSIVE 4U
+#define TISP_COLORSPACE_STOCK        8U
 #define TISP_PIX_FMT_NV12_ENUM      10U
+#define TISP_OUTPUT_FMT_NV12         0U
 #define TISP_BUFFER_WORDS           17
 
 typedef enum {
@@ -150,6 +159,11 @@ struct tisp_buf_info {
     uint32_t size;
 };
 
+struct tisp_bin_path {
+    int32_t vinum;
+    char path[64];
+};
+
 struct tisp_pix_format {
     uint32_t width;
     uint32_t height;
@@ -225,6 +239,8 @@ struct openimp_p1_state {
     int32_t last_errno;
     uint32_t last_ioctl;
     IMPSensorInfo sensor;
+    struct tisp_bin_path bin_paths[IMPVI_BUTT];
+    uint32_t bin_path_set[IMPVI_BUTT];
     struct tisp_buf_info mdns;
     void *mdns_virtual;
     struct openimp_dma_state dma;
@@ -462,8 +478,14 @@ int IMP_ISP_AddSensor(IMPVI_NUM num, IMPSensorInfo *info)
         unlock_p1();
         return -1;
     }
+    if (p1.bin_path_set[num] &&
+        record_ioctl(p1.isp_fd, TISP_VIDIOC_SET_DEFAULT_BIN_PATH,
+                     &p1.bin_paths[num]) < 0) {
+        unlock_p1();
+        return -1;
+    }
     memset(&input, 0, sizeof(input));
-    input.enable = 0;
+    input.enable = 1;
     input.vinum = num;
     if (record_ioctl(p1.isp_fd, TISP_VIDIOC_S_INPUT, &input) < 0) {
         unlock_p1();
@@ -507,7 +529,7 @@ int IMP_ISP_DelSensor(IMPVI_NUM num, IMPSensorInfo *info)
     memset(&input, 0, sizeof(input));
     input.vinum = num;
     result = record_ioctl(p1.isp_fd, TISP_VIDIOC_S_INPUT, &input);
-    /* The open T40 driver owns the sensor subdevice for the lifetime of the
+    /* The stock T40 driver owns the sensor subdevice for the lifetime of the
      * sensor kernel module.  Its legacy UNREGISTER_SENSOR delegation tears
      * down that module-owned object and is not part of a userspace close.
      * Deselecting the input plus clearing this library's ownership is the
@@ -582,6 +604,29 @@ int IMP_ISP_DisableSensor(IMPVI_NUM num)
         p1.sensor_enabled = 0;
     unlock_p1();
     return result;
+}
+
+int OpenIMP_P1_SetDefaultBinPath(IMPVI_NUM num, const char *path)
+{
+    size_t length;
+
+    if (num < IMPVI_MAIN || num >= IMPVI_BUTT || !path)
+        return -1;
+    length = strlen(path);
+    if (length >= sizeof(p1.bin_paths[num].path))
+        return -1;
+    lock_p1();
+    prepare_p1();
+    if (!p1.isp_open || p1.sensor_added) {
+        unlock_p1();
+        return -1;
+    }
+    memset(&p1.bin_paths[num], 0, sizeof(p1.bin_paths[num]));
+    p1.bin_paths[num].vinum = num;
+    memcpy(p1.bin_paths[num].path, path, length + 1U);
+    p1.bin_path_set[num] = 1;
+    unlock_p1();
+    return 0;
 }
 
 int IMP_ISP_EnableTuning(void)
@@ -752,9 +797,15 @@ static void fill_frame_format(struct tisp_frame_format *format,
     format->type = TISP_BUF_TYPE_VIDEO_CAPTURE;
     format->pix.width = (uint32_t)attr->picWidth;
     format->pix.height = (uint32_t)attr->picHeight;
-    format->pix.pixelformat = (uint32_t)attr->pixFmt;
-    format->pix.field = TISP_FIELD_NONE;
-    format->pix.colorspace = TISP_COLORSPACE_REC709;
+    /*
+     * IMP exposes PIX_FMT_NV12 as enum value 10, but the stock T40
+     * frame-channel ABI consumes enum tisp_output_fmt.  The stock module's
+     * isp_output_fmt table and SDK both identify semi-planar Y/CbCr 4:2:0 as
+     * output format 0.
+     */
+    format->pix.pixelformat = TISP_OUTPUT_FMT_NV12;
+    format->pix.field = TISP_FIELD_STOCK_PROGRESSIVE;
+    format->pix.colorspace = TISP_COLORSPACE_STOCK;
     format->crop_enable = (uint32_t)attr->crop.enable;
     format->crop_top = (uint32_t)attr->crop.top;
     format->crop_left = (uint32_t)attr->crop.left;
@@ -779,7 +830,7 @@ static void fill_qbuf(uint32_t *words, uint32_t index, uint32_t physical,
     words[0] = index;
     words[1] = TISP_BUF_TYPE_VIDEO_CAPTURE;
     words[2] = size;
-    words[4] = TISP_FIELD_NONE;
+    words[4] = TISP_FIELD_STOCK_PROGRESSIVE;
     words[12] = TISP_MEMORY_USERPTR;
     words[13] = physical;
     words[14] = size;

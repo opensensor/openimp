@@ -6,11 +6,11 @@ flat and ported T31 builds remain unchanged.
 
 ## Current live gate
 
-The validated camera is a Wyze Cam v3 Pro running Thingino with the open
-TX-ISP, GC4653 sensor, and AVPU drivers. RVD, RIC, and RSD run with only the
-OpenIMP library mapped.
+The validated camera is a Wyze Cam v3 Pro running Thingino with the stock
+`tx_isp_t40` and `sensor_gc4653_t40` kernel modules. RVD, RIC, and RSD run
+with only the OpenIMP library mapped; `tx_isp_t40_recovered` is not loaded.
 
-The decoder-clean inspection endpoint is:
+The live inspection endpoint is:
 
 ```text
 rtsp://CAMERA_IP/stream0
@@ -23,17 +23,16 @@ using `tests/t40/profiles/raptor-live-640.conf`:
 - forced day mode
 - one RTSP client
 
-The T40 ISP quality blocks recovered in `open-tx-isp` are required for a
-finished image. Without them the AE loop reaches its luma target by driving
-the GC4653 to high analog gain while demosaic, gamma, denoise, CCM, lens
-shading, and white-balance processing remain bypassed. The result is bright
-but visibly grainy and green/yellow. Loading those initialized quality blocks
-produces the current inspection-quality stream.
+OpenIMP passes the configured tuning-bin path to the stock ISP before sensor
+selection. The stock ISP firmware owns AE, AWB, demosaic, gamma, denoise, CCM,
+lens shading, and sensor-specific exposure/gain translation. OpenIMP forwards
+public tuning controls through the OEM T40 descriptor ABI; it contains no
+GC4653 register table or analog-gain LUT.
 
 ## Milestones
 
 - P0: standalone System state and lifecycle
-- P1: open ISP/sensor/FrameSource lifecycle and NV12 capture
+- P1: stock ISP/sensor/FrameSource lifecycle and NV12 capture
 - P2: open AVPU/DMA encoder lifecycle
 - P3: Raptor video/audio/control import coverage with no OEM `libimp.so`
 
@@ -44,13 +43,15 @@ maintained `libaudioProcess-neo`; logging uses the target's
 
 ## Known gaps
 
-- The 640x360 current-firmware VBR path is decoder-clean and stable.
+- The 640x360 current-firmware VBR path is live and decodable. Extended
+  decoder-clean soak testing remains part of the encoder gate.
 - 1920x1080 scaling and AVPU submission run, but the completion/status path
   can expose a short zero-filled payload and corrupt the first macroblock.
   The 1080 profile is diagnostic until a fresh main-stream AVPU oracle closes
   that gap.
-- AE is active in OpenIMP. The current color/denoise quality still depends on
-  the recovered open TX-ISP tuning blocks and their load-time configuration.
+- AE/AWB and image-quality processing run in the stock ISP firmware using the
+  selected sensor tuning blob. OpenIMP forwards tuning requests without
+  duplicating sensor policy.
 - P4 surfaces not used by the active Raptor gate return `ENOTSUP`.
 
 ## Build
