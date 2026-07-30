@@ -38,6 +38,7 @@ enum {
 /* Throttled logging: only emit per-frame logs on every Nth frame.
  * Use LOG_CODEC_THROTTLE(ctx, ...) in hot paths instead of LOG_CODEC. */
 #define AVPU_LOG_INTERVAL 50
+#define AVPU_T31_STREAM_PREFIX_BYTES 0x220u
 #define AVPU_SHOULD_LOG(ctx) \
     ((ctx) && ((ctx)->frames_encoded < 3 || ((ctx)->frames_encoded % AVPU_LOG_INTERVAL) == 0))
 #define LOG_CODEC_THROTTLE(ctx, ...) do { if (AVPU_SHOULD_LOG(ctx)) LOG_CODEC(__VA_ARGS__); } while(0)
@@ -2122,6 +2123,20 @@ static uint32_t avpu_prewrite_stream_headers(ALAvpuContext *ctx, int buf_idx, in
     ctx->stream_header_offset = pos;
     if (buf_idx >= 0 && buf_idx < 16)
         ctx->stream_header_offset_by_buf[buf_idx] = pos;
+#if defined(PLATFORM_T31)
+    /*
+     * T31 uses the first 0x220 stream bytes as a hardware work area and can
+     * replace the host-generated Annex-B prefix with its diagnostic fill on
+     * completion.  Keep a per-buffer copy so output assembly can restore the
+     * exact current SPS/PPS/slice prefix before joining the entropy payload.
+     */
+    if (ctx->stream_header_shadow &&
+        buf_idx >= 0 && buf_idx < 16 &&
+        pos <= AVPU_T31_STREAM_PREFIX_BYTES)
+        memcpy(ctx->stream_header_shadow +
+                   (size_t)buf_idx * AVPU_T31_STREAM_PREFIX_BYTES,
+               buf, pos);
+#endif
 #if defined(PLATFORM_T40)
     avpu_t40_stage_stream_prefix(buf, pos);
 #endif
@@ -2696,13 +2711,58 @@ static void fill_cmd_regs_enc1(const ALAvpuContext* ctx, uint32_t* cmd,
 #if defined(PLATFORM_T31)
         /*
          * The T31 and T40 command engines use the same inline AVC layout,
-         * but the current T31 OEM command oracle leaves these T40-only
-         * control bits clear.  Keep all address and picture-shape fields
-         * derived from the active channel above.
+         * but their hardware-rate-control seed is not interchangeable.  A
+         * T40 seed here occasionally lets T31 complete an IDR, then more
+         * commonly makes the command status and stream buffer collapse into
+         * the AVPU's 0x10/0x80/0x99 error-fill patterns.
+         *
+         * Keep all addresses and picture-shape fields derived from the active
+         * channel above, but rebuild the T31 control window from its live OEM
+         * command-list semantics:
+         *
+         *   - initial IDR QP is one below the common bits-per-LCU estimate;
+         *   - cmd[0x15] is the per-picture target distributed over the T31
+         *     HWRC grid (the 9914/10000 factor recovers OEM's integer seed);
+         *   - cmd[0x16] is the long-term per-frame target;
+         *   - cmd[0x18]'s low field is cmd[0x15] in 128-bit units.
+         *
+         * For the captured 640x360, 25 fps, 1 Mbps oracle this produces the
+         * exact OEM IDR values 0x6bc, 0x3f000121 and 0xc210000d without
+         * baking that resolution or bitrate into the implementation.
          */
+        uint32_t t31_picture_qp = picture_qp;
+        uint64_t t31_picture_target;
+
+        if (is_idr && t31_picture_qp > min_qp)
+            --t31_picture_qp;
+        if (t31_picture_qp < min_qp)
+            t31_picture_qp = min_qp;
+        if (t31_picture_qp > max_qp)
+            t31_picture_qp = max_qp;
+
+        t31_picture_target =
+            (uint64_t)(ctx->bitrate ? ctx->bitrate : 2000000u) *
+            fps_den * hwrc_group_count * 8u;
+        if (lcu_count != 0u && fps_num != 0u)
+            t31_picture_target /= (uint64_t)lcu_count * fps_num;
+        else
+            t31_picture_target = 0u;
+        hwrc_word15 =
+            (uint32_t)((t31_picture_target * 9914u) / 10000u);
+
+        cmd[0x03] = (is_idr ? 0x21000000u : 0x11000000u)
+                  | (t31_picture_qp << 16);
         cmd[0x0a] = 0x00000c80u;
         cmd[0x12] &= 0x7fffffffu;
         cmd[0x13] = 0u;
+        cmd[0x15] = hwrc_word15 & 0x00ffffffu;
+        cmd[0x16] = 0x3f000000u | (hwrc_word16 & 0x00ffffffu);
+        cmd[0x17] = (min_qp << 24) | (t31_picture_qp << 16)
+                  | (max_qp << 8) | t31_picture_qp;
+        cmd[0x18] = (ctx->frame_number <= 1u ? 0xc0000000u : 0x40000000u)
+                  | (((hwrc_columns_per_group * 4u + 1u) & 0xffu) << 20)
+                  | ((hwrc_word15 >> 7) & 0xffffu);
+        cmd[0x1c] = cmd[0x03] | 0x00000d06u;
 #endif
     }
 #endif
@@ -3132,6 +3192,25 @@ static void avpu_complete_frame(ALAvpuContext *ctx, const char *source)
               buf_idx, frame_size, flush_ret);
 }
 
+#if defined(PLATFORM_T31)
+static int avpu_t31_bitcount_is_error_fill(uint32_t bitcount)
+{
+    uint32_t fill = bitcount & 0xffu;
+
+    /*
+     * A failed T31 command can leave the status word filled with the same
+     * diagnostic byte used for the stream buffer.  Those words can look like
+     * plausible in-range bit counts (for example 0x00101010), so a simple
+     * buffer-size bound is insufficient.
+     */
+    if (fill != 0x10u && fill != 0x80u && fill != 0x81u &&
+        fill != 0x82u && fill != 0x99u)
+        return 0;
+
+    return (bitcount & 0x00ffffffu) == fill * 0x00010101u;
+}
+#endif
+
 static int avpu_try_recover_sticky_completion(ALAvpuContext *ctx,
                                               unsigned int core_status,
                                               const char *source)
@@ -3141,9 +3220,27 @@ static int avpu_try_recover_sticky_completion(ALAvpuContext *ctx,
     int frames_consumed;
     int pending_stream_count;
     unsigned int submitted_frames;
+#if defined(PLATFORM_T31)
+    int pending_buf_idx = -1;
+    uint32_t pending_cl_idx;
+    const uint32_t *pending_cmd;
+    uint32_t pending_bits;
+    uint32_t pending_bytes;
+#endif
 
     if (!ctx || !ctx->session_ready)
         return 0;
+
+#if defined(PLATFORM_T31)
+    /*
+     * A T31 core-status value of 3 is not proof of completion.  Before any
+     * real IRQ has been observed, its untouched/error-filled command block
+     * can contain an in-range number that looks like a bit count.  Fail
+     * closed instead of publishing that synthetic first frame.
+     */
+    if (ctx->last_irq_id < 0)
+        return 0;
+#endif
 
     if ((core_status & 0x3u) != 0x3u)
         return 0;
@@ -3168,6 +3265,33 @@ static int avpu_try_recover_sticky_completion(ALAvpuContext *ctx,
 
     if (pending_stream_count <= 0)
         return 0;
+
+#if defined(PLATFORM_T31)
+    /*
+     * Core status can become sticky before the submitted command list has
+     * received its completion writeback.  Promoting on status alone pops the
+     * wrong buffer; the delayed real IRQ then completes the next frame.
+     * Require the same sane bit-count word used by the normal T31 callback.
+     */
+    if (!avpu_pending_peek(ctx, &pending_buf_idx, NULL) ||
+        pending_buf_idx < 0 || pending_buf_idx >= 16)
+        return 0;
+    pending_cl_idx = ctx->stream_enc2_cl_idx[pending_buf_idx];
+    if (!ctx->cl_submit_ring.uncached_map)
+        avpu_flush_cache(ctx->fd, ctx->cl_submit_ring.map,
+                         0x100000, 0 /* BIDIRECTIONAL */);
+    pending_cmd = (const uint32_t *)
+        avpu_cl_submit_entry_ptr(ctx, pending_cl_idx);
+    if (!pending_cmd)
+        return 0;
+    pending_bits = pending_cmd[0x4d] & 0x0fffffffu;
+    pending_bytes = (pending_bits + 7u) >> 3;
+    if (pending_bits == 0u ||
+        avpu_t31_bitcount_is_error_fill(pending_bits) ||
+        ctx->stream_buf_size <= 0x220 ||
+        pending_bytes > (uint32_t)ctx->stream_buf_size - 0x220u)
+        return 0;
+#endif
 
     LOG_CODEC("%s: recovering sticky completion core_status=0x%08x submitted=%u enc=%d cons=%d pending=%d last_irq=%d",
               source ? source : "AVPU",
@@ -3393,12 +3517,15 @@ static void avpu_end_encoding_callback(void *user_data)
     int completed = 0;
     int have_pending = 0;
 
-    if (ctx && ctx->frames_encoded % 50 == 0)
+    if (ctx && (ctx->frames_encoded < 16 ||
+                ctx->frames_encoded % 50 == 0))
     LOG_CODEC("EndEncoding callback: encoding completed (frame %d)", ctx ? ctx->frames_encoded : -1);
 
     /* OEM reads the 0x200-byte status block from the current readback/status
-     * pointer in the core context. Prefer the CPU-visible readback ring and
-     * only fall back to the submit copy if the readback entry is unavailable. */
+     * pointer in the core context.  T31 writes completion status back into
+     * the submitted CL itself; the separate host-side readback copy retains
+     * the pre-submit words.  Other generations still prefer that readback
+     * copy and fall back to the submit entry. */
     memset(&status_regs, 0, sizeof(status_regs));
     memset(&slice_status, 0, sizeof(slice_status));
     memset(&merged_status, 0, sizeof(merged_status));
@@ -3410,9 +3537,15 @@ static void avpu_end_encoding_callback(void *user_data)
             avpu_flush_cache(ctx->fd, ctx->cl_ring.map, 0x100000, 0 /* BIDIRECTIONAL */);
         if (!ctx->cl_submit_ring.uncached_map && avpu_cl_submit_ring_base(ctx))
             avpu_flush_cache(ctx->fd, ctx->cl_submit_ring.map, 0x100000, 0 /* BIDIRECTIONAL */);
+#if defined(PLATFORM_T31)
+        status_regs_ptr = avpu_cl_submit_entry_ptr(ctx, cl_idx);
+        if (!status_regs_ptr)
+            status_regs_ptr = avpu_cl_entry_ptr(ctx, cl_idx);
+#else
         status_regs_ptr = avpu_cl_entry_ptr(ctx, cl_idx);
         if (!status_regs_ptr)
             status_regs_ptr = avpu_cl_submit_entry_ptr(ctx, cl_idx);
+#endif
         if (status_regs_ptr)
             memcpy(status_regs.raw, status_regs_ptr, sizeof(status_regs.raw));
     }
@@ -3421,7 +3554,8 @@ static void avpu_end_encoding_callback(void *user_data)
     MergeEncodingStatus(&merged_status, &slice_status);
     memcpy(&bitcount, slice_status.raw + 0x38, sizeof(bitcount));
     memcpy(&completed_flag, slice_status.raw + 0x10, sizeof(completed_flag));
-    if (ctx && ctx->frames_encoded % 50 == 0) {
+    if (ctx && (ctx->frames_encoded < 16 ||
+                ctx->frames_encoded % 50 == 0)) {
         LOG_CODEC("EndEncoding status: done=%d bitcount=0x%08x completed_flag=0x%08x pending=%d buf=%d cl=%u status_src=%s",
                   completed, bitcount, completed_flag,
                   have_pending, buf_idx, cl_idx,
@@ -3434,11 +3568,40 @@ static void avpu_end_encoding_callback(void *user_data)
         return;
     }
 
-    avpu_complete_frame(ctx, "EndEncoding callback");
+#if defined(PLATFORM_T31)
+    bitcount &= 0x0fffffffu;
+    if (bitcount == 0u ||
+        avpu_t31_bitcount_is_error_fill(bitcount) ||
+        ctx->stream_buf_size <= 0x220 ||
+        ((bitcount + 7u) >> 3) >
+            (uint32_t)ctx->stream_buf_size - 0x220u) {
+        LOG_CODEC("EndEncoding callback: rejecting invalid T31 completion bitcount=0x%08x buf=%d cl=%u",
+                  bitcount, buf_idx, cl_idx);
+        avpu_write_reg(ctx->fd, AVPU_INTERRUPT_MASK, 0u);
+        avpu_turn_off_gc(ctx->fd, 0);
+        return;
+    }
+#endif
 
-    /* Do NOT reset from callback — writing registers from IRQ thread context
-     * while hardware is still active causes a hard lockup. The reset is done
-     * in the submission path (Process) before the next CL_PUSH instead. */
+    /*
+     * The T31 OEM lifecycle masks this core and gates its clock after every
+     * completed command list.  Leaving both enabled makes the first picture
+     * complete, but the next reset sees the old 0x3 core state and can turn
+     * the submitted stream into the AVPU's error-fill pattern without a real
+     * completion IRQ.  This is intentionally only mask + clock gate: reset
+     * remains in the next submission path, where it cannot race writeback.
+     */
+#if defined(PLATFORM_T31)
+    avpu_write_reg(ctx->fd, AVPU_INTERRUPT_MASK, 0u);
+    avpu_turn_off_gc(ctx->fd, 0);
+#endif
+
+    /*
+     * Publish only after the core is quiescent.  Fifo_Queue wakes Raptor's
+     * encoder thread immediately, and publishing first lets the next Process
+     * race the two lifecycle writes above.
+     */
+    avpu_complete_frame(ctx, "EndEncoding callback");
 }
 
 /* EndAvcEntropy callback - separate OEM IRQ slot (core*4+2).
@@ -3978,6 +4141,11 @@ static uint32_t avpu_stream_buffer_effective_size(ALAvpuContext *ctx, int buf_id
     int have_t40_payload_size = 0;
     int ignore_t40_status_size = 0;
 #endif
+#if defined(PLATFORM_T31)
+    uint32_t t31_payload_bits = 0;
+    uint32_t t31_payload_size = 0;
+    int have_t31_payload_size = 0;
+#endif
 
     if (flush_ret_out) {
         *flush_ret_out = -1;
@@ -4016,6 +4184,27 @@ static uint32_t avpu_stream_buffer_effective_size(ALAvpuContext *ctx, int buf_id
      * This is the authoritative byte count — it matches exactly what the OEM
      * OutputSlice reads at *(cl + 0xf8) or *(cl + 0xc8). */
     hw_end = avpu_read_hw_stream_end(ctx, buf_idx);
+#if defined(PLATFORM_T31)
+    {
+        uint32_t cl_idx = ctx->stream_enc2_cl_idx[buf_idx];
+        const uint32_t *submit_cmd =
+            (const uint32_t *)avpu_cl_submit_entry_ptr(ctx, cl_idx);
+
+        if (submit_cmd) {
+            /* EncodingStatusRegsToSliceStatus reads raw +0x134, command
+             * word 0x4d, as the completed entropy bit count. */
+            t31_payload_bits = submit_cmd[0x4d] & 0x0fffffffu;
+            t31_payload_size = (t31_payload_bits + 7u) >> 3;
+            have_t31_payload_size =
+                t31_payload_bits != 0u &&
+                t31_payload_size <=
+                    (uint32_t)ctx->stream_buf_size - 0x220u;
+        }
+    }
+    /* T31 cmd[0x32] is the submitted 0x220 payload start, not the completed
+     * stream end.  Never expose that fixed offset as the frame length. */
+    hw_end = 0u;
+#endif
 #if defined(PLATFORM_T40)
     /* On T40 cmd[0x32] is the submitted header bit position.  The live AVPU
      * status mirror at 0x8304 is the completed entropy payload byte count:
@@ -4054,6 +4243,58 @@ static uint32_t avpu_stream_buffer_effective_size(ALAvpuContext *ctx, int buf_id
     sb = (const uint8_t *)ctx->stream_bufs[buf_idx].map;
     raw_end = avpu_stream_buffer_raw_end(sb, (size_t)ctx->stream_buf_size);
     scanned_raw_end = raw_end;
+
+#if defined(PLATFORM_T31)
+    {
+        const uint32_t payload_offset = 0x220u;
+        uint32_t header_size = ctx->stream_header_offset;
+        uint8_t *mutable_stream =
+            (uint8_t *)ctx->stream_bufs[buf_idx].map;
+
+        if (buf_idx >= 0 && buf_idx < 16 &&
+            ctx->stream_header_offset_by_buf[buf_idx] != 0u)
+            header_size = ctx->stream_header_offset_by_buf[buf_idx];
+
+        if (have_t31_payload_size)
+            raw_end = payload_offset + t31_payload_size;
+
+        if (ctx->frames_encoded < 3 ||
+            (ctx->frames_encoded % AVPU_LOG_INTERVAL) == 0) {
+            LOG_CODEC("AVPU: T31 payload buf[%d] bits=%u bytes=%u valid=%d scan_end=%u chosen_raw_end=%u header=%u",
+                      buf_idx, t31_payload_bits, t31_payload_size,
+                      have_t31_payload_size, scanned_raw_end, raw_end,
+                      header_size);
+        }
+
+        /* A missing/invalid completion word means the old sticky-status path
+         * reached this buffer before writeback.  Do not guess from a partial
+         * DMA buffer or expose it to Raptor. */
+        if (!have_t31_payload_size)
+            return 0u;
+
+        if (ctx->stream_header_shadow &&
+            header_size <= AVPU_T31_STREAM_PREFIX_BYTES)
+            memcpy(mutable_stream,
+                   ctx->stream_header_shadow +
+                       (size_t)buf_idx * AVPU_T31_STREAM_PREFIX_BYTES,
+                   header_size);
+
+        /* The inline T31 command writes entropy data at the fixed +0x220
+         * boundary.  Join it to the host-generated Annex-B prefix before
+         * Raptor sees the completed access unit. */
+        if (raw_end > payload_offset && header_size <= payload_offset) {
+            uint32_t payload_size = raw_end - payload_offset;
+
+            memmove(mutable_stream + header_size,
+                    mutable_stream + payload_offset, payload_size);
+            raw_end = header_size + payload_size;
+            if (raw_end < (uint32_t)ctx->stream_buf_size)
+                memset(mutable_stream + raw_end, 0,
+                       (size_t)ctx->stream_buf_size - raw_end);
+            sb = mutable_stream;
+        }
+    }
+#endif
 
 #if defined(PLATFORM_T40)
     {
@@ -5234,6 +5475,8 @@ int AL_Codec_Encode_Destroy(void *codec) {
             free(enc->avpu.stream_queue_mutex);
             enc->avpu.stream_queue_mutex = NULL;
         }
+        free(enc->avpu.stream_header_shadow);
+        enc->avpu.stream_header_shadow = NULL;
 
     }
     if (enc->hw_encoder_fd >= 0) {
@@ -5595,6 +5838,13 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
                         enc->avpu.pending_stream_read = 0;
                         enc->avpu.pending_stream_write = 0;
                         enc->avpu.pending_stream_count = 0;
+#if defined(PLATFORM_T31)
+                        enc->avpu.stream_header_shadow =
+                            (uint8_t *)calloc(16u,
+                                AVPU_T31_STREAM_PREFIX_BYTES);
+                        if (!enc->avpu.stream_header_shadow)
+                            LOG_CODEC("AVPU: failed to allocate T31 stream-prefix shadow");
+#endif
 
                         /* OEM parity: AL_Board_Create allocates mutex and starts
                          * WaitInterruptThread immediately after opening /dev/avpu. */
@@ -6186,6 +6436,13 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
 
             /* Fill Enc1 command registers — source addr and header offset go INTO the CL entry */
             fill_cmd_regs_enc1(ctx, cmd, buf_idx, phys_addr, hdr_offset, is_idr, ref_phys);
+            if (ctx->frame_number < 16u) {
+                LOG_CODEC("Process: T31 submit frame=%u CL[%u] buf=%d src=0x%08x rec=0x%08x ref=0x%08x idr=%d force=%d periodic=%d gop=%u cmd03=%08x cmd15=%08x cmd17=%08x cmd18=%08x",
+                          ctx->frame_number, idx, buf_idx, phys_addr,
+                          ctx->rec_buf.phy_addr, ref_phys, is_idr,
+                          force_idr, periodic_idr, ctx->gop_length,
+                          cmd[0x03], cmd[0x15], cmd[0x17], cmd[0x18]);
+            }
             log_first_enc1_cmd_window(ctx, idx, cmd);
 
             /* Flush the mapped command-list region from CPU cache to RAM.

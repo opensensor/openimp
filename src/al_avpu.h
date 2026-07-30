@@ -269,6 +269,7 @@ typedef struct ALAvpuContext {
     uint32_t interm_ep2_size;
     uint32_t interm_map_size;
     uint32_t interm_data_size;
+    uint8_t *stream_header_shadow; /* optional 16 x 0x220 host-prefix shadow */
 } ALAvpuContext;
 
 /* ---- Board / IP Controller API (OEM parity) ---- */
