@@ -7,3 +7,4 @@ prudynt-t
 driver/
 thingino-streamer/
 .vscode/
+/logs/

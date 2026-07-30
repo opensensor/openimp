@@ -140,6 +140,14 @@ static int p2_h264_stream_is_idr(const uint8_t *stream, uint32_t length)
 
 extern int AL_Codec_Encode_SetDefaultParam(void *param);
 extern int AL_Codec_Encode_Create(void **codec, void *params);
+extern int AL_Codec_Encode_SetStreamBufferSize(void *codec, int size);
+extern int AL_Codec_Encode_SetFrameRate(void *codec, void *fps);
+extern int AL_Codec_Encode_SetBitRate(void *codec, int target_bitrate,
+                                     int max_bitrate);
+extern int AL_Codec_Encode_SetRcParam(void *codec, void *rc_attr);
+extern int AL_Codec_Encode_SetQpBounds(void *codec, int min_qp, int max_qp);
+extern int AL_Codec_Encode_SetGopParam(void *codec, void *gop);
+extern int AL_Codec_Encode_SetGopLength(void *codec, int length);
 extern int AL_Codec_Encode_Destroy(void *codec);
 extern int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data);
 extern int AL_Codec_Encode_GetStream(void *codec, void **stream, void **user_data);
@@ -402,6 +410,14 @@ int IMP_Encoder_CreateChn(int channel, IMPEncoderCHNAttr *attr)
         pthread_mutex_unlock(&ch->lock);
         return -1;
     }
+    if (ch->stream_buf_size != 0u &&
+        AL_Codec_Encode_SetStreamBufferSize(ch->codec,
+                                            (int)ch->stream_buf_size) != 0) {
+        AL_Codec_Encode_Destroy(ch->codec);
+        ch->codec = NULL;
+        pthread_mutex_unlock(&ch->lock);
+        return -1;
+    }
     ch->attr = *attr;
     ch->codec_type = (((uint32_t)attr->encAttr.profile) >> 24) & 0xffu;
     ch->created = 1;
@@ -537,20 +553,31 @@ int IMP_Encoder_PollingStream(int channel, uint32_t timeout_ms)
         pthread_mutex_unlock(&ch->lock);
         return -1;
     }
-    fps_num = ch->attr.rcAttr.outFrmRate.frmRateNum;
-    fps_den = ch->attr.rcAttr.outFrmRate.frmRateDen;
-    if (!fps_num || !fps_den) {
-        fps_num = 25u;
-        fps_den = 1u;
+    /*
+     * The physical FrameSource ioctl blocks at sensor cadence.  Do not add a
+     * second clock to AVC: sleeping until the same edge and then issuing
+     * WAIT_FRAME races past that edge and waits an additional sensor period.
+     * The metadata-only JPEG fallback has no FrameSource wait, so it still
+     * needs explicit pacing.
+     */
+    interval_us = 0u;
+    wait_us = 0u;
+    if (ch->codec_type == IMP_ENC_TYPE_JPEG) {
+        fps_num = ch->attr.rcAttr.outFrmRate.frmRateNum;
+        fps_den = ch->attr.rcAttr.outFrmRate.frmRateDen;
+        if (!fps_num || !fps_den) {
+            fps_num = 25u;
+            fps_den = 1u;
+        }
+        interval_us = (1000000ull * fps_den) / fps_num;
+        if (!interval_us)
+            interval_us = 1u;
+        if (interval_us > 60000000u)
+            interval_us = 60000000u;
+        now_us = p2_monotonic_us();
+        wait_us = ch->next_frame_due_us > now_us
+            ? ch->next_frame_due_us - now_us : 0u;
     }
-    interval_us = (1000000ull * fps_den) / fps_num;
-    if (!interval_us)
-        interval_us = 1u;
-    if (interval_us > 60000000u)
-        interval_us = 60000000u;
-    now_us = p2_monotonic_us();
-    wait_us = ch->next_frame_due_us > now_us
-        ? ch->next_frame_due_us - now_us : 0u;
     pthread_mutex_unlock(&ch->lock);
 
     timeout_us = (uint64_t)timeout_ms * 1000u;
@@ -568,8 +595,10 @@ int IMP_Encoder_PollingStream(int channel, uint32_t timeout_ms)
         pthread_mutex_unlock(&ch->lock);
         return ch->raw_stream ? 0 : -1;
     }
-    now_us = p2_monotonic_us();
-    ch->next_frame_due_us = now_us + interval_us;
+    if (interval_us) {
+        now_us = p2_monotonic_us();
+        ch->next_frame_due_us = now_us + interval_us;
+    }
     pthread_mutex_unlock(&ch->lock);
 
     pthread_mutex_lock(&p2_core_lock);
@@ -586,6 +615,18 @@ int IMP_Encoder_PollingStream(int channel, uint32_t timeout_ms)
     }
     if (AL_Codec_Encode_Process(ch->codec, frame, frame) != 0)
         goto done;
+    /*
+     * The stock encoder returns the capture buffer to the frame channel as
+     * soon as the AVPU has accepted the source address.  Holding it until the
+     * public stream is released misses the ISP's next scheduling window on
+     * T40: a nominal 30 fps channel then dequeues at about 15 fps and the
+     * temporal ISP filters see discontinuous input.  AVPU completion is well
+     * inside one sensor interval, so the ISP cannot refill this buffer before
+     * the hardware has consumed it.
+     */
+    if (frame != &ch->synthetic_frame &&
+        IMP_FrameSource_ReleaseFrame(ch->source_channel, frame) == 0)
+        frame = NULL;
     retries = timeout_ms ? timeout_ms : 2000u;
     if (retries < 2000u)
         retries = 2000u;
@@ -597,7 +638,7 @@ int IMP_Encoder_PollingStream(int channel, uint32_t timeout_ms)
     if (!stream)
         goto done;
     pthread_mutex_lock(&ch->lock);
-    ch->source_frame = frame;
+    ch->source_frame = frame ? frame : &ch->synthetic_frame;
     ch->raw_stream = stream;
     ch->codec_user = user;
     pthread_mutex_unlock(&ch->lock);
@@ -824,6 +865,10 @@ int IMP_Encoder_SetChnFrmRate(int channel, IMPEncoderFrmRate *rate,
     }
     ch->attr.rcAttr.outFrmRate = *rate;
     ch->next_frame_due_us = 0;
+    if (AL_Codec_Encode_SetFrameRate(ch->codec, rate) != 0) {
+        pthread_mutex_unlock(&ch->lock);
+        return -1;
+    }
     pthread_mutex_unlock(&ch->lock);
     return 0;
 }
@@ -848,9 +893,71 @@ int IMP_Encoder_GetChnAttrRcMode(int channel, IMPEncoderAttrRcMode *mode)
 
 int IMP_Encoder_SetChnAttrRcMode(int channel, IMPEncoderAttrRcMode *mode)
 {
-    if (!p2_valid_channel(channel) || !mode || !p2_channels[channel].created)
+    P2EncoderChannel *ch;
+    IMPEncoderRcAttr codec_rc;
+    uint32_t target_kbps = 0;
+    uint32_t maximum_kbps = 0;
+
+    if (!p2_valid_channel(channel) || !mode)
         return -1;
-    p2_channels[channel].attr.rcAttr.attrRcMode = *mode;
+    ch = &p2_channels[channel];
+    pthread_mutex_lock(&ch->lock);
+    if (!ch->created) {
+        pthread_mutex_unlock(&ch->lock);
+        return -1;
+    }
+
+    ch->attr.rcAttr.attrRcMode = *mode;
+    codec_rc = ch->attr.rcAttr;
+    switch (codec_rc.attrRcMode.rcMode) {
+    case IMP_ENC_RC_MODE_CBR:
+        target_kbps = codec_rc.attrRcMode.attrCbr.uTargetBitRate;
+        codec_rc.attrRcMode.attrCbr.uTargetBitRate =
+            target_kbps > UINT32_MAX / 1000u ? UINT32_MAX :
+            target_kbps * 1000u;
+        break;
+    case IMP_ENC_RC_MODE_VBR:
+        target_kbps = codec_rc.attrRcMode.attrVbr.uTargetBitRate;
+        maximum_kbps = codec_rc.attrRcMode.attrVbr.uMaxBitRate;
+        codec_rc.attrRcMode.attrVbr.uTargetBitRate =
+            target_kbps > UINT32_MAX / 1000u ? UINT32_MAX :
+            target_kbps * 1000u;
+        codec_rc.attrRcMode.attrVbr.uMaxBitRate =
+            maximum_kbps > UINT32_MAX / 1000u ? UINT32_MAX :
+            maximum_kbps * 1000u;
+        break;
+    case IMP_ENC_RC_MODE_CAPPED_VBR:
+        target_kbps = codec_rc.attrRcMode.attrCappedVbr.uTargetBitRate;
+        maximum_kbps = codec_rc.attrRcMode.attrCappedVbr.uMaxBitRate;
+        codec_rc.attrRcMode.attrCappedVbr.uTargetBitRate =
+            target_kbps > UINT32_MAX / 1000u ? UINT32_MAX :
+            target_kbps * 1000u;
+        codec_rc.attrRcMode.attrCappedVbr.uMaxBitRate =
+            maximum_kbps > UINT32_MAX / 1000u ? UINT32_MAX :
+            maximum_kbps * 1000u;
+        break;
+    case IMP_ENC_RC_MODE_CAPPED_QUALITY:
+        target_kbps = codec_rc.attrRcMode.attrCappedQuality.uTargetBitRate;
+        maximum_kbps = codec_rc.attrRcMode.attrCappedQuality.uMaxBitRate;
+        codec_rc.attrRcMode.attrCappedQuality.uTargetBitRate =
+            target_kbps > UINT32_MAX / 1000u ? UINT32_MAX :
+            target_kbps * 1000u;
+        codec_rc.attrRcMode.attrCappedQuality.uMaxBitRate =
+            maximum_kbps > UINT32_MAX / 1000u ? UINT32_MAX :
+            maximum_kbps * 1000u;
+        break;
+    case IMP_ENC_RC_MODE_FIXQP:
+        break;
+    default:
+        pthread_mutex_unlock(&ch->lock);
+        return -1;
+    }
+
+    if (AL_Codec_Encode_SetRcParam(ch->codec, &codec_rc) != 0) {
+        pthread_mutex_unlock(&ch->lock);
+        return -1;
+    }
+    pthread_mutex_unlock(&ch->lock);
     return 0;
 }
 
@@ -889,6 +996,10 @@ int IMP_Encoder_SetChnBitRate(int channel, int bitrate, int max_bitrate)
     default:
         return -1;
     }
+    if (AL_Codec_Encode_SetBitRate(p2_channels[channel].codec,
+                                   (int)(target * 1000u),
+                                   (int)(maximum * 1000u)) != 0)
+        return -1;
     return 0;
 }
 
@@ -905,7 +1016,7 @@ int IMP_Encoder_SetChnGopAttr(int channel, IMPEncoderGopAttr *gop)
     if (!p2_valid_channel(channel) || !gop || !p2_channels[channel].created)
         return -1;
     p2_channels[channel].attr.gopAttr = *gop;
-    return 0;
+    return AL_Codec_Encode_SetGopParam(p2_channels[channel].codec, gop);
 }
 
 int IMP_Encoder_SetChnGopLength(int channel, int length)
@@ -914,7 +1025,7 @@ int IMP_Encoder_SetChnGopLength(int channel, int length)
         !p2_channels[channel].created)
         return -1;
     p2_channels[channel].attr.gopAttr.uGopLength = (uint16_t)length;
-    return 0;
+    return AL_Codec_Encode_SetGopLength(p2_channels[channel].codec, length);
 }
 
 static void p2_set_qp_bounds(IMPEncoderAttrRcMode *mode, int minimum,
@@ -942,7 +1053,8 @@ int IMP_Encoder_SetChnQpBounds(int channel, int minimum, int maximum)
         return -1;
     p2_set_qp_bounds(&p2_channels[channel].attr.rcAttr.attrRcMode,
                      minimum, maximum);
-    return 0;
+    return AL_Codec_Encode_SetQpBounds(p2_channels[channel].codec,
+                                       minimum, maximum);
 }
 
 int IMP_Encoder_GetChnEncType(int channel, IMPEncoderEncType *type)

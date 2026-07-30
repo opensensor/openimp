@@ -814,8 +814,16 @@ static void fill_frame_format(struct tisp_frame_format *format,
     format->scaler_enable = (uint32_t)attr->scaler.enable;
     format->scaler_out_width = (uint32_t)attr->scaler.outwidth;
     format->scaler_out_height = (uint32_t)attr->scaler.outheight;
-    format->rate_bits = (uint32_t)attr->outFrmRateNum;
-    format->rate_mask = (uint32_t)attr->outFrmRateDen;
+    /*
+     * These two driver fields are not the public IMP numerator and
+     * denominator.  They program the mscaler frame-drop loop and bit mask.
+     * Stock libimp uses loop=0/mask=1 for the physical FrameSource channel,
+     * both when the encoder consumes every sensor frame and when its output
+     * rate is lower.  Encoder-side pacing performs any configured drop while
+     * keeping the ISP (and its temporal filters) running at sensor cadence.
+     */
+    format->rate_bits = 0u;
+    format->rate_mask = 1u;
     format->fcrop_enable = (uint32_t)attr->fcrop.enable;
     format->fcrop_top = (uint32_t)attr->fcrop.top;
     format->fcrop_left = (uint32_t)attr->fcrop.left;
@@ -829,8 +837,6 @@ static void fill_qbuf(uint32_t *words, uint32_t index, uint32_t physical,
     memset(words, 0, TISP_BUFFER_WORDS * sizeof(*words));
     words[0] = index;
     words[1] = TISP_BUF_TYPE_VIDEO_CAPTURE;
-    words[2] = size;
-    words[4] = TISP_FIELD_STOCK_PROGRESSIVE;
     words[12] = TISP_MEMORY_USERPTR;
     words[13] = physical;
     words[14] = size;
@@ -923,7 +929,6 @@ int IMP_FrameSource_GetFrame(int channel, IMPFrameInfo **frame)
     struct openimp_fs_channel *chn;
     struct openimp_fs_buffer *buffer;
     uint32_t words[TISP_BUFFER_WORDS];
-    uint32_t sequence = 0;
     uint32_t index;
     int attempts;
 
@@ -939,10 +944,15 @@ int IMP_FrameSource_GetFrame(int channel, IMPFrameInfo **frame)
     }
     unlock_p1();
 
-    for (attempts = 0; attempts < 100; attempts++) {
-        if (record_ioctl(chn->fd, TISP_VIDIOC_WAIT_FRAME, &sequence) < 0 &&
-            errno != EAGAIN && errno != EINTR)
-            return -1;
+    for (attempts = 0; attempts < 1000; attempts++) {
+        /*
+         * Dequeue a frame which the ISP has already completed before asking
+         * the driver for another one.  The stock T40 WAIT_FRAME ioctl reports
+         * the ISP core edge rather than the frame-channel buffer becoming
+         * dequeueable; using it between DQBUF attempts can skip that ready
+         * edge and hold a 30 fps channel near 15 fps.  A short bounded DQBUF
+         * retry keeps buffer ownership tied to the actual frame channel.
+         */
         memset(words, 0, sizeof(words));
         words[1] = TISP_BUF_TYPE_VIDEO_CAPTURE;
         words[12] = TISP_MEMORY_USERPTR;
@@ -950,9 +960,9 @@ int IMP_FrameSource_GetFrame(int channel, IMPFrameInfo **frame)
             break;
         if (errno != EAGAIN && errno != ENODATA && errno != EINTR)
             return -1;
-        usleep(10000);
+        usleep(1000);
     }
-    if (attempts == 100)
+    if (attempts == 1000)
         return -1;
     index = words[0];
     if (index >= chn->buffer_count)

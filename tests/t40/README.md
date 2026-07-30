@@ -1,9 +1,16 @@
 # T40 tests
 
-`profiles/raptor-live-640.conf` is the stable interactive profile.
-`profiles/raptor-live-1080.conf` reproduces the unresolved main-stream AVPU
-payload/completion issue. `profiles/raptor-dual.conf` exercises the broader
-producer topology.
+The stable interactive profiles are:
+
+- `profiles/raptor-live-640.conf`: 640x360 at 30 fps
+- `profiles/raptor-live-720.conf`: 1280x720 at 30 fps
+- `profiles/raptor-live-1080.conf`: 1920x1080 at 15 fps
+- `profiles/raptor-live-1440.conf`: 2560x1440 at 15 fps
+
+`profiles/raptor-dual.conf` exercises the broader producer topology. The
+single-stream profiles intentionally exercise the same implementation at
+different configured dimensions; the T40 capture and encoder paths do not
+select resolution-specific templates.
 
 The source probes under `probes/` correspond to the P0-P2 bring-up gates:
 

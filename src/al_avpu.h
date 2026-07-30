@@ -169,9 +169,12 @@ typedef struct ALAvpuContext {
     uint32_t enc_h;
     uint32_t fps_num;
     uint32_t fps_den;
+    uint32_t bitrate;
     int profile;
     uint32_t rc_mode;
     uint32_t qp;
+    uint32_t min_qp;
+    uint32_t max_qp;
     uint32_t entropy_mode;
     uint32_t gop_length;
     uint32_t format_word;

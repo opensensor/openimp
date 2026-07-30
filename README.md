@@ -149,7 +149,7 @@ To use this library with prudynt-t:
 - [x] T40XP open AVPU/DMA H.264 pipeline
 - [x] T40XP Raptor video/audio/control import coverage
 - [x] T40XP runtime with no OEM `libimp.so` dependency
-- [ ] T40XP decoder-clean 1920x1080 output
+- [x] T40XP decoder-clean dynamic 640x360 through 2560x1440 output
 - [ ] P4 APIs currently outside the Raptor runtime gate
 
 The T31 track retains the prior compatibility/stub implementation and its

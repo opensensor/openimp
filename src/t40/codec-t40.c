@@ -8,6 +8,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
+#include <limits.h>
 #include <pthread.h>
 #include <unistd.h>
 #include <fcntl.h>
@@ -703,6 +704,25 @@ static size_t avpu_get_nv12_frame_size(uint32_t width, uint32_t height)
     return ((size_t)avpu_get_nv12_luma_plane_size(width, height) * 3u) / 2u;
 }
 
+static uint32_t avpu_get_stream_buffer_size(uint32_t width, uint32_t height)
+{
+    uint64_t picture_bytes = (uint64_t)width * (uint64_t)height;
+    uint64_t aligned;
+
+    /*
+     * Size the compressed-picture window from the configured picture rather
+     * than assigning one buffer to "sub" streams and another to "main".
+     * One byte per visible pixel covers the largest observed intra pictures
+     * while keeping allocations proportional for arbitrary channel sizes.
+     */
+    if (picture_bytes < 0x20000u)
+        picture_bytes = 0x20000u;
+    aligned = (picture_bytes + 0xfffu) & ~0xfffull;
+    if (aligned > (uint64_t)(INT_MAX & ~0xfff))
+        aligned = (uint64_t)(INT_MAX & ~0xfff);
+    return (uint32_t)aligned;
+}
+
 static size_t avpu_get_enc1_ref_region_size(uint32_t width, uint32_t height)
 {
     uint32_t aligned_w = avpu_align_up_u32(width, 64u);
@@ -722,6 +742,21 @@ static size_t avpu_get_enc1_map_region_size(uint32_t width, uint32_t height)
      * This must match avpu_get_enc1_fbc_map_pitch() which uses 0x20 (32) per
      * 4K tile. Stock CL has map_sz=0xb80=2944 for 640x360 (32*1*92). */
     return (size_t)(width_4k_tiles * 32u) * (size_t)height_quads;
+}
+
+static size_t avpu_get_enc1_map_storage_size(uint32_t width, uint32_t height)
+{
+    size_t luma_map_size = avpu_get_enc1_map_region_size(
+        width, avpu_align_up_u32(height, 64u));
+
+    /*
+     * Encoder FBC reference storage carries a half-sized chroma map after the
+     * luma map.  Reference surfaces and their maps use the same 64-line
+     * storage height even when the visible height only needs 16-line command
+     * geometry.  The combined allocation is rounded to the DMA manager's
+     * 256-byte boundary.
+     */
+    return (luma_map_size + (luma_map_size >> 1) + 0xffu) & ~0xffu;
 }
 
 static size_t avpu_get_enc1_mv_region_size(uint32_t width, uint32_t height)
@@ -849,39 +884,34 @@ static uint32_t avpu_get_enc1_comp_map_size(uint32_t width, uint32_t height)
 
 static uint32_t avpu_get_enc1_wpp_size(uint32_t width, uint32_t height)
 {
-    uint32_t lcu_h = 16u;
-    uint32_t lcu_w = (width + 15u) >> 4;
-    uint32_t row_count;
-    uint32_t row_groups;
-    uint32_t group_bytes;
+    uint32_t lcu_rows;
 
-    if (lcu_w == 0u)
-        return 0u;
+    (void)width;
+    lcu_rows = (height + 15u) >> 4;
 
-    /* OEM AL_GetAllocSize_WPP(height, 16, lcu_w):
-     *   return lcu_w * align128((ceil(ceil(height / 16) / lcu_w) << 2)) * 16;
-     * recovered from Binary Ninja decompilation of AL_GetAllocSize_WPP(). */
-    row_count = (height + lcu_h - 1u) / lcu_h;
-    row_groups = (row_count + lcu_w - 1u) / lcu_w;
-    group_bytes = avpu_align_up_u32(row_groups << 2, 128u);
-    return lcu_w * group_bytes * lcu_h;
+    /*
+     * The AVC configuration used by Raptor has one slice and one WPP
+     * partition.  AL_GetAllocSize_WPP therefore reduces to one 32-bit state
+     * entry per configured LCU row, rounded to the hardware's 128-byte
+     * boundary.  The old implementation accidentally multiplied by the
+     * picture width and LCU size, inflating this region by hundreds of KiB.
+     */
+    return avpu_align_up_u32(lcu_rows * sizeof(uint32_t), 128u);
 }
 
 static size_t avpu_get_enc1_frame_buf_size(uint32_t width, uint32_t height)
 {
     size_t ref_sz = avpu_get_enc1_ref_region_size(width, height);
-    size_t map_sz = avpu_get_enc1_map_region_size(width, height);
+    size_t map_storage_sz = avpu_get_enc1_map_storage_size(width, height);
     size_t mv_sz = avpu_get_enc1_mv_region_size(width, height);
-    size_t map_padding = width > 640u ? 0x1100u : 0x680u;
-    size_t total = ref_sz + map_sz + map_padding + mv_sz;
+    size_t total = ref_sz + map_storage_sz + mv_sz;
     size_t nv12_sz = avpu_get_nv12_frame_size(width, height);
 
     if (total < nv12_sz)
         total = nv12_sz;
 
     /* Do not page-align this allocation.  The OEM ref manager places the MV
-     * allocation immediately after its padded FBC-map allocation.  At 640x360
-     * the exact layout is 0x5a000 + 0xb80 + 0x680 + 0x7400 = 0x62600. */
+     * allocation immediately after the combined luma/chroma FBC maps. */
     return total;
 }
 
@@ -890,67 +920,129 @@ static size_t avpu_get_enc1_frame_buf_size(uint32_t width, uint32_t height)
 #define AVPU_T40_EP3_DATA_SIZE 0x14a0u
 #define AVPU_T40_EP3_SLOT_COUNT 3u
 
-static size_t avpu_t40_read_file(const char *path, void *dst, size_t size)
-{
-    FILE *file;
-    size_t got;
+static const uint32_t avpu_t40_ep3_qp_words[12][3] = {
+    { 0x0c090706u, 0x08060504u, 0x130e0a08u },
+    { 0x08060504u, 0x06050403u, 0x0e0a0806u },
+    { 0x06050403u, 0x05040302u, 0x0a070504u },
+    { 0x04030202u, 0x04030201u, 0x07050403u },
+    { 0x03020101u, 0x03020101u, 0x05040302u },
+    { 0x02010101u, 0x02010101u, 0x03020101u },
+    { 0x00000000u, 0x01010101u, 0x00000000u },
+    { 0xffffffffu, 0x00000000u, 0x00000000u },
+    { 0xfdfeffffu, 0x00000000u, 0x00000000u },
+    { 0xfcfdfefeu, 0x00000000u, 0x00000000u },
+    { 0xfafbfcfdu, 0x00000000u, 0x00000000u },
+    { 0xf8fafbfcu, 0x00000000u, 0x00000000u },
+};
 
-    if (!path || path[0] == '\0' || !dst || size == 0u)
-        return 0u;
-    file = fopen(path, "rb");
-    if (!file)
-        return 0u;
-    got = fread(dst, 1u, size, file);
-    fclose(file);
-    return got;
+static const uint32_t avpu_t40_ep3_lambda_words[103] = {
+    0x5b, 0x66, 0x72, 0x80, 0x90, 0xa1, 0xb5, 0xcb, 0xe4, 0x100, 0x11f,
+    0x143, 0x16a, 0x196, 0x1c8, 0x200, 0x23f, 0x285, 0x2d4, 0x32d, 0x390,
+    0x400, 0x47d, 0x50a, 0x5a8, 0x659, 0x721, 0x800, 0x8fb, 0xa14, 0xb50,
+    0xcb3, 0xe41, 0x1000, 0x11f6, 0x1429, 0x16a1, 0x1966, 0x1c82, 0x2000,
+    0x23eb, 0x2851, 0x2d41, 0x32cc, 0x3904, 0x4000, 0x47d6, 0x50a3,
+    0x5a82, 0x6598, 0x7209, 0x8000, 0x8fad, 0xa145, 0xb505, 0xcb30,
+    0xe412, 0x10000, 0x11f5a, 0x1428a, 0x16a0a, 0x19660, 0x1c824,
+    0x20000, 0x23eb3, 0x28514, 0x2d414, 0x32cc0, 0x39048, 0x40000,
+    0x47d67, 0x50a29, 0x5a828, 0x65980, 0x72090, 0x80000, 0x8facd,
+    0xa1451, 0xb504f, 0xcb2ff, 0xe411f, 0x100000, 0x11f59b, 0x1428a3,
+    0x16a09e, 0x1965ff, 0x1c823e, 0x200000, 0x23eb36, 0x285146,
+    0x2d413d, 0x32cbfd, 0x39047c, 0x400000, 0x47d66b, 0x50a28c,
+    0x5a827a, 0x6597fb, 0x7208f8, 0x800000, 0x8facd6, 0xa14518,
+    0xb504f3,
+};
+
+static uint32_t avpu_t40_ep3_target(uint32_t bitrate, unsigned int slot)
+{
+    uint64_t target = bitrate;
+
+    /*
+     * GetTargetSize() assigns the three hardware RC tables to the GOP's
+     * temporal layers.  Preserve its integer-operation order: the rounding is
+     * observable in the initialized DMA table.
+     */
+    if (slot < 2u)
+        target = target * 5u / 7u;
+    if (slot == 0u)
+        target = target * 10u / 13u;
+    return (uint32_t)target;
 }
 
-static size_t avpu_t40_init_ep3_ring(AvpuDMABuf *ring)
+static size_t avpu_t40_init_ep3_ring(ALAvpuContext *ctx)
 {
-    static const char *const slot_env[AVPU_T40_EP3_SLOT_COUNT] = {
-        "OPENIMP_T40_EP3_0_FILE",
-        "OPENIMP_T40_EP3_1_FILE",
-        "OPENIMP_T40_EP3_2_FILE",
+    static const uint8_t row_percent[11] = {
+        150u, 130u, 120u, 110u, 105u, 100u, 95u, 90u, 80u, 70u, 50u,
     };
-    const char *ring_path;
     uint8_t *base;
-    size_t total = 0u;
-    size_t got;
-    unsigned int i;
+    uint32_t bitrate;
+    unsigned int slot;
 
-    if (!ring || !ring->map || ring->size < AVPU_T40_EP3_SLOT_SIZE * AVPU_T40_EP3_SLOT_COUNT)
+    if (!ctx || !ctx->rec_trace_buf.map ||
+        ctx->rec_trace_buf.size <
+            AVPU_T40_EP3_SLOT_SIZE * AVPU_T40_EP3_SLOT_COUNT)
         return 0u;
 
-    base = (uint8_t *)ring->map;
-    memset(base, 0, AVPU_T40_EP3_SLOT_SIZE * AVPU_T40_EP3_SLOT_COUNT);
+    base = (uint8_t *)ctx->rec_trace_buf.map;
+    bitrate = ctx->bitrate ? ctx->bitrate : 2000000u;
+    memset(base, 0,
+           AVPU_T40_EP3_SLOT_SIZE * AVPU_T40_EP3_SLOT_COUNT);
 
-    /* A combined ring image can contain three 0x1500-byte slots.  For
-     * convenience, a single 0x14a0-byte OEM dump is replicated to all slots. */
-    ring_path = getenv("OPENIMP_T40_EP3_FILE");
-    got = avpu_t40_read_file(ring_path, base,
-                             AVPU_T40_EP3_SLOT_SIZE * AVPU_T40_EP3_SLOT_COUNT);
-    if (got > 0u && got <= AVPU_T40_EP3_DATA_SIZE) {
-        for (i = 1u; i < AVPU_T40_EP3_SLOT_COUNT; ++i)
-            memcpy(base + i * AVPU_T40_EP3_SLOT_SIZE, base, got);
-        total = got * AVPU_T40_EP3_SLOT_COUNT;
-    } else {
-        total = got;
+    for (slot = 0u; slot < AVPU_T40_EP3_SLOT_COUNT; ++slot) {
+        uint32_t *words =
+            (uint32_t *)(base + slot * AVPU_T40_EP3_SLOT_SIZE);
+        uint32_t target = avpu_t40_ep3_target(bitrate, slot);
+        uint32_t base_target = (uint32_t)((uint64_t)target * 95u / 100u);
+        unsigned int row;
+
+        for (row = 0u; row < 11u; ++row) {
+            uint32_t *record = words + row * 8u;
+
+            record[0] =
+                (uint32_t)((uint64_t)base_target * row_percent[row] / 100u);
+            record[1] = avpu_t40_ep3_qp_words[row][0];
+            record[3] = avpu_t40_ep3_qp_words[row][1];
+            record[5] = avpu_t40_ep3_qp_words[row][2];
+        }
+        words[11u * 8u] = 1u;
+        words[11u * 8u + 1u] = avpu_t40_ep3_qp_words[11][0];
+        memcpy(words + 16u * 8u, avpu_t40_ep3_lambda_words,
+               sizeof(avpu_t40_ep3_lambda_words));
+        LOG_CODEC("AVPU: initialized EP3 slot[%u] bitrate=%u target=%u",
+                  slot, bitrate, target);
     }
 
-    /* Per-slot captures override the corresponding slot in a combined image. */
-    for (i = 0u; i < AVPU_T40_EP3_SLOT_COUNT; ++i) {
-        const char *path = getenv(slot_env[i]);
+    return AVPU_T40_EP3_DATA_SIZE * AVPU_T40_EP3_SLOT_COUNT;
+}
 
-        if (!path || path[0] == '\0')
-            continue;
-        got = avpu_t40_read_file(path, base + i * AVPU_T40_EP3_SLOT_SIZE,
-                                 AVPU_T40_EP3_DATA_SIZE);
-        total += got;
-        LOG_CODEC("AVPU: EP3 slot[%u] preload path=%s bytes=%zu",
-                  i, path, got);
-    }
+static int avpu_t40_init_ep2(ALAvpuContext *ctx)
+{
+    static const uint32_t seed_words[4] = {
+        0x03e809c4u,
+        0x13880100u,
+        0x23281b58u,
+        0x010a0301u,
+    };
+    uint8_t *destination;
+    uint32_t bounds_word;
+    size_t offset;
 
-    return total;
+    if (!ctx || !ctx->interm_buf.map)
+        return -1;
+
+    offset = (size_t)ctx->interm_ep1_size +
+             (size_t)ctx->interm_wpp_size;
+    if (offset + sizeof(seed_words) + sizeof(bounds_word) >
+        ctx->interm_buf.size)
+        return -1;
+
+    destination = (uint8_t *)ctx->interm_buf.map + offset;
+    memcpy(destination, seed_words, sizeof(seed_words));
+    bounds_word = ((ctx->max_qp & 0xffu) << 24) |
+                  ((ctx->min_qp & 0xffu) << 16) |
+                  0x00000302u;
+    memcpy(destination + sizeof(seed_words), &bounds_word,
+           sizeof(bounds_word));
+    return 0;
 }
 #endif
 
@@ -1161,23 +1253,23 @@ static uint32_t avpu_get_hw_hdr_offset(uint32_t hdr_offset)
 static uint32_t avpu_default_enc2_slice78(uint32_t enc_h)
 {
     uint32_t lcu_h;
+    uint32_t row_groups;
 
     if (enc_h == 0u)
         return 7u;
 
-    /* Stock captures: 640x360 → 7, 1920x1080 → 10. These are the number
-     * of wavefront-parallel row groups for Enc2 entropy coding.
-     * The OEM UpdateCommand runtime producer for SliceParam+0x78 has not
-     * been fully recovered. Use a lookup for known resolutions, with a
-     * conservative lcu_h-based estimate as fallback. */
+    /*
+     * Scale the entropy row-group count from the configured LCU height.
+     * This preserves the recovered range while avoiding resolution-specific
+     * lookups, so intermediate dimensions follow the same continuous rule.
+     */
     lcu_h = (enc_h + 15u) >> 4;
-    if (lcu_h == 68u) return 10u;  /* 1080p: stock verified */
-    if (lcu_h == 23u) return 7u;   /* 360p: stock verified */
-    /* Fallback: scale linearly between known points.
-     * 23 → 7, 68 → 10. slope ≈ 3/45 ≈ 0.067. */
-    if (lcu_h <= 23u) return 7u;
-    if (lcu_h >= 68u) return 10u;
-    return 7u + ((lcu_h - 23u) * 3u + 22u) / 45u;
+    row_groups = 7u;
+    if (lcu_h > 23u)
+        row_groups += ((lcu_h - 23u) * 3u + 22u) / 45u;
+    if (row_groups > 10u)
+        row_groups = 10u;
+    return row_groups;
 }
 
 static uint32_t avpu_pack_enc2_cmd1b(const ALAvpuContext *ctx)
@@ -1460,6 +1552,96 @@ static int avpu_generate_sps_rbsp(uint8_t *rbsp, const ALAvpuContext *ctx)
     int bp = 0;
     memset(rbsp, 0, 128);
 
+#if defined(PLATFORM_T40)
+    {
+        uint32_t mb_w = (ctx->enc_w + 15u) >> 4;
+        uint32_t mb_h = (ctx->enc_h + 15u) >> 4;
+        uint32_t crop_r = ((mb_w << 4) - ctx->enc_w) >> 1;
+        uint32_t crop_b = ((mb_h << 4) - ctx->enc_h) >> 1;
+        uint32_t fps_num = ctx->fps_num ? ctx->fps_num : 25u;
+        uint32_t fps_den = ctx->fps_den ? ctx->fps_den : 1u;
+        uint32_t bitrate = ctx->bitrate ? ctx->bitrate : 2000000u;
+        uint64_t cpb_size = (uint64_t)bitrate * 3u;
+        uint32_t bit_rate_value_minus1 =
+            (uint32_t)(((uint64_t)bitrate + 63u) / 64u - 1u);
+        uint32_t cpb_size_value_minus1 =
+            (uint32_t)((cpb_size + 63u) / 64u - 1u);
+        unsigned int i;
+
+        /*
+         * Generate the stock T40XP High-profile syntax from the active
+         * channel.  The previous implementation selected captured byte
+         * arrays for exactly 640x360 or 1920x1080, which made SPS dimensions,
+         * cropping, timing and HRD silently disagree with any other config.
+         */
+        bs_write_bits(rbsp, &bp, 100u, 8); /* High */
+        bs_write_bits(rbsp, &bp, 0u, 8);   /* constraint flags */
+        bs_write_bits(rbsp, &bp, 51u, 8);  /* level 5.1 */
+        bs_write_ue(rbsp, &bp, 0u);        /* sps id */
+        bs_write_ue(rbsp, &bp, 1u);        /* 4:2:0 */
+        bs_write_ue(rbsp, &bp, 0u);        /* 8-bit luma */
+        bs_write_ue(rbsp, &bp, 0u);        /* 8-bit chroma */
+        bs_write_bit(rbsp, &bp, 0);        /* transform bypass */
+        bs_write_bit(rbsp, &bp, 1);        /* scaling matrix present */
+        for (i = 0; i < 8u; ++i)
+            bs_write_bit(rbsp, &bp, 0);    /* High-profile defaults */
+
+        bs_write_ue(rbsp, &bp, 0u);        /* log2 max frame num - 4 */
+        bs_write_ue(rbsp, &bp, 0u);        /* POC type */
+        bs_write_ue(rbsp, &bp, 6u);        /* 10-bit POC */
+        bs_write_ue(rbsp, &bp, 1u);        /* one reference */
+        bs_write_bit(rbsp, &bp, 0);        /* no frame-num gaps */
+        bs_write_ue(rbsp, &bp, mb_w - 1u);
+        bs_write_ue(rbsp, &bp, mb_h - 1u);
+        bs_write_bit(rbsp, &bp, 1);        /* frame_mbs_only */
+        bs_write_bit(rbsp, &bp, 1);        /* direct_8x8 inference */
+
+        bs_write_bit(rbsp, &bp, crop_r != 0u || crop_b != 0u);
+        if (crop_r != 0u || crop_b != 0u) {
+            bs_write_ue(rbsp, &bp, 0u);
+            bs_write_ue(rbsp, &bp, crop_r);
+            bs_write_ue(rbsp, &bp, 0u);
+            bs_write_ue(rbsp, &bp, crop_b);
+        }
+
+        /* VUI/HRD is derived from the configured frame rate and bitrate. */
+        bs_write_bit(rbsp, &bp, 1);        /* VUI present */
+        bs_write_bit(rbsp, &bp, 0);        /* no aspect-ratio override */
+        bs_write_bit(rbsp, &bp, 0);        /* no overscan */
+        bs_write_bit(rbsp, &bp, 1);        /* video signal present */
+        bs_write_bits(rbsp, &bp, 5u, 3);   /* unspecified video format */
+        bs_write_bit(rbsp, &bp, 0);        /* limited range */
+        bs_write_bit(rbsp, &bp, 1);        /* colour description present */
+        bs_write_bits(rbsp, &bp, 1u, 8);   /* BT.709 primaries */
+        bs_write_bits(rbsp, &bp, 1u, 8);   /* BT.709 transfer */
+        bs_write_bits(rbsp, &bp, 1u, 8);   /* BT.709 matrix */
+        bs_write_bit(rbsp, &bp, 1);        /* chroma location present */
+        bs_write_ue(rbsp, &bp, 0u);
+        bs_write_ue(rbsp, &bp, 0u);
+        bs_write_bit(rbsp, &bp, 1);        /* timing present */
+        bs_write_bits(rbsp, &bp, fps_den, 32);
+        bs_write_bits(rbsp, &bp, fps_num * 2u, 32);
+        bs_write_bit(rbsp, &bp, 0);        /* variable cadence permitted */
+        bs_write_bit(rbsp, &bp, 0);        /* no NAL HRD */
+        bs_write_bit(rbsp, &bp, 1);        /* VCL HRD */
+        bs_write_ue(rbsp, &bp, 0u);        /* one CPB */
+        bs_write_bits(rbsp, &bp, 0u, 4);   /* bitrate scale: 64 bps */
+        bs_write_bits(rbsp, &bp, 2u, 4);   /* CPB scale: 64 bits */
+        bs_write_ue(rbsp, &bp, bit_rate_value_minus1);
+        bs_write_ue(rbsp, &bp, cpb_size_value_minus1);
+        bs_write_bit(rbsp, &bp, ctx->rc_mode == HW_RC_MODE_CBR);
+        bs_write_bits(rbsp, &bp, 31u, 5);
+        bs_write_bits(rbsp, &bp, 31u, 5);
+        bs_write_bits(rbsp, &bp, 31u, 5);
+        bs_write_bits(rbsp, &bp, 0u, 5);
+        bs_write_bit(rbsp, &bp, 0);        /* low-delay HRD */
+        bs_write_bit(rbsp, &bp, 1);        /* pic_struct present */
+        bs_write_bit(rbsp, &bp, 0);        /* no bitstream restriction */
+        bs_trailing_bits(rbsp, &bp);
+        return bp / 8;
+    }
+#endif
+
     /* profile_idc: Baseline=66, Main=77, High=100 */
     uint8_t profile_idc;
     switch (ctx->profile) {
@@ -1561,7 +1743,11 @@ static int avpu_generate_pps_rbsp(uint8_t *rbsp, const ALAvpuContext *ctx)
 
     /* High profile: transform_8x8_mode etc */
     if (ctx->profile == 2) {
+#if defined(PLATFORM_T40)
+        bs_write_bit(rbsp, &bp, 1); /* stock T40 High path uses 8x8 transform */
+#else
         bs_write_bit(rbsp, &bp, 0); /* transform_8x8_mode */
+#endif
         bs_write_bit(rbsp, &bp, 0); /* pic_scaling_matrix_present */
         bs_write_se(rbsp, &bp, 0);  /* second_chroma_qp_index_offset */
     }
@@ -1613,7 +1799,14 @@ static int avpu_generate_slice_header_rbsp(uint8_t *rbsp, const ALAvpuContext *c
                                             int is_idr, uint32_t *slice_bits_out)
 {
     int bp = 0;
+    uint32_t picture_number;
     memset(rbsp, 0, 64);
+
+    picture_number = ctx->frame_number;
+    if (ctx->gop_length != 0u)
+        picture_number %= ctx->gop_length;
+    if (is_idr)
+        picture_number = 0u;
 
     bs_write_ue(rbsp, &bp, 0); /* first_mb_in_slice = 0 */
     /* OEM WriteAvcSliceSegmentHdr writes AL_AVC_SLICE_TYPE[pSH->slice_type],
@@ -1627,7 +1820,7 @@ static int avpu_generate_slice_header_rbsp(uint8_t *rbsp, const ALAvpuContext *c
     bs_write_ue(rbsp, &bp, 0); /* pic_parameter_set_id = 0 */
 
     /* frame_num: log2_max_frame_num_minus4 = 0 → log2_max = 4 → 4 bits */
-    bs_write_bits(rbsp, &bp, ctx->frame_number & 0xF, 4);
+    bs_write_bits(rbsp, &bp, picture_number & 0xFu, 4);
 
     if (is_idr) {
         bs_write_ue(rbsp, &bp, 0); /* idr_pic_id */
@@ -1636,9 +1829,9 @@ static int avpu_generate_slice_header_rbsp(uint8_t *rbsp, const ALAvpuContext *c
     /* The recovered T40 SPS uses log2_max_pic_order_cnt_lsb_minus4=6,
      * while the older generic/T31 SPS uses the minimum four-bit POC. */
 #if defined(PLATFORM_T40)
-    bs_write_bits(rbsp, &bp, (ctx->frame_number * 2) & 0x3FF, 10);
+    bs_write_bits(rbsp, &bp, (picture_number * 2u) & 0x3ffu, 10);
 #else
-    bs_write_bits(rbsp, &bp, (ctx->frame_number * 2) & 0xF, 4);
+    bs_write_bits(rbsp, &bp, (picture_number * 2u) & 0xfu, 4);
 #endif
 
     if (!is_idr) {
@@ -1655,10 +1848,10 @@ static int avpu_generate_slice_header_rbsp(uint8_t *rbsp, const ALAvpuContext *c
     }
 
     /* CABAC: cabac_init_idc */
-    if (ctx->entropy_mode) {
+    if (ctx->entropy_mode && !is_idr) {
 #if defined(PLATFORM_T40)
         /* Exact T40 stream syntax: cabac_init_idc=1 for P pictures. */
-        bs_write_ue(rbsp, &bp, is_idr ? 0u : 1u);
+        bs_write_ue(rbsp, &bp, 1u);
 #else
         bs_write_ue(rbsp, &bp, 0);
 #endif
@@ -1700,6 +1893,135 @@ static int avpu_generate_slice_header_rbsp(uint8_t *rbsp, const ALAvpuContext *c
     return bp / 8;
 }
 
+#if defined(PLATFORM_T40)
+static uint32_t avpu_t40_picture_qp(const ALAvpuContext *ctx, int is_idr)
+{
+    uint64_t bits_per_lcu_q16;
+    uint64_t denominator;
+    uint32_t lcu_count;
+    uint32_t integer_log;
+    uint32_t fraction_log = 0u;
+    uint32_t normalized;
+    int32_t log2_q8;
+    int32_t qp_q8;
+    uint32_t qp;
+    unsigned int bit;
+
+    if (!ctx)
+        return 30u;
+
+    if (ctx->rc_mode == HW_RC_MODE_FIXQP)
+        return ctx->qp <= 51u ? ctx->qp : 26u;
+
+    lcu_count = ((ctx->enc_w + 15u) >> 4) * ((ctx->enc_h + 15u) >> 4);
+    denominator = (uint64_t)(ctx->fps_num ? ctx->fps_num : 25u) *
+                  (uint64_t)(lcu_count ? lcu_count : 1u);
+    bits_per_lcu_q16 =
+        ((uint64_t)(ctx->bitrate ? ctx->bitrate : 2000000u) *
+         (uint64_t)(ctx->fps_den ? ctx->fps_den : 1u) << 16) /
+        denominator;
+    if (bits_per_lcu_q16 == 0u)
+        bits_per_lcu_q16 = 1u;
+
+    integer_log = 0u;
+    while ((bits_per_lcu_q16 >> integer_log) > 1u)
+        ++integer_log;
+
+    /*
+     * Compute log2(bits-per-LCU) in Q8 without libm.  Normalize to Q30 and
+     * extract eight fractional bits by repeated squaring.  The recovered
+     * stock starting-QP curve is the usual six-QP-per-doubling relationship,
+     * anchored at QP 57 before applying the configured bounds.
+     */
+    if (integer_log >= 30u)
+        normalized = (uint32_t)(bits_per_lcu_q16 >> (integer_log - 30u));
+    else
+        normalized = (uint32_t)(bits_per_lcu_q16 << (30u - integer_log));
+    for (bit = 0u; bit < 8u; ++bit) {
+        uint64_t square = (uint64_t)normalized * normalized;
+
+        normalized = (uint32_t)(square >> 30);
+        if (normalized >= (2u << 30)) {
+            normalized >>= 1;
+            fraction_log |= 1u << (7u - bit);
+        }
+    }
+
+    log2_q8 = ((int32_t)integer_log - 16) * 256 + (int32_t)fraction_log;
+    qp_q8 = 57 * 256 - 6 * log2_q8;
+    qp = qp_q8 > 0 ? (uint32_t)((qp_q8 + 255) >> 8) : 0u;
+    if (qp < ctx->min_qp)
+        qp = ctx->min_qp;
+    if (ctx->max_qp != 0u && qp > ctx->max_qp)
+        qp = ctx->max_qp;
+    if (qp > 51u)
+        qp = 51u;
+
+    (void)is_idr;
+    return qp;
+}
+
+/*
+ * Recover the hardware-rate-control column grid selected by InitHwRateCtrl.
+ * The low sixteen bits of Enc1 cmd[0x14] are two zero-based factors whose
+ * product must equal the configured LCU width:
+ *
+ *   bits  5:0  = columns_per_group - 1
+ *   bits 15:6  = group_count - 1
+ *
+ * Stock searches down from min(lcu_width - 1, 32) and keeps the smallest
+ * divisor which leaves fewer than 64 columns per group and fewer than 1024
+ * LCUs in that group shape.  Deriving this from the active dimensions is
+ * essential: a grid captured at another resolution can leave the AVPU
+ * waiting forever for columns which do not exist.
+ */
+static void avpu_t40_get_hwrc_grid(uint32_t width, uint32_t height,
+                                   uint32_t *group_count_out,
+                                   uint32_t *columns_per_group_out)
+{
+    uint32_t lcu_w = (width + 15u) >> 4;
+    uint32_t lcu_h = (height + 15u) >> 4;
+    uint32_t group_count = lcu_w;
+    uint32_t divisor;
+
+    if (lcu_w == 0u) {
+        if (group_count_out)
+            *group_count_out = 1u;
+        if (columns_per_group_out)
+            *columns_per_group_out = 1u;
+        return;
+    }
+
+    divisor = lcu_w > 32u ? 32u : lcu_w - 1u;
+    while (divisor >= 5u) {
+        if ((lcu_w % divisor) == 0u) {
+            uint32_t columns_per_group = lcu_w / divisor;
+
+            if (columns_per_group < 0x41u &&
+                (uint64_t)lcu_h * columns_per_group < 0x400u)
+                group_count = divisor;
+        }
+        --divisor;
+    }
+
+    if (group_count_out)
+        *group_count_out = group_count;
+    if (columns_per_group_out)
+        *columns_per_group_out = lcu_w / group_count;
+}
+
+static uint32_t avpu_t40_pack_hwrc_grid(uint32_t width, uint32_t height)
+{
+    uint32_t group_count;
+    uint32_t columns_per_group;
+
+    avpu_t40_get_hwrc_grid(width, height, &group_count, &columns_per_group);
+    return 0xf4000000u
+         | (((group_count - 1u) & 0x3ffu) << 6)
+         | ((columns_per_group - 1u) & 0x3fu);
+}
+#endif
+
 /* Pre-write H.264 NAL headers into stream buffer before AVPU submit.
  *
  * OEM parity: encode1() -> GenerateAvcSliceHeader() -> FlushNAL()
@@ -1728,100 +2050,41 @@ static uint32_t avpu_prewrite_stream_headers(ALAvpuContext *ctx, int buf_idx, in
     ctx->slice_header_splice_word = 0u;
 
 #if defined(PLATFORM_T40)
+    ALAvpuContext header_ctx = *ctx;
+
+    header_ctx.qp = avpu_t40_picture_qp(ctx, is_idr);
     /*
-     * T40XP Enc1 emits CABAC macroblock data for the exact AVC syntax used by
-     * the firmware encoder.  In particular, the stream uses level 5.1,
-     * log2_max_pic_order_cnt_lsb_minus4=6, transform_8x8, and -1/-1 deblock
-     * offsets.  Its QP follows the active rate-control state.  A generic but
-     * otherwise valid SPS/slice prefix makes
-     * the same AVPU payload undecodable because CABAC is initialized from
-     * those syntax values.
-     *
-     * These are data templates recovered from the two Raptor configurations,
-     * not calls or references to the OEM library.  Each template stops on a
-     * byte boundary immediately after cabac_alignment_one_bit; the next byte
-     * in an OEM access-unit capture is already frame-specific CABAC payload
-     * and must not be copied into the template.  Enc1 payload bytes are
-     * compacted directly behind the header when the IRQ completes.
+     * T40XP Enc1/Enc2 uses nal_ref_idc=1 and no AUD. Build the prefix from
+     * current channel state so the SPS macroblock grid, crop, timing and HRD
+     * all follow the configured stream instead of a resolution template.
      */
-    if (is_idr && ctx->enc_w == 640u && ctx->enc_h == 360u) {
-        static const uint8_t t40_sub_cbr_idr_prefix[] = {
-            0x00,0x00,0x00,0x01,0x27,0x64,0x00,0x33,
-            0xad,0x00,0xce,0x80,0xa0,0x2f,0xf9,0x66,
-            0xa0,0x20,0x20,0x3e,0x00,0x00,0x03,0x00,
-            0x02,0x00,0x00,0x03,0x00,0x78,0x60,0x40,
-            0x00,0xf4,0x24,0x00,0x05,0xb8,0xdf,0xff,
-            0xf8,0x14,0x00,0x00,0x00,0x01,0x28,0xee,
-            0x3c,0xb0,0x00,0x00,0x00,0x01,0x25,0xb8,
-            0x40,0x00,0x21,
-        };
-        static const uint8_t t40_sub_vbr_idr_prefix[] = {
-            0x00,0x00,0x00,0x01,0x27,0x64,0x00,0x33,
-            0xad,0x00,0xce,0x80,0xa0,0x2f,0xf9,0x66,
-            0xa0,0x20,0x20,0x3e,0x00,0x00,0x03,0x00,
-            0x02,0x00,0x00,0x03,0x00,0x78,0x64,0x00,
-            0x01,0x45,0x70,0x00,0x07,0xa0,0xa2,0xff,
-            0xfe,0x05,0x00,0x00,0x00,0x01,0x28,0xee,
-            0x3c,0xb0,0x00,0x00,0x00,0x01,0x25,0xb8,
-            0x40,0x01,0xdb,
-        };
-        const uint8_t *prefix = ctx->rc_mode == HW_RC_MODE_VBR
-                              ? t40_sub_vbr_idr_prefix
-                              : t40_sub_cbr_idr_prefix;
-        size_t prefix_size = ctx->rc_mode == HW_RC_MODE_VBR
-                           ? sizeof(t40_sub_vbr_idr_prefix)
-                           : sizeof(t40_sub_cbr_idr_prefix);
-        memcpy(buf, prefix, prefix_size);
-        pos = (uint32_t)prefix_size;
-        ctx->slice_header_nal_bytes = 10u;
-        ctx->slice_header_prefix_bits = 8u;
-        ctx->stream_header_offset = pos;
-        ctx->stream_header_offset_by_buf[buf_idx] = pos;
-        avpu_t40_stage_stream_prefix(buf, pos);
-        return pos;
-    }
-    if (is_idr && ctx->enc_w == 1920u && ctx->enc_h == 1080u) {
-        static const uint8_t t40_main_idr_prefix[] = {
-            0x00,0x00,0x00,0x01,0x27,0x64,0x00,0x33,
-            0xad,0x00,0xce,0x80,0x78,0x02,0x27,0xe5,
-            0x9a,0x80,0x80,0x80,0xf8,0x00,0x00,0x03,
-            0x00,0x08,0x00,0x00,0x03,0x01,0xe1,0x81,
-            0x00,0x00,0xb7,0x1b,0x00,0x00,0x44,0xaa,
-            0x3f,0xff,0xe0,0x50,0x00,0x00,0x00,0x01,
-            0x28,0xee,0x3c,0xb0,0x00,0x00,0x00,0x01,
-            0x25,0xb8,0x20,0x00,0x08,
-        };
-        memcpy(buf, t40_main_idr_prefix, sizeof(t40_main_idr_prefix));
-        pos = (uint32_t)sizeof(t40_main_idr_prefix);
-        ctx->slice_header_nal_bytes = 10u;
-        ctx->slice_header_prefix_bits = 8u;
-        ctx->stream_header_offset = pos;
-        ctx->stream_header_offset_by_buf[buf_idx] = pos;
-        avpu_t40_stage_stream_prefix(buf, pos);
-        return pos;
-    }
-    if (!is_idr &&
-        ((ctx->enc_w == 640u && ctx->enc_h == 360u) ||
-         (ctx->enc_w == 1920u && ctx->enc_h == 1080u))) {
-        /* T40 P pictures contain only the type-1 slice NAL.  The header QP
-         * follows ctx->qp, just like the command words below.  At QP 30 the
-         * frame-1 prefix matches the current VBR oracle exactly:
-         * 00 00 00 01 21 e2 01 04 22 df.  The AVPU CABAC
-         * payload is DMAed at +0x220 and compacted after this prefix when the
-         * completion IRQ arrives. */
-        slice_bits = 0u;
-        rbsp_len = avpu_generate_slice_header_rbsp(rbsp, ctx, 0, &slice_bits);
-        if (rbsp_len <= 0)
+    if (is_idr) {
+        rbsp_len = avpu_generate_sps_rbsp(rbsp, &header_ctx);
+        if (rbsp_len <= 0 || pos + (uint32_t)rbsp_len + 16u >= budget)
             return 0u;
-        pos = (uint32_t)avpu_write_nal_epb(buf, 0x21u, rbsp, rbsp_len);
-        ctx->slice_header_nal_bytes = pos;
-        ctx->slice_header_prefix_bits = 8u;
-        ctx->slice_header_splice_word = 0u;
-        ctx->stream_header_offset = pos;
-        ctx->stream_header_offset_by_buf[buf_idx] = pos;
-        avpu_t40_stage_stream_prefix(buf, pos);
-        return pos;
+        pos += (uint32_t)avpu_write_nal_epb(buf + pos, 0x27u,
+                                            rbsp, rbsp_len);
+        rbsp_len = avpu_generate_pps_rbsp(rbsp, &header_ctx);
+        if (rbsp_len <= 0 || pos + (uint32_t)rbsp_len + 16u >= budget)
+            return 0u;
+        pos += (uint32_t)avpu_write_nal_epb(buf + pos, 0x28u,
+                                            rbsp, rbsp_len);
     }
+    slice_bits = 0u;
+    rbsp_len = avpu_generate_slice_header_rbsp(rbsp, &header_ctx, is_idr,
+                                                &slice_bits);
+    if (rbsp_len <= 0 || pos + (uint32_t)rbsp_len + 16u >= budget)
+        return 0u;
+    pos += (uint32_t)avpu_write_nal_epb(buf + pos,
+                                        is_idr ? 0x25u : 0x21u,
+                                        rbsp, rbsp_len);
+    ctx->slice_header_nal_bytes = is_idr ? 10u : pos;
+    ctx->slice_header_prefix_bits = 8u;
+    ctx->slice_header_splice_word = 0u;
+    ctx->stream_header_offset = pos;
+    ctx->stream_header_offset_by_buf[buf_idx] = pos;
+    avpu_t40_stage_stream_prefix(buf, pos);
+    return pos;
 #endif
 
     /* AUD */
@@ -2067,19 +2330,12 @@ static void fill_cmd_regs_enc1(const ALAvpuContext* ctx, uint32_t* cmd,
      * cmd[0x17] contains QP at bits[23:16] and bits[7:0] with fixed
      * template bits: (0x10 << 24) | (qp << 16) | (0x2d << 8) | qp.
      */
-    if (ctx->enc_w == 1920 && ctx->enc_h == 1080) {
-        /* Stock 1920x1080 High/CABAC IDR from stock_logs.txt line 124 */
-        cmd[0x14] = 0xf40001ceu;
-        cmd[0x15] = 0x0000049cu;
-        cmd[0x16] = 0x3f000068u;
-        cmd[0x18] = 0xc3d00009u;
-    } else {
-        /* Stock 640x360 Baseline/CAVLC IDR (default fallback) */
-        cmd[0x14] = 0xf4000107u;
-        cmd[0x15] = 0x00000664u;
-        cmd[0x16] = 0x3f00006cu;
-        cmd[0x18] = 0xc210000cu;
-    }
+    /* Generic fallback.  The T40 block below replaces these fields with its
+     * configured-picture formulas before submission. */
+    cmd[0x14] = 0xf4000107u;
+    cmd[0x15] = 0x00000664u;
+    cmd[0x16] = 0x3f00006cu;
+    cmd[0x18] = 0xc210000cu;
     /* cmd[0x17]: QP-dependent — same formula for all resolutions */
     {
         uint32_t qp17 = ctx->qp ? ctx->qp : 30u;
@@ -2286,6 +2542,8 @@ static void fill_cmd_regs_enc1(const ALAvpuContext* ctx, uint32_t* cmd,
         uint32_t lcu_w = (width + 15u) >> 4;
         uint32_t lcu_h = (height + 15u) >> 4;
         uint32_t lcu_count = lcu_w * lcu_h;
+        uint32_t picture_area_1k =
+            (uint32_t)(((uint64_t)width * (uint64_t)height) >> 10);
         uint32_t rec_base = ctx->rec_buf.phy_addr;
         uint32_t rec_frame_size = (uint32_t)avpu_get_enc1_ref_region_size(width, height);
         uint32_t rec_map_size = (uint32_t)avpu_get_enc1_map_region_size(width, height);
@@ -2294,13 +2552,26 @@ static void fill_cmd_regs_enc1(const ALAvpuContext* ctx, uint32_t* cmd,
                                 * (uint32_t)avpu_align_up_u32(height, 64u));
         uint32_t rec_map = rec_y + rec_frame_size;
         uint32_t rec_map_end = rec_map + rec_map_size;
-        uint32_t mv_data_offset = width > 640u ? 0x1200u : 0x780u;
+        uint32_t map_storage_size =
+            (uint32_t)avpu_get_enc1_map_storage_size(width, height);
+        uint32_t mv_data_offset =
+            map_storage_size - rec_map_size + 0x100u;
         uint32_t ep3_index = (2u + 3u - (ctx->frame_number % 3u)) % 3u;
         uint32_t ep3_phys = ctx->rec_trace_buf.phy_addr
                           ? ctx->rec_trace_buf.phy_addr + ep3_index * 0x1500u
                           : 0u;
-        int main_stream = width > 640u;
-        int vbr_mode = ctx->rc_mode == HW_RC_MODE_VBR;
+        uint32_t ep1_row_table_size =
+            avpu_align_up_u32(lcu_h * sizeof(uint32_t), 128u);
+        uint32_t picture_qp = avpu_t40_picture_qp(ctx, is_idr);
+        uint32_t hwrc_group_count;
+        uint32_t hwrc_columns_per_group;
+        uint64_t hwrc_target;
+        uint32_t hwrc_word15;
+        uint32_t hwrc_word16;
+        uint32_t fps_num = ctx->fps_num ? ctx->fps_num : 25u;
+        uint32_t fps_den = ctx->fps_den ? ctx->fps_den : 1u;
+        uint32_t min_qp = ctx->min_qp <= 51u ? ctx->min_qp : 0u;
+        uint32_t max_qp = ctx->max_qp <= 51u ? ctx->max_qp : 51u;
 
         uint32_t ref_y = 0u;
         uint32_t ref_uv = 0u;
@@ -2315,25 +2586,33 @@ static void fill_cmd_regs_enc1(const ALAvpuContext* ctx, uint32_t* cmd,
             ref_map_end = ref_map + rec_map_size;
         }
 
+        avpu_t40_get_hwrc_grid(width, height, &hwrc_group_count,
+                               &hwrc_columns_per_group);
+        hwrc_target = ctx->bitrate ? ctx->bitrate : 2000000u;
+        if (!is_idr)
+            hwrc_target = hwrc_target * 5u / 7u;
+        hwrc_target = hwrc_target * 95u / 100u;
+        hwrc_word15 = lcu_count
+                    ? (uint32_t)(hwrc_target * hwrc_group_count / lcu_count)
+                    : 0u;
+        hwrc_word16 = (lcu_count && fps_num)
+                    ? (uint32_t)(((uint64_t)(ctx->bitrate ? ctx->bitrate : 2000000u) *
+                                  fps_den * hwrc_group_count * 4u) /
+                                 ((uint64_t)lcu_count * fps_num * 3u))
+                    : 0u;
+
         /* Exact T40XP High/CABAC control shape recovered from live OEM IDR
          * and P command lists. Address-bearing words are substituted below. */
         cmd[0x00] = 0x80700411u;
         cmd[0x02] = 0x4010ad50u;
-        if (is_idr) {
-            cmd[0x03] = main_stream ? 0x21240000u
-                                    : (vbr_mode ? 0x21190000u : 0x21220000u);
-        } else {
-            cmd[0x03] = main_stream ? 0x11280000u
-                                    : (vbr_mode
-                                       ? (0x11000000u | ((ctx->qp ? ctx->qp : 30u) << 16))
-                                       : 0x111e0000u);
-        }
+        cmd[0x03] = (is_idr ? 0x21000000u : 0x11000000u)
+                  | (picture_qp << 16);
         cmd[0x04] = 0x00083f1fu;
         cmd[0x08] = 0x77000000u;
         if (!is_idr)
             cmd[0x08] = 0x11000000u;
         cmd[0x09] = 0xfc010000u;
-        cmd[0x0a] = main_stream ? 0x07e90c80u : 0x00e10c80u;
+        cmd[0x0a] = (picture_area_1k << 16) | 0x0c80u;
         cmd[0x0b] = ((lcu_w - 1u) & 0x3ffu) << 12;
         if (!is_idr)
             cmd[0x06] |= 0x00000400u;
@@ -2341,47 +2620,29 @@ static void fill_cmd_regs_enc1(const ALAvpuContext* ctx, uint32_t* cmd,
         cmd[0x10] = 0xffffffffu;
         cmd[0x11] = 0xffffffffu;
         if (is_idr) {
-            cmd[0x12] = main_stream ? 0x803ff3ffu : 0x823ff3ffu;
+            cmd[0x12] = 0x803ff3ffu;
         } else {
             cmd[0x0c] = 0x00000002u;
-            cmd[0x12] = main_stream ? 0x8001b01du : 0x8201b01du;
+            cmd[0x12] = 0x8001b01du;
         }
         /* OEM T40 oracle: this picture-shape control word is 0x1d000000
          * for 1920x1080 and 0x09000000 for 640x360.  Zero happens to leave
          * the small stream decodable, but corrupts the first 1080p CABAC
          * macroblock ("top block unavailable" in ffmpeg). */
-        cmd[0x13] = main_stream ? 0x1d000000u : 0x09000000u;
-        cmd[0x14] = main_stream ? 0xf40001ceu : 0xf4000107u;
-        cmd[0x15] = main_stream ? 0x00000aeau : 0x0000142bu;
-        if (!is_idr)
-            cmd[0x15] = main_stream ? 0x000007cbu : 0x00000e67u;
-        cmd[0x16] = main_stream ? 0x3f000062u
-                                : (vbr_mode ? 0x3f0000f1u : 0x3f0000b5u);
-        if (is_idr) {
-            cmd[0x17] = main_stream ? 0x22243324u
-                                    : (vbr_mode ? 0x14192d19u : 0x22223322u);
-        } else {
-            cmd[0x17] = main_stream ? 0x22243328u
-                                    : (vbr_mode
-                                       ? (0x14192d00u | (ctx->qp ? ctx->qp : 30u))
-                                       : 0x14192d1eu);
-        }
-        cmd[0x18] = main_stream ? 0xc3d00015u : 0xc2100028u;
-        if (!is_idr)
-            cmd[0x18] = main_stream ? 0xc3d0000fu : 0xc210001cu;
+        cmd[0x13] =
+            (lcu_w ? (((lcu_w + 3u) >> 2) - 1u) : 0u) << 24;
+        cmd[0x14] = avpu_t40_pack_hwrc_grid(width, height);
+        cmd[0x15] = hwrc_word15 & 0x00ffffffu;
+        cmd[0x16] = 0x3f000000u | (hwrc_word16 & 0x00ffffffu);
+        cmd[0x17] = (min_qp << 24) | (picture_qp << 16)
+                  | (max_qp << 8) | picture_qp;
+        cmd[0x18] = (ctx->frame_number <= 1u ? 0xc0000000u : 0x40000000u)
+                  | (((hwrc_columns_per_group * 4u + 1u) & 0xffu) << 20)
+                  | ((hwrc_word15 >> 7) & 0xffffu);
         cmd[0x19] = 0u;
         cmd[0x1a] = 0u;
-        cmd[0x1b] = (is_idr && !main_stream && vbr_mode)
-                  ? 0x00090c80u : 0x000a0c80u;
-        if (is_idr) {
-            cmd[0x1c] = main_stream ? 0x21240d06u
-                                    : (vbr_mode ? 0x21190d06u : 0x21220d06u);
-        } else {
-            cmd[0x1c] = main_stream ? 0x11280d06u
-                                    : (vbr_mode
-                                       ? (0x11000d06u | ((ctx->qp ? ctx->qp : 30u) << 16))
-                                       : 0x111e0d06u);
-        }
+        cmd[0x1b] = 0x000a0c80u;
+        cmd[0x1c] = cmd[0x03] | 0x00000d06u;
         cmd[0x1d] = cmd[0x0b];
         cmd[0x1e] = lcu_count ? lcu_count - 1u : 0u;
         cmd[0x1f] = 0u;
@@ -2390,7 +2651,7 @@ static void fill_cmd_regs_enc1(const ALAvpuContext* ctx, uint32_t* cmd,
         cmd[0x21] = src_phys + avpu_get_nv12_luma_plane_size(width, height);
         cmd[0x22] = avpu_get_enc1_src_pitch(width, ctx->format_word);
         cmd[0x23] = ctx->interm_buf.phy_addr
-                  + (main_stream ? 0x6580u : 0x6480u);
+                  + ctx->interm_ep1_size + ep1_row_table_size;
         cmd[0x24] = rec_y;
         cmd[0x25] = rec_uv;
         cmd[0x26] = (avpu_get_enc1_rec_pitch(width, ctx->format_word) & 0x3ffffu)
@@ -2410,13 +2671,14 @@ static void fill_cmd_regs_enc1(const ALAvpuContext* ctx, uint32_t* cmd,
         cmd[0x2e] = rec_map_end + mv_data_offset;
         cmd[0x2f] = 0u;
         cmd[0x30] = stream_desc_phys;
-        cmd[0x31] = main_stream ? 0x000e7680u : 0x00030a00u;
+        cmd[0x31] = stream_part_offset;
         /* The live T40 oracle uses a fixed 0x220-byte hardware payload
          * window.  AVPU DMA writes in bursts and can clobber a short prefix
          * when pointed directly at it, so keep the captured safe offset and
          * compact the payload behind our generated headers on completion. */
         cmd[0x32] = 0x00000220u;
-        cmd[0x33] = cmd[0x31] > cmd[0x32] ? cmd[0x31] - cmd[0x32] : 0u;
+        cmd[0x33] = avpu_get_stream_window_budget(ctx, cmd[0x31],
+                                                   cmd[0x32]);
         cmd[0x34] = 0u;
         cmd[0x35] = 0u;
         cmd[0x36] = 0u;
@@ -3937,17 +4199,14 @@ struct AL_CodecEncode {
     ALAvpuContext avpu;            /* Vendor-like AL over /dev/avpu (scaffolding) */
 };
 
+#if !defined(PLATFORM_T40)
 static int avpu_can_use_high_profile_template(const AL_CodecEncode *enc)
 {
-    if (!enc)
-        return 0;
-
-    /* The in-tree OEM control-word/template coverage is only proven for
-     * 1920x1080 High/CABAC and 640x360 Baseline/CAVLC. Running 640x360 with
-     * the High/CABAC top-level bits mixes incompatible stock templates and
-     * currently yields zero payload bytes after the host-written headers. */
-    return enc->avpu.enc_w == 1920u && enc->avpu.enc_h == 1080u;
+    return enc && enc->avpu.enc_w != 0u && enc->avpu.enc_h != 0u &&
+           enc->avpu.profile == HW_PROFILE_HIGH &&
+           enc->avpu.entropy_mode != 0u;
 }
+#endif
 
 static uint32_t codec_param_read_input_width(const uint8_t *param)
 {
@@ -4255,8 +4514,11 @@ static void avpu_sync_runtime_encode_state(AL_CodecEncode *enc)
     enc->avpu.enc_h = codec_param_read_input_height(enc->codec_param);
     enc->avpu.fps_num = enc->fps_cache.frmRateNum ? enc->fps_cache.frmRateNum : enc->hw_params.fps_num;
     enc->avpu.fps_den = enc->fps_cache.frmRateDen ? enc->fps_cache.frmRateDen : enc->hw_params.fps_den;
+    enc->avpu.bitrate = enc->hw_params.bitrate;
     enc->avpu.rc_mode = enc->hw_params.rc_mode;
     enc->avpu.qp = enc->hw_params.qp;
+    enc->avpu.min_qp = enc->hw_params.min_qp;
+    enc->avpu.max_qp = enc->hw_params.max_qp;
     enc->avpu.entropy_mode = enc->entropy_mode;
     enc->avpu.gop_length = enc->gop_cache.gopLength ? enc->gop_cache.gopLength : enc->hw_params.gop_length;
     enc->avpu.format_word = *(uint32_t *)(enc->codec_param + 0x10);
@@ -4768,8 +5030,12 @@ int AL_Codec_Encode_Create(void **codec, void *params) {
     enc->hw_params.codec_type = codec_param_read_codec_type(enc->codec_param);
     enc->hw_params.width = codec_param_read_input_width(enc->codec_param);
     enc->hw_params.height = codec_param_read_input_height(enc->codec_param);
-    if (enc->hw_params.width <= 640u)
-        enc->stream_buf_size = 0x32000;
+    if (enc->hw_params.width != 0u && enc->hw_params.height != 0u) {
+        enc->frame_buf_size = (int)avpu_get_nv12_frame_size(
+            enc->hw_params.width, enc->hw_params.height);
+        enc->stream_buf_size = (int)avpu_get_stream_buffer_size(
+            enc->hw_params.width, enc->hw_params.height);
+    }
     enc->hw_params.fps_num = enc->fps_cache.frmRateNum;
     enc->hw_params.fps_den = enc->fps_cache.frmRateDen;
     enc->hw_params.gop_length = enc->gop_cache.gopLength ? enc->gop_cache.gopLength : 25u;
@@ -4787,8 +5053,11 @@ int AL_Codec_Encode_Create(void **codec, void *params) {
     enc->avpu.enc_h = enc->hw_params.height;
     enc->avpu.fps_num = enc->hw_params.fps_num;
     enc->avpu.fps_den = enc->hw_params.fps_den;
+    enc->avpu.bitrate = enc->hw_params.bitrate;
     enc->avpu.gop_length = enc->hw_params.gop_length;
     enc->avpu.qp = enc->hw_params.qp;
+    enc->avpu.min_qp = enc->hw_params.min_qp;
+    enc->avpu.max_qp = enc->hw_params.max_qp;
     enc->avpu.rc_mode = enc->hw_params.rc_mode;
 
     enc->loop_filter_beta_offset = 0;
@@ -5453,9 +5722,20 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
                             enc->avpu.interm_ep1_size = avpu_get_enc1_ep1_size();
                             enc->avpu.interm_wpp_size = avpu_get_enc1_wpp_size(width, height);
                             enc->avpu.interm_ep2_size = avpu_get_enc1_ep2_size(width, height);
+#if defined(PLATFORM_T40)
+                            /*
+                             * T40's inline AVC command consumes EP1, WPP and
+                             * EP2 only.  Compression-map/data storage belongs
+                             * to the reconstructed-frame manager, not this
+                             * intermediate allocation.
+                             */
+                            enc->avpu.interm_map_size = 0u;
+                            enc->avpu.interm_data_size = 0u;
+#else
                             enc->avpu.interm_map_size = avpu_get_enc1_comp_map_size(width, height);
                             enc->avpu.interm_data_size = (uint32_t)avpu_get_enc1_comp_data_size(width, height,
                                                                                                  enc->avpu.format_word);
+#endif
 
                             {
                                 size_t interm_total_sz = (size_t)enc->avpu.interm_ep1_size
@@ -5465,8 +5745,6 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
                                                        + (size_t)enc->avpu.interm_data_size;
 
                                 if (avpu_alloc_imp(interm_total_sz, "AVPU_ITM", &enc->avpu.interm_buf) == 0) {
-                                    const char *ep1_path = getenv("OPENIMP_T40_EP1_FILE");
-
                                     if (openimp_t40_init_ep1(enc->avpu.interm_buf.map,
                                                             interm_total_sz) != 0) {
                                         memset(enc->avpu.interm_buf.map, 0,
@@ -5476,37 +5754,13 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
                                         LOG_CODEC("AVPU: initialized default AVC EP1 table (%u bytes)",
                                                   enc->avpu.interm_ep1_size);
                                     }
-                                    if (ep1_path != NULL && ep1_path[0] != '\0') {
-                                        FILE *ep1_file = fopen(ep1_path, "rb");
-                                        size_t ep1_read = 0;
-
-                                        if (ep1_file != NULL) {
-                                            ep1_read = fread(enc->avpu.interm_buf.map, 1,
-                                                            enc->avpu.interm_ep1_size,
-                                                            ep1_file);
-                                            fclose(ep1_file);
-                                        }
-                                        LOG_CODEC("AVPU: EP1 preload path=%s bytes=%zu expected=%u",
-                                                  ep1_path, ep1_read,
-                                                  enc->avpu.interm_ep1_size);
-                                    }
 #if defined(PLATFORM_T40)
-                                    {
-                                        const char *tail_path = getenv("OPENIMP_T40_INTERM_TAIL_FILE");
-                                        size_t tail_read = 0u;
-
-                                        if (interm_total_sz > 0x6400u && tail_path && tail_path[0] != '\0') {
-                                            size_t tail_capacity = interm_total_sz - 0x6400u;
-                                            if (tail_capacity > 0x4c0u)
-                                                tail_capacity = 0x4c0u;
-                                            tail_read = avpu_t40_read_file(
-                                                tail_path,
-                                                (uint8_t *)enc->avpu.interm_buf.map + 0x6400u,
-                                                tail_capacity);
-                                        }
-                                        LOG_CODEC("AVPU: interm tail preload path=%s bytes=%zu expected=1216",
-                                                  tail_path ? tail_path : "", tail_read);
-                                    }
+                                    if (avpu_t40_init_ep2(&enc->avpu) != 0)
+                                        LOG_CODEC("AVPU: ERROR - default EP2 initialization failed");
+                                    else
+                                        LOG_CODEC("AVPU: initialized default AVC EP2 table at offset=0x%x",
+                                                  enc->avpu.interm_ep1_size +
+                                                  enc->avpu.interm_wpp_size);
 #endif
                                     enc->avpu.init_interm_flush_ret = avpu_flush_dma_buf(fd, "interm_buf", &enc->avpu.interm_buf, interm_total_sz);
                                     LOG_CODEC("AVPU: interm_buf phys=0x%08x size=%zu (ep1=%u wpp=%u ep2=%u map=%u data=%u)",
@@ -5547,14 +5801,14 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
                              * the three-slot EP3 HW-rate-control ring. */
                             if (avpu_alloc_imp(AVPU_T40_EP3_SLOT_SIZE * AVPU_T40_EP3_SLOT_COUNT,
                                                "AVPU_EP3", &enc->avpu.rec_trace_buf) == 0) {
-                                size_t ep3_loaded = avpu_t40_init_ep3_ring(&enc->avpu.rec_trace_buf);
+                                size_t ep3_initialized = avpu_t40_init_ep3_ring(&enc->avpu);
                                 int ep3_flush = avpu_flush_dma_buf(fd, "ep3_ring",
                                                                   &enc->avpu.rec_trace_buf,
                                                                   enc->avpu.rec_trace_buf.size);
-                                LOG_CODEC("AVPU: ep3_ring phys=0x%08x size=%zu loaded=%zu flush=%d",
+                                LOG_CODEC("AVPU: ep3_ring phys=0x%08x size=%zu initialized=%zu flush=%d",
                                           enc->avpu.rec_trace_buf.phy_addr,
                                           enc->avpu.rec_trace_buf.size,
-                                          ep3_loaded, ep3_flush);
+                                          ep3_initialized, ep3_flush);
                             } else {
                                 LOG_CODEC("AVPU: WARNING - failed to allocate EP3 ring");
                             }
@@ -6411,6 +6665,8 @@ int AL_Codec_Encode_SetQpBounds(void *codec, int minQp, int maxQp)
                                 enc->hw_params.qp ? enc->hw_params.qp : enc->hw_params.min_qp,
                                 enc->hw_params.min_qp,
                                 enc->hw_params.max_qp);
+    enc->avpu.min_qp = enc->hw_params.min_qp;
+    enc->avpu.max_qp = enc->hw_params.max_qp;
     codec_sync_rc_cache(enc);
     codec_set_error(enc, 0);
 
@@ -6430,6 +6686,7 @@ int AL_Codec_Encode_SetBitRate(void *codec, int targetBitrate, int maxBitrate)
     enc = (AL_CodecEncode *)codec;
     bitrate_bps = (uint32_t)(targetBitrate > 0 ? targetBitrate : maxBitrate);
     enc->hw_params.bitrate = bitrate_bps;
+    enc->avpu.bitrate = bitrate_bps;
     codec_param_write_bitrate_bps(enc->codec_param, bitrate_bps);
     codec_sync_rc_cache(enc);
     codec_set_error(enc, 0);
@@ -6532,6 +6789,11 @@ int AL_Codec_Encode_SetRcParam(void *codec, void *rcAttr)
                                 enc->hw_params.qp,
                                 enc->hw_params.min_qp,
                                 enc->hw_params.max_qp);
+    enc->avpu.bitrate = enc->hw_params.bitrate;
+    enc->avpu.rc_mode = enc->hw_params.rc_mode;
+    enc->avpu.qp = enc->hw_params.qp;
+    enc->avpu.min_qp = enc->hw_params.min_qp;
+    enc->avpu.max_qp = enc->hw_params.max_qp;
     codec_sync_rc_cache(enc);
     codec_set_error(enc, 0);
     return 0;
@@ -6665,6 +6927,24 @@ int AL_Codec_Encode_SetInputResolution(void *codec, int width, int height)
     enc->hw_params.height = (uint32_t)height;
     enc->avpu.enc_w = (uint32_t)width;
     enc->avpu.enc_h = (uint32_t)height;
+    enc->frame_buf_size = (int)avpu_get_nv12_frame_size(
+        (uint32_t)width, (uint32_t)height);
+    enc->stream_buf_size = (int)avpu_get_stream_buffer_size(
+        (uint32_t)width, (uint32_t)height);
+    codec_set_error(enc, 0);
+    return 0;
+}
+
+int AL_Codec_Encode_SetStreamBufferSize(void *codec, int size)
+{
+    AL_CodecEncode *enc;
+
+    if (codec == NULL || size <= 0)
+        return -1;
+    enc = (AL_CodecEncode *)codec;
+    if (enc->avpu.session_ready)
+        return -1;
+    enc->stream_buf_size = size;
     codec_set_error(enc, 0);
     return 0;
 }
