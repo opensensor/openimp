@@ -1,0 +1,13 @@
+{
+    global:
+        IMP_*;
+        AL_Codec_Encode_*;
+        FrameSourceInit;
+        EncoderInit;
+        EncoderExit;
+        OpenIMP_P0_GetState;
+        OpenIMP_P1_GetState;
+        OpenIMP_P2_DMAState;
+    local:
+        *;
+};

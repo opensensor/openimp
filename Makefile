@@ -124,9 +124,15 @@ LIBSU_SO = $(LIB_DIR)/libsysutils.so
 LIBSU_A = $(LIB_DIR)/libsysutils.a
 
 # Targets
-.PHONY: all clean install test strip
+.PHONY: all clean install test strip t40
 
 all: $(LIBIMP_SO) $(LIBIMP_A) $(LIBSU_SO) $(LIBSU_A)
+
+# The T40XP implementation has a distinct ABI/header set and deliberately
+# does not link libsysutils. Keep it isolated from the T31 legacy/ported
+# object graphs while exposing one repository-level build entry point.
+t40:
+	./build-t40.sh
 
 # Strip debug symbols for smaller binaries
 strip: all
@@ -194,6 +200,7 @@ help:
 	@echo "  strip    - Strip debug symbols from shared libraries"
 	@echo "  install  - Install libraries and headers"
 	@echo "  test     - Build and run tests"
+	@echo "  t40      - Cross-build the standalone T40XP libimp"
 	@echo "  help     - Show this help message"
 	@echo ""
 	@echo "Variables:"

@@ -1,4 +1,5 @@
 prudynt-t
+/build/
 *.o
 *.so
 *.a

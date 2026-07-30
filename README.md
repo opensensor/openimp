@@ -84,9 +84,11 @@ Platform-specific differences are handled through conditional compilation.
 # Build for T31 (default)
 make
 
-# Build for other platforms
+# Build the compatibility implementation for another platform
 make PLATFORM=T23
-make PLATFORM=T40
+
+# Build the functional T40XP implementation
+make t40
 
 # Cross-compile for MIPS
 make CC=mipsel-linux-gnu-gcc
@@ -100,6 +102,12 @@ make install PREFIX=$HOME/.local
 # Clean build artifacts
 make clean
 ```
+
+The T40XP target uses its own 1.3.1 ABI headers and an isolated source graph,
+so it does not disturb the T31 legacy or ported builds. It produces
+`build/t40/libimp.so` and checks the target RVD/RAD import surface when the
+matching Thingino build is available. See
+[`docs/T40_STATUS.md`](docs/T40_STATUS.md) for the live gate and known gaps.
 
 ### Build Output
 
@@ -135,19 +143,19 @@ To use this library with prudynt-t:
 
 ## Development Status
 
-- [x] API analysis complete (130+ functions documented)
-- [x] Project structure created
-- [x] Header files defined (all modules)
-- [x] Stub implementations created (all modules)
-- [x] Data structures reverse engineered from binary
-- [x] Build system working (Makefile with platform support)
-- [x] API surface test passing
-- [ ] Hardware integration (ISP, encoder, audio)
-- [ ] Functional video pipeline
-- [ ] Functional audio pipeline
-- [ ] Memory management (VBM, physical memory)
+- [x] T31 API analysis and compatibility surface
+- [x] T31 legacy and ported build graphs
+- [x] T40XP open ISP/sensor/FrameSource pipeline
+- [x] T40XP open AVPU/DMA H.264 pipeline
+- [x] T40XP Raptor video/audio/control import coverage
+- [x] T40XP runtime with no OEM `libimp.so` dependency
+- [ ] T40XP decoder-clean 1920x1080 output
+- [ ] P4 APIs currently outside the Raptor runtime gate
 
-**Current Status**: Fully functional stub implementation. All API functions are present and callable, but hardware interaction is not implemented. Suitable for development and testing of applications that use the IMP API.
+The T31 track retains the prior compatibility/stub implementation and its
+historical streaming milestone below. The T40XP track is a separate functional
+hardware implementation; its exact live gate is maintained in
+[`docs/T40_STATUS.md`](docs/T40_STATUS.md).
 
 
 ## 24-hour milestone: End-to-end RTSP streaming on T31
@@ -190,4 +198,3 @@ This is a clean-room reverse engineering effort. The API signatures are derived 
 - [prudynt-t](https://github.com/gtxaspec/prudynt-t) - The primary consumer of this API
 - Ingenic IMP SDK Documentation
 - Binary analysis via Binary Ninja MCP (libimp.so T31 v1.1.6)
-
