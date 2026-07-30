@@ -102,11 +102,12 @@ typedef struct Module {
     /* Extended data follows at 0x148 */
 } Module;
 
-/* Global module registry - g_modules at 0x108ca0 */
-/* Layout: modules[deviceID][groupID] where deviceID=0-5, groupID=0-5 */
+/* Global module registry shared across subsystems.
+ * Encoder/OSD/other modules reference this symbol directly, so it must not be
+ * file-local in the legacy build. */
 #define MAX_DEVICES 6
 #define MAX_GROUPS 6
-static Module *g_modules[MAX_DEVICES][MAX_GROUPS];
+Module *g_modules[MAX_DEVICES][MAX_GROUPS];
 
 /* Global state */
 static uint64_t timestamp_base = 0;
@@ -504,6 +505,16 @@ int IMP_System_GetVersion(IMPVersion *pstVersion) {
 /* IMP_System_GetCPUInfo - based on decompilation at 0x1e02c
  * Returns static string pointer based on CPU ID */
 const char *IMP_System_GetCPUInfo(void) {
+#if defined(PLATFORM_T40)
+    return "T40-XP";
+#elif defined(PLATFORM_T41)
+    return "T41";
+#elif defined(PLATFORM_T32)
+    return "T32";
+#elif defined(PLATFORM_C100)
+    return "C100";
+#endif
+
     int cpu_id = get_cpu_id();
 
     /* Switch statement from OEM decompilation */

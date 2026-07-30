@@ -306,6 +306,14 @@ int32_t AL_IntermMngr_ReleaseBuffer(AL_TIntermMngr *arg1, AL_TIntermBuffer *arg2
         return 0;
     }
 
+    if (arg2 == NULL) {
+        INTM_KMSG("ReleaseBuffer skip-null ctx=%p head=%d size=%d cap=%d",
+                  arg1, arg1->head, arg1->size, arg1->capacity);
+        INTM_DMSG("ReleaseBuffer skip-null ctx=%p head=%d size=%d cap=%d",
+                  arg1, arg1->head, arg1->size, arg1->capacity);
+        return AL_IntermMngr_Unlock(mutex);
+    }
+
     {
         int32_t a1 = arg1->size;
 

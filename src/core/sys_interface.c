@@ -241,6 +241,16 @@ int32_t IMP_System_GetBindbyDest(IMPCell *arg1, IMPCell *arg2)
 
 const char *IMP_System_GetCPUInfo(void)
 {
+#if defined(PLATFORM_T40)
+    return "T40-XP";
+#elif defined(PLATFORM_T41)
+    return "T41";
+#elif defined(PLATFORM_T32)
+    return "T32";
+#elif defined(PLATFORM_C100)
+    return "C100";
+#endif
+
     int32_t v0 = get_cpu_id();
 
     if (v0 == 0) {

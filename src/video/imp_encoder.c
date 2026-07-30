@@ -129,6 +129,7 @@ int32_t AL_Codec_Encode_SetGopLength(void *codec, int32_t gopLen); /* forward de
 int32_t AL_Codec_Encode_RestartGop(void *codec); /* forward decl, ported by T<N> later */
 int32_t AL_Codec_Encode_GetLastError(void *codec); /* forward decl, ported by T<N> later */
 int32_t AL_Codec_Encode_RequestIDR(void *codec); /* forward decl, ported by T<N> later */
+void *AL_Buffer_GetMetaData(void *buffer, int32_t type); /* forward decl, ported by T<N> later */
 
 /* fifo helpers used by the live encoder clone-slot pool */
 int32_t Fifo_Queue(void *fifo_ptr, void *item, int32_t timeout_ms); /* forward decl, ported by T<N> later */
@@ -158,6 +159,17 @@ int32_t IMP_Encoder_PollingStream(int32_t arg1, uint32_t arg2);
 int32_t IMP_Encoder_GetStream_Impl(int32_t arg1, void *arg2, uint32_t arg3, int32_t arg4);
 int32_t IMP_Encoder_GetStream(int32_t arg1, void *arg2, uint32_t arg3);
 int32_t IMP_Encoder_ReleaseStream(int32_t arg1, void *arg2);
+
+static uint8_t enc_stream_tail_owns_src(void *codec_stream)
+{
+    void *meta7;
+
+    if (codec_stream == NULL) {
+        return 0;
+    }
+    meta7 = AL_Buffer_GetMetaData(codec_stream, 7);
+    return meta7 != NULL ? *(uint8_t *)((uint8_t *)meta7 + 0x0c) : 0;
+}
 int32_t IMP_Encoder_RegisterChn(int32_t arg1, int32_t arg2);
 int32_t IMP_Encoder_RequestIDR(int32_t arg1);
 int32_t IMP_Encoder_StartRecvPic(int32_t arg1);
@@ -2669,17 +2681,25 @@ int32_t IMP_Encoder_ReleaseStream(int32_t arg1, void *arg2)
                     arg2_iter = (int32_t *)((char *)arg2_iter + 0x188);
                 }
             }
-            video_enc_kmsg("libimp/ENCW2: ReleaseStream matched chn=%d slot=%p codec_stream=%p user=%p\n",
-                           arg1, s0_1, *(void **)((char *)s0_1 + 0x10),
-                           *(void **)((char *)s0_1 + 0x14));
-            src_slot = *(void **)((char *)s0_1 + 0x14);
-            AL_Codec_Encode_ReleaseStream(CH_PTR(arg1, ENC_F_CODEC_HANDLE),
-                                          *(void **)((char *)s0_1 + 0x10),
-                                          *(void **)((char *)s0_1 + 0x14));
-            if (src_slot != NULL) {
-                Fifo_Queue(enc_ptr(arg1, IMP_ENC_BASE_ADDR + 0x18), src_slot, -1);
-                video_enc_kmsg("libimp/ENCW2: ReleaseStream recycled-src chn=%d slot=%p fifo=%p\n",
-                               arg1, src_slot, enc_ptr(arg1, IMP_ENC_BASE_ADDR + 0x18));
+            {
+                void *codec_stream = *(void **)((char *)s0_1 + 0x10);
+                uint8_t tail_owns_src = enc_stream_tail_owns_src(codec_stream);
+
+                video_enc_kmsg("libimp/ENCW2: ReleaseStream matched chn=%d slot=%p codec_stream=%p user=%p tail_owns_src=%u\n",
+                               arg1, s0_1, codec_stream,
+                               *(void **)((char *)s0_1 + 0x14), tail_owns_src);
+                src_slot = *(void **)((char *)s0_1 + 0x14);
+                AL_Codec_Encode_ReleaseStream(CH_PTR(arg1, ENC_F_CODEC_HANDLE),
+                                              codec_stream,
+                                              tail_owns_src ? NULL : *(void **)((char *)s0_1 + 0x14));
+                if (src_slot != NULL && !tail_owns_src) {
+                    Fifo_Queue(enc_ptr(arg1, IMP_ENC_BASE_ADDR + 0x18), src_slot, -1);
+                    video_enc_kmsg("libimp/ENCW2: ReleaseStream recycled-src chn=%d slot=%p fifo=%p\n",
+                                   arg1, src_slot, enc_ptr(arg1, IMP_ENC_BASE_ADDR + 0x18));
+                } else if (src_slot != NULL) {
+                    video_enc_kmsg("libimp/ENCW2: ReleaseStream defer-src-recycle chn=%d slot=%p\n",
+                                   arg1, src_slot);
+                }
             }
             pthread_mutex_lock((pthread_mutex_t *)enc_ptr(arg1, ENC_F_MTX_PACK));
             {

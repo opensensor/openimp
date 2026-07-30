@@ -10,17 +10,11 @@
 extern "C" {
 #endif
 
-/* V4L2 format structure with Ingenic extensions for VIDIOC_SET_FMT ioctl
- * This is a 0xc8 (200 byte) structure that gets passed to ioctl 0xc07056c3
- * Based on kernel driver tx-isp-module.c line 3896
- *
- * The raw_data area contains a copy of imp_channel_attr starting at offset 0x24
- * which the kernel extracts and passes to tisp_channel_attr_set
- */
+/* High-level frame-source format description matching the stock libimp
+ * fs_set_format/fs_get_format argument layout. The live ioctl payload is a
+ * 0x70-byte structure whose raw channel-attr words begin at offset 0x24. */
 typedef struct {
-    /* V4L2 standard header */
     int type;                   /* 0x00: Buffer type (V4L2_BUF_TYPE_VIDEO_CAPTURE = 1) */
-    /* V4L2 pix format */
     int width;                  /* 0x04: Width */
     int height;                 /* 0x08: Height */
     int pixelformat;            /* 0x0c: Pixel format (fourcc) */
@@ -51,7 +45,7 @@ typedef struct {
     int picheight;              /* 0x54: Picture height (arg2[12]) */
     int fps_num;                /* 0x58: FPS numerator (arg2[13]) */
     int fps_den;                /* 0x5c: FPS denominator (arg2[14]) */
-    char padding[0x68];         /* 0x60-0xc7: Padding to 200 bytes */
+    char padding[0x10];         /* 0x60-0x6f: Reserved/padding */
 } fs_format_t;
 
 /* FrameSource device operations */

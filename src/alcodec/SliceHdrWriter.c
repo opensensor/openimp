@@ -2,6 +2,7 @@
 #include <string.h>
 
 #include "alcodec/BitStreamLite.h"
+#include "imp_log_int.h"
 
 /* Channel-context layout is owned by T42 Scheduler and pinned there. This TU
  * uses raw byte offsets until that struct is declared in a shared header. */
@@ -87,7 +88,17 @@ static int32_t FlushNAL(AL_BitStreamLite *arg1, int32_t arg2, char arg3, char *a
 
     s0 = arg5;
     writeStartCode(arg1, arg2, (uint32_t)(uint8_t)arg3);
-    result = *(int32_t *)(arg4 + 4);
+    /*
+     * Some recovered live AVC paths only need FlushNAL to prepend the start
+     * code + payload and intentionally pass no auxiliary NAL header blob.
+     * The stock code tolerates that, but the raw decompilation here was
+     * blindly dereferencing arg4, which turns a NULL header into a read from
+     * 0x00000004 and kills group_update before AVPU launch.
+     */
+    result = 0;
+    if (arg4 != 0) {
+        result = *(int32_t *)(arg4 + 4);
+    }
 
     if (result > 0) {
         AL_BitStreamLite_PutBits(arg1, 8, (uint32_t)(uint8_t)arg4[0]);
@@ -626,6 +637,14 @@ int32_t WriteAvcSliceSegmentHdr(AL_BitStreamLite *arg1, uint8_t *arg2, uint8_t *
     uint32_t v1_2;
     int32_t result;
 
+    IMP_LOG_INFO("ENC",
+                 "WriteAvcSliceSegmentHdr entry sh04=%d sh08=%u sh0c=%08x sh14=%d sh18=%08x sh29=%u"
+                 " sh4f5=%u ch24=%08x ch28=%08x ch30=%08x ch54=%08x",
+                 read_s32(arg2, 0x04), read_u32(arg2, 0x08), read_u32(arg2, 0x0c),
+                 read_s32(arg2, 0x14), read_u32(arg2, 0x18), (unsigned)read_u8(arg2, 0x29),
+                 (unsigned)read_u8(arg2, 0x4f5),
+                 read_u32(arg3, 0x24), read_u32(arg3, 0x28), read_u32(arg3, 0x30), read_u32(arg3, 0x54));
+
     AL_BitStreamLite_PutUE(arg1, read_s32(arg2, 0x04));
     v0 = read_u32(arg2, 0x08);
 
@@ -1078,6 +1097,15 @@ int32_t GenerateAvcSliceHeader(uint8_t *chCtx, uint8_t *sliceParam, uint8_t *pic
     uint32_t a1_7;
     uint8_t *dst;
 
+    IMP_LOG_INFO("ENC",
+                 "GenerateAvcSliceHeader entry ch=%p slice=%p pic=%p sched=%p bs=%p ch24=%08x ch28=%08x ch54=%08x cha8=%08x"
+                 " slice24=%08x slicec0=%08x pic30=%08x pic3c=%08x pic40=%u pic41=%u meta=%p dstOff=%d strip=%u",
+                 chCtx, sliceParam, picCtx, schedCtx, *(void **)(chCtx + 0x20),
+                 read_u32(chCtx, 0x24), read_u32(chCtx, 0x28), read_u32(chCtx, 0x54), read_u32(chCtx, 0xa8),
+                 read_u32(sliceParam, 0x24), read_u32(sliceParam, 0xc0),
+                 read_u32(picCtx, 0x30), read_u32(picCtx, 0x3c), (unsigned)read_u8(picCtx, 0x40),
+                 (unsigned)read_u8(picCtx, 0x41), *(void **)(schedCtx + 0x80), dstOffset, (unsigned char)stripPrefix);
+
     memset(sh, 0, sizeof(sh));
 
     nalType = (read_u32(sliceParam, 0x24) & 1U) != 0 ? 5U : 1U;
@@ -1086,7 +1114,14 @@ int32_t GenerateAvcSliceHeader(uint8_t *chCtx, uint8_t *sliceParam, uint8_t *pic
     write_u16(sh, 0x000, (uint16_t)((((int32_t)read_u16(picCtx, 0x10a) + 1) >> 1) << 4));
     write_u32(sh, 0x004, read_u32(picCtx, 0x3c));
     write_u32(sh, 0x008, read_u32(picCtx, 0x30));
-    sh[0x009] = read_u8(chCtx, 0x24);
+    /*
+     * WriteAvcSliceSegmentHdr treats sh+0x08 as the base AVC slice_type and
+     * sh[0x09] as pic_parameter_set_id. The recovered live path only uses
+     * PPS id 0. Pulling byte 0x24 from chCtx here corrupts the 32-bit
+     * slice_type word on little-endian MIPS (e.g. 0x00004902), which trips
+     * the stock assert `pSH->slice_type < 3`.
+     */
+    sh[0x009] = 0;
     write_u32(sh, 0x00c, read_u32(sliceParam, 0xb0));
     sh[0x00e] = 0;
     sh[0x028] = 0;
@@ -1117,8 +1152,10 @@ int32_t GenerateAvcSliceHeader(uint8_t *chCtx, uint8_t *sliceParam, uint8_t *pic
 
     bs = *(AL_BitStreamLite **)(chCtx + 0x20);
     AL_BitStreamLite_Reset(bs);
+    IMP_LOG_INFO("ENC", "GenerateAvcSliceHeader pre-WriteAvc bs=%p", bs);
     WriteAvcSliceSegmentHdr(bs, sh, chCtx, sliceParam);
     bitsCount = (uint32_t)AL_BitStreamLite_GetBitsCount(bs);
+    IMP_LOG_INFO("ENC", "GenerateAvcSliceHeader post-WriteAvc bits=%u", bitsCount);
 
     write_u8(picCtx, 0xf8, 0);
     bytesCount = (bitsCount + 7U) >> 3;
@@ -1147,6 +1184,8 @@ int32_t GenerateAvcSliceHeader(uint8_t *chCtx, uint8_t *sliceParam, uint8_t *pic
     result = (uint8_t)FlushNAL((AL_BitStreamLite *)(dst + prefixBytes), 0, (char)nalType, 0,
                                (char *)AL_BitStreamLite_GetData(bs), (int32_t)bitsCount);
     result -= prefixBytes;
+    IMP_LOG_INFO("ENC", "GenerateAvcSliceHeader post-Flush result=%u prefix=%u bytes=%u", result, prefixBytes,
+                 bytesCount);
 
     if (read_u8(picCtx, 0xf8) != 0) {
         a1_7 = bitsCount & 7U;

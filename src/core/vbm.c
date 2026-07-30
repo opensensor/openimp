@@ -1,4 +1,6 @@
+#include <fcntl.h>
 #include <pthread.h>
+#include <stdarg.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -54,6 +56,23 @@ static VBMFrameVolume g_framevolumes[0x1e];
 static VBMFrame frame_type2;
 static uint8_t print_cnt_vtv = 1;
 static const char data_edab0[] = "vbm";
+
+static void vbm_kmsg(const char *fmt, ...)
+{
+    int fd;
+    char buf[256];
+    va_list ap;
+
+    va_start(ap, fmt);
+    vsnprintf(buf, sizeof(buf), fmt, ap);
+    va_end(ap);
+
+    fd = open("/dev/kmsg", O_WRONLY);
+    if (fd >= 0) {
+        write(fd, buf, strlen(buf));
+        close(fd);
+    }
+}
 
 static inline pthread_mutex_t *vbm_volume_mutex(VBMFrameVolume *volume)
 {
@@ -180,6 +199,7 @@ int32_t VBMUnLockFrame(VBMFrame *arg1)
 
 int32_t VBMLockFrameByVaddr(uint32_t arg1)
 {
+    static int trace_budget = 32;
     int32_t i = 0;
     uint32_t *v1 = &g_framevolumes[0].virt_addr;
 
@@ -191,10 +211,22 @@ int32_t VBMLockFrameByVaddr(uint32_t arg1)
             int32_t s2_1 = i * 0x28;
             pthread_mutex_t *s1_1 = (pthread_mutex_t *)(void *)((char *)g_framevolumes + s2_1 + 0x10);
             VBMFrameVolume *s0_1 = (VBMFrameVolume *)((char *)g_framevolumes + s2_1);
+            int32_t old_ref;
+            int32_t new_ref;
+            VBMFrame *frame;
 
             pthread_mutex_lock(s1_1);
+            old_ref = s0_1->ref_count;
             s0_1->ref_count += 1;
+            new_ref = s0_1->ref_count;
+            frame = s0_1->frame;
             pthread_mutex_unlock(s1_1);
+            if (trace_budget > 0) {
+                trace_budget--;
+                vbm_kmsg("libimp/VBM: lock vaddr=0x%x ref=%d->%d frame=%p chn=%d idx=%d\n",
+                         arg1, old_ref, new_ref, frame,
+                         frame ? frame->chn : -1, frame ? frame->index : -1);
+            }
             return 0;
         }
 
@@ -233,6 +265,7 @@ int32_t VBMLockFrameByVaddr(uint32_t arg1)
 
 int32_t VBMUnlockFrameByVaddr(uint32_t arg1)
 {
+    static int trace_budget = 64;
     int32_t v0 = 0;
     uint32_t *v1 = &g_framevolumes[0].virt_addr;
 
@@ -291,6 +324,10 @@ int32_t VBMUnlockFrameByVaddr(uint32_t arg1)
         int32_t v0_2 = v0 * 0x28;
         pthread_mutex_t *s1_1 = (pthread_mutex_t *)(void *)((char *)g_framevolumes + v0_2 + 0x10);
         VBMFrameVolume *s0_1 = (VBMFrameVolume *)((char *)g_framevolumes + v0_2);
+        int32_t old_ref;
+        int32_t new_ref;
+        VBMFrame *frame;
+        int32_t release_rc = 0;
 
         pthread_mutex_lock(s1_1);
         if (s0_1->ref_count == 0) {
@@ -305,12 +342,16 @@ int32_t VBMUnlockFrameByVaddr(uint32_t arg1)
             return -1;
         }
 
+        old_ref = s0_1->ref_count;
         s0_1->ref_count -= 1;
+        new_ref = s0_1->ref_count;
+        frame = s0_1->frame;
         if (s0_1->ref_count == 0) {
             void *a0_3 = s0_1->frame;
             void *v0_8 = *(void **)((char *)VBMGetInstance() + ((*(int32_t *)((char *)a0_3 + 4)) << 2));
 
-            if (((int32_t (*)(void *, void *))*(void **)((char *)v0_8 + 0x178))(a0_3, *(void **)((char *)v0_8 + 4)) < 0) {
+            release_rc = ((int32_t (*)(void *, void *))*(void **)((char *)v0_8 + 0x178))(a0_3, *(void **)((char *)v0_8 + 4));
+            if (release_rc < 0) {
                 int32_t v0_10 = IMP_Log_Get_Option();
                 VBMFrame *v1_4 = s0_1->frame;
 
@@ -322,6 +363,12 @@ int32_t VBMUnlockFrameByVaddr(uint32_t arg1)
         }
 
         pthread_mutex_unlock(s1_1);
+        if (trace_budget > 0) {
+            trace_budget--;
+            vbm_kmsg("libimp/VBM: unlock vaddr=0x%x ref=%d->%d frame=%p chn=%d idx=%d release_rc=%d\n",
+                     arg1, old_ref, new_ref, frame,
+                     frame ? frame->chn : -1, frame ? frame->index : -1, release_rc);
+        }
         return 0;
     }
 }

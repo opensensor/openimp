@@ -1800,24 +1800,43 @@ static int32_t EndEncoding(int32_t *arg1, int32_t *arg2, int32_t arg3)
         CENC_KMSG("EndEncodingCB pre-user cb=0x%x cb_ctx=0x%x stream=%p src=%p layer=%d",
                   cb, cb_ctx, (void *)(intptr_t)s3_8, (void *)(intptr_t)s5_4, s2);
         ((void (*)(int32_t, int32_t, int32_t, int32_t))(intptr_t)cb)(cb_ctx, s3_8, s5_4, s2);
-        CENC_KMSG("EndEncodingCB post-user cb=0x%x stream=%p src=%p", cb, (void *)(intptr_t)s3_8, (void *)(intptr_t)s5_4);
+    CENC_KMSG("EndEncodingCB post-user cb=0x%x stream=%p src=%p aa=0x%x",
+              cb, (void *)(intptr_t)s3_8, (void *)(intptr_t)s5_4,
+              READ_U8(arg2, 0xaa));
     }
 
     if (READ_U8(arg2, 0xaa) != 0) {
         int32_t (*done_cb)(int32_t *) = (int32_t (*)(int32_t *))(intptr_t)READ_S32(s1, 0);
+        int32_t done_rc_1;
+        int32_t done_rc_2;
 
-        if (done_cb(arg2) != 0)
+        done_rc_1 = done_cb(arg2);
+        CENC_KMSG("EndEncodingCB tail-owned-src stream=%p src=%p aa=0x%x done1=%d stream_ref=%d src_ref=%d",
+                  (void *)(intptr_t)s3_8, (void *)(intptr_t)s5_4, READ_U8(arg2, 0xaa),
+                  done_rc_1,
+                  s3_8 ? READ_S32((void *)(intptr_t)s3_8, 0x34) : -1,
+                  s5_4 ? READ_S32((void *)(intptr_t)s5_4, 0x34) : -1);
+
+        if (done_rc_1 != 0) {
+            CENC_KMSG("EndEncodingCB tail-releaseSource src=%p aux=%p",
+                      (void *)(intptr_t)s5_4, (uint8_t *)s1 + fp_1 * 0x30 + 0xed90);
             releaseSource(s1, s5_4, (uint8_t *)s1 + fp_1 * 0x30 + 0xed90);
+        }
 
         Rtos_GetMutex(READ_PTR(s1, 0xf254));
         WRITE_S32(s1, 0xed88, READ_S32(s1, 0xed88) + 1);
-        if (done_cb(arg2) != 0)
+        done_rc_2 = done_cb(arg2);
+        CENC_KMSG("EndEncodingCB tail-post-release done2=%d fifo=%p sem=%p",
+                  done_rc_2, (uint8_t *)s1 + 0xf0f0, READ_PTR(s1, 0xf258));
+        if (done_rc_2 != 0)
             AL_Fifo_Queue((int32_t *)((uint8_t *)s1 + 0xf0f0), (void *)(intptr_t)(fp_1 + 1), 0);
         Rtos_ReleaseMutex(READ_PTR(s1, 0xf254));
         Rtos_ReleaseSemaphore(READ_PTR(s1, 0xf258));
         return 0;
     }
 
+    CENC_KMSG("EndEncodingCB tail-unref-stream stream=%p stream_ref=%d",
+              (void *)(intptr_t)s3_8, s3_8 ? READ_S32((void *)(intptr_t)s3_8, 0x34) : -1);
     Rtos_GetMutex(READ_PTR(s1, 0xf254));
     AL_Buffer_Unref((AL_TBuffer *)(intptr_t)s3_8);
     return Rtos_ReleaseMutex(READ_PTR(s1, 0xf254));

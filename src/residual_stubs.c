@@ -193,6 +193,35 @@ static void stub_kmsg(const char *fmt, ...)
     close(fd);
 }
 
+static void dump_public_stream_once(const void *data, uint32_t len, uint32_t seq)
+{
+    static int dumped = 0;
+    int fd;
+
+    if (dumped || data == NULL || len == 0) {
+        return;
+    }
+
+    fd = open("/tmp/openimp-public-ch0-seq0.h264", O_CREAT | O_TRUNC | O_WRONLY, 0644);
+    if (fd < 0) {
+        stub_kmsg("libimp/ENCX: dump_public_stream_once open-fail errno=%d seq=%u len=%u\n",
+                  errno, seq, len);
+        return;
+    }
+
+    if (write(fd, data, (size_t)len) != (ssize_t)len) {
+        stub_kmsg("libimp/ENCX: dump_public_stream_once write-fail errno=%d seq=%u len=%u\n",
+                  errno, seq, len);
+        close(fd);
+        return;
+    }
+
+    close(fd);
+    dumped = 1;
+    stub_kmsg("libimp/ENCX: dump_public_stream_once ok seq=%u len=%u path=/tmp/openimp-public-ch0-seq0.h264\n",
+              seq, len);
+}
+
 static void stub_stderr(const char *fmt, ...)
 {
     char buf[512];
@@ -494,6 +523,31 @@ static void *encoder_current_pack_slot(EncoderChannelLayout *chn)
         return NULL;
 
     return base + (size_t)(idx % max) * 0x188U;
+}
+
+static int encoder_pack_slot_is_valid(EncoderChannelLayout *chn, const void *slot)
+{
+    uintptr_t base;
+    uintptr_t ptr;
+    uintptr_t span;
+    int32_t max;
+
+    if (chn == NULL || slot == NULL)
+        return 0;
+
+    base = (uintptr_t)(uint8_t *)(uintptr_t)*enc_channel_stream_ring_base(chn);
+    max = *enc_channel_stream_ring_count(chn);
+    ptr = (uintptr_t)slot;
+    if (base == 0 || max <= 0)
+        return 0;
+
+    span = (uintptr_t)max * 0x188U;
+    if (ptr < base || ptr >= base + span)
+        return 0;
+    if (((ptr - base) % 0x188U) != 0U)
+        return 0;
+
+    return 1;
 }
 
 static int encoder_clone_source_frame(EncoderChannelLayout *chn, void *src_frame, void **slot_out)
@@ -860,28 +914,47 @@ int32_t update_one_frmstrm(void *arg1_in)
     uint64_t ts = (uint64_t)(uint32_t)Rtos_GetTime();
     s7_1[0x108] = (int32_t)(uint32_t)ts;
     s7_1[0x109] = (int32_t)(uint32_t)(ts >> 32);
+    int32_t *reserved_pack = *(int32_t **)((uint8_t *)var_40 + 0x428);
+    int32_t *legacy_pack   = s7_1 != NULL ? (int32_t *)(uintptr_t)s7_1[0x10a] : NULL;
+    int32_t *current_pack  = (int32_t *)encoder_current_pack_slot(chn);
+
+    if (!encoder_pack_slot_is_valid(chn, reserved_pack))
+        reserved_pack = NULL;
+    if (!encoder_pack_slot_is_valid(chn, legacy_pack))
+        legacy_pack = NULL;
+    if (!encoder_pack_slot_is_valid(chn, current_pack))
+        current_pack = NULL;
     if (do_log) {
-        stub_kmsg("libimp/ENCX: update_one frame-slot srcbuf=%p frame=%p pack_field=%p fallback_pack=%p max=%d idx=%d\n",
-                  var_40, s7_1, s7_1 != NULL ? (void *)(uintptr_t)s7_1[0x10a] : NULL,
-                  encoder_current_pack_slot(chn),
+        stub_kmsg("libimp/ENCX: update_one frame-slot srcbuf=%p frame=%p reserved_pack=%p legacy_pack=%p current_pack=%p max=%d idx=%d\n",
+                  var_40, s7_1, reserved_pack, legacy_pack, current_pack,
                   *enc_channel_stream_ring_count(chn), *enc_channel_stream_ring_index(chn));
     }
 
+    /* The live path consumes public stream slots strictly in ring-index
+     * order. When the cloned frame carries a stale legacy pack pointer,
+     * flattening into that stale slot leaves the current slot empty and
+     * GetStream_Impl returns pack_count=0 on the next dequeue. Prefer the
+     * current ring slot whenever it is valid, and mirror it back into the
+     * public frame header so later release paths stay aligned. */
+    if (current_pack != NULL)
+        s7_1[0x10a] = (int32_t)(intptr_t)current_pack;
+
     /* When in PASS-THROUGH mode (+0x2d4 set) or slot mode=4, skip the
      * 8-word "ENCODE TIME" log and the setRight copy of &str[0x59..0x5d]. */
-    int32_t *str = (int32_t *)encoder_current_pack_slot(chn);
+    int32_t *str = current_pack != NULL ? current_pack :
+                   (reserved_pack != NULL ? reserved_pack : legacy_pack);
     if (*(uint8_t *)(arg1 + 0x2d4) != 0) {
         if (str == NULL)
-            str = (int32_t *)(uintptr_t)s7_1[0x10a];
+            str = current_pack;
     } else if (*(uint8_t *)(arg1 + 0x9b * 4) == 4) {
         if (str == NULL)
-            str = (int32_t *)(uintptr_t)s7_1[0x10a];
+            str = current_pack;
     } else {
         /* Copy the 10-word ENCODE-TIME block (str[0x59..0x62]) into the
          * public-frame struct at arg1+0x2e0..+0x308 via setLeft+setRight
          * permute — the stock idiom for 32-bit word stores on MIPS. */
         if (str == NULL)
-            str = (int32_t *)(uintptr_t)s7_1[0x10a];
+            str = current_pack;
         if (str == NULL) {
             if (do_log)
                 stub_kmsg("libimp/ENCX: update_one missing stream-record frame=%p ring_base=%p max=%d idx=%d\n",
@@ -895,6 +968,9 @@ int32_t update_one_frmstrm(void *arg1_in)
             (void)_setLeftPart32((uint32_t)str[0x59 + i]);
             dst[i] = (int32_t)_setRightPart32((uint32_t)str[0x59 + i]);
         }
+    }
+    if (str == NULL) {
+        str = current_pack != NULL ? current_pack : legacy_pack;
     }
     if (str == NULL) {
         if (do_log)
@@ -944,6 +1020,7 @@ int32_t update_one_frmstrm(void *arg1_in)
              s2_2 -= 0x14, s0_4 -= 8) {
             int32_t *v0_17 = (int32_t *)((uint8_t *)
                 *(void **)((uint8_t *)meta + 0x10) + s2_2);
+            int32_t raw_off = v0_17[0];
             uint32_t n = (uint32_t)v0_17[1];
             if (n == 0) continue;
             int32_t t3_1 = v0_17[4];
@@ -956,6 +1033,21 @@ int32_t update_one_frmstrm(void *arg1_in)
             *((uint8_t *)&s0_4[4]) = (uint8_t)((uint32_t)t2_1 >> 0x1d) & 1U;
             s0_4[5] = t4_1;
             s0_4[6] = t3_1;
+            if (do_log) {
+                uint8_t *dbase = (uint8_t *)(intptr_t)data;
+
+                if (raw_off >= 0 && raw_off + 16 <= sz) {
+                    stub_kmsg("libimp/ENCX: update_one raw-section idx=%d off=%d len=%u aux=%d qp=%d type=%d %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x\n",
+                              i, raw_off, n, (int)(*((uint8_t *)&s0_4[4]) & 1U), t4_1, t3_1,
+                              dbase[raw_off + 0], dbase[raw_off + 1], dbase[raw_off + 2], dbase[raw_off + 3],
+                              dbase[raw_off + 4], dbase[raw_off + 5], dbase[raw_off + 6], dbase[raw_off + 7],
+                              dbase[raw_off + 8], dbase[raw_off + 9], dbase[raw_off + 10], dbase[raw_off + 11],
+                              dbase[raw_off + 12], dbase[raw_off + 13], dbase[raw_off + 14], dbase[raw_off + 15]);
+                } else {
+                    stub_kmsg("libimp/ENCX: update_one raw-section idx=%d off=%d len=%u aux=%d qp=%d type=%d\n",
+                              i, raw_off, n, (int)(*((uint8_t *)&s0_4[4]) & 1U), t4_1, t3_1);
+                }
+            }
             if ((uint32_t)(t3_1 - 1) < 2U ||
                 *(uint8_t *)(arg1 + 0x9b * 4) == 4) {
                 s5_1 = (uint32_t)v0_17[0];
@@ -1004,6 +1096,36 @@ int32_t update_one_frmstrm(void *arg1_in)
     if (do_log) {
         stub_kmsg("libimp/ENCX: update_one packed public=%p packs=%d payload=%u base=0x%x\n",
                   s7_1, str[6], s6_1, (unsigned)str[1]);
+        {
+            uint8_t *out = (uint8_t *)(intptr_t)str[1];
+
+            if (out != NULL && s6_1 >= 16U) {
+                stub_kmsg("libimp/ENCX: update_one public-bytes base=0x%x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x\n",
+                          (unsigned)str[1],
+                          out[0], out[1], out[2], out[3], out[4], out[5], out[6], out[7],
+                          out[8], out[9], out[10], out[11], out[12], out[13], out[14], out[15]);
+            }
+            for (int32_t k = 0; k < str[6] && k < 4; ++k) {
+                int32_t *pk = str + 8 + k * 8;
+                int32_t pk_off = pk[0];
+                int32_t pk_len = pk[1];
+
+                if (out != NULL && pk_off >= 0 && pk_len > 0 && pk_off + 16 <= s6_1) {
+                    stub_kmsg("libimp/ENCX: update_one public-pack idx=%d off=%d len=%d qp=%d type=%d %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x\n",
+                              k, pk_off, pk_len, pk[5], pk[6],
+                              out[pk_off + 0], out[pk_off + 1], out[pk_off + 2], out[pk_off + 3],
+                              out[pk_off + 4], out[pk_off + 5], out[pk_off + 6], out[pk_off + 7],
+                              out[pk_off + 8], out[pk_off + 9], out[pk_off + 10], out[pk_off + 11],
+                              out[pk_off + 12], out[pk_off + 13], out[pk_off + 14], out[pk_off + 15]);
+                } else {
+                    stub_kmsg("libimp/ENCX: update_one public-pack idx=%d off=%d len=%d qp=%d type=%d\n",
+                              k, pk_off, pk_len, pk[5], pk[6]);
+                }
+            }
+        }
+    }
+    if (str[3] == 0 && str[1] != 0 && s6_1 != 0) {
+        dump_public_stream_once((const void *)(intptr_t)str[1], s6_1, (uint32_t)str[3]);
     }
 
     *(uint32_t *)(arg1 + 0x2a4) += s6_1;

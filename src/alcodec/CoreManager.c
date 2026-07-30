@@ -88,16 +88,18 @@ extern void *__assert(const char *expression, const char *file, int32_t line, co
 
 int32_t AL_ModuleArray_IsEmpty(int32_t arg1); /* forward decl, ported by T<N> later */
 int32_t EncodingStatusRegsToSliceStatus(const void *status_regs, void *slice_status); /* forward decl, ported by T<N> later */
+int32_t EntropyStatusRegsToSliceStatus(void *arg1, char *arg2, int32_t arg3); /* forward decl, ported by T<N> later */
 int32_t MergeEncodingStatus(void *merged_status, const void *slice_status); /* forward decl, ported by T<N> later */
 int32_t IntVector_Add(int32_t *arg1, int32_t arg2); /* forward decl, ported by T<N> later */
 void IntVector_Init(int32_t *arg1); /* forward decl, ported by T<N> later */
 int32_t IntVector_Remove(int32_t *arg1, int32_t arg2); /* forward decl, ported by T<N> later */
 int32_t AL_Buffer_Unref(AL_TBuffer *arg1); /* forward decl, ported by T<N> later */
 int32_t AL_DmaAlloc_FlushCache(int32_t arg1, int32_t arg2, int32_t arg3); /* forward decl, ported by T<N> later */
+int32_t AL_EncCore_ReadStatusRegsEnc(void *arg1, void *arg2); /* forward decl */
 
 static const uint64_t AL_ENCJPEG_CMD = 0x0b000000000000ULL;
 #define AL_CMD_LIST_FLUSH_BYTES 0x200
-#define LIVE_T31_POSTDMA_READ_FLUSH_DIR 2
+#define LIVE_T31_POSTDMA_READ_FLUSH_DIR 0
 #define LIVE_T31_MAX_LAUNCH_CORES 2
 
 static void LogCoreIrqSnapshot(AL_EncCoreCtxCompat *core, const char *tag)
@@ -312,7 +314,7 @@ static void LogEnc2WritebackStatus(AL_EncCoreCtxCompat *core, const char *tag)
 
 static void WaitForEnc2Writeback(AL_EncCoreCtxCompat *core, const char *tag)
 {
-    static const int32_t delays_ms[] = { 1, 2, 5, 10, 20, 50, 100, 200, 500 };
+    static const int32_t delays_ms[] = { 1, 2, 5, 10, 20 };
     AL_EncCoreCtxCompat *blocking_core = core;
     uint32_t status = 0;
     uint32_t end_off = 0;
@@ -337,6 +339,39 @@ static void WaitForEnc2Writeback(AL_EncCoreCtxCompat *core, const char *tag)
                      i, status, end_off, enc_stat, ent_stat);
         Rtos_Sleep(delays_ms[i]);
     }
+}
+
+static void ProbeEnc2SliceStatus(AL_EncCoreCtxCompat *core, const char *tag)
+{
+    uint8_t merged[0x88] = {0};
+    uint32_t *cmd;
+    int32_t budget;
+
+    if (core == NULL || core->cmd_regs_2 == 0) {
+        return;
+    }
+
+    cmd = (uint32_t *)(intptr_t)core->cmd_regs_2;
+    budget = (int32_t)cmd[0xfc];
+    if (budget <= 0) {
+        budget = (int32_t)cmd[0xcc];
+    }
+
+    /*
+     * The generic Enc-status walk probes cmd_regs_1 and derives its byte count
+     * from unrelated offsets on this live Enc2 path. Probe the launched Enc2
+     * window directly so the callback log matches OutputSlice/MergeEntropyStatus.
+     */
+    EntropyStatusRegsToSliceStatus(cmd, (char *)merged, budget);
+    IMP_LOG_INFO("AVPU",
+                 "enc2-slice-probe tag=%s core=%u budget=%d err=%u full=%u overflow=%u bytes=%d aux=%d"
+                 " w08=%08x st104=%08x st108=%08x st1e4=%08x st1e8=%08x outc8=%08x outcc=%08x offf8=%08x outfc=%08x",
+                 tag ? tag : "?", (unsigned)core->core_id,
+                 budget,
+                 (unsigned)merged[0], (unsigned)merged[1], (unsigned)merged[2],
+                 *(int32_t *)(void *)(merged + 8), *(int32_t *)(void *)(merged + 0xc),
+                 cmd[0x08 / 4], cmd[0x104 / 4], cmd[0x108 / 4], cmd[0x1e4 / 4], cmd[0x1e8 / 4],
+                 cmd[0xc8 / 4], cmd[0xcc / 4], cmd[0xf8 / 4], cmd[0xfc / 4]);
 }
 
 static int32_t StartEnc1WithCommandList_isra_25(AL_EncCoreCtxCompat *arg1, uint8_t *arg2, int32_t arg3, int32_t arg4)
@@ -426,16 +461,30 @@ void EndEncoding(void *arg1)
 
 void EndAvcEntropy(void *arg1)
 {
+    AL_EncCoreCtxCompat *core = (AL_EncCoreCtxCompat *)arg1;
+    uint32_t status = 0;
+    uint32_t end_off = 0;
+    uint32_t enc_stat = 0;
+    uint32_t ent_stat = 0;
     int32_t t9 = *(int32_t *)((char *)arg1 + 0x14);
 
     /*
      * On live T31 runs the phase-1 IRQ can arrive before the command list
      * writeback is visible in memory. Wait briefly for the status words to
-     * settle, but always continue into the scheduler callback even if the
-     * writeback still looks incomplete after the retries.
+     * settle, but do not defer completion across repeated legacy irq4
+     * callbacks: doing so lets the next frame prewrite a fresh header block
+     * into the same stream buffer before we flatten the current access unit.
      */
-    WaitForEnc2Writeback((AL_EncCoreCtxCompat *)arg1, "EndAvcEntropy");
-    LogEnc2WritebackStatus((AL_EncCoreCtxCompat *)arg1, "EndAvcEntropy");
+    WaitForEnc2Writeback(core, "EndAvcEntropy");
+    if (Enc2WritebackLooksIncomplete(core, &status, &end_off, &enc_stat, &ent_stat) != 0) {
+        LogEnc2WritebackStatus(core, "EndAvcEntropy");
+        ProbeEnc2SliceStatus(core, "EndAvcEntropy");
+        IMP_LOG_INFO("AVPU",
+                     "EndAvcEntropy finalize-incomplete core=%u status=0x%08x end=0x%08x st104=0x%08x st1e4=0x%08x",
+                     core ? (unsigned)core->core_id : 0U,
+                     status, end_off, enc_stat, ent_stat);
+    }
+    LogEnc2WritebackStatus(core, "EndAvcEntropy");
     IMP_LOG_INFO("AVPU", "core EndAvcEntropy ctx=%p fn=0x%x user=%p payload=%p mode=1",
                  arg1, t9, *(void **)((char *)arg1 + 0x18), *(void **)((char *)arg1 + 0x10));
     if (t9 != 0)
@@ -896,6 +945,15 @@ int32_t AL_EncCore_Encode2(AL_EncCoreCtxCompat *arg1, int32_t arg2, int32_t arg3
 
     arg1->cmd_regs_2 = arg3;
     LogEnc2CommandWindow(arg1, arg2, arg3);
+    if (arg1->ip_ctrl != NULL && arg1->core_id < LIVE_T31_MAX_LAUNCH_CORES) {
+        /*
+         * Live phase-1 often inherits a stale pending bit on the shared AVPU
+         * interrupt bank. If we leave it armed, the wait thread can dispatch a
+         * recycled irq4 callback before the new Enc2 launch does any work.
+         * Clear the global pending latch before the entropy pass starts.
+         */
+        arg1->ip_ctrl->vtable->WriteRegister(arg1->ip_ctrl, 0x8018, 0x00ffffffU);
+    }
     LogCoreIrqSnapshot(arg1, "enc2-pre");
     result = IsEnc2AlreadyRunning(a0, a1);
     if (result != 0) {
@@ -910,6 +968,12 @@ int32_t AL_EncCore_Encode2(AL_EncCoreCtxCompat *arg1, int32_t arg2, int32_t arg3
                      (unsigned)(result == 0));
     }
     if (result == 0) {
+        uint32_t status_before_launch = 0U;
+
+        if (arg1->ip_ctrl != NULL) {
+            status_before_launch = (uint32_t)arg1->ip_ctrl->vtable->ReadRegister(arg1->ip_ctrl,
+                                                                                  (a1 << 9) + 0x83f8);
+        }
         if (arg3 != 0) {
             {
                 int flush_ret = Rtos_FlushCacheMemory(arg3, AL_CMD_LIST_FLUSH_BYTES);
@@ -918,7 +982,12 @@ int32_t AL_EncCore_Encode2(AL_EncCoreCtxCompat *arg1, int32_t arg2, int32_t arg3
                              AL_CMD_LIST_FLUSH_BYTES, flush_ret);
             }
         }
-        StartEnc1WithCommandList_isra_25(arg1, &arg1->core_id, arg2, 2);
+        /*
+         * Phase-1 writeback is still failing, but the isolated re-test of a
+         * synthetic 0x2 pre-kick only changed the stuck status from 0x10 to
+         * 0x12. Keep Enc2 on the direct 0x8 launch while investigating the
+         * surrounding source-config ordering instead.
+         */
         result = StartEnc1WithCommandList_isra_25(arg1, &arg1->core_id, arg2, 8);
         LogCoreIrqSnapshot(arg1, "enc2-post");
         ProbeEnc2Progress(arg1);

@@ -295,6 +295,84 @@ static inline double cvt_u32_bias(uint32_t value)
     return result;
 }
 
+typedef struct SrcCookieFallbackEntry {
+    void *srcbuf;
+    void *cookie;
+    uint32_t gen;
+} SrcCookieFallbackEntry;
+
+static SrcCookieFallbackEntry g_src_cookie_fallback[16];
+static uint32_t g_src_cookie_fallback_gen;
+static int g_src_cookie_fallback_log_budget = 32;
+
+static void codec_bind_src_cookie(void *srcbuf, void *cookie)
+{
+    uint32_t slot = UINT32_MAX;
+    uint32_t empty = UINT32_MAX;
+    uint32_t i;
+
+    if (srcbuf == NULL)
+        return;
+
+    for (i = 0; i < (sizeof(g_src_cookie_fallback) / sizeof(g_src_cookie_fallback[0])); ++i) {
+        if (g_src_cookie_fallback[i].srcbuf == srcbuf) {
+            slot = i;
+            break;
+        }
+        if (empty == UINT32_MAX && g_src_cookie_fallback[i].srcbuf == NULL)
+            empty = i;
+    }
+
+    if (slot == UINT32_MAX) {
+        if (empty != UINT32_MAX) {
+            slot = empty;
+        } else {
+            uint32_t oldest = 0;
+            uint32_t oldest_gen = g_src_cookie_fallback[0].gen;
+
+            for (i = 1; i < (sizeof(g_src_cookie_fallback) / sizeof(g_src_cookie_fallback[0])); ++i) {
+                if (g_src_cookie_fallback[i].gen < oldest_gen) {
+                    oldest = i;
+                    oldest_gen = g_src_cookie_fallback[i].gen;
+                }
+            }
+            slot = oldest;
+        }
+    }
+
+    g_src_cookie_fallback[slot].srcbuf = srcbuf;
+    g_src_cookie_fallback[slot].cookie = cookie;
+    g_src_cookie_fallback[slot].gen = ++g_src_cookie_fallback_gen;
+
+    if (g_src_cookie_fallback_log_budget > 0) {
+        int kfd = open("/dev/kmsg", O_WRONLY);
+        if (kfd >= 0) {
+            char b[160];
+            int n = snprintf(b, sizeof(b),
+                             "libimp/LCOD: bind-src-cookie src=%p cookie=%p slot=%u gen=%u\n",
+                             srcbuf, cookie, slot, g_src_cookie_fallback[slot].gen);
+            if (n > 0)
+                write(kfd, b, n);
+            close(kfd);
+        }
+        g_src_cookie_fallback_log_budget--;
+    }
+}
+
+static void *codec_lookup_src_cookie(void *srcbuf)
+{
+    uint32_t i;
+
+    if (srcbuf == NULL)
+        return NULL;
+
+    for (i = 0; i < (sizeof(g_src_cookie_fallback) / sizeof(g_src_cookie_fallback[0])); ++i) {
+        if (g_src_cookie_fallback[i].srcbuf == srcbuf)
+            return g_src_cookie_fallback[i].cookie;
+    }
+    return NULL;
+}
+
 int32_t AL_Codec_Encode_ValidateGopParam(void *arg1, int32_t *arg2)
 {
     uint32_t a0 = (uint32_t)read_u16(arg1, 0x76);
@@ -912,6 +990,39 @@ void AL_Encoder_EndEncodingCallBack(void *arg1, AL_TBuffer *arg2, AL_TBuffer *ar
             int32_t v0_1;
             int32_t v1_1;
 
+            if (s3_1 == NULL) {
+                s3_1 = codec_lookup_src_cookie(arg3);
+                if (s3_1 != NULL) {
+                    write_ptr(arg3, 0x24, s3_1);
+                    AL_Buffer_Ref(arg3);
+                    {
+                        int kfd = open("/dev/kmsg", O_WRONLY);
+                        if (kfd >= 0) {
+                            char b[192];
+                            int n = snprintf(b, sizeof(b),
+                                             "libimp/LCOD: EndEncCB recovered-src-cookie src=%p cookie=%p src_ref=%d\n",
+                                             arg3, s3_1, read_s32(arg3, 0x34));
+                            if (n > 0) write(kfd, b, n);
+                            close(kfd);
+                        }
+                    }
+                } else {
+                    {
+                        int kfd = open("/dev/kmsg", O_WRONLY);
+                        if (kfd >= 0) {
+                            char b[192];
+                            int n = snprintf(b, sizeof(b),
+                                             "libimp/LCOD: EndEncCB missing-src-cookie src=%p stream=%p -> drop\n",
+                                             arg3, arg2);
+                            if (n > 0) write(kfd, b, n);
+                            close(kfd);
+                        }
+                    }
+                    AL_Codec_Encode_ReleaseStream(arg1, arg2, arg3);
+                    return;
+                }
+            }
+
             v0_1 = Rtos_GetTime();
             v1_1 = Rtos_GetTime();
             write_s32(s3_1, 0x41c, v1_1);
@@ -1499,8 +1610,9 @@ int32_t AL_Codec_Encode_Process(int32_t *arg1, void *arg2, void *arg3)
             int32_t a1_3 = read_s32(v0_2, 0x14);
             AL_TAllocator *a0_4 = *(AL_TAllocator **)(*(uint8_t **)arg1 + 4);
             const void *vtable = a0_4 ? *(const void **)a0_4 : NULL;
-            int32_t a3_1 = *(int32_t *)((uint8_t *)arg2 + 0x18);
+                int32_t a3_1 = *(int32_t *)((uint8_t *)arg2 + 0x18);
             write_ptr(v0_2, 0x24, arg2);
+            codec_bind_src_cookie(v0_2, arg2);
             if (vtable == NULL || *(const void * const *)((const char *)vtable + 0x20) == NULL)
                 __assert("pAllocator && pAllocator->vtable && pAllocator->vtable->SetExtraMemory", "/home/user/git/proj/sdk-lv3/src/imp/video/alcodec/lib_codec/lib_codec.c", 0x3e0, "AL_Codec_Encode_Process");
             ((int32_t (*)(AL_TAllocator *, int32_t, int32_t, int32_t, int32_t))
@@ -1510,6 +1622,7 @@ int32_t AL_Codec_Encode_Process(int32_t *arg1, void *arg2, void *arg3)
             void *v0_4 = *(void **)arg1;
             int32_t a1 = read_s32(v0_2, 0x14);
             write_ptr(v0_2, 0x24, arg2);
+            codec_bind_src_cookie(v0_2, arg2);
             {
                 AL_TAllocator *a0_1 = *(AL_TAllocator **)((uint8_t *)v0_4 + 4);
                 const void *vtable = a0_1 ? *(const void **)a0_1 : NULL;

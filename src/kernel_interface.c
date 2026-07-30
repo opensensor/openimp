@@ -97,11 +97,9 @@ static void *fs_poll_worker(void *arg)
 #define ISP_SET_SENSOR      0x50000001  /* Placeholder */
 
 /* High-level userspace format description used by openimp callers.
- * The raw ioctl payload is marshaled separately below. */
+ * This matches the stock libimp fs_set_format/fs_get_format argument layout. */
 typedef struct {
-    /* V4L2 standard header */
     int type;                   /* 0x00: Buffer type (V4L2_BUF_TYPE_VIDEO_CAPTURE = 1) */
-    /* V4L2 pix format */
     int width;                  /* 0x04: Width */
     int height;                 /* 0x08: Height */
     int pixelformat;            /* 0x0c: Pixel format (fourcc) */
@@ -132,48 +130,23 @@ typedef struct {
     int picheight;              /* 0x54: Picture height (arg2[12]) */
     int fps_num;                /* 0x58: FPS numerator (arg2[13]) */
     int fps_den;                /* 0x5c: FPS denominator (arg2[14]) */
-    char padding[0x68];         /* 0x60-0xc7: Padding to 200 bytes */
+    char padding[0x10];         /* 0x60-0x6f: Reserved/padding */
 } fs_format_t;
 
-/* open-tx-isp expects struct frame_image_format (0x70 bytes), not the older
- * attr-slice layout that OEM libimp uses on other stacks.  Keep the ABI-local
- * ioctl struct here so callers can continue to use fs_format_t unchanged. */
-struct fs_ioctl_pix_format {
-    uint32_t width;         /* 0x04 */
-    uint32_t height;        /* 0x08 */
-    uint32_t pixelformat;   /* 0x0c */
-    uint32_t field;         /* 0x10 */
-    uint32_t bytesperline;  /* 0x14 */
-    uint32_t sizeimage;     /* 0x18 */
-    uint32_t colorspace;    /* 0x1c */
-    uint32_t priv;          /* 0x20 */
-    uint32_t flags;         /* 0x24 */
-    uint32_t ycbcr_enc;     /* 0x28 */
-    uint32_t quantization;  /* 0x2c */
-    uint32_t xfer_func;     /* 0x30 */
-};
-
 struct fs_ioctl_format70 {
-    uint32_t type;                  /* 0x00 */
-    struct fs_ioctl_pix_format pix; /* 0x04..0x33 */
-    uint32_t crop_enable;           /* 0x34 */
-    uint32_t crop_top;              /* 0x38 */
-    uint32_t crop_left;             /* 0x3c */
-    uint32_t crop_width;            /* 0x40 */
-    uint32_t crop_height;           /* 0x44 */
-    uint32_t scaler_enable;         /* 0x48 */
-    uint32_t scaler_out_width;      /* 0x4c */
-    uint32_t scaler_out_height;     /* 0x50 */
-    uint32_t rate_bits;             /* 0x54 */
-    uint32_t rate_mask;             /* 0x58 */
-    uint32_t fcrop_enable;          /* 0x5c */
-    uint32_t fcrop_top;             /* 0x60 */
-    uint32_t fcrop_left;            /* 0x64 */
-    uint32_t fcrop_width;           /* 0x68 */
-    uint32_t fcrop_height;          /* 0x6c */
+    uint32_t type;           /* 0x00 */
+    uint32_t width;          /* 0x04 */
+    uint32_t height;         /* 0x08 */
+    uint32_t pixelformat;    /* 0x0c */
+    uint32_t field;          /* 0x10 */
+    uint32_t bytesperline;   /* 0x14 */
+    uint32_t sizeimage;      /* 0x18 */
+    uint32_t colorspace;     /* 0x1c */
+    uint32_t priv;           /* 0x20 */
+    uint32_t raw_attr[15];   /* 0x24..0x5c */
+    uint8_t reserved[0x10];  /* 0x60..0x6f */
 };
 
-_Static_assert(sizeof(struct fs_ioctl_pix_format) == 0x30, "fs ioctl pix format size");
 _Static_assert(sizeof(struct fs_ioctl_format70) == 0x70, "fs ioctl format size");
 
 /* v4l2_requestbuffers (driver expects 5 x u32 = 0x14 bytes):
@@ -241,21 +214,32 @@ int fs_get_format(int fd, fs_format_t *fmt) {
 
     /* Copy relevant fields back out */
     fmt->type = (int)g.type;
-    fmt->width = (int)g.pix.width;
-    fmt->height = (int)g.pix.height;
-    fmt->pixelformat = (int)g.pix.pixelformat;
-    fmt->field = (int)g.pix.field;
-    fmt->bytesperline = (int)g.pix.bytesperline;
-    fmt->sizeimage = (int)g.pix.sizeimage;
-    fmt->colorspace = (int)g.pix.colorspace;
-    fmt->crop_enable = (int)g.crop_enable;
-    fmt->crop_x = (int)g.crop_left;
-    fmt->crop_y = (int)g.crop_top;
-    fmt->crop_width = (int)g.crop_width;
-    fmt->crop_height = (int)g.crop_height;
-    fmt->scaler_enable = (int)g.scaler_enable;
-    fmt->scaler_outwidth = (int)g.scaler_out_width;
-    fmt->scaler_outheight = (int)g.scaler_out_height;
+    fmt->width = (int)g.width;
+    fmt->height = (int)g.height;
+    fmt->pixelformat = (int)g.pixelformat;
+    fmt->field = (int)g.field;
+    fmt->bytesperline = (int)g.bytesperline;
+    fmt->sizeimage = (int)g.sizeimage;
+    fmt->colorspace = (int)g.colorspace;
+    fmt->priv = (int)g.priv;
+    {
+        const uint32_t *raw = g.raw_attr;
+        fmt->enable = (int)raw[0];
+        fmt->attr_width = (int)raw[1];
+        fmt->attr_height = (int)raw[2];
+        fmt->crop_enable = (int)raw[3];
+        fmt->crop_x = (int)raw[4];
+        fmt->crop_y = (int)raw[5];
+        fmt->crop_width = (int)raw[6];
+        fmt->crop_height = (int)raw[7];
+        fmt->scaler_enable = (int)raw[8];
+        fmt->scaler_outwidth = (int)raw[9];
+        fmt->scaler_outheight = (int)raw[10];
+        fmt->picwidth = (int)raw[11];
+        fmt->picheight = (int)raw[12];
+        fmt->fps_num = (int)raw[13];
+        fmt->fps_den = (int)raw[14];
+    }
 
     fprintf(stderr, "[KernelIF] Got format: %dx%d fmt=0x%x sizeimage=%d bytesperline=%d\n",
             fmt->width, fmt->height, fmt->pixelformat, fmt->sizeimage, fmt->bytesperline);
@@ -293,87 +277,78 @@ int fs_set_format(int fd, fs_format_t *fmt) {
     }
 
     struct fs_ioctl_format70 s = {0};
-    uint32_t expected_bytesperline = 0;
-    uint32_t expected_sizeimage = 0;
-    int is_nv12_family = 0;
-
     /* Header */
     s.type = 1; /* V4L2_BUF_TYPE_VIDEO_CAPTURE */
-    s.pix.width = (uint32_t)fmt->width;
-    s.pix.height = (uint32_t)fmt->height;
+    s.width = (uint32_t)fmt->width;
+    s.height = (uint32_t)fmt->height;
 
     /* Convert enum pixfmt to fourcc if needed */
     uint32_t fourcc = (fmt->pixelformat < 0x100) ? pixfmt_to_fourcc(fmt->pixelformat)
                                                  : (uint32_t)fmt->pixelformat;
-    s.pix.pixelformat = fourcc;
-    s.pix.field = 0;         /* V4L2_FIELD_NONE */
-    is_nv12_family = (fmt->pixelformat == 0xa || fmt->pixelformat == 0xb ||
-                      fourcc == 0x3231564e || fourcc == 0x3132564e);
+    s.pixelformat = fourcc;
+    s.field = 0;         /* V4L2_FIELD_NONE */
 
-    /* Compute NV12 sizeimage and bytesperline explicitly.
-     * The kernel's QBUF handler checks: length == sizeimage. If sizeimage
-     * is 0 in the kernel's channel state (because SET_FMT didn't store it),
-     * ALL QBUFs are rejected with "invalid memory size". This was the root
-     * cause of channel 0 (1920x1080) never getting frames. */
+    /* Stock leaves bytesperline/sizeimage for the driver to populate. */
+    s.bytesperline = 0;
+    s.sizeimage = 0;
+    s.colorspace = 8;    /* V4L2_COLORSPACE_SRGB */
+    s.priv = 0;
+
+    /* The OEM marshaler copies the 15 semantic channel-attr words starting at
+     * fs_format_t+0x24 straight into the ioctl payload after the V4L2 pix
+     * block. Keep the raw order here instead of reinterpreting those words as
+     * a different crop/scaler/fcrop layout. */
     {
-        uint32_t stride = s.pix.width;
-        uint32_t aligned_height = (s.pix.height + 15) & ~15u;
-        s.pix.bytesperline = stride;
-        s.pix.sizeimage = (stride * aligned_height * 3) / 2; /* NV12: Y + UV/2 */
-        expected_bytesperline = stride;
-        expected_sizeimage = (stride * s.pix.height * 3) / 2; /* OEM encoder-visible size */
+        uint32_t *raw = s.raw_attr;
+        raw[0] = (uint32_t)fmt->enable;
+        raw[1] = (uint32_t)fmt->attr_width;
+        raw[2] = (uint32_t)fmt->attr_height;
+        raw[3] = (uint32_t)fmt->crop_enable;
+        raw[4] = (uint32_t)fmt->crop_x;
+        raw[5] = (uint32_t)fmt->crop_y;
+        raw[6] = (uint32_t)fmt->crop_width;
+        raw[7] = (uint32_t)fmt->crop_height;
+        raw[8] = (uint32_t)fmt->scaler_enable;
+        raw[9] = (uint32_t)fmt->scaler_outwidth;
+        raw[10] = (uint32_t)fmt->scaler_outheight;
+        raw[11] = (uint32_t)fmt->picwidth;
+        raw[12] = (uint32_t)fmt->picheight;
+        raw[13] = (uint32_t)fmt->fps_num;
+        raw[14] = (uint32_t)fmt->fps_den;
     }
-    s.pix.colorspace = 8;    /* V4L2_COLORSPACE_SRGB */
-    s.pix.priv = 0;
-    s.pix.flags = 0;
-    s.pix.ycbcr_enc = 0;
-    s.pix.quantization = 0;
-    s.pix.xfer_func = 0;
-
-    /* Map the high-level crop/scaler knobs onto frame_image_format. Leave the
-     * rate/front-crop words zeroed unless a caller explicitly grows fs_format_t
-     * to drive them later. */
-    s.crop_enable = (uint32_t)fmt->crop_enable;
-    s.crop_top = (uint32_t)fmt->crop_y;
-    s.crop_left = (uint32_t)fmt->crop_x;
-    s.crop_width = (uint32_t)fmt->crop_width;
-    s.crop_height = (uint32_t)fmt->crop_height;
-    s.scaler_enable = (uint32_t)fmt->scaler_enable;
-    s.scaler_out_width = (uint32_t)fmt->scaler_outwidth;
-    s.scaler_out_height = (uint32_t)fmt->scaler_outheight;
-    s.rate_bits = 0;
-    s.rate_mask = 0;
-    s.fcrop_enable = 0;
-    s.fcrop_top = 0;
-    s.fcrop_left = 0;
-    s.fcrop_width = 0;
-    s.fcrop_height = 0;
 
     /* Debug: dump structure before ioctl */
     fprintf(stderr, "[KernelIF] SET_FMT before ioctl:\n");
     fprintf(stderr, "[KernelIF]   width=%u height=%u pixelformat=0x%x\n",
-            s.pix.width, s.pix.height, s.pix.pixelformat);
+            s.width, s.height, s.pixelformat);
     fprintf(stderr, "[KernelIF]   bytesperline=%u sizeimage=%u colorspace=%u\n",
-            s.pix.bytesperline, s.pix.sizeimage, s.pix.colorspace);
-    fprintf(stderr, "[KernelIF]   crop_enable=%u crop=%ux%u+%u+%u\n",
-            s.crop_enable, s.crop_width, s.crop_height, s.crop_left, s.crop_top);
-    fprintf(stderr, "[KernelIF]   scaler_enable=%u scaler_outwidth=%u scaler_outheight=%u\n",
-            s.scaler_enable, s.scaler_out_width, s.scaler_out_height);
+            s.bytesperline, s.sizeimage, s.colorspace);
+    fprintf(stderr, "[KernelIF]   attr enable=%d attr=%dx%d pic=%dx%d fps=%d/%d\n",
+            fmt->enable, fmt->attr_width, fmt->attr_height,
+            fmt->picwidth, fmt->picheight, fmt->fps_num, fmt->fps_den);
+    fprintf(stderr, "[KernelIF]   crop_enable=%d crop=%dx%d+%d+%d\n",
+            fmt->crop_enable, fmt->crop_width, fmt->crop_height, fmt->crop_x, fmt->crop_y);
+    fprintf(stderr, "[KernelIF]   scaler_enable=%d scaler_outwidth=%d scaler_outheight=%d\n",
+            fmt->scaler_enable, fmt->scaler_outwidth, fmt->scaler_outheight);
 
     int ret = ioctl(fd, VIDIOC_SET_FMT, &s);
     if (ret < 0) {
         fprintf(stderr, "[KernelIF] VIDIOC_SET_FMT failed: %s\n", strerror(errno));
         fprintf(stderr, "[KernelIF]   Requested: %dx%d fmt=0x%x (fourcc=0x%x) colorspace=%d\n",
-                fmt->width, fmt->height, fmt->pixelformat, fourcc, s.pix.colorspace);
+                fmt->width, fmt->height, fmt->pixelformat, fourcc, s.colorspace);
         return -1;
     }
 
     /* Debug: dump structure after ioctl */
     fprintf(stderr, "[KernelIF] SET_FMT after ioctl:\n");
     fprintf(stderr, "[KernelIF]   width=%u height=%u sizeimage=%u bytesperline=%u\n",
-            s.pix.width, s.pix.height, s.pix.sizeimage, s.pix.bytesperline);
-    fprintf(stderr, "[KernelIF]   scaler_enable=%u scaler_outwidth=%u scaler_outheight=%u\n",
-            s.scaler_enable, s.scaler_out_width, s.scaler_out_height);
+            s.width, s.height, s.sizeimage, s.bytesperline);
+    {
+        uint32_t *raw = s.raw_attr;
+        fprintf(stderr, "[KernelIF]   raw_attr[0..14]=%u %u %u %u %u %u %u %u %u %u %u %u %u %u %u\n",
+                raw[0], raw[1], raw[2], raw[3], raw[4], raw[5], raw[6], raw[7],
+                raw[8], raw[9], raw[10], raw[11], raw[12], raw[13], raw[14]);
+    }
 
     /* CRITICAL: The kernel modifies the structure in-place during SET_FMT and copies it back.
      * The remote ISP core may update sizeimage, bytesperline, and other fields.
@@ -382,43 +357,40 @@ int fs_set_format(int fd, fs_format_t *fmt) {
      */
     fprintf(stderr, "[KernelIF] Set format: %dx%d fmt=0x%x (fourcc=0x%x) sizeimage=%u bytesperline=%u colorspace=%d\n",
             fmt->width, fmt->height, fmt->pixelformat, fourcc,
-            s.pix.sizeimage, s.pix.bytesperline, s.pix.colorspace);
+            s.sizeimage, s.bytesperline, s.colorspace);
 
     /* Update fmt with kernel-modified values */
-    fmt->width = (int)s.pix.width;
-    fmt->height = (int)s.pix.height;
-    fmt->sizeimage = (int)s.pix.sizeimage;
-    fmt->bytesperline = (int)s.pix.bytesperline;
-    fmt->field = (int)s.pix.field;
-    fmt->colorspace = (int)s.pix.colorspace;
-    fmt->crop_enable = (int)s.crop_enable;
-    fmt->crop_x = (int)s.crop_left;
-    fmt->crop_y = (int)s.crop_top;
-    fmt->crop_width = (int)s.crop_width;
-    fmt->crop_height = (int)s.crop_height;
-    fmt->scaler_enable = (int)s.scaler_enable;
-    fmt->scaler_outwidth = (int)s.scaler_out_width;
-    fmt->scaler_outheight = (int)s.scaler_out_height;
-
-    if (is_nv12_family) {
-        if ((uint32_t)fmt->bytesperline != expected_bytesperline ||
-            (uint32_t)fmt->sizeimage != s.pix.sizeimage) {
-            fprintf(stderr,
-                    "[KernelIF] SET_FMT keep driver NV12 geometry: driver bytesperline=%d sizeimage=%d expected visible bytesperline=%u visible_size=%u\n",
-                    fmt->bytesperline, fmt->sizeimage,
-                    expected_bytesperline, expected_sizeimage);
-        }
-
-        /* The frame-channel QBUF path validates length against the kernel's
-         * internal sizeimage, not the visible NV12 payload size. Keep the
-         * driver-returned geometry here so VBM allocates/QBUFs buffers the
-         * kernel will actually accept. The encoder-visible source size still
-         * comes from GetPixMapCfg and remains 1920*1080*3/2 for NV12. */
-        if (fmt->bytesperline <= 0)
-            fmt->bytesperline = (int)expected_bytesperline;
-        if (fmt->sizeimage <= 0)
-            fmt->sizeimage = (int)s.pix.sizeimage;
+    fmt->width = (int)s.width;
+    fmt->height = (int)s.height;
+    fmt->sizeimage = (int)s.sizeimage;
+    fmt->bytesperline = (int)s.bytesperline;
+    fmt->field = (int)s.field;
+    fmt->colorspace = (int)s.colorspace;
+    fmt->priv = (int)s.priv;
+    {
+        const uint32_t *raw = s.raw_attr;
+        fmt->enable = (int)raw[0];
+        fmt->attr_width = (int)raw[1];
+        fmt->attr_height = (int)raw[2];
+        fmt->crop_enable = (int)raw[3];
+        fmt->crop_x = (int)raw[4];
+        fmt->crop_y = (int)raw[5];
+        fmt->crop_width = (int)raw[6];
+        fmt->crop_height = (int)raw[7];
+        fmt->scaler_enable = (int)raw[8];
+        fmt->scaler_outwidth = (int)raw[9];
+        fmt->scaler_outheight = (int)raw[10];
+        fmt->picwidth = (int)raw[11];
+        fmt->picheight = (int)raw[12];
+        fmt->fps_num = (int)raw[13];
+        fmt->fps_den = (int)raw[14];
     }
+
+    if (fmt->bytesperline <= 0)
+        fmt->bytesperline = (int)fmt->width;
+    /* The VBM/QBUF path uses fmt->sizeimage directly as the queued USERPTR
+     * length. On T31, replacing the driver-returned aligned size with the
+     * visible WxH payload size makes VIDIOC_QBUF fail with EINVAL. */
 
     return 0;
 }
@@ -652,12 +624,14 @@ int fs_qbuf(int fd, int index, unsigned long phys, unsigned int length) {
     b->sequence = 0;
     b->m = (uint32_t)phys;  /* USERPTR carries DMA phys on this T31 variant */
     b->length = length;     /* Must equal kernel expected length */
-    b->bytesused = 0;       /* OEM leaves bytesused=0 (from memset) */
+    b->bytesused = length;  /* Stock helper mirrors payload length here */
 
     int ret = ioctl(fd, VIDIOC_QBUF, b);
     if (ret < 0) {
         fprintf(stderr, "[KernelIF] QBUF failed: idx=%d phys=0x%lx len=%u err=%s\n",
                 index, phys, length, strerror(errno));
+        ki_trace("libimp/KI: QBUF fail fd=%d idx=%d phys=0x%lx len=%u err=%d\n",
+                 fd, index, phys, length, errno);
         free(raw);
         return -1;
     }
@@ -666,6 +640,8 @@ int fs_qbuf(int fd, int index, unsigned long phys, unsigned int length) {
         if (qbuf_log_count < 6) {
             fprintf(stderr, "[KernelIF] QBUF OK: fd=%d idx=%d phys=0x%lx len=%u\n",
                     fd, index, phys, length);
+            ki_trace("libimp/KI: QBUF ok fd=%d idx=%d phys=0x%lx len=%u bytesused=%u\n",
+                     fd, index, phys, length, b->bytesused);
             qbuf_log_count++;
         }
     }
@@ -1402,6 +1378,7 @@ int VBMGetFrame(int chn, void **frame) {
 }
 
 int VBMReleaseFrame(int chn, void *frame) {
+    static int trace_budget = 96;
     if (chn < 0 || chn >= MAX_VBM_POOLS) {
         return -1;
     }
@@ -1411,34 +1388,114 @@ int VBMReleaseFrame(int chn, void *frame) {
         return -1;
     }
 
-    fprintf(stderr, "[VBM] ReleaseFrame: chn=%d, frame=%p\n", chn, frame);
-
-    /* Get frame index */
-    VBMFrame *vbm_frame = (VBMFrame*)frame;
-    int frame_idx = vbm_frame->index;
-
-    /* Return frame to available queue */
-    pthread_mutex_lock(&pool->queue_mutex);
-
-    if (pool->queue_count >= pool->frame_count) {
-        /* Queue is full - make room by dropping the oldest entry (kernel-backed path doesn't use this queue) */
-        int dropped_idx = pool->available_queue[pool->queue_head];
-        pool->queue_head = (pool->queue_head + 1) % pool->frame_count;
-        pool->queue_count--;
+    if (trace_budget > 0) {
+        VBMFrame *trace_frame = (VBMFrame*)frame;
+        trace_budget--;
+        ki_trace("libimp/VBMKI: release chn=%d frame=%p idx=%d frame_chn=%d vaddr=0x%x paddr=0x%x\n",
+                 chn, frame,
+                 trace_frame ? trace_frame->index : -1,
+                 trace_frame ? trace_frame->chn : -1,
+                 trace_frame ? trace_frame->virt_addr : 0,
+                 trace_frame ? trace_frame->phys_addr : 0);
     }
 
-    /* If kernel-backed, re-queue to kernel immediately (QBUF) — but only
-     * if the buffer was actually DQBUF'd into userspace. */
-    if (pool->fd >= 0 && frame_idx >= 0 && frame_idx < pool->frame_count
-        && pool->buf_in_userspace && pool->buf_in_userspace[frame_idx]) {
-        unsigned long phys = vbm_frame->phys_addr;
-        unsigned int qlen = (unsigned int)vbm_frame->size;
-        if (fs_qbuf(pool->fd, frame_idx, phys, qlen) < 0) {
-            fprintf(stderr, "[VBM] ReleaseFrame: fs_qbuf failed for idx=%d (len=%u)\n", frame_idx, qlen);
+    VBMFrame *vbm_frame = (VBMFrame*)frame;
+    int frame_idx = vbm_frame->index;
+    int kernel_backed = (pool->fd >= 0);
+    int valid_idx = (frame_idx >= 0 && frame_idx < pool->frame_count);
+
+    pthread_mutex_lock(&pool->queue_mutex);
+
+    if (valid_idx && pool->buf_in_userspace != NULL && pool->ops[1] != NULL) {
+        int in_userspace = pool->buf_in_userspace[frame_idx];
+
+        if (trace_budget > 0) {
+            trace_budget--;
+            ki_trace("libimp/VBMKI: release-cb chn=%d idx=%d in_userspace=%d cb=%p priv=%p\n",
+                     chn, frame_idx, in_userspace, pool->ops[1], pool->priv);
         }
-        /* No delay needed — triple buffering (min 3 VBM buffers) ensures
-         * there's always a buffer in the kernel queue for the next DQBUF. */
+
+        if (!in_userspace) {
+            pthread_mutex_unlock(&pool->queue_mutex);
+            return 0;
+        }
+
+        if (((int (*)(void *, void *))pool->ops[1])(frame, pool->priv) == 0) {
+            pool->buf_in_userspace[frame_idx] = 0;
+            if (trace_budget > 0) {
+                trace_budget--;
+                ki_trace("libimp/VBMKI: release-cb-ok chn=%d idx=%d\n",
+                         chn, frame_idx);
+            }
+            pthread_mutex_unlock(&pool->queue_mutex);
+            return 0;
+        }
+
+        if (trace_budget > 0) {
+            trace_budget--;
+            ki_trace("libimp/VBMKI: release-cb-fail chn=%d idx=%d\n",
+                     chn, frame_idx);
+        }
+        /* Callback-backed pools are driver-owned; if the callback fails,
+         * fall through to the legacy local-queue fallback. */
         pool->buf_in_userspace[frame_idx] = 0;
+    }
+
+    if (kernel_backed) {
+        int in_userspace = 0;
+
+        if (valid_idx && pool->buf_in_userspace != NULL) {
+            in_userspace = pool->buf_in_userspace[frame_idx];
+        }
+        if (trace_budget > 0) {
+            trace_budget--;
+            ki_trace("libimp/VBMKI: release-kernel chn=%d idx=%d in_userspace=%d q=%d/%d fd=%d\n",
+                     chn, frame_idx, in_userspace,
+                     pool->queue_count, pool->frame_count, pool->fd);
+        }
+
+        /* Duplicate releases are expected from higher layers; only the first
+         * release after DQBUF should hand the buffer back to the kernel. */
+        if (!valid_idx || pool->buf_in_userspace == NULL || !in_userspace) {
+            pthread_mutex_unlock(&pool->queue_mutex);
+            return 0;
+        }
+
+        {
+            unsigned long phys = vbm_frame->phys_addr;
+            unsigned int qlen = (unsigned int)vbm_frame->size;
+
+            if (fs_qbuf(pool->fd, frame_idx, phys, qlen) == 0) {
+                pool->buf_in_userspace[frame_idx] = 0;
+                if (trace_budget > 0) {
+                    trace_budget--;
+                    ki_trace("libimp/VBMKI: release-qbuf-ok chn=%d idx=%d phys=0x%lx len=%u\n",
+                             chn, frame_idx, phys, qlen);
+                }
+                pthread_mutex_unlock(&pool->queue_mutex);
+                return 0;
+            }
+
+            fprintf(stderr, "[VBM] ReleaseFrame: fs_qbuf failed for idx=%d (len=%u)\n", frame_idx, qlen);
+            if (trace_budget > 0) {
+                trace_budget--;
+                ki_trace("libimp/VBMKI: release-qbuf-fail chn=%d idx=%d phys=0x%lx len=%u\n",
+                         chn, frame_idx, phys, qlen);
+            }
+            /* Fall back to the software queue so callers are not left with a
+             * permanently lost buffer when QBUF fails. */
+            pool->buf_in_userspace[frame_idx] = 0;
+        }
+    }
+
+    if (!valid_idx) {
+        pthread_mutex_unlock(&pool->queue_mutex);
+        return -1;
+    }
+
+    if (pool->queue_count >= pool->frame_count) {
+        pool->queue_head = (pool->queue_head + 1) % pool->frame_count;
+        pool->queue_count--;
     }
 
     pool->available_queue[pool->queue_tail] = frame_idx;
@@ -1454,6 +1511,7 @@ int VBMReleaseFrame(int chn, void *frame) {
 
 int VBMLockFrameByVaddr(uint32_t vaddr)
 {
+    static int trace_budget = 64;
     VBMVolume *vol = vbm_find_volume_by_vaddr(vaddr);
     if (vol == NULL) {
         fprintf(stderr, "[VBM] LockFrameByVaddr: vaddr=0x%x not found\n", vaddr);
@@ -1461,14 +1519,24 @@ int VBMLockFrameByVaddr(uint32_t vaddr)
     }
 
     pthread_mutex_lock(&vol->mutex);
+    int old_ref = vol->ref_count;
     vol->ref_count++;
+    int new_ref = vol->ref_count;
+    VBMFrame *frame = vol->frame;
     /* fprintf throttled — high-frequency per-frame path */
     pthread_mutex_unlock(&vol->mutex);
+    if (trace_budget > 0) {
+        trace_budget--;
+        ki_trace("libimp/VBMKI: lock vaddr=0x%x ref=%d->%d frame=%p chn=%d idx=%d\n",
+                 vaddr, old_ref, new_ref, frame,
+                 frame ? frame->chn : -1, frame ? frame->index : -1);
+    }
     return 0;
 }
 
 int VBMUnlockFrameByVaddr(uint32_t vaddr)
 {
+    static int trace_budget = 96;
     VBMVolume *vol = vbm_find_volume_by_vaddr(vaddr);
     if (vol == NULL) {
         fprintf(stderr, "[VBM] UnlockFrameByVaddr: vaddr=0x%x not found\n", vaddr);
@@ -1482,14 +1550,26 @@ int VBMUnlockFrameByVaddr(uint32_t vaddr)
         return -1;
     }
 
+    int old_ref = vol->ref_count;
     vol->ref_count--;
     int ref_count = vol->ref_count;
     VBMFrame *frame = vol->frame;
     pthread_mutex_unlock(&vol->mutex);
 
     fprintf(stderr, "[VBM] UnlockFrameByVaddr: vaddr=0x%x ref=%d\n", vaddr, ref_count);
+    if (trace_budget > 0) {
+        trace_budget--;
+        ki_trace("libimp/VBMKI: unlock vaddr=0x%x ref=%d->%d frame=%p chn=%d idx=%d\n",
+                 vaddr, old_ref, ref_count, frame,
+                 frame ? frame->chn : -1, frame ? frame->index : -1);
+    }
 
     if (ref_count == 0 && frame != NULL) {
+        if (trace_budget > 0) {
+            trace_budget--;
+            ki_trace("libimp/VBMKI: unlock-release vaddr=0x%x frame=%p chn=%d idx=%d\n",
+                     vaddr, frame, frame->chn, frame->index);
+        }
         return VBMReleaseFrame(frame->chn, frame);
     }
 

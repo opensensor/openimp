@@ -46,8 +46,194 @@ typedef struct AL_CodecEncode AL_CodecEncode;
 static int avpu_queue_completed_stream(ALAvpuContext *ctx, int buf_idx, void *user_data,
                                        const char *source, uint32_t *frame_size_out,
                                        int *flush_ret_out);
-extern int EncodingStatusRegsToSliceStatus(const void *status_regs, void *slice_status);
-extern int MergeEncodingStatus(void *merged_status, const void *slice_status);
+
+#define CODEC_READ_U8(base, off)  (*(uint8_t *)((uint8_t *)(base) + (off)))
+#define CODEC_READ_U16(base, off) (*(uint16_t *)((uint8_t *)(base) + (off)))
+#define CODEC_READ_S32(base, off) (*(int32_t *)((uint8_t *)(base) + (off)))
+#define CODEC_READ_U32(base, off) (*(uint32_t *)((uint8_t *)(base) + (off)))
+#define CODEC_WRITE_U8(base, off, val)  (*(uint8_t *)((uint8_t *)(base) + (off)) = (uint8_t)(val))
+#define CODEC_WRITE_U16(base, off, val) (*(uint16_t *)((uint8_t *)(base) + (off)) = (uint16_t)(val))
+#define CODEC_WRITE_S32(base, off, val) (*(int32_t *)((uint8_t *)(base) + (off)) = (int32_t)(val))
+#define CODEC_WRITE_U32(base, off, val) (*(uint32_t *)((uint8_t *)(base) + (off)) = (uint32_t)(val))
+
+int EncodingStatusRegsToSliceStatus(const void *status_regs, void *slice_status)
+{
+    const void *arg1 = status_regs;
+    void *arg2 = slice_status;
+    int32_t v0_2;
+    int32_t v1_2;
+    int32_t v1_3;
+    int32_t a2_1;
+    int32_t a3_1;
+    int32_t v0_7;
+    int32_t v1_4;
+    int32_t v0_17;
+
+    CODEC_WRITE_U32(arg2, 0x34, CODEC_READ_U32(arg1, 0x130));
+    CODEC_WRITE_U32(arg2, 0x38, CODEC_READ_U32(arg1, 0x134) & 0x0fffffffU);
+    v0_2 = CODEC_READ_S32(arg1, 0x138);
+    CODEC_WRITE_U32(arg2, 0x44, CODEC_READ_U32(arg1, 0x13c));
+    CODEC_WRITE_U32(arg2, 0x48, CODEC_READ_U32(arg1, 0x140));
+    v1_2 = CODEC_READ_S32(arg1, 0x144);
+    CODEC_WRITE_U16(arg2, 0x3e, (uint16_t)(v0_2 & 0xff));
+    CODEC_WRITE_U32(arg2, 0x4c, v1_2);
+    v1_3 = CODEC_READ_S32(arg1, 0x148);
+    CODEC_WRITE_U16(arg2, 0x42, (uint16_t)((uint32_t)v0_2 >> 16));
+    CODEC_WRITE_U16(arg2, 0x40, (uint16_t)(((uint32_t)v0_2 >> 8) & 0xff));
+    CODEC_WRITE_U32(arg2, 0x50, v1_3);
+    CODEC_WRITE_U32(arg2, 0x54, CODEC_READ_U32(arg1, 0x14c));
+    CODEC_WRITE_U32(arg2, 0x58, CODEC_READ_U32(arg1, 0x150));
+    CODEC_WRITE_U32(arg2, 0x5c, CODEC_READ_U32(arg1, 0x154));
+    a2_1 = CODEC_READ_S32(arg1, 0x158);
+    a3_1 = CODEC_READ_S32(arg1, 0x15c);
+    v0_7 = CODEC_READ_S32(arg1, 0x160);
+    v1_4 = CODEC_READ_S32(arg1, 0x164);
+    CODEC_WRITE_U32(arg2, 0x14, CODEC_READ_U32(arg1, 0x10c));
+    CODEC_WRITE_U32(arg2, 0x60, a3_1);
+    CODEC_WRITE_U32(arg2, 0x64, a2_1);
+    CODEC_WRITE_U32(arg2, 0x68, v1_4);
+    CODEC_WRITE_U32(arg2, 0x6c, v0_7);
+    CODEC_WRITE_U32(arg2, 0x18, CODEC_READ_U32(arg1, 0x110));
+    CODEC_WRITE_U32(arg2, 0x1c, CODEC_READ_U32(arg1, 0x114));
+    CODEC_WRITE_U32(arg2, 0x20, CODEC_READ_U32(arg1, 0x11c));
+    CODEC_WRITE_U32(arg2, 0x24, CODEC_READ_U32(arg1, 0x120));
+    CODEC_WRITE_U32(arg2, 0x28, CODEC_READ_U32(arg1, 0x124));
+    CODEC_WRITE_U32(arg2, 0x2c, CODEC_READ_U32(arg1, 0x128));
+    CODEC_WRITE_U32(arg2, 0x30, CODEC_READ_U16(arg1, 0x12c));
+    CODEC_WRITE_U32(arg2, 0x10, CODEC_READ_U16(arg1, 0x12e));
+    v0_17 = (CODEC_READ_U32(arg1, 8) >> 0xb) & 1;
+    if (v0_17 != 0) {
+        CODEC_WRITE_U8(arg2, 2, 0);
+        return v0_17;
+    }
+
+    {
+        uint8_t v0_23 =
+            (uint8_t)(((((CODEC_READ_U32(arg1, 0x104) & 0x3fffffffU) + 0x1fU) >> 5 << 5) <
+                       (((CODEC_READ_U32(arg1, 0xcc) >> 5) - 1U) << 5))
+                          ? 1
+                          : 0) ^
+                     1;
+        CODEC_WRITE_U8(arg2, 2, v0_23);
+        return v0_23;
+    }
+}
+
+int MergeEncodingStatus(void *merged_status, const void *slice_status)
+{
+    void *arg1 = merged_status;
+    const void *arg2 = slice_status;
+    int32_t t7 = (int16_t)CODEC_READ_U16(arg2, 0x3e);
+    int32_t t8 = (int16_t)CODEC_READ_U16(arg1, 0x3e);
+    int32_t t1_1;
+    int32_t t0_1;
+    int32_t t5_1;
+    int32_t a3_1;
+    int32_t v0;
+    int32_t t9;
+    int32_t t4_1;
+    int32_t a2_1;
+    int32_t t3_1;
+    int32_t v1_1;
+    int32_t v0_1;
+    int32_t a2_2;
+    int32_t a2_3;
+    int32_t t5_2;
+    int32_t v0_4;
+    int32_t v1_5;
+    int32_t t6_3;
+    int32_t s1_4;
+    int32_t s0_1;
+    int32_t t9_1;
+    int32_t t8_1;
+    int32_t t7_6;
+    int32_t s2_1;
+    int32_t t4_2;
+    int32_t t3_3;
+    int32_t t2_3;
+    int32_t t1_3;
+    int32_t t0_3;
+    int32_t a3_4;
+    int32_t t4_3;
+    int32_t t3_4;
+    int32_t a2_4;
+    int32_t v1_6;
+    uint8_t v0_7;
+    int32_t t2_4;
+    int32_t t1_4;
+    uint8_t result;
+
+    if (t7 >= t8) {
+        t7 = t8;
+    }
+    t1_1 = CODEC_READ_S32(arg1, 0x48) + CODEC_READ_S32(arg2, 0x48);
+    t0_1 = CODEC_READ_S32(arg1, 0x4c) + CODEC_READ_S32(arg2, 0x4c);
+    t5_1 = CODEC_READ_S32(arg1, 0x34) + CODEC_READ_S32(arg2, 0x34);
+    a3_1 = CODEC_READ_S32(arg1, 0x50) + CODEC_READ_S32(arg2, 0x50);
+    v0 = (int16_t)CODEC_READ_U16(arg2, 0x40);
+    t9 = (int16_t)CODEC_READ_U16(arg1, 0x40);
+    t4_1 = CODEC_READ_S32(arg1, 0x38) + CODEC_READ_S32(arg2, 0x38);
+    a2_1 = CODEC_READ_S32(arg1, 0x54) + CODEC_READ_S32(arg2, 0x54);
+    if (t9 >= v0) {
+        v0 = t9;
+    }
+    t3_1 = CODEC_READ_S32(arg1, 0x44) + CODEC_READ_S32(arg2, 0x44);
+    v1_1 = CODEC_READ_S32(arg1, 0x58) + CODEC_READ_S32(arg2, 0x58);
+    CODEC_WRITE_U16(arg1, 0x42, CODEC_READ_U16(arg1, 0x42) + CODEC_READ_U16(arg2, 0x42));
+    CODEC_WRITE_S32(arg1, 0x34, t5_1);
+    CODEC_WRITE_S32(arg1, 0x38, t4_1);
+    CODEC_WRITE_S32(arg1, 0x44, t3_1);
+    CODEC_WRITE_U16(arg1, 0x40, (uint16_t)v0);
+    CODEC_WRITE_U16(arg1, 0x3e, (uint16_t)t7);
+    CODEC_WRITE_S32(arg1, 0x48, t1_1);
+    v0_1 = CODEC_READ_S32(arg1, 0x60);
+    CODEC_WRITE_S32(arg1, 0x54, a2_1);
+    a2_2 = CODEC_READ_S32(arg2, 0x60);
+    CODEC_WRITE_S32(arg1, 0x50, a3_1);
+    CODEC_WRITE_S32(arg1, 0x58, v1_1);
+    a2_3 = v0_1 + a2_2;
+    t5_2 = CODEC_READ_S32(arg2, 0x5c);
+    CODEC_WRITE_S32(arg1, 0x64, ((uint32_t)a2_3 < (uint32_t)v0_1 ? 1 : 0) + CODEC_READ_S32(arg1, 0x64) + CODEC_READ_S32(arg2, 0x64));
+    v0_4 = CODEC_READ_S32(arg1, 0x68);
+    v1_5 = v0_4 + CODEC_READ_S32(arg2, 0x68);
+    t6_3 = CODEC_READ_S32(arg1, 0x6c) + CODEC_READ_S32(arg2, 0x6c);
+    s1_4 = CODEC_READ_S32(arg2, 0x14);
+    s0_1 = CODEC_READ_S32(arg2, 0x30);
+    t9_1 = CODEC_READ_S32(arg2, 0x2c);
+    t8_1 = CODEC_READ_S32(arg2, 0x28);
+    t7_6 = CODEC_READ_S32(arg2, 0x24);
+    s2_1 = CODEC_READ_S32(arg1, 0x5c);
+    t4_2 = CODEC_READ_S32(arg1, 0x18);
+    CODEC_WRITE_S32(arg1, 0x4c, t0_1);
+    t3_3 = CODEC_READ_S32(arg1, 0x14) + s1_4;
+    t2_3 = CODEC_READ_S32(arg1, 0x30) + s0_1;
+    t1_3 = CODEC_READ_S32(arg1, 0x2c) + t9_1;
+    t0_3 = CODEC_READ_S32(arg1, 0x28) + t8_1;
+    a3_4 = CODEC_READ_S32(arg1, 0x24) + t7_6;
+    t4_3 = t4_2 + CODEC_READ_S32(arg2, 0x18);
+    CODEC_WRITE_S32(arg1, 0x60, a2_3);
+    CODEC_WRITE_S32(arg1, 0x68, v1_5);
+    CODEC_WRITE_S32(arg1, 0x6c, ((uint32_t)v1_5 < (uint32_t)v0_4 ? 1 : 0) + t6_3);
+    CODEC_WRITE_S32(arg1, 0x5c, s2_1 + t5_2);
+    CODEC_WRITE_S32(arg1, 0x18, t4_3);
+    CODEC_WRITE_S32(arg1, 0x14, t3_3);
+    t3_4 = CODEC_READ_S32(arg2, 0x1c);
+    a2_4 = CODEC_READ_S32(arg1, 0x20);
+    v1_6 = CODEC_READ_S32(arg1, 0x10);
+    v0_7 = CODEC_READ_U8(arg1, 2);
+    CODEC_WRITE_S32(arg1, 0x30, t2_3);
+    CODEC_WRITE_S32(arg1, 0x2c, t1_3);
+    t2_4 = CODEC_READ_S32(arg2, 0x20);
+    t1_4 = CODEC_READ_S32(arg2, 0x10);
+    CODEC_WRITE_S32(arg1, 0x28, t0_3);
+    CODEC_WRITE_S32(arg1, 0x24, a3_4);
+    result = v0_7 | CODEC_READ_U8(arg2, 2);
+    CODEC_WRITE_S32(arg1, 0x1c, CODEC_READ_S32(arg1, 0x1c) + t3_4);
+    CODEC_WRITE_S32(arg1, 0x20, a2_4 + t2_4);
+    CODEC_WRITE_S32(arg1, 0x10, v1_6 + t1_4);
+    CODEC_WRITE_U8(arg1, 2, result);
+    return result;
+}
 
 static inline int avpu_sys_ioctl(int fd, unsigned long cmd, void *arg)
 {
@@ -3277,6 +3463,301 @@ static int avpu_can_use_high_profile_template(const AL_CodecEncode *enc)
     return enc->avpu.enc_w == 1920u && enc->avpu.enc_h == 1080u;
 }
 
+static uint32_t codec_param_read_input_width(const uint8_t *param)
+{
+    uint16_t width16 = 0;
+    uint32_t width32 = 0;
+
+    if (!param)
+        return 0;
+
+    memcpy(&width16, param + 0x08, sizeof(width16));
+    if (width16 != 0)
+        return (uint32_t)width16;
+
+    memcpy(&width16, param + 0x0c, sizeof(width16));
+    if (width16 != 0)
+        return (uint32_t)width16;
+
+    memcpy(&width32, param + 0x14, sizeof(width32));
+    if (width32 != 0 && width32 != 0x188u)
+        return width32;
+
+    return 0;
+}
+
+static uint32_t codec_param_read_input_height(const uint8_t *param)
+{
+    uint16_t height16 = 0;
+    uint32_t height32 = 0;
+
+    if (!param)
+        return 0;
+
+    memcpy(&height16, param + 0x0a, sizeof(height16));
+    if (height16 != 0)
+        return (uint32_t)height16;
+
+    memcpy(&height16, param + 0x0e, sizeof(height16));
+    if (height16 != 0)
+        return (uint32_t)height16;
+
+    memcpy(&height32, param + 0x18, sizeof(height32));
+    return height32;
+}
+
+static uint32_t codec_param_read_codec_type(const uint8_t *param)
+{
+    uint32_t profile_word = 0;
+    uint32_t codec_type;
+    uint32_t profile_idc;
+
+    if (!param)
+        return IMP_ENC_TYPE_AVC;
+
+    memcpy(&profile_word, param + 0x20, sizeof(profile_word));
+    codec_type = (profile_word >> 24) & 0xffu;
+    if (codec_type == IMP_ENC_TYPE_AVC ||
+        codec_type == IMP_ENC_TYPE_HEVC ||
+        codec_type == IMP_ENC_TYPE_JPEG)
+        return codec_type;
+
+    profile_idc = profile_word & 0xffu;
+    switch (profile_idc) {
+    case IMP_ENC_AVC_PROFILE_IDC_BASELINE:
+    case IMP_ENC_AVC_PROFILE_IDC_MAIN:
+    case IMP_ENC_AVC_PROFILE_IDC_HIGH:
+        return IMP_ENC_TYPE_AVC;
+    default:
+        return IMP_ENC_TYPE_AVC;
+    }
+}
+
+static uint32_t codec_param_read_profile_idc(const uint8_t *param)
+{
+    uint32_t profile_word = 0;
+    uint32_t profile_idc = 0;
+
+    if (!param)
+        return IMP_ENC_AVC_PROFILE_IDC_MAIN;
+
+    memcpy(&profile_word, param + 0x20, sizeof(profile_word));
+    if (((profile_word >> 24) & 0xffu) == IMP_ENC_TYPE_AVC)
+        return profile_word & 0xffu;
+    if (((profile_word >> 24) & 0xffu) == IMP_ENC_TYPE_HEVC)
+        return profile_word & 0xffu;
+    if (((profile_word >> 24) & 0xffu) == IMP_ENC_TYPE_JPEG)
+        return 0;
+
+    memcpy(&profile_idc, param + 0x24, sizeof(profile_idc));
+    if (profile_idc == IMP_ENC_AVC_PROFILE_IDC_BASELINE ||
+        profile_idc == IMP_ENC_AVC_PROFILE_IDC_MAIN ||
+        profile_idc == IMP_ENC_AVC_PROFILE_IDC_HIGH)
+        return profile_idc;
+
+    profile_idc = profile_word & 0xffu;
+    if (profile_idc == IMP_ENC_AVC_PROFILE_IDC_BASELINE ||
+        profile_idc == IMP_ENC_AVC_PROFILE_IDC_MAIN ||
+        profile_idc == IMP_ENC_AVC_PROFILE_IDC_HIGH)
+        return profile_idc;
+
+    return IMP_ENC_AVC_PROFILE_IDC_MAIN;
+}
+
+static uint32_t codec_param_read_rc_mode(const uint8_t *param)
+{
+    uint32_t rc_mode = 0;
+
+    if (!param)
+        return HW_RC_MODE_CBR;
+
+    memcpy(&rc_mode, param + 0x6c, sizeof(rc_mode));
+    if (rc_mode == HW_RC_MODE_FIXQP ||
+        rc_mode == HW_RC_MODE_CBR ||
+        rc_mode == HW_RC_MODE_VBR)
+        return rc_mode;
+
+    memcpy(&rc_mode, param + 0x2c, sizeof(rc_mode));
+    if (rc_mode == HW_RC_MODE_FIXQP ||
+        rc_mode == HW_RC_MODE_CBR ||
+        rc_mode == HW_RC_MODE_VBR)
+        return rc_mode;
+
+    return HW_RC_MODE_CBR;
+}
+
+static uint32_t codec_param_read_bitrate_bps(const uint8_t *param)
+{
+    uint32_t target_bps = 0;
+    uint32_t max_bps = 0;
+    uint32_t legacy = 0;
+
+    if (!param)
+        return 0;
+
+    memcpy(&target_bps, param + 0x7c, sizeof(target_bps));
+    if (target_bps != 0)
+        return target_bps;
+
+    memcpy(&max_bps, param + 0x80, sizeof(max_bps));
+    if (max_bps != 0)
+        return max_bps;
+
+    memcpy(&legacy, param + 0x30, sizeof(legacy));
+    if (legacy != 0 && legacy < 1000000u)
+        return legacy * 1000u;
+
+    return legacy;
+}
+
+static uint32_t codec_param_read_fps_num(const uint8_t *param)
+{
+    uint16_t fps_num16 = 0;
+    uint32_t fps_num32 = 0;
+
+    if (!param)
+        return 25;
+
+    memcpy(&fps_num16, param + 0x78, sizeof(fps_num16));
+    if (fps_num16 != 0)
+        return (uint32_t)fps_num16;
+
+    memcpy(&fps_num32, param + 0x7c, sizeof(fps_num32));
+    if (fps_num32 > 0 && fps_num32 <= 240u)
+        return fps_num32;
+
+    return 25;
+}
+
+static uint32_t codec_param_read_fps_den(const uint8_t *param)
+{
+    uint16_t fps_clk16 = 0;
+    uint32_t fps_den32 = 0;
+
+    if (!param)
+        return 1;
+
+    memcpy(&fps_clk16, param + 0x7a, sizeof(fps_clk16));
+    if (fps_clk16 != 0) {
+        if (fps_clk16 >= 1000u && (fps_clk16 % 1000u) == 0u)
+            return (uint32_t)(fps_clk16 / 1000u);
+        return 1;
+    }
+
+    memcpy(&fps_den32, param + 0x80, sizeof(fps_den32));
+    if (fps_den32 > 0 && fps_den32 <= 1000u)
+        return fps_den32;
+
+    return 1;
+}
+
+static uint32_t codec_param_read_initial_qp(const uint8_t *param)
+{
+    uint16_t qp16 = 0;
+    uint32_t qp32 = 0;
+
+    if (!param)
+        return 26;
+
+    memcpy(&qp16, param + 0x84, sizeof(qp16));
+    if (qp16 != 0 && qp16 <= 51u)
+        return (uint32_t)qp16;
+
+    memcpy(&qp32, param + 0x38, sizeof(qp32));
+    if (qp32 <= 51u)
+        return qp32;
+
+    return 26;
+}
+
+static uint32_t codec_param_read_min_qp(const uint8_t *param)
+{
+    int8_t qp8 = 0;
+    uint32_t qp32 = 0;
+
+    if (!param)
+        return 15;
+
+    memcpy(&qp8, param + 0x86, sizeof(qp8));
+    if (qp8 > 0 && qp8 <= 51)
+        return (uint32_t)qp8;
+
+    memcpy(&qp32, param + 0x40, sizeof(qp32));
+    if (qp32 <= 51u)
+        return qp32;
+
+    return 15;
+}
+
+static uint32_t codec_param_read_max_qp(const uint8_t *param)
+{
+    uint16_t qp16 = 0;
+    uint32_t qp32 = 0;
+
+    if (!param)
+        return 45;
+
+    memcpy(&qp16, param + 0x88, sizeof(qp16));
+    if (qp16 != 0 && qp16 <= 51u)
+        return (uint32_t)qp16;
+
+    memcpy(&qp32, param + 0x3c, sizeof(qp32));
+    if (qp32 <= 51u)
+        return qp32;
+
+    return 45;
+}
+
+static void codec_param_write_input_resolution(uint8_t *param, uint32_t width, uint32_t height)
+{
+    if (!param)
+        return;
+
+    *(uint16_t *)(param + 0x08) = (uint16_t)width;
+    *(uint16_t *)(param + 0x0a) = (uint16_t)height;
+    *(uint16_t *)(param + 0x0c) = (uint16_t)width;
+    *(uint16_t *)(param + 0x0e) = (uint16_t)height;
+}
+
+static void codec_param_write_fps(uint8_t *param, const IMPEncoderFrmRate *rate)
+{
+    uint32_t num;
+    uint32_t den;
+    uint32_t clk;
+
+    if (!param || !rate)
+        return;
+
+    num = rate->frmRateNum ? rate->frmRateNum : 25u;
+    den = rate->frmRateDen ? rate->frmRateDen : 1u;
+    clk = den * 1000u;
+    if (clk > 0xffffu)
+        clk = 0xffffu;
+
+    *(uint16_t *)(param + 0x78) = (uint16_t)num;
+    *(uint16_t *)(param + 0x7a) = (uint16_t)clk;
+}
+
+static void codec_param_write_bitrate_bps(uint8_t *param, uint32_t bitrate_bps)
+{
+    if (!param)
+        return;
+
+    *(uint32_t *)(param + 0x7c) = bitrate_bps;
+    *(uint32_t *)(param + 0x80) = bitrate_bps;
+}
+
+static void codec_param_write_qp_bounds(uint8_t *param, uint32_t initial_qp,
+                                        uint32_t min_qp, uint32_t max_qp)
+{
+    if (!param)
+        return;
+
+    *(uint16_t *)(param + 0x84) = (uint16_t)clamp_qp_u32(initial_qp);
+    *(int8_t *)(param + 0x86) = (int8_t)clamp_qp_u32(min_qp);
+    *(uint16_t *)(param + 0x88) = (uint16_t)clamp_qp_u32(max_qp);
+}
+
 static void avpu_sync_runtime_encode_state(AL_CodecEncode *enc)
 {
     uint32_t profile_idc;
@@ -3284,8 +3765,8 @@ static void avpu_sync_runtime_encode_state(AL_CodecEncode *enc)
     if (!enc)
         return;
 
-    enc->avpu.enc_w = *(uint32_t *)(enc->codec_param + 0x14);
-    enc->avpu.enc_h = *(uint32_t *)(enc->codec_param + 0x18);
+    enc->avpu.enc_w = codec_param_read_input_width(enc->codec_param);
+    enc->avpu.enc_h = codec_param_read_input_height(enc->codec_param);
     enc->avpu.fps_num = enc->fps_cache.frmRateNum ? enc->fps_cache.frmRateNum : enc->hw_params.fps_num;
     enc->avpu.fps_den = enc->fps_cache.frmRateDen ? enc->fps_cache.frmRateDen : enc->hw_params.fps_den;
     enc->avpu.rc_mode = enc->hw_params.rc_mode;
@@ -3294,7 +3775,7 @@ static void avpu_sync_runtime_encode_state(AL_CodecEncode *enc)
     enc->avpu.gop_length = enc->gop_cache.gopLength ? enc->gop_cache.gopLength : enc->hw_params.gop_length;
     enc->avpu.format_word = *(uint32_t *)(enc->codec_param + 0x10);
 
-    profile_idc = *(uint32_t *)(enc->codec_param + 0x24);
+    profile_idc = codec_param_read_profile_idc(enc->codec_param);
     switch (profile_idc) {
     case 66:
         enc->avpu.profile = HW_PROFILE_BASELINE;
@@ -3364,27 +3845,68 @@ static void codec_sync_rc_cache(AL_CodecEncode *enc)
     qp = enc->hw_params.qp;
 
     rc->outFrmRate = enc->fps_cache;
+#if !(defined(PLATFORM_T31) || defined(PLATFORM_T40) || defined(PLATFORM_T41))
     rc->attrGop = enc->gop_cache;
+#endif
 
-    rc->attrRcMode.attrH264FixQp.outFrmRate = enc->fps_cache.frmRateNum;
-    rc->attrRcMode.attrH264FixQp.maxGop = enc->gop_cache.gopLength;
-    rc->attrRcMode.attrH264FixQp.qp = qp;
+    switch (rc->attrRcMode.rcMode) {
+    case IMP_ENC_RC_MODE_CBR:
+#if defined(PLATFORM_T31) || defined(PLATFORM_T40) || defined(PLATFORM_T41)
+        rc->attrRcMode.attrH264Cbr.uTargetBitRate = bitrate_kbps;
+        rc->attrRcMode.attrH264Cbr.iInitialQP = (int16_t)clamp_qp_u32(qp);
+        rc->attrRcMode.attrH264Cbr.iMinQP = (int16_t)clamp_qp_u32(enc->hw_params.min_qp);
+        rc->attrRcMode.attrH264Cbr.iMaxQP = (int16_t)clamp_qp_u32(enc->hw_params.max_qp);
+        rc->attrRcMode.attrH264Cbr.iIPDelta = 0;
+        rc->attrRcMode.attrH264Cbr.iPBDelta = 0;
+        rc->attrRcMode.attrH264Cbr.eRcOptions = 0;
+        rc->attrRcMode.attrH264Cbr.uMaxPictureSize = 0;
+#else
+        rc->attrRcMode.attrH264Cbr.outFrmRate = enc->fps_cache.frmRateNum;
+        rc->attrRcMode.attrH264Cbr.maxGop = bitrate_kbps;
+        rc->attrRcMode.attrH264Cbr.maxQp = enc->hw_params.max_qp;
+        rc->attrRcMode.attrH264Cbr.minQp = enc->hw_params.min_qp;
+        rc->attrRcMode.attrH264Cbr.iBiasLvl = 0;
+        rc->attrRcMode.attrH264Cbr.frmQPStep = 0;
+        rc->attrRcMode.attrH264Cbr.gopQPStep = 0;
+        rc->attrRcMode.attrH264Cbr.adaptiveMode = 0;
+        rc->attrRcMode.attrH264Cbr.gopRelation = 0;
+#endif
+        break;
 
-    rc->attrRcMode.attrH264Cbr.outFrmRate = enc->fps_cache.frmRateNum;
-    rc->attrRcMode.attrH264Cbr.maxGop = bitrate_kbps;
-    rc->attrRcMode.attrH264Cbr.maxQp = enc->hw_params.max_qp;
-    rc->attrRcMode.attrH264Cbr.minQp = enc->hw_params.min_qp;
-    rc->attrRcMode.attrH264Cbr.iBiasLvl = 0;
-    rc->attrRcMode.attrH264Cbr.frmQPStep = 0;
-    rc->attrRcMode.attrH264Cbr.gopQPStep = 0;
-    rc->attrRcMode.attrH264Cbr.adaptiveMode = 0;
-    rc->attrRcMode.attrH264Cbr.gopRelation = 0;
+    case IMP_ENC_RC_MODE_VBR:
+    case IMP_ENC_RC_MODE_CAPPED_VBR:
+    case IMP_ENC_RC_MODE_CAPPED_QUALITY:
+#if defined(PLATFORM_T31) || defined(PLATFORM_T40) || defined(PLATFORM_T41)
+        rc->attrRcMode.attrH264Vbr.uTargetBitRate = bitrate_kbps;
+        rc->attrRcMode.attrH264Vbr.uMaxBitRate = bitrate_kbps;
+        rc->attrRcMode.attrH264Vbr.iInitialQP = (int16_t)clamp_qp_u32(qp);
+        rc->attrRcMode.attrH264Vbr.iMinQP = (int16_t)clamp_qp_u32(enc->hw_params.min_qp);
+        rc->attrRcMode.attrH264Vbr.iMaxQP = (int16_t)clamp_qp_u32(enc->hw_params.max_qp);
+        rc->attrRcMode.attrH264Vbr.iIPDelta = 0;
+        rc->attrRcMode.attrH264Vbr.iPBDelta = 0;
+        rc->attrRcMode.attrH264Vbr.eRcOptions = 0;
+        rc->attrRcMode.attrH264Vbr.uMaxPictureSize = 0;
+        rc->attrRcMode.attrH264Vbr.uMaxPSNR = 0;
+#else
+        rc->attrRcMode.attrH264Vbr.outFrmRate = enc->fps_cache.frmRateNum;
+        rc->attrRcMode.attrH264Vbr.maxGop = bitrate_kbps;
+        rc->attrRcMode.attrH264Vbr.maxQp = enc->hw_params.max_qp;
+        rc->attrRcMode.attrH264Vbr.minQp = enc->hw_params.min_qp;
+        rc->attrRcMode.attrH264Vbr.staticTime = 0;
+#endif
+        break;
 
-    rc->attrRcMode.attrH264Vbr.outFrmRate = enc->fps_cache.frmRateNum;
-    rc->attrRcMode.attrH264Vbr.maxGop = bitrate_kbps;
-    rc->attrRcMode.attrH264Vbr.maxQp = enc->hw_params.max_qp;
-    rc->attrRcMode.attrH264Vbr.minQp = enc->hw_params.min_qp;
-    rc->attrRcMode.attrH264Vbr.staticTime = 0;
+    case IMP_ENC_RC_MODE_FIXQP:
+    default:
+#if defined(PLATFORM_T31) || defined(PLATFORM_T40) || defined(PLATFORM_T41)
+        rc->attrRcMode.attrH264FixQp.qp = (int16_t)clamp_qp_u32(qp);
+#else
+        rc->attrRcMode.attrH264FixQp.outFrmRate = enc->fps_cache.frmRateNum;
+        rc->attrRcMode.attrH264FixQp.maxGop = enc->gop_cache.gopLength;
+        rc->attrRcMode.attrH264FixQp.qp = qp;
+#endif
+        break;
+    }
 }
 
 static void codec_queue_frame_metadata(AL_CodecEncode *enc, void *user_data)
@@ -3696,7 +4218,7 @@ int AL_Codec_Encode_Create(void **codec, void *params) {
     enc->g_pCodec = g_pCodec;
     memcpy(enc->codec_param, params, 0x794);
     {
-        uint32_t profile_idc = *(uint32_t*)(enc->codec_param + 0x24);
+        uint32_t profile_idc = codec_param_read_profile_idc(enc->codec_param);
         enc->entropy_mode = (profile_idc == IMP_ENC_AVC_PROFILE_IDC_BASELINE) ? 0u : 1u;
     }
 
@@ -3735,16 +4257,44 @@ int AL_Codec_Encode_Create(void **codec, void *params) {
     enc->use_hardware = 1;
     enc->last_error = 0;
 
-    enc->fps_cache.frmRateNum = *(uint32_t *)(enc->codec_param + 0x7c);
-    enc->fps_cache.frmRateDen = *(uint32_t *)(enc->codec_param + 0x80);
+    enc->fps_cache.frmRateNum = codec_param_read_fps_num(enc->codec_param);
+    enc->fps_cache.frmRateDen = codec_param_read_fps_den(enc->codec_param);
     if (enc->fps_cache.frmRateNum == 0)
         enc->fps_cache.frmRateNum = 25;
     if (enc->fps_cache.frmRateDen == 0)
         enc->fps_cache.frmRateDen = 1;
 
     enc->gop_cache.gopLength = *(uint32_t *)(enc->codec_param + 0xb0);
+#if defined(PLATFORM_T31) || defined(PLATFORM_T40) || defined(PLATFORM_T41)
+    enc->gop_cache.gopMode = IMP_ENC_GOP_CTRL_MODE_DEFAULT;
+#else
     enc->gop_cache.ipQpDelta = 2u;
     enc->gop_cache.gopMode = IMP_ENC_GOP_MODE_NORMALP;
+#endif
+
+    enc->hw_params.codec_type = codec_param_read_codec_type(enc->codec_param);
+    enc->hw_params.width = codec_param_read_input_width(enc->codec_param);
+    enc->hw_params.height = codec_param_read_input_height(enc->codec_param);
+    enc->hw_params.fps_num = enc->fps_cache.frmRateNum;
+    enc->hw_params.fps_den = enc->fps_cache.frmRateDen;
+    enc->hw_params.gop_length = enc->gop_cache.gopLength ? enc->gop_cache.gopLength : 25u;
+    enc->hw_params.rc_mode = codec_param_read_rc_mode(enc->codec_param);
+    enc->hw_params.bitrate = codec_param_read_bitrate_bps(enc->codec_param);
+    enc->hw_params.qp = codec_param_read_initial_qp(enc->codec_param);
+    enc->hw_params.min_qp = codec_param_read_min_qp(enc->codec_param);
+    enc->hw_params.max_qp = codec_param_read_max_qp(enc->codec_param);
+    if (enc->hw_params.min_qp > enc->hw_params.max_qp) {
+        uint32_t tmp = enc->hw_params.min_qp;
+        enc->hw_params.min_qp = enc->hw_params.max_qp;
+        enc->hw_params.max_qp = tmp;
+    }
+    enc->avpu.enc_w = enc->hw_params.width;
+    enc->avpu.enc_h = enc->hw_params.height;
+    enc->avpu.fps_num = enc->hw_params.fps_num;
+    enc->avpu.fps_den = enc->hw_params.fps_den;
+    enc->avpu.gop_length = enc->hw_params.gop_length;
+    enc->avpu.qp = enc->hw_params.qp;
+    enc->avpu.rc_mode = enc->hw_params.rc_mode;
 
     enc->loop_filter_beta_offset = 0;
     enc->loop_filter_tc_offset = 0;
@@ -3978,21 +4528,20 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
         /* Lazy-init hardware encoder on first frame */
         if (enc->hw_encoder_fd < 0) {
             /* Build parameters from codec_param (written by channel_encoder_init) */
-            uint32_t bitrate_kbps = *(uint32_t*)(enc->codec_param + 0x30);
-            uint32_t fps_num = *(uint32_t*)(enc->codec_param + 0x7c);
-            uint32_t fps_den = *(uint32_t*)(enc->codec_param + 0x80);
+            uint32_t bitrate_bps = codec_param_read_bitrate_bps(enc->codec_param);
+            uint32_t fps_num = codec_param_read_fps_num(enc->codec_param);
+            uint32_t fps_den = codec_param_read_fps_den(enc->codec_param);
             uint32_t gop = *(uint32_t*)(enc->codec_param + 0xb0);
-            uint32_t profile_word = *(uint32_t*)(enc->codec_param + 0x20);
-            uint32_t profile_idc = *(uint32_t*)(enc->codec_param + 0x24);
-            uint32_t codec_type = (profile_word >> 24) & 0xffu;
-            uint32_t rc_mode = *(uint32_t*)(enc->codec_param + 0x2c);
+            uint32_t profile_idc = codec_param_read_profile_idc(enc->codec_param);
+            uint32_t codec_type = codec_param_read_codec_type(enc->codec_param);
+            uint32_t rc_mode = codec_param_read_rc_mode(enc->codec_param);
             { static int li_log = 0; if (++li_log <= 3)
                 LOG_CODEC("Process: lazy-init channel_id=%d %ux%u codec_type=%u profile_idc=%u entropy_mode=%u",
                           enc->channel_id, width, height, codec_type, profile_idc, enc->entropy_mode);
             }
-            uint32_t init_qp = (*(uint32_t*)(enc->codec_param + 0x38)) & 0xFFu;
-            uint32_t max_qp = *(uint32_t*)(enc->codec_param + 0x3c);
-            uint32_t min_qp = *(uint32_t*)(enc->codec_param + 0x40);
+            uint32_t init_qp = codec_param_read_initial_qp(enc->codec_param);
+            uint32_t max_qp = codec_param_read_max_qp(enc->codec_param);
+            uint32_t min_qp = codec_param_read_min_qp(enc->codec_param);
             memset(&enc->hw_params, 0, sizeof(enc->hw_params));
             enc->hw_params.codec_type = codec_type;
             enc->hw_params.width = width;
@@ -4008,7 +4557,7 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
                     enc->hw_params.rc_mode = HW_RC_MODE_CBR;
                     break;
             }
-            enc->hw_params.bitrate = bitrate_kbps ? (bitrate_kbps * 1000u) : 2*1000*1000u;
+            enc->hw_params.bitrate = bitrate_bps ? bitrate_bps : 2*1000*1000u;
             enc->hw_params.max_qp = clamp_qp_u32(max_qp);
             enc->hw_params.min_qp = clamp_qp_u32(min_qp);
             if (enc->hw_params.min_qp > enc->hw_params.max_qp) {
@@ -4999,8 +5548,10 @@ int AL_Codec_Encode_SetQpBounds(void *codec, int minQp, int maxQp)
         enc->hw_params.max_qp = tmp;
     }
 
-    *(uint32_t *)(enc->codec_param + 0x40) = enc->hw_params.min_qp;
-    *(uint32_t *)(enc->codec_param + 0x3c) = enc->hw_params.max_qp;
+    codec_param_write_qp_bounds(enc->codec_param,
+                                enc->hw_params.qp ? enc->hw_params.qp : enc->hw_params.min_qp,
+                                enc->hw_params.min_qp,
+                                enc->hw_params.max_qp);
     codec_sync_rc_cache(enc);
     codec_set_error(enc, 0);
 
@@ -5012,20 +5563,20 @@ int AL_Codec_Encode_SetQpBounds(void *codec, int minQp, int maxQp)
 int AL_Codec_Encode_SetBitRate(void *codec, int targetBitrate, int maxBitrate)
 {
     AL_CodecEncode *enc;
-    uint32_t bitrate_kbps;
+    uint32_t bitrate_bps;
 
     if (codec == NULL || targetBitrate < 0 || maxBitrate < 0)
         return -1;
 
     enc = (AL_CodecEncode *)codec;
-    bitrate_kbps = (uint32_t)(targetBitrate > 0 ? targetBitrate : maxBitrate);
-    enc->hw_params.bitrate = bitrate_kbps;
-    *(uint32_t *)(enc->codec_param + 0x30) = bitrate_kbps;
+    bitrate_bps = (uint32_t)(targetBitrate > 0 ? targetBitrate : maxBitrate);
+    enc->hw_params.bitrate = bitrate_bps;
+    codec_param_write_bitrate_bps(enc->codec_param, bitrate_bps);
     codec_sync_rc_cache(enc);
     codec_set_error(enc, 0);
 
     LOG_CODEC("SetBitRate: codec=%p target=%d max=%d stored=%u",
-              codec, targetBitrate, maxBitrate, bitrate_kbps);
+              codec, targetBitrate, maxBitrate, bitrate_bps);
     return 0;
 }
 
@@ -5055,7 +5606,9 @@ int AL_Codec_Encode_SetRcParam(void *codec, void *rcAttr)
     memcpy(&enc->rc_attr_cache, src, sizeof(*src));
 
     enc->fps_cache = src->outFrmRate;
+#if !(defined(PLATFORM_T31) || defined(PLATFORM_T40) || defined(PLATFORM_T41))
     enc->gop_cache = src->attrGop;
+#endif
     if (enc->fps_cache.frmRateNum == 0)
         enc->fps_cache.frmRateNum = 25;
     if (enc->fps_cache.frmRateDen == 0)
@@ -5063,8 +5616,7 @@ int AL_Codec_Encode_SetRcParam(void *codec, void *rcAttr)
     if (enc->gop_cache.gopLength == 0)
         enc->gop_cache.gopLength = 25;
 
-    *(uint32_t *)(enc->codec_param + 0x7c) = enc->fps_cache.frmRateNum;
-    *(uint32_t *)(enc->codec_param + 0x80) = enc->fps_cache.frmRateDen;
+    codec_param_write_fps(enc->codec_param, &enc->fps_cache);
     *(uint32_t *)(enc->codec_param + 0xb0) = enc->gop_cache.gopLength;
     enc->hw_params.fps_num = enc->fps_cache.frmRateNum;
     enc->hw_params.fps_den = enc->fps_cache.frmRateDen;
@@ -5075,35 +5627,52 @@ int AL_Codec_Encode_SetRcParam(void *codec, void *rcAttr)
 
     switch (src->attrRcMode.rcMode) {
     case IMP_ENC_RC_MODE_CBR:
-        *(uint32_t *)(enc->codec_param + 0x2c) = HW_RC_MODE_CBR;
+        *(uint32_t *)(enc->codec_param + 0x6c) = HW_RC_MODE_CBR;
         enc->hw_params.rc_mode = HW_RC_MODE_CBR;
+#if defined(PLATFORM_T31) || defined(PLATFORM_T40) || defined(PLATFORM_T41)
+        enc->hw_params.bitrate = src->attrRcMode.attrH264Cbr.uTargetBitRate;
+        enc->hw_params.qp = clamp_qp_u32(src->attrRcMode.attrH264Cbr.iInitialQP);
+        enc->hw_params.min_qp = clamp_qp_u32(src->attrRcMode.attrH264Cbr.iMinQP);
+        enc->hw_params.max_qp = clamp_qp_u32(src->attrRcMode.attrH264Cbr.iMaxQP);
+#else
         enc->hw_params.bitrate = src->attrRcMode.attrH264Cbr.maxGop;
         enc->hw_params.min_qp = clamp_qp_u32(src->attrRcMode.attrH264Cbr.minQp);
         enc->hw_params.max_qp = clamp_qp_u32(src->attrRcMode.attrH264Cbr.maxQp);
+#endif
         break;
     case IMP_ENC_RC_MODE_VBR:
     case IMP_ENC_RC_MODE_CAPPED_VBR:
     case IMP_ENC_RC_MODE_CAPPED_QUALITY:
-        *(uint32_t *)(enc->codec_param + 0x2c) = HW_RC_MODE_VBR;
+        *(uint32_t *)(enc->codec_param + 0x6c) = HW_RC_MODE_VBR;
         enc->hw_params.rc_mode = HW_RC_MODE_VBR;
+#if defined(PLATFORM_T31) || defined(PLATFORM_T40) || defined(PLATFORM_T41)
+        enc->hw_params.bitrate = src->attrRcMode.attrH264Vbr.uTargetBitRate;
+        if (enc->hw_params.bitrate == 0)
+            enc->hw_params.bitrate = src->attrRcMode.attrH264Vbr.uMaxBitRate;
+        enc->hw_params.qp = clamp_qp_u32(src->attrRcMode.attrH264Vbr.iInitialQP);
+        enc->hw_params.min_qp = clamp_qp_u32(src->attrRcMode.attrH264Vbr.iMinQP);
+        enc->hw_params.max_qp = clamp_qp_u32(src->attrRcMode.attrH264Vbr.iMaxQP);
+#else
         enc->hw_params.bitrate = src->attrRcMode.attrH264Vbr.maxGop;
         enc->hw_params.min_qp = clamp_qp_u32(src->attrRcMode.attrH264Vbr.minQp);
         enc->hw_params.max_qp = clamp_qp_u32(src->attrRcMode.attrH264Vbr.maxQp);
+#endif
         break;
     case IMP_ENC_RC_MODE_FIXQP:
     default:
-        *(uint32_t *)(enc->codec_param + 0x2c) = HW_RC_MODE_FIXQP;
+        *(uint32_t *)(enc->codec_param + 0x6c) = HW_RC_MODE_FIXQP;
         enc->hw_params.rc_mode = HW_RC_MODE_FIXQP;
         enc->hw_params.qp = clamp_qp_u32(src->attrRcMode.attrH264FixQp.qp);
         enc->hw_params.min_qp = enc->hw_params.qp;
         enc->hw_params.max_qp = enc->hw_params.qp;
-        *(uint32_t *)(enc->codec_param + 0x38) = enc->hw_params.qp;
         break;
     }
 
-    *(uint32_t *)(enc->codec_param + 0x30) = enc->hw_params.bitrate;
-    *(uint32_t *)(enc->codec_param + 0x40) = enc->hw_params.min_qp;
-    *(uint32_t *)(enc->codec_param + 0x3c) = enc->hw_params.max_qp;
+    codec_param_write_bitrate_bps(enc->codec_param, enc->hw_params.bitrate);
+    codec_param_write_qp_bounds(enc->codec_param,
+                                enc->hw_params.qp,
+                                enc->hw_params.min_qp,
+                                enc->hw_params.max_qp);
     codec_sync_rc_cache(enc);
     codec_set_error(enc, 0);
     return 0;
@@ -5134,8 +5703,7 @@ int AL_Codec_Encode_SetFrameRate(void *codec, void *fps)
     if (enc->fps_cache.frmRateDen == 0)
         enc->fps_cache.frmRateDen = 1;
 
-    *(uint32_t *)(enc->codec_param + 0x7c) = enc->fps_cache.frmRateNum;
-    *(uint32_t *)(enc->codec_param + 0x80) = enc->fps_cache.frmRateDen;
+    codec_param_write_fps(enc->codec_param, &enc->fps_cache);
     enc->hw_params.fps_num = enc->fps_cache.frmRateNum;
     enc->hw_params.fps_den = enc->fps_cache.frmRateDen;
     enc->avpu.fps_num = enc->fps_cache.frmRateNum;
@@ -5153,8 +5721,24 @@ int AL_Codec_Encode_SetQpIPDelta(void *codec, int delta)
         return -1;
 
     enc = (AL_CodecEncode *)codec;
+#if defined(PLATFORM_T31) || defined(PLATFORM_T40) || defined(PLATFORM_T41)
+    switch (enc->rc_attr_cache.attrRcMode.rcMode) {
+    case IMP_ENC_RC_MODE_CBR:
+        enc->rc_attr_cache.attrRcMode.attrH264Cbr.iIPDelta = (int16_t)delta;
+        break;
+    case IMP_ENC_RC_MODE_VBR:
+    case IMP_ENC_RC_MODE_CAPPED_VBR:
+    case IMP_ENC_RC_MODE_CAPPED_QUALITY:
+        enc->rc_attr_cache.attrRcMode.attrH264Vbr.iIPDelta = (int16_t)delta;
+        break;
+    case IMP_ENC_RC_MODE_FIXQP:
+    default:
+        break;
+    }
+#else
     enc->gop_cache.ipQpDelta = (uint32_t)delta;
     enc->rc_attr_cache.attrGop.ipQpDelta = (uint32_t)delta;
+#endif
     codec_set_error(enc, 0);
     return 0;
 }
@@ -5190,7 +5774,9 @@ int AL_Codec_Encode_SetGopParam(void *codec, void *gopAttr)
     *(uint32_t *)(enc->codec_param + 0xb0) = enc->gop_cache.gopLength;
     enc->hw_params.gop_length = enc->gop_cache.gopLength;
     enc->avpu.gop_length = enc->gop_cache.gopLength;
+#if !(defined(PLATFORM_T31) || defined(PLATFORM_T40) || defined(PLATFORM_T41))
     enc->rc_attr_cache.attrGop = enc->gop_cache;
+#endif
     codec_set_error(enc, 0);
     return 0;
 }
@@ -5215,8 +5801,7 @@ int AL_Codec_Encode_SetInputResolution(void *codec, int width, int height)
         return -1;
 
     enc = (AL_CodecEncode *)codec;
-    *(uint32_t *)(enc->codec_param + 0x14) = (uint32_t)width;
-    *(uint32_t *)(enc->codec_param + 0x18) = (uint32_t)height;
+    codec_param_write_input_resolution(enc->codec_param, (uint32_t)width, (uint32_t)height);
     enc->hw_params.width = (uint32_t)width;
     enc->hw_params.height = (uint32_t)height;
     enc->avpu.enc_w = (uint32_t)width;

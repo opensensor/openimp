@@ -15,6 +15,7 @@
 #include <stdarg.h>
 
 #include <sys/time.h>
+#include <time.h>
 #include <pthread.h>
 #include <semaphore.h>
 #include <imp/imp_framesource.h>
@@ -68,6 +69,8 @@ static int fs_initialized = 0;
 static IMPFSChnFifoAttr g_fifo_attrs[MAX_FS_CHANNELS];
 static int g_frame_depth[MAX_FS_CHANNELS];
 
+#define FS_STOCK_ATTR_SIZE 0x3c
+
 
 /* Forward declarations */
 static void *frame_capture_thread(void *arg);
@@ -87,19 +90,6 @@ static void fs_bind_trace(const char *fmt, ...)
 
     if (n > 0) write(fd, buf, (size_t)n);
     close(fd);
-}
-
-static void framesource_publish_outputs(void *module, void *frame)
-{
-    if (module == NULL) return;
-
-    uint32_t count = *(uint32_t *)((char *)module + 0x134);
-    if (count == 0) count = 1;
-    if (count > 3) count = 3;
-
-    for (uint32_t i = 0; i < count; i++) {
-        *(void **)((char *)module + 0x138 + (i * sizeof(void *))) = frame;
-    }
 }
 
 /* Initialize framesource module */
@@ -181,18 +171,25 @@ int IMP_FrameSource_CreateChn(int chnNum, IMPFSChnAttr *chn_attr) {
 
     FSChannel *chn = &gFramesource->channels[chnNum];
 
-    /* Set attributes at offset 0x20 in channel struct */
-    memcpy(&chn->attr, chn_attr, sizeof(IMPFSChnAttr));
+    /* Stock T31 libimp copies only the base attr payload and ignores the
+     * newer fcrop tail even when the public header is larger. */
+    memset(&chn->attr, 0, sizeof(chn->attr));
+    memcpy(&chn->attr, chn_attr,
+           FS_STOCK_ATTR_SIZE < (int)sizeof(IMPFSChnAttr) ? FS_STOCK_ATTR_SIZE : sizeof(IMPFSChnAttr));
+    chn->state = 0;
     chn->fd = -1;
+    chn->thread = 0;
 
     /* Initialize readiness semaphore so we can gate STREAM_ON until thread is ready */
     sem_init(&chn->sem, 0, 0);
 
     /* OEM: initialize frame depth and copy type to 0 */
     g_frame_depth[chnNum] = 0;
+    memset(&g_fifo_attrs[chnNum], 0, sizeof(g_fifo_attrs[chnNum]));
 
-    /* OEM does NOT open device or create VBM pool in CreateChn.
-     * Device open and VBM pool creation happen in EnableChn. */
+    /* Stock libimp attempts to open the device during CreateChn but still
+     * completes channel creation even if the open fails. */
+    chn->fd = fs_open_device(chnNum);
 
     /* Register FrameSource channel as module (DEV_ID_FS = 0) */
     extern void* IMP_System_AllocModule(const char *name, int groupID);
@@ -224,9 +221,6 @@ int IMP_FrameSource_CreateChn(int chnNum, IMPFSChnAttr *chn_attr) {
         *unbind_ptr = (void*)framesource_unbind;
     }
 
-    /* OEM sets state to 1 (created), not 0 */
-    chn->state = 1;
-
     pthread_mutex_unlock(&fs_mutex);
 
     LOG_FS("CreateChn: chn=%d, %dx%d, fmt=0x%x", chnNum,
@@ -248,26 +242,30 @@ int IMP_FrameSource_DestroyChn(int chnNum) {
         return 0;
     }
 
-    /* OEM requires state==1 (created but disabled). If state==2 (enabled), error out. */
-    if (gFramesource->channels[chnNum].state == 2) {
-        LOG_FS("DestroyChn: channel %d is busy, please disable it firstly", chnNum);
+    if (gFramesource->channels[chnNum].state != 0) {
         pthread_mutex_unlock(&fs_mutex);
-        return -1;
+        IMP_FrameSource_DisableChn(chnNum);
+        pthread_mutex_lock(&fs_mutex);
+
+        if (gFramesource == NULL) {
+            pthread_mutex_unlock(&fs_mutex);
+            return 0;
+        }
     }
 
-    if (gFramesource->channels[chnNum].state == 0) {
-        LOG_FS("DestroyChn: channel %d not created", chnNum);
-        pthread_mutex_unlock(&fs_mutex);
-        return -1;
-    }
-
-    /* OEM: reset frame depth and copy type */
     g_frame_depth[chnNum] = 0;
+    memset(&g_fifo_attrs[chnNum], 0, sizeof(g_fifo_attrs[chnNum]));
 
-    /* OEM does NOT close fd here - fd is closed in DisableChn.
-     * Destroy the module/group and clear channel state. */
-    gFramesource->channels[chnNum].state = 0;
-    gFramesource->channels[chnNum].fd = -1;
+    {
+        FSChannel *chn = &gFramesource->channels[chnNum];
+        if (chn->fd >= 0) {
+            fs_close_device(chn->fd);
+        }
+        VBMFlushFrame(chnNum);
+        VBMDestroyPool(chnNum);
+        memset(chn, 0, sizeof(*chn));
+        chn->fd = -1;
+    }
 
     pthread_mutex_unlock(&fs_mutex);
 
@@ -296,12 +294,6 @@ int IMP_FrameSource_EnableChn(int chnNum) {
         return 0;
     }
 
-    if (gFramesource->channels[chnNum].state != 1) {
-        LOG_FS("EnableChn: channel %d not created (state=%d)", chnNum, gFramesource->channels[chnNum].state);
-        pthread_mutex_unlock(&fs_mutex);
-        return -1;
-    }
-
     FSChannel *chn = &gFramesource->channels[chnNum];
 
     /* Open device if not already open */
@@ -314,24 +306,12 @@ int IMP_FrameSource_EnableChn(int chnNum) {
         }
     }
 
-    /* Prepare format structure — OEM-exact layout from do_reset_channel_attr
-     * decompilation at 0x9ecf8.
-     *
-     * CRITICAL: The OEM memsets the 0x70-byte format buffer to zero and then
-     * fills ONLY the V4L2 header fields (type, width, height, pixelformat,
-     * colorspace) and two overrides (fps_num=1, picheight=0).  All Ingenic
-     * extended attributes (enable, attr_width, crop, scaler, picwidth, etc.)
-     * are left ZERO.  Setting enable=1 or non-zero picwidth/picheight causes
-     * tisp_channel_attr_set in the stock kernel to configure the ISP channel
-     * differently, which breaks the DQBUF path for PHY_CHANNEL (channel 0).
-     *
-     * The OEM only calls GET_FMT before SET_FMT for RAW format (0x22), never
-     * for NV12/NV21. Doing so corrupts width/height with sensor-side values.
-     */
+    /* Prepare format structure — stock T31 libimp duplicates the base channel
+     * size into the semantic attr_width/picwidth fields and forwards the crop,
+     * scaler and fps words from IMPFSChnAttr into the SET_FMT payload. */
     fs_format_t fmt;
     memset(&fmt, 0, sizeof(fmt));
 
-    /* V4L2 header fields (match OEM defaults) */
     fmt.type = 1;           /* V4L2_BUF_TYPE_VIDEO_CAPTURE */
     fmt.width = chn->attr.picWidth;
     fmt.height = chn->attr.picHeight;
@@ -342,16 +322,21 @@ int IMP_FrameSource_EnableChn(int chnNum) {
     fmt.colorspace = 8;     /* V4L2_COLORSPACE_SRGB like OEM */
     fmt.priv = 0;
 
-    /* Ingenic extended attributes — OEM leaves these at zero for both
-     * PHY_CHANNEL and EXT_CHANNEL in the initial SET_FMT.  The only
-     * overrides the OEM applies (at label_9eef8) are:
-     *   picheight = 0   (already zero from memset)
-     *   fps_num   = 1
-     * Everything else (enable, attr_width/height, crop, scaler, picwidth,
-     * fps_den) stays zero. */
     fmt.enable = 0;
-    fmt.fps_num = 1;
-    /* All other extended fields remain 0 from memset — OEM parity */
+    fmt.attr_width = chn->attr.picWidth;
+    fmt.attr_height = chn->attr.picHeight;
+    fmt.crop_enable = chn->attr.crop.enable;
+    fmt.crop_x = chn->attr.crop.left;
+    fmt.crop_y = chn->attr.crop.top;
+    fmt.crop_width = chn->attr.crop.width;
+    fmt.crop_height = chn->attr.crop.height;
+    fmt.scaler_enable = chn->attr.scaler.enable;
+    fmt.scaler_outwidth = chn->attr.scaler.outwidth;
+    fmt.scaler_outheight = chn->attr.scaler.outheight;
+    fmt.picwidth = chn->attr.picWidth;
+    fmt.picheight = chn->attr.picHeight;
+    fmt.fps_num = chn->attr.outFrmRateNum > 0 ? chn->attr.outFrmRateNum : 1;
+    fmt.fps_den = chn->attr.outFrmRateDen > 0 ? chn->attr.outFrmRateDen : 1;
 
     /* Set format via ioctl - this updates fmt.sizeimage with kernel's value */
     if (fs_set_format(chn->fd, &fmt) < 0) {
@@ -376,40 +361,24 @@ int IMP_FrameSource_EnableChn(int chnNum) {
                 kernel_sizeimage, chnNum);
     }
 
-
-    /* Build VBM format block matching IMPFSChnAttr layout offsets expected by VBMCreatePool:
-       [0x00]=width, [0x04]=height, [0x08]=pixfmt(enum), [0x0c]=req_size(sizeimage), [0x34]=nrVBs */
-    uint8_t vbm_fmt[0xd0];
-    memset(vbm_fmt, 0, sizeof(vbm_fmt));
-    memcpy(vbm_fmt + 0x00, &chn->attr.picWidth, sizeof(int));
-    memcpy(vbm_fmt + 0x04, &chn->attr.picHeight, sizeof(int));
-    memcpy(vbm_fmt + 0x08, &chn->attr.pixFmt, sizeof(int));
-    memcpy(vbm_fmt + 0x0c, &kernel_sizeimage, sizeof(int));
-    /* Triple buffering minimum: with synchronous encoder_update on the
-     * capture thread and 2 buffers, the capture thread exhausts both before
-     * the stream_thread can QBUF either back. 3 buffers ensures there's
-     * always one in the kernel queue. The OEM avoids this via async encode
-     * threads; our synchronous path needs the extra buffer. */
-    int vbm_count = chn->attr.nrVBs;
-    if (vbm_count < 3) vbm_count = 3;
-    memcpy(vbm_fmt + 0x34, &vbm_count, sizeof(int));
-
-    /* Create VBM pool using kernel-computed size and requested buffer count */
-    if (VBMCreatePool(chnNum, vbm_fmt, NULL, NULL) < 0) {
-        LOG_FS("EnableChn failed: cannot create VBM pool");
-        fs_close_device(chn->fd);
-        chn->fd = -1;
-        pthread_mutex_unlock(&fs_mutex);
-        return -1;
+    /* Stock ordering: REQBUFS happens before VBM pool creation. */
+    int requested_bufcnt = chn->attr.nrVBs;
+    if (requested_bufcnt <= 0) {
+        requested_bufcnt = 4;
+    } else if (requested_bufcnt == 1) {
+        requested_bufcnt = 2;
+    }
+    /* Empirically, 2/2 priming regressed sub-channel dequeue on T31 while the
+     * last known-good frame-source checkpoint dequeued with 3/3 primed buffers.
+     * Keep one extra slot so the framechan has a queued, completing, and
+     * recyclable USERPTR buffer during the first capture/encode handoff. */
+    if (requested_bufcnt < 3) {
+        requested_bufcnt = 3;
     }
 
-    /* REQBUFS before STREAM_ON — match the VBM pool count (min 3 for
-     * triple buffering). Add frame_depth if configured. */
-    int requested_bufcnt = vbm_count + (g_frame_depth[chnNum] > 0 ? g_frame_depth[chnNum] : 0);
     int bufcnt = fs_set_buffer_count(chn->fd, requested_bufcnt);
     if (bufcnt < 0) {
         LOG_FS("EnableChn failed: cannot set buffer count");
-        VBMDestroyPool(chnNum);
         fs_close_device(chn->fd);
         chn->fd = -1;
         pthread_mutex_unlock(&fs_mutex);
@@ -418,6 +387,24 @@ int IMP_FrameSource_EnableChn(int chnNum) {
     if (bufcnt < requested_bufcnt) {
         LOG_FS("EnableChn: driver reduced buffer count from %d to %d; continuing",
                requested_bufcnt, bufcnt);
+    }
+
+    /* Build VBM format block after REQBUFS so the pool matches the real
+     * kernel queue depth. */
+    uint8_t vbm_fmt[0xd0];
+    memset(vbm_fmt, 0, sizeof(vbm_fmt));
+    memcpy(vbm_fmt + 0x00, &chn->attr.picWidth, sizeof(int));
+    memcpy(vbm_fmt + 0x04, &chn->attr.picHeight, sizeof(int));
+    memcpy(vbm_fmt + 0x08, &chn->attr.pixFmt, sizeof(int));
+    memcpy(vbm_fmt + 0x0c, &kernel_sizeimage, sizeof(int));
+    memcpy(vbm_fmt + 0x34, &bufcnt, sizeof(int));
+
+    if (VBMCreatePool(chnNum, vbm_fmt, NULL, NULL) < 0) {
+        LOG_FS("EnableChn failed: cannot create VBM pool");
+        fs_close_device(chn->fd);
+        chn->fd = -1;
+        pthread_mutex_unlock(&fs_mutex);
+        return -1;
     }
 
     /* Fill VBM pool (marks buffers as available in userspace queue) */
@@ -430,20 +417,7 @@ int IMP_FrameSource_EnableChn(int chnNum) {
         return -1;
     }
 
-    /* Match OEM: ensure kernel frame depth is configured before STREAM_ON
-     * OEM only calls SET_DEPTH when depth > 0 (verified via BN MCP decompilation) */
-    {
-        extern int fs_set_depth(int fd, int depth);
-        int desired_depth = g_frame_depth[chnNum]; /* defaults to 0 unless app set */
-        if (desired_depth > 0) {
-            if (fs_set_depth(chn->fd, desired_depth) < 0) {
-                LOG_FS("EnableChn: warning: could not set kernel frame depth to %d", desired_depth);
-            }
-        }
-    }
-
-    /* Mark running and start capture thread; it will block on select() */
-    /* QBUF before STREAM_ON (standard V4L2 order) */
+    /* QBUF before STREAM_ON */
     extern int VBMPrimeKernelQueue(int chn, int fd, int limit);
     int queued_ok = VBMPrimeKernelQueue(chnNum, chn->fd, bufcnt);
     if (queued_ok < 0) {
@@ -467,30 +441,19 @@ int IMP_FrameSource_EnableChn(int chnNum) {
 
     usleep(5000); /* 5ms guard */
 
-    /* Ensure ISP global stream is active */
     {
-        extern int ISP_EnsureLinkStreamOn(int sensor_idx);
-        ISP_EnsureLinkStreamOn(0);
+        extern int fs_set_depth(int fd, int depth);
+        int desired_depth = g_frame_depth[chnNum];
+        if (fs_set_depth(chn->fd, desired_depth) < 0) {
+            LOG_FS("EnableChn: warning: could not set kernel frame depth to %d", desired_depth);
+        }
     }
 
-    /* STREAM_ON */
-    if (fs_stream_on(chn->fd) < 0) {
-        LOG_FS("EnableChn failed: cannot start streaming");
-        VBMFlushFrame(chnNum);
-        VBMDestroyPool(chnNum);
-        fs_close_device(chn->fd);
-        chn->fd = -1;
-        pthread_mutex_unlock(&fs_mutex);
-        return -1;
-    }
-
-    /* Start capture thread AFTER STREAM_ON */
-    chn->state = 2; /* Running */
+    chn->state = 2;
     gFramesource->active_count++;
 
     if (pthread_create(&chn->thread, NULL, frame_capture_thread, chn) != 0) {
         LOG_FS("EnableChn failed: cannot create capture thread");
-        fs_stream_off(chn->fd);
         chn->state = 0;
         gFramesource->active_count--;
         VBMFlushFrame(chnNum);
@@ -501,6 +464,32 @@ int IMP_FrameSource_EnableChn(int chnNum) {
         return -1;
     }
 
+    {
+        struct timespec ts;
+        clock_gettime(CLOCK_REALTIME, &ts);
+        ts.tv_sec += 1;
+        if (sem_timedwait(&chn->sem, &ts) == 0) {
+            LOG_FS("EnableChn: capture thread signaled readiness");
+        } else {
+            LOG_FS("EnableChn: readiness wait timed out: %s", strerror(errno));
+        }
+    }
+
+    /* STREAM_ON after the capture thread is live, matching stock ordering. */
+    if (fs_stream_on(chn->fd) < 0) {
+        LOG_FS("EnableChn failed: cannot start streaming");
+        pthread_cancel(chn->thread);
+        pthread_join(chn->thread, NULL);
+        chn->thread = 0;
+        chn->state = 0;
+        gFramesource->active_count--;
+        VBMFlushFrame(chnNum);
+        VBMDestroyPool(chnNum);
+        fs_close_device(chn->fd);
+        chn->fd = -1;
+        pthread_mutex_unlock(&fs_mutex);
+        return -1;
+    }
 
     pthread_mutex_unlock(&fs_mutex);
 
@@ -598,8 +587,10 @@ int IMP_FrameSource_SetChnAttr(int chnNum, IMPFSChnAttr *chn_attr) {
         return -1;
     }
 
-    /* Copy attributes - from decompilation, copies 0x50 bytes */
-    memcpy(&gFramesource->channels[chnNum].attr, chn_attr, sizeof(IMPFSChnAttr));
+    /* Stock T31 libimp copies only the base attr payload. */
+    memset(&gFramesource->channels[chnNum].attr, 0, sizeof(gFramesource->channels[chnNum].attr));
+    memcpy(&gFramesource->channels[chnNum].attr, chn_attr,
+           FS_STOCK_ATTR_SIZE < (int)sizeof(IMPFSChnAttr) ? FS_STOCK_ATTR_SIZE : sizeof(IMPFSChnAttr));
 
     pthread_mutex_unlock(&fs_mutex);
 
@@ -636,8 +627,9 @@ int IMP_FrameSource_GetChnAttr(int chnNum, IMPFSChnAttr *chn_attr) {
         return -1;
     }
 
-    /* Copy attributes - from decompilation, copies 0x50 bytes */
-    memcpy(chn_attr, &gFramesource->channels[chnNum].attr, sizeof(IMPFSChnAttr));
+    memset(chn_attr, 0, sizeof(*chn_attr));
+    memcpy(chn_attr, &gFramesource->channels[chnNum].attr,
+           FS_STOCK_ATTR_SIZE < (int)sizeof(IMPFSChnAttr) ? FS_STOCK_ATTR_SIZE : sizeof(IMPFSChnAttr));
 
     pthread_mutex_unlock(&fs_mutex);
 
@@ -649,16 +641,8 @@ int IMP_FrameSource_SetChnFifoAttr(int chnNum, IMPFSChnFifoAttr *attr) {
     if (attr == NULL) return -1;
     if (chnNum < 0 || chnNum >= MAX_FS_CHANNELS) return -1;
     pthread_mutex_lock(&fs_mutex);
-    /* OEM: channel must be created (state==1) but not enabled */
-    if (gFramesource && gFramesource->channels[chnNum].state != 1) {
-        LOG_FS("SetChnFifoAttr: channel %d not in created state", chnNum);
-        pthread_mutex_unlock(&fs_mutex);
-        return -1;
-    }
     g_fifo_attrs[chnNum] = *attr;
     pthread_mutex_unlock(&fs_mutex);
-    /* OEM calls SetMaxDelay with first field of fifo attr */
-    IMP_FrameSource_SetMaxDelay(chnNum, attr->maxdepth);
     LOG_FS("SetChnFifoAttr: chn=%d, maxdepth=%d, depth=%d", chnNum, attr->maxdepth, attr->depth);
     return 0;
 }
@@ -667,12 +651,6 @@ int IMP_FrameSource_GetChnFifoAttr(int chnNum, IMPFSChnFifoAttr *attr) {
     if (attr == NULL) return -1;
     if (chnNum < 0 || chnNum >= MAX_FS_CHANNELS) return -1;
     pthread_mutex_lock(&fs_mutex);
-    /* OEM: channel must be created (state != 0) */
-    if (gFramesource && gFramesource->channels[chnNum].state == 0) {
-        LOG_FS("GetChnFifoAttr: channel %d not created", chnNum);
-        pthread_mutex_unlock(&fs_mutex);
-        return -1;
-    }
     *attr = g_fifo_attrs[chnNum];
     pthread_mutex_unlock(&fs_mutex);
     LOG_FS("GetChnFifoAttr: chn=%d -> maxdepth=%d, depth=%d", chnNum, attr->maxdepth, attr->depth);
@@ -730,11 +708,10 @@ static void *frame_capture_thread(void *arg) {
     int frame_count = 0;
     int poll_count = 0;
     int state_wait_count = 0;
-    int software_mode = 0;  /* Try hardware mode first; fallback to SOFTWARE MODE on errors */
-    int no_frame_cycles = 0;    /* Counts consecutive hardware waits with no frames */
-    int ioctl_fail_count = 0;    /* Counts consecutive ioctl failures */
-    const int NO_FRAME_THRESHOLD = 20;  /* ~2s: 20 x 100ms select timeouts */
-    const int IOCTL_FAIL_THRESHOLD = 5; /* switch after repeated ioctl errors */
+    int software_mode = 0;      /* Hardware first, fallback after repeated empty drains */
+    int no_frame_cycles = 0;    /* Counts consecutive hardware drain loops with no frames */
+    int ioctl_fail_count = 0;   /* Counts consecutive dequeue failures */
+    const int NO_FRAME_THRESHOLD = 20;
 
     LOG_FS("frame_capture_thread chn=%d: entering main loop", chn_num);
     fflush(stderr);
@@ -795,7 +772,6 @@ static void *frame_capture_thread(void *arg) {
                 /* Notify observers (bound modules like Encoder) */
                 void *module = IMP_System_GetModule(DEV_ID_FS, chn_num);
                 if (module != NULL) {
-                    framesource_publish_outputs(module, frame);
                     notify_observers(module, frame);
                 } else {
                     LOG_FS("frame_capture_thread chn=%d: WARNING - no module found for FrameSource", chn_num);
@@ -811,82 +787,13 @@ static void *frame_capture_thread(void *arg) {
             continue;
         }
 
-        /* HARDWARE MODE: Wait using select(2) on framechan fd, then drain with DQBUF */
+        /* HARDWARE MODE: stock libimp drains directly with VBMKernelDequeue().
+         * Do not gate this behind select()/POLL_FRAME; on T31 that extra wait
+         * wedges ch0 while stock keeps draining normally. */
         int drained = 0;
-        {
-            if (poll_count <= 3) {
-                LOG_FS("frame_capture_thread chn=%d: about to select() (poll #%d)", chn_num, poll_count);
-                fflush(stderr);
-            }
-
-            fd_set rfds; FD_ZERO(&rfds); FD_SET(chn->fd, &rfds);
-            struct timeval tv; tv.tv_sec = 0; tv.tv_usec = 25000; /* 25ms */
-
-            pthread_testcancel();
-            int rc = select(chn->fd + 1, &rfds, NULL, NULL, &tv);
-            pthread_testcancel();
-
-            if (poll_count <= 3) {
-                LOG_FS("frame_capture_thread chn=%d: select() returned %d (errno=%d)", chn_num, rc, errno);
-                fflush(stderr);
-            }
-
-            if (rc < 0) {
-                if (errno == EINTR) {
-                    /* interrupted by signal, retry */
-                } else {
-                    ioctl_fail_count++;
-                    if (ioctl_fail_count % 5 == 0) {
-                        LOG_FS("frame_capture_thread chn=%d: select() error: %s (count=%d)", chn_num, strerror(errno), ioctl_fail_count);
-                        fflush(stderr);
-                    }
-                }
-            } else {
-                ioctl_fail_count = 0;
-            }
-        }
         if (poll_count <= 3) {
             LOG_FS("frame_capture_thread chn=%d: entering DQBUF drain loop", chn_num);
             fflush(stderr);
-        }
-
-        {
-            unsigned int ready = 0;
-            int poll_ret = fs_poll_frame(chn->fd, &ready);
-            if (poll_ret == -2) {
-                if (poll_count <= 5) {
-                    LOG_FS("frame_capture_thread chn=%d: POLL_FRAME interrupted", chn_num);
-                    fflush(stderr);
-                }
-                continue;
-            }
-            if (poll_ret < 0) {
-                if (poll_count <= 5 || (poll_count % 50) == 0) {
-                    LOG_FS("frame_capture_thread chn=%d: POLL_FRAME failed before DQBUF", chn_num);
-                    fflush(stderr);
-                }
-                usleep(1000);
-                continue;
-            }
-            if (ready == 0) {
-                if (poll_count <= 5 || (poll_count % 50) == 0) {
-                    LOG_FS("frame_capture_thread chn=%d: POLL_FRAME reported 0 ready frames", chn_num);
-                    fflush(stderr);
-                }
-                usleep(1000);
-                continue;
-            }
-            if (poll_count <= 5) {
-                LOG_FS("frame_capture_thread chn=%d: POLL_FRAME ready=%u", chn_num, ready);
-                fflush(stderr);
-            }
-        }
-
-        /* Enforce non-blocking on fd in case driver cleared O_NONBLOCK */
-        int __fl = fcntl(chn->fd, F_GETFL, 0);
-        if (__fl != -1 && !(__fl & O_NONBLOCK)) {
-            fcntl(chn->fd, F_SETFL, __fl | O_NONBLOCK);
-            LOG_FS("frame_capture_thread chn=%d: re-enabled O_NONBLOCK before DQBUF", chn_num);
         }
 
         while (1) {
@@ -907,7 +814,6 @@ static void *frame_capture_thread(void *arg) {
                         LOG_FS("frame_capture_thread chn=%d: about to notify_observers module=%p", chn_num, module);
                         fflush(stderr);
                     }
-                    framesource_publish_outputs(module, frame);
                     notify_observers(module, frame);
                     if (frame_count <= 5) {
                         LOG_FS("frame_capture_thread chn=%d: notify_observers returned", chn_num);
@@ -922,6 +828,8 @@ static void *frame_capture_thread(void *arg) {
                        chn_num, dq_ret, frame);
                 fflush(stderr);
             }
+            if (dq_ret < 0)
+                ioctl_fail_count++;
             break;
         }
 
