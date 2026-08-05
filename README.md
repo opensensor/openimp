@@ -56,8 +56,16 @@ records RVD import coverage in `build/t31/`.
 
 - T40: decoder-clean, resolution-independent H.264 streaming through the
   stock T40XP ISP and AVPU drivers.
-- T31: shared T40-derived encoder and AVPU backend compile cleanly; live
-  validation is performed against the stock T31 ISP and AVPU drivers.
+- T31: the shared T40-derived encoder ran for more than 1,000 hardware frames
+  on a stock-driver GC2053 camera. Main 1920x1080 H.264 and AAC probed and
+  decoded without H.264 errors during the device smoke cycle. Timing parity is
+  still open: the final 12-second decode reported 11 duplicate output-DTS
+  warnings, while a same-device stock-userspace decode reported none.
+- Capture ownership is an explicit platform policy: T31 returns a frame after
+  AVPU completion, while T40 returns it immediately after submission. This
+  preserves full-rate capture on both stock-driver ABIs.
+- T41: not implemented. There is no T41 build target or verified userspace
+  ABI, and the T40 library must not be staged on a T41 camera.
 - Sensor configuration and tuning remain owned by the stock ISP driver, so
   the userspace encoder is sensor-independent.
 

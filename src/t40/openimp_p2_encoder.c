@@ -27,6 +27,22 @@
 #define P2_ENCODER_STREAM_ABI_SIZE 28u
 #endif
 
+typedef enum {
+    P2_CAPTURE_RELEASE_AFTER_SUBMIT,
+    P2_CAPTURE_RELEASE_AFTER_COMPLETION,
+} P2CaptureReleasePolicy;
+
+static P2CaptureReleasePolicy p2_capture_release_policy(void)
+{
+#if defined(PLATFORM_T31)
+    return P2_CAPTURE_RELEASE_AFTER_COMPLETION;
+#elif defined(PLATFORM_T40)
+    return P2_CAPTURE_RELEASE_AFTER_SUBMIT;
+#else
+#error "capture-buffer ownership must be established for this platform"
+#endif
+}
+
 typedef struct {
     uint32_t phys_addr;
     uint32_t virt_addr;
@@ -692,18 +708,16 @@ int IMP_Encoder_PollingStream(int channel, uint32_t timeout_ms)
     if (AL_Codec_Encode_Process(ch->codec, frame, frame) != 0)
         goto done;
     /*
-     * Keep the capture buffer owned until the AVPU completion becomes
-     * visible through GetStream.  Submission only transfers the physical
-     * address to the hardware; it does not prove that the source DMA read has
-     * finished.  At T31 1080p the encode can outlast one sensor interval, so
-     * returning the buffer here lets FrameSource refill it while the AVPU is
-     * still consuming the old picture.  The resulting IDR is syntactically
-     * valid but can reconstruct with a frame-wide luma/chroma shift that all
-     * following P pictures inherit.
-     *
-     * Releasing immediately after completion still avoids retaining the
-     * source through the public IMP_Encoder_ReleaseStream lifetime.
+     * Capture ownership differs at the stock-driver seam.  T31 1080p can
+     * outlast one sensor interval, so it must retain the source until AVPU
+     * completion.  T40 completes inside the interval and must return the
+     * frame immediately after submission; retaining it halves the capture
+     * cadence and starves the ISP temporal filters.
      */
+    if (p2_capture_release_policy() == P2_CAPTURE_RELEASE_AFTER_SUBMIT &&
+        frame != &ch->synthetic_frame &&
+        IMP_FrameSource_ReleaseFrame(ch->source_channel, frame) == 0)
+        frame = NULL;
     retries = timeout_ms ? timeout_ms : 2000u;
     if (retries < 2000u)
         retries = 2000u;
@@ -718,7 +732,8 @@ int IMP_Encoder_PollingStream(int channel, uint32_t timeout_ms)
     }
     if (!stream)
         goto done;
-    if (frame != &ch->synthetic_frame &&
+    if (p2_capture_release_policy() == P2_CAPTURE_RELEASE_AFTER_COMPLETION &&
+        frame != &ch->synthetic_frame &&
         IMP_FrameSource_ReleaseFrame(ch->source_channel, frame) == 0)
         frame = NULL;
     pthread_mutex_lock(&ch->lock);

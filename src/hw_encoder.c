@@ -417,8 +417,15 @@ static int generate_h264_pps(uint8_t *buf) {
  * Produces a valid IDR with all macroblocks coded as I_4x4 with zero residual
  * (solid grey frame). This is the minimum valid H.264 IDR that decoders accept.
  */
-static int generate_h264_idr_slice(uint8_t *buf, int width, int height, uint32_t frame_num) {
+static int generate_h264_idr_slice(uint8_t *buf, size_t buf_size, int width, int height,
+                                   uint32_t frame_num) {
     int pos = 0;
+
+    if (buf == NULL || buf_size < 64 || width <= 0 || height <= 0) {
+        return -1;
+    }
+
+    memset(buf, 0, buf_size);
 
     /* Start code */
     buf[pos++] = 0x00;
@@ -430,7 +437,6 @@ static int generate_h264_idr_slice(uint8_t *buf, int width, int height, uint32_t
     buf[pos++] = 0x65;
 
     int bit_pos = pos * 8;
-    memset(&buf[pos], 0, 4096);
 
     /* --- Slice header --- */
     write_exp_golomb(buf, &bit_pos, 0);       /* first_mb_in_slice */
@@ -478,8 +484,15 @@ static int generate_h264_idr_slice(uint8_t *buf, int width, int height, uint32_t
  * Generate H.264 P slice NAL unit
  * All macroblocks are skipped (P_Skip), producing a "repeat previous frame" effect.
  */
-static int generate_h264_p_slice(uint8_t *buf, int width, int height, uint32_t frame_num) {
+static int generate_h264_p_slice(uint8_t *buf, size_t buf_size, int width, int height,
+                                 uint32_t frame_num) {
     int pos = 0;
+
+    if (buf == NULL || buf_size < 64 || width <= 0 || height <= 0) {
+        return -1;
+    }
+
+    memset(buf, 0, buf_size);
 
     /* Start code */
     buf[pos++] = 0x00;
@@ -492,7 +505,6 @@ static int generate_h264_p_slice(uint8_t *buf, int width, int height, uint32_t f
     buf[pos++] = 0x01;
 
     int bit_pos = pos * 8;
-    memset(&buf[pos], 0, 200);
 
     /* --- Slice header --- */
     write_exp_golomb(buf, &bit_pos, 0);       /* first_mb_in_slice */
@@ -529,8 +541,10 @@ static int generate_h264_p_slice(uint8_t *buf, int width, int height, uint32_t f
 }
 
 /* --- BN MCP-compatible NAL writing helpers (AUD + EPB insertion) --- */
-static int write_nal_epb(uint8_t *dst, uint8_t nal_header, const uint8_t *rbsp, int rbsp_len) {
+static int write_nal_epb(uint8_t *dst, size_t dst_size, uint8_t nal_header,
+                         const uint8_t *rbsp, int rbsp_len) {
     int pos = 0;
+    if (dst == NULL || rbsp == NULL || rbsp_len < 0 || dst_size < 5) return -1;
     /* Annex B start code */
     dst[pos++] = 0x00; dst[pos++] = 0x00; dst[pos++] = 0x00; dst[pos++] = 0x01;
     /* NAL header */
@@ -540,9 +554,11 @@ static int write_nal_epb(uint8_t *dst, uint8_t nal_header, const uint8_t *rbsp, 
     for (int i = 0; i < rbsp_len; i++) {
         uint8_t b = rbsp[i];
         if (zeros >= 2 && b <= 0x03) {
+            if ((size_t)pos >= dst_size) return -1;
             dst[pos++] = 0x03;
             zeros = 0;
         }
+        if ((size_t)pos >= dst_size) return -1;
         dst[pos++] = b;
         zeros = (b == 0x00) ? (zeros + 1) : 0;
     }
@@ -615,12 +631,13 @@ static int build_sei_picture_timing_rbsp(uint8_t *rbsp, uint32_t cpb_removal_del
 }
 
 /* Pack existing generator output (with startcode+header) using EPB-accurate writer */
-static int repack_with_epb(uint8_t *dst, const uint8_t *src_nal, int src_len) {
+static int repack_with_epb(uint8_t *dst, size_t dst_size, const uint8_t *src_nal,
+                           int src_len) {
     if (src_len < 6) return 0; /* too small */
     uint8_t header = src_nal[4];
     const uint8_t *rbsp = src_nal + 5;
     int rbsp_len = src_len - 5;
-    return write_nal_epb(dst, header, rbsp, rbsp_len);
+    return write_nal_epb(dst, dst_size, header, rbsp, rbsp_len);
 }
 
 /**
@@ -702,15 +719,32 @@ int HW_Encoder_Encode_Software(HWFrameBuffer *frame, HWStreamBuffer *stream, uin
         return -1;
     }
 
-    /* Allocate buffer for NAL units */
-    uint8_t *nal_buffer = (uint8_t*)malloc(8192);
-    if (nal_buffer == NULL) {
-        LOG_HW("Software encoding: failed to allocate NAL buffer");
+    /* The synthetic IDR writes six bits per macroblock.  The old fixed 4 KiB
+     * scratch buffer overflowed at 1080p and the fixed 8 KiB AU buffer was too
+     * small at 1440p after emulation-prevention insertion. */
+    if (frame->width == 0 || frame->height == 0 ||
+        frame->width > 16384 || frame->height > 16384) {
+        LOG_HW("Software encoding: invalid dimensions %ux%u", frame->width, frame->height);
         return -1;
     }
 
-    uint8_t tmp[4096];
+    size_t mb_cols = (frame->width + 15u) / 16u;
+    size_t mb_rows = (frame->height + 15u) / 16u;
+    size_t num_mbs = mb_cols * mb_rows;
+    /* SPS/PPS generators clear up to 100 bytes past their five-byte prefix. */
+    size_t tmp_size = 128u + ((num_mbs * 6u + 7u) / 8u);
+    size_t nal_size = tmp_size + (tmp_size / 2u) + 1024u;
+    uint8_t *tmp = (uint8_t*)calloc(1, tmp_size);
+    uint8_t *nal_buffer = (uint8_t*)malloc(nal_size);
+    if (tmp == NULL || nal_buffer == NULL) {
+        LOG_HW("Software encoding: failed to allocate H.264 buffers");
+        free(tmp);
+        free(nal_buffer);
+        return -1;
+    }
+
     int total_size = 0;
+    int written;
 
     /* Decide frame type */
     int is_idr = ((frame_counter % 30) == 0) || g_force_idr;
@@ -722,19 +756,32 @@ int HW_Encoder_Encode_Software(HWFrameBuffer *frame, HWStreamBuffer *stream, uin
     /* AUD (Access Unit Delimiter) — helps decoders find frame boundaries */
     uint8_t aud_rbsp[8];
     int aud_rbsp_len = build_aud_rbsp(aud_rbsp, is_idr);
-    total_size += write_nal_epb(nal_buffer + total_size, 0x09, aud_rbsp, aud_rbsp_len);
+    written = write_nal_epb(nal_buffer, nal_size, 0x09, aud_rbsp, aud_rbsp_len);
+    if (written < 0) goto h264_buffer_error;
+    total_size += written;
 
 
     if (is_idr) {
         /* SPS */
         int sps_len_raw = generate_h264_sps(tmp, frame->width, frame->height);
-        total_size += repack_with_epb(nal_buffer + total_size, tmp, sps_len_raw);
+        written = repack_with_epb(nal_buffer + total_size, nal_size - (size_t)total_size,
+                                  tmp, sps_len_raw);
+        if (written < 0) goto h264_buffer_error;
+        total_size += written;
         /* PPS */
         int pps_len_raw = generate_h264_pps(tmp);
-        total_size += repack_with_epb(nal_buffer + total_size, tmp, pps_len_raw);
+        written = repack_with_epb(nal_buffer + total_size, nal_size - (size_t)total_size,
+                                  tmp, pps_len_raw);
+        if (written < 0) goto h264_buffer_error;
+        total_size += written;
         /* IDR slice */
-        int idr_len_raw = generate_h264_idr_slice(tmp, frame->width, frame->height, frame_counter);
-        total_size += repack_with_epb(nal_buffer + total_size, tmp, idr_len_raw);
+        int idr_len_raw = generate_h264_idr_slice(tmp, tmp_size, frame->width, frame->height,
+                                                  frame_counter);
+        if (idr_len_raw < 0) goto h264_buffer_error;
+        written = repack_with_epb(nal_buffer + total_size, nal_size - (size_t)total_size,
+                                  tmp, idr_len_raw);
+        if (written < 0) goto h264_buffer_error;
+        total_size += written;
 
         stream->frame_type = HW_FRAME_TYPE_I;
         stream->slice_type = 0;
@@ -742,8 +789,13 @@ int HW_Encoder_Encode_Software(HWFrameBuffer *frame, HWStreamBuffer *stream, uin
         LOG_HW("Software encoding: IDR frame %u, total=%d bytes", frame_counter, total_size);
     } else {
         /* P slice */
-        int p_len_raw = generate_h264_p_slice(tmp, frame->width, frame->height, frame_counter);
-        total_size += repack_with_epb(nal_buffer + total_size, tmp, p_len_raw);
+        int p_len_raw = generate_h264_p_slice(tmp, tmp_size, frame->width, frame->height,
+                                              frame_counter);
+        if (p_len_raw < 0) goto h264_buffer_error;
+        written = repack_with_epb(nal_buffer + total_size, nal_size - (size_t)total_size,
+                                  tmp, p_len_raw);
+        if (written < 0) goto h264_buffer_error;
+        total_size += written;
 
         stream->frame_type = HW_FRAME_TYPE_P;
         stream->slice_type = 1;
@@ -757,8 +809,15 @@ int HW_Encoder_Encode_Software(HWFrameBuffer *frame, HWStreamBuffer *stream, uin
     stream->length = total_size;
     stream->timestamp = frame->timestamp;
 
+    free(tmp);
     frame_counter++;
     return 0;
+
+h264_buffer_error:
+    LOG_HW("Software encoding: H.264 access unit exceeded its checked buffer");
+    free(tmp);
+    free(nal_buffer);
+    return -1;
 }
 
 /**
@@ -768,4 +827,3 @@ void HW_Encoder_RequestIDR(void) {
     g_force_idr = 1;
     LOG_HW("RequestIDR: next frame will be IDR");
 }
-
