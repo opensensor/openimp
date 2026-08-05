@@ -24,7 +24,7 @@
 #include "imp_log_int.h"
 #include "kernel_interface.h"
 #if defined(PLATFORM_T41)
-#include "t41_command_layout.h"
+#include "t41_command_builder.h"
 #endif
 #include <sys/eventfd.h>
 #include <sys/ioctl.h>
@@ -396,6 +396,14 @@ static int avpu_flush_cache(int fd, void *virt_addr, unsigned int size, unsigned
 {
     (void)fd; /* OEM uses rmem_fd, not avpu_fd */
     if (!virt_addr || size == 0) return -1;
+#if defined(PLATFORM_T41)
+    /* T41's rmem implementation rejects or stalls on short cache ranges.
+     * The OEM always asks it to operate on a 1 MiB window, including for
+     * the ~228 KiB substream buffers.  Normalize centrally because command,
+     * stream and completion paths also call this primitive directly. */
+    if (size < 0x100000u)
+        size = 0x100000u;
+#endif
     return DMA_RmemFlushCache(virt_addr, size, (int)dir);
 }
 
@@ -409,13 +417,6 @@ static int avpu_flush_dma_buf(int fd, const char *tag, const AvpuDMABuf *buf, si
     }
 
 #if defined(PLATFORM_T41)
-    /*
-     * The T41 rmem cache ioctl faults its caller for sub-1 MiB ranges.  This
-     * was reproduced independently with 0x85c0, 0x9000 and 0x10000 byte
-     * requests; the same address succeeds with the OEM-sized 1 MiB request.
-     * P2 uses one contiguous rmem arena, so extending a small descriptor flush
-     * stays inside the mapping and matches the stock command-list operation.
-     */
     if (flush_size < 0x100000u)
         flush_size = 0x100000u;
 #endif
@@ -1152,6 +1153,11 @@ static int avpu_t40_init_ep2(ALAvpuContext *ctx)
 
     offset = (size_t)ctx->interm_ep1_size +
              (size_t)ctx->interm_wpp_size;
+#if defined(PLATFORM_T41)
+    /* The T41 intermediary manager reserves 0x100 bytes between the WPP
+     * state and EP2.  Both captured channels pass the post-gap address. */
+    offset += 0x100u;
+#endif
     if (offset + sizeof(seed_words) + sizeof(bounds_word) >
         ctx->interm_buf.size)
         return -1;
@@ -2345,6 +2351,146 @@ static uint32_t avpu_get_enc1_stream_part_offset(const ALAvpuContext *ctx)
     return (uint32_t)ctx->stream_buf_size - stream_part_size;
 }
 
+#if defined(PLATFORM_T41)
+static uint32_t avpu_t41_advance_luma_offset(uint32_t current,
+                                             uint32_t luma_size,
+                                             uint32_t source_pitch)
+{
+    uint32_t step;
+
+    if (source_pitch > UINT32_MAX / 48u || luma_size == 0u)
+        return 0u;
+    step = source_pitch * 48u;
+    if (step >= luma_size)
+        return 0u;
+    if (current >= luma_size)
+        current %= luma_size;
+    return current >= step ? current - step : current + luma_size - step;
+}
+
+static int avpu_t41_fill_command(ALAvpuContext *ctx, void *slot,
+                                 int stream_buf_idx, uint32_t src_phys,
+                                 int is_idr)
+{
+    OpenIMPT41CommandParams params;
+    uint32_t luma_size;
+    uint32_t chroma_size;
+    uint32_t map_luma_size;
+    uint32_t map_slot_size;
+    uint32_t mv_slot_size;
+    uint32_t maps_base;
+    uint32_t mv_base;
+    uint32_t picture_number;
+    uint32_t current_slot;
+    uint32_t previous_slot;
+    uint32_t picture_qp;
+    uint32_t min_qp;
+    uint32_t max_qp;
+
+    if (!ctx || !slot || stream_buf_idx < 0 ||
+        stream_buf_idx >= ctx->stream_bufs_used ||
+        !ctx->rec_buf.phy_addr || !ctx->interm_buf.phy_addr ||
+        !ctx->rec_trace_buf.phy_addr)
+        return -1;
+
+    luma_size = openimp_t41_reconstruction_luma_size(ctx->enc_w,
+                                                      ctx->enc_h);
+    chroma_size = openimp_t41_reconstruction_chroma_size(ctx->enc_w,
+                                                          ctx->enc_h);
+    map_luma_size = openimp_t41_reconstruction_map_luma_size(ctx->enc_w,
+                                                             ctx->enc_h);
+    map_slot_size = openimp_t41_reconstruction_map_slot_size(ctx->enc_w,
+                                                             ctx->enc_h);
+    mv_slot_size = openimp_t41_motion_vector_slot_size(ctx->enc_w,
+                                                       ctx->enc_h);
+    if (!luma_size || !chroma_size || !map_luma_size || !map_slot_size ||
+        !mv_slot_size)
+        return -1;
+
+    maps_base = ctx->rec_buf.phy_addr + luma_size + chroma_size;
+    mv_base = maps_base + 2u * map_slot_size + 0x100u;
+    picture_number = is_idr
+        ? 0u : ctx->frame_number - ctx->idr_frame_number;
+    current_slot = picture_number & 1u;
+    previous_slot = current_slot ^ 1u;
+
+    min_qp = ctx->min_qp <= 51u ? ctx->min_qp : 0u;
+    max_qp = ctx->max_qp <= 51u ? ctx->max_qp : 51u;
+    if (min_qp > max_qp) {
+        uint32_t swap = min_qp;
+        min_qp = max_qp;
+        max_qp = swap;
+    }
+    picture_qp = ctx->qp <= 51u ? ctx->qp : 34u;
+    if (picture_qp < min_qp)
+        picture_qp = min_qp;
+    if (picture_qp > max_qp)
+        picture_qp = max_qp;
+
+    memset(&params, 0, sizeof(params));
+    params.width = ctx->enc_w;
+    params.height = ctx->enc_h;
+    params.bitrate = ctx->bitrate ? ctx->bitrate : 2000000u;
+    params.fps_num = ctx->fps_num ? ctx->fps_num : 25u;
+    params.fps_den = ctx->fps_den ? ctx->fps_den : 1u;
+    params.min_qp = min_qp;
+    params.picture_qp = picture_qp;
+    params.max_qp = max_qp;
+    params.picture_number = picture_number;
+    params.is_idr = is_idr;
+
+    params.source_y = src_phys;
+    params.source_uv = src_phys +
+        avpu_get_nv12_luma_plane_size(ctx->enc_w, ctx->enc_h);
+
+    params.reference_y = ctx->rec_buf.phy_addr;
+    params.reference_uv = ctx->rec_buf.phy_addr + luma_size;
+    params.reference_map_luma = maps_base + previous_slot * map_slot_size;
+    params.reference_map_chroma = params.reference_map_luma + map_luma_size;
+    params.reference_luma_offset = ctx->t41_reference_luma_offset;
+    params.reference_chroma_offset = params.reference_luma_offset >> 1;
+
+    params.reconstruction_y = ctx->rec_buf.phy_addr;
+    params.reconstruction_uv = ctx->rec_buf.phy_addr + luma_size;
+    params.reconstruction_map_luma = maps_base + current_slot * map_slot_size;
+    params.reconstruction_map_chroma =
+        params.reconstruction_map_luma + map_luma_size;
+    params.reconstruction_luma_offset = avpu_t41_advance_luma_offset(
+        params.reference_luma_offset, luma_size,
+        avpu_align_up_u32(ctx->enc_w, 16u));
+    params.reconstruction_chroma_offset =
+        params.reconstruction_luma_offset >> 1;
+
+    params.stream_buffer = ctx->stream_bufs[stream_buf_idx].phy_addr;
+    params.stream_part_offset = avpu_get_enc1_stream_part_offset(ctx);
+    params.ep1 = ctx->interm_buf.phy_addr;
+    params.ep2 = ctx->interm_buf.phy_addr + ctx->interm_ep1_size +
+                 ctx->interm_wpp_size + 0x100u;
+    params.mv_previous = mv_base + previous_slot * mv_slot_size;
+    params.mv_current = mv_base + current_slot * mv_slot_size;
+    params.ep3 = ctx->rec_trace_buf.phy_addr +
+                 (is_idr ? AVPU_T40_EP3_SLOT_SIZE : 0u);
+
+    if (openimp_t41_build_command(slot, ctx->cl_entry_size, &params) != 0)
+        return -1;
+    ctx->t41_pending_luma_offset = params.reconstruction_luma_offset;
+
+    if (ctx->frame_number < 16u || is_idr) {
+        LOG_CODEC("Process: T41 command frame=%u picture=%u buf=%d idr=%d src=%08x/%08x rec=%08x/%08x map=%08x/%08x mv=%08x/%08x offsets=%x/%x stream=%08x part=%x ep=%08x/%08x/%08x",
+                  ctx->frame_number, picture_number, stream_buf_idx, is_idr,
+                  params.source_y, params.source_uv,
+                  params.reconstruction_y, params.reconstruction_uv,
+                  params.reference_map_luma, params.reconstruction_map_luma,
+                  params.mv_previous, params.mv_current,
+                  params.reference_luma_offset,
+                  params.reconstruction_luma_offset,
+                  params.stream_buffer, params.stream_part_offset,
+                  params.ep1, params.ep2, params.ep3);
+    }
+    return 0;
+}
+#endif
+
 
 /* Fill Enc1 command registers (OEM parity: from SliceParamToCmdRegsEnc1)
  *
@@ -3243,6 +3389,24 @@ static void log_busy_enc1_cmd_window(ALAvpuContext* ctx, uint32_t active_idx, un
 
 static void avpu_promote_reference(ALAvpuContext *ctx)
 {
+#if defined(PLATFORM_T41)
+    if (!ctx || !ctx->rec_buf.phy_addr)
+        return;
+
+    /* T41's reconstructed data stays at one stable base.  Successive
+     * pictures alternate only the embedded map/MV slots, so swapping whole
+     * allocations (the T31/T40 ownership model) disconnects those addresses
+     * from the reference manager captured in the command oracle. */
+    ctx->t41_reference_luma_offset = ctx->t41_pending_luma_offset;
+    __sync_synchronize();
+    ctx->reference_valid = 1;
+
+    if (ctx->frames_encoded % 50 == 0)
+        LOG_CODEC("EndEncoding: promoted T41 embedded reference manager=0x%08x luma_offset=0x%x ep3_ring=0x%08x",
+                  ctx->rec_buf.phy_addr,
+                  ctx->t41_reference_luma_offset,
+                  ctx->rec_trace_buf.phy_addr);
+#else
     if (!ctx || !ctx->rec_buf.phy_addr || !ctx->ref_buf.phy_addr)
         return;
 
@@ -3257,6 +3421,7 @@ static void avpu_promote_reference(ALAvpuContext *ctx)
     LOG_CODEC("EndEncoding: promoted rec->ref ref=0x%08x next_rec=0x%08x ep3_ring=0x%08x",
               ctx->ref_buf.phy_addr, ctx->rec_buf.phy_addr,
               ctx->rec_trace_buf.phy_addr);
+#endif
 }
 
 static pthread_mutex_t *avpu_stream_queue_mutex(ALAvpuContext *ctx)
@@ -3926,16 +4091,46 @@ static void avpu_end_encoding_callback(void *user_data)
             memcpy(status_regs.raw, status_regs_ptr, sizeof(status_regs.raw));
     }
 
+#if defined(PLATFORM_T41)
+    if (ctx && have_pending && buf_idx >= 0 && buf_idx < 16 &&
+        status_regs_ptr) {
+        uint32_t payload_size;
+
+        /* T41 does not use the T31/T40 status layout consumed by
+         * EncodingStatusRegsToSliceStatus().  The first word at the
+         * command slot's +0x5c0 writeback block is the completed entropy
+         * payload size in bytes.  It matched the DMA extent exactly on both
+         * encoder channels, including IDR and P pictures. */
+        memcpy(&payload_size, status_regs.raw, sizeof(payload_size));
+        ctx->t41_payload_size_by_buf[buf_idx] = payload_size;
+        bitcount = payload_size;
+        completed = payload_size > 0u &&
+            ctx->stream_buf_size > (int)OPENIMP_T41_STREAM_PAYLOAD_OFFSET &&
+            payload_size <= (uint32_t)ctx->stream_buf_size -
+                OPENIMP_T41_STREAM_PAYLOAD_OFFSET;
+        completed_flag = completed ? 1u : 0u;
+    }
+#else
     completed = EncodingStatusRegsToSliceStatus(&status_regs, &slice_status);
     MergeEncodingStatus(&merged_status, &slice_status);
     memcpy(&bitcount, slice_status.raw + 0x38, sizeof(bitcount));
     memcpy(&completed_flag, slice_status.raw + 0x10, sizeof(completed_flag));
+#endif
     if (ctx && (ctx->frames_encoded < 16 ||
                 ctx->frames_encoded % 50 == 0)) {
-        LOG_CODEC("EndEncoding status: done=%d bitcount=0x%08x completed_flag=0x%08x pending=%d buf=%d cl=%u status_src=%s",
+        LOG_CODEC("EndEncoding status: done=%d bitcount=0x%08x completed_flag=0x%08x pending=%d buf=%d cl=%u status_src=%s"
+#if defined(PLATFORM_T41)
+                  " t41_payload=0x%08x"
+#endif
+                  ,
                   completed, bitcount, completed_flag,
                   have_pending, buf_idx, cl_idx,
-                  status_source);
+                  status_source
+#if defined(PLATFORM_T41)
+                  , (buf_idx >= 0 && buf_idx < 16)
+                        ? ctx->t41_payload_size_by_buf[buf_idx] : 0u
+#endif
+                  );
     }
 
     if (!have_pending || !status_regs_ptr) {
@@ -4585,11 +4780,18 @@ static uint32_t avpu_stream_buffer_effective_size(ALAvpuContext *ctx, int buf_id
     /* On T40 cmd[0x32] is the submitted header bit position.  The live AVPU
      * status mirror at 0x8304 is the completed entropy payload byte count:
      * OEM sub-IDR=0x5e9, and the former flat probe=0x127 (60+295=355 bytes).
-     * Read it before the next submission resets the status window. */
+     * Read it before the next submission resets the status window. T41 has
+     * no T40 0x8304 register window; its completion lives in the command
+     * slot's +0x5c0 status block, so retain the zero-buffer extent scan. */
+#if defined(PLATFORM_T41)
+    have_t40_payload_size = 0;
+    ignore_t40_status_size = 1;
+#else
     have_t40_payload_size =
         avpu_read_reg_quiet(ctx->fd, 0x8304u, &t40_payload_status) == 0;
     t40_payload_size = t40_payload_status & 0x3fffffffu;
     ignore_t40_status_size = getenv("OPENIMP_T40_IGNORE_STATUS_SIZE") != NULL;
+#endif
     hw_end = 0u;
 #endif
 
@@ -4730,6 +4932,31 @@ static uint32_t avpu_stream_buffer_effective_size(ALAvpuContext *ctx, int buf_id
         if (buf_idx >= 0 && buf_idx < 16 &&
             ctx->stream_header_offset_by_buf[buf_idx] != 0u)
             header_size = ctx->stream_header_offset_by_buf[buf_idx];
+#if defined(PLATFORM_T41)
+        {
+            uint32_t t41_payload_size =
+                ctx->t41_payload_size_by_buf[buf_idx];
+
+            if (ctx->stream_buf_size > (int)payload_offset &&
+                t41_payload_size > 0u &&
+                t41_payload_size <=
+                    (uint32_t)ctx->stream_buf_size - payload_offset) {
+                raw_end = payload_offset + t41_payload_size;
+                LOG_CODEC_THROTTLE(ctx,
+                                   "AVPU: T41 payload status bytes=%u scan_end=%u compacted=%u",
+                                   t41_payload_size, scanned_raw_end,
+                                   header_size + t41_payload_size);
+            } else {
+                LOG_CODEC("AVPU: refusing T41 completion with invalid payload status=%u capacity=%u buf=%d",
+                          t41_payload_size,
+                          ctx->stream_buf_size > (int)payload_offset
+                              ? (uint32_t)ctx->stream_buf_size - payload_offset
+                              : 0u,
+                          buf_idx);
+                return 0u;
+            }
+        }
+#else
         if (!ignore_t40_status_size &&
             have_t40_payload_size && t40_payload_size > 0u &&
             t40_payload_size <= (uint32_t)ctx->stream_buf_size - payload_offset) {
@@ -4738,7 +4965,9 @@ static uint32_t avpu_stream_buffer_effective_size(ALAvpuContext *ctx, int buf_id
                                "AVPU: T40 payload status bytes=%u compacted=%u",
                                t40_payload_size, header_size + t40_payload_size);
         }
+#endif
         if (ctx->frames_encoded < 3) {
+#if !defined(PLATFORM_T41)
             unsigned int status_values[12] = {0};
             static const unsigned int status_regs[12] = {
                 0x8304u, 0x8308u, 0x830cu, 0x8310u,
@@ -4762,6 +4991,10 @@ static uint32_t avpu_stream_buffer_effective_size(ALAvpuContext *ctx, int buf_id
                       status_values[4], status_values[5], status_values[6],
                       status_values[7], status_values[8], status_values[9],
                       status_values[10], status_values[11]);
+#else
+            LOG_CODEC("AVPU: T41 payload buf[%d] scan_end=%u chosen_raw_end=%u",
+                      buf_idx, scanned_raw_end, raw_end);
+#endif
         }
         if (raw_end > payload_offset && header_size <= payload_offset) {
             uint32_t payload_size = raw_end - payload_offset;
@@ -4771,6 +5004,15 @@ static uint32_t avpu_stream_buffer_effective_size(ALAvpuContext *ctx, int buf_id
             if (raw_end < (uint32_t)ctx->stream_buf_size)
                 memset(mutable_stream + raw_end, 0,
                        (size_t)ctx->stream_buf_size - raw_end);
+#if defined(PLATFORM_T41)
+            /* Raptor consumes the same pages through its FrameSource rmem
+             * alias.  Publish the compacted AU to RAM before invalidating
+             * that second alias in avpu_queue_completed_stream(). */
+            if (avpu_flush_cache(ctx->fd, mutable_stream, raw_end,
+                                 1 /* WBACK */) != 0)
+                LOG_CODEC("AVPU: T41 compacted stream writeback failed buf[%d] len=%u",
+                          buf_idx, raw_end);
+#endif
             sb = mutable_stream;
         }
     }
@@ -4824,6 +5066,36 @@ static uint32_t avpu_stream_buffer_effective_size(ALAvpuContext *ctx, int buf_id
                                             frame_size);
         }
     }
+
+#if defined(PLATFORM_T41)
+    {
+        const char *dump_dir = getenv("OPENIMP_T41_DUMP_FIRST_AU");
+
+        if (dump_dir && dump_dir[0] != '\0' && ctx->frames_encoded == 1) {
+            char dump_path[256];
+            int dump_fd;
+
+            snprintf(dump_path, sizeof(dump_path),
+                     "%s/openimp-t41-%ux%u-first.h264",
+                     dump_dir, ctx->enc_w, ctx->enc_h);
+            dump_fd = open(dump_path, O_WRONLY | O_CREAT | O_EXCL, 0600);
+            if (dump_fd >= 0) {
+                size_t written = 0u;
+
+                while (written < frame_size) {
+                    ssize_t n = write(dump_fd, sb + written,
+                                      frame_size - written);
+                    if (n <= 0)
+                        break;
+                    written += (size_t)n;
+                }
+                close(dump_fd);
+                LOG_CODEC("AVPU: dumped first T41 AU %s bytes=%zu/%u",
+                          dump_path, written, frame_size);
+            }
+        }
+    }
+#endif
 
     return frame_size;
 }
@@ -5448,6 +5720,31 @@ static int avpu_queue_completed_stream(ALAvpuContext *ctx, int buf_idx, void *us
 
     phys_addr = ctx->stream_bufs[buf_idx].phy_addr;
     virt_addr = (uint32_t)(uintptr_t)ctx->stream_bufs[buf_idx].map;
+#if defined(PLATFORM_T41)
+    if (user_data) {
+        uint32_t source_phys = 0u;
+        uint32_t source_virt = 0u;
+
+        memcpy(&source_phys, (const uint8_t *)user_data + 0x18u,
+               sizeof(source_phys));
+        memcpy(&source_virt, (const uint8_t *)user_data + 0x1cu,
+               sizeof(source_virt));
+        if (source_phys != 0u && source_virt > source_phys) {
+            uint64_t public_alias = (uint64_t)phys_addr +
+                (uint64_t)(source_virt - source_phys);
+
+            if (public_alias <= UINT32_MAX) {
+                virt_addr = (uint32_t)public_alias;
+                /* The compacted bytes were written through the allocation
+                 * alias above.  Drop any stale lines in Raptor's public
+                 * FrameSource alias before handing it the pointer. */
+                avpu_flush_cache(ctx->fd,
+                                 (void *)(uintptr_t)virt_addr,
+                                 frame_size, 2 /* INVALIDATE */);
+            }
+        }
+    }
+#endif
     hw_stream->phys_addr = phys_addr;
     hw_stream->virt_addr = virt_addr;
     hw_stream->length = frame_size;
@@ -6495,7 +6792,13 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
                              * so the late Enc1 command words never point past the end of
                              * a plain raster-only buffer. */
                             size_t nv12_sz = avpu_get_nv12_frame_size(width, height);
-                            size_t aux_frame_sz = avpu_get_enc1_frame_buf_size(width, height);
+                            size_t aux_frame_sz;
+#if defined(PLATFORM_T41)
+                            aux_frame_sz = openimp_t41_reconstruction_manager_size(
+                                width, height);
+#else
+                            aux_frame_sz = avpu_get_enc1_frame_buf_size(width, height);
+#endif
                             size_t aux_alloc_sz = aux_frame_sz;
 
                             memset(&enc->avpu.rec_buf, 0, sizeof(AvpuDMABuf));
@@ -6526,6 +6829,9 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
                                                        + (size_t)enc->avpu.interm_ep2_size
                                                        + (size_t)enc->avpu.interm_map_size
                                                        + (size_t)enc->avpu.interm_data_size;
+#if defined(PLATFORM_T41)
+                                interm_total_sz += 0x100u;
+#endif
 
                                 if (avpu_alloc_imp(interm_total_sz, "AVPU_ITM", &enc->avpu.interm_buf) == 0) {
                                     int use_fixqp_lda = 0;
@@ -6550,7 +6856,11 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
                                     else
                                         LOG_CODEC("AVPU: initialized default AVC EP2 table at offset=0x%x",
                                                   enc->avpu.interm_ep1_size +
-                                                  enc->avpu.interm_wpp_size);
+                                                  enc->avpu.interm_wpp_size
+#if defined(PLATFORM_T41)
+                                                  + 0x100u
+#endif
+                                                  );
 #endif
                                     enc->avpu.init_interm_flush_ret = avpu_flush_dma_buf(fd, "interm_buf", &enc->avpu.interm_buf, interm_total_sz);
                                     LOG_CODEC("AVPU: interm_buf phys=0x%08x size=%zu (ep1=%u wpp=%u ep2=%u map=%u data=%u)",
@@ -6576,6 +6886,7 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
                                 LOG_CODEC("AVPU: WARNING - failed to allocate rec_buf (%zu bytes)", aux_frame_sz);
                             }
 
+#if !defined(PLATFORM_T41)
                             if (avpu_alloc_imp(aux_alloc_sz, "AVPU_REF", &enc->avpu.ref_buf) == 0) {
                                 /* Do NOT memset — ref_buf content is irrelevant for the
                                  * first IDR frame (intra-only), and subsequent frames will
@@ -6584,6 +6895,12 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
                             } else {
                                 LOG_CODEC("AVPU: WARNING - failed to allocate ref_buf (%zu bytes)", aux_frame_sz);
                             }
+#else
+                            LOG_CODEC("AVPU: T41 rec manager phys=0x%08x size=%zu map_slot=%u mv_slot=%u (single stable data base)",
+                                      enc->avpu.rec_buf.phy_addr, aux_frame_sz,
+                                      openimp_t41_reconstruction_map_slot_size(width, height),
+                                      openimp_t41_motion_vector_slot_size(width, height));
+#endif
 
 #if defined(PLATFORM_T40) || defined(PLATFORM_T31)
                             /* The old trace-shadow allocations were based on a
@@ -6863,21 +7180,30 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
              * writing SPS+PPS+slice header into the stream buffer. The returned byte
              * count becomes cmd[0x32]/cmd[0x36] so the AVPU writes encoded data after. */
             int periodic_idr = 0;
+#if defined(PLATFORM_T41)
+            int reference_storage_ready = ctx->rec_buf.phy_addr != 0;
+#else
+            int reference_storage_ready = ctx->ref_buf.phy_addr != 0;
+#endif
             if (!force_idr
                 && ctx->gop_length > 0u
                 && ctx->frame_number != 0u
                 && ((ctx->frame_number % ctx->gop_length) == 0u)
                 && (ctx->reference_valid != 0)
-                && (ctx->ref_buf.phy_addr != 0)) {
+                && reference_storage_ready) {
                 periodic_idr = 1;
             }
 
             int has_reference = (!force_idr)
                 && (!periodic_idr)
                 && (ctx->reference_valid != 0)
-                && (ctx->ref_buf.phy_addr != 0);
+                && reference_storage_ready;
             int is_idr = !has_reference;
+#if defined(PLATFORM_T41)
+            uint32_t ref_phys = has_reference ? ctx->rec_buf.phy_addr : 0;
+#else
             uint32_t ref_phys = has_reference ? ctx->ref_buf.phy_addr : 0;
+#endif
             if (is_idr)
                 ctx->idr_frame_number = ctx->frame_number;
             if (force_idr) {
@@ -6960,6 +7286,12 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
                 return -1;
             }
 
+#if defined(PLATFORM_T41)
+            /* A reused buffer must not inherit the preceding completion's
+             * payload count if an IRQ arrives without a valid writeback. */
+            ctx->t41_payload_size_by_buf[buf_idx] = 0u;
+#endif
+
             /* OEM parity: zero + write headers via CACHED mapping, then flush
              * the entire stream buffer to physical RAM via the /dev/rmem
              * ioctl 0xc00c7200 (Rtos_FlushCacheMemory path).
@@ -6984,9 +7316,21 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
             }
 
             /* Fill Enc1 command registers — source addr and header offset go INTO the CL entry */
+#if defined(PLATFORM_T41)
+            if (avpu_t41_fill_command(ctx, cmd, buf_idx, phys_addr,
+                                      is_idr) != 0) {
+                LOG_CODEC("Process: failed to build T41 command frame=%u buf=%d",
+                          ctx->frame_number, buf_idx);
+                avpu_mark_stream_buffer_released(ctx, buf_idx);
+                free(hw_stream);
+                errno = EINVAL;
+                return -1;
+            }
+#else
             fill_cmd_regs_enc1(ctx, cmd, buf_idx, phys_addr, hdr_offset, is_idr, ref_phys);
+#endif
             if (ctx->frame_number < 16u || is_idr) {
-                LOG_CODEC("Process: T31 submit frame=%u CL[%u] buf=%d src=0x%08x rec=0x%08x ref=0x%08x ref_valid=%d idr=%d force=%d periodic=%d gop=%u cmd03=%08x cmd15=%08x cmd17=%08x cmd18=%08x map37=%08x ref38=%08x map67=%08x ref68=%08x ref69=%08x",
+                LOG_CODEC("Process: AVPU submit frame=%u CL[%u] buf=%d src=0x%08x rec=0x%08x ref=0x%08x ref_valid=%d idr=%d force=%d periodic=%d gop=%u cmd03=%08x cmd15=%08x cmd17=%08x cmd18=%08x map37=%08x ref38=%08x map67=%08x ref68=%08x ref69=%08x",
                           ctx->frame_number, idx, buf_idx, phys_addr,
                           ctx->rec_buf.phy_addr, ref_phys,
                           ctx->reference_valid, is_idr,

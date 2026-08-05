@@ -62,6 +62,55 @@ uint32_t openimp_t41_reconstruction_chroma_size(uint32_t width,
     return openimp_t41_reconstruction_luma_size(width, height) >> 1;
 }
 
+uint32_t openimp_t41_reconstruction_map_luma_size(uint32_t width,
+                                                  uint32_t height)
+{
+    uint64_t width_4k_tiles = ((uint64_t)width + 0xfffu) >> 12;
+    uint64_t height_quads = openimp_t41_align_up(height, 64u) >> 2;
+    uint64_t size = width_4k_tiles * 32u * height_quads;
+
+    return size <= UINT32_MAX ? (uint32_t)size : 0u;
+}
+
+uint32_t openimp_t41_reconstruction_map_chroma_size(uint32_t width,
+                                                    uint32_t height)
+{
+    uint32_t luma = openimp_t41_reconstruction_map_luma_size(width, height);
+
+    return openimp_t41_align_up(luma >> 1, 0x200u);
+}
+
+uint32_t openimp_t41_reconstruction_map_slot_size(uint32_t width,
+                                                  uint32_t height)
+{
+    uint64_t size = openimp_t41_reconstruction_map_luma_size(width, height);
+
+    size += openimp_t41_reconstruction_map_chroma_size(width, height);
+    return size <= UINT32_MAX ? (uint32_t)size : 0u;
+}
+
+uint32_t openimp_t41_motion_vector_slot_size(uint32_t width,
+                                             uint32_t height)
+{
+    uint64_t lcu_w = ((uint64_t)width + 15u) >> 4;
+    uint64_t lcu_h = ((uint64_t)height + 15u) >> 4;
+    uint64_t size = (2u * lcu_w * lcu_h + 0x10u) << 4;
+
+    return size <= UINT32_MAX ? (uint32_t)size : 0u;
+}
+
+uint32_t openimp_t41_reconstruction_manager_size(uint32_t width,
+                                                 uint32_t height)
+{
+    uint64_t size = openimp_t41_reconstruction_luma_size(width, height);
+
+    size += openimp_t41_reconstruction_chroma_size(width, height);
+    size += 2u * openimp_t41_reconstruction_map_slot_size(width, height);
+    size += 0x100u;
+    size += 2u * openimp_t41_motion_vector_slot_size(width, height);
+    return size <= UINT32_MAX ? (uint32_t)size : 0u;
+}
+
 uint32_t openimp_t41_hwrc_grid(uint32_t width, uint32_t height)
 {
     uint32_t group_count;

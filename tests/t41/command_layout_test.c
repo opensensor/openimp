@@ -157,6 +157,16 @@ static void test_builder_validation(void)
     assert(openimp_t41_reconstruction_pitch(640) == 0x0a00u);
     assert(openimp_t41_reconstruction_luma_size(640, 360) == 0x43800u);
     assert(openimp_t41_reconstruction_chroma_size(640, 360) == 0x21c00u);
+    assert(openimp_t41_reconstruction_map_luma_size(1920, 1080) == 0x2200u);
+    assert(openimp_t41_reconstruction_map_chroma_size(1920, 1080) == 0x1200u);
+    assert(openimp_t41_reconstruction_map_slot_size(1920, 1080) == 0x3400u);
+    assert(openimp_t41_motion_vector_slot_size(1920, 1080) == 0x3fd00u);
+    assert(openimp_t41_reconstruction_manager_size(1920, 1080) == 0x3a4f00u);
+    assert(openimp_t41_reconstruction_map_luma_size(640, 360) == 0x0c00u);
+    assert(openimp_t41_reconstruction_map_chroma_size(640, 360) == 0x0600u);
+    assert(openimp_t41_reconstruction_map_slot_size(640, 360) == 0x1200u);
+    assert(openimp_t41_motion_vector_slot_size(640, 360) == 0x7400u);
+    assert(openimp_t41_reconstruction_manager_size(640, 360) == 0x76100u);
     assert(openimp_t41_hwrc_grid(1920, 1080) == 0xf40001ceu);
     assert(openimp_t41_hwrc_grid(640, 360) == 0xf4000107u);
 }

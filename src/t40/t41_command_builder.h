@@ -58,6 +58,16 @@ uint32_t openimp_t41_reconstruction_luma_size(uint32_t width,
                                               uint32_t height);
 uint32_t openimp_t41_reconstruction_chroma_size(uint32_t width,
                                                 uint32_t height);
+uint32_t openimp_t41_reconstruction_map_luma_size(uint32_t width,
+                                                  uint32_t height);
+uint32_t openimp_t41_reconstruction_map_chroma_size(uint32_t width,
+                                                    uint32_t height);
+uint32_t openimp_t41_reconstruction_map_slot_size(uint32_t width,
+                                                  uint32_t height);
+uint32_t openimp_t41_motion_vector_slot_size(uint32_t width,
+                                             uint32_t height);
+uint32_t openimp_t41_reconstruction_manager_size(uint32_t width,
+                                                 uint32_t height);
 uint32_t openimp_t41_hwrc_grid(uint32_t width, uint32_t height);
 
 int openimp_t41_build_command(void *slot, size_t slot_size,

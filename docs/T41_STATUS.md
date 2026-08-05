@@ -34,16 +34,24 @@ platform branches represent measured public or kernel ABI differences.
   host oracles cover the captured 1920x1080 IDR and 640x360 first P picture;
   the builder also reproduces T41's padded FBC sizes (`0x214800/0x10a400` and
   `0x43800/0x21c00`) from geometry.
+- The shared encoder now submits that dedicated T41 command image with owned
+  EP1/EP2/EP3 storage and one geometry-sized reconstruction manager. Its two
+  embedded map and motion-vector slots alternate per picture while the
+  reference base stays stable, matching the measured T41 ownership model.
+- Both 1920x1080 and 640x360 channels complete continuously through real AVPU
+  IRQs. The first word of the command slot's `+0x5c0` status block is treated
+  as the authoritative entropy payload size; it matches the DMA extent after
+  T41's `+0x220` boundary and is validated before an access unit is published.
+- Decoder probes identify valid High-profile H.264 on both channels. Captured
+  boundary access units contain valid SPS/PPS/IDR NAL units and decode at the
+  configured geometry. Raptor receives the compacted output through its
+  FrameSource virtual alias, so both RTSP endpoints publish the open encoder's
+  output without an OEM `libimp.so` dependency.
 
-## Remaining correctness gate
+## Remaining work
 
-The shared codec still populates only the T40 command fields at the start of
-each T41 slot; the recovered T41 builder is not submitted yet. Its explicit
-DMA inputs must first be connected to T41-owned FBC maps, EP1/EP2/EP3, motion
-vector storage, and rotating picture offsets. Until that adapter is complete,
-the core does not raise a completion IRQ and RVD does not publish a valid H.264
-stream.
-
-The next step is the T41 DMA-ownership adapter plus IDR submission, followed by
-the first-P reference transition and decoder-clean stream gate. Performance
-work and V4L2 support remain deferred until this stream is decoder-clean.
+OpenIMP's T41 ISP tuning is not yet at OEM image-quality parity; current output
+is structurally correct but visibly overexposed and color-biased. Longer RTSP
+captures can also skip dependent P pictures when the current consumer/ring path
+falls behind. Throughput work and V4L2 support remain intentionally deferred
+until the cross-SoC correctness and image-quality work is complete.
