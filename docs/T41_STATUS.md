@@ -44,14 +44,35 @@ platform branches represent measured public or kernel ABI differences.
   T41's `+0x220` boundary and is validated before an access unit is published.
 - Decoder probes identify valid High-profile H.264 on both channels. Captured
   boundary access units contain valid SPS/PPS/IDR NAL units and decode at the
-  configured geometry. Raptor receives the compacted output through its
-  FrameSource virtual alias, so both RTSP endpoints publish the open encoder's
-  output without an OEM `libimp.so` dependency.
+  configured geometry. Submit-time IDR state is carried with each hardware
+  stream buffer, so the public encoder reports the completed picture type
+  without rescanning a second cached alias of the encoded bytes.
+- T41 copies the FrameSource timestamp and public rmem-alias delta into
+  per-stream-buffer metadata before returning the capture descriptor. AVPU
+  completion therefore does not dereference a FrameSource descriptor whose
+  ownership has already returned to the driver.
+- The correctness-first Raptor integration uses
+  `OPENIMP_T41_STREAM_COPY_MODE=1` with `ring.refmode=false`. OpenIMP then
+  returns the allocation alias containing the authoritative compacted access
+  unit and Raptor copies it into its embedded shared-memory ring. Both RTSP
+  endpoints start reliably in this mode, and repeated decoded samples are
+  free of the macroblock corruption seen through the cross-process rmem alias.
+- OpenIMP and the open T41 TX-ISP driver run together on the Wyze v4. A current
+  1920x1080 sample has balanced global luma/chroma statistics and no visible
+  block corruption under mixed daylight and warm interior lighting.
 
 ## Remaining work
 
-OpenIMP's T41 ISP tuning is not yet at OEM image-quality parity; current output
-is structurally correct but visibly overexposed and color-biased. Longer RTSP
-captures can also skip dependent P pictures when the current consumer/ring path
-falls behind. Throughput work and V4L2 support remain intentionally deferred
-until the cross-SoC correctness and image-quality work is complete.
+The zero-copy Raptor path is not yet correctness-safe. Raptor's reference-mode
+consumer maps `/dev/rmem` through a different cached virtual alias from the one
+OpenIMP uses to compact the completed access unit. Invalidating that foreign
+alias is unsafe, and publishing it without a coherent ownership transition can
+produce stale blocks. Keep embedded copy mode enabled until that cache contract
+is solved explicitly.
+
+Open TX-ISP exposure and color are now close to the measured OEM baseline, but
+scene-by-scene image-quality parity is still being tuned. The native T41 AVPU
+path also delivers fewer frames per second than the configured rate and an RSD
+ring reopen can reset an active client's RTP epoch. Throughput work, zero-copy
+optimization, and V4L2 support remain intentionally deferred until cross-SoC
+correctness and image-quality work are complete.

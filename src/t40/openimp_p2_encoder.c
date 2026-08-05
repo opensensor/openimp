@@ -53,6 +53,13 @@ typedef struct {
     uint32_t reserved[8];
 } P2HWStream;
 
+_Static_assert(offsetof(P2HWStream, timestamp) == 0x10,
+               "hardware stream timestamp ABI mismatch");
+_Static_assert(offsetof(P2HWStream, frame_type) == 0x18,
+               "hardware stream frame type ABI mismatch");
+_Static_assert(offsetof(P2HWStream, reserved) == 0x20,
+               "hardware stream private metadata ABI mismatch");
+
 /* The recovered codec only reads the first 0x20 bytes of a frame before its
  * software JPEG path.  JPEG channels share an encoder group with AVC in rvd;
  * the OEM graph fans one FrameSource frame out to both consumers, whereas the
@@ -168,6 +175,7 @@ static void p2_sleep_us(uint64_t delay_us)
  * actual Annex-B slice here, outside the AVPU completion thread, so Raptor can
  * gate a new RTSP client on a real IDR instead of treating every P picture as
  * a keyframe. */
+#if !defined(PLATFORM_T41)
 static int p2_h264_stream_is_idr(const uint8_t *stream, uint32_t length)
 {
     uint32_t offset;
@@ -196,6 +204,7 @@ static int p2_h264_stream_is_idr(const uint8_t *stream, uint32_t length)
     }
     return 0;
 }
+#endif
 
 extern int AL_Codec_Encode_SetDefaultParam(void *param);
 extern int AL_Codec_Encode_Create(void **codec, void *params);
@@ -824,8 +833,12 @@ int IMP_Encoder_GetStream(int channel, IMPEncoderStream *stream, int block)
         return -1;
     }
     is_idr = ch->codec_type != IMP_ENC_TYPE_JPEG &&
+#if defined(PLATFORM_T41)
+        raw->frame_type == 0u;
+#else
         p2_h264_stream_is_idr((const uint8_t *)(uintptr_t)raw->virt_addr,
                               raw->length);
+#endif
     memset(stream, 0, P2_ENCODER_STREAM_ABI_SIZE);
     memset(&ch->pack, 0, sizeof(ch->pack));
     ch->pack.offset = 0;

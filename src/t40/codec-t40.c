@@ -5721,33 +5721,24 @@ static int avpu_queue_completed_stream(ALAvpuContext *ctx, int buf_idx, void *us
     phys_addr = ctx->stream_bufs[buf_idx].phy_addr;
     virt_addr = (uint32_t)(uintptr_t)ctx->stream_bufs[buf_idx].map;
 #if defined(PLATFORM_T41)
-    if (user_data) {
-        uint32_t source_phys = 0u;
-        uint32_t source_virt = 0u;
+    if (!getenv("OPENIMP_T41_STREAM_COPY_MODE") &&
+        ctx->stream_public_alias_valid[buf_idx]) {
+        uint64_t public_alias = (uint64_t)phys_addr +
+            (uint64_t)ctx->stream_public_alias_delta[buf_idx];
 
-        memcpy(&source_phys, (const uint8_t *)user_data + 0x18u,
-               sizeof(source_phys));
-        memcpy(&source_virt, (const uint8_t *)user_data + 0x1cu,
-               sizeof(source_virt));
-        if (source_phys != 0u && source_virt > source_phys) {
-            uint64_t public_alias = (uint64_t)phys_addr +
-                (uint64_t)(source_virt - source_phys);
-
-            if (public_alias <= UINT32_MAX) {
-                virt_addr = (uint32_t)public_alias;
-                /* The compacted bytes were written through the allocation
-                 * alias above.  Drop any stale lines in Raptor's public
-                 * FrameSource alias before handing it the pointer. */
-                avpu_flush_cache(ctx->fd,
-                                 (void *)(uintptr_t)virt_addr,
-                                 frame_size, 2 /* INVALIDATE */);
-            }
+        if (public_alias <= UINT32_MAX) {
+            virt_addr = (uint32_t)public_alias;
         }
     }
 #endif
     hw_stream->phys_addr = phys_addr;
     hw_stream->virt_addr = virt_addr;
     hw_stream->length = frame_size;
+    hw_stream->timestamp = ctx->stream_timestamp[buf_idx];
+    hw_stream->frame_type = ctx->stream_is_idr[buf_idx]
+        ? HW_FRAME_TYPE_I : HW_FRAME_TYPE_P;
+    hw_stream->slice_type = ctx->stream_is_idr[buf_idx]
+        ? IMP_ENC_SLICE_I : IMP_ENC_SLICE_P;
     avpu_hw_stream_set_user_data(hw_stream, user_data);
 
     if (ctx->frames_encoded % 50 == 0)
@@ -6513,12 +6504,15 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
     }
 #endif
 
-    /* OEM T31 copies frameInfo.timeStamp at offset 0x20 into every public
-     * encoder pack.  Preserve the capture-completion timestamp populated by
-     * DQBUF instead of replacing it with jittery encoder-start wall time. */
+    /* Preserve the capture-completion timestamp populated by DQBUF instead
+     * of replacing it with jittery encoder-start wall time.  T41 releases
+     * the FrameSource descriptor immediately after submission, so everything
+     * needed at AVPU completion must be copied before Process returns. */
     uint64_t timestamp = 0;
 #if defined(PLATFORM_T31)
     memcpy(&timestamp, (const uint8_t *)frame + 0x20, sizeof(timestamp));
+#elif defined(PLATFORM_T41)
+    memcpy(&timestamp, (const uint8_t *)frame + 0x28, sizeof(timestamp));
 #endif
     if (!timestamp)
         timestamp = IMP_System_GetTimeStamp();
@@ -7306,6 +7300,17 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
             }
 
             uint32_t hdr_offset = avpu_prewrite_stream_headers(ctx, buf_idx, is_idr);
+            ctx->stream_is_idr[buf_idx] = is_idr ? 1u : 0u;
+            ctx->stream_timestamp[buf_idx] = timestamp;
+#if defined(PLATFORM_T41)
+            ctx->stream_public_alias_delta[buf_idx] = 0u;
+            ctx->stream_public_alias_valid[buf_idx] = 0u;
+            if (phys_addr != 0u && virt_addr > phys_addr) {
+                ctx->stream_public_alias_delta[buf_idx] =
+                    virt_addr - phys_addr;
+                ctx->stream_public_alias_valid[buf_idx] = 1u;
+            }
+#endif
 
             /* Flush entire stream buffer (headers + zeroed payload area) to
              * physical RAM via rmem ioctl, matching OEM's 0x100000-byte flush.

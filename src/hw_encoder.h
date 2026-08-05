@@ -76,10 +76,10 @@ typedef struct {
     uint32_t phys_addr;         /* 0x00: Physical address */
     uint32_t virt_addr;         /* 0x04: Virtual address */
     uint32_t length;            /* 0x08: Stream length */
-    uint64_t timestamp;         /* 0x0c: Timestamp */
-    uint32_t frame_type;        /* 0x14: Frame type (I/P/B) */
-    uint32_t slice_type;        /* 0x18: Slice type */
-    uint32_t reserved[8];       /* 0x1c-0x3b: Reserved */
+    uint64_t timestamp;         /* 0x10: Timestamp (8-byte aligned) */
+    uint32_t frame_type;        /* 0x18: Frame type (I/P/B) */
+    uint32_t slice_type;        /* 0x1c: Slice type */
+    uint32_t reserved[8];       /* 0x20-0x3f: Reserved */
 } HWStreamBuffer;
 
 /* Frame types */
@@ -155,4 +155,3 @@ void HW_Encoder_RequestIDR(void);
 #endif
 
 #endif /* HW_ENCODER_H */
-

@@ -74,11 +74,12 @@ records RVD import coverage in `build/t31/`.
 - Capture ownership is an explicit platform policy: T31 returns a frame after
   AVPU completion, while T40 returns it immediately after submission. This
   preserves full-rate capture on both stock-driver ABIs.
-- T41: active bring-up. The T41 build covers every RVD/RAD IMP import and the
-  stock-driver pipeline reaches live dual-channel FrameSource capture and the
-  native T41 AVPU command-slot submission. H.264 output is not yet valid: the
-  remaining blocker is conversion of the inherited T40 command payload into
-  T41's 4 KiB command/status layout.
+- T41: active correctness bring-up. The build covers every RVD/RAD IMP import,
+  the shared pipeline runs dual-channel FrameSource capture, and the native
+  AVPU backend emits decoder-clean High-profile H.264 at both configured
+  geometries. Raptor currently uses embedded-ring copy mode for correctness;
+  its cross-process cached-rmem reference path is not yet coherent. ISP parity
+  and configured-rate delivery remain in progress.
 - Sensor configuration and tuning remain owned by the stock ISP driver, so
   the userspace encoder is sensor-independent.
 
