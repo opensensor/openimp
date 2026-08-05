@@ -26,14 +26,24 @@ platform branches represent measured public or kernel ABI differences.
   command ranges through word 237 (`0x3b8` bytes), plus an optional 60-byte
   entropy block at `+0x800`. The recovered range table and bounds helpers live
   in `src/t40/t41_command_layout.c` and have a host regression test.
+- `src/t40/t41_command_builder.c` now builds the complete observed command
+  image without an OEM blob. Geometry, LCU history, source/reconstruction
+  pitch, the `0x220` payload boundary, entropy words, and hardware-rate-control
+  fields are derived from channel state. Physical buffer ownership and the two
+  rotating per-picture offsets are explicit adapter inputs. Exact full-slot
+  host oracles cover the captured 1920x1080 IDR and 640x360 first P picture;
+  the builder also reproduces T41's padded FBC sizes (`0x214800/0x10a400` and
+  `0x43800/0x21c00`) from geometry.
 
 ## Remaining correctness gate
 
 The shared codec still populates only the T40 command fields at the start of
-each T41 slot; the recovered T41 range map requires additional control and DMA
-fields through word 237. Until that payload builder is ported, the core does
-not raise a completion IRQ and RVD does not publish a valid H.264 stream.
+each T41 slot; the recovered T41 builder is not submitted yet. Its explicit
+DMA inputs must first be connected to T41-owned FBC maps, EP1/EP2/EP3, motion
+vector storage, and rotating picture offsets. Until that adapter is complete,
+the core does not raise a completion IRQ and RVD does not publish a valid H.264
+stream.
 
-The next step is a dedicated T41 payload writer behind the shared codec state,
-using captured stock command slots as the oracle. Performance work and V4L2
-support remain deferred until this stream is decoder-clean.
+The next step is the T41 DMA-ownership adapter plus IDR submission, followed by
+the first-P reference transition and decoder-clean stream gate. Performance
+work and V4L2 support remain deferred until this stream is decoder-clean.

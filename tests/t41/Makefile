@@ -10,11 +10,14 @@ check: $(TEST_BIN)
 
 $(TEST_BIN): command_layout_test.c \
 	$(PROJECT_DIR)/src/t40/t41_command_layout.c \
-	$(PROJECT_DIR)/src/t40/t41_command_layout.h
+	$(PROJECT_DIR)/src/t40/t41_command_layout.h \
+	$(PROJECT_DIR)/src/t40/t41_command_builder.c \
+	$(PROJECT_DIR)/src/t40/t41_command_builder.h
 	mkdir -p "$(dir $@)"
 	$(CC) $(CFLAGS) -I$(PROJECT_DIR)/src \
 		command_layout_test.c \
 		$(PROJECT_DIR)/src/t40/t41_command_layout.c \
+		$(PROJECT_DIR)/src/t40/t41_command_builder.c \
 		-o "$@"
 
 clean:
