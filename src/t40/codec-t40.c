@@ -29,6 +29,16 @@
 #include <sys/mman.h>
 #include <sys/syscall.h> /* for SYS_ioctl */
 
+/*
+ * T41 reuses the T4 encoder implementation, EP tables, IRQ owner and device
+ * pool.  Generation-specific guards still take precedence for its public ABI,
+ * cache rules, register map and command-slot transport.  The remaining T41
+ * command payload conversion is intentionally isolated inside this backend.
+ */
+#if defined(PLATFORM_T41)
+#define PLATFORM_T40 1
+#endif
+
 enum {
     AVPU_STREAM_BUF_FREE = 0,
     AVPU_STREAM_BUF_IN_FLIGHT = 1,
@@ -304,7 +314,38 @@ struct avpu_reg {
 #define AL_CMD_IP_READ_REG     _IOWR(AVPU_IOC_MAGIC, 11, struct avpu_reg)
 #define AL_CMD_IP_WAIT_IRQ     _IOWR(AVPU_IOC_MAGIC, 12, int)
 
-/* AVPU register offsets (from driver and BN decompilation) */
+/* AVPU register offsets (from driver and OEM userspace decompilation). */
+#if defined(PLATFORM_T41)
+/*
+ * T41 keeps the 'q' ioctl transport but exposes the newer 4 KiB/core register
+ * banks directly.  Do not fold these offsets into the T40 0x8000 window: live
+ * OEM ioctl traces use the values below verbatim.
+ */
+#define AVPU_BASE_OFFSET       0x0000
+#define AVPU_INTERRUPT_MASK    0x0014
+#define AVPU_INTERRUPT         0x0018
+#define AVPU_REG_TOP_CTRL      0x0000
+#define AVPU_REG_MISC_CTRL     0x0010
+#define AVPU_REG_SRC_PUSH      0x0000
+#define AVPU_REG_STRM_PUSH     0x0000
+#define AVPU_REG_CL_ADDR       0x1000
+#define AVPU_REG_CL_ADDR_HI    0x1004
+#define AVPU_REG_CL_STATUS     0x1008
+#define AVPU_REG_CL_STATUS_HI  0x100c
+#define AVPU_REG_CL_CTRL       0x1010
+#define AVPU_REG_CL_PUSH       0x1018
+#define AVPU_REG_ENC_EN_A      0x0000
+#define AVPU_REG_ENC_EN_B      0x0000
+#define AVPU_REG_ENC_EN_C      0x0000
+#define AVPU_REG_AXI_ADDR_OFFSET_IP 0x0000
+#define AVPU_REG_WPP_CORE0_RESET(c) (0x1028u + ((unsigned)(c) << 12))
+#define AVPU_REG_CORE_STATUS_8230(c) (0x1030u + ((unsigned)(c) << 12))
+#define AVPU_REG_CORE_STATUS_8234(c) (0x1034u + ((unsigned)(c) << 12))
+#define AVPU_REG_CORE_STATUS_8238(c) (0x1038u + ((unsigned)(c) << 12))
+#define AVPU_REG_CORE_RESET(c)  (0x1028u + ((unsigned)(c) << 12))
+#define AVPU_REG_CORE_CLKCMD(c) (0x102cu + ((unsigned)(c) << 12))
+#define AVPU_REG_CORE_STATUS(c) (0x101cu + ((unsigned)(c) << 12))
+#else
 #define AVPU_BASE_OFFSET       0x8000
 #define AVPU_INTERRUPT_MASK    (AVPU_BASE_OFFSET + 0x14)
 #define AVPU_INTERRUPT         (AVPU_BASE_OFFSET + 0x18)
@@ -326,6 +367,7 @@ static inline unsigned AVPU_CORE_BASE(int core) { return (AVPU_BASE_OFFSET + 0x3
 #define AVPU_REG_CORE_RESET(c)   (AVPU_CORE_BASE(c) + 0x00)
 #define AVPU_REG_CORE_CLKCMD(c)  (AVPU_CORE_BASE(c) + 0x04)
 #define AVPU_REG_CORE_STATUS(c)  (AVPU_CORE_BASE(c) + 0x08)
+#endif
 
 /* Cache flush via OEM-compatible /dev/rmem ioctl 0xc00c7200.
  * rmem mappings are CACHED — the AVPU reads from physical RAM, not CPU cache.
@@ -356,17 +398,30 @@ static int avpu_flush_cache(int fd, void *virt_addr, unsigned int size, unsigned
 
 static int avpu_flush_dma_buf(int fd, const char *tag, const AvpuDMABuf *buf, size_t size)
 {
+    size_t flush_size = size;
     int ret;
 
     if (fd < 0 || !buf || !buf->map || size == 0) {
         return -1;
     }
 
-    ret = avpu_flush_cache(fd, buf->map, (unsigned int)size, 1 /*WBACK*/);
+#if defined(PLATFORM_T41)
+    /*
+     * The T41 rmem cache ioctl faults its caller for sub-1 MiB ranges.  This
+     * was reproduced independently with 0x85c0, 0x9000 and 0x10000 byte
+     * requests; the same address succeeds with the OEM-sized 1 MiB request.
+     * P2 uses one contiguous rmem arena, so extending a small descriptor flush
+     * stays inside the mapping and matches the stock command-list operation.
+     */
+    if (flush_size < 0x100000u)
+        flush_size = 0x100000u;
+#endif
+    ret = avpu_flush_cache(fd, buf->map, (unsigned int)flush_size, 1 /*WBACK*/);
     { static unsigned int fl_count = 0; unsigned int c = __sync_add_and_fetch(&fl_count, 1);
       if (c <= 10 || (c % 1000) == 0)
-        LOG_CODEC("AVPU: flush %s phys=0x%08x size=0x%08x ret=%d [#%u]",
-                  tag ? tag : "dma", buf->phy_addr, (unsigned int)size, ret, c);
+        LOG_CODEC("AVPU: flush %s phys=0x%08x size=0x%08x requested=0x%08x ret=%d [#%u]",
+                  tag ? tag : "dma", buf->phy_addr,
+                  (unsigned int)flush_size, (unsigned int)size, ret, c);
     }
     return ret;
 }
@@ -3541,8 +3596,8 @@ static int avpu_try_recover_sticky_completion(ALAvpuContext *ctx,
  * AL_EncCore_EnableInterrupts are fully recovered. */
 static void avpu_enable_interrupts(int fd, int core)
 {
-#if defined(PLATFORM_T31)
-    /* The T31 stock libimp audit enables Enc1 completion bit 0 only. */
+#if defined(PLATFORM_T31) || defined(PLATFORM_T41)
+    /* T31 and T41 stock audits enable Enc1 completion bit 0 here. */
     unsigned add_m = 0x01u;
 #else
     unsigned add_m = 0x11u; /* T40 Enc1 + entropy completion */
@@ -3608,6 +3663,44 @@ static void avpu_turn_off_gc(int fd, int core)
 
     avpu_write_reg(fd, AVPU_REG_CORE_CLKCMD(core), new_val);
 }
+
+#if defined(PLATFORM_T41)
+/* OEM AL_EncCore_Reset on T41: select reset clock, pulse reset, restore the
+ * clock command, then acknowledge this core through the global control word. */
+static void avpu_t41_reset_core(int fd, int core)
+{
+    unsigned int old = 0;
+    unsigned int reset_clock = 2u;
+    unsigned int restored_clock = 0u;
+
+    if (avpu_read_reg_quiet(fd, AVPU_REG_CORE_CLKCMD(core), &old) == 0)
+        reset_clock = ((old ^ 2u) & 0x3u) ^ old;
+    avpu_write_reg(fd, AVPU_REG_CORE_CLKCMD(core), reset_clock);
+    avpu_write_reg(fd, AVPU_REG_CORE_RESET(core), 1u);
+    if (avpu_read_reg_quiet(fd, AVPU_REG_CORE_CLKCMD(core), &old) == 0)
+        restored_clock = old & ~0x3u;
+    avpu_write_reg(fd, AVPU_REG_CORE_CLKCMD(core), restored_clock);
+    avpu_write_reg(fd, AVPU_REG_MISC_CTRL, 1u << ((unsigned)core + 16u));
+}
+
+static void avpu_t41_program_command_slot(int fd, int core,
+                                          uint32_t command_phys)
+{
+    unsigned int control = 0;
+    unsigned int base = (unsigned int)core << 12;
+
+    avpu_write_reg(fd, base + AVPU_REG_CL_ADDR_HI, 0u);
+    avpu_write_reg(fd, base + AVPU_REG_CL_ADDR, command_phys);
+    avpu_write_reg(fd, base + AVPU_REG_CL_STATUS_HI, 0u);
+    avpu_write_reg(fd, base + AVPU_REG_CL_STATUS,
+                   command_phys + 0x5c0u);
+    if (avpu_read_reg_quiet(fd, base + AVPU_REG_CL_CTRL, &control) == 0)
+        avpu_write_reg(fd, base + AVPU_REG_CL_CTRL, control | 0x1000u);
+    if (avpu_read_reg_quiet(fd, base + AVPU_REG_CL_CTRL, &control) == 0)
+        avpu_write_reg(fd, base + AVPU_REG_CL_CTRL,
+                       control | 0x10000000u);
+}
+#endif
 
 /* Fifo_Init - based on decompilation at 0x7af28 */
 static int fifo_init(long *fifo, int max_elements)
@@ -5167,7 +5260,9 @@ static void codec_sync_rc_cache(AL_CodecEncode *enc)
         rc->attrRcMode.attrH264Vbr.iPBDelta = 0;
         rc->attrRcMode.attrH264Vbr.eRcOptions = 0;
         rc->attrRcMode.attrH264Vbr.uMaxPictureSize = 0;
+#if !defined(PLATFORM_T41)
         rc->attrRcMode.attrH264Vbr.uMaxPSNR = 0;
+#endif
 #else
         rc->attrRcMode.attrH264Vbr.outFrmRate = enc->fps_cache.frmRateNum;
         rc->attrRcMode.attrH264Vbr.maxGop = bitrate_kbps;
@@ -5180,7 +5275,12 @@ static void codec_sync_rc_cache(AL_CodecEncode *enc)
     case IMP_ENC_RC_MODE_FIXQP:
     default:
 #if defined(PLATFORM_T31) || defined(PLATFORM_T40) || defined(PLATFORM_T41)
+#if defined(PLATFORM_T41)
+        rc->attrRcMode.attrH264FixQp.iInitialQP =
+            (int16_t)clamp_qp_u32(qp);
+#else
         rc->attrRcMode.attrH264FixQp.qp = (int16_t)clamp_qp_u32(qp);
+#endif
 #else
         rc->attrRcMode.attrH264FixQp.outFrmRate = enc->fps_cache.frmRateNum;
         rc->attrRcMode.attrH264FixQp.maxGop = enc->gop_cache.gopLength;
@@ -6288,9 +6388,14 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
                         }
                         enc->avpu.stream_bufs_used = filled;
 
-                        /* Allocate command-list rings via IMP_Alloc (0x13 entries x 512B):
-                         * readback/stored ring + submit ring, mirroring OEM request pointers. */
+                        /* Allocate command-list rings via IMP_Alloc.  T41's
+                         * command/status pair occupies one 4 KiB slot, with
+                         * the status half at +0x5c0; T31/T40 use 512 bytes. */
+#if defined(PLATFORM_T41)
+                        enc->avpu.cl_entry_size = 0x1000;
+#else
                         enc->avpu.cl_entry_size = 0x200;
+#endif
                         enc->avpu.cl_count = 0x13;
                         size_t cl_bytes = enc->avpu.cl_entry_size * enc->avpu.cl_count;
                         int cl_ok = 0;
@@ -6467,14 +6572,14 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
                         /* Register OEM callbacks (AL_EncCore_Init at 0x6c8d8). */
                         int irq_id0 = 0;                  /* completion slot */
                         int irq_id2 = 2;                  /* AVC entropy slot */
-#if !defined(PLATFORM_T31)
+#if !defined(PLATFORM_T31) && !defined(PLATFORM_T41)
                         int irq_id4 = 4;                  /* live T31 completion IRQ */
 #endif
 
                         avpu_register_callback(&enc->avpu, avpu_end_encoding_callback, &enc->avpu, irq_id0);
                         LOG_CODEC("AVPU: registered callback for IRQ %d (callback=%p, user_data=%p)",
                                   irq_id0, (void*)avpu_end_encoding_callback, (void*)&enc->avpu);
-#if !defined(PLATFORM_T31)
+#if !defined(PLATFORM_T31) && !defined(PLATFORM_T41)
                         avpu_register_callback(&enc->avpu, avpu_end_encoding_callback, &enc->avpu, irq_id4);
                         LOG_CODEC("AVPU: registered callback for IRQ %d (callback=%p, user_data=%p)",
                                   irq_id4, (void*)avpu_end_encoding_callback, (void*)&enc->avpu);
@@ -6606,11 +6711,19 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
              */
 
             /* Phase 1: Init */
+#if defined(PLATFORM_T41)
+            avpu_write_reg(fd, AVPU_REG_MISC_CTRL, 0x00000001);
+            avpu_write_reg(fd, AVPU_REG_MISC_CTRL, 0x00010000);
+            avpu_write_reg(fd, AVPU_REG_CORE_RESET(0), 0x00000002);
+            avpu_t41_reset_core(fd, 0);
+            avpu_write_reg(fd, AVPU_INTERRUPT, AVPU_IRQ_CLEAR_MASK);
+#else
             avpu_write_reg(fd, AVPU_REG_MISC_CTRL, 0x00001000);
             avpu_write_reg(fd, AVPU_REG_CORE_RESET(0), 0x00000001);
             avpu_write_reg(fd, AVPU_REG_CORE_RESET(0), 0x00000002);
             avpu_write_reg(fd, AVPU_REG_CORE_RESET(0), 0x00000004);
             avpu_write_reg(fd, AVPU_INTERRUPT, 0x00FFFFFF);
+#endif
             /* The T40 OEM trace has exactly two reset triplets before its
              * first frame: the one above in AL_EncCore_Init, and the
              * per-frame triplet immediately before CL_PUSH below.  An older
@@ -6622,7 +6735,17 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
              *
              * TOP_CTRL is likewise absent from the T40 userspace trace and
              * reads back as zero in the live OEM snapshot. */
-#if defined(PLATFORM_T40)
+#if defined(PLATFORM_T41)
+            {
+                unsigned int irq_mask = 0;
+                avpu_read_reg_quiet(fd, AVPU_INTERRUPT_MASK, &irq_mask);
+                avpu_write_reg(fd, AVPU_INTERRUPT_MASK,
+                               irq_mask | 0x00000004u);
+                avpu_read_reg_quiet(fd, AVPU_INTERRUPT_MASK, &irq_mask);
+                avpu_write_reg(fd, AVPU_INTERRUPT_MASK,
+                               irq_mask | 0x00000004u);
+            }
+#elif defined(PLATFORM_T40)
             {
                 unsigned int irq_mask = 0;
                 avpu_read_reg_quiet(fd, AVPU_INTERRUPT_MASK, &irq_mask);
@@ -6891,6 +7014,10 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
              * 3. Callback +0x42c (FillSourceConfig)
              * 4. Callback +0x430
              * 5. AL_EncCore_Encode1 → Rtos_FlushCacheMemory + CL_PUSH */
+#if defined(PLATFORM_T41)
+            avpu_t41_reset_core(fd, 0);
+            avpu_turn_on_gc(fd, 0);
+#else
             avpu_turn_on_gc(fd, 0);
 #if defined(PLATFORM_T40) || defined(PLATFORM_T31)
             avpu_write_reg(fd, AVPU_REG_CORE_RESET(0), 0x00000001);
@@ -6898,6 +7025,7 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
             avpu_write_reg(fd, AVPU_REG_CORE_RESET(0), 0x00000004);
 #else
             avpu_clear_interrupts(fd);
+#endif
 #endif
             avpu_enable_interrupts(fd, 0);
 
@@ -7000,7 +7128,12 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
             g_t40_irq_owner = ctx;
             __sync_synchronize();
 #endif
+#if defined(PLATFORM_T41)
+            avpu_t41_program_command_slot(fd, 0, cl_phys);
+            cl_addr_ret = 0;
+#else
             cl_addr_ret = avpu_write_reg(fd, AVPU_REG_CL_ADDR, cl_phys);
+#endif
             if (trace_submit) {
                 LOG_CODEC("AVPU: submit write CL[%u] CL_ADDR ret=%d", idx, cl_addr_ret);
                 avpu_log_submit_snapshot(ctx, idx, "post_cl_addr");
@@ -7428,7 +7561,12 @@ int AL_Codec_Encode_SetRcParam(void *codec, void *rcAttr)
     default:
         *(uint32_t *)(enc->codec_param + 0x6c) = HW_RC_MODE_FIXQP;
         enc->hw_params.rc_mode = HW_RC_MODE_FIXQP;
+#if defined(PLATFORM_T41)
+        enc->hw_params.qp =
+            clamp_qp_u32(src->attrRcMode.attrH264FixQp.iInitialQP);
+#else
         enc->hw_params.qp = clamp_qp_u32(src->attrRcMode.attrH264FixQp.qp);
+#endif
         enc->hw_params.min_qp = enc->hw_params.qp;
         enc->hw_params.max_qp = enc->hw_params.qp;
         break;

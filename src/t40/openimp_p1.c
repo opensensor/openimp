@@ -12,6 +12,7 @@
 #include <string.h>
 #include <sys/ioctl.h>
 #include <sys/mman.h>
+#include <syslog.h>
 #include <unistd.h>
 
 #define OPENIMP_P1_MAGIC        0x50315434U /* "P1T4" */
@@ -36,7 +37,11 @@
 #define TISP_VIDIOC_SET_MDNS_BUF_INFO     0x800c540fU
 #define TISP_VIDIOC_GET_MDNS_BUF_INFO     0x800c5410U
 
+#if defined(PLATFORM_T41)
+#define TISP_VIDIOC_SET_FRAME_FORMAT      0xc0745451U
+#else
 #define TISP_VIDIOC_SET_FRAME_FORMAT      0xc0705451U
+#endif
 #define TISP_VIDIOC_REQBUFS               0xc0145453U
 #define TISP_VIDIOC_QBUF                  0xc0445455U
 #define TISP_VIDIOC_DQBUF                 0xc0445456U
@@ -128,6 +133,9 @@ typedef struct {
     int32_t nrVBs;
     int32_t type;
     IMPFSChnCrop fcrop;
+#if defined(PLATFORM_T41)
+    int32_t mirr_enable;
+#endif
 } IMPFSChnAttr;
 
 typedef struct {
@@ -139,9 +147,29 @@ typedef struct {
     uint32_t size;
     uint32_t phyAddr;
     uint32_t virAddr;
+#if defined(PLATFORM_T41)
+    uint32_t direct_phyAddr;
+#endif
     void *pool;
     int64_t timeStamp;
 } IMPFrameInfo;
+
+#if defined(PLATFORM_T41)
+_Static_assert(sizeof(IMPFSChnAttr) == 0x68,
+               "T41 IMPFSChnAttr ABI mismatch");
+_Static_assert(offsetof(IMPFSChnAttr, picWidth) == 0x14,
+               "T41 IMPFSChnAttr.picWidth ABI mismatch");
+_Static_assert(offsetof(IMPFSChnAttr, fcrop) == 0x50,
+               "T41 IMPFSChnAttr.fcrop ABI mismatch");
+_Static_assert(sizeof(IMPFrameInfo) == 0x30,
+               "T41 IMPFrameInfo ABI mismatch");
+_Static_assert(offsetof(IMPFrameInfo, direct_phyAddr) == 0x20,
+               "T41 IMPFrameInfo.direct_phyAddr ABI mismatch");
+_Static_assert(offsetof(IMPFrameInfo, pool) == 0x24,
+               "T41 IMPFrameInfo.pool ABI mismatch");
+_Static_assert(offsetof(IMPFrameInfo, timeStamp) == 0x28,
+               "T41 IMPFrameInfo.timeStamp ABI mismatch");
+#endif
 
 typedef struct {
     int32_t maxdepth;
@@ -197,7 +225,18 @@ struct tisp_frame_format {
     uint32_t fcrop_left;
     uint32_t fcrop_width;
     uint32_t fcrop_height;
+#if defined(PLATFORM_T41)
+    uint32_t flip_enable;
+#endif
 };
+
+#if defined(PLATFORM_T41)
+_Static_assert(sizeof(struct tisp_frame_format) == 0x74,
+               "T41 frame-channel format ABI mismatch");
+#else
+_Static_assert(sizeof(struct tisp_frame_format) == 0x70,
+               "T40 frame-channel format ABI mismatch");
+#endif
 
 struct openimp_dma_state {
     int fd;
@@ -217,6 +256,7 @@ struct openimp_fs_buffer {
 
 struct openimp_fs_channel {
     int fd;
+    int pool_id;
     uint32_t created;
     uint32_t enabled;
     uint32_t depth;
@@ -282,8 +322,10 @@ static void prepare_p1(void)
     p1.isp_fd = -1;
     p1.tuning_fd = -1;
     p1.dma.fd = -1;
-    for (i = 0; i < OPENIMP_FS_CHANNELS; i++)
+    for (i = 0; i < OPENIMP_FS_CHANNELS; i++) {
         p1.channels[i].fd = -1;
+        p1.channels[i].pool_id = -1;
+    }
 }
 
 static int record_ioctl(int fd, uint32_t command, void *argument)
@@ -292,6 +334,11 @@ static int record_ioctl(int fd, uint32_t command, void *argument)
 
     p1.last_ioctl = command;
     p1.last_errno = result < 0 ? errno : 0;
+    if (result < 0 && !(command == TISP_VIDIOC_DQBUF &&
+                        (errno == EAGAIN || errno == ENODATA ||
+                         errno == EINTR)))
+        syslog(LOG_ERR, "openimp-p1: ioctl fd=%d cmd=0x%08x failed: %d",
+               fd, command, errno);
     return result;
 }
 
@@ -679,6 +726,7 @@ int IMP_FrameSource_CreateChn(int channel, IMPFSChnAttr *attr)
 {
     char path[20];
     struct openimp_fs_channel *chn;
+    int pool_id;
     int fd;
 
     if (channel < 0 || channel >= OPENIMP_FS_CHANNELS || !attr)
@@ -699,8 +747,10 @@ int IMP_FrameSource_CreateChn(int channel, IMPFSChnAttr *attr)
         unlock_p1();
         return -1;
     }
+    pool_id = chn->pool_id;
     memset(chn, 0, sizeof(*chn));
     chn->fd = fd;
+    chn->pool_id = pool_id;
     chn->created = 1;
     chn->attr = *attr;
     unlock_p1();
@@ -713,7 +763,7 @@ int IMP_FrameSource_SetChnAttr(int channel, const IMPFSChnAttr *attr)
         return -1;
     lock_p1();
     prepare_p1();
-    if (!p1.channels[channel].created || p1.channels[channel].enabled) {
+    if (p1.channels[channel].enabled) {
         unlock_p1();
         return -1;
     }
@@ -757,6 +807,34 @@ int IMP_FrameSource_GetFrameDepth(int channel, int *depth)
     *depth = (int)p1.channels[channel].depth;
     unlock_p1();
     return 0;
+}
+
+int IMP_FrameSource_SetPool(int channel, int pool_id)
+{
+    if (channel < 0 || channel >= OPENIMP_FS_CHANNELS || pool_id < 0)
+        return -1;
+    lock_p1();
+    prepare_p1();
+    if (!p1.channels[channel].created || p1.channels[channel].enabled) {
+        unlock_p1();
+        return -1;
+    }
+    p1.channels[channel].pool_id = pool_id;
+    unlock_p1();
+    return 0;
+}
+
+int IMP_FrameSource_GetPool(int channel)
+{
+    int pool_id;
+
+    if (channel < 0 || channel >= OPENIMP_FS_CHANNELS)
+        return -1;
+    lock_p1();
+    prepare_p1();
+    pool_id = p1.channels[channel].pool_id;
+    unlock_p1();
+    return pool_id;
 }
 
 int IMP_FrameSource_SetChnFifoAttr(int channel, IMPFSChnFifoAttr *attr)
@@ -829,6 +907,9 @@ static void fill_frame_format(struct tisp_frame_format *format,
     format->fcrop_left = (uint32_t)attr->fcrop.left;
     format->fcrop_width = (uint32_t)attr->fcrop.width;
     format->fcrop_height = (uint32_t)attr->fcrop.height;
+#if defined(PLATFORM_T41)
+    format->flip_enable = (uint32_t)(attr->mirr_enable != 0);
+#endif
 }
 
 static void fill_qbuf(uint32_t *words, uint32_t index, uint32_t physical,
@@ -859,6 +940,9 @@ int IMP_FrameSource_EnableChn(int channel)
     prepare_p1();
     chn = &p1.channels[channel];
     if (!chn->created || chn->fd < 0) {
+        syslog(LOG_ERR,
+               "openimp-p1: enable chn=%d invalid lifecycle created=%u fd=%d",
+               channel, chn->created, chn->fd);
         unlock_p1();
         return -1;
     }
@@ -868,6 +952,10 @@ int IMP_FrameSource_EnableChn(int channel)
     }
     if (chn->attr.picWidth <= 0 || chn->attr.picHeight <= 0 ||
         chn->attr.pixFmt != (int32_t)TISP_PIX_FMT_NV12_ENUM) {
+        syslog(LOG_ERR,
+               "openimp-p1: enable chn=%d invalid format %dx%d pixfmt=%d expected=%u",
+               channel, chn->attr.picWidth, chn->attr.picHeight,
+               chn->attr.pixFmt, TISP_PIX_FMT_NV12_ENUM);
         unlock_p1();
         return -1;
     }
@@ -876,8 +964,11 @@ int IMP_FrameSource_EnableChn(int channel)
     if (record_ioctl(chn->fd, TISP_VIDIOC_SET_FRAME_FORMAT, &format) < 0)
         goto done;
     trace_p1("P1_INNER SET_FMT_END\n");
-    if (!format.pix.sizeimage)
+    if (!format.pix.sizeimage) {
+        syslog(LOG_ERR, "openimp-p1: enable chn=%d SET_FMT returned size 0",
+               channel);
         goto done;
+    }
     memset(request, 0, sizeof(request));
     count = chn->attr.nrVBs > 0 ? (uint32_t)chn->attr.nrVBs : 2U;
     if (count < 2U)
@@ -892,8 +983,12 @@ int IMP_FrameSource_EnableChn(int channel)
         goto done;
     trace_p1("P1_INNER REQBUFS_END\n");
     count = request[0];
-    if (!count || count > OPENIMP_FS_BUFFERS)
+    if (!count || count > OPENIMP_FS_BUFFERS) {
+        syslog(LOG_ERR,
+               "openimp-p1: enable chn=%d REQBUFS returned count=%u",
+               channel, count);
         goto done;
+    }
     chn->buffer_count = count;
     chn->sizeimage = format.pix.sizeimage;
     for (i = 0; i < count; i++) {
@@ -901,8 +996,12 @@ int IMP_FrameSource_EnableChn(int channel)
 
         trace_p1("P1_INNER ALLOC_BEGIN\n");
         if (dma_alloc(chn->sizeimage, &buffer->physical,
-                      &buffer->virtual_address) < 0)
+                      &buffer->virtual_address) < 0) {
+            syslog(LOG_ERR,
+                   "openimp-p1: enable chn=%d DMA alloc index=%u size=%u failed",
+                   channel, i, chn->sizeimage);
             goto done;
+        }
         trace_p1("P1_INNER ALLOC_END\n");
         buffer->size = chn->sizeimage;
         fill_qbuf(words, i, buffer->physical, buffer->size);
@@ -979,6 +1078,9 @@ int IMP_FrameSource_GetFrame(int channel, IMPFrameInfo **frame)
     buffer->frame.size = buffer->size;
     buffer->frame.phyAddr = buffer->physical;
     buffer->frame.virAddr = (uint32_t)(uintptr_t)buffer->virtual_address;
+#if defined(PLATFORM_T41)
+    buffer->frame.direct_phyAddr = buffer->physical;
+#endif
     buffer->frame.pool = chn;
     buffer->frame.timeStamp = IMP_System_GetTimeStamp();
     chn->frames_dequeued++;
@@ -1068,6 +1170,7 @@ int IMP_FrameSource_DestroyChn(int channel)
         close(chn->fd);
     memset(chn, 0, sizeof(*chn));
     chn->fd = -1;
+    chn->pool_id = -1;
     unlock_p1();
     return 0;
 }

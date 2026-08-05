@@ -5,7 +5,7 @@ against the stock ISP, sensor, FrameSource, and AVPU kernel drivers.
 
 ## Architecture
 
-There is one encoder implementation for T31 and T40:
+There is one encoder implementation for T31, T40, and the T41 bring-up:
 
 - `src/t40/openimp_p2_encoder.c` owns the public encoder lifecycle.
 - `src/t40/codec-t40.c` owns the shared AVPU codec backend.
@@ -15,7 +15,7 @@ There is one encoder implementation for T31 and T40:
   `src/isp/isp_tseries.c`, `src/kernel_interface.c`, and `src/dma_alloc.c`
   are the T31 stock-driver ABI seam.
 - `src/t40/openimp_p1.c` and `src/t40/openimp_p2_dma.c` are the corresponding
-  T40 stock-driver seam.
+  T4 stock-driver seam, with explicit T40/T41 ABI branches.
 
 T31 does not carry a separate scheduler, rate-control graph, or codec
 implementation. Platform conditionals are restricted to real ABI differences
@@ -41,12 +41,18 @@ make t31
 ./build-for-device.sh T40
 # or
 make t40
+
+# T41/T41NQ
+./build-for-device.sh T41
+# or
+make t41
 ```
 
 Outputs:
 
 - `build/t31/libimp.so`
 - `build/t40/libimp.so`
+- `build/t41/libimp.so`
 
 Both build scripts reject a produced library that depends on an OEM
 `libimp.so`. The T31 build additionally rejects accidental audio exports and
@@ -68,10 +74,13 @@ records RVD import coverage in `build/t31/`.
 - Capture ownership is an explicit platform policy: T31 returns a frame after
   AVPU completion, while T40 returns it immediately after submission. This
   preserves full-rate capture on both stock-driver ABIs.
-- T41: not implemented. There is no T41 build target or verified userspace
-  ABI, and the T40 library must not be staged on a T41 camera.
+- T41: active bring-up. The T41 build covers every RVD/RAD IMP import and the
+  stock-driver pipeline reaches live dual-channel FrameSource capture and the
+  native T41 AVPU command-slot submission. H.264 output is not yet valid: the
+  remaining blocker is conversion of the inherited T40 command payload into
+  T41's 4 KiB command/status layout.
 - Sensor configuration and tuning remain owned by the stock ISP driver, so
   the userspace encoder is sensor-independent.
 
-See [`docs/T40_STATUS.md`](docs/T40_STATUS.md) for the detailed T40 runtime
-gate.
+See [`docs/T40_STATUS.md`](docs/T40_STATUS.md) and
+[`docs/T41_STATUS.md`](docs/T41_STATUS.md) for the detailed runtime gates.

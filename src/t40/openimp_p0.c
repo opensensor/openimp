@@ -197,6 +197,8 @@ static void prepare_state(void)
     state.magic = OPENIMP_P0_MAGIC;
 #if defined(PLATFORM_T31)
     state.cpu_id = 21; /* T31X */
+#elif defined(PLATFORM_T41)
+    state.cpu_id = 23; /* T41NQ */
 #else
     state.cpu_id = 22; /* T40-XP */
 #endif
@@ -347,6 +349,8 @@ int IMP_System_GetVersion(char *version)
 {
 #if defined(PLATFORM_T31)
     static const char text[] = "libimp.so T31 openimp";
+#elif defined(PLATFORM_T41)
+    static const char text[] = "libimp.so T41 openimp";
 #else
     static const char text[] = "libimp.so T40 openimp-p0";
 #endif
@@ -362,6 +366,8 @@ const char *IMP_System_GetCPUInfo(void)
 {
 #if defined(PLATFORM_T31)
     return "T31X";
+#elif defined(PLATFORM_T41)
+    return "T41NQ";
 #else
     return "T40-XP";
 #endif

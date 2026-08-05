@@ -11,7 +11,11 @@
 
 #include <imp/imp_isp.h>
 
+#if defined(PLATFORM_T41)
+#define TISP_VIDIOC_DEFAULT_TUNING 0xc0105435U
+#else
 #define TISP_VIDIOC_DEFAULT_TUNING 0xc0105436U
+#endif
 
 /*
  * T40's OEM userspace ABI predates the newer 0x56xx tuning-node interface.
@@ -26,6 +30,11 @@
 #define TISP_CID_SHARPNESS 0x08000093
 #define TISP_CID_SATURATION 0x08000094
 #define TISP_CID_CONTRAST 0x08000095
+#if defined(PLATFORM_T41)
+#define TISP_CID_MASK_BLOCK 0x08000074
+#define TISP_CID_SCALER_LV 0x080000a6
+#define TISP_CID_AWB_RGB_COEFFT 0x08000098
+#endif
 
 typedef struct {
     int32_t vinum;
@@ -100,7 +109,11 @@ static struct {
     unsigned char hue;
     uint32_t fps_num;
     uint32_t fps_den;
+#if defined(PLATFORM_T41)
+    IMPISPHVFLIPAttr flip;
+#else
     IMPISPHVFLIP flip;
+#endif
     IMPISPRunningMode running_mode;
     IMPISPAntiflickerAttr antiflicker;
     char bin_path[128];
@@ -177,10 +190,18 @@ int32_t IMP_ISP_Tuning_GetBcshHue(IMPVI_NUM num, unsigned char *value)
     return result;
 }
 
+#if defined(PLATFORM_T41)
+int32_t IMP_ISP_Tuning_SetSensorFPS(IMPVI_NUM num, IMPISPSensorFps *fps)
+#else
 int32_t IMP_ISP_Tuning_SetSensorFPS(IMPVI_NUM num, uint32_t *numerator,
                                     uint32_t *denominator)
+#endif
 {
     int result;
+#if defined(PLATFORM_T41)
+    uint32_t *numerator = fps ? &fps->num : NULL;
+    uint32_t *denominator = fps ? &fps->den : NULL;
+#endif
 
     if (num != IMPVI_MAIN || !numerator || !denominator || !*denominator ||
         *numerator > 0xffffU || *denominator > 0xffffU)
@@ -194,11 +215,19 @@ int32_t IMP_ISP_Tuning_SetSensorFPS(IMPVI_NUM num, uint32_t *numerator,
     return result;
 }
 
+#if defined(PLATFORM_T41)
+int32_t IMP_ISP_Tuning_GetSensorFPS(IMPVI_NUM num, IMPISPSensorFps *fps)
+#else
 int32_t IMP_ISP_Tuning_GetSensorFPS(IMPVI_NUM num, uint32_t *numerator,
                                     uint32_t *denominator)
+#endif
 {
     int32_t value = 0;
     int result;
+#if defined(PLATFORM_T41)
+    uint32_t *numerator = fps ? &fps->num : NULL;
+    uint32_t *denominator = fps ? &fps->den : NULL;
+#endif
 
     if (num != IMPVI_MAIN || !numerator || !denominator)
         return -1;
@@ -212,7 +241,11 @@ int32_t IMP_ISP_Tuning_GetSensorFPS(IMPVI_NUM num, uint32_t *numerator,
     return result;
 }
 
+#if defined(PLATFORM_T41)
+int32_t IMP_ISP_Tuning_SetHVFLIP(IMPVI_NUM num, IMPISPHVFLIPAttr *flip)
+#else
 int32_t IMP_ISP_Tuning_SetHVFLIP(IMPVI_NUM num, IMPISPHVFLIP *flip)
+#endif
 {
     int result;
 
@@ -224,7 +257,11 @@ int32_t IMP_ISP_Tuning_SetHVFLIP(IMPVI_NUM num, IMPISPHVFLIP *flip)
     return result;
 }
 
+#if defined(PLATFORM_T41)
+int32_t IMP_ISP_Tuning_GetHVFLIP(IMPVI_NUM num, IMPISPHVFLIPAttr *flip)
+#else
 int32_t IMP_ISP_Tuning_GetHVFlip(IMPVI_NUM num, IMPISPHVFLIP *flip)
+#endif
 {
     int result;
 
@@ -236,6 +273,29 @@ int32_t IMP_ISP_Tuning_GetHVFlip(IMPVI_NUM num, IMPISPHVFLIP *flip)
     *flip = p3_controls.flip;
     return result;
 }
+
+#if defined(PLATFORM_T41)
+int32_t IMP_ISP_Tuning_SetMaskBlock(IMPVI_NUM num,
+                                    IMPISPMaskBlockAttr *mask)
+{
+    return p3_tuning_pointer(num, 0, TISP_CID_MASK_BLOCK, mask);
+}
+
+int32_t IMP_ISP_Tuning_SetScalerLv(IMPVI_NUM num, IMPISPScalerLvAttr *attr)
+{
+    return p3_tuning_pointer(num, 0, TISP_CID_SCALER_LV, attr);
+}
+
+int IMP_ISP_Tuning_Awb_SetRgbCoefft(IMPVI_NUM num, IMPISPCoefftWb *attr)
+{
+    return p3_tuning_pointer(num, 0, TISP_CID_AWB_RGB_COEFFT, attr);
+}
+
+int IMP_ISP_Tuning_Awb_GetRgbCoefft(IMPVI_NUM num, IMPISPCoefftWb *attr)
+{
+    return p3_tuning_pointer(num, 1, TISP_CID_AWB_RGB_COEFFT, attr);
+}
+#endif
 
 int32_t IMP_ISP_Tuning_SetISPRunningMode(IMPVI_NUM num,
                                          IMPISPRunningMode *mode)

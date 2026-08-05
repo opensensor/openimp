@@ -1,7 +1,7 @@
 PREFIX ?= /usr/local
 PLATFORM ?= T31
 
-.PHONY: all t31 t40 clean install
+.PHONY: all t31 t40 t41 clean install
 
 all:
 	./build-for-device.sh $(PLATFORM)
@@ -12,8 +12,11 @@ t31:
 t40:
 	./build-t40.sh
 
+t41:
+	./build-t41.sh
+
 clean:
-	$(RM) -r build/t31 build/t40
+	$(RM) -r build/t31 build/t40 build/t41
 
 install: all
 	install -d "$(DESTDIR)$(PREFIX)/include/imp"

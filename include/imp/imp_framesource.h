@@ -169,6 +169,7 @@ int IMP_FrameSource_GetDelay(int chnNum, int *delay_ms);
 int IMP_FrameSource_SetMaxDelay(int chnNum, int max_delay_ms);
 int IMP_FrameSource_GetMaxDelay(int chnNum, int *max_delay_ms);
 int IMP_FrameSource_SetPool(int chnNum, int poolId);
+int IMP_FrameSource_GetPool(int chnNum);
 int IMP_FrameSource_ChnStatQuery(int chnNum, void *stat);
 int IMP_FrameSource_EnableChnUndistort(int chnNum);
 int IMP_FrameSource_DisableChnUndistort(int chnNum);
@@ -181,4 +182,3 @@ int IMP_FrameSource_SetFrameOffset(int chnNum, int offset);
 #endif
 
 #endif /* __IMP_FRAMESOURCE_H__ */
-

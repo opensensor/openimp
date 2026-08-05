@@ -36,7 +36,7 @@ static P2CaptureReleasePolicy p2_capture_release_policy(void)
 {
 #if defined(PLATFORM_T31)
     return P2_CAPTURE_RELEASE_AFTER_COMPLETION;
-#elif defined(PLATFORM_T40)
+#elif defined(PLATFORM_T40) || defined(PLATFORM_T41)
     return P2_CAPTURE_RELEASE_AFTER_SUBMIT;
 #else
 #error "capture-buffer ownership must be established for this platform"
@@ -67,9 +67,21 @@ typedef struct {
     uint32_t size;
     uint32_t physical_address;
     uint32_t virtual_address;
+#if defined(PLATFORM_T41)
+    uint32_t direct_physical_address;
+#endif
     void *pool;
     int64_t timestamp;
 } P2SyntheticFrame;
+
+#if defined(PLATFORM_T41)
+_Static_assert(offsetof(P2SyntheticFrame, direct_physical_address) == 0x20,
+               "T41 synthetic frame direct address ABI mismatch");
+_Static_assert(offsetof(P2SyntheticFrame, pool) == 0x24,
+               "T41 synthetic frame pool ABI mismatch");
+_Static_assert(offsetof(P2SyntheticFrame, timestamp) == 0x28,
+               "T41 synthetic frame timestamp ABI mismatch");
+#endif
 
 typedef struct {
     int active;
@@ -1206,6 +1218,47 @@ int IMP_Encoder_SetChnQpBounds(int channel, int minimum, int maximum)
                      minimum, maximum);
     return AL_Codec_Encode_SetQpBounds(p2_channels[channel].codec,
                                        minimum, maximum);
+}
+
+int IMP_Encoder_SetChnQpBoundsPerFrame(int channel, int minimum_i,
+                                       int maximum_i, int minimum_p,
+                                       int maximum_p)
+{
+    int minimum;
+    int maximum;
+
+    if (minimum_i < 0 || maximum_i > 51 || minimum_i > maximum_i ||
+        minimum_p < 0 || maximum_p > 51 || minimum_p > maximum_p)
+        return -1;
+
+    /* The shared backend currently exposes one hardware QP window.  Use the
+     * union of the requested I/P windows so neither frame class is clipped.
+     */
+    minimum = minimum_i < minimum_p ? minimum_i : minimum_p;
+    maximum = maximum_i > maximum_p ? maximum_i : maximum_p;
+    return IMP_Encoder_SetChnQpBounds(channel, minimum, maximum);
+}
+
+int IMP_Encoder_SetChnMaxPictureSize(int channel, uint32_t maximum_i,
+                                     uint32_t maximum_p)
+{
+    IMPEncoderAttrRcMode *mode;
+    uint32_t maximum;
+
+    if (!p2_valid_channel(channel) || !p2_channels[channel].created ||
+        !maximum_i || !maximum_p)
+        return -1;
+    mode = &p2_channels[channel].attr.rcAttr.attrRcMode;
+    maximum = maximum_i > maximum_p ? maximum_i : maximum_p;
+    if (mode->rcMode == IMP_ENC_RC_MODE_CBR)
+        mode->attrCbr.uMaxPictureSize = maximum;
+    else if (mode->rcMode == IMP_ENC_RC_MODE_VBR)
+        mode->attrVbr.uMaxPictureSize = maximum;
+    else if (mode->rcMode == IMP_ENC_RC_MODE_CAPPED_VBR)
+        mode->attrCappedVbr.uMaxPictureSize = maximum;
+    else if (mode->rcMode == IMP_ENC_RC_MODE_CAPPED_QUALITY)
+        mode->attrCappedQuality.uMaxPictureSize = maximum;
+    return 0;
 }
 
 int IMP_Encoder_SetChnQp(int channel, int qp_value)

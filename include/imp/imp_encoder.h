@@ -78,7 +78,182 @@ typedef struct {
     uint32_t frmRateDen;                /**< Frame rate denominator */
 } IMPEncoderFrmRate;
 
-#if defined(PLATFORM_T31) || defined(PLATFORM_T40) || defined(PLATFORM_T41)
+#if defined(PLATFORM_T41)
+typedef uint32_t IMPEncoderRcOptions;
+
+typedef struct {
+    int16_t iInitialQP;
+    int16_t iMinQP;
+    int16_t iMaxQP;
+} IMPEncoderAttrFixQp;
+
+typedef struct {
+    uint32_t uTargetBitRate;
+    int16_t iInitialQP;
+    int16_t iMinQP;
+    int16_t iMaxQP;
+    int16_t iIPDelta;
+    int16_t iPBDelta;
+    uint16_t _reserved0;
+    IMPEncoderRcOptions eRcOptions;
+    uint32_t uMaxPictureSize;
+} IMPEncoderAttrCbr;
+
+typedef struct {
+    uint32_t uTargetBitRate;
+    uint32_t uMaxBitRate;
+    int16_t iInitialQP;
+    int16_t iMinQP;
+    int16_t iMaxQP;
+    int16_t iIPDelta;
+    int16_t iPBDelta;
+    uint16_t _reserved0;
+    IMPEncoderRcOptions eRcOptions;
+    uint32_t uMaxPictureSize;
+} IMPEncoderAttrVbr;
+
+typedef struct {
+    uint32_t uTargetBitRate;
+    uint32_t uMaxBitRate;
+    int16_t iInitialQP;
+    int16_t iMinQP;
+    int16_t iMaxQP;
+    int16_t iIPDelta;
+    int16_t iPBDelta;
+    uint16_t _reserved0;
+    IMPEncoderRcOptions eRcOptions;
+    uint32_t uMaxPictureSize;
+    uint16_t uMaxPSNR;
+    uint16_t _reserved1;
+} IMPEncoderAttrCappedVbr;
+
+typedef IMPEncoderAttrCappedVbr IMPEncoderAttrCappedQuality;
+typedef IMPEncoderAttrFixQp IMPEncoderAttrH264FixQp;
+typedef IMPEncoderAttrCbr IMPEncoderAttrH264Cbr;
+typedef IMPEncoderAttrVbr IMPEncoderAttrH264Vbr;
+typedef IMPEncoderAttrVbr IMPEncoderAttrH264Smart;
+
+typedef struct {
+    IMPEncoderRcMode rcMode;
+    union {
+        IMPEncoderAttrFixQp attrFixQp;
+        IMPEncoderAttrCbr attrCbr;
+        IMPEncoderAttrVbr attrVbr;
+        IMPEncoderAttrCappedVbr attrCappedVbr;
+        IMPEncoderAttrCappedQuality attrCappedQuality;
+        IMPEncoderAttrH264FixQp attrH264FixQp;
+        IMPEncoderAttrH264Cbr attrH264Cbr;
+        IMPEncoderAttrH264Vbr attrH264Vbr;
+        IMPEncoderAttrH264Smart attrH264Smart;
+    };
+} IMPEncoderAttrRcMode;
+
+typedef enum {
+    IMP_ENC_GOP_CTRL_MODE_DEFAULT = 0x02,
+    IMP_ENC_GOP_CTRL_MODE_PYRAMIDAL = 0x04,
+    IMP_ENC_GOP_CTRL_MODE_SMARTP = 0xfe,
+} IMPEncoderGopCtrlMode;
+
+typedef struct {
+    union {
+        uint32_t uGopCtrlMode;
+        IMPEncoderGopCtrlMode gopMode;
+    };
+    union {
+        uint16_t uGopLength;
+        uint16_t gopLength;
+    };
+    uint8_t uNotifyUserLTInter;
+    uint8_t _reserved0;
+    uint32_t uMaxSameSenceCnt;
+    uint8_t bEnableLT;
+    uint8_t _reserved1[3];
+    uint32_t uFreqLT;
+    uint8_t bLTRC;
+    uint8_t _reserved2[3];
+} IMPEncoderGopAttr;
+
+typedef enum {
+    IMP_ENC_VPU_TYPE_AVPU = 1,
+    IMP_ENC_VPU_TYPE_IVPU = 2,
+} IMPEncoderVpuType;
+
+typedef struct {
+    bool enable;
+    uint8_t _reserved0[3];
+    uint32_t x;
+    uint32_t y;
+    uint32_t w;
+    uint32_t h;
+} IMPEncoderCropCfg;
+
+typedef struct {
+    IMPEncoderVpuType encVputype;
+    union {
+        IMPEncoderProfile eProfile;
+        IMPEncoderProfile profile;
+    };
+    union {
+        uint8_t uLevel;
+        uint8_t level;
+    };
+    union {
+        uint8_t uTier;
+        uint8_t tier;
+    };
+    union {
+        uint16_t uWidth;
+        uint16_t maxPicWidth;
+    };
+    union {
+        uint16_t uHeight;
+        uint16_t maxPicHeight;
+    };
+    uint16_t _reserved0;
+    union {
+        uint32_t ePicFormat;
+        uint32_t picFormat;
+    };
+    union {
+        uint32_t eEncOptions;
+        uint32_t encOptions;
+    };
+    union {
+        uint32_t eEncTools;
+        uint32_t encTools;
+    };
+    IMPEncoderCropCfg crop;
+    uint32_t bufSize;
+} IMPEncoderAttr;
+
+typedef IMPEncoderAttr IMPEncoderEncAttr;
+typedef IMPEncoderAttr IMPEncoderAttrH264;
+typedef IMPEncoderAttr IMPEncoderAttrH265;
+typedef IMPEncoderAttr IMPEncoderAttrJpeg;
+
+typedef struct {
+    IMPEncoderAttrRcMode attrRcMode;
+    IMPEncoderFrmRate outFrmRate;
+} IMPEncoderRcAttr;
+
+typedef struct {
+    IMPEncoderAttr encAttr;
+    IMPEncoderRcAttr rcAttr;
+    IMPEncoderGopAttr gopAttr;
+    uint8_t bEnableIvdc;
+    uint8_t _reserved2[3];
+} IMPEncoderChnAttr;
+
+typedef IMPEncoderChnAttr IMPEncoderCHNAttr;
+
+_Static_assert(sizeof(IMPEncoderAttrRcMode) == 0x24, "T41 IMPEncoderAttrRcMode ABI mismatch");
+_Static_assert(sizeof(IMPEncoderGopAttr) == 0x18, "T41 IMPEncoderGopAttr ABI mismatch");
+_Static_assert(sizeof(IMPEncoderAttr) == 0x34, "T41 IMPEncoderAttr ABI mismatch");
+_Static_assert(offsetof(IMPEncoderChnAttr, rcAttr) == 0x34, "T41 IMPEncoderChnAttr.rcAttr ABI mismatch");
+_Static_assert(offsetof(IMPEncoderChnAttr, gopAttr) == 0x60, "T41 IMPEncoderChnAttr.gopAttr ABI mismatch");
+_Static_assert(offsetof(IMPEncoderChnAttr, bEnableIvdc) == 0x78, "T41 IMPEncoderChnAttr.bEnableIvdc ABI mismatch");
+_Static_assert(sizeof(IMPEncoderChnAttr) == 0x7c, "T41 IMPEncoderChnAttr ABI mismatch");
+#elif defined(PLATFORM_T31) || defined(PLATFORM_T40)
 typedef uint32_t IMPEncoderRcOptions;
 
 typedef struct {
@@ -741,6 +916,10 @@ int IMP_Encoder_SetPool(int encChn, int poolId);
 int IMP_Encoder_GetPool(int encChn);
 int IMP_Encoder_ClearPoolId(int encChn);
 int IMP_Encoder_SetChnQpBounds(int encChn, int minQp, int maxQp);
+int IMP_Encoder_SetChnQpBoundsPerFrame(int encChn, int minQpI, int maxQpI,
+                                      int minQpP, int maxQpP);
+int IMP_Encoder_SetChnMaxPictureSize(int encChn, uint32_t maxPictureSizeI,
+                                    uint32_t maxPictureSizeP);
 int IMP_Encoder_SetChnQpIPDelta(int encChn, int delta);
 int IMP_Encoder_GetChnEncType(int encChn, IMPEncoderEncType *encType);
 #if defined(PLATFORM_T31)
