@@ -23,6 +23,9 @@
 #include "dma_alloc.h"
 #include "imp_log_int.h"
 #include "kernel_interface.h"
+#if defined(PLATFORM_T41)
+#include "t41_command_layout.h"
+#endif
 #include <sys/eventfd.h>
 #include <sys/ioctl.h>
 #include <errno.h>
@@ -611,6 +614,29 @@ static inline uint8_t *avpu_cl_submit_entry_ptr(ALAvpuContext *ctx, uint32_t idx
     if (!base || ctx->cl_entry_size == 0 || ctx->cl_count == 0)
         return NULL;
     return base + ((size_t)(idx % ctx->cl_count) * ctx->cl_entry_size);
+}
+
+static inline uint8_t *avpu_cl_status_ptr(ALAvpuContext *ctx, uint32_t idx)
+{
+    uint8_t *entry = avpu_cl_entry_ptr(ctx, idx);
+#if defined(PLATFORM_T41)
+    return (uint8_t *)openimp_t41_command_status_ptr(
+        entry, ctx ? ctx->cl_entry_size : 0u);
+#else
+    return entry;
+#endif
+}
+
+static inline uint8_t *avpu_cl_submit_status_ptr(ALAvpuContext *ctx,
+                                                 uint32_t idx)
+{
+    uint8_t *entry = avpu_cl_submit_entry_ptr(ctx, idx);
+#if defined(PLATFORM_T41)
+    return (uint8_t *)openimp_t41_command_status_ptr(
+        entry, ctx ? ctx->cl_entry_size : 0u);
+#else
+    return entry;
+#endif
 }
 
 static void avpu_log_dma_range(const char *name, const AvpuDMABuf *buf)
@@ -3495,6 +3521,21 @@ static int avpu_try_recover_sticky_completion(ALAvpuContext *ctx,
                                               unsigned int core_status,
                                               const char *source)
 {
+    if (!ctx || !ctx->session_ready)
+        return 0;
+
+#if defined(PLATFORM_T41)
+    /*
+     * The measured T41 core transition from 0x80000000 to 0x80000003 does
+     * not, by itself, indicate a completed command.  OEM completion arrives
+     * through the IRQ and the separate status structure at slot +0x5c0.
+     * Until that structure validates, fail closed instead of publishing a
+     * synthetic frame from an unported command payload.
+     */
+    (void)core_status;
+    (void)source;
+    return 0;
+#else
     pthread_mutex_t *mutex;
     int frames_encoded;
     int frames_consumed;
@@ -3506,9 +3547,6 @@ static int avpu_try_recover_sticky_completion(ALAvpuContext *ctx,
     const uint32_t *pending_cmd;
     uint32_t pending_status;
 #endif
-
-    if (!ctx || !ctx->session_ready)
-        return 0;
 
 #if defined(PLATFORM_T31)
     /*
@@ -3583,6 +3621,7 @@ static int avpu_try_recover_sticky_completion(ALAvpuContext *ctx,
 
     avpu_complete_frame(ctx, source ? source : "EndEncoding[sticky]");
     return 1;
+#endif
 }
 
 /* OEM uses 24-bit interrupt clear (0xFFFFFF), not 32-bit.
@@ -3688,12 +3727,18 @@ static void avpu_t41_program_command_slot(int fd, int core,
 {
     unsigned int control = 0;
     unsigned int base = (unsigned int)core << 12;
+    uint32_t status_phys = 0;
+
+    if (openimp_t41_command_status_phys(command_phys, &status_phys) != 0) {
+        LOG_CODEC("AVPU: invalid T41 command physical address 0x%08x",
+                  command_phys);
+        return;
+    }
 
     avpu_write_reg(fd, base + AVPU_REG_CL_ADDR_HI, 0u);
     avpu_write_reg(fd, base + AVPU_REG_CL_ADDR, command_phys);
     avpu_write_reg(fd, base + AVPU_REG_CL_STATUS_HI, 0u);
-    avpu_write_reg(fd, base + AVPU_REG_CL_STATUS,
-                   command_phys + 0x5c0u);
+    avpu_write_reg(fd, base + AVPU_REG_CL_STATUS, status_phys);
     if (avpu_read_reg_quiet(fd, base + AVPU_REG_CL_CTRL, &control) == 0)
         avpu_write_reg(fd, base + AVPU_REG_CL_CTRL, control | 0x1000u);
     if (avpu_read_reg_quiet(fd, base + AVPU_REG_CL_CTRL, &control) == 0)
@@ -3830,6 +3875,7 @@ static void avpu_end_encoding_callback(void *user_data)
     uint32_t cl_idx = 0;
     uint32_t bitcount = 0;
     uint32_t completed_flag = 0;
+    const char *status_source = "empty";
     int buf_idx = -1;
     int completed = 0;
     int have_pending = 0;
@@ -3854,14 +3900,27 @@ static void avpu_end_encoding_callback(void *user_data)
             avpu_flush_cache(ctx->fd, ctx->cl_ring.map, 0x100000, 0 /* BIDIRECTIONAL */);
         if (!ctx->cl_submit_ring.uncached_map && avpu_cl_submit_ring_base(ctx))
             avpu_flush_cache(ctx->fd, ctx->cl_submit_ring.map, 0x100000, 0 /* BIDIRECTIONAL */);
-#if defined(PLATFORM_T31)
-        status_regs_ptr = avpu_cl_submit_entry_ptr(ctx, cl_idx);
-        if (!status_regs_ptr)
-            status_regs_ptr = avpu_cl_entry_ptr(ctx, cl_idx);
+#if defined(PLATFORM_T31) || defined(PLATFORM_T41)
+        /* These generations direct hardware writeback into the submitted
+         * slot. T41's helper additionally advances to the +0x5c0 status
+         * half selected through AVPU_REG_CL_STATUS. */
+        status_regs_ptr = avpu_cl_submit_status_ptr(ctx, cl_idx);
+        if (status_regs_ptr)
+            status_source = "submit";
+        else {
+            status_regs_ptr = avpu_cl_status_ptr(ctx, cl_idx);
+            if (status_regs_ptr)
+                status_source = "readback";
+        }
 #else
-        status_regs_ptr = avpu_cl_entry_ptr(ctx, cl_idx);
-        if (!status_regs_ptr)
-            status_regs_ptr = avpu_cl_submit_entry_ptr(ctx, cl_idx);
+        status_regs_ptr = avpu_cl_status_ptr(ctx, cl_idx);
+        if (status_regs_ptr)
+            status_source = "readback";
+        else {
+            status_regs_ptr = avpu_cl_submit_status_ptr(ctx, cl_idx);
+            if (status_regs_ptr)
+                status_source = "submit";
+        }
 #endif
         if (status_regs_ptr)
             memcpy(status_regs.raw, status_regs_ptr, sizeof(status_regs.raw));
@@ -3876,7 +3935,7 @@ static void avpu_end_encoding_callback(void *user_data)
         LOG_CODEC("EndEncoding status: done=%d bitcount=0x%08x completed_flag=0x%08x pending=%d buf=%d cl=%u status_src=%s",
                   completed, bitcount, completed_flag,
                   have_pending, buf_idx, cl_idx,
-                  status_regs_ptr ? (status_regs_ptr == avpu_cl_submit_entry_ptr(ctx, cl_idx) ? "submit" : "readback") : "empty");
+                  status_source);
     }
 
     if (!have_pending || !status_regs_ptr) {
@@ -6392,7 +6451,7 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
                          * command/status pair occupies one 4 KiB slot, with
                          * the status half at +0x5c0; T31/T40 use 512 bytes. */
 #if defined(PLATFORM_T41)
-                        enc->avpu.cl_entry_size = 0x1000;
+                        enc->avpu.cl_entry_size = OPENIMP_T41_CL_SLOT_SIZE;
 #else
                         enc->avpu.cl_entry_size = 0x200;
 #endif

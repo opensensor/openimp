@@ -19,14 +19,20 @@ platform branches represent measured public or kernel ABI differences.
   `0x85c0`, `0x9000`, and `0x10000` probes faulted the caller; 1 MiB completed.
 - The native AVPU register sequence is recovered from the stock T41 library
   and confirmed live: IRQ mask `0x5`, clock command `0x1`, 4 KiB command slots,
-  status pointer at command `+0x5c0`, and core status `0x80000003` after push.
+  status pointer at command `+0x5c0`, and a core-state transition from
+  `0x80000000` to `0x80000003` after push. That transition is not treated as
+  completion without an IRQ and valid status writeback.
+- OEM `PrepareCommand` starts with a 4 KiB template and copies 17 non-empty
+  command ranges through word 237 (`0x3b8` bytes), plus an optional 60-byte
+  entropy block at `+0x800`. The recovered range table and bounds helpers live
+  in `src/t40/t41_command_layout.c` and have a host regression test.
 
 ## Remaining correctness gate
 
-The shared codec still populates the T40 command payload at the start of each
-T41 slot. T41 distributes the equivalent fields across a larger 4 KiB command
-and status layout. Until that payload builder is ported, the core does not
-raise a completion IRQ and RVD does not publish a valid H.264 stream.
+The shared codec still populates only the T40 command fields at the start of
+each T41 slot; the recovered T41 range map requires additional control and DMA
+fields through word 237. Until that payload builder is ported, the core does
+not raise a completion IRQ and RVD does not publish a valid H.264 stream.
 
 The next step is a dedicated T41 payload writer behind the shared codec state,
 using captured stock command slots as the oracle. Performance work and V4L2

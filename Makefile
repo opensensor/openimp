@@ -1,7 +1,7 @@
 PREFIX ?= /usr/local
 PLATFORM ?= T31
 
-.PHONY: all t31 t40 t41 clean install
+.PHONY: all t31 t40 t41 check clean install
 
 all:
 	./build-for-device.sh $(PLATFORM)
@@ -14,6 +14,9 @@ t40:
 
 t41:
 	./build-t41.sh
+
+check:
+	$(MAKE) -C tests/t41 check
 
 clean:
 	$(RM) -r build/t31 build/t40 build/t41
