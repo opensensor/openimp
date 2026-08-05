@@ -22,6 +22,12 @@
  * The stock driver owns all sensor-specific exposure and gain translation.
  */
 #define TISP_CID_AE_EXPR_INFO 0x08000023
+#define TISP_CID_AE_WEIGHT 0x08000021
+#define TISP_CID_AE_STATISTICS 0x08000022
+#define TISP_CID_AWB_ATTR 0x08000010
+#define TISP_CID_AWB_STATISTICS 0x08000011
+#define TISP_CID_AWB_WEIGHT 0x08000012
+#define TISP_CID_AWB_GLOBAL_STATISTICS 0x08000013
 #define TISP_CID_SENSOR_FPS 0x08000070
 #define TISP_CID_RUNNING_MODE 0x08000071
 #define TISP_CID_HVFLIP 0x08000073
@@ -99,6 +105,57 @@ int32_t IMP_ISP_Tuning_SetAeExprInfo(IMPVI_NUM num,
                                      IMPISPAEExprInfo *exprinfo)
 {
     return p3_tuning_pointer(num, 0, TISP_CID_AE_EXPR_INFO, exprinfo);
+}
+
+int32_t IMP_ISP_Tuning_SetAeWeight(IMPVI_NUM num,
+                                    IMPISPAEWeightAttr *ae_weight)
+{
+    return p3_tuning_pointer(num, 0, TISP_CID_AE_WEIGHT, ae_weight);
+}
+
+int32_t IMP_ISP_Tuning_GetAeWeight(IMPVI_NUM num,
+                                    IMPISPAEWeightAttr *ae_weight)
+{
+    return p3_tuning_pointer(num, 1, TISP_CID_AE_WEIGHT, ae_weight);
+}
+
+int32_t IMP_ISP_Tuning_GetAeStatistics(IMPVI_NUM num,
+                                        IMPISPAEStatisInfo *ae_statis)
+{
+    return p3_tuning_pointer(num, 1, TISP_CID_AE_STATISTICS, ae_statis);
+}
+
+int32_t IMP_ISP_Tuning_SetAwbAttr(IMPVI_NUM num, IMPISPWBAttr *attr)
+{
+    return p3_tuning_pointer(num, 0, TISP_CID_AWB_ATTR, attr);
+}
+
+int32_t IMP_ISP_Tuning_GetAwbAttr(IMPVI_NUM num, IMPISPWBAttr *attr)
+{
+    return p3_tuning_pointer(num, 1, TISP_CID_AWB_ATTR, attr);
+}
+
+int32_t IMP_ISP_Tuning_GetAwbStatistics(IMPVI_NUM num,
+                                         IMPISPAWBStatisInfo *awb_statis)
+{
+    return p3_tuning_pointer(num, 1, TISP_CID_AWB_STATISTICS, awb_statis);
+}
+
+int32_t IMP_ISP_Tuning_SetAwbWeight(IMPVI_NUM num, IMPISPWeight *awb_weight)
+{
+    return p3_tuning_pointer(num, 0, TISP_CID_AWB_WEIGHT, awb_weight);
+}
+
+int32_t IMP_ISP_Tuning_GetAwbWeight(IMPVI_NUM num, IMPISPWeight *awb_weight)
+{
+    return p3_tuning_pointer(num, 1, TISP_CID_AWB_WEIGHT, awb_weight);
+}
+
+int32_t IMP_ISP_Tuning_GetAwbGlobalStatistics(
+    IMPVI_NUM num, IMPISPAWBGlobalStatisInfo *awb_statis)
+{
+    return p3_tuning_pointer(num, 1, TISP_CID_AWB_GLOBAL_STATISTICS,
+                             awb_statis);
 }
 
 static struct {
