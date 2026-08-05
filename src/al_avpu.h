@@ -231,6 +231,7 @@ typedef struct ALAvpuContext {
      * before each AVPU submit, then feeds the byte offset into cmd[0x32]
      * and cmd[0x36] so the AVPU writes encoded data after the headers. */
     uint32_t frame_number;          /* monotonic frame counter */
+    uint32_t idr_frame_number;      /* monotonic index of current GOP's IDR */
     uint32_t stream_header_offset;  /* bytes of header pre-written into current stream buf */
     uint32_t stream_header_offset_by_buf[16]; /* per-stream-buffer header bytes */
     uint32_t slice_header_nal_bytes;/* slice header NAL byte count (OEM sp+0x78 → cmd[0x1b] bits[25:16]) */
@@ -270,6 +271,8 @@ typedef struct ALAvpuContext {
     uint32_t interm_map_size;
     uint32_t interm_data_size;
     uint8_t *stream_header_shadow; /* optional 16 x 0x220 host-prefix shadow */
+    volatile unsigned int dropped_completions;
+    volatile unsigned int reported_dropped_completions;
 } ALAvpuContext;
 
 /* ---- Board / IP Controller API (OEM parity) ---- */

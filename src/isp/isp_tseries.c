@@ -6,6 +6,7 @@
 #include <stdio.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <pthread.h>
 #include <unistd.h>
 #include <sys/ioctl.h>
 #include <sys/mman.h>
@@ -38,6 +39,10 @@ static uint8_t custom_sharpness;
 static uint32_t global_mode;
 static int tseries_isp_stream_started;
 static int tseries_bypass_link_setup_done;
+static pthread_t tseries_tuning_thread;
+static volatile int tseries_tuning_thread_stop;
+static int tseries_tuning_thread_running;
+static int32_t tseries_tuning_last_total_gain = -1;
 
 int IMP_ISP_Tuning_SetContrast_internal(uint32_t arg1, int32_t arg2);
 int IMP_ISP_Tuning_SetSharpness_internal(uint32_t arg1, int32_t arg2);
@@ -1191,6 +1196,80 @@ static int tseries_v4l2_get(int32_t id, int32_t *value)
 
         return result;
     }
+}
+
+/*
+ * The T31 OEM EnableTuning path starts an isp_tuning_deamon and registers
+ * isp_tuning_func_update_total_gain plus isp_tuning_func_contrast_judge.
+ * update_total_gain reads TISP_CID_TOTAL_GAIN; contrast_judge then submits
+ *
+ *     (total_gain << 8) | custom_contrast
+ *
+ * through V4L2_CID_CONTRAST whenever the gain changes.  This is not merely
+ * telemetry: the ISP driver uses the high bits to select the gain-dependent
+ * contrast/noise-processing state.  Omitting the daemon leaves that state at
+ * its startup value while AE continues to move the sensor gain, which shows
+ * up most clearly as crawling shadows on flat dark walls.
+ *
+ * The OEM daemon is frame-event driven.  A 25 Hz worker preserves the same
+ * per-frame update bound without recreating its generic named-task registry.
+ */
+static void *tseries_tuning_worker(void *unused)
+{
+    (void)unused;
+
+    while (!tseries_tuning_thread_stop) {
+        int32_t total_gain = 0;
+
+        if (tseries_tuning_get_val(TISP_CID_TOTAL_GAIN, &total_gain) == 0 &&
+            total_gain >= 0 &&
+            total_gain != tseries_tuning_last_total_gain) {
+            uint32_t packed =
+                ((uint32_t)total_gain << 8) | (uint32_t)custom_contrast;
+
+            if (tseries_v4l2_set(TISP_V4L2_CID_CONTRAST,
+                                 (int32_t)packed) == 0) {
+                static unsigned int update_count;
+
+                tseries_tuning_last_total_gain = total_gain;
+                update_count++;
+                if (update_count <= 4u || (update_count % 100u) == 0u)
+                    kmsg_trace("libimp/ISP: tuning gain/contrast update gain=%d contrast=%u packed=0x%08x count=%u\n",
+                               total_gain, custom_contrast, packed,
+                               update_count);
+            }
+        }
+
+        usleep(40000);
+    }
+
+    return NULL;
+}
+
+static int tseries_start_tuning_worker(void)
+{
+    if (tseries_tuning_thread_running)
+        return 0;
+
+    tseries_tuning_last_total_gain = -1;
+    tseries_tuning_thread_stop = 0;
+    if (pthread_create(&tseries_tuning_thread, NULL,
+                       tseries_tuning_worker, NULL) != 0)
+        return -1;
+
+    tseries_tuning_thread_running = 1;
+    return 0;
+}
+
+static void tseries_stop_tuning_worker(void)
+{
+    if (!tseries_tuning_thread_running)
+        return;
+
+    tseries_tuning_thread_stop = 1;
+    pthread_join(tseries_tuning_thread, NULL);
+    tseries_tuning_thread_running = 0;
+    tseries_tuning_last_total_gain = -1;
 }
 
 int IMP_ISP_Tuning_SetSensorFPS(uint32_t fps_num, uint32_t fps_den)
@@ -2743,6 +2822,8 @@ int IMP_ISP_EnableTuning(void)
         *(int32_t *)((char *)tune + 0x10) = fps_pack[2] & 0xffff;
     }
     *(uint8_t *)((char *)tune + 9) = custom_contrast;
+    if (tseries_start_tuning_worker() != 0)
+        kmsg_trace("libimp/ISP: failed to start gain/contrast tuning worker\n");
     return 0;
 }
 
@@ -2751,6 +2832,8 @@ int IMP_ISP_DisableTuning(void)
     ISPDevice *isp = (ISPDevice *)gISP;
     uint8_t *isp_b = (uint8_t *)isp;
     if (isp == NULL) return 0;
+
+    tseries_stop_tuning_worker();
 
     void *tune = *(void **)(isp_b + 0x9c);
     if (tune != NULL) free(tune);

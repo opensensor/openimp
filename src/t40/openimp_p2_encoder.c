@@ -171,6 +171,7 @@ static int p2_h264_stream_is_idr(const uint8_t *stream, uint32_t length)
 
 extern int AL_Codec_Encode_SetDefaultParam(void *param);
 extern int AL_Codec_Encode_Create(void **codec, void *params);
+extern int AL_Codec_Encode_SetStreamBufferCount(void *codec, int count);
 extern int AL_Codec_Encode_SetStreamBufferSize(void *codec, int size);
 extern int AL_Codec_Encode_SetFrameRate(void *codec, void *fps);
 extern int AL_Codec_Encode_SetBitRate(void *codec, int target_bitrate,
@@ -285,6 +286,10 @@ static void p2_codec_params(unsigned char *params, const IMPEncoderCHNAttr *attr
         qp = 25;
     if (qp < 1 || qp > 51)
         qp = 26;
+    if (attr->rcAttr.attrRcMode.rcMode == IMP_ENC_RC_MODE_FIXQP) {
+        min_qp = qp;
+        max_qp = qp;
+    }
     if (min_qp < 1 || min_qp > 51)
         min_qp = 15;
     if (max_qp < 1 || max_qp > 51)
@@ -450,6 +455,13 @@ int IMP_Encoder_CreateChn(int channel, IMPEncoderCHNAttr *attr)
     }
     p2_codec_params(params, attr);
     if (AL_Codec_Encode_Create(&ch->codec, params) != 0) {
+        pthread_mutex_unlock(&ch->lock);
+        return -1;
+    }
+    if (AL_Codec_Encode_SetStreamBufferCount(ch->codec,
+                                             ch->max_stream_count) != 0) {
+        AL_Codec_Encode_Destroy(ch->codec);
+        ch->codec = NULL;
         pthread_mutex_unlock(&ch->lock);
         return -1;
     }
@@ -680,27 +692,35 @@ int IMP_Encoder_PollingStream(int channel, uint32_t timeout_ms)
     if (AL_Codec_Encode_Process(ch->codec, frame, frame) != 0)
         goto done;
     /*
-     * The stock encoder returns the capture buffer to the frame channel as
-     * soon as the AVPU has accepted the source address.  Holding it until the
-     * public stream is released misses the ISP's next scheduling window on
-     * T40: a nominal 30 fps channel then dequeues at about 15 fps and the
-     * temporal ISP filters see discontinuous input.  AVPU completion is well
-     * inside one sensor interval, so the ISP cannot refill this buffer before
-     * the hardware has consumed it.
+     * Keep the capture buffer owned until the AVPU completion becomes
+     * visible through GetStream.  Submission only transfers the physical
+     * address to the hardware; it does not prove that the source DMA read has
+     * finished.  At T31 1080p the encode can outlast one sensor interval, so
+     * returning the buffer here lets FrameSource refill it while the AVPU is
+     * still consuming the old picture.  The resulting IDR is syntactically
+     * valid but can reconstruct with a frame-wide luma/chroma shift that all
+     * following P pictures inherit.
+     *
+     * Releasing immediately after completion still avoids retaining the
+     * source through the public IMP_Encoder_ReleaseStream lifetime.
      */
-    if (frame != &ch->synthetic_frame &&
-        IMP_FrameSource_ReleaseFrame(ch->source_channel, frame) == 0)
-        frame = NULL;
     retries = timeout_ms ? timeout_ms : 2000u;
     if (retries < 2000u)
         retries = 2000u;
     for (retry = 0; retry < retries; retry++) {
-        if (AL_Codec_Encode_GetStream(ch->codec, &stream, &user) == 0)
+        int get_result =
+            AL_Codec_Encode_GetStream(ch->codec, &stream, &user);
+        if (get_result == 0)
             break;
+        if (get_result > 0)
+            goto done;
         usleep(1000);
     }
     if (!stream)
         goto done;
+    if (frame != &ch->synthetic_frame &&
+        IMP_FrameSource_ReleaseFrame(ch->source_channel, frame) == 0)
+        frame = NULL;
     pthread_mutex_lock(&ch->lock);
     ch->source_frame = frame ? frame : &ch->synthetic_frame;
     ch->raw_stream = stream;
@@ -912,10 +932,22 @@ int IMP_Encoder_SetJpegeQl(int channel, IMPEncoderJpegeQl *quality)
 
 int IMP_Encoder_SetMaxStreamCnt(int channel, int count)
 {
-    if (!p2_valid_channel(channel) || count <= 0)
+    P2EncoderChannel *ch;
+
+    if (!p2_valid_channel(channel) || count <= 0 || count > 16)
         return -1;
     EncoderInit();
-    p2_channels[channel].max_stream_count = count;
+    ch = &p2_channels[channel];
+    pthread_mutex_lock(&ch->lock);
+    if (ch->codec &&
+        AL_Codec_Encode_SetStreamBufferCount(ch->codec, count) != 0) {
+        pthread_mutex_unlock(&ch->lock);
+        return -1;
+    }
+    ch->max_stream_count = count;
+    pthread_mutex_unlock(&ch->lock);
+    p2_trace("openimp/P2: SetMaxStreamCnt ch=%d count=%d\n",
+             channel, count);
     return 0;
 }
 
