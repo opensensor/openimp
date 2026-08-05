@@ -7,6 +7,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
+#include <stddef.h>
 #include <fcntl.h>
 #include <unistd.h>
 #include <sys/ioctl.h>
@@ -16,6 +17,9 @@
 #include <time.h>
 #include <stdarg.h>
 #include "dma_alloc.h"
+
+extern int64_t IMP_System_GetTimeStamp(void);
+extern int64_t OpenIMP_P0_NormalizeMonotonicTimeStamp(uint64_t timestamp);
 
 static void ki_trace(const char *fmt, ...)
 {
@@ -640,7 +644,7 @@ int fs_qbuf(int fd, int index, unsigned long phys, unsigned int length) {
     return 0;
 }
 /* Dequeue a filled buffer from the framechan driver */
-int fs_dqbuf(int fd, int *index_out) {
+int fs_dqbuf(int fd, int *index_out, uint64_t *timestamp_out) {
     void *raw = NULL;
     struct v4l2_buf32 *b;
     int ret;
@@ -685,12 +689,20 @@ int fs_dqbuf(int fd, int *index_out) {
     }
 
     *index_out = (int)b->index;
+    if (timestamp_out != NULL) {
+        if (b->ts_usec < 1000000u)
+            *timestamp_out = (uint64_t)b->ts_sec * 1000000u + b->ts_usec;
+        else
+            *timestamp_out = 0;
+    }
     ki_trace("libimp/KI: DQBUF exit fd=%d ret=%d idx=%d errno=%d\n",
              fd, ret, *index_out, saved_errno);
     {
         static int dqbuf_ok_log = 0;
         if (dqbuf_ok_log < 6) {
-            fprintf(stderr, "[KernelIF] DQBUF: fd=%d OK idx=%d\n", fd, *index_out);
+            fprintf(stderr,
+                    "[KernelIF] DQBUF: fd=%d OK idx=%d ts=%u.%06u seq=%u\n",
+                    fd, *index_out, b->ts_sec, b->ts_usec, b->sequence);
             dqbuf_ok_log++;
         }
     }
@@ -726,6 +738,9 @@ typedef struct {
     uint32_t virt_addr;     /* 0x1c: Virtual address */
     uint8_t data[0x408];    /* 0x20-0x427: Frame data */
 } VBMFrame;
+
+_Static_assert(offsetof(VBMFrame, data) == 0x20,
+               "T31 frame timestamp offset must remain 0x20");
 
 /* VBM Pool structure */
 typedef struct {
@@ -1193,12 +1208,14 @@ int VBMKernelDequeue(int chn, int fd, void **frame_out) {
     static int dbg_count[MAX_VBM_POOLS] = {0};
 
     int idx = -1;
+    uint64_t absolute_timestamp = 0;
+    int64_t frame_timestamp;
     ki_trace("libimp/VBM: KernelDequeue enter ch=%d fd=%d pool=%p\n", chn, fd, pool);
     if (dbg_count[chn] < 3) {
         fprintf(stderr, "[VBM] VBMKernelDequeue chn=%d: attempting DQBUF...\n", chn);
     }
 
-    int ret = fs_dqbuf(fd, &idx);
+    int ret = fs_dqbuf(fd, &idx, &absolute_timestamp);
     ki_trace("libimp/VBM: KernelDequeue post-dq ch=%d fd=%d ret=%d idx=%d\n",
              chn, fd, ret, idx);
     if (dbg_count[chn] < 3) {
@@ -1224,6 +1241,12 @@ int VBMKernelDequeue(int chn, int fd, void **frame_out) {
         fprintf(stderr, "[VBM] VBMKernelDequeue chn=%d: invalid idx=%d (frame_count=%d)\n", chn, idx, pool->frame_count);
         return -1;
     }
+    frame_timestamp =
+        OpenIMP_P0_NormalizeMonotonicTimeStamp(absolute_timestamp);
+    if (frame_timestamp < 0)
+        frame_timestamp = IMP_System_GetTimeStamp();
+    memcpy(pool->frames[idx].data, &frame_timestamp,
+           sizeof(frame_timestamp));
     /* Mark buffer as in userspace — VBMReleaseFrame will only QBUF it back
      * if this flag is set, preventing double-QBUF. */
     if (pool->buf_in_userspace)

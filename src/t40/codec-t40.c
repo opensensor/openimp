@@ -6057,8 +6057,15 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
     }
 #endif
 
-    /* Get current timestamp */
-    uint64_t timestamp = IMP_System_GetTimeStamp();
+    /* OEM T31 copies frameInfo.timeStamp at offset 0x20 into every public
+     * encoder pack.  Preserve the capture-completion timestamp populated by
+     * DQBUF instead of replacing it with jittery encoder-start wall time. */
+    uint64_t timestamp = 0;
+#if defined(PLATFORM_T31)
+    memcpy(&timestamp, (const uint8_t *)frame + 0x20, sizeof(timestamp));
+#endif
+    if (!timestamp)
+        timestamp = IMP_System_GetTimeStamp();
 
     if (enc->use_hardware) {
         /* Lazy-init hardware encoder on first frame */

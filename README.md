@@ -58,9 +58,13 @@ records RVD import coverage in `build/t31/`.
   stock T40XP ISP and AVPU drivers.
 - T31: the shared T40-derived encoder ran for more than 1,000 hardware frames
   on a stock-driver GC2053 camera. Main 1920x1080 H.264 and AAC probed and
-  decoded without H.264 errors during the device smoke cycle. Timing parity is
-  still open: the final 12-second decode reported 11 duplicate output-DTS
-  warnings, while a same-device stock-userspace decode reported none.
+  decoded without H.264 errors during the device smoke cycle. The T31
+  FrameSource seam now preserves the kernel DQBUF completion timestamp in the
+  OEM `frameInfo.timeStamp` slot at offset `0x20`; the shared encoder copies
+  that capture timestamp into each public pack instead of substituting
+  encoder-start wall time. A 30-second live decode completed 721 frames with
+  zero duplicate/non-monotonic DTS warnings, compared with 11 warnings in the
+  prior 12-second checkpoint.
 - Capture ownership is an explicit platform policy: T31 returns a frame after
   AVPU completion, while T40 returns it immediately after submission. This
   preserves full-rate capture on both stock-driver ABIs.

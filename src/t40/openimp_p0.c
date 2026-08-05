@@ -378,6 +378,21 @@ int64_t IMP_System_GetTimeStamp(void)
     return (int64_t)(now - state.timestamp_base_us);
 }
 
+/* FrameSource DQBUF timestamps use the same absolute monotonic clock as the
+ * system timestamp base.  Keep the conversion here so the T31 stock-driver
+ * seam does not duplicate or guess P0's private rebase state. */
+int64_t OpenIMP_P0_NormalizeMonotonicTimeStamp(uint64_t timestamp)
+{
+    uint64_t base;
+
+    lock_state();
+    base = state.timestamp_base_us;
+    unlock_state();
+    if (!base || timestamp < base)
+        return -1;
+    return (int64_t)(timestamp - base);
+}
+
 int IMP_System_RebaseTimeStamp(int64_t timestamp)
 {
     uint64_t now = monotonic_us();
