@@ -269,6 +269,147 @@ static void test_oem_model_selection_primitives(void)
                11225u, 1, 100u) == -1);
 }
 
+static void test_oem_p_picture_selector(void)
+{
+    struct SelectorFixture {
+        uint32_t bits;
+        uint32_t feedback;
+        uint32_t model_bits[3];
+        int16_t model_qp[3];
+        uint32_t model_scale[3];
+        int16_t current_qp;
+        uint32_t remaining;
+        uint32_t adaptive_bits;
+        int32_t compensation_bits;
+        int32_t history_bits;
+        uint32_t policy_mode;
+        uint8_t negative_latch;
+        uint8_t low_feedback_latch;
+        uint32_t expected_target;
+        int64_t expected_residual;
+        int32_t expected_delta;
+        int16_t expected_qp;
+        uint8_t expected_negative_latch;
+        uint8_t expected_low_feedback_latch;
+    };
+    static const struct SelectorFixture fixtures[] = {
+        { 537464u, 100u, { 320000u, 537464u, 320000u },
+          { 38, 38, 38 }, { 11225u, 11225u, 11225u }, 38, 48u,
+          14964u, -32685, 11699656, 2u, 0u, 1u,
+          217455u, 10810072, 0, 38, 0u, 0u },
+        { 212520u, 40u, { 320000u, 212520u, 320000u },
+          { 38, 38, 38 }, { 11225u, 11225u, 11225u }, 38, 47u,
+          3575u, -32685, 11807136, 1u, 0u, 0u,
+          271642u, 17948767, 1, 39, 0u, 0u },
+        { 91960u, 41u, { 320000u, 91960u, 320000u },
+          { 38, 39, 38 }, { 11225u, 11202u, 11225u }, 39, 47u,
+          5509u, 3725, 11877152, 1u, 0u, 0u,
+          297254u, 20111458, -4, 35, 1u, 0u },
+        { 124080u, 17u, { 320000u, 124080u, 320000u },
+          { 38, 34, 38 }, { 11225u, 15590u, 11225u }, 34, 43u,
+          4370u, 3725, 12239368, 1u, 1u, 0u,
+          303518u, 13031772, -2, 34, 1u, 1u },
+        { 1095568u, 72u, { 320000u, 1095568u, 320000u },
+          { 38, 34, 38 }, { 11225u, 20000u, 11225u }, 34, 39u,
+          4369u, 3725, 11315944, 1u, 0u, 1u,
+          303524u, 2432368, 1, 35, 0u, 1u },
+        { 211168u, 17u, { 320000u, 211168u, 320000u },
+          { 38, 37, 38 }, { 11225u, 20000u, 11225u }, 37, 32u,
+          6175u, 3725, 10511152, 1u, 0u, 1u,
+          293711u, 17372464, 1, 38, 0u, 1u },
+        { 42560u, 20u, { 320000u, 42560u, 320000u },
+          { 38, 41, 38 }, { 11225u, 13658u, 11225u }, 41, 24u,
+          6924u, 3725, 11515432, 1u, 1u, 1u,
+          289827u, 18447568, 0, 41, 0u, 1u },
+        { 27328u, 7u, { 320000u, 27328u, 320000u },
+          { 38, 39, 38 }, { 11225u, 20000u, 11225u }, 39, 15u,
+          6924u, 3725, 14045704, 1u, 0u, 1u,
+          289827u, 18435784, -1, 38, 1u, 1u },
+    };
+    size_t index;
+
+    for (index = 0u; index < sizeof(fixtures) / sizeof(fixtures[0]);
+         ++index) {
+        const struct SelectorFixture *fixture = &fixtures[index];
+        OpenIMPT41RateControlPSelector selector;
+        OpenIMPT41RateControlSelection selection;
+        size_t model;
+
+        memset(&selector, 0, sizeof(selector));
+        for (model = 0u; model < 3u; ++model) {
+            selector.models.models[model].bits = fixture->model_bits[model];
+            selector.models.models[model].qp = fixture->model_qp[model];
+            selector.models.models[model].scale =
+                fixture->model_scale[model];
+        }
+        selector.models.current_qp = fixture->current_qp;
+        selector.models.first_model_qp_bias = 2;
+        selector.models.max_qp_steps = 4;
+        selector.min_qp = 34;
+        selector.max_qp = 51;
+        selector.gop_length = 50u;
+        selector.pictures_remaining = fixture->remaining;
+        selector.allocation_budget_bits = 320000u;
+        selector.residual_picture_bits = 320000u;
+        selector.adaptive_model_bits = fixture->adaptive_bits;
+        selector.allocation_compensation_bits = fixture->compensation_bits;
+        selector.prediction_cap_bits = 24000000u;
+        selector.buffer_budget_bits = 19200000u;
+        selector.threshold_span_bits = 8000000u;
+        selector.history_target_bits = fixture->history_bits;
+        selector.residual_policy_mode = fixture->policy_mode;
+        selector.negative_delta_latch = fixture->negative_latch;
+        selector.low_feedback_latch = fixture->low_feedback_latch;
+
+        assert(openimp_t41_rate_control_select_p_picture(
+                   &selector, fixture->bits, fixture->feedback,
+                   &selection) == 0);
+        assert(selection.picture_target_bits == fixture->expected_target);
+        assert(selection.residual_bits == fixture->expected_residual);
+        assert(selection.qp_delta == fixture->expected_delta);
+        assert(selection.selected_qp == fixture->expected_qp);
+        assert(selector.models.current_qp == fixture->expected_qp);
+        assert(selector.negative_delta_latch ==
+               fixture->expected_negative_latch);
+        assert(selector.low_feedback_latch ==
+               fixture->expected_low_feedback_latch);
+    }
+
+    /* The first non-IDR call takes the positive four-step search before the
+     * OEM mode-2 residual gate resets the final delta to zero. */
+    {
+        OpenIMPT41RateControlPSelector selector = {
+            { {
+                { 320000u, 38u, 11225u },
+                { 537464u, 38u, 11225u },
+                { 320000u, 38u, 11225u },
+            }, 38, 2, 4 },
+            34, 51, 50u, 48u, 320000u, 320000u, 14964u, -32685,
+            24000000u, 19200000u, 8000000u, 11699656, 2u, 0u, 1u,
+        };
+        OpenIMPT41RateControlSelection selection;
+        OpenIMPT41RateControlPSelector original = selector;
+
+        assert(openimp_t41_rate_control_select_p_picture(
+                   &selector, 537464u, 100u, &selection) == 0);
+        assert(selection.adjusted_completed_bits == 338533u);
+        assert(selection.predictions_before[1] == 537464u);
+        assert(selection.predictions_after[1] == 338533u);
+
+        selector = original;
+        selector.gop_length = 1u;
+        original = selector;
+        assert(openimp_t41_rate_control_select_p_picture(
+                   &selector, 537464u, 100u, &selection) == -1);
+        assert(memcmp(&selector, &original, sizeof(selector)) == 0);
+        selector.gop_length = 50u;
+        original = selector;
+        assert(openimp_t41_rate_control_select_p_picture(
+                   &selector, 0u, 100u, &selection) == -1);
+        assert(memcmp(&selector, &original, sizeof(selector)) == 0);
+    }
+}
+
 static void test_coupled_controller(void)
 {
     OpenIMPT41RateController controller;
@@ -356,6 +497,7 @@ int main(void)
     test_oem_subchannel_window_oracle();
     test_window_bounds();
     test_oem_model_selection_primitives();
+    test_oem_p_picture_selector();
     test_coupled_controller();
     test_controller_bounds_and_detail_gate();
     puts("T41 software rate-control coupling: OK");

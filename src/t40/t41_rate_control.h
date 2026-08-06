@@ -37,6 +37,39 @@ typedef struct OpenIMPT41RateControlModelSet {
     int32_t max_qp_steps;
 } OpenIMPT41RateControlModelSet;
 
+/* Semantic state for the T41 OEM selector's normal P-picture path.  The
+ * original routine stores these values at unrelated offsets in a 440-byte
+ * private object; keeping the recovered policy in a named structure avoids
+ * spreading that private ABI through the codec. */
+typedef struct OpenIMPT41RateControlPSelector {
+    OpenIMPT41RateControlModelSet models;
+    int16_t min_qp;
+    int16_t max_qp;
+    uint32_t gop_length;
+    uint32_t pictures_remaining;
+    uint32_t allocation_budget_bits;
+    uint32_t residual_picture_bits;
+    uint32_t adaptive_model_bits;
+    int32_t allocation_compensation_bits;
+    uint32_t prediction_cap_bits;
+    uint32_t buffer_budget_bits;
+    uint32_t threshold_span_bits;
+    int32_t history_target_bits;
+    uint32_t residual_policy_mode;
+    uint8_t negative_delta_latch;
+    uint8_t low_feedback_latch;
+} OpenIMPT41RateControlPSelector;
+
+typedef struct OpenIMPT41RateControlSelection {
+    uint32_t picture_target_bits;
+    uint32_t adjusted_completed_bits;
+    uint32_t predictions_before[3];
+    uint32_t predictions_after[3];
+    int64_t residual_bits;
+    int32_t qp_delta;
+    int16_t selected_qp;
+} OpenIMPT41RateControlSelection;
+
 /* Software-owned part of the T41 CBR loop.  The 0x40-byte history and
  * normalized hardware feedback match the recovered OEM stages exactly.
  * Selection is deliberately bounded to one QP per completed P picture so a
@@ -96,6 +129,16 @@ int openimp_t41_rate_control_adjust_model(
     uint32_t *model_bits, uint32_t *previous_bound_distance,
     int16_t current_qp, int16_t min_qp, int16_t max_qp,
     uint32_t scale, int32_t max_adjustment, uint32_t feedback_percent);
+
+/* Exact policy followed by the captured OEM T41 CBR configuration for a
+ * normal P picture (mode 2, one-QP steps, no enhanced/temporal cadence).
+ * The picture-class model updater remains a separate stage: callers provide
+ * its current models and allocation terms, and this routine reproduces the
+ * larger o1II selector's target, candidate search, residual correction,
+ * hysteresis latches, and final QP clamp. */
+int openimp_t41_rate_control_select_p_picture(
+    OpenIMPT41RateControlPSelector *selector, uint32_t completed_bits,
+    uint32_t feedback_percent, OpenIMPT41RateControlSelection *selection);
 
 int openimp_t41_rate_controller_init(OpenIMPT41RateController *controller,
                                      uint32_t bitrate, uint32_t fps_num,

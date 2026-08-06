@@ -327,6 +327,225 @@ int openimp_t41_rate_control_adjust_model(
     return 0;
 }
 
+static int openimp_t41_rate_control_residual(
+    uint32_t pictures_remaining, uint32_t picture_bits,
+    int32_t history_bits, uint32_t predicted_bits, int64_t *residual)
+{
+    uint64_t budget;
+    uint64_t prediction;
+    int64_t value;
+
+    if (!residual || history_bits < 0 ||
+        (pictures_remaining != 0u &&
+         picture_bits > UINT64_MAX / pictures_remaining))
+        return -1;
+    budget = (uint64_t)pictures_remaining * picture_bits;
+    prediction = (uint64_t)pictures_remaining * predicted_bits;
+    if (budget > (uint64_t)INT64_MAX - (uint32_t)history_bits ||
+        prediction > (uint64_t)INT64_MAX)
+        return -1;
+    value = (int64_t)budget + history_bits;
+    *residual = value - (int64_t)prediction;
+    return 0;
+}
+
+int openimp_t41_rate_control_select_p_picture(
+    OpenIMPT41RateControlPSelector *selector, uint32_t completed_bits,
+    uint32_t feedback_percent, OpenIMPT41RateControlSelection *selection)
+{
+    OpenIMPT41RateControlPSelector next;
+    OpenIMPT41RateControlSelection result;
+    uint64_t numerator;
+    uint64_t quotient;
+    uint64_t comparison;
+    uint64_t refinement_threshold;
+    int64_t target;
+    int64_t residual;
+    uint32_t denominator;
+    uint32_t band;
+    uint32_t scale;
+    uint32_t quarter;
+    uint32_t three_quarters;
+    uint32_t max_positive_delta;
+    int32_t candidate = 0;
+    int skip_history_correction = 0;
+
+    if (!selector || !selection || completed_bits == 0u ||
+        selector->models.max_qp_steps <= 0 ||
+        selector->models.max_qp_steps > INT16_MAX ||
+        selector->min_qp > selector->models.current_qp ||
+        selector->models.current_qp > selector->max_qp ||
+        selector->gop_length < 2u || selector->pictures_remaining == 0u ||
+        selector->pictures_remaining > selector->gop_length ||
+        selector->prediction_cap_bits < selector->buffer_budget_bits ||
+        selector->models.models[1].scale == 0u ||
+        selector->gop_length > UINT32_MAX / 1000u ||
+        selector->adaptive_model_bits >
+            UINT32_MAX - (selector->gop_length - 1u) * 1000u)
+        return -1;
+
+    denominator = (selector->gop_length - 1u) * 1000u +
+                  selector->adaptive_model_bits;
+    if (denominator == 0u ||
+        selector->allocation_budget_bits >
+            UINT64_MAX / ((uint64_t)selector->gop_length * 1000u))
+        return -1;
+    numerator = (uint64_t)selector->gop_length * 1000u *
+                selector->allocation_budget_bits;
+    quotient = numerator / denominator;
+    if (quotient > (uint64_t)INT64_MAX ||
+        (selector->allocation_compensation_bits > 0 &&
+         quotient > (uint64_t)INT64_MAX -
+             (uint32_t)selector->allocation_compensation_bits))
+        return -1;
+    target = (int64_t)quotient +
+             selector->allocation_compensation_bits;
+    if (target < 1)
+        target = 1;
+    if (target > UINT32_MAX)
+        return -1;
+
+    memset(&result, 0, sizeof(result));
+    result.picture_target_bits = (uint32_t)target;
+    result.adjusted_completed_bits = completed_bits;
+    if (openimp_t41_rate_control_predict_model_set(
+            &selector->models, 0, selector->prediction_cap_bits,
+            result.predictions_before) != 0 ||
+        openimp_t41_rate_control_residual(
+            selector->pictures_remaining,
+            selector->residual_picture_bits,
+            selector->history_target_bits, result.predictions_before[1],
+            &residual) != 0)
+        return -1;
+
+    band = selector->threshold_span_bits / 10u;
+    if (band > selector->prediction_cap_bits -
+                   selector->buffer_budget_bits)
+        band = selector->prediction_cap_bits -
+               selector->buffer_budget_bits;
+    scale = selector->models.models[1].scale;
+
+    if (completed_bits < result.picture_target_bits &&
+        residual > (int64_t)selector->buffer_budget_bits + band) {
+        do {
+            --candidate;
+            result.adjusted_completed_bits = (uint32_t)(
+                (uint64_t)result.adjusted_completed_bits * scale / 10000u);
+            if (result.adjusted_completed_bits == 0u)
+                return -1;
+            comparison = (uint64_t)result.picture_target_bits * 10000u /
+                         result.adjusted_completed_bits;
+            if (scale >= comparison)
+                break;
+        } while (candidate > -selector->models.max_qp_steps);
+    } else if (residual <
+               (int64_t)selector->buffer_budget_bits -
+                   (band < selector->buffer_budget_bits
+                        ? band : selector->buffer_budget_bits)) {
+        if (result.picture_target_bits < completed_bits) {
+            do {
+                ++candidate;
+                result.adjusted_completed_bits = (uint32_t)(
+                    (uint64_t)result.adjusted_completed_bits * 10000u /
+                    scale);
+                comparison =
+                    (uint64_t)result.adjusted_completed_bits * 10000u /
+                    result.picture_target_bits;
+                if (scale >= comparison)
+                    break;
+            } while (candidate < selector->models.max_qp_steps);
+        } else {
+            candidate = 1;
+        }
+    }
+
+    if (openimp_t41_rate_control_predict_model_set(
+            &selector->models, candidate,
+            selector->prediction_cap_bits,
+            result.predictions_after) != 0 ||
+        openimp_t41_rate_control_residual(
+            selector->pictures_remaining,
+            selector->residual_picture_bits,
+            selector->history_target_bits, result.predictions_after[1],
+            &residual) != 0)
+        return -1;
+
+    quarter = selector->prediction_cap_bits / 4u;
+    three_quarters = quarter * 3u;
+    refinement_threshold = quarter +
+        (uint64_t)result.predictions_after[1] *
+            selector->adaptive_model_bits / 1000u;
+    if (residual < 0 || (uint64_t)residual < refinement_threshold) {
+        if (candidate <= 0) {
+            ++candidate;
+            skip_history_correction = 1;
+        } else if (residual > three_quarters) {
+            --candidate;
+            skip_history_correction = 1;
+        }
+    } else if (residual > three_quarters && candidate >= 0) {
+        --candidate;
+        skip_history_correction = 1;
+    }
+
+    if (!skip_history_correction) {
+        uint32_t sixth = selector->prediction_cap_bits / 6u;
+
+        if ((int64_t)selector->history_target_bits < sixth)
+            ++candidate;
+        else if ((int64_t)sixth * 5 < selector->history_target_bits)
+            --candidate;
+    }
+
+    next = *selector;
+    if (next.gop_length >= 3u) {
+        if (candidate < 0) {
+            next.negative_delta_latch = 1u;
+        } else if (next.negative_delta_latch != 0u) {
+            next.negative_delta_latch = 0u;
+            candidate = feedback_percent < 30u && residual > 0 ? 0 : 1;
+        }
+        if (next.residual_policy_mode == 2u && residual > 0)
+            candidate = 0;
+    }
+
+    max_positive_delta = (uint32_t)next.models.max_qp_steps;
+    if (feedback_percent >= 86u && next.low_feedback_latch != 0u) {
+        if ((int64_t)next.history_target_bits >=
+            next.buffer_budget_bits / 2u) {
+            if ((int64_t)next.history_target_bits >=
+                (int64_t)next.buffer_budget_bits * 3 / 4) {
+                max_positive_delta = candidate <= 0 ? 0u : 1u;
+            } else {
+                max_positive_delta /= 2u;
+            }
+        }
+        next.low_feedback_latch = 0u;
+    } else if (feedback_percent < 30u) {
+        next.low_feedback_latch = 1u;
+    }
+
+    /* This asymmetry is intentional: the OEM block uses its dynamic positive
+     * limit only to select whether the negative clamp executes.  Positive
+     * candidates were already bounded by the search above. */
+    if (candidate <= (int32_t)max_positive_delta &&
+        candidate < -next.models.max_qp_steps)
+        candidate = -next.models.max_qp_steps;
+
+    target = (int64_t)next.models.current_qp + candidate;
+    if (target < next.min_qp)
+        target = next.min_qp;
+    if (target > next.max_qp)
+        target = next.max_qp;
+    next.models.current_qp = (int16_t)target;
+    result.residual_bits = residual;
+    result.qp_delta = candidate;
+    result.selected_qp = (int16_t)target;
+    *selector = next;
+    *selection = result;
+    return 0;
+}
+
 static uint32_t openimp_t41_clamp_qp(uint32_t qp, uint32_t min_qp,
                                      uint32_t max_qp)
 {
