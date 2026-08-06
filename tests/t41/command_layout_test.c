@@ -5,6 +5,7 @@
 
 #include "t40/t41_command_builder.h"
 #include "t40/t41_command_layout.h"
+#include "t40/t41_hw_rate_control.h"
 
 typedef struct ExpectedWord {
     uint16_t index;
@@ -343,6 +344,44 @@ static void test_entropy_status_oracle(void)
                slot, sizeof(slot), slice, sizeof(slice) - 1u, 0x140u) == -1);
 }
 
+static void test_hwrc_level_lifecycle(void)
+{
+    uint32_t ring[OPENIMP_T41_EP3_RING_SIZE / sizeof(uint32_t)];
+    OpenIMPT41HWRCLevelState state;
+    size_t p_level = (OPENIMP_T41_EP3_SLOT_STRIDE +
+                      OPENIMP_T41_EP3_LEVEL_OFFSET) / sizeof(uint32_t);
+    size_t idr_level = (2u * OPENIMP_T41_EP3_SLOT_STRIDE +
+                        OPENIMP_T41_EP3_LEVEL_OFFSET) / sizeof(uint32_t);
+
+    memset(ring, 0xa5, sizeof(ring));
+    openimp_t41_hwrc_level_init(&state);
+    assert(state.level == 0u);
+    assert(openimp_t41_hwrc_level_set_buffer(
+               &state, ring, sizeof(ring), 1u) == 0);
+    assert(ring[p_level] == 0u);
+
+    ring[idr_level] = 0x08ab0c89u;
+    assert(openimp_t41_hwrc_level_update(
+               &state, ring, sizeof(ring), 2u) == 0);
+    assert(state.level == 0x08ab0c89u);
+    assert(openimp_t41_hwrc_level_set_buffer(
+               &state, ring, sizeof(ring), 1u) == 0);
+    assert(ring[p_level] == 0x08ab0c89u);
+    assert(ring[(OPENIMP_T41_EP3_SLOT_STRIDE +
+                 OPENIMP_T41_EP3_HISTORY_OFFSET) / sizeof(uint32_t)] ==
+           0xa5a5a5a5u);
+
+    assert(openimp_t41_hwrc_level_update(
+               NULL, ring, sizeof(ring), 1u) == -1);
+    assert(openimp_t41_hwrc_level_update(
+               &state, NULL, sizeof(ring), 1u) == -1);
+    assert(openimp_t41_hwrc_level_update(
+               &state, ring, sizeof(ring),
+               OPENIMP_T41_EP3_SLOT_COUNT) == -1);
+    assert(openimp_t41_hwrc_level_set_buffer(
+               &state, ring, OPENIMP_T41_EP3_LEVEL_OFFSET, 0u) == -1);
+}
+
 int main(void)
 {
     uint8_t slot[OPENIMP_T41_CL_SLOT_SIZE];
@@ -386,6 +425,7 @@ int main(void)
     test_encoding_status_oracle();
     test_rate_control_statistics_oracle();
     test_entropy_status_oracle();
+    test_hwrc_level_lifecycle();
 
     puts("T41 command layout and builder: OK");
     return 0;

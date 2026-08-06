@@ -109,6 +109,8 @@ The exact T41 OEM binary now identifies the EP3 buffer-manager transition:
 - `AL_HwRC_SetBuffer` resolves the next EP3 buffer's physical and virtual
   addresses, copies manager offset `0x18` to that buffer's offset `0x1400`,
   flushes those four bytes, and returns both addresses to the command builder.
+- The `0x1420` per-core size, `0x1500` slot stride, `0x1360` history window,
+  and `0x1400` level handoff now live in a bounded, host-tested T41 component.
 
 A live OpenIMP probe reproduced that scalar handoff and confirmed that T41
 hardware updates the field. The scalar handoff alone caused unstable payload
@@ -129,6 +131,13 @@ and `34/37/0` for the subchannel, with the recovered overflow flag clear. This
 confirms that the hardware supplies channel-specific QP feedback that the
 payload-only approximation discards; the fields are logged but not yet fed
 back into the next command.
+
+A read-only physical-memory check also corrected the earlier cached-alias
+observation: the active main-channel P slot contains all 36 hardware-written
+words at `+0x1360` and level `0x00000a13`; its IDR slot contains a distinct
+history and level `0x08ab0c89`. The hardware writeback is therefore present.
+The remaining lifecycle issue is coherent CPU visibility and the OEM
+cross-slot handoff, not absent AVPU output.
 
 ## Remaining work
 

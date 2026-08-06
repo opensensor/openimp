@@ -25,6 +25,7 @@
 #include "kernel_interface.h"
 #if defined(PLATFORM_T41)
 #include "t41_command_builder.h"
+#include "t41_hw_rate_control.h"
 #endif
 #include <sys/eventfd.h>
 #include <sys/ioctl.h>
@@ -1035,9 +1036,15 @@ static size_t avpu_get_enc1_frame_buf_size(uint32_t width, uint32_t height)
 }
 
 #if defined(PLATFORM_T40) || defined(PLATFORM_T31)
+#if defined(PLATFORM_T41)
+#define AVPU_T40_EP3_SLOT_SIZE OPENIMP_T41_EP3_SLOT_STRIDE
+#define AVPU_T40_EP3_DATA_SIZE OPENIMP_T41_EP3_PER_CORE_SIZE
+#define AVPU_T40_EP3_SLOT_COUNT OPENIMP_T41_EP3_SLOT_COUNT
+#else
 #define AVPU_T40_EP3_SLOT_SIZE 0x1500u
 #define AVPU_T40_EP3_DATA_SIZE 0x14a0u
 #define AVPU_T40_EP3_SLOT_COUNT 3u
+#endif
 
 static const uint32_t avpu_t40_ep3_qp_words[12][3] = {
     { 0x0c090706u, 0x08060504u, 0x130e0a08u },
