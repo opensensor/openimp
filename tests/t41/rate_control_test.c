@@ -177,6 +177,83 @@ static void test_window_bounds(void)
     assert(memcmp(&window, &original, sizeof(window)) == 0);
 }
 
+static void test_coupled_controller(void)
+{
+    OpenIMPT41RateController controller;
+    OpenIMPT41RateControlFeedback feedback = { 0 };
+
+    assert(openimp_t41_rate_controller_init(
+               &controller, 8000000u, 25u, 1u, 25u,
+               34u, 51u, 38u) == 0);
+    assert(controller.target_bits == 320000u);
+    assert(controller.window.words[0] == 24000000u);
+    assert(controller.window.words[1] == 216000u);
+    assert(controller.window.words[2] == 1000u);
+    assert(controller.window.words[3] == 25000u);
+    assert(controller.window.words[4] == 8000000u);
+    assert(controller.window.words[5] == 0x101u);
+    assert(controller.window.words[8] == 216000u);
+    assert(openimp_t41_rate_controller_qp(&controller) == 38u);
+
+    /* A large IDR advances history without reproducing the old +4 jump. */
+    assert(openimp_t41_rate_controller_complete(
+               &controller, 1000000u, 1, &feedback) == 0);
+    assert(openimp_t41_rate_controller_qp(&controller) == 38u);
+    assert(controller.window.words[14] == 1u);
+
+    assert(openimp_t41_rate_controller_complete(
+               &controller, 400000u, 0, &feedback) == 0);
+    assert(openimp_t41_rate_controller_qp(&controller) == 38u);
+    assert(openimp_t41_rate_controller_complete(
+               &controller, 400000u, 0, &feedback) == 0);
+    assert(openimp_t41_rate_controller_qp(&controller) == 39u);
+    assert(controller.completed_pictures == 3u);
+    assert(controller.completed_p_pictures == 2u);
+}
+
+static void test_controller_bounds_and_detail_gate(void)
+{
+    OpenIMPT41RateController controller;
+    OpenIMPT41RateControlFeedback detailed = { 0 };
+
+    assert(openimp_t41_rate_controller_init(
+               &controller, 8000000u, 25u, 1u, 25u,
+               34u, 51u, 99u) == 0);
+    assert(openimp_t41_rate_controller_qp(&controller) == 51u);
+    assert(openimp_t41_rate_controller_complete(
+               &controller, 800000u, 0, NULL) == 0);
+    assert(openimp_t41_rate_controller_complete(
+               &controller, 800000u, 0, NULL) == 0);
+    assert(openimp_t41_rate_controller_qp(&controller) == 51u);
+
+    assert(openimp_t41_rate_controller_init(
+               &controller, 8000000u, 25u, 1u, 25u,
+               34u, 51u, 40u) == 0);
+    detailed.field_1c_percent = 75u;
+    assert(openimp_t41_rate_controller_complete(
+               &controller, 100000u, 0, &detailed) == 0);
+    assert(openimp_t41_rate_controller_complete(
+               &controller, 100000u, 0, &detailed) == 0);
+    assert(openimp_t41_rate_controller_complete(
+               &controller, 100000u, 0, &detailed) == 0);
+    assert(openimp_t41_rate_controller_qp(&controller) == 40u);
+    detailed.field_1c_percent = 10u;
+    assert(openimp_t41_rate_controller_complete(
+               &controller, 100000u, 0, &detailed) == 0);
+    assert(openimp_t41_rate_controller_qp(&controller) == 39u);
+
+    assert(openimp_t41_rate_controller_init(
+               NULL, 1u, 1u, 1u, 1u, 0u, 51u, 1u) == -1);
+    assert(openimp_t41_rate_controller_init(
+               &controller, 0u, 1u, 1u, 1u, 0u, 51u, 1u) == -1);
+    assert(openimp_t41_rate_controller_init(
+               &controller, 1u, 1u, 1u, 1u, 52u, 51u, 1u) == -1);
+    memset(&controller, 0, sizeof(controller));
+    assert(openimp_t41_rate_controller_complete(
+               &controller, 1u, 0, NULL) == -1);
+    assert(openimp_t41_rate_controller_qp(NULL) == 0u);
+}
+
 int main(void)
 {
     test_oem_main_idr_oracle();
@@ -186,6 +263,8 @@ int main(void)
     test_oem_main_window_oracle();
     test_oem_subchannel_window_oracle();
     test_window_bounds();
-    puts("T41 software rate-control feedback: OK");
+    test_coupled_controller();
+    test_controller_bounds_and_detail_gate();
+    puts("T41 software rate-control coupling: OK");
     return 0;
 }

@@ -71,116 +71,51 @@ platform branches represent measured public or kernel ABI differences.
   block corruption under mixed daylight and warm interior lighting.
 - The Wyze v4 full-resolution profile now runs the same all-open stack at
   2560x1440. A 100-frame High-profile H.264 sample reported 2560x1440 at
-  25/1 fps, decoded without errors, and contained 5,132,459 bytes. Its live
+  25/1 fps, decoded without errors, and contained 4,237,360 bytes after the
+  completion controller settled against a 4,000,000-byte CBR budget. Its live
   software-rate-control block total is 57,600, matching the coded 320x180
-  8x8-block grid. This confirms geometry and buffer correctness at 2.5K, while
-  also making the still-excessive fixed-QP bitrate especially visible.
+  8x8-block grid. A second userspace stop/start without unloading ISP modules
+  produced another decoder-clean 50-frame sample, and a subsequent device
+  reboot returned the same open stack and full-resolution stream.
 
 ## H.264 quality state
 
-The decoder-clean fallback currently keeps the P-picture command and entropy
-QP at 34 while forwarding the recovered rate-control QP through command word
-179.  This produces more coded high-frequency noise and a higher bitrate than
-OEM, but changing command word 24 independently is not safe yet.
+The previously incomplete completion path is now coupled end to end:
 
-A same-boot OEM/Open `/dev/rmem` trace narrowed the missing coupling:
+- T41's exact combined encoding/entropy status decoder feeds the recovered
+  hardware-counter normalizer and the exact 0x40-byte bitrate-history update.
+  Captured OEM fixtures and all 40 recorded history transitions remain host
+  regression oracles.
+- A persistent per-channel controller replaces the old payload-only `+/-4`
+  helper. It starts from the observed OEM QP 38, ignores the separate IDR
+  burst when updating its P-picture model, and makes at most a one-QP change
+  per completed P picture using smoothed payload, virtual-buffer, and texture
+  feedback. This selector is intentionally bounded; it is not yet a line-for-
+  line port of OEM's full 4084-byte model-selection routine.
+- The selected QP is applied consistently to the generated slice header,
+  command word 24, its entropy mirror, and both QP fields in word 179. This
+  removes the former syntax/hardware split that produced CABAC corruption when
+  command QP was changed in isolation.
+- `AL_GetLambda` was recovered from the OEM binary. T41's two 16-bit EP1
+  lambda lanes now select AVC component 2 for IDR/I pictures and component 1
+  for P pictures while retaining component 3. The first IDR-to-P transition
+  changes exactly the 26 words measured in the OEM trace.
+- The full three-slot EP3 manager lifecycle is active. The completed slot is
+  invalidated, its hardware-written level at `+0x1400` is retained in manager
+  state, and that value is written and flushed into the next IDR/P slot. The
+  hardware-owned 36-word history at `+0x1360` remains in place. T41's required
+  1 MiB cache-operation normalization is used for both EP1 and EP3.
 
-- The first IDR EP1 image is byte-identical.  On the first P picture OEM
-  changes exactly 26 lambda words from the intra lane to the inter lane;
-  OpenIMP currently retains the intra form.
-- After physical addresses are excluded, the first main-channel P command
-  differs only at word 24 and its entropy mirror at word 513.  OEM uses its
-  recovered rate-control QP there.
-- OEM's P-picture EP3 state already has a nonzero word at offset `0x1400` and
-  gains additional hardware-written state at `0x1360` on later pictures.
-  OpenIMP's cached EP3 snapshots leave that whole tail zero.
-- OEM slice headers still advertise QP 34 (`slice_qp_delta = 8`), so changing
-  the generated slice header to follow command word 24 is not the missing
-  operation.
+On the live 8-Mbit/s, 2560x1440/25 stream, the controller settled around QP
+37-38 after a bounded startup transient. A 100-frame sample was 4,237,360
+bytes against a 4,000,000-byte nominal budget and decoded with an empty error
+log. A second Raptor stop/start, without unloading TX-ISP or rebooting, yielded
+a decoder-clean 50-frame sample. No EP1 flush, EP3 handoff, controller, kernel,
+or service errors were observed; the required cleanup reboot then returned a
+decoder-clean full-resolution stream from the persistent open implementation.
 
-Applying the measured P-picture EP1 transition by itself remained
-decoder-clean, but raised a matched 100-frame capture from 1,634,021 to
-1,799,978 bytes and increased mean luma temporal difference from 0.886 to
-1.001.  Pairing it with either dynamic command QP or a constant P QP of 40
-caused CABAC decode errors.  Those probes were reverted.  Keep the known-clean
-QP-34/IDR-lambda fallback until the EP3 initialization, writeback, and cache
-ownership transition is recovered as one unit.
-
-The exact T41 OEM binary now identifies the EP3 buffer-manager transition:
-
-- `AL_GetAllocSizeEP3PerCore` returns `0x1420`; `PreprocessHwRateCtrl` clears
-  the final `0x20` bytes beginning at `0x1400` and initializes each per-core
-  state in `0x1420`-byte strides. The allocator-facing buffer size is rounded
-  to 128 bytes, while the three captured picture-class buffers are placed on
-  `0x1500`-byte boundaries.
-- `AL_HwRC_UpdateLevel` invalidates four bytes at the completed EP3 buffer's
-  offset `0x1400`, reads the word, and stores it at HWRC-manager offset `0x18`.
-- `AL_HwRC_SetBuffer` resolves the next EP3 buffer's physical and virtual
-  addresses, copies manager offset `0x18` to that buffer's offset `0x1400`,
-  flushes those four bytes, and returns both addresses to the command builder.
-- The `0x1420` per-core size, `0x1500` slot stride, `0x1360` history window,
-  and `0x1400` level handoff now live in a bounded, host-tested T41 component.
-- The recovered three-slot EP3 initializer now has a bounded, directly
-  host-tested T41 implementation behind its dedicated `0x3f00`-byte
-  allocation. Its static table image and per-picture bitrate targets match
-  the captured OEM IDR/P oracles; dynamic QP remains disabled while the full
-  feedback transition is validated.
-
-A live OpenIMP probe reproduced that scalar handoff and confirmed that T41
-hardware updates the field. The scalar handoff alone caused unstable payload
-sizes. Enabling it together with the measured P-picture command QP, entropy
-mirror, and EP1 lane still produced top-row/CABAC errors in a 100-frame sample
-(1,788,954 bytes; nonempty decoder error log). All runtime changes were
-reverted, and the restored 100-frame fallback sample is decoder-clean
-(1,664,541 bytes; empty decoder error log). This rules out the `0x1400` word
-as the only missing state. The next port must include the OEM software
-rate-controller/statistics update and the full EP3 manager lifecycle; the
-current payload-only `openimp_t41_next_rate_control_qp` approximation is not a
-safe source for command word 24.
-
-The exact combined encoding/entropy-status decoder is now also active as a
-diagnostic while the fallback remains in control. On a decoder-clean
-100-frame open-stack capture,
-the packed hardware fields were consistently `34/38-39/0` for the main channel
-and `34/37/0` for the subchannel, with the recovered overflow flag clear. This
-confirms that the hardware supplies channel-specific QP feedback that the
-payload-only approximation discards; the fields are logged but not yet fed
-back into the next command. The recovered entropy byte count also matched the
-authoritative completed payload on both channels, its auxiliary counter was
-nonzero, and all three status flags remained clear.
-
-A read-only physical-memory check also corrected the earlier cached-alias
-observation: the active main-channel P slot contains all 36 hardware-written
-words at `+0x1360` and level `0x00000a13`; its IDR slot contains a distinct
-history and level `0x08ab0c89`. The hardware writeback is therefore present.
-The remaining lifecycle issue is coherent CPU visibility and the OEM
-cross-slot handoff, not absent AVPU output.
-
-The software-controller seam is now measured as well. The CBR controller is
-an inline-method object, and its per-completion method at `+0x10` is a
-4084-byte state-machine routine rather than a payload-only QP adjustment. It
-receives the full combined slice status, completed access-unit bit count,
-skip flag, and slice budget. An interposed OEM run showed approximately
-`0x1c0` bytes of persistent state changing independently for the main and sub
-channels; confirmed fields include current QP at `+0x78`, cumulative completed
-bits at `+0xd0`, and completed-picture count at `+0x170`.
-
-The first exact stage of that routine now lives in a bounded, host-tested T41
-component. It combines four hardware counters at slice-status offsets
-`+0x24..+0x30`, then normalizes the counters at `+0x14..+0x20` exactly as the
-OEM routine does. Captured OEM fixtures produce block totals of 32640 for the
-1920x1088-coded main channel and 3680 for the padded 640x368 subchannel. The
-same totals are now observed live on the open stack, and a 100-frame main
-sample with this observation-only path remained decoder-clean (1,909,504
-bytes). These values are deliberately not connected to command QP until the
-remaining persistent-state transitions reproduce the OEM trace.
-
-The controller's embedded 0x40-byte bitrate-history window is also isolated
-from that larger state machine. Its integer accumulator update now reproduces
-all 40 captured OEM completions (20 main and 20 sub), including fractional
-remainders, cumulative 64-bit bit counts, and channel-specific bitrate state.
-This exact window is still host-only; the next boundary is the QP-selection
-logic that consumes it together with the normalized hardware feedback.
+Set `OPENIMP_T41_RATE_CONTROL_COUPLING=0` only for diagnostic A/B rollback to
+the fixed command-QP path. Coupling is enabled by default.
 
 ## Remaining work
 
@@ -193,7 +128,9 @@ is solved explicitly.
 
 Open TX-ISP exposure and color are now close to the measured OEM baseline, but
 scene-by-scene image-quality parity is still being tuned. The native T41 AVPU
-path also delivers fewer frames per second than the configured rate and an RSD
-ring reopen can reset an active client's RTP epoch. Throughput work, zero-copy
-optimization, and V4L2 support remain intentionally deferred until cross-SoC
-correctness and image-quality work are complete.
+path now averages the configured 25 fps in decoded captures, though an RSD
+ring reopen can still reset an active client's RTP epoch. Exact OEM parity for
+the larger model-update/QP-selection state machine remains future correctness
+work. Throughput work, zero-copy optimization, and V4L2 support remain
+intentionally deferred until cross-SoC correctness and image-quality work are
+complete.

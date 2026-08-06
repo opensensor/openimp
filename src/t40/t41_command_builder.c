@@ -123,73 +123,6 @@ uint32_t openimp_t41_hwrc_grid(uint32_t width, uint32_t height)
            ((columns_per_group - 1u) & 0x3fu);
 }
 
-uint32_t openimp_t41_next_rate_control_qp(uint32_t current_qp,
-                                          uint32_t min_qp,
-                                          uint32_t max_qp,
-                                          uint32_t payload_bytes,
-                                          uint32_t bitrate,
-                                          uint32_t fps_num,
-                                          uint32_t fps_den)
-{
-    uint64_t target_numerator;
-    uint64_t target_denominator;
-    uint64_t target_bytes;
-    uint32_t increase = 0u;
-    uint32_t decrease = 0u;
-
-    if (max_qp > 51u)
-        max_qp = 51u;
-    if (min_qp > max_qp)
-        min_qp = max_qp;
-    if (current_qp < min_qp)
-        current_qp = min_qp;
-    if (current_qp > max_qp)
-        current_qp = max_qp;
-    if (!payload_bytes || !bitrate || !fps_num || !fps_den)
-        return current_qp;
-
-    target_numerator = (uint64_t)bitrate * fps_den;
-    target_denominator = (uint64_t)fps_num * 8u;
-    target_bytes = target_numerator / target_denominator;
-    if (target_numerator % target_denominator >=
-        (target_denominator + 1u) / 2u)
-        ++target_bytes;
-    if (!target_bytes)
-        target_bytes = 1u;
-
-    /* OEM T41 carries its evolving rate-control state in cmd[179]'s low
-     * byte.  Keep that feedback separate from the configured slice QP.  Use
-     * coarse corrections far from the per-picture byte budget and one-step
-     * corrections near it; this reproduces the observed 34 -> 38 first-IDR
-     * response without baking in a resolution or bitrate. */
-    if ((uint64_t)payload_bytes > target_bytes) {
-        if ((uint64_t)payload_bytes > target_bytes * 4u)
-            increase = 4u;
-        else if ((uint64_t)payload_bytes > target_bytes * 2u)
-            increase = 2u;
-        else if ((uint64_t)payload_bytes * 4u > target_bytes * 5u)
-            increase = 1u;
-    } else if ((uint64_t)payload_bytes * 4u < target_bytes) {
-        decrease = 4u;
-    } else if ((uint64_t)payload_bytes * 2u < target_bytes) {
-        decrease = 2u;
-    } else if ((uint64_t)payload_bytes * 4u < target_bytes * 3u) {
-        decrease = 1u;
-    }
-
-    if (increase) {
-        if (increase > max_qp - current_qp)
-            return max_qp;
-        return current_qp + increase;
-    }
-    if (decrease) {
-        if (decrease > current_qp - min_qp)
-            return min_qp;
-        return current_qp - decrease;
-    }
-    return current_qp;
-}
-
 static int openimp_t41_params_are_valid(
     const OpenIMPT41CommandParams *params)
 {
@@ -308,7 +241,8 @@ int openimp_t41_build_command(void *slot, size_t slot_size,
     }
     cmd[13] = 0xffffffffu;
 
-    cmd[24] = params->is_idr ? 0x21220000u : 0x11220000u;
+    cmd[24] = (params->is_idr ? 0x21000000u : 0x11000000u) |
+              (params->picture_qp << 16);
     cmd[25] = 0x00083f1fu;
     cmd[27] = (((lcu_h - 1u) & 0x3ffu) << 12) |
               ((lcu_w - 1u) & 0x3ffu) |

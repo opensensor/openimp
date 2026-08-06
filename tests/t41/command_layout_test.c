@@ -140,6 +140,22 @@ static void test_sub_first_p_oracle(void)
     };
 
     assert_command(&params, expected, sizeof(expected) / sizeof(expected[0]));
+
+    /* The runtime controller advances header, command, entropy, and word-179
+     * picture QP together. Keep the non-default packing independently pinned
+     * while retaining the captured QP-34 full-slot oracle above. */
+    {
+        OpenIMPT41CommandParams selected = params;
+        uint32_t slot[OPENIMP_T41_CL_SLOT_SIZE / sizeof(uint32_t)];
+
+        selected.picture_qp = 38u;
+        assert(openimp_t41_build_command(
+                   slot, sizeof(slot), &selected) == 0);
+        assert(slot[24] == 0x11260000u);
+        assert(slot[179] == 0x22263326u);
+        assert(slot[OPENIMP_T41_CL_ENTROPY_OFFSET / sizeof(uint32_t) + 1u] ==
+               0x11260d06u);
+    }
 }
 
 static void test_builder_validation(void)
@@ -184,18 +200,6 @@ static void test_builder_validation(void)
     assert(openimp_t41_reconstruction_manager_size(2560, 1440) == 0x67af00u);
     assert(openimp_t41_hwrc_grid(2560, 1440) == 0xf40003c9u);
 
-    assert(openimp_t41_next_rate_control_qp(
-               34, 34, 51, 86000, 3000000, 25, 1) == 38u);
-    assert(openimp_t41_next_rate_control_qp(
-               38, 34, 51, 45000, 3000000, 25, 1) == 40u);
-    assert(openimp_t41_next_rate_control_qp(
-               50, 34, 51, 70000, 3000000, 25, 1) == 51u);
-    assert(openimp_t41_next_rate_control_qp(
-               51, 34, 51, 2000, 3000000, 25, 1) == 47u);
-    assert(openimp_t41_next_rate_control_qp(
-               35, 34, 51, 2000, 3000000, 25, 1) == 34u);
-    assert(openimp_t41_next_rate_control_qp(
-               38, 34, 51, 0, 3000000, 25, 1) == 38u);
 }
 
 static void test_encoding_status_oracle(void)

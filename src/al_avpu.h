@@ -26,6 +26,11 @@
 #include <stddef.h>
 #include <pthread.h>
 
+#if defined(PLATFORM_T41)
+#include "t40/t41_hw_rate_control.h"
+#include "t40/t41_rate_control.h"
+#endif
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -244,6 +249,8 @@ typedef struct ALAvpuContext {
     uint32_t t41_payload_size_by_buf[16];
     uint32_t t41_rate_control_qp;
     uint32_t t41_rate_control_qp_by_buf[16];
+    OpenIMPT41RateController t41_rate_controller;
+    OpenIMPT41HWRCLevelState t41_hwrc_level;
 #endif
     uint32_t stream_header_offset;  /* bytes of header pre-written into current stream buf */
     uint32_t stream_header_offset_by_buf[16]; /* per-stream-buffer header bytes */

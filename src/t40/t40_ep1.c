@@ -3,6 +3,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "t40_ep1.h"
+
 int32_t AL_AVC_GenerateHwScalingList(void *scaling, int32_t scratch);
 int32_t AL_AVC_WriteEncHwScalingList(void *scaling, void *scratch,
                                      uint32_t *output);
@@ -105,15 +107,9 @@ static int openimp_init_ep1(void *ep1, size_t size, int use_fixqp_lda,
     memset(ep1, 0, size);
     memset(scaling, 0, sizeof(scaling));
     if (use_t41_layout) {
-        uint8_t *output = (uint8_t *)ep1;
-
-        /* T41 stores the final two lambda components for each QP in the high
-         * byte of 16-bit lanes.  T31/T40 consume all four components as
-         * packed bytes.  Keeping this conversion at the table boundary lets
-         * the common lambda source remain shared across the SoCs. */
-        for (i = 0; i < 52u; ++i) {
-            output[i * 4u + 1u] = lda[i * 4u + 2u];
-            output[i * 4u + 3u] = lda[i * 4u + 3u];
+        if (openimp_t41_update_ep1_lambda(ep1, size, 2u) != 0) {
+            free(scratch);
+            return -1;
         }
     } else {
         memcpy(ep1, lda, sizeof(avc_default_lda));
@@ -146,4 +142,26 @@ int openimp_t40_init_ep1(void *ep1, size_t size, int use_fixqp_lda)
 int openimp_t41_init_ep1(void *ep1, size_t size)
 {
     return openimp_init_ep1(ep1, size, 0, 1);
+}
+
+int openimp_t41_update_ep1_lambda(void *ep1, size_t size,
+                                  unsigned int picture_type)
+{
+    uint8_t *output = (uint8_t *)ep1;
+    unsigned int qp;
+
+    if (!output || size < sizeof(avc_default_lda) || picture_type > 2u)
+        return -1;
+
+    /* Exact T41 AL_GetLambda layout: each QP is two big-endian 16-bit
+     * lanes, so only bytes 1 and 3 carry the selected AVC lambda values.
+     * OEM prepares type 2 for IDR/I pictures and rewrites type 1 for P. */
+    for (qp = 0u; qp < 52u; ++qp) {
+        output[qp * 4u] = 0u;
+        output[qp * 4u + 1u] =
+            avc_default_lda[qp * 4u + picture_type];
+        output[qp * 4u + 2u] = 0u;
+        output[qp * 4u + 3u] = avc_default_lda[qp * 4u + 3u];
+    }
+    return 0;
 }

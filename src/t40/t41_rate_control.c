@@ -1,5 +1,6 @@
 #include "t41_rate_control.h"
 
+#include <limits.h>
 #include <string.h>
 
 static uint32_t openimp_t41_rate_control_read_u32(const uint8_t *base,
@@ -127,4 +128,125 @@ int openimp_t41_rate_control_window_update(
 
     *window = next;
     return 0;
+}
+
+static uint32_t openimp_t41_clamp_qp(uint32_t qp, uint32_t min_qp,
+                                     uint32_t max_qp)
+{
+    if (qp < min_qp)
+        return min_qp;
+    if (qp > max_qp)
+        return max_qp;
+    return qp;
+}
+
+int openimp_t41_rate_controller_init(OpenIMPT41RateController *controller,
+                                     uint32_t bitrate, uint32_t fps_num,
+                                     uint32_t fps_den, uint32_t gop_length,
+                                     uint32_t min_qp, uint32_t max_qp,
+                                     uint32_t initial_qp)
+{
+    uint64_t target_bits;
+    uint64_t fps_milli;
+    uint64_t history_rate;
+
+    if (!controller || !bitrate || !fps_num || !fps_den ||
+        min_qp > max_qp || max_qp > 51u)
+        return -1;
+
+    target_bits = ((uint64_t)bitrate * fps_den + fps_num / 2u) / fps_num;
+    fps_milli = (uint64_t)fps_num * 1000u / fps_den;
+    history_rate = (uint64_t)bitrate * 3u;
+    if (!target_bits || target_bits > UINT32_MAX || !fps_milli ||
+        fps_milli > UINT32_MAX || history_rate > UINT32_MAX)
+        return -1;
+
+    memset(controller, 0, sizeof(*controller));
+    controller->bitrate = bitrate;
+    controller->fps_num = fps_num;
+    controller->fps_den = fps_den;
+    controller->gop_length = gop_length ? gop_length : 1u;
+    controller->target_bits = (uint32_t)target_bits;
+    controller->min_qp = min_qp;
+    controller->max_qp = max_qp;
+    controller->current_qp =
+        openimp_t41_clamp_qp(initial_qp, min_qp, max_qp);
+
+    /* Exact oIIo defaults recovered from the T41 controller object. */
+    controller->window.words[0] = (uint32_t)history_rate;
+    controller->window.words[1] = 216000u;
+    controller->window.words[2] = 1000u;
+    controller->window.words[3] = (uint32_t)fps_milli;
+    controller->window.words[4] = bitrate;
+    controller->window.words[5] = 0x101u;
+    controller->window.words[8] = 216000u;
+    controller->initialized = 1;
+    return 0;
+}
+
+int openimp_t41_rate_controller_complete(
+    OpenIMPT41RateController *controller, uint32_t completed_bits,
+    int is_idr, const OpenIMPT41RateControlFeedback *feedback)
+{
+    int64_t target;
+    int64_t limit;
+
+    if (!controller || !controller->initialized || !completed_bits)
+        return -1;
+    if (openimp_t41_rate_control_window_update(
+            &controller->window, completed_bits) != 0)
+        return -1;
+    if (feedback)
+        controller->feedback = *feedback;
+    ++controller->completed_pictures;
+
+    /* IDR has its own hardware table and GOP allocation.  Feeding its burst
+     * into a per-P selector was the old source of four-QP jumps. */
+    if (is_idr)
+        return 0;
+
+    ++controller->completed_p_pictures;
+    if (controller->smoothed_p_bits == 0u) {
+        controller->smoothed_p_bits = completed_bits;
+    } else {
+        controller->smoothed_p_bits =
+            (uint32_t)(((uint64_t)controller->smoothed_p_bits * 3u +
+                        completed_bits + 2u) / 4u);
+    }
+
+    target = (int64_t)controller->target_bits;
+    controller->virtual_buffer_bits += (int64_t)completed_bits - target;
+    limit = target * 8;
+    if (controller->virtual_buffer_bits > limit)
+        controller->virtual_buffer_bits = limit;
+    if (controller->virtual_buffer_bits < -limit)
+        controller->virtual_buffer_bits = -limit;
+
+    /* Two completed P pictures establish a model.  Thereafter use a 12%
+     * upper and 28% lower hysteresis band, with the recovered texture
+     * feedback suppressing quality increases on highly detailed pictures. */
+    if (controller->completed_p_pictures < 2u)
+        return 0;
+    if ((uint64_t)controller->smoothed_p_bits * 100u >
+            (uint64_t)controller->target_bits * 112u ||
+        controller->virtual_buffer_bits > target * 2) {
+        if (controller->current_qp < controller->max_qp)
+            ++controller->current_qp;
+        controller->virtual_buffer_bits -= target;
+    } else if ((uint64_t)controller->smoothed_p_bits * 100u <
+                   (uint64_t)controller->target_bits * 72u &&
+               controller->virtual_buffer_bits < -target * 2 &&
+               (!feedback || feedback->field_1c_percent < 70u)) {
+        if (controller->current_qp > controller->min_qp)
+            --controller->current_qp;
+        controller->virtual_buffer_bits += target;
+    }
+    return 0;
+}
+
+uint32_t openimp_t41_rate_controller_qp(
+    const OpenIMPT41RateController *controller)
+{
+    return controller && controller->initialized
+        ? controller->current_qp : 0u;
 }

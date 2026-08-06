@@ -23,6 +23,7 @@
 #include "dma_alloc.h"
 #include "imp_log_int.h"
 #include "kernel_interface.h"
+#include "t40_ep1.h"
 #if defined(PLATFORM_T41)
 #include "t41_command_builder.h"
 #include "t41_hw_rate_control.h"
@@ -64,9 +65,6 @@ typedef struct AL_CodecEncode AL_CodecEncode;
 static int avpu_queue_completed_stream(ALAvpuContext *ctx, int buf_idx, void *user_data,
                                        const char *source, uint32_t *frame_size_out,
                                        int *flush_ret_out);
-int openimp_t40_init_ep1(void *ep1, size_t size, int use_fixqp_lda);
-int openimp_t41_init_ep1(void *ep1, size_t size);
-
 #if defined(PLATFORM_T40)
 void OpenIMP_P3_FrameStats(uint32_t luma, uint32_t u_mean,
                            uint32_t v_mean);
@@ -2084,6 +2082,14 @@ static uint32_t avpu_t40_picture_qp(const ALAvpuContext *ctx, int is_idr)
     if (ctx->rc_mode == HW_RC_MODE_FIXQP)
         return ctx->qp <= 51u ? ctx->qp : 26u;
 
+#if defined(PLATFORM_T41)
+    /* Header and command generation must observe the same controller QP or
+     * CABAC starts with a different context from the encoded macroblocks. */
+    if (ctx->t41_rate_controller.initialized)
+        return openimp_t41_rate_controller_qp(
+            &ctx->t41_rate_controller);
+#endif
+
     lcu_count = ((ctx->enc_w + 15u) >> 4) * ((ctx->enc_h + 15u) >> 4);
     denominator = (uint64_t)(ctx->fps_num ? ctx->fps_num : 25u) *
                   (uint64_t)(lcu_count ? lcu_count : 1u);
@@ -2365,6 +2371,111 @@ static uint32_t avpu_get_enc1_stream_part_offset(const ALAvpuContext *ctx)
 }
 
 #if defined(PLATFORM_T41)
+static int avpu_t41_rate_control_coupling_enabled(void)
+{
+    const char *value = getenv("OPENIMP_T41_RATE_CONTROL_COUPLING");
+
+    return !value || strcmp(value, "0") != 0;
+}
+
+static void avpu_t41_qp_bounds(const ALAvpuContext *ctx,
+                               uint32_t *min_qp_out,
+                               uint32_t *max_qp_out)
+{
+    uint32_t min_qp = ctx->min_qp <= 51u ? ctx->min_qp : 0u;
+    uint32_t max_qp = ctx->max_qp <= 51u ? ctx->max_qp : 51u;
+
+    if (min_qp > max_qp) {
+        uint32_t swap = min_qp;
+
+        min_qp = max_qp;
+        max_qp = swap;
+    }
+    if (min_qp_out)
+        *min_qp_out = min_qp;
+    if (max_qp_out)
+        *max_qp_out = max_qp;
+}
+
+static int avpu_t41_prepare_picture(ALAvpuContext *ctx, int is_idr)
+{
+    uint32_t min_qp;
+    uint32_t max_qp;
+    uint32_t selected_qp;
+    uint32_t bitrate;
+    uint32_t fps_num;
+    uint32_t fps_den;
+    uint32_t gop_length;
+    unsigned int ep3_slot = is_idr ? 2u : 1u;
+    int interm_flush;
+    int ep3_flush;
+
+    if (!ctx || !ctx->interm_buf.map || !ctx->rec_trace_buf.map)
+        return -1;
+
+    avpu_t41_qp_bounds(ctx, &min_qp, &max_qp);
+    selected_qp = ctx->qp <= 51u ? ctx->qp : 34u;
+    if (selected_qp < min_qp)
+        selected_qp = min_qp;
+    if (selected_qp > max_qp)
+        selected_qp = max_qp;
+
+    bitrate = ctx->bitrate ? ctx->bitrate : 2000000u;
+    fps_num = ctx->fps_num ? ctx->fps_num : 25u;
+    fps_den = ctx->fps_den ? ctx->fps_den : 1u;
+    gop_length = ctx->gop_length ? ctx->gop_length : fps_num / fps_den;
+    if (!gop_length)
+        gop_length = 1u;
+
+    if (ctx->rc_mode != HW_RC_MODE_FIXQP &&
+        avpu_t41_rate_control_coupling_enabled()) {
+        OpenIMPT41RateController *controller =
+            &ctx->t41_rate_controller;
+
+        if (!controller->initialized ||
+            controller->bitrate != bitrate ||
+            controller->fps_num != fps_num ||
+            controller->fps_den != fps_den ||
+            controller->gop_length != gop_length ||
+            controller->min_qp != min_qp ||
+            controller->max_qp != max_qp) {
+            /* Both live T41 controller objects observed in OEM start at 38. */
+            if (openimp_t41_rate_controller_init(
+                    controller, bitrate, fps_num, fps_den, gop_length,
+                    min_qp, max_qp, 38u) != 0)
+                return -1;
+            LOG_CODEC("AVPU: T41 rate controller initialized bitrate=%u fps=%u/%u gop=%u qp=%u bounds=%u/%u",
+                      bitrate, fps_num, fps_den, gop_length,
+                      controller->current_qp, min_qp, max_qp);
+        }
+        selected_qp = openimp_t41_rate_controller_qp(controller);
+    }
+    ctx->t41_rate_control_qp = selected_qp;
+
+    if (openimp_t41_update_ep1_lambda(
+            ctx->interm_buf.map, ctx->interm_buf.size,
+            is_idr ? 2u : 1u) != 0)
+        return -1;
+    if (openimp_t41_hwrc_level_set_buffer(
+            &ctx->t41_hwrc_level, ctx->rec_trace_buf.map,
+            ctx->rec_trace_buf.size, ep3_slot) != 0)
+        return -1;
+
+    /* T41's rmem cache API requires the normalized 1 MiB operation. */
+    interm_flush = avpu_flush_dma_buf(
+        ctx->fd, "t41_ep1_picture", &ctx->interm_buf,
+        ctx->interm_ep1_size);
+    ep3_flush = avpu_flush_dma_buf(
+        ctx->fd, "t41_ep3_picture", &ctx->rec_trace_buf,
+        ctx->rec_trace_buf.size);
+    if (interm_flush != 0 || ep3_flush != 0) {
+        LOG_CODEC("AVPU: T41 picture-state flush failed ep1=%d ep3=%d",
+                  interm_flush, ep3_flush);
+        return -1;
+    }
+    return 0;
+}
+
 static uint32_t avpu_t41_advance_luma_offset(uint32_t current,
                                              uint32_t luma_size,
                                              uint32_t source_pitch)
@@ -2428,13 +2539,7 @@ static int avpu_t41_fill_command(ALAvpuContext *ctx, void *slot,
     current_slot = picture_number & 1u;
     previous_slot = current_slot ^ 1u;
 
-    min_qp = ctx->min_qp <= 51u ? ctx->min_qp : 0u;
-    max_qp = ctx->max_qp <= 51u ? ctx->max_qp : 51u;
-    if (min_qp > max_qp) {
-        uint32_t swap = min_qp;
-        min_qp = max_qp;
-        max_qp = swap;
-    }
+    avpu_t41_qp_bounds(ctx, &min_qp, &max_qp);
     picture_qp = ctx->qp <= 51u ? ctx->qp : 34u;
     if (picture_qp < min_qp)
         picture_qp = min_qp;
@@ -2444,6 +2549,8 @@ static int avpu_t41_fill_command(ALAvpuContext *ctx, void *slot,
     if (ctx->rc_mode == HW_RC_MODE_FIXQP || rate_control_qp < min_qp ||
         rate_control_qp > max_qp)
         rate_control_qp = picture_qp;
+    else if (avpu_t41_rate_control_coupling_enabled())
+        picture_qp = rate_control_qp;
 
     memset(&params, 0, sizeof(params));
     params.width = ctx->enc_w;
@@ -4194,12 +4301,55 @@ static void avpu_end_encoding_callback(void *user_data)
                           ? rate_control_feedback.field_18_quarters_per_block
                           : 0u);
         }
-        if (ctx->rc_mode != HW_RC_MODE_FIXQP) {
-            uint32_t used_qp = ctx->t41_rate_control_qp_by_buf[buf_idx];
+        if (payload_size > 0u &&
+            ctx->stream_buf_size >
+                (int)OPENIMP_T41_STREAM_PAYLOAD_OFFSET &&
+            payload_size <= (uint32_t)ctx->stream_buf_size -
+                OPENIMP_T41_STREAM_PAYLOAD_OFFSET) {
+            unsigned int completed_ep3_slot =
+                ctx->stream_is_idr[buf_idx] ? 2u : 1u;
+            int ep3_invalidate = avpu_flush_cache(
+                ctx->fd, ctx->rec_trace_buf.map, 0x100000u,
+                0 /* BIDIRECTIONAL */);
+            int level_update = ep3_invalidate == 0
+                ? openimp_t41_hwrc_level_update(
+                    &ctx->t41_hwrc_level, ctx->rec_trace_buf.map,
+                    ctx->rec_trace_buf.size, completed_ep3_slot)
+                : -1;
 
-            ctx->t41_rate_control_qp = openimp_t41_next_rate_control_qp(
-                used_qp, ctx->min_qp, ctx->max_qp, payload_size,
-                ctx->bitrate, ctx->fps_num, ctx->fps_den);
+            if (level_update != 0)
+                LOG_CODEC("AVPU: T41 EP3 completion handoff failed invalidate=%d update=%d slot=%u",
+                          ep3_invalidate, level_update,
+                          completed_ep3_slot);
+
+            if (ctx->rc_mode != HW_RC_MODE_FIXQP &&
+                avpu_t41_rate_control_coupling_enabled() &&
+                ctx->t41_rate_controller.initialized) {
+                uint32_t used_qp =
+                    ctx->t41_rate_control_qp_by_buf[buf_idx];
+                int controller_ret =
+                    openimp_t41_rate_controller_complete(
+                        &ctx->t41_rate_controller, payload_size * 8u,
+                        ctx->stream_is_idr[buf_idx],
+                        have_rate_control_feedback
+                            ? &rate_control_feedback : NULL);
+
+                ctx->t41_rate_control_qp =
+                    openimp_t41_rate_controller_qp(
+                        &ctx->t41_rate_controller);
+                if (ctx->frames_encoded < 16 ||
+                    ctx->frames_encoded % 50 == 0) {
+                    LOG_CODEC("T41 rate controller: buf=%d idr=%u used=%u next=%u target=%u ema=%u vb=%lld complete=%u/%u ret=%d level=%u",
+                              buf_idx, ctx->stream_is_idr[buf_idx], used_qp,
+                              ctx->t41_rate_control_qp,
+                              ctx->t41_rate_controller.target_bits,
+                              ctx->t41_rate_controller.smoothed_p_bits,
+                              (long long)ctx->t41_rate_controller.virtual_buffer_bits,
+                              ctx->t41_rate_controller.completed_pictures,
+                              ctx->t41_rate_controller.completed_p_pictures,
+                              controller_ret, ctx->t41_hwrc_level.level);
+                }
+            }
         }
         bitcount = payload_size;
         completed = payload_size > 0u &&
@@ -7019,6 +7169,8 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
                                 int ep3_flush = avpu_flush_dma_buf(
                                     fd, "ep3_ring", &enc->avpu.rec_trace_buf,
                                     enc->avpu.rec_trace_buf.size);
+                                openimp_t41_hwrc_level_init(
+                                    &enc->avpu.t41_hwrc_level);
                                 LOG_CODEC("AVPU: T41 ep3_ring phys=0x%08x size=%zu initialized=%zu flush=%d",
                                           enc->avpu.rec_trace_buf.phy_addr,
                                           enc->avpu.rec_trace_buf.size,
@@ -7429,6 +7581,16 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
                 memset(ctx->stream_bufs[buf_idx].map, 0, (size_t)ctx->stream_buf_size);
             }
 
+#if defined(PLATFORM_T41)
+            if (avpu_t41_prepare_picture(ctx, is_idr) != 0) {
+                LOG_CODEC("Process: failed to prepare T41 rate-control state frame=%u buf=%d",
+                          ctx->frame_number, buf_idx);
+                avpu_mark_stream_buffer_released(ctx, buf_idx);
+                free(hw_stream);
+                errno = EIO;
+                return -1;
+            }
+#endif
             uint32_t hdr_offset = avpu_prewrite_stream_headers(ctx, buf_idx, is_idr);
             ctx->stream_is_idr[buf_idx] = is_idr ? 1u : 0u;
             ctx->stream_timestamp[buf_idx] = timestamp;

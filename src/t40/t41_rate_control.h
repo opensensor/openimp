@@ -24,6 +24,28 @@ typedef struct OpenIMPT41RateControlWindow {
     uint32_t words[OPENIMP_T41_RATE_CONTROL_WINDOW_WORDS];
 } OpenIMPT41RateControlWindow;
 
+/* Software-owned part of the T41 CBR loop.  The 0x40-byte history and
+ * normalized hardware feedback match the recovered OEM stages exactly.
+ * Selection is deliberately bounded to one QP per completed P picture so a
+ * corrupt statistic cannot destabilize the hardware controller. */
+typedef struct OpenIMPT41RateController {
+    OpenIMPT41RateControlWindow window;
+    OpenIMPT41RateControlFeedback feedback;
+    uint32_t bitrate;
+    uint32_t fps_num;
+    uint32_t fps_den;
+    uint32_t gop_length;
+    uint32_t target_bits;
+    uint32_t smoothed_p_bits;
+    uint32_t completed_pictures;
+    uint32_t completed_p_pictures;
+    uint32_t min_qp;
+    uint32_t max_qp;
+    uint32_t current_qp;
+    int64_t virtual_buffer_bits;
+    int initialized;
+} OpenIMPT41RateController;
+
 /* Recover the first, exact normalization stage of the OEM CBR controller.
  * The field-based names are intentional until the four hardware counters'
  * semantic names are established.  Arithmetic follows the OEM's uint32_t
@@ -37,5 +59,21 @@ int openimp_t41_rate_control_extract_feedback(
  * denominator is zero. */
 int openimp_t41_rate_control_window_update(
     OpenIMPT41RateControlWindow *window, uint32_t completed_bits);
+
+int openimp_t41_rate_controller_init(OpenIMPT41RateController *controller,
+                                     uint32_t bitrate, uint32_t fps_num,
+                                     uint32_t fps_den, uint32_t gop_length,
+                                     uint32_t min_qp, uint32_t max_qp,
+                                     uint32_t initial_qp);
+
+/* Complete one access unit and select the QP for the next picture.  IDR
+ * payloads advance the exact history but do not directly perturb the P-frame
+ * model because their separate EP3 picture-class budget is GOP-sized. */
+int openimp_t41_rate_controller_complete(
+    OpenIMPT41RateController *controller, uint32_t completed_bits,
+    int is_idr, const OpenIMPT41RateControlFeedback *feedback);
+
+uint32_t openimp_t41_rate_controller_qp(
+    const OpenIMPT41RateController *controller);
 
 #endif
