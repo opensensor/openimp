@@ -327,7 +327,7 @@ static void init_oem_p_model_updater(
     OpenIMPT41RateControlPModelUpdater *updater,
     int16_t current_qp, uint32_t p_bits, uint16_t p_qp,
     uint32_t p_scale, uint32_t feedback_bits, uint16_t feedback_qp,
-    int32_t feedback_qp_bias,
+    uint32_t feedback_bound_distance,
     uint32_t allocation_weight, uint32_t baseline_ratio,
     uint32_t mode_0, uint32_t mode_1, uint32_t mode_2,
     uint32_t feedback_reference, uint32_t previous_bits,
@@ -358,7 +358,7 @@ static void init_oem_p_model_updater(
     updater->baseline_max_qp = 51;
     updater->feedback_min_qp = 34;
     updater->feedback_max_qp = 51;
-    updater->feedback_model_qp_bias = feedback_qp_bias;
+    updater->feedback_model_bound_distance = feedback_bound_distance;
     updater->lower_scale = 11180u;
     updater->upper_scale = 20000u;
     updater->baseline_ratio = baseline_ratio;
@@ -625,6 +625,90 @@ static void test_oem_p_picture_selector(void)
     }
 }
 
+static void test_oem_sequential_p_picture_completion(void)
+{
+    static const OpenIMPT41RateControlWindow after_call_2 = { {
+        0x016e3600u, 0x00034bc0u, 0x000003e8u, 0x000061a8u,
+        0x007a1200u, 0x00000101u, 0x000165bau, 0x006a3380u,
+        0x000367e0u, 0u, 0u, 0u, 0x007c3638u, 0u, 2u, 0u,
+    } };
+    static const OpenIMPT41RateControlWindow after_call_3 = { {
+        0x016e3600u, 0x00034bc0u, 0x000003e8u, 0x000061a8u,
+        0x007a1200u, 0x00000101u, 0x00016f11u, 0x0057e400u,
+        0x000375f0u, 0u, 0u, 0u, 0x007f7460u, 0u, 3u, 0u,
+    } };
+    OpenIMPT41RateControlWindow window = { {
+        0x016e3600u, 0x00034bc0u, 0x000003e8u, 0x000061a8u,
+        0x007a1200u, 0x00000101u, 0x00014e1cu, 0x0030d400u,
+        0x000359d0u, 0u, 0u, 0u, 0x007402c0u, 0u, 1u, 0u,
+    } };
+    OpenIMPT41RateControlPSelector selector;
+    OpenIMPT41RateControlPModelUpdater updater;
+    OpenIMPT41RateControlSelection selection;
+    OpenIMPT41RateControlFeedback feedback = { 0 };
+
+    /* Start at the exact controller state following the trace's first IDR. */
+    init_oem_p_model_updater(
+        &selector, &updater, 38, 320000u, 38u, 11225u,
+        7602880u, 34u, 4, 23759u, 333u, 2u, 2u, 10u,
+        60u, 7602880u, 0u, 0u, 0u);
+    selector.gop_length = 50u;
+    selector.allocation_budget_bits = 320000u;
+    selector.residual_picture_bits = 320000u;
+    selector.allocation_compensation_bits = -32685;
+    selector.prediction_cap_bits = 24000000u;
+    selector.buffer_budget_bits = 19200000u;
+    selector.threshold_span_bits = 8000000u;
+    selector.low_feedback_latch = 1u;
+    updater.last_picture_target_bits = 320000u;
+    updater.gop_picture_count = 1u;
+    updater.max_model_adjustment = 1u;
+
+    feedback.field_20_percent = 0u;
+    feedback.field_1c_percent = 100u;
+    assert(openimp_t41_rate_control_complete_p_picture(
+               &window, &selector, &updater, 537464u, &feedback,
+               1, 1, &selection) == 0);
+    assert(memcmp(&window, &after_call_2, sizeof(window)) == 0);
+    assert(selection.picture_target_bits == 217455u);
+    assert(selection.residual_bits == 10810072);
+    assert(selection.qp_delta == 0);
+    assert(selection.selected_qp == 38);
+    assert(selector.models.current_qp == 38);
+    assert_oem_p_model_result(
+        &selector, &updater, 537464u, 38u, 11225u,
+        537464u, 38u, 14964u, 472u, 2u,
+        537464u, 38u, 1u, 0u);
+    assert(updater.feedback_model_bound_distance == 0u);
+    assert(updater.feedback_reference_percent == 0u);
+    assert(updater.last_picture_target_bits == 320000u);
+    assert(updater.gop_picture_count == 2u);
+    assert(selector.low_feedback_latch == 0u);
+
+    /* The following call consumes every state transition above.  Its mode-2
+     * model refresh and selector output therefore test true coupling rather
+     * than another independently seeded fixture. */
+    feedback.field_20_percent = 33u;
+    feedback.field_1c_percent = 40u;
+    assert(openimp_t41_rate_control_complete_p_picture(
+               &window, &selector, &updater, 212520u, &feedback,
+               1, 1, &selection) == 0);
+    assert(memcmp(&window, &after_call_3, sizeof(window)) == 0);
+    assert(selection.picture_target_bits == 271642u);
+    assert(selection.residual_bits == 17948767);
+    assert(selection.qp_delta == 1);
+    assert(selection.selected_qp == 39);
+    assert(selector.models.current_qp == 39);
+    assert_oem_p_model_result(
+        &selector, &updater, 212520u, 38u, 11225u,
+        537464u, 38u, 3575u, 1195u, 1u,
+        212520u, 76u, 2u, 0u);
+    assert(updater.feedback_model_bound_distance == 3u);
+    assert(updater.feedback_reference_percent == 33u);
+    assert(updater.last_picture_target_bits == 271642u);
+    assert(updater.gop_picture_count == 3u);
+}
+
 static void test_coupled_controller(void)
 {
     OpenIMPT41RateController controller;
@@ -715,6 +799,7 @@ int main(void)
     test_oem_picture_model_scale_update();
     test_oem_p_picture_model_updater();
     test_oem_p_picture_selector();
+    test_oem_sequential_p_picture_completion();
     test_coupled_controller();
     test_controller_bounds_and_detail_gate();
     puts("T41 software rate-control coupling: OK");

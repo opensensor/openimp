@@ -72,15 +72,16 @@ typedef struct OpenIMPT41RateControlSelection {
 
 /* State owned by the OEM P-picture model updater but not consumed as one of
  * the selector's three prediction classes.  feedback_model is refreshed by
- * high-confidence hardware feedback and supplies the allocation weight.
- * modes[] is the recovered three-picture cadence, newest first. */
+ * high-confidence hardware feedback and supplies the allocation weight.  Its
+ * bound distance is also the exact QP offset consumed by the next model
+ * update.  modes[] is the recovered three-picture cadence, newest first. */
 typedef struct OpenIMPT41RateControlPModelUpdater {
     OpenIMPT41RateControlModel feedback_model;
     int16_t baseline_min_qp;
     int16_t baseline_max_qp;
     int16_t feedback_min_qp;
     int16_t feedback_max_qp;
-    int32_t feedback_model_qp_bias;
+    uint32_t feedback_model_bound_distance;
     uint32_t lower_scale;
     uint32_t upper_scale;
     uint32_t baseline_ratio;
@@ -89,6 +90,9 @@ typedef struct OpenIMPT41RateControlPModelUpdater {
     uint32_t previous_completed_bits;
     uint32_t cumulative_qp;
     uint32_t completed_p_pictures;
+    uint32_t last_picture_target_bits;
+    uint32_t gop_picture_count;
+    uint32_t max_model_adjustment;
 } OpenIMPT41RateControlPModelUpdater;
 
 /* Software-owned part of the T41 CBR loop.  The 0x40-byte history and
@@ -183,6 +187,21 @@ int openimp_t41_rate_control_update_p_picture_model(
     uint32_t completed_bits,
     const OpenIMPT41RateControlFeedback *feedback,
     int rotate_modes);
+
+/* Run the complete recovered OEM transaction for one normal P picture.
+ * Model learning precedes selector-side feedback adjustment, bitrate-history
+ * advancement, and QP selection.  The operation is atomic on error and leaves
+ * all persistent state ready for the next completed picture.  The two flags
+ * expose the OEM's picture flag/config gates without leaking its layout. */
+int openimp_t41_rate_control_complete_p_picture(
+    OpenIMPT41RateControlWindow *window,
+    OpenIMPT41RateControlPSelector *selector,
+    OpenIMPT41RateControlPModelUpdater *updater,
+    uint32_t completed_bits,
+    const OpenIMPT41RateControlFeedback *feedback,
+    int adjust_feedback_model,
+    int rotate_modes,
+    OpenIMPT41RateControlSelection *selection);
 
 int openimp_t41_rate_controller_init(OpenIMPT41RateController *controller,
                                      uint32_t bitrate, uint32_t fps_num,

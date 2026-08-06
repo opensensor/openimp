@@ -471,7 +471,8 @@ int openimp_t41_rate_control_update_p_picture_model(
 
     if (next_updater.feedback_model.bits != 0u) {
         requested_qp = openimp_t41_rate_control_clamp_qp_signed(
-            (int64_t)current_qp - next_updater.feedback_model_qp_bias,
+            (int64_t)current_qp -
+                next_updater.feedback_model_bound_distance,
             next_updater.feedback_min_qp, next_updater.feedback_max_qp);
         if (openimp_t41_rate_control_predict_bits(
                 next_updater.feedback_model.bits,
@@ -770,6 +771,75 @@ int openimp_t41_rate_control_select_p_picture(
     result.selected_qp = (int16_t)target;
     *selector = next;
     *selection = result;
+    return 0;
+}
+
+int openimp_t41_rate_control_complete_p_picture(
+    OpenIMPT41RateControlWindow *window,
+    OpenIMPT41RateControlPSelector *selector,
+    OpenIMPT41RateControlPModelUpdater *updater,
+    uint32_t completed_bits,
+    const OpenIMPT41RateControlFeedback *feedback,
+    int adjust_feedback_model,
+    int rotate_modes,
+    OpenIMPT41RateControlSelection *selection)
+{
+    OpenIMPT41RateControlWindow next_window;
+    OpenIMPT41RateControlPSelector next_selector;
+    OpenIMPT41RateControlPModelUpdater next_updater;
+    OpenIMPT41RateControlSelection next_selection;
+
+    if (!window || !selector || !updater || !feedback || !selection ||
+        completed_bits == 0u || selector->gop_length < 2u ||
+        (adjust_feedback_model &&
+         updater->max_model_adjustment > INT32_MAX))
+        return -1;
+
+    next_window = *window;
+    next_selector = *selector;
+    next_updater = *updater;
+    if (openimp_t41_rate_control_update_p_picture_model(
+            &next_selector, &next_updater, completed_bits, feedback,
+            rotate_modes) != 0)
+        return -1;
+
+    if (adjust_feedback_model &&
+        openimp_t41_rate_control_adjust_model(
+            &next_selector.adaptive_model_bits,
+            &next_updater.feedback_model_bound_distance,
+            next_selector.models.current_qp,
+            next_updater.feedback_min_qp,
+            next_updater.feedback_max_qp,
+            next_updater.feedback_model.scale,
+            (int32_t)next_updater.max_model_adjustment,
+            feedback->field_1c_percent) != 0)
+        return -1;
+
+    if (openimp_t41_rate_control_window_update(
+            &next_window, completed_bits) != 0)
+        return -1;
+    ++next_updater.gop_picture_count;
+    next_selector.pictures_remaining =
+        next_updater.gop_picture_count < next_selector.gop_length
+            ? next_selector.gop_length - next_updater.gop_picture_count
+            : 1u;
+    next_selector.history_target_bits =
+        openimp_t41_rate_control_window_target(&next_window);
+
+    if (openimp_t41_rate_control_select_p_picture(
+            &next_selector, completed_bits, feedback->field_1c_percent,
+            &next_selection) != 0)
+        return -1;
+    if (feedback->field_1c_percent < 81u)
+        next_updater.last_picture_target_bits =
+            next_selection.picture_target_bits;
+    next_updater.feedback_reference_percent =
+        feedback->field_20_percent;
+
+    *window = next_window;
+    *selector = next_selector;
+    *updater = next_updater;
+    *selection = next_selection;
     return 0;
 }
 
