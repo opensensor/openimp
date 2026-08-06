@@ -95,13 +95,15 @@ typedef struct OpenIMPT41RateControlPModelUpdater {
     uint32_t max_model_adjustment;
 } OpenIMPT41RateControlPModelUpdater;
 
-/* Software-owned part of the T41 CBR loop.  The 0x40-byte history and
- * normalized hardware feedback match the recovered OEM stages exactly.
- * Selection is deliberately bounded to one QP per completed P picture so a
- * corrupt statistic cannot destabilize the hardware controller. */
+/* Software-owned T41 CBR loop.  selector/updater are the semantic form of the
+ * recovered OEM private object; the trailing scalar fields remain as stable
+ * codec-facing configuration and diagnostics. */
 typedef struct OpenIMPT41RateController {
     OpenIMPT41RateControlWindow window;
     OpenIMPT41RateControlFeedback feedback;
+    OpenIMPT41RateControlPSelector selector;
+    OpenIMPT41RateControlPModelUpdater updater;
+    OpenIMPT41RateControlSelection last_selection;
     uint32_t bitrate;
     uint32_t fps_num;
     uint32_t fps_den;
@@ -188,6 +190,16 @@ int openimp_t41_rate_control_update_p_picture_model(
     const OpenIMPT41RateControlFeedback *feedback,
     int rotate_modes);
 
+/* Exact IDR model transition paired with the normal-P updater above.  The
+ * completed IDR refreshes the feedback model, resets P accumulation, and
+ * relearns the allocation weight from the current P model. */
+int openimp_t41_rate_control_update_idr_picture_model(
+    OpenIMPT41RateControlPSelector *selector,
+    OpenIMPT41RateControlPModelUpdater *updater,
+    uint32_t completed_bits,
+    const OpenIMPT41RateControlFeedback *feedback,
+    int rotate_modes);
+
 /* Run the complete recovered OEM transaction for one normal P picture.
  * Model learning precedes selector-side feedback adjustment, bitrate-history
  * advancement, and QP selection.  The operation is atomic on error and leaves
@@ -200,6 +212,18 @@ int openimp_t41_rate_control_complete_p_picture(
     uint32_t completed_bits,
     const OpenIMPT41RateControlFeedback *feedback,
     int adjust_feedback_model,
+    int rotate_modes,
+    OpenIMPT41RateControlSelection *selection);
+
+/* Complete one IDR after its model transition.  This advances the same
+ * bitrate window, learns the signed GOP allocation compensation, and resets
+ * the within-GOP selector count without perturbing the selected P QP. */
+int openimp_t41_rate_control_complete_idr_picture(
+    OpenIMPT41RateControlWindow *window,
+    OpenIMPT41RateControlPSelector *selector,
+    OpenIMPT41RateControlPModelUpdater *updater,
+    uint32_t completed_bits,
+    const OpenIMPT41RateControlFeedback *feedback,
     int rotate_modes,
     OpenIMPT41RateControlSelection *selection);
 

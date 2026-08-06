@@ -555,6 +555,76 @@ int openimp_t41_rate_control_update_p_picture_model(
     return 0;
 }
 
+int openimp_t41_rate_control_update_idr_picture_model(
+    OpenIMPT41RateControlPSelector *selector,
+    OpenIMPT41RateControlPModelUpdater *updater,
+    uint32_t completed_bits,
+    const OpenIMPT41RateControlFeedback *feedback,
+    int rotate_modes)
+{
+    OpenIMPT41RateControlPSelector next_selector;
+    OpenIMPT41RateControlPModelUpdater next_updater;
+    const OpenIMPT41RateControlModel *p_model;
+    int16_t current_qp;
+    int16_t feedback_qp;
+    uint32_t predicted;
+
+    if (!selector || !updater || !feedback || completed_bits == 0u ||
+        selector->models.max_qp_steps < 0 ||
+        selector->min_qp < 0 || selector->max_qp < 0 ||
+        selector->models.current_qp < selector->min_qp ||
+        selector->models.current_qp > selector->max_qp ||
+        selector->models.models[1].qp > INT16_MAX ||
+        updater->feedback_min_qp < 0 || updater->feedback_max_qp < 0 ||
+        updater->feedback_min_qp > updater->feedback_max_qp ||
+        updater->feedback_model_bound_distance > INT32_MAX ||
+        updater->upper_scale == 0u)
+        return -1;
+
+    next_selector = *selector;
+    next_updater = *updater;
+    current_qp = next_selector.models.current_qp;
+    feedback_qp = openimp_t41_rate_control_clamp_qp_signed(
+        (int64_t)current_qp -
+            next_updater.feedback_model_bound_distance,
+        next_updater.feedback_min_qp, next_updater.feedback_max_qp);
+    p_model = &next_selector.models.models[1];
+
+    if (feedback->field_20_percent < 95u && p_model->bits != 0u) {
+        if (openimp_t41_rate_control_predict_bits(
+                p_model->bits, p_model->qp, (uint16_t)current_qp,
+                p_model->scale, next_selector.models.max_qp_steps,
+                &predicted) != 0)
+            return -1;
+        if (predicted == 0u || completed_bits / predicted >= 501u) {
+            next_selector.adaptive_model_bits = 500000u;
+        } else {
+            next_selector.adaptive_model_bits = (uint32_t)(
+                (uint64_t)completed_bits * 1000u / predicted);
+        }
+    }
+
+    if (next_updater.feedback_model.scale == next_updater.upper_scale)
+        next_selector.negative_delta_latch = 0u;
+    next_updater.feedback_model.bits = completed_bits;
+    next_updater.feedback_model.qp = (uint16_t)feedback_qp;
+    next_updater.previous_completed_bits = completed_bits;
+    next_updater.cumulative_qp = 0u;
+    next_updater.completed_p_pictures = 0u;
+
+    if (rotate_modes) {
+        uint32_t previous_mode = next_updater.modes[1];
+
+        next_updater.modes[0] = 2u;
+        next_updater.modes[1] = 2u;
+        next_updater.modes[2] = previous_mode;
+    }
+    next_selector.residual_policy_mode = next_updater.modes[2];
+    *selector = next_selector;
+    *updater = next_updater;
+    return 0;
+}
+
 static int openimp_t41_rate_control_residual(
     uint32_t pictures_remaining, uint32_t picture_bits,
     int32_t history_bits, uint32_t predicted_bits, int64_t *residual)
@@ -843,6 +913,93 @@ int openimp_t41_rate_control_complete_p_picture(
     return 0;
 }
 
+int openimp_t41_rate_control_complete_idr_picture(
+    OpenIMPT41RateControlWindow *window,
+    OpenIMPT41RateControlPSelector *selector,
+    OpenIMPT41RateControlPModelUpdater *updater,
+    uint32_t completed_bits,
+    const OpenIMPT41RateControlFeedback *feedback,
+    int rotate_modes,
+    OpenIMPT41RateControlSelection *selection)
+{
+    OpenIMPT41RateControlWindow next_window;
+    OpenIMPT41RateControlPSelector next_selector;
+    OpenIMPT41RateControlPModelUpdater next_updater;
+    OpenIMPT41RateControlSelection next_selection;
+    uint64_t numerator;
+    uint64_t weighted_target;
+    uint64_t magnitude;
+    uint32_t iteration_count;
+    uint32_t denominator;
+    int64_t allocation_target;
+    int64_t error;
+    int64_t compensation;
+
+    if (!window || !selector || !updater || !feedback || !selection ||
+        completed_bits == 0u || selector->gop_length < 2u ||
+        selector->gop_length > UINT32_MAX / 1000u)
+        return -1;
+
+    next_window = *window;
+    next_selector = *selector;
+    next_updater = *updater;
+    if (openimp_t41_rate_control_update_idr_picture_model(
+            &next_selector, &next_updater, completed_bits, feedback,
+            rotate_modes) != 0 ||
+        openimp_t41_rate_control_window_update(
+            &next_window, completed_bits) != 0)
+        return -1;
+
+    iteration_count = next_selector.gop_length - 1u;
+    if (next_selector.adaptive_model_bits >
+        UINT32_MAX - iteration_count * 1000u)
+        return -1;
+    denominator = iteration_count * 1000u +
+                  next_selector.adaptive_model_bits;
+    if (denominator == 0u ||
+        next_selector.allocation_budget_bits >
+            UINT64_MAX / ((uint64_t)next_selector.gop_length * 1000u))
+        return -1;
+    numerator = (uint64_t)next_selector.gop_length * 1000u *
+                next_selector.allocation_budget_bits;
+    allocation_target = (int64_t)(numerator / denominator) +
+                        next_selector.allocation_compensation_bits;
+    if (allocation_target < 0 || allocation_target > UINT32_MAX)
+        return -1;
+
+    weighted_target = (uint64_t)allocation_target *
+                      next_selector.adaptive_model_bits / 1000u;
+    if (weighted_target == 0u)
+        weighted_target = 1u;
+    if (weighted_target > UINT32_MAX)
+        return -1;
+    error = (int64_t)weighted_target - completed_bits;
+    magnitude = error < 0 ? (uint64_t)(-error) : (uint64_t)error;
+    magnitude = magnitude * (iteration_count * 1000u) / denominator;
+    compensation = (int64_t)(magnitude / iteration_count);
+    if (error < 0)
+        compensation = -compensation;
+    if (compensation < INT32_MIN || compensation > INT32_MAX)
+        return -1;
+    next_selector.allocation_compensation_bits = (int32_t)compensation;
+
+    next_updater.gop_picture_count = 1u;
+    next_selector.pictures_remaining = iteration_count;
+    next_selector.history_target_bits =
+        openimp_t41_rate_control_window_target(&next_window);
+    memset(&next_selection, 0, sizeof(next_selection));
+    next_selection.picture_target_bits = (uint32_t)weighted_target;
+    next_selection.adjusted_completed_bits = completed_bits;
+    next_selection.residual_bits = error;
+    next_selection.selected_qp = next_selector.models.current_qp;
+
+    *window = next_window;
+    *selector = next_selector;
+    *updater = next_updater;
+    *selection = next_selection;
+    return 0;
+}
+
 static uint32_t openimp_t41_clamp_qp(uint32_t qp, uint32_t min_qp,
                                      uint32_t max_qp)
 {
@@ -862,9 +1019,13 @@ int openimp_t41_rate_controller_init(OpenIMPT41RateController *controller,
     uint64_t target_bits;
     uint64_t fps_milli;
     uint64_t history_rate;
+    uint32_t current_qp;
+    uint32_t bound_distance;
+    size_t model;
 
     if (!controller || !bitrate || !fps_num || !fps_den ||
-        min_qp > max_qp || max_qp > 51u)
+        min_qp > max_qp || max_qp > 51u || gop_length < 2u ||
+        gop_length > UINT32_MAX / 1000u)
         return -1;
 
     target_bits = ((uint64_t)bitrate * fps_den + fps_num / 2u) / fps_num;
@@ -878,12 +1039,12 @@ int openimp_t41_rate_controller_init(OpenIMPT41RateController *controller,
     controller->bitrate = bitrate;
     controller->fps_num = fps_num;
     controller->fps_den = fps_den;
-    controller->gop_length = gop_length ? gop_length : 1u;
+    controller->gop_length = gop_length;
     controller->target_bits = (uint32_t)target_bits;
     controller->min_qp = min_qp;
     controller->max_qp = max_qp;
-    controller->current_qp =
-        openimp_t41_clamp_qp(initial_qp, min_qp, max_qp);
+    current_qp = openimp_t41_clamp_qp(initial_qp, min_qp, max_qp);
+    controller->current_qp = current_qp;
 
     /* Exact oIIo defaults recovered from the T41 controller object. */
     controller->window.words[0] = (uint32_t)history_rate;
@@ -893,6 +1054,52 @@ int openimp_t41_rate_controller_init(OpenIMPT41RateController *controller,
     controller->window.words[4] = bitrate;
     controller->window.words[5] = 0x101u;
     controller->window.words[8] = 216000u;
+
+    for (model = 0u; model < 3u; ++model) {
+        controller->selector.models.models[model].bits =
+            (uint32_t)target_bits;
+        controller->selector.models.models[model].qp =
+            (uint16_t)current_qp;
+        controller->selector.models.models[model].scale = 11225u;
+    }
+    controller->selector.models.current_qp = (int16_t)current_qp;
+    controller->selector.models.first_model_qp_bias = 2;
+    controller->selector.models.max_qp_steps = 4;
+    controller->selector.min_qp = (int16_t)min_qp;
+    controller->selector.max_qp = (int16_t)max_qp;
+    controller->selector.gop_length = gop_length;
+    controller->selector.pictures_remaining = gop_length - 1u;
+    controller->selector.allocation_budget_bits = (uint32_t)target_bits;
+    controller->selector.residual_picture_bits = (uint32_t)target_bits;
+    controller->selector.adaptive_model_bits = 333u;
+    controller->selector.prediction_cap_bits = (uint32_t)history_rate;
+    controller->selector.buffer_budget_bits =
+        (uint32_t)(history_rate * 4u / 5u);
+    controller->selector.threshold_span_bits = bitrate;
+    controller->selector.residual_policy_mode = 10u;
+    controller->selector.low_feedback_latch = 1u;
+
+    controller->updater.feedback_model.bits = (uint32_t)target_bits;
+    controller->updater.feedback_model.qp = (uint16_t)current_qp;
+    controller->updater.feedback_model.scale = 11225u;
+    controller->updater.baseline_min_qp = (int16_t)min_qp;
+    controller->updater.baseline_max_qp = (int16_t)max_qp;
+    controller->updater.feedback_min_qp = (int16_t)min_qp;
+    controller->updater.feedback_max_qp = (int16_t)max_qp;
+    bound_distance = current_qp - min_qp;
+    if (max_qp - current_qp < bound_distance)
+        bound_distance = max_qp - current_qp;
+    controller->updater.feedback_model_bound_distance = bound_distance;
+    controller->updater.lower_scale = 11180u;
+    controller->updater.upper_scale = 20000u;
+    controller->updater.baseline_ratio = 333u;
+    controller->updater.modes[0] = 10u;
+    controller->updater.modes[1] = 10u;
+    controller->updater.modes[2] = 10u;
+    controller->updater.feedback_reference_percent = 60u;
+    controller->updater.last_picture_target_bits = (uint32_t)target_bits;
+    controller->updater.max_model_adjustment = 1u;
+    controller->smoothed_p_bits = (uint32_t)target_bits;
     controller->initialized = 1;
     return 0;
 }
@@ -901,59 +1108,38 @@ int openimp_t41_rate_controller_complete(
     OpenIMPT41RateController *controller, uint32_t completed_bits,
     int is_idr, const OpenIMPT41RateControlFeedback *feedback)
 {
-    int64_t target;
-    int64_t limit;
+    OpenIMPT41RateControlFeedback effective_feedback;
+    OpenIMPT41RateControlSelection selection;
+    int result;
 
     if (!controller || !controller->initialized || !completed_bits)
         return -1;
-    if (openimp_t41_rate_control_window_update(
-            &controller->window, completed_bits) != 0)
-        return -1;
-    if (feedback)
-        controller->feedback = *feedback;
-    ++controller->completed_pictures;
-
-    /* IDR has its own hardware table and GOP allocation.  Feeding its burst
-     * into a per-P selector was the old source of four-QP jumps. */
-    if (is_idr)
-        return 0;
-
-    ++controller->completed_p_pictures;
-    if (controller->smoothed_p_bits == 0u) {
-        controller->smoothed_p_bits = completed_bits;
+    effective_feedback = feedback ? *feedback : controller->feedback;
+    if (is_idr) {
+        result = openimp_t41_rate_control_complete_idr_picture(
+            &controller->window, &controller->selector,
+            &controller->updater, completed_bits, &effective_feedback,
+            1, &selection);
     } else {
-        controller->smoothed_p_bits =
-            (uint32_t)(((uint64_t)controller->smoothed_p_bits * 3u +
-                        completed_bits + 2u) / 4u);
+        result = openimp_t41_rate_control_complete_p_picture(
+            &controller->window, &controller->selector,
+            &controller->updater, completed_bits, &effective_feedback,
+            1, 1, &selection);
     }
+    if (result != 0)
+        return -1;
 
-    target = (int64_t)controller->target_bits;
-    controller->virtual_buffer_bits += (int64_t)completed_bits - target;
-    limit = target * 8;
-    if (controller->virtual_buffer_bits > limit)
-        controller->virtual_buffer_bits = limit;
-    if (controller->virtual_buffer_bits < -limit)
-        controller->virtual_buffer_bits = -limit;
-
-    /* Two completed P pictures establish a model.  Thereafter use a 12%
-     * upper and 28% lower hysteresis band, with the recovered texture
-     * feedback suppressing quality increases on highly detailed pictures. */
-    if (controller->completed_p_pictures < 2u)
-        return 0;
-    if ((uint64_t)controller->smoothed_p_bits * 100u >
-            (uint64_t)controller->target_bits * 112u ||
-        controller->virtual_buffer_bits > target * 2) {
-        if (controller->current_qp < controller->max_qp)
-            ++controller->current_qp;
-        controller->virtual_buffer_bits -= target;
-    } else if ((uint64_t)controller->smoothed_p_bits * 100u <
-                   (uint64_t)controller->target_bits * 72u &&
-               controller->virtual_buffer_bits < -target * 2 &&
-               (!feedback || feedback->field_1c_percent < 70u)) {
-        if (controller->current_qp > controller->min_qp)
-            --controller->current_qp;
-        controller->virtual_buffer_bits += target;
-    }
+    controller->feedback = effective_feedback;
+    controller->last_selection = selection;
+    controller->current_qp =
+        (uint32_t)controller->selector.models.current_qp;
+    controller->smoothed_p_bits =
+        controller->selector.models.models[1].bits;
+    controller->virtual_buffer_bits =
+        controller->selector.history_target_bits;
+    ++controller->completed_pictures;
+    if (!is_idr)
+        ++controller->completed_p_pictures;
     return 0;
 }
 
