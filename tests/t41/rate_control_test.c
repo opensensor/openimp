@@ -822,6 +822,140 @@ static void test_coupled_controller(void)
     assert(controller.completed_p_pictures == 2u);
 }
 
+static uint32_t mix_oem_semantic_word(uint32_t hash, uint32_t value)
+{
+    return (hash ^ value) * 16777619u;
+}
+
+static uint32_t controller_oem_semantic_hash(
+    const OpenIMPT41RateController *controller)
+{
+    const OpenIMPT41RateControlPSelector *selector = &controller->selector;
+    const OpenIMPT41RateControlPModelUpdater *updater = &controller->updater;
+    uint32_t hash = 2166136261u;
+    size_t index;
+
+    for (index = 0u; index < OPENIMP_T41_RATE_CONTROL_WINDOW_WORDS;
+         ++index)
+        hash = mix_oem_semantic_word(hash, controller->window.words[index]);
+    for (index = 0u; index < 3u; ++index) {
+        hash = mix_oem_semantic_word(
+            hash, selector->models.models[index].bits);
+        hash = mix_oem_semantic_word(
+            hash, selector->models.models[index].qp);
+        hash = mix_oem_semantic_word(
+            hash, selector->models.models[index].scale);
+    }
+    hash = mix_oem_semantic_word(
+        hash, (uint32_t)(uint16_t)selector->models.current_qp);
+    hash = mix_oem_semantic_word(hash, selector->adaptive_model_bits);
+    hash = mix_oem_semantic_word(
+        hash, (uint32_t)selector->allocation_compensation_bits);
+    hash = mix_oem_semantic_word(hash, selector->residual_policy_mode);
+    hash = mix_oem_semantic_word(hash, selector->negative_delta_latch);
+    hash = mix_oem_semantic_word(hash, selector->low_feedback_latch);
+    hash = mix_oem_semantic_word(hash, updater->feedback_model.bits);
+    hash = mix_oem_semantic_word(hash, updater->feedback_model.qp);
+    hash = mix_oem_semantic_word(hash, updater->feedback_model.scale);
+    hash = mix_oem_semantic_word(
+        hash, updater->feedback_model_bound_distance);
+    hash = mix_oem_semantic_word(hash, updater->baseline_ratio);
+    for (index = 0u; index < 3u; ++index)
+        hash = mix_oem_semantic_word(hash, updater->modes[index]);
+    hash = mix_oem_semantic_word(
+        hash, updater->feedback_reference_percent);
+    hash = mix_oem_semantic_word(hash, updater->previous_completed_bits);
+    hash = mix_oem_semantic_word(hash, updater->cumulative_qp);
+    hash = mix_oem_semantic_word(hash, updater->completed_p_pictures);
+    hash = mix_oem_semantic_word(hash, updater->last_picture_target_bits);
+    hash = mix_oem_semantic_word(hash, updater->gop_picture_count);
+    return hash;
+}
+
+static void test_oem_full_trace_controller(void)
+{
+    struct CompletionFixture {
+        uint32_t completed_bits;
+        uint32_t field_20_percent;
+        uint32_t field_1c_percent;
+        int is_idr;
+        uint32_t expected_semantic_hash;
+    };
+    /* Inputs and post-call state come from one uninterrupted production OEM
+     * trace.  The hash intentionally mixes named semantic fields rather than
+     * copying the OEM private-object layout into OpenIMP. */
+    static const struct CompletionFixture fixtures[] = {
+        { 7602880u, 0u, 100u, 1, 0x76c15050u },
+        { 537464u, 0u, 100u, 0, 0x7478ac86u },
+        { 212520u, 33u, 40u, 0, 0x00578c19u },
+        { 395856u, 0u, 100u, 1, 0x0cd7fc1bu },
+        { 402168u, 0u, 97u, 0, 0x5f81bcddu },
+        { 91960u, 44u, 41u, 0, 0x85b674e2u },
+        { 171800u, 36u, 32u, 0, 0xb1470583u },
+        { 451808u, 3u, 70u, 0, 0xb476abccu },
+        { 170096u, 39u, 35u, 0, 0x08262366u },
+        { 124080u, 61u, 17u, 0, 0x751a4979u },
+        { 744912u, 4u, 75u, 0, 0xa4fe6e1bu },
+        { 231984u, 37u, 29u, 0, 0xf233331fu },
+        { 130960u, 53u, 26u, 0, 0xa8a53cd8u },
+        { 1095568u, 4u, 72u, 0, 0xb9411622u },
+        { 404232u, 24u, 28u, 0, 0x70527468u },
+        { 102248u, 63u, 16u, 0, 0x02c4cbf4u },
+        { 915408u, 1u, 78u, 0, 0x9cec9be5u },
+        { 169760u, 52u, 16u, 0, 0x5f10bc80u },
+        { 126856u, 56u, 25u, 0, 0x5ded0319u },
+        { 1115120u, 1u, 77u, 0, 0xb680d91au },
+        { 211168u, 49u, 17u, 0, 0xf4b3abdfu },
+        { 82800u, 70u, 18u, 0, 0xec48a0b4u },
+        { 736328u, 1u, 73u, 0, 0x7019c275u },
+        { 82136u, 73u, 11u, 0, 0x79293994u },
+        { 51832u, 74u, 21u, 0, 0xcf9f56a7u },
+        { 489616u, 0u, 71u, 0, 0x5737280au },
+        { 39288u, 80u, 14u, 0, 0x98abd7d1u },
+        { 31160u, 77u, 19u, 0, 0x76339c82u },
+        { 42560u, 75u, 20u, 0, 0xc71b363au },
+        { 30856u, 82u, 14u, 0, 0x76d63e09u },
+        { 48432u, 79u, 13u, 0, 0x469e36ffu },
+        { 39400u, 78u, 16u, 0, 0x59288118u },
+        { 38272u, 79u, 15u, 0, 0x16d979a0u },
+        { 30968u, 83u, 13u, 0, 0x44928aebu },
+        { 67472u, 77u, 11u, 0, 0xc52675d3u },
+        { 34128u, 83u, 11u, 0, 0xcbbf26d5u },
+        { 32872u, 82u, 13u, 0, 0xa234c9e9u },
+        { 27328u, 88u, 7u, 0, 0x5603b47bu },
+        { 65344u, 81u, 7u, 0, 0xf77b8621u },
+        { 33456u, 85u, 9u, 0, 0x6b14807au },
+    };
+    OpenIMPT41RateController controller;
+    OpenIMPT41RateControlFeedback feedback = { 0 };
+    size_t index;
+
+    assert(openimp_t41_rate_controller_init(
+               &controller, 8000000u, 25u, 1u, 50u,
+               34u, 51u, 38u) == 0);
+    for (index = 0u; index < sizeof(fixtures) / sizeof(fixtures[0]);
+         ++index) {
+        const struct CompletionFixture *fixture = &fixtures[index];
+
+        feedback.field_20_percent = fixture->field_20_percent;
+        feedback.field_1c_percent = fixture->field_1c_percent;
+        assert(openimp_t41_rate_controller_complete(
+                   &controller, fixture->completed_bits, fixture->is_idr,
+                   &feedback) == 0);
+        {
+            uint32_t actual_hash =
+                controller_oem_semantic_hash(&controller);
+
+            if (actual_hash != fixture->expected_semantic_hash)
+                fprintf(stderr,
+                        "OEM controller call %zu hash %08x != %08x\n",
+                        index + 1u, actual_hash,
+                        fixture->expected_semantic_hash);
+            assert(actual_hash == fixture->expected_semantic_hash);
+        }
+    }
+}
+
 static void test_controller_bounds_and_errors(void)
 {
     OpenIMPT41RateController controller;
@@ -860,6 +994,7 @@ int main(void)
     test_oem_p_picture_selector();
     test_oem_sequential_p_picture_completion();
     test_coupled_controller();
+    test_oem_full_trace_controller();
     test_controller_bounds_and_errors();
     puts("T41 software rate-control coupling: OK");
     return 0;

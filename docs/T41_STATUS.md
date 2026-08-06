@@ -50,7 +50,8 @@ platform branches represent measured public or kernel ABI differences.
   subsequent 0x28-byte `AL_RateCtrl_ExtractStatistics` projection are also
   recovered and tested. A bounded composition now initializes the slice
   status and combines both hardware blocks before projecting all statistics;
-  these inputs are observed live but do not yet drive rate control.
+  the normalized block and feedback counters now drive the recovered software
+  rate controller on every completed access unit.
 - Decoder probes identify valid High-profile H.264 on both channels. Captured
   boundary access units contain valid SPS/PPS/IDR NAL units and decode at the
   configured geometry. Submit-time IDR state is carried with each hardware
@@ -86,12 +87,14 @@ The previously incomplete completion path is now coupled end to end:
   hardware-counter normalizer and the exact 0x40-byte bitrate-history update.
   Captured OEM fixtures and all 40 recorded history transitions remain host
   regression oracles.
-- A persistent per-channel controller replaces the old payload-only `+/-4`
-  helper. It starts from the observed OEM QP 38, ignores the separate IDR
-  burst when updating its P-picture model, and makes at most a one-QP change
-  per completed P picture using smoothed payload, virtual-buffer, and texture
-  feedback. This selector is intentionally bounded; it is not yet a line-for-
-  line port of OEM's full 4084-byte model-selection routine.
+- The active T41 CBR path through OEM's 4,084-byte `o1II` model selector and
+  its 4,384-byte picture-model updater is recovered for IDR and normal P
+  pictures. It includes fixed-point scale learning, the three prediction
+  classes, feedback-model bound adjustment, GOP allocation compensation,
+  bitrate-history correction, cadence, and both hysteresis latches. A
+  constructor-initialized OpenIMP controller reproduces a 40-completion OEM
+  trace after every call; the regression hashes all 16 history words and all
+  recovered semantic model state, rather than checking QP alone.
 - The selected QP is applied consistently to the generated slice header,
   command word 24, its entropy mirror, and both QP fields in word 179. This
   removes the former syntax/hardware split that produced CABAC corruption when
@@ -106,13 +109,12 @@ The previously incomplete completion path is now coupled end to end:
   hardware-owned 36-word history at `+0x1360` remains in place. T41's required
   1 MiB cache-operation normalization is used for both EP1 and EP3.
 
-On the live 8-Mbit/s, 2560x1440/25 stream, the controller settled around QP
-37-38 after a bounded startup transient. A 100-frame sample was 4,237,360
-bytes against a 4,000,000-byte nominal budget and decoded with an empty error
-log. A second Raptor stop/start, without unloading TX-ISP or rebooting, yielded
-a decoder-clean 50-frame sample. No EP1 flush, EP3 handoff, controller, kernel,
-or service errors were observed; the required cleanup reboot then returned a
-decoder-clean full-resolution stream from the persistent open implementation.
+On the live 8-Mbit/s, 2560x1440/25 stream, the exact controller settles around
+QP 38-39. A 120-frame sample was 4,877,928 bytes against a 4,800,000-byte
+nominal budget and decoded with an empty error log. All completions returned
+success. The required cleanup reboot then loaded the same open library and
+open TX-ISP modules; a 60-frame full-resolution sample decoded cleanly with no
+ISP overflow or controller errors.
 
 Set `OPENIMP_T41_RATE_CONTROL_COUPLING=0` only for diagnostic A/B rollback to
 the fixed command-QP path. Coupling is enabled by default.
@@ -129,8 +131,10 @@ is solved explicitly.
 Open TX-ISP exposure and color are now close to the measured OEM baseline, but
 scene-by-scene image-quality parity is still being tuned. The native T41 AVPU
 path now averages the configured 25 fps in decoded captures, though an RSD
-ring reopen can still reset an active client's RTP epoch. Exact OEM parity for
-the larger model-update/QP-selection state machine remains future correctness
-work. Throughput work, zero-copy optimization, and V4L2 support remain
-intentionally deferred until cross-SoC correctness and image-quality work are
-complete.
+ring reopen can still reset an active client's RTP epoch. A userspace Raptor
+restart can also produce a short ISP-overflow burst while buffers are being
+re-established, although a clean boot and steady-state capture are clean.
+OEM selector branches for configurations other than the captured normal-P CBR
+profile remain future correctness work. Throughput work, zero-copy
+optimization, and V4L2 support remain intentionally deferred until cross-SoC
+correctness and image-quality work are complete.
