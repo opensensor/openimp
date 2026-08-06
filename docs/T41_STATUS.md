@@ -94,7 +94,9 @@ The previously incomplete completion path is now coupled end to end:
   bitrate-history correction, cadence, and both hysteresis latches. A
   constructor-initialized OpenIMP controller reproduces a 40-completion OEM
   trace after every call; the regression hashes all 16 history words and all
-  recovered semantic model state, rather than checking QP alone.
+  recovered semantic model state, rather than checking QP alone. A separate
+  deterministic matrix exercises 1-12 Mbit/s, integer and fractional frame
+  rates, GOP lengths 25-60, and several QP ranges under ASAN and UBSAN.
 - The exact controller is gated to OEM rate-control mode 1 (CBR). FIXQP and
   VBR do not enter it, and changing away from CBR invalidates its history so a
   later CBR transition reconstructs the recovered constructor state.
@@ -134,10 +136,11 @@ is solved explicitly.
 Open TX-ISP exposure and color are now close to the measured OEM baseline, but
 scene-by-scene image-quality parity is still being tuned. The native T41 AVPU
 path now averages the configured 25 fps in decoded captures, though an RSD
-ring reopen can still reset an active client's RTP epoch. A userspace Raptor
-restart can also produce a short ISP-overflow burst while buffers are being
-re-established, although a clean boot and steady-state capture are clean.
-OEM selector branches for configurations other than the captured normal-P CBR
-profile remain future correctness work. Throughput work, zero-copy
+ring reopen can still reset an active client's RTP epoch. One staged library
+restart captured a short ISP-overflow burst, but an immediate controlled
+stop/start plus decoded capture did not reproduce it; clean boots and
+steady-state captures are also clean. OEM selector branches for configurations
+other than the captured normal-P CBR profile remain future correctness work.
+Throughput work, zero-copy
 optimization, and V4L2 support remain intentionally deferred until cross-SoC
 correctness and image-quality work are complete.

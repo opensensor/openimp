@@ -956,6 +956,71 @@ static void test_oem_full_trace_controller(void)
     }
 }
 
+static void test_controller_configuration_matrix(void)
+{
+    struct ControllerConfig {
+        uint32_t bitrate;
+        uint32_t fps_num;
+        uint32_t fps_den;
+        uint32_t gop_length;
+        uint32_t min_qp;
+        uint32_t max_qp;
+        uint32_t initial_qp;
+    };
+    static const struct ControllerConfig configs[] = {
+        { 1000000u, 15u, 1u, 30u, 20u, 45u, 30u },
+        { 4000000u, 30000u, 1001u, 60u, 15u, 48u, 38u },
+        { 8000000u, 25u, 1u, 25u, 34u, 51u, 38u },
+        { 12000000u, 30u, 1u, 45u, 10u, 42u, 50u },
+    };
+    size_t config_index;
+
+    for (config_index = 0u;
+         config_index < sizeof(configs) / sizeof(configs[0]);
+         ++config_index) {
+        const struct ControllerConfig *config = &configs[config_index];
+        OpenIMPT41RateController controller;
+        OpenIMPT41RateControlFeedback feedback = { 0 };
+        uint32_t idr_count = 0u;
+        uint32_t frame_count = config->gop_length * 3u;
+        uint32_t frame;
+
+        assert(openimp_t41_rate_controller_init(
+                   &controller, config->bitrate,
+                   config->fps_num, config->fps_den,
+                   config->gop_length, config->min_qp,
+                   config->max_qp, config->initial_qp) == 0);
+        for (frame = 0u; frame < frame_count; ++frame) {
+            uint32_t target = controller.target_bits;
+            uint32_t completed_bits;
+            int is_idr = frame % config->gop_length == 0u;
+
+            if (is_idr) {
+                completed_bits = target * (frame == 0u ? 8u : 2u);
+                ++idr_count;
+            } else {
+                completed_bits = target / 2u +
+                    (uint32_t)(((uint64_t)frame * 7919u) % target);
+            }
+            if (completed_bits == 0u)
+                completed_bits = 1u;
+            feedback.field_20_percent = frame * 17u % 101u;
+            feedback.field_1c_percent = frame * 29u % 101u;
+            assert(openimp_t41_rate_controller_complete(
+                       &controller, completed_bits, is_idr,
+                       &feedback) == 0);
+            assert(openimp_t41_rate_controller_qp(&controller) >=
+                   config->min_qp);
+            assert(openimp_t41_rate_controller_qp(&controller) <=
+                   config->max_qp);
+            assert(controller.selector.models.current_qp ==
+                   (int16_t)controller.current_qp);
+            assert(controller.completed_pictures == frame + 1u);
+        }
+        assert(controller.completed_p_pictures == frame_count - idr_count);
+    }
+}
+
 static void test_controller_bounds_and_errors(void)
 {
     OpenIMPT41RateController controller;
@@ -995,6 +1060,7 @@ int main(void)
     test_oem_sequential_p_picture_completion();
     test_coupled_controller();
     test_oem_full_trace_controller();
+    test_controller_configuration_matrix();
     test_controller_bounds_and_errors();
     puts("T41 software rate-control coupling: OK");
     return 0;
