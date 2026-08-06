@@ -61,6 +61,36 @@ platform branches represent measured public or kernel ABI differences.
   1920x1080 sample has balanced global luma/chroma statistics and no visible
   block corruption under mixed daylight and warm interior lighting.
 
+## H.264 quality state
+
+The decoder-clean fallback currently keeps the P-picture command and entropy
+QP at 34 while forwarding the recovered rate-control QP through command word
+179.  This produces more coded high-frequency noise and a higher bitrate than
+OEM, but changing command word 24 independently is not safe yet.
+
+A same-boot OEM/Open `/dev/rmem` trace narrowed the missing coupling:
+
+- The first IDR EP1 image is byte-identical.  On the first P picture OEM
+  changes exactly 26 lambda words from the intra lane to the inter lane;
+  OpenIMP currently retains the intra form.
+- After physical addresses are excluded, the first main-channel P command
+  differs only at word 24 and its entropy mirror at word 513.  OEM uses its
+  recovered rate-control QP there.
+- OEM's P-picture EP3 state already has a nonzero word at offset `0x1400` and
+  gains additional hardware-written state at `0x1360` on later pictures.
+  OpenIMP's cached EP3 snapshots leave that whole tail zero.
+- OEM slice headers still advertise QP 34 (`slice_qp_delta = 8`), so changing
+  the generated slice header to follow command word 24 is not the missing
+  operation.
+
+Applying the measured P-picture EP1 transition by itself remained
+decoder-clean, but raised a matched 100-frame capture from 1,634,021 to
+1,799,978 bytes and increased mean luma temporal difference from 0.886 to
+1.001.  Pairing it with either dynamic command QP or a constant P QP of 40
+caused CABAC decode errors.  Those probes were reverted.  Keep the known-clean
+QP-34/IDR-lambda fallback until the EP3 initialization, writeback, and cache
+ownership transition is recovered as one unit.
+
 ## Remaining work
 
 The zero-copy Raptor path is not yet correctness-safe. Raptor's reference-mode
