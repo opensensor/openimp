@@ -95,6 +95,9 @@ The previously incomplete completion path is now coupled end to end:
   constructor-initialized OpenIMP controller reproduces a 40-completion OEM
   trace after every call; the regression hashes all 16 history words and all
   recovered semantic model state, rather than checking QP alone.
+- The exact controller is gated to OEM rate-control mode 1 (CBR). FIXQP and
+  VBR do not enter it, and changing away from CBR invalidates its history so a
+  later CBR transition reconstructs the recovered constructor state.
 - The selected QP is applied consistently to the generated slice header,
   command word 24, its entropy mirror, and both QP fields in word 179. This
   removes the former syntax/hardware split that produced CABAC corruption when

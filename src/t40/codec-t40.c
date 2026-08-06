@@ -2378,6 +2378,15 @@ static int avpu_t41_rate_control_coupling_enabled(void)
     return !value || strcmp(value, "0") != 0;
 }
 
+static int avpu_t41_exact_rate_control_enabled(const ALAvpuContext *ctx)
+{
+    /* The recovered o1II object is the OEM mode-1 CBR controller.  VBR uses
+     * a different OEM implementation and must not inherit this state merely
+     * because it is also a non-FIXQP mode. */
+    return ctx && ctx->rc_mode == HW_RC_MODE_CBR &&
+           avpu_t41_rate_control_coupling_enabled();
+}
+
 static void avpu_t41_qp_bounds(const ALAvpuContext *ctx,
                                uint32_t *min_qp_out,
                                uint32_t *max_qp_out)
@@ -2427,8 +2436,7 @@ static int avpu_t41_prepare_picture(ALAvpuContext *ctx, int is_idr)
     if (!gop_length)
         gop_length = 1u;
 
-    if (ctx->rc_mode != HW_RC_MODE_FIXQP &&
-        avpu_t41_rate_control_coupling_enabled()) {
+    if (avpu_t41_exact_rate_control_enabled(ctx)) {
         OpenIMPT41RateController *controller =
             &ctx->t41_rate_controller;
 
@@ -2449,6 +2457,10 @@ static int avpu_t41_prepare_picture(ALAvpuContext *ctx, int is_idr)
                       controller->current_qp, min_qp, max_qp);
         }
         selected_qp = openimp_t41_rate_controller_qp(controller);
+    } else {
+        /* A later CBR transition must reconstruct OEM defaults instead of
+         * resuming history accumulated under an earlier channel mode. */
+        ctx->t41_rate_controller.initialized = 0;
     }
     ctx->t41_rate_control_qp = selected_qp;
 
@@ -2549,7 +2561,7 @@ static int avpu_t41_fill_command(ALAvpuContext *ctx, void *slot,
     if (ctx->rc_mode == HW_RC_MODE_FIXQP || rate_control_qp < min_qp ||
         rate_control_qp > max_qp)
         rate_control_qp = picture_qp;
-    else if (avpu_t41_rate_control_coupling_enabled())
+    else if (avpu_t41_exact_rate_control_enabled(ctx))
         picture_qp = rate_control_qp;
 
     memset(&params, 0, sizeof(params));
@@ -4322,8 +4334,7 @@ static void avpu_end_encoding_callback(void *user_data)
                           ep3_invalidate, level_update,
                           completed_ep3_slot);
 
-            if (ctx->rc_mode != HW_RC_MODE_FIXQP &&
-                avpu_t41_rate_control_coupling_enabled() &&
+            if (avpu_t41_exact_rate_control_enabled(ctx) &&
                 ctx->t41_rate_controller.initialized) {
                 uint32_t used_qp =
                     ctx->t41_rate_control_qp_by_buf[buf_idx];
