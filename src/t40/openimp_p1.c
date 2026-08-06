@@ -576,12 +576,21 @@ int IMP_ISP_DelSensor(IMPVI_NUM num, IMPSensorInfo *info)
     memset(&input, 0, sizeof(input));
     input.vinum = num;
     result = record_ioctl(p1.isp_fd, TISP_VIDIOC_S_INPUT, &input);
+#if defined(PLATFORM_T41)
+    /* T41 creates the sensor I2C client during REGISTER_SENSOR.  Release it
+     * after deselecting the input so a new producer can register the same
+     * OS04D10 without unloading the ISP module or rebooting the camera. */
+    if (result == 0)
+        result = record_ioctl(p1.isp_fd, TISP_VIDIOC_UNREGISTER_SENSOR,
+                              info);
+#else
     /* The stock T40 driver owns the sensor subdevice for the lifetime of the
      * sensor kernel module.  Its legacy UNREGISTER_SENSOR delegation tears
      * down that module-owned object and is not part of a userspace close.
      * Deselecting the input plus clearing this library's ownership is the
      * safe, repeatable DelSensor operation.
      */
+#endif
     if (result == 0) {
         p1.sensor_added = 0;
         memset(&p1.sensor, 0, sizeof(p1.sensor));
