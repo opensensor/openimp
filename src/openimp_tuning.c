@@ -25,6 +25,8 @@
 #if defined(PLATFORM_T41)
 #define TISP_VIDIOC_DEFAULT_TUNING 0xc0105435U
 #define TISP_CID_T41_AE_EXPR 0x08000023U
+#define TISP_CID_OPEN_AWB_CONTROL 0x08ff0001U
+#define TISP_CID_OPEN_AE_TARGET 0x08ff0002U
 #define TISP_T41_AE_EXPR_BYTES 232U
 #define TISP_T41_AE_EXPR_TOTAL_GAIN_OFFSET 204U
 #else
@@ -78,6 +80,17 @@ void OpenIMP_Tuning_DefaultProfile(OpenIMPTuningProfile *profile)
     profile->sharpness = 128;
     profile->hue = 128;
     profile->gain_feedback = 1;
+    profile->auto_white_balance = 0;
+    /* Reproduce a converged OEM OS04D10 daylight capture.  The recovered
+     * aggregate AWB model remains opt-in: its gray-world mapping is not yet
+     * equivalent to the larger OEM model-selection routine. */
+    profile->red_gain = 1476;
+    profile->blue_gain = 3524;
+    profile->exposure_target_q8 = 17600;
+#if defined(PLATFORM_T41)
+    profile->control_mask |= OPENIMP_TUNING_CONTROL_WHITE_BALANCE |
+                             OPENIMP_TUNING_CONTROL_EXPOSURE_TARGET;
+#endif
     profile->feedback_interval_ms = OPENIMP_TUNING_DEFAULT_INTERVAL_MS;
 }
 
@@ -90,9 +103,14 @@ int OpenIMP_Tuning_ProfilePreset(OpenIMPTuningProfileKind kind,
         return -EINVAL;
     OpenIMP_Tuning_DefaultProfile(profile);
     profile->kind = kind;
-    /* The psychedelic preset intentionally preserves the accepted warm,
-     * saturated T41 open-ISP state. Future effects can vary these values
-     * without changing capture or encoder ownership. */
+#if defined(PLATFORM_T41)
+    if (kind == OPENIMP_TUNING_PROFILE_PSYCHEDELIC) {
+        /* Preserve the accepted warm open-ISP state as a deliberate effect. */
+        profile->red_gain = 1800;
+        profile->blue_gain = 3000;
+        profile->exposure_target_q8 = 14500;
+    }
+#endif
     return 0;
 }
 
@@ -178,6 +196,33 @@ struct t40_tuning_request {
     uintptr_t value_or_pointer;
 };
 
+#if defined(PLATFORM_T41)
+struct t41_awb_control {
+    uint32_t mode;
+    uint16_t red_gain;
+    uint16_t blue_gain;
+};
+
+static int t41_awb_control(int fd, int is_get,
+                           struct t41_awb_control *control)
+{
+    struct t40_tuning_request request = {
+        0, is_get, TISP_CID_OPEN_AWB_CONTROL, (uintptr_t)control
+    };
+
+    return ioctl(fd, TISP_VIDIOC_DEFAULT_TUNING, &request) < 0 ? -errno : 0;
+}
+
+static int t41_ae_target(int fd, int is_get, uint32_t *target)
+{
+    struct t40_tuning_request request = {
+        0, is_get, TISP_CID_OPEN_AE_TARGET, (uintptr_t)target
+    };
+
+    return ioctl(fd, TISP_VIDIOC_DEFAULT_TUNING, &request) < 0 ? -errno : 0;
+}
+#endif
+
 static int t40_set_control(int fd, int32_t id, uint8_t value)
 {
     struct t40_tuning_request request = { 0, 0, id,
@@ -191,7 +236,24 @@ static int tuning_apply(OpenIMPTuningController *controller,
 {
     int ret = 0;
 
-    if (profile->control_mask & OPENIMP_TUNING_CONTROL_BRIGHTNESS)
+#if defined(PLATFORM_T41)
+    if (profile->control_mask & OPENIMP_TUNING_CONTROL_WHITE_BALANCE) {
+        struct t41_awb_control control = {
+            profile->auto_white_balance ? 1U : 0U,
+            profile->red_gain,
+            profile->blue_gain,
+        };
+
+        ret = t41_awb_control(controller->fd, 0, &control);
+    }
+    if (!ret &&
+        (profile->control_mask & OPENIMP_TUNING_CONTROL_EXPOSURE_TARGET)) {
+        uint32_t target = profile->exposure_target_q8;
+
+        ret = t41_ae_target(controller->fd, 0, &target);
+    }
+#endif
+    if (!ret && (profile->control_mask & OPENIMP_TUNING_CONTROL_BRIGHTNESS))
         ret = t40_set_control(controller->fd, TISP_CID_BRIGHTNESS,
                               profile->brightness);
     if (!ret && (profile->control_mask & OPENIMP_TUNING_CONTROL_CONTRAST))
@@ -380,6 +442,29 @@ int OpenIMP_Tuning_GetStatus(OpenIMPTuningController *controller,
     status->profile = controller->profile;
     status->last_total_gain = controller->last_total_gain;
     status->feedback_updates = controller->feedback_updates;
+    status->active_auto_white_balance =
+        controller->profile.auto_white_balance;
+    status->active_red_gain = controller->profile.red_gain;
+    status->active_blue_gain = controller->profile.blue_gain;
+    status->active_exposure_target_q8 =
+        controller->profile.exposure_target_q8;
+#if defined(PLATFORM_T41)
+    {
+        struct t41_awb_control control;
+
+        if (!t41_awb_control(controller->fd, 1, &control)) {
+            status->active_auto_white_balance = control.mode != 0;
+            status->active_red_gain = control.red_gain;
+            status->active_blue_gain = control.blue_gain;
+        }
+        {
+            uint32_t target;
+
+            if (!t41_ae_target(controller->fd, 1, &target))
+                status->active_exposure_target_q8 = (uint16_t)target;
+        }
+    }
+#endif
     status->running = controller->running;
     pthread_mutex_unlock(&controller->lock);
     return 0;

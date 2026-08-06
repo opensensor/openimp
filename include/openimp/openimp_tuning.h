@@ -21,7 +21,9 @@ enum {
     OPENIMP_TUNING_CONTROL_SATURATION = 1U << 2,
     OPENIMP_TUNING_CONTROL_SHARPNESS = 1U << 3,
     OPENIMP_TUNING_CONTROL_HUE = 1U << 4,
-    OPENIMP_TUNING_CONTROL_ALL = (1U << 5) - 1U,
+    OPENIMP_TUNING_CONTROL_WHITE_BALANCE = 1U << 5,
+    OPENIMP_TUNING_CONTROL_EXPOSURE_TARGET = 1U << 6,
+    OPENIMP_TUNING_CONTROL_ALL = (1U << 7) - 1U,
 };
 
 typedef struct {
@@ -33,6 +35,10 @@ typedef struct {
     uint8_t sharpness;
     uint8_t hue;
     uint8_t gain_feedback;
+    uint8_t auto_white_balance;
+    uint16_t red_gain;
+    uint16_t blue_gain;
+    uint16_t exposure_target_q8;
     uint16_t feedback_interval_ms;
 } OpenIMPTuningProfile;
 
@@ -45,6 +51,10 @@ typedef struct {
     OpenIMPTuningProfile profile;
     int32_t last_total_gain;
     uint32_t feedback_updates;
+    uint8_t active_auto_white_balance;
+    uint16_t active_red_gain;
+    uint16_t active_blue_gain;
+    uint16_t active_exposure_target_q8;
     int running;
 } OpenIMPTuningStatus;
 
