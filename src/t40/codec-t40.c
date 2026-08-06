@@ -4774,6 +4774,13 @@ static void* avpu_irq_thread(void* arg)
 {
     ALAvpuContext* ctx = (ALAvpuContext*)arg;
     int fd = ctx->fd;
+    /* WAIT_IRQ has historically copied beyond its four-byte result on some
+     * vendor kernels, so retain the proven 0x40-byte slack and 16-byte
+     * alignment.  The ioctl is synchronous: one thread-local buffer can be
+     * reused for the lifetime of the waiter instead of allocating and freeing
+     * a tiny heap object for every encoded frame. */
+    uint8_t irq_raw[sizeof(uint32_t) + 0x40]
+        __attribute__((aligned(16)));
 
     ctx->irq_thread_started = 1;
     ctx->irq_thread_exited = 0;
@@ -4783,33 +4790,23 @@ static void* avpu_irq_thread(void* arg)
     LOG_CODEC("IRQ thread: started for fd=%d", fd);
 
     while (ctx->irq_thread_running) {
-        /* Use heap buffer with slack for WAIT_IRQ return value to avoid over-copy issues */
-        size_t buf_sz = sizeof(uint32_t) + 0x40;
-        void *raw = NULL;
-        if (posix_memalign(&raw, 16, buf_sz) != 0 || !raw) {
-            LOG_CODEC("IRQ thread: posix_memalign failed");
-            break;
-        }
-        memset(raw, 0xFF, buf_sz);
-        uint32_t *p_irq = (uint32_t*)raw;
+        uint32_t *p_irq = (uint32_t *)(void *)irq_raw;
+
+        memset(irq_raw, 0xFF, sizeof(irq_raw));
         *p_irq = 0xFFFFFFFFu;
 
         /* ioctl($a0_2, 0xc004710c, &var_28) - AL_CMD_IP_WAIT_IRQ */
         if (avpu_sys_ioctl(fd, AL_CMD_IP_WAIT_IRQ, p_irq) == -1) {
-            if (errno == EINTR) {
-                free(raw);
+            if (errno == EINTR)
                 continue; /* interrupted by signal, retry */
-            }
             if (errno != EINTR) {
                 ctx->irq_wait_errno = errno;
                 LOG_CODEC("IRQ thread: WAIT_IRQ failed: %s (%d)", strerror(errno), errno);
             }
-            free(raw);
             break;
         }
 
         uint32_t irq_id = *p_irq;
-        free(raw);
         ctx->irq_wait_errno = 0;
 
         /* OEM: if (var_28 u>= 0x14) fprintf(stderr, ...) */
