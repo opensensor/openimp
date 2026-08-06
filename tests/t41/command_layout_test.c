@@ -344,6 +344,61 @@ static void test_entropy_status_oracle(void)
                slot, sizeof(slot), slice, sizeof(slice) - 1u, 0x140u) == -1);
 }
 
+static void test_combined_rate_control_status_oracle(void)
+{
+    uint32_t slot[OPENIMP_T41_CL_SLOT_SIZE / sizeof(uint32_t)];
+    uint32_t slice[OPENIMP_T41_SLICE_STATUS_SIZE / sizeof(uint32_t)];
+    uint32_t stats[OPENIMP_T41_RC_STATS_SIZE / sizeof(uint32_t)];
+    uint8_t *status = (uint8_t *)slot + OPENIMP_T41_CL_STATUS_OFFSET;
+    uint32_t *entropy = slot + OPENIMP_T41_CL_ENTROPY_STATUS_OFFSET / 4u;
+    uint16_t *stats_half = (uint16_t *)stats;
+
+    memset(slot, 0, sizeof(slot));
+    memset(slice, 0xa5, sizeof(slice));
+    memset(stats, 0xa5, sizeof(stats));
+    slot[0x234u / 4u] = 0x1000u;
+    entropy[0] = 0x80000321u;
+    entropy[1] = 0x10203040u;
+    ((uint32_t *)status)[0x10u / 4u] = 0x11111111u;
+    ((uint32_t *)status)[0x14u / 4u] = 0x22222222u;
+    ((uint32_t *)status)[0x18u / 4u] = 0x33333333u;
+    ((uint32_t *)status)[0x1cu / 4u] = 0x44444444u;
+    ((uint32_t *)status)[0x20u / 4u] = 0x55555555u;
+    ((uint32_t *)status)[0x2cu / 4u] = 0x06789abcu;
+    ((uint32_t *)status)[0x30u / 4u] = 0x00002b26u;
+
+    assert(openimp_t41_command_extract_rate_control_status(
+               slot, sizeof(slot), 0x1000u,
+               slice, sizeof(slice), stats, sizeof(stats)) == 0);
+    assert(((uint8_t *)slice)[0] == 1u);
+    assert(((uint8_t *)slice)[1] == 0u);
+    assert(((uint8_t *)slice)[2] == 0u);
+    assert(stats[0] == 0u);
+    assert(stats[1] == 0x321u);
+    assert(stats[2] == 0x10203040u);
+    assert(stats[3] == 0x11111111u);
+    assert(stats[4] == 0x22222222u);
+    assert(stats[5] == 0x33333333u);
+    assert(stats[6] == 0x44444444u);
+    assert(stats[7] == 0x55555555u);
+    assert(stats[8] == 0x06789abcu);
+    assert(stats_half[0x24u / 2u] == 0x0026u);
+    assert(stats_half[0x26u / 2u] == 0x002bu);
+
+    assert(openimp_t41_command_extract_rate_control_status(
+               NULL, sizeof(slot), 0x1000u,
+               slice, sizeof(slice), stats, sizeof(stats)) == -1);
+    assert(openimp_t41_command_extract_rate_control_status(
+               slot, sizeof(slot) - 1u, 0x1000u,
+               slice, sizeof(slice), stats, sizeof(stats)) == -1);
+    assert(openimp_t41_command_extract_rate_control_status(
+               slot, sizeof(slot), 0x1000u,
+               slice, sizeof(slice) - 1u, stats, sizeof(stats)) == -1);
+    assert(openimp_t41_command_extract_rate_control_status(
+               slot, sizeof(slot), 0x1000u,
+               slice, sizeof(slice), stats, sizeof(stats) - 1u) == -1);
+}
+
 static void test_hwrc_level_lifecycle(void)
 {
     uint32_t ring[OPENIMP_T41_EP3_RING_SIZE / sizeof(uint32_t)];
@@ -425,6 +480,7 @@ int main(void)
     test_encoding_status_oracle();
     test_rate_control_statistics_oracle();
     test_entropy_status_oracle();
+    test_combined_rate_control_status_oracle();
     test_hwrc_level_lifecycle();
 
     puts("T41 command layout and builder: OK");

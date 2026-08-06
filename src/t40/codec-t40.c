@@ -4135,10 +4135,9 @@ static void avpu_end_encoding_callback(void *user_data)
         memcpy(&payload_size, status_regs.raw, sizeof(payload_size));
         ctx->t41_payload_size_by_buf[buf_idx] = payload_size;
         have_encoding_status = command_slot_ptr &&
-            openimp_t41_command_extract_encoding_status(
+            openimp_t41_command_extract_rate_control_status(
                 command_slot_ptr, ctx->cl_entry_size,
-                slice_status.raw, sizeof(slice_status.raw)) == 0 &&
-            openimp_t41_slice_status_extract_rate_control(
+                (uint32_t)ctx->stream_buf_size,
                 slice_status.raw, sizeof(slice_status.raw),
                 rate_control_stats, sizeof(rate_control_stats)) == 0;
         if (have_encoding_status &&
@@ -4146,6 +4145,8 @@ static void avpu_end_encoding_callback(void *user_data)
             uint32_t field_1c;
             uint32_t field_20;
             uint32_t field_38;
+            uint32_t entropy_bytes;
+            uint32_t entropy_aux;
             uint16_t field_3e;
             uint16_t field_40;
             uint16_t field_42;
@@ -4156,15 +4157,22 @@ static void avpu_end_encoding_callback(void *user_data)
                    sizeof(field_20));
             memcpy(&field_38, slice_status.raw + 0x38u,
                    sizeof(field_38));
+            memcpy(&entropy_bytes, rate_control_stats + 0x04u,
+                   sizeof(entropy_bytes));
+            memcpy(&entropy_aux, rate_control_stats + 0x08u,
+                   sizeof(entropy_aux));
             memcpy(&field_3e, slice_status.raw + 0x3eu,
                    sizeof(field_3e));
             memcpy(&field_40, slice_status.raw + 0x40u,
                    sizeof(field_40));
             memcpy(&field_42, slice_status.raw + 0x42u,
                    sizeof(field_42));
-            LOG_CODEC("T41 encoding status: buf=%d payload=0x%08x field1c=0x%08x field20=0x%08x field38=0x%08x qpfields=%u/%u/%u overflow=%u",
-                      buf_idx, payload_size, field_1c, field_20, field_38,
+            LOG_CODEC("T41 encoding status: buf=%d payload=0x%08x entropy=%08x/%08x field1c=0x%08x field20=0x%08x field38=0x%08x qpfields=%u/%u/%u flags=%u/%u/%u",
+                      buf_idx, payload_size, entropy_bytes, entropy_aux,
+                      field_1c, field_20, field_38,
                       field_3e, field_40, field_42,
+                      (unsigned int)slice_status.raw[0],
+                      (unsigned int)slice_status.raw[1],
                       (unsigned int)slice_status.raw[2]);
         }
         if (ctx->rc_mode != HW_RC_MODE_FIXQP) {

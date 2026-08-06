@@ -245,3 +245,34 @@ int openimp_t41_slice_status_extract_rate_control(
     openimp_t41_write_u16(stats, 0x26u, openimp_t41_read_u16(slice, 0x40u));
     return 0;
 }
+
+int openimp_t41_command_extract_rate_control_status(
+    const void *slot, size_t slot_size, uint32_t stream_budget,
+    void *slice_status, size_t slice_status_size,
+    void *rate_control_stats, size_t rate_control_stats_size)
+{
+    uint8_t *slice = (uint8_t *)slice_status;
+
+    if (!slot || !slice || !rate_control_stats ||
+        !openimp_t41_command_slot_is_valid(slot_size) ||
+        slice_status_size < OPENIMP_T41_SLICE_STATUS_SIZE ||
+        rate_control_stats_size < OPENIMP_T41_RC_STATS_SIZE)
+        return -1;
+
+    /* OEM InitSliceStatus clears the complete structure and uses 0x7fff as
+     * the initial signed-QP sentinel.  Encoding status replaces that field,
+     * while entropy status supplies the two words at +0x08/+0x0c.  Keep the
+     * order explicit because the alternate entropy path also consumes the
+     * slice-count field installed by encoding status. */
+    memset(slice, 0, OPENIMP_T41_SLICE_STATUS_SIZE);
+    openimp_t41_write_u16(slice, 0x3eu, 0x7fffu);
+    if (openimp_t41_command_extract_encoding_status(
+            slot, slot_size, slice, slice_status_size) != 0 ||
+        openimp_t41_command_extract_entropy_status(
+            slot, slot_size, slice, slice_status_size, stream_budget) != 0)
+        return -1;
+
+    return openimp_t41_slice_status_extract_rate_control(
+        slice, slice_status_size,
+        rate_control_stats, rate_control_stats_size);
+}

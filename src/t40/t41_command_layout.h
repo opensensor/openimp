@@ -42,5 +42,9 @@ int openimp_t41_command_extract_entropy_status(
 int openimp_t41_slice_status_extract_rate_control(
     const void *slice_status, size_t slice_status_size,
     void *rate_control_stats, size_t rate_control_stats_size);
+int openimp_t41_command_extract_rate_control_status(
+    const void *slot, size_t slot_size, uint32_t stream_budget,
+    void *slice_status, size_t slice_status_size,
+    void *rate_control_stats, size_t rate_control_stats_size);
 
 #endif

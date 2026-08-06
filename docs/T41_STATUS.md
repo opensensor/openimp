@@ -47,7 +47,9 @@ platform branches represent measured public or kernel ABI differences.
   portion of the 0x70-byte slice status while copying the T41 counter, packed
   QP, and overflow fields. The complementary entropy-status mapping and the
   subsequent 0x28-byte `AL_RateCtrl_ExtractStatistics` projection are also
-  recovered and tested. They are not yet used to drive live rate control.
+  recovered and tested. A bounded composition now initializes the slice
+  status and combines both hardware blocks before projecting all statistics;
+  these inputs are observed live but do not yet drive rate control.
 - Decoder probes identify valid High-profile H.264 on both channels. Captured
   boundary access units contain valid SPS/PPS/IDR NAL units and decode at the
   configured geometry. Submit-time IDR state is carried with each hardware
@@ -124,13 +126,16 @@ rate-controller/statistics update and the full EP3 manager lifecycle; the
 current payload-only `openimp_t41_next_rate_control_qp` approximation is not a
 safe source for command word 24.
 
-The exact encoding-status decoder is now also active as a diagnostic while the
-fallback remains in control. On a decoder-clean 100-frame open-stack capture,
+The exact combined encoding/entropy-status decoder is now also active as a
+diagnostic while the fallback remains in control. On a decoder-clean
+100-frame open-stack capture,
 the packed hardware fields were consistently `34/38-39/0` for the main channel
 and `34/37/0` for the subchannel, with the recovered overflow flag clear. This
 confirms that the hardware supplies channel-specific QP feedback that the
 payload-only approximation discards; the fields are logged but not yet fed
-back into the next command.
+back into the next command. The recovered entropy byte count also matched the
+authoritative completed payload on both channels, its auxiliary counter was
+nonzero, and all three status flags remained clear.
 
 A read-only physical-memory check also corrected the earlier cached-alias
 observation: the active main-channel P slot contains all 36 hardware-written
