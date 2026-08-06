@@ -186,6 +186,75 @@ static void test_builder_validation(void)
                38, 34, 51, 0, 3000000, 25, 1) == 38u);
 }
 
+static void test_encoding_status_oracle(void)
+{
+    uint32_t slot[OPENIMP_T41_CL_SLOT_SIZE / sizeof(uint32_t)];
+    uint8_t slice[OPENIMP_T41_SLICE_STATUS_SIZE];
+    uint8_t *status = (uint8_t *)slot + OPENIMP_T41_CL_STATUS_OFFSET;
+    uint32_t value;
+    uint16_t half;
+    size_t i;
+
+    memset(slot, 0, sizeof(slot));
+    memset(slice, 0xa5, sizeof(slice));
+    ((uint32_t *)slot)[0x8d] = 0x1000u;
+    ((uint32_t *)status)[0x00] = 0x0200u;
+    for (i = 2u; i <= 8u; ++i)
+        ((uint32_t *)status)[i] = 0x11000000u + (uint32_t)i;
+    for (i = 10u; i <= 23u; ++i)
+        ((uint32_t *)status)[i] = 0x22000000u + (uint32_t)i;
+    ((uint32_t *)status)[9] = 0x56781234u;
+    ((uint32_t *)status)[12] = 0x9abc5634u;
+
+    assert(openimp_t41_command_extract_encoding_status(
+               slot, sizeof(slot), slice, sizeof(slice)) == 0);
+    assert(slice[2] == 0u);
+    assert(slice[3] == 0xa5u);
+    memcpy(&value, slice + 0x04, sizeof(value));
+    assert(value == 0xa5a5a5a5u);
+    memcpy(&value, slice + 0x14, sizeof(value));
+    assert(value == 0x11000002u);
+    memcpy(&value, slice + 0x30, sizeof(value));
+    assert(value == 0x00001234u);
+    memcpy(&value, slice + 0x10, sizeof(value));
+    assert(value == 0x00005678u);
+    memcpy(&value, slice + 0x34, sizeof(value));
+    assert(value == 0x2200000au);
+    memcpy(&value, slice + 0x38, sizeof(value));
+    assert(value == 0x0200000bu);
+    memcpy(&half, slice + 0x3e, sizeof(half));
+    assert(half == 0x0034u);
+    memcpy(&half, slice + 0x40, sizeof(half));
+    assert(half == 0x0056u);
+    memcpy(&half, slice + 0x42, sizeof(half));
+    assert(half == 0x9abcu);
+    memcpy(&value, slice + 0x6c, sizeof(value));
+    assert(value == 0x22000017u);
+
+    ((uint32_t *)status)[0x00] = 0x2000u;
+    assert(openimp_t41_command_extract_encoding_status(
+               slot, sizeof(slot), slice, sizeof(slice)) == 0);
+    assert(slice[2] == 1u);
+    ((uint32_t *)slot)[3] = 1u << 11;
+    assert(openimp_t41_command_extract_encoding_status(
+               slot, sizeof(slot), slice, sizeof(slice)) == 0);
+    assert(slice[2] == 0u);
+
+    ((uint32_t *)slot)[3] = 0u;
+    ((uint32_t *)slot)[0x8d] = 0u;
+    ((uint32_t *)status)[0x00] = 0x20u;
+    assert(openimp_t41_command_extract_encoding_status(
+               slot, sizeof(slot), slice, sizeof(slice)) == 0);
+    assert(slice[2] == 0u);
+
+    assert(openimp_t41_command_extract_encoding_status(
+               NULL, sizeof(slot), slice, sizeof(slice)) == -1);
+    assert(openimp_t41_command_extract_encoding_status(
+               slot, sizeof(slot) - 1u, slice, sizeof(slice)) == -1);
+    assert(openimp_t41_command_extract_encoding_status(
+               slot, sizeof(slot), slice, sizeof(slice) - 1u) == -1);
+}
+
 int main(void)
 {
     uint8_t slot[OPENIMP_T41_CL_SLOT_SIZE];
@@ -226,6 +295,7 @@ int main(void)
     test_main_idr_oracle();
     test_sub_first_p_oracle();
     test_builder_validation();
+    test_encoding_status_oracle();
 
     puts("T41 command layout and builder: OK");
     return 0;

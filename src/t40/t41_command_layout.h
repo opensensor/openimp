@@ -13,6 +13,7 @@
 #define OPENIMP_T41_CL_STATUS_SIZE     0x0168u
 #define OPENIMP_T41_CL_ENTROPY_OFFSET  0x0800u
 #define OPENIMP_T41_CL_ENTROPY_SIZE    0x003cu
+#define OPENIMP_T41_SLICE_STATUS_SIZE  0x0070u
 
 typedef struct OpenIMPT41CommandRange {
     uint16_t word_offset;
@@ -29,5 +30,8 @@ const void *openimp_t41_command_status_const_ptr(const void *slot,
                                                  size_t slot_size);
 int openimp_t41_command_status_phys(uint32_t command_phys,
                                     uint32_t *status_phys);
+int openimp_t41_command_extract_encoding_status(
+    const void *slot, size_t slot_size,
+    void *slice_status, size_t slice_status_size);
 
 #endif

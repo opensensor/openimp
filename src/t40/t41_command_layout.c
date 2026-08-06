@@ -1,6 +1,35 @@
 #include "t41_command_layout.h"
 
 #include <limits.h>
+#include <string.h>
+
+static uint16_t openimp_t41_read_u16(const uint8_t *base, size_t offset)
+{
+    uint16_t value;
+
+    memcpy(&value, base + offset, sizeof(value));
+    return value;
+}
+
+static uint32_t openimp_t41_read_u32(const uint8_t *base, size_t offset)
+{
+    uint32_t value;
+
+    memcpy(&value, base + offset, sizeof(value));
+    return value;
+}
+
+static void openimp_t41_write_u16(uint8_t *base, size_t offset,
+                                  uint16_t value)
+{
+    memcpy(base + offset, &value, sizeof(value));
+}
+
+static void openimp_t41_write_u32(uint8_t *base, size_t offset,
+                                  uint32_t value)
+{
+    memcpy(base + offset, &value, sizeof(value));
+}
 
 /*
  * Recovered from the 29-entry table consumed by OEM PrepareCommand.  Entries
@@ -60,5 +89,91 @@ int openimp_t41_command_status_phys(uint32_t command_phys,
     if (!status_phys || command_phys > UINT32_MAX - OPENIMP_T41_CL_STATUS_OFFSET)
         return -1;
     *status_phys = command_phys + OPENIMP_T41_CL_STATUS_OFFSET;
+    return 0;
+}
+
+int openimp_t41_command_extract_encoding_status(
+    const void *slot, size_t slot_size,
+    void *slice_status, size_t slice_status_size)
+{
+    const uint8_t *command = (const uint8_t *)slot;
+    const uint8_t *status;
+    uint8_t *slice = (uint8_t *)slice_status;
+    uint32_t packed_qp;
+    uint32_t command_flags;
+    uint32_t overflow = 0u;
+
+    if (!command || !slice ||
+        !openimp_t41_command_slot_is_valid(slot_size) ||
+        slice_status_size < OPENIMP_T41_SLICE_STATUS_SIZE)
+        return -1;
+
+    status = command + OPENIMP_T41_CL_STATUS_OFFSET;
+    openimp_t41_write_u32(slice, 0x34u,
+                          openimp_t41_read_u32(status, 0x28u));
+    openimp_t41_write_u32(slice, 0x38u,
+                          openimp_t41_read_u32(status, 0x2cu) &
+                              0x0fffffffu);
+    packed_qp = openimp_t41_read_u32(status, 0x30u);
+    openimp_t41_write_u16(slice, 0x3eu, (uint16_t)(packed_qp & 0xffu));
+    openimp_t41_write_u16(slice, 0x40u,
+                          (uint16_t)((packed_qp >> 8) & 0xffu));
+    openimp_t41_write_u16(slice, 0x42u,
+                          (uint16_t)(packed_qp >> 16));
+
+    openimp_t41_write_u32(slice, 0x44u,
+                          openimp_t41_read_u32(status, 0x34u));
+    openimp_t41_write_u32(slice, 0x48u,
+                          openimp_t41_read_u32(status, 0x38u));
+    openimp_t41_write_u32(slice, 0x4cu,
+                          openimp_t41_read_u32(status, 0x3cu));
+    openimp_t41_write_u32(slice, 0x50u,
+                          openimp_t41_read_u32(status, 0x40u));
+    openimp_t41_write_u32(slice, 0x54u,
+                          openimp_t41_read_u32(status, 0x44u));
+    openimp_t41_write_u32(slice, 0x58u,
+                          openimp_t41_read_u32(status, 0x48u));
+    openimp_t41_write_u32(slice, 0x5cu,
+                          openimp_t41_read_u32(status, 0x4cu));
+
+    openimp_t41_write_u32(slice, 0x14u,
+                          openimp_t41_read_u32(status, 0x08u));
+    openimp_t41_write_u32(slice, 0x18u,
+                          openimp_t41_read_u32(status, 0x0cu));
+    openimp_t41_write_u32(slice, 0x1cu,
+                          openimp_t41_read_u32(status, 0x10u));
+    openimp_t41_write_u32(slice, 0x20u,
+                          openimp_t41_read_u32(status, 0x14u));
+    openimp_t41_write_u32(slice, 0x24u,
+                          openimp_t41_read_u32(status, 0x18u));
+    openimp_t41_write_u32(slice, 0x28u,
+                          openimp_t41_read_u32(status, 0x1cu));
+    openimp_t41_write_u32(slice, 0x2cu,
+                          openimp_t41_read_u32(status, 0x20u));
+    openimp_t41_write_u32(slice, 0x30u,
+                          openimp_t41_read_u16(status, 0x24u));
+    openimp_t41_write_u32(slice, 0x10u,
+                          openimp_t41_read_u16(status, 0x26u));
+
+    openimp_t41_write_u32(slice, 0x60u,
+                          openimp_t41_read_u32(status, 0x50u));
+    openimp_t41_write_u32(slice, 0x64u,
+                          openimp_t41_read_u32(status, 0x54u));
+    openimp_t41_write_u32(slice, 0x68u,
+                          openimp_t41_read_u32(status, 0x58u));
+    openimp_t41_write_u32(slice, 0x6cu,
+                          openimp_t41_read_u32(status, 0x5cu));
+
+    command_flags = openimp_t41_read_u32(command, 0x0cu);
+    if ((command_flags & (1u << 11)) == 0u) {
+        uint32_t bytes = openimp_t41_read_u32(status, 0x00u) &
+                         0x3fffffffu;
+        uint32_t budget = openimp_t41_read_u32(command, 0x234u);
+        uint32_t rounded_bytes = (bytes + 0x1fu) & ~0x1fu;
+        uint32_t rounded_budget = ((budget >> 5) - 1u) << 5;
+
+        overflow = rounded_budget < rounded_bytes;
+    }
+    slice[2] = (uint8_t)overflow;
     return 0;
 }
