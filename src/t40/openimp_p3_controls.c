@@ -40,6 +40,7 @@
 #define TISP_CID_MASK_BLOCK 0x08000074
 #define TISP_CID_SCALER_LV 0x080000a6
 #define TISP_CID_AWB_RGB_COEFFT 0x08000098
+#define TISP_CID_ANTIFLICKER 0x08000026
 #endif
 
 typedef struct {
@@ -396,8 +397,17 @@ int32_t IMP_ISP_Tuning_SetISPBypass(IMPVI_NUM num,
 int32_t IMP_ISP_Tuning_SetAntiFlickerAttr(IMPVI_NUM num,
                                           IMPISPAntiflickerAttr *attribute)
 {
+#if defined(PLATFORM_T41)
+    int result;
+#endif
+
     if (num != IMPVI_MAIN || !attribute)
         return -1;
+#if defined(PLATFORM_T41)
+    result = p3_tuning_pointer(num, 0, TISP_CID_ANTIFLICKER, attribute);
+    if (result != 0)
+        return result;
+#endif
     p3_controls.antiflicker = *attribute;
     return 0;
 }
@@ -405,8 +415,18 @@ int32_t IMP_ISP_Tuning_SetAntiFlickerAttr(IMPVI_NUM num,
 int32_t IMP_ISP_Tuning_GetAntiFlickerAttr(IMPVI_NUM num,
                                           IMPISPAntiflickerAttr *attribute)
 {
+#if defined(PLATFORM_T41)
+    int result;
+#endif
+
     if (num != IMPVI_MAIN || !attribute)
         return -1;
+#if defined(PLATFORM_T41)
+    result = p3_tuning_pointer(num, 1, TISP_CID_ANTIFLICKER, attribute);
+    if (result != 0)
+        return result;
+    p3_controls.antiflicker = *attribute;
+#endif
     *attribute = p3_controls.antiflicker;
     return 0;
 }
