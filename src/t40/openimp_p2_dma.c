@@ -10,6 +10,7 @@
 #include <fcntl.h>
 #include <stdint.h>
 #include <stddef.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/ioctl.h>
 #include <sys/mman.h>
@@ -62,17 +63,79 @@ static uint32_t align_page(uint32_t value)
     return (value + 4095U) & ~4095U;
 }
 
+static int p2_rmem_from_cmdline(uint32_t *base_out, uint32_t *size_out)
+{
+    char command_line[1024];
+    const char *value;
+    char *end;
+    unsigned long long size;
+    unsigned long base;
+    ssize_t count;
+    int fd;
+
+    if (!base_out || !size_out)
+        return -1;
+    fd = open("/proc/cmdline", O_RDONLY | O_CLOEXEC);
+    if (fd < 0)
+        return -1;
+    count = read(fd, command_line, sizeof(command_line) - 1u);
+    close(fd);
+    if (count <= 0)
+        return -1;
+    command_line[count] = '\0';
+    value = strstr(command_line, "rmem=");
+    if (!value)
+        return -1;
+    value += 5;
+    errno = 0;
+    size = strtoull(value, &end, 0);
+    if (errno || end == value || !size)
+        return -1;
+    if (*end == 'K' || *end == 'k') {
+        size *= 1024u;
+        ++end;
+    } else if (*end == 'M' || *end == 'm') {
+        size *= 1024u * 1024u;
+        ++end;
+    } else if (*end == 'G' || *end == 'g') {
+        size *= 1024u * 1024u * 1024u;
+        ++end;
+    }
+    if (*end != '@' || size > UINT32_MAX)
+        return -1;
+    errno = 0;
+    base = strtoul(end + 1, &end, 0);
+    if (errno || base > UINT32_MAX ||
+        (*end != '\0' && *end != ' ' && *end != '\n'))
+        return -1;
+    *base_out = (uint32_t)base;
+    *size_out = (uint32_t)size;
+    return *base_out ? 0 : -1;
+}
+
 static int p2_dma_prepare(void)
 {
     uint32_t flags = 0, channels = 0, frames = 0, command = 0;
     uint32_t base = 0, used = 0;
+    uint32_t command_line_base = 0;
+    uint32_t command_line_size = 0;
     int32_t saved_errno = 0;
 
     if (p2_dma.mapping)
         return 0;
     if (OpenIMP_P1_GetState(&flags, &channels, &frames, &command,
-                            &saved_errno, &base, &used) < 0 || !base)
+                            &saved_errno, &base, &used) < 0 || !base) {
+        if (p2_rmem_from_cmdline(&base, &command_line_size) < 0)
+            return -1;
+        used = 0;
+    } else if (p2_rmem_from_cmdline(&command_line_base,
+                                    &command_line_size) == 0 &&
+               command_line_base != base) {
+        errno = EINVAL;
         return -1;
+    }
+    if (command_line_size)
+        p2_dma.size = command_line_size;
     p2_dma.fd = open("/dev/rmem", O_RDWR | O_SYNC);
     if (p2_dma.fd < 0)
         return -1;

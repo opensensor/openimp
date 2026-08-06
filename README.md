@@ -9,6 +9,8 @@ There is one encoder implementation for T31, T40, and the T41 bring-up:
 
 - `src/t40/openimp_p2_encoder.c` owns the public encoder lifecycle.
 - `src/t40/codec-t40.c` owns the shared AVPU codec backend.
+- `include/openimp/openimp_avc.h` exposes that backend independently of the
+  IMP graph for physically contiguous NV12 producers such as V4L2 DMA-BUF.
 - `src/al_avpu.c`, `src/device_pool.c`, `src/fifo.c`, and
   `src/hw_encoder.c` provide the common hardware path.
 - `src/t31/`, `src/framesource/framesource_tseries.c`,
@@ -80,6 +82,10 @@ records RVD import coverage in `build/t31/`.
   geometries. Raptor currently uses embedded-ring copy mode for correctness;
   its cross-process cached-rmem reference path is not yet coherent. ISP parity
   and configured-rate delivery remain in progress.
+- T41's standalone V4L2 path exports capture buffers as DMA-BUF and submits
+  their bus addresses directly to the shared OpenIMP AVC backend. A 250-frame
+  2560x1440 High-profile sample completed in 10.20 seconds, reported 25/1 fps,
+  and decoded without warnings or pixel copies.
 - Sensor configuration and tuning remain owned by the stock ISP driver, so
   the userspace encoder is sensor-independent.
 

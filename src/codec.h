@@ -50,6 +50,9 @@ int AL_Codec_Encode_GetSrcFrameCntAndSize(void *codec, int *cnt, int *size);
  */
 int AL_Codec_Encode_GetSrcStreamCntAndSize(void *codec, int *cnt, int *size);
 
+int AL_Codec_Encode_SetStreamBufferCount(void *codec, int count);
+int AL_Codec_Encode_SetStreamBufferSize(void *codec, int size);
+
 /**
  * Process a frame for encoding
  * @param codec Codec instance

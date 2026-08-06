@@ -51,7 +51,7 @@ repo_includes="-I$project_dir/include -I$project_dir/src"
     -o "$output_dir/openimp_profile.o"
 
 for source in \
-    openimp_p0 openimp_p1 openimp_p2_dma openimp_p2_encoder t40_ep1
+    openimp_p0 openimp_p1 openimp_p2_dma openimp_p2_encoder openimp_avc t40_ep1
 do
     "$compiler" $strict_flags $repo_includes \
         -c "$project_dir/src/t40/$source.c" \
@@ -88,6 +88,7 @@ done
     "$output_dir/openimp_p1.o" \
     "$output_dir/openimp_p2_dma.o" \
     "$output_dir/openimp_p2_encoder.o" \
+    "$output_dir/openimp_avc.o" \
     "$output_dir/openimp_p3_controls.o" \
     "$output_dir/openimp_p3_audio.o" \
     "$output_dir/openimp_p3_compat.o" \

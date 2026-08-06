@@ -619,6 +619,20 @@ static int avpu_alloc_imp(size_t size, const char* tag, AvpuDMABuf* out)
     return 0;
 }
 
+/* The IMP graph owns a shared rmem arena during normal Raptor operation. A
+ * standalone V4L2 consumer has no P1 FrameSource state, so that arena cannot
+ * be discovered. Preserve the proven rmem path when present and fall back to
+ * coherent allocations owned by the already-open AVPU channel otherwise. */
+static int avpu_alloc_encoder(int fd, size_t size, const char *tag,
+                              AvpuDMABuf *out)
+{
+    if (avpu_alloc_imp(size, tag, out) == 0)
+        return 0;
+    LOG_CODEC("AVPU: %s falling back to coherent allocation (%zu bytes)",
+              tag ? tag : "buffer", size);
+    return avpu_alloc_mmap(fd, size, out);
+}
+
 /* Re-map a DMA buffer as UNCACHED via /dev/mem.
  * The rmem cached mapping's cache flush is broken on T31.
  * /dev/mem with MAP_SHARED + O_SYNC gives an uncached mapping on MIPS. */
@@ -6141,7 +6155,7 @@ static int avpu_queue_completed_stream(ALAvpuContext *ctx, int buf_idx, void *us
         ? IMP_ENC_SLICE_I : IMP_ENC_SLICE_P;
     avpu_hw_stream_set_user_data(hw_stream, user_data);
 
-    if (ctx->frames_encoded % 50 == 0)
+    if (ctx->frames_encoded <= 4 || ctx->frames_encoded % 50 == 0)
     LOG_CODEC("%s: queue completed stream buf[%d] stream=%p phys=0x%08x virt=0x%08x len=%u flush_ret=%d user=%p",
               source ? source : "EndEncoding",
               buf_idx, (void *)hw_stream, phys_addr, virt_addr, frame_size,
@@ -6152,7 +6166,7 @@ static int avpu_queue_completed_stream(ALAvpuContext *ctx, int buf_idx, void *us
         return 0;
     }
 
-    if (ctx->frames_encoded % 50 == 0)
+    if (ctx->frames_encoded <= 4 || ctx->frames_encoded % 50 == 0)
     LOG_CODEC("%s: queued completed stream buf[%d] stream=%p phys=0x%08x virt=0x%08x len=%u flush_ret=%d",
               source ? source : "EndEncoding",
               buf_idx, (void *)hw_stream, phys_addr, virt_addr, frame_size, flush_ret);
@@ -7136,7 +7150,7 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
                         for (int i = 0; i < enc->avpu.stream_buf_count; ++i) {
                             LOG_CODEC("AVPU: alloc stream buf[%d] size=%d (IMP_Alloc)", i, enc->avpu.stream_buf_size);
                             AvpuDMABuf tmp = (AvpuDMABuf){0};
-                            if (avpu_alloc_imp((size_t)enc->avpu.stream_buf_size, "AVPU_STRM", &tmp) == 0) {
+                            if (avpu_alloc_encoder(fd, (size_t)enc->avpu.stream_buf_size, "AVPU_STRM", &tmp) == 0) {
 #if defined(PLATFORM_T31)
                                 /*
                                  * Header/payload compaction happens after
@@ -7183,8 +7197,8 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
                         enc->avpu.cl_count = 0x13;
                         size_t cl_bytes = enc->avpu.cl_entry_size * enc->avpu.cl_count;
                         int cl_ok = 0;
-                        if (avpu_alloc_imp(cl_bytes, "AVPU_CL", &enc->avpu.cl_ring) == 0) {
-                            if (avpu_alloc_imp(cl_bytes, "AVPU_CL_SUBMIT", &enc->avpu.cl_submit_ring) == 0) {
+                        if (avpu_alloc_encoder(fd, cl_bytes, "AVPU_CL", &enc->avpu.cl_ring) == 0) {
+                            if (avpu_alloc_encoder(fd, cl_bytes, "AVPU_CL_SUBMIT", &enc->avpu.cl_submit_ring) == 0) {
                                 cl_ok = 1;
                                 void *virt = enc->avpu.cl_ring.map;
                                 void *submit_virt = enc->avpu.cl_submit_ring.map;
@@ -7292,7 +7306,7 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
                                 interm_total_sz += 0x100u;
 #endif
 
-                                if (avpu_alloc_imp(interm_total_sz, "AVPU_ITM", &enc->avpu.interm_buf) == 0) {
+                                if (avpu_alloc_encoder(fd, interm_total_sz, "AVPU_ITM", &enc->avpu.interm_buf) == 0) {
 #if !defined(PLATFORM_T41)
                                     int use_fixqp_lda = 0;
 #if defined(PLATFORM_T31)
@@ -7342,7 +7356,7 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
                                 }
                             }
 
-                            if (avpu_alloc_imp(aux_alloc_sz, "AVPU_REC", &enc->avpu.rec_buf) == 0) {
+                            if (avpu_alloc_encoder(fd, aux_alloc_sz, "AVPU_REC", &enc->avpu.rec_buf) == 0) {
                                 /* Do NOT memset — rec_buf is AVPU output (reconstruction),
                                  * and zeroing 3MB of uncached DMA memory can stall/hang
                                  * the AXI bus on cold boot. */
@@ -7356,7 +7370,7 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
                             }
 
 #if !defined(PLATFORM_T41)
-                            if (avpu_alloc_imp(aux_alloc_sz, "AVPU_REF", &enc->avpu.ref_buf) == 0) {
+                            if (avpu_alloc_encoder(fd, aux_alloc_sz, "AVPU_REF", &enc->avpu.ref_buf) == 0) {
                                 /* Do NOT memset — ref_buf content is irrelevant for the
                                  * first IDR frame (intra-only), and subsequent frames will
                                  * have valid reconstruction data copied in by the AVPU. */
@@ -7376,8 +7390,8 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
                              * 0x1420-byte per-core image in three 0x1500-byte
                              * picture-class slots. Keep this separate from
                              * reconstruction storage, matching OEM ownership. */
-                            if (avpu_alloc_imp(OPENIMP_T41_EP3_RING_SIZE,
-                                               "AVPU_EP3", &enc->avpu.rec_trace_buf) == 0) {
+                            if (avpu_alloc_encoder(fd, OPENIMP_T41_EP3_RING_SIZE,
+                                                   "AVPU_EP3", &enc->avpu.rec_trace_buf) == 0) {
                                 size_t ep3_initialized =
                                     openimp_t41_hwrc_ring_init(
                                         enc->avpu.rec_trace_buf.map,
@@ -7409,8 +7423,9 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
                             /* The old trace-shadow allocations were based on a
                              * false interpretation of cmd[0x2d].  It is really
                              * the three-slot EP3 HW-rate-control ring. */
-                            if (avpu_alloc_imp(AVPU_T40_EP3_SLOT_SIZE * AVPU_T40_EP3_SLOT_COUNT,
-                                               "AVPU_EP3", &enc->avpu.rec_trace_buf) == 0) {
+                            if (avpu_alloc_encoder(fd,
+                                                   AVPU_T40_EP3_SLOT_SIZE * AVPU_T40_EP3_SLOT_COUNT,
+                                                   "AVPU_EP3", &enc->avpu.rec_trace_buf) == 0) {
                                 size_t ep3_initialized = avpu_t40_init_ep3_ring(&enc->avpu);
                                 int ep3_flush = avpu_flush_dma_buf(fd, "ep3_ring",
                                                                   &enc->avpu.rec_trace_buf,
@@ -7423,12 +7438,12 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
                                 LOG_CODEC("AVPU: WARNING - failed to allocate EP3 ring");
                             }
 #else
-                            if (avpu_alloc_imp(aux_alloc_sz, "AVPU_TRC_REC", &enc->avpu.rec_trace_buf) == 0) {
+                            if (avpu_alloc_encoder(fd, aux_alloc_sz, "AVPU_TRC_REC", &enc->avpu.rec_trace_buf) == 0) {
                                 LOG_CODEC("AVPU: rec_trace_buf phys=0x%08x size=%zu", enc->avpu.rec_trace_buf.phy_addr, aux_frame_sz);
                             } else {
                                 LOG_CODEC("AVPU: WARNING - failed to allocate rec_trace_buf (%zu bytes)", aux_frame_sz);
                             }
-                            if (avpu_alloc_imp(aux_alloc_sz, "AVPU_TRC_REF", &enc->avpu.ref_trace_buf) == 0) {
+                            if (avpu_alloc_encoder(fd, aux_alloc_sz, "AVPU_TRC_REF", &enc->avpu.ref_trace_buf) == 0) {
                                 LOG_CODEC("AVPU: ref_trace_buf phys=0x%08x size=%zu", enc->avpu.ref_trace_buf.phy_addr, aux_frame_sz);
                             } else {
                                 LOG_CODEC("AVPU: WARNING - failed to allocate ref_trace_buf (%zu bytes)", aux_frame_sz);
@@ -7851,12 +7866,20 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
             ctx->stream_is_idr[buf_idx] = is_idr ? 1u : 0u;
             ctx->stream_timestamp[buf_idx] = timestamp;
 #if defined(PLATFORM_T41)
+            {
+                const uint32_t external_frame_magic = 0x56344c32u;
+                uint32_t frame_magic = 0u;
+
+                memcpy(&frame_magic, frame_bytes + 0x30,
+                       sizeof(frame_magic));
             ctx->stream_public_alias_delta[buf_idx] = 0u;
             ctx->stream_public_alias_valid[buf_idx] = 0u;
-            if (phys_addr != 0u && virt_addr > phys_addr) {
+            if (frame_magic != external_frame_magic &&
+                phys_addr != 0u && virt_addr > phys_addr) {
                 ctx->stream_public_alias_delta[buf_idx] =
                     virt_addr - phys_addr;
                 ctx->stream_public_alias_valid[buf_idx] = 1u;
+            }
             }
 #endif
 

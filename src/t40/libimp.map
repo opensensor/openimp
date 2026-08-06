@@ -2,6 +2,7 @@
     global:
         IMP_*;
         AL_Codec_Encode_*;
+        OpenIMP_AVC_*;
         FrameSourceInit;
         EncoderInit;
         EncoderExit;

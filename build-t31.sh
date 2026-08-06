@@ -46,6 +46,7 @@ compile()
 compile openimp_p0 src/t40/openimp_p0.c -Werror
 compile openimp_profile src/openimp_profile.c -Werror
 compile openimp_p2_encoder src/t40/openimp_p2_encoder.c -Werror
+compile openimp_avc src/t40/openimp_avc.c -Werror
 compile t40_ep1 src/t40/t40_ep1.c -Werror
 compile enc_hw_scaling src/alcodec/EncHwScalingList.c
 compile codec src/t40/codec-t40.c -Wno-stringop-overflow
@@ -75,6 +76,7 @@ compile t31_services src/t31/openimp_t31_services.c -Werror
     "$output_dir/openimp_p0.o" \
     "$output_dir/openimp_profile.o" \
     "$output_dir/openimp_p2_encoder.o" \
+    "$output_dir/openimp_avc.o" \
     "$output_dir/t40_ep1.o" \
     "$output_dir/enc_hw_scaling.o" \
     "$output_dir/codec.o" \

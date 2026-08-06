@@ -150,6 +150,29 @@ T31 and T40 retain their existing status discovery and cache behavior.
 A separate RTSP decoder probe on the all-open stack reported H.264,
 2560x1440, and 25/1 fps and decoded for ten seconds without warnings.
 
+## Standalone V4L2 to AVPU path
+
+`include/openimp/openimp_avc.h` now exposes the existing AL/AVPU encoder core
+without requiring an IMP FrameSource or encoder-channel graph. The caller
+imports all contiguous capture DMA-BUFs before the first submission, retains
+ownership of each source buffer through output dequeue and release, and then
+may requeue the capture buffer. This is the queue contract needed by an
+optional V4L2 Raptor backend and a later V4L2 mem2mem facade.
+
+`tests/t41/v4l2_avc_test.c` exercises that contract end to end. On the Wyze v4
+it exported three 5,529,600-byte NV12 buffers from `/dev/video0`, resolved
+their AVPU bus addresses, and encoded 250 frames at 2560x1440. The run took
+10.20 seconds including lazy hardware initialization, produced 250 readable
+High-profile H.264 frames with an average frame rate of 25/1, and passed a
+full FFmpeg decode with an empty warning log. No image-plane copy occurs.
+
+Standalone allocation first uses the boot-reserved `rmem` arena parsed from
+the exact kernel command line; this preserves the proven Raptor allocation
+path while avoiding a dependency on OpenIMP P1 state. The existing coherent
+AVPU allocation ioctl remains the fallback when no reserved arena is present.
+The legacy IMP/Raptor pipeline was restarted against the same library after
+the standalone test and continued encoding through periodic IDRs.
+
 ## Stage profile and first optimization
 
 The vendor 4.4 kernel exposes neither a usable perf-event interface nor
@@ -228,7 +251,8 @@ restart captured a short ISP-overflow burst, but an immediate controlled
 stop/start plus decoded capture did not reproduce it; clean boots and
 steady-state captures are also clean. OEM selector branches for configurations
 other than the captured normal-P CBR profile remain future correctness work.
-Cache-ownership profiling and allocation/lifecycle optimization are now in
-progress without changing the public pipeline contract. Zero-copy and V4L2
-implementation remain deferred until the remaining ownership boundaries are
-measured and a cross-SoC queue contract is scoped.
+Cache-ownership profiling and allocation/lifecycle optimization continue
+without changing the public IMP pipeline contract. The standalone V4L2
+DMA-BUF-to-AVPU queue contract is now implemented and measured; production
+Raptor selection and a standard mem2mem facade remain the next integration
+layers.
