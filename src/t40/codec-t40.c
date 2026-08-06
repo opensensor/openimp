@@ -4052,6 +4052,9 @@ static void avpu_end_encoding_callback(void *user_data)
         uint8_t raw[0x70];
     } merged_status;
     uint8_t *status_regs_ptr = NULL;
+#if defined(PLATFORM_T41)
+    uint8_t *command_slot_ptr = NULL;
+#endif
     uint32_t cl_idx = 0;
     uint32_t bitcount = 0;
     uint32_t completed_flag = 0;
@@ -4104,12 +4107,18 @@ static void avpu_end_encoding_callback(void *user_data)
 #endif
         if (status_regs_ptr)
             memcpy(status_regs.raw, status_regs_ptr, sizeof(status_regs.raw));
+#if defined(PLATFORM_T41)
+        if (status_regs_ptr)
+            command_slot_ptr = status_regs_ptr - OPENIMP_T41_CL_STATUS_OFFSET;
+#endif
     }
 
 #if defined(PLATFORM_T41)
     if (ctx && have_pending && buf_idx >= 0 && buf_idx < 16 &&
         status_regs_ptr) {
+        uint8_t rate_control_stats[OPENIMP_T41_RC_STATS_SIZE];
         uint32_t payload_size;
+        int have_encoding_status;
 
         /* T41 does not use the T31/T40 status layout consumed by
          * EncodingStatusRegsToSliceStatus().  The first word at the
@@ -4118,6 +4127,39 @@ static void avpu_end_encoding_callback(void *user_data)
          * encoder channels, including IDR and P pictures. */
         memcpy(&payload_size, status_regs.raw, sizeof(payload_size));
         ctx->t41_payload_size_by_buf[buf_idx] = payload_size;
+        have_encoding_status = command_slot_ptr &&
+            openimp_t41_command_extract_encoding_status(
+                command_slot_ptr, ctx->cl_entry_size,
+                slice_status.raw, sizeof(slice_status.raw)) == 0 &&
+            openimp_t41_slice_status_extract_rate_control(
+                slice_status.raw, sizeof(slice_status.raw),
+                rate_control_stats, sizeof(rate_control_stats)) == 0;
+        if (have_encoding_status &&
+            (ctx->frames_encoded < 16 || ctx->frames_encoded % 50 == 0)) {
+            uint32_t field_1c;
+            uint32_t field_20;
+            uint32_t field_38;
+            uint16_t field_3e;
+            uint16_t field_40;
+            uint16_t field_42;
+
+            memcpy(&field_1c, slice_status.raw + 0x1cu,
+                   sizeof(field_1c));
+            memcpy(&field_20, slice_status.raw + 0x20u,
+                   sizeof(field_20));
+            memcpy(&field_38, slice_status.raw + 0x38u,
+                   sizeof(field_38));
+            memcpy(&field_3e, slice_status.raw + 0x3eu,
+                   sizeof(field_3e));
+            memcpy(&field_40, slice_status.raw + 0x40u,
+                   sizeof(field_40));
+            memcpy(&field_42, slice_status.raw + 0x42u,
+                   sizeof(field_42));
+            LOG_CODEC("T41 encoding status: buf=%d payload=0x%08x field1c=0x%08x field20=0x%08x field38=0x%08x qpfields=%u/%u/%u overflow=%u",
+                      buf_idx, payload_size, field_1c, field_20, field_38,
+                      field_3e, field_40, field_42,
+                      (unsigned int)slice_status.raw[2]);
+        }
         if (ctx->rc_mode != HW_RC_MODE_FIXQP) {
             uint32_t used_qp = ctx->t41_rate_control_qp_by_buf[buf_idx];
 

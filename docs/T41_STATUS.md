@@ -122,6 +122,14 @@ rate-controller/statistics update and the full EP3 manager lifecycle; the
 current payload-only `openimp_t41_next_rate_control_qp` approximation is not a
 safe source for command word 24.
 
+The exact encoding-status decoder is now also active as a diagnostic while the
+fallback remains in control. On a decoder-clean 100-frame open-stack capture,
+the packed hardware fields were consistently `34/38-39/0` for the main channel
+and `34/37/0` for the subchannel, with the recovered overflow flag clear. This
+confirms that the hardware supplies channel-specific QP feedback that the
+payload-only approximation discards; the fields are logged but not yet fed
+back into the next command.
+
 ## Remaining work
 
 The zero-copy Raptor path is not yet correctness-safe. Raptor's reference-mode
