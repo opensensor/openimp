@@ -732,7 +732,9 @@ void AL_sWriteInvCoeff(void *arg1, void *arg2, int32_t arg3, uint32_t **arg4)
     }
 }
 
-int32_t AL_AVC_WriteEncHwScalingList(void *arg1, void *arg2, uint32_t *arg3)
+static int32_t AL_AVC_WriteEncHwScalingListWithOrder(void *arg1, void *arg2,
+                                                     uint32_t *arg3,
+                                                     void *order8x8)
 {
     uint32_t *var_18 = arg3;
 
@@ -747,8 +749,8 @@ int32_t AL_AVC_WriteEncHwScalingList(void *arg1, void *arg2, uint32_t *arg3)
         return AL_HEVC_WriteEncHwScalingList((void *)(intptr_t)a0_13, a1_4, a2);
     }
 
-    AL_sWriteInvCoeff((uint8_t *)arg1 + 0x1bc, (void *)AL_FAST_AVC_ENC_SCL_ORDER_8x8, 0x40, &var_18);
-    AL_sWriteInvCoeff((uint8_t *)arg1 + 0x27c, (void *)AL_FAST_AVC_ENC_SCL_ORDER_8x8, 0x40, &var_18);
+    AL_sWriteInvCoeff((uint8_t *)arg1 + 0x1bc, order8x8, 0x40, &var_18);
+    AL_sWriteInvCoeff((uint8_t *)arg1 + 0x27c, order8x8, 0x40, &var_18);
     AL_sWriteInvCoeff((uint8_t *)arg1 + 0x3c, (void *)AL_AVC_ENC_SCL_ORDER_4x4, 0x10, &var_18);
     AL_sWriteInvCoeff((uint8_t *)arg1 + 0x7c, (void *)AL_AVC_ENC_SCL_ORDER_4x4, 0x10, &var_18);
     AL_sWriteInvCoeff((uint8_t *)arg1 + 0xbc, (void *)AL_AVC_ENC_SCL_ORDER_4x4, 0x10, &var_18);
@@ -763,9 +765,9 @@ int32_t AL_AVC_WriteEncHwScalingList(void *arg1, void *arg2, uint32_t *arg3)
         do {
             uint8_t *a1 = i + 0x2ee0;
 
-            AL_sWriteFwdCoeffs(&var_18, i_2, 0x10, (void *)AL_FAST_AVC_ENC_SCL_ORDER_8x8);
+            AL_sWriteFwdCoeffs(&var_18, i_2, 0x10, order8x8);
             i += 0x7d0;
-            AL_sWriteFwdCoeffs(&var_18, a1, 0x10, (void *)AL_FAST_AVC_ENC_SCL_ORDER_8x8);
+            AL_sWriteFwdCoeffs(&var_18, a1, 0x10, order8x8);
             i_2 = i;
         } while (i != (uint8_t *)arg2 + 0x32e0);
     }
@@ -794,6 +796,18 @@ int32_t AL_AVC_WriteEncHwScalingList(void *arg1, void *arg2, uint32_t *arg3)
                 return result;
         } while (1);
     }
+}
+
+int32_t AL_AVC_WriteEncHwScalingList(void *arg1, void *arg2, uint32_t *arg3)
+{
+    return AL_AVC_WriteEncHwScalingListWithOrder(
+        arg1, arg2, arg3, (void *)AL_FAST_AVC_ENC_SCL_ORDER_8x8);
+}
+
+int32_t AL_AVC_WriteEncHwScalingListT41(void *arg1, void *arg2,
+                                        uint32_t *arg3)
+{
+    return AL_AVC_WriteEncHwScalingListWithOrder(arg1, arg2, arg3, NULL);
 }
 
 int32_t AL_HEVC_WriteEncHwScalingList(void *arg1, void *arg2, uint32_t *arg3)

@@ -40,6 +40,7 @@ static void test_main_idr_oracle(void)
         .width = 1920, .height = 1080, .bitrate = 3000000,
         .fps_num = 25, .fps_den = 1,
         .min_qp = 34, .picture_qp = 34, .max_qp = 51,
+        .rate_control_qp = 34,
         .picture_number = 0, .is_idr = 1,
         .source_y = 0x06b0ad00, .source_uv = 0x06d08d00,
         .reference_luma_offset = 0x000f0000,
@@ -60,7 +61,7 @@ static void test_main_idr_oracle(void)
         {3, 0x40000d50}, {5, 0x00001fdf},
         {12, 0xffffffff}, {13, 0xffffffff},
         {24, 0x21220000}, {25, 0x00083f1f}, {27, 0x00043077},
-        {29, 0x00000c80}, {32, 0x80043077}, {33, 0x12000000},
+        {29, 0x00000c80}, {32, 0x80043077},
         {34, 0x00077000}, {40, 0x06b0ad00}, {42, 0x06d08d00},
         {52, 0x00000780}, {53, 0x00000780},
         {108, 0x000f0000}, {109, 0x00078000},
@@ -71,7 +72,7 @@ static void test_main_idr_oracle(void)
         {126, 0x00214800}, {127, 0x0010a400},
         {128, 0x02001e00}, {129, 0x02001e00}, {130, 0x00000200},
         {136, 0x066fe700}, {139, 0x000e7a80}, {140, 0x00000220},
-        {141, 0x000e7860}, {152, 0x000000f6}, {153, 0x0000203b},
+        {141, 0x000e7860}, {152, 0x000000f6}, {153, 0x007fe7ff},
         {154, 0x066f6680}, {156, 0x066f0000}, {160, 0x06670700},
         {176, 0xf40001ce}, {177, 0x00000aea}, {178, 0x3f000075},
         {179, 0x22223322}, {180, 0xc3d00015}, {181, 0x00000001},
@@ -89,6 +90,7 @@ static void test_sub_first_p_oracle(void)
         .width = 640, .height = 360, .bitrate = 1000000,
         .fps_num = 25, .fps_den = 1,
         .min_qp = 34, .picture_qp = 34, .max_qp = 51,
+        .rate_control_qp = 38,
         .picture_number = 1, .is_idr = 0,
         .source_y = 0x0715b100, .source_uv = 0x07194900,
         .reference_y = 0x068ecd00, .reference_uv = 0x06930500,
@@ -130,7 +132,7 @@ static void test_sub_first_p_oracle(void)
         {154, 0x06969280}, {156, 0x06962d00},
         {158, 0x06954600}, {160, 0x0695ba00},
         {176, 0xf4000107}, {177, 0x00000e67}, {178, 0x3f0000d9},
-        {179, 0x22223322}, {180, 0xc210001c}, {181, 0x00000001},
+        {179, 0x22223326}, {180, 0xc210001c}, {181, 0x00000001},
         {182, 0x068d6300},
         {512, 0x000a0c80}, {513, 0x11220d06},
         {515, 0x00027000}, {516, 0x00000397},
@@ -169,6 +171,19 @@ static void test_builder_validation(void)
     assert(openimp_t41_reconstruction_manager_size(640, 360) == 0x76100u);
     assert(openimp_t41_hwrc_grid(1920, 1080) == 0xf40001ceu);
     assert(openimp_t41_hwrc_grid(640, 360) == 0xf4000107u);
+
+    assert(openimp_t41_next_rate_control_qp(
+               34, 34, 51, 86000, 3000000, 25, 1) == 38u);
+    assert(openimp_t41_next_rate_control_qp(
+               38, 34, 51, 45000, 3000000, 25, 1) == 40u);
+    assert(openimp_t41_next_rate_control_qp(
+               50, 34, 51, 70000, 3000000, 25, 1) == 51u);
+    assert(openimp_t41_next_rate_control_qp(
+               51, 34, 51, 2000, 3000000, 25, 1) == 47u);
+    assert(openimp_t41_next_rate_control_qp(
+               35, 34, 51, 2000, 3000000, 25, 1) == 34u);
+    assert(openimp_t41_next_rate_control_qp(
+               38, 34, 51, 0, 3000000, 25, 1) == 38u);
 }
 
 int main(void)

@@ -123,6 +123,73 @@ uint32_t openimp_t41_hwrc_grid(uint32_t width, uint32_t height)
            ((columns_per_group - 1u) & 0x3fu);
 }
 
+uint32_t openimp_t41_next_rate_control_qp(uint32_t current_qp,
+                                          uint32_t min_qp,
+                                          uint32_t max_qp,
+                                          uint32_t payload_bytes,
+                                          uint32_t bitrate,
+                                          uint32_t fps_num,
+                                          uint32_t fps_den)
+{
+    uint64_t target_numerator;
+    uint64_t target_denominator;
+    uint64_t target_bytes;
+    uint32_t increase = 0u;
+    uint32_t decrease = 0u;
+
+    if (max_qp > 51u)
+        max_qp = 51u;
+    if (min_qp > max_qp)
+        min_qp = max_qp;
+    if (current_qp < min_qp)
+        current_qp = min_qp;
+    if (current_qp > max_qp)
+        current_qp = max_qp;
+    if (!payload_bytes || !bitrate || !fps_num || !fps_den)
+        return current_qp;
+
+    target_numerator = (uint64_t)bitrate * fps_den;
+    target_denominator = (uint64_t)fps_num * 8u;
+    target_bytes = target_numerator / target_denominator;
+    if (target_numerator % target_denominator >=
+        (target_denominator + 1u) / 2u)
+        ++target_bytes;
+    if (!target_bytes)
+        target_bytes = 1u;
+
+    /* OEM T41 carries its evolving rate-control state in cmd[179]'s low
+     * byte.  Keep that feedback separate from the configured slice QP.  Use
+     * coarse corrections far from the per-picture byte budget and one-step
+     * corrections near it; this reproduces the observed 34 -> 38 first-IDR
+     * response without baking in a resolution or bitrate. */
+    if ((uint64_t)payload_bytes > target_bytes) {
+        if ((uint64_t)payload_bytes > target_bytes * 4u)
+            increase = 4u;
+        else if ((uint64_t)payload_bytes > target_bytes * 2u)
+            increase = 2u;
+        else if ((uint64_t)payload_bytes * 4u > target_bytes * 5u)
+            increase = 1u;
+    } else if ((uint64_t)payload_bytes * 4u < target_bytes) {
+        decrease = 4u;
+    } else if ((uint64_t)payload_bytes * 2u < target_bytes) {
+        decrease = 2u;
+    } else if ((uint64_t)payload_bytes * 4u < target_bytes * 3u) {
+        decrease = 1u;
+    }
+
+    if (increase) {
+        if (increase > max_qp - current_qp)
+            return max_qp;
+        return current_qp + increase;
+    }
+    if (decrease) {
+        if (decrease > current_qp - min_qp)
+            return min_qp;
+        return current_qp - decrease;
+    }
+    return current_qp;
+}
+
 static int openimp_t41_params_are_valid(
     const OpenIMPT41CommandParams *params)
 {
@@ -145,7 +212,10 @@ static int openimp_t41_params_are_valid(
         return 0;
 
     if (params->min_qp > params->picture_qp ||
-        params->picture_qp > params->max_qp || params->max_qp > 51u)
+        params->picture_qp > params->max_qp ||
+        params->min_qp > params->rate_control_qp ||
+        params->rate_control_qp > params->max_qp ||
+        params->max_qp > 51u)
         return 0;
     if (params->picture_number > UINT32_MAX / 2u)
         return 0;
@@ -248,7 +318,8 @@ int openimp_t41_build_command(void *slot, size_t slot_size,
     cmd[32] = 0x80000000u |
               (((lcu_h - 1u) & 0x3ffu) << 12) |
               ((lcu_w - 1u) & 0x3ffu);
-    cmd[33] = 0x12000000u;
+    if (!params->is_idr)
+        cmd[33] = 0x12000000u;
     cmd[34] = ((lcu_w - 1u) & 0x3ffu) << 12;
 
     cmd[40] = params->source_y;
@@ -288,7 +359,7 @@ int openimp_t41_build_command(void *slot, size_t slot_size,
                OPENIMP_T41_STREAM_PAYLOAD_OFFSET;
 
     cmd[152] = 0x000000f6u;
-    cmd[153] = 0x0000203bu;
+    cmd[153] = params->is_idr ? 0x007fe7ffu : 0x0000203bu;
     cmd[154] = params->ep2;
     cmd[156] = params->ep1;
     if (!params->is_idr)
@@ -301,7 +372,7 @@ int openimp_t41_build_command(void *slot, size_t slot_size,
     cmd[179] = (params->min_qp << 24) |
                (params->picture_qp << 16) |
                (params->max_qp << 8) |
-               params->picture_qp;
+               params->rate_control_qp;
     cmd[180] = ((params->is_idr || params->picture_number == 1u)
                     ? 0xc0000000u : 0x40000000u) |
                (((columns_per_group * 4u + 1u) & 0xffu) << 20) |

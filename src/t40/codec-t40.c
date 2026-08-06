@@ -63,6 +63,7 @@ static int avpu_queue_completed_stream(ALAvpuContext *ctx, int buf_idx, void *us
                                        const char *source, uint32_t *frame_size_out,
                                        int *flush_ret_out);
 int openimp_t40_init_ep1(void *ep1, size_t size, int use_fixqp_lda);
+int openimp_t41_init_ep1(void *ep1, size_t size);
 
 #if defined(PLATFORM_T40)
 void OpenIMP_P3_FrameStats(uint32_t luma, uint32_t u_mean,
@@ -1974,7 +1975,11 @@ static int avpu_generate_slice_header_rbsp(uint8_t *rbsp, const ALAvpuContext *c
     bs_write_bits(rbsp, &bp, picture_number & 0xFu, 4);
 
     if (is_idr) {
+#if defined(PLATFORM_T41)
+        bs_write_ue(rbsp, &bp, 1); /* recovered T41 idr_pic_id */
+#else
         bs_write_ue(rbsp, &bp, 0); /* idr_pic_id */
+#endif
     }
 
     /* The recovered T40 SPS uses log2_max_pic_order_cnt_lsb_minus4=6,
@@ -2384,6 +2389,7 @@ static int avpu_t41_fill_command(ALAvpuContext *ctx, void *slot,
     uint32_t current_slot;
     uint32_t previous_slot;
     uint32_t picture_qp;
+    uint32_t rate_control_qp;
     uint32_t min_qp;
     uint32_t max_qp;
 
@@ -2426,6 +2432,10 @@ static int avpu_t41_fill_command(ALAvpuContext *ctx, void *slot,
         picture_qp = min_qp;
     if (picture_qp > max_qp)
         picture_qp = max_qp;
+    rate_control_qp = ctx->t41_rate_control_qp;
+    if (ctx->rc_mode == HW_RC_MODE_FIXQP || rate_control_qp < min_qp ||
+        rate_control_qp > max_qp)
+        rate_control_qp = picture_qp;
 
     memset(&params, 0, sizeof(params));
     params.width = ctx->enc_w;
@@ -2436,6 +2446,7 @@ static int avpu_t41_fill_command(ALAvpuContext *ctx, void *slot,
     params.min_qp = min_qp;
     params.picture_qp = picture_qp;
     params.max_qp = max_qp;
+    params.rate_control_qp = rate_control_qp;
     params.picture_number = picture_number;
     params.is_idr = is_idr;
 
@@ -2455,9 +2466,10 @@ static int avpu_t41_fill_command(ALAvpuContext *ctx, void *slot,
     params.reconstruction_map_luma = maps_base + current_slot * map_slot_size;
     params.reconstruction_map_chroma =
         params.reconstruction_map_luma + map_luma_size;
-    params.reconstruction_luma_offset = avpu_t41_advance_luma_offset(
-        params.reference_luma_offset, luma_size,
-        avpu_align_up_u32(ctx->enc_w, 16u));
+    params.reconstruction_luma_offset = ctx->frame_number == 0u
+        ? 0u : avpu_t41_advance_luma_offset(
+            params.reference_luma_offset, luma_size,
+            avpu_align_up_u32(ctx->enc_w, 16u));
     params.reconstruction_chroma_offset =
         params.reconstruction_luma_offset >> 1;
 
@@ -2469,15 +2481,18 @@ static int avpu_t41_fill_command(ALAvpuContext *ctx, void *slot,
     params.mv_previous = mv_base + previous_slot * mv_slot_size;
     params.mv_current = mv_base + current_slot * mv_slot_size;
     params.ep3 = ctx->rec_trace_buf.phy_addr +
-                 (is_idr ? AVPU_T40_EP3_SLOT_SIZE : 0u);
+                 (is_idr ? 2u : 1u) * AVPU_T40_EP3_SLOT_SIZE;
 
     if (openimp_t41_build_command(slot, ctx->cl_entry_size, &params) != 0)
         return -1;
+    ctx->t41_rate_control_qp = rate_control_qp;
+    ctx->t41_rate_control_qp_by_buf[stream_buf_idx] = rate_control_qp;
     ctx->t41_pending_luma_offset = params.reconstruction_luma_offset;
 
     if (ctx->frame_number < 16u || is_idr) {
-        LOG_CODEC("Process: T41 command frame=%u picture=%u buf=%d idr=%d src=%08x/%08x rec=%08x/%08x map=%08x/%08x mv=%08x/%08x offsets=%x/%x stream=%08x part=%x ep=%08x/%08x/%08x",
+        LOG_CODEC("Process: T41 command frame=%u picture=%u buf=%d idr=%d qp=%u rcqp=%u src=%08x/%08x rec=%08x/%08x map=%08x/%08x mv=%08x/%08x offsets=%x/%x stream=%08x part=%x ep=%08x/%08x/%08x",
                   ctx->frame_number, picture_number, stream_buf_idx, is_idr,
+                  picture_qp, rate_control_qp,
                   params.source_y, params.source_uv,
                   params.reconstruction_y, params.reconstruction_uv,
                   params.reference_map_luma, params.reconstruction_map_luma,
@@ -4103,6 +4118,13 @@ static void avpu_end_encoding_callback(void *user_data)
          * encoder channels, including IDR and P pictures. */
         memcpy(&payload_size, status_regs.raw, sizeof(payload_size));
         ctx->t41_payload_size_by_buf[buf_idx] = payload_size;
+        if (ctx->rc_mode != HW_RC_MODE_FIXQP) {
+            uint32_t used_qp = ctx->t41_rate_control_qp_by_buf[buf_idx];
+
+            ctx->t41_rate_control_qp = openimp_t41_next_rate_control_qp(
+                used_qp, ctx->min_qp, ctx->max_qp, payload_size,
+                ctx->bitrate, ctx->fps_num, ctx->fps_den);
+        }
         bitcount = payload_size;
         completed = payload_size > 0u &&
             ctx->stream_buf_size > (int)OPENIMP_T41_STREAM_PAYLOAD_OFFSET &&
@@ -6828,15 +6850,25 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
 #endif
 
                                 if (avpu_alloc_imp(interm_total_sz, "AVPU_ITM", &enc->avpu.interm_buf) == 0) {
+#if !defined(PLATFORM_T41)
                                     int use_fixqp_lda = 0;
 #if defined(PLATFORM_T31)
                                     use_fixqp_lda =
                                         enc->avpu.rc_mode == HW_RC_MODE_FIXQP;
 #endif
-                                    if (openimp_t40_init_ep1(
+#endif
+                                    if (
+#if defined(PLATFORM_T41)
+                                        openimp_t41_init_ep1(
+                                            enc->avpu.interm_buf.map,
+                                            interm_total_sz)
+#else
+                                        openimp_t40_init_ep1(
                                             enc->avpu.interm_buf.map,
                                             interm_total_sz,
-                                            use_fixqp_lda) != 0) {
+                                            use_fixqp_lda)
+#endif
+                                        != 0) {
                                         memset(enc->avpu.interm_buf.map, 0,
                                                interm_total_sz);
                                         LOG_CODEC("AVPU: ERROR - default EP1 initialization failed");

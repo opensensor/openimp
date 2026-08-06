@@ -242,6 +242,8 @@ typedef struct ALAvpuContext {
     uint32_t t41_reference_luma_offset;
     uint32_t t41_pending_luma_offset;
     uint32_t t41_payload_size_by_buf[16];
+    uint32_t t41_rate_control_qp;
+    uint32_t t41_rate_control_qp_by_buf[16];
 #endif
     uint32_t stream_header_offset;  /* bytes of header pre-written into current stream buf */
     uint32_t stream_header_offset_by_buf[16]; /* per-stream-buffer header bytes */

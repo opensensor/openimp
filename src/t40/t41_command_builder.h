@@ -21,6 +21,7 @@ typedef struct OpenIMPT41CommandParams {
     uint32_t min_qp;
     uint32_t picture_qp;
     uint32_t max_qp;
+    uint32_t rate_control_qp;
     uint32_t picture_number;
     int is_idr;
 
@@ -69,6 +70,13 @@ uint32_t openimp_t41_motion_vector_slot_size(uint32_t width,
 uint32_t openimp_t41_reconstruction_manager_size(uint32_t width,
                                                  uint32_t height);
 uint32_t openimp_t41_hwrc_grid(uint32_t width, uint32_t height);
+uint32_t openimp_t41_next_rate_control_qp(uint32_t current_qp,
+                                          uint32_t min_qp,
+                                          uint32_t max_qp,
+                                          uint32_t payload_bytes,
+                                          uint32_t bitrate,
+                                          uint32_t fps_num,
+                                          uint32_t fps_den);
 
 int openimp_t41_build_command(void *slot, size_t slot_size,
                               const OpenIMPT41CommandParams *params);

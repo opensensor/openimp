@@ -6,6 +6,8 @@
 int32_t AL_AVC_GenerateHwScalingList(void *scaling, int32_t scratch);
 int32_t AL_AVC_WriteEncHwScalingList(void *scaling, void *scratch,
                                      uint32_t *output);
+int32_t AL_AVC_WriteEncHwScalingListT41(void *scaling, void *scratch,
+                                        uint32_t *output);
 
 /* Stock AVC lambda table used when no external Lambdas.hex override exists. */
 static const uint8_t avc_default_lda[0xd0] = {
@@ -86,8 +88,10 @@ static const uint8_t avc_default_scaling_4x4[0x20] = {
     0x14, 0x18, 0x1b, 0x1e, 0x18, 0x1b, 0x1e, 0x22,
 };
 
-int openimp_t40_init_ep1(void *ep1, size_t size, int use_fixqp_lda)
+static int openimp_init_ep1(void *ep1, size_t size, int use_fixqp_lda,
+                            int use_t41_layout)
 {
+    const uint8_t *lda = use_fixqp_lda ? avc_fixqp_lda : avc_default_lda;
     uint8_t scaling[0x400];
     uint8_t *scratch;
     unsigned int i;
@@ -100,9 +104,20 @@ int openimp_t40_init_ep1(void *ep1, size_t size, int use_fixqp_lda)
 
     memset(ep1, 0, size);
     memset(scaling, 0, sizeof(scaling));
-    memcpy(ep1,
-           use_fixqp_lda ? avc_fixqp_lda : avc_default_lda,
-           sizeof(avc_default_lda));
+    if (use_t41_layout) {
+        uint8_t *output = (uint8_t *)ep1;
+
+        /* T41 stores the final two lambda components for each QP in the high
+         * byte of 16-bit lanes.  T31/T40 consume all four components as
+         * packed bytes.  Keeping this conversion at the table boundary lets
+         * the common lambda source remain shared across the SoCs. */
+        for (i = 0; i < 52u; ++i) {
+            output[i * 4u + 1u] = lda[i * 4u + 2u];
+            output[i * 4u + 3u] = lda[i * 4u + 3u];
+        }
+    } else {
+        memcpy(ep1, lda, sizeof(avc_default_lda));
+    }
     memcpy(scaling + 0x1bc, avc_default_scaling_8x8, 0x40);
     memcpy(scaling + 0x27c, avc_default_scaling_8x8 + 0x40, 0x40);
     for (i = 0; i < 3; ++i) {
@@ -113,8 +128,22 @@ int openimp_t40_init_ep1(void *ep1, size_t size, int use_fixqp_lda)
     }
 
     AL_AVC_GenerateHwScalingList(scaling, (int32_t)(intptr_t)scratch);
-    AL_AVC_WriteEncHwScalingList(scaling, scratch,
-                                 (uint32_t *)((uint8_t *)ep1 + 0x100));
+    if (use_t41_layout)
+        AL_AVC_WriteEncHwScalingListT41(
+            scaling, scratch, (uint32_t *)((uint8_t *)ep1 + 0x100));
+    else
+        AL_AVC_WriteEncHwScalingList(
+            scaling, scratch, (uint32_t *)((uint8_t *)ep1 + 0x100));
     free(scratch);
     return 0;
+}
+
+int openimp_t40_init_ep1(void *ep1, size_t size, int use_fixqp_lda)
+{
+    return openimp_init_ep1(ep1, size, use_fixqp_lda, 0);
+}
+
+int openimp_t41_init_ep1(void *ep1, size_t size)
+{
+    return openimp_init_ep1(ep1, size, 0, 1);
 }
