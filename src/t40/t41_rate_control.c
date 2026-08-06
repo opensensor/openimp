@@ -130,6 +130,203 @@ int openimp_t41_rate_control_window_update(
     return 0;
 }
 
+static int32_t openimp_t41_divide_signed(int32_t numerator,
+                                         int32_t denominator)
+{
+    /* C99 division truncates toward zero, as does the OEM MIPS `div`. */
+    return numerator / denominator;
+}
+
+int32_t openimp_t41_rate_control_window_target(
+    const OpenIMPT41RateControlWindow *window)
+{
+    uint64_t product;
+    uint32_t measured_time;
+    uint32_t target_time;
+    uint32_t measured_fraction;
+    uint32_t target_fraction;
+
+    if (!window || window->words[3] == 0u)
+        return 0;
+
+    measured_time = window->words[6];
+    measured_fraction = window->words[7];
+    target_time = window->words[8];
+    product = (uint64_t)window->words[4] * window->words[9];
+    target_fraction = (uint32_t)(product / window->words[3]);
+
+    /* Exact OEM lI1i recovery.  When the low byte at +0x14 is clear the
+     * controller first catches the measured clock up to its latency floor. */
+    if (((const uint8_t *)&window->words[5])[0] == 0u) {
+        uint32_t floor = target_time - window->words[1];
+
+        if (measured_time < floor) {
+            measured_time = floor;
+            measured_fraction = target_fraction;
+        }
+    }
+
+    if (target_time >= measured_time &&
+        (target_time != measured_time ||
+         (uint64_t)window->words[9] * window->words[4] >=
+             (uint64_t)measured_fraction * window->words[3])) {
+        int32_t fractional =
+            (int32_t)(target_fraction - measured_fraction);
+        uint32_t whole = (uint32_t)(((uint64_t)
+            (target_time - measured_time) * window->words[4]) / 90000u);
+
+        return openimp_t41_divide_signed(fractional, 90000) +
+               (int32_t)whole;
+    } else {
+        int32_t fractional =
+            (int32_t)(measured_fraction - target_fraction);
+        uint32_t whole = (uint32_t)(((uint64_t)
+            (measured_time - target_time) * window->words[4]) / 90000u);
+
+        return openimp_t41_divide_signed(fractional, -90000) -
+               (int32_t)whole;
+    }
+}
+
+int openimp_t41_rate_control_predict_bits(
+    uint32_t model_bits, uint16_t model_qp, uint16_t requested_qp,
+    uint32_t scale, int32_t max_qp_steps, uint32_t *predicted_bits)
+{
+    uint32_t steps;
+    uint32_t distance;
+    uint64_t product;
+
+    if (!predicted_bits || scale == 0u || max_qp_steps < 0)
+        return -1;
+
+    distance = model_qp < requested_qp
+        ? (uint32_t)requested_qp - model_qp
+        : (uint32_t)model_qp - requested_qp;
+    steps = distance < (uint32_t)max_qp_steps
+        ? distance : (uint32_t)max_qp_steps;
+
+    while (steps-- != 0u) {
+        if (model_qp < requested_qp) {
+            product = (uint64_t)model_bits * 10000u;
+            model_bits = (uint32_t)(product / scale);
+        } else {
+            product = (uint64_t)model_bits * scale;
+            model_bits = (uint32_t)(product / 10000u);
+        }
+    }
+    *predicted_bits = model_bits;
+    return 0;
+}
+
+int openimp_t41_rate_control_search_qp(
+    uint32_t model_bits, int16_t model_qp, uint32_t target_bits,
+    uint32_t scale, int16_t min_qp, int16_t max_qp, int16_t *selected_qp)
+{
+    uint64_t product;
+
+    if (!selected_qp || scale == 0u || min_qp > max_qp ||
+        model_qp < min_qp || model_qp > max_qp)
+        return -1;
+
+    if (target_bits >= model_bits) {
+        while (model_qp > min_qp && model_bits < target_bits) {
+            --model_qp;
+            product = (uint64_t)model_bits * scale;
+            model_bits = (uint32_t)(product / 10000u);
+        }
+    } else {
+        while (model_qp < max_qp && target_bits < model_bits) {
+            ++model_qp;
+            product = (uint64_t)model_bits * 10000u;
+            model_bits = (uint32_t)(product / scale);
+        }
+    }
+    *selected_qp = model_qp;
+    return 0;
+}
+
+int openimp_t41_rate_control_predict_model_set(
+    const OpenIMPT41RateControlModelSet *models, int32_t qp_delta,
+    uint32_t prediction_cap, uint32_t predictions[3])
+{
+    size_t index;
+
+    if (!models || !predictions || models->max_qp_steps < 0)
+        return -1;
+
+    for (index = 0u; index < 3u; ++index) {
+        int64_t requested = (int64_t)models->current_qp + qp_delta;
+        uint32_t predicted;
+
+        if (index == 0u)
+            requested += models->first_model_qp_bias;
+        if (requested < 0)
+            requested = 0;
+        if (requested > (int64_t)UINT16_MAX)
+            requested = (int64_t)UINT16_MAX;
+        if (openimp_t41_rate_control_predict_bits(
+                models->models[index].bits, models->models[index].qp,
+                (uint16_t)requested, models->models[index].scale,
+                models->max_qp_steps, &predicted) != 0)
+            return -1;
+        predictions[index] = predicted < prediction_cap
+            ? predicted : prediction_cap;
+    }
+    return 0;
+}
+
+int openimp_t41_rate_control_adjust_model(
+    uint32_t *model_bits, uint32_t *previous_bound_distance,
+    int16_t current_qp, int16_t min_qp, int16_t max_qp,
+    uint32_t scale, int32_t max_adjustment, uint32_t feedback_percent)
+{
+    int32_t distance_to_min;
+    int32_t distance_to_max;
+    int32_t bound_distance;
+    int32_t permitted_adjustment;
+    int32_t delta;
+    uint64_t product;
+
+    if (!model_bits || !previous_bound_distance || scale == 0u ||
+        max_adjustment < 0 || max_adjustment > INT32_MAX / 4 ||
+        *previous_bound_distance > INT32_MAX ||
+        min_qp > current_qp || current_qp > max_qp)
+        return -1;
+
+    permitted_adjustment = max_adjustment;
+    if (feedback_percent >= 81u) {
+        permitted_adjustment = 0;
+    } else if (feedback_percent < 61u) {
+        if (feedback_percent >= 41u)
+            permitted_adjustment *= 2;
+        else if (feedback_percent >= 21u)
+            permitted_adjustment *= 3;
+        else
+            permitted_adjustment *= 4;
+    }
+
+    distance_to_min = current_qp - min_qp;
+    distance_to_max = max_qp - current_qp;
+    bound_distance = distance_to_min < distance_to_max
+        ? distance_to_min : distance_to_max;
+    if (permitted_adjustment < bound_distance)
+        bound_distance = permitted_adjustment;
+
+    delta = bound_distance - (int32_t)*previous_bound_distance;
+    while (delta < 0) {
+        product = (uint64_t)*model_bits * 10000u;
+        *model_bits = (uint32_t)(product / scale);
+        ++delta;
+    }
+    while (delta > 0) {
+        product = (uint64_t)*model_bits * scale;
+        *model_bits = (uint32_t)(product / 10000u);
+        --delta;
+    }
+    *previous_bound_distance = (uint32_t)bound_distance;
+    return 0;
+}
+
 static uint32_t openimp_t41_clamp_qp(uint32_t qp, uint32_t min_qp,
                                      uint32_t max_qp)
 {

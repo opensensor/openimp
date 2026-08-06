@@ -24,6 +24,19 @@ typedef struct OpenIMPT41RateControlWindow {
     uint32_t words[OPENIMP_T41_RATE_CONTROL_WINDOW_WORDS];
 } OpenIMPT41RateControlWindow;
 
+typedef struct OpenIMPT41RateControlModel {
+    uint32_t bits;
+    uint16_t qp;
+    uint32_t scale;
+} OpenIMPT41RateControlModel;
+
+typedef struct OpenIMPT41RateControlModelSet {
+    OpenIMPT41RateControlModel models[3];
+    int16_t current_qp;
+    int32_t first_model_qp_bias;
+    int32_t max_qp_steps;
+} OpenIMPT41RateControlModelSet;
+
 /* Software-owned part of the T41 CBR loop.  The 0x40-byte history and
  * normalized hardware feedback match the recovered OEM stages exactly.
  * Selection is deliberately bounded to one QP per completed P picture so a
@@ -59,6 +72,30 @@ int openimp_t41_rate_control_extract_feedback(
  * denominator is zero. */
 int openimp_t41_rate_control_window_update(
     OpenIMPT41RateControlWindow *window, uint32_t completed_bits);
+
+/* Exact pure model-selection primitives used by the OEM 4,084-byte o1II
+ * routine.  These are kept separate from the policy state while the
+ * picture-class model updater is being recovered, which makes every integer
+ * transition independently replayable against captured OEM calls. */
+int32_t openimp_t41_rate_control_window_target(
+    const OpenIMPT41RateControlWindow *window);
+
+int openimp_t41_rate_control_predict_bits(
+    uint32_t model_bits, uint16_t model_qp, uint16_t requested_qp,
+    uint32_t scale, int32_t max_qp_steps, uint32_t *predicted_bits);
+
+int openimp_t41_rate_control_search_qp(
+    uint32_t model_bits, int16_t model_qp, uint32_t target_bits,
+    uint32_t scale, int16_t min_qp, int16_t max_qp, int16_t *selected_qp);
+
+int openimp_t41_rate_control_predict_model_set(
+    const OpenIMPT41RateControlModelSet *models, int32_t qp_delta,
+    uint32_t prediction_cap, uint32_t predictions[3]);
+
+int openimp_t41_rate_control_adjust_model(
+    uint32_t *model_bits, uint32_t *previous_bound_distance,
+    int16_t current_qp, int16_t min_qp, int16_t max_qp,
+    uint32_t scale, int32_t max_adjustment, uint32_t feedback_percent);
 
 int openimp_t41_rate_controller_init(OpenIMPT41RateController *controller,
                                      uint32_t bitrate, uint32_t fps_num,

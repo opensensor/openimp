@@ -177,6 +177,98 @@ static void test_window_bounds(void)
     assert(memcmp(&window, &original, sizeof(window)) == 0);
 }
 
+static void test_oem_model_selection_primitives(void)
+{
+    OpenIMPT41RateControlWindow first_idr = { {
+        0x016e3600u, 0x00034bc0u, 0x000003e8u, 0x000061a8u,
+        0x007a1200u, 0x00000101u, 0x00014e1cu, 0x0030d400u,
+        0x000359d0u, 0u, 0u, 0u, 0x007402c0u, 0u, 1u, 0u,
+    } };
+    uint32_t predicted = 0u;
+    uint32_t predictions[3] = { 0u, 0u, 0u };
+    uint32_t adaptive_bits = 0x00005ccfu;
+    uint32_t previous_distance = 4u;
+    int16_t qp = 0;
+    OpenIMPT41RateControlModelSet models = {
+        {
+            { 320000u, 38u, 11225u },
+            { 320000u, 38u, 11225u },
+            { 320000u, 38u, 11225u },
+        },
+        38,
+        2,
+        4,
+    };
+
+    /* Each value below was also executed directly against the OEM MIPS
+     * helper.  Together they cover both prediction directions, step caps,
+     * both QP-search directions, and the signed history target. */
+    assert(openimp_t41_rate_control_window_target(&first_idr) ==
+           11917120);
+    assert(openimp_t41_rate_control_window_target(NULL) == 0);
+    first_idr.words[3] = 0u;
+    assert(openimp_t41_rate_control_window_target(&first_idr) == 0);
+
+    assert(openimp_t41_rate_control_predict_bits(
+               320000u, 38u, 39u, 11225u, 4, &predicted) == 0);
+    assert(predicted == 285077u);
+    assert(openimp_t41_rate_control_predict_bits(
+               320000u, 38u, 34u, 11225u, 4, &predicted) == 0);
+    assert(predicted == 508036u);
+    assert(openimp_t41_rate_control_predict_bits(
+               100000u, 35u, 45u, 14000u, 3, &predicted) == 0);
+    assert(predicted == 36442u);
+    assert(openimp_t41_rate_control_predict_bits(
+               1u, 1u, 1u, 0u, 1, &predicted) == -1);
+    assert(openimp_t41_rate_control_predict_bits(
+               1u, 1u, 1u, 1u, -1, &predicted) == -1);
+    assert(openimp_t41_rate_control_predict_bits(
+               1u, 1u, 1u, 1u, 1, NULL) == -1);
+
+    assert(openimp_t41_rate_control_search_qp(
+               320000u, 38, 212520u, 11225u, 34, 51, &qp) == 0);
+    assert(qp == 42);
+    assert(openimp_t41_rate_control_search_qp(
+               402168u, 39, 320000u, 11225u, 34, 51, &qp) == 0);
+    assert(qp == 41);
+    assert(openimp_t41_rate_control_search_qp(
+               100000u, 40, 320000u, 11225u, 34, 51, &qp) == 0);
+    assert(qp == 34);
+    assert(openimp_t41_rate_control_search_qp(
+               1u, 0, 1u, 0u, 0, 51, &qp) == -1);
+    assert(openimp_t41_rate_control_search_qp(
+               1u, 0, 1u, 1u, 1, 51, &qp) == -1);
+    assert(openimp_t41_rate_control_search_qp(
+               1u, 0, 1u, 1u, 0, 51, NULL) == -1);
+
+    /* Exact ooIo three-picture-class predictions from the first OEM call. */
+    assert(openimp_t41_rate_control_predict_model_set(
+               &models, 0, 24000000u, predictions) == 0);
+    assert(predictions[0] == 253966u);
+    assert(predictions[1] == 320000u);
+    assert(predictions[2] == 320000u);
+    assert(openimp_t41_rate_control_predict_model_set(
+               &models, 3, 24000000u, predictions) == 0);
+    assert(predictions[0] == 201559u);
+    assert(predictions[1] == 226250u);
+    assert(predictions[2] == 226250u);
+    assert(openimp_t41_rate_control_predict_model_set(
+               NULL, 0, 1u, predictions) == -1);
+    assert(openimp_t41_rate_control_predict_model_set(
+               &models, 0, 1u, NULL) == -1);
+
+    /* OEM l1io maps 100% feedback to zero permitted bound distance.  The
+     * four exact inverse-scale steps turn 0x5ccf into 0x3a74. */
+    assert(openimp_t41_rate_control_adjust_model(
+               &adaptive_bits, &previous_distance, 38, 34, 51,
+               11225u, 1, 100u) == 0);
+    assert(adaptive_bits == 0x00003a74u);
+    assert(previous_distance == 0u);
+    assert(openimp_t41_rate_control_adjust_model(
+               NULL, &previous_distance, 38, 34, 51,
+               11225u, 1, 100u) == -1);
+}
+
 static void test_coupled_controller(void)
 {
     OpenIMPT41RateController controller;
@@ -263,6 +355,7 @@ int main(void)
     test_oem_main_window_oracle();
     test_oem_subchannel_window_oracle();
     test_window_bounds();
+    test_oem_model_selection_primitives();
     test_coupled_controller();
     test_controller_bounds_and_detail_gate();
     puts("T41 software rate-control coupling: OK");
