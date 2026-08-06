@@ -269,6 +269,221 @@ static void test_oem_model_selection_primitives(void)
                11225u, 1, 100u) == -1);
 }
 
+static void test_oem_picture_model_scale_update(void)
+{
+    struct ScaleFixture {
+        uint32_t previous_bits;
+        int16_t previous_qp;
+        uint32_t completed_bits;
+        int16_t completed_qp;
+        uint32_t current_scale;
+        uint32_t expected_scale;
+    };
+    static const struct ScaleFixture fixtures[] = {
+        /* Captured OEM P-picture transitions. */
+        { 537464u, 38, 212520u, 38, 11225u, 11225u },
+        { 212520u, 38, 402168u, 39, 11225u, 11202u },
+        { 91960u, 39, 171800u, 35, 11202u, 11691u },
+        { 171800u, 35, 451808u, 34, 11691u, 20000u },
+        { 170096u, 35, 124080u, 34, 20000u, 15590u },
+        { 31160u, 42, 42560u, 41, 20000u, 13658u },
+        { 30856u, 41, 48432u, 40, 13658u, 15696u },
+
+        /* One-step interior and lower-clamp paths derived directly from the
+         * same OEM integer instructions. */
+        { 100000u, 38, 80000u, 39, 11225u, 12500u },
+        { 100000u, 38, 99000u, 39, 11225u, 11180u },
+    };
+    uint32_t scale;
+    size_t index;
+
+    for (index = 0u; index < sizeof(fixtures) / sizeof(fixtures[0]);
+         ++index) {
+        const struct ScaleFixture *fixture = &fixtures[index];
+
+        scale = 0u;
+        assert(openimp_t41_rate_control_update_model_scale(
+                   fixture->previous_bits, fixture->previous_qp,
+                   fixture->completed_bits, fixture->completed_qp,
+                   fixture->current_scale, 11180u, 20000u,
+                   &scale) == 0);
+        assert(scale == fixture->expected_scale);
+    }
+
+    scale = 0x5a5a5a5au;
+    assert(openimp_t41_rate_control_update_model_scale(
+               0u, 38, 1u, 39, 11225u, 11180u, 20000u, &scale) == -1);
+    assert(scale == 0x5a5a5a5au);
+    assert(openimp_t41_rate_control_update_model_scale(
+               1u, 38, 1u, 39, 11225u, 20000u, 11180u, &scale) == -1);
+    assert(openimp_t41_rate_control_update_model_scale(
+               1u, -1, 1u, 39, 11225u, 11180u, 20000u, &scale) == -1);
+    assert(openimp_t41_rate_control_update_model_scale(
+               1u, 38, 1u, 39, 11225u, 11180u, 20000u, NULL) == -1);
+}
+
+static void init_oem_p_model_updater(
+    OpenIMPT41RateControlPSelector *selector,
+    OpenIMPT41RateControlPModelUpdater *updater,
+    int16_t current_qp, uint32_t p_bits, uint16_t p_qp,
+    uint32_t p_scale, uint32_t feedback_bits, uint16_t feedback_qp,
+    int32_t feedback_qp_bias,
+    uint32_t allocation_weight, uint32_t baseline_ratio,
+    uint32_t mode_0, uint32_t mode_1, uint32_t mode_2,
+    uint32_t feedback_reference, uint32_t previous_bits,
+    uint32_t cumulative_qp, uint32_t completed_p_pictures,
+    uint8_t negative_latch)
+{
+    memset(selector, 0, sizeof(*selector));
+    memset(updater, 0, sizeof(*updater));
+    selector->models.models[0] =
+        (OpenIMPT41RateControlModel){ 320000u, 38u, 11225u };
+    selector->models.models[1] =
+        (OpenIMPT41RateControlModel){ p_bits, p_qp, p_scale };
+    selector->models.models[2] =
+        (OpenIMPT41RateControlModel){ 320000u, 38u, 11225u };
+    selector->models.current_qp = current_qp;
+    selector->models.first_model_qp_bias = 2;
+    selector->models.max_qp_steps = 4;
+    selector->min_qp = 34;
+    selector->max_qp = 51;
+    selector->adaptive_model_bits = allocation_weight;
+    selector->residual_policy_mode = mode_2;
+    selector->negative_delta_latch = negative_latch;
+
+    updater->feedback_model = (OpenIMPT41RateControlModel){
+        feedback_bits, feedback_qp, 11225u
+    };
+    updater->baseline_min_qp = 34;
+    updater->baseline_max_qp = 51;
+    updater->feedback_min_qp = 34;
+    updater->feedback_max_qp = 51;
+    updater->feedback_model_qp_bias = feedback_qp_bias;
+    updater->lower_scale = 11180u;
+    updater->upper_scale = 20000u;
+    updater->baseline_ratio = baseline_ratio;
+    updater->modes[0] = mode_0;
+    updater->modes[1] = mode_1;
+    updater->modes[2] = mode_2;
+    updater->feedback_reference_percent = feedback_reference;
+    updater->previous_completed_bits = previous_bits;
+    updater->cumulative_qp = cumulative_qp;
+    updater->completed_p_pictures = completed_p_pictures;
+}
+
+static void assert_oem_p_model_result(
+    const OpenIMPT41RateControlPSelector *selector,
+    const OpenIMPT41RateControlPModelUpdater *updater,
+    uint32_t p_bits, uint16_t p_qp, uint32_t p_scale,
+    uint32_t feedback_bits, uint16_t feedback_qp,
+    uint32_t allocation_weight, uint32_t baseline_ratio,
+    uint32_t mode_2, uint32_t previous_bits,
+    uint32_t cumulative_qp, uint32_t completed_p_pictures,
+    uint8_t negative_latch)
+{
+    assert(selector->models.models[1].bits == p_bits);
+    assert(selector->models.models[1].qp == p_qp);
+    assert(selector->models.models[1].scale == p_scale);
+    assert(updater->feedback_model.bits == feedback_bits);
+    assert(updater->feedback_model.qp == feedback_qp);
+    assert(selector->adaptive_model_bits == allocation_weight);
+    assert(updater->baseline_ratio == baseline_ratio);
+    assert(updater->modes[0] == 1u);
+    assert(updater->modes[1] == 1u);
+    assert(updater->modes[2] == mode_2);
+    assert(selector->residual_policy_mode == mode_2);
+    assert(updater->previous_completed_bits == previous_bits);
+    assert(updater->cumulative_qp == cumulative_qp);
+    assert(updater->completed_p_pictures == completed_p_pictures);
+    assert(selector->negative_delta_latch == negative_latch);
+}
+
+static void test_oem_p_picture_model_updater(void)
+{
+    OpenIMPT41RateControlPSelector selector;
+    OpenIMPT41RateControlPModelUpdater updater;
+    OpenIMPT41RateControlFeedback feedback = { 0 };
+
+    /* Calls 2, 3, 7, and 8 from the production OEM trace cover feedback
+     * refresh, mode-2 allocation update, a four-QP scale root, and the upper
+     * scale hysteresis reset respectively. */
+    init_oem_p_model_updater(
+        &selector, &updater, 38, 320000u, 38u, 11225u,
+        7602880u, 34u, 4, 23759u, 333u, 2u, 2u, 10u,
+        60u, 7602880u, 0u, 0u, 0u);
+    feedback.field_20_percent = 0u;
+    feedback.field_1c_percent = 100u;
+    assert(openimp_t41_rate_control_update_p_picture_model(
+               &selector, &updater, 537464u, &feedback, 1) == 0);
+    assert_oem_p_model_result(
+        &selector, &updater, 537464u, 38u, 11225u,
+        537464u, 38u, 23759u, 472u, 2u,
+        537464u, 38u, 1u, 0u);
+
+    init_oem_p_model_updater(
+        &selector, &updater, 38, 537464u, 38u, 11225u,
+        537464u, 38u, 0, 14964u, 472u, 1u, 1u, 2u,
+        0u, 537464u, 38u, 1u, 0u);
+    feedback.field_20_percent = 33u;
+    feedback.field_1c_percent = 40u;
+    assert(openimp_t41_rate_control_update_p_picture_model(
+               &selector, &updater, 212520u, &feedback, 1) == 0);
+    assert_oem_p_model_result(
+        &selector, &updater, 212520u, 38u, 11225u,
+        537464u, 38u, 2529u, 1195u, 1u,
+        212520u, 76u, 2u, 0u);
+
+    init_oem_p_model_updater(
+        &selector, &updater, 35, 91960u, 39u, 11202u,
+        402168u, 39u, 2, 5509u, 2460u, 1u, 1u, 1u,
+        44u, 91960u, 78u, 2u, 1u);
+    feedback.field_20_percent = 36u;
+    feedback.field_1c_percent = 32u;
+    assert(openimp_t41_rate_control_update_p_picture_model(
+               &selector, &updater, 171800u, &feedback, 1) == 0);
+    assert_oem_p_model_result(
+        &selector, &updater, 171800u, 35u, 11691u,
+        402168u, 39u, 5509u, 2090u, 1u,
+        171800u, 113u, 3u, 1u);
+
+    init_oem_p_model_updater(
+        &selector, &updater, 34, 171800u, 35u, 11691u,
+        402168u, 39u, 1, 4907u, 2090u, 1u, 1u, 1u,
+        36u, 171800u, 113u, 3u, 1u);
+    feedback.field_20_percent = 3u;
+    feedback.field_1c_percent = 70u;
+    assert(openimp_t41_rate_control_update_p_picture_model(
+               &selector, &updater, 451808u, &feedback, 1) == 0);
+    assert_oem_p_model_result(
+        &selector, &updater, 451808u, 34u, 20000u,
+        402168u, 39u, 4907u, 892u, 1u,
+        451808u, 147u, 4u, 0u);
+
+    /* Exercise the feedback-discontinuity averaging path, which is dormant
+     * in the captured steady-state segment. */
+    init_oem_p_model_updater(
+        &selector, &updater, 38, 100000u, 38u, 11225u,
+        100000u, 38u, 0, 1000u, 1000u, 1u, 1u, 1u,
+        100u, 300000u, 0u, 0u, 0u);
+    feedback.field_20_percent = 0u;
+    feedback.field_1c_percent = 0u;
+    assert(openimp_t41_rate_control_update_p_picture_model(
+               &selector, &updater, 100000u, &feedback, 0) == 0);
+    assert(selector.models.models[1].bits == 200000u);
+
+    {
+        OpenIMPT41RateControlPSelector original_selector = selector;
+        OpenIMPT41RateControlPModelUpdater original_updater = updater;
+
+        assert(openimp_t41_rate_control_update_p_picture_model(
+                   &selector, &updater, 0u, &feedback, 1) == -1);
+        assert(memcmp(&selector, &original_selector,
+                      sizeof(selector)) == 0);
+        assert(memcmp(&updater, &original_updater,
+                      sizeof(updater)) == 0);
+    }
+}
+
 static void test_oem_p_picture_selector(void)
 {
     struct SelectorFixture {
@@ -497,6 +712,8 @@ int main(void)
     test_oem_subchannel_window_oracle();
     test_window_bounds();
     test_oem_model_selection_primitives();
+    test_oem_picture_model_scale_update();
+    test_oem_p_picture_model_updater();
     test_oem_p_picture_selector();
     test_coupled_controller();
     test_controller_bounds_and_detail_gate();

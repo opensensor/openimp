@@ -70,6 +70,27 @@ typedef struct OpenIMPT41RateControlSelection {
     int16_t selected_qp;
 } OpenIMPT41RateControlSelection;
 
+/* State owned by the OEM P-picture model updater but not consumed as one of
+ * the selector's three prediction classes.  feedback_model is refreshed by
+ * high-confidence hardware feedback and supplies the allocation weight.
+ * modes[] is the recovered three-picture cadence, newest first. */
+typedef struct OpenIMPT41RateControlPModelUpdater {
+    OpenIMPT41RateControlModel feedback_model;
+    int16_t baseline_min_qp;
+    int16_t baseline_max_qp;
+    int16_t feedback_min_qp;
+    int16_t feedback_max_qp;
+    int32_t feedback_model_qp_bias;
+    uint32_t lower_scale;
+    uint32_t upper_scale;
+    uint32_t baseline_ratio;
+    uint32_t modes[3];
+    uint32_t feedback_reference_percent;
+    uint32_t previous_completed_bits;
+    uint32_t cumulative_qp;
+    uint32_t completed_p_pictures;
+} OpenIMPT41RateControlPModelUpdater;
+
 /* Software-owned part of the T41 CBR loop.  The 0x40-byte history and
  * normalized hardware feedback match the recovered OEM stages exactly.
  * Selection is deliberately bounded to one QP per completed P picture so a
@@ -117,6 +138,17 @@ int openimp_t41_rate_control_predict_bits(
     uint32_t model_bits, uint16_t model_qp, uint16_t requested_qp,
     uint32_t scale, int32_t max_qp_steps, uint32_t *predicted_bits);
 
+/* Update one picture-class model's fixed-point QP scale from two completed
+ * samples.  Scale 10000 represents unity.  This is the exact bounded integer
+ * root estimator used by the OEM picture-model updater: inconsistent
+ * bit/QP movement decays toward the lower bound, while consistent movement
+ * solves the per-QP ratio without floating point. */
+int openimp_t41_rate_control_update_model_scale(
+    uint32_t previous_bits, int16_t previous_qp,
+    uint32_t completed_bits, int16_t completed_qp,
+    uint32_t current_scale, uint32_t lower_scale, uint32_t upper_scale,
+    uint32_t *updated_scale);
+
 int openimp_t41_rate_control_search_qp(
     uint32_t model_bits, int16_t model_qp, uint32_t target_bits,
     uint32_t scale, int16_t min_qp, int16_t max_qp, int16_t *selected_qp);
@@ -139,6 +171,18 @@ int openimp_t41_rate_control_adjust_model(
 int openimp_t41_rate_control_select_p_picture(
     OpenIMPT41RateControlPSelector *selector, uint32_t completed_bits,
     uint32_t feedback_percent, OpenIMPT41RateControlSelection *selection);
+
+/* Exact normal-P path of the OEM 4,384-byte picture-model updater.  It runs
+ * before openimp_t41_rate_control_select_p_picture(), learns the P scale,
+ * refreshes both model ratios, advances picture cadence, and performs the
+ * shared upper-scale hysteresis reset.  rotate_modes corresponds to bit 1 of
+ * the OEM picture flags word. */
+int openimp_t41_rate_control_update_p_picture_model(
+    OpenIMPT41RateControlPSelector *selector,
+    OpenIMPT41RateControlPModelUpdater *updater,
+    uint32_t completed_bits,
+    const OpenIMPT41RateControlFeedback *feedback,
+    int rotate_modes);
 
 int openimp_t41_rate_controller_init(OpenIMPT41RateController *controller,
                                      uint32_t bitrate, uint32_t fps_num,

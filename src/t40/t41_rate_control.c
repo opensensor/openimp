@@ -218,6 +218,93 @@ int openimp_t41_rate_control_predict_bits(
     return 0;
 }
 
+static uint32_t openimp_t41_rate_control_clamp_scale(
+    uint32_t scale, uint32_t lower_scale, uint32_t upper_scale)
+{
+    if (scale < lower_scale)
+        return lower_scale;
+    if (scale > upper_scale)
+        return upper_scale;
+    return scale;
+}
+
+int openimp_t41_rate_control_update_model_scale(
+    uint32_t previous_bits, int16_t previous_qp,
+    uint32_t completed_bits, int16_t completed_qp,
+    uint32_t current_scale, uint32_t lower_scale, uint32_t upper_scale,
+    uint32_t *updated_scale)
+{
+    uint64_t ratio;
+    uint64_t product;
+    uint32_t ratio_base;
+    uint32_t distance;
+    uint32_t scale;
+
+    if (!updated_scale || previous_bits == 0u || completed_bits == 0u ||
+        previous_qp < 0 || completed_qp < 0 ||
+        current_scale == 0u || lower_scale == 0u ||
+        lower_scale > upper_scale)
+        return -1;
+
+    if (previous_qp == completed_qp) {
+        *updated_scale = current_scale;
+        return 0;
+    }
+
+    if (completed_bits < previous_bits && previous_qp < completed_qp) {
+        distance = (uint32_t)completed_qp - (uint32_t)previous_qp;
+        product = (uint64_t)previous_bits * 10000u;
+        ratio_base = (uint32_t)(product / completed_bits);
+    } else if (previous_bits < completed_bits &&
+               completed_qp < previous_qp) {
+        distance = (uint32_t)previous_qp - (uint32_t)completed_qp;
+        product = (uint64_t)completed_bits * 10000u;
+        ratio_base = (uint32_t)(product / previous_bits);
+    } else {
+        /* OEM uses a wrapping 32-bit add before the divide. */
+        *updated_scale = (current_scale + lower_scale) / 2u;
+        return 0;
+    }
+    ratio = (uint64_t)ratio_base * 10000u;
+    scale = current_scale;
+
+    for (;;) {
+        uint32_t power = 10000u;
+        uint32_t candidate;
+        uint32_t quotient;
+        uint32_t numerator;
+        uint32_t step;
+
+        /* Fixed-point scale^(distance - 1).  Each OEM __udivdi3 return is
+         * consumed through v0, so retain its low 32 bits at every step. */
+        for (step = 1u; step < distance; ++step) {
+            product = (uint64_t)power * scale;
+            power = (uint32_t)(product / 10000u);
+        }
+        if (power == 0u) {
+            /* The OEM's failed-root clamp falls through with its upper
+             * bound in a0, so a vanished fixed-point power selects it. */
+            *updated_scale = upper_scale;
+            return 0;
+        }
+
+        quotient = (uint32_t)(ratio / power);
+        numerator = (distance - 1u) * scale + quotient;
+        candidate = numerator / distance;
+
+        /* `candidate - scale + 1 < 3` is the OEM's unsigned test for a
+         * change in [-1, 1].  It also stops before accepting an out-of-bound
+         * Newton iterate; that final value is clamped exactly once. */
+        if (candidate - scale + 1u < 3u ||
+            candidate >= upper_scale || candidate <= lower_scale) {
+            *updated_scale = openimp_t41_rate_control_clamp_scale(
+                candidate, lower_scale, upper_scale);
+            return 0;
+        }
+        scale = candidate;
+    }
+}
+
 int openimp_t41_rate_control_search_qp(
     uint32_t model_bits, int16_t model_qp, uint32_t target_bits,
     uint32_t scale, int16_t min_qp, int16_t max_qp, int16_t *selected_qp)
@@ -324,6 +411,146 @@ int openimp_t41_rate_control_adjust_model(
         --delta;
     }
     *previous_bound_distance = (uint32_t)bound_distance;
+    return 0;
+}
+
+static int16_t openimp_t41_rate_control_clamp_qp_signed(
+    int64_t qp, int16_t min_qp, int16_t max_qp)
+{
+    if (qp < min_qp)
+        return min_qp;
+    if (qp > max_qp)
+        return max_qp;
+    return (int16_t)qp;
+}
+
+int openimp_t41_rate_control_update_p_picture_model(
+    OpenIMPT41RateControlPSelector *selector,
+    OpenIMPT41RateControlPModelUpdater *updater,
+    uint32_t completed_bits,
+    const OpenIMPT41RateControlFeedback *feedback,
+    int rotate_modes)
+{
+    OpenIMPT41RateControlPSelector next_selector;
+    OpenIMPT41RateControlPModelUpdater next_updater;
+    OpenIMPT41RateControlModel *p_model;
+    uint32_t predicted;
+    uint32_t model_bits;
+    int16_t current_qp;
+    int16_t requested_qp;
+
+    if (!selector || !updater || !feedback || completed_bits == 0u ||
+        selector->models.max_qp_steps < 0 ||
+        selector->min_qp < 0 || selector->max_qp < 0 ||
+        selector->models.current_qp < selector->min_qp ||
+        selector->models.current_qp > selector->max_qp ||
+        selector->models.models[0].qp > INT16_MAX ||
+        selector->models.models[1].qp > INT16_MAX ||
+        updater->feedback_model.qp > INT16_MAX ||
+        updater->baseline_min_qp < 0 || updater->baseline_max_qp < 0 ||
+        updater->feedback_min_qp < 0 || updater->feedback_max_qp < 0 ||
+        updater->baseline_min_qp > updater->baseline_max_qp ||
+        updater->feedback_min_qp > updater->feedback_max_qp ||
+        updater->lower_scale == 0u ||
+        updater->lower_scale > updater->upper_scale)
+        return -1;
+
+    next_selector = *selector;
+    next_updater = *updater;
+    current_qp = next_selector.models.current_qp;
+    p_model = &next_selector.models.models[1];
+
+    if (p_model->bits != 0u) {
+        if (openimp_t41_rate_control_update_model_scale(
+                p_model->bits, (int16_t)p_model->qp,
+                completed_bits, current_qp, p_model->scale,
+                next_updater.lower_scale, next_updater.upper_scale,
+                &p_model->scale) != 0)
+            return -1;
+    }
+
+    if (next_updater.feedback_model.bits != 0u) {
+        requested_qp = openimp_t41_rate_control_clamp_qp_signed(
+            (int64_t)current_qp - next_updater.feedback_model_qp_bias,
+            next_updater.feedback_min_qp, next_updater.feedback_max_qp);
+        if (openimp_t41_rate_control_predict_bits(
+                next_updater.feedback_model.bits,
+                next_updater.feedback_model.qp, (uint16_t)requested_qp,
+                next_updater.feedback_model.scale,
+                next_selector.models.max_qp_steps, &predicted) != 0)
+            return -1;
+        if (next_updater.modes[2] == 2u) {
+            if (predicted / completed_bits >= 501u) {
+                next_selector.adaptive_model_bits = 500000u;
+            } else {
+                next_selector.adaptive_model_bits = (uint32_t)(
+                    (uint64_t)predicted * 1000u / completed_bits);
+            }
+        }
+    }
+
+    if (next_selector.models.models[0].bits != 0u) {
+        const OpenIMPT41RateControlModel *baseline =
+            &next_selector.models.models[0];
+
+        requested_qp = openimp_t41_rate_control_clamp_qp_signed(
+            (int64_t)current_qp +
+                next_selector.models.first_model_qp_bias,
+            next_updater.baseline_min_qp, next_updater.baseline_max_qp);
+        if (openimp_t41_rate_control_predict_bits(
+                baseline->bits, baseline->qp, (uint16_t)requested_qp,
+                baseline->scale, next_selector.models.max_qp_steps,
+                &predicted) != 0)
+            return -1;
+        if (predicted == 0u || completed_bits / predicted >= 501u) {
+            next_updater.baseline_ratio = 2u;
+        } else {
+            next_updater.baseline_ratio = (uint32_t)(
+                (uint64_t)predicted * 1000u / completed_bits);
+        }
+    }
+
+    /* The OEM reuses byte +0x181 as selector hysteresis.  Its P updater
+     * clears that byte when this picture-class scale reaches +0x1a0. */
+    if (p_model->scale == next_updater.upper_scale)
+        next_selector.negative_delta_latch = 0u;
+
+    model_bits = completed_bits;
+    if (next_updater.modes[0] == 1u &&
+        ((int64_t)feedback->field_20_percent >
+             (int64_t)next_updater.feedback_reference_percent + 60 ||
+         (int64_t)feedback->field_20_percent <
+             (int64_t)next_updater.feedback_reference_percent - 60 ||
+         feedback->field_20_percent >= 99u)) {
+        uint32_t sum = completed_bits +
+                       next_updater.previous_completed_bits;
+        int32_t signed_sum;
+
+        /* `addu` deliberately wraps before the OEM's signed divide by two. */
+        memcpy(&signed_sum, &sum, sizeof(signed_sum));
+        model_bits = (uint32_t)(signed_sum / 2);
+    }
+    p_model->bits = model_bits;
+    p_model->qp = (uint16_t)current_qp;
+
+    if (feedback->field_1c_percent >= 81u) {
+        next_updater.feedback_model.bits = completed_bits;
+        next_updater.feedback_model.qp = (uint16_t)current_qp;
+    }
+    next_updater.previous_completed_bits = completed_bits;
+    next_updater.cumulative_qp += (uint32_t)current_qp;
+    ++next_updater.completed_p_pictures;
+
+    if (rotate_modes) {
+        uint32_t previous_mode = next_updater.modes[1];
+
+        next_updater.modes[0] = 1u;
+        next_updater.modes[1] = 1u;
+        next_updater.modes[2] = previous_mode;
+    }
+    next_selector.residual_policy_mode = next_updater.modes[2];
+    *selector = next_selector;
+    *updater = next_updater;
     return 0;
 }
 
