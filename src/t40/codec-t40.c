@@ -4206,10 +4206,23 @@ static void avpu_end_encoding_callback(void *user_data)
     have_pending = avpu_pending_peek(ctx, &buf_idx, NULL);
     if (have_pending && buf_idx >= 0 && buf_idx < 16) {
         cl_idx = ctx->stream_enc2_cl_idx[buf_idx];
+#if defined(PLATFORM_T41)
+        /*
+         * T41 writes completion status into the submitted slot.  The host
+         * readback ring is only a command-building mirror and is never an
+         * AVPU DMA target, so invalidating both 1 MiB windows here wastes a
+         * substantial part of the 40 ms frame budget.
+         */
+        if (!ctx->cl_submit_ring.uncached_map &&
+            avpu_cl_submit_ring_base(ctx))
+            avpu_flush_cache(ctx->fd, ctx->cl_submit_ring.map,
+                             0x100000, 0 /* BIDIRECTIONAL */);
+#else
         if (!ctx->cl_ring.uncached_map && avpu_cl_ring_base(ctx))
             avpu_flush_cache(ctx->fd, ctx->cl_ring.map, 0x100000, 0 /* BIDIRECTIONAL */);
         if (!ctx->cl_submit_ring.uncached_map && avpu_cl_submit_ring_base(ctx))
             avpu_flush_cache(ctx->fd, ctx->cl_submit_ring.map, 0x100000, 0 /* BIDIRECTIONAL */);
+#endif
 #if defined(PLATFORM_T31) || defined(PLATFORM_T41)
         /* These generations direct hardware writeback into the submitted
          * slot. T41's helper additionally advances to the +0x5c0 status
@@ -4939,6 +4952,12 @@ static uint32_t avpu_read_hw_stream_end(ALAvpuContext *ctx, int buf_idx)
     if (ctx->cl_entry_size == 0)
         return 0;
 
+#if defined(PLATFORM_T41)
+    /* The +0x5c0 completion status already supplied the exact payload size.
+     * T41 command words are inputs, not an OutputSlice byte-count source. */
+    return 0;
+#endif
+
     cl_idx = ctx->stream_enc2_cl_idx[buf_idx];
 
     /* Cache-invalidate both mirrored CL rings so we can prefer the CPU-visible
@@ -5078,8 +5097,16 @@ static uint32_t avpu_stream_buffer_effective_size(ALAvpuContext *ctx, int buf_id
     }
 
     sb = (const uint8_t *)ctx->stream_bufs[buf_idx].map;
+#if defined(PLATFORM_T41)
+    /* T41 completion reports the entropy byte count.  Scanning the entire
+     * multi-megabyte stream buffer to rediscover it is both redundant and
+     * large enough to halve QHD throughput on the target CPU. */
+    raw_end = 0u;
+    scanned_raw_end = 0u;
+#else
     raw_end = avpu_stream_buffer_raw_end(sb, (size_t)ctx->stream_buf_size);
     scanned_raw_end = raw_end;
+#endif
 
 #if defined(PLATFORM_T31)
     {
@@ -5260,9 +5287,11 @@ static uint32_t avpu_stream_buffer_effective_size(ALAvpuContext *ctx, int buf_id
             memmove(mutable_stream + header_size,
                     mutable_stream + payload_offset, payload_size);
             raw_end = header_size + payload_size;
+#if !defined(PLATFORM_T41)
             if (raw_end < (uint32_t)ctx->stream_buf_size)
                 memset(mutable_stream + raw_end, 0,
                        (size_t)ctx->stream_buf_size - raw_end);
+#endif
 #if defined(PLATFORM_T41)
             /* Raptor consumes the same pages through its FrameSource rmem
              * alias.  Publish the compacted AU to RAM before invalidating
@@ -7588,8 +7617,17 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
              * state for the corresponding cached mapping, making subsequent
              * cached writes invisible to both CPU reads and rmem flush.
              * The OEM uses cached-only + rmem flush for all DMA buffers. */
-            if (buf_idx < ctx->stream_bufs_used && ctx->stream_bufs[buf_idx].map) {
-                memset(ctx->stream_bufs[buf_idx].map, 0, (size_t)ctx->stream_buf_size);
+            if (buf_idx < ctx->stream_bufs_used &&
+                ctx->stream_bufs[buf_idx].map) {
+#if defined(PLATFORM_T41)
+                /* Payload length comes from the completion slot, so stale
+                 * bytes beyond this picture are never scanned or exposed. */
+                memset(ctx->stream_bufs[buf_idx].map, 0,
+                       OPENIMP_T41_STREAM_PAYLOAD_OFFSET);
+#else
+                memset(ctx->stream_bufs[buf_idx].map, 0,
+                       (size_t)ctx->stream_buf_size);
+#endif
             }
 
 #if defined(PLATFORM_T41)
@@ -7618,9 +7656,17 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
             /* Flush entire stream buffer (headers + zeroed payload area) to
              * physical RAM via rmem ioctl, matching OEM's 0x100000-byte flush.
              * This is the ONLY reliable cache flush path on T31. */
-            if (buf_idx < ctx->stream_bufs_used && ctx->stream_bufs[buf_idx].map) {
+            if (buf_idx < ctx->stream_bufs_used &&
+                ctx->stream_bufs[buf_idx].map) {
+#if defined(PLATFORM_T41)
                 avpu_flush_cache(fd, ctx->stream_bufs[buf_idx].map,
-                                 (unsigned int)ctx->stream_buf_size, 1 /*WBACK*/);
+                                 OPENIMP_T41_STREAM_PAYLOAD_OFFSET,
+                                 1 /* WBACK */);
+#else
+                avpu_flush_cache(fd, ctx->stream_bufs[buf_idx].map,
+                                 (unsigned int)ctx->stream_buf_size,
+                                 1 /* WBACK */);
+#endif
             }
 
             /* Fill Enc1 command registers — source addr and header offset go INTO the CL entry */
@@ -7685,12 +7731,28 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
             }
             memcpy(submit_entry, entry, ctx->cl_entry_size);
             ctx->enc_core.cmd_list = entry;
-            cl_flush_ret = ctx->cl_ring.uncached_map
-                         ? 0
-                         : avpu_flush_cache(fd, entry, (unsigned int)cl_flush_size, 1 /*WBACK*/);
+#if defined(PLATFORM_T41)
+            /* Only the submit ring is consumed by hardware.  Flush from its
+             * allocation base so the normalized 1 MiB T41 cache operation
+             * covers every slot without starting past the small ring. */
+            cl_flush_ret = 0;
             submit_flush_ret = ctx->cl_submit_ring.uncached_map
-                             ? 0
-                             : avpu_flush_cache(fd, submit_entry, (unsigned int)cl_flush_size, 1 /*WBACK*/);
+                ? 0
+                : avpu_flush_cache(fd, ctx->cl_submit_ring.map,
+                                   (unsigned int)cl_flush_size,
+                                   1 /* WBACK */);
+#else
+            cl_flush_ret = ctx->cl_ring.uncached_map
+                ? 0
+                : avpu_flush_cache(fd, entry,
+                                   (unsigned int)cl_flush_size,
+                                   1 /* WBACK */);
+            submit_flush_ret = ctx->cl_submit_ring.uncached_map
+                ? 0
+                : avpu_flush_cache(fd, submit_entry,
+                                   (unsigned int)cl_flush_size,
+                                   1 /* WBACK */);
+#endif
             if (ctx->frame_number % 50 == 0)
             LOG_CODEC("Process: CL[%u] flush ret=%d submit_ret=%d (rmem+avpu)", idx, cl_flush_ret, submit_flush_ret);
             int trace_submit = (idx == 0 && ctx->frames_encoded == 0);

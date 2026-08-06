@@ -124,6 +124,31 @@ ISP overflow or controller errors.
 Set `OPENIMP_T41_RATE_CONTROL_COUPLING=0` only for diagnostic A/B rollback to
 the fixed command-QP path. Coupling is enabled by default.
 
+## QHD cadence baseline
+
+The on-device benchmark now measures the configured 2560x1440, 25/1 H.264
+stream at its shared-memory publication boundary. With the same Raptor CBR
+profile and no connected clients, the August 6, 2026 isolation runs measured:
+
+| ISP | IMP | Delivered fps | System CPU | Pipeline CPU |
+| --- | --- | ---: | ---: | ---: |
+| stock | OEM | 25.008 | 11.110% | 3.587% |
+| stock | OpenIMP before fix | 16.266 | 33.225% | 27.973% |
+| stock | OpenIMP current | 25.000 | 12.868% | 3.738% |
+| open | OpenIMP current | 24.984 | 17.900% | 8.497% |
+
+T41 completion already provides the exact entropy payload size at command
+slot `+0x5c0`. The old path nevertheless scanned and cleared the entire
+multi-megabyte stream buffer, invalidated the host-only command mirror, and
+repeated command-ring cache operations when packaging every access unit.
+The current path trusts the validated completion length, clears only the
+header/payload prefix before submission, flushes only the hardware-visible
+command ring, and does not clear bytes beyond the published access unit.
+T31 and T40 retain their existing status discovery and cache behavior.
+
+A separate RTSP decoder probe on the all-open stack reported H.264,
+2560x1440, and 25/1 fps and decoded for ten seconds without warnings.
+
 ## Remaining work
 
 The zero-copy Raptor path is not yet correctness-safe. Raptor's reference-mode
