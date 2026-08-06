@@ -437,6 +437,38 @@ static void test_hwrc_level_lifecycle(void)
                &state, ring, OPENIMP_T41_EP3_LEVEL_OFFSET, 0u) == -1);
 }
 
+static void test_hwrc_ring_initialization(void)
+{
+    uint32_t ring[OPENIMP_T41_EP3_RING_SIZE / sizeof(uint32_t)];
+    size_t slot0 = 0u;
+    size_t slot1 = OPENIMP_T41_EP3_SLOT_STRIDE / sizeof(uint32_t);
+    size_t slot2 = 2u * slot1;
+    size_t level = OPENIMP_T41_EP3_LEVEL_OFFSET / sizeof(uint32_t);
+
+    memset(ring, 0xa5, sizeof(ring));
+    assert(openimp_t41_hwrc_ring_init(
+               ring, sizeof(ring), 3000000u) ==
+           OPENIMP_T41_EP3_PER_CORE_SIZE *
+               OPENIMP_T41_EP3_SLOT_COUNT);
+    assert(ring[slot0] == 0x0023d763u);
+    assert(ring[slot1] == 0x002e9803u);
+    assert(ring[slot2] == 0x00413b38u);
+    assert(ring[slot2 + 1u] == 0x0c090706u);
+    assert(ring[slot2 + 11u * 8u] == 1u);
+    assert(ring[slot2 + 11u * 8u + 1u] == 0xf8fafbfcu);
+    assert(ring[slot2 + 0x200u / 4u] == 0x5bu);
+    assert(ring[slot2 + 0x398u / 4u] == 0xb504f3u);
+    assert(ring[slot0 + level] == 0u);
+    assert(ring[slot1 + level] == 0u);
+    assert(ring[slot2 + level] == 0u);
+    assert(ring[OPENIMP_T41_EP3_RING_SIZE / sizeof(uint32_t) - 1u] == 0u);
+
+    assert(openimp_t41_hwrc_ring_init(
+               NULL, sizeof(ring), 3000000u) == 0u);
+    assert(openimp_t41_hwrc_ring_init(
+               ring, sizeof(ring) - 1u, 3000000u) == 0u);
+}
+
 int main(void)
 {
     uint8_t slot[OPENIMP_T41_CL_SLOT_SIZE];
@@ -481,6 +513,7 @@ int main(void)
     test_rate_control_statistics_oracle();
     test_entropy_status_oracle();
     test_combined_rate_control_status_oracle();
+    test_hwrc_ring_initialization();
     test_hwrc_level_lifecycle();
 
     puts("T41 command layout and builder: OK");

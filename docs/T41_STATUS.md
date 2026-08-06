@@ -113,6 +113,11 @@ The exact T41 OEM binary now identifies the EP3 buffer-manager transition:
   flushes those four bytes, and returns both addresses to the command builder.
 - The `0x1420` per-core size, `0x1500` slot stride, `0x1360` history window,
   and `0x1400` level handoff now live in a bounded, host-tested T41 component.
+- The recovered three-slot EP3 initializer now has a bounded, directly
+  host-tested T41 implementation behind its dedicated `0x3f00`-byte
+  allocation. Its static table image and per-picture bitrate targets match
+  the captured OEM IDR/P oracles; dynamic QP remains disabled while the full
+  feedback transition is validated.
 
 A live OpenIMP probe reproduced that scalar handoff and confirmed that T41
 hardware updates the field. The scalar handoff alone caused unstable payload

@@ -6985,7 +6985,29 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
                                       openimp_t41_motion_vector_slot_size(width, height));
 #endif
 
-#if defined(PLATFORM_T40) || defined(PLATFORM_T31)
+#if defined(PLATFORM_T41)
+                            /* T41 uses the same recovered table values but a
+                             * 0x1420-byte per-core image in three 0x1500-byte
+                             * picture-class slots. Keep this separate from
+                             * reconstruction storage, matching OEM ownership. */
+                            if (avpu_alloc_imp(OPENIMP_T41_EP3_RING_SIZE,
+                                               "AVPU_EP3", &enc->avpu.rec_trace_buf) == 0) {
+                                size_t ep3_initialized =
+                                    openimp_t41_hwrc_ring_init(
+                                        enc->avpu.rec_trace_buf.map,
+                                        enc->avpu.rec_trace_buf.size,
+                                        enc->avpu.bitrate ? enc->avpu.bitrate : 2000000u);
+                                int ep3_flush = avpu_flush_dma_buf(
+                                    fd, "ep3_ring", &enc->avpu.rec_trace_buf,
+                                    enc->avpu.rec_trace_buf.size);
+                                LOG_CODEC("AVPU: T41 ep3_ring phys=0x%08x size=%zu initialized=%zu flush=%d",
+                                          enc->avpu.rec_trace_buf.phy_addr,
+                                          enc->avpu.rec_trace_buf.size,
+                                          ep3_initialized, ep3_flush);
+                            } else {
+                                LOG_CODEC("AVPU: WARNING - failed to allocate T41 EP3 ring");
+                            }
+#elif defined(PLATFORM_T40) || defined(PLATFORM_T31)
                             /* The old trace-shadow allocations were based on a
                              * false interpretation of cmd[0x2d].  It is really
                              * the three-slot EP3 HW-rate-control ring. */
