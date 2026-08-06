@@ -149,6 +149,29 @@ T31 and T40 retain their existing status discovery and cache behavior.
 A separate RTSP decoder probe on the all-open stack reported H.264,
 2560x1440, and 25/1 fps and decoded for ten seconds without warnings.
 
+## Stage profile and first optimization
+
+The vendor 4.4 kernel exposes neither a usable perf-event interface nor
+ftrace, so the shared OpenIMP backend now contains an environment-gated stage
+profiler. A controlled pair of all-open, no-client QHD runs found that the
+FrameSource DQBUF blocks efficiently with zero retries and that the small
+rate-control and command-copy operations are not the main CPU cost.
+
+The dominant avoidable submit work was a diagnostic-only scalar traversal of
+4,096 sparse luma samples and 1,024 sparse chroma pairs on every frame. Its
+consumer intentionally discards the resulting means. Making that traversal
+opt-in reduced RVD CPU capacity from 1.882% to 1.386%, pipeline-process CPU
+from 4.125% to 3.597%, and whole-system CPU from 5.343% to 4.786%, while
+delivery remained 25 fps and all overflow/fatal/fault deltas remained zero.
+The required captured-source cache invalidation is unchanged.
+
+The post-reboot production run had profiling disabled and delivered 25.016
+fps with 1.177% RVD CPU capacity, 3.333% aggregate pipeline-process CPU
+capacity, and zero overflow/fatal/fault deltas.
+
+The detailed stage data and T41 MXUv3 measurements are in
+[`PROFILING.md`](PROFILING.md).
+
 ## Remaining work
 
 The zero-copy Raptor path is not yet correctness-safe. Raptor's reference-mode

@@ -11,6 +11,8 @@
 #include <time.h>
 #include <unistd.h>
 
+#include "openimp_profile.h"
+
 #include <imp/imp_common.h>
 #include <imp/imp_encoder.h>
 
@@ -647,9 +649,11 @@ int IMP_Encoder_PollingStream(int channel, uint32_t timeout_ms)
     uint64_t wait_us;
     uint64_t timeout_us;
     int result = -1;
+    OpenIMPProfileStamp poll_profile;
 
     if (!p2_valid_channel(channel))
         return -1;
+    poll_profile = openimp_profile_begin();
     if (__sync_add_and_fetch(&trace_count, 1u) <= 8u)
         p2_trace("openimp/P2: PollingStream enter ch=%d timeout=%u\n",
                  channel, timeout_ms);
@@ -657,10 +661,12 @@ int IMP_Encoder_PollingStream(int channel, uint32_t timeout_ms)
     pthread_mutex_lock(&ch->lock);
     if (ch->raw_stream) {
         pthread_mutex_unlock(&ch->lock);
+        openimp_profile_end(OPENIMP_PROFILE_ENCODER_POLL, poll_profile);
         return 0;
     }
     if (!ch->created || !ch->registered || !ch->receiving || !ch->codec) {
         pthread_mutex_unlock(&ch->lock);
+        openimp_profile_end(OPENIMP_PROFILE_ENCODER_POLL, poll_profile);
         return -1;
     }
     /*
@@ -694,6 +700,7 @@ int IMP_Encoder_PollingStream(int channel, uint32_t timeout_ms)
     if (wait_us && (!timeout_ms || wait_us > timeout_us)) {
         if (timeout_us)
             p2_sleep_us(timeout_us);
+        openimp_profile_end(OPENIMP_PROFILE_ENCODER_POLL, poll_profile);
         return -1;
     }
     if (wait_us)
@@ -703,6 +710,7 @@ int IMP_Encoder_PollingStream(int channel, uint32_t timeout_ms)
     if (!ch->created || !ch->registered || !ch->receiving || !ch->codec ||
         ch->raw_stream) {
         pthread_mutex_unlock(&ch->lock);
+        openimp_profile_end(OPENIMP_PROFILE_ENCODER_POLL, poll_profile);
         return ch->raw_stream ? 0 : -1;
     }
     if (interval_us) {
@@ -753,6 +761,8 @@ int IMP_Encoder_PollingStream(int channel, uint32_t timeout_ms)
     }
     if (!stream)
         goto done;
+    openimp_profile_count(OPENIMP_PROFILE_GETSTREAM_RETRIES,
+                          (uint64_t)retry);
     if (p2_capture_release_policy() == P2_CAPTURE_RELEASE_AFTER_COMPLETION &&
         frame != &ch->synthetic_frame &&
         IMP_FrameSource_ReleaseFrame(ch->source_channel, frame) == 0)
@@ -772,6 +782,7 @@ done:
     if (frame && frame != &ch->synthetic_frame)
         IMP_FrameSource_ReleaseFrame(ch->source_channel, frame);
     pthread_mutex_unlock(&p2_core_lock);
+    openimp_profile_end(OPENIMP_PROFILE_ENCODER_POLL, poll_profile);
     return result;
 }
 

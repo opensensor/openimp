@@ -23,6 +23,7 @@
 #include "dma_alloc.h"
 #include "imp_log_int.h"
 #include "kernel_interface.h"
+#include "openimp_profile.h"
 #include "t40_ep1.h"
 #if defined(PLATFORM_T41)
 #include "t41_command_builder.h"
@@ -395,6 +396,9 @@ struct avpu_flush_info { unsigned int addr; unsigned int len; unsigned int dir; 
 struct rmem_flush_info_codec { unsigned int addr; unsigned int size; unsigned int dir; };
 static int avpu_flush_cache(int fd, void *virt_addr, unsigned int size, unsigned int dir)
 {
+    OpenIMPProfileStamp profile;
+    int result;
+
     (void)fd; /* OEM uses rmem_fd, not avpu_fd */
     if (!virt_addr || size == 0) return -1;
 #if defined(PLATFORM_T41)
@@ -405,7 +409,11 @@ static int avpu_flush_cache(int fd, void *virt_addr, unsigned int size, unsigned
     if (size < 0x100000u)
         size = 0x100000u;
 #endif
-    return DMA_RmemFlushCache(virt_addr, size, (int)dir);
+    profile = openimp_profile_begin();
+    result = DMA_RmemFlushCache(virt_addr, size, (int)dir);
+    openimp_profile_count(OPENIMP_PROFILE_CACHE_BYTES, size);
+    openimp_profile_end(OPENIMP_PROFILE_CACHE_MAINTENANCE, profile);
+    return result;
 }
 
 static int avpu_flush_dma_buf(int fd, const char *tag, const AvpuDMABuf *buf, size_t size)
@@ -3798,6 +3806,8 @@ static void avpu_complete_frame(ALAvpuContext *ctx, const char *source)
         return;
     }
 
+    openimp_profile_frame_completed(frame_size);
+
     if (frames_encoded % 50 == 0)
     LOG_CODEC("%s: frames_encoded=%d frame_number=%u frames_consumed=%d buf_idx=%d frame_size=%u flush_ret=%d",
               source ? source : "EndEncoding",
@@ -4168,6 +4178,8 @@ static void* fifo_dequeue(long *fifo, unsigned int timeout_ms)
  */
 static void avpu_end_encoding_callback(void *user_data)
 {
+    OpenIMPProfileStamp completion_profile = openimp_profile_begin();
+    OpenIMPProfileStamp status_profile = completion_profile;
     ALAvpuContext *ctx = (ALAvpuContext*)user_data;
     struct {
         uint8_t raw[0x168];
@@ -4447,7 +4459,10 @@ static void avpu_end_encoding_callback(void *user_data)
      * encoder thread immediately, and publishing first lets the next Process
      * race the two lifecycle writes above.
      */
+    openimp_profile_end(OPENIMP_PROFILE_COMPLETION_STATUS, status_profile);
     avpu_complete_frame(ctx, "EndEncoding callback");
+    openimp_profile_end(OPENIMP_PROFILE_IRQ_COMPLETION,
+                        completion_profile);
 }
 
 /* EndAvcEntropy callback - separate OEM IRQ slot (core*4+2).
@@ -5284,8 +5299,13 @@ static uint32_t avpu_stream_buffer_effective_size(ALAvpuContext *ctx, int buf_id
         }
         if (raw_end > payload_offset && header_size <= payload_offset) {
             uint32_t payload_size = raw_end - payload_offset;
+            OpenIMPProfileStamp compact_profile = openimp_profile_begin();
             memmove(mutable_stream + header_size,
                     mutable_stream + payload_offset, payload_size);
+            openimp_profile_count(OPENIMP_PROFILE_COMPACT_BYTES,
+                                  payload_size);
+            openimp_profile_end(OPENIMP_PROFILE_STREAM_COMPACT,
+                                compact_profile);
             raw_end = header_size + payload_size;
 #if !defined(PLATFORM_T41)
             if (raw_end < (uint32_t)ctx->stream_buf_size)
@@ -5961,6 +5981,7 @@ static int avpu_queue_completed_stream(ALAvpuContext *ctx, int buf_idx, void *us
     uint32_t phys_addr;
     uint32_t virt_addr;
     int flush_ret = -1;
+    OpenIMPProfileStamp finalize_profile;
 
     if (frame_size_out)
         *frame_size_out = 0;
@@ -5974,7 +5995,9 @@ static int avpu_queue_completed_stream(ALAvpuContext *ctx, int buf_idx, void *us
     if (!enc || !enc->fifo_streams)
         return 0;
 
+    finalize_profile = openimp_profile_begin();
     frame_size = avpu_stream_buffer_effective_size(ctx, buf_idx, &flush_ret);
+    openimp_profile_end(OPENIMP_PROFILE_STREAM_FINALIZE, finalize_profile);
     if (frame_size_out)
         *frame_size_out = frame_size;
     if (flush_ret_out)
@@ -6632,6 +6655,8 @@ static int t40_encode_gray_jpeg(uint32_t width, uint32_t height,
  * Process a frame for encoding
  */
 int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
+    OpenIMPProfileStamp submit_profile;
+
     if (codec == NULL) {
         LOG_CODEC("Process: NULL codec pointer");
         return -1;
@@ -6653,6 +6678,8 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
         LOG_CODEC("Process: invalid frame pointer %p (too small, likely corrupted)", frame);
         return -1;
     }
+
+    submit_profile = openimp_profile_begin();
 
     /* Encode frame using hardware or software */
     HWStreamBuffer *hw_stream = (HWStreamBuffer*)malloc(sizeof(HWStreamBuffer));
@@ -6702,13 +6729,29 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
      * stale cached source lines over the ISP's newest DMA frame. */
     if (phys_addr && virt_addr && size) {
         int source_sync_ret =
-            DMA_RmemFlushCache((void *)(uintptr_t)virt_addr, size,
-                               2 /* DMA_FROM_DEVICE / invalidate */);
+            avpu_flush_cache(-1, (void *)(uintptr_t)virt_addr, size,
+                             2 /* DMA_FROM_DEVICE / invalidate */);
         static unsigned int source_sync_count;
+        static int collect_source_stats = -1;
         unsigned int source_sync_index =
             __sync_add_and_fetch(&source_sync_count, 1u);
 
-        {
+        if (collect_source_stats < 0) {
+            const char *stats_env = getenv("OPENIMP_SOURCE_STATS");
+
+            collect_source_stats =
+                stats_env && stats_env[0] && stats_env[0] != '0';
+#if defined(PLATFORM_T31)
+            if (!collect_source_stats) {
+                stats_env = getenv("OPENIMP_T31_FULL_FRAME_STATS");
+                collect_source_stats =
+                    stats_env && stats_env[0] && stats_env[0] != '0';
+            }
+#endif
+        }
+
+        if (collect_source_stats) {
+            OpenIMPProfileStamp stats_profile = openimp_profile_begin();
             const uint8_t *source = (const uint8_t *)(uintptr_t)virt_addr;
             uint32_t luma_size = width * height;
             uint32_t luma_storage_size = size * 2u / 3u;
@@ -6788,6 +6831,14 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
                       luma_mean_milli % 1000u, u_mean, v_mean,
                       sample_count, full_source_stats);
             }
+            openimp_profile_end(OPENIMP_PROFILE_SOURCE_STATS,
+                                stats_profile);
+        } else if (source_sync_index <= 4u ||
+                   (source_sync_index % 250u) == 0u) {
+            LOG_CODEC("Process: source sync #%u ret=%d phys=0x%08x "
+                      "virt=0x%08x size=%u stats=disabled",
+                      source_sync_index, source_sync_ret, phys_addr,
+                      virt_addr, size);
         }
     }
 #endif
@@ -7631,16 +7682,30 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
             }
 
 #if defined(PLATFORM_T41)
-            if (avpu_t41_prepare_picture(ctx, is_idr) != 0) {
-                LOG_CODEC("Process: failed to prepare T41 rate-control state frame=%u buf=%d",
-                          ctx->frame_number, buf_idx);
-                avpu_mark_stream_buffer_released(ctx, buf_idx);
-                free(hw_stream);
-                errno = EIO;
-                return -1;
+            {
+                OpenIMPProfileStamp picture_profile =
+                    openimp_profile_begin();
+                int picture_result =
+                    avpu_t41_prepare_picture(ctx, is_idr);
+
+                openimp_profile_end(
+                    OPENIMP_PROFILE_T41_PICTURE_STATE,
+                    picture_profile);
+                if (picture_result != 0) {
+                    LOG_CODEC("Process: failed to prepare T41 rate-control state frame=%u buf=%d",
+                              ctx->frame_number, buf_idx);
+                    avpu_mark_stream_buffer_released(ctx, buf_idx);
+                    free(hw_stream);
+                    errno = EIO;
+                    return -1;
+                }
             }
 #endif
-            uint32_t hdr_offset = avpu_prewrite_stream_headers(ctx, buf_idx, is_idr);
+            OpenIMPProfileStamp header_profile = openimp_profile_begin();
+            uint32_t hdr_offset = avpu_prewrite_stream_headers(
+                ctx, buf_idx, is_idr);
+            openimp_profile_end(OPENIMP_PROFILE_STREAM_HEADER,
+                                header_profile);
             ctx->stream_is_idr[buf_idx] = is_idr ? 1u : 0u;
             ctx->stream_timestamp[buf_idx] = timestamp;
 #if defined(PLATFORM_T41)
@@ -7671,17 +7736,33 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
 
             /* Fill Enc1 command registers — source addr and header offset go INTO the CL entry */
 #if defined(PLATFORM_T41)
-            if (avpu_t41_fill_command(ctx, cmd, buf_idx, phys_addr,
-                                      is_idr) != 0) {
-                LOG_CODEC("Process: failed to build T41 command frame=%u buf=%d",
-                          ctx->frame_number, buf_idx);
-                avpu_mark_stream_buffer_released(ctx, buf_idx);
-                free(hw_stream);
-                errno = EINVAL;
-                return -1;
+            {
+                OpenIMPProfileStamp command_profile =
+                    openimp_profile_begin();
+                int command_result = avpu_t41_fill_command(
+                    ctx, cmd, buf_idx, phys_addr, is_idr);
+
+                openimp_profile_end(OPENIMP_PROFILE_COMMAND_BUILD,
+                                    command_profile);
+                if (command_result != 0) {
+                    LOG_CODEC("Process: failed to build T41 command frame=%u buf=%d",
+                              ctx->frame_number, buf_idx);
+                    avpu_mark_stream_buffer_released(ctx, buf_idx);
+                    free(hw_stream);
+                    errno = EINVAL;
+                    return -1;
+                }
             }
 #else
-            fill_cmd_regs_enc1(ctx, cmd, buf_idx, phys_addr, hdr_offset, is_idr, ref_phys);
+            {
+                OpenIMPProfileStamp command_profile =
+                    openimp_profile_begin();
+
+                fill_cmd_regs_enc1(ctx, cmd, buf_idx, phys_addr, hdr_offset,
+                                   is_idr, ref_phys);
+                openimp_profile_end(OPENIMP_PROFILE_COMMAND_BUILD,
+                                    command_profile);
+            }
 #endif
             if (ctx->frame_number < 16u || is_idr) {
                 LOG_CODEC("Process: AVPU submit frame=%u CL[%u] buf=%d src=0x%08x rec=0x%08x ref=0x%08x ref_valid=%d idr=%d force=%d periodic=%d gop=%u cmd03=%08x cmd15=%08x cmd17=%08x cmd18=%08x map37=%08x ref38=%08x map67=%08x ref68=%08x ref69=%08x",
@@ -7729,7 +7810,13 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
                 errno = EAGAIN;
                 return -1;
             }
-            memcpy(submit_entry, entry, ctx->cl_entry_size);
+            {
+                OpenIMPProfileStamp copy_profile = openimp_profile_begin();
+
+                memcpy(submit_entry, entry, ctx->cl_entry_size);
+                openimp_profile_end(OPENIMP_PROFILE_COMMAND_COPY,
+                                    copy_profile);
+            }
             ctx->enc_core.cmd_list = entry;
 #if defined(PLATFORM_T41)
             /* Only the submit ring is consumed by hardware.  Flush from its
@@ -7788,9 +7875,11 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
              * 4. Callback +0x430
              * 5. AL_EncCore_Encode1 → Rtos_FlushCacheMemory + CL_PUSH */
 #if defined(PLATFORM_T41)
+            OpenIMPProfileStamp submit_io_profile = openimp_profile_begin();
             avpu_t41_reset_core(fd, 0);
             avpu_turn_on_gc(fd, 0);
 #else
+            OpenIMPProfileStamp submit_io_profile = openimp_profile_begin();
             avpu_turn_on_gc(fd, 0);
 #if defined(PLATFORM_T40) || defined(PLATFORM_T31)
             avpu_write_reg(fd, AVPU_REG_CORE_RESET(0), 0x00000001);
@@ -7913,6 +8002,8 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
             }
 
             cl_push_ret = avpu_write_reg(fd, AVPU_REG_CL_PUSH, 0x00000002);
+            openimp_profile_end(OPENIMP_PROFILE_AVPU_SUBMIT_IO,
+                                submit_io_profile);
             if (trace_submit) {
                 LOG_CODEC("AVPU: submit write CL[%u] CL_PUSH ret=%d val=0x00000002", idx, cl_push_ret);
 #if !defined(PLATFORM_T40) && !defined(PLATFORM_T31)
@@ -7987,6 +8078,7 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
 
         /* Do not dequeue here; GetStream() will handle stream retrieval */
         free(hw_stream);
+        openimp_profile_end(OPENIMP_PROFILE_ENCODE_SUBMIT, submit_profile);
         return submitted ? 0 : -1;
     } else {
         /* Software fallback */
@@ -8031,6 +8123,7 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
     codec_queue_frame_metadata(enc, user_data);
 
     /* Throttled: per-frame "encoded and queued" log suppressed */
+    openimp_profile_end(OPENIMP_PROFILE_ENCODE_SUBMIT, submit_profile);
     return 0;
 }
 

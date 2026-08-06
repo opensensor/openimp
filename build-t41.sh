@@ -60,6 +60,10 @@ base_flags="$base_flags -fPIC -G0 -fno-stack-protector -DPLATFORM_T41"
 strict_flags="$base_flags -Wall -Wextra -Werror"
 repo_includes="-I$project_dir/include -I$project_dir/src"
 
+"$compiler" $strict_flags $repo_includes \
+    -c "$project_dir/src/openimp_profile.c" \
+    -o "$output_dir/openimp_profile.o"
+
 for source in \
     openimp_p0 openimp_p1 openimp_p2_dma openimp_p2_encoder t40_ep1 \
     t41_command_layout t41_command_builder t41_hw_rate_control \
@@ -96,6 +100,7 @@ done
     -Wl,--version-script="$project_dir/src/t40/libimp.map" \
     -o "$output_dir/libimp.so" \
     "$output_dir/openimp_p0.o" \
+    "$output_dir/openimp_profile.o" \
     "$output_dir/openimp_p1.o" \
     "$output_dir/openimp_p2_dma.o" \
     "$output_dir/openimp_p2_encoder.o" \

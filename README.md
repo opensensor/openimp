@@ -85,3 +85,5 @@ records RVD import coverage in `build/t31/`.
 
 See [`docs/T40_STATUS.md`](docs/T40_STATUS.md) and
 [`docs/T41_STATUS.md`](docs/T41_STATUS.md) for the detailed runtime gates.
+See [`docs/PROFILING.md`](docs/PROFILING.md) for the opt-in on-device stage
+profiler, the current T41 QHD hotspot data, and the MXU2/MXU3 assessment.

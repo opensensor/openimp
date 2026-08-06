@@ -15,6 +15,8 @@
 #include <syslog.h>
 #include <unistd.h>
 
+#include "openimp_profile.h"
+
 #define OPENIMP_P1_MAGIC        0x50315434U /* "P1T4" */
 #define OPENIMP_FS_CHANNELS     4
 #define OPENIMP_FS_BUFFERS      4
@@ -1039,6 +1041,7 @@ int IMP_FrameSource_GetFrame(int channel, IMPFrameInfo **frame)
     uint32_t words[TISP_BUFFER_WORDS];
     uint32_t index;
     int attempts;
+    OpenIMPProfileStamp wait_profile;
 
     if (channel < 0 || channel >= OPENIMP_FS_CHANNELS || !frame)
         return -1;
@@ -1052,7 +1055,11 @@ int IMP_FrameSource_GetFrame(int channel, IMPFrameInfo **frame)
     }
     unlock_p1();
 
+    wait_profile = openimp_profile_begin();
+
     for (attempts = 0; attempts < 1000; attempts++) {
+        OpenIMPProfileStamp dqbuf_profile;
+
         /*
          * Dequeue a frame which the ISP has already completed before asking
          * the driver for another one.  The stock T40 WAIT_FRAME ioctl reports
@@ -1064,17 +1071,32 @@ int IMP_FrameSource_GetFrame(int channel, IMPFrameInfo **frame)
         memset(words, 0, sizeof(words));
         words[1] = TISP_BUF_TYPE_VIDEO_CAPTURE;
         words[12] = TISP_MEMORY_USERPTR;
-        if (record_ioctl(chn->fd, TISP_VIDIOC_DQBUF, words) >= 0)
+        dqbuf_profile = openimp_profile_begin();
+        if (record_ioctl(chn->fd, TISP_VIDIOC_DQBUF, words) >= 0) {
+            openimp_profile_end(OPENIMP_PROFILE_FRAME_SOURCE_DQBUF,
+                                dqbuf_profile);
             break;
-        if (errno != EAGAIN && errno != ENODATA && errno != EINTR)
+        }
+        openimp_profile_end(OPENIMP_PROFILE_FRAME_SOURCE_DQBUF,
+                            dqbuf_profile);
+        if (errno != EAGAIN && errno != ENODATA && errno != EINTR) {
+            openimp_profile_end(OPENIMP_PROFILE_FRAME_SOURCE_WAIT,
+                                wait_profile);
             return -1;
+        }
         usleep(1000);
     }
-    if (attempts == 1000)
+    openimp_profile_count(OPENIMP_PROFILE_DQBUF_RETRIES,
+                          (uint64_t)attempts);
+    if (attempts == 1000) {
+        openimp_profile_end(OPENIMP_PROFILE_FRAME_SOURCE_WAIT, wait_profile);
         return -1;
+    }
     index = words[0];
-    if (index >= chn->buffer_count)
+    if (index >= chn->buffer_count) {
+        openimp_profile_end(OPENIMP_PROFILE_FRAME_SOURCE_WAIT, wait_profile);
         return -1;
+    }
     lock_p1();
     buffer = &chn->buffers[index];
     buffer->queued = 0;
@@ -1095,6 +1117,7 @@ int IMP_FrameSource_GetFrame(int channel, IMPFrameInfo **frame)
     chn->frames_dequeued++;
     *frame = &buffer->frame;
     unlock_p1();
+    openimp_profile_end(OPENIMP_PROFILE_FRAME_SOURCE_WAIT, wait_profile);
     return 0;
 }
 
