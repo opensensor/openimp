@@ -96,6 +96,31 @@ profiler disabled and the compact open ISP module loaded, a subsequent run
 delivered 24.992 fps at 3.176% pipeline CPU with zero error deltas. A
 ten-second High-profile 2560x1440/25 RTSP decode completed without warnings.
 
+## Stable per-buffer completion descriptors
+
+The direct AVPU path previously performed two avoidable heap-allocation
+round trips per frame. `AL_Codec_Encode_Process()` allocated and zeroed a
+descriptor which the hardware path never published, then completion allocated
+a second descriptor which `ReleaseStream()` freed. The submit descriptor is
+now allocated only for the legacy and software paths. Direct AVPU completion
+uses one stable descriptor embedded beside each of its sixteen possible DMA
+buffer slots; the existing buffer state machine prevents that descriptor from
+being reused until `ReleaseStream()` returns the slot.
+
+The isolated submit change reduced the 750-frame `encode_submit` CPU average
+from 373 to 350 us/frame while preserving the nine cache operations and exact
+25 fps delivery. The completed pool run removed the remaining IRQ-side
+allocation/free and delivered 25.024 fps with 1.273% RVD CPU capacity, 3.573%
+aggregate pipeline-process CPU capacity, and zero overflow, kernel-fatal, or
+userspace-fault deltas. Both the library file size (316,760 bytes) and the
+loaded open ISP module were unchanged. A 249-frame decoder probe reported
+High-profile 2560x1440 video and no warnings.
+
+This is primarily a lifecycle and ownership improvement: the second CPU delta
+was below the noise floor, but stream descriptors can no longer fragment the
+heap over long runs. Binding metadata to a fixed DMA slot also matches the
+queue model expected by a future V4L2 mmap/DMABUF adapter.
+
 ## MXU assessment
 
 The T41 reports MXUv3 in `/proc/cpuinfo`. The

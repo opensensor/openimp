@@ -5477,6 +5477,11 @@ struct AL_CodecEncode {
     IMPEncoderGopAttr gop_cache;
     int loop_filter_beta_offset;
     int loop_filter_tc_offset;
+    /* Direct-AVPU completion descriptors have the same lifetime as their DMA
+     * slots.  Keeping them here avoids IRQ-side heap churn and gives each
+     * queued buffer a stable descriptor, matching the ownership model needed
+     * by mmap/DMABUF-style consumers. */
+    HWStreamBuffer avpu_stream_descriptors[16];
     ALAvpuContext avpu;            /* Vendor-like AL over /dev/avpu (scaffolding) */
 };
 
@@ -6045,12 +6050,10 @@ static int avpu_queue_completed_stream(ALAvpuContext *ctx, int buf_idx, void *us
         }
     }
 
-    hw_stream = (HWStreamBuffer *)calloc(1, sizeof(HWStreamBuffer));
-    if (!hw_stream) {
-        LOG_CODEC("%s: failed to allocate HWStreamBuffer for completed buf[%d]",
-                  source ? source : "EndEncoding", buf_idx);
-        return 0;
-    }
+    /* stream_buf_state prevents this DMA slot from being reused until
+     * ReleaseStream, so its descriptor can be reused on the same boundary. */
+    hw_stream = &enc->avpu_stream_descriptors[buf_idx];
+    memset(hw_stream, 0, sizeof(*hw_stream));
 
     phys_addr = ctx->stream_bufs[buf_idx].phy_addr;
     virt_addr = (uint32_t)(uintptr_t)ctx->stream_bufs[buf_idx].map;
@@ -6083,7 +6086,6 @@ static int avpu_queue_completed_stream(ALAvpuContext *ctx, int buf_idx, void *us
 
     if (Fifo_Queue(enc->fifo_streams, hw_stream, -1) == 0) {
         LOG_CODEC("%s: failed to queue completed stream buf[%d]", source ? source : "EndEncoding", buf_idx);
-        free(hw_stream);
         return 0;
     }
 
@@ -6704,17 +6706,11 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
 
     submit_profile = openimp_profile_begin();
 
-    /* Encode frame using hardware or software */
-    HWStreamBuffer *hw_stream = (HWStreamBuffer*)malloc(sizeof(HWStreamBuffer));
-    if (hw_stream == NULL) {
-        LOG_CODEC("Process: failed to allocate stream buffer");
-        return -1;
-    }
-    /* reserved[] carries AVPU user_data when explicitly populated.  Leaving
-     * it as heap garbage makes the software GetStream path skip its metadata
-     * FIFO; after four JPEG frames that FIFO fills and Process blocks while
-     * the public layer holds the shared core lock. */
-    memset(hw_stream, 0, sizeof(*hw_stream));
+    /* The direct AVPU path publishes a descriptor from its completion
+     * callback, so it does not need a speculative per-submit allocation.
+     * Legacy and software paths allocate their descriptor only when selected
+     * below. */
+    HWStreamBuffer *hw_stream = NULL;
 
     /* Extract frame data from VBM frame structure */
     /* VBMFrame structure layout (0x428 bytes):
@@ -7403,6 +7399,12 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
     if (enc->use_hardware == 1 && enc->hw_encoder_fd >= 0) {
         /* Legacy hardware path (/dev/venc, etc.) */
         HWFrameBuffer hw_frame;
+
+        hw_stream = (HWStreamBuffer *)calloc(1, sizeof(*hw_stream));
+        if (hw_stream == NULL) {
+            LOG_CODEC("Process: failed to allocate legacy stream buffer");
+            return -1;
+        }
         memset(&hw_frame, 0, sizeof(HWFrameBuffer));
         hw_frame.phys_addr = phys_addr;
         hw_frame.virt_addr = virt_addr;
@@ -8108,6 +8110,16 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
         uint32_t codec_type = (*(uint32_t*)(enc->codec_param + 0x20) >> 24) & 0xffu;
         int force_idr = __sync_lock_test_and_set(&enc->force_next_idr, 0);
         HWFrameBuffer hw_frame;
+
+        /* reserved[] carries AVPU user_data when explicitly populated.
+         * Keeping software descriptors zeroed makes GetStream use its
+         * metadata FIFO; heap garbage here used to fill that FIFO and block
+         * JPEG Process after four frames. */
+        hw_stream = (HWStreamBuffer *)calloc(1, sizeof(*hw_stream));
+        if (hw_stream == NULL) {
+            LOG_CODEC("Process: failed to allocate software stream buffer");
+            return -1;
+        }
         memset(&hw_frame, 0, sizeof(HWFrameBuffer));
         hw_frame.phys_addr = phys_addr;
         hw_frame.virt_addr = virt_addr;
@@ -8296,7 +8308,21 @@ int AL_Codec_Encode_ReleaseStream(void *codec, void *stream, void *user_data) {
             }
         }
 
-        free(hw_stream);
+        /* AVPU descriptors are embedded one-per-DMA-slot in the codec.  A
+         * legacy heap descriptor can still cross the lazy-init transition,
+         * so free only pointers which are not members of that stable pool. */
+        {
+            int pooled_descriptor = 0;
+
+            for (int i = 0; i < 16; ++i) {
+                if (hw_stream == &enc->avpu_stream_descriptors[i]) {
+                    pooled_descriptor = 1;
+                    break;
+                }
+            }
+            if (!pooled_descriptor)
+                free(hw_stream);
+        }
         return 0;
     }
 

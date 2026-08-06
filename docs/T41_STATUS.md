@@ -179,6 +179,16 @@ run with the compact open ISP module delivered 24.992 fps at 3.176% aggregate
 pipeline CPU and decoded ten seconds of High-profile 2560x1440/25 video
 without warnings.
 
+Direct AVPU submission and completion no longer allocate and free two stream
+descriptors per frame. Legacy/software paths retain their heap-backed
+descriptor, while the T-series hardware path publishes a stable descriptor
+owned by each DMA stream-buffer slot. The isolated submit-side change reduced
+profiled submit CPU from 373 to 350 us/frame. The completed pool delivered
+25.024 fps at 1.273% RVD and 3.573% aggregate pipeline-process CPU, with no
+connected clients and zero error deltas; a 249-frame QHD High-profile decode
+was clean. The fixed slot/descriptor ownership is deliberately compatible
+with a later V4L2 buffer queue.
+
 The detailed stage data and T41 MXUv3 measurements are in
 [`PROFILING.md`](PROFILING.md).
 
@@ -199,6 +209,7 @@ restart captured a short ISP-overflow burst, but an immediate controlled
 stop/start plus decoded capture did not reproduce it; clean boots and
 steady-state captures are also clean. OEM selector branches for configurations
 other than the captured normal-P CBR profile remain future correctness work.
-Throughput work, zero-copy
-optimization, and V4L2 support remain intentionally deferred until cross-SoC
-correctness and image-quality work are complete.
+Cache-ownership profiling and allocation/lifecycle optimization are now in
+progress without changing the public pipeline contract. Zero-copy and V4L2
+implementation remain deferred until the remaining ownership boundaries are
+measured and a cross-SoC queue contract is scoped.
