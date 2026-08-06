@@ -121,6 +121,42 @@ was below the noise floor, but stream descriptors can no longer fragment the
 heap over long runs. Binding metadata to a fixed DMA slot also matches the
 queue model expected by a future V4L2 mmap/DMABUF adapter.
 
+## T41 command/status ownership
+
+Per-site cache timing identified the T41 submit command ring as the largest
+removable pair of cache operations. Publishing its 4 KiB slot cost 26 us/frame
+and invalidating the hardware-written status cost another 37 us/frame because
+the T41 rmem cache ABI normalizes both requests to 1 MiB. The remaining seven
+transitions are distinct source, EP1/EP3, and output-stream ownership barriers.
+
+T41 now maps only the hardware-visible command/status ring uncached, with a
+safe fallback to the original cached mapping if `/dev/mem` is unavailable.
+The host command mirror remains cached. A tested publish helper uses the
+recovered OEM `PrepareCommand` range table to copy its seventeen non-empty
+command ranges and entropy command, while clearing both reused completion
+windows. This reduces the uncached transfer from the entire 4 KiB slot to
+roughly 1 KiB and prevents stale completion status from surviving slot reuse.
+`OPENIMP_T41_UNCACHED_COMMAND_RING=0` retains the old cached path for a
+diagnostic A/B.
+
+Matched 750-frame profiles on the same open QHD stack measured:
+
+| Metric | Cached full-slot ring | Sparse uncached ring | Change |
+| --- | ---: | ---: | ---: |
+| cache calls | 6,756 | 5,257 | -1,499 (two/frame after init) |
+| cache-accounted bytes | 10,455,498,752 | 8,883,683,328 | -15.0% |
+| command copy CPU/frame | 4 us | 17 us | +13 us |
+| encode-submit CPU/frame | 363 us | 334 us | -8.0% |
+| IRQ-completion CPU/frame | 322 us | 307 us | -4.7% |
+| submit + completion CPU/frame | 685 us | 641 us | -6.4% |
+| completed frames | 750 | 750 | unchanged |
+
+The follow-up no-client benchmark delivered 24.968 fps overall with zero ISP
+overflow, kernel-fatal, or userspace-fault events. A repeated ten-second
+High-profile 2560x1440 decoder run completed without warnings. The first RTSP
+open observed the already-documented single repeated timestamp at a ring epoch
+boundary; the immediate repeat was clean and no H.264 decode errors occurred.
+
 ## MXU assessment
 
 The T41 reports MXUv3 in `/proc/cpuinfo`. The

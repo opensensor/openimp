@@ -37,6 +37,15 @@ static const char *const profile_stage_names[OPENIMP_PROFILE_STAGE_COUNT] = {
     "command_copy",
     "avpu_submit_io",
     "cache_maintenance",
+    "cache_source_invalidate",
+    "cache_ep1_publish",
+    "cache_ep3_publish",
+    "cache_stream_prepare",
+    "cache_command_publish",
+    "cache_command_complete",
+    "cache_ep3_complete",
+    "cache_stream_complete",
+    "cache_stream_publish",
     "completion_status",
     "irq_completion",
     "stream_finalize",
@@ -81,6 +90,19 @@ static uint64_t profile_clock_ns(clockid_t clock_id)
         return 0u;
     return (uint64_t)now.tv_sec * 1000000000ull +
            (uint64_t)now.tv_nsec;
+}
+
+static void profile_record_elapsed(OpenIMPProfileStat *stat,
+                                   uint64_t wall_elapsed,
+                                   uint64_t cpu_elapsed)
+{
+    ++stat->calls;
+    stat->wall_ns += wall_elapsed;
+    stat->cpu_ns += cpu_elapsed;
+    if (wall_elapsed > stat->max_wall_ns)
+        stat->max_wall_ns = wall_elapsed;
+    if (cpu_elapsed > stat->max_cpu_ns)
+        stat->max_cpu_ns = cpu_elapsed;
 }
 
 int openimp_profile_enabled(void)
@@ -143,13 +165,31 @@ void openimp_profile_end(OpenIMPProfileStage stage,
 
     profile_take_lock();
     stat = &profile_stats[stage];
-    ++stat->calls;
-    stat->wall_ns += wall_elapsed;
-    stat->cpu_ns += cpu_elapsed;
-    if (wall_elapsed > stat->max_wall_ns)
-        stat->max_wall_ns = wall_elapsed;
-    if (cpu_elapsed > stat->max_cpu_ns)
-        stat->max_cpu_ns = cpu_elapsed;
+    profile_record_elapsed(stat, wall_elapsed, cpu_elapsed);
+    profile_drop_lock();
+}
+
+void openimp_profile_end_pair(OpenIMPProfileStage first,
+                              OpenIMPProfileStage second,
+                              OpenIMPProfileStamp start)
+{
+    uint64_t wall_end;
+    uint64_t cpu_end;
+    uint64_t wall_elapsed;
+    uint64_t cpu_elapsed;
+
+    if ((unsigned int)first >= OPENIMP_PROFILE_STAGE_COUNT ||
+        (unsigned int)second >= OPENIMP_PROFILE_STAGE_COUNT ||
+        start.wall_ns == 0u)
+        return;
+    wall_end = profile_clock_ns(CLOCK_MONOTONIC_RAW);
+    cpu_end = profile_clock_ns(CLOCK_THREAD_CPUTIME_ID);
+    wall_elapsed = wall_end >= start.wall_ns ? wall_end - start.wall_ns : 0u;
+    cpu_elapsed = cpu_end >= start.cpu_ns ? cpu_end - start.cpu_ns : 0u;
+
+    profile_take_lock();
+    profile_record_elapsed(&profile_stats[first], wall_elapsed, cpu_elapsed);
+    profile_record_elapsed(&profile_stats[second], wall_elapsed, cpu_elapsed);
     profile_drop_lock();
 }
 

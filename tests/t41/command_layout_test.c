@@ -484,6 +484,46 @@ static void test_hwrc_ring_initialization(void)
                ring, sizeof(ring) - 1u, 3000000u) == 0u);
 }
 
+static void test_sparse_command_publish(void)
+{
+    uint8_t source[OPENIMP_T41_CL_SLOT_SIZE];
+    uint8_t destination[OPENIMP_T41_CL_SLOT_SIZE];
+    uint8_t expected[OPENIMP_T41_CL_SLOT_SIZE];
+    size_t i;
+
+    for (i = 0u; i < sizeof(source); ++i)
+        source[i] = (uint8_t)(i * 37u + 11u);
+    memset(destination, 0xa5, sizeof(destination));
+    memset(expected, 0xa5, sizeof(expected));
+
+    for (i = 0u; i < openimp_t41_command_range_count; ++i) {
+        size_t offset =
+            (size_t)openimp_t41_command_ranges[i].word_offset * sizeof(uint32_t);
+        size_t bytes =
+            (size_t)openimp_t41_command_ranges[i].word_count * sizeof(uint32_t);
+
+        memcpy(expected + offset, source + offset, bytes);
+    }
+    memset(expected + OPENIMP_T41_CL_STATUS_OFFSET, 0,
+           OPENIMP_T41_CL_STATUS_SIZE);
+    memcpy(expected + OPENIMP_T41_CL_ENTROPY_OFFSET,
+           source + OPENIMP_T41_CL_ENTROPY_OFFSET,
+           OPENIMP_T41_CL_ENTROPY_SIZE);
+    memset(expected + OPENIMP_T41_CL_ENTROPY_STATUS_OFFSET, 0,
+           OPENIMP_T41_CL_ENTROPY_SIZE);
+
+    assert(openimp_t41_command_publish(
+               destination, sizeof(destination), source, sizeof(source)) == 0);
+    assert(memcmp(destination, expected, sizeof(destination)) == 0);
+    assert(openimp_t41_command_publish(
+               NULL, sizeof(destination), source, sizeof(source)) == -1);
+    assert(openimp_t41_command_publish(
+               destination, sizeof(destination), NULL, sizeof(source)) == -1);
+    assert(openimp_t41_command_publish(
+               destination, sizeof(destination) - 1u,
+               source, sizeof(source)) == -1);
+}
+
 int main(void)
 {
     uint8_t slot[OPENIMP_T41_CL_SLOT_SIZE];
@@ -528,6 +568,7 @@ int main(void)
     test_rate_control_statistics_oracle();
     test_entropy_status_oracle();
     test_combined_rate_control_status_oracle();
+    test_sparse_command_publish();
     test_hwrc_ring_initialization();
     test_hwrc_level_lifecycle();
 

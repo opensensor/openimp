@@ -68,6 +68,48 @@ int openimp_t41_command_slot_is_valid(size_t slot_size)
                slot_size - OPENIMP_T41_CL_STATUS_OFFSET;
 }
 
+int openimp_t41_command_publish(void *destination, size_t destination_size,
+                                const void *source, size_t source_size)
+{
+    uint8_t *dst = (uint8_t *)destination;
+    const uint8_t *src = (const uint8_t *)source;
+    size_t i;
+
+    if (!dst || !src ||
+        !openimp_t41_command_slot_is_valid(destination_size) ||
+        !openimp_t41_command_slot_is_valid(source_size) ||
+        OPENIMP_T41_CL_ENTROPY_OFFSET > destination_size ||
+        OPENIMP_T41_CL_ENTROPY_SIZE >
+            destination_size - OPENIMP_T41_CL_ENTROPY_OFFSET ||
+        OPENIMP_T41_CL_ENTROPY_STATUS_OFFSET > destination_size ||
+        OPENIMP_T41_CL_ENTROPY_SIZE >
+            destination_size - OPENIMP_T41_CL_ENTROPY_STATUS_OFFSET)
+        return -1;
+
+    /* PrepareCommand publishes only the recovered non-empty command ranges.
+     * Completion owns both status windows, so clear them before reusing a
+     * slot rather than copying the host mirror's unrelated padding. */
+    for (i = 0u; i < openimp_t41_command_range_count; ++i) {
+        size_t offset =
+            (size_t)openimp_t41_command_ranges[i].word_offset * sizeof(uint32_t);
+        size_t bytes =
+            (size_t)openimp_t41_command_ranges[i].word_count * sizeof(uint32_t);
+
+        if (offset > destination_size || bytes > destination_size - offset ||
+            offset > source_size || bytes > source_size - offset)
+            return -1;
+        memcpy(dst + offset, src + offset, bytes);
+    }
+    memset(dst + OPENIMP_T41_CL_STATUS_OFFSET, 0,
+           OPENIMP_T41_CL_STATUS_SIZE);
+    memcpy(dst + OPENIMP_T41_CL_ENTROPY_OFFSET,
+           src + OPENIMP_T41_CL_ENTROPY_OFFSET,
+           OPENIMP_T41_CL_ENTROPY_SIZE);
+    memset(dst + OPENIMP_T41_CL_ENTROPY_STATUS_OFFSET, 0,
+           OPENIMP_T41_CL_ENTROPY_SIZE);
+    return 0;
+}
+
 void *openimp_t41_command_status_ptr(void *slot, size_t slot_size)
 {
     if (!slot || !openimp_t41_command_slot_is_valid(slot_size))

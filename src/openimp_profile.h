@@ -15,6 +15,15 @@ typedef enum {
     OPENIMP_PROFILE_COMMAND_COPY,
     OPENIMP_PROFILE_AVPU_SUBMIT_IO,
     OPENIMP_PROFILE_CACHE_MAINTENANCE,
+    OPENIMP_PROFILE_CACHE_SOURCE_INVALIDATE,
+    OPENIMP_PROFILE_CACHE_EP1_PUBLISH,
+    OPENIMP_PROFILE_CACHE_EP3_PUBLISH,
+    OPENIMP_PROFILE_CACHE_STREAM_PREPARE,
+    OPENIMP_PROFILE_CACHE_COMMAND_PUBLISH,
+    OPENIMP_PROFILE_CACHE_COMMAND_COMPLETE,
+    OPENIMP_PROFILE_CACHE_EP3_COMPLETE,
+    OPENIMP_PROFILE_CACHE_STREAM_COMPLETE,
+    OPENIMP_PROFILE_CACHE_STREAM_PUBLISH,
     OPENIMP_PROFILE_COMPLETION_STATUS,
     OPENIMP_PROFILE_IRQ_COMPLETION,
     OPENIMP_PROFILE_STREAM_FINALIZE,
@@ -40,6 +49,9 @@ int openimp_profile_enabled(void);
 OpenIMPProfileStamp openimp_profile_begin(void);
 void openimp_profile_end(OpenIMPProfileStage stage,
                          OpenIMPProfileStamp start);
+void openimp_profile_end_pair(OpenIMPProfileStage first,
+                              OpenIMPProfileStage second,
+                              OpenIMPProfileStamp start);
 void openimp_profile_count(OpenIMPProfileCounter counter, uint64_t amount);
 void openimp_profile_frame_completed(uint32_t stream_bytes);
 

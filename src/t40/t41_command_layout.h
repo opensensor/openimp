@@ -27,6 +27,8 @@ extern const OpenIMPT41CommandRange openimp_t41_command_ranges[];
 extern const size_t openimp_t41_command_range_count;
 
 int openimp_t41_command_slot_is_valid(size_t slot_size);
+int openimp_t41_command_publish(void *destination, size_t destination_size,
+                                const void *source, size_t source_size);
 void *openimp_t41_command_status_ptr(void *slot, size_t slot_size);
 const void *openimp_t41_command_status_const_ptr(const void *slot,
                                                  size_t slot_size);

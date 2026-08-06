@@ -397,7 +397,9 @@ struct avpu_flush_info { unsigned int addr; unsigned int len; unsigned int dir; 
  * Uses the RMEM fd (not AVPU fd) and the rmem-mapped virtual address. */
 #define RMEM_FLUSH_IOCTL 0xc00c7200
 struct rmem_flush_info_codec { unsigned int addr; unsigned int size; unsigned int dir; };
-static int avpu_flush_cache(int fd, void *virt_addr, unsigned int size, unsigned int dir)
+static int avpu_flush_cache_internal(int fd, void *virt_addr,
+                                     unsigned int size, unsigned int dir,
+                                     OpenIMPProfileStage site)
 {
     OpenIMPProfileStamp profile;
     int result;
@@ -415,11 +417,31 @@ static int avpu_flush_cache(int fd, void *virt_addr, unsigned int size, unsigned
     profile = openimp_profile_begin();
     result = DMA_RmemFlushCache(virt_addr, size, (int)dir);
     openimp_profile_count(OPENIMP_PROFILE_CACHE_BYTES, size);
-    openimp_profile_end(OPENIMP_PROFILE_CACHE_MAINTENANCE, profile);
+    if ((unsigned int)site < OPENIMP_PROFILE_STAGE_COUNT)
+        openimp_profile_end_pair(OPENIMP_PROFILE_CACHE_MAINTENANCE,
+                                 site, profile);
+    else
+        openimp_profile_end(OPENIMP_PROFILE_CACHE_MAINTENANCE, profile);
     return result;
 }
 
-static int avpu_flush_dma_buf(int fd, const char *tag, const AvpuDMABuf *buf, size_t size)
+static int avpu_flush_cache(int fd, void *virt_addr, unsigned int size,
+                            unsigned int dir)
+{
+    return avpu_flush_cache_internal(fd, virt_addr, size, dir,
+                                     OPENIMP_PROFILE_STAGE_COUNT);
+}
+
+static int avpu_flush_cache_profiled(int fd, void *virt_addr,
+                                     unsigned int size, unsigned int dir,
+                                     OpenIMPProfileStage stage)
+{
+    return avpu_flush_cache_internal(fd, virt_addr, size, dir, stage);
+}
+
+static int avpu_flush_dma_buf_internal(int fd, const char *tag,
+                                       const AvpuDMABuf *buf, size_t size,
+                                       OpenIMPProfileStage stage)
 {
     size_t flush_size = size;
     int ret;
@@ -432,7 +454,12 @@ static int avpu_flush_dma_buf(int fd, const char *tag, const AvpuDMABuf *buf, si
     if (flush_size < 0x100000u)
         flush_size = 0x100000u;
 #endif
-    ret = avpu_flush_cache(fd, buf->map, (unsigned int)flush_size, 1 /*WBACK*/);
+    if ((unsigned int)stage < OPENIMP_PROFILE_STAGE_COUNT)
+        ret = avpu_flush_cache_profiled(
+            fd, buf->map, (unsigned int)flush_size, 1 /* WBACK */, stage);
+    else
+        ret = avpu_flush_cache(fd, buf->map, (unsigned int)flush_size,
+                               1 /* WBACK */);
     { static unsigned int fl_count = 0; unsigned int c = __sync_add_and_fetch(&fl_count, 1);
       if (c <= 10 || (c % 1000) == 0)
         LOG_CODEC("AVPU: flush %s phys=0x%08x size=0x%08x requested=0x%08x ret=%d [#%u]",
@@ -441,6 +468,22 @@ static int avpu_flush_dma_buf(int fd, const char *tag, const AvpuDMABuf *buf, si
     }
     return ret;
 }
+
+static int avpu_flush_dma_buf(int fd, const char *tag,
+                              const AvpuDMABuf *buf, size_t size)
+{
+    return avpu_flush_dma_buf_internal(fd, tag, buf, size,
+                                       OPENIMP_PROFILE_STAGE_COUNT);
+}
+
+#if defined(PLATFORM_T41)
+static int avpu_flush_dma_buf_profiled(int fd, const char *tag,
+                                       const AvpuDMABuf *buf, size_t size,
+                                       OpenIMPProfileStage stage)
+{
+    return avpu_flush_dma_buf_internal(fd, tag, buf, size, stage);
+}
+#endif
 
 /* Direct ioctl helpers (OEM parity - no wrapper functions) */
 static int avpu_write_reg(int fd, unsigned int off, unsigned int val)
@@ -2485,12 +2528,12 @@ static int avpu_t41_prepare_picture(ALAvpuContext *ctx, int is_idr)
         return -1;
 
     /* T41's rmem cache API requires the normalized 1 MiB operation. */
-    interm_flush = avpu_flush_dma_buf(
+    interm_flush = avpu_flush_dma_buf_profiled(
         ctx->fd, "t41_ep1_picture", &ctx->interm_buf,
-        ctx->interm_ep1_size);
-    ep3_flush = avpu_flush_dma_buf(
+        ctx->interm_ep1_size, OPENIMP_PROFILE_CACHE_EP1_PUBLISH);
+    ep3_flush = avpu_flush_dma_buf_profiled(
         ctx->fd, "t41_ep3_picture", &ctx->rec_trace_buf,
-        ctx->rec_trace_buf.size);
+        ctx->rec_trace_buf.size, OPENIMP_PROFILE_CACHE_EP3_PUBLISH);
     if (interm_flush != 0 || ep3_flush != 0) {
         LOG_CODEC("AVPU: T41 picture-state flush failed ep1=%d ep3=%d",
                   interm_flush, ep3_flush);
@@ -4230,8 +4273,10 @@ static void avpu_end_encoding_callback(void *user_data)
          */
         if (!ctx->cl_submit_ring.uncached_map &&
             avpu_cl_submit_ring_base(ctx))
-            avpu_flush_cache(ctx->fd, ctx->cl_submit_ring.map,
-                             0x100000, 0 /* BIDIRECTIONAL */);
+            avpu_flush_cache_profiled(
+                ctx->fd, ctx->cl_submit_ring.map,
+                0x100000, 0 /* BIDIRECTIONAL */,
+                OPENIMP_PROFILE_CACHE_COMMAND_COMPLETE);
 #else
         if (!ctx->cl_ring.uncached_map && avpu_cl_ring_base(ctx))
             avpu_flush_cache(ctx->fd, ctx->cl_ring.map, 0x100000, 0 /* BIDIRECTIONAL */);
@@ -4348,9 +4393,10 @@ static void avpu_end_encoding_callback(void *user_data)
                 OPENIMP_T41_STREAM_PAYLOAD_OFFSET) {
             unsigned int completed_ep3_slot =
                 ctx->stream_is_idr[buf_idx] ? 2u : 1u;
-            int ep3_invalidate = avpu_flush_cache(
+            int ep3_invalidate = avpu_flush_cache_profiled(
                 ctx->fd, ctx->rec_trace_buf.map, 0x100000u,
-                0 /* BIDIRECTIONAL */);
+                0 /* BIDIRECTIONAL */,
+                OPENIMP_PROFILE_CACHE_EP3_COMPLETE);
             int level_update = ep3_invalidate == 0
                 ? openimp_t41_hwrc_level_update(
                     &ctx->t41_hwrc_level, ctx->rec_trace_buf.map,
@@ -5042,8 +5088,17 @@ static uint32_t avpu_stream_buffer_effective_size(ALAvpuContext *ctx, int buf_id
      * reliably on this kernel; dir=0 with large size is the proven
      * full-cache-flush path from the pre-submit code. */
     {
-        int inv_ret = avpu_flush_cache(ctx->fd, ctx->stream_bufs[buf_idx].map,
-                                       0x100000, 0 /*BIDIRECTIONAL*/);
+        int inv_ret;
+#if defined(PLATFORM_T41)
+        inv_ret = avpu_flush_cache_profiled(
+            ctx->fd, ctx->stream_bufs[buf_idx].map,
+            0x100000, 0 /* BIDIRECTIONAL */,
+            OPENIMP_PROFILE_CACHE_STREAM_COMPLETE);
+#else
+        inv_ret = avpu_flush_cache(ctx->fd,
+                                   ctx->stream_bufs[buf_idx].map,
+                                   0x100000, 0 /* BIDIRECTIONAL */);
+#endif
         if (flush_ret_out)
             *flush_ret_out = inv_ret;
     }
@@ -5328,8 +5383,9 @@ static uint32_t avpu_stream_buffer_effective_size(ALAvpuContext *ctx, int buf_id
             /* Raptor consumes the same pages through its FrameSource rmem
              * alias.  Publish the compacted AU to RAM before invalidating
              * that second alias in avpu_queue_completed_stream(). */
-            if (avpu_flush_cache(ctx->fd, mutable_stream, raw_end,
-                                 1 /* WBACK */) != 0)
+            if (avpu_flush_cache_profiled(
+                    ctx->fd, mutable_stream, raw_end, 1 /* WBACK */,
+                    OPENIMP_PROFILE_CACHE_STREAM_PUBLISH) != 0)
                 LOG_CODEC("AVPU: T41 compacted stream writeback failed buf[%d] len=%u",
                           buf_idx, raw_end);
 #endif
@@ -6747,9 +6803,17 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
      * without invalidating the captured frame first, that writeback can push
      * stale cached source lines over the ISP's newest DMA frame. */
     if (phys_addr && virt_addr && size) {
-        int source_sync_ret =
-            avpu_flush_cache(-1, (void *)(uintptr_t)virt_addr, size,
-                             2 /* DMA_FROM_DEVICE / invalidate */);
+        int source_sync_ret;
+#if defined(PLATFORM_T41)
+        source_sync_ret = avpu_flush_cache_profiled(
+            -1, (void *)(uintptr_t)virt_addr, size,
+            2 /* DMA_FROM_DEVICE / invalidate */,
+            OPENIMP_PROFILE_CACHE_SOURCE_INVALIDATE);
+#else
+        source_sync_ret = avpu_flush_cache(
+            -1, (void *)(uintptr_t)virt_addr, size,
+            2 /* DMA_FROM_DEVICE / invalidate */);
+#endif
         static unsigned int source_sync_count;
         static int collect_source_stats = -1;
         unsigned int source_sync_index =
@@ -7122,6 +7186,37 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
                                     enc->avpu.cl_idx = 0;
                                     memset(virt, 0, cl_bytes);
                                     memset(submit_virt, 0, cl_bytes);
+#if defined(PLATFORM_T41)
+                                    {
+                                        const char *uncached_command_ring =
+                                            getenv("OPENIMP_T41_UNCACHED_COMMAND_RING");
+
+                                        /* Prefer one coherent mapping for the
+                                         * hardware-owned submit/status slot.
+                                         * Set the environment value to 0 only
+                                         * for a cached-path diagnostic A/B. */
+                                        if (!uncached_command_ring ||
+                                            uncached_command_ring[0] != '0') {
+                                            int initial_publish =
+                                                avpu_flush_cache(
+                                                    fd, submit_virt,
+                                                    (unsigned int)cl_bytes,
+                                                    1 /* WBACK */);
+
+                                            if (initial_publish == 0)
+                                                enc->avpu.cl_submit_ring.uncached_map =
+                                                    avpu_remap_uncached(
+                                                        submit_phys, cl_bytes);
+                                            if (enc->avpu.cl_submit_ring.uncached_map) {
+                                                LOG_CODEC("AVPU: T41 submit command/status ring uses coherent uncached mapping %p",
+                                                          enc->avpu.cl_submit_ring.uncached_map);
+                                            } else {
+                                                LOG_CODEC("AVPU: T41 uncached submit ring unavailable publish=%d; retaining cached mapping",
+                                                          initial_publish);
+                                            }
+                                        }
+                                    }
+#endif
                                     LOG_CODEC("AVPU: cmdlist ring phys=0x%08x size=%zu entries=%u", phys, cl_bytes, enc->avpu.cl_count);
                                     LOG_CODEC("AVPU: submit cmdlist ring phys=0x%08x size=%zu entries=%u",
                                               submit_phys, cl_bytes, enc->avpu.cl_count);
@@ -7749,9 +7844,10 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
             if (buf_idx < ctx->stream_bufs_used &&
                 ctx->stream_bufs[buf_idx].map) {
 #if defined(PLATFORM_T41)
-                avpu_flush_cache(fd, ctx->stream_bufs[buf_idx].map,
-                                 OPENIMP_T41_STREAM_PAYLOAD_OFFSET,
-                                 1 /* WBACK */);
+                avpu_flush_cache_profiled(
+                    fd, ctx->stream_bufs[buf_idx].map,
+                    OPENIMP_T41_STREAM_PAYLOAD_OFFSET, 1 /* WBACK */,
+                    OPENIMP_PROFILE_CACHE_STREAM_PREPARE);
 #else
                 avpu_flush_cache(fd, ctx->stream_bufs[buf_idx].map,
                                  (unsigned int)ctx->stream_buf_size,
@@ -7828,6 +7924,7 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
             uint8_t *submit_entry = avpu_cl_submit_entry_ptr(ctx, idx);
             int cl_flush_ret;
             int submit_flush_ret;
+            int command_copy_ret = 0;
             if (!submit_entry) {
                 LOG_CODEC("Process: submit CL[%u] missing", idx);
                 avpu_mark_stream_buffer_released(ctx, buf_idx);
@@ -7838,9 +7935,23 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
             {
                 OpenIMPProfileStamp copy_profile = openimp_profile_begin();
 
+#if defined(PLATFORM_T41)
+                command_copy_ret = openimp_t41_command_publish(
+                    submit_entry, ctx->cl_entry_size,
+                    entry, ctx->cl_entry_size);
+#else
                 memcpy(submit_entry, entry, ctx->cl_entry_size);
+#endif
                 openimp_profile_end(OPENIMP_PROFILE_COMMAND_COPY,
                                     copy_profile);
+            }
+            if (command_copy_ret != 0) {
+                LOG_CODEC("Process: failed to publish T41 command slot CL[%u]",
+                          idx);
+                avpu_mark_stream_buffer_released(ctx, buf_idx);
+                free(hw_stream);
+                errno = EINVAL;
+                return -1;
             }
             ctx->enc_core.cmd_list = entry;
 #if defined(PLATFORM_T41)
@@ -7850,9 +7961,10 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
             cl_flush_ret = 0;
             submit_flush_ret = ctx->cl_submit_ring.uncached_map
                 ? 0
-                : avpu_flush_cache(fd, ctx->cl_submit_ring.map,
-                                   (unsigned int)cl_flush_size,
-                                   1 /* WBACK */);
+                : avpu_flush_cache_profiled(
+                    fd, ctx->cl_submit_ring.map,
+                    (unsigned int)cl_flush_size, 1 /* WBACK */,
+                    OPENIMP_PROFILE_CACHE_COMMAND_PUBLISH);
 #else
             cl_flush_ret = ctx->cl_ring.uncached_map
                 ? 0

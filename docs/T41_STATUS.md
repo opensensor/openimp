@@ -189,6 +189,17 @@ connected clients and zero error deltas; a 249-frame QHD High-profile decode
 was clean. The fixed slot/descriptor ownership is deliberately compatible
 with a later V4L2 buffer queue.
 
+Per-site cache profiling then isolated the hardware-visible command/status
+ring. T41 now publishes the recovered non-empty OEM command ranges through a
+coherent uncached mapping and clears the two completion windows before slot
+reuse. It falls back to the prior cached mapping if the uncached remap is not
+available, and `OPENIMP_T41_UNCACHED_COMMAND_RING=0` remains an A/B override.
+The change removed two normalized 1 MiB cache operations per frame: cache
+calls fell from 6,756 to 5,257 over 750 frames and combined submit/completion
+CPU fell from 685 to 641 us/frame. A no-client run delivered 24.968 fps with
+zero error deltas, and the repeated QHD High-profile decoder gate was clean.
+The sparse publish layout is covered by the host command suite.
+
 The detailed stage data and T41 MXUv3 measurements are in
 [`PROFILING.md`](PROFILING.md).
 
