@@ -121,6 +121,16 @@ was below the noise floor, but stream descriptors can no longer fragment the
 heap over long runs. Binding metadata to a fixed DMA slot also matches the
 queue model expected by a future V4L2 mmap/DMABUF adapter.
 
+The AVPU waiter still independently allocated a small aligned `WAIT_IRQ`
+result buffer for every frame. Some vendor kernels copy beyond the four-byte
+interrupt ID, so the proven 0x40-byte slack and 16-byte alignment remain, but
+the interrupt thread now keeps that storage for its lifetime. The ioctl is
+synchronous and only that thread accesses the buffer, eliminating another 25
+allocation/free pairs per second at the normal T41 cadence without changing
+the kernel ABI. The combined T41 production checkpoint delivered 24.996 fps;
+RVD used 0.809% of total two-core capacity, down directionally from 1.047% in
+the immediately preceding full-rate run, with zero fault deltas.
+
 ## T41 command/status ownership
 
 Per-site cache timing identified the T41 submit command ring as the largest
