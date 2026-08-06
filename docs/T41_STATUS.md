@@ -45,7 +45,9 @@ platform branches represent measured public or kernel ABI differences.
 - The exact OEM `EncodingStatusRegsToSliceStatus` mapping is recovered as a
   bounded, host-tested command-slot decoder. It preserves the entropy-owned
   portion of the 0x70-byte slice status while copying the T41 counter, packed
-  QP, and overflow fields. It is not yet used to drive live rate control.
+  QP, and overflow fields. The complementary entropy-status mapping and the
+  subsequent 0x28-byte `AL_RateCtrl_ExtractStatistics` projection are also
+  recovered and tested. They are not yet used to drive live rate control.
 - Decoder probes identify valid High-profile H.264 on both channels. Captured
   boundary access units contain valid SPS/PPS/IDR NAL units and decode at the
   configured geometry. Submit-time IDR state is carried with each hardware

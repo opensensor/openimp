@@ -177,3 +177,71 @@ int openimp_t41_command_extract_encoding_status(
     slice[2] = (uint8_t)overflow;
     return 0;
 }
+
+int openimp_t41_command_extract_entropy_status(
+    const void *slot, size_t slot_size,
+    void *slice_status, size_t slice_status_size,
+    uint32_t stream_budget)
+{
+    const uint8_t *command = (const uint8_t *)slot;
+    const uint8_t *status;
+    uint8_t *slice = (uint8_t *)slice_status;
+    uint32_t status_word;
+    uint32_t bytes;
+    uint32_t rounded_bytes;
+    uint32_t rounded_budget;
+    uint32_t command_flags;
+
+    if (!command || !slice ||
+        !openimp_t41_command_slot_is_valid(slot_size) ||
+        slice_status_size < OPENIMP_T41_SLICE_STATUS_SIZE)
+        return -1;
+
+    command_flags = openimp_t41_read_u32(command, 0x0cu);
+    status = command + (((command_flags & (1u << 11)) == 0u)
+                        ? OPENIMP_T41_CL_ENTROPY_STATUS_OFFSET
+                        : OPENIMP_T41_CL_STATUS_OFFSET);
+    status_word = openimp_t41_read_u32(status, 0x00u);
+    bytes = status_word & 0x3fffffffu;
+    openimp_t41_write_u32(slice, 0x08u, bytes);
+    openimp_t41_write_u32(slice, 0x0cu,
+                          openimp_t41_read_u32(status, 0x04u));
+
+    if ((command_flags & (1u << 11)) != 0u) {
+        uint32_t slice_count =
+            (uint32_t)openimp_t41_read_u16(slice, 0x42u) + 1u;
+
+        bytes += (uint32_t)command[0x12u] * slice_count;
+    }
+    rounded_bytes = (bytes + 0x1fu) & ~0x1fu;
+    rounded_budget = ((stream_budget >> 5) - 1u) << 5;
+    slice[0] = (uint8_t)(status_word >> 31);
+    slice[1] = (uint8_t)(rounded_budget < rounded_bytes);
+    return 0;
+}
+
+int openimp_t41_slice_status_extract_rate_control(
+    const void *slice_status, size_t slice_status_size,
+    void *rate_control_stats, size_t rate_control_stats_size)
+{
+    const uint8_t *slice = (const uint8_t *)slice_status;
+    uint8_t *stats = (uint8_t *)rate_control_stats;
+
+    if (!slice || !stats ||
+        slice_status_size < OPENIMP_T41_SLICE_STATUS_SIZE ||
+        rate_control_stats_size < OPENIMP_T41_RC_STATS_SIZE)
+        return -1;
+
+    openimp_t41_write_u32(stats, 0x00u, openimp_t41_read_u32(slice, 0x04u));
+    openimp_t41_write_u32(stats, 0x04u, openimp_t41_read_u32(slice, 0x08u));
+    openimp_t41_write_u32(stats, 0x08u, openimp_t41_read_u32(slice, 0x0cu));
+    openimp_t41_write_u32(stats, 0x0cu, openimp_t41_read_u32(slice, 0x1cu));
+    openimp_t41_write_u32(stats, 0x10u, openimp_t41_read_u32(slice, 0x20u));
+    openimp_t41_write_u32(stats, 0x14u, openimp_t41_read_u32(slice, 0x24u));
+    openimp_t41_write_u32(stats, 0x18u, openimp_t41_read_u32(slice, 0x28u));
+    openimp_t41_write_u32(stats, 0x1cu, openimp_t41_read_u32(slice, 0x2cu));
+    openimp_t41_write_u32(stats, 0x20u, openimp_t41_read_u32(slice, 0x38u));
+    openimp_t41_write_u16(stats, 0x24u, openimp_t41_read_u16(slice, 0x3eu));
+    openimp_t41_write_u16(stats, 0x26u, openimp_t41_read_u16(slice, 0x40u));
+    return 0;
+}
