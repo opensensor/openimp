@@ -50,6 +50,10 @@ repo_includes="-I$project_dir/include -I$project_dir/src"
     -c "$project_dir/src/openimp_profile.c" \
     -o "$output_dir/openimp_profile.o"
 
+"$compiler" $strict_flags $repo_includes \
+    -c "$project_dir/src/openimp_tuning.c" \
+    -o "$output_dir/openimp_tuning.o"
+
 for source in \
     openimp_p0 openimp_p1 openimp_p2_dma openimp_p2_encoder openimp_avc t40_ep1
 do
@@ -85,6 +89,7 @@ done
     -o "$output_dir/libimp.so" \
     "$output_dir/openimp_p0.o" \
     "$output_dir/openimp_profile.o" \
+    "$output_dir/openimp_tuning.o" \
     "$output_dir/openimp_p1.o" \
     "$output_dir/openimp_p2_dma.o" \
     "$output_dir/openimp_p2_encoder.o" \
@@ -100,6 +105,10 @@ done
     "$output_dir/backend-fifo.o" \
     "$output_dir/backend-hw_encoder.o" \
     -ldl -lpthread -lrt
+
+"$compiler" $strict_flags $repo_includes \
+    "$project_dir/tools/openimp-tuningd.c" "$output_dir/openimp_tuning.o" \
+    -lpthread -o "$output_dir/openimp-tuningd"
 
 imports="$output_dir/raptor-imp-imports.txt"
 exports="$output_dir/libimp-exports.txt"

@@ -11,6 +11,9 @@ There is one encoder implementation for T31, T40, and the T41 bring-up:
 - `src/t40/codec-t40.c` owns the shared AVPU codec backend.
 - `include/openimp/openimp_avc.h` exposes that backend independently of the
   IMP graph for physically contiguous NV12 producers such as V4L2 DMA-BUF.
+- `include/openimp/openimp_tuning.h` and `openimp-tuningd` keep image policy
+  and gain feedback independent of capture/encoder ownership. See
+  [`docs/TUNING_DAEMON.md`](docs/TUNING_DAEMON.md).
 - `src/al_avpu.c`, `src/device_pool.c`, `src/fifo.c`, and
   `src/hw_encoder.c` provide the common hardware path.
 - `src/t31/`, `src/framesource/framesource_tseries.c`,

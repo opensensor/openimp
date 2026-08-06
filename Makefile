@@ -23,7 +23,12 @@ clean:
 
 install: all
 	install -d "$(DESTDIR)$(PREFIX)/include/imp"
+	install -d "$(DESTDIR)$(PREFIX)/include/openimp"
+	install -d "$(DESTDIR)$(PREFIX)/bin"
 	install -d "$(DESTDIR)$(PREFIX)/lib"
 	install -m 644 include/imp/*.h "$(DESTDIR)$(PREFIX)/include/imp/"
+	install -m 644 include/openimp/*.h "$(DESTDIR)$(PREFIX)/include/openimp/"
 	install -m 755 "build/$(shell printf '%s' '$(PLATFORM)' | tr '[:upper:]' '[:lower:]')/libimp.so" \
 		"$(DESTDIR)$(PREFIX)/lib/libimp.so"
+	install -m 755 "build/$(shell printf '%s' '$(PLATFORM)' | tr '[:upper:]' '[:lower:]')/openimp-tuningd" \
+		"$(DESTDIR)$(PREFIX)/bin/openimp-tuningd"

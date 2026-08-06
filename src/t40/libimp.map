@@ -3,6 +3,7 @@
         IMP_*;
         AL_Codec_Encode_*;
         OpenIMP_AVC_*;
+        OpenIMP_Tuning_*;
         FrameSourceInit;
         EncoderInit;
         EncoderExit;
