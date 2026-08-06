@@ -62,7 +62,8 @@ repo_includes="-I$project_dir/include -I$project_dir/src"
 
 for source in \
     openimp_p0 openimp_p1 openimp_p2_dma openimp_p2_encoder t40_ep1 \
-    t41_command_layout t41_command_builder t41_hw_rate_control
+    t41_command_layout t41_command_builder t41_hw_rate_control \
+    t41_rate_control
 do
     "$compiler" $strict_flags $repo_includes \
         -c "$project_dir/src/t40/$source.c" \
@@ -105,6 +106,7 @@ done
     "$output_dir/t41_command_layout.o" \
     "$output_dir/t41_command_builder.o" \
     "$output_dir/t41_hw_rate_control.o" \
+    "$output_dir/t41_rate_control.o" \
     "$output_dir/backend-enc-hw-scaling-list.o" \
     "$output_dir/backend-codec.o" \
     "$output_dir/backend-al_avpu.o" \

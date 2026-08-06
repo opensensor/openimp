@@ -149,6 +149,25 @@ history and level `0x08ab0c89`. The hardware writeback is therefore present.
 The remaining lifecycle issue is coherent CPU visibility and the OEM
 cross-slot handoff, not absent AVPU output.
 
+The software-controller seam is now measured as well. The CBR controller is
+an inline-method object, and its per-completion method at `+0x10` is a
+4084-byte state-machine routine rather than a payload-only QP adjustment. It
+receives the full combined slice status, completed access-unit bit count,
+skip flag, and slice budget. An interposed OEM run showed approximately
+`0x1c0` bytes of persistent state changing independently for the main and sub
+channels; confirmed fields include current QP at `+0x78`, cumulative completed
+bits at `+0xd0`, and completed-picture count at `+0x170`.
+
+The first exact stage of that routine now lives in a bounded, host-tested T41
+component. It combines four hardware counters at slice-status offsets
+`+0x24..+0x30`, then normalizes the counters at `+0x14..+0x20` exactly as the
+OEM routine does. Captured OEM fixtures produce block totals of 32640 for the
+1920x1088-coded main channel and 3680 for the padded 640x368 subchannel. The
+same totals are now observed live on the open stack, and a 100-frame main
+sample with this observation-only path remained decoder-clean (1,909,504
+bytes). These values are deliberately not connected to command QP until the
+remaining persistent-state transitions reproduce the OEM trace.
+
 ## Remaining work
 
 The zero-copy Raptor path is not yet correctness-safe. Raptor's reference-mode

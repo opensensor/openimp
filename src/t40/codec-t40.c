@@ -26,6 +26,7 @@
 #if defined(PLATFORM_T41)
 #include "t41_command_builder.h"
 #include "t41_hw_rate_control.h"
+#include "t41_rate_control.h"
 #endif
 #include <sys/eventfd.h>
 #include <sys/ioctl.h>
@@ -4124,8 +4125,10 @@ static void avpu_end_encoding_callback(void *user_data)
     if (ctx && have_pending && buf_idx >= 0 && buf_idx < 16 &&
         status_regs_ptr) {
         uint8_t rate_control_stats[OPENIMP_T41_RC_STATS_SIZE];
+        OpenIMPT41RateControlFeedback rate_control_feedback;
         uint32_t payload_size;
         int have_encoding_status;
+        int have_rate_control_feedback;
 
         /* T41 does not use the T31/T40 status layout consumed by
          * EncodingStatusRegsToSliceStatus().  The first word at the
@@ -4140,6 +4143,11 @@ static void avpu_end_encoding_callback(void *user_data)
                 (uint32_t)ctx->stream_buf_size,
                 slice_status.raw, sizeof(slice_status.raw),
                 rate_control_stats, sizeof(rate_control_stats)) == 0;
+        have_rate_control_feedback = have_encoding_status &&
+            payload_size <= UINT32_MAX / 8u &&
+            openimp_t41_rate_control_extract_feedback(
+                slice_status.raw, sizeof(slice_status.raw),
+                payload_size * 8u, &rate_control_feedback) == 0;
         if (have_encoding_status &&
             (ctx->frames_encoded < 16 || ctx->frames_encoded % 50 == 0)) {
             uint32_t field_1c;
@@ -4167,13 +4175,24 @@ static void avpu_end_encoding_callback(void *user_data)
                    sizeof(field_40));
             memcpy(&field_42, slice_status.raw + 0x42u,
                    sizeof(field_42));
-            LOG_CODEC("T41 encoding status: buf=%d payload=0x%08x entropy=%08x/%08x field1c=0x%08x field20=0x%08x field38=0x%08x qpfields=%u/%u/%u flags=%u/%u/%u",
+            LOG_CODEC("T41 encoding status: buf=%d payload=0x%08x entropy=%08x/%08x field1c=0x%08x field20=0x%08x field38=0x%08x qpfields=%u/%u/%u flags=%u/%u/%u rcfeedback=%u/%u/%u/%u/%u",
                       buf_idx, payload_size, entropy_bytes, entropy_aux,
                       field_1c, field_20, field_38,
                       field_3e, field_40, field_42,
                       (unsigned int)slice_status.raw[0],
                       (unsigned int)slice_status.raw[1],
-                      (unsigned int)slice_status.raw[2]);
+                      (unsigned int)slice_status.raw[2],
+                      have_rate_control_feedback
+                          ? rate_control_feedback.block_count : 0u,
+                      have_rate_control_feedback
+                          ? rate_control_feedback.field_20_percent : 0u,
+                      have_rate_control_feedback
+                          ? rate_control_feedback.field_1c_percent : 0u,
+                      have_rate_control_feedback
+                          ? rate_control_feedback.field_14_bit_percent : 0u,
+                      have_rate_control_feedback
+                          ? rate_control_feedback.field_18_quarters_per_block
+                          : 0u);
         }
         if (ctx->rc_mode != HW_RC_MODE_FIXQP) {
             uint32_t used_qp = ctx->t41_rate_control_qp_by_buf[buf_idx];
