@@ -65,6 +65,7 @@ compile framesource src/framesource/framesource_tseries.c
 compile isp src/isp/isp_tseries.c
 compile t31_compat src/t31/openimp_t31_compat.c
 compile t31_state src/t31/openimp_t31_state.c -Werror
+compile t31_services src/t31/openimp_t31_services.c -Werror
 
 "$compiler" -shared -nostartfiles \
     -Wl,-soname,libimp.so \
@@ -89,6 +90,7 @@ compile t31_state src/t31/openimp_t31_state.c -Werror
     "$output_dir/isp.o" \
     "$output_dir/t31_compat.o" \
     "$output_dir/t31_state.o" \
+    "$output_dir/t31_services.o" \
     -ldl -lpthread -lrt
 
 "$stripper" --strip-unneeded "$output_dir/libimp.so"
@@ -120,6 +122,11 @@ if [ -f "$rvd" ]; then
     comm -23 "$output_dir/rvd-imp-imports.txt" \
         "$output_dir/libimp-exports.txt" >"$output_dir/rvd-imp-missing.txt"
     echo "RVD IMP coverage: $(comm -12 "$output_dir/rvd-imp-imports.txt" "$output_dir/libimp-exports.txt" | wc -l)/$(wc -l <"$output_dir/rvd-imp-imports.txt")"
+    if [ -s "$output_dir/rvd-imp-missing.txt" ]; then
+        echo "T31 build is missing RVD IMP imports:" >&2
+        cat "$output_dir/rvd-imp-missing.txt" >&2
+        exit 1
+    fi
 fi
 
 sha256sum "$output_dir/libimp.so"
