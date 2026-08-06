@@ -157,6 +157,37 @@ High-profile 2560x1440 decoder run completed without warnings. The first RTSP
 open observed the already-documented single repeated timestamp at a ring epoch
 boundary; the immediate repeat was clean and no H.264 decode errors occurred.
 
+## T41 EP3 scalar ownership
+
+The T41 hardware-rate-control manager exchanges one four-byte level value with
+the AVPU in each selected EP3 slot. The cached implementation nevertheless
+published and invalidated the entire 16 KiB manager allocation; the kernel
+normalized each request to 1 MiB. T41 now initializes and publishes the EP3
+manager once, then uses a coherent uncached alias for the per-picture scalar
+handoff. The cached fallback remains available when `/dev/mem` cannot be
+mapped, and `OPENIMP_T41_UNCACHED_EP3_RING=0` explicitly selects it for an A/B.
+
+Matched 750-frame profiles on the same open QHD stack measured:
+
+| Metric | Cached EP3 ring | Coherent EP3 ring | Change |
+| --- | ---: | ---: | ---: |
+| cache calls | 5,257 | 3,757 | -1,500 (two/frame) |
+| cache-accounted bytes | 8,883,683,328 | 7,310,819,328 | -1,572,864,000 |
+| picture-state CPU/frame | 61 us | 39 us | -36.1% |
+| completion-status CPU/frame | 118 us | 74 us | -37.3% |
+| encode-submit CPU/frame | 334 us | 313 us | -6.3% |
+| IRQ-completion CPU/frame | 307 us | 243 us | -20.8% |
+| submit + completion CPU/frame | 641 us | 556 us | -13.3% |
+| completed frames | 750 | 750 | unchanged |
+
+The profiler-on correctness benchmark still delivered exactly 25.000 fps and
+reported zero ISP-overflow, kernel-fatal, or userspace-fault deltas. A complete
+Raptor stop/start exercised alias teardown and recreation successfully, then a
+ten-second High-profile 2560x1440 stream decoded 251 frames without H.264
+errors. The RTSP client did report repeated timestamps at the already-known
+Raptor ring-epoch boundary; that transport timestamp issue is independent of
+the EP3 memory ownership change.
+
 ## MXU assessment
 
 The T41 reports MXUv3 in `/proc/cpuinfo`. The

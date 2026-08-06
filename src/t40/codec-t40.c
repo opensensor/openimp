@@ -2462,6 +2462,7 @@ static void avpu_t41_qp_bounds(const ALAvpuContext *ctx,
 
 static int avpu_t41_prepare_picture(ALAvpuContext *ctx, int is_idr)
 {
+    void *ep3_cpu;
     uint32_t min_qp;
     uint32_t max_qp;
     uint32_t selected_qp;
@@ -2475,6 +2476,8 @@ static int avpu_t41_prepare_picture(ALAvpuContext *ctx, int is_idr)
 
     if (!ctx || !ctx->interm_buf.map || !ctx->rec_trace_buf.map)
         return -1;
+    ep3_cpu = ctx->rec_trace_buf.uncached_map
+        ? ctx->rec_trace_buf.uncached_map : ctx->rec_trace_buf.map;
 
     avpu_t41_qp_bounds(ctx, &min_qp, &max_qp);
     selected_qp = ctx->qp <= 51u ? ctx->qp : 34u;
@@ -2523,7 +2526,7 @@ static int avpu_t41_prepare_picture(ALAvpuContext *ctx, int is_idr)
             is_idr ? 2u : 1u) != 0)
         return -1;
     if (openimp_t41_hwrc_level_set_buffer(
-            &ctx->t41_hwrc_level, ctx->rec_trace_buf.map,
+            &ctx->t41_hwrc_level, ep3_cpu,
             ctx->rec_trace_buf.size, ep3_slot) != 0)
         return -1;
 
@@ -2531,9 +2534,11 @@ static int avpu_t41_prepare_picture(ALAvpuContext *ctx, int is_idr)
     interm_flush = avpu_flush_dma_buf_profiled(
         ctx->fd, "t41_ep1_picture", &ctx->interm_buf,
         ctx->interm_ep1_size, OPENIMP_PROFILE_CACHE_EP1_PUBLISH);
-    ep3_flush = avpu_flush_dma_buf_profiled(
-        ctx->fd, "t41_ep3_picture", &ctx->rec_trace_buf,
-        ctx->rec_trace_buf.size, OPENIMP_PROFILE_CACHE_EP3_PUBLISH);
+    ep3_flush = ctx->rec_trace_buf.uncached_map
+        ? 0
+        : avpu_flush_dma_buf_profiled(
+            ctx->fd, "t41_ep3_picture", &ctx->rec_trace_buf,
+            ctx->rec_trace_buf.size, OPENIMP_PROFILE_CACHE_EP3_PUBLISH);
     if (interm_flush != 0 || ep3_flush != 0) {
         LOG_CODEC("AVPU: T41 picture-state flush failed ep1=%d ep3=%d",
                   interm_flush, ep3_flush);
@@ -4393,13 +4398,18 @@ static void avpu_end_encoding_callback(void *user_data)
                 OPENIMP_T41_STREAM_PAYLOAD_OFFSET) {
             unsigned int completed_ep3_slot =
                 ctx->stream_is_idr[buf_idx] ? 2u : 1u;
-            int ep3_invalidate = avpu_flush_cache_profiled(
-                ctx->fd, ctx->rec_trace_buf.map, 0x100000u,
-                0 /* BIDIRECTIONAL */,
-                OPENIMP_PROFILE_CACHE_EP3_COMPLETE);
+            void *ep3_cpu = ctx->rec_trace_buf.uncached_map
+                ? ctx->rec_trace_buf.uncached_map
+                : ctx->rec_trace_buf.map;
+            int ep3_invalidate = ctx->rec_trace_buf.uncached_map
+                ? 0
+                : avpu_flush_cache_profiled(
+                    ctx->fd, ctx->rec_trace_buf.map, 0x100000u,
+                    0 /* BIDIRECTIONAL */,
+                    OPENIMP_PROFILE_CACHE_EP3_COMPLETE);
             int level_update = ep3_invalidate == 0
                 ? openimp_t41_hwrc_level_update(
-                    &ctx->t41_hwrc_level, ctx->rec_trace_buf.map,
+                    &ctx->t41_hwrc_level, ep3_cpu,
                     ctx->rec_trace_buf.size, completed_ep3_slot)
                 : -1;
 
@@ -6571,6 +6581,11 @@ int AL_Codec_Encode_Destroy(void *codec) {
             close(enc->avpu.interm_buf.dmabuf_fd);
             enc->avpu.interm_buf.dmabuf_fd = -1;
         }
+        if (enc->avpu.rec_trace_buf.uncached_map) {
+            munmap(enc->avpu.rec_trace_buf.uncached_map,
+                   enc->avpu.rec_trace_buf.size);
+            enc->avpu.rec_trace_buf.uncached_map = NULL;
+        }
 
         /* OEM parity: unblock the one shared WaitInterruptThread before its
          * host context is closed. Non-host contexts share the fd but have no
@@ -7374,12 +7389,22 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
                                 int ep3_flush = avpu_flush_dma_buf(
                                     fd, "ep3_ring", &enc->avpu.rec_trace_buf,
                                     enc->avpu.rec_trace_buf.size);
+                                const char *uncached_ep3 =
+                                    getenv("OPENIMP_T41_UNCACHED_EP3_RING");
+
+                                if (ep3_flush == 0 &&
+                                    (!uncached_ep3 || uncached_ep3[0] != '0'))
+                                    enc->avpu.rec_trace_buf.uncached_map =
+                                        avpu_remap_uncached(
+                                            enc->avpu.rec_trace_buf.phy_addr,
+                                            enc->avpu.rec_trace_buf.size);
                                 openimp_t41_hwrc_level_init(
                                     &enc->avpu.t41_hwrc_level);
-                                LOG_CODEC("AVPU: T41 ep3_ring phys=0x%08x size=%zu initialized=%zu flush=%d",
+                                LOG_CODEC("AVPU: T41 ep3_ring phys=0x%08x size=%zu initialized=%zu flush=%d uncached=%p",
                                           enc->avpu.rec_trace_buf.phy_addr,
                                           enc->avpu.rec_trace_buf.size,
-                                          ep3_initialized, ep3_flush);
+                                          ep3_initialized, ep3_flush,
+                                          enc->avpu.rec_trace_buf.uncached_map);
                             } else {
                                 LOG_CODEC("AVPU: WARNING - failed to allocate T41 EP3 ring");
                             }

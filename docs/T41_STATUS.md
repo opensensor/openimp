@@ -109,10 +109,11 @@ The previously incomplete completion path is now coupled end to end:
   for P pictures while retaining component 3. The first IDR-to-P transition
   changes exactly the 26 words measured in the OEM trace.
 - The full three-slot EP3 manager lifecycle is active. The completed slot is
-  invalidated, its hardware-written level at `+0x1400` is retained in manager
-  state, and that value is written and flushed into the next IDR/P slot. The
-  hardware-owned 36-word history at `+0x1360` remains in place. T41's required
-  1 MiB cache-operation normalization is used for both EP1 and EP3.
+  consumed through a coherent uncached alias, its hardware-written level at
+  `+0x1400` is retained in manager state, and that value is written into the
+  next IDR/P slot. The hardware-owned 36-word history at `+0x1360` remains in
+  place. This removes both normalized 1 MiB EP3 cache operations per frame;
+  EP1 retains its required cache-ownership transition.
 
 On the live 8-Mbit/s, 2560x1440/25 stream, the exact controller settles around
 QP 38-39. A 120-frame sample was 4,877,928 bytes against a 4,800,000-byte
@@ -199,6 +200,13 @@ calls fell from 6,756 to 5,257 over 750 frames and combined submit/completion
 CPU fell from 685 to 641 us/frame. A no-client run delivered 24.968 fps with
 zero error deltas, and the repeated QHD High-profile decoder gate was clean.
 The sparse publish layout is covered by the host command suite.
+
+The EP3 manager now uses the same explicit coherent-ownership pattern for its
+four-byte per-picture level handoff. A matched 750-frame profile removed two
+more normalized 1 MiB operations per frame: cache calls fell from 5,257 to
+3,757 and combined submit/completion CPU fell from 641 to 556 us/frame
+(-13.3%). Delivery remained 25 fps with zero benchmark error deltas. A full
+Raptor stop/start exercised the new alias teardown and recreation successfully.
 
 The detailed stage data and T41 MXUv3 measurements are in
 [`PROFILING.md`](PROFILING.md).
