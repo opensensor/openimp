@@ -4,7 +4,9 @@ PROJECT_DIR := ../..
 COMMAND_TEST_BIN := $(PROJECT_DIR)/build/tests/t41-command-layout-test
 RATE_CONTROL_TEST_BIN := $(PROJECT_DIR)/build/tests/t41-rate-control-test
 EP1_TEST_BIN := $(PROJECT_DIR)/build/tests/t41-ep1-layout-test
-TEST_BINS := $(COMMAND_TEST_BIN) $(RATE_CONTROL_TEST_BIN) $(EP1_TEST_BIN)
+STREAM_LAYOUT_TEST_BIN := $(PROJECT_DIR)/build/tests/t41-stream-layout-test
+TEST_BINS := $(COMMAND_TEST_BIN) $(RATE_CONTROL_TEST_BIN) $(EP1_TEST_BIN) \
+	$(STREAM_LAYOUT_TEST_BIN)
 
 .PHONY: check clean
 
@@ -12,6 +14,7 @@ check: $(TEST_BINS)
 	$(COMMAND_TEST_BIN)
 	$(RATE_CONTROL_TEST_BIN)
 	$(EP1_TEST_BIN)
+	$(STREAM_LAYOUT_TEST_BIN)
 
 $(COMMAND_TEST_BIN): command_layout_test.c \
 	$(PROJECT_DIR)/src/t40/t41_command_layout.c \
@@ -44,6 +47,15 @@ $(EP1_TEST_BIN): ep1_layout_test.c \
 	$(CC) $(CFLAGS) -I$(PROJECT_DIR)/src \
 		ep1_layout_test.c \
 		$(PROJECT_DIR)/src/t40/t40_ep1.c \
+		-o "$@"
+
+$(STREAM_LAYOUT_TEST_BIN): stream_layout_test.c \
+	$(PROJECT_DIR)/src/t40/t41_stream_layout.c \
+	$(PROJECT_DIR)/src/t40/t41_stream_layout.h
+	mkdir -p "$(dir $@)"
+	$(CC) $(CFLAGS) -I$(PROJECT_DIR)/src \
+		stream_layout_test.c \
+		$(PROJECT_DIR)/src/t40/t41_stream_layout.c \
 		-o "$@"
 
 clean:

@@ -65,6 +65,37 @@ These numbers make the next work order explicit: reduce stream-finalization
 and completion overhead before touching rate-control arithmetic or the small
 command copy.
 
+## Exact T41 stream extent
+
+T41 completion already supplies a bounds-checked entropy payload byte count.
+After moving that payload from the hardware's fixed `+0x220` boundary behind
+the generated Annex-B prefix, the old finalizer nevertheless scanned every
+byte of the completed access unit for start codes and trailing zeros. Besides
+being redundant, that heuristic could remove a legitimate zero-valued final
+entropy byte.
+
+The finalizer now derives both pre- and post-compaction extents from one
+tested layout helper and publishes the exact result. T31 and T40 retain their
+generation-specific discovery paths. A matched 750-frame profiler pair on the
+all-open QHD stack measured:
+
+| Metric | Annex-B rescan | Exact T41 extent | Change |
+| --- | ---: | ---: | ---: |
+| delivered fps | 25.000 | 25.000 | unchanged |
+| whole-system CPU capacity | 20.375% | 20.388% | unchanged |
+| pipeline-process CPU capacity | 7.226% | 7.067% | -0.159 points (-2.2%) |
+| stream-finalize CPU/frame | 277 us | 147 us | -46.9% |
+| total IRQ-completion CPU/frame | 464 us | 330 us | -28.9% |
+| stream compaction CPU/frame | 19 us | 18 us | unchanged |
+| ISP overflow / kernel fatal / userspace fault | 0 / 0 / 0 | 0 / 0 / 0 | unchanged |
+
+The high system and pipeline figures in this profiler pair include the
+profiler and active background services; they are useful as a matched A/B,
+not as a replacement for the profiler-disabled production baseline. With the
+profiler disabled and the compact open ISP module loaded, a subsequent run
+delivered 24.992 fps at 3.176% pipeline CPU with zero error deltas. A
+ten-second High-profile 2560x1440/25 RTSP decode completed without warnings.
+
 ## MXU assessment
 
 The T41 reports MXUv3 in `/proc/cpuinfo`. The

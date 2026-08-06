@@ -169,6 +169,16 @@ The post-reboot production run had profiling disabled and delivered 25.016
 fps with 1.177% RVD CPU capacity, 3.333% aggregate pipeline-process CPU
 capacity, and zero overflow/fatal/fault deltas.
 
+The next pass removed the redundant Annex-B rescan from T41's exact
+completion-length path. In a matched 750-frame profile, stream-finalization
+CPU fell from 277 to 147 us/frame and total IRQ-completion CPU fell from 464
+to 330 us/frame, with both runs delivering exactly 25 fps and reporting zero
+error deltas. The exact extent is validated by a host boundary suite; T31 and
+T40 retain their existing fallback sizing behavior. A later profiler-disabled
+run with the compact open ISP module delivered 24.992 fps at 3.176% aggregate
+pipeline CPU and decoded ten seconds of High-profile 2560x1440/25 video
+without warnings.
+
 The detailed stage data and T41 MXUv3 measurements are in
 [`PROFILING.md`](PROFILING.md).
 

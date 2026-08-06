@@ -24,6 +24,9 @@
 #include "imp_log_int.h"
 #include "kernel_interface.h"
 #include "openimp_profile.h"
+#if defined(PLATFORM_T41)
+#include "t41_stream_layout.h"
+#endif
 #include "t40_ep1.h"
 #if defined(PLATFORM_T41)
 #include "t41_command_builder.h"
@@ -5012,6 +5015,10 @@ static uint32_t avpu_stream_buffer_effective_size(ALAvpuContext *ctx, int buf_id
     uint32_t t31_payload_size = 0;
     int have_t31_payload_size = 0;
 #endif
+#if defined(PLATFORM_T41)
+    OpenIMPT41StreamLayout t41_layout;
+    int have_t41_layout = 0;
+#endif
 
     if (flush_ret_out) {
         *flush_ret_out = -1;
@@ -5238,15 +5245,16 @@ static uint32_t avpu_stream_buffer_effective_size(ALAvpuContext *ctx, int buf_id
             uint32_t t41_payload_size =
                 ctx->t41_payload_size_by_buf[buf_idx];
 
-            if (ctx->stream_buf_size > (int)payload_offset &&
-                t41_payload_size > 0u &&
-                t41_payload_size <=
-                    (uint32_t)ctx->stream_buf_size - payload_offset) {
-                raw_end = payload_offset + t41_payload_size;
+            if (ctx->stream_buf_size > 0 &&
+                openimp_t41_stream_layout(
+                    (uint32_t)ctx->stream_buf_size, payload_offset,
+                    header_size, t41_payload_size, &t41_layout) == 0) {
+                raw_end = t41_layout.payload_end;
+                have_t41_layout = 1;
                 LOG_CODEC_THROTTLE(ctx,
                                    "AVPU: T41 payload status bytes=%u scan_end=%u compacted=%u",
                                    t41_payload_size, scanned_raw_end,
-                                   header_size + t41_payload_size);
+                                   t41_layout.access_unit_size);
             } else {
                 LOG_CODEC("AVPU: refusing T41 completion with invalid payload status=%u capacity=%u buf=%d",
                           t41_payload_size,
@@ -5306,7 +5314,11 @@ static uint32_t avpu_stream_buffer_effective_size(ALAvpuContext *ctx, int buf_id
                                   payload_size);
             openimp_profile_end(OPENIMP_PROFILE_STREAM_COMPACT,
                                 compact_profile);
+#if defined(PLATFORM_T41)
+            raw_end = t41_layout.access_unit_size;
+#else
             raw_end = header_size + payload_size;
+#endif
 #if !defined(PLATFORM_T41)
             if (raw_end < (uint32_t)ctx->stream_buf_size)
                 memset(mutable_stream + raw_end, 0,
@@ -5357,7 +5369,17 @@ static uint32_t avpu_stream_buffer_effective_size(ALAvpuContext *ctx, int buf_id
         if (buf_idx >= 0 && buf_idx < 16 && ctx->stream_header_offset_by_buf[buf_idx] != 0)
             hdr_off = ctx->stream_header_offset_by_buf[buf_idx];
 
-        /* Use the HW-reported end if it's sane; fall back to trailing-zero scan */
+        /* T41's completion word is already an exact, validated entropy-byte
+         * count.  After compaction its access-unit extent is exact as well;
+         * rescanning the entire AU for Annex-B start codes is redundant and
+         * may trim a legitimate zero-valued final entropy byte. */
+#if defined(PLATFORM_T41)
+        if (!have_t41_layout || raw_end != t41_layout.access_unit_size)
+            return 0;
+        frame_size = t41_layout.access_unit_size;
+#else
+        /* Use the HW-reported end if it's sane; fall back to a diagnostic
+         * Annex-B extent scan on generations without an exact length. */
         if (hw_end > hdr_off &&
             hw_end <= (uint32_t)ctx->stream_buf_size) {
             frame_size = hw_end;
@@ -5367,6 +5389,7 @@ static uint32_t avpu_stream_buffer_effective_size(ALAvpuContext *ctx, int buf_id
             annexb = annexb_effective_size(sb, raw_end);
             frame_size = annexb > 0 ? (uint32_t)annexb : raw_end;
         }
+#endif
 
         if (frame_size <= hdr_off) {
             avpu_log_suspicious_stream_size(ctx, buf_idx, "EndEncoding",
