@@ -85,12 +85,107 @@ static void test_empty_and_bounds(void)
                status, sizeof(status), 1u, NULL) == -1);
 }
 
+static void test_oem_main_window_oracle(void)
+{
+    static const uint32_t remaining_bits[] = {
+        82584u, 183768u, 365224u, 57064u, 45440u, 217912u,
+        64136u, 63432u, 340776u, 76120u, 78632u, 462304u,
+        86912u, 61096u, 341384u, 54120u, 34080u, 364408u,
+    };
+    static const OpenIMPT41RateControlWindow expected = { {
+        0x00895440u, 0x00034bc0u, 0x000003e8u, 0x000061a8u,
+        0x002dc6c0u, 0x00000101u, 0x0001eb42u, 0x001d4c00u,
+        0x00046500u, 0u, 0u, 0u, 0x003ff758u, 0u, 0x14u, 0u,
+    } };
+    OpenIMPT41RateControlWindow window = { {
+        0x00895440u, 0x00034bc0u, 0x000003e8u, 0x000061a8u,
+        0x002dc6c0u, 0x00000101u, 0u, 0u,
+        0x00034bc0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u,
+    } };
+
+    assert(openimp_t41_rate_control_window_update(&window, 941192u) == 0);
+    assert(window.words[6] == 0x00006e4bu);
+    assert(window.words[7] == 0x0022ca40u);
+    assert(window.words[8] == 0x000359d0u);
+    assert(window.words[9] == 0u);
+    assert(window.words[10] == 0u);
+    assert(window.words[12] == 0x000e5c88u);
+    assert(window.words[13] == 0u);
+    assert(window.words[14] == 1u);
+
+    assert(openimp_t41_rate_control_window_update(&window, 271504u) == 0);
+    assert(window.words[6] == 0x00008e1cu);
+    assert(window.words[7] == 0x00284880u);
+    assert(window.words[8] == 0x000367e0u);
+    assert(window.words[9] == 0u);
+    assert(window.words[12] == 0x00128118u);
+    assert(window.words[14] == 2u);
+
+    for (size_t i = 0u;
+         i < sizeof(remaining_bits) / sizeof(remaining_bits[0]); ++i)
+        assert(openimp_t41_rate_control_window_update(
+                   &window, remaining_bits[i]) == 0);
+    assert(memcmp(&window, &expected, sizeof(window)) == 0);
+}
+
+static void test_oem_subchannel_window_oracle(void)
+{
+    static const uint32_t remaining_bits[] = {
+        15704u, 4064u, 13856u, 63392u, 5112u, 4408u,
+        22696u, 5120u, 2632u, 29600u, 4904u, 2240u,
+        32128u, 5840u, 2816u, 33656u, 4480u, 1208u, 41376u,
+    };
+    static const OpenIMPT41RateControlWindow expected = { {
+        0x002dc6c0u, 0x00034bc0u, 0x000003e8u, 0x000061a8u,
+        0x000f4240u, 0x00000101u, 0x0000755au, 0u,
+        0x00046500u, 0u, 0u, 0u, 0x000517e8u, 0u, 0x14u, 0u,
+    } };
+    OpenIMPT41RateControlWindow window = { {
+        0x002dc6c0u, 0x00034bc0u, 0x000003e8u, 0x000061a8u,
+        0x000f4240u, 0x00000101u, 0u, 0u,
+        0x00034bc0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u,
+    } };
+
+    assert(openimp_t41_rate_control_window_update(&window, 38568u) == 0);
+    assert(window.words[6] == 0x00000d8fu);
+    assert(window.words[7] == 0x0001d4c0u);
+    assert(window.words[8] == 0x000359d0u);
+    assert(window.words[9] == 0u);
+    assert(window.words[12] == 0x000096a8u);
+    assert(window.words[13] == 0u);
+    assert(window.words[14] == 1u);
+
+    for (size_t i = 0u;
+         i < sizeof(remaining_bits) / sizeof(remaining_bits[0]); ++i)
+        assert(openimp_t41_rate_control_window_update(
+                   &window, remaining_bits[i]) == 0);
+    assert(memcmp(&window, &expected, sizeof(window)) == 0);
+}
+
+static void test_window_bounds(void)
+{
+    OpenIMPT41RateControlWindow window = { { 0 } };
+    OpenIMPT41RateControlWindow original;
+
+    original = window;
+    assert(openimp_t41_rate_control_window_update(NULL, 1u) == -1);
+    assert(openimp_t41_rate_control_window_update(&window, 1u) == -1);
+    assert(memcmp(&window, &original, sizeof(window)) == 0);
+    window.words[3] = 1u;
+    original = window;
+    assert(openimp_t41_rate_control_window_update(&window, 1u) == -1);
+    assert(memcmp(&window, &original, sizeof(window)) == 0);
+}
+
 int main(void)
 {
     test_oem_main_idr_oracle();
     test_oem_main_p_oracle();
     test_oem_subchannel_oracle();
     test_empty_and_bounds();
+    test_oem_main_window_oracle();
+    test_oem_subchannel_window_oracle();
+    test_window_bounds();
     puts("T41 software rate-control feedback: OK");
     return 0;
 }

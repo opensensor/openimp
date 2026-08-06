@@ -168,6 +168,13 @@ sample with this observation-only path remained decoder-clean (1,909,504
 bytes). These values are deliberately not connected to command QP until the
 remaining persistent-state transitions reproduce the OEM trace.
 
+The controller's embedded 0x40-byte bitrate-history window is also isolated
+from that larger state machine. Its integer accumulator update now reproduces
+all 40 captured OEM completions (20 main and 20 sub), including fractional
+remainders, cumulative 64-bit bit counts, and channel-specific bitrate state.
+This exact window is still host-only; the next boundary is the QP-selection
+logic that consumes it together with the normalized hardware feedback.
+
 ## Remaining work
 
 The zero-copy Raptor path is not yet correctness-safe. Raptor's reference-mode

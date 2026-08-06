@@ -51,3 +51,80 @@ int openimp_t41_rate_control_extract_feedback(
         block_count;
     return 0;
 }
+
+int openimp_t41_rate_control_window_update(
+    OpenIMPT41RateControlWindow *window, uint32_t completed_bits)
+{
+    OpenIMPT41RateControlWindow next;
+    uint64_t product;
+    uint32_t accumulator_18;
+    uint32_t accumulator_20;
+    uint32_t remainder_1c;
+    uint32_t remainder_24;
+    uint32_t reduction_units = 0u;
+    uint32_t threshold;
+    uint32_t value;
+
+    if (!window || window->words[3] == 0u || window->words[4] == 0u)
+        return -1;
+    next = *window;
+
+    accumulator_18 = next.words[6];
+    accumulator_20 = next.words[8];
+    threshold = next.words[1];
+    if ((((const uint8_t *)&next.words[5])[0]) == 0u) {
+        value = accumulator_20 - threshold;
+        if (accumulator_18 < value) {
+            next.words[15] += value - accumulator_18;
+            accumulator_18 = value;
+        }
+    }
+
+    product = (uint64_t)completed_bits * 90000u;
+    value = next.words[7] + (uint32_t)(product % next.words[4]);
+    remainder_1c = value % next.words[4];
+    accumulator_18 += value / next.words[4] +
+                      (uint32_t)(product / next.words[4]);
+
+    product = (uint64_t)next.words[2] * 90000u;
+    value = next.words[9] + (uint32_t)(product % next.words[3]);
+    remainder_24 = value % next.words[3];
+    accumulator_20 += value / next.words[3] +
+                      (uint32_t)(product / next.words[3]);
+
+    if (threshold < accumulator_20 && threshold < accumulator_18) {
+        uint32_t lower = accumulator_20 < accumulator_18
+            ? accumulator_20 : accumulator_18;
+
+        reduction_units = (lower - threshold) / 90000u;
+        value = reduction_units * 90000u;
+        accumulator_18 -= value;
+        accumulator_20 -= value;
+    }
+
+    next.words[10] += reduction_units;
+    next.words[6] = accumulator_18;
+    next.words[8] = accumulator_20;
+    ++next.words[14];
+    value = next.words[12] + completed_bits;
+    next.words[13] += value < next.words[12];
+    next.words[12] = value;
+
+    /* With flag +0x15 clear, OEM keeps the later of the two fractional
+     * accumulators.  The cross-product preserves its exact tie-break without
+     * introducing floating-point arithmetic. */
+    if (((const uint8_t *)&next.words[5])[1] == 0u &&
+        (accumulator_20 < accumulator_18 ||
+         (accumulator_20 == accumulator_18 &&
+          (uint64_t)next.words[4] * remainder_24 <
+              (uint64_t)remainder_1c * next.words[3]))) {
+        next.words[8] = accumulator_18;
+        next.words[9] = remainder_1c;
+    } else {
+        next.words[7] = remainder_1c;
+        next.words[9] = remainder_24;
+    }
+
+    *window = next;
+    return 0;
+}
