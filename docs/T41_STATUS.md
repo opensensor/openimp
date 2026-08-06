@@ -91,6 +91,31 @@ caused CABAC decode errors.  Those probes were reverted.  Keep the known-clean
 QP-34/IDR-lambda fallback until the EP3 initialization, writeback, and cache
 ownership transition is recovered as one unit.
 
+The exact T41 OEM binary now identifies the EP3 buffer-manager transition:
+
+- `AL_GetAllocSizeEP3PerCore` returns `0x1420`; `PreprocessHwRateCtrl` clears
+  the final `0x20` bytes beginning at `0x1400` and initializes each per-core
+  state in `0x1420`-byte strides. The allocator-facing buffer size is rounded
+  to 128 bytes, while the three captured picture-class buffers are placed on
+  `0x1500`-byte boundaries.
+- `AL_HwRC_UpdateLevel` invalidates four bytes at the completed EP3 buffer's
+  offset `0x1400`, reads the word, and stores it at HWRC-manager offset `0x18`.
+- `AL_HwRC_SetBuffer` resolves the next EP3 buffer's physical and virtual
+  addresses, copies manager offset `0x18` to that buffer's offset `0x1400`,
+  flushes those four bytes, and returns both addresses to the command builder.
+
+A live OpenIMP probe reproduced that scalar handoff and confirmed that T41
+hardware updates the field. The scalar handoff alone caused unstable payload
+sizes. Enabling it together with the measured P-picture command QP, entropy
+mirror, and EP1 lane still produced top-row/CABAC errors in a 100-frame sample
+(1,788,954 bytes; nonempty decoder error log). All runtime changes were
+reverted, and the restored 100-frame fallback sample is decoder-clean
+(1,664,541 bytes; empty decoder error log). This rules out the `0x1400` word
+as the only missing state. The next port must include the OEM software
+rate-controller/statistics update and the full EP3 manager lifecycle; the
+current payload-only `openimp_t41_next_rate_control_qp` approximation is not a
+safe source for command word 24.
+
 ## Remaining work
 
 The zero-copy Raptor path is not yet correctness-safe. Raptor's reference-mode
