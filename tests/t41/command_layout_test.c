@@ -173,6 +173,17 @@ static void test_builder_validation(void)
     assert(openimp_t41_hwrc_grid(1920, 1080) == 0xf40001ceu);
     assert(openimp_t41_hwrc_grid(640, 360) == 0xf4000107u);
 
+    /* Wyze Cam v4 full-resolution path (2.5K QHD). */
+    assert(openimp_t41_reconstruction_pitch(2560) == 0x2800u);
+    assert(openimp_t41_reconstruction_luma_size(2560, 1440) == 0x3b6000u);
+    assert(openimp_t41_reconstruction_chroma_size(2560, 1440) == 0x1db000u);
+    assert(openimp_t41_reconstruction_map_luma_size(2560, 1440) == 0x2e00u);
+    assert(openimp_t41_reconstruction_map_chroma_size(2560, 1440) == 0x1800u);
+    assert(openimp_t41_reconstruction_map_slot_size(2560, 1440) == 0x4600u);
+    assert(openimp_t41_motion_vector_slot_size(2560, 1440) == 0x70900u);
+    assert(openimp_t41_reconstruction_manager_size(2560, 1440) == 0x67af00u);
+    assert(openimp_t41_hwrc_grid(2560, 1440) == 0xf40003c9u);
+
     assert(openimp_t41_next_rate_control_qp(
                34, 34, 51, 86000, 3000000, 25, 1) == 38u);
     assert(openimp_t41_next_rate_control_qp(

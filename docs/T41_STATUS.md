@@ -38,8 +38,9 @@ platform branches represent measured public or kernel ABI differences.
   EP1/EP2/EP3 storage and one geometry-sized reconstruction manager. Its two
   embedded map and motion-vector slots alternate per picture while the
   reference base stays stable, matching the measured T41 ownership model.
-- Both 1920x1080 and 640x360 channels complete continuously through real AVPU
-  IRQs. The first word of the command slot's `+0x5c0` status block is treated
+- The 2560x1440 full-resolution main channel, 1920x1080 main channel, and
+  640x360 subchannel complete continuously through real AVPU IRQs. The first
+  word of the command slot's `+0x5c0` status block is treated
   as the authoritative entropy payload size; it matches the DMA extent after
   T41's `+0x220` boundary and is validated before an access unit is published.
 - The exact OEM `EncodingStatusRegsToSliceStatus` mapping is recovered as a
@@ -68,6 +69,12 @@ platform branches represent measured public or kernel ABI differences.
 - OpenIMP and the open T41 TX-ISP driver run together on the Wyze v4. A current
   1920x1080 sample has balanced global luma/chroma statistics and no visible
   block corruption under mixed daylight and warm interior lighting.
+- The Wyze v4 full-resolution profile now runs the same all-open stack at
+  2560x1440. A 100-frame High-profile H.264 sample reported 2560x1440 at
+  25/1 fps, decoded without errors, and contained 5,132,459 bytes. Its live
+  software-rate-control block total is 57,600, matching the coded 320x180
+  8x8-block grid. This confirms geometry and buffer correctness at 2.5K, while
+  also making the still-excessive fixed-QP bitrate especially visible.
 
 ## H.264 quality state
 
