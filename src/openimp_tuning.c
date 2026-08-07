@@ -27,8 +27,19 @@
 #define TISP_CID_T41_AE_EXPR 0x08000023U
 #define TISP_CID_OPEN_AWB_CONTROL 0x08ff0001U
 #define TISP_CID_OPEN_AE_TARGET 0x08ff0002U
+#define TISP_CID_OPEN_COLOR_MODEL 0x08ff0003U
 #define TISP_T41_AE_EXPR_BYTES 232U
 #define TISP_T41_AE_EXPR_TOTAL_GAIN_OFFSET 204U
+#define T41_COLOR_MODEL_DAY 0U
+#define T41_COLOR_MODEL_LOW_LIGHT 1U
+#define T41_SECURITY_LOW_LIGHT_ENTER_GAIN 70000
+#define T41_SECURITY_LOW_LIGHT_EXIT_GAIN 56000
+#define T41_SECURITY_DAY_RED_GAIN 1476U
+#define T41_SECURITY_DAY_BLUE_GAIN 3524U
+#define T41_SECURITY_DAY_AE_TARGET 17600U
+#define T41_SECURITY_LOW_LIGHT_RED_GAIN 1225U
+#define T41_SECURITY_LOW_LIGHT_BLUE_GAIN 4850U
+#define T41_SECURITY_LOW_LIGHT_AE_TARGET 15800U
 #else
 #define TISP_VIDIOC_DEFAULT_TUNING 0xc0105436U
 #endif
@@ -49,6 +60,7 @@ struct OpenIMPTuningController {
     int worker_created;
     int stop;
     int running;
+    int security_low_light;
 };
 
 static int tuning_open(const char *device)
@@ -221,6 +233,54 @@ static int t41_ae_target(int fd, int is_get, uint32_t *target)
 
     return ioctl(fd, TISP_VIDIOC_DEFAULT_TUNING, &request) < 0 ? -errno : 0;
 }
+
+static int t41_color_model(int fd, int is_get, uint32_t *model)
+{
+    struct t40_tuning_request request = {
+        0, is_get, TISP_CID_OPEN_COLOR_MODEL, (uintptr_t)model
+    };
+
+    return ioctl(fd, TISP_VIDIOC_DEFAULT_TUNING, &request) < 0 ? -errno : 0;
+}
+
+static int t41_apply_security_model(OpenIMPTuningController *controller,
+                                    int low_light)
+{
+    struct t41_awb_control awb;
+    uint32_t color_model;
+    uint32_t target;
+    int ret;
+
+    if (low_light) {
+        color_model = T41_COLOR_MODEL_LOW_LIGHT;
+        awb = (struct t41_awb_control){
+            0, T41_SECURITY_LOW_LIGHT_RED_GAIN,
+            T41_SECURITY_LOW_LIGHT_BLUE_GAIN,
+        };
+        target = T41_SECURITY_LOW_LIGHT_AE_TARGET;
+    } else {
+        color_model = T41_COLOR_MODEL_DAY;
+        awb = (struct t41_awb_control){
+            0, T41_SECURITY_DAY_RED_GAIN, T41_SECURITY_DAY_BLUE_GAIN,
+        };
+        target = T41_SECURITY_DAY_AE_TARGET;
+    }
+
+    ret = t41_color_model(controller->fd, 0, &color_model);
+    if (!ret)
+        ret = t41_awb_control(controller->fd, 0, &awb);
+    if (!ret)
+        ret = t41_ae_target(controller->fd, 0, &target);
+    if (ret)
+        return ret;
+
+    controller->profile.auto_white_balance = 0;
+    controller->profile.red_gain = awb.red_gain;
+    controller->profile.blue_gain = awb.blue_gain;
+    controller->profile.exposure_target_q8 = (uint16_t)target;
+    controller->security_low_light = low_light;
+    return 0;
+}
 #endif
 
 static int t40_set_control(int fd, int32_t id, uint8_t value)
@@ -237,7 +297,15 @@ static int tuning_apply(OpenIMPTuningController *controller,
     int ret = 0;
 
 #if defined(PLATFORM_T41)
-    if (profile->control_mask & OPENIMP_TUNING_CONTROL_WHITE_BALANCE) {
+    if (profile->kind != OPENIMP_TUNING_PROFILE_CUSTOM) {
+        uint32_t color_model = T41_COLOR_MODEL_DAY;
+
+        ret = t41_color_model(controller->fd, 0, &color_model);
+        if (!ret)
+            controller->security_low_light = 0;
+    }
+    if (!ret &&
+        (profile->control_mask & OPENIMP_TUNING_CONTROL_WHITE_BALANCE)) {
         struct t41_awb_control control = {
             profile->auto_white_balance ? 1U : 0U,
             profile->red_gain,
@@ -287,10 +355,25 @@ static int tuning_feedback(OpenIMPTuningController *controller)
     memcpy(&total_gain,
            response + TISP_T41_AE_EXPR_TOTAL_GAIN_OFFSET,
            sizeof(total_gain));
-    if (total_gain != controller->last_total_gain) {
-        controller->last_total_gain = total_gain;
-        controller->feedback_updates++;
+    if (total_gain == controller->last_total_gain)
+        return 0;
+    if (controller->profile.kind == OPENIMP_TUNING_PROFILE_SECURITY) {
+        int low_light = controller->security_low_light;
+
+        if (!low_light && total_gain >= T41_SECURITY_LOW_LIGHT_ENTER_GAIN)
+            low_light = 1;
+        else if (low_light &&
+                 total_gain <= T41_SECURITY_LOW_LIGHT_EXIT_GAIN)
+            low_light = 0;
+        if (low_light != controller->security_low_light) {
+            int ret = t41_apply_security_model(controller, low_light);
+
+            if (ret)
+                return ret;
+        }
     }
+    controller->last_total_gain = total_gain;
+    controller->feedback_updates++;
     return 0;
 }
 #endif
@@ -448,6 +531,8 @@ int OpenIMP_Tuning_GetStatus(OpenIMPTuningController *controller,
     status->active_blue_gain = controller->profile.blue_gain;
     status->active_exposure_target_q8 =
         controller->profile.exposure_target_q8;
+    status->active_low_light_color_model =
+        controller->security_low_light != 0;
 #if defined(PLATFORM_T41)
     {
         struct t41_awb_control control;
@@ -462,6 +547,13 @@ int OpenIMP_Tuning_GetStatus(OpenIMPTuningController *controller,
 
             if (!t41_ae_target(controller->fd, 1, &target))
                 status->active_exposure_target_q8 = (uint16_t)target;
+        }
+        {
+            uint32_t color_model;
+
+            if (!t41_color_model(controller->fd, 1, &color_model))
+                status->active_low_light_color_model =
+                    color_model == T41_COLOR_MODEL_LOW_LIGHT;
         }
     }
 #endif

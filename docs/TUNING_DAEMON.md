@@ -12,14 +12,15 @@ feedback:
 - T31 reads total gain at 25 Hz and submits the OEM packed
   `(total_gain << 8) | contrast` update.
 - T41 reads the recovered 232-byte AE expression response at 25 Hz and tracks
-  total-gain changes. Profile changes use an atomic private-ioctl handoff for
-  the two AWB banks. This establishes the feedback boundary without coupling
-  policy to Raptor or the V4L2 queue.
+  total-gain changes. The security policy uses hysteresis to select the
+  stock-derived daylight or low-light AWB, AE-target, and 29-word color-model
+  bank as illumination changes. Profile changes use private-ioctl handoffs;
+  capture and encoding remain untouched.
 - T40 currently owns the tuning node and applies selected static controls;
   dynamic feedback will be added only when its OEM rule is evidenced.
 
-Static controls are opt-in through `control_mask`. Starting a preset never
-silently rewrites an already-calibrated ISP bank. On T41, sharpness uses the
+Generic static controls are opt-in through `control_mask`. On T41, named
+profiles also own their documented AWB, AE, and color-model state. Sharpness uses the
 repaired DMSC writer and saturation uses the proven direct BCSH matrix writer.
 Brightness, contrast, and hue return `EOPNOTSUPP` until their recovered
 interpolation workspace is safe; unsupported controls cannot enter a damaged
@@ -41,14 +42,17 @@ openimp-tuningd -C 'set awb manual 1800 3000'
 openimp-tuningd -C 'set awb auto'
 ```
 
-On T41, `security` replays the 1476/3524 AWB pair from a converged OEM OS04D10
-daylight sample and selects the same-scene luma-matched 17600 Q8 AE target.
+On T41, `security` follows two matched OEM OS04D10 operating points. Daylight
+uses AWB 1476/3524 with a 17600 Q8 AE target. Above the low-light entry gain it
+atomically switches to AWB 1225/4850, a 15800 target, and the OEM-derived
+low-light color-model bank; it returns to daylight below a separate exit gain
+to prevent hunting. A nighttime reference measured normalized YUV averages of
+109.568/116.295/138.708 for stock and 109.546/116.765/137.548 for open.
 `psychedelic` preserves the accepted warm open-ISP baseline by replaying the
-proven 1800/3000 pair and its 14500 Q8 AE target. Both are deterministic:
-the recovered aggregate AWB controller is still not equivalent to the OEM's
-larger model-selection routine. `set awb auto` exposes it as an explicit
-experiment. The driver owns the safe two-bank update and auto/manual
-transition; profile names remain userspace policy.
+proven 1800/3000 pair, its 14500 Q8 AE target, and the daylight color bank.
+The aggregate AWB controller remains an explicit `set awb auto` experiment;
+the security policy does not depend on its unstable per-bank estimate. The
+driver owns safe register handoffs and profile names remain userspace policy.
 
 The Unix control socket defaults to `/var/run/openimp-tuning.sock`. `status`,
 named `profile` changes, individual color/exposure controls, and auto/manual

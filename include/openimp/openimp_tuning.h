@@ -55,6 +55,7 @@ typedef struct {
     uint16_t active_red_gain;
     uint16_t active_blue_gain;
     uint16_t active_exposure_target_q8;
+    uint8_t active_low_light_color_model;
     int running;
 } OpenIMPTuningStatus;
 
