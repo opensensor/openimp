@@ -72,17 +72,23 @@ static int avpu_queue_completed_stream(ALAvpuContext *ctx, int buf_idx, void *us
 #if defined(PLATFORM_T40)
 void OpenIMP_P3_FrameStats(uint32_t luma, uint32_t u_mean,
                            uint32_t v_mean);
+#endif
 
+#if defined(PLATFORM_T40) || defined(PLATFORM_T31)
 /*
  * The OEM board object owns one /dev/avpu wait thread and dispatches IRQs to
  * whichever encoder submitted the core.  AL_DevicePool likewise returns one
  * shared fd.  Keep that ownership shape here: one host waiter, with the
  * active context selected immediately before CL_PUSH.  This is what permits
- * the main and sub AVC channels to alternate on the single T40 encoder core.
+ * the main and sub AVC channels to alternate on the single T-series core.
  */
-static pthread_mutex_t g_t40_irq_host_lock = PTHREAD_MUTEX_INITIALIZER;
-static ALAvpuContext *g_t40_irq_host;
-static ALAvpuContext *volatile g_t40_irq_owner;
+static pthread_mutex_t g_tseries_irq_host_lock = PTHREAD_MUTEX_INITIALIZER;
+static ALAvpuContext *g_tseries_irq_host;
+static ALAvpuContext *volatile g_tseries_irq_owner;
+#if defined(PLATFORM_T31)
+/* T31's mainline AVPU driver exposes one physical encoder channel. */
+static pthread_mutex_t g_t31_encode_core_lock = PTHREAD_MUTEX_INITIALIZER;
+#endif
 #endif
 
 #define CODEC_READ_U8(base, off)  (*(uint8_t *)((uint8_t *)(base) + (off)))
@@ -4830,9 +4836,9 @@ static void* avpu_irq_thread(void* arg)
         }
 
         ALAvpuContext *dispatch_ctx = ctx;
-#if defined(PLATFORM_T40)
-        if (g_t40_irq_owner)
-            dispatch_ctx = g_t40_irq_owner;
+#if defined(PLATFORM_T40) || defined(PLATFORM_T31)
+        if (g_tseries_irq_owner)
+            dispatch_ctx = g_tseries_irq_owner;
 #endif
         dispatch_ctx->last_irq_id = (int)irq_id;
         { static unsigned int irq_count = 0; unsigned int c = __sync_add_and_fetch(&irq_count, 1);
@@ -6616,13 +6622,13 @@ int AL_Codec_Encode_Destroy(void *codec) {
             enc->avpu.irq_thread = 0;
             LOG_CODEC("AVPU: IRQ thread joined");
         }
-#if defined(PLATFORM_T40)
-        pthread_mutex_lock(&g_t40_irq_host_lock);
-        if (g_t40_irq_owner == &enc->avpu)
-            g_t40_irq_owner = NULL;
-        if (g_t40_irq_host == &enc->avpu)
-            g_t40_irq_host = NULL;
-        pthread_mutex_unlock(&g_t40_irq_host_lock);
+#if defined(PLATFORM_T40) || defined(PLATFORM_T31)
+        pthread_mutex_lock(&g_tseries_irq_host_lock);
+        if (g_tseries_irq_owner == &enc->avpu)
+            g_tseries_irq_owner = NULL;
+        if (g_tseries_irq_host == &enc->avpu)
+            g_tseries_irq_host = NULL;
+        pthread_mutex_unlock(&g_tseries_irq_host_lock);
 #endif
         /* Destroy IRQ mutex if allocated */
         if (enc->avpu.irq_mutex) {
@@ -6761,9 +6767,9 @@ static int t40_encode_gray_jpeg(uint32_t width, uint32_t height,
  * AL_Codec_Encode_Process - based on decompilation at 0x7a334
  * Process a frame for encoding
  */
-int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
+static int al_codec_encode_process_impl(void *codec, void *frame,
+                                        void *user_data) {
     OpenIMPProfileStamp submit_profile;
-
     if (codec == NULL) {
         LOG_CODEC("Process: NULL codec pointer");
         return -1;
@@ -7098,14 +7104,14 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
 
                         if (enc->avpu.irq_mutex) {
                             int start_irq_thread = 1;
-#if defined(PLATFORM_T40)
-                            pthread_mutex_lock(&g_t40_irq_host_lock);
-                            if (g_t40_irq_host == NULL) {
-                                g_t40_irq_host = &enc->avpu;
+#if defined(PLATFORM_T40) || defined(PLATFORM_T31)
+                            pthread_mutex_lock(&g_tseries_irq_host_lock);
+                            if (g_tseries_irq_host == NULL) {
+                                g_tseries_irq_host = &enc->avpu;
                             } else {
                                 start_irq_thread = 0;
                             }
-                            pthread_mutex_unlock(&g_t40_irq_host_lock);
+                            pthread_mutex_unlock(&g_tseries_irq_host_lock);
 #endif
                             if (start_irq_thread) {
                                 enc->avpu.irq_thread_running = 1;
@@ -7116,15 +7122,15 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
                                 } else {
                                     LOG_CODEC("AVPU: failed to start WaitInterruptThread during open");
                                     enc->avpu.irq_thread_running = 0;
-#if defined(PLATFORM_T40)
-                                    pthread_mutex_lock(&g_t40_irq_host_lock);
-                                    if (g_t40_irq_host == &enc->avpu)
-                                        g_t40_irq_host = NULL;
-                                    pthread_mutex_unlock(&g_t40_irq_host_lock);
+#if defined(PLATFORM_T40) || defined(PLATFORM_T31)
+                                    pthread_mutex_lock(&g_tseries_irq_host_lock);
+                                    if (g_tseries_irq_host == &enc->avpu)
+                                        g_tseries_irq_host = NULL;
+                                    pthread_mutex_unlock(&g_tseries_irq_host_lock);
 #endif
                                 }
                             } else {
-                                LOG_CODEC("AVPU: using shared T40 WaitInterruptThread");
+                                LOG_CODEC("AVPU: using shared T-series WaitInterruptThread");
                             }
                         }
 
@@ -8167,9 +8173,9 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
             if (trace_submit)
                 avpu_log_submit_snapshot(ctx, idx, "pre");
 
-#if defined(PLATFORM_T40)
+#if defined(PLATFORM_T40) || defined(PLATFORM_T31)
             __sync_synchronize();
-            g_t40_irq_owner = ctx;
+            g_tseries_irq_owner = ctx;
             __sync_synchronize();
 #endif
 #if defined(PLATFORM_T41)
@@ -8317,6 +8323,54 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data) {
     /* Throttled: per-frame "encoded and queued" log suppressed */
     openimp_profile_end(OPENIMP_PROFILE_ENCODE_SUBMIT, submit_profile);
     return 0;
+}
+
+int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data)
+{
+#if defined(PLATFORM_T31)
+    AL_CodecEncode *enc = (AL_CodecEncode *)codec;
+    int frames_before = 0;
+    unsigned int drops_before = 0;
+    int ret;
+
+    pthread_mutex_lock(&g_t31_encode_core_lock);
+    if (enc != NULL) {
+        frames_before = enc->avpu.frames_encoded;
+        drops_before = enc->avpu.dropped_completions;
+    }
+
+    ret = al_codec_encode_process_impl(codec, frame, user_data);
+
+    /* Raptor has one thread per encoded stream, but T31 has one physical
+     * encoder channel.  Keep that channel assigned to this context until the
+     * shared IRQ waiter consumes its command list. */
+    if (ret == 0 && enc != NULL && enc->use_hardware == 2 &&
+        enc->avpu.fd >= 0) {
+        int completed = 0;
+
+        for (int retry = 0; retry < 2000; ++retry) {
+            int pending = avpu_pending_peek(&enc->avpu, NULL, NULL);
+
+            __sync_synchronize();
+            if (!pending &&
+                (enc->avpu.frames_encoded != frames_before ||
+                 enc->avpu.dropped_completions != drops_before)) {
+                completed = 1;
+                break;
+            }
+            usleep(1000);
+        }
+        if (!completed) {
+            LOG_CODEC("Process: T31 serialized completion timeout channel=%d enc=%d pending=%d",
+                      enc->channel_id - 1, enc->avpu.frames_encoded,
+                      enc->avpu.pending_stream_count);
+        }
+    }
+    pthread_mutex_unlock(&g_t31_encode_core_lock);
+    return ret;
+#else
+    return al_codec_encode_process_impl(codec, frame, user_data);
+#endif
 }
 
 /**

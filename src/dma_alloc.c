@@ -47,6 +47,24 @@ typedef struct {
 #define IOCTL_MEM_GET_PHY   0xc0104d03  /* Get physical address */
 #define IOCTL_MEM_FLUSH     0xc0104d04  /* Flush cache */
 
+/* Mainline T31 exposes coherent allocations through the AVPU device as a
+ * last-resort fallback.  Keep the legacy /dev/rmem and bootloader-reserved
+ * arena paths ahead of it so the encoder can own the AVPU channel. */
+#define AVPU_GET_DMA_MMAP   _IOWR('q', 26, struct avpu_dma_info)
+#define AVPU_FLUSH_CACHE    _IOWR('q', 14, int)
+
+struct avpu_dma_info {
+    uint32_t fd;       /* page-aligned mmap offset returned by the driver */
+    uint32_t size;
+    uint32_t phy_addr;
+} __attribute__((aligned(4)));
+
+struct avpu_flush_cache_info {
+    uint32_t addr;
+    uint32_t len;
+    uint32_t dir;
+};
+
 /* Memory allocation request structure */
 typedef struct {
     uint32_t size;              /* Requested size */
@@ -68,6 +86,8 @@ static int g_rmem_supported = 0;  /* set to 1 when /dev/rmem accepts our ioctls 
 
 /* RMEM-specific globals (for /dev/rmem bump allocator) */
 static int g_is_rmem = 0;
+static int g_is_avpu = 0;
+static int g_is_devmem_rmem = 0;
 static uint32_t g_rmem_base_phys = 0x06300000; /* 29MB region base (from RE notes) */
 static size_t g_rmem_size = (size_t)(29 * 1024 * 1024);
 static void *g_rmem_virt_base = NULL;
@@ -230,15 +250,18 @@ static int looks_like_pointer_style_pool_alloc(uintptr_t arg2, intptr_t arg3, co
 /**
  * Initialize DMA allocator
  */
-static void maybe_override_rmem_from_env(void)
+static int maybe_override_rmem_from_env(void)
 {
     const char *env_base = getenv("OPENIMP_RMEM_BASE");
     const char *env_size = getenv("OPENIMP_RMEM_SIZE");
+    int configured = 0;
+
     if (env_base && *env_base) {
         char *endp = NULL;
         unsigned long v = strtoul(env_base, &endp, 0);
-        if (endp && endp != env_base) {
+        if (endp && endp != env_base && v <= UINT32_MAX) {
             g_rmem_base_phys = (uint32_t)v;
+            configured = 1;
             LOG_DMA("RMEM base overridden by env: 0x%08x", g_rmem_base_phys);
         }
     }
@@ -247,9 +270,61 @@ static void maybe_override_rmem_from_env(void)
         unsigned long v = strtoul(env_size, &endp, 0);
         if (endp && endp != env_size && v > 0) {
             g_rmem_size = (size_t)v;
+            configured = 1;
             LOG_DMA("RMEM size overridden by env: %zu (0x%zx)", g_rmem_size, g_rmem_size);
         }
     }
+    return configured;
+}
+
+static int maybe_override_rmem_from_cmdline(void)
+{
+    char cmdline[1024];
+    char *field;
+    char *endp;
+    unsigned long amount;
+    unsigned long base;
+    uint64_t bytes;
+    FILE *fp;
+
+    fp = fopen("/proc/cmdline", "r");
+    if (fp == NULL)
+        return 0;
+    if (fgets(cmdline, sizeof(cmdline), fp) == NULL) {
+        fclose(fp);
+        return 0;
+    }
+    fclose(fp);
+
+    field = strstr(cmdline, "rmem=");
+    if (field == NULL)
+        return 0;
+    field += strlen("rmem=");
+    amount = strtoul(field, &endp, 0);
+    if (endp == field || amount == 0)
+        return 0;
+
+    bytes = amount;
+    if (*endp == 'M' || *endp == 'm') {
+        bytes *= 1024u * 1024u;
+        endp++;
+    } else if (*endp == 'K' || *endp == 'k') {
+        bytes *= 1024u;
+        endp++;
+    }
+    if (*endp != '@' || bytes == 0 || bytes > SIZE_MAX)
+        return 0;
+
+    field = endp + 1;
+    base = strtoul(field, &endp, 0);
+    if (endp == field || base > UINT32_MAX)
+        return 0;
+
+    g_rmem_base_phys = (uint32_t)base;
+    g_rmem_size = (size_t)bytes;
+    LOG_DMA("RMEM parsed from cmdline: base=0x%08x size=%zu (0x%zx)",
+            g_rmem_base_phys, g_rmem_size, g_rmem_size);
+    return 1;
 }
 
 static int dma_init(void) {
@@ -264,8 +339,10 @@ static int dma_init(void) {
         return 0;
     }
 
-    /* Allow environment to override RMEM base/size to match device-specific layout */
-    maybe_override_rmem_from_env();
+    /* The bootloader is authoritative for the reserved arena.  Environment
+     * values remain a useful explicit override for development profiles. */
+    int devmem_rmem_configured = maybe_override_rmem_from_cmdline();
+    devmem_rmem_configured |= maybe_override_rmem_from_env();
 
     /* Check if RMEM should be disabled (T31 workaround for kernel bugs) */
     const char *disable_rmem_env = getenv("OPENIMP_DISABLE_RMEM");
@@ -301,9 +378,43 @@ static int dma_init(void) {
         }
     }
 
+    if (g_mem_fd < 0 && devmem_rmem_configured &&
+        g_rmem_base_phys != 0 && g_rmem_size != 0) {
+        int fd = open("/dev/mem", O_RDWR | O_SYNC | O_CLOEXEC);
+        if (fd >= 0) {
+            void *base = mmap(NULL, g_rmem_size, PROT_READ | PROT_WRITE,
+                              MAP_SHARED, fd, (off_t)g_rmem_base_phys);
+            if (base != MAP_FAILED) {
+                g_mem_fd = fd;
+                g_rmem_supported = 1;
+                g_rmem_virt_base = base;
+                g_is_rmem = 1;
+                g_is_devmem_rmem = 1;
+                strncpy(g_chosen_dev_path, "/dev/mem",
+                        sizeof(g_chosen_dev_path) - 1);
+                LOG_DMA("DMA init: reserved arena mapped uncached through /dev/mem at %p size=%zu base_phys=0x%08x",
+                        base, g_rmem_size, g_rmem_base_phys);
+            } else {
+                LOG_DMA("DMA init: reserved /dev/mem mmap failed (%s)",
+                        strerror(errno));
+                close(fd);
+            }
+        }
+    }
+
     if (g_mem_fd < 0) {
-        g_rmem_supported = 0;
-        LOG_DMA("DMA init: no DMA device found; using malloc fallback only");
+        int fd = open("/dev/avpu", O_RDWR | O_CLOEXEC);
+        if (fd >= 0) {
+            g_mem_fd = fd;
+            g_rmem_supported = 1;
+            g_is_avpu = 1;
+            strncpy(g_chosen_dev_path, "/dev/avpu",
+                    sizeof(g_chosen_dev_path) - 1);
+            LOG_DMA("DMA init: using AVPU coherent allocator");
+        } else {
+            g_rmem_supported = 0;
+            LOG_DMA("DMA init: no DMA device found; using malloc fallback only");
+        }
     } else if (strcmp(g_chosen_dev_path, "/dev/rmem") == 0) {
         /* rmem requires mmap; set up a single mapping and bump allocator */
         /*
@@ -340,6 +451,11 @@ static int dma_free_buffer(DMABufferRecord *buf)
     if (buf->virt_addr != NULL) {
         if ((buf->flags & 0x2) && g_is_rmem) {
             /* RMEM bump allocations are not individually freed (no-op) */
+        } else if ((buf->flags & 0x4) && g_is_avpu) {
+            /* The AVPU channel owns the coherent allocation.  Unmapping the
+             * userspace alias here is sufficient; the driver releases the
+             * allocation when the channel fd closes. */
+            munmap(buf->virt_addr, buf->size);
         } else if ((buf->flags & 0x1) && g_rmem_supported && g_mem_fd >= 0) {
             mem_alloc_req_t req;
             munmap(buf->virt_addr, buf->size);
@@ -401,6 +517,30 @@ static int dma_alloc_descriptor_internal(int pool_id, IMPDMABufferInfo *info_out
                 LOG_DMA("Alloc: /dev/rmem out of memory (requested=%d, used=%zu/%zu); falling back",
                         size, g_rmem_offset, g_rmem_size);
             }
+        } else if (g_is_avpu) {
+            struct avpu_dma_info info;
+            void *virt;
+
+            memset(&info, 0, sizeof(info));
+            info.size = (uint32_t)size;
+            if (ioctl(g_mem_fd, AVPU_GET_DMA_MMAP, &info) == 0 &&
+                info.phy_addr != 0) {
+                virt = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED,
+                            g_mem_fd, (off_t)info.fd);
+                if (virt != MAP_FAILED) {
+                    buf->virt_addr = virt;
+                    buf->phys_addr = info.phy_addr;
+                    buf->flags |= 0x4;
+                    LOG_DMA("Alloc: %s size=%d phys=0x%x virt=%p (avpu coherent off=0x%x)",
+                            buf->name[0] ? buf->name : "(unnamed)", size,
+                            buf->phys_addr, buf->virt_addr, info.fd);
+                } else {
+                    LOG_DMA("Alloc: AVPU mmap failed for phys=0x%x off=0x%x (%s)",
+                            info.phy_addr, info.fd, strerror(errno));
+                }
+            } else {
+                LOG_DMA("Alloc: AVPU_GET_DMA_MMAP failed (%s)", strerror(errno));
+            }
         } else {
             mem_alloc_req_t req;
             memset(&req, 0, sizeof(req));
@@ -437,6 +577,8 @@ static int dma_alloc_descriptor_internal(int pool_id, IMPDMABufferInfo *info_out
         LOG_DMA("Alloc: failed to register buffer");
         if ((buf->flags & 0x2) && g_is_rmem) {
             /* RMEM bump allocations cannot be individually rolled back. */
+        } else if ((buf->flags & 0x4) && g_is_avpu) {
+            munmap(buf->virt_addr, buf->size);
         } else if ((buf->flags & 0x1) && g_rmem_supported && g_mem_fd >= 0) {
             munmap(buf->virt_addr, buf->size);
         } else {
@@ -711,6 +853,64 @@ int DMA_RmemFlushCache(void *virt_addr, uint32_t size, int dir)
 
     if (!virt_addr || size == 0) return -1;
     if (dma_init() != 0 || g_mem_fd < 0) return -1;
+
+    if (g_is_devmem_rmem) {
+        uintptr_t address = (uintptr_t)virt_addr;
+        uintptr_t base = (uintptr_t)g_rmem_virt_base;
+        uint64_t offset;
+
+        if (address >= base && address - base < g_rmem_size) {
+            offset = address - base;
+        } else if (address >= g_rmem_base_phys &&
+                   address - g_rmem_base_phys < g_rmem_size) {
+            offset = address - g_rmem_base_phys;
+        } else {
+            LOG_DMA("DevmemFlushCache: address %p is outside reserved arena",
+                    virt_addr);
+            return -1;
+        }
+        if (offset + size > g_rmem_size) {
+            LOG_DMA("DevmemFlushCache: range address=%p size=0x%x exceeds reserved arena",
+                    virt_addr, size);
+            return -1;
+        }
+
+        /* O_SYNC /dev/mem mappings are uncached on MIPS, so CPU stores and
+         * device DMA already observe the same physical bytes. */
+        index = __sync_add_and_fetch(&flush_count, 1);
+        if (index <= 12) {
+            LOG_DMA("DevmemFlushCache: uncached virt=%p phys=0x%08x size=0x%x dir=%d [#%u]",
+                    virt_addr, g_rmem_base_phys + (uint32_t)offset, size, dir,
+                    index);
+        }
+        return 0;
+    }
+
+    if (g_is_avpu) {
+        struct avpu_flush_cache_info info;
+        DMABufferRecord *buf;
+
+        buf = lookup_buffer_containing_virt(virt_addr, NULL);
+        if (buf == NULL)
+            buf = lookup_buffer_containing_phys((uint32_t)(uintptr_t)virt_addr,
+                                                NULL);
+        if (buf == NULL) {
+            LOG_DMA("AvpuFlushCache: address %p is outside DMA allocations",
+                    virt_addr);
+            return -1;
+        }
+
+        info.addr = (uint32_t)(uintptr_t)virt_addr;
+        info.len = size;
+        info.dir = (uint32_t)dir;
+        ret = ioctl(g_mem_fd, AVPU_FLUSH_CACHE, &info);
+        index = __sync_add_and_fetch(&flush_count, 1);
+        if (index <= 12 || ret != 0) {
+            LOG_DMA("AvpuFlushCache: virt=%p phys=0x%08x size=0x%x dir=%d ret=%d [#%u]",
+                    virt_addr, buf->phys_addr, size, dir, ret, index);
+        }
+        return ret;
+    }
 
     /*
      * T31's 3.10 rmem driver passes info.addr straight to
