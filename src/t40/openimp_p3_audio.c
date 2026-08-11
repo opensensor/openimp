@@ -13,6 +13,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/ioctl.h>
+#include <sys/time.h>
 #include <unistd.h>
 
 #include <imp/imp_audio.h>
@@ -30,6 +31,7 @@ typedef struct {
     uint32_t size;
     void *aec;
     uint32_t aec_size;
+    struct timeval *timestamp;
 } P3AudioInputStream;
 
 typedef struct {
@@ -77,6 +79,11 @@ typedef struct {
 #define AMIC_SPK_GET_GAIN P3_SIOR(83, P3AudioVolume)
 #define AMIC_AI_SET_MUTE P3_SIOR(78, P3AudioMute)
 #define AMIC_SPK_SET_MUTE P3_SIOR(77, P3AudioMute)
+
+_Static_assert(sizeof(P3AudioInputStream) == 20,
+               "T40/T41 audio input stream ABI mismatch");
+_Static_assert(AMIC_AI_GET_STREAM == 0x40145062UL,
+               "T40/T41 AMIC_AI_GET_STREAM ioctl mismatch");
 
 typedef void (*P3HpfCreate)(int16_t *, int16_t *, int16_t, int16_t, int, int);
 typedef int (*P3HpfProcess)(int16_t *, int16_t *, int);
@@ -333,6 +340,7 @@ int IMP_AI_GetFrame(int device, int channel, IMPAudioFrame *frame,
                     IMPBlock block)
 {
     P3AudioInputStream stream;
+    struct timeval capture_timestamp = { 0 };
     size_t bytes;
     unsigned int channels;
 
@@ -355,6 +363,7 @@ int IMP_AI_GetFrame(int device, int channel, IMPAudioFrame *frame,
     memset(&stream, 0, sizeof(stream));
     stream.data = p3_audio.frame_buffer;
     stream.size = (uint32_t)bytes;
+    stream.timestamp = &capture_timestamp;
     if (ioctl(p3_audio.fd, AMIC_AI_GET_STREAM, &stream) != 0)
         return -1;
     p3_process_effects((int16_t *)p3_audio.frame_buffer,
@@ -407,11 +416,43 @@ static int p3_get_volume(int command, int channel, int *value)
     return 0;
 }
 
+/*
+ * The IMP API expresses AI volume as half-decibels in [-30, 120], with 60
+ * representing 0 dB and -30 representing mute.  The T40/T41 codec driver
+ * ioctl instead consumes the CLAVR register value: 195 is 0 dB, each step is
+ * 0.5 dB, and zero is mute.  Passing the public value through unchanged makes
+ * Raptor's default volume of 80 program roughly -57.5 dB.
+ */
+static int p3_volume_to_raw(int value, int raw_unity)
+{
+    if (value < -30)
+        value = -30;
+    else if (value > 120)
+        value = 120;
+    if (value == -30)
+        return 0;
+    value += raw_unity - 60;
+    return value > 255 ? 255 : value;
+}
+
+static int p3_volume_from_raw(int value, int raw_unity)
+{
+    if (value <= 0)
+        return -30;
+    value -= raw_unity - 60;
+    if (value < -29)
+        return -29;
+    if (value > 120)
+        return 120;
+    return value;
+}
+
 int IMP_AI_SetVol(int device, int channel, int value)
 {
     int result;
     (void)device;
-    result = p3_set_volume(AMIC_AI_SET_VOLUME, channel, value);
+    result = p3_set_volume(AMIC_AI_SET_VOLUME, channel,
+                           p3_volume_to_raw(value, 195));
     if (result == 0)
         p3_audio.ai_volume = value;
     return result;
@@ -422,8 +463,10 @@ int IMP_AI_GetVol(int device, int channel, int *value)
     int result;
     (void)device;
     result = p3_get_volume(AMIC_AI_GET_VOLUME, channel, value);
-    if (result == 0)
+    if (result == 0) {
+        *value = p3_volume_from_raw(*value, 195);
         p3_audio.ai_volume = *value;
+    }
     return result;
 }
 
@@ -653,7 +696,9 @@ int IMP_AO_SetVol(int device, int channel, int value)
 {
     int result;
     (void)device;
-    result = p3_set_volume(AMIC_SPK_SET_VOLUME, channel, value);
+    /* The T40/T41 DAC's CDGSR register uses 241, rather than 195, for 0 dB. */
+    result = p3_set_volume(AMIC_SPK_SET_VOLUME, channel,
+                           p3_volume_to_raw(value, 241));
     if (result == 0)
         p3_audio.ao_volume = value;
     return result;
@@ -664,8 +709,10 @@ int IMP_AO_GetVol(int device, int channel, int *value)
     int result;
     (void)device;
     result = p3_get_volume(AMIC_SPK_GET_VOLUME, channel, value);
-    if (result == 0)
+    if (result == 0) {
+        *value = p3_volume_from_raw(*value, 241);
         p3_audio.ao_volume = *value;
+    }
     return result;
 }
 
