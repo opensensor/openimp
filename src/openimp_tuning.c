@@ -28,15 +28,34 @@
 #define TISP_CID_OPEN_AWB_CONTROL 0x08ff0001U
 #define TISP_CID_OPEN_AE_TARGET 0x08ff0002U
 #define TISP_CID_OPEN_COLOR_MODEL 0x08ff0003U
+#define TISP_CID_OPEN_AWB_SCENE 0x08ff0004U
 #define TISP_T41_AE_EXPR_BYTES 232U
 #define TISP_T41_AE_EXPR_TOTAL_GAIN_OFFSET 204U
 #define T41_COLOR_MODEL_DAY 0U
 #define T41_COLOR_MODEL_LOW_LIGHT 1U
+#define T41_COLOR_MODEL_BRIGHT_DAY 2U
+#define T41_SECURITY_BRIGHT_DAY_ENTER_B_Q10 3000U
+#define T41_SECURITY_BRIGHT_DAY_EXIT_B_Q10 3300U
+#define T41_SECURITY_BRIGHT_DAY_SAMPLES 32
 #define T41_SECURITY_LOW_LIGHT_ENTER_GAIN 70000
 #define T41_SECURITY_LOW_LIGHT_EXIT_GAIN 56000
+#define T41_SECURITY_LOW_LIGHT_ENTER_B_Q10 3800U
+#define T41_SECURITY_LOW_LIGHT_SAMPLES 32
+#define T41_SECURITY_AWB_UPDATE_SAMPLES 5U
+#define T41_SECURITY_AWB_SLEW_MAX 16
+#define T41_SECURITY_AWB_DEADBAND 4
+#define T41_SECURITY_AWB_RED_BIAS_Q10 1018U
+#define T41_SECURITY_AWB_BLUE_BIAS_Q10 1111U
+#define T41_SECURITY_AWB_RED_MIN 1000U
+#define T41_SECURITY_AWB_RED_MAX 2400U
+#define T41_SECURITY_AWB_BLUE_MIN 2500U
+#define T41_SECURITY_AWB_BLUE_MAX 5400U
 #define T41_SECURITY_DAY_RED_GAIN 1476U
 #define T41_SECURITY_DAY_BLUE_GAIN 3524U
 #define T41_SECURITY_DAY_AE_TARGET 17600U
+#define T41_SECURITY_BRIGHT_DAY_RED_GAIN 1908U
+#define T41_SECURITY_BRIGHT_DAY_BLUE_GAIN 3092U
+#define T41_SECURITY_BRIGHT_DAY_AE_TARGET 17600U
 #define T41_SECURITY_LOW_LIGHT_RED_GAIN 1225U
 #define T41_SECURITY_LOW_LIGHT_BLUE_GAIN 4850U
 #define T41_SECURITY_LOW_LIGHT_AE_TARGET 15800U
@@ -60,7 +79,12 @@ struct OpenIMPTuningController {
     int worker_created;
     int stop;
     int running;
-    int security_low_light;
+    uint32_t security_color_model;
+    int bright_day_evidence;
+    int low_light_evidence;
+    uint32_t scene_red_q10;
+    uint32_t scene_blue_q10;
+    uint8_t awb_update_samples;
 };
 
 static int tuning_open(const char *device)
@@ -215,6 +239,11 @@ struct t41_awb_control {
     uint16_t blue_gain;
 };
 
+struct t41_awb_scene {
+    uint32_t raw_r_q10;
+    uint32_t raw_b_q10;
+};
+
 static int t41_awb_control(int fd, int is_get,
                            struct t41_awb_control *control)
 {
@@ -243,21 +272,100 @@ static int t41_color_model(int fd, int is_get, uint32_t *model)
     return ioctl(fd, TISP_VIDIOC_DEFAULT_TUNING, &request) < 0 ? -errno : 0;
 }
 
+static int t41_awb_scene(int fd, struct t41_awb_scene *scene)
+{
+    struct t40_tuning_request request = {
+        0, 1, TISP_CID_OPEN_AWB_SCENE, (uintptr_t)scene
+    };
+
+    return ioctl(fd, TISP_VIDIOC_DEFAULT_TUNING, &request) < 0 ? -errno : 0;
+}
+
+static void t41_security_awb_target(OpenIMPTuningController *controller,
+                                    uint16_t *red_gain,
+                                    uint16_t *blue_gain)
+{
+    uint32_t red = (controller->scene_red_q10 *
+                    T41_SECURITY_AWB_RED_BIAS_Q10 + 512U) >> 10;
+    uint32_t blue = (controller->scene_blue_q10 *
+                     T41_SECURITY_AWB_BLUE_BIAS_Q10 + 512U) >> 10;
+
+    if (red < T41_SECURITY_AWB_RED_MIN)
+        red = T41_SECURITY_AWB_RED_MIN;
+    else if (red > T41_SECURITY_AWB_RED_MAX)
+        red = T41_SECURITY_AWB_RED_MAX;
+    if (blue < T41_SECURITY_AWB_BLUE_MIN)
+        blue = T41_SECURITY_AWB_BLUE_MIN;
+    else if (blue > T41_SECURITY_AWB_BLUE_MAX)
+        blue = T41_SECURITY_AWB_BLUE_MAX;
+    *red_gain = (uint16_t)red;
+    *blue_gain = (uint16_t)blue;
+}
+
+static int t41_adapt_security_awb(OpenIMPTuningController *controller)
+{
+    struct t41_awb_control awb = {
+        0, controller->profile.red_gain, controller->profile.blue_gain
+    };
+    uint16_t target_red;
+    uint16_t target_blue;
+    int red_delta;
+    int blue_delta;
+    int ret;
+
+    if (++controller->awb_update_samples <
+        T41_SECURITY_AWB_UPDATE_SAMPLES)
+        return 0;
+    controller->awb_update_samples = 0;
+
+    if (!controller->scene_red_q10 || !controller->scene_blue_q10)
+        return 0;
+    t41_security_awb_target(controller, &target_red, &target_blue);
+    red_delta = (int)target_red - (int)awb.red_gain;
+    blue_delta = (int)target_blue - (int)awb.blue_gain;
+    if (abs(red_delta) <= T41_SECURITY_AWB_DEADBAND)
+        red_delta = 0;
+    if (abs(blue_delta) <= T41_SECURITY_AWB_DEADBAND)
+        blue_delta = 0;
+    if (!red_delta && !blue_delta)
+        return 0;
+    if (red_delta > T41_SECURITY_AWB_SLEW_MAX)
+        red_delta = T41_SECURITY_AWB_SLEW_MAX;
+    else if (red_delta < -T41_SECURITY_AWB_SLEW_MAX)
+        red_delta = -T41_SECURITY_AWB_SLEW_MAX;
+    if (blue_delta > T41_SECURITY_AWB_SLEW_MAX)
+        blue_delta = T41_SECURITY_AWB_SLEW_MAX;
+    else if (blue_delta < -T41_SECURITY_AWB_SLEW_MAX)
+        blue_delta = -T41_SECURITY_AWB_SLEW_MAX;
+    awb.red_gain = (uint16_t)((int)awb.red_gain + red_delta);
+    awb.blue_gain = (uint16_t)((int)awb.blue_gain + blue_delta);
+    ret = t41_awb_control(controller->fd, 0, &awb);
+    if (!ret) {
+        controller->profile.red_gain = awb.red_gain;
+        controller->profile.blue_gain = awb.blue_gain;
+    }
+    return ret;
+}
+
 static int t41_apply_security_model(OpenIMPTuningController *controller,
-                                    int low_light)
+                                    uint32_t color_model)
 {
     struct t41_awb_control awb;
-    uint32_t color_model;
     uint32_t target;
     int ret;
 
-    if (low_light) {
-        color_model = T41_COLOR_MODEL_LOW_LIGHT;
+    if (color_model == T41_COLOR_MODEL_LOW_LIGHT) {
         awb = (struct t41_awb_control){
             0, T41_SECURITY_LOW_LIGHT_RED_GAIN,
             T41_SECURITY_LOW_LIGHT_BLUE_GAIN,
         };
         target = T41_SECURITY_LOW_LIGHT_AE_TARGET;
+    } else if (color_model == T41_COLOR_MODEL_BRIGHT_DAY) {
+        awb = (struct t41_awb_control){
+            0, T41_SECURITY_BRIGHT_DAY_RED_GAIN,
+            T41_SECURITY_BRIGHT_DAY_BLUE_GAIN,
+        };
+        target = T41_SECURITY_BRIGHT_DAY_AE_TARGET;
     } else {
         color_model = T41_COLOR_MODEL_DAY;
         awb = (struct t41_awb_control){
@@ -278,7 +386,8 @@ static int t41_apply_security_model(OpenIMPTuningController *controller,
     controller->profile.red_gain = awb.red_gain;
     controller->profile.blue_gain = awb.blue_gain;
     controller->profile.exposure_target_q8 = (uint16_t)target;
-    controller->security_low_light = low_light;
+    controller->security_color_model = color_model;
+    controller->awb_update_samples = 0;
     return 0;
 }
 #endif
@@ -302,7 +411,7 @@ static int tuning_apply(OpenIMPTuningController *controller,
 
         ret = t41_color_model(controller->fd, 0, &color_model);
         if (!ret)
-            controller->security_low_light = 0;
+            controller->security_color_model = T41_COLOR_MODEL_DAY;
     }
     if (!ret &&
         (profile->control_mask & OPENIMP_TUNING_CONTROL_WHITE_BALANCE)) {
@@ -343,8 +452,10 @@ static int tuning_apply(OpenIMPTuningController *controller,
 static int tuning_feedback(OpenIMPTuningController *controller)
 {
     struct t40_tuning_request request;
+    struct t41_awb_scene scene;
     uint8_t response[TISP_T41_AE_EXPR_BYTES];
     int32_t total_gain;
+    int gain_changed;
 
     memset(response, 0, sizeof(response));
     request = (struct t40_tuning_request){
@@ -355,25 +466,83 @@ static int tuning_feedback(OpenIMPTuningController *controller)
     memcpy(&total_gain,
            response + TISP_T41_AE_EXPR_TOTAL_GAIN_OFFSET,
            sizeof(total_gain));
-    if (total_gain == controller->last_total_gain)
-        return 0;
+    gain_changed = total_gain != controller->last_total_gain;
     if (controller->profile.kind == OPENIMP_TUNING_PROFILE_SECURITY) {
-        int low_light = controller->security_low_light;
+        uint32_t color_model = controller->security_color_model;
+        int scene_ret = t41_awb_scene(controller->fd, &scene);
 
-        if (!low_light && total_gain >= T41_SECURITY_LOW_LIGHT_ENTER_GAIN)
-            low_light = 1;
-        else if (low_light &&
-                 total_gain <= T41_SECURITY_LOW_LIGHT_EXIT_GAIN)
-            low_light = 0;
-        if (low_light != controller->security_low_light) {
-            int ret = t41_apply_security_model(controller, low_light);
+        if (!scene_ret) {
+            controller->scene_red_q10 = scene.raw_r_q10;
+            controller->scene_blue_q10 = scene.raw_b_q10;
+        }
+
+        if (!scene_ret) {
+            if (scene.raw_b_q10 <=
+                T41_SECURITY_BRIGHT_DAY_ENTER_B_Q10) {
+                if (controller->bright_day_evidence <
+                    T41_SECURITY_BRIGHT_DAY_SAMPLES)
+                    controller->bright_day_evidence++;
+            } else if (scene.raw_b_q10 >=
+                       T41_SECURITY_BRIGHT_DAY_EXIT_B_Q10) {
+                if (controller->bright_day_evidence >
+                    -T41_SECURITY_BRIGHT_DAY_SAMPLES)
+                    controller->bright_day_evidence--;
+            } else if (controller->bright_day_evidence > 0) {
+                controller->bright_day_evidence--;
+            } else if (controller->bright_day_evidence < 0) {
+                controller->bright_day_evidence++;
+            }
+
+            /* Exposure gain describes scene brightness, not illuminant.
+             * Require both a dark exposure and a sustained warm-scene AWB
+             * ratio before selecting the low-light color/WB bank. */
+            if (total_gain >= T41_SECURITY_LOW_LIGHT_ENTER_GAIN &&
+                scene.raw_b_q10 >=
+                    T41_SECURITY_LOW_LIGHT_ENTER_B_Q10) {
+                if (controller->low_light_evidence <
+                    T41_SECURITY_LOW_LIGHT_SAMPLES)
+                    controller->low_light_evidence++;
+            } else if (controller->low_light_evidence > 0) {
+                controller->low_light_evidence--;
+            }
+        }
+
+        /* Cool-daylight evidence remains authoritative even after the
+         * low-light model has latched. This prevents a daylight exposure
+         * rise from trapping the camera on the blue low-light WB preset. */
+        if (controller->bright_day_evidence >=
+            T41_SECURITY_BRIGHT_DAY_SAMPLES) {
+            color_model = T41_COLOR_MODEL_BRIGHT_DAY;
+        } else if (controller->low_light_evidence >=
+                   T41_SECURITY_LOW_LIGHT_SAMPLES) {
+            color_model = T41_COLOR_MODEL_LOW_LIGHT;
+        } else if (color_model == T41_COLOR_MODEL_LOW_LIGHT &&
+                   total_gain <= T41_SECURITY_LOW_LIGHT_EXIT_GAIN) {
+            color_model = T41_COLOR_MODEL_DAY;
+        } else if (color_model == T41_COLOR_MODEL_BRIGHT_DAY &&
+                   controller->bright_day_evidence <=
+                       -T41_SECURITY_BRIGHT_DAY_SAMPLES) {
+            color_model = T41_COLOR_MODEL_DAY;
+        }
+        if (color_model != controller->security_color_model) {
+            int ret = t41_apply_security_model(controller, color_model);
+
+            if (ret)
+                return ret;
+            controller->bright_day_evidence = 0;
+            controller->low_light_evidence = 0;
+        }
+        {
+            int ret = t41_adapt_security_awb(controller);
 
             if (ret)
                 return ret;
         }
     }
-    controller->last_total_gain = total_gain;
-    controller->feedback_updates++;
+    if (gain_changed) {
+        controller->last_total_gain = total_gain;
+        controller->feedback_updates++;
+    }
     return 0;
 }
 #endif
@@ -531,9 +700,13 @@ int OpenIMP_Tuning_GetStatus(OpenIMPTuningController *controller,
     status->active_blue_gain = controller->profile.blue_gain;
     status->active_exposure_target_q8 =
         controller->profile.exposure_target_q8;
-    status->active_low_light_color_model =
-        controller->security_low_light != 0;
+    status->active_scene_red_q10 = controller->scene_red_q10;
+    status->active_scene_blue_q10 = controller->scene_blue_q10;
 #if defined(PLATFORM_T41)
+    status->active_low_light_color_model =
+        controller->security_color_model == T41_COLOR_MODEL_LOW_LIGHT;
+    status->active_bright_day_color_model =
+        controller->security_color_model == T41_COLOR_MODEL_BRIGHT_DAY;
     {
         struct t41_awb_control control;
 
@@ -551,11 +724,17 @@ int OpenIMP_Tuning_GetStatus(OpenIMPTuningController *controller,
         {
             uint32_t color_model;
 
-            if (!t41_color_model(controller->fd, 1, &color_model))
+            if (!t41_color_model(controller->fd, 1, &color_model)) {
                 status->active_low_light_color_model =
                     color_model == T41_COLOR_MODEL_LOW_LIGHT;
+                status->active_bright_day_color_model =
+                    color_model == T41_COLOR_MODEL_BRIGHT_DAY;
+            }
         }
     }
+#else
+    status->active_low_light_color_model = 0;
+    status->active_bright_day_color_model = 0;
 #endif
     status->running = controller->running;
     pthread_mutex_unlock(&controller->lock);
