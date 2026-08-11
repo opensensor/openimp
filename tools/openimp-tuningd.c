@@ -210,14 +210,18 @@ static int handle_command(OpenIMPTuningController *controller, char *command,
                 set_response(response, response_bytes,
                     "OK profile=%s running=%d feedback_updates=%u "
                     "total_gain=%d ae_target=%u color_model=%s awb=%s "
-                    "red_gain=%u blue_gain=%u\n",
+                    "red_gain=%u blue_gain=%u scene_r_q10=%u "
+                    "scene_b_q10=%u\n",
                     profile_name(status.profile.kind), status.running,
                     status.feedback_updates, status.last_total_gain,
                     status.active_exposure_target_q8,
-                    status.active_low_light_color_model ?
-                        "low-light" : "day",
+                    status.active_low_light_color_model ? "low-light" :
+                        (status.active_bright_day_color_model ?
+                            "bright-day" : "day"),
                     status.active_auto_white_balance ? "auto" : "manual",
-                    status.active_red_gain, status.active_blue_gain);
+                    status.active_red_gain, status.active_blue_gain,
+                    status.active_scene_red_q10,
+                    status.active_scene_blue_q10);
         }
     } else if (!strcmp(verb, "profile")) {
         argument = strtok_r(NULL, " \t\r\n", &save);
