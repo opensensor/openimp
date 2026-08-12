@@ -32,7 +32,11 @@ uint64_t system_gettime(int clock_type)
 
 int32_t get_cpu_id(void)
 {
+#if defined(PLATFORM_T23)
+    return 0x0f; /* T23-N */
+#else
     return 0x15; /* T31X */
+#endif
 }
 
 int32_t is_has_simd128(void)

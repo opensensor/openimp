@@ -47,6 +47,9 @@
 #include "core/globals.h"
 #include "core/imp_alloc.h"
 #include "kernel_interface.h"
+#if defined(PLATFORM_T23)
+#include "t23/openimp_t23_persist.h"
+#endif
 
 /* ---------------------------------------------------------------------
  * Compatibility forward declarations (functions ported in other tasks).
@@ -87,18 +90,47 @@ static void *fs_retaddr(void)
     return __builtin_return_address(0);
 }
 
+static int fs_trace_enabled(void)
+{
+    static int enabled = -1;
+
+    if (enabled < 0) {
+        const char *value = getenv("OPENIMP_TRACE_KMSG");
+
+        enabled = value && value[0] && value[0] != '0';
+    }
+    return enabled;
+}
+
 static void fs_thread_trace(const char *fmt, ...)
 {
-    int fd = open("/dev/kmsg", O_WRONLY | O_CLOEXEC);
-    if (fd < 0) return;
+    int trace_kmsg = fs_trace_enabled();
+#if defined(PLATFORM_T23)
+    int trace_persist = openimp_t23_persist_enabled();
+#else
+    int trace_persist = 0;
+#endif
+    if (!trace_kmsg && !trace_persist)
+        return;
 
     char buf[256];
     va_list ap;
     va_start(ap, fmt);
     int n = vsnprintf(buf, sizeof(buf), fmt, ap);
     va_end(ap);
-    if (n > 0) write(fd, buf, (size_t)n);
-    close(fd);
+    if (n > 0) {
+        if (trace_kmsg) {
+            int fd = open("/dev/kmsg", O_WRONLY | O_CLOEXEC);
+            if (fd >= 0) {
+                write(fd, buf, (size_t)n);
+                close(fd);
+            }
+        }
+#if defined(PLATFORM_T23)
+        if (trace_persist)
+            openimp_t23_persist_write(buf, (size_t)n);
+#endif
+    }
 }
 
 static void fs_user_trace(const char *fmt, ...)
@@ -106,13 +138,20 @@ static void fs_user_trace(const char *fmt, ...)
     char buf[256];
     va_list ap;
 
+    if (!fs_trace_enabled()
+#if defined(PLATFORM_T23)
+        && !openimp_t23_persist_enabled()
+#endif
+    )
+        return;
     va_start(ap, fmt);
     vsnprintf(buf, sizeof(buf), fmt, ap);
     va_end(ap);
 
-    imp_log_fun(4, IMP_Log_Get_Option(), 2, "Framesource",
-        "/home/user/git/proj/sdk-lv3/src/imp/framesource/framesource_tseries.c",
-        0x3f0, "frame_pooling_thread", "%s\n", buf);
+    if (fs_trace_enabled())
+        imp_log_fun(4, IMP_Log_Get_Option(), 2, "Framesource",
+            "/home/user/git/proj/sdk-lv3/src/imp/framesource/framesource_tseries.c",
+            0x3f0, "frame_pooling_thread", "%s\n", buf);
 }
 
 /* Bind callbacks are defined later in the file but are needed during
@@ -733,8 +772,14 @@ static volatile int g_fs_thread_enabled_seen[FS_MAX_CHANNELS];
 
 static void fs_bind_trace(const char *fmt, ...)
 {
-    int fd = open("/dev/kmsg", O_WRONLY);
-    if (fd < 0) return;
+    int trace_kmsg = fs_trace_enabled();
+#if defined(PLATFORM_T23)
+    int trace_persist = openimp_t23_persist_enabled();
+#else
+    int trace_persist = 0;
+#endif
+    if (!trace_kmsg && !trace_persist)
+        return;
 
     char buf[512];
     va_list ap;
@@ -742,8 +787,25 @@ static void fs_bind_trace(const char *fmt, ...)
     int n = vsnprintf(buf, sizeof(buf), fmt, ap);
     va_end(ap);
 
-    if (n > 0) write(fd, buf, (size_t)n);
-    close(fd);
+    if (n > 0) {
+        if (trace_kmsg) {
+            int fd = open("/dev/kmsg", O_WRONLY);
+            if (fd >= 0) {
+                write(fd, buf, (size_t)n);
+                close(fd);
+            }
+        }
+#if defined(PLATFORM_T23)
+        if (trace_persist &&
+            strstr(buf, "select-") == NULL &&
+            strstr(buf, "dequeue") == NULL &&
+            strstr(buf, "release_frame") == NULL &&
+            strstr(buf, "notify-empty") == NULL &&
+            strstr(buf, " notify ") == NULL &&
+            strstr(buf, "direct-enc-dispatch") == NULL)
+            openimp_t23_persist_write(buf, (size_t)n);
+#endif
+    }
 }
 
 __attribute__((constructor))

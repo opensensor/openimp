@@ -12,6 +12,7 @@ extern "C" {
 #endif
 
 #include <stdint.h>
+#include <stddef.h>
 
 /**
  * Return codes
@@ -84,11 +85,48 @@ typedef struct {
     char aVersion[64];  /**< Version string */
 } IMPVersion;
 
-/** Frame info structure (width/height) */
+/** Frame info structure.  T23 1.3.0 exposes the complete DMA descriptor. */
+#if defined(PLATFORM_T23)
+typedef struct {
+    int index;
+    int pool_idx;
+    uint32_t width;
+    uint32_t height;
+    uint32_t pixfmt;
+    uint32_t size;
+    uint32_t phyAddr;
+    uint32_t virAddr;
+    uint32_t direct_phyAddr;
+    int64_t timeStamp;
+    int64_t timeStamp_ivdc;
+    uint32_t priv[0];
+} IMPFrameInfo;
+
+typedef struct {
+    uint64_t ts;
+    uint64_t minus;
+    uint64_t plus;
+} IMPFrameTimestamp;
+
+_Static_assert(offsetof(IMPFrameInfo, direct_phyAddr) == 0x20,
+               "T23 IMPFrameInfo.direct_phyAddr ABI mismatch");
+_Static_assert(offsetof(IMPFrameInfo, timeStamp) == 0x28,
+               "T23 IMPFrameInfo.timeStamp ABI mismatch");
+_Static_assert(sizeof(IMPFrameInfo) == 0x38,
+               "T23 IMPFrameInfo ABI mismatch");
+#else
 typedef struct {
     int width;
     int height;
 } IMPFrameInfo;
+#endif
+
+/** T23 encoder payload identifiers (SDK 1.3.0). */
+typedef enum {
+    PT_JPEG = 0,
+    PT_H264 = 1,
+    PT_H265 = 2,
+} IMPPayloadType;
 
 /**
  * Rectangle structure
@@ -184,4 +222,3 @@ typedef int IMPRgnHandle;
 #endif
 
 #endif /* __IMP_COMMON_H__ */
-

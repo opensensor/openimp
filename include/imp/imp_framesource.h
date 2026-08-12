@@ -54,10 +54,22 @@ typedef struct {
     int outFrmRateDen;      /**< Output frame rate denominator */
     int nrVBs;              /**< Number of video buffers */
     IMPFSChnType type;      /**< Channel type */
-#if defined(PLATFORM_T31) || defined(PLATFORM_C100) || defined(PLATFORM_T40) || defined(PLATFORM_T41)
+#if defined(PLATFORM_T23)
+    int mirr_enable;        /**< T23 1.3.0 mirror flag */
+    IMPFSChnCrop fcrop;     /**< T23 frame crop */
+#elif defined(PLATFORM_T31) || defined(PLATFORM_C100) || defined(PLATFORM_T40) || defined(PLATFORM_T41)
     IMPFSChnCrop fcrop;     /**< Frame crop (newer platforms) */
 #endif
 } IMPFSChnAttr;
+
+#if defined(PLATFORM_T23)
+_Static_assert(offsetof(IMPFSChnAttr, mirr_enable) == 0x3c,
+               "T23 IMPFSChnAttr.mirr_enable ABI mismatch");
+_Static_assert(offsetof(IMPFSChnAttr, fcrop) == 0x40,
+               "T23 IMPFSChnAttr.fcrop ABI mismatch");
+_Static_assert(sizeof(IMPFSChnAttr) == 0x54,
+               "T23 IMPFSChnAttr ABI mismatch");
+#endif
 
 /**
  * FIFO attributes

@@ -10,6 +10,7 @@
 #include <stdint.h>
 #include <limits.h>
 #include <pthread.h>
+#include <stdarg.h>
 #include <unistd.h>
 #include <fcntl.h>
 #include <imp/imp_encoder.h>
@@ -26,6 +27,10 @@
 #include "openimp_profile.h"
 #if defined(PLATFORM_T41)
 #include "t41_stream_layout.h"
+#endif
+#if defined(PLATFORM_T23)
+#include "t23/openimp_t23_helix_bridge.h"
+#include "t23/openimp_t23_persist.h"
 #endif
 #include "t40_ep1.h"
 #if defined(PLATFORM_T41)
@@ -63,6 +68,48 @@ enum {
 #define AVPU_SHOULD_LOG(ctx) \
     ((ctx) && ((ctx)->frames_encoded < 3 || ((ctx)->frames_encoded % AVPU_LOG_INTERVAL) == 0))
 #define LOG_CODEC_THROTTLE(ctx, ...) do { if (AVPU_SHOULD_LOG(ctx)) LOG_CODEC(__VA_ARGS__); } while(0)
+
+static void codec_startup_marker(const char *marker, size_t size)
+{
+    if (getenv("OPENIMP_STARTUP_TRACE"))
+        (void)write(STDERR_FILENO, marker, size);
+#if defined(PLATFORM_T23)
+    openimp_t23_persist_write(marker, size);
+#endif
+}
+
+#define CODEC_STARTUP_MARKER(value) \
+    codec_startup_marker((value), sizeof(value) - 1u)
+
+static void codec_startup_trace(const char *format, ...)
+{
+    char message[256];
+    va_list arguments;
+    int length;
+
+    if (!getenv("OPENIMP_STARTUP_TRACE")
+#if defined(PLATFORM_T23)
+        && !openimp_t23_persist_enabled()
+#endif
+    )
+        return;
+    va_start(arguments, format);
+    length = vsnprintf(message, sizeof(message), format, arguments);
+    va_end(arguments);
+    if (length > 0) {
+        size_t size = (size_t)length;
+
+        if (size >= sizeof(message))
+            size = sizeof(message) - 1u;
+        if (getenv("OPENIMP_STARTUP_TRACE")) {
+            (void)write(STDERR_FILENO, message, size);
+            (void)fsync(STDERR_FILENO);
+        }
+#if defined(PLATFORM_T23)
+        openimp_t23_persist_write(message, size);
+#endif
+    }
+}
 
 typedef struct AL_CodecEncode AL_CodecEncode;
 
@@ -5566,6 +5613,9 @@ struct AL_CodecEncode {
      * by mmap/DMABUF-style consumers. */
     HWStreamBuffer avpu_stream_descriptors[16];
     ALAvpuContext avpu;            /* Vendor-like AL over /dev/avpu (scaffolding) */
+#if defined(PLATFORM_T23)
+    T23HelixBridge t23_helix;      /* T23 Helix /dev/soc_vpu bootstrap */
+#endif
 };
 
 #if !defined(PLATFORM_T40)
@@ -5969,13 +6019,24 @@ static void codec_sync_rc_cache(AL_CodecEncode *enc)
     qp = enc->hw_params.qp;
 
     rc->outFrmRate = enc->fps_cache;
-#if !(defined(PLATFORM_T31) || defined(PLATFORM_T40) || defined(PLATFORM_T41))
+#if defined(PLATFORM_T23)
+    rc->maxGop = enc->gop_cache.gopLength;
+#elif !(defined(PLATFORM_T31) || defined(PLATFORM_T40) || defined(PLATFORM_T41))
     rc->attrGop = enc->gop_cache;
 #endif
 
     switch (rc->attrRcMode.rcMode) {
     case IMP_ENC_RC_MODE_CBR:
-#if defined(PLATFORM_T31) || defined(PLATFORM_T40) || defined(PLATFORM_T41)
+#if defined(PLATFORM_T23)
+        rc->attrRcMode.attrH264Cbr.outBitRate = bitrate_kbps / 1000u;
+        rc->attrRcMode.attrH264Cbr.maxQp = enc->hw_params.max_qp;
+        rc->attrRcMode.attrH264Cbr.minQp = enc->hw_params.min_qp;
+        rc->attrRcMode.attrH264Cbr.iBiasLvl = 0;
+        rc->attrRcMode.attrH264Cbr.frmQPStep = 0;
+        rc->attrRcMode.attrH264Cbr.gopQPStep = 0;
+        rc->attrRcMode.attrH264Cbr.adaptiveMode = false;
+        rc->attrRcMode.attrH264Cbr.gopRelation = false;
+#elif defined(PLATFORM_T31) || defined(PLATFORM_T40) || defined(PLATFORM_T41)
         rc->attrRcMode.attrH264Cbr.uTargetBitRate = bitrate_kbps;
         rc->attrRcMode.attrH264Cbr.iInitialQP = (int16_t)clamp_qp_u32(qp);
         rc->attrRcMode.attrH264Cbr.iMinQP = (int16_t)clamp_qp_u32(enc->hw_params.min_qp);
@@ -5998,9 +6059,20 @@ static void codec_sync_rc_cache(AL_CodecEncode *enc)
         break;
 
     case IMP_ENC_RC_MODE_VBR:
+#if defined(PLATFORM_T23)
+    case IMP_ENC_RC_MODE_SMART:
+#else
     case IMP_ENC_RC_MODE_CAPPED_VBR:
     case IMP_ENC_RC_MODE_CAPPED_QUALITY:
-#if defined(PLATFORM_T31) || defined(PLATFORM_T40) || defined(PLATFORM_T41)
+#endif
+#if defined(PLATFORM_T23)
+        rc->attrRcMode.attrH264Vbr.maxBitRate = bitrate_kbps / 1000u;
+        rc->attrRcMode.attrH264Vbr.maxQp = enc->hw_params.max_qp;
+        rc->attrRcMode.attrH264Vbr.minQp = enc->hw_params.min_qp;
+        rc->attrRcMode.attrH264Vbr.staticTime = 1;
+        rc->attrRcMode.attrH264Vbr.changePos = 80;
+        rc->attrRcMode.attrH264Vbr.qualityLvl = 2;
+#elif defined(PLATFORM_T31) || defined(PLATFORM_T40) || defined(PLATFORM_T41)
         rc->attrRcMode.attrH264Vbr.uTargetBitRate = bitrate_kbps;
         rc->attrRcMode.attrH264Vbr.uMaxBitRate = bitrate_kbps;
         rc->attrRcMode.attrH264Vbr.iInitialQP = (int16_t)clamp_qp_u32(qp);
@@ -6024,7 +6096,9 @@ static void codec_sync_rc_cache(AL_CodecEncode *enc)
 
     case IMP_ENC_RC_MODE_FIXQP:
     default:
-#if defined(PLATFORM_T31) || defined(PLATFORM_T40) || defined(PLATFORM_T41)
+#if defined(PLATFORM_T23)
+        rc->attrRcMode.attrH264FixQp.qp = clamp_qp_u32(qp);
+#elif defined(PLATFORM_T31) || defined(PLATFORM_T40) || defined(PLATFORM_T41)
 #if defined(PLATFORM_T41)
         rc->attrRcMode.attrH264FixQp.iInitialQP =
             (int16_t)clamp_qp_u32(qp);
@@ -6356,6 +6430,9 @@ int AL_Codec_Encode_SetStreamBufferCount(void *codec, int count)
  * Creates a codec encoder instance
  */
 int AL_Codec_Encode_Create(void **codec, void *params) {
+    CODEC_STARTUP_MARKER("openimp/codec marker A0 Create entry\n");
+    codec_startup_trace("openimp/codec startup: Create entry codec=%p params=%p\n",
+                        codec, params);
     if (codec == NULL || params == NULL) {
         LOG_CODEC("Create: NULL parameters");
         return -1;
@@ -6363,12 +6440,17 @@ int AL_Codec_Encode_Create(void **codec, void *params) {
 
     /* Allocate codec structure using real size */
     AL_CodecEncode *enc = (AL_CodecEncode*)malloc(sizeof(AL_CodecEncode));
+    CODEC_STARTUP_MARKER("openimp/codec marker A1 malloc returned\n");
+    codec_startup_trace("openimp/codec startup: encoder malloc size=%u result=%p\n",
+                        (unsigned int)sizeof(AL_CodecEncode), enc);
     if (enc == NULL) {
         LOG_CODEC("Create: malloc failed");
         return -1;
     }
 
     memset(enc, 0, sizeof(AL_CodecEncode));
+    CODEC_STARTUP_MARKER("openimp/codec marker A2 memset returned\n");
+    codec_startup_trace("openimp/codec startup: encoder memset done\n");
 
     /* Sentinel fd values: memset zeroed everything, but fd=0 is stdin,
      * which causes every 'if (enc->avpu.fd >= 0)' check to be true
@@ -6394,7 +6476,9 @@ int AL_Codec_Encode_Create(void **codec, void *params) {
     enc->callback = NULL;
     enc->callback_arg = enc;
     int efd = eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC);
+    CODEC_STARTUP_MARKER("openimp/codec marker A3 eventfd returned\n");
     if (efd >= 0) enc->event = (void*)(uintptr_t)efd;
+    codec_startup_trace("openimp/codec startup: eventfd=%d\n", efd);
 
     /* Set default buffer counts and sizes */
     enc->frame_buf_count = 4;           /* Default frame buffer count */
@@ -6406,6 +6490,9 @@ int AL_Codec_Encode_Create(void **codec, void *params) {
     int fifo_size = Fifo_SizeOf();
     enc->fifo_frames = malloc(fifo_size);
     enc->fifo_streams = malloc(fifo_size);
+    CODEC_STARTUP_MARKER("openimp/codec marker A4 fifo malloc returned\n");
+    codec_startup_trace("openimp/codec startup: fifo size=%d frames=%p streams=%p\n",
+                        fifo_size, enc->fifo_frames, enc->fifo_streams);
     if (enc->fifo_frames == NULL || enc->fifo_streams == NULL) {
         LOG_CODEC("Create: FIFO alloc failed");
         if (enc->fifo_frames) free(enc->fifo_frames);
@@ -6415,6 +6502,8 @@ int AL_Codec_Encode_Create(void **codec, void *params) {
     }
     Fifo_Init(enc->fifo_frames, enc->frame_buf_count);
     Fifo_Init(enc->fifo_streams, enc->stream_buf_count);
+    CODEC_STARTUP_MARKER("openimp/codec marker A5 fifo init returned\n");
+    codec_startup_trace("openimp/codec startup: fifo init done\n");
 
     /* Set source FourCC to NV12 */
     enc->src_fourcc = 0x3231564e;  /* 'NV12' */
@@ -6478,11 +6567,21 @@ int AL_Codec_Encode_Create(void **codec, void *params) {
     enc->loop_filter_tc_offset = 0;
 
     codec_sync_rc_cache(enc);
+    CODEC_STARTUP_MARKER("openimp/codec marker A6 params complete\n");
+    codec_startup_trace("openimp/codec startup: params done size=%ux%u bitrate=%u qp=%u/%u/%u\n",
+                        (unsigned int)enc->hw_params.width,
+                        (unsigned int)enc->hw_params.height,
+                        (unsigned int)enc->hw_params.bitrate,
+                        (unsigned int)enc->hw_params.qp,
+                        (unsigned int)enc->hw_params.min_qp,
+                        (unsigned int)enc->hw_params.max_qp);
 
     LOG_CODEC("Create: hardware encoder will be attempted via /dev/avpu (lazy init)");
 
     /* Register in global instances */
     pthread_mutex_lock(&g_codec_mutex);
+    CODEC_STARTUP_MARKER("openimp/codec marker A7 global lock acquired\n");
+    codec_startup_trace("openimp/codec startup: global codec lock acquired\n");
     for (int i = 0; i < 6; i++) {
         if (g_codec_instances[i] == NULL) {
             g_codec_instances[i] = enc;
@@ -6490,6 +6589,9 @@ int AL_Codec_Encode_Create(void **codec, void *params) {
             pthread_mutex_unlock(&g_codec_mutex);
 
             *codec = enc;
+            CODEC_STARTUP_MARKER("openimp/codec marker A8 Create complete\n");
+            codec_startup_trace("openimp/codec startup: Create done slot=%d codec=%p\n",
+                                i, enc);
             LOG_CODEC("Create: codec=%p, channel=%d", enc, i);
             return 0;
         }
@@ -6518,6 +6620,10 @@ int AL_Codec_Encode_Destroy(void *codec) {
     AL_CodecEncode *enc = (AL_CodecEncode*)codec;
 
     LOG_CODEC("Destroy: codec=%p, channel=%d", codec, enc->channel_id - 1);
+
+#if defined(PLATFORM_T23)
+    OpenIMP_T23_HelixExit(&enc->t23_helix);
+#endif
 
     /* Deinitialize hardware encoder(s) - OEM parity: no separate deinit function */
     if (enc->use_hardware == 2 && enc->avpu.fd >= 0) {
@@ -6965,11 +7071,53 @@ static int al_codec_encode_process_impl(void *codec, void *frame,
     uint64_t timestamp = 0;
 #if defined(PLATFORM_T31)
     memcpy(&timestamp, (const uint8_t *)frame + 0x20, sizeof(timestamp));
-#elif defined(PLATFORM_T41)
+#elif defined(PLATFORM_T41) || defined(PLATFORM_T23)
     memcpy(&timestamp, (const uint8_t *)frame + 0x28, sizeof(timestamp));
 #endif
     if (!timestamp)
         timestamp = IMP_System_GetTimeStamp();
+
+#if defined(PLATFORM_T23)
+    /* T23 has the Helix encoder at /dev/soc_vpu, not the Allegro AVPU used by
+     * the newer T-series backend below.  Use Ingenic's standalone YUV codec
+     * seam in a stock-linked helper process while the native open Helix
+     * descriptor builder is brought over.  Capture, binding and stream
+     * ownership remain entirely in OpenIMP. */
+    if (codec_param_read_codec_type(enc->codec_param) == IMP_ENC_TYPE_AVC) {
+        if (getenv("OPENIMP_T23_SKIP_HELIX")) {
+            codec_set_error(enc, -1);
+            return -1;
+        }
+        if (enc->t23_helix.worker_pid <= 0 && !enc->t23_helix.failed) {
+            enc->hw_params.width = width;
+            enc->hw_params.height = height;
+            if (!enc->hw_params.fps_num)
+                enc->hw_params.fps_num = 25u;
+            if (!enc->hw_params.fps_den)
+                enc->hw_params.fps_den = 1u;
+            if (!enc->hw_params.gop_length)
+                enc->hw_params.gop_length = 25u;
+            if (!enc->hw_params.bitrate)
+                enc->hw_params.bitrate = 2000000u;
+            if (OpenIMP_T23_HelixInit(&enc->t23_helix,
+                                      &enc->hw_params) != 0) {
+                enc->use_hardware = 0;
+                LOG_CODEC("Process: T23 Helix init failed; using software fallback");
+            } else {
+                enc->use_hardware = 3;
+            }
+        }
+        if (enc->t23_helix.worker_pid > 0) {
+            if (__sync_lock_test_and_set(&enc->force_next_idr, 0))
+                OpenIMP_T23_HelixRequestIDR(&enc->t23_helix);
+            if (OpenIMP_T23_HelixEncode(&enc->t23_helix,
+                                        (const IMPFrameInfo *)frame,
+                                        &hw_stream) != 0)
+                return -1;
+            goto queue_encoded_stream;
+        }
+    }
+#endif
 
     if (enc->use_hardware) {
         /* Lazy-init hardware encoder on first frame */
@@ -8312,6 +8460,7 @@ static int al_codec_encode_process_impl(void *codec, void *frame,
         }
     }
 
+queue_encoded_stream:
     /* Queue encoded stream to FIFO */
     if (Fifo_Queue(enc->fifo_streams, hw_stream, -1) == 0) {
         LOG_CODEC("Process: failed to queue stream");
@@ -8385,11 +8534,6 @@ int AL_Codec_Encode_GetStream(void *codec, void **stream, void **user_data) {
     AL_CodecEncode *enc = (AL_CodecEncode*)codec;
 
     *user_data = NULL;
-
-    { static unsigned int gs_count = 0; unsigned int c = __sync_add_and_fetch(&gs_count, 1);
-      if (c <= 5 || (c % 50) == 0)
-        LOG_CODEC("GetStream: use_hw=%d avpu.fd=%d [#%u]", enc->use_hardware, enc->avpu.fd, c);
-    }
 
     if (enc->use_hardware == 2 && enc->avpu.fd >= 0) {
         ALAvpuContext *ctx = &enc->avpu;
@@ -8631,7 +8775,9 @@ int AL_Codec_Encode_SetRcParam(void *codec, void *rcAttr)
     memcpy(&enc->rc_attr_cache, src, sizeof(*src));
 
     enc->fps_cache = src->outFrmRate;
-#if !(defined(PLATFORM_T31) || defined(PLATFORM_T40) || defined(PLATFORM_T41))
+#if defined(PLATFORM_T23)
+    enc->gop_cache.gopLength = src->maxGop;
+#elif !(defined(PLATFORM_T31) || defined(PLATFORM_T40) || defined(PLATFORM_T41))
     enc->gop_cache = src->attrGop;
 #endif
     if (enc->fps_cache.frmRateNum == 0)
@@ -8654,7 +8800,16 @@ int AL_Codec_Encode_SetRcParam(void *codec, void *rcAttr)
     case IMP_ENC_RC_MODE_CBR:
         *(uint32_t *)(enc->codec_param + 0x6c) = HW_RC_MODE_CBR;
         enc->hw_params.rc_mode = HW_RC_MODE_CBR;
-#if defined(PLATFORM_T31) || defined(PLATFORM_T40) || defined(PLATFORM_T41)
+#if defined(PLATFORM_T23)
+        enc->hw_params.bitrate =
+            src->attrRcMode.attrH264Cbr.outBitRate * 1000u;
+        enc->hw_params.min_qp =
+            clamp_qp_u32(src->attrRcMode.attrH264Cbr.minQp);
+        enc->hw_params.max_qp =
+            clamp_qp_u32(src->attrRcMode.attrH264Cbr.maxQp);
+        enc->hw_params.qp =
+            (enc->hw_params.min_qp + enc->hw_params.max_qp) / 2u;
+#elif defined(PLATFORM_T31) || defined(PLATFORM_T40) || defined(PLATFORM_T41)
         enc->hw_params.bitrate = src->attrRcMode.attrH264Cbr.uTargetBitRate;
         enc->hw_params.qp = clamp_qp_u32(src->attrRcMode.attrH264Cbr.iInitialQP);
         enc->hw_params.min_qp = clamp_qp_u32(src->attrRcMode.attrH264Cbr.iMinQP);
@@ -8666,11 +8821,24 @@ int AL_Codec_Encode_SetRcParam(void *codec, void *rcAttr)
 #endif
         break;
     case IMP_ENC_RC_MODE_VBR:
+#if defined(PLATFORM_T23)
+    case IMP_ENC_RC_MODE_SMART:
+#else
     case IMP_ENC_RC_MODE_CAPPED_VBR:
     case IMP_ENC_RC_MODE_CAPPED_QUALITY:
+#endif
         *(uint32_t *)(enc->codec_param + 0x6c) = HW_RC_MODE_VBR;
         enc->hw_params.rc_mode = HW_RC_MODE_VBR;
-#if defined(PLATFORM_T31) || defined(PLATFORM_T40) || defined(PLATFORM_T41)
+#if defined(PLATFORM_T23)
+        enc->hw_params.bitrate =
+            src->attrRcMode.attrH264Vbr.maxBitRate * 1000u;
+        enc->hw_params.min_qp =
+            clamp_qp_u32(src->attrRcMode.attrH264Vbr.minQp);
+        enc->hw_params.max_qp =
+            clamp_qp_u32(src->attrRcMode.attrH264Vbr.maxQp);
+        enc->hw_params.qp =
+            (enc->hw_params.min_qp + enc->hw_params.max_qp) / 2u;
+#elif defined(PLATFORM_T31) || defined(PLATFORM_T40) || defined(PLATFORM_T41)
         enc->hw_params.bitrate = src->attrRcMode.attrH264Vbr.uTargetBitRate;
         if (enc->hw_params.bitrate == 0)
             enc->hw_params.bitrate = src->attrRcMode.attrH264Vbr.uMaxBitRate;
@@ -8770,6 +8938,8 @@ int AL_Codec_Encode_SetQpIPDelta(void *codec, int delta)
     default:
         break;
     }
+#elif defined(PLATFORM_T23)
+    (void)delta;
 #else
     enc->gop_cache.ipQpDelta = (uint32_t)delta;
     enc->rc_attr_cache.attrGop.ipQpDelta = (uint32_t)delta;
@@ -8809,7 +8979,9 @@ int AL_Codec_Encode_SetGopParam(void *codec, void *gopAttr)
     *(uint32_t *)(enc->codec_param + 0xb0) = enc->gop_cache.gopLength;
     enc->hw_params.gop_length = enc->gop_cache.gopLength;
     enc->avpu.gop_length = enc->gop_cache.gopLength;
-#if !(defined(PLATFORM_T31) || defined(PLATFORM_T40) || defined(PLATFORM_T41))
+#if defined(PLATFORM_T23)
+    enc->rc_attr_cache.maxGop = enc->gop_cache.gopLength;
+#elif !(defined(PLATFORM_T31) || defined(PLATFORM_T40) || defined(PLATFORM_T41))
     enc->rc_attr_cache.attrGop = enc->gop_cache;
 #endif
     codec_set_error(enc, 0);
@@ -8936,6 +9108,10 @@ int AL_Codec_Encode_RequestIDR(void *codec) {
     }
 
     AL_CodecEncode *enc = (AL_CodecEncode*)codec;
+#if defined(PLATFORM_T23)
+    if (enc->t23_helix.worker_pid > 0)
+        return OpenIMP_T23_HelixRequestIDR(&enc->t23_helix);
+#endif
     __sync_lock_test_and_set(&enc->force_next_idr, 1);
 
     { static unsigned int idr_req_count = 0; unsigned int c = __sync_add_and_fetch(&idr_req_count, 1);

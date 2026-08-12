@@ -50,9 +50,22 @@ typedef enum {
     IMP_ENC_RC_MODE_FIXQP = 0,          /**< Fixed QP */
     IMP_ENC_RC_MODE_CBR = 1,            /**< Constant bitrate */
     IMP_ENC_RC_MODE_VBR = 2,            /**< Variable bitrate */
+#if defined(PLATFORM_T23)
+    IMP_ENC_RC_MODE_SMART = 3,          /**< T23 Smart rate control */
+    IMP_ENC_RC_MODE_INV = 4,            /**< T23 invalid mode sentinel */
+#else
     IMP_ENC_RC_MODE_CAPPED_VBR = 4,     /**< Capped VBR */
     IMP_ENC_RC_MODE_CAPPED_QUALITY = 8  /**< Capped quality */
+#endif
 } IMPEncoderRcMode;
+
+#if defined(PLATFORM_T23)
+#define ENC_RC_MODE_FIXQP IMP_ENC_RC_MODE_FIXQP
+#define ENC_RC_MODE_CBR IMP_ENC_RC_MODE_CBR
+#define ENC_RC_MODE_VBR IMP_ENC_RC_MODE_VBR
+#define ENC_RC_MODE_SMART IMP_ENC_RC_MODE_SMART
+#define ENC_RC_MODE_INV IMP_ENC_RC_MODE_INV
+#endif
 
 /**
  * GOP mode
@@ -253,6 +266,198 @@ _Static_assert(offsetof(IMPEncoderChnAttr, rcAttr) == 0x34, "T41 IMPEncoderChnAt
 _Static_assert(offsetof(IMPEncoderChnAttr, gopAttr) == 0x60, "T41 IMPEncoderChnAttr.gopAttr ABI mismatch");
 _Static_assert(offsetof(IMPEncoderChnAttr, bEnableIvdc) == 0x78, "T41 IMPEncoderChnAttr.bEnableIvdc ABI mismatch");
 _Static_assert(sizeof(IMPEncoderChnAttr) == 0x7c, "T41 IMPEncoderChnAttr ABI mismatch");
+#elif defined(PLATFORM_T23)
+typedef struct {
+    uint32_t qp;
+} IMPEncoderAttrH264FixQP;
+
+typedef struct {
+    uint32_t maxQp;
+    uint32_t minQp;
+    uint32_t outBitRate;
+    int iBiasLvl;
+    uint32_t frmQPStep;
+    uint32_t gopQPStep;
+    bool adaptiveMode;
+    bool gopRelation;
+} IMPEncoderAttrH264CBR;
+
+typedef struct {
+    uint32_t maxQp;
+    uint32_t minQp;
+    uint32_t staticTime;
+    uint32_t maxBitRate;
+    int32_t iBiasLvl;
+    uint32_t changePos;
+    uint32_t qualityLvl;
+    uint32_t frmQPStep;
+    uint32_t gopQPStep;
+    bool gopRelation;
+} IMPEncoderAttrH264VBR;
+
+typedef IMPEncoderAttrH264VBR IMPEncoderAttrH264Smart;
+
+typedef struct {
+    uint32_t qp;
+} IMPEncoderAttrH265FixQP;
+
+typedef struct {
+    uint32_t maxQp;
+    uint32_t minQp;
+    uint32_t staticTime;
+    uint32_t outBitRate;
+    int iBiasLvl;
+    uint32_t frmQPStep;
+    uint32_t gopQPStep;
+    uint32_t flucLvl;
+} IMPEncoderAttrH265CBR;
+
+typedef struct {
+    uint32_t maxQp;
+    uint32_t minQp;
+    uint32_t staticTime;
+    uint32_t maxBitRate;
+    int32_t iBiasLvl;
+    uint32_t changePos;
+    uint32_t qualityLvl;
+    uint32_t frmQPStep;
+    uint32_t gopQPStep;
+    uint32_t flucLvl;
+} IMPEncoderAttrH265VBR;
+
+typedef IMPEncoderAttrH265VBR IMPEncoderAttrH265Smart;
+
+typedef struct {
+    bool enable;
+    int dnType;
+    int dnIQp;
+    int dnPQp;
+} IMPEncoderAttrDenoise;
+
+typedef enum {
+    ENC_FRM_BYPASS = 0,
+    ENC_FRM_REUSED = 1,
+    ENC_FRM_SKIP = 2,
+} EncFrmUsedMode;
+
+typedef struct {
+    bool enable;
+    EncFrmUsedMode frmUsedMode;
+    uint32_t frmUsedTimes;
+} IMPEncoderAttrFrmUsed;
+
+typedef enum {
+    IMP_Encoder_STYPE_N1X = 0,
+    IMP_Encoder_STYPE_N2X = 1,
+    IMP_Encoder_STYPE_N4X = 2,
+    IMP_Encoder_STYPE_HN1_FALSE = 3,
+    IMP_Encoder_STYPE_HN1_TRUE = 4,
+    IMP_Encoder_STYPE_H1M_FALSE = 5,
+    IMP_Encoder_STYPE_H1M_TRUE = 6,
+} IMPSkipType;
+
+typedef enum {
+    IMP_Encoder_FSTYPE_IDR = 0,
+    IMP_Encoder_FSTYPE_LBASE = 1,
+    IMP_Encoder_FSTYPE_SBASE = 2,
+    IMP_Encoder_FSTYPE_ENHANCE = 3,
+} IMPRefType;
+
+typedef struct {
+    IMPSkipType skipType;
+    int m;
+    int n;
+    int maxSameSceneCnt;
+    int bEnableScenecut;
+    int bBlackEnhance;
+} IMPEncoderAttrHSkip;
+
+typedef struct {
+    IMPEncoderAttrHSkip hSkipAttr;
+    IMPSkipType maxHSkipType;
+} IMPEncoderAttrInitHSkip;
+
+typedef struct {
+    IMPEncoderRcMode rcMode;
+    union {
+        IMPEncoderAttrH264FixQP attrH264FixQp;
+        IMPEncoderAttrH264CBR attrH264Cbr;
+        IMPEncoderAttrH264VBR attrH264Vbr;
+        IMPEncoderAttrH264Smart attrH264Smart;
+        IMPEncoderAttrH265FixQP attrH265FixQp;
+        IMPEncoderAttrH265CBR attrH265Cbr;
+        IMPEncoderAttrH265VBR attrH265Vbr;
+        IMPEncoderAttrH265Smart attrH265Smart;
+    };
+} IMPEncoderAttrRcMode;
+
+typedef struct {
+    IMPEncoderFrmRate outFrmRate;
+    uint32_t maxGop;
+    IMPEncoderAttrRcMode attrRcMode;
+    IMPEncoderAttrFrmUsed attrFrmUsed;
+    IMPEncoderAttrDenoise attrDenoise;
+    IMPEncoderAttrInitHSkip attrHSkip;
+} IMPEncoderRcAttr;
+
+typedef struct {
+    bool enable;
+    uint32_t x;
+    uint32_t y;
+    uint32_t w;
+    uint32_t h;
+} IMPEncoderCropCfg;
+
+typedef struct {
+    uint32_t maxUserDataCnt;
+    uint32_t maxUserDataSize;
+} IMPEncoderUserDataCfg;
+
+typedef struct {
+    IMPPayloadType enType;
+    uint32_t bufSize;
+    uint32_t profile;
+    uint32_t picWidth;
+    uint32_t picHeight;
+    IMPEncoderCropCfg crop;
+    IMPEncoderUserDataCfg userData;
+} IMPEncoderAttr;
+
+typedef IMPEncoderAttr IMPEncoderAttrH264;
+typedef IMPEncoderAttr IMPEncoderAttrH265;
+typedef IMPEncoderAttr IMPEncoderAttrJpeg;
+
+typedef struct {
+    IMPEncoderAttr encAttr;
+    IMPEncoderRcAttr rcAttr;
+    bool bEnableIvdc;
+} IMPEncoderCHNAttr;
+
+typedef IMPEncoderCHNAttr IMPEncoderChnAttr;
+
+/* Compatibility control type used internally by the shared AVPU backend. */
+typedef struct {
+    uint32_t gopLength;
+    uint32_t ipQpDelta;
+    IMPEncoderGopMode gopMode;
+} IMPEncoderGopAttr;
+
+typedef struct {
+    int gopsize;
+} IMPEncoderGOPSizeCfg;
+
+_Static_assert(sizeof(IMPEncoderAttrRcMode) == 0x2c,
+               "T23 IMPEncoderAttrRcMode ABI mismatch");
+_Static_assert(sizeof(IMPEncoderRcAttr) == 0x70,
+               "T23 IMPEncoderRcAttr ABI mismatch");
+_Static_assert(sizeof(IMPEncoderAttr) == 0x30,
+               "T23 IMPEncoderAttr ABI mismatch");
+_Static_assert(offsetof(IMPEncoderCHNAttr, rcAttr) == 0x30,
+               "T23 IMPEncoderCHNAttr.rcAttr ABI mismatch");
+_Static_assert(offsetof(IMPEncoderCHNAttr, bEnableIvdc) == 0xa0,
+               "T23 IMPEncoderCHNAttr.bEnableIvdc ABI mismatch");
+_Static_assert(sizeof(IMPEncoderCHNAttr) == 0xa4,
+               "T23 IMPEncoderCHNAttr ABI mismatch");
 #elif defined(PLATFORM_T31) || defined(PLATFORM_T40)
 typedef uint32_t IMPEncoderRcOptions;
 
@@ -583,7 +788,38 @@ typedef enum {
     IMP_ENC_SLICE_MAX_ENUM,
 } IMPEncoderSliceType;
 
-/* Stream pack (match vendor layout: bool frameEnd; union nalType; enum sliceType) */
+#if defined(PLATFORM_T23)
+typedef union {
+    IMPEncoderH264NaluType h264Type;
+    IMPEncoderH265NaluType h265Type;
+} IMPEncoderDataType;
+
+typedef struct {
+    uint32_t phyAddr;
+    uint32_t virAddr;
+    uint32_t length;
+    int64_t timestamp;
+    bool frameEnd;
+    IMPEncoderDataType dataType;
+} IMPEncoderPack;
+
+typedef struct {
+    IMPEncoderPack *pack;
+    uint32_t packCount;
+    uint32_t seq;
+    IMPRefType refType;
+} IMPEncoderStream;
+
+_Static_assert(offsetof(IMPEncoderPack, timestamp) == 0x10,
+               "T23 IMPEncoderPack.timestamp ABI mismatch");
+_Static_assert(offsetof(IMPEncoderPack, dataType) == 0x1c,
+               "T23 IMPEncoderPack.dataType ABI mismatch");
+_Static_assert(sizeof(IMPEncoderPack) == 0x20,
+               "T23 IMPEncoderPack ABI mismatch");
+_Static_assert(sizeof(IMPEncoderStream) == 0x10,
+               "T23 IMPEncoderStream ABI mismatch");
+#else
+/* Stream pack (match newer vendor layout). */
 typedef struct {
     uint32_t    offset;
     uint32_t    length;
@@ -625,10 +861,24 @@ typedef struct {
         IMPEncoderJpegInfo   jpegInfo;
     };
 } IMPEncoderStream;
+#endif
 
 /**
  * Encoder channel statistics (T20/T21/T23)
  */
+#if defined(PLATFORM_T23)
+typedef struct {
+    bool registered;
+    uint32_t leftPics;
+    uint32_t leftStreamBytes;
+    uint32_t leftStreamFrames;
+    uint32_t curPacks;
+    uint32_t work_done;
+} IMPEncoderCHNStat;
+
+_Static_assert(sizeof(IMPEncoderCHNStat) == 0x18,
+               "T23 IMPEncoderCHNStat ABI mismatch");
+#else
 typedef struct {
     uint32_t leftPics;                  /**< Left pictures */
     uint32_t leftBytes;                 /**< Left bytes */
@@ -636,6 +886,7 @@ typedef struct {
     uint32_t curPacks;                  /**< Current packs */
     uint32_t work_done;                 /**< Work done flag */
 } IMPEncoderCHNStat;
+#endif
 
 /**
  * Encoder channel statistics (T31/C100/T40/T41)
@@ -651,12 +902,19 @@ typedef struct {
 /**
  * JPEG quality level
  */
+#if defined(PLATFORM_T23)
+typedef struct {
+    bool user_ql_en;
+    uint8_t qmem_table[128];
+} IMPEncoderJpegeQl;
+#else
 typedef struct {
     uint32_t qmaxI;                     /**< Maximum I frame quality */
     uint32_t qminI;                     /**< Minimum I frame quality */
     uint32_t qmaxP;                     /**< Maximum P frame quality */
     uint32_t qminP;                     /**< Minimum P frame quality */
 } IMPEncoderJpegeQl;
+#endif
 
 /**
  * Quantization Parameter (QP) structure
@@ -824,6 +1082,7 @@ int IMP_Encoder_GetChnAttr(int encChn, IMPEncoderChnAttr *attr);
  * @return 0 on success, negative on error
  */
 int IMP_Encoder_SetJpegeQl(int encChn, IMPEncoderJpegeQl *attr);
+int IMP_Encoder_GetJpegeQl(int encChn, IMPEncoderJpegeQl *attr);
 
 /**
  * Set buffer sharing between channels (T31/C100/T40/T41)
@@ -903,8 +1162,14 @@ int IMP_Encoder_GetChnEvalInfo(int encChn, void *info);
 /* Additional encoder functions (raptor-hal parity) */
 int IMP_Encoder_GetStreamBufSize(int encChn, int *size);
 int IMP_Encoder_GetMaxStreamCnt(int encChn, int *cnt);
+#if defined(PLATFORM_T23)
+int IMP_Encoder_SetChnFrmRate(int encChn, const IMPEncoderFrmRate *rate);
+int IMP_Encoder_GetChnFrmRate(int encChn, IMPEncoderFrmRate *rate);
+int IMP_Encoder_SetGOPSize(int encChn, const IMPEncoderGOPSizeCfg *gop);
+#else
 int IMP_Encoder_SetChnFrmRate(int encChn, IMPEncoderFrmRate *in, IMPEncoderFrmRate *out);
 int IMP_Encoder_GetChnFrmRate(int encChn, IMPEncoderFrmRate *in, IMPEncoderFrmRate *out);
+#endif
 int IMP_Encoder_SetChnRcAttr(int encChn, void *rcAttr);
 int IMP_Encoder_GetChnRcAttr(int encChn, void *rcAttr);
 int IMP_Encoder_SetChnAttrRcMode(int encChn, IMPEncoderAttrRcMode *rcMode);
@@ -921,7 +1186,11 @@ int IMP_Encoder_SetChnQpBoundsPerFrame(int encChn, int minQpI, int maxQpI,
 int IMP_Encoder_SetChnMaxPictureSize(int encChn, uint32_t maxPictureSizeI,
                                     uint32_t maxPictureSizeP);
 int IMP_Encoder_SetChnQpIPDelta(int encChn, int delta);
+#if defined(PLATFORM_T23)
+int IMP_Encoder_GetChnEncType(int encChn, IMPPayloadType *encType);
+#else
 int IMP_Encoder_GetChnEncType(int encChn, IMPEncoderEncType *encType);
+#endif
 #if defined(PLATFORM_T31)
 int IMP_Encoder_GetChnAveBitrate(int encChn, IMPEncoderStream *stream,
                                  int frames, double *bitrate);
