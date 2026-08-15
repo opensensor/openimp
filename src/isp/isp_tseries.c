@@ -991,7 +991,10 @@ enum {
     TISP_CID_AE_HIST = 0x800002e,
     TISP_CID_AE_HIST_ORIGIN = 0x800002f,
     TISP_CID_AE_ZONE = 0x8000030,
-    TISP_CID_AE_LUMA = 0x8000031,
+    /* OEM T23/T31 dispatches tisp_get_ae_luma at 0x8000033.  Command
+     * 0x8000031 is a different statistics query; treating its first word as
+     * luma makes bright scenes read near zero and forces RIC into night mode. */
+    TISP_CID_AE_LUMA = 0x8000033,
     TISP_CID_AE_IT_MAX = 0x8000032,
     TISP_CID_AE_MIN = 0x8000033,
     TISP_CID_AE_FREEZE = 0x8000034,
