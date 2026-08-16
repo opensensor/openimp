@@ -121,6 +121,7 @@ typedef struct {
     int entropy_mode_set;
     int resize_mode;
     uint64_t next_frame_due_us;
+    uint64_t output_timestamp_us;
     pthread_mutex_t lock;
 } P2EncoderChannel;
 
@@ -612,6 +613,7 @@ int IMP_Encoder_StartRecvPic(int channel)
     }
     ch->source_channel = p2_find_source_channel(ch->group);
     ch->next_frame_due_us = 0;
+    ch->output_timestamp_us = 0;
     ch->receiving = 1;
     pthread_mutex_unlock(&ch->lock);
     p2_trace("openimp/P2: StartRecv ch=%d source=%d\n",
@@ -633,6 +635,7 @@ int IMP_Encoder_StopRecvPic(int channel)
     }
     ch->receiving = 0;
     ch->next_frame_due_us = 0;
+    ch->output_timestamp_us = 0;
     pthread_mutex_unlock(&ch->lock);
     return 0;
 }
@@ -676,30 +679,27 @@ int IMP_Encoder_PollingStream(int channel, uint32_t timeout_ms)
         return -1;
     }
     /*
-     * The physical FrameSource ioctl blocks at sensor cadence.  Do not add a
-     * second clock to AVC: sleeping until the same edge and then issuing
-     * WAIT_FRAME races past that edge and waits an additional sensor period.
-     * The metadata-only JPEG fallback has no FrameSource wait, so it still
-     * needs explicit pacing.
+     * Pace every encoder channel at its requested output rate.  FrameSource
+     * channels can still publish at sensor rate on T31, so relying on capture
+     * cadence alone lets a low-rate substream compete equally with the main
+     * stream for the single AVPU.  The userspace VBM ready queue preserves a
+     * completed frame while we wait, unlike the old blocking WAIT_FRAME path
+     * that could race past a sensor edge.
      */
-    interval_us = 0u;
-    wait_us = 0u;
-    if (ch->codec_type == IMP_ENC_TYPE_JPEG) {
-        fps_num = ch->attr.rcAttr.outFrmRate.frmRateNum;
-        fps_den = ch->attr.rcAttr.outFrmRate.frmRateDen;
-        if (!fps_num || !fps_den) {
-            fps_num = 25u;
-            fps_den = 1u;
-        }
-        interval_us = (1000000ull * fps_den) / fps_num;
-        if (!interval_us)
-            interval_us = 1u;
-        if (interval_us > 60000000u)
-            interval_us = 60000000u;
-        now_us = p2_monotonic_us();
-        wait_us = ch->next_frame_due_us > now_us
-            ? ch->next_frame_due_us - now_us : 0u;
+    fps_num = ch->attr.rcAttr.outFrmRate.frmRateNum;
+    fps_den = ch->attr.rcAttr.outFrmRate.frmRateDen;
+    if (!fps_num || !fps_den) {
+        fps_num = 25u;
+        fps_den = 1u;
     }
+    interval_us = (1000000ull * fps_den) / fps_num;
+    if (!interval_us)
+        interval_us = 1u;
+    if (interval_us > 60000000u)
+        interval_us = 60000000u;
+    now_us = p2_monotonic_us();
+    wait_us = ch->next_frame_due_us > now_us
+        ? ch->next_frame_due_us - now_us : 0u;
     pthread_mutex_unlock(&ch->lock);
 
     timeout_us = (uint64_t)timeout_ms * 1000u;
@@ -721,7 +721,11 @@ int IMP_Encoder_PollingStream(int channel, uint32_t timeout_ms)
     }
     if (interval_us) {
         now_us = p2_monotonic_us();
-        ch->next_frame_due_us = now_us + interval_us;
+        if (!ch->next_frame_due_us ||
+            now_us > ch->next_frame_due_us + interval_us)
+            ch->next_frame_due_us = now_us + interval_us;
+        else
+            ch->next_frame_due_us += interval_us;
     }
     pthread_mutex_unlock(&ch->lock);
 
@@ -859,6 +863,10 @@ int IMP_Encoder_GetStream(int channel, IMPEncoderStream *stream, int block)
 {
     P2EncoderChannel *ch;
     P2HWStream *raw;
+    uint32_t fps_num;
+    uint32_t fps_den;
+    uint64_t frame_interval_us;
+    uint64_t source_timestamp_us;
     int is_idr;
 
     if (!p2_valid_channel(channel) || !stream)
@@ -883,8 +891,22 @@ int IMP_Encoder_GetStream(int channel, IMPEncoderStream *stream, int block)
     memset(&ch->pack, 0, sizeof(ch->pack));
     ch->pack.offset = 0;
     ch->pack.length = raw->length;
-    ch->pack.timestamp = raw->timestamp
-        ? (int64_t)raw->timestamp : (int64_t)p2_monotonic_us();
+    source_timestamp_us = raw->timestamp
+        ? raw->timestamp : p2_monotonic_us();
+    fps_num = ch->attr.rcAttr.outFrmRate.frmRateNum;
+    fps_den = ch->attr.rcAttr.outFrmRate.frmRateDen;
+    if (!fps_num || !fps_den) {
+        fps_num = 25u;
+        fps_den = 1u;
+    }
+    frame_interval_us = (1000000ull * fps_den) / fps_num;
+    if (!frame_interval_us)
+        frame_interval_us = 1u;
+    if (!ch->output_timestamp_us)
+        ch->output_timestamp_us = source_timestamp_us;
+    else
+        ch->output_timestamp_us += frame_interval_us;
+    ch->pack.timestamp = (int64_t)ch->output_timestamp_us;
     ch->pack.frameEnd = true;
     ch->pack.sliceType = is_idr ? IMP_ENC_SLICE_I : IMP_ENC_SLICE_P;
     ch->pack.nalType.h264NalType = ch->codec_type == IMP_ENC_TYPE_JPEG
@@ -1081,6 +1103,7 @@ int IMP_Encoder_SetChnFrmRate(int channel, IMPEncoderFrmRate *rate,
     }
     ch->attr.rcAttr.outFrmRate = *rate;
     ch->next_frame_due_us = 0;
+    ch->output_timestamp_us = 0;
     if (AL_Codec_Encode_SetFrameRate(ch->codec, rate) != 0) {
         pthread_mutex_unlock(&ch->lock);
         return -1;
