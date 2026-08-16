@@ -2208,7 +2208,27 @@ static uint32_t avpu_t40_picture_qp(const ALAvpuContext *ctx, int is_idr)
     if (qp > 51u)
         qp = 51u;
 
+#if defined(PLATFORM_T31)
+    /* T31 defines iIPDelta as I-picture QP relative to the following P
+     * picture.  The recovered SDK default is -1.  Keep the adjustment here
+     * so the generated slice header and both Enc1 command words use the same
+     * effective QP. */
+    if (is_idr) {
+        int32_t idr_qp = (int32_t)qp + ctx->qp_ip_delta;
+
+        if (idr_qp < (int32_t)ctx->min_qp)
+            idr_qp = (int32_t)ctx->min_qp;
+        if (ctx->max_qp != 0u && idr_qp > (int32_t)ctx->max_qp)
+            idr_qp = (int32_t)ctx->max_qp;
+        if (idr_qp < 0)
+            idr_qp = 0;
+        if (idr_qp > 51)
+            idr_qp = 51;
+        qp = (uint32_t)idr_qp;
+    }
+#else
     (void)is_idr;
+#endif
     return qp;
 }
 
@@ -2305,13 +2325,7 @@ static uint32_t avpu_prewrite_stream_headers(ALAvpuContext *ctx, int buf_idx, in
 
     header_ctx.qp = avpu_t40_picture_qp(ctx, is_idr);
 #if defined(PLATFORM_T31)
-    /*
-     * The T31 HWRC seed lowers the first IDR QP by one.  FixQP bypasses
-     * HWRC, so its configured QP is already the exact per-picture value.
-     */
-    if (ctx->rc_mode != HW_RC_MODE_FIXQP &&
-        is_idr && header_ctx.qp > header_ctx.min_qp)
-        --header_ctx.qp;
+    /* avpu_t40_picture_qp() already applied the T31 I/P delta. */
     if (header_ctx.qp < header_ctx.min_qp)
         header_ctx.qp = header_ctx.min_qp;
     if (header_ctx.max_qp != 0u && header_ctx.qp > header_ctx.max_qp)
@@ -3291,9 +3305,7 @@ static void fill_cmd_regs_enc1(const ALAvpuContext* ctx, uint32_t* cmd,
         uint32_t t31_picture_number =
             is_idr ? 0u : ctx->frame_number - ctx->idr_frame_number;
 
-        if (ctx->rc_mode != HW_RC_MODE_FIXQP &&
-            is_idr && t31_picture_qp > min_qp)
-            --t31_picture_qp;
+        /* avpu_t40_picture_qp() already applied the T31 I/P delta. */
         if (t31_picture_qp < min_qp)
             t31_picture_qp = min_qp;
         if (t31_picture_qp > max_qp)
@@ -5980,7 +5992,8 @@ static void codec_sync_rc_cache(AL_CodecEncode *enc)
         rc->attrRcMode.attrH264Cbr.iInitialQP = (int16_t)clamp_qp_u32(qp);
         rc->attrRcMode.attrH264Cbr.iMinQP = (int16_t)clamp_qp_u32(enc->hw_params.min_qp);
         rc->attrRcMode.attrH264Cbr.iMaxQP = (int16_t)clamp_qp_u32(enc->hw_params.max_qp);
-        rc->attrRcMode.attrH264Cbr.iIPDelta = 0;
+        rc->attrRcMode.attrH264Cbr.iIPDelta =
+            (int16_t)enc->avpu.qp_ip_delta;
         rc->attrRcMode.attrH264Cbr.iPBDelta = 0;
         rc->attrRcMode.attrH264Cbr.eRcOptions = 0;
         rc->attrRcMode.attrH264Cbr.uMaxPictureSize = 0;
@@ -6006,7 +6019,8 @@ static void codec_sync_rc_cache(AL_CodecEncode *enc)
         rc->attrRcMode.attrH264Vbr.iInitialQP = (int16_t)clamp_qp_u32(qp);
         rc->attrRcMode.attrH264Vbr.iMinQP = (int16_t)clamp_qp_u32(enc->hw_params.min_qp);
         rc->attrRcMode.attrH264Vbr.iMaxQP = (int16_t)clamp_qp_u32(enc->hw_params.max_qp);
-        rc->attrRcMode.attrH264Vbr.iIPDelta = 0;
+        rc->attrRcMode.attrH264Vbr.iIPDelta =
+            (int16_t)enc->avpu.qp_ip_delta;
         rc->attrRcMode.attrH264Vbr.iPBDelta = 0;
         rc->attrRcMode.attrH264Vbr.eRcOptions = 0;
         rc->attrRcMode.attrH264Vbr.uMaxPictureSize = 0;
@@ -6472,6 +6486,7 @@ int AL_Codec_Encode_Create(void **codec, void *params) {
     enc->avpu.qp = enc->hw_params.qp;
     enc->avpu.min_qp = enc->hw_params.min_qp;
     enc->avpu.max_qp = enc->hw_params.max_qp;
+    enc->avpu.qp_ip_delta = -1;
     enc->avpu.rc_mode = enc->hw_params.rc_mode;
 
     enc->loop_filter_beta_offset = 0;
@@ -8659,6 +8674,7 @@ int AL_Codec_Encode_SetRcParam(void *codec, void *rcAttr)
         enc->hw_params.qp = clamp_qp_u32(src->attrRcMode.attrH264Cbr.iInitialQP);
         enc->hw_params.min_qp = clamp_qp_u32(src->attrRcMode.attrH264Cbr.iMinQP);
         enc->hw_params.max_qp = clamp_qp_u32(src->attrRcMode.attrH264Cbr.iMaxQP);
+        enc->avpu.qp_ip_delta = src->attrRcMode.attrH264Cbr.iIPDelta;
 #else
         enc->hw_params.bitrate = src->attrRcMode.attrH264Cbr.maxGop;
         enc->hw_params.min_qp = clamp_qp_u32(src->attrRcMode.attrH264Cbr.minQp);
@@ -8677,6 +8693,7 @@ int AL_Codec_Encode_SetRcParam(void *codec, void *rcAttr)
         enc->hw_params.qp = clamp_qp_u32(src->attrRcMode.attrH264Vbr.iInitialQP);
         enc->hw_params.min_qp = clamp_qp_u32(src->attrRcMode.attrH264Vbr.iMinQP);
         enc->hw_params.max_qp = clamp_qp_u32(src->attrRcMode.attrH264Vbr.iMaxQP);
+        enc->avpu.qp_ip_delta = src->attrRcMode.attrH264Vbr.iIPDelta;
 #else
         enc->hw_params.bitrate = src->attrRcMode.attrH264Vbr.maxGop;
         enc->hw_params.min_qp = clamp_qp_u32(src->attrRcMode.attrH264Vbr.minQp);
@@ -8752,10 +8769,11 @@ int AL_Codec_Encode_SetQpIPDelta(void *codec, int delta)
 {
     AL_CodecEncode *enc;
 
-    if (codec == NULL)
+    if (codec == NULL || delta < -51 || delta > 51)
         return -1;
 
     enc = (AL_CodecEncode *)codec;
+    enc->avpu.qp_ip_delta = delta;
 #if defined(PLATFORM_T31) || defined(PLATFORM_T40) || defined(PLATFORM_T41)
     switch (enc->rc_attr_cache.attrRcMode.rcMode) {
     case IMP_ENC_RC_MODE_CBR:

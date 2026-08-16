@@ -502,6 +502,12 @@ int IMP_Encoder_CreateChn(int channel, IMPEncoderCHNAttr *attr)
         pthread_mutex_unlock(&ch->lock);
         return -1;
     }
+    if (attr->rcAttr.attrRcMode.rcMode == IMP_ENC_RC_MODE_CBR)
+        AL_Codec_Encode_SetQpIPDelta(
+            ch->codec, attr->rcAttr.attrRcMode.attrCbr.iIPDelta);
+    else if (attr->rcAttr.attrRcMode.rcMode == IMP_ENC_RC_MODE_VBR)
+        AL_Codec_Encode_SetQpIPDelta(
+            ch->codec, attr->rcAttr.attrRcMode.attrVbr.iIPDelta);
     if (AL_Codec_Encode_SetStreamBufferCount(ch->codec,
                                              ch->max_stream_count) != 0) {
         AL_Codec_Encode_Destroy(ch->codec);
@@ -1007,12 +1013,14 @@ int IMP_Encoder_SetDefaultParam(IMPEncoderChnAttr *attr, IMPEncoderProfile profi
         attr->rcAttr.attrRcMode.attrCbr.iInitialQP = 26;
         attr->rcAttr.attrRcMode.attrCbr.iMinQP = 15;
         attr->rcAttr.attrRcMode.attrCbr.iMaxQP = 45;
+        attr->rcAttr.attrRcMode.attrCbr.iIPDelta = -1;
     } else {
         attr->rcAttr.attrRcMode.attrVbr.uTargetBitRate = (uint32_t)bitrate;
         attr->rcAttr.attrRcMode.attrVbr.uMaxBitRate = (uint32_t)bitrate;
         attr->rcAttr.attrRcMode.attrVbr.iInitialQP = 26;
         attr->rcAttr.attrRcMode.attrVbr.iMinQP = 15;
         attr->rcAttr.attrRcMode.attrVbr.iMaxQP = 45;
+        attr->rcAttr.attrRcMode.attrVbr.iIPDelta = -1;
     }
     return 0;
 }
