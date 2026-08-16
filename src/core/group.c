@@ -8,6 +8,7 @@
 
 #include "core/globals.h"
 #include "core/module.h"
+#include "trace_control.h"
 
 int IMP_Log_Get_Option(void); /* forward decl, ported by T<N> later */
 void imp_log_fun(int level, int option, int type, ...); /* forward decl, ported by T<N> later */
@@ -18,6 +19,8 @@ extern uint32_t g_block_info_addr; /* forward decl, ported by T<N> later */
 
 static void group_trace(const char *fmt, ...)
 {
+    if (!openimp_debug_trace_enabled()) return;
+
     int fd = open("/dev/kmsg", O_WRONLY);
     if (fd < 0) return;
 

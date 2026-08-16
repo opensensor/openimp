@@ -17,12 +17,15 @@
 #include <time.h>
 #include <stdarg.h>
 #include "dma_alloc.h"
+#include "trace_control.h"
 
 extern int64_t IMP_System_GetTimeStamp(void);
 extern int64_t OpenIMP_P0_NormalizeMonotonicTimeStamp(uint64_t timestamp);
 
 static void ki_trace(const char *fmt, ...)
 {
+    if (!openimp_debug_trace_enabled()) return;
+
     int fd = open("/dev/kmsg", O_WRONLY);
     if (fd < 0) return;
 

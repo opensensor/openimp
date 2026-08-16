@@ -39,6 +39,8 @@
 #include <unistd.h>
 #include <stdarg.h>
 
+#include "trace_control.h"
+
 #include "imp/imp_common.h"
 #include "imp/imp_encoder.h"
 #include "imp/imp_framesource.h"
@@ -89,6 +91,8 @@ static void *fs_retaddr(void)
 
 static void fs_thread_trace(const char *fmt, ...)
 {
+    if (!openimp_debug_trace_enabled()) return;
+
     int fd = open("/dev/kmsg", O_WRONLY | O_CLOEXEC);
     if (fd < 0) return;
 
@@ -733,6 +737,8 @@ static volatile int g_fs_thread_enabled_seen[FS_MAX_CHANNELS];
 
 static void fs_bind_trace(const char *fmt, ...)
 {
+    if (!openimp_debug_trace_enabled()) return;
+
     int fd = open("/dev/kmsg", O_WRONLY);
     if (fd < 0) return;
 

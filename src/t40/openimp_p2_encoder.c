@@ -12,6 +12,7 @@
 #include <unistd.h>
 
 #include "openimp_profile.h"
+#include "trace_control.h"
 
 #include <imp/imp_common.h>
 #include <imp/imp_encoder.h>
@@ -136,6 +137,9 @@ static void p2_trace(const char *format, ...)
     va_list arguments;
     int fd;
     int length;
+
+    if (!openimp_debug_trace_enabled())
+        return;
 
     fd = open("/dev/kmsg", O_WRONLY);
     if (fd < 0)
@@ -646,8 +650,10 @@ int IMP_Encoder_PollingStream(int channel, uint32_t timeout_ms)
     uint32_t fps_den;
     uint64_t interval_us;
     uint64_t now_us;
+    uint64_t frame_deadline_us;
     uint64_t wait_us;
     uint64_t timeout_us;
+    int core_locked = 0;
     int result = -1;
     OpenIMPProfileStamp poll_profile;
 
@@ -719,7 +725,6 @@ int IMP_Encoder_PollingStream(int channel, uint32_t timeout_ms)
     }
     pthread_mutex_unlock(&ch->lock);
 
-    pthread_mutex_lock(&p2_core_lock);
     if (ch->codec_type == IMP_ENC_TYPE_JPEG) {
         memset(&ch->synthetic_frame, 0, sizeof(ch->synthetic_frame));
         ch->synthetic_frame.index = -1;
@@ -728,12 +733,35 @@ int IMP_Encoder_PollingStream(int channel, uint32_t timeout_ms)
         ch->synthetic_frame.height = ch->attr.encAttr.maxPicHeight;
         ch->synthetic_frame.pixel_format = 10u; /* PIX_FMT_NV12 */
         frame = &ch->synthetic_frame;
-    } else if (IMP_FrameSource_GetFrame(ch->source_channel, &frame) != 0) {
-        goto done;
+    } else {
+        /*
+         * IMP_FrameSource_GetFrame() exposes the userspace VBM ready queue
+         * and is intentionally non-blocking.  PollingStream, however, is a
+         * blocking API and Raptor passes a one-second timeout.  Returning as
+         * soon as the queue is momentarily empty makes both encoder threads
+         * spin thousands of times between sensor frames and can starve the
+         * capture/network paths on a single-core T31.
+         */
+        frame_deadline_us = p2_monotonic_us() + timeout_us;
+        while (IMP_FrameSource_GetFrame(ch->source_channel, &frame) != 0) {
+            if (!timeout_ms || p2_monotonic_us() >= frame_deadline_us)
+                goto done;
+            p2_sleep_us(1000u);
+        }
     }
     if (trace_count <= 8u)
         p2_trace("openimp/P2: PollingStream frame ch=%d source=%d frame=%p\n",
                  channel, ch->source_channel, frame);
+
+    /*
+     * Wait for this channel's source frame without owning the shared AVPU
+     * lock.  Holding the lock across the sensor-cadence wait lets whichever
+     * channel won it first repeatedly reacquire it and starve the other
+     * stream for seconds at a time.  Only command submission and completion
+     * collection need to be serialized across encoder instances.
+     */
+    pthread_mutex_lock(&p2_core_lock);
+    core_locked = 1;
     if (AL_Codec_Encode_Process(ch->codec, frame, frame) != 0)
         goto done;
     /*
@@ -781,7 +809,8 @@ done:
         AL_Codec_Encode_ReleaseStream(ch->codec, stream, user);
     if (frame && frame != &ch->synthetic_frame)
         IMP_FrameSource_ReleaseFrame(ch->source_channel, frame);
-    pthread_mutex_unlock(&p2_core_lock);
+    if (core_locked)
+        pthread_mutex_unlock(&p2_core_lock);
     openimp_profile_end(OPENIMP_PROFILE_ENCODER_POLL, poll_profile);
     return result;
 }
