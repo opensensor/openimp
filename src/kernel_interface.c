@@ -25,7 +25,6 @@ extern int64_t OpenIMP_P0_NormalizeMonotonicTimeStamp(uint64_t timestamp);
 static void ki_trace(const char *fmt, ...)
 {
     if (!openimp_debug_trace_enabled()) return;
-
     int fd = open("/dev/kmsg", O_WRONLY);
     if (fd < 0) return;
 
@@ -739,11 +738,26 @@ typedef struct {
     int size;               /* 0x14: Frame size */
     uint32_t phys_addr;     /* 0x18: Physical address */
     uint32_t virt_addr;     /* 0x1c: Virtual address */
+#if defined(PLATFORM_T23)
+    uint32_t direct_phys_addr; /* 0x20: T23 direct physical address */
+    uint32_t _timestamp_pad;   /* 0x24: o32 alignment */
+    int64_t time_stamp;        /* 0x28: Public capture timestamp */
+    int64_t time_stamp_ivdc;   /* 0x30: IVDC dequeue timestamp */
+    uint8_t data[0x3f0];       /* 0x38-0x427: Private frame data */
+#else
     uint8_t data[0x408];    /* 0x20-0x427: Frame data */
+#endif
 } VBMFrame;
 
+#if defined(PLATFORM_T23)
+_Static_assert(offsetof(VBMFrame, time_stamp) == 0x28,
+               "T23 frame timestamp offset must remain 0x28");
+#else
 _Static_assert(offsetof(VBMFrame, data) == 0x20,
                "T31 frame timestamp offset must remain 0x20");
+#endif
+_Static_assert(sizeof(VBMFrame) == VBM_FRAME_SIZE,
+               "VBM public/private frame record size mismatch");
 
 /* VBM Pool structure */
 typedef struct {
@@ -1028,12 +1042,20 @@ int VBMCreatePool(int chn, void *fmt, void *ops, void *priv) {
         uint32_t virt = pool->virt_base + (i * pool->frame_size);
         memcpy(frame_bytes + 0x1c, &virt, sizeof(uint32_t));
 
+#if defined(PLATFORM_T23)
+        /* The 1.3.0 public descriptor exposes a direct address followed by
+         * two aligned timestamps.  OpenTX uses the same physical DMA window
+         * for direct and normal capture on T23. */
+        memcpy(frame_bytes + 0x20, &phys, sizeof(uint32_t));
+#else
+
         /* OEM encoder callback reads framePriv->i_fps_num/den from
          * words 0xb/0xc (byte offsets 0x2c/0x30). Seed those fields
          * directly in the public frame record so on_encoder_group_data_update
          * can enter sub_8eea0 instead of rejecting the frame. */
         memcpy(frame_bytes + 0x2c, &fps_num, sizeof(int));
         memcpy(frame_bytes + 0x30, &fps_den, sizeof(int));
+#endif
 
         fprintf(stderr, "[VBM] Frame %d: phys=0x%x virt=0x%x fourcc=0x%x fps=%d/%d\n",
                 i, phys, virt, frame_fourcc, fps_num, fps_den);
@@ -1248,8 +1270,13 @@ int VBMKernelDequeue(int chn, int fd, void **frame_out) {
         OpenIMP_P0_NormalizeMonotonicTimeStamp(absolute_timestamp);
     if (frame_timestamp < 0)
         frame_timestamp = IMP_System_GetTimeStamp();
+#if defined(PLATFORM_T23)
+    pool->frames[idx].time_stamp = frame_timestamp;
+    pool->frames[idx].time_stamp_ivdc = frame_timestamp;
+#else
     memcpy(pool->frames[idx].data, &frame_timestamp,
            sizeof(frame_timestamp));
+#endif
     /* Mark buffer as in userspace — VBMReleaseFrame will only QBUF it back
      * if this flag is set, preventing double-QBUF. */
     if (pool->buf_in_userspace)

@@ -13,6 +13,9 @@
 
 #include "openimp_profile.h"
 #include "trace_control.h"
+#if defined(PLATFORM_T23)
+#include "t23/openimp_t23_persist.h"
+#endif
 
 #include <imp/imp_common.h>
 #include <imp/imp_encoder.h>
@@ -24,7 +27,7 @@
 /* T40 1.3.1 ends IMPEncoderStream after isVI and pads it to 28 bytes. T31
  * 1.1.6 includes the streamInfo/jpegInfo union, matching the compatibility
  * header. Write exactly the ABI selected for the target caller. */
-#if defined(PLATFORM_T31)
+#if defined(PLATFORM_T31) || defined(PLATFORM_T23)
 #define P2_ENCODER_STREAM_ABI_SIZE sizeof(IMPEncoderStream)
 #else
 #define P2_ENCODER_STREAM_ABI_SIZE 28u
@@ -37,7 +40,7 @@ typedef enum {
 
 static P2CaptureReleasePolicy p2_capture_release_policy(void)
 {
-#if defined(PLATFORM_T31)
+#if defined(PLATFORM_T31) || defined(PLATFORM_T23)
     return P2_CAPTURE_RELEASE_AFTER_COMPLETION;
 #elif defined(PLATFORM_T40) || defined(PLATFORM_T41)
     return P2_CAPTURE_RELEASE_AFTER_SUBMIT;
@@ -113,6 +116,7 @@ typedef struct {
     P2SyntheticFrame synthetic_frame;
     IMPEncoderCHNAttr attr;
     IMPEncoderPack pack;
+    IMPEncoderJpegeQl jpeg_quality;
     uint32_t sequence;
     uint32_t stream_buf_size;
     int max_stream_count;
@@ -132,19 +136,63 @@ static P2Bind p2_binds[P2_MAX_BINDS];
 static pthread_mutex_t p2_state_lock = PTHREAD_MUTEX_INITIALIZER;
 static pthread_mutex_t p2_core_lock = PTHREAD_MUTEX_INITIALIZER;
 
+static void p2_startup_marker(const char *marker, size_t size)
+{
+    if (getenv("OPENIMP_STARTUP_TRACE"))
+        (void)write(STDERR_FILENO, marker, size);
+#if defined(PLATFORM_T23)
+    openimp_t23_persist_write(marker, size);
+#endif
+}
+
+#define P2_STARTUP_MARKER(value) \
+    p2_startup_marker((value), sizeof(value) - 1u)
+
+static void p2_startup_trace(const char *format, ...)
+{
+    char message[256];
+    va_list arguments;
+    int length;
+
+    if (!getenv("OPENIMP_STARTUP_TRACE")
+#if defined(PLATFORM_T23)
+        && !openimp_t23_persist_enabled()
+#endif
+    )
+        return;
+    va_start(arguments, format);
+    length = vsnprintf(message, sizeof(message), format, arguments);
+    va_end(arguments);
+    if (length > 0) {
+        size_t size = (size_t)length;
+
+        if (size >= sizeof(message))
+            size = sizeof(message) - 1u;
+        if (getenv("OPENIMP_STARTUP_TRACE")) {
+            (void)write(STDERR_FILENO, message, size);
+            (void)fsync(STDERR_FILENO);
+        }
+#if defined(PLATFORM_T23)
+        openimp_t23_persist_write(message, size);
+#endif
+    }
+}
+
 static void p2_trace(const char *format, ...)
 {
     char message[256];
     va_list arguments;
-    int fd;
     int length;
+    int trace_kmsg = openimp_debug_trace_enabled();
+#if defined(PLATFORM_T23)
+    int trace_persist = openimp_t23_persist_enabled();
+#else
+    int trace_persist = 0;
+#endif
 
-    if (!openimp_debug_trace_enabled())
+    if (!trace_kmsg && !trace_persist)
         return;
 
-    fd = open("/dev/kmsg", O_WRONLY);
-    if (fd < 0)
-        return;
     va_start(arguments, format);
     length = vsnprintf(message, sizeof(message), format, arguments);
     va_end(arguments);
@@ -153,9 +201,18 @@ static void p2_trace(const char *format, ...)
 
         if (size > sizeof(message))
             size = sizeof(message);
-        write(fd, message, size);
+        if (trace_kmsg) {
+            int fd = open("/dev/kmsg", O_WRONLY);
+
+            if (fd >= 0) {
+                write(fd, message, size);
+                close(fd);
+            }
+        }
+#if defined(PLATFORM_T23)
+        openimp_t23_persist_write(message, size);
+#endif
     }
-    close(fd);
 }
 
 static uint64_t p2_monotonic_us(void)
@@ -276,8 +333,91 @@ static int p2_find_source_channel(int encoder_group)
     return encoder_group;
 }
 
+static uint32_t p2_attr_codec_type(const IMPEncoderCHNAttr *attr)
+{
+#if defined(PLATFORM_T23)
+    switch (attr->encAttr.enType) {
+    case PT_JPEG:
+        return IMP_ENC_TYPE_JPEG;
+    case PT_H265:
+        return IMP_ENC_TYPE_HEVC;
+    case PT_H264:
+    default:
+        return IMP_ENC_TYPE_AVC;
+    }
+#else
+    return (((uint32_t)attr->encAttr.profile) >> 24) & 0xffu;
+#endif
+}
+
+static uint32_t p2_attr_profile(const IMPEncoderCHNAttr *attr)
+{
+#if defined(PLATFORM_T23)
+    uint32_t codec_type = p2_attr_codec_type(attr);
+
+    if (codec_type == IMP_ENC_TYPE_JPEG)
+        return IMP_ENC_PROFILE_JPEG;
+    if (codec_type == IMP_ENC_TYPE_HEVC)
+        return IMP_ENC_PROFILE_HEVC_MAIN;
+    switch (attr->encAttr.profile) {
+    case 2:
+    case IMP_ENC_AVC_PROFILE_IDC_HIGH:
+        return IMP_ENC_PROFILE_AVC_HIGH;
+    case 1:
+    case IMP_ENC_AVC_PROFILE_IDC_MAIN:
+        return IMP_ENC_PROFILE_AVC_MAIN;
+    default:
+        return IMP_ENC_PROFILE_AVC_BASELINE;
+    }
+#else
+    return (uint32_t)attr->encAttr.profile;
+#endif
+}
+
+static uint32_t p2_attr_width(const IMPEncoderCHNAttr *attr)
+{
+#if defined(PLATFORM_T23)
+    return attr->encAttr.picWidth;
+#else
+    return attr->encAttr.maxPicWidth;
+#endif
+}
+
+static uint32_t p2_attr_height(const IMPEncoderCHNAttr *attr)
+{
+#if defined(PLATFORM_T23)
+    return attr->encAttr.picHeight;
+#else
+    return attr->encAttr.maxPicHeight;
+#endif
+}
+
+static uint32_t p2_attr_gop_length(const IMPEncoderCHNAttr *attr)
+{
+#if defined(PLATFORM_T23)
+    return attr->rcAttr.maxGop;
+#else
+    return attr->gopAttr.uGopLength;
+#endif
+}
+
 static uint32_t p2_attr_bitrate_kbps(const IMPEncoderCHNAttr *attr)
 {
+#if defined(PLATFORM_T23)
+    switch (attr->rcAttr.attrRcMode.rcMode) {
+    case IMP_ENC_RC_MODE_CBR:
+        return p2_attr_codec_type(attr) == IMP_ENC_TYPE_HEVC
+            ? attr->rcAttr.attrRcMode.attrH265Cbr.outBitRate
+            : attr->rcAttr.attrRcMode.attrH264Cbr.outBitRate;
+    case IMP_ENC_RC_MODE_VBR:
+    case IMP_ENC_RC_MODE_SMART:
+        return p2_attr_codec_type(attr) == IMP_ENC_TYPE_HEVC
+            ? attr->rcAttr.attrRcMode.attrH265Vbr.maxBitRate
+            : attr->rcAttr.attrRcMode.attrH264Vbr.maxBitRate;
+    default:
+        return 0;
+    }
+#else
     switch (attr->rcAttr.attrRcMode.rcMode) {
     case IMP_ENC_RC_MODE_CBR:
         return attr->rcAttr.attrRcMode.attrCbr.uTargetBitRate;
@@ -290,12 +430,13 @@ static uint32_t p2_attr_bitrate_kbps(const IMPEncoderCHNAttr *attr)
     default:
         return 0;
     }
+#endif
 }
 
 static void p2_codec_params(unsigned char *params, const IMPEncoderCHNAttr *attr)
 {
-    uint32_t profile = (uint32_t)attr->encAttr.profile;
-    uint32_t codec_type = (profile >> 24) & 0xffu;
+    uint32_t profile = p2_attr_profile(attr);
+    uint32_t codec_type = p2_attr_codec_type(attr);
     uint32_t fps_num = attr->rcAttr.outFrmRate.frmRateNum;
     uint32_t fps_den = attr->rcAttr.outFrmRate.frmRateDen;
     uint32_t bitrate = p2_attr_bitrate_kbps(attr) * 1000u;
@@ -303,18 +444,45 @@ static void p2_codec_params(unsigned char *params, const IMPEncoderCHNAttr *attr
     int min_qp = 15;
     int max_qp = 45;
 
+    p2_startup_trace("openimp/P2 startup: codec params defaults begin\n");
     AL_Codec_Encode_SetDefaultParam(params);
-    *(uint16_t *)(params + 0x08) = attr->encAttr.maxPicWidth;
-    *(uint16_t *)(params + 0x0a) = attr->encAttr.maxPicHeight;
-    *(uint16_t *)(params + 0x0c) = attr->encAttr.maxPicWidth;
-    *(uint16_t *)(params + 0x0e) = attr->encAttr.maxPicHeight;
+    p2_startup_trace("openimp/P2 startup: codec params defaults done\n");
+    *(uint16_t *)(params + 0x08) = (uint16_t)p2_attr_width(attr);
+    *(uint16_t *)(params + 0x0a) = (uint16_t)p2_attr_height(attr);
+    *(uint16_t *)(params + 0x0c) = (uint16_t)p2_attr_width(attr);
+    *(uint16_t *)(params + 0x0e) = (uint16_t)p2_attr_height(attr);
     *(uint32_t *)(params + 0x20) = profile;
     *(uint32_t *)(params + 0x6c) = (uint32_t)attr->rcAttr.attrRcMode.rcMode;
     *(uint16_t *)(params + 0x78) = (uint16_t)(fps_num ? fps_num : 25u);
     *(uint16_t *)(params + 0x7a) = (uint16_t)((fps_den ? fps_den : 1u) * 1000u);
     *(uint32_t *)(params + 0x7c) = bitrate;
-    *(uint32_t *)(params + 0xb0) = attr->gopAttr.uGopLength;
+    *(uint32_t *)(params + 0xb0) = p2_attr_gop_length(attr);
 
+#if defined(PLATFORM_T23)
+    if (attr->rcAttr.attrRcMode.rcMode == IMP_ENC_RC_MODE_FIXQP) {
+        qp = codec_type == IMP_ENC_TYPE_HEVC
+            ? (int)attr->rcAttr.attrRcMode.attrH265FixQp.qp
+            : (int)attr->rcAttr.attrRcMode.attrH264FixQp.qp;
+    } else if (attr->rcAttr.attrRcMode.rcMode == IMP_ENC_RC_MODE_CBR) {
+        if (codec_type == IMP_ENC_TYPE_HEVC) {
+            min_qp = (int)attr->rcAttr.attrRcMode.attrH265Cbr.minQp;
+            max_qp = (int)attr->rcAttr.attrRcMode.attrH265Cbr.maxQp;
+        } else {
+            min_qp = (int)attr->rcAttr.attrRcMode.attrH264Cbr.minQp;
+            max_qp = (int)attr->rcAttr.attrRcMode.attrH264Cbr.maxQp;
+        }
+        qp = (min_qp + max_qp) / 2;
+    } else {
+        if (codec_type == IMP_ENC_TYPE_HEVC) {
+            min_qp = (int)attr->rcAttr.attrRcMode.attrH265Vbr.minQp;
+            max_qp = (int)attr->rcAttr.attrRcMode.attrH265Vbr.maxQp;
+        } else {
+            min_qp = (int)attr->rcAttr.attrRcMode.attrH264Vbr.minQp;
+            max_qp = (int)attr->rcAttr.attrRcMode.attrH264Vbr.maxQp;
+        }
+        qp = (min_qp + max_qp) / 2;
+    }
+#else
     if (attr->rcAttr.attrRcMode.rcMode == IMP_ENC_RC_MODE_FIXQP) {
         qp = attr->rcAttr.attrRcMode.attrFixQp.iInitialQP;
     } else if (attr->rcAttr.attrRcMode.rcMode == IMP_ENC_RC_MODE_CBR) {
@@ -326,6 +494,7 @@ static void p2_codec_params(unsigned char *params, const IMPEncoderCHNAttr *attr
         min_qp = attr->rcAttr.attrRcMode.attrVbr.iMinQP;
         max_qp = attr->rcAttr.attrRcMode.attrVbr.iMaxQP;
     }
+#endif
     if (codec_type == IMP_ENC_TYPE_JPEG && qp < 1)
         qp = 25;
     if (qp < 1 || qp > 51)
@@ -341,13 +510,19 @@ static void p2_codec_params(unsigned char *params, const IMPEncoderCHNAttr *attr
     *(uint16_t *)(params + 0x84) = (uint16_t)qp;
     *(uint8_t *)(params + 0x86) = (uint8_t)min_qp;
     *(uint16_t *)(params + 0x88) = (uint16_t)max_qp;
+    p2_startup_trace("openimp/P2 startup: codec params done rc=%u bitrate=%u qp=%d/%d/%d\n",
+                     (unsigned int)attr->rcAttr.attrRcMode.rcMode,
+                     (unsigned int)bitrate, qp, min_qp, max_qp);
 }
 
 int EncoderInit(void)
 {
     int i;
 
+    p2_startup_trace("openimp/P2 startup: EncoderInit entry initialized=%d\n",
+                     p2_initialized);
     pthread_mutex_lock(&p2_state_lock);
+    p2_startup_trace("openimp/P2 startup: EncoderInit state lock acquired\n");
     if (!p2_initialized) {
         memset(p2_groups, 0, sizeof(p2_groups));
         memset(p2_channels, 0, sizeof(p2_channels));
@@ -360,8 +535,10 @@ int EncoderInit(void)
             pthread_mutex_init(&p2_channels[i].lock, NULL);
         }
         p2_initialized = 1;
+        p2_startup_trace("openimp/P2 startup: EncoderInit channel locks initialized\n");
     }
     pthread_mutex_unlock(&p2_state_lock);
+    p2_startup_trace("openimp/P2 startup: EncoderInit done\n");
     return 0;
 }
 
@@ -484,30 +661,47 @@ int IMP_Encoder_CreateChn(int channel, IMPEncoderCHNAttr *attr)
     P2EncoderChannel *ch;
     unsigned char params[P2_PARAM_SIZE];
 
+    P2_STARTUP_MARKER("openimp/P2 marker C0 CreateChn entry\n");
     if (!p2_valid_channel(channel) || !attr)
         return -1;
+    P2_STARTUP_MARKER("openimp/P2 marker C1 args valid\n");
     EncoderInit();
+    P2_STARTUP_MARKER("openimp/P2 marker C2 EncoderInit returned\n");
+    p2_startup_trace("openimp/P2 startup: CreateChn after EncoderInit\n");
     p2_trace("openimp/P2: CreateChn begin ch=%d profile=0x%x size=%ux%u\n",
-             channel, (unsigned int)attr->encAttr.profile,
-             (unsigned int)attr->encAttr.maxPicWidth,
-             (unsigned int)attr->encAttr.maxPicHeight);
+             channel, (unsigned int)p2_attr_profile(attr),
+             (unsigned int)p2_attr_width(attr),
+             (unsigned int)p2_attr_height(attr));
     ch = &p2_channels[channel];
+    P2_STARTUP_MARKER("openimp/P2 marker C3 before channel lock\n");
+    p2_startup_trace("openimp/P2 startup: CreateChn locking channel\n");
     pthread_mutex_lock(&ch->lock);
+    P2_STARTUP_MARKER("openimp/P2 marker C4 channel locked\n");
+    p2_startup_trace("openimp/P2 startup: CreateChn channel lock acquired\n");
     if (ch->created) {
         pthread_mutex_unlock(&ch->lock);
         return -1;
     }
+    P2_STARTUP_MARKER("openimp/P2 marker C5 before codec params\n");
     p2_codec_params(params, attr);
+    P2_STARTUP_MARKER("openimp/P2 marker C6 codec params returned\n");
+    p2_startup_trace("openimp/P2 startup: CreateChn calling codec create\n");
+    P2_STARTUP_MARKER("openimp/P2 marker C7 before codec create\n");
     if (AL_Codec_Encode_Create(&ch->codec, params) != 0) {
         pthread_mutex_unlock(&ch->lock);
         return -1;
     }
+    P2_STARTUP_MARKER("openimp/P2 marker C8 codec create returned\n");
+    p2_startup_trace("openimp/P2 startup: CreateChn codec created %p\n",
+                     ch->codec);
+#if !defined(PLATFORM_T23)
     if (attr->rcAttr.attrRcMode.rcMode == IMP_ENC_RC_MODE_CBR)
         AL_Codec_Encode_SetQpIPDelta(
             ch->codec, attr->rcAttr.attrRcMode.attrCbr.iIPDelta);
     else if (attr->rcAttr.attrRcMode.rcMode == IMP_ENC_RC_MODE_VBR)
         AL_Codec_Encode_SetQpIPDelta(
             ch->codec, attr->rcAttr.attrRcMode.attrVbr.iIPDelta);
+#endif
     if (AL_Codec_Encode_SetStreamBufferCount(ch->codec,
                                              ch->max_stream_count) != 0) {
         AL_Codec_Encode_Destroy(ch->codec);
@@ -515,6 +709,8 @@ int IMP_Encoder_CreateChn(int channel, IMPEncoderCHNAttr *attr)
         pthread_mutex_unlock(&ch->lock);
         return -1;
     }
+    p2_startup_trace("openimp/P2 startup: CreateChn stream count set=%d\n",
+                     ch->max_stream_count);
     if (ch->stream_buf_size != 0u &&
         AL_Codec_Encode_SetStreamBufferSize(ch->codec,
                                             (int)ch->stream_buf_size) != 0) {
@@ -524,7 +720,7 @@ int IMP_Encoder_CreateChn(int channel, IMPEncoderCHNAttr *attr)
         return -1;
     }
     ch->attr = *attr;
-    ch->codec_type = (((uint32_t)attr->encAttr.profile) >> 24) & 0xffu;
+    ch->codec_type = (int)p2_attr_codec_type(attr);
     ch->created = 1;
     ch->group = -1;
     ch->source_channel = -1;
@@ -649,6 +845,9 @@ int IMP_Encoder_StopRecvPic(int channel)
 int IMP_Encoder_PollingStream(int channel, uint32_t timeout_ms)
 {
     static unsigned int trace_count;
+#if defined(PLATFORM_T23)
+    static unsigned int t23_avc_trace_count;
+#endif
     P2EncoderChannel *ch;
     void *frame = NULL;
     void *stream = NULL;
@@ -739,8 +938,8 @@ int IMP_Encoder_PollingStream(int channel, uint32_t timeout_ms)
         memset(&ch->synthetic_frame, 0, sizeof(ch->synthetic_frame));
         ch->synthetic_frame.index = -1;
         ch->synthetic_frame.pool_index = -1;
-        ch->synthetic_frame.width = ch->attr.encAttr.maxPicWidth;
-        ch->synthetic_frame.height = ch->attr.encAttr.maxPicHeight;
+        ch->synthetic_frame.width = p2_attr_width(&ch->attr);
+        ch->synthetic_frame.height = p2_attr_height(&ch->attr);
         ch->synthetic_frame.pixel_format = 10u; /* PIX_FMT_NV12 */
         frame = &ch->synthetic_frame;
     } else {
@@ -774,6 +973,12 @@ int IMP_Encoder_PollingStream(int channel, uint32_t timeout_ms)
     core_locked = 1;
     if (AL_Codec_Encode_Process(ch->codec, frame, frame) != 0)
         goto done;
+#if defined(PLATFORM_T23)
+    if (ch->codec_type == IMP_ENC_TYPE_AVC &&
+        __sync_add_and_fetch(&t23_avc_trace_count, 1u) <= 16u)
+        p2_trace("openimp/P2: encode returned frame=%u ptr=%p\n",
+                 t23_avc_trace_count - 1u, frame);
+#endif
     /*
      * Capture ownership differs at the stock-driver seam.  T31 1080p can
      * outlast one sensor interval, so it must retain the source until AVPU
@@ -799,12 +1004,22 @@ int IMP_Encoder_PollingStream(int channel, uint32_t timeout_ms)
     }
     if (!stream)
         goto done;
+#if defined(PLATFORM_T23)
+    if (ch->codec_type == IMP_ENC_TYPE_AVC && t23_avc_trace_count <= 16u)
+        p2_trace("openimp/P2: stream dequeued frame=%u stream=%p user=%p\n",
+                 t23_avc_trace_count - 1u, stream, user);
+#endif
     openimp_profile_count(OPENIMP_PROFILE_GETSTREAM_RETRIES,
                           (uint64_t)retry);
     if (p2_capture_release_policy() == P2_CAPTURE_RELEASE_AFTER_COMPLETION &&
         frame != &ch->synthetic_frame &&
         IMP_FrameSource_ReleaseFrame(ch->source_channel, frame) == 0)
         frame = NULL;
+#if defined(PLATFORM_T23)
+    if (ch->codec_type == IMP_ENC_TYPE_AVC && t23_avc_trace_count <= 16u)
+        p2_trace("openimp/P2: capture released frame=%u remaining=%p\n",
+                 t23_avc_trace_count - 1u, frame);
+#endif
     pthread_mutex_lock(&ch->lock);
     ch->source_frame = frame ? frame : &ch->synthetic_frame;
     ch->raw_stream = stream;
@@ -867,12 +1082,17 @@ int IMP_Encoder_PollingModuleStream(uint32_t *channel_bitmap,
 
 int IMP_Encoder_GetStream(int channel, IMPEncoderStream *stream, int block)
 {
+#if defined(PLATFORM_T23)
+    static unsigned int t23_get_trace_count;
+#endif
     P2EncoderChannel *ch;
     P2HWStream *raw;
+#if !defined(PLATFORM_T23)
     uint32_t fps_num;
     uint32_t fps_den;
     uint64_t frame_interval_us;
     uint64_t source_timestamp_us;
+#endif
     int is_idr;
 
     if (!p2_valid_channel(channel) || !stream)
@@ -895,6 +1115,28 @@ int IMP_Encoder_GetStream(int channel, IMPEncoderStream *stream, int block)
 #endif
     memset(stream, 0, P2_ENCODER_STREAM_ABI_SIZE);
     memset(&ch->pack, 0, sizeof(ch->pack));
+#if defined(PLATFORM_T23)
+    ch->pack.phyAddr = raw->phys_addr;
+    ch->pack.virAddr = raw->virt_addr;
+    ch->pack.length = raw->length;
+    ch->pack.timestamp = raw->timestamp
+        ? (int64_t)raw->timestamp : (int64_t)p2_monotonic_us();
+    ch->pack.frameEnd = true;
+    ch->pack.dataType.h264Type = ch->codec_type == IMP_ENC_TYPE_JPEG
+        ? IMP_H264_NAL_UNKNOWN
+        : (is_idr ? IMP_H264_NAL_SLICE_IDR : IMP_H264_NAL_SLICE);
+    stream->pack = &ch->pack;
+    stream->packCount = 1;
+    stream->seq = ch->sequence++;
+    stream->refType = is_idr ? IMP_Encoder_FSTYPE_IDR
+                             : IMP_Encoder_FSTYPE_SBASE;
+    if (__sync_add_and_fetch(&t23_get_trace_count, 1u) <= 16u)
+        p2_trace("openimp/P2: get public frame=%u ch=%d seq=%u "
+                 "raw=%p addr=0x%08x len=%u idr=%d nal=%d\n",
+                 t23_get_trace_count - 1u, channel, stream->seq,
+                 (void *)raw, ch->pack.virAddr, ch->pack.length, is_idr,
+                 (int)ch->pack.dataType.h264Type);
+#else
     ch->pack.offset = 0;
     ch->pack.length = raw->length;
     source_timestamp_us = raw->timestamp
@@ -925,12 +1167,16 @@ int IMP_Encoder_GetStream(int channel, IMPEncoderStream *stream, int block)
     stream->packCount = 1;
     stream->seq = ch->sequence++;
     stream->isVI = false;
+#endif
     pthread_mutex_unlock(&ch->lock);
     return 0;
 }
 
 int IMP_Encoder_ReleaseStream(int channel, IMPEncoderStream *stream)
 {
+#if defined(PLATFORM_T23)
+    static unsigned int t23_release_trace_count;
+#endif
     P2EncoderChannel *ch;
     void *raw;
     void *user;
@@ -950,6 +1196,12 @@ int IMP_Encoder_ReleaseStream(int channel, IMPEncoderStream *stream)
     pthread_mutex_unlock(&ch->lock);
     if (!raw || !frame)
         return -1;
+#if defined(PLATFORM_T23)
+    if (__sync_add_and_fetch(&t23_release_trace_count, 1u) <= 16u)
+        p2_trace("openimp/P2: release public frame=%u raw=%p user=%p "
+                 "source=%p\n", t23_release_trace_count - 1u, raw, user,
+                 frame);
+#endif
     result = AL_Codec_Encode_ReleaseStream(ch->codec, raw, user);
     if (frame != &ch->synthetic_frame &&
         IMP_FrameSource_ReleaseFrame(ch->source_channel, frame) != 0)
@@ -959,11 +1211,28 @@ int IMP_Encoder_ReleaseStream(int channel, IMPEncoderStream *stream)
 
 int IMP_Encoder_RequestIDR(int channel)
 {
+#if defined(PLATFORM_T23)
+    static unsigned int t23_idr_request_count;
+#endif
+
     if (!p2_valid_channel(channel) || !p2_channels[channel].codec)
         return -1;
     if (p2_channels[channel].codec_type == IMP_ENC_TYPE_JPEG)
         return 0;
+#if defined(PLATFORM_T23)
+    /* IMP_Encoder_YuvRequestIDR can leave the standalone Helix encoder in a
+     * permanently asserted IRQ state when it is called after streaming has
+     * begun.  Raptor requests an IDR whenever an RTSP client joins, and the
+     * next YuvEncode then wedges in the stock IRQ handler.  The configured
+     * maxGop already emits regular SPS/PPS/IDR access units, so acknowledge
+     * the hint and let the natural GOP provide the next safe join point. */
+    if (__sync_add_and_fetch(&t23_idr_request_count, 1u) <= 16u)
+        p2_trace("openimp/P2: T23 IDR request deferred to natural GOP "
+                 "ch=%d request=%u\n", channel, t23_idr_request_count);
+    return 0;
+#else
     return AL_Codec_Encode_RequestIDR(p2_channels[channel].codec);
+#endif
 }
 
 int IMP_Encoder_Query(int channel, IMPEncoderCHNStat *stat)
@@ -971,6 +1240,9 @@ int IMP_Encoder_Query(int channel, IMPEncoderCHNStat *stat)
     if (!p2_valid_channel(channel) || !stat || !p2_channels[channel].created)
         return -1;
     memset(stat, 0, sizeof(*stat));
+#if defined(PLATFORM_T23)
+    stat->registered = p2_channels[channel].registered != 0;
+#endif
     stat->leftPics = p2_channels[channel].raw_stream ? 1u : 0u;
     stat->curPacks = p2_channels[channel].raw_stream ? 1u : 0u;
     return 0;
@@ -984,6 +1256,7 @@ int IMP_Encoder_GetChnAttr(int channel, IMPEncoderChnAttr *attr)
     return 0;
 }
 
+#if !defined(PLATFORM_T23)
 int IMP_Encoder_SetDefaultParam(IMPEncoderChnAttr *attr, IMPEncoderProfile profile,
                                 IMPEncoderRcMode rc_mode, int width, int height,
                                 int fps_num, int fps_den, int gop_length,
@@ -1024,6 +1297,7 @@ int IMP_Encoder_SetDefaultParam(IMPEncoderChnAttr *attr, IMPEncoderProfile profi
     }
     return 0;
 }
+#endif
 
 int IMP_Encoder_FlushStream(int channel)
 {
@@ -1037,7 +1311,18 @@ int IMP_Encoder_SetbufshareChn(int channel, int share_channel)
 
 int IMP_Encoder_SetJpegeQl(int channel, IMPEncoderJpegeQl *quality)
 {
-    return p2_valid_channel(channel) && quality ? 0 : -1;
+    if (!p2_valid_channel(channel) || !quality)
+        return -1;
+    p2_channels[channel].jpeg_quality = *quality;
+    return 0;
+}
+
+int IMP_Encoder_GetJpegeQl(int channel, IMPEncoderJpegeQl *quality)
+{
+    if (!p2_valid_channel(channel) || !quality)
+        return -1;
+    *quality = p2_channels[channel].jpeg_quality;
+    return 0;
 }
 
 int IMP_Encoder_SetMaxStreamCnt(int channel, int count)
@@ -1094,12 +1379,18 @@ int IMP_Encoder_GetStreamBufSize(int channel, int *size)
  * T40 callers pass two.  Only the second argument is read, so the function is
  * ABI-correct for the T40 two-argument call while retaining a compilable
  * prototype in this standalone unit. */
+#if defined(PLATFORM_T23)
+int IMP_Encoder_SetChnFrmRate(int channel, const IMPEncoderFrmRate *rate)
+#else
 int IMP_Encoder_SetChnFrmRate(int channel, IMPEncoderFrmRate *rate,
                               IMPEncoderFrmRate *unused)
+#endif
 {
     P2EncoderChannel *ch;
 
+#if !defined(PLATFORM_T23)
     (void)unused;
+#endif
     if (!p2_valid_channel(channel) || !rate || !rate->frmRateNum ||
         !rate->frmRateDen)
         return -1;
@@ -1112,7 +1403,7 @@ int IMP_Encoder_SetChnFrmRate(int channel, IMPEncoderFrmRate *rate,
     ch->attr.rcAttr.outFrmRate = *rate;
     ch->next_frame_due_us = 0;
     ch->output_timestamp_us = 0;
-    if (AL_Codec_Encode_SetFrameRate(ch->codec, rate) != 0) {
+    if (AL_Codec_Encode_SetFrameRate(ch->codec, (void *)rate) != 0) {
         pthread_mutex_unlock(&ch->lock);
         return -1;
     }
@@ -1120,10 +1411,16 @@ int IMP_Encoder_SetChnFrmRate(int channel, IMPEncoderFrmRate *rate,
     return 0;
 }
 
+#if defined(PLATFORM_T23)
+int IMP_Encoder_GetChnFrmRate(int channel, IMPEncoderFrmRate *rate)
+#else
 int IMP_Encoder_GetChnFrmRate(int channel, IMPEncoderFrmRate *rate,
                               IMPEncoderFrmRate *unused)
+#endif
 {
+#if !defined(PLATFORM_T23)
     (void)unused;
+#endif
     if (!p2_valid_channel(channel) || !rate || !p2_channels[channel].created)
         return -1;
     *rate = p2_channels[channel].attr.rcAttr.outFrmRate;
@@ -1142,8 +1439,10 @@ int IMP_Encoder_SetChnAttrRcMode(int channel, IMPEncoderAttrRcMode *mode)
 {
     P2EncoderChannel *ch;
     IMPEncoderRcAttr codec_rc;
+#if !defined(PLATFORM_T23)
     uint32_t target_kbps = 0;
     uint32_t maximum_kbps = 0;
+#endif
 
     if (!p2_valid_channel(channel) || !mode)
         return -1;
@@ -1156,6 +1455,13 @@ int IMP_Encoder_SetChnAttrRcMode(int channel, IMPEncoderAttrRcMode *mode)
 
     ch->attr.rcAttr.attrRcMode = *mode;
     codec_rc = ch->attr.rcAttr;
+#if defined(PLATFORM_T23)
+    if (codec_rc.attrRcMode.rcMode < IMP_ENC_RC_MODE_FIXQP ||
+        codec_rc.attrRcMode.rcMode >= IMP_ENC_RC_MODE_INV) {
+        pthread_mutex_unlock(&ch->lock);
+        return -1;
+    }
+#else
     switch (codec_rc.attrRcMode.rcMode) {
     case IMP_ENC_RC_MODE_CBR:
         target_kbps = codec_rc.attrRcMode.attrCbr.uTargetBitRate;
@@ -1199,6 +1505,7 @@ int IMP_Encoder_SetChnAttrRcMode(int channel, IMPEncoderAttrRcMode *mode)
         pthread_mutex_unlock(&ch->lock);
         return -1;
     }
+#endif
 
     if (AL_Codec_Encode_SetRcParam(ch->codec, &codec_rc) != 0) {
         pthread_mutex_unlock(&ch->lock);
@@ -1224,6 +1531,25 @@ int IMP_Encoder_SetChnBitRate(int channel, int bitrate, int max_bitrate)
     if (!maximum)
         maximum = target;
     mode = &p2_channels[channel].attr.rcAttr.attrRcMode;
+#if defined(PLATFORM_T23)
+    switch (mode->rcMode) {
+    case IMP_ENC_RC_MODE_CBR:
+        if (p2_channels[channel].codec_type == IMP_ENC_TYPE_HEVC)
+            mode->attrH265Cbr.outBitRate = target;
+        else
+            mode->attrH264Cbr.outBitRate = target;
+        break;
+    case IMP_ENC_RC_MODE_VBR:
+    case IMP_ENC_RC_MODE_SMART:
+        if (p2_channels[channel].codec_type == IMP_ENC_TYPE_HEVC)
+            mode->attrH265Vbr.maxBitRate = maximum;
+        else
+            mode->attrH264Vbr.maxBitRate = maximum;
+        break;
+    default:
+        return -1;
+    }
+#else
     switch (mode->rcMode) {
     case IMP_ENC_RC_MODE_CBR:
         mode->attrCbr.uTargetBitRate = target;
@@ -1243,6 +1569,7 @@ int IMP_Encoder_SetChnBitRate(int channel, int bitrate, int max_bitrate)
     default:
         return -1;
     }
+#endif
     if (AL_Codec_Encode_SetBitRate(p2_channels[channel].codec,
                                    (int)(target * 1000u),
                                    (int)(maximum * 1000u)) != 0)
@@ -1254,7 +1581,12 @@ int IMP_Encoder_GetChnGopAttr(int channel, IMPEncoderGopAttr *gop)
 {
     if (!p2_valid_channel(channel) || !gop || !p2_channels[channel].created)
         return -1;
+#if defined(PLATFORM_T23)
+    memset(gop, 0, sizeof(*gop));
+    gop->gopLength = p2_channels[channel].attr.rcAttr.maxGop;
+#else
     *gop = p2_channels[channel].attr.gopAttr;
+#endif
     return 0;
 }
 
@@ -1262,7 +1594,11 @@ int IMP_Encoder_SetChnGopAttr(int channel, IMPEncoderGopAttr *gop)
 {
     if (!p2_valid_channel(channel) || !gop || !p2_channels[channel].created)
         return -1;
+#if defined(PLATFORM_T23)
+    p2_channels[channel].attr.rcAttr.maxGop = gop->gopLength;
+#else
     p2_channels[channel].attr.gopAttr = *gop;
+#endif
     return AL_Codec_Encode_SetGopParam(p2_channels[channel].codec, gop);
 }
 
@@ -1271,13 +1607,36 @@ int IMP_Encoder_SetChnGopLength(int channel, int length)
     if (!p2_valid_channel(channel) || length <= 0 ||
         !p2_channels[channel].created)
         return -1;
+#if defined(PLATFORM_T23)
+    p2_channels[channel].attr.rcAttr.maxGop = (uint32_t)length;
+#else
     p2_channels[channel].attr.gopAttr.uGopLength = (uint16_t)length;
+#endif
     return AL_Codec_Encode_SetGopLength(p2_channels[channel].codec, length);
 }
+
+#if defined(PLATFORM_T23)
+int IMP_Encoder_SetGOPSize(int channel, const IMPEncoderGOPSizeCfg *gop)
+{
+    if (!gop || gop->gopsize <= 0)
+        return -1;
+    return IMP_Encoder_SetChnGopLength(channel, gop->gopsize);
+}
+#endif
 
 static void p2_set_qp_bounds(IMPEncoderAttrRcMode *mode, int minimum,
                              int maximum)
 {
+#if defined(PLATFORM_T23)
+    if (mode->rcMode == IMP_ENC_RC_MODE_CBR) {
+        mode->attrH264Cbr.minQp = (uint32_t)minimum;
+        mode->attrH264Cbr.maxQp = (uint32_t)maximum;
+    } else if (mode->rcMode == IMP_ENC_RC_MODE_VBR ||
+               mode->rcMode == IMP_ENC_RC_MODE_SMART) {
+        mode->attrH264Vbr.minQp = (uint32_t)minimum;
+        mode->attrH264Vbr.maxQp = (uint32_t)maximum;
+    }
+#else
     if (mode->rcMode == IMP_ENC_RC_MODE_CBR) {
         mode->attrCbr.iMinQP = (int16_t)minimum;
         mode->attrCbr.iMaxQP = (int16_t)maximum;
@@ -1291,6 +1650,7 @@ static void p2_set_qp_bounds(IMPEncoderAttrRcMode *mode, int minimum,
         mode->attrCappedQuality.iMinQP = (int16_t)minimum;
         mode->attrCappedQuality.iMaxQP = (int16_t)maximum;
     }
+#endif
 }
 
 int IMP_Encoder_SetChnQpBounds(int channel, int minimum, int maximum)
@@ -1334,6 +1694,10 @@ int IMP_Encoder_SetChnMaxPictureSize(int channel, uint32_t maximum_i,
         return -1;
     mode = &p2_channels[channel].attr.rcAttr.attrRcMode;
     maximum = maximum_i > maximum_p ? maximum_i : maximum_p;
+#if defined(PLATFORM_T23)
+    (void)mode;
+    (void)maximum;
+#else
     if (mode->rcMode == IMP_ENC_RC_MODE_CBR)
         mode->attrCbr.uMaxPictureSize = maximum;
     else if (mode->rcMode == IMP_ENC_RC_MODE_VBR)
@@ -1342,6 +1706,7 @@ int IMP_Encoder_SetChnMaxPictureSize(int channel, uint32_t maximum_i,
         mode->attrCappedVbr.uMaxPictureSize = maximum;
     else if (mode->rcMode == IMP_ENC_RC_MODE_CAPPED_QUALITY)
         mode->attrCappedQuality.uMaxPictureSize = maximum;
+#endif
     return 0;
 }
 
@@ -1424,7 +1789,12 @@ int IMP_Encoder_GetChnAveBitrate(int channel, IMPEncoderStream *stream,
         fps_num = 25;
         fps_den = 1;
     }
+#if defined(PLATFORM_T23)
+    bits_per_second = (uint64_t)(stream->packCount && stream->pack
+        ? stream->pack[0].length : 0u) * 8u * fps_num / fps_den;
+#else
     bits_per_second = (uint64_t)stream->streamSize * 8u * fps_num / fps_den;
+#endif
 #if defined(PLATFORM_T31)
     *bitrate = (double)bits_per_second;
 #else
@@ -1434,11 +1804,29 @@ int IMP_Encoder_GetChnAveBitrate(int channel, IMPEncoderStream *stream,
     return 0;
 }
 
+#if defined(PLATFORM_T23)
+int IMP_Encoder_GetChnEncType(int channel, IMPPayloadType *type)
+#else
 int IMP_Encoder_GetChnEncType(int channel, IMPEncoderEncType *type)
+#endif
 {
     if (!p2_valid_channel(channel) || !type || !p2_channels[channel].created)
         return -1;
+#if defined(PLATFORM_T23)
+    switch (p2_channels[channel].codec_type) {
+    case IMP_ENC_TYPE_JPEG:
+        *type = PT_JPEG;
+        break;
+    case IMP_ENC_TYPE_HEVC:
+        *type = PT_H265;
+        break;
+    default:
+        *type = PT_H264;
+        break;
+    }
+#else
     *type = (IMPEncoderEncType)p2_channels[channel].codec_type;
+#endif
     return 0;
 }
 

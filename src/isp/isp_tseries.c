@@ -14,6 +14,17 @@
 #include "core/globals.h"
 #include "imp/imp_isp.h"
 #include "isp_ioctl_compat.h"
+#if defined(PLATFORM_T23)
+#include "t23/openimp_t23_persist.h"
+#endif
+
+#if defined(PLATFORM_T23)
+#define TISP_TUNING_IOCTL 0xc01056c6U
+#define TISP_TUNING_SENSOR_FIELD int32_t sensor;
+#else
+#define TISP_TUNING_IOCTL 0xc00c56c6U
+#define TISP_TUNING_SENSOR_FIELD
+#endif
 
 int IMP_Log_Get_Option(void);
 void imp_log_fun(int level, int option, int type, ...);
@@ -22,16 +33,39 @@ typedef struct ISPDevice {
     char dev_name[0x20];
     int32_t fd;
     uint32_t opened;
+#if defined(PLATFORM_T23)
+    uint8_t sensor_info[0x54];
+#else
     uint8_t unk_28[0x50];
+#endif
     char tuning_path[0x20];
     int32_t tuning_fd;
     void *tuning;
     int32_t mem_fd;
     void *isp_base;
     int32_t tuning_state;
+#if defined(PLATFORM_T23)
+    void *sensor_alloc[2];
+    int32_t wdr_mode;
+    void *wdr_alloc;
+#else
     uint8_t unk_ac[8];
     int32_t wdr_mode;
+#endif
 } ISPDevice;
+
+#if defined(PLATFORM_T23)
+_Static_assert(offsetof(ISPDevice, tuning_path) == 0x7c,
+               "T23 ISP tuning path ABI mismatch");
+_Static_assert(offsetof(ISPDevice, tuning_fd) == 0x9c,
+               "T23 ISP tuning fd ABI mismatch");
+_Static_assert(offsetof(ISPDevice, tuning) == 0xa0,
+               "T23 ISP tuning object ABI mismatch");
+_Static_assert(offsetof(ISPDevice, tuning_state) == 0xac,
+               "T23 ISP tuning state ABI mismatch");
+_Static_assert(offsetof(ISPDevice, sensor_alloc) == 0xb0,
+               "T23 ISP sensor allocation ABI mismatch");
+#endif
 
 static char *bpath;
 static uint8_t custom_contrast;
@@ -54,6 +88,8 @@ int IMP_ISP_Open(void)
 {
     int32_t result = 0;
 
+    kmsg_trace("libimp/ISP: Open entry gISP=%p\n", (void *)gISP);
+
     /* Early kmsg trace — confirm this port's IMP_ISP_Open is the one invoked. */
     {
         int kfd = open("/dev/kmsg", O_WRONLY);
@@ -67,7 +103,11 @@ int IMP_ISP_Open(void)
     }
 
     if (gISP == NULL) {
+#if defined(PLATFORM_T23)
+        void *v0_2 = calloc(0xf0, 1);
+#else
         void *v0_2 = calloc(0xe0, 1);
+#endif
         gISP = v0_2;
         {
             int kfd = open("/dev/kmsg", O_WRONLY);
@@ -89,6 +129,9 @@ int IMP_ISP_Open(void)
 
         __builtin_strcpy((char *)v0_2, "/dev/tx-isp");
         ((ISPDevice *)v0_2)->fd = open((char *)v0_2, 0x80002, 0);
+        kmsg_trace("libimp/ISP: Open /dev/tx-isp fd=%d errno=%d\n",
+                   ((ISPDevice *)v0_2)->fd,
+                   ((ISPDevice *)v0_2)->fd < 0 ? errno : 0);
         if (((ISPDevice *)gISP)->fd < 0) {
             result = -1;
             imp_log_fun(6, IMP_Log_Get_Option(), 2, "IMP-ISP",
@@ -102,6 +145,9 @@ int IMP_ISP_Open(void)
             "/home/user/git/proj/sdk-lv3/src/imp/isp/isp_tseries.c", 0x14b,
             "IMP_ISP_Open", "~~~~~~ %s[%d] ~~~~~~~\n", "IMP_ISP_Open", 0x14b);
     }
+
+    kmsg_trace("libimp/ISP: Open return=%d gISP=%p\n", result,
+               (void *)gISP);
 
     return result;
 }
@@ -477,8 +523,9 @@ int IMP_ISP_Tuning_GetTotalGain(uint32_t *arg1)
             int32_t cmd;
             int32_t subcmd;
             int32_t value;
+            TISP_TUNING_SENSOR_FIELD
         } var_18 = { 1, 0x8000027, 0 };
-        int32_t result = ioctl(gISP_1->tuning_fd, 0xc00c56c6, &var_18);
+        int32_t result = ioctl(gISP_1->tuning_fd, TISP_TUNING_IOCTL, &var_18);
 
         if (result == 0) {
             *arg1 = (uint32_t)var_18.value;
@@ -884,8 +931,9 @@ int IMP_ISP_Tuning_SetAeComp(int arg1)
                     int32_t cmd;
                     int32_t subcmd;
                     int32_t value;
+                    TISP_TUNING_SENSOR_FIELD
                 } var_18 = { 0, 0x8000023, arg1 };
-                int32_t result = ioctl(gISP_1->tuning_fd, 0xc00c56c6, &var_18);
+                int32_t result = ioctl(gISP_1->tuning_fd, TISP_TUNING_IOCTL, &var_18);
 
                 if (result == 0) {
                     return 0;
@@ -927,8 +975,9 @@ int IMP_ISP_Tuning_GetAeComp(int *arg1)
             int32_t cmd;
             int32_t subcmd;
             int32_t value;
+            TISP_TUNING_SENSOR_FIELD
         } var_20 = { 1, 0x8000023, 0 };
-        int32_t result = ioctl(gISP_1->tuning_fd, 0xc00c56c6, &var_20);
+        int32_t result = ioctl(gISP_1->tuning_fd, TISP_TUNING_IOCTL, &var_20);
 
         if (result != 0) {
             imp_log_fun(6, IMP_Log_Get_Option(), 2, "IMP-ISP",
@@ -966,7 +1015,7 @@ enum {
     TISP_VIDIOC_GET_FRAME_DROP = 0xc00456e7,
     TISP_VIDIOC_GPIO_INIT_OR_FREE = 0xc00456e8,
     TISP_VIDIOC_GPIO_STA = 0xc00456e9,
-    TISP_VIDIOC_TUNING = 0xc00c56c6,
+    TISP_VIDIOC_TUNING = TISP_TUNING_IOCTL,
     TISP_VIDIOC_G_CTRL = 0xc008561b,
     TISP_VIDIOC_S_CTRL = 0xc008561c,
     TISP_CID_WB_ATTR = 0x8000004,
@@ -1031,12 +1080,14 @@ typedef struct TSeriesTuningValReq {
     int32_t cmd;
     int32_t subcmd;
     int32_t value;
+    TISP_TUNING_SENSOR_FIELD
 } TSeriesTuningValReq;
 
 typedef struct TSeriesTuningPtrReq {
     int32_t cmd;
     int32_t subcmd;
     void *ptr;
+    TISP_TUNING_SENSOR_FIELD
 } TSeriesTuningPtrReq;
 
 typedef struct TSeriesV4L2Ctrl {
@@ -1390,6 +1441,14 @@ int IMP_ISP_Tuning_SetISPBypass(IMPISPTuningOpsMode enable)
     if (tseries_get_isp(&isp) != 0) {
         return -1;
     }
+
+#if defined(PLATFORM_T23)
+    if (getenv("OPENIMP_T23_SKIP_BYPASS")) {
+        kmsg_trace("libimp/ISP: SetISPBypass skipped by T23 cold-start guard enable=%d\n",
+                   enable);
+        return 0;
+    }
+#endif
 
     kmsg_trace("libimp/ISP: SetISPBypass enter enable=%d isp=%p fd=%d tuning_fd=%d\n",
                enable, (void *)isp, isp->fd, isp->tuning_fd);
@@ -2555,13 +2614,7 @@ int IMP_ISP_SET_GPIO_STA(int *gpio)
     return ioctl(isp->fd, TISP_VIDIOC_GPIO_STA, gpio);
 }
 
-/* ----- Missing symbols required by rvd hal_init() -----
- * Ported from libimp.so decomps at 0x9bd84 / 0x9c69c / 0x9e0f8 / 0x9cd40.
- * The struct layout uses raw byte offsets because the ISPDevice struct
- * in this file doesn't fully match the binary's internal layout
- * (fields +0xac=ncu_buf pointer and +0xb4=wdr_buf pointer are unsplit
- * in the struct).
- */
+/* ----- Missing symbols required by rvd hal_init() ----- */
 
 /* T68 forward decls */
 int32_t IMP_Alloc(void *info, int32_t size, const char *name);
@@ -2632,8 +2685,12 @@ int IMP_ISP_AddSensor(IMPSensorInfo *pinfo)
         return -1;
     }
 
-    /* Copy 0x50 bytes of sensor-info into gISP +0x28 via halfword pack */
+    /* T23's OEM ISPDevice retains the complete 0x54-byte sensor record. */
+#if defined(PLATFORM_T23)
+    memcpy(isp_b + 0x28, pinfo, 0x54);
+#else
     memcpy(isp_b + 0x28, pinfo, 0x50);
+#endif
 
     /* Read required ISP buffer size using the platform-specific ABI. */
     tx_isp_buf_t buf_info;
@@ -2661,7 +2718,16 @@ int IMP_ISP_AddSensor(IMPSensorInfo *pinfo)
         printf("error(%s,%d): IMP_Alloc\n", "IMP_ISP_AddSensor", 0x1e8);
         return -1;
     }
+#if defined(PLATFORM_T23)
+    if ((unsigned int)sensor_idx >= 2u) {
+        IMP_Free(ncu_alloc, *(int32_t *)((char *)ncu_alloc + 0x80));
+        free(ncu_alloc);
+        return -1;
+    }
+    isp->sensor_alloc[sensor_idx] = ncu_alloc;
+#else
     *(void **)(isp_b + 0xac) = ncu_alloc;
+#endif
     int32_t ncu_phys = *(int32_t *)((char *)ncu_alloc + 0x84);
     tx_isp_buf_t set_buf;
     TXISP_BUF_INIT(set_buf);
@@ -2676,8 +2742,7 @@ int IMP_ISP_AddSensor(IMPSensorInfo *pinfo)
         return -1;
     }
 
-    /* WDR path only if WDR mode flag (+0xb0) is set */
-    if (*(int32_t *)(isp_b + 0xb0) != 1) return 0;
+    if (isp->wdr_mode != 1) return 0;
 
     struct { uint32_t addr; uint32_t size; } wdr_info = {0, 0};
     if (ioctl(isp->fd, 0x800856d7, &wdr_info) != 0) {
@@ -2699,7 +2764,11 @@ int IMP_ISP_AddSensor(IMPSensorInfo *pinfo)
         printf("error(%s,%d): IMP_Alloc\n", "IMP_ISP_AddSensor", 0x202);
         return -1;
     }
+#if defined(PLATFORM_T23)
+    isp->wdr_alloc = wdr_alloc;
+#else
     *(void **)(isp_b + 0xb4) = wdr_alloc;
+#endif
     int32_t wdr_phys = *(int32_t *)((char *)wdr_alloc + 0x84);
     struct { uint32_t addr; uint32_t size; } set_wdr;
     set_wdr.addr = (uint32_t)wdr_phys;
@@ -2748,18 +2817,40 @@ int IMP_ISP_DelSensor(IMPSensorInfo *pinfo)
         return r;
     }
 
-    memset(isp_b + 0x28, 0, 0x50);
+    memset(isp_b + 0x28, 0,
+#if defined(PLATFORM_T23)
+           0x54
+#else
+           0x50
+#endif
+    );
+#if defined(PLATFORM_T23)
+    void *ncu = isp->sensor_alloc[0];
+#else
     void *ncu = *(void **)(isp_b + 0xac);
+#endif
     if (ncu != NULL) {
         IMP_Free(ncu, *(int32_t *)((char *)ncu + 0x80));
         free(ncu);
+#if defined(PLATFORM_T23)
+        isp->sensor_alloc[0] = NULL;
+#else
         *(void **)(isp_b + 0xac) = NULL;
+#endif
     }
+#if defined(PLATFORM_T23)
+    void *wdr = isp->wdr_alloc;
+#else
     void *wdr = *(void **)(isp_b + 0xb4);
+#endif
     if (wdr != NULL) {
         IMP_Free(wdr, *(int32_t *)((char *)wdr + 0x80));
         free(wdr);
+#if defined(PLATFORM_T23)
+        isp->wdr_alloc = NULL;
+#else
         *(void **)(isp_b + 0xb4) = NULL;
+#endif
     }
     return 0;
 }
@@ -2770,31 +2861,40 @@ int IMP_ISP_DelSensor(IMPSensorInfo *pinfo)
 static void kmsg_trace(const char *fmt, ...)
 {
     static int kfd = -2;
-    if (kfd == -2) kfd = open("/dev/kmsg", O_WRONLY);
-    if (kfd < 0) return;
     char buf[256];
     va_list ap;
+
+    if (kfd == -2) kfd = open("/dev/kmsg", O_WRONLY);
     va_start(ap, fmt);
     int n = vsnprintf(buf, sizeof(buf), fmt, ap);
     va_end(ap);
-    if (n > 0) write(kfd, buf, (size_t)n);
+    if (n <= 0)
+        return;
+    if (kfd >= 0)
+        write(kfd, buf, (size_t)n);
+#if defined(PLATFORM_T23)
+    openimp_t23_persist_write(buf, (size_t)n);
+#endif
+    if (getenv("OPENIMP_STARTUP_TRACE")) {
+        write(STDERR_FILENO, buf, (size_t)n);
+        fsync(STDERR_FILENO);
+    }
 }
 
 int IMP_ISP_EnableTuning(void)
 {
     ISPDevice *isp = (ISPDevice *)gISP;
-    uint8_t *isp_b = (uint8_t *)isp;
 
     kmsg_trace("libimp/ISP: EnableTuning entry gISP=%p\n", (void *)isp);
     if (isp != NULL)
         kmsg_trace("libimp/ISP: opened=%u tuning=%p\n",
-                   isp->opened, *(void **)(isp_b + 0x9c));
+                   isp->opened, isp->tuning);
 
     if (isp == NULL) {
         kmsg_trace("libimp/ISP: EnableTuning FAILED — gISP NULL (Open not called)\n");
         return -1;
     }
-    if (*(void **)(isp_b + 0x9c) != NULL) return 0;  /* already enabled */
+    if (isp->tuning != NULL) return 0;  /* already enabled */
 
     /* Build "/dev/isp-m0" path at +0x78.
      * Stock binary uses open flags 0x80002 (O_RDWR | O_CLOEXEC), but the
@@ -2802,50 +2902,56 @@ int IMP_ISP_EnableTuning(void)
      * this particular module build — the legacy openimp impl used plain
      * O_RDWR and got the stream on. Prefer the flag value that works on
      * real hardware over binary-exact. */
-    strcpy((char *)(isp_b + 0x78), "/dev/isp-m0");
-    int32_t tfd = open((char *)(isp_b + 0x78), O_RDWR);
+    strcpy(isp->tuning_path, "/dev/isp-m0");
+    int32_t tfd = open(isp->tuning_path, O_RDWR);
     int32_t err1 = (tfd < 0) ? errno : 0;
     kmsg_trace("libimp/ISP: open(/dev/isp-m0, O_RDWR) = %d (errno=%d %s)\n",
                tfd, err1, err1 ? strerror(err1) : "ok");
     if (tfd < 0) {
-        strcpy((char *)(isp_b + 0x78), "/dev/isp-w02");
-        tfd = open((char *)(isp_b + 0x78), O_RDWR);
+        strcpy(isp->tuning_path, "/dev/isp-w02");
+        tfd = open(isp->tuning_path, O_RDWR);
         int32_t err2 = (tfd < 0) ? errno : 0;
         kmsg_trace("libimp/ISP: open(/dev/isp-w02, O_RDWR) = %d (errno=%d %s)\n",
                    tfd, err2, err2 ? strerror(err2) : "ok");
     }
-    *(int32_t *)(isp_b + 0x98) = tfd;
+    isp->tuning_fd = tfd;
     if (tfd < 0) {
         kmsg_trace("libimp/ISP: EnableTuning FAILED — could not open any tuning node\n");
         return -1;
     }
     kmsg_trace("libimp/ISP: EnableTuning opened %s as fd=%d\n",
-               (char *)(isp_b + 0x78), tfd);
+               isp->tuning_path, tfd);
     void *tune = calloc(0x1c, 1);
     if (tune == NULL) { close(tfd); return -1; }
-    *(void **)(isp_b + 0x9c) = tune;
-    *(int32_t *)(isp_b + 0xa8) = 2;
+    isp->tuning = tune;
+    isp->tuning_state = 2;
 
     int32_t mem_fd = open("/dev/mem", O_RDWR | O_SYNC);
-    *(int32_t *)(isp_b + 0xa0) = mem_fd;
+    isp->mem_fd = mem_fd;
     if (mem_fd <= 0) {
         imp_log_fun(6, IMP_Log_Get_Option(), 2, "IMP-ISP",
             "/home/user/git/proj/sdk-lv3/src/imp/isp/isp_tseries.c", 0x485,
             "IMP_ISP_EnableTuning", "Failed to open %s\n", "/dev/mem");
     }
-    void *base = mmap(0, 0x10000, PROT_READ | PROT_WRITE, MAP_SHARED,
+#if defined(PLATFORM_T23)
+    const size_t isp_map_size = 0x1b000u;
+#else
+    const size_t isp_map_size = 0x10000u;
+#endif
+    void *base = mmap(0, isp_map_size, PROT_READ | PROT_WRITE, MAP_SHARED,
                       mem_fd, 0x13380000);
-    *(void **)(isp_b + 0xa4) = base;
+    isp->isp_base = base;
     if (base == NULL || base == MAP_FAILED) {
         imp_log_fun(6, IMP_Log_Get_Option(), 2, "IMP-ISP",
             "/home/user/git/proj/sdk-lv3/src/imp/isp/isp_tseries.c", 0x489,
             "IMP_ISP_EnableTuning", "Failed to mmap isp base addr\n");
     }
 
-    int32_t fps_pack[3] = { 1, 0, 0x80000e0 };
-    if (ioctl(*(int32_t *)(isp_b + 0x98), 0xc00c56c6, fps_pack) == 0) {
-        *(int32_t *)((char *)tune + 0xc) = (uint32_t)fps_pack[2] >> 16;
-        *(int32_t *)((char *)tune + 0x10) = fps_pack[2] & 0xffff;
+    TSeriesTuningValReq fps_req = { 1, TISP_CID_SENSOR_FPS, 0 };
+    if (ioctl(isp->tuning_fd, TISP_VIDIOC_TUNING,
+              &fps_req) == 0) {
+        *(int32_t *)((char *)tune + 0xc) = (uint32_t)fps_req.value >> 16;
+        *(int32_t *)((char *)tune + 0x10) = fps_req.value & 0xffff;
     }
     *(uint8_t *)((char *)tune + 9) = custom_contrast;
     if (tseries_start_tuning_worker() != 0)
@@ -2856,23 +2962,27 @@ int IMP_ISP_EnableTuning(void)
 int IMP_ISP_DisableTuning(void)
 {
     ISPDevice *isp = (ISPDevice *)gISP;
-    uint8_t *isp_b = (uint8_t *)isp;
     if (isp == NULL) return 0;
 
     tseries_stop_tuning_worker();
 
-    void *tune = *(void **)(isp_b + 0x9c);
+    void *tune = isp->tuning;
     if (tune != NULL) free(tune);
-    int32_t tfd = *(int32_t *)(isp_b + 0x98);
-    *(void **)(isp_b + 0x9c) = NULL;
+    int32_t tfd = isp->tuning_fd;
+    isp->tuning = NULL;
     if (tfd > 0) close(tfd);
 
-    void *base = *(void **)(isp_b + 0xa4);
-    if (base != NULL) munmap(base, 0x10000);
-    int32_t mem_fd = *(int32_t *)(isp_b + 0xa0);
+    void *base = isp->isp_base;
+#if defined(PLATFORM_T23)
+    const size_t isp_map_size = 0x1b000u;
+#else
+    const size_t isp_map_size = 0x10000u;
+#endif
+    if (base != NULL && base != MAP_FAILED) munmap(base, isp_map_size);
+    int32_t mem_fd = isp->mem_fd;
     if (mem_fd > 0) close(mem_fd);
-    *(void **)(isp_b + 0xa4) = NULL;
-    *(int32_t *)(isp_b + 0xa0) = 0;
-    *(int32_t *)(isp_b + 0xa8) = 0;
+    isp->isp_base = NULL;
+    isp->mem_fd = 0;
+    isp->tuning_state = 0;
     return 0;
 }

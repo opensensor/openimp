@@ -2,8 +2,11 @@
 
 #include <stdint.h>
 #include <stddef.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <unistd.h>
 
 #define OPENIMP_P0_MAGIC             0x50305434U /* "P0T4" */
 #define OPENIMP_MAX_FS_CHANNELS      16
@@ -300,6 +303,12 @@ int IMP_System_Init(void)
     int result;
     uint64_t now;
 
+    if (getenv("OPENIMP_STARTUP_TRACE")) {
+        static const char message[] = "libimp/System: Init entry\n";
+
+        write(STDERR_FILENO, message, sizeof(message) - 1u);
+        fsync(STDERR_FILENO);
+    }
     lock_state();
     if (state.initialized) {
         unlock_state();
@@ -313,7 +322,28 @@ int IMP_System_Init(void)
     }
     state.timestamp_base_us = now;
     for (root = 0; root < OPENIMP_ROOT_COUNT; root++) {
+        if (getenv("OPENIMP_STARTUP_TRACE")) {
+            char message[64];
+            int length = snprintf(message, sizeof(message),
+                                  "libimp/System: root %d begin\n", root);
+
+            if (length > 0) {
+                write(STDERR_FILENO, message, (size_t)length);
+                fsync(STDERR_FILENO);
+            }
+        }
         result = root_init((enum openimp_root_id)root);
+        if (getenv("OPENIMP_STARTUP_TRACE")) {
+            char message[64];
+            int length = snprintf(message, sizeof(message),
+                                  "libimp/System: root %d ret=%d\n", root,
+                                  result);
+
+            if (length > 0) {
+                write(STDERR_FILENO, message, (size_t)length);
+                fsync(STDERR_FILENO);
+            }
+        }
         if (result < 0) {
             while (--root >= 0)
                 root_exit((enum openimp_root_id)root);
@@ -347,7 +377,9 @@ int IMP_System_Exit(void)
 
 int IMP_System_GetVersion(char *version)
 {
-#if defined(PLATFORM_T31)
+#if defined(PLATFORM_T23)
+    static const char text[] = "libimp.so T23 openimp";
+#elif defined(PLATFORM_T31)
     static const char text[] = "libimp.so T31 openimp";
 #elif defined(PLATFORM_T41)
     static const char text[] = "libimp.so T41 openimp";
@@ -364,7 +396,9 @@ int IMP_System_GetVersion(char *version)
 
 const char *IMP_System_GetCPUInfo(void)
 {
-#if defined(PLATFORM_T31)
+#if defined(PLATFORM_T23)
+    return "T23-N";
+#elif defined(PLATFORM_T31)
     return "T31X";
 #elif defined(PLATFORM_T41)
     return "T41NQ";
