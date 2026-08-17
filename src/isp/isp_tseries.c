@@ -1214,8 +1214,7 @@ static int tseries_v4l2_get(int32_t id, int32_t *value)
  * its startup value while AE continues to move the sensor gain, which shows
  * up most clearly as crawling shadows on flat dark walls.
  *
- * The OEM daemon is frame-event driven.  A 25 Hz worker preserves the same
- * per-frame update bound without recreating its generic named-task registry.
+ * The OEM isp_tuning_deamon_thread runs these callbacks once per second.
  */
 static void *tseries_tuning_worker(void *unused)
 {
@@ -1243,7 +1242,7 @@ static void *tseries_tuning_worker(void *unused)
             }
         }
 
-        usleep(40000);
+        sleep(1);
     }
 
     return NULL;
