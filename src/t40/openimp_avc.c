@@ -327,6 +327,18 @@ int OpenIMP_AVC_SetBitrate(OpenIMPAVCEncoder *encoder, uint32_t bitrate)
     return 0;
 }
 
+int OpenIMP_AVC_SetGopLength(OpenIMPAVCEncoder *encoder, uint32_t gop_length)
+{
+    if (!encoder || !gop_length)
+        return -EINVAL;
+    if (gop_length > INT_MAX)
+        return -ERANGE;
+    if (AL_Codec_Encode_SetGopLength(encoder->codec, (int)gop_length) != 0)
+        return -EIO;
+    encoder->config.gop_length = gop_length;
+    return 0;
+}
+
 int OpenIMP_AVC_ImportDMABuf(int dma_buf_fd, uint32_t size,
                              uint32_t *physical_address)
 {

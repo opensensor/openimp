@@ -83,6 +83,10 @@ int OpenIMP_AVC_RequestIDR(OpenIMPAVCEncoder *encoder);
  * this with Submit/Dequeue/Release for the same encoder. */
 int OpenIMP_AVC_SetBitrate(OpenIMPAVCEncoder *encoder, uint32_t bitrate);
 
+/* Update the periodic keyframe interval for subsequent frames. The caller
+ * must serialize this with Submit/Dequeue/Release for the same encoder. */
+int OpenIMP_AVC_SetGopLength(OpenIMPAVCEncoder *encoder, uint32_t gop_length);
+
 /* Resolve a contiguous DMA-BUF to the Ingenic AVPU bus address. Import all
  * capture buffers before the first Submit: the legacy AVPU driver permits a
  * single open channel and the codec claims it lazily on first use. */
