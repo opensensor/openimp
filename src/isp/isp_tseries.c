@@ -998,6 +998,7 @@ enum {
     TISP_V4L2_CID_SATURATION = 0x980902,
     TISP_V4L2_CID_HFLIP = 0x980914,
     TISP_V4L2_CID_VFLIP = 0x980915,
+    TISP_V4L2_CID_POWER_LINE_FREQUENCY = 0x980918,
     TISP_V4L2_CID_SHARPNESS = 0x98091b,
     TISP_VIDIOC_ENABLE_SENSOR = 0x80045612,
     TISP_VIDIOC_DISABLE_SENSOR = 0x80045613,
@@ -1040,7 +1041,10 @@ enum {
     TISP_CID_AE_HIST = 0x800002e,
     TISP_CID_AE_HIST_ORIGIN = 0x800002f,
     TISP_CID_AE_ZONE = 0x8000030,
-    TISP_CID_AE_LUMA = 0x8000031,
+    /* OEM T23/T31 dispatches tisp_get_ae_luma at 0x8000033.  Command
+     * 0x8000031 is a different statistics query; treating its first word as
+     * luma makes bright scenes read near zero and forces RIC into night mode. */
+    TISP_CID_AE_LUMA = 0x8000033,
     TISP_CID_AE_IT_MAX = 0x8000032,
     TISP_CID_AE_MIN = 0x8000033,
     TISP_CID_AE_FREEZE = 0x8000034,
@@ -1262,8 +1266,7 @@ static int tseries_v4l2_get(int32_t id, int32_t *value)
  * its startup value while AE continues to move the sensor gain, which shows
  * up most clearly as crawling shadows on flat dark walls.
  *
- * The OEM daemon is frame-event driven.  A 25 Hz worker preserves the same
- * per-frame update bound without recreating its generic named-task registry.
+ * The OEM isp_tuning_deamon_thread runs these callbacks once per second.
  */
 static void *tseries_tuning_worker(void *unused)
 {
@@ -1291,7 +1294,7 @@ static void *tseries_tuning_worker(void *unused)
             }
         }
 
-        usleep(40000);
+        sleep(1);
     }
 
     return NULL;
@@ -1362,16 +1365,39 @@ int IMP_ISP_Tuning_GetSensorFPS(uint32_t *fps_num, uint32_t *fps_den)
 
 int IMP_ISP_Tuning_SetAntiFlickerAttr(IMPISPAntiflickerAttr attr)
 {
-    tseries_antiflicker_attr = attr;
-    return 0;
+    int result;
+
+    if (attr != IMPISP_ANTIFLICKER_DISABLE &&
+        attr != IMPISP_ANTIFLICKER_50HZ &&
+        attr != IMPISP_ANTIFLICKER_60HZ) {
+        return -1;
+    }
+
+    result = tseries_v4l2_set(TISP_V4L2_CID_POWER_LINE_FREQUENCY,
+                              (int32_t)attr);
+    if (result == 0) {
+        tseries_antiflicker_attr = attr;
+    }
+
+    return result;
 }
 
 int IMP_ISP_Tuning_GetAntiFlickerAttr(IMPISPAntiflickerAttr *pattr)
 {
+    int32_t value = 0;
+    int result;
+
     if (pattr == NULL) {
         return -1;
     }
 
+    result = tseries_v4l2_get(TISP_V4L2_CID_POWER_LINE_FREQUENCY, &value);
+    if (result != 0 || value < IMPISP_ANTIFLICKER_DISABLE ||
+        value > IMPISP_ANTIFLICKER_60HZ) {
+        return -1;
+    }
+
+    tseries_antiflicker_attr = (IMPISPAntiflickerAttr)value;
     *pattr = tseries_antiflicker_attr;
     return 0;
 }

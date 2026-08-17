@@ -12,6 +12,7 @@
 #include "core/globals.h"
 #include "core/module.h"
 #include "imp/imp_common.h"
+#include "trace_control.h"
 
 int IMP_Log_Get_Option(void); /* forward decl, ported by T<N> later */
 void imp_log_fun(int level, int option, int type, ...); /* forward decl, ported by T<N> later */
@@ -112,6 +113,8 @@ static __attribute__((constructor)) void install_fatal_signal_handlers(void)
 
 static void sysbind_trace(const char *fmt, ...)
 {
+    if (!openimp_debug_trace_enabled()) return;
+
     int fd = open("/dev/kmsg", O_WRONLY);
     if (fd < 0) return;
 

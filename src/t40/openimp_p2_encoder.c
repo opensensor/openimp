@@ -12,6 +12,7 @@
 #include <unistd.h>
 
 #include "openimp_profile.h"
+#include "trace_control.h"
 #if defined(PLATFORM_T23)
 #include "t23/openimp_t23_persist.h"
 #endif
@@ -124,6 +125,7 @@ typedef struct {
     int entropy_mode_set;
     int resize_mode;
     uint64_t next_frame_due_us;
+    uint64_t output_timestamp_us;
     pthread_mutex_t lock;
 } P2EncoderChannel;
 
@@ -180,14 +182,15 @@ static void p2_trace(const char *format, ...)
 {
     char message[256];
     va_list arguments;
-    int fd;
     int length;
-
-    if (!getenv("OPENIMP_P2_TRACE")
+    int trace_kmsg = openimp_debug_trace_enabled();
 #if defined(PLATFORM_T23)
-        && !openimp_t23_persist_enabled()
+    int trace_persist = openimp_t23_persist_enabled();
+#else
+    int trace_persist = 0;
 #endif
-    )
+
+    if (!trace_kmsg && !trace_persist)
         return;
 
     va_start(arguments, format);
@@ -198,8 +201,9 @@ static void p2_trace(const char *format, ...)
 
         if (size > sizeof(message))
             size = sizeof(message);
-        if (getenv("OPENIMP_P2_TRACE")) {
-            fd = open("/dev/kmsg", O_WRONLY);
+        if (trace_kmsg) {
+            int fd = open("/dev/kmsg", O_WRONLY);
+
             if (fd >= 0) {
                 write(fd, message, size);
                 close(fd);
@@ -690,6 +694,14 @@ int IMP_Encoder_CreateChn(int channel, IMPEncoderCHNAttr *attr)
     P2_STARTUP_MARKER("openimp/P2 marker C8 codec create returned\n");
     p2_startup_trace("openimp/P2 startup: CreateChn codec created %p\n",
                      ch->codec);
+#if !defined(PLATFORM_T23)
+    if (attr->rcAttr.attrRcMode.rcMode == IMP_ENC_RC_MODE_CBR)
+        AL_Codec_Encode_SetQpIPDelta(
+            ch->codec, attr->rcAttr.attrRcMode.attrCbr.iIPDelta);
+    else if (attr->rcAttr.attrRcMode.rcMode == IMP_ENC_RC_MODE_VBR)
+        AL_Codec_Encode_SetQpIPDelta(
+            ch->codec, attr->rcAttr.attrRcMode.attrVbr.iIPDelta);
+#endif
     if (AL_Codec_Encode_SetStreamBufferCount(ch->codec,
                                              ch->max_stream_count) != 0) {
         AL_Codec_Encode_Destroy(ch->codec);
@@ -803,6 +815,7 @@ int IMP_Encoder_StartRecvPic(int channel)
     }
     ch->source_channel = p2_find_source_channel(ch->group);
     ch->next_frame_due_us = 0;
+    ch->output_timestamp_us = 0;
     ch->receiving = 1;
     pthread_mutex_unlock(&ch->lock);
     p2_trace("openimp/P2: StartRecv ch=%d source=%d\n",
@@ -824,6 +837,7 @@ int IMP_Encoder_StopRecvPic(int channel)
     }
     ch->receiving = 0;
     ch->next_frame_due_us = 0;
+    ch->output_timestamp_us = 0;
     pthread_mutex_unlock(&ch->lock);
     return 0;
 }
@@ -831,7 +845,9 @@ int IMP_Encoder_StopRecvPic(int channel)
 int IMP_Encoder_PollingStream(int channel, uint32_t timeout_ms)
 {
     static unsigned int trace_count;
+#if defined(PLATFORM_T23)
     static unsigned int t23_avc_trace_count;
+#endif
     P2EncoderChannel *ch;
     void *frame = NULL;
     void *stream = NULL;
@@ -842,8 +858,10 @@ int IMP_Encoder_PollingStream(int channel, uint32_t timeout_ms)
     uint32_t fps_den;
     uint64_t interval_us;
     uint64_t now_us;
+    uint64_t frame_deadline_us;
     uint64_t wait_us;
     uint64_t timeout_us;
+    int core_locked = 0;
     int result = -1;
     OpenIMPProfileStamp poll_profile;
 
@@ -866,36 +884,27 @@ int IMP_Encoder_PollingStream(int channel, uint32_t timeout_ms)
         return -1;
     }
     /*
-     * The physical FrameSource ioctl normally blocks at sensor cadence.  T23
-     * is the exception: its recovered frame-channel currently continues at
-     * sensor cadence even when Raptor requests a lower encoder frame rate.
-     * The standalone Helix API does not drop those excess input frames and
-     * eventually wedges the SoC under sustained 1080p load.  Pace T23 AVC at
-     * the public channel rate before dequeuing; other AVC backends retain the
-     * one-clock behavior.
+     * Pace every encoder channel at its requested output rate.  FrameSource
+     * channels can still publish at sensor rate on T31, so relying on capture
+     * cadence alone lets a low-rate substream compete equally with the main
+     * stream for the single AVPU.  The userspace VBM ready queue preserves a
+     * completed frame while we wait, unlike the old blocking WAIT_FRAME path
+     * that could race past a sensor edge.
      */
-    interval_us = 0u;
-    wait_us = 0u;
-    if (ch->codec_type == IMP_ENC_TYPE_JPEG
-#if defined(PLATFORM_T23)
-        || ch->codec_type == IMP_ENC_TYPE_AVC
-#endif
-    ) {
-        fps_num = ch->attr.rcAttr.outFrmRate.frmRateNum;
-        fps_den = ch->attr.rcAttr.outFrmRate.frmRateDen;
-        if (!fps_num || !fps_den) {
-            fps_num = 25u;
-            fps_den = 1u;
-        }
-        interval_us = (1000000ull * fps_den) / fps_num;
-        if (!interval_us)
-            interval_us = 1u;
-        if (interval_us > 60000000u)
-            interval_us = 60000000u;
-        now_us = p2_monotonic_us();
-        wait_us = ch->next_frame_due_us > now_us
-            ? ch->next_frame_due_us - now_us : 0u;
+    fps_num = ch->attr.rcAttr.outFrmRate.frmRateNum;
+    fps_den = ch->attr.rcAttr.outFrmRate.frmRateDen;
+    if (!fps_num || !fps_den) {
+        fps_num = 25u;
+        fps_den = 1u;
     }
+    interval_us = (1000000ull * fps_den) / fps_num;
+    if (!interval_us)
+        interval_us = 1u;
+    if (interval_us > 60000000u)
+        interval_us = 60000000u;
+    now_us = p2_monotonic_us();
+    wait_us = ch->next_frame_due_us > now_us
+        ? ch->next_frame_due_us - now_us : 0u;
     pthread_mutex_unlock(&ch->lock);
 
     timeout_us = (uint64_t)timeout_ms * 1000u;
@@ -917,11 +926,14 @@ int IMP_Encoder_PollingStream(int channel, uint32_t timeout_ms)
     }
     if (interval_us) {
         now_us = p2_monotonic_us();
-        ch->next_frame_due_us = now_us + interval_us;
+        if (!ch->next_frame_due_us ||
+            now_us > ch->next_frame_due_us + interval_us)
+            ch->next_frame_due_us = now_us + interval_us;
+        else
+            ch->next_frame_due_us += interval_us;
     }
     pthread_mutex_unlock(&ch->lock);
 
-    pthread_mutex_lock(&p2_core_lock);
     if (ch->codec_type == IMP_ENC_TYPE_JPEG) {
         memset(&ch->synthetic_frame, 0, sizeof(ch->synthetic_frame));
         ch->synthetic_frame.index = -1;
@@ -930,12 +942,35 @@ int IMP_Encoder_PollingStream(int channel, uint32_t timeout_ms)
         ch->synthetic_frame.height = p2_attr_height(&ch->attr);
         ch->synthetic_frame.pixel_format = 10u; /* PIX_FMT_NV12 */
         frame = &ch->synthetic_frame;
-    } else if (IMP_FrameSource_GetFrame(ch->source_channel, &frame) != 0) {
-        goto done;
+    } else {
+        /*
+         * IMP_FrameSource_GetFrame() exposes the userspace VBM ready queue
+         * and is intentionally non-blocking.  PollingStream, however, is a
+         * blocking API and Raptor passes a one-second timeout.  Returning as
+         * soon as the queue is momentarily empty makes both encoder threads
+         * spin thousands of times between sensor frames and can starve the
+         * capture/network paths on a single-core T31.
+         */
+        frame_deadline_us = p2_monotonic_us() + timeout_us;
+        while (IMP_FrameSource_GetFrame(ch->source_channel, &frame) != 0) {
+            if (!timeout_ms || p2_monotonic_us() >= frame_deadline_us)
+                goto done;
+            p2_sleep_us(1000u);
+        }
     }
     if (trace_count <= 8u)
         p2_trace("openimp/P2: PollingStream frame ch=%d source=%d frame=%p\n",
                  channel, ch->source_channel, frame);
+
+    /*
+     * Wait for this channel's source frame without owning the shared AVPU
+     * lock.  Holding the lock across the sensor-cadence wait lets whichever
+     * channel won it first repeatedly reacquire it and starve the other
+     * stream for seconds at a time.  Only command submission and completion
+     * collection need to be serialized across encoder instances.
+     */
+    pthread_mutex_lock(&p2_core_lock);
+    core_locked = 1;
     if (AL_Codec_Encode_Process(ch->codec, frame, frame) != 0)
         goto done;
 #if defined(PLATFORM_T23)
@@ -999,7 +1034,8 @@ done:
         AL_Codec_Encode_ReleaseStream(ch->codec, stream, user);
     if (frame && frame != &ch->synthetic_frame)
         IMP_FrameSource_ReleaseFrame(ch->source_channel, frame);
-    pthread_mutex_unlock(&p2_core_lock);
+    if (core_locked)
+        pthread_mutex_unlock(&p2_core_lock);
     openimp_profile_end(OPENIMP_PROFILE_ENCODER_POLL, poll_profile);
     return result;
 }
@@ -1046,9 +1082,17 @@ int IMP_Encoder_PollingModuleStream(uint32_t *channel_bitmap,
 
 int IMP_Encoder_GetStream(int channel, IMPEncoderStream *stream, int block)
 {
+#if defined(PLATFORM_T23)
     static unsigned int t23_get_trace_count;
+#endif
     P2EncoderChannel *ch;
     P2HWStream *raw;
+#if !defined(PLATFORM_T23)
+    uint32_t fps_num;
+    uint32_t fps_den;
+    uint64_t frame_interval_us;
+    uint64_t source_timestamp_us;
+#endif
     int is_idr;
 
     if (!p2_valid_channel(channel) || !stream)
@@ -1086,19 +1130,31 @@ int IMP_Encoder_GetStream(int channel, IMPEncoderStream *stream, int block)
     stream->seq = ch->sequence++;
     stream->refType = is_idr ? IMP_Encoder_FSTYPE_IDR
                              : IMP_Encoder_FSTYPE_SBASE;
-#if defined(PLATFORM_T23)
     if (__sync_add_and_fetch(&t23_get_trace_count, 1u) <= 16u)
         p2_trace("openimp/P2: get public frame=%u ch=%d seq=%u "
                  "raw=%p addr=0x%08x len=%u idr=%d nal=%d\n",
                  t23_get_trace_count - 1u, channel, stream->seq,
                  (void *)raw, ch->pack.virAddr, ch->pack.length, is_idr,
                  (int)ch->pack.dataType.h264Type);
-#endif
 #else
     ch->pack.offset = 0;
     ch->pack.length = raw->length;
-    ch->pack.timestamp = raw->timestamp
-        ? (int64_t)raw->timestamp : (int64_t)p2_monotonic_us();
+    source_timestamp_us = raw->timestamp
+        ? raw->timestamp : p2_monotonic_us();
+    fps_num = ch->attr.rcAttr.outFrmRate.frmRateNum;
+    fps_den = ch->attr.rcAttr.outFrmRate.frmRateDen;
+    if (!fps_num || !fps_den) {
+        fps_num = 25u;
+        fps_den = 1u;
+    }
+    frame_interval_us = (1000000ull * fps_den) / fps_num;
+    if (!frame_interval_us)
+        frame_interval_us = 1u;
+    if (!ch->output_timestamp_us)
+        ch->output_timestamp_us = source_timestamp_us;
+    else
+        ch->output_timestamp_us += frame_interval_us;
+    ch->pack.timestamp = (int64_t)ch->output_timestamp_us;
     ch->pack.frameEnd = true;
     ch->pack.sliceType = is_idr ? IMP_ENC_SLICE_I : IMP_ENC_SLICE_P;
     ch->pack.nalType.h264NalType = ch->codec_type == IMP_ENC_TYPE_JPEG
@@ -1118,7 +1174,9 @@ int IMP_Encoder_GetStream(int channel, IMPEncoderStream *stream, int block)
 
 int IMP_Encoder_ReleaseStream(int channel, IMPEncoderStream *stream)
 {
+#if defined(PLATFORM_T23)
     static unsigned int t23_release_trace_count;
+#endif
     P2EncoderChannel *ch;
     void *raw;
     void *user;
@@ -1228,12 +1286,14 @@ int IMP_Encoder_SetDefaultParam(IMPEncoderChnAttr *attr, IMPEncoderProfile profi
         attr->rcAttr.attrRcMode.attrCbr.iInitialQP = 26;
         attr->rcAttr.attrRcMode.attrCbr.iMinQP = 15;
         attr->rcAttr.attrRcMode.attrCbr.iMaxQP = 45;
+        attr->rcAttr.attrRcMode.attrCbr.iIPDelta = -1;
     } else {
         attr->rcAttr.attrRcMode.attrVbr.uTargetBitRate = (uint32_t)bitrate;
         attr->rcAttr.attrRcMode.attrVbr.uMaxBitRate = (uint32_t)bitrate;
         attr->rcAttr.attrRcMode.attrVbr.iInitialQP = 26;
         attr->rcAttr.attrRcMode.attrVbr.iMinQP = 15;
         attr->rcAttr.attrRcMode.attrVbr.iMaxQP = 45;
+        attr->rcAttr.attrRcMode.attrVbr.iIPDelta = -1;
     }
     return 0;
 }
@@ -1342,6 +1402,7 @@ int IMP_Encoder_SetChnFrmRate(int channel, IMPEncoderFrmRate *rate,
     }
     ch->attr.rcAttr.outFrmRate = *rate;
     ch->next_frame_due_us = 0;
+    ch->output_timestamp_us = 0;
     if (AL_Codec_Encode_SetFrameRate(ch->codec, (void *)rate) != 0) {
         pthread_mutex_unlock(&ch->lock);
         return -1;

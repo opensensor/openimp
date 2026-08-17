@@ -25,6 +25,9 @@
 #include "imp_log_int.h"
 #include "kernel_interface.h"
 #include "openimp_profile.h"
+#if defined(PLATFORM_T31)
+#include "t31_stream_layout.h"
+#endif
 #if defined(PLATFORM_T41)
 #include "t41_stream_layout.h"
 #endif
@@ -2255,7 +2258,27 @@ static uint32_t avpu_t40_picture_qp(const ALAvpuContext *ctx, int is_idr)
     if (qp > 51u)
         qp = 51u;
 
+#if defined(PLATFORM_T31)
+    /* T31 defines iIPDelta as I-picture QP relative to the following P
+     * picture.  The recovered SDK default is -1.  Keep the adjustment here
+     * so the generated slice header and both Enc1 command words use the same
+     * effective QP. */
+    if (is_idr) {
+        int32_t idr_qp = (int32_t)qp + ctx->qp_ip_delta;
+
+        if (idr_qp < (int32_t)ctx->min_qp)
+            idr_qp = (int32_t)ctx->min_qp;
+        if (ctx->max_qp != 0u && idr_qp > (int32_t)ctx->max_qp)
+            idr_qp = (int32_t)ctx->max_qp;
+        if (idr_qp < 0)
+            idr_qp = 0;
+        if (idr_qp > 51)
+            idr_qp = 51;
+        qp = (uint32_t)idr_qp;
+    }
+#else
     (void)is_idr;
+#endif
     return qp;
 }
 
@@ -2352,13 +2375,7 @@ static uint32_t avpu_prewrite_stream_headers(ALAvpuContext *ctx, int buf_idx, in
 
     header_ctx.qp = avpu_t40_picture_qp(ctx, is_idr);
 #if defined(PLATFORM_T31)
-    /*
-     * The T31 HWRC seed lowers the first IDR QP by one.  FixQP bypasses
-     * HWRC, so its configured QP is already the exact per-picture value.
-     */
-    if (ctx->rc_mode != HW_RC_MODE_FIXQP &&
-        is_idr && header_ctx.qp > header_ctx.min_qp)
-        --header_ctx.qp;
+    /* avpu_t40_picture_qp() already applied the T31 I/P delta. */
     if (header_ctx.qp < header_ctx.min_qp)
         header_ctx.qp = header_ctx.min_qp;
     if (header_ctx.max_qp != 0u && header_ctx.qp > header_ctx.max_qp)
@@ -3338,9 +3355,7 @@ static void fill_cmd_regs_enc1(const ALAvpuContext* ctx, uint32_t* cmd,
         uint32_t t31_picture_number =
             is_idr ? 0u : ctx->frame_number - ctx->idr_frame_number;
 
-        if (ctx->rc_mode != HW_RC_MODE_FIXQP &&
-            is_idr && t31_picture_qp > min_qp)
-            --t31_picture_qp;
+        /* avpu_t40_picture_qp() already applied the T31 I/P delta. */
         if (t31_picture_qp < min_qp)
             t31_picture_qp = min_qp;
         if (t31_picture_qp > max_qp)
@@ -3979,8 +3994,8 @@ static int avpu_try_recover_sticky_completion(ALAvpuContext *ctx,
 #if defined(PLATFORM_T31)
     int pending_buf_idx = -1;
     uint32_t pending_cl_idx;
-    const uint32_t *pending_cmd;
-    uint32_t pending_status;
+    const uint8_t *pending_status_regs;
+    uint32_t pending_payload_size = 0u;
 #endif
 
 #if defined(PLATFORM_T31)
@@ -4023,26 +4038,30 @@ static int avpu_try_recover_sticky_completion(ALAvpuContext *ctx,
      * Core status can become sticky before the submitted command list has
      * received its completion writeback.  Promoting on status alone pops the
      * wrong buffer; the delayed real IRQ then completes the next frame.
-     * Require the same sane completion-status word used by the normal T31
-     * callback.  T31's cmd[0x4d] writeback is not a payload byte count; at
-     * 1080p it is commonly larger than the registered output buffer.
+     * Require the same exact entropy byte count used by the normal T31
+     * callback.  The writeback word at +0x104, unlike cmd[0x4d], matched the
+     * DMA payload extent in every archived status-window capture.
      */
     if (!avpu_pending_peek(ctx, &pending_buf_idx, NULL) ||
         pending_buf_idx < 0 || pending_buf_idx >= 16)
         return 0;
     pending_cl_idx = ctx->stream_enc2_cl_idx[pending_buf_idx];
+    pending_status_regs = avpu_cl_submit_status_ptr(ctx, pending_cl_idx);
+    if (!pending_status_regs)
+        return 0;
     if (!ctx->cl_submit_ring.uncached_map)
-        avpu_flush_cache(ctx->fd, ctx->cl_submit_ring.map,
-                         0x100000, 0 /* BIDIRECTIONAL */);
-    pending_cmd = (const uint32_t *)
-        avpu_cl_submit_entry_ptr(ctx, pending_cl_idx);
-    if (!pending_cmd)
+        avpu_flush_cache(ctx->fd, (void *)pending_status_regs,
+                         (unsigned int)ctx->cl_entry_size,
+                         0 /* BIDIRECTIONAL */);
+    if (openimp_t31_completion_payload_size(
+            pending_status_regs, ctx->cl_entry_size,
+            &pending_payload_size) != 0 ||
+        avpu_t31_payload_size_is_error_fill(pending_payload_size) ||
+        ctx->stream_buf_size <= (int)AVPU_T31_PAYLOAD_OFFSET ||
+        pending_payload_size > (uint32_t)ctx->stream_buf_size -
+            AVPU_T31_PAYLOAD_OFFSET)
         return 0;
-    pending_status = pending_cmd[0x4d] & 0x0fffffffu;
-    if (pending_status == 0u ||
-        avpu_t31_payload_size_is_error_fill(pending_status) ||
-        ctx->stream_buf_size <= (int)AVPU_T31_PAYLOAD_OFFSET)
-        return 0;
+    ctx->t31_payload_size_by_buf[pending_buf_idx] = pending_payload_size;
 #endif
 
     LOG_CODEC("%s: recovering sticky completion core_status=0x%08x submitted=%u enc=%d cons=%d pending=%d last_irq=%d",
@@ -4349,6 +4368,19 @@ static void avpu_end_encoding_callback(void *user_data)
                 ctx->fd, ctx->cl_submit_ring.map,
                 0x100000, 0 /* BIDIRECTIONAL */,
                 OPENIMP_PROFILE_CACHE_COMMAND_COMPLETE);
+#elif defined(PLATFORM_T31)
+        /* T31 writes completion status into the active submitted slot.  The
+         * readback ring is not a DMA target, and invalidating both complete
+         * 1 MiB rings here consumed a material part of every frame budget. */
+        if (!ctx->cl_submit_ring.uncached_map) {
+            void *submit_entry = avpu_cl_submit_entry_ptr(ctx, cl_idx);
+
+            if (submit_entry)
+                avpu_flush_cache_profiled(
+                    ctx->fd, submit_entry, (unsigned int)ctx->cl_entry_size,
+                    0 /* BIDIRECTIONAL */,
+                    OPENIMP_PROFILE_CACHE_COMMAND_COMPLETE);
+        }
 #else
         if (!ctx->cl_ring.uncached_map && avpu_cl_ring_base(ctx))
             avpu_flush_cache(ctx->fd, ctx->cl_ring.map, 0x100000, 0 /* BIDIRECTIONAL */);
@@ -4384,6 +4416,25 @@ static void avpu_end_encoding_callback(void *user_data)
             command_slot_ptr = status_regs_ptr - OPENIMP_T41_CL_STATUS_OFFSET;
 #endif
     }
+
+#if defined(PLATFORM_T31)
+    if (ctx && have_pending && buf_idx >= 0 && buf_idx < 16 &&
+        status_regs_ptr) {
+        uint32_t payload_size = 0u;
+
+        if (openimp_t31_completion_payload_size(
+                status_regs.raw, sizeof(status_regs.raw),
+                &payload_size) == 0 &&
+            !avpu_t31_payload_size_is_error_fill(payload_size) &&
+            ctx->stream_buf_size > (int)AVPU_T31_PAYLOAD_OFFSET &&
+            payload_size <= (uint32_t)ctx->stream_buf_size -
+                AVPU_T31_PAYLOAD_OFFSET) {
+            ctx->t31_payload_size_by_buf[buf_idx] = payload_size;
+        } else {
+            ctx->t31_payload_size_by_buf[buf_idx] = 0u;
+        }
+    }
+#endif
 
 #if defined(PLATFORM_T41)
     if (ctx && have_pending && buf_idx >= 0 && buf_idx < 16 &&
@@ -4520,6 +4571,11 @@ static void avpu_end_encoding_callback(void *user_data)
                 OPENIMP_T41_STREAM_PAYLOAD_OFFSET;
         completed_flag = completed ? 1u : 0u;
     }
+#elif defined(PLATFORM_T31)
+    bitcount = ctx && buf_idx >= 0 && buf_idx < 16
+        ? ctx->t31_payload_size_by_buf[buf_idx] : 0u;
+    completed = bitcount > 0u;
+    completed_flag = completed ? 1u : 0u;
 #else
     completed = EncodingStatusRegsToSliceStatus(&status_regs, &slice_status);
     MergeEncodingStatus(&merged_status, &slice_status);
@@ -4531,6 +4587,8 @@ static void avpu_end_encoding_callback(void *user_data)
         LOG_CODEC("EndEncoding status: done=%d bitcount=0x%08x completed_flag=0x%08x pending=%d buf=%d cl=%u status_src=%s"
 #if defined(PLATFORM_T41)
                   " t41_payload=0x%08x"
+#elif defined(PLATFORM_T31)
+                  " t31_payload=0x%08x"
 #endif
                   ,
                   completed, bitcount, completed_flag,
@@ -4539,6 +4597,9 @@ static void avpu_end_encoding_callback(void *user_data)
 #if defined(PLATFORM_T41)
                   , (buf_idx >= 0 && buf_idx < 16)
                         ? ctx->t41_payload_size_by_buf[buf_idx] : 0u
+#elif defined(PLATFORM_T31)
+                  , (buf_idx >= 0 && buf_idx < 16)
+                        ? ctx->t31_payload_size_by_buf[buf_idx] : 0u
 #endif
                   );
     }
@@ -4948,6 +5009,7 @@ static size_t annexb_effective_size(const uint8_t *buf, size_t maxlen)
     return (end > first) ? (end - first) : 0;
 }
 
+#if !defined(PLATFORM_T31)
 static uint32_t avpu_stream_buffer_raw_end(const uint8_t *buf, size_t maxlen)
 {
     size_t end = maxlen;
@@ -4960,6 +5022,7 @@ static uint32_t avpu_stream_buffer_raw_end(const uint8_t *buf, size_t maxlen)
 
     return (uint32_t)end;
 }
+#endif
 
 static void avpu_format_hex_preview(const uint8_t *buf, size_t len, char *out, size_t out_sz)
 {
@@ -5056,6 +5119,7 @@ static void avpu_log_suspicious_stream_size(ALAvpuContext *ctx, int buf_idx,
               have_status_8238 ? "" : "ERR:", status_8238);
 }
 
+#if !defined(PLATFORM_T31)
 /* OEM parity: read the hardware-updated iOffset from the active 0x200 status/
  * command block to determine the encoded byte count. In our manual AVPU path,
  * the hardware-visible submit ring is the only block that can contain live
@@ -5115,16 +5179,21 @@ static uint32_t avpu_read_hw_stream_end(ALAvpuContext *ctx, int buf_idx)
 
     return readback_end != 0 ? readback_end : submit_end;
 }
+#endif
 
 static uint32_t avpu_stream_buffer_effective_size(ALAvpuContext *ctx, int buf_idx,
                                                   int *flush_ret_out)
 {
     const uint8_t *sb;
     uint32_t raw_end;
+#if !defined(PLATFORM_T31)
     uint32_t scanned_raw_end;
+#endif
     uint32_t hw_end;
     uint32_t frame_size;
+#if !defined(PLATFORM_T31)
     size_t annexb;
+#endif
 #if defined(PLATFORM_T40)
     unsigned int t40_payload_size = 0;
     unsigned int t40_payload_status = 0;
@@ -5133,7 +5202,9 @@ static uint32_t avpu_stream_buffer_effective_size(ALAvpuContext *ctx, int buf_id
 #endif
 #if defined(PLATFORM_T31)
     uint32_t t31_payload_size = 0;
-    int have_t31_payload_size = 0;
+    uint32_t t31_header_size = 0;
+    OpenIMPT31StreamLayout t31_layout;
+    int have_t31_layout = 0;
 #endif
 #if defined(PLATFORM_T41)
     OpenIMPT41StreamLayout t41_layout;
@@ -5149,24 +5220,47 @@ static uint32_t avpu_stream_buffer_effective_size(ALAvpuContext *ctx, int buf_id
     if (!ctx->stream_bufs[buf_idx].map)
         return 0;
 
+#if defined(PLATFORM_T31)
+    t31_payload_size = ctx->t31_payload_size_by_buf[buf_idx];
+    t31_header_size = ctx->stream_header_offset;
+    if (ctx->stream_header_offset_by_buf[buf_idx] != 0u)
+        t31_header_size = ctx->stream_header_offset_by_buf[buf_idx];
+    if (ctx->stream_buf_size <= 0 ||
+        openimp_t31_stream_layout(
+            (uint32_t)ctx->stream_buf_size, AVPU_T31_PAYLOAD_OFFSET,
+            t31_header_size, t31_payload_size, &t31_layout) != 0) {
+        LOG_CODEC("AVPU: refusing T31 completion with invalid payload status=%u capacity=%u buf=%d",
+                  t31_payload_size,
+                  ctx->stream_buf_size > (int)AVPU_T31_PAYLOAD_OFFSET
+                      ? (uint32_t)ctx->stream_buf_size -
+                          AVPU_T31_PAYLOAD_OFFSET
+                      : 0u,
+                  buf_idx);
+        return 0u;
+    }
+    have_t31_layout = 1;
+#endif
+
 #if defined(PLATFORM_T40)
     /* IRQ 0 reports the inline Enc1/Enc2 command complete before the final
      * stream-buffer DMA burst is guaranteed to be visible to the CPU. */
     usleep(2000);
 #endif
 
-    /* Invalidate CPU cache for the stream buffer so we read fresh data
-     * written by AVPU DMA. Use dir=0 (DMA_BIDIRECTIONAL = writeback +
-     * invalidate) with a 1MB size to flush the ENTIRE L1 D-cache on
-     * T31's MIPS core (~32KB). dir=2 (invalidate-only) may not work
-     * reliably on this kernel; dir=0 with large size is the proven
-     * full-cache-flush path from the pre-submit code. */
+    /* Invalidate CPU cache so the completed AVPU DMA is visible. T31's exact
+     * completion count bounds this operation to the bytes hardware wrote;
+     * generations without an exact extent retain their proven full window. */
     {
         int inv_ret;
 #if defined(PLATFORM_T41)
         inv_ret = avpu_flush_cache_profiled(
             ctx->fd, ctx->stream_bufs[buf_idx].map,
             0x100000, 0 /* BIDIRECTIONAL */,
+            OPENIMP_PROFILE_CACHE_STREAM_COMPLETE);
+#elif defined(PLATFORM_T31)
+        inv_ret = avpu_flush_cache_profiled(
+            ctx->fd, ctx->stream_bufs[buf_idx].map,
+            t31_layout.payload_end, 0 /* BIDIRECTIONAL */,
             OPENIMP_PROFILE_CACHE_STREAM_COMPLETE);
 #else
         inv_ret = avpu_flush_cache(ctx->fd,
@@ -5177,33 +5271,12 @@ static uint32_t avpu_stream_buffer_effective_size(ALAvpuContext *ctx, int buf_id
             *flush_ret_out = inv_ret;
     }
 
-    /* OEM parity: read the hardware-updated stream end position from the CL.
-     * This is the authoritative byte count — it matches exactly what the OEM
-     * OutputSlice reads at *(cl + 0xf8) or *(cl + 0xc8). */
-    hw_end = avpu_read_hw_stream_end(ctx, buf_idx);
+    /* Non-T31 generations may expose a live end position in the command list.
+     * T31 instead uses its exact +0x104 completion payload count. */
 #if defined(PLATFORM_T31)
-    {
-        uint32_t cl_idx = ctx->stream_enc2_cl_idx[buf_idx];
-        const uint32_t *submit_cmd =
-            (const uint32_t *)avpu_cl_submit_entry_ptr(ctx, cl_idx);
-
-        if (submit_cmd) {
-            /*
-             * EncodingStatusRegsToSliceStatus reads raw +0x134, command
-             * word 0x4d.  OEM OutputSlice consumes that value directly as
-             * the completed entropy payload size in bytes; it is not a bit
-             * count.  Dividing it by eight truncates the access unit midway
-             * through the picture.
-             */
-            t31_payload_size = submit_cmd[0x4d] & 0x0fffffffu;
-            have_t31_payload_size =
-                t31_payload_size != 0u &&
-                !avpu_t31_payload_size_is_error_fill(t31_payload_size);
-        }
-    }
-    /* T31 cmd[0x32] is the submitted payload start, not the completed
-     * stream end.  Never expose that fixed offset as the frame length. */
     hw_end = 0u;
+#else
+    hw_end = avpu_read_hw_stream_end(ctx, buf_idx);
 #endif
 #if defined(PLATFORM_T40)
     /* On T40 cmd[0x32] is the submitted header bit position.  The live AVPU
@@ -5248,10 +5321,12 @@ static uint32_t avpu_stream_buffer_effective_size(ALAvpuContext *ctx, int buf_id
     }
 
     sb = (const uint8_t *)ctx->stream_bufs[buf_idx].map;
-#if defined(PLATFORM_T41)
-    /* T41 completion reports the entropy byte count.  Scanning the entire
+#if defined(PLATFORM_T31)
+    raw_end = 0u;
+#elif defined(PLATFORM_T41)
+    /* T31/T41 completion reports the entropy byte count. Scanning the entire
      * multi-megabyte stream buffer to rediscover it is both redundant and
-     * large enough to halve QHD throughput on the target CPU. */
+     * large enough to halve throughput on the target CPU. */
     raw_end = 0u;
     scanned_raw_end = 0u;
 #else
@@ -5262,33 +5337,20 @@ static uint32_t avpu_stream_buffer_effective_size(ALAvpuContext *ctx, int buf_id
 #if defined(PLATFORM_T31)
     {
         const uint32_t payload_offset = AVPU_T31_PAYLOAD_OFFSET;
-        uint32_t header_size = ctx->stream_header_offset;
+        uint32_t header_size = t31_header_size;
         uint8_t *mutable_stream =
             (uint8_t *)(ctx->stream_bufs[buf_idx].uncached_map
                 ? ctx->stream_bufs[buf_idx].uncached_map
                 : ctx->stream_bufs[buf_idx].map);
 
-        if (buf_idx >= 0 && buf_idx < 16 &&
-            ctx->stream_header_offset_by_buf[buf_idx] != 0u)
-            header_size = ctx->stream_header_offset_by_buf[buf_idx];
-
-        /*
-         * cmd[0x4d] is useful as a completion-validity word, but the live
-         * T31 writeback value is not the entropy byte count (at 1080p it is
-         * about 600 KiB while the DMA extent is about 102 KiB).  The stream
-         * buffer was zeroed before submission, so its last non-zero byte is
-         * the reliable end of the completed DMA payload.
-         */
-        if (scanned_raw_end > payload_offset)
-            raw_end = scanned_raw_end;
-        else if (have_t31_payload_size)
-            raw_end = payload_offset + t31_payload_size;
+        raw_end = t31_layout.payload_end;
 
         if (ctx->frames_encoded < 3 ||
             (ctx->frames_encoded % AVPU_LOG_INTERVAL) == 0) {
-            LOG_CODEC("AVPU: T31 payload buf[%d] bytes=%u valid=%d scan_end=%u chosen_raw_end=%u header=%u",
+            LOG_CODEC("AVPU: T31 payload buf[%d] bytes=%u exact_raw_end=%u compacted=%u header=%u",
                       buf_idx, t31_payload_size,
-                      have_t31_payload_size, scanned_raw_end, raw_end,
+                      t31_layout.payload_end,
+                      t31_layout.access_unit_size,
                       header_size);
         }
         if (ctx->frames_encoded == 0u) {
@@ -5317,10 +5379,7 @@ static uint32_t avpu_stream_buffer_effective_size(ALAvpuContext *ctx, int buf_id
             }
         }
 
-        /* A missing/invalid completion word means the old sticky-status path
-         * reached this buffer before writeback.  Do not guess from a partial
-         * DMA buffer or expose it to Raptor. */
-        if (!have_t31_payload_size || scanned_raw_end <= payload_offset)
+        if (!have_t31_layout)
             return 0u;
 
         if (ctx->stream_header_shadow &&
@@ -5334,23 +5393,18 @@ static uint32_t avpu_stream_buffer_effective_size(ALAvpuContext *ctx, int buf_id
          * boundary.  Join it to the host-generated Annex-B prefix before
          * Raptor sees the completed access unit. */
         if (raw_end > payload_offset && header_size <= payload_offset) {
-            uint32_t payload_size = raw_end - payload_offset;
+            uint32_t payload_size = t31_payload_size;
+            OpenIMPProfileStamp compact_profile = openimp_profile_begin();
 
             memmove(mutable_stream + header_size,
                     mutable_stream + payload_offset, payload_size);
-            raw_end = header_size + payload_size;
-            if (ctx->stream_bufs[buf_idx].uncached_map) {
-                /*
-                 * Drop the clean cache lines loaded by the pre-compaction
-                 * scan.  Subsequent virAddr reads will refill from the
-                 * physical bytes just written through the uncached alias.
-                 */
-                if (avpu_flush_cache(ctx->fd,
-                                     ctx->stream_bufs[buf_idx].map,
-                                     0x100000, 0 /*BIDIRECTIONAL*/) != 0)
-                    LOG_CODEC("AVPU: T31 compacted stream cache invalidate failed buf[%d] len=%u",
-                              buf_idx, raw_end);
-            } else if (avpu_flush_cache(ctx->fd, mutable_stream, raw_end,
+            openimp_profile_count(OPENIMP_PROFILE_COMPACT_BYTES,
+                                  payload_size);
+            openimp_profile_end(OPENIMP_PROFILE_STREAM_COMPACT,
+                                compact_profile);
+            raw_end = t31_layout.access_unit_size;
+            if (!ctx->stream_bufs[buf_idx].uncached_map &&
+                avpu_flush_cache(ctx->fd, mutable_stream, raw_end,
                                         1 /*WBACK*/) != 0) {
                 LOG_CODEC("AVPU: T31 compacted stream writeback failed buf[%d] len=%u",
                           buf_idx, raw_end);
@@ -5473,13 +5527,13 @@ static uint32_t avpu_stream_buffer_effective_size(ALAvpuContext *ctx, int buf_id
         const uint32_t *w = (const uint32_t *)sb;
         LOG_CODEC("AVPU diag buf[%d] stream @0x000: %08x %08x %08x %08x",
                   buf_idx, w[0], w[1], w[2], w[3]);
-        /* Scan entire buffer for first non-zero word past header offset */
+        /* Keep the startup diagnostic within the completed AU extent. */
         {
             uint32_t hdr_off = ctx->stream_header_offset;
             if (buf_idx >= 0 && buf_idx < 16 && ctx->stream_header_offset_by_buf[buf_idx] != 0)
                 hdr_off = ctx->stream_header_offset_by_buf[buf_idx];
             uint32_t hdr_words = (hdr_off + 3) / 4;
-            uint32_t total_words = (uint32_t)ctx->stream_buf_size / 4;
+            uint32_t total_words = (raw_end + 3u) / 4u;
             int first_nz_off = -1;
             for (uint32_t i = hdr_words; i < total_words; i++) {
                 if (w[i] != 0) { first_nz_off = (int)(i * 4); break; }
@@ -5499,11 +5553,15 @@ static uint32_t avpu_stream_buffer_effective_size(ALAvpuContext *ctx, int buf_id
         if (buf_idx >= 0 && buf_idx < 16 && ctx->stream_header_offset_by_buf[buf_idx] != 0)
             hdr_off = ctx->stream_header_offset_by_buf[buf_idx];
 
-        /* T41's completion word is already an exact, validated entropy-byte
-         * count.  After compaction its access-unit extent is exact as well;
-         * rescanning the entire AU for Annex-B start codes is redundant and
-         * may trim a legitimate zero-valued final entropy byte. */
-#if defined(PLATFORM_T41)
+        /* T31/T41 completion supplies an exact, validated entropy-byte count.
+         * After compaction the AU extent is exact as well; rescanning for
+         * Annex-B start codes is redundant and may trim a legitimate trailing
+         * zero-valued entropy byte. */
+#if defined(PLATFORM_T31)
+        if (!have_t31_layout || raw_end != t31_layout.access_unit_size)
+            return 0;
+        frame_size = t31_layout.access_unit_size;
+#elif defined(PLATFORM_T41)
         if (!have_t41_layout || raw_end != t41_layout.access_unit_size)
             return 0;
         frame_size = t41_layout.access_unit_size;
@@ -6041,7 +6099,8 @@ static void codec_sync_rc_cache(AL_CodecEncode *enc)
         rc->attrRcMode.attrH264Cbr.iInitialQP = (int16_t)clamp_qp_u32(qp);
         rc->attrRcMode.attrH264Cbr.iMinQP = (int16_t)clamp_qp_u32(enc->hw_params.min_qp);
         rc->attrRcMode.attrH264Cbr.iMaxQP = (int16_t)clamp_qp_u32(enc->hw_params.max_qp);
-        rc->attrRcMode.attrH264Cbr.iIPDelta = 0;
+        rc->attrRcMode.attrH264Cbr.iIPDelta =
+            (int16_t)enc->avpu.qp_ip_delta;
         rc->attrRcMode.attrH264Cbr.iPBDelta = 0;
         rc->attrRcMode.attrH264Cbr.eRcOptions = 0;
         rc->attrRcMode.attrH264Cbr.uMaxPictureSize = 0;
@@ -6078,7 +6137,8 @@ static void codec_sync_rc_cache(AL_CodecEncode *enc)
         rc->attrRcMode.attrH264Vbr.iInitialQP = (int16_t)clamp_qp_u32(qp);
         rc->attrRcMode.attrH264Vbr.iMinQP = (int16_t)clamp_qp_u32(enc->hw_params.min_qp);
         rc->attrRcMode.attrH264Vbr.iMaxQP = (int16_t)clamp_qp_u32(enc->hw_params.max_qp);
-        rc->attrRcMode.attrH264Vbr.iIPDelta = 0;
+        rc->attrRcMode.attrH264Vbr.iIPDelta =
+            (int16_t)enc->avpu.qp_ip_delta;
         rc->attrRcMode.attrH264Vbr.iPBDelta = 0;
         rc->attrRcMode.attrH264Vbr.eRcOptions = 0;
         rc->attrRcMode.attrH264Vbr.uMaxPictureSize = 0;
@@ -6561,6 +6621,7 @@ int AL_Codec_Encode_Create(void **codec, void *params) {
     enc->avpu.qp = enc->hw_params.qp;
     enc->avpu.min_qp = enc->hw_params.min_qp;
     enc->avpu.max_qp = enc->hw_params.max_qp;
+    enc->avpu.qp_ip_delta = -1;
     enc->avpu.rc_mode = enc->hw_params.rc_mode;
 
     enc->loop_filter_beta_offset = 0;
@@ -7968,11 +8029,14 @@ static int al_codec_encode_process_impl(void *codec, void *frame,
             /* A reused buffer must not inherit the preceding completion's
              * payload count if an IRQ arrives without a valid writeback. */
             ctx->t41_payload_size_by_buf[buf_idx] = 0u;
+#elif defined(PLATFORM_T31)
+            ctx->t31_payload_size_by_buf[buf_idx] = 0u;
 #endif
 
-            /* OEM parity: zero + write headers via CACHED mapping, then flush
-             * the entire stream buffer to physical RAM via the /dev/rmem
-             * ioctl 0xc00c7200 (Rtos_FlushCacheMemory path).
+            /* Prepare host-owned stream bytes through the cached mapping.
+             * Generations with an exact completion extent only need to clear
+             * and publish the header prefix; stale payload bytes are neither
+             * scanned nor exposed.
              *
              * CRITICAL: Do NOT use uncached /dev/mem mappings for stream
              * buffers. On MIPS T31, uncached memset corrupts the CPU cache
@@ -7986,6 +8050,11 @@ static int al_codec_encode_process_impl(void *codec, void *frame,
                  * bytes beyond this picture are never scanned or exposed. */
                 memset(ctx->stream_bufs[buf_idx].map, 0,
                        OPENIMP_T41_STREAM_PAYLOAD_OFFSET);
+#elif defined(PLATFORM_T31)
+                /* T31 completion status supplies the exact payload extent;
+                 * only the host-owned header prefix needs clearing. */
+                memset(ctx->stream_bufs[buf_idx].map, 0,
+                       AVPU_T31_STREAM_PREFIX_BYTES);
 #else
                 memset(ctx->stream_bufs[buf_idx].map, 0,
                        (size_t)ctx->stream_buf_size);
@@ -8037,15 +8106,18 @@ static int al_codec_encode_process_impl(void *codec, void *frame,
             }
 #endif
 
-            /* Flush entire stream buffer (headers + zeroed payload area) to
-             * physical RAM via rmem ioctl, matching OEM's 0x100000-byte flush.
-             * This is the ONLY reliable cache flush path on T31. */
+            /* Publish the host-written header prefix before AVPU DMA. */
             if (buf_idx < ctx->stream_bufs_used &&
                 ctx->stream_bufs[buf_idx].map) {
 #if defined(PLATFORM_T41)
                 avpu_flush_cache_profiled(
                     fd, ctx->stream_bufs[buf_idx].map,
                     OPENIMP_T41_STREAM_PAYLOAD_OFFSET, 1 /* WBACK */,
+                    OPENIMP_PROFILE_CACHE_STREAM_PREPARE);
+#elif defined(PLATFORM_T31)
+                avpu_flush_cache_profiled(
+                    fd, ctx->stream_bufs[buf_idx].map,
+                    AVPU_T31_STREAM_PREFIX_BYTES, 1 /* WBACK */,
                     OPENIMP_PROFILE_CACHE_STREAM_PREPARE);
 #else
                 avpu_flush_cache(fd, ctx->stream_bufs[buf_idx].map,
@@ -8164,6 +8236,17 @@ static int al_codec_encode_process_impl(void *codec, void *frame,
                     fd, ctx->cl_submit_ring.map,
                     (unsigned int)cl_flush_size, 1 /* WBACK */,
                     OPENIMP_PROFILE_CACHE_COMMAND_PUBLISH);
+#elif defined(PLATFORM_T31)
+            /* The readback entry has already been copied and is never a DMA
+             * target. Preserve the proven full-cache publish on the one ring
+             * the T31 AVPU actually consumes. */
+            cl_flush_ret = 0;
+            submit_flush_ret = ctx->cl_submit_ring.uncached_map
+                ? 0
+                : avpu_flush_cache_profiled(
+                    fd, submit_entry, (unsigned int)cl_flush_size,
+                    1 /* WBACK */,
+                    OPENIMP_PROFILE_CACHE_COMMAND_PUBLISH);
 #else
             cl_flush_ret = ctx->cl_ring.uncached_map
                 ? 0
@@ -8180,9 +8263,9 @@ static int al_codec_encode_process_impl(void *codec, void *frame,
             LOG_CODEC("Process: CL[%u] flush ret=%d submit_ret=%d (rmem+avpu)", idx, cl_flush_ret, submit_flush_ret);
             int trace_submit = (idx == 0 && ctx->frames_encoded == 0);
 
-            /* Record which CL entry holds the iOffset that the hardware will
-             * update — needed by the dqbuf path to read back the actual
-             * encoded byte count instead of scanning for trailing zeros. */
+            /* Record which CL entry owns this stream buffer's completion
+             * status. Exact-length generations use that writeback instead of
+             * scanning the stream buffer for trailing zeros. */
 #if defined(PLATFORM_T40) || defined(PLATFORM_T31)
             /* Both current T-series paths complete inline under CL_PUSH=2. */
             ctx->stream_enc2_cl_idx[buf_idx] = idx;
@@ -8814,6 +8897,7 @@ int AL_Codec_Encode_SetRcParam(void *codec, void *rcAttr)
         enc->hw_params.qp = clamp_qp_u32(src->attrRcMode.attrH264Cbr.iInitialQP);
         enc->hw_params.min_qp = clamp_qp_u32(src->attrRcMode.attrH264Cbr.iMinQP);
         enc->hw_params.max_qp = clamp_qp_u32(src->attrRcMode.attrH264Cbr.iMaxQP);
+        enc->avpu.qp_ip_delta = src->attrRcMode.attrH264Cbr.iIPDelta;
 #else
         enc->hw_params.bitrate = src->attrRcMode.attrH264Cbr.maxGop;
         enc->hw_params.min_qp = clamp_qp_u32(src->attrRcMode.attrH264Cbr.minQp);
@@ -8845,6 +8929,7 @@ int AL_Codec_Encode_SetRcParam(void *codec, void *rcAttr)
         enc->hw_params.qp = clamp_qp_u32(src->attrRcMode.attrH264Vbr.iInitialQP);
         enc->hw_params.min_qp = clamp_qp_u32(src->attrRcMode.attrH264Vbr.iMinQP);
         enc->hw_params.max_qp = clamp_qp_u32(src->attrRcMode.attrH264Vbr.iMaxQP);
+        enc->avpu.qp_ip_delta = src->attrRcMode.attrH264Vbr.iIPDelta;
 #else
         enc->hw_params.bitrate = src->attrRcMode.attrH264Vbr.maxGop;
         enc->hw_params.min_qp = clamp_qp_u32(src->attrRcMode.attrH264Vbr.minQp);
@@ -8920,10 +9005,11 @@ int AL_Codec_Encode_SetQpIPDelta(void *codec, int delta)
 {
     AL_CodecEncode *enc;
 
-    if (codec == NULL)
+    if (codec == NULL || delta < -51 || delta > 51)
         return -1;
 
     enc = (AL_CodecEncode *)codec;
+    enc->avpu.qp_ip_delta = delta;
 #if defined(PLATFORM_T31) || defined(PLATFORM_T40) || defined(PLATFORM_T41)
     switch (enc->rc_attr_cache.attrRcMode.rcMode) {
     case IMP_ENC_RC_MODE_CBR:

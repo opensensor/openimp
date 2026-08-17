@@ -16,6 +16,8 @@
 #include <unistd.h>
 #include <string.h>
 
+#include "trace_control.h"
+
 /* One-time syslog init (safe to call multiple times) */
 static inline void imp_log_ensure_init(void) {
     static int inited = 0;
@@ -45,6 +47,17 @@ static inline void imp_log_ensure_init(void) {
 #define IMP_LOG_ERR(tag, fmt, ...)  IMP_LOG(LOG_ERR,     tag, fmt, ##__VA_ARGS__)
 #define IMP_LOG_INFO(tag, fmt, ...) IMP_LOG(LOG_INFO,    tag, fmt, ##__VA_ARGS__)
 
+/*
+ * Codec, hardware, and DMA messages are reverse-engineering traces.  Some of
+ * them run once or more per encoded frame, so sending them to syslog and
+ * stderr by default can steal meaningful encode time on the single-core T31.
+ */
+#define IMP_TRACE_LOG(tag, fmt, ...) do {                         \
+    if (openimp_debug_trace_enabled()) {                          \
+        IMP_LOG(LOG_INFO, tag, fmt, ##__VA_ARGS__);               \
+    }                                                             \
+} while (0)
+
 /* Convenience per-module macros -- drop-in replacements */
 #define LOG_ISP(fmt, ...)    IMP_LOG(LOG_INFO, "IMP_ISP", fmt, ##__VA_ARGS__)
 #define LOG_SYS(fmt, ...)    IMP_LOG(LOG_INFO, "System",  fmt, ##__VA_ARGS__)
@@ -53,8 +66,8 @@ static inline void imp_log_ensure_init(void) {
 #define LOG_AUD(fmt, ...)    IMP_LOG(LOG_INFO, "Audio",   fmt, ##__VA_ARGS__)
 #define LOG_OSD(fmt, ...)    IMP_LOG(LOG_INFO, "OSD",     fmt, ##__VA_ARGS__)
 #define LOG_IVS(fmt, ...)    IMP_LOG(LOG_INFO, "IVS",     fmt, ##__VA_ARGS__)
-#define LOG_CODEC(fmt, ...)  IMP_LOG(LOG_INFO, "Codec",   fmt, ##__VA_ARGS__)
-#define LOG_HW(fmt, ...)     IMP_LOG(LOG_INFO, "HW_Enc",  fmt, ##__VA_ARGS__)
-#define LOG_DMA(fmt, ...)    IMP_LOG(LOG_INFO, "DMA",     fmt, ##__VA_ARGS__)
+#define LOG_CODEC(fmt, ...)  IMP_TRACE_LOG("Codec",  fmt, ##__VA_ARGS__)
+#define LOG_HW(fmt, ...)     IMP_TRACE_LOG("HW_Enc", fmt, ##__VA_ARGS__)
+#define LOG_DMA(fmt, ...)    IMP_TRACE_LOG("DMA",    fmt, ##__VA_ARGS__)
 
 #endif /* IMP_LOG_INT_H */

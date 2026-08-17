@@ -17,26 +17,14 @@
 #include <time.h>
 #include <stdarg.h>
 #include "dma_alloc.h"
+#include "trace_control.h"
 
 extern int64_t IMP_System_GetTimeStamp(void);
 extern int64_t OpenIMP_P0_NormalizeMonotonicTimeStamp(uint64_t timestamp);
 
-static int ki_trace_enabled(void)
-{
-    static int enabled = -1;
-
-    if (enabled < 0) {
-        const char *value = getenv("OPENIMP_TRACE_KMSG");
-
-        enabled = value && value[0] && value[0] != '0';
-    }
-    return enabled;
-}
-
 static void ki_trace(const char *fmt, ...)
 {
-    if (!ki_trace_enabled())
-        return;
+    if (!openimp_debug_trace_enabled()) return;
     int fd = open("/dev/kmsg", O_WRONLY);
     if (fd < 0) return;
 

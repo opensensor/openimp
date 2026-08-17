@@ -31,8 +31,10 @@ Audio processing belongs to
 [`libaudioProcess-neo`](https://github.com/gtxaspec/libaudioProcess-neo).
 Logging and system support libraries belong to
 [`ingenic-system-libs-neo`](https://github.com/gtxaspec/ingenic-system-libs-neo).
-OpenIMP's normal builds do not export audio APIs or build replacement
-`libsysutils`/`libalog` libraries.
+OpenIMP provides the native IMP audio I/O layer on T31 and T40/T41. HPF,
+noise suppression, and AGC are loaded at runtime from the installed
+`libaudioProcess-neo`; OpenIMP does not replace that effects library or build
+replacement `libsysutils`/`libalog` libraries.
 
 ## Build
 
@@ -60,8 +62,8 @@ Outputs:
 - `build/t41/libimp.so`
 
 Both build scripts reject a produced library that depends on an OEM
-`libimp.so`. The T31 build additionally rejects accidental audio exports and
-records RVD import coverage in `build/t31/`.
+`libimp.so`. The T31 build records RVD import coverage and requires complete
+coverage of Raptor's AI/AO imports in `build/t31/`.
 
 ## Current status
 

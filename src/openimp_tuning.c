@@ -11,7 +11,11 @@
 
 #include "openimp/openimp_tuning.h"
 
+#if defined(PLATFORM_T31)
+#define OPENIMP_TUNING_DEFAULT_INTERVAL_MS 1000U
+#else
 #define OPENIMP_TUNING_DEFAULT_INTERVAL_MS 40U
+#endif
 
 #if defined(PLATFORM_T31)
 #define TISP_VIDIOC_TUNING 0xc00c56c6U

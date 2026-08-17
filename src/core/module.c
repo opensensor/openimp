@@ -12,6 +12,7 @@
 #include <stdarg.h>
 
 #include "core/module.h"
+#include "trace_control.h"
 
 typedef struct ModuleQueueNode {
     int32_t value;
@@ -173,6 +174,8 @@ static void module_trace_quick_state(const char *tag, Module *module, int32_t me
 
 static void module_trace(const char *fmt, ...)
 {
+    if (!openimp_debug_trace_enabled()) return;
+
     int fd = open("/dev/kmsg", O_WRONLY);
     if (fd < 0) return;
 

@@ -39,6 +39,8 @@
 #include <unistd.h>
 #include <stdarg.h>
 
+#include "trace_control.h"
+
 #include "imp/imp_common.h"
 #include "imp/imp_encoder.h"
 #include "imp/imp_framesource.h"
@@ -90,21 +92,9 @@ static void *fs_retaddr(void)
     return __builtin_return_address(0);
 }
 
-static int fs_trace_enabled(void)
-{
-    static int enabled = -1;
-
-    if (enabled < 0) {
-        const char *value = getenv("OPENIMP_TRACE_KMSG");
-
-        enabled = value && value[0] && value[0] != '0';
-    }
-    return enabled;
-}
-
 static void fs_thread_trace(const char *fmt, ...)
 {
-    int trace_kmsg = fs_trace_enabled();
+    int trace_kmsg = openimp_debug_trace_enabled();
 #if defined(PLATFORM_T23)
     int trace_persist = openimp_t23_persist_enabled();
 #else
@@ -138,7 +128,7 @@ static void fs_user_trace(const char *fmt, ...)
     char buf[256];
     va_list ap;
 
-    if (!fs_trace_enabled()
+    if (!openimp_debug_trace_enabled()
 #if defined(PLATFORM_T23)
         && !openimp_t23_persist_enabled()
 #endif
@@ -148,7 +138,7 @@ static void fs_user_trace(const char *fmt, ...)
     vsnprintf(buf, sizeof(buf), fmt, ap);
     va_end(ap);
 
-    if (fs_trace_enabled())
+    if (openimp_debug_trace_enabled())
         imp_log_fun(4, IMP_Log_Get_Option(), 2, "Framesource",
             "/home/user/git/proj/sdk-lv3/src/imp/framesource/framesource_tseries.c",
             0x3f0, "frame_pooling_thread", "%s\n", buf);
@@ -772,7 +762,7 @@ static volatile int g_fs_thread_enabled_seen[FS_MAX_CHANNELS];
 
 static void fs_bind_trace(const char *fmt, ...)
 {
-    int trace_kmsg = fs_trace_enabled();
+    int trace_kmsg = openimp_debug_trace_enabled();
 #if defined(PLATFORM_T23)
     int trace_persist = openimp_t23_persist_enabled();
 #else

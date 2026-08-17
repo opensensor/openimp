@@ -74,6 +74,15 @@ typedef struct {
 } IMPAudioIChnParam;
 
 /**
+ * Audio output channel queue state
+ */
+typedef struct {
+    int chnTotalNum;                    /**< Total queue slots */
+    int chnFreeNum;                     /**< Free queue slots */
+    int chnBusyNum;                     /**< Occupied queue slots */
+} IMPAudioOChnState;
+
+/**
  * Audio output channel parameters
  */
 typedef struct {
@@ -332,7 +341,7 @@ int IMP_AI_DisableNs(void);
  * 
  * @return 0 on success, negative on error
  */
-int IMP_AI_EnableHpf(void);
+int IMP_AI_EnableHpf(IMPAudioIOAttr *attr);
 
 /**
  * Disable high-pass filter
@@ -502,10 +511,11 @@ int IMP_AI_EnableAec(int aiDevId, int aiChn, int aoDevId, int aoChn);
 int IMP_AI_DisableAec(int aiDevId, int aiChn);
 int IMP_AI_SetVolMute(int audioDevId, int aiChn, int mute);
 int IMP_AI_GetAlcGain(int audioDevId, int aiChn, int *gain);
-int IMP_AI_SetHpfCoFreq(int freq);
+int IMP_AI_SetHpfCoFrequency(int freq);
 int IMP_AI_SetAgcMode(int mode);
+int IMP_AI_Set_WebrtcProfileIni_Path(char *path);
 int IMP_AI_EnableAecRefFrame(int aiDevId, int aiChn, int aoDevId, int aoChn);
-int IMP_AI_DisableAecRefFrame(int aiDevId, int aiChn);
+int IMP_AI_DisableAecRefFrame(int aiDevId, int aiChn, int aoDevId, int aoChn);
 int IMP_AI_GetFrameAndRef(int audioDevId, int aiChn, IMPAudioFrame *frame,
                           IMPAudioFrame *ref, IMPBlock block);
 
@@ -526,19 +536,18 @@ int IMP_AO_GetVol(int audioDevId, int aoChn, int *vol);
 int IMP_AO_SetGain(int audioDevId, int aoChn, int gain);
 int IMP_AO_GetGain(int audioDevId, int aoChn, int *gain);
 int IMP_AO_SetVolMute(int audioDevId, int aoChn, int mute);
-int IMP_AO_SoftMute(int audioDevId, int aoChn);
-int IMP_AO_SoftUNMute(int audioDevId, int aoChn);
+int IMP_AO_Soft_Mute(int audioDevId, int aoChn);
+int IMP_AO_Soft_UNMute(int audioDevId, int aoChn);
 int IMP_AO_CacheSwitch(int audioDevId, int aoChn, int enable);
-int IMP_AO_QueryChnStat(int audioDevId, int aoChn, void *stat);
-int IMP_AO_EnableHpf(int audioDevId, int aoChn);
-int IMP_AO_DisableHpf(int audioDevId, int aoChn);
-int IMP_AO_EnableAgc(int audioDevId, int aoChn);
-int IMP_AO_DisableAgc(int audioDevId, int aoChn);
-int IMP_AO_SetHpfCoFreq(int audioDevId, int aoChn, int freq);
+int IMP_AO_QueryChnStat(int audioDevId, int aoChn, IMPAudioOChnState *stat);
+int IMP_AO_EnableHpf(IMPAudioIOAttr *attr);
+int IMP_AO_DisableHpf(void);
+int IMP_AO_EnableAgc(IMPAudioIOAttr *attr, IMPAudioAgcConfig config);
+int IMP_AO_DisableAgc(void);
+int IMP_AO_SetHpfCoFrequency(int freq);
 
 #ifdef __cplusplus
 }
 #endif
 
 #endif /* __IMP_AUDIO_H__ */
-

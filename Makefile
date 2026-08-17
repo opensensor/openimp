@@ -16,6 +16,7 @@ t41:
 	./build-t41.sh
 
 check:
+	$(MAKE) -C tests/t31 check
 	$(MAKE) -C tests/t41 check
 
 clean:

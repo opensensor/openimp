@@ -49,6 +49,7 @@ compile openimp_tuning src/openimp_tuning.c -Werror
 compile openimp_p2_encoder src/t40/openimp_p2_encoder.c -Werror
 compile openimp_avc src/t40/openimp_avc.c -Werror
 compile t40_ep1 src/t40/t40_ep1.c -Werror
+compile t31_stream_layout src/t40/t31_stream_layout.c -Werror
 compile enc_hw_scaling src/alcodec/EncHwScalingList.c
 compile codec src/t40/codec-t40.c -Wno-stringop-overflow
 compile al_avpu src/al_avpu.c -Wno-stringop-overflow
@@ -69,6 +70,7 @@ compile isp src/isp/isp_tseries.c
 compile t31_compat src/t31/openimp_t31_compat.c
 compile t31_state src/t31/openimp_t31_state.c -Werror
 compile t31_services src/t31/openimp_t31_services.c -Werror
+compile t31_audio src/t31/openimp_t31_audio.c -Werror
 
 "$compiler" -shared -nostartfiles \
     -Wl,-soname,libimp.so \
@@ -80,6 +82,7 @@ compile t31_services src/t31/openimp_t31_services.c -Werror
     "$output_dir/openimp_p2_encoder.o" \
     "$output_dir/openimp_avc.o" \
     "$output_dir/t40_ep1.o" \
+    "$output_dir/t31_stream_layout.o" \
     "$output_dir/enc_hw_scaling.o" \
     "$output_dir/codec.o" \
     "$output_dir/al_avpu.o" \
@@ -97,6 +100,7 @@ compile t31_services src/t31/openimp_t31_services.c -Werror
     "$output_dir/t31_compat.o" \
     "$output_dir/t31_state.o" \
     "$output_dir/t31_services.o" \
+    "$output_dir/t31_audio.o" \
     -ldl -lpthread -lrt
 
 "$compiler" $base_flags $repo_includes -Wall -Wextra -Werror \
@@ -109,13 +113,6 @@ if readelf -d "$output_dir/libimp.so" |
     grep -q 'Shared library: \[libimp.so'
 then
     echo "T31 build has an OEM libimp dependency" >&2
-    exit 1
-fi
-
-if readelf --dyn-syms --wide "$output_dir/libimp.so" |
-    awk '$7 != "UND" && $8 ~ /^IMP_(AI|AO|AENC|ADEC|DMIC)_/ {found=1} END {exit !found}'
-then
-    echo "T31 build exports audio APIs" >&2
     exit 1
 fi
 
@@ -135,6 +132,26 @@ if [ -f "$rvd" ]; then
     if [ -s "$output_dir/rvd-imp-missing.txt" ]; then
         echo "T31 build is missing RVD IMP imports:" >&2
         cat "$output_dir/rvd-imp-missing.txt" >&2
+        exit 1
+    fi
+fi
+
+rad=${T31_RAD:-"$target_dir/target/usr/bin/rad"}
+if [ -f "$rad" ]; then
+    readelf --dyn-syms --wide "$rad" |
+        awk '$7 == "UND" && $8 ~ /^IMP_(AI|AO)_/ {
+            sub(/@.*/, "", $8)
+            print $8
+        }' | sort -u >"$output_dir/rad-audio-imports.txt"
+    readelf --dyn-syms --wide "$output_dir/libimp.so" |
+        awk '$7 != "UND" && $5 == "GLOBAL" && $8 ~ /^IMP_(AI|AO)_/ {print $8}' |
+        sort -u >"$output_dir/libimp-audio-exports.txt"
+    comm -23 "$output_dir/rad-audio-imports.txt" \
+        "$output_dir/libimp-audio-exports.txt" >"$output_dir/rad-audio-missing.txt"
+    echo "RAD audio IMP coverage: $(comm -12 "$output_dir/rad-audio-imports.txt" "$output_dir/libimp-audio-exports.txt" | wc -l)/$(wc -l <"$output_dir/rad-audio-imports.txt")"
+    if [ -s "$output_dir/rad-audio-missing.txt" ]; then
+        echo "T31 build is missing RAD audio IMP imports:" >&2
+        cat "$output_dir/rad-audio-missing.txt" >&2
         exit 1
     fi
 fi
