@@ -949,6 +949,7 @@ enum {
     TISP_V4L2_CID_SATURATION = 0x980902,
     TISP_V4L2_CID_HFLIP = 0x980914,
     TISP_V4L2_CID_VFLIP = 0x980915,
+    TISP_V4L2_CID_POWER_LINE_FREQUENCY = 0x980918,
     TISP_V4L2_CID_SHARPNESS = 0x98091b,
     TISP_VIDIOC_ENABLE_SENSOR = 0x80045612,
     TISP_VIDIOC_DISABLE_SENSOR = 0x80045613,
@@ -1313,16 +1314,39 @@ int IMP_ISP_Tuning_GetSensorFPS(uint32_t *fps_num, uint32_t *fps_den)
 
 int IMP_ISP_Tuning_SetAntiFlickerAttr(IMPISPAntiflickerAttr attr)
 {
-    tseries_antiflicker_attr = attr;
-    return 0;
+    int result;
+
+    if (attr != IMPISP_ANTIFLICKER_DISABLE &&
+        attr != IMPISP_ANTIFLICKER_50HZ &&
+        attr != IMPISP_ANTIFLICKER_60HZ) {
+        return -1;
+    }
+
+    result = tseries_v4l2_set(TISP_V4L2_CID_POWER_LINE_FREQUENCY,
+                              (int32_t)attr);
+    if (result == 0) {
+        tseries_antiflicker_attr = attr;
+    }
+
+    return result;
 }
 
 int IMP_ISP_Tuning_GetAntiFlickerAttr(IMPISPAntiflickerAttr *pattr)
 {
+    int32_t value = 0;
+    int result;
+
     if (pattr == NULL) {
         return -1;
     }
 
+    result = tseries_v4l2_get(TISP_V4L2_CID_POWER_LINE_FREQUENCY, &value);
+    if (result != 0 || value < IMPISP_ANTIFLICKER_DISABLE ||
+        value > IMPISP_ANTIFLICKER_60HZ) {
+        return -1;
+    }
+
+    tseries_antiflicker_attr = (IMPISPAntiflickerAttr)value;
     *pattr = tseries_antiflicker_attr;
     return 0;
 }
