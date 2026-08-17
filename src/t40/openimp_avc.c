@@ -314,6 +314,19 @@ int OpenIMP_AVC_RequestIDR(OpenIMPAVCEncoder *encoder)
     return AL_Codec_Encode_RequestIDR(encoder->codec) == 0 ? 0 : -EIO;
 }
 
+int OpenIMP_AVC_SetBitrate(OpenIMPAVCEncoder *encoder, uint32_t bitrate)
+{
+    if (!encoder || !bitrate)
+        return -EINVAL;
+    if (bitrate > INT_MAX)
+        return -ERANGE;
+    if (AL_Codec_Encode_SetBitRate(encoder->codec, (int)bitrate,
+                                   (int)bitrate) != 0)
+        return -EIO;
+    encoder->config.bitrate = bitrate;
+    return 0;
+}
+
 int OpenIMP_AVC_ImportDMABuf(int dma_buf_fd, uint32_t size,
                              uint32_t *physical_address)
 {
