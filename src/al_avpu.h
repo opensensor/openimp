@@ -253,6 +253,10 @@ typedef struct ALAvpuContext {
     OpenIMPT41RateController t41_rate_controller;
     OpenIMPT41HWRCLevelState t41_hwrc_level;
 #endif
+#if defined(PLATFORM_T31)
+    /* Exact entropy bytes reported at completion status +0x104. */
+    uint32_t t31_payload_size_by_buf[16];
+#endif
     uint32_t stream_header_offset;  /* bytes of header pre-written into current stream buf */
     uint32_t stream_header_offset_by_buf[16]; /* per-stream-buffer header bytes */
     uint32_t slice_header_nal_bytes;/* slice header NAL byte count (OEM sp+0x78 → cmd[0x1b] bits[25:16]) */
