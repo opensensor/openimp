@@ -1019,10 +1019,12 @@ enum {
     TISP_VIDIOC_G_CTRL = 0xc008561b,
     TISP_VIDIOC_S_CTRL = 0xc008561c,
     TISP_CID_WB_ATTR = 0x8000004,
+    TISP_CID_WB_STATS = 0x8000005,
     TISP_CID_AWB_WEIGHT = 0x8000006,
     TISP_CID_AWB_HIST = 0x8000007,
     TISP_CID_AWB_CWF_SHIFT = 0x8000008,
-    TISP_CID_AWB_ZONE = 0x8000009,
+    TISP_CID_WB_GOL_STATS = 0x8000009,
+    TISP_CID_AWB_ZONE = 0x800000b,
     TISP_CID_WB_ALGO = 0x800000c,
     TISP_CID_AWB_CT = 0x800000d,
     TISP_CID_AWB_CLUSTER = 0x800000e,
@@ -1121,6 +1123,7 @@ static int32_t tseries_awb_algo_en;
 static int tseries_get_isp(ISPDevice **out);
 static int tseries_tuning_set_val(int32_t subcmd, int32_t value);
 static int tseries_tuning_get_val(int32_t subcmd, int32_t *value);
+static int tseries_tuning_get_wb_stats(int32_t subcmd, IMPISPWB *wb);
 static int tseries_tuning_set_ptr(int32_t subcmd, void *ptr);
 static int tseries_tuning_get_ptr(int32_t subcmd, void *ptr);
 static int tseries_v4l2_set(int32_t id, int32_t value);
@@ -1177,6 +1180,24 @@ static int tseries_tuning_get_val(int32_t subcmd, int32_t *value)
 
         return result;
     }
+}
+
+static int tseries_tuning_get_wb_stats(int32_t subcmd, IMPISPWB *wb)
+{
+    int32_t packed = 0;
+    int result;
+
+    if (wb == NULL) {
+        return -1;
+    }
+
+    result = tseries_tuning_get_val(subcmd, &packed);
+    if (result == 0) {
+        wb->rgain = (uint16_t)((uint32_t)packed >> 16);
+        wb->bgain = (uint16_t)packed;
+    }
+
+    return result;
 }
 
 static int tseries_tuning_set_ptr(int32_t subcmd, void *ptr)
@@ -1812,12 +1833,12 @@ int IMP_ISP_Tuning_GetWB(IMPISPWB *wb)
 
 int IMP_ISP_Tuning_GetWB_Statis(IMPISPWB *wb)
 {
-    return IMP_ISP_Tuning_GetWB(wb);
+    return tseries_tuning_get_wb_stats(TISP_CID_WB_STATS, wb);
 }
 
 int IMP_ISP_Tuning_GetWB_GOL_Statis(IMPISPWB *wb)
 {
-    return IMP_ISP_Tuning_GetWB(wb);
+    return tseries_tuning_get_wb_stats(TISP_CID_WB_GOL_STATS, wb);
 }
 
 int IMP_ISP_Tuning_SetExpr(IMPISPExpr *expr)
