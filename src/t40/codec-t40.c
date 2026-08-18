@@ -26,6 +26,7 @@
 #include "kernel_interface.h"
 #include "openimp_profile.h"
 #if defined(PLATFORM_T31)
+#include "t31_rate_control.h"
 #include "t31_stream_layout.h"
 #endif
 #if defined(PLATFORM_T41)
@@ -2213,20 +2214,28 @@ static uint32_t avpu_t40_picture_qp(const ALAvpuContext *ctx, int is_idr)
         return openimp_t41_rate_controller_qp(
             &ctx->t41_rate_controller);
 #endif
+#if defined(PLATFORM_T31)
+    if (ctx->t31_rate_controller.initialized)
+        qp = openimp_t31_rate_controller_qp(
+            &ctx->t31_rate_controller);
+    else
+#endif
+    {
 
-    lcu_count = ((ctx->enc_w + 15u) >> 4) * ((ctx->enc_h + 15u) >> 4);
-    denominator = (uint64_t)(ctx->fps_num ? ctx->fps_num : 25u) *
-                  (uint64_t)(lcu_count ? lcu_count : 1u);
-    bits_per_lcu_q16 =
-        ((uint64_t)(ctx->bitrate ? ctx->bitrate : 2000000u) *
-         (uint64_t)(ctx->fps_den ? ctx->fps_den : 1u) << 16) /
-        denominator;
-    if (bits_per_lcu_q16 == 0u)
-        bits_per_lcu_q16 = 1u;
+        lcu_count = ((ctx->enc_w + 15u) >> 4) *
+                    ((ctx->enc_h + 15u) >> 4);
+        denominator = (uint64_t)(ctx->fps_num ? ctx->fps_num : 25u) *
+                      (uint64_t)(lcu_count ? lcu_count : 1u);
+        bits_per_lcu_q16 =
+            ((uint64_t)(ctx->bitrate ? ctx->bitrate : 2000000u) *
+             (uint64_t)(ctx->fps_den ? ctx->fps_den : 1u) << 16) /
+            denominator;
+        if (bits_per_lcu_q16 == 0u)
+            bits_per_lcu_q16 = 1u;
 
-    integer_log = 0u;
-    while ((bits_per_lcu_q16 >> integer_log) > 1u)
-        ++integer_log;
+        integer_log = 0u;
+        while ((bits_per_lcu_q16 >> integer_log) > 1u)
+            ++integer_log;
 
     /*
      * Compute log2(bits-per-LCU) in Q8 without libm.  Normalize to Q30 and
@@ -2234,29 +2243,33 @@ static uint32_t avpu_t40_picture_qp(const ALAvpuContext *ctx, int is_idr)
      * stock starting-QP curve is the usual six-QP-per-doubling relationship,
      * anchored at QP 57 before applying the configured bounds.
      */
-    if (integer_log >= 30u)
-        normalized = (uint32_t)(bits_per_lcu_q16 >> (integer_log - 30u));
-    else
-        normalized = (uint32_t)(bits_per_lcu_q16 << (30u - integer_log));
-    for (bit = 0u; bit < 8u; ++bit) {
-        uint64_t square = (uint64_t)normalized * normalized;
+        if (integer_log >= 30u)
+            normalized =
+                (uint32_t)(bits_per_lcu_q16 >> (integer_log - 30u));
+        else
+            normalized =
+                (uint32_t)(bits_per_lcu_q16 << (30u - integer_log));
+        for (bit = 0u; bit < 8u; ++bit) {
+            uint64_t square = (uint64_t)normalized * normalized;
 
-        normalized = (uint32_t)(square >> 30);
-        if (normalized >= (2u << 30)) {
-            normalized >>= 1;
-            fraction_log |= 1u << (7u - bit);
+            normalized = (uint32_t)(square >> 30);
+            if (normalized >= (2u << 30)) {
+                normalized >>= 1;
+                fraction_log |= 1u << (7u - bit);
+            }
         }
-    }
 
-    log2_q8 = ((int32_t)integer_log - 16) * 256 + (int32_t)fraction_log;
-    qp_q8 = 57 * 256 - 6 * log2_q8;
-    qp = qp_q8 > 0 ? (uint32_t)((qp_q8 + 255) >> 8) : 0u;
-    if (qp < ctx->min_qp)
-        qp = ctx->min_qp;
-    if (ctx->max_qp != 0u && qp > ctx->max_qp)
-        qp = ctx->max_qp;
-    if (qp > 51u)
-        qp = 51u;
+        log2_q8 = ((int32_t)integer_log - 16) * 256 +
+                  (int32_t)fraction_log;
+        qp_q8 = 57 * 256 - 6 * log2_q8;
+        qp = qp_q8 > 0 ? (uint32_t)((qp_q8 + 255) >> 8) : 0u;
+        if (qp < ctx->min_qp)
+            qp = ctx->min_qp;
+        if (ctx->max_qp != 0u && qp > ctx->max_qp)
+            qp = ctx->max_qp;
+        if (qp > 51u)
+            qp = 51u;
+    }
 
 #if defined(PLATFORM_T31)
     /* T31 defines iIPDelta as I-picture QP relative to the following P
@@ -2281,6 +2294,61 @@ static uint32_t avpu_t40_picture_qp(const ALAvpuContext *ctx, int is_idr)
 #endif
     return qp;
 }
+
+#if defined(PLATFORM_T31)
+static int avpu_t31_prepare_picture(ALAvpuContext *ctx)
+{
+    OpenIMPT31RateController *controller;
+    uint32_t min_qp;
+    uint32_t max_qp;
+    uint32_t bitrate;
+    uint32_t fps_num;
+    uint32_t fps_den;
+    uint32_t gop_length;
+    uint32_t initial_qp;
+
+    if (!ctx)
+        return -1;
+    controller = &ctx->t31_rate_controller;
+    if (ctx->rc_mode != HW_RC_MODE_CBR) {
+        controller->initialized = 0;
+        return 0;
+    }
+
+    min_qp = ctx->min_qp <= 51u ? ctx->min_qp : 0u;
+    max_qp = ctx->max_qp <= 51u ? ctx->max_qp : 51u;
+    if (min_qp > max_qp) {
+        uint32_t swap = min_qp;
+
+        min_qp = max_qp;
+        max_qp = swap;
+    }
+    bitrate = ctx->bitrate ? ctx->bitrate : 2000000u;
+    fps_num = ctx->fps_num ? ctx->fps_num : 25u;
+    fps_den = ctx->fps_den ? ctx->fps_den : 1u;
+    gop_length = ctx->gop_length ? ctx->gop_length : fps_num / fps_den;
+    if (gop_length == 0u)
+        gop_length = 1u;
+
+    if (!controller->initialized || controller->bitrate != bitrate ||
+        controller->fps_num != fps_num || controller->fps_den != fps_den ||
+        controller->gop_length != gop_length ||
+        controller->min_qp != min_qp || controller->max_qp != max_qp) {
+        /* Obtain the recovered T31 starting point before initialization makes
+         * avpu_t40_picture_qp() select the controller-owned value. */
+        controller->initialized = 0;
+        initial_qp = avpu_t40_picture_qp(ctx, 0);
+        if (openimp_t31_rate_controller_init(
+                controller, bitrate, fps_num, fps_den, gop_length,
+                min_qp, max_qp, initial_qp) != 0)
+            return -1;
+        LOG_CODEC("AVPU: T31 rate controller initialized bitrate=%u fps=%u/%u gop=%u qp=%u bounds=%u/%u",
+                  bitrate, fps_num, fps_den, gop_length,
+                  controller->current_qp, min_qp, max_qp);
+    }
+    return 0;
+}
+#endif
 
 /*
  * Recover the hardware-rate-control column grid selected by InitHwRateCtrl.
@@ -4574,7 +4642,31 @@ static void avpu_end_encoding_callback(void *user_data)
 #elif defined(PLATFORM_T31)
     bitcount = ctx && buf_idx >= 0 && buf_idx < 16
         ? ctx->t31_payload_size_by_buf[buf_idx] : 0u;
-    completed = bitcount > 0u;
+    completed = bitcount > 0u && bitcount <= UINT32_MAX / 8u &&
+        ctx->stream_buf_size > (int)AVPU_T31_PAYLOAD_OFFSET &&
+        bitcount <= (uint32_t)ctx->stream_buf_size -
+            AVPU_T31_PAYLOAD_OFFSET;
+    if (completed && ctx->t31_rate_controller.initialized) {
+        uint32_t used_qp = ctx->t31_rate_control_qp_by_buf[buf_idx];
+        int controller_ret = openimp_t31_rate_controller_complete(
+            &ctx->t31_rate_controller, bitcount * 8u, used_qp,
+            ctx->stream_is_idr[buf_idx]);
+
+        if (ctx->frames_encoded < 16 || ctx->frames_encoded % 50 == 0) {
+            LOG_CODEC("T31 rate controller: buf=%d idr=%u used=%u next=%u target=%u picture_target=%u p_model=%u@%u idr_ema=%u vb=%lld complete=%u/%u ret=%d",
+                      buf_idx, ctx->stream_is_idr[buf_idx], used_qp,
+                      ctx->t31_rate_controller.current_qp,
+                      ctx->t31_rate_controller.target_bits,
+                      ctx->t31_rate_controller.picture_target_bits,
+                      ctx->t31_rate_controller.model_p_bits,
+                      ctx->t31_rate_controller.model_p_qp,
+                      ctx->t31_rate_controller.smoothed_idr_bits,
+                      (long long)ctx->t31_rate_controller.virtual_buffer_bits,
+                      ctx->t31_rate_controller.completed_pictures,
+                      ctx->t31_rate_controller.completed_p_pictures,
+                      controller_ret);
+        }
+    }
     completed_flag = completed ? 1u : 0u;
 #else
     completed = EncodingStatusRegsToSliceStatus(&status_regs, &slice_status);
@@ -8080,6 +8172,18 @@ static int al_codec_encode_process_impl(void *codec, void *frame,
                     return -1;
                 }
             }
+#endif
+#if defined(PLATFORM_T31)
+            if (avpu_t31_prepare_picture(ctx) != 0) {
+                LOG_CODEC("Process: failed to prepare T31 rate-control state frame=%u buf=%d",
+                          ctx->frame_number, buf_idx);
+                avpu_mark_stream_buffer_released(ctx, buf_idx);
+                free(hw_stream);
+                errno = EIO;
+                return -1;
+            }
+            ctx->t31_rate_control_qp_by_buf[buf_idx] =
+                avpu_t40_picture_qp(ctx, is_idr);
 #endif
             OpenIMPProfileStamp header_profile = openimp_profile_begin();
             uint32_t hdr_offset = avpu_prewrite_stream_headers(

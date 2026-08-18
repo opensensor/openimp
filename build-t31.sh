@@ -49,6 +49,7 @@ compile openimp_tuning src/openimp_tuning.c -Werror
 compile openimp_p2_encoder src/t40/openimp_p2_encoder.c -Werror
 compile openimp_avc src/t40/openimp_avc.c -Werror
 compile t40_ep1 src/t40/t40_ep1.c -Werror
+compile t31_rate_control src/t40/t31_rate_control.c -Werror
 compile t31_stream_layout src/t40/t31_stream_layout.c -Werror
 compile enc_hw_scaling src/alcodec/EncHwScalingList.c
 compile codec src/t40/codec-t40.c -Wno-stringop-overflow
@@ -82,6 +83,7 @@ compile t31_audio src/t31/openimp_t31_audio.c -Werror
     "$output_dir/openimp_p2_encoder.o" \
     "$output_dir/openimp_avc.o" \
     "$output_dir/t40_ep1.o" \
+    "$output_dir/t31_rate_control.o" \
     "$output_dir/t31_stream_layout.o" \
     "$output_dir/enc_hw_scaling.o" \
     "$output_dir/codec.o" \

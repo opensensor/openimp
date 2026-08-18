@@ -26,6 +26,9 @@
 #include <stddef.h>
 #include <pthread.h>
 
+#if defined(PLATFORM_T31)
+#include "t40/t31_rate_control.h"
+#endif
 #if defined(PLATFORM_T41)
 #include "t40/t41_hw_rate_control.h"
 #include "t40/t41_rate_control.h"
@@ -256,6 +259,8 @@ typedef struct ALAvpuContext {
 #if defined(PLATFORM_T31)
     /* Exact entropy bytes reported at completion status +0x104. */
     uint32_t t31_payload_size_by_buf[16];
+    uint32_t t31_rate_control_qp_by_buf[16];
+    OpenIMPT31RateController t31_rate_controller;
 #endif
     uint32_t stream_header_offset;  /* bytes of header pre-written into current stream buf */
     uint32_t stream_header_offset_by_buf[16]; /* per-stream-buffer header bytes */
