@@ -2334,10 +2334,11 @@ static int avpu_t31_prepare_picture(ALAvpuContext *ctx)
         controller->fps_num != fps_num || controller->fps_den != fps_den ||
         controller->gop_length != gop_length ||
         controller->min_qp != min_qp || controller->max_qp != max_qp) {
-        /* Obtain the recovered T31 starting point before initialization makes
-         * avpu_t40_picture_qp() select the controller-owned value. */
+        /* Respect iInitialQP and its public bounds.  Re-deriving a QP from
+         * resolution and bitrate here made the long-window controller spend
+         * many GOPs undoing a starting value the caller never requested. */
         controller->initialized = 0;
-        initial_qp = avpu_t40_picture_qp(ctx, 0);
+        initial_qp = ctx->qp;
         if (openimp_t31_rate_controller_init(
                 controller, bitrate, fps_num, fps_den, gop_length,
                 min_qp, max_qp, initial_qp) != 0)
@@ -4653,7 +4654,7 @@ static void avpu_end_encoding_callback(void *user_data)
             ctx->stream_is_idr[buf_idx]);
 
         if (ctx->frames_encoded < 16 || ctx->frames_encoded % 50 == 0) {
-            LOG_CODEC("T31 rate controller: buf=%d idr=%u used=%u next=%u target=%u picture_target=%u p_model=%u@%u idr_ema=%u vb=%lld complete=%u/%u ret=%d",
+            LOG_CODEC("T31 rate controller: buf=%d idr=%u used=%u next=%u target=%u picture_target=%u p_model=%u@%u idr_ema=%u gop_ema=%u gops=%u streak=%u/%u vb=%lld complete=%u/%u ret=%d",
                       buf_idx, ctx->stream_is_idr[buf_idx], used_qp,
                       ctx->t31_rate_controller.current_qp,
                       ctx->t31_rate_controller.target_bits,
@@ -4661,6 +4662,10 @@ static void avpu_end_encoding_callback(void *user_data)
                       ctx->t31_rate_controller.model_p_bits,
                       ctx->t31_rate_controller.model_p_qp,
                       ctx->t31_rate_controller.smoothed_idr_bits,
+                      ctx->t31_rate_controller.smoothed_gop_model_bits,
+                      ctx->t31_rate_controller.completed_gops,
+                      ctx->t31_rate_controller.over_target_gops,
+                      ctx->t31_rate_controller.under_target_gops,
                       (long long)ctx->t31_rate_controller.virtual_buffer_bits,
                       ctx->t31_rate_controller.completed_pictures,
                       ctx->t31_rate_controller.completed_p_pictures,

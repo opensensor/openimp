@@ -42,8 +42,15 @@ static int test_validation(void)
     EXPECT(openimp_t31_rate_controller_init(
         &controller, 8000000u, 30u, 1u, 30u, 20u, 45u, 27u) == 0);
     EXPECT(controller.target_bits == 266667u);
+    EXPECT(controller.current_qp == 27u);
+    EXPECT(openimp_t31_rate_controller_init(
+        &controller, 8000000u, 30u, 1u, 30u, 34u, 45u, 26u) == 0);
+    EXPECT(controller.current_qp == 34u);
+    EXPECT(openimp_t31_rate_controller_init(
+        &controller, 8000000u, 30u, 1u, 30u, 20u, 45u, 51u) == 0);
+    EXPECT(controller.current_qp == 45u);
     EXPECT(openimp_t31_rate_controller_complete(
-        &controller, 0u, 27u, 0) != 0);
+        &controller, 0u, 45u, 0) != 0);
     EXPECT(openimp_t31_rate_controller_complete(
         &controller, 266667u, 52u, 0) != 0);
     return 0;
@@ -100,16 +107,66 @@ static int test_recording_shape_converges(void)
         EXPECT(openimp_t31_rate_controller_complete(
             &controller, bits, used_qp, is_idr) == 0);
         next_qp = openimp_t31_rate_controller_qp(&controller);
-        EXPECT(next_qp <= previous_qp + 2u);
-        EXPECT(previous_qp <= next_qp + 2u);
+        EXPECT(next_qp <= previous_qp + 1u);
+        EXPECT(previous_qp <= next_qp + 1u);
+        if ((frame + 1u) % 30u != 0u)
+            EXPECT(next_qp == previous_qp);
         EXPECT(next_qp >= 20u && next_qp <= 45u);
     }
 
-    EXPECT(total_bits * 30u / 900u < 9000000u);
+    EXPECT(total_bits * 30u / 900u < 9200000u);
     EXPECT(settled_bits * 30u / settled_frames >= 7400000u);
     EXPECT(settled_bits * 30u / settled_frames <= 8500000u);
     EXPECT(openimp_t31_rate_controller_qp(&controller) >= 30u);
     EXPECT(openimp_t31_rate_controller_qp(&controller) <= 32u);
+    return 0;
+}
+
+static int test_short_motion_burst_does_not_pump_qp(void)
+{
+    OpenIMPT31RateController controller;
+    unsigned int frame;
+
+    EXPECT(openimp_t31_rate_controller_init(
+        &controller, 2000000u, 25u, 1u, 25u, 20u, 45u, 34u) == 0);
+    for (frame = 0u; frame < 250u; ++frame) {
+        int is_idr = frame % 25u == 0u;
+        int motion = frame >= 100u && frame < 150u;
+        uint32_t qp = openimp_t31_rate_controller_qp(&controller);
+        uint32_t used_qp = is_idr && qp > 20u ? qp - 1u : qp;
+        uint32_t bits_at_qp34 = is_idr ? 500000u
+            : motion ? 120000u : 60000u;
+        uint32_t bits = scale_bits(bits_at_qp34,
+                                   (int)used_qp - 34);
+
+        EXPECT(openimp_t31_rate_controller_complete(
+            &controller, bits, used_qp, is_idr) == 0);
+        EXPECT(openimp_t31_rate_controller_qp(&controller) == 34u);
+    }
+    EXPECT(controller.completed_gops == 10u);
+    return 0;
+}
+
+static int test_sustained_motion_requires_fresh_persistence(void)
+{
+    OpenIMPT31RateController controller;
+    unsigned int frame;
+
+    EXPECT(openimp_t31_rate_controller_init(
+        &controller, 2000000u, 25u, 1u, 25u, 20u, 45u, 34u) == 0);
+    for (frame = 0u; frame < 125u; ++frame) {
+        int is_idr = frame % 25u == 0u;
+        uint32_t qp = openimp_t31_rate_controller_qp(&controller);
+        uint32_t used_qp = is_idr && qp > 20u ? qp - 1u : qp;
+        uint32_t bits_at_qp34 = is_idr ? 500000u : 180000u;
+        uint32_t bits = scale_bits(bits_at_qp34,
+                                   (int)used_qp - 34);
+
+        EXPECT(openimp_t31_rate_controller_complete(
+            &controller, bits, used_qp, is_idr) == 0);
+        EXPECT(openimp_t31_rate_controller_qp(&controller) <= 35u);
+    }
+    EXPECT(openimp_t31_rate_controller_qp(&controller) == 35u);
     return 0;
 }
 
@@ -120,19 +177,19 @@ static int test_bounds_and_scene_changes(void)
 
     EXPECT(openimp_t31_rate_controller_init(
         &controller, 1000000u, 25u, 1u, 25u, 24u, 30u, 27u) == 0);
-    for (frame = 0u; frame < 100u; ++frame) {
+    for (frame = 0u; frame < 250u; ++frame) {
         uint32_t qp = openimp_t31_rate_controller_qp(&controller);
 
         EXPECT(openimp_t31_rate_controller_complete(
-            &controller, 300000u, qp, 0) == 0);
+            &controller, 300000u, qp, frame % 25u == 0u) == 0);
     }
     EXPECT(openimp_t31_rate_controller_qp(&controller) == 30u);
 
-    for (frame = 0u; frame < 150u; ++frame) {
+    for (frame = 0u; frame < 1000u; ++frame) {
         uint32_t qp = openimp_t31_rate_controller_qp(&controller);
 
         EXPECT(openimp_t31_rate_controller_complete(
-            &controller, 2000u, qp, 0) == 0);
+            &controller, 2000u, qp, frame % 25u == 0u) == 0);
     }
     EXPECT(openimp_t31_rate_controller_qp(&controller) == 24u);
     return 0;
@@ -148,7 +205,7 @@ static int test_large_completion_is_bounded(void)
         &controller, UINT32_MAX, 27u, 0) == 0);
     EXPECT(controller.virtual_buffer_bits <=
            (int64_t)controller.target_bits * controller.gop_length * 8);
-    EXPECT(openimp_t31_rate_controller_qp(&controller) <= 29u);
+    EXPECT(openimp_t31_rate_controller_qp(&controller) == 27u);
     return 0;
 }
 
@@ -156,6 +213,8 @@ int main(void)
 {
     if (test_validation() || test_steady_target() ||
         test_recording_shape_converges() ||
+        test_short_motion_burst_does_not_pump_qp() ||
+        test_sustained_motion_requires_fresh_persistence() ||
         test_bounds_and_scene_changes() ||
         test_large_completion_is_bounded())
         return 1;
