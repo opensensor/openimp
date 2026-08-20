@@ -523,7 +523,8 @@ int IMP_AI_SetHpfCoFrequency(int frequency)
 
 int IMP_AI_EnableNs(IMPAudioIOAttr *attribute, int mode)
 {
-    if (!attribute || mode < 0 || mode > 3 || p3_effects_load() != 0)
+    /* Mode 4 is libaudioProcess-neo's non-pumping music/video profile. */
+    if (!attribute || mode < 0 || mode > 4 || p3_effects_load() != 0)
         return -1;
     if (!p3_audio.ns)
         p3_audio.ns = p3_audio.ns_create();

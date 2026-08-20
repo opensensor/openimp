@@ -114,12 +114,14 @@ static struct {
     T31AgcProcess agc_process;
     T31AgcFree agc_free;
     void *agc;
+    int agc_mode;
     int agc_enabled;
 } t31_audio = {
     .ai_fd = -1,
     .ao_fd = -1,
     .ai_volume = 60,
     .ao_volume = 60,
+    .agc_mode = 3,
 };
 
 extern int64_t IMP_System_GetTimeStamp(void);
@@ -526,7 +528,8 @@ int IMP_AI_SetHpfCoFrequency(int frequency)
 
 int IMP_AI_EnableNs(IMPAudioIOAttr *attribute, int mode)
 {
-    if (!t31_valid_attr(attribute) || mode < 0 || mode > 3 ||
+    /* Mode 4 is libaudioProcess-neo's non-pumping music/video profile. */
+    if (!t31_valid_attr(attribute) || mode < 0 || mode > 4 ||
         t31_effects_load() != 0)
         return -1;
     if (!t31_audio.ns)
@@ -560,7 +563,8 @@ int IMP_AI_EnableAgc(IMPAudioIOAttr *attribute, IMPAudioAgcConfig configuration)
     config.target_level_dbfs = (int16_t)configuration.TargetLevelDbfs;
     config.compression_gain_db = (int16_t)configuration.CompressionGaindB;
     config.limiter_enable = 1;
-    if (t31_audio.agc_set_config(t31_audio.agc, 0, 255, 2,
+    if (t31_audio.agc_set_config(t31_audio.agc, 0, 255,
+                                 t31_audio.agc_mode,
                                  attribute->samplerate, config) != 0)
         return -1;
     t31_audio.agc_enabled = 1;
@@ -578,7 +582,10 @@ int IMP_AI_DisableAgc(void)
 
 int IMP_AI_SetAgcMode(int mode)
 {
-    return mode >= 0 ? 0 : -1;
+    if (mode < 1 || mode > 3)
+        mode = 2;
+    t31_audio.agc_mode = mode;
+    return 0;
 }
 
 int IMP_AI_Set_WebrtcProfileIni_Path(char *path)
