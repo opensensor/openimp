@@ -605,16 +605,22 @@ int avpu_dmabuf_get_address(struct device *dev, u32 fd, u32 *bus_address)
 	int err = 0;
 
 	dbuf = dma_buf_get(fd);
-	if (IS_ERR(dbuf))
-		return -EINVAL;
+	if (IS_ERR(dbuf)) {
+		err = PTR_ERR(dbuf);
+		dev_err(dev, "dma_buf_get(%u) failed: %d\n", fd, err);
+		return err;
+	}
 	attach = dma_buf_attach(dbuf, dev);
 	if (IS_ERR(attach)) {
-		err = -EINVAL;
+		err = PTR_ERR(attach);
+		dev_err(dev, "dma_buf_attach(%u) failed: %d\n", fd, err);
 		goto fail_attach;
 	}
 	sgt = dma_buf_map_attachment(attach, DMA_BIDIRECTIONAL);
 	if (IS_ERR(sgt)) {
-		err = -EINVAL;
+		err = PTR_ERR(sgt);
+		dev_err(dev, "dma_buf_map_attachment(%u) failed: %d\n", fd,
+			err);
 		goto fail_map;
 	}
 
@@ -627,4 +633,3 @@ fail_attach:
 	dma_buf_put(dbuf);
 	return err;
 }
-
