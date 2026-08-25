@@ -2713,6 +2713,16 @@ int IMP_ISP_AddSensor(IMPSensorInfo *pinfo)
     memcpy(isp_b + 0x28, pinfo, 0x50);
 #endif
 
+#if defined(PLATFORM_T30)
+    /*
+     * T30 libimp 1.0.5 stops here.  Unlike T23/T31, AddSensor does not
+     * allocate or install the ISP MDNS buffer.  The stock T30 ioctl accepts
+     * the nominally 8-byte 0x800856d5 request while writing a 12-byte result,
+     * so trying the newer allocation path also corrupts our stack.
+     */
+    return 0;
+#endif
+
     /* Read required ISP buffer size using the platform-specific ABI. */
     tx_isp_buf_t buf_info;
     TXISP_BUF_INIT(buf_info);

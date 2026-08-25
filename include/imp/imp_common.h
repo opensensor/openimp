@@ -85,7 +85,7 @@ typedef struct {
     char aVersion[64];  /**< Version string */
 } IMPVersion;
 
-/** Frame info structure.  T23 1.3.0 exposes the complete DMA descriptor. */
+/** Legacy T23 frame descriptor with direct-mode timestamps. */
 #if defined(PLATFORM_T23)
 typedef struct {
     int index;
@@ -109,11 +109,35 @@ typedef struct {
 } IMPFrameTimestamp;
 
 _Static_assert(offsetof(IMPFrameInfo, direct_phyAddr) == 0x20,
-               "T23 IMPFrameInfo.direct_phyAddr ABI mismatch");
+               "legacy IMPFrameInfo.direct_phyAddr ABI mismatch");
 _Static_assert(offsetof(IMPFrameInfo, timeStamp) == 0x28,
-               "T23 IMPFrameInfo.timeStamp ABI mismatch");
+               "legacy IMPFrameInfo.timeStamp ABI mismatch");
 _Static_assert(sizeof(IMPFrameInfo) == 0x38,
-               "T23 IMPFrameInfo ABI mismatch");
+               "legacy IMPFrameInfo ABI mismatch");
+#elif defined(PLATFORM_T30)
+typedef struct {
+    int index;
+    int pool_idx;
+    uint32_t width;
+    uint32_t height;
+    uint32_t pixfmt;
+    uint32_t size;
+    uint32_t phyAddr;
+    uint32_t virAddr;
+    int64_t timeStamp;
+    uint32_t priv[0];
+} IMPFrameInfo;
+
+typedef struct {
+    uint64_t ts;
+    uint64_t minus;
+    uint64_t plus;
+} IMPFrameTimestamp;
+
+_Static_assert(offsetof(IMPFrameInfo, timeStamp) == 0x20,
+               "T30 IMPFrameInfo.timeStamp ABI mismatch");
+_Static_assert(sizeof(IMPFrameInfo) == 0x28,
+               "T30 IMPFrameInfo ABI mismatch");
 #else
 typedef struct {
     int width;

@@ -36,6 +36,9 @@
 #include "t23/openimp_t23_helix_bridge.h"
 #include "t23/openimp_t23_persist.h"
 #endif
+#if defined(PLATFORM_T30)
+#include "t30/t30_helix_encoder.h"
+#endif
 #include "t40_ep1.h"
 #if defined(PLATFORM_T41)
 #include "t41_command_builder.h"
@@ -5771,6 +5774,9 @@ struct AL_CodecEncode {
 #if defined(PLATFORM_T23)
     T23HelixBridge t23_helix;      /* T23 Helix /dev/soc_vpu bootstrap */
 #endif
+#if defined(PLATFORM_T30)
+    T30HelixEncoder *t30_helix;    /* Native T30 /dev/soc_vpu encoder */
+#endif
 };
 
 #if !defined(PLATFORM_T40)
@@ -6174,7 +6180,7 @@ static void codec_sync_rc_cache(AL_CodecEncode *enc)
     qp = enc->hw_params.qp;
 
     rc->outFrmRate = enc->fps_cache;
-#if defined(PLATFORM_T23)
+#if defined(PLATFORM_T23) || defined(PLATFORM_T30)
     rc->maxGop = enc->gop_cache.gopLength;
 #elif !(defined(PLATFORM_T31) || defined(PLATFORM_T40) || defined(PLATFORM_T41))
     rc->attrGop = enc->gop_cache;
@@ -6182,7 +6188,7 @@ static void codec_sync_rc_cache(AL_CodecEncode *enc)
 
     switch (rc->attrRcMode.rcMode) {
     case IMP_ENC_RC_MODE_CBR:
-#if defined(PLATFORM_T23)
+#if defined(PLATFORM_T23) || defined(PLATFORM_T30)
         rc->attrRcMode.attrH264Cbr.outBitRate = bitrate_kbps / 1000u;
         rc->attrRcMode.attrH264Cbr.maxQp = enc->hw_params.max_qp;
         rc->attrRcMode.attrH264Cbr.minQp = enc->hw_params.min_qp;
@@ -6215,13 +6221,13 @@ static void codec_sync_rc_cache(AL_CodecEncode *enc)
         break;
 
     case IMP_ENC_RC_MODE_VBR:
-#if defined(PLATFORM_T23)
+#if defined(PLATFORM_T23) || defined(PLATFORM_T30)
     case IMP_ENC_RC_MODE_SMART:
 #else
     case IMP_ENC_RC_MODE_CAPPED_VBR:
     case IMP_ENC_RC_MODE_CAPPED_QUALITY:
 #endif
-#if defined(PLATFORM_T23)
+#if defined(PLATFORM_T23) || defined(PLATFORM_T30)
         rc->attrRcMode.attrH264Vbr.maxBitRate = bitrate_kbps / 1000u;
         rc->attrRcMode.attrH264Vbr.maxQp = enc->hw_params.max_qp;
         rc->attrRcMode.attrH264Vbr.minQp = enc->hw_params.min_qp;
@@ -6253,7 +6259,7 @@ static void codec_sync_rc_cache(AL_CodecEncode *enc)
 
     case IMP_ENC_RC_MODE_FIXQP:
     default:
-#if defined(PLATFORM_T23)
+#if defined(PLATFORM_T23) || defined(PLATFORM_T30)
         rc->attrRcMode.attrH264FixQp.qp = clamp_qp_u32(qp);
 #elif defined(PLATFORM_T31) || defined(PLATFORM_T40) || defined(PLATFORM_T41)
 #if defined(PLATFORM_T41)
@@ -6782,6 +6788,10 @@ int AL_Codec_Encode_Destroy(void *codec) {
 #if defined(PLATFORM_T23)
     OpenIMP_T23_HelixExit(&enc->t23_helix);
 #endif
+#if defined(PLATFORM_T30)
+    OpenIMP_T30_HelixDestroy(enc->t30_helix);
+    enc->t30_helix = NULL;
+#endif
 
     /* Deinitialize hardware encoder(s) - OEM parity: no separate deinit function */
     if (enc->use_hardware == 2 && enc->avpu.fd >= 0) {
@@ -7227,10 +7237,42 @@ static int al_codec_encode_process_impl(void *codec, void *frame,
      * the FrameSource descriptor immediately after submission, so everything
      * needed at AVPU completion must be copied before Process returns. */
     uint64_t timestamp = 0;
-#if defined(PLATFORM_T31)
+#if defined(PLATFORM_T31) || defined(PLATFORM_T30)
     memcpy(&timestamp, (const uint8_t *)frame + 0x20, sizeof(timestamp));
 #elif defined(PLATFORM_T41) || defined(PLATFORM_T23)
     memcpy(&timestamp, (const uint8_t *)frame + 0x28, sizeof(timestamp));
+#endif
+
+#if defined(PLATFORM_T30)
+    if (codec_param_read_codec_type(enc->codec_param) == IMP_ENC_TYPE_AVC) {
+        if (!enc->t30_helix) {
+            enc->hw_params.width = width;
+            enc->hw_params.height = height;
+            if (!enc->hw_params.fps_num)
+                enc->hw_params.fps_num = 25u;
+            if (!enc->hw_params.fps_den)
+                enc->hw_params.fps_den = 1u;
+            if (!enc->hw_params.gop_length)
+                enc->hw_params.gop_length = 25u;
+            if (!enc->hw_params.bitrate)
+                enc->hw_params.bitrate = 2000000u;
+            if (OpenIMP_T30_HelixCreate(&enc->t30_helix,
+                                        &enc->hw_params) != 0) {
+                codec_set_error(enc, -1);
+                return -1;
+            }
+            enc->use_hardware = 3;
+        }
+        if (__sync_lock_test_and_set(&enc->force_next_idr, 0))
+            OpenIMP_T30_HelixRequestIDR(enc->t30_helix);
+        if (OpenIMP_T30_HelixEncode(enc->t30_helix,
+                                    (const IMPFrameInfo *)frame,
+                                    &hw_stream) != 0) {
+            codec_set_error(enc, -1);
+            return -1;
+        }
+        goto queue_encoded_stream;
+    }
 #endif
     if (!timestamp)
         timestamp = IMP_System_GetTimeStamp();
@@ -8967,7 +9009,7 @@ int AL_Codec_Encode_SetRcParam(void *codec, void *rcAttr)
     memcpy(&enc->rc_attr_cache, src, sizeof(*src));
 
     enc->fps_cache = src->outFrmRate;
-#if defined(PLATFORM_T23)
+#if defined(PLATFORM_T23) || defined(PLATFORM_T30)
     enc->gop_cache.gopLength = src->maxGop;
 #elif !(defined(PLATFORM_T31) || defined(PLATFORM_T40) || defined(PLATFORM_T41))
     enc->gop_cache = src->attrGop;
@@ -8992,7 +9034,7 @@ int AL_Codec_Encode_SetRcParam(void *codec, void *rcAttr)
     case IMP_ENC_RC_MODE_CBR:
         *(uint32_t *)(enc->codec_param + 0x6c) = HW_RC_MODE_CBR;
         enc->hw_params.rc_mode = HW_RC_MODE_CBR;
-#if defined(PLATFORM_T23)
+#if defined(PLATFORM_T23) || defined(PLATFORM_T30)
         enc->hw_params.bitrate =
             src->attrRcMode.attrH264Cbr.outBitRate * 1000u;
         enc->hw_params.min_qp =
@@ -9014,7 +9056,7 @@ int AL_Codec_Encode_SetRcParam(void *codec, void *rcAttr)
 #endif
         break;
     case IMP_ENC_RC_MODE_VBR:
-#if defined(PLATFORM_T23)
+#if defined(PLATFORM_T23) || defined(PLATFORM_T30)
     case IMP_ENC_RC_MODE_SMART:
 #else
     case IMP_ENC_RC_MODE_CAPPED_VBR:
@@ -9022,7 +9064,7 @@ int AL_Codec_Encode_SetRcParam(void *codec, void *rcAttr)
 #endif
         *(uint32_t *)(enc->codec_param + 0x6c) = HW_RC_MODE_VBR;
         enc->hw_params.rc_mode = HW_RC_MODE_VBR;
-#if defined(PLATFORM_T23)
+#if defined(PLATFORM_T23) || defined(PLATFORM_T30)
         enc->hw_params.bitrate =
             src->attrRcMode.attrH264Vbr.maxBitRate * 1000u;
         enc->hw_params.min_qp =
@@ -9133,7 +9175,7 @@ int AL_Codec_Encode_SetQpIPDelta(void *codec, int delta)
     default:
         break;
     }
-#elif defined(PLATFORM_T23)
+#elif defined(PLATFORM_T23) || defined(PLATFORM_T30)
     (void)delta;
 #else
     enc->gop_cache.ipQpDelta = (uint32_t)delta;
@@ -9174,7 +9216,7 @@ int AL_Codec_Encode_SetGopParam(void *codec, void *gopAttr)
     *(uint32_t *)(enc->codec_param + 0xb0) = enc->gop_cache.gopLength;
     enc->hw_params.gop_length = enc->gop_cache.gopLength;
     enc->avpu.gop_length = enc->gop_cache.gopLength;
-#if defined(PLATFORM_T23)
+#if defined(PLATFORM_T23) || defined(PLATFORM_T30)
     enc->rc_attr_cache.maxGop = enc->gop_cache.gopLength;
 #elif !(defined(PLATFORM_T31) || defined(PLATFORM_T40) || defined(PLATFORM_T41))
     enc->rc_attr_cache.attrGop = enc->gop_cache;
@@ -9306,6 +9348,10 @@ int AL_Codec_Encode_RequestIDR(void *codec) {
 #if defined(PLATFORM_T23)
     if (enc->t23_helix.worker_pid > 0)
         return OpenIMP_T23_HelixRequestIDR(&enc->t23_helix);
+#endif
+#if defined(PLATFORM_T30)
+    if (enc->t30_helix)
+        return OpenIMP_T30_HelixRequestIDR(enc->t30_helix);
 #endif
     __sync_lock_test_and_set(&enc->force_next_idr, 1);
 

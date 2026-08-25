@@ -50,7 +50,7 @@ typedef enum {
     IMP_ENC_RC_MODE_FIXQP = 0,          /**< Fixed QP */
     IMP_ENC_RC_MODE_CBR = 1,            /**< Constant bitrate */
     IMP_ENC_RC_MODE_VBR = 2,            /**< Variable bitrate */
-#if defined(PLATFORM_T23)
+#if defined(PLATFORM_T23) || defined(PLATFORM_T30)
     IMP_ENC_RC_MODE_SMART = 3,          /**< T23 Smart rate control */
     IMP_ENC_RC_MODE_INV = 4,            /**< T23 invalid mode sentinel */
 #else
@@ -59,7 +59,7 @@ typedef enum {
 #endif
 } IMPEncoderRcMode;
 
-#if defined(PLATFORM_T23)
+#if defined(PLATFORM_T23) || defined(PLATFORM_T30)
 #define ENC_RC_MODE_FIXQP IMP_ENC_RC_MODE_FIXQP
 #define ENC_RC_MODE_CBR IMP_ENC_RC_MODE_CBR
 #define ENC_RC_MODE_VBR IMP_ENC_RC_MODE_VBR
@@ -266,7 +266,7 @@ _Static_assert(offsetof(IMPEncoderChnAttr, rcAttr) == 0x34, "T41 IMPEncoderChnAt
 _Static_assert(offsetof(IMPEncoderChnAttr, gopAttr) == 0x60, "T41 IMPEncoderChnAttr.gopAttr ABI mismatch");
 _Static_assert(offsetof(IMPEncoderChnAttr, bEnableIvdc) == 0x78, "T41 IMPEncoderChnAttr.bEnableIvdc ABI mismatch");
 _Static_assert(sizeof(IMPEncoderChnAttr) == 0x7c, "T41 IMPEncoderChnAttr ABI mismatch");
-#elif defined(PLATFORM_T23)
+#elif defined(PLATFORM_T23) || defined(PLATFORM_T30)
 typedef struct {
     uint32_t qp;
 } IMPEncoderAttrH264FixQP;
@@ -788,7 +788,7 @@ typedef enum {
     IMP_ENC_SLICE_MAX_ENUM,
 } IMPEncoderSliceType;
 
-#if defined(PLATFORM_T23)
+#if defined(PLATFORM_T23) || defined(PLATFORM_T30)
 typedef union {
     IMPEncoderH264NaluType h264Type;
     IMPEncoderH265NaluType h265Type;
@@ -866,7 +866,7 @@ typedef struct {
 /**
  * Encoder channel statistics (T20/T21/T23)
  */
-#if defined(PLATFORM_T23)
+#if defined(PLATFORM_T23) || defined(PLATFORM_T30)
 typedef struct {
     bool registered;
     uint32_t leftPics;
@@ -902,7 +902,7 @@ typedef struct {
 /**
  * JPEG quality level
  */
-#if defined(PLATFORM_T23)
+#if defined(PLATFORM_T23) || defined(PLATFORM_T30)
 typedef struct {
     bool user_ql_en;
     uint8_t qmem_table[128];
@@ -1162,7 +1162,7 @@ int IMP_Encoder_GetChnEvalInfo(int encChn, void *info);
 /* Additional encoder functions (raptor-hal parity) */
 int IMP_Encoder_GetStreamBufSize(int encChn, int *size);
 int IMP_Encoder_GetMaxStreamCnt(int encChn, int *cnt);
-#if defined(PLATFORM_T23)
+#if defined(PLATFORM_T23) || defined(PLATFORM_T30)
 int IMP_Encoder_SetChnFrmRate(int encChn, const IMPEncoderFrmRate *rate);
 int IMP_Encoder_GetChnFrmRate(int encChn, IMPEncoderFrmRate *rate);
 int IMP_Encoder_SetGOPSize(int encChn, const IMPEncoderGOPSizeCfg *gop);
@@ -1186,7 +1186,7 @@ int IMP_Encoder_SetChnQpBoundsPerFrame(int encChn, int minQpI, int maxQpI,
 int IMP_Encoder_SetChnMaxPictureSize(int encChn, uint32_t maxPictureSizeI,
                                     uint32_t maxPictureSizeP);
 int IMP_Encoder_SetChnQpIPDelta(int encChn, int delta);
-#if defined(PLATFORM_T23)
+#if defined(PLATFORM_T23) || defined(PLATFORM_T30)
 int IMP_Encoder_GetChnEncType(int encChn, IMPPayloadType *encType);
 #else
 int IMP_Encoder_GetChnEncType(int encChn, IMPEncoderEncType *encType);

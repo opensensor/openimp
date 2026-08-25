@@ -82,8 +82,14 @@ static void *fs_poll_worker(void *arg)
 /* ioctl command definitions from decompilation */
 
 /* FrameSource ioctl commands */
+#if defined(PLATFORM_T30)
+/* The VDB1 T30-X OEM ABI uses the original 0x4c-byte frame format. */
+#define VIDIOC_GET_FMT      0x404c56c4  /* Get format */
+#define VIDIOC_SET_FMT      0xc04c56c3  /* Set format */
+#else
 #define VIDIOC_GET_FMT      0x407056c4  /* Get format */
 #define VIDIOC_SET_FMT      0xc07056c3  /* Set format */
+#endif
 #define VIDIOC_SET_BUFCNT   0xc0145608  /* Set buffer count */
 #define VIDIOC_SET_DEPTH    0x800456c5  /* Set frame depth */
 #define VIDIOC_STREAM_ON    0x80045612  /* Start streaming */
@@ -149,10 +155,24 @@ struct fs_ioctl_format70 {
     uint32_t sizeimage;        /* 0x18 */
     uint32_t colorspace;       /* 0x1c */
     uint32_t priv;             /* 0x20 */
+#if !defined(PLATFORM_T30)
     uint32_t flags;            /* 0x24 */
     uint32_t ycbcr_enc;        /* 0x28 */
     uint32_t quantization;     /* 0x2c */
     uint32_t xfer_func;        /* 0x30 */
+#endif
+#if defined(PLATFORM_T30)
+    uint32_t crop_enable;      /* 0x24 */
+    uint32_t crop_top;         /* 0x28 */
+    uint32_t crop_left;        /* 0x2c */
+    uint32_t crop_width;       /* 0x30 */
+    uint32_t crop_height;      /* 0x34 */
+    uint32_t scaler_enable;    /* 0x38 */
+    uint32_t scaler_outwidth;  /* 0x3c */
+    uint32_t scaler_outheight; /* 0x40 */
+    uint32_t rate_bits;        /* 0x44 */
+    uint32_t rate_mask;        /* 0x48 */
+#else
     uint32_t crop_enable;      /* 0x34 */
     uint32_t crop_top;         /* 0x38 */
     uint32_t crop_left;        /* 0x3c */
@@ -168,9 +188,16 @@ struct fs_ioctl_format70 {
     uint32_t fcrop_left;       /* 0x64 */
     uint32_t fcrop_width;      /* 0x68 */
     uint32_t fcrop_height;     /* 0x6c */
+#endif
 };
 
-_Static_assert(sizeof(struct fs_ioctl_format70) == 0x70, "fs ioctl format size");
+#if defined(PLATFORM_T30)
+_Static_assert(sizeof(struct fs_ioctl_format70) == 0x4c,
+               "T30 fs ioctl format size");
+#else
+_Static_assert(sizeof(struct fs_ioctl_format70) == 0x70,
+               "fs ioctl format size");
+#endif
 
 /* v4l2_requestbuffers (driver expects 5 x u32 = 0x14 bytes):
  * count, type, memory, capabilities, reserved[1]

@@ -5,7 +5,8 @@ against the stock ISP, sensor, FrameSource, and AVPU kernel drivers.
 
 ## Architecture
 
-There is one encoder implementation for T31, T40, and the T41 bring-up:
+The public encoder graph is shared by T23, T30, T31, T40, and T41. The
+hardware backend is selected only where the SoC ABI actually differs:
 
 - `src/t40/openimp_p2_encoder.c` owns the public encoder lifecycle.
 - `src/t40/codec-t40.c` owns the shared AVPU codec backend.
@@ -16,6 +17,8 @@ There is one encoder implementation for T31, T40, and the T41 bring-up:
   [`docs/TUNING_DAEMON.md`](docs/TUNING_DAEMON.md).
 - `src/al_avpu.c`, `src/device_pool.c`, `src/fifo.c`, and
   `src/hw_encoder.c` provide the common hardware path.
+- `src/t30/` provides the native T30 Helix descriptor and legacy
+  `/dev/soc_vpu` channel adapter.
 - `src/t31/`, `src/framesource/framesource_tseries.c`,
   `src/isp/isp_tseries.c`, `src/kernel_interface.c`, and `src/dma_alloc.c`
   are the T31 stock-driver ABI seam.
@@ -39,6 +42,16 @@ replacement `libsysutils`/`libalog` libraries.
 ## Build
 
 ```sh
+# T23
+./build-for-device.sh T23
+# or
+make t23
+
+# T30/T30X
+./build-for-device.sh T30
+# or
+make t30
+
 # T31 (default)
 ./build-for-device.sh
 # or
@@ -57,16 +70,23 @@ make t41
 
 Outputs:
 
+- `build/t23/libimp.so`
+- `build/t30/libimp.so`
 - `build/t31/libimp.so`
 - `build/t40/libimp.so`
 - `build/t41/libimp.so`
 
-Both build scripts reject a produced library that depends on an OEM
-`libimp.so`. The T31 build records RVD import coverage and requires complete
-coverage of Raptor's AI/AO imports in `build/t31/`.
+Each target build rejects a produced library that depends on an OEM
+`libimp.so`. Target builds record RVD import coverage where a matching Raptor
+binary is available.
 
 ## Current status
 
+- T30: source-only native Helix H.264 through the stock 3.10.14
+  `/dev/soc_vpu` ABI. A T30X VDB1 streams both configured channels over RTSP;
+  the 1920x1080 Main stream probes at 25 fps and decodes without warnings.
+  The current milestone emits IDR pictures only while P-picture motion
+  estimation and rate control remain in progress.
 - T40: decoder-clean, resolution-independent H.264 streaming through the
   stock T40XP ISP and AVPU drivers.
 - T31: the shared T40-derived encoder ran for more than 1,000 hardware frames
@@ -95,6 +115,8 @@ coverage of Raptor's AI/AO imports in `build/t31/`.
   the userspace encoder is sensor-independent.
 
 See [`docs/T40_STATUS.md`](docs/T40_STATUS.md) and
-[`docs/T41_STATUS.md`](docs/T41_STATUS.md) for the detailed runtime gates.
+[`docs/T41_STATUS.md`](docs/T41_STATUS.md) for the corresponding runtime
+gates. See [`docs/T30_STATUS.md`](docs/T30_STATUS.md) for the legacy Helix
+bring-up and its current limitations.
 See [`docs/PROFILING.md`](docs/PROFILING.md) for the opt-in on-device stage
 profiler, the current T41 QHD hotspot data, and the MXU2/MXU3 assessment.
