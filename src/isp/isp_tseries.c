@@ -12,6 +12,7 @@
 #include <sys/mman.h>
 
 #include "core/globals.h"
+#include "dma_alloc.h"
 #include "imp/imp_isp.h"
 #include "isp_ioctl_compat.h"
 #if defined(PLATFORM_T23)
@@ -94,6 +95,9 @@ static IMPISPTemperDenoiseAttr tseries_temper_dns = {
     .type = IMPISP_TEMPER_AUTO,
     .temper_strength = 128,
 };
+#if defined(PLATFORM_T30)
+static IMPDMABufferInfo t30_temper_buffer;
+#endif
 
 int IMP_ISP_Tuning_SetContrast_internal(uint32_t arg1, int32_t arg2);
 int IMP_ISP_Tuning_SetSharpness_internal(uint32_t arg1, int32_t arg2);
@@ -1122,6 +1126,69 @@ typedef struct TSeriesAlgoFunc {
     void *reserved1;
 } TSeriesAlgoFunc;
 
+#if defined(PLATFORM_T30)
+#define T30_TISP_CID_TEMPER_ATTR 0x08000083
+#define T30_TISP_CID_TEMPER_BUF  0x08000084
+
+static int t30_tuning_configure_temper(ISPDevice *isp)
+{
+    volatile uint32_t *registers;
+    TSeriesTuningValReq buffer_request;
+    TSeriesTuningPtrReq attr_request;
+    uint32_t width;
+    uint32_t height;
+    uint32_t stride;
+    uint64_t size;
+
+    if (isp == NULL || isp->tuning_fd < 0 || isp->isp_base == NULL ||
+        isp->isp_base == MAP_FAILED)
+        return -1;
+
+    registers = (volatile uint32_t *)isp->isp_base;
+    width = registers[0x10 / sizeof(*registers)] & 0xffffu;
+    height = registers[0x14 / sizeof(*registers)] & 0xffffu;
+    if (width == 0 || height == 0 || width > UINT32_MAX / 4u)
+        return -1;
+    stride = (width * 4u + 127u) & ~127u;
+    size = (uint64_t)stride * height;
+    if (size == 0 || size > INT32_MAX)
+        return -1;
+
+    if (t30_temper_buffer.phys_addr == 0) {
+        memset(&t30_temper_buffer, 0, sizeof(t30_temper_buffer));
+        if (DMA_AllocDescriptor(&t30_temper_buffer, (int)size,
+                                "t30-isp-temper") != 0 ||
+            t30_temper_buffer.phys_addr == 0 ||
+            t30_temper_buffer.virt_addr == 0) {
+            memset(&t30_temper_buffer, 0, sizeof(t30_temper_buffer));
+            return -1;
+        }
+        memset((void *)(uintptr_t)t30_temper_buffer.virt_addr, 0,
+               (size_t)size);
+    } else if (t30_temper_buffer.size < size) {
+        return -1;
+    }
+
+    buffer_request = (TSeriesTuningValReq){
+        0, T30_TISP_CID_TEMPER_BUF,
+        (int32_t)t30_temper_buffer.phys_addr
+    };
+    if (ioctl(isp->tuning_fd, TISP_VIDIOC_TUNING, &buffer_request) != 0)
+        return -1;
+
+    attr_request = (TSeriesTuningPtrReq){
+        0, T30_TISP_CID_TEMPER_ATTR, &tseries_temper_dns
+    };
+    if (ioctl(isp->tuning_fd, TISP_VIDIOC_TUNING, &attr_request) != 0)
+        return -1;
+
+    kmsg_trace("libimp/ISP: T30 temper %ux%u stride=%u size=%llu phys=0x%08x\n",
+               width, height, stride, (unsigned long long)size,
+               t30_temper_buffer.phys_addr);
+    return 0;
+}
+#endif
+
 static uint32_t tseries_sensor_fps_num = 25;
 static uint32_t tseries_sensor_fps_den = 1;
 static IMPISPHVFLIP tseries_hvflip;
@@ -1797,6 +1864,16 @@ int IMP_ISP_Tuning_SetTemperDnsAttr(IMPISPTemperDenoiseAttr *attribute)
     if (!attribute || attribute->type > IMPISP_TEMPER_MANUAL)
         return -1;
     tseries_temper_dns = *attribute;
+#if defined(PLATFORM_T30)
+    {
+        ISPDevice *isp;
+
+        if (tseries_get_isp(&isp) == 0 && isp->tuning != NULL &&
+            isp->tuning_state == 2)
+            return tseries_tuning_set_ptr(T30_TISP_CID_TEMPER_ATTR,
+                                          &tseries_temper_dns);
+    }
+#endif
     return 0;
 }
 
@@ -3073,6 +3150,12 @@ int IMP_ISP_EnableTuning(void)
             "/home/user/git/proj/sdk-lv3/src/imp/isp/isp_tseries.c", 0x489,
             "IMP_ISP_EnableTuning", "Failed to mmap isp base addr\n");
     }
+
+#if defined(PLATFORM_T30)
+    if (t30_tuning_configure_temper(isp) != 0)
+        kmsg_trace("libimp/ISP: T30 temper setup failed: %s\n",
+                   strerror(errno));
+#endif
 
     TSeriesTuningValReq fps_req = { 1, TISP_CID_SENSOR_FPS, 0 };
     if (ioctl(isp->tuning_fd, TISP_VIDIOC_TUNING,
