@@ -126,7 +126,11 @@ compile t30_rate_control src/t40/t31_rate_control.c -Werror
     "$output_dir/t30_h264_set.o" \
     "$output_dir/t30_h264_slice.o" \
     "$output_dir/t30_rate_control.o" \
-    -ldl -lpthread -lrt
+	-ldl -lpthread -lrt
+
+"$compiler" $base_flags $repo_includes -Wall -Wextra -Werror \
+    "$project_dir/tools/openimp-tuningd.c" "$output_dir/openimp_tuning.o" \
+    -lpthread -o "$output_dir/openimp-tuningd"
 
 "$stripper" --strip-unneeded "$output_dir/libimp.so"
 
