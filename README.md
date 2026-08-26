@@ -84,9 +84,9 @@ binary is available.
 
 - T30: source-only native Helix H.264 through the stock 3.10.14
   `/dev/soc_vpu` ABI. A T30X VDB1 streams both configured channels over RTSP;
-  the 1920x1080 Main stream probes at 25 fps and decodes without warnings.
-  The current milestone emits IDR pictures only while P-picture motion
-  estimation and rate control remain in progress.
+  main and sub rings sustain 25 fps with decoder-clean I/P GOPs, ping-pong
+  reconstruction, and feedback rate control. The 1920x1080 Main stream runs
+  near the OEM bitrate under the same Raptor configuration.
 - T40: decoder-clean, resolution-independent H.264 streaming through the
   stock T40XP ISP and AVPU drivers.
 - T31: the shared T40-derived encoder ran for more than 1,000 hardware frames

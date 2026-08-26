@@ -3,7 +3,9 @@
 
 #include <stdint.h>
 
-#define WORD_SIZE sizeof(void *) /*4 Bytes*/
+/* The bitstream writer stores uint32_t words regardless of host pointer size.
+ * Keeping this fixed also makes its tests valid on 64-bit build hosts. */
+#define WORD_SIZE 4
 
 
 static inline uint32_t endian_fix32( uint32_t x )

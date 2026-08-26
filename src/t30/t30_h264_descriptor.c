@@ -1,5 +1,5 @@
 /*
- * Ingenic T30 Helix H.264 IDR descriptor builder.
+ * Ingenic T30 Helix H.264 descriptor builder.
  *
  * Register definitions and programming order are based on the GPL-2.0 T30
  * SDK 1.0.5 kernel (thingino-linux commit dc2e24d03f) and the GPL-2.0 Ingenic
@@ -74,10 +74,52 @@ static int t30_emit_final(T30DescriptorWriter *writer, uint32_t reg,
     return 0;
 }
 
-static unsigned int t30_vmau_context_index(unsigned int index)
+/* Packed from the GPL-2.0 H264_QPEL interpolation table in the T30 Helix
+ * kernel header.  The generated register values were checked against SDK
+ * 1.0.5 on T30X hardware. */
+static const uint32_t t30_h264_luma_interpolation[16][6] = {
+    {0x00000000u, 0x00000000u, 0x00000001u, 0x00000000u, 0x00000000u, 0x00000000u},
+    {0x80100506u, 0x00000000u, 0x1414fb01u, 0x000001fbu, 0x00000000u, 0x00000000u},
+    {0x80100500u, 0x00000000u, 0x1414fb01u, 0x000001fbu, 0x00000000u, 0x00000000u},
+    {0x80100507u, 0x00000000u, 0x1414fb01u, 0x000001fbu, 0x00000000u, 0x00000000u},
+    {0x81100506u, 0x00000000u, 0x1414fb01u, 0x000001fbu, 0x00000000u, 0x00000000u},
+    {0x8c100500u, 0x8d100506u, 0x1414fb01u, 0x000001fbu, 0x1414fb01u, 0x000001fbu},
+    {0x80100500u, 0x81000a06u, 0x1414fb01u, 0x000001fbu, 0x1414fb01u, 0x000001fbu},
+    {0x8c100501u, 0x8d100506u, 0x1414fb01u, 0x000001fbu, 0x1414fb01u, 0x000001fbu},
+    {0x81100500u, 0x00000000u, 0x1414fb01u, 0x000001fbu, 0x00000000u, 0x00000000u},
+    {0x81100500u, 0x80000a06u, 0x1414fb01u, 0x000001fbu, 0x1414fb01u, 0x000001fbu},
+    {0x80100500u, 0x81000a00u, 0x1414fb01u, 0x000001fbu, 0x1414fb01u, 0x000001fbu},
+    {0x81100500u, 0x80000a07u, 0x1414fb01u, 0x000001fbu, 0x1414fb01u, 0x000001fbu},
+    {0x81100507u, 0x00000000u, 0x1414fb01u, 0x000001fbu, 0x00000000u, 0x00000000u},
+    {0x8c100500u, 0x8d100507u, 0x1414fb01u, 0x000001fbu, 0x1414fb01u, 0x000001fbu},
+    {0x80100500u, 0x81000a07u, 0x1414fb01u, 0x000001fbu, 0x1414fb01u, 0x000001fbu},
+    {0x8c100501u, 0x8d100507u, 0x1414fb01u, 0x000001fbu, 0x1414fb01u, 0x000001fbu},
+};
+
+static const uint32_t t30_h264_chroma_interpolation[16][4] = {
+    {0x00000000u, 0x00000000u, 0x00000001u, 0x00000000u},
+    {0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u},
+    {0x80040300u, 0x00000000u, 0x00000000u, 0x00000000u},
+    {0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u},
+    {0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u},
+    {0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u},
+    {0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u},
+    {0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u},
+    {0x81040300u, 0x00000000u, 0x00000000u, 0x00000000u},
+    {0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u},
+    {0x80000000u, 0x81200600u, 0x00000000u, 0x00000000u},
+    {0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u},
+    {0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u},
+    {0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u},
+    {0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u},
+    {0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u},
+};
+
+static unsigned int t30_vmau_context_index(uint8_t slice_type,
+                                            unsigned int index)
 {
     if (index < 10u)
-        return index + 3u;
+        return index + (slice_type ? 14u : 3u);
     if (index < 22u)
         return index + 63u;
     if (index < 28u)
@@ -85,8 +127,61 @@ static unsigned int t30_vmau_context_index(unsigned int index)
     return index + 12u;
 }
 
-int T30_H264_BuildIDRDescriptor(const T30H264IDRConfig *config,
-                                size_t *pair_count)
+static int t30_emit_motion_estimation(T30DescriptorWriter *writer,
+                                      const T30H264SliceConfig *config)
+{
+    static const uint32_t luma_register_offset[6] = {
+        0x50900, 0x50904, 0x50a00, 0x50a04, 0x50a08, 0x50a0c
+    };
+    static const uint32_t chroma_register_offset[4] = {
+        0x50980, 0x50984, 0x50b00, 0x50b08
+    };
+    unsigned int i;
+    unsigned int j;
+
+#define MOTION_EMIT(reg, value)                                              \
+    do {                                                                      \
+        if (t30_emit(writer, (reg), (value)) != 0)                           \
+            return -1;                                                        \
+    } while (0)
+
+    MOTION_EMIT(0x5010c, T30_VRAM_ME);
+    MOTION_EMIT(0x50104, T30_VRAM_TOPMV);
+    MOTION_EMIT(0x50108, 0x13200070u);
+    MOTION_EMIT(0x50060, ((uint32_t)config->height - 1u) << 16 |
+                         ((uint32_t)config->width - 1u));
+    MOTION_EMIT(0x50064, (config->stride[1] << 16) |
+                         config->stride[0]);
+    MOTION_EMIT(0x50010, 0x800a8021u);
+    MOTION_EMIT(0x50040, 0x873f5008u);
+    MOTION_EMIT(0x50044, 0);
+    MOTION_EMIT(0x50048, 0x07d007d0u);
+    MOTION_EMIT(0x50800, config->reference_y);
+    MOTION_EMIT(0x50804, config->reference_c);
+    for (i = 0; i < 16u; i++) {
+        for (j = 0; j < 6u; j++)
+            MOTION_EMIT(luma_register_offset[j] +
+                        (j < 2u ? i * 8u : i * 16u),
+                        t30_h264_luma_interpolation[i][j]);
+    }
+    for (i = 0; i < 16u; i++) {
+        for (j = 0; j < 4u; j++)
+            MOTION_EMIT(chroma_register_offset[j] +
+                        (j < 2u ? i * 8u : i * 16u),
+                        t30_h264_chroma_interpolation[i][j]);
+    }
+    MOTION_EMIT(0x50068, 0);
+    /* Disable the optional frame-size-control padding: OpenIMP owns tightly
+     * aligned reconstruction planes and supplies their addresses directly. */
+    MOTION_EMIT(0x5004c, 0);
+    MOTION_EMIT(0x50000, 0x11u);
+
+#undef MOTION_EMIT
+    return 0;
+}
+
+int T30_H264_BuildDescriptor(const T30H264SliceConfig *config,
+                             size_t *pair_count)
 {
     static const uint32_t roi_position_registers[16] = {
         0x4004c, 0x40050, 0x40054, 0x40058,
@@ -113,7 +208,10 @@ int T30_H264_BuildIDRDescriptor(const T30H264IDRConfig *config,
 
     if (!config || !config->descriptor || !config->cabac_state ||
         !config->mb_width || !config->mb_height ||
-        config->descriptor_words < 1222u) {
+        !config->width || !config->height || config->slice_type > 1u ||
+        config->descriptor_words < (config->slice_type ? 1570u : 1222u) ||
+        (config->slice_type &&
+         (!config->reference_y || !config->reference_c))) {
         errno = EINVAL;
         return -1;
     }
@@ -163,6 +261,10 @@ int T30_H264_BuildIDRDescriptor(const T30H264IDRConfig *config,
     for (i = 0; i < 13u; i++)
         EMIT(qpg_zero_registers[i], 0);
 
+    if (config->slice_type &&
+        t30_emit_motion_estimation(&writer, config) != 0)
+        return -1;
+
     /* VMAU mode decision and the 42 CABAC contexts it consumes directly. */
     EMIT(0x80040, 4);
     EMIT(0x80050, 0x80000b00u);
@@ -174,7 +276,8 @@ int T30_H264_BuildIDRDescriptor(const T30H264IDRConfig *config,
     EMIT(0x80078, 0x0b150b15u);
     EMIT(0x80028, T30_VRAM_TOPPA);
     EMIT(0x80030, ((uint32_t)config->last_mby << 24) |
-                  (((uint32_t)config->mb_width - 1u) << 16) | 1u);
+                  (((uint32_t)config->mb_width - 1u) << 16) |
+                  (config->slice_type ? 2u : 1u));
     EMIT(0x80034, 0x0000c202u);
     EMIT(0x80038, 0xcccc0111u);
     EMIT(0x8003c, 0);
@@ -185,7 +288,9 @@ int T30_H264_BuildIDRDescriptor(const T30H264IDRConfig *config,
     EMIT(0x80118, 0x01800200u);
     EMIT(0x8011c, 0x00000400u);
     for (i = 0; i < 42u; i++)
-        EMIT(0x8002c, config->cabac_state[t30_vmau_context_index(i)]);
+        EMIT(0x8002c,
+             config->cabac_state[t30_vmau_context_index(config->slice_type,
+                                                        i)]);
     EMIT(0x8007c, 2);
 
     /* Deblocking. */
@@ -202,7 +307,7 @@ int T30_H264_BuildIDRDescriptor(const T30H264IDRConfig *config,
     EMIT(0x7008c, T30_VRAM_DUMMY);
     EMIT(0x70080, ((uint32_t)config->mb_width << 23) |
                   ((uint32_t)config->mb_width << 8));
-    EMIT(0x70068, 1);
+    EMIT(0x70068, ((uint32_t)config->slice_type << 3) | 1u);
     EMIT(0x70060, 8);
     EMIT(0x70240, 0x68040100u);
     EMIT(0x70244, 0x132c7000u);
@@ -215,7 +320,8 @@ int T30_H264_BuildIDRDescriptor(const T30H264IDRConfig *config,
                   ((uint32_t)config->first_mby << 8));
     EMIT(0x90010, 2);
     EMIT(0x90014, 3);
-    EMIT(0x90018, ((uint32_t)config->qp << 8) | 0x11u);
+    EMIT(0x90018, ((uint32_t)config->qp << 8) |
+                  (config->slice_type ? 0x12u : 0x11u));
     EMIT(0x9001c, T30_VRAM_SDE);
     EMIT(0x90020, 0x1320007cu);
     EMIT(0x90024, config->bitstream);
@@ -230,10 +336,11 @@ int T30_H264_BuildIDRDescriptor(const T30H264IDRConfig *config,
 
     for (i = 0; i < 8u; i++)
         EMIT(scheduler_zero_registers[i], 0);
-    EMIT(0x00060, 0x0c0c0400u);
-    EMIT(0x00064, 0x97850fceu);
+    EMIT(0x00060, 0x0c0c0400u | ((uint32_t)config->slice_type << 2));
+    EMIT(0x00064, 0x97850fceu | config->slice_type);
     if (t30_emit_final(&writer, 0x40000,
                        0xc0000000u | ((uint32_t)config->qp << 8) |
+                       ((uint32_t)config->slice_type << 4) |
                        config->raw_format | 0x23u) != 0)
         return -1;
 

@@ -14,7 +14,6 @@ void h264e_sps_write(bs_t *s, h264_sps_t *sps)
 	bs_write(s, 8, sps->i_level_idc);
 	bs_write_ue(s, sps->i_id);
 
-#if 0
 	if(sps->i_profile_idc >= PROFILE_HIGH) {
 		bs_write_ue(s, sps->i_chroma_format_idc);
 
@@ -25,12 +24,9 @@ void h264e_sps_write(bs_t *s, h264_sps_t *sps)
 		bs_write_ue(s, 0); // bit_depth_chroma_minus8;
 
 		bs_write1(s, sps->b_qpprime_y_zero_transform_bypass);
-		bs_write1(s, sps->b_avcintra); //seq_scaling_matrix_present_flag.
-		if(sps->b_avcintra){
-			/* TODO: 固定不支持吗，谁决定的？*/
-		}
+		/* The T30 path uses the default scaling matrices. */
+		bs_write1(s, 0); // seq_scaling_matrix_present_flag
 	}
-#endif
 
 	bs_write_ue(s, sps->i_log2_max_frame_num - 4); // log2_max_frame_num_minus4;
 	bs_write_ue(s, sps->i_poc_type); // pic_order_cnt_type;

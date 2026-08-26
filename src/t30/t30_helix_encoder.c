@@ -22,6 +22,7 @@
 #include "imp_log_int.h"
 #include "t30/h264enc/common.h"
 #include "t30/t30_h264_descriptor.h"
+#include "t40/t31_rate_control.h"
 
 #define T30_CHANNEL_REQUEST 0xc0386300u
 #define T30_CHANNEL_RELEASE 0xc0386301u
@@ -80,8 +81,8 @@ struct T30HelixEncoder {
     IMPDMABufferInfo descriptor;
     IMPDMABufferInfo emc;
     IMPDMABufferInfo temporary;
-    T30ReferenceFrame reference[3];
-    T30H264IDRConfig slice;
+    T30ReferenceFrame reference[2];
+    T30H264SliceConfig slice;
     h264_sps_t sps;
     h264_pps_t pps;
     h264_slice_header_t slice_header;
@@ -89,8 +90,13 @@ struct T30HelixEncoder {
     uint8_t headers[T30_HEADER_CAPACITY];
     uint32_t headers_size;
     uint32_t frame_number;
+    uint32_t gop_position;
     uint32_t idr_pic_id;
+    unsigned int reference_index;
+    int have_reference;
     int force_idr;
+    OpenIMPT31RateController rate_control;
+    int rate_control_enabled;
 };
 
 static void t30_dma_release(IMPDMABufferInfo *dma)
@@ -131,10 +137,9 @@ static void t30_init_parameter_sets(T30HelixEncoder *encoder)
 
     memset(sps, 0, sizeof(*sps));
     sps->i_id = 0;
-    sps->i_profile_idc = PROFILE_MAIN;
+    sps->i_profile_idc = PROFILE_HIGH;
     sps->i_level_idc = (int)t30_level_for_size(encoder->params.width,
                                                 encoder->params.height);
-    sps->b_constraint_set1 = 1;
     sps->i_log2_max_frame_num = 10;
     sps->i_poc_type = 2;
     sps->i_num_ref_frames = 1;
@@ -221,16 +226,20 @@ static int t30_generate_headers(T30HelixEncoder *encoder)
 }
 
 static void t30_fill_slice(T30HelixEncoder *encoder,
-                           const IMPFrameInfo *frame, uint32_t qp)
+                           const IMPFrameInfo *frame, uint32_t qp,
+                           int idr, unsigned int output_index)
 {
-    T30H264IDRConfig *slice = &encoder->slice;
+    T30H264SliceConfig *slice = &encoder->slice;
 
     memset(slice, 0, sizeof(*slice));
+    slice->slice_type = idr ? 0u : 1u;
     slice->mb_width = (uint8_t)encoder->sps.i_mb_width;
     slice->mb_height = (uint8_t)encoder->sps.i_mb_height;
     slice->first_mby = 0;
     slice->last_mby = (uint8_t)(slice->mb_height - 1u);
     slice->qp = (uint8_t)qp;
+    slice->width = (uint16_t)encoder->params.width;
+    slice->height = (uint16_t)encoder->params.height;
     slice->cabac_state = encoder->cabac.state;
     slice->raw_format = T30_NV12_MODE;
     slice->stride[0] = (int)encoder->params.width;
@@ -242,8 +251,12 @@ static void t30_fill_slice(T30HelixEncoder *encoder,
                     (uint32_t)encoder->sps.i_mb_width * 16u *
                     (uint32_t)encoder->sps.i_mb_height * 16u;
     slice->raw[2] = 0;
-    slice->output_y = encoder->reference[0].y;
-    slice->output_c = encoder->reference[0].c;
+    if (!idr) {
+        slice->reference_y = encoder->reference[encoder->reference_index].y;
+        slice->reference_c = encoder->reference[encoder->reference_index].c;
+    }
+    slice->output_y = encoder->reference[output_index].y;
+    slice->output_c = encoder->reference[output_index].c;
     slice->bitstream = encoder->temporary.phys_addr + T30_SLICE_OFFSET;
     slice->descriptor = (uint32_t *)(uintptr_t)encoder->descriptor.virt_addr;
     slice->descriptor_words = encoder->descriptor.size / sizeof(uint32_t);
@@ -256,12 +269,19 @@ int OpenIMP_T30_HelixCreate(T30HelixEncoder **encoder_out,
 {
     T30HelixEncoder *encoder;
     uint64_t frame_size;
+    uint64_t aligned_luma_size;
+    uint64_t reference_size;
     unsigned int i;
 
     if (!encoder_out || !params || !params->width || !params->height)
         return -1;
     frame_size = (uint64_t)params->width * params->height;
     if (frame_size > UINT32_MAX / 2u)
+        return -1;
+    aligned_luma_size = (((uint64_t)params->width + 15u) & ~15ull) *
+                        (((uint64_t)params->height + 15u) & ~15ull);
+    reference_size = aligned_luma_size + aligned_luma_size / 2u;
+    if (aligned_luma_size > UINT32_MAX || reference_size > UINT32_MAX)
         return -1;
     encoder = calloc(1, sizeof(*encoder));
     if (!encoder)
@@ -292,19 +312,28 @@ int OpenIMP_T30_HelixCreate(T30HelixEncoder **encoder_out,
         t30_dma_allocate(&encoder->temporary, (uint32_t)frame_size * 2u,
                          "t30-helix-bs") != 0)
         goto fail;
-    for (i = 0; i < 3u; i++) {
+    for (i = 0; i < 2u; i++) {
         if (t30_dma_allocate(&encoder->reference[i].dma,
-                             (uint32_t)(frame_size + frame_size / 2u),
+                             (uint32_t)reference_size,
                              "t30-helix-ref") != 0)
             goto fail;
         encoder->reference[i].y = encoder->reference[i].dma.phys_addr;
         encoder->reference[i].c = encoder->reference[i].y +
-                                  (uint32_t)frame_size;
+                                  (uint32_t)aligned_luma_size;
     }
     t30_init_parameter_sets(encoder);
     h264_cabac_init();
     if (t30_generate_headers(encoder) != 0)
         goto fail;
+    if (encoder->params.rc_mode != HW_RC_MODE_FIXQP &&
+        encoder->params.bitrate && encoder->params.fps_num &&
+        encoder->params.fps_den &&
+        openimp_t31_rate_controller_init(
+            &encoder->rate_control, encoder->params.bitrate,
+            encoder->params.fps_num, encoder->params.fps_den,
+            encoder->params.gop_length, encoder->params.min_qp,
+            encoder->params.max_qp, encoder->params.qp) == 0)
+        encoder->rate_control_enabled = 1;
     encoder->force_idr = 1;
     *encoder_out = encoder;
     LOG_CODEC("T30 Helix: native encoder ready channel=%u %ux%u desc=0x%08x",
@@ -329,22 +358,28 @@ int OpenIMP_T30_HelixEncode(T30HelixEncoder *encoder,
     uint32_t capacity;
     uint32_t offset = 0;
     uint32_t qp;
+    unsigned int output_index;
     int idr;
     int nal_length;
     size_t descriptor_pairs;
 
     if (!encoder || !frame || !stream_out || !frame->phyAddr)
         return -1;
-    /* The source-only T30 bring-up currently emits the exact IDR program.
-     * P-frame motion-estimation programming is the next incremental step. */
-    idr = 1;
+    idr = encoder->force_idr || !encoder->have_reference ||
+          encoder->gop_position >= encoder->params.gop_length;
     encoder->force_idr = 0;
-    qp = encoder->params.qp;
+    if (idr)
+        encoder->gop_position = 0;
+    qp = encoder->rate_control_enabled
+        ? openimp_t31_rate_controller_qp(&encoder->rate_control)
+        : encoder->params.qp;
+    output_index = encoder->have_reference
+        ? (encoder->reference_index ^ 1u) : 0u;
 
     h264e_slice_header_init(&encoder->slice_header, &encoder->sps,
                             &encoder->pps,
                             idr ? (int)(encoder->idr_pic_id++ & 1u) : -1,
-                            idr ? 0 : (int)(encoder->frame_number & 1023u),
+                            idr ? 0 : (int)(encoder->gop_position & 1023u),
                             (int)qp);
     encoder->slice_header.i_type = idr ? SLICE_TYPE_I : SLICE_TYPE_P;
     encoder->slice_header.i_disable_deblocking_filter_idc = 0;
@@ -358,9 +393,9 @@ int OpenIMP_T30_HelixEncode(T30HelixEncoder *encoder,
                             (int)qp,
                             encoder->slice_header.i_cabac_init_idc);
 
-    t30_fill_slice(encoder, frame, qp);
-    if (T30_H264_BuildIDRDescriptor(&encoder->slice,
-                                    &descriptor_pairs) != 0) {
+    t30_fill_slice(encoder, frame, qp, idr, output_index);
+    if (T30_H264_BuildDescriptor(&encoder->slice,
+                                 &descriptor_pairs) != 0) {
         LOG_CODEC("T30 Helix: descriptor build failed: %s",
                   strerror(errno));
         return -1;
@@ -412,7 +447,13 @@ int OpenIMP_T30_HelixEncode(T30HelixEncoder *encoder,
     stream->frame_type = idr ? HW_FRAME_TYPE_I : HW_FRAME_TYPE_P;
     stream->slice_type = stream->frame_type;
     *stream_out = stream;
+    encoder->reference_index = output_index;
+    encoder->have_reference = 1;
+    encoder->gop_position++;
     encoder->frame_number++;
+    if (encoder->rate_control_enabled)
+        (void)openimp_t31_rate_controller_complete(
+            &encoder->rate_control, stream->length * 8u, qp, idr);
     if (encoder->frame_number <= 4u ||
         (encoder->frame_number % 100u) == 0u)
         LOG_CODEC("T30 Helix: frame=%u %s bytes=%u hw=%u status=0x%08x desc=%u",
@@ -442,7 +483,7 @@ void OpenIMP_T30_HelixDestroy(T30HelixEncoder *encoder)
     }
     if (encoder->fd >= 0)
         close(encoder->fd);
-    for (i = 0; i < 3u; i++)
+    for (i = 0; i < 2u; i++)
         t30_dma_release(&encoder->reference[i].dma);
     t30_dma_release(&encoder->temporary);
     t30_dma_release(&encoder->emc);

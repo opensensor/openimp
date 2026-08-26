@@ -88,6 +88,7 @@ compile t30_h264_common src/t30/h264enc/common.c -Werror
 compile t30_h264_cabac src/t30/h264enc/cabac.c -Werror
 compile t30_h264_set src/t30/h264enc/set.c -Werror
 compile t30_h264_slice src/t30/h264enc/slice.c -Werror
+compile t30_rate_control src/t40/t31_rate_control.c -Werror
 
 "$compiler" -shared -nostartfiles \
     -Wl,-soname,libimp.so \
@@ -124,6 +125,7 @@ compile t30_h264_slice src/t30/h264enc/slice.c -Werror
     "$output_dir/t30_h264_cabac.o" \
     "$output_dir/t30_h264_set.o" \
     "$output_dir/t30_h264_slice.o" \
+    "$output_dir/t30_rate_control.o" \
     -ldl -lpthread -lrt
 
 "$stripper" --strip-unneeded "$output_dir/libimp.so"

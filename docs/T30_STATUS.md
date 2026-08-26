@@ -14,10 +14,15 @@ Sensor configuration and image processing remain owned by the loaded ISP
 driver and its tuning binary.
 
 Raptor's RVD process runs with `build/t30/libimp.so` and publishes both the
-1920x1080 main channel and 640x360 subchannel. The main RTSP stream reports
-H.264 Main, NV12-derived 4:2:0, 1920x1080, and 25/1 fps. A five-second FFmpeg
-decode completed without warnings. The main and subchannel hardware jobs
-return status `0x301` and use 611-register-pair command lists.
+1920x1080 main channel and 640x360 subchannel as High-profile H.264 4:2:0.
+Both rings sustain 25.3 fps. The main channel runs at about 2.9 Mbit/s and the
+subchannel at about 0.85 Mbit/s with 25-picture GOPs, compared with about
+3.3 Mbit/s and the same GOP cadence from the OEM main encoder under the same
+Raptor configuration.
+Eighty frames were captured from each OpenIMP ring on the camera. After
+starting at the first access unit containing SPS/PPS/IDR, FFmpeg decoded every
+remaining I/P picture with zero diagnostics. The main and subchannel hardware
+jobs return status `0x301` and use 611-pair IDR or 785-pair P command lists.
 
 The visible T30 FrameSource height is not its luma allocation height. For a
 1920x1080 frame, chroma begins after 1088 luma rows. The T30 adapter derives
@@ -33,6 +38,10 @@ produces a magenta band at the top of the decoded image.
 - `src/t30/t30_h264_descriptor.c` programs the T30 Helix VDMA command list
   from typed OpenIMP inputs. It does not copy a captured command template or
   access private OEM structures by hard-coded member offsets.
+- P pictures use the GPL Helix H.264 interpolation definitions, two aligned
+  reconstruction surfaces, and explicit previous/output plane addresses.
+  The same slow GOP-level feedback controller used by T31 supplies CBR/VBR
+  QP selection; fixed-QP mode remains fixed.
 - SPS, PPS, slice headers, and CABAC initial state come from the GPL H.264
   helpers in `src/t30/h264enc/`.
 
@@ -49,14 +58,11 @@ descriptor is part of the runtime implementation.
 the stock driver's channel calls and command memory. It is not built into or
 loaded by OpenIMP.
 
-## Current limitation
-
-The native backend currently emits every picture as an IDR. That establishes
-the source-only hardware, FrameSource, public IMP, and Raptor/RTSP path with a
-decoder-clean image, but it is intentionally not the final bitrate or quality
-configuration. P-picture motion estimation, reference rotation, GOP cadence,
-and feedback rate control are the next T30 encoder milestone. Until then,
-bandwidth is substantially higher than the stock GOP stream.
+The lab's current IPv6/WireGuard path is lossy enough that multi-megabit live
+RTSP cannot be evaluated at real time from the remote client: 1200-byte ICMP
+tests showed 16 percent loss while camera-local ring capture remained at full
+rate. Runtime codec gates therefore use lossless camera-local capture followed
+by offline decoding, separately from the network-path observation.
 
 ## Build
 
