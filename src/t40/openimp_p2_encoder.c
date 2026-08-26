@@ -11,6 +11,13 @@
 #include <time.h>
 #include <unistd.h>
 
+/* T21 and T30 expose the same legacy public encoder ABI and both use the
+ * source-only Helix /dev/soc_vpu backend.  Keep that compatibility local to
+ * the encoder translation unit: their ISP and FrameSource ioctls differ. */
+#if defined(PLATFORM_T21)
+#define PLATFORM_T30 1
+#endif
+
 #include "openimp_profile.h"
 #include "trace_control.h"
 #if defined(PLATFORM_T23) || defined(PLATFORM_T30)
@@ -23,6 +30,7 @@
 #define P2_MAX_GROUPS 8
 #define P2_MAX_CHANNELS 8
 #define P2_MAX_BINDS 16
+#define P2_MAX_PUBLIC_PACKS 8
 #define P2_PARAM_SIZE 0x794
 /* T40 1.3.1 ends IMPEncoderStream after isVI and pads it to 28 bytes. T31
  * 1.1.6 includes the streamInfo/jpegInfo union, matching the compatibility
@@ -115,7 +123,7 @@ typedef struct {
     void *source_frame;
     P2SyntheticFrame synthetic_frame;
     IMPEncoderCHNAttr attr;
-    IMPEncoderPack pack;
+    IMPEncoderPack packs[P2_MAX_PUBLIC_PACKS];
     IMPEncoderJpegeQl jpeg_quality;
     uint32_t sequence;
     uint32_t stream_buf_size;
@@ -124,6 +132,16 @@ typedef struct {
     int entropy_mode;
     int entropy_mode_set;
     int resize_mode;
+#if defined(PLATFORM_T23) || defined(PLATFORM_T30)
+    IMPEncoderColor2GreyCfg color2grey;
+    IMPEncoderROICfg roi[8];
+    IMPEncoderAttrDenoise denoise;
+    IMPEncoderSuperFrmCfg superframe;
+    IMPEncoderH264TransCfg h264_transform;
+    IMPEncoderH265TransCfg h265_transform;
+    IMPEncoderQpgMode qpg_mode;
+    int macroblock_rate_control;
+#endif
     uint64_t next_frame_due_us;
     uint64_t output_timestamp_us;
     pthread_mutex_t lock;
@@ -267,6 +285,71 @@ static int p2_h264_stream_is_idr(const uint8_t *stream, uint32_t length)
             return 0;
     }
     return 0;
+}
+#endif
+
+#if defined(PLATFORM_T23) || defined(PLATFORM_T30)
+static uint32_t p2_find_annexb_start4(const uint8_t *data, uint32_t offset,
+                                      uint32_t length)
+{
+    while (offset + 4u <= length) {
+        if (data[offset] == 0u && data[offset + 1u] == 0u &&
+            data[offset + 2u] == 0u && data[offset + 3u] == 1u)
+            return offset;
+        offset++;
+    }
+    return length;
+}
+
+/* The legacy IMP ABI exposes one Annex-B NAL per pack.  Native Helix emits
+ * SPS, PPS and the IDR slice into one owned allocation, so describe each NAL
+ * as a separate view while retaining a single release owner. */
+static uint32_t p2_fill_legacy_packs(P2EncoderChannel *channel,
+                                     const P2HWStream *raw)
+{
+    const uint8_t *data = (const uint8_t *)(uintptr_t)raw->virt_addr;
+    int64_t timestamp = raw->timestamp
+        ? (int64_t)raw->timestamp : (int64_t)p2_monotonic_us();
+    uint32_t count = 0;
+    uint32_t begin;
+
+    memset(channel->packs, 0, sizeof(channel->packs));
+    if (!data || !raw->length)
+        return 0;
+    begin = p2_find_annexb_start4(data, 0, raw->length);
+    if (channel->codec_type == IMP_ENC_TYPE_JPEG || begin != 0u) {
+        channel->packs[0].phyAddr = raw->phys_addr;
+        channel->packs[0].virAddr = raw->virt_addr;
+        channel->packs[0].length = raw->length;
+        channel->packs[0].timestamp = timestamp;
+        channel->packs[0].frameEnd = true;
+        channel->packs[0].dataType.h264Type = IMP_H264_NAL_UNKNOWN;
+        return 1;
+    }
+    while (begin < raw->length && count < P2_MAX_PUBLIC_PACKS) {
+        IMPEncoderPack *pack = &channel->packs[count];
+        uint32_t next;
+        uint32_t nal_header = begin + 4u;
+
+        if (count + 1u == P2_MAX_PUBLIC_PACKS)
+            next = raw->length;
+        else
+            next = p2_find_annexb_start4(data, nal_header, raw->length);
+        if (next <= begin)
+            break;
+        pack->phyAddr = raw->phys_addr ? raw->phys_addr + begin : 0u;
+        pack->virAddr = raw->virt_addr + begin;
+        pack->length = next - begin;
+        pack->timestamp = timestamp;
+        pack->dataType.h264Type = nal_header < raw->length
+            ? (IMPEncoderH264NaluType)(data[nal_header] & 0x1fu)
+            : IMP_H264_NAL_UNKNOWN;
+        count++;
+        begin = next;
+    }
+    if (count)
+        channel->packs[count - 1u].frameEnd = true;
+    return count;
 }
 #endif
 
@@ -1084,6 +1167,7 @@ int IMP_Encoder_GetStream(int channel, IMPEncoderStream *stream, int block)
 {
 #if defined(PLATFORM_T23) || defined(PLATFORM_T30)
     static unsigned int t23_get_trace_count;
+    uint32_t pack_count;
 #endif
     P2EncoderChannel *ch;
     P2HWStream *raw;
@@ -1114,31 +1198,27 @@ int IMP_Encoder_GetStream(int channel, IMPEncoderStream *stream, int block)
                               raw->length);
 #endif
     memset(stream, 0, P2_ENCODER_STREAM_ABI_SIZE);
-    memset(&ch->pack, 0, sizeof(ch->pack));
 #if defined(PLATFORM_T23) || defined(PLATFORM_T30)
-    ch->pack.phyAddr = raw->phys_addr;
-    ch->pack.virAddr = raw->virt_addr;
-    ch->pack.length = raw->length;
-    ch->pack.timestamp = raw->timestamp
-        ? (int64_t)raw->timestamp : (int64_t)p2_monotonic_us();
-    ch->pack.frameEnd = true;
-    ch->pack.dataType.h264Type = ch->codec_type == IMP_ENC_TYPE_JPEG
-        ? IMP_H264_NAL_UNKNOWN
-        : (is_idr ? IMP_H264_NAL_SLICE_IDR : IMP_H264_NAL_SLICE);
-    stream->pack = &ch->pack;
-    stream->packCount = 1;
+    pack_count = p2_fill_legacy_packs(ch, raw);
+    if (!pack_count) {
+        pthread_mutex_unlock(&ch->lock);
+        return -1;
+    }
+    stream->pack = ch->packs;
+    stream->packCount = pack_count;
     stream->seq = ch->sequence++;
     stream->refType = is_idr ? IMP_Encoder_FSTYPE_IDR
                              : IMP_Encoder_FSTYPE_SBASE;
     if (__sync_add_and_fetch(&t23_get_trace_count, 1u) <= 16u)
         p2_trace("openimp/P2: get public frame=%u ch=%d seq=%u "
-                 "raw=%p addr=0x%08x len=%u idr=%d nal=%d\n",
+                 "raw=%p addr=0x%08x len=%u packs=%u idr=%d nal=%d\n",
                  t23_get_trace_count - 1u, channel, stream->seq,
-                 (void *)raw, ch->pack.virAddr, ch->pack.length, is_idr,
-                 (int)ch->pack.dataType.h264Type);
+                 (void *)raw, ch->packs[0].virAddr, raw->length, pack_count,
+                 is_idr, (int)ch->packs[0].dataType.h264Type);
 #else
-    ch->pack.offset = 0;
-    ch->pack.length = raw->length;
+    memset(&ch->packs[0], 0, sizeof(ch->packs[0]));
+    ch->packs[0].offset = 0;
+    ch->packs[0].length = raw->length;
     source_timestamp_us = raw->timestamp
         ? raw->timestamp : p2_monotonic_us();
     fps_num = ch->attr.rcAttr.outFrmRate.frmRateNum;
@@ -1154,16 +1234,16 @@ int IMP_Encoder_GetStream(int channel, IMPEncoderStream *stream, int block)
         ch->output_timestamp_us = source_timestamp_us;
     else
         ch->output_timestamp_us += frame_interval_us;
-    ch->pack.timestamp = (int64_t)ch->output_timestamp_us;
-    ch->pack.frameEnd = true;
-    ch->pack.sliceType = is_idr ? IMP_ENC_SLICE_I : IMP_ENC_SLICE_P;
-    ch->pack.nalType.h264NalType = ch->codec_type == IMP_ENC_TYPE_JPEG
+    ch->packs[0].timestamp = (int64_t)ch->output_timestamp_us;
+    ch->packs[0].frameEnd = true;
+    ch->packs[0].sliceType = is_idr ? IMP_ENC_SLICE_I : IMP_ENC_SLICE_P;
+    ch->packs[0].nalType.h264NalType = ch->codec_type == IMP_ENC_TYPE_JPEG
         ? IMP_H264_NAL_UNKNOWN
         : (is_idr ? IMP_H264_NAL_SLICE_IDR : IMP_H264_NAL_SLICE);
     stream->phyAddr = raw->phys_addr;
     stream->virAddr = raw->virt_addr;
     stream->streamSize = raw->length;
-    stream->pack = &ch->pack;
+    stream->pack = &ch->packs[0];
     stream->packCount = 1;
     stream->seq = ch->sequence++;
     stream->isVI = false;
@@ -1846,6 +1926,235 @@ int IMP_Encoder_GetPool(int channel)
     EncoderInit();
     return p2_channels[channel].pool_id;
 }
+
+#if defined(PLATFORM_T23) || defined(PLATFORM_T30)
+static P2EncoderChannel *p2_legacy_config_channel(int channel)
+{
+    if (!p2_valid_channel(channel) || !p2_channels[channel].created)
+        return NULL;
+    return &p2_channels[channel];
+}
+
+int IMP_Encoder_SetChnColor2Grey(int channel,
+                                const IMPEncoderColor2GreyCfg *config)
+{
+    P2EncoderChannel *ch = p2_legacy_config_channel(channel);
+
+    if (!ch || !config)
+        return -1;
+    pthread_mutex_lock(&ch->lock);
+    ch->color2grey = *config;
+    pthread_mutex_unlock(&ch->lock);
+    return 0;
+}
+
+int IMP_Encoder_GetChnColor2Grey(int channel,
+                                IMPEncoderColor2GreyCfg *config)
+{
+    P2EncoderChannel *ch = p2_legacy_config_channel(channel);
+
+    if (!ch || !config)
+        return -1;
+    pthread_mutex_lock(&ch->lock);
+    *config = ch->color2grey;
+    pthread_mutex_unlock(&ch->lock);
+    return 0;
+}
+
+int IMP_Encoder_SetChnROI(int channel, const IMPEncoderROICfg *config)
+{
+    P2EncoderChannel *ch = p2_legacy_config_channel(channel);
+
+    if (!ch || !config || config->u32Index >= 8u)
+        return -1;
+    pthread_mutex_lock(&ch->lock);
+    ch->roi[config->u32Index] = *config;
+    pthread_mutex_unlock(&ch->lock);
+    return 0;
+}
+
+int IMP_Encoder_GetChnROI(int channel, IMPEncoderROICfg *config)
+{
+    P2EncoderChannel *ch = p2_legacy_config_channel(channel);
+    uint32_t index;
+
+    if (!ch || !config || config->u32Index >= 8u)
+        return -1;
+    index = config->u32Index;
+    pthread_mutex_lock(&ch->lock);
+    *config = ch->roi[index];
+    config->u32Index = index;
+    pthread_mutex_unlock(&ch->lock);
+    return 0;
+}
+
+int IMP_Encoder_SetChnDenoise(int channel,
+                             const IMPEncoderAttrDenoise *config)
+{
+    P2EncoderChannel *ch = p2_legacy_config_channel(channel);
+
+    if (!ch || !config)
+        return -1;
+    pthread_mutex_lock(&ch->lock);
+    ch->denoise = *config;
+    ch->attr.rcAttr.attrDenoise = *config;
+    pthread_mutex_unlock(&ch->lock);
+    return 0;
+}
+
+int IMP_Encoder_GetChnDenoise(int channel, IMPEncoderAttrDenoise *config)
+{
+    P2EncoderChannel *ch = p2_legacy_config_channel(channel);
+
+    if (!ch || !config)
+        return -1;
+    pthread_mutex_lock(&ch->lock);
+    *config = ch->denoise;
+    pthread_mutex_unlock(&ch->lock);
+    return 0;
+}
+
+int IMP_Encoder_InsertUserData(int channel, void *data, uint32_t size)
+{
+    P2EncoderChannel *ch = p2_legacy_config_channel(channel);
+
+    if (!ch || !data || !size || size > 1024u)
+        return -1;
+    p2_trace("openimp/P2: accepted pending user data ch=%d size=%u\n",
+             channel, (unsigned int)size);
+    return 0;
+}
+
+int IMP_Encoder_SetMbRC(int channel, int enabled)
+{
+    P2EncoderChannel *ch = p2_legacy_config_channel(channel);
+
+    if (!ch || (enabled != 0 && enabled != 1))
+        return -1;
+    pthread_mutex_lock(&ch->lock);
+    ch->macroblock_rate_control = enabled;
+    pthread_mutex_unlock(&ch->lock);
+    return 0;
+}
+
+int IMP_Encoder_GetMbRC(int channel, int *enabled)
+{
+    P2EncoderChannel *ch = p2_legacy_config_channel(channel);
+
+    if (!ch || !enabled)
+        return -1;
+    pthread_mutex_lock(&ch->lock);
+    *enabled = ch->macroblock_rate_control;
+    pthread_mutex_unlock(&ch->lock);
+    return 0;
+}
+
+int IMP_Encoder_SetSuperFrameCfg(int channel,
+                                const IMPEncoderSuperFrmCfg *config)
+{
+    P2EncoderChannel *ch = p2_legacy_config_channel(channel);
+
+    if (!ch || !config)
+        return -1;
+    pthread_mutex_lock(&ch->lock);
+    ch->superframe = *config;
+    pthread_mutex_unlock(&ch->lock);
+    return 0;
+}
+
+int IMP_Encoder_GetSuperFrameCfg(int channel,
+                                IMPEncoderSuperFrmCfg *config)
+{
+    P2EncoderChannel *ch = p2_legacy_config_channel(channel);
+
+    if (!ch || !config)
+        return -1;
+    pthread_mutex_lock(&ch->lock);
+    *config = ch->superframe;
+    pthread_mutex_unlock(&ch->lock);
+    return 0;
+}
+
+int IMP_Encoder_SetH264TransCfg(int channel,
+                               const IMPEncoderH264TransCfg *config)
+{
+    P2EncoderChannel *ch = p2_legacy_config_channel(channel);
+
+    if (!ch || !config || config->chroma_qp_index_offset < -12 ||
+        config->chroma_qp_index_offset > 12)
+        return -1;
+    pthread_mutex_lock(&ch->lock);
+    ch->h264_transform = *config;
+    pthread_mutex_unlock(&ch->lock);
+    return 0;
+}
+
+int IMP_Encoder_GetH264TransCfg(int channel,
+                               IMPEncoderH264TransCfg *config)
+{
+    P2EncoderChannel *ch = p2_legacy_config_channel(channel);
+
+    if (!ch || !config)
+        return -1;
+    pthread_mutex_lock(&ch->lock);
+    *config = ch->h264_transform;
+    pthread_mutex_unlock(&ch->lock);
+    return 0;
+}
+
+int IMP_Encoder_SetH265TransCfg(int channel,
+                               const IMPEncoderH265TransCfg *config)
+{
+    P2EncoderChannel *ch = p2_legacy_config_channel(channel);
+
+    if (!ch || !config || config->chroma_cr_qp_offset < -12 ||
+        config->chroma_cr_qp_offset > 12 ||
+        config->chroma_cb_qp_offset < -12 ||
+        config->chroma_cb_qp_offset > 12)
+        return -1;
+    pthread_mutex_lock(&ch->lock);
+    ch->h265_transform = *config;
+    pthread_mutex_unlock(&ch->lock);
+    return 0;
+}
+
+int IMP_Encoder_GetH265TransCfg(int channel,
+                               IMPEncoderH265TransCfg *config)
+{
+    P2EncoderChannel *ch = p2_legacy_config_channel(channel);
+
+    if (!ch || !config)
+        return -1;
+    pthread_mutex_lock(&ch->lock);
+    *config = ch->h265_transform;
+    pthread_mutex_unlock(&ch->lock);
+    return 0;
+}
+
+int IMP_Encoder_SetQpgMode(int channel, const IMPEncoderQpgMode *mode)
+{
+    P2EncoderChannel *ch = p2_legacy_config_channel(channel);
+
+    if (!ch || !mode || *mode < ENC_QPG_CLOSE || *mode > ENC_QPG_SASM_TAB)
+        return -1;
+    pthread_mutex_lock(&ch->lock);
+    ch->qpg_mode = *mode;
+    pthread_mutex_unlock(&ch->lock);
+    return 0;
+}
+
+int IMP_Encoder_GetQpgMode(int channel, IMPEncoderQpgMode *mode)
+{
+    P2EncoderChannel *ch = p2_legacy_config_channel(channel);
+
+    if (!ch || !mode)
+        return -1;
+    pthread_mutex_lock(&ch->lock);
+    *mode = ch->qpg_mode;
+    pthread_mutex_unlock(&ch->lock);
+    return 0;
+}
+#endif
 
 int IMP_Encoder_GetFd(int channel)
 {

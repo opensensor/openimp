@@ -21,7 +21,13 @@
 #include "dma_alloc.h"
 #include "imp_log_int.h"
 #include "t30/h264enc/common.h"
+#if defined(PLATFORM_T21)
+#include "t21/t21_h264_descriptor.h"
+typedef T21H264SliceConfig PlatformH264SliceConfig;
+#else
 #include "t30/t30_h264_descriptor.h"
+typedef T30H264SliceConfig PlatformH264SliceConfig;
+#endif
 #include "t40/t31_rate_control.h"
 
 #define T30_CHANNEL_REQUEST 0xc0386300u
@@ -47,6 +53,20 @@
 #define T30_SLICE_OFFSET      256u
 #define T30_HEADER_CAPACITY   4096u
 #define T30_NV12_MODE         8u
+
+#if defined(PLATFORM_T21)
+/* T21 Helix programs fixed 4x4/8x8 quantization matrices in its VDMA list.
+ * Advertise those same matrices in the PPS so a decoder interprets the
+ * transform flags and inverse quantization exactly as the hardware does. */
+static const uint8_t t21_high_profile_pps[] = {
+    0x00, 0x00, 0x00, 0x01, 0x68, 0xee, 0x3c, 0xe1,
+    0x00, 0x42, 0x42, 0x00, 0x84, 0x84, 0x04, 0x4c,
+    0x52, 0x1b, 0x93, 0xc5, 0x7c, 0x9f, 0x93, 0xf9,
+    0x3f, 0x27, 0xc9, 0xe6, 0xe4, 0xc9, 0x24, 0x2c,
+    0x22, 0x42, 0x90, 0x9c, 0x9e, 0x4f, 0xaf, 0xc9,
+    0xfd, 0x7e, 0x4f, 0xaf, 0x27, 0x26, 0xa4, 0xc0,
+};
+#endif
 
 typedef struct {
     uint32_t clist;
@@ -82,7 +102,7 @@ struct T30HelixEncoder {
     IMPDMABufferInfo emc;
     IMPDMABufferInfo temporary;
     T30ReferenceFrame reference[2];
-    T30H264SliceConfig slice;
+    PlatformH264SliceConfig slice;
     h264_sps_t sps;
     h264_pps_t pps;
     h264_slice_header_t slice_header;
@@ -142,7 +162,19 @@ static void t30_init_parameter_sets(T30HelixEncoder *encoder)
                                                 encoder->params.height);
     sps->i_log2_max_frame_num = 10;
     sps->i_poc_type = 2;
+#if defined(PLATFORM_T21)
+    sps->i_num_ref_frames = 2;
+    sps->b_gaps_in_frame_num_value_allowed = 1;
+    sps->b_vui = 1;
+    sps->vui.b_timing_info_present = 1;
+    sps->vui.i_num_units_in_tick = encoder->params.fps_den
+        ? encoder->params.fps_den : 1u;
+    sps->vui.i_time_scale = (encoder->params.fps_num
+        ? encoder->params.fps_num : 25u) * 2u;
+    sps->vui.b_fixed_frame_rate = 1;
+#else
     sps->i_num_ref_frames = 1;
+#endif
     sps->i_mb_width = (int)(aligned_width / 16u);
     sps->i_mb_height = (int)(aligned_height / 16u);
     sps->b_frame_mbs_only = 1;
@@ -165,6 +197,9 @@ static void t30_init_parameter_sets(T30HelixEncoder *encoder)
     pps->i_pic_init_qp = 26;
     pps->i_pic_init_qs = 26;
     pps->b_deblocking_filter_control = 1;
+#if defined(PLATFORM_T21)
+    pps->b_transform_8x8_mode = 1;
+#endif
 }
 
 static int t30_annexb_nal(bs_t *bits, uint8_t *destination,
@@ -212,6 +247,14 @@ static int t30_generate_headers(T30HelixEncoder *encoder)
         return -1;
     encoder->headers_size = (uint32_t)length;
 
+#if defined(PLATFORM_T21)
+    if (sizeof(t21_high_profile_pps) >
+        sizeof(encoder->headers) - encoder->headers_size)
+        return -1;
+    memcpy(encoder->headers + encoder->headers_size,
+           t21_high_profile_pps, sizeof(t21_high_profile_pps));
+    encoder->headers_size += sizeof(t21_high_profile_pps);
+#else
     memset(temporary, 0, sizeof(temporary));
     bs_init(&bits, temporary, sizeof(temporary));
     h264e_pps_write(&bits, &encoder->sps, &encoder->pps);
@@ -222,6 +265,7 @@ static int t30_generate_headers(T30HelixEncoder *encoder)
     if (length < 0)
         return -1;
     encoder->headers_size += (uint32_t)length;
+#endif
     return 0;
 }
 
@@ -229,7 +273,7 @@ static void t30_fill_slice(T30HelixEncoder *encoder,
                            const IMPFrameInfo *frame, uint32_t qp,
                            int idr, unsigned int output_index)
 {
-    T30H264SliceConfig *slice = &encoder->slice;
+    PlatformH264SliceConfig *slice = &encoder->slice;
 
     memset(slice, 0, sizeof(*slice));
     slice->slice_type = idr ? 0u : 1u;
@@ -251,17 +295,23 @@ static void t30_fill_slice(T30HelixEncoder *encoder,
                     (uint32_t)encoder->sps.i_mb_width * 16u *
                     (uint32_t)encoder->sps.i_mb_height * 16u;
     slice->raw[2] = 0;
+#if !defined(PLATFORM_T21)
     if (!idr) {
         slice->reference_y = encoder->reference[encoder->reference_index].y;
         slice->reference_c = encoder->reference[encoder->reference_index].c;
     }
+#endif
     slice->output_y = encoder->reference[output_index].y;
     slice->output_c = encoder->reference[output_index].c;
     slice->bitstream = encoder->temporary.phys_addr + T30_SLICE_OFFSET;
     slice->descriptor = (uint32_t *)(uintptr_t)encoder->descriptor.virt_addr;
     slice->descriptor_words = encoder->descriptor.size / sizeof(uint32_t);
+#if defined(PLATFORM_T21)
+    slice->scratch_base = encoder->emc.phys_addr;
+#else
     /* SDK 1.0.5 selects the alternate DCS threshold for its substream. */
     slice->dcs_oth = encoder->params.width <= 640u ? 1u : 0u;
+#endif
 }
 
 int OpenIMP_T30_HelixCreate(T30HelixEncoder **encoder_out,
@@ -389,13 +439,25 @@ int OpenIMP_T30_HelixEncode(T30HelixEncoder *encoder,
     h264e_slice_header_write(&bits, &encoder->slice_header,
                              idr ? NAL_PRIORITY_HIGHEST : NAL_PRIORITY_HIGH);
     bs_align_1(&bits);
-    h264_cabac_context_init(&encoder->cabac, encoder->slice_header.i_type,
+    h264_cabac_context_init(&encoder->cabac,
+#if defined(PLATFORM_T21)
+                            /* Stock T21 selects the intra initialization bank
+                             * for both IDR and non-IDR hardware descriptors. */
+                            SLICE_TYPE_I,
+#else
+                            encoder->slice_header.i_type,
+#endif
                             (int)qp,
                             encoder->slice_header.i_cabac_init_idc);
 
     t30_fill_slice(encoder, frame, qp, idr, output_index);
+#if defined(PLATFORM_T21)
+    if (T21_H264_BuildDescriptor(&encoder->slice,
+                                 &descriptor_pairs) != 0) {
+#else
     if (T30_H264_BuildDescriptor(&encoder->slice,
                                  &descriptor_pairs) != 0) {
+#endif
         LOG_CODEC("T30 Helix: descriptor build failed: %s",
                   strerror(errno));
         return -1;

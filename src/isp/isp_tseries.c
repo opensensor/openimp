@@ -77,6 +77,23 @@ static pthread_t tseries_tuning_thread;
 static volatile int tseries_tuning_thread_stop;
 static int tseries_tuning_thread_running;
 static int32_t tseries_tuning_last_total_gain = -1;
+static IMPISPDrcAttr tseries_raw_drc = {
+    .mode = IMPISP_DRC_MANUAL,
+    .drc_strength = 128,
+    .slop_max = 128,
+    .slop_min = 128,
+    .black_level = 0,
+    .white_level = 0xfff,
+};
+static IMPISPSinterDenoiseAttr tseries_sinter_dns = {
+    .enable = IMPISP_TUNING_OPS_MODE_ENABLE,
+    .type = IMPISP_TUNING_OPS_TYPE_AUTO,
+    .sinter_strength = 128,
+};
+static IMPISPTemperDenoiseAttr tseries_temper_dns = {
+    .type = IMPISP_TEMPER_AUTO,
+    .temper_strength = 128,
+};
 
 int IMP_ISP_Tuning_SetContrast_internal(uint32_t arg1, int32_t arg2);
 int IMP_ISP_Tuning_SetSharpness_internal(uint32_t arg1, int32_t arg2);
@@ -1474,6 +1491,19 @@ int IMP_ISP_Tuning_SetISPBypass(IMPISPTuningOpsMode enable)
     kmsg_trace("libimp/ISP: SetISPBypass enter enable=%d isp=%p fd=%d tuning_fd=%d\n",
                enable, (void *)isp, isp->fd, isp->tuning_fd);
 
+#if defined(PLATFORM_T21)
+    /* T21 exposes one media-link configuration (index zero).  Its OEM libimp
+     * nevertheless derives index one for DISABLE, which the driver rejects
+     * after the old graph has already been destroyed.  EnableSensor installed
+     * the normal processed graph, so disabling an already-disabled bypass is
+     * idempotent and must leave that graph intact. */
+    if (enable == IMPISP_TUNING_OPS_MODE_DISABLE) {
+        kmsg_trace("libimp/ISP: SetISPBypass T21 normal graph already active\n");
+        tseries_bypass_link_setup_done = 1;
+        return 0;
+    }
+#endif
+
     if (ioctl(isp->fd, TISP_VIDIOC_DISABLE_LINKS, 0) != 0) {
         kmsg_trace("libimp/ISP: SetISPBypass DISABLE_LINKS failed errno=%d\n", errno);
         return -1;
@@ -1496,6 +1526,11 @@ int IMP_ISP_Tuning_SetISPBypass(IMPISPTuningOpsMode enable)
     }
     kmsg_trace("libimp/ISP: SetISPBypass S_CTRL ISP_PROCESS ok value=%d\n", enable);
 
+#if defined(PLATFORM_T21)
+    /* T21 has one link configuration.  This branch is reachable only when
+     * bypass is enabled; the normal path above remains undisturbed. */
+    sensor_index = 0;
+#else
     sensor_index = -1;
     if (ioctl(isp->fd, TISP_VIDIOC_GET_SENSOR_INDEX, &sensor_index) != 0 ||
         sensor_index < 0) {
@@ -1503,6 +1538,7 @@ int IMP_ISP_Tuning_SetISPBypass(IMPISPTuningOpsMode enable)
                    errno, sensor_index);
         return -1;
     }
+#endif
 
     if (ioctl(isp->fd, TISP_VIDIOC_CREATE_LINKS, &sensor_index) != 0) {
         kmsg_trace("libimp/ISP: SetISPBypass CREATE_LINKS failed arg=%d errno=%d\n",
@@ -1536,6 +1572,17 @@ int ISP_EnsureLinkStreamOn(int32_t sensor_idx)
         kmsg_trace("libimp/ISP: EnsureLinkStreamOn tseries_get_isp failed\n");
         return -1;
     }
+
+#if defined(PLATFORM_T21)
+    /* IMP_ISP_EnableSensor already starts the sensor and enables its link
+     * graph.  Stock T21 FrameSource_EnableChn goes directly from REQBUFS to
+     * frame-channel STREAMON; replaying the ISP-wide sensor STREAMON here
+     * wedges the first interrupt transition. */
+    (void)sensor_idx;
+    tseries_isp_stream_started = 1;
+    kmsg_trace("libimp/ISP: EnsureLinkStreamOn T21 already active\n");
+    return 0;
+#endif
 
     if (tseries_isp_stream_started != 0) {
         kmsg_trace("libimp/ISP: EnsureLinkStreamOn already-started bypass_done=%d\n",
@@ -1710,6 +1757,55 @@ int IMP_ISP_Tuning_GetDPC_Strength(uint32_t *pratio)
 int IMP_ISP_Tuning_SetDRC_Strength(uint32_t ratio)
 {
     return tseries_tuning_set_val(TISP_CID_DRC_RATIO, ratio);
+}
+
+int IMP_ISP_Tuning_SetRawDRC(IMPISPDrcAttr *attribute)
+{
+    if (!attribute || attribute->mode > IMPISP_DRC_DISABLE)
+        return -1;
+    tseries_raw_drc = *attribute;
+    return 0;
+}
+
+int IMP_ISP_Tuning_GetRawDRC(IMPISPDrcAttr *attribute)
+{
+    if (!attribute)
+        return -1;
+    *attribute = tseries_raw_drc;
+    return 0;
+}
+
+int IMP_ISP_Tuning_SetSinterDnsAttr(IMPISPSinterDenoiseAttr *attribute)
+{
+    if (!attribute || attribute->enable > IMPISP_TUNING_OPS_MODE_ENABLE ||
+        attribute->type >= IMPISP_TUNING_OPS_TYPE_BUTT)
+        return -1;
+    tseries_sinter_dns = *attribute;
+    return 0;
+}
+
+int IMP_ISP_Tuning_GetSinterDnsAttr(IMPISPSinterDenoiseAttr *attribute)
+{
+    if (!attribute)
+        return -1;
+    *attribute = tseries_sinter_dns;
+    return 0;
+}
+
+int IMP_ISP_Tuning_SetTemperDnsAttr(IMPISPTemperDenoiseAttr *attribute)
+{
+    if (!attribute || attribute->type > IMPISP_TEMPER_MANUAL)
+        return -1;
+    tseries_temper_dns = *attribute;
+    return 0;
+}
+
+int IMP_ISP_Tuning_GetTemperDnsAttr(IMPISPTemperDenoiseAttr *attribute)
+{
+    if (!attribute)
+        return -1;
+    *attribute = tseries_temper_dns;
+    return 0;
 }
 
 int IMP_ISP_Tuning_GetDRC_Strength(uint32_t *pratio)

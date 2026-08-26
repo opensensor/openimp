@@ -56,7 +56,51 @@ void h264e_sps_write(bs_t *s, h264_sps_t *sps)
 
 	bs_write1( s, sps->b_vui );
 	if(sps->b_vui) {
-		/* TODO: 需要弄清楚这些参数的含义，什么是vui？？*/
+		bs_write1(s, sps->vui.b_aspect_ratio_info_present);
+		if(sps->vui.b_aspect_ratio_info_present) {
+			bs_write(s, 8, 255); /* Extended_SAR */
+			bs_write(s, 16, sps->vui.i_sar_width);
+			bs_write(s, 16, sps->vui.i_sar_height);
+		}
+		bs_write1(s, sps->vui.b_overscan_info_present);
+		if(sps->vui.b_overscan_info_present)
+			bs_write1(s, sps->vui.b_overscan_info);
+		bs_write1(s, sps->vui.b_signal_type_present);
+		if(sps->vui.b_signal_type_present) {
+			bs_write(s, 3, sps->vui.i_vidformat);
+			bs_write1(s, sps->vui.b_fullrange);
+			bs_write1(s, sps->vui.b_color_description_present);
+			if(sps->vui.b_color_description_present) {
+				bs_write(s, 8, sps->vui.i_colorprim);
+				bs_write(s, 8, sps->vui.i_transfer);
+				bs_write(s, 8, sps->vui.i_colmatrix);
+			}
+		}
+		bs_write1(s, sps->vui.b_chroma_loc_info_present);
+		if(sps->vui.b_chroma_loc_info_present) {
+			bs_write_ue(s, sps->vui.i_chroma_loc_top);
+			bs_write_ue(s, sps->vui.i_chroma_loc_bottom);
+		}
+		bs_write1(s, sps->vui.b_timing_info_present);
+		if(sps->vui.b_timing_info_present) {
+			bs_write32(s, sps->vui.i_num_units_in_tick);
+			bs_write32(s, sps->vui.i_time_scale);
+			bs_write1(s, sps->vui.b_fixed_frame_rate);
+		}
+		/* This compact Helix writer does not configure HRD buffering. */
+		bs_write1(s, 0);
+		bs_write1(s, 0);
+		bs_write1(s, sps->vui.b_pic_struct_present);
+		bs_write1(s, sps->vui.b_bitstream_restriction);
+		if(sps->vui.b_bitstream_restriction) {
+			bs_write1(s, sps->vui.b_motion_vectors_over_pic_boundaries);
+			bs_write_ue(s, sps->vui.i_max_bytes_per_pic_denom);
+			bs_write_ue(s, sps->vui.i_max_bits_per_mb_denom);
+			bs_write_ue(s, sps->vui.i_log2_max_mv_length_horizontal);
+			bs_write_ue(s, sps->vui.i_log2_max_mv_length_vertical);
+			bs_write_ue(s, sps->vui.i_num_reorder_frames);
+			bs_write_ue(s, sps->vui.i_max_dec_frame_buffering);
+		}
 	}
 
 	bs_rbsp_trailing( s );

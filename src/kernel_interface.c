@@ -82,8 +82,8 @@ static void *fs_poll_worker(void *arg)
 /* ioctl command definitions from decompilation */
 
 /* FrameSource ioctl commands */
-#if defined(PLATFORM_T30)
-/* The VDB1 T30-X OEM ABI uses the original 0x4c-byte frame format. */
+#if defined(PLATFORM_T21) || defined(PLATFORM_T30)
+/* T21 and T30 use the original 0x4c-byte frame-channel format ABI. */
 #define VIDIOC_GET_FMT      0x404c56c4  /* Get format */
 #define VIDIOC_SET_FMT      0xc04c56c3  /* Set format */
 #else
@@ -155,13 +155,13 @@ struct fs_ioctl_format70 {
     uint32_t sizeimage;        /* 0x18 */
     uint32_t colorspace;       /* 0x1c */
     uint32_t priv;             /* 0x20 */
-#if !defined(PLATFORM_T30)
+#if !defined(PLATFORM_T21) && !defined(PLATFORM_T30)
     uint32_t flags;            /* 0x24 */
     uint32_t ycbcr_enc;        /* 0x28 */
     uint32_t quantization;     /* 0x2c */
     uint32_t xfer_func;        /* 0x30 */
 #endif
-#if defined(PLATFORM_T30)
+#if defined(PLATFORM_T21) || defined(PLATFORM_T30)
     uint32_t crop_enable;      /* 0x24 */
     uint32_t crop_top;         /* 0x28 */
     uint32_t crop_left;        /* 0x2c */
@@ -191,9 +191,9 @@ struct fs_ioctl_format70 {
 #endif
 };
 
-#if defined(PLATFORM_T30)
+#if defined(PLATFORM_T21) || defined(PLATFORM_T30)
 _Static_assert(sizeof(struct fs_ioctl_format70) == 0x4c,
-               "T30 fs ioctl format size");
+               "legacy fs ioctl format size");
 #else
 _Static_assert(sizeof(struct fs_ioctl_format70) == 0x70,
                "fs ioctl format size");

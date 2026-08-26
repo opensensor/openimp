@@ -26,8 +26,8 @@ typedef enum {
  */
 typedef struct {
     int enable;             /**< Enable crop */
-    int top;                /**< Top offset */
     int left;               /**< Left offset */
+    int top;                /**< Top offset */
     int width;              /**< Crop width */
     int height;             /**< Crop height */
 } IMPFSChnCrop;
@@ -69,6 +69,9 @@ _Static_assert(offsetof(IMPFSChnAttr, fcrop) == 0x40,
                "T23 IMPFSChnAttr.fcrop ABI mismatch");
 _Static_assert(sizeof(IMPFSChnAttr) == 0x54,
                "T23 IMPFSChnAttr ABI mismatch");
+#elif defined(PLATFORM_T21) || defined(PLATFORM_T30)
+_Static_assert(sizeof(IMPFSChnAttr) == 0x3c,
+               "legacy IMPFSChnAttr ABI mismatch");
 #endif
 
 /**

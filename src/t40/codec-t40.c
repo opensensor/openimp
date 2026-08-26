@@ -13,6 +13,13 @@
 #include <stdarg.h>
 #include <unistd.h>
 #include <fcntl.h>
+
+/* The T21 encoder ABI and legacy Helix device seam match T30.  This alias is
+ * deliberately translation-unit local; T21 ISP/FrameSource follows T31. */
+#if defined(PLATFORM_T21)
+#define PLATFORM_T30 1
+#endif
+
 #include <imp/imp_encoder.h>
 #include <imp/imp_system.h>
 #include "codec.h"
