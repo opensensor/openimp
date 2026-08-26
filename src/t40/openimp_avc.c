@@ -18,6 +18,11 @@
 #define OPENIMP_AVC_TYPE_AVC 0u
 #define OPENIMP_AVC_GET_DMA_PHY _IOWR('q', 18, struct openimp_avc_dma_info)
 #define OPENIMP_AVC_EXTERNAL_FRAME_MAGIC 0x56344c32u
+#if defined(PLATFORM_T30)
+#define OPENIMP_AVC_DMA_DEVICE "/dev/tx-isp-t30-dmabuf"
+#else
+#define OPENIMP_AVC_DMA_DEVICE "/dev/avpu"
+#endif
 
 struct openimp_avc_dma_info {
     uint32_t fd;
@@ -343,18 +348,18 @@ int OpenIMP_AVC_ImportDMABuf(int dma_buf_fd, uint32_t size,
                              uint32_t *physical_address)
 {
     struct openimp_avc_dma_info info;
-    int avpu_fd;
+    int importer_fd;
     int ret;
 
     if (dma_buf_fd < 0 || !size || !physical_address)
         return -EINVAL;
-    avpu_fd = open("/dev/avpu", O_RDWR | O_CLOEXEC);
-    if (avpu_fd < 0)
+    importer_fd = open(OPENIMP_AVC_DMA_DEVICE, O_RDWR | O_CLOEXEC);
+    if (importer_fd < 0)
         return -errno;
     memset(&info, 0, sizeof(info));
     info.fd = (uint32_t)dma_buf_fd;
     info.size = size;
-    ret = ioctl(avpu_fd, OPENIMP_AVC_GET_DMA_PHY, &info);
+    ret = ioctl(importer_fd, OPENIMP_AVC_GET_DMA_PHY, &info);
     if (ret != 0)
         ret = -errno;
     else if (!info.physical_address)
@@ -363,6 +368,6 @@ int OpenIMP_AVC_ImportDMABuf(int dma_buf_fd, uint32_t size,
         *physical_address = info.physical_address;
         ret = 0;
     }
-    close(avpu_fd);
+    close(importer_fd);
     return ret;
 }
