@@ -19,10 +19,12 @@ Both rings sustain 25.3 fps. The main channel runs at about 2.9 Mbit/s and the
 subchannel at about 0.85 Mbit/s with 25-picture GOPs, compared with about
 3.3 Mbit/s and the same GOP cadence from the OEM main encoder under the same
 Raptor configuration.
-Eighty frames were captured from each OpenIMP ring on the camera. After
-starting at the first access unit containing SPS/PPS/IDR, FFmpeg decoded every
-remaining I/P picture with zero diagnostics. The main and subchannel hardware
-jobs return status `0x301` and use 611-pair IDR or 785-pair P command lists.
+In a sustained gate, both channels ran concurrently for 1,500 frames (60
+seconds) at exactly 25.0 fps. Each stream contained the expected 60 IDRs and
+1,440 P pictures; RVD/RSD remained healthy and the kernel reported no VPU or
+Helix faults. Camera-local captures starting at SPS/PPS/IDR also decoded every
+I/P picture with zero FFmpeg diagnostics. The main and subchannel hardware jobs
+return status `0x301` and use 611-pair IDR or 785-pair P command lists.
 
 The visible T30 FrameSource height is not its luma allocation height. For a
 1920x1080 frame, chroma begins after 1088 luma rows. The T30 adapter derives
