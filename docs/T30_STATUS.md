@@ -1,9 +1,9 @@
 # T30/T30X status
 
 OpenIMP has a source-only H.264 path for the legacy Ingenic T30 Helix block.
-It uses the stock 3.10.14 ISP, sensor, FrameSource, reserved-memory, and
-`/dev/soc_vpu` kernel drivers, but it neither links nor loads the OEM
-`libimp.so` for video.
+It uses the compatible 3.10.14 ISP, sensor, FrameSource, reserved-memory, and
+`/dev/soc_vpu` interfaces, but it neither links nor loads the OEM `libimp.so`
+for video.
 
 ## Verified live gate
 
@@ -11,7 +11,9 @@ The current test device is a Wyze VDB1 with a T30X and SC4236 sensor. The
 sensor name describes the test fixture, not encoder policy: OpenIMP contains
 no SC4236 register table, gain LUT, tuning data, or fixed sensor dimensions.
 Sensor configuration and image processing remain owned by the loaded ISP
-driver and its tuning binary.
+driver and its tuning binary. The verified persistent boot path loads the
+source-built `open-tx-isp` T30 core with the board's sensor module, then starts
+RVD against the source-built OpenIMP library.
 
 Raptor's RVD process runs with `build/t30/libimp.so` and publishes both the
 1920x1080 main channel and 640x360 subchannel as High-profile H.264 4:2:0.
