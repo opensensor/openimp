@@ -114,7 +114,7 @@ _Static_assert(offsetof(IMPFrameInfo, timeStamp) == 0x28,
                "legacy IMPFrameInfo.timeStamp ABI mismatch");
 _Static_assert(sizeof(IMPFrameInfo) == 0x38,
                "legacy IMPFrameInfo ABI mismatch");
-#elif defined(PLATFORM_T30)
+#elif defined(PLATFORM_T21) || defined(PLATFORM_T30)
 typedef struct {
     int index;
     int pool_idx;
@@ -135,9 +135,9 @@ typedef struct {
 } IMPFrameTimestamp;
 
 _Static_assert(offsetof(IMPFrameInfo, timeStamp) == 0x20,
-               "T30 IMPFrameInfo.timeStamp ABI mismatch");
+               "legacy IMPFrameInfo.timeStamp ABI mismatch");
 _Static_assert(sizeof(IMPFrameInfo) == 0x28,
-               "T30 IMPFrameInfo ABI mismatch");
+               "legacy IMPFrameInfo ABI mismatch");
 #else
 typedef struct {
     int width;

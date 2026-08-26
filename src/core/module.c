@@ -298,8 +298,12 @@ int32_t notify_observers(Module *arg1, void *arg2)
                  arg1->name, arg1, count, arg2);
 
     if (count <= 0) {
-        module_user_trace("notify src=%s count=0 frame=%p",
-                          arg1 ? arg1->name : "?", arg2);
+        /* A source may legitimately have no Module observers.  The P2
+         * encoder used by T21/T23/T30 records System binds separately and
+         * pulls completed frames from the VBM ready queue.  Avoid routing
+         * this normal, per-frame case through imp_log_fun(): apart from being
+         * needlessly hot, the legacy T21 logger is not safe from the capture
+         * worker while the first frame is being handed off. */
         return 0;
     }
 

@@ -50,7 +50,7 @@ typedef enum {
     IMP_ENC_RC_MODE_FIXQP = 0,          /**< Fixed QP */
     IMP_ENC_RC_MODE_CBR = 1,            /**< Constant bitrate */
     IMP_ENC_RC_MODE_VBR = 2,            /**< Variable bitrate */
-#if defined(PLATFORM_T23) || defined(PLATFORM_T30)
+#if defined(PLATFORM_T21) || defined(PLATFORM_T23) || defined(PLATFORM_T30)
     IMP_ENC_RC_MODE_SMART = 3,          /**< T23 Smart rate control */
     IMP_ENC_RC_MODE_INV = 4,            /**< T23 invalid mode sentinel */
 #else
@@ -59,7 +59,7 @@ typedef enum {
 #endif
 } IMPEncoderRcMode;
 
-#if defined(PLATFORM_T23) || defined(PLATFORM_T30)
+#if defined(PLATFORM_T21) || defined(PLATFORM_T23) || defined(PLATFORM_T30)
 #define ENC_RC_MODE_FIXQP IMP_ENC_RC_MODE_FIXQP
 #define ENC_RC_MODE_CBR IMP_ENC_RC_MODE_CBR
 #define ENC_RC_MODE_VBR IMP_ENC_RC_MODE_VBR
@@ -266,7 +266,7 @@ _Static_assert(offsetof(IMPEncoderChnAttr, rcAttr) == 0x34, "T41 IMPEncoderChnAt
 _Static_assert(offsetof(IMPEncoderChnAttr, gopAttr) == 0x60, "T41 IMPEncoderChnAttr.gopAttr ABI mismatch");
 _Static_assert(offsetof(IMPEncoderChnAttr, bEnableIvdc) == 0x78, "T41 IMPEncoderChnAttr.bEnableIvdc ABI mismatch");
 _Static_assert(sizeof(IMPEncoderChnAttr) == 0x7c, "T41 IMPEncoderChnAttr ABI mismatch");
-#elif defined(PLATFORM_T23) || defined(PLATFORM_T30)
+#elif defined(PLATFORM_T21) || defined(PLATFORM_T23) || defined(PLATFORM_T30)
 typedef struct {
     uint32_t qp;
 } IMPEncoderAttrH264FixQP;
@@ -430,7 +430,9 @@ typedef IMPEncoderAttr IMPEncoderAttrJpeg;
 typedef struct {
     IMPEncoderAttr encAttr;
     IMPEncoderRcAttr rcAttr;
+#if !defined(PLATFORM_T21)
     bool bEnableIvdc;
+#endif
 } IMPEncoderCHNAttr;
 
 typedef IMPEncoderCHNAttr IMPEncoderChnAttr;
@@ -446,18 +448,82 @@ typedef struct {
     int gopsize;
 } IMPEncoderGOPSizeCfg;
 
+typedef struct {
+    bool enable;
+} IMPEncoderColor2GreyCfg;
+
+typedef struct {
+    uint32_t u32Index;
+    bool bEnable;
+    bool bRelatedQp;
+    int s32Qp;
+    IMPRect rect;
+} IMPEncoderROICfg;
+
+typedef enum {
+    IMP_RC_SUPERFRM_NONE = 0,
+    IMP_RC_SUPERFRM_DISCARD = 1,
+    IMP_RC_SUPERFRM_REENCODE = 2,
+    IMP_RC_SUPERFRM_BUTT = 3,
+} IMPEncoderSuperFrmMode;
+
+typedef enum {
+    IMP_RC_PRIORITY_RDO = 0,
+    IMP_RC_PRIORITY_BITRATE_FIRST = 1,
+    IMP_RC_PRIORITY_FRAMEBITS_FIRST = 2,
+    IMP_RC_PRIORITY_BUTT = 3,
+} IMPEncoderRcPriority;
+
+typedef struct {
+    IMPEncoderSuperFrmMode superFrmMode;
+    uint32_t superIFrmBitsThr;
+    uint32_t superPFrmBitsThr;
+    uint32_t superBFrmBitsThr;
+    IMPEncoderRcPriority rcPriority;
+} IMPEncoderSuperFrmCfg;
+
+typedef struct {
+    int chroma_qp_index_offset;
+} IMPEncoderH264TransCfg;
+
+typedef struct {
+    int chroma_cr_qp_offset;
+    int chroma_cb_qp_offset;
+} IMPEncoderH265TransCfg;
+
+typedef enum {
+    ENC_QPG_CLOSE = 0,
+    ENC_QPG_CRP = 1,
+    ENC_QPG_SAS = 2,
+    ENC_QPG_SASM = 3,
+    ENC_QPG_MBRC = 4,
+    ENC_QPG_CRP_TAB = 5,
+    ENC_QPG_SAS_TAB = 6,
+    ENC_QPG_SASM_TAB = 7,
+} IMPEncoderQpgMode;
+
+_Static_assert(sizeof(IMPEncoderROICfg) == 0x1c,
+               "legacy IMPEncoderROICfg ABI mismatch");
+_Static_assert(sizeof(IMPEncoderSuperFrmCfg) == 0x14,
+               "legacy IMPEncoderSuperFrmCfg ABI mismatch");
+
 _Static_assert(sizeof(IMPEncoderAttrRcMode) == 0x2c,
-               "T23 IMPEncoderAttrRcMode ABI mismatch");
+               "legacy IMPEncoderAttrRcMode ABI mismatch");
 _Static_assert(sizeof(IMPEncoderRcAttr) == 0x70,
-               "T23 IMPEncoderRcAttr ABI mismatch");
+               "legacy IMPEncoderRcAttr ABI mismatch");
 _Static_assert(sizeof(IMPEncoderAttr) == 0x30,
-               "T23 IMPEncoderAttr ABI mismatch");
+               "legacy IMPEncoderAttr ABI mismatch");
 _Static_assert(offsetof(IMPEncoderCHNAttr, rcAttr) == 0x30,
-               "T23 IMPEncoderCHNAttr.rcAttr ABI mismatch");
+               "legacy IMPEncoderCHNAttr.rcAttr ABI mismatch");
+#if defined(PLATFORM_T21)
+_Static_assert(sizeof(IMPEncoderCHNAttr) == 0xa0,
+               "T21 IMPEncoderCHNAttr ABI mismatch");
+#else
 _Static_assert(offsetof(IMPEncoderCHNAttr, bEnableIvdc) == 0xa0,
                "T23 IMPEncoderCHNAttr.bEnableIvdc ABI mismatch");
 _Static_assert(sizeof(IMPEncoderCHNAttr) == 0xa4,
                "T23 IMPEncoderCHNAttr ABI mismatch");
+#endif
 #elif defined(PLATFORM_T31) || defined(PLATFORM_T40)
 typedef uint32_t IMPEncoderRcOptions;
 
@@ -788,7 +854,7 @@ typedef enum {
     IMP_ENC_SLICE_MAX_ENUM,
 } IMPEncoderSliceType;
 
-#if defined(PLATFORM_T23) || defined(PLATFORM_T30)
+#if defined(PLATFORM_T21) || defined(PLATFORM_T23) || defined(PLATFORM_T30)
 typedef union {
     IMPEncoderH264NaluType h264Type;
     IMPEncoderH265NaluType h265Type;
@@ -866,7 +932,7 @@ typedef struct {
 /**
  * Encoder channel statistics (T20/T21/T23)
  */
-#if defined(PLATFORM_T23) || defined(PLATFORM_T30)
+#if defined(PLATFORM_T21) || defined(PLATFORM_T23) || defined(PLATFORM_T30)
 typedef struct {
     bool registered;
     uint32_t leftPics;
@@ -902,7 +968,7 @@ typedef struct {
 /**
  * JPEG quality level
  */
-#if defined(PLATFORM_T23) || defined(PLATFORM_T30)
+#if defined(PLATFORM_T21) || defined(PLATFORM_T23) || defined(PLATFORM_T30)
 typedef struct {
     bool user_ql_en;
     uint8_t qmem_table[128];
@@ -1162,10 +1228,37 @@ int IMP_Encoder_GetChnEvalInfo(int encChn, void *info);
 /* Additional encoder functions (raptor-hal parity) */
 int IMP_Encoder_GetStreamBufSize(int encChn, int *size);
 int IMP_Encoder_GetMaxStreamCnt(int encChn, int *cnt);
-#if defined(PLATFORM_T23) || defined(PLATFORM_T30)
+#if defined(PLATFORM_T21) || defined(PLATFORM_T23) || defined(PLATFORM_T30)
 int IMP_Encoder_SetChnFrmRate(int encChn, const IMPEncoderFrmRate *rate);
 int IMP_Encoder_GetChnFrmRate(int encChn, IMPEncoderFrmRate *rate);
 int IMP_Encoder_SetGOPSize(int encChn, const IMPEncoderGOPSizeCfg *gop);
+int IMP_Encoder_SetChnColor2Grey(int encChn,
+                                const IMPEncoderColor2GreyCfg *config);
+int IMP_Encoder_GetChnColor2Grey(int encChn,
+                                IMPEncoderColor2GreyCfg *config);
+int IMP_Encoder_SetChnROI(int encChn, const IMPEncoderROICfg *config);
+int IMP_Encoder_GetChnROI(int encChn, IMPEncoderROICfg *config);
+int IMP_Encoder_SetChnDenoise(int encChn,
+                             const IMPEncoderAttrDenoise *config);
+int IMP_Encoder_GetChnDenoise(int encChn,
+                             IMPEncoderAttrDenoise *config);
+int IMP_Encoder_InsertUserData(int encChn, void *data, uint32_t size);
+int IMP_Encoder_SetMbRC(int encChn, int enable);
+int IMP_Encoder_GetMbRC(int encChn, int *enable);
+int IMP_Encoder_SetSuperFrameCfg(int encChn,
+                                const IMPEncoderSuperFrmCfg *config);
+int IMP_Encoder_GetSuperFrameCfg(int encChn,
+                                IMPEncoderSuperFrmCfg *config);
+int IMP_Encoder_SetH264TransCfg(int encChn,
+                               const IMPEncoderH264TransCfg *config);
+int IMP_Encoder_GetH264TransCfg(int encChn,
+                               IMPEncoderH264TransCfg *config);
+int IMP_Encoder_SetH265TransCfg(int encChn,
+                               const IMPEncoderH265TransCfg *config);
+int IMP_Encoder_GetH265TransCfg(int encChn,
+                               IMPEncoderH265TransCfg *config);
+int IMP_Encoder_SetQpgMode(int encChn, const IMPEncoderQpgMode *mode);
+int IMP_Encoder_GetQpgMode(int encChn, IMPEncoderQpgMode *mode);
 #else
 int IMP_Encoder_SetChnFrmRate(int encChn, IMPEncoderFrmRate *in, IMPEncoderFrmRate *out);
 int IMP_Encoder_GetChnFrmRate(int encChn, IMPEncoderFrmRate *in, IMPEncoderFrmRate *out);
@@ -1186,7 +1279,7 @@ int IMP_Encoder_SetChnQpBoundsPerFrame(int encChn, int minQpI, int maxQpI,
 int IMP_Encoder_SetChnMaxPictureSize(int encChn, uint32_t maxPictureSizeI,
                                     uint32_t maxPictureSizeP);
 int IMP_Encoder_SetChnQpIPDelta(int encChn, int delta);
-#if defined(PLATFORM_T23) || defined(PLATFORM_T30)
+#if defined(PLATFORM_T21) || defined(PLATFORM_T23) || defined(PLATFORM_T30)
 int IMP_Encoder_GetChnEncType(int encChn, IMPPayloadType *encType);
 #else
 int IMP_Encoder_GetChnEncType(int encChn, IMPEncoderEncType *encType);

@@ -30,6 +30,54 @@ typedef enum {
     IMPISP_TUNING_OPS_MODE_ENABLE = 1   /**< Enable */
 } IMPISPTuningOpsMode;
 
+typedef enum {
+    IMPISP_TUNING_OPS_TYPE_AUTO = 0,
+    IMPISP_TUNING_OPS_TYPE_MANUAL = 1,
+    IMPISP_TUNING_OPS_TYPE_BUTT,
+} IMPISPTuningOpsType;
+
+typedef enum {
+    IMPISP_DRC_MANUAL = 0,
+    IMPISP_DRC_UNLIMIT,
+    IMPISP_DRC_HIGH,
+    IMPISP_DRC_MEDIUM,
+    IMPISP_DRC_LOW,
+    IMPISP_DRC_DISABLE,
+} IMPISPDrcMode;
+
+typedef struct {
+    IMPISPDrcMode mode;
+    unsigned char drc_strength;
+    unsigned char slop_max;
+    unsigned char slop_min;
+    unsigned short black_level;
+    unsigned short white_level;
+} IMPISPDrcAttr;
+
+typedef struct {
+    IMPISPTuningOpsMode enable;
+    IMPISPTuningOpsType type;
+    unsigned char sinter_strength;
+} IMPISPSinterDenoiseAttr;
+
+typedef enum {
+    IMPISP_TEMPER_DISABLE = 0,
+    IMPISP_TEMPER_AUTO,
+    IMPISP_TEMPER_MANUAL,
+} IMPISPTemperMode;
+
+typedef struct imp_isp_temper_denoise_attr {
+    IMPISPTemperMode type;
+    unsigned char temper_strength;
+} IMPISPTemperDenoiseAttr;
+
+_Static_assert(sizeof(IMPISPDrcAttr) == 0xc,
+               "T21 IMPISPDrcAttr ABI mismatch");
+_Static_assert(sizeof(IMPISPSinterDenoiseAttr) == 0xc,
+               "T21 IMPISPSinterDenoiseAttr ABI mismatch");
+_Static_assert(sizeof(IMPISPTemperDenoiseAttr) == 0x8,
+               "T21 IMPISPTemperDenoiseAttr ABI mismatch");
+
 /**
  * Anti-flicker attribute
  */
@@ -379,6 +427,13 @@ int IMP_ISP_Tuning_SetDPC_Strength(uint32_t ratio);
  * @return 0 on success, negative on error
  */
 int IMP_ISP_Tuning_SetDRC_Strength(uint32_t ratio);
+int IMP_ISP_Tuning_GetDRC_Strength(uint32_t *ratio);
+int IMP_ISP_Tuning_SetRawDRC(IMPISPDrcAttr *attribute);
+int IMP_ISP_Tuning_GetRawDRC(IMPISPDrcAttr *attribute);
+int IMP_ISP_Tuning_SetSinterDnsAttr(IMPISPSinterDenoiseAttr *attribute);
+int IMP_ISP_Tuning_GetSinterDnsAttr(IMPISPSinterDenoiseAttr *attribute);
+int IMP_ISP_Tuning_SetTemperDnsAttr(IMPISPTemperDenoiseAttr *attribute);
+int IMP_ISP_Tuning_GetTemperDnsAttr(IMPISPTemperDenoiseAttr *attribute);
 
 /**
  * Set highlight depress
@@ -395,6 +450,7 @@ int IMP_ISP_Tuning_SetHiLightDepress(uint32_t strength);
  * @return 0 on success, negative on error
  */
 int IMP_ISP_Tuning_SetTemperStrength(uint32_t ratio);
+int IMP_ISP_Tuning_GetTemperStrength(uint32_t *ratio);
 
 /**
  * Set spatial denoise strength
@@ -403,6 +459,7 @@ int IMP_ISP_Tuning_SetTemperStrength(uint32_t ratio);
  * @return 0 on success, negative on error
  */
 int IMP_ISP_Tuning_SetSinterStrength(uint32_t ratio);
+int IMP_ISP_Tuning_GetSinterStrength(uint32_t *ratio);
 
 /**
  * Set hue
@@ -555,4 +612,3 @@ int IMP_ISP_Tuning_GetAeLuma(int *luma);
 #endif
 
 #endif /* __IMP_ISP_H__ */
-

@@ -1812,11 +1812,13 @@ int IMP_FrameSource_EnableChn(int chnNum)
 
     *(int32_t *)(chan + 0x1c4) = ctx->fd;
 
-    /* OEM sequence includes 0x800456c5 during channel enable. The HLIL for
-     * frame_channel_unlocked_ioctl shows this path dispatching a remote event
-     * as part of the enable flow, so openimp should not gate it on an explicit
-     * frame-depth setting from the app. Use nrVBs as the bank count because it
-     * matches the pool shape we just configured with REQBUFS. */
+    /* T21 folds the bank-count event into REQBUFS and has no 0x800456c5
+     * command.  Later frame-channel ABIs issue the extra bank/depth ioctl.
+     * Use nrVBs because it matches the pool shape configured above. */
+#if defined(PLATFORM_T21)
+    fs_trace("libimp/FS: enable set-banks-via-reqbufs ch=%d fd=%d banks=%d depth=%d\n",
+             chnNum, ctx->fd, vbm_count, ctx->frame_depth);
+#else
     {
         int banks = ctx->attr.nrVBs;
         if (banks < 1) {
@@ -1836,6 +1838,7 @@ int IMP_FrameSource_EnableChn(int chnNum)
         fs_trace("libimp/FS: enable set-banks-ok ch=%d fd=%d banks=%d depth=%d\n",
                  chnNum, ctx->fd, banks, ctx->frame_depth);
     }
+#endif
 
     queued_ok = VBMFillPool(chnNum);
     if (queued_ok < 0) {
@@ -1979,14 +1982,17 @@ int IMP_FrameSource_DisableChn(int chnNum)
     }
 
     ctx->running = 0;
+    /* A frame-channel DQBUF may remain asleep in the kernel even after the
+     * worker is cancelled.  STREAMOFF is the driver's wakeup edge, so issue
+     * it before joining the pooling thread.  Waiting first deadlocks T21
+     * shutdown whenever the worker is between completed frames. */
+    if (ctx->fd >= 0) {
+        fs_stream_off(ctx->fd);
+    }
     if (ctx->thread != 0) {
         pthread_cancel(ctx->thread);
         pthread_join(ctx->thread, NULL);
         ctx->thread = 0;
-    }
-
-    if (ctx->fd >= 0) {
-        fs_stream_off(ctx->fd);
     }
     VBMFlushFrame(chnNum);
     VBMDestroyPool(chnNum);

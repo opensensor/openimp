@@ -11,13 +11,13 @@
 
 #include "openimp/openimp_tuning.h"
 
-#if defined(PLATFORM_T31)
+#if defined(PLATFORM_T21) || defined(PLATFORM_T31)
 #define OPENIMP_TUNING_DEFAULT_INTERVAL_MS 1000U
 #else
 #define OPENIMP_TUNING_DEFAULT_INTERVAL_MS 40U
 #endif
 
-#if defined(PLATFORM_T31)
+#if defined(PLATFORM_T21) || defined(PLATFORM_T31)
 #define TISP_VIDIOC_TUNING 0xc00c56c6U
 #define TISP_VIDIOC_S_CTRL 0xc008561cU
 #define TISP_CID_TOTAL_GAIN 0x08000027U
@@ -98,7 +98,7 @@ static int tuning_open(const char *device)
     if (device && *device)
         return open(device, O_RDWR | O_CLOEXEC);
     fd = open("/dev/isp-m0", O_RDWR | O_CLOEXEC);
-#if defined(PLATFORM_T31)
+#if defined(PLATFORM_T21) || defined(PLATFORM_T31)
     if (fd < 0)
         fd = open("/dev/isp-w02", O_RDWR | O_CLOEXEC);
 #endif
@@ -161,7 +161,7 @@ static int tuning_profile_kind_valid(OpenIMPTuningProfileKind kind)
            kind == OPENIMP_TUNING_PROFILE_CUSTOM;
 }
 
-#if defined(PLATFORM_T31)
+#if defined(PLATFORM_T21) || defined(PLATFORM_T31)
 struct t31_tuning_value {
     int32_t direction;
     int32_t id;
@@ -553,7 +553,7 @@ static int tuning_feedback(OpenIMPTuningController *controller)
 
 #endif
 
-#if defined(PLATFORM_T31) || defined(PLATFORM_T41)
+#if defined(PLATFORM_T21) || defined(PLATFORM_T31) || defined(PLATFORM_T41)
 static void *tuning_worker(void *opaque)
 {
     OpenIMPTuningController *controller = opaque;
@@ -637,7 +637,7 @@ int OpenIMP_Tuning_Start(OpenIMPTuningController *controller)
     controller->stop = 0;
     controller->running = 1;
     pthread_mutex_unlock(&controller->lock);
-#if defined(PLATFORM_T31) || defined(PLATFORM_T41)
+#if defined(PLATFORM_T21) || defined(PLATFORM_T31) || defined(PLATFORM_T41)
     if (pthread_create(&controller->worker, NULL, tuning_worker,
                        controller) != 0) {
         pthread_mutex_lock(&controller->lock);

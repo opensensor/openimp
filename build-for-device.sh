@@ -5,6 +5,9 @@ project_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 platform=$(printf '%s' "${1:-T31}" | tr '[:lower:]' '[:upper:]')
 
 case "$platform" in
+    T21|T21N)
+        exec "$project_dir/build-t21.sh"
+        ;;
     T23)
         exec "$project_dir/build-t23.sh"
         ;;
@@ -21,7 +24,7 @@ case "$platform" in
         exec "$project_dir/build-t41.sh"
         ;;
     *)
-        echo "unsupported platform: $platform (use T23, T30, T31, T40, or T41)" >&2
+        echo "unsupported platform: $platform (use T21, T23, T30, T31, T40, or T41)" >&2
         exit 2
         ;;
 esac

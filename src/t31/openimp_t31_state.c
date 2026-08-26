@@ -32,7 +32,9 @@ uint64_t system_gettime(int clock_type)
 
 int32_t get_cpu_id(void)
 {
-#if defined(PLATFORM_T23)
+#if defined(PLATFORM_T21)
+    return 0x11; /* T21-N */
+#elif defined(PLATFORM_T23)
     return 0x0f; /* T23-N */
 #else
     return 0x15; /* T31X */
