@@ -115,10 +115,49 @@ static int t21_emit_final(T21DescriptorWriter *writer, uint32_t reg,
     return 0;
 }
 
-static unsigned int t21_vmau_context_index(unsigned int index)
+/* T21 uses the same Helix ME register bank as later SoCs, but not their
+ * per-frame interpolation-table upload.  The OEM T21 encoder emits this
+ * compact 19-write block for every P slice. */
+static int t21_emit_motion_estimation(T21DescriptorWriter *writer,
+                                      const T21H264SliceConfig *config)
+{
+#define MOTION_EMIT(reg, value)                                              \
+    do {                                                                      \
+        if (t21_emit(writer, (reg), (value)) != 0)                           \
+            return -1;                                                        \
+    } while (0)
+
+    MOTION_EMIT(0x5010c, T21_VRAM_ME);
+    MOTION_EMIT(0x50104, T21_VRAM_TOPMV);
+    MOTION_EMIT(0x50108, 0x13200070u);
+    MOTION_EMIT(0x50060, ((uint32_t)config->height - 1u) << 16 |
+                         ((uint32_t)config->width - 1u));
+    MOTION_EMIT(0x50064, (config->stride[1] << 16) |
+                         config->stride[0]);
+    MOTION_EMIT(0x50010, 0x800a8021u);
+    MOTION_EMIT(0x50040, 0x873f5008u);
+    MOTION_EMIT(0x50044, 0);
+    MOTION_EMIT(0x50048, 0x03fc03fcu);
+    MOTION_EMIT(0x5006c, config->reference_y);
+    MOTION_EMIT(0x50070, config->reference_c);
+    MOTION_EMIT(0x50110, config->raw[0]);
+    MOTION_EMIT(0x50114, config->raw[1]);
+    MOTION_EMIT(0x50074, 0);
+    MOTION_EMIT(0x50078, 0);
+    MOTION_EMIT(0x50068, 0);
+    MOTION_EMIT(0x5004c, 0x88080303u);
+    MOTION_EMIT(0x5007c, 0);
+    MOTION_EMIT(0x50000, 0x547fdfb1u);
+
+#undef MOTION_EMIT
+    return 0;
+}
+
+static unsigned int t21_vmau_context_index(uint8_t slice_type,
+                                            unsigned int index)
 {
     if (index < 10u)
-        return index + 3u;
+        return index + (slice_type ? 14u : 3u);
     if (index < 22u)
         return index + 63u;
     if (index < 28u)
@@ -185,7 +224,10 @@ int T21_H264_BuildDescriptor(const T21H264SliceConfig *config,
     if (!config || !config->descriptor || !config->cabac_state ||
         !config->mb_width || !config->mb_height || !config->width ||
         !config->height || config->slice_type > 1u ||
-        config->descriptor_words < 2022u || !config->raw[0] ||
+        config->descriptor_words < (config->slice_type ? 2060u : 2022u) ||
+        (config->slice_type &&
+         (!config->reference_y || !config->reference_c)) ||
+        !config->raw[0] ||
         !config->raw[1] || !config->output_y || !config->output_c ||
         !config->bitstream || !config->scratch_base) {
         errno = EINVAL;
@@ -227,7 +269,7 @@ int T21_H264_BuildDescriptor(const T21H264SliceConfig *config,
     EMIT(0x4006c, 0x000c5800u);
     EMIT(0x40120, 0);
     EMIT(0x40108, 0);
-    EMIT(0x4010c, 0x03400000u);
+    EMIT(0x4010c, 0x00400000u);
     EMIT(0x40074, (max_qp << 24) | (min_qp << 16) |
                   ((uint32_t)config->qp << 8));
     for (i = 0; i < 7u; i++)
@@ -267,8 +309,12 @@ int T21_H264_BuildDescriptor(const T21H264SliceConfig *config,
     EMIT(0x1002c, 0);
     EMIT(0x10000, 0x20u);
 
+    if (config->slice_type &&
+        t21_emit_motion_estimation(&writer, config) != 0)
+        return -1;
+
     EMIT(0x80040, 4);
-    EMIT(0x80050, 0x80001b00u);
+    EMIT(0x80050, config->slice_type ? 0x80000b00u : 0x80001b00u);
     EMIT(0x8000c, T21_VRAM_MAU);
     EMIT(0x8005c, T21_VRAM_DUMMY);
     EMIT(0x80058, 0x13200074u);
@@ -278,7 +324,8 @@ int T21_H264_BuildDescriptor(const T21H264SliceConfig *config,
     EMIT(0x8019c, 0x0b5552d5u);
     EMIT(0x80028, T21_VRAM_TOPPA);
     EMIT(0x80030, ((uint32_t)config->last_mby << 24) |
-                  (((uint32_t)config->mb_width - 1u) << 16) | 0x8001u);
+                  (((uint32_t)config->mb_width - 1u) << 16) |
+                  (config->slice_type ? 0x8002u : 0x8001u));
     EMIT(0x80034, 0x0000c200u);
     EMIT(0x80038, 0xcc000000u);
     EMIT(0x8003c, 0);
@@ -293,7 +340,9 @@ int T21_H264_BuildDescriptor(const T21H264SliceConfig *config,
     for (i = 0; i < 40u; i++)
         EMIT(0x80198, t21_vmau_interpolation[i]);
     for (i = 0; i < 42u; i++)
-        EMIT(0x8002c, config->cabac_state[t21_vmau_context_index(i)]);
+        EMIT(0x8002c,
+             config->cabac_state[t21_vmau_context_index(config->slice_type,
+                                                        i)]);
     for (i = 0; i < 225u; i++)
         EMIT(0x80174, config->cabac_state[t21_mau_context_index(i)]);
     EMIT(0x801c0, 0x70000006u);
@@ -315,7 +364,8 @@ int T21_H264_BuildDescriptor(const T21H264SliceConfig *config,
                   ((uint32_t)config->first_mby << 8));
     EMIT(0x90010, 2);
     EMIT(0x90014, 3);
-    EMIT(0x90018, ((uint32_t)config->qp << 8) | 0x31u);
+    EMIT(0x90018, ((uint32_t)config->qp << 8) |
+                  (config->slice_type ? 0x32u : 0x31u));
     EMIT(0x9001c, T21_VRAM_SDE);
     EMIT(0x90020, 0x1320007cu);
     EMIT(0x90024, config->bitstream);
@@ -340,8 +390,9 @@ int T21_H264_BuildDescriptor(const T21H264SliceConfig *config,
     EMIT(0x30024, 1);
     for (i = 0; i < 8u; i++)
         EMIT(0x00060u + i * 4u, 0);
-    EMIT(0x00060, 0x08080400u);
-    EMIT(0x00064, 0x97850f02u);
+    EMIT(0x00060, 0x08080400u |
+                  ((uint32_t)config->slice_type << 2));
+    EMIT(0x00064, 0x97850f02u | config->slice_type);
     EMIT(0x60004, ((uint32_t)config->height << 14) | config->width);
     EMIT(0x60008, config->output_y);
     EMIT(0x6000c, config->output_c);
@@ -366,6 +417,7 @@ int T21_H264_BuildDescriptor(const T21H264SliceConfig *config,
     EMIT(0xb0000, 0x0002ffbdu);
     if (t21_emit_final(&writer, 0x40000,
                        0xc0000000u | ((uint32_t)config->qp << 8) |
+                       ((uint32_t)config->slice_type << 4) |
                        crop_flag | config->raw_format | 0x23u) != 0)
         return -1;
 

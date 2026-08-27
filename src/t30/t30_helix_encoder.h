@@ -15,6 +15,8 @@ int OpenIMP_T30_HelixEncode(T30HelixEncoder *encoder,
                             const IMPFrameInfo *frame,
                             HWStreamBuffer **stream);
 int OpenIMP_T30_HelixRequestIDR(T30HelixEncoder *encoder);
+int OpenIMP_T30_HelixSetBitrate(T30HelixEncoder *encoder,
+                                uint32_t bitrate);
 void OpenIMP_T30_HelixDestroy(T30HelixEncoder *encoder);
 
 #endif

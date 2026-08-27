@@ -18,7 +18,9 @@
 #define OPENIMP_AVC_TYPE_AVC 0u
 #define OPENIMP_AVC_GET_DMA_PHY _IOWR('q', 18, struct openimp_avc_dma_info)
 #define OPENIMP_AVC_EXTERNAL_FRAME_MAGIC 0x56344c32u
-#if defined(PLATFORM_T30)
+#if defined(PLATFORM_T21)
+#define OPENIMP_AVC_DMA_DEVICE "/dev/tx-isp-t21-dmabuf"
+#elif defined(PLATFORM_T30)
 #define OPENIMP_AVC_DMA_DEVICE "/dev/tx-isp-t30-dmabuf"
 #else
 #define OPENIMP_AVC_DMA_DEVICE "/dev/avpu"
@@ -42,7 +44,7 @@ typedef struct OpenIMPAVCRawFrame {
 #if defined(PLATFORM_T41)
     uint32_t direct_physical_address;
 #endif
-#if !defined(PLATFORM_T30)
+#if !defined(PLATFORM_T21) && !defined(PLATFORM_T30)
     void *pool;
 #endif
     int64_t timestamp;
@@ -66,14 +68,15 @@ _Static_assert(offsetof(OpenIMPAVCRawFrame, physical_address) == 0x18,
 #if defined(PLATFORM_T41)
 _Static_assert(offsetof(OpenIMPAVCRawFrame, timestamp) == 0x28,
                "T41 codec frame timestamp ABI mismatch");
-#elif defined(PLATFORM_T30)
-/* The native T30 Helix path consumes the legacy IMPFrameInfo layout.  It has
- * no pool pointer between virAddr and timeStamp, so keep the standalone AVC
- * bridge layout-compatible instead of making the encoder guess an offset. */
+#elif defined(PLATFORM_T21) || defined(PLATFORM_T30)
+/* The native T21/T30 Helix paths consume the legacy IMPFrameInfo layout.  It
+ * has no pool pointer between virAddr and timeStamp, so keep the standalone
+ * AVC bridge layout-compatible instead of making the encoder guess an
+ * offset. */
 _Static_assert(offsetof(OpenIMPAVCRawFrame, timestamp) == 0x20,
-               "T30 codec frame timestamp ABI mismatch");
+               "T21/T30 codec frame timestamp ABI mismatch");
 _Static_assert(offsetof(OpenIMPAVCRawFrame, external_frame_magic) == 0x28,
-               "T30 external frame marker ABI mismatch");
+               "T21/T30 external frame marker ABI mismatch");
 #endif
 _Static_assert(offsetof(OpenIMPAVCRawStream, timestamp) == 0x10,
                "codec stream timestamp ABI mismatch");

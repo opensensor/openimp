@@ -39,7 +39,12 @@ typedef T30H264SliceConfig PlatformH264SliceConfig;
 #define T30_CHANNEL_OPEN     0u
 #define T30_CHANNEL_CLOSE    2u
 #define T30_CHANNEL_DELAY_MS 20000u
+#if defined(PLATFORM_T21)
+#define T30_DESCRIPTOR_WINDOW (1u << 14)
+#define T30_BITSTREAM_WINDOW  (1u << 20)
+#else
 #define T30_DESCRIPTOR_WINDOW (1u << 20)
+#endif
 #define T30_EMC_SIZE          (1u << 21)
 #define T30_DBLK_SIZE         (1u << 20)
 #define T30_RECON_SIZE        (1u << 18)
@@ -295,12 +300,10 @@ static void t30_fill_slice(T30HelixEncoder *encoder,
                     (uint32_t)encoder->sps.i_mb_width * 16u *
                     (uint32_t)encoder->sps.i_mb_height * 16u;
     slice->raw[2] = 0;
-#if !defined(PLATFORM_T21)
     if (!idr) {
         slice->reference_y = encoder->reference[encoder->reference_index].y;
         slice->reference_c = encoder->reference[encoder->reference_index].c;
     }
-#endif
     slice->output_y = encoder->reference[output_index].y;
     slice->output_c = encoder->reference[output_index].c;
     slice->bitstream = encoder->temporary.phys_addr + T30_SLICE_OFFSET;
@@ -359,7 +362,11 @@ int OpenIMP_T30_HelixCreate(T30HelixEncoder **encoder_out,
                          "t30-helix-desc") != 0 ||
         t30_dma_allocate(&encoder->emc, T30_EMC_SIZE,
                          "t30-helix-emc") != 0 ||
+#if defined(PLATFORM_T21)
+        t30_dma_allocate(&encoder->temporary, T30_BITSTREAM_WINDOW,
+#else
         t30_dma_allocate(&encoder->temporary, (uint32_t)frame_size * 2u,
+#endif
                          "t30-helix-bs") != 0)
         goto fail;
     for (i = 0; i < 2u; i++) {
@@ -440,13 +447,7 @@ int OpenIMP_T30_HelixEncode(T30HelixEncoder *encoder,
                              idr ? NAL_PRIORITY_HIGHEST : NAL_PRIORITY_HIGH);
     bs_align_1(&bits);
     h264_cabac_context_init(&encoder->cabac,
-#if defined(PLATFORM_T21)
-                            /* Stock T21 selects the intra initialization bank
-                             * for both IDR and non-IDR hardware descriptors. */
-                            SLICE_TYPE_I,
-#else
                             encoder->slice_header.i_type,
-#endif
                             (int)qp,
                             encoder->slice_header.i_cabac_init_idc);
 
@@ -460,6 +461,26 @@ int OpenIMP_T30_HelixEncode(T30HelixEncoder *encoder,
 #endif
         LOG_CODEC("T30 Helix: descriptor build failed: %s",
                   strerror(errno));
+        return -1;
+    }
+    /* /dev/rmem is a cached mapping.  Publish the CPU-built command list
+     * before the VPU fetches it, and discard the allocator's initial dirty
+     * zero lines from the hardware-output window before DMA begins.  Doing
+     * the latter only after RUN is too late: an intervening cache eviction
+     * can overwrite freshly encoded CABAC bytes with stale zeros. */
+    if (DMA_RmemFlushCache(
+            (void *)(uintptr_t)encoder->descriptor.virt_addr,
+            (uint32_t)(descriptor_pairs * 2u * sizeof(uint32_t)), 1) != 0 ||
+        DMA_RmemFlushCache(temporary + T30_SLICE_OFFSET,
+                           encoder->temporary.size - T30_SLICE_OFFSET,
+                           2) != 0
+#if defined(PLATFORM_T21)
+        || DMA_RmemFlushCache(
+               (void *)(uintptr_t)encoder->reference[output_index].dma.virt_addr,
+               encoder->reference[output_index].dma.size, 2) != 0
+#endif
+       ) {
+        LOG_CODEC("T30 Helix: DMA prepare failed: %s", strerror(errno));
         return -1;
     }
     encoder->channel.vpu_id = (int32_t)T30_HELIX_H264_CORE;
@@ -533,10 +554,36 @@ int OpenIMP_T30_HelixRequestIDR(T30HelixEncoder *encoder)
     return 0;
 }
 
+int OpenIMP_T30_HelixSetBitrate(T30HelixEncoder *encoder,
+                                uint32_t bitrate)
+{
+    if (!encoder || !bitrate)
+        return -1;
+
+    if (encoder->params.rc_mode != HW_RC_MODE_FIXQP) {
+        if (encoder->rate_control_enabled) {
+            if (openimp_t31_rate_controller_set_bitrate(
+                    &encoder->rate_control, bitrate) != 0)
+                return -1;
+        } else if (encoder->params.fps_num && encoder->params.fps_den &&
+                   openimp_t31_rate_controller_init(
+                       &encoder->rate_control, bitrate,
+                       encoder->params.fps_num, encoder->params.fps_den,
+                       encoder->params.gop_length, encoder->params.min_qp,
+                       encoder->params.max_qp, encoder->params.qp) == 0) {
+            encoder->rate_control_enabled = 1;
+        } else {
+            return -1;
+        }
+    }
+
+    encoder->params.bitrate = bitrate;
+    return 0;
+}
+
 void OpenIMP_T30_HelixDestroy(T30HelixEncoder *encoder)
 {
     unsigned int i;
-
     if (!encoder)
         return;
     if (encoder->fd >= 0 && encoder->channel.clist) {

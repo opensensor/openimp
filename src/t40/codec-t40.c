@@ -8979,6 +8979,13 @@ int AL_Codec_Encode_SetBitRate(void *codec, int targetBitrate, int maxBitrate)
 
     enc = (AL_CodecEncode *)codec;
     bitrate_bps = (uint32_t)(targetBitrate > 0 ? targetBitrate : maxBitrate);
+#if defined(PLATFORM_T30)
+    if (enc->t30_helix &&
+        OpenIMP_T30_HelixSetBitrate(enc->t30_helix, bitrate_bps) != 0) {
+        codec_set_error(enc, -1);
+        return -1;
+    }
+#endif
     enc->hw_params.bitrate = bitrate_bps;
     enc->avpu.bitrate = bitrate_bps;
     codec_param_write_bitrate_bps(enc->codec_param, bitrate_bps);
