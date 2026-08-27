@@ -42,6 +42,12 @@ int openimp_t31_rate_controller_init(OpenIMPT31RateController *controller,
                                      uint32_t min_qp, uint32_t max_qp,
                                      uint32_t initial_qp);
 
+/* Retarget an active controller without throwing away its normalized scene
+ * model.  This is used by the T21/T30 Helix path as well as the direct T31
+ * encoder when a consumer changes bitrate between frames. */
+int openimp_t31_rate_controller_set_bitrate(
+    OpenIMPT31RateController *controller, uint32_t bitrate);
+
 /* Complete one access unit.  QP changes only at a completed GOP boundary. */
 int openimp_t31_rate_controller_complete(
     OpenIMPT31RateController *controller, uint32_t completed_bits,

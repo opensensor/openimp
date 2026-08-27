@@ -41,6 +41,25 @@ static uint32_t t31_scale_bits_for_qp(uint32_t bits, int qp_delta)
     return (uint32_t)scaled;
 }
 
+static uint32_t t31_select_model_qp(uint32_t model_bits,
+                                    uint32_t target_bits,
+                                    uint32_t min_qp, uint32_t max_qp)
+{
+    uint32_t qp;
+
+    for (qp = min_qp; qp <= max_qp; ++qp) {
+        uint32_t prediction = t31_scale_bits_for_qp(
+            model_bits, (int)qp - (int)T31_MODEL_REFERENCE_QP);
+
+        /* One-QP fixed-point scaling is not perfectly reciprocal; accept a
+         * 0.1% round-trip tolerance so an exact target does not gain a QP. */
+        if ((uint64_t)prediction * 1000u <=
+            (uint64_t)target_bits * 1001u)
+            return qp;
+    }
+    return max_qp;
+}
+
 static int64_t t31_saturating_add_i64(int64_t left, int64_t right)
 {
     if (right > 0 && left > INT64_MAX - right)
@@ -121,23 +140,41 @@ static void t31_complete_gop(OpenIMPT31RateController *controller)
         controller->over_target_gops = 0u;
         controller->under_target_gops = 0u;
     }
-    controller->smoothed_gop_model_bits = (uint32_t)(
-        ((uint64_t)controller->smoothed_gop_model_bits *
-             T31_GOP_EMA_OLD_WEIGHT +
-         average + T31_GOP_EMA_OLD_WEIGHT / 2u) /
-        (T31_GOP_EMA_OLD_WEIGHT + 1u));
     previous_qp = controller->current_qp;
-    if (controller->over_target_gops >= T31_OVER_TARGET_GOPS) {
+    if (controller->completed_gops == 0u) {
+        /*
+         * The configured initial QP is only a safe way to obtain the first
+         * GOP.  Use that GOP's normalized measurement immediately so startup
+         * cannot spend tens of seconds far above the requested bitrate.  All
+         * subsequent adjustments retain the deliberately slow persistence
+         * behavior that prevents visible pumping during scene changes.
+         */
+        controller->smoothed_gop_model_bits = (uint32_t)average;
+        controller->current_qp = t31_select_model_qp(
+            controller->smoothed_gop_model_bits, controller->target_bits,
+            controller->min_qp, controller->max_qp);
+        controller->over_target_gops = 0u;
+        controller->under_target_gops = 0u;
+    } else {
+        controller->smoothed_gop_model_bits = (uint32_t)(
+            ((uint64_t)controller->smoothed_gop_model_bits *
+                 T31_GOP_EMA_OLD_WEIGHT +
+             average + T31_GOP_EMA_OLD_WEIGHT / 2u) /
+            (T31_GOP_EMA_OLD_WEIGHT + 1u));
+    }
+    if (controller->completed_gops != 0u &&
+        controller->over_target_gops >= T31_OVER_TARGET_GOPS) {
         if (controller->current_qp < controller->max_qp)
             ++controller->current_qp;
         controller->over_target_gops = 0u;
         controller->under_target_gops = 0u;
-    } else if (controller->under_target_gops >= T31_UNDER_TARGET_GOPS) {
+    } else if (controller->completed_gops != 0u &&
+               controller->under_target_gops >= T31_UNDER_TARGET_GOPS) {
         if (controller->current_qp > controller->min_qp)
             --controller->current_qp;
         controller->over_target_gops = 0u;
         controller->under_target_gops = 0u;
-    } else {
+    } else if (controller->completed_gops != 0u) {
         controller->current_qp = t31_select_recovery_qp(controller);
         if (controller->current_qp != previous_qp) {
             controller->over_target_gops = 0u;
@@ -184,6 +221,49 @@ int openimp_t31_rate_controller_init(OpenIMPT31RateController *controller,
     return 0;
 }
 
+int openimp_t31_rate_controller_set_bitrate(
+    OpenIMPT31RateController *controller, uint32_t bitrate)
+{
+    uint64_t target_bits;
+    uint32_t model_bits;
+    uint32_t selected_qp;
+
+    if (!controller || !controller->initialized || bitrate == 0u ||
+        controller->fps_num == 0u || controller->fps_den == 0u)
+        return -1;
+
+    target_bits = ((uint64_t)bitrate * controller->fps_den +
+                   controller->fps_num / 2u) / controller->fps_num;
+    if (target_bits == 0u || target_bits > UINT32_MAX)
+        return -1;
+
+    /* smoothed_gop_model_bits is normalized to the reference QP and remains
+     * valid across a target-rate change.  At startup, before a completed GOP
+     * exists, derive the same normalized estimate from the old target. */
+    model_bits = controller->smoothed_gop_model_bits;
+    if (model_bits == 0u) {
+        model_bits = t31_scale_bits_for_qp(
+            controller->target_bits,
+            (int)T31_MODEL_REFERENCE_QP -
+                (int)controller->current_qp);
+    }
+
+    selected_qp = t31_select_model_qp(
+        model_bits, (uint32_t)target_bits,
+        controller->min_qp, controller->max_qp);
+
+    controller->bitrate = bitrate;
+    controller->target_bits = (uint32_t)target_bits;
+    controller->picture_target_bits = controller->target_bits;
+    controller->current_qp = selected_qp;
+    controller->gop_model_bits = 0u;
+    controller->gop_pictures = 0u;
+    controller->over_target_gops = 0u;
+    controller->under_target_gops = 0u;
+    controller->virtual_buffer_bits = 0;
+    return 0;
+}
+
 int openimp_t31_rate_controller_complete(
     OpenIMPT31RateController *controller, uint32_t completed_bits,
     uint32_t used_qp, int is_idr)
@@ -199,8 +279,19 @@ int openimp_t31_rate_controller_complete(
     /* An early IDR closes the preceding GOP.  The normal fixed-length path
      * below closes it after the last P picture, before the next IDR is
      * submitted, so its selected QP applies consistently to that next GOP. */
-    if (is_idr && controller->gop_pictures > 0u)
-        t31_complete_gop(controller);
+    if (is_idr && controller->gop_pictures > 0u) {
+        /* Consumers commonly request a second IDR immediately after encoder
+         * creation.  Do not teach the startup model from that one-picture
+         * GOP: an IDR alone badly overestimates steady inter-frame cost. */
+        if (controller->completed_gops == 0u &&
+            controller->gop_pictures <
+                (controller->gop_length + 1u) / 2u) {
+            controller->gop_model_bits = 0u;
+            controller->gop_pictures = 0u;
+        } else {
+            t31_complete_gop(controller);
+        }
+    }
 
     error = (int64_t)completed_bits - controller->target_bits;
     controller->virtual_buffer_bits = t31_saturating_add_i64(
