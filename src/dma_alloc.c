@@ -81,15 +81,16 @@ static pthread_mutex_t g_registry_mutex = PTHREAD_MUTEX_INITIALIZER;
 /* Global state */
 static int g_mem_fd = -1;
 static pthread_mutex_t g_dma_mutex = PTHREAD_MUTEX_INITIALIZER;
+static pthread_mutex_t g_alloc_mutex = PTHREAD_MUTEX_INITIALIZER;
 static int g_dma_initialized = 0;
-static int g_rmem_supported = 0;  /* set to 1 when /dev/rmem accepts our ioctls */
+static int g_rmem_supported = 0;  /* set when a DMA-capable backend is ready */
 
 /* RMEM-specific globals (for /dev/rmem bump allocator) */
 static int g_is_rmem = 0;
 static int g_is_avpu = 0;
 static int g_is_devmem_rmem = 0;
-static uint32_t g_rmem_base_phys = 0x06300000; /* 29MB region base (from RE notes) */
-static size_t g_rmem_size = (size_t)(29 * 1024 * 1024);
+static uint32_t g_rmem_base_phys;
+static size_t g_rmem_size;
 static void *g_rmem_virt_base = NULL;
 static size_t g_rmem_offset = 0; /* bump pointer */
 static char g_chosen_dev_path[64] = {0};
@@ -250,40 +251,78 @@ static int looks_like_pointer_style_pool_alloc(uintptr_t arg2, intptr_t arg3, co
 /**
  * Initialize DMA allocator
  */
-static int maybe_override_rmem_from_env(void)
+static int rmem_range_valid(uint32_t base, size_t size)
+{
+    uint64_t end = (uint64_t)base + (uint64_t)size;
+
+    return base != 0 && size != 0 &&
+           (base & 0xfffu) == 0 && (size & 0xfffu) == 0 &&
+           end <= (UINT64_C(1) << 32);
+}
+
+static int parse_uint32_exact(const char *value, uint32_t *result)
+{
+    char *endp = NULL;
+    unsigned long parsed;
+
+    if (value == NULL || *value == '\0' || result == NULL)
+        return -1;
+    errno = 0;
+    parsed = strtoul(value, &endp, 0);
+    if (errno != 0 || endp == value || *endp != '\0' || parsed > UINT32_MAX)
+        return -1;
+    *result = (uint32_t)parsed;
+    return 0;
+}
+
+static int parse_size_exact(const char *value, size_t *result)
+{
+    char *endp = NULL;
+    unsigned long parsed;
+
+    if (value == NULL || *value == '\0' || result == NULL)
+        return -1;
+    errno = 0;
+    parsed = strtoul(value, &endp, 0);
+    if (errno != 0 || endp == value || *endp != '\0' || parsed == 0)
+        return -1;
+    *result = (size_t)parsed;
+    return 0;
+}
+
+static int configure_rmem_from_env(void)
 {
     const char *env_base = getenv("OPENIMP_RMEM_BASE");
     const char *env_size = getenv("OPENIMP_RMEM_SIZE");
-    int configured = 0;
+    uint32_t base;
+    size_t size;
 
-    if (env_base && *env_base) {
-        char *endp = NULL;
-        unsigned long v = strtoul(env_base, &endp, 0);
-        if (endp && endp != env_base && v <= UINT32_MAX) {
-            g_rmem_base_phys = (uint32_t)v;
-            configured = 1;
-            LOG_DMA("RMEM base overridden by env: 0x%08x", g_rmem_base_phys);
-        }
+    if ((!env_base || !*env_base) && (!env_size || !*env_size))
+        return 0;
+    if (!env_base || !*env_base || !env_size || !*env_size ||
+        parse_uint32_exact(env_base, &base) != 0 ||
+        parse_size_exact(env_size, &size) != 0 ||
+        !rmem_range_valid(base, size)) {
+        LOG_DMA("RMEM environment override rejected: both page-aligned base and size are required");
+        return -1;
     }
-    if (env_size && *env_size) {
-        char *endp = NULL;
-        unsigned long v = strtoul(env_size, &endp, 0);
-        if (endp && endp != env_size && v > 0) {
-            g_rmem_size = (size_t)v;
-            configured = 1;
-            LOG_DMA("RMEM size overridden by env: %zu (0x%zx)", g_rmem_size, g_rmem_size);
-        }
-    }
-    return configured;
+
+    g_rmem_base_phys = base;
+    g_rmem_size = size;
+    LOG_DMA("RMEM overridden by env: base=0x%08x size=%zu (0x%zx)",
+            g_rmem_base_phys, g_rmem_size, g_rmem_size);
+    return 1;
 }
 
-static int maybe_override_rmem_from_cmdline(void)
+static int configure_rmem_from_cmdline(void)
 {
     char cmdline[1024];
     char *field;
+    char *saveptr = NULL;
     char *endp;
     unsigned long amount;
     unsigned long base;
+    uint64_t multiplier = 1;
     uint64_t bytes;
     FILE *fp;
 
@@ -296,60 +335,84 @@ static int maybe_override_rmem_from_cmdline(void)
     }
     fclose(fp);
 
-    field = strstr(cmdline, "rmem=");
+    field = strtok_r(cmdline, " \t\r\n", &saveptr);
+    while (field != NULL && strncmp(field, "rmem=", 5) != 0)
+        field = strtok_r(NULL, " \t\r\n", &saveptr);
     if (field == NULL)
         return 0;
-    field += strlen("rmem=");
+    field += 5;
+    errno = 0;
     amount = strtoul(field, &endp, 0);
-    if (endp == field || amount == 0)
-        return 0;
+    if (errno != 0 || endp == field)
+        goto invalid;
 
-    bytes = amount;
     if (*endp == 'M' || *endp == 'm') {
-        bytes *= 1024u * 1024u;
+        multiplier = 1024u * 1024u;
         endp++;
     } else if (*endp == 'K' || *endp == 'k') {
-        bytes *= 1024u;
+        multiplier = 1024u;
         endp++;
     }
-    if (*endp != '@' || bytes == 0 || bytes > SIZE_MAX)
-        return 0;
+    if (*endp != '@' || amount > UINT64_MAX / multiplier)
+        goto invalid;
+    bytes = (uint64_t)amount * multiplier;
 
     field = endp + 1;
+    errno = 0;
     base = strtoul(field, &endp, 0);
-    if (endp == field || base > UINT32_MAX)
+    if (errno != 0 || endp == field || *endp != '\0' ||
+        base > UINT32_MAX || bytes > SIZE_MAX)
+        goto invalid;
+
+    if (bytes == 0) {
+        LOG_DMA("RMEM disabled by kernel command line");
         return 0;
+    }
+    if (!rmem_range_valid((uint32_t)base, (size_t)bytes))
+        goto invalid;
 
     g_rmem_base_phys = (uint32_t)base;
     g_rmem_size = (size_t)bytes;
     LOG_DMA("RMEM parsed from cmdline: base=0x%08x size=%zu (0x%zx)",
             g_rmem_base_phys, g_rmem_size, g_rmem_size);
     return 1;
+
+invalid:
+    LOG_DMA("RMEM kernel command line value is malformed or unsafe");
+    return -1;
 }
 
 static int dma_init(void) {
+    int cmdline_config;
+    int env_config;
+    int rmem_configured;
+
     if (g_dma_initialized) {
-        return 0;
+        return g_rmem_supported ? 0 : -1;
     }
 
     pthread_mutex_lock(&g_dma_mutex);
 
     if (g_dma_initialized) {
         pthread_mutex_unlock(&g_dma_mutex);
-        return 0;
+        return g_rmem_supported ? 0 : -1;
     }
 
     /* The bootloader is authoritative for the reserved arena.  Environment
      * values remain a useful explicit override for development profiles. */
-    int devmem_rmem_configured = maybe_override_rmem_from_cmdline();
-    devmem_rmem_configured |= maybe_override_rmem_from_env();
+    cmdline_config = configure_rmem_from_cmdline();
+    env_config = configure_rmem_from_env();
+    if (cmdline_config < 0 || env_config < 0) {
+        LOG_DMA("DMA init: refusing an invalid reserved-memory configuration");
+        goto unavailable;
+    }
+    rmem_configured = cmdline_config > 0 || env_config > 0;
 
     /* Check if RMEM should be disabled (T31 workaround for kernel bugs) */
     const char *disable_rmem_env = getenv("OPENIMP_DISABLE_RMEM");
     int disable_rmem = (disable_rmem_env && disable_rmem_env[0] == '1');
 
     const char *candidates[] = {
-        "/dev/rmem",
         "/dev/memalloc",
         "/dev/ion-ingenic",
         "/dev/ion",
@@ -361,14 +424,40 @@ static int dma_init(void) {
     };
 
     g_mem_fd = -1;
-    for (int i = 0; candidates[i] != NULL; i++) {
-        /* Skip /dev/rmem if disabled via environment variable */
-        if (disable_rmem && strcmp(candidates[i], "/dev/rmem") == 0) {
-            LOG_DMA("DMA init: skipping /dev/rmem (OPENIMP_DISABLE_RMEM=1)");
-            continue;
-        }
+    if (!disable_rmem && rmem_configured) {
+        int fd = open("/dev/rmem", O_RDWR | O_CLOEXEC);
 
-        int fd = open(candidates[i], O_RDWR | O_CLOEXEC);
+        if (fd >= 0) {
+            void *base = mmap(NULL, g_rmem_size, PROT_READ | PROT_WRITE,
+                              MAP_SHARED, fd, (off_t)g_rmem_base_phys);
+
+            if (base != MAP_FAILED) {
+                g_mem_fd = fd;
+                g_rmem_supported = 1;
+                g_rmem_virt_base = base;
+                g_is_rmem = 1;
+                strncpy(g_chosen_dev_path, "/dev/rmem",
+                        sizeof(g_chosen_dev_path) - 1);
+                LOG_DMA("DMA init: /dev/rmem mapped at %p size=%zu base_phys=0x%08x",
+                        base, g_rmem_size, g_rmem_base_phys);
+            } else {
+                LOG_DMA("DMA init: mmap of /dev/rmem failed (%s)",
+                        strerror(errno));
+                close(fd);
+            }
+        }
+    } else if (disable_rmem) {
+        LOG_DMA("DMA init: skipping /dev/rmem (OPENIMP_DISABLE_RMEM=1)");
+    } else {
+        LOG_DMA("DMA init: skipping /dev/rmem without a valid reserved-memory range");
+    }
+
+    for (int i = 0; candidates[i] != NULL; i++) {
+        int fd;
+
+        if (g_mem_fd >= 0)
+            break;
+        fd = open(candidates[i], O_RDWR | O_CLOEXEC);
         if (fd >= 0) {
             g_mem_fd = fd;
             g_rmem_supported = 1;
@@ -378,7 +467,7 @@ static int dma_init(void) {
         }
     }
 
-    if (g_mem_fd < 0 && devmem_rmem_configured &&
+    if (g_mem_fd < 0 && rmem_configured &&
         g_rmem_base_phys != 0 && g_rmem_size != 0) {
         int fd = open("/dev/mem", O_RDWR | O_SYNC | O_CLOEXEC);
         if (fd >= 0) {
@@ -413,31 +502,19 @@ static int dma_init(void) {
             LOG_DMA("DMA init: using AVPU coherent allocator");
         } else {
             g_rmem_supported = 0;
-            LOG_DMA("DMA init: no DMA device found; using malloc fallback only");
-        }
-    } else if (strcmp(g_chosen_dev_path, "/dev/rmem") == 0) {
-        /* rmem requires mmap; set up a single mapping and bump allocator */
-        /*
-         * /dev/rmem passes vm_pgoff straight to io_remap_pfn_range().  The
-         * offset therefore is the physical address of the reserved arena,
-         * not an allocator-relative file offset.  Mapping at zero creates a
-         * cached alias of physical RAM starting at address zero while the
-         * descriptors below still advertise g_rmem_base_phys to DMA users.
-         */
-        void *base = mmap(NULL, g_rmem_size, PROT_READ | PROT_WRITE,
-                          MAP_SHARED, g_mem_fd, (off_t)g_rmem_base_phys);
-        if (base == MAP_FAILED) {
-            LOG_DMA("DMA init: mmap of /dev/rmem failed (%s); will fall back per-alloc", strerror(errno));
-        } else {
-            g_rmem_virt_base = base;
-            g_is_rmem = 1;
-            LOG_DMA("DMA init: /dev/rmem mapped at %p size=%zu base_phys=0x%08x", base, g_rmem_size, g_rmem_base_phys);
+            LOG_DMA("DMA init: no DMA-capable allocator is available");
         }
     }
 
     g_dma_initialized = 1;
     pthread_mutex_unlock(&g_dma_mutex);
-    return 0;
+    return g_rmem_supported ? 0 : -1;
+
+unavailable:
+    g_rmem_supported = 0;
+    g_dma_initialized = 1;
+    pthread_mutex_unlock(&g_dma_mutex);
+    return -1;
 }
 
 static int dma_free_buffer(DMABufferRecord *buf)
@@ -502,6 +579,10 @@ static int dma_alloc_descriptor_internal(int pool_id, IMPDMABufferInfo *info_out
     buf->size = (uint32_t)size;
     buf->pool_id = (pool_id >= 0) ? (uint32_t)pool_id : 0;
 
+    /* The reserved arena is a bump allocator.  Serializing the complete
+     * backend operation prevents concurrent callers from receiving the same
+     * physical pages. */
+    pthread_mutex_lock(&g_alloc_mutex);
     if (g_rmem_supported && g_mem_fd >= 0) {
         if (g_is_rmem && g_rmem_virt_base != NULL) {
             size_t align = 4096;
@@ -514,7 +595,7 @@ static int dma_alloc_descriptor_internal(int pool_id, IMPDMABufferInfo *info_out
                 LOG_DMA("Alloc: %s size=%d phys=0x%x virt=%p (rmem off=0x%zx)",
                         buf->name[0] ? buf->name : "(unnamed)", size, buf->phys_addr, buf->virt_addr, off);
             } else {
-                LOG_DMA("Alloc: /dev/rmem out of memory (requested=%d, used=%zu/%zu); falling back",
+                LOG_DMA("Alloc: /dev/rmem out of memory (requested=%d, used=%zu/%zu); refusing unsafe fallback",
                         size, g_rmem_offset, g_rmem_size);
             }
         } else if (g_is_avpu) {
@@ -555,23 +636,25 @@ static int dma_alloc_descriptor_internal(int pool_id, IMPDMABufferInfo *info_out
                     LOG_DMA("Alloc: %s size=%d phys=0x%x virt=%p (kernel)",
                             buf->name[0] ? buf->name : "(unnamed)", size, buf->phys_addr, buf->virt_addr);
                 } else {
-                    LOG_DMA("Alloc: mmap failed for phys=0x%x (%s); falling back", req.phys_addr, strerror(errno));
+                    LOG_DMA("Alloc: mmap failed for phys=0x%x (%s)", req.phys_addr, strerror(errno));
+                    if (ioctl(g_mem_fd, IOCTL_MEM_FREE, &req) != 0)
+                        LOG_DMA("Alloc: failed to release phys=0x%x after mmap failure (%s)",
+                                req.phys_addr, strerror(errno));
                 }
             } else {
-                LOG_DMA("Alloc: IOCTL_MEM_ALLOC failed (%s); falling back", strerror(errno));
+                LOG_DMA("Alloc: IOCTL_MEM_ALLOC failed (%s)", strerror(errno));
             }
         }
     }
 
     if (buf->virt_addr == NULL) {
-        if (posix_memalign(&buf->virt_addr, 4096, (size_t)size) != 0) {
-            LOG_DMA("Alloc: posix_memalign failed");
-            free(buf);
-            return -1;
-        }
-        buf->phys_addr = (uint32_t)(uintptr_t)buf->virt_addr;
-        LOG_DMA("Alloc: %s size=%d virt=%p (fallback)", buf->name[0] ? buf->name : "(unnamed)", size, buf->virt_addr);
+        pthread_mutex_unlock(&g_alloc_mutex);
+        LOG_DMA("Alloc: no DMA-backed storage for %s size=%d",
+                buf->name[0] ? buf->name : "(unnamed)", size);
+        free(buf);
+        return -1;
     }
+    pthread_mutex_unlock(&g_alloc_mutex);
 
     if (register_buffer(buf) < 0) {
         LOG_DMA("Alloc: failed to register buffer");
@@ -971,28 +1054,34 @@ static MemPoolEntry g_mem_pools[MAX_MEM_POOLS];
 static pthread_mutex_t mempool_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 int IMP_MemPool_InitPool(int pool_id, uint32_t size, int flags) {
+    IMPDMABufferInfo info;
+    MemPoolEntry *pool;
+
     if (pool_id < 0 || pool_id >= MAX_MEM_POOLS) {
         LOG_DMA("MemPool_InitPool: invalid pool_id %d", pool_id);
         return -1;
     }
-    if (size == 0) {
-        LOG_DMA("MemPool_InitPool: size is 0");
+    if (size == 0 || size > kCompatMaxAllocSize) {
+        LOG_DMA("MemPool_InitPool: invalid size %u", size);
         return -1;
     }
 
     pthread_mutex_lock(&mempool_mutex);
 
-    MemPoolEntry *pool = &g_mem_pools[pool_id];
+    pool = &g_mem_pools[pool_id];
     if (pool->in_use) {
         LOG_DMA("MemPool_InitPool: pool %d already in use", pool_id);
         pthread_mutex_unlock(&mempool_mutex);
         return -1;
     }
 
-    /* Allocate the pool's backing memory via DMA */
-    uintptr_t phys = IMP_Alloc(NULL, (intptr_t)size, "mempool");
-    if (phys == 0) {
-        LOG_DMA("MemPool_InitPool: IMP_Alloc failed for pool %d, size %u", pool_id, size);
+    /* This path needs both addresses.  Calling the dual-ABI IMP_Alloc with a
+     * NULL descriptor returns a status value, not an allocation address. */
+    memset(&info, 0, sizeof(info));
+    if (DMA_AllocDescriptor(&info, (int)size, "mempool") != 0 ||
+        info.phys_addr == 0 || info.virt_addr == 0) {
+        LOG_DMA("MemPool_InitPool: DMA allocation failed for pool %d, size %u",
+                pool_id, size);
         pthread_mutex_unlock(&mempool_mutex);
         return -1;
     }
@@ -1000,13 +1089,13 @@ int IMP_MemPool_InitPool(int pool_id, uint32_t size, int flags) {
     pool->in_use = 1;
     pool->pool_id = pool_id;
     pool->size = size;
-    pool->phys_base = (uint32_t)phys;
-    extern void *IMP_Phys_to_Virt(uint32_t);
-    pool->virt_base = IMP_Phys_to_Virt((uint32_t)phys);
+    pool->phys_base = info.phys_addr;
+    pool->virt_base = (void *)(uintptr_t)info.virt_addr;
     (void)flags;
 
     pthread_mutex_unlock(&mempool_mutex);
-    LOG_DMA("MemPool_InitPool: pool=%d size=%u phys=0x%x", pool_id, size, (uint32_t)phys);
+    LOG_DMA("MemPool_InitPool: pool=%d size=%u phys=0x%x",
+            pool_id, size, info.phys_addr);
     return 0;
 }
 
@@ -1072,10 +1161,16 @@ static AllocAttr g_alloc_attr = {0x1000, 0}; /* Default: 4K alignment, cached */
 static AllocAttr g_pool_alloc_attr = {0x1000, 0};
 
 uintptr_t IMP_Sp_Alloc(int size, char *tag) {
+    IMPDMABufferInfo info;
+
     /* OEM: special-purpose allocation — same as IMP_Alloc but with specific flags.
      * Routes through the same DMA allocator. */
-    if (size <= 0) return 0;
-    return IMP_Alloc(NULL, (intptr_t)size, tag);
+    if (size <= 0)
+        return 0;
+    memset(&info, 0, sizeof(info));
+    if (DMA_AllocDescriptor(&info, size, tag) != 0)
+        return 0;
+    return (uintptr_t)info.virt_addr;
 }
 
 int IMP_Alloc_Set_Attr(uint32_t alignment, uint32_t cache_policy) {
