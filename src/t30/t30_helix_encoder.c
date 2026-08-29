@@ -21,7 +21,7 @@
 #include "dma_alloc.h"
 #include "imp_log_int.h"
 #include "t30/h264enc/common.h"
-#if defined(PLATFORM_T21)
+#if defined(PLATFORM_T21) && !defined(PLATFORM_T20)
 #include "t21/t21_h264_descriptor.h"
 typedef T21H264SliceConfig PlatformH264SliceConfig;
 #else
@@ -34,7 +34,14 @@ typedef T30H264SliceConfig PlatformH264SliceConfig;
 #define T30_CHANNEL_RELEASE 0xc0386301u
 #define T30_CHANNEL_RUN     0xc0386302u
 
+#if defined(PLATFORM_T20)
+/* Stock T20 libimp passes RANDOM_ID (-1) and lets soc_vpu select/open the
+ * pre-Helix JZ NVPU.  Preserve that ABI exactly; the later Helix selector is
+ * not registered on T20. */
+#define T30_HELIX_H264_CORE 0xffffffffu
+#else
 #define T30_HELIX_H264_CORE 0x02000001u
+#endif
 #define T30_H264_ENCODE      0u
 #define T30_CHANNEL_OPEN     0u
 #define T30_CHANNEL_CLOSE    2u
@@ -59,7 +66,7 @@ typedef T30H264SliceConfig PlatformH264SliceConfig;
 #define T30_HEADER_CAPACITY   4096u
 #define T30_NV12_MODE         8u
 
-#if defined(PLATFORM_T21)
+#if defined(PLATFORM_T21) && !defined(PLATFORM_T20)
 /* T21 Helix programs fixed 4x4/8x8 quantization matrices in its VDMA list.
  * Advertise those same matrices in the PPS so a decoder interprets the
  * transform flags and inverse quantization exactly as the hardware does. */
@@ -167,7 +174,7 @@ static void t30_init_parameter_sets(T30HelixEncoder *encoder)
                                                 encoder->params.height);
     sps->i_log2_max_frame_num = 10;
     sps->i_poc_type = 2;
-#if defined(PLATFORM_T21)
+#if defined(PLATFORM_T21) && !defined(PLATFORM_T20)
     sps->i_num_ref_frames = 2;
     sps->b_gaps_in_frame_num_value_allowed = 1;
     sps->b_vui = 1;
@@ -202,7 +209,7 @@ static void t30_init_parameter_sets(T30HelixEncoder *encoder)
     pps->i_pic_init_qp = 26;
     pps->i_pic_init_qs = 26;
     pps->b_deblocking_filter_control = 1;
-#if defined(PLATFORM_T21)
+#if defined(PLATFORM_T21) && !defined(PLATFORM_T20)
     pps->b_transform_8x8_mode = 1;
 #endif
 }
@@ -252,7 +259,7 @@ static int t30_generate_headers(T30HelixEncoder *encoder)
         return -1;
     encoder->headers_size = (uint32_t)length;
 
-#if defined(PLATFORM_T21)
+#if defined(PLATFORM_T21) && !defined(PLATFORM_T20)
     if (sizeof(t21_high_profile_pps) >
         sizeof(encoder->headers) - encoder->headers_size)
         return -1;
@@ -309,7 +316,7 @@ static void t30_fill_slice(T30HelixEncoder *encoder,
     slice->bitstream = encoder->temporary.phys_addr + T30_SLICE_OFFSET;
     slice->descriptor = (uint32_t *)(uintptr_t)encoder->descriptor.virt_addr;
     slice->descriptor_words = encoder->descriptor.size / sizeof(uint32_t);
-#if defined(PLATFORM_T21)
+#if defined(PLATFORM_T21) && !defined(PLATFORM_T20)
     slice->scratch_base = encoder->emc.phys_addr;
 #else
     /* SDK 1.0.5 selects the alternate DCS threshold for its substream. */
@@ -452,7 +459,7 @@ int OpenIMP_T30_HelixEncode(T30HelixEncoder *encoder,
                             encoder->slice_header.i_cabac_init_idc);
 
     t30_fill_slice(encoder, frame, qp, idr, output_index);
-#if defined(PLATFORM_T21)
+#if defined(PLATFORM_T21) && !defined(PLATFORM_T20)
     if (T21_H264_BuildDescriptor(&encoder->slice,
                                  &descriptor_pairs) != 0) {
 #else

@@ -24,7 +24,15 @@ extern int64_t OpenIMP_P0_NormalizeMonotonicTimeStamp(uint64_t timestamp);
 
 static void ki_trace(const char *fmt, ...)
 {
+    static unsigned int dequeue_trace_count;
+
     if (!openimp_debug_trace_enabled()) return;
+    /* A nonblocking capture queue can legitimately report EAGAIN while it
+     * waits for its first completed buffer.  Keep that diagnostic bounded so
+     * it cannot evict the QBUF/STREAMON setup evidence from the kernel log. */
+    if ((strstr(fmt, "DQBUF") != NULL || strstr(fmt, "KernelDequeue") != NULL) &&
+        __sync_fetch_and_add(&dequeue_trace_count, 1) >= 24)
+        return;
     int fd = open("/dev/kmsg", O_WRONLY);
     if (fd < 0) return;
 
@@ -82,7 +90,15 @@ static void *fs_poll_worker(void *arg)
 /* ioctl command definitions from decompilation */
 
 /* FrameSource ioctl commands */
-#if defined(PLATFORM_T21) || defined(PLATFORM_T30)
+#if defined(PLATFORM_T20)
+/* T20 uses the kernel 3.10 standard V4L2 capture ABI. */
+#define VIDIOC_GET_FMT      0xc0cc5604
+#define VIDIOC_TRY_FMT      0xc0cc5640
+#define VIDIOC_SET_FMT      0xc0cc5605
+#define VIDIOC_SET_CROP     0x8014563c
+#define VIDIOC_GET_SCALERCAP 0xc00856c3
+#define VIDIOC_SET_SCALER   0x800456c4
+#elif defined(PLATFORM_T21) || defined(PLATFORM_T30)
 /* T21 and T30 use the original 0x4c-byte frame-channel format ABI. */
 #define VIDIOC_GET_FMT      0x404c56c4  /* Get format */
 #define VIDIOC_SET_FMT      0xc04c56c3  /* Set format */
@@ -191,6 +207,52 @@ struct fs_ioctl_format70 {
 #endif
 };
 
+#if defined(PLATFORM_T20)
+struct t20_v4l2_pix_format {
+    uint32_t width;
+    uint32_t height;
+    uint32_t pixelformat;
+    uint32_t field;
+    uint32_t bytesperline;
+    uint32_t sizeimage;
+    uint32_t colorspace;
+    uint32_t priv;
+};
+
+struct t20_v4l2_format {
+    uint32_t type;
+    union {
+        struct t20_v4l2_pix_format pix;
+        uint8_t raw_data[200];
+    } fmt;
+};
+
+struct t20_v4l2_crop {
+    uint32_t type;
+    int32_t left;
+    int32_t top;
+    int32_t width;
+    int32_t height;
+};
+
+struct t20_scalercap {
+    uint16_t max_width;
+    uint16_t max_height;
+    uint16_t min_width;
+    uint16_t min_height;
+};
+
+struct t20_scaler {
+    uint16_t out_width;
+    uint16_t out_height;
+};
+
+_Static_assert(sizeof(struct t20_v4l2_format) == 0xcc,
+               "T20 v4l2_format size");
+_Static_assert(sizeof(struct t20_v4l2_crop) == 0x14,
+               "T20 v4l2_crop size");
+#endif
+
 #if defined(PLATFORM_T21) || defined(PLATFORM_T30)
 _Static_assert(sizeof(struct fs_ioctl_format70) == 0x4c,
                "legacy fs ioctl format size");
@@ -216,11 +278,21 @@ typedef struct {
  */
 int fs_open_device(int chn) {
     char devname[64];
+#if defined(PLATFORM_T20)
+    snprintf(devname, sizeof(devname), "/dev/video%d", chn + 1);
+#else
     snprintf(devname, sizeof(devname), "/dev/framechan%d", chn);
+#endif
 
     /* Try to open with retries (from decompilation: 0x101 retries) */
     for (int i = 0; i < 257; i++) {
-        int fd = open(devname, O_RDWR | O_NONBLOCK, 0);
+        int fd = open(devname,
+#if defined(PLATFORM_T20)
+                      O_RDWR | O_CLOEXEC,
+#else
+                      O_RDWR | O_NONBLOCK,
+#endif
+                      0);
         if (fd >= 0) {
             fprintf(stderr, "[KernelIF] Opened %s (fd=%d)\n", devname, fd);
             return fd;
@@ -253,6 +325,25 @@ int fs_get_format(int fd, fs_format_t *fmt) {
         return -1;
     }
 
+#if defined(PLATFORM_T20)
+    struct t20_v4l2_format g = {0};
+
+    g.type = 1;
+    if (ioctl(fd, VIDIOC_GET_FMT, &g) < 0) {
+        fprintf(stderr, "[KernelIF] T20 VIDIOC_G_FMT failed: %s\n", strerror(errno));
+        return -1;
+    }
+    fmt->type = (int)g.type;
+    fmt->width = (int)g.fmt.pix.width;
+    fmt->height = (int)g.fmt.pix.height;
+    fmt->pixelformat = (int)g.fmt.pix.pixelformat;
+    fmt->field = (int)g.fmt.pix.field;
+    fmt->bytesperline = (int)g.fmt.pix.bytesperline;
+    fmt->sizeimage = (int)g.fmt.pix.sizeimage;
+    fmt->colorspace = (int)g.fmt.pix.colorspace;
+    fmt->priv = (int)g.fmt.pix.priv;
+    return 0;
+#else
     struct fs_ioctl_format70 g = {0};
 
     g.type = 1; /* V4L2_BUF_TYPE_VIDEO_CAPTURE */
@@ -284,6 +375,7 @@ int fs_get_format(int fd, fs_format_t *fmt) {
     fprintf(stderr, "[KernelIF] Got format: %dx%d fmt=0x%x sizeimage=%d bytesperline=%d\n",
             fmt->width, fmt->height, fmt->pixelformat, fmt->sizeimage, fmt->bytesperline);
     return 0;
+#endif
 }
 
 /**
@@ -316,6 +408,77 @@ int fs_set_format(int fd, fs_format_t *fmt) {
         return -1;
     }
 
+#if defined(PLATFORM_T20)
+    struct t20_v4l2_crop crop = {
+        .type = 1,
+        .left = fmt->crop_enable ? fmt->crop_x : 0,
+        .top = fmt->crop_enable ? fmt->crop_y : 0,
+        .width = fmt->crop_enable ? fmt->crop_width : 0,
+        .height = fmt->crop_enable ? fmt->crop_height : 0,
+    };
+    struct t20_scalercap cap = {0};
+    struct t20_scaler scaler = {
+        .out_width = fmt->scaler_enable ? (uint16_t)fmt->scaler_outwidth : 0,
+        .out_height = fmt->scaler_enable ? (uint16_t)fmt->scaler_outheight : 0,
+    };
+    struct t20_v4l2_format s = {0};
+    uint32_t fourcc = (fmt->pixelformat < 0x100) ? pixfmt_to_fourcc(fmt->pixelformat)
+                                                 : (uint32_t)fmt->pixelformat;
+
+    if (ioctl(fd, VIDIOC_SET_CROP, &crop) < 0) {
+        fprintf(stderr, "[KernelIF] T20 VIDIOC_S_CROP failed: %s\n", strerror(errno));
+        return -1;
+    }
+    if (ioctl(fd, VIDIOC_GET_SCALERCAP, &cap) < 0) {
+        fprintf(stderr, "[KernelIF] T20 GET_SCALERCAP failed: %s\n", strerror(errno));
+        return -1;
+    }
+    if (ioctl(fd, VIDIOC_SET_SCALER, &scaler) < 0) {
+        fprintf(stderr, "[KernelIF] T20 SET_SCALER failed: %s\n", strerror(errno));
+        return -1;
+    }
+
+    s.type = 1;
+    s.fmt.pix.width = (uint32_t)fmt->width;
+    s.fmt.pix.height = (uint32_t)fmt->height;
+    s.fmt.pix.pixelformat = fourcc;
+    s.fmt.pix.field = 0;
+    if (ioctl(fd, VIDIOC_TRY_FMT, &s) < 0) {
+        fprintf(stderr, "[KernelIF] T20 VIDIOC_TRY_FMT failed: %s\n", strerror(errno));
+        return -1;
+    }
+    if (ioctl(fd, VIDIOC_SET_FMT, &s) < 0) {
+        fprintf(stderr, "[KernelIF] T20 VIDIOC_S_FMT failed: %s\n", strerror(errno));
+        return -1;
+    }
+
+    fmt->width = (int)s.fmt.pix.width;
+    fmt->height = (int)s.fmt.pix.height;
+    fmt->field = (int)s.fmt.pix.field;
+    fmt->bytesperline = (int)s.fmt.pix.bytesperline;
+    fmt->sizeimage = (int)s.fmt.pix.sizeimage;
+    fmt->colorspace = (int)s.fmt.pix.colorspace;
+    fmt->priv = (int)s.fmt.pix.priv;
+    if (fmt->bytesperline <= 0)
+        fmt->bytesperline = fmt->width;
+    /* S_FMT returns the queue's authoritative allocation size.  NV12/NV21
+     * include the chroma plane: 0x2fd000 for 1080p and 0x56400 for 360p.
+     * Retain a format-aware fallback for kernels that leave sizeimage zero. */
+    if (fmt->sizeimage <= 0) {
+        int aligned_height = (fmt->height + 15) & ~15;
+        int luma_size = fmt->bytesperline * aligned_height;
+
+        if (fourcc == 0x3231564e || fourcc == 0x3132564e)
+            fmt->sizeimage = luma_size * 3 / 2;
+        else
+            fmt->sizeimage = luma_size;
+    }
+    fprintf(stderr,
+            "[KernelIF] T20 format %dx%d fourcc=0x%x bpl=%d queue-size=%d cap=%ux%u..%ux%u\n",
+            fmt->width, fmt->height, fourcc, fmt->bytesperline, fmt->sizeimage,
+            cap.min_width, cap.min_height, cap.max_width, cap.max_height);
+    return 0;
+#else
     struct fs_ioctl_format70 s = {0};
     /* Header */
     s.type = 1; /* V4L2_BUF_TYPE_VIDEO_CAPTURE */
@@ -417,6 +580,7 @@ int fs_set_format(int fd, fs_format_t *fmt) {
      * visible WxH payload size makes VIDIOC_QBUF fail with EINVAL. */
 
     return 0;
+#endif
 }
 
 /**

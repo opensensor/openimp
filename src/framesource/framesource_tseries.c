@@ -762,6 +762,7 @@ static volatile int g_fs_thread_enabled_seen[FS_MAX_CHANNELS];
 
 static void fs_bind_trace(const char *fmt, ...)
 {
+    static unsigned int capture_loop_trace_count;
     int trace_kmsg = openimp_debug_trace_enabled();
 #if defined(PLATFORM_T23)
     int trace_persist = openimp_t23_persist_enabled();
@@ -778,6 +779,12 @@ static void fs_bind_trace(const char *fmt, ...)
     va_end(ap);
 
     if (n > 0) {
+        if (trace_kmsg &&
+            (strstr(buf, "pooling select-") != NULL ||
+             strstr(buf, "pooling dq-path") != NULL ||
+             strstr(buf, "pooling dequeue") != NULL) &&
+            __sync_fetch_and_add(&capture_loop_trace_count, 1) >= 24)
+            trace_kmsg = 0;
         if (trace_kmsg) {
             int fd = open("/dev/kmsg", O_WRONLY);
             if (fd >= 0) {
@@ -1027,10 +1034,12 @@ static void *frame_pooling_thread(void *arg)
                     }
                     if (dq_ret != 0 || frame == NULL) {
                         if (dq_ret == -2 || dq_ret == 0) {
+                            no_frame_cycles++;
                             if (no_frame_cycles <= 5 || (no_frame_cycles % 50) == 0) {
                                 fs_trace("libimp/FS: pooling dequeue-empty ch=%d fd=%d idle=%d state=%d\n",
                                          chn, ctx->fd, no_frame_cycles, ch_state);
                             }
+                            usleep(1000);
                         }
                         break;
                     }
@@ -1815,7 +1824,7 @@ int IMP_FrameSource_EnableChn(int chnNum)
     /* T21 folds the bank-count event into REQBUFS and has no 0x800456c5
      * command.  Later frame-channel ABIs issue the extra bank/depth ioctl.
      * Use nrVBs because it matches the pool shape configured above. */
-#if defined(PLATFORM_T21)
+#if defined(PLATFORM_T21) || defined(PLATFORM_T20)
     fs_trace("libimp/FS: enable set-banks-via-reqbufs ch=%d fd=%d banks=%d depth=%d\n",
              chnNum, ctx->fd, vbm_count, ctx->frame_depth);
 #else

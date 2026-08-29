@@ -189,12 +189,14 @@ int T30_H264_BuildDescriptor(const T30H264SliceConfig *config,
         0x40138, 0x4013c, 0x40140, 0x40144,
         0x40148, 0x4014c, 0x40150, 0x40154
     };
+#if !defined(PLATFORM_T20)
     static const uint32_t qpg_zero_registers[13] = {
         0x4007c, 0x40080, 0x40084, 0x40088,
         0x4008c, 0x40090, 0x40078, 0x400a4,
         0x400a8, 0x400ac, 0x400b0, 0x400b4,
         0x400c8
     };
+#endif
     static const uint32_t scheduler_zero_registers[8] = {
         0x00060, 0x00064, 0x00068, 0x0006c,
         0x00070, 0x00074, 0x00078, 0x0007c
@@ -202,7 +204,9 @@ int T30_H264_BuildDescriptor(const T30H264SliceConfig *config,
     T30DescriptorWriter writer;
     uint32_t aligned_width;
     uint32_t aligned_height;
+#if !defined(PLATFORM_T20)
     uint32_t min_qp;
+#endif
     uint32_t max_qp;
     unsigned int i;
 
@@ -219,7 +223,9 @@ int T30_H264_BuildDescriptor(const T30H264SliceConfig *config,
     writer.end = config->descriptor + config->descriptor_words;
     aligned_width = (uint32_t)config->mb_width * 16u;
     aligned_height = (uint32_t)config->mb_height * 16u;
+#if !defined(PLATFORM_T20)
     min_qp = config->qp > 12u ? config->qp - 12u : 0u;
+#endif
     max_qp = config->qp < 39u ? config->qp + 13u : 51u;
 
 #define EMIT(reg, value)                                                     \
@@ -248,18 +254,29 @@ int T30_H264_BuildDescriptor(const T30H264SliceConfig *config,
     EMIT(0x40040, max_qp);
     EMIT(0x40044, 0);
     EMIT(0x40048, 0);
+#if defined(PLATFORM_T20)
+    /* T20's older JZ NVPU only has the first eight ROI slots.  Writes to the
+     * later T30 EFE slots stop its VDMA walker before the terminal command. */
+    for (i = 0; i < 8u; i++)
+        EMIT(roi_position_registers[i], 0);
+#else
     EMIT(0x40130, 0);
     EMIT(0x40134, 0);
     for (i = 0; i < 16u; i++)
         EMIT(roi_position_registers[i], 0);
+#endif
     EMIT(0x4006c, 0x000c5800u);
     EMIT(0x40120, 0);
     EMIT(0x40108, 0);
+#if defined(PLATFORM_T20)
+    EMIT(0x4010c, 0x03400000u);
+#else
     EMIT(0x4010c, 0x00400000u | ((uint32_t)config->dcs_oth << 24));
     EMIT(0x40074, (max_qp << 24) | (min_qp << 16) |
                   ((uint32_t)config->qp << 8));
     for (i = 0; i < 13u; i++)
         EMIT(qpg_zero_registers[i], 0);
+#endif
 
     if (config->slice_type &&
         t30_emit_motion_estimation(&writer, config) != 0)
@@ -278,15 +295,21 @@ int T30_H264_BuildDescriptor(const T30H264SliceConfig *config,
     EMIT(0x80030, ((uint32_t)config->last_mby << 24) |
                   (((uint32_t)config->mb_width - 1u) << 16) |
                   (config->slice_type ? 2u : 1u));
+#if defined(PLATFORM_T20)
+    EMIT(0x80034, 0x00008202u);
+#else
     EMIT(0x80034, 0x0000c202u);
+#endif
     EMIT(0x80038, 0xcccc0111u);
     EMIT(0x8003c, 0);
     EMIT(0x800d8, 0);
     EMIT(0x800dc, 0);
+#if !defined(PLATFORM_T20)
     EMIT(0x800fc, 0x00774533u);
     EMIT(0x80114, 0x00002a42u);
     EMIT(0x80118, 0x01800200u);
     EMIT(0x8011c, 0x00000400u);
+#endif
     for (i = 0; i < 42u; i++)
         EMIT(0x8002c,
              config->cabac_state[t30_vmau_context_index(config->slice_type,
@@ -309,8 +332,10 @@ int T30_H264_BuildDescriptor(const T30H264SliceConfig *config,
                   ((uint32_t)config->mb_width << 8));
     EMIT(0x70068, ((uint32_t)config->slice_type << 3) | 1u);
     EMIT(0x70060, 8);
+#if !defined(PLATFORM_T20)
     EMIT(0x70240, 0x68040100u);
     EMIT(0x70244, 0x132c7000u);
+#endif
 
     /* Syntax/data encoder and all 460 H.264 CABAC contexts. */
     EMIT(0x90000, 0);

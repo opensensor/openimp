@@ -198,7 +198,9 @@ static void prepare_state(void)
         return;
     memset(&state, 0, sizeof(state));
     state.magic = OPENIMP_P0_MAGIC;
-#if defined(PLATFORM_T21)
+#if defined(PLATFORM_T20)
+    state.cpu_id = 12; /* T20X */
+#elif defined(PLATFORM_T21)
     state.cpu_id = 17; /* T21N */
 #elif defined(PLATFORM_T31)
     state.cpu_id = 21; /* T31X */
@@ -381,7 +383,9 @@ int IMP_System_Exit(void)
 
 int IMP_System_GetVersion(char *version)
 {
-#if defined(PLATFORM_T21)
+#if defined(PLATFORM_T20)
+    static const char text[] = "libimp.so T20 openimp";
+#elif defined(PLATFORM_T21)
     static const char text[] = "libimp.so T21 openimp";
 #elif defined(PLATFORM_T23)
     static const char text[] = "libimp.so T23 openimp";
@@ -404,7 +408,9 @@ int IMP_System_GetVersion(char *version)
 
 const char *IMP_System_GetCPUInfo(void)
 {
-#if defined(PLATFORM_T21)
+#if defined(PLATFORM_T20)
+    return "T20-X";
+#elif defined(PLATFORM_T21)
     return "T21-N";
 #elif defined(PLATFORM_T23)
     return "T23-N";

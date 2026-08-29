@@ -18,7 +18,9 @@
 #define OPENIMP_AVC_TYPE_AVC 0u
 #define OPENIMP_AVC_GET_DMA_PHY _IOWR('q', 18, struct openimp_avc_dma_info)
 #define OPENIMP_AVC_EXTERNAL_FRAME_MAGIC 0x56344c32u
-#if defined(PLATFORM_T21)
+#if defined(PLATFORM_T20)
+#define OPENIMP_AVC_DMA_DEVICE "/dev/tx-isp-t20-dmabuf"
+#elif defined(PLATFORM_T21)
 #define OPENIMP_AVC_DMA_DEVICE "/dev/tx-isp-t21-dmabuf"
 #elif defined(PLATFORM_T30)
 #define OPENIMP_AVC_DMA_DEVICE "/dev/tx-isp-t30-dmabuf"

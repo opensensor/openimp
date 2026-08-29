@@ -42,7 +42,8 @@ test -x "$compiler"
 mkdir -p "$output_dir"
 
 base_flags="-std=gnu99 -O2 -mabi=32 -march=mips32r2 -mabicalls"
-base_flags="$base_flags -fPIC -G0 -fno-stack-protector -DPLATFORM_T21 -DVPU_BASE=0x13200000"
+platform_cppflags=${T21_PLATFORM_CPPFLAGS:--DPLATFORM_T21}
+base_flags="$base_flags -fPIC -G0 -fno-stack-protector $platform_cppflags -DVPU_BASE=0x13200000"
 repo_includes="-I$project_dir/include -I$project_dir/src"
 
 compile()
@@ -85,6 +86,7 @@ compile t21_persist src/t23/openimp_t23_persist.c -Werror
 compile t21_audio src/t31/openimp_t31_audio.c -Werror
 compile t21_helix src/t30/t30_helix_encoder.c -Werror
 compile t21_h264_descriptor src/t21/t21_h264_descriptor.c -Werror
+compile t30_h264_descriptor src/t30/t30_h264_descriptor.c -Werror
 compile t21_h264_common src/t30/h264enc/common.c -Werror
 compile t21_h264_cabac src/t30/h264enc/cabac.c -Werror
 compile t21_h264_set src/t30/h264enc/set.c -Werror
@@ -123,6 +125,7 @@ compile t21_rate_control src/t40/t31_rate_control.c -Werror
     "$output_dir/t21_audio.o" \
     "$output_dir/t21_helix.o" \
     "$output_dir/t21_h264_descriptor.o" \
+    "$output_dir/t30_h264_descriptor.o" \
     "$output_dir/t21_h264_common.o" \
     "$output_dir/t21_h264_cabac.o" \
     "$output_dir/t21_h264_set.o" \
@@ -134,7 +137,9 @@ compile t21_rate_control src/t40/t31_rate_control.c -Werror
     "$project_dir/tools/openimp-tuningd.c" "$output_dir/openimp_tuning.o" \
     -lpthread -o "$output_dir/openimp-tuningd"
 
-"$stripper" --strip-unneeded "$output_dir/libimp.so"
+if [ "${T21_NO_STRIP:-0}" != "1" ]; then
+    "$stripper" --strip-unneeded "$output_dir/libimp.so"
+fi
 
 if readelf -d "$output_dir/libimp.so" |
     grep -q 'Shared library: \[libimp.so'

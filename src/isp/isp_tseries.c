@@ -144,9 +144,16 @@ int IMP_ISP_Open(void)
             return result;
         }
 
-        __builtin_strcpy((char *)v0_2, "/dev/tx-isp");
+        __builtin_strcpy((char *)v0_2,
+#if defined(PLATFORM_T20)
+                         "/dev/v4l-subdev0"
+#else
+                         "/dev/tx-isp"
+#endif
+        );
         ((ISPDevice *)v0_2)->fd = open((char *)v0_2, 0x80002, 0);
-        kmsg_trace("libimp/ISP: Open /dev/tx-isp fd=%d errno=%d\n",
+        kmsg_trace("libimp/ISP: Open %s fd=%d errno=%d\n",
+                   (char *)v0_2,
                    ((ISPDevice *)v0_2)->fd,
                    ((ISPDevice *)v0_2)->fd < 0 ? errno : 0);
         if (((ISPDevice *)gISP)->fd < 0) {
@@ -1090,7 +1097,12 @@ enum {
     TISP_CID_WDR_OUTPUT_MODE = 0x80000ea,
     TISP_CID_CCM_ATTR = 0x8000100,
     TISP_CID_BCSH_HUE = 0x8000101,
+#if defined(PLATFORM_T20)
+    /* IMAGE_TUNING_CID_CUSTOM_BASE + 7 in the T20 V4L2 tuning ABI. */
+    TISP_CID_ISP_PROCESS = 0x0098e907,
+#else
     TISP_CID_ISP_PROCESS = 0x8000164,
+#endif
     TISP_CID_FW_FREEZE = 0x8000165,
     TISP_CID_SHADING = 0x8000166
 };
@@ -1490,6 +1502,19 @@ int IMP_ISP_Tuning_SetISPBypass(IMPISPTuningOpsMode enable)
 
     kmsg_trace("libimp/ISP: SetISPBypass enter enable=%d isp=%p fd=%d tuning_fd=%d\n",
                enable, (void *)isp, isp->fd, isp->tuning_fd);
+
+#if defined(PLATFORM_T20)
+    /* T20 has no userspace-managed media link graph.  The selected sensor
+     * owns the fixed pipeline and video0 exposes the ISP-process control. */
+    if (tseries_v4l2_set(TISP_CID_ISP_PROCESS, enable) != 0) {
+        kmsg_trace("libimp/ISP: SetISPBypass T20 S_CTRL failed value=%d errno=%d\n",
+                   enable, errno);
+        return -1;
+    }
+    tseries_bypass_link_setup_done = 1;
+    kmsg_trace("libimp/ISP: SetISPBypass T20 S_CTRL ok value=%d\n", enable);
+    return 0;
+#endif
 
 #if defined(PLATFORM_T21)
     /* T21 exposes one media-link configuration (index zero).  Its OEM libimp
@@ -2621,6 +2646,23 @@ int IMP_ISP_EnableSensor(void)
         IMP_ISP_SetAwbAlgoFunc_internal(tseries_awb_func_tmp);
     }
 
+#if defined(PLATFORM_T20)
+    if (ioctl(isp->fd, 0x40045626U, &sensor_index) != 0 || sensor_index < 0) {
+        kmsg_trace("libimp/ISP: EnableSensor T20 G_INPUT failed idx=%d errno=%d\n",
+                   sensor_index, errno);
+        return -1;
+    }
+    if (ioctl(isp->fd, 0x80045612U, &sensor_index) != 0) {
+        kmsg_trace("libimp/ISP: EnableSensor T20 STREAMON failed errno=%d\n", errno);
+        return -1;
+    }
+    isp->opened += 2;
+    tseries_isp_stream_started = 1;
+    tseries_bypass_link_setup_done = 1;
+    kmsg_trace("libimp/ISP: EnableSensor T20 STREAMON ok idx=%d\n", sensor_index);
+    return 0;
+#endif
+
     if (ioctl(isp->fd, TISP_VIDIOC_GET_SENSOR_INDEX, &sensor_index) != 0) {
         kmsg_trace("libimp/ISP: EnableSensor GET_SENSOR_INDEX failed errno=%d\n", errno);
         return -1;
@@ -2664,6 +2706,23 @@ int IMP_ISP_DisableSensor(void)
     if (tseries_get_isp(&isp) != 0) {
         return -1;
     }
+
+#if defined(PLATFORM_T20)
+    if (ioctl(isp->fd, 0x40045626U, &sensor_index) != 0 || sensor_index < 0) {
+        kmsg_trace("libimp/ISP: DisableSensor T20 G_INPUT failed idx=%d errno=%d\n",
+                   sensor_index, errno);
+        return -1;
+    }
+    if (ioctl(isp->fd, 0x80045613U, &sensor_index) != 0) {
+        kmsg_trace("libimp/ISP: DisableSensor T20 STREAMOFF failed errno=%d\n", errno);
+        return -1;
+    }
+    tseries_isp_stream_started = 0;
+    tseries_bypass_link_setup_done = 0;
+    isp->opened -= 2;
+    kmsg_trace("libimp/ISP: DisableSensor T20 STREAMOFF ok idx=%d\n", sensor_index);
+    return 0;
+#endif
 
     if (ioctl(isp->fd, TISP_VIDIOC_GET_SENSOR_INDEX, &sensor_index) != 0) {
         kmsg_trace("libimp/ISP: DisableSensor GET_SENSOR_INDEX failed errno=%d\n", errno);
@@ -2757,7 +2816,7 @@ int IMP_ISP_AddSensor(IMPSensorInfo *pinfo)
             "Sensor is runing, please Call 'EmuISP_DisableSensor' firstly\n");
         return -1;
     }
-    if (ioctl(isp->fd, 0x805056c1, pinfo) != 0) {
+    if (ioctl(isp->fd, 0x805056c1U, pinfo) != 0) {
         imp_log_fun(6, IMP_Log_Get_Option(), 2, "IMP-ISP",
             "/home/user/git/proj/sdk-lv3/src/imp/isp/isp_tseries.c", 0x1a7,
             "IMP_ISP_AddSensor", "VIDIOC_REGISTER_SENSOR(%s) error!\n", pinfo);
@@ -2807,6 +2866,12 @@ int IMP_ISP_AddSensor(IMPSensorInfo *pinfo)
     memcpy(isp_b + 0x28, pinfo, 0x54);
 #else
     memcpy(isp_b + 0x28, pinfo, 0x50);
+#endif
+
+#if defined(PLATFORM_T20)
+    /* The T20 video-input node owns all ISP memory.  Unlike T23/T31 there
+     * is no GET_BUF/SET_BUF userspace allocation handshake after S_INPUT. */
+    return 0;
 #endif
 
 #if defined(PLATFORM_T30)
@@ -2936,7 +3001,7 @@ int IMP_ISP_DelSensor(IMPSensorInfo *pinfo)
             "IMP_ISP_DelSensor", "Failed to select sensor[%s]!\n", pinfo);
         return -1;
     }
-    int32_t r = ioctl(isp->fd, 0x805056c2, pinfo);
+    int32_t r = ioctl(isp->fd, 0x805056c2U, pinfo);
     if (r != 0) {
         imp_log_fun(6, IMP_Log_Get_Option(), 2, "IMP-ISP",
             "/home/user/git/proj/sdk-lv3/src/imp/isp/isp_tseries.c", 0x2bc,
@@ -2951,6 +3016,9 @@ int IMP_ISP_DelSensor(IMPSensorInfo *pinfo)
            0x50
 #endif
     );
+#if defined(PLATFORM_T20)
+    return 0;
+#else
 #if defined(PLATFORM_T23)
     void *ncu = isp->sensor_alloc[0];
 #else
@@ -2980,6 +3048,7 @@ int IMP_ISP_DelSensor(IMPSensorInfo *pinfo)
 #endif
     }
     return 0;
+#endif
 }
 
 /* Diagnostic trace — writes to /dev/kmsg which ALWAYS appears in `dmesg`.
@@ -3029,11 +3098,18 @@ int IMP_ISP_EnableTuning(void)
      * this particular module build — the legacy openimp impl used plain
      * O_RDWR and got the stream on. Prefer the flag value that works on
      * real hardware over binary-exact. */
-    strcpy(isp->tuning_path, "/dev/isp-m0");
+    strcpy(isp->tuning_path,
+#if defined(PLATFORM_T20)
+           "/dev/video0"
+#else
+           "/dev/isp-m0"
+#endif
+    );
     int32_t tfd = open(isp->tuning_path, O_RDWR);
     int32_t err1 = (tfd < 0) ? errno : 0;
-    kmsg_trace("libimp/ISP: open(/dev/isp-m0, O_RDWR) = %d (errno=%d %s)\n",
-               tfd, err1, err1 ? strerror(err1) : "ok");
+    kmsg_trace("libimp/ISP: open(%s, O_RDWR) = %d (errno=%d %s)\n",
+               isp->tuning_path, tfd, err1, err1 ? strerror(err1) : "ok");
+#if !defined(PLATFORM_T20)
     if (tfd < 0) {
         strcpy(isp->tuning_path, "/dev/isp-w02");
         tfd = open(isp->tuning_path, O_RDWR);
@@ -3041,6 +3117,7 @@ int IMP_ISP_EnableTuning(void)
         kmsg_trace("libimp/ISP: open(/dev/isp-w02, O_RDWR) = %d (errno=%d %s)\n",
                    tfd, err2, err2 ? strerror(err2) : "ok");
     }
+#endif
     isp->tuning_fd = tfd;
     if (tfd < 0) {
         kmsg_trace("libimp/ISP: EnableTuning FAILED — could not open any tuning node\n");
@@ -3060,7 +3137,7 @@ int IMP_ISP_EnableTuning(void)
             "/home/user/git/proj/sdk-lv3/src/imp/isp/isp_tseries.c", 0x485,
             "IMP_ISP_EnableTuning", "Failed to open %s\n", "/dev/mem");
     }
-#if defined(PLATFORM_T23)
+#if defined(PLATFORM_T20) || defined(PLATFORM_T23)
     const size_t isp_map_size = 0x1b000u;
 #else
     const size_t isp_map_size = 0x10000u;
@@ -3100,7 +3177,7 @@ int IMP_ISP_DisableTuning(void)
     if (tfd > 0) close(tfd);
 
     void *base = isp->isp_base;
-#if defined(PLATFORM_T23)
+#if defined(PLATFORM_T20) || defined(PLATFORM_T23)
     const size_t isp_map_size = 0x1b000u;
 #else
     const size_t isp_map_size = 0x10000u;
