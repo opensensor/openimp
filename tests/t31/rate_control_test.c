@@ -179,6 +179,27 @@ static int test_startup_ignores_single_picture_gop(void)
     return 0;
 }
 
+static int test_quiet_startup_does_not_drop_qp(void)
+{
+    OpenIMPT31RateController controller;
+    unsigned int frame;
+
+    EXPECT(openimp_t31_rate_controller_init(
+        &controller, 1000000u, 25u, 1u, 25u, 18u, 45u, 26u) == 0);
+
+    /* A settling capture path can initially repeat nearly identical frames.
+     * That first GOP must not teach the controller to jump to minimum QP. */
+    for (frame = 0u; frame < 25u; ++frame) {
+        uint32_t qp = openimp_t31_rate_controller_qp(&controller);
+
+        EXPECT(openimp_t31_rate_controller_complete(
+            &controller, 4000u, qp, frame == 0u) == 0);
+    }
+    EXPECT(controller.completed_gops == 1u);
+    EXPECT(openimp_t31_rate_controller_qp(&controller) == 26u);
+    return 0;
+}
+
 static int test_short_motion_burst_does_not_pump_qp(void)
 {
     OpenIMPT31RateController controller;
@@ -323,6 +344,7 @@ int main(void)
         test_recording_shape_converges() ||
         test_first_gop_bootstraps_scene_model() ||
         test_startup_ignores_single_picture_gop() ||
+        test_quiet_startup_does_not_drop_qp() ||
         test_short_motion_burst_does_not_pump_qp() ||
         test_sustained_motion_requires_fresh_persistence() ||
         test_bounds_and_scene_changes() ||

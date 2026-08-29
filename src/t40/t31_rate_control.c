@@ -142,17 +142,26 @@ static void t31_complete_gop(OpenIMPT31RateController *controller)
     }
     previous_qp = controller->current_qp;
     if (controller->completed_gops == 0u) {
+        uint32_t bootstrap_qp;
+
         /*
          * The configured initial QP is only a safe way to obtain the first
          * GOP.  Use that GOP's normalized measurement immediately so startup
-         * cannot spend tens of seconds far above the requested bitrate.  All
-         * subsequent adjustments retain the deliberately slow persistence
-         * behavior that prevents visible pumping during scene changes.
+         * cannot spend tens of seconds far above the requested bitrate.
+         *
+         * Do not lower QP from this one sample.  Capture pipelines commonly
+         * deliver a nearly static or duplicate-filled first GOP while the ISP
+         * settles.  Treating that transient as normal scene complexity can
+         * select the minimum QP and create a large bitrate spike as soon as
+         * live frames arrive.  A first-GOP increase is safe and necessary;
+         * quality recovery still uses the persisted path below.
          */
         controller->smoothed_gop_model_bits = (uint32_t)average;
-        controller->current_qp = t31_select_model_qp(
+        bootstrap_qp = t31_select_model_qp(
             controller->smoothed_gop_model_bits, controller->target_bits,
             controller->min_qp, controller->max_qp);
+        if (bootstrap_qp > controller->current_qp)
+            controller->current_qp = bootstrap_qp;
         controller->over_target_gops = 0u;
         controller->under_target_gops = 0u;
     } else {
