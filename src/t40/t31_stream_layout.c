@@ -31,3 +31,47 @@ int openimp_t31_stream_layout(uint32_t capacity, uint32_t payload_offset,
     layout->access_unit_size = header_size + payload_size;
     return 0;
 }
+
+static uint32_t find_annexb_start4(const uint8_t *data, uint32_t offset,
+                                   uint32_t length)
+{
+    while (offset + 4u <= length) {
+        if (data[offset] == 0u && data[offset + 1u] == 0u &&
+            data[offset + 2u] == 0u && data[offset + 3u] == 1u)
+            return offset;
+        offset++;
+    }
+    return length;
+}
+
+int openimp_t31_annexb_nals(const uint8_t *data, uint32_t length,
+                            OpenIMPT31AnnexBNAL *nals, uint32_t capacity)
+{
+    uint32_t begin;
+    uint32_t count = 0u;
+
+    if (!data || !nals || !length || !capacity)
+        return -1;
+
+    begin = find_annexb_start4(data, 0u, length);
+    if (begin != 0u)
+        return 0;
+
+    while (begin < length) {
+        uint32_t nal_header = begin + 4u;
+        uint32_t next;
+
+        if (nal_header >= length || count >= capacity)
+            return -1;
+        next = find_annexb_start4(data, nal_header, length);
+        if (next <= nal_header)
+            return -1;
+        nals[count].offset = begin;
+        nals[count].length = next - begin;
+        nals[count].nal_type = data[nal_header] & 0x1fu;
+        count++;
+        begin = next;
+    }
+
+    return (int)count;
+}

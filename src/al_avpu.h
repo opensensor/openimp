@@ -153,6 +153,7 @@ typedef struct ALAvpuContext {
     unsigned char stream_is_idr[16];
     unsigned char stream_public_alias_valid[16];
     uint32_t stream_public_alias_delta[16];
+    void *stream_public_copy[16];
     uint64_t stream_timestamp[16];
     uint32_t stream_enc2_cl_idx[16];  /* Enc2 CL index used for each stream buf */
     int next_stream_submit;
@@ -216,6 +217,11 @@ typedef struct ALAvpuContext {
 
     volatile int frames_encoded;
     volatile int frames_consumed;
+    /* Number of completions whose DMA drain and public-stream publication
+     * have both finished.  T31 uses this as the shared-core handoff barrier;
+     * frames_encoded advances earlier, while the IRQ callback is still
+     * finalizing the completed access unit. */
+    volatile unsigned int completions_drained;
     volatile unsigned int busy_skip_count;
     volatile int busy_snapshot_emitted;
     volatile int first_submit_logged;

@@ -3475,31 +3475,12 @@ static void fill_cmd_regs_enc1(const ALAvpuContext* ctx, uint32_t* cmd,
 
         cmd[0x03] = (is_idr ? 0x21000000u : 0x11000000u)
                   | (t31_picture_qp << 16);
-        /*
-         * These three fields are picture-shape controls, not T31-wide
-         * constants.  The exact 640x360 OEM oracle leaves their extensions
-         * clear, while the exact 1920x1080 oracle carries:
-         *
-         *   cmd[0x0a] = 0x07e90c80  (floor(width * height / 1024))
-         *   cmd[0x12] = 0x803ff3ff
-         *   cmd[0x13] = 0x1d000000
-         *
-         * A previous 640 parity pass cleared the extensions for every
-         * resolution.  At 1080p that makes successive IDRs reconstruct with
-         * different frame-wide levels even though the captured NV12 source
-         * is stable.  Preserve the small-picture T31 form, but derive the
-         * large-picture form from the configured geometry.
-         */
-        if (picture_area_1k > 0x3ffu) {
-            cmd[0x0a] = (picture_area_1k << 16) | 0x0c80u;
-            cmd[0x12] |= 0x80000000u;
-            cmd[0x13] =
-                (lcu_w ? (((lcu_w + 3u) >> 2) - 1u) : 0u) << 24;
-        } else {
-            cmd[0x0a] = 0x00000c80u;
-            cmd[0x12] &= 0x7fffffffu;
-            cmd[0x13] = 0u;
-        }
+        /* T31 keeps these fields clear at both captured resolutions.  The
+         * 1080p-sized extensions belong to the T40 command shape; T31 gets
+         * its source geometry from the companion 0x8400 register block. */
+        cmd[0x0a] = 0x00000c80u;
+        cmd[0x12] &= 0x7fffffffu;
+        cmd[0x13] = 0u;
         cmd[0x15] = hwrc_word15 & 0x00ffffffu;
         cmd[0x16] = 0x3f000000u
                   | ((uint32_t)t31_long_term_target & 0x00ffffffu);
@@ -4015,10 +3996,21 @@ static void avpu_complete_frame(ALAvpuContext *ctx, const char *source)
                       buf_idx, frame_size, flush_ret);
         }
         __sync_add_and_fetch(&ctx->dropped_completions, 1u);
+        if (buf_idx >= 0) {
+            /* Publish the handoff only after the late-DMA drain and all
+             * completion-side buffer handling have finished. */
+            __sync_add_and_fetch(&ctx->completions_drained, 1u);
+        }
         return;
     }
 
     openimp_profile_frame_completed(frame_size);
+
+    /* frames_encoded is intentionally advanced before stream publication so
+     * DPB ownership is visible to consumers, but it is too early to release
+     * T31's single physical encoder to another context: effective-size
+     * handling above still drains late DMA and copies the access unit. */
+    __sync_add_and_fetch(&ctx->completions_drained, 1u);
 
     if (frames_encoded % 50 == 0)
     LOG_CODEC("%s: frames_encoded=%d frame_number=%u frames_consumed=%d buf_idx=%d frame_size=%u flush_ret=%d",
@@ -4688,11 +4680,26 @@ static void avpu_end_encoding_callback(void *user_data)
     MergeEncodingStatus(&merged_status, &slice_status);
     memcpy(&bitcount, slice_status.raw + 0x38, sizeof(bitcount));
     memcpy(&completed_flag, slice_status.raw + 0x10, sizeof(completed_flag));
+#if defined(PLATFORM_T31)
+    if (ctx && status_regs_ptr && buf_idx >= 0 && buf_idx < 16) {
+        uint32_t payload_size = 0u;
+
+        /* EntropyStatusRegsToSliceStatus consumes the 30-bit byte count at
+         * +0x104.  Live T31 correlation confirms that adding the generated
+         * Annex-B header gives the exact published access-unit length. */
+        memcpy(&payload_size, status_regs.raw + 0x104u,
+               sizeof(payload_size));
+        ctx->t31_payload_size_by_buf[buf_idx] =
+            payload_size & 0x3fffffffu;
+    }
+#endif
 #endif
     if (ctx && (ctx->frames_encoded < 16 ||
                 ctx->frames_encoded % 50 == 0)) {
         LOG_CODEC("EndEncoding status: done=%d bitcount=0x%08x completed_flag=0x%08x pending=%d buf=%d cl=%u status_src=%s"
-#if defined(PLATFORM_T41)
+#if defined(PLATFORM_T31)
+                  " t31_payload=0x%08x"
+#elif defined(PLATFORM_T41)
                   " t41_payload=0x%08x"
 #elif defined(PLATFORM_T31)
                   " t31_payload=0x%08x"
@@ -4701,7 +4708,10 @@ static void avpu_end_encoding_callback(void *user_data)
                   completed, bitcount, completed_flag,
                   have_pending, buf_idx, cl_idx,
                   status_source
-#if defined(PLATFORM_T41)
+#if defined(PLATFORM_T31)
+                  , (buf_idx >= 0 && buf_idx < 16)
+                        ? ctx->t31_payload_size_by_buf[buf_idx] : 0u
+#elif defined(PLATFORM_T41)
                   , (buf_idx >= 0 && buf_idx < 16)
                         ? ctx->t41_payload_size_by_buf[buf_idx] : 0u
 #elif defined(PLATFORM_T31)
@@ -4718,20 +4728,23 @@ static void avpu_end_encoding_callback(void *user_data)
     }
 
 #if defined(PLATFORM_T31)
-    bitcount &= 0x0fffffffu;
-    if (bitcount == 0u ||
-        avpu_t31_payload_size_is_error_fill(bitcount) ||
-        ctx->stream_buf_size <= (int)AVPU_T31_PAYLOAD_OFFSET) {
+    if (buf_idx < 0 || buf_idx >= 16 ||
+        ctx->stream_buf_size <= (int)AVPU_T31_PAYLOAD_OFFSET ||
+        ctx->t31_payload_size_by_buf[buf_idx] == 0u ||
+        ctx->t31_payload_size_by_buf[buf_idx] >
+            (uint32_t)ctx->stream_buf_size - AVPU_T31_PAYLOAD_OFFSET) {
         /*
-         * The completion IRQ is real even when its status word is zero or
-         * contains diagnostic fill.  Continue through the normal completion
-         * path: effective-size validation will refuse to publish this access
-         * unit, while popping the pending entry and freeing the stream slot
-         * allows the next capture to proceed.  Returning here permanently
-         * strands the encoder after one recoverable status anomaly.
+         * Continue through normal completion so the pending slot is freed.
+         * Effective-size validation will refuse to publish this access unit.
          */
-        LOG_CODEC("EndEncoding callback: dropping invalid T31 completion status=0x%08x buf=%d cl=%u",
-                  bitcount, buf_idx, cl_idx);
+        LOG_CODEC("EndEncoding callback: invalid T31 entropy size=%u capacity=%u buf=%d cl=%u",
+                  (buf_idx >= 0 && buf_idx < 16)
+                      ? ctx->t31_payload_size_by_buf[buf_idx] : 0u,
+                  ctx->stream_buf_size > (int)AVPU_T31_PAYLOAD_OFFSET
+                      ? (uint32_t)ctx->stream_buf_size -
+                            AVPU_T31_PAYLOAD_OFFSET
+                      : 0u,
+                  buf_idx, cl_idx);
     }
 #endif
 
@@ -4752,7 +4765,7 @@ static void avpu_end_encoding_callback(void *user_data)
      * Publish only after the core is quiescent.  Fifo_Queue wakes Raptor's
      * encoder thread immediately, and publishing first lets the next Process
      * race the two lifecycle writes above.
-     */
+    */
     openimp_profile_end(OPENIMP_PROFILE_COMPLETION_STATUS, status_profile);
     avpu_complete_frame(ctx, "EndEncoding callback");
     openimp_profile_end(OPENIMP_PROFILE_IRQ_COMPLETION,
@@ -5288,6 +5301,84 @@ static uint32_t avpu_read_hw_stream_end(ALAvpuContext *ctx, int buf_idx)
 }
 #endif
 
+#if defined(PLATFORM_T31)
+/*
+ * T31's inline Enc2 output is mostly already EBSP escaped, but live 1080p
+ * captures occasionally retain 00 00 {00,01,02} in the entropy payload.
+ * Annex-B then mistakes 00 00 01 for a new NAL boundary and publishes a
+ * truncated picture followed by a bogus NAL.  Preserve existing 00 00 03
+ * escape bytes and add only the missing ones while compacting the fixed
+ * +0x220 payload behind the host-generated slice prefix.
+ *
+ * Copy into a CPU-owned buffer while escaping so the published bytes never
+ * share storage with the still DMA-visible source.
+ */
+static uint32_t avpu_t31_copy_entropy_ebsp(uint8_t *destination,
+                                           uint32_t capacity,
+                                           const uint8_t *source,
+                                           uint32_t header_size,
+                                           uint32_t payload_offset,
+                                           uint32_t payload_size,
+                                           uint32_t *inserted_out)
+{
+    uint32_t inserted = 0u;
+    uint32_t zero_run = 0u;
+    uint32_t i;
+    uint32_t dst = header_size;
+    uint32_t slice_payload = 0u;
+
+    if (inserted_out)
+        *inserted_out = 0u;
+    if (!destination || !source || payload_offset > capacity ||
+        payload_size > capacity - payload_offset ||
+        header_size > capacity)
+        return 0u;
+
+    /* Seed the zero run from the host-generated slice header so an escape is
+     * also inserted when the forbidden sequence crosses the join boundary. */
+    for (i = 0u; i + 3u < header_size; ++i) {
+        if (destination[i] == 0u && destination[i + 1u] == 0u &&
+            destination[i + 2u] == 1u) {
+            slice_payload = i + 4u;
+        } else if (i + 4u < header_size &&
+                   destination[i] == 0u && destination[i + 1u] == 0u &&
+                   destination[i + 2u] == 0u &&
+                   destination[i + 3u] == 1u) {
+            slice_payload = i + 5u;
+        }
+    }
+    for (i = slice_payload; i < header_size; ++i)
+        zero_run = destination[i] == 0u ? zero_run + 1u : 0u;
+
+    for (i = 0u; i < payload_size; ++i) {
+        uint8_t byte = source[payload_offset + i];
+
+        if (zero_run >= 2u) {
+            if (byte <= 2u) {
+                if (dst >= capacity)
+                    return 0u;
+                destination[dst++] = 3u;
+                ++inserted;
+                zero_run = 0u;
+            } else if (byte == 3u) {
+                zero_run = 0u;
+            }
+        }
+        if (dst >= capacity)
+            return 0u;
+        destination[dst++] = byte;
+        if (byte == 0u)
+            ++zero_run;
+        else
+            zero_run = 0u;
+    }
+
+    if (inserted_out)
+        *inserted_out = inserted;
+    return dst;
+}
+#endif
+
 static uint32_t avpu_stream_buffer_effective_size(ALAvpuContext *ctx, int buf_idx,
                                                   int *flush_ret_out)
 {
@@ -5348,9 +5439,11 @@ static uint32_t avpu_stream_buffer_effective_size(ALAvpuContext *ctx, int buf_id
     have_t31_layout = 1;
 #endif
 
-#if defined(PLATFORM_T40)
+#if defined(PLATFORM_T31) || defined(PLATFORM_T40)
     /* IRQ 0 reports the inline Enc1/Enc2 command complete before the final
-     * stream-buffer DMA burst is guaranteed to be visible to the CPU. */
+     * stream-buffer DMA burst is guaranteed to be visible to the CPU.  T31
+     * also needs this drain: compacting immediately can be overwritten by a
+     * late burst, restoring unescaped 00 00 00 01 inside the access unit. */
     usleep(2000);
 #endif
 
@@ -5381,6 +5474,8 @@ static uint32_t avpu_stream_buffer_effective_size(ALAvpuContext *ctx, int buf_id
     /* Non-T31 generations may expose a live end position in the command list.
      * T31 instead uses its exact +0x104 completion payload count. */
 #if defined(PLATFORM_T31)
+    /* T31 cmd[0x32] is the submitted payload start, not the completed
+     * stream end.  Never expose that fixed offset as the frame length. */
     hw_end = 0u;
 #else
     hw_end = avpu_read_hw_stream_end(ctx, buf_idx);
@@ -5431,7 +5526,7 @@ static uint32_t avpu_stream_buffer_effective_size(ALAvpuContext *ctx, int buf_id
 #if defined(PLATFORM_T31)
     raw_end = 0u;
 #elif defined(PLATFORM_T41)
-    /* T31/T41 completion reports the entropy byte count. Scanning the entire
+    /* T41 completion reports the entropy byte count. Scanning the entire
      * multi-megabyte stream buffer to rediscover it is both redundant and
      * large enough to halve throughput on the target CPU. */
     raw_end = 0u;
@@ -5489,34 +5584,48 @@ static uint32_t avpu_stream_buffer_effective_size(ALAvpuContext *ctx, int buf_id
         if (!have_t31_layout)
             return 0u;
 
-        if (ctx->stream_header_shadow &&
-            header_size <= AVPU_T31_STREAM_PREFIX_BYTES)
-            memcpy(mutable_stream,
-                   ctx->stream_header_shadow +
-                       (size_t)buf_idx * AVPU_T31_STREAM_PREFIX_BYTES,
-                   header_size);
-
         /* The inline T31 command writes entropy data at the OEM +0x220
-         * boundary.  Join it to the host-generated Annex-B prefix before
-         * Raptor sees the completed access unit. */
+         * boundary.  Escape it directly into a CPU-owned per-slot snapshot;
+         * never compact inside the DMA buffer that hardware can still touch. */
         if (raw_end > payload_offset && header_size <= payload_offset) {
             uint32_t payload_size = t31_payload_size;
-            OpenIMPProfileStamp compact_profile = openimp_profile_begin();
+            uint32_t inserted = 0u;
+            uint8_t *public_stream;
 
-            memmove(mutable_stream + header_size,
-                    mutable_stream + payload_offset, payload_size);
-            openimp_profile_count(OPENIMP_PROFILE_COMPACT_BYTES,
-                                  payload_size);
-            openimp_profile_end(OPENIMP_PROFILE_STREAM_COMPACT,
-                                compact_profile);
-            raw_end = t31_layout.access_unit_size;
-            if (!ctx->stream_bufs[buf_idx].uncached_map &&
-                avpu_flush_cache(ctx->fd, mutable_stream, raw_end,
-                                        1 /*WBACK*/) != 0) {
-                LOG_CODEC("AVPU: T31 compacted stream writeback failed buf[%d] len=%u",
-                          buf_idx, raw_end);
+            if (!ctx->stream_public_copy[buf_idx])
+                ctx->stream_public_copy[buf_idx] =
+                    malloc((size_t)ctx->stream_buf_size);
+            public_stream = (uint8_t *)ctx->stream_public_copy[buf_idx];
+            if (!public_stream)
+                return 0u;
+
+            if (ctx->stream_header_shadow &&
+                header_size <= AVPU_T31_STREAM_PREFIX_BYTES) {
+                memcpy(public_stream,
+                       ctx->stream_header_shadow +
+                           (size_t)buf_idx * AVPU_T31_STREAM_PREFIX_BYTES,
+                       header_size);
+            } else {
+                memcpy(public_stream, ctx->stream_bufs[buf_idx].map,
+                       header_size);
             }
-            sb = mutable_stream;
+
+            raw_end = avpu_t31_copy_entropy_ebsp(
+                public_stream, (uint32_t)ctx->stream_buf_size,
+                mutable_stream, header_size, payload_offset,
+                payload_size, &inserted);
+            if (raw_end == 0u) {
+                LOG_CODEC("AVPU: refusing T31 payload snapshot header=%u payload=%u capacity=%u buf=%d",
+                          header_size, payload_size,
+                          (uint32_t)ctx->stream_buf_size, buf_idx);
+                return 0u;
+            }
+            if (inserted != 0u &&
+                (ctx->frames_encoded < 3 ||
+                 (ctx->frames_encoded % AVPU_LOG_INTERVAL) == 0u))
+                LOG_CODEC("AVPU: T31 EBSP normalized buf[%d] inserted=%u access_unit=%u",
+                          buf_idx, inserted, raw_end);
+            sb = public_stream;
         }
     }
 #endif
@@ -5661,13 +5770,14 @@ static uint32_t avpu_stream_buffer_effective_size(ALAvpuContext *ctx, int buf_id
             hdr_off = ctx->stream_header_offset_by_buf[buf_idx];
 
         /* T31/T41 completion supplies an exact, validated entropy-byte count.
-         * After compaction the AU extent is exact as well; rescanning for
-         * Annex-B start codes is redundant and may trim a legitimate trailing
-         * zero-valued entropy byte. */
+         * Rescanning for Annex-B start codes is redundant and may trim a
+         * legitimate zero-valued entropy byte. */
 #if defined(PLATFORM_T31)
-        if (!have_t31_layout || raw_end != t31_layout.access_unit_size)
+        /* EBSP normalization can only grow the compacted access unit. */
+        if (!have_t31_layout || raw_end < t31_layout.access_unit_size ||
+            raw_end > (uint32_t)ctx->stream_buf_size)
             return 0;
-        frame_size = t31_layout.access_unit_size;
+        frame_size = raw_end;
 #elif defined(PLATFORM_T41)
         if (!have_t41_layout || raw_end != t41_layout.access_unit_size)
             return 0;
@@ -5786,7 +5896,7 @@ struct AL_CodecEncode {
 #endif
 };
 
-#if !defined(PLATFORM_T40)
+#if !defined(PLATFORM_T40) && !defined(PLATFORM_T31)
 static int avpu_can_use_high_profile_template(const AL_CodecEncode *enc)
 {
     return enc && enc->avpu.enc_w != 0u && enc->avpu.enc_h != 0u &&
@@ -6131,6 +6241,23 @@ static void avpu_sync_runtime_encode_state(AL_CodecEncode *enc)
      * 1920x1080 and 640x360 Raptor AVC channels. */
     enc->avpu.profile = HW_PROFILE_HIGH;
     enc->avpu.entropy_mode = 1u;
+#elif defined(PLATFORM_T31)
+    /* T31 has recovered command oracles for High/CABAC and
+     * Baseline/CAVLC, but not a separate Main/CABAC control shape.  Main
+     * requests already generate CABAC headers, so promote them to the proven
+     * High command template instead of silently pairing those headers with
+     * the incomplete Baseline command window. */
+    if (enc->avpu.entropy_mode != 0u) {
+        if (enc->avpu.profile != HW_PROFILE_HIGH) {
+            LOG_CODEC_THROTTLE(&enc->avpu,
+                               "AVPU: promoting %ux%u AVC profile=%u CABAC request to proven T31 High/CABAC template",
+                               enc->avpu.enc_w, enc->avpu.enc_h,
+                               enc->avpu.profile);
+        }
+        enc->avpu.profile = HW_PROFILE_HIGH;
+    } else {
+        enc->avpu.profile = HW_PROFILE_BASELINE;
+    }
 #else
     if (!avpu_can_use_high_profile_template(enc)) {
         if (enc->avpu.profile != HW_PROFILE_BASELINE || enc->avpu.entropy_mode != 0u) {
@@ -6384,6 +6511,15 @@ static int avpu_queue_completed_stream(ALAvpuContext *ctx, int buf_idx, void *us
 
     phys_addr = ctx->stream_bufs[buf_idx].phy_addr;
     virt_addr = (uint32_t)(uintptr_t)ctx->stream_bufs[buf_idx].map;
+#if defined(PLATFORM_T31)
+    /*
+     * avpu_stream_buffer_effective_size() already copied and escaped the raw
+     * entropy payload into this stable per-slot public buffer.
+     */
+    if (ctx->stream_public_copy[buf_idx])
+        virt_addr = (uint32_t)(uintptr_t)
+            ctx->stream_public_copy[buf_idx];
+#endif
 #if defined(PLATFORM_T41)
     if (!getenv("OPENIMP_T41_STREAM_COPY_MODE") &&
         ctx->stream_public_alias_valid[buf_idx]) {
@@ -6802,9 +6938,9 @@ int AL_Codec_Encode_Destroy(void *codec) {
 
     /* Deinitialize hardware encoder(s) - OEM parity: no separate deinit function */
     if (enc->use_hardware == 2 && enc->avpu.fd >= 0) {
-#if defined(PLATFORM_T40)
+#if defined(PLATFORM_T40) || defined(PLATFORM_T31)
         /* The channel has already been stopped before codec destruction, so
-         * no further CL can be submitted here.  Quiesce the T40 core before
+         * no further CL can be submitted here.  Quiesce the T-series core before
          * releasing any DMA mapping.  Leaving GC clocked with the completed
          * CL and stream mappings torn down makes the next unrelated AXI user
          * (notably Wi-Fi/SCP) wedge the SoC.
@@ -6821,11 +6957,27 @@ int AL_Codec_Encode_Destroy(void *codec) {
             avpu_write_reg(enc->avpu.fd, AVPU_REG_CORE_RESET(0), 4u);
             avpu_turn_off_gc(enc->avpu.fd, 0);
             enc->avpu.session_ready = 0;
-            LOG_CODEC("AVPU: T40 core quiesced before DMA teardown");
+            LOG_CODEC("AVPU: T-series core quiesced before DMA teardown");
         }
 #endif
+        /* Stop and join the IRQ waiter while its file and every DMA mapping
+         * are still valid.  The old order tore down those resources first,
+         * leaving a completion callback able to touch unmapped memory and a
+         * blocked WAIT_IRQ thread joined only after its pooled fd was closed. */
+        if (enc->avpu.irq_thread) {
+            pthread_t tid = (pthread_t)enc->avpu.irq_thread;
+
+            enc->avpu.irq_thread_running = 0;
+            avpu_sys_ioctl(enc->avpu.fd, AL_CMD_UNBLOCK_CHANNEL, NULL);
+            pthread_join(tid, NULL);
+            enc->avpu.irq_thread = 0;
+            LOG_CODEC("AVPU: IRQ thread joined before DMA teardown");
+        }
+
         /* Clean up stream buffers and command-list mappings */
         for (int i = 0; i < enc->avpu.stream_bufs_used; ++i) {
+            free(enc->avpu.stream_public_copy[i]);
+            enc->avpu.stream_public_copy[i] = NULL;
             if (enc->avpu.stream_bufs[i].map) {
                 if (!enc->avpu.stream_bufs[i].from_rmem) {
                     munmap(enc->avpu.stream_bufs[i].map, enc->avpu.stream_bufs[i].size);
@@ -6885,24 +7037,8 @@ int AL_Codec_Encode_Destroy(void *codec) {
             enc->avpu.rec_trace_buf.uncached_map = NULL;
         }
 
-        /* OEM parity: unblock the one shared WaitInterruptThread before its
-         * host context is closed. Non-host contexts share the fd but have no
-         * waiter of their own, so unblocking them would terminate the host. */
-        if (enc->avpu.irq_thread) {
-            enc->avpu.irq_thread_running = 0;
-            if (enc->avpu.fd >= 0)
-                avpu_sys_ioctl(enc->avpu.fd, AL_CMD_UNBLOCK_CHANNEL, NULL);
-        }
         AL_DevicePool_Close(enc->avpu.fd);
         enc->avpu.fd = -1;
-
-        /* Join IRQ thread if it was started */
-        if (enc->avpu.irq_thread) {
-            pthread_t tid = (pthread_t)enc->avpu.irq_thread;
-            pthread_join(tid, NULL);
-            enc->avpu.irq_thread = 0;
-            LOG_CODEC("AVPU: IRQ thread joined");
-        }
 #if defined(PLATFORM_T40) || defined(PLATFORM_T31)
         pthread_mutex_lock(&g_tseries_irq_host_lock);
         if (g_tseries_irq_owner == &enc->avpu)
@@ -7041,6 +7177,122 @@ static int t40_encode_gray_jpeg(uint32_t width, uint32_t height,
     stream->frame_type = HW_FRAME_TYPE_I;
     stream->slice_type = 0u;
     return 0;
+}
+#endif
+
+#if defined(PLATFORM_T31)
+static void avpu_t31_dump_source_once(int channel_id, uint32_t width,
+                                      uint32_t height,
+                                      const uint8_t *source, uint32_t size)
+{
+    static volatile unsigned int dumped_channels;
+    const char *dump_dir = getenv("OPENIMP_T31_DUMP_SOURCE_DIR");
+    unsigned int channel_bit;
+    char dump_path[192];
+    uint32_t written = 0u;
+    int dump_fd;
+
+    if (!dump_dir || !dump_dir[0] || !source || !size ||
+        channel_id < 0 || channel_id >= 32)
+        return;
+
+    channel_bit = 1u << (unsigned int)channel_id;
+    if (__sync_fetch_and_or(&dumped_channels, channel_bit) & channel_bit)
+        return;
+
+    snprintf(dump_path, sizeof(dump_path),
+             "%s/openimp-source-ch%d-%ux%u.nv12", dump_dir, channel_id,
+             width, height);
+    dump_fd = open(dump_path, O_WRONLY | O_CREAT | O_EXCL, 0600);
+    if (dump_fd < 0) {
+        LOG_CODEC("AVPU: source dump open failed path=%s errno=%d",
+                  dump_path, errno);
+        return;
+    }
+
+    while (written < size) {
+        ssize_t result = write(dump_fd, source + written, size - written);
+
+        if (result <= 0)
+            break;
+        written += (uint32_t)result;
+    }
+    close(dump_fd);
+    LOG_CODEC("AVPU: source dump path=%s bytes=%u/%u",
+              dump_path, written, size);
+}
+
+static void avpu_t31_start_companion_stage(ALAvpuContext *ctx, int fd,
+                                            uint32_t width, uint32_t height,
+                                            uint32_t phys_addr,
+                                            const uint32_t *cmd, int buf_idx,
+                                            int trace_submit)
+{
+    uint32_t y_plane_sz = avpu_get_nv12_luma_plane_size(width, height);
+    uint32_t stream_part_offset = cmd[0x31];
+    uint32_t hw_hdr_offset = 0x200u;
+    uint32_t hw_stream_budget =
+        stream_part_offset > hw_hdr_offset
+            ? stream_part_offset - hw_hdr_offset : 0u;
+    int source_cfg_stream_idx = buf_idx;
+    uint32_t source_cfg_stream = cmd[0x30];
+
+    if (ctx->stream_bufs_used > 1) {
+        source_cfg_stream_idx = (buf_idx + 1) % ctx->stream_bufs_used;
+        source_cfg_stream =
+            ctx->stream_bufs[source_cfg_stream_idx].phy_addr;
+    }
+
+    avpu_write_reg(fd, AVPU_REG_ENC_EN_B, 0x00000001);
+    avpu_write_reg(fd, AVPU_REG_ENC_EN_A, 0x00000001);
+
+    avpu_write_reg(fd, 0x8400, 0x00000131u);
+    avpu_write_reg(fd, 0x8404,
+                   ((width - 1u) << 16) | (height - 1u));
+    avpu_write_reg(fd, 0x8408, 0x00010001u);
+    avpu_write_reg(fd, 0x840c, width);
+    avpu_write_reg(fd, 0x8410, phys_addr);
+    avpu_write_reg(fd, 0x8414, phys_addr + y_plane_sz);
+    avpu_write_reg(fd, 0x8418, ctx->interm_buf.phy_addr
+                   + ctx->interm_ep1_size); /* WPP start */
+    avpu_write_reg(fd, 0x841c, source_cfg_stream);
+    avpu_write_reg(fd, 0x8420, stream_part_offset);
+    avpu_write_reg(fd, 0x8424, hw_hdr_offset);
+    avpu_write_reg(fd, 0x8428, hw_stream_budget);
+
+    avpu_write_reg(fd, AVPU_REG_ENC_EN_C, 0x00000001);
+
+    if (trace_submit) {
+        unsigned int cfg_8400 = 0, cfg_8404 = 0, cfg_8408 = 0;
+        unsigned int cfg_840c = 0, cfg_8410 = 0, cfg_8414 = 0;
+        unsigned int cfg_8418 = 0, cfg_841c = 0, cfg_8420 = 0;
+        unsigned int cfg_8424 = 0, cfg_8428 = 0, cfg_85e4 = 0;
+
+        avpu_read_reg_quiet(fd, 0x8400, &cfg_8400);
+        avpu_read_reg_quiet(fd, 0x8404, &cfg_8404);
+        avpu_read_reg_quiet(fd, 0x8408, &cfg_8408);
+        avpu_read_reg_quiet(fd, 0x840c, &cfg_840c);
+        avpu_read_reg_quiet(fd, 0x8410, &cfg_8410);
+        avpu_read_reg_quiet(fd, 0x8414, &cfg_8414);
+        avpu_read_reg_quiet(fd, 0x8418, &cfg_8418);
+        avpu_read_reg_quiet(fd, 0x841c, &cfg_841c);
+        avpu_read_reg_quiet(fd, 0x8420, &cfg_8420);
+        avpu_read_reg_quiet(fd, 0x8424, &cfg_8424);
+        avpu_read_reg_quiet(fd, 0x8428, &cfg_8428);
+        avpu_read_reg_quiet(fd, AVPU_REG_ENC_EN_C, &cfg_85e4);
+        LOG_CODEC("AVPU: post-CL source cfg 8400=%08x 8404=%08x 8408=%08x 840c=%08x 8410=%08x 8414=%08x",
+                  cfg_8400, cfg_8404, cfg_8408, cfg_840c, cfg_8410,
+                  cfg_8414);
+        LOG_CODEC("AVPU: post-CL source cfg 8418=%08x 841c=%08x 8420=%08x 8424=%08x 8428=%08x 85e4=%08x",
+                  cfg_8418, cfg_841c, cfg_8420, cfg_8424, cfg_8428,
+                  cfg_85e4);
+        LOG_CODEC("AVPU: source cfg stream active_idx=%d active=0x%08x alternate_idx=%d alternate=0x%08x",
+                  buf_idx, cmd[0x30], source_cfg_stream_idx,
+                  source_cfg_stream);
+    }
+
+    if (ctx->frame_number % 50 == 0)
+        LOG_CODEC("AVPU: T31 encoder config AFTER CL_PUSH while IRQ mutex held");
 }
 #endif
 
@@ -7236,6 +7488,11 @@ static int al_codec_encode_process_impl(void *codec, void *frame,
                       source_sync_index, source_sync_ret, phys_addr,
                       virt_addr, size);
         }
+#if defined(PLATFORM_T31)
+        avpu_t31_dump_source_once(enc->channel_id, width, height,
+                                  (const uint8_t *)(uintptr_t)virt_addr,
+                                  size);
+#endif
     }
 #endif
 
@@ -7573,7 +7830,32 @@ static int al_codec_encode_process_impl(void *codec, void *frame,
                                     enc->avpu.cl_idx = 0;
                                     memset(virt, 0, cl_bytes);
                                     memset(submit_virt, 0, cl_bytes);
-#if defined(PLATFORM_T41)
+#if defined(PLATFORM_T31)
+                                    {
+                                        int command_publish = avpu_flush_cache(
+                                            fd, virt, (unsigned int)cl_bytes,
+                                            1 /* WBACK */);
+                                        int submit_publish = avpu_flush_cache(
+                                            fd, submit_virt,
+                                            (unsigned int)cl_bytes,
+                                            1 /* WBACK */);
+
+                                        if (command_publish == 0)
+                                            enc->avpu.cl_ring.uncached_map =
+                                                avpu_remap_uncached(
+                                                    phys, cl_bytes);
+                                        if (submit_publish == 0)
+                                            enc->avpu.cl_submit_ring.uncached_map =
+                                                avpu_remap_uncached(
+                                                    submit_phys, cl_bytes);
+
+                                        LOG_CODEC(
+                                            "AVPU: T31 command rings use uncached mappings command=%p submit=%p publish=%d/%d",
+                                            enc->avpu.cl_ring.uncached_map,
+                                            enc->avpu.cl_submit_ring.uncached_map,
+                                            command_publish, submit_publish);
+                                    }
+#elif defined(PLATFORM_T41)
                                     {
                                         const char *uncached_command_ring =
                                             getenv("OPENIMP_T41_UNCACHED_COMMAND_RING");
@@ -8136,7 +8418,8 @@ static int al_codec_encode_process_impl(void *codec, void *frame,
                     return -1;
                 }
 
-                if (avpu_is_enc1_running(fd, 0, &core_status)) {
+                if (ctx->pending_stream_count > 0 &&
+                    avpu_is_enc1_running(fd, 0, &core_status)) {
                     if (avpu_try_recover_sticky_completion(ctx, core_status, "Process[AVPU]")) {
                         free(hw_stream);
                         return -1;
@@ -8171,7 +8454,9 @@ static int al_codec_encode_process_impl(void *codec, void *frame,
                 return -1;
             }
 
-#if defined(PLATFORM_T41)
+#if defined(PLATFORM_T31)
+            ctx->t31_payload_size_by_buf[buf_idx] = 0u;
+#elif defined(PLATFORM_T41)
             /* A reused buffer must not inherit the preceding completion's
              * payload count if an IRQ arrives without a valid writeback. */
             ctx->t41_payload_size_by_buf[buf_idx] = 0u;
@@ -8433,14 +8718,6 @@ static int al_codec_encode_process_impl(void *codec, void *frame,
                 : idx;                         /* IDR: inline Enc2, read cmd[0x32] from Enc1 CL */
 #endif
 
-            if (!avpu_track_submitted_stream(ctx, buf_idx, user_data)) {
-                LOG_CODEC("Process: failed to track submitted AVPU stream buf[%d]", buf_idx);
-                avpu_mark_stream_buffer_released(ctx, buf_idx);
-                free(hw_stream);
-                errno = EAGAIN;
-                return -1;
-            }
-
             /* OEM per-frame pre-submit: TurnOnGC + ResetCore + IRQ re-arm
              * before CL_PUSH. The ingenic-sdk driver only transports register
              * ioctls and IRQ indices; it does not perform this reset.
@@ -8468,33 +8745,15 @@ static int al_codec_encode_process_impl(void *codec, void *frame,
 #endif
             avpu_enable_interrupts(fd, 0);
 
-            /* HLIL analysis of encode1() reveals the OEM order:
-             * 1. FillSourceConfig callback → ENC_EN + 0x8400 block
-             * 2. Rtos_FlushCacheMemory(CL, 0x100000)
-             * 3. CL_ADDR + CL_PUSH
-             *
-             * We were writing 0x8400 block AFTER CL_PUSH. The OEM writes
-             * it BEFORE. This could be why the AVPU processes the CL but
-             * produces zero encoded output — the source config registers
-             * aren't programmed when the hardware starts. */
-#if !defined(PLATFORM_T40) && !defined(PLATFORM_T31)
+            /* T41 latches its source configuration before the command-list
+             * transaction.  T31 follows the OEM-observed post-push order
+             * below, while the submission mutex still excludes IRQ dispatch. */
+#if defined(PLATFORM_T41)
             {
                 uint32_t y_plane_sz = avpu_get_nv12_luma_plane_size(width, height);
-#if defined(PLATFORM_T40)
-                /* The T40 command oracle carries a 0x220 payload offset and
-                 * the OEM programs the companion global view on a 32-byte
-                 * boundary.  Establish that state explicitly on an
-                 * open-only boot; no stock process has pre-seeded it. */
-                uint32_t stream_part_offset = cmd[0x31];
-                uint32_t hw_hdr_offset = 0x200u;
-                uint32_t hw_stream_budget =
-                    stream_part_offset > hw_hdr_offset
-                        ? stream_part_offset - hw_hdr_offset : 0u;
-#else
                 uint32_t stream_part_offset = avpu_get_enc1_stream_part_offset(ctx);
                 uint32_t hw_hdr_offset = avpu_get_hw_hdr_offset(hdr_offset);
                 uint32_t hw_stream_budget = avpu_get_stream_window_budget(ctx, stream_part_offset, hw_hdr_offset);
-#endif
 
                 avpu_write_reg(fd, AVPU_REG_ENC_EN_B, 0x00000001);
                 avpu_write_reg(fd, AVPU_REG_ENC_EN_A, 0x00000001);
@@ -8578,7 +8837,36 @@ static int al_codec_encode_process_impl(void *codec, void *frame,
                 avpu_log_submit_snapshot(ctx, idx, "post_cl_addr");
             }
 
+            /* Reset/re-arm can wake WAIT_IRQ before CL_PUSH.  Do not expose a
+             * pending frame to that stale IRQ: it would consume this buffer
+             * and gate the core while source configuration is still being
+             * programmed.  Publish ownership only at the push boundary and
+             * serialize it with callback dispatch through irq_mutex. */
+            pthread_mutex_t *submit_irq_mutex =
+                (pthread_mutex_t *)ctx->irq_mutex;
+            if (submit_irq_mutex)
+                pthread_mutex_lock(submit_irq_mutex);
+            if (!avpu_track_submitted_stream(ctx, buf_idx, user_data)) {
+                if (submit_irq_mutex)
+                    pthread_mutex_unlock(submit_irq_mutex);
+                LOG_CODEC("Process: failed to track submitted AVPU stream buf[%d]", buf_idx);
+                avpu_mark_stream_buffer_released(ctx, buf_idx);
+                free(hw_stream);
+                errno = EAGAIN;
+                return -1;
+            }
+
             cl_push_ret = avpu_write_reg(fd, AVPU_REG_CL_PUSH, 0x00000002);
+#if defined(PLATFORM_T31)
+            /* OEM traces program the companion 0x8400 block immediately
+             * after CL_PUSH.  Keep irq_mutex locked across both operations:
+             * publishing the pending stream before the companion stage is
+             * ready lets the shared waiter race this register sequence. */
+            avpu_t31_start_companion_stage(ctx, fd, width, height, phys_addr,
+                                           cmd, buf_idx, trace_submit);
+#endif
+            if (submit_irq_mutex)
+                pthread_mutex_unlock(submit_irq_mutex);
             openimp_profile_end(OPENIMP_PROFILE_AVPU_SUBMIT_IO,
                                 submit_io_profile);
             if (trace_submit) {
@@ -8720,13 +9008,16 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data)
 #if defined(PLATFORM_T31)
     AL_CodecEncode *enc = (AL_CodecEncode *)codec;
     int frames_before = 0;
-    unsigned int drops_before = 0;
+    unsigned int submitted_before = 0;
+    unsigned int drained_before = 0;
     int ret;
 
     pthread_mutex_lock(&g_t31_encode_core_lock);
     if (enc != NULL) {
         frames_before = enc->avpu.frames_encoded;
-        drops_before = enc->avpu.dropped_completions;
+        submitted_before = enc->avpu.frame_number;
+        drained_before = enc->avpu.completions_drained;
+
     }
 
     ret = al_codec_encode_process_impl(codec, frame, user_data);
@@ -8735,7 +9026,7 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data)
      * encoder channel.  Keep that channel assigned to this context until the
      * shared IRQ waiter consumes its command list. */
     if (ret == 0 && enc != NULL && enc->use_hardware == 2 &&
-        enc->avpu.fd >= 0) {
+        enc->avpu.fd >= 0 && enc->avpu.frame_number != submitted_before) {
         int completed = 0;
 
         for (int retry = 0; retry < 2000; ++retry) {
@@ -8743,16 +9034,17 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data)
 
             __sync_synchronize();
             if (!pending &&
-                (enc->avpu.frames_encoded != frames_before ||
-                 enc->avpu.dropped_completions != drops_before)) {
+                enc->avpu.completions_drained != drained_before) {
                 completed = 1;
                 break;
             }
             usleep(1000);
         }
         if (!completed) {
-            LOG_CODEC("Process: T31 serialized completion timeout channel=%d enc=%d pending=%d",
+            LOG_CODEC("Process: T31 serialized completion timeout channel=%d enc=%d/%d drained=%u/%u pending=%d",
                       enc->channel_id - 1, enc->avpu.frames_encoded,
+                      frames_before, enc->avpu.completions_drained,
+                      drained_before,
                       enc->avpu.pending_stream_count);
         }
     }

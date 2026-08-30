@@ -27,10 +27,14 @@
 #include <imp/imp_common.h>
 #include <imp/imp_encoder.h>
 
+#if defined(PLATFORM_T31)
+#include "t40/t31_stream_layout.h"
+#endif
+
 #define P2_MAX_GROUPS 8
 #define P2_MAX_CHANNELS 8
 #define P2_MAX_BINDS 16
-#define P2_MAX_PUBLIC_PACKS 8
+#define P2_MAX_PUBLIC_PACKS 16
 #define P2_PARAM_SIZE 0x794
 /* T40 1.3.1 ends IMPEncoderStream after isVI and pads it to 28 bytes. T31
  * 1.1.6 includes the streamInfo/jpegInfo union, matching the compatibility
@@ -146,6 +150,49 @@ typedef struct {
     uint64_t output_timestamp_us;
     pthread_mutex_t lock;
 } P2EncoderChannel;
+
+#if defined(PLATFORM_T31)
+static uint32_t p2_fill_t31_packs(P2EncoderChannel *channel,
+                                  const P2HWStream *raw, int64_t timestamp,
+                                  int is_idr)
+{
+    const uint8_t *data = (const uint8_t *)(uintptr_t)raw->virt_addr;
+    OpenIMPT31AnnexBNAL nals[P2_MAX_PUBLIC_PACKS];
+    int count;
+    int index;
+
+    memset(channel->packs, 0, sizeof(channel->packs));
+    count = channel->codec_type == IMP_ENC_TYPE_JPEG
+        ? 0
+        : openimp_t31_annexb_nals(data, raw->length, nals,
+                                  P2_MAX_PUBLIC_PACKS);
+    if (count <= 0) {
+        channel->packs[0].offset = 0;
+        channel->packs[0].length = raw->length;
+        channel->packs[0].timestamp = timestamp;
+        channel->packs[0].frameEnd = true;
+        channel->packs[0].sliceType = is_idr
+            ? IMP_ENC_SLICE_I : IMP_ENC_SLICE_P;
+        channel->packs[0].nalType.h264NalType =
+            channel->codec_type == IMP_ENC_TYPE_JPEG
+                ? IMP_H264_NAL_UNKNOWN
+                : (is_idr ? IMP_H264_NAL_SLICE_IDR : IMP_H264_NAL_SLICE);
+        return 1;
+    }
+
+    for (index = 0; index < count; index++) {
+        channel->packs[index].offset = nals[index].offset;
+        channel->packs[index].length = nals[index].length;
+        channel->packs[index].timestamp = timestamp;
+        channel->packs[index].sliceType = is_idr
+            ? IMP_ENC_SLICE_I : IMP_ENC_SLICE_P;
+        channel->packs[index].nalType.h264NalType =
+            (IMPEncoderH264NaluType)nals[index].nal_type;
+    }
+    channel->packs[count - 1].frameEnd = true;
+    return (uint32_t)count;
+}
+#endif
 
 static int p2_initialized;
 static int p2_groups[P2_MAX_GROUPS];
@@ -1026,14 +1073,9 @@ int IMP_Encoder_PollingStream(int channel, uint32_t timeout_ms)
         ch->synthetic_frame.pixel_format = 10u; /* PIX_FMT_NV12 */
         frame = &ch->synthetic_frame;
     } else {
-        /*
-         * IMP_FrameSource_GetFrame() exposes the userspace VBM ready queue
-         * and is intentionally non-blocking.  PollingStream, however, is a
-         * blocking API and Raptor passes a one-second timeout.  Returning as
-         * soon as the queue is momentarily empty makes both encoder threads
-         * spin thousands of times between sensor frames and can starve the
-         * capture/network paths on a single-core T31.
-         */
+        /* FrameSource exposes a non-blocking userspace-ready queue, while
+         * PollingStream is a blocking ABI.  Wait outside the shared AVPU lock
+         * so an empty queue neither spins the caller nor starves capture. */
         frame_deadline_us = p2_monotonic_us() + timeout_us;
         while (IMP_FrameSource_GetFrame(ch->source_channel, &frame) != 0) {
             if (!timeout_ms || p2_monotonic_us() >= frame_deadline_us)
@@ -1171,13 +1213,17 @@ int IMP_Encoder_GetStream(int channel, IMPEncoderStream *stream, int block)
 #endif
     P2EncoderChannel *ch;
     P2HWStream *raw;
-#if !defined(PLATFORM_T23) && !defined(PLATFORM_T30)
+#if !defined(PLATFORM_T23) && !defined(PLATFORM_T30) && \
+    !defined(PLATFORM_T31)
     uint32_t fps_num;
     uint32_t fps_den;
     uint64_t frame_interval_us;
     uint64_t source_timestamp_us;
 #endif
     int is_idr;
+#if defined(PLATFORM_T31)
+    uint32_t pack_count;
+#endif
 
     if (!p2_valid_channel(channel) || !stream)
         return -1;
@@ -1216,6 +1262,17 @@ int IMP_Encoder_GetStream(int channel, IMPEncoderStream *stream, int block)
                  (void *)raw, ch->packs[0].virAddr, raw->length, pack_count,
                  is_idr, (int)ch->packs[0].dataType.h264Type);
 #else
+#if defined(PLATFORM_T31)
+    pack_count = p2_fill_t31_packs(
+        ch, raw,
+        raw->timestamp
+            ? (int64_t)raw->timestamp : (int64_t)p2_monotonic_us(),
+        is_idr);
+    if (!pack_count) {
+        pthread_mutex_unlock(&ch->lock);
+        return -1;
+    }
+#else
     memset(&ch->packs[0], 0, sizeof(ch->packs[0]));
     ch->packs[0].offset = 0;
     ch->packs[0].length = raw->length;
@@ -1240,11 +1297,16 @@ int IMP_Encoder_GetStream(int channel, IMPEncoderStream *stream, int block)
     ch->packs[0].nalType.h264NalType = ch->codec_type == IMP_ENC_TYPE_JPEG
         ? IMP_H264_NAL_UNKNOWN
         : (is_idr ? IMP_H264_NAL_SLICE_IDR : IMP_H264_NAL_SLICE);
+#endif
     stream->phyAddr = raw->phys_addr;
     stream->virAddr = raw->virt_addr;
     stream->streamSize = raw->length;
     stream->pack = &ch->packs[0];
+#if defined(PLATFORM_T31)
+    stream->packCount = pack_count;
+#else
     stream->packCount = 1;
+#endif
     stream->seq = ch->sequence++;
     stream->isVI = false;
 #endif

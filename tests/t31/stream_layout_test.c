@@ -33,9 +33,18 @@ static int expect_trace(uint32_t capacity, uint32_t status_payload,
 
 int main(void)
 {
+    static const uint8_t idr_access_unit[] = {
+        0x00, 0x00, 0x00, 0x01, 0x67, 0xaa, 0xbb,
+        0x00, 0x00, 0x00, 0x01, 0x68, 0xcc,
+        0x00, 0x00, 0x00, 0x01, 0x65, 0xdd, 0xee, 0xff,
+    };
+    static const uint8_t p_access_unit[] = {
+        0x00, 0x00, 0x00, 0x01, 0x41, 0x12, 0x34,
+    };
     uint8_t status[0x168] = {0};
     uint32_t payload_size = 0;
     OpenIMPT31StreamLayout layout = {0};
+    OpenIMPT31AnnexBNAL nals[3] = {{0}};
     int failed = 0;
 
     /* Archived T31 status/stream pairs: raw_end = 0x220 + status[0x104]. */
@@ -59,6 +68,26 @@ int main(void)
         openimp_t31_stream_layout(0x1000u, 0x220u, 10u, 0xde1u,
                                   &layout) == 0) {
         fprintf(stderr, "invalid T31 completion layout accepted\n");
+        failed = 1;
+    }
+
+    if (openimp_t31_annexb_nals(idr_access_unit,
+                                sizeof(idr_access_unit), nals, 3u) != 3 ||
+        nals[0].offset != 0u || nals[0].length != 7u ||
+        nals[0].nal_type != 7u || nals[1].offset != 7u ||
+        nals[1].length != 6u || nals[1].nal_type != 8u ||
+        nals[2].offset != 13u || nals[2].length != 8u ||
+        nals[2].nal_type != 5u ||
+        openimp_t31_annexb_nals(p_access_unit, sizeof(p_access_unit),
+                                nals, 3u) != 1 ||
+        nals[0].offset != 0u || nals[0].length != sizeof(p_access_unit) ||
+        nals[0].nal_type != 1u ||
+        openimp_t31_annexb_nals(idr_access_unit,
+                                sizeof(idr_access_unit), nals, 2u) >= 0 ||
+        openimp_t31_annexb_nals(idr_access_unit + 1u,
+                                sizeof(idr_access_unit) - 1u,
+                                nals, 3u) != 0) {
+        fprintf(stderr, "invalid T31 Annex-B pack layout\n");
         failed = 1;
     }
 
