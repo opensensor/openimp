@@ -8963,8 +8963,10 @@ static int al_codec_encode_process_impl(void *codec, void *frame,
         memset(&hw_frame, 0, sizeof(HWFrameBuffer));
         hw_frame.phys_addr = phys_addr;
         hw_frame.virt_addr = virt_addr;
+        hw_frame.size = size;
         hw_frame.width = width;
         hw_frame.height = height;
+        hw_frame.pixfmt = pixfmt;
         hw_frame.timestamp = timestamp;
         if (force_idr) {
             LOG_CODEC("Process: channel=%d forcing next SW frame to IDR", enc->channel_id - 1);

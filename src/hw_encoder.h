@@ -145,6 +145,10 @@ int HW_Encoder_SetParams(int fd, HWEncoderParams *params);
  */
 int HW_Encoder_Encode_Software(HWFrameBuffer *frame, HWStreamBuffer *stream, uint32_t codec_type);
 
+int HW_Encoder_Encode_NV12_JPEG(HWFrameBuffer *frame,
+                                HWStreamBuffer *stream,
+                                uint32_t quality);
+
 /**
  * Request IDR frame on next encode (software encoder)
  */

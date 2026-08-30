@@ -78,11 +78,10 @@ _Static_assert(offsetof(P2HWStream, frame_type) == 0x18,
 _Static_assert(offsetof(P2HWStream, reserved) == 0x20,
                "hardware stream private metadata ABI mismatch");
 
-/* The recovered codec only reads the first 0x20 bytes of a frame before its
- * software JPEG path.  JPEG channels share an encoder group with AVC in rvd;
- * the OEM graph fans one FrameSource frame out to both consumers, whereas the
- * P1 public GetFrame API is a dequeue.  Give the metadata-only JPEG fallback
- * its own frame descriptor so it cannot consume (and deadlock) AVC capture. */
+/* JPEG channels share an encoder group with AVC in rvd.  The OEM graph fans
+ * one FrameSource frame out to both consumers, whereas the recovered public
+ * GetFrame API is a dequeue.  Give software JPEG its own copied frame so it
+ * neither steals an AVC capture buffer nor reads one after AVC releases it. */
 typedef struct {
     int32_t index;
     int32_t pool_index;
@@ -94,8 +93,8 @@ typedef struct {
     uint32_t virtual_address;
 #if defined(PLATFORM_T41)
     uint32_t direct_physical_address;
-#endif
     void *pool;
+#endif
     int64_t timestamp;
 } P2SyntheticFrame;
 
@@ -106,6 +105,9 @@ _Static_assert(offsetof(P2SyntheticFrame, pool) == 0x24,
                "T41 synthetic frame pool ABI mismatch");
 _Static_assert(offsetof(P2SyntheticFrame, timestamp) == 0x28,
                "T41 synthetic frame timestamp ABI mismatch");
+#else
+_Static_assert(offsetof(P2SyntheticFrame, timestamp) == 0x20,
+               "synthetic frame timestamp ABI mismatch");
 #endif
 
 typedef struct {
@@ -126,6 +128,11 @@ typedef struct {
     void *codec_user;
     void *source_frame;
     P2SyntheticFrame synthetic_frame;
+    uint8_t *jpeg_frame_buffer;
+    size_t jpeg_frame_capacity;
+    uint64_t jpeg_frame_generation;
+    int jpeg_frame_requested;
+    pthread_cond_t jpeg_frame_ready;
     IMPEncoderCHNAttr attr;
     IMPEncoderPack packs[P2_MAX_PUBLIC_PACKS];
     IMPEncoderJpegeQl jpeg_quality;
@@ -200,6 +207,96 @@ static P2EncoderChannel p2_channels[P2_MAX_CHANNELS];
 static P2Bind p2_binds[P2_MAX_BINDS];
 static pthread_mutex_t p2_state_lock = PTHREAD_MUTEX_INITIALIZER;
 static pthread_mutex_t p2_core_lock = PTHREAD_MUTEX_INITIALIZER;
+static uint64_t p2_monotonic_us(void);
+
+static int p2_copy_requested_jpeg_frames(int source_channel,
+                                         const P2SyntheticFrame *source)
+{
+    int channel;
+
+    if (!source || !source->virtual_address || !source->size)
+        return -1;
+
+    for (channel = 0; channel < P2_MAX_CHANNELS; channel++) {
+        P2EncoderChannel *jpeg = &p2_channels[channel];
+        uint8_t *resized;
+
+        pthread_mutex_lock(&jpeg->lock);
+        if (!jpeg->created || !jpeg->registered || !jpeg->receiving ||
+            jpeg->codec_type != IMP_ENC_TYPE_JPEG ||
+            jpeg->source_channel != source_channel ||
+            !jpeg->jpeg_frame_requested) {
+            pthread_mutex_unlock(&jpeg->lock);
+            continue;
+        }
+        if (jpeg->jpeg_frame_capacity < source->size) {
+            resized = realloc(jpeg->jpeg_frame_buffer, source->size);
+            if (!resized) {
+                jpeg->jpeg_frame_requested = 0;
+                pthread_cond_broadcast(&jpeg->jpeg_frame_ready);
+                pthread_mutex_unlock(&jpeg->lock);
+                continue;
+            }
+            jpeg->jpeg_frame_buffer = resized;
+            jpeg->jpeg_frame_capacity = source->size;
+        }
+        memcpy(jpeg->jpeg_frame_buffer,
+               (const void *)(uintptr_t)source->virtual_address,
+               source->size);
+        memset(&jpeg->synthetic_frame, 0, sizeof(jpeg->synthetic_frame));
+        jpeg->synthetic_frame.index = -1;
+        jpeg->synthetic_frame.pool_index = -1;
+        jpeg->synthetic_frame.width = source->width;
+        jpeg->synthetic_frame.height = source->height;
+        jpeg->synthetic_frame.pixel_format = source->pixel_format;
+        jpeg->synthetic_frame.size = source->size;
+        jpeg->synthetic_frame.virtual_address =
+            (uint32_t)(uintptr_t)jpeg->jpeg_frame_buffer;
+        jpeg->synthetic_frame.timestamp = (int64_t)p2_monotonic_us();
+        jpeg->jpeg_frame_requested = 0;
+        jpeg->jpeg_frame_generation++;
+        pthread_cond_broadcast(&jpeg->jpeg_frame_ready);
+        pthread_mutex_unlock(&jpeg->lock);
+    }
+    return 0;
+}
+
+static int p2_wait_for_jpeg_frame(P2EncoderChannel *channel,
+                                  uint32_t timeout_ms, void **frame)
+{
+    struct timespec deadline;
+    uint64_t generation;
+    int wait_result = 0;
+
+    if (!channel || !frame)
+        return -1;
+    clock_gettime(CLOCK_REALTIME, &deadline);
+    deadline.tv_sec += timeout_ms / 1000u;
+    deadline.tv_nsec += (long)(timeout_ms % 1000u) * 1000000l;
+    if (deadline.tv_nsec >= 1000000000l) {
+        deadline.tv_sec++;
+        deadline.tv_nsec -= 1000000000l;
+    }
+
+    pthread_mutex_lock(&channel->lock);
+    generation = channel->jpeg_frame_generation;
+    channel->jpeg_frame_requested = 1;
+    while (channel->receiving && channel->jpeg_frame_requested &&
+           channel->jpeg_frame_generation == generation &&
+           wait_result == 0) {
+        wait_result = pthread_cond_timedwait(&channel->jpeg_frame_ready,
+                                             &channel->lock, &deadline);
+    }
+    if (!channel->receiving ||
+        channel->jpeg_frame_generation == generation) {
+        channel->jpeg_frame_requested = 0;
+        pthread_mutex_unlock(&channel->lock);
+        return -1;
+    }
+    *frame = &channel->synthetic_frame;
+    pthread_mutex_unlock(&channel->lock);
+    return 0;
+}
 
 static void p2_startup_marker(const char *marker, size_t size)
 {
@@ -663,6 +760,7 @@ int EncoderInit(void)
             p2_channels[i].max_stream_count = 4;
             p2_channels[i].pool_id = -1;
             pthread_mutex_init(&p2_channels[i].lock, NULL);
+            pthread_cond_init(&p2_channels[i].jpeg_frame_ready, NULL);
         }
         p2_initialized = 1;
         p2_startup_trace("openimp/P2 startup: EncoderInit channel locks initialized\n");
@@ -682,8 +780,10 @@ int EncoderExit(void)
         if (p2_channels[i].created)
             return -1;
     pthread_mutex_lock(&p2_state_lock);
-    for (i = 0; i < P2_MAX_CHANNELS; i++)
+    for (i = 0; i < P2_MAX_CHANNELS; i++) {
+        pthread_cond_destroy(&p2_channels[i].jpeg_frame_ready);
         pthread_mutex_destroy(&p2_channels[i].lock);
+    }
     p2_initialized = 0;
     pthread_mutex_unlock(&p2_state_lock);
     return 0;
@@ -882,9 +982,16 @@ int IMP_Encoder_DestroyChn(int channel)
     }
     if (ch->codec)
         AL_Codec_Encode_Destroy(ch->codec);
+    free(ch->jpeg_frame_buffer);
+    ch->jpeg_frame_buffer = NULL;
+    ch->jpeg_frame_capacity = 0;
+    ch->jpeg_frame_generation = 0;
+    ch->jpeg_frame_requested = 0;
     ch->codec = NULL;
     ch->created = 0;
     ch->receiving = 0;
+    ch->jpeg_frame_requested = 0;
+    pthread_cond_broadcast(&ch->jpeg_frame_ready);
     ch->group = -1;
     ch->source_channel = -1;
     pthread_mutex_unlock(&ch->lock);
@@ -968,6 +1075,8 @@ int IMP_Encoder_StopRecvPic(int channel)
     ch->receiving = 0;
     ch->next_frame_due_us = 0;
     ch->output_timestamp_us = 0;
+    ch->jpeg_frame_requested = 0;
+    pthread_cond_broadcast(&ch->jpeg_frame_ready);
     pthread_mutex_unlock(&ch->lock);
     return 0;
 }
@@ -1065,13 +1174,8 @@ int IMP_Encoder_PollingStream(int channel, uint32_t timeout_ms)
     pthread_mutex_unlock(&ch->lock);
 
     if (ch->codec_type == IMP_ENC_TYPE_JPEG) {
-        memset(&ch->synthetic_frame, 0, sizeof(ch->synthetic_frame));
-        ch->synthetic_frame.index = -1;
-        ch->synthetic_frame.pool_index = -1;
-        ch->synthetic_frame.width = p2_attr_width(&ch->attr);
-        ch->synthetic_frame.height = p2_attr_height(&ch->attr);
-        ch->synthetic_frame.pixel_format = 10u; /* PIX_FMT_NV12 */
-        frame = &ch->synthetic_frame;
+        if (p2_wait_for_jpeg_frame(ch, timeout_ms, &frame) != 0)
+            goto done;
     } else {
         /* FrameSource exposes a non-blocking userspace-ready queue, while
          * PollingStream is a blocking ABI.  Wait outside the shared AVPU lock
@@ -1082,6 +1186,8 @@ int IMP_Encoder_PollingStream(int channel, uint32_t timeout_ms)
                 goto done;
             p2_sleep_us(1000u);
         }
+        (void)p2_copy_requested_jpeg_frames(
+            ch->source_channel, (const P2SyntheticFrame *)frame);
     }
     if (trace_count <= 8u)
         p2_trace("openimp/P2: PollingStream frame ch=%d source=%d frame=%p\n",
