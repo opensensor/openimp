@@ -24,6 +24,18 @@
 #define T31_IVS_CHANNELS 16
 #define T31_IVS_MAGIC   0x49565331U
 
+/*
+ * T31's public H.264 stream is a CPU-owned Annex-B snapshot.  The AVPU writes
+ * entropy data into rmem, but codec-t40.c must prepend headers and apply
+ * emulation-prevention into stream_public_copy before GetStream returns it.
+ * Consumers therefore cannot reconstruct the returned bytes from /dev/rmem.
+ */
+int OpenIMP_Encoder_StreamIsRmem(int channel)
+{
+    (void)channel;
+    return 0;
+}
+
 struct t31_osd_group {
     int created;
     int started;
