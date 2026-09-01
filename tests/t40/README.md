@@ -23,3 +23,9 @@ Device runs require the target firmware's stock TX-ISP and sensor modules plus
 the matching AVPU module.
 The probe library path can be passed as the first argument; probes that also
 compare against the OEM implementation expect it at `/usr/lib/libimp.so`.
+
+Run the host-side T40 completion-layout boundary test with:
+
+```sh
+make -C tests/t40 check
+```

@@ -100,7 +100,10 @@ binary is available.
   reconstruction, and feedback rate control. The 1920x1080 Main stream runs
   near the OEM bitrate under the same Raptor configuration.
 - T40: decoder-clean, resolution-independent H.264 streaming through the
-  stock T40XP ISP and AVPU drivers.
+  stock T40XP ISP and AVPU drivers. The V4L2/OpenIMP QHD path validates the
+  AVPU's exact `0x8304` entropy-byte count instead of scanning the complete
+  3.7 MiB stream buffer. On a Wyze Cam v3 Pro at 2560x1440/25, this restored
+  AVPU cadence from 12.5 to 24.8 fps and reduced RVD CPU from 20.4% to 3.3%.
 - T31: the shared T40-derived encoder ran for more than 1,000 hardware frames
   on a stock-driver GC2053 camera. Main 1920x1080 H.264 and AAC probed and
   decoded without H.264 errors during the device smoke cycle. The T31
