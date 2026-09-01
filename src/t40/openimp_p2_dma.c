@@ -18,6 +18,7 @@
 
 #define P2_RMEM_SIZE (96U * 1024U * 1024U)
 #define P2_RMEM_FLUSH_IOCTL 0xc00c7200U
+#define P2_DMA_MAX_ALLOCS 128U
 
 typedef struct {
     char name[96];
@@ -35,6 +36,12 @@ struct p2_flush_info {
     uint32_t direction;
 };
 
+struct p2_dma_allocation {
+    uint32_t start;
+    uint32_t size;
+    int active;
+};
+
 extern int OpenIMP_P1_GetState(uint32_t *, uint32_t *, uint32_t *,
                                uint32_t *, int32_t *, uint32_t *, uint32_t *);
 
@@ -42,10 +49,12 @@ static struct {
     int fd;
     uint32_t base;
     uint32_t size;
+    uint32_t floor;
     uint32_t next;
     void *mapping;
     volatile int lock;
-} p2_dma = { -1, 0, P2_RMEM_SIZE, 0, NULL, 0 };
+    struct p2_dma_allocation allocations[P2_DMA_MAX_ALLOCS];
+} p2_dma = { .fd = -1, .size = P2_RMEM_SIZE };
 
 static void p2_lock(void)
 {
@@ -61,6 +70,79 @@ static void p2_unlock(void)
 static uint32_t align_page(uint32_t value)
 {
     return (value + 4095U) & ~4095U;
+}
+
+static void p2_dma_recompute_next(void)
+{
+    uint32_t next = p2_dma.floor;
+    unsigned int i;
+
+    for (i = 0; i < P2_DMA_MAX_ALLOCS; ++i) {
+        uint32_t end;
+
+        if (!p2_dma.allocations[i].active)
+            continue;
+        end = p2_dma.allocations[i].start +
+              p2_dma.allocations[i].size;
+        if (end > next)
+            next = end;
+    }
+    p2_dma.next = next;
+}
+
+/* Return the first page-aligned gap above P1's live capture allocations.
+ * P2 allocations are few and long-lived, so a bounded linear scan is both
+ * deterministic and less error-prone than maintaining a second linked-list
+ * allocator inside libimp. */
+static int p2_dma_find_gap(uint32_t size, uint32_t *start_out)
+{
+    uint32_t candidate = p2_dma.floor;
+    unsigned int pass;
+
+    if (!start_out || !size)
+        return -1;
+    for (pass = 0; pass <= P2_DMA_MAX_ALLOCS; ++pass) {
+        unsigned int i;
+        int moved = 0;
+
+        if (candidate > p2_dma.size || size > p2_dma.size - candidate)
+            return -1;
+        for (i = 0; i < P2_DMA_MAX_ALLOCS; ++i) {
+            const struct p2_dma_allocation *allocation =
+                &p2_dma.allocations[i];
+            uint32_t allocation_end;
+
+            if (!allocation->active)
+                continue;
+            allocation_end = allocation->start + allocation->size;
+            if (candidate < allocation_end &&
+                allocation->start < candidate + size) {
+                candidate = align_page(allocation_end);
+                moved = 1;
+                break;
+            }
+        }
+        if (!moved) {
+            *start_out = candidate;
+            return 0;
+        }
+    }
+    return -1;
+}
+
+static int p2_dma_record_allocation(uint32_t start, uint32_t size)
+{
+    unsigned int i;
+
+    for (i = 0; i < P2_DMA_MAX_ALLOCS; ++i) {
+        if (!p2_dma.allocations[i].active) {
+            p2_dma.allocations[i].start = start;
+            p2_dma.allocations[i].size = size;
+            p2_dma.allocations[i].active = 1;
+            return 0;
+        }
+    }
+    return -1;
 }
 
 static int p2_rmem_from_cmdline(uint32_t *base_out, uint32_t *size_out)
@@ -148,13 +230,15 @@ static int p2_dma_prepare(void)
         return -1;
     }
     p2_dma.base = base;
-    p2_dma.next = align_page(used);
+    p2_dma.floor = align_page(used);
+    p2_dma.next = p2_dma.floor;
     return 0;
 }
 
 int DMA_AllocDescriptor(IMPDMABufferInfo *out, int size, const char *tag)
 {
     uint32_t start;
+    uint32_t allocation_size;
 
     if (!out || size <= 0)
         return -1;
@@ -163,8 +247,9 @@ int DMA_AllocDescriptor(IMPDMABufferInfo *out, int size, const char *tag)
         p2_unlock();
         return -1;
     }
-    start = align_page(p2_dma.next);
-    if (start > p2_dma.size || (uint32_t)size > p2_dma.size - start) {
+    allocation_size = align_page((uint32_t)size);
+    if (p2_dma_find_gap(allocation_size, &start) < 0 ||
+        p2_dma_record_allocation(start, allocation_size) < 0) {
         p2_unlock();
         errno = ENOMEM;
         return -1;
@@ -177,7 +262,7 @@ int DMA_AllocDescriptor(IMPDMABufferInfo *out, int size, const char *tag)
     out->phys_addr = p2_dma.base + start;
     out->size = (uint32_t)size;
     out->flags = 2U;
-    p2_dma.next = start + align_page((uint32_t)size);
+    p2_dma_recompute_next();
     p2_unlock();
     return 0;
 }
@@ -252,18 +337,47 @@ uintptr_t IMP_PoolAlloc(int pool_id, void *info_or_size, intptr_t size,
 
 int IMP_Free(uintptr_t address)
 {
-    /* P1/P2 deliberately share a monotonic rmem arena.  Individual buffers
-     * cannot be returned safely; the whole mapping is reclaimed on process
-     * exit.  Treat an in-arena address as a successful logical free. */
     uintptr_t virtual_base;
+    uint32_t offset;
+    unsigned int i;
+    int result = -1;
 
-    if (!address || p2_dma_prepare() != 0)
+    if (!address)
         return -1;
+    p2_lock();
+    if (p2_dma_prepare() != 0) {
+        p2_unlock();
+        return -1;
+    }
     virtual_base = (uintptr_t)p2_dma.mapping;
-    if ((address >= p2_dma.base && address < p2_dma.base + p2_dma.size) ||
-        (address >= virtual_base && address < virtual_base + p2_dma.size))
-        return 0;
-    return -1;
+    if (address >= p2_dma.base && address < p2_dma.base + p2_dma.size)
+        offset = (uint32_t)(address - p2_dma.base);
+    else if (address >= virtual_base && address < virtual_base + p2_dma.size)
+        offset = (uint32_t)(address - virtual_base);
+    else {
+        p2_unlock();
+        return -1;
+    }
+
+    for (i = 0; i < P2_DMA_MAX_ALLOCS; ++i) {
+        struct p2_dma_allocation *allocation = &p2_dma.allocations[i];
+
+        if (!allocation->active || offset != allocation->start)
+            continue;
+        allocation->active = 0;
+        allocation->start = 0;
+        allocation->size = 0;
+        p2_dma_recompute_next();
+        result = 0;
+        break;
+    }
+    p2_unlock();
+    return result;
+}
+
+int DMA_FreePhys(uint32_t phys_addr)
+{
+    return IMP_Free((uintptr_t)phys_addr);
 }
 
 int IMP_FlushCache(void *address, uint32_t length)

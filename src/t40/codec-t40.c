@@ -700,6 +700,44 @@ static int avpu_alloc_encoder(int fd, size_t size, const char *tag,
     return avpu_alloc_mmap(fd, size, out);
 }
 
+/* Release every userspace reference carried by a DMA descriptor.  Coherent
+ * GET_DMA_MMAP allocations are VMAs of /dev/avpu, so closing the channel fd
+ * before unmapping all of them does not invoke the driver's release method:
+ * the VMA keeps struct file alive and T31/T40's single codec->chan slot remains
+ * permanently occupied.  IMP/rmem owns its primary mapping, but any uncached
+ * /dev/mem alias and optional dmabuf fd are still ours. */
+static void avpu_release_dma_buf(AvpuDMABuf *buf)
+{
+    uint32_t phys_addr;
+    int from_rmem;
+
+    if (!buf)
+        return;
+
+    phys_addr = buf->phy_addr;
+    from_rmem = buf->from_rmem;
+
+    if (buf->uncached_map && buf->uncached_map != MAP_FAILED) {
+        munmap(buf->uncached_map, buf->size);
+        buf->uncached_map = NULL;
+    }
+    if (!buf->from_rmem && buf->map && buf->map != MAP_FAILED) {
+        munmap(buf->map, buf->size);
+        buf->map = NULL;
+    }
+    if (buf->dmabuf_fd >= 0) {
+        close(buf->dmabuf_fd);
+        buf->dmabuf_fd = -1;
+    }
+    if (from_rmem && phys_addr)
+        (void)DMA_FreePhys(phys_addr);
+
+    buf->phy_addr = 0;
+    buf->mmap_off = 0;
+    buf->size = 0;
+    buf->from_rmem = 0;
+}
+
 /* Re-map a DMA buffer as UNCACHED via /dev/mem.
  * The rmem cached mapping's cache flush is broken on T31.
  * /dev/mem with MAP_SHARED + O_SYNC gives an uncached mapping on MIPS. */
@@ -6764,10 +6802,13 @@ int AL_Codec_Encode_Create(void **codec, void *params) {
     enc->avpu.fd = -1;
     enc->avpu.event_fd = -1;
     enc->avpu.cl_ring.dmabuf_fd = -1;
+    enc->avpu.cl_submit_ring.dmabuf_fd = -1;
     enc->avpu.interm_buf.dmabuf_fd = -1;
     enc->avpu.rec_buf.dmabuf_fd = -1;
     enc->avpu.ref_buf.dmabuf_fd = -1;
-    for (int i = 0; i < 8; i++)
+    enc->avpu.rec_trace_buf.dmabuf_fd = -1;
+    enc->avpu.ref_trace_buf.dmabuf_fd = -1;
+    for (int i = 0; i < 16; i++)
         enc->avpu.stream_bufs[i].dmabuf_fd = -1;
 
     /* Initialize from parameters */
@@ -6927,6 +6968,13 @@ int AL_Codec_Encode_Destroy(void *codec) {
     AL_CodecEncode *enc = (AL_CodecEncode*)codec;
 
     LOG_CODEC("Destroy: codec=%p, channel=%d", codec, enc->channel_id - 1);
+    codec_startup_trace(
+        "openimp/codec teardown: entry codec=%p fd=%d ready=%d frames=%d/%d "
+        "drained=%u pending=%d irq=%p running=%d\n",
+        codec, enc->avpu.fd, enc->avpu.session_ready,
+        enc->avpu.frames_encoded, enc->avpu.frames_consumed,
+        enc->avpu.completions_drained, enc->avpu.pending_stream_count,
+        enc->avpu.irq_thread, enc->avpu.irq_thread_running);
 
 #if defined(PLATFORM_T23)
     OpenIMP_T23_HelixExit(&enc->t23_helix);
@@ -6949,13 +6997,56 @@ int AL_Codec_Encode_Destroy(void *codec) {
          * completion first so the waiter cannot dispatch into buffers while
          * destruction proceeds. */
         if (enc->avpu.session_ready) {
-            avpu_write_reg(enc->avpu.fd, AVPU_INTERRUPT_MASK, 0u);
-            avpu_write_reg(enc->avpu.fd, AVPU_INTERRUPT,
-                           AVPU_IRQ_CLEAR_MASK);
-            avpu_write_reg(enc->avpu.fd, AVPU_REG_CORE_RESET(0), 1u);
-            avpu_write_reg(enc->avpu.fd, AVPU_REG_CORE_RESET(0), 2u);
-            avpu_write_reg(enc->avpu.fd, AVPU_REG_CORE_RESET(0), 4u);
+            unsigned int core_status = 0;
+            unsigned int clkcmd = 0;
+            unsigned int irq_mask = 0;
+            unsigned int irq_pending = 0;
+            int status_ret;
+            int clk_ret;
+            int mask_read_ret;
+            int pending_ret;
+            int mask_ret;
+            int ack_ret;
+            int reset1_ret;
+            int reset2_ret;
+            int reset4_ret;
+
+            status_ret = avpu_read_reg_quiet(enc->avpu.fd,
+                                             AVPU_REG_CORE_STATUS(0),
+                                             &core_status);
+            clk_ret = avpu_read_reg_quiet(enc->avpu.fd,
+                                          AVPU_REG_CORE_CLKCMD(0), &clkcmd);
+            mask_read_ret = avpu_read_reg_quiet(enc->avpu.fd,
+                                                AVPU_INTERRUPT_MASK,
+                                                &irq_mask);
+            pending_ret = avpu_read_reg_quiet(enc->avpu.fd,
+                                              AVPU_INTERRUPT,
+                                              &irq_pending);
+            codec_startup_trace(
+                "openimp/codec teardown: pre-quiesce status=%d:0x%08x "
+                "clk=%d:0x%08x mask=%d:0x%08x pending=%d:0x%08x\n",
+                status_ret, core_status, clk_ret, clkcmd,
+                mask_read_ret, irq_mask, pending_ret, irq_pending);
+
+            mask_ret = avpu_write_reg(enc->avpu.fd, AVPU_INTERRUPT_MASK, 0u);
+            codec_startup_trace(
+                "openimp/codec teardown: irq masked ret=%d\n", mask_ret);
+            ack_ret = avpu_write_reg(enc->avpu.fd, AVPU_INTERRUPT,
+                                     AVPU_IRQ_CLEAR_MASK);
+            codec_startup_trace(
+                "openimp/codec teardown: irq acked ret=%d\n", ack_ret);
+            reset1_ret = avpu_write_reg(enc->avpu.fd,
+                                        AVPU_REG_CORE_RESET(0), 1u);
+            reset2_ret = avpu_write_reg(enc->avpu.fd,
+                                        AVPU_REG_CORE_RESET(0), 2u);
+            reset4_ret = avpu_write_reg(enc->avpu.fd,
+                                        AVPU_REG_CORE_RESET(0), 4u);
+            codec_startup_trace(
+                "openimp/codec teardown: reset triplet ret=%d/%d/%d\n",
+                reset1_ret, reset2_ret, reset4_ret);
             avpu_turn_off_gc(enc->avpu.fd, 0);
+            codec_startup_trace(
+                "openimp/codec teardown: core clock gated\n");
             enc->avpu.session_ready = 0;
             LOG_CODEC("AVPU: T-series core quiesced before DMA teardown");
         }
@@ -6968,77 +7059,45 @@ int AL_Codec_Encode_Destroy(void *codec) {
             pthread_t tid = (pthread_t)enc->avpu.irq_thread;
 
             enc->avpu.irq_thread_running = 0;
+            codec_startup_trace(
+                "openimp/codec teardown: unblocking irq waiter\n");
             avpu_sys_ioctl(enc->avpu.fd, AL_CMD_UNBLOCK_CHANNEL, NULL);
+            codec_startup_trace(
+                "openimp/codec teardown: joining irq waiter\n");
             pthread_join(tid, NULL);
             enc->avpu.irq_thread = 0;
+            codec_startup_trace(
+                "openimp/codec teardown: irq waiter joined\n");
             LOG_CODEC("AVPU: IRQ thread joined before DMA teardown");
         }
 
-        /* Clean up stream buffers and command-list mappings */
+        /* Drop every DMA mapping before closing /dev/avpu.  Its single-channel
+         * driver releases codec->chan only after the final VMA/file reference. */
+        codec_startup_trace(
+            "openimp/codec teardown: releasing dma buffers count=%d\n",
+            enc->avpu.stream_bufs_used);
         for (int i = 0; i < enc->avpu.stream_bufs_used; ++i) {
             free(enc->avpu.stream_public_copy[i]);
             enc->avpu.stream_public_copy[i] = NULL;
-            if (enc->avpu.stream_bufs[i].map) {
-                if (!enc->avpu.stream_bufs[i].from_rmem) {
-                    munmap(enc->avpu.stream_bufs[i].map, enc->avpu.stream_bufs[i].size);
-                }
-                enc->avpu.stream_bufs[i].map = NULL;
-            }
-            if (enc->avpu.stream_bufs[i].uncached_map) {
-                munmap(enc->avpu.stream_bufs[i].uncached_map, enc->avpu.stream_bufs[i].size);
-                enc->avpu.stream_bufs[i].uncached_map = NULL;
-            }
-            if (enc->avpu.stream_bufs[i].dmabuf_fd >= 0) {
-                close(enc->avpu.stream_bufs[i].dmabuf_fd);
-                enc->avpu.stream_bufs[i].dmabuf_fd = -1;
-            }
+            avpu_release_dma_buf(&enc->avpu.stream_bufs[i]);
         }
-        if (enc->avpu.cl_ring.map) {
-            if (!enc->avpu.cl_ring.from_rmem) {
-                munmap(enc->avpu.cl_ring.map, enc->avpu.cl_ring.size);
-            }
-            enc->avpu.cl_ring.map = NULL;
-        }
-        if (enc->avpu.cl_ring.uncached_map) {
-            munmap(enc->avpu.cl_ring.uncached_map, enc->avpu.cl_ring.size);
-            enc->avpu.cl_ring.uncached_map = NULL;
-        }
-        if (enc->avpu.cl_ring.dmabuf_fd >= 0) {
-            close(enc->avpu.cl_ring.dmabuf_fd);
-            enc->avpu.cl_ring.dmabuf_fd = -1;
-        }
-        if (enc->avpu.cl_submit_ring.map) {
-            if (!enc->avpu.cl_submit_ring.from_rmem) {
-                munmap(enc->avpu.cl_submit_ring.map, enc->avpu.cl_submit_ring.size);
-            }
-            enc->avpu.cl_submit_ring.map = NULL;
-        }
-        if (enc->avpu.cl_submit_ring.uncached_map) {
-            munmap(enc->avpu.cl_submit_ring.uncached_map, enc->avpu.cl_submit_ring.size);
-            enc->avpu.cl_submit_ring.uncached_map = NULL;
-        }
-        if (enc->avpu.cl_submit_ring.dmabuf_fd >= 0) {
-            close(enc->avpu.cl_submit_ring.dmabuf_fd);
-            enc->avpu.cl_submit_ring.dmabuf_fd = -1;
-        }
-        if (enc->avpu.interm_buf.map) {
-            if (!enc->avpu.interm_buf.from_rmem) {
-                munmap(enc->avpu.interm_buf.map, enc->avpu.interm_buf.size);
-            }
-            enc->avpu.interm_buf.map = NULL;
-        }
-        if (enc->avpu.interm_buf.dmabuf_fd >= 0) {
-            close(enc->avpu.interm_buf.dmabuf_fd);
-            enc->avpu.interm_buf.dmabuf_fd = -1;
-        }
-        if (enc->avpu.rec_trace_buf.uncached_map) {
-            munmap(enc->avpu.rec_trace_buf.uncached_map,
-                   enc->avpu.rec_trace_buf.size);
-            enc->avpu.rec_trace_buf.uncached_map = NULL;
-        }
+        avpu_release_dma_buf(&enc->avpu.cl_ring);
+        avpu_release_dma_buf(&enc->avpu.cl_submit_ring);
+        avpu_release_dma_buf(&enc->avpu.interm_buf);
+        avpu_release_dma_buf(&enc->avpu.rec_buf);
+        avpu_release_dma_buf(&enc->avpu.ref_buf);
+        avpu_release_dma_buf(&enc->avpu.rec_trace_buf);
+        avpu_release_dma_buf(&enc->avpu.ref_trace_buf);
+        codec_startup_trace(
+            "openimp/codec teardown: dma buffers released\n");
 
+        codec_startup_trace(
+            "openimp/codec teardown: closing device pool fd=%d\n",
+            enc->avpu.fd);
         AL_DevicePool_Close(enc->avpu.fd);
         enc->avpu.fd = -1;
+        codec_startup_trace(
+            "openimp/codec teardown: device pool closed\n");
 #if defined(PLATFORM_T40) || defined(PLATFORM_T31)
         pthread_mutex_lock(&g_tseries_irq_host_lock);
         if (g_tseries_irq_owner == &enc->avpu)
@@ -7659,11 +7718,22 @@ static int al_codec_encode_process_impl(void *codec, void *frame,
                 } else {
                     /* Open device via device pool (OEM parity: AL_DevicePool_Open at 0x362dc) */
                     int fd = AL_DevicePool_Open("/dev/avpu");
+                    codec_startup_trace(
+                        "openimp/codec startup: device pool open fd=%d\n", fd);
                     if (fd >= 0) {
                         /* Initialize AVPU context directly (OEM parity: no ALAvpu_Init wrapper) */
                         memset(&enc->avpu, 0, sizeof(enc->avpu));
                         enc->avpu.fd = fd;
                         enc->avpu.event_fd = enc->event ? (int)(uintptr_t)enc->event : -1;
+                        enc->avpu.cl_ring.dmabuf_fd = -1;
+                        enc->avpu.cl_submit_ring.dmabuf_fd = -1;
+                        enc->avpu.interm_buf.dmabuf_fd = -1;
+                        enc->avpu.rec_buf.dmabuf_fd = -1;
+                        enc->avpu.ref_buf.dmabuf_fd = -1;
+                        enc->avpu.rec_trace_buf.dmabuf_fd = -1;
+                        enc->avpu.ref_trace_buf.dmabuf_fd = -1;
+                        for (int i = 0; i < 16; ++i)
+                            enc->avpu.stream_bufs[i].dmabuf_fd = -1;
                         enc->avpu.frames_encoded = 0;
                         enc->avpu.frame_number = 0;
                         enc->avpu.idr_frame_number = 0;
@@ -7803,6 +7873,9 @@ static int al_codec_encode_process_impl(void *codec, void *frame,
                             }
                         }
                         enc->avpu.stream_bufs_used = filled;
+                        codec_startup_trace(
+                            "openimp/codec startup: stream dma ready=%d requested=%d\n",
+                            filled, enc->avpu.stream_buf_count);
 
                         /* Allocate command-list rings via IMP_Alloc.  T41's
                          * command/status pair occupies one 4 KiB slot, with
@@ -7896,6 +7969,9 @@ static int al_codec_encode_process_impl(void *codec, void *frame,
                         } else {
                             LOG_CODEC("AVPU: failed to allocate cmdlist ring via IMP_Alloc (size=%zu)", cl_bytes);
                         }
+                        codec_startup_trace(
+                            "openimp/codec startup: command dma ready=%d\n",
+                            cl_ok);
 
                         /* Allocate reconstruction and reference frame DMA buffers.
                          * The AVPU hardware writes reconstructed frames and reads
@@ -7922,6 +7998,11 @@ static int al_codec_encode_process_impl(void *codec, void *frame,
                             memset(&enc->avpu.rec_trace_buf, 0, sizeof(AvpuDMABuf));
                             memset(&enc->avpu.ref_trace_buf, 0, sizeof(AvpuDMABuf));
                             memset(&enc->avpu.interm_buf, 0, sizeof(AvpuDMABuf));
+                            enc->avpu.rec_buf.dmabuf_fd = -1;
+                            enc->avpu.ref_buf.dmabuf_fd = -1;
+                            enc->avpu.rec_trace_buf.dmabuf_fd = -1;
+                            enc->avpu.ref_trace_buf.dmabuf_fd = -1;
+                            enc->avpu.interm_buf.dmabuf_fd = -1;
                             enc->avpu.interm_ep1_size = avpu_get_enc1_ep1_size();
                             enc->avpu.interm_wpp_size = avpu_get_enc1_wpp_size(width, height);
                             enc->avpu.interm_ep2_size = avpu_get_enc1_ep2_size(width, height);
@@ -8094,6 +8175,100 @@ static int al_codec_encode_process_impl(void *codec, void *frame,
 #endif
 
                             avpu_log_dma_layout(&enc->avpu);
+                        }
+
+                        /* Never let a partial allocator result reach the AVPU.
+                         * A zero CL/intermediate/reconstruction address is not
+                         * a recoverable encode error on T40: it wedges the AXI
+                         * fabric before userspace can report the failure. */
+                        {
+                            int required_dma_ok =
+                                enc->avpu.stream_bufs_used > 0 && cl_ok &&
+                                enc->avpu.cl_ring.map &&
+                                enc->avpu.cl_submit_ring.map &&
+                                enc->avpu.interm_buf.map &&
+                                enc->avpu.rec_buf.map;
+#if (defined(PLATFORM_T40) || defined(PLATFORM_T31)) && \
+    !defined(PLATFORM_T41)
+                            required_dma_ok = required_dma_ok &&
+                                enc->avpu.ref_buf.map &&
+                                enc->avpu.rec_trace_buf.map;
+#elif defined(PLATFORM_T41)
+                            required_dma_ok = required_dma_ok &&
+                                enc->avpu.rec_trace_buf.map;
+#endif
+                            codec_startup_trace(
+                                "openimp/codec startup: dma complete=%d stream=%d "
+                                "cl=%p/%p interm=%p rec=%p ref=%p ep3=%p\n",
+                                required_dma_ok,
+                                enc->avpu.stream_bufs_used,
+                                enc->avpu.cl_ring.map,
+                                enc->avpu.cl_submit_ring.map,
+                                enc->avpu.interm_buf.map,
+                                enc->avpu.rec_buf.map,
+                                enc->avpu.ref_buf.map,
+                                enc->avpu.rec_trace_buf.map);
+                            if (!required_dma_ok) {
+                                int i;
+
+                                LOG_CODEC("AVPU: refusing partial DMA layout");
+                                if (enc->avpu.irq_thread) {
+                                    pthread_t tid =
+                                        (pthread_t)enc->avpu.irq_thread;
+
+                                    enc->avpu.irq_thread_running = 0;
+                                    avpu_sys_ioctl(enc->avpu.fd,
+                                                   AL_CMD_UNBLOCK_CHANNEL,
+                                                   NULL);
+                                    pthread_join(tid, NULL);
+                                    enc->avpu.irq_thread = 0;
+                                }
+                                for (i = 0;
+                                     i < enc->avpu.stream_bufs_used; ++i)
+                                    avpu_release_dma_buf(
+                                        &enc->avpu.stream_bufs[i]);
+                                avpu_release_dma_buf(&enc->avpu.cl_ring);
+                                avpu_release_dma_buf(
+                                    &enc->avpu.cl_submit_ring);
+                                avpu_release_dma_buf(&enc->avpu.interm_buf);
+                                avpu_release_dma_buf(&enc->avpu.rec_buf);
+                                avpu_release_dma_buf(&enc->avpu.ref_buf);
+                                avpu_release_dma_buf(
+                                    &enc->avpu.rec_trace_buf);
+                                avpu_release_dma_buf(
+                                    &enc->avpu.ref_trace_buf);
+                                AL_DevicePool_Close(enc->avpu.fd);
+                                enc->avpu.fd = -1;
+#if defined(PLATFORM_T40) || defined(PLATFORM_T31)
+                                pthread_mutex_lock(
+                                    &g_tseries_irq_host_lock);
+                                if (g_tseries_irq_owner == &enc->avpu)
+                                    g_tseries_irq_owner = NULL;
+                                if (g_tseries_irq_host == &enc->avpu)
+                                    g_tseries_irq_host = NULL;
+                                pthread_mutex_unlock(
+                                    &g_tseries_irq_host_lock);
+#endif
+                                if (enc->avpu.irq_mutex) {
+                                    pthread_mutex_destroy(
+                                        (pthread_mutex_t *)
+                                            enc->avpu.irq_mutex);
+                                    free(enc->avpu.irq_mutex);
+                                    enc->avpu.irq_mutex = NULL;
+                                }
+                                if (enc->avpu.stream_queue_mutex) {
+                                    pthread_mutex_destroy(
+                                        (pthread_mutex_t *)
+                                            enc->avpu.stream_queue_mutex);
+                                    free(enc->avpu.stream_queue_mutex);
+                                    enc->avpu.stream_queue_mutex = NULL;
+                                }
+                                free(enc->avpu.stream_header_shadow);
+                                enc->avpu.stream_header_shadow = NULL;
+                                enc->use_hardware = 0;
+                                codec_set_error(enc, -ENOMEM);
+                                return -1;
+                            }
                         }
 
                         /* T31 uses absolute addressing (offset mode causes kernel crashes) */
