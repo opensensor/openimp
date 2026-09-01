@@ -227,7 +227,7 @@ static int t23_start_worker(T23HelixBridge *bridge)
 {
     static char *const helper_environment[] = {
         "PATH=/usr/bin:/bin",
-        "LD_LIBRARY_PATH=/usr/lib",
+        "LD_LIBRARY_PATH=/opt/openimp-t23",
         NULL,
     };
     T23HelixIpcRequest request;

@@ -42,6 +42,16 @@ replacement `libsysutils`/`libalog` libraries.
 ## Build
 
 ```sh
+# T20/T20X
+./build-for-device.sh T20
+# or
+make t20
+
+# T21/T21N
+./build-for-device.sh T21
+# or
+make t21
+
 # T23
 ./build-for-device.sh T23
 # or
@@ -70,6 +80,8 @@ make t41
 
 Outputs:
 
+- `build/t20/libimp.so`
+- `build/t21/libimp.so`
 - `build/t23/libimp.so`
 - `build/t30/libimp.so`
 - `build/t31/libimp.so`

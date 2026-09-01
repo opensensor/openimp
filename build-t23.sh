@@ -21,7 +21,7 @@ fi
 
 : "${firmware_dir:?set THINGINO_DIR to a Thingino firmware checkout}"
 target_name=${T23_TARGET:-cinnado_d1_t23n_sc2336_atbm6012bx-3.10.14-uclibc}
-target_dir="$firmware_dir/output/master/$target_name"
+target_dir=${T23_TARGET_DIR:-"$firmware_dir/output/master/$target_name"}
 toolchain_prefix=${TOOLCHAIN_PREFIX:-"$target_dir/host/bin/mipsel-linux"}
 compiler="${toolchain_prefix}-gcc"
 stripper="${toolchain_prefix}-strip"
@@ -103,6 +103,10 @@ compile t23_persist src/t23/openimp_t23_persist.c -Werror
     "$output_dir/t23_helix_bridge.o" \
     "$output_dir/t23_persist.o" \
     -ldl -lpthread -lrt
+
+"$compiler" $base_flags $repo_includes -Wall -Wextra -Werror \
+    "$project_dir/tools/openimp-tuningd.c" "$output_dir/openimp_tuning.o" \
+    -lpthread -o "$output_dir/openimp-tuningd"
 
 "$stripper" --strip-unneeded "$output_dir/libimp.so"
 
