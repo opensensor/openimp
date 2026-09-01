@@ -32,6 +32,9 @@
 #include "imp_log_int.h"
 #include "kernel_interface.h"
 #include "openimp_profile.h"
+#if defined(PLATFORM_T40)
+#include "t40_stream_layout.h"
+#endif
 #if defined(PLATFORM_T31)
 #include "t31_rate_control.h"
 #include "t31_stream_layout.h"
@@ -5435,6 +5438,10 @@ static uint32_t avpu_stream_buffer_effective_size(ALAvpuContext *ctx, int buf_id
     unsigned int t40_payload_status = 0;
     int have_t40_payload_size = 0;
     int ignore_t40_status_size = 0;
+#if !defined(PLATFORM_T41)
+    OpenIMPT40StreamLayout t40_layout;
+    int have_t40_layout = 0;
+#endif
 #endif
 #if defined(PLATFORM_T31)
     uint32_t t31_payload_size = 0;
@@ -5485,9 +5492,30 @@ static uint32_t avpu_stream_buffer_effective_size(ALAvpuContext *ctx, int buf_id
     usleep(2000);
 #endif
 
-    /* Invalidate CPU cache so the completed AVPU DMA is visible. T31's exact
-     * completion count bounds this operation to the bytes hardware wrote;
-     * generations without an exact extent retain their proven full window. */
+#if defined(PLATFORM_T40) && !defined(PLATFORM_T41)
+    /* T40 exposes the completed entropy-byte count at 0x8304.  Validate it
+     * before touching the output buffer so every later cache and compaction
+     * range can be bounded by bytes the AVPU actually wrote. */
+    have_t40_payload_size =
+        avpu_read_reg_quiet(ctx->fd, 0x8304u, &t40_payload_status) == 0;
+    t40_payload_size =
+        t40_payload_status & OPENIMP_T40_PAYLOAD_SIZE_MASK;
+    ignore_t40_status_size =
+        getenv("OPENIMP_T40_IGNORE_STATUS_SIZE") != NULL;
+    if (!ignore_t40_status_size && have_t40_payload_size &&
+        ctx->stream_buf_size > 0 &&
+        openimp_t40_stream_layout(
+            (uint32_t)ctx->stream_buf_size, 0x220u,
+            ctx->stream_header_offset_by_buf[buf_idx] != 0u
+                ? ctx->stream_header_offset_by_buf[buf_idx]
+                : ctx->stream_header_offset,
+            t40_payload_status, &t40_layout) == 0)
+        have_t40_layout = 1;
+#endif
+
+    /* Invalidate CPU cache so the completed AVPU DMA is visible. Exact T31,
+     * T40 and T41 completion counts bound this operation to bytes hardware
+     * wrote; diagnostic fallbacks retain their proven full window. */
     {
         int inv_ret;
 #if defined(PLATFORM_T41)
@@ -5500,6 +5528,12 @@ static uint32_t avpu_stream_buffer_effective_size(ALAvpuContext *ctx, int buf_id
             ctx->fd, ctx->stream_bufs[buf_idx].map,
             t31_layout.payload_end, 0 /* BIDIRECTIONAL */,
             OPENIMP_PROFILE_CACHE_STREAM_COMPLETE);
+#elif defined(PLATFORM_T40)
+        inv_ret = avpu_flush_cache_profiled(
+            ctx->fd, ctx->stream_bufs[buf_idx].map,
+            have_t40_layout ? t40_layout.payload_end : 0x100000u,
+            0 /* BIDIRECTIONAL */,
+            OPENIMP_PROFILE_CACHE_STREAM_COMPLETE);
 #else
         inv_ret = avpu_flush_cache(ctx->fd,
                                    ctx->stream_bufs[buf_idx].map,
@@ -5511,9 +5545,11 @@ static uint32_t avpu_stream_buffer_effective_size(ALAvpuContext *ctx, int buf_id
 
     /* Non-T31 generations may expose a live end position in the command list.
      * T31 instead uses its exact +0x104 completion payload count. */
-#if defined(PLATFORM_T31)
+#if defined(PLATFORM_T31) || \
+    (defined(PLATFORM_T40) && !defined(PLATFORM_T41))
     /* T31 cmd[0x32] is the submitted payload start, not the completed
-     * stream end.  Never expose that fixed offset as the frame length. */
+     * stream end. T40 likewise uses 0x8304 rather than its input command
+     * words. Never expose either fixed offset as the frame length. */
     hw_end = 0u;
 #else
     hw_end = avpu_read_hw_stream_end(ctx, buf_idx);
@@ -5528,11 +5564,6 @@ static uint32_t avpu_stream_buffer_effective_size(ALAvpuContext *ctx, int buf_id
 #if defined(PLATFORM_T41)
     have_t40_payload_size = 0;
     ignore_t40_status_size = 1;
-#else
-    have_t40_payload_size =
-        avpu_read_reg_quiet(ctx->fd, 0x8304u, &t40_payload_status) == 0;
-    t40_payload_size = t40_payload_status & 0x3fffffffu;
-    ignore_t40_status_size = getenv("OPENIMP_T40_IGNORE_STATUS_SIZE") != NULL;
 #endif
     hw_end = 0u;
 #endif
@@ -5569,6 +5600,15 @@ static uint32_t avpu_stream_buffer_effective_size(ALAvpuContext *ctx, int buf_id
      * large enough to halve throughput on the target CPU. */
     raw_end = 0u;
     scanned_raw_end = 0u;
+#elif defined(PLATFORM_T40)
+    if (have_t40_layout) {
+        raw_end = t40_layout.payload_end;
+        scanned_raw_end = 0u;
+    } else {
+        raw_end = avpu_stream_buffer_raw_end(
+            sb, (size_t)ctx->stream_buf_size);
+        scanned_raw_end = raw_end;
+    }
 #else
     raw_end = avpu_stream_buffer_raw_end(sb, (size_t)ctx->stream_buf_size);
     scanned_raw_end = raw_end;
@@ -5703,13 +5743,12 @@ static uint32_t avpu_stream_buffer_effective_size(ALAvpuContext *ctx, int buf_id
             }
         }
 #else
-        if (!ignore_t40_status_size &&
-            have_t40_payload_size && t40_payload_size > 0u &&
-            t40_payload_size <= (uint32_t)ctx->stream_buf_size - payload_offset) {
-            raw_end = payload_offset + t40_payload_size;
+        if (have_t40_layout) {
+            raw_end = t40_layout.payload_end;
             LOG_CODEC_THROTTLE(ctx,
                                "AVPU: T40 payload status bytes=%u compacted=%u",
-                               t40_payload_size, header_size + t40_payload_size);
+                               t40_layout.payload_size,
+                               t40_layout.access_unit_size);
         }
 #endif
         if (ctx->frames_encoded < 3) {
@@ -5754,10 +5793,13 @@ static uint32_t avpu_stream_buffer_effective_size(ALAvpuContext *ctx, int buf_id
 #if defined(PLATFORM_T41)
             raw_end = t41_layout.access_unit_size;
 #else
-            raw_end = header_size + payload_size;
+            raw_end = have_t40_layout
+                ? t40_layout.access_unit_size
+                : header_size + payload_size;
 #endif
 #if !defined(PLATFORM_T41)
-            if (raw_end < (uint32_t)ctx->stream_buf_size)
+            if (!have_t40_layout &&
+                raw_end < (uint32_t)ctx->stream_buf_size)
                 memset(mutable_stream + raw_end, 0,
                        (size_t)ctx->stream_buf_size - raw_end);
 #endif
@@ -5820,6 +5862,17 @@ static uint32_t avpu_stream_buffer_effective_size(ALAvpuContext *ctx, int buf_id
         if (!have_t41_layout || raw_end != t41_layout.access_unit_size)
             return 0;
         frame_size = t41_layout.access_unit_size;
+#elif defined(PLATFORM_T40)
+        if (have_t40_layout) {
+            if (raw_end != t40_layout.access_unit_size)
+                return 0;
+            frame_size = t40_layout.access_unit_size;
+        } else {
+            if (raw_end == 0)
+                return 0;
+            annexb = annexb_effective_size(sb, raw_end);
+            frame_size = annexb > 0 ? (uint32_t)annexb : raw_end;
+        }
 #else
         /* Use the HW-reported end if it's sane; fall back to a diagnostic
          * Annex-B extent scan on generations without an exact length. */
