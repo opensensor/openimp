@@ -2324,21 +2324,40 @@ static uint32_t avpu_t40_picture_qp(const ALAvpuContext *ctx, int is_idr)
 
 #if defined(PLATFORM_T31)
     /* T31 defines iIPDelta as I-picture QP relative to the following P
-     * picture.  The recovered SDK default is -1.  Keep the adjustment here
-     * so the generated slice header and both Enc1 command words use the same
-     * effective QP. */
-    if (is_idr) {
-        int32_t idr_qp = (int32_t)qp + ctx->qp_ip_delta;
+     * picture.  A positive delta makes the IDR smaller, but applying the
+     * whole step to the IDR alone forces the first P picture to repair the
+     * reference-quality cliff and merely moves the bitrate spike by one
+     * frame.  Taper a positive delta by one QP per following picture so the
+     * reference returns to the controller QP without another super-frame.
+     * Non-positive values retain the recovered SDK behavior exactly. */
+    {
+        int32_t picture_delta = 0;
 
-        if (idr_qp < (int32_t)ctx->min_qp)
-            idr_qp = (int32_t)ctx->min_qp;
-        if (ctx->max_qp != 0u && idr_qp > (int32_t)ctx->max_qp)
-            idr_qp = (int32_t)ctx->max_qp;
-        if (idr_qp < 0)
-            idr_qp = 0;
-        if (idr_qp > 51)
-            idr_qp = 51;
-        qp = (uint32_t)idr_qp;
+        if (is_idr) {
+            picture_delta = ctx->qp_ip_delta;
+        } else if (ctx->qp_ip_delta > 1 &&
+                   ctx->frame_number > ctx->idr_frame_number) {
+            uint32_t picture_number =
+                ctx->frame_number - ctx->idr_frame_number;
+
+            if (picture_number < (uint32_t)ctx->qp_ip_delta)
+                picture_delta = ctx->qp_ip_delta - (int32_t)picture_number;
+        }
+
+        if (picture_delta != 0) {
+            int32_t picture_qp = (int32_t)qp + picture_delta;
+
+            if (picture_qp < (int32_t)ctx->min_qp)
+                picture_qp = (int32_t)ctx->min_qp;
+            if (ctx->max_qp != 0u &&
+                picture_qp > (int32_t)ctx->max_qp)
+                picture_qp = (int32_t)ctx->max_qp;
+            if (picture_qp < 0)
+                picture_qp = 0;
+            if (picture_qp > 51)
+                picture_qp = 51;
+            qp = (uint32_t)picture_qp;
+        }
     }
 #else
     (void)is_idr;
