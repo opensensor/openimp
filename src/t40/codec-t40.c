@@ -2324,21 +2324,40 @@ static uint32_t avpu_t40_picture_qp(const ALAvpuContext *ctx, int is_idr)
 
 #if defined(PLATFORM_T31)
     /* T31 defines iIPDelta as I-picture QP relative to the following P
-     * picture.  The recovered SDK default is -1.  Keep the adjustment here
-     * so the generated slice header and both Enc1 command words use the same
-     * effective QP. */
-    if (is_idr) {
-        int32_t idr_qp = (int32_t)qp + ctx->qp_ip_delta;
+     * picture.  A positive delta makes the IDR smaller, but applying the
+     * whole step to the IDR alone forces the first P picture to repair the
+     * reference-quality cliff and merely moves the bitrate spike by one
+     * frame.  Taper a positive delta by one QP per following picture so the
+     * reference returns to the controller QP without another super-frame.
+     * Non-positive values retain the recovered SDK behavior exactly. */
+    {
+        int32_t picture_delta = 0;
 
-        if (idr_qp < (int32_t)ctx->min_qp)
-            idr_qp = (int32_t)ctx->min_qp;
-        if (ctx->max_qp != 0u && idr_qp > (int32_t)ctx->max_qp)
-            idr_qp = (int32_t)ctx->max_qp;
-        if (idr_qp < 0)
-            idr_qp = 0;
-        if (idr_qp > 51)
-            idr_qp = 51;
-        qp = (uint32_t)idr_qp;
+        if (is_idr) {
+            picture_delta = ctx->qp_ip_delta;
+        } else if (ctx->qp_ip_delta > 1 &&
+                   ctx->frame_number > ctx->idr_frame_number) {
+            uint32_t picture_number =
+                ctx->frame_number - ctx->idr_frame_number;
+
+            if (picture_number < (uint32_t)ctx->qp_ip_delta)
+                picture_delta = ctx->qp_ip_delta - (int32_t)picture_number;
+        }
+
+        if (picture_delta != 0) {
+            int32_t picture_qp = (int32_t)qp + picture_delta;
+
+            if (picture_qp < (int32_t)ctx->min_qp)
+                picture_qp = (int32_t)ctx->min_qp;
+            if (ctx->max_qp != 0u &&
+                picture_qp > (int32_t)ctx->max_qp)
+                picture_qp = (int32_t)ctx->max_qp;
+            if (picture_qp < 0)
+                picture_qp = 0;
+            if (picture_qp > 51)
+                picture_qp = 51;
+            qp = (uint32_t)picture_qp;
+        }
     }
 #else
     (void)is_idr;
@@ -6310,6 +6329,27 @@ static void avpu_sync_runtime_encode_state(AL_CodecEncode *enc)
     enc->avpu.entropy_mode = enc->entropy_mode;
     enc->avpu.gop_length = enc->gop_cache.gopLength ? enc->gop_cache.gopLength : enc->hw_params.gop_length;
     enc->avpu.format_word = *(uint32_t *)(enc->codec_param + 0x10);
+#if defined(PLATFORM_T31) || defined(PLATFORM_T40) || defined(PLATFORM_T41)
+    /* Lazy AVPU initialization clears the entire hardware shadow.  Restore
+     * the configured I/P delta from the control-plane cache along with the
+     * other rate-control fields so CreateChn attributes survive first frame. */
+    switch (enc->rc_attr_cache.attrRcMode.rcMode) {
+    case IMP_ENC_RC_MODE_CBR:
+        enc->avpu.qp_ip_delta =
+            enc->rc_attr_cache.attrRcMode.attrH264Cbr.iIPDelta;
+        break;
+    case IMP_ENC_RC_MODE_VBR:
+    case IMP_ENC_RC_MODE_CAPPED_VBR:
+    case IMP_ENC_RC_MODE_CAPPED_QUALITY:
+        enc->avpu.qp_ip_delta =
+            enc->rc_attr_cache.attrRcMode.attrH264Vbr.iIPDelta;
+        break;
+    case IMP_ENC_RC_MODE_FIXQP:
+    default:
+        enc->avpu.qp_ip_delta = -1;
+        break;
+    }
+#endif
 
     profile_idc = codec_param_read_profile_idc(enc->codec_param);
     switch (profile_idc) {
@@ -6385,7 +6425,7 @@ static void codec_sync_rc_cache(AL_CodecEncode *enc)
     rc = &enc->rc_attr_cache;
     memset(rc, 0, sizeof(*rc));
 
-    rc_mode = *(uint32_t *)(enc->codec_param + 0x2c);
+    rc_mode = codec_param_read_rc_mode(enc->codec_param);
     switch (rc_mode) {
     case HW_RC_MODE_FIXQP:
         rc->attrRcMode.rcMode = IMP_ENC_RC_MODE_FIXQP;
