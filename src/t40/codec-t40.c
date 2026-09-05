@@ -7293,14 +7293,17 @@ static void avpu_t31_start_companion_stage(ALAvpuContext *ctx, int fd,
     uint32_t hw_stream_budget =
         stream_part_offset > hw_hdr_offset
             ? stream_part_offset - hw_hdr_offset : 0u;
-    int source_cfg_stream_idx = buf_idx;
+    /* The stream output target must be THIS transaction's slot.  The CL
+     * (cmd[0x30]) already carries stream_bufs[buf_idx].phy_addr (see
+     * fill_cmd_regs_enc1: "must match STRM_PUSH"), and every host-side
+     * structure binds buf_idx: the per-slot header shadow, the CL status
+     * binding (stream_enc2_cl_idx[buf_idx]), the pending-stream FIFO entry,
+     * the completion payload extent at +0x220, and release-by-phys matching.
+     * Advertising stream_bufs[(buf_idx + 1) % used] instead paired the
+     * hardware entropy output with the wrong slot whenever more than one
+     * stream buffer was configured.  Keep the companion block consistent
+     * with the CL: always program cmd[0x30]. */
     uint32_t source_cfg_stream = cmd[0x30];
-
-    if (ctx->stream_bufs_used > 1) {
-        source_cfg_stream_idx = (buf_idx + 1) % ctx->stream_bufs_used;
-        source_cfg_stream =
-            ctx->stream_bufs[source_cfg_stream_idx].phy_addr;
-    }
 
     avpu_write_reg(fd, AVPU_REG_ENC_EN_B, 0x00000001);
     avpu_write_reg(fd, AVPU_REG_ENC_EN_A, 0x00000001);
@@ -7345,9 +7348,8 @@ static void avpu_t31_start_companion_stage(ALAvpuContext *ctx, int fd,
         LOG_CODEC("AVPU: post-CL source cfg 8418=%08x 841c=%08x 8420=%08x 8424=%08x 8428=%08x 85e4=%08x",
                   cfg_8418, cfg_841c, cfg_8420, cfg_8424, cfg_8428,
                   cfg_85e4);
-        LOG_CODEC("AVPU: source cfg stream active_idx=%d active=0x%08x alternate_idx=%d alternate=0x%08x",
-                  buf_idx, cmd[0x30], source_cfg_stream_idx,
-                  source_cfg_stream);
+        LOG_CODEC("AVPU: source cfg stream buf_idx=%d cl_stream=0x%08x reg_841c=0x%08x",
+                  buf_idx, cmd[0x30], cfg_841c);
     }
 
     if (ctx->frame_number % 50 == 0)
