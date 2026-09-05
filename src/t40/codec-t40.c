@@ -6310,6 +6310,27 @@ static void avpu_sync_runtime_encode_state(AL_CodecEncode *enc)
     enc->avpu.entropy_mode = enc->entropy_mode;
     enc->avpu.gop_length = enc->gop_cache.gopLength ? enc->gop_cache.gopLength : enc->hw_params.gop_length;
     enc->avpu.format_word = *(uint32_t *)(enc->codec_param + 0x10);
+#if defined(PLATFORM_T31) || defined(PLATFORM_T40) || defined(PLATFORM_T41)
+    /* Lazy AVPU initialization clears the entire hardware shadow.  Restore
+     * the configured I/P delta from the control-plane cache along with the
+     * other rate-control fields so CreateChn attributes survive first frame. */
+    switch (enc->rc_attr_cache.attrRcMode.rcMode) {
+    case IMP_ENC_RC_MODE_CBR:
+        enc->avpu.qp_ip_delta =
+            enc->rc_attr_cache.attrRcMode.attrH264Cbr.iIPDelta;
+        break;
+    case IMP_ENC_RC_MODE_VBR:
+    case IMP_ENC_RC_MODE_CAPPED_VBR:
+    case IMP_ENC_RC_MODE_CAPPED_QUALITY:
+        enc->avpu.qp_ip_delta =
+            enc->rc_attr_cache.attrRcMode.attrH264Vbr.iIPDelta;
+        break;
+    case IMP_ENC_RC_MODE_FIXQP:
+    default:
+        enc->avpu.qp_ip_delta = -1;
+        break;
+    }
+#endif
 
     profile_idc = codec_param_read_profile_idc(enc->codec_param);
     switch (profile_idc) {
@@ -6385,7 +6406,7 @@ static void codec_sync_rc_cache(AL_CodecEncode *enc)
     rc = &enc->rc_attr_cache;
     memset(rc, 0, sizeof(*rc));
 
-    rc_mode = *(uint32_t *)(enc->codec_param + 0x2c);
+    rc_mode = codec_param_read_rc_mode(enc->codec_param);
     switch (rc_mode) {
     case HW_RC_MODE_FIXQP:
         rc->attrRcMode.rcMode = IMP_ENC_RC_MODE_FIXQP;
