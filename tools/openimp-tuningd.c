@@ -69,7 +69,7 @@ static int parse_exposure_target(const char *text, uint16_t *value)
     if (!text)
         return -1;
     parsed = strtoul(text, &end, 0);
-    if (!*text || *end || parsed < 0x400U || parsed > 0xffffU)
+    if (!*text || *end || (parsed && parsed < 0x400U) || parsed > 0xffffU)
         return -1;
     *value = (uint16_t)parsed;
     return 0;

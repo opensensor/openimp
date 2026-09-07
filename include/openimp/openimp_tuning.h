@@ -38,7 +38,7 @@ typedef struct {
     uint8_t auto_white_balance;
     uint16_t red_gain;
     uint16_t blue_gain;
-    uint16_t exposure_target_q8;
+    uint16_t exposure_target_q8; /* T41: 0 = calibrated automatic EV target */
     uint16_t feedback_interval_ms;
 } OpenIMPTuningProfile;
 
@@ -54,7 +54,7 @@ typedef struct {
     uint8_t active_auto_white_balance;
     uint16_t active_red_gain;
     uint16_t active_blue_gain;
-    uint16_t active_exposure_target_q8;
+    uint16_t active_exposure_target_q8; /* 0 = calibrated automatic, not black */
     uint8_t active_low_light_color_model;
     uint8_t active_bright_day_color_model;
     uint32_t active_scene_red_q10;

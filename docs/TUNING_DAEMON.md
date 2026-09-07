@@ -2,6 +2,24 @@
 
 ## Current T41 calibrated path and startup readiness
 
+Security first negotiates `OPEN_AE_TARGET=0`, meaning the active calibration's
+automatic EV target. A sentinel GET verifies support, including old kernels
+that silently acknowledge unknown commands. With support present, security
+starts from the live calibrated WB gains and disables the old scene-preset
+switching; it does not install captured daylight gains or a fixed AE target.
+The bounded calibrated-neutral estimator still slews WB in userspace.
+This is not a claim to implement OEM illuminant clustering/convergence.
+
+Only `ERANGE`, `EOPNOTSUPP`, `ENOTTY`, or an unchanged/nonzero negotiation
+reply select legacy compatibility. Readiness and malformed-request errors
+propagate to startup handling. Missing neutral evidence holds WB; a broken
+calibrated AWB contract cannot silently introduce legacy RGB biases.
+`status` reports `ae_target=0` for automatic calibration, not zero brightness.
+Use `set exposure 0` to restore automatic metering after a manual target.
+Custom profiles and the intentionally colored psychedelic effect stay
+explicit opt-ins. Tests cover negotiation, legacy replies, cold readiness,
+manual-to-auto return, and suppression of high-gain/warm-scene preset jumps.
+
 When the kernel implements `OPEN_AWB_TARGET`, security-policy updates use
 its calibrated neutral estimate without applying the legacy RGB biases
 again. Missing neutral evidence holds the last gains. The new T41 ISP also

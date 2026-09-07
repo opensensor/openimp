@@ -91,6 +91,7 @@ struct OpenIMPTuningController {
     uint32_t scene_blue_q10;
     uint8_t awb_update_samples;
     int calibrated_awb_support; /* 0 unknown, 1 supported, -1 legacy kernel */
+    int calibrated_ae_policy; /* security uses kernel EV target, not scene presets */
 };
 
 static int tuning_open(const char *device)
@@ -123,15 +124,13 @@ void OpenIMP_Tuning_DefaultProfile(OpenIMPTuningProfile *profile)
     profile->hue = 128;
     profile->gain_feedback = 1;
     profile->auto_white_balance = 0;
-    /* Reproduce a converged OEM OS04D10 daylight capture.  The recovered
-     * aggregate AWB model remains opt-in: its gray-world mapping is not yet
-     * equivalent to the larger OEM model-selection routine. */
-    profile->red_gain = 1476;
-    profile->blue_gain = 3524;
-    profile->exposure_target_q8 = 17600;
+    /* Security starts from the ISP's calibrated WB state, not a captured
+     * illuminant. Zero exposure target requests calibration-driven AE. */
+    profile->red_gain = 1024;
+    profile->blue_gain = 1024;
+    profile->exposure_target_q8 = 0;
 #if defined(PLATFORM_T41)
-    profile->control_mask |= OPENIMP_TUNING_CONTROL_WHITE_BALANCE |
-                             OPENIMP_TUNING_CONTROL_EXPOSURE_TARGET;
+    profile->control_mask |= OPENIMP_TUNING_CONTROL_EXPOSURE_TARGET;
 #endif
     profile->feedback_interval_ms = OPENIMP_TUNING_DEFAULT_INTERVAL_MS;
 }
@@ -151,6 +150,7 @@ int OpenIMP_Tuning_ProfilePreset(OpenIMPTuningProfileKind kind,
         profile->red_gain = 1800;
         profile->blue_gain = 3000;
         profile->exposure_target_q8 = 14500;
+        profile->control_mask |= OPENIMP_TUNING_CONTROL_WHITE_BALANCE;
     }
 #endif
     return 0;
@@ -363,6 +363,8 @@ static int t41_adapt_security_awb(OpenIMPTuningController *controller)
     if (ret == -ENODATA || ret == -EAGAIN)
         return 0;
     if (ret == -EOPNOTSUPP || ret == -ENOTTY) {
+        if (controller->calibrated_ae_policy)
+            return ret; /* do not inject legacy biases into the generic path */
         if (!controller->scene_red_q10 || !controller->scene_blue_q10)
             return 0;
         t41_security_awb_target(controller, &target_red, &target_blue);
@@ -438,6 +440,59 @@ static int t41_apply_security_model(OpenIMPTuningController *controller,
     controller->awb_update_samples = 0;
     return 0;
 }
+
+/* Explicitly negotiate the new zero=calibrated AE contract. Old kernels
+ * either reject zero or acknowledge unknown requests without changing the
+ * output. A GET sentinel distinguishes the latter; readiness errors must
+ * reach the startup retry loop instead of selecting a legacy scene bank. */
+static int t41_security_begin(OpenIMPTuningController *controller,
+                               OpenIMPTuningProfile *profile)
+{
+    uint32_t target = 0;
+    struct t41_awb_control awb = {0, 0, 0};
+    int ret = t41_ae_target(controller->fd, 0, &target);
+    if (!ret) {
+        target = UINT32_MAX;
+        ret = t41_ae_target(controller->fd, 1, &target);
+        if (!ret && target != 0)
+            ret = -EOPNOTSUPP;
+    }
+    if (ret == -ERANGE || ret == -EOPNOTSUPP || ret == -ENOTTY) {
+        /* Compatibility only. Never reach these captured defaults when the
+         * calibrated AE contract is present. */
+        controller->calibrated_ae_policy = 0;
+        profile->red_gain = 1476;
+        profile->blue_gain = 3524;
+        profile->exposure_target_q8 = 17600;
+        profile->control_mask |= OPENIMP_TUNING_CONTROL_WHITE_BALANCE;
+        return 0;
+    }
+    if (ret)
+        return ret;
+    ret = t41_awb_control(controller->fd, 1, &awb);
+    if (ret)
+        return ret;
+    if (awb.red_gain < 512 || awb.red_gain > 6144 ||
+        awb.blue_gain < 512 || awb.blue_gain > 6144)
+        return -EAGAIN;
+    /* Transfer WB ownership without changing the current calibrated gain.
+     * The userspace neutral estimator and kernel auto loop must not race. */
+    awb.mode = 0;
+    ret = t41_awb_control(controller->fd, 0, &awb);
+    if (ret)
+        return ret;
+    controller->calibrated_ae_policy = 1;
+    controller->bright_day_evidence = 0;
+    controller->low_light_evidence = 0;
+    controller->awb_update_samples = 0;
+    controller->security_color_model = T41_COLOR_MODEL_DAY;
+    profile->auto_white_balance = 0;
+    profile->red_gain = awb.red_gain;
+    profile->blue_gain = awb.blue_gain;
+    profile->exposure_target_q8 = 0;
+    profile->control_mask &= ~OPENIMP_TUNING_CONTROL_WHITE_BALANCE;
+    return 0;
+}
 #endif
 
 static int t40_set_control(int fd, int32_t id, uint8_t value)
@@ -449,12 +504,16 @@ static int t40_set_control(int fd, int32_t id, uint8_t value)
 }
 
 static int tuning_apply(OpenIMPTuningController *controller,
-                        const OpenIMPTuningProfile *profile)
+                        OpenIMPTuningProfile *profile)
 {
     int ret = 0;
 
 #if defined(PLATFORM_T41)
-    if (profile->kind != OPENIMP_TUNING_PROFILE_CUSTOM) {
+    if (profile->kind == OPENIMP_TUNING_PROFILE_SECURITY)
+        ret = t41_security_begin(controller, profile);
+    if (!ret && profile->kind != OPENIMP_TUNING_PROFILE_CUSTOM &&
+        (profile->kind != OPENIMP_TUNING_PROFILE_SECURITY ||
+         !controller->calibrated_ae_policy)) {
         uint32_t color_model = T41_COLOR_MODEL_DAY;
 
         ret = t41_color_model(controller->fd, 0, &color_model);
@@ -524,7 +583,7 @@ static int tuning_feedback(OpenIMPTuningController *controller)
             controller->scene_blue_q10 = scene.raw_b_q10;
         }
 
-        if (!scene_ret) {
+        if (!scene_ret && !controller->calibrated_ae_policy) {
             if (scene.raw_b_q10 <=
                 T41_SECURITY_BRIGHT_DAY_ENTER_B_Q10) {
                 if (controller->bright_day_evidence <
@@ -558,27 +617,29 @@ static int tuning_feedback(OpenIMPTuningController *controller)
         /* Cool-daylight evidence remains authoritative even after the
          * low-light model has latched. This prevents a daylight exposure
          * rise from trapping the camera on the blue low-light WB preset. */
-        if (controller->bright_day_evidence >=
-            T41_SECURITY_BRIGHT_DAY_SAMPLES) {
-            color_model = T41_COLOR_MODEL_DAY;
-        } else if (controller->low_light_evidence >=
-                   T41_SECURITY_LOW_LIGHT_SAMPLES) {
-            color_model = T41_COLOR_MODEL_LOW_LIGHT;
-        } else if (color_model == T41_COLOR_MODEL_LOW_LIGHT &&
-                   total_gain <= T41_SECURITY_LOW_LIGHT_EXIT_GAIN) {
-            color_model = T41_COLOR_MODEL_DAY;
-        } else if (color_model == T41_COLOR_MODEL_BRIGHT_DAY &&
-                   controller->bright_day_evidence <=
-                       -T41_SECURITY_BRIGHT_DAY_SAMPLES) {
-            color_model = T41_COLOR_MODEL_DAY;
-        }
-        if (color_model != controller->security_color_model) {
-            int ret = t41_apply_security_model(controller, color_model);
+        if (!controller->calibrated_ae_policy) {
+            if (controller->bright_day_evidence >=
+                T41_SECURITY_BRIGHT_DAY_SAMPLES) {
+                color_model = T41_COLOR_MODEL_DAY;
+            } else if (controller->low_light_evidence >=
+                       T41_SECURITY_LOW_LIGHT_SAMPLES) {
+                color_model = T41_COLOR_MODEL_LOW_LIGHT;
+            } else if (color_model == T41_COLOR_MODEL_LOW_LIGHT &&
+                       total_gain <= T41_SECURITY_LOW_LIGHT_EXIT_GAIN) {
+                color_model = T41_COLOR_MODEL_DAY;
+            } else if (color_model == T41_COLOR_MODEL_BRIGHT_DAY &&
+                       controller->bright_day_evidence <=
+                           -T41_SECURITY_BRIGHT_DAY_SAMPLES) {
+                color_model = T41_COLOR_MODEL_DAY;
+            }
+            if (color_model != controller->security_color_model) {
+                int ret = t41_apply_security_model(controller, color_model);
 
-            if (ret)
-                return ret;
-            controller->bright_day_evidence = 0;
-            controller->low_light_evidence = 0;
+                if (ret)
+                    return ret;
+                controller->bright_day_evidence = 0;
+                controller->low_light_evidence = 0;
+            }
         }
         {
             int ret = t41_adapt_security_awb(controller);
