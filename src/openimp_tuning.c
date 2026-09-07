@@ -33,6 +33,7 @@
 #define TISP_CID_OPEN_AE_TARGET 0x08ff0002U
 #define TISP_CID_OPEN_COLOR_MODEL 0x08ff0003U
 #define TISP_CID_OPEN_AWB_SCENE 0x08ff0004U
+#define TISP_CID_OPEN_AWB_TARGET 0x08ff0005U
 #define TISP_T41_AE_EXPR_BYTES 232U
 #define TISP_T41_AE_EXPR_TOTAL_GAIN_OFFSET 204U
 #define T41_COLOR_MODEL_DAY 0U
@@ -89,6 +90,7 @@ struct OpenIMPTuningController {
     uint32_t scene_red_q10;
     uint32_t scene_blue_q10;
     uint8_t awb_update_samples;
+    int calibrated_awb_support; /* 0 unknown, 1 supported, -1 legacy kernel */
 };
 
 static int tuning_open(const char *device)
@@ -306,13 +308,48 @@ static void t41_security_awb_target(OpenIMPTuningController *controller,
     *blue_gain = (uint16_t)blue;
 }
 
+static int t41_calibrated_awb_target(OpenIMPTuningController *controller,
+                                      uint16_t *red, uint16_t *blue)
+{
+    uint32_t gains[2] = {0, 0};
+    struct t40_tuning_request request = {
+        0, 1, TISP_CID_OPEN_AWB_TARGET, (uintptr_t)gains
+    };
+    int ret;
+
+    if (controller->calibrated_awb_support < 0)
+        return -EOPNOTSUPP;
+    ret = ioctl(controller->fd, TISP_VIDIOC_DEFAULT_TUNING, &request);
+    if (ret < 0) {
+        ret = -errno;
+        if (ret == -EOPNOTSUPP || ret == -ENOTTY)
+            controller->calibrated_awb_support = -1;
+        return ret;
+    }
+    /* Older open kernels acknowledge unknown controls without filling the
+     * payload. A zero-initialized reply distinguishes that from a target. */
+    if (!gains[0] && !gains[1] && !controller->calibrated_awb_support) {
+        controller->calibrated_awb_support = -1;
+        return -EOPNOTSUPP;
+    }
+    controller->calibrated_awb_support = 1;
+    if (gains[0] < 512 || gains[0] > 6144 ||
+        gains[1] < 512 || gains[1] > 6144)
+        return -ERANGE;
+    /* Sensor calibration and RGB bias have already been applied. Applying
+     * the legacy security-profile bias again recreates the blue cast. */
+    *red = (uint16_t)gains[0];
+    *blue = (uint16_t)gains[1];
+    return 0;
+}
+
 static int t41_adapt_security_awb(OpenIMPTuningController *controller)
 {
     struct t41_awb_control awb = {
         0, controller->profile.red_gain, controller->profile.blue_gain
     };
-    uint16_t target_red;
-    uint16_t target_blue;
+    uint16_t target_red = awb.red_gain;
+    uint16_t target_blue = awb.blue_gain;
     int red_delta;
     int blue_delta;
     int ret;
@@ -322,9 +359,16 @@ static int t41_adapt_security_awb(OpenIMPTuningController *controller)
         return 0;
     controller->awb_update_samples = 0;
 
-    if (!controller->scene_red_q10 || !controller->scene_blue_q10)
+    ret = t41_calibrated_awb_target(controller, &target_red, &target_blue);
+    if (ret == -ENODATA || ret == -EAGAIN)
         return 0;
-    t41_security_awb_target(controller, &target_red, &target_blue);
+    if (ret == -EOPNOTSUPP || ret == -ENOTTY) {
+        if (!controller->scene_red_q10 || !controller->scene_blue_q10)
+            return 0;
+        t41_security_awb_target(controller, &target_red, &target_blue);
+    } else if (ret) {
+        return ret;
+    }
     red_delta = (int)target_red - (int)awb.red_gain;
     blue_delta = (int)target_blue - (int)awb.blue_gain;
     if (abs(red_delta) <= T41_SECURITY_AWB_DEADBAND)

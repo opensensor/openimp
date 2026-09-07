@@ -5,8 +5,9 @@ COMMAND_TEST_BIN := $(PROJECT_DIR)/build/tests/t41-command-layout-test
 RATE_CONTROL_TEST_BIN := $(PROJECT_DIR)/build/tests/t41-rate-control-test
 EP1_TEST_BIN := $(PROJECT_DIR)/build/tests/t41-ep1-layout-test
 STREAM_LAYOUT_TEST_BIN := $(PROJECT_DIR)/build/tests/t41-stream-layout-test
+TUNING_AWB_TEST_BIN := $(PROJECT_DIR)/build/tests/t41-tuning-awb-test
 TEST_BINS := $(COMMAND_TEST_BIN) $(RATE_CONTROL_TEST_BIN) $(EP1_TEST_BIN) \
-	$(STREAM_LAYOUT_TEST_BIN)
+	$(STREAM_LAYOUT_TEST_BIN) $(TUNING_AWB_TEST_BIN)
 
 .PHONY: check clean
 
@@ -15,6 +16,12 @@ check: $(TEST_BINS)
 	$(RATE_CONTROL_TEST_BIN)
 	$(EP1_TEST_BIN)
 	$(STREAM_LAYOUT_TEST_BIN)
+	$(TUNING_AWB_TEST_BIN)
+
+$(TUNING_AWB_TEST_BIN): tuning_awb_test.c $(PROJECT_DIR)/src/openimp_tuning.c
+	mkdir -p "$(dir $@)"
+	$(CC) $(CFLAGS) -DPLATFORM_T41 -I$(PROJECT_DIR)/include \
+		tuning_awb_test.c -pthread -o "$@"
 
 $(COMMAND_TEST_BIN): command_layout_test.c \
 	$(PROJECT_DIR)/src/t40/t41_command_layout.c \
