@@ -30,6 +30,13 @@ typedef struct {
     uint32_t size;
     void *aec;
     uint32_t aec_size;
+#if defined(PLATFORM_T41)
+    /* T41 OSS3 appends a pointer to its 32-bit kernel timeval. */
+    struct {
+        int32_t seconds;
+        int32_t microseconds;
+    } *timestamp;
+#endif
 } P3AudioInputStream;
 
 typedef struct {
@@ -78,10 +85,17 @@ typedef struct {
 #define AMIC_AI_SET_MUTE P3_SIOR(78, P3AudioMute)
 #define AMIC_SPK_SET_MUTE P3_SIOR(77, P3AudioMute)
 
+#if defined(PLATFORM_T41)
+_Static_assert(sizeof(P3AudioInputStream) == 20,
+               "T41 audio input stream ABI mismatch");
+_Static_assert(AMIC_AI_GET_STREAM == 0x40145062UL,
+               "T41 AMIC_AI_GET_STREAM ioctl mismatch");
+#else
 _Static_assert(sizeof(P3AudioInputStream) == 16,
-               "T40/T41 audio input stream ABI mismatch");
+               "T40 audio input stream ABI mismatch");
 _Static_assert(AMIC_AI_GET_STREAM == 0x40105062UL,
-               "T40/T41 AMIC_AI_GET_STREAM ioctl mismatch");
+               "T40 AMIC_AI_GET_STREAM ioctl mismatch");
+#endif
 
 typedef void (*P3HpfCreate)(int16_t *, int16_t *, int16_t, int16_t, int, int);
 typedef int (*P3HpfProcess)(int16_t *, int16_t *, int);
@@ -338,6 +352,9 @@ int IMP_AI_GetFrame(int device, int channel, IMPAudioFrame *frame,
                     IMPBlock block)
 {
     P3AudioInputStream stream;
+#if defined(PLATFORM_T41)
+    typeof(*stream.timestamp) capture_timestamp = { 0, 0 };
+#endif
     size_t bytes;
     unsigned int channels;
 
@@ -360,6 +377,9 @@ int IMP_AI_GetFrame(int device, int channel, IMPAudioFrame *frame,
     memset(&stream, 0, sizeof(stream));
     stream.data = p3_audio.frame_buffer;
     stream.size = (uint32_t)bytes;
+#if defined(PLATFORM_T41)
+    stream.timestamp = &capture_timestamp;
+#endif
     if (ioctl(p3_audio.fd, AMIC_AI_GET_STREAM, &stream) != 0)
         return -1;
     p3_process_effects((int16_t *)p3_audio.frame_buffer,
