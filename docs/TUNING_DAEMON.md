@@ -1,5 +1,27 @@
 # Standalone tuning daemon
 
+## Current T41 calibrated path and startup readiness
+
+When the kernel implements `OPEN_AWB_TARGET`, security-policy updates use
+its calibrated neutral estimate without applying the legacy RGB biases
+again. Missing neutral evidence holds the last gains. The new T41 ISP also
+computes BCSH from CT/EV/CSC calibration; the color-model hint no longer
+selects a captured register bank. The older profile description below is
+historical/fallback behavior, not proof of complete OEM AWB reconstruction.
+
+The daemon may be launched before the streamer initializes the ISP. It now
+reopens/retries creation and startup for up to 30 seconds on readiness errors
+(`ENOENT`, `ENODEV`, `ENXIO`, `EAGAIN`, `EBUSY`). Each failed attempt destroys
+its controller; unsupported controls and invalid ABI requests still fail
+immediately. SIGINT/SIGTERM cancel retries, and the control socket is created
+only after successful startup. This repairs the cold-boot case where an
+early color ioctl failed and left fixed seed gains without an AWB worker.
+
+Host tests cover a missing device followed by late ISP readiness, exhausted
+retries, fatal unsupported controls, and cancellation with no leaked owner.
+
+## Policy architecture
+
 `openimp-tuningd` separates image policy from IMP graph ownership. This is
 required when Raptor consumes `/dev/video0`: V4L2 owns capture and OpenIMP AVC
 owns encoding, but neither process should impersonate the legacy IMP ISP

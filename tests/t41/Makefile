@@ -6,8 +6,9 @@ RATE_CONTROL_TEST_BIN := $(PROJECT_DIR)/build/tests/t41-rate-control-test
 EP1_TEST_BIN := $(PROJECT_DIR)/build/tests/t41-ep1-layout-test
 STREAM_LAYOUT_TEST_BIN := $(PROJECT_DIR)/build/tests/t41-stream-layout-test
 TUNING_AWB_TEST_BIN := $(PROJECT_DIR)/build/tests/t41-tuning-awb-test
+TUNING_STARTUP_TEST_BIN := $(PROJECT_DIR)/build/tests/tuning-startup-test
 TEST_BINS := $(COMMAND_TEST_BIN) $(RATE_CONTROL_TEST_BIN) $(EP1_TEST_BIN) \
-	$(STREAM_LAYOUT_TEST_BIN) $(TUNING_AWB_TEST_BIN)
+	$(STREAM_LAYOUT_TEST_BIN) $(TUNING_AWB_TEST_BIN) $(TUNING_STARTUP_TEST_BIN)
 
 .PHONY: check clean
 
@@ -17,6 +18,11 @@ check: $(TEST_BINS)
 	$(EP1_TEST_BIN)
 	$(STREAM_LAYOUT_TEST_BIN)
 	$(TUNING_AWB_TEST_BIN)
+	$(TUNING_STARTUP_TEST_BIN)
+
+$(TUNING_STARTUP_TEST_BIN): tuning_startup_test.c $(PROJECT_DIR)/tools/tuning_startup.h
+	mkdir -p "$(dir $@)"
+	$(CC) $(CFLAGS) -I$(PROJECT_DIR)/include $< -o "$@"
 
 $(TUNING_AWB_TEST_BIN): tuning_awb_test.c $(PROJECT_DIR)/src/openimp_tuning.c
 	mkdir -p "$(dir $@)"

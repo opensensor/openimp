@@ -14,6 +14,7 @@
 #include <unistd.h>
 
 #include "openimp/openimp_tuning.h"
+#include "tuning_startup.h"
 
 #define DEFAULT_CONTROL_SOCKET "/var/run/openimp-tuning.sock"
 #define COMMAND_BYTES 256
@@ -25,6 +26,11 @@ static void stop_handler(int signal_number)
 {
     (void)signal_number;
     stop_requested = 1;
+}
+
+static void wait_for_isp(void)
+{
+    usleep(250000);
 }
 
 static int parse_u8(const char *text, uint8_t *value)
@@ -421,17 +427,15 @@ int main(int argc, char **argv)
     signal(SIGTERM, stop_handler);
     signal(SIGPIPE, SIG_IGN);
 
-    ret = OpenIMP_Tuning_Create(&controller, &config);
+    /* Init scripts can start us before the streamer creates ISP tuning
+     * objects. Reopen on retry, with a bounded 30-second startup window. */
+    ret = tuning_startup(&controller, &config, &stop_requested, 120,
+                         wait_for_isp);
     if (ret) {
-        fprintf(stderr, "openimp-tuningd: create failed: %s\n",
-                strerror(-ret));
-        return 1;
-    }
-    ret = OpenIMP_Tuning_Start(controller);
-    if (ret) {
+        if (ret == -EINTR && stop_requested)
+            return 0;
         fprintf(stderr, "openimp-tuningd: start failed: %s\n",
                 strerror(-ret));
-        OpenIMP_Tuning_Destroy(controller);
         return 1;
     }
     listen_fd = make_control_socket(control_socket);
