@@ -12,6 +12,7 @@
 #include <unistd.h>
 
 #include "codec.h"
+#include "device_pool.h"
 #include <openimp/openimp_avc.h>
 
 #define OPENIMP_AVC_PARAM_SIZE 0x794u
@@ -222,8 +223,10 @@ int OpenIMP_AVC_Destroy(OpenIMPAVCEncoder *encoder)
     if (!encoder || encoder->submitted || encoder->dequeued_stream)
         return -EBUSY;
     ret = AL_Codec_Encode_Destroy(encoder->codec);
+    if (ret)
+        return -EIO;
     free(encoder);
-    return ret == 0 ? 0 : -EIO;
+    return 0;
 }
 
 int OpenIMP_AVC_Submit(OpenIMPAVCEncoder *encoder,
@@ -368,7 +371,15 @@ int OpenIMP_AVC_ImportDMABuf(int dma_buf_fd, uint32_t size,
 
     if (dma_buf_fd < 0 || !size || !physical_address)
         return -EINVAL;
+#if defined(PLATFORM_T41)
+    /* T41's AVPU node has one physical channel. During a live output
+     * recreation, opening a second file fails ENODEV; borrow the encoder's
+     * reference-counted device instead. The temporary reference also keeps
+     * the importer valid against a concurrent last-encoder close. */
+    importer_fd = AL_DevicePool_Open(OPENIMP_AVC_DMA_DEVICE);
+#else
     importer_fd = open(OPENIMP_AVC_DMA_DEVICE, O_RDWR | O_CLOEXEC);
+#endif
     if (importer_fd < 0)
         return -errno;
     memset(&info, 0, sizeof(info));
@@ -383,6 +394,10 @@ int OpenIMP_AVC_ImportDMABuf(int dma_buf_fd, uint32_t size,
         *physical_address = info.physical_address;
         ret = 0;
     }
+#if defined(PLATFORM_T41)
+    AL_DevicePool_Close(importer_fd);
+#else
     close(importer_fd);
+#endif
     return ret;
 }

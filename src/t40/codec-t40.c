@@ -130,6 +130,11 @@ static void codec_startup_trace(const char *format, ...)
 
 typedef struct AL_CodecEncode AL_CodecEncode;
 
+#if defined(PLATFORM_T41)
+#include "openimp_core_lease.h"
+static OpenIMPCoreLease g_t41_core = OPENIMP_CORE_LEASE_INITIALIZER;
+#endif
+
 static int avpu_queue_completed_stream(ALAvpuContext *ctx, int buf_idx, void *user_data,
                                        const char *source, uint32_t *frame_size_out,
                                        int *flush_ret_out);
@@ -149,6 +154,9 @@ void OpenIMP_P3_FrameStats(uint32_t luma, uint32_t u_mean,
 static pthread_mutex_t g_tseries_irq_host_lock = PTHREAD_MUTEX_INITIALIZER;
 static ALAvpuContext *g_tseries_irq_host;
 static ALAvpuContext *volatile g_tseries_irq_owner;
+#if defined(PLATFORM_T41)
+static ALAvpuContext *g_t41_irq_users[6];
+#endif
 #if defined(PLATFORM_T31)
 /* T31's mainline AVPU driver exposes one physical encoder channel. */
 static pthread_mutex_t g_t31_encode_core_lock = PTHREAD_MUTEX_INITIALIZER;
@@ -5105,9 +5113,22 @@ static void* avpu_irq_thread(void* arg)
         }
 
         ALAvpuContext *dispatch_ctx = ctx;
+#if defined(PLATFORM_T41)
+        unsigned int drained_before;
+        int core_completed;
+
+        pthread_mutex_lock(&g_tseries_irq_host_lock);
+        if (!g_tseries_irq_owner) {
+            pthread_mutex_unlock(&g_tseries_irq_host_lock);
+            continue;
+        }
+#endif
 #if defined(PLATFORM_T40) || defined(PLATFORM_T31)
         if (g_tseries_irq_owner)
             dispatch_ctx = g_tseries_irq_owner;
+#endif
+#if defined(PLATFORM_T41)
+        drained_before = dispatch_ctx->completions_drained;
 #endif
         dispatch_ctx->last_irq_id = (int)irq_id;
         { static unsigned int irq_count = 0; unsigned int c = __sync_add_and_fetch(&irq_count, 1);
@@ -5136,12 +5157,98 @@ static void* avpu_irq_thread(void* arg)
 
         /* OEM: Rtos_ReleaseMutex(*(arg1 + 0xc)) */
         pthread_mutex_unlock((pthread_mutex_t*)dispatch_ctx->irq_mutex);
+#if defined(PLATFORM_T41)
+        core_completed = dispatch_ctx->completions_drained != drained_before;
+        if (core_completed)
+            g_tseries_irq_owner = NULL;
+        pthread_mutex_unlock(&g_tseries_irq_host_lock);
+        /* Release only after the entire callback and its mutex handoff.
+         * The next lease may destroy this context and its IRQ mutex. */
+        if (core_completed)
+            openimp_core_release(&g_t41_core, dispatch_ctx);
+#endif
     }
 
     ctx->irq_thread_exited = 1;
     LOG_CODEC("IRQ thread: exiting");
     return NULL;
 }
+
+#if defined(PLATFORM_T41)
+/* The waiter belongs to the shared AVPU device, not whichever video output
+ * encoded first. Each initialized codec keeps the pooled fd alive. Retire
+ * the waiter before the final codec closes that fd, including init unwind. */
+static int avpu_t41_irq_host_get(ALAvpuContext *ctx)
+{
+    ALAvpuContext *host;
+    pthread_t tid;
+    int slot = -1, ret;
+
+    pthread_mutex_lock(&g_tseries_irq_host_lock);
+    for (int i = 0; i < 6; ++i) {
+        if (g_t41_irq_users[i] == ctx) {
+            pthread_mutex_unlock(&g_tseries_irq_host_lock);
+            return 0;
+        }
+        if (!g_t41_irq_users[i] && slot < 0)
+            slot = i;
+    }
+    if (slot < 0) {
+        pthread_mutex_unlock(&g_tseries_irq_host_lock);
+        return -ENOSPC;
+    }
+    if (!g_tseries_irq_host) {
+        host = calloc(1, sizeof(*host));
+        if (!host) {
+            pthread_mutex_unlock(&g_tseries_irq_host_lock);
+            return -ENOMEM;
+        }
+        host->fd = ctx->fd;
+        host->irq_thread_running = 1;
+        ret = pthread_create(&tid, NULL, avpu_irq_thread, host);
+        if (ret) {
+            free(host);
+            pthread_mutex_unlock(&g_tseries_irq_host_lock);
+            return -ret;
+        }
+        host->irq_thread = (long)tid;
+        g_tseries_irq_host = host;
+    }
+    g_t41_irq_users[slot] = ctx;
+    ctx->irq_thread_started = 1; /* shared waiter acquired, no per-output thread */
+    pthread_mutex_unlock(&g_tseries_irq_host_lock);
+    return 0;
+}
+
+static unsigned int avpu_t41_irq_host_put(ALAvpuContext *ctx)
+{
+    ALAvpuContext *host;
+    unsigned int users = 0;
+
+    pthread_mutex_lock(&g_tseries_irq_host_lock);
+    for (int i = 0; i < 6; ++i) {
+        if (g_t41_irq_users[i] == ctx)
+            g_t41_irq_users[i] = NULL;
+        if (g_t41_irq_users[i])
+            users++;
+    }
+    ctx->irq_thread_started = 0;
+    if (g_tseries_irq_owner == ctx)
+        g_tseries_irq_owner = NULL;
+    host = users ? NULL : g_tseries_irq_host;
+    if (host) {
+        g_tseries_irq_host = NULL;
+        host->irq_thread_running = 0;
+    }
+    pthread_mutex_unlock(&g_tseries_irq_host_lock);
+    if (host) {
+        avpu_sys_ioctl(host->fd, AL_CMD_UNBLOCK_CHANNEL, NULL);
+        pthread_join((pthread_t)host->irq_thread, NULL);
+        free(host);
+    }
+    return users;
+}
+#endif
 
 /* Compute effective AnnexB stream size (trim trailing zeros) */
 static size_t annexb_effective_size(const uint8_t *buf, size_t maxlen)
@@ -7034,12 +7141,16 @@ int AL_Codec_Encode_Create(void **codec, void *params) {
  * AL_Codec_Encode_Destroy - based on decompilation at 0x7a180
  * Destroys a codec encoder instance
  */
-int AL_Codec_Encode_Destroy(void *codec) {
+static int al_codec_encode_destroy_impl(void *codec) {
     if (codec == NULL) {
         return -1;
     }
 
     AL_CodecEncode *enc = (AL_CodecEncode*)codec;
+#if defined(PLATFORM_T41)
+    unsigned int surviving_irq_users = 0;
+    unsigned int saved_irq_mask = 0;
+#endif
 
     LOG_CODEC("Destroy: codec=%p, channel=%d", codec, enc->channel_id - 1);
     codec_startup_trace(
@@ -7067,9 +7178,10 @@ int AL_Codec_Encode_Destroy(void *codec) {
          * CL and stream mappings torn down makes the next unrelated AXI user
          * (notably Wi-Fi/SCP) wedge the SoC.
          *
-         * Keep the reset triplet back-to-back, as in ResetCore, and mask/ack
-         * completion first so the waiter cannot dispatch into buffers while
-         * destruction proceeds. */
+         * Use this generation's ResetCore and mask/ack completion first so
+         * the waiter cannot dispatch into buffers during destruction. T41
+         * must select the reset clock and acknowledge global control; the
+         * T31/T40 reset triplet does not quiesce that hardware. */
         if (enc->avpu.session_ready) {
             unsigned int core_status = 0;
             unsigned int clkcmd = 0;
@@ -7081,9 +7193,11 @@ int AL_Codec_Encode_Destroy(void *codec) {
             int pending_ret;
             int mask_ret;
             int ack_ret;
+#if !defined(PLATFORM_T41)
             int reset1_ret;
             int reset2_ret;
             int reset4_ret;
+#endif
 
             status_ret = avpu_read_reg_quiet(enc->avpu.fd,
                                              AVPU_REG_CORE_STATUS(0),
@@ -7096,6 +7210,9 @@ int AL_Codec_Encode_Destroy(void *codec) {
             pending_ret = avpu_read_reg_quiet(enc->avpu.fd,
                                               AVPU_INTERRUPT,
                                               &irq_pending);
+#if defined(PLATFORM_T41)
+            saved_irq_mask = irq_mask;
+#endif
             codec_startup_trace(
                 "openimp/codec teardown: pre-quiesce status=%d:0x%08x "
                 "clk=%d:0x%08x mask=%d:0x%08x pending=%d:0x%08x\n",
@@ -7109,6 +7226,11 @@ int AL_Codec_Encode_Destroy(void *codec) {
                                      AVPU_IRQ_CLEAR_MASK);
             codec_startup_trace(
                 "openimp/codec teardown: irq acked ret=%d\n", ack_ret);
+#if defined(PLATFORM_T41)
+            avpu_t41_reset_core(enc->avpu.fd, 0);
+            codec_startup_trace(
+                "openimp/codec teardown: T41 reset clock/pulse/ack complete\n");
+#else
             reset1_ret = avpu_write_reg(enc->avpu.fd,
                                         AVPU_REG_CORE_RESET(0), 1u);
             reset2_ret = avpu_write_reg(enc->avpu.fd,
@@ -7118,6 +7240,7 @@ int AL_Codec_Encode_Destroy(void *codec) {
             codec_startup_trace(
                 "openimp/codec teardown: reset triplet ret=%d/%d/%d\n",
                 reset1_ret, reset2_ret, reset4_ret);
+#endif
             avpu_turn_off_gc(enc->avpu.fd, 0);
             codec_startup_trace(
                 "openimp/codec teardown: core clock gated\n");
@@ -7129,6 +7252,9 @@ int AL_Codec_Encode_Destroy(void *codec) {
          * are still valid.  The old order tore down those resources first,
          * leaving a completion callback able to touch unmapped memory and a
          * blocked WAIT_IRQ thread joined only after its pooled fd was closed. */
+#if defined(PLATFORM_T41)
+        surviving_irq_users = avpu_t41_irq_host_put(&enc->avpu);
+#endif
         if (enc->avpu.irq_thread) {
             pthread_t tid = (pthread_t)enc->avpu.irq_thread;
 
@@ -7164,6 +7290,14 @@ int AL_Codec_Encode_Destroy(void *codec) {
         avpu_release_dma_buf(&enc->avpu.ref_trace_buf);
         codec_startup_trace(
             "openimp/codec teardown: dma buffers released\n");
+#if defined(PLATFORM_T41)
+        /* Masking the shared core is temporary when another initialized
+         * encoder survives. Its next per-picture submit only enables Enc1;
+         * entropy IRQ registration is part of one-time session setup. Do
+         * not leave that surviving session with its registration erased. */
+        if (surviving_irq_users)
+            avpu_write_reg(enc->avpu.fd, AVPU_INTERRUPT_MASK, saved_irq_mask);
+#endif
 
         codec_startup_trace(
             "openimp/codec teardown: closing device pool fd=%d\n",
@@ -7229,6 +7363,29 @@ int AL_Codec_Encode_Destroy(void *codec) {
     free(enc);
 
     return 0;
+}
+
+int AL_Codec_Encode_Destroy(void *codec)
+{
+#if defined(PLATFORM_T41)
+    AL_CodecEncode *enc = codec;
+    int ret;
+
+    if (!enc)
+        return -1;
+    if (codec_param_read_codec_type(enc->codec_param) == IMP_ENC_TYPE_JPEG)
+        return al_codec_encode_destroy_impl(codec);
+    /* Teardown masks IRQs and resets the one physical core. It must not
+     * reset a different output's in-flight command. A stalled core leaves
+     * resources owned for retry/recovery, never freed underneath DMA. */
+    if (openimp_core_acquire(&g_t41_core, enc, 2000))
+        return -1;
+    ret = al_codec_encode_destroy_impl(codec);
+    openimp_core_release(&g_t41_core, codec);
+    return ret;
+#else
+    return al_codec_encode_destroy_impl(codec);
+#endif
 }
 
 /* Emit a standards-compliant baseline grayscale JPEG for the T40 snapshot
@@ -7793,6 +7950,14 @@ static int al_codec_encode_process_impl(void *codec, void *frame,
                     }
                 } else {
                     /* Open device via device pool (OEM parity: AL_DevicePool_Open at 0x362dc) */
+#if defined(PLATFORM_T41)
+                    /* Allocation, table initialization and cache publication
+                     * touch only this session's buffers. Let the other output
+                     * encode while these run; take the core back before IRQ
+                     * registration or any encoder register access. The caller
+                     * still serializes Process/Destroy for this instance. */
+                    openimp_core_release(&g_t41_core, &enc->avpu);
+#endif
                     int fd = AL_DevicePool_Open("/dev/avpu");
                     codec_startup_trace(
                         "openimp/codec startup: device pool open fd=%d\n", fd);
@@ -7861,6 +8026,11 @@ static int al_codec_encode_process_impl(void *codec, void *frame,
                         memset(enc->avpu.irq_callbacks, 0, sizeof(enc->avpu.irq_callbacks));
 
                         if (enc->avpu.irq_mutex) {
+#if defined(PLATFORM_T41)
+                            /* Join the shared waiter after reacquiring the
+                             * core, below, so last-owner teardown cannot race
+                             * registration of a new waiter. */
+#else
                             int start_irq_thread = 1;
 #if defined(PLATFORM_T40) || defined(PLATFORM_T31)
                             pthread_mutex_lock(&g_tseries_irq_host_lock);
@@ -7890,6 +8060,7 @@ static int al_codec_encode_process_impl(void *codec, void *frame,
                             } else {
                                 LOG_CODEC("AVPU: using shared T-series WaitInterruptThread");
                             }
+#endif
                         }
 
                         /* Cache live encode state for OEM-shaped command-list population. */
@@ -8271,7 +8442,16 @@ static int al_codec_encode_process_impl(void *codec, void *frame,
                                 enc->avpu.rec_trace_buf.map;
 #elif defined(PLATFORM_T41)
                             required_dma_ok = required_dma_ok &&
-                                enc->avpu.rec_trace_buf.map;
+                                enc->avpu.rec_trace_buf.map &&
+                                enc->avpu.irq_mutex &&
+                                enc->avpu.stream_queue_mutex;
+                            if (required_dma_ok) {
+                                int lease_ret = openimp_core_acquire(
+                                    &g_t41_core, &enc->avpu, 2000);
+                                if (lease_ret ||
+                                    avpu_t41_irq_host_get(&enc->avpu))
+                                    required_dma_ok = 0;
+                            }
 #endif
                             codec_startup_trace(
                                 "openimp/codec startup: dma complete=%d stream=%d "
@@ -8288,6 +8468,9 @@ static int al_codec_encode_process_impl(void *codec, void *frame,
                                 int i;
 
                                 LOG_CODEC("AVPU: refusing partial DMA layout");
+#if defined(PLATFORM_T41)
+                                avpu_t41_irq_host_put(&enc->avpu);
+#endif
                                 if (enc->avpu.irq_thread) {
                                     pthread_t tid =
                                         (pthread_t)enc->avpu.irq_thread;
@@ -8386,6 +8569,12 @@ static int al_codec_encode_process_impl(void *codec, void *frame,
                     } else {
                         int e = errno;
                         LOG_CODEC("Process: channel=%d AL_DevicePool_Open failed: %s", enc->channel_id - 1, strerror(e));
+#if defined(PLATFORM_T41)
+                        /* No alternate T41 hardware is available, and the
+                         * allocation phase deliberately released the core. */
+                        codec_set_error(enc, -e);
+                        return -1;
+#endif
                         int init_fd = -1;
                         if (HW_Encoder_Init(&init_fd, &enc->hw_params) == 0 && init_fd >= 0) {
                             enc->hw_encoder_fd = init_fd;
@@ -9258,7 +9447,26 @@ queue_encoded_stream:
 
 int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data)
 {
-#if defined(PLATFORM_T31)
+#if defined(PLATFORM_T41)
+    AL_CodecEncode *enc = codec;
+    unsigned int submitted_before;
+    int ret;
+
+    if (!enc || !frame ||
+        codec_param_read_codec_type(enc->codec_param) == IMP_ENC_TYPE_JPEG)
+        return al_codec_encode_process_impl(codec, frame, user_data);
+    if (openimp_core_acquire(&g_t41_core, &enc->avpu, 2000))
+        return -1;
+    submitted_before = enc->avpu.frame_number;
+    ret = al_codec_encode_process_impl(codec, frame, user_data);
+    if (enc->use_hardware != 2 || enc->avpu.frame_number == submitted_before)
+        openimp_core_release(&g_t41_core, &enc->avpu);
+    else if (ret)
+        /* Once submitted, the source is still DMA-owned even if a later
+         * bookkeeping step failed. Keep it submitted for Dequeue/recovery. */
+        ret = 0;
+    return ret;
+#elif defined(PLATFORM_T31)
     AL_CodecEncode *enc = (AL_CodecEncode *)codec;
     int frames_before = 0;
     unsigned int submitted_before = 0;

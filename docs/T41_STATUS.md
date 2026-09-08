@@ -363,9 +363,34 @@ must not be presented as a large end-to-end CPU reduction. Snapshot bytes are
 real image content and decode correctly. Longer endurance, the occasional
 reverse-direction restart gap, and standalone V4L2 multi-output remain open.
 
-The shared IMP graph is not the standalone V4L2 backend. The latter still
-exports one selected scaler channel and one HAL encoder instance, and its
-standalone AVC interface has no shared multi-instance submission/completion
-arbiter. Multiple capture nodes, shared input lifetimes, HAL channel plumbing
-and that arbiter must be implemented together before advertising standalone
-V4L2 multi-output support.
+### Standalone V4L2 multi-output checkpoint, 2026-09-08
+
+The shared IMP graph is not the standalone V4L2 backend. The latter now has
+three independent ISP capture nodes, shared input lifetime, per-channel HAL
+instances and an AVPU core lease held through IRQ completion. The IRQ waiter
+belongs to the pooled device, not the first encoder. DMA-BUF import borrows
+that pooled fd, and failed destruction preserves the public wrapper and its
+DMA ownership. T41 teardown uses its own reset sequence and restores the
+shared interrupt mask when another session survives. Initial buffer/table
+allocation runs outside the hardware lease; callback registration, hardware
+setup, submission and destruction remain serialized.
+
+On the OS04D10 T41 device, main 2560x1440 and sub 640x360 H.264 both run at
+the sensor's approximately 24.9865 fps with Neo AAC retained. Simultaneous
+120-second main TCP/sub UDP decodes produced no warnings. A 65-second main
+RTP check had no source gaps, backwards timestamps or video/audio sequence
+loss. These are short steady-state checks, not full endurance qualification.
+
+The live-resize hang was independently reproduced using a third raw capture
+node without destroying either encoder. MSCA enable cleared immediately,
+but its active bit remained set for about 26 ms after STREAMOFF returned.
+The ISP now waits for per-channel DMA quiescence before FIFO reset and buffer
+release. Eighteen raw resize cycles at 1/10/39 ms frame offsets and twelve
+encoded resizes passed without a hang. This is a hardware ownership fix;
+no sensor coefficients, tuning offsets or fixed teardown delay were added.
+
+Continuity is still an exit gate: in six substream resizes the unaffected
+main missed one source frame twice; in six main resizes the sub missed one
+each time. RTP sequence and audio remained continuous. JPEG support on this
+standalone backend, independent capture-rate negotiation, sub-only tuning
+progress, matched CPU/IQ comparisons and longer endurance remain unqualified.

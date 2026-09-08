@@ -9,12 +9,14 @@ TUNING_AWB_TEST_BIN := $(PROJECT_DIR)/build/tests/t41-tuning-awb-test
 TUNING_POLICY_TEST_BIN := $(PROJECT_DIR)/build/tests/t41-tuning-policy-test
 TUNING_STARTUP_TEST_BIN := $(PROJECT_DIR)/build/tests/tuning-startup-test
 JPEG_DCT_TEST_BIN := $(PROJECT_DIR)/build/tests/jpeg-dct-test
-TEST_BINS := $(COMMAND_TEST_BIN) $(RATE_CONTROL_TEST_BIN) $(EP1_TEST_BIN) \
+CORE_LEASE_TEST_BIN := $(PROJECT_DIR)/build/tests/core-lease-test
+TEST_BINS := $(CORE_LEASE_TEST_BIN) $(COMMAND_TEST_BIN) $(RATE_CONTROL_TEST_BIN) $(EP1_TEST_BIN) \
 	$(STREAM_LAYOUT_TEST_BIN) $(TUNING_AWB_TEST_BIN) $(TUNING_STARTUP_TEST_BIN) $(TUNING_POLICY_TEST_BIN) $(JPEG_DCT_TEST_BIN)
 
 .PHONY: check clean
 
 check: $(TEST_BINS)
+	$(CORE_LEASE_TEST_BIN)
 	$(COMMAND_TEST_BIN)
 	$(RATE_CONTROL_TEST_BIN)
 	$(EP1_TEST_BIN)
@@ -23,6 +25,10 @@ check: $(TEST_BINS)
 	$(TUNING_STARTUP_TEST_BIN)
 	$(TUNING_POLICY_TEST_BIN)
 	$(JPEG_DCT_TEST_BIN)
+
+$(CORE_LEASE_TEST_BIN): core_lease_test.c $(PROJECT_DIR)/src/t40/openimp_core_lease.h
+	mkdir -p "$(dir $@)"
+	$(CC) $(CFLAGS) $< -pthread -o "$@"
 
 $(JPEG_DCT_TEST_BIN): jpeg_dct_test.c $(PROJECT_DIR)/src/jpeg_dct.h
 	mkdir -p "$(dir $@)"

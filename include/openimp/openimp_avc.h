@@ -67,10 +67,14 @@ typedef struct OpenIMPAVCPacket {
 /* Create an AVC encoder backed by the same AL/AVPU core used by the IMP API. */
 int OpenIMP_AVC_Create(OpenIMPAVCEncoder **encoder,
                        const OpenIMPAVCConfig *config);
+/* Failure leaves the encoder owned by the caller for retry; its DMA storage
+ * must not be freed while a submitted command is still outstanding. */
 int OpenIMP_AVC_Destroy(OpenIMPAVCEncoder *encoder);
 
 /* Submit one physically contiguous NV12 frame. The source must remain owned
- * by the caller until its packet is dequeued and released. */
+ * by the caller until its packet is dequeued and released. T41 arbitrates
+ * distinct encoder instances at the shared AL hardware/IRQ boundary. Calls
+ * for the same instance still require caller-side serialization. */
 int OpenIMP_AVC_Submit(OpenIMPAVCEncoder *encoder,
                        const OpenIMPAVCFrame *frame);
 int OpenIMP_AVC_Dequeue(OpenIMPAVCEncoder *encoder,
@@ -87,9 +91,10 @@ int OpenIMP_AVC_SetBitrate(OpenIMPAVCEncoder *encoder, uint32_t bitrate);
  * must serialize this with Submit/Dequeue/Release for the same encoder. */
 int OpenIMP_AVC_SetGopLength(OpenIMPAVCEncoder *encoder, uint32_t gop_length);
 
-/* Resolve a contiguous DMA-BUF to the Ingenic AVPU bus address. Import all
- * capture buffers before the first Submit: the legacy AVPU driver permits a
- * single open channel and the codec claims it lazily on first use. */
+/* Resolve a contiguous DMA-BUF to the Ingenic AVPU bus address. T41 borrows
+ * the pooled device, so capture buffers may also be imported while another
+ * encoder is running. Other legacy AVPU paths require imports before the
+ * first Submit because the driver permits only one open channel. */
 int OpenIMP_AVC_ImportDMABuf(int dma_buf_fd, uint32_t size,
                              uint32_t *physical_address);
 
