@@ -333,3 +333,23 @@ through AL Create/Process/GetStream/Release/Destroy, preserves source timestamps
 and writes a 64x24 color JPEG. An ordinary decoder must see red and blue halves,
 not constant gray. Physical simultaneous video/JPEG validation is still required
 before this checkpoint is promoted.
+
+The first real-image physical trial delivered 60 QHD JPEGs in 59 seconds
+alongside main/sub H.264 and Neo AAC, without packet loss or backwards media
+timestamps. It did not meet the no-gap gate: main had nine missing source
+frames and sub one during the 70-second probe. Total CPU was 44.64% of both
+cores. A lower-priority JPEG worker reduced, but did not eliminate, gaps;
+that runtime experiment is not a persistent scheduling change.
+
+The portable JPEG transform now keeps four fractional sample bits and Q13
+cosine constants, with Q20 reciprocal quantization. Floating point is confined
+to the once-per-image scale-table setup. There is no sensor-specific input.
+The byte writer also avoids a generic reserve/copy call for every entropy byte.
+The old floating-point transform remains a test-only reference. 10,000
+synthetic blocks (all constant levels, extreme patterns and random input),
+nine quantizer values, host ASan/UBSan, QEMU and physical MIPS tests show a
+maximum normalized coefficient error of 0.2631 and at most one quantized step
+of difference. DC transform values remain exact. Ordinary JPEG decoding also
+checks the padded color fixture. Before the byte-writer change, two alternating
+QHD synthetic-image measurements improved from 352/354 ms to 256/261 ms per
+image; this is an isolated software benchmark, not a live-stream no-gap claim.

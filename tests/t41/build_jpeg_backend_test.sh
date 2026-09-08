@@ -14,7 +14,11 @@ for object in openimp_p0 openimp_profile openimp_tuning openimp_p1 \
     t41_command_builder t41_hw_rate_control t41_rate_control t41_stream_layout \
     backend-enc-hw-scaling-list backend-codec backend-al_avpu \
     backend-device_pool backend-fifo backend-hw_encoder; do
-    set -- "$@" "$build/$object.o"
+    if [ "$object" = backend-hw_encoder ] && [ -n "${JPEG_HW_OBJECT:-}" ]; then
+        set -- "$@" "$JPEG_HW_OBJECT"
+    else
+        set -- "$@" "$build/$object.o"
+    fi
 done
 "${cross}gcc" -std=gnu99 -O2 -Wall -Wextra -Werror -DPLATFORM_T41 \
     -static -I"$repo/include" -I"$repo/src" \

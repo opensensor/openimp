@@ -12,6 +12,7 @@
 #include <errno.h>
 #include <sys/ioctl.h>
 #include "hw_encoder.h"
+#include "jpeg_dct.h"
 
 #include "imp_log_int.h"
 
@@ -771,7 +772,10 @@ static void jpeg_writer_write(JPEGWriter *writer, const void *data, size_t size)
 
 static void jpeg_writer_byte(JPEGWriter *writer, uint8_t value)
 {
-    jpeg_writer_write(writer, &value, 1u);
+    if (writer->failed ||
+        (writer->size == writer->capacity && jpeg_writer_reserve(writer, 1u) != 0))
+        return;
+    writer->data[writer->size++] = value;
 }
 
 static void jpeg_writer_be16(JPEGWriter *writer, uint16_t value)
@@ -832,46 +836,9 @@ static JPEGHuffmanCode jpeg_value_bits(int value)
     return bits;
 }
 
-static void jpeg_dct(float *d0p, float *d1p, float *d2p, float *d3p,
-                     float *d4p, float *d5p, float *d6p, float *d7p)
-{
-    float d0 = *d0p, d1 = *d1p, d2 = *d2p, d3 = *d3p;
-    float d4 = *d4p, d5 = *d5p, d6 = *d6p, d7 = *d7p;
-    float tmp0 = d0 + d7, tmp7 = d0 - d7;
-    float tmp1 = d1 + d6, tmp6 = d1 - d6;
-    float tmp2 = d2 + d5, tmp5 = d2 - d5;
-    float tmp3 = d3 + d4, tmp4 = d3 - d4;
-    float tmp10 = tmp0 + tmp3, tmp13 = tmp0 - tmp3;
-    float tmp11 = tmp1 + tmp2, tmp12 = tmp1 - tmp2;
-    float z1, z2, z3, z4, z5, z11, z13;
-
-    d0 = tmp10 + tmp11;
-    d4 = tmp10 - tmp11;
-    z1 = (tmp12 + tmp13) * 0.707106781f;
-    d2 = tmp13 + z1;
-    d6 = tmp13 - z1;
-    tmp10 = tmp4 + tmp5;
-    tmp11 = tmp5 + tmp6;
-    tmp12 = tmp6 + tmp7;
-    z5 = (tmp10 - tmp12) * 0.382683433f;
-    z2 = tmp10 * 0.541196100f + z5;
-    z4 = tmp12 * 1.306562965f + z5;
-    z3 = tmp11 * 0.707106781f;
-    z11 = tmp7 + z3;
-    z13 = tmp7 - z3;
-    *d5p = z13 + z2;
-    *d3p = z13 - z2;
-    *d1p = z11 + z4;
-    *d7p = z11 - z4;
-    *d0p = d0;
-    *d2p = d2;
-    *d4p = d4;
-    *d6p = d6;
-}
-
 static int jpeg_process_block(JPEGWriter *writer, uint32_t *bit_buffer,
-                              unsigned int *bit_count, float block[64],
-                              const float scale[64], int previous_dc,
+                              unsigned int *bit_count, int32_t block[64],
+                              const uint32_t scale[64], int previous_dc,
                               const JPEGHuffmanCode dc_table[256],
                               const JPEGHuffmanCode ac_table[256])
 {
@@ -888,12 +855,9 @@ static int jpeg_process_block(JPEGWriter *writer, uint32_t *bit_buffer,
         jpeg_dct(&block[index], &block[index + 8], &block[index + 16],
                  &block[index + 24], &block[index + 32], &block[index + 40],
                  &block[index + 48], &block[index + 56]);
-    for (index = 0; index < 64; index++) {
-        float value = block[index] * scale[index];
-
+    for (index = 0; index < 64; index++)
         quantized[jpeg_zigzag[index]] =
-            (int)(value < 0.0f ? value - 0.5f : value + 0.5f);
-    }
+            jpeg_dct_quantize(block[index], scale[index]);
 
     difference = quantized[0] - previous_dc;
     if (!difference) {
@@ -956,7 +920,7 @@ int HW_Encoder_Encode_NV12_JPEG(HWFrameBuffer *frame,
     JPEGHuffmanCode y_dc_table[256], y_ac_table[256];
     JPEGHuffmanCode uv_dc_table[256], uv_ac_table[256];
     uint8_t y_table[64], uv_table[64];
-    float y_scale[64], uv_scale[64];
+    uint32_t y_scale[64], uv_scale[64];
     JPEGWriter writer;
     const uint8_t *luma;
     const uint8_t *chroma;
@@ -1001,10 +965,12 @@ int HW_Encoder_Encode_NV12_JPEG(HWFrameBuffer *frame,
         uvq = uvq < 1 ? 1 : uvq > 255 ? 255 : uvq;
         y_table[jpeg_zigzag[index]] = (uint8_t)yq;
         uv_table[jpeg_zigzag[index]] = (uint8_t)uvq;
-        y_scale[index] = 1.0f /
-            (y_table[jpeg_zigzag[index]] * aasf[row] * aasf[column]);
-        uv_scale[index] = 1.0f /
-            (uv_table[jpeg_zigzag[index]] * aasf[row] * aasf[column]);
+        /* Q20 reciprocal, including the DCT's four fractional sample bits.
+         * Floating point is confined to this once-per-image setup. */
+        y_scale[index] = (uint32_t)(65536.0f /
+            (y_table[jpeg_zigzag[index]] * aasf[row] * aasf[column]) + 0.5f);
+        uv_scale[index] = (uint32_t)(65536.0f /
+            (uv_table[jpeg_zigzag[index]] * aasf[row] * aasf[column]) + 0.5f);
     }
     jpeg_build_huffman(jpeg_y_dc_counts, jpeg_y_dc_values,
                        sizeof(jpeg_y_dc_values), y_dc_table);
@@ -1054,7 +1020,7 @@ int HW_Encoder_Encode_NV12_JPEG(HWFrameBuffer *frame,
 
             for (block_y = 0; block_y < 2; block_y++) {
                 for (block_x = 0; block_x < 2; block_x++) {
-                    float block[64];
+                    int32_t block[64];
                     unsigned int row, column;
 
                     for (row = 0; row < 8; row++) {
@@ -1068,7 +1034,8 @@ int HW_Encoder_Encode_NV12_JPEG(HWFrameBuffer *frame,
                             if (source_x >= width)
                                 source_x = width - 1u;
                             block[row * 8u + column] =
-                                (float)luma[(size_t)source_y * stride + source_x] - 128.0f;
+                                ((int32_t)luma[(size_t)source_y * stride +
+                                               source_x] - 128) * 16;
                         }
                     }
                     dc_y = jpeg_process_block(&writer, &bit_buffer, &bit_count,
@@ -1077,7 +1044,7 @@ int HW_Encoder_Encode_NV12_JPEG(HWFrameBuffer *frame,
                 }
             }
             {
-                float u_block[64], v_block[64];
+                int32_t u_block[64], v_block[64];
                 unsigned int row, column;
 
                 for (row = 0; row < 8; row++) {
@@ -1093,9 +1060,9 @@ int HW_Encoder_Encode_NV12_JPEG(HWFrameBuffer *frame,
                             source_x = (width - 1u) / 2u;
                         offset = (size_t)source_y * stride + source_x * 2u;
                         u_block[row * 8u + column] =
-                            (float)chroma[offset + (nv21 ? 1u : 0u)] - 128.0f;
+                            ((int32_t)chroma[offset + (nv21 ? 1u : 0u)] - 128) * 16;
                         v_block[row * 8u + column] =
-                            (float)chroma[offset + (nv21 ? 0u : 1u)] - 128.0f;
+                            ((int32_t)chroma[offset + (nv21 ? 0u : 1u)] - 128) * 16;
                     }
                 }
                 dc_u = jpeg_process_block(&writer, &bit_buffer, &bit_count,
