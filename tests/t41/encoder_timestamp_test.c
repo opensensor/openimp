@@ -14,6 +14,8 @@ int AL_Codec_Encode_GetStream(void *codec, void **stream, void **user)
 { (void)codec; (void)stream; (void)user; assert(0); return -1; }
 int AL_Codec_Encode_ReleaseStream(void *codec, void *stream, void *user)
 { (void)codec; (void)stream; (void)user; assert(0); return -1; }
+int DMA_RmemFlushCache(void *address, uint32_t length, int direction)
+{ (void)address; (void)length; (void)direction; assert(0); return -1; }
 
 int main(void)
 {

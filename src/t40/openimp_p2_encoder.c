@@ -20,6 +20,9 @@
 
 #include "openimp_profile.h"
 #include "trace_control.h"
+#if defined(PLATFORM_T41)
+#include "dma_alloc.h"
+#endif
 #if defined(PLATFORM_T23) || defined(PLATFORM_T30)
 #include "t23/openimp_t23_persist.h"
 #endif
@@ -213,6 +216,9 @@ static int p2_copy_requested_jpeg_frames(int source_channel,
                                          const P2SyntheticFrame *source)
 {
     int channel;
+#if defined(PLATFORM_T41)
+    int source_sync = 1;
+#endif
 
     if (!source || !source->virtual_address || !source->size)
         return -1;
@@ -229,6 +235,29 @@ static int p2_copy_requested_jpeg_frames(int source_channel,
             pthread_mutex_unlock(&jpeg->lock);
             continue;
         }
+#if defined(PLATFORM_T41)
+        /* ISP DMA owns the captured pixels, whereas JPEG reads them on the
+         * CPU. Synchronize once, before any fanout copy, while the caller
+         * owns the AVPU lock (its command cache operations share this arena).
+         * Synthetic CPU frames have no physical address and need no sync. */
+        if (source_sync == 1 && source->physical_address) {
+            uint32_t length = source->size < 0x100000u
+                ? 0x100000u : source->size;
+            OpenIMPProfileStamp profile = openimp_profile_begin();
+
+            source_sync = DMA_RmemFlushCache(
+                (void *)(uintptr_t)source->virtual_address, length, 2);
+            openimp_profile_count(OPENIMP_PROFILE_CACHE_BYTES, length);
+            openimp_profile_end_pair(OPENIMP_PROFILE_CACHE_MAINTENANCE,
+                OPENIMP_PROFILE_CACHE_SOURCE_INVALIDATE, profile);
+        }
+        if (source_sync < 0) {
+            jpeg->jpeg_frame_requested = 0;
+            pthread_cond_broadcast(&jpeg->jpeg_frame_ready);
+            pthread_mutex_unlock(&jpeg->lock);
+            continue;
+        }
+#endif
         if (jpeg->jpeg_frame_capacity < source->size) {
             resized = realloc(jpeg->jpeg_frame_buffer, source->size);
             if (!resized) {
@@ -1186,8 +1215,6 @@ int IMP_Encoder_PollingStream(int channel, uint32_t timeout_ms)
                 goto done;
             p2_sleep_us(1000u);
         }
-        (void)p2_copy_requested_jpeg_frames(
-            ch->source_channel, (const P2SyntheticFrame *)frame);
     }
     if (trace_count <= 8u)
         p2_trace("openimp/P2: PollingStream frame ch=%d source=%d frame=%p\n",
@@ -1200,8 +1227,15 @@ int IMP_Encoder_PollingStream(int channel, uint32_t timeout_ms)
      * stream for seconds at a time.  Only command submission and completion
      * collection need to be serialized across encoder instances.
      */
-    pthread_mutex_lock(&p2_core_lock);
-    core_locked = 1;
+    /* JPEG uses an owned CPU copy and a software encoder; it must never
+     * serialize its DCT with the hardware video channels. Capture fanout is
+     * short and remains inside the hardware/cache ownership boundary. */
+    if (ch->codec_type != IMP_ENC_TYPE_JPEG) {
+        pthread_mutex_lock(&p2_core_lock);
+        core_locked = 1;
+        (void)p2_copy_requested_jpeg_frames(
+            ch->source_channel, (const P2SyntheticFrame *)frame);
+    }
     if (AL_Codec_Encode_Process(ch->codec, frame, frame) != 0)
         goto done;
 #if defined(PLATFORM_T23) || defined(PLATFORM_T30)

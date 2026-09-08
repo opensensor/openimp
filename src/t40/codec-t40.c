@@ -7236,7 +7236,7 @@ int AL_Codec_Encode_Destroy(void *codec) {
  * must still produce an image that rvd and ordinary decoders can consume.
  * A one-symbol DC table (category 0) plus a one-symbol AC table (EOB) encodes
  * every 8x8 block as constant grey in two bits. */
-#if defined(PLATFORM_T40)
+#if defined(PLATFORM_T40) && !defined(PLATFORM_T41)
 static int t40_encode_gray_jpeg(uint32_t width, uint32_t height,
                                 uint64_t timestamp, HWStreamBuffer *stream)
 {
@@ -9228,7 +9228,7 @@ static int al_codec_encode_process_impl(void *codec, void *frame,
             LOG_CODEC("Process: SW encode frame %ux%u codec_type=%u [#%u]", width, height, codec_type, c);
         }
         if (
-#if defined(PLATFORM_T40)
+#if defined(PLATFORM_T40) && !defined(PLATFORM_T41)
             (codec_type == IMP_ENC_TYPE_JPEG
                 ? t40_encode_gray_jpeg(width, height, timestamp, hw_stream)
                 : HW_Encoder_Encode_Software(&hw_frame, hw_stream, codec_type)) < 0

@@ -298,5 +298,38 @@ order, 100 alternating restarts without growing memory usage, geometry
 changes, allocation exhaustion, setup failures and rejected queue-release
 ownership are checked. The live codec allocation's bytes must remain intact.
 The shared change is compiled/tested for both T40 and T41, but this test does
-not claim physical T40 coverage. Full T41 restart/snapshot validation remains
-necessary before promotion.
+not claim physical T40 coverage.
+
+On the T41/OS04D10 with the matching open TX-ISP capture gate and generated
+all-channel scaler, ten substream stop/start cycles preserve the main stream:
+24.9865 capture fps, no RTP sequence or source-frame gaps, and unchanged RVD
+RSS/data size (4620/2932 KiB). Main-stream restart no longer freezes the graph,
+but one reverse-direction run lost one substream frame (80 ms timestamp
+interval); that is not an interruption-free pass. Main 25 fps plus sub 15 fps,
+and a live substream change from 640x360 to 960x544, also preserve main cadence.
+These are short functional checks, not endurance or matched CPU benchmarks.
+
+## Real-image JPEG alongside video
+
+The T41 codec inherited T40's constant-gray JPEG placeholder through its
+translation-unit platform alias. A physical 2560x1440 snapshot decoded to
+exactly luma 128 everywhere. T41 now uses the existing generic, sensor-independent
+NV12/NV21 JPEG encoder; its input is the captured image, including padded
+chroma-plane placement, not generated test pixels or calibration-bin tables.
+T40's unvalidated placeholder selection is left unchanged.
+
+P2 synchronizes T41 ISP-written pixels before making the requested owned
+snapshot copy. A failed cache transition does not publish stale pixels. The
+brief fanout remains inside the hardware/cache lock; the software JPEG encode
+itself does not hold the AVPU lock and therefore cannot serialize video for
+the duration of its DCT. JPEG still costs CPU: this is not a hardware JPEG
+implementation or a claim that full-resolution snapshot rate is unlimited.
+
+`jpeg_concurrency-test` runs real P2 PollingStream with a blocked JPEG backend
+and proves independent video progress, one coherent copy per requested source,
+and rejection on failed synchronization. `build_jpeg_backend_test.sh` links
+the actual T41 production objects, feeds eight synthetic padded NV12 frames
+through AL Create/Process/GetStream/Release/Destroy, preserves source timestamps,
+and writes a 64x24 color JPEG. An ordinary decoder must see red and blue halves,
+not constant gray. Physical simultaneous video/JPEG validation is still required
+before this checkpoint is promoted.

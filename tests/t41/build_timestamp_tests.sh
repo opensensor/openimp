@@ -6,7 +6,7 @@ output=$2
 repo=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 mkdir -p "$output"
 # Exercise the real 32-bit ABI and adapter bodies, not a host-sized imitation.
-for test in frame_timestamp encoder_timestamp capture_allocator; do
+for test in frame_timestamp encoder_timestamp capture_allocator jpeg_concurrency; do
     "${cross}gcc" -std=gnu99 -O2 -Wall -Wextra -Werror -DPLATFORM_T41 \
         -ffunction-sections -fdata-sections -Wl,--gc-sections -static \
         -I"$repo/include" -I"$repo/src" "$repo/tests/t41/${test}_test.c" \
