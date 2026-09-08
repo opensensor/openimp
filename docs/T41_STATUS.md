@@ -256,3 +256,21 @@ without changing the public IMP pipeline contract. The standalone V4L2
 DMA-BUF-to-AVPU queue contract is now implemented and measured; production
 Raptor selection and a standard mem2mem facade remain the next integration
 layers.
+# Multi-output timestamp boundary
+
+The shared IMP graph must carry the actual FrameSource completion instant to
+every encoder, rather than synthesize a nominal frame-rate timeline. T41's
+DQBUF words 5/6 contain a CLOCK_MONOTONIC_RAW timeval. P1 validates the
+microseconds and converts it through P0's existing timestamp-base owner,
+falling back to the system timestamp only for absent/invalid/pre-base data.
+P2 preserves that timestamp, including zero, stop/start gaps and skipped
+frames. JPEG fanout copies the source timestamp with its owned NV12 pixels;
+it does not switch to a different absolute clock.
+
+`tests/t41/build_timestamp_tests.sh CROSS_PREFIX OUTPUT_DIR` builds private
+MIPS tests of the real P1 GetFrame and P2 GetStream/fanout bodies. The tests
+cover both video channels, different configured frame rates, JPEG, missing
+frames, zero, invalid timeval, pre-base fallback and long-uptime arithmetic.
+They require no ISP device. Run each `*-test` in QEMU or on the camera.
+This does not establish snapshot performance or concurrent stream endurance;
+those remain physical multi-output exit gates.

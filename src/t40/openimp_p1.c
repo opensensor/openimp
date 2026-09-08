@@ -293,6 +293,9 @@ static struct openimp_p1_state p1;
 static volatile uint32_t p1_lock;
 
 extern int64_t IMP_System_GetTimeStamp(void);
+#if defined(PLATFORM_T41)
+extern int64_t OpenIMP_P0_NormalizeMonotonicTimeStamp(uint64_t timestamp);
+#endif
 
 static void trace_p1(const char *text)
 {
@@ -1113,7 +1116,18 @@ int IMP_FrameSource_GetFrame(int channel, IMPFrameInfo **frame)
     buffer->frame.direct_phyAddr = buffer->physical;
 #endif
     buffer->frame.pool = chn;
+#if defined(PLATFORM_T41)
+    /* The T41 frame-channel wire timeval is CLOCK_MONOTONIC_RAW, at
+     * words 5/6 (seconds/microseconds). Preserve the completion instant,
+     * including real gaps, in P0's clock domain instead of timing DQBUF. */
+    buffer->frame.timeStamp = words[6] < 1000000U ?
+        OpenIMP_P0_NormalizeMonotonicTimeStamp(
+            (uint64_t)words[5] * 1000000U + words[6]) : -1;
+    if (buffer->frame.timeStamp < 0)
+        buffer->frame.timeStamp = IMP_System_GetTimeStamp();
+#else
     buffer->frame.timeStamp = IMP_System_GetTimeStamp();
+#endif
     chn->frames_dequeued++;
     *frame = &buffer->frame;
     unlock_p1();

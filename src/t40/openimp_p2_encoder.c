@@ -252,7 +252,7 @@ static int p2_copy_requested_jpeg_frames(int source_channel,
         jpeg->synthetic_frame.size = source->size;
         jpeg->synthetic_frame.virtual_address =
             (uint32_t)(uintptr_t)jpeg->jpeg_frame_buffer;
-        jpeg->synthetic_frame.timestamp = (int64_t)p2_monotonic_us();
+        jpeg->synthetic_frame.timestamp = source->timestamp;
         jpeg->jpeg_frame_requested = 0;
         jpeg->jpeg_frame_generation++;
         pthread_cond_broadcast(&jpeg->jpeg_frame_ready);
@@ -1320,7 +1320,7 @@ int IMP_Encoder_GetStream(int channel, IMPEncoderStream *stream, int block)
     P2EncoderChannel *ch;
     P2HWStream *raw;
 #if !defined(PLATFORM_T23) && !defined(PLATFORM_T30) && \
-    !defined(PLATFORM_T31)
+    !defined(PLATFORM_T31) && !defined(PLATFORM_T41)
     uint32_t fps_num;
     uint32_t fps_den;
     uint64_t frame_interval_us;
@@ -1382,6 +1382,13 @@ int IMP_Encoder_GetStream(int channel, IMPEncoderStream *stream, int block)
     memset(&ch->packs[0], 0, sizeof(ch->packs[0]));
     ch->packs[0].offset = 0;
     ch->packs[0].length = raw->length;
+#if defined(PLATFORM_T41)
+    /* The codec carries the FrameSource completion timestamp through its
+     * owned stream. Do not manufacture a frame-rate timeline: it hides
+     * dropped frames, drifts against audio and compresses stop/start gaps.
+     * Zero is a valid P0-relative timestamp, not an uninitialized marker. */
+    ch->packs[0].timestamp = (int64_t)raw->timestamp;
+#else
     source_timestamp_us = raw->timestamp
         ? raw->timestamp : p2_monotonic_us();
     fps_num = ch->attr.rcAttr.outFrmRate.frmRateNum;
@@ -1398,6 +1405,7 @@ int IMP_Encoder_GetStream(int channel, IMPEncoderStream *stream, int block)
     else
         ch->output_timestamp_us += frame_interval_us;
     ch->packs[0].timestamp = (int64_t)ch->output_timestamp_us;
+#endif
     ch->packs[0].frameEnd = true;
     ch->packs[0].sliceType = is_idr ? IMP_ENC_SLICE_I : IMP_ENC_SLICE_P;
     ch->packs[0].nalType.h264NalType = ch->codec_type == IMP_ENC_TYPE_JPEG

@@ -437,7 +437,7 @@ int64_t IMP_System_GetTimeStamp(void)
 }
 
 /* FrameSource DQBUF timestamps use the same absolute monotonic clock as the
- * system timestamp base.  Keep the conversion here so the T31 stock-driver
+ * system timestamp base.  Keep the conversion here so the T31/T41 driver
  * seam does not duplicate or guess P0's private rebase state. */
 int64_t OpenIMP_P0_NormalizeMonotonicTimeStamp(uint64_t timestamp)
 {
