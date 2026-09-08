@@ -353,3 +353,19 @@ of difference. DC transform values remain exact. Ordinary JPEG decoding also
 checks the padded color fixture. Before the byte-writer change, two alternating
 QHD synthetic-image measurements improved from 352/354 ms to 256/261 ms per
 image; this is an isolated software benchmark, not a live-stream no-gap claim.
+
+The fixed-point cold-boot trial subsequently passed a concurrent 100-second
+RTP check: both video channels measured 24.98646 capture fps without source
+gaps, backwards timestamps or video/audio sequence loss while 90 QHD snapshots
+were delivered in 89 seconds. Thread priorities were back at their defaults.
+Total CPU remained 43.90% (RVD 23.82%) of both cores, so the isolated DCT speedup
+must not be presented as a large end-to-end CPU reduction. Snapshot bytes are
+real image content and decode correctly. Longer endurance, the occasional
+reverse-direction restart gap, and standalone V4L2 multi-output remain open.
+
+The shared IMP graph is not the standalone V4L2 backend. The latter still
+exports one selected scaler channel and one HAL encoder instance, and its
+standalone AVC interface has no shared multi-instance submission/completion
+arbiter. Multiple capture nodes, shared input lifetimes, HAL channel plumbing
+and that arbiter must be implemented together before advertising standalone
+V4L2 multi-output support.
