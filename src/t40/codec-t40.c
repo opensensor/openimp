@@ -7671,8 +7671,10 @@ static int al_codec_encode_process_impl(void *codec, void *frame,
         goto queue_encoded_stream;
     }
 #endif
+#if !defined(PLATFORM_T41)
     if (!timestamp)
         timestamp = IMP_System_GetTimeStamp();
+#endif
 
 #if defined(PLATFORM_T23)
     /* T23 has the Helix encoder at /dev/soc_vpu, not the Allegro AVPU used by

@@ -1,9 +1,8 @@
 /* P2 DMA adapter for the recovered Allegro/AVPU userspace backend.
  *
- * FrameSource and the encoder must allocate from one monotonically advancing
- * T40 rmem arena.  The older OpenIMP allocator assumed a T31 mapping at offset
- * zero; that is fatal on this T40XP.  This adapter starts after P1's live
- * capture allocations and maps /dev/rmem at the physical rmem base.
+ * FrameSource, ISP history and the encoder share one allocation ledger.
+ * A snapshot of P1's bump pointer is not a reservation: capture allocations
+ * after encoder startup would otherwise overlap live codec buffers.
  */
 
 #include <errno.h>
@@ -15,20 +14,12 @@
 #include <sys/ioctl.h>
 #include <sys/mman.h>
 #include <unistd.h>
+#include "dma_alloc.h"
+#include "t40/openimp_p2_dma.h"
 
 #define P2_RMEM_SIZE (96U * 1024U * 1024U)
 #define P2_RMEM_FLUSH_IOCTL 0xc00c7200U
 #define P2_DMA_MAX_ALLOCS 128U
-
-typedef struct {
-    char name[96];
-    char tag[32];
-    uint32_t virt_addr;
-    uint32_t phys_addr;
-    uint32_t size;
-    uint32_t flags;
-    uint32_t pool_id;
-} IMPDMABufferInfo;
 
 struct p2_flush_info {
     uint32_t address;
@@ -41,9 +32,6 @@ struct p2_dma_allocation {
     uint32_t size;
     int active;
 };
-
-extern int OpenIMP_P1_GetState(uint32_t *, uint32_t *, uint32_t *,
-                               uint32_t *, int32_t *, uint32_t *, uint32_t *);
 
 static struct {
     int fd;
@@ -90,8 +78,8 @@ static void p2_dma_recompute_next(void)
     p2_dma.next = next;
 }
 
-/* Return the first page-aligned gap above P1's live capture allocations.
- * P2 allocations are few and long-lived, so a bounded linear scan is both
+/* Return the first page-aligned gap in the shared capture/encoder ledger.
+ * Allocations are few and long-lived, so a bounded linear scan is both
  * deterministic and less error-prone than maintaining a second linked-list
  * allocator inside libimp. */
 static int p2_dma_find_gap(uint32_t size, uint32_t *start_out)
@@ -197,27 +185,32 @@ static int p2_rmem_from_cmdline(uint32_t *base_out, uint32_t *size_out)
 
 static int p2_dma_prepare(void)
 {
-    uint32_t flags = 0, channels = 0, frames = 0, command = 0;
-    uint32_t base = 0, used = 0;
-    uint32_t command_line_base = 0;
-    uint32_t command_line_size = 0;
-    int32_t saved_errno = 0;
+    uint32_t base, size, floor = 0;
+    const char *offset_text;
 
     if (p2_dma.mapping)
         return 0;
-    if (OpenIMP_P1_GetState(&flags, &channels, &frames, &command,
-                            &saved_errno, &base, &used) < 0 || !base) {
-        if (p2_rmem_from_cmdline(&base, &command_line_size) < 0)
+    if (p2_rmem_from_cmdline(&base, &size) < 0 || size > UINT32_MAX - base)
+        return -1;
+    offset_text = getenv("OPENIMP_RMEM_START_OFFSET");
+    if (offset_text && *offset_text) {
+        char *end;
+        unsigned long parsed;
+
+        errno = 0;
+        parsed = strtoul(offset_text, &end, 0);
+        if (errno || end == offset_text || *end || parsed >= size ||
+            (parsed & 4095U)) {
+            errno = EINVAL;
             return -1;
-        used = 0;
-    } else if (p2_rmem_from_cmdline(&command_line_base,
-                                    &command_line_size) == 0 &&
-               command_line_base != base) {
+        }
+        floor = (uint32_t)parsed;
+    }
+    if (floor >= size) {
         errno = EINVAL;
         return -1;
     }
-    if (command_line_size)
-        p2_dma.size = command_line_size;
+    p2_dma.size = size;
     p2_dma.fd = open("/dev/rmem", O_RDWR | O_SYNC);
     if (p2_dma.fd < 0)
         return -1;
@@ -230,7 +223,7 @@ static int p2_dma_prepare(void)
         return -1;
     }
     p2_dma.base = base;
-    p2_dma.floor = align_page(used);
+    p2_dma.floor = floor;
     p2_dma.next = p2_dma.floor;
     return 0;
 }
@@ -288,11 +281,33 @@ int DMA_RmemFlushCache(void *address, uint32_t length, int direction)
 
 int OpenIMP_P2_DMAState(uint32_t *base, uint32_t *used)
 {
+    int ready;
+
+    p2_lock();
     if (base)
         *base = p2_dma.base;
     if (used)
         *used = p2_dma.next;
-    return p2_dma.mapping ? 0 : -1;
+    ready = p2_dma.mapping != NULL;
+    p2_unlock();
+    return ready ? 0 : -1;
+}
+
+int OpenIMP_P2_DMARegion(uint32_t *base, uint32_t *size, void **mapping)
+{
+    int result;
+
+    if (!base || !size || !mapping)
+        return -1;
+    p2_lock();
+    result = p2_dma_prepare();
+    if (!result) {
+        *base = p2_dma.base;
+        *size = p2_dma.size;
+        *mapping = p2_dma.mapping;
+    }
+    p2_unlock();
+    return result;
 }
 
 /* Public T40 allocator compatibility.  libimp consumers use both the

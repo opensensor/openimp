@@ -256,7 +256,7 @@ without changing the public IMP pipeline contract. The standalone V4L2
 DMA-BUF-to-AVPU queue contract is now implemented and measured; production
 Raptor selection and a standard mem2mem facade remain the next integration
 layers.
-# Multi-output timestamp boundary
+## Multi-output timestamp boundary
 
 The shared IMP graph must carry the actual FrameSource completion instant to
 every encoder, rather than synthesize a nominal frame-rate timeline. T41's
@@ -274,3 +274,29 @@ frames, zero, invalid timeval, pre-base fallback and long-uptime arithmetic.
 They require no ISP device. Run each `*-test` in QEMU or on the camera.
 This does not establish snapshot performance or concurrent stream endurance;
 those remain physical multi-output exit gates.
+
+## Shared capture/encoder allocation owner
+
+The previous P1 bump allocator and P2 gap allocator managed the same rmem
+independently. P2 took a one-time snapshot of P1's high-water mark. A later
+capture allocation, including a stream restart, could overwrite a live
+codec allocation. P1 also discarded its allocation records on disable
+without reclaiming storage. These are lifetime defects, not sensor tuning.
+
+P1 ISP-history/capture allocations now use the same bounded ledger and
+mapping as the encoder. The allocator discovers its region independently;
+it never calls back into P1, so the lock order stays P1 then arena. Released
+capture storage is reclaimed only after STREAMOFF and REQBUFS(0) establish
+that the driver no longer owns it. Failed cancellation retains its records
+for retry. The explicit rmem start-offset reservation applies to all owners,
+including a standalone encoder without a FrameSource graph.
+
+The MIPS adapter test script also builds `capture_allocator-test` and
+`capture_allocator-t40-test`. Both use the production P1 lifecycle and DMA
+ledger with private RAM and a fake driver: capture/codec/capture allocation
+order, 100 alternating restarts without growing memory usage, geometry
+changes, allocation exhaustion, setup failures and rejected queue-release
+ownership are checked. The live codec allocation's bytes must remain intact.
+The shared change is compiled/tested for both T40 and T41, but this test does
+not claim physical T40 coverage. Full T41 restart/snapshot validation remains
+necessary before promotion.

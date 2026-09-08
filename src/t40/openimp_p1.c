@@ -16,12 +16,12 @@
 #include <unistd.h>
 
 #include "openimp_profile.h"
+#include "dma_alloc.h"
+#include "t40/openimp_p2_dma.h"
 
 #define OPENIMP_P1_MAGIC        0x50315434U /* "P1T4" */
 #define OPENIMP_FS_CHANNELS     4
 #define OPENIMP_FS_BUFFERS      4
-#define OPENIMP_DEFAULT_RMEM_BASE 0x06000000U
-#define OPENIMP_DEFAULT_RMEM_SIZE (96U * 1024U * 1024U)
 
 #define TISP_VIDIOC_DRIVER_VERSION        0x80045401U
 #define TISP_VIDIOC_ENUMINPUT             0xc0045402U
@@ -347,120 +347,64 @@ static int record_ioctl(int fd, uint32_t command, void *argument)
     return result;
 }
 
-static void parse_rmem(uint32_t *base, uint32_t *size)
-{
-    char text[512];
-    char *field;
-    char *end;
-    unsigned long amount;
-    unsigned long address;
-    ssize_t length;
-    int fd;
-
-    *base = OPENIMP_DEFAULT_RMEM_BASE;
-    *size = OPENIMP_DEFAULT_RMEM_SIZE;
-    fd = open("/proc/cmdline", O_RDONLY | O_CLOEXEC);
-    if (fd < 0)
-        return;
-    length = read(fd, text, sizeof(text) - 1);
-    close(fd);
-    if (length <= 0)
-        return;
-    text[length] = '\0';
-    field = strstr(text, "rmem=");
-    if (!field)
-        return;
-    amount = strtoul(field + 5, &end, 0);
-    if (end == field + 5)
-        return;
-    if (*end == 'M' || *end == 'm') {
-        amount *= 1024UL * 1024UL;
-        end++;
-    } else if (*end == 'K' || *end == 'k') {
-        amount *= 1024UL;
-        end++;
-    }
-    if (*end != '@')
-        return;
-    address = strtoul(end + 1, &end, 0);
-    if (!amount || amount > 0xffffffffUL || address > 0xffffffffUL)
-        return;
-    *size = (uint32_t)amount;
-    *base = (uint32_t)address;
-}
-
 static int dma_init(void)
 {
-    const char *start_offset_text;
-    uint32_t base;
-    uint32_t size;
-    uint32_t start_offset = 0;
-    void *mapping;
-    int fd;
-
     if (p1.dma.mapping)
         return 0;
-    trace_p1("P1_INNER DMA_OPEN\n");
-    parse_rmem(&base, &size);
-    fd = open("/dev/rmem", O_RDWR | O_CLOEXEC);
-    if (fd < 0)
-        return -1;
-    mapping = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd,
-                   (off_t)base);
-    if (mapping == MAP_FAILED) {
-        close(fd);
-        return -1;
-    }
-    p1.dma.fd = fd;
-    p1.dma.base = base;
-    p1.dma.size = size;
-    start_offset_text = getenv("OPENIMP_RMEM_START_OFFSET");
-    if (start_offset_text && *start_offset_text) {
-        char *end = NULL;
-        unsigned long parsed = strtoul(start_offset_text, &end, 0);
-
-        if (!end || *end != '\0' || parsed >= size ||
-            (parsed & 4095UL) != 0) {
-            munmap(mapping, size);
-            close(fd);
-            return -1;
-        }
-        start_offset = (uint32_t)parsed;
-    }
-    p1.dma.next = start_offset;
-    p1.dma.mapping = mapping;
-    trace_p1("P1_INNER DMA_MAPPED\n");
-    return 0;
+    return OpenIMP_P2_DMARegion(&p1.dma.base, &p1.dma.size, &p1.dma.mapping);
 }
 
 static void dma_deinit(void)
 {
-    if (p1.dma.mapping)
-        munmap(p1.dma.mapping, p1.dma.size);
-    if (p1.dma.fd >= 0)
-        close(p1.dma.fd);
+    /* Mapping belongs to the shared arena, not this FrameSource owner. */
     memset(&p1.dma, 0, sizeof(p1.dma));
     p1.dma.fd = -1;
 }
 
 static int dma_alloc(uint32_t size, uint32_t *physical, void **virtual_address)
 {
-    uint32_t offset;
-    uint32_t aligned_size;
+    IMPDMABufferInfo allocation;
 
-    if (!size || !physical || !virtual_address)
+    if (!size || size > INT32_MAX || !physical || !virtual_address)
         return -1;
     if (dma_init() < 0)
         return -1;
-    offset = (p1.dma.next + 4095U) & ~4095U;
-    aligned_size = (size + 4095U) & ~4095U;
-    if (offset > p1.dma.size || aligned_size > p1.dma.size - offset)
+    if (DMA_AllocDescriptor(&allocation, (int)size, "capture") < 0)
         return -1;
-    *physical = p1.dma.base + offset;
-    *virtual_address = (void *)((uintptr_t)p1.dma.mapping + offset);
-    memset(*virtual_address, 0, aligned_size);
-    p1.dma.next = offset + aligned_size;
+    *physical = allocation.phys_addr;
+    *virtual_address = (void *)(uintptr_t)allocation.virt_addr;
+    memset(*virtual_address, 0, size);
+    OpenIMP_P2_DMAState(NULL, &p1.dma.next);
     return 0;
+}
+
+static int free_capture_buffers(struct openimp_fs_channel *chn)
+{
+    unsigned int i;
+    int result = 0;
+
+    for (i = 0; i < OPENIMP_FS_BUFFERS; ++i) {
+        if (chn->buffers[i].physical && DMA_FreePhys(chn->buffers[i].physical) < 0) {
+            result = -1;
+            continue;
+        }
+        memset(&chn->buffers[i], 0, sizeof(chn->buffers[i]));
+    }
+    if (result)
+        return result;
+    chn->buffer_count = 0;
+    chn->sizeimage = 0;
+    return 0;
+}
+
+/* Only release physical storage after the driver acknowledges queue removal. */
+static int release_capture_queue(struct openimp_fs_channel *chn)
+{
+    uint32_t request[5] = {0, TISP_BUF_TYPE_VIDEO_CAPTURE, TISP_MEMORY_USERPTR};
+
+    if (record_ioctl(chn->fd, TISP_VIDIOC_REQBUFS, request) < 0)
+        return -1;
+    return free_capture_buffers(chn);
 }
 
 int IMP_ISP_Open(void)
@@ -555,6 +499,9 @@ int IMP_ISP_AddSensor(IMPVI_NUM num, IMPSensorInfo *info)
         return -1;
     }
     if (record_ioctl(p1.isp_fd, TISP_VIDIOC_SET_MDNS_BUF_INFO, &mdns) < 0) {
+        if (mdns.paddr)
+            DMA_FreePhys(mdns.paddr);
+        p1.mdns_virtual = NULL;
         unlock_p1();
         return -1;
     }
@@ -598,6 +545,8 @@ int IMP_ISP_DelSensor(IMPVI_NUM num, IMPSensorInfo *info)
 #endif
     if (result == 0) {
         p1.sensor_added = 0;
+        if (p1.mdns.paddr)
+            DMA_FreePhys(p1.mdns.paddr);
         memset(&p1.sensor, 0, sizeof(p1.sensor));
         memset(&p1.mdns, 0, sizeof(p1.mdns));
         p1.mdns_virtual = NULL;
@@ -964,6 +913,10 @@ int IMP_FrameSource_EnableChn(int channel)
         unlock_p1();
         return 0;
     }
+    if (chn->buffer_count && release_capture_queue(chn) < 0) {
+        unlock_p1();
+        return -1;
+    }
     if (chn->attr.picWidth <= 0 || chn->attr.picHeight <= 0 ||
         chn->attr.pixFmt != (int32_t)TISP_PIX_FMT_NV12_ENUM) {
         syslog(LOG_ERR,
@@ -1033,6 +986,8 @@ int IMP_FrameSource_EnableChn(int channel)
     chn->enabled = 1;
     result = 0;
 done:
+    if (result && chn->buffer_count)
+        release_capture_queue(chn);
     unlock_p1();
     return result;
 }
@@ -1170,7 +1125,6 @@ int IMP_FrameSource_ReleaseFrame(int channel, IMPFrameInfo *frame)
 int IMP_FrameSource_DisableChn(int channel)
 {
     struct openimp_fs_channel *chn;
-    uint32_t request[5];
     uint32_t type;
     int result = 0;
 
@@ -1179,22 +1133,20 @@ int IMP_FrameSource_DisableChn(int channel)
     lock_p1();
     prepare_p1();
     chn = &p1.channels[channel];
-    if (!chn->enabled) {
+    if (!chn->enabled && !chn->buffer_count) {
         unlock_p1();
         return 0;
     }
-    type = TISP_BUF_TYPE_VIDEO_CAPTURE;
-    result = record_ioctl(chn->fd, TISP_VIDIOC_STREAMOFF, &type);
-    memset(request, 0, sizeof(request));
-    request[1] = TISP_BUF_TYPE_VIDEO_CAPTURE;
-    request[2] = TISP_MEMORY_USERPTR;
-    if (record_ioctl(chn->fd, TISP_VIDIOC_REQBUFS, request) < 0 &&
-        result == 0)
-        result = -1;
+    if (chn->enabled) {
+        type = TISP_BUF_TYPE_VIDEO_CAPTURE;
+        result = record_ioctl(chn->fd, TISP_VIDIOC_STREAMOFF, &type);
+        if (result < 0) {
+            unlock_p1();
+            return result;
+        }
+    }
     chn->enabled = 0;
-    chn->buffer_count = 0;
-    chn->sizeimage = 0;
-    memset(chn->buffers, 0, sizeof(chn->buffers));
+    result = release_capture_queue(chn);
     unlock_p1();
     return result;
 }
@@ -1209,6 +1161,10 @@ int IMP_FrameSource_DestroyChn(int channel)
     prepare_p1();
     chn = &p1.channels[channel];
     if (chn->enabled) {
+        unlock_p1();
+        return -1;
+    }
+    if (chn->buffer_count && release_capture_queue(chn) < 0) {
         unlock_p1();
         return -1;
     }
@@ -1250,6 +1206,7 @@ int OpenIMP_P1_GetState(uint32_t *isp_flags, uint32_t *channel_mask,
     *last_errno = p1.last_errno;
     *rmem_base = p1.dma.base;
     *rmem_used = p1.dma.next;
+    OpenIMP_P2_DMAState(rmem_base, rmem_used);
     unlock_p1();
     return 0;
 }
