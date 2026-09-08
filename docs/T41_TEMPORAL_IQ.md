@@ -3,6 +3,38 @@
 Status: the reported visual flicker is **not resolved**. Successful decoding
 and timestamp checks do not establish temporal image quality.
 
+## Rapid brightness flicker: ISP control defect
+
+A subsequent raw third-output capture isolated a roughly 5 Hz indoor-wall
+brightness oscillation before encoding. The public T41 anti-flicker ioctl
+was silently acknowledged by the ISP dispatcher without applying the request
+or filling GET. The OpenIMP envelope/command reaches the kernel; the missing
+native route is repaired in open-tx-isp, not by modifying the encoder.
+
+With the repaired driver, NORMAL 60 Hz reduces raw wall amplitude from
+4.791 to 0.0125 eight-bit luma units. AUTO brings it back (8.233 in the next
+capture). The user confirms no rapid flicker in NORMAL but severe bright-scene
+overexposure. **This is not an acceptable complete visual fix.** NORMAL's
+minimum 8.33 ms exposure and AUTO's short-exposure allowance remain different
+policies; no scene-derived color gain or bitrate/GOP workaround is introduced.
+
+Reanalysis of the earlier OEM ISP/encoder recording also finds the rapid
+wall oscillation, about 9.24 luma amplitude. OEM anti-flicker was OFF in that
+recording, and illumination/exposure were not locked. Do not conflate it with
+the slower keyframe effect or claim matched OEM NORMAL/AUTO parity. The user
+also reports flicker on T31; that device has not been measured in this run.
+
+A fresh OEM ISP/encoder cold-boot off/NORMAL-60-Hz A/B subsequently confirms
+the tradeoff: wall amplitude 4.759 -> 0.0318, but mean Y 125.06 -> 213.95
+and pixels with Y >= 250 increase from 6.09% to 61.71%. Stock's settled
+NORMAL exposure is EV 369 at unity analog gain. These measurements exclude
+the first 50 of each 500-frame recording. The rapid symptom is therefore
+not specific to OpenIMP or concurrent outputs; overall IQ still fails when
+strict anti-flicker blows out the bright scene.
+
+The driver repository's `docs/T41_ANTIFLICKER.md` records the ABI, generic
+sensor-timing arithmetic, control rejection tests, and raw-luma diagnostic.
+
 ## Isolated completion-tail race
 
 The frozen-source probe exposed a separate regression in the shared AVPU
