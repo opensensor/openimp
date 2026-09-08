@@ -34,6 +34,8 @@
 #define TISP_CID_OPEN_COLOR_MODEL 0x08ff0003U
 #define TISP_CID_OPEN_AWB_SCENE 0x08ff0004U
 #define TISP_CID_OPEN_AWB_TARGET 0x08ff0005U
+#define TISP_CID_OPEN_AWB_OWNER 0x08ff0006U
+#define TISP_AWB_OWNER_NATIVE 0x41574201U
 #define TISP_T41_AE_EXPR_BYTES 232U
 #define TISP_T41_AE_EXPR_TOTAL_GAIN_OFFSET 204U
 #define T41_COLOR_MODEL_DAY 0U
@@ -92,6 +94,7 @@ struct OpenIMPTuningController {
     uint8_t awb_update_samples;
     int calibrated_awb_support; /* 0 unknown, 1 supported, -1 legacy kernel */
     int calibrated_ae_policy; /* security uses kernel EV target, not scene presets */
+    int native_awb_policy; /* frame-driven kernel owner; no userspace estimator */
 };
 
 static int tuning_open(const char *device)
@@ -354,6 +357,9 @@ static int t41_adapt_security_awb(OpenIMPTuningController *controller)
     int blue_delta;
     int ret;
 
+    if (controller->native_awb_policy)
+        return 0;
+
     if (++controller->awb_update_samples <
         T41_SECURITY_AWB_UPDATE_SAMPLES)
         return 0;
@@ -451,6 +457,12 @@ static int t41_security_begin(OpenIMPTuningController *controller,
     uint32_t target = 0;
     struct t41_awb_control awb = {0, 0, 0};
     int ret = t41_ae_target(controller->fd, 0, &target);
+    uint32_t owner = 0;
+    struct t40_tuning_request ownership = {
+        0, 1, TISP_CID_OPEN_AWB_OWNER, (uintptr_t)&owner
+    };
+
+    controller->native_awb_policy = 0;
     if (!ret) {
         target = UINT32_MAX;
         ret = t41_ae_target(controller->fd, 1, &target);
@@ -475,9 +487,17 @@ static int t41_security_begin(OpenIMPTuningController *controller,
     if (awb.red_gain < 512 || awb.red_gain > 6144 ||
         awb.blue_gain < 512 || awb.blue_gain > 6144)
         return -EAGAIN;
-    /* Transfer WB ownership without changing the current calibrated gain.
-     * The userspace neutral estimator and kernel auto loop must not race. */
-    awb.mode = 0;
+    /* Old kernels may acknowledge an unknown GET without filling it. Require
+     * the explicit ABI token, and propagate readiness errors instead of
+     * accidentally assigning a second writer during startup. */
+    if (ioctl(controller->fd, TISP_VIDIOC_DEFAULT_TUNING, &ownership) < 0) {
+        ret = -errno;
+        if (ret != -EOPNOTSUPP && ret != -ENOTTY)
+            return ret;
+    } else if (owner == TISP_AWB_OWNER_NATIVE) {
+        controller->native_awb_policy = 1;
+    }
+    awb.mode = controller->native_awb_policy ? 1 : 0;
     ret = t41_awb_control(controller->fd, 0, &awb);
     if (ret)
         return ret;
@@ -486,11 +506,16 @@ static int t41_security_begin(OpenIMPTuningController *controller,
     controller->low_light_evidence = 0;
     controller->awb_update_samples = 0;
     controller->security_color_model = T41_COLOR_MODEL_DAY;
-    profile->auto_white_balance = 0;
+    profile->auto_white_balance = controller->native_awb_policy;
     profile->red_gain = awb.red_gain;
     profile->blue_gain = awb.blue_gain;
     profile->exposure_target_q8 = 0;
     profile->control_mask &= ~OPENIMP_TUNING_CONTROL_WHITE_BALANCE;
+    /* With the kernel owning all gain-dependent algorithms, feedback only
+     * updates status. Preserve explicit nondefault caller intervals. */
+    if (controller->native_awb_policy &&
+        profile->feedback_interval_ms == OPENIMP_TUNING_DEFAULT_INTERVAL_MS)
+        profile->feedback_interval_ms = 1000;
     return 0;
 }
 #endif
@@ -574,7 +599,8 @@ static int tuning_feedback(OpenIMPTuningController *controller)
            response + TISP_T41_AE_EXPR_TOTAL_GAIN_OFFSET,
            sizeof(total_gain));
     gain_changed = total_gain != controller->last_total_gain;
-    if (controller->profile.kind == OPENIMP_TUNING_PROFILE_SECURITY) {
+    if (controller->profile.kind == OPENIMP_TUNING_PROFILE_SECURITY &&
+        !controller->native_awb_policy) {
         uint32_t color_model = controller->security_color_model;
         int scene_ret = t41_awb_scene(controller->fd, &scene);
 

@@ -50,6 +50,10 @@ int main(void)
     untouched = 1;
     assert(t41_calibrated_awb_target(&c, &r, &b) == -EOPNOTSUPP);
     assert(c.calibrated_awb_support == -1);
+    c.native_awb_policy = 1;
+    gets = sets = 0;
+    for (int i = 0; i < 100; ++i) assert(!t41_adapt_security_awb(&c));
+    assert(!gets && !sets);
     gets = 0;
     assert(t41_calibrated_awb_target(&c, &r, &b) == -EOPNOTSUPP && !gets);
     c = (OpenIMPTuningController){0};
