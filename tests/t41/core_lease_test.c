@@ -28,12 +28,22 @@ int main(void)
     pthread_t a, b;
     assert(openimp_core_acquire(&core, NULL, 0) == -EINVAL);
     assert(!openimp_core_acquire(&core, &main_owner, 0));
-    assert(openimp_core_acquire(&core, &main_owner, 0) == -EBUSY);
+    assert(openimp_core_acquire(&core, &main_owner, 0) == -EAGAIN);
+    assert(openimp_core_acquire(&core, &main_owner, 2) == -ETIMEDOUT);
     assert(openimp_core_acquire(&core, &sub_owner, 0) == -EAGAIN);
     assert(openimp_core_acquire(&core, &sub_owner, 2) == -ETIMEDOUT);
     assert(core.owner == &main_owner); /* timeout cannot revoke DMA ownership */
     openimp_core_release(&core, &sub_owner);
     assert(core.owner == &main_owner);
+    /* A published packet may be consumed before its IRQ epilogue releases
+     * the lease. A serial next Submit must wait, not report recursive entry.
+     * Repeat the handoff with the SAME codec token across distinct threads. */
+    for (int i = 0; i < 100; ++i) {
+        assert(!pthread_create(&a, NULL, completion, &main_owner));
+        assert(!openimp_core_acquire(&core, &main_owner, 2000));
+        assert(!pthread_join(a, NULL));
+        assert(core.owner == &main_owner);
+    }
     assert(!pthread_create(&a, NULL, completion, &main_owner));
     assert(!openimp_core_acquire(&core, &sub_owner, 2000));
     assert(!pthread_join(a, NULL));
@@ -45,6 +55,6 @@ int main(void)
     assert(!pthread_join(a, NULL));
     assert(!pthread_join(b, NULL));
     assert(core.owner == NULL);
-    puts("core lease: cross-thread completion, timeout retention, stale owner, 20000 handoffs PASS");
+    puts("core lease: same-codec completion tail, timeout retention, stale owner, 20000 handoffs PASS");
     return 0;
 }

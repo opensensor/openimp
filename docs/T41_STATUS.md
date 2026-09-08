@@ -81,6 +81,11 @@ platform branches represent measured public or kernel ABI differences.
 
 ## H.264 quality state
 
+**Temporal-IQ gate is open:** a reported flicker prompted stock/open and
+frozen-source comparisons. A completion-tail submission race was isolated
+and fixed, but that does not establish a visual flicker fix. See
+[the temporal-IQ investigation](T41_TEMPORAL_IQ.md) for evidence and limits.
+
 The previously incomplete completion path is now coupled end to end:
 
 - T41's exact combined encoding/entropy status decoder feeds the recovered

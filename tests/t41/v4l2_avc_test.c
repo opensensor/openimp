@@ -19,6 +19,7 @@
 
 #define BUFFER_COUNT 3U
 #define FRAME_COUNT 100U
+#define FREEZE_WARMUP_FRAMES 50U
 
 struct capture_buffer {
     void *address;
@@ -56,6 +57,16 @@ static int write_all(int fd, const uint8_t *data, uint32_t length)
     return 0;
 }
 
+static uint32_t source_hash(const uint8_t *data, size_t length)
+{
+    uint32_t hash = 2166136261u;
+    size_t i;
+
+    for (i = 0; i < length; ++i)
+        hash = (hash ^ data[i]) * 16777619u;
+    return hash;
+}
+
 int main(int argc, char **argv)
 {
     const char *video_path = argc > 1 ? argv[1] : "/dev/video0";
@@ -67,6 +78,9 @@ int main(int argc, char **argv)
     struct v4l2_format format;
     enum v4l2_buf_type type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
     unsigned int requested_frames = FRAME_COUNT;
+    int freeze_qp = -1;
+    uint32_t frozen_hash = 0;
+    struct v4l2_buffer frozen_buffer;
     unsigned int frame_index;
     unsigned int index;
     int video_fd = -1;
@@ -84,6 +98,22 @@ int main(int argc, char **argv)
         }
         requested_frames = (unsigned int)parsed;
     }
+    /* Optional frozen-source diagnostic: warm up capture, stop after DQBUF
+     * but retain its allocation, then encode identical NV12 bytes at FIXQP.
+     * This separates encoder temporal drift from live ISP/scene changes.
+     * Usage: v4l2_avc_test [device [output [frames [freeze_qp]]]] */
+    if (argc > 4) {
+        char *end = NULL;
+        long parsed = strtol(argv[4], &end, 10);
+
+        if (argc > 5 || !end || end == argv[4] || *end ||
+            parsed < 1 || parsed > 51) {
+            fprintf(stderr, "freeze QP must be 1..51\n");
+            return 2;
+        }
+        freeze_qp = (int)parsed;
+    }
+    memset(&frozen_buffer, 0, sizeof(frozen_buffer));
     memset(buffers, 0, sizeof(buffers));
     for (index = 0; index < BUFFER_COUNT; ++index)
         buffers[index].dma_fd = -1;
@@ -164,7 +194,7 @@ int main(int argc, char **argv)
             .fps_den = 1,
             .bitrate = 8000000,
             .gop_length = 25,
-            .stream_buffer_count = 4,
+            .stream_buffer_count = 1,
             .profile = OPENIMP_AVC_PROFILE_HIGH,
             .rate_control = OPENIMP_AVC_RATE_CBR,
             .initial_qp = 26,
@@ -172,7 +202,15 @@ int main(int argc, char **argv)
             .max_qp = 45,
             .entropy_coding = 1,
         };
-        int ret = OpenIMP_AVC_Create(&encoder, &config);
+        int ret;
+
+        if (freeze_qp >= 0) {
+            config.rate_control = OPENIMP_AVC_RATE_FIXQP;
+            config.initial_qp = (uint8_t)freeze_qp;
+            config.min_qp = (uint8_t)freeze_qp;
+            config.max_qp = (uint8_t)freeze_qp;
+        }
+        ret = OpenIMP_AVC_Create(&encoder, &config);
 
         if (ret) {
             fprintf(stderr, "OpenIMP_AVC_Create: %d\n", ret);
@@ -183,6 +221,23 @@ int main(int argc, char **argv)
     if (checked_ioctl(video_fd, VIDIOC_STREAMON, &type, "VIDIOC_STREAMON"))
         goto out;
     streaming = 1;
+    if (freeze_qp >= 0) {
+        /* Let automatic tuning advance before freezing. This is a bounded
+         * diagnostic warmup, not a claim that AE/AWB have converged. */
+        for (index = 0; index < FREEZE_WARMUP_FRAMES; ++index) {
+            struct pollfd pollfd = { video_fd, POLLIN, 0 };
+            struct v4l2_buffer buffer = {0};
+
+            buffer.type = type;
+            buffer.memory = V4L2_MEMORY_MMAP;
+            if (poll(&pollfd, 1, 3000) <= 0 ||
+                checked_ioctl(video_fd, VIDIOC_DQBUF, &buffer,
+                              "VIDIOC_DQBUF(warmup)") ||
+                checked_ioctl(video_fd, VIDIOC_QBUF, &buffer,
+                              "VIDIOC_QBUF(warmup)"))
+                goto out;
+        }
+    }
     for (frame_index = 0; frame_index < requested_frames; ++frame_index) {
         struct pollfd pollfd = { video_fd, POLLIN, 0 };
         struct v4l2_buffer buffer;
@@ -191,15 +246,37 @@ int main(int argc, char **argv)
         int packet_dequeued = 0;
         int ret;
 
-        if (poll(&pollfd, 1, 3000) <= 0) {
-            fprintf(stderr, "capture poll timeout at frame %u\n", frame_index);
-            goto out;
+        if (freeze_qp >= 0 && frame_index) {
+            buffer = frozen_buffer;
+        } else {
+            if (poll(&pollfd, 1, 3000) <= 0) {
+                fprintf(stderr, "capture poll timeout at frame %u\n", frame_index);
+                goto out;
+            }
+            memset(&buffer, 0, sizeof(buffer));
+            buffer.type = type;
+            buffer.memory = V4L2_MEMORY_MMAP;
+            if (checked_ioctl(video_fd, VIDIOC_DQBUF, &buffer, "VIDIOC_DQBUF"))
+                goto out;
+            if (buffer.index >= request.count ||
+                buffer.bytesused > buffers[buffer.index].length ||
+                !buffer.bytesused) {
+                fprintf(stderr, "invalid captured buffer extent\n");
+                goto out;
+            }
+            if (freeze_qp >= 0) {
+                frozen_buffer = buffer;
+                if (checked_ioctl(video_fd, VIDIOC_STREAMOFF, &type,
+                                  "VIDIOC_STREAMOFF(freeze)"))
+                    goto out;
+                streaming = 0;
+                frozen_hash = source_hash(buffers[buffer.index].address,
+                                          buffer.bytesused);
+                printf("frozen source: qp=%d sequence=%u bytes=%u "
+                       "fnv1a=%08x warmup=%u\n", freeze_qp, buffer.sequence,
+                       buffer.bytesused, frozen_hash, FREEZE_WARMUP_FRAMES);
+            }
         }
-        memset(&buffer, 0, sizeof(buffer));
-        buffer.type = type;
-        buffer.memory = V4L2_MEMORY_MMAP;
-        if (checked_ioctl(video_fd, VIDIOC_DQBUF, &buffer, "VIDIOC_DQBUF"))
-            goto out;
         memset(&frame, 0, sizeof(frame));
         frame.width = format.fmt.pix.width;
         frame.height = format.fmt.pix.height;
@@ -211,6 +288,8 @@ int main(int argc, char **argv)
             (uintptr_t)buffers[buffer.index].address;
         frame.timestamp = (uint64_t)buffer.timestamp.tv_sec * 1000000u +
                           (uint64_t)buffer.timestamp.tv_usec;
+        if (freeze_qp >= 0)
+            frame.timestamp += (uint64_t)frame_index * 40000u;
         frame.cookie = (void *)(uintptr_t)buffer.index;
         ret = OpenIMP_AVC_Submit(encoder, &frame);
         if (!ret) {
@@ -235,8 +314,15 @@ int main(int argc, char **argv)
             fprintf(stderr, "encode frame %u: %d\n", frame_index, ret);
             goto out;
         }
-        if (checked_ioctl(video_fd, VIDIOC_QBUF, &buffer, "VIDIOC_QBUF"))
+        if (freeze_qp < 0 &&
+            checked_ioctl(video_fd, VIDIOC_QBUF, &buffer, "VIDIOC_QBUF"))
             goto out;
+    }
+    if (freeze_qp >= 0 &&
+        source_hash(buffers[frozen_buffer.index].address,
+                    frozen_buffer.bytesused) != frozen_hash) {
+        fprintf(stderr, "frozen source changed during encoding\n");
+        goto out;
     }
     status = 0;
 

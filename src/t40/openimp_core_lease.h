@@ -8,7 +8,11 @@
 
 /* A command and its IRQ completion can run on different threads. The mutex
  * protects the owner token, not the lifetime of the command; no thread ever
- * unlocks a mutex locked by another thread. A timeout never revokes a lease. */
+ * unlocks a mutex locked by another thread. A timeout never revokes a lease.
+ * The owner identifies a codec, not a thread. Even that same codec must wait
+ * for a previous completion's epilogue: its packet can already be dequeued
+ * before the IRQ handler finishes releasing this lease. Callers serialize
+ * submissions for each codec; this is not a recursive mutex. */
 typedef struct {
     pthread_mutex_t lock;
     pthread_cond_t changed;
@@ -34,10 +38,6 @@ static inline int openimp_core_acquire(OpenIMPCoreLease *core,
         deadline.tv_nsec -= 1000000000L;
     }
     pthread_mutex_lock(&core->lock);
-    if (core->owner == owner) {
-        ret = -EBUSY;
-        goto out;
-    }
     while (core->owner) {
         if (!timeout_ms) {
             ret = -EAGAIN;
