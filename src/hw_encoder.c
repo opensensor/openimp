@@ -826,11 +826,7 @@ static JPEGHuffmanCode jpeg_value_bits(int value)
     JPEGHuffmanCode bits;
     unsigned int magnitude = (unsigned int)(value < 0 ? -value : value);
 
-    bits.size = 0;
-    while (magnitude) {
-        bits.size++;
-        magnitude >>= 1;
-    }
+    bits.size = magnitude ? (uint8_t)(32 - __builtin_clz(magnitude)) : 0;
     bits.code = (uint16_t)((value < 0 ? value - 1 : value) &
                            ((1u << bits.size) - 1u));
     return bits;
@@ -838,7 +834,8 @@ static JPEGHuffmanCode jpeg_value_bits(int value)
 
 static int jpeg_process_block(JPEGWriter *writer, uint32_t *bit_buffer,
                               unsigned int *bit_count, int32_t block[64],
-                              const uint32_t scale[64], int previous_dc,
+                              const uint32_t scale[64],
+                              const int32_t threshold[64], int previous_dc,
                               const JPEGHuffmanCode dc_table[256],
                               const JPEGHuffmanCode ac_table[256])
 {
@@ -855,9 +852,15 @@ static int jpeg_process_block(JPEGWriter *writer, uint32_t *bit_buffer,
         jpeg_dct(&block[index], &block[index + 8], &block[index + 16],
                  &block[index + 24], &block[index + 32], &block[index + 40],
                  &block[index + 48], &block[index + 56]);
-    for (index = 0; index < 64; index++)
+    /* Most high-frequency coefficients quantize to zero; skip their 64-bit
+     * multiply. Exact: below threshold[] the rounded quotient is 0. */
+    for (index = 0; index < 64; index++) {
+        int32_t coefficient = block[index];
+
         quantized[jpeg_zigzag[index]] =
-            jpeg_dct_quantize(block[index], scale[index]);
+            coefficient < threshold[index] && coefficient > -threshold[index]
+                ? 0 : jpeg_dct_quantize(coefficient, scale[index]);
+    }
 
     difference = quantized[0] - previous_dc;
     if (!difference) {
@@ -1015,6 +1018,7 @@ int HW_Encoder_Encode_NV12_JPEG(HWFrameBuffer *frame,
     JPEGHuffmanCode uv_dc_table[256], uv_ac_table[256];
     uint8_t y_table[64], uv_table[64];
     uint32_t y_scale[64], uv_scale[64];
+    int32_t y_threshold[64], uv_threshold[64];
     JPEGWriter writer;
     const uint8_t *luma;
     const uint8_t *chroma;
@@ -1065,6 +1069,11 @@ int HW_Encoder_Encode_NV12_JPEG(HWFrameBuffer *frame,
             (y_table[jpeg_zigzag[index]] * aasf[row] * aasf[column]) + 0.5f);
         uv_scale[index] = (uint32_t)(65536.0f /
             (uv_table[jpeg_zigzag[index]] * aasf[row] * aasf[column]) + 0.5f);
+        /* jpeg_dct_quantize() yields 0 exactly when |c| * scale < 2^19. */
+        y_threshold[index] =
+            (int32_t)((524288u + y_scale[index] - 1u) / y_scale[index]);
+        uv_threshold[index] =
+            (int32_t)((524288u + uv_scale[index] - 1u) / uv_scale[index]);
     }
     jpeg_build_huffman(jpeg_y_dc_counts, jpeg_y_dc_values,
                        sizeof(jpeg_y_dc_values), y_dc_table);
@@ -1109,6 +1118,11 @@ int HW_Encoder_Encode_NV12_JPEG(HWFrameBuffer *frame,
     }
 
     for (y = 0; y < height; y += 16u) {
+        /* Interior MCUs need no edge replication: load without per-pixel
+         * clamping. Only the last row/column of MCUs takes the slow path. */
+        int luma_rows_full = y + 16u <= height;
+        int chroma_rows_full = y / 2u + 8u <= chroma_rows;
+
         for (x = 0; x < width; x += 16u) {
             unsigned int block_y, block_x;
 
@@ -1117,6 +1131,21 @@ int HW_Encoder_Encode_NV12_JPEG(HWFrameBuffer *frame,
                     int32_t block[64];
                     unsigned int row, column;
 
+                    if (luma_rows_full && x + 16u <= width) {
+                        const uint8_t *source = luma +
+                            (size_t)(y + block_y * 8u) * stride +
+                            x + block_x * 8u;
+
+                        for (row = 0; row < 8; row++, source += stride)
+                            for (column = 0; column < 8; column++)
+                                block[row * 8u + column] =
+                                    ((int32_t)source[column] - 128) * 16;
+                        dc_y = jpeg_process_block(&writer, &bit_buffer,
+                                                  &bit_count, block, y_scale,
+                                                  y_threshold, dc_y,
+                                                  y_dc_table, y_ac_table);
+                        continue;
+                    }
                     for (row = 0; row < 8; row++) {
                         uint32_t source_y = y + block_y * 8u + row;
 
@@ -1133,15 +1162,28 @@ int HW_Encoder_Encode_NV12_JPEG(HWFrameBuffer *frame,
                         }
                     }
                     dc_y = jpeg_process_block(&writer, &bit_buffer, &bit_count,
-                                              block, y_scale, dc_y,
-                                              y_dc_table, y_ac_table);
+                                              block, y_scale, y_threshold,
+                                              dc_y, y_dc_table, y_ac_table);
                 }
             }
             {
                 int32_t u_block[64], v_block[64];
                 unsigned int row, column;
 
-                for (row = 0; row < 8; row++) {
+                if (chroma_rows_full && x / 2u + 8u <= (width + 1u) / 2u) {
+                    const uint8_t *source = chroma +
+                        (size_t)(y / 2u) * stride + x;
+                    const unsigned int u_offset = nv21 ? 1u : 0u;
+                    const unsigned int v_offset = nv21 ? 0u : 1u;
+
+                    for (row = 0; row < 8; row++, source += stride)
+                        for (column = 0; column < 8; column++) {
+                            u_block[row * 8u + column] =
+                                ((int32_t)source[column * 2u + u_offset] - 128) * 16;
+                            v_block[row * 8u + column] =
+                                ((int32_t)source[column * 2u + v_offset] - 128) * 16;
+                        }
+                } else for (row = 0; row < 8; row++) {
                     uint32_t source_y = y / 2u + row;
 
                     if (source_y >= chroma_rows)
@@ -1160,11 +1202,11 @@ int HW_Encoder_Encode_NV12_JPEG(HWFrameBuffer *frame,
                     }
                 }
                 dc_u = jpeg_process_block(&writer, &bit_buffer, &bit_count,
-                                          u_block, uv_scale, dc_u,
-                                          uv_dc_table, uv_ac_table);
+                                          u_block, uv_scale, uv_threshold,
+                                          dc_u, uv_dc_table, uv_ac_table);
                 dc_v = jpeg_process_block(&writer, &bit_buffer, &bit_count,
-                                          v_block, uv_scale, dc_v,
-                                          uv_dc_table, uv_ac_table);
+                                          v_block, uv_scale, uv_threshold,
+                                          dc_v, uv_dc_table, uv_ac_table);
             }
         }
     }
