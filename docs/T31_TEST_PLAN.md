@@ -36,6 +36,9 @@ Du arbeitest auf einem Rechner im selben Netz wie die Testkamera und erreichst s
 | Hardware-JPEG in OpenIMP, Schalter `OPENIMP_T31_HW_JPEG=1` | `src/t40/codec-t40.c`, `src/hw_encoder.c` | E |
 | `IMP_ISP_Tuning_SetIntegrationTime` für T20/T21/T30 | `src/isp/isp_tseries.c` | F (optional, T20-Kamera) |
 | Tracer für die Original-libimp | `tools/oem_trace/` | Anhang (optional) |
+| Nur auf `claude/t31-perf`: schnellere Software-JPEG (bitgleiche Ausgabe) | `src/hw_encoder.c` | H |
+| Nur auf `claude/t31-perf`: Hardware-JPEG liest die Frame-Kopie direkt aus rmem (eine 3-MB-Kopie weniger) | `src/t40/openimp_p2_encoder.c`, `src/t40/codec-t40.c` | H |
+| Nur auf `claude/t31-perf`: OSD-Zeichnen mit der IPU, Schalter `OPENIMP_T31_OSD=1` | `src/t31/openimp_t31_services.c`, `src/t40/openimp_p2_encoder.c` | G |
 
 ---
 
@@ -141,11 +144,30 @@ Nur mit einer T20-Kamera mit OpenIMP und timps als Streamer.
 
 - **Erfolg:** Das gemeldete Maximum entspricht dem Wunsch, kein `SDK rejected the cap`.
 
+### G. OSD im Streamer (Branch `claude/t31-perf`)
+
+Erst nach A2 und C. Anleitung: [`T31_OSD_IPU_TEST.md`](T31_OSD_IPU_TEST.md), Stufe 2.
+Für G und H die Bibliothek aus `claude/t31-perf` statt `claude/t31-re` bauen (sonst wie B).
+
+- **Erfolg:** OSD sichtbar in RTSP und Snapshot, kein `backend disabled`, CPU-Last nicht höher
+  als ohne Variable (Ziel: niedriger als mit der Original-libimp, falls Vergleich möglich).
+
+### H. JPEG-Optimierungen (Branch `claude/t31-perf`)
+
+Wie E, aber mit der Bibliothek aus `claude/t31-perf`:
+
+1. Ohne Variablen: Snapshots holen, CPU-Last beim MJPEG-Abruf mit E (Lauf C) vergleichen. Die
+   Bilder müssen identisch aussehen wie mit `claude/t31-re`.
+2. Mit `OPENIMP_T31_HW_JPEG=1`: Snapshots/MJPEG, `HWJPEG:`-Zeilen, CPU-Last mit E (Lauf D)
+   vergleichen.
+
+- **Erfolg:** gleiche Bilder, gleiche oder niedrigere CPU-Last, keine neuen Fehler im Log.
+
 ---
 
 ## 4. Ergebnisbericht
 
-Eine Datei `T31_TEST_RESULTS.md` mit einem Abschnitt pro Test (A1, A2, C, D, E, F):
+Eine Datei `T31_TEST_RESULTS.md` mit einem Abschnitt pro Test (A1, A2, C, D, E, F, G, H):
 
 - **Status:** bestanden / fehlgeschlagen / übersprungen, mit Grund.
 - **Die jeweils in der Einzelanleitung verlangten Ausgaben:**

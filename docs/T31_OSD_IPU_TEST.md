@@ -85,3 +85,52 @@ Es erzeugt außerdem `ipu-before.png` und `ipu-after.png`. Die bitte ansehen:
 | Bitmap deckend statt Alpha-Rampe | Alpha-Modus, Bits 1–2 |
 | Abdeckfläche falsche Farbe / zu dunkel | Farbwort (Y ohne +16?) oder Masken-Bit 23 |
 | Bild außerhalb der Kästen verändert | Positions- oder Stride-Problem |
+
+---
+
+# Stufe 2: OSD-Backend in OpenIMP (Branch `claude/t31-perf`)
+
+Erst machen, wenn Stufe 1 (Testtool) plausible Bilder geliefert hat. Auf `claude/t31-perf`
+zeichnet OpenIMP die OSD-Regionen mit der IPU, sobald `OPENIMP_T31_OSD=1` gesetzt ist. Ohne die
+Variable ändert sich nichts.
+
+Was das Backend anders macht als die Original-`libimp`:
+- bis zu 4 Regionen pro IPU-Durchlauf (Original: ein Durchlauf pro Region), nach `layer` sortiert
+- Bitmaps werden nur bei einer Änderung ins rmem kopiert, pro Frame gibt es keinen
+  1-MB-Cache-Flush mehr
+- nach 10 IPU-Fehlern in Folge schaltet es sich ab (Logzeile `T31 IPU OSD backend disabled`),
+  der Stream läuft weiter
+
+## Ablauf
+
+1. `libimp.so` von `claude/t31-perf` bauen und wie im Testplan, Schritt B, per Bind-Mount
+   einhängen (`git switch claude/t31-perf` statt `claude/t31-re`).
+2. Im Streamer das OSD eingeschaltet lassen (Uhrzeit, ggf. Logo und eine Privatzone).
+3. Streamer von Hand starten, einmal ohne und einmal mit Variable:
+
+   ```sh
+   /etc/init.d/<S95streamer> stop; sleep 1
+   OPENIMP_T31_OSD=1 <streamer-befehlszeile> > /tmp/osd-run.log 2>&1 &
+   ```
+
+4. RTSP-Stream öffnen und 5 Minuten laufen lassen. Dabei:
+   - `top -b -n 5 -d 2 | grep -E '<streamer>|CPU:'` einmal ohne, einmal mit Variable
+   - `grep -E 'OSD' /tmp/osd-run.log`
+   - `dmesg | grep -i ipu | tail`
+5. Bild ansehen (nur der Mensch oder mit seinem Einverständnis): Steht die Uhrzeit an der
+   richtigen Stelle, zählt sie sekündlich weiter, stimmen Farben und Transparenz, ist die
+   Privatzone deckend?
+6. Wenn der Streamer Snapshots/MJPEG anbietet: einen Snapshot holen. Das OSD muss auch dort
+   sichtbar sein (JPEG liest das Bild nach dem Blending).
+
+## Rückmeldung
+
+| Beobachtung | Bedeutung |
+|---|---|
+| `backend requested`, kein `disabled`, OSD sichtbar | Erfolg. CPU-Last mit/ohne notieren. |
+| `disabled: cannot open /dev/ipu` | Kernel ohne IPU-Treiber (`ls -l /dev/ipu`) |
+| `disabled: repeated IPU errors` | Parameterwort falsch, `dmesg` mitschicken |
+| OSD im RTSP sichtbar, im Snapshot nicht | Cache-Invalidierung nach dem Blending reicht nicht |
+| Text flackert oder zeigt alte Uhrzeit | Bitmap-Update (Double Buffer / Write-back) prüfen |
+| Farben vertauscht, falsch deckend | wie in der Tabelle von Stufe 1 |
+| Stream ruckelt oder FPS sinkt | IPU-Zeit pro Frame zu hoch, `-n 200` aus Stufe 1 vergleichen |
