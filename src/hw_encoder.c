@@ -909,6 +909,100 @@ static void jpeg_write_dht(JPEGWriter *writer, uint8_t table_id,
     jpeg_writer_write(writer, values, value_count);
 }
 
+static void jpeg_ep1_put_u32(uint8_t *p, uint32_t value)
+{
+    memcpy(p, &value, sizeof(value));
+}
+
+/* IJG-scaled table in zigzag (DQT) order plus the hardware quantizer's u16
+ * reciprocals in raster order, as the stock JpegTables_InitQuant lays them. */
+static void jpeg_ep1_quant(uint8_t *zigzag_out, uint8_t *reciprocal_out,
+                           const uint8_t base[64], uint32_t quality)
+{
+    uint32_t scale = (quality >= 50u ? 200u - 2u * quality
+                                     : 5000u / quality) & 0xffffu;
+    unsigned int index;
+
+    for (index = 0; index < 64; index++) {
+        uint32_t q = (base[index] * scale + 50u) / 100u;
+        uint16_t reciprocal;
+
+        q = q < 1u ? 1u : q > 255u ? 255u : q;
+        zigzag_out[jpeg_zigzag[index]] = (uint8_t)q;
+        reciprocal = (uint16_t)(((0x10000u + (q >> 1)) / q - 1u) & 0xffffu);
+        memcpy(reciprocal_out + 2u * index, &reciprocal, sizeof(reciprocal));
+    }
+}
+
+/* BITS[16] as four u32 words, four bytes each, most significant first. */
+static void jpeg_ep1_bits(uint8_t *out, const uint8_t counts[16])
+{
+    unsigned int word;
+
+    for (word = 0; word < 4; word++)
+        jpeg_ep1_put_u32(out + 4u * word,
+                         (uint32_t)counts[4u * word] << 24 |
+                         (uint32_t)counts[4u * word + 1u] << 16 |
+                         (uint32_t)counts[4u * word + 2u] << 8 |
+                         counts[4u * word + 3u]);
+}
+
+/* One u32 per symbol: [7:0] next symbol in HUFFVAL order (0xff ends the
+ * list), [23:8] code, [31:24] length - 1. DC entries are indexed by
+ * category; AC by (size - 1) * 16 + run, with ZRL at 160 and EOB at 161. */
+static void jpeg_ep1_codebook(uint8_t *out, const uint8_t counts[16],
+                              const uint8_t *values, size_t value_count,
+                              int is_ac)
+{
+    uint32_t code = 0;
+    size_t value = 0;
+    unsigned int length;
+
+    for (length = 1; length <= 16; length++) {
+        unsigned int index;
+
+        for (index = 0; index < counts[length - 1] && value < value_count;
+             index++, value++) {
+            uint8_t symbol = values[value];
+            uint8_t next = value + 1u < value_count ? values[value + 1u] : 0xffu;
+            unsigned int slot = symbol;
+
+            if (is_ac)
+                slot = symbol == 0xf0u ? 160u : symbol == 0x00u ? 161u
+                     : ((symbol & 0x0fu) - 1u) * 16u + (symbol >> 4);
+            jpeg_ep1_put_u32(out + 4u * slot,
+                             (uint32_t)(length - 1u) << 24 |
+                             (code & 0xffffu) << 8 | next);
+            code++;
+        }
+        code <<= 1;
+    }
+}
+
+int HW_Encoder_BuildJpegEp1(uint8_t *ep1, size_t size, uint32_t quality)
+{
+    if (!ep1 || size < HW_JPEG_EP1_SIZE || quality < 1u || quality > 100u)
+        return -1;
+    memset(ep1, 0, HW_JPEG_EP1_SIZE);
+    jpeg_ep1_quant(ep1 + 0x000, ep1 + 0x080, jpeg_y_quant, quality);
+    jpeg_ep1_quant(ep1 + 0x040, ep1 + 0x100, jpeg_uv_quant, quality);
+    jpeg_ep1_put_u32(ep1 + 0x180, 1u);
+    jpeg_ep1_put_u32(ep1 + 0x184, 0u);
+    jpeg_ep1_bits(ep1 + 0x188, jpeg_y_ac_counts);
+    jpeg_ep1_bits(ep1 + 0x198, jpeg_y_dc_counts);
+    jpeg_ep1_bits(ep1 + 0x1a8, jpeg_uv_ac_counts);
+    jpeg_ep1_bits(ep1 + 0x1b8, jpeg_uv_dc_counts);
+    jpeg_ep1_codebook(ep1 + 0x1c8, jpeg_y_ac_counts, jpeg_y_ac_values,
+                      sizeof(jpeg_y_ac_values), 1);
+    jpeg_ep1_codebook(ep1 + 0x450, jpeg_y_dc_counts, jpeg_y_dc_values,
+                      sizeof(jpeg_y_dc_values), 0);
+    jpeg_ep1_codebook(ep1 + 0x480, jpeg_uv_ac_counts, jpeg_uv_ac_values,
+                      sizeof(jpeg_uv_ac_values), 1);
+    jpeg_ep1_codebook(ep1 + 0x708, jpeg_uv_dc_counts, jpeg_uv_dc_values,
+                      sizeof(jpeg_uv_dc_values), 0);
+    return 0;
+}
+
 int HW_Encoder_Encode_NV12_JPEG(HWFrameBuffer *frame,
                                 HWStreamBuffer *stream,
                                 uint32_t quality)

@@ -400,6 +400,11 @@ struct avpu_reg {
 #define AL_CMD_IP_READ_REG     _IOWR(AVPU_IOC_MAGIC, 11, struct avpu_reg)
 #define AL_CMD_IP_WAIT_IRQ     _IOWR(AVPU_IOC_MAGIC, 12, int)
 
+#if defined(PLATFORM_T31)
+static int t31_hwjpeg_on_irq(uint32_t irq_id);
+static uint32_t t31_hwjpeg_idle_irq_mask(void);
+#endif
+
 /* AVPU register offsets (from driver and OEM userspace decompilation). */
 #if defined(PLATFORM_T41)
 /*
@@ -4806,7 +4811,7 @@ static void avpu_end_encoding_callback(void *user_data)
      * remains in the next submission path, where it cannot race writeback.
      */
 #if defined(PLATFORM_T31)
-    avpu_write_reg(ctx->fd, AVPU_INTERRUPT_MASK, 0u);
+    avpu_write_reg(ctx->fd, AVPU_INTERRUPT_MASK, t31_hwjpeg_idle_irq_mask());
     avpu_turn_off_gc(ctx->fd, 0);
 #endif
 
@@ -5111,6 +5116,11 @@ static void* avpu_irq_thread(void* arg)
             LOG_CODEC("IRQ thread: invalid IRQ ID %d", irq_id);
             continue;
         }
+#if defined(PLATFORM_T31)
+        /* Slot 4 is the JPEG core (core 1); it has no AVC owner. */
+        if (t31_hwjpeg_on_irq(irq_id))
+            continue;
+#endif
 
         ALAvpuContext *dispatch_ctx = ctx;
 #if defined(PLATFORM_T41)
@@ -7512,10 +7522,270 @@ static void avpu_t31_dump_source_once(int channel_id, uint32_t width,
               dump_path, written, size);
 }
 
+/*
+ * Hardware JPEG on the T31 AVPU JPEG core (core index 1), opt-in with
+ * OPENIMP_T31_HW_JPEG=1. Register window 0x8400-0x85FF: command zone
+ * 0x8400-0x8428 (11 words), soft reset 0x85F0, start 0x85E4, clock gate
+ * 0x85F4, status 0x8430-0x8438 (0x8434 = JPEG bytes, 0x8438 bit 1 = error).
+ * Completion arrives on IRQ slot 4. The stock library lets the hardware emit
+ * the whole JFIF stream; every job here checks for SOI/EOI and any failure
+ * disables the path for the process, falling back to the software encoder.
+ *
+ * Jobs are synchronous and run under g_t31_encode_core_lock like every other
+ * T31 encode, so they never overlap an AVC command list.
+ */
+#define T31_HWJPEG_IRQ_SLOT     4u
+#define T31_HWJPEG_REG_CMD      0x8400u
+#define T31_HWJPEG_REG_STATUS   0x8430u
+#define T31_HWJPEG_REG_START    0x85E4u
+#define T31_HWJPEG_REG_RESET    0x85F0u
+#define T31_HWJPEG_REG_CLOCK    0x85F4u
+#define T31_HWJPEG_STREAM_OFF   0x200u
+#define T31_HWJPEG_TIMEOUT_MS   200
+
+static struct {
+    pthread_mutex_t lock;
+    pthread_cond_t done;
+    int state;                  /* 0 = not set up, 1 = ready, -1 = disabled */
+    int fd;
+    int in_flight;
+    int completed;
+    uint32_t ep1_quality;
+    AvpuDMABuf src, ep1, stream;
+} g_t31_hwjpeg = {
+    PTHREAD_MUTEX_INITIALIZER, PTHREAD_COND_INITIALIZER, 0, -1, 0, 0, 0,
+    {0}, {0}, {0}
+};
+
+static int t31_hwjpeg_requested(void)
+{
+    static int requested = -1;
+
+    if (requested < 0) {
+        const char *value = getenv("OPENIMP_T31_HW_JPEG");
+
+        requested = value && value[0] == '1' && value[1] == '\0';
+        if (requested)
+            LOG_CODEC("HWJPEG: T31 hardware JPEG requested (OPENIMP_T31_HW_JPEG=1)");
+    }
+    return requested;
+}
+
+static void t31_hwjpeg_disable(const char *reason)
+{
+    g_t31_hwjpeg.state = -1;
+    LOG_CODEC("HWJPEG: disabled, using the software encoder: %s", reason);
+}
+
+static int t31_hwjpeg_on_irq(uint32_t irq_id)
+{
+    if (irq_id != T31_HWJPEG_IRQ_SLOT)
+        return 0;
+    pthread_mutex_lock(&g_t31_hwjpeg.lock);
+    if (g_t31_hwjpeg.in_flight) {
+        g_t31_hwjpeg.completed = 1;
+        pthread_cond_signal(&g_t31_hwjpeg.done);
+    }
+    pthread_mutex_unlock(&g_t31_hwjpeg.lock);
+    return 1;
+}
+
+/* AVC completion masks the core; keep the JPEG bit while a job runs. */
+static uint32_t t31_hwjpeg_idle_irq_mask(void)
+{
+    return g_t31_hwjpeg.in_flight ? 1u << T31_HWJPEG_IRQ_SLOT : 0u;
+}
+
+static void t31_hwjpeg_set_irq_bit(int fd, int on)
+{
+    unsigned int mask = 0;
+
+    if (avpu_read_reg_quiet(fd, AVPU_INTERRUPT_MASK, &mask) != 0)
+        mask = 0;
+    mask = on ? mask | (1u << T31_HWJPEG_IRQ_SLOT)
+              : mask & ~(1u << T31_HWJPEG_IRQ_SLOT);
+    avpu_write_reg(fd, AVPU_INTERRUPT_MASK, mask);
+}
+
+static int t31_hwjpeg_setup(uint32_t src_size, uint32_t stream_size)
+{
+    int fd = AL_DevicePool_Open("/dev/avpu");
+
+    if (fd < 0) {
+        t31_hwjpeg_disable("cannot open /dev/avpu");
+        return -1;
+    }
+    g_t31_hwjpeg.fd = fd;
+    if (avpu_alloc_encoder(fd, 0x1000u, "hwjpeg-ep1", &g_t31_hwjpeg.ep1) != 0 ||
+        avpu_alloc_encoder(fd, src_size, "hwjpeg-src", &g_t31_hwjpeg.src) != 0 ||
+        avpu_alloc_encoder(fd, stream_size, "hwjpeg-stream",
+                           &g_t31_hwjpeg.stream) != 0) {
+        t31_hwjpeg_disable("DMA allocation failed");
+        return -1;
+    }
+    if ((g_t31_hwjpeg.ep1.phy_addr & 31u) != 0) {
+        t31_hwjpeg_disable("EP1 buffer not 32-byte aligned");
+        return -1;
+    }
+    if (((g_t31_hwjpeg.src.phy_addr | g_t31_hwjpeg.stream.phy_addr) & 255u) != 0)
+        LOG_CODEC("HWJPEG: warning: source/stream not 256-byte aligned as in stock traces");
+    LOG_CODEC("HWJPEG: ready src=0x%08x/%zu ep1=0x%08x stream=0x%08x/%zu",
+              g_t31_hwjpeg.src.phy_addr, g_t31_hwjpeg.src.size,
+              g_t31_hwjpeg.ep1.phy_addr, g_t31_hwjpeg.stream.phy_addr,
+              g_t31_hwjpeg.stream.size);
+    g_t31_hwjpeg.state = 1;
+    return 0;
+}
+
+/* Encodes an NV12 frame (pitch = width, chroma after align16(height) luma
+ * rows, the software encoder's layout). Returns -1 to fall back. */
+static int t31_hwjpeg_encode(const HWFrameBuffer *frame, HWStreamBuffer *stream,
+                             uint32_t quality)
+{
+    uint32_t width = frame->width, height = frame->height;
+    uint32_t uv_offset = width * ((height + 15u) & ~15u);
+    uint32_t src_size = uv_offset + width * ((height + 1u) / 2u);
+    uint32_t stream_size = width * height / 2u + 0x10000u;
+    uint32_t cmd[11], status[3], length;
+    struct timespec deadline;
+    const uint8_t *jpeg;
+    uint8_t *copy;
+    int fd, completed, i;
+
+    if (!t31_hwjpeg_requested() || g_t31_hwjpeg.state < 0)
+        return -1;
+    if (!frame->virt_addr || width < 16u || height < 16u ||
+        (width & 15u) != 0 || width > 4096u || height > 4096u ||
+        frame->size < src_size ||
+        frame->pixfmt == 0x0bu || frame->pixfmt == 0x3132564eu /* NV21 */)
+        return -1;
+    if (g_t31_hwjpeg.state == 0 && t31_hwjpeg_setup(src_size, stream_size) != 0)
+        return -1;
+    if (g_t31_hwjpeg.src.size < src_size ||
+        g_t31_hwjpeg.stream.size < stream_size) {
+        LOG_CODEC("HWJPEG: %ux%u exceeds the buffers sized at setup, software this frame",
+                  width, height);
+        return -1;
+    }
+    fd = g_t31_hwjpeg.fd;
+
+    if (g_t31_hwjpeg.ep1_quality != quality) {
+        if (HW_Encoder_BuildJpegEp1(g_t31_hwjpeg.ep1.map, g_t31_hwjpeg.ep1.size,
+                                    quality) != 0)
+            return -1;
+        avpu_flush_cache(fd, g_t31_hwjpeg.ep1.map, HW_JPEG_EP1_SIZE, 1 /*WBACK*/);
+        g_t31_hwjpeg.ep1_quality = quality;
+    }
+    memcpy(g_t31_hwjpeg.src.map, (const void *)(uintptr_t)frame->virt_addr,
+           src_size);
+    avpu_flush_cache(fd, g_t31_hwjpeg.src.map, src_size, 1 /*WBACK*/);
+    avpu_flush_cache(fd, g_t31_hwjpeg.stream.map,
+                     (unsigned int)g_t31_hwjpeg.stream.size, 2 /*INV*/);
+
+    cmd[0] = 0x1u | 3u << 4 | 1u << 8;   /* 4:2:0, 3 components, stock bit 8 */
+    cmd[1] = (width - 1u) << 16 | (height - 1u);
+    cmd[2] = 0x00010001u;                /* JFIF density 1:1 */
+    cmd[3] = width;                      /* luma pitch */
+    cmd[4] = g_t31_hwjpeg.src.phy_addr;
+    cmd[5] = g_t31_hwjpeg.src.phy_addr + uv_offset;
+    cmd[6] = g_t31_hwjpeg.ep1.phy_addr;
+    cmd[7] = g_t31_hwjpeg.stream.phy_addr;
+    cmd[8] = (uint32_t)g_t31_hwjpeg.stream.size;
+    cmd[9] = T31_HWJPEG_STREAM_OFF;
+    cmd[10] = (uint32_t)g_t31_hwjpeg.stream.size - T31_HWJPEG_STREAM_OFF;
+
+    pthread_mutex_lock(&g_t31_hwjpeg.lock);
+    g_t31_hwjpeg.in_flight = 1;
+    g_t31_hwjpeg.completed = 0;
+    pthread_mutex_unlock(&g_t31_hwjpeg.lock);
+
+    {
+        unsigned int clock = 0;
+
+        avpu_read_reg_quiet(fd, T31_HWJPEG_REG_CLOCK, &clock);
+        avpu_write_reg(fd, T31_HWJPEG_REG_CLOCK, (clock & ~3u) | 1u);
+    }
+    t31_hwjpeg_set_irq_bit(fd, 1);
+    avpu_write_reg(fd, T31_HWJPEG_REG_RESET, 1u);
+    for (i = 0; i < 11; i++)
+        avpu_write_reg(fd, T31_HWJPEG_REG_CMD + 4u * (unsigned int)i, cmd[i]);
+    avpu_write_reg(fd, T31_HWJPEG_REG_START, 1u);
+
+    clock_gettime(CLOCK_REALTIME, &deadline);
+    deadline.tv_nsec += (long)T31_HWJPEG_TIMEOUT_MS * 1000000L;
+    deadline.tv_sec += deadline.tv_nsec / 1000000000L;
+    deadline.tv_nsec %= 1000000000L;
+    pthread_mutex_lock(&g_t31_hwjpeg.lock);
+    while (!g_t31_hwjpeg.completed &&
+           pthread_cond_timedwait(&g_t31_hwjpeg.done, &g_t31_hwjpeg.lock,
+                                  &deadline) == 0)
+        ;
+    completed = g_t31_hwjpeg.completed;
+    g_t31_hwjpeg.in_flight = 0;
+    pthread_mutex_unlock(&g_t31_hwjpeg.lock);
+
+    for (i = 0; i < 3; i++)
+        avpu_read_reg_quiet(fd, T31_HWJPEG_REG_STATUS + 4u * (unsigned int)i,
+                            &status[i]);
+    t31_hwjpeg_set_irq_bit(fd, 0);
+    if (!completed) {
+        avpu_write_reg(fd, T31_HWJPEG_REG_RESET, 1u);
+        LOG_CODEC("HWJPEG: no IRQ %u within %d ms (status %08x %08x %08x)",
+                  T31_HWJPEG_IRQ_SLOT, T31_HWJPEG_TIMEOUT_MS,
+                  status[0], status[1], status[2]);
+        t31_hwjpeg_disable("completion timeout");
+        return -1;
+    }
+
+    length = status[1];
+    if (status[2] & 2u) {
+        LOG_CODEC("HWJPEG: error bit set (status %08x %08x %08x), software this frame",
+                  status[0], status[1], status[2]);
+        return -1;
+    }
+    if (length < 4u || length > cmd[10]) {
+        LOG_CODEC("HWJPEG: implausible length %u", length);
+        t31_hwjpeg_disable("implausible length");
+        return -1;
+    }
+    avpu_flush_cache(fd, g_t31_hwjpeg.stream.map,
+                     T31_HWJPEG_STREAM_OFF + length, 2 /*INV*/);
+    jpeg = (const uint8_t *)g_t31_hwjpeg.stream.map + T31_HWJPEG_STREAM_OFF;
+    if (jpeg[0] != 0xffu || jpeg[1] != 0xd8u ||
+        jpeg[length - 2u] != 0xffu || jpeg[length - 1u] != 0xd9u) {
+        LOG_CODEC("HWJPEG: output lacks SOI/EOI (%02x %02x .. %02x %02x, %u bytes)",
+                  jpeg[0], jpeg[1], jpeg[length - 2u], jpeg[length - 1u], length);
+        t31_hwjpeg_disable("hardware did not emit a JFIF stream");
+        return -1;
+    }
+
+    /* The software stream contract: heap buffer, phys 0, freed on release. */
+    copy = malloc(length);
+    if (!copy)
+        return -1;
+    memcpy(copy, jpeg, length);
+    stream->virt_addr = (uint32_t)(uintptr_t)copy;
+    stream->phys_addr = 0;
+    stream->length = length;
+    stream->timestamp = frame->timestamp;
+    stream->frame_type = HW_FRAME_TYPE_I;
+    stream->slice_type = 0;
+    {
+        static unsigned int count;
+        unsigned int c = __sync_add_and_fetch(&count, 1);
+
+        if (c <= 3 || c % 100 == 0)
+            LOG_CODEC("HWJPEG: %ux%u q%u -> %u bytes [#%u]",
+                      width, height, quality, length, c);
+    }
+    return 0;
+}
+
 /* The 0x8400-0x8428 block plus 0x85F0/0x85E4 is the stock libimp's JPEG core
  * (core index 1) command zone; the OEM trace this was copied from had JPEG
  * channels running alongside AVC. OPENIMP_T31_COMPANION_STAGE=0 skips it so
- * AVC can be compared with and without the extra JPEG-core kick. */
+ * AVC can be compared with and without the extra JPEG-core kick. It is always
+ * off with OPENIMP_T31_HW_JPEG=1, which owns that core. */
 static int avpu_t31_companion_stage_enabled(void)
 {
     static int enabled = -1;
@@ -7523,9 +7793,10 @@ static int avpu_t31_companion_stage_enabled(void)
     if (enabled < 0) {
         const char *value = getenv("OPENIMP_T31_COMPANION_STAGE");
 
-        enabled = !(value && value[0] == '0' && value[1] == '\0');
+        enabled = !(value && value[0] == '0' && value[1] == '\0') &&
+                  !t31_hwjpeg_requested();
         LOG_CODEC("AVPU: T31 companion stage %s",
-                  enabled ? "enabled" : "disabled (OPENIMP_T31_COMPANION_STAGE=0)");
+                  enabled ? "enabled" : "disabled");
     }
     return enabled;
 }
@@ -9442,6 +9713,11 @@ static int al_codec_encode_process_impl(void *codec, void *frame,
             (codec_type == IMP_ENC_TYPE_JPEG
                 ? t40_encode_gray_jpeg(width, height, timestamp, hw_stream)
                 : HW_Encoder_Encode_Software(&hw_frame, hw_stream, codec_type)) < 0
+#elif defined(PLATFORM_T31)
+            /* 75 matches the software path's fixed JPEG quality. */
+            ((codec_type == IMP_ENC_TYPE_JPEG &&
+              t31_hwjpeg_encode(&hw_frame, hw_stream, 75u) == 0)
+                ? 0 : HW_Encoder_Encode_Software(&hw_frame, hw_stream, codec_type)) < 0
 #else
             HW_Encoder_Encode_Software(&hw_frame, hw_stream, codec_type) < 0
 #endif

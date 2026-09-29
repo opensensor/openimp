@@ -7,6 +7,7 @@
 #ifndef HW_ENCODER_H
 #define HW_ENCODER_H
 
+#include <stddef.h>
 #include <stdint.h>
 
 #ifdef __cplusplus
@@ -148,6 +149,11 @@ int HW_Encoder_Encode_Software(HWFrameBuffer *frame, HWStreamBuffer *stream, uin
 int HW_Encoder_Encode_NV12_JPEG(HWFrameBuffer *frame,
                                 HWStreamBuffer *stream,
                                 uint32_t quality);
+
+/* Quant and Huffman table buffer ("EP1") for the T31 AVPU JPEG core, 4:2:0
+ * layout. ep1 must hold at least HW_JPEG_EP1_SIZE bytes. */
+#define HW_JPEG_EP1_SIZE 0x790u
+int HW_Encoder_BuildJpegEp1(uint8_t *ep1, size_t size, uint32_t quality);
 
 /**
  * Request IDR frame on next encode (software encoder)
