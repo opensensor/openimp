@@ -32,6 +32,7 @@
 
 #if defined(PLATFORM_T31)
 #include "t40/t31_stream_layout.h"
+#include "t31/openimp_t31_osd.h"
 #endif
 
 #define P2_MAX_GROUPS 8
@@ -125,6 +126,7 @@ typedef struct {
     int receiving;
     int group;
     int source_channel;
+    int osd_group;                  /* OSD group bound between FS and ENC, -1 none */
     int codec_type;
     void *codec;
     void *raw_stream;
@@ -649,6 +651,35 @@ static int p2_find_source_channel(int encoder_group)
     return encoder_group;
 }
 
+/* First OSD group on the bind path from this encoder group back to its
+ * FrameSource; p2_find_source_channel() walks through it transparently. */
+static int p2_find_osd_group(int encoder_group)
+{
+    IMPCell cursor = { DEV_ID_ENC, encoder_group, 0 };
+    int depth;
+
+    for (depth = 0; depth < P2_MAX_BINDS; depth++) {
+        int i;
+        int found = 0;
+
+        if (cursor.deviceID == DEV_ID_OSD)
+            return cursor.groupID;
+        if (cursor.deviceID == DEV_ID_FS)
+            break;
+        for (i = 0; i < P2_MAX_BINDS; i++) {
+            if (p2_binds[i].active &&
+                p2_cell_equal(&p2_binds[i].destination, &cursor)) {
+                cursor = p2_binds[i].source;
+                found = 1;
+                break;
+            }
+        }
+        if (!found)
+            break;
+    }
+    return -1;
+}
+
 static uint32_t p2_attr_codec_type(const IMPEncoderCHNAttr *attr)
 {
 #if defined(PLATFORM_T23) || defined(PLATFORM_T30)
@@ -1100,6 +1131,7 @@ int IMP_Encoder_RegisterChn(int group, int channel)
     ch->registered = 1;
     ch->group = group;
     ch->source_channel = p2_find_source_channel(group);
+    ch->osd_group = p2_find_osd_group(group);
     pthread_mutex_unlock(&ch->lock);
     p2_trace("openimp/P2: RegisterChn group=%d ch=%d source=%d\n",
              group, channel, ch->source_channel);
@@ -1138,6 +1170,7 @@ int IMP_Encoder_StartRecvPic(int channel)
         return -1;
     }
     ch->source_channel = p2_find_source_channel(ch->group);
+    ch->osd_group = p2_find_osd_group(ch->group);
     ch->next_frame_due_us = 0;
     ch->output_timestamp_us = 0;
     ch->receiving = 1;
@@ -1273,6 +1306,12 @@ int IMP_Encoder_PollingStream(int channel, uint32_t timeout_ms)
                 goto done;
             p2_sleep_us(1000u);
         }
+#if defined(PLATFORM_T31)
+        /* Overlay before the JPEG fan-out copy and the AVC encode, as the
+         * stock OSD group sits between FrameSource and Encoder. */
+        if (ch->osd_group >= 0)
+            openimp_t31_osd_apply(ch->osd_group, frame);
+#endif
     }
     if (trace_count <= 8u)
         p2_trace("openimp/P2: PollingStream frame ch=%d source=%d frame=%p\n",
