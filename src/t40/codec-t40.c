@@ -154,12 +154,33 @@ void OpenIMP_P3_FrameStats(uint32_t luma, uint32_t u_mean,
 static pthread_mutex_t g_tseries_irq_host_lock = PTHREAD_MUTEX_INITIALIZER;
 static ALAvpuContext *g_tseries_irq_host;
 static ALAvpuContext *volatile g_tseries_irq_owner;
-#if defined(PLATFORM_T41)
+#if defined(PLATFORM_T41) || defined(PLATFORM_T31)
+/* Users of the shared waiter (codecs, and on T31 the hardware JPEG path). */
 static ALAvpuContext *g_t41_irq_users[6];
 #endif
 #if defined(PLATFORM_T31)
 /* T31's mainline AVPU driver exposes one physical encoder channel. */
 static pthread_mutex_t g_t31_encode_core_lock = PTHREAD_MUTEX_INITIALIZER;
+/* AVC sessions that ran AL_EncCore_Init; under g_t31_encode_core_lock. The
+ * core is initialized by the first and quiesced by the last one only. */
+static int g_t31_avc_sessions;
+
+/* OPENIMP_T31_AVC_LEGACY=1 restores the old completion handling (accept an
+ * IRQ without a size writeback, no recovery after a completion timeout) for
+ * A/B tests on a device. */
+static int t31_avc_legacy(void)
+{
+    static int cached = -1;
+
+    if (cached < 0) {
+        const char *value = getenv("OPENIMP_T31_AVC_LEGACY");
+
+        cached = value && value[0] == '1';
+        if (cached)
+            IMP_LOG_INFO("Codec", "AVC: legacy completion handling (OPENIMP_T31_AVC_LEGACY=1)");
+    }
+    return cached;
+}
 #endif
 #endif
 
@@ -4048,6 +4069,12 @@ static void avpu_complete_frame(ALAvpuContext *ctx, const char *source)
             LOG_CODEC("%s: released unqueued stream buf[%d] len=%u flush_ret=%d",
                       source ? source : "EndEncoding",
                       buf_idx, frame_size, flush_ret);
+#if defined(PLATFORM_T31)
+            /* The decoder never sees this picture and its reconstruction
+             * may be broken: restart the prediction chain with an IDR
+             * instead of streaming artefacts until the next GOP. */
+            ctx->reference_valid = 0;
+#endif
         }
         __sync_add_and_fetch(&ctx->dropped_completions, 1u);
         if (buf_idx >= 0) {
@@ -4558,6 +4585,53 @@ static void avpu_end_encoding_callback(void *user_data)
         } else {
             ctx->t31_payload_size_by_buf[buf_idx] = 0u;
         }
+    }
+
+    /*
+     * Accept a completion only with hardware evidence. The entry's size word
+     * is cleared before submission, so zero means the core has not written
+     * back this command: a stale IRQ (of a frame dropped by timeout
+     * recovery, or queued across a reset) or a slow writeback. Consuming the
+     * pending entry here used to mask and gate the core mid-frame and chain
+     * into dropping every following frame. Wait briefly for the writeback,
+     * then leave everything untouched; a real loss ends in the Process
+     * timeout recovery. A nonzero word (size, overflow, error fill) is a real
+     * completion and continues below.
+     */
+    if (ctx && have_pending && buf_idx >= 0 && buf_idx < 16 &&
+        status_regs_ptr && !t31_avc_legacy()) {
+        const volatile uint32_t *size_word = (const volatile uint32_t *)
+            (const void *)(status_regs_ptr +
+                           OPENIMP_T31_COMPLETION_PAYLOAD_SIZE_OFFSET);
+        uint32_t raw_size;
+
+        memcpy(&raw_size, status_regs.raw +
+                   OPENIMP_T31_COMPLETION_PAYLOAD_SIZE_OFFSET,
+               sizeof(raw_size));
+        for (int poll = 0; raw_size == 0u && poll < 10; ++poll) {
+            usleep(200);
+            if (!ctx->cl_submit_ring.uncached_map)
+                avpu_flush_cache(ctx->fd, status_regs_ptr,
+                                 (unsigned int)sizeof(status_regs.raw),
+                                 0 /* BIDIRECTIONAL */);
+            raw_size = *size_word;
+        }
+        if (raw_size == 0u) {
+            static unsigned int spurious;
+            unsigned int n = __sync_add_and_fetch(&spurious, 1u);
+
+            if (n <= 5u || n % 100u == 0u)
+                LOG_CODEC("EndEncoding callback: IRQ %d without size writeback for buf=%d cl=%u, ignored [#%u]",
+                          ctx->last_irq_id, buf_idx, cl_idx, n);
+            return;
+        }
+        memcpy(status_regs.raw + OPENIMP_T31_COMPLETION_PAYLOAD_SIZE_OFFSET,
+               &raw_size, sizeof(raw_size));
+        if (!avpu_t31_payload_size_is_error_fill(raw_size) &&
+            ctx->stream_buf_size > (int)AVPU_T31_PAYLOAD_OFFSET &&
+            raw_size <= (uint32_t)ctx->stream_buf_size -
+                AVPU_T31_PAYLOAD_OFFSET)
+            ctx->t31_payload_size_by_buf[buf_idx] = raw_size;
     }
 #endif
 
@@ -5084,6 +5158,8 @@ static void* avpu_irq_thread(void* arg)
     uint8_t irq_raw[sizeof(uint32_t) + 0x40]
         __attribute__((aligned(16)));
 
+    unsigned int eintr_streak = 0;
+
     ctx->irq_thread_started = 1;
     ctx->irq_thread_exited = 0;
     ctx->irq_wait_errno = 0;
@@ -5099,8 +5175,19 @@ static void* avpu_irq_thread(void* arg)
 
         /* ioctl($a0_2, 0xc004710c, &var_28) - AL_CMD_IP_WAIT_IRQ */
         if (avpu_sys_ioctl(fd, AL_CMD_IP_WAIT_IRQ, p_irq) == -1) {
-            if (errno == EINTR)
-                continue; /* interrupted by signal, retry */
+            if (errno == EINTR) {
+                /* A signal, or UNBLOCK_CHANNEL. The kernel never clears the
+                 * unblock flag of an open fd, so a waiter started on an fd
+                 * that was unblocked before would spin here at 100 % CPU. */
+                if (!ctx->irq_thread_running)
+                    break;
+                if (++eintr_streak >= 100u) {
+                    if (eintr_streak == 100u)
+                        IMP_LOG_ERR("Codec", "IRQ thread: WAIT_IRQ keeps returning EINTR (fd unblocked?), throttling");
+                    usleep(10000);
+                }
+                continue;
+            }
             if (errno != EINTR) {
                 ctx->irq_wait_errno = errno;
                 LOG_CODEC("IRQ thread: WAIT_IRQ failed: %s (%d)", strerror(errno), errno);
@@ -5110,6 +5197,7 @@ static void* avpu_irq_thread(void* arg)
 
         uint32_t irq_id = *p_irq;
         ctx->irq_wait_errno = 0;
+        eintr_streak = 0;
 
         /* OEM: if (var_28 u>= 0x14) fprintf(stderr, ...) */
         if (irq_id >= 20) {
@@ -5123,13 +5211,22 @@ static void* avpu_irq_thread(void* arg)
 #endif
 
         ALAvpuContext *dispatch_ctx = ctx;
-#if defined(PLATFORM_T41)
+#if defined(PLATFORM_T41) || defined(PLATFORM_T31)
         unsigned int drained_before;
         int core_completed;
 
+        /* Select and use the owner under the lock that Destroy takes to
+         * clear it: a context read here cannot be freed underneath. The host
+         * context has no callbacks, so an IRQ without owner (late IRQ after
+         * a timeout recovery or a teardown) is dropped. */
         pthread_mutex_lock(&g_tseries_irq_host_lock);
         if (!g_tseries_irq_owner) {
+            static unsigned int ownerless;
+
             pthread_mutex_unlock(&g_tseries_irq_host_lock);
+            if (++ownerless <= 5u || ownerless % 100u == 0u)
+                LOG_CODEC("IRQ thread: IRQ %u without owner dropped [#%u]",
+                          irq_id, ownerless);
             continue;
         }
 #endif
@@ -5137,7 +5234,7 @@ static void* avpu_irq_thread(void* arg)
         if (g_tseries_irq_owner)
             dispatch_ctx = g_tseries_irq_owner;
 #endif
-#if defined(PLATFORM_T41)
+#if defined(PLATFORM_T41) || defined(PLATFORM_T31)
         drained_before = dispatch_ctx->completions_drained;
 #endif
         dispatch_ctx->last_irq_id = (int)irq_id;
@@ -5167,6 +5264,14 @@ static void* avpu_irq_thread(void* arg)
 
         /* OEM: Rtos_ReleaseMutex(*(arg1 + 0xc)) */
         pthread_mutex_unlock((pthread_mutex_t*)dispatch_ctx->irq_mutex);
+#if defined(PLATFORM_T31)
+        /* A completed command releases the core; a stale IRQ arriving before
+         * the next submit is then dropped above instead of hitting it. */
+        core_completed = dispatch_ctx->completions_drained != drained_before;
+        if (core_completed && g_tseries_irq_owner == dispatch_ctx)
+            g_tseries_irq_owner = NULL;
+        pthread_mutex_unlock(&g_tseries_irq_host_lock);
+#endif
 #if defined(PLATFORM_T41)
         core_completed = dispatch_ctx->completions_drained != drained_before;
         if (core_completed)
@@ -5184,7 +5289,7 @@ static void* avpu_irq_thread(void* arg)
     return NULL;
 }
 
-#if defined(PLATFORM_T41)
+#if defined(PLATFORM_T41) || defined(PLATFORM_T31)
 /* The waiter belongs to the shared AVPU device, not whichever video output
  * encoded first. Each initialized codec keeps the pooled fd alive. Retire
  * the waiter before the final codec closes that fd, including init unwind. */
@@ -7160,6 +7265,8 @@ static int al_codec_encode_destroy_impl(void *codec) {
 #if defined(PLATFORM_T41)
     unsigned int surviving_irq_users = 0;
     unsigned int saved_irq_mask = 0;
+#elif defined(PLATFORM_T31)
+    unsigned int surviving_irq_users = 0;
 #endif
 
     LOG_CODEC("Destroy: codec=%p, channel=%d", codec, enc->channel_id - 1);
@@ -7192,6 +7299,21 @@ static int al_codec_encode_destroy_impl(void *codec) {
          * the waiter cannot dispatch into buffers during destruction. T41
          * must select the reset clock and acknowledge global control; the
          * T31/T40 reset triplet does not quiesce that hardware. */
+#if defined(PLATFORM_T31)
+        /* Runs under g_t31_encode_core_lock, so no command is in flight.
+         * Resetting and gating the one core while another AVC session uses
+         * it would kill that session's next frame: only the last session
+         * quiesces, as the OEM tears the core down once in EncoderExit. */
+        if (enc->avpu.session_ready) {
+            if (g_t31_avc_sessions > 0)
+                g_t31_avc_sessions--;
+            if (g_t31_avc_sessions > 0) {
+                enc->avpu.session_ready = 0;
+                LOG_CODEC("AVPU: %d other AVC session(s) active, core left initialized",
+                          g_t31_avc_sessions);
+            }
+        }
+#endif
         if (enc->avpu.session_ready) {
             unsigned int core_status = 0;
             unsigned int clkcmd = 0;
@@ -7274,8 +7396,11 @@ static int al_codec_encode_destroy_impl(void *codec) {
          * are still valid.  The old order tore down those resources first,
          * leaving a completion callback able to touch unmapped memory and a
          * blocked WAIT_IRQ thread joined only after its pooled fd was closed. */
-#if defined(PLATFORM_T41)
+#if defined(PLATFORM_T41) || defined(PLATFORM_T31)
         surviving_irq_users = avpu_t41_irq_host_put(&enc->avpu);
+#endif
+#if defined(PLATFORM_T31)
+        (void)surviving_irq_users;
 #endif
         if (enc->avpu.irq_thread) {
             pthread_t tid = (pthread_t)enc->avpu.irq_thread;
@@ -7404,6 +7529,19 @@ int AL_Codec_Encode_Destroy(void *codec)
         return -1;
     ret = al_codec_encode_destroy_impl(codec);
     openimp_core_release(&g_t41_core, codec);
+    return ret;
+#elif defined(PLATFORM_T31)
+    AL_CodecEncode *enc = codec;
+    int ret;
+
+    if (!enc)
+        return -1;
+    if (codec_param_read_codec_type(enc->codec_param) == IMP_ENC_TYPE_JPEG)
+        return al_codec_encode_destroy_impl(codec);
+    /* Not while another channel's command list runs on the shared core. */
+    pthread_mutex_lock(&g_t31_encode_core_lock);
+    ret = al_codec_encode_destroy_impl(codec);
+    pthread_mutex_unlock(&g_t31_encode_core_lock);
     return ret;
 #else
     return al_codec_encode_destroy_impl(codec);
@@ -7543,8 +7681,8 @@ static void avpu_t31_dump_source_once(int channel_id, uint32_t width,
  * the whole JFIF stream; every job here checks for SOI/EOI and any failure
  * disables the path for the process, falling back to the software encoder.
  *
- * Jobs are synchronous and run under g_t31_encode_core_lock like every other
- * T31 encode, so they never overlap an AVC command list.
+ * Jobs are synchronous and run under g_t31_encode_core_lock (taken by
+ * t31_hwjpeg_encode_locked), so they never overlap an AVC command list.
  */
 #define T31_HWJPEG_IRQ_SLOT     4u
 #define T31_HWJPEG_REG_CMD      0x8400u
@@ -7639,6 +7777,13 @@ static int t31_hwjpeg_irq_waiter_running(void)
     return running;
 }
 
+/* The JPEG path keeps the pooled fd open for the process lifetime, so it
+ * also keeps the waiter: unblocking that fd would be permanent. */
+static int t31_hwjpeg_join_irq_waiter(void)
+{
+    return avpu_t41_irq_host_get((ALAvpuContext *)(void *)&g_t31_hwjpeg);
+}
+
 static void t31_hwjpeg_set_irq_bit(int fd, int on)
 {
     unsigned int mask = 0;
@@ -7683,6 +7828,10 @@ static int t31_hwjpeg_setup(void)
         return -1;
     }
     g_t31_hwjpeg.fd = fd;
+    if (t31_hwjpeg_join_irq_waiter() != 0) {
+        t31_hwjpeg_disable("cannot join the AVPU IRQ waiter");
+        return -1;
+    }
     if (t31_hwjpeg_ensure(&g_t31_hwjpeg.ep1, T31_HWJPEG_EP1_ALLOC, 1, "hwjpeg-ep1") != 0) {
         t31_hwjpeg_disable("EP1 allocation failed");
         return -1;
@@ -7884,6 +8033,19 @@ static int t31_hwjpeg_encode(const HWFrameBuffer *frame, HWStreamBuffer *stream,
                          width, height, quality, length, c);
     }
     return 0;
+}
+
+static int t31_hwjpeg_encode_locked(const HWFrameBuffer *frame,
+                                    HWStreamBuffer *stream, uint32_t quality)
+{
+    int ret;
+
+    if (!t31_hwjpeg_requested() || g_t31_hwjpeg.state < 0)
+        return -1;
+    pthread_mutex_lock(&g_t31_encode_core_lock);
+    ret = t31_hwjpeg_encode(frame, stream, quality);
+    pthread_mutex_unlock(&g_t31_encode_core_lock);
+    return ret;
 }
 
 /* The 0x8400-0x8428 block plus 0x85F0/0x85E4 is the stock libimp's JPEG core
@@ -8427,6 +8589,15 @@ static int al_codec_encode_process_impl(void *codec, void *frame,
                             /* Join the shared waiter after reacquiring the
                              * core, below, so last-owner teardown cannot race
                              * registration of a new waiter. */
+#elif defined(PLATFORM_T31)
+                            /* One waiter per device with a user count, as
+                             * the OEM board object: destroying the channel
+                             * that happened to start it must not leave the
+                             * other channel without IRQs. */
+                            if (avpu_t41_irq_host_get(&enc->avpu) == 0)
+                                LOG_CODEC("AVPU: joined shared WaitInterruptThread");
+                            else
+                                LOG_CODEC("AVPU: failed to join shared WaitInterruptThread");
 #else
                             int start_irq_thread = 1;
 #if defined(PLATFORM_T40) || defined(PLATFORM_T31)
@@ -8865,7 +9036,7 @@ static int al_codec_encode_process_impl(void *codec, void *frame,
                                 int i;
 
                                 LOG_CODEC("AVPU: refusing partial DMA layout");
-#if defined(PLATFORM_T41)
+#if defined(PLATFORM_T41) || defined(PLATFORM_T31)
                                 avpu_t41_irq_host_put(&enc->avpu);
 #endif
                                 if (enc->avpu.irq_thread) {
@@ -9045,7 +9216,9 @@ static int al_codec_encode_process_impl(void *codec, void *frame,
         ALAvpuContext *ctx = &enc->avpu;
         int fd = ctx->fd;
         int submitted = 0;
-        int force_idr = __sync_lock_test_and_set(&enc->force_next_idr, 0);
+        /* Consumed only once a command is submitted: a request must survive
+         * a skipped or failed submit (busy core, no stream buffer). */
+        int force_idr = enc->force_next_idr;
 
         /* Keep the AVPU shadow aligned with live control-plane state before
          * each OEM-shaped encode1 submit. */
@@ -9097,6 +9270,17 @@ static int al_codec_encode_process_impl(void *codec, void *frame,
             avpu_write_reg(fd, AVPU_REG_CORE_RESET(0), 0x00000002);
             avpu_t41_reset_core(fd, 0);
             avpu_write_reg(fd, AVPU_INTERRUPT, AVPU_IRQ_CLEAR_MASK);
+#elif defined(PLATFORM_T31)
+            /* Once per core, as the OEM trace (one init for main + sub):
+             * a second session must not reset the core or clear pending
+             * IRQ bits of the first. Serialized by g_t31_encode_core_lock. */
+            if (g_t31_avc_sessions == 0) {
+                avpu_write_reg(fd, AVPU_REG_MISC_CTRL, 0x00001000);
+                avpu_write_reg(fd, AVPU_REG_CORE_RESET(0), 0x00000001);
+                avpu_write_reg(fd, AVPU_REG_CORE_RESET(0), 0x00000002);
+                avpu_write_reg(fd, AVPU_REG_CORE_RESET(0), 0x00000004);
+                avpu_write_reg(fd, AVPU_INTERRUPT, 0x00FFFFFF);
+            }
 #else
             avpu_write_reg(fd, AVPU_REG_MISC_CTRL, 0x00001000);
             avpu_write_reg(fd, AVPU_REG_CORE_RESET(0), 0x00000001);
@@ -9136,11 +9320,15 @@ static int al_codec_encode_process_impl(void *codec, void *frame,
                                irq_mask | 0x00000010u);
             }
 #elif defined(PLATFORM_T31)
-            avpu_write_reg(fd, AVPU_REG_TOP_CTRL, 0x00000080);
+            if (g_t31_avc_sessions == 0)
+                avpu_write_reg(fd, AVPU_REG_TOP_CTRL, 0x00000080);
 #endif
 
             LOG_CODEC("AVPU: init complete (stock-matched sequence)");
             ctx->session_ready = 1;
+#if defined(PLATFORM_T31)
+            g_t31_avc_sessions++;
+#endif
 
             /* Push stream buffers via STRM_PUSH so the hardware DMA engine
              * knows they're available. The CL (cmd[0x30]) specifies where to
@@ -9658,7 +9846,11 @@ static int al_codec_encode_process_impl(void *codec, void *frame,
             if (trace_submit)
                 avpu_log_submit_snapshot(ctx, idx, "pre");
 
-#if defined(PLATFORM_T40) || defined(PLATFORM_T31)
+#if defined(PLATFORM_T31)
+            pthread_mutex_lock(&g_tseries_irq_host_lock);
+            g_tseries_irq_owner = ctx;
+            pthread_mutex_unlock(&g_tseries_irq_host_lock);
+#elif defined(PLATFORM_T40)
             __sync_synchronize();
             g_tseries_irq_owner = ctx;
             __sync_synchronize();
@@ -9772,6 +9964,8 @@ static int al_codec_encode_process_impl(void *codec, void *frame,
             /* Advance CL index (already set above based on IDR vs P frame) */
             ctx->frame_number++;
             submitted = 1;
+            if (force_idr)
+                __sync_lock_test_and_set(&enc->force_next_idr, 0);
 
             if (ctx->frame_number % 50 == 0)
             LOG_CODEC("Process: AVPU queued frame %ux%u phys=0x%x CL[%u] hdr=%u - encoding triggered",
@@ -9821,7 +10015,7 @@ static int al_codec_encode_process_impl(void *codec, void *frame,
 #elif defined(PLATFORM_T31)
             /* 75 matches the software path's fixed JPEG quality. */
             ((codec_type == IMP_ENC_TYPE_JPEG &&
-              t31_hwjpeg_encode(&hw_frame, hw_stream, 75u) == 0)
+              t31_hwjpeg_encode_locked(&hw_frame, hw_stream, 75u) == 0)
                 ? 0 : HW_Encoder_Encode_Software(&hw_frame, hw_stream, codec_type)) < 0
 #else
             HW_Encoder_Encode_Software(&hw_frame, hw_stream, codec_type) < 0
@@ -9846,6 +10040,75 @@ queue_encoded_stream:
     openimp_profile_end(OPENIMP_PROFILE_ENCODE_SUBMIT, submit_profile);
     return 0;
 }
+
+#if defined(PLATFORM_T31)
+/* Run the completion handler without an IRQ. It completes only on a size
+ * writeback, so a finished command whose IRQ was lost is recovered and
+ * anything else is left alone. Same locks as the IRQ thread. */
+static int t31_avc_poll_completion(AL_CodecEncode *enc,
+                                   unsigned int drained_before)
+{
+    ALAvpuContext *ctx = &enc->avpu;
+    int done;
+
+    pthread_mutex_lock(&g_tseries_irq_host_lock);
+    if (g_tseries_irq_owner != ctx || !ctx->irq_mutex) {
+        pthread_mutex_unlock(&g_tseries_irq_host_lock);
+        return 0;
+    }
+    pthread_mutex_lock((pthread_mutex_t *)ctx->irq_mutex);
+    if (avpu_pending_peek(ctx, NULL, NULL))
+        avpu_end_encoding_callback(ctx);
+    done = ctx->completions_drained != drained_before &&
+           !avpu_pending_peek(ctx, NULL, NULL);
+    pthread_mutex_unlock((pthread_mutex_t *)ctx->irq_mutex);
+    if (done) {
+        g_tseries_irq_owner = NULL;
+        LOG_CODEC("Process: T31 completion found without IRQ (writeback present)");
+    }
+    pthread_mutex_unlock(&g_tseries_irq_host_lock);
+    return done;
+}
+
+/* The command did not complete within 2 s. Before the caller releases the
+ * source frame, stop the core (keeping a JPEG job's IRQ bit), drop this
+ * context's pending commands and start again with an IDR. Without this the
+ * next submit is paired with the old IRQ, stream buffers leak one per hang
+ * and the channel dies once they are gone. */
+static void t31_avc_recover_timeout(AL_CodecEncode *enc)
+{
+    ALAvpuContext *ctx = &enc->avpu;
+    int fd = ctx->fd;
+    int buf_idx = -1;
+    int dropped = 0;
+    uint32_t keep_mask;
+
+    pthread_mutex_lock(&g_tseries_irq_host_lock);
+    if (ctx->irq_mutex)
+        pthread_mutex_lock((pthread_mutex_t *)ctx->irq_mutex);
+    keep_mask = t31_hwjpeg_idle_irq_mask();
+    avpu_write_reg(fd, AVPU_INTERRUPT_MASK, keep_mask);
+    avpu_write_reg(fd, AVPU_INTERRUPT, keep_mask ? 0x0fu : AVPU_IRQ_CLEAR_MASK);
+    avpu_write_reg(fd, AVPU_REG_CORE_RESET(0), 1u);
+    avpu_write_reg(fd, AVPU_REG_CORE_RESET(0), 2u);
+    avpu_write_reg(fd, AVPU_REG_CORE_RESET(0), 4u);
+    avpu_turn_off_gc(fd, 0);
+    while (avpu_complete_next_stream(ctx, &buf_idx, NULL)) {
+        if (buf_idx >= 0)
+            avpu_mark_stream_buffer_released(ctx, buf_idx);
+        buf_idx = -1;
+        dropped++;
+    }
+    ctx->reference_valid = 0;
+    if (g_tseries_irq_owner == ctx)
+        g_tseries_irq_owner = NULL;
+    if (ctx->irq_mutex)
+        pthread_mutex_unlock((pthread_mutex_t *)ctx->irq_mutex);
+    pthread_mutex_unlock(&g_tseries_irq_host_lock);
+    IMP_LOG_ERR("Codec", "AVC: completion timeout, core reset, %d command(s) dropped, next frame IDR",
+                dropped);
+}
+#endif
 
 int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data)
 {
@@ -9875,6 +10138,13 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data)
     unsigned int drained_before = 0;
     int ret;
 
+    /* JPEG runs on the CPU (its hardware job takes the core lock itself in
+     * t31_hwjpeg_encode_locked): a snapshot must not stall both H.264
+     * channels for a whole software encode. */
+    if (enc != NULL && enc->use_hardware != 2 &&
+        codec_param_read_codec_type(enc->codec_param) == IMP_ENC_TYPE_JPEG)
+        return al_codec_encode_process_impl(codec, frame, user_data);
+
     pthread_mutex_lock(&g_t31_encode_core_lock);
     if (enc != NULL) {
         frames_before = enc->avpu.frames_encoded;
@@ -9901,6 +10171,13 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data)
                 completed = 1;
                 break;
             }
+            /* A frame takes < 100 ms: from 0.5 s on, look for a finished
+             * command whose IRQ got lost. */
+            if (!t31_avc_legacy() && retry >= 500 && retry % 250 == 0 &&
+                t31_avc_poll_completion(enc, drained_before)) {
+                completed = 1;
+                break;
+            }
             usleep(1000);
         }
         if (!completed) {
@@ -9909,6 +10186,11 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data)
                       frames_before, enc->avpu.completions_drained,
                       drained_before,
                       enc->avpu.pending_stream_count);
+            if (!t31_avc_legacy()) {
+                t31_avc_recover_timeout(enc);
+                errno = ETIMEDOUT;
+                ret = -1;
+            }
         }
     }
     pthread_mutex_unlock(&g_t31_encode_core_lock);
@@ -9975,6 +10257,12 @@ int AL_Codec_Encode_GetStream(void *codec, void **stream, void **user_data) {
             }
 
             unsigned int core_status = 0;
+#if defined(PLATFORM_T31)
+            /* Unlocked against the IRQ thread; on T31 a lost IRQ is
+             * recovered inside Process (t31_avc_poll_completion). */
+            if (!t31_avc_legacy())
+                continue;
+#endif
             if (avpu_read_reg_quiet(ctx->fd, AVPU_REG_CORE_STATUS(0), &core_status) == 0)
                 avpu_try_recover_sticky_completion(ctx, core_status, "GetStream[AVPU]");
         }

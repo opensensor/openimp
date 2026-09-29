@@ -161,6 +161,8 @@ typedef struct {
 #endif
     uint64_t next_frame_due_us;
     uint64_t output_timestamp_us;
+    int in_poll;                    /* PollingStream calls in progress */
+    pthread_cond_t poll_idle;       /* signalled when in_poll drops to 0 */
     pthread_mutex_t lock;
 } P2EncoderChannel;
 
@@ -881,6 +883,7 @@ int EncoderInit(void)
             p2_channels[i].pool_id = -1;
             pthread_mutex_init(&p2_channels[i].lock, NULL);
             pthread_cond_init(&p2_channels[i].jpeg_frame_ready, NULL);
+            pthread_cond_init(&p2_channels[i].poll_idle, NULL);
         }
         p2_initialized = 1;
         p2_startup_trace("openimp/P2 startup: EncoderInit channel locks initialized\n");
@@ -1088,6 +1091,15 @@ int IMP_Encoder_CreateChn(int channel, IMPEncoderCHNAttr *attr)
     return 0;
 }
 
+/* Called with ch->lock held. A PollingStream in progress still uses the
+ * codec and the source channel; tearing them down underneath it freed the
+ * codec during an encode and leaked capture buffers. */
+static void p2_wait_poll_idle(P2EncoderChannel *ch)
+{
+    while (ch->in_poll > 0)
+        pthread_cond_wait(&ch->poll_idle, &ch->lock);
+}
+
 int IMP_Encoder_DestroyChn(int channel)
 {
     P2EncoderChannel *ch;
@@ -1096,6 +1108,7 @@ int IMP_Encoder_DestroyChn(int channel)
         return -1;
     ch = &p2_channels[channel];
     pthread_mutex_lock(&ch->lock);
+    p2_wait_poll_idle(ch);
     if (!ch->created || ch->registered || ch->raw_stream || ch->source_frame) {
         pthread_mutex_unlock(&ch->lock);
         return -1;
@@ -1146,6 +1159,7 @@ int IMP_Encoder_UnRegisterChn(int channel)
         return -1;
     ch = &p2_channels[channel];
     pthread_mutex_lock(&ch->lock);
+    p2_wait_poll_idle(ch);
     if (!ch->created || !ch->registered || ch->receiving || ch->raw_stream) {
         pthread_mutex_unlock(&ch->lock);
         return -1;
@@ -1201,7 +1215,28 @@ int IMP_Encoder_StopRecvPic(int channel)
     return 0;
 }
 
+static int p2_polling_stream(int channel, uint32_t timeout_ms);
+
 int IMP_Encoder_PollingStream(int channel, uint32_t timeout_ms)
+{
+    P2EncoderChannel *ch;
+    int ret;
+
+    if (!p2_valid_channel(channel))
+        return -1;
+    ch = &p2_channels[channel];
+    pthread_mutex_lock(&ch->lock);
+    ch->in_poll++;
+    pthread_mutex_unlock(&ch->lock);
+    ret = p2_polling_stream(channel, timeout_ms);
+    pthread_mutex_lock(&ch->lock);
+    if (--ch->in_poll == 0)
+        pthread_cond_broadcast(&ch->poll_idle);
+    pthread_mutex_unlock(&ch->lock);
+    return ret;
+}
+
+static int p2_polling_stream(int channel, uint32_t timeout_ms)
 {
     static unsigned int trace_count;
 #if defined(PLATFORM_T23) || defined(PLATFORM_T30)
@@ -1218,6 +1253,7 @@ int IMP_Encoder_PollingStream(int channel, uint32_t timeout_ms)
     uint64_t interval_us;
     uint64_t now_us;
     uint64_t frame_deadline_us;
+    uint64_t stream_deadline_us;
     uint64_t wait_us;
     uint64_t timeout_us;
     int core_locked = 0;
@@ -1302,7 +1338,9 @@ int IMP_Encoder_PollingStream(int channel, uint32_t timeout_ms)
          * so an empty queue neither spins the caller nor starves capture. */
         frame_deadline_us = p2_monotonic_us() + timeout_us;
         while (IMP_FrameSource_GetFrame(ch->source_channel, &frame) != 0) {
-            if (!timeout_ms || p2_monotonic_us() >= frame_deadline_us)
+            /* StopRecvPic ends the wait: UnRegisterChn waits for us. */
+            if (!timeout_ms || p2_monotonic_us() >= frame_deadline_us ||
+                !__atomic_load_n(&ch->receiving, __ATOMIC_RELAXED))
                 goto done;
             p2_sleep_us(1000u);
         }
@@ -1352,15 +1390,17 @@ int IMP_Encoder_PollingStream(int channel, uint32_t timeout_ms)
         frame != &ch->synthetic_frame &&
         IMP_FrameSource_ReleaseFrame(ch->source_channel, frame) == 0)
         frame = NULL;
-    retries = timeout_ms ? timeout_ms : 2000u;
-    if (retries < 2000u)
-        retries = 2000u;
-    for (retry = 0; retry < retries; retry++) {
+    /* Bounded by time, not by attempts: one GetStream can wait up to 2 s
+     * itself, and 2000 attempts held p2_core_lock (and so every other
+     * channel) for over an hour when a completion was lost. */
+    retries = timeout_ms > 2000u ? timeout_ms : 2000u;
+    stream_deadline_us = p2_monotonic_us() + (uint64_t)retries * 1000u;
+    for (retry = 0;; retry++) {
         int get_result =
             AL_Codec_Encode_GetStream(ch->codec, &stream, &user);
         if (get_result == 0)
             break;
-        if (get_result > 0)
+        if (get_result > 0 || p2_monotonic_us() >= stream_deadline_us)
             goto done;
         usleep(1000);
     }
