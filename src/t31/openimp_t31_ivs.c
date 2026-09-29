@@ -456,7 +456,8 @@ struct t31_ivs_channel {
     T31IVSFrameInfo work;           /* frame handed to processAsync */
     uint8_t *copy;                  /* NV12 copy for foreign interfaces */
     size_t copy_size;
-    int error_logged;
+    int proc_error_logged;          /* IVS thread */
+    int pre_error_logged;           /* capture context */
     struct {                        /* OPENIMP_T31_IVS_STATS=1 */
         unsigned int frames, dropped;
         uint64_t copy_ns;
@@ -601,9 +602,9 @@ static void *ivs_thread(void *arg)
         }
         if (ret == 0) {
             sem_post(&c->sem_result);
-        } else if (ret < 0 && !c->error_logged) {
+        } else if (ret < 0 && !c->proc_error_logged) {
             /* The vendor ends the thread here; keep serving frames. */
-            c->error_logged = 1;
+            c->proc_error_logged = 1;
             IMP_LOG_ERR("IVS", "channel %d: ivs process failed (%d)",
                         c->number, ret);
         }
@@ -631,8 +632,8 @@ static void ivs_deliver(struct t31_ivs_channel *c, const T31IVSFrameInfo *frame)
 
         ivs_invalidate(frame->virAddr, size);
         if (inf->preProcessSync && inf->preProcessSync(inf, &c->work) < 0 &&
-            !c->error_logged) {
-            c->error_logged = 1;
+            !c->pre_error_logged) {
+            c->pre_error_logged = 1;
             IMP_LOG_ERR("IVS", "channel %d: preProcessSync failed", c->number);
         }
         if (inf->processAsync && frame->virAddr && size) {
@@ -789,7 +790,8 @@ int IMP_IVS_CreateChn(int channel, IMPIVSInterface *handler)
     c->enabled = 0;
     c->param_changed = 0;
     c->quit = 0;
-    c->error_logged = 0;
+    c->proc_error_logged = 0;
+    c->pre_error_logged = 0;
     memset(&c->stats, 0, sizeof(c->stats));
     sem_init(&c->sem_start, 0, 0);
     sem_init(&c->sem_end, 0, 1);
