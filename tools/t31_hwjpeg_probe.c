@@ -351,6 +351,7 @@ static void usage(const char *argv0)
         "  -o <file.jpg>     output (default /tmp/hwjpeg.jpg)\n"
         "  -e <file>         also write the generated EP1 table buffer (0x%x bytes)\n"
         "  -E <file>         load EP1 from a file (e.g. a stock libimp dump) instead\n"
+        "  -G <file>         only write the generated EP1 for -q to <file> and exit (no device)\n"
         "  -t <ms>           IRQ timeout (default 2000)\n"
         "  -c <word0>        override command word 0 (default 0x131: 4:2:0, 3 comps, bit 8)\n"
         "  -s <bytes>        stream buffer size (default W*H+64KiB; small values test overflow)\n"
@@ -365,10 +366,10 @@ int main(int argc, char **argv)
     uint32_t w = 1920, h = 1080;
     int quality = 75, timeout_ms = 2000, skip_init = 0, opt;
     uint32_t cmd0 = 0x1u | 3u << 4 | 1u << 8, strm_override = 0;
-    const char *in = NULL, *out = "/tmp/hwjpeg.jpg", *ep1_out = NULL, *ep1_in = NULL;
+    const char *in = NULL, *out = "/tmp/hwjpeg.jpg", *ep1_out = NULL, *ep1_in = NULL, *gen_only = NULL;
     dma_buf src, ep1, strm;
 
-    while ((opt = getopt(argc, argv, "W:H:q:i:o:e:E:t:c:s:nvh")) != -1) {
+    while ((opt = getopt(argc, argv, "W:H:q:i:o:e:E:G:t:c:s:nvh")) != -1) {
         switch (opt) {
         case 'W': w = (uint32_t)strtoul(optarg, NULL, 0); break;
         case 'H': h = (uint32_t)strtoul(optarg, NULL, 0); break;
@@ -377,6 +378,7 @@ int main(int argc, char **argv)
         case 'o': out = optarg; break;
         case 'e': ep1_out = optarg; break;
         case 'E': ep1_in = optarg; break;
+        case 'G': gen_only = optarg; break;
         case 't': timeout_ms = atoi(optarg); break;
         case 'c': cmd0 = (uint32_t)strtoul(optarg, NULL, 0); break;
         case 's': strm_override = (uint32_t)strtoul(optarg, NULL, 0); break;
@@ -389,6 +391,13 @@ int main(int argc, char **argv)
         quality < 1 || quality > 100) {
         usage(argv[0]);
         return 2;
+    }
+
+    if (gen_only) {
+        static uint8_t gen[EP1_USED];
+
+        ep1_build(gen, quality);
+        return write_file(gen_only, gen, EP1_USED) ? 1 : 0;
     }
 
     const uint32_t pitch = (w + 15) & ~15u;
