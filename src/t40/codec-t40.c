@@ -7711,7 +7711,7 @@ static int t31_hwjpeg_encode(const HWFrameBuffer *frame, HWStreamBuffer *stream,
     uint32_t uv_offset = width * luma_rows;
     uint32_t src_need = uv_offset + width * ((height + 1u) / 2u);
     uint32_t src_size = uv_offset + width * (luma_rows / 2u);
-    uint32_t copy_size, stream_size;
+    uint32_t copy_size, stream_size, src_phys;
     uint32_t cmd[11], status[3], busy = 0, length;
     struct timespec deadline;
     const uint8_t *jpeg;
@@ -7742,9 +7742,13 @@ static int t31_hwjpeg_encode(const HWFrameBuffer *frame, HWStreamBuffer *stream,
         stream_size = g_t31_hwjpeg.stream_min;
     stream_size = (stream_size + 0xfffu) & ~0xfffu;
     src_coherent_env = getenv("OPENIMP_T31_HW_JPEG_SRC_COHERENT");
-    if (t31_hwjpeg_ensure(&g_t31_hwjpeg.src, src_size,
-                          src_coherent_env && src_coherent_env[0] == '1',
-                          "hwjpeg-src") != 0 ||
+    /* The p2 layer copies JPEG frames straight into rmem (written back,
+     * physical address set): read that in place instead of copying again. */
+    src_phys = src_coherent_env && src_coherent_env[0] == '1' ? 0 : frame->phys_addr;
+    if ((!src_phys &&
+         t31_hwjpeg_ensure(&g_t31_hwjpeg.src, src_size,
+                           src_coherent_env && src_coherent_env[0] == '1',
+                           "hwjpeg-src") != 0) ||
         t31_hwjpeg_ensure(&g_t31_hwjpeg.stream, stream_size, 1,
                           "hwjpeg-stream") != 0) {
         t31_hwjpeg_disable("DMA allocation failed");
@@ -7757,18 +7761,21 @@ static int t31_hwjpeg_encode(const HWFrameBuffer *frame, HWStreamBuffer *stream,
             return -1;
         g_t31_hwjpeg.ep1_quality = quality;
     }
-    copy_size = frame->size < src_size ? frame->size : src_size;
-    memcpy(g_t31_hwjpeg.src.map, (const void *)(uintptr_t)frame->virt_addr,
-           copy_size);
-    if (g_t31_hwjpeg.src.from_rmem)
-        avpu_flush_cache(fd, g_t31_hwjpeg.src.map, copy_size, 1 /*WBACK*/);
+    if (!src_phys) {
+        copy_size = frame->size < src_size ? frame->size : src_size;
+        memcpy(g_t31_hwjpeg.src.map, (const void *)(uintptr_t)frame->virt_addr,
+               copy_size);
+        if (g_t31_hwjpeg.src.from_rmem)
+            avpu_flush_cache(fd, g_t31_hwjpeg.src.map, copy_size, 1 /*WBACK*/);
+        src_phys = g_t31_hwjpeg.src.phy_addr;
+    }
 
     cmd[0] = 0x1u | 3u << 4 | 1u << 8;   /* 4:2:0, 3 components, stock bit 8 */
     cmd[1] = (width - 1u) << 16 | (height - 1u);
     cmd[2] = 0x00010001u;                /* JFIF density 1:1 */
     cmd[3] = width;                      /* luma pitch */
-    cmd[4] = g_t31_hwjpeg.src.phy_addr;
-    cmd[5] = g_t31_hwjpeg.src.phy_addr + uv_offset;
+    cmd[4] = src_phys;
+    cmd[5] = src_phys + uv_offset;
     cmd[6] = g_t31_hwjpeg.ep1.phy_addr;
     cmd[7] = g_t31_hwjpeg.stream.phy_addr;
     cmd[8] = (uint32_t)g_t31_hwjpeg.stream.size;

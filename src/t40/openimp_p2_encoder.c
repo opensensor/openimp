@@ -20,7 +20,7 @@
 
 #include "openimp_profile.h"
 #include "trace_control.h"
-#if defined(PLATFORM_T41)
+#if defined(PLATFORM_T41) || defined(PLATFORM_T31)
 #include "dma_alloc.h"
 #endif
 #if defined(PLATFORM_T23) || defined(PLATFORM_T30)
@@ -133,6 +133,7 @@ typedef struct {
     P2SyntheticFrame synthetic_frame;
     uint8_t *jpeg_frame_buffer;
     size_t jpeg_frame_capacity;
+    uint32_t jpeg_frame_phys;       /* rmem copy for the T31 hardware JPEG core */
     uint64_t jpeg_frame_generation;
     int jpeg_frame_requested;
     pthread_cond_t jpeg_frame_ready;
@@ -212,6 +213,39 @@ static pthread_mutex_t p2_state_lock = PTHREAD_MUTEX_INITIALIZER;
 static pthread_mutex_t p2_core_lock = PTHREAD_MUTEX_INITIALIZER;
 static uint64_t p2_monotonic_us(void);
 
+#if defined(PLATFORM_T31)
+/* With OPENIMP_T31_HW_JPEG=1 the JPEG copy goes straight into rmem, so the
+ * hardware JPEG core reads it by physical address instead of the codec
+ * copying the frame a second time. OPENIMP_T31_HW_JPEG_SRC_COHERENT=1
+ * keeps the codec's own coherent source buffer (cache-flush debugging). */
+static int p2_jpeg_copy_in_rmem(void)
+{
+    static int enabled = -1;
+
+    if (enabled < 0) {
+        const char *hw = getenv("OPENIMP_T31_HW_JPEG");
+        const char *coherent = getenv("OPENIMP_T31_HW_JPEG_SRC_COHERENT");
+
+        enabled = hw && hw[0] == '1' && hw[1] == '\0' &&
+                  !(coherent && coherent[0] == '1');
+    }
+    return enabled;
+}
+#endif
+
+static void p2_free_jpeg_frame_buffer(P2EncoderChannel *ch)
+{
+#if defined(PLATFORM_T31)
+    if (ch->jpeg_frame_phys)
+        DMA_FreePhys(ch->jpeg_frame_phys);
+    else
+#endif
+        free(ch->jpeg_frame_buffer);
+    ch->jpeg_frame_buffer = NULL;
+    ch->jpeg_frame_capacity = 0;
+    ch->jpeg_frame_phys = 0;
+}
+
 static int p2_copy_requested_jpeg_frames(int source_channel,
                                          const P2SyntheticFrame *source)
 {
@@ -259,19 +293,44 @@ static int p2_copy_requested_jpeg_frames(int source_channel,
         }
 #endif
         if (jpeg->jpeg_frame_capacity < source->size) {
+            resized = NULL;
+#if defined(PLATFORM_T31)
+            if (p2_jpeg_copy_in_rmem()) {
+                IMPDMABufferInfo info;
+
+                p2_free_jpeg_frame_buffer(jpeg);
+                memset(&info, 0, sizeof(info));
+                if (DMA_AllocDescriptor(&info, (int)source->size,
+                                        "p2-jpeg-src") == 0 &&
+                    info.virt_addr && info.phys_addr) {
+                    jpeg->jpeg_frame_buffer = (uint8_t *)(uintptr_t)info.virt_addr;
+                    jpeg->jpeg_frame_capacity = source->size;
+                    jpeg->jpeg_frame_phys = info.phys_addr;
+                }
+            }
+            if (!jpeg->jpeg_frame_phys)
+#endif
             resized = realloc(jpeg->jpeg_frame_buffer, source->size);
-            if (!resized) {
+            if (!resized && !jpeg->jpeg_frame_phys) {
                 jpeg->jpeg_frame_requested = 0;
                 pthread_cond_broadcast(&jpeg->jpeg_frame_ready);
                 pthread_mutex_unlock(&jpeg->lock);
                 continue;
             }
-            jpeg->jpeg_frame_buffer = resized;
-            jpeg->jpeg_frame_capacity = source->size;
+            if (resized) {
+                jpeg->jpeg_frame_buffer = resized;
+                jpeg->jpeg_frame_capacity = source->size;
+            }
         }
         memcpy(jpeg->jpeg_frame_buffer,
                (const void *)(uintptr_t)source->virtual_address,
                source->size);
+        /* The codec invalidates any source with a physical address before
+         * encoding; write the CPU copy back first so nothing is lost. */
+#if defined(PLATFORM_T31)
+        if (jpeg->jpeg_frame_phys)
+            DMA_RmemFlushCache(jpeg->jpeg_frame_buffer, source->size, 1);
+#endif
         memset(&jpeg->synthetic_frame, 0, sizeof(jpeg->synthetic_frame));
         jpeg->synthetic_frame.index = -1;
         jpeg->synthetic_frame.pool_index = -1;
@@ -281,6 +340,7 @@ static int p2_copy_requested_jpeg_frames(int source_channel,
         jpeg->synthetic_frame.size = source->size;
         jpeg->synthetic_frame.virtual_address =
             (uint32_t)(uintptr_t)jpeg->jpeg_frame_buffer;
+        jpeg->synthetic_frame.physical_address = jpeg->jpeg_frame_phys;
         jpeg->synthetic_frame.timestamp = source->timestamp;
         jpeg->jpeg_frame_requested = 0;
         jpeg->jpeg_frame_generation++;
@@ -1011,9 +1071,7 @@ int IMP_Encoder_DestroyChn(int channel)
     }
     if (ch->codec)
         AL_Codec_Encode_Destroy(ch->codec);
-    free(ch->jpeg_frame_buffer);
-    ch->jpeg_frame_buffer = NULL;
-    ch->jpeg_frame_capacity = 0;
+    p2_free_jpeg_frame_buffer(ch);
     ch->jpeg_frame_generation = 0;
     ch->jpeg_frame_requested = 0;
     ch->codec = NULL;
