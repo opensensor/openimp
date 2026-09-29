@@ -244,6 +244,7 @@ typedef struct ALAvpuContext {
     volatile int irq_thread_exited;
     volatile int irq_wait_errno;
     volatile int last_irq_id;
+    int t31_irq_dispatch;        /* T31: callback runs for a delivered IRQ */
 
     /* OEM parity: frame counter and stream header tracking.
      * The OEM pre-writes SPS/PPS/slice headers into the stream buffer

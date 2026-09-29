@@ -162,6 +162,7 @@ typedef struct {
     uint64_t next_frame_due_us;
     uint64_t output_timestamp_us;
     int in_poll;                    /* PollingStream calls in progress */
+    int closing;                    /* teardown waits: refuse new polls */
     pthread_cond_t poll_idle;       /* signalled when in_poll drops to 0 */
     pthread_mutex_t lock;
 } P2EncoderChannel;
@@ -1096,8 +1097,10 @@ int IMP_Encoder_CreateChn(int channel, IMPEncoderCHNAttr *attr)
  * codec during an encode and leaked capture buffers. */
 static void p2_wait_poll_idle(P2EncoderChannel *ch)
 {
+    ch->closing++;
     while (ch->in_poll > 0)
         pthread_cond_wait(&ch->poll_idle, &ch->lock);
+    ch->closing--;
 }
 
 int IMP_Encoder_DestroyChn(int channel)
@@ -1226,6 +1229,10 @@ int IMP_Encoder_PollingStream(int channel, uint32_t timeout_ms)
         return -1;
     ch = &p2_channels[channel];
     pthread_mutex_lock(&ch->lock);
+    if (ch->closing) {
+        pthread_mutex_unlock(&ch->lock);
+        return -1;
+    }
     ch->in_poll++;
     pthread_mutex_unlock(&ch->lock);
     ret = p2_polling_stream(channel, timeout_ms);

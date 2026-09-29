@@ -19,13 +19,18 @@ Zeilennummern dort beziehen sich auf `claude/t31-re`).
 | F2 | IRQ ohne Größen-Writeback wird ignoriert statt den Frame zu verwerfen | `AVC: IRQ … without size writeback … ignored` |
 | F3 | Ein IRQ-Waiter pro Gerät mit Nutzerzähler; kein 100-%-CPU-Spin bei `EINTR` | ggf. `keeps returning EINTR` |
 | F4 | Zerstören eines Kanals stört den anderen nicht mehr | `AVC: … other session(s) active, core left initialized` |
-| F5 | Verworfenes Bild erzwingt ein IDR | – |
+| F5 | Verworfenes Bild erzwingt ein IDR; passt ein Bild nicht in den Stream-Puffer, steigt der QP | `AVC: picture larger than the stream buffer` |
 | F6 | Software-JPEG blockiert H.264 nicht mehr | – |
 | F7 | Core-Init nur einmal pro Gerät | – |
 | F8 | `RequestIDR` geht nicht mehr verloren | – |
 
-Der Schalter `OPENIMP_T31_AVC_LEGACY=1` stellt das alte Verhalten von F1 und F2 wieder her.
-Damit lässt sich A/B vergleichen. F3–F8 sind nicht abschaltbar.
+Der Schalter `OPENIMP_T31_AVC_LEGACY=1` stellt das alte Verhalten von F1 und F2 wieder her
+und schaltet den Core beim Zerstören eines Kanals wieder immer ab. F3 und F5–F8 sowie das
+Verwerfen von IRQs ohne Besitzer bleiben aktiv. Der A/B-Vergleich deckt also vor allem F1/F2 ab.
+
+Weitere Meldung: `AVC: size written back but core still running` heißt, eine Größe stand schon
+im Speicher, der Core lief aber noch. Dann wird auf die eigene IRQ gewartet. Einzelne Treffer
+sind harmlos, viele sprechen dafür, dass die Hardware die Größe vor dem Frame-Ende schreibt.
 
 Die Meldungen in der Tabelle erscheinen immer (stderr und syslog, also auch in `logread`).
 Mit `OPENIMP_DEBUG_TRACE=1` kommen sehr viele Detailzeilen pro Frame dazu; das nur für die
@@ -101,6 +106,12 @@ Auflösung oder Bitrate des Substreams ändern, sodass der Encoder-Kanal neu ang
 
 S1 für 1 Stunde mit `OPENIMP_T31_AVC_LEGACY=1` wiederholen. Treten dort Hänger oder
 schwarze Streams auf, die ohne den Schalter nicht auftreten, belegt das F1/F2.
+
+## Bekannte offene Punkte
+
+- Zwei direkt aufeinanderfolgende IDRs tragen beide `idr_pic_id = 0`. Das verletzt die
+  H.264-Norm, die meisten Decoder stört es nicht. Durch F1/F5/F8 kommt das häufiger vor. Wenn
+  `ffmpeg -v error` genau bei solchen Stellen Fehler meldet, bitte notieren.
 
 ## Rückmeldung
 
