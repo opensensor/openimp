@@ -39,6 +39,7 @@ Du arbeitest auf einem Rechner im selben Netz wie die Testkamera und erreichst s
 | Nur auf `claude/t31-perf`: schnellere Software-JPEG (bitgleiche Ausgabe) | `src/hw_encoder.c` | H |
 | Nur auf `claude/t31-perf`: Hardware-JPEG liest die Frame-Kopie direkt aus rmem (eine 3-MB-Kopie weniger) | `src/t40/openimp_p2_encoder.c`, `src/t40/codec-t40.c` | H |
 | Nur auf `claude/t31-perf`: OSD-Zeichnen mit der IPU, Schalter `OPENIMP_T31_OSD=1` | `src/t31/openimp_t31_services.c`, `src/t40/openimp_p2_encoder.c` | G |
+| Nur auf `claude/t31-ivs-move`: IVS-Bewegungserkennung (move, base move) statt Stubs, Vergleichstool | `src/t31/openimp_t31_ivs*.{c,h}`, `src/kernel_interface.c`, `tools/t31_ivs_compare.c` | I |
 
 ---
 
@@ -163,17 +164,35 @@ Wie E, aber mit der Bibliothek aus `claude/t31-perf`:
 
 - **Erfolg:** gleiche Bilder, gleiche oder niedrigere CPU-Last, keine neuen Fehler im Log.
 
+### I. IVS-Bewegungserkennung (Branch `claude/t31-ivs-move`)
+
+Erst nach C. Anleitung: [`T31_IVS_MOVE.md`](T31_IVS_MOVE.md), Abschnitt 6. Die Bibliothek aus
+`claude/t31-ivs-move` bauen (sonst wie B), dazu das Tool `t31_ivs_compare`.
+
+1. Stufe 1: `t31_ivs_compare` gegen die Stock-libimp, einmal mit SIMD, einmal mit
+   `/tmp/closesimd`. Läuft neben dem Streamer, ohne Kamerabild.
+2. Stufe 2: timps mit `-c /tmp/timps-ivs.conf`, `motion.enabled = 1` und
+   `OPENIMP_T31_IVS_STATS=1`. Ruhige Szene, Gehtest (nur mit Einverständnis), Empfindlichkeit
+   live, Last und Bildrate mit und ohne Bewegungserkennung.
+
+- **Erfolg:**
+  - Stufe 1: `differ=0` bei move und base in beiden Läufen (`oob-differ` ist erlaubt).
+  - Stufe 2: Treffer bei Bewegung, keine bei ruhiger Szene, kein `stalled`, Bildrate des
+    Hauptstreams unverändert.
+- **Abbruchkriterium:** Absturz oder eingefrorener Stream mit der neuen Bibliothek. Dann melden.
+
 ---
 
 ## 4. Ergebnisbericht
 
-Eine Datei `T31_TEST_RESULTS.md` mit einem Abschnitt pro Test (A1, A2, C, D, E, F, G, H):
+Eine Datei `T31_TEST_RESULTS.md` mit einem Abschnitt pro Test (A1, A2, C, D, E, F, G, H, I):
 
 - **Status:** bestanden / fehlgeschlagen / übersprungen, mit Grund.
 - **Die jeweils in der Einzelanleitung verlangten Ausgaben:**
   - Tool-Ausgaben
   - `ipu_osd_analyze.py`-Ausgabe
-  - Logzeilen `HWJPEG:` / `companion stage`
+  - Logzeilen `HWJPEG:` / `companion stage` / `[IVS]`
+  - `t31_ivs_compare`-Ausgaben
   - `top`-Werte
   - Frame-Zählungen
 - **Vorne ein Kopf mit Geräteangaben:**
