@@ -4621,7 +4621,7 @@ static void avpu_end_encoding_callback(void *user_data)
             unsigned int n = __sync_add_and_fetch(&spurious, 1u);
 
             if (n <= 5u || n % 100u == 0u)
-                LOG_CODEC("EndEncoding callback: IRQ %d without size writeback for buf=%d cl=%u, ignored [#%u]",
+                IMP_LOG_INFO("Codec", "AVC: IRQ %d without size writeback for buf=%d cl=%u, ignored [#%u]",
                           ctx->last_irq_id, buf_idx, cl_idx, n);
             return;
         }
@@ -7309,7 +7309,7 @@ static int al_codec_encode_destroy_impl(void *codec) {
                 g_t31_avc_sessions--;
             if (g_t31_avc_sessions > 0) {
                 enc->avpu.session_ready = 0;
-                LOG_CODEC("AVPU: %d other AVC session(s) active, core left initialized",
+                IMP_LOG_INFO("Codec", "AVC: %d other session(s) active, core left initialized",
                           g_t31_avc_sessions);
             }
         }
@@ -10064,7 +10064,7 @@ static int t31_avc_poll_completion(AL_CodecEncode *enc,
     pthread_mutex_unlock((pthread_mutex_t *)ctx->irq_mutex);
     if (done) {
         g_tseries_irq_owner = NULL;
-        LOG_CODEC("Process: T31 completion found without IRQ (writeback present)");
+        IMP_LOG_INFO("Codec", "AVC: completion found without IRQ (writeback present)");
     }
     pthread_mutex_unlock(&g_tseries_irq_host_lock);
     return done;

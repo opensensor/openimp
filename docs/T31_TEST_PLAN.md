@@ -39,6 +39,7 @@ Du arbeitest auf einem Rechner im selben Netz wie die Testkamera und erreichst s
 | Nur auf `claude/t31-perf`: schnellere Software-JPEG (bitgleiche Ausgabe) | `src/hw_encoder.c` | H |
 | Nur auf `claude/t31-perf`: Hardware-JPEG liest die Frame-Kopie direkt aus rmem (eine 3-MB-Kopie weniger) | `src/t40/openimp_p2_encoder.c`, `src/t40/codec-t40.c` | H |
 | Nur auf `claude/t31-perf`: OSD-Zeichnen mit der IPU, Schalter `OPENIMP_T31_OSD=1` | `src/t31/openimp_t31_services.c`, `src/t40/openimp_p2_encoder.c` | G |
+| Nur auf `claude/t31-avc-stability` (enthält `claude/t31-perf`): H.264-Pfad erholt sich statt einzufrieren, Schalter `OPENIMP_T31_AVC_LEGACY=1` für A/B | `src/t40/codec-t40.c`, `src/t40/openimp_p2_encoder.c` | S |
 
 ---
 
@@ -163,11 +164,19 @@ Wie E, aber mit der Bibliothek aus `claude/t31-perf`:
 
 - **Erfolg:** gleiche Bilder, gleiche oder niedrigere CPU-Last, keine neuen Fehler im Log.
 
+### S. H.264-Stabilität (Branch `claude/t31-avc-stability`)
+
+Anleitung: [`T31_AVC_STABILITY_TEST.md`](T31_AVC_STABILITY_TEST.md). Der Branch enthält auch
+alles aus `claude/t31-perf`, G und H können also mit derselben Bibliothek laufen.
+
+- **Erfolg:** Dauerlauf Main + Sub ohne Einfrieren; nach einem Hänger läuft der Stream nach
+  höchstens ca. 2 s mit einem IDR weiter.
+
 ---
 
 ## 4. Ergebnisbericht
 
-Eine Datei `T31_TEST_RESULTS.md` mit einem Abschnitt pro Test (A1, A2, C, D, E, F, G, H):
+Eine Datei `T31_TEST_RESULTS.md` mit einem Abschnitt pro Test (A1, A2, C, D, E, F, G, H, S):
 
 - **Status:** bestanden / fehlgeschlagen / übersprungen, mit Grund.
 - **Die jeweils in der Einzelanleitung verlangten Ausgaben:**
