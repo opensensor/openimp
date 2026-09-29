@@ -7229,11 +7229,23 @@ static int al_codec_encode_destroy_impl(void *codec) {
                 status_ret, core_status, clk_ret, clkcmd,
                 mask_read_ret, irq_mask, pending_ret, irq_pending);
 
+#if defined(PLATFORM_T31)
+            /* A hardware JPEG job on core 1 may be in flight: keep its mask
+             * bit and ack only core 0's slots then. */
+            mask_ret = avpu_write_reg(enc->avpu.fd, AVPU_INTERRUPT_MASK,
+                                      t31_hwjpeg_idle_irq_mask());
+            codec_startup_trace(
+                "openimp/codec teardown: irq masked ret=%d\n", mask_ret);
+            ack_ret = avpu_write_reg(enc->avpu.fd, AVPU_INTERRUPT,
+                                     t31_hwjpeg_idle_irq_mask()
+                                         ? 0x0fu : AVPU_IRQ_CLEAR_MASK);
+#else
             mask_ret = avpu_write_reg(enc->avpu.fd, AVPU_INTERRUPT_MASK, 0u);
             codec_startup_trace(
                 "openimp/codec teardown: irq masked ret=%d\n", mask_ret);
             ack_ret = avpu_write_reg(enc->avpu.fd, AVPU_INTERRUPT,
                                      AVPU_IRQ_CLEAR_MASK);
+#endif
             codec_startup_trace(
                 "openimp/codec teardown: irq acked ret=%d\n", ack_ret);
 #if defined(PLATFORM_T41)
@@ -7541,21 +7553,39 @@ static void avpu_t31_dump_source_once(int channel_id, uint32_t width,
 #define T31_HWJPEG_REG_RESET    0x85F0u
 #define T31_HWJPEG_REG_CLOCK    0x85F4u
 #define T31_HWJPEG_STREAM_OFF   0x200u
+#define T31_HWJPEG_REG_BUSY     0x85F8u
 #define T31_HWJPEG_TIMEOUT_MS   200
+#define T31_HWJPEG_MAX_TIMEOUTS 3
+#define T31_HWJPEG_EP1_ALLOC    0x6400u     /* stock AL_GetAllocSizeEP1() */
 
 static struct {
     pthread_mutex_t lock;
-    pthread_cond_t done;
+    pthread_cond_t done;        /* re-initialised on CLOCK_MONOTONIC once */
     int state;                  /* 0 = not set up, 1 = ready, -1 = disabled */
     int fd;
     int in_flight;
     int completed;
+    int timeouts;               /* consecutive */
     uint32_t ep1_quality;
+    uint32_t stream_min;        /* raised after a stream overflow */
     AvpuDMABuf src, ep1, stream;
 } g_t31_hwjpeg = {
-    PTHREAD_MUTEX_INITIALIZER, PTHREAD_COND_INITIALIZER, 0, -1, 0, 0, 0,
+    PTHREAD_MUTEX_INITIALIZER, PTHREAD_COND_INITIALIZER, 0, -1, 0, 0, 0, 0, 0,
     {0}, {0}, {0}
 };
+static pthread_once_t g_t31_hwjpeg_once = PTHREAD_ONCE_INIT;
+
+/* A wall-clock step (NTP at boot) must not fake a completion timeout. */
+static void t31_hwjpeg_init_once(void)
+{
+    pthread_condattr_t attr;
+
+    pthread_condattr_init(&attr);
+    pthread_condattr_setclock(&attr, CLOCK_MONOTONIC);
+    pthread_cond_destroy(&g_t31_hwjpeg.done);
+    pthread_cond_init(&g_t31_hwjpeg.done, &attr);
+    pthread_condattr_destroy(&attr);
+}
 
 static int t31_hwjpeg_requested(void)
 {
@@ -7590,10 +7620,23 @@ static int t31_hwjpeg_on_irq(uint32_t irq_id)
     return 1;
 }
 
-/* AVC completion masks the core; keep the JPEG bit while a job runs. */
+/* AVC completion and teardown mask the core; keep the JPEG bit while a job
+ * runs. */
 static uint32_t t31_hwjpeg_idle_irq_mask(void)
 {
     return g_t31_hwjpeg.in_flight ? 1u << T31_HWJPEG_IRQ_SLOT : 0u;
+}
+
+/* Completion is delivered by the shared WAIT_IRQ thread that an AVC session
+ * starts; without it a job could only time out. */
+static int t31_hwjpeg_irq_waiter_running(void)
+{
+    int running;
+
+    pthread_mutex_lock(&g_tseries_irq_host_lock);
+    running = g_tseries_irq_host != NULL && g_tseries_irq_host->irq_thread_running;
+    pthread_mutex_unlock(&g_tseries_irq_host_lock);
+    return running;
 }
 
 static void t31_hwjpeg_set_irq_bit(int fd, int on)
@@ -7607,7 +7650,31 @@ static void t31_hwjpeg_set_irq_bit(int fd, int on)
     avpu_write_reg(fd, AVPU_INTERRUPT_MASK, mask);
 }
 
-static int t31_hwjpeg_setup(uint32_t src_size, uint32_t stream_size)
+/* Grow-only. EP1 and the stream are small and coherent: the cached rmem
+ * flush is not trusted on T31 (see avpu_remap_uncached). The source stays
+ * cached for the 3 MB copy unless OPENIMP_T31_HW_JPEG_SRC_COHERENT=1. */
+static int t31_hwjpeg_ensure(AvpuDMABuf *buf, uint32_t size, int coherent,
+                             const char *tag)
+{
+    if (buf->map && buf->size >= size)
+        return 0;
+    if (buf->map)
+        avpu_release_dma_buf(buf);
+    memset(buf, 0, sizeof(*buf));
+    buf->dmabuf_fd = -1;
+    if ((coherent ? avpu_alloc_mmap(g_t31_hwjpeg.fd, size, buf)
+                  : avpu_alloc_encoder(g_t31_hwjpeg.fd, size, tag, buf)) != 0) {
+        memset(buf, 0, sizeof(*buf));
+        buf->dmabuf_fd = -1;
+        return -1;
+    }
+    if ((buf->phy_addr & 255u) != 0)
+        IMP_LOG_INFO("Codec", "HWJPEG: warning: %s at 0x%08x is not 256-byte aligned as in stock traces",
+                     tag, buf->phy_addr);
+    return 0;
+}
+
+static int t31_hwjpeg_setup(void)
 {
     int fd = AL_DevicePool_Open("/dev/avpu");
 
@@ -7616,23 +7683,18 @@ static int t31_hwjpeg_setup(uint32_t src_size, uint32_t stream_size)
         return -1;
     }
     g_t31_hwjpeg.fd = fd;
-    if (avpu_alloc_encoder(fd, 0x1000u, "hwjpeg-ep1", &g_t31_hwjpeg.ep1) != 0 ||
-        avpu_alloc_encoder(fd, src_size, "hwjpeg-src", &g_t31_hwjpeg.src) != 0 ||
-        avpu_alloc_encoder(fd, stream_size, "hwjpeg-stream",
-                           &g_t31_hwjpeg.stream) != 0) {
-        t31_hwjpeg_disable("DMA allocation failed");
+    if (t31_hwjpeg_ensure(&g_t31_hwjpeg.ep1, T31_HWJPEG_EP1_ALLOC, 1, "hwjpeg-ep1") != 0) {
+        t31_hwjpeg_disable("EP1 allocation failed");
         return -1;
     }
     if ((g_t31_hwjpeg.ep1.phy_addr & 31u) != 0) {
         t31_hwjpeg_disable("EP1 buffer not 32-byte aligned");
         return -1;
     }
-    if (((g_t31_hwjpeg.src.phy_addr | g_t31_hwjpeg.stream.phy_addr) & 255u) != 0)
-        IMP_LOG_INFO("Codec", "HWJPEG: warning: source/stream not 256-byte aligned as in stock traces");
-    IMP_LOG_INFO("Codec", "HWJPEG: ready src=0x%08x/%zu ep1=0x%08x stream=0x%08x/%zu",
-              g_t31_hwjpeg.src.phy_addr, g_t31_hwjpeg.src.size,
-              g_t31_hwjpeg.ep1.phy_addr, g_t31_hwjpeg.stream.phy_addr,
-              g_t31_hwjpeg.stream.size);
+    /* The stock library clears the whole EP1 once; the hardware read
+     * length beyond the 0x790 bytes of tables is unknown. */
+    memset(g_t31_hwjpeg.ep1.map, 0, g_t31_hwjpeg.ep1.size);
+    IMP_LOG_INFO("Codec", "HWJPEG: ready, ep1=0x%08x", g_t31_hwjpeg.ep1.phy_addr);
     g_t31_hwjpeg.state = 1;
     return 0;
 }
@@ -7642,11 +7704,15 @@ static int t31_hwjpeg_setup(uint32_t src_size, uint32_t stream_size)
 static int t31_hwjpeg_encode(const HWFrameBuffer *frame, HWStreamBuffer *stream,
                              uint32_t quality)
 {
+    static int no_waiter_logged;
+    const char *src_coherent_env;
     uint32_t width = frame->width, height = frame->height;
-    uint32_t uv_offset = width * ((height + 15u) & ~15u);
-    uint32_t src_size = uv_offset + width * ((height + 1u) / 2u);
-    uint32_t stream_size = width * height / 2u + 0x10000u;
-    uint32_t cmd[11], status[3], length;
+    uint32_t luma_rows = (height + 15u) & ~15u;
+    uint32_t uv_offset = width * luma_rows;
+    uint32_t src_need = uv_offset + width * ((height + 1u) / 2u);
+    uint32_t src_size = uv_offset + width * (luma_rows / 2u);
+    uint32_t copy_size, stream_size;
+    uint32_t cmd[11], status[3], busy = 0, length;
     struct timespec deadline;
     const uint8_t *jpeg;
     uint8_t *copy;
@@ -7656,31 +7722,46 @@ static int t31_hwjpeg_encode(const HWFrameBuffer *frame, HWStreamBuffer *stream,
         return -1;
     if (!frame->virt_addr || width < 16u || height < 16u ||
         (width & 15u) != 0 || width > 4096u || height > 4096u ||
-        frame->size < src_size ||
+        frame->size < src_need ||
         frame->pixfmt == 0x0bu || frame->pixfmt == 0x3132564eu /* NV21 */)
         return -1;
-    if (g_t31_hwjpeg.state == 0 && t31_hwjpeg_setup(src_size, stream_size) != 0)
-        return -1;
-    if (g_t31_hwjpeg.src.size < src_size ||
-        g_t31_hwjpeg.stream.size < stream_size) {
-        IMP_LOG_INFO("Codec", "HWJPEG: %ux%u exceeds the buffers sized at setup, software this frame",
-                  width, height);
+    if (!t31_hwjpeg_irq_waiter_running()) {
+        if (!no_waiter_logged) {
+            no_waiter_logged = 1;
+            IMP_LOG_INFO("Codec", "HWJPEG: no AVC IRQ waiter yet, software until one runs");
+        }
         return -1;
     }
+    pthread_once(&g_t31_hwjpeg_once, t31_hwjpeg_init_once);
+    if (g_t31_hwjpeg.state == 0 && t31_hwjpeg_setup() != 0)
+        return -1;
     fd = g_t31_hwjpeg.fd;
+
+    stream_size = width * height / 2u + 0x10000u;
+    if (stream_size < g_t31_hwjpeg.stream_min)
+        stream_size = g_t31_hwjpeg.stream_min;
+    stream_size = (stream_size + 0xfffu) & ~0xfffu;
+    src_coherent_env = getenv("OPENIMP_T31_HW_JPEG_SRC_COHERENT");
+    if (t31_hwjpeg_ensure(&g_t31_hwjpeg.src, src_size,
+                          src_coherent_env && src_coherent_env[0] == '1',
+                          "hwjpeg-src") != 0 ||
+        t31_hwjpeg_ensure(&g_t31_hwjpeg.stream, stream_size, 1,
+                          "hwjpeg-stream") != 0) {
+        t31_hwjpeg_disable("DMA allocation failed");
+        return -1;
+    }
 
     if (g_t31_hwjpeg.ep1_quality != quality) {
         if (HW_Encoder_BuildJpegEp1(g_t31_hwjpeg.ep1.map, g_t31_hwjpeg.ep1.size,
                                     quality) != 0)
             return -1;
-        avpu_flush_cache(fd, g_t31_hwjpeg.ep1.map, HW_JPEG_EP1_SIZE, 1 /*WBACK*/);
         g_t31_hwjpeg.ep1_quality = quality;
     }
+    copy_size = frame->size < src_size ? frame->size : src_size;
     memcpy(g_t31_hwjpeg.src.map, (const void *)(uintptr_t)frame->virt_addr,
-           src_size);
-    avpu_flush_cache(fd, g_t31_hwjpeg.src.map, src_size, 1 /*WBACK*/);
-    avpu_flush_cache(fd, g_t31_hwjpeg.stream.map,
-                     (unsigned int)g_t31_hwjpeg.stream.size, 2 /*INV*/);
+           copy_size);
+    if (g_t31_hwjpeg.src.from_rmem)
+        avpu_flush_cache(fd, g_t31_hwjpeg.src.map, copy_size, 1 /*WBACK*/);
 
     cmd[0] = 0x1u | 3u << 4 | 1u << 8;   /* 4:2:0, 3 components, stock bit 8 */
     cmd[1] = (width - 1u) << 16 | (height - 1u);
@@ -7705,13 +7786,15 @@ static int t31_hwjpeg_encode(const HWFrameBuffer *frame, HWStreamBuffer *stream,
         avpu_read_reg_quiet(fd, T31_HWJPEG_REG_CLOCK, &clock);
         avpu_write_reg(fd, T31_HWJPEG_REG_CLOCK, (clock & ~3u) | 1u);
     }
+    /* A stale slot-4 pending bit (W1C) must not count as this job's end. */
+    avpu_write_reg(fd, AVPU_INTERRUPT, 1u << T31_HWJPEG_IRQ_SLOT);
     t31_hwjpeg_set_irq_bit(fd, 1);
     avpu_write_reg(fd, T31_HWJPEG_REG_RESET, 1u);
     for (i = 0; i < 11; i++)
         avpu_write_reg(fd, T31_HWJPEG_REG_CMD + 4u * (unsigned int)i, cmd[i]);
     avpu_write_reg(fd, T31_HWJPEG_REG_START, 1u);
 
-    clock_gettime(CLOCK_REALTIME, &deadline);
+    clock_gettime(CLOCK_MONOTONIC, &deadline);
     deadline.tv_nsec += (long)T31_HWJPEG_TIMEOUT_MS * 1000000L;
     deadline.tv_sec += deadline.tv_nsec / 1000000000L;
     deadline.tv_nsec %= 1000000000L;
@@ -7729,18 +7812,24 @@ static int t31_hwjpeg_encode(const HWFrameBuffer *frame, HWStreamBuffer *stream,
                             &status[i]);
     t31_hwjpeg_set_irq_bit(fd, 0);
     if (!completed) {
+        avpu_read_reg_quiet(fd, T31_HWJPEG_REG_BUSY, &busy);
         avpu_write_reg(fd, T31_HWJPEG_REG_RESET, 1u);
-        IMP_LOG_INFO("Codec", "HWJPEG: no IRQ %u within %d ms (status %08x %08x %08x)",
-                  T31_HWJPEG_IRQ_SLOT, T31_HWJPEG_TIMEOUT_MS,
-                  status[0], status[1], status[2]);
-        t31_hwjpeg_disable("completion timeout");
+        IMP_LOG_INFO("Codec", "HWJPEG: no IRQ %u within %d ms (status %08x %08x %08x, 0x85f8 %08x) [%d/%d]",
+                     T31_HWJPEG_IRQ_SLOT, T31_HWJPEG_TIMEOUT_MS, status[0],
+                     status[1], status[2], busy, g_t31_hwjpeg.timeouts + 1,
+                     T31_HWJPEG_MAX_TIMEOUTS);
+        if (++g_t31_hwjpeg.timeouts >= T31_HWJPEG_MAX_TIMEOUTS)
+            t31_hwjpeg_disable("repeated completion timeouts");
         return -1;
     }
+    g_t31_hwjpeg.timeouts = 0;
 
     length = status[1];
     if (status[2] & 2u) {
-        IMP_LOG_INFO("Codec", "HWJPEG: error bit set (status %08x %08x %08x), software this frame",
-                  status[0], status[1], status[2]);
+        /* Stream overflow (stock error 0x88): retry larger next time. */
+        g_t31_hwjpeg.stream_min = (uint32_t)g_t31_hwjpeg.stream.size * 2u;
+        IMP_LOG_INFO("Codec", "HWJPEG: stream overflow at %zu bytes (status %08x %08x %08x), software this frame",
+                     g_t31_hwjpeg.stream.size, status[0], status[1], status[2]);
         return -1;
     }
     if (length < 4u || length > cmd[10]) {
@@ -7748,16 +7837,25 @@ static int t31_hwjpeg_encode(const HWFrameBuffer *frame, HWStreamBuffer *stream,
         t31_hwjpeg_disable("implausible length");
         return -1;
     }
-    avpu_flush_cache(fd, g_t31_hwjpeg.stream.map,
-                     T31_HWJPEG_STREAM_OFF + length, 2 /*INV*/);
     jpeg = (const uint8_t *)g_t31_hwjpeg.stream.map + T31_HWJPEG_STREAM_OFF;
-    if (jpeg[0] != 0xffu || jpeg[1] != 0xd8u ||
-        jpeg[length - 2u] != 0xffu || jpeg[length - 1u] != 0xd9u) {
-        IMP_LOG_INFO("Codec", "HWJPEG: output lacks SOI/EOI (%02x %02x .. %02x %02x, %u bytes)",
-                  jpeg[0], jpeg[1], jpeg[length - 2u], jpeg[length - 1u], length);
+    if (jpeg[0] != 0xffu || jpeg[1] != 0xd8u) {
+        IMP_LOG_INFO("Codec", "HWJPEG: output lacks SOI (%02x %02x .., %u bytes)",
+                     jpeg[0], jpeg[1], length);
         t31_hwjpeg_disable("hardware did not emit a JFIF stream");
         return -1;
     }
+    /* EOI may be followed by alignment padding. */
+    for (i = 0; i < 64 && length - (uint32_t)i >= 4u; i++) {
+        if (jpeg[length - (uint32_t)i - 2u] == 0xffu &&
+            jpeg[length - (uint32_t)i - 1u] == 0xd9u)
+            break;
+    }
+    if (i == 64 || length - (uint32_t)i < 4u) {
+        IMP_LOG_INFO("Codec", "HWJPEG: no EOI in the last 64 bytes (%u bytes)", length);
+        t31_hwjpeg_disable("hardware did not emit a JFIF stream");
+        return -1;
+    }
+    length -= (uint32_t)i;
 
     /* The software stream contract: heap buffer, phys 0, freed on release. */
     copy = malloc(length);
@@ -7776,7 +7874,7 @@ static int t31_hwjpeg_encode(const HWFrameBuffer *frame, HWStreamBuffer *stream,
 
         if (c <= 3 || c % 100 == 0)
             IMP_LOG_INFO("Codec", "HWJPEG: %ux%u q%u -> %u bytes [#%u]",
-                      width, height, quality, length, c);
+                         width, height, quality, length, c);
     }
     return 0;
 }

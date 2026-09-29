@@ -4,7 +4,8 @@ Diese Anleitung ist für eine Claude-Code-Session gedacht, die auf einem Rechner
 selben Netz wie eine **T31-Testkamera** läuft und per SSH auf sie zugreifen kann. Sie
 setzt keine Vorkenntnisse aus früheren Sessions voraus.
 
-Hintergrund und Registerkarte stehen in [`T31_HW_JPEG_RE.md`](T31_HW_JPEG_RE.md). Die
+Hintergrund und Registerkarte stehen in [`T31_HW_JPEG_RE.md`](T31_HW_JPEG_RE.md), offene Punkte
+und ein Code-Review in [`T31_HW_JPEG_RE_FOLLOWUP.md`](T31_HW_JPEG_RE_FOLLOWUP.md). Die
 Kurzfassung:
 
 - OpenIMP kodiert JPEG heute in Software. Das kostet grob 0,3 s CPU pro 1080p-Bild und
@@ -144,6 +145,17 @@ Dann das Bild ansehen. Stimmen Graustufen, Schachbrett und Farbbalken?
 | Farben vertauscht (Blau/Rot) | U/V-Reihenfolge | melden |
 | Kamera hängt | AVPU blockiert | Neustart; genau notieren, nach welchem Aufruf |
 
+Zusätzliche Probe-Läufe, nachdem der Basistest funktioniert:
+
+```sh
+/tmp/t31_hwjpeg_probe -s 65536 -o /tmp/overflow.jpg      # erwartet: Overflow-Bit (0x8438 Bit 1)
+/tmp/t31_hwjpeg_probe -c 0x31 -o /tmp/bit8off.jpg         # Bit 8 aus: was ändert sich?
+/tmp/t31_hwjpeg_probe -c 0x00080131 -o /tmp/dri8.jpg      # Restart-Intervall 8 in [31:16]: RST-Marker im JPEG?
+```
+
+Jeweils Ausgabe, `0x85f8`-Werte und `xxd <datei> | head -4` melden. Ob `dri8.jpg`
+Restart-Marker enthält: `python3 -c "d=open('dri8.jpg','rb').read(); print([hex(d[i+1]) for i in range(len(d)-1) if d[i]==0xff and 0xd0<=d[i+1]<=0xd7][:5], b'\xff\xdd' in d)"`.
+
 Mit einem echten Kamerabild (optional, OpenIMP-Streamer läuft vorher):
 
 ```sh
@@ -263,10 +275,27 @@ JPEGs sind korrekt, und H.264 bleibt stabil.
 
 | Grund | Bedeutung |
 |---|---|
-| `completion timeout` | IRQ 4 kam nicht an. Läuft H.264 gleichzeitig? Der IRQ-Thread existiert nur mit aktivem H.264-Kanal. |
-| `hardware did not emit a JFIF stream` | siehe Stufe 1, Header |
+| `repeated completion timeouts` | IRQ 4 kam dreimal in Folge nicht an. Die vorherigen Zeilen `HWJPEG: no IRQ 4 within 200 ms (status …, 0x85f8 …)` mitliefern. |
+| `hardware did not emit a JFIF stream` | kein `FF D8` am Anfang oder kein `FF D9` in den letzten 64 Bytes. Siehe Stufe 1, Header |
 | `implausible length` | siehe Stufe 1 |
 | `DMA allocation failed` / `EP1 … aligned` | Speicher. Die Log-Zeile `HWJPEG: ready …` fehlt, bitte melden. |
+
+Weitere Meldungen, die **nicht** abschalten:
+
+- `HWJPEG: no AVC IRQ waiter yet, software until one runs`: Der gemeinsame IRQ-Thread
+  startet mit dem ersten H.264-Kanal. Bis dahin kodiert der Pfad in Software. Erscheint
+  danach nie ein `HWJPEG: … bytes`, läuft kein H.264, bitte melden.
+- `HWJPEG: stream overflow …`: Das eine Bild geht in Software, beim nächsten wird der
+  Stream-Puffer verdoppelt.
+
+**Wenn die Bilder aus D kaputt aussehen** (Streifen, alte Bildinhalte, Blockmüll), der
+Probe aus Stufe 1 aber saubere Bilder liefert: Durchgang D mit zusätzlich
+`OPENIMP_T31_HW_JPEG_SRC_COHERENT=1` wiederholen. Dann liegt auch das Quellbild in
+kohärentem statt gecachtem Speicher. Wird es damit sauber, ist der Cache-Flush des
+gecachten rmem auf T31 die Ursache. Das ist ein wichtiger Befund.
+
+Die Stufe 3a (Companion-Stage) vor 3b auswerten: `OPENIMP_T31_HW_JPEG=1` schaltet die
+Companion-Stage immer mit ab, sonst lassen sich H.264-Auffälligkeiten nicht zuordnen.
 
 ---
 

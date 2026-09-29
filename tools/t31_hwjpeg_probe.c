@@ -55,6 +55,7 @@ struct avpu_dma_info {
 #define REG_JPEG_START 0x85E4
 #define REG_JPEG_RST   0x85F0
 #define REG_JPEG_CLK   0x85F4
+#define REG_JPEG_BUSY  0x85F8
 #define JPEG_IRQ_SLOT  4
 
 #define EP1_ALLOC      0x6400u
@@ -351,6 +352,8 @@ static void usage(const char *argv0)
         "  -e <file>         also write the generated EP1 table buffer (0x%x bytes)\n"
         "  -E <file>         load EP1 from a file (e.g. a stock libimp dump) instead\n"
         "  -t <ms>           IRQ timeout (default 2000)\n"
+        "  -c <word0>        override command word 0 (default 0x131: 4:2:0, 3 comps, bit 8)\n"
+        "  -s <bytes>        stream buffer size (default W*H+64KiB; small values test overflow)\n"
         "  -n                skip the global/core-0 init writes\n"
         "  -v                log every register write\n"
         "Stop the streamer first: the AVPU driver accepts one client.\n",
@@ -361,10 +364,11 @@ int main(int argc, char **argv)
 {
     uint32_t w = 1920, h = 1080;
     int quality = 75, timeout_ms = 2000, skip_init = 0, opt;
+    uint32_t cmd0 = 0x1u | 3u << 4 | 1u << 8, strm_override = 0;
     const char *in = NULL, *out = "/tmp/hwjpeg.jpg", *ep1_out = NULL, *ep1_in = NULL;
     dma_buf src, ep1, strm;
 
-    while ((opt = getopt(argc, argv, "W:H:q:i:o:e:E:t:nvh")) != -1) {
+    while ((opt = getopt(argc, argv, "W:H:q:i:o:e:E:t:c:s:nvh")) != -1) {
         switch (opt) {
         case 'W': w = (uint32_t)strtoul(optarg, NULL, 0); break;
         case 'H': h = (uint32_t)strtoul(optarg, NULL, 0); break;
@@ -374,6 +378,8 @@ int main(int argc, char **argv)
         case 'e': ep1_out = optarg; break;
         case 'E': ep1_in = optarg; break;
         case 't': timeout_ms = atoi(optarg); break;
+        case 'c': cmd0 = (uint32_t)strtoul(optarg, NULL, 0); break;
+        case 's': strm_override = (uint32_t)strtoul(optarg, NULL, 0); break;
         case 'n': skip_init = 1; break;
         case 'v': g_verbose = 1; break;
         default: usage(argv[0]); return 2;
@@ -389,7 +395,7 @@ int main(int argc, char **argv)
     const uint32_t luma_rows = (h + 15) & ~15u;
     const uint32_t uv_off = pitch * luma_rows;
     const uint32_t src_size = uv_off + pitch * (luma_rows / 2);
-    const uint32_t strm_size = w * h + 0x10000u;
+    const uint32_t strm_size = strm_override ? strm_override : w * h + 0x10000u;
 
     g_fd = open("/dev/avpu", O_RDWR);
     if (g_fd < 0) {
@@ -441,7 +447,7 @@ int main(int argc, char **argv)
         return 1;
 
     const uint32_t cmd[11] = {
-        0x1u | 3u << 4 | 1u << 8,              /* 4:2:0, 3 components, bit 8 as stock */
+        cmd0,                                  /* default 4:2:0, 3 components, bit 8 as stock */
         (w - 1) << 16 | (h - 1),
         0x00010001u,                           /* JFIF density 1:1 */
         pitch,
@@ -459,6 +465,7 @@ int main(int argc, char **argv)
     sa.sa_handler = on_alarm;                  /* no SA_RESTART: WAIT_IRQ returns EINTR */
     sigaction(SIGALRM, &sa, NULL);
 
+    printf("0x85f8 before start: 0x%08x\n", rd_or0(REG_JPEG_BUSY));
     if (wr(REG_JPEG_RST, 1))
         return 1;
     for (int i = 0; i < 11; i++)
@@ -488,6 +495,7 @@ int main(int argc, char **argv)
     double hw_ms = now_ms() - t0;
 
     uint32_t s0 = rd_or0(REG_JPEG_STAT), len = rd_or0(REG_JPEG_STAT + 4), s2 = rd_or0(REG_JPEG_STAT + 8);
+    printf("0x85f8 after: 0x%08x\n", rd_or0(REG_JPEG_BUSY));
     printf("status: 0x8430=0x%08x len(0x8434)=%u 0x8438=0x%08x%s  mask=0x%08x\n",
            s0, len, s2, (s2 & 2u) ? " [ERROR/overflow bit]" : "", rd_or0(REG_IRQ_MASK));
     if (!got) {
