@@ -17,17 +17,21 @@
 #include "imp_log_int.h"
 #include "openimp_t31_osd.h"
 
+#if !defined(PLATFORM_T31)
 #include "imp/imp_ivs.h"
 #include "imp/imp_ivs_base_move.h"
 #include "imp/imp_ivs_move.h"
+#endif
 #include "openimp_t31_osd_abi.h"
 #include "imp/imp_system.h"
 
 #define T31_OSD_GROUPS  16
 #define T31_OSD_REGIONS 64
+#if !defined(PLATFORM_T31)
 #define T31_IVS_GROUPS  16
 #define T31_IVS_CHANNELS 16
 #define T31_IVS_MAGIC   0x49565331U
+#endif
 
 /*
  * T31's public H.264 stream is a CPU-owned Annex-B snapshot.  The AVPU writes
@@ -585,6 +589,9 @@ int IMP_OSD_Stop(int group)
     return 0;
 }
 
+/* T21/T23/T30 builds keep these IVS stubs; T31 has the real IVS in
+ * openimp_t31_ivs.c (vendor ABI there differs from include/imp/imp_ivs*.h). */
+#if !defined(PLATFORM_T31)
 enum t31_ivs_kind {
     T31_IVS_MOVE,
     T31_IVS_BASE_MOVE
@@ -918,6 +925,7 @@ int IMP_IVS_SetParam(int channel, void *param)
     pthread_mutex_unlock(&ivs_lock);
     return 0;
 }
+#endif /* !PLATFORM_T31 */
 
 static uint32_t t31_register_access(uint32_t address,
                                     const uint32_t *write_value)
