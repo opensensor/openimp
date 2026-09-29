@@ -7512,12 +7512,33 @@ static void avpu_t31_dump_source_once(int channel_id, uint32_t width,
               dump_path, written, size);
 }
 
+/* The 0x8400-0x8428 block plus 0x85F0/0x85E4 is the stock libimp's JPEG core
+ * (core index 1) command zone; the OEM trace this was copied from had JPEG
+ * channels running alongside AVC. OPENIMP_T31_COMPANION_STAGE=0 skips it so
+ * AVC can be compared with and without the extra JPEG-core kick. */
+static int avpu_t31_companion_stage_enabled(void)
+{
+    static int enabled = -1;
+
+    if (enabled < 0) {
+        const char *value = getenv("OPENIMP_T31_COMPANION_STAGE");
+
+        enabled = !(value && value[0] == '0' && value[1] == '\0');
+        LOG_CODEC("AVPU: T31 companion stage %s",
+                  enabled ? "enabled" : "disabled (OPENIMP_T31_COMPANION_STAGE=0)");
+    }
+    return enabled;
+}
+
 static void avpu_t31_start_companion_stage(ALAvpuContext *ctx, int fd,
                                             uint32_t width, uint32_t height,
                                             uint32_t phys_addr,
                                             const uint32_t *cmd, int buf_idx,
                                             int trace_submit)
 {
+    if (!avpu_t31_companion_stage_enabled())
+        return;
+
     uint32_t y_plane_sz = avpu_get_nv12_luma_plane_size(width, height);
     uint32_t stream_part_offset = cmd[0x31];
     uint32_t hw_hdr_offset = 0x200u;
