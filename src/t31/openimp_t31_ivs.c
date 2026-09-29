@@ -457,12 +457,69 @@ struct t31_ivs_channel {
     uint8_t *copy;                  /* NV12 copy for foreign interfaces */
     size_t copy_size;
     int error_logged;
+    struct {                        /* OPENIMP_T31_IVS_STATS=1 */
+        unsigned int frames, dropped;
+        uint64_t copy_ns;
+        uint32_t copy_max_ns;
+        int64_t last_ms;
+        /* written by the IVS thread, atomics */
+        uint32_t results, proc_us, proc_max_us;
+    } stats;
 };
 
 static pthread_mutex_t ivs_lock = PTHREAD_MUTEX_INITIALIZER;
 static int ivs_groups[T31_IVS_GROUPS];
 static struct t31_ivs_channel ivs_channels[T31_IVS_CHANNELS];
 static int ivs_receiving;           /* channels with enabled set */
+
+static uint64_t ivs_now_ns(void)
+{
+    struct timespec ts;
+
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (uint64_t)ts.tv_sec * 1000000000u + (uint64_t)ts.tv_nsec;
+}
+
+/* OPENIMP_T31_IVS_STATS=1: one line per channel every 10 s with frame,
+ * drop and result counts and the time spent copying (capture thread) and
+ * processing (IVS thread). */
+static int ivs_stats_enabled(void)
+{
+    static int enabled = -1;
+
+    if (enabled < 0) {
+        const char *value = getenv("OPENIMP_T31_IVS_STATS");
+
+        enabled = value && value[0] == '1';
+    }
+    return enabled;
+}
+
+static void ivs_stats_report(struct t31_ivs_channel *c)
+{
+    int64_t now = (int64_t)(ivs_now_ns() / 1000000u);
+    unsigned int accepted = c->stats.frames - c->stats.dropped;
+    uint32_t results, proc_us, proc_max_us;
+
+    if (!c->stats.last_ms)
+        c->stats.last_ms = now;
+    if (now - c->stats.last_ms < 10000)
+        return;
+    results = __atomic_exchange_n(&c->stats.results, 0u, __ATOMIC_RELAXED);
+    proc_us = __atomic_exchange_n(&c->stats.proc_us, 0u, __ATOMIC_RELAXED);
+    proc_max_us = __atomic_exchange_n(&c->stats.proc_max_us, 0u, __ATOMIC_RELAXED);
+    IMP_LOG_INFO("IVS", "chn%d: %u frames, %u dropped busy, %u results; "
+                 "copy avg %u us max %u us; process avg %u us max %u us",
+                 c->number, c->stats.frames, c->stats.dropped, results,
+                 accepted ? (unsigned int)(c->stats.copy_ns / accepted / 1000u) : 0u,
+                 c->stats.copy_max_ns / 1000u,
+                 accepted ? proc_us / accepted : 0u, proc_max_us);
+    c->stats.frames = 0;
+    c->stats.dropped = 0;
+    c->stats.copy_ns = 0;
+    c->stats.copy_max_ns = 0;
+    c->stats.last_ms = now;
+}
 
 static int ivs_fail(int error)
 {
@@ -528,7 +585,20 @@ static void *ivs_thread(void *arg)
             ;
         if (__atomic_load_n(&c->quit, __ATOMIC_ACQUIRE))
             break;
-        ret = inf->processAsync ? inf->processAsync(inf, &c->work) : 1;
+        if (ivs_stats_enabled()) {
+            uint64_t t0 = ivs_now_ns();
+            uint32_t us;
+
+            ret = inf->processAsync ? inf->processAsync(inf, &c->work) : 1;
+            us = (uint32_t)((ivs_now_ns() - t0) / 1000u);
+            __atomic_add_fetch(&c->stats.proc_us, us, __ATOMIC_RELAXED);
+            if (us > __atomic_load_n(&c->stats.proc_max_us, __ATOMIC_RELAXED))
+                __atomic_store_n(&c->stats.proc_max_us, us, __ATOMIC_RELAXED);
+            if (ret == 0)
+                __atomic_add_fetch(&c->stats.results, 1u, __ATOMIC_RELAXED);
+        } else {
+            ret = inf->processAsync ? inf->processAsync(inf, &c->work) : 1;
+        }
         if (ret == 0) {
             sem_post(&c->sem_result);
         } else if (ret < 0 && !c->error_logged) {
@@ -605,9 +675,22 @@ void openimp_t31_ivs_capture(int fs_chn, const void *frame)
             source = ivs_group_source(0);
         if (source != fs_chn)
             break;                  /* one group: nothing else to feed */
-        if (sem_trywait(&c->sem_end) != 0)
-            continue;               /* still busy: drop, as the vendor */
-        ivs_deliver(c, &info);
+        c->stats.frames++;
+        if (sem_trywait(&c->sem_end) != 0) {
+            c->stats.dropped++;     /* still busy: drop, as the vendor */
+        } else if (ivs_stats_enabled()) {
+            uint64_t t0 = ivs_now_ns(), dt;
+
+            ivs_deliver(c, &info);
+            dt = ivs_now_ns() - t0;
+            c->stats.copy_ns += dt;
+            if (dt > c->stats.copy_max_ns)
+                c->stats.copy_max_ns = (uint32_t)dt;
+        } else {
+            ivs_deliver(c, &info);
+        }
+        if (ivs_stats_enabled())
+            ivs_stats_report(c);
     }
     pthread_mutex_unlock(&ivs_lock);
 }
@@ -707,6 +790,7 @@ int IMP_IVS_CreateChn(int channel, IMPIVSInterface *handler)
     c->param_changed = 0;
     c->quit = 0;
     c->error_logged = 0;
+    memset(&c->stats, 0, sizeof(c->stats));
     sem_init(&c->sem_start, 0, 0);
     sem_init(&c->sem_end, 0, 1);
     sem_init(&c->sem_result, 0, 0);
