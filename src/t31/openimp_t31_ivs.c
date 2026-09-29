@@ -451,7 +451,7 @@ struct t31_ivs_channel {
     IMPIVSInterface *inf;
     sem_t sem_start, sem_end, sem_result;
     pthread_t thread;
-    volatile int quit;
+    int quit;                       /* atomic */
     int number;
     T31IVSFrameInfo work;           /* frame handed to processAsync */
     uint8_t *copy;                  /* NV12 copy for foreign interfaces */
@@ -526,7 +526,7 @@ static void *ivs_thread(void *arg)
 
         while (sem_wait(&c->sem_start) != 0 && errno == EINTR)
             ;
-        if (c->quit)
+        if (__atomic_load_n(&c->quit, __ATOMIC_ACQUIRE))
             break;
         ret = inf->processAsync ? inf->processAsync(inf, &c->work) : 1;
         if (ret == 0) {
@@ -771,7 +771,7 @@ int IMP_IVS_DestroyChn(int channel)
     pthread_mutex_unlock(&ivs_lock);
 
     ivs_wait_users(c);
-    c->quit = 1;
+    __atomic_store_n(&c->quit, 1, __ATOMIC_RELEASE);
     sem_post(&c->sem_start);
     pthread_join(c->thread, NULL);
     if (inf->exit)
@@ -906,7 +906,7 @@ int IMP_IVS_PollingResult(int channel, int timeout_ms)
     struct t31_ivs_channel *c;
     unsigned int gen;
     int64_t deadline;
-    int got = 0;
+    int got = 0, alive;
 
     if (!ivs_valid_channel(channel))
         return ivs_fail(EINVAL);
@@ -933,8 +933,12 @@ int IMP_IVS_PollingResult(int channel, int timeout_ms)
             break;
         }
         left = deadline - ivs_monotonic_ms();
-        if (!timeout_ms || left <= 0 || c->state != IVS_CHN_ACTIVE ||
-            c->gen != gen)
+        if (!timeout_ms || left <= 0)
+            break;
+        pthread_mutex_lock(&ivs_lock);
+        alive = c->state == IVS_CHN_ACTIVE && c->gen == gen;
+        pthread_mutex_unlock(&ivs_lock);
+        if (!alive)
             break;
         ivs_realtime_in(&ts, left < 100 ? (long)left : 100L);
         if (sem_timedwait(&c->sem_result, &ts) == 0) {
