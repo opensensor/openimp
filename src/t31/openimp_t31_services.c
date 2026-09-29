@@ -15,7 +15,7 @@
 #include "imp/imp_ivs.h"
 #include "imp/imp_ivs_base_move.h"
 #include "imp/imp_ivs_move.h"
-#include "imp/imp_osd.h"
+#include "openimp_t31_osd_abi.h"
 #include "imp/imp_system.h"
 
 #define T31_OSD_GROUPS  16
