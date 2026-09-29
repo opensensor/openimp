@@ -7566,7 +7566,7 @@ static int t31_hwjpeg_requested(void)
 
         requested = value && value[0] == '1' && value[1] == '\0';
         if (requested)
-            LOG_CODEC("HWJPEG: T31 hardware JPEG requested (OPENIMP_T31_HW_JPEG=1)");
+            IMP_LOG_INFO("Codec", "HWJPEG: T31 hardware JPEG requested (OPENIMP_T31_HW_JPEG=1)");
     }
     return requested;
 }
@@ -7574,7 +7574,7 @@ static int t31_hwjpeg_requested(void)
 static void t31_hwjpeg_disable(const char *reason)
 {
     g_t31_hwjpeg.state = -1;
-    LOG_CODEC("HWJPEG: disabled, using the software encoder: %s", reason);
+    IMP_LOG_INFO("Codec", "HWJPEG: disabled, using the software encoder: %s", reason);
 }
 
 static int t31_hwjpeg_on_irq(uint32_t irq_id)
@@ -7628,8 +7628,8 @@ static int t31_hwjpeg_setup(uint32_t src_size, uint32_t stream_size)
         return -1;
     }
     if (((g_t31_hwjpeg.src.phy_addr | g_t31_hwjpeg.stream.phy_addr) & 255u) != 0)
-        LOG_CODEC("HWJPEG: warning: source/stream not 256-byte aligned as in stock traces");
-    LOG_CODEC("HWJPEG: ready src=0x%08x/%zu ep1=0x%08x stream=0x%08x/%zu",
+        IMP_LOG_INFO("Codec", "HWJPEG: warning: source/stream not 256-byte aligned as in stock traces");
+    IMP_LOG_INFO("Codec", "HWJPEG: ready src=0x%08x/%zu ep1=0x%08x stream=0x%08x/%zu",
               g_t31_hwjpeg.src.phy_addr, g_t31_hwjpeg.src.size,
               g_t31_hwjpeg.ep1.phy_addr, g_t31_hwjpeg.stream.phy_addr,
               g_t31_hwjpeg.stream.size);
@@ -7663,7 +7663,7 @@ static int t31_hwjpeg_encode(const HWFrameBuffer *frame, HWStreamBuffer *stream,
         return -1;
     if (g_t31_hwjpeg.src.size < src_size ||
         g_t31_hwjpeg.stream.size < stream_size) {
-        LOG_CODEC("HWJPEG: %ux%u exceeds the buffers sized at setup, software this frame",
+        IMP_LOG_INFO("Codec", "HWJPEG: %ux%u exceeds the buffers sized at setup, software this frame",
                   width, height);
         return -1;
     }
@@ -7730,7 +7730,7 @@ static int t31_hwjpeg_encode(const HWFrameBuffer *frame, HWStreamBuffer *stream,
     t31_hwjpeg_set_irq_bit(fd, 0);
     if (!completed) {
         avpu_write_reg(fd, T31_HWJPEG_REG_RESET, 1u);
-        LOG_CODEC("HWJPEG: no IRQ %u within %d ms (status %08x %08x %08x)",
+        IMP_LOG_INFO("Codec", "HWJPEG: no IRQ %u within %d ms (status %08x %08x %08x)",
                   T31_HWJPEG_IRQ_SLOT, T31_HWJPEG_TIMEOUT_MS,
                   status[0], status[1], status[2]);
         t31_hwjpeg_disable("completion timeout");
@@ -7739,12 +7739,12 @@ static int t31_hwjpeg_encode(const HWFrameBuffer *frame, HWStreamBuffer *stream,
 
     length = status[1];
     if (status[2] & 2u) {
-        LOG_CODEC("HWJPEG: error bit set (status %08x %08x %08x), software this frame",
+        IMP_LOG_INFO("Codec", "HWJPEG: error bit set (status %08x %08x %08x), software this frame",
                   status[0], status[1], status[2]);
         return -1;
     }
     if (length < 4u || length > cmd[10]) {
-        LOG_CODEC("HWJPEG: implausible length %u", length);
+        IMP_LOG_INFO("Codec", "HWJPEG: implausible length %u", length);
         t31_hwjpeg_disable("implausible length");
         return -1;
     }
@@ -7753,7 +7753,7 @@ static int t31_hwjpeg_encode(const HWFrameBuffer *frame, HWStreamBuffer *stream,
     jpeg = (const uint8_t *)g_t31_hwjpeg.stream.map + T31_HWJPEG_STREAM_OFF;
     if (jpeg[0] != 0xffu || jpeg[1] != 0xd8u ||
         jpeg[length - 2u] != 0xffu || jpeg[length - 1u] != 0xd9u) {
-        LOG_CODEC("HWJPEG: output lacks SOI/EOI (%02x %02x .. %02x %02x, %u bytes)",
+        IMP_LOG_INFO("Codec", "HWJPEG: output lacks SOI/EOI (%02x %02x .. %02x %02x, %u bytes)",
                   jpeg[0], jpeg[1], jpeg[length - 2u], jpeg[length - 1u], length);
         t31_hwjpeg_disable("hardware did not emit a JFIF stream");
         return -1;
@@ -7775,7 +7775,7 @@ static int t31_hwjpeg_encode(const HWFrameBuffer *frame, HWStreamBuffer *stream,
         unsigned int c = __sync_add_and_fetch(&count, 1);
 
         if (c <= 3 || c % 100 == 0)
-            LOG_CODEC("HWJPEG: %ux%u q%u -> %u bytes [#%u]",
+            IMP_LOG_INFO("Codec", "HWJPEG: %ux%u q%u -> %u bytes [#%u]",
                       width, height, quality, length, c);
     }
     return 0;
@@ -7795,7 +7795,7 @@ static int avpu_t31_companion_stage_enabled(void)
 
         enabled = !(value && value[0] == '0' && value[1] == '\0') &&
                   !t31_hwjpeg_requested();
-        LOG_CODEC("AVPU: T31 companion stage %s",
+        IMP_LOG_INFO("Codec", "AVPU: T31 companion stage %s",
                   enabled ? "enabled" : "disabled");
     }
     return enabled;
