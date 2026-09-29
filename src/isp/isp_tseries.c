@@ -2206,6 +2206,59 @@ int IMP_ISP_Tuning_GetHVFLIP(IMPISPHVFLIP *hvflip)
     return IMP_ISP_Tuning_GetHVFlip(hvflip);
 }
 
+#if defined(PLATFORM_T20) || defined(PLATFORM_T21) || defined(PLATFORM_T30)
+/* IMPISPITAttr of the T10/T20/T21/T30 SDKs (not in the T31-style headers
+ * OpenIMP builds against). */
+typedef struct {
+    int32_t mode;                   /* 0 auto, 1 manual, 2 range */
+    uint16_t integration_time;      /* sensor lines, manual mode */
+    uint16_t max_integration_time;  /* sensor lines, range mode */
+} TSeriesLegacyITAttr;
+
+/*
+ * The stock T20 3.12.0, T21 1.0.33 and T30 1.0.5 libraries send a zeroed
+ * 0x70-byte AE block on tuning CID 0x0800002C (the same tuning ioctl as
+ * SetAeComp) with only the selected mode's fields and enable bytes set:
+ *   auto:   [0x3f] = 1
+ *   manual: [0x03] = [0x3f] = [0x51] = 1, u16 [0x18] = integration_time
+ *   range:  [0x52] = 1, u16 [0x1a] = max_integration_time
+ * T20/T21 reject a manual time of 256 lines or more.
+ */
+#define TISP_CID_LEGACY_IT_ATTR 0x800002c
+
+int IMP_ISP_Tuning_SetIntegrationTime(void *itattr)
+{
+    const TSeriesLegacyITAttr *attr = itattr;
+    uint8_t ae[0x70];
+
+    if (attr == NULL)
+        return -1;
+    memset(ae, 0, sizeof(ae));
+    switch (attr->mode) {
+    case 0:
+        ae[0x3f] = 1;
+        break;
+    case 1:
+#if defined(PLATFORM_T20) || defined(PLATFORM_T21)
+        if (attr->integration_time >= 256)
+            return -1;
+#endif
+        ae[0x03] = 1;
+        ae[0x3f] = 1;
+        ae[0x51] = 1;
+        memcpy(ae + 0x18, &attr->integration_time, sizeof(uint16_t));
+        break;
+    case 2:
+        ae[0x52] = 1;
+        memcpy(ae + 0x1a, &attr->max_integration_time, sizeof(uint16_t));
+        break;
+    default:
+        return -1;
+    }
+    return tseries_tuning_set_ptr(TISP_CID_LEGACY_IT_ATTR, ae);
+}
+#endif
+
 int IMP_ISP_Tuning_SetAe_IT_MAX(uint32_t it_max)
 {
     return tseries_tuning_set_val(TISP_CID_AE_IT_MAX, it_max);
