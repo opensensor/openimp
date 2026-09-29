@@ -28,7 +28,7 @@ Die Regeln sind verbindlich. Bei Unklarheit fragst du den Menschen.
    - Neue Dateien nur nach `/tmp`.
    - Die neue `libimp.so` nur per Bind-Mount einhängen, ein Neustart macht alles rückgängig.
 3. **Git:** Im Repo `Lu-Fi/openimp` nur in Branches schreiben, die du selbst neu anlegst
-   (z. B. `claude/t31-hw-jpeg-results`). Niemals auf `main`, `claude/t31-hw-jpeg` oder
+   (z. B. `claude/t31-hw-jpeg-results`). Niemals auf `main`, `claude/t31-re`, `claude/t31-hw-jpeg` oder
    andere bestehende Branches pushen, niemals force-pushen.
 4. **Vor jedem Schritt, der den Streamer stoppt,** kurz Bescheid geben: Die Kamera
    liefert dann kein Bild.
@@ -43,11 +43,11 @@ Auf dem lokalen Rechner:
 
 ```sh
 git clone https://github.com/Lu-Fi/openimp && cd openimp
-git switch claude/t31-hw-jpeg
-git log --oneline -5
+git switch claude/t31-re
+git log --oneline -15
 ```
 
-Der Branch enthält:
+Der Branch enthält (u. a.):
 
 | Commit | Inhalt |
 |---|---|

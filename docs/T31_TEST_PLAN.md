@@ -1,0 +1,178 @@
+# Testplan für den Branch `claude/t31-re` (für eine lokale Claude-Code-Session)
+
+Dieses Dokument ist der **Einstieg**. Es sagt, was getestet wird, in welcher Reihenfolge,
+auf welcher Kamera, und was zurückgemeldet wird. Die Einzelschritte stehen in den verlinkten
+Anleitungen. Alles hier ist bisher nur gebaut und statisch geprüft, **nichts ist auf einer
+Kamera gelaufen**. Genau das soll dieser Test nachholen.
+
+Du arbeitest auf einem Rechner im selben Netz wie die Testkamera und erreichst sie per SSH.
+
+---
+
+## 0. Regeln (verbindlich)
+
+1. **Nur ein Testgerät.** Die AVPU oder IPU kann hängen, dann hilft nur ein Neustart.
+2. **Nichts dauerhaft ändern.**
+   - Nicht flashen, nichts unter `/etc` oder im Overlay ändern.
+   - Neue Dateien nur nach `/tmp`.
+   - Die neue `libimp.so` nur per Bind-Mount einhängen, ein Neustart stellt alles wieder her.
+3. **Git:** Im Fork `Lu-Fi/openimp` nur in Branches schreiben, die du selbst **neu** anlegst.
+   Nie auf `main`, `claude/t31-re` oder andere bestehende Branches pushen, nie force-pushen.
+4. **Vor jedem Stoppen des Streamers kurz Bescheid geben.** Bei Unklarheit fragen.
+5. **Alles melden,** auch Fehlschläge, mit dem genauen Befehl davor.
+6. **Kamerabilder** (Snapshots, Testausgaben mit Kamerabild) nur mit Einverständnis des
+   Menschen weitergeben oder committen. Die Testbilder der Tools sind unkritisch.
+
+---
+
+## 1. Was auf dem Branch liegt und welcher Test es abdeckt
+
+| Änderung | Datei(en) | Test |
+|---|---|---|
+| Testtool Hardware-JPEG-Core | `tools/t31_hwjpeg_probe.c` | A1 |
+| Testtool IPU-OSD + Auswertung | `tools/t31_ipu_osd_probe.c`, `tools/ipu_osd_analyze.py` | A2 |
+| OSD-Strukturen im Vendor-Layout (32 statt 72 Byte), behebt Stack-Überschreiben in `IMP_OSD_GetRgnAttr` | `src/t31/openimp_t31_osd_abi.h`, `src/t31/openimp_t31_services.c` | C |
+| Schalter `OPENIMP_T31_COMPANION_STAGE=0` (unnötigen JPEG-Core-Start pro H.264-Frame abschalten) | `src/t40/codec-t40.c` | D |
+| Hardware-JPEG in OpenIMP, Schalter `OPENIMP_T31_HW_JPEG=1` | `src/t40/codec-t40.c`, `src/hw_encoder.c` | E |
+| `IMP_ISP_Tuning_SetIntegrationTime` für T20/T21/T30 | `src/isp/isp_tseries.c` | F (optional, T20-Kamera) |
+| Tracer für die Original-libimp | `tools/oem_trace/` | Anhang (optional) |
+
+---
+
+## 2. Benötigte Hardware
+
+- **Pflicht:** eine **T31**-Testkamera mit thingino `aperto` und offenem Stack
+  (open-tx-isp + OpenIMP). Prüfen:
+  `strings /usr/lib/libimp.so | grep -i -m1 openimp` findet etwas.
+- **Für A1/A2** reicht jede T31 mit `/dev/avpu` und `/dev/ipu`, auch mit Original-Stack.
+- **Optional:** eine T20-Kamera mit OpenIMP (Test F); eine T31 mit Original-Stack (Anhang).
+- **Toolchain:** Die thingino-Toolchain für das Kameraprofil
+  (`<thingino>/output/<branch>/<target>/host/bin/mipsel-linux-`) wird für `libimp.so` (Test B)
+  gebraucht. Die Testtools (A1, A2) sind statisch und gehen auch mit `gcc-mipsel-linux-gnu`.
+  Gibt es noch keinen thingino-Build, den Menschen fragen.
+
+---
+
+## 3. Reihenfolge
+
+Von risikoarm nach risikoreich. Nach jedem Schritt die Ergebnisse notieren. Bei einem
+**Abbruchkriterium** stoppen und melden, statt weiterzumachen.
+
+### A1. Hardware-JPEG-Testtool (ohne Bibliothekswechsel)
+
+Anleitung: [`T31_HW_JPEG_TEST.md`](T31_HW_JPEG_TEST.md), Abschnitt 2 inklusive der
+Zusatzläufe (`-s`, `-c`).
+
+- **Erfolg:** `SOI present`, `EOI present`, das Testbild ist korrekt.
+- **Abbruchkriterium für E:** A1 liefert kein gültiges JPEG. Dann E überspringen, D trotzdem
+  machen.
+
+### A2. IPU-OSD-Testtool (ohne Bibliothekswechsel)
+
+Anleitung: [`T31_OSD_IPU_TEST.md`](T31_OSD_IPU_TEST.md), inklusive `-n 200`.
+
+- **Erfolg:**
+  - Alle vier Ebenen erscheinen an der richtigen Stelle, außerhalb ändert sich nichts.
+  - Farben und Alpha stimmen.
+  - Die drei Zeiten sind gemessen.
+- Diese Ergebnisse steuern die OSD-Implementierung. Hier gibt es kein Abbruchkriterium für
+  die anderen Tests.
+
+### B. `libimp.so` aus `claude/t31-re` bauen und einhängen
+
+Anleitung: [`T31_HW_JPEG_TEST.md`](T31_HW_JPEG_TEST.md), Abschnitt 3.
+
+```sh
+cd openimp && git switch claude/t31-re
+TC=<thingino>/output/<branch>/<target>/host/bin/mipsel-linux
+THINGINO_DIR=<thingino> TOOLCHAIN_PREFIX=$TC T31_OUTPUT_DIR=$PWD/build/t31 sh build-t31.sh
+scp build/t31/libimp.so root@<kamera>:/tmp/libimp-t31re.so
+# auf der Kamera:
+cp /usr/lib/libimp.so /tmp/libimp-orig.so
+mount --bind /tmp/libimp-t31re.so /usr/lib/libimp.so
+```
+
+Für die Tests C–E startest du den Streamer von Hand, mit den Variablen des jeweiligen Tests
+(Befehlszeile aus dem Init-Skript). Siehe [`T31_HW_JPEG_TEST.md`](T31_HW_JPEG_TEST.md),
+Abschnitt 4.
+
+### C. Regression mit der neuen Bibliothek, ohne Schalter
+
+- Streamer ohne zusätzliche Variablen starten, 10 Minuten laufen lassen:
+  - RTSP-Stream öffnen
+  - ein paar Snapshots abrufen
+  - OSD in der Streamer-Konfiguration eingeschaltet lassen
+- Vergleich mit der Original-OpenIMP (`/tmp/libimp-orig.so`), gleicher Ablauf:
+  - Startet der Streamer?
+  - Laufen H.264 und JPEG?
+  - Stürzt etwas ab? (`dmesg`, `logread`)
+  - Meldet der Streamer OSD-Fehler?
+- **Erwartung:**
+  - Verhalten wie vorher.
+  - Das OSD ist weiterhin **unsichtbar**. Das ist bekannt, das Zeichnen kommt erst nach A2.
+  - Die OSD-Aufrufe des Streamers laufen ohne Fehler, und nichts stürzt ab.
+- **Abbruchkriterium:** Absturz oder Stream bricht ab, obwohl er mit der Original-OpenIMP
+  läuft. Dann nicht weiter, sondern melden (mit `logread`/`dmesg`).
+
+### D. Companion-Stage A/B
+
+Anleitung: [`T31_HW_JPEG_TEST.md`](T31_HW_JPEG_TEST.md), Abschnitt 4a. Lauf A ohne Variablen,
+Lauf B mit `OPENIMP_T31_COMPANION_STAGE=0`, je 5 Minuten RTSP mitschneiden und vergleichen.
+
+### E. Hardware-JPEG im Streamer
+
+Anleitung: [`T31_HW_JPEG_TEST.md`](T31_HW_JPEG_TEST.md), Abschnitt 4b. Lauf C ohne, Lauf D mit
+`OPENIMP_T31_HW_JPEG=1`. CPU-Last per `top`, `HWJPEG:`-Zeilen im Log, Bildqualität.
+
+### F. Optional: `SetIntegrationTime` auf T20
+
+Nur mit einer T20-Kamera mit OpenIMP und timps als Streamer.
+
+1. `libimp.so` für T20 bauen:
+   `THINGINO_DIR=<thingino> TOOLCHAIN_PREFIX=$TC T20_OUTPUT_DIR=$PWD/build/t20 sh build-t20.sh`
+2. Wie in B einhängen.
+3. Vorher prüfen, ob timps gegen die bisherige OpenIMP überhaupt startet. Bisher fehlte ihm
+   dort genau diese Funktion, also sollte der Start scheitern.
+4. Mit der neuen Bibliothek timps starten und `image.ae_it_max_us` setzen (z. B. `10000`, per
+   `POST /control` oder in `/etc/timps.conf` in einer Kopie unter `/tmp`).
+5. Einen RTSP-Client verbinden. Die Kappung greift nur, während Frames fließen.
+6. Im timps-Log die Meldung `image.ae_it_max_us=… -> capped AE at … lines; GetExpr now reports
+   max=…` suchen.
+
+- **Erfolg:** Das gemeldete Maximum entspricht dem Wunsch, kein `SDK rejected the cap`.
+
+---
+
+## 4. Ergebnisbericht
+
+Eine Datei `T31_TEST_RESULTS.md` mit einem Abschnitt pro Test (A1, A2, C, D, E, F):
+
+- **Status:** bestanden / fehlgeschlagen / übersprungen, mit Grund.
+- **Die jeweils in der Einzelanleitung verlangten Ausgaben:**
+  - Tool-Ausgaben
+  - `ipu_osd_analyze.py`-Ausgabe
+  - Logzeilen `HWJPEG:` / `companion stage`
+  - `top`-Werte
+  - Frame-Zählungen
+- **Vorne ein Kopf mit Geräteangaben:**
+  - Modell, SoC-Variante (`/proc/cpuinfo`)
+  - thingino-Stand, Kernel
+  - Streamer und Version
+  - Commit von `claude/t31-re` (`git rev-parse --short HEAD`)
+
+Den Bericht und die kleinen Dateien, also Tool-Ausgaben, PNGs aus A2, `ep1.bin` und Logs,
+auf einem **neuen eigenen** Branch `claude/t31-test-results-<datum>` im Fork pushen, unter
+`test-results/`. Keine Videos, keine Kamerabilder ohne Einverständnis. Oder alles direkt dem
+Menschen übergeben.
+
+Zum Schluss den Bind-Mount lösen (`umount /usr/lib/libimp.so`) oder die Kamera neu starten und
+prüfen, dass der Streamer normal läuft.
+
+---
+
+## Anhang: Traces der Original-libimp (optional)
+
+Steht zusätzlich eine T31 mit **Original**-Stack zur Verfügung, beantwortet ein Mitschnitt
+der Original-Bibliothek viele offene Fragen direkt: JPEG-Header, Tabellenpuffer,
+IPU-Parameter. Anleitung: [`RE_TRACE_GUIDE.md`](RE_TRACE_GUIDE.md). Das ist kein Teil des
+Pflichttests.
