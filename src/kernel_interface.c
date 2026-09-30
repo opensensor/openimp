@@ -1565,6 +1565,7 @@ typedef struct {
     uint32_t fallback_invalid;
     uint32_t fallback_order;
     uint32_t logged_fallbacks;
+    uint32_t summarized;    /* fallback total in the last summary line */
 } FsTsState;
 
 static FsTsState fs_ts_state[MAX_VBM_POOLS] = {
@@ -1708,11 +1709,16 @@ static int64_t fs_frame_timestamp(int chn, uint64_t stamp)
                     (long long)st->last, (long long)ts);
         }
     }
-    if ((st->fallback_invalid || st->fallback_order) && now >= 0 &&
+    /* At most one summary a minute, and only when something new was
+     * synthesized: one fallback at start-up must not turn into a line
+     * every minute for the rest of a soak. */
+    if (st->fallback_invalid + st->fallback_order != st->summarized &&
+        now >= 0 &&
         (st->last_log < 0 || now - st->last_log >= FS_TS_LOG_INTERVAL_US)) {
         int locked = __atomic_load_n(&fs_ts_clock, __ATOMIC_RELAXED);
 
         st->last_log = now;
+        st->summarized = st->fallback_invalid + st->fallback_order;
         fprintf(stderr, "[KernelIF] ch%d timestamps: %u frames, clock %s, "
                 "synthesized %u (no capture time) + %u (not increasing)\n",
                 chn, st->frames,
