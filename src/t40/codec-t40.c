@@ -7917,6 +7917,7 @@ static int t31_hwjpeg_encode(const HWFrameBuffer *frame, HWStreamBuffer *stream,
                              uint32_t quality)
 {
     static int no_waiter_logged;
+    static int no_core_logged;
     const char *src_coherent_env;
     uint32_t width = frame->width, height = frame->height;
     uint32_t luma_rows = (height + 15u) & ~15u;
@@ -7941,6 +7942,19 @@ static int t31_hwjpeg_encode(const HWFrameBuffer *frame, HWStreamBuffer *stream,
         if (!no_waiter_logged) {
             no_waiter_logged = 1;
             IMP_LOG_INFO("Codec", "HWJPEG: no AVC IRQ waiter yet, software until one runs");
+        }
+        return -1;
+    }
+    /* The global core setup (MISC_CTRL, reset triplet, TOP_CTRL) is done
+     * by the first AVC session's AL_EncCore_Init and undone by the last
+     * one's teardown; both run under g_t31_encode_core_lock, held here.
+     * The waiter alone does not imply it: it starts when the AVC codec
+     * opens, before its first frame. A job on an uninitialised core only
+     * times out, so this is not counted as a timeout. */
+    if (g_t31_avc_sessions <= 0) {
+        if (!no_core_logged) {
+            no_core_logged = 1;
+            IMP_LOG_INFO("Codec", "HWJPEG: AVC core not initialised yet, software until it is");
         }
         return -1;
     }
