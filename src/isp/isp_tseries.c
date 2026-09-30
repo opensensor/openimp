@@ -2378,6 +2378,73 @@ int IMP_ISP_Tuning_GetAWBCt(uint32_t *ct)
     return result;
 }
 
+#if defined(PLATFORM_T23) || defined(PLATFORM_T31)
+/* The public IMPISPCCMAttr is {ManualEn, SatEn, float ColorMatrix[9]}; the
+ * kernel takes 40 bytes: byte 0 manual, byte 1 saturation, then nine
+ * coefficients as 14-bit two's-complement Q10 in 32-bit words. The stock
+ * T23/T31 libimp converts between the two exactly like this; passing the
+ * public struct through made a manual CCM install float bit patterns. */
+typedef struct {
+    int32_t manual_en;
+    int32_t sat_en;
+    float matrix[9];
+} TSeriesCCMAttr;
+
+typedef struct {
+    int8_t manual_en;
+    int8_t sat_en;
+    uint8_t reserved[2];
+    uint32_t coef[9];
+} TSeriesKernelCCM;
+
+static uint32_t tseries_ccm_to_q10(float value)
+{
+    if (value < -1e-5f)
+        return ((uint32_t)-(int32_t)(-value * 1024.0f) & 0x1fffu) | 0x2000u;
+    return (uint32_t)(int32_t)(value * 1024.0f) & 0x1fffu;
+}
+
+static float tseries_ccm_from_q10(uint32_t word)
+{
+    if (word & 0x2000u)
+        return -(float)(-word & 0x1fffu) / 1024.0f;
+    return (float)(int32_t)word / 1024.0f;
+}
+
+int IMP_ISP_Tuning_SetCCMAttr(void *attr)
+{
+    const TSeriesCCMAttr *in = attr;
+    TSeriesKernelCCM k;
+
+    if (in == NULL)
+        return -1;
+    memset(&k, 0, sizeof(k));
+    k.manual_en = (int8_t)in->manual_en;
+    k.sat_en = (int8_t)in->sat_en;
+    for (int i = 0; i < 9; i++)
+        k.coef[i] = tseries_ccm_to_q10(in->matrix[i]);
+    return tseries_tuning_set_ptr(TISP_CID_CCM_ATTR, &k);
+}
+
+int IMP_ISP_Tuning_GetCCMAttr(void *attr)
+{
+    TSeriesCCMAttr *out = attr;
+    TSeriesKernelCCM k;
+    int result;
+
+    if (out == NULL)
+        return -1;
+    memset(&k, 0, sizeof(k));
+    result = tseries_tuning_get_ptr(TISP_CID_CCM_ATTR, &k);
+    if (result == 0) {
+        out->manual_en = k.manual_en;
+        out->sat_en = k.sat_en;
+        for (int i = 0; i < 9; i++)
+            out->matrix[i] = tseries_ccm_from_q10(k.coef[i]);
+    }
+    return result;
+}
+#else
 int IMP_ISP_Tuning_SetCCMAttr(void *attr)
 {
     return tseries_tuning_set_ptr(TISP_CID_CCM_ATTR, attr);
@@ -2387,6 +2454,7 @@ int IMP_ISP_Tuning_GetCCMAttr(void *attr)
 {
     return tseries_tuning_get_ptr(TISP_CID_CCM_ATTR, attr);
 }
+#endif
 
 int IMP_ISP_Tuning_SetWB_ALGO(int mode)
 {
