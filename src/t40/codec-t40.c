@@ -7791,10 +7791,13 @@ static int t31_hwjpeg_requested(void)
     return requested;
 }
 
+/* Permanent for the process: an error, so a CPU jump can be matched to it.
+ * Per-frame fallbacks stay at info level. */
 static void t31_hwjpeg_disable(const char *reason)
 {
     g_t31_hwjpeg.state = -1;
-    IMP_LOG_INFO("Codec", "HWJPEG: disabled, using the software encoder: %s", reason);
+    IMP_LOG_ERR("Codec", "HWJPEG: disabled for this process, all JPEG frames now use the software encoder: %s",
+                reason);
 }
 
 static int t31_hwjpeg_on_irq(uint32_t irq_id)
