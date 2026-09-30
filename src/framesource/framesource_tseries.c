@@ -49,6 +49,7 @@
 #include "core/globals.h"
 #include "core/imp_alloc.h"
 #include "kernel_interface.h"
+#include "vbm_dq_step.h"
 #include "imp_log_int.h"
 #if defined(PLATFORM_T23)
 #include "t23/openimp_t23_persist.h"
@@ -763,6 +764,63 @@ static volatile int g_fs_thread_enabled_seen[FS_MAX_CHANNELS];
 /* Set by the pooling worker when it leaves its loop (not when cancelled). */
 static volatile int g_fs_thread_exited[FS_MAX_CHANNELS];
 
+#if defined(PLATFORM_T31)
+/* Stop diagnostics: the pooling worker records where it is, so a
+ * DisableChn that times out waiting for it can say where it waits. */
+enum {
+    FS_STEP_START,          /* thread entry, stderr markers */
+    FS_STEP_LOOP,           /* loop head */
+    FS_STEP_STATE_WAIT,     /* waiting for ENABLED */
+    FS_STEP_SELECT,         /* 25 ms select */
+    FS_STEP_IDLE_SLEEP,     /* 1 ms sleep after an empty select */
+    FS_STEP_DQBUF,          /* VBMKernelDequeue, see openimp_vbm_dq_step */
+    FS_STEP_DQ_EMPTY_SLEEP, /* 1 ms sleep after an empty DQBUF */
+    FS_STEP_NOTIFY,         /* publish + notify_observers */
+    FS_STEP_DIRECT_ENC,     /* fs_direct_encoder_fallback */
+    FS_STEP_NOTIFY_DONE,    /* frame delivered, next DQBUF follows */
+    FS_STEP_EXIT,
+};
+static const char *const fs_step_names[] = {
+    "start", "loop-head", "state-wait", "select", "idle-sleep", "dqbuf",
+    "dq-empty-sleep", "notify", "direct-enc", "notify-done", "exit",
+};
+static const char *const fs_dq_step_names[] = {
+    "-", "ioctl", "ivs-capture", "queue-mutex", "requeue",
+};
+static volatile int g_fs_step[FS_MAX_CHANNELS];
+static volatile uint32_t g_fs_step_ms[FS_MAX_CHANNELS];
+static volatile int g_fs_step_iter[FS_MAX_CHANNELS];
+
+static uint32_t fs_now_ms(void)
+{
+    struct timespec ts;
+
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (uint32_t)ts.tv_sec * 1000u + (uint32_t)(ts.tv_nsec / 1000000L);
+}
+
+#define FS_STEP(chn, step) do {                 \
+        g_fs_step_ms[(chn)] = fs_now_ms();      \
+        g_fs_step[(chn)] = (step);              \
+    } while (0)
+
+static const char *fs_step_name(int step)
+{
+    if (step < 0 || step >= (int)(sizeof(fs_step_names) / sizeof(fs_step_names[0])))
+        return "?";
+    return fs_step_names[step];
+}
+
+static const char *fs_dq_step_name(int step)
+{
+    if (step < 0 || step >= (int)(sizeof(fs_dq_step_names) / sizeof(fs_dq_step_names[0])))
+        return "?";
+    return fs_dq_step_names[step];
+}
+#else
+#define FS_STEP(chn, step) do { } while (0)
+#endif
+
 static void fs_bind_trace(const char *fmt, ...)
 {
     static unsigned int capture_loop_trace_count;
@@ -915,6 +973,7 @@ static void *frame_pooling_thread(void *arg)
     }
     ctx = &g_fs_ctx[chn];
     g_fs_thread_entered[chn] = 1;
+    FS_STEP(chn, FS_STEP_START);
     write(2, "FSDBG thread_entry\n", 19);
 
     fs_bind_trace("libimp/FSB: pooling-thread start ch=%d ctx=%p arg=%p ra=%p\n",
@@ -932,6 +991,10 @@ static void *frame_pooling_thread(void *arg)
 
         pthread_testcancel();
         poll_count++;
+        FS_STEP(chn, FS_STEP_LOOP);
+#if defined(PLATFORM_T31)
+        g_fs_step_iter[chn] = poll_count;
+#endif
         if (poll_count <= 2) {
             fs_thread_trace("libimp/FS: thread-mark ch=%d step=loop-top iter=%d fd=%d running=%d\n",
                             chn, poll_count, ctx->fd, ctx->running);
@@ -951,6 +1014,7 @@ static void *frame_pooling_thread(void *arg)
                 fs_trace("libimp/FS: thread-wait-enabled ch=%d iter=%d state=%d fd=%d waits=%d\n",
                          chn, poll_count, ch_state, ctx->fd, state_wait_count);
             }
+            FS_STEP(chn, FS_STEP_STATE_WAIT);
             usleep(10000);
             continue;
         }
@@ -983,6 +1047,7 @@ static void *frame_pooling_thread(void *arg)
             errno = 0;
             fs_trace("libimp/FS: pooling select-enter ch=%d fd=%d iter=%d\n",
                      chn, ctx->fd, poll_count);
+            FS_STEP(chn, FS_STEP_SELECT);
             select_ret = select(ctx->fd + 1, &rfds, NULL, NULL, &tv);
             fs_trace("libimp/FS: pooling select-exit ch=%d fd=%d iter=%d rc=%d errno=%d\n",
                      chn, ctx->fd, poll_count, select_ret, errno);
@@ -1004,6 +1069,7 @@ static void *frame_pooling_thread(void *arg)
                     fs_trace("libimp/FS: pooling select-timeout ch=%d fd=%d idle=%d\n",
                              chn, ctx->fd, no_frame_cycles);
                 }
+                FS_STEP(chn, FS_STEP_IDLE_SLEEP);
                 usleep(1000);
                 continue;
             }
@@ -1033,7 +1099,13 @@ static void *frame_pooling_thread(void *arg)
                 fs_trace("libimp/FS: pooling dequeue-enter ch=%d fd=%d\n",
                          chn, ctx->fd);
                 {
-                    int dq_ret = VBMKernelDequeue(chn, ctx->fd, &frame);
+                    int dq_ret;
+
+#if defined(PLATFORM_T31)
+                    openimp_vbm_dq_step[chn] = VBM_DQ_STEP_NONE;
+#endif
+                    FS_STEP(chn, FS_STEP_DQBUF);
+                    dq_ret = VBMKernelDequeue(chn, ctx->fd, &frame);
                     fs_trace("libimp/FS: pooling dequeue ch=%d fd=%d ret=%d frame=%p\n",
                              chn, ctx->fd, dq_ret, frame);
                     if (dq_ret == 0 && frame != NULL) {
@@ -1046,6 +1118,7 @@ static void *frame_pooling_thread(void *arg)
                                 fs_trace("libimp/FS: pooling dequeue-empty ch=%d fd=%d idle=%d state=%d\n",
                                          chn, ctx->fd, no_frame_cycles, ch_state);
                             }
+                            FS_STEP(chn, FS_STEP_DQ_EMPTY_SLEEP);
                             usleep(1000);
                         }
                         break;
@@ -1059,13 +1132,16 @@ static void *frame_pooling_thread(void *arg)
                                   chn, m, frame, *(int32_t *)((char *)m + 0x3c));
                     fs_trace("libimp/FS: pooling ch=%d fd=%d module=%p frame=%p notify start\n",
                              chn, ctx->fd, m, frame);
+                    FS_STEP(chn, FS_STEP_NOTIFY);
                     framesource_publish_outputs(m, frame);
                     notify_observers(m, frame);
                     if (*(int32_t *)((char *)m + 0x3c) == 0) {
                         fs_trace("libimp/FS: pooling ch=%d fd=%d module=%p frame=%p notify-empty direct-enc\n",
                                  chn, ctx->fd, m, frame);
+                        FS_STEP(chn, FS_STEP_DIRECT_ENC);
                         fs_direct_encoder_fallback(chn, frame);
                     }
+                    FS_STEP(chn, FS_STEP_NOTIFY_DONE);
                     fs_trace("libimp/FS: pooling ch=%d fd=%d module=%p frame=%p notify done\n",
                              chn, ctx->fd, m, frame);
                 }
@@ -1099,6 +1175,7 @@ static void *frame_pooling_thread(void *arg)
 
     fs_trace("libimp/FS: pooling-thread exit ch=%d fd=%d running=%d state=%d\n",
              chn, ctx->fd, ctx->running, fs_chan_get_state(chn));
+    FS_STEP(chn, FS_STEP_EXIT);
     g_fs_thread_exited[chn] = 1;
     return NULL;
 }
@@ -2033,12 +2110,31 @@ int IMP_FrameSource_DisableChn(int chnNum)
 
         if (ctx->thread != 0) {
             if (fs_wait_worker_exit(chnNum, FS_WORKER_STOP_TIMEOUT_MS) != 0) {
+                static unsigned int timeouts;
+                unsigned int n = ++timeouts;
+                int step = g_fs_step[chnNum];
+                int dq_step = openimp_vbm_dq_step[chnNum];
+                uint32_t in_step = fs_now_ms() - g_fs_step_ms[chnNum];
+                int woke;
+
                 IMP_LOG_ERR("Framesource", "chn%d: pooling thread did not stop within %d ms, cancelling it after STREAMOFF",
                             chnNum, FS_WORKER_STOP_TIMEOUT_MS);
                 if (ctx->fd >= 0)
                     fs_stream_off(ctx->fd);
                 stream_off_done = 1;
-                pthread_cancel(ctx->thread);
+                /* Diagnostics: did STREAMOFF alone release it? */
+                woke = fs_wait_worker_exit(chnNum, 100) == 0;
+                if (n <= 20 || n % 20 == 0)
+                    IMP_LOG_ERR("Framesource", "chn%d: stop timeout #%u: worker in step %s (dq %s) for %u ms, iter %d, thread_entered %d, enabled_seen %d; %s",
+                                chnNum, n, fs_step_name(step),
+                                fs_dq_step_name(dq_step), in_step,
+                                g_fs_step_iter[chnNum],
+                                g_fs_thread_entered[chnNum],
+                                g_fs_thread_enabled_seen[chnNum],
+                                woke ? "exited after STREAMOFF"
+                                     : "still running after STREAMOFF + 100 ms, cancelling");
+                if (!woke)
+                    pthread_cancel(ctx->thread);
             }
             pthread_join(ctx->thread, NULL);
             ctx->thread = 0;

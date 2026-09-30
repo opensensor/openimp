@@ -18,6 +18,7 @@
 #include <stdarg.h>
 #include "dma_alloc.h"
 #include "trace_control.h"
+#include "vbm_dq_step.h"
 
 extern int64_t IMP_System_GetTimeStamp(void);
 extern int64_t OpenIMP_P0_NormalizeMonotonicTimeStamp(uint64_t timestamp);
@@ -1416,6 +1417,13 @@ int VBMPrimeKernelQueue(int chn, int fd, int limit) {
 /* Dequeue a kernel-filled frame and map to VBM frame pointer */
 
 #if defined(PLATFORM_T31)
+volatile int openimp_vbm_dq_step[MAX_VBM_POOLS];
+#define VBM_DQ_STEP(chn, step) (openimp_vbm_dq_step[(chn)] = (step))
+#else
+#define VBM_DQ_STEP(chn, step) do { } while (0)
+#endif
+
+#if defined(PLATFORM_T31)
 extern void openimp_t31_ivs_capture(int fs_chn, const void *frame)
     __attribute__((weak));
 #endif
@@ -1436,6 +1444,7 @@ int VBMKernelDequeue(int chn, int fd, void **frame_out) {
         fprintf(stderr, "[VBM] VBMKernelDequeue chn=%d: attempting DQBUF...\n", chn);
     }
 
+    VBM_DQ_STEP(chn, VBM_DQ_STEP_DQBUF);
     int ret = fs_dqbuf(fd, &idx, &absolute_timestamp);
     ki_trace("libimp/VBM: KernelDequeue post-dq ch=%d fd=%d ret=%d idx=%d\n",
              chn, fd, ret, idx);
@@ -1476,6 +1485,7 @@ int VBMKernelDequeue(int chn, int fd, void **frame_out) {
 #if defined(PLATFORM_T31)
     /* IVS groups bound to this channel copy the luma they need now, while
      * the buffer is still private to this thread (openimp_t31_ivs.c). */
+    VBM_DQ_STEP(chn, VBM_DQ_STEP_IVS);
     if (openimp_t31_ivs_capture)
         openimp_t31_ivs_capture(chn, &pool->frames[idx]);
 #endif
@@ -1493,11 +1503,13 @@ int VBMKernelDequeue(int chn, int fd, void **frame_out) {
      * VBMReleaseFrame return it to the stock frame-channel driver after AVPU
      * accepts the source address.
      */
+    VBM_DQ_STEP(chn, VBM_DQ_STEP_QUEUE);
     pthread_mutex_lock(&pool->queue_mutex);
     if (pool->queue_count >= pool->frame_count) {
         VBMFrame *captured = &pool->frames[idx];
 
         pthread_mutex_unlock(&pool->queue_mutex);
+        VBM_DQ_STEP(chn, VBM_DQ_STEP_REQUEUE);
         ki_trace("libimp/VBM: ready-queue-full ch=%d idx=%d count=%d\n",
                  chn, idx, pool->queue_count);
         if (fs_qbuf(fd, idx, captured->phys_addr,
