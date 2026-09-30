@@ -2004,11 +2004,18 @@ int IMP_FrameSource_DisableChn(int chnNum)
         ctx->thread = 0;
     }
     VBMFlushFrame(chnNum);
-    VBMDestroyPool(chnNum);
+    /* Close before the pool memory goes back to the allocator: the ISP
+     * driver drops the buffer addresses still queued in its hardware FIFO
+     * on release, and freed pool pages are handed out again. Unpublish the
+     * fd first so a late ReleaseFrame cannot QBUF on it. */
     if (ctx->fd >= 0) {
-        fs_close_device(ctx->fd);
+        int fd = ctx->fd;
+
+        *(int32_t *)(fs_channel_base(chnNum) + 0x1c4) = -1;
         ctx->fd = -1;
+        fs_close_device(fd);
     }
+    VBMDestroyPool(chnNum);
 
     fs_chan_set_state(chnNum, 1);
     pthread_mutex_unlock(&g_fs_lock);
