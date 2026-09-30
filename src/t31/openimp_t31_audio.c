@@ -9,10 +9,12 @@
 #include <dlfcn.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <pthread.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/ioctl.h>
+#include <time.h>
 #include <unistd.h>
 
 #include <imp/imp_audio.h>
@@ -32,6 +34,10 @@
 #define T31_AO_SYNC_STREAM        0x4004506bUL
 #define T31_PCM_FORMAT_S16_LE     0x10
 #define T31_CAPTURE_CHUNK_BYTES   1280U
+#define T31_CAPTURE_DEFAULT_DEPTH 8
+#define T31_CAPTURE_MAX_DEPTH     50
+#define T31_CAPTURE_RETRY_US      20000
+#define T31_CAPTURE_STOP_MS       500U
 
 typedef struct {
     void *data;
@@ -89,9 +95,19 @@ static struct {
     int ai_alc_gain;
     int ao_volume;
     int ao_gain;
+    /* The record thread owns T31_AI_GET_STREAM; the fields below up to
+     * capture_tail_time are shared with it under capture_lock. */
+    pthread_t capture_thread;
+    int capture_running;
+    int capture_stop;
+    int capture_exited;
+    int capture_error;
     unsigned char *capture_buffer;
     size_t capture_capacity;
     size_t capture_valid;
+    size_t capture_limit;
+    size_t capture_frame_bytes;
+    int64_t capture_tail_time;
     unsigned char *frame_buffer;
     size_t frame_capacity;
     int frame_outstanding;
@@ -123,6 +139,10 @@ static struct {
     .ao_volume = 60,
     .agc_mode = 3,
 };
+
+static pthread_mutex_t t31_capture_lock = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t t31_capture_cond;
+static pthread_once_t t31_capture_once = PTHREAD_ONCE_INIT;
 
 extern int64_t IMP_System_GetTimeStamp(void);
 
@@ -264,6 +284,169 @@ static void t31_apply_ai_volume(int16_t *samples, int count)
     }
 }
 
+static void t31_capture_init_cond(void)
+{
+    pthread_condattr_t attribute;
+
+    pthread_condattr_init(&attribute);
+    pthread_condattr_setclock(&attribute, CLOCK_MONOTONIC);
+    pthread_cond_init(&t31_capture_cond, &attribute);
+    pthread_condattr_destroy(&attribute);
+}
+
+static void t31_capture_deadline(struct timespec *deadline,
+                                 unsigned int timeout_ms)
+{
+    clock_gettime(CLOCK_MONOTONIC, deadline);
+    deadline->tv_sec += timeout_ms / 1000U;
+    deadline->tv_nsec += (long)(timeout_ms % 1000U) * 1000000L;
+    if (deadline->tv_nsec >= 1000000000L) {
+        deadline->tv_sec++;
+        deadline->tv_nsec -= 1000000000L;
+    }
+}
+
+static size_t t31_frame_bytes(void)
+{
+    unsigned int channels;
+
+    channels = t31_audio.ai_attr.soundmode == AUDIO_SOUND_MODE_STEREO ? 2U : 1U;
+    return (size_t)t31_audio.ai_attr.numPerFrm * channels * sizeof(int16_t);
+}
+
+static int64_t t31_bytes_to_us(size_t bytes)
+{
+    unsigned int channels;
+    int64_t rate;
+
+    channels = t31_audio.ai_attr.soundmode == AUDIO_SOUND_MODE_STEREO ? 2U : 1U;
+    rate = (int64_t)t31_audio.ai_attr.samplerate * channels * sizeof(int16_t);
+    return rate > 0 ? (int64_t)bytes * 1000000 / rate : 0;
+}
+
+/* Like the stock _ai_record_thread: the driver only offers a blocking
+ * GET_STREAM (its poll handler returns -EINVAL), so capture runs here and
+ * IMP_AI_GetFrame/IMP_AI_PollingFrame consume a bounded FIFO.  When the
+ * consumer falls behind, whole frames are dropped from the oldest end. */
+static void *t31_capture_main(void *argument)
+{
+    unsigned char chunk[T31_CAPTURE_CHUNK_BYTES];
+    T31AudioInputStream stream;
+    size_t align;
+
+    (void)argument;
+    align = t31_audio.ai_attr.soundmode == AUDIO_SOUND_MODE_STEREO ? 4U : 2U;
+    pthread_mutex_lock(&t31_capture_lock);
+    while (!t31_audio.capture_stop) {
+        size_t size;
+        int result;
+
+        pthread_mutex_unlock(&t31_capture_lock);
+        memset(&stream, 0, sizeof(stream));
+        stream.data = chunk;
+        stream.size = sizeof(chunk);
+        result = ioctl(t31_audio.ai_fd, T31_AI_GET_STREAM, &stream);
+        size = stream.size < sizeof(chunk) ? stream.size : sizeof(chunk);
+        size -= size % align;
+        pthread_mutex_lock(&t31_capture_lock);
+        if (t31_audio.capture_stop)
+            break;
+        if (result != 0 || !size) {
+            t31_audio.capture_error = 1;
+            pthread_cond_broadcast(&t31_capture_cond);
+            pthread_mutex_unlock(&t31_capture_lock);
+            usleep(T31_CAPTURE_RETRY_US);
+            pthread_mutex_lock(&t31_capture_lock);
+            continue;
+        }
+        memcpy(t31_audio.capture_buffer + t31_audio.capture_valid, chunk, size);
+        t31_audio.capture_valid += size;
+        if (t31_audio.capture_valid > t31_audio.capture_limit) {
+            size_t frame = t31_audio.capture_frame_bytes;
+            size_t drop = t31_audio.capture_valid - t31_audio.capture_limit;
+
+            drop = (drop + frame - 1) / frame * frame;
+            t31_audio.capture_valid -= drop;
+            memmove(t31_audio.capture_buffer, t31_audio.capture_buffer + drop,
+                    t31_audio.capture_valid);
+        }
+        t31_audio.capture_tail_time = IMP_System_GetTimeStamp();
+        t31_audio.capture_error = 0;
+        pthread_cond_broadcast(&t31_capture_cond);
+    }
+    t31_audio.capture_exited = 1;
+    pthread_cond_broadcast(&t31_capture_cond);
+    pthread_mutex_unlock(&t31_capture_lock);
+    return NULL;
+}
+
+static int t31_capture_start(void)
+{
+    size_t frame = t31_frame_bytes();
+    size_t depth = T31_CAPTURE_DEFAULT_DEPTH;
+    size_t capacity;
+
+    pthread_once(&t31_capture_once, t31_capture_init_cond);
+    if (t31_audio.capture_running)
+        return 0;
+    if (!frame || t31_audio.ai_fd < 0)
+        return -1;
+    if (t31_audio.ai_attr.frmNum >= 2)
+        depth = t31_audio.ai_attr.frmNum < T31_CAPTURE_MAX_DEPTH
+                    ? (size_t)t31_audio.ai_attr.frmNum
+                    : T31_CAPTURE_MAX_DEPTH;
+    capacity = frame * depth + T31_CAPTURE_CHUNK_BYTES;
+    if (capacity > t31_audio.capture_capacity) {
+        void *buffer = realloc(t31_audio.capture_buffer, capacity);
+        if (!buffer)
+            return -1;
+        t31_audio.capture_buffer = buffer;
+        t31_audio.capture_capacity = capacity;
+    }
+    t31_audio.capture_limit = frame * depth;
+    t31_audio.capture_frame_bytes = frame;
+    t31_audio.capture_valid = 0;
+    t31_audio.capture_stop = 0;
+    t31_audio.capture_exited = 0;
+    t31_audio.capture_error = 0;
+    if (pthread_create(&t31_audio.capture_thread, NULL, t31_capture_main,
+                       NULL) != 0)
+        return -1;
+    t31_audio.capture_running = 1;
+    return 0;
+}
+
+/* A running stream completes the thread's GET_STREAM within one chunk.  If
+ * the driver has stalled, DISABLE_STREAM finishes the pending task node so
+ * the thread can be joined; the stream is re-enabled for the caller. */
+static void t31_capture_stop(void)
+{
+    struct timespec deadline;
+    int exited;
+
+    if (!t31_audio.capture_running)
+        return;
+    pthread_mutex_lock(&t31_capture_lock);
+    t31_audio.capture_stop = 1;
+    pthread_cond_broadcast(&t31_capture_cond);
+    t31_capture_deadline(&deadline, T31_CAPTURE_STOP_MS);
+    while (!t31_audio.capture_exited &&
+           pthread_cond_timedwait(&t31_capture_cond, &t31_capture_lock,
+                                  &deadline) == 0)
+        ;
+    exited = t31_audio.capture_exited;
+    pthread_mutex_unlock(&t31_capture_lock);
+    if (!exited) {
+        (void)ioctl(t31_audio.ai_fd, T31_DISABLE_STREAM, 1);
+        pthread_join(t31_audio.capture_thread, NULL);
+        (void)ioctl(t31_audio.ai_fd, T31_ENABLE_STREAM, 1);
+    } else {
+        pthread_join(t31_audio.capture_thread, NULL);
+    }
+    t31_audio.capture_running = 0;
+    t31_audio.capture_valid = 0;
+}
+
 int IMP_AI_SetPubAttr(int device, IMPAudioIOAttr *attribute)
 {
     if ((device != 0 && device != 1) || t31_audio.ai_enabled ||
@@ -309,6 +492,7 @@ int IMP_AI_Disable(int device)
 
     if (device != 0 && device != 1)
         return -1;
+    t31_capture_stop();
     if (t31_audio.ai_fd >= 0) {
         if (t31_audio.ai_enabled)
             result = ioctl(t31_audio.ai_fd, T31_DISABLE_STREAM, 1);
@@ -325,7 +509,7 @@ int IMP_AI_Disable(int device)
 int IMP_AI_EnableChn(int device, int channel)
 {
     if ((device != 0 && device != 1) || channel != 0 ||
-        !t31_audio.ai_enabled)
+        !t31_audio.ai_enabled || t31_capture_start() != 0)
         return -1;
     t31_audio.ai_channel_enabled = 1;
     return 0;
@@ -335,6 +519,7 @@ int IMP_AI_DisableChn(int device, int channel)
 {
     if ((device != 0 && device != 1) || channel != 0)
         return -1;
+    t31_capture_stop();
     t31_audio.ai_channel_enabled = 0;
     t31_audio.frame_outstanding = 0;
     t31_audio.capture_valid = 0;
@@ -359,51 +544,36 @@ int IMP_AI_GetChnParam(int device, int channel, IMPAudioIChnParam *parameter)
 
 int IMP_AI_PollingFrame(int device, int channel, unsigned int timeout_ms)
 {
-    (void)timeout_ms;
-    return (device == 0 || device == 1) && channel == 0 &&
-                   t31_audio.ai_channel_enabled &&
-                   !t31_audio.frame_outstanding
-               ? 0
-               : -1;
-}
+    struct timespec deadline;
+    int ready;
 
-static int t31_capture_fill(size_t required)
-{
-    T31AudioInputStream stream;
-    size_t capacity = required + T31_CAPTURE_CHUNK_BYTES;
-
-    if (capacity > t31_audio.capture_capacity) {
-        void *buffer = realloc(t31_audio.capture_buffer, capacity);
-        if (!buffer)
-            return -1;
-        t31_audio.capture_buffer = buffer;
-        t31_audio.capture_capacity = capacity;
-    }
-    while (t31_audio.capture_valid < required) {
-        memset(&stream, 0, sizeof(stream));
-        stream.data = t31_audio.capture_buffer + t31_audio.capture_valid;
-        stream.size = T31_CAPTURE_CHUNK_BYTES;
-        if (ioctl(t31_audio.ai_fd, T31_AI_GET_STREAM, &stream) != 0)
-            return -1;
-        t31_audio.capture_valid += T31_CAPTURE_CHUNK_BYTES;
-    }
-    return 0;
+    if ((device != 0 && device != 1) || channel != 0 ||
+        !t31_audio.ai_channel_enabled || t31_audio.frame_outstanding ||
+        !t31_audio.capture_running)
+        return -1;
+    t31_capture_deadline(&deadline, timeout_ms);
+    pthread_mutex_lock(&t31_capture_lock);
+    while (t31_audio.capture_valid < t31_audio.capture_frame_bytes &&
+           !t31_audio.capture_exited &&
+           pthread_cond_timedwait(&t31_capture_cond, &t31_capture_lock,
+                                  &deadline) == 0)
+        ;
+    ready = t31_audio.capture_valid >= t31_audio.capture_frame_bytes;
+    pthread_mutex_unlock(&t31_capture_lock);
+    return ready ? 0 : -1;
 }
 
 int IMP_AI_GetFrame(int device, int channel, IMPAudioFrame *frame,
                     IMPBlock block)
 {
     size_t bytes;
-    unsigned int channels;
+    int64_t timestamp;
 
-    (void)block;
     if ((device != 0 && device != 1) || channel != 0 || !frame ||
-        !t31_audio.ai_channel_enabled || t31_audio.frame_outstanding)
+        !t31_audio.ai_channel_enabled || t31_audio.frame_outstanding ||
+        !t31_audio.capture_running)
         return -1;
-    channels = t31_audio.ai_attr.soundmode == AUDIO_SOUND_MODE_STEREO ? 2U : 1U;
-    bytes = (size_t)t31_audio.ai_attr.numPerFrm * channels * sizeof(int16_t);
-    if (!bytes || t31_capture_fill(bytes) != 0)
-        return -1;
+    bytes = t31_audio.capture_frame_bytes;
     if (bytes > t31_audio.frame_capacity) {
         void *buffer = realloc(t31_audio.frame_buffer, bytes);
         if (!buffer)
@@ -411,11 +581,23 @@ int IMP_AI_GetFrame(int device, int channel, IMPAudioFrame *frame,
         t31_audio.frame_buffer = buffer;
         t31_audio.frame_capacity = bytes;
     }
+    pthread_mutex_lock(&t31_capture_lock);
+    while (block == BLOCK && t31_audio.capture_valid < bytes &&
+           !t31_audio.capture_error && !t31_audio.capture_exited)
+        pthread_cond_wait(&t31_capture_cond, &t31_capture_lock);
+    if (t31_audio.capture_valid < bytes) {
+        pthread_mutex_unlock(&t31_capture_lock);
+        return -1;
+    }
     memcpy(t31_audio.frame_buffer, t31_audio.capture_buffer, bytes);
     t31_audio.capture_valid -= bytes;
     if (t31_audio.capture_valid)
         memmove(t31_audio.capture_buffer, t31_audio.capture_buffer + bytes,
                 t31_audio.capture_valid);
+    /* Stamp the frame's capture end, not the time it was dequeued. */
+    timestamp = t31_audio.capture_tail_time -
+                t31_bytes_to_us(t31_audio.capture_valid);
+    pthread_mutex_unlock(&t31_capture_lock);
     t31_process_effects((int16_t *)t31_audio.frame_buffer,
                         (int)(bytes / sizeof(int16_t)));
     t31_apply_ai_volume((int16_t *)t31_audio.frame_buffer,
@@ -424,7 +606,7 @@ int IMP_AI_GetFrame(int device, int channel, IMPAudioFrame *frame,
     frame->bitwidth = t31_audio.ai_attr.bitwidth;
     frame->soundmode = t31_audio.ai_attr.soundmode;
     frame->virAddr = (uint32_t *)(void *)t31_audio.frame_buffer;
-    frame->timeStamp = IMP_System_GetTimeStamp();
+    frame->timeStamp = timestamp;
     frame->seq = t31_audio.sequence++;
     frame->len = (int)bytes;
     t31_audio.frame_outstanding = 1;
