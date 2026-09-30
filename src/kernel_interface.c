@@ -1510,6 +1510,204 @@ int VBMRecycleIdleFrames(int chn)
 }
 #endif
 
+#if defined(PLATFORM_T31)
+#include "imp/imp_framesource.h"
+
+/*
+ * Capture timestamps for the T31 frame channels.
+ *
+ * Both kernel drivers stamp a buffer when the ISP completes it:
+ *  - stock tx-isp-t31.ko: frame_chan_event (buffer done, called from the ISP
+ *    interrupt routine) calls private_getrawmonotonic() and stores tv_sec and
+ *    tv_nsec / 1000 in vb+0x14/+0x18, which __fill_v4l2_buffer copies to the
+ *    DQBUF timestamp (CLOCK_MONOTONIC_RAW, the P0 timestamp clock);
+ *  - open-tx-isp: fill_timeval_mono in the frame-done interrupt
+ *    (CLOCK_MONOTONIC).
+ * Rather than trusting one layout per driver, work out which clock the
+ * DQBUF value belongs to at dequeue time: it must be a little older than
+ * "now" on that clock.  CLOCK_MONOTONIC_RAW is tried first and is converted
+ * 1:1, so a plausible raw value takes exactly the old path; other clocks are
+ * rebased with the per-frame offset between that clock and the raw clock.
+ * The clock that last matched is tried first and stays preferred with a
+ * wider window, so NTP slew between MONOTONIC and MONOTONIC_RAW cannot make
+ * it flap.
+ *
+ * Only when no clock fits (or the result would go backwards) does the frame
+ * get a synthetic time: previous timestamp + one frame period, never later
+ * than dequeue time.  Plain dequeue time is what made the pts jitter by up to
+ * one frame (34/55/88/101 ms steps at 15 fps) and repeat.
+ */
+enum {
+    FS_TS_CLOCK_RAW,
+    FS_TS_CLOCK_MONOTONIC,
+    FS_TS_CLOCK_REALTIME,
+    FS_TS_CLOCK_COUNT
+};
+
+#define FS_TS_MAX_AGE_US        1000000ull  /* new clock: at most 1 s old */
+#define FS_TS_LOCKED_MAX_AGE_US 5000000ull  /* clock already in use */
+#define FS_TS_FUTURE_SLACK_US   5000ull     /* stamp may lead "now" slightly */
+#define FS_TS_LOG_INTERVAL_US   60000000ll
+
+static const clockid_t fs_ts_clock_id[FS_TS_CLOCK_COUNT] = {
+    CLOCK_MONOTONIC_RAW, CLOCK_MONOTONIC, CLOCK_REALTIME
+};
+static const char *const fs_ts_clock_name[FS_TS_CLOCK_COUNT] = {
+    "MONOTONIC_RAW", "MONOTONIC", "REALTIME"
+};
+
+typedef struct {
+    int64_t last;           /* last published P0 timestamp, -1 = none */
+    int64_t last_log;       /* P0 time of the last summary line */
+    uint32_t period_us;     /* frame period from the channel attributes */
+    uint32_t frames;
+    uint32_t fallback_invalid;
+    uint32_t fallback_order;
+    uint32_t logged_fallbacks;
+} FsTsState;
+
+static FsTsState fs_ts_state[MAX_VBM_POOLS] = {
+    [0 ... MAX_VBM_POOLS - 1] = { .last = -1, .last_log = -1 }
+};
+static int fs_ts_clock = -1;    /* clock that matched last, -1 = none yet */
+
+static uint64_t fs_ts_clock_us(clockid_t id)
+{
+    struct timespec ts;
+
+    if (clock_gettime(id, &ts) != 0)
+        return 0;
+    return (uint64_t)(uint32_t)ts.tv_sec * 1000000ull +
+           (uint64_t)(uint32_t)ts.tv_nsec / 1000ull;
+}
+
+/* Is stamp a plausible reading of clock c taken no more than max_age ago?
+ * On success returns the same instant on CLOCK_MONOTONIC_RAW. */
+static int fs_ts_try_clock(int c, uint64_t stamp, uint64_t raw_now,
+                           uint64_t max_age, uint64_t *raw_out)
+{
+    uint64_t now = c == FS_TS_CLOCK_RAW ? raw_now
+                                        : fs_ts_clock_us(fs_ts_clock_id[c]);
+    uint64_t age;
+
+    if (!now || stamp > now + FS_TS_FUTURE_SLACK_US)
+        return 0;
+    age = stamp < now ? now - stamp : 0;
+    if (age > max_age)
+        return 0;
+    if (c == FS_TS_CLOCK_RAW)
+        *raw_out = stamp;
+    else if (age > raw_now)
+        return 0;
+    else
+        *raw_out = raw_now - age;
+    return 1;
+}
+
+static int fs_ts_to_raw(uint64_t stamp, uint64_t raw_now, uint64_t *raw_out)
+{
+    int locked = __atomic_load_n(&fs_ts_clock, __ATOMIC_RELAXED);
+    int c;
+
+    if (!stamp || !raw_now)
+        return -1;
+    if (locked >= 0 &&
+        fs_ts_try_clock(locked, stamp, raw_now, FS_TS_LOCKED_MAX_AGE_US,
+                        raw_out))
+        return locked;
+    for (c = 0; c < FS_TS_CLOCK_COUNT; ++c) {
+        if (c == locked ||
+            !fs_ts_try_clock(c, stamp, raw_now, FS_TS_MAX_AGE_US, raw_out))
+            continue;
+        __atomic_store_n(&fs_ts_clock, c, __ATOMIC_RELAXED);
+        fprintf(stderr, "[KernelIF] frame timestamps use CLOCK_%s "
+                "(DQBUF %llu us, raw now %llu us)\n", fs_ts_clock_name[c],
+                (unsigned long long)stamp, (unsigned long long)raw_now);
+        return c;
+    }
+    return -1;
+}
+
+static uint32_t fs_ts_period_us(int chn, FsTsState *st)
+{
+    if (!st->period_us || (st->frames & 63u) == 0) {
+        IMPFSChnAttr attr;
+
+        memset(&attr, 0, sizeof(attr));
+        if (IMP_FrameSource_GetChnAttr(chn, &attr) == 0 &&
+            attr.outFrmRateNum > 0 && attr.outFrmRateDen > 0) {
+            uint64_t period = 1000000ull * (uint32_t)attr.outFrmRateDen /
+                              (uint32_t)attr.outFrmRateNum;
+
+            if (period)
+                st->period_us = period > 2000000ull ? 2000000u
+                                                     : (uint32_t)period;
+        }
+        if (!st->period_us)
+            st->period_us = 40000u;
+    }
+    return st->period_us;
+}
+
+/* DQBUF timestamp (absolute, unknown clock) -> P0 frame timestamp.
+ * Called only by the channel's own dequeue thread. */
+static int64_t fs_frame_timestamp(int chn, uint64_t stamp)
+{
+    FsTsState *st = &fs_ts_state[chn];
+    uint64_t raw_now = fs_ts_clock_us(CLOCK_MONOTONIC_RAW);
+    int64_t now = IMP_System_GetTimeStamp();
+    int64_t ts = -1;
+    uint64_t raw;
+    uint32_t period = fs_ts_period_us(chn, st);
+    int clock = fs_ts_to_raw(stamp, raw_now, &raw);
+    const char *why = NULL;
+
+    st->frames++;
+    if (clock >= 0)
+        ts = OpenIMP_P0_NormalizeMonotonicTimeStamp(raw);
+    if (ts < 0) {
+        why = "no usable capture time";
+        st->fallback_invalid++;
+    } else if (st->last >= 0 && ts <= st->last) {
+        why = "capture time not increasing";
+        st->fallback_order++;
+    }
+    if (why) {
+        int64_t captured = ts;
+
+        if (st->last < 0) {
+            ts = now;
+        } else {
+            ts = st->last + period;
+            if (ts > now)
+                ts = now;
+            if (ts <= st->last)
+                ts = st->last + 1;
+        }
+        if (st->logged_fallbacks < 5) {
+            st->logged_fallbacks++;
+            fprintf(stderr, "[KernelIF] ch%d frame %u: %s (DQBUF %llu us, "
+                    "P0 %lld us, last %lld us) -> %lld us\n", chn, st->frames,
+                    why, (unsigned long long)stamp, (long long)captured,
+                    (long long)st->last, (long long)ts);
+        }
+    }
+    if ((st->fallback_invalid || st->fallback_order) && now >= 0 &&
+        (st->last_log < 0 || now - st->last_log >= FS_TS_LOG_INTERVAL_US)) {
+        int locked = __atomic_load_n(&fs_ts_clock, __ATOMIC_RELAXED);
+
+        st->last_log = now;
+        fprintf(stderr, "[KernelIF] ch%d timestamps: %u frames, clock %s, "
+                "synthesized %u (no capture time) + %u (not increasing)\n",
+                chn, st->frames,
+                locked >= 0 ? fs_ts_clock_name[locked] : "none",
+                st->fallback_invalid, st->fallback_order);
+    }
+    st->last = ts;
+    return ts;
+}
+#endif
+
 int VBMKernelDequeue(int chn, int fd, void **frame_out) {
     if (chn < 0 || chn >= MAX_VBM_POOLS || !frame_out) return -1;
     VBMPool *pool = vbm_instance[chn];
@@ -1553,10 +1751,14 @@ int VBMKernelDequeue(int chn, int fd, void **frame_out) {
         fprintf(stderr, "[VBM] VBMKernelDequeue chn=%d: invalid idx=%d (frame_count=%d)\n", chn, idx, pool->frame_count);
         return -1;
     }
+#if defined(PLATFORM_T31)
+    frame_timestamp = fs_frame_timestamp(chn, absolute_timestamp);
+#else
     frame_timestamp =
         OpenIMP_P0_NormalizeMonotonicTimeStamp(absolute_timestamp);
     if (frame_timestamp < 0)
         frame_timestamp = IMP_System_GetTimeStamp();
+#endif
 #if defined(PLATFORM_T23)
     pool->frames[idx].time_stamp = frame_timestamp;
     pool->frames[idx].time_stamp_ivdc = frame_timestamp;
