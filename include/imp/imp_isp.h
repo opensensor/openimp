@@ -475,7 +475,7 @@ int IMP_ISP_Tuning_SetBcshHue(unsigned char hue);
  * @param strength Defog strength
  * @return 0 on success, negative on error
  */
-int IMP_ISP_Tuning_SetDefog_Strength(uint32_t strength);
+int IMP_ISP_Tuning_SetDefog_Strength(uint8_t *ratio);
 
 /**
  * Set white balance
