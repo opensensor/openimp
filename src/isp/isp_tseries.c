@@ -1966,7 +1966,11 @@ int IMP_ISP_Tuning_GetDefog_Strength(uint8_t *ratio)
     if (tseries_get_isp(&isp) != 0 || isp->tuning == NULL || isp->tuning_state != 2) {
         return -1;
     }
-    TSeriesTuningValReq req = { 1, TISP_CID_DEFOG_STRENGTH, (int32_t)(intptr_t)ratio };
+    TSeriesTuningValReq req = {
+        .cmd = 1,
+        .subcmd = TISP_CID_DEFOG_STRENGTH,
+        .value = (int32_t)(intptr_t)ratio,
+    };
 
     result = ioctl(isp->tuning_fd, TISP_VIDIOC_TUNING, &req);
     if (result == 0 && req.value != (int32_t)(intptr_t)ratio) {
