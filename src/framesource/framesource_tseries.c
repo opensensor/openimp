@@ -967,9 +967,6 @@ static void *frame_pooling_thread(void *arg)
             fd_set rfds;
             struct timeval tv;
             int select_ret;
-#if defined(PLATFORM_T31)
-            int drain_polled;
-#endif
 
             if (poll_count <= 2) {
                 fs_thread_trace("libimp/FS: thread-mark ch=%d step=select iter=%d fd=%d state=%d errno=%d\n",
@@ -1022,35 +1019,11 @@ static void *frame_pooling_thread(void *arg)
                 }
             }
 
-#if defined(PLATFORM_T31)
-            drain_polled = 1;   /* the select above reported a frame */
-#endif
             while (1) {
                 /* DisableChn may be waiting for this thread to stop before
                  * STREAMOFF: no further DQBUF once it asked. */
                 if (!ctx->running)
                     break;
-#if defined(PLATFORM_T31)
-                /* The open tx-isp driver ignores O_NONBLOCK: its DQBUF
-                 * sleeps until a frame is ready or the stream stops. When
-                 * no buffer is queued (every one held by the ready queue or
-                 * a consumer, e.g. a short enable without a reader or an
-                 * idle JPEG channel) that is until STREAMOFF, and T31's
-                 * DisableChn stops this thread before STREAMOFF. Its poll
-                 * reports exactly "frame ready", so only DQBUF after a
-                 * readable select, as the first one in this drain does. */
-                if (!drain_polled) {
-                    fd_set ready_fds;
-                    struct timeval no_wait = { 0, 0 };
-
-                    FD_ZERO(&ready_fds);
-                    FD_SET(ctx->fd, &ready_fds);
-                    if (select(ctx->fd + 1, &ready_fds, NULL, NULL,
-                               &no_wait) <= 0)
-                        break;
-                }
-                drain_polled = 0;
-#endif
                 if (poll_count <= 2) {
                     fs_thread_trace("libimp/FS: thread-mark ch=%d step=dq-drain iter=%d fd=%d state=%d errno=%d\n",
                                     chn, poll_count, ctx->fd, ch_state, errno);
@@ -2048,9 +2021,8 @@ int IMP_FrameSource_DisableChn(int chnNum)
     ctx->running = 0;
 #if defined(PLATFORM_T31)
     /* T31 is the other way round. The worker only issues DQBUF after select
-     * reported a frame ready (also inside its drain loop: the open tx-isp
-     * driver ignores O_NONBLOCK), so it never sleeps in DQBUF and stops by
-     * itself within one select timeout. It must stop before
+     * reported the fd readable, and the fd is O_NONBLOCK from then on, so it
+     * never sleeps in DQBUF and stops by itself. It must stop before
      * STREAMOFF: on the stock tx-isp driver a DQBUF after STREAMOFF loops in
      * the kernel ("Streaming off, will not wait for buffers"), where neither
      * cancel nor join reach it and the process is left as a zombie. Joining
