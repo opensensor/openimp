@@ -1054,7 +1054,13 @@ enum {
     TISP_CID_AWB_CT = 0x800000d,
     TISP_CID_AWB_CLUSTER = 0x800000e,
     TISP_CID_AWB_CT_TREND = 0x800000f,
+#if defined(PLATFORM_T23) || defined(PLATFORM_T31)
+    /* Verified against the stock T23/T31 firmware s_ctrl/g_ctrl dispatch:
+     * 0x8000020 is rejected there; the AE attribute block is 0x8000035. */
+    TISP_CID_AE_ATTR = 0x8000035,
+#else
     TISP_CID_AE_ATTR = 0x8000020,
+#endif
     TISP_CID_AE_COMP = 0x8000023,
     TISP_CID_EXPR = 0x8000025,
     TISP_CID_EV_ATTR = 0x8000026,
@@ -1066,16 +1072,30 @@ enum {
     TISP_CID_MOVESTATE = 0x800002c,
     TISP_CID_AE_WEIGHT = 0x800002d,
     TISP_CID_AE_HIST = 0x800002e,
+#if defined(PLATFORM_T23) || defined(PLATFORM_T31)
+    TISP_CID_AE_HIST_ORIGIN = 0x8000031,
+#else
     TISP_CID_AE_HIST_ORIGIN = 0x800002f,
+#endif
     TISP_CID_AE_ZONE = 0x8000030,
     /* OEM T23/T31 dispatches tisp_get_ae_luma at 0x8000033.  Command
      * 0x8000031 is a different statistics query; treating its first word as
      * luma makes bright scenes read near zero and forces RIC into night mode. */
     TISP_CID_AE_LUMA = 0x8000033,
     TISP_CID_AE_IT_MAX = 0x8000032,
+#if defined(PLATFORM_T23) || defined(PLATFORM_T31)
+    TISP_CID_AE_MIN = 0x800002f,    /* 16 bytes: it, again, it_short, again_short */
+#else
     TISP_CID_AE_MIN = 0x8000033,
+#endif
     TISP_CID_AE_FREEZE = 0x8000034,
+#if defined(PLATFORM_T23) || defined(PLATFORM_T31)
+    /* 0x8000035 is SetAeAttr on T23/T31: sending ROI weights there switched
+     * AE to manual with ROI bytes as its flags and froze it. */
+    TISP_CID_AE_ROI = 0x8000024,
+#else
     TISP_CID_AE_ROI = 0x8000035,
+#endif
     TISP_CID_AE_STATE = 0x8000036,
     TISP_CID_BACKLIGHT_COMP = 0x8000037,
     TISP_CID_DEFOG_STRENGTH = 0x8000039,
@@ -1924,22 +1944,34 @@ int IMP_ISP_Tuning_GetBcshHue(unsigned char *phue)
     return result;
 }
 
-int IMP_ISP_Tuning_SetDefog_Strength(uint32_t strength)
+/* Vendor ABI: uint8_t *ratio. The stock and open kernels copy one byte from
+ * the pointer. The old uint32_t prototype only worked because callers built
+ * against the vendor header passed a pointer anyway. */
+int IMP_ISP_Tuning_SetDefog_Strength(uint8_t *ratio)
 {
-    return tseries_tuning_set_val(TISP_CID_DEFOG_STRENGTH, strength);
+    return tseries_tuning_set_ptr(TISP_CID_DEFOG_STRENGTH, ratio);
 }
 
-int IMP_ISP_Tuning_GetDefog_Strength(uint32_t *pstrength)
+/* The stock kernel copies one byte to the pointer; the open kernel returns
+ * the value inline instead. Handle both, and never write more than the
+ * caller's one byte (the old uint32_t store overwrote three bytes past it). */
+int IMP_ISP_Tuning_GetDefog_Strength(uint8_t *ratio)
 {
-    int32_t value = 0;
+    ISPDevice *isp;
     int result;
 
-    if (pstrength == NULL) {
+    if (ratio == NULL) {
         return -1;
     }
+    if (tseries_get_isp(&isp) != 0 || isp->tuning == NULL || isp->tuning_state != 2) {
+        return -1;
+    }
+    TSeriesTuningValReq req = { 1, TISP_CID_DEFOG_STRENGTH, (int32_t)(intptr_t)ratio };
 
-    result = tseries_tuning_get_val(TISP_CID_DEFOG_STRENGTH, &value);
-    *pstrength = value;
+    result = ioctl(isp->tuning_fd, TISP_VIDIOC_TUNING, &req);
+    if (result == 0 && req.value != (int32_t)(intptr_t)ratio) {
+        *ratio = (uint8_t)req.value;
+    }
     return result;
 }
 
@@ -2279,32 +2311,17 @@ int IMP_ISP_Tuning_GetAE_IT_MAX(uint32_t *it_max)
     return result;
 }
 
-int IMP_ISP_Tuning_SetAeMin(int min_it, int min_again)
+/* Vendor ABI (T23/T31): IMPISPAEMin *, four words (it, again, it_short,
+ * again_short); the kernel copies 16 bytes. The old (int, int) form made the
+ * kernel read eight bytes past a two-word stack object. */
+int IMP_ISP_Tuning_SetAeMin(void *ae_min)
 {
-    struct {
-        int min_it;
-        int min_again;
-    } params = { min_it, min_again };
-
-    return tseries_tuning_set_ptr(TISP_CID_AE_MIN, &params);
+    return tseries_tuning_set_ptr(TISP_CID_AE_MIN, ae_min);
 }
 
-int IMP_ISP_Tuning_GetAeMin(int *min_it, int *min_again)
+int IMP_ISP_Tuning_GetAeMin(void *ae_min)
 {
-    struct {
-        int min_it;
-        int min_again;
-    } params = { 0, 0 };
-    int result;
-
-    if (min_it == NULL || min_again == NULL) {
-        return -1;
-    }
-
-    result = tseries_tuning_get_ptr(TISP_CID_AE_MIN, &params);
-    *min_it = params.min_it;
-    *min_again = params.min_again;
-    return result;
+    return tseries_tuning_get_ptr(TISP_CID_AE_MIN, ae_min);
 }
 
 int IMP_ISP_Tuning_GetAeZone(void *zone)
@@ -2393,10 +2410,11 @@ int IMP_ISP_Tuning_SetShading(void *attr)
     return tseries_tuning_set_ptr(TISP_CID_SHADING, attr);
 }
 
-int IMP_ISP_Tuning_SetScalerLv(int chn, int level)
+/* Vendor ABI (T23/T31): IMPISPScalerLv * (channel, method, level); the
+ * kernel copies 12 bytes. */
+int IMP_ISP_Tuning_SetScalerLv(void *scaler_level)
 {
-    (void)chn;
-    return tseries_tuning_set_val(TISP_CID_SCALER_LV, level);
+    return tseries_tuning_set_ptr(TISP_CID_SCALER_LV, scaler_level);
 }
 
 int IMP_ISP_Tuning_SetMask(void *attr)
@@ -2429,23 +2447,15 @@ int IMP_ISP_Tuning_GetCsc_Attr(void *attr)
     return tseries_tuning_get_ptr(TISP_CID_CSC_ATTR, attr);
 }
 
-int IMP_ISP_Tuning_SetWdr_OutputMode(int mode)
+/* Vendor ABI (T31): IMPISPWdrOutputMode *; the kernel copies 4 bytes. */
+int IMP_ISP_Tuning_SetWdr_OutputMode(void *mode)
 {
-    return tseries_tuning_set_val(TISP_CID_WDR_OUTPUT_MODE, mode);
+    return tseries_tuning_set_ptr(TISP_CID_WDR_OUTPUT_MODE, mode);
 }
 
-int IMP_ISP_Tuning_GetWdr_OutputMode(int *mode)
+int IMP_ISP_Tuning_GetWdr_OutputMode(void *mode)
 {
-    int32_t value = 0;
-    int result;
-
-    if (mode == NULL) {
-        return -1;
-    }
-
-    result = tseries_tuning_get_val(TISP_CID_WDR_OUTPUT_MODE, &value);
-    *mode = value;
-    return result;
+    return tseries_tuning_get_ptr(TISP_CID_WDR_OUTPUT_MODE, mode);
 }
 
 int IMP_ISP_Tuning_SetAwbCtTrend(void *attr)
