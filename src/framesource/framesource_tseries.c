@@ -1001,6 +1001,12 @@ static void *frame_pooling_thread(void *arg)
                     fs_trace("libimp/FS: pooling select-timeout ch=%d fd=%d idle=%d\n",
                              chn, ctx->fd, no_frame_cycles);
                 }
+#if defined(PLATFORM_T31)
+                /* A reader that stopped (StopRecvPic) with every buffer
+                 * parked in the ready queue leaves no DQBUF to complete;
+                 * hand them back so IVS-only capture keeps running. */
+                VBMRecycleIdleFrames(chn);
+#endif
                 usleep(1000);
                 continue;
             }
