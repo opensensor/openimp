@@ -7757,10 +7757,11 @@ static struct {
     int timeouts;               /* consecutive */
     uint32_t ep1_quality;
     uint32_t stream_min;        /* raised after a stream overflow */
+    uint32_t stream_fail;       /* smallest stream size that failed to grow */
     AvpuDMABuf src, ep1, stream;
 } g_t31_hwjpeg = {
     PTHREAD_MUTEX_INITIALIZER, PTHREAD_COND_INITIALIZER, 0, -1, 0, 0, 0, 0, 0,
-    {0}, {0}, {0}
+    0, {0}, {0}, {0}
 };
 static pthread_once_t g_t31_hwjpeg_once = PTHREAD_ONCE_INIT;
 
@@ -7852,22 +7853,26 @@ static void t31_hwjpeg_set_irq_bit(int fd, int on)
 
 /* Grow-only. EP1 and the stream are small and coherent: the cached rmem
  * flush is not trusted on T31 (see avpu_remap_uncached). The source stays
- * cached for the 3 MB copy unless OPENIMP_T31_HW_JPEG_SRC_COHERENT=1. */
+ * cached for the 3 MB copy unless OPENIMP_T31_HW_JPEG_SRC_COHERENT=1.
+ *
+ * The new buffer is allocated before the old one is released: a failed
+ * allocation (fragmented lowmem for the coherent ones) leaves *buf as it
+ * was, so the caller can keep using a smaller buffer that still works. */
 static int t31_hwjpeg_ensure(AvpuDMABuf *buf, uint32_t size, int coherent,
                              const char *tag)
 {
+    AvpuDMABuf grown;
+
     if (buf->map && buf->size >= size)
         return 0;
+    memset(&grown, 0, sizeof(grown));
+    grown.dmabuf_fd = -1;
+    if ((coherent ? avpu_alloc_mmap(g_t31_hwjpeg.fd, size, &grown)
+                  : avpu_alloc_encoder(g_t31_hwjpeg.fd, size, tag, &grown)) != 0)
+        return -1;
     if (buf->map)
         avpu_release_dma_buf(buf);
-    memset(buf, 0, sizeof(*buf));
-    buf->dmabuf_fd = -1;
-    if ((coherent ? avpu_alloc_mmap(g_t31_hwjpeg.fd, size, buf)
-                  : avpu_alloc_encoder(g_t31_hwjpeg.fd, size, tag, buf)) != 0) {
-        memset(buf, 0, sizeof(*buf));
-        buf->dmabuf_fd = -1;
-        return -1;
-    }
+    *buf = grown;
     if ((buf->phy_addr & 255u) != 0)
         IMP_LOG_INFO("Codec", "HWJPEG: warning: %s at 0x%08x is not 256-byte aligned as in stock traces",
                      tag, buf->phy_addr);
@@ -7948,18 +7953,39 @@ static int t31_hwjpeg_encode(const HWFrameBuffer *frame, HWStreamBuffer *stream,
     if (stream_size < g_t31_hwjpeg.stream_min)
         stream_size = g_t31_hwjpeg.stream_min;
     stream_size = (stream_size + 0xfffu) & ~0xfffu;
+    /* Every failed attempt is a large lowmem allocation in the kernel: do
+     * not retry a size that already failed, keep the current buffer. */
+    if (g_t31_hwjpeg.stream.map && g_t31_hwjpeg.stream_fail &&
+        stream_size >= g_t31_hwjpeg.stream_fail)
+        stream_size = (uint32_t)g_t31_hwjpeg.stream.size;
     src_coherent_env = getenv("OPENIMP_T31_HW_JPEG_SRC_COHERENT");
     /* The p2 layer copies JPEG frames straight into rmem (written back,
      * physical address set): read that in place instead of copying again. */
     src_phys = src_coherent_env && src_coherent_env[0] == '1' ? 0 : frame->phys_addr;
-    if ((!src_phys &&
-         t31_hwjpeg_ensure(&g_t31_hwjpeg.src, src_size,
-                           src_coherent_env && src_coherent_env[0] == '1',
-                           "hwjpeg-src") != 0) ||
-        t31_hwjpeg_ensure(&g_t31_hwjpeg.stream, stream_size, 1,
-                          "hwjpeg-stream") != 0) {
+    if (!src_phys &&
+        t31_hwjpeg_ensure(&g_t31_hwjpeg.src, src_size,
+                          src_coherent_env && src_coherent_env[0] == '1',
+                          "hwjpeg-src") != 0) {
+        /* The path is off from here on: do not keep the old source. */
+        if (g_t31_hwjpeg.src.map)
+            avpu_release_dma_buf(&g_t31_hwjpeg.src);
+        memset(&g_t31_hwjpeg.src, 0, sizeof(g_t31_hwjpeg.src));
+        g_t31_hwjpeg.src.dmabuf_fd = -1;
         t31_hwjpeg_disable("DMA allocation failed");
         return -1;
+    }
+    if (t31_hwjpeg_ensure(&g_t31_hwjpeg.stream, stream_size, 1,
+                          "hwjpeg-stream") != 0) {
+        if (!g_t31_hwjpeg.stream.map) {
+            t31_hwjpeg_disable("DMA allocation failed");
+            return -1;
+        }
+        /* Growing after an overflow failed. The old buffer still fits
+         * normal frames; a frame that overflows it again is encoded in
+         * software (status bit 1 below), so keep the hardware path. */
+        g_t31_hwjpeg.stream_fail = stream_size;
+        IMP_LOG_INFO("Codec", "HWJPEG: cannot grow the stream buffer to %u bytes, keeping %zu",
+                     stream_size, g_t31_hwjpeg.stream.size);
     }
 
     if (g_t31_hwjpeg.ep1_quality != quality) {
