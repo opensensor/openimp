@@ -5932,6 +5932,8 @@ static uint32_t avpu_stream_buffer_effective_size(ALAvpuContext *ctx, int buf_id
 
         if (!have_t31_layout)
             return 0u;
+        ctx->t31_au_header_by_buf[buf_idx] = header_size;
+        ctx->t31_ebsp_inserted_by_buf[buf_idx] = 0u;
 
         /* The inline T31 command writes entropy data at the OEM +0x220
          * boundary.  Escape it directly into a CPU-owned per-slot snapshot;
@@ -5969,6 +5971,8 @@ static uint32_t avpu_stream_buffer_effective_size(ALAvpuContext *ctx, int buf_id
                           (uint32_t)ctx->stream_buf_size, buf_idx);
                 return 0u;
             }
+            ctx->t31_au_header_by_buf[buf_idx] = header_size;
+            ctx->t31_ebsp_inserted_by_buf[buf_idx] = inserted;
             if (inserted != 0u &&
                 (ctx->frames_encoded < 3 ||
                  (ctx->frames_encoded % AVPU_LOG_INTERVAL) == 0u))
@@ -6923,6 +6927,16 @@ static int avpu_queue_completed_stream(ALAvpuContext *ctx, int buf_idx, void *us
     hw_stream->slice_type = ctx->stream_is_idr[buf_idx]
         ? IMP_ENC_SLICE_I : IMP_ENC_SLICE_P;
     avpu_hw_stream_set_user_data(hw_stream, user_data);
+#if defined(PLATFORM_T31)
+    /* Layout of this AU for the P2 access-unit check (reserved[0..1]
+     * carry the user pointer). */
+    hw_stream->reserved[2] = (uint32_t)buf_idx;
+    hw_stream->reserved[3] = ctx->t31_au_header_by_buf[buf_idx];
+    hw_stream->reserved[4] = AVPU_T31_PAYLOAD_OFFSET;
+    hw_stream->reserved[5] = ctx->t31_payload_size_by_buf[buf_idx];
+    hw_stream->reserved[6] = ctx->t31_ebsp_inserted_by_buf[buf_idx];
+    hw_stream->reserved[7] = (uint32_t)ctx->frames_encoded;
+#endif
 
     if (ctx->frames_encoded <= 4 || ctx->frames_encoded % 50 == 0)
     LOG_CODEC("%s: queue completed stream buf[%d] stream=%p phys=0x%08x virt=0x%08x len=%u flush_ret=%d user=%p",

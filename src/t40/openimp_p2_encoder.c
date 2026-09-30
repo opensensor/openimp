@@ -19,6 +19,7 @@
 #endif
 
 #include "openimp_profile.h"
+#include "imp_log_int.h"
 #include "trace_control.h"
 #if defined(PLATFORM_T41) || defined(PLATFORM_T31)
 #include "dma_alloc.h"
@@ -168,6 +169,9 @@ typedef struct {
 } P2EncoderChannel;
 
 #if defined(PLATFORM_T31)
+static void p2_t31_check_au(const P2EncoderChannel *channel,
+                            const P2HWStream *raw);
+
 static uint32_t p2_fill_t31_packs(P2EncoderChannel *channel,
                                   const P2HWStream *raw, int64_t timestamp,
                                   int is_idr)
@@ -178,6 +182,8 @@ static uint32_t p2_fill_t31_packs(P2EncoderChannel *channel,
     int index;
 
     memset(channel->packs, 0, sizeof(channel->packs));
+    if (channel->codec_type == IMP_ENC_TYPE_AVC)
+        p2_t31_check_au(channel, raw);
     count = channel->codec_type == IMP_ENC_TYPE_JPEG
         ? 0
         : openimp_t31_annexb_nals(data, raw->length, nals,
@@ -217,6 +223,78 @@ static P2Bind p2_binds[P2_MAX_BINDS];
 static pthread_mutex_t p2_state_lock = PTHREAD_MUTEX_INITIALIZER;
 static pthread_mutex_t p2_core_lock = PTHREAD_MUTEX_INITIALIZER;
 static uint64_t p2_monotonic_us(void);
+
+#if defined(PLATFORM_T31)
+/*
+ * Every published H.264 access unit is checked the way a decoder splits it
+ * (any 00 00 01 starts a NAL).  An emulated start code or a second slice in
+ * one AU makes ffmpeg start a second picture inside one packet ("number of
+ * reference frames (0+2) exceeds max"), so report the exact layout: which
+ * NALs, where the first unexpected one starts relative to the host header,
+ * and the codec's slot/header/payload bookkeeping for this AU.  At most
+ * P2_AU_CHECK_LOGS reports per minute; the rest are only counted.
+ */
+#define P2_AU_CHECK_LOGS 4u
+#define P2_AU_CHECK_WINDOW_US 60000000ull
+
+static pthread_mutex_t p2_au_check_lock = PTHREAD_MUTEX_INITIALIZER;
+static uint64_t p2_au_check_window_us;
+static uint32_t p2_au_check_logged;
+static uint32_t p2_au_check_suppressed;
+static uint32_t p2_au_check_total;
+
+static void p2_t31_check_au(const P2EncoderChannel *channel,
+                            const P2HWStream *raw)
+{
+    const uint8_t *data = (const uint8_t *)(uintptr_t)raw->virt_addr;
+    OpenIMPT31AvcAuCheck au;
+    char summary[320];
+    uint32_t suppressed;
+    uint32_t total;
+    uint32_t header = raw->reserved[3];
+    uint64_t now;
+    int log_it;
+
+    if (!data || !raw->length)
+        return;
+    if (!openimp_t31_avc_au_check(data, raw->length,
+                                  raw->frame_type == 0u, &au))
+        return;
+
+    now = p2_monotonic_us();
+    pthread_mutex_lock(&p2_au_check_lock);
+    total = ++p2_au_check_total;
+    if (!p2_au_check_window_us ||
+        now - p2_au_check_window_us >= P2_AU_CHECK_WINDOW_US) {
+        p2_au_check_window_us = now;
+        p2_au_check_logged = 0u;
+    }
+    log_it = p2_au_check_logged < P2_AU_CHECK_LOGS;
+    if (log_it) {
+        p2_au_check_logged++;
+        suppressed = p2_au_check_suppressed;
+        p2_au_check_suppressed = 0u;
+    } else {
+        p2_au_check_suppressed++;
+        suppressed = 0u;
+    }
+    pthread_mutex_unlock(&p2_au_check_lock);
+    if (!log_it)
+        return;
+
+    openimp_t31_avc_au_describe(data, raw->length, &au, summary,
+                                sizeof(summary));
+    IMP_LOG_WARN("Encoder",
+                 "AVC AU check ch=%d expect=%s %s bad-hdr=%d slot=%u hdr=%u payload_off=0x%x payload=%u ebsp+%u frame=%u total=%u suppressed=%u",
+                 (int)(channel - p2_channels),
+                 raw->frame_type == 0u ? "IDR" : "P", summary,
+                 au.first_bad_offset == UINT32_MAX
+                     ? 0 : (int)au.first_bad_offset - (int)header,
+                 raw->reserved[2], header, raw->reserved[4],
+                 raw->reserved[5], raw->reserved[6], raw->reserved[7],
+                 total, suppressed);
+}
+#endif
 
 #if defined(PLATFORM_T31)
 /* With OPENIMP_T31_HW_JPEG=1 the JPEG copy goes straight into rmem, so the

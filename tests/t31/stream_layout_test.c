@@ -91,6 +91,105 @@ int main(void)
         failed = 1;
     }
 
+    {
+        static const uint8_t p_embedded[] = {
+            0x00, 0x00, 0x00, 0x01, 0x21, 0x9a, 0x00, 0x00,
+            0x01, 0x21, 0x88, 0x12, 0x34,
+        };
+        static const uint8_t idr_mirrored[] = {
+            0x00, 0x00, 0x00, 0x01, 0x27, 0xaa,
+            0x00, 0x00, 0x00, 0x01, 0x28, 0xcc,
+            0x00, 0x00, 0x00, 0x01, 0x25, 0xb8,
+            0x00, 0x00, 0x00, 0x01, 0x27, 0xaa,
+            0x00, 0x00, 0x00, 0x01, 0x28, 0xcc,
+            0x00, 0x00, 0x00, 0x01, 0x25, 0xb8, 0x40,
+        };
+        static const uint8_t p_escaped[] = {
+            0x00, 0x00, 0x00, 0x01, 0x21, 0x9a, 0x00, 0x00,
+            0x03, 0x01, 0x00, 0x00, 0x03, 0x00, 0x7f,
+        };
+        static const uint8_t p_forbidden[] = {
+            0x00, 0x00, 0x00, 0x01, 0xa1, 0x9a,
+        };
+        static const uint8_t p_sei[] = {
+            0x00, 0x00, 0x00, 0x01, 0x06, 0x05, 0x80,
+            0x00, 0x00, 0x00, 0x01, 0x21, 0x9a,
+        };
+        static const uint8_t p_garbage[] = {
+            0x12, 0x00, 0x00, 0x00, 0x01, 0x21, 0x9a,
+        };
+        OpenIMPT31AvcAuCheck au;
+
+        if (openimp_t31_avc_au_check(idr_access_unit,
+                                     sizeof(idr_access_unit), 1, &au) ||
+            au.nal_count != 3u || au.vcl_count != 1u ||
+            au.first_bad_offset != UINT32_MAX ||
+            openimp_t31_avc_au_check(idr_access_unit,
+                                     sizeof(idr_access_unit), -1, &au) ||
+            openimp_t31_avc_au_check(p_access_unit, sizeof(p_access_unit),
+                                     0, &au) ||
+            openimp_t31_avc_au_check(p_escaped, sizeof(p_escaped),
+                                     0, &au) ||
+            au.nals[0].length != sizeof(p_escaped)) {
+            fprintf(stderr, "clean T31 access unit rejected\n");
+            failed = 1;
+        }
+        if (openimp_t31_avc_au_check(p_embedded, sizeof(p_embedded),
+                                     0, &au) !=
+                (OPENIMP_T31_AU_SHORT_START | OPENIMP_T31_AU_MULTI_VCL |
+                 OPENIMP_T31_AU_BAD_ORDER) ||
+            au.first_bad_offset != 6u || au.nal_count != 2u ||
+            au.nals[0].length != 6u || au.nals[1].offset != 6u ||
+            au.nals[1].length != 7u) {
+            fprintf(stderr, "embedded start code not reported (0x%x)\n",
+                    au.flags);
+            failed = 1;
+        }
+        {
+            char text[256];
+
+            openimp_t31_avc_au_describe(p_embedded, sizeof(p_embedded),
+                                        &au, text, sizeof(text));
+            if (strcmp(text,
+                       "flags=0x046 sc3 multivcl order len=13 nals=2 vcl=2 "
+                       "[1@0+6 1@6+7] bad@6 [00 00 00 01 21 9a|00 00 01 21 "
+                       "88 12 34]") != 0) {
+                fprintf(stderr, "unexpected AU summary: %s\n", text);
+                failed = 1;
+            }
+            openimp_t31_avc_au_describe(p_embedded, sizeof(p_embedded),
+                                        &au, text, 12u);
+            if (strlen(text) != 11u) {
+                fprintf(stderr, "AU summary overflowed\n");
+                failed = 1;
+            }
+        }
+        if (openimp_t31_avc_au_check(idr_mirrored, sizeof(idr_mirrored),
+                                     1, &au) !=
+                (OPENIMP_T31_AU_MULTI_VCL | OPENIMP_T31_AU_BAD_ORDER) ||
+            au.first_bad_offset != 18u || au.nal_count != 6u) {
+            fprintf(stderr, "mirrored prefix not reported (0x%x)\n",
+                    au.flags);
+            failed = 1;
+        }
+        if (openimp_t31_avc_au_check(p_forbidden, sizeof(p_forbidden),
+                                     0, &au) !=
+                OPENIMP_T31_AU_FORBIDDEN_BIT ||
+            openimp_t31_avc_au_check(p_sei, sizeof(p_sei), 0, &au) !=
+                (OPENIMP_T31_AU_BAD_TYPE | OPENIMP_T31_AU_BAD_ORDER) ||
+            au.first_bad_offset != 0u ||
+            openimp_t31_avc_au_check(p_garbage, sizeof(p_garbage), 0,
+                                     &au) != OPENIMP_T31_AU_NO_START_CODE ||
+            au.nals[0].offset != 1u ||
+            openimp_t31_avc_au_check(p_access_unit, sizeof(p_access_unit),
+                                     1, &au) !=
+                OPENIMP_T31_AU_BAD_ORDER) {
+            fprintf(stderr, "malformed T31 access unit accepted (0x%x)\n",
+                    au.flags);
+            failed = 1;
+        }
+    }
+
     if (failed)
         return 1;
     puts("T31 stream-layout tests passed");
