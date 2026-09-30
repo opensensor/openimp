@@ -7,6 +7,12 @@ Kamera gelaufen**. Genau das soll dieser Test nachholen.
 
 Du arbeitest auf einem Rechner im selben Netz wie die Testkamera und erreichst sie per SSH.
 
+**Kurzweg:** Der Branch `claude/t31-all` enthält alles aus `claude/t31-re`, `claude/t31-perf`,
+`claude/t31-avc-stability` und `claude/t31-ivs-move`. Für B und alle Tests ab C diese eine
+Bibliothek bauen; wo unten ein anderer Branch genannt ist, gilt `claude/t31-all`. Die neuen
+Funktionen sind per Umgebungsvariable schaltbar (siehe jeweiligen Test). Zeigt sich ein Fehler,
+den Test mit der Bibliothek des dort genannten Einzel-Branches wiederholen, um ihn einzugrenzen.
+
 ---
 
 ## 0. Regeln (verbindlich)
@@ -17,7 +23,8 @@ Du arbeitest auf einem Rechner im selben Netz wie die Testkamera und erreichst s
    - Neue Dateien nur nach `/tmp`.
    - Die neue `libimp.so` nur per Bind-Mount einhängen, ein Neustart stellt alles wieder her.
 3. **Git:** Im Fork `Lu-Fi/openimp` nur in Branches schreiben, die du selbst **neu** anlegst.
-   Nie auf `main`, `claude/t31-re` oder andere bestehende Branches pushen, nie force-pushen.
+   Nie auf `main` oder einen bestehenden Branch pushen (etwa `claude/t31-re`, `claude/t31-all`),
+   nie force-pushen.
 4. **Vor jedem Stoppen des Streamers kurz Bescheid geben.** Bei Unklarheit fragen.
 5. **Alles melden,** auch Fehlschläge, mit dem genauen Befehl davor.
 6. **Kamerabilder** (Snapshots, Testausgaben mit Kamerabild) nur mit Einverständnis des
@@ -40,6 +47,7 @@ Du arbeitest auf einem Rechner im selben Netz wie die Testkamera und erreichst s
 | Nur auf `claude/t31-perf`: Hardware-JPEG liest die Frame-Kopie direkt aus rmem (eine 3-MB-Kopie weniger) | `src/t40/openimp_p2_encoder.c`, `src/t40/codec-t40.c` | H |
 | Nur auf `claude/t31-perf`: OSD-Zeichnen mit der IPU, Schalter `OPENIMP_T31_OSD=1` | `src/t31/openimp_t31_services.c`, `src/t40/openimp_p2_encoder.c` | G |
 | Nur auf `claude/t31-avc-stability` (enthält `claude/t31-perf`): H.264-Pfad erholt sich statt einzufrieren, Schalter `OPENIMP_T31_AVC_LEGACY=1` für A/B | `src/t40/codec-t40.c`, `src/t40/openimp_p2_encoder.c` | S |
+| Nur auf `claude/t31-ivs-move`: IVS-Bewegungserkennung (move, base move) statt Stubs, Vergleichstool | `src/t31/openimp_t31_ivs*.{c,h}`, `src/kernel_interface.c`, `tools/t31_ivs_compare.c` | I |
 
 ---
 
@@ -82,12 +90,12 @@ Anleitung: [`T31_OSD_IPU_TEST.md`](T31_OSD_IPU_TEST.md), inklusive `-n 200`.
 - Diese Ergebnisse steuern die OSD-Implementierung. Hier gibt es kein Abbruchkriterium für
   die anderen Tests.
 
-### B. `libimp.so` aus `claude/t31-re` bauen und einhängen
+### B. `libimp.so` bauen und einhängen (`claude/t31-all`)
 
 Anleitung: [`T31_HW_JPEG_TEST.md`](T31_HW_JPEG_TEST.md), Abschnitt 3.
 
 ```sh
-cd openimp && git switch claude/t31-re
+cd openimp && git switch claude/t31-all      # oder der Einzel-Branch des Tests
 TC=<thingino>/output/<branch>/<target>/host/bin/mipsel-linux
 THINGINO_DIR=<thingino> TOOLCHAIN_PREFIX=$TC T31_OUTPUT_DIR=$PWD/build/t31 sh build-t31.sh
 scp build/t31/libimp.so root@<kamera>:/tmp/libimp-t31re.so
@@ -164,6 +172,23 @@ Wie E, aber mit der Bibliothek aus `claude/t31-perf`:
 
 - **Erfolg:** gleiche Bilder, gleiche oder niedrigere CPU-Last, keine neuen Fehler im Log.
 
+### I. IVS-Bewegungserkennung (Branch `claude/t31-ivs-move`)
+
+Erst nach C. Anleitung: [`T31_IVS_MOVE.md`](T31_IVS_MOVE.md), Abschnitt 6. Die Bibliothek aus
+`claude/t31-ivs-move` bauen (sonst wie B), dazu das Tool `t31_ivs_compare`.
+
+1. Stufe 1: `t31_ivs_compare` gegen die Stock-libimp, einmal mit SIMD, einmal mit
+   `/tmp/closesimd`. Läuft neben dem Streamer, ohne Kamerabild.
+2. Stufe 2: timps mit `-c /tmp/timps-ivs.conf`, `motion.enabled = 1` und
+   `OPENIMP_T31_IVS_STATS=1`. Ruhige Szene, Gehtest (nur mit Einverständnis), Empfindlichkeit
+   live, Last und Bildrate mit und ohne Bewegungserkennung.
+
+- **Erfolg:**
+  - Stufe 1: `differ=0` bei move und base in beiden Läufen (`oob-differ` ist erlaubt).
+  - Stufe 2: Treffer bei Bewegung, keine bei ruhiger Szene, kein `stalled`, Bildrate des
+    Hauptstreams unverändert.
+- **Abbruchkriterium:** Absturz oder eingefrorener Stream mit der neuen Bibliothek. Dann melden.
+
 ### S. H.264-Stabilität (Branch `claude/t31-avc-stability`)
 
 Anleitung: [`T31_AVC_STABILITY_TEST.md`](T31_AVC_STABILITY_TEST.md). Der Branch enthält auch
@@ -176,13 +201,14 @@ alles aus `claude/t31-perf`, G und H können also mit derselben Bibliothek laufe
 
 ## 4. Ergebnisbericht
 
-Eine Datei `T31_TEST_RESULTS.md` mit einem Abschnitt pro Test (A1, A2, C, D, E, F, G, H, S):
+Eine Datei `T31_TEST_RESULTS.md` mit einem Abschnitt pro Test (A1, A2, C, D, E, F, G, H, I, S):
 
 - **Status:** bestanden / fehlgeschlagen / übersprungen, mit Grund.
 - **Die jeweils in der Einzelanleitung verlangten Ausgaben:**
   - Tool-Ausgaben
   - `ipu_osd_analyze.py`-Ausgabe
-  - Logzeilen `HWJPEG:` / `companion stage`
+  - Logzeilen `HWJPEG:` / `companion stage` / `[IVS]`
+  - `t31_ivs_compare`-Ausgaben
   - `top`-Werte
   - Frame-Zählungen
 - **Vorne ein Kopf mit Geräteangaben:**

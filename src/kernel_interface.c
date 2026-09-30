@@ -1415,6 +1415,11 @@ int VBMPrimeKernelQueue(int chn, int fd, int limit) {
 
 /* Dequeue a kernel-filled frame and map to VBM frame pointer */
 
+#if defined(PLATFORM_T31)
+extern void openimp_t31_ivs_capture(int fs_chn, const void *frame)
+    __attribute__((weak));
+#endif
+
 int VBMKernelDequeue(int chn, int fd, void **frame_out) {
     if (chn < 0 || chn >= MAX_VBM_POOLS || !frame_out) return -1;
     VBMPool *pool = vbm_instance[chn];
@@ -1467,6 +1472,12 @@ int VBMKernelDequeue(int chn, int fd, void **frame_out) {
 #else
     memcpy(pool->frames[idx].data, &frame_timestamp,
            sizeof(frame_timestamp));
+#endif
+#if defined(PLATFORM_T31)
+    /* IVS groups bound to this channel copy the luma they need now, while
+     * the buffer is still private to this thread (openimp_t31_ivs.c). */
+    if (openimp_t31_ivs_capture)
+        openimp_t31_ivs_capture(chn, &pool->frames[idx]);
 #endif
     /* Mark buffer as in userspace — VBMReleaseFrame will only QBUF it back
      * if this flag is set, preventing double-QBUF. */

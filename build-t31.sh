@@ -71,6 +71,8 @@ compile isp src/isp/isp_tseries.c
 compile t31_compat src/t31/openimp_t31_compat.c
 compile t31_state src/t31/openimp_t31_state.c -Werror
 compile t31_services src/t31/openimp_t31_services.c -Werror
+compile t31_ivs src/t31/openimp_t31_ivs.c -Werror
+compile t31_ivs_move src/t31/openimp_t31_ivs_move.c -Werror
 compile t31_audio src/t31/openimp_t31_audio.c -Werror
 
 "$compiler" -shared -nostartfiles \
@@ -102,6 +104,8 @@ compile t31_audio src/t31/openimp_t31_audio.c -Werror
     "$output_dir/t31_compat.o" \
     "$output_dir/t31_state.o" \
     "$output_dir/t31_services.o" \
+    "$output_dir/t31_ivs.o" \
+    "$output_dir/t31_ivs_move.o" \
     "$output_dir/t31_audio.o" \
     -ldl -lpthread -lrt
 
