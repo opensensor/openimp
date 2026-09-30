@@ -1548,6 +1548,7 @@ enum {
 #define FS_TS_LOCKED_MAX_AGE_US 5000000ull  /* clock already in use */
 #define FS_TS_FUTURE_SLACK_US   5000ull     /* stamp may lead "now" slightly */
 #define FS_TS_LOG_INTERVAL_US   60000000ll
+#define FS_TS_REBASE_US         1000000ll   /* P0 clock moved back this far */
 
 static const clockid_t fs_ts_clock_id[FS_TS_CLOCK_COUNT] = {
     CLOCK_MONOTONIC_RAW, CLOCK_MONOTONIC, CLOCK_REALTIME
@@ -1663,6 +1664,21 @@ static int64_t fs_frame_timestamp(int chn, uint64_t stamp)
     const char *why = NULL;
 
     st->frames++;
+    /*
+     * The P0 timebase itself went backwards: IMP_System_Init after an
+     * IMP_System_Exit in the same process restarts it at 0, and
+     * IMP_System_RebaseTimeStamp can move it anywhere.  The previous
+     * session's last timestamp then no longer compares with anything;
+     * keeping it would synthesize last + 1 us for every frame until the
+     * new timebase caught up with the old one.  Start the channel over.
+     */
+    if (st->last >= 0 && now >= 0 && now + FS_TS_REBASE_US < st->last) {
+        fprintf(stderr, "[KernelIF] ch%d timestamp base moved back "
+                "(now %lld us, last %lld us), restarting the sequence\n",
+                chn, (long long)now, (long long)st->last);
+        st->last = -1;
+        st->last_log = -1;
+    }
     if (clock >= 0)
         ts = OpenIMP_P0_NormalizeMonotonicTimeStamp(raw);
     if (ts < 0) {
