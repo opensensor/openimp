@@ -817,6 +817,7 @@ static const char *fs_dq_step_name(int step)
         return "?";
     return fs_dq_step_names[step];
 }
+
 #else
 #define FS_STEP(chn, step) do { } while (0)
 #endif
@@ -1086,8 +1087,9 @@ static void *frame_pooling_thread(void *arg)
             }
 
             while (1) {
-                /* DisableChn may be waiting for this thread to stop before
-                 * STREAMOFF: no further DQBUF once it asked. */
+                /* No further DQBUF once DisableChn asked us to stop: it has
+                 * issued STREAMOFF (or is about to), and a DQBUF on T31
+                 * sleeps until the next frame, which may never come. */
                 if (!ctx->running)
                     break;
                 if (poll_count <= 2) {
@@ -2063,22 +2065,24 @@ int IMP_FrameSource_EnableChn(int chnNum)
 }
 
 #if defined(PLATFORM_T31)
-/* The pooling worker checks running at its loop head and before every
- * DQBUF. Its longest wait is the 25 ms select; add the delivery of a frame
- * it has already dequeued. */
+/* After STREAMOFF the worker leaves within one select timeout (25 ms) plus
+ * the delivery of a frame it had already dequeued. Anything near a second
+ * is a genuine hang (a consumer blocking notify, a VBM mutex, ...). */
 #define FS_WORKER_STOP_TIMEOUT_MS 1000
 
+/* Returns the time waited in ms, or -1 if the worker has not left. */
 static int fs_wait_worker_exit(int chn, int timeout_ms)
 {
     int waited;
 
-    for (waited = 0; waited < timeout_ms; waited += 5) {
+    for (waited = 0; waited < timeout_ms; waited++) {
         if (g_fs_thread_exited[chn])
-            return 0;
-        usleep(5000);
+            return waited;
+        usleep(1000);
     }
-    return g_fs_thread_exited[chn] ? 0 : -1;
+    return g_fs_thread_exited[chn] ? waited : -1;
 }
+
 #endif
 
 int IMP_FrameSource_DisableChn(int chnNum)
@@ -2097,50 +2101,59 @@ int IMP_FrameSource_DisableChn(int chnNum)
 
     ctx->running = 0;
 #if defined(PLATFORM_T31)
-    /* T31 is the other way round. The worker only issues DQBUF after select
-     * reported the fd readable, and the fd is O_NONBLOCK from then on, so it
-     * never sleeps in DQBUF and stops by itself. It must stop before
-     * STREAMOFF: on the stock tx-isp driver a DQBUF after STREAMOFF loops in
-     * the kernel ("Streaming off, will not wait for buffers"), where neither
-     * cancel nor join reach it and the process is left as a zombie. Joining
-     * a thread that returned by itself also avoids cancelling it while it
-     * holds a VBM mutex. */
-    {
-        int stream_off_done = 0;
+    /* STREAMOFF first, then let the worker leave by itself, cancel only as
+     * a last resort. This is the same for both T31 ISP drivers:
+     *
+     * - Neither DQBUF honours O_NONBLOCK. The stock tx-isp DQBUF goes
+     *   straight to wait_event_interruptible() (no f_flags check in the
+     *   binary), the open tx-isp one to wait_event_interruptible(frame_wait,
+     *   frame_ready_count > 0 || !streaming). With no buffer queued to the
+     *   driver (all held by the VBM ready queue or a consumer: a short
+     *   enable without a reader, an idle snapshot channel) the worker sleeps
+     *   there until STREAMOFF, so a stop that waits for it before STREAMOFF
+     *   always waits its full timeout in those cases.
+     * - STREAMOFF is the only wake-up both drivers offer: the stock driver
+     *   clears the streaming flag and wakes the queue in __vb2_queue_cancel,
+     *   the woken DQBUF returns -EINVAL (its "Streaming off, will not wait
+     *   for buffers" line with a dump_stack() is the isp_printf error level,
+     *   not a fault); the open driver returns -EINVAL from the same wait.
+     * - A DQBUF entered after STREAMOFF returns -EINVAL at once on both
+     *   (the worker also checks running before every DQBUF).
+     * - pthread_cancel is a signal. The stock DQBUF re-enters its wait loop
+     *   on -ERESTARTSYS and, while the channel streams, never returns to
+     *   user space: a thread cancelled or killed in DQBUF while streaming
+     *   spins at 100 % sys and cannot be reaped. Cancelling after STREAMOFF
+     *   cannot hit that loop (the flag is checked before every wait), and a
+     *   worker that leaves by itself is never cancelled while it holds a
+     *   VBM mutex. */
+    if (ctx->fd >= 0)
+        fs_stream_off(ctx->fd);
+    if (ctx->thread != 0) {
+        int waited = fs_wait_worker_exit(chnNum, FS_WORKER_STOP_TIMEOUT_MS);
 
-        if (ctx->thread != 0) {
-            if (fs_wait_worker_exit(chnNum, FS_WORKER_STOP_TIMEOUT_MS) != 0) {
-                static unsigned int timeouts;
-                unsigned int n = ++timeouts;
-                int step = g_fs_step[chnNum];
-                int dq_step = openimp_vbm_dq_step[chnNum];
-                uint32_t in_step = fs_now_ms() - g_fs_step_ms[chnNum];
-                int woke;
+        if (waited < 0) {
+            static unsigned int timeouts;
+            unsigned int n = ++timeouts;
+            int step = g_fs_step[chnNum];
+            int dq_step = openimp_vbm_dq_step[chnNum];
+            uint32_t in_step = fs_now_ms() - g_fs_step_ms[chnNum];
 
-                IMP_LOG_ERR("Framesource", "chn%d: pooling thread did not stop within %d ms, cancelling it after STREAMOFF",
-                            chnNum, FS_WORKER_STOP_TIMEOUT_MS);
-                if (ctx->fd >= 0)
-                    fs_stream_off(ctx->fd);
-                stream_off_done = 1;
-                /* Diagnostics: did STREAMOFF alone release it? */
-                woke = fs_wait_worker_exit(chnNum, 100) == 0;
-                if (n <= 20 || n % 20 == 0)
-                    IMP_LOG_ERR("Framesource", "chn%d: stop timeout #%u: worker in step %s (dq %s) for %u ms, iter %d, thread_entered %d, enabled_seen %d; %s",
-                                chnNum, n, fs_step_name(step),
-                                fs_dq_step_name(dq_step), in_step,
-                                g_fs_step_iter[chnNum],
-                                g_fs_thread_entered[chnNum],
-                                g_fs_thread_enabled_seen[chnNum],
-                                woke ? "exited after STREAMOFF"
-                                     : "still running after STREAMOFF + 100 ms, cancelling");
-                if (!woke)
-                    pthread_cancel(ctx->thread);
-            }
-            pthread_join(ctx->thread, NULL);
-            ctx->thread = 0;
+            /* Genuine hang: STREAMOFF did not release it. Say where it is
+             * (rate-limited: the first 20, then every 20th) and cancel. */
+            if (n <= 20 || n % 20 == 0)
+                IMP_LOG_ERR("Framesource", "chn%d: pooling thread still running %d ms after STREAMOFF (#%u): in step %s (dq %s) for %u ms, iter %d, thread_entered %d, enabled_seen %d; cancelling it",
+                            chnNum, FS_WORKER_STOP_TIMEOUT_MS, n,
+                            fs_step_name(step), fs_dq_step_name(dq_step),
+                            in_step, g_fs_step_iter[chnNum],
+                            g_fs_thread_entered[chnNum],
+                            g_fs_thread_enabled_seen[chnNum]);
+            pthread_cancel(ctx->thread);
+        } else {
+            fs_trace("libimp/FS: disable worker-stop ch=%d fd=%d after %d ms (last step %s)\n",
+                     chnNum, ctx->fd, waited, fs_step_name(g_fs_step[chnNum]));
         }
-        if (ctx->fd >= 0 && !stream_off_done)
-            fs_stream_off(ctx->fd);
+        pthread_join(ctx->thread, NULL);
+        ctx->thread = 0;
     }
 #else
     /* A frame-channel DQBUF may remain asleep in the kernel even after the
