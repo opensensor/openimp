@@ -416,9 +416,10 @@ int IMP_ISP_SetSensorRegister(uint32_t arg1, uint32_t arg2)
             uint32_t f_18;
             uint32_t f_1c;
             uint32_t f_20;
-            int32_t reg;
+            uint32_t size;      /* 0x24, not set by the stock library */
+            int32_t reg;        /* 0x28, 64-bit in the kernel */
             int32_t zero0;
-            int32_t val;
+            int32_t val;        /* 0x30, 64-bit in the kernel */
             int32_t zero1;
         } var_40;
         int32_t result;
@@ -432,6 +433,8 @@ int IMP_ISP_SetSensorRegister(uint32_t arg1, uint32_t arg2)
         var_40.f_18 = *(uint32_t *)((char *)gISP_1 + 0x3c);
         var_40.f_1c = *(uint32_t *)((char *)gISP_1 + 0x40);
         var_40.f_20 = *(uint32_t *)((char *)gISP_1 + 0x44);
+        _Static_assert(sizeof(var_40) == 0x38, "the kernel copies 0x38 bytes");
+        var_40.size = 0;
         var_40.reg = (int32_t)arg1;
         var_40.zero0 = 0;
         var_40.val = (int32_t)arg2;
@@ -495,9 +498,11 @@ int IMP_ISP_GetSensorRegister(uint32_t arg1, uint32_t *arg2)
             uint32_t f_18;
             uint32_t f_1c;
             uint32_t f_20;
-            int32_t reg;
+            uint32_t size;      /* 0x24, not set by the stock library */
+            int32_t reg;        /* 0x28, 64-bit in the kernel */
             int32_t zero0;
-            int32_t val;
+            int32_t val;        /* 0x30, 64-bit in the kernel */
+            int32_t zero1;
         } var_48;
         int32_t result;
 
@@ -510,6 +515,8 @@ int IMP_ISP_GetSensorRegister(uint32_t arg1, uint32_t *arg2)
         var_48.f_18 = *(uint32_t *)((char *)gISP_1 + 0x3c);
         var_48.f_1c = *(uint32_t *)((char *)gISP_1 + 0x40);
         var_48.f_20 = *(uint32_t *)((char *)gISP_1 + 0x44);
+        _Static_assert(sizeof(var_48) == 0x38, "the kernel copies 0x38 bytes");
+        var_48.size = 0;
         var_48.reg = (int32_t)arg1;
         var_48.zero0 = 0;
         result = ioctl(gISP_1->fd, 0xc0385650, &var_48);
