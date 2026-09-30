@@ -49,6 +49,7 @@
 #include "core/globals.h"
 #include "core/imp_alloc.h"
 #include "kernel_interface.h"
+#include "imp_log_int.h"
 #if defined(PLATFORM_T23)
 #include "t23/openimp_t23_persist.h"
 #endif
@@ -759,6 +760,8 @@ static FsChnCtx g_fs_ctx[FS_MAX_CHANNELS];
 static pthread_mutex_t g_fs_lock = PTHREAD_MUTEX_INITIALIZER;
 static volatile int g_fs_thread_entered[FS_MAX_CHANNELS];
 static volatile int g_fs_thread_enabled_seen[FS_MAX_CHANNELS];
+/* Set by the pooling worker when it leaves its loop (not when cancelled). */
+static volatile int g_fs_thread_exited[FS_MAX_CHANNELS];
 
 static void fs_bind_trace(const char *fmt, ...)
 {
@@ -1017,6 +1020,10 @@ static void *frame_pooling_thread(void *arg)
             }
 
             while (1) {
+                /* DisableChn may be waiting for this thread to stop before
+                 * STREAMOFF: no further DQBUF once it asked. */
+                if (!ctx->running)
+                    break;
                 if (poll_count <= 2) {
                     fs_thread_trace("libimp/FS: thread-mark ch=%d step=dq-drain iter=%d fd=%d state=%d errno=%d\n",
                                     chn, poll_count, ctx->fd, ch_state, errno);
@@ -1092,6 +1099,7 @@ static void *frame_pooling_thread(void *arg)
 
     fs_trace("libimp/FS: pooling-thread exit ch=%d fd=%d running=%d state=%d\n",
              chn, ctx->fd, ctx->running, fs_chan_get_state(chn));
+    g_fs_thread_exited[chn] = 1;
     return NULL;
 }
 
@@ -1868,6 +1876,7 @@ int IMP_FrameSource_EnableChn(int chnNum)
         chn_id_storage[chnNum] = chnNum;
         g_fs_thread_entered[chnNum] = 0;
         g_fs_thread_enabled_seen[chnNum] = 0;
+        g_fs_thread_exited[chnNum] = 0;
         if (pthread_create(&ctx->thread, NULL, frame_pooling_thread,
                            &chn_id_storage[chnNum]) != 0) {
             fs_trace("libimp/FS: enable pthread-create-fail ch=%d fd=%d\n", chnNum, ctx->fd);
@@ -1976,6 +1985,25 @@ int IMP_FrameSource_EnableChn(int chnNum)
     return 0;
 }
 
+#if defined(PLATFORM_T31)
+/* The pooling worker checks running at its loop head and before every
+ * DQBUF. Its longest wait is the 25 ms select; add the delivery of a frame
+ * it has already dequeued. */
+#define FS_WORKER_STOP_TIMEOUT_MS 1000
+
+static int fs_wait_worker_exit(int chn, int timeout_ms)
+{
+    int waited;
+
+    for (waited = 0; waited < timeout_ms; waited += 5) {
+        if (g_fs_thread_exited[chn])
+            return 0;
+        usleep(5000);
+    }
+    return g_fs_thread_exited[chn] ? 0 : -1;
+}
+#endif
+
 int IMP_FrameSource_DisableChn(int chnNum)
 {
     FsChnCtx *ctx;
@@ -1991,6 +2019,34 @@ int IMP_FrameSource_DisableChn(int chnNum)
     }
 
     ctx->running = 0;
+#if defined(PLATFORM_T31)
+    /* T31 is the other way round. The worker only issues DQBUF after select
+     * reported the fd readable, and the fd is O_NONBLOCK from then on, so it
+     * never sleeps in DQBUF and stops by itself. It must stop before
+     * STREAMOFF: on the stock tx-isp driver a DQBUF after STREAMOFF loops in
+     * the kernel ("Streaming off, will not wait for buffers"), where neither
+     * cancel nor join reach it and the process is left as a zombie. Joining
+     * a thread that returned by itself also avoids cancelling it while it
+     * holds a VBM mutex. */
+    {
+        int stream_off_done = 0;
+
+        if (ctx->thread != 0) {
+            if (fs_wait_worker_exit(chnNum, FS_WORKER_STOP_TIMEOUT_MS) != 0) {
+                IMP_LOG_ERR("Framesource", "chn%d: pooling thread did not stop within %d ms, cancelling it after STREAMOFF",
+                            chnNum, FS_WORKER_STOP_TIMEOUT_MS);
+                if (ctx->fd >= 0)
+                    fs_stream_off(ctx->fd);
+                stream_off_done = 1;
+                pthread_cancel(ctx->thread);
+            }
+            pthread_join(ctx->thread, NULL);
+            ctx->thread = 0;
+        }
+        if (ctx->fd >= 0 && !stream_off_done)
+            fs_stream_off(ctx->fd);
+    }
+#else
     /* A frame-channel DQBUF may remain asleep in the kernel even after the
      * worker is cancelled.  STREAMOFF is the driver's wakeup edge, so issue
      * it before joining the pooling thread.  Waiting first deadlocks T21
@@ -2003,6 +2059,7 @@ int IMP_FrameSource_DisableChn(int chnNum)
         pthread_join(ctx->thread, NULL);
         ctx->thread = 0;
     }
+#endif
     VBMFlushFrame(chnNum);
     /* Close before the pool memory goes back to the allocator: the ISP
      * driver drops the buffer addresses still queued in its hardware FIFO
