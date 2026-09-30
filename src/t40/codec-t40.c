@@ -5691,6 +5691,55 @@ static uint32_t avpu_t31_copy_entropy_ebsp(uint8_t *destination,
 }
 #endif
 
+#if defined(PLATFORM_T31)
+/* Bytes at the end of the payload compared before and after the copy. */
+#define AVPU_T31_TAIL_CHECK_BYTES 64u
+
+/* At most four AU warnings a minute; the rest are counted. */
+static int avpu_t31_au_log_allowed(uint32_t *suppressed_out)
+{
+    static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
+    static uint64_t window_us;
+    static uint32_t logged;
+    static uint32_t suppressed;
+    struct timespec now;
+    uint64_t now_us;
+    int allowed;
+
+    clock_gettime(CLOCK_MONOTONIC, &now);
+    now_us = (uint64_t)now.tv_sec * 1000000u + (uint64_t)now.tv_nsec / 1000u;
+    pthread_mutex_lock(&lock);
+    if (!window_us || now_us - window_us >= 60000000u) {
+        window_us = now_us;
+        logged = 0u;
+    }
+    allowed = logged < 4u;
+    if (allowed) {
+        logged++;
+        *suppressed_out = suppressed;
+        suppressed = 0u;
+    } else {
+        suppressed++;
+        *suppressed_out = 0u;
+    }
+    pthread_mutex_unlock(&lock);
+    return allowed;
+}
+
+/* OPENIMP_T31_AU_GATE=0 publishes malformed AUs (log only) for A/B runs. */
+static int avpu_t31_au_gate_enabled(void)
+{
+    static int enabled = -1;
+
+    if (enabled < 0) {
+        const char *value = getenv("OPENIMP_T31_AU_GATE");
+
+        enabled = !(value && value[0] == '0' && value[1] == '\0');
+    }
+    return enabled;
+}
+#endif
+
 static uint32_t avpu_stream_buffer_effective_size(ALAvpuContext *ctx, int buf_idx,
                                                   int *flush_ret_out)
 {
@@ -5736,9 +5785,21 @@ static uint32_t avpu_stream_buffer_effective_size(ALAvpuContext *ctx, int buf_id
 
 #if defined(PLATFORM_T31)
     t31_payload_size = ctx->t31_payload_size_by_buf[buf_idx];
-    t31_header_size = ctx->stream_header_offset;
-    if (ctx->stream_header_offset_by_buf[buf_idx] != 0u)
-        t31_header_size = ctx->stream_header_offset_by_buf[buf_idx];
+    /*
+     * The published AU is [this slot's host header][escaped payload].  Only
+     * the header written for this slot's submit describes the payload: the
+     * context-wide stream_header_offset belongs to whichever picture was
+     * prepared last and may be the other picture type.  A slot whose header
+     * is unknown (prewrite failed, or reset at acquire) is dropped, which
+     * restarts the prediction chain with an IDR, instead of publishing an
+     * AU with a mismatched or missing header.
+     */
+    t31_header_size = ctx->stream_header_offset_by_buf[buf_idx];
+    if (t31_header_size == 0u) {
+        LOG_CODEC("AVPU: refusing T31 completion without a header for buf=%d",
+                  buf_idx);
+        return 0u;
+    }
     if (ctx->stream_buf_size <= 0 ||
         openimp_t31_stream_layout(
             (uint32_t)ctx->stream_buf_size, AVPU_T31_PAYLOAD_OFFSET,
@@ -5759,7 +5820,9 @@ static uint32_t avpu_stream_buffer_effective_size(ALAvpuContext *ctx, int buf_id
     /* IRQ 0 reports the inline Enc1/Enc2 command complete before the final
      * stream-buffer DMA burst is guaranteed to be visible to the CPU.  T31
      * also needs this drain: compacting immediately can be overwritten by a
-     * late burst, restoring unescaped 00 00 00 01 inside the access unit. */
+     * late burst, restoring unescaped 00 00 00 01 inside the access unit.
+     * T31 additionally verifies the payload tail around its copy and checks
+     * the finished AU before publishing it (see below). */
     usleep(2000);
 #endif
 
@@ -5937,11 +6000,23 @@ static uint32_t avpu_stream_buffer_effective_size(ALAvpuContext *ctx, int buf_id
 
         /* The inline T31 command writes entropy data at the OEM +0x220
          * boundary.  Escape it directly into a CPU-owned per-slot snapshot;
-         * never compact inside the DMA buffer that hardware can still touch. */
-        if (raw_end > payload_offset && header_size <= payload_offset) {
+         * never compact inside the DMA buffer that hardware can still touch.
+         * The raw DMA layout [header][gap][header mirror][payload] must never
+         * be published: the mirror right before +0x220 would put a second
+         * SPS/PPS/slice header into the AU. */
+        if (raw_end <= payload_offset || header_size > payload_offset)
+            return 0u;
+        {
             uint32_t payload_size = t31_payload_size;
             uint32_t inserted = 0u;
+            uint32_t tail_size = payload_size < AVPU_T31_TAIL_CHECK_BYTES
+                ? payload_size : AVPU_T31_TAIL_CHECK_BYTES;
+            const uint8_t *tail =
+                mutable_stream + payload_offset + payload_size - tail_size;
+            uint8_t tail_before[AVPU_T31_TAIL_CHECK_BYTES];
+            OpenIMPT31AvcAuCheck au;
             uint8_t *public_stream;
+            int attempt;
 
             if (!ctx->stream_public_copy[buf_idx])
                 ctx->stream_public_copy[buf_idx] =
@@ -5961,15 +6036,45 @@ static uint32_t avpu_stream_buffer_effective_size(ALAvpuContext *ctx, int buf_id
                        header_size);
             }
 
-            raw_end = avpu_t31_copy_entropy_ebsp(
-                public_stream, (uint32_t)ctx->stream_buf_size,
-                mutable_stream, header_size, payload_offset,
-                payload_size, &inserted);
-            if (raw_end == 0u) {
-                LOG_CODEC("AVPU: refusing T31 payload snapshot header=%u payload=%u capacity=%u buf=%d",
-                          header_size, payload_size,
-                          (uint32_t)ctx->stream_buf_size, buf_idx);
-                return 0u;
+            /*
+             * The fixed drain above is a guess.  The last DMA burst ends the
+             * payload, so compare its tail before and after the escaping
+             * copy: if it moved, the burst landed while copying and the
+             * snapshot may mix old and new bytes.  Copy again; a tail that
+             * keeps moving drops the picture (next one IDR).
+             */
+            for (attempt = 0;; ++attempt) {
+                memcpy(tail_before, tail, tail_size);
+                raw_end = avpu_t31_copy_entropy_ebsp(
+                    public_stream, (uint32_t)ctx->stream_buf_size,
+                    mutable_stream, header_size, payload_offset,
+                    payload_size, &inserted);
+                if (raw_end == 0u) {
+                    LOG_CODEC("AVPU: refusing T31 payload snapshot header=%u payload=%u capacity=%u buf=%d",
+                              header_size, payload_size,
+                              (uint32_t)ctx->stream_buf_size, buf_idx);
+                    return 0u;
+                }
+                if (memcmp(tail_before, tail, tail_size) == 0)
+                    break;
+                if (attempt >= 2) {
+                    uint32_t suppressed;
+
+                    if (avpu_t31_au_log_allowed(&suppressed))
+                        IMP_LOG_WARN("Codec", "AVC: payload tail still changing after %d copies, picture dropped (slot=%d payload=%u frame=%d suppressed=%u)",
+                                     attempt + 1, buf_idx, payload_size,
+                                     ctx->frames_encoded, suppressed);
+                    return 0u;
+                }
+                usleep(1000);
+            }
+            if (attempt != 0) {
+                uint32_t suppressed;
+
+                if (avpu_t31_au_log_allowed(&suppressed))
+                    IMP_LOG_WARN("Codec", "AVC: late payload DMA seen, copied again (slot=%d payload=%u copies=%d frame=%d suppressed=%u)",
+                                 buf_idx, payload_size, attempt + 1,
+                                 ctx->frames_encoded, suppressed);
             }
             ctx->t31_au_header_by_buf[buf_idx] = header_size;
             ctx->t31_ebsp_inserted_by_buf[buf_idx] = inserted;
@@ -5978,6 +6083,39 @@ static uint32_t avpu_stream_buffer_effective_size(ALAvpuContext *ctx, int buf_id
                  (ctx->frames_encoded % AVPU_LOG_INTERVAL) == 0u))
                 LOG_CODEC("AVPU: T31 EBSP normalized buf[%d] inserted=%u access_unit=%u",
                           buf_idx, inserted, raw_end);
+
+            /*
+             * Last line of defence before the AU becomes visible: it must be
+             * exactly SPS,PPS,IDR or one P slice, with no further start code
+             * anywhere.  A second picture start in one packet is what makes
+             * ffmpeg report "(0+2) exceeds max"; dropping the picture costs
+             * one frame and an IDR instead.
+             */
+            if (openimp_t31_avc_au_check(public_stream, raw_end,
+                                         ctx->stream_is_idr[buf_idx] ? 1 : 0,
+                                         &au) != 0u) {
+                uint32_t suppressed;
+                int gate = avpu_t31_au_gate_enabled();
+
+                if (avpu_t31_au_log_allowed(&suppressed)) {
+                    char summary[320];
+
+                    openimp_t31_avc_au_describe(public_stream, raw_end, &au,
+                                                summary, sizeof(summary));
+                    IMP_LOG_WARN("Codec", "AVC: malformed AU %s (expect=%s %s bad-hdr=%d slot=%d hdr=%u payload_off=0x%x payload=%u ebsp+%u frame=%d suppressed=%u)",
+                                 gate ? "dropped, next IDR" : "published",
+                                 ctx->stream_is_idr[buf_idx] ? "IDR" : "P",
+                                 summary,
+                                 au.first_bad_offset == UINT32_MAX ? 0 :
+                                     (int)au.first_bad_offset -
+                                     (int)header_size,
+                                 buf_idx, header_size, payload_offset,
+                                 payload_size, inserted,
+                                 ctx->frames_encoded, suppressed);
+                }
+                if (gate)
+                    return 0u;
+            }
             sb = public_stream;
         }
     }
@@ -9553,6 +9691,8 @@ static int al_codec_encode_process_impl(void *codec, void *frame,
 
 #if defined(PLATFORM_T31)
             ctx->t31_payload_size_by_buf[buf_idx] = 0u;
+            /* Set by avpu_prewrite_stream_headers() for this submit only. */
+            ctx->stream_header_offset_by_buf[buf_idx] = 0u;
 #elif defined(PLATFORM_T41)
             /* A reused buffer must not inherit the preceding completion's
              * payload count if an IRQ arrives without a valid writeback. */
