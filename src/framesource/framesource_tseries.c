@@ -773,6 +773,7 @@ enum {
     FS_STEP_STATE_WAIT,     /* waiting for ENABLED */
     FS_STEP_SELECT,         /* 25 ms select */
     FS_STEP_IDLE_SLEEP,     /* 1 ms sleep after an empty select */
+    FS_STEP_IDLE_RECYCLE,   /* VBMRecycleIdleFrames after an empty select */
     FS_STEP_DQBUF,          /* VBMKernelDequeue, see openimp_vbm_dq_step */
     FS_STEP_DQ_EMPTY_SLEEP, /* 1 ms sleep after an empty DQBUF */
     FS_STEP_NOTIFY,         /* publish + notify_observers */
@@ -781,7 +782,8 @@ enum {
     FS_STEP_EXIT,
 };
 static const char *const fs_step_names[] = {
-    "start", "loop-head", "state-wait", "select", "idle-sleep", "dqbuf",
+    "start", "loop-head", "state-wait", "select", "idle-sleep",
+    "idle-recycle", "dqbuf",
     "dq-empty-sleep", "notify", "direct-enc", "notify-done", "exit",
 };
 static const char *const fs_dq_step_names[] = {
@@ -1091,6 +1093,22 @@ static void *frame_pooling_thread(void *arg)
                     fs_trace("libimp/FS: pooling select-timeout ch=%d fd=%d idle=%d\n",
                              chn, ctx->fd, no_frame_cycles);
                 }
+#if defined(PLATFORM_T31)
+                /* A reader that stopped (StopRecvPic) with every buffer
+                 * parked in the ready queue leaves no DQBUF to complete;
+                 * hand them back so IVS-only capture keeps running.
+                 * DisableChn holds g_fs_lock from clearing running until
+                 * after the join, so taking it here (never waiting for it)
+                 * keeps any QBUF from racing the STREAMOFF/join, and
+                 * running is rechecked under it. */
+                if (pthread_mutex_trylock(&g_fs_lock) == 0) {
+                    if (ctx->running && fs_chan_get_state(chn) == 2) {
+                        FS_STEP(chn, FS_STEP_IDLE_RECYCLE);
+                        VBMRecycleIdleFrames(chn);
+                    }
+                    pthread_mutex_unlock(&g_fs_lock);
+                }
+#endif
                 FS_STEP(chn, FS_STEP_IDLE_SLEEP);
                 usleep(1000);
                 continue;

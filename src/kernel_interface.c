@@ -1439,6 +1439,75 @@ volatile int openimp_vbm_dq_step[MAX_VBM_POOLS];
 #if defined(PLATFORM_T31)
 extern void openimp_t31_ivs_capture(int fs_chn, const void *frame)
     __attribute__((weak));
+
+/*
+ * The ready queue below is a pull queue: only IMP_FrameSource_GetFrame (the
+ * encoder's PollingStream while it receives, or a streamer's own reader)
+ * pops it and hands the buffer back through VBMReleaseFrame.  IVS takes its
+ * copy in VBMKernelDequeue and never holds a capture buffer, so with IVS as
+ * the only consumer every buffer ended up parked in the ready queue and the
+ * next DQBUF never completed.  While nobody has pulled for VBM_PULL_IDLE_MS
+ * a captured buffer therefore goes straight back to the driver after the
+ * IVS copy, together with anything a stopped reader left queued.  A reader
+ * that comes back marks itself with its first (empty) GetFrame, and the
+ * next capture is published again; an active reader polls far more often
+ * than this window, so its path is unchanged.
+ */
+#define VBM_PULL_IDLE_MS 1000u
+
+int VBMReleaseFrame(int chn, void *frame);
+
+static uint32_t vbm_last_pull_ms[MAX_VBM_POOLS];
+
+static uint32_t vbm_now_ms(void)
+{
+    struct timespec ts;
+
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (uint32_t)ts.tv_sec * 1000u + (uint32_t)(ts.tv_nsec / 1000000);
+}
+
+static int vbm_pull_idle(int chn)
+{
+    uint32_t last = __atomic_load_n(&vbm_last_pull_ms[chn], __ATOMIC_RELAXED);
+
+    return vbm_now_ms() - last >= VBM_PULL_IDLE_MS;
+}
+
+/* Return every frame still waiting in chn's ready queue to the driver while
+ * no reader is pulling it.  Each index is popped under queue_mutex, so a
+ * reader that races in can never receive a frame that is being recycled. */
+int VBMRecycleIdleFrames(int chn)
+{
+    VBMPool *pool;
+    int recycled = 0;
+
+    if (chn < 0 || chn >= MAX_VBM_POOLS || !vbm_pull_idle(chn))
+        return 0;
+    pool = vbm_instance[chn];
+    if (!pool || pool->fd < 0)
+        return 0;
+    for (;;) {
+        int idx;
+
+        pthread_mutex_lock(&pool->queue_mutex);
+        if (pool->queue_count <= 0) {
+            pthread_mutex_unlock(&pool->queue_mutex);
+            break;
+        }
+        idx = pool->available_queue[pool->queue_head];
+        pool->queue_head = (pool->queue_head + 1) % pool->frame_count;
+        pool->queue_count--;
+        pthread_mutex_unlock(&pool->queue_mutex);
+        if (idx < 0 || idx >= pool->frame_count)
+            continue;
+        VBMReleaseFrame(chn, &pool->frames[idx]);
+        recycled++;
+    }
+    if (recycled)
+        ki_trace("libimp/VBM: idle-recycle ch=%d frames=%d\n", chn, recycled);
+    return recycled;
+}
 #endif
 
 int VBMKernelDequeue(int chn, int fd, void **frame_out) {
@@ -1506,6 +1575,15 @@ int VBMKernelDequeue(int chn, int fd, void **frame_out) {
      * if this flag is set, preventing double-QBUF. */
     if (pool->buf_in_userspace)
         pool->buf_in_userspace[idx] = 1;
+#if defined(PLATFORM_T31)
+    if (vbm_pull_idle(chn)) {
+        VBM_DQ_STEP(chn, VBM_DQ_STEP_REQUEUE);
+        VBMRecycleIdleFrames(chn);
+        VBMReleaseFrame(chn, &pool->frames[idx]);
+        *frame_out = NULL;
+        return -1;
+    }
+#endif
 
     /*
      * The shared encoder is a public-API pull consumer: PollingStream calls
@@ -1632,6 +1710,9 @@ int VBMGetFrame(int chn, void **frame) {
         *frame = NULL;
         return -1;
     }
+#if defined(PLATFORM_T31)
+    __atomic_store_n(&vbm_last_pull_ms[chn], vbm_now_ms(), __ATOMIC_RELAXED);
+#endif
 
     /* Get next available frame from queue */
     pthread_mutex_lock(&pool->queue_mutex);

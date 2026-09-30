@@ -81,6 +81,10 @@ int fs_dqbuf(int fd, int *index_out, uint64_t *timestamp_out);
 /* Bridge between VBM and kernel queue */
 int VBMPrimeKernelQueue(int chn, int fd, int limit);
 int VBMKernelDequeue(int chn, int fd, void **frame_out);
+#if defined(PLATFORM_T31)
+/* Return ready frames to the driver while no reader pulls the channel. */
+int VBMRecycleIdleFrames(int chn);
+#endif
 
 #ifdef __cplusplus
 }
