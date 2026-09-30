@@ -68,6 +68,9 @@ static int (*stock_base_pre)(void *, T31IVSFrameInfo *);
 static int (*stock_base_proc)(void *, T31IVSFrameInfo *, StockBaseSlot *);
 
 static void no_free(void *p) { (void)p; }
+/* Stock destructors; optional so older libs still load. */
+static void (*stock_free_move)(void *);
+static void (*stock_free_base)(void *);
 
 static uint32_t rng = 12345;
 static uint32_t rnd(void) { rng = rng * 1103515245u + 12345u; return rng >> 8; }
@@ -179,7 +182,10 @@ static void compare_move(int w, int h, int skip, int layout, int mode)
             }
         }
     }
-    /* The stock handle is not freed (its destructor is internal). */
+    /* Free the stock handle: without it the base-move pass grows by ~50 MB
+     * and the OOM killer (or, with a streamer running, the watchdog) ends it. */
+    if (stock_free_move)
+        stock_free_move(stock);
     t31_ivs_move_destroy(mine);
     free(f);
 }
@@ -235,6 +241,8 @@ static void compare_base(int w, int h, int skip, int refnum, int sense, int mode
         }
     }
 out:
+    if (stock && stock_free_base)
+        stock_free_base(stock);
     t31_ivs_base_move_destroy(mine);
     free(f);
     free(sd);
@@ -279,6 +287,8 @@ int main(int argc, char **argv)
     stock_alloc_base = (void *(*)(IMP_IVS_BaseMoveParam *, void (*)(void *)))dlsym(lib, "imp_alloc_base_move");
     stock_base_pre = (int (*)(void *, T31IVSFrameInfo *))dlsym(lib, "imp_base_move_preprocess");
     stock_base_proc = (int (*)(void *, T31IVSFrameInfo *, StockBaseSlot *))dlsym(lib, "imp_base_move_process");
+    stock_free_move = (void (*)(void *))dlsym(lib, "imp_free_move");
+    stock_free_base = (void (*)(void *))dlsym(lib, "imp_free_base_move");
     if (!stock_alloc_move || !stock_move_pre || !stock_move_proc ||
         !stock_alloc_base || !stock_base_pre || !stock_base_proc) {
         fprintf(stderr, "%s: IVS entry points not found (not a stock %s libimp?)\n",
