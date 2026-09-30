@@ -2195,6 +2195,16 @@ static int avpu_generate_slice_header_rbsp(uint8_t *rbsp, const ALAvpuContext *c
     if (is_idr) {
 #if defined(PLATFORM_T41)
         bs_write_ue(rbsp, &bp, 1); /* recovered T41 idr_pic_id */
+#elif defined(PLATFORM_T31)
+        /*
+         * Consecutive IDR access units must differ in idr_pic_id (7.4.3):
+         * with frame_num 0 and POC 0 on both, it is the only field that
+         * separates two back-to-back IDRs, as an RTSP join request right
+         * after a periodic IDR produces.  ue(1) is two bits longer than
+         * ue(0); slice_bits and the header byte count follow from bp, and
+         * the CABAC alignment bits absorb the change like a QP delta does.
+         */
+        bs_write_ue(rbsp, &bp, ctx->t31_next_idr_pic_id & 1u);
 #else
         bs_write_ue(rbsp, &bp, 0); /* idr_pic_id */
 #endif
@@ -2562,6 +2572,11 @@ static uint32_t avpu_prewrite_stream_headers(ALAvpuContext *ctx, int buf_idx, in
     pos += (uint32_t)avpu_write_nal_epb(buf + pos,
                                         is_idr ? 0x25u : 0x21u,
                                         rbsp, rbsp_len);
+#if defined(PLATFORM_T31)
+    if (is_idr && buf_idx >= 0 && buf_idx < 16)
+        ctx->t31_idr_pic_id_by_buf[buf_idx] =
+            ctx->t31_next_idr_pic_id & 1u;
+#endif
     ctx->slice_header_nal_bytes = is_idr ? 10u : pos;
     ctx->slice_header_prefix_bits = 8u;
     ctx->slice_header_splice_word = 0u;
@@ -7086,6 +7101,13 @@ static int avpu_queue_completed_stream(ALAvpuContext *ctx, int buf_idx, void *us
         LOG_CODEC("%s: failed to queue completed stream buf[%d]", source ? source : "EndEncoding", buf_idx);
         return 0;
     }
+#if defined(PLATFORM_T31)
+    /* Only a published IDR moves idr_pic_id on: a dropped one does not
+     * reach the decoder, so the next IDR may reuse its value. */
+    if (ctx->stream_is_idr[buf_idx])
+        ctx->t31_next_idr_pic_id =
+            (uint8_t)((ctx->t31_idr_pic_id_by_buf[buf_idx] ^ 1u) & 1u);
+#endif
 
     if (ctx->frames_encoded <= 4 || ctx->frames_encoded % 50 == 0)
     LOG_CODEC("%s: queued completed stream buf[%d] stream=%p phys=0x%08x virt=0x%08x len=%u flush_ret=%d",
