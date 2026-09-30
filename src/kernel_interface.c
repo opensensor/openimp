@@ -840,7 +840,7 @@ int fs_qbuf(int fd, int index, unsigned long phys, unsigned int length) {
     {
         static int qbuf_log_count = 0;
         if (qbuf_log_count < 6) {
-            fprintf(stderr, "[KernelIF] QBUF OK: fd=%d idx=%d phys=0x%lx len=%u\n",
+            OPENIMP_TRACE_STDERR("[KernelIF] QBUF OK: fd=%d idx=%d phys=0x%lx len=%u\n",
                     fd, index, phys, length);
             ki_trace("libimp/KI: QBUF ok fd=%d idx=%d phys=0x%lx len=%u bytesused=%u\n",
                      fd, index, phys, length, b->bytesused);
@@ -872,7 +872,7 @@ int fs_dqbuf(int fd, int *index_out, uint64_t *timestamp_out) {
     {
         static int dqbuf_log_count = 0;
         if (dqbuf_log_count < 6) {
-            fprintf(stderr, "[KernelIF] DQBUF: fd=%d attempting...\n", fd);
+            OPENIMP_TRACE_STDERR("[KernelIF] DQBUF: fd=%d attempting...\n", fd);
             dqbuf_log_count++;
         }
     }
@@ -907,7 +907,7 @@ int fs_dqbuf(int fd, int *index_out, uint64_t *timestamp_out) {
     {
         static int dqbuf_ok_log = 0;
         if (dqbuf_ok_log < 6) {
-            fprintf(stderr,
+            OPENIMP_TRACE_STDERR(
                     "[KernelIF] DQBUF: fd=%d OK idx=%d ts=%u.%06u seq=%u\n",
                     fd, *index_out, b->ts_sec, b->ts_usec, b->sequence);
             dqbuf_ok_log++;
@@ -1523,7 +1523,7 @@ int VBMKernelDequeue(int chn, int fd, void **frame_out) {
     int64_t frame_timestamp;
     ki_trace("libimp/VBM: KernelDequeue enter ch=%d fd=%d pool=%p\n", chn, fd, pool);
     if (dbg_count[chn] < 3) {
-        fprintf(stderr, "[VBM] VBMKernelDequeue chn=%d: attempting DQBUF...\n", chn);
+        OPENIMP_TRACE_STDERR("[VBM] VBMKernelDequeue chn=%d: attempting DQBUF...\n", chn);
     }
 
     VBM_DQ_STEP(chn, VBM_DQ_STEP_DQBUF);
@@ -1531,14 +1531,14 @@ int VBMKernelDequeue(int chn, int fd, void **frame_out) {
     ki_trace("libimp/VBM: KernelDequeue post-dq ch=%d fd=%d ret=%d idx=%d\n",
              chn, fd, ret, idx);
     if (dbg_count[chn] < 3) {
-        fprintf(stderr, "[VBM] VBMKernelDequeue chn=%d: DQBUF ret=%d idx=%d\n", chn, ret, idx);
+        OPENIMP_TRACE_STDERR("[VBM] VBMKernelDequeue chn=%d: DQBUF ret=%d idx=%d\n", chn, ret, idx);
         dbg_count[chn]++;
     }
 
     if (ret == -2) {
         int c = ++eagain_count[chn];
         if (c <= 5 || (c % 50) == 0) {
-            fprintf(stderr, "[VBM] VBMKernelDequeue chn=%d: DQBUF EAGAIN (count=%d)\n", chn, c);
+            OPENIMP_TRACE_STDERR("[VBM] VBMKernelDequeue chn=%d: DQBUF EAGAIN (count=%d)\n", chn, c);
         }
         return -2; /* EAGAIN */
     }
@@ -1755,7 +1755,7 @@ int VBMGetFrame(int chn, void **frame) {
         return -1;
     }
 
-    fprintf(stderr, "[VBM] GetFrame: chn=%d, frame=%p (idx=%d, %d remaining)\n",
+    OPENIMP_TRACE_STDERR("[VBM] GetFrame: chn=%d, frame=%p (idx=%d, %d remaining)\n",
             chn, *frame, frame_idx, pool->queue_count);
     return 0;
 }
@@ -1939,7 +1939,7 @@ int VBMUnlockFrameByVaddr(uint32_t vaddr)
     VBMFrame *frame = vol->frame;
     pthread_mutex_unlock(&vol->mutex);
 
-    fprintf(stderr, "[VBM] UnlockFrameByVaddr: vaddr=0x%x ref=%d\n", vaddr, ref_count);
+    OPENIMP_TRACE_STDERR("[VBM] UnlockFrameByVaddr: vaddr=0x%x ref=%d\n", vaddr, ref_count);
     if (trace_budget > 0) {
         trace_budget--;
         ki_trace("libimp/VBMKI: unlock vaddr=0x%x ref=%d->%d frame=%p chn=%d idx=%d\n",

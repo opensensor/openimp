@@ -1,6 +1,7 @@
 #ifndef OPENIMP_TRACE_CONTROL_H
 #define OPENIMP_TRACE_CONTROL_H
 
+#include <stdio.h>
 #include <stdlib.h>
 
 /*
@@ -20,5 +21,15 @@ static inline int openimp_debug_trace_enabled(void)
     }
     return enabled;
 }
+
+/*
+ * Bench-only stderr chatter (per-frame buffer traffic, per-(re)start setup
+ * dumps).  Same OPENIMP_DEBUG_TRACE switch as the kmsg probes; genuine
+ * errors and one-shot summaries keep using plain fprintf(stderr, ...).
+ */
+#define OPENIMP_TRACE_STDERR(...) do {                            \
+    if (openimp_debug_trace_enabled())                            \
+        fprintf(stderr, __VA_ARGS__);                             \
+} while (0)
 
 #endif /* OPENIMP_TRACE_CONTROL_H */
