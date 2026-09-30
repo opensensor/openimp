@@ -675,6 +675,19 @@ int fs_stream_off(int fd) {
     return 0;
 }
 
+#if defined(PLATFORM_T31)
+/* STREAMOFF for the process exit paths: only the ioctl, no stdio, so it
+ * can run from a signal handler. Errors ("not streaming") are ignored. */
+int fs_stream_off_quiet(int fd) {
+    int enable = 1;
+
+    if (fd < 0) {
+        return -1;
+    }
+    return ioctl(fd, VIDIOC_STREAM_OFF, &enable);
+}
+#endif
+
 int fs_poll_frame(int fd, unsigned int *ready_out)
 {
     struct fs_poll_wait wait = {

@@ -21,6 +21,9 @@ int32_t get_module_location(Module *arg1, int32_t *arg2, int32_t *arg3); /* forw
 int32_t BindObserverToSubject(Module *arg1, Module *arg2, void *arg3); /* forward decl, ported by T<N> later */
 int32_t UnBindObserverFromSubject(Module *arg1, Module *arg2); /* forward decl, ported by T<N> later */
 char *dump_ob_modules(Module *arg1, int32_t arg2); /* forward decl, ported by T<N> later */
+#if defined(PLATFORM_T31)
+void openimp_fs_stream_off_all(void); /* framesource/framesource_tseries.c */
+#endif
 
 static int32_t soc_id_8648 = -1;
 static int32_t cppsr_8647 = -1;
@@ -87,6 +90,13 @@ static void fatal_signal_handler(int sig, siginfo_t *info, void *ucontext)
     if (fatal_kmsg_fd >= 0) {
         write(fatal_kmsg_fd, buf, len);
     }
+#if defined(PLATFORM_T31)
+    /* _exit kills the other threads with SIGKILL. A FrameSource worker
+     * asleep in the stock tx-isp DQBUF never returns from that with the
+     * channel still streaming (framesource_tseries.c); stop the streams
+     * first. Only ioctls, safe here. */
+    openimp_fs_stream_off_all();
+#endif
 
     _exit(128 + sig);
 }

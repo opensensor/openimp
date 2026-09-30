@@ -52,6 +52,9 @@ int fs_set_buffer_count(int fd, int count);
 int fs_set_depth(int fd, int depth);
 int fs_stream_on(int fd);
 int fs_stream_off(int fd);
+#if defined(PLATFORM_T31)
+int fs_stream_off_quiet(int fd); /* ioctl only, for the exit paths */
+#endif
 int fs_poll_frame(int fd, unsigned int *ready_out);
 void fs_close_device(int fd);
 

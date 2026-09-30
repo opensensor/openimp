@@ -818,6 +818,27 @@ static const char *fs_dq_step_name(int step)
     return fs_dq_step_names[step];
 }
 
+/* Which T31 ISP driver is loaded, for the log only: the stop order does
+ * not depend on it (see IMP_FrameSource_DisableChn). Both drivers load as
+ * tx-isp-t31.ko; only the open one has the ae_freeze / isp_bypass_all
+ * module parameters. Done once, at the first successful stream start. */
+static void fs_t31_log_isp_driver(void)
+{
+    static int logged;
+    const char *driver;
+
+    if (logged)
+        return;
+    logged = 1;
+    if (access("/sys/module/tx_isp_t31/parameters/ae_freeze", F_OK) == 0 ||
+        access("/sys/module/tx_isp_t31/parameters/isp_bypass_all", F_OK) == 0)
+        driver = "open tx-isp";
+    else if (access("/sys/module/tx_isp_t31", F_OK) == 0)
+        driver = "stock tx-isp";
+    else
+        driver = "unknown (no /sys/module/tx_isp_t31)";
+    IMP_LOG_INFO("Framesource", "T31 ISP driver: %s", driver);
+}
 #else
 #define FS_STEP(chn, step) do { } while (0)
 #endif
@@ -2000,6 +2021,9 @@ int IMP_FrameSource_EnableChn(int chnNum)
         return -1;
     }
     fs_trace("libimp/FS: enable stream-on-ok ch=%d fd=%d\n", chnNum, ctx->fd);
+#if defined(PLATFORM_T31)
+    fs_t31_log_isp_driver();
+#endif
 
     /* Only replay the pool if the pre-STREAMON prime queued nothing. Once the
      * driver has already accepted those QBUFs, replaying the same buffers after
@@ -2083,6 +2107,35 @@ static int fs_wait_worker_exit(int chn, int timeout_ms)
     return g_fs_thread_exited[chn] ? waited : -1;
 }
 
+/* Stop the stream of every channel still enabled. Called on the way out of
+ * the process (destructor, fatal signal handler in core/sys_core.c). The
+ * stock tx-isp T31 DQBUF sleeps in wait_event_interruptible() regardless
+ * of O_NONBLOCK and, once a signal is pending while the channel streams,
+ * loops on -ERESTARTSYS without ever returning to user space; the SIGKILL
+ * that exit_group() sends to the other threads is such a signal, the
+ * thread then spins at 100 % sys and the process stays a zombie until a
+ * reboot. STREAMOFF first clears the streaming flag, after which that
+ * DQBUF returns -EINVAL whatever signal is pending. Only ioctls here: this
+ * may run from a signal handler, with g_fs_lock possibly held. */
+void openimp_fs_stream_off_all(void)
+{
+    int chn;
+
+    for (chn = 0; chn < FS_MAX_CHANNELS; chn++) {
+        FsChnCtx *ctx = &g_fs_ctx[chn];
+
+        if (ctx->fd < 0 || ctx->thread == 0)
+            continue;
+        ctx->running = 0;
+        fs_stream_off_quiet(ctx->fd);
+    }
+}
+
+__attribute__((destructor))
+static void framesource_dtor_stream_off(void)
+{
+    openimp_fs_stream_off_all();
+}
 #endif
 
 int IMP_FrameSource_DisableChn(int chnNum)
