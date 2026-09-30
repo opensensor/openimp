@@ -40,7 +40,7 @@ den Test mit der Bibliothek des dort genannten Einzel-Branches wiederholen, um i
 | Testtool IPU-OSD + Auswertung | `tools/t31_ipu_osd_probe.c`, `tools/ipu_osd_analyze.py` | A2 |
 | OSD-Strukturen im Vendor-Layout (32 statt 72 Byte), behebt Stack-Überschreiben in `IMP_OSD_GetRgnAttr` | `src/t31/openimp_t31_osd_abi.h`, `src/t31/openimp_t31_services.c` | C |
 | Schalter `OPENIMP_T31_COMPANION_STAGE=0` (unnötigen JPEG-Core-Start pro H.264-Frame abschalten) | `src/t40/codec-t40.c` | D |
-| Hardware-JPEG in OpenIMP, Schalter `OPENIMP_T31_HW_JPEG=1` | `src/t40/codec-t40.c`, `src/hw_encoder.c` | E |
+| Hardware-JPEG in OpenIMP, Standard, Opt-out `OPENIMP_T31_HW_JPEG=0` | `src/t40/codec-t40.c`, `src/hw_encoder.c` | E |
 | `IMP_ISP_Tuning_SetIntegrationTime` für T20/T21/T30 | `src/isp/isp_tseries.c` | F (optional, T20-Kamera) |
 | Tracer für die Original-libimp | `tools/oem_trace/` | Anhang (optional) |
 | Nur auf `claude/t31-perf`: schnellere Software-JPEG (bitgleiche Ausgabe) | `src/hw_encoder.c` | H |
@@ -114,6 +114,9 @@ Abschnitt 4.
   - RTSP-Stream öffnen
   - ein paar Snapshots abrufen
   - OSD in der Streamer-Konfiguration eingeschaltet lassen
+- Ohne Variablen laufen Hardware-JPEG und damit ohne Companion-Stage auch H.264 anders als
+  in älteren Bibliotheken. Weicht etwas ab, den Lauf mit `OPENIMP_T31_HW_JPEG=0` wiederholen
+  (Software-JPEG, Companion-Stage an), um das einzugrenzen.
 - Vergleich mit der Original-OpenIMP (`/tmp/libimp-orig.so`), gleicher Ablauf:
   - Startet der Streamer?
   - Laufen H.264 und JPEG?
@@ -136,13 +139,15 @@ Abschnitt 4.
 
 ### D. Companion-Stage A/B
 
-Anleitung: [`T31_HW_JPEG_TEST.md`](T31_HW_JPEG_TEST.md), Abschnitt 4a. Lauf A ohne Variablen,
-Lauf B mit `OPENIMP_T31_COMPANION_STAGE=0`, je 5 Minuten RTSP mitschneiden und vergleichen.
+Anleitung: [`T31_HW_JPEG_TEST.md`](T31_HW_JPEG_TEST.md), Abschnitt 4a. Hardware-JPEG (Standard)
+schaltet die Companion-Stage ab, deshalb beide Läufe mit `OPENIMP_T31_HW_JPEG=0`: Lauf A nur damit,
+Lauf B zusätzlich mit `OPENIMP_T31_COMPANION_STAGE=0`, je 5 Minuten RTSP mitschneiden und vergleichen.
 
 ### E. Hardware-JPEG im Streamer
 
-Anleitung: [`T31_HW_JPEG_TEST.md`](T31_HW_JPEG_TEST.md), Abschnitt 4b. Lauf C ohne, Lauf D mit
-`OPENIMP_T31_HW_JPEG=1`. CPU-Last per `top`, `HWJPEG:`-Zeilen im Log, Bildqualität.
+Anleitung: [`T31_HW_JPEG_TEST.md`](T31_HW_JPEG_TEST.md), Abschnitt 4b. Lauf C mit
+`OPENIMP_T31_HW_JPEG=0` (Software), Lauf D ohne Variable (Hardware-JPEG ist Standard). CPU-Last
+per `top`, `HWJPEG:`-Zeilen im Log, Bildqualität.
 
 ### F. Optional: `SetIntegrationTime` auf T20
 
@@ -173,10 +178,10 @@ Für G und H die Bibliothek aus `claude/t31-perf` statt `claude/t31-re` bauen (s
 
 Wie E, aber mit der Bibliothek aus `claude/t31-perf`:
 
-1. Ohne Variablen: Snapshots holen, CPU-Last beim MJPEG-Abruf mit E (Lauf C) vergleichen. Die
-   Bilder müssen identisch aussehen wie mit `claude/t31-re`.
-2. Mit `OPENIMP_T31_HW_JPEG=1`: Snapshots/MJPEG, `HWJPEG:`-Zeilen, CPU-Last mit E (Lauf D)
-   vergleichen.
+1. Mit `OPENIMP_T31_HW_JPEG=0`: Snapshots holen, CPU-Last beim MJPEG-Abruf mit E (Lauf C)
+   vergleichen. Die Bilder müssen identisch aussehen wie mit `claude/t31-re`.
+2. Ohne Variable (Hardware-JPEG, Standard): Snapshots/MJPEG, `HWJPEG:`-Zeilen, CPU-Last mit E
+   (Lauf D) vergleichen.
 
 - **Erfolg:** gleiche Bilder, gleiche oder niedrigere CPU-Last, keine neuen Fehler im Log.
 

@@ -7724,8 +7724,8 @@ static void avpu_t31_dump_source_once(int channel_id, uint32_t width,
 }
 
 /*
- * Hardware JPEG on the T31 AVPU JPEG core (core index 1), opt-in with
- * OPENIMP_T31_HW_JPEG=1. Register window 0x8400-0x85FF: command zone
+ * Hardware JPEG on the T31 AVPU JPEG core (core index 1), on by default;
+ * OPENIMP_T31_HW_JPEG=0 selects the software encoder. Register window 0x8400-0x85FF: command zone
  * 0x8400-0x8428 (11 words), soft reset 0x85F0, start 0x85E4, clock gate
  * 0x85F4, status 0x8430-0x8438 (0x8434 = JPEG bytes, 0x8438 bit 1 = error).
  * Completion arrives on IRQ slot 4. The stock library lets the hardware emit
@@ -7784,9 +7784,12 @@ static int t31_hwjpeg_requested(void)
     if (requested < 0) {
         const char *value = getenv("OPENIMP_T31_HW_JPEG");
 
-        requested = value && value[0] == '1' && value[1] == '\0';
+        /* Same rule as p2_jpeg_copy_in_rmem(): on unless exactly "0". */
+        requested = !(value && value[0] == '0' && value[1] == '\0');
         if (requested)
-            IMP_LOG_INFO("Codec", "HWJPEG: T31 hardware JPEG requested (OPENIMP_T31_HW_JPEG=1)");
+            IMP_LOG_INFO("Codec", "HWJPEG: T31 hardware JPEG enabled (OPENIMP_T31_HW_JPEG=0 selects the software encoder)");
+        else
+            IMP_LOG_INFO("Codec", "HWJPEG: T31 hardware JPEG off (OPENIMP_T31_HW_JPEG=0), software encoder");
     }
     return requested;
 }
@@ -8153,7 +8156,8 @@ static int t31_hwjpeg_encode_locked(const HWFrameBuffer *frame,
  * (core index 1) command zone; the OEM trace this was copied from had JPEG
  * channels running alongside AVC. OPENIMP_T31_COMPANION_STAGE=0 skips it so
  * AVC can be compared with and without the extra JPEG-core kick. It is always
- * off with OPENIMP_T31_HW_JPEG=1, which owns that core. */
+ * off while hardware JPEG is enabled (the default), which owns that core;
+ * OPENIMP_T31_HW_JPEG=0 brings it back. */
 static int avpu_t31_companion_stage_enabled(void)
 {
     static int enabled = -1;

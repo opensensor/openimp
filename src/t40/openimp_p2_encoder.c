@@ -219,10 +219,11 @@ static pthread_mutex_t p2_core_lock = PTHREAD_MUTEX_INITIALIZER;
 static uint64_t p2_monotonic_us(void);
 
 #if defined(PLATFORM_T31)
-/* With OPENIMP_T31_HW_JPEG=1 the JPEG copy goes straight into rmem, so the
- * hardware JPEG core reads it by physical address instead of the codec
- * copying the frame a second time. OPENIMP_T31_HW_JPEG_SRC_COHERENT=1
- * keeps the codec's own coherent source buffer (cache-flush debugging). */
+/* With hardware JPEG (the default, OPENIMP_T31_HW_JPEG=0 turns it off) the
+ * JPEG copy goes straight into rmem, so the hardware JPEG core reads it by
+ * physical address instead of the codec copying the frame a second time.
+ * OPENIMP_T31_HW_JPEG_SRC_COHERENT=1 keeps the codec's own coherent source
+ * buffer (cache-flush debugging). */
 static int p2_jpeg_copy_in_rmem(void)
 {
     static int enabled = -1;
@@ -231,7 +232,8 @@ static int p2_jpeg_copy_in_rmem(void)
         const char *hw = getenv("OPENIMP_T31_HW_JPEG");
         const char *coherent = getenv("OPENIMP_T31_HW_JPEG_SRC_COHERENT");
 
-        enabled = hw && hw[0] == '1' && hw[1] == '\0' &&
+        /* Same rule as t31_hwjpeg_requested(): on unless exactly "0". */
+        enabled = !(hw && hw[0] == '0' && hw[1] == '\0') &&
                   !(coherent && coherent[0] == '1');
     }
     return enabled;

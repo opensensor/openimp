@@ -8,12 +8,13 @@ Hintergrund und Registerkarte stehen in [`T31_HW_JPEG_RE.md`](T31_HW_JPEG_RE.md)
 und ein Code-Review in [`T31_HW_JPEG_RE_FOLLOWUP.md`](T31_HW_JPEG_RE_FOLLOWUP.md). Die
 Kurzfassung:
 
-- OpenIMP kodiert JPEG heute in Software. Das kostet grob 0,3 s CPU pro 1080p-Bild und
-  blockiert während dieser Zeit H.264-Submits.
+- Der Software-Encoder von OpenIMP kostet grob 0,3 s CPU pro 1080p-Bild und blockiert
+  während dieser Zeit H.264-Submits.
 - Die Original-`libimp` nutzt dafür einen eigenen Hardware-Core im AVPU (Core 1). Der
   braucht ~8 ms und belastet die CPU praktisch nicht.
-- Dieser Branch baut den Hardwarepfad nach. Er ist **nur auf dem Papier und im Build
-  geprüft**, noch nicht auf einer Kamera. Genau das soll dieser Test nachholen.
+- OpenIMP baut den Hardwarepfad nach. Auf einer T31X geprüft (gültige Bilder, timpsd
+  18,5 % statt 66,9 % CPU) und seitdem **Standard**. `OPENIMP_T31_HW_JPEG=0` schaltet
+  zurück auf den Software-Encoder (Opt-out). Dieser Test prüft das auf weiteren Kameras.
 
 ---
 
@@ -52,7 +53,7 @@ Der Branch enthält (u. a.):
 | Commit | Inhalt |
 |---|---|
 | `t31: allow disabling the AVPU companion stage …` | Schalter `OPENIMP_T31_COMPANION_STAGE=0` |
-| `t31: opt-in hardware JPEG …` | Hardwarepfad, Schalter `OPENIMP_T31_HW_JPEG=1` |
+| `t31: opt-in hardware JPEG …` | Hardwarepfad; inzwischen Standard, `OPENIMP_T31_HW_JPEG=0` schaltet ihn ab |
 | `t31: log hardware JPEG state …` | `HWJPEG:`-Meldungen im Syslog |
 | `tools: add t31_hwjpeg_probe …` | eigenständiges Testtool |
 
@@ -217,15 +218,18 @@ Prüfen, dass die Variable wirklich gesetzt ist:
 
 ### 4a. Companion-Stage A/B (H.264-Regression)
 
-Hintergrund: OpenIMP startet heute nach **jedem** H.264-Frame zusätzlich den JPEG-Core. Die
+Hintergrund: Mit `OPENIMP_T31_HW_JPEG=0` startet OpenIMP nach **jedem** H.264-Frame zusätzlich den JPEG-Core. Die
 Einstellungen dafür sind aus einem Hersteller-Trace abgeschrieben, in dem parallel ein
 JPEG-Kanal lief. Laut Herstellercode gehört das nicht zu H.264. Es schreibt vermutlich in
 einen H.264-Stream-Puffer, der gerade noch beim Streamer liegen kann.
 
+Hardware-JPEG (Standard) schaltet die Companion-Stage immer ab. Für diesen Vergleich
+deshalb in beiden Läufen `OPENIMP_T31_HW_JPEG=0` setzen:
+
 | Lauf | Variablen |
 |---|---|
-| A | keine (Verhalten wie bisher) |
-| B | `OPENIMP_T31_COMPANION_STAGE=0` |
+| A | `OPENIMP_T31_HW_JPEG=0` (Companion-Stage an) |
+| B | `OPENIMP_T31_HW_JPEG=0 OPENIMP_T31_COMPANION_STAGE=0` |
 
 Je Lauf 5 Minuten RTSP abgreifen:
 
@@ -245,8 +249,8 @@ Artefakte), ist das ein wichtiger Befund: Dann hängt H.264 wider Erwarten davon
 
 | Lauf | Variablen |
 |---|---|
-| C | keine (Software-JPEG) |
-| D | `OPENIMP_T31_HW_JPEG=1` |
+| C | `OPENIMP_T31_HW_JPEG=0` (Software-JPEG) |
+| D | keine (Hardware-JPEG, Standard) |
 
 Last erzeugen, von einem anderen Rechner oder auf der Kamera: jede Sekunde ein Snapshot
 bzw. einen MJPEG-Stream offen halten. Den Endpunkt aus der Doku des Streamers nehmen.
@@ -261,10 +265,11 @@ Messen:
 - **CPU:** `top -b -H -n 6 -d 5 > /tmp/top-<lauf>.txt` während der Last
   (pro Thread, Streamer-Threads und `idle`).
 - **Log D:**
-  - `HWJPEG: T31 hardware JPEG requested`
-  - `HWJPEG: ready src=…`
+  - `HWJPEG: T31 hardware JPEG enabled (OPENIMP_T31_HW_JPEG=0 selects the software encoder)`
+  - `HWJPEG: ready, ep1=…`
   - `HWJPEG: 1920x1080 q75 -> … bytes`
-  - oder `HWJPEG: disabled, using the software encoder: <Grund>`
+  - oder, als Fehler geloggt, `HWJPEG: disabled for this process, all JPEG frames now use the software encoder: <Grund>`
+- **Log C:** `HWJPEG: T31 hardware JPEG off (OPENIMP_T31_HW_JPEG=0), software encoder`
 - **Bilder aus D:** ein paar Snapshots speichern und ansehen. Das Bild muss korrekt sein.
 - **H.264 in D:** wie in 4a kurz prüfen, dass der Stream sauber bleibt.
 
@@ -285,8 +290,14 @@ Weitere Meldungen, die **nicht** abschalten:
 - `HWJPEG: no AVC IRQ waiter yet, software until one runs`: Der gemeinsame IRQ-Thread
   startet mit dem ersten H.264-Kanal. Bis dahin kodiert der Pfad in Software. Erscheint
   danach nie ein `HWJPEG: … bytes`, läuft kein H.264, bitte melden.
+- `HWJPEG: AVC core not initialised yet, software until it is`: Der AVPU-Core wird mit dem
+  ersten H.264-Frame initialisiert (und nach dem letzten H.264-Kanal wieder abgeschaltet).
+  Solange kodiert der Pfad in Software, ohne das als Timeout zu zählen.
 - `HWJPEG: stream overflow …`: Das eine Bild geht in Software, beim nächsten wird der
   Stream-Puffer verdoppelt.
+- `HWJPEG: cannot grow the stream buffer to … bytes, keeping …`: Die Verdopplung bekam
+  keinen Speicher. Der alte Puffer bleibt, nur Bilder, die ihn wieder sprengen, gehen in
+  Software. Diese Größe wird nicht erneut versucht.
 
 **Wenn die Bilder aus D kaputt aussehen** (Streifen, alte Bildinhalte, Blockmüll), der
 Probe aus Stufe 1 aber saubere Bilder liefert: Durchgang D mit zusätzlich
@@ -294,7 +305,7 @@ Probe aus Stufe 1 aber saubere Bilder liefert: Durchgang D mit zusätzlich
 kohärentem statt gecachtem Speicher. Wird es damit sauber, ist der Cache-Flush des
 gecachten rmem auf T31 die Ursache. Das ist ein wichtiger Befund.
 
-Die Stufe 3a (Companion-Stage) vor 3b auswerten: `OPENIMP_T31_HW_JPEG=1` schaltet die
+Die Stufe 3a (Companion-Stage) vor 3b auswerten: Hardware-JPEG (Standard) schaltet die
 Companion-Stage immer mit ab, sonst lassen sich H.264-Auffälligkeiten nicht zuordnen.
 
 ---
