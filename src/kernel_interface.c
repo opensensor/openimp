@@ -517,17 +517,17 @@ int fs_set_format(int fd, fs_format_t *fmt) {
     s.rate_mask = 1;
 
     /* Debug: dump structure before ioctl */
-    fprintf(stderr, "[KernelIF] SET_FMT before ioctl:\n");
-    fprintf(stderr, "[KernelIF]   width=%u height=%u pixelformat=0x%x\n",
+    OPENIMP_TRACE_STDERR("[KernelIF] SET_FMT before ioctl:\n");
+    OPENIMP_TRACE_STDERR("[KernelIF]   width=%u height=%u pixelformat=0x%x\n",
             s.width, s.height, s.pixelformat);
-    fprintf(stderr, "[KernelIF]   bytesperline=%u sizeimage=%u colorspace=%u\n",
+    OPENIMP_TRACE_STDERR("[KernelIF]   bytesperline=%u sizeimage=%u colorspace=%u\n",
             s.bytesperline, s.sizeimage, s.colorspace);
-    fprintf(stderr, "[KernelIF]   attr enable=%d attr=%dx%d pic=%dx%d fps=%d/%d\n",
+    OPENIMP_TRACE_STDERR("[KernelIF]   attr enable=%d attr=%dx%d pic=%dx%d fps=%d/%d\n",
             fmt->enable, fmt->attr_width, fmt->attr_height,
             fmt->picwidth, fmt->picheight, fmt->fps_num, fmt->fps_den);
-    fprintf(stderr, "[KernelIF]   crop_enable=%d crop=%dx%d+%d+%d\n",
+    OPENIMP_TRACE_STDERR("[KernelIF]   crop_enable=%d crop=%dx%d+%d+%d\n",
             fmt->crop_enable, fmt->crop_width, fmt->crop_height, fmt->crop_x, fmt->crop_y);
-    fprintf(stderr, "[KernelIF]   scaler_enable=%d scaler_outwidth=%d scaler_outheight=%d\n",
+    OPENIMP_TRACE_STDERR("[KernelIF]   scaler_enable=%d scaler_outwidth=%d scaler_outheight=%d\n",
             fmt->scaler_enable, fmt->scaler_outwidth, fmt->scaler_outheight);
 
     int ret = ioctl(fd, VIDIOC_SET_FMT, &s);
@@ -539,10 +539,10 @@ int fs_set_format(int fd, fs_format_t *fmt) {
     }
 
     /* Debug: dump structure after ioctl */
-    fprintf(stderr, "[KernelIF] SET_FMT after ioctl:\n");
-    fprintf(stderr, "[KernelIF]   width=%u height=%u sizeimage=%u bytesperline=%u\n",
+    OPENIMP_TRACE_STDERR("[KernelIF] SET_FMT after ioctl:\n");
+    OPENIMP_TRACE_STDERR("[KernelIF]   width=%u height=%u sizeimage=%u bytesperline=%u\n",
             s.width, s.height, s.sizeimage, s.bytesperline);
-    fprintf(stderr,
+    OPENIMP_TRACE_STDERR(
             "[KernelIF]   crop=%u %ux%u+%u+%u scaler=%u %ux%u rate=%u/0x%x\n",
             s.crop_enable, s.crop_width, s.crop_height, s.crop_left, s.crop_top,
             s.scaler_enable, s.scaler_outwidth, s.scaler_outheight,
@@ -840,7 +840,7 @@ int fs_qbuf(int fd, int index, unsigned long phys, unsigned int length) {
     {
         static int qbuf_log_count = 0;
         if (qbuf_log_count < 6) {
-            fprintf(stderr, "[KernelIF] QBUF OK: fd=%d idx=%d phys=0x%lx len=%u\n",
+            OPENIMP_TRACE_STDERR("[KernelIF] QBUF OK: fd=%d idx=%d phys=0x%lx len=%u\n",
                     fd, index, phys, length);
             ki_trace("libimp/KI: QBUF ok fd=%d idx=%d phys=0x%lx len=%u bytesused=%u\n",
                      fd, index, phys, length, b->bytesused);
@@ -872,7 +872,7 @@ int fs_dqbuf(int fd, int *index_out, uint64_t *timestamp_out) {
     {
         static int dqbuf_log_count = 0;
         if (dqbuf_log_count < 6) {
-            fprintf(stderr, "[KernelIF] DQBUF: fd=%d attempting...\n", fd);
+            OPENIMP_TRACE_STDERR("[KernelIF] DQBUF: fd=%d attempting...\n", fd);
             dqbuf_log_count++;
         }
     }
@@ -907,7 +907,7 @@ int fs_dqbuf(int fd, int *index_out, uint64_t *timestamp_out) {
     {
         static int dqbuf_ok_log = 0;
         if (dqbuf_ok_log < 6) {
-            fprintf(stderr,
+            OPENIMP_TRACE_STDERR(
                     "[KernelIF] DQBUF: fd=%d OK idx=%d ts=%u.%06u seq=%u\n",
                     fd, *index_out, b->ts_sec, b->ts_usec, b->sequence);
             dqbuf_ok_log++;
@@ -1112,7 +1112,7 @@ int VBMCreatePool(int chn, void *fmt, void *ops, void *priv) {
 
     /* Allocate pool structure with proper alignment for MIPS */
     size_t pool_size = frame_count * VBM_FRAME_SIZE + 0x180;
-    fprintf(stderr, "[VBM] CreatePool: allocating pool_size=%zu (frame_count=%d * 0x%x + 0x180)\n",
+    OPENIMP_TRACE_STDERR("[VBM] CreatePool: allocating pool_size=%zu (frame_count=%d * 0x%x + 0x180)\n",
             pool_size, frame_count, VBM_FRAME_SIZE);
 
     VBMPool *pool = NULL;
@@ -1262,7 +1262,7 @@ int VBMCreatePool(int chn, void *fmt, void *ops, void *priv) {
         memcpy(frame_bytes + 0x30, &fps_den, sizeof(int));
 #endif
 
-        fprintf(stderr, "[VBM] Frame %d: phys=0x%x virt=0x%x fourcc=0x%x fps=%d/%d\n",
+        OPENIMP_TRACE_STDERR("[VBM] Frame %d: phys=0x%x virt=0x%x fourcc=0x%x fps=%d/%d\n",
                 i, phys, virt, frame_fourcc, fps_num, fps_den);
 
         /* Register in global frame volumes */
@@ -1299,7 +1299,7 @@ int VBMCreatePool(int chn, void *fmt, void *ops, void *priv) {
 
     vbm_instance[chn] = pool;
 
-    fprintf(stderr, "[VBM] CreatePool: chn=%d created successfully\n", chn);
+    OPENIMP_TRACE_STDERR("[VBM] CreatePool: chn=%d created successfully\n", chn);
     return 0;
 }
 
@@ -1349,7 +1349,7 @@ int VBMDestroyPool(int chn) {
     free(pool);
     vbm_instance[chn] = NULL;
 
-    fprintf(stderr, "[VBM] DestroyPool: chn=%d destroyed\n", chn);
+    OPENIMP_TRACE_STDERR("[VBM] DestroyPool: chn=%d destroyed\n", chn);
     return 0;
 }
 
@@ -1399,7 +1399,7 @@ int VBMPrimeKernelQueue(int chn, int fd, int limit) {
         unsigned long addr_m = use_virt ? (unsigned long)f->virt_addr
                                         : (unsigned long)f->phys_addr;
         if (j == 0) {
-            fprintf(stderr, "[VBM] PrimeKernelQueue: QBUF using %s address in .m\n",
+            OPENIMP_TRACE_STDERR("[VBM] PrimeKernelQueue: QBUF using %s address in .m\n",
                     use_virt ? "VIRT" : "PHYS");
         }
 
@@ -1523,7 +1523,7 @@ int VBMKernelDequeue(int chn, int fd, void **frame_out) {
     int64_t frame_timestamp;
     ki_trace("libimp/VBM: KernelDequeue enter ch=%d fd=%d pool=%p\n", chn, fd, pool);
     if (dbg_count[chn] < 3) {
-        fprintf(stderr, "[VBM] VBMKernelDequeue chn=%d: attempting DQBUF...\n", chn);
+        OPENIMP_TRACE_STDERR("[VBM] VBMKernelDequeue chn=%d: attempting DQBUF...\n", chn);
     }
 
     VBM_DQ_STEP(chn, VBM_DQ_STEP_DQBUF);
@@ -1531,14 +1531,14 @@ int VBMKernelDequeue(int chn, int fd, void **frame_out) {
     ki_trace("libimp/VBM: KernelDequeue post-dq ch=%d fd=%d ret=%d idx=%d\n",
              chn, fd, ret, idx);
     if (dbg_count[chn] < 3) {
-        fprintf(stderr, "[VBM] VBMKernelDequeue chn=%d: DQBUF ret=%d idx=%d\n", chn, ret, idx);
+        OPENIMP_TRACE_STDERR("[VBM] VBMKernelDequeue chn=%d: DQBUF ret=%d idx=%d\n", chn, ret, idx);
         dbg_count[chn]++;
     }
 
     if (ret == -2) {
         int c = ++eagain_count[chn];
         if (c <= 5 || (c % 50) == 0) {
-            fprintf(stderr, "[VBM] VBMKernelDequeue chn=%d: DQBUF EAGAIN (count=%d)\n", chn, c);
+            OPENIMP_TRACE_STDERR("[VBM] VBMKernelDequeue chn=%d: DQBUF EAGAIN (count=%d)\n", chn, c);
         }
         return -2; /* EAGAIN */
     }
@@ -1632,7 +1632,7 @@ int VBMFillPool(int chn) {
         return -1;
     }
 
-    fprintf(stderr, "[VBM] FillPool: chn=%d, filling %d frames\n", chn, pool->frame_count);
+    OPENIMP_TRACE_STDERR("[VBM] FillPool: chn=%d, filling %d frames\n", chn, pool->frame_count);
 
     pthread_mutex_lock(&pool->queue_mutex);
     pool->queue_head = 0;
@@ -1653,7 +1653,7 @@ int VBMFillPool(int chn) {
             }
         }
 
-        fprintf(stderr, "[VBM] FillPool: seeded %d/%d frames via release callback\n",
+        OPENIMP_TRACE_STDERR("[VBM] FillPool: seeded %d/%d frames via release callback\n",
                 queued_ok, pool->frame_count);
         return queued_ok;
     }
@@ -1669,7 +1669,7 @@ int VBMFillPool(int chn) {
 
     pthread_mutex_unlock(&pool->queue_mutex);
 
-    fprintf(stderr, "[VBM] FillPool: queued %d frames\n", pool->queue_count);
+    OPENIMP_TRACE_STDERR("[VBM] FillPool: queued %d frames\n", pool->queue_count);
 
     return pool->queue_count;
 }
@@ -1684,7 +1684,7 @@ int VBMFlushFrame(int chn) {
         return -1;
     }
 
-    fprintf(stderr, "[VBM] FlushFrame: chn=%d\n", chn);
+    OPENIMP_TRACE_STDERR("[VBM] FlushFrame: chn=%d\n", chn);
 
     /* Clear the frame queue */
     pthread_mutex_lock(&pool->queue_mutex);
@@ -1695,7 +1695,7 @@ int VBMFlushFrame(int chn) {
 
     pthread_mutex_unlock(&pool->queue_mutex);
 
-    fprintf(stderr, "[VBM] FlushFrame: flushed all frames\n");
+    OPENIMP_TRACE_STDERR("[VBM] FlushFrame: flushed all frames\n");
 
     return 0;
 }
@@ -1755,7 +1755,7 @@ int VBMGetFrame(int chn, void **frame) {
         return -1;
     }
 
-    fprintf(stderr, "[VBM] GetFrame: chn=%d, frame=%p (idx=%d, %d remaining)\n",
+    OPENIMP_TRACE_STDERR("[VBM] GetFrame: chn=%d, frame=%p (idx=%d, %d remaining)\n",
             chn, *frame, frame_idx, pool->queue_count);
     return 0;
 }
@@ -1939,7 +1939,7 @@ int VBMUnlockFrameByVaddr(uint32_t vaddr)
     VBMFrame *frame = vol->frame;
     pthread_mutex_unlock(&vol->mutex);
 
-    fprintf(stderr, "[VBM] UnlockFrameByVaddr: vaddr=0x%x ref=%d\n", vaddr, ref_count);
+    OPENIMP_TRACE_STDERR("[VBM] UnlockFrameByVaddr: vaddr=0x%x ref=%d\n", vaddr, ref_count);
     if (trace_budget > 0) {
         trace_budget--;
         ki_trace("libimp/VBMKI: unlock vaddr=0x%x ref=%d->%d frame=%p chn=%d idx=%d\n",

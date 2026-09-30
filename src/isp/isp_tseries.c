@@ -7,6 +7,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <pthread.h>
+#include <time.h>
 #include <unistd.h>
 #include <sys/ioctl.h>
 #include <sys/mman.h>
@@ -77,6 +78,13 @@ static int tseries_bypass_link_setup_done;
 static pthread_t tseries_tuning_thread;
 static volatile int tseries_tuning_thread_stop;
 static int tseries_tuning_thread_running;
+/* Stop wake-up for the tuning worker: it waits on this condvar for its
+ * one-second period instead of sleep(1), so a stop does not stall
+ * IMP_ISP_DisableTuning for up to a second. */
+static pthread_mutex_t tseries_tuning_lock = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t tseries_tuning_cond;
+static pthread_once_t tseries_tuning_cond_once = PTHREAD_ONCE_INIT;
+static clockid_t tseries_tuning_clock = CLOCK_REALTIME;
 static int32_t tseries_tuning_last_total_gain = -1;
 static IMPISPDrcAttr tseries_raw_drc = {
     .mode = IMPISP_DRC_MANUAL,
@@ -1346,6 +1354,49 @@ static int tseries_v4l2_get(int32_t id, int32_t *value)
  *
  * The OEM isp_tuning_deamon_thread runs these callbacks once per second.
  */
+static void tseries_tuning_cond_init(void)
+{
+    pthread_condattr_t attr;
+
+    if (pthread_condattr_init(&attr) == 0) {
+        if (pthread_condattr_setclock(&attr, CLOCK_MONOTONIC) == 0 &&
+            pthread_cond_init(&tseries_tuning_cond, &attr) == 0) {
+            tseries_tuning_clock = CLOCK_MONOTONIC;
+            pthread_condattr_destroy(&attr);
+            return;
+        }
+        pthread_condattr_destroy(&attr);
+    }
+    tseries_tuning_clock = CLOCK_REALTIME;
+    pthread_cond_init(&tseries_tuning_cond, NULL);
+}
+
+/* Wait one tuning period (1 s) or until tseries_stop_tuning_worker(). */
+static void tseries_tuning_wait_period(void)
+{
+    struct timespec deadline;
+    int rc = 0;
+
+    if (clock_gettime(tseries_tuning_clock, &deadline) != 0) {
+        sleep(1);
+        return;
+    }
+    deadline.tv_sec += 1;
+
+    pthread_mutex_lock(&tseries_tuning_lock);
+    while (!tseries_tuning_thread_stop) {
+        rc = pthread_cond_timedwait(&tseries_tuning_cond,
+                                    &tseries_tuning_lock, &deadline);
+        if (rc != 0)
+            break;
+    }
+    pthread_mutex_unlock(&tseries_tuning_lock);
+
+    /* Neither a timeout nor a wake-up: never turn the loop into a spin. */
+    if (rc != 0 && rc != ETIMEDOUT && !tseries_tuning_thread_stop)
+        sleep(1);
+}
+
 static void *tseries_tuning_worker(void *unused)
 {
     (void)unused;
@@ -1372,7 +1423,7 @@ static void *tseries_tuning_worker(void *unused)
             }
         }
 
-        sleep(1);
+        tseries_tuning_wait_period();
     }
 
     return NULL;
@@ -1383,6 +1434,7 @@ static int tseries_start_tuning_worker(void)
     if (tseries_tuning_thread_running)
         return 0;
 
+    pthread_once(&tseries_tuning_cond_once, tseries_tuning_cond_init);
     tseries_tuning_last_total_gain = -1;
     tseries_tuning_thread_stop = 0;
     if (pthread_create(&tseries_tuning_thread, NULL,
@@ -1398,7 +1450,10 @@ static void tseries_stop_tuning_worker(void)
     if (!tseries_tuning_thread_running)
         return;
 
+    pthread_mutex_lock(&tseries_tuning_lock);
     tseries_tuning_thread_stop = 1;
+    pthread_cond_signal(&tseries_tuning_cond);
+    pthread_mutex_unlock(&tseries_tuning_lock);
     pthread_join(tseries_tuning_thread, NULL);
     tseries_tuning_thread_running = 0;
     tseries_tuning_last_total_gain = -1;

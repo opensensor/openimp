@@ -13,6 +13,8 @@
 #include <errno.h>
 #include <time.h>
 
+#include "trace_control.h"
+
 #define LOG_FIFO(fmt, ...) fprintf(stderr, "[Fifo] " fmt "\n", ##__VA_ARGS__)
 
 /* Fifo structure - based on decompilation */
@@ -89,7 +91,7 @@ void Fifo_Init(void *fifo_ptr, int size) {
         return;
     }
 
-    LOG_FIFO("Init: size=%d, max_elements=%d", size, fifo->max_elements);
+    OPENIMP_TRACE_STDERR("[Fifo] Init: size=%d, max_elements=%d\n", size, fifo->max_elements);
 }
 
 /**
@@ -120,7 +122,7 @@ void Fifo_Deinit(void *fifo_ptr) {
         fifo->buffer = NULL;
     }
 
-    LOG_FIFO("Deinit: completed");
+    OPENIMP_TRACE_STDERR("[Fifo] Deinit: completed\n");
 }
 
 /**
