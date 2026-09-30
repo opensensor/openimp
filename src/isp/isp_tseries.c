@@ -14,6 +14,7 @@
 #include "core/globals.h"
 #include "imp/imp_isp.h"
 #include "isp_ioctl_compat.h"
+#include "dma_alloc.h"
 #if defined(PLATFORM_T23)
 #include "t23/openimp_t23_persist.h"
 #endif
@@ -2847,7 +2848,12 @@ int IMP_ISP_SET_GPIO_STA(int *gpio)
 
 /* T68 forward decls */
 int32_t IMP_Alloc(void *info, int32_t size, const char *name);
-int32_t IMP_Free(void *info, int32_t phys);
+/* The OEM IMP_Free takes (descriptor, address); OpenIMP's takes one address
+ * and did not find the descriptor, so these buffers were never freed. */
+static inline void isp_free_dma(void *info)
+{
+    DMA_FreePhys(((const IMPDMABufferInfo *)info)->phys_addr);
+}
 
 int IMP_ISP_AddSensor(IMPSensorInfo *pinfo)
 {
@@ -2965,7 +2971,7 @@ int IMP_ISP_AddSensor(IMPSensorInfo *pinfo)
     }
 #if defined(PLATFORM_T23)
     if ((unsigned int)sensor_idx >= 2u) {
-        IMP_Free(ncu_alloc, *(int32_t *)((char *)ncu_alloc + 0x80));
+        isp_free_dma(ncu_alloc);
         free(ncu_alloc);
         return -1;
     }
@@ -3078,7 +3084,7 @@ int IMP_ISP_DelSensor(IMPSensorInfo *pinfo)
     void *ncu = *(void **)(isp_b + 0xac);
 #endif
     if (ncu != NULL) {
-        IMP_Free(ncu, *(int32_t *)((char *)ncu + 0x80));
+        isp_free_dma(ncu);
         free(ncu);
 #if defined(PLATFORM_T23)
         isp->sensor_alloc[0] = NULL;
@@ -3092,7 +3098,7 @@ int IMP_ISP_DelSensor(IMPSensorInfo *pinfo)
     void *wdr = *(void **)(isp_b + 0xb4);
 #endif
     if (wdr != NULL) {
-        IMP_Free(wdr, *(int32_t *)((char *)wdr + 0x80));
+        isp_free_dma(wdr);
         free(wdr);
 #if defined(PLATFORM_T23)
         isp->wdr_alloc = NULL;

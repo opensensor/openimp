@@ -16,6 +16,7 @@
 #include <pthread.h>
 
 #include "dma_alloc.h"
+#include "rmem_arena.h"
 #include "imp_log_int.h"
 
 /* Best-effort check that a pointer looks like a C string within max bytes */
@@ -85,19 +86,49 @@ static pthread_mutex_t g_alloc_mutex = PTHREAD_MUTEX_INITIALIZER;
 static int g_dma_initialized = 0;
 static int g_rmem_supported = 0;  /* set when a DMA-capable backend is ready */
 
-/* RMEM-specific globals (for /dev/rmem bump allocator) */
+/* RMEM-specific globals (reserved-arena allocator, see rmem_arena.h) */
 static int g_is_rmem = 0;
 static int g_is_avpu = 0;
 static int g_is_devmem_rmem = 0;
 static uint32_t g_rmem_base_phys;
 static size_t g_rmem_size;
 static void *g_rmem_virt_base = NULL;
-static size_t g_rmem_offset = 0; /* bump pointer */
+static RmemArena g_rmem_arena;    /* under g_alloc_mutex */
+static int g_rmem_arena_ready = 0;
 static char g_chosen_dev_path[64] = {0};
 
 static const uint32_t kCompatMaxAllocSize = 256u * 1024u * 1024u;
 
 int IMP_FlushCache(void *virt_addr, uint32_t size);
+
+/* OPENIMP_RMEM_NO_REUSE=1 keeps freed arena memory reserved, as the old
+ * bump allocator did, to rule out reuse while debugging. */
+static int rmem_reuse_enabled(void)
+{
+    static int enabled = -1;
+
+    if (enabled < 0) {
+        const char *value = getenv("OPENIMP_RMEM_NO_REUSE");
+
+        enabled = !(value && value[0] == '1');
+    }
+    return enabled;
+}
+
+/* Called with g_alloc_mutex held. */
+static void rmem_arena_release(DMABufferRecord *buf)
+{
+    size_t len = 0;
+
+    if (!rmem_reuse_enabled())
+        return;
+    if (rmem_arena_free(&g_rmem_arena,
+                        (size_t)(buf->phys_addr - g_rmem_base_phys), &len) != 0)
+        IMP_LOG_ERR("DMA", "rmem free: no allocation at phys=0x%08x", buf->phys_addr);
+    else
+        LOG_DMA("Free: rmem phys=0x%x len=0x%zx used=%zu/%zu",
+                buf->phys_addr, len, g_rmem_arena.used, g_rmem_arena.size);
+}
 
 /**
  * Register buffer in global registry
@@ -525,9 +556,19 @@ static int dma_free_buffer(DMABufferRecord *buf)
 
     LOG_DMA("Free: phys=0x%x virt=%p", buf->phys_addr, buf->virt_addr);
 
+    /* Out of the registry before the pages can be handed out again, so a
+     * lookup never finds two records for one address. */
+    unregister_buffer(buf);
+
     if (buf->virt_addr != NULL) {
         if ((buf->flags & 0x2) && g_is_rmem) {
-            /* RMEM bump allocations are not individually freed (no-op) */
+            /* The pages go to the next owner, which may be a DMA device:
+             * write back and drop our dirty lines first, or a later
+             * eviction would overwrite what the device wrote there. */
+            DMA_RmemFlushCache(buf->virt_addr, buf->size, 0 /* wb + inv */);
+            pthread_mutex_lock(&g_alloc_mutex);
+            rmem_arena_release(buf);
+            pthread_mutex_unlock(&g_alloc_mutex);
         } else if ((buf->flags & 0x4) && g_is_avpu) {
             /* The AVPU channel owns the coherent allocation.  Unmapping the
              * userspace alias here is sufficient; the driver releases the
@@ -547,7 +588,6 @@ static int dma_free_buffer(DMABufferRecord *buf)
         }
     }
 
-    unregister_buffer(buf);
     free(buf);
     return 0;
 }
@@ -579,24 +619,28 @@ static int dma_alloc_descriptor_internal(int pool_id, IMPDMABufferInfo *info_out
     buf->size = (uint32_t)size;
     buf->pool_id = (pool_id >= 0) ? (uint32_t)pool_id : 0;
 
-    /* The reserved arena is a bump allocator.  Serializing the complete
-     * backend operation prevents concurrent callers from receiving the same
-     * physical pages. */
+    /* Serializing the complete backend operation prevents concurrent
+     * callers from receiving the same physical pages. */
     pthread_mutex_lock(&g_alloc_mutex);
     if (g_rmem_supported && g_mem_fd >= 0) {
         if (g_is_rmem && g_rmem_virt_base != NULL) {
-            size_t align = 4096;
-            size_t off = (g_rmem_offset + (align - 1)) & ~(align - 1);
-            if (off + (size_t)size <= g_rmem_size) {
+            size_t off = 0;
+
+            if (!g_rmem_arena_ready) {
+                rmem_arena_init(&g_rmem_arena, g_rmem_size);
+                g_rmem_arena_ready = 1;
+            }
+            if (rmem_arena_alloc(&g_rmem_arena, (size_t)size, &off) == 0) {
                 buf->virt_addr = (void*)((uintptr_t)g_rmem_virt_base + off);
                 buf->phys_addr = g_rmem_base_phys + (uint32_t)off;
                 buf->flags |= 0x2;
-                g_rmem_offset = off + (size_t)size;
-                LOG_DMA("Alloc: %s size=%d phys=0x%x virt=%p (rmem off=0x%zx)",
-                        buf->name[0] ? buf->name : "(unnamed)", size, buf->phys_addr, buf->virt_addr, off);
+                LOG_DMA("Alloc: %s size=%d phys=0x%x virt=%p (rmem off=0x%zx used=%zu/%zu)",
+                        buf->name[0] ? buf->name : "(unnamed)", size, buf->phys_addr, buf->virt_addr, off,
+                        g_rmem_arena.used, g_rmem_arena.size);
             } else {
-                LOG_DMA("Alloc: /dev/rmem out of memory (requested=%d, used=%zu/%zu); refusing unsafe fallback",
-                        size, g_rmem_offset, g_rmem_size);
+                IMP_LOG_ERR("DMA", "rmem out of memory: requested %d, used %zu of %zu, largest free block %zu, %d allocations",
+                            size, g_rmem_arena.used, g_rmem_arena.size,
+                            rmem_arena_largest_gap(&g_rmem_arena), g_rmem_arena.count);
             }
         } else if (g_is_avpu) {
             struct avpu_dma_info info;
@@ -659,7 +703,9 @@ static int dma_alloc_descriptor_internal(int pool_id, IMPDMABufferInfo *info_out
     if (register_buffer(buf) < 0) {
         LOG_DMA("Alloc: failed to register buffer");
         if ((buf->flags & 0x2) && g_is_rmem) {
-            /* RMEM bump allocations cannot be individually rolled back. */
+            pthread_mutex_lock(&g_alloc_mutex);
+            rmem_arena_release(buf);
+            pthread_mutex_unlock(&g_alloc_mutex);
         } else if ((buf->flags & 0x4) && g_is_avpu) {
             munmap(buf->virt_addr, buf->size);
         } else if ((buf->flags & 0x1) && g_rmem_supported && g_mem_fd >= 0) {
@@ -1202,6 +1248,10 @@ int IMP_Alloc_Dump(void) {
         }
     }
     LOG_DMA("  Total: %d buffers, %zu bytes", count, total_size);
+    if (g_rmem_arena_ready)
+        LOG_DMA("  rmem: used %zu of %zu, largest free block %zu, %d allocations",
+                g_rmem_arena.used, g_rmem_arena.size,
+                rmem_arena_largest_gap(&g_rmem_arena), g_rmem_arena.count);
     LOG_DMA("==========================");
 
     pthread_mutex_unlock(&g_registry_mutex);
