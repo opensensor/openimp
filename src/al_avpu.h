@@ -268,6 +268,12 @@ typedef struct ALAvpuContext {
     uint32_t t31_payload_size_by_buf[16];
     uint32_t t31_rate_control_qp_by_buf[16];
     OpenIMPT31RateController t31_rate_controller;
+    /* Published access-unit layout, handed to P2 for its AU check. */
+    uint32_t t31_au_header_by_buf[16];
+    uint32_t t31_ebsp_inserted_by_buf[16];
+    /* idr_pic_id alternates between consecutive published IDRs (7.4.3). */
+    uint8_t t31_idr_pic_id_by_buf[16];
+    uint8_t t31_next_idr_pic_id;
 #endif
     uint32_t stream_header_offset;  /* bytes of header pre-written into current stream buf */
     uint32_t stream_header_offset_by_buf[16]; /* per-stream-buffer header bytes */
