@@ -998,7 +998,7 @@ static void *frame_pooling_thread(void *arg)
     ctx = &g_fs_ctx[chn];
     g_fs_thread_entered[chn] = 1;
     FS_STEP(chn, FS_STEP_START);
-    write(2, "FSDBG thread_entry\n", 19);
+    OPENIMP_TRACE_STDERR("FSDBG thread_entry\n");
 
     fs_bind_trace("libimp/FSB: pooling-thread start ch=%d ctx=%p arg=%p ra=%p\n",
                   chn, ctx, arg, fs_retaddr());
@@ -1007,7 +1007,7 @@ static void *frame_pooling_thread(void *arg)
 
     snprintf(name, sizeof(name), "FS(%d)-tick", chn);
     prctl(PR_SET_NAME, name);
-    dprintf(2, "FSDBG ch=%d step=post_prctl fd=%d running=%d\n", chn, ctx->fd, ctx->running);
+    OPENIMP_TRACE_STDERR("FSDBG ch=%d step=post_prctl fd=%d running=%d\n", chn, ctx->fd, ctx->running);
     while (ctx->running) {
         void *frame = NULL;
         Module *m;
@@ -1022,7 +1022,7 @@ static void *frame_pooling_thread(void *arg)
         if (poll_count <= 2) {
             fs_thread_trace("libimp/FS: thread-mark ch=%d step=loop-top iter=%d fd=%d running=%d\n",
                             chn, poll_count, ctx->fd, ctx->running);
-            dprintf(2, "FSDBG ch=%d step=loop_top iter=%d fd=%d running=%d\n",
+            OPENIMP_TRACE_STDERR("FSDBG ch=%d step=loop_top iter=%d fd=%d running=%d\n",
                     chn, poll_count, ctx->fd, ctx->running);
         }
         ch_state = fs_chan_get_state(chn);
@@ -1059,7 +1059,7 @@ static void *frame_pooling_thread(void *arg)
             if (poll_count <= 2) {
                 fs_thread_trace("libimp/FS: thread-mark ch=%d step=select iter=%d fd=%d state=%d errno=%d\n",
                                 chn, poll_count, ctx->fd, ch_state, errno);
-                dprintf(2, "FSDBG ch=%d step=before_select iter=%d fd=%d state=%d\n",
+                OPENIMP_TRACE_STDERR("FSDBG ch=%d step=before_select iter=%d fd=%d state=%d\n",
                         chn, poll_count, ctx->fd, ch_state);
             }
 
@@ -1134,7 +1134,7 @@ static void *frame_pooling_thread(void *arg)
                 if (poll_count <= 2) {
                     fs_thread_trace("libimp/FS: thread-mark ch=%d step=dq-drain iter=%d fd=%d state=%d errno=%d\n",
                                     chn, poll_count, ctx->fd, ch_state, errno);
-                    dprintf(2, "FSDBG ch=%d step=before_dq iter=%d fd=%d state=%d\n",
+                    OPENIMP_TRACE_STDERR("FSDBG ch=%d step=before_dq iter=%d fd=%d state=%d\n",
                             chn, poll_count, ctx->fd, ch_state);
                 }
                 fs_trace("libimp/FS: pooling dequeue-enter ch=%d fd=%d\n",
