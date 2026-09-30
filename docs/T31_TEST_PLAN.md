@@ -125,6 +125,14 @@ Abschnitt 4.
   - Die OSD-Aufrufe des Streamers laufen ohne Fehler, und nichts stürzt ab.
 - **Abbruchkriterium:** Absturz oder Stream bricht ab, obwohl er mit der Original-OpenIMP
   läuft. Dann nicht weiter, sondern melden (mit `logread`/`dmesg`).
+- **FrameSource-Zyklen (rmem-Leck, behoben auf `claude/rmem-allocator`, in `claude/t31-all`
+  enthalten):** Den Kanal mindestens 20-mal aus- und einschalten lassen. Bei timps geht das,
+  indem sich der letzte RTSP-Client trennt und wieder verbindet; ein Tag/Nacht-Wechsel geht
+  auch. Danach muss der Stream noch laufen, und im Log darf kein
+  `rmem out of memory` stehen. Zum Vergleich: vorher scheiterte `EnableChn` nach 5–7 Zyklen.
+  Mit `OPENIMP_RMEM_NO_REUSE=1` lässt sich das alte Verhalten nachstellen.
+  Auf Bildfehler direkt nach einem Zyklus achten. Die würden bedeuten, dass noch Hardware in
+  einen schon freigegebenen Puffer schreibt.
 
 ### D. Companion-Stage A/B
 
