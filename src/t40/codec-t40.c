@@ -5790,6 +5790,23 @@ static int avpu_t31_au_log_allowed(uint32_t *suppressed_out)
     return allowed;
 }
 
+/* OPENIMP_T31_STREAM_READ_UNCACHED=1 makes the escaping copy read the
+ * stream through the uncached /dev/mem alias again (A/B and cache
+ * debugging); by default it reads the invalidated cached alias. */
+static int avpu_t31_stream_read_uncached(void)
+{
+    static int enabled = -1;
+
+    if (enabled < 0) {
+        const char *value = getenv("OPENIMP_T31_STREAM_READ_UNCACHED");
+
+        enabled = value && value[0] == '1';
+        if (enabled)
+            IMP_LOG_INFO("Codec", "AVC: stream copy reads the uncached alias (OPENIMP_T31_STREAM_READ_UNCACHED=1)");
+    }
+    return enabled;
+}
+
 /* OPENIMP_T31_AU_GATE=0 publishes malformed AUs (log only) for A/B runs. */
 static int avpu_t31_au_gate_enabled(void)
 {
@@ -5832,6 +5849,7 @@ static uint32_t avpu_stream_buffer_effective_size(ALAvpuContext *ctx, int buf_id
     uint32_t t31_header_size = 0;
     OpenIMPT31StreamLayout t31_layout;
     int have_t31_layout = 0;
+    int t31_invalidate_ret = -1;
 #endif
 #if defined(PLATFORM_T41)
     OpenIMPT41StreamLayout t41_layout;
@@ -5926,6 +5944,7 @@ static uint32_t avpu_stream_buffer_effective_size(ALAvpuContext *ctx, int buf_id
             ctx->fd, ctx->stream_bufs[buf_idx].map,
             t31_layout.payload_end, 0 /* BIDIRECTIONAL */,
             OPENIMP_PROFILE_CACHE_STREAM_COMPLETE);
+        t31_invalidate_ret = inv_ret;
 #elif defined(PLATFORM_T40)
         inv_ret = avpu_flush_cache_profiled(
             ctx->fd, ctx->stream_bufs[buf_idx].map,
@@ -6020,6 +6039,23 @@ static uint32_t avpu_stream_buffer_effective_size(ALAvpuContext *ctx, int buf_id
             (uint8_t *)(ctx->stream_bufs[buf_idx].uncached_map
                 ? ctx->stream_bufs[buf_idx].uncached_map
                 : ctx->stream_bufs[buf_idx].map);
+        /*
+         * The escaping copy reads every payload byte once. Through the
+         * uncached /dev/mem alias each byte was a separate bus read (on the
+         * order of 100 ns, i.e. ~1 ms per 10 KB P picture and 10+ ms per
+         * IDR, in the IRQ thread with the core still owned). Read the
+         * cached rmem alias instead: [0, payload_end) was invalidated just
+         * above (the OEM reads its streams the same way), so its first
+         * touch fetches whole lines from memory. The late-DMA tail check
+         * below keeps reading the uncached alias, which always sees memory,
+         * and a retry invalidates again before copying. If that
+         * invalidation failed, or with OPENIMP_T31_STREAM_READ_UNCACHED=1,
+         * the copy reads the uncached alias as before.
+         */
+        const uint8_t *copy_source =
+            (t31_invalidate_ret == 0 && !avpu_t31_stream_read_uncached())
+                ? (const uint8_t *)ctx->stream_bufs[buf_idx].map
+                : mutable_stream;
 
         raw_end = t31_layout.payload_end;
 
@@ -6109,9 +6145,16 @@ static uint32_t avpu_stream_buffer_effective_size(ALAvpuContext *ctx, int buf_id
              */
             for (attempt = 0;; ++attempt) {
                 memcpy(tail_before, tail, tail_size);
+                /* A previous attempt may have pulled lines of the late
+                 * burst's range into the cache before it landed. */
+                if (attempt != 0 && copy_source != mutable_stream &&
+                    avpu_flush_cache(ctx->fd, ctx->stream_bufs[buf_idx].map,
+                                     t31_layout.payload_end,
+                                     0 /* BIDIRECTIONAL */) != 0)
+                    copy_source = mutable_stream;
                 raw_end = avpu_t31_copy_entropy_ebsp(
                     public_stream, (uint32_t)ctx->stream_buf_size,
-                    mutable_stream, header_size, payload_offset,
+                    copy_source, header_size, payload_offset,
                     payload_size, &inserted);
                 if (raw_end == 0u) {
                     LOG_CODEC("AVPU: refusing T31 payload snapshot header=%u payload=%u capacity=%u buf=%d",
