@@ -759,9 +759,17 @@ static int p2_h264_stream_is_idr(const uint8_t *stream, uint32_t length)
 static uint32_t p2_find_annexb_start4(const uint8_t *data, uint32_t offset,
                                       uint32_t length)
 {
+    /* Each access unit is scanned whole; let memchr skip the zero-free
+     * stretches that make up nearly all of an escaped slice. */
     while (offset + 4u <= length) {
-        if (data[offset] == 0u && data[offset + 1u] == 0u &&
-            data[offset + 2u] == 0u && data[offset + 3u] == 1u)
+        const uint8_t *zero = memchr(data + offset, 0,
+                                     length - 3u - offset);
+
+        if (!zero)
+            break;
+        offset = (uint32_t)(zero - data);
+        if (data[offset + 1u] == 0u && data[offset + 2u] == 0u &&
+            data[offset + 3u] == 1u)
             return offset;
         offset++;
     }
@@ -2074,7 +2082,7 @@ int IMP_Encoder_ReleaseStream(int channel, IMPEncoderStream *stream)
 
 int IMP_Encoder_RequestIDR(int channel)
 {
-#if defined(PLATFORM_T23) || defined(PLATFORM_T30)
+#if defined(PLATFORM_T23)
     static unsigned int t23_idr_request_count;
 #endif
 
@@ -2103,7 +2111,7 @@ int IMP_Encoder_RequestIDR(int channel)
             return AL_Codec_Encode_RequestIDR(p2_channels[channel].codec);
     }
 #endif
-#if defined(PLATFORM_T23) || defined(PLATFORM_T30)
+#if defined(PLATFORM_T23)
     /* IMP_Encoder_YuvRequestIDR can leave the standalone Helix encoder in a
      * permanently asserted IRQ state when it is called after streaming has
      * begun.  Raptor requests an IDR whenever an RTSP client joins, and the
@@ -2115,6 +2123,9 @@ int IMP_Encoder_RequestIDR(int channel)
                  "ch=%d request=%u\n", channel, t23_idr_request_count);
     return 0;
 #else
+    /* The native T21/T30 Helix encoder never touches the stock YUV seam: an
+     * IDR request only latches a flag consumed before the next picture, so
+     * forwarding it is safe and lets a joining RTSP client start at once. */
     return AL_Codec_Encode_RequestIDR(p2_channels[channel].codec);
 #endif
 }

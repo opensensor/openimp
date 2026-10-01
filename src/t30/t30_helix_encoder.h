@@ -15,8 +15,11 @@ int OpenIMP_T30_HelixEncode(T30HelixEncoder *encoder,
                             const IMPFrameInfo *frame,
                             HWStreamBuffer **stream);
 int OpenIMP_T30_HelixRequestIDR(T30HelixEncoder *encoder);
-int OpenIMP_T30_HelixSetBitrate(T30HelixEncoder *encoder,
-                                uint32_t bitrate);
+/* Adopt the codec's current rate-control fields (fps, GOP, RC mode,
+ * bitrate, QP and its bounds).  Call on the encoding thread before a
+ * picture; zero or out-of-range fields keep their current value. */
+int OpenIMP_T30_HelixUpdateParams(T30HelixEncoder *encoder,
+                                  const HWEncoderParams *params);
 void OpenIMP_T30_HelixDestroy(T30HelixEncoder *encoder);
 
 #endif
