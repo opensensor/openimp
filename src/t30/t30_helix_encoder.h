@@ -22,4 +22,14 @@ int OpenIMP_T30_HelixUpdateParams(T30HelixEncoder *encoder,
                                   const HWEncoderParams *params);
 void OpenIMP_T30_HelixDestroy(T30HelixEncoder *encoder);
 
+#if defined(PLATFORM_T23)
+/* Apply changed rate-control, frame-rate, GOP and QP-bound settings
+ * between pictures (call from the encoding thread).  Unchanged values are
+ * a no-op; zero fields keep the current value. */
+int OpenIMP_T30_HelixReconfigure(T30HelixEncoder *encoder,
+                                 const HWEncoderParams *params);
+/* Consecutive failed pictures since the last good one. */
+uint32_t OpenIMP_T30_HelixFailures(const T30HelixEncoder *encoder);
+#endif
+
 #endif

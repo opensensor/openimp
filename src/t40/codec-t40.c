@@ -46,7 +46,7 @@
 #include "t23/openimp_t23_helix_bridge.h"
 #include "t23/openimp_t23_persist.h"
 #endif
-#if defined(PLATFORM_T30)
+#if defined(PLATFORM_T30) || defined(PLATFORM_T23)
 #include "t30/t30_helix_encoder.h"
 #endif
 #include "t40_ep1.h"
@@ -6544,6 +6544,10 @@ struct AL_CodecEncode {
 #if defined(PLATFORM_T30)
     T30HelixEncoder *t30_helix;    /* Native T30 /dev/soc_vpu encoder */
 #endif
+#if defined(PLATFORM_T23)
+    T30HelixEncoder *t30_helix;    /* Native T21-family Helix encoder */
+    int t23_backend;               /* T23_BACKEND_*, chosen on first frame */
+#endif
 };
 
 #if defined(PLATFORM_T23) || defined(PLATFORM_T30)
@@ -6605,6 +6609,54 @@ static inline uint32_t codec_jpeg_quality(const AL_CodecEncode *enc)
 #endif
 
 #if defined(PLATFORM_T23)
+
+/* H.264 backend of a T23 codec.  "native" drives the Helix core directly
+ * through /dev/soc_vpu (src/t30/t30_helix_encoder.c with the T21-family
+ * command list); "worker" runs the OEM YUV encoder in openimp-t23-helixd.
+ * OPENIMP_T23_ENCODER=native|worker selects it at run time; the build
+ * default comes from T23_DEFAULT_ENCODER in build-t23.sh. */
+#ifndef OPENIMP_T23_DEFAULT_NATIVE
+#define OPENIMP_T23_DEFAULT_NATIVE 0
+#endif
+enum {
+    T23_BACKEND_UNSET = 0,
+    T23_BACKEND_NATIVE,
+    T23_BACKEND_WORKER,
+    T23_BACKEND_NATIVE_STOPPED,     /* native failed repeatedly: no output */
+};
+/* consecutive failed pictures after which a native channel stops
+ * submitting work to the VPU */
+#define T23_NATIVE_MAX_FAILURES 8u
+
+static int t23_native_wanted(void)
+{
+    static int wanted = -1;
+    const char *value;
+
+    if (wanted >= 0)
+        return wanted;
+    value = getenv("OPENIMP_T23_ENCODER");
+    if (value && strcmp(value, "native") == 0)
+        wanted = 1;
+    else if (value && strcmp(value, "worker") == 0)
+        wanted = 0;
+    else
+        wanted = OPENIMP_T23_DEFAULT_NATIVE ? 1 : 0;
+    IMP_LOG_INFO("Encoder", "T23 H.264 backend: %s%s",
+                 wanted ? "native Helix" : "OEM worker",
+                 value ? " (OPENIMP_T23_ENCODER)" : " (build default)");
+    return wanted;
+}
+
+/* Fall back to the worker when the native encoder cannot be created (no
+ * picture has reached the VPU then).  OPENIMP_T23_NATIVE_FALLBACK=0 keeps
+ * the channel native-only for testing. */
+static int t23_native_fallback_allowed(void)
+{
+    const char *value = getenv("OPENIMP_T23_NATIVE_FALLBACK");
+
+    return !(value && value[0] == '0' && value[1] == '\0');
+}
 
 /* Set when a requested IDR is followed by a failed or recovered Helix
  * encode: from then on IDR requests wait for the natural GOP, as before
@@ -7721,6 +7773,8 @@ static int al_codec_encode_destroy_impl(void *codec) {
 
 #if defined(PLATFORM_T23)
     OpenIMP_T23_HelixExit(&enc->t23_helix);
+    OpenIMP_T30_HelixDestroy(enc->t30_helix);
+    enc->t30_helix = NULL;
 #endif
 #if defined(PLATFORM_T30)
     OpenIMP_T30_HelixDestroy(enc->t30_helix);
@@ -8971,6 +9025,62 @@ static int al_codec_encode_process_impl(void *codec, void *frame,
         if (getenv("OPENIMP_T23_SKIP_HELIX")) {
             codec_set_error(enc, -1);
             return -1;
+        }
+        if (enc->t23_backend == T23_BACKEND_UNSET) {
+            enc->t23_backend = T23_BACKEND_WORKER;
+            if (t23_native_wanted()) {
+                enc->hw_params.width = width;
+                enc->hw_params.height = height;
+                if (!enc->hw_params.fps_num)
+                    enc->hw_params.fps_num = 25u;
+                if (!enc->hw_params.fps_den)
+                    enc->hw_params.fps_den = 1u;
+                if (!enc->hw_params.gop_length)
+                    enc->hw_params.gop_length = 25u;
+                if (!enc->hw_params.bitrate)
+                    enc->hw_params.bitrate = 2000000u;
+                if (OpenIMP_T30_HelixCreate(&enc->t30_helix,
+                                            &enc->hw_params) == 0) {
+                    enc->t23_backend = T23_BACKEND_NATIVE;
+                    enc->use_hardware = 3;
+                } else if (!t23_native_fallback_allowed()) {
+                    enc->t23_backend = T23_BACKEND_NATIVE_STOPPED;
+                    IMP_LOG_ERR("Encoder", "T23 channel %d: native Helix "
+                                "encoder unavailable and fallback disabled",
+                                enc->channel_id - 1);
+                } else {
+                    IMP_LOG_ERR("Encoder", "T23 channel %d: native Helix "
+                                "encoder unavailable, using the OEM worker",
+                                enc->channel_id - 1);
+                }
+            }
+        }
+        if (enc->t23_backend == T23_BACKEND_NATIVE_STOPPED) {
+            codec_set_error(enc, -1);
+            return -1;
+        }
+        if (enc->t23_backend == T23_BACKEND_NATIVE) {
+            (void)OpenIMP_T30_HelixReconfigure(enc->t30_helix,
+                                               &enc->hw_params);
+            if (__sync_lock_test_and_set(&enc->force_next_idr, 0))
+                OpenIMP_T30_HelixRequestIDR(enc->t30_helix);
+            if (OpenIMP_T30_HelixEncode(enc->t30_helix,
+                                        (const IMPFrameInfo *)frame,
+                                        &hw_stream) != 0) {
+                if (OpenIMP_T30_HelixFailures(enc->t30_helix) >=
+                    T23_NATIVE_MAX_FAILURES) {
+                    IMP_LOG_ERR("Encoder", "T23 channel %d: %u consecutive "
+                                "Helix failures, stopping this channel's "
+                                "H.264 output", enc->channel_id - 1,
+                                OpenIMP_T30_HelixFailures(enc->t30_helix));
+                    OpenIMP_T30_HelixDestroy(enc->t30_helix);
+                    enc->t30_helix = NULL;
+                    enc->t23_backend = T23_BACKEND_NATIVE_STOPPED;
+                }
+                codec_set_error(enc, -1);
+                return -1;
+            }
+            goto queue_encoded_stream;
         }
         if (enc->t23_helix.worker_pid <= 0 && !enc->t23_helix.failed) {
             enc->hw_params.width = width;

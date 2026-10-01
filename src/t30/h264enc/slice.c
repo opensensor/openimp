@@ -63,7 +63,7 @@ void h264e_slice_header_write(bs_t *s, h264_slice_header_t *sh, int i_nal_ref_id
 {
 	/*Do not support mbaff*/
 	bs_write_ue(s, sh->i_first_mb);
-#if defined(PLATFORM_T21)
+#if defined(PLATFORM_T21) || defined(PLATFORM_T23)
 	/* T21's public encoder uses the canonical 0..4 slice_type values. */
 	bs_write_ue(s, sh->i_type);
 #else

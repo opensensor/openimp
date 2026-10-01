@@ -26,9 +26,24 @@ typedef struct {
     uint32_t output_c;
     uint32_t bitstream;
     uint32_t scratch_base;
+#if defined(PLATFORM_T23)
+    /* Offsets of the EMC per-macroblock buffers 0x3004c, 0x30050, 0x30054
+     * and 0x30058 from scratch_base (0x30018 is at scratch_base), and the
+     * bitstream window in KiB (0x30040).  T23_HelixScratchLayout() fills
+     * them for a picture size; zero offsets select the T21 1080p layout. */
+    uint32_t scratch_offset[4];
+    uint32_t bitstream_kib;
+#endif
     uint32_t *descriptor;
     size_t descriptor_words;
 } T21H264SliceConfig;
+
+#if defined(PLATFORM_T23)
+/* EMC scratch layout for an mb_width x mb_height picture: fills
+ * config->scratch_offset and returns the scratch size in bytes. */
+uint32_t T23_HelixScratchLayout(uint32_t mb_width, uint32_t mb_height,
+                                uint32_t offsets[4]);
+#endif
 
 int T21_H264_BuildDescriptor(const T21H264SliceConfig *config,
                              size_t *pair_count);
