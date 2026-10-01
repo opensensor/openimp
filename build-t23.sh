@@ -66,6 +66,7 @@ compile core_group src/core/group.c
 compile core_module src/core/module.c
 compile framesource src/framesource/framesource_tseries.c
 compile isp src/isp/isp_tseries.c
+compile isp_t23_tuning src/isp/isp_t23_tuning.c -Werror
 compile t23_compat src/t31/openimp_t31_compat.c
 compile t23_state src/t31/openimp_t31_state.c -Werror
 compile t23_services src/t31/openimp_t31_services.c -Werror
@@ -99,6 +100,7 @@ compile t23_yuv src/t23/openimp_t23_yuv.c -Werror
     "$output_dir/core_module.o" \
     "$output_dir/framesource.o" \
     "$output_dir/isp.o" \
+    "$output_dir/isp_t23_tuning.o" \
     "$output_dir/t23_compat.o" \
     "$output_dir/t23_state.o" \
     "$output_dir/t23_services.o" \

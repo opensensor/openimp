@@ -3,8 +3,9 @@
  *
  * The T23 SDK exposes single-camera tuning calls and parallel
  * IMP_ISP_MultiCamera_* entry points.  Raptor is built against the latter,
- * even on one-sensor products.  OpenIMP has one ISP instance today, so map
- * VI_MAIN to the working single-camera implementation and reject VI_SEC.
+ * even on one-sensor products.  On T23 the complete MultiCamera tuning API
+ * lives in src/isp/isp_t23_tuning.c; the T21/T20 builds, which share this
+ * file, map VI_MAIN to the single-camera implementation and reject VI_SEC.
  *
  * ISP-integrated OSD is separate from the ordinary IMP_OSD bind-chain used
  * by Raptor.  Keep its small handle API ABI-correct for configurations which
@@ -13,6 +14,7 @@
 
 #include <errno.h>
 #include <stdint.h>
+#include <string.h>
 
 #include <imp/imp_isp.h>
 #include <imp/imp_osd.h>
@@ -22,8 +24,14 @@
 
 static uint8_t isp_osd_handles[T23_ISP_OSD_HANDLES];
 
+#if defined(PLATFORM_T23)
+/* sizeof(IMPIspOsdAttrAsm) in the T23 1.3.0 headers */
+#define T23_ISP_OSD_ATTR_SIZE 44
+static uint8_t isp_osd_attr[T23_ISP_OSD_HANDLES][T23_ISP_OSD_ATTR_SIZE];
+#else
 extern int IMP_ISP_Tuning_GetTotalGain(uint32_t *gain);
 extern int IMP_ISP_Tuning_SetAeFreeze(int enable);
+#endif
 
 static int t23_check_vi(int vi)
 {
@@ -37,6 +45,7 @@ int IMP_ISP_MultiCamera_SetSwitchgpio(void *info)
     return 0;
 }
 
+#if !defined(PLATFORM_T23)
 #define T23_TUNING_WRAP_U8(name)                                           \
     int IMP_ISP_MultiCamera_Tuning_##name(int vi, unsigned char value)     \
     {                                                                      \
@@ -119,6 +128,7 @@ int IMP_ISP_MultiCamera_Tuning_GetTotalGain(int vi, uint32_t *gain)
         return -EINVAL;
     return IMP_ISP_Tuning_GetTotalGain(gain);
 }
+#endif /* !PLATFORM_T23 */
 
 int IMP_ISP_Tuning_SetOsdPoolSize(int size)
 {
@@ -135,6 +145,12 @@ int IMP_ISP_Tuning_CreateOsdRgn(int channel, IMPIspOsdAttrAsm *attr)
     for (handle = 0; handle < T23_ISP_OSD_HANDLES; handle++) {
         if (!isp_osd_handles[handle]) {
             isp_osd_handles[handle] = 1;
+#if defined(PLATFORM_T23)
+            if (attr)
+                memcpy(isp_osd_attr[handle], attr, T23_ISP_OSD_ATTR_SIZE);
+            else
+                memset(isp_osd_attr[handle], 0, T23_ISP_OSD_ATTR_SIZE);
+#endif
             return handle;
         }
     }
@@ -155,12 +171,33 @@ int IMP_ISP_Tuning_DestroyOsdRgn(int channel, int handle)
 int IMP_ISP_Tuning_SetOsdRgnAttr(int channel, int handle,
                                  IMPIspOsdAttrAsm *attr)
 {
+#if defined(PLATFORM_T23)
+    if (channel == T23_VI_MAIN && handle >= 0 &&
+        handle < T23_ISP_OSD_HANDLES && isp_osd_handles[handle] && attr)
+        memcpy(isp_osd_attr[handle], attr, T23_ISP_OSD_ATTR_SIZE);
+#else
     (void)attr;
+#endif
     if (channel != T23_VI_MAIN)
         return -ENODEV;
     return handle >= 0 && handle < T23_ISP_OSD_HANDLES &&
            isp_osd_handles[handle] ? 0 : -EINVAL;
 }
+
+#if defined(PLATFORM_T23)
+/* Returns the attributes last given to Create/SetOsdRgnAttr. */
+int IMP_ISP_Tuning_GetOsdRgnAttr(int channel, int handle,
+                                 IMPIspOsdAttrAsm *attr)
+{
+    if (channel != T23_VI_MAIN)
+        return -ENODEV;
+    if (handle < 0 || handle >= T23_ISP_OSD_HANDLES ||
+        !isp_osd_handles[handle] || attr == NULL)
+        return -EINVAL;
+    memcpy(attr, isp_osd_attr[handle], T23_ISP_OSD_ATTR_SIZE);
+    return 0;
+}
+#endif
 
 int IMP_ISP_Tuning_ShowOsdRgn(int channel, int handle, int show)
 {
