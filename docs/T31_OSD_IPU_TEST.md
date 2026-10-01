@@ -92,7 +92,8 @@ Es erzeugt außerdem `ipu-before.png` und `ipu-after.png`. Die bitte ansehen:
 
 Erst machen, wenn Stufe 1 (Testtool) plausible Bilder geliefert hat. Auf `claude/t31-perf`
 zeichnet OpenIMP die OSD-Regionen mit der IPU, sobald `OPENIMP_T31_OSD=1` gesetzt ist. Ohne die
-Variable ändert sich nichts.
+Variable ändert sich nichts. Seit `claude/t31-osd-default` ist das Backend standardmäßig an;
+`OPENIMP_T31_OSD=0` schaltet es ab.
 
 Was das Backend anders macht als die Original-`libimp`:
 - bis zu 4 Regionen pro IPU-Durchlauf (Original: ein Durchlauf pro Region), nach `layer` sortiert

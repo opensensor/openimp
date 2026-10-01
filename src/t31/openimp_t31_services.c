@@ -91,7 +91,7 @@ static int valid_osd_region(IMPRgnHandle handle)
     return handle >= 0 && handle < T31_OSD_REGIONS;
 }
 
-/* ---- IPU backend (OPENIMP_T31_OSD=1) ---------------------------------- */
+/* ---- IPU backend (default on, OPENIMP_T31_OSD=0 disables) ------------- */
 
 #define T31_IPU_START            0x2000496aUL   /* _IO('I', 106) */
 #define T31_IPU_FMT_BGRA_8888    5u
@@ -117,9 +117,11 @@ static int t31_osd_backend_enabled(void)
     if (osd_backend_state == 0) {
         const char *v = getenv("OPENIMP_T31_OSD");
 
-        osd_backend_state = v && v[0] == '1' && v[1] == '\0' ? 1 : -1;
+        osd_backend_state = v && v[0] == '0' && v[1] == '\0' ? -1 : 1;
         if (osd_backend_state > 0)
-            IMP_LOG_INFO("OSD", "T31 IPU OSD backend requested (OPENIMP_T31_OSD=1)");
+            IMP_LOG_INFO("OSD", "T31 IPU OSD backend enabled (OPENIMP_T31_OSD=0 disables it)");
+        else
+            IMP_LOG_INFO("OSD", "T31 IPU OSD backend disabled by OPENIMP_T31_OSD=0");
     }
     return osd_backend_state > 0;
 }
