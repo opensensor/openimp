@@ -2587,12 +2587,22 @@ static int avpu_t31_hevc_hwrc_enabled(const ALAvpuContext *ctx)
     return enabled && ctx && ctx->rc_mode != HW_RC_MODE_FIXQP;
 }
 
+/*
+ * cmd[2] bits 9:8 carry uCabacInitIdc (chan 0x3b, vendor default 1).  For
+ * AVC it is cabac_init_idc 1; for HEVC the vendor's GenerateHevcSliceHeader
+ * writes it as cabac_init_flag, so the core initialises P slices with
+ * initType 2.  The PPS must therefore have cabac_init_present_flag = 1 and
+ * every P slice cabac_init_flag = 1; signalling the default (flag 0) made
+ * the decoder desynchronise in the first P CTB ("cu_qp_delta outside the
+ * valid range").  OPENIMP_T31_HEVC_CABAC_INIT=0 selects uCabacInitIdc 0
+ * and cabac_init_flag 0 instead.
+ */
 static int avpu_t31_hevc_cabac_init_flag(void)
 {
     static int enabled = -1;
 
     if (enabled < 0)
-        enabled = avpu_t31_env_flag("OPENIMP_T31_HEVC_CABAC_INIT", 0);
+        enabled = avpu_t31_env_flag("OPENIMP_T31_HEVC_CABAC_INIT", 1);
     return enabled;
 }
 
@@ -2615,7 +2625,8 @@ static void avpu_t31_hevc_config(const ALAvpuContext *ctx,
     config->cu_qp_delta_enabled =
         avpu_t31_hevc_hwrc_enabled(ctx) ? 1u : 0u;
     config->diff_cu_qp_delta_depth = 0u;
-    config->cabac_init_present = avpu_t31_hevc_cabac_init_flag() ? 1u : 0u;
+    /* Always present, so either uCabacInitIdc can be signalled. */
+    config->cabac_init_present = 1u;
     config->tmvp_enabled = avpu_t31_hevc_tmvp_enabled() ? 1u : 0u;
 }
 
@@ -2647,7 +2658,7 @@ static uint32_t avpu_t31_hevc_write_headers(ALAvpuContext *ctx,
     slice.poc = is_idr ? 0u : ctx->frame_number - ctx->idr_frame_number;
     slice.ref_poc_delta = 1u;
     slice.qp = (int32_t)(qp <= 51u ? qp : 51u);
-    slice.cabac_init_flag = config.cabac_init_present;
+    slice.cabac_init_flag = avpu_t31_hevc_cabac_init_flag() ? 1u : 0u;
     written = openimp_t31_hevc_write_slice_header(buf + pos, limit - pos,
                                                   &config, &slice);
     if (written <= 0)
@@ -2682,13 +2693,14 @@ static void avpu_t31_hevc_fill_cmd(const ALAvpuContext *ctx, uint32_t *cmd,
     /* SliceParamToCmdRegsEnc1 cmd[0]: min TU 4, max TU 32 (sp[1]=5),
      * min CU 8 (sp[2]=3), CTB 32 (sp[3]=5), codec 1, last slice. */
     cmd[0x00] = 0x91700c11u;
-    /* bit 30 temporal MV prediction (sp[0x23]), bit 26 cabac_init_flag
-     * (sp[0x21], P only); merge candidates, CABAC and deblocking as AVC. */
+    /* bit 30 temporal MV prediction (sp[0x23]), bits 9:8 uCabacInitIdc
+     * (sp[0x10], = the slice cabac_init_flag); merge candidates, CABAC and
+     * deblocking as AVC. */
     cmd[0x02] = 0x4010ad50u;
     if (!avpu_t31_hevc_tmvp_enabled())
         cmd[0x02] &= ~0x40000000u;
-    if (!is_idr && avpu_t31_hevc_cabac_init_flag())
-        cmd[0x02] |= 0x04000000u;
+    if (!avpu_t31_hevc_cabac_init_flag())
+        cmd[0x02] &= ~0x00000300u;
 
     cmd[0x06] = avpu_pack_enc1_lcu_pos(ctb_count - 1u, ctb_w);
     if (!is_idr)

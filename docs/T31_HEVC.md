@@ -170,6 +170,24 @@ way AVC Baseline runs without them.
 
 OpenIMP keeps the AVC allocations and only enlarges EP2.
 
+### 1.9 CABAC init selection (`uCabacInitIdc`)
+
+Channel parameter 0x3b is `uCabacInitIdc` (vendor default 1; HEVC clamps
+it to 0..1).  `encode1` copies it to `sp[0x10]`, packed in `cmd[2]` bits 9:8
+(AVC: `cabac_init_idc 1`, the value OpenIMP's AVC slice header always
+writes).  For HEVC `GenerateHevcSliceHeader` writes the same `sp[0x10]` as
+the slice `cabac_init_flag`, so with the default the core initialises P
+slices with initType 2.  The stream must say so: PPS
+`cabac_init_present_flag 1` and `cabac_init_flag 1` in every P slice.
+Signalling flag 0 (first device test, 2026-10-02) desynchronised the
+decoder in the first P CTB, visible as "cu_qp_delta outside the valid
+range [-26, 25]" with values -63..83.
+
+(`cu_qp_delta` itself matches the vendor: its `AL_Codec_Encode_SetDefaultParam`
+sets `eQpCtrlMode = 1` (settings 0x118), which turns on
+`cu_qp_delta_enabled_flag` with `CuQpDeltaDepth` (chan 0x3a) 0 for every
+HEVC stream.)
+
 ## 2. Bitstream headers
 
 The vendor writes VPS/SPS/PPS and the slice segment header in software
@@ -210,7 +228,7 @@ no long-term, `sps_temporal_mvp_enabled_flag 1`,
 video_format 5, limited range, BT.709 colour description and timing.
 
 PPS: no dependent slices, no extra slice header bits,
-`sign_data_hiding 0`, `cabac_init_present` from chan 0x28 bit 1 (0),
+`sign_data_hiding 0`, `cabac_init_present_flag 1` (see 1.9),
 `num_ref_idx_l0_default_active_minus1 0`, `init_qp_minus26 0`,
 `constrained_intra_pred 0`, `transform_skip 0`, `cu_qp_delta` as in 1.6,
 chroma offsets 0, no weighted prediction, no tiles/WPP,
@@ -223,6 +241,7 @@ Slice segment header: first slice 1, `no_output_of_prior_pics_flag 0` on
 IRAP, PPS id 0, slice type (I = 2, P = 1); for P: POC LSB, explicit
 `st_ref_pic_set` (one negative picture, delta 1, used),
 `slice_temporal_mvp_enabled_flag 1`, `num_ref_idx_active_override_flag 0`,
+`cabac_init_flag 1`,
 `five_minus_max_num_merge_cand 0`; then `slice_qp_delta`,
 `slice_loop_filter_across_slices_enabled_flag 1`, `byte_alignment()`.
 
@@ -246,8 +265,8 @@ Diagnostic knobs (environment, read once):
 
 * `OPENIMP_T31_HEVC_HWRC=0` - HEVC without hardware RC (picture-level QP,
   PPS `cu_qp_delta_enabled_flag 0`).
-* `OPENIMP_T31_HEVC_CABAC_INIT=1` - signal and request `cabac_init_flag = 1`
-  for P slices (`cmd[2]` bit 26).
+* `OPENIMP_T31_HEVC_CABAC_INIT=0` - `uCabacInitIdc 0` in `cmd[2]` bits 9:8
+  and `cabac_init_flag 0` (default 1/1, see 1.9).
 * `OPENIMP_T31_HEVC_TMVP=0` - disable temporal MV prediction (`cmd[2]`
   bit 30 and the SPS/slice flags).
 
@@ -257,8 +276,7 @@ Diagnostic knobs (environment, read once):
    the same way as for inline AVC (`EncodingStatusRegsToSliceStatus` is
    codec independent).
 2. `cmd[9]` bit 15 (`sp[0x5f]`) is left 0.
-3. Whether P slices use CABAC initType 1 (`cabac_init_flag 0`) - see the
-   `OPENIMP_T31_HEVC_CABAC_INIT` knob.
+3. Resolved on the device (2026-10-02): P slices use initType 2, see 1.9.
 4. The HWRC targets in `cmd[0x15/0x16/0x18]` reuse the recovered AVC
    formulas on the CTB grid.
 5. EP3 (HWRC tables) is shared with AVC unchanged.
