@@ -37,6 +37,7 @@
 #endif
 #if defined(PLATFORM_T23)
 #include "t23/openimp_t23_osd.h"
+#include "t23/openimp_t23_encoder.h"
 #endif
 
 #define P2_MAX_GROUPS 8
@@ -1928,6 +1929,13 @@ int IMP_Encoder_SetChnFrmRate(int channel, IMPEncoderFrmRate *rate,
         pthread_mutex_unlock(&ch->lock);
         return -1;
     }
+#if defined(PLATFORM_T23)
+    /* reach the running Helix encoder (OEM: i264e frame-rate param) */
+    if (openimp_t23_enc_push_fps(ch->codec, ch->codec_type, rate) != 0) {
+        pthread_mutex_unlock(&ch->lock);
+        return -1;
+    }
+#endif
     pthread_mutex_unlock(&ch->lock);
     return 0;
 }
@@ -2032,6 +2040,13 @@ int IMP_Encoder_SetChnAttrRcMode(int channel, IMPEncoderAttrRcMode *mode)
         pthread_mutex_unlock(&ch->lock);
         return -1;
     }
+#if defined(PLATFORM_T23)
+    if (openimp_t23_enc_push_rc(ch->codec, ch->codec_type,
+                                &ch->attr.rcAttr.attrRcMode) != 0) {
+        pthread_mutex_unlock(&ch->lock);
+        return -1;
+    }
+#endif
     pthread_mutex_unlock(&ch->lock);
     return 0;
 }
@@ -2095,7 +2110,12 @@ int IMP_Encoder_SetChnBitRate(int channel, int bitrate, int max_bitrate)
                                    (int)(target * 1000u),
                                    (int)(maximum * 1000u)) != 0)
         return -1;
+#if defined(PLATFORM_T23)
+    return openimp_t23_enc_push_rc(p2_channels[channel].codec,
+                                   p2_channels[channel].codec_type, mode);
+#else
     return 0;
+#endif
 }
 
 int IMP_Encoder_GetChnGopAttr(int channel, IMPEncoderGopAttr *gop)
@@ -2120,7 +2140,15 @@ int IMP_Encoder_SetChnGopAttr(int channel, IMPEncoderGopAttr *gop)
 #else
     p2_channels[channel].attr.gopAttr = *gop;
 #endif
+#if defined(PLATFORM_T23)
+    if (AL_Codec_Encode_SetGopParam(p2_channels[channel].codec, gop) != 0)
+        return -1;
+    return openimp_t23_enc_push_gop(p2_channels[channel].codec,
+                                    p2_channels[channel].codec_type,
+                                    (int)gop->gopLength);
+#else
     return AL_Codec_Encode_SetGopParam(p2_channels[channel].codec, gop);
+#endif
 }
 
 int IMP_Encoder_SetChnGopLength(int channel, int length)
@@ -2133,7 +2161,14 @@ int IMP_Encoder_SetChnGopLength(int channel, int length)
 #else
     p2_channels[channel].attr.gopAttr.uGopLength = (uint16_t)length;
 #endif
+#if defined(PLATFORM_T23)
+    if (AL_Codec_Encode_SetGopLength(p2_channels[channel].codec, length) != 0)
+        return -1;
+    return openimp_t23_enc_push_gop(p2_channels[channel].codec,
+                                    p2_channels[channel].codec_type, length);
+#else
     return AL_Codec_Encode_SetGopLength(p2_channels[channel].codec, length);
+#endif
 }
 
 #if defined(PLATFORM_T23) || defined(PLATFORM_T30)
@@ -2181,8 +2216,17 @@ int IMP_Encoder_SetChnQpBounds(int channel, int minimum, int maximum)
         return -1;
     p2_set_qp_bounds(&p2_channels[channel].attr.rcAttr.attrRcMode,
                      minimum, maximum);
+#if defined(PLATFORM_T23)
+    if (AL_Codec_Encode_SetQpBounds(p2_channels[channel].codec,
+                                    minimum, maximum) != 0)
+        return -1;
+    return openimp_t23_enc_push_rc(p2_channels[channel].codec,
+                                   p2_channels[channel].codec_type,
+                                   &p2_channels[channel].attr.rcAttr.attrRcMode);
+#else
     return AL_Codec_Encode_SetQpBounds(p2_channels[channel].codec,
                                        minimum, maximum);
+#endif
 }
 
 int IMP_Encoder_SetChnQpBoundsPerFrame(int channel, int minimum_i,
@@ -2215,7 +2259,13 @@ int IMP_Encoder_SetChnMaxPictureSize(int channel, uint32_t maximum_i,
         return -1;
     mode = &p2_channels[channel].attr.rcAttr.attrRcMode;
     maximum = maximum_i > maximum_p ? maximum_i : maximum_p;
-#if defined(PLATFORM_T23) || defined(PLATFORM_T30)
+#if defined(PLATFORM_T23)
+    /* OEM: one channel frame-loss threshold, kbit -> bytes, shared with
+     * IMP_Encoder_Setframelossthd */
+    (void)mode;
+    (void)maximum;
+    return openimp_t23_enc_set_lossthd(channel, maximum_i * 128u);
+#elif defined(PLATFORM_T30)
     (void)mode;
     (void)maximum;
 #else
@@ -2385,6 +2435,13 @@ int IMP_Encoder_SetChnColor2Grey(int channel,
         return -1;
     pthread_mutex_lock(&ch->lock);
     ch->color2grey = *config;
+#if defined(PLATFORM_T23)
+    if (openimp_t23_enc_push_color2grey(ch->codec, ch->codec_type,
+                                        config) != 0) {
+        pthread_mutex_unlock(&ch->lock);
+        return -1;
+    }
+#endif
     pthread_mutex_unlock(&ch->lock);
     return 0;
 }
@@ -2410,6 +2467,12 @@ int IMP_Encoder_SetChnROI(int channel, const IMPEncoderROICfg *config)
         return -1;
     pthread_mutex_lock(&ch->lock);
     ch->roi[config->u32Index] = *config;
+#if defined(PLATFORM_T23)
+    if (openimp_t23_enc_push_roi(ch->codec, ch->codec_type, config) != 0) {
+        pthread_mutex_unlock(&ch->lock);
+        return -1;
+    }
+#endif
     pthread_mutex_unlock(&ch->lock);
     return 0;
 }
@@ -2438,7 +2501,22 @@ int IMP_Encoder_SetChnDenoise(int channel,
         return -1;
     pthread_mutex_lock(&ch->lock);
     ch->denoise = *config;
+#if defined(PLATFORM_T23)
+    {
+        /* OEM: the on/off switch stays as created, only type/QPs change */
+        bool created_enable = ch->attr.rcAttr.attrDenoise.enable;
+
+        ch->attr.rcAttr.attrDenoise = *config;
+        ch->attr.rcAttr.attrDenoise.enable = created_enable;
+        if (openimp_t23_enc_push_denoise(ch->codec, ch->codec_type, config,
+                                         created_enable) != 0) {
+            pthread_mutex_unlock(&ch->lock);
+            return -1;
+        }
+    }
+#else
     ch->attr.rcAttr.attrDenoise = *config;
+#endif
     pthread_mutex_unlock(&ch->lock);
     return 0;
 }
@@ -2474,6 +2552,12 @@ int IMP_Encoder_SetMbRC(int channel, int enabled)
         return -1;
     pthread_mutex_lock(&ch->lock);
     ch->macroblock_rate_control = enabled;
+#if defined(PLATFORM_T23)
+    if (openimp_t23_enc_push_mbrc(ch->codec, ch->codec_type, enabled) != 0) {
+        pthread_mutex_unlock(&ch->lock);
+        return -1;
+    }
+#endif
     pthread_mutex_unlock(&ch->lock);
     return 0;
 }
@@ -2499,6 +2583,13 @@ int IMP_Encoder_SetSuperFrameCfg(int channel,
         return -1;
     pthread_mutex_lock(&ch->lock);
     ch->superframe = *config;
+#if defined(PLATFORM_T23)
+    if (openimp_t23_enc_push_superframe(ch->codec, ch->codec_type,
+                                        config) != 0) {
+        pthread_mutex_unlock(&ch->lock);
+        return -1;
+    }
+#endif
     pthread_mutex_unlock(&ch->lock);
     return 0;
 }
@@ -2526,6 +2617,13 @@ int IMP_Encoder_SetH264TransCfg(int channel,
         return -1;
     pthread_mutex_lock(&ch->lock);
     ch->h264_transform = *config;
+#if defined(PLATFORM_T23)
+    if (openimp_t23_enc_push_h264trans(ch->codec, ch->codec_type,
+                                       config) != 0) {
+        pthread_mutex_unlock(&ch->lock);
+        return -1;
+    }
+#endif
     pthread_mutex_unlock(&ch->lock);
     return 0;
 }
@@ -2580,6 +2678,12 @@ int IMP_Encoder_SetQpgMode(int channel, const IMPEncoderQpgMode *mode)
         return -1;
     pthread_mutex_lock(&ch->lock);
     ch->qpg_mode = *mode;
+#if defined(PLATFORM_T23)
+    if (openimp_t23_enc_push_qpgmode(ch->codec, ch->codec_type, mode) != 0) {
+        pthread_mutex_unlock(&ch->lock);
+        return -1;
+    }
+#endif
     pthread_mutex_unlock(&ch->lock);
     return 0;
 }
@@ -2603,3 +2707,28 @@ int IMP_Encoder_GetFd(int channel)
     errno = ENOSYS;
     return -1;
 }
+
+#if defined(PLATFORM_T23)
+/* T23 encoder extras (src/t23/openimp_t23_encoder.c) run `fn` on a view of
+ * the channel with the channel lock held, so the codec cannot go away. */
+int openimp_t23_p2_call(int channel, OpenIMPT23P2Fn fn, void *arg)
+{
+    P2EncoderChannel *ch;
+    OpenIMPT23P2View view;
+    int ret;
+
+    if (!p2_valid_channel(channel) || !fn)
+        return -1;
+    EncoderInit();
+    ch = &p2_channels[channel];
+    pthread_mutex_lock(&ch->lock);
+    view.created = ch->created;
+    view.receiving = ch->receiving;
+    view.codec_type = ch->codec_type;
+    view.codec = ch->codec;
+    view.attr = &ch->attr;
+    ret = fn(&view, arg);
+    pthread_mutex_unlock(&ch->lock);
+    return ret;
+}
+#endif

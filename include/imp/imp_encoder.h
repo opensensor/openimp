@@ -1318,6 +1318,41 @@ intptr_t IMP_Encoder_VbmV2P(intptr_t vaddr);
 intptr_t IMP_Encoder_VbmP2V(intptr_t paddr);
 int IMP_Encoder_InputJpege(uint8_t *src, uint8_t *dst, int src_w, int src_h,
                            int q, int *stream_length);
+
+/* T23 1.3.0 channel extras. */
+typedef struct {
+    bool enable;                    /**< Gradual decoder refresh on/off */
+    int gdrCycle;                   /**< GDR period in frames (>= 3) */
+    int gdrFrames;                  /**< Frames one refresh spans (2..10) */
+} IMPEncoderGDRCfg;
+
+int IMP_Encoder_SetChnCrop(int encChn, const IMPEncoderCropCfg *cfg);
+int IMP_Encoder_GetChnCrop(int encChn, IMPEncoderCropCfg *cfg);
+int IMP_Encoder_YuvSetCrop(void *h, IMPEncoderCropCfg *cfg);
+int IMP_Encoder_YuvGetCrop(void *h, IMPEncoderCropCfg *cfg);
+int IMP_Encoder_SetChnHSkip(int encChn, const IMPEncoderAttrHSkip *attr);
+int IMP_Encoder_GetChnHSkip(int encChn, IMPEncoderAttrHSkip *attr);
+int IMP_Encoder_SetChnHSkipBlackEnhance(int encChn, const int bBlackEnhance);
+int IMP_Encoder_SetChnFrmUsedMode(int encChn, const IMPEncoderAttrFrmUsed *attr);
+int IMP_Encoder_GetChnFrmUsedMode(int encChn, IMPEncoderAttrFrmUsed *attr);
+int IMP_Encoder_GetGOPSize(int encChn, IMPEncoderGOPSizeCfg *cfg);
+int IMP_Encoder_SetChangeRef(int encChn, int bEnable);
+int IMP_Encoder_GetChangeRef(int encChn, int *bEnable);
+int IMP_Encoder_SetFisheyeEnableStatus(int encChn, int enable);
+int IMP_Encoder_GetFisheyeEnableStatus(int encChn, int *enable);
+int IMP_Encoder_Setframelossthd(int encChn, uint32_t framelossthd);
+int IMP_Encoder_Getframelossthd(int encChn, uint32_t *framelossthd);
+int IMP_Encoder_GetChnMaxPictureSize(int encChn, uint32_t *maxPictureSizeI,
+                                    uint32_t *maxPictureSizeP);
+int IMP_Encoder_SetMultiSectionMode(int mode, int size, int cnt);
+int IMP_Encoder_SetGDRCfg(int encChn, const IMPEncoderGDRCfg *cfg);
+int IMP_Encoder_GetGDRCfg(int encChn, IMPEncoderGDRCfg *cfg);
+int IMP_Encoder_RequestGDR(int encChn, int gdrFrames);
+int IMP_Encoder_SetChnInitQP(int encChn, uint32_t initQP);
+int IMP_Encoder_SetPoolSize(int size);
+int IMP_Encoder_SetRdBufShare(int encChn, int enable);
+int IMP_Encoder_EnableAllNCUDenoise(void);
+int IMP_Encoder_DisableAllNCUDenoise(void);
 #endif
 
 #ifdef __cplusplus

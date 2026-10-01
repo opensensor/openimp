@@ -11100,3 +11100,12 @@ int AL_Codec_Encode_RequestIDR(void *codec) {
 
     return 0;
 }
+
+#if defined(PLATFORM_T23)
+/* The Helix session behind a T23 H.264 codec, for the encoder extras in
+ * src/t23/openimp_t23_encoder.c. */
+T23HelixBridge *OpenIMP_T23_CodecBridge(void *codec)
+{
+    return codec ? &((AL_CodecEncode *)codec)->t23_helix : NULL;
+}
+#endif
