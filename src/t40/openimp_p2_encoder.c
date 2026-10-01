@@ -1322,6 +1322,16 @@ int IMP_Encoder_CreateChn(int channel, IMPEncoderCHNAttr *attr)
     P2_STARTUP_MARKER("openimp/P2 marker C0 CreateChn entry\n");
     if (!p2_valid_channel(channel) || !attr)
         return -1;
+    if (p2_attr_codec_type(attr) == IMP_ENC_TYPE_HEVC) {
+        /* Every OpenIMP backend (AVPU, native and OEM Helix, software) is
+         * H.264/JPEG only: an HEVC channel used to be created and then
+         * produced no stream at all.  Fail here so the caller can fall
+         * back to H.264. */
+        IMP_LOG_ERR("Encoder",
+                    "CreateChn(%d): H.265/HEVC encoding is not supported "
+                    "by OpenIMP on this SoC; use H.264\n", channel);
+        return -1;
+    }
     hw_rc_mode = p2_codec_rc_mode(attr, channel);
     if (hw_rc_mode < 0)
         return -1;
