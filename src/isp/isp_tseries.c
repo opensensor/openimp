@@ -2356,6 +2356,27 @@ int IMP_ISP_Tuning_SetIntegrationTime(void *itattr)
     }
     return tseries_tuning_set_ptr(TISP_CID_LEGACY_IT_ATTR, ae);
 }
+
+/* Stock T20 3.12.0 reads the same 0x70-byte block back on CID 0x0800002C:
+ * mode = [0x03] != 0 (manual flag), integration_time = u16 [0x18],
+ * max_integration_time = u16 [0x1a]. */
+int IMP_ISP_Tuning_GetIntegrationTime(void *itattr)
+{
+    TSeriesLegacyITAttr *attr = itattr;
+    uint8_t ae[0x70];
+    int result;
+
+    if (attr == NULL)
+        return -1;
+    memset(ae, 0, sizeof(ae));
+    result = tseries_tuning_get_ptr(TISP_CID_LEGACY_IT_ATTR, ae);
+    if (result != 0)
+        return result;
+    attr->mode = ae[0x03] != 0;
+    memcpy(&attr->integration_time, ae + 0x18, sizeof(uint16_t));
+    memcpy(&attr->max_integration_time, ae + 0x1a, sizeof(uint16_t));
+    return 0;
+}
 #endif
 
 int IMP_ISP_Tuning_SetAe_IT_MAX(uint32_t it_max)
