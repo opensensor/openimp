@@ -1748,6 +1748,18 @@ int IMP_Encoder_RequestIDR(int channel)
      * next YuvEncode then wedges in the stock IRQ handler.  The configured
      * maxGop already emits regular SPS/PPS/IDR access units, so acknowledge
      * the hint and let the natural GOP provide the next safe join point. */
+#if defined(PLATFORM_T23)
+    /* The OEM channel path forces the next picture to IDR exactly like
+     * IMP_Encoder_YuvRequestIDR does (i_type = IDR on the next encode), so
+     * the wedge above may have had another cause: OPENIMP_T23_HELIX_IDR=1
+     * forwards the request to the Helix worker for testing. */
+    {
+        const char *forward = getenv("OPENIMP_T23_HELIX_IDR");
+
+        if (forward && forward[0] == '1' && forward[1] == '\0')
+            return AL_Codec_Encode_RequestIDR(p2_channels[channel].codec);
+    }
+#endif
     if (__sync_add_and_fetch(&t23_idr_request_count, 1u) <= 16u)
         p2_trace("openimp/P2: T23 IDR request deferred to natural GOP "
                  "ch=%d request=%u\n", channel, t23_idr_request_count);
