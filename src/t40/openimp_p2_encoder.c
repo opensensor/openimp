@@ -35,6 +35,7 @@
 #include "t40/t31_stream_layout.h"
 #include "t31/openimp_t31_osd.h"
 #include "kernel_interface.h"
+#include "t40/p2_frame_pin.h"
 
 /* Longest single sleep while waiting for a capture frame: bounds how late
  * StopRecvPic is noticed when no frame comes (the frame itself wakes the
@@ -50,6 +51,26 @@
 #define P2_MAX_CHANNELS 8
 #define P2_MAX_BINDS 16
 #define P2_MAX_PUBLIC_PACKS 16
+/*
+ * Stream buffers per channel unless the application calls
+ * IMP_Encoder_SetMaxStreamCnt. T31: the stock IMP_Encoder_CreateChn uses 2
+ * for H.264/H.265 and 1 for JPEG when MaxStreamCnt was not set (sub_83908
+ * in libimp 1.1.6). P2 never uses more than two at once: PollingStream
+ * starts no encode while the application holds a stream (raw_stream), and
+ * Process returns only after the completion, so one buffer is held or
+ * queued and one is free for the next picture; the second also keeps a
+ * channel encoding when a GetStream timed out and left a completed stream
+ * queued. JPEG keeps 2 as well: its stream FIFO has this depth and a
+ * blocking queue of depth 1 could wait forever behind such a stale stream
+ * (JPEG allocates no AVPU stream buffer, so this costs nothing). A larger
+ * count only rotated through more 0.93 MB (1080p) rmem buffers and heap
+ * snapshots without ever using them together.
+ */
+#if defined(PLATFORM_T31)
+#define P2_DEFAULT_STREAM_COUNT 2
+#else
+#define P2_DEFAULT_STREAM_COUNT 4
+#endif
 #define P2_PARAM_SIZE 0x794
 /* T40 1.3.1 ends IMPEncoderStream after isVI and pads it to 28 bytes. T31
  * 1.1.6 includes the streamInfo/jpegInfo union, matching the compatibility
@@ -147,6 +168,10 @@ typedef struct {
     uint8_t *jpeg_frame_buffer;
     size_t jpeg_frame_capacity;
     uint32_t jpeg_frame_phys;       /* rmem copy for the T31 hardware JPEG core */
+#if defined(PLATFORM_T31)
+    void *jpeg_lent_frame;          /* capture frame lent by the AVC channel */
+    int jpeg_lent_source;
+#endif
     uint64_t jpeg_frame_generation;
     int jpeg_frame_requested;
     pthread_cond_t jpeg_frame_ready;
@@ -343,6 +368,71 @@ static int p2_jpeg_copy_in_rmem(void)
 }
 #endif
 
+extern int IMP_FrameSource_ReleaseFrame(int channel, void *frame);
+
+#if defined(PLATFORM_T31)
+/*
+ * Hardware JPEG reads the capture frame itself. The AVC channel that
+ * dequeued it lends it to each JPEG channel that asked for a frame instead
+ * of copying 3.1 MB into rmem (and writing that back) under p2_core_lock;
+ * the frame goes back to the FrameSource when the AVC picture and every
+ * JPEG job reading it are done (p2_frame_pin.h). The frame is not queued to
+ * the ISP meanwhile, so nothing can rewrite it; the AVPU and JPEG jobs
+ * only read it and are serialised on the single core by the codec.
+ * Only while the hardware JPEG path is usable: a software JPEG encode would
+ * hold a capture buffer for a long time. OPENIMP_T31_HW_JPEG_SRC_COPY=1
+ * keeps the copy (A/B).
+ */
+extern int OpenIMP_T31_HwJpegActive(void);
+
+static P2FramePinTable p2_frame_pins = P2_FRAME_PIN_TABLE_INITIALIZER;
+
+static int p2_jpeg_src_copy_forced(void)
+{
+    static int forced = -1;
+
+    if (forced < 0) {
+        const char *value = getenv("OPENIMP_T31_HW_JPEG_SRC_COPY");
+
+        forced = value && value[0] == '1';
+        if (forced)
+            IMP_LOG_INFO("Encoder", "JPEG: source frames are copied (OPENIMP_T31_HW_JPEG_SRC_COPY=1)");
+    }
+    return forced;
+}
+
+static int p2_fs_release(int channel, void *frame)
+{
+    return IMP_FrameSource_ReleaseFrame(channel, frame);
+}
+
+/* Every capture-frame release of the encoder goes through here. */
+static int p2_release_source_frame(int channel, void *frame)
+{
+    return p2_frame_pin_put(&p2_frame_pins, channel, frame, p2_fs_release);
+}
+
+/* The JPEG channel is done with a lent frame (or will not use it). */
+static void p2_jpeg_return_lent_frame(P2EncoderChannel *jpeg)
+{
+    void *frame;
+    int source;
+
+    pthread_mutex_lock(&jpeg->lock);
+    frame = jpeg->jpeg_lent_frame;
+    source = jpeg->jpeg_lent_source;
+    jpeg->jpeg_lent_frame = NULL;
+    pthread_mutex_unlock(&jpeg->lock);
+    if (frame)
+        (void)p2_release_source_frame(source, frame);
+}
+#else
+static int p2_release_source_frame(int channel, void *frame)
+{
+    return IMP_FrameSource_ReleaseFrame(channel, frame);
+}
+#endif
+
 static void p2_free_jpeg_frame_buffer(P2EncoderChannel *ch)
 {
 #if defined(PLATFORM_T31)
@@ -362,6 +452,9 @@ static int p2_copy_requested_jpeg_frames(int source_channel,
     int channel;
 #if defined(PLATFORM_T41)
     int source_sync = 1;
+#endif
+#if defined(PLATFORM_T31)
+    int lend = -1;          /* decided once per frame, if anyone asks */
 #endif
 
     if (!source || !source->virtual_address || !source->size)
@@ -397,6 +490,32 @@ static int p2_copy_requested_jpeg_frames(int source_channel,
         }
         if (source_sync < 0) {
             jpeg->jpeg_frame_requested = 0;
+            pthread_cond_broadcast(&jpeg->jpeg_frame_ready);
+            pthread_mutex_unlock(&jpeg->lock);
+            continue;
+        }
+#endif
+#if defined(PLATFORM_T31)
+        if (lend < 0)
+            lend = source->physical_address && p2_jpeg_copy_in_rmem() &&
+                   !p2_jpeg_src_copy_forced() && OpenIMP_T31_HwJpegActive();
+        if (lend && !jpeg->jpeg_lent_frame &&
+            p2_frame_pin_lend(&p2_frame_pins, source_channel,
+                              (void *)source) == 0) {
+            memset(&jpeg->synthetic_frame, 0, sizeof(jpeg->synthetic_frame));
+            jpeg->synthetic_frame.index = -1;
+            jpeg->synthetic_frame.pool_index = -1;
+            jpeg->synthetic_frame.width = source->width;
+            jpeg->synthetic_frame.height = source->height;
+            jpeg->synthetic_frame.pixel_format = source->pixel_format;
+            jpeg->synthetic_frame.size = source->size;
+            jpeg->synthetic_frame.virtual_address = source->virtual_address;
+            jpeg->synthetic_frame.physical_address = source->physical_address;
+            jpeg->synthetic_frame.timestamp = source->timestamp;
+            jpeg->jpeg_lent_frame = (void *)source;
+            jpeg->jpeg_lent_source = source_channel;
+            jpeg->jpeg_frame_requested = 0;
+            jpeg->jpeg_frame_generation++;
             pthread_cond_broadcast(&jpeg->jpeg_frame_ready);
             pthread_mutex_unlock(&jpeg->lock);
             continue;
@@ -490,6 +609,10 @@ static int p2_wait_for_jpeg_frame(P2EncoderChannel *channel,
         channel->jpeg_frame_generation == generation) {
         channel->jpeg_frame_requested = 0;
         pthread_mutex_unlock(&channel->lock);
+#if defined(PLATFORM_T31)
+        /* Stopped right after a frame was lent: hand it back. */
+        p2_jpeg_return_lent_frame(channel);
+#endif
         return -1;
     }
     *frame = &channel->synthetic_frame;
@@ -985,7 +1108,7 @@ int EncoderInit(void)
         for (i = 0; i < P2_MAX_CHANNELS; i++) {
             p2_channels[i].group = -1;
             p2_channels[i].source_channel = -1;
-            p2_channels[i].max_stream_count = 4;
+            p2_channels[i].max_stream_count = P2_DEFAULT_STREAM_COUNT;
             p2_channels[i].pool_id = -1;
             pthread_mutex_init(&p2_channels[i].lock, NULL);
             pthread_cond_init(&p2_channels[i].jpeg_frame_ready, NULL);
@@ -1376,6 +1499,7 @@ static int p2_polling_stream(int channel, uint32_t timeout_ms)
     uint64_t timeout_us;
     int core_locked = 0;
     int result = -1;
+    int process_result;
     OpenIMPProfileStamp poll_profile;
 
     if (!p2_valid_channel(channel))
@@ -1519,7 +1643,13 @@ static int p2_polling_stream(int channel, uint32_t timeout_ms)
         (void)p2_copy_requested_jpeg_frames(
             ch->source_channel, (const P2SyntheticFrame *)frame);
     }
-    if (AL_Codec_Encode_Process(ch->codec, frame, frame) != 0)
+    process_result = AL_Codec_Encode_Process(ch->codec, frame, frame);
+#if defined(PLATFORM_T31)
+    /* JPEG encodes synchronously: a lent capture frame is free again. */
+    if (ch->codec_type == IMP_ENC_TYPE_JPEG)
+        p2_jpeg_return_lent_frame(ch);
+#endif
+    if (process_result != 0)
         goto done;
 #if defined(PLATFORM_T23) || defined(PLATFORM_T30)
     if (ch->codec_type == IMP_ENC_TYPE_AVC &&
@@ -1536,7 +1666,7 @@ static int p2_polling_stream(int channel, uint32_t timeout_ms)
      */
     if (p2_capture_release_policy() == P2_CAPTURE_RELEASE_AFTER_SUBMIT &&
         frame != &ch->synthetic_frame &&
-        IMP_FrameSource_ReleaseFrame(ch->source_channel, frame) == 0)
+        p2_release_source_frame(ch->source_channel, frame) == 0)
         frame = NULL;
     /* Bounded by time, not by attempts: one GetStream can wait up to 2 s
      * itself, and 2000 attempts held p2_core_lock (and so every other
@@ -1563,7 +1693,7 @@ static int p2_polling_stream(int channel, uint32_t timeout_ms)
                           (uint64_t)retry);
     if (p2_capture_release_policy() == P2_CAPTURE_RELEASE_AFTER_COMPLETION &&
         frame != &ch->synthetic_frame &&
-        IMP_FrameSource_ReleaseFrame(ch->source_channel, frame) == 0)
+        p2_release_source_frame(ch->source_channel, frame) == 0)
         frame = NULL;
 #if defined(PLATFORM_T23) || defined(PLATFORM_T30)
     if (ch->codec_type == IMP_ENC_TYPE_AVC && t23_avc_trace_count <= 16u)
@@ -1583,7 +1713,7 @@ done:
     if (stream)
         AL_Codec_Encode_ReleaseStream(ch->codec, stream, user);
     if (frame && frame != &ch->synthetic_frame)
-        IMP_FrameSource_ReleaseFrame(ch->source_channel, frame);
+        p2_release_source_frame(ch->source_channel, frame);
     if (core_locked)
         pthread_mutex_unlock(&p2_core_lock);
     openimp_profile_end(OPENIMP_PROFILE_ENCODER_POLL, poll_profile);
@@ -1779,7 +1909,7 @@ int IMP_Encoder_ReleaseStream(int channel, IMPEncoderStream *stream)
 #endif
     result = AL_Codec_Encode_ReleaseStream(ch->codec, raw, user);
     if (frame != &ch->synthetic_frame &&
-        IMP_FrameSource_ReleaseFrame(ch->source_channel, frame) != 0)
+        p2_release_source_frame(ch->source_channel, frame) != 0)
         result = -1;
     return result;
 }

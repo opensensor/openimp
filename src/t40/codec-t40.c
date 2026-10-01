@@ -8484,6 +8484,22 @@ static int t31_hwjpeg_encode(const HWFrameBuffer *frame, HWStreamBuffer *stream,
     return 0;
 }
 
+/* For the P2 JPEG fan-out: lend capture frames (no copy) only while a
+ * snapshot will really run on the JPEG core, not in the software encoder,
+ * which would hold the capture buffer for a long time. */
+int OpenIMP_T31_HwJpegActive(void)
+{
+    int sessions;
+
+    if (!t31_hwjpeg_requested() || g_t31_hwjpeg.state < 0)
+        return 0;
+    if (t31_hwjpeg_src_coherent_env() &&
+        t31_hwjpeg_src_coherent_env()[0] == '1')
+        return 0;
+    __atomic_load(&g_t31_avc_sessions, &sessions, __ATOMIC_RELAXED);
+    return sessions > 0 && t31_hwjpeg_irq_waiter_running();
+}
+
 static int t31_hwjpeg_encode_locked(const HWFrameBuffer *frame,
                                     HWStreamBuffer *stream, uint32_t quality)
 {
