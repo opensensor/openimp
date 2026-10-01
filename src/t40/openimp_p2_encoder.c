@@ -1031,7 +1031,56 @@ static uint32_t p2_attr_bitrate_kbps(const IMPEncoderCHNAttr *attr)
 #endif
 }
 
-static void p2_codec_params(unsigned char *params, const IMPEncoderCHNAttr *attr)
+/* The codec's rate control knows FixQP, CBR and VBR (HW_RC_MODE_*).  It
+ * read any other rcMode as CBR, so CappedVBR/CappedQuality (T31/T40/T41)
+ * and SMART (T21/T23/T30) channels were created as CBR.  Map them to VBR,
+ * which carries the same target/max bitrate and QP fields (the attr structs
+ * share the VBR layout) and is what SetChnAttrRcMode already does at run
+ * time.  Returns the HW mode, or -1 for a mode with no counterpart. */
+enum { /* HW_RC_MODE_* in hw_encoder.h, as codec_param_read_rc_mode reads */
+    HW_RC_MODE_FIXQP = 0,
+    HW_RC_MODE_CBR = 1,
+    HW_RC_MODE_VBR = 2,
+};
+
+static int p2_codec_rc_mode(const IMPEncoderCHNAttr *attr, int channel)
+{
+    int mode = (int)attr->rcAttr.attrRcMode.rcMode;
+    const char *name;
+
+    switch (mode) {
+    case IMP_ENC_RC_MODE_FIXQP:
+        return HW_RC_MODE_FIXQP;
+    case IMP_ENC_RC_MODE_CBR:
+        return HW_RC_MODE_CBR;
+    case IMP_ENC_RC_MODE_VBR:
+        return HW_RC_MODE_VBR;
+#if defined(PLATFORM_T23) || defined(PLATFORM_T30)
+    case IMP_ENC_RC_MODE_SMART:
+        name = "SMART";
+        break;
+#else
+    case IMP_ENC_RC_MODE_CAPPED_VBR:
+        name = "CappedVBR";
+        break;
+    case IMP_ENC_RC_MODE_CAPPED_QUALITY:
+        name = "CappedQuality";
+        break;
+#endif
+    default:
+        IMP_LOG_ERR("Encoder",
+                    "CreateChn(%d): rate-control mode %d is not supported\n",
+                    channel, mode);
+        return -1;
+    }
+    IMP_LOG_INFO("Encoder",
+                 "CreateChn(%d): rate-control mode %s runs as VBR "
+                 "(no native %s rate control)\n", channel, name, name);
+    return HW_RC_MODE_VBR;
+}
+
+static void p2_codec_params(unsigned char *params, const IMPEncoderCHNAttr *attr,
+                            int hw_rc_mode)
 {
     uint32_t profile = p2_attr_profile(attr);
     uint32_t codec_type = p2_attr_codec_type(attr);
@@ -1050,7 +1099,7 @@ static void p2_codec_params(unsigned char *params, const IMPEncoderCHNAttr *attr
     *(uint16_t *)(params + 0x0c) = (uint16_t)p2_attr_width(attr);
     *(uint16_t *)(params + 0x0e) = (uint16_t)p2_attr_height(attr);
     *(uint32_t *)(params + 0x20) = profile;
-    *(uint32_t *)(params + 0x6c) = (uint32_t)attr->rcAttr.attrRcMode.rcMode;
+    *(uint32_t *)(params + 0x6c) = (uint32_t)hw_rc_mode;
     *(uint16_t *)(params + 0x78) = (uint16_t)(fps_num ? fps_num : 25u);
     *(uint16_t *)(params + 0x7a) = (uint16_t)((fps_den ? fps_den : 1u) * 1000u);
     *(uint32_t *)(params + 0x7c) = bitrate;
@@ -1262,9 +1311,13 @@ int IMP_Encoder_CreateChn(int channel, IMPEncoderCHNAttr *attr)
 {
     P2EncoderChannel *ch;
     unsigned char params[P2_PARAM_SIZE];
+    int hw_rc_mode;
 
     P2_STARTUP_MARKER("openimp/P2 marker C0 CreateChn entry\n");
     if (!p2_valid_channel(channel) || !attr)
+        return -1;
+    hw_rc_mode = p2_codec_rc_mode(attr, channel);
+    if (hw_rc_mode < 0)
         return -1;
     P2_STARTUP_MARKER("openimp/P2 marker C1 args valid\n");
     EncoderInit();
@@ -1285,7 +1338,7 @@ int IMP_Encoder_CreateChn(int channel, IMPEncoderCHNAttr *attr)
         return -1;
     }
     P2_STARTUP_MARKER("openimp/P2 marker C5 before codec params\n");
-    p2_codec_params(params, attr);
+    p2_codec_params(params, attr, hw_rc_mode);
     P2_STARTUP_MARKER("openimp/P2 marker C6 codec params returned\n");
     p2_startup_trace("openimp/P2 startup: CreateChn calling codec create\n");
     P2_STARTUP_MARKER("openimp/P2 marker C7 before codec create\n");
