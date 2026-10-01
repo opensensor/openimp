@@ -103,58 +103,68 @@ typedef struct {
 } IMPAudioFrame;
 
 /**
- * Audio stream
+ * Audio stream (vendor ABI: 32 bytes, timeStamp at offset 16)
  */
 typedef struct {
-    uint32_t *stream;                   /**< Stream data */
+    uint8_t *stream;                    /**< Stream data */
     uint32_t phyAddr;                   /**< Physical address */
-    int len;                            /**< Length */
+    int len;                            /**< Length in bytes */
     int64_t timeStamp;                  /**< Timestamp */
     int seq;                            /**< Sequence number */
 } IMPAudioStream;
 
 /**
+ * Audio decoder mode
+ */
+typedef enum {
+    ADEC_MODE_PACK = 0,                 /**< Pack decoding */
+    ADEC_MODE_STREAM = 1,               /**< Stream decoding */
+} IMPAudioDecMode;
+
+/**
  * Audio encoder channel attributes
+ *
+ * type is a PT_* value for the built-in G.711A/G.711U/G.726/ADPCM encoders
+ * or a handle returned by IMP_AENC_RegisterEncoder().
  */
 typedef struct {
-    IMPAudioPalyloadType type;          /**< Payload type */
-    int bufSize;                        /**< Buffer size */
-    uint32_t *value;                    /**< Value pointer */
+    IMPAudioPalyloadType type;          /**< Payload type or encoder handle */
+    int bufSize;                        /**< Buffer depth in frames */
+    uint32_t *value;                    /**< Protocol attribute pointer */
 } IMPAudioEncChnAttr;
 
 /**
  * Audio decoder channel attributes
  */
 typedef struct {
-    IMPAudioPalyloadType type;          /**< Payload type */
-    int bufSize;                        /**< Buffer size */
-    IMPAudioSoundMode mode;             /**< Sound mode */
-    uint32_t *value;                    /**< Value pointer */
+    IMPAudioPalyloadType type;          /**< Payload type or decoder handle */
+    int bufSize;                        /**< Buffer depth in frames */
+    IMPAudioDecMode mode;               /**< Decoding mode */
+    void *value;                        /**< Protocol attribute pointer */
 } IMPAudioDecChnAttr;
 
 /**
- * Audio encoder callbacks
+ * User audio encoder (vendor ABI: 36 bytes)
  */
 typedef struct {
     IMPAudioPalyloadType type;          /**< Payload type */
     int maxFrmLen;                      /**< Maximum frame length */
-    char name[32];                      /**< Encoder name */
-    int (*openEncoder)(void *attr, void *enc);      /**< Open callback */
-    int (*encoderFrm)(void *enc, IMPAudioFrame *data, unsigned char *outbuf, int *outLen);  /**< Encode callback */
-    int (*closeEncoder)(void *enc);     /**< Close callback */
+    char name[16];                      /**< Encoder name */
+    int (*openEncoder)(void *encoderAttr, void *encoder);      /**< Open callback */
+    int (*encoderFrm)(void *encoder, IMPAudioFrame *data, unsigned char *outbuf, int *outLen);  /**< Encode callback */
+    int (*closeEncoder)(void *encoder); /**< Close callback */
 } IMPAudioEncEncoder;
 
 /**
- * Audio decoder callbacks
+ * User audio decoder (vendor ABI: 36 bytes)
  */
 typedef struct {
     IMPAudioPalyloadType type;          /**< Payload type */
-    int maxFrmLen;                      /**< Maximum frame length */
-    char name[32];                      /**< Decoder name */
-    int (*openDecoder)(void *attr, void *dec);      /**< Open callback */
-    int (*decodeFrm)(void *dec, unsigned char *inbuf, int inLen, unsigned short *outbuf, int *outLen, int *chns);  /**< Decode callback */
-    int (*getFrmInfo)(void *dec, void *info);       /**< Get frame info callback */
-    int (*closeDecoder)(void *dec);     /**< Close callback */
+    char name[16];                      /**< Decoder name */
+    int (*openDecoder)(void *decoderAttr, void *decoder);      /**< Open callback */
+    int (*decodeFrm)(void *decoder, unsigned char *inbuf, int inLen, unsigned short *outbuf, int *outLen, int *chns);  /**< Decode callback */
+    int (*getFrmInfo)(void *decoder, void *info);       /**< Get frame info callback */
+    int (*closeDecoder)(void *decoder); /**< Close callback */
 } IMPAudioDecDecoder;
 
 /**
@@ -418,7 +428,7 @@ int IMP_AENC_SendFrame(int aeChn, IMPAudioFrame *frame);
  * @param timeoutMs Timeout in milliseconds
  * @return 0 on success, negative on error
  */
-int IMP_AENC_PollingStream(int aeChn, uint32_t timeoutMs);
+int IMP_AENC_PollingStream(int aeChn, unsigned int timeoutMs);
 
 /**
  * Get encoded stream
@@ -504,7 +514,7 @@ int IMP_ADEC_GetStream(int adChn, IMPAudioStream *stream, IMPBlock block);
  */
 int IMP_ADEC_ReleaseStream(int adChn, IMPAudioStream *stream);
 int IMP_ADEC_ClearChnBuf(int adChn);
-int IMP_ADEC_PollingStream(int adChn, uint32_t timeoutMs);
+int IMP_ADEC_PollingStream(int adChn, unsigned int timeoutMs);
 
 /* Additional AI functions (raptor-hal parity) */
 int IMP_AI_EnableAec(int aiDevId, int aiChn, int aoDevId, int aoChn);

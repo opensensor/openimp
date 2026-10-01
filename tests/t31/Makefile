@@ -3,12 +3,14 @@ CFLAGS ?= -std=c99 -O2 -Wall -Wextra -Werror
 PROJECT_DIR := ../..
 STREAM_LAYOUT_TEST_BIN := $(PROJECT_DIR)/build/tests/t31-stream-layout-test
 RATE_CONTROL_TEST_BIN := $(PROJECT_DIR)/build/tests/t31-rate-control-test
+ACODEC_TEST_BIN := $(PROJECT_DIR)/build/tests/t31-acodec-test
 
 .PHONY: check clean
 
-check: $(STREAM_LAYOUT_TEST_BIN) $(RATE_CONTROL_TEST_BIN)
+check: $(STREAM_LAYOUT_TEST_BIN) $(RATE_CONTROL_TEST_BIN) $(ACODEC_TEST_BIN)
 	$(STREAM_LAYOUT_TEST_BIN)
 	$(RATE_CONTROL_TEST_BIN)
+	$(ACODEC_TEST_BIN)
 
 $(STREAM_LAYOUT_TEST_BIN): stream_layout_test.c \
 	$(PROJECT_DIR)/src/t40/t31_stream_layout.c \
@@ -28,5 +30,17 @@ $(RATE_CONTROL_TEST_BIN): rate_control_test.c \
 		$(PROJECT_DIR)/src/t40/t31_rate_control.c \
 		-o "$@"
 
+$(ACODEC_TEST_BIN): acodec_test.c \
+	$(PROJECT_DIR)/src/t31/openimp_t31_acodec.c \
+	$(PROJECT_DIR)/src/t31/openimp_t31_acodec_core.c \
+	$(PROJECT_DIR)/src/t31/openimp_t31_acodec_core.h \
+	$(PROJECT_DIR)/include/imp/imp_audio.h
+	mkdir -p "$(dir $@)"
+	$(CC) $(CFLAGS) -std=gnu99 -I$(PROJECT_DIR)/include -I$(PROJECT_DIR)/src \
+		acodec_test.c \
+		$(PROJECT_DIR)/src/t31/openimp_t31_acodec.c \
+		$(PROJECT_DIR)/src/t31/openimp_t31_acodec_core.c \
+		-lpthread -lm -o "$@"
+
 clean:
-	$(RM) $(STREAM_LAYOUT_TEST_BIN) $(RATE_CONTROL_TEST_BIN)
+	$(RM) $(STREAM_LAYOUT_TEST_BIN) $(RATE_CONTROL_TEST_BIN) $(ACODEC_TEST_BIN)
