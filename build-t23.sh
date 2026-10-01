@@ -76,6 +76,9 @@ compile t23_audio src/t31/openimp_t31_audio.c -Werror
 compile t23_yuv src/t23/openimp_t23_yuv.c -Werror
 compile t23_osd src/t23/openimp_t23_osd.c -Werror
 compile t23_isp_osd src/t23/openimp_t23_isp_osd.c -Werror
+compile audio_codec src/audio/openimp_audio_codec.c -Werror
+compile audio_enc_dec src/audio/openimp_audio_enc_dec.c -Werror
+compile t23_audio_ext src/t23/openimp_t23_audio_ext.c -Werror
 
 "$compiler" -shared -nostartfiles \
     -Wl,-soname,libimp.so \
@@ -111,6 +114,9 @@ compile t23_isp_osd src/t23/openimp_t23_isp_osd.c -Werror
     "$output_dir/t23_yuv.o" \
     "$output_dir/t23_osd.o" \
     "$output_dir/t23_isp_osd.o" \
+    "$output_dir/audio_codec.o" \
+    "$output_dir/audio_enc_dec.o" \
+    "$output_dir/t23_audio_ext.o" \
     -ldl -lpthread -lrt
 
 "$compiler" $base_flags $repo_includes -Wall -Wextra -Werror \
