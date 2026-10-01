@@ -5789,6 +5789,25 @@ static int avpu_t31_au_log_allowed(uint32_t *suppressed_out)
     return allowed;
 }
 
+/* Late-DMA drain before the payload copy, see its use. */
+static uint32_t avpu_t31_dma_drain_us(void)
+{
+    static int drain_us = -1;
+
+    if (drain_us < 0) {
+        const char *value = getenv("OPENIMP_T31_DMA_DRAIN_US");
+        char *end = NULL;
+        long parsed = value && value[0] ? strtol(value, &end, 10) : -1;
+
+        drain_us = (end && *end == '\0' && parsed >= 0 && parsed <= 100000)
+            ? (int)parsed : 2000;
+        if (drain_us != 2000)
+            IMP_LOG_INFO("Codec", "AVC: late-DMA drain %d us (OPENIMP_T31_DMA_DRAIN_US)",
+                         drain_us);
+    }
+    return (uint32_t)drain_us;
+}
+
 /* OPENIMP_T31_STREAM_READ_UNCACHED=1 makes the escaping copy read the
  * stream through the uncached /dev/mem alias again (A/B and cache
  * debugging); by default it reads the invalidated cached alias. */
@@ -5903,8 +5922,20 @@ static uint32_t avpu_stream_buffer_effective_size(ALAvpuContext *ctx, int buf_id
      * also needs this drain: compacting immediately can be overwritten by a
      * late burst, restoring unescaped 00 00 00 01 inside the access unit.
      * T31 additionally verifies the payload tail around its copy and checks
-     * the finished AU before publishing it (see below). */
+     * the finished AU before publishing it (see below).
+     * OPENIMP_T31_DMA_DRAIN_US overrides the T31 drain (default 2000 us)
+     * for on-device A/B runs: the drain holds the core and delays both
+     * streams by its length on every picture. */
+#if defined(PLATFORM_T31)
+    {
+        uint32_t drain_us = avpu_t31_dma_drain_us();
+
+        if (drain_us)
+            usleep(drain_us);
+    }
+#else
     usleep(2000);
+#endif
 #endif
 
 #if defined(PLATFORM_T40) && !defined(PLATFORM_T41)
