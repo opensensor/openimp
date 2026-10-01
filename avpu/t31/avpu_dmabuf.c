@@ -7,6 +7,8 @@
 #include <linux/module.h>
 #include <linux/slab.h>
 #include <linux/anon_inodes.h>
+#include <linux/file.h>
+#include <linux/scatterlist.h>
 
 MODULE_LICENSE("GPL v2");
 MODULE_AUTHOR("Kevin Grandemange");
@@ -176,6 +178,10 @@ __weak struct dma_buf *dma_buf_export_named(void *priv, const struct dma_buf_ops
 	dmabuf->exp_name = exp_name;
 
 	file = anon_inode_getfile("dmabuf", &dma_buf_fops, dmabuf, flags);
+	if (IS_ERR(file)) {
+		kfree(dmabuf);
+		return ERR_CAST(file);
+	}
 
 	dmabuf->file = file;
 
@@ -406,13 +412,17 @@ static int avpu_dmabuf_mmap(struct dma_buf *buf, struct vm_area_struct *vma)
 	struct avpu_dmabuf_priv *dinfo = buf->priv;
 	unsigned long start = vma->vm_start;
 	unsigned long vsize = vma->vm_end - start;
-	struct avpu_dma_buffer *buffer = dinfo->buffer;
+	struct avpu_dma_buffer *buffer;
 	int ret;
 
-	if (!dinfo) {
+	if (!dinfo || !dinfo->buffer) {
 		pr_err("No buffer to map\n");
 		return -EINVAL;
 	}
+	buffer = dinfo->buffer;
+
+	if (vsize > PAGE_ALIGN(buffer->size))
+		return -EINVAL;
 
 	vma->vm_pgoff = 0;
 
@@ -452,6 +462,9 @@ static void *avpu_dmabuf_kmap(struct dma_buf *dmabuf, unsigned long page_num)
 {
 	struct avpu_dmabuf_priv *dinfo = dmabuf->priv;
 	void *vaddr = dinfo->buffer->cpu_handle;
+
+	if (page_num >= PAGE_ALIGN(dinfo->buffer->size) >> PAGE_SHIFT)
+		return NULL;
 
 	return vaddr + page_num * PAGE_SIZE;
 }
@@ -532,27 +545,22 @@ static struct dma_buf *avpu_get_dmabuf(void *dma_info_priv)
 		dinfo->sgt_base = avpu_get_base_sgt(dinfo);
 
 	if (WARN_ON(!dinfo->sgt_base))
-		return NULL;
+		return ERR_PTR(-ENOMEM);
 
 #if defined(CONFIG_SOC_T40) || defined(CONFIG_SOC_T41)
 	define_export_info(&exp_info, buf->size, (void *)dinfo);
 	dbuf = dma_buf_export(&exp_info);
-	if (IS_ERR(dbuf)) {
-		pr_err("couldn't export dma buf\n");
-		return NULL;
-	}
 #else
 	dbuf = dma_buf_export((void *)dinfo, &avpu_dmabuf_ops, buf->size, O_RDWR);
-	if (IS_ERR(buf)) {
-		pr_err("couldn't export dma buf\n");
-		return NULL;
-	}
 #endif
+	if (IS_ERR(dbuf))
+		pr_err("couldn't export dma buf\n");
 	return dbuf;
 }
 
-static void *avpu_dmabuf_wrap(struct device *dev, unsigned long size,
-			     struct avpu_dma_buffer *buffer)
+/* On success the dma-buf owns buffer and frees it from release(). */
+static struct dma_buf *avpu_dmabuf_wrap(struct device *dev,
+					struct avpu_dma_buffer *buffer)
 {
 	struct avpu_dmabuf_priv *dinfo;
 	struct dma_buf *dbuf;
@@ -567,34 +575,69 @@ static void *avpu_dmabuf_wrap(struct device *dev, unsigned long size,
 	dinfo->sgt_base = avpu_get_base_sgt(dinfo);
 
 	dbuf = avpu_get_dmabuf(dinfo);
-	if (IS_ERR_OR_NULL(dbuf))
-		return ERR_PTR(-EINVAL);
+	if (IS_ERR(dbuf)) {
+		if (dinfo->sgt_base) {
+			sg_free_table(dinfo->sgt_base);
+			kfree(dinfo->sgt_base);
+		}
+		put_device(dinfo->dev);
+		kfree(dinfo);
+	}
 
 	return dbuf;
 }
 
-int avpu_create_dmabuf_fd(struct device *dev, unsigned long size,
-			 struct avpu_dma_buffer *buffer)
-{
-	struct dma_buf *dbuf = avpu_dmabuf_wrap(dev, size, buffer);
-
-	if (IS_ERR(dbuf))
-		return PTR_ERR(dbuf);
-	return dma_buf_fd(dbuf, O_RDWR);
-}
-
-int avpu_allocate_dmabuf(struct device *dev, int size, u32 *fd)
+int avpu_allocate_dmabuf_fd(struct device *dev, struct avpu_dma_info *info,
+			    struct avpu_dma_info __user *uinfo)
 {
 	struct avpu_dma_buffer *buffer;
+	struct dma_buf *dbuf;
+	int fd;
 
-	buffer = avpu_alloc_dma(dev, size);
+	buffer = avpu_alloc_dma(dev, info->size);
 	if (!buffer) {
 		dev_err(dev, "Can't alloc DMA buffer\n");
 		return -ENOMEM;
 	}
 
-	*fd = avpu_create_dmabuf_fd(dev, size, buffer);
+	dbuf = avpu_dmabuf_wrap(dev, buffer);
+	if (IS_ERR(dbuf)) {
+		avpu_free_dma(dev, buffer);
+		return PTR_ERR(dbuf);
+	}
+
+	fd = get_unused_fd_flags(O_RDWR);
+	if (fd < 0) {
+		dma_buf_put(dbuf);
+		return fd;
+	}
+
+	info->fd = fd;
+	info->phy_addr = (u32)buffer->dma_handle;
+	if (copy_to_user(uinfo, info, sizeof(*info))) {
+		put_unused_fd(fd);
+		dma_buf_put(dbuf);
+		return -EFAULT;
+	}
+
+	fd_install(fd, dbuf->file);
 	return 0;
+}
+
+/* The bus address is only meaningful for physically contiguous memory. */
+static int avpu_sgt_is_contiguous(struct sg_table *sgt)
+{
+	struct scatterlist *sg;
+	dma_addr_t next;
+	int i;
+
+	next = sg_dma_address(sgt->sgl);
+	for_each_sg(sgt->sgl, sg, sgt->nents, i) {
+		if (sg_dma_address(sg) != next)
+			return 0;
+		next += sg_dma_len(sg);
+	}
+	return 1;
 }
 
 int avpu_dmabuf_get_address(struct device *dev, u32 fd, u32 *bus_address)
@@ -610,26 +653,42 @@ int avpu_dmabuf_get_address(struct device *dev, u32 fd, u32 *bus_address)
 		dev_err(dev, "dma_buf_get(%u) failed: %d\n", fd, err);
 		return err;
 	}
+
+	/* Our own coherent buffers already know their bus address; skip the
+	 * attach + map + unmap round trip and its cache maintenance over the
+	 * whole buffer. */
+	if (dbuf->ops == &avpu_dmabuf_ops) {
+		struct avpu_dmabuf_priv *dinfo = dbuf->priv;
+
+		*bus_address = (u32)dinfo->buffer->dma_handle;
+		goto out_put;
+	}
+
 	attach = dma_buf_attach(dbuf, dev);
 	if (IS_ERR(attach)) {
 		err = PTR_ERR(attach);
 		dev_err(dev, "dma_buf_attach(%u) failed: %d\n", fd, err);
-		goto fail_attach;
+		goto out_put;
 	}
 	sgt = dma_buf_map_attachment(attach, DMA_BIDIRECTIONAL);
-	if (IS_ERR(sgt)) {
-		err = PTR_ERR(sgt);
+	if (IS_ERR_OR_NULL(sgt)) {
+		err = sgt ? PTR_ERR(sgt) : -ENOMEM;
 		dev_err(dev, "dma_buf_map_attachment(%u) failed: %d\n", fd,
 			err);
 		goto fail_map;
 	}
 
-	*bus_address = sg_dma_address(sgt->sgl);
+	if (!avpu_sgt_is_contiguous(sgt)) {
+		err = -EINVAL;
+		dev_err(dev, "dma-buf %u is not physically contiguous\n", fd);
+	} else {
+		*bus_address = sg_dma_address(sgt->sgl);
+	}
 
 	dma_buf_unmap_attachment(attach, sgt, DMA_BIDIRECTIONAL);
 fail_map:
 	dma_buf_detach(dbuf, attach);
-fail_attach:
+out_put:
 	dma_buf_put(dbuf);
 	return err;
 }
