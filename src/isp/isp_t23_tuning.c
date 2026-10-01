@@ -541,7 +541,18 @@ T23_MC_GET_PTR(GetFrontCrop, T23_CID_FRONT_CROP, T23F_NULLCHK)
 T23_MC_SET(SetAutoZoom, T23_CID_AUTO_ZOOM, void *, T23F_NULLCHK)
 T23_MC_GET_PTR(GetAutoZoom, T23_CID_AUTO_ZOOM, T23F_NULLCHK)
 T23_MC_SET(SetScalerLv, T23_CID_SCALER_LV, void *, 0)
-T23_MC_GET_PTR(GetSensorAttr, T23_CID_SENSOR_ATTR, T23F_NULLCHK)
+/* The T23 module copies 20 bytes {hts, vts, fps, width, height}; the public
+ * IMPISPSENSORAttr is {fps, width, height}, so go through a bounce buffer. */
+int IMP_ISP_MultiCamera_Tuning_GetSensorAttr(int num, void *p)
+{
+    uint32_t attr[5] = { 0 };
+    int ret = t23_get_ptr(__func__, num, T23_CID_SENSOR_ATTR, p ? attr : NULL,
+                          T23F_NULLCHK);
+
+    if (!ret)
+        memcpy(p, &attr[2], 3 * sizeof(uint32_t));
+    return ret;
+}
 T23_MC_SET(SwitchBin, T23_CID_SWITCH_BIN, void *, 0)
 
 /* ------------------------------------------------------------------------
