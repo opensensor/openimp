@@ -18,6 +18,7 @@
 #include <unistd.h>
 
 #include "openimp_t23_persist.h"
+#include "dma_alloc.h"
 
 #define T23_HELIX_HELPER_DEFAULT "/opt/openimp-t23/openimp-t23-helixd"
 #define T23_HELIX_PAGE_SIZE 4096u
@@ -183,6 +184,31 @@ static void t23_make_request(const T23HelixBridge *bridge,
     request->input_capacity = bridge->input_capacity;
     request->output_capacity = bridge->output_capacity;
     request->encoder_input = bridge->input;
+    if (command == T23_HELIX_COMMAND_INIT && bridge->zero_copy)
+        request->flags = T23_HELIX_INIT_ZERO_COPY;
+}
+
+/*
+ * Zero-copy input: OpenIMP's capture frames live in the reserved memory
+ * that the OEM libimp in the worker maps as a whole, so the worker can
+ * read a frame in place from its physical address instead of OpenIMP
+ * copying every frame (3.1 MB at 1080p) into the shared window and the
+ * worker copying it again into a VBM buffer. The exchange is synchronous
+ * and the caller owns the frame until it returns, so the frame is never
+ * released while the worker uses it; a worker that times out is killed
+ * before the frame is handed back. OPENIMP_T23_HELIX_COPY=1 keeps the
+ * copies (A/B); a worker that cannot map a frame turns it off.
+ */
+static int t23_zero_copy_requested(void)
+{
+    static int requested = -1;
+
+    if (requested < 0) {
+        const char *value = getenv("OPENIMP_T23_HELIX_COPY");
+
+        requested = !(value && value[0] == '1');
+    }
+    return requested;
 }
 
 static void t23_stop_worker(T23HelixBridge *bridge)
@@ -443,6 +469,7 @@ static void t23_reset_bridge(T23HelixBridge *bridge, uint32_t width,
     bridge->worker_pid = -1;
     bridge->width = width;
     bridge->height = height;
+    bridge->zero_copy = t23_zero_copy_requested();
 }
 
 /* Size the shared input/output window for input_size bytes of NV12 and
@@ -518,21 +545,49 @@ static int t23_encode_once(T23HelixBridge *bridge,
                            T23HelixIpcResponse *response)
 {
     T23HelixIpcRequest request;
+    uint32_t physical = 0u;
+    int status;
 
     if (!bridge->shared_buffer || frame->size < bridge->input_size)
         return -1;
-    memcpy(bridge->shared_buffer, (const void *)(uintptr_t)frame->virAddr,
-           bridge->input_size);
-    __sync_synchronize();
+    /* Write back anything the CPU put into the frame (the core reads
+     * memory); a frame outside the reserved memory is copied. */
+    if (bridge->zero_copy && frame->phyAddr &&
+        frame->phyAddr != frame->virAddr &&
+        DMA_VirtToPhys((const void *)(uintptr_t)frame->virAddr) ==
+            frame->phyAddr &&
+        DMA_RmemFlushCache((void *)(uintptr_t)frame->virAddr,
+                           bridge->input_size, 1 /* write back */) == 0)
+        physical = frame->phyAddr;
+    if (!physical) {
+        memcpy(bridge->shared_buffer,
+               (const void *)(uintptr_t)frame->virAddr, bridge->input_size);
+        __sync_synchronize();
+    }
     t23_make_request(bridge, &request, T23_HELIX_COMMAND_ENCODE);
+    request.input_physical = physical;
     request.pixel_format = frame->pixfmt;
     if (request.pixel_format == 0x3231564eu) /* V4L2_PIX_FMT_NV12 */
         request.pixel_format = PIX_FMT_NV12;
     else if (request.pixel_format == 0x3132564eu) /* V4L2_PIX_FMT_NV21 */
         request.pixel_format = PIX_FMT_NV21;
     request.timestamp = frame->timeStamp;
-    return t23_exchange(bridge, &request, response,
-                        T23_HELIX_ENCODE_TIMEOUT_MS);
+    status = t23_exchange(bridge, &request, response,
+                          T23_HELIX_ENCODE_TIMEOUT_MS);
+    if (status == -EFAULT && physical) {
+        /* The worker cannot reach this memory: copy from now on. */
+        bridge->zero_copy = 0;
+        t23_log(LOG_WARNING,
+                "openimp/T23: Helix helper cannot read frames in place "
+                "(phys 0x%08x), copying them", physical);
+        memcpy(bridge->shared_buffer,
+               (const void *)(uintptr_t)frame->virAddr, bridge->input_size);
+        __sync_synchronize();
+        request.input_physical = 0u;
+        status = t23_exchange(bridge, &request, response,
+                              T23_HELIX_ENCODE_TIMEOUT_MS);
+    }
+    return status;
 }
 
 static int t23_recover_worker(T23HelixBridge *bridge)

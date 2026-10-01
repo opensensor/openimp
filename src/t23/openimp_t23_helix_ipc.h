@@ -6,8 +6,20 @@
 #include <imp/imp_encoder.h>
 
 #define T23_HELIX_IPC_MAGIC 0x4f483233u /* "OH23" */
-#define T23_HELIX_IPC_VERSION 2u
+/* 3: one protocol for both extensions of version 1 that were developed
+ *    side by side as "version 2":
+ *    - SET_PARAM/GET_PARAM/SET_FRAME_CTL and the DEC_* commands with the
+ *      param_id/param_size/param/frame_ctl request fields and the response
+ *      param fields;
+ *    - zero-copy input: input_physical/flags in the request and the
+ *      T23_HELIX_INIT_ZERO_COPY flag of INIT.
+ * The worker and libimp are built and installed together; a version
+ * mismatch fails INIT. */
+#define T23_HELIX_IPC_VERSION 3u
 #define T23_HELIX_PARAM_MAX 64u
+
+/* INIT flags */
+#define T23_HELIX_INIT_ZERO_COPY 0x1u /* allocate the input copy lazily */
 
 /* The OEM IMP_Encoder_Yuv* in/out structures (imp/imp_encoder.h). */
 typedef IMPEncoderYuvIn T23EncoderYuvIn;
@@ -82,6 +94,11 @@ typedef struct {
     uint32_t param_size;
     uint8_t param[T23_HELIX_PARAM_MAX];
     T23HelixFrameCtl frame_ctl;
+    /* ENCODE: physical address of the frame in the reserved memory both
+     * processes map (OpenIMP's VBM pool), or 0 for a frame copied into the
+     * shared window. The caller keeps the frame until the response. */
+    uint32_t input_physical;
+    uint32_t flags;
 } T23HelixIpcRequest;
 
 typedef struct {
