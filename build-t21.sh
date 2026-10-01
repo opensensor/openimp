@@ -81,6 +81,8 @@ compile isp src/isp/isp_tseries.c
 compile t21_compat src/t31/openimp_t31_compat.c
 compile t21_state src/t31/openimp_t31_state.c -Werror
 compile t21_services src/t31/openimp_t31_services.c -Werror
+compile t21_ivs src/t31/openimp_t31_ivs.c -Werror
+compile t21_ivs_move src/t31/openimp_t31_ivs_move.c -Werror
 compile t21_platform_services src/t23/openimp_t23_services.c -Werror
 compile t21_persist src/t23/openimp_t23_persist.c -Werror
 compile t21_audio src/t31/openimp_t31_audio.c -Werror
@@ -131,6 +133,8 @@ compile t21_rate_control src/t40/t31_rate_control.c -Werror
     "$output_dir/t21_h264_set.o" \
     "$output_dir/t21_h264_slice.o" \
     "$output_dir/t21_rate_control.o" \
+    "$output_dir/t21_ivs.o" \
+    "$output_dir/t21_ivs_move.o" \
     -ldl -lpthread -lrt
 
 "$compiler" $base_flags $repo_includes -Wall -Wextra -Werror \

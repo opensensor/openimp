@@ -1502,9 +1502,13 @@ volatile int openimp_vbm_dq_step[MAX_VBM_POOLS];
 #define VBM_DQ_STEP(chn, step) do { } while (0)
 #endif
 
-#if defined(PLATFORM_T31) || defined(PLATFORM_T23)
+#if defined(PLATFORM_T31) || defined(PLATFORM_T23) || \
+    defined(PLATFORM_T21) || defined(PLATFORM_T30)
 extern void openimp_t31_ivs_capture(int fs_chn, const void *frame)
     __attribute__((weak));
+#endif
+
+#if defined(PLATFORM_T31) || defined(PLATFORM_T23)
 
 /*
  * The ready queue below is a pull queue: only IMP_FrameSource_GetFrame (the
@@ -1903,7 +1907,8 @@ int VBMKernelDequeue(int chn, int fd, void **frame_out) {
     memcpy(pool->frames[idx].data, &frame_timestamp,
            sizeof(frame_timestamp));
 #endif
-#if defined(PLATFORM_T31) || defined(PLATFORM_T23)
+#if defined(PLATFORM_T31) || defined(PLATFORM_T23) || \
+    defined(PLATFORM_T21) || defined(PLATFORM_T30)
     /* IVS groups bound to this channel copy the luma they need now, while
      * the buffer is still private to this thread (openimp_t31_ivs.c). */
     VBM_DQ_STEP(chn, VBM_DQ_STEP_IVS);

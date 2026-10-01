@@ -18,6 +18,12 @@
  *   - base move results carry the frame timestamp in the public T23
  *     IMP_IVS_BaseMoveOutput.timeStamp (offset 0x10 on the target).
  *
+ * Built with PLATFORM_T21 (and PLATFORM_T20) instead, the same checks run
+ * against the legacy T20 3.12.0 / T21 1.0.33 / T30 1.0.5 layout: 0x28-byte
+ * IMPFrameInfo (timestamp at 0x20 of the capture record), IMP_IVS_MoveParam
+ * of 0x448 bytes with roiRect at 0x100 and roiRectCnt at 0x440, and a base
+ * move timestamp only on T21/T30.
+ *
  * The frame buffers are mapped below 4 GiB because the vendor frame record
  * carries 32-bit virtual addresses.
  */
@@ -58,6 +64,22 @@ int IMP_IVS_SetParam(int channel, void *param);
 #define H 240
 #define BW 64
 #define BH 48
+
+#if defined(PLATFORM_T21) || defined(PLATFORM_T30)
+#define ABI_NAME            "T20/T21/T30"
+#define REC_TIMESTAMP       0x20
+#define MOVE_PARAM_SIZE     0x448
+#define MOVE_ROI_RECT       0x100
+#define MOVE_ROI_RECT_CNT   0x440
+#define BASE_PARAM_SIZE     0x38
+#else
+#define ABI_NAME            "T23"
+#define REC_TIMESTAMP       0x28
+#define MOVE_PARAM_SIZE     0x458
+#define MOVE_ROI_RECT       0x110
+#define MOVE_ROI_RECT_CNT   0x450
+#define BASE_PARAM_SIZE     0x48
+#endif
 
 /* ---- stubs for what libimp provides around the IVS files ---- */
 
@@ -117,7 +139,9 @@ static void put64(uint8_t *rec, size_t off, int64_t v)
     memcpy(rec + off, &v, sizeof(v));
 }
 
-/* T23 1.3.0 IMPFrameInfo at the start of the 0x428-byte capture record. */
+/* Vendor IMPFrameInfo at the start of the 0x428-byte capture record: T23
+ * 1.3.0 (direct_phyAddr at 0x20, timestamps at 0x28/0x30) or the legacy
+ * layout (timestamp at 0x20). */
 static void make_record(uint8_t *rec, const uint8_t *frame, int w, int h,
                         int index, int64_t ts)
 {
@@ -132,10 +156,12 @@ static void make_record(uint8_t *rec, const uint8_t *frame, int w, int h,
     put32(rec, 0x14, size);
     put32(rec, 0x18, 0x02000000u + (uint32_t)index * size);
     put32(rec, 0x1c, (uint32_t)(uintptr_t)frame);
+#if REC_TIMESTAMP == 0x28
     put32(rec, 0x20, 0x02000000u + (uint32_t)index * size);
     put32(rec, 0x24, 0);
-    put64(rec, 0x28, ts);
     put64(rec, 0x30, ts + 7);
+#endif
+    put64(rec, REC_TIMESTAMP, ts);
 }
 
 /* Flat background, a bright 60x60 box in the bottom-right quadrant while
@@ -180,16 +206,17 @@ static void test_move(void)
     }
     p.roiRectCnt = 4;
     /* the layout the vendor library reads, by offset */
-    CHECK(*(int *)((uint8_t *)&p + 0x450) == 4, "roiRectCnt not at 0x450");
-    CHECK(*(int *)((uint8_t *)&p + 0x110 + 3 * 16 + 8) == W - 1,
-          "roiRect[3].p1.x not at 0x138");
+    CHECK(*(int *)((uint8_t *)&p + MOVE_ROI_RECT_CNT) == 4,
+          "roiRectCnt not at 0x%x", MOVE_ROI_RECT_CNT);
+    CHECK(*(int *)((uint8_t *)&p + MOVE_ROI_RECT + 3 * 16 + 8) == W - 1,
+          "roiRect[3].p1.x not at 0x%x", MOVE_ROI_RECT + 3 * 16 + 8);
 
     ref = t31_ivs_move_create(&p);
     CHECK(ref != NULL, "reference instance");
     CHECK(IMP_IVS_CreateGroup(0) == 0, "CreateGroup");
     inf = IMP_IVS_CreateMoveInterface(&p);
     CHECK(inf && inf->paramSize == (int)sizeof(IMP_IVS_MoveParam) &&
-          inf->paramSize == 0x458, "move interface paramSize %d",
+          inf->paramSize == MOVE_PARAM_SIZE, "move interface paramSize %d",
           inf ? inf->paramSize : -1);
     CHECK(inf && inf->pixfmt == 10, "move interface pixfmt NV12 (10)");
     CHECK(IMP_IVS_CreateChn(0, inf) == 0, "CreateChn");
@@ -273,7 +300,7 @@ static void test_base_move(void)
     p.frameInfo.height = BH;
     CHECK(IMP_IVS_CreateGroup(0) == 0, "CreateGroup");
     inf = IMP_IVS_CreateBaseMoveInterface(&p);
-    CHECK(inf && inf->paramSize == 0x48, "base move paramSize");
+    CHECK(inf && inf->paramSize == BASE_PARAM_SIZE, "base move paramSize");
     CHECK(IMP_IVS_CreateChn(1, inf) == 0, "CreateChn");
     CHECK(IMP_IVS_RegisterChn(0, 1) == 0, "RegisterChn");
     bound = 1;
@@ -281,7 +308,9 @@ static void test_base_move(void)
     for (t = 0; t < 12; t++) {
         IMP_IVS_BaseMoveOutput *out = NULL;
         int64_t ts = 5000000 + t * 33333;
+#if OPENIMP_IVS_BASE_MOVE_TIMESTAMP
         int64_t got;
+#endif
 
         memset(frame, (t & 1) ? 67 : 100, (size_t)BW * BH);
         make_record(rec, frame, BW, BH, t % 4, ts);
@@ -291,6 +320,7 @@ static void test_base_move(void)
               "base GetResult t=%d", t);
         if (!out)
             continue;
+#if OPENIMP_IVS_BASE_MOVE_TIMESTAMP
         /* 0x10 on the 32-bit target (the ABI header asserts it there);
          * the host has a 64-bit data pointer in front of it */
         memcpy(&got, (uint8_t *)out + (sizeof(void *) == 4 ? 0x10 : 0x18),
@@ -298,6 +328,7 @@ static void test_base_move(void)
         CHECK(got == ts && out->timeStamp == ts,
               "base move timeStamp %lld, frame %lld", (long long)got,
               (long long)ts);
+#endif
         CHECK(out->datalen == (BW / 8) * (BH / 8), "base move datalen");
         if (out->ret) {
             detections++;
@@ -326,6 +357,6 @@ int main(void)
         fprintf(stderr, "%d check(s) failed\n", failures);
         return 1;
     }
-    printf("T23 IVS framework: all checks passed\n");
+    printf("%s IVS framework: all checks passed\n", ABI_NAME);
     return 0;
 }
