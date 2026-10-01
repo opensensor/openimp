@@ -297,7 +297,11 @@ static int encode(T30HelixEncoder *encoder, PictureInfo *info)
     bits.offset = 0;
     assert(bits_ue(&bits) == 0u);                   /* first_mb_in_slice */
     slice_type = bits_ue(&bits);
+#if defined(PLATFORM_T21)
+    assert(slice_type == (info->idr ? 2u : 0u));
+#else
     assert(slice_type == (info->idr ? 7u : 5u));
+#endif
     assert(bits_ue(&bits) == 0u);                   /* pps id */
     info->frame_num = bits_read(&bits, 10);
     info->idr_pic_id = info->idr ? bits_ue(&bits) : 0u;
@@ -470,6 +474,12 @@ int main(void)
     test_large_frame_level();
     for (i = 0; i < 16u; i++)
         assert(!allocations[i].mapping);
+#if defined(PLATFORM_T20)
+    printf("T20 Helix encoder tests passed (%u runs)\n", runs);
+#elif defined(PLATFORM_T21)
+    printf("T21 Helix encoder tests passed (%u runs)\n", runs);
+#else
     printf("T30 Helix encoder tests passed (%u runs)\n", runs);
+#endif
     return 0;
 }
