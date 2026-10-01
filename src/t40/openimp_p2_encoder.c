@@ -1925,7 +1925,7 @@ int IMP_Encoder_ReleaseStream(int channel, IMPEncoderStream *stream)
 
 int IMP_Encoder_RequestIDR(int channel)
 {
-#if defined(PLATFORM_T23) || defined(PLATFORM_T30)
+#if defined(PLATFORM_T23)
     static unsigned int t23_idr_request_count;
 #endif
 
@@ -1954,7 +1954,7 @@ int IMP_Encoder_RequestIDR(int channel)
             return AL_Codec_Encode_RequestIDR(p2_channels[channel].codec);
     }
 #endif
-#if defined(PLATFORM_T23) || defined(PLATFORM_T30)
+#if defined(PLATFORM_T23)
     /* IMP_Encoder_YuvRequestIDR can leave the standalone Helix encoder in a
      * permanently asserted IRQ state when it is called after streaming has
      * begun.  Raptor requests an IDR whenever an RTSP client joins, and the
@@ -1966,6 +1966,9 @@ int IMP_Encoder_RequestIDR(int channel)
                  "ch=%d request=%u\n", channel, t23_idr_request_count);
     return 0;
 #else
+    /* The native T21/T30 Helix encoder never touches the stock YUV seam: an
+     * IDR request only latches a flag consumed before the next picture, so
+     * forwarding it is safe and lets a joining RTSP client start at once. */
     return AL_Codec_Encode_RequestIDR(p2_channels[channel].codec);
 #endif
 }

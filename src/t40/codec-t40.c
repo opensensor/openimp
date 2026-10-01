@@ -11395,10 +11395,9 @@ int AL_Codec_Encode_RequestIDR(void *codec) {
     if (__atomic_load_n(&t23_helix_idr_disabled, __ATOMIC_RELAXED))
         return 0;                   /* natural GOP, see t23_helix_idr_check */
 #endif
-#if defined(PLATFORM_T30)
-    if (enc->t30_helix)
-        return OpenIMP_T30_HelixRequestIDR(enc->t30_helix);
-#endif
+    /* T30/T21 Helix: latch only as well.  Process hands the request to the
+     * native encoder on the encoding thread, so it cannot race the encoder's
+     * own IDR bookkeeping. */
     __sync_lock_test_and_set(&enc->force_next_idr, 1);
 
     { static unsigned int idr_req_count = 0; unsigned int c = __sync_add_and_fetch(&idr_req_count, 1);
