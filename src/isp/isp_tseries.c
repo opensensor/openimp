@@ -1093,10 +1093,22 @@ enum {
     /* OEM T23/T31 dispatches tisp_get_ae_luma at 0x8000033.  Command
      * 0x8000031 is a different statistics query; treating its first word as
      * luma makes bright scenes read near zero and forces RIC into night mode. */
+#if defined(PLATFORM_T21) && !defined(PLATFORM_T20)
+    /* T21: the stock libimp sends {1, 0x8000031} on 0xc00c56c6 and the stock
+     * and open tx-isp-t21 g_ctrl dispatch tisp_g_ae_luma there; the stock
+     * dispatcher rejects 0x8000033.  Same id as claude/t21-bringup c1bd3b0. */
+    TISP_CID_AE_LUMA = 0x8000031,
+#else
     TISP_CID_AE_LUMA = 0x8000033,
+#endif
     TISP_CID_AE_IT_MAX = 0x8000032,
 #if defined(PLATFORM_T23) || defined(PLATFORM_T31)
     TISP_CID_AE_MIN = 0x800002f,    /* 16 bytes: it, again, it_short, again_short */
+#elif defined(PLATFORM_T21) && !defined(PLATFORM_T20)
+    /* T21 1.0.33 libimp Get/SetAeMin send 0x800002f (8 bytes: min
+     * integration time, min analogue gain); the T21 kernel rejects
+     * 0x8000033 in both directions. */
+    TISP_CID_AE_MIN = 0x800002f,
 #else
     TISP_CID_AE_MIN = 0x8000033,
 #endif
