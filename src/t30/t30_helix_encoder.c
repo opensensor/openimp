@@ -123,6 +123,7 @@ struct T30HelixEncoder {
     uint8_t headers[T30_HEADER_CAPACITY];
     uint32_t headers_size;
     uint32_t frame_number;
+    uint32_t max_output_len;
     uint32_t gop_position;
     uint32_t idr_pic_id;
     unsigned int reference_index;
@@ -567,6 +568,8 @@ int OpenIMP_T30_HelixEncode(T30HelixEncoder *encoder,
         encoder->gop_position = 0;
         encoder->idr_pic_id++;
     }
+    if (encoder->channel.output_len > encoder->max_output_len)
+        encoder->max_output_len = encoder->channel.output_len;
     encoder->reference_index = output_index;
     encoder->have_reference = 1;
     encoder->gop_position++;
@@ -576,9 +579,12 @@ int OpenIMP_T30_HelixEncode(T30HelixEncoder *encoder,
             &encoder->rate_control, stream->length * 8u, qp, idr);
     if (encoder->frame_number <= 4u ||
         (encoder->frame_number % 100u) == 0u)
-        LOG_CODEC("T30 Helix: frame=%u %s bytes=%u hw=%u status=0x%08x desc=%u",
+        /* hw_max against the window sizes the bitstream allocation. */
+        LOG_CODEC("T30 Helix: frame=%u %s bytes=%u hw=%u hw_max=%u/%u status=0x%08x desc=%u",
                   encoder->frame_number, idr ? "IDR" : "P",
                   stream->length, encoder->channel.output_len,
+                  encoder->max_output_len,
+                  encoder->temporary.size - T30_SLICE_OFFSET,
                   encoder->channel.status, (unsigned int)descriptor_pairs);
     return 0;
 }
