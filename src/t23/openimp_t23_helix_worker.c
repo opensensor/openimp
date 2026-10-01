@@ -103,10 +103,55 @@ static void worker_release(T23HelixWorker *worker)
     worker->subsystem_ready = 0;
 }
 
+static int worker_alloc_input(T23HelixWorker *worker)
+{
+    intptr_t physical;
+
+    if (worker->input_buffer)
+        return 0;
+    worker->input_buffer =
+        IMP_Encoder_VbmAlloc(worker->input_capacity, T23_HELIX_PAGE_SIZE);
+    if (!worker->input_buffer)
+        return -ENOMEM;
+    physical = IMP_Encoder_VbmV2P((intptr_t)(uintptr_t)worker->input_buffer);
+    if (physical <= 0 || (uintptr_t)physical > UINT32_MAX)
+        return -EFAULT;
+    memset(worker->input_buffer, 0, worker->input_capacity);
+    if (IMP_FlushCache(worker->input_buffer, worker->input_capacity,
+                       T23_CACHE_WBACK) != 0)
+        return -EIO;
+    worker->input_physical = (uint32_t)(uintptr_t)physical;
+    return 0;
+}
+
+/*
+ * The frame in place: the OEM kmem allocator maps the whole reserved
+ * memory (/dev/rmem) linearly, and OpenIMP's frame pools live in the same
+ * reserved memory, so IMP_Encoder_VbmP2V gives this process's address of
+ * the frame. The OEM YuvEncode takes the luma/chroma addresses from
+ * virAddr and translates them back with V2P for the core, so both ends of
+ * the frame must translate back to the address OpenIMP sent.
+ */
+static uint32_t worker_map_input(uint32_t physical, uint32_t size)
+{
+    intptr_t virt;
+    intptr_t last;
+
+    if (!physical || !size || physical > UINT32_MAX - size)
+        return 0u;
+    virt = IMP_Encoder_VbmP2V((intptr_t)physical);
+    if (virt <= 0)
+        return 0u;
+    last = IMP_Encoder_VbmV2P(virt + (intptr_t)size - 1);
+    if (IMP_Encoder_VbmV2P(virt) != (intptr_t)physical ||
+        last != (intptr_t)(physical + size - 1u))
+        return 0u;
+    return (uint32_t)virt;
+}
+
 static int worker_init(T23HelixWorker *worker,
                        const T23HelixIpcRequest *request)
 {
-    intptr_t physical;
     uint64_t required;
 
     if (!worker || !request || request->width == 0u ||
@@ -128,27 +173,25 @@ static int worker_init(T23HelixWorker *worker,
         !worker->encoder)
         return -EIO;
 
-    worker->input_buffer =
-        IMP_Encoder_VbmAlloc(request->input_capacity, T23_HELIX_PAGE_SIZE);
     worker->output_buffer =
         IMP_Encoder_VbmAlloc(request->output_capacity, T23_HELIX_PAGE_SIZE);
-    if (!worker->input_buffer || !worker->output_buffer)
+    if (!worker->output_buffer)
         return -ENOMEM;
-    physical = IMP_Encoder_VbmV2P((intptr_t)(uintptr_t)worker->input_buffer);
-    if (physical <= 0 || (uintptr_t)physical > UINT32_MAX)
-        return -EFAULT;
-
-    memset(worker->input_buffer, 0, request->input_capacity);
     memset(worker->output_buffer, 0, request->output_capacity);
-    if (IMP_FlushCache(worker->input_buffer, request->input_capacity,
-                       T23_CACHE_WBACK) != 0 ||
-        IMP_FlushCache(worker->output_buffer, request->output_capacity,
+    if (IMP_FlushCache(worker->output_buffer, request->output_capacity,
                        T23_CACHE_WBACK) != 0)
         return -EIO;
-
-    worker->input_physical = (uint32_t)(uintptr_t)physical;
     worker->input_size = request->input_size;
     worker->input_capacity = request->input_capacity;
+    /* Zero-copy sessions read the frames in place; the input copy buffer
+     * (a frame-sized VBM allocation) is only made for a copied frame. */
+    if (!(request->flags & T23_HELIX_INIT_ZERO_COPY)) {
+        int status = worker_alloc_input(worker);
+
+        if (status != 0)
+            return status;
+    }
+
     worker->output_capacity = request->output_capacity;
     worker->width = request->width;
     worker->height = request->height;
@@ -176,21 +219,37 @@ static int worker_encode(T23HelixWorker *worker,
         request->input_size != worker->input_size)
         return -EINVAL;
 
-    memcpy(worker->input_buffer, worker->shared, worker->input_size);
-    if (IMP_FlushCache(worker->input_buffer, worker->input_size,
-                       T23_CACHE_WBACK) != 0)
-        return -EIO;
-
     memset(&frame, 0, sizeof(frame));
+    if (request->input_physical) {
+        /* OpenIMP holds the frame until our response and wrote back its
+         * CPU view; the core reads it from memory. */
+        uint32_t virt = worker_map_input(request->input_physical,
+                                         worker->input_size);
+
+        if (!virt)
+            return -EFAULT;     /* OpenIMP falls back to copying */
+        frame.phyAddr = request->input_physical;
+        frame.virAddr = virt;
+        frame.direct_phyAddr = request->input_physical;
+    } else {
+        int status = worker_alloc_input(worker);
+
+        if (status != 0)
+            return status;
+        memcpy(worker->input_buffer, worker->shared, worker->input_size);
+        if (IMP_FlushCache(worker->input_buffer, worker->input_size,
+                           T23_CACHE_WBACK) != 0)
+            return -EIO;
+        frame.phyAddr = worker->input_physical;
+        frame.virAddr = (uint32_t)(uintptr_t)worker->input_buffer;
+        frame.direct_phyAddr = worker->input_physical;
+    }
     frame.index = -1;
     frame.pool_idx = -1;
     frame.width = worker->width;
     frame.height = worker->height;
     frame.pixfmt = request->pixel_format;
     frame.size = worker->input_size;
-    frame.phyAddr = worker->input_physical;
-    frame.virAddr = (uint32_t)(uintptr_t)worker->input_buffer;
-    frame.direct_phyAddr = worker->input_physical;
     frame.timeStamp = request->timestamp;
 
     output.outAddr = worker->output_buffer;

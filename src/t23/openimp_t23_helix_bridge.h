@@ -25,6 +25,7 @@ typedef struct {
     int shared_fd;
     pid_t worker_pid;
     int failed;
+    int zero_copy;      /* frames are passed by physical address */
 } T23HelixBridge;
 
 int OpenIMP_T23_HelixInit(T23HelixBridge *bridge,
