@@ -6,6 +6,15 @@
  * encoder and checked against command lists produced on real T21N hardware.
  * Only the fixed-function SoC programming belongs here; sensor selection and
  * ISP tuning remain in the sensor tuning binary.
+ *
+ * T23 carries the same Helix generation at a different bus address
+ * (0x13100000 instead of 0x13200000; T23 maps its ISP-VPU direct-connect
+ * block at 0x13200000).  Its command list is the T21 list with every Helix
+ * address moved to that base plus a few T23-only writes (see
+ * T21_HELIX_T23_DELTAS below).  Both facts were established by running the
+ * OEM T21 1.0.33 and T23 1.3.0 slice builders side by side on identical
+ * inputs (tools/helix_oem_descriptor_compare.py); the resulting register
+ * order and constants are checked by tests/t23_helix_descriptor_test.c.
  */
 
 #include "t21_h264_descriptor.h"
@@ -17,14 +26,33 @@
 
 #define T21_TCSM_FLUSH 0xc0000u
 
-#define T21_VRAM_TOPPA 0x132c4000u
-#define T21_VRAM_TOPMV 0x132c4800u
-#define T21_VRAM_MAU   0x132c4c00u
-#define T21_VRAM_DBLK  0x132c5000u
-#define T21_VRAM_ME    0x132c5400u
-#define T21_VRAM_SDE   0x132c5600u
-#define T21_VRAM_RAW   0x132f0000u
-#define T21_VRAM_DUMMY 0x132ffffcu
+#if defined(PLATFORM_T23)
+#define T21_HELIX_BASE 0x13100000u
+#define T21_HELIX_T23_DELTAS 1
+#else
+#define T21_HELIX_BASE 0x13200000u
+#endif
+
+/* Helix-internal SRAM (TCSM/VRAM) windows and scheduler done-flags, all
+ * addressed on the SoC bus relative to the Helix base. */
+#define T21_VRAM_TCSM  (T21_HELIX_BASE + 0xc0000u)
+#define T21_VRAM_TOPPA (T21_HELIX_BASE + 0xc4000u)
+#define T21_VRAM_TOPMV (T21_HELIX_BASE + 0xc4800u)
+#define T21_VRAM_MAU   (T21_HELIX_BASE + 0xc4c00u)
+#define T21_VRAM_DBLK  (T21_HELIX_BASE + 0xc5000u)
+#define T21_VRAM_ME    (T21_HELIX_BASE + 0xc5400u)
+#define T21_VRAM_SDE   (T21_HELIX_BASE + 0xc5600u)
+#define T21_VRAM_RAW   (T21_HELIX_BASE + 0xf0000u)
+#define T21_VRAM_DUMMY (T21_HELIX_BASE + 0xffffcu)
+#define T21_SCH_DONE_ME   (T21_HELIX_BASE + 0x70u)
+#define T21_SCH_DONE_MAU  (T21_HELIX_BASE + 0x74u)
+#define T21_SCH_DONE_SDE  (T21_HELIX_BASE + 0x7cu)
+
+#if defined(T21_HELIX_T23_DELTAS)
+#define T21_MIN_DESCRIPTOR_WORDS(p) ((p) ? 2068u : 2030u)
+#else
+#define T21_MIN_DESCRIPTOR_WORDS(p) ((p) ? 2060u : 2022u)
+#endif
 
 typedef struct {
     uint32_t *cursor;
@@ -129,7 +157,7 @@ static int t21_emit_motion_estimation(T21DescriptorWriter *writer,
 
     MOTION_EMIT(0x5010c, T21_VRAM_ME);
     MOTION_EMIT(0x50104, T21_VRAM_TOPMV);
-    MOTION_EMIT(0x50108, 0x13200070u);
+    MOTION_EMIT(0x50108, T21_SCH_DONE_ME);
     MOTION_EMIT(0x50060, ((uint32_t)config->height - 1u) << 16 |
                          ((uint32_t)config->width - 1u));
     MOTION_EMIT(0x50064, (config->stride[1] << 16) |
@@ -224,7 +252,7 @@ int T21_H264_BuildDescriptor(const T21H264SliceConfig *config,
     if (!config || !config->descriptor || !config->cabac_state ||
         !config->mb_width || !config->mb_height || !config->width ||
         !config->height || config->slice_type > 1u ||
-        config->descriptor_words < (config->slice_type ? 2060u : 2022u) ||
+        config->descriptor_words < T21_MIN_DESCRIPTOR_WORDS(config->slice_type) ||
         (config->slice_type &&
          (!config->reference_y || !config->reference_c)) ||
         !config->raw[0] ||
@@ -247,11 +275,14 @@ int T21_H264_BuildDescriptor(const T21H264SliceConfig *config,
             return -1;                                                       \
     } while (0)
 
+#if !defined(T21_HELIX_T23_DELTAS)
+    /* The T23 encoder starts directly with the EFE programming. */
     EMIT(T21_TCSM_FLUSH, 0);
+#endif
     EMIT(0x40004, ((uint32_t)config->first_mby << 24) |
                   ((uint32_t)config->last_mby << 8) |
                   ((uint32_t)config->mb_width - 1u));
-    EMIT(0x4000c, 0x132c0000u);
+    EMIT(0x4000c, T21_VRAM_TCSM);
     EMIT(0x40010, config->raw[0]);
     EMIT(0x40014, config->raw[1]);
     EMIT(0x40034, config->raw[2]);
@@ -292,6 +323,11 @@ int T21_H264_BuildDescriptor(const T21H264SliceConfig *config,
     EMIT(0x400e8, 0x0c25bd33u);
     EMIT(0x400ec, 0x10f65409u);
     EMIT(0x400f0, 0x37465405u);
+#if defined(T21_HELIX_T23_DELTAS)
+    /* T23-only EFE registers; constant in the OEM T23 builder. */
+    EMIT(0x40170, 0x00000330u);
+    EMIT(0x40174, 0x80000330u);
+#endif
 
     EMIT(0x10004, 0x20000000u | ((uint32_t)config->height << 14) |
                   config->width);
@@ -317,7 +353,7 @@ int T21_H264_BuildDescriptor(const T21H264SliceConfig *config,
     EMIT(0x80050, config->slice_type ? 0x80000b00u : 0x80001b00u);
     EMIT(0x8000c, T21_VRAM_MAU);
     EMIT(0x8005c, T21_VRAM_DUMMY);
-    EMIT(0x80058, 0x13200074u);
+    EMIT(0x80058, T21_SCH_DONE_MAU);
     EMIT(0x80054, (aligned_height << 16) | aligned_width);
     EMIT(0x80044, 0x01000001u);
     EMIT(0x80078, 0x0b150b15u);
@@ -336,6 +372,10 @@ int T21_H264_BuildDescriptor(const T21H264SliceConfig *config,
     EMIT(0x80118, 0);
     EMIT(0x8011c, 0);
     EMIT(0x80194, 0x23000000u);
+#if defined(T21_HELIX_T23_DELTAS)
+    EMIT(0x801e0, 0x00400000u);
+    EMIT(0x801e4, 0x00400000u);
+#endif
     EMIT(0x8007c, 0xffff8002u);
     for (i = 0; i < 40u; i++)
         EMIT(0x80198, t21_vmau_interpolation[i]);
@@ -367,8 +407,11 @@ int T21_H264_BuildDescriptor(const T21H264SliceConfig *config,
     EMIT(0x90018, ((uint32_t)config->qp << 8) |
                   (config->slice_type ? 0x32u : 0x31u));
     EMIT(0x9001c, T21_VRAM_SDE);
-    EMIT(0x90020, 0x1320007cu);
+    EMIT(0x90020, T21_SCH_DONE_SDE);
     EMIT(0x90024, config->bitstream);
+#if defined(T21_HELIX_T23_DELTAS)
+    EMIT(0x90028, 0x00400000u);
+#endif
     for (i = 0; i < 460u; i++) {
         uint32_t state = config->cabac_state[i];
         uint32_t index = state <= 63u ? 63u - state : state - 64u;
@@ -393,7 +436,14 @@ int T21_H264_BuildDescriptor(const T21H264SliceConfig *config,
     EMIT(0x00060, 0x08080400u |
                   ((uint32_t)config->slice_type << 2));
     EMIT(0x00064, 0x97850f02u | config->slice_type);
+#if defined(T21_HELIX_T23_DELTAS)
+    /* The OEM T23 builder always sets bit 31 here (bit 30 would select its
+     * shared reference/reconstruction buffer mode, which is not used). */
+    EMIT(0x60004, 0x80000000u | ((uint32_t)config->height << 14) |
+                  config->width);
+#else
     EMIT(0x60004, ((uint32_t)config->height << 14) | config->width);
+#endif
     EMIT(0x60008, config->output_y);
     EMIT(0x6000c, config->output_c);
     EMIT(0x60010, ((uint32_t)config->width << 16) |
