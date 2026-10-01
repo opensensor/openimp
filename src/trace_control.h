@@ -22,6 +22,18 @@ static inline int openimp_debug_trace_enabled(void)
     return enabled;
 }
 
+/* OPENIMP_STARTUP_TRACE, looked up once: EncoderInit (and with it the
+ * startup markers) also runs from per-frame entry points such as
+ * IMP_Encoder_PollingModuleStream. */
+static inline int openimp_startup_trace_enabled(void)
+{
+    static int enabled = -1;
+
+    if (enabled < 0)
+        enabled = getenv("OPENIMP_STARTUP_TRACE") != NULL;
+    return enabled;
+}
+
 /*
  * Bench-only stderr chatter (per-frame buffer traffic, per-(re)start setup
  * dumps).  Same OPENIMP_DEBUG_TRACE switch as the kmsg probes; genuine

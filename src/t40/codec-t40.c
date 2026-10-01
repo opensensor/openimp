@@ -88,7 +88,7 @@ enum {
 
 static void codec_startup_marker(const char *marker, size_t size)
 {
-    if (getenv("OPENIMP_STARTUP_TRACE"))
+    if (openimp_startup_trace_enabled())
         (void)write(STDERR_FILENO, marker, size);
 #if defined(PLATFORM_T23)
     openimp_t23_persist_write(marker, size);
@@ -104,7 +104,7 @@ static void codec_startup_trace(const char *format, ...)
     va_list arguments;
     int length;
 
-    if (!getenv("OPENIMP_STARTUP_TRACE")
+    if (!openimp_startup_trace_enabled()
 #if defined(PLATFORM_T23)
         && !openimp_t23_persist_enabled()
 #endif
@@ -118,7 +118,7 @@ static void codec_startup_trace(const char *format, ...)
 
         if (size >= sizeof(message))
             size = sizeof(message) - 1u;
-        if (getenv("OPENIMP_STARTUP_TRACE")) {
+        if (openimp_startup_trace_enabled()) {
             (void)write(STDERR_FILENO, message, size);
             (void)fsync(STDERR_FILENO);
         }
@@ -8042,6 +8042,19 @@ static void t31_hwjpeg_init_once(void)
     pthread_condattr_destroy(&attr);
 }
 
+/* Looked up once, not per snapshot. */
+static const char *t31_hwjpeg_src_coherent_env(void)
+{
+    static int looked_up;
+    static const char *value;
+
+    if (!looked_up) {
+        value = getenv("OPENIMP_T31_HW_JPEG_SRC_COHERENT");
+        looked_up = 1;
+    }
+    return value;
+}
+
 static int t31_hwjpeg_requested(void)
 {
     static int requested = -1;
@@ -8243,7 +8256,7 @@ static int t31_hwjpeg_encode(const HWFrameBuffer *frame, HWStreamBuffer *stream,
     if (g_t31_hwjpeg.stream.map && g_t31_hwjpeg.stream_fail &&
         stream_size >= g_t31_hwjpeg.stream_fail)
         stream_size = (uint32_t)g_t31_hwjpeg.stream.size;
-    src_coherent_env = getenv("OPENIMP_T31_HW_JPEG_SRC_COHERENT");
+    src_coherent_env = t31_hwjpeg_src_coherent_env();
     /* The p2 layer copies JPEG frames straight into rmem (written back,
      * physical address set): read that in place instead of copying again. */
     src_phys = src_coherent_env && src_coherent_env[0] == '1' ? 0 : frame->phys_addr;

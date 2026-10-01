@@ -495,7 +495,7 @@ static int p2_wait_for_jpeg_frame(P2EncoderChannel *channel,
 
 static void p2_startup_marker(const char *marker, size_t size)
 {
-    if (getenv("OPENIMP_STARTUP_TRACE"))
+    if (openimp_startup_trace_enabled())
         (void)write(STDERR_FILENO, marker, size);
 #if defined(PLATFORM_T23) || defined(PLATFORM_T30)
     openimp_t23_persist_write(marker, size);
@@ -511,7 +511,7 @@ static void p2_startup_trace(const char *format, ...)
     va_list arguments;
     int length;
 
-    if (!getenv("OPENIMP_STARTUP_TRACE")
+    if (!openimp_startup_trace_enabled()
 #if defined(PLATFORM_T23) || defined(PLATFORM_T30)
         && !openimp_t23_persist_enabled()
 #endif
@@ -525,7 +525,7 @@ static void p2_startup_trace(const char *format, ...)
 
         if (size >= sizeof(message))
             size = sizeof(message) - 1u;
-        if (getenv("OPENIMP_STARTUP_TRACE")) {
+        if (openimp_startup_trace_enabled()) {
             (void)write(STDERR_FILENO, message, size);
             (void)fsync(STDERR_FILENO);
         }
