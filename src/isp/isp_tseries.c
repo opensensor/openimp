@@ -72,7 +72,13 @@ _Static_assert(offsetof(ISPDevice, sensor_alloc) == 0xb0,
 static char *bpath;
 static uint8_t custom_contrast;
 static uint8_t custom_sharpness;
-static uint32_t global_mode;
+/*
+ * Vendor libimp (T31 HLIL data_1075d4) initialises this to 2 and only the
+ * *_internal(value, 0/1) paths ever change it; nothing derives it from the
+ * ISP running mode.  Mirroring the running mode here made Set{Contrast,
+ * Sharpness} store-only while in night mode, so those changes were lost.
+ */
+static uint32_t global_mode = 2;
 static int tseries_isp_stream_started;
 static int tseries_bypass_link_setup_done;
 static pthread_t tseries_tuning_thread;
@@ -1541,7 +1547,6 @@ int IMP_ISP_Tuning_SetISPRunningMode(IMPISPRunningMode mode)
 
     if (result == 0) {
         tseries_running_mode = mode;
-        global_mode = mode;
     }
     return result;
 }
@@ -1558,7 +1563,6 @@ int IMP_ISP_Tuning_GetISPRunningMode(IMPISPRunningMode *pmode)
     result = tseries_tuning_get_val(TISP_CID_RUNNING_MODE, &value);
     if (result == 0) {
         tseries_running_mode = value;
-        global_mode = value;
     }
 
     *pmode = tseries_running_mode;
