@@ -47,6 +47,11 @@
 #include "t23/openimp_t23_osd.h"
 #include "t23/openimp_t23_encoder.h"
 #endif
+#if defined(PLATFORM_T30)
+/* T20/T21/T30 keep the T31 OSD state and blend PIC/COVER regions with the
+ * same jz_ipu_v13 /dev/ipu request as the OEM T20 osd_update/ipu_osd. */
+#include "t31/openimp_t31_osd.h"
+#endif
 
 #define P2_MAX_GROUPS 8
 #define P2_MAX_CHANNELS 8
@@ -1759,9 +1764,10 @@ static int p2_polling_stream(int channel, uint32_t timeout_ms)
 #if defined(PLATFORM_T23)
         pace_got_us = p2_monotonic_us();
 #endif
-#if defined(PLATFORM_T31)
+#if defined(PLATFORM_T31) || defined(PLATFORM_T30)
         /* Overlay before the JPEG fan-out copy and the AVC encode, as the
-         * stock OSD group sits between FrameSource and Encoder. */
+         * stock OSD group sits between FrameSource and Encoder. The IPU
+         * writes the frame in memory, where the Helix VPU reads it. */
         if (ch->osd_group >= 0)
             openimp_t31_osd_apply(ch->osd_group, frame);
 #elif defined(PLATFORM_T23)
