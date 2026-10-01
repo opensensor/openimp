@@ -19,9 +19,13 @@ descriptor_test: $(SOURCES)
 annexb_test: annexb_test.c $(ROOT)/src/t30/t30_annexb.h
 	$(CC) $(CFLAGS) $(INCLUDES) -o $@ annexb_test.c
 
-check: descriptor_test annexb_test
+level_test: level_test.c $(ROOT)/src/t30/t30_h264_level.h
+	$(CC) $(CFLAGS) $(INCLUDES) -o $@ level_test.c
+
+check: descriptor_test annexb_test level_test
 	./descriptor_test
 	./annexb_test
+	./level_test
 
 clean:
-	$(RM) descriptor_test annexb_test
+	$(RM) descriptor_test annexb_test level_test

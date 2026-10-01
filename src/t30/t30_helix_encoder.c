@@ -22,6 +22,7 @@
 #include "imp_log_int.h"
 #include "t30/h264enc/common.h"
 #include "t30/t30_annexb.h"
+#include "t30/t30_h264_level.h"
 #if defined(PLATFORM_T21) && !defined(PLATFORM_T20)
 #include "t21/t21_h264_descriptor.h"
 typedef T21H264SliceConfig PlatformH264SliceConfig;
@@ -153,14 +154,6 @@ static int t30_dma_allocate(IMPDMABufferInfo *dma, uint32_t size,
     return 0;
 }
 
-static uint32_t t30_level_for_size(uint32_t width, uint32_t height)
-{
-    uint64_t macroblocks = ((uint64_t)width + 15u) / 16u;
-
-    macroblocks *= ((uint64_t)height + 15u) / 16u;
-    return macroblocks > 3600u ? 40u : 31u;
-}
-
 static void t30_init_parameter_sets(T30HelixEncoder *encoder)
 {
     h264_sps_t *sps = &encoder->sps;
@@ -171,8 +164,6 @@ static void t30_init_parameter_sets(T30HelixEncoder *encoder)
     memset(sps, 0, sizeof(*sps));
     sps->i_id = 0;
     sps->i_profile_idc = PROFILE_HIGH;
-    sps->i_level_idc = (int)t30_level_for_size(encoder->params.width,
-                                                encoder->params.height);
     sps->i_log2_max_frame_num = 10;
     sps->i_poc_type = 2;
 #if defined(PLATFORM_T21) && !defined(PLATFORM_T20)
@@ -188,6 +179,10 @@ static void t30_init_parameter_sets(T30HelixEncoder *encoder)
 #else
     sps->i_num_ref_frames = 1;
 #endif
+    sps->i_level_idc = (int)t30_h264_level(
+        encoder->params.width, encoder->params.height,
+        encoder->params.fps_num, encoder->params.fps_den,
+        encoder->params.bitrate, (uint32_t)sps->i_num_ref_frames);
     sps->i_mb_width = (int)(aligned_width / 16u);
     sps->i_mb_height = (int)(aligned_height / 16u);
     sps->b_frame_mbs_only = 1;
@@ -319,7 +314,9 @@ int OpenIMP_T30_HelixCreate(T30HelixEncoder **encoder_out,
     uint64_t reference_size;
     unsigned int i;
 
-    if (!encoder_out || !params || !params->width || !params->height)
+    /* The descriptors carry macroblock dimensions in eight bits. */
+    if (!encoder_out || !params || !params->width || !params->height ||
+        params->width > 255u * 16u || params->height > 255u * 16u)
         return -1;
     frame_size = (uint64_t)params->width * params->height;
     if (frame_size > UINT32_MAX / 2u)
