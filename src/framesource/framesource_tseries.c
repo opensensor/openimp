@@ -2106,7 +2106,7 @@ int IMP_FrameSource_EnableChn(int chnNum)
     return 0;
 }
 
-#if defined(PLATFORM_T31)
+#if defined(PLATFORM_T31) || defined(PLATFORM_T23) || defined(PLATFORM_T20)
 /* After STREAMOFF the worker leaves within one select timeout (25 ms) plus
  * the delivery of a frame it had already dequeued. Anything near a second
  * is a genuine hang (a consumer blocking notify, a VBM mutex, ...). */
@@ -2124,7 +2124,9 @@ static int fs_wait_worker_exit(int chn, int timeout_ms)
     }
     return g_fs_thread_exited[chn] ? waited : -1;
 }
+#endif
 
+#if defined(PLATFORM_T31)
 /* Stop the stream of every channel still enabled. Called on the way out of
  * the process (destructor, fatal signal handler in core/sys_core.c). The
  * stock tx-isp T31 DQBUF sleeps in wait_event_interruptible() regardless
@@ -2235,7 +2237,21 @@ int IMP_FrameSource_DisableChn(int chnNum)
         fs_stream_off(ctx->fd);
     }
     if (ctx->thread != 0) {
+#if defined(PLATFORM_T23) || defined(PLATFORM_T20)
+        /* Both drivers wake the worker on STREAMOFF (open tx-isp T23: the
+         * DQBUF wait ends with -EPIPE; T20 vb2: poll reports POLLERR and
+         * DQBUF fails), so let it leave by itself and cancel only a worker
+         * that is still running after FS_WORKER_STOP_TIMEOUT_MS. A worker
+         * cancelled while it delivers a frame can leave a VBM or encoder
+         * mutex locked. */
+        if (fs_wait_worker_exit(chnNum, FS_WORKER_STOP_TIMEOUT_MS) < 0) {
+            IMP_LOG_ERR("Framesource", "chn%d: pooling thread still running %d ms after STREAMOFF; cancelling it",
+                        chnNum, FS_WORKER_STOP_TIMEOUT_MS);
+            pthread_cancel(ctx->thread);
+        }
+#else
         pthread_cancel(ctx->thread);
+#endif
         pthread_join(ctx->thread, NULL);
         ctx->thread = 0;
     }
