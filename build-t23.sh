@@ -31,6 +31,18 @@ mkdir -p "$output_dir"
 
 base_flags="-std=gnu99 -O2 -mabi=32 -march=mips32r2 -mabicalls"
 base_flags="$base_flags -fPIC -G0 -fno-stack-protector -DPLATFORM_T23"
+
+# H.264 backend when OPENIMP_T23_ENCODER is not set at run time: "worker"
+# (the OEM encoder in openimp-t23-helixd) or "native" (OpenIMP's own Helix
+# command lists over /dev/soc_vpu).
+case "${T23_DEFAULT_ENCODER:-worker}" in
+    worker) default_encoder_flag=-DOPENIMP_T23_DEFAULT_NATIVE=0 ;;
+    native) default_encoder_flag=-DOPENIMP_T23_DEFAULT_NATIVE=1 ;;
+    *)
+        echo "T23_DEFAULT_ENCODER must be worker or native" >&2
+        exit 1
+        ;;
+esac
 repo_includes="-I$project_dir/include -I$project_dir/src"
 
 compile()
@@ -52,7 +64,8 @@ compile openimp_p2_encoder src/t40/openimp_p2_encoder.c -Werror
 compile openimp_avc src/t40/openimp_avc.c -Werror
 compile t40_ep1 src/t40/t40_ep1.c -Werror
 compile enc_hw_scaling src/alcodec/EncHwScalingList.c
-compile codec src/t40/codec-t40.c -Wno-stringop-overflow
+compile codec src/t40/codec-t40.c -Wno-stringop-overflow \
+    "$default_encoder_flag"
 compile al_avpu src/al_avpu.c -Wno-stringop-overflow
 compile device_pool src/device_pool.c -Wno-stringop-overflow
 compile fifo src/fifo.c -Wno-stringop-overflow
@@ -85,6 +98,14 @@ compile t23_audio_ext src/t23/openimp_t23_audio_ext.c -Werror
 compile t23_encoder src/t23/openimp_t23_encoder.c -Werror
 compile t23_decoder src/t23/openimp_t23_decoder.c -Werror
 compile t23_misc src/t23/openimp_t23_misc.c -Werror
+# Native Helix H.264: the T30/T21 encoder with the T21-family command list.
+compile t23_helix_native src/t30/t30_helix_encoder.c -Werror
+compile t23_h264_descriptor src/t21/t21_h264_descriptor.c -Werror
+compile t23_h264_common src/t30/h264enc/common.c -Werror
+compile t23_h264_cabac src/t30/h264enc/cabac.c -Werror
+compile t23_h264_set src/t30/h264enc/set.c -Werror
+compile t23_h264_slice src/t30/h264enc/slice.c -Werror
+compile t23_rate_control src/t40/t31_rate_control.c -Werror
 
 "$compiler" -shared -nostartfiles \
     -Wl,-soname,libimp.so \
@@ -129,6 +150,13 @@ compile t23_misc src/t23/openimp_t23_misc.c -Werror
     "$output_dir/t23_encoder.o" \
     "$output_dir/t23_decoder.o" \
     "$output_dir/t23_misc.o" \
+    "$output_dir/t23_helix_native.o" \
+    "$output_dir/t23_h264_descriptor.o" \
+    "$output_dir/t23_h264_common.o" \
+    "$output_dir/t23_h264_cabac.o" \
+    "$output_dir/t23_h264_set.o" \
+    "$output_dir/t23_h264_slice.o" \
+    "$output_dir/t23_rate_control.o" \
     -ldl -lpthread -lrt
 
 "$compiler" $base_flags $repo_includes -Wall -Wextra -Werror \
@@ -136,6 +164,18 @@ compile t23_misc src/t23/openimp_t23_misc.c -Werror
     -lpthread -o "$output_dir/openimp-tuningd"
 
 "$stripper" --strip-unneeded "$output_dir/libimp.so"
+
+# On-device bring-up test of the native Helix encoder (not installed by the
+# firmware package; copy it to the camera by hand, see
+# docs/T23_NATIVE_HELIX.md).
+"$compiler" $base_flags $repo_includes -Wall -Wextra -Werror \
+    "$project_dir/tools/t23_helix_selftest.c" \
+    "$output_dir/t23_helix_native.o" "$output_dir/t23_h264_descriptor.o" \
+    "$output_dir/t23_h264_common.o" "$output_dir/t23_h264_cabac.o" \
+    "$output_dir/t23_h264_set.o" "$output_dir/t23_h264_slice.o" \
+    "$output_dir/t23_rate_control.o" "$output_dir/dma_alloc.o" \
+    -lpthread -o "$output_dir/openimp-t23-helix-selftest"
+"$stripper" --strip-unneeded "$output_dir/openimp-t23-helix-selftest"
 
 if readelf -d "$output_dir/libimp.so" |
     grep -q 'Shared library: \[libimp.so'

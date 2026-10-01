@@ -1325,6 +1325,25 @@ const uint16_t h264_cabac_entropy[128] =
     C_FIX8(0.9285), C_FIX8(1.0752), C_FIX8(1.0000), C_FIX8(1.0000)
 };
 
+#if defined(PLATFORM_T23)
+/* T23 runs in about 40 MiB of RAM: derive the 460 initial states of one
+ * slice when it starts instead of keeping the 208 KiB table of every
+ * (model, QP) pair resident.  The values are identical. */
+void h264_cabac_init(void)
+{
+}
+
+void h264_cabac_context_init(h264_cabac_t *cb, int i_slice_type, int i_qp, int i_model )
+{
+    const int8_t (*cabac_context_init)[1024][2] =
+        i_slice_type == SLICE_TYPE_I ? &h264_cabac_context_init_I
+                                     : &h264_cabac_context_init_PB[i_model];
+    int j;
+
+    for( j = 0; j < 460; j++ )
+        cb->state[j] = c_clip3( (((*cabac_context_init)[j][0] * i_qp) >> 4) + (*cabac_context_init)[j][1], 1, 126 );
+}
+#else
 uint8_t h264_cabac_contexts[4][QP_MAX_SPEC+1][1024];
 
 void h264_cabac_init(void)
@@ -1350,6 +1369,8 @@ void h264_cabac_context_init(h264_cabac_t *cb, int i_slice_type, int i_qp, int i
 {
     memcpy( cb->state, h264_cabac_contexts[i_slice_type == SLICE_TYPE_I ? 0 : i_model + 1][i_qp], 460);
 }
+
+#endif
 
 #if 0
 void h264_cabac_encode_init_core( h264_cabac_t *cb )

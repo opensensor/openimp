@@ -14,6 +14,15 @@ IVS_DIGEST_T31 := $(BUILD)/t23-ivs-digest-t31abi
 IVS_DIGEST_T23 := $(BUILD)/t23-ivs-digest-t23abi
 IVS_FRAMEWORK := $(BUILD)/t23-ivs-framework-test
 JPEG_QL := $(BUILD)/t23-jpeg-ql-test
+HELIX_DESCRIPTOR := $(BUILD)/t23-helix-descriptor-test
+HELIX_STREAM := $(BUILD)/t23-helix-stream-test
+HELIX_NATIVE_SOURCES := $(PROJECT_DIR)/src/t30/t30_helix_encoder.c \
+	$(PROJECT_DIR)/src/t21/t21_h264_descriptor.c \
+	$(PROJECT_DIR)/src/t30/h264enc/cabac.c \
+	$(PROJECT_DIR)/src/t30/h264enc/common.c \
+	$(PROJECT_DIR)/src/t30/h264enc/set.c \
+	$(PROJECT_DIR)/src/t30/h264enc/slice.c \
+	$(PROJECT_DIR)/src/t40/t31_rate_control.c
 # The IMP headers pin the 32-bit MIPS ABI with _Static_assert; the Helix
 # bridge host build (x86_64, both ends of the IPC built alike) only checks
 # the bridge's input path, so those layout checks are compiled out there.
@@ -26,7 +35,18 @@ HELIX_INCLUDES := -DPLATFORM_T23 '-D_Static_assert(c,m)=' -Wno-unused-result \
 # build without PIE so the test's data lies below 4 GiB.
 check: $(ISP_TUNING_TEST_BIN) $(ACODEC_TEST_BIN) $(ZERO_COPY_TEST_BIN) \
 	$(FAKE_HELIXD_BIN) $(IVS_DIGEST_T31) $(IVS_DIGEST_T23) \
-	$(IVS_FRAMEWORK) $(JPEG_QL)
+	$(IVS_FRAMEWORK) $(JPEG_QL) $(HELIX_DESCRIPTOR) $(HELIX_STREAM)
+	$(HELIX_DESCRIPTOR)
+	$(HELIX_STREAM) encode $(BUILD)/t23-helix.h264 $(BUILD)/t23-helix.ref
+	@if command -v ffmpeg >/dev/null 2>&1; then \
+		ffmpeg -v error -err_detect explode -y \
+			-i $(BUILD)/t23-helix.h264 -f rawvideo \
+			-pix_fmt nv12 $(BUILD)/t23-helix.nv12 && \
+		$(HELIX_STREAM) verify $(BUILD)/t23-helix.nv12 \
+			$(BUILD)/t23-helix.ref; \
+	else \
+		echo "ffmpeg not found: T23 Helix stream not decoded"; \
+	fi
 	$(ISP_TUNING_TEST_BIN)
 	$(ACODEC_TEST_BIN)
 	$(ZERO_COPY_TEST_BIN) zero-copy "$(abspath $(FAKE_HELIXD_BIN))"
@@ -102,7 +122,28 @@ $(JPEG_QL): jpeg_ql_test.c $(PROJECT_DIR)/src/hw_encoder.c \
 		-I$(PROJECT_DIR)/include -I$(PROJECT_DIR)/src jpeg_ql_test.c \
 		$(PROJECT_DIR)/src/hw_encoder.c -no-pie -o "$@"
 
+# Native Helix H.264 (T21-family command list with the T23 deltas): the
+# command list against the OEM T23 register order, and the whole encoder
+# against a fake /dev/soc_vpu whose CABAC output a stock decoder checks.
+$(HELIX_DESCRIPTOR): helix_descriptor_test.c \
+	$(PROJECT_DIR)/src/t21/t21_h264_descriptor.c \
+	$(PROJECT_DIR)/src/t21/t21_h264_descriptor.h
+	mkdir -p "$(dir $@)"
+	$(CC) $(CFLAGS) -DPLATFORM_T23 -I$(PROJECT_DIR)/src \
+		helix_descriptor_test.c \
+		$(PROJECT_DIR)/src/t21/t21_h264_descriptor.c -o "$@"
+
+$(HELIX_STREAM): helix_stream_test.c $(HELIX_NATIVE_SOURCES) \
+	$(PROJECT_DIR)/src/t30/t30_helix_encoder.h
+	mkdir -p "$(dir $@)"
+	$(CC) $(CFLAGS) $(HELIX_INCLUDES) -U_FORTIFY_SOURCE \
+		-D_FORTIFY_SOURCE=0 -Wno-missing-field-initializers \
+		helix_stream_test.c $(HELIX_NATIVE_SOURCES) -no-pie \
+		-Wl,--wrap=open,--wrap=close,--wrap=ioctl -o "$@"
+
 clean:
+	rm -f $(HELIX_DESCRIPTOR) $(HELIX_STREAM) $(BUILD)/t23-helix.h264 \
+		$(BUILD)/t23-helix.ref $(BUILD)/t23-helix.nv12
 	rm -f $(ISP_TUNING_TEST_BIN) $(ACODEC_TEST_BIN) $(DEVICE_TEST_BIN) \
 		$(ZERO_COPY_TEST_BIN) $(FAKE_HELIXD_BIN) $(IVS_DIGEST_T31) \
 		$(IVS_DIGEST_T23) $(IVS_FRAMEWORK) $(JPEG_QL) \

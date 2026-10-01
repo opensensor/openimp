@@ -5,6 +5,12 @@
  * GPL-2.0 Helix sources.  This wrapper deliberately uses the legacy T30
  * /dev/soc_vpu ABI directly; no V4L2 codec node or proprietary libimp is
  * involved.
+ *
+ * T21 and T23 share one Helix generation ("T21 family": the T21 command
+ * list, fixed quantisation matrices and High-profile PPS).  T23 differs in
+ * its Helix bus address (handled by the command-list builder), a longer
+ * soc_vpu channel_node, the bitstream-full interrupt its kernel enables,
+ * and a few safety checks that keep a bad frame from reaching the VPU.
  */
 
 #include "t30_helix_encoder.h"
@@ -21,7 +27,18 @@
 #include "dma_alloc.h"
 #include "imp_log_int.h"
 #include "t30/h264enc/common.h"
-#if defined(PLATFORM_T21) && !defined(PLATFORM_T20)
+#if (defined(PLATFORM_T21) && !defined(PLATFORM_T20)) || \
+    defined(PLATFORM_T23)
+/* T21-family command list, PPS and SPS (T21, T23). */
+#define HELIX_T21_SYNTAX 1
+#endif
+#if defined(PLATFORM_T21) || defined(PLATFORM_T23)
+/* 16 KiB command list, fixed bitstream window, reconstruction invalidate
+ * (T20, T21, T23). */
+#define HELIX_SMALL_WINDOWS 1
+#endif
+
+#if defined(HELIX_T21_SYNTAX)
 #include "t21/t21_h264_descriptor.h"
 typedef T21H264SliceConfig PlatformH264SliceConfig;
 #else
@@ -30,9 +47,16 @@ typedef T30H264SliceConfig PlatformH264SliceConfig;
 #endif
 #include "t40/t31_rate_control.h"
 
+#if defined(PLATFORM_T23)
+/* _IOWR('c', n, struct channel_node) with the 88-byte T23 node */
+#define T30_CHANNEL_REQUEST 0xc0586300u
+#define T30_CHANNEL_RELEASE 0xc0586301u
+#define T30_CHANNEL_RUN     0xc0586302u
+#else
 #define T30_CHANNEL_REQUEST 0xc0386300u
 #define T30_CHANNEL_RELEASE 0xc0386301u
 #define T30_CHANNEL_RUN     0xc0386302u
+#endif
 
 #if defined(PLATFORM_T20)
 /* Stock T20 libimp passes RANDOM_ID (-1) and lets soc_vpu select/open the
@@ -45,10 +69,25 @@ typedef T30H264SliceConfig PlatformH264SliceConfig;
 #define T30_H264_ENCODE      0u
 #define T30_CHANNEL_OPEN     0u
 #define T30_CHANNEL_CLOSE    2u
+#if defined(PLATFORM_T23)
+/* soc_vpu uses mdelay for the channel wait, the VPU wait and the encode
+ * completion wait; on a timeout it resets the Helix core.  A 1080p picture
+ * takes tens of milliseconds, so fail (and reset) after 2 s rather than
+ * the OEM's 20 s.  OPENIMP_T23_HELIX_TIMEOUT_MS overrides it. */
+#define T30_CHANNEL_DELAY_MS 2000u
+#else
 #define T30_CHANNEL_DELAY_MS 20000u
-#if defined(PLATFORM_T21)
+#endif
+#if defined(HELIX_SMALL_WINDOWS)
 #define T30_DESCRIPTOR_WINDOW (1u << 14)
+#if defined(PLATFORM_T23)
+/* The command list declares a 1 MiB EMC bitstream window (0x30040 = 1024
+ * KiB) starting at the 128-byte aligned slice data; keep a page of slack
+ * past it so even a full window stays inside this allocation. */
+#define T30_BITSTREAM_WINDOW  ((1u << 20) + 4096u)
+#else
 #define T30_BITSTREAM_WINDOW  (1u << 20)
+#endif
 #else
 #define T30_DESCRIPTOR_WINDOW (1u << 20)
 #endif
@@ -66,7 +105,7 @@ typedef T30H264SliceConfig PlatformH264SliceConfig;
 #define T30_HEADER_CAPACITY   4096u
 #define T30_NV12_MODE         8u
 
-#if defined(PLATFORM_T21) && !defined(PLATFORM_T20)
+#if defined(HELIX_T21_SYNTAX)
 /* T21 Helix programs fixed 4x4/8x8 quantization matrices in its VDMA list.
  * Advertise those same matrices in the PPS so a decoder interprets the
  * transform flags and inverse quantization exactly as the hardware does. */
@@ -95,10 +134,39 @@ typedef struct {
     uint32_t cmpx;
     uint32_t n_flag;
     uint32_t ncu_addr;
+#if defined(PLATFORM_T23)
+    /* CONFIG_SOC_T23 extension.  frame_type 3 selects the ISP-VPU direct
+     * connection; OpenIMP always encodes complete frames from memory and
+     * leaves these zero. */
+    uint32_t frame_type;
+    uint32_t overflow_cnt;
+    uint32_t ivdc_mem_line;
+    uint32_t data_threshold;
+    uint32_t max_bs_act;
+    uint32_t reserved;
+    uint64_t time;
+#endif
 } T30ChannelNode;
 
+#if defined(PLATFORM_T23)
+_Static_assert(sizeof(T30ChannelNode) == 88,
+               "T23 soc_vpu channel ABI mismatch");
+_Static_assert(__builtin_offsetof(T30ChannelNode, time) == 80,
+               "T23 soc_vpu channel time offset");
+
+/* Helix SCH_STAT bits (soc_vpu helix.h) */
+#define T23_SCH_STAT_ENDFLAG (1u << 0)
+#define T23_SCH_STAT_ACFGERR (1u << 2)
+#define T23_SCH_STAT_BSERR   (1u << 7)
+#define T23_SCH_STAT_ORESERR (1u << 10)
+#define T23_SCH_STAT_BSFULL  (1u << 20)
+#define T23_SCH_STAT_ERRORS  (T23_SCH_STAT_ACFGERR | T23_SCH_STAT_BSERR | \
+                              T23_SCH_STAT_ORESERR | T23_SCH_STAT_BSFULL)
+#define T23_NV12_FOURCC      0x3231564eu
+#else
 _Static_assert(sizeof(T30ChannelNode) == 56,
                "T30 soc_vpu channel ABI mismatch");
+#endif
 
 typedef struct {
     IMPDMABufferInfo dma;
@@ -129,6 +197,10 @@ struct T30HelixEncoder {
     int force_idr;
     OpenIMPT31RateController rate_control;
     int rate_control_enabled;
+#if defined(PLATFORM_T23)
+    uint32_t failures;          /* consecutive failed pictures */
+    uint32_t input_size;        /* NV12 bytes the VPU reads per frame */
+#endif
 };
 
 static void t30_dma_release(IMPDMABufferInfo *dma)
@@ -174,7 +246,7 @@ static void t30_init_parameter_sets(T30HelixEncoder *encoder)
                                                 encoder->params.height);
     sps->i_log2_max_frame_num = 10;
     sps->i_poc_type = 2;
-#if defined(PLATFORM_T21) && !defined(PLATFORM_T20)
+#if defined(HELIX_T21_SYNTAX)
     sps->i_num_ref_frames = 2;
     sps->b_gaps_in_frame_num_value_allowed = 1;
     sps->b_vui = 1;
@@ -209,7 +281,7 @@ static void t30_init_parameter_sets(T30HelixEncoder *encoder)
     pps->i_pic_init_qp = 26;
     pps->i_pic_init_qs = 26;
     pps->b_deblocking_filter_control = 1;
-#if defined(PLATFORM_T21) && !defined(PLATFORM_T20)
+#if defined(HELIX_T21_SYNTAX)
     pps->b_transform_8x8_mode = 1;
 #endif
 }
@@ -259,7 +331,7 @@ static int t30_generate_headers(T30HelixEncoder *encoder)
         return -1;
     encoder->headers_size = (uint32_t)length;
 
-#if defined(PLATFORM_T21) && !defined(PLATFORM_T20)
+#if defined(HELIX_T21_SYNTAX)
     if (sizeof(t21_high_profile_pps) >
         sizeof(encoder->headers) - encoder->headers_size)
         return -1;
@@ -311,12 +383,21 @@ static void t30_fill_slice(T30HelixEncoder *encoder,
         slice->reference_y = encoder->reference[encoder->reference_index].y;
         slice->reference_c = encoder->reference[encoder->reference_index].c;
     }
+#if defined(PLATFORM_T23)
+    else {
+        /* An IDR does not predict, but the T21-family list still programs
+         * reference addresses into the VDMA/recon blocks.  Point them at
+         * the idle reconstruction buffer instead of physical address 0. */
+        slice->reference_y = encoder->reference[output_index ^ 1u].y;
+        slice->reference_c = encoder->reference[output_index ^ 1u].c;
+    }
+#endif
     slice->output_y = encoder->reference[output_index].y;
     slice->output_c = encoder->reference[output_index].c;
     slice->bitstream = encoder->temporary.phys_addr + T30_SLICE_OFFSET;
     slice->descriptor = (uint32_t *)(uintptr_t)encoder->descriptor.virt_addr;
     slice->descriptor_words = encoder->descriptor.size / sizeof(uint32_t);
-#if defined(PLATFORM_T21) && !defined(PLATFORM_T20)
+#if defined(HELIX_T21_SYNTAX)
     slice->scratch_base = encoder->emc.phys_addr;
 #else
     /* SDK 1.0.5 selects the alternate DCS threshold for its substream. */
@@ -357,11 +438,24 @@ int OpenIMP_T30_HelixCreate(T30HelixEncoder **encoder_out,
     if (!encoder->params.max_qp || encoder->params.max_qp > 51u)
         encoder->params.max_qp = 45;
 
+#if defined(PLATFORM_T23)
+    encoder->input_size = (uint32_t)(aligned_luma_size +
+                                     aligned_luma_size / 2u);
+#endif
     encoder->fd = open("/dev/soc_vpu", O_RDWR | O_CLOEXEC);
     if (encoder->fd < 0)
         goto fail;
     memset(&encoder->channel, 0, sizeof(encoder->channel));
     encoder->channel.mdelay = T30_CHANNEL_DELAY_MS;
+#if defined(PLATFORM_T23)
+    {
+        const char *timeout = getenv("OPENIMP_T23_HELIX_TIMEOUT_MS");
+        unsigned long value = timeout ? strtoul(timeout, NULL, 0) : 0ul;
+
+        if (value >= 100ul && value <= 20000ul)
+            encoder->channel.mdelay = (uint32_t)value;
+    }
+#endif
     encoder->channel.thread_id = -1;
     if (ioctl(encoder->fd, T30_CHANNEL_REQUEST, &encoder->channel) != 0)
         goto fail;
@@ -369,7 +463,7 @@ int OpenIMP_T30_HelixCreate(T30HelixEncoder **encoder_out,
                          "t30-helix-desc") != 0 ||
         t30_dma_allocate(&encoder->emc, T30_EMC_SIZE,
                          "t30-helix-emc") != 0 ||
-#if defined(PLATFORM_T21)
+#if defined(HELIX_SMALL_WINDOWS)
         t30_dma_allocate(&encoder->temporary, T30_BITSTREAM_WINDOW,
 #else
         t30_dma_allocate(&encoder->temporary, (uint32_t)frame_size * 2u,
@@ -403,10 +497,28 @@ int OpenIMP_T30_HelixCreate(T30HelixEncoder **encoder_out,
     LOG_CODEC("T30 Helix: native encoder ready channel=%u %ux%u desc=0x%08x",
               encoder->channel.channel_id, params->width, params->height,
               encoder->descriptor.phys_addr);
+#if defined(PLATFORM_T23)
+    IMP_LOG_INFO("Encoder", "T23 Helix: native encoder ready channel=%u "
+                 "%ux%u rc=%u bitrate=%u fps=%u/%u gop=%u qp=%u [%u,%u] "
+                 "desc=0x%08x emc=0x%08x bs=0x%08x ref=0x%08x/0x%08x "
+                 "timeout=%ums", encoder->channel.channel_id,
+                 params->width, params->height, encoder->params.rc_mode,
+                 encoder->params.bitrate, encoder->params.fps_num,
+                 encoder->params.fps_den, encoder->params.gop_length,
+                 encoder->params.qp, encoder->params.min_qp,
+                 encoder->params.max_qp, encoder->descriptor.phys_addr,
+                 encoder->emc.phys_addr, encoder->temporary.phys_addr,
+                 encoder->reference[0].y, encoder->reference[1].y,
+                 encoder->channel.mdelay);
+#endif
     return 0;
 
 fail:
     LOG_CODEC("T30 Helix: create failed: %s", strerror(errno));
+#if defined(PLATFORM_T23)
+    IMP_LOG_ERR("Encoder", "T23 Helix: native encoder create failed for "
+                "%ux%u: %s", params->width, params->height, strerror(errno));
+#endif
     OpenIMP_T30_HelixDestroy(encoder);
     return -1;
 }
@@ -429,6 +541,30 @@ int OpenIMP_T30_HelixEncode(T30HelixEncoder *encoder,
 
     if (!encoder || !frame || !stream_out || !frame->phyAddr)
         return -1;
+#if defined(PLATFORM_T23)
+    /* The VPU reads input by physical address.  Only hand it a frame whose
+     * address is the reserved-memory translation of its mapping and that
+     * holds a complete macroblock-aligned NV12 picture; anything else is
+     * dropped here instead of becoming a DMA from arbitrary memory. */
+    if (!frame->virAddr || frame->size < encoder->input_size ||
+        DMA_VirtToPhys((const void *)(uintptr_t)frame->virAddr) !=
+            frame->phyAddr) {
+        IMP_LOG_ERR("Encoder", "T23 Helix: rejecting frame phys=0x%08x virt=0x%08x "
+                  "size=%u (need %u in reserved memory)", frame->phyAddr,
+                  frame->virAddr, frame->size, encoder->input_size);
+        return -1;
+    }
+    if (frame->pixfmt && frame->pixfmt != T23_NV12_FOURCC &&
+        encoder->frame_number == 0u)
+        IMP_LOG_WARN("Encoder", "T23 Helix: frame format 0x%08x is not NV12; encoding "
+                  "it as NV12", frame->pixfmt);
+    /* Write back what the CPU drew into the frame (OSD) before DMA. */
+    if (DMA_RmemFlushCache((void *)(uintptr_t)frame->virAddr,
+                           encoder->input_size, 1) != 0) {
+        IMP_LOG_ERR("Encoder", "T23 Helix: input flush failed");
+        return -1;
+    }
+#endif
     idr = encoder->force_idr || !encoder->have_reference ||
           encoder->gop_position >= encoder->params.gop_length;
     encoder->force_idr = 0;
@@ -459,7 +595,7 @@ int OpenIMP_T30_HelixEncode(T30HelixEncoder *encoder,
                             encoder->slice_header.i_cabac_init_idc);
 
     t30_fill_slice(encoder, frame, qp, idr, output_index);
-#if defined(PLATFORM_T21) && !defined(PLATFORM_T20)
+#if defined(HELIX_T21_SYNTAX)
     if (T21_H264_BuildDescriptor(&encoder->slice,
                                  &descriptor_pairs) != 0) {
 #else
@@ -481,7 +617,7 @@ int OpenIMP_T30_HelixEncode(T30HelixEncoder *encoder,
         DMA_RmemFlushCache(temporary + T30_SLICE_OFFSET,
                            encoder->temporary.size - T30_SLICE_OFFSET,
                            2) != 0
-#if defined(PLATFORM_T21)
+#if defined(HELIX_SMALL_WINDOWS)
         || DMA_RmemFlushCache(
                (void *)(uintptr_t)encoder->reference[output_index].dma.virt_addr,
                encoder->reference[output_index].dma.size, 2) != 0
@@ -494,6 +630,29 @@ int OpenIMP_T30_HelixEncode(T30HelixEncoder *encoder,
     encoder->channel.codecdir = T30_H264_ENCODE;
     encoder->channel.dma_addr = encoder->descriptor.phys_addr;
     encoder->channel.thread_id = -1;
+#if defined(PLATFORM_T23)
+    encoder->channel.status = 0;
+    encoder->channel.output_len = 0;
+    encoder->channel.frame_type = 0;
+    encoder->channel.time = 0;
+    if (ioctl(encoder->fd, T30_CHANNEL_RUN, &encoder->channel) != 0 ||
+        !(encoder->channel.status & T23_SCH_STAT_ENDFLAG) ||
+        (encoder->channel.status & T23_SCH_STAT_ERRORS) ||
+        !encoder->channel.output_len ||
+        encoder->channel.output_len > (1u << 20)) {
+        /* A timed-out, errored or bitstream-full picture leaves no usable
+         * reconstruction: restart the GOP.  soc_vpu has already reset the
+         * core on a timeout and resets it again before the next job. */
+        IMP_LOG_ERR("Encoder", "T23 Helix: run failed frame=%u errno=%d status=0x%08x "
+                  "len=%u", encoder->frame_number, errno,
+                  encoder->channel.status, encoder->channel.output_len);
+        encoder->force_idr = 1;
+        encoder->have_reference = 0;
+        encoder->failures++;
+        return -1;
+    }
+    encoder->failures = 0;
+#else
     if (ioctl(encoder->fd, T30_CHANNEL_RUN, &encoder->channel) != 0 ||
         !encoder->channel.output_len ||
         encoder->channel.output_len > encoder->temporary.size - T30_SLICE_OFFSET) {
@@ -502,6 +661,7 @@ int OpenIMP_T30_HelixEncode(T30HelixEncoder *encoder,
                   encoder->channel.output_len);
         return -1;
     }
+#endif
     DMA_RmemFlushCache(temporary + T30_SLICE_OFFSET,
                        encoder->channel.output_len, 2);
     if (bits.i_left != 32)
@@ -510,7 +670,15 @@ int OpenIMP_T30_HelixEncode(T30HelixEncoder *encoder,
            encoder->channel.output_len);
     bits.p += encoder->channel.output_len;
 
+#if defined(PLATFORM_T23)
+    /* Emulation prevention adds at most one byte per two payload bytes;
+     * size the access unit for that instead of twice the window (RAM is
+     * scarce on T23). */
+    capacity = T30_HEADER_CAPACITY + 16u +
+               ((uint32_t)bs_pos(&bits) / 8u) * 3u / 2u;
+#else
     capacity = encoder->temporary.size * 2u + T30_HEADER_CAPACITY;
+#endif
     output = malloc(capacity);
     stream = calloc(1, sizeof(*stream));
     if (!output || !stream) {
@@ -544,6 +712,15 @@ int OpenIMP_T30_HelixEncode(T30HelixEncoder *encoder,
     if (encoder->rate_control_enabled)
         (void)openimp_t31_rate_controller_complete(
             &encoder->rate_control, stream->length * 8u, qp, idr);
+#if defined(PLATFORM_T23)
+    if (encoder->frame_number <= 3u)
+        IMP_LOG_INFO("Encoder", "T23 Helix: %ux%u frame=%u %s bytes=%u "
+                     "qp=%u status=0x%08x pairs=%u", encoder->params.width,
+                     encoder->params.height, encoder->frame_number,
+                     idr ? "IDR" : "P", stream->length, qp,
+                     encoder->channel.status,
+                     (unsigned int)descriptor_pairs);
+#endif
     if (encoder->frame_number <= 4u ||
         (encoder->frame_number % 100u) == 0u)
         LOG_CODEC("T30 Helix: frame=%u %s bytes=%u hw=%u status=0x%08x desc=%u",
@@ -552,6 +729,107 @@ int OpenIMP_T30_HelixEncode(T30HelixEncoder *encoder,
                   encoder->channel.status, (unsigned int)descriptor_pairs);
     return 0;
 }
+
+#if defined(PLATFORM_T23)
+static int t23_rate_control_restart(T30HelixEncoder *encoder)
+{
+    uint32_t qp = encoder->rate_control_enabled
+        ? openimp_t31_rate_controller_qp(&encoder->rate_control)
+        : encoder->params.qp;
+
+    encoder->rate_control_enabled = 0;
+    if (qp < encoder->params.min_qp)
+        qp = encoder->params.min_qp;
+    if (qp > encoder->params.max_qp)
+        qp = encoder->params.max_qp;
+    if (encoder->params.rc_mode != HW_RC_MODE_FIXQP &&
+        encoder->params.bitrate && encoder->params.fps_num &&
+        encoder->params.fps_den &&
+        openimp_t31_rate_controller_init(
+            &encoder->rate_control, encoder->params.bitrate,
+            encoder->params.fps_num, encoder->params.fps_den,
+            encoder->params.gop_length, encoder->params.min_qp,
+            encoder->params.max_qp, qp) == 0)
+        encoder->rate_control_enabled = 1;
+    return 0;
+}
+
+int OpenIMP_T30_HelixReconfigure(T30HelixEncoder *encoder,
+                                 const HWEncoderParams *params)
+{
+    HWEncoderParams next;
+    int restart = 0;
+
+    if (!encoder || !params)
+        return -1;
+    next = encoder->params;
+    if (params->gop_length)
+        next.gop_length = params->gop_length;
+    if (params->fps_num && params->fps_den) {
+        next.fps_num = params->fps_num;
+        next.fps_den = params->fps_den;
+    }
+    if (params->rc_mode <= HW_RC_MODE_VBR)
+        next.rc_mode = params->rc_mode;
+    if (params->bitrate)
+        next.bitrate = params->bitrate;
+    if (params->qp && params->qp <= 51u)
+        next.qp = params->qp;
+    if (params->min_qp && params->min_qp <= 51u)
+        next.min_qp = params->min_qp;
+    if (params->max_qp && params->max_qp <= 51u)
+        next.max_qp = params->max_qp;
+    if (next.min_qp > next.max_qp)
+        next.min_qp = next.max_qp;
+
+    if (next.gop_length == encoder->params.gop_length &&
+        next.fps_num == encoder->params.fps_num &&
+        next.fps_den == encoder->params.fps_den &&
+        next.rc_mode == encoder->params.rc_mode &&
+        next.bitrate == encoder->params.bitrate &&
+        next.qp == encoder->params.qp &&
+        next.min_qp == encoder->params.min_qp &&
+        next.max_qp == encoder->params.max_qp)
+        return 0;
+
+    if (next.bitrate != encoder->params.bitrate &&
+        next.gop_length == encoder->params.gop_length &&
+        next.fps_num == encoder->params.fps_num &&
+        next.fps_den == encoder->params.fps_den &&
+        next.rc_mode == encoder->params.rc_mode &&
+        next.min_qp == encoder->params.min_qp &&
+        next.max_qp == encoder->params.max_qp &&
+        encoder->rate_control_enabled) {
+        /* bitrate only: keep the scene model */
+        if (openimp_t31_rate_controller_set_bitrate(&encoder->rate_control,
+                                                    next.bitrate) != 0)
+            return -1;
+    } else {
+        restart = 1;
+    }
+    IMP_LOG_INFO("Encoder", "T23 Helix: %ux%u reconfigured rc=%u bitrate=%u fps=%u/%u "
+              "gop=%u qp=%u [%u,%u]", encoder->params.width,
+              encoder->params.height, next.rc_mode, next.bitrate,
+              next.fps_num, next.fps_den, next.gop_length, next.qp,
+              next.min_qp, next.max_qp);
+    encoder->params.gop_length = next.gop_length;
+    encoder->params.fps_num = next.fps_num;
+    encoder->params.fps_den = next.fps_den;
+    encoder->params.rc_mode = next.rc_mode;
+    encoder->params.bitrate = next.bitrate;
+    encoder->params.qp = next.qp;
+    encoder->params.min_qp = next.min_qp;
+    encoder->params.max_qp = next.max_qp;
+    if (restart)
+        return t23_rate_control_restart(encoder);
+    return 0;
+}
+
+uint32_t OpenIMP_T30_HelixFailures(const T30HelixEncoder *encoder)
+{
+    return encoder ? encoder->failures : 0u;
+}
+#endif
 
 int OpenIMP_T30_HelixRequestIDR(T30HelixEncoder *encoder)
 {
