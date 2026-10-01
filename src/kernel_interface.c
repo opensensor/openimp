@@ -21,7 +21,9 @@
 #include "kernel_interface.h"
 #include "trace_control.h"
 #include "vbm_dq_step.h"
-#if defined(PLATFORM_T31)
+/* T31: frame-ready events of the encoder pull path; T23 shares that VBM
+ * block (IVS capture, idle drain) since claude/t23-stub-fixes. */
+#if defined(PLATFORM_T31) || defined(PLATFORM_T23)
 #include "openimp_ready_event.h"
 #endif
 
@@ -1500,7 +1502,7 @@ volatile int openimp_vbm_dq_step[MAX_VBM_POOLS];
 #define VBM_DQ_STEP(chn, step) do { } while (0)
 #endif
 
-#if defined(PLATFORM_T31)
+#if defined(PLATFORM_T31) || defined(PLATFORM_T23)
 extern void openimp_t31_ivs_capture(int fs_chn, const void *frame)
     __attribute__((weak));
 
@@ -1901,7 +1903,7 @@ int VBMKernelDequeue(int chn, int fd, void **frame_out) {
     memcpy(pool->frames[idx].data, &frame_timestamp,
            sizeof(frame_timestamp));
 #endif
-#if defined(PLATFORM_T31)
+#if defined(PLATFORM_T31) || defined(PLATFORM_T23)
     /* IVS groups bound to this channel copy the luma they need now, while
      * the buffer is still private to this thread (openimp_t31_ivs.c). */
     VBM_DQ_STEP(chn, VBM_DQ_STEP_IVS);
@@ -1912,7 +1914,7 @@ int VBMKernelDequeue(int chn, int fd, void **frame_out) {
      * if this flag is set, preventing double-QBUF. */
     if (pool->buf_in_userspace)
         pool->buf_in_userspace[idx] = 1;
-#if defined(PLATFORM_T31)
+#if defined(PLATFORM_T31) || defined(PLATFORM_T23)
     if (vbm_pull_idle(chn)) {
         VBM_DQ_STEP(chn, VBM_DQ_STEP_REQUEUE);
         VBMRecycleIdleFrames(chn);
@@ -2050,7 +2052,7 @@ int VBMGetFrame(int chn, void **frame) {
         *frame = NULL;
         return -1;
     }
-#if defined(PLATFORM_T31)
+#if defined(PLATFORM_T31) || defined(PLATFORM_T23)
     __atomic_store_n(&vbm_last_pull_ms[chn], vbm_now_ms(), __ATOMIC_RELAXED);
 #endif
 

@@ -838,6 +838,10 @@ extern int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data);
 extern int AL_Codec_Encode_GetStream(void *codec, void **stream, void **user_data);
 extern int AL_Codec_Encode_ReleaseStream(void *codec, void *stream, void *user_data);
 extern int AL_Codec_Encode_RequestIDR(void *codec);
+#if defined(PLATFORM_T23)
+extern int AL_Codec_Encode_SetJpegQl(void *codec, int enable,
+                                     const uint8_t tables[128]);
+#endif
 extern int IMP_FrameSource_GetFrame(int channel, void **frame);
 extern int IMP_FrameSource_ReleaseFrame(int channel, void *frame);
 
@@ -1303,6 +1307,11 @@ int IMP_Encoder_CreateChn(int channel, IMPEncoderCHNAttr *attr)
     }
     ch->attr = *attr;
     ch->codec_type = (int)p2_attr_codec_type(attr);
+#if defined(PLATFORM_T23)
+    if (ch->jpeg_quality.user_ql_en)
+        (void)AL_Codec_Encode_SetJpegQl(ch->codec, 1,
+                                        ch->jpeg_quality.qmem_table);
+#endif
     ch->created = 1;
     ch->group = -1;
     ch->source_channel = -1;
@@ -1924,6 +1933,27 @@ int IMP_Encoder_RequestIDR(int channel)
         return -1;
     if (p2_channels[channel].codec_type == IMP_ENC_TYPE_JPEG)
         return 0;
+#if defined(PLATFORM_T23)
+    /* Forwarded by default: the codec latches the request and the encoder
+     * thread hands it to the Helix worker right before the next frame
+     * (IMP_Encoder_YuvRequestIDR, i_type = IDR on that picture, as the OEM
+     * channel path does). The freeze that once made this a no-op came from
+     * the request racing the frame exchange on the worker socket, which
+     * had no lock then; AL_Codec_Encode_RequestIDR no longer talks to the
+     * worker from the caller's thread at all. OPENIMP_T23_HELIX_IDR=0
+     * restores the old behaviour (next natural GOP IDR). */
+    {
+        static int forward = -1;
+
+        if (forward < 0) {
+            const char *value = getenv("OPENIMP_T23_HELIX_IDR");
+
+            forward = !(value && value[0] == '0' && value[1] == '\0');
+        }
+        if (forward)
+            return AL_Codec_Encode_RequestIDR(p2_channels[channel].codec);
+    }
+#endif
 #if defined(PLATFORM_T23) || defined(PLATFORM_T30)
     /* IMP_Encoder_YuvRequestIDR can leave the standalone Helix encoder in a
      * permanently asserted IRQ state when it is called after streaming has
@@ -1931,18 +1961,6 @@ int IMP_Encoder_RequestIDR(int channel)
      * next YuvEncode then wedges in the stock IRQ handler.  The configured
      * maxGop already emits regular SPS/PPS/IDR access units, so acknowledge
      * the hint and let the natural GOP provide the next safe join point. */
-#if defined(PLATFORM_T23)
-    /* The OEM channel path forces the next picture to IDR exactly like
-     * IMP_Encoder_YuvRequestIDR does (i_type = IDR on the next encode), so
-     * the wedge above may have had another cause: OPENIMP_T23_HELIX_IDR=1
-     * forwards the request to the Helix worker for testing. */
-    {
-        const char *forward = getenv("OPENIMP_T23_HELIX_IDR");
-
-        if (forward && forward[0] == '1' && forward[1] == '\0')
-            return AL_Codec_Encode_RequestIDR(p2_channels[channel].codec);
-    }
-#endif
     if (__sync_add_and_fetch(&t23_idr_request_count, 1u) <= 16u)
         p2_trace("openimp/P2: T23 IDR request deferred to natural GOP "
                  "ch=%d request=%u\n", channel, t23_idr_request_count);
@@ -2035,8 +2053,25 @@ int IMP_Encoder_SetJpegeQl(int channel, IMPEncoderJpegeQl *quality)
 {
     if (!p2_valid_channel(channel) || !quality)
         return -1;
+#if defined(PLATFORM_T23)
+    {
+        P2EncoderChannel *ch = &p2_channels[channel];
+        int result = 0;
+
+        pthread_mutex_lock(&ch->lock);
+        ch->jpeg_quality = *quality;
+        /* a channel created later picks it up in IMP_Encoder_CreateChn */
+        if (ch->codec)
+            result = AL_Codec_Encode_SetJpegQl(ch->codec,
+                                               quality->user_ql_en,
+                                               quality->qmem_table);
+        pthread_mutex_unlock(&ch->lock);
+        return result;
+    }
+#else
     p2_channels[channel].jpeg_quality = *quality;
     return 0;
+#endif
 }
 
 int IMP_Encoder_GetJpegeQl(int channel, IMPEncoderJpegeQl *quality)

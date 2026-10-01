@@ -149,6 +149,14 @@ int HW_Encoder_Encode_Software(HWFrameBuffer *frame, HWStreamBuffer *stream, uin
 int HW_Encoder_Encode_NV12_JPEG(HWFrameBuffer *frame,
                                 HWStreamBuffer *stream,
                                 uint32_t quality);
+#if defined(PLATFORM_T23)
+/* Same with the quantizers of IMP_Encoder_SetJpegeQl: tables holds the luma
+ * and then the chroma table, 64 bytes each in DQT (zigzag) order. */
+int HW_Encoder_Encode_NV12_JPEG_Tables(HWFrameBuffer *frame,
+                                       HWStreamBuffer *stream,
+                                       uint32_t quality,
+                                       const uint8_t tables[128]);
+#endif
 
 /* Quant and Huffman table buffer ("EP1") for the T31 AVPU JPEG core, 4:2:0
  * layout. ep1 must hold at least HW_JPEG_EP1_SIZE bytes. */

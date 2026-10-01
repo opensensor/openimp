@@ -6531,11 +6531,80 @@ struct AL_CodecEncode {
     ALAvpuContext avpu;            /* Vendor-like AL over /dev/avpu (scaffolding) */
 #if defined(PLATFORM_T23)
     T23HelixBridge t23_helix;      /* T23 Helix /dev/soc_vpu bootstrap */
+    /* IMP_Encoder_SetJpegeQl for the software JPEG path, under
+     * t23_jpeg_ql_lock */
+    int t23_jpeg_user_tables;
+    uint8_t t23_jpeg_tables[128];
 #endif
 #if defined(PLATFORM_T30)
     T30HelixEncoder *t30_helix;    /* Native T30 /dev/soc_vpu encoder */
 #endif
 };
+
+#if defined(PLATFORM_T23)
+static pthread_mutex_t t23_jpeg_ql_lock = PTHREAD_MUTEX_INITIALIZER;
+
+/* IMP_Encoder_SetJpegeQl: enable != 0 replaces the quality-75 tables of
+ * the software JPEG encoder with the caller's (luma then chroma, 64 bytes
+ * each, DQT order), as the T23 libimp's ijpege_reconfig_ql_set does for
+ * its JPEG core; enable == 0 goes back to the built-in tables. */
+int AL_Codec_Encode_SetJpegQl(void *codec, int enable,
+                              const uint8_t tables[128])
+{
+    AL_CodecEncode *enc = (AL_CodecEncode *)codec;
+
+    if (!enc || (enable && !tables))
+        return -1;
+    pthread_mutex_lock(&t23_jpeg_ql_lock);
+    if (enable)
+        memcpy(enc->t23_jpeg_tables, tables, sizeof(enc->t23_jpeg_tables));
+    enc->t23_jpeg_user_tables = enable != 0;
+    pthread_mutex_unlock(&t23_jpeg_ql_lock);
+    return 0;
+}
+
+static int t23_encode_jpeg(AL_CodecEncode *enc, HWFrameBuffer *frame,
+                           HWStreamBuffer *stream)
+{
+    uint8_t tables[128];
+    int user;
+
+    pthread_mutex_lock(&t23_jpeg_ql_lock);
+    user = enc->t23_jpeg_user_tables;
+    if (user)
+        memcpy(tables, enc->t23_jpeg_tables, sizeof(tables));
+    pthread_mutex_unlock(&t23_jpeg_ql_lock);
+    /* 75 matches the built-in table set the T23 libimp starts with */
+    return user ? HW_Encoder_Encode_NV12_JPEG_Tables(frame, stream, 75u, tables)
+                : HW_Encoder_Encode_NV12_JPEG(frame, stream, 75u);
+}
+
+/* Set when a requested IDR is followed by a failed or recovered Helix
+ * encode: from then on IDR requests wait for the natural GOP, as before
+ * RequestIDR was forwarded, instead of risking further worker restarts. */
+static int t23_helix_idr_disabled;
+
+static void t23_helix_idr_check(const AL_CodecEncode *enc, int encoded,
+                                int recovered)
+{
+    static unsigned int forwarded;
+    unsigned int count = __sync_add_and_fetch(&forwarded, 1u);
+
+    if (encoded == 0 && !recovered) {
+        if (count <= 3u || count % 100u == 0u)
+            IMP_LOG_INFO("Encoder", "T23 channel %d: IDR request #%u "
+                         "forwarded to the Helix worker",
+                         enc->channel_id - 1, count);
+        return;
+    }
+    if (!__sync_lock_test_and_set(&t23_helix_idr_disabled, 1))
+        IMP_LOG_ERR("Encoder", "T23 channel %d: the Helix worker %s right "
+                    "after a requested IDR (#%u); IDR requests now wait for "
+                    "the natural GOP (OPENIMP_T23_HELIX_IDR=0 makes that the "
+                    "default)", enc->channel_id - 1,
+                    encoded == 0 ? "had to be restarted" : "failed", count);
+}
+#endif
 
 #if !defined(PLATFORM_T40) && !defined(PLATFORM_T31)
 static int avpu_can_use_high_profile_template(const AL_CodecEncode *enc)
@@ -8889,11 +8958,27 @@ static int al_codec_encode_process_impl(void *codec, void *frame,
             }
         }
         if (enc->t23_helix.worker_pid > 0) {
-            if (__sync_lock_test_and_set(&enc->force_next_idr, 0))
-                OpenIMP_T23_HelixRequestIDR(&enc->t23_helix);
-            if (OpenIMP_T23_HelixEncode(&enc->t23_helix,
-                                        (const IMPFrameInfo *)frame,
-                                        &hw_stream) != 0)
+            uint32_t recoveries = enc->t23_helix.recoveries;
+            int forced = 0;
+            int encoded;
+
+            /* A latched IMP_Encoder_RequestIDR reaches the worker here, on
+             * the encoder thread, in sequence with the frames. */
+            if (__sync_lock_test_and_set(&enc->force_next_idr, 0) &&
+                !__atomic_load_n(&t23_helix_idr_disabled, __ATOMIC_RELAXED)) {
+                if (OpenIMP_T23_HelixRequestIDR(&enc->t23_helix) == 0)
+                    forced = 1;
+                else
+                    LOG_CODEC("Process: T23 channel=%d IDR request refused "
+                              "by the Helix worker", enc->channel_id - 1);
+            }
+            encoded = OpenIMP_T23_HelixEncode(&enc->t23_helix,
+                                              (const IMPFrameInfo *)frame,
+                                              &hw_stream);
+            if (forced)
+                t23_helix_idr_check(enc, encoded,
+                                    enc->t23_helix.recoveries != recoveries);
+            if (encoded != 0)
                 return -1;
             goto queue_encoded_stream;
         }
@@ -10485,6 +10570,10 @@ static int al_codec_encode_process_impl(void *codec, void *frame,
             ((codec_type == IMP_ENC_TYPE_JPEG &&
               t31_hwjpeg_encode_locked(&hw_frame, hw_stream, 75u) == 0)
                 ? 0 : HW_Encoder_Encode_Software(&hw_frame, hw_stream, codec_type)) < 0
+#elif defined(PLATFORM_T23)
+            (codec_type == IMP_ENC_TYPE_JPEG
+                ? t23_encode_jpeg(enc, &hw_frame, hw_stream)
+                : HW_Encoder_Encode_Software(&hw_frame, hw_stream, codec_type)) < 0
 #else
             HW_Encoder_Encode_Software(&hw_frame, hw_stream, codec_type) < 0
 #endif
@@ -11300,8 +11389,11 @@ int AL_Codec_Encode_RequestIDR(void *codec) {
 
     AL_CodecEncode *enc = (AL_CodecEncode*)codec;
 #if defined(PLATFORM_T23)
-    if (enc->t23_helix.worker_pid > 0)
-        return OpenIMP_T23_HelixRequestIDR(&enc->t23_helix);
+    /* Only latch: the encoder thread forwards it before the next frame
+     * (AL_Codec_Encode_Process), so the caller never waits for the worker
+     * socket or for another channel's encode. */
+    if (__atomic_load_n(&t23_helix_idr_disabled, __ATOMIC_RELAXED))
+        return 0;                   /* natural GOP, see t23_helix_idr_check */
 #endif
 #if defined(PLATFORM_T30)
     if (enc->t30_helix)

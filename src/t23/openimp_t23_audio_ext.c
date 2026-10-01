@@ -29,6 +29,7 @@
 #define T23_PROFILE_DEFAULT "/etc/" T23_PROFILE_NAME
 
 extern const char *openimp_t23_audio_profile(void);
+extern void openimp_audio_set_ao_agc_mode(int mode);
 
 /* ---- webrtc_profile.ini ---------------------------------------------- */
 
@@ -211,8 +212,8 @@ int IMP_AO_EnableAlgo(int device, int channel)
         IMPAudioAgcConfig agc;
 
         memset(&agc, 0, sizeof(agc));
-        /* the OEM keeps a separate AO AGC mode; the shared AGC has one */
-        IMP_AI_SetAgcMode(profile_agc_mode(path, "AGC_AO"));
+        /* the OEM keeps a separate AO AGC mode (ao_agc_mode) */
+        openimp_audio_set_ao_agc_mode(profile_agc_mode(path, "AGC_AO"));
         agc.TargetLevelDbfs =
             profile_int(path, "AGC_AO", "set_target_level_dbfs", 3);
         agc.CompressionGaindB =

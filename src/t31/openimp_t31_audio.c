@@ -1064,13 +1064,34 @@ int IMP_AI_SetVolMute(int device, int channel, int mute)
     return 0;
 }
 
+/* HPF state as libimp's _ai/_ao_InitializeFilter sets it up. Ingenic's
+ * libaudioProcess runs WebRTC's HighPassFilter on {int16 y[4]; int16 x[2];
+ * const int16 *ba;} and dereferences ba, which libimp points at
+ * kFilterCoefficients (kFilterCoefficients8kHz at 8 kHz) or at
+ * coefficients designed for a cut-off; libaudioProcess-neo overlays its
+ * own float biquad on the same 32 bytes, designs it on the first call
+ * (while b0 is still zero) and overwrites ba. A zero ba crashes the former. */
+static const int16_t t31_hpf_coefficients[5] = {
+    3665, -7330, 3665, 7285, -3280
+};
+static const int16_t t31_hpf_coefficients_8k[5] = {
+    3798, -7596, 3798, 7807, -3733
+};
+
+static void t31_hpf_setup(int16_t state[16], const int16_t *coefficients)
+{
+    memset(state, 0, 16 * sizeof(int16_t));
+    t31_audio.hpf_create(state + 4, state, 0, 0, 2, 4);
+    memcpy((unsigned char *)state + 12, &coefficients, sizeof(coefficients));
+}
+
 int IMP_AI_EnableHpf(IMPAudioIOAttr *attribute)
 {
     if (!t31_valid_attr(attribute) || t31_effects_load() != 0)
         return -1;
-    memset(t31_audio.hpf_state, 0, sizeof(t31_audio.hpf_state));
-    t31_audio.hpf_create(t31_audio.hpf_state, t31_audio.hpf_state + 8,
-                         0, 0, 8, 8);
+    t31_hpf_setup(t31_audio.hpf_state,
+                  attribute->samplerate == 8000 ? t31_hpf_coefficients_8k
+                                                : t31_hpf_coefficients);
     t31_audio.hpf_enabled = 1;
     return 0;
 }
@@ -1473,12 +1494,106 @@ int IMP_AO_DisableChn(int device, int channel)
     return 0;
 }
 
+/* AO effects, separate from the microphone ones as in libimp (ao.c has
+ * its own handle_ao_hpf, AoCoefficients, handle_ao_agc and ao_agc_mode):
+ * IMP_AO_SendFrame runs HPF, then AGC in 10 ms blocks, then the volume. */
+static struct {
+    int16_t hpf_state[16];
+    int16_t hpf_coefficients[5];
+    int hpf_cutoff;                 /* IMP_AO_SetHpfCoFrequency, 0 = default */
+    int hpf_enabled;
+    void *agc;
+    int agc_mode;                   /* bss in libimp: 0 unless EnableAlgo */
+    int agc_enabled;
+    int sample_rate;
+    int16_t *bounce;                /* T31: SendFrame works on a copy */
+    size_t bounce_capacity;
+} t31_ao_fx;
+
+static pthread_mutex_t t31_ao_fx_lock = PTHREAD_MUTEX_INITIALIZER;
+
+/* tan() for 0 <= x < pi/2 from the sine and cosine series, so libimp
+ * keeps not depending on libm. */
+static double t31_tan(double x)
+{
+    double sine = x, cosine = 1.0, term_s = x, term_c = 1.0;
+    int n;
+
+    for (n = 1; n < 24; n++) {
+        term_s *= -x * x / (double)((2 * n) * (2 * n + 1));
+        term_c *= -x * x / (double)((2 * n - 1) * (2 * n));
+        sine += term_s;
+        cosine += term_c;
+    }
+    return sine / cosine;
+}
+
+/* libimp Hpf_gen_filter_coefficients: 2nd-order Butterworth high pass,
+ * bilinear transform, 4096 = 1.0, same float/double steps. */
+static void t31_hpf_design(int16_t coefficients[5], int sample_rate,
+                           int cutoff)
+{
+    float k = (float)t31_tan((double)((float)cutoff / (float)sample_rate) *
+                             3.14159265358979311600);
+    double ks = (double)k * 1.41421356237309514547;
+    float k2 = k * k;
+    float denominator = (float)((double)k2 + ks + 1.0);
+    float pole = (float)((double)k2 - ks + 1.0);
+    float a1 = -((k + k) * k - 2.0f);
+    int16_t b0 = (int16_t)(int)(1.0f / denominator * 4096.0f);
+
+    coefficients[0] = b0;
+    coefficients[1] = (int16_t)(-2 * b0);
+    coefficients[2] = b0;
+    coefficients[3] = (int16_t)(int)(a1 / denominator * 4096.0f);
+    coefficients[4] = (int16_t)(int)(-pole / denominator * 4096.0f);
+}
+
+/* Called with t31_ao_fx_lock held. */
+static void t31_ao_process_effects(int16_t *samples, int count)
+{
+    int frame_samples = t31_ao_fx.sample_rate / 100;
+    int offset;
+
+    if (t31_ao_fx.hpf_enabled)
+        (void)t31_audio.hpf_process(t31_ao_fx.hpf_state, samples, count);
+    if (!t31_ao_fx.agc_enabled || !t31_ao_fx.agc || frame_samples <= 0 ||
+        frame_samples > 160)
+        return;
+    for (offset = 0; offset + frame_samples <= count; offset += frame_samples) {
+        const int16_t *inputs[1] = { samples + offset };
+        int16_t *outputs[1] = { samples + offset };
+        int32_t output_level = 0;
+        uint8_t saturated = 0;
+
+        (void)t31_audio.agc_process(t31_ao_fx.agc, inputs, 1,
+                                    (size_t)frame_samples, outputs, 127,
+                                    &output_level, 0, &saturated);
+    }
+}
+
+/* T23 extras (src/t23/openimp_t23_audio_ext.c): the [AGC_AO] set_mode of
+ * the WebRTC profile, applied by the next IMP_AO_EnableAgc. */
+void openimp_audio_set_ao_agc_mode(int mode);
+void openimp_audio_set_ao_agc_mode(int mode)
+{
+    pthread_mutex_lock(&t31_ao_fx_lock);
+    t31_ao_fx.agc_mode = mode;
+    pthread_mutex_unlock(&t31_ao_fx_lock);
+}
+
 #if defined(PLATFORM_T23)
 static int t23_ao_write_period(void)
 {
     T31AudioOutputStream stream;
     int result;
 
+    pthread_mutex_lock(&t31_ao_fx_lock);
+    if (t31_ao_fx.hpf_enabled || t31_ao_fx.agc_enabled)
+        t31_ao_process_effects((int16_t *)(void *)t31_audio.ao_period,
+                               (int)(t31_audio.ao_period_valid /
+                                     sizeof(int16_t)));
+    pthread_mutex_unlock(&t31_ao_fx_lock);
     t23_apply_volume((int16_t *)(void *)t31_audio.ao_period,
                      (int)(t31_audio.ao_period_valid / sizeof(int16_t)),
                      t31_audio.ao_volume, t31_audio.ao_muted);
@@ -1538,6 +1653,25 @@ int IMP_AO_SendFrame(int device, int channel, IMPAudioFrame *frame,
         return -1;
     data = (unsigned char *)(void *)frame->virAddr;
     remaining = frame->len;
+    pthread_mutex_lock(&t31_ao_fx_lock);
+    if (t31_ao_fx.hpf_enabled || t31_ao_fx.agc_enabled) {
+        /* the caller's buffer is not ours to filter in place */
+        if (t31_ao_fx.bounce_capacity < (size_t)remaining) {
+            int16_t *bounce = realloc(t31_ao_fx.bounce, (size_t)remaining);
+
+            if (!bounce) {
+                pthread_mutex_unlock(&t31_ao_fx_lock);
+                return -1;
+            }
+            t31_ao_fx.bounce = bounce;
+            t31_ao_fx.bounce_capacity = (size_t)remaining;
+        }
+        memcpy(t31_ao_fx.bounce, data, (size_t)remaining);
+        t31_ao_process_effects(t31_ao_fx.bounce,
+                               remaining / (int)sizeof(int16_t));
+        data = (unsigned char *)t31_ao_fx.bounce;
+    }
+    pthread_mutex_unlock(&t31_ao_fx_lock);
     while (remaining > 0) {
         int written;
 
@@ -1688,28 +1822,88 @@ int IMP_AO_Soft_UNMute(int device, int channel)
     return IMP_AO_SetVolMute(device, channel, 0);
 }
 
+/* The AO effects used to forward to the IMP_AI_* ones and so filtered the
+ * microphone (and an AO disable switched the microphone's off). */
 int IMP_AO_EnableHpf(IMPAudioIOAttr *attribute)
 {
-    return IMP_AI_EnableHpf(attribute);
+    int cutoff;
+
+    if (!t31_valid_attr(attribute) || t31_effects_load() != 0)
+        return -1;
+    pthread_mutex_lock(&t31_ao_fx_lock);
+    cutoff = t31_ao_fx.hpf_cutoff;
+    if (cutoff < 0 || cutoff * 2 >= (int)attribute->samplerate) {
+        pthread_mutex_unlock(&t31_ao_fx_lock);
+        return -1;                  /* "HPF cut-off frequency is illegal" */
+    }
+    if (cutoff)
+        t31_hpf_design(t31_ao_fx.hpf_coefficients, attribute->samplerate,
+                       cutoff);
+    else
+        memcpy(t31_ao_fx.hpf_coefficients,
+               attribute->samplerate == 8000 ? t31_hpf_coefficients_8k
+                                             : t31_hpf_coefficients,
+               sizeof(t31_ao_fx.hpf_coefficients));
+    t31_hpf_setup(t31_ao_fx.hpf_state, t31_ao_fx.hpf_coefficients);
+    t31_ao_fx.sample_rate = attribute->samplerate;
+    t31_ao_fx.hpf_enabled = 1;
+    pthread_mutex_unlock(&t31_ao_fx_lock);
+    return 0;
 }
 
 int IMP_AO_DisableHpf(void)
 {
-    return IMP_AI_DisableHpf();
+    pthread_mutex_lock(&t31_ao_fx_lock);
+    t31_ao_fx.hpf_enabled = 0;
+    pthread_mutex_unlock(&t31_ao_fx_lock);
+    return 0;
 }
 
 int IMP_AO_SetHpfCoFrequency(int frequency)
 {
-    return IMP_AI_SetHpfCoFrequency(frequency);
+    if (frequency < 0)
+        return -1;
+    pthread_mutex_lock(&t31_ao_fx_lock);
+    t31_ao_fx.hpf_cutoff = frequency;
+    pthread_mutex_unlock(&t31_ao_fx_lock);
+    return 0;
 }
 
 int IMP_AO_EnableAgc(IMPAudioIOAttr *attribute,
                      IMPAudioAgcConfig configuration)
 {
-    return IMP_AI_EnableAgc(attribute, configuration);
+    T31WebRtcAgcConfig config;
+    int result = -1;
+
+    if (!t31_valid_attr(attribute) || t31_effects_load() != 0)
+        return -1;
+    pthread_mutex_lock(&t31_ao_fx_lock);
+    if (!t31_ao_fx.agc)
+        t31_ao_fx.agc = t31_audio.agc_create();
+    if (t31_ao_fx.agc) {
+        config.target_level_dbfs = (int16_t)configuration.TargetLevelDbfs;
+        config.compression_gain_db =
+            (int16_t)configuration.CompressionGaindB;
+        config.limiter_enable = 1;
+        if (t31_audio.agc_set_config(t31_ao_fx.agc, 0, 255,
+                                     t31_ao_fx.agc_mode,
+                                     attribute->samplerate, config) == 0) {
+            t31_ao_fx.sample_rate = attribute->samplerate;
+            t31_ao_fx.agc_enabled = 1;
+            result = 0;
+        }
+    }
+    pthread_mutex_unlock(&t31_ao_fx_lock);
+    return result;
 }
 
 int IMP_AO_DisableAgc(void)
 {
-    return IMP_AI_DisableAgc();
+    pthread_mutex_lock(&t31_ao_fx_lock);
+    if (t31_ao_fx.agc)
+        (void)t31_audio.agc_free(t31_ao_fx.agc);
+    t31_ao_fx.agc = NULL;
+    t31_ao_fx.agc_enabled = 0;
+    pthread_mutex_unlock(&t31_ao_fx_lock);
+    return 0;
 }

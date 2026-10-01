@@ -20,7 +20,7 @@
 #include "openimp_t31_osd.h"
 #endif
 
-#if !defined(PLATFORM_T31)
+#if !defined(PLATFORM_T31) && !defined(PLATFORM_T23)
 #include "imp/imp_ivs.h"
 #include "imp/imp_ivs_base_move.h"
 #include "imp/imp_ivs_move.h"
@@ -32,7 +32,7 @@
 
 #define T31_OSD_GROUPS  16
 #define T31_OSD_REGIONS 64
-#if !defined(PLATFORM_T31)
+#if !defined(PLATFORM_T31) && !defined(PLATFORM_T23)
 #define T31_IVS_GROUPS  16
 #define T31_IVS_CHANNELS 16
 #define T31_IVS_MAGIC   0x49565331U
@@ -83,13 +83,14 @@ static int osd_pool_size;
 
 #endif /* !PLATFORM_T23 */
 
+#if !defined(PLATFORM_T23)
+/* OSD and the IVS stubs below; T23 has neither in this file. */
 static int t31_fail(int error)
 {
     errno = error;
     return -1;
 }
 
-#if !defined(PLATFORM_T23)
 static int valid_osd_group(int group)
 {
     return group >= 0 && group < T31_OSD_GROUPS;
@@ -601,9 +602,9 @@ int IMP_OSD_Stop(int group)
 }
 #endif /* !PLATFORM_T23 */
 
-/* T21/T23/T30 builds keep these IVS stubs; T31 has the real IVS in
+/* T21/T30 builds keep these IVS stubs; T31 and T23 have the real IVS in
  * openimp_t31_ivs.c (vendor ABI there differs from include/imp/imp_ivs*.h). */
-#if !defined(PLATFORM_T31)
+#if !defined(PLATFORM_T31) && !defined(PLATFORM_T23)
 enum t31_ivs_kind {
     T31_IVS_MOVE,
     T31_IVS_BASE_MOVE
@@ -937,7 +938,7 @@ int IMP_IVS_SetParam(int channel, void *param)
     pthread_mutex_unlock(&ivs_lock);
     return 0;
 }
-#endif /* !PLATFORM_T31 */
+#endif /* !PLATFORM_T31 && !PLATFORM_T23 */
 
 static uint32_t t31_register_access(uint32_t address,
                                     const uint32_t *write_value)

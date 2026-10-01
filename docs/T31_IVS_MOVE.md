@@ -344,3 +344,30 @@ Oder die Kamera neu starten. Danach prüfen, dass der Streamer normal läuft.
   - Logauszüge bei Fehlern.
 - Stufe 3, falls gemacht: Beobachtungen im Vergleich.
 - Keine Kamerabilder ohne Einverständnis.
+
+## 7. T23 (T23 SDK 1.3.0)
+
+Seit Branch `claude/t23-stub-fixes` baut `build-t23.sh` dieselben Dateien
+(`openimp_t31_ivs.c`, `openimp_t31_ivs_move.c`) mit `PLATFORM_T23`; die IVS-Stubs in
+`openimp_t31_services.c` gelten nur noch für T21/T30.
+
+- **Vendor-Abgleich (Disassembly von `libimp.a` 1.3.0 gegen T31 1.1.6):** `ivs.c`,
+  `move_ivs.c`, `base_move_ivs.c`, `ivs_move.c`, `ivs_base_move.c`, `filter.c`, `sad.c` sind
+  bis auf Struktur-Offsets identisch. Wo T31 einen MXU2-Zweig hat (`resize`,
+  `MorphRowFilter`, `MorphColumnFilter`, `move_detect`, `Proceed`, `MergeBaseMove`), hat T23
+  nur den skalaren Zweig und ein `assert` statt des SIMD-Codes; Konstanten
+  (Schwellen 1365/455/151/50/16, 20, 30/20/15/10) und Tabellen sind gleich. OpenIMP bildet
+  den skalaren T31-Pfad bitgenau nach, also auch T23.
+- **ABI-Unterschied:** nur `IMPFrameInfo` (0x38 statt 0x30 Byte: `direct_phyAddr` bei 0x20,
+  `timeStamp` bei 0x28, `timeStamp_ivdc` bei 0x30). Daraus folgt `IMP_IVS_MoveParam` 0x458
+  (roiRect 0x110, roiRectCnt 0x450), `IMP_IVS_BaseMoveParam` 0x48 und das öffentliche
+  `IMP_IVS_BaseMoveOutput.timeStamp` bei 0x10. `openimp_t31_ivs_abi.h` prüft das mit
+  `_Static_assert`.
+- **Frame-Hook und Idle-Drain:** wie T31 (`VBMKernelDequeue` → `openimp_t31_ivs_capture`,
+  Rückgabe der Puffer an den Treiber, solange niemand `GetFrame` aufruft, und
+  `VBMRecycleIdleFrames` nach leerem `select`), jetzt auch für `PLATFORM_T23`.
+- **Hosttests:** `make -C tests/t23 check` vergleicht die Algorithmen mit T31- und T23-Layout
+  (gleicher Digest, 3708 move-Ergebnisse, 5120 base-move-Detektionen) und fährt das
+  Framework mit T23-Capture-Records von Group/Chn/Bind bis Poll/Get/Release durch.
+- **Gerätevergleich:** `tools/t31_ivs_compare.c` mit `-DPLATFORM_T23` bauen und gegen
+  `/opt/openimp-t23/libimp.so` (die Stock-libimp des Helix-Workers) laufen lassen.
