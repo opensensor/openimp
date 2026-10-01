@@ -9,18 +9,20 @@ IVS_DEPS := $(IVS_SRC)/openimp_t31_ivs_move.c $(IVS_SRC)/openimp_t31_ivs_move.h 
 DIGEST_T31 := $(BUILD)/t23-ivs-digest-t31abi
 DIGEST_T23 := $(BUILD)/t23-ivs-digest-t23abi
 FRAMEWORK := $(BUILD)/t23-ivs-framework-test
+JPEG_QL := $(BUILD)/t23-jpeg-ql-test
 
 .PHONY: check clean
 
 # The T23 move / base move results must equal the T31 ones bit for bit
 # (same vendor scalar code, only the parameter layout differs), and the T23
 # IVS framework must deliver them through the T23 capture record and ABI.
-check: $(DIGEST_T31) $(DIGEST_T23) $(FRAMEWORK)
+check: $(DIGEST_T31) $(DIGEST_T23) $(FRAMEWORK) $(JPEG_QL)
 	$(DIGEST_T31) > $(BUILD)/t23-ivs-digest-t31abi.txt
 	$(DIGEST_T23) > $(BUILD)/t23-ivs-digest-t23abi.txt
 	cat $(BUILD)/t23-ivs-digest-t23abi.txt
 	cmp $(BUILD)/t23-ivs-digest-t31abi.txt $(BUILD)/t23-ivs-digest-t23abi.txt
 	$(FRAMEWORK)
+	$(JPEG_QL)
 
 $(DIGEST_T31): ivs_move_digest.c $(IVS_DEPS)
 	mkdir -p "$(dir $@)"
@@ -40,6 +42,16 @@ $(FRAMEWORK): ivs_framework_test.c $(IVS_SRC)/openimp_t31_ivs.c \
 		$(IVS_SRC)/openimp_t31_ivs.c $(IVS_SRC)/openimp_t31_ivs_move.c \
 		-pthread -o "$@"
 
+# IMP_Encoder_SetJpegeQl tables in the software JPEG encoder. hw_encoder.c
+# carries helpers other platforms use, hence -Wno-unused-function; -no-pie
+# keeps the heap below 4 GiB for its 32-bit buffer addresses.
+$(JPEG_QL): jpeg_ql_test.c $(PROJECT_DIR)/src/hw_encoder.c \
+	$(PROJECT_DIR)/src/hw_encoder.h $(PROJECT_DIR)/src/jpeg_dct.h
+	mkdir -p "$(dir $@)"
+	$(CC) $(CFLAGS) -Wno-unused-function -DPLATFORM_T23 \
+		-I$(PROJECT_DIR)/include -I$(PROJECT_DIR)/src jpeg_ql_test.c \
+		$(PROJECT_DIR)/src/hw_encoder.c -no-pie -o "$@"
+
 clean:
-	$(RM) $(DIGEST_T31) $(DIGEST_T23) $(FRAMEWORK) \
+	$(RM) $(DIGEST_T31) $(DIGEST_T23) $(FRAMEWORK) $(JPEG_QL) \
 		$(BUILD)/t23-ivs-digest-t31abi.txt $(BUILD)/t23-ivs-digest-t23abi.txt

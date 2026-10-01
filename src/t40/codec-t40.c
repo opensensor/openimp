@@ -6409,6 +6409,10 @@ struct AL_CodecEncode {
     ALAvpuContext avpu;            /* Vendor-like AL over /dev/avpu (scaffolding) */
 #if defined(PLATFORM_T23)
     T23HelixBridge t23_helix;      /* T23 Helix /dev/soc_vpu bootstrap */
+    /* IMP_Encoder_SetJpegeQl for the software JPEG path, under
+     * t23_jpeg_ql_lock */
+    int t23_jpeg_user_tables;
+    uint8_t t23_jpeg_tables[128];
 #endif
 #if defined(PLATFORM_T30)
     T30HelixEncoder *t30_helix;    /* Native T30 /dev/soc_vpu encoder */
@@ -6416,6 +6420,43 @@ struct AL_CodecEncode {
 };
 
 #if defined(PLATFORM_T23)
+static pthread_mutex_t t23_jpeg_ql_lock = PTHREAD_MUTEX_INITIALIZER;
+
+/* IMP_Encoder_SetJpegeQl: enable != 0 replaces the quality-75 tables of
+ * the software JPEG encoder with the caller's (luma then chroma, 64 bytes
+ * each, DQT order), as the T23 libimp's ijpege_reconfig_ql_set does for
+ * its JPEG core; enable == 0 goes back to the built-in tables. */
+int AL_Codec_Encode_SetJpegQl(void *codec, int enable,
+                              const uint8_t tables[128])
+{
+    AL_CodecEncode *enc = (AL_CodecEncode *)codec;
+
+    if (!enc || (enable && !tables))
+        return -1;
+    pthread_mutex_lock(&t23_jpeg_ql_lock);
+    if (enable)
+        memcpy(enc->t23_jpeg_tables, tables, sizeof(enc->t23_jpeg_tables));
+    enc->t23_jpeg_user_tables = enable != 0;
+    pthread_mutex_unlock(&t23_jpeg_ql_lock);
+    return 0;
+}
+
+static int t23_encode_jpeg(AL_CodecEncode *enc, HWFrameBuffer *frame,
+                           HWStreamBuffer *stream)
+{
+    uint8_t tables[128];
+    int user;
+
+    pthread_mutex_lock(&t23_jpeg_ql_lock);
+    user = enc->t23_jpeg_user_tables;
+    if (user)
+        memcpy(tables, enc->t23_jpeg_tables, sizeof(tables));
+    pthread_mutex_unlock(&t23_jpeg_ql_lock);
+    /* 75 matches the built-in table set the T23 libimp starts with */
+    return user ? HW_Encoder_Encode_NV12_JPEG_Tables(frame, stream, 75u, tables)
+                : HW_Encoder_Encode_NV12_JPEG(frame, stream, 75u);
+}
+
 /* Set when a requested IDR is followed by a failed or recovered Helix
  * encode: from then on IDR requests wait for the natural GOP, as before
  * RequestIDR was forwarded, instead of risking further worker restarts. */
@@ -10342,6 +10383,10 @@ static int al_codec_encode_process_impl(void *codec, void *frame,
             ((codec_type == IMP_ENC_TYPE_JPEG &&
               t31_hwjpeg_encode_locked(&hw_frame, hw_stream, 75u) == 0)
                 ? 0 : HW_Encoder_Encode_Software(&hw_frame, hw_stream, codec_type)) < 0
+#elif defined(PLATFORM_T23)
+            (codec_type == IMP_ENC_TYPE_JPEG
+                ? t23_encode_jpeg(enc, &hw_frame, hw_stream)
+                : HW_Encoder_Encode_Software(&hw_frame, hw_stream, codec_type)) < 0
 #else
             HW_Encoder_Encode_Software(&hw_frame, hw_stream, codec_type) < 0
 #endif

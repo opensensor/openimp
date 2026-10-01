@@ -694,6 +694,10 @@ extern int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data);
 extern int AL_Codec_Encode_GetStream(void *codec, void **stream, void **user_data);
 extern int AL_Codec_Encode_ReleaseStream(void *codec, void *stream, void *user_data);
 extern int AL_Codec_Encode_RequestIDR(void *codec);
+#if defined(PLATFORM_T23)
+extern int AL_Codec_Encode_SetJpegQl(void *codec, int enable,
+                                     const uint8_t tables[128]);
+#endif
 extern int IMP_FrameSource_GetFrame(int channel, void **frame);
 extern int IMP_FrameSource_ReleaseFrame(int channel, void *frame);
 
@@ -1159,6 +1163,11 @@ int IMP_Encoder_CreateChn(int channel, IMPEncoderCHNAttr *attr)
     }
     ch->attr = *attr;
     ch->codec_type = (int)p2_attr_codec_type(attr);
+#if defined(PLATFORM_T23)
+    if (ch->jpeg_quality.user_ql_en)
+        (void)AL_Codec_Encode_SetJpegQl(ch->codec, 1,
+                                        ch->jpeg_quality.qmem_table);
+#endif
     ch->created = 1;
     ch->group = -1;
     ch->source_channel = -1;
@@ -1861,8 +1870,25 @@ int IMP_Encoder_SetJpegeQl(int channel, IMPEncoderJpegeQl *quality)
 {
     if (!p2_valid_channel(channel) || !quality)
         return -1;
+#if defined(PLATFORM_T23)
+    {
+        P2EncoderChannel *ch = &p2_channels[channel];
+        int result = 0;
+
+        pthread_mutex_lock(&ch->lock);
+        ch->jpeg_quality = *quality;
+        /* a channel created later picks it up in IMP_Encoder_CreateChn */
+        if (ch->codec)
+            result = AL_Codec_Encode_SetJpegQl(ch->codec,
+                                               quality->user_ql_en,
+                                               quality->qmem_table);
+        pthread_mutex_unlock(&ch->lock);
+        return result;
+    }
+#else
     p2_channels[channel].jpeg_quality = *quality;
     return 0;
+#endif
 }
 
 int IMP_Encoder_GetJpegeQl(int channel, IMPEncoderJpegeQl *quality)

@@ -1006,9 +1006,18 @@ int HW_Encoder_BuildJpegEp1(uint8_t *ep1, size_t size, uint32_t quality)
     return 0;
 }
 
+#if defined(PLATFORM_T23)
+/* tables: NULL, or the 128-byte IMPEncoderJpegeQl.qmem_table: the luma
+ * then the chroma quantizer in DQT (zigzag) order, which the T23 libimp
+ * writes into the DQT segments unchanged (ijpege_write_header) and loads
+ * into the JPEG core in the same order (ijpege_reconfig). */
+static int jpeg_encode_nv12(HWFrameBuffer *frame, HWStreamBuffer *stream,
+                            uint32_t quality, const uint8_t *tables)
+#else
 int HW_Encoder_Encode_NV12_JPEG(HWFrameBuffer *frame,
                                 HWStreamBuffer *stream,
                                 uint32_t quality)
+#endif
 {
     static const float aasf[8] = {
         2.828427125f, 3.923141121f, 3.695518130f, 3.325878449f,
@@ -1061,6 +1070,14 @@ int HW_Encoder_Encode_NV12_JPEG(HWFrameBuffer *frame,
 
         yq = yq < 1 ? 1 : yq > 255 ? 255 : yq;
         uvq = uvq < 1 ? 1 : uvq > 255 ? 255 : uvq;
+#if defined(PLATFORM_T23)
+        if (tables) {
+            /* a zero step would divide by zero; the core treats it as 1 */
+            yq = tables[jpeg_zigzag[index]] ? tables[jpeg_zigzag[index]] : 1;
+            uvq = tables[64u + jpeg_zigzag[index]]
+                      ? tables[64u + jpeg_zigzag[index]] : 1;
+        }
+#endif
         y_table[jpeg_zigzag[index]] = (uint8_t)yq;
         uv_table[jpeg_zigzag[index]] = (uint8_t)uvq;
         /* Q20 reciprocal, including the DCT's four fractional sample bits.
@@ -1230,6 +1247,23 @@ int HW_Encoder_Encode_NV12_JPEG(HWFrameBuffer *frame,
     stream->slice_type = 0;
     return 0;
 }
+
+#if defined(PLATFORM_T23)
+int HW_Encoder_Encode_NV12_JPEG(HWFrameBuffer *frame,
+                                HWStreamBuffer *stream,
+                                uint32_t quality)
+{
+    return jpeg_encode_nv12(frame, stream, quality, NULL);
+}
+
+int HW_Encoder_Encode_NV12_JPEG_Tables(HWFrameBuffer *frame,
+                                       HWStreamBuffer *stream,
+                                       uint32_t quality,
+                                       const uint8_t tables[128])
+{
+    return jpeg_encode_nv12(frame, stream, quality, tables);
+}
+#endif
 
 int HW_Encoder_Encode_Software(HWFrameBuffer *frame, HWStreamBuffer *stream, uint32_t codec_type) {
     if (frame == NULL || stream == NULL) {
