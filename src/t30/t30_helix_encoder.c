@@ -151,6 +151,16 @@ static int t30_dma_allocate(IMPDMABufferInfo *dma, uint32_t size,
         return -1;
     }
     memset((void *)(uintptr_t)dma->virt_addr, 0, size);
+    /* /dev/rmem is a cached mapping.  Write the zeroed lines back now: a
+     * dirty line evicted later would overwrite whatever the VPU has written
+     * there meanwhile.  Afterwards the CPU never writes the VPU-owned
+     * buffers, so no per-picture cleaning of them is needed. */
+    if (DMA_RmemFlushCache((void *)(uintptr_t)dma->virt_addr, size, 1) != 0) {
+        LOG_CODEC("T30 Helix: DMA writeback failed tag=%s size=%u", tag,
+                  size);
+        t30_dma_release(dma);
+        return -1;
+    }
     return 0;
 }
 
@@ -484,23 +494,14 @@ int OpenIMP_T30_HelixEncode(T30HelixEncoder *encoder,
                   strerror(errno));
         return -1;
     }
-    /* /dev/rmem is a cached mapping.  Publish the CPU-built command list
-     * before the VPU fetches it, and discard the allocator's initial dirty
-     * zero lines from the hardware-output window before DMA begins.  Doing
-     * the latter only after RUN is too late: an intervening cache eviction
-     * can overwrite freshly encoded CABAC bytes with stale zeros. */
+    /* Publish the CPU-built command list before the VPU fetches it.  The
+     * VPU-written buffers hold no dirty lines: their allocation zeroes were
+     * written back at create, and the CPU only ever reads the bitstream
+     * window (invalidated after RUN below), so the whole-window and
+     * whole-reference invalidations per picture are unnecessary. */
     if (DMA_RmemFlushCache(
             (void *)(uintptr_t)encoder->descriptor.virt_addr,
-            (uint32_t)(descriptor_pairs * 2u * sizeof(uint32_t)), 1) != 0 ||
-        DMA_RmemFlushCache(temporary + T30_SLICE_OFFSET,
-                           encoder->temporary.size - T30_SLICE_OFFSET,
-                           2) != 0
-#if defined(PLATFORM_T21)
-        || DMA_RmemFlushCache(
-               (void *)(uintptr_t)encoder->reference[output_index].dma.virt_addr,
-               encoder->reference[output_index].dma.size, 2) != 0
-#endif
-       ) {
+            (uint32_t)(descriptor_pairs * 2u * sizeof(uint32_t)), 1) != 0) {
         LOG_CODEC("T30 Helix: DMA prepare failed: %s", strerror(errno));
         return -1;
     }

@@ -390,6 +390,14 @@ static void test_gop_and_failures(void)
     assert(encode(encoder, &info) == 0);
     assert(!info.idr && info.frame_num == 2u);
 
+    /* Per picture, only the command list is cleaned before RUN and only
+     * the bytes the VPU reported are invalidated after it. */
+    flushed_before_run = 0;
+    flushed_after_run = 0;
+    assert(encode(encoder, &info) == 0);
+    assert(flushed_before_run > 0u && flushed_before_run <= 2060u * 8u);
+    assert(flushed_after_run == payload_length);
+
     /* Worst-case escaping: an all-zero payload ending in the stop byte. */
     fill_payload(200000, 100);
     assert(encode(encoder, &info) == 0);
