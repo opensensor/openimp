@@ -11,6 +11,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <sys/ioctl.h>
+#include <poll.h>
 #include <pthread.h>
 #include <errno.h>
 #include <sched.h>
@@ -47,53 +48,11 @@ static void ki_trace(const char *fmt, ...)
     close(fd);
 }
 
-struct fs_poll_wait {
-    int fd;
-    uint32_t ready;
-    int ret;
-    int err;
-    int done;
-    pthread_mutex_t lock;
-    pthread_cond_t cond;
-};
-
-static long long ki_mono_ms(void)
-{
-    struct timespec now;
-    clock_gettime(CLOCK_MONOTONIC, &now);
-    return (long long)now.tv_sec * 1000LL + (long long)now.tv_nsec / 1000000LL;
-}
-
 static long long ki_mono_us(void)
 {
     struct timespec now;
     clock_gettime(CLOCK_MONOTONIC, &now);
     return (long long)now.tv_sec * 1000000LL + (long long)now.tv_nsec / 1000LL;
-}
-
-static void ki_timespec_add_ms(struct timespec *ts, long ms)
-{
-    ts->tv_sec += ms / 1000;
-    ts->tv_nsec += (ms % 1000) * 1000000L;
-    if (ts->tv_nsec >= 1000000000L) {
-        ts->tv_sec += 1;
-        ts->tv_nsec -= 1000000000L;
-    }
-}
-
-static void *fs_poll_worker(void *arg)
-{
-    struct fs_poll_wait *wait = (struct fs_poll_wait *)arg;
-    int ret = ioctl(wait->fd, 0x400456bf, &wait->ready);
-    int err = errno;
-
-    pthread_mutex_lock(&wait->lock);
-    wait->ret = ret;
-    wait->err = err;
-    wait->done = 1;
-    pthread_cond_signal(&wait->cond);
-    pthread_mutex_unlock(&wait->lock);
-    return NULL;
 }
 
 /* ioctl command definitions from decompilation */
@@ -662,77 +621,83 @@ int fs_stream_off_quiet(int fd) {
 }
 #endif
 
-int fs_poll_frame(int fd, unsigned int *ready_out)
+/*
+ * VIDIOC_POLL_FRAME (0x400456bf) is the frame-ready wait of the stock libimp
+ * FS(N)-tick thread (frame_pooling_thread at 0x99acc): it blocks in this
+ * ioctl, then calls the group update that DQBUFs the frame.  In the driver
+ * it is wait_for_completion_interruptible(&chan->frame_done) (OEM +0x2d4);
+ * frame_chan_event() complete()s it once per finished frame, STREAMOFF and
+ * release complete_all() it.  *ready_out receives the ready-frame count
+ * (open tx-isp: frame_ready_count, at least 1) or the negative error.
+ *
+ * OpenIMP does not need it: the FrameSource worker waits in select() and
+ * drains with DQBUF (frame_pooling_thread in framesource_tseries.c), and
+ * nothing calls fs_poll_frame() at the moment.  It is kept, without the
+ * helper thread it used to start per call (that thread only added a 10 ms
+ * trace tick; the caller always waited for it with no timeout, so it bought
+ * nothing and cost a pthread_create per frame), for a caller that wants the
+ * OEM wait, e.g. a stock-compatible tick loop:
+ *
+ * - The fd is O_NONBLOCK (fs_open_device).  A driver that honours that for
+ *   this ioctl (open tx-isp, claude/t31-isp-last-close, pending) returns
+ *   EAGAIN when no frame completed; then this waits in poll() for up to
+ *   timeout_ms (-1 = forever) and asks again.  POLLIN with the completion
+ *   already taken still means a frame can be dequeued, reported as ready=1.
+ *   Logged once when first seen.
+ * - The stock driver and today's open driver ignore O_NONBLOCK here and
+ *   block in the ioctl until a frame or STREAMOFF, exactly as before;
+ *   timeout_ms has no effect then.
+ *
+ * Returns 0 (frame ready), -1 error or stream stopped (POLLERR), -2 EINTR,
+ * -3 timeout.
+ */
+static int fs_poll_frame_nonblock_seen;
+
+int fs_poll_frame(int fd, unsigned int *ready_out, int timeout_ms)
 {
-    struct fs_poll_wait wait = {
-        .fd = fd,
-        .ready = 0xffffffffu,
-        .ret = -1,
-        .err = 0,
-        .done = 0,
-        .lock = PTHREAD_MUTEX_INITIALIZER,
-        .cond = PTHREAD_COND_INITIALIZER,
-    };
-    pthread_t tid;
-    int create_ret;
-    struct timespec ts;
-    long long start_ms;
-    long long last_log_ms = 0;
+    uint32_t ready = 0xffffffffu;
+    struct pollfd pfd;
+    int ret;
+    int err;
 
     if (fd < 0)
         return -1;
 
-    create_ret = pthread_create(&tid, NULL, fs_poll_worker, &wait);
-    if (create_ret != 0) {
-        uint32_t ready = 0xffffffffu;
-        int ret = ioctl(fd, VIDIOC_POLL_FRAME, &ready);
-        if (ret < 0) {
-            if (errno == EINTR)
-                return -2;
-            fprintf(stderr, "[KernelIF] POLL_FRAME failed: fd=%d %s\n", fd, strerror(errno));
-            return -1;
-        }
-        if (ready_out)
-            *ready_out = ready;
-        return 0;
-    }
-
-    start_ms = ki_mono_ms();
-    ki_trace("libimp/KI: POLL_FRAME enter fd=%d\n", fd);
-
-    pthread_mutex_lock(&wait.lock);
-    while (!wait.done) {
-        clock_gettime(CLOCK_REALTIME, &ts);
-        ki_timespec_add_ms(&ts, 10);
-        if (pthread_cond_timedwait(&wait.cond, &wait.lock, &ts) == ETIMEDOUT) {
-            long long elapsed_ms = ki_mono_ms() - start_ms;
-            if (elapsed_ms >= 10 && elapsed_ms - last_log_ms >= 100) {
-                ki_trace("libimp/KI: POLL_FRAME still-waiting fd=%d elapsed_ms=%lld\n",
-                         fd, elapsed_ms);
-                last_log_ms = elapsed_ms;
-            }
+    ret = ioctl(fd, VIDIOC_POLL_FRAME, &ready);
+    err = errno;
+    if (ret < 0 && err == EAGAIN) {
+        if (!__atomic_exchange_n(&fs_poll_frame_nonblock_seen, 1,
+                                 __ATOMIC_RELAXED))
+            fprintf(stderr, "[KernelIF] framechan POLL_FRAME (0x400456bf) "
+                    "honours O_NONBLOCK: waiting in poll()\n");
+        pfd.fd = fd;
+        pfd.events = POLLIN;
+        pfd.revents = 0;
+        ret = poll(&pfd, 1, timeout_ms);
+        if (ret == 0)
+            return -3;
+        if (ret < 0)
+            return errno == EINTR ? -2 : -1;
+        if (pfd.revents & (POLLERR | POLLHUP | POLLNVAL))
+            return -1; /* not streaming (any more) */
+        ready = 0xffffffffu;
+        ret = ioctl(fd, VIDIOC_POLL_FRAME, &ready);
+        err = errno;
+        if (ret < 0 && err == EAGAIN) {
+            ready = 1u;
+            ret = 0;
         }
     }
-    pthread_mutex_unlock(&wait.lock);
-
-    pthread_join(tid, NULL);
-    pthread_cond_destroy(&wait.cond);
-    pthread_mutex_destroy(&wait.lock);
-
-    if (wait.ret < 0) {
-        if (wait.err == EINTR)
+    if (ret < 0) {
+        if (err == EINTR)
             return -2;
-        fprintf(stderr, "[KernelIF] POLL_FRAME failed: fd=%d %s\n", fd, strerror(wait.err));
-        ki_trace("libimp/KI: POLL_FRAME exit fd=%d ret=%d errno=%d ready=%u\n",
-                 fd, wait.ret, wait.err, wait.ready);
+        fprintf(stderr, "[KernelIF] POLL_FRAME failed: fd=%d %s\n", fd,
+                strerror(err));
         return -1;
     }
-
     if (ready_out)
-        *ready_out = wait.ready;
-
-    ki_trace("libimp/KI: POLL_FRAME exit fd=%d ret=%d errno=%d ready=%u\n",
-             fd, wait.ret, wait.err, wait.ready);
+        *ready_out = ready;
+    ki_trace("libimp/KI: POLL_FRAME fd=%d ready=%u\n", fd, ready);
     return 0;
 }
 

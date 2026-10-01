@@ -55,7 +55,8 @@ int fs_stream_off(int fd);
 #if defined(PLATFORM_T31)
 int fs_stream_off_quiet(int fd); /* ioctl only, for the exit paths */
 #endif
-int fs_poll_frame(int fd, unsigned int *ready_out);
+/* OEM frame-ready wait (0x400456bf), unused by OpenIMP; see the .c file. */
+int fs_poll_frame(int fd, unsigned int *ready_out, int timeout_ms);
 
 /* Whether the frame-channel driver honours O_NONBLOCK in DQBUF, learnt from
  * the DQBUFs fs_dqbuf() has issued (all /dev/framechanN fds are opened
