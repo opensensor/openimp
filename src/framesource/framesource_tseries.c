@@ -797,7 +797,11 @@ static volatile unsigned int g_fs_step_seq[FS_MAX_CHANNELS];
  * the worker change step, i.e. a lower bound for how long it is in it. */
 static uint32_t g_fs_step_seen_ms[FS_MAX_CHANNELS];
 static volatile int g_fs_step_iter[FS_MAX_CHANNELS];
+#endif
 
+#if defined(PLATFORM_T31) || defined(PLATFORM_T23) || defined(PLATFORM_T20)
+/* Monotonic ms, for the worker-stop wait (T31, T23, T20) and the T31 stop
+ * diagnostics. */
 static uint32_t fs_now_ms(void)
 {
     struct timespec ts;
@@ -805,6 +809,9 @@ static uint32_t fs_now_ms(void)
     clock_gettime(CLOCK_MONOTONIC, &ts);
     return (uint32_t)ts.tv_sec * 1000u + (uint32_t)(ts.tv_nsec / 1000000L);
 }
+#endif
+
+#if defined(PLATFORM_T31)
 
 /* No clock read here: on the 3.10 MIPS kernels without a vDSO every
  * clock_gettime is a syscall, and this runs ~5 times per frame and
@@ -2132,7 +2139,7 @@ int IMP_FrameSource_EnableChn(int chnNum)
     return 0;
 }
 
-#if defined(PLATFORM_T31)
+#if defined(PLATFORM_T31) || defined(PLATFORM_T23) || defined(PLATFORM_T20)
 /* After STREAMOFF the worker leaves within one select timeout (25 ms) plus
  * the delivery of a frame it had already dequeued. Anything near a second
  * is a genuine hang (a consumer blocking notify, a VBM mutex, ...). */
@@ -2146,18 +2153,22 @@ static int fs_wait_worker_exit(int chn, int timeout_ms)
 {
     uint32_t start = fs_now_ms();
     uint32_t waited = 0;
+#if defined(PLATFORM_T31)
     unsigned int seq = g_fs_step_seq[chn];
 
     /* The worker stays in its current step at least from now on; every
      * step change seen while waiting moves that point. */
     g_fs_step_seen_ms[chn] = start;
+#endif
     while (!g_fs_thread_exited[chn]) {
         uint32_t now = fs_now_ms();
 
+#if defined(PLATFORM_T31)
         if (g_fs_step_seq[chn] != seq) {
             seq = g_fs_step_seq[chn];
             g_fs_step_seen_ms[chn] = now;
         }
+#endif
         waited = now - start;
         if (waited >= (uint32_t)timeout_ms)
             return -1;
@@ -2165,7 +2176,9 @@ static int fs_wait_worker_exit(int chn, int timeout_ms)
     }
     return (int)(fs_now_ms() - start);
 }
+#endif
 
+#if defined(PLATFORM_T31)
 /* Stop the stream of every channel still enabled. Called on the way out of
  * the process (destructor, fatal signal handler in core/sys_core.c). The
  * stock tx-isp T31 DQBUF sleeps in wait_event_interruptible() regardless
@@ -2309,7 +2322,21 @@ int IMP_FrameSource_DisableChn(int chnNum)
         fs_stream_off(ctx->fd);
     }
     if (ctx->thread != 0) {
+#if defined(PLATFORM_T23) || defined(PLATFORM_T20)
+        /* Both drivers wake the worker on STREAMOFF (open tx-isp T23: the
+         * DQBUF wait ends with -EPIPE; T20 vb2: poll reports POLLERR and
+         * DQBUF fails), so let it leave by itself and cancel only a worker
+         * that is still running after FS_WORKER_STOP_TIMEOUT_MS. A worker
+         * cancelled while it delivers a frame can leave a VBM or encoder
+         * mutex locked. */
+        if (fs_wait_worker_exit(chnNum, FS_WORKER_STOP_TIMEOUT_MS) < 0) {
+            IMP_LOG_ERR("Framesource", "chn%d: pooling thread still running %d ms after STREAMOFF; cancelling it",
+                        chnNum, FS_WORKER_STOP_TIMEOUT_MS);
+            pthread_cancel(ctx->thread);
+        }
+#else
         pthread_cancel(ctx->thread);
+#endif
         pthread_join(ctx->thread, NULL);
         ctx->thread = 0;
     }

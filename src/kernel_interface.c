@@ -66,6 +66,7 @@ static long long ki_mono_us(void)
 #define VIDIOC_GET_FMT      0xc0cc5604
 #define VIDIOC_TRY_FMT      0xc0cc5640
 #define VIDIOC_SET_FMT      0xc0cc5605
+#define VIDIOC_CROPCAP      0xc02c563a
 #define VIDIOC_SET_CROP     0x8014563c
 #define VIDIOC_GET_SCALERCAP 0xc00856c3
 #define VIDIOC_SET_SCALER   0x800456c4
@@ -172,6 +173,13 @@ struct t20_v4l2_crop {
     int32_t height;
 };
 
+struct t20_v4l2_cropcap {
+    uint32_t type;
+    struct { int32_t left, top, width, height; } bounds;
+    struct { int32_t left, top, width, height; } defrect;
+    struct { uint32_t numerator, denominator; } pixelaspect;
+};
+
 struct t20_scalercap {
     uint16_t max_width;
     uint16_t max_height;
@@ -188,6 +196,8 @@ _Static_assert(sizeof(struct t20_v4l2_format) == 0xcc,
                "T20 v4l2_format size");
 _Static_assert(sizeof(struct t20_v4l2_crop) == 0x14,
                "T20 v4l2_crop size");
+_Static_assert(sizeof(struct t20_v4l2_cropcap) == 0x2c,
+               "T20 v4l2_cropcap size");
 #endif
 
 #if defined(PLATFORM_T21) || defined(PLATFORM_T30)
@@ -362,15 +372,47 @@ int fs_set_format(int fd, fs_format_t *fmt) {
     uint32_t fourcc = (fmt->pixelformat < 0x100) ? pixfmt_to_fourcc(fmt->pixelformat)
                                                  : (uint32_t)fmt->pixelformat;
 
+    /* The T20 frame channel checks S_CROP against bounds that only
+     * VIDIOC_CROPCAP fills in; until then they are 0x0 and any non-empty
+     * crop is rejected with EINVAL.  The OEM T20 EnableChn therefore issues
+     * CROPCAP first whenever crop is enabled and validates the rectangle
+     * against the returned bounds before S_CROP. */
+    if (fmt->crop_enable) {
+        struct t20_v4l2_cropcap cc;
+
+        memset(&cc, 0, sizeof(cc));
+        cc.type = 1;
+        if (ioctl(fd, VIDIOC_CROPCAP, &cc) < 0) {
+            fprintf(stderr, "[KernelIF] T20 VIDIOC_CROPCAP failed: %s\n", strerror(errno));
+            return -1;
+        }
+        if (crop.left < cc.bounds.left || crop.top < cc.bounds.top ||
+            crop.left + crop.width > cc.bounds.left + cc.bounds.width ||
+            crop.top + crop.height > cc.bounds.top + cc.bounds.height) {
+            fprintf(stderr,
+                    "[KernelIF] T20 crop %dx%d+%d+%d exceeds bounds %dx%d+%d+%d\n",
+                    crop.width, crop.height, crop.left, crop.top,
+                    cc.bounds.width, cc.bounds.height,
+                    cc.bounds.left, cc.bounds.top);
+            return -1;
+        }
+    }
     if (ioctl(fd, VIDIOC_SET_CROP, &crop) < 0) {
         fprintf(stderr, "[KernelIF] T20 VIDIOC_S_CROP failed: %s\n", strerror(errno));
         return -1;
     }
+    /* The driver answers GET_SCALERCAP with EPERM for a channel without a
+     * usable scaler (ISP bypass, YUV sensors, an FR channel) and would then
+     * reject SET_SCALER.  The OEM T20 EnableChn skips SET_SCALER when
+     * GET_SCALERCAP fails instead of failing the whole enable. */
     if (ioctl(fd, VIDIOC_GET_SCALERCAP, &cap) < 0) {
-        fprintf(stderr, "[KernelIF] T20 GET_SCALERCAP failed: %s\n", strerror(errno));
-        return -1;
-    }
-    if (ioctl(fd, VIDIOC_SET_SCALER, &scaler) < 0) {
+        if (fmt->scaler_enable) {
+            fprintf(stderr, "[KernelIF] T20 GET_SCALERCAP failed with scaler requested: %s\n",
+                    strerror(errno));
+            return -1;
+        }
+        memset(&cap, 0, sizeof(cap));
+    } else if (ioctl(fd, VIDIOC_SET_SCALER, &scaler) < 0) {
         fprintf(stderr, "[KernelIF] T20 SET_SCALER failed: %s\n", strerror(errno));
         return -1;
     }
