@@ -1051,7 +1051,7 @@ static void *frame_pooling_thread(void *arg)
         }
 
         if (!software_mode) {
-            int flags;
+            int drained = 0;
             fd_set rfds;
             struct timeval tv;
             int select_ret;
@@ -1117,14 +1117,11 @@ static void *frame_pooling_thread(void *arg)
             fs_trace("libimp/FS: pooling dq-path ch=%d fd=%d mode=select-then-dq\n",
                      chn, ctx->fd);
 
-            flags = fcntl(ctx->fd, F_GETFL, 0);
-            if (flags >= 0 && (flags & O_NONBLOCK) == 0) {
-                if (fcntl(ctx->fd, F_SETFL, flags | O_NONBLOCK) == 0) {
-                    fs_trace("libimp/FS: pooling set-nonblock ch=%d fd=%d old=0x%x\n",
-                             chn, ctx->fd, flags);
-                }
-            }
-
+            /* fs_open_device() opens the fd O_NONBLOCK (no F_GETFL/F_SETFL
+             * per wake-up). A driver that honours it (open tx-isp) ends the
+             * drain below with EAGAIN; the stock one ignores it and sleeps
+             * in DQBUF until the next frame, its select() is always ready.
+             * fs_dqbuf() learns which and logs it once. */
             while (1) {
                 /* No further DQBUF once DisableChn asked us to stop: it has
                  * issued STREAMOFF (or is about to), and a DQBUF on T31
@@ -1153,11 +1150,21 @@ static void *frame_pooling_thread(void *arg)
                         fs_user_trace("pooling dequeue-ok ch=%d fd=%d frame=%p", chn, ctx->fd, frame);
                     }
                     if (dq_ret != 0 || frame == NULL) {
-                        if (dq_ret == -2 || dq_ret == 0) {
+                        /* EAGAIN after at least one frame is the normal end
+                         * of a drain on a driver with a real poll: go
+                         * straight back to select(), which sleeps until the
+                         * next frame. Sleep 1 ms only when select() said
+                         * ready but nothing could be dequeued (a poll that
+                         * always reports readable with a non-blocking
+                         * DQBUF would otherwise spin), and after an error
+                         * while still running (POLLERR + -EINVAL when the
+                         * driver stopped the stream by itself). */
+                        if ((dq_ret == -2 && drained == 0) || dq_ret == 0 ||
+                            (dq_ret < 0 && dq_ret != -2 && ctx->running)) {
                             no_frame_cycles++;
                             if (no_frame_cycles <= 5 || (no_frame_cycles % 50) == 0) {
-                                fs_trace("libimp/FS: pooling dequeue-empty ch=%d fd=%d idle=%d state=%d\n",
-                                         chn, ctx->fd, no_frame_cycles, ch_state);
+                                fs_trace("libimp/FS: pooling dequeue-empty ch=%d fd=%d idle=%d state=%d ret=%d\n",
+                                         chn, ctx->fd, no_frame_cycles, ch_state, dq_ret);
                             }
                             FS_STEP(chn, FS_STEP_DQ_EMPTY_SLEEP);
                             usleep(1000);
@@ -1166,6 +1173,7 @@ static void *frame_pooling_thread(void *arg)
                     }
                 }
                 no_frame_cycles = 0;
+                drained++;
 
                 m = g_modules[0][chn];
                 if (m != NULL) {

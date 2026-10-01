@@ -17,6 +17,7 @@
 #include <time.h>
 #include <stdarg.h>
 #include "dma_alloc.h"
+#include "kernel_interface.h"
 #include "trace_control.h"
 #include "vbm_dq_step.h"
 
@@ -61,6 +62,13 @@ static long long ki_mono_ms(void)
     struct timespec now;
     clock_gettime(CLOCK_MONOTONIC, &now);
     return (long long)now.tv_sec * 1000LL + (long long)now.tv_nsec / 1000000LL;
+}
+
+static long long ki_mono_us(void)
+{
+    struct timespec now;
+    clock_gettime(CLOCK_MONOTONIC, &now);
+    return (long long)now.tv_sec * 1000000LL + (long long)now.tv_nsec / 1000LL;
 }
 
 static void ki_timespec_add_ms(struct timespec *ts, long ms)
@@ -125,42 +133,8 @@ static void *fs_poll_worker(void *arg)
 #define ISP_INIT            0x50000000  /* Placeholder */
 #define ISP_SET_SENSOR      0x50000001  /* Placeholder */
 
-/* High-level userspace format description used by openimp callers.
- * This matches the stock libimp fs_set_format/fs_get_format argument layout. */
-typedef struct {
-    int type;                   /* 0x00: Buffer type (V4L2_BUF_TYPE_VIDEO_CAPTURE = 1) */
-    int width;                  /* 0x04: Width */
-    int height;                 /* 0x08: Height */
-    int pixelformat;            /* 0x0c: Pixel format (fourcc) */
-    int field;                  /* 0x10: Field order */
-    int bytesperline;           /* 0x14: Bytes per line */
-    int sizeimage;              /* 0x18: Image size in bytes */
-    int colorspace;             /* 0x1c: Colorspace (V4L2_COLORSPACE_SRGB = 8) */
-    int priv;                   /* 0x20: Private data */
-    /* Ingenic imp_channel_attr in raw_data area (starting at 0x24)
-     * Must match tisp_channel_attr_set indices:
-     *   [0]=enable, [1]=width, [2]=height,
-     *   [3]=crop_enable, [4]=crop_x, [5]=crop_y, [6]=crop_width, [7]=crop_height,
-     *   [8]=scaler_enable, [9]=scaler_outwidth, [10]=scaler_outheight,
-     *   [11]=picwidth, [12]=picheight, [13]=fps_num, [14]=fps_den
-     * Note: pixel format is conveyed via V4L2 pixelformat header field. */
-    int enable;                 /* 0x24: Enable (arg2[0]) */
-    int attr_width;             /* 0x28: Width (arg2[1]) */
-    int attr_height;            /* 0x2c: Height (arg2[2]) */
-    int crop_enable;            /* 0x30: Crop enable (arg2[3]) */
-    int crop_x;                 /* 0x34: Crop X (arg2[4]) */
-    int crop_y;                 /* 0x38: Crop Y (arg2[5]) */
-    int crop_width;             /* 0x3c: Crop width (arg2[6]) */
-    int crop_height;            /* 0x40: Crop height (arg2[7]) */
-    int scaler_enable;          /* 0x44: Scaler enable (arg2[8]) */
-    int scaler_outwidth;        /* 0x48: Scaler output width (arg2[9]) */
-    int scaler_outheight;       /* 0x4c: Scaler output height (arg2[10]) */
-    int picwidth;               /* 0x50: Picture width (arg2[11]) */
-    int picheight;              /* 0x54: Picture height (arg2[12]) */
-    int fps_num;                /* 0x58: FPS numerator (arg2[13]) */
-    int fps_den;                /* 0x5c: FPS denominator (arg2[14]) */
-    char padding[0x10];         /* 0x60-0x6f: Reserved/padding */
-} fs_format_t;
+/* fs_format_t (the 0x70-byte stock fs_set_format/fs_get_format argument)
+ * is declared in kernel_interface.h. */
 
 struct fs_ioctl_format70 {
     uint32_t type;             /* 0x00 */
@@ -850,12 +824,83 @@ int fs_qbuf(int fd, int index, unsigned long phys, unsigned int length) {
     free(raw);
     return 0;
 }
+/*
+ * DQBUF O_NONBLOCK detection (see kernel_interface.h).  The fd is opened
+ * O_NONBLOCK, so a driver that honours the flag answers an empty queue with
+ * EAGAIN at once; the FrameSource worker drains until that happens, so the
+ * open driver gives the first EAGAIN within the first frame period.  The
+ * stock driver never returns EAGAIN: it sleeps in DQBUF until the next frame
+ * (select() always reports the fd readable there), so each DQBUF after the
+ * first frame blocks for most of a frame period.  Three DQBUFs that slept at
+ * least FS_DQ_BLOCKED_US without any EAGAIN seen make it IGNORED.  An EAGAIN
+ * seen later still switches to HONOURED (a long scheduling delay could fake
+ * a blocking DQBUF, nothing fakes an EAGAIN).  Timing stops once decided.
+ */
+#define FS_DQ_BLOCKED_US 10000LL
+#define FS_DQ_BLOCKED_HITS 3u
+
+static int fs_dq_nonblock = FS_DQ_NONBLOCK_UNKNOWN;
+static unsigned int fs_dq_blocked_hits;
+
+int fs_dqbuf_nonblock_mode(void)
+{
+    return __atomic_load_n(&fs_dq_nonblock, __ATOMIC_RELAXED);
+}
+
+const char *fs_dqbuf_nonblock_name(int mode)
+{
+    switch (mode) {
+    case FS_DQ_NONBLOCK_HONOURED:
+        return "honours O_NONBLOCK";
+    case FS_DQ_NONBLOCK_IGNORED:
+        return "ignores O_NONBLOCK";
+    default:
+        return "O_NONBLOCK support not yet known";
+    }
+}
+
+static void fs_dq_note_eagain(void)
+{
+    int old = __atomic_exchange_n(&fs_dq_nonblock, FS_DQ_NONBLOCK_HONOURED,
+                                  __ATOMIC_RELAXED);
+
+    if (old != FS_DQ_NONBLOCK_HONOURED)
+        fprintf(stderr, "[KernelIF] framechan DQBUF honours O_NONBLOCK%s: "
+                "capture waits in select(), DQBUF never sleeps\n",
+                old == FS_DQ_NONBLOCK_IGNORED
+                    ? " (EAGAIN after all; earlier slow DQBUFs were "
+                      "scheduling delays)" : "");
+}
+
+static void fs_dq_note_slept(int fd, long long slept_us)
+{
+    int flags;
+    int expected = FS_DQ_NONBLOCK_UNKNOWN;
+
+    if (slept_us < FS_DQ_BLOCKED_US ||
+        __sync_add_and_fetch(&fs_dq_blocked_hits, 1u) < FS_DQ_BLOCKED_HITS)
+        return;
+    /* Only meaningful if the fd really is non-blocking. */
+    flags = fcntl(fd, F_GETFL, 0);
+    if (flags < 0 || !(flags & O_NONBLOCK))
+        return;
+    if (__atomic_compare_exchange_n(&fs_dq_nonblock, &expected,
+                                    FS_DQ_NONBLOCK_IGNORED, 0,
+                                    __ATOMIC_RELAXED, __ATOMIC_RELAXED))
+        fprintf(stderr, "[KernelIF] framechan DQBUF ignores O_NONBLOCK "
+                "(%u DQBUFs slept, last %lld ms, no EAGAIN): capture waits "
+                "in DQBUF, only STREAMOFF wakes it\n",
+                FS_DQ_BLOCKED_HITS, slept_us / 1000LL);
+}
+
 /* Dequeue a filled buffer from the framechan driver */
 int fs_dqbuf(int fd, int *index_out, uint64_t *timestamp_out) {
     void *raw = NULL;
     struct v4l2_buf32 *b;
     int ret;
     int saved_errno;
+    int nonblock_mode;
+    long long dq_start_us = 0;
     size_t buf_sz;
 
     if (fd < 0 || !index_out) return -1;
@@ -879,8 +924,17 @@ int fs_dqbuf(int fd, int *index_out, uint64_t *timestamp_out) {
     ki_trace("libimp/KI: DQBUF enter fd=%d raw=%p\n", fd, raw);
 
     ki_trace("libimp/KI: DQBUF ioctl-call fd=%d\n", fd);
+    nonblock_mode = fs_dqbuf_nonblock_mode();
+    if (nonblock_mode == FS_DQ_NONBLOCK_UNKNOWN)
+        dq_start_us = ki_mono_us();
     ret = ioctl(fd, VIDIOC_DQBUF, raw);
     saved_errno = errno;
+    if (ret < 0 && saved_errno == EAGAIN) {
+        if (nonblock_mode != FS_DQ_NONBLOCK_HONOURED)
+            fs_dq_note_eagain();
+    } else if (ret == 0 && nonblock_mode == FS_DQ_NONBLOCK_UNKNOWN) {
+        fs_dq_note_slept(fd, ki_mono_us() - dq_start_us);
+    }
     ki_trace("libimp/KI: DQBUF ioctl-ret fd=%d ret=%d errno=%d\n", fd, ret, saved_errno);
 
     if (ret < 0) {

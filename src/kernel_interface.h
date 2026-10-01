@@ -56,6 +56,22 @@ int fs_stream_off(int fd);
 int fs_stream_off_quiet(int fd); /* ioctl only, for the exit paths */
 #endif
 int fs_poll_frame(int fd, unsigned int *ready_out);
+
+/* Whether the frame-channel driver honours O_NONBLOCK in DQBUF, learnt from
+ * the DQBUFs fs_dqbuf() has issued (all /dev/framechanN fds are opened
+ * O_NONBLOCK, see fs_open_device):
+ * - HONOURED: a DQBUF returned EAGAIN (open tx-isp since 85fbd1fd). The
+ *   reader waits in select()/poll(), never in DQBUF.
+ * - IGNORED: DQBUFs on the O_NONBLOCK fd slept until a frame arrived, and
+ *   no EAGAIN was ever seen (stock tx-isp). Only STREAMOFF wakes them.
+ * - UNKNOWN: too few DQBUFs yet. Treat as IGNORED. */
+enum {
+    FS_DQ_NONBLOCK_UNKNOWN = 0,
+    FS_DQ_NONBLOCK_HONOURED = 1,
+    FS_DQ_NONBLOCK_IGNORED = 2,
+};
+int fs_dqbuf_nonblock_mode(void);
+const char *fs_dqbuf_nonblock_name(int mode);
 void fs_close_device(int fd);
 
 /* VBM (Video Buffer Manager) operations */
