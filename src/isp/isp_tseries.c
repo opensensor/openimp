@@ -1113,9 +1113,12 @@ enum {
     TISP_CID_AE_MIN = 0x8000033,
 #endif
     TISP_CID_AE_FREEZE = 0x8000034,
-#if defined(PLATFORM_T23) || defined(PLATFORM_T31)
+#if defined(PLATFORM_T23) || defined(PLATFORM_T31) || \
+    defined(PLATFORM_T20) || defined(PLATFORM_T21)
     /* 0x8000035 is SetAeAttr on T23/T31: sending ROI weights there switched
-     * AE to manual with ROI bytes as its flags and froze it. */
+     * AE to manual with ROI bytes as its flags and froze it.  The vendor
+     * T20 3.12.0 and T21 1.0.33 AE_Set/GetROI send 0x8000024 as well
+     * (IMAGE_TUNING_CID_AE_ROI in the T20 SDK); the T20 driver rejects 0x35. */
     TISP_CID_AE_ROI = 0x8000024,
 #else
     TISP_CID_AE_ROI = 0x8000035,
@@ -1125,12 +1128,27 @@ enum {
     TISP_CID_DEFOG_STRENGTH = 0x8000039,
     TISP_CID_AF_METRICES = 0x8000043,
     TISP_CID_AF_WEIGHT = 0x8000044,
-    TISP_CID_AF_HIST = 0x8000045,
+    /* Vendor T20 3.12.0, T21 1.0.33 and T31 1.1.6 Set/GetAfHist all send
+     * 0x8000042; 0x8000045 is the sensor attribute block on T31.  The T31
+     * GetAfZone sends 0x8000046. */
+    TISP_CID_AF_HIST = 0x8000042,
+    TISP_CID_AF_ZONE = 0x8000046,
     TISP_CID_DPC_RATIO = 0x8000062,
     TISP_CID_NCU_INFO = 0x8000084,
+#if defined(PLATFORM_T20)
+    /* T20 SDK tx-isp-core-tuning.h numbering (PRIVATE_BASE + 0x80 block):
+     * SINTER_ATTR 0x81 (struct), TEMPER_STRENGTH 0x82 (scalar), DRC_ATTR 0xa0
+     * (struct).  The T20 driver rejects the T31 ids 0x85/0x86/0xa2. */
+    TISP_CID_2DNS_ATTR = 0x8000081,
+    TISP_CID_3DNS_RATIO = 0x8000082,
+    TISP_CID_DRC_ATTR = 0x80000a0,
+#else
+    /* T21 1.0.33 SetTemperStrength/Set/GetDRC_Strength send 0x8000085 and
+     * 0x80000a2, the T31 numbers. */
     TISP_CID_3DNS_RATIO = 0x8000085,
     TISP_CID_2DNS_RATIO = 0x8000086,
     TISP_CID_DRC_RATIO = 0x80000a2,
+#endif
     TISP_CID_ENABLE_DEFOG = 0x80000a4,
     TISP_CID_BLC_ATTR = 0x80000a5,
     TISP_CID_CSC_ATTR = 0x80000a6,
@@ -1903,6 +1921,32 @@ int IMP_ISP_Tuning_GetBacklightComp(uint32_t *pstrength)
     return result;
 }
 
+#if defined(PLATFORM_T20)
+/* T20 SDK attribute structs behind TISP_CID_2DNS_ATTR / TISP_CID_DRC_ATTR
+ * (struct isp_core_sinter_attr / isp_core_drc_attr in tx-isp-core-tuning.h).
+ * The driver copy_from_user()s the whole struct, so fill every field. */
+typedef struct {
+    int32_t mode;              /* ISPCORE_MODULE_DISABLE/ENABLE */
+    int32_t type;              /* ISPCORE_MODULE_AUTO/MANUAL */
+    uint8_t manual_strength;
+} TSeriesT20SinterAttr;
+
+typedef struct {
+    int32_t mode;              /* ISPMODULE_DRC_MODE */
+    uint8_t strength;
+    uint8_t slope_max;
+    uint8_t slope_min;
+    uint16_t black_level;
+    uint16_t white_level;
+} TSeriesT20DrcAttr;
+
+/* The T20 driver has no getter for TEMPER_STRENGTH (returns 0 without
+ * data) nor for SINTER_ATTR; the vendor T20 libimp exports no getter either.
+ * Report the last value set. */
+static uint32_t tseries_t20_temper_ratio = 128;
+static uint32_t tseries_t20_sinter_ratio = 128;
+#endif
+
 int IMP_ISP_Tuning_SetDPC_Strength(uint32_t ratio)
 {
     return tseries_tuning_set_val(TISP_CID_DPC_RATIO, ratio);
@@ -1924,7 +1968,20 @@ int IMP_ISP_Tuning_GetDPC_Strength(uint32_t *pratio)
 
 int IMP_ISP_Tuning_SetDRC_Strength(uint32_t ratio)
 {
+#if defined(PLATFORM_T20)
+    /* DRC_ATTR set applies attr.strength (IRIDIX_STRENGTH_ID); read the
+     * current struct first so the other fields are written back unchanged. */
+    TSeriesT20DrcAttr attr;
+
+    memset(&attr, 0, sizeof(attr));
+    if (tseries_tuning_get_ptr(TISP_CID_DRC_ATTR, &attr) != 0) {
+        return -1;
+    }
+    attr.strength = (uint8_t)(ratio > 255 ? 255 : ratio);
+    return tseries_tuning_set_ptr(TISP_CID_DRC_ATTR, &attr);
+#else
     return tseries_tuning_set_val(TISP_CID_DRC_RATIO, ratio);
+#endif
 }
 #endif /* !PLATFORM_T23 */
 
@@ -1987,7 +2044,17 @@ int IMP_ISP_Tuning_GetDRC_Strength(uint32_t *pratio)
         return -1;
     }
 
+#if defined(PLATFORM_T20)
+    {
+        TSeriesT20DrcAttr attr;
+
+        memset(&attr, 0, sizeof(attr));
+        result = tseries_tuning_get_ptr(TISP_CID_DRC_ATTR, &attr);
+        value = attr.strength;
+    }
+#else
     result = tseries_tuning_get_val(TISP_CID_DRC_RATIO, &value);
+#endif
     *pratio = value;
     return result;
 }
@@ -2013,7 +2080,16 @@ int IMP_ISP_Tuning_GetHiLightDepress(uint32_t *pstrength)
 
 int IMP_ISP_Tuning_SetTemperStrength(uint32_t ratio)
 {
+#if defined(PLATFORM_T20)
+    int result = tseries_tuning_set_val(TISP_CID_3DNS_RATIO, ratio);
+
+    if (result == 0) {
+        tseries_t20_temper_ratio = ratio;
+    }
+    return result;
+#else
     return tseries_tuning_set_val(TISP_CID_3DNS_RATIO, ratio);
+#endif
 }
 #endif /* !PLATFORM_T23 */
 
@@ -2026,15 +2102,38 @@ int IMP_ISP_Tuning_GetTemperStrength(uint32_t *pratio)
         return -1;
     }
 
+#if defined(PLATFORM_T20)
+    (void)value;
+    result = 0;
+    *pratio = tseries_t20_temper_ratio;
+    return result;
+#else
     result = tseries_tuning_get_val(TISP_CID_3DNS_RATIO, &value);
     *pratio = value;
     return result;
+#endif
 }
 
 #if !defined(PLATFORM_T23) /* T23: isp_t23_tuning.c */
 int IMP_ISP_Tuning_SetSinterStrength(uint32_t ratio)
 {
+#if defined(PLATFORM_T20)
+    /* SINTER_ATTR: manual type writes manual_strength to SINTER_STRENGTH_ID. */
+    TSeriesT20SinterAttr attr;
+    int result;
+
+    memset(&attr, 0, sizeof(attr));
+    attr.mode = 1;
+    attr.type = 1;
+    attr.manual_strength = (uint8_t)(ratio > 255 ? 255 : ratio);
+    result = tseries_tuning_set_ptr(TISP_CID_2DNS_ATTR, &attr);
+    if (result == 0) {
+        tseries_t20_sinter_ratio = ratio;
+    }
+    return result;
+#else
     return tseries_tuning_set_val(TISP_CID_2DNS_RATIO, ratio);
+#endif
 }
 #endif /* !PLATFORM_T23 */
 
@@ -2047,9 +2146,16 @@ int IMP_ISP_Tuning_GetSinterStrength(uint32_t *pratio)
         return -1;
     }
 
+#if defined(PLATFORM_T20)
+    (void)value;
+    result = 0;
+    *pratio = tseries_t20_sinter_ratio;
+    return result;
+#else
     result = tseries_tuning_get_val(TISP_CID_2DNS_RATIO, &value);
     *pratio = value;
     return result;
+#endif
 }
 
 #if !defined(PLATFORM_T23) /* T23: isp_t23_tuning.c */
@@ -2154,12 +2260,38 @@ int IMP_ISP_Tuning_GetAeWeight(void *weight)
 
 int IMP_ISP_Tuning_AE_SetROI(void *roi)
 {
+#if defined(PLATFORM_T20)
+    /* T20: the vendor libimp and the SDK driver pass the 4-byte ROI by
+     * value in control->value (AE_ROI_ID), not through a pointer. */
+    int32_t packed;
+
+    if (roi == NULL) {
+        return -1;
+    }
+    memcpy(&packed, roi, sizeof(packed));
+    return tseries_tuning_set_val(TISP_CID_AE_ROI, packed);
+#else
     return tseries_tuning_set_ptr(TISP_CID_AE_ROI, roi);
+#endif
 }
 
 int IMP_ISP_Tuning_AE_GetROI(void *roi)
 {
+#if defined(PLATFORM_T20)
+    int32_t packed = 0;
+    int result;
+
+    if (roi == NULL) {
+        return -1;
+    }
+    result = tseries_tuning_get_val(TISP_CID_AE_ROI, &packed);
+    if (result == 0) {
+        memcpy(roi, &packed, sizeof(packed));
+    }
+    return result;
+#else
     return tseries_tuning_get_ptr(TISP_CID_AE_ROI, roi);
+#endif
 }
 
 int IMP_ISP_Tuning_SetGamma(void *gamma)
@@ -2745,7 +2877,7 @@ int IMP_ISP_Tuning_GetBlcAttr(void *attr)
 
 int IMP_ISP_Tuning_GetAfZone(void *zone)
 {
-    return tseries_tuning_get_ptr(TISP_CID_AF_HIST, zone);
+    return tseries_tuning_get_ptr(TISP_CID_AF_ZONE, zone);
 }
 
 int IMP_ISP_Tuning_GetAFMetrices(void *metrices)
