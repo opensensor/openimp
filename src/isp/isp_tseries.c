@@ -1167,13 +1167,16 @@ enum {
     TISP_CID_CCM_ATTR = 0x8000100,
     TISP_CID_BCSH_HUE = 0x8000101,
 #if defined(PLATFORM_T20)
-    /* IMAGE_TUNING_CID_CUSTOM_BASE + 7 in the T20 V4L2 tuning ABI. */
+    /* IMAGE_TUNING_CID_CUSTOM_BASE + 7/8/10 in the T20 V4L2 tuning ABI
+     * (T20 3.12.0 SetISPProcess/SetFWFreeze/SetShading). */
     TISP_CID_ISP_PROCESS = 0x0098e907,
+    TISP_CID_FW_FREEZE = 0x0098e908,
+    TISP_CID_SHADING = 0x0098e90a
 #else
     TISP_CID_ISP_PROCESS = 0x8000164,
-#endif
     TISP_CID_FW_FREEZE = 0x8000165,
     TISP_CID_SHADING = 0x8000166
+#endif
 };
 
 typedef struct TSeriesTuningValReq {
@@ -1415,6 +1418,180 @@ static int tseries_v4l2_get(int32_t id, int32_t *value)
 }
 #endif /* !PLATFORM_T23 */
 
+#if defined(PLATFORM_T21) /* T21 and T20 */
+/*
+ * Port of the vendor's local isp_table_tuning_ratio() (T21 1.0.33 libimp
+ * 0x4eab0, T20 3.12.0 0x57fc0; both identical).  SetSinterStrength (table
+ * 109, both) and the T20 SetTemperStrength (table 132) scale a driver
+ * tuning table in userspace instead of using a control id:
+ *
+ *   1. tuning GET 0x8000161 with {table, 0, 0, 0, 1, NULL} returns the
+ *      table geometry (rows, columns, element size 1/2/4);
+ *   2. tuning GET again with flag 1 and a rows*cols*size buffer reads it;
+ *   3. element 1 of every row (the vendor indexes row*2+1, i.e. a
+ *      two-column table) becomes (uint32)(value * ratio) / 100.0, truncated
+ *      to the element width;
+ *   4. tuning SET 0x8000161 with flag 0 writes the buffer back.
+ *
+ * The vendor rescales whatever the driver currently holds, so repeated
+ * calls compound (150 then 100 leaves 1.5x).  This port keeps the first
+ * table it read as the baseline and scales from that, so the ratio is
+ * absolute; the baseline is dropped on a running-mode change because the
+ * driver may load the other day/night table then.
+ */
+#define TISP_CID_TABLE_TUNING 0x8000161
+#define TSERIES_TABLE_SINTER 109
+#define TSERIES_TABLE_TEMPER 132
+
+typedef struct {
+    uint32_t table;
+    uint32_t rows;
+    uint32_t cols;
+    uint32_t elem_size;
+    uint32_t flag;      /* 1: read (NULL buf: geometry only), 0: write */
+    void *buf;
+} TSeriesTableReq;
+
+typedef struct {
+    uint32_t table;
+    uint32_t rows;
+    uint32_t cols;
+    uint32_t elem_size;
+    void *base;
+} TSeriesTableBaseline;
+
+static TSeriesTableBaseline tseries_table_baseline[2] = {
+    { TSERIES_TABLE_SINTER, 0, 0, 0, NULL },
+    { TSERIES_TABLE_TEMPER, 0, 0, 0, NULL },
+};
+
+static void tseries_table_baseline_reset(void)
+{
+    size_t i;
+
+    for (i = 0; i < sizeof(tseries_table_baseline) / sizeof(tseries_table_baseline[0]); i++) {
+        free(tseries_table_baseline[i].base);
+        tseries_table_baseline[i].base = NULL;
+    }
+}
+
+static int tseries_table_tuning_ratio(uint32_t table, uint32_t ratio)
+{
+    TSeriesTableBaseline *bl = NULL;
+    TSeriesTableReq req;
+    uint8_t *buf;
+    size_t size;
+    uint32_t row;
+    size_t i;
+    int result;
+
+    for (i = 0; i < sizeof(tseries_table_baseline) / sizeof(tseries_table_baseline[0]); i++) {
+        if (tseries_table_baseline[i].table == table) {
+            bl = &tseries_table_baseline[i];
+        }
+    }
+
+    memset(&req, 0, sizeof(req));
+    req.table = table;
+    req.flag = 1;
+    result = tseries_tuning_get_ptr(TISP_CID_TABLE_TUNING, &req);
+    if (result != 0) {
+        return -1;
+    }
+
+    size = (size_t)req.rows * req.cols * req.elem_size;
+    if (size == 0 || req.cols < 2 ||
+        (req.elem_size != 1 && req.elem_size != 2 && req.elem_size != 4)) {
+        return -1;
+    }
+
+    buf = malloc(size);
+    if (buf == NULL) {
+        return -1;
+    }
+
+    if (bl != NULL && bl->base != NULL && bl->rows == req.rows &&
+        bl->cols == req.cols && bl->elem_size == req.elem_size) {
+        memcpy(buf, bl->base, size);
+    } else {
+        req.flag = 1;
+        req.buf = buf;
+        if (tseries_tuning_get_ptr(TISP_CID_TABLE_TUNING, &req) != 0) {
+            free(buf);
+            return -1;
+        }
+        if (bl != NULL) {
+            free(bl->base);
+            bl->base = malloc(size);
+            if (bl->base != NULL) {
+                memcpy(bl->base, buf, size);
+                bl->rows = req.rows;
+                bl->cols = req.cols;
+                bl->elem_size = req.elem_size;
+            }
+        }
+    }
+
+    for (row = 0; row < req.rows; row++) {
+        uint8_t *p = buf + ((size_t)row * 2 + 1) * req.elem_size;
+
+        if (req.elem_size == 1) {
+            *p = (uint8_t)((uint32_t)(*p * ratio) / 100u);
+        } else if (req.elem_size == 2) {
+            uint16_t v;
+
+            memcpy(&v, p, sizeof(v));
+            v = (uint16_t)((uint32_t)(v * ratio) / 100u);
+            memcpy(p, &v, sizeof(v));
+        } else {
+            uint32_t v;
+
+            memcpy(&v, p, sizeof(v));
+            v = (v * ratio) / 100u;
+            memcpy(p, &v, sizeof(v));
+        }
+    }
+
+    req.flag = 0;
+    req.buf = buf;
+    result = tseries_tuning_set_ptr(TISP_CID_TABLE_TUNING, &req);
+    free(buf);
+    return result == 0 ? 0 : -1;
+}
+
+/*
+ * T21 1.0.33 / T20 3.12.0 SetISPRunningMode: after 0x80000e1 succeeds the
+ * vendor re-sends contrast, brightness, saturation and sharpness through
+ * VIDIOC_S_CTRL as cached_byte | ((mode + 1) << 8), in that order, so the
+ * driver switches those blocks to their day (0x100) or night (0x200)
+ * parameter sets.  The cache is the tuning block bytes +8..+0xb (B/C/S/
+ * sharpness), the same bytes Set/GetBrightness etc. maintain.
+ */
+static void tseries_running_mode_reapply_bcs(ISPDevice *isp, uint32_t mode)
+{
+    static const struct {
+        int32_t id;
+        uint8_t offset;
+    } ctrls[] = {
+        { 0x980901, 9 },   /* contrast */
+        { 0x980900, 8 },   /* brightness */
+        { 0x980902, 10 },  /* saturation */
+        { 0x98091b, 11 },  /* sharpness */
+    };
+    uint32_t high = (mode + 1) << 8;
+    size_t i;
+
+    for (i = 0; i < sizeof(ctrls) / sizeof(ctrls[0]); i++) {
+        uint8_t cached = *(uint8_t *)((char *)isp->tuning + ctrls[i].offset);
+
+        if (tseries_v4l2_set(ctrls[i].id, (int32_t)(cached | high)) < 0) {
+            kmsg_trace("libimp/ISP: RunningMode %u S_CTRL %#x failed errno=%d\n",
+                       mode, ctrls[i].id, errno);
+        }
+    }
+}
+#endif /* PLATFORM_T21 */
+
 /*
  * The T31 OEM EnableTuning path starts an isp_tuning_deamon and registers
  * isp_tuning_func_update_total_gain plus isp_tuning_func_contrast_judge.
@@ -1641,6 +1818,23 @@ int IMP_ISP_Tuning_SetISPRunningMode(IMPISPRunningMode mode)
 #endif
 
     if (result == 0) {
+#if defined(PLATFORM_T21) /* T21 and T20 */
+        ISPDevice *isp;
+
+#if defined(PLATFORM_T20)
+        /* The vendor uses the value the driver left in &value. */
+        if (tseries_get_isp(&isp) == 0 && isp->tuning != NULL) {
+            tseries_running_mode_reapply_bcs(isp, (uint32_t)value);
+        }
+#else
+        if (tseries_get_isp(&isp) == 0 && isp->tuning != NULL) {
+            tseries_running_mode_reapply_bcs(isp, (uint32_t)mode);
+        }
+#endif
+        if (mode != tseries_running_mode) {
+            tseries_table_baseline_reset();
+        }
+#endif
         tseries_running_mode = mode;
     }
     return result;
@@ -1952,15 +2146,9 @@ int IMP_ISP_Tuning_GetBacklightComp(uint32_t *pstrength)
 }
 
 #if defined(PLATFORM_T20)
-/* T20 SDK attribute structs behind TISP_CID_2DNS_ATTR / TISP_CID_DRC_ATTR
- * (struct isp_core_sinter_attr / isp_core_drc_attr in tx-isp-core-tuning.h).
- * The driver copy_from_user()s the whole struct, so fill every field. */
-typedef struct {
-    int32_t mode;              /* ISPCORE_MODULE_DISABLE/ENABLE */
-    int32_t type;              /* ISPCORE_MODULE_AUTO/MANUAL */
-    uint8_t manual_strength;
-} TSeriesT20SinterAttr;
-
+/* T20 SDK attribute struct behind TISP_CID_DRC_ATTR (struct
+ * isp_core_drc_attr in tx-isp-core-tuning.h).  The driver
+ * copy_from_user()s the whole struct, so fill every field. */
 typedef struct {
     int32_t mode;              /* ISPMODULE_DRC_MODE */
     uint8_t strength;
@@ -1970,11 +2158,15 @@ typedef struct {
     uint16_t white_level;
 } TSeriesT20DrcAttr;
 
-/* The T20 driver has no getter for TEMPER_STRENGTH (returns 0 without
- * data) nor for SINTER_ATTR; the vendor T20 libimp exports no getter either.
- * Report the last value set. */
-static uint32_t tseries_t20_temper_ratio = 128;
-static uint32_t tseries_t20_sinter_ratio = 128;
+/* Temper strength is a userspace table scale on T20 (see
+ * tseries_table_tuning_ratio); there is nothing to read back, so report the
+ * last ratio set (100 = tuning-bin table unchanged). */
+static uint32_t tseries_t20_temper_ratio = 100;
+#endif
+
+#if defined(PLATFORM_T21) /* T21 and T20 */
+/* Same for sinter strength on T21 and T20. */
+static uint32_t tseries_t2x_sinter_ratio = 100;
 #endif
 
 int IMP_ISP_Tuning_SetDPC_Strength(uint32_t ratio)
@@ -2111,7 +2303,10 @@ int IMP_ISP_Tuning_GetHiLightDepress(uint32_t *pstrength)
 int IMP_ISP_Tuning_SetTemperStrength(uint32_t ratio)
 {
 #if defined(PLATFORM_T20)
-    int result = tseries_tuning_set_val(TISP_CID_3DNS_RATIO, ratio);
+    /* T20 3.12.0: isp_table_tuning_ratio(132, min(ratio, 200)); the driver
+     * has no temper-strength control. */
+    int result = tseries_table_tuning_ratio(TSERIES_TABLE_TEMPER,
+                                            ratio > 200 ? 200 : ratio);
 
     if (result == 0) {
         tseries_t20_temper_ratio = ratio;
@@ -2147,18 +2342,14 @@ int IMP_ISP_Tuning_GetTemperStrength(uint32_t *pratio)
 #if !defined(PLATFORM_T23) /* T23: isp_t23_tuning.c */
 int IMP_ISP_Tuning_SetSinterStrength(uint32_t ratio)
 {
-#if defined(PLATFORM_T20)
-    /* SINTER_ATTR: manual type writes manual_strength to SINTER_STRENGTH_ID. */
-    TSeriesT20SinterAttr attr;
-    int result;
+#if defined(PLATFORM_T21) /* T21 and T20 */
+    /* T21 1.0.33 / T20 3.12.0: isp_table_tuning_ratio(109, min(ratio, 200));
+     * the drivers reject 0x8000086 and have no sinter-strength control. */
+    int result = tseries_table_tuning_ratio(TSERIES_TABLE_SINTER,
+                                            ratio > 200 ? 200 : ratio);
 
-    memset(&attr, 0, sizeof(attr));
-    attr.mode = 1;
-    attr.type = 1;
-    attr.manual_strength = (uint8_t)(ratio > 255 ? 255 : ratio);
-    result = tseries_tuning_set_ptr(TISP_CID_2DNS_ATTR, &attr);
     if (result == 0) {
-        tseries_t20_sinter_ratio = ratio;
+        tseries_t2x_sinter_ratio = ratio;
     }
     return result;
 #else
@@ -2176,10 +2367,10 @@ int IMP_ISP_Tuning_GetSinterStrength(uint32_t *pratio)
         return -1;
     }
 
-#if defined(PLATFORM_T20)
+#if defined(PLATFORM_T21) /* T21 and T20 */
     (void)value;
     result = 0;
-    *pratio = tseries_t20_sinter_ratio;
+    *pratio = tseries_t2x_sinter_ratio;
     return result;
 #else
     result = tseries_tuning_get_val(TISP_CID_2DNS_RATIO, &value);
@@ -2834,7 +3025,12 @@ int IMP_ISP_Tuning_SetVideoDrop(void *attr)
 
 int IMP_ISP_Tuning_SetShading(void *attr)
 {
+#if defined(PLATFORM_T21) /* T21 and T20 */
+    /* T21 1.0.33 / T20 3.12.0 pass the argument as the S_CTRL value. */
+    return tseries_v4l2_set(TISP_CID_SHADING, (int32_t)(intptr_t)attr);
+#else
     return tseries_tuning_set_ptr(TISP_CID_SHADING, attr);
+#endif
 }
 
 /* Vendor ABI (T23/T31): IMPISPScalerLv * (channel, method, level); the
@@ -2856,12 +3052,21 @@ int IMP_ISP_Tuning_GetMask(void *attr)
 
 int IMP_ISP_Tuning_SetISPProcess(void *attr)
 {
+#if defined(PLATFORM_T21) /* T21 and T20 */
+    /* T21 1.0.33 / T20 3.12.0 pass the argument as the S_CTRL value. */
+    return tseries_v4l2_set(TISP_CID_ISP_PROCESS, (int32_t)(intptr_t)attr);
+#else
     return tseries_tuning_set_ptr(TISP_CID_ISP_PROCESS, attr);
+#endif
 }
 
 int IMP_ISP_Tuning_SetFWFreeze(int enable)
 {
+#if defined(PLATFORM_T21) /* T21 and T20 */
+    return tseries_v4l2_set(TISP_CID_FW_FREEZE, enable);
+#else
     return tseries_tuning_set_val(TISP_CID_FW_FREEZE, enable);
+#endif
 }
 
 int IMP_ISP_Tuning_SetCsc_Attr(void *attr)
@@ -3673,6 +3878,27 @@ int IMP_ISP_EnableTuning(void)
     }
 #endif
     *(uint8_t *)((char *)tune + 9) = TSERIES_CUSTOM_CONTRAST;
+#if defined(PLATFORM_T21) /* T21 and T20 */
+    {
+        /* SetISPRunningMode re-sends the cached brightness, saturation and
+         * sharpness bytes.  The vendor leaves them 0 until the app sets or
+         * gets them, which would push 0 on a day/night switch; seed them
+         * from the driver, or 128 if it has no getter or reports 0. */
+        static const struct { int32_t id; uint8_t offset; } seed[] = {
+            { 0x980900, 8 }, { 0x980902, 10 }, { 0x98091b, 11 },
+        };
+        size_t i;
+
+        for (i = 0; i < sizeof(seed) / sizeof(seed[0]); i++) {
+            int32_t v = 0;
+
+            if (tseries_v4l2_get(seed[i].id, &v) != 0 || (uint8_t)v == 0) {
+                v = 0x80;
+            }
+            *(uint8_t *)((char *)tune + seed[i].offset) = (uint8_t)v;
+        }
+    }
+#endif
 #if defined(PLATFORM_T23)
     openimp_t23_isp_tuning_enabled();
 #endif
