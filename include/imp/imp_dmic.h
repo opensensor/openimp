@@ -70,7 +70,7 @@ int IMP_DMIC_GetGain(int dmicDevId, int dmicChnId, int *dmicGain);
 int IMP_DMIC_EnableAec(int dmicDevId, int dmicChnId, int aoDevId, int aoChId);
 int IMP_DMIC_DisableAec(int dmicDevId, int dmicChnId);
 int IMP_DMIC_EnableAecRefFrame(int dmicDevId, int dmicChnId, int audioAoDevId, int aoChn);
-int IMP_DMIC_DisableAecRefFrame(int dmicDevId, int dmicChnId);
+int IMP_DMIC_DisableAecRefFrame(int dmicDevId, int dmicChnId, int audioAoDevId, int aoChn);
 int IMP_DMIC_GetFrameAndRef(int dmicDevId, int dmicChnId, IMPDmicChnFrame *chnFrm, IMPDmicFrame *ref, IMPBlock block);
 
 #ifdef __cplusplus
