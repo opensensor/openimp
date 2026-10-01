@@ -639,14 +639,16 @@ static int avpu_write_reg(int fd, unsigned int off, unsigned int val)
 {
     if (fd < 0 || (off & 3) != 0) return -1;
 
-    /* Some kernel builds copy more than sizeof(struct avpu_reg). Provide slack. */
-    size_t buf_sz = sizeof(struct avpu_reg) + 0x400;
-    void *raw = NULL;
-    if (posix_memalign(&raw, 16, buf_sz) != 0 || !raw) {
-        return -1;
-    }
-    memset(raw, 0, buf_sz);
-    struct avpu_reg *p = (struct avpu_reg*)raw;
+    /* Some kernel builds copy more than sizeof(struct avpu_reg). Provide
+     * slack. The ioctl is synchronous, so the zeroed, 16-byte aligned
+     * buffer lives on the stack: this runs ~20 times per encoded picture
+     * and a heap allocation + free per register access bought nothing. */
+    union {
+        struct avpu_reg reg;
+        uint8_t bytes[sizeof(struct avpu_reg) + 0x400];
+    } raw __attribute__((aligned(16)));
+    memset(&raw, 0, sizeof(raw));
+    struct avpu_reg *p = &raw.reg;
     p->id = off;
     p->value = val;
 
@@ -654,22 +656,20 @@ static int avpu_write_reg(int fd, unsigned int off, unsigned int val)
       if (c <= 20 || (c % 1000) == 0)
         LOG_CODEC("AVPU write_reg: off=0x%08x val=0x%08x argp=%p [#%u]", off, val, (void*)p, c);
     }
-    int ret = avpu_sys_ioctl(fd, AL_CMD_IP_WRITE_REG, p);
-    free(raw);
-    return ret;
+    return avpu_sys_ioctl(fd, AL_CMD_IP_WRITE_REG, p);
 }
 
 static int avpu_read_reg_internal(int fd, unsigned int off, unsigned int *out, int verbose)
 {
     if (fd < 0 || (off & 3) != 0) return -1;
 
-    size_t buf_sz = sizeof(struct avpu_reg) + 0x400;
-    void *raw = NULL;
-    if (posix_memalign(&raw, 16, buf_sz) != 0 || !raw) {
-        return -1;
-    }
-    memset(raw, 0, buf_sz);
-    struct avpu_reg *p = (struct avpu_reg*)raw;
+    /* Same slack and stack buffer as avpu_write_reg. */
+    union {
+        struct avpu_reg reg;
+        uint8_t bytes[sizeof(struct avpu_reg) + 0x400];
+    } raw __attribute__((aligned(16)));
+    memset(&raw, 0, sizeof(raw));
+    struct avpu_reg *p = &raw.reg;
     p->id = off;
     p->value = 0;
 
@@ -680,7 +680,6 @@ static int avpu_read_reg_internal(int fd, unsigned int off, unsigned int *out, i
     }
     int ret = avpu_sys_ioctl(fd, AL_CMD_IP_READ_REG, p);
     if (ret == 0 && out) *out = p->value;
-    free(raw);
     return ret;
 }
 
