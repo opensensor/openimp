@@ -1,7 +1,8 @@
 /*
  * t23tune: on-camera CLI test tool for the new T23 tuning CIDs
  * (MaxAgain, MaxDgain, AE_IT_MAX, SensorAttr, EnableDRC, EnableDefog,
- * SinterStrength) plus the existing EXPR/EV/TotalGain/AeLuma getters.
+ * SinterStrength, sensor flip) plus the existing EXPR/EV/TotalGain/AeLuma
+ * getters.
  *
  * Runs as a second process alongside timps: it opens only the tuning
  * node /dev/isp-m0 directly (no IMP_ISP_Open, no sensor/frame channels),
@@ -133,8 +134,11 @@ int main(int argc, char **argv)
 {
     if (argc < 2) {
         fprintf(stderr,
-            "usage: %s show | maxagain N | itmax LINES | drc 0|1 | "
-            "defog 0|1 | sinter N\n", argv[0]);
+            "usage: %s show | maxagain N | maxdgain N | itmax LINES | "
+            "drc 0|1 | defog 0|1 | sinter N | flip 0..3\n"
+            "  maxagain/maxdgain: log2 in 1/32 steps (32 = 2x)\n"
+            "  flip: sensor mirror/flip, bit 0 mirror, bit 1 flip\n",
+            argv[0]);
         return 2;
     }
     if (open_isp())
@@ -153,6 +157,26 @@ int main(int argc, char **argv)
     if (!strcmp(argv[1], "maxagain"))
         return do_u32("MaxAgain", v, IMP_ISP_Tuning_SetMaxAgain,
                       IMP_ISP_Tuning_GetMaxAgain);
+    if (!strcmp(argv[1], "maxdgain"))
+        return do_u32("MaxDgain", v, IMP_ISP_Tuning_SetMaxDgain,
+                      IMP_ISP_Tuning_GetMaxDgain);
+    if (!strcmp(argv[1], "flip")) {
+        uint32_t h = 0, vf = 0;
+        int r1, r2, r3, r4;
+
+        if (v > 3U) {
+            fprintf(stderr, "flip: 0..3\n");
+            return 2;
+        }
+        r1 = IMP_ISP_Tuning_SetSensorHflip((int)(v & 1U));
+        r2 = IMP_ISP_Tuning_SetSensorVflip((int)((v >> 1) & 1U));
+        r3 = IMP_ISP_Tuning_GetSensorHflip(&h);
+        r4 = IMP_ISP_Tuning_GetSensorVflip(&vf);
+        printf("SetSensorHflip(%u) ret %d SetSensorVflip(%u) ret %d; "
+               "read back h %u ret %d v %u ret %d\n", v & 1U, r1,
+               (v >> 1) & 1U, r2, h, r3, vf, r4);
+        return (r1 || r2) ? 1 : 0;
+    }
     if (!strcmp(argv[1], "itmax"))
         return do_u32("Ae_IT_MAX", v, IMP_ISP_Tuning_SetAe_IT_MAX,
                       IMP_ISP_Tuning_GetAE_IT_MAX);
