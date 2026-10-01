@@ -80,14 +80,8 @@ typedef T30H264SliceConfig PlatformH264SliceConfig;
 #endif
 #if defined(HELIX_SMALL_WINDOWS)
 #define T30_DESCRIPTOR_WINDOW (1u << 14)
-#if defined(PLATFORM_T23)
-/* The command list declares a 1 MiB EMC bitstream window (0x30040 = 1024
- * KiB) starting at the 128-byte aligned slice data; keep a page of slack
- * past it so even a full window stays inside this allocation. */
-#define T30_BITSTREAM_WINDOW  ((1u << 20) + 4096u)
-#else
+/* T23 sizes its bitstream window per picture (OpenIMP_T30_HelixCreate) */
 #define T30_BITSTREAM_WINDOW  (1u << 20)
-#endif
 #else
 #define T30_DESCRIPTOR_WINDOW (1u << 20)
 #endif
@@ -200,6 +194,9 @@ struct T30HelixEncoder {
 #if defined(PLATFORM_T23)
     uint32_t failures;          /* consecutive failed pictures */
     uint32_t input_size;        /* NV12 bytes the VPU reads per frame */
+    uint32_t scratch_offset[4]; /* EMC per-macroblock buffer layout */
+    uint32_t scratch_size;
+    uint32_t bitstream_kib;     /* EMC bitstream window (0x30040) */
 #endif
 };
 
@@ -214,7 +211,15 @@ static void t30_dma_release(IMPDMABufferInfo *dma)
 static int t30_dma_allocate(IMPDMABufferInfo *dma, uint32_t size,
                             const char *tag)
 {
+#if defined(PLATFORM_T23)
+    /* Long-lived encoder buffers go to the top of the reserved arena, away
+     * from the FrameSource pools that are freed and re-created from the
+     * bottom whenever a channel idles. */
+    if (size > INT32_MAX ||
+        DMA_AllocDescriptorTop(dma, (int)size, tag) != 0 ||
+#else
     if (size > INT32_MAX || DMA_AllocDescriptor(dma, (int)size, tag) != 0 ||
+#endif
         !dma->phys_addr || !dma->virt_addr) {
         LOG_CODEC("T30 Helix: DMA allocation failed tag=%s size=%u", tag,
                   size);
@@ -399,6 +404,11 @@ static void t30_fill_slice(T30HelixEncoder *encoder,
     slice->descriptor_words = encoder->descriptor.size / sizeof(uint32_t);
 #if defined(HELIX_T21_SYNTAX)
     slice->scratch_base = encoder->emc.phys_addr;
+#if defined(PLATFORM_T23)
+    memcpy(slice->scratch_offset, encoder->scratch_offset,
+           sizeof(slice->scratch_offset));
+    slice->bitstream_kib = encoder->bitstream_kib;
+#endif
 #else
     /* SDK 1.0.5 selects the alternate DCS threshold for its substream. */
     slice->dcs_oth = encoder->params.width <= 640u ? 1u : 0u;
@@ -459,6 +469,44 @@ int OpenIMP_T30_HelixCreate(T30HelixEncoder **encoder_out,
     encoder->channel.thread_id = -1;
     if (ioctl(encoder->fd, T30_CHANNEL_REQUEST, &encoder->channel) != 0)
         goto fail;
+#if defined(PLATFORM_T23)
+    /* Size the per-channel buffers for the picture: EMC per-macroblock
+     * scratch, and a bitstream window of one raw picture (an all-I_PCM
+     * picture fits; at least 256 KiB, at most the 1 MiB of the T21
+     * layout). */
+    encoder->scratch_size = T23_HelixScratchLayout(
+        (params->width + 15u) / 16u, (params->height + 15u) / 16u,
+        encoder->scratch_offset);
+    {
+        uint64_t window = (reference_size + 0xffffu) &
+                          ~(uint64_t)0xffffu;
+
+        if (window < (256u << 10))
+            window = 256u << 10;
+        if (window > (1u << 20))
+            window = 1u << 20;
+        encoder->bitstream_kib = (uint32_t)(window >> 10);
+    }
+    for (i = 0; i < 2u; i++) {
+        if (t30_dma_allocate(&encoder->reference[i].dma,
+                             (uint32_t)reference_size,
+                             "t23-helix-ref") != 0)
+            goto fail;
+        encoder->reference[i].y = encoder->reference[i].dma.phys_addr;
+        encoder->reference[i].c = encoder->reference[i].y +
+                                  (uint32_t)aligned_luma_size;
+    }
+    /* the window starts at the 128-byte aligned slice data; a page of
+     * slack keeps even a full window inside the allocation */
+    if (t30_dma_allocate(&encoder->temporary,
+                         (encoder->bitstream_kib << 10) + 4096u,
+                         "t23-helix-bs") != 0 ||
+        t30_dma_allocate(&encoder->emc, encoder->scratch_size,
+                         "t23-helix-emc") != 0 ||
+        t30_dma_allocate(&encoder->descriptor, T30_DESCRIPTOR_WINDOW,
+                         "t23-helix-desc") != 0)
+        goto fail;
+#else
     if (t30_dma_allocate(&encoder->descriptor, T30_DESCRIPTOR_WINDOW,
                          "t30-helix-desc") != 0 ||
         t30_dma_allocate(&encoder->emc, T30_EMC_SIZE,
@@ -479,6 +527,7 @@ int OpenIMP_T30_HelixCreate(T30HelixEncoder **encoder_out,
         encoder->reference[i].c = encoder->reference[i].y +
                                   (uint32_t)aligned_luma_size;
     }
+#endif
     t30_init_parameter_sets(encoder);
     h264_cabac_init();
     if (t30_generate_headers(encoder) != 0)
@@ -500,14 +549,16 @@ int OpenIMP_T30_HelixCreate(T30HelixEncoder **encoder_out,
 #if defined(PLATFORM_T23)
     IMP_LOG_INFO("Encoder", "T23 Helix: native encoder ready channel=%u "
                  "%ux%u rc=%u bitrate=%u fps=%u/%u gop=%u qp=%u [%u,%u] "
-                 "desc=0x%08x emc=0x%08x bs=0x%08x ref=0x%08x/0x%08x "
-                 "timeout=%ums", encoder->channel.channel_id,
+                 "desc=0x%08x emc=0x%08x/%uK bs=0x%08x/%uK "
+                 "ref=0x%08x/0x%08x timeout=%ums",
+                 encoder->channel.channel_id,
                  params->width, params->height, encoder->params.rc_mode,
                  encoder->params.bitrate, encoder->params.fps_num,
                  encoder->params.fps_den, encoder->params.gop_length,
                  encoder->params.qp, encoder->params.min_qp,
                  encoder->params.max_qp, encoder->descriptor.phys_addr,
-                 encoder->emc.phys_addr, encoder->temporary.phys_addr,
+                 encoder->emc.phys_addr, encoder->scratch_size >> 10,
+                 encoder->temporary.phys_addr, encoder->bitstream_kib,
                  encoder->reference[0].y, encoder->reference[1].y,
                  encoder->channel.mdelay);
 #endif
@@ -639,7 +690,7 @@ int OpenIMP_T30_HelixEncode(T30HelixEncoder *encoder,
         !(encoder->channel.status & T23_SCH_STAT_ENDFLAG) ||
         (encoder->channel.status & T23_SCH_STAT_ERRORS) ||
         !encoder->channel.output_len ||
-        encoder->channel.output_len > (1u << 20)) {
+        encoder->channel.output_len > (encoder->bitstream_kib << 10)) {
         /* A timed-out, errored or bitstream-full picture leaves no usable
          * reconstruction: restart the GOP.  soc_vpu has already reset the
          * core on a timeout and resets it again before the next job. */

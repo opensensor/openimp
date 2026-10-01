@@ -180,6 +180,45 @@ static void check_list(int p, unsigned int w, unsigned int h)
            p ? "P" : "I", w, h, pairs);
 }
 
+static void check_scratch_layout(void)
+{
+    T21H264SliceConfig c;
+    uint32_t offsets[4];
+    uint32_t size;
+    size_t pairs = 0;
+
+    /* 1080p: exactly the captured T21 layout in 2 MiB */
+    size = T23_HelixScratchLayout(120, 68, offsets);
+    assert(offsets[0] == 0x30000u && offsets[1] == 0xb0000u &&
+           offsets[2] == 0xd0000u && offsets[3] == 0x150000u);
+    assert(size == 0x200000u);
+    /* 360p: per-macroblock scaled, every buffer still at least as large
+     * per macroblock as at 1080p */
+    size = T23_HelixScratchLayout(40, 23, offsets);
+    assert(offsets[0] >= 24u * 920u && offsets[1] - offsets[0] >= 64u * 920u &&
+           offsets[2] - offsets[1] >= 16u * 920u &&
+           offsets[3] - offsets[2] >= 64u * 920u &&
+           size - offsets[3] >= 0xb0000u / 8160u * 920u);
+    assert(size < (300u << 10));
+    printf("EMC scratch 640x360: %u KiB (1920x1080: 2048 KiB)\n",
+           size >> 10);
+
+    fill(&c, 1, 640, 360);
+    c.scratch_offset[0] = offsets[0];
+    c.scratch_offset[1] = offsets[1];
+    c.scratch_offset[2] = offsets[2];
+    c.scratch_offset[3] = offsets[3];
+    c.bitstream_kib = 256;
+    assert(T21_H264_BuildDescriptor(&c, &pairs) == 0 && pairs == 1034u);
+    assert(fnv1a(descriptor, pairs) == OEM_T23_P_DIGEST);
+    assert(value_of(pairs, 0x30018, 0) == c.scratch_base);
+    assert(value_of(pairs, 0x3004c, 0) == c.scratch_base + offsets[0]);
+    assert(value_of(pairs, 0x30050, 0) == c.scratch_base + offsets[1]);
+    assert(value_of(pairs, 0x30054, 0) == c.scratch_base + offsets[2]);
+    assert(value_of(pairs, 0x30058, 0) == c.scratch_base + offsets[3]);
+    assert(value_of(pairs, 0x30040, 0) == 256u);
+}
+
 static void check_refusals(void)
 {
     T21H264SliceConfig c;
@@ -215,6 +254,7 @@ int main(void)
     check_list(0, 640, 360);
     check_list(1, 640, 360);
     check_refusals();
+    check_scratch_layout();
     printf("T23 Helix descriptor test passed\n");
     return 0;
 }

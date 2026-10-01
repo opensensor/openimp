@@ -98,9 +98,67 @@ keeps only the number of writes and an FNV-1a digest of the register order.
   Rate control (CBR/VBR/FixQP), GOP, IDR requests and the output path
   (`queue_encoded_stream`, P2 pack splitting) are shared with T30.
 
-Reserved memory per channel: 16 KiB command list, 2 MiB EMC scratch,
-1 MiB + 4 KiB bitstream window, two NV12 reconstruction planes. That is
-about 9.3 MiB for 1920x1080 and 3.7 MiB for 640x360 (13 MiB for both).
+Reserved memory per channel (all from the **top** of the reserved arena,
+`DMA_AllocDescriptorTop`, so the FrameSource pools that timps frees and
+re-creates whenever a channel idles keep their holes at the bottom):
+
+| Buffer | 1920x1080 | 640x360 |
+| --- | --- | --- |
+| reconstruction/reference, 2 NV12 planes | 6120 KiB | 690 KiB |
+| EMC per-macroblock scratch (24/64/16/64/88 B per MB, 4 KiB pages) | 2048 KiB | 260 KiB |
+| bitstream window (one raw picture, 256 KiB..1 MiB) + 4 KiB | 1028 KiB | 388 KiB |
+| command list | 16 KiB | 16 KiB |
+| total | 9212 KiB | 1360 KiB |
+
+The 1080p EMC layout is the one captured from the OEM T21 encoder (offsets
+0x30000/0xb0000/0xd0000/0x150000 in 2 MiB), which is exactly 24, 64, 16 and
+64 bytes per macroblock rounded to pages; smaller pictures scale per
+macroblock (plus a spare page per buffer). The OEM sets the window size
+(0x30040, KiB) per channel; OpenIMP uses one raw picture so even an
+all-I_PCM picture fits.
+
+The first device run (2 MiB EMC and 1 MiB window per channel, buffers
+best-fit from the bottom) needed 13 MiB and broke the main pool's re-creation
+after an idle cycle ("largest free block 5554176"); the layout test below
+reproduces exactly that failure and shows the new layout surviving.
+
+### OEM reference sharing (not used)
+
+The OEM T23 encoder can keep reference and reconstruction in one ring per
+channel (`BUF_SHARE_CFG`; only when the application enables buffer sharing
+for the channel and per frame). Emulating the OEM builder shows how it works:
+the ring holds the picture plus 256 lines (`(1117+1)*64`, the encoder sets
+3), register 0x60004 gets bit 30, 0x60014/0x60018 are the ring start and
+0x6001c/0x60020 the ring end (luma/chroma), and the reconstruction pointer
+0x60008/0x6000c moves 256 lines down per picture modulo the ring while the
+reference (0x5006c/0x50070, 0xb0014/0xb0018) is the previous picture's
+position. For 1080p that is 3.7 MiB instead of 6.0 MiB. It is not
+implemented: the budget fits without it and the ring semantics of the
+reference readers are not verifiable on the host.
+
+## Status (WIP)
+
+Done:
+- native encoder, device-tested by the coordinator: self-test stages
+  (360p and 1080p) decode; timps with both channels native encodes
+  (status 0x301), but the first layout ran rmem out on chn0's idle cycle;
+- per-picture EMC scratch and bitstream window, encoder buffers from the
+  top of the arena (`DMA_AllocDescriptorTop`, T23 only), layout simulation
+  test.
+
+Next:
+- device test of the new layout (plan below, "Memory retest");
+- optional: OEM reference sharing (above) if more headroom is needed.
+
+Current builds (`T23_DEFAULT_ENCODER=worker` default):
+
+| Build | md5 |
+| --- | --- |
+| T23 libimp.so (default worker) | 42fc84f665214bcef8da8822f4e38ce7 |
+| T23 libimp.so (`T23_DEFAULT_ENCODER=native`) | 6ee5fce902cd520f1ce055e25e86cf8f |
+| T23 openimp-t23-helix-selftest | 416de9a06e7c54f2db33c19f0a426dd0 |
+| T23 openimp-t23-helixd (unchanged) | 2173cdb30c4dd9e24229ac4db80111f3 |
+| T30 / T31 / T20 / T21 libimp.so (unchanged) | f953cffc… / 9606fc65… / f787b889… / 6a045ced… |
 
 ## Host tests
 
@@ -111,6 +169,12 @@ about 9.3 MiB for 1920x1080 and 3.7 MiB for 640x360 (13 MiB for both).
   Helix-internal address is in 0x131xxxxx, nothing points into
   0x132xxxxx, the T23 constants are present, inputs pass through, invalid
   inputs are refused.
+- `t23-rmem-layout-test`: OpenIMP's arena allocator with the real encoder
+  buffer sizes through timps' sequence (start, chn0 idle, sub channel
+  starting while chn0 is idle, re-enable; then 20000 random idle/re-enable,
+  snapshot and encoder-restart steps). Every pool re-creation must succeed;
+  it prints the least free space (1556 KiB with a 256 KiB snapshot buffer
+  live). The previous layout must fail with the device's numbers.
 - `t23-helix-stream-test`: the whole native encoder against a fake
   `/dev/soc_vpu` that validates every job (ioctl numbers, node, core id,
   terminated list in reserved memory, DMA addresses inside allocations) and
@@ -191,6 +255,22 @@ expected size, bitrate, fps and GOP, and the first frames' `status`. Then:
 
 Afterwards drop `OPENIMP_T23_NATIVE_FALLBACK=0` (fallback to the worker on
 create failure) and, once proven, build with `T23_DEFAULT_ENCODER=native`.
+
+### Memory retest (after the first device run)
+
+1. timps with `OPENIMP_T23_ENCODER=native OPENIMP_T23_NATIVE_FALLBACK=0`
+   and `OPENIMP_DEBUG_TRACE=1` once (DMA allocation lines). Check both
+   "native encoder ready" lines: `emc=.../2048K bs=.../1024K` for 1080p and
+   `emc=.../260K bs=.../384K` for 360p, addresses near the top of rmem
+   (main below 0x04000000, sub just below the main buffers).
+2. Let timps idle chn0 and chn1 (no clients) and bring them back several
+   times (open/close RTSP on each channel, take snapshots in between). No
+   `rmem out of memory`, no `EnableChn failed`.
+3. While both channels stream: the trace's `used=` for rmem should be about
+   21 MiB of 22 MiB (1.5 MiB free); note the value.
+4. Run for an hour with clients coming and going (Frigate on the sub
+   stream, an RTSP player on the main), watch kmsg for vpu/helix messages
+   and timps for encoder failures.
 
 ### Hang precautions
 

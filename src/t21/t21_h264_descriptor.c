@@ -238,6 +238,42 @@ static unsigned int t21_mau_context_index(unsigned int index)
     return index + 0xd3u;
 }
 
+#if defined(PLATFORM_T23)
+/* The EMC block keeps per-macroblock side information in five buffers.
+ * The T21 1080p layout (8160 macroblocks: offsets 0x30000, 0xb0000,
+ * 0xd0000, 0x150000 in a 2 MiB scratch, as captured from the OEM encoder)
+ * is exactly 24, 64, 16 and 64 bytes per macroblock rounded up to 4 KiB,
+ * with 0xb0000 bytes (88.3 per macroblock) left for the last buffer.  Scale
+ * that per macroblock, plus one spare page per buffer, so a 640x360
+ * channel needs 0.26 MiB instead of 2 MiB.  For 1920x1080 this
+ * reproduces the captured layout byte for byte. */
+uint32_t T23_HelixScratchLayout(uint32_t mb_width, uint32_t mb_height,
+                                uint32_t offsets[4])
+{
+    static const uint32_t bytes_per_mb[4] = { 24u, 64u, 16u, 64u };
+    uint32_t mbs = mb_width * mb_height;
+    uint32_t offset = 0;
+    uint32_t last;
+    unsigned int i;
+
+    if (mbs >= 8160u) {
+        /* the captured layout; larger pictures scale from it */
+        for (i = 0; i < 4u; i++) {
+            offset += (bytes_per_mb[i] * mbs + 4095u) & ~4095u;
+            offsets[i] = offset;
+        }
+        last = (uint32_t)(((uint64_t)0xb0000u * mbs + 8159u) / 8160u);
+        return offsets[3] + ((last + 4095u) & ~4095u);
+    }
+    for (i = 0; i < 4u; i++) {
+        offset += ((bytes_per_mb[i] * mbs + 4095u) & ~4095u) + 4096u;
+        offsets[i] = offset;
+    }
+    last = (uint32_t)(((uint64_t)0xb0000u * mbs + 8159u) / 8160u);
+    return offsets[3] + ((last + 4095u) & ~4095u) + 4096u;
+}
+#endif
+
 int T21_H264_BuildDescriptor(const T21H264SliceConfig *config,
                              size_t *pair_count)
 {
@@ -424,12 +460,24 @@ int T21_H264_BuildDescriptor(const T21H264SliceConfig *config,
     EMIT(0x30000, ((uint32_t)config->last_mby << 8) |
                   ((uint32_t)config->mb_width - 1u));
     EMIT(0x30004, config->bitstream & ~0x7fu);
+#if defined(PLATFORM_T23)
+    if (config->scratch_offset[0]) {
+        EMIT(0x30018, config->scratch_base);
+        EMIT(0x3004c, config->scratch_base + config->scratch_offset[0]);
+        EMIT(0x30050, config->scratch_base + config->scratch_offset[1]);
+        EMIT(0x30058, config->scratch_base + config->scratch_offset[3]);
+        EMIT(0x30054, config->scratch_base + config->scratch_offset[2]);
+        EMIT(0x30040, config->bitstream_kib ? config->bitstream_kib : 0x400u);
+    } else
+#endif
+    {
     EMIT(0x30018, config->scratch_base);
     EMIT(0x3004c, config->scratch_base + 0x30000u);
     EMIT(0x30050, config->scratch_base + 0xb0000u);
     EMIT(0x30058, config->scratch_base + 0x150000u);
     EMIT(0x30054, config->scratch_base + 0xd0000u);
     EMIT(0x30040, 0x400u);
+    }
     EMIT(0x30024, 1);
     for (i = 0; i < 8u; i++)
         EMIT(0x00060u + i * 4u, 0);

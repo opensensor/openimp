@@ -16,6 +16,7 @@ IVS_FRAMEWORK := $(BUILD)/t23-ivs-framework-test
 JPEG_QL := $(BUILD)/t23-jpeg-ql-test
 HELIX_DESCRIPTOR := $(BUILD)/t23-helix-descriptor-test
 HELIX_STREAM := $(BUILD)/t23-helix-stream-test
+RMEM_LAYOUT := $(BUILD)/t23-rmem-layout-test
 HELIX_NATIVE_SOURCES := $(PROJECT_DIR)/src/t30/t30_helix_encoder.c \
 	$(PROJECT_DIR)/src/t21/t21_h264_descriptor.c \
 	$(PROJECT_DIR)/src/t30/h264enc/cabac.c \
@@ -35,8 +36,10 @@ HELIX_INCLUDES := -DPLATFORM_T23 '-D_Static_assert(c,m)=' -Wno-unused-result \
 # build without PIE so the test's data lies below 4 GiB.
 check: $(ISP_TUNING_TEST_BIN) $(ACODEC_TEST_BIN) $(ZERO_COPY_TEST_BIN) \
 	$(FAKE_HELIXD_BIN) $(IVS_DIGEST_T31) $(IVS_DIGEST_T23) \
-	$(IVS_FRAMEWORK) $(JPEG_QL) $(HELIX_DESCRIPTOR) $(HELIX_STREAM)
+	$(IVS_FRAMEWORK) $(JPEG_QL) $(HELIX_DESCRIPTOR) $(HELIX_STREAM) \
+	$(RMEM_LAYOUT)
 	$(HELIX_DESCRIPTOR)
+	$(RMEM_LAYOUT)
 	$(HELIX_STREAM) encode $(BUILD)/t23-helix.h264 $(BUILD)/t23-helix.ref
 	@if command -v ffmpeg >/dev/null 2>&1; then \
 		ffmpeg -v error -err_detect explode -y \
@@ -141,8 +144,18 @@ $(HELIX_STREAM): helix_stream_test.c $(HELIX_NATIVE_SOURCES) \
 		helix_stream_test.c $(HELIX_NATIVE_SOURCES) -no-pie \
 		-Wl,--wrap=open,--wrap=close,--wrap=ioctl -o "$@"
 
+# Reserved-memory layout with the native encoder: OpenIMP's arena and the
+# real encoder buffer sizes through timps' idle/re-enable cycles.
+$(RMEM_LAYOUT): rmem_layout_test.c $(HELIX_NATIVE_SOURCES) \
+	$(PROJECT_DIR)/src/rmem_arena.h $(PROJECT_DIR)/src/t30/t30_helix_encoder.h
+	mkdir -p "$(dir $@)"
+	$(CC) $(CFLAGS) $(HELIX_INCLUDES) -U_FORTIFY_SOURCE \
+		-D_FORTIFY_SOURCE=0 -Wno-missing-field-initializers \
+		rmem_layout_test.c $(HELIX_NATIVE_SOURCES) -no-pie \
+		-Wl,--wrap=open,--wrap=close,--wrap=ioctl -o "$@"
+
 clean:
-	rm -f $(HELIX_DESCRIPTOR) $(HELIX_STREAM) $(BUILD)/t23-helix.h264 \
+	rm -f $(HELIX_DESCRIPTOR) $(HELIX_STREAM) $(RMEM_LAYOUT) $(BUILD)/t23-helix.h264 \
 		$(BUILD)/t23-helix.ref $(BUILD)/t23-helix.nv12
 	rm -f $(ISP_TUNING_TEST_BIN) $(ACODEC_TEST_BIN) $(DEVICE_TEST_BIN) \
 		$(ZERO_COPY_TEST_BIN) $(FAKE_HELIXD_BIN) $(IVS_DIGEST_T31) \

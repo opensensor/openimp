@@ -98,6 +98,44 @@ static inline int rmem_arena_alloc(RmemArena *a, size_t size, size_t *off_out)
     return 0;
 }
 
+/* Like rmem_arena_alloc, but for long-lived buffers: place the request at
+ * the top end of the highest free gap that fits, so it stays clear of the
+ * pools that are freed and re-created from the bottom. */
+static inline int rmem_arena_alloc_top(RmemArena *a, size_t size,
+                                       size_t *off_out)
+{
+    size_t len, prev_end = 0, best_off = 0;
+    int best_idx = -1;
+
+    if (size == 0 || a->count >= RMEM_ARENA_MAX_EXTENTS)
+        return -1;
+    len = rmem_arena_round(size);
+    if (len < size)
+        return -1;
+    for (int i = 0; i <= a->count; i++) {
+        size_t end = i < a->count ? a->ext[i].off : a->size;
+
+        if (end > prev_end && end - prev_end >= len) {
+            best_off = end - len;
+            best_idx = i;
+        }
+        if (i < a->count)
+            prev_end = a->ext[i].off + a->ext[i].len;
+    }
+    if (best_idx < 0)
+        return -1;
+    for (int i = a->count; i > best_idx; i--)
+        a->ext[i] = a->ext[i - 1];
+    a->ext[best_idx].off = best_off;
+    a->ext[best_idx].len = len;
+    a->count++;
+    a->used += len;
+    if (best_off + len > a->high_water)
+        a->high_water = best_off + len;
+    *off_out = best_off;
+    return 0;
+}
+
 /* Frees the extent starting at off; -1 if there is none (double free). */
 static inline int rmem_arena_free(RmemArena *a, size_t off, size_t *len_out)
 {

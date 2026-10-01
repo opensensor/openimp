@@ -92,6 +92,12 @@ int DMA_AllocDescriptor(IMPDMABufferInfo *info, int size, const char *tag)
     return 0;
 }
 
+int DMA_AllocDescriptorTop(IMPDMABufferInfo *info, int size,
+                           const char *tag)
+{
+    return DMA_AllocDescriptor(info, size, tag);
+}
+
 int DMA_FreePhys(uint32_t phys)
 {
     unsigned int i;
@@ -459,9 +465,19 @@ int __wrap_ioctl(int fd, unsigned long request, ...)
         return -1;
     }
     bitstream = reg_value(list, pairs, 0x90024);
-    assert(in_allocation(bitstream, 1u << 20));
-    node->output_len = encode_picture(list, pairs, p, virt_of(bitstream),
-                                      1u << 20);
+    {
+        /* the EMC window (0x30040 KiB from 0x30004) must lie inside the
+         * bitstream allocation */
+        uint32_t window = reg_value(list, pairs, 0x30040) << 10;
+        uint32_t start = reg_value(list, pairs, 0x30004);
+
+        assert(window >= (256u << 10) && window <= (1u << 20));
+        assert(start == (bitstream & ~0x7fu));
+        assert(in_allocation(start, window));
+        node->output_len = encode_picture(list, pairs, p,
+                                          virt_of(bitstream),
+                                          window - (bitstream - start));
+    }
     node->status = 0x301u;
     if (next_fault == FAULT_BSFULL) {
         next_fault = FAULT_NONE;
