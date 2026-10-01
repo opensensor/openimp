@@ -225,13 +225,27 @@ static void selftest(void)
     INFO("GetISPCustomMode ret %d value %d (-1: the tuning bin has no "
          "custom bank)", ret, (int)v);
 
-    /* Served with placeholder values by the kernel today. */
-    ret = IMP_ISP_Tuning_GetTotalGain(&v);
-    INFO("GetTotalGain ret %d value %u (kernel placeholder 256)", ret, v);
-    memset(ev, 0, sizeof(ev));
-    ret = IMP_ISP_Tuning_GetEVAttr(ev);
-    INFO("GetEVAttr ret %d ev %u expr %u", ret, ((uint32_t *)ev)[0],
-         ((uint32_t *)ev)[1]);
+    /* Live AE read-back: the kernel's tisp_g_ev_attr() equivalent.  The
+     * AE may step between the calls, so only report. */
+    {
+        struct {                    /* IMPISPExpr.g_attr */
+            uint32_t mode;
+            uint16_t it, it_min, it_max, line_us;
+        } expr;
+        const uint32_t *e = (const uint32_t *)ev;
+
+        memset(&expr, 0, sizeof(expr));
+        ret = IMP_ISP_Tuning_GetExpr(&expr);
+        INFO("GetExpr ret %d mode %u it %u min %u max %u line %u us", ret,
+             expr.mode, expr.it, expr.it_min, expr.it_max, expr.line_us);
+        ret = IMP_ISP_Tuning_GetTotalGain(&v);
+        INFO("GetTotalGain ret %d value %u ([24.8], 256 = 1x)", ret, v);
+        memset(ev, 0, sizeof(ev));
+        ret = IMP_ISP_Tuning_GetEVAttr(ev);
+        INFO("GetEVAttr ret %d ev %u expr_us %u ev_log2 %u again %u "
+             "dgain %u gain_log2 %u", ret, e[0], e[1], e[2], e[3], e[4],
+             e[5]);
+    }
 
     /* Error conventions of the stock library. */
     RESULT(IMP_ISP_MultiCamera_Tuning_SetBrightness(4, 1) == -4092,
