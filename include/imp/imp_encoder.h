@@ -930,40 +930,23 @@ typedef struct {
 #endif
 
 /**
- * Encoder channel statistics (T20/T21/T23)
+ * Encoder channel statistics.  Every vendor SDK (T20/T21/T23 IMPEncoderCHNStat,
+ * T31/T40/T41 IMPEncoderChnStat) uses this 6-word layout; T31 1.1.6
+ * IMP_Encoder_Query stores six words (HLIL 0x84b68).
  */
-#if defined(PLATFORM_T21) || defined(PLATFORM_T23) || defined(PLATFORM_T30)
 typedef struct {
-    bool registered;
-    uint32_t leftPics;
-    uint32_t leftStreamBytes;
-    uint32_t leftStreamFrames;
-    uint32_t curPacks;
-    uint32_t work_done;
+    bool registered;                    /**< Registered to a group */
+    uint32_t leftPics;                  /**< Pictures waiting to be encoded */
+    uint32_t leftStreamBytes;           /**< Bytes left in the stream buffer */
+    uint32_t leftStreamFrames;          /**< Frames left in the stream buffer */
+    uint32_t curPacks;                  /**< Packs of the current frame */
+    uint32_t work_done;                 /**< 0: running, 1: not running */
 } IMPEncoderCHNStat;
 
 _Static_assert(sizeof(IMPEncoderCHNStat) == 0x18,
-               "T23 IMPEncoderCHNStat ABI mismatch");
-#else
-typedef struct {
-    uint32_t leftPics;                  /**< Left pictures */
-    uint32_t leftBytes;                 /**< Left bytes */
-    uint32_t leftFrames;                /**< Left frames */
-    uint32_t curPacks;                  /**< Current packs */
-    uint32_t work_done;                 /**< Work done flag */
-} IMPEncoderCHNStat;
-#endif
+               "IMPEncoderCHNStat ABI mismatch");
 
-/**
- * Encoder channel statistics (T31/C100/T40/T41)
- */
-typedef struct {
-    uint32_t leftPics;                  /**< Left pictures */
-    uint32_t leftBytes;                 /**< Left bytes */
-    uint32_t leftFrames;                /**< Left frames */
-    uint32_t curPacks;                  /**< Current packs */
-    uint32_t work_done;                 /**< Work done flag */
-} IMPEncoderChnStat;
+typedef IMPEncoderCHNStat IMPEncoderChnStat;
 
 /**
  * JPEG quality level

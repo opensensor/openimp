@@ -203,6 +203,12 @@ typedef struct {
 #endif
     uint64_t next_frame_due_us;
     uint64_t output_timestamp_us;
+    /* IMP_Encoder_GetChnAveBitrate window, as the vendor keeps per channel */
+    uint64_t ave_bytes;
+    uint64_t ave_start_us;
+    uint32_t ave_frames;
+    int ave_valid;
+    double ave_kbps;
     int in_poll;                    /* PollingStream calls in progress */
     int closing;                    /* teardown waits: refuse new polls */
     pthread_cond_t poll_idle;       /* signalled when in_poll drops to 0 */
@@ -1388,6 +1394,11 @@ int IMP_Encoder_CreateChn(int channel, IMPEncoderCHNAttr *attr)
             ch->codec, attr->rcAttr.attrRcMode.attrFixQp.iInitialQP);
 #endif
     ch->created = 1;
+    ch->ave_bytes = 0;
+    ch->ave_start_us = 0;
+    ch->ave_frames = 0;
+    ch->ave_valid = 0;
+    ch->ave_kbps = 0.0;
     ch->group = -1;
     ch->source_channel = -1;
     if (ch->entropy_mode_set &&
@@ -2202,9 +2213,7 @@ int IMP_Encoder_Query(int channel, IMPEncoderCHNStat *stat)
     if (!p2_valid_channel(channel) || !stat || !p2_channels[channel].created)
         return -1;
     memset(stat, 0, sizeof(*stat));
-#if defined(PLATFORM_T23) || defined(PLATFORM_T30)
     stat->registered = p2_channels[channel].registered != 0;
-#endif
     stat->leftPics = p2_channels[channel].raw_stream ? 1u : 0u;
     stat->curPacks = p2_channels[channel].raw_stream ? 1u : 0u;
     return 0;
@@ -2801,6 +2810,9 @@ int IMP_Encoder_GetChnEvalInfo(int channel, void *info)
     return -1;
 }
 
+/* Not ch->lock: that is held across encoder work on other threads. */
+static pthread_mutex_t p2_ave_lock = PTHREAD_MUTEX_INITIALIZER;
+
 #if defined(PLATFORM_T31)
 int IMP_Encoder_GetChnAveBitrate(int channel, IMPEncoderStream *stream,
                                  int frames, double *bitrate)
@@ -2809,30 +2821,51 @@ int IMP_Encoder_GetChnAveBitrate(int channel, IMPEncoderStream *stream,
                                  int frames, int *bitrate)
 #endif
 {
-    uint32_t fps_num;
-    uint32_t fps_den;
-    uint64_t bits_per_second;
+    P2EncoderChannel *ch;
+    struct timespec now_ts;
+    uint64_t bytes = 0;
+    uint64_t now_us;
+    uint32_t i;
+    double kbps;
 
+    /* Vendor (T31 HLIL 0x8754c): sum the pack lengths of every stream
+     * passed in; once `frames` streams are counted, the average is
+     * bits / elapsed milliseconds (kbit/s) and the window restarts.
+     * Between windows the last average is reported (or the running one
+     * before the first window completes). */
     if (!p2_valid_channel(channel) || !stream || frames <= 0 || !bitrate ||
         !p2_channels[channel].created)
         return -1;
-    fps_num = p2_channels[channel].attr.rcAttr.outFrmRate.frmRateNum;
-    fps_den = p2_channels[channel].attr.rcAttr.outFrmRate.frmRateDen;
-    if (!fps_num || !fps_den) {
-        fps_num = 25;
-        fps_den = 1;
+    ch = &p2_channels[channel];
+    for (i = 0; stream->pack && i < stream->packCount; i++)
+        bytes += stream->pack[i].length;
+    clock_gettime(CLOCK_MONOTONIC, &now_ts);
+    now_us = (uint64_t)now_ts.tv_sec * 1000000u +
+             (uint64_t)now_ts.tv_nsec / 1000u;
+
+    pthread_mutex_lock(&p2_ave_lock);
+    if (!ch->ave_start_us)
+        ch->ave_start_us = now_us;
+    ch->ave_bytes += bytes;
+    ch->ave_frames++;
+    kbps = now_us > ch->ave_start_us
+        ? (double)ch->ave_bytes * 8.0 * 1000.0 /
+              (double)(now_us - ch->ave_start_us)
+        : 0.0;
+    if (ch->ave_frames >= (uint32_t)frames) {
+        ch->ave_kbps = kbps;
+        ch->ave_valid = 1;
+        ch->ave_bytes = 0;
+        ch->ave_frames = 0;
+        ch->ave_start_us = now_us;
+    } else if (ch->ave_valid) {
+        kbps = ch->ave_kbps;
     }
-#if defined(PLATFORM_T23) || defined(PLATFORM_T30)
-    bits_per_second = (uint64_t)(stream->packCount && stream->pack
-        ? stream->pack[0].length : 0u) * 8u * fps_num / fps_den;
-#else
-    bits_per_second = (uint64_t)stream->streamSize * 8u * fps_num / fps_den;
-#endif
+    pthread_mutex_unlock(&p2_ave_lock);
 #if defined(PLATFORM_T31)
-    *bitrate = (double)bits_per_second;
+    *bitrate = kbps;
 #else
-    *bitrate = bits_per_second > INT32_MAX
-        ? INT32_MAX : (int)bits_per_second;
+    *bitrate = kbps > (double)INT32_MAX ? INT32_MAX : (int)kbps;
 #endif
     return 0;
 }
