@@ -1541,8 +1541,18 @@ int IMP_ISP_Tuning_SetSensorFPS(uint32_t fps_num, uint32_t fps_den)
         return -1;
     }
 
+#if defined(PLATFORM_T20)
+    {
+        /* T20 apical_isp_fps_s_control copy_from_user()s the value from
+         * the address in control->value, like the get side below. */
+        uint32_t fps = (fps_num << 16) | (fps_den & 0xffff);
+
+        result = tseries_tuning_set_ptr(TISP_CID_SENSOR_FPS, &fps);
+    }
+#else
     result = tseries_tuning_set_val(TISP_CID_SENSOR_FPS,
         ((int32_t)fps_num << 16) | (fps_den & 0xffff));
+#endif
     if (result == 0) {
         tseries_sensor_fps_num = fps_num;
         tseries_sensor_fps_den = fps_den;
@@ -1559,7 +1569,12 @@ int IMP_ISP_Tuning_GetSensorFPS(uint32_t *fps_num, uint32_t *fps_den)
         return -1;
     }
 
+#if defined(PLATFORM_T20)
+    /* T20 apical_isp_fps_g_control copy_to_user()s through control->value. */
+    result = tseries_tuning_get_val_indirect(TISP_CID_SENSOR_FPS, &value);
+#else
     result = tseries_tuning_get_val(TISP_CID_SENSOR_FPS, &value);
+#endif
     if (result == 0) {
         tseries_sensor_fps_num = ((uint32_t)value >> 16) & 0xffff;
         tseries_sensor_fps_den = (uint32_t)value & 0xffff;
@@ -1611,7 +1626,16 @@ int IMP_ISP_Tuning_GetAntiFlickerAttr(IMPISPAntiflickerAttr *pattr)
 
 int IMP_ISP_Tuning_SetISPRunningMode(IMPISPRunningMode mode)
 {
+#if defined(PLATFORM_T20)
+    /* T20 apical_isp_day_or_night_s_ctrl copy_from_user()s the mode from
+     * the address in control->value.  An inline value made that copy fail
+     * silently: the ISP never left day mode (colour, no clip_min_uv 512)
+     * while timps' day/night logic believed it had switched. */
+    int32_t value = (int32_t)mode;
+    int result = tseries_tuning_set_ptr(TISP_CID_RUNNING_MODE, &value);
+#else
     int result = tseries_tuning_set_val(TISP_CID_RUNNING_MODE, mode);
+#endif
 
     if (result == 0) {
         tseries_running_mode = mode;
@@ -3583,12 +3607,26 @@ int IMP_ISP_EnableTuning(void)
             "IMP_ISP_EnableTuning", "Failed to mmap isp base addr\n");
     }
 
+#if defined(PLATFORM_T20)
+    {
+        /* T20 copies the FPS through control->value (see GetSensorFPS). */
+        uint32_t fps = 0;
+        TSeriesTuningValReq fps_req = { 1, TISP_CID_SENSOR_FPS,
+                                        (int32_t)(intptr_t)&fps };
+
+        if (ioctl(isp->tuning_fd, TISP_VIDIOC_TUNING, &fps_req) == 0) {
+            *(int32_t *)((char *)tune + 0xc) = fps >> 16;
+            *(int32_t *)((char *)tune + 0x10) = fps & 0xffff;
+        }
+    }
+#else
     TSeriesTuningValReq fps_req = { 1, TISP_CID_SENSOR_FPS, 0 };
     if (ioctl(isp->tuning_fd, TISP_VIDIOC_TUNING,
               &fps_req) == 0) {
         *(int32_t *)((char *)tune + 0xc) = (uint32_t)fps_req.value >> 16;
         *(int32_t *)((char *)tune + 0x10) = fps_req.value & 0xffff;
     }
+#endif
     *(uint8_t *)((char *)tune + 9) = TSERIES_CUSTOM_CONTRAST;
 #if defined(PLATFORM_T23)
     openimp_t23_isp_tuning_enabled();
