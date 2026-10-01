@@ -42,10 +42,14 @@ int32_t set_framesource_changewait_cnt(void);
 int IMP_ISP_SetDefaultBinPath(const char *path);
 int IMP_ISP_GetDefaultBinPath(char *path);
 
+/* The stock library's source path, used in its log lines (and keeping the
+ * build directory out of the binary). */
+#define T23_SRC_FILE \
+    "/home_a/ingenic/isvp_t23/proj/sdk-lv3/src/imp/isp/isp_tseries.c"
+
 #define T23_LOG_ERR(fn, ...)                                               \
-    imp_log_fun(6, IMP_Log_Get_Option(), 2, "IMP-ISP",                     \
-                "/home_a/ingenic/isvp_t23/proj/sdk-lv3/src/imp/isp/"       \
-                "isp_tseries.c", __LINE__, fn, __VA_ARGS__)
+    imp_log_fun(6, IMP_Log_Get_Option(), 2, "IMP-ISP", T23_SRC_FILE,       \
+                __LINE__, fn, __VA_ARGS__)
 
 #define T23_VI_MAX 4
 #define T23_ERR_VI_OVERFLOW (-4092) /* stock CODE 4100 */
@@ -1557,7 +1561,7 @@ int IMP_ISP_MultiCamera_SetDefaultBinPath(int num, char *path)
         return -1;
     }
     if (num != 0) {
-        imp_log_fun(5, IMP_Log_Get_Option(), 2, "IMP-ISP", __FILE__,
+        imp_log_fun(5, IMP_Log_Get_Option(), 2, "IMP-ISP", T23_SRC_FILE,
                     __LINE__, __func__,
                     "[ %s:%d ] This interface currently does not support "
                     "sub-cameras or the third camera channel\n",
@@ -1779,7 +1783,7 @@ int IMP_ISP_Tuning_SetShading(int enable)
 {
     int ret = t23_cached_ctrl(__func__, T23_CID_SHADING, enable, NULL);
 
-    printf("##### %s,%s,%d en = %d, ret = %d\n", __func__, __FILE__,
+    printf("##### %s,%s,%d en = %d, ret = %d\n", __func__, T23_SRC_FILE,
            __LINE__, enable, ret);
     return ret;
 }
