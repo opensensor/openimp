@@ -228,6 +228,7 @@ static int t23_start_worker(T23HelixBridge *bridge)
     static char *const helper_environment[] = {
         "PATH=/usr/bin:/bin",
         "LD_LIBRARY_PATH=/opt/openimp-t23",
+        "OPENIMP_T23_HELIX_WORKER=1",
         NULL,
     };
     T23HelixIpcRequest request;
@@ -245,6 +246,12 @@ static int t23_start_worker(T23HelixBridge *bridge)
     if (!bridge || bridge->socket_fd >= 0 || bridge->shared_fd >= 0 ||
         bridge->shared_buffer)
         return -1;
+    if (getenv("OPENIMP_T23_HELIX_WORKER")) {
+        /* OpenIMP loaded inside the helper itself: never recurse */
+        t23_log(LOG_ERR, "openimp/T23: Helix helper loaded OpenIMP instead "
+                         "of the OEM libimp");
+        return -1;
+    }
     helper = getenv("OPENIMP_T23_HELIX_HELPER");
     if (!helper || !*helper)
         helper = T23_HELIX_HELPER_DEFAULT;

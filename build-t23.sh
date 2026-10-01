@@ -160,10 +160,23 @@ readelf -d "$output_dir/libimp.so" | grep -E 'SONAME|NEEDED'
 # Keep the proprietary T23 Helix implementation in a clean process.  RVD loads
 # OpenIMP, while this small worker resolves libimp from /usr/lib and exchanges
 # raw frames through tmpfs-backed shared memory.
+# Link it against the OEM libimp.  With per-package directories the
+# package's own staging holds the OEM copy at build time (ingenic-lib), while
+# $target_dir/target only exists once the image is assembled, so a caller may
+# point T23_OEM_LIB_DIR there.
+oem_lib_dir=${T23_OEM_LIB_DIR:-"$target_dir/target/usr/lib"}
+if [ ! -f "$oem_lib_dir/libimp.so" ] ||
+    readelf --dyn-syms --wide "$oem_lib_dir/libimp.so" |
+        awk '$7 != "UND" && $8 == "OpenIMP_P0_GetState" {found=1} END {exit !found}'
+then
+    echo "T23 Helix worker needs the OEM libimp.so in $oem_lib_dir" \
+        "(set T23_OEM_LIB_DIR)" >&2
+    exit 1
+fi
 "$compiler" $base_flags $repo_includes -Wall -Wextra -Werror \
     "$project_dir/src/t23/openimp_t23_helix_worker.c" \
-    -L"$target_dir/target/usr/lib" \
-    -Wl,-rpath,/usr/lib -Wl,-rpath-link,"$target_dir/target/usr/lib" \
+    -L"$oem_lib_dir" \
+    -Wl,-rpath,/usr/lib -Wl,-rpath-link,"$oem_lib_dir" \
     -limp -lalog -lpthread -ldl \
     -o "$output_dir/openimp-t23-helixd"
 "$stripper" --strip-unneeded "$output_dir/openimp-t23-helixd"

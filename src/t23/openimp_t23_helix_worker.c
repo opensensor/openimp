@@ -1,5 +1,7 @@
+#define _GNU_SOURCE
 #include "openimp_t23_helix_ipc.h"
 
+#include <dlfcn.h>
 #include <errno.h>
 #include <signal.h>
 #include <stdint.h>
@@ -259,6 +261,18 @@ int main(int argc, char **argv)
 
     signal(SIGPIPE, SIG_IGN);
     openlog("openimp-t23-helixd", LOG_PID, LOG_DAEMON);
+    /* This worker must run on the OEM libimp.  OpenIMP exports the same
+     * IMP_Encoder_Yuv* entry points and would serve them by spawning
+     * another worker, so refuse to run on it (e.g. when
+     * /opt/openimp-t23/libimp.so was overwritten with OpenIMP). */
+    if (dlsym(RTLD_DEFAULT, "OpenIMP_P0_GetState")) {
+        syslog(LOG_ERR, "openimp/T23 helper: libimp.so is OpenIMP, not "
+                        "the OEM library; refusing to run");
+        munmap(worker.shared, worker.shared_size);
+        close(worker.socket_fd);
+        closelog();
+        return 3;
+    }
     for (;;) {
         T23HelixIpcRequest request;
         T23HelixIpcResponse response;
