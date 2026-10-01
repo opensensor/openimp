@@ -34,9 +34,17 @@ void imp_log_fun(int level, int option, int type, ...);
 #include "isp_tseries_dev.h"
 
 static char *bpath;
+#if defined(PLATFORM_T23)
+/* The T23 tuning API (isp_t23_tuning.c) owns the per-sensor contrast. */
+uint8_t openimp_t23_isp_custom_contrast(void);
+void openimp_t23_isp_tuning_enabled(void);
+#define TSERIES_CUSTOM_CONTRAST openimp_t23_isp_custom_contrast()
+#else
 static uint8_t custom_contrast;
 static uint8_t custom_sharpness;
 static uint32_t global_mode;
+#define TSERIES_CUSTOM_CONTRAST custom_contrast
+#endif
 static int tseries_isp_stream_started;
 static int tseries_bypass_link_setup_done;
 static pthread_t tseries_tuning_thread;
@@ -511,6 +519,7 @@ log_error:
     return -1;
 }
 
+#if !defined(PLATFORM_T23) /* T23: isp_t23_tuning.c */
 int IMP_ISP_Tuning_GetTotalGain(uint32_t *arg1)
 {
     ISPDevice *gISP_1 = gISP;
@@ -995,6 +1004,7 @@ int IMP_ISP_Tuning_GetAeComp(int *arg1)
         return result;
     }
 }
+#endif /* !PLATFORM_T23 */
 
 enum {
     TISP_V4L2_CID_BRIGHTNESS = 0x980900,
@@ -1134,6 +1144,7 @@ typedef struct TSeriesAlgoFunc {
     void *reserved1;
 } TSeriesAlgoFunc;
 
+#if !defined(PLATFORM_T23) /* T23: isp_t23_tuning.c */
 static uint32_t tseries_sensor_fps_num = 25;
 static uint32_t tseries_sensor_fps_den = 1;
 static IMPISPHVFLIP tseries_hvflip;
@@ -1144,19 +1155,26 @@ static IMPISPAntiflickerAttr tseries_antiflicker_attr;
 static IMPISPModuleCtl tseries_module_ctl;
 static IMPISPFrontCrop tseries_front_crop;
 static IMPISPAETargetList tseries_ae_target_list;
+#endif /* !PLATFORM_T23 */
 static void *tseries_ae_func_tmp;
 static void *tseries_awb_func_tmp;
 static int32_t tseries_ae_algo_en;
 static int32_t tseries_awb_algo_en;
 
 static int tseries_get_isp(ISPDevice **out);
+#if !defined(PLATFORM_T23) /* T23: isp_t23_tuning.c */
 static int tseries_tuning_set_val(int32_t subcmd, int32_t value);
+#endif /* !PLATFORM_T23 */
 static int tseries_tuning_get_val(int32_t subcmd, int32_t *value);
+#if !defined(PLATFORM_T23) /* T23: isp_t23_tuning.c */
 static int tseries_tuning_get_wb_stats(int32_t subcmd, IMPISPWB *wb);
+#endif /* !PLATFORM_T23 */
 static int tseries_tuning_set_ptr(int32_t subcmd, void *ptr);
 static int tseries_tuning_get_ptr(int32_t subcmd, void *ptr);
 static int tseries_v4l2_set(int32_t id, int32_t value);
+#if !defined(PLATFORM_T23) /* T23: isp_t23_tuning.c */
 static int tseries_v4l2_get(int32_t id, int32_t *value);
+#endif /* !PLATFORM_T23 */
 
 static int tseries_get_isp(ISPDevice **out)
 {
@@ -1173,6 +1191,7 @@ static int tseries_get_isp(ISPDevice **out)
     return 0;
 }
 
+#if !defined(PLATFORM_T23) /* T23: isp_t23_tuning.c */
 static int tseries_tuning_set_val(int32_t subcmd, int32_t value)
 {
     ISPDevice *isp;
@@ -1186,6 +1205,7 @@ static int tseries_tuning_set_val(int32_t subcmd, int32_t value)
         return ioctl(isp->tuning_fd, TISP_VIDIOC_TUNING, &req);
     }
 }
+#endif /* !PLATFORM_T23 */
 
 static int tseries_tuning_get_val(int32_t subcmd, int32_t *value)
 {
@@ -1211,6 +1231,7 @@ static int tseries_tuning_get_val(int32_t subcmd, int32_t *value)
     }
 }
 
+#if !defined(PLATFORM_T23) /* T23: isp_t23_tuning.c */
 static int tseries_tuning_get_wb_stats(int32_t subcmd, IMPISPWB *wb)
 {
     int32_t packed = 0;
@@ -1228,6 +1249,7 @@ static int tseries_tuning_get_wb_stats(int32_t subcmd, IMPISPWB *wb)
 
     return result;
 }
+#endif /* !PLATFORM_T23 */
 
 static int tseries_tuning_set_ptr(int32_t subcmd, void *ptr)
 {
@@ -1279,6 +1301,7 @@ static int tseries_v4l2_set(int32_t id, int32_t value)
     }
 }
 
+#if !defined(PLATFORM_T23) /* T23: isp_t23_tuning.c */
 static int tseries_v4l2_get(int32_t id, int32_t *value)
 {
     ISPDevice *isp;
@@ -1302,6 +1325,7 @@ static int tseries_v4l2_get(int32_t id, int32_t *value)
         return result;
     }
 }
+#endif /* !PLATFORM_T23 */
 
 /*
  * The T31 OEM EnableTuning path starts an isp_tuning_deamon and registers
@@ -1372,7 +1396,7 @@ static void *tseries_tuning_worker(void *unused)
             total_gain >= 0 &&
             total_gain != tseries_tuning_last_total_gain) {
             uint32_t packed =
-                ((uint32_t)total_gain << 8) | (uint32_t)custom_contrast;
+                ((uint32_t)total_gain << 8) | (uint32_t)TSERIES_CUSTOM_CONTRAST;
 
             if (tseries_v4l2_set(TISP_V4L2_CID_CONTRAST,
                                  (int32_t)packed) == 0) {
@@ -1382,7 +1406,7 @@ static void *tseries_tuning_worker(void *unused)
                 update_count++;
                 if (update_count <= 4u || (update_count % 100u) == 0u)
                     kmsg_trace("libimp/ISP: tuning gain/contrast update gain=%d contrast=%u packed=0x%08x count=%u\n",
-                               total_gain, custom_contrast, packed,
+                               total_gain, TSERIES_CUSTOM_CONTRAST, packed,
                                update_count);
             }
         }
@@ -1423,6 +1447,7 @@ static void tseries_stop_tuning_worker(void)
     tseries_tuning_last_total_gain = -1;
 }
 
+#if !defined(PLATFORM_T23) /* T23: isp_t23_tuning.c */
 int IMP_ISP_Tuning_SetSensorFPS(uint32_t fps_num, uint32_t fps_den)
 {
     int result;
@@ -1528,6 +1553,7 @@ int IMP_ISP_Tuning_GetISPRunningMode(IMPISPRunningMode *pmode)
     *pmode = tseries_running_mode;
     return result;
 }
+#endif /* !PLATFORM_T23 */
 
 int IMP_ISP_Tuning_SetISPBypass(IMPISPTuningOpsMode enable)
 {
@@ -1692,6 +1718,7 @@ int ISP_EnsureLinkStreamOn(int32_t sensor_idx)
     return 0;
 }
 
+#if !defined(PLATFORM_T23) /* T23: isp_t23_tuning.c */
 int IMP_ISP_Tuning_SetISPHflip(IMPISPTuningOpsMode mode)
 {
     int result = tseries_v4l2_set(TISP_V4L2_CID_HFLIP, mode);
@@ -1830,6 +1857,7 @@ int IMP_ISP_Tuning_SetDRC_Strength(uint32_t ratio)
 {
     return tseries_tuning_set_val(TISP_CID_DRC_RATIO, ratio);
 }
+#endif /* !PLATFORM_T23 */
 
 int IMP_ISP_Tuning_SetRawDRC(IMPISPDrcAttr *attribute)
 {
@@ -1880,6 +1908,7 @@ int IMP_ISP_Tuning_GetTemperDnsAttr(IMPISPTemperDenoiseAttr *attribute)
     return 0;
 }
 
+#if !defined(PLATFORM_T23) /* T23: isp_t23_tuning.c */
 int IMP_ISP_Tuning_GetDRC_Strength(uint32_t *pratio)
 {
     int32_t value = 0;
@@ -1917,6 +1946,7 @@ int IMP_ISP_Tuning_SetTemperStrength(uint32_t ratio)
 {
     return tseries_tuning_set_val(TISP_CID_3DNS_RATIO, ratio);
 }
+#endif /* !PLATFORM_T23 */
 
 int IMP_ISP_Tuning_GetTemperStrength(uint32_t *pratio)
 {
@@ -1932,10 +1962,12 @@ int IMP_ISP_Tuning_GetTemperStrength(uint32_t *pratio)
     return result;
 }
 
+#if !defined(PLATFORM_T23) /* T23: isp_t23_tuning.c */
 int IMP_ISP_Tuning_SetSinterStrength(uint32_t ratio)
 {
     return tseries_tuning_set_val(TISP_CID_2DNS_RATIO, ratio);
 }
+#endif /* !PLATFORM_T23 */
 
 int IMP_ISP_Tuning_GetSinterStrength(uint32_t *pratio)
 {
@@ -1951,6 +1983,7 @@ int IMP_ISP_Tuning_GetSinterStrength(uint32_t *pratio)
     return result;
 }
 
+#if !defined(PLATFORM_T23) /* T23: isp_t23_tuning.c */
 int IMP_ISP_Tuning_SetBcshHue(unsigned char hue)
 {
     return tseries_tuning_set_val(TISP_CID_BCSH_HUE, hue);
@@ -2263,6 +2296,7 @@ int IMP_ISP_Tuning_GetHVFlip(IMPISPHVFLIP *hvflip)
     *hvflip = tseries_hvflip;
     return 0;
 }
+#endif /* !PLATFORM_T23 */
 
 int IMP_ISP_Tuning_GetHVFLIP(IMPISPHVFLIP *hvflip)
 {
@@ -2322,6 +2356,7 @@ int IMP_ISP_Tuning_SetIntegrationTime(void *itattr)
 }
 #endif
 
+#if !defined(PLATFORM_T23) /* T23: isp_t23_tuning.c */
 int IMP_ISP_Tuning_SetAe_IT_MAX(uint32_t it_max)
 {
     return tseries_tuning_set_val(TISP_CID_AE_IT_MAX, it_max);
@@ -2544,6 +2579,7 @@ int IMP_ISP_Tuning_GetCsc_Attr(void *attr)
 {
     return tseries_tuning_get_ptr(TISP_CID_CSC_ATTR, attr);
 }
+#endif /* !PLATFORM_T23 */
 
 /* Vendor ABI (T31): IMPISPWdrOutputMode *; the kernel copies 4 bytes. */
 int IMP_ISP_Tuning_SetWdr_OutputMode(void *mode)
@@ -2556,6 +2592,7 @@ int IMP_ISP_Tuning_GetWdr_OutputMode(void *mode)
     return tseries_tuning_get_ptr(TISP_CID_WDR_OUTPUT_MODE, mode);
 }
 
+#if !defined(PLATFORM_T23) /* T23: isp_t23_tuning.c */
 int IMP_ISP_Tuning_SetAwbCtTrend(void *attr)
 {
     return tseries_tuning_set_ptr(TISP_CID_AWB_CT_TREND, attr);
@@ -2650,6 +2687,7 @@ int IMP_ISP_Tuning_Awb_GetRgbCoefft(void *attr)
 {
     return tseries_tuning_get_ptr(TISP_CID_AWB_CWF_SHIFT, attr);
 }
+#endif /* !PLATFORM_T23 */
 
 int IMP_ISP_SetFrameDrop(void *attr)
 {
@@ -2673,11 +2711,13 @@ int IMP_ISP_GetFrameDrop(void *attr)
     return ioctl(isp->fd, TISP_VIDIOC_GET_FRAME_DROP, attr);
 }
 
+#if !defined(PLATFORM_T23) /* T23: isp_t23_tuning.c */
 int IMP_ISP_SetFixedContraster(int mode)
 {
     (void)mode;
     return 0;
 }
+#endif /* !PLATFORM_T23 */
 
 int IMP_ISP_SetAeAlgoFunc(void *func)
 {
@@ -3324,7 +3364,10 @@ int IMP_ISP_EnableTuning(void)
         *(int32_t *)((char *)tune + 0xc) = (uint32_t)fps_req.value >> 16;
         *(int32_t *)((char *)tune + 0x10) = fps_req.value & 0xffff;
     }
-    *(uint8_t *)((char *)tune + 9) = custom_contrast;
+    *(uint8_t *)((char *)tune + 9) = TSERIES_CUSTOM_CONTRAST;
+#if defined(PLATFORM_T23)
+    openimp_t23_isp_tuning_enabled();
+#endif
     if (tseries_start_tuning_worker() != 0)
         kmsg_trace("libimp/ISP: failed to start gain/contrast tuning worker\n");
     return 0;
