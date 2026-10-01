@@ -1094,15 +1094,22 @@ enum {
 #endif
     TISP_CID_AE_STATE = 0x8000036,
     TISP_CID_BACKLIGHT_COMP = 0x8000037,
+    TISP_CID_AE_TARGET_LIST = 0x8000038,
     TISP_CID_DEFOG_STRENGTH = 0x8000039,
+    /* vendor libimp 1.1.6: AfHist 0x42, AFMetrices 0x43, AfWeight 0x44,
+     * GetSensorAttr 0x45, AfZone 0x46 */
+    TISP_CID_AF_HIST = 0x8000042,
     TISP_CID_AF_METRICES = 0x8000043,
     TISP_CID_AF_WEIGHT = 0x8000044,
-    TISP_CID_AF_HIST = 0x8000045,
+    TISP_CID_SENSOR_ATTR = 0x8000045,
+    TISP_CID_AF_ZONE = 0x8000046,
     TISP_CID_DPC_RATIO = 0x8000062,
     TISP_CID_NCU_INFO = 0x8000084,
     TISP_CID_3DNS_RATIO = 0x8000085,
     TISP_CID_2DNS_RATIO = 0x8000086,
     TISP_CID_DRC_RATIO = 0x80000a2,
+    TISP_CID_MODULE_CONTROL = 0x80000e2,
+    TISP_CID_WAIT_FRAME = 0x8000162,
     TISP_CID_ENABLE_DEFOG = 0x80000a4,
     TISP_CID_BLC_ATTR = 0x80000a5,
     TISP_CID_CSC_ATTR = 0x80000a6,
@@ -2133,10 +2140,27 @@ int IMP_ISP_Tuning_GetAwbWeight(void *weight)
     return tseries_tuning_get_ptr(TISP_CID_AWB_WEIGHT, weight);
 }
 
-int IMP_ISP_Tuning_WaitFrame(int timeout_ms)
+int IMP_ISP_Tuning_WaitFrame(IMPISPWaitFrameAttr *attr)
 {
-    (void)timeout_ms;
+    if (attr == NULL) {
+        return -1;
+    }
+#if defined(PLATFORM_T31)
+    {
+        /* vendor 1.1.6: the driver exchanges 0x18 bytes (timeout in word 0,
+         * the 64-bit frame-done count in words 2-3), so go through a local
+         * buffer and copy only the count back */
+        uint32_t buf[6] = { attr->timeout, 0, 0, 0, 0, 0 };
+        int result = tseries_tuning_get_ptr(TISP_CID_WAIT_FRAME, buf);
+
+        if (result == 0) {
+            attr->cnt = (uint64_t)buf[2] | ((uint64_t)buf[3] << 32);
+        }
+        return result;
+    }
+#else
     return 0;
+#endif
 }
 
 int IMP_ISP_Tuning_GetSensorAttr(IMPISPSENSORAttr *attr)
@@ -2146,6 +2170,15 @@ int IMP_ISP_Tuning_GetSensorAttr(IMPISPSENSORAttr *attr)
     }
 
     memset(attr, 0, sizeof(*attr));
+#if defined(PLATFORM_T31)
+    /* vendor 1.1.6 hands the pointer to the driver, which fills
+     * {hts, vts, fps, width, height}; a driver without it leaves zeros */
+    if (tseries_tuning_get_ptr(TISP_CID_SENSOR_ATTR, attr) == 0 &&
+        attr->width && attr->height) {
+        return 0;
+    }
+    memset(attr, 0, sizeof(*attr));
+#endif
     attr->fps = tseries_sensor_fps_num;
     return 0;
 }
@@ -2165,7 +2198,12 @@ int IMP_ISP_Tuning_SetModuleControl(IMPISPModuleCtl *ispmodule)
     if (ispmodule == NULL) {
         return -1;
     }
-
+#if defined(PLATFORM_T31)
+    /* vendor 1.1.6: the pointer goes to tuning 0x80000e2 (bypass bits) */
+    if (tseries_tuning_set_ptr(TISP_CID_MODULE_CONTROL, ispmodule) != 0) {
+        return -1;
+    }
+#endif
     tseries_module_ctl = *ispmodule;
     return 0;
 }
@@ -2175,9 +2213,12 @@ int IMP_ISP_Tuning_GetModuleControl(IMPISPModuleCtl *ispmodule)
     if (ispmodule == NULL) {
         return -1;
     }
-
+#if defined(PLATFORM_T31)
+    return tseries_tuning_get_ptr(TISP_CID_MODULE_CONTROL, ispmodule);
+#else
     *ispmodule = tseries_module_ctl;
     return 0;
+#endif
 }
 
 int IMP_ISP_Tuning_SetFrontCrop(IMPISPFrontCrop *ispfrontcrop)
@@ -2210,7 +2251,12 @@ int IMP_ISP_Tuning_SetAeTargetList(IMPISPAETargetList *at_list)
     if (at_list == NULL) {
         return -1;
     }
-
+#if defined(PLATFORM_T31)
+    /* vendor 1.1.6: tuning 0x8000038, ten target words by pointer */
+    if (tseries_tuning_set_ptr(TISP_CID_AE_TARGET_LIST, at_list) != 0) {
+        return -1;
+    }
+#endif
     tseries_ae_target_list = *at_list;
     return 0;
 }
@@ -2220,9 +2266,12 @@ int IMP_ISP_Tuning_GetAeTargetList(IMPISPAETargetList *at_list)
     if (at_list == NULL) {
         return -1;
     }
-
+#if defined(PLATFORM_T31)
+    return tseries_tuning_get_ptr(TISP_CID_AE_TARGET_LIST, at_list);
+#else
     *at_list = tseries_ae_target_list;
     return 0;
+#endif
 }
 
 int IMP_ISP_Tuning_SetISPCustomMode(IMPISPTuningOpsMode mode)
@@ -2681,7 +2730,7 @@ int IMP_ISP_Tuning_GetBlcAttr(void *attr)
 
 int IMP_ISP_Tuning_GetAfZone(void *zone)
 {
-    return tseries_tuning_get_ptr(TISP_CID_AF_HIST, zone);
+    return tseries_tuning_get_ptr(TISP_CID_AF_ZONE, zone);
 }
 
 int IMP_ISP_Tuning_GetAFMetrices(void *metrices)
