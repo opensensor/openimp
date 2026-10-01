@@ -758,9 +758,17 @@ static int p2_h264_stream_is_idr(const uint8_t *stream, uint32_t length)
 static uint32_t p2_find_annexb_start4(const uint8_t *data, uint32_t offset,
                                       uint32_t length)
 {
+    /* Each access unit is scanned whole; let memchr skip the zero-free
+     * stretches that make up nearly all of an escaped slice. */
     while (offset + 4u <= length) {
-        if (data[offset] == 0u && data[offset + 1u] == 0u &&
-            data[offset + 2u] == 0u && data[offset + 3u] == 1u)
+        const uint8_t *zero = memchr(data + offset, 0,
+                                     length - 3u - offset);
+
+        if (!zero)
+            break;
+        offset = (uint32_t)(zero - data);
+        if (data[offset + 1u] == 0u && data[offset + 2u] == 0u &&
+            data[offset + 3u] == 1u)
             return offset;
         offset++;
     }
