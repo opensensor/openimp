@@ -4,6 +4,11 @@
  * gtxaspec's libaudioProcess-neo and are resolved lazily from the installed
  * libaudioProcess.so, matching the division of responsibilities used by the
  * OpenIMP T40/T41 implementation.
+ *
+ * T20/T21 build this file unchanged.  T23 builds it with PLATFORM_T23, which
+ * swaps the kernel ABI for the T23 OSS3 one (see the T23 block below) and
+ * keeps everything above the driver - the capture thread and its FIFO, the
+ * BLOCK/NOBLOCK GetFrame semantics, software AI volume, effects - shared.
  */
 
 #include <dlfcn.h>
@@ -19,6 +24,91 @@
 
 #include <imp/imp_audio.h>
 
+#if defined(PLATFORM_T23)
+/* T23 speaks the OSS3 "AMIC" /dev/dsp ABI of ingenic-sdk audio/t23/oss3
+ * (include/audio_dsp.h), not the T31 one.  The numbers below are the ones the
+ * OEM T23 libimp 1.3.0 issues from __ai_dev_init, __ai_dev_read,
+ * __ao_dev_init, _ao_play_thread, __ai_dev_set_gain and friends:
+ *   - parameters go through AI/AO_SET_PARAM {rate, format, channel} instead
+ *     of SNDCTL_DSP_SPEED/CHANNELS/SETFMT, and AI and AO have separate
+ *     ENABLE/DISABLE_STREAM requests;
+ *   - GET_STREAM carries a fifth member, a pointer the driver stores the
+ *     capture timeval into (20 bytes, like T41; T40 has 16);
+ *   - gain requests take struct volume {channel, gain} (8 bytes, unlike the
+ *     12-byte T40/T41 struct); channel 1 is MONO_LEFT;
+ *   - GET_STREAM/SET_STREAM move whole driver fragments (20 ms with the
+ *     default fragment_time) and return 0, not a byte count: a size that is
+ *     not a fragment multiple is silently truncated;
+ *   - the codec's digital volume hooks are empty, so - as in the OEM libimp,
+ *     which computes a pow() gain for IMP_AO_SetVol - volume is applied in
+ *     software on both directions.
+ * The driver's DISABLE_STREAM also forgets the route's sample rate, so every
+ * ENABLE_STREAM must be preceded by SET_PARAM (enabling a route whose rate is
+ * 0 divides by zero in dsp_create_dma_chan). */
+#define T23_AO_SET_GAIN           0x40085058UL /* AMIC_SPK_SET_GAIN */
+#define T23_AI_SET_GAIN           0x4008505aUL /* AMIC_AI_SET_GAIN */
+#define T31_AI_DISABLE_AEC        0x4004505cUL /* AMIC_DISABLE_AEC */
+#define T31_AI_ENABLE_AEC         0x4004505dUL /* AMIC_ENABLE_AEC */
+#define T23_AO_ENABLE_STREAM      0x4004505eUL
+#define T23_AO_DISABLE_STREAM     0x4004505fUL
+#define T23_AI_ENABLE_STREAM      0x40045060UL
+#define T23_AI_DISABLE_STREAM     0x40045061UL
+#define T31_AI_GET_STREAM         0x40145062UL
+#define T31_AO_SET_STREAM         0x40085063UL
+#define T31_AO_CLEAR_STREAM       0x40045064UL
+#define T31_AO_SYNC_STREAM        0x40045065UL
+#define T23_AO_SET_PARAM          0x4008506fUL
+#define T23_AI_SET_PARAM          0x40085071UL
+#define T23_PCM_FORMAT_S16        16U
+#define T23_VOLUME_MONO_LEFT      1U
+/* driver fragment = rate / 100 * frame bytes * fragment_time (module
+ * parameter, default 2 x 10 ms) */
+#define T23_FRAGMENT_10MS_UNITS   2U
+#define T23_AO_MAX_PERIOD_BYTES   65536U
+#define T31_CAPTURE_DEFAULT_DEPTH 8
+#define T31_CAPTURE_MAX_DEPTH     50
+#define T31_CAPTURE_RETRY_US      20000
+#define T31_CAPTURE_STOP_MS       500U
+
+typedef struct {
+    int32_t seconds;
+    int32_t microseconds;
+} T23AudioTimeval;
+
+typedef struct {
+    void *data;
+    uint32_t size;
+    void *aec;
+    uint32_t aec_size;
+    T23AudioTimeval *timestamp;
+} T31AudioInputStream;
+
+typedef struct {
+    uint32_t rate;
+    uint16_t format;
+    uint16_t channel;
+} T23AudioParameter;
+
+typedef struct {
+    uint32_t channel;
+    uint32_t gain;
+} T23AudioVolume;
+
+_Static_assert(sizeof(T31AudioInputStream) == 20,
+               "T23 audio input stream ABI mismatch");
+_Static_assert(sizeof(T23AudioParameter) == 8,
+               "T23 audio parameter ABI mismatch");
+_Static_assert(sizeof(T23AudioVolume) == 8, "T23 audio volume ABI mismatch");
+_Static_assert(T31_AI_GET_STREAM ==
+                   _IOC(_IOC_READ, 'P', 98, sizeof(T31AudioInputStream)),
+               "T23 AMIC_AI_GET_STREAM ioctl mismatch");
+_Static_assert(T23_AI_SET_PARAM ==
+                   _IOC(_IOC_READ, 'P', 113, sizeof(T23AudioParameter)),
+               "T23 AMIC_AI_SET_PARAM ioctl mismatch");
+_Static_assert(T23_AI_SET_GAIN ==
+                   _IOC(_IOC_READ, 'P', 90, sizeof(T23AudioVolume)),
+               "T23 AMIC_AI_SET_GAIN ioctl mismatch");
+#else
 #define T31_DSP_SPEED             0xc0045002UL
 #define T31_DSP_SETFMT            0xc0045005UL
 #define T31_DSP_CHANNELS          0xc0045006UL
@@ -44,6 +134,7 @@ typedef struct {
     void *aec;
     uint32_t size;
 } T31AudioInputStream;
+#endif
 
 typedef struct {
     void *data;
@@ -56,8 +147,10 @@ typedef struct {
     uint8_t limiter_enable;
 } T31WebRtcAgcConfig;
 
+#if !defined(PLATFORM_T23)
 _Static_assert(sizeof(T31AudioInputStream) == 12,
                "T31 audio input stream ABI mismatch");
+#endif
 _Static_assert(sizeof(T31AudioOutputStream) == 8,
                "T31 audio output stream ABI mismatch");
 
@@ -132,6 +225,17 @@ static struct {
     void *agc;
     int agc_mode;
     int agc_enabled;
+#if defined(PLATFORM_T23)
+    /* GET_STREAM bounce buffer: whole driver fragments, up to one frame */
+    unsigned char *capture_chunk;
+    size_t capture_chunk_capacity;
+    size_t capture_chunk_bytes;
+    /* SendFrame re-blocks arbitrary frame sizes into whole driver periods */
+    unsigned char *ao_period;
+    size_t ao_period_capacity;
+    size_t ao_period_bytes;
+    size_t ao_period_valid;
+#endif
 } t31_audio = {
     .ai_fd = -1,
     .ao_fd = -1,
@@ -155,6 +259,43 @@ static int t31_valid_attr(const IMPAudioIOAttr *attribute)
            attribute->numPerFrm > 0;
 }
 
+#if defined(PLATFORM_T23)
+static int t23_configure_fd(int fd, const IMPAudioIOAttr *attribute,
+                            unsigned long set_param, unsigned long enable)
+{
+    T23AudioParameter parameter;
+
+    if (fd < 0 || !t31_valid_attr(attribute))
+        return -1;
+    memset(&parameter, 0, sizeof(parameter));
+    parameter.rate = (uint32_t)attribute->samplerate;
+    parameter.format = T23_PCM_FORMAT_S16;
+    parameter.channel =
+        attribute->soundmode == AUDIO_SOUND_MODE_STEREO ? 2U : 1U;
+    if (ioctl(fd, set_param, &parameter) != 0 || ioctl(fd, enable, 1) != 0)
+        return -1;
+    return 0;
+}
+
+static int t23_set_gain(int fd, unsigned long command, int value)
+{
+    T23AudioVolume volume;
+
+    volume.channel = T23_VOLUME_MONO_LEFT;
+    volume.gain = (uint32_t)value;
+    return ioctl(fd, command, &volume);
+}
+
+/* driver fragment size for an attribute, see T23_FRAGMENT_10MS_UNITS */
+static size_t t23_fragment_bytes(const IMPAudioIOAttr *attribute)
+{
+    size_t channels =
+        attribute->soundmode == AUDIO_SOUND_MODE_STEREO ? 2U : 1U;
+
+    return (size_t)(attribute->samplerate / 100) * channels *
+           sizeof(int16_t) * T23_FRAGMENT_10MS_UNITS;
+}
+#else
 static int t31_configure_fd(int fd, const IMPAudioIOAttr *attribute)
 {
     int rate;
@@ -172,6 +313,7 @@ static int t31_configure_fd(int fd, const IMPAudioIOAttr *attribute)
         return -1;
     return 0;
 }
+#endif
 
 static int t31_effects_load(void)
 {
@@ -284,6 +426,43 @@ static void t31_apply_ai_volume(int16_t *samples, int count)
     }
 }
 
+#if defined(PLATFORM_T23)
+/* Same 0.5 dB/step curve as t31_apply_ai_volume, for the speaker path. */
+static void t23_apply_volume(int16_t *samples, int count, int volume,
+                             int muted)
+{
+    int steps = volume - 60;
+    uint64_t gain = 65536;
+    int i;
+
+    if (muted || volume <= -30) {
+        memset(samples, 0, (size_t)count * sizeof(*samples));
+        return;
+    }
+    if (!steps)
+        return;
+    if (steps > 60)
+        steps = 60;
+    if (steps < -89)
+        steps = -89;
+    if (steps > 0) {
+        for (i = 0; i < steps; i++)
+            gain = (gain * 69419U + 32768U) >> 16;
+    } else {
+        for (i = 0; i > steps; i--)
+            gain = (gain * 61870U + 32768U) >> 16;
+    }
+    for (i = 0; i < count; i++) {
+        int64_t value = ((int64_t)samples[i] * (int64_t)gain) >> 16;
+        if (value > 32767)
+            value = 32767;
+        else if (value < -32768)
+            value = -32768;
+        samples[i] = (int16_t)value;
+    }
+}
+#endif
+
 static void t31_capture_init_cond(void)
 {
     pthread_condattr_t attribute;
@@ -330,7 +509,15 @@ static int64_t t31_bytes_to_us(size_t bytes)
  * consumer falls behind, whole frames are dropped from the oldest end. */
 static void *t31_capture_main(void *argument)
 {
+#if defined(PLATFORM_T23)
+    /* Up to one IMP frame per GET_STREAM, like the OEM __ai_dev_read, but
+     * always whole driver fragments; the FIFO re-blocks into frames. */
+    unsigned char *chunk = t31_audio.capture_chunk;
+    const size_t chunk_size = t31_audio.capture_chunk_bytes;
+    T23AudioTimeval capture_time;
+#else
     unsigned char chunk[T31_CAPTURE_CHUNK_BYTES];
+#endif
     T31AudioInputStream stream;
     size_t align;
 
@@ -344,9 +531,19 @@ static void *t31_capture_main(void *argument)
         pthread_mutex_unlock(&t31_capture_lock);
         memset(&stream, 0, sizeof(stream));
         stream.data = chunk;
+#if defined(PLATFORM_T23)
+        stream.size = (uint32_t)chunk_size;
+        stream.timestamp = &capture_time;
+        result = ioctl(t31_audio.ai_fd, T31_AI_GET_STREAM, &stream);
+        /* success means every requested fragment was copied; the driver
+         * reports no count (and returns early, data untouched, when the
+         * route was disabled under it - capture_stop is checked below) */
+        size = result == 0 ? chunk_size : 0;
+#else
         stream.size = sizeof(chunk);
         result = ioctl(t31_audio.ai_fd, T31_AI_GET_STREAM, &stream);
         size = stream.size < sizeof(chunk) ? stream.size : sizeof(chunk);
+#endif
         size -= size % align;
         pthread_mutex_lock(&t31_capture_lock);
         if (t31_audio.capture_stop)
@@ -395,7 +592,28 @@ static int t31_capture_start(void)
         depth = t31_audio.ai_attr.frmNum < T31_CAPTURE_MAX_DEPTH
                     ? (size_t)t31_audio.ai_attr.frmNum
                     : T31_CAPTURE_MAX_DEPTH;
+#if defined(PLATFORM_T23)
+    {
+        size_t fragment = t23_fragment_bytes(&t31_audio.ai_attr);
+        size_t chunk = frame - frame % (fragment ? fragment : 1U);
+
+        if (!fragment)
+            return -1;
+        if (!chunk)
+            chunk = fragment;
+        if (chunk > t31_audio.capture_chunk_capacity) {
+            void *buffer = realloc(t31_audio.capture_chunk, chunk);
+            if (!buffer)
+                return -1;
+            t31_audio.capture_chunk = buffer;
+            t31_audio.capture_chunk_capacity = chunk;
+        }
+        t31_audio.capture_chunk_bytes = chunk;
+        capacity = frame * depth + chunk;
+    }
+#else
     capacity = frame * depth + T31_CAPTURE_CHUNK_BYTES;
+#endif
     if (capacity > t31_audio.capture_capacity) {
         void *buffer = realloc(t31_audio.capture_buffer, capacity);
         if (!buffer)
@@ -437,9 +655,18 @@ static void t31_capture_stop(void)
     exited = t31_audio.capture_exited;
     pthread_mutex_unlock(&t31_capture_lock);
     if (!exited) {
+#if defined(PLATFORM_T23)
+        /* DISABLE completes the driver waiter; it also zeroes the route
+         * rate, so re-arm with SET_PARAM before ENABLE. */
+        (void)ioctl(t31_audio.ai_fd, T23_AI_DISABLE_STREAM, 1);
+        pthread_join(t31_audio.capture_thread, NULL);
+        (void)t23_configure_fd(t31_audio.ai_fd, &t31_audio.ai_attr,
+                               T23_AI_SET_PARAM, T23_AI_ENABLE_STREAM);
+#else
         (void)ioctl(t31_audio.ai_fd, T31_DISABLE_STREAM, 1);
         pthread_join(t31_audio.capture_thread, NULL);
         (void)ioctl(t31_audio.ai_fd, T31_ENABLE_STREAM, 1);
+#endif
     } else {
         pthread_join(t31_audio.capture_thread, NULL);
     }
@@ -476,7 +703,12 @@ int IMP_AI_Enable(int device)
     fd = open("/dev/dsp", O_RDONLY | O_CLOEXEC);
     if (fd < 0)
         return -1;
+#if defined(PLATFORM_T23)
+    if (t23_configure_fd(fd, &t31_audio.ai_attr, T23_AI_SET_PARAM,
+                         T23_AI_ENABLE_STREAM) != 0) {
+#else
     if (t31_configure_fd(fd, &t31_audio.ai_attr) != 0) {
+#endif
         close(fd);
         return -1;
     }
@@ -495,7 +727,11 @@ int IMP_AI_Disable(int device)
     t31_capture_stop();
     if (t31_audio.ai_fd >= 0) {
         if (t31_audio.ai_enabled)
+#if defined(PLATFORM_T23)
+            result = ioctl(t31_audio.ai_fd, T23_AI_DISABLE_STREAM, 1);
+#else
             result = ioctl(t31_audio.ai_fd, T31_DISABLE_STREAM, 1);
+#endif
         close(t31_audio.ai_fd);
     }
     t31_audio.ai_fd = -1;
@@ -645,9 +881,15 @@ int IMP_AI_SetGain(int device, int channel, int value)
     if ((device != 0 && device != 1) || channel != 0 ||
         value < 0 || value > 31)
         return -1;
+#if defined(PLATFORM_T23)
+    if (t31_audio.ai_fd >= 0 &&
+        t23_set_gain(t31_audio.ai_fd, T23_AI_SET_GAIN, value) != 0)
+        return -1;
+#else
     if (t31_audio.ai_fd >= 0 &&
         ioctl(t31_audio.ai_fd, T31_AI_SET_GAIN, &value) != 0)
         return -1;
+#endif
     t31_audio.ai_gain = value;
     return 0;
 }
@@ -784,7 +1026,16 @@ int IMP_AI_EnableAec(int ai_device, int ai_channel, int ao_device, int ao_channe
     if ((ai_device != 0 && ai_device != 1) || ai_channel != 0 ||
         ao_channel != 0 || t31_audio.ai_fd < 0)
         return -1;
+#if defined(PLATFORM_T23)
+    {
+        /* the driver stores the AI/AEC sample offset through the argument */
+        int sample_offset = 0;
+
+        return ioctl(t31_audio.ai_fd, T31_AI_ENABLE_AEC, &sample_offset);
+    }
+#else
     return ioctl(t31_audio.ai_fd, T31_AI_ENABLE_AEC, 1);
+#endif
 }
 
 int IMP_AI_DisableAec(int ai_device, int ai_channel)
@@ -843,10 +1094,40 @@ int IMP_AO_Enable(int device)
         return -1;
     if (t31_audio.ao_enabled)
         return 0;
+#if defined(PLATFORM_T23)
+    {
+        size_t fragment = t23_fragment_bytes(&t31_audio.ao_attr);
+        size_t period = (size_t)t31_audio.ao_attr.numPerFrm *
+                        (t31_audio.ao_attr.soundmode ==
+                                 AUDIO_SOUND_MODE_STEREO ? 2U : 1U) *
+                        sizeof(int16_t);
+
+        /* write whole fragments only: round the period down to one */
+        period -= period % fragment;
+        if (!fragment || !period)
+            period = fragment;
+        if (!period || period > T23_AO_MAX_PERIOD_BYTES)
+            return -1;
+        if (period > t31_audio.ao_period_capacity) {
+            void *buffer = realloc(t31_audio.ao_period, period);
+            if (!buffer)
+                return -1;
+            t31_audio.ao_period = buffer;
+            t31_audio.ao_period_capacity = period;
+        }
+        t31_audio.ao_period_bytes = period;
+        t31_audio.ao_period_valid = 0;
+    }
+#endif
     fd = open("/dev/dsp", O_WRONLY | O_CLOEXEC);
     if (fd < 0)
         return -1;
+#if defined(PLATFORM_T23)
+    if (t23_configure_fd(fd, &t31_audio.ao_attr, T23_AO_SET_PARAM,
+                         T23_AO_ENABLE_STREAM) != 0) {
+#else
     if (t31_configure_fd(fd, &t31_audio.ao_attr) != 0) {
+#endif
         close(fd);
         return -1;
     }
@@ -863,13 +1144,20 @@ int IMP_AO_Disable(int device)
         return -1;
     if (t31_audio.ao_fd >= 0) {
         if (t31_audio.ao_enabled)
+#if defined(PLATFORM_T23)
+            result = ioctl(t31_audio.ao_fd, T23_AO_DISABLE_STREAM, 1);
+#else
             result = ioctl(t31_audio.ao_fd, T31_DISABLE_STREAM, 1);
+#endif
         close(t31_audio.ao_fd);
     }
     t31_audio.ao_fd = -1;
     t31_audio.ao_enabled = 0;
     t31_audio.ao_channel_enabled = 0;
     t31_audio.ao_paused = 0;
+#if defined(PLATFORM_T23)
+    t31_audio.ao_period_valid = 0;
+#endif
     return result;
 }
 
@@ -889,6 +1177,57 @@ int IMP_AO_DisableChn(int device, int channel)
     return 0;
 }
 
+#if defined(PLATFORM_T23)
+static int t23_ao_write_period(void)
+{
+    T31AudioOutputStream stream;
+    int result;
+
+    t23_apply_volume((int16_t *)(void *)t31_audio.ao_period,
+                     (int)(t31_audio.ao_period_valid / sizeof(int16_t)),
+                     t31_audio.ao_volume, t31_audio.ao_muted);
+    stream.data = t31_audio.ao_period;
+    stream.size = (uint32_t)t31_audio.ao_period_valid;
+    /* blocks until the driver ring has room (800 ms driver timeout) */
+    result = ioctl(t31_audio.ao_fd, T31_AO_SET_STREAM, &stream);
+    t31_audio.ao_period_valid = 0;
+    return result == 0 ? 0 : -1;
+}
+
+/* The driver takes whole fragments only, so frames of any length (a
+ * backchannel delivers 20 ms RTP payloads, AAC 1024-sample blocks, ...) are
+ * collected into fragment-aligned periods; a partial period stays queued
+ * until more data arrives or IMP_AO_FlushChnBuf pads it out. */
+int IMP_AO_SendFrame(int device, int channel, IMPAudioFrame *frame,
+                     IMPBlock block)
+{
+    const unsigned char *data;
+    size_t remaining;
+
+    (void)block;
+    if (device != 0 || channel != 0 || !frame || !frame->virAddr ||
+        frame->len <= 0 || !t31_audio.ao_channel_enabled ||
+        t31_audio.ao_paused || t31_audio.ao_fd < 0 ||
+        !t31_audio.ao_period || !t31_audio.ao_period_bytes)
+        return -1;
+    data = (const unsigned char *)(const void *)frame->virAddr;
+    remaining = (size_t)frame->len;
+    while (remaining > 0) {
+        size_t take = t31_audio.ao_period_bytes - t31_audio.ao_period_valid;
+
+        if (take > remaining)
+            take = remaining;
+        memcpy(t31_audio.ao_period + t31_audio.ao_period_valid, data, take);
+        t31_audio.ao_period_valid += take;
+        data += take;
+        remaining -= take;
+        if (t31_audio.ao_period_valid == t31_audio.ao_period_bytes &&
+            t23_ao_write_period() != 0)
+            return -1;
+    }
+    return 0;
+}
+#else
 int IMP_AO_SendFrame(int device, int channel, IMPAudioFrame *frame,
                      IMPBlock block)
 {
@@ -920,6 +1259,7 @@ int IMP_AO_SendFrame(int device, int channel, IMPAudioFrame *frame,
     }
     return 0;
 }
+#endif
 
 int IMP_AO_SetVol(int device, int channel, int value)
 {
@@ -941,9 +1281,15 @@ int IMP_AO_SetGain(int device, int channel, int value)
 {
     if (device != 0 || channel != 0 || value < 0 || value > 31)
         return -1;
+#if defined(PLATFORM_T23)
+    if (t31_audio.ao_fd >= 0 &&
+        t23_set_gain(t31_audio.ao_fd, T23_AO_SET_GAIN, value) != 0)
+        return -1;
+#else
     if (t31_audio.ao_fd >= 0 &&
         ioctl(t31_audio.ao_fd, T31_AO_SET_GAIN, &value) != 0)
         return -1;
+#endif
     t31_audio.ao_gain = value;
     return 0;
 }
@@ -964,6 +1310,30 @@ int IMP_AO_SetVolMute(int device, int channel, int mute)
     return 0;
 }
 
+#if defined(PLATFORM_T23)
+int IMP_AO_ClearChnBuf(int device, int channel)
+{
+    if (device != 0 || channel != 0 || t31_audio.ao_fd < 0)
+        return -1;
+    t31_audio.ao_period_valid = 0;
+    return ioctl(t31_audio.ao_fd, T31_AO_CLEAR_STREAM, 1);
+}
+
+int IMP_AO_FlushChnBuf(int device, int channel)
+{
+    if (device != 0 || channel != 0 || t31_audio.ao_fd < 0)
+        return -1;
+    /* play out the queued partial period, padded with silence */
+    if (t31_audio.ao_period_valid) {
+        memset(t31_audio.ao_period + t31_audio.ao_period_valid, 0,
+               t31_audio.ao_period_bytes - t31_audio.ao_period_valid);
+        t31_audio.ao_period_valid = t31_audio.ao_period_bytes;
+        if (t23_ao_write_period() != 0)
+            return -1;
+    }
+    return ioctl(t31_audio.ao_fd, T31_AO_SYNC_STREAM, 1);
+}
+#else
 int IMP_AO_ClearChnBuf(int device, int channel)
 {
     return device == 0 && channel == 0 && t31_audio.ao_fd >= 0
@@ -977,6 +1347,7 @@ int IMP_AO_FlushChnBuf(int device, int channel)
                ? ioctl(t31_audio.ao_fd, T31_AO_SYNC_STREAM, 1)
                : -1;
 }
+#endif
 
 int IMP_AO_PauseChn(int device, int channel)
 {

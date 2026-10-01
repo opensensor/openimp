@@ -43,7 +43,8 @@ compile()
 }
 
 # The T23 public ABI feeds the recovered AVPU backend through the T-series
-# stock-driver seam.  Audio remains in the OEM libimp used by RAD.
+# stock-driver seam.  Audio reuses the T31 implementation, built against the
+# T23 OSS3 /dev/dsp ABI (PLATFORM_T23 selects it in openimp_t31_audio.c).
 compile openimp_p0 src/t40/openimp_p0.c -Werror
 compile openimp_profile src/openimp_profile.c -Werror
 compile openimp_tuning src/openimp_tuning.c -Werror
@@ -71,6 +72,7 @@ compile t23_services src/t31/openimp_t31_services.c -Werror
 compile t23_platform_services src/t23/openimp_t23_services.c -Werror
 compile t23_helix_bridge src/t23/openimp_t23_helix_bridge.c -Werror
 compile t23_persist src/t23/openimp_t23_persist.c -Werror
+compile t23_audio src/t31/openimp_t31_audio.c -Werror
 
 "$compiler" -shared -nostartfiles \
     -Wl,-soname,libimp.so \
@@ -102,6 +104,7 @@ compile t23_persist src/t23/openimp_t23_persist.c -Werror
     "$output_dir/t23_platform_services.o" \
     "$output_dir/t23_helix_bridge.o" \
     "$output_dir/t23_persist.o" \
+    "$output_dir/t23_audio.o" \
     -ldl -lpthread -lrt
 
 "$compiler" $base_flags $repo_includes -Wall -Wextra -Werror \
@@ -117,12 +120,16 @@ then
     exit 1
 fi
 
-if readelf --dyn-syms --wide "$output_dir/libimp.so" |
-    awk '$7 != "UND" && $8 ~ /^IMP_(AI|AO|AENC|ADEC|DMIC)_/ {found=1} END {exit !found}'
-then
-    echo "T23 build exports audio APIs" >&2
-    exit 1
-fi
+for symbol in IMP_AI_GetFrame IMP_AI_PollingFrame IMP_AO_SendFrame \
+    IMP_AO_FlushChnBuf
+do
+    if ! readelf --dyn-syms --wide "$output_dir/libimp.so" |
+        awk -v s="$symbol" '$7 != "UND" && $8 == s {found=1} END {exit !found}'
+    then
+        echo "T23 build does not export $symbol" >&2
+        exit 1
+    fi
+done
 
 rvd=${T23_RVD:-"$target_dir/target/usr/bin/rvd"}
 if [ -f "$rvd" ]; then
