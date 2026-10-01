@@ -3,7 +3,7 @@
 Everything changed, extended or fixed in OpenIMP, open-tx-isp, timps and the thingino
 integration since the test campaign started on 2026-09-30. Kept up to date during the campaign.
 
-Last update: 2026-10-02 02:40.
+Last update: 2026-10-02 01:20.
 
 Cameras are anonymised: cam-A (T31), cam-B (T23), cam-C (T20), cam-D (T21).
 
@@ -15,7 +15,7 @@ All four test cameras run the open kernel driver (open-tx-isp), OpenIMP and timp
 | Camera | SoC | Stack | State |
 |---|---|---|---|
 | cam-A | T31 | fully open | Flashed image from 2026-10-01 morning; HEVC, AO and tuning-gap fixes verified live; new image pending |
-| cam-B | T23 | open, encoder via helixd | Flashed open driver + OpenIMP; native Helix encoder (no vendor code) verified live; default still the helixd worker |
+| cam-B | T23 | open, encoder via helixd | Flashed 2026-10-02 with open-tx-isp-all-2 + OpenIMP t23-native-helix-2 (night mono in image); native encoder selectable via env; flip-dgain and bss-shrink not yet in an image |
 | cam-C | T20 | fully open | Flashed open image; aggregate driver, AE limits and day/night library running live |
 | cam-D | T21 | fully open, first bring-up | Flashed with boot guard (stack loaded manually); stock-equivalent AE, ADR, defog and controls running live |
 
