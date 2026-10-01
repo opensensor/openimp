@@ -192,6 +192,12 @@ typedef struct ALAvpuContext {
     uint32_t entropy_mode;
     uint32_t gop_length;
     uint32_t format_word;
+    /* T31 only: the channel encodes HEVC (CTB 32, host VPS/SPS/PPS and
+     * slice headers, no inline Enc2).  Zero keeps every AVC path as is. */
+    uint32_t codec_hevc;
+    /* T31 HEVC: cu_qp_delta_enabled_flag of the PPS sent with the last IDR;
+     * the hardware RC may only run while it is set. */
+    uint32_t hevc_pps_cu_qp_delta;
     /* OEM Enc1 slice-param words threaded into the AVPU context so command-list
      * packing can match SliceParamToCmdRegsEnc1 instead of width heuristics. */
     uint32_t enc1_cmd_0a_74;

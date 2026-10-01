@@ -246,8 +246,11 @@ static uint32_t p2_fill_t31_packs(P2EncoderChannel *channel,
         p2_t31_check_au(channel, raw);
     count = channel->codec_type == IMP_ENC_TYPE_JPEG
         ? 0
-        : openimp_t31_annexb_nals(data, raw->length, nals,
-                                  P2_MAX_PUBLIC_PACKS);
+        : channel->codec_type == IMP_ENC_TYPE_HEVC
+            ? openimp_t31_hevc_annexb_nals(data, raw->length, nals,
+                                           P2_MAX_PUBLIC_PACKS)
+            : openimp_t31_annexb_nals(data, raw->length, nals,
+                                      P2_MAX_PUBLIC_PACKS);
     if (count <= 0) {
         channel->packs[0].offset = 0;
         channel->packs[0].length = raw->length;
@@ -255,10 +258,14 @@ static uint32_t p2_fill_t31_packs(P2EncoderChannel *channel,
         channel->packs[0].frameEnd = true;
         channel->packs[0].sliceType = is_idr
             ? IMP_ENC_SLICE_I : IMP_ENC_SLICE_P;
-        channel->packs[0].nalType.h264NalType =
-            channel->codec_type == IMP_ENC_TYPE_JPEG
-                ? IMP_H264_NAL_UNKNOWN
-                : (is_idr ? IMP_H264_NAL_SLICE_IDR : IMP_H264_NAL_SLICE);
+        if (channel->codec_type == IMP_ENC_TYPE_HEVC)
+            channel->packs[0].nalType.h265NalType = is_idr
+                ? IMP_H265_NAL_SLICE_IDR_W_RADL : IMP_H265_NAL_SLICE_TRAIL_R;
+        else
+            channel->packs[0].nalType.h264NalType =
+                channel->codec_type == IMP_ENC_TYPE_JPEG
+                    ? IMP_H264_NAL_UNKNOWN
+                    : (is_idr ? IMP_H264_NAL_SLICE_IDR : IMP_H264_NAL_SLICE);
         return 1;
     }
 
@@ -268,8 +275,12 @@ static uint32_t p2_fill_t31_packs(P2EncoderChannel *channel,
         channel->packs[index].timestamp = timestamp;
         channel->packs[index].sliceType = is_idr
             ? IMP_ENC_SLICE_I : IMP_ENC_SLICE_P;
-        channel->packs[index].nalType.h264NalType =
-            (IMPEncoderH264NaluType)nals[index].nal_type;
+        if (channel->codec_type == IMP_ENC_TYPE_HEVC)
+            channel->packs[index].nalType.h265NalType =
+                (IMPEncoderH265NaluType)nals[index].nal_type;
+        else
+            channel->packs[index].nalType.h264NalType =
+                (IMPEncoderH264NaluType)nals[index].nal_type;
     }
     channel->packs[count - 1].frameEnd = true;
     return (uint32_t)count;
@@ -1322,16 +1333,18 @@ int IMP_Encoder_CreateChn(int channel, IMPEncoderCHNAttr *attr)
     P2_STARTUP_MARKER("openimp/P2 marker C0 CreateChn entry\n");
     if (!p2_valid_channel(channel) || !attr)
         return -1;
+#if !defined(PLATFORM_T31)
     if (p2_attr_codec_type(attr) == IMP_ENC_TYPE_HEVC) {
-        /* Every OpenIMP backend (AVPU, native and OEM Helix, software) is
-         * H.264/JPEG only: an HEVC channel used to be created and then
-         * produced no stream at all.  Fail here so the caller can fall
-         * back to H.264. */
+        /* Only the T31 AVPU backend encodes HEVC (docs/T31_HEVC.md); the
+         * other backends (native and OEM Helix, software) are H.264/JPEG
+         * only and used to create an HEVC channel that produced no stream
+         * at all.  Fail here so the caller can fall back to H.264. */
         IMP_LOG_ERR("Encoder",
                     "CreateChn(%d): H.265/HEVC encoding is not supported "
                     "by OpenIMP on this SoC; use H.264\n", channel);
         return -1;
     }
+#endif
     hw_rc_mode = p2_codec_rc_mode(attr, channel);
     if (hw_rc_mode < 0)
         return -1;
@@ -2048,6 +2061,13 @@ int IMP_Encoder_GetStream(int channel, IMPEncoderStream *stream, int block)
     is_idr = ch->codec_type != IMP_ENC_TYPE_JPEG &&
 #if defined(PLATFORM_T41)
         raw->frame_type == 0u;
+#elif defined(PLATFORM_T31)
+        /* HEVC NAL headers are not H.264 ones; the AVPU codec marks its
+         * IDR access units itself. */
+        (ch->codec_type == IMP_ENC_TYPE_HEVC
+            ? raw->frame_type == 0u
+            : p2_h264_stream_is_idr(
+                  (const uint8_t *)(uintptr_t)raw->virt_addr, raw->length));
 #else
         p2_h264_stream_is_idr((const uint8_t *)(uintptr_t)raw->virt_addr,
                               raw->length);

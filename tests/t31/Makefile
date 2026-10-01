@@ -7,18 +7,20 @@ READY_EVENT_TEST_BIN := $(PROJECT_DIR)/build/tests/t31-ready-event-test
 ACODEC_TEST_BIN := $(PROJECT_DIR)/build/tests/t31-acodec-test
 FRAME_PIN_TEST_BIN := $(PROJECT_DIR)/build/tests/t31-frame-pin-test
 AO_SENDFRAME_TEST_BIN := $(PROJECT_DIR)/build/tests/t31-ao-sendframe-test
+HEVC_HEADERS_TEST_BIN := $(PROJECT_DIR)/build/tests/t31-hevc-headers-test
 
 .PHONY: check clean
 
 check: $(STREAM_LAYOUT_TEST_BIN) $(RATE_CONTROL_TEST_BIN) \
 	$(READY_EVENT_TEST_BIN) $(ACODEC_TEST_BIN) $(FRAME_PIN_TEST_BIN) \
-	$(AO_SENDFRAME_TEST_BIN)
+	$(AO_SENDFRAME_TEST_BIN) $(HEVC_HEADERS_TEST_BIN)
 	$(STREAM_LAYOUT_TEST_BIN)
 	$(RATE_CONTROL_TEST_BIN)
 	$(READY_EVENT_TEST_BIN)
 	$(ACODEC_TEST_BIN)
 	$(FRAME_PIN_TEST_BIN)
 	$(AO_SENDFRAME_TEST_BIN)
+	$(HEVC_HEADERS_TEST_BIN)
 
 $(STREAM_LAYOUT_TEST_BIN): stream_layout_test.c \
 	$(PROJECT_DIR)/src/t40/t31_stream_layout.c \
@@ -72,7 +74,19 @@ $(AO_SENDFRAME_TEST_BIN): ao_sendframe_test.c \
 		ao_sendframe_test.c $(PROJECT_DIR)/src/t31/openimp_t31_audio.c \
 		-Wl,--wrap=open,--wrap=ioctl,--wrap=close -lpthread -ldl -lm -o "$@"
 
+$(HEVC_HEADERS_TEST_BIN): hevc_headers_test.c \
+	$(PROJECT_DIR)/src/t40/t31_hevc_headers.c \
+	$(PROJECT_DIR)/src/t40/t31_hevc_headers.h \
+	$(PROJECT_DIR)/src/t40/t31_stream_layout.c \
+	$(PROJECT_DIR)/src/t40/t31_stream_layout.h
+	mkdir -p "$(dir $@)"
+	$(CC) $(CFLAGS) -I$(PROJECT_DIR)/src \
+		hevc_headers_test.c \
+		$(PROJECT_DIR)/src/t40/t31_hevc_headers.c \
+		$(PROJECT_DIR)/src/t40/t31_stream_layout.c \
+		-o "$@"
+
 clean:
 	$(RM) $(STREAM_LAYOUT_TEST_BIN) $(RATE_CONTROL_TEST_BIN) \
 		$(READY_EVENT_TEST_BIN) $(ACODEC_TEST_BIN) $(FRAME_PIN_TEST_BIN) \
-		$(AO_SENDFRAME_TEST_BIN)
+		$(AO_SENDFRAME_TEST_BIN) $(HEVC_HEADERS_TEST_BIN)
