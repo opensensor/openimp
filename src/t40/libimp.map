@@ -1,6 +1,7 @@
 {
     global:
         IMP_*;
+        IMPPixfmtToString;
         AL_Codec_Encode_*;
         OpenIMP_AVC_*;
         OpenIMP_Encoder_StreamIsRmem;

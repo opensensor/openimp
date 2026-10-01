@@ -77,6 +77,7 @@ compile t31_audio src/t31/openimp_t31_audio.c -Werror
 compile t31_acodec_core src/t31/openimp_t31_acodec_core.c -Werror
 compile t31_acodec src/t31/openimp_t31_acodec.c -Werror
 compile t31_dmic src/t31/openimp_t31_dmic.c -Werror
+compile t31_extras src/t31/openimp_t31_extras.c -Werror
 
 "$compiler" -shared -nostartfiles \
     -Wl,-soname,libimp.so \
@@ -113,6 +114,7 @@ compile t31_dmic src/t31/openimp_t31_dmic.c -Werror
     "$output_dir/t31_acodec_core.o" \
     "$output_dir/t31_acodec.o" \
     "$output_dir/t31_dmic.o" \
+    "$output_dir/t31_extras.o" \
     -ldl -lpthread -lrt
 
 "$compiler" $base_flags $repo_includes -Wall -Wextra -Werror \
