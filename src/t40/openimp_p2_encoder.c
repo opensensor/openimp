@@ -182,7 +182,20 @@ static uint32_t p2_fill_t31_packs(P2EncoderChannel *channel,
     int index;
 
     memset(channel->packs, 0, sizeof(channel->packs));
-    if (channel->codec_type == IMP_ENC_TYPE_AVC)
+    /*
+     * An AVPU AU (reserved[3] = its host header size, never 0) was already
+     * checked by avpu_stream_buffer_effective_size() on these exact bytes:
+     * the heap copy stream_public_copy[slot], length frame_size, and the
+     * same IDR expectation (frame_type 0 <=> stream_is_idr).  The slot and
+     * its copy stay owned until ReleaseStream, so nothing rewrites them in
+     * between.  With OPENIMP_T31_AU_GATE on a failing AU never gets here;
+     * with it off the codec has already logged it.  Repeating the scan
+     * here can therefore never report anything new; keep it as a debug
+     * cross-check (OPENIMP_DEBUG_TRACE) and for AUs the codec did not
+     * check (software fallback, reserved[] zeroed).
+     */
+    if (channel->codec_type == IMP_ENC_TYPE_AVC &&
+        (raw->reserved[3] == 0u || openimp_debug_trace_enabled()))
         p2_t31_check_au(channel, raw);
     count = channel->codec_type == IMP_ENC_TYPE_JPEG
         ? 0
@@ -226,13 +239,15 @@ static uint64_t p2_monotonic_us(void);
 
 #if defined(PLATFORM_T31)
 /*
- * Every published H.264 access unit is checked the way a decoder splits it
+ * A published H.264 access unit is checked the way a decoder splits it
  * (any 00 00 01 starts a NAL).  An emulated start code or a second slice in
  * one AU makes ffmpeg start a second picture inside one packet ("number of
  * reference frames (0+2) exceeds max"), so report the exact layout: which
  * NALs, where the first unexpected one starts relative to the host header,
  * and the codec's slot/header/payload bookkeeping for this AU.  At most
  * P2_AU_CHECK_LOGS reports per minute; the rest are only counted.
+ * Only runs for AUs the codec did not already check (see p2_fill_t31_packs)
+ * or with OPENIMP_DEBUG_TRACE as a codec-to-GetStream cross-check.
  */
 #define P2_AU_CHECK_LOGS 4u
 #define P2_AU_CHECK_WINDOW_US 60000000ull
