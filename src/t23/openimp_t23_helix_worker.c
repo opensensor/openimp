@@ -1,5 +1,7 @@
+#define _GNU_SOURCE
 #include "openimp_t23_helix_ipc.h"
 
+#include <dlfcn.h>
 #include <errno.h>
 #include <signal.h>
 #include <stdint.h>
@@ -17,15 +19,7 @@
 extern int EncoderInit(void);
 extern int EncoderExit(void);
 extern int IMP_FlushCache(void *address, uint32_t size, int direction);
-extern int IMP_Encoder_YuvInit(void **handle, int width, int height,
-                               T23EncoderYuvIn *input);
-extern int IMP_Encoder_YuvEncode(void *handle, IMPFrameInfo frame,
-                                 T23EncoderYuvOut *output);
-extern int IMP_Encoder_YuvExit(void *handle);
-extern int IMP_Encoder_YuvRequestIDR(void *handle);
-extern void *IMP_Encoder_VbmAlloc(uint32_t size, uint32_t align);
-extern void IMP_Encoder_VbmFree(void *address);
-extern intptr_t IMP_Encoder_VbmV2P(intptr_t address);
+/* IMP_Encoder_Yuv* and IMP_Encoder_Vbm* are declared by imp/imp_encoder.h */
 
 #define T23_HELIX_PAGE_SIZE 4096u
 #define T23_CACHE_WBACK 1
@@ -267,6 +261,18 @@ int main(int argc, char **argv)
 
     signal(SIGPIPE, SIG_IGN);
     openlog("openimp-t23-helixd", LOG_PID, LOG_DAEMON);
+    /* This worker must run on the OEM libimp.  OpenIMP exports the same
+     * IMP_Encoder_Yuv* entry points and would serve them by spawning
+     * another worker, so refuse to run on it (e.g. when
+     * /opt/openimp-t23/libimp.so was overwritten with OpenIMP). */
+    if (dlsym(RTLD_DEFAULT, "OpenIMP_P0_GetState")) {
+        syslog(LOG_ERR, "openimp/T23 helper: libimp.so is OpenIMP, not "
+                        "the OEM library; refusing to run");
+        munmap(worker.shared, worker.shared_size);
+        close(worker.socket_fd);
+        closelog();
+        return 3;
+    }
     for (;;) {
         T23HelixIpcRequest request;
         T23HelixIpcResponse response;

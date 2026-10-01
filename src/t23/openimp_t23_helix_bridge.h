@@ -32,6 +32,15 @@ int OpenIMP_T23_HelixInit(T23HelixBridge *bridge,
 int OpenIMP_T23_HelixEncode(T23HelixBridge *bridge,
                             const IMPFrameInfo *frame,
                             HWStreamBuffer **stream);
+/* Unbound (IMP_Encoder_Yuv*) session: caller-supplied rate control and a
+ * packed NV12 input of width * height * 3 / 2 bytes. */
+int OpenIMP_T23_HelixInitYuv(T23HelixBridge *bridge, uint32_t width,
+                             uint32_t height, const T23EncoderYuvIn *input);
+/* Encode into a caller buffer; *length is its capacity on entry and the
+ * access unit length on success. */
+int OpenIMP_T23_HelixEncodeInto(T23HelixBridge *bridge,
+                                const IMPFrameInfo *frame, void *output,
+                                uint32_t *length);
 int OpenIMP_T23_HelixRequestIDR(T23HelixBridge *bridge);
 void OpenIMP_T23_HelixExit(T23HelixBridge *bridge);
 

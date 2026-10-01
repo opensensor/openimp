@@ -43,7 +43,8 @@ compile()
 }
 
 # The T23 public ABI feeds the recovered AVPU backend through the T-series
-# stock-driver seam.  Audio remains in the OEM libimp used by RAD.
+# stock-driver seam.  Audio reuses the T31 implementation, built against the
+# T23 OSS3 /dev/dsp ABI (PLATFORM_T23 selects it in openimp_t31_audio.c).
 compile openimp_p0 src/t40/openimp_p0.c -Werror
 compile openimp_profile src/openimp_profile.c -Werror
 compile openimp_tuning src/openimp_tuning.c -Werror
@@ -71,6 +72,8 @@ compile t23_services src/t31/openimp_t31_services.c -Werror
 compile t23_platform_services src/t23/openimp_t23_services.c -Werror
 compile t23_helix_bridge src/t23/openimp_t23_helix_bridge.c -Werror
 compile t23_persist src/t23/openimp_t23_persist.c -Werror
+compile t23_audio src/t31/openimp_t31_audio.c -Werror
+compile t23_yuv src/t23/openimp_t23_yuv.c -Werror
 
 "$compiler" -shared -nostartfiles \
     -Wl,-soname,libimp.so \
@@ -102,6 +105,8 @@ compile t23_persist src/t23/openimp_t23_persist.c -Werror
     "$output_dir/t23_platform_services.o" \
     "$output_dir/t23_helix_bridge.o" \
     "$output_dir/t23_persist.o" \
+    "$output_dir/t23_audio.o" \
+    "$output_dir/t23_yuv.o" \
     -ldl -lpthread -lrt
 
 "$compiler" $base_flags $repo_includes -Wall -Wextra -Werror \
@@ -117,12 +122,17 @@ then
     exit 1
 fi
 
-if readelf --dyn-syms --wide "$output_dir/libimp.so" |
-    awk '$7 != "UND" && $8 ~ /^IMP_(AI|AO|AENC|ADEC|DMIC)_/ {found=1} END {exit !found}'
-then
-    echo "T23 build exports audio APIs" >&2
-    exit 1
-fi
+for symbol in IMP_AI_GetFrame IMP_AI_PollingFrame IMP_AO_SendFrame \
+    IMP_AO_FlushChnBuf IMP_Encoder_YuvInit IMP_Encoder_YuvEncode \
+    IMP_Encoder_VbmAlloc IMP_Encoder_InputJpege
+do
+    if ! readelf --dyn-syms --wide "$output_dir/libimp.so" |
+        awk -v s="$symbol" '$7 != "UND" && $8 == s {found=1} END {exit !found}'
+    then
+        echo "T23 build does not export $symbol" >&2
+        exit 1
+    fi
+done
 
 rvd=${T23_RVD:-"$target_dir/target/usr/bin/rvd"}
 if [ -f "$rvd" ]; then
@@ -150,10 +160,23 @@ readelf -d "$output_dir/libimp.so" | grep -E 'SONAME|NEEDED'
 # Keep the proprietary T23 Helix implementation in a clean process.  RVD loads
 # OpenIMP, while this small worker resolves libimp from /usr/lib and exchanges
 # raw frames through tmpfs-backed shared memory.
+# Link it against the OEM libimp.  With per-package directories the
+# package's own staging holds the OEM copy at build time (ingenic-lib), while
+# $target_dir/target only exists once the image is assembled, so a caller may
+# point T23_OEM_LIB_DIR there.
+oem_lib_dir=${T23_OEM_LIB_DIR:-"$target_dir/target/usr/lib"}
+if [ ! -f "$oem_lib_dir/libimp.so" ] ||
+    readelf --dyn-syms --wide "$oem_lib_dir/libimp.so" |
+        awk '$7 != "UND" && $8 == "OpenIMP_P0_GetState" {found=1} END {exit !found}'
+then
+    echo "T23 Helix worker needs the OEM libimp.so in $oem_lib_dir" \
+        "(set T23_OEM_LIB_DIR)" >&2
+    exit 1
+fi
 "$compiler" $base_flags $repo_includes -Wall -Wextra -Werror \
     "$project_dir/src/t23/openimp_t23_helix_worker.c" \
-    -L"$target_dir/target/usr/lib" \
-    -Wl,-rpath,/usr/lib -Wl,-rpath-link,"$target_dir/target/usr/lib" \
+    -L"$oem_lib_dir" \
+    -Wl,-rpath,/usr/lib -Wl,-rpath-link,"$oem_lib_dir" \
     -limp -lalog -lpthread -ldl \
     -o "$output_dir/openimp-t23-helixd"
 "$stripper" --strip-unneeded "$output_dir/openimp-t23-helixd"
