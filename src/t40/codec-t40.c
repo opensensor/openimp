@@ -38,6 +38,7 @@
 #if defined(PLATFORM_T31)
 #include "t31_rate_control.h"
 #include "t31_stream_layout.h"
+#include "t31_hevc_headers.h"
 #endif
 #if defined(PLATFORM_T41)
 #include "t41_stream_layout.h"
@@ -2504,12 +2505,10 @@ static int avpu_t31_prepare_picture(ALAvpuContext *ctx)
  * essential: a grid captured at another resolution can leave the AVPU
  * waiting forever for columns which do not exist.
  */
-static void avpu_t40_get_hwrc_grid(uint32_t width, uint32_t height,
-                                   uint32_t *group_count_out,
-                                   uint32_t *columns_per_group_out)
+static void avpu_t40_get_hwrc_grid_lcu(uint32_t lcu_w, uint32_t lcu_h,
+                                       uint32_t *group_count_out,
+                                       uint32_t *columns_per_group_out)
 {
-    uint32_t lcu_w = (width + 15u) >> 4;
-    uint32_t lcu_h = (height + 15u) >> 4;
     uint32_t group_count = lcu_w;
     uint32_t divisor;
 
@@ -2539,6 +2538,14 @@ static void avpu_t40_get_hwrc_grid(uint32_t width, uint32_t height,
         *columns_per_group_out = lcu_w / group_count;
 }
 
+static void avpu_t40_get_hwrc_grid(uint32_t width, uint32_t height,
+                                   uint32_t *group_count_out,
+                                   uint32_t *columns_per_group_out)
+{
+    avpu_t40_get_hwrc_grid_lcu((width + 15u) >> 4, (height + 15u) >> 4,
+                               group_count_out, columns_per_group_out);
+}
+
 static uint32_t avpu_t40_pack_hwrc_grid(uint32_t width, uint32_t height)
 {
     uint32_t group_count;
@@ -2548,6 +2555,221 @@ static uint32_t avpu_t40_pack_hwrc_grid(uint32_t width, uint32_t height)
     return 0xf4000000u
          | (((group_count - 1u) & 0x3ffu) << 6)
          | ((columns_per_group - 1u) & 0x3fu);
+}
+#endif
+
+#if defined(PLATFORM_T31)
+/*
+ * T31 HEVC (docs/T31_HEVC.md).  The AVC command words above stay untouched;
+ * an HEVC channel rewrites only the fields the vendor's encode1() derives
+ * differently for codec 1.  Three diagnostic knobs select the uncertain
+ * bits on the device without a rebuild; each is read once.
+ */
+#define AVPU_T31_HEVC_LOG2_CTB 5u
+
+static int avpu_t31_env_flag(const char *name, int fallback)
+{
+    const char *value = getenv(name);
+
+    if (!value || !value[0])
+        return fallback;
+    return !(value[0] == '0' && value[1] == '\0');
+}
+
+/* Hardware RC and PPS cu_qp_delta_enabled_flag go together: the HEVC core
+ * can change the QP inside a picture only when the PPS allows it. */
+static int avpu_t31_hevc_hwrc_enabled(const ALAvpuContext *ctx)
+{
+    static int enabled = -1;
+
+    if (enabled < 0)
+        enabled = avpu_t31_env_flag("OPENIMP_T31_HEVC_HWRC", 1);
+    return enabled && ctx && ctx->rc_mode != HW_RC_MODE_FIXQP;
+}
+
+static int avpu_t31_hevc_cabac_init_flag(void)
+{
+    static int enabled = -1;
+
+    if (enabled < 0)
+        enabled = avpu_t31_env_flag("OPENIMP_T31_HEVC_CABAC_INIT", 0);
+    return enabled;
+}
+
+static int avpu_t31_hevc_tmvp_enabled(void)
+{
+    static int enabled = -1;
+
+    if (enabled < 0)
+        enabled = avpu_t31_env_flag("OPENIMP_T31_HEVC_TMVP", 1);
+    return enabled;
+}
+
+static void avpu_t31_hevc_config(const ALAvpuContext *ctx,
+                                 OpenIMPT31HevcConfig *config)
+{
+    openimp_t31_hevc_default_config(config, ctx->enc_w, ctx->enc_h,
+                                    ctx->fps_num ? ctx->fps_num : 25u,
+                                    ctx->fps_den ? ctx->fps_den : 1u);
+    config->log2_ctb_size = AVPU_T31_HEVC_LOG2_CTB;
+    config->cu_qp_delta_enabled =
+        avpu_t31_hevc_hwrc_enabled(ctx) ? 1u : 0u;
+    config->diff_cu_qp_delta_depth = 0u;
+    config->cabac_init_present = avpu_t31_hevc_cabac_init_flag() ? 1u : 0u;
+    config->tmvp_enabled = avpu_t31_hevc_tmvp_enabled() ? 1u : 0u;
+}
+
+/* VPS/SPS/PPS (IDR) and the slice segment header; returns the byte count
+ * or 0 when the prefix does not fit. */
+static uint32_t avpu_t31_hevc_write_headers(const ALAvpuContext *ctx,
+                                            uint8_t *buf, uint32_t budget,
+                                            uint32_t qp, int is_idr)
+{
+    OpenIMPT31HevcConfig config;
+    OpenIMPT31HevcSlice slice;
+    uint32_t limit = budget < AVPU_T31_STREAM_PREFIX_BYTES
+        ? budget : AVPU_T31_STREAM_PREFIX_BYTES;
+    uint32_t pos = 0u;
+    int written;
+
+    avpu_t31_hevc_config(ctx, &config);
+    if (is_idr) {
+        written = openimp_t31_hevc_write_parameter_sets(buf, limit, &config);
+        if (written <= 0)
+            return 0u;
+        pos = (uint32_t)written;
+    }
+    memset(&slice, 0, sizeof(slice));
+    slice.is_idr = is_idr ? 1u : 0u;
+    slice.poc = is_idr ? 0u : ctx->frame_number - ctx->idr_frame_number;
+    slice.ref_poc_delta = 1u;
+    slice.qp = (int32_t)(qp <= 51u ? qp : 51u);
+    slice.cabac_init_flag = config.cabac_init_present;
+    written = openimp_t31_hevc_write_slice_header(buf + pos, limit - pos,
+                                                  &config, &slice);
+    if (written <= 0)
+        return 0u;
+    return pos + (uint32_t)written;
+}
+
+/*
+ * Rewrite the AVC Enc1 words that differ for an HEVC picture.  Addresses,
+ * QP, slice type, deblocking and the picture-class EP3 slot are shared with
+ * AVC and already in cmd[].
+ */
+static void avpu_t31_hevc_fill_cmd(const ALAvpuContext *ctx, uint32_t *cmd,
+                                   int is_idr)
+{
+    const uint32_t ctb = 1u << AVPU_T31_HEVC_LOG2_CTB;
+    uint32_t width = ctx->enc_w;
+    uint32_t height = ctx->enc_h;
+    uint32_t ctb_w = (width + ctb - 1u) >> AVPU_T31_HEVC_LOG2_CTB;
+    uint32_t ctb_h = (height + ctb - 1u) >> AVPU_T31_HEVC_LOG2_CTB;
+    uint32_t ctb_count = ctb_w * ctb_h;
+    uint32_t picture_number =
+        is_idr ? 0u : ctx->frame_number - ctx->idr_frame_number;
+    uint32_t space;
+    uint64_t pcm_cap;
+
+    if (!ctb_w || !ctb_h)
+        return;
+
+    /* SliceParamToCmdRegsEnc1 cmd[0]: min TU 4, max TU 32 (sp[1]=5),
+     * min CU 8 (sp[2]=3), CTB 32 (sp[3]=5), codec 1, last slice. */
+    cmd[0x00] = 0x91700c11u;
+    /* bit 30 temporal MV prediction (sp[0x23]), bit 26 cabac_init_flag
+     * (sp[0x21], P only); merge candidates, CABAC and deblocking as AVC. */
+    cmd[0x02] = 0x4010ad50u;
+    if (!avpu_t31_hevc_tmvp_enabled())
+        cmd[0x02] &= ~0x40000000u;
+    if (!is_idr && avpu_t31_hevc_cabac_init_flag())
+        cmd[0x02] |= 0x04000000u;
+
+    cmd[0x06] = avpu_pack_enc1_lcu_pos(ctb_count - 1u, ctb_w);
+    if (!is_idr)
+        cmd[0x06] |= 0x00000400u;
+    cmd[0x07] = (((ctb_h - 1u) & 0x3ffu) << 12) | ((ctb_w - 1u) & 0x3ffu) |
+                0x80000000u;
+
+    /* No scaling list (bits 30/31), collocated_from_l0 (bit 18, sp[0x65]),
+     * HWRC enable (bit 16) only together with PPS cu_qp_delta. */
+    cmd[0x09] = (cmd[0x09] & 0x3fffffffu) | 0x00040000u;
+    if (!avpu_t31_hevc_hwrc_enabled(ctx))
+        cmd[0x09] &= ~0x00010000u;
+
+    /* sp+0x74: PCM bytes of one CTB, (8 * 32 * 32 * 1.5) * 5 / 3. */
+    cmd[0x0a] = ((ctb * ctb * 8u + ((ctb * ctb) >> 1) * 8u) * 5u / 3u) &
+                0xffffu;
+    cmd[0x0b] = ((ctb_w - 1u) & 0x3ffu) << 12;
+
+    /* Picture numbers for the single reference: HEVC POC steps by one,
+     * the collocated picture is the reference. */
+    if (!is_idr) {
+        cmd[0x0c] = picture_number;
+        cmd[0x0d] = picture_number - 1u;
+        cmd[0x0e] = 0u;
+        cmd[0x0f] = picture_number - 1u;
+        cmd[0x10] = picture_number > 1u ? picture_number - 2u : 0xffffffffu;
+        cmd[0x11] = 0xffffffffu;
+
+        /* InitMERange: HEVC searches the picture size, vertically capped
+         * at 0xe0 like AVC. */
+        {
+            uint32_t h_range = width >= 64u ? width : 64u;
+            uint32_t v_range = height < 0xe0u ? height : 0xe0u;
+
+            if (v_range < 8u)
+                v_range = 8u;
+            cmd[0x12] = (((h_range >> 6) - 1u) & 0x3ffu) |
+                        ((((v_range >> 3) - 1u) & 0x3ffu) << 12);
+        }
+    }
+
+    if (avpu_t31_hevc_hwrc_enabled(ctx)) {
+        uint32_t group_count;
+        uint32_t columns_per_group;
+        uint64_t bitrate = ctx->bitrate ? ctx->bitrate : 2000000u;
+        uint32_t fps_num = ctx->fps_num ? ctx->fps_num : 25u;
+        uint32_t fps_den = ctx->fps_den ? ctx->fps_den : 1u;
+        uint64_t per_group;
+        uint32_t word15;
+
+        /* InitHwRateCtrl works on the CTB grid for HEVC. */
+        avpu_t40_get_hwrc_grid_lcu(ctb_w, ctb_h, &group_count,
+                                   &columns_per_group);
+        cmd[0x14] = 0xf4000000u |
+                    (((group_count - 1u) & 0x3ffu) << 6) |
+                    ((columns_per_group - 1u) & 0x3fu);
+        per_group = bitrate * fps_den * group_count;
+        if (is_idr)
+            word15 = (uint32_t)(per_group * 8u / ((uint64_t)ctb_count * fps_num) *
+                                9914u / 10000u);
+        else
+            word15 = (uint32_t)(per_group * 17u /
+                                ((uint64_t)ctb_count * fps_num * 20u));
+        cmd[0x15] = word15 & 0x00ffffffu;
+        cmd[0x16] = 0x3f000000u |
+                    ((uint32_t)(per_group / ((uint64_t)ctb_count * fps_num)) &
+                     0x00ffffffu);
+        cmd[0x18] = ((is_idr || picture_number == 1u)
+                       ? 0xc0000000u : 0x40000000u) |
+                    (((columns_per_group * 4u + 1u) & 0xffu) << 20) |
+                    ((word15 >> 7) & 0xffffu);
+    } else {
+        memset(&cmd[0x14], 0, 5u * sizeof(uint32_t));
+        cmd[0x2d] = 0u;
+    }
+
+    /* The HEVC core writes the final CABAC bitstream: no inline Enc2. */
+    memset(&cmd[0x1b], 0, 5u * sizeof(uint32_t));
+
+    /* Stream window: the free space, bounded by the PCM size of every CTB
+     * (AL_PCM_SIZE 0x600 samples per 4:2:0 32x32, 8 bit). */
+    space = cmd[0x31] > cmd[0x32] ? cmd[0x31] - cmd[0x32] : 0u;
+    pcm_cap = (uint64_t)ctb_count * 0x600u;
+    if ((uint64_t)space > pcm_cap)
+        space = (uint32_t)pcm_cap;
+    cmd[0x33] = space & ~0x1fu;
 }
 #endif
 
@@ -2594,31 +2816,43 @@ static uint32_t avpu_prewrite_stream_headers(ALAvpuContext *ctx, int buf_idx, in
      * current channel state so the SPS macroblock grid, crop, timing and HRD
      * all follow the configured stream instead of a resolution template.
      */
-    if (is_idr) {
-        rbsp_len = avpu_generate_sps_rbsp(rbsp, &header_ctx);
-        if (rbsp_len <= 0 || pos + (uint32_t)rbsp_len + 16u >= budget)
-            return 0u;
-        pos += (uint32_t)avpu_write_nal_epb(buf + pos, 0x27u,
-                                            rbsp, rbsp_len);
-        rbsp_len = avpu_generate_pps_rbsp(rbsp, &header_ctx);
-        if (rbsp_len <= 0 || pos + (uint32_t)rbsp_len + 16u >= budget)
-            return 0u;
-        pos += (uint32_t)avpu_write_nal_epb(buf + pos, 0x28u,
-                                            rbsp, rbsp_len);
-    }
     slice_bits = 0u;
-    rbsp_len = avpu_generate_slice_header_rbsp(rbsp, &header_ctx, is_idr,
-                                                &slice_bits);
-    if (rbsp_len <= 0 || pos + (uint32_t)rbsp_len + 16u >= budget)
-        return 0u;
-    pos += (uint32_t)avpu_write_nal_epb(buf + pos,
-                                        is_idr ? 0x25u : 0x21u,
-                                        rbsp, rbsp_len);
 #if defined(PLATFORM_T31)
-    if (is_idr && buf_idx >= 0 && buf_idx < 16)
-        ctx->t31_idr_pic_id_by_buf[buf_idx] =
-            ctx->t31_next_idr_pic_id & 1u;
+    if (ctx->codec_hevc) {
+        /* HEVC: VPS/SPS/PPS on IDR plus a byte-aligned slice segment
+         * header; the AVPU HEVC core continues with slice_segment_data(). */
+        pos = avpu_t31_hevc_write_headers(ctx, buf, budget, header_ctx.qp,
+                                          is_idr);
+        if (pos == 0u)
+            return 0u;
+    } else
 #endif
+    {
+        if (is_idr) {
+            rbsp_len = avpu_generate_sps_rbsp(rbsp, &header_ctx);
+            if (rbsp_len <= 0 || pos + (uint32_t)rbsp_len + 16u >= budget)
+                return 0u;
+            pos += (uint32_t)avpu_write_nal_epb(buf + pos, 0x27u,
+                                                rbsp, rbsp_len);
+            rbsp_len = avpu_generate_pps_rbsp(rbsp, &header_ctx);
+            if (rbsp_len <= 0 || pos + (uint32_t)rbsp_len + 16u >= budget)
+                return 0u;
+            pos += (uint32_t)avpu_write_nal_epb(buf + pos, 0x28u,
+                                                rbsp, rbsp_len);
+        }
+        rbsp_len = avpu_generate_slice_header_rbsp(rbsp, &header_ctx, is_idr,
+                                                    &slice_bits);
+        if (rbsp_len <= 0 || pos + (uint32_t)rbsp_len + 16u >= budget)
+            return 0u;
+        pos += (uint32_t)avpu_write_nal_epb(buf + pos,
+                                            is_idr ? 0x25u : 0x21u,
+                                            rbsp, rbsp_len);
+#if defined(PLATFORM_T31)
+        if (is_idr && buf_idx >= 0 && buf_idx < 16)
+            ctx->t31_idr_pic_id_by_buf[buf_idx] =
+                ctx->t31_next_idr_pic_id & 1u;
+#endif
+    }
     ctx->slice_header_nal_bytes = is_idr ? 10u : pos;
     ctx->slice_header_prefix_bits = 8u;
     ctx->slice_header_splice_word = 0u;
@@ -3679,6 +3913,8 @@ static void fill_cmd_regs_enc1(const ALAvpuContext* ctx, uint32_t* cmd,
         cmd[0x32] = AVPU_T31_STREAM_PREFIX_BYTES;
         cmd[0x33] = avpu_get_stream_window_budget(ctx, cmd[0x31],
                                                    cmd[0x32]);
+        if (ctx->codec_hevc)
+            avpu_t31_hevc_fill_cmd(ctx, cmd, is_idr);
 #endif
     }
 #endif
@@ -6228,9 +6464,13 @@ static uint32_t avpu_stream_buffer_effective_size(ALAvpuContext *ctx, int buf_id
              * ffmpeg report "(0+2) exceeds max"; dropping the picture costs
              * one frame and an IDR instead.
              */
-            if (openimp_t31_avc_au_check(public_stream, raw_end,
-                                         ctx->stream_is_idr[buf_idx] ? 1 : 0,
-                                         &au) != 0u) {
+            if ((ctx->codec_hevc
+                     ? openimp_t31_hevc_au_check(
+                           public_stream, raw_end,
+                           ctx->stream_is_idr[buf_idx] ? 1 : 0, &au)
+                     : openimp_t31_avc_au_check(
+                           public_stream, raw_end,
+                           ctx->stream_is_idr[buf_idx] ? 1 : 0, &au)) != 0u) {
                 uint32_t suppressed;
                 int gate = avpu_t31_au_gate_enabled();
 
@@ -6239,7 +6479,8 @@ static uint32_t avpu_stream_buffer_effective_size(ALAvpuContext *ctx, int buf_id
 
                     openimp_t31_avc_au_describe(public_stream, raw_end, &au,
                                                 summary, sizeof(summary));
-                    IMP_LOG_WARN("Codec", "AVC: malformed AU %s (expect=%s %s bad-hdr=%d slot=%d hdr=%u payload_off=0x%x payload=%u ebsp+%u frame=%d suppressed=%u)",
+                    IMP_LOG_WARN("Codec", "%s: malformed AU %s (expect=%s %s bad-hdr=%d slot=%d hdr=%u payload_off=0x%x payload=%u ebsp+%u frame=%d suppressed=%u)",
+                                 ctx->codec_hevc ? "HEVC" : "AVC",
                                  gate ? "dropped, next IDR" : "published",
                                  ctx->stream_is_idr[buf_idx] ? "IDR" : "P",
                                  summary,
@@ -7000,12 +7241,18 @@ static void avpu_sync_runtime_encode_state(AL_CodecEncode *enc)
     enc->avpu.profile = HW_PROFILE_HIGH;
     enc->avpu.entropy_mode = 1u;
 #elif defined(PLATFORM_T31)
+    enc->avpu.codec_hevc =
+        codec_param_read_codec_type(enc->codec_param) == IMP_ENC_TYPE_HEVC;
     /* T31 has recovered command oracles for High/CABAC and
      * Baseline/CAVLC, but not a separate Main/CABAC control shape.  Main
      * requests already generate CABAC headers, so promote them to the proven
      * High command template instead of silently pairing those headers with
-     * the incomplete Baseline command window. */
-    if (enc->avpu.entropy_mode != 0u) {
+     * the incomplete Baseline command window.  HEVC is always CABAC and
+     * starts from the same template (docs/T31_HEVC.md). */
+    if (enc->avpu.codec_hevc) {
+        enc->avpu.entropy_mode = 1u;
+        enc->avpu.profile = HW_PROFILE_HIGH;
+    } else if (enc->avpu.entropy_mode != 0u) {
         if (enc->avpu.profile != HW_PROFILE_HIGH) {
             LOG_CODEC_THROTTLE(&enc->avpu,
                                "AVPU: promoting %ux%u AVC profile=%u CABAC request to proven T31 High/CABAC template",
@@ -9080,6 +9327,11 @@ static int al_codec_encode_process_impl(void *codec, void *frame,
              * as soon as chn1 opened /dev/avpu, which matches the "no stream
              * on chn0" failure seen on target. */
             int try_avpu = (codec_type == IMP_ENC_TYPE_AVC);
+#if defined(PLATFORM_T31)
+            /* The T31 AVPU encodes HEVC as well (docs/T31_HEVC.md). */
+            if (codec_type == IMP_ENC_TYPE_HEVC)
+                try_avpu = 1;
+#endif
 
             if (try_avpu) {
                 if (enc->avpu.fd > 2) {
@@ -9406,6 +9658,19 @@ static int al_codec_encode_process_impl(void *codec, void *frame,
                             enc->avpu.interm_ep1_size = avpu_get_enc1_ep1_size();
                             enc->avpu.interm_wpp_size = avpu_get_enc1_wpp_size(width, height);
                             enc->avpu.interm_ep2_size = avpu_get_enc1_ep2_size(width, height);
+#if defined(PLATFORM_T31)
+                            if (enc->avpu.codec_hevc) {
+                                /* AL_GetAllocSizeEP2(HEVC) =
+                                 * align128(8 * blk32x32) + 0x40, about twice
+                                 * the AVC size. */
+                                uint32_t hevc_ep2 = avpu_align_up_u32(
+                                    ((width + 31u) >> 5) *
+                                    ((height + 31u) >> 5) * 8u, 128u) + 0x40u;
+
+                                if (hevc_ep2 > enc->avpu.interm_ep2_size)
+                                    enc->avpu.interm_ep2_size = hevc_ep2;
+                            }
+#endif
 #if defined(PLATFORM_T40) || defined(PLATFORM_T31)
                             /*
                              * The inline T-series AVC command consumes EP1,
@@ -9443,6 +9708,15 @@ static int al_codec_encode_process_impl(void *codec, void *frame,
                                         openimp_t41_init_ep1(
                                             enc->avpu.interm_buf.map,
                                             interm_total_sz)
+#elif defined(PLATFORM_T31)
+                                        (enc->avpu.codec_hevc
+                                            ? openimp_t31_init_hevc_ep1(
+                                                  enc->avpu.interm_buf.map,
+                                                  interm_total_sz)
+                                            : openimp_t40_init_ep1(
+                                                  enc->avpu.interm_buf.map,
+                                                  interm_total_sz,
+                                                  use_fixqp_lda))
 #else
                                         openimp_t40_init_ep1(
                                             enc->avpu.interm_buf.map,
