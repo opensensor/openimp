@@ -30,7 +30,7 @@ HELIX_NATIVE_SOURCES := $(PROJECT_DIR)/src/t30/t30_helix_encoder.c \
 HELIX_INCLUDES := -DPLATFORM_T23 '-D_Static_assert(c,m)=' -Wno-unused-result \
 	-I$(PROJECT_DIR)/include -I$(PROJECT_DIR)/src
 
-.PHONY: check clean device
+.PHONY: check clean device t23tune
 
 # The code under test passes pointers through 32-bit words, as on MIPS:
 # build without PIE so the test's data lies below 4 GiB.
@@ -175,4 +175,18 @@ $(DEVICE_TEST_BIN): isp_tuning_device_test.c \
 		-Wno-cast-function-type -DPLATFORM_T23 \
 		-I$(PROJECT_DIR)/include -I$(PROJECT_DIR)/src \
 		isp_tuning_device_test.c -lpthread -o "$@"
+	$(CROSS_COMPILE)strip "$@"
+
+# t23tune: on-camera CLI test tool for the new T23 tuning CIDs; see
+# t23tune.c.  Same build recipe as the device test.
+T23TUNE_BIN := $(BUILD)/t23tune
+
+t23tune: $(T23TUNE_BIN)
+
+$(T23TUNE_BIN): t23tune.c $(PROJECT_DIR)/src/isp/isp_t23_tuning.c
+	mkdir -p "$(dir $@)"
+	$(CROSS_COMPILE)gcc -static -std=gnu99 -O2 -Wall -Wextra -Werror \
+		-Wno-cast-function-type -DPLATFORM_T23 \
+		-I$(PROJECT_DIR)/include -I$(PROJECT_DIR)/src \
+		t23tune.c -lpthread -o "$@"
 	$(CROSS_COMPILE)strip "$@"
