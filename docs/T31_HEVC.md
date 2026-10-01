@@ -196,9 +196,10 @@ one layer set, no timing, no extension.
 
 PTL: profile space 0, tier from chan 0x21 (Main), profile idc 1,
 compatibility flag 1, progressive 1, interlaced 0, non-packed 0,
-frame-only 1, `general_level_idc = 3 * level` (OpenIMP derives the level
-from the picture size: <= 1280x720 -> 3.1, <= 2048x1080 class -> 4.1,
-else 5.1).
+frame-only 1, `general_level_idc = 3 * level` (the vendor takes chan 0x20,
+default 5.1; OpenIMP writes the lowest Main-tier level of Table A.8 that
+fits the picture size and luma sample rate, e.g. 4 for 1080p25, 5 for
+2560x1440).
 
 SPS: chroma 4:2:0, picture size aligned to 8 with a conformance window,
 8-bit, log2 min CB 3 / CTB 5, log2 min TB 2 / max TB 5, transform depth
