@@ -57,6 +57,8 @@ typedef struct {
     uint64_t stats_oem_us;
     uint64_t stats_oem_max_us;
     uint64_t stats_bytes;
+    uint32_t idr_requested;     /* frame number of a pending RequestIDR + 1 */
+    uint32_t idr_requests;
 } T23HelixBridge;
 
 int OpenIMP_T23_HelixInit(T23HelixBridge *bridge,

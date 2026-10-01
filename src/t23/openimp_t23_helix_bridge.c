@@ -239,18 +239,37 @@ static uint64_t t23_stats_interval_us(void)
  * its own arena (OPENIMP_T23_HELIX_RMEM=<phys>:<bytes>); without it the
  * worker refuses to initialise.
  *
- * Sized from what the OEM encoder allocates (measured at 1920x1080 on a
- * T23N: 2076672 + 3907200 + 2146304 bytes):
+ * Sized from what the OEM encoder allocates, measured on a T23N
+ * (Galayou Y4):
+ *
+ *                  bitstream   pictures   output (+ page)   total used
+ *   1920x1080      2076672     3907200    2146304           8130304
+ *    640x360        524288      613760     593920           1731968
+ *
  *  - the bitstream buffer, t23_helix_bs_size();
- *  - one block for the reference and reconstructed pictures, 3907200
- *    bytes at 1920x1088 aligned, i.e. 15/8 bytes per aligned pixel;
+ *  - one block for the reference and reconstructed pictures.  It is not
+ *    proportional to the picture: 1.87 bytes per aligned pixel at 1080p,
+ *    2.61 at 360p.  16/9 per aligned pixel plus 196 KiB covers both
+ *    (3914411 and 619407);
  *  - the output buffer, plus the page VbmAlloc adds;
  *  - the input copy buffer, only when frames are copied;
  *  - 128 KiB for the OEM's alignment and anything smaller.
- * OPENIMP_T23_HELIX_RMEM_KB overrides it: one value for every worker, or
- * per picture size, e.g. "1920x1080=8200,640x360=1800".
+ * That is 8269824 bytes at 1080p and 1871872 at 360p.
+ *
+ * The rmem budget of the same camera (rmem=22M, 23068672 bytes) with both
+ * streams: ncubuf 3117056 (ISP), OSD bitmaps about 0.27 MB, the capture
+ * pools vbm_chn0 6266880 and vbm_chn1 706560, i.e. two buffers each, and
+ * the two slices, leaves about 2.4 MB.  Two capture buffers per channel
+ * is the minimum (the ISP fills one while the encoder reads the other in
+ * place) and is enough: at 15 fps from a 25 fps sensor the encoder never
+ * waits for a frame (OPENIMP_T23_PACE_STATS shows ~10 us).  A third main
+ * buffer (3.1 MB) would not fit.
+ *
+ * OPENIMP_T23_HELIX_RMEM_KB overrides the size: one value for every worker,
+ * or per picture size, e.g. "1920x1080=8200,640x360=1900".
  */
 #define T23_HELIX_RMEM_MARGIN (128u * 1024u)
+#define T23_HELIX_PICTURE_FIXED (196u * 1024u)
 
 static uint64_t t23_rmem_override(uint32_t width, uint32_t height)
 {
@@ -296,7 +315,7 @@ static uint64_t t23_rmem_estimate(const T23HelixBridge *bridge,
         /* decoded pictures held until released, plus the bitstream */
         return pixels * 3u / 2u * 3u + 1024u * 1024u;
     size = t23_helix_bs_size(bridge->width, bridge->height) +
-           (pixels * 15u + 7u) / 8u +
+           (pixels * 16u + 8u) / 9u + T23_HELIX_PICTURE_FIXED +
            bridge->output_capacity + T23_HELIX_PAGE_SIZE +
            T23_HELIX_RMEM_MARGIN;
     if (!bridge->zero_copy)
@@ -823,6 +842,9 @@ static int t23_recover_worker(T23HelixBridge *bridge)
 
 /* Encode one frame; on success *encoded points at the access unit inside
  * the shared window, valid until the next request on this bridge. */
+static void t23_check_idr(T23HelixBridge *bridge, const unsigned char *data,
+                          uint32_t length);
+
 static int t23_encode_frame(T23HelixBridge *bridge, const IMPFrameInfo *frame,
                             unsigned char **encoded_out,
                             uint32_t *length_out)
@@ -868,6 +890,7 @@ static int t23_encode_frame(T23HelixBridge *bridge, const IMPFrameInfo *frame,
                 "openimp/T23: leave helper encode frame=%u len=%u",
                 frame_number, response.output_length);
     t23_trace_annexb(frame_number, encoded, response.output_length);
+    t23_check_idr(bridge, encoded, response.output_length);
     *encoded_out = encoded;
     *length_out = response.output_length;
     return 0;
@@ -929,12 +952,59 @@ static int helix_request_idr(T23HelixBridge *bridge)
 {
     T23HelixIpcRequest request;
     T23HelixIpcResponse response;
+    int ret;
 
     if (!bridge || bridge->worker_pid <= 0)
         return -1;
     t23_make_request(bridge, &request, T23_HELIX_COMMAND_REQUEST_IDR);
-    return t23_exchange(bridge, &request, &response,
-                        T23_HELIX_ENCODE_TIMEOUT_MS);
+    ret = t23_exchange(bridge, &request, &response,
+                       T23_HELIX_ENCODE_TIMEOUT_MS);
+    if (ret == 0 && !bridge->idr_requested)
+        bridge->idr_requested = bridge->frames + 1u;
+    return ret;
+}
+
+/* An Annex B access unit with an IDR slice (nal_unit_type 5). */
+static int t23_annexb_has_idr(const unsigned char *data, uint32_t length)
+{
+    uint32_t i;
+
+    for (i = 0; i + 3u < length; i++) {
+        if (data[i] == 0 && data[i + 1u] == 0 && data[i + 2u] == 1) {
+            unsigned int type = data[i + 3u] & 0x1fu;
+
+            if (type == 5u)
+                return 1;
+            if (type == 1u)
+                return 0;   /* a non-IDR slice: no IDR in this unit */
+            i += 2u;
+        }
+    }
+    return 0;
+}
+
+/* RequestIDR makes the very next YuvEncode an IDR (the OEM sets the
+ * picture type from the request flag and clears it).  Say what came out,
+ * per channel, so a slow first keyframe can be told from a missing one. */
+static void t23_check_idr(T23HelixBridge *bridge, const unsigned char *data,
+                          uint32_t length)
+{
+    uint32_t requested;
+    int idr;
+
+    if (!bridge->idr_requested)
+        return;
+    requested = bridge->idr_requested - 1u;
+    bridge->idr_requested = 0u;
+    bridge->idr_requests++;
+    idr = t23_annexb_has_idr(data, length);
+    if (!idr || bridge->idr_requests <= 20u ||
+        bridge->idr_requests % 100u == 0u)
+        t23_log(idr ? LOG_INFO : LOG_WARNING,
+                "openimp/T23 helix %ux%u: IDR request %u (at frame %u): "
+                "frame %u is %s, %u bytes", bridge->width, bridge->height,
+                bridge->idr_requests, requested, bridge->frames,
+                idr ? "an IDR" : "NOT an IDR", length);
 }
 
 /* ---- public entry points: serialized on t23_ipc_lock ------------------ */
