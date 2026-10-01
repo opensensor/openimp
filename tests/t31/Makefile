@@ -4,14 +4,16 @@ PROJECT_DIR := ../..
 STREAM_LAYOUT_TEST_BIN := $(PROJECT_DIR)/build/tests/t31-stream-layout-test
 RATE_CONTROL_TEST_BIN := $(PROJECT_DIR)/build/tests/t31-rate-control-test
 READY_EVENT_TEST_BIN := $(PROJECT_DIR)/build/tests/t31-ready-event-test
+ACODEC_TEST_BIN := $(PROJECT_DIR)/build/tests/t31-acodec-test
 
 .PHONY: check clean
 
 check: $(STREAM_LAYOUT_TEST_BIN) $(RATE_CONTROL_TEST_BIN) \
-	$(READY_EVENT_TEST_BIN)
+	$(READY_EVENT_TEST_BIN) $(ACODEC_TEST_BIN)
 	$(STREAM_LAYOUT_TEST_BIN)
 	$(RATE_CONTROL_TEST_BIN)
 	$(READY_EVENT_TEST_BIN)
+	$(ACODEC_TEST_BIN)
 
 $(STREAM_LAYOUT_TEST_BIN): stream_layout_test.c \
 	$(PROJECT_DIR)/src/t40/t31_stream_layout.c \
@@ -37,6 +39,18 @@ $(READY_EVENT_TEST_BIN): ready_event_test.c \
 	$(CC) $(CFLAGS) -I$(PROJECT_DIR)/src \
 		ready_event_test.c -o "$@" -lpthread
 
+$(ACODEC_TEST_BIN): acodec_test.c \
+	$(PROJECT_DIR)/src/t31/openimp_t31_acodec.c \
+	$(PROJECT_DIR)/src/t31/openimp_t31_acodec_core.c \
+	$(PROJECT_DIR)/src/t31/openimp_t31_acodec_core.h \
+	$(PROJECT_DIR)/include/imp/imp_audio.h
+	mkdir -p "$(dir $@)"
+	$(CC) $(CFLAGS) -std=gnu99 -I$(PROJECT_DIR)/include -I$(PROJECT_DIR)/src \
+		acodec_test.c \
+		$(PROJECT_DIR)/src/t31/openimp_t31_acodec.c \
+		$(PROJECT_DIR)/src/t31/openimp_t31_acodec_core.c \
+		-lpthread -lm -o "$@"
+
 clean:
 	$(RM) $(STREAM_LAYOUT_TEST_BIN) $(RATE_CONTROL_TEST_BIN) \
-		$(READY_EVENT_TEST_BIN)
+		$(READY_EVENT_TEST_BIN) $(ACODEC_TEST_BIN)
