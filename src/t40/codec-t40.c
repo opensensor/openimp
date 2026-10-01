@@ -2621,7 +2621,7 @@ static void avpu_t31_hevc_config(const ALAvpuContext *ctx,
 
 /* VPS/SPS/PPS (IDR) and the slice segment header; returns the byte count
  * or 0 when the prefix does not fit. */
-static uint32_t avpu_t31_hevc_write_headers(const ALAvpuContext *ctx,
+static uint32_t avpu_t31_hevc_write_headers(ALAvpuContext *ctx,
                                             uint8_t *buf, uint32_t budget,
                                             uint32_t qp, int is_idr)
 {
@@ -2638,6 +2638,9 @@ static uint32_t avpu_t31_hevc_write_headers(const ALAvpuContext *ctx,
         if (written <= 0)
             return 0u;
         pos = (uint32_t)written;
+        /* P pictures keep this PPS; Process forces an IDR when the
+         * hardware RC state no longer matches it. */
+        ctx->hevc_pps_cu_qp_delta = config.cu_qp_delta_enabled;
     }
     memset(&slice, 0, sizeof(slice));
     slice.is_idr = is_idr ? 1u : 0u;
@@ -2668,6 +2671,8 @@ static void avpu_t31_hevc_fill_cmd(const ALAvpuContext *ctx, uint32_t *cmd,
     uint32_t ctb_count = ctb_w * ctb_h;
     uint32_t picture_number =
         is_idr ? 0u : ctx->frame_number - ctx->idr_frame_number;
+    /* HWRC follows the cu_qp_delta flag of the PPS in force. */
+    int hwrc = ctx->hevc_pps_cu_qp_delta != 0u;
     uint32_t space;
     uint64_t pcm_cap;
 
@@ -2694,7 +2699,7 @@ static void avpu_t31_hevc_fill_cmd(const ALAvpuContext *ctx, uint32_t *cmd,
     /* No scaling list (bits 30/31), collocated_from_l0 (bit 18, sp[0x65]),
      * HWRC enable (bit 16) only together with PPS cu_qp_delta. */
     cmd[0x09] = (cmd[0x09] & 0x3fffffffu) | 0x00040000u;
-    if (!avpu_t31_hevc_hwrc_enabled(ctx))
+    if (!hwrc)
         cmd[0x09] &= ~0x00010000u;
 
     /* sp+0x74: PCM bytes of one CTB, (8 * 32 * 32 * 1.5) * 5 / 3. */
@@ -2725,7 +2730,7 @@ static void avpu_t31_hevc_fill_cmd(const ALAvpuContext *ctx, uint32_t *cmd,
         }
     }
 
-    if (avpu_t31_hevc_hwrc_enabled(ctx)) {
+    if (hwrc) {
         uint32_t group_count;
         uint32_t columns_per_group;
         uint64_t bitrate = ctx->bitrate ? ctx->bitrate : 2000000u;
@@ -10082,6 +10087,15 @@ static int al_codec_encode_process_impl(void *codec, void *frame,
         /* Keep the AVPU shadow aligned with live control-plane state before
          * each OEM-shaped encode1 submit. */
         avpu_sync_runtime_encode_state(enc);
+#if defined(PLATFORM_T31)
+        /* HEVC: the PPS of the last IDR fixes cu_qp_delta_enabled_flag.  A
+         * rate-control change that switches the hardware RC on or off
+         * needs a new IDR with a matching PPS. */
+        if (ctx->codec_hevc && ctx->reference_valid &&
+            (uint32_t)avpu_t31_hevc_hwrc_enabled(ctx) !=
+                ctx->hevc_pps_cu_qp_delta)
+            force_idr = 1;
+#endif
 
         /* AL_EncCore_Init: exact OEM sequence from decompilation at 0x6c8d8.
          *
