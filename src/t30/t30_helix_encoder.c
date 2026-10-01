@@ -156,6 +156,18 @@ _Static_assert(__builtin_offsetof(T30ChannelNode, time) == 80,
 #define T23_SCH_STAT_BSFULL  (1u << 20)
 #define T23_SCH_STAT_ERRORS  (T23_SCH_STAT_ACFGERR | T23_SCH_STAT_BSERR | \
                               T23_SCH_STAT_ORESERR | T23_SCH_STAT_BSFULL)
+/* A completed job reads 0x301 (ENDFLAG plus the per-unit done bits 8 and
+ * 9).  The kernel's interrupt handler clears the SDE and deblocker done
+ * flags, which drops ENDFLAG and bit 9 from SCH_STAT; when the interrupt
+ * handler runs a second time for the same job before the encoding thread
+ * wakes (the soc_vpu handler re-reads SCH_STAT and takes its "error" branch
+ * for a status without ENDFLAG), it overwrites the saved status with that
+ * residue, 0x100, and zeroes the length, which vpu_wait_complete then
+ * re-reads from REG_SDE_CFG9.  The ioctl only returns success after the
+ * job's ENDFLAG interrupt has completed it, so such a result is a finished
+ * picture.  The OEM encoder ignores the status word altogether and uses
+ * output_len. */
+#define T23_SCH_STAT_LATE    (1u << 8)
 #define T23_NV12_FOURCC      0x3231564eu
 #else
 _Static_assert(sizeof(T30ChannelNode) == 56,
@@ -197,6 +209,9 @@ struct T30HelixEncoder {
     uint32_t scratch_offset[4]; /* EMC per-macroblock buffer layout */
     uint32_t scratch_size;
     uint32_t bitstream_kib;     /* EMC bitstream window (0x30040) */
+    uint32_t retries;           /* jobs repeated after an odd result */
+    uint32_t late_status;       /* completed jobs with status 0x100 */
+    int strict_status;          /* OPENIMP_T23_HELIX_STRICT_STATUS=1 */
 #endif
 };
 
@@ -465,6 +480,13 @@ int OpenIMP_T30_HelixCreate(T30HelixEncoder **encoder_out,
         if (value >= 100ul && value <= 20000ul)
             encoder->channel.mdelay = (uint32_t)value;
     }
+    {
+        /* =1: also require ENDFLAG (retry once, then drop and restart the
+         * GOP), for comparing against the default on a device */
+        const char *strict = getenv("OPENIMP_T23_HELIX_STRICT_STATUS");
+
+        encoder->strict_status = strict && strict[0] == '1';
+    }
 #endif
     encoder->channel.thread_id = -1;
     if (ioctl(encoder->fd, T30_CHANNEL_REQUEST, &encoder->channel) != 0)
@@ -682,25 +704,78 @@ int OpenIMP_T30_HelixEncode(T30HelixEncoder *encoder,
     encoder->channel.dma_addr = encoder->descriptor.phys_addr;
     encoder->channel.thread_id = -1;
 #if defined(PLATFORM_T23)
-    encoder->channel.status = 0;
-    encoder->channel.output_len = 0;
-    encoder->channel.frame_type = 0;
-    encoder->channel.time = 0;
-    if (ioctl(encoder->fd, T30_CHANNEL_RUN, &encoder->channel) != 0 ||
-        !(encoder->channel.status & T23_SCH_STAT_ENDFLAG) ||
-        (encoder->channel.status & T23_SCH_STAT_ERRORS) ||
-        !encoder->channel.output_len ||
-        encoder->channel.output_len > (encoder->bitstream_kib << 10)) {
-        /* A timed-out, errored or bitstream-full picture leaves no usable
-         * reconstruction: restart the GOP.  soc_vpu has already reset the
-         * core on a timeout and resets it again before the next job. */
-        IMP_LOG_ERR("Encoder", "T23 Helix: run failed frame=%u errno=%d status=0x%08x "
-                  "len=%u", encoder->frame_number, errno,
-                  encoder->channel.status, encoder->channel.output_len);
-        encoder->force_idr = 1;
-        encoder->have_reference = 0;
-        encoder->failures++;
-        return -1;
+    {
+        int attempt;
+        int run_ret = -1;
+        int late = 0;
+
+        for (attempt = 0; attempt < 2; attempt++) {
+            uint32_t status;
+
+            encoder->channel.status = 0;
+            encoder->channel.output_len = 0;
+            encoder->channel.frame_type = 0;
+            encoder->channel.time = 0;
+            errno = 0;
+            run_ret = ioctl(encoder->fd, T30_CHANNEL_RUN, &encoder->channel);
+            status = encoder->channel.status;
+            late = run_ret == 0 && !(status & T23_SCH_STAT_ENDFLAG) &&
+                   (status & T23_SCH_STAT_LATE) && !encoder->strict_status;
+            if (run_ret == 0 && !(status & T23_SCH_STAT_ERRORS) &&
+                ((status & T23_SCH_STAT_ENDFLAG) || late) &&
+                encoder->channel.output_len &&
+                encoder->channel.output_len <=
+                    (encoder->bitstream_kib << 10))
+                break;
+            /* Retry an unexplained result once with the identical job;
+             * a timeout (the kernel already waited and reset the core)
+             * or an error the core reported would only repeat. */
+            if (run_ret != 0 || (status & T23_SCH_STAT_ERRORS) ||
+                attempt == 1) {
+                attempt = 2;
+                break;
+            }
+            IMP_LOG_WARN("Encoder", "T23 Helix: %ux%u frame=%u %s "
+                         "status=0x%08x len=%u, retrying the job",
+                         encoder->params.width, encoder->params.height,
+                         encoder->frame_number, idr ? "IDR" : "P",
+                         status, encoder->channel.output_len);
+            encoder->retries++;
+            (void)DMA_RmemFlushCache(temporary + T30_SLICE_OFFSET,
+                                     encoder->temporary.size -
+                                         T30_SLICE_OFFSET, 2);
+        }
+        if (attempt >= 2) {
+            /* A timed-out, errored or bitstream-full picture leaves no
+             * usable reconstruction: restart the GOP.  soc_vpu has already
+             * reset the core on a timeout and resets it again before the
+             * next job. */
+            IMP_LOG_ERR("Encoder", "T23 Helix: %ux%u run failed frame=%u "
+                        "%s qp=%u ret=%d errno=%d status=0x%08x len=%u",
+                        encoder->params.width, encoder->params.height,
+                        encoder->frame_number, idr ? "IDR" : "P", qp,
+                        run_ret, errno, encoder->channel.status,
+                        encoder->channel.output_len);
+            encoder->force_idr = 1;
+            encoder->have_reference = 0;
+            encoder->failures++;
+            return -1;
+        }
+        if (late) {
+            /* See T23_SCH_STAT_LATE: the job completed; the length was
+             * read back from the bitstream engine. */
+            encoder->late_status++;
+            if (encoder->late_status <= 3u ||
+                encoder->late_status % 100u == 0u)
+                IMP_LOG_INFO("Encoder", "T23 Helix: %ux%u frame=%u %s "
+                             "completed with late interrupt status "
+                             "0x%08x len=%u (%u so far)",
+                             encoder->params.width, encoder->params.height,
+                             encoder->frame_number, idr ? "IDR" : "P",
+                             encoder->channel.status,
+                             encoder->channel.output_len,
+                             encoder->late_status);
+        }
     }
     encoder->failures = 0;
 #else

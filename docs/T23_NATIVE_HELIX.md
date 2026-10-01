@@ -146,19 +146,66 @@ Done:
   top of the arena (`DMA_AllocDescriptorTop`, T23 only), layout simulation
   test.
 
+- memory layout soak-tested on the device (2 h 34 min, both channels, no
+  reconnects, MemFree stable); 218 pictures (0.09 %) were dropped for
+  status 0x100, now accepted (see "Job status" below).
+
 Next:
-- device test of the new layout (plan below, "Memory retest");
+- device retest of the status handling (plan below, "Status retest");
 - optional: OEM reference sharing (above) if more headroom is needed.
 
 Current builds (`T23_DEFAULT_ENCODER=worker` default):
 
 | Build | md5 |
 | --- | --- |
-| T23 libimp.so (default worker) | 42fc84f665214bcef8da8822f4e38ce7 |
-| T23 libimp.so (`T23_DEFAULT_ENCODER=native`) | 6ee5fce902cd520f1ce055e25e86cf8f |
-| T23 openimp-t23-helix-selftest | 416de9a06e7c54f2db33c19f0a426dd0 |
+| T23 libimp.so (default worker) | ba44331b46e57cdbfd7fb9aa493e8700 |
+| T23 libimp.so (`T23_DEFAULT_ENCODER=native`) | 32b2c141e629ada27084140e20fc60a9 |
+| T23 openimp-t23-helix-selftest | a456fd79db9ea5bb4d202bb7f615c629 |
 | T23 openimp-t23-helixd (unchanged) | 2173cdb30c4dd9e24229ac4db80111f3 |
 | T30 / T31 / T20 / T21 libimp.so (unchanged) | f953cffc… / 9606fc65… / f787b889… / 6a045ced… |
+
+## Job status
+
+soc_vpu returns the Helix `SCH_STAT` word of the job's interrupt. A
+completed job reads 0x301: ENDFLAG (bit 0) plus bits 8 and 9, which
+`helix.h` does not name and which behave as per-unit done flags. The
+kernel's interrupt handler (`helix.c vpu_interrupt`) clears the SDE and
+deblocker done flags on ENDFLAG but not `SCH_STAT` itself, and masks the
+interrupt enables. If the handler runs a second time for the same job before
+the waiting thread wakes, `SCH_STAT` has lost ENDFLAG and bit 9 (residue
+0x100), so the handler takes its error branch: it stores status 0x100 and
+zeroes the length, but does not signal completion. `vpu_wait_complete` was
+already woken by the first (ENDFLAG) invocation, sees the zero length and
+re-reads it from `REG_SDE_CFG9`. So ioctl success + status 0x100 + a length
+is a finished picture with its real length. The OEM T23 encoder
+(`hwicodec_pf_h264e_t21_enc`) never looks at the status word: it takes
+`output_len` and `cmpx` from the channel node and only treats a negative
+ioctl result or "cancelled" (2, direct mode) as failure, and it neither
+retries nor waits longer.
+
+OpenIMP therefore accepts status 0x100 without error bits as success
+(logged as "completed with late interrupt status", first 3 and every
+100th). Any other unexpected result without error bits is re-run once with
+the identical command list (deterministic, the reference is untouched);
+timeouts, error bits and bitstream-full still drop the picture and restart
+the GOP. `OPENIMP_T23_HELIX_STRICT_STATUS=1` restores the strict check
+(with the single retry) for comparison. Failure and retry lines now name
+the channel size, picture type and QP.
+
+The lengths in the soak log (60, 192, 403 bytes) are those of P pictures
+of a nearly static scene, not IDRs (tens of kB); the frame counter is per
+channel, so it does not tell main from sub.
+
+### Status retest
+
+1. timps as before; count `late interrupt status` lines (expect about
+   0.09 % of pictures) and `retrying the job` / `run failed` lines
+   (expect none).
+2. Record both RTSP streams for 30 minutes (`ffmpeg -i rtsp://... -c copy
+   main.h264`) and check them with `ffmpeg -v error -i main.h264 -f null -`:
+   no errors, and IDRs only at GOP boundaries or on request.
+3. For an A/B check, run once with `OPENIMP_T23_HELIX_STRICT_STATUS=1`:
+   the old drops come back as `run failed ... status=0x00000100`.
 
 ## Host tests
 

@@ -266,7 +266,7 @@ typedef struct {
     uint64_t time;
 } FakeNode;
 
-enum { FAULT_NONE, FAULT_BSFULL, FAULT_TIMEOUT };
+enum { FAULT_NONE, FAULT_BSFULL, FAULT_TIMEOUT, FAULT_LATE, FAULT_ODD };
 static int next_fault;
 static unsigned int jobs;
 static unsigned int channels_open;
@@ -482,6 +482,15 @@ int __wrap_ioctl(int fd, unsigned long request, ...)
     if (next_fault == FAULT_BSFULL) {
         next_fault = FAULT_NONE;
         node->status |= 1u << 20;
+    } else if (next_fault == FAULT_LATE) {
+        /* second interrupt after completion: residue status, length read
+         * back from the bitstream engine */
+        next_fault = FAULT_NONE;
+        node->status = 0x100u;
+    } else if (next_fault == FAULT_ODD) {
+        /* neither ENDFLAG nor the done residue: retried once */
+        next_fault = FAULT_NONE;
+        node->status = 0u;
     }
     return 0;
 }
@@ -588,6 +597,10 @@ static int encode(const char *stream_path, const char *ref_path)
             change.fps_num = 10;
             assert(OpenIMP_T30_HelixReconfigure(encoder, &change) == 0);
         }
+        if (frame == 3u)
+            next_fault = FAULT_LATE;    /* accepted, GOP continues */
+        if (frame == 8u)
+            next_fault = FAULT_ODD;     /* retried, GOP continues */
         if (frame == 10u)
             next_fault = FAULT_BSFULL;
         if (frame == 14u)
@@ -624,6 +637,8 @@ static int encode(const char *stream_path, const char *ref_path)
         free((void *)(uintptr_t)out->virt_addr);
         free(out);
     }
+    /* one VPU job per frame plus the single retry of frame 8 */
+    assert(jobs == FRAMES + 1u);
     /* a frame outside reserved memory or too small never reaches the VPU */
     {
         IMPFrameInfo bad;
