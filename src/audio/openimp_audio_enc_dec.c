@@ -14,7 +14,7 @@
  *     in the OEM;
  *   - every channel has `bufSize` stream nodes; Send* waits for a free node,
  *     Polling* waits up to the timeout for an encoded/decoded one, Get*
- *     blocks or not, Release* returns the node;
+ *     blocks (IMPBlock BLOCK = 0) or not, Release* returns the node;
  *   - GetStream time-stamps the stream with the wall clock in microseconds.
  * Node buffers are allocated on first use, so an idle channel costs no
  * stream memory. */
@@ -239,12 +239,16 @@ static int poll_filled(AudioChannel *c, uint32_t timeout_ms)
     return ret;
 }
 
+/* IMPBlock: BLOCK = 0 waits for a stream, NOBLOCK = 1 does not (the OEM
+ * then returns 0 with the stream untouched; here it fails instead). */
+#define AUDIO_BLOCK 0
+
 static int get_filled(AudioChannel *c, AudioStreamABI *stream, int block)
 {
     AudioNode *n;
 
     pthread_mutex_lock(&c->lock);
-    while (block && c->created && !c->closing && !c->head)
+    while (block == AUDIO_BLOCK && c->created && !c->closing && !c->head)
         pthread_cond_wait(&c->cond, &c->lock);
     n = c->created ? c->head : NULL;
     if (!n) {
