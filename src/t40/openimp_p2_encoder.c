@@ -47,6 +47,26 @@
 #define P2_MAX_CHANNELS 8
 #define P2_MAX_BINDS 16
 #define P2_MAX_PUBLIC_PACKS 16
+/*
+ * Stream buffers per channel unless the application calls
+ * IMP_Encoder_SetMaxStreamCnt. T31: the stock IMP_Encoder_CreateChn uses 2
+ * for H.264/H.265 and 1 for JPEG when MaxStreamCnt was not set (sub_83908
+ * in libimp 1.1.6). P2 never uses more than two at once: PollingStream
+ * starts no encode while the application holds a stream (raw_stream), and
+ * Process returns only after the completion, so one buffer is held or
+ * queued and one is free for the next picture; the second also keeps a
+ * channel encoding when a GetStream timed out and left a completed stream
+ * queued. JPEG keeps 2 as well: its stream FIFO has this depth and a
+ * blocking queue of depth 1 could wait forever behind such a stale stream
+ * (JPEG allocates no AVPU stream buffer, so this costs nothing). A larger
+ * count only rotated through more 0.93 MB (1080p) rmem buffers and heap
+ * snapshots without ever using them together.
+ */
+#if defined(PLATFORM_T31)
+#define P2_DEFAULT_STREAM_COUNT 2
+#else
+#define P2_DEFAULT_STREAM_COUNT 4
+#endif
 #define P2_PARAM_SIZE 0x794
 /* T40 1.3.1 ends IMPEncoderStream after isVI and pads it to 28 bytes. T31
  * 1.1.6 includes the streamInfo/jpegInfo union, matching the compatibility
@@ -1084,7 +1104,7 @@ int EncoderInit(void)
         for (i = 0; i < P2_MAX_CHANNELS; i++) {
             p2_channels[i].group = -1;
             p2_channels[i].source_channel = -1;
-            p2_channels[i].max_stream_count = 4;
+            p2_channels[i].max_stream_count = P2_DEFAULT_STREAM_COUNT;
             p2_channels[i].pool_id = -1;
             pthread_mutex_init(&p2_channels[i].lock, NULL);
             pthread_cond_init(&p2_channels[i].jpeg_frame_ready, NULL);
