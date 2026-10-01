@@ -41,10 +41,12 @@ struct dma_buf_info {
 	struct avpu_codec_desc *codec;
 };
 
-struct r_irq {
-	struct list_head list;
-	u32 bitfield;
-};
+/* Interrupt sources the hard IRQ handler forwards to userspace. */
+#define AVPU_IRQ_SOURCES 20
+/* Pending interrupt indices, delivered one per AL_CMD_IP_WAIT_IRQ. Must be a
+ * power of two. A frame raises a handful of interrupts and the waiter drains
+ * them immediately, so the queue only fills when nobody is waiting. */
+#define AVPU_IRQ_QUEUE_LEN 256
 
 struct avpu_codec_desc {
 	struct device *device;
@@ -53,9 +55,13 @@ struct avpu_codec_desc {
 	struct cdev cdev;
 	/* one for one mapping in the no mcu case */
 	struct avpu_codec_chan *chan;
-	struct list_head irq_masks;
+	/* i_lock protects chan, the irq queue and irq_dropped */
 	spinlock_t i_lock;
-	struct kmem_cache *cache;
+	u8 irq_queue[AVPU_IRQ_QUEUE_LEN];
+	unsigned int irq_head;
+	unsigned int irq_tail;
+	unsigned int irq_dropped;
+	int irq;                        /* -1 when running without irq */
 	int minor;
 	struct clk          *clk;
 	struct clk          *clk_mux;
@@ -88,5 +94,14 @@ int avpu_codec_read_register(struct avpu_codec_chan *chan,
 			     struct avpu_reg *reg);
 void avpu_codec_write_register(struct avpu_codec_chan *chan,
 			       struct avpu_reg *reg);
-irqreturn_t avpu_irq_handler(int irq, void *data);
 irqreturn_t avpu_hardirq_handler(int irq, void *data);
+void avpu_irq_queue_reset(struct avpu_codec_desc *codec);
+int avpu_irq_queue_pop(struct avpu_codec_desc *codec, u32 *irq_idx);
+
+extern bool avpu_trace;
+
+#define avpu_trace_log(format, ...)				\
+	do {							\
+		if (unlikely(avpu_trace))			\
+			pr_info("[AVPU] " format, ## __VA_ARGS__); \
+	} while (0)
