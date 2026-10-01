@@ -64,7 +64,6 @@
 /* driver fragment = rate / 100 * frame bytes * fragment_time (module
  * parameter, default 2 x 10 ms) */
 #define T23_FRAGMENT_10MS_UNITS   2U
-#define T23_AO_MAX_PERIOD_BYTES   65536U
 #define T31_CAPTURE_DEFAULT_DEPTH 8
 #define T31_CAPTURE_MAX_DEPTH     50
 #define T31_CAPTURE_RETRY_US      20000
@@ -259,12 +258,12 @@ static struct {
     unsigned char *capture_chunk;
     size_t capture_chunk_capacity;
     size_t capture_chunk_bytes;
+#endif
     /* SendFrame re-blocks arbitrary frame sizes into whole driver periods */
     unsigned char *ao_period;
     size_t ao_period_capacity;
     size_t ao_period_bytes;
     size_t ao_period_valid;
-#endif
 } t31_audio = {
     .ai_fd = -1,
     .ao_fd = -1,
@@ -272,6 +271,9 @@ static struct {
     .ao_volume = 60,
     .agc_mode = 3,
 };
+
+/* Largest SendFrame period (one IMPAudioIOAttr.numPerFrm frame). */
+#define OPENIMP_AO_MAX_PERIOD_BYTES 65536U
 
 static pthread_mutex_t t31_capture_lock = PTHREAD_MUTEX_INITIALIZER;
 #if !defined(PLATFORM_T23)
@@ -1403,6 +1405,23 @@ int IMP_AO_GetPubAttr(int device, IMPAudioIOAttr *attribute)
     return 0;
 }
 
+/* Playback fragment of the driver. Both kernel ABIs copy whole fragments
+ * only and keep a write that ends in a partial one waiting for good: the
+ * T23 OSS3 driver in 20 ms units (T23_FRAGMENT_10MS_UNITS), the OSS2 driver
+ * of T31/T30/T21/T20 in 10 ms units (xb_snd_dsp.c ao_copy_from_user,
+ * xb47xx_i2s_v12.c SND_DSP_GET_REPLAY_FRAGMENTSIZE). */
+static size_t t31_ao_fragment_bytes(const IMPAudioIOAttr *attribute)
+{
+#if defined(PLATFORM_T23)
+    return t23_fragment_bytes(attribute);
+#else
+    size_t channels =
+        attribute->soundmode == AUDIO_SOUND_MODE_STEREO ? 2U : 1U;
+
+    return (size_t)(attribute->samplerate / 100) * channels * sizeof(int16_t);
+#endif
+}
+
 int IMP_AO_Enable(int device)
 {
     int fd;
@@ -1411,9 +1430,8 @@ int IMP_AO_Enable(int device)
         return -1;
     if (t31_audio.ao_enabled)
         return 0;
-#if defined(PLATFORM_T23)
     {
-        size_t fragment = t23_fragment_bytes(&t31_audio.ao_attr);
+        size_t fragment = t31_ao_fragment_bytes(&t31_audio.ao_attr);
         size_t period = (size_t)t31_audio.ao_attr.numPerFrm *
                         (t31_audio.ao_attr.soundmode ==
                                  AUDIO_SOUND_MODE_STEREO ? 2U : 1U) *
@@ -1423,7 +1441,7 @@ int IMP_AO_Enable(int device)
         period -= period % fragment;
         if (!fragment || !period)
             period = fragment;
-        if (!period || period > T23_AO_MAX_PERIOD_BYTES)
+        if (!period || period > OPENIMP_AO_MAX_PERIOD_BYTES)
             return -1;
         if (period > t31_audio.ao_period_capacity) {
             void *buffer = realloc(t31_audio.ao_period, period);
@@ -1435,7 +1453,6 @@ int IMP_AO_Enable(int device)
         t31_audio.ao_period_bytes = period;
         t31_audio.ao_period_valid = 0;
     }
-#endif
     fd = open("/dev/dsp", O_WRONLY | O_CLOEXEC);
     if (fd < 0)
         return -1;
@@ -1472,9 +1489,7 @@ int IMP_AO_Disable(int device)
     t31_audio.ao_enabled = 0;
     t31_audio.ao_channel_enabled = 0;
     t31_audio.ao_paused = 0;
-#if defined(PLATFORM_T23)
     t31_audio.ao_period_valid = 0;
-#endif
     return result;
 }
 
@@ -1506,8 +1521,6 @@ static struct {
     int agc_mode;                   /* bss in libimp: 0 unless EnableAlgo */
     int agc_enabled;
     int sample_rate;
-    int16_t *bounce;                /* T31: SendFrame works on a copy */
-    size_t bounce_capacity;
 } t31_ao_fx;
 
 static pthread_mutex_t t31_ao_fx_lock = PTHREAD_MUTEX_INITIALIZER;
@@ -1582,8 +1595,7 @@ void openimp_audio_set_ao_agc_mode(int mode)
     pthread_mutex_unlock(&t31_ao_fx_lock);
 }
 
-#if defined(PLATFORM_T23)
-static int t23_ao_write_period(void)
+static int t31_ao_write_period(void)
 {
     T31AudioOutputStream stream;
     int result;
@@ -1599,7 +1611,8 @@ static int t23_ao_write_period(void)
                      t31_audio.ao_volume, t31_audio.ao_muted);
     stream.data = t31_audio.ao_period;
     stream.size = (uint32_t)t31_audio.ao_period_valid;
-    /* blocks until the driver ring has room (800 ms driver timeout) */
+    /* blocks until the driver took the whole period (OSS3: 800 ms timeout;
+     * OSS2 returns 0 and the count in stream.size, a period is taken whole) */
     result = ioctl(t31_audio.ao_fd, T31_AO_SET_STREAM, &stream);
     t31_audio.ao_period_valid = 0;
     return result == 0 ? 0 : -1;
@@ -1633,70 +1646,11 @@ int IMP_AO_SendFrame(int device, int channel, IMPAudioFrame *frame,
         data += take;
         remaining -= take;
         if (t31_audio.ao_period_valid == t31_audio.ao_period_bytes &&
-            t23_ao_write_period() != 0)
+            t31_ao_write_period() != 0)
             return -1;
     }
     return 0;
 }
-#else
-int IMP_AO_SendFrame(int device, int channel, IMPAudioFrame *frame,
-                     IMPBlock block)
-{
-    T31AudioOutputStream stream;
-    unsigned char *data;
-    int remaining;
-
-    (void)block;
-    if (device != 0 || channel != 0 || !frame || !frame->virAddr ||
-        frame->len <= 0 || !t31_audio.ao_channel_enabled ||
-        t31_audio.ao_paused || t31_audio.ao_fd < 0)
-        return -1;
-    data = (unsigned char *)(void *)frame->virAddr;
-    remaining = frame->len;
-    pthread_mutex_lock(&t31_ao_fx_lock);
-    if (t31_ao_fx.hpf_enabled || t31_ao_fx.agc_enabled ||
-        t31_audio.ao_muted || t31_audio.ao_volume != 60) {
-        /* the caller's buffer is not ours to filter or scale in place */
-        if (t31_ao_fx.bounce_capacity < (size_t)remaining) {
-            int16_t *bounce = realloc(t31_ao_fx.bounce, (size_t)remaining);
-
-            if (!bounce) {
-                pthread_mutex_unlock(&t31_ao_fx_lock);
-                return -1;
-            }
-            t31_ao_fx.bounce = bounce;
-            t31_ao_fx.bounce_capacity = (size_t)remaining;
-        }
-        memcpy(t31_ao_fx.bounce, data, (size_t)remaining);
-        if (t31_ao_fx.hpf_enabled || t31_ao_fx.agc_enabled)
-            t31_ao_process_effects(t31_ao_fx.bounce,
-                                   remaining / (int)sizeof(int16_t));
-        t31_apply_ao_volume(t31_ao_fx.bounce,
-                            remaining / (int)sizeof(int16_t),
-                            t31_audio.ao_volume, t31_audio.ao_muted);
-        data = (unsigned char *)t31_ao_fx.bounce;
-    }
-    pthread_mutex_unlock(&t31_ao_fx_lock);
-    /* The OSS2 driver (xb_snd_dsp.c dsp_ioctl_ao_stream, same on T20, T21,
-     * T30 and T31) returns 0 on success and writes the number of bytes it
-     * queued back into stream.size; any size is accepted. */
-    while (remaining > 0) {
-        int written;
-
-        stream.data = data;
-        stream.size = (uint32_t)remaining;
-        if (ioctl(t31_audio.ao_fd, T31_AO_SET_STREAM, &stream) != 0)
-            return -1;
-        written = stream.size > (uint32_t)remaining ? remaining
-                                                     : (int)stream.size;
-        if (written <= 0)
-            return -1;
-        data += written;
-        remaining -= written;
-    }
-    return 0;
-}
-#endif
 
 int IMP_AO_SetVol(int device, int channel, int value)
 {
@@ -1747,7 +1701,6 @@ int IMP_AO_SetVolMute(int device, int channel, int mute)
     return 0;
 }
 
-#if defined(PLATFORM_T23)
 int IMP_AO_ClearChnBuf(int device, int channel)
 {
     if (device != 0 || channel != 0 || t31_audio.ao_fd < 0)
@@ -1765,26 +1718,11 @@ int IMP_AO_FlushChnBuf(int device, int channel)
         memset(t31_audio.ao_period + t31_audio.ao_period_valid, 0,
                t31_audio.ao_period_bytes - t31_audio.ao_period_valid);
         t31_audio.ao_period_valid = t31_audio.ao_period_bytes;
-        if (t23_ao_write_period() != 0)
+        if (t31_ao_write_period() != 0)
             return -1;
     }
     return ioctl(t31_audio.ao_fd, T31_AO_SYNC_STREAM, 1);
 }
-#else
-int IMP_AO_ClearChnBuf(int device, int channel)
-{
-    return device == 0 && channel == 0 && t31_audio.ao_fd >= 0
-               ? ioctl(t31_audio.ao_fd, T31_AO_CLEAR_STREAM, 1)
-               : -1;
-}
-
-int IMP_AO_FlushChnBuf(int device, int channel)
-{
-    return device == 0 && channel == 0 && t31_audio.ao_fd >= 0
-               ? ioctl(t31_audio.ao_fd, T31_AO_SYNC_STREAM, 1)
-               : -1;
-}
-#endif
 
 int IMP_AO_PauseChn(int device, int channel)
 {

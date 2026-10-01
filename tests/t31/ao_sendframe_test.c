@@ -3,15 +3,18 @@
  *
  * Builds src/t31/openimp_t31_audio.c (T31 / T20 / T21 / T30 path) with open,
  * ioctl and close wrapped. The fake SNDCTL_EXT_SET_AO_STREAM behaves like
- * xb_snd_dsp.c dsp_ioctl_ao_stream: it returns 0 on success and writes the
- * number of bytes it took back into stream.size. To exercise the loop it
- * takes at most FAKE_CHUNK bytes per call.
+ * xb_snd_dsp.c dsp_ioctl_ao_stream: it returns 0 and writes the byte count
+ * back into stream.size. ao_copy_from_user copies whole 10 ms fragments
+ * only, so a write that is not a multiple of one never completes on the
+ * device (the caller blocks for good); the fake counts such a write as
+ * stuck and fails it.
  *
  * Checks:
- *   - SendFrame succeeds and the driver receives every byte unchanged at
- *     the default volume (60);
- *   - SetVol 120 makes the output louder, SetVolMute silences it;
- *   - a driver error (-1) makes SendFrame fail.
+ *   - frames of any length reach the driver in whole fragments only, and
+ *     FlushChnBuf plays the remainder padded with silence;
+ *   - the data is unchanged at the default volume (60);
+ *   - SetVol 120 makes the output louder, 20 quieter, SetVolMute silent;
+ *   - a driver error makes SendFrame fail.
  */
 #define _GNU_SOURCE
 #include <stdarg.h>
@@ -23,7 +26,7 @@
 #include <imp/imp_audio.h>
 
 #define FAKE_FD    77
-#define FAKE_CHUNK 1000u
+#define FRAGMENT   320u         /* 10 ms of 16 kHz mono S16 */
 
 #define T31_AO_SET_STREAM 0x40085069UL
 
@@ -36,6 +39,7 @@ static uint8_t sink[65536];
 static size_t sink_len;
 static int fail_writes;
 static int set_calls;
+static int stuck_writes;
 
 int __real_open(const char *path, int flags, ...);
 int __real_ioctl(int fd, unsigned long request, void *arg);
@@ -59,11 +63,15 @@ int __wrap_ioctl(int fd, unsigned long request, void *arg)
         return __real_ioctl(fd, request, arg);
     if (request == T31_AO_SET_STREAM) {
         FakeOutputStream *stream = arg;
-        uint32_t take = stream->size < FAKE_CHUNK ? stream->size : FAKE_CHUNK;
+        uint32_t take = stream->size;
 
         set_calls++;
         if (fail_writes)
             return -1;
+        if (!take || take % FRAGMENT) {
+            stuck_writes++;     /* the real driver never returns */
+            return -1;
+        }
         if (sink_len + take > sizeof(sink))
             take = (uint32_t)(sizeof(sink) - sink_len);
         memcpy(sink + sink_len, stream->data, take);
@@ -90,18 +98,38 @@ static int failures;
         }                                                             \
     } while (0)
 
+/* 2400 samples: not a multiple of the 640-sample period nor of a fragment */
 static int16_t pcm[2400];
 
+/* one clip as timps plays it: odd-sized blocks, then FlushChnBuf */
 static int send(void)
 {
     IMPAudioFrame frame;
+    size_t off = 0, block = 1000;   /* bytes, not fragment aligned */
 
-    memset(&frame, 0, sizeof(frame));
-    frame.virAddr = (uint32_t *)(void *)pcm;
-    frame.len = (int)sizeof(pcm);
     sink_len = 0;
     set_calls = 0;
-    return IMP_AO_SendFrame(0, 0, &frame, BLOCK);
+    while (off < sizeof(pcm)) {
+        size_t n = sizeof(pcm) - off < block ? sizeof(pcm) - off : block;
+
+        memset(&frame, 0, sizeof(frame));
+        frame.virAddr = (uint32_t *)(void *)((uint8_t *)pcm + off);
+        frame.len = (int)n;
+        if (IMP_AO_SendFrame(0, 0, &frame, BLOCK) != 0)
+            return -1;
+        off += n;
+    }
+    return IMP_AO_FlushChnBuf(0, 0);
+}
+
+static int tail_silent(void)
+{
+    size_t i;
+
+    for (i = sizeof(pcm); i < sink_len; i++)
+        if (sink[i])
+            return 0;
+    return 1;
 }
 
 static long peak(void)
@@ -140,15 +168,19 @@ int main(void)
     CHECK(IMP_AO_Enable(0) == 0, "Enable");
     CHECK(IMP_AO_EnableChn(0, 0) == 0, "EnableChn");
 
-    CHECK(send() == 0, "SendFrame at the default volume");
-    CHECK(sink_len == sizeof(pcm) && !memcmp(sink, pcm, sizeof(pcm)),
-          "driver got %zu of %zu bytes, unchanged at volume 60", sink_len,
-          sizeof(pcm));
-    CHECK(set_calls == (int)((sizeof(pcm) + FAKE_CHUNK - 1) / FAKE_CHUNK),
-          "%d SET_AO_STREAM calls for partial takes", set_calls);
+    CHECK(send() == 0, "SendFrame + FlushChnBuf at the default volume");
+    CHECK(stuck_writes == 0, "%d writes not made of whole fragments",
+          stuck_writes);
+    CHECK(sink_len >= sizeof(pcm) && sink_len % FRAGMENT == 0 &&
+          sink_len < sizeof(pcm) + 1280u,
+          "driver got %zu bytes for a %zu-byte clip", sink_len, sizeof(pcm));
+    CHECK(!memcmp(sink, pcm, sizeof(pcm)) && tail_silent(),
+          "clip unchanged at volume 60, padding silent");
+    CHECK(set_calls == 4, "%d SET_AO_STREAM calls, 3 periods + flush",
+          set_calls);
 
     CHECK(IMP_AO_SetVol(0, 0, 120) == 0, "SetVol 120");
-    CHECK(send() == 0 && sink_len == sizeof(pcm), "SendFrame at volume 120");
+    CHECK(send() == 0 && sink_len >= sizeof(pcm), "SendFrame at volume 120");
     CHECK(peak() > 4000, "volume 120 peak %ld, input 4000", peak());
 
     CHECK(IMP_AO_SetVol(0, 0, 20) == 0, "SetVol 20");
@@ -162,6 +194,8 @@ int main(void)
     fail_writes = 1;
     CHECK(send() != 0, "SendFrame must fail when the driver fails");
     fail_writes = 0;
+    CHECK(stuck_writes == 0, "%d writes would have blocked the driver",
+          stuck_writes);
 
     CHECK(IMP_AO_DisableChn(0, 0) == 0, "DisableChn");
     CHECK(IMP_AO_Disable(0) == 0, "Disable");
