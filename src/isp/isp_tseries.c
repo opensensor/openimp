@@ -40,8 +40,11 @@ uint8_t openimp_t23_isp_custom_contrast(void);
 void openimp_t23_isp_tuning_enabled(void);
 #define TSERIES_CUSTOM_CONTRAST openimp_t23_isp_custom_contrast()
 #else
-static uint8_t custom_contrast;
-static uint8_t custom_sharpness;
+/* Vendor libimp .data initialises both to 0x80 (T31 HLIL 0x1075d8); the
+ * tuning worker pushes (gain << 8) | custom_contrast every second, so 0 here
+ * forced contrast to zero until the application called SetContrast. */
+static uint8_t custom_contrast = 0x80;
+static uint8_t custom_sharpness = 0x80;
 /*
  * Vendor libimp (T31 HLIL data_1075d4) initialises this to 2 and only the
  * *_internal(value, 0/1) paths ever change it; nothing derives it from the
