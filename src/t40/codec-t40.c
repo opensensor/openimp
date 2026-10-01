@@ -6415,6 +6415,34 @@ struct AL_CodecEncode {
 #endif
 };
 
+#if defined(PLATFORM_T23)
+/* Set when a requested IDR is followed by a failed or recovered Helix
+ * encode: from then on IDR requests wait for the natural GOP, as before
+ * RequestIDR was forwarded, instead of risking further worker restarts. */
+static int t23_helix_idr_disabled;
+
+static void t23_helix_idr_check(const AL_CodecEncode *enc, int encoded,
+                                int recovered)
+{
+    static unsigned int forwarded;
+    unsigned int count = __sync_add_and_fetch(&forwarded, 1u);
+
+    if (encoded == 0 && !recovered) {
+        if (count <= 3u || count % 100u == 0u)
+            IMP_LOG_INFO("Encoder", "T23 channel %d: IDR request #%u "
+                         "forwarded to the Helix worker",
+                         enc->channel_id - 1, count);
+        return;
+    }
+    if (!__sync_lock_test_and_set(&t23_helix_idr_disabled, 1))
+        IMP_LOG_ERR("Encoder", "T23 channel %d: the Helix worker %s right "
+                    "after a requested IDR (#%u); IDR requests now wait for "
+                    "the natural GOP (OPENIMP_T23_HELIX_IDR=0 makes that the "
+                    "default)", enc->channel_id - 1,
+                    encoded == 0 ? "had to be restarted" : "failed", count);
+}
+#endif
+
 #if !defined(PLATFORM_T40) && !defined(PLATFORM_T31)
 static int avpu_can_use_high_profile_template(const AL_CodecEncode *enc)
 {
@@ -8702,11 +8730,27 @@ static int al_codec_encode_process_impl(void *codec, void *frame,
             }
         }
         if (enc->t23_helix.worker_pid > 0) {
-            if (__sync_lock_test_and_set(&enc->force_next_idr, 0))
-                OpenIMP_T23_HelixRequestIDR(&enc->t23_helix);
-            if (OpenIMP_T23_HelixEncode(&enc->t23_helix,
-                                        (const IMPFrameInfo *)frame,
-                                        &hw_stream) != 0)
+            uint32_t recoveries = enc->t23_helix.recoveries;
+            int forced = 0;
+            int encoded;
+
+            /* A latched IMP_Encoder_RequestIDR reaches the worker here, on
+             * the encoder thread, in sequence with the frames. */
+            if (__sync_lock_test_and_set(&enc->force_next_idr, 0) &&
+                !__atomic_load_n(&t23_helix_idr_disabled, __ATOMIC_RELAXED)) {
+                if (OpenIMP_T23_HelixRequestIDR(&enc->t23_helix) == 0)
+                    forced = 1;
+                else
+                    LOG_CODEC("Process: T23 channel=%d IDR request refused "
+                              "by the Helix worker", enc->channel_id - 1);
+            }
+            encoded = OpenIMP_T23_HelixEncode(&enc->t23_helix,
+                                              (const IMPFrameInfo *)frame,
+                                              &hw_stream);
+            if (forced)
+                t23_helix_idr_check(enc, encoded,
+                                    enc->t23_helix.recoveries != recoveries);
+            if (encoded != 0)
                 return -1;
             goto queue_encoded_stream;
         }
@@ -11084,8 +11128,11 @@ int AL_Codec_Encode_RequestIDR(void *codec) {
 
     AL_CodecEncode *enc = (AL_CodecEncode*)codec;
 #if defined(PLATFORM_T23)
-    if (enc->t23_helix.worker_pid > 0)
-        return OpenIMP_T23_HelixRequestIDR(&enc->t23_helix);
+    /* Only latch: the encoder thread forwards it before the next frame
+     * (AL_Codec_Encode_Process), so the caller never waits for the worker
+     * socket or for another channel's encode. */
+    if (__atomic_load_n(&t23_helix_idr_disabled, __ATOMIC_RELAXED))
+        return 0;                   /* natural GOP, see t23_helix_idr_check */
 #endif
 #if defined(PLATFORM_T30)
     if (enc->t30_helix)
