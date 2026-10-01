@@ -11,7 +11,7 @@ SOURCES := \
 	$(ROOT)/src/t30/h264enc/common.c \
 	$(ROOT)/src/t30/h264enc/set.c
 
-.PHONY: check clean
+.PHONY: check clean ivs-bench
 
 descriptor_test: $(SOURCES)
 	$(CC) $(CFLAGS) $(INCLUDES) -o $@ $(SOURCES)
@@ -75,9 +75,23 @@ ivs_framework_test_t20: $(IVS_DEPS)
 		-fno-pie -no-pie -I$(ROOT)/include -I$(ROOT)/src -I$(IVS_SRC) \
 		-o $@ $(IVS_SOURCES) -pthread
 
+# Move algorithm: bit-identity against the frozen reference copy
+# (tests/t23/ivs_move_ref.c), legacy T20/T21/T30 parameter layout. The bench
+# target times reference and current code at 1080p and 360p.
+IVS_BENCH_SOURCES := $(ROOT)/tests/t23/ivs_move_bench.c \
+	$(ROOT)/tests/t23/ivs_move_ref.c $(IVS_SRC)/openimp_t31_ivs_move.c
+
+ivs_move_bench_t20: $(IVS_BENCH_SOURCES) $(IVS_SRC)/openimp_t31_ivs_move.h \
+	$(IVS_SRC)/openimp_t31_ivs_abi.h
+	$(CC) $(CFLAGS) -DPLATFORM_T20 -DPLATFORM_T21 -I$(IVS_SRC) \
+		-o $@ $(IVS_BENCH_SOURCES)
+
+ivs-bench: ivs_move_bench_t20
+	./ivs_move_bench_t20 bench
+
 check: descriptor_test annexb_test level_test helix_encoder_test \
 	helix_encoder_test_t21 helix_encoder_test_t20 \
-	ivs_framework_test_t21 ivs_framework_test_t20
+	ivs_framework_test_t21 ivs_framework_test_t20 ivs_move_bench_t20
 	./descriptor_test
 	./annexb_test
 	./level_test
@@ -86,8 +100,9 @@ check: descriptor_test annexb_test level_test helix_encoder_test \
 	./helix_encoder_test_t20
 	./ivs_framework_test_t21
 	./ivs_framework_test_t20
+	./ivs_move_bench_t20 equiv
 
 clean:
 	$(RM) descriptor_test annexb_test level_test helix_encoder_test \
 		helix_encoder_test_t21 helix_encoder_test_t20 \
-		ivs_framework_test_t21 ivs_framework_test_t20
+		ivs_framework_test_t21 ivs_framework_test_t20 ivs_move_bench_t20
