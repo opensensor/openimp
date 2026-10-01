@@ -10588,6 +10588,10 @@ queue_encoded_stream:
     /* Queue encoded stream to FIFO */
     if (Fifo_Queue(enc->fifo_streams, hw_stream, -1) == 0) {
         LOG_CODEC("Process: failed to queue stream");
+        /* Same ownership rule as the legacy ReleaseStream: a heap stream
+         * without a DMA address owns its payload (native Helix, software). */
+        if (hw_stream->virt_addr != 0 && hw_stream->phys_addr == 0)
+            free((void *)(uintptr_t)hw_stream->virt_addr);
         free(hw_stream);
         return -1;
     }
