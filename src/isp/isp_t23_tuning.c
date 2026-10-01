@@ -541,8 +541,11 @@ T23_MC_GET_PTR(GetFrontCrop, T23_CID_FRONT_CROP, T23F_NULLCHK)
 T23_MC_SET(SetAutoZoom, T23_CID_AUTO_ZOOM, void *, T23F_NULLCHK)
 T23_MC_GET_PTR(GetAutoZoom, T23_CID_AUTO_ZOOM, T23F_NULLCHK)
 T23_MC_SET(SetScalerLv, T23_CID_SCALER_LV, void *, 0)
-/* The T23 module copies 20 bytes {hts, vts, fps, width, height}; the public
- * IMPISPSENSORAttr is {fps, width, height}, so go through a bounce buffer. */
+/* The T23 module and the public IMPISPSENSORAttr both lay out 20 bytes
+ * {hts, vts, fps, width, height} (vendor 1.3.0 imp_isp.h: not 12 bytes, see
+ * include/imp/imp_isp.h), so copy the driver's reply through unchanged; go
+ * through a local buffer only so a NULL caller pointer still makes the
+ * driver call (T23F_NULLCHK semantics). */
 int IMP_ISP_MultiCamera_Tuning_GetSensorAttr(int num, void *p)
 {
     uint32_t attr[5] = { 0 };
@@ -550,7 +553,7 @@ int IMP_ISP_MultiCamera_Tuning_GetSensorAttr(int num, void *p)
                           T23F_NULLCHK);
 
     if (!ret)
-        memcpy(p, &attr[2], 3 * sizeof(uint32_t));
+        memcpy(p, attr, sizeof(attr));
     return ret;
 }
 T23_MC_SET(SwitchBin, T23_CID_SWITCH_BIN, void *, 0)

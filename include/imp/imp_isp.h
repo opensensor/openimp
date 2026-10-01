@@ -183,11 +183,20 @@ typedef enum {
     IMPISP_FLIP_MODE_BUTT,
 } IMPISPHVFLIP;
 
+/* Vendor layout (T23, T31, T32, T33, T40, T41, C100 SDKs): 20 bytes. */
 typedef struct {
+    unsigned int hts;
+    unsigned int vts;
     unsigned int fps;
     unsigned int width;
     unsigned int height;
 } IMPISPSENSORAttr;
+
+/* IMP_ISP_Tuning_WaitFrame parameters (every vendor SDK). */
+typedef struct {
+    uint32_t timeout;   /* ms */
+    uint64_t cnt;       /* frame-done count */
+} IMPISPWaitFrameAttr;
 
 /**
  * Open ISP module
@@ -596,6 +605,7 @@ int IMP_ISP_Tuning_SetHVFLIP(IMPISPHVFLIP hvflip);
 int IMP_ISP_Tuning_GetHVFlip(IMPISPHVFLIP *hvflip);
 int IMP_ISP_Tuning_GetHVFLIP(IMPISPHVFLIP *hvflip);
 int IMP_ISP_Tuning_GetSensorAttr(IMPISPSENSORAttr *attr);
+int IMP_ISP_Tuning_WaitFrame(IMPISPWaitFrameAttr *attr);
 int IMP_ISP_Tuning_SetAeTargetList(IMPISPAETargetList *at_list);
 int IMP_ISP_Tuning_GetAeTargetList(IMPISPAETargetList *at_list);
 int IMP_ISP_Tuning_SetModuleControl(IMPISPModuleCtl *ispmodule);
