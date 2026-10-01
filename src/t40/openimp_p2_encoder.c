@@ -1813,9 +1813,14 @@ int IMP_Encoder_SetDefaultParam(IMPEncoderChnAttr *attr, IMPEncoderProfile profi
 }
 #endif
 
+/* libimp: RequestIDR, then drain the streams already encoded. OpenIMP
+ * encodes on demand in PollingStream, so nothing older than the next frame
+ * is queued and the IDR request is the whole job. */
 int IMP_Encoder_FlushStream(int channel)
 {
-    return p2_valid_channel(channel) && p2_channels[channel].created ? 0 : -1;
+    if (!p2_valid_channel(channel) || !p2_channels[channel].created)
+        return -1;
+    return IMP_Encoder_RequestIDR(channel) < 0 ? -1 : 0;
 }
 
 int IMP_Encoder_SetbufshareChn(int channel, int share_channel)

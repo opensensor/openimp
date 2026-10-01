@@ -2378,11 +2378,15 @@ int IMP_FrameSource_DisableChnUndistort(int chnNum)
     return 0;
 }
 
+/* libimp rotates 90/270 degrees in software into an extra rmem buffer.
+ * OpenIMP has no rotation path: report failure for rotTo90 1/2 so callers
+ * (prudynt, timps) keep the stream unrotated with matching encoder
+ * dimensions instead of believing the frames are rotated. */
 int IMP_FrameSource_SetChnRotate(int chnNum, int rotation, int height, int width)
 {
-    (void)rotation; (void)height; (void)width;
+    (void)height; (void)width;
     if (chnNum < 0 || chnNum >= FS_MAX_CHANNELS) return -1;
-    return 0;
+    return (rotation & 0xff) == 0 ? 0 : -1;
 }
 
 int IMP_FrameSource_ChnStatQuery(int chnNum, void *stat)
