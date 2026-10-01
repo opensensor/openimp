@@ -52,10 +52,18 @@ int openimp_t31_stream_layout(uint32_t capacity, uint32_t payload_offset,
                               OpenIMPT31StreamLayout *layout);
 int openimp_t31_annexb_nals(const uint8_t *data, uint32_t length,
                             OpenIMPT31AnnexBNAL *nals, uint32_t capacity);
+/* Same split for HEVC: nal_type is (byte >> 1) & 0x3f of the two-byte
+ * NAL header. */
+int openimp_t31_hevc_annexb_nals(const uint8_t *data, uint32_t length,
+                                 OpenIMPT31AnnexBNAL *nals, uint32_t capacity);
 /* is_idr: 1 = expect SPS,PPS,IDR; 0 = expect one P slice; -1 = take the
  * expectation from the first slice NAL.  Returns report->flags (0 = clean). */
 uint32_t openimp_t31_avc_au_check(const uint8_t *data, uint32_t length,
                                   int is_idr, OpenIMPT31AvcAuCheck *report);
+/* HEVC access unit: IDR = VPS,SPS,PPS,IDR_W_RADL; P = one TRAIL_R slice.
+ * Any other type, a layer id or a temporal id is BAD_TYPE. */
+uint32_t openimp_t31_hevc_au_check(const uint8_t *data, uint32_t length,
+                                   int is_idr, OpenIMPT31AvcAuCheck *report);
 /* One-line summary of a check result for logs: flag names, NAL list
  * (type@offset+length) and the bytes around the first unexpected NAL. */
 void openimp_t31_avc_au_describe(const uint8_t *data, uint32_t length,

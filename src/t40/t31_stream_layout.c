@@ -46,8 +46,8 @@ static uint32_t find_annexb_start4(const uint8_t *data, uint32_t offset,
     return length;
 }
 
-int openimp_t31_annexb_nals(const uint8_t *data, uint32_t length,
-                            OpenIMPT31AnnexBNAL *nals, uint32_t capacity)
+static int annexb_nals(const uint8_t *data, uint32_t length,
+                       OpenIMPT31AnnexBNAL *nals, uint32_t capacity, int hevc)
 {
     uint32_t begin;
     uint32_t count = 0u;
@@ -63,19 +63,33 @@ int openimp_t31_annexb_nals(const uint8_t *data, uint32_t length,
         uint32_t nal_header = begin + 4u;
         uint32_t next;
 
-        if (nal_header >= length || count >= capacity)
+        if (nal_header + (hevc ? 1u : 0u) >= length || count >= capacity)
             return -1;
         next = find_annexb_start4(data, nal_header, length);
         if (next <= nal_header)
             return -1;
         nals[count].offset = begin;
         nals[count].length = next - begin;
-        nals[count].nal_type = data[nal_header] & 0x1fu;
+        nals[count].nal_type = hevc
+            ? (uint8_t)((data[nal_header] >> 1) & 0x3fu)
+            : (uint8_t)(data[nal_header] & 0x1fu);
         count++;
         begin = next;
     }
 
     return (int)count;
+}
+
+int openimp_t31_annexb_nals(const uint8_t *data, uint32_t length,
+                            OpenIMPT31AnnexBNAL *nals, uint32_t capacity)
+{
+    return annexb_nals(data, length, nals, capacity, 0);
+}
+
+int openimp_t31_hevc_annexb_nals(const uint8_t *data, uint32_t length,
+                                 OpenIMPT31AnnexBNAL *nals, uint32_t capacity)
+{
+    return annexb_nals(data, length, nals, capacity, 1);
 }
 
 /* Offset of the next 00 00 01 at or after offset, or length.  Skips three
@@ -100,10 +114,14 @@ static uint32_t find_annexb_start3(const uint8_t *data, uint32_t offset,
     return length;
 }
 
-uint32_t openimp_t31_avc_au_check(const uint8_t *data, uint32_t length,
-                                  int is_idr, OpenIMPT31AvcAuCheck *report)
+static uint32_t au_check(const uint8_t *data, uint32_t length, int is_idr,
+                         OpenIMPT31AvcAuCheck *report, int hevc)
 {
-    static const uint8_t idr_sequence[3] = { 7u, 8u, 5u };
+    static const uint8_t avc_idr_sequence[3] = { 7u, 8u, 5u };
+    static const uint8_t hevc_idr_sequence[4] = { 32u, 33u, 34u, 19u };
+    const uint8_t *idr_sequence = hevc ? hevc_idr_sequence : avc_idr_sequence;
+    const uint32_t idr_count = hevc ? 4u : 3u;
+    const uint8_t idr_type = hevc ? 19u : 5u;
     uint32_t start;
     uint32_t index = 0u;
     uint32_t order_bad = 0u;
@@ -134,26 +152,39 @@ uint32_t openimp_t31_avc_au_check(const uint8_t *data, uint32_t length,
             report->flags |= OPENIMP_T31_AU_SHORT_START;
             unexpected = 1u;
         }
-        if (header >= end) {
+        if (header >= end || (hevc && header + 1u >= end)) {
             report->flags |= OPENIMP_T31_AU_EMPTY_NAL;
             unexpected = 1u;
         } else {
-            type = data[header] & 0x1fu;
+            int known;
+
+            if (hevc) {
+                type = (data[header] >> 1) & 0x3fu;
+                /* nuh_layer_id 0 and nuh_temporal_id_plus1 1 */
+                known = (type == 1u || type == 19u || type == 32u ||
+                         type == 33u || type == 34u) &&
+                        (data[header] & 1u) == 0u &&
+                        data[header + 1u] == 1u;
+            } else {
+                type = data[header] & 0x1fu;
+                known = type == 1u || type == 5u || type == 7u ||
+                        type == 8u;
+            }
             if (data[header] & 0x80u) {
                 report->flags |= OPENIMP_T31_AU_FORBIDDEN_BIT;
                 unexpected = 1u;
             }
-            if (type != 1u && type != 5u && type != 7u && type != 8u) {
+            if (!known) {
                 report->flags |= OPENIMP_T31_AU_BAD_TYPE;
                 unexpected = 1u;
             }
-            if (type == 1u || type == 5u) {
+            if (type == 1u || type == idr_type) {
                 report->vcl_count++;
                 if (is_idr < 0)
-                    is_idr = type == 5u;
+                    is_idr = type == idr_type;
             }
         }
-        if (is_idr > 0 && (index >= 3u || type != idr_sequence[index]))
+        if (is_idr > 0 && (index >= idr_count || type != idr_sequence[index]))
             order_bad = unexpected = 1u;
         else if (is_idr == 0 && (index != 0u || type != 1u))
             order_bad = unexpected = 1u;
@@ -178,10 +209,22 @@ uint32_t openimp_t31_avc_au_check(const uint8_t *data, uint32_t length,
         report->flags |= OPENIMP_T31_AU_MULTI_VCL;
     if (!report->vcl_count)
         report->flags |= OPENIMP_T31_AU_NO_VCL;
-    if (order_bad || (is_idr > 0 && index != 3u) ||
+    if (order_bad || (is_idr > 0 && index != idr_count) ||
         (is_idr == 0 && index != 1u))
         report->flags |= OPENIMP_T31_AU_BAD_ORDER;
     return report->flags;
+}
+
+uint32_t openimp_t31_avc_au_check(const uint8_t *data, uint32_t length,
+                                  int is_idr, OpenIMPT31AvcAuCheck *report)
+{
+    return au_check(data, length, is_idr, report, 0);
+}
+
+uint32_t openimp_t31_hevc_au_check(const uint8_t *data, uint32_t length,
+                                   int is_idr, OpenIMPT31AvcAuCheck *report)
+{
+    return au_check(data, length, is_idr, report, 1);
 }
 
 static size_t append_text(char *out, size_t out_size, size_t used,
