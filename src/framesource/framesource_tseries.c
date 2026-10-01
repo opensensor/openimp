@@ -2477,7 +2477,10 @@ int IMP_FrameSource_SetChnRotate(int chnNum, int rotation, int height, int width
 int IMP_FrameSource_ChnStatQuery(int chnNum, void *stat)
 {
     if (chnNum < 0 || chnNum >= FS_MAX_CHANNELS || stat == NULL) return -1;
-    memset(stat, 0, 64);
+    /* stat is an IMPFSChnState enum (4 bytes); vendor stores the channel
+     * state word (chan + 0x1c: 0 closed, 1 created, 2 running). The former
+     * 64-byte memset overran the caller's variable. */
+    *(int32_t *)stat = fs_chan_get_state(chnNum);
     return 0;
 }
 
