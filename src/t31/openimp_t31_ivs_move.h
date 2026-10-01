@@ -10,6 +10,9 @@
  *
  * feed() and run() must alternate and must not run concurrently for the
  * same instance; the IVS framework guarantees that with its semaphores.
+ * move: set_param() must not come between a feed() and its run() (the
+ * framework applies parameters right before feed()); feed() may already
+ * have done the detection for that frame with the ROIs in force then.
  * No function here touches the frame after feed() returns. */
 #ifndef OPENIMP_T31_IVS_MOVE_H
 #define OPENIMP_T31_IVS_MOVE_H

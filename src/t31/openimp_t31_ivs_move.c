@@ -25,10 +25,17 @@
  *     replicate), then the 8x8 block sum truncated to 8 bit.
  *
  * Performance notes: move keeps the binary maps as bit rows (32 pixels per
- * word); the difference test runs four pixels per 32-bit word, erosion and
- * counting are word operations. Only frames that take part in a comparison
- * are decimated. base move uses a lookup table for the thresholded
- * difference and a separable, branch-free minimum. */
+ * word); the difference test runs four pixels per 32-bit word in byte
+ * lanes, erosion and counting are word operations. Only frames that take
+ * part in a comparison are decimated. Eroded rows are computed on demand:
+ * one empty row clears three output rows, so a still scene differences
+ * only every third row. When the new frame is not needed again as a
+ * reference (skipFrameCnt 1 or >= 3), the detection runs in feed() on the
+ * input frame directly and decimates just the rows it reads; run() then
+ * only applies the thresholds. All of this leaves the results unchanged
+ * (tests/t23/ivs_move_bench.c compares them with the previous code).
+ * base move uses a lookup table for the thresholded difference and a
+ * separable, branch-free minimum. */
 
 #include <stdlib.h>
 #include <string.h>
@@ -55,7 +62,10 @@ static inline uint32_t popcount32(uint32_t x)
 #define MV_RING 4
 #define MV_MAX_ROI IMP_IVS_MOVE_MAX_ROI_CNT
 
-enum { MV_JOB_NONE, MV_JOB_WARMUP, MV_JOB_DETECT };
+/* MV_JOB_COUNTED: the detection already ran in feed(), straight from the
+ * input frame; run() only applies the thresholds. */
+enum { MV_JOB_NONE, MV_JOB_WARMUP, MV_JOB_DETECT, MV_JOB_COUNTED };
+enum { MV_ROW_UNKNOWN, MV_ROW_ZERO, MV_ROW_SET };
 
 static const int move_threshold[9] = { 1365, 455, 151, 50, 16, 8, 4, 2, 1 };
 
@@ -74,6 +84,11 @@ struct T31IvsMove {
     uint32_t *hbits;                /* horizontally eroded rows, h2 * wpr */
     uint32_t *dwork;                /* difference bits of one row */
     uint32_t *erow;                 /* fully eroded output row */
+    uint8_t *hstate;                /* MV_ROW_* per hbits row */
+    int xs, xe, ws, nw;             /* detection columns, set per detection */
+    const uint8_t *src;             /* new image straight from the frame */
+    uint32_t sstride;
+    uint8_t *arow;                  /* one decimated row of src, pitch bytes */
     int counts[MV_MAX_ROI];
 };
 
@@ -129,7 +144,9 @@ T31IvsMove *t31_ivs_move_create(const IMP_IVS_MoveParam *param)
     m->hbits = calloc((size_t)m->wpr * (size_t)m->h2, sizeof(uint32_t));
     m->dwork = calloc((size_t)m->wpr, sizeof(uint32_t));
     m->erow = calloc((size_t)m->wpr, sizeof(uint32_t));
-    if (!m->hbits || !m->dwork || !m->erow)
+    m->hstate = calloc((size_t)m->h2, 1);
+    m->arow = calloc((size_t)m->pitch, 1);  /* padding stays zero */
+    if (!m->hbits || !m->dwork || !m->erow || !m->hstate || !m->arow)
         goto fail;
     move_set_rois(m, param->roiRect, clampi(param->roiRectCnt, 0, MV_MAX_ROI));
     for (i = 0; i < m->nroi; i++)
@@ -152,6 +169,8 @@ void t31_ivs_move_destroy(T31IvsMove *m)
     free(m->hbits);
     free(m->dwork);
     free(m->erow);
+    free(m->hstate);
+    free(m->arow);
     free(m);
 }
 
@@ -246,6 +265,19 @@ static void decimate_row(uint8_t *dst, const uint8_t *src, int w2)
         dst[x] = src[2 * x];
 }
 
+static void move_detect(T31IvsMove *m, const uint8_t *A, const uint8_t *B);
+
+/* Is the frame being fed now read again, as the reference three frames
+ * later? Called with the state after this frame. */
+static int move_ref_later(const T31IvsMove *m)
+{
+    int c = m->cnt;
+
+    move_step(m->skip, &c);
+    move_step(m->skip, &c);
+    return move_step(m->skip, &c) == MV_JOB_DETECT;
+}
+
 void t31_ivs_move_feed(T31IvsMove *m, const uint8_t *luma, uint32_t stride)
 {
     int y;
@@ -265,38 +297,57 @@ void t31_ivs_move_feed(T31IvsMove *m, const uint8_t *luma, uint32_t stride)
     m->job = MV_JOB_NONE;
     if (m->cnt < m->skip) {
         m->cnt++;
+    } else if (m->cnt >= m->skip + MV_RING - 1) {
+        m->job = MV_JOB_DETECT;
+        m->job_a = m->cur;
+        m->job_b = m->ref;
+        m->skip = m->param.skipFrameCnt;
+        m->cnt = MV_RING - 1;
+        if (luma && !move_ref_later(m)) {
+            /* Nobody reads this frame again: difference it against the
+             * reference right here instead of decimating all of it into
+             * the ring first. Only the rows the detection asks for are
+             * decimated (a third of them in a still scene). */
+            m->src = luma;
+            m->sstride = stride;
+            move_detect(m, NULL, m->buf[m->job_b]);
+            m->src = NULL;
+            m->job = MV_JOB_COUNTED;
+        } else if (luma) {
+            for (y = 0; y < m->h2; y++)
+                decimate_row(m->buf[m->cur] + (size_t)y * m->pitch,
+                             luma + (size_t)(2 * y) * stride, m->w2);
+        }
     } else {
         if (luma)
             for (y = 0; y < m->h2; y++)
                 decimate_row(m->buf[m->cur] + (size_t)y * m->pitch,
                              luma + (size_t)(2 * y) * stride, m->w2);
-        if (m->cnt >= m->skip + MV_RING - 1) {
-            m->job = MV_JOB_DETECT;
-            m->job_a = m->cur;
-            m->job_b = m->ref;
-            m->skip = m->param.skipFrameCnt;
-            m->cnt = MV_RING - 1;
-        } else {
-            m->cnt++;
-        }
+        m->cnt++;
     }
     m->ref++;
     m->cur++;
 }
 
-/* Four pixels per word: bit k of the result is |a_k - b_k| > 20. Even and
- * odd bytes go into 16-bit lanes holding 256 + a - b (1..511), so neither
- * the subtraction nor the two range tests carry across lanes. */
+/* Four pixels per word: bit k of the result is |a_k - b_k| > 20, with
+ * byte lanes and no carry between them. With y = 255 - b, the floor
+ * average (a + y) >> 1 is >= 138 exactly when a - b >= 21 and the ceiling
+ * average (a + y + 1) >> 1 is <= 117 exactly when a - b <= -21. Both
+ * averages and both constant compares stay inside their byte; the
+ * multiply gathers the four lane flags (bits 0, 8, 16, 24) into bits
+ * 24..27 without overlapping partial products. */
 static inline uint32_t move_diff4(uint32_t a, uint32_t b)
 {
-    const uint32_t lo = 0x00ff00ffu;
-    uint32_t te = ((a & lo) | 0x01000100u) - (b & lo);
-    uint32_t to = (((a >> 8) & lo) | 0x01000100u) - ((b >> 8) & lo);
-    uint32_t fe = ((te + 0x00eb00ebu) | ~(te + 0x01140114u)) & 0x02000200u;
-    uint32_t fo = ((to + 0x00eb00ebu) | ~(to + 0x01140114u)) & 0x02000200u;
-    uint32_t f = fe | (fo << 1);    /* pixels 0..3 at bits 9, 10, 25, 26 */
+    const uint32_t lo7 = 0x7f7f7f7fu;
+    uint32_t y = ~b;
+    uint32_t s = ((a ^ y) >> 1) & lo7;
+    uint32_t fl = (a & y) + s;
+    uint32_t ce = (a | y) - s;
+    uint32_t ge = fl & ((fl & lo7) + 0x76767676u);
+    uint32_t lt = ~(ce | ((ce & lo7) + 0x0a0a0a0au));
+    uint32_t f = ((ge | lt) >> 7) & 0x01010101u;
 
-    return ((f >> 9) & 3u) | ((f >> 23) & 0xcu);
+    return (f * 0x01020408u) >> 24;
 }
 
 static int count_range(const uint32_t *w, int x0, int x1)
@@ -314,65 +365,117 @@ static int count_range(const uint32_t *w, int x0, int x1)
     return c + (int)popcount32(w[i1] & m1);
 }
 
+/* Difference bits of image row r inside the bounding-box words, then the
+ * horizontal 3-erosion into hbits row r. Returns non-zero when any bit of
+ * the eroded row is set. */
+static uint32_t move_hrow(T31IvsMove *m, const uint8_t *A, const uint8_t *B,
+                          int r)
+{
+    const int w2 = m->w2, ws = m->ws, nw = m->nw, base = ws << 5;
+    const t31_ivs_u32a *a;
+    const t31_ivs_u32a *b =
+        (const t31_ivs_u32a *)(const void *)(B + (size_t)r * m->pitch + base);
+    uint32_t *d = m->dwork;
+    uint32_t *h = m->hbits + (size_t)r * m->wpr;
+    uint32_t any = 0, dor = 0;
+    int i;
+
+    if (m->src) {
+        int n = nw << 5;
+
+        if (n > w2 - base)
+            n = w2 - base;
+        decimate_row(m->arow + base, m->src + (size_t)(2 * r) * m->sstride +
+                     2 * (size_t)base, n);
+        a = (const t31_ivs_u32a *)(const void *)(m->arow + base);
+    } else {
+        a = (const t31_ivs_u32a *)(const void *)(A + (size_t)r * m->pitch + base);
+    }
+    for (i = 1; i <= nw; i++, a += 8, b += 8) {
+        d[i] = move_diff4(a[0], b[0]) |
+               (move_diff4(a[1], b[1]) << 4) |
+               (move_diff4(a[2], b[2]) << 8) |
+               (move_diff4(a[3], b[3]) << 12) |
+               (move_diff4(a[4], b[4]) << 16) |
+               (move_diff4(a[5], b[5]) << 20) |
+               (move_diff4(a[6], b[6]) << 24) |
+               (move_diff4(a[7], b[7]) << 28);
+        dor |= d[i];
+    }
+    if (!dor) {
+        /* No difference at all: the eroded row is zero. Callers only read
+         * hbits rows whose state says non-zero. */
+        m->hstate[r] = MV_ROW_ZERO;
+        return 0;
+    }
+    /* Guard bits: replicate at the image borders; elsewhere the value
+     * only reaches pixels outside the bounding box. */
+    d[0] = ws == 0 ? d[1] << 31 : 0;
+    d[nw + 1] = 0;
+    if (m->xe == w2 - 1) {
+        int rel = w2 - base, last = rel - 1;
+        uint32_t bit = (d[1 + (last >> 5)] >> (last & 31)) & 1u;
+        uint32_t *dw = &d[1 + (rel >> 5)];
+
+        *dw = (*dw & ~(1u << (rel & 31))) | (bit << (rel & 31));
+    }
+    for (i = 1; i <= nw; i++) {
+        h[i] = d[i] & ((d[i] << 1) | (d[i - 1] >> 31)) &
+               ((d[i] >> 1) | (d[i + 1] << 31));
+        any |= h[i];
+    }
+    m->hstate[r] = any ? MV_ROW_SET : MV_ROW_ZERO;
+    return any;
+}
+
+/* Is eroded row r known to be zero, computing it if needed? */
+static int move_row_zero(T31IvsMove *m, const uint8_t *A, const uint8_t *B,
+                         int r)
+{
+    if (m->hstate[r] == MV_ROW_UNKNOWN)
+        (void)move_hrow(m, A, B, r);
+    return m->hstate[r] == MV_ROW_ZERO;
+}
+
+/* Output row y is the AND of eroded rows y+sh-1, y+sh, y+sh+1, so one
+ * all-zero eroded row clears three output rows. Eroded rows are computed
+ * on demand, the one furthest down first: in a still scene only every
+ * third row is ever differenced, and the result is the same as computing
+ * them all. */
 static void move_detect(T31IvsMove *m, const uint8_t *A, const uint8_t *B)
 {
-    const int w2 = m->w2, h2 = m->h2, pitch = m->pitch;
-    int sh, xs, xe, ws, we, nw, base, r0, r1, r, y, i;
+    const int h2 = m->h2;
+    int sh, ws, base, y, i;
 
     memset(m->counts, 0, sizeof(m->counts));
     if (m->nroi <= 0 || m->bx1 < m->bx0 || m->by1 < m->by0)
         return;
     sh = m->by0 > 0 ? 1 : 0;        /* vendor row offset, see top */
-    xs = m->bx0 > 0 ? m->bx0 - 1 : 0;
-    xe = m->bx1 + 1 < w2 ? m->bx1 + 1 : w2 - 1;
-    ws = xs >> 5;
-    we = xe >> 5;
-    nw = we - ws + 1;
+    m->xs = m->bx0 > 0 ? m->bx0 - 1 : 0;
+    m->xe = m->bx1 + 1 < m->w2 ? m->bx1 + 1 : m->w2 - 1;
+    ws = m->ws = m->xs >> 5;
+    m->nw = (m->xe >> 5) - ws + 1;
     base = ws << 5;
-    r0 = clampi(m->by0 + sh - 1, 0, h2 - 1);
-    r1 = clampi(m->by1 + sh + 1, 0, h2 - 1);
-
-    for (r = r0; r <= r1; r++) {
-        const t31_ivs_u32a *a =
-            (const t31_ivs_u32a *)(const void *)(A + (size_t)r * pitch + base);
-        const t31_ivs_u32a *b =
-            (const t31_ivs_u32a *)(const void *)(B + (size_t)r * pitch + base);
-        uint32_t *d = m->dwork;
-        uint32_t *h = m->hbits + (size_t)r * m->wpr;
-
-        for (i = 1; i <= nw; i++, a += 8, b += 8)
-            d[i] = move_diff4(a[0], b[0]) |
-                   (move_diff4(a[1], b[1]) << 4) |
-                   (move_diff4(a[2], b[2]) << 8) |
-                   (move_diff4(a[3], b[3]) << 12) |
-                   (move_diff4(a[4], b[4]) << 16) |
-                   (move_diff4(a[5], b[5]) << 20) |
-                   (move_diff4(a[6], b[6]) << 24) |
-                   (move_diff4(a[7], b[7]) << 28);
-        /* Guard bits: replicate at the image borders; elsewhere the value
-         * only reaches pixels outside the bounding box. */
-        d[0] = ws == 0 ? d[1] << 31 : 0;
-        d[nw + 1] = 0;
-        if (xe == w2 - 1) {
-            int rel = w2 - base, last = rel - 1;
-            uint32_t bit = (d[1 + (last >> 5)] >> (last & 31)) & 1u;
-            uint32_t *dw = &d[1 + (rel >> 5)];
-
-            *dw = (*dw & ~(1u << (rel & 31))) | (bit << (rel & 31));
-        }
-        for (i = 1; i <= nw; i++)
-            h[i] = d[i] & ((d[i] << 1) | (d[i - 1] >> 31)) &
-                   ((d[i] >> 1) | (d[i + 1] << 31));
-    }
+    memset(m->hstate, MV_ROW_UNKNOWN, (size_t)h2);
 
     for (y = m->by0; y <= m->by1; y++) {
-        const uint32_t *ha = m->hbits + (size_t)clampi(y + sh - 1, 0, h2 - 1) * m->wpr;
-        const uint32_t *hb = m->hbits + (size_t)clampi(y + sh, 0, h2 - 1) * m->wpr;
-        const uint32_t *hc = m->hbits + (size_t)clampi(y + sh + 1, 0, h2 - 1) * m->wpr;
+        int ra = clampi(y + sh - 1, 0, h2 - 1);
+        int rb = clampi(y + sh, 0, h2 - 1);
+        int rc = clampi(y + sh + 1, 0, h2 - 1);
+        const uint32_t *ha, *hb, *hc;
         uint32_t *e = m->erow;
         uint32_t any = 0;
 
-        for (i = 1; i <= nw; i++) {
+        if (m->hstate[ra] == MV_ROW_ZERO || m->hstate[rb] == MV_ROW_ZERO ||
+            m->hstate[rc] == MV_ROW_ZERO)
+            continue;
+        if (move_row_zero(m, A, B, rc) || move_row_zero(m, A, B, rb) ||
+            move_row_zero(m, A, B, ra))
+            continue;
+        ha = m->hbits + (size_t)ra * m->wpr;
+        hb = m->hbits + (size_t)rb * m->wpr;
+        hc = m->hbits + (size_t)rc * m->wpr;
+        for (i = 1; i <= m->nw; i++) {
             e[i] = ha[i] & hb[i] & hc[i];
             any |= e[i];
         }
@@ -395,9 +498,10 @@ int t31_ivs_move_run(T31IvsMove *m, int *retRoi)
         memset(retRoi, 0, sizeof(int) * (size_t)m->nroi);
         return 0;
     }
-    if (job != MV_JOB_DETECT)
+    if (job == MV_JOB_DETECT)
+        move_detect(m, m->buf[m->job_a], m->buf[m->job_b]);
+    else if (job != MV_JOB_COUNTED)
         return 1;
-    move_detect(m, m->buf[m->job_a], m->buf[m->job_b]);
     for (i = 0; i < m->nroi; i++)
         retRoi[i] = m->counts[i] > m->thr[i];
     return 0;
