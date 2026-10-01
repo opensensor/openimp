@@ -545,11 +545,27 @@ int IMP_ISP_Tuning_GetTotalGain(uint32_t *arg1)
             int32_t value;
             TISP_TUNING_SENSOR_FIELD
         } var_18 = { 1, 0x8000027, 0 };
-        int32_t result = ioctl(gISP_1->tuning_fd, TISP_TUNING_IOCTL, &var_18);
+        int32_t result;
+#if defined(PLATFORM_T20)
+        /* The T20 apical SDK handler (apical_isp_g_totalgain) does
+         * copy_to_user(control->value, &total_gain): the value word is the
+         * address of the result, as in stock T20 3.12.0 libimp
+         * (IMP_ISP_Tuning_GetTotalGain at 0x5a70c passes &local).  With 0
+         * there the copy faulted silently and the gain read back as 0. */
+        uint32_t gain = 0;
+
+        var_18.value = (int32_t)(intptr_t)&gain;
+        result = ioctl(gISP_1->tuning_fd, TISP_TUNING_IOCTL, &var_18);
+        if (result == 0) {
+            *arg1 = gain;
+        }
+#else
+        result = ioctl(gISP_1->tuning_fd, TISP_TUNING_IOCTL, &var_18);
 
         if (result == 0) {
             *arg1 = (uint32_t)var_18.value;
         }
+#endif
         return result;
     }
 }
@@ -1238,6 +1254,35 @@ static int tseries_tuning_get_val(int32_t subcmd, int32_t *value)
     }
 }
 
+#if defined(PLATFORM_T20)
+/* Get for T20 apical SDK g_ctrl handlers that copy_to_user() their result
+ * through control->value instead of storing it there. */
+static int tseries_tuning_get_val_indirect(int32_t subcmd, int32_t *value)
+{
+    ISPDevice *isp;
+    int32_t out = 0;
+
+    if (value == NULL) {
+        return -1;
+    }
+
+    if (tseries_get_isp(&isp) != 0 || isp->tuning == NULL || isp->tuning_state != 2) {
+        return -1;
+    }
+
+    {
+        TSeriesTuningValReq req = { 1, subcmd, (int32_t)(intptr_t)&out };
+        int result = ioctl(isp->tuning_fd, TISP_VIDIOC_TUNING, &req);
+
+        if (result == 0) {
+            *value = out;
+        }
+
+        return result;
+    }
+}
+#endif
+
 #if !defined(PLATFORM_T23) /* T23: isp_t23_tuning.c */
 static int tseries_tuning_get_wb_stats(int32_t subcmd, IMPISPWB *wb)
 {
@@ -1550,7 +1595,14 @@ int IMP_ISP_Tuning_GetISPRunningMode(IMPISPRunningMode *pmode)
         return -1;
     }
 
+#if defined(PLATFORM_T20)
+    /* T20 apical_isp_day_or_night_g_ctrl copies its result through
+     * control->value like GetTotalGain above; stock T20 libimp
+     * (IMP_ISP_Tuning_GetISPRunningMode at 0x5dddc) passes &local. */
+    result = tseries_tuning_get_val_indirect(TISP_CID_RUNNING_MODE, &value);
+#else
     result = tseries_tuning_get_val(TISP_CID_RUNNING_MODE, &value);
+#endif
     if (result == 0) {
         tseries_running_mode = value;
     }
