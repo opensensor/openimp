@@ -270,7 +270,10 @@ static void t23_replay_params(T23HelixBridge *bridge)
         (void)t23_send_frame_ctl(bridge, &cache->frame_ctl);
 }
 
-static int t23_start_worker(T23HelixBridge *bridge)
+/* Fork the worker and initialise it: with `init` (a decoder session) or with
+ * the encoder INIT built from the bridge. */
+static int t23_start_worker_with(T23HelixBridge *bridge,
+                                 const T23HelixIpcRequest *init)
 {
     static char *const helper_environment[] = {
         "PATH=/usr/bin:/bin",
@@ -347,10 +350,18 @@ static int t23_start_worker(T23HelixBridge *bridge)
     bridge->socket_fd = sockets[0];
     sockets[0] = -1;
 
-    t23_make_request(bridge, &request, T23_HELIX_COMMAND_INIT);
+    if (init) {
+        request = *init;
+    } else {
+        t23_make_request(bridge, &request, T23_HELIX_COMMAND_INIT);
+    }
     if (t23_exchange(bridge, &request, &response,
                      T23_HELIX_INIT_TIMEOUT_MS) != 0) {
         t23_log(LOG_ERR, "openimp/T23: Helix helper initialization failed");
+        goto out;
+    }
+    if (init) {
+        result = 0;
         goto out;
     }
     t23_log(LOG_NOTICE,
@@ -371,6 +382,11 @@ out:
     if (result != 0)
         t23_stop_worker(bridge);
     return result;
+}
+
+static int t23_start_worker(T23HelixBridge *bridge)
+{
+    return t23_start_worker_with(bridge, NULL);
 }
 
 static void t23_fill_yuv_input(T23EncoderYuvIn *input,
@@ -837,4 +853,120 @@ void OpenIMP_T23_HelixExit(T23HelixBridge *bridge)
     free(bridge->cache);
     memset(bridge, 0, sizeof(*bridge));
     pthread_mutex_unlock(&t23_ipc_lock);
+}
+
+/* ---- OEM hardware JPEG decoder session --------------------------------- */
+
+int OpenIMP_T23_HelixDecoderOpen(T23HelixBridge *bridge, const void *attr,
+                                 uint32_t attr_size, uint32_t max_width,
+                                 uint32_t max_height)
+{
+    T23HelixIpcRequest request;
+    uint64_t capacity;
+    int ret;
+
+    if (!bridge || !attr || attr_size > T23_HELIX_PARAM_MAX || !max_width ||
+        !max_height)
+        return -1;
+    /* one NV12 picture: room for the JPEG coming in and, only for the copy
+     * fallback, the picture going out.  tmpfs pages cost memory only once
+     * written. */
+    capacity = (((uint64_t)max_width + 15u) & ~15ull) *
+               (((uint64_t)max_height + 15u) & ~15ull) * 3u / 2u;
+    capacity = (capacity + T23_HELIX_PAGE_SIZE - 1u) &
+               ~((uint64_t)T23_HELIX_PAGE_SIZE - 1u);
+    if (capacity > UINT32_MAX / 2u)
+        return -1;
+    pthread_mutex_lock(&t23_ipc_lock);
+    t23_reset_bridge(bridge, max_width, max_height);
+    bridge->input_capacity = (uint32_t)capacity;
+    bridge->output_capacity = (uint32_t)capacity;
+    bridge->shared_size = (uint32_t)capacity * 2u;
+    t23_make_request(bridge, &request, T23_HELIX_COMMAND_DEC_INIT);
+    request.param_size = attr_size;
+    memcpy(request.param, attr, attr_size);
+    ret = t23_start_worker_with(bridge, &request);
+    if (ret != 0)
+        bridge->failed = 1;
+    pthread_mutex_unlock(&t23_ipc_lock);
+    return ret == 0 ? 0 : -1;
+}
+
+int OpenIMP_T23_HelixDecode(T23HelixBridge *bridge, const void *data,
+                            uint32_t length, int64_t timestamp,
+                            uint32_t timeout_ms, IMPFrameInfo *frame,
+                            uint32_t *handle)
+{
+    T23HelixIpcRequest request;
+    T23HelixIpcResponse response;
+    int ret = -1;
+
+    if (!bridge || !data || !length || !frame || !handle)
+        return -1;
+    pthread_mutex_lock(&t23_ipc_lock);
+    if (bridge->worker_pid > 0 && bridge->shared_buffer &&
+        length <= bridge->input_capacity) {
+        memcpy(bridge->shared_buffer, data, length);
+        __sync_synchronize();
+        t23_make_request(bridge, &request, T23_HELIX_COMMAND_DEC_DECODE);
+        request.input_size = length;
+        request.timestamp = timestamp;
+        request.param_id = timeout_ms;
+        if (t23_exchange(bridge, &request, &response,
+                         (int)(2u * timeout_ms + 1000u)) == 0 &&
+            response.param_size == sizeof(*frame)) {
+            memcpy(frame, response.param, sizeof(*frame));
+            *handle = response.output_offset;
+            ret = 0;
+        }
+    }
+    pthread_mutex_unlock(&t23_ipc_lock);
+    return ret;
+}
+
+int OpenIMP_T23_HelixDecoderRelease(T23HelixBridge *bridge, uint32_t handle)
+{
+    T23HelixIpcRequest request;
+    T23HelixIpcResponse response;
+    int ret = -1;
+
+    if (!bridge || !handle)
+        return -1;
+    pthread_mutex_lock(&t23_ipc_lock);
+    if (bridge->worker_pid > 0) {
+        t23_make_request(bridge, &request, T23_HELIX_COMMAND_DEC_RELEASE);
+        request.param_id = handle;
+        ret = t23_exchange(bridge, &request, &response,
+                           T23_HELIX_ENCODE_TIMEOUT_MS) == 0 ? 0 : -1;
+    }
+    pthread_mutex_unlock(&t23_ipc_lock);
+    return ret;
+}
+
+int OpenIMP_T23_HelixDecoderCopy(T23HelixBridge *bridge, uint32_t handle,
+                                 void *out, uint32_t size)
+{
+    T23HelixIpcRequest request;
+    T23HelixIpcResponse response;
+    int ret = -1;
+
+    if (!bridge || !handle || !out)
+        return -1;
+    pthread_mutex_lock(&t23_ipc_lock);
+    if (bridge->worker_pid > 0) {
+        t23_make_request(bridge, &request, T23_HELIX_COMMAND_DEC_COPY);
+        request.param_id = handle;
+        if (t23_exchange(bridge, &request, &response,
+                         T23_HELIX_ENCODE_TIMEOUT_MS) == 0 &&
+            response.output_length <= size &&
+            response.output_offset == bridge->input_capacity) {
+            __sync_synchronize();
+            memcpy(out, (unsigned char *)bridge->shared_buffer +
+                            response.output_offset,
+                   response.output_length);
+            ret = 0;
+        }
+    }
+    pthread_mutex_unlock(&t23_ipc_lock);
+    return ret;
 }

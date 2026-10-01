@@ -76,6 +76,19 @@ int OpenIMP_T23_HelixSetFrameCtl(T23HelixBridge *bridge,
                                  const T23HelixFrameCtl *ctl);
 int OpenIMP_T23_HelixGetFrameCtl(T23HelixBridge *bridge,
                                  T23HelixFrameCtl *ctl);
+/* OEM hardware JPEG decoder (IMP_Decoder channel 0) in a worker.  Decoded
+ * frames stay in the worker's VBM until released; `handle` names one. */
+int OpenIMP_T23_HelixDecoderOpen(T23HelixBridge *bridge, const void *attr,
+                                 uint32_t attr_size, uint32_t max_width,
+                                 uint32_t max_height);
+int OpenIMP_T23_HelixDecode(T23HelixBridge *bridge, const void *data,
+                            uint32_t length, int64_t timestamp,
+                            uint32_t timeout_ms, IMPFrameInfo *frame,
+                            uint32_t *handle);
+int OpenIMP_T23_HelixDecoderRelease(T23HelixBridge *bridge, uint32_t handle);
+/* copy a held frame (size bytes at most) for callers that cannot map it */
+int OpenIMP_T23_HelixDecoderCopy(T23HelixBridge *bridge, uint32_t handle,
+                                 void *out, uint32_t size);
 void OpenIMP_T23_HelixExit(T23HelixBridge *bridge);
 
 #endif

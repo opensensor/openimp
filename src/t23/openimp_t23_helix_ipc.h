@@ -25,6 +25,16 @@ enum {
     /* per-frame picture controls (initial QP, GDR) applied before every
      * following encode */
     T23_HELIX_COMMAND_SET_FRAME_CTL = 7,
+    /* OEM IMP_Decoder (hardware JPEG) session:
+     * DEC_INIT param = IMPDecoderCHNAttr (28 bytes); DEC_DECODE decodes the
+     * JPEG in the shared input window and answers with the OEM frame
+     * (IMPFrameInfo, 56 bytes, in param) and its handle (output_offset),
+     * which stays the worker's until DEC_RELEASE (param_id = handle);
+     * DEC_COPY copies a held frame to the shared output window. */
+    T23_HELIX_COMMAND_DEC_INIT = 8,
+    T23_HELIX_COMMAND_DEC_DECODE = 9,
+    T23_HELIX_COMMAND_DEC_RELEASE = 10,
+    T23_HELIX_COMMAND_DEC_COPY = 11,
 };
 
 /* OEM i264e parameter ids (IMP_Encoder_* -> i264e_set_param) */

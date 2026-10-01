@@ -80,6 +80,8 @@ compile audio_codec src/audio/openimp_audio_codec.c -Werror
 compile audio_enc_dec src/audio/openimp_audio_enc_dec.c -Werror
 compile t23_audio_ext src/t23/openimp_t23_audio_ext.c -Werror
 compile t23_encoder src/t23/openimp_t23_encoder.c -Werror
+compile t23_decoder src/t23/openimp_t23_decoder.c -Werror
+compile t23_misc src/t23/openimp_t23_misc.c -Werror
 
 "$compiler" -shared -nostartfiles \
     -Wl,-soname,libimp.so \
@@ -119,6 +121,8 @@ compile t23_encoder src/t23/openimp_t23_encoder.c -Werror
     "$output_dir/audio_enc_dec.o" \
     "$output_dir/t23_audio_ext.o" \
     "$output_dir/t23_encoder.o" \
+    "$output_dir/t23_decoder.o" \
+    "$output_dir/t23_misc.o" \
     -ldl -lpthread -lrt
 
 "$compiler" $base_flags $repo_includes -Wall -Wextra -Werror \
