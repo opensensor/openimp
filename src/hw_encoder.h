@@ -149,7 +149,8 @@ int HW_Encoder_Encode_Software(HWFrameBuffer *frame, HWStreamBuffer *stream, uin
 int HW_Encoder_Encode_NV12_JPEG(HWFrameBuffer *frame,
                                 HWStreamBuffer *stream,
                                 uint32_t quality);
-#if defined(PLATFORM_T23)
+#if defined(PLATFORM_T23) || defined(PLATFORM_T21) || defined(PLATFORM_T30)
+#define HW_ENCODER_JPEG_USER_TABLES 1
 /* Same with the quantizers of IMP_Encoder_SetJpegeQl: tables holds the luma
  * and then the chroma table, 64 bytes each in DQT (zigzag) order. */
 int HW_Encoder_Encode_NV12_JPEG_Tables(HWFrameBuffer *frame,

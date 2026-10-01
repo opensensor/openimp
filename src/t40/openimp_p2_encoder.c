@@ -852,9 +852,11 @@ extern int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data);
 extern int AL_Codec_Encode_GetStream(void *codec, void **stream, void **user_data);
 extern int AL_Codec_Encode_ReleaseStream(void *codec, void *stream, void *user_data);
 extern int AL_Codec_Encode_RequestIDR(void *codec);
-#if defined(PLATFORM_T23)
+#if defined(PLATFORM_T23) || defined(PLATFORM_T30)
 extern int AL_Codec_Encode_SetJpegQl(void *codec, int enable,
                                      const uint8_t tables[128]);
+#else
+extern int AL_Codec_Encode_SetJpegQuality(void *codec, int quality);
 #endif
 extern int IMP_FrameSource_GetFrame(int channel, void **frame);
 extern int IMP_FrameSource_ReleaseFrame(int channel, void *frame);
@@ -1321,10 +1323,16 @@ int IMP_Encoder_CreateChn(int channel, IMPEncoderCHNAttr *attr)
     }
     ch->attr = *attr;
     ch->codec_type = (int)p2_attr_codec_type(attr);
-#if defined(PLATFORM_T23)
+#if defined(PLATFORM_T23) || defined(PLATFORM_T30)
     if (ch->jpeg_quality.user_ql_en)
         (void)AL_Codec_Encode_SetJpegQl(ch->codec, 1,
                                         ch->jpeg_quality.qmem_table);
+#else
+    /* Vendor: JPEG quality (1..100) is attrFixQp.iInitialQP, which
+     * IMP_Encoder_SetDefaultParam fills for every JPEG channel. */
+    if (ch->codec_type == IMP_ENC_TYPE_JPEG)
+        (void)AL_Codec_Encode_SetJpegQuality(
+            ch->codec, attr->rcAttr.attrRcMode.attrFixQp.iInitialQP);
 #endif
     ch->created = 1;
     ch->group = -1;
@@ -2219,7 +2227,7 @@ int IMP_Encoder_SetJpegeQl(int channel, IMPEncoderJpegeQl *quality)
 {
     if (!p2_valid_channel(channel) || !quality)
         return -1;
-#if defined(PLATFORM_T23)
+#if defined(PLATFORM_T23) || defined(PLATFORM_T30)
     {
         P2EncoderChannel *ch = &p2_channels[channel];
         int result = 0;

@@ -1006,11 +1006,11 @@ int HW_Encoder_BuildJpegEp1(uint8_t *ep1, size_t size, uint32_t quality)
     return 0;
 }
 
-#if defined(PLATFORM_T23)
+#if defined(HW_ENCODER_JPEG_USER_TABLES)
 /* tables: NULL, or the 128-byte IMPEncoderJpegeQl.qmem_table: the luma
- * then the chroma quantizer in DQT (zigzag) order, which the T23 libimp
- * writes into the DQT segments unchanged (ijpege_write_header) and loads
- * into the JPEG core in the same order (ijpege_reconfig). */
+ * then the chroma quantizer in DQT (zigzag) order, which the T20/T21/T23
+ * libimp writes into the DQT segments unchanged (ijpege_write_header) and
+ * loads into the JPEG core in the same order (ijpege_reconfig). */
 static int jpeg_encode_nv12(HWFrameBuffer *frame, HWStreamBuffer *stream,
                             uint32_t quality, const uint8_t *tables)
 #else
@@ -1070,7 +1070,7 @@ int HW_Encoder_Encode_NV12_JPEG(HWFrameBuffer *frame,
 
         yq = yq < 1 ? 1 : yq > 255 ? 255 : yq;
         uvq = uvq < 1 ? 1 : uvq > 255 ? 255 : uvq;
-#if defined(PLATFORM_T23)
+#if defined(HW_ENCODER_JPEG_USER_TABLES)
         if (tables) {
             /* a zero step would divide by zero; the core treats it as 1 */
             yq = tables[jpeg_zigzag[index]] ? tables[jpeg_zigzag[index]] : 1;
@@ -1248,7 +1248,7 @@ int HW_Encoder_Encode_NV12_JPEG(HWFrameBuffer *frame,
     return 0;
 }
 
-#if defined(PLATFORM_T23)
+#if defined(HW_ENCODER_JPEG_USER_TABLES)
 int HW_Encoder_Encode_NV12_JPEG(HWFrameBuffer *frame,
                                 HWStreamBuffer *stream,
                                 uint32_t quality)
