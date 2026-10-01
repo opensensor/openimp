@@ -21,6 +21,7 @@
 #include "dma_alloc.h"
 #include "imp_log_int.h"
 #include "t30/h264enc/common.h"
+#include "t30/t30_annexb.h"
 #if defined(PLATFORM_T21) && !defined(PLATFORM_T20)
 #include "t21/t21_h264_descriptor.h"
 typedef T21H264SliceConfig PlatformH264SliceConfig;
@@ -217,29 +218,14 @@ static void t30_init_parameter_sets(T30HelixEncoder *encoder)
 static int t30_annexb_nal(bs_t *bits, uint8_t *destination,
                           uint32_t capacity, int type, int priority)
 {
-    uint8_t *source = bits->p_start;
-    uint8_t *end = source + (uint32_t)bs_pos(bits) / 8u;
-    uint8_t *output = destination;
+    T30AnnexBWriter writer;
 
-    if (capacity < 5u)
+    if (t30_annexb_begin(&writer, destination, capacity, type,
+                         priority) != 0 ||
+        t30_annexb_append(&writer, bits->p_start,
+                          (uint32_t)bs_pos(bits) / 8u) != 0)
         return -1;
-    *output++ = 0;
-    *output++ = 0;
-    *output++ = 0;
-    *output++ = 1;
-    *output++ = (uint8_t)((priority << 5) | type);
-    while (source < end) {
-        if ((uint32_t)(output - destination) >= capacity)
-            return -1;
-        if (source[0] <= 3u && output - destination >= 2 &&
-            output[-2] == 0u && output[-1] == 0u) {
-            if ((uint32_t)(output - destination) >= capacity)
-                return -1;
-            *output++ = 3u;
-        }
-        *output++ = *source++;
-    }
-    return (int)(output - destination);
+    return (int)(writer.output - destination);
 }
 
 static int t30_generate_headers(T30HelixEncoder *encoder)
@@ -418,22 +404,23 @@ int OpenIMP_T30_HelixEncode(T30HelixEncoder *encoder,
     uint8_t *temporary;
     uint8_t *output;
     HWStreamBuffer *stream;
+    T30AnnexBWriter writer;
     bs_t bits;
     uint32_t capacity;
+    uint32_t header_length;
     uint32_t offset = 0;
     uint32_t qp;
     unsigned int output_index;
     int idr;
-    int nal_length;
     size_t descriptor_pairs;
 
     if (!encoder || !frame || !stream_out || !frame->phyAddr)
         return -1;
+    /* Nothing below commits encoder state until the access unit exists: a
+     * failed picture leaves a requested IDR, the GOP position and the
+     * reference chain exactly as they were. */
     idr = encoder->force_idr || !encoder->have_reference ||
           encoder->gop_position >= encoder->params.gop_length;
-    encoder->force_idr = 0;
-    if (idr)
-        encoder->gop_position = 0;
     qp = encoder->rate_control_enabled
         ? openimp_t31_rate_controller_qp(&encoder->rate_control)
         : encoder->params.qp;
@@ -442,7 +429,7 @@ int OpenIMP_T30_HelixEncode(T30HelixEncoder *encoder,
 
     h264e_slice_header_init(&encoder->slice_header, &encoder->sps,
                             &encoder->pps,
-                            idr ? (int)(encoder->idr_pic_id++ & 1u) : -1,
+                            idr ? (int)(encoder->idr_pic_id & 1u) : -1,
                             idr ? 0 : (int)(encoder->gop_position & 1023u),
                             (int)qp);
     encoder->slice_header.i_type = idr ? SLICE_TYPE_I : SLICE_TYPE_P;
@@ -453,6 +440,9 @@ int OpenIMP_T30_HelixEncode(T30HelixEncoder *encoder,
     h264e_slice_header_write(&bits, &encoder->slice_header,
                              idr ? NAL_PRIORITY_HIGHEST : NAL_PRIORITY_HIGH);
     bs_align_1(&bits);
+    if (bits.i_left != 32)
+        return -1;
+    header_length = (uint32_t)(bits.p - bits.p_start);
     h264_cabac_context_init(&encoder->cabac,
                             encoder->slice_header.i_type,
                             (int)qp,
@@ -494,6 +484,9 @@ int OpenIMP_T30_HelixEncode(T30HelixEncoder *encoder,
     encoder->channel.codecdir = T30_H264_ENCODE;
     encoder->channel.dma_addr = encoder->descriptor.phys_addr;
     encoder->channel.thread_id = -1;
+    /* Never let a RUN that returns without reporting a length republish the
+     * previous picture's size over stale bitstream bytes. */
+    encoder->channel.output_len = 0;
     if (ioctl(encoder->fd, T30_CHANNEL_RUN, &encoder->channel) != 0 ||
         !encoder->channel.output_len ||
         encoder->channel.output_len > encoder->temporary.size - T30_SLICE_OFFSET) {
@@ -502,15 +495,18 @@ int OpenIMP_T30_HelixEncode(T30HelixEncoder *encoder,
                   encoder->channel.output_len);
         return -1;
     }
-    DMA_RmemFlushCache(temporary + T30_SLICE_OFFSET,
-                       encoder->channel.output_len, 2);
-    if (bits.i_left != 32)
+    if (DMA_RmemFlushCache(temporary + T30_SLICE_OFFSET,
+                           encoder->channel.output_len, 2) != 0) {
+        LOG_CODEC("T30 Helix: bitstream invalidate failed: %s",
+                  strerror(errno));
         return -1;
-    memcpy(bits.p, temporary + T30_SLICE_OFFSET,
-           encoder->channel.output_len);
-    bits.p += encoder->channel.output_len;
+    }
 
-    capacity = encoder->temporary.size * 2u + T30_HEADER_CAPACITY;
+    /* Emit the CPU-written slice header and the VPU's CABAC payload as one
+     * escaped NAL straight from the DMA window: no staging copy, and the
+     * allocation follows the picture rather than the window size. */
+    capacity = (idr ? encoder->headers_size : 0u) +
+               t30_annexb_bound(header_length + encoder->channel.output_len);
     output = malloc(capacity);
     stream = calloc(1, sizeof(*stream));
     if (!output || !stream) {
@@ -522,21 +518,28 @@ int OpenIMP_T30_HelixEncode(T30HelixEncoder *encoder,
         memcpy(output, encoder->headers, encoder->headers_size);
         offset = encoder->headers_size;
     }
-    nal_length = t30_annexb_nal(&bits, output + offset, capacity - offset,
-                                idr ? NAL_SLICE_IDR : NAL_SLICE,
-                                idr ? NAL_PRIORITY_HIGHEST :
-                                      NAL_PRIORITY_HIGH);
-    if (nal_length < 0) {
+    if (t30_annexb_begin(&writer, output + offset, capacity - offset,
+                         idr ? NAL_SLICE_IDR : NAL_SLICE,
+                         idr ? NAL_PRIORITY_HIGHEST :
+                               NAL_PRIORITY_HIGH) != 0 ||
+        t30_annexb_append(&writer, temporary, header_length) != 0 ||
+        t30_annexb_append(&writer, temporary + T30_SLICE_OFFSET,
+                          encoder->channel.output_len) != 0) {
         free(output);
         free(stream);
         return -1;
     }
     stream->virt_addr = (uint32_t)(uintptr_t)output;
-    stream->length = offset + (uint32_t)nal_length;
+    stream->length = (uint32_t)(writer.output - output);
     stream->timestamp = frame->timeStamp;
     stream->frame_type = idr ? HW_FRAME_TYPE_I : HW_FRAME_TYPE_P;
     stream->slice_type = stream->frame_type;
     *stream_out = stream;
+    if (idr) {
+        encoder->force_idr = 0;
+        encoder->gop_position = 0;
+        encoder->idr_pic_id++;
+    }
     encoder->reference_index = output_index;
     encoder->have_reference = 1;
     encoder->gop_position++;

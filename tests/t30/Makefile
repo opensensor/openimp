@@ -16,8 +16,12 @@ SOURCES := \
 descriptor_test: $(SOURCES)
 	$(CC) $(CFLAGS) $(INCLUDES) -o $@ $(SOURCES)
 
-check: descriptor_test
+annexb_test: annexb_test.c $(ROOT)/src/t30/t30_annexb.h
+	$(CC) $(CFLAGS) $(INCLUDES) -o $@ annexb_test.c
+
+check: descriptor_test annexb_test
 	./descriptor_test
+	./annexb_test
 
 clean:
-	$(RM) descriptor_test
+	$(RM) descriptor_test annexb_test
