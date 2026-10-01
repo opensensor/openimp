@@ -8042,6 +8042,29 @@ static void t31_hwjpeg_init_once(void)
     pthread_condattr_destroy(&attr);
 }
 
+/*
+ * The JPEG output buffer comes from the rmem arena (cached, invalidated
+ * before the copy-out) instead of a coherent AVPU allocation: the coherent
+ * one is ~1.1 MB of kernel lowmem at 1080p, outside the reserved arena,
+ * and the copy-out of every snapshot through it was one uncached bus read
+ * per word. avpu_alloc_encoder() still falls back to a coherent buffer
+ * when the arena is full. OPENIMP_T31_HW_JPEG_STREAM_COHERENT=1 keeps the
+ * coherent buffer (A/B, cache debugging).
+ */
+static int t31_hwjpeg_stream_coherent(void)
+{
+    static int coherent = -1;
+
+    if (coherent < 0) {
+        const char *value = getenv("OPENIMP_T31_HW_JPEG_STREAM_COHERENT");
+
+        coherent = value && value[0] == '1';
+        if (coherent)
+            IMP_LOG_INFO("Codec", "HWJPEG: coherent stream buffer (OPENIMP_T31_HW_JPEG_STREAM_COHERENT=1)");
+    }
+    return coherent;
+}
+
 /* Looked up once, not per snapshot. */
 static const char *t31_hwjpeg_src_coherent_env(void)
 {
@@ -8135,9 +8158,10 @@ static void t31_hwjpeg_set_irq_bit(int fd, int on)
     avpu_write_reg(fd, AVPU_INTERRUPT_MASK, mask);
 }
 
-/* Grow-only. EP1 and the stream are small and coherent: the cached rmem
- * flush is not trusted on T31 (see avpu_remap_uncached). The source stays
- * cached for the 3 MB copy unless OPENIMP_T31_HW_JPEG_SRC_COHERENT=1.
+/* Grow-only. EP1 is small and coherent. The stream is cached rmem unless
+ * OPENIMP_T31_HW_JPEG_STREAM_COHERENT=1 (see t31_hwjpeg_stream_coherent),
+ * the source stays cached for the 3 MB copy unless
+ * OPENIMP_T31_HW_JPEG_SRC_COHERENT=1.
  *
  * The new buffer is allocated before the old one is released: a failed
  * allocation (fragmented lowmem for the coherent ones) leaves *buf as it
@@ -8272,7 +8296,8 @@ static int t31_hwjpeg_encode(const HWFrameBuffer *frame, HWStreamBuffer *stream,
         t31_hwjpeg_disable("DMA allocation failed");
         return -1;
     }
-    if (t31_hwjpeg_ensure(&g_t31_hwjpeg.stream, stream_size, 1,
+    if (t31_hwjpeg_ensure(&g_t31_hwjpeg.stream, stream_size,
+                          t31_hwjpeg_stream_coherent(),
                           "hwjpeg-stream") != 0) {
         if (!g_t31_hwjpeg.stream.map) {
             t31_hwjpeg_disable("DMA allocation failed");
@@ -8373,6 +8398,17 @@ static int t31_hwjpeg_encode(const HWFrameBuffer *frame, HWStreamBuffer *stream,
     if (length < 4u || length > cmd[10]) {
         IMP_LOG_INFO("Codec", "HWJPEG: implausible length %u", length);
         t31_hwjpeg_disable("implausible length");
+        return -1;
+    }
+    /* An rmem stream buffer is cached: drop stale lines of the range the
+     * core wrote before the CPU reads it (nothing ever writes it through
+     * the CPU, and freed rmem is written back and invalidated, so no dirty
+     * line can land on the output). */
+    if (g_t31_hwjpeg.stream.from_rmem &&
+        avpu_flush_cache(fd, g_t31_hwjpeg.stream.map,
+                         T31_HWJPEG_STREAM_OFF + length,
+                         0 /* BIDIRECTIONAL */) != 0) {
+        IMP_LOG_INFO("Codec", "HWJPEG: stream cache invalidate failed, software this frame");
         return -1;
     }
     jpeg = (const uint8_t *)g_t31_hwjpeg.stream.map + T31_HWJPEG_STREAM_OFF;
