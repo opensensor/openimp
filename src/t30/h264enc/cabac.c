@@ -1325,22 +1325,12 @@ const uint16_t h264_cabac_entropy[128] =
     C_FIX8(0.9285), C_FIX8(1.0752), C_FIX8(1.0000), C_FIX8(1.0000)
 };
 
-uint8_t h264_cabac_contexts[4][QP_MAX_SPEC+1][1024];
-
+/* The VPU consumes the 460 initial context states of one slice type, model
+ * and QP per picture.  Derive just those instead of keeping a 4x52x1024
+ * table (213 KB, all of it touched) that every encoder rebuilt at create
+ * while other encoders read it. */
 void h264_cabac_init(void)
 {
-	int i = 0, j = 0, qp = 0;
-    int ctx_count = 460;
-    for( i = 0; i < 4; i++ )
-    {
-        const int8_t (*cabac_context_init)[1024][2] = i == 0 ? &h264_cabac_context_init_I
-                                                             : &h264_cabac_context_init_PB[i-1];
-        for( qp = 0; qp <= QP_MAX_SPEC; qp++ )
-            for( j = 0; j < ctx_count; j++ )
-            {
-                h264_cabac_contexts[i][qp][j] = c_clip3( (((*cabac_context_init)[j][0] * qp) >> 4) + (*cabac_context_init)[j][1], 1, 126 );
-            }
-    }
 }
 
 /*****************************************************************************
@@ -1348,7 +1338,14 @@ void h264_cabac_init(void)
  *****************************************************************************/
 void h264_cabac_context_init(h264_cabac_t *cb, int i_slice_type, int i_qp, int i_model )
 {
-    memcpy( cb->state, h264_cabac_contexts[i_slice_type == SLICE_TYPE_I ? 0 : i_model + 1][i_qp], 460);
+    const int8_t (*cabac_context_init)[1024][2] =
+        i_slice_type == SLICE_TYPE_I ? &h264_cabac_context_init_I
+                                     : &h264_cabac_context_init_PB[i_model];
+    int qp = c_clip3( i_qp, 0, QP_MAX_SPEC );
+    int j;
+
+    for( j = 0; j < 460; j++ )
+        cb->state[j] = (uint8_t)c_clip3( (((*cabac_context_init)[j][0] * qp) >> 4) + (*cabac_context_init)[j][1], 1, 126 );
 }
 
 #if 0
