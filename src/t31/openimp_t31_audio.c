@@ -473,10 +473,11 @@ static void t31_apply_ai_volume(int16_t *samples, int count)
     }
 }
 
-#if defined(PLATFORM_T23)
-/* Same 0.5 dB/step curve as t31_apply_ai_volume, for the speaker path. */
-static void t23_apply_volume(int16_t *samples, int count, int volume,
-                             int muted)
+/* Same 0.5 dB/step curve as t31_apply_ai_volume, for the speaker path
+ * (IMP_AO_SetVol/SetVolMute; the vendor applies a software gain in its play
+ * thread too). */
+static void t31_apply_ao_volume(int16_t *samples, int count, int volume,
+                                int muted)
 {
     int steps = volume - 60;
     uint64_t gain = 65536;
@@ -508,7 +509,6 @@ static void t23_apply_volume(int16_t *samples, int count, int volume,
         samples[i] = (int16_t)value;
     }
 }
-#endif
 
 static void t31_capture_init_cond(void)
 {
@@ -1594,7 +1594,7 @@ static int t23_ao_write_period(void)
                                (int)(t31_audio.ao_period_valid /
                                      sizeof(int16_t)));
     pthread_mutex_unlock(&t31_ao_fx_lock);
-    t23_apply_volume((int16_t *)(void *)t31_audio.ao_period,
+    t31_apply_ao_volume((int16_t *)(void *)t31_audio.ao_period,
                      (int)(t31_audio.ao_period_valid / sizeof(int16_t)),
                      t31_audio.ao_volume, t31_audio.ao_muted);
     stream.data = t31_audio.ao_period;
@@ -1654,8 +1654,9 @@ int IMP_AO_SendFrame(int device, int channel, IMPAudioFrame *frame,
     data = (unsigned char *)(void *)frame->virAddr;
     remaining = frame->len;
     pthread_mutex_lock(&t31_ao_fx_lock);
-    if (t31_ao_fx.hpf_enabled || t31_ao_fx.agc_enabled) {
-        /* the caller's buffer is not ours to filter in place */
+    if (t31_ao_fx.hpf_enabled || t31_ao_fx.agc_enabled ||
+        t31_audio.ao_muted || t31_audio.ao_volume != 60) {
+        /* the caller's buffer is not ours to filter or scale in place */
         if (t31_ao_fx.bounce_capacity < (size_t)remaining) {
             int16_t *bounce = realloc(t31_ao_fx.bounce, (size_t)remaining);
 
@@ -1667,8 +1668,12 @@ int IMP_AO_SendFrame(int device, int channel, IMPAudioFrame *frame,
             t31_ao_fx.bounce_capacity = (size_t)remaining;
         }
         memcpy(t31_ao_fx.bounce, data, (size_t)remaining);
-        t31_ao_process_effects(t31_ao_fx.bounce,
-                               remaining / (int)sizeof(int16_t));
+        if (t31_ao_fx.hpf_enabled || t31_ao_fx.agc_enabled)
+            t31_ao_process_effects(t31_ao_fx.bounce,
+                                   remaining / (int)sizeof(int16_t));
+        t31_apply_ao_volume(t31_ao_fx.bounce,
+                            remaining / (int)sizeof(int16_t),
+                            t31_audio.ao_volume, t31_audio.ao_muted);
         data = (unsigned char *)t31_ao_fx.bounce;
     }
     pthread_mutex_unlock(&t31_ao_fx_lock);
