@@ -27,6 +27,10 @@
 #define T23_HELIX_EXIT_TIMEOUT_MS 250
 
 static pthread_mutex_t t23_worker_start_lock = PTHREAD_MUTEX_INITIALIZER;
+/* One request/response exchange at a time per worker socket: frames come
+ * from the encoder thread, parameters from application threads.  The
+ * public entry points below take it; static helpers expect it held. */
+static pthread_mutex_t t23_ipc_lock = PTHREAD_MUTEX_INITIALIZER;
 
 _Static_assert(sizeof(T23EncoderYuvIn) == 0x3c,
                "T23 YUV encoder input ABI mismatch");
@@ -223,6 +227,49 @@ static void t23_stop_worker(T23HelixBridge *bridge)
     bridge->shared_fd = -1;
 }
 
+static int t23_send_param(T23HelixBridge *bridge, const T23HelixParam *param)
+{
+    T23HelixIpcRequest request;
+    T23HelixIpcResponse response;
+
+    t23_make_request(bridge, &request, T23_HELIX_COMMAND_SET_PARAM);
+    request.param_id = param->id;
+    request.param_size = param->size;
+    memcpy(request.param, param->data, param->size);
+    return t23_exchange(bridge, &request, &response,
+                        T23_HELIX_ENCODE_TIMEOUT_MS);
+}
+
+static int t23_send_frame_ctl(T23HelixBridge *bridge,
+                              const T23HelixFrameCtl *ctl)
+{
+    T23HelixIpcRequest request;
+    T23HelixIpcResponse response;
+
+    t23_make_request(bridge, &request, T23_HELIX_COMMAND_SET_FRAME_CTL);
+    request.frame_ctl = *ctl;
+    return t23_exchange(bridge, &request, &response,
+                        T23_HELIX_ENCODE_TIMEOUT_MS);
+}
+
+/* Re-apply what the application set before this worker existed. */
+static void t23_replay_params(T23HelixBridge *bridge)
+{
+    T23HelixParamCache *cache = bridge->cache;
+    uint32_t i;
+
+    if (!cache)
+        return;
+    for (i = 0; i < cache->count; i++) {
+        if (t23_send_param(bridge, &cache->params[i]) != 0)
+            t23_log(LOG_WARNING,
+                    "openimp/T23: encoder refused parameter %u",
+                    cache->params[i].id);
+    }
+    if (cache->frame_ctl_set)
+        (void)t23_send_frame_ctl(bridge, &cache->frame_ctl);
+}
+
 static int t23_start_worker(T23HelixBridge *bridge)
 {
     static char *const helper_environment[] = {
@@ -312,6 +359,7 @@ static int t23_start_worker(T23HelixBridge *bridge)
             (long)bridge->worker_pid, bridge->width, bridge->height,
             bridge->input.outFrmRate.frmRateNum,
             bridge->input.outFrmRate.frmRateDen, bridge->input.maxGop);
+    t23_replay_params(bridge);
     result = 0;
 
 out:
@@ -370,7 +418,10 @@ static void t23_fill_yuv_input(T23EncoderYuvIn *input,
 static void t23_reset_bridge(T23HelixBridge *bridge, uint32_t width,
                              uint32_t height)
 {
+    T23HelixParamCache *cache = bridge->cache;
+
     memset(bridge, 0, sizeof(*bridge));
+    bridge->cache = cache;
     bridge->socket_fd = -1;
     bridge->shared_fd = -1;
     bridge->worker_pid = -1;
@@ -412,8 +463,7 @@ fail:
     return -1;
 }
 
-int OpenIMP_T23_HelixInit(T23HelixBridge *bridge,
-                          const HWEncoderParams *params)
+static int helix_init(T23HelixBridge *bridge, const HWEncoderParams *params)
 {
     uint64_t input_size;
 
@@ -434,8 +484,8 @@ int OpenIMP_T23_HelixInit(T23HelixBridge *bridge,
     return t23_start_bridge(bridge, input_size);
 }
 
-int OpenIMP_T23_HelixInitYuv(T23HelixBridge *bridge, uint32_t width,
-                             uint32_t height, const T23EncoderYuvIn *input)
+static int helix_init_yuv(T23HelixBridge *bridge, uint32_t width,
+                          uint32_t height, const T23EncoderYuvIn *input)
 {
     if (!bridge || !input || !width || !height)
         return -1;
@@ -533,9 +583,8 @@ static int t23_encode_frame(T23HelixBridge *bridge, const IMPFrameInfo *frame,
     return 0;
 }
 
-int OpenIMP_T23_HelixEncode(T23HelixBridge *bridge,
-                            const IMPFrameInfo *frame,
-                            HWStreamBuffer **stream)
+static int helix_encode(T23HelixBridge *bridge, const IMPFrameInfo *frame,
+                        HWStreamBuffer **stream)
 {
     HWStreamBuffer *result;
     unsigned char *encoded;
@@ -564,9 +613,9 @@ int OpenIMP_T23_HelixEncode(T23HelixBridge *bridge,
     return 0;
 }
 
-int OpenIMP_T23_HelixEncodeInto(T23HelixBridge *bridge,
-                                const IMPFrameInfo *frame, void *output,
-                                uint32_t *length)
+static int helix_encode_into(T23HelixBridge *bridge,
+                             const IMPFrameInfo *frame, void *output,
+                             uint32_t *length)
 {
     unsigned char *encoded;
     uint32_t encoded_length;
@@ -586,7 +635,7 @@ int OpenIMP_T23_HelixEncodeInto(T23HelixBridge *bridge,
     return 0;
 }
 
-int OpenIMP_T23_HelixRequestIDR(T23HelixBridge *bridge)
+static int helix_request_idr(T23HelixBridge *bridge)
 {
     T23HelixIpcRequest request;
     T23HelixIpcResponse response;
@@ -598,10 +647,194 @@ int OpenIMP_T23_HelixRequestIDR(T23HelixBridge *bridge)
                         T23_HELIX_ENCODE_TIMEOUT_MS);
 }
 
+/* ---- public entry points: serialized on t23_ipc_lock ------------------ */
+
+int OpenIMP_T23_HelixInit(T23HelixBridge *bridge,
+                          const HWEncoderParams *params)
+{
+    int ret;
+
+    pthread_mutex_lock(&t23_ipc_lock);
+    ret = helix_init(bridge, params);
+    pthread_mutex_unlock(&t23_ipc_lock);
+    return ret;
+}
+
+int OpenIMP_T23_HelixInitYuv(T23HelixBridge *bridge, uint32_t width,
+                             uint32_t height, const T23EncoderYuvIn *input)
+{
+    int ret;
+
+    pthread_mutex_lock(&t23_ipc_lock);
+    ret = helix_init_yuv(bridge, width, height, input);
+    pthread_mutex_unlock(&t23_ipc_lock);
+    return ret;
+}
+
+int OpenIMP_T23_HelixEncode(T23HelixBridge *bridge,
+                            const IMPFrameInfo *frame,
+                            HWStreamBuffer **stream)
+{
+    int ret;
+
+    pthread_mutex_lock(&t23_ipc_lock);
+    ret = helix_encode(bridge, frame, stream);
+    pthread_mutex_unlock(&t23_ipc_lock);
+    return ret;
+}
+
+int OpenIMP_T23_HelixEncodeInto(T23HelixBridge *bridge,
+                                const IMPFrameInfo *frame, void *output,
+                                uint32_t *length)
+{
+    int ret;
+
+    pthread_mutex_lock(&t23_ipc_lock);
+    ret = helix_encode_into(bridge, frame, output, length);
+    pthread_mutex_unlock(&t23_ipc_lock);
+    return ret;
+}
+
+int OpenIMP_T23_HelixRequestIDR(T23HelixBridge *bridge)
+{
+    int ret;
+
+    pthread_mutex_lock(&t23_ipc_lock);
+    ret = helix_request_idr(bridge);
+    pthread_mutex_unlock(&t23_ipc_lock);
+    return ret;
+}
+
+static T23HelixParam *cache_find(T23HelixParamCache *cache, uint32_t id,
+                                 uint32_t key)
+{
+    for (uint32_t i = 0; cache && i < cache->count; i++) {
+        if (cache->params[i].id == id && cache->params[i].key == key)
+            return &cache->params[i];
+    }
+    return NULL;
+}
+
+static void cache_drop(T23HelixParamCache *cache, T23HelixParam *param)
+{
+    uint32_t index = (uint32_t)(param - cache->params);
+
+    memmove(param, param + 1,
+            (cache->count - index - 1u) * sizeof(*param));
+    cache->count--;
+}
+
+static T23HelixParamCache *cache_of(T23HelixBridge *bridge)
+{
+    if (!bridge->cache)
+        bridge->cache = calloc(1, sizeof(*bridge->cache));
+    return bridge->cache;
+}
+
+int OpenIMP_T23_HelixSetParam(T23HelixBridge *bridge, uint32_t id,
+                              uint32_t key, const void *data, uint32_t size)
+{
+    T23HelixParamCache *cache;
+    T23HelixParam *param;
+    int ret = 0;
+
+    if (!bridge || !data || !size || size > T23_HELIX_PARAM_MAX)
+        return -1;
+    pthread_mutex_lock(&t23_ipc_lock);
+    cache = cache_of(bridge);
+    param = cache_find(cache, id, key);
+    if (!param && cache && cache->count < T23_HELIX_MAX_PARAMS)
+        param = &cache->params[cache->count++];
+    if (!param) {
+        pthread_mutex_unlock(&t23_ipc_lock);
+        return -1;
+    }
+    param->id = id;
+    param->key = key;
+    param->size = size;
+    memset(param->data, 0, sizeof(param->data));
+    memcpy(param->data, data, size);
+    if (bridge->worker_pid > 0 && t23_send_param(bridge, param) != 0) {
+        cache_drop(cache, param);
+        ret = -1;
+    }
+    pthread_mutex_unlock(&t23_ipc_lock);
+    return ret;
+}
+
+int OpenIMP_T23_HelixGetParam(T23HelixBridge *bridge, uint32_t id,
+                              uint32_t key, void *data, uint32_t size)
+{
+    T23HelixIpcRequest request;
+    T23HelixIpcResponse response;
+    T23HelixParam *param;
+    int ret = 1;
+
+    if (!bridge || !data || !size || size > T23_HELIX_PARAM_MAX)
+        return -1;
+    pthread_mutex_lock(&t23_ipc_lock);
+    if (bridge->worker_pid > 0) {
+        t23_make_request(bridge, &request, T23_HELIX_COMMAND_GET_PARAM);
+        request.param_id = id;
+        request.param_size = size;
+        memcpy(request.param, data, size);
+        ret = t23_exchange(bridge, &request, &response,
+                           T23_HELIX_ENCODE_TIMEOUT_MS) == 0 ? 0 : -1;
+        if (ret == 0)
+            memcpy(data, response.param, size);
+    } else if ((param = cache_find(bridge->cache, id, key)) != NULL) {
+        memcpy(data, param->data, size < param->size ? size : param->size);
+        ret = 0;
+    }
+    pthread_mutex_unlock(&t23_ipc_lock);
+    return ret;
+}
+
+int OpenIMP_T23_HelixSetFrameCtl(T23HelixBridge *bridge,
+                                 const T23HelixFrameCtl *ctl)
+{
+    T23HelixParamCache *cache;
+    int ret = 0;
+
+    if (!bridge || !ctl)
+        return -1;
+    pthread_mutex_lock(&t23_ipc_lock);
+    cache = cache_of(bridge);
+    if (!cache) {
+        pthread_mutex_unlock(&t23_ipc_lock);
+        return -1;
+    }
+    cache->frame_ctl = *ctl;
+    cache->frame_ctl_set = 1;
+    if (bridge->worker_pid > 0)
+        ret = t23_send_frame_ctl(bridge, ctl) == 0 ? 0 : -1;
+    /* a GDR request is one-shot: do not replay it after a restart */
+    cache->frame_ctl.gdr_request = 0;
+    pthread_mutex_unlock(&t23_ipc_lock);
+    return ret;
+}
+
+int OpenIMP_T23_HelixGetFrameCtl(T23HelixBridge *bridge,
+                                 T23HelixFrameCtl *ctl)
+{
+    if (!bridge || !ctl)
+        return -1;
+    pthread_mutex_lock(&t23_ipc_lock);
+    if (bridge->cache && bridge->cache->frame_ctl_set)
+        *ctl = bridge->cache->frame_ctl;
+    else
+        memset(ctl, 0, sizeof(*ctl));
+    pthread_mutex_unlock(&t23_ipc_lock);
+    return 0;
+}
+
 void OpenIMP_T23_HelixExit(T23HelixBridge *bridge)
 {
     if (!bridge)
         return;
+    pthread_mutex_lock(&t23_ipc_lock);
     t23_stop_worker(bridge);
+    free(bridge->cache);
     memset(bridge, 0, sizeof(*bridge));
+    pthread_mutex_unlock(&t23_ipc_lock);
 }

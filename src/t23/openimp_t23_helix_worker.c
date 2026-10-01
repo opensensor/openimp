@@ -19,6 +19,9 @@
 extern int EncoderInit(void);
 extern int EncoderExit(void);
 extern int IMP_FlushCache(void *address, uint32_t size, int direction);
+/* The OEM encoder core behind every IMP_Encoder_Set/Get* channel call. */
+extern int i264e_set_param(void *encoder, int id, void *param);
+extern int i264e_get_param(void *encoder, int id, void *param);
 /* IMP_Encoder_Yuv* and IMP_Encoder_Vbm* are declared by imp/imp_encoder.h */
 
 #define T23_HELIX_PAGE_SIZE 4096u
@@ -38,7 +41,88 @@ typedef struct {
     uint32_t width;
     uint32_t height;
     int subsystem_ready;
+    T23HelixFrameCtl frame_ctl;
+    int frame_ctl_set;
 } T23HelixWorker;
+
+/* OEM IMP_Encoder_YuvInit handle (76 bytes): +0 payload kind (1 = H.264),
+ * +60 i264e encoder, +64 i264e parameters, +68 the i264e picture that
+ * IMP_Encoder_YuvEncode hands to i264e_encode, +72 IDR request flag.  The
+ * picture is the same 432-byte structure the OEM channel thread fills;
+ * the fields below are the ones it sets for GDR and the initial QP. */
+#define T23_YUV_KIND        0
+#define T23_YUV_I264E       60
+#define T23_YUV_PICTURE     68
+#define T23_PIC_GDR_ENABLE  392
+#define T23_PIC_GDR_REQUEST 396
+#define T23_PIC_GDR_CYCLE   400
+#define T23_PIC_GDR_FRAMES  404
+#define T23_PIC_FORCE_QP    428
+
+static void *worker_i264e(const T23HelixWorker *worker)
+{
+    const unsigned char *handle = worker ? worker->encoder : NULL;
+    void *i264e = NULL;
+    int32_t kind;
+
+    if (!handle)
+        return NULL;
+    memcpy(&kind, handle + T23_YUV_KIND, sizeof(kind));
+    if (kind != 1)
+        return NULL;
+    memcpy(&i264e, handle + T23_YUV_I264E, sizeof(i264e));
+    return i264e;
+}
+
+static void worker_apply_frame_ctl(T23HelixWorker *worker)
+{
+    unsigned char *picture = NULL;
+    int32_t value;
+    int8_t qp;
+
+    if (!worker->frame_ctl_set || !worker_i264e(worker))
+        return;
+    memcpy(&picture, (unsigned char *)worker->encoder + T23_YUV_PICTURE,
+           sizeof(picture));
+    if (!picture)
+        return;
+    value = worker->frame_ctl.gdr_enable ? 1 : 0;
+    memcpy(picture + T23_PIC_GDR_ENABLE, &value, sizeof(value));
+    if (value) {
+        memcpy(picture + T23_PIC_GDR_CYCLE, &worker->frame_ctl.gdr_cycle,
+               sizeof(int32_t));
+        memcpy(picture + T23_PIC_GDR_FRAMES, &worker->frame_ctl.gdr_frames,
+               sizeof(int32_t));
+    }
+    value = worker->frame_ctl.gdr_request ? 1 : 0;
+    memcpy(picture + T23_PIC_GDR_REQUEST, &value, sizeof(value));
+    worker->frame_ctl.gdr_request = 0;
+    qp = (int8_t)(worker->frame_ctl.init_qp > 0 ? worker->frame_ctl.init_qp
+                                                 : 0);
+    memcpy(picture + T23_PIC_FORCE_QP, &qp, sizeof(qp));
+}
+
+static int worker_param(T23HelixWorker *worker,
+                        const T23HelixIpcRequest *request,
+                        T23HelixIpcResponse *response, int set)
+{
+    /* i264e may write more than a request carries: give it room */
+    unsigned char param[256];
+    void *i264e = worker_i264e(worker);
+
+    if (!i264e || request->param_size > T23_HELIX_PARAM_MAX)
+        return -EINVAL;
+    memset(param, 0, sizeof(param));
+    memcpy(param, request->param, request->param_size);
+    if ((set ? i264e_set_param(i264e, (int)request->param_id, param)
+             : i264e_get_param(i264e, (int)request->param_id, param)) != 0)
+        return -EIO;
+    if (!set) {
+        memcpy(response->param, param, T23_HELIX_PARAM_MAX);
+        response->param_size = request->param_size;
+    }
+    return 0;
+}
 
 _Static_assert(sizeof(T23EncoderYuvIn) == 0x3c,
                "T23 YUV encoder input ABI mismatch");
@@ -193,6 +277,7 @@ static int worker_encode(T23HelixWorker *worker,
     frame.direct_phyAddr = worker->input_physical;
     frame.timeStamp = request->timestamp;
 
+    worker_apply_frame_ctl(worker);
     output.outAddr = worker->output_buffer;
     output.outLen = worker->output_capacity;
     if (IMP_Encoder_YuvEncode(worker->encoder, frame, &output) != 0 ||
@@ -300,6 +385,17 @@ int main(int argc, char **argv)
                 status = worker.encoder
                              ? IMP_Encoder_YuvRequestIDR(worker.encoder)
                              : -EINVAL;
+                break;
+            case T23_HELIX_COMMAND_SET_PARAM:
+                status = worker_param(&worker, &request, &response, 1);
+                break;
+            case T23_HELIX_COMMAND_GET_PARAM:
+                status = worker_param(&worker, &request, &response, 0);
+                break;
+            case T23_HELIX_COMMAND_SET_FRAME_CTL:
+                worker.frame_ctl = request.frame_ctl;
+                worker.frame_ctl_set = 1;
+                status = 0;
                 break;
             case T23_HELIX_COMMAND_EXIT:
                 status = 0;

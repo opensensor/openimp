@@ -6,7 +6,8 @@
 #include <imp/imp_encoder.h>
 
 #define T23_HELIX_IPC_MAGIC 0x4f483233u /* "OH23" */
-#define T23_HELIX_IPC_VERSION 1u
+#define T23_HELIX_IPC_VERSION 2u
+#define T23_HELIX_PARAM_MAX 64u
 
 /* The OEM IMP_Encoder_Yuv* in/out structures (imp/imp_encoder.h). */
 typedef IMPEncoderYuvIn T23EncoderYuvIn;
@@ -17,7 +18,43 @@ enum {
     T23_HELIX_COMMAND_ENCODE = 2,
     T23_HELIX_COMMAND_REQUEST_IDR = 3,
     T23_HELIX_COMMAND_EXIT = 4,
+    /* i264e_set_param/i264e_get_param on the worker's encoder, the calls
+     * behind the OEM IMP_Encoder_Set/Get* channel functions */
+    T23_HELIX_COMMAND_SET_PARAM = 5,
+    T23_HELIX_COMMAND_GET_PARAM = 6,
+    /* per-frame picture controls (initial QP, GDR) applied before every
+     * following encode */
+    T23_HELIX_COMMAND_SET_FRAME_CTL = 7,
 };
+
+/* OEM i264e parameter ids (IMP_Encoder_* -> i264e_set_param) */
+enum {
+    T23_I264E_COLOR2GREY = 0,
+    T23_I264E_CROP = 1,
+    T23_I264E_ROI = 2,
+    T23_I264E_RC = 3,
+    T23_I264E_RC_TRIG = 4,
+    T23_I264E_FPS = 5,
+    T23_I264E_GOP = 7,
+    T23_I264E_DENOISE = 8,
+    T23_I264E_HSKIP = 9,
+    T23_I264E_BLACK_ENHANCE = 10,
+    T23_I264E_MBRC = 11,
+    T23_I264E_CHANGE_REF = 12,
+    T23_I264E_SUPER_FRAME = 13,
+    T23_I264E_H264_TRANS = 14,
+    T23_I264E_QPG_MODE = 15,
+};
+
+/* Picture fields the OEM channel thread sets before i264e_encode; in the
+ * OEM YUV session they stay zero. */
+typedef struct {
+    int32_t init_qp;        /* 0: rate control picks the QP */
+    int32_t gdr_enable;
+    int32_t gdr_cycle;
+    int32_t gdr_frames;
+    int32_t gdr_request;    /* one-shot */
+} T23HelixFrameCtl;
 
 typedef struct {
     uint32_t magic;
@@ -31,6 +68,10 @@ typedef struct {
     uint32_t pixel_format;
     int64_t timestamp;
     T23EncoderYuvIn encoder_input;
+    uint32_t param_id;
+    uint32_t param_size;
+    uint8_t param[T23_HELIX_PARAM_MAX];
+    T23HelixFrameCtl frame_ctl;
 } T23HelixIpcRequest;
 
 typedef struct {
@@ -40,6 +81,8 @@ typedef struct {
     int32_t status;
     uint32_t output_offset;
     uint32_t output_length;
+    uint32_t param_size;
+    uint8_t param[T23_HELIX_PARAM_MAX];
 } T23HelixIpcResponse;
 
 #endif
