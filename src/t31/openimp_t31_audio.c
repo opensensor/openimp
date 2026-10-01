@@ -1677,18 +1677,20 @@ int IMP_AO_SendFrame(int device, int channel, IMPAudioFrame *frame,
         data = (unsigned char *)t31_ao_fx.bounce;
     }
     pthread_mutex_unlock(&t31_ao_fx_lock);
+    /* The OSS2 driver (xb_snd_dsp.c dsp_ioctl_ao_stream, same on T20, T21,
+     * T30 and T31) returns 0 on success and writes the number of bytes it
+     * queued back into stream.size; any size is accepted. */
     while (remaining > 0) {
         int written;
 
         stream.data = data;
         stream.size = (uint32_t)remaining;
-        written = ioctl(t31_audio.ao_fd, T31_AO_SET_STREAM, &stream);
-        if (written < 0)
+        if (ioctl(t31_audio.ao_fd, T31_AO_SET_STREAM, &stream) != 0)
             return -1;
-        if (written == 0)
+        written = stream.size > (uint32_t)remaining ? remaining
+                                                     : (int)stream.size;
+        if (written <= 0)
             return -1;
-        if (written > remaining)
-            written = remaining;
         data += written;
         remaining -= written;
     }
