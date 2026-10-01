@@ -25,6 +25,13 @@
  *       tools/t31_ivs_compare.c src/t31/openimp_t31_ivs_move.c -ldl
  * Run: ./t31_ivs_compare /tmp/libimp-stock.so
  * Exit status 0 when every non-oob result is identical.
+ *
+ * T23: add -DPLATFORM_T23 (T23 1.3.0 parameter and IMPFrameInfo layout)
+ * and run it against the stock T23 1.3.0 libimp, which an OpenIMP T23
+ * image keeps for the Helix worker:
+ *   LD_LIBRARY_PATH=/opt/openimp-t23 ./t23_ivs_compare /opt/openimp-t23/libimp.so
+ * The T23 library has only the scalar path (no MXU2 branch, see
+ * openimp_t31_ivs.c), so /tmp/closesimd makes no difference there.
  */
 #include <dlfcn.h>
 #include <fcntl.h>
@@ -273,7 +280,14 @@ int main(int argc, char **argv)
     stock_base_proc = (int (*)(void *, T31IVSFrameInfo *, StockBaseSlot *))dlsym(lib, "imp_base_move_process");
     if (!stock_alloc_move || !stock_move_pre || !stock_move_proc ||
         !stock_alloc_base || !stock_base_pre || !stock_base_proc) {
-        fprintf(stderr, "%s: IVS entry points not found (not a stock T31 libimp?)\n", argv[1]);
+        fprintf(stderr, "%s: IVS entry points not found (not a stock %s libimp?)\n",
+                argv[1],
+#if defined(PLATFORM_T23)
+                "T23"
+#else
+                "T31"
+#endif
+                );
         return 2;
     }
     fflush(stdout);

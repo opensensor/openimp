@@ -1,6 +1,9 @@
-/* T31 IVS framework (IMP_IVS_*) and the move / base-move interfaces.
+/* T31/T23 IVS framework (IMP_IVS_*) and the move / base-move interfaces.
  *
- * Semantics follow the T31 1.1.6 libimp:
+ * Semantics follow the T31 1.1.6 libimp; the T23 1.3.0 libimp has the same
+ * framework (ivs.c), the same move / base-move code (the T31 scalar path:
+ * T23 has no MXU2 branch) and differs only in the IMPFrameInfo layout, see
+ * openimp_t31_ivs_abi.h. PLATFORM_T23 builds this file for T23:
  *   - one IVS group (0), up to 64 channels, each with its own processing
  *     thread and three semaphores (process start = 0, process end = 1,
  *     result = 0);
@@ -74,7 +77,7 @@ int IMP_IVS_SetParam(int channel, void *param);
 
 /* ============================ helpers ============================ */
 
-/* OpenIMP's T31 FrameSource hands out NV12 with the luma rows packed
+/* OpenIMP's T31/T23 FrameSource hands out NV12 with the luma rows packed
  * (stride == width, the UV plane follows at width * ALIGN16(height)); the
  * frame record carries no separate stride. Every copy below goes row by
  * row through this value, so a different stride only needs changing here. */
@@ -283,6 +286,11 @@ struct t31_base_slot {
 _Static_assert(offsetof(struct t31_base_slot, datalen) ==
                offsetof(IMP_IVS_BaseMoveOutput, datalen),
                "base move result slot must start with IMP_IVS_BaseMoveOutput");
+#if defined(PLATFORM_T23)
+_Static_assert(offsetof(struct t31_base_slot, timeStamp) ==
+               offsetof(IMP_IVS_BaseMoveOutput, timeStamp),
+               "T23 publishes the base move timestamp in IMP_IVS_BaseMoveOutput");
+#endif
 
 struct t31_base_iface {
     IMPIVSInterface inf;
@@ -665,7 +673,7 @@ void openimp_t31_ivs_capture(int fs_chn, const void *frame)
     if (!frame || !__atomic_load_n(&ivs_receiving, __ATOMIC_RELAXED))
         return;
     memset(&info, 0, sizeof(info));
-    memcpy(&info, frame, offsetof(T31IVSFrameInfo, rotate_osdflag));
+    memcpy(&info, frame, T31_IVS_FRAME_RECORD_BYTES);
     pthread_mutex_lock(&ivs_lock);
     for (i = 0; i < T31_IVS_CHANNELS; i++) {
         struct t31_ivs_channel *c = &ivs_channels[i];

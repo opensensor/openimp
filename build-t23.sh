@@ -69,6 +69,8 @@ compile isp src/isp/isp_tseries.c
 compile t23_compat src/t31/openimp_t31_compat.c
 compile t23_state src/t31/openimp_t31_state.c -Werror
 compile t23_services src/t31/openimp_t31_services.c -Werror
+compile t23_ivs src/t31/openimp_t31_ivs.c -Werror
+compile t23_ivs_move src/t31/openimp_t31_ivs_move.c -Werror
 compile t23_platform_services src/t23/openimp_t23_services.c -Werror
 compile t23_helix_bridge src/t23/openimp_t23_helix_bridge.c -Werror
 compile t23_persist src/t23/openimp_t23_persist.c -Werror
@@ -110,6 +112,8 @@ compile t23_misc src/t23/openimp_t23_misc.c -Werror
     "$output_dir/t23_compat.o" \
     "$output_dir/t23_state.o" \
     "$output_dir/t23_services.o" \
+    "$output_dir/t23_ivs.o" \
+    "$output_dir/t23_ivs_move.o" \
     "$output_dir/t23_platform_services.o" \
     "$output_dir/t23_helix_bridge.o" \
     "$output_dir/t23_persist.o" \
@@ -140,7 +144,8 @@ fi
 
 for symbol in IMP_AI_GetFrame IMP_AI_PollingFrame IMP_AO_SendFrame \
     IMP_AO_FlushChnBuf IMP_Encoder_YuvInit IMP_Encoder_YuvEncode \
-    IMP_Encoder_VbmAlloc IMP_Encoder_InputJpege
+    IMP_Encoder_VbmAlloc IMP_Encoder_InputJpege \
+    IMP_IVS_CreateMoveInterface IMP_IVS_PollingResult IMP_IVS_GetResult
 do
     if ! readelf --dyn-syms --wide "$output_dir/libimp.so" |
         awk -v s="$symbol" '$7 != "UND" && $8 == s {found=1} END {exit !found}'

@@ -29,6 +29,7 @@ t41:
 
 check:
 	$(MAKE) -C tests/t30 check
+	$(MAKE) -C tests/t23 -f stub_fixes.mk check
 	$(MAKE) -C tests/t31 check
 	$(MAKE) -C tests/t40 check
 	$(MAKE) -C tests/t41 check
