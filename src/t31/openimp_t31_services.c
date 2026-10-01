@@ -654,21 +654,23 @@ static struct t31_ivs_interface *t31_ivs_interface(IMPIVSInterface *interface)
     return result;
 }
 
+/* No motion algorithm runs behind these interfaces on T20/T21/T30: the
+ * frames never reach an IVS worker and GetResult always reported "no
+ * motion".  Refuse to create the interfaces so callers see motion detection
+ * as unavailable instead of silently never firing.  (T31/T23: real IVS in
+ * openimp_t31_ivs.c.) */
+static void t31_ivs_unavailable(const char *function)
+{
+    IMP_LOG_ERR("IVS", "%s: motion detection is not implemented by OpenIMP "
+                "on this SoC\n", function);
+}
+
 IMPIVSInterface *IMP_IVS_CreateMoveInterface(IMP_IVS_MoveParam *param)
 {
-    struct t31_ivs_interface *interface;
-
-    if (!param) {
-        t31_fail(EINVAL);
-        return NULL;
-    }
-    interface = calloc(1, sizeof(*interface));
-    if (!interface)
-        return NULL;
-    interface->magic = T31_IVS_MAGIC;
-    interface->kind = T31_IVS_MOVE;
-    interface->param.move = *param;
-    return (IMPIVSInterface *)interface;
+    (void)param;
+    t31_ivs_unavailable(__func__);
+    t31_fail(ENOTSUP);
+    return NULL;
 }
 
 void IMP_IVS_DestroyMoveInterface(IMPIVSInterface *opaque)
@@ -684,19 +686,10 @@ void IMP_IVS_DestroyMoveInterface(IMPIVSInterface *opaque)
 IMPIVSInterface *IMP_IVS_CreateBaseMoveInterface(
     IMP_IVS_BaseMoveParam *param)
 {
-    struct t31_ivs_interface *interface;
-
-    if (!param) {
-        t31_fail(EINVAL);
-        return NULL;
-    }
-    interface = calloc(1, sizeof(*interface));
-    if (!interface)
-        return NULL;
-    interface->magic = T31_IVS_MAGIC;
-    interface->kind = T31_IVS_BASE_MOVE;
-    interface->param.base_move = *param;
-    return (IMPIVSInterface *)interface;
+    (void)param;
+    t31_ivs_unavailable(__func__);
+    t31_fail(ENOTSUP);
+    return NULL;
 }
 
 void IMP_IVS_DestroyBaseMoveInterface(IMPIVSInterface *opaque)
