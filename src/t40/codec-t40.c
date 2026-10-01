@@ -183,6 +183,49 @@ static int t31_avc_legacy(void)
     }
     return cached;
 }
+
+/*
+ * Completion hand-off to the thread that submitted the command
+ * (AL_Codec_Encode_Process). avpu_complete_frame() advances
+ * completions_drained as its very last step and then broadcasts here, so
+ * the submitter sleeps until its command is done instead of waking every
+ * millisecond to look (that poll cost one wake-up and several syscalls per
+ * millisecond of every encode, on both stream threads). The waiter checks
+ * its condition under g_t31_completion_lock and the signaller takes that
+ * lock after the counter moved, so a completion between the check and the
+ * wait cannot be missed. Lock order: g_t31_completion_lock may be taken
+ * with the IRQ host lock and irq_mutex held, never the other way round.
+ */
+static pthread_mutex_t g_t31_completion_lock = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t g_t31_completion_cond = PTHREAD_COND_INITIALIZER;
+static pthread_once_t g_t31_completion_once = PTHREAD_ONCE_INIT;
+
+/* A wall-clock step (NTP at boot) must not shorten or stretch the wait. */
+static void t31_completion_init_once(void)
+{
+    pthread_condattr_t attr;
+
+    pthread_condattr_init(&attr);
+    pthread_condattr_setclock(&attr, CLOCK_MONOTONIC);
+    pthread_cond_destroy(&g_t31_completion_cond);
+    pthread_cond_init(&g_t31_completion_cond, &attr);
+    pthread_condattr_destroy(&attr);
+}
+
+static void t31_completion_signal(void)
+{
+    pthread_mutex_lock(&g_t31_completion_lock);
+    pthread_cond_broadcast(&g_t31_completion_cond);
+    pthread_mutex_unlock(&g_t31_completion_lock);
+}
+
+static uint64_t t31_monotonic_ms(void)
+{
+    struct timespec now;
+
+    clock_gettime(CLOCK_MONOTONIC, &now);
+    return (uint64_t)now.tv_sec * 1000u + (uint64_t)now.tv_nsec / 1000000u;
+}
 #endif
 #endif
 
@@ -4098,6 +4141,9 @@ static void avpu_complete_frame(ALAvpuContext *ctx, const char *source)
             /* Publish the handoff only after the late-DMA drain and all
              * completion-side buffer handling have finished. */
             __sync_add_and_fetch(&ctx->completions_drained, 1u);
+#if defined(PLATFORM_T31)
+            t31_completion_signal();
+#endif
         }
         return;
     }
@@ -4109,6 +4155,9 @@ static void avpu_complete_frame(ALAvpuContext *ctx, const char *source)
      * T31's single physical encoder to another context: effective-size
      * handling above still drains late DMA and copies the access unit. */
     __sync_add_and_fetch(&ctx->completions_drained, 1u);
+#if defined(PLATFORM_T31)
+    t31_completion_signal();
+#endif
 
     if (frames_encoded % 50 == 0)
     LOG_CODEC("%s: frames_encoded=%d frame_number=%u frames_consumed=%d buf_idx=%d frame_size=%u flush_ret=%d",
@@ -10426,6 +10475,9 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data)
         codec_param_read_codec_type(enc->codec_param) == IMP_ENC_TYPE_JPEG)
         return al_codec_encode_process_impl(codec, frame, user_data);
 
+    /* Before the first submit, so no completion can signal the condition
+     * variable while it is being re-initialised. */
+    pthread_once(&g_t31_completion_once, t31_completion_init_once);
     pthread_mutex_lock(&g_t31_encode_core_lock);
     if (enc != NULL) {
         frames_before = enc->avpu.frames_encoded;
@@ -10442,24 +10494,50 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data)
     if (ret == 0 && enc != NULL && enc->use_hardware == 2 &&
         enc->avpu.fd >= 0 && enc->avpu.frame_number != submitted_before) {
         int completed = 0;
+        /* Same budget as the former 2000 x 1 ms poll: give up after 2 s;
+         * a frame takes < 100 ms, so from 0.5 s on look every 250 ms for
+         * a finished command whose IRQ got lost. The wait itself ends as
+         * soon as avpu_complete_frame() signals the completion. */
+        uint64_t start_ms = t31_monotonic_ms();
+        uint64_t deadline_ms = start_ms + 2000u;
+        uint64_t next_poll_ms = start_ms + 500u;
 
-        for (int retry = 0; retry < 2000; ++retry) {
-            int pending = avpu_pending_peek(&enc->avpu, NULL, NULL);
+        for (;;) {
+            uint64_t now_ms = 0;
+            uint64_t wake_ms;
 
-            __sync_synchronize();
-            if (!pending &&
-                enc->avpu.completions_drained != drained_before) {
+            pthread_mutex_lock(&g_t31_completion_lock);
+            for (;;) {
+                int pending = avpu_pending_peek(&enc->avpu, NULL, NULL);
+                struct timespec until;
+
+                __sync_synchronize();
+                if (!pending &&
+                    enc->avpu.completions_drained != drained_before) {
+                    completed = 1;
+                    break;
+                }
+                now_ms = t31_monotonic_ms();
+                wake_ms = deadline_ms;
+                if (!t31_avc_legacy() && next_poll_ms < wake_ms)
+                    wake_ms = next_poll_ms;
+                if (now_ms >= wake_ms)
+                    break;
+                until.tv_sec = (time_t)(wake_ms / 1000u);
+                until.tv_nsec = (long)(wake_ms % 1000u) * 1000000L;
+                (void)pthread_cond_timedwait(&g_t31_completion_cond,
+                                             &g_t31_completion_lock, &until);
+            }
+            pthread_mutex_unlock(&g_t31_completion_lock);
+            if (completed || now_ms >= deadline_ms)
+                break;
+            /* now_ms >= next_poll_ms: lost-IRQ check, outside the
+             * completion lock (it may complete and signal itself). */
+            if (t31_avc_poll_completion(enc, drained_before)) {
                 completed = 1;
                 break;
             }
-            /* A frame takes < 100 ms: from 0.5 s on, look for a finished
-             * command whose IRQ got lost. */
-            if (!t31_avc_legacy() && retry >= 500 && retry % 250 == 0 &&
-                t31_avc_poll_completion(enc, drained_before)) {
-                completed = 1;
-                break;
-            }
-            usleep(1000);
+            next_poll_ms += 250u;
         }
         if (!completed) {
             LOG_CODEC("Process: T31 serialized completion timeout channel=%d enc=%d/%d drained=%u/%u pending=%d",
