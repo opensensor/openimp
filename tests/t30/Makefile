@@ -56,15 +56,38 @@ helix_encoder_test_t20: $(HELIX_SOURCES) $(ROOT)/src/t30/t30_annexb.h $(ROOT)/sr
 		-Wl,--wrap=open,--wrap=close,--wrap=ioctl \
 		-o $@ $(HELIX_SOURCES)
 
+# IVS framework and move algorithm with the legacy T20/T21/T30 ABI; the test
+# source is shared with tests/t23. The frame record carries 32-bit
+# addresses: no PIE.
+IVS_SRC := $(ROOT)/src/t31
+IVS_SOURCES := $(ROOT)/tests/t23/ivs_framework_test.c \
+	$(IVS_SRC)/openimp_t31_ivs.c $(IVS_SRC)/openimp_t31_ivs_move.c
+IVS_DEPS := $(IVS_SOURCES) $(IVS_SRC)/openimp_t31_ivs.h \
+	$(IVS_SRC)/openimp_t31_ivs_abi.h $(IVS_SRC)/openimp_t31_ivs_move.h
+
+ivs_framework_test_t21: $(IVS_DEPS)
+	$(CC) $(CFLAGS) -Wno-unused-function -DPLATFORM_T21 -fno-pie -no-pie \
+		-I$(ROOT)/include -I$(ROOT)/src -I$(IVS_SRC) \
+		-o $@ $(IVS_SOURCES) -pthread
+
+ivs_framework_test_t20: $(IVS_DEPS)
+	$(CC) $(CFLAGS) -Wno-unused-function -DPLATFORM_T20 -DPLATFORM_T21 \
+		-fno-pie -no-pie -I$(ROOT)/include -I$(ROOT)/src -I$(IVS_SRC) \
+		-o $@ $(IVS_SOURCES) -pthread
+
 check: descriptor_test annexb_test level_test helix_encoder_test \
-	helix_encoder_test_t21 helix_encoder_test_t20
+	helix_encoder_test_t21 helix_encoder_test_t20 \
+	ivs_framework_test_t21 ivs_framework_test_t20
 	./descriptor_test
 	./annexb_test
 	./level_test
 	./helix_encoder_test
 	./helix_encoder_test_t21
 	./helix_encoder_test_t20
+	./ivs_framework_test_t21
+	./ivs_framework_test_t20
 
 clean:
 	$(RM) descriptor_test annexb_test level_test helix_encoder_test \
-		helix_encoder_test_t21 helix_encoder_test_t20
+		helix_encoder_test_t21 helix_encoder_test_t20 \
+		ivs_framework_test_t21 ivs_framework_test_t20

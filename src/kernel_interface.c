@@ -1502,9 +1502,14 @@ volatile int openimp_vbm_dq_step[MAX_VBM_POOLS];
 #define VBM_DQ_STEP(chn, step) do { } while (0)
 #endif
 
-#if defined(PLATFORM_T31) || defined(PLATFORM_T23)
+#if defined(PLATFORM_T31) || defined(PLATFORM_T23) || \
+    defined(PLATFORM_T21) || defined(PLATFORM_T30)
 extern void openimp_t31_ivs_capture(int fs_chn, const void *frame)
     __attribute__((weak));
+#endif
+
+#if defined(PLATFORM_T31) || defined(PLATFORM_T23) || \
+    defined(PLATFORM_T21) || defined(PLATFORM_T30)
 
 /*
  * The ready queue below is a pull queue: only IMP_FrameSource_GetFrame (the
@@ -1517,7 +1522,8 @@ extern void openimp_t31_ivs_capture(int fs_chn, const void *frame)
  * IVS copy, together with anything a stopped reader left queued.  A reader
  * that comes back marks itself with its first (empty) GetFrame, and the
  * next capture is published again; an active reader polls far more often
- * than this window, so its path is unchanged.
+ * than this window, so its path is unchanged.  T20/T21/T30 need this as
+ * well: their pools have two buffers, so two parked frames stop capture.
  */
 #define VBM_PULL_IDLE_MS 1000u
 
@@ -1540,6 +1546,7 @@ static int vbm_pull_idle(int chn)
     return vbm_now_ms() - last >= VBM_PULL_IDLE_MS;
 }
 
+#if defined(PLATFORM_T31) || defined(PLATFORM_T23)
 /*
  * Frame-ready events. The encoder pulls frames with VBMGetFrame, which never
  * blocks; it used to sleep 1 ms between attempts, so every captured frame
@@ -1588,6 +1595,8 @@ int VBMWaitReady(int chn, unsigned int sequence, uint32_t timeout_us)
     pthread_once(&vbm_ready_once, vbm_ready_init_once);
     return openimp_ready_event_wait(&vbm_ready[chn], sequence, timeout_us);
 }
+
+#endif /* PLATFORM_T31 || PLATFORM_T23: frame-ready events */
 
 /* Return every frame still waiting in chn's ready queue to the driver while
  * no reader is pulling it.  Each index is popped under queue_mutex, so a
@@ -1903,7 +1912,8 @@ int VBMKernelDequeue(int chn, int fd, void **frame_out) {
     memcpy(pool->frames[idx].data, &frame_timestamp,
            sizeof(frame_timestamp));
 #endif
-#if defined(PLATFORM_T31) || defined(PLATFORM_T23)
+#if defined(PLATFORM_T31) || defined(PLATFORM_T23) || \
+    defined(PLATFORM_T21) || defined(PLATFORM_T30)
     /* IVS groups bound to this channel copy the luma they need now, while
      * the buffer is still private to this thread (openimp_t31_ivs.c). */
     VBM_DQ_STEP(chn, VBM_DQ_STEP_IVS);
@@ -1914,7 +1924,8 @@ int VBMKernelDequeue(int chn, int fd, void **frame_out) {
      * if this flag is set, preventing double-QBUF. */
     if (pool->buf_in_userspace)
         pool->buf_in_userspace[idx] = 1;
-#if defined(PLATFORM_T31) || defined(PLATFORM_T23)
+#if defined(PLATFORM_T31) || defined(PLATFORM_T23) || \
+    defined(PLATFORM_T21) || defined(PLATFORM_T30)
     if (vbm_pull_idle(chn)) {
         VBM_DQ_STEP(chn, VBM_DQ_STEP_REQUEUE);
         VBMRecycleIdleFrames(chn);
@@ -2052,7 +2063,8 @@ int VBMGetFrame(int chn, void **frame) {
         *frame = NULL;
         return -1;
     }
-#if defined(PLATFORM_T31) || defined(PLATFORM_T23)
+#if defined(PLATFORM_T31) || defined(PLATFORM_T23) || \
+    defined(PLATFORM_T21) || defined(PLATFORM_T30)
     __atomic_store_n(&vbm_last_pull_ms[chn], vbm_now_ms(), __ATOMIC_RELAXED);
 #endif
 
