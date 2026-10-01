@@ -1,4 +1,7 @@
-/* Host tests for the T31 AENC/ADEC built-in codecs and channel API. */
+/* Host tests for the AENC/ADEC built-in codecs and channel API
+ * (src/audio, shared by T31 and T23). Built once as is (T31 behaviour:
+ * G.726 at 16 kbit/s, frame time stamps) and once with -DPLATFORM_T23
+ * (G.726 at 32 kbit/s, wall-clock time stamps) by tests/t23. */
 
 #define _GNU_SOURCE
 #include <math.h>
@@ -6,10 +9,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/time.h>
 
 #include <imp/imp_audio.h>
 
-#include "t31/openimp_t31_acodec_core.h"
+#include "audio/openimp_audio_codec.h"
 
 #define CHECK(condition)                                                      \
     do {                                                                      \
@@ -165,6 +169,63 @@ static const uint8_t g726_ffmpeg_prefix[83] = {
     0xb7, 0x30, 0x41, 0xb0, 0x8e, 0xe7, 0x31, 0x01, 0x20, 0x88, 0xe8,
 };
 
+/* ffmpeg's adpcm_g726 at 32 kbit/s agrees with the Sun G.721 arithmetic
+ * on the first 93 bytes (186 samples) of make_signal(); the old T23
+ * src/audio G.721 coder, written independently from the CCITT reference,
+ * matched this one bit for bit over 64000 samples. */
+static const uint8_t g726_32_ffmpeg_prefix[93] = {
+    0x88, 0x88, 0x87, 0x77, 0x77, 0x65, 0x32, 0x21, 0xec, 0xb9, 0xaa, 0xcd,
+    0xde, 0x14, 0x55, 0x65, 0x32, 0x2e, 0xfe, 0xaa, 0xa9, 0xcd, 0xee, 0x22,
+    0x36, 0x55, 0x5f, 0x31, 0xfe, 0xab, 0x9a, 0xae, 0xef, 0xc4, 0x16, 0x27,
+    0x12, 0xff, 0x1e, 0xed, 0xba, 0xad, 0xc1, 0xee, 0x35, 0x46, 0x53, 0x21,
+    0xf3, 0xdb, 0xa9, 0xd9, 0xdf, 0xc2, 0x1f, 0x55, 0x64, 0x12, 0x14, 0xde,
+    0x91, 0x8e, 0xd1, 0xde, 0x1f, 0x15, 0x17, 0x1e, 0x21, 0xff, 0xcf, 0xbd,
+    0x9e, 0xfe, 0xc4, 0xb6, 0x4f, 0x54, 0xd5, 0xdf, 0xfc, 0xac, 0xab, 0x1c,
+    0xed, 0x5b, 0x7f, 0x53, 0xc3, 0x4e, 0xee, 0x9e, 0xab,
+
+};
+
+static void test_g726_32(void)
+{
+    OpenIMPG726State enc;
+    OpenIMPG726State dec;
+    int16_t pcm[1600];
+    int16_t back[1600];
+    uint8_t coded[800];
+    int written;
+
+    make_signal(pcm, 1600);
+    openimp_g726_32_init(&enc);
+    /* an odd sample count keeps its nibble for the next call */
+    written = openimp_g726_encode(&enc, coded, pcm, 1);
+    CHECK(written == 0);
+    written += openimp_g726_encode(&enc, coded, pcm + 1, 1598);
+    CHECK(written == 799);
+    written += openimp_g726_encode(&enc, coded + 799, pcm + 1599, 1);
+    CHECK(written == 800);
+    CHECK(memcmp(coded, g726_32_ffmpeg_prefix,
+                 sizeof(g726_32_ffmpeg_prefix)) == 0);
+
+    openimp_g726_32_init(&dec);
+    CHECK(openimp_g726_decode(&dec, back, coded, 800) == 1600);
+    CHECK(snr_db(pcm, back, 1600, 80) > 12.0);
+
+    sine(pcm, 1600, 6000.0, 500.0);
+    openimp_g726_32_init(&enc);
+    openimp_g726_32_init(&dec);
+    CHECK(openimp_g726_encode(&enc, coded, pcm, 1600) == 800);
+    CHECK(openimp_g726_decode(&dec, back, coded, 800) == 1600);
+    CHECK(snr_db(pcm, back, 1600, 80) > 20.0);
+}
+
+static int64_t wall_us(void)
+{
+    struct timeval tv;
+
+    gettimeofday(&tv, NULL);
+    return (int64_t)tv.tv_sec * 1000000 + tv.tv_usec;
+}
+
 static void test_g726(void)
 {
     OpenIMPG726State enc;
@@ -290,9 +351,20 @@ static void test_api(void)
     CHECK(IMP_AENC_GetStream(0, &stream, NOBLOCK) == -1);
     CHECK(IMP_AENC_SendFrame(0, &frame) == 0);
     CHECK(IMP_AENC_PollingStream(0, 10) == 0);
-    CHECK(IMP_AENC_GetStream(0, &stream, BLOCK) == 0);
+    {
+        int64_t before = wall_us();
+
+        CHECK(IMP_AENC_GetStream(0, &stream, BLOCK) == 0);
+#if defined(PLATFORM_T23)
+        /* T23 OEM: GetStream stamps the stream with gettimeofday() */
+        CHECK(stream.timeStamp >= before && stream.timeStamp <= wall_us());
+#else
+        (void)before;
+        CHECK(stream.timeStamp == 123456789);
+#endif
+    }
     CHECK(stream.len == 160);
-    CHECK(stream.timeStamp == 123456789 && stream.seq == 7);
+    CHECK(stream.seq == 7);
     openimp_g711a_encode(expect, pcm, 160);
     CHECK(memcmp(stream.stream, expect, 160) == 0);
 
@@ -332,7 +404,11 @@ static void test_api(void)
         } cases[] = {
             { PT_G711U, 160, 320 },
             { PT_ADPCM, 80, 320 },
-            { PT_G726, 40, 320 },
+#if defined(PLATFORM_T23)
+            { PT_G726, 80, 320 },   /* 32 kbit/s */
+#else
+            { PT_G726, 40, 320 },   /* 16 kbit/s */
+#endif
         };
         unsigned int c;
 
@@ -424,7 +500,12 @@ int main(void)
     test_g711();
     test_adpcm();
     test_g726();
+    test_g726_32();
     test_api();
+#if defined(PLATFORM_T23)
+    printf("T23 audio codec tests passed\n");
+#else
     printf("T31 audio codec tests passed\n");
+#endif
     return 0;
 }

@@ -40,15 +40,15 @@ $(READY_EVENT_TEST_BIN): ready_event_test.c \
 		ready_event_test.c -o "$@" -lpthread
 
 $(ACODEC_TEST_BIN): acodec_test.c \
-	$(PROJECT_DIR)/src/t31/openimp_t31_acodec.c \
-	$(PROJECT_DIR)/src/t31/openimp_t31_acodec_core.c \
-	$(PROJECT_DIR)/src/t31/openimp_t31_acodec_core.h \
+	$(PROJECT_DIR)/src/audio/openimp_audio_enc_dec.c \
+	$(PROJECT_DIR)/src/audio/openimp_audio_codec.c \
+	$(PROJECT_DIR)/src/audio/openimp_audio_codec.h \
 	$(PROJECT_DIR)/include/imp/imp_audio.h
 	mkdir -p "$(dir $@)"
 	$(CC) $(CFLAGS) -std=gnu99 -I$(PROJECT_DIR)/include -I$(PROJECT_DIR)/src \
 		acodec_test.c \
-		$(PROJECT_DIR)/src/t31/openimp_t31_acodec.c \
-		$(PROJECT_DIR)/src/t31/openimp_t31_acodec_core.c \
+		$(PROJECT_DIR)/src/audio/openimp_audio_enc_dec.c \
+		$(PROJECT_DIR)/src/audio/openimp_audio_codec.c \
 		-lpthread -lm -o "$@"
 
 clean:

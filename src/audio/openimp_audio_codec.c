@@ -1,4 +1,4 @@
-/* Built-in AENC/ADEC codecs, see openimp_t31_acodec_core.h.
+/* Built-in AENC/ADEC codecs, see openimp_audio_codec.h.
  *
  * G.711 and G.726 follow the Sun Microsystems reference implementation
  * (released for unrestricted use), IMA ADPCM follows Jack Jansen's
@@ -7,7 +7,7 @@
  * so the bitstreams are identical.
  */
 
-#include "t31/openimp_t31_acodec_core.h"
+#include "audio/openimp_audio_codec.h"
 
 #include <string.h>
 
@@ -310,6 +310,26 @@ static const int16_t g726_16_dqlntab[4] = { 116, 365, 365, 116 };
 static const int16_t g726_16_witab[4] = { -704, 14048, 14048, -704 };
 static const int16_t g726_16_fitab[4] = { 0, 0xe00, 0xe00, 0 };
 
+/* ---------------------------------------------------------- G.726 32k */
+
+/* G.721 tables of the Sun reference g721.c. witab is scaled by 32 at the
+ * call, as there. */
+#define G726_32_BITS 4
+
+static const int16_t g726_32_qtab[7] = { -124, 80, 178, 246, 300, 349, 400 };
+static const int16_t g726_32_dqlntab[16] = {
+    -2048, 4, 135, 213, 273, 323, 373, 425,
+    425, 373, 323, 273, 213, 135, 4, -2048
+};
+static const int16_t g726_32_witab[16] = {
+    -12, 18, 41, 64, 112, 198, 355, 1122,
+    1122, 355, 198, 112, 64, 41, 18, -12
+};
+static const int16_t g726_32_fitab[16] = {
+    0, 0, 0, 0x200, 0x200, 0x200, 0x600, 0xe00,
+    0xe00, 0x600, 0x200, 0x200, 0x200, 0, 0, 0
+};
+
 static int g726_quan(int value, const int16_t *table, int size)
 {
     int i;
@@ -559,7 +579,7 @@ static void g726_update(int code_size, int y, int wi, int fi, int dq, int sr,
     }
 }
 
-void openimp_g726_16_init(OpenIMPG726State *state)
+static void g726_init(OpenIMPG726State *state, int bits)
 {
     int i;
 
@@ -570,56 +590,100 @@ void openimp_g726_16_init(OpenIMPG726State *state)
         state->sr[i] = 32;
     for (i = 0; i < 6; i++)
         state->dq[i] = 32;
+    state->bits = bits;
 }
 
-static int g726_16_encode_sample(OpenIMPG726State *st, int sl)
+void openimp_g726_16_init(OpenIMPG726State *state)
+{
+    g726_init(state, G726_16_BITS);
+}
+
+void openimp_g726_32_init(OpenIMPG726State *state)
+{
+    g726_init(state, G726_32_BITS);
+}
+
+/* Per-rate quantizer: code -> sign bit, dqln, wi, fi, as in the Sun
+ * g723_16/g721 coders. libimp calls its quantize() with the code count
+ * (4) at 16 kbit/s and 15 at 32 kbit/s (the T23 g726codec.o, same object
+ * in T31 libimp 1.1.6). */
+static int g726_code_quantize(const OpenIMPG726State *st, int d, int y)
+{
+    if (st->bits == G726_32_BITS)
+        return g726_quantize(d, y, g726_32_qtab, 15);
+    return g726_quantize(d, y, g726_16_qtab, 4);
+}
+
+static void g726_code_params(const OpenIMPG726State *st, int code, int *sign,
+                             int *dqln, int *wi, int *fi)
+{
+    if (st->bits == G726_32_BITS) {
+        code &= 15;
+        *sign = code & 8;
+        *dqln = g726_32_dqlntab[code];
+        *wi = g726_32_witab[code] * 32;
+        *fi = g726_32_fitab[code];
+    } else {
+        code &= 3;
+        *sign = code & 2;
+        *dqln = g726_16_dqlntab[code];
+        *wi = g726_16_witab[code];
+        *fi = g726_16_fitab[code];
+    }
+}
+
+static int g726_encode_sample(OpenIMPG726State *st, int sl)
 {
     int sezi = g726_predictor_zero(st);
     int16_t sez = (int16_t)((int16_t)sezi >> 1);
     int16_t se = (int16_t)((int16_t)(sezi + g726_predictor_pole(st)) >> 1);
     int16_t d = (int16_t)(sl - se);
     int y = g726_step_size(st);
-    int i = g726_quantize(d, y, g726_16_qtab, 4);
-    int16_t dq = (int16_t)g726_reconstruct(i & 2, g726_16_dqlntab[i], y);
-    int16_t sr = (int16_t)(dq < 0 ? se - (dq & 0x3fff) : se + dq);
-    int16_t dqsez = (int16_t)(sr + sez - se);
+    int i = g726_code_quantize(st, d, y);
+    int sign, dqln, wi, fi;
+    int16_t dq;
+    int16_t sr;
+    int16_t dqsez;
 
-    g726_update(G726_16_BITS, y, g726_16_witab[i], g726_16_fitab[i], dq, sr,
-                dqsez, st);
+    g726_code_params(st, i, &sign, &dqln, &wi, &fi);
+    dq = (int16_t)g726_reconstruct(sign, dqln, y);
+    sr = (int16_t)(dq < 0 ? se - (dq & 0x3fff) : se + dq);
+    dqsez = (int16_t)(sr + sez - se);
+    g726_update(st->bits, y, wi, fi, dq, sr, dqsez, st);
     return i;
 }
 
-static int16_t g726_16_decode_sample(OpenIMPG726State *st, int code)
+static int16_t g726_decode_sample(OpenIMPG726State *st, int code)
 {
     int sezi = g726_predictor_zero(st);
     int16_t sez = (int16_t)((int16_t)sezi >> 1);
     int16_t se = (int16_t)((int16_t)(sezi + g726_predictor_pole(st)) >> 1);
     int y = g726_step_size(st);
+    int sign, dqln, wi, fi;
     int16_t dq;
     int16_t sr;
     int16_t dqsez;
 
-    code &= 3;
-    dq = (int16_t)g726_reconstruct(code & 2, g726_16_dqlntab[code], y);
+    g726_code_params(st, code, &sign, &dqln, &wi, &fi);
+    dq = (int16_t)g726_reconstruct(sign, dqln, y);
     sr = (int16_t)(dq < 0 ? se - (dq & 0x3fff) : se + dq);
     dqsez = (int16_t)(sr - se + sez);
-    g726_update(G726_16_BITS, y, g726_16_witab[code], g726_16_fitab[code], dq,
-                sr, dqsez, st);
+    g726_update(st->bits, y, wi, fi, dq, sr, dqsez, st);
     return (int16_t)(sr * 4);
 }
 
-int openimp_g726_16_encode(OpenIMPG726State *state, uint8_t *out,
-                           const int16_t *in, int samples)
+int openimp_g726_encode(OpenIMPG726State *state, uint8_t *out,
+                        const int16_t *in, int samples)
 {
+    int bits = state->bits;
     int written = 0;
     int i;
 
     for (i = 0; i < samples; i++) {
-        int code = g726_16_encode_sample(state, in[i] >> 2);
+        int code = g726_encode_sample(state, in[i] >> 2);
 
-        state->bit_buffer = (state->bit_buffer << G726_16_BITS) |
-                            (uint32_t)code;
-        state->bit_count += G726_16_BITS;
+        state->bit_buffer = (state->bit_buffer << bits) | (uint32_t)code;
+        state->bit_count += bits;
         if (state->bit_count >= 8) {
             state->bit_count -= 8;
             out[written++] =
@@ -629,23 +693,36 @@ int openimp_g726_16_encode(OpenIMPG726State *state, uint8_t *out,
     return written;
 }
 
-int openimp_g726_16_decode(OpenIMPG726State *state, int16_t *out,
-                           const uint8_t *in, int bytes)
+int openimp_g726_decode(OpenIMPG726State *state, int16_t *out,
+                        const uint8_t *in, int bytes)
 {
+    int bits = state->bits;
     int consumed = 0;
     int written = 0;
 
     for (;;) {
-        if (state->bit_count < G726_16_BITS) {
+        if (state->bit_count < bits) {
             if (consumed >= bytes)
                 break;
             state->bit_buffer = (state->bit_buffer << 8) | in[consumed++];
             state->bit_count += 8;
         }
-        state->bit_count -= G726_16_BITS;
-        out[written++] = g726_16_decode_sample(
+        state->bit_count -= bits;
+        out[written++] = g726_decode_sample(
             state, (int)((state->bit_buffer >> state->bit_count) &
-                         ((1u << G726_16_BITS) - 1u)));
+                         ((1u << bits) - 1u)));
     }
     return written;
+}
+
+int openimp_g726_16_encode(OpenIMPG726State *state, uint8_t *out,
+                           const int16_t *in, int samples)
+{
+    return openimp_g726_encode(state, out, in, samples);
+}
+
+int openimp_g726_16_decode(OpenIMPG726State *state, int16_t *out,
+                           const uint8_t *in, int bytes)
+{
+    return openimp_g726_decode(state, out, in, bytes);
 }

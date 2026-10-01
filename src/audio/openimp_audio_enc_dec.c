@@ -1,6 +1,7 @@
-/* T31 audio encoder (AENC) and decoder (ADEC) channels.
+/* Audio encoder (AENC) and decoder (ADEC) channels, shared by T31 and T23.
  *
- * Mirrors libimp 1.1.6 aenc.c/adec.c:
+ * Mirrors libimp 1.1.6 aenc.c/adec.c (the T23 SDK 1.3.0 objects behave the
+ * same, with the two platform differences under OPENIMP_ACODEC_* below):
  *   - six channels per direction; a channel owns bufSize nodes that cycle
  *     between a free list and a ready list;
  *   - the work is synchronous: SendFrame/SendStream run the codec in the
@@ -10,8 +11,8 @@
  *   - a node holds one AI frame (AENC: numPerFrm * 2 bytes of the AI
  *     device) or one AO frame (ADEC: numPerFrm * 2 bytes of the AO device);
  *     800 bytes if the device attributes are not set yet;
- *   - method slots 0..5 are the PT_* payload types (G.711A, G.711U, G.726 at
- *     16 kbit/s and IMA ADPCM are built in, PT_PCM and PT_AEC are not), slots
+ *   - method slots 0..5 are the PT_* payload types (G.711A, G.711U, G.726 and
+ *     IMA ADPCM are built in, PT_PCM and PT_AEC are not), slots
  *     6..10 take user codecs; IMP_A*_Register* returns the slot as handle and
  *     the caller passes it as IMPAudio*ChnAttr.type;
  *   - user callbacks receive NULL as their attribute/instance pointers, like
@@ -30,17 +31,32 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <sys/time.h>
 #include <unistd.h>
 
 #include <imp/imp_audio.h>
 
-#include "t31/openimp_t31_acodec_core.h"
+#include "audio/openimp_audio_codec.h"
 
 #define ACODEC_CHANNELS        6
 #define ACODEC_BUILTIN_SLOTS   6
 #define ACODEC_METHOD_SLOTS    11
 #define ACODEC_DEFAULT_BYTES   800
 #define ACODEC_USER_MIN_BYTES  8192
+
+/* Platform differences of the vendor objects:
+ * - PT_G726 rate: T31 libimp 1.1.6 opens g726_init(16000), the T23 OEM
+ *   libimp g726_init(32000) (both in _aenc_pcm2g726/_adec_g726_2pcm);
+ * - stream time stamp: the T23 OEM GetStream stamps the stream with
+ *   gettimeofday() in microseconds; T31 libimp leaves it untouched, here it
+ *   carries the frame's (AENC) or input stream's (ADEC) time stamp. */
+#if defined(PLATFORM_T23)
+#define OPENIMP_ACODEC_G726_32K       1
+#define OPENIMP_ACODEC_WALLCLOCK_TS   1
+#else
+#define OPENIMP_ACODEC_G726_32K       0
+#define OPENIMP_ACODEC_WALLCLOCK_TS   0
+#endif
 
 #if UINTPTR_MAX == 0xffffffffu /* MIPS32 target; host tests are 64-bit */
 _Static_assert(sizeof(IMPAudioEncEncoder) == 36,
@@ -190,6 +206,18 @@ static int channel_alloc_buffers(AcodecChannel *ch, int depth, int capacity)
     return 0;
 }
 
+static void acodec_g726_init(OpenIMPG726State *state)
+{
+#if OPENIMP_ACODEC_G726_32K
+    openimp_g726_32_init(state);
+#else
+    openimp_g726_16_init(state);
+#endif
+}
+
+/* PCM samples per G.726 code byte: 4 at 16 kbit/s, 2 at 32 kbit/s */
+#define ACODEC_G726_SAMPLES_PER_BYTE (OPENIMP_ACODEC_G726_32K ? 2 : 4)
+
 static void deadline_after_ms(struct timespec *deadline, unsigned int ms)
 {
     clock_gettime(CLOCK_MONOTONIC, deadline);
@@ -267,7 +295,16 @@ static int channel_get(AcodecChannel *ch, IMPAudioStream *stream,
     stream->stream = node->data;
     stream->phyAddr = 0;
     stream->len = node->len;
+#if OPENIMP_ACODEC_WALLCLOCK_TS
+    {
+        struct timeval tv;
+
+        gettimeofday(&tv, NULL);
+        stream->timeStamp = (int64_t)tv.tv_sec * 1000000 + tv.tv_usec;
+    }
+#else
     stream->timeStamp = node->timestamp;
+#endif
     stream->seq = node->seq;
     pthread_mutex_unlock(&ch->lock);
     return 0;
@@ -407,7 +444,7 @@ int IMP_AENC_CreateChn(int aeChn, IMPAudioEncChnAttr *attr)
     if (type == PT_ADPCM)
         openimp_adpcm_init(&ch->state.adpcm);
     else if (type == PT_G726)
-        openimp_g726_16_init(&ch->state.g726);
+        acodec_g726_init(&ch->state.g726);
     else if (encoder.openEncoder)
         (void)encoder.openEncoder(NULL, NULL);
     ch->enabled = 1;
@@ -459,9 +496,9 @@ static int aenc_builtin_encode(AcodecChannel *ch, IMPAudioFrame *frame,
             samples = capacity * 2;
         return openimp_adpcm_encode(&ch->state.adpcm, out, pcm, samples);
     case PT_G726:
-        if (samples > capacity * 4)
-            samples = capacity * 4;
-        return openimp_g726_16_encode(&ch->state.g726, out, pcm, samples);
+        if (samples > capacity * ACODEC_G726_SAMPLES_PER_BYTE)
+            samples = capacity * ACODEC_G726_SAMPLES_PER_BYTE;
+        return openimp_g726_encode(&ch->state.g726, out, pcm, samples);
     default:
         return 0;
     }
@@ -605,7 +642,7 @@ int IMP_ADEC_CreateChn(int adChn, IMPAudioDecChnAttr *attr)
     if (type == PT_ADPCM)
         openimp_adpcm_init(&ch->state.adpcm);
     else if (type == PT_G726)
-        openimp_g726_16_init(&ch->state.g726);
+        acodec_g726_init(&ch->state.g726);
     else if (decoder.openDecoder)
         (void)decoder.openDecoder(NULL, NULL);
     ch->enabled = 1;
@@ -656,9 +693,9 @@ static int adec_builtin_decode(AcodecChannel *ch, const uint8_t *in, int len,
             len = capacity / 4;
         return openimp_adpcm_decode(&ch->state.adpcm, pcm, in, len);
     case PT_G726:
-        if (len > capacity / 8)
-            len = capacity / 8;
-        return openimp_g726_16_decode(&ch->state.g726, pcm, in, len) * 2;
+        if (len > capacity / (2 * ACODEC_G726_SAMPLES_PER_BYTE))
+            len = capacity / (2 * ACODEC_G726_SAMPLES_PER_BYTE);
+        return openimp_g726_decode(&ch->state.g726, pcm, in, len) * 2;
     default:
         return 0;
     }

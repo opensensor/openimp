@@ -111,6 +111,60 @@ int IMP_Encoder_YuvExit(void *h)
     return 0;
 }
 
+/* OEM IMP_Encoder_YuvSetCrop: even values inside the picture, every crop
+ * margin below 510 pixels; i264e order {enable, x, w, y, h}. */
+int IMP_Encoder_YuvSetCrop(void *h, IMPEncoderCropCfg *cfg)
+{
+    T23YuvEncoder *encoder = h;
+    uint32_t aligned_w, aligned_h, value[5];
+    int result;
+
+    if (!encoder || !cfg || ((cfg->x | cfg->y | cfg->w | cfg->h) & 1u) ||
+        cfg->x + cfg->w > encoder->bridge.width ||
+        cfg->y + cfg->h > encoder->bridge.height)
+        return -1;
+    aligned_w = (encoder->bridge.width + 15u) & ~15u;
+    aligned_h = (encoder->bridge.height + 15u) & ~15u;
+    if (cfg->x >= 510u || cfg->y >= 510u ||
+        aligned_w - cfg->x - cfg->w >= 510u ||
+        aligned_h - cfg->y - cfg->h >= 510u)
+        return -1;
+    value[0] = cfg->enable ? 1u : 0u;
+    value[1] = cfg->x;
+    value[2] = cfg->w;
+    value[3] = cfg->y;
+    value[4] = cfg->h;
+    pthread_mutex_lock(&encoder->lock);
+    result = OpenIMP_T23_HelixSetParam(&encoder->bridge, T23_I264E_CROP, 0,
+                                       value, sizeof(value));
+    pthread_mutex_unlock(&encoder->lock);
+    return result == 0 ? 0 : -1;
+}
+
+int IMP_Encoder_YuvGetCrop(void *h, IMPEncoderCropCfg *cfg)
+{
+    T23YuvEncoder *encoder = h;
+    uint32_t value[5];
+    int result;
+
+    if (!encoder || !cfg)
+        return -1;
+    memset(cfg, 0, sizeof(*cfg));
+    memset(value, 0, sizeof(value));
+    pthread_mutex_lock(&encoder->lock);
+    result = OpenIMP_T23_HelixGetParam(&encoder->bridge, T23_I264E_CROP, 0,
+                                       value, sizeof(value));
+    pthread_mutex_unlock(&encoder->lock);
+    if (result < 0)
+        return -1;
+    cfg->enable = value[0] != 0;
+    cfg->x = value[1];
+    cfg->w = value[2];
+    cfg->y = value[3];
+    cfg->h = value[4];
+    return 0;
+}
+
 /* Physically contiguous, page-aligned buffers from the rmem allocator. */
 void *IMP_Encoder_VbmAlloc(uint32_t size, uint32_t align)
 {

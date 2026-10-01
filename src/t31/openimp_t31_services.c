@@ -15,14 +15,19 @@
 
 #include "dma_alloc.h"
 #include "imp_log_int.h"
+#if !defined(PLATFORM_T23)
+/* T23 has its own OSD ABI and implementation (src/t23/openimp_t23_osd.c) */
 #include "openimp_t31_osd.h"
+#endif
 
 #if !defined(PLATFORM_T31)
 #include "imp/imp_ivs.h"
 #include "imp/imp_ivs_base_move.h"
 #include "imp/imp_ivs_move.h"
 #endif
+#if !defined(PLATFORM_T23)
 #include "openimp_t31_osd_abi.h"
+#endif
 #include "imp/imp_system.h"
 
 #define T31_OSD_GROUPS  16
@@ -45,6 +50,7 @@ int OpenIMP_Encoder_StreamIsRmem(int channel)
     return 0;
 }
 
+#if !defined(PLATFORM_T23)
 struct t31_osd_group {
     int created;
     int started;
@@ -75,12 +81,15 @@ static struct t31_osd_group osd_groups[T31_OSD_GROUPS];
 static struct t31_osd_region osd_regions[T31_OSD_REGIONS];
 static int osd_pool_size;
 
+#endif /* !PLATFORM_T23 */
+
 static int t31_fail(int error)
 {
     errno = error;
     return -1;
 }
 
+#if !defined(PLATFORM_T23)
 static int valid_osd_group(int group)
 {
     return group >= 0 && group < T31_OSD_GROUPS;
@@ -590,6 +599,7 @@ int IMP_OSD_Stop(int group)
     pthread_mutex_unlock(&osd_lock);
     return 0;
 }
+#endif /* !PLATFORM_T23 */
 
 /* T21/T23/T30 builds keep these IVS stubs; T31 has the real IVS in
  * openimp_t31_ivs.c (vendor ABI there differs from include/imp/imp_ivs*.h). */

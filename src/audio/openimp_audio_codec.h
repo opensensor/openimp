@@ -1,16 +1,18 @@
-/* Built-in audio codecs of the T31 AENC/ADEC modules.
+/* Built-in audio codecs of the AENC/ADEC modules (T31 and T23).
  *
  * These match the vendor libimp 1.1.6 codecs bit for bit: G.711 A/u-law
  * (Sun g711.c with 13/14-bit segment search), IMA ADPCM (Jansen's
  * adpcm.c, high nibble first) and G.726 at 16 kbit/s (Sun g72x reference
- * plus the 2-bit tables, MSB-first bit packing). The vendor keeps one static
+ * plus the 2-bit tables, MSB-first bit packing). The T23 OEM libimp links
+ * the same codec objects but opens G.726 at 32 kbit/s (G.721 tables), so
+ * that rate is here too. The vendor keeps one static
  * state per codec and direction; here the state belongs to the caller so
  * channels do not share predictor history.
  *
  * The module has no IMP dependencies so the host tests can link it.
  */
-#ifndef OPENIMP_T31_ACODEC_CORE_H
-#define OPENIMP_T31_ACODEC_CORE_H
+#ifndef OPENIMP_AUDIO_CODEC_H
+#define OPENIMP_AUDIO_CODEC_H
 
 #include <stdint.h>
 
@@ -33,6 +35,7 @@ typedef struct {
     int8_t td;           /* tone detect */
     uint32_t bit_buffer; /* packer/unpacker */
     int bit_count;
+    int bits;            /* code word size: 2 (16 kbit/s) or 4 (32 kbit/s) */
 } OpenIMPG726State;
 
 uint8_t openimp_linear2alaw(int16_t pcm);
@@ -55,11 +58,20 @@ int openimp_adpcm_encode(OpenIMPAdpcmState *state, uint8_t *out,
 int openimp_adpcm_decode(OpenIMPAdpcmState *state, int16_t *out,
                          const uint8_t *in, int bytes);
 
+/* G.726 at 16 kbit/s (2-bit codes, what T31 libimp 1.1.6 uses for PT_G726)
+ * or 32 kbit/s (4-bit codes, G.721, what the T23 OEM libimp uses). The init
+ * call picks the rate; encode/decode follow the state. */
 void openimp_g726_16_init(OpenIMPG726State *state);
+void openimp_g726_32_init(OpenIMPG726State *state);
 /* return bytes written; leftover bits stay in the state like the vendor */
+int openimp_g726_encode(OpenIMPG726State *state, uint8_t *out,
+                        const int16_t *in, int samples);
+/* return samples written (8 / bits per input byte) */
+int openimp_g726_decode(OpenIMPG726State *state, int16_t *out,
+                        const uint8_t *in, int bytes);
+/* the same, kept for the 16 kbit/s callers */
 int openimp_g726_16_encode(OpenIMPG726State *state, uint8_t *out,
                            const int16_t *in, int samples);
-/* return samples written (4 per input byte) */
 int openimp_g726_16_decode(OpenIMPG726State *state, int16_t *out,
                            const uint8_t *in, int bytes);
 

@@ -383,12 +383,27 @@ failure:
     return -1;
 }
 
+#if defined(PLATFORM_T23)
+/* T23 extras (src/t23/openimp_t23_audio_ext.c): howling suppression ahead
+ * of the effects below, and the WebRTC profile path for IMP_*_EnableAlgo. */
+extern void openimp_t23_ai_pre_effects(int16_t *samples, int count,
+                                       int sample_rate);
+
+const char *openimp_t23_audio_profile(void)
+{
+    return t31_audio.aec_profile;
+}
+#endif
+
 static void t31_process_effects(int16_t *samples, int count)
 {
     int sample_rate = t31_audio.ai_attr.samplerate;
     int frame_samples = sample_rate / 100;
     int offset;
 
+#if defined(PLATFORM_T23)
+    openimp_t23_ai_pre_effects(samples, count, sample_rate);
+#endif
     if (t31_audio.hpf_enabled)
         (void)t31_audio.hpf_process(t31_audio.hpf_state, samples, count);
     if (frame_samples <= 0 || frame_samples > 160)
