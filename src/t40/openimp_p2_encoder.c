@@ -34,6 +34,12 @@
 #if defined(PLATFORM_T31)
 #include "t40/t31_stream_layout.h"
 #include "t31/openimp_t31_osd.h"
+#include "kernel_interface.h"
+
+/* Longest single sleep while waiting for a capture frame: bounds how late
+ * StopRecvPic is noticed when no frame comes (the frame itself wakes the
+ * wait at once). */
+#define P2_FRAME_WAIT_SLICE_US 20000u
 #endif
 
 #define P2_MAX_GROUPS 8
@@ -1309,6 +1315,12 @@ int IMP_Encoder_StopRecvPic(int channel)
     ch->output_timestamp_us = 0;
     ch->jpeg_frame_requested = 0;
     pthread_cond_broadcast(&ch->jpeg_frame_ready);
+#if defined(PLATFORM_T31)
+    /* A PollingStream waiting for a capture frame leaves now, as it did
+     * within 1 ms when it polled. */
+    if (ch->source_channel >= 0)
+        VBMWakeReaders(ch->source_channel);
+#endif
     pthread_mutex_unlock(&ch->lock);
     return 0;
 }
@@ -1439,6 +1451,31 @@ static int p2_polling_stream(int channel, uint32_t timeout_ms)
          * PollingStream is a blocking ABI.  Wait outside the shared AVPU lock
          * so an empty queue neither spins the caller nor starves capture. */
         frame_deadline_us = p2_monotonic_us() + timeout_us;
+#if defined(PLATFORM_T31)
+        /* Sleep until the capture worker publishes a frame instead of
+         * polling every millisecond. The sequence is read before each
+         * attempt, so a frame published in between ends the wait at once.
+         * Waits are sliced (P2_FRAME_WAIT_SLICE_US) so StopRecvPic and the
+         * deadline are still noticed without a frame. */
+        for (;;) {
+            unsigned int ready_seq = VBMReadySequence(ch->source_channel);
+            uint64_t now_us;
+            uint64_t slice_us;
+
+            if (IMP_FrameSource_GetFrame(ch->source_channel, &frame) == 0)
+                break;
+            /* StopRecvPic ends the wait: UnRegisterChn waits for us. */
+            now_us = p2_monotonic_us();
+            if (!timeout_ms || now_us >= frame_deadline_us ||
+                !__atomic_load_n(&ch->receiving, __ATOMIC_RELAXED))
+                goto done;
+            slice_us = frame_deadline_us - now_us;
+            if (slice_us > P2_FRAME_WAIT_SLICE_US)
+                slice_us = P2_FRAME_WAIT_SLICE_US;
+            (void)VBMWaitReady(ch->source_channel, ready_seq,
+                               (uint32_t)slice_us);
+        }
+#else
         while (IMP_FrameSource_GetFrame(ch->source_channel, &frame) != 0) {
             /* StopRecvPic ends the wait: UnRegisterChn waits for us. */
             if (!timeout_ms || p2_monotonic_us() >= frame_deadline_us ||
@@ -1446,6 +1483,7 @@ static int p2_polling_stream(int channel, uint32_t timeout_ms)
                 goto done;
             p2_sleep_us(1000u);
         }
+#endif
 #if defined(PLATFORM_T31)
         /* Overlay before the JPEG fan-out copy and the AVC encode, as the
          * stock OSD group sits between FrameSource and Encoder. */

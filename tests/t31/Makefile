@@ -3,12 +3,15 @@ CFLAGS ?= -std=c99 -O2 -Wall -Wextra -Werror
 PROJECT_DIR := ../..
 STREAM_LAYOUT_TEST_BIN := $(PROJECT_DIR)/build/tests/t31-stream-layout-test
 RATE_CONTROL_TEST_BIN := $(PROJECT_DIR)/build/tests/t31-rate-control-test
+READY_EVENT_TEST_BIN := $(PROJECT_DIR)/build/tests/t31-ready-event-test
 
 .PHONY: check clean
 
-check: $(STREAM_LAYOUT_TEST_BIN) $(RATE_CONTROL_TEST_BIN)
+check: $(STREAM_LAYOUT_TEST_BIN) $(RATE_CONTROL_TEST_BIN) \
+	$(READY_EVENT_TEST_BIN)
 	$(STREAM_LAYOUT_TEST_BIN)
 	$(RATE_CONTROL_TEST_BIN)
+	$(READY_EVENT_TEST_BIN)
 
 $(STREAM_LAYOUT_TEST_BIN): stream_layout_test.c \
 	$(PROJECT_DIR)/src/t40/t31_stream_layout.c \
@@ -28,5 +31,12 @@ $(RATE_CONTROL_TEST_BIN): rate_control_test.c \
 		$(PROJECT_DIR)/src/t40/t31_rate_control.c \
 		-o "$@"
 
+$(READY_EVENT_TEST_BIN): ready_event_test.c \
+	$(PROJECT_DIR)/src/openimp_ready_event.h
+	mkdir -p "$(dir $@)"
+	$(CC) $(CFLAGS) -I$(PROJECT_DIR)/src \
+		ready_event_test.c -o "$@" -lpthread
+
 clean:
-	$(RM) $(STREAM_LAYOUT_TEST_BIN) $(RATE_CONTROL_TEST_BIN)
+	$(RM) $(STREAM_LAYOUT_TEST_BIN) $(RATE_CONTROL_TEST_BIN) \
+		$(READY_EVENT_TEST_BIN)

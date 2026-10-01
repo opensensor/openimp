@@ -21,6 +21,9 @@
 #include "kernel_interface.h"
 #include "trace_control.h"
 #include "vbm_dq_step.h"
+#if defined(PLATFORM_T31)
+#include "openimp_ready_event.h"
+#endif
 
 extern int64_t IMP_System_GetTimeStamp(void);
 extern int64_t OpenIMP_P0_NormalizeMonotonicTimeStamp(uint64_t timestamp);
@@ -1493,6 +1496,55 @@ static int vbm_pull_idle(int chn)
     return vbm_now_ms() - last >= VBM_PULL_IDLE_MS;
 }
 
+/*
+ * Frame-ready events. The encoder pulls frames with VBMGetFrame, which never
+ * blocks; it used to sleep 1 ms between attempts, so every captured frame
+ * cost it up to a frame interval of 1 ms wake-ups (plus a clock_gettime per
+ * attempt here). The capture worker now advances a per-channel sequence
+ * after publishing a frame and broadcasts; a reader takes the sequence
+ * before its VBMGetFrame and sleeps until it moves (openimp_ready_event.h).
+ * The events are static, so a waiter never touches a pool that DestroyPool
+ * may free.
+ */
+static OpenIMPReadyEvent vbm_ready[MAX_VBM_POOLS];
+static pthread_once_t vbm_ready_once = PTHREAD_ONCE_INIT;
+
+static void vbm_ready_init_once(void)
+{
+    int i;
+
+    for (i = 0; i < MAX_VBM_POOLS; i++)
+        openimp_ready_event_init(&vbm_ready[i]);
+}
+
+static void vbm_ready_notify(int chn)
+{
+    pthread_once(&vbm_ready_once, vbm_ready_init_once);
+    openimp_ready_event_notify(&vbm_ready[chn]);
+}
+
+void VBMWakeReaders(int chn)
+{
+    if (chn >= 0 && chn < MAX_VBM_POOLS)
+        vbm_ready_notify(chn);
+}
+
+unsigned int VBMReadySequence(int chn)
+{
+    if (chn < 0 || chn >= MAX_VBM_POOLS)
+        return 0u;
+    pthread_once(&vbm_ready_once, vbm_ready_init_once);
+    return openimp_ready_event_sequence(&vbm_ready[chn]);
+}
+
+int VBMWaitReady(int chn, unsigned int sequence, uint32_t timeout_us)
+{
+    if (chn < 0 || chn >= MAX_VBM_POOLS)
+        return -1;
+    pthread_once(&vbm_ready_once, vbm_ready_init_once);
+    return openimp_ready_event_wait(&vbm_ready[chn], sequence, timeout_us);
+}
+
 /* Return every frame still waiting in chn's ready queue to the driver while
  * no reader is pulling it.  Each index is popped under queue_mutex, so a
  * reader that races in can never receive a frame that is being recycled. */
@@ -1857,6 +1909,9 @@ int VBMKernelDequeue(int chn, int fd, void **frame_out) {
     pool->queue_tail = (pool->queue_tail + 1) % pool->frame_count;
     pool->queue_count++;
     pthread_mutex_unlock(&pool->queue_mutex);
+#if defined(PLATFORM_T31)
+    vbm_ready_notify(chn);
+#endif
 
     *frame_out = &pool->frames[idx];
     ki_trace("libimp/VBM: ready ch=%d idx=%d count=%d frame=%p\n",
@@ -2129,6 +2184,10 @@ int VBMReleaseFrame(int chn, void *frame) {
     pool->queue_count++;
 
     pthread_mutex_unlock(&pool->queue_mutex);
+#if defined(PLATFORM_T31)
+    /* Software fallback queue: also readable by VBMGetFrame. */
+    vbm_ready_notify(chn);
+#endif
 
     /* fprintf throttled — high-frequency per-frame path */
 

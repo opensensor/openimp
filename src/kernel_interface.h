@@ -101,6 +101,14 @@ int VBMKernelDequeue(int chn, int fd, void **frame_out);
 #if defined(PLATFORM_T31)
 /* Return ready frames to the driver while no reader pulls the channel. */
 int VBMRecycleIdleFrames(int chn);
+/* Frame-ready events for a pull reader (the encoder's PollingStream):
+ * read the sequence before VBMGetFrame and, when that found nothing, wait
+ * for it to move instead of polling. Returns 0 when it moved (a frame was
+ * published), -1 on timeout or a bad channel. */
+unsigned int VBMReadySequence(int chn);
+int VBMWaitReady(int chn, unsigned int sequence, uint32_t timeout_us);
+/* End every VBMWaitReady on chn now (the reader rechecks its own state). */
+void VBMWakeReaders(int chn);
 #endif
 
 #ifdef __cplusplus
