@@ -812,9 +812,18 @@ int OpenIMP_T30_HelixReconfigure(T30HelixEncoder *encoder,
               encoder->params.height, next.rc_mode, next.bitrate,
               next.fps_num, next.fps_den, next.gop_length, next.qp,
               next.min_qp, next.max_qp);
+    if (next.fps_num != encoder->params.fps_num ||
+        next.fps_den != encoder->params.fps_den) {
+        /* The SPS carries the frame rate (VUI timing): send new parameter
+         * sets with the next picture, which must then be an IDR. */
+        encoder->params.fps_num = next.fps_num;
+        encoder->params.fps_den = next.fps_den;
+        t30_init_parameter_sets(encoder);
+        if (t30_generate_headers(encoder) != 0)
+            return -1;
+        encoder->force_idr = 1;
+    }
     encoder->params.gop_length = next.gop_length;
-    encoder->params.fps_num = next.fps_num;
-    encoder->params.fps_den = next.fps_den;
     encoder->params.rc_mode = next.rc_mode;
     encoder->params.bitrate = next.bitrate;
     encoder->params.qp = next.qp;
