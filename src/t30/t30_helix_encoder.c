@@ -305,6 +305,48 @@ static void t30_fill_slice(T30HelixEncoder *encoder,
 #endif
 }
 
+/* Fill unset or out-of-range rate-control fields from `fallback`, then from
+ * the encoder defaults. */
+static void t30_normalize_params(HWEncoderParams *params,
+                                 const HWEncoderParams *fallback)
+{
+    uint32_t swap;
+
+    if (!params->fps_num || !params->fps_den) {
+        params->fps_num = fallback ? fallback->fps_num : 0u;
+        params->fps_den = fallback ? fallback->fps_den : 0u;
+    }
+    if (!params->gop_length)
+        params->gop_length = fallback ? fallback->gop_length : 25u;
+    if (!params->bitrate && fallback)
+        params->bitrate = fallback->bitrate;
+    if (!params->qp || params->qp > 51u)
+        params->qp = fallback ? fallback->qp : 28u;
+    if (!params->min_qp || params->min_qp > 51u)
+        params->min_qp = fallback ? fallback->min_qp : 18u;
+    if (!params->max_qp || params->max_qp > 51u)
+        params->max_qp = fallback ? fallback->max_qp : 45u;
+    if (params->min_qp > params->max_qp) {
+        swap = params->min_qp;
+        params->min_qp = params->max_qp;
+        params->max_qp = swap;
+    }
+}
+
+static void t30_start_rate_control(T30HelixEncoder *encoder,
+                                   uint32_t initial_qp)
+{
+    encoder->rate_control_enabled =
+        encoder->params.rc_mode != HW_RC_MODE_FIXQP &&
+        encoder->params.bitrate && encoder->params.fps_num &&
+        encoder->params.fps_den &&
+        openimp_t31_rate_controller_init(
+            &encoder->rate_control, encoder->params.bitrate,
+            encoder->params.fps_num, encoder->params.fps_den,
+            encoder->params.gop_length, encoder->params.min_qp,
+            encoder->params.max_qp, initial_qp) == 0;
+}
+
 int OpenIMP_T30_HelixCreate(T30HelixEncoder **encoder_out,
                             const HWEncoderParams *params)
 {
@@ -331,14 +373,7 @@ int OpenIMP_T30_HelixCreate(T30HelixEncoder **encoder_out,
         return -1;
     encoder->fd = -1;
     encoder->params = *params;
-    if (!encoder->params.gop_length)
-        encoder->params.gop_length = 25;
-    if (!encoder->params.qp || encoder->params.qp > 51u)
-        encoder->params.qp = 28;
-    if (!encoder->params.min_qp || encoder->params.min_qp > 51u)
-        encoder->params.min_qp = 18;
-    if (!encoder->params.max_qp || encoder->params.max_qp > 51u)
-        encoder->params.max_qp = 45;
+    t30_normalize_params(&encoder->params, NULL);
 
     encoder->fd = open("/dev/soc_vpu", O_RDWR | O_CLOEXEC);
     if (encoder->fd < 0)
@@ -372,15 +407,7 @@ int OpenIMP_T30_HelixCreate(T30HelixEncoder **encoder_out,
     h264_cabac_init();
     if (t30_generate_headers(encoder) != 0)
         goto fail;
-    if (encoder->params.rc_mode != HW_RC_MODE_FIXQP &&
-        encoder->params.bitrate && encoder->params.fps_num &&
-        encoder->params.fps_den &&
-        openimp_t31_rate_controller_init(
-            &encoder->rate_control, encoder->params.bitrate,
-            encoder->params.fps_num, encoder->params.fps_den,
-            encoder->params.gop_length, encoder->params.min_qp,
-            encoder->params.max_qp, encoder->params.qp) == 0)
-        encoder->rate_control_enabled = 1;
+    t30_start_rate_control(encoder, encoder->params.qp);
     encoder->force_idr = 1;
     *encoder_out = encoder;
     LOG_CODEC("T30 Helix: native encoder ready channel=%u %ux%u desc=0x%08x",
@@ -561,30 +588,77 @@ int OpenIMP_T30_HelixRequestIDR(T30HelixEncoder *encoder)
     return 0;
 }
 
-int OpenIMP_T30_HelixSetBitrate(T30HelixEncoder *encoder,
-                                uint32_t bitrate)
+int OpenIMP_T30_HelixUpdateParams(T30HelixEncoder *encoder,
+                                  const HWEncoderParams *requested)
 {
-    if (!encoder || !bitrate)
-        return -1;
+    HWEncoderParams next;
+    uint32_t level;
+    uint32_t qp;
+    int frame_rate_changed;
+    int model_changed;
 
-    if (encoder->params.rc_mode != HW_RC_MODE_FIXQP) {
-        if (encoder->rate_control_enabled) {
-            if (openimp_t31_rate_controller_set_bitrate(
-                    &encoder->rate_control, bitrate) != 0)
-                return -1;
-        } else if (encoder->params.fps_num && encoder->params.fps_den &&
-                   openimp_t31_rate_controller_init(
-                       &encoder->rate_control, bitrate,
-                       encoder->params.fps_num, encoder->params.fps_den,
-                       encoder->params.gop_length, encoder->params.min_qp,
-                       encoder->params.max_qp, encoder->params.qp) == 0) {
-            encoder->rate_control_enabled = 1;
-        } else {
+    if (!encoder || !requested)
+        return -1;
+    next = encoder->params;
+    next.fps_num = requested->fps_num;
+    next.fps_den = requested->fps_den;
+    next.gop_length = requested->gop_length;
+    next.rc_mode = requested->rc_mode;
+    next.bitrate = requested->bitrate;
+    next.qp = requested->qp;
+    next.min_qp = requested->min_qp;
+    next.max_qp = requested->max_qp;
+    t30_normalize_params(&next, &encoder->params);
+    if (!memcmp(&next, &encoder->params, sizeof(next)))
+        return 0;
+
+    frame_rate_changed = next.fps_num != encoder->params.fps_num ||
+                         next.fps_den != encoder->params.fps_den;
+    model_changed = frame_rate_changed ||
+                    next.gop_length != encoder->params.gop_length ||
+                    next.rc_mode != encoder->params.rc_mode ||
+                    next.min_qp != encoder->params.min_qp ||
+                    next.max_qp != encoder->params.max_qp;
+    qp = encoder->rate_control_enabled
+        ? openimp_t31_rate_controller_qp(&encoder->rate_control)
+        : encoder->params.qp;
+    if (qp < next.min_qp)
+        qp = next.min_qp;
+    if (qp > next.max_qp)
+        qp = next.max_qp;
+
+    if (next.bitrate != encoder->params.bitrate && !model_changed &&
+        encoder->rate_control_enabled) {
+        /* Retarget without discarding the scene model. */
+        if (openimp_t31_rate_controller_set_bitrate(&encoder->rate_control,
+                                                    next.bitrate) != 0)
             return -1;
-        }
+        encoder->params = next;
+    } else {
+        encoder->params = next;
+        if (model_changed || !encoder->rate_control_enabled)
+            t30_start_rate_control(encoder, qp);
     }
 
-    encoder->params.bitrate = bitrate;
+    /* The SPS carries the level (frame rate and bitrate dependent) and, on
+     * T21, VUI timing.  A changed SPS must start a new IDR. */
+    level = t30_h264_level(next.width, next.height, next.fps_num,
+                           next.fps_den, next.bitrate,
+                           (uint32_t)encoder->sps.i_num_ref_frames);
+    if (level != (uint32_t)encoder->sps.i_level_idc
+#if defined(PLATFORM_T21) && !defined(PLATFORM_T20)
+        || frame_rate_changed
+#endif
+       ) {
+        t30_init_parameter_sets(encoder);
+        if (t30_generate_headers(encoder) != 0)
+            return -1;
+        encoder->force_idr = 1;
+    }
+    LOG_CODEC("T30 Helix: params fps=%u/%u gop=%u rc=%u bitrate=%u qp=%u [%u,%u] rc_loop=%d",
+              next.fps_num, next.fps_den, next.gop_length, next.rc_mode,
+              next.bitrate, next.qp, next.min_qp, next.max_qp,
+              encoder->rate_control_enabled);
     return 0;
 }
 
