@@ -48,11 +48,10 @@ typedef T30H264SliceConfig PlatformH264SliceConfig;
 #define T30_CHANNEL_OPEN     0u
 #define T30_CHANNEL_CLOSE    2u
 #define T30_CHANNEL_DELAY_MS 20000u
-#if defined(PLATFORM_T21)
+/* The longest command list (T21 P slice) is 2060 words, about 8 KiB. */
 #define T30_DESCRIPTOR_WINDOW (1u << 14)
+#if defined(PLATFORM_T21)
 #define T30_BITSTREAM_WINDOW  (1u << 20)
-#else
-#define T30_DESCRIPTOR_WINDOW (1u << 20)
 #endif
 #define T30_EMC_SIZE          (1u << 21)
 #define T30_DBLK_SIZE         (1u << 20)
@@ -395,8 +394,11 @@ int OpenIMP_T30_HelixCreate(T30HelixEncoder **encoder_out,
         goto fail;
     if (t30_dma_allocate(&encoder->descriptor, T30_DESCRIPTOR_WINDOW,
                          "t30-helix-desc") != 0 ||
+#if defined(PLATFORM_T21) && !defined(PLATFORM_T20)
+        /* Only the T21 command list points the VPU at an EMC scratch area. */
         t30_dma_allocate(&encoder->emc, T30_EMC_SIZE,
                          "t30-helix-emc") != 0 ||
+#endif
 #if defined(PLATFORM_T21)
         t30_dma_allocate(&encoder->temporary, T30_BITSTREAM_WINDOW,
 #else

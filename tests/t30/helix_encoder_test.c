@@ -460,6 +460,19 @@ static void test_runtime_parameters(void)
     OpenIMP_T30_HelixDestroy(encoder);
 }
 
+static void test_dma_footprint(void)
+{
+    T30HelixEncoder *encoder = create(1920, 1080, 25, 25);
+
+    assert(allocation("t30-helix-desc")->size == 16384u);
+#if defined(PLATFORM_T21) && !defined(PLATFORM_T20)
+    assert(allocation("t30-helix-emc") != NULL);
+#else
+    assert(allocation("t30-helix-emc") == NULL);
+#endif
+    OpenIMP_T30_HelixDestroy(encoder);
+}
+
 static void test_large_frame_level(void)
 {
     T30HelixEncoder *encoder = create(2560, 1440, 20, 25);
@@ -480,6 +493,7 @@ int main(void)
     test_gop_and_failures();
     test_runtime_parameters();
     test_large_frame_level();
+    test_dma_footprint();
     for (i = 0; i < 16u; i++)
         assert(!allocations[i].mapping);
 #if defined(PLATFORM_T20)
