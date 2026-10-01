@@ -1,0 +1,121 @@
+# Open Stack Changelog
+
+Everything changed, extended or fixed in OpenIMP, open-tx-isp, timps and the thingino
+integration since the test campaign started on 2026-09-30. Kept up to date during the campaign.
+
+Last update: 2026-10-02 02:40.
+
+Cameras are anonymised: cam-A (T31), cam-B (T23), cam-C (T20), cam-D (T21).
+
+## Where each camera stands
+
+All four test cameras run the open kernel driver (open-tx-isp), OpenIMP and timps.
+"Live" means newer builds loaded from `/tmp` that are lost on reboot.
+
+| Camera | SoC | Stack | State |
+|---|---|---|---|
+| cam-A | T31 | fully open | Flashed image from 2026-10-01 morning; HEVC, AO and tuning-gap fixes verified live; new image pending |
+| cam-B | T23 | open, encoder via helixd | Flashed open driver + OpenIMP; native Helix encoder (no vendor code) verified live; default still the helixd worker |
+| cam-C | T20 | fully open | Flashed open image; aggregate driver, AE limits and day/night library running live |
+| cam-D | T21 | fully open, first bring-up | Flashed with boot guard (stack loaded manually); stock-equivalent AE, ADR, defog and controls running live |
+
+## OpenIMP (userspace libimp)
+
+| Area | Was | Now | Branch |
+|---|---|---|---|
+| ISP tuning | Contrast/sharpness started at 0 instead of 0x80 | Vendor defaults | `claude/openimp-quickfixes` |
+| ISP tuning T20/T21 | T31 control IDs sent; wrong AeLuma ID; TotalGain/RunningMode/FPS without result pointer | SDK control IDs, pointer semantics as vendor | `claude/openimp-quickfixes`, `claude/exposure-readback`, `claude/t20-tuning-ptr` |
+| Day/night T20/T21 | Brightness/contrast/saturation/sharpness not re-sent on switch; sinter/temper sent to rejected IDs | Re-sent like vendor; table-based sinter/temper | `claude/tseries-daynight` |
+| ISP tuning T23 | GetSensorAttr wrote past the caller's buffer | Vendor 20-byte layout via bounce buffer | `claude/t23-sensorattr` |
+| ISP tuning T31 | AF IDs wrong; SensorAttr/WaitFrame/ModuleControl cache-only | Through the driver with vendor ABI | `claude/t31-isp-gaps` |
+| Encoder rate control | CappedVBR/CappedQuality/SMART silently CBR | Mapped to VBR with log line | `claude/openimp-quickfixes` |
+| JPEG | Quality ignored (fixed 75 or cached only) | Configured quality applied | `claude/openimp-quickfixes` |
+| HEVC T31 | H.265 accepted but streams empty | Real HEVC on the AVPU: VPS/SPS/PPS, slice headers, CABAC init as vendor | `claude/t31-hevc` |
+| Encoder telemetry | Channel-stat struct one word short; bitrate not averaged; stack overflow in ChnStatQuery | Vendor layout, real average, fixed | `claude/openimp-quickfixes` |
+| T23 encoder | Vendor Helix worker only; worker zeroed all of rmem; wrong RPATH | Per-worker rmem slices; native Helix encoder without vendor code | `claude/t23-helix-worker-fixes`, `claude/t23-native-helix-2` |
+| Helix T20/T21/T30 | Encoder issues on the Helix path | Fixed | `claude/t30-helix-fixes` |
+| OSD | Never drawn on T20/T21 (Helix path) | IPU OSD hook | `claude/t20-osd` |
+| Motion detection | T20/T21/T30 always "no motion" | Real frame-diff IVS ported from T31/T23 | `claude/tseries-ivs` |
+| Audio out | Volume/mute ignored; partial OSS fragments dropped | Applied; whole-fragment writes | `claude/openimp-quickfixes`, `claude/t31-ao-fix` |
+| Framesource / VBM T21 | Idle teardown freed the pool; later allocations failed in 23 MB rmem | Pool parking and reuse | `claude/t21-bringup` |
+| T31 HW JPEG | Software JPEG only | Hardware JPEG path, hardened | `claude/t31-hwjpeg-default` |
+| Tools | No way to exercise T23 tuning on device | `t23tune` (show, max gain, IT max, DRC, defog, sinter, flip, max dgain) | `claude/t23-tune-tool` |
+
+## open-tx-isp (kernel driver)
+
+### T31 (reference SoC)
+- Lifecycle hardening: locking around frame-channel ioctls, STREAMOFF races, buffers freed under a running ISP, last-close use-after-free, bounded tuning register access; rmmod oops fixed (3 clean cycles).
+- Frame-channel DQBUF honours `O_NONBLOCK`.
+- Tuning gaps: RGB coefficients as int16, AE ROI getter/setters and EXPR setter, AE histogram edges kept, correct isp-m0 gain lines, isp-w02 VIC error counters, SensorAttr, per-frame WaitFrame (`claude/t31-tuning-gaps`).
+
+### T23
+- Exposure readback: Expr/EV/TotalGain were constants; now live values and vendor-format isp-m0 (`claude/exposure-readback`).
+- Day→night kernel oops: a zeroed array was used as a wait queue; now a real wait queue (`claude/t23-tuning-wiring`).
+- About 45 control IDs silently returned success; unknown IDs are now rejected; WB, CCM, DRC, defog, DPC, CSC, module control, live WB statistics, flip and anti-flicker wired (`claude/t23-tuning-wiring`).
+- Night picture stayed purple: the CSC clip register write had lost its argument; night mono restored (`claude/t23-tuning-rest`).
+- Max analog gain, IT max, SensorAttr, DRC/defog enable, non-compounding sinter (`claude/t23-tuning-rest`); max ISP digital gain as a new AE stage and Bayer re-sync after sensor flip (`claude/t23-flip-dgain`); SetSensorFPS.
+- Static memory: oversized decompiler placeholder arrays shrunk; module 1,598 KB → 1,095 KB (`claude/t23-bss-shrink`).
+
+### T20
+- No isp-m0 → vendor-format isp-m0; AE exposure read the table address instead of the value (`claude/exposure-readback`).
+- Kernel oops on timps stop/restart: sensors released without unbind; fixed, 20 clean cycles (`claude/t20-stop-oops`).
+- Max analog gain applied by the AE; line time reported instead of 0; scene-mode IT limit no longer lost (`claude/t20-ae-limits`).
+
+### T21 (first open bring-up)
+- Exposure readback, unreachable controls (0x2c–0x45), EV in wrong units fixed; day/night decided correctly (`claude/t21-exposure`).
+- Night flicker (ISP gain cycling 6↔25): now the stock AE itself, lifted instruction-for-instruction from the vendor module, including the second AE stage.
+- Noise: 2DNR read its parameters from a text table; denoise never followed gain; registers written without value; fixed.
+- Night mono, colour blotches (lens-shading gains doubled per channel) and overexposure (fixed ADR curve) fixed; ADR and defog lifted from stock.
+- Control dispatchers lifted from stock: anti-flicker, sensor FPS, readable brightness/contrast/saturation/sharpness, AE ROI/zone/histogram, flip.
+- All on `claude/t21-image-fixes`.
+
+## timps and thingino
+- timps: AE IT max can be reset to 0 again (PR #3, merged).
+- thingino: per-camera pins for both packages; the open-stack switch (`THINGINO_ISP_OPEN`) set per device so OpenIMP replaces the vendor library; T23 keeps the vendor library only under `/opt/openimp-t23` for helixd.
+- T21 boot guard `S10isp-guard` with u-boot `isp_open=manual|auto|off`, so a bad driver cannot boot-loop the camera.
+- T21 image: sensor `shvflip=1`, TLS and WebRTC enabled.
+
+## Evidence
+
+| Check | SoC | Result |
+|---|---|---|
+| Full-stack soak, 25 fps | T31 | 2 h 53 min, 260,648 frames, 1030/1030 snapshots, 0 errors |
+| HEVC decode | T31 | 2 × 900 frames, 0 decode errors |
+| Native Helix soak, 25 fps | T23 | 2 h 34 min, 231,668 frames, 0 decode errors, ~6 % CPU |
+| Tuning checks with t23tune | T23 | Gain/IT limits with AE retime, DRC/defog bits, idempotent sinter, flip, max dgain: all pass |
+| Night mono | T23, T21 | Chroma exactly 0 |
+| Stop/start cycles | T20 | 20 cycles, 0 oops, no hung process |
+| Motion detection | T20 | 6/6 events, 0 false alarms in 2 min |
+| Long soak, 25 fps | T20 | 1 h 44 min, 156,517 frames per stream, 0 errors |
+| Night stability | T21 | ISP gain constant (was cycling 6↔25) |
+| Colour blotches | T21 | Chroma spatial σ 30 → 6 |
+| Day exposure | T21 | Mean Y 235 (blown out) → 120, natural colour |
+| Stock-lift equivalence (emulator) | T21 | AE 8/8, ADR 40/40, defog 40/40, dispatchers identical |
+
+## Compared with the vendor stack
+
+| Item | Vendor | Open | Comment |
+|---|---|---|---|
+| libimp code + data, T21 | ~1.0 MB | ~0.5 MB | Open saves about half |
+| libimp code + data, T23 | ~1.26 MB | ~0.6 MB | Native encoder also drops the helixd vendor library |
+| libimp code + data, T31 | ~1.05 MB | ~0.57 MB | |
+| Kernel module, T21 | 616 KB | 805 KB | Static frames from lifted AE/ADR; reduction planned |
+| Kernel module, T23 | 857 KB | ~1,100 KB | After `t23-bss-shrink` (was 1,607 KB) |
+
+## Still open
+- New images for all four cameras from the aggregate branches (building).
+- Kernel module memory on T21; T21 camera memory headroom.
+- T21 module reload oops (sensor GPIO not released); boot guard to `auto` once stable.
+- Real echo cancellation; T31 rotation 90/270; T40/T41 gaps.
+- Merge `tseries-daynight`, `t23-native-helix-2`, `t31-hevc`, `t23-flip-dgain`, `t23-bss-shrink`, `t20-ae-limits` and the newest `t21-image-fixes` into the next aggregates.
+
+## Branch map
+
+| Repository | Aggregate | Contains |
+|---|---|---|
+| open-tx-isp | `claude/open-tx-isp-all-2` | t23-tuning-wiring, t23-tuning-rest, t21-image-fixes (incl. t21-exposure, t21-bringup), t20-stop-oops, t31-tuning-gaps, on top of open-tx-isp-all |
+| OpenIMP | `claude/openimp-all-2` | openimp-quickfixes (IVS stopgap reverted), exposure-readback, tseries-ivs, t31-ao-fix, t20-tuning-ptr, t23-sensorattr, t31-isp-gaps, on top of openimp-all |
+| OpenIMP | separate | t23-native-helix-2, t31-hevc, t23-tune-tool, tseries-daynight |
+| open-tx-isp | separate | t23-flip-dgain, t23-bss-shrink, t20-ae-limits |
+
+Numbers come from on-device measurements and host checks during the campaign.
