@@ -17,15 +17,7 @@
 extern int EncoderInit(void);
 extern int EncoderExit(void);
 extern int IMP_FlushCache(void *address, uint32_t size, int direction);
-extern int IMP_Encoder_YuvInit(void **handle, int width, int height,
-                               T23EncoderYuvIn *input);
-extern int IMP_Encoder_YuvEncode(void *handle, IMPFrameInfo frame,
-                                 T23EncoderYuvOut *output);
-extern int IMP_Encoder_YuvExit(void *handle);
-extern int IMP_Encoder_YuvRequestIDR(void *handle);
-extern void *IMP_Encoder_VbmAlloc(uint32_t size, uint32_t align);
-extern void IMP_Encoder_VbmFree(void *address);
-extern intptr_t IMP_Encoder_VbmV2P(intptr_t address);
+/* IMP_Encoder_Yuv* and IMP_Encoder_Vbm* are declared by imp/imp_encoder.h */
 
 #define T23_HELIX_PAGE_SIZE 4096u
 #define T23_CACHE_WBACK 1

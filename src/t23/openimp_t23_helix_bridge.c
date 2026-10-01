@@ -360,35 +360,28 @@ static void t23_fill_yuv_input(T23EncoderYuvIn *input,
     }
 }
 
-int OpenIMP_T23_HelixInit(T23HelixBridge *bridge,
-                          const HWEncoderParams *params)
+static void t23_reset_bridge(T23HelixBridge *bridge, uint32_t width,
+                             uint32_t height)
 {
-    uint64_t input_size;
-    uint64_t input_capacity;
-    uint64_t output_capacity;
-    uint64_t shared_size;
-
-    if (!bridge || !params || !params->width || !params->height)
-        return -1;
-    if (bridge->worker_pid > 0)
-        return 0;
-    if (bridge->failed)
-        return -1;
-
     memset(bridge, 0, sizeof(*bridge));
     bridge->socket_fd = -1;
     bridge->shared_fd = -1;
     bridge->worker_pid = -1;
-    bridge->width = params->width;
-    bridge->height = params->height;
-    t23_fill_yuv_input(&bridge->input, params);
+    bridge->width = width;
+    bridge->height = height;
+}
 
-    input_size = ((uint64_t)params->width + 15u) & ~15u;
-    input_size *= ((uint64_t)params->height + 15u) & ~15u;
-    input_size = input_size * 3u / 2u;
+/* Size the shared input/output window for input_size bytes of NV12 and
+ * start the worker.  bridge->input/width/height must already be set. */
+static int t23_start_bridge(T23HelixBridge *bridge, uint64_t input_size)
+{
+    uint64_t input_capacity;
+    uint64_t output_capacity;
+    uint64_t shared_size;
+
     input_capacity = (input_size + T23_HELIX_PAGE_SIZE - 1u) &
                      ~((uint64_t)T23_HELIX_PAGE_SIZE - 1u);
-    output_capacity = (uint64_t)params->width * params->height * 2u +
+    output_capacity = (uint64_t)bridge->width * bridge->height * 2u +
                       65536u;
     output_capacity =
         (output_capacity + T23_HELIX_PAGE_SIZE - 1u) &
@@ -410,6 +403,41 @@ fail:
     t23_stop_worker(bridge);
     bridge->failed = 1;
     return -1;
+}
+
+int OpenIMP_T23_HelixInit(T23HelixBridge *bridge,
+                          const HWEncoderParams *params)
+{
+    uint64_t input_size;
+
+    if (!bridge || !params || !params->width || !params->height)
+        return -1;
+    if (bridge->worker_pid > 0)
+        return 0;
+    if (bridge->failed)
+        return -1;
+
+    t23_reset_bridge(bridge, params->width, params->height);
+    t23_fill_yuv_input(&bridge->input, params);
+
+    /* framesource frames carry a 16-aligned luma plane */
+    input_size = ((uint64_t)params->width + 15u) & ~15u;
+    input_size *= ((uint64_t)params->height + 15u) & ~15u;
+    input_size = input_size * 3u / 2u;
+    return t23_start_bridge(bridge, input_size);
+}
+
+int OpenIMP_T23_HelixInitYuv(T23HelixBridge *bridge, uint32_t width,
+                             uint32_t height, const T23EncoderYuvIn *input)
+{
+    if (!bridge || !input || !width || !height)
+        return -1;
+    t23_reset_bridge(bridge, width, height);
+    bridge->input = *input;
+    /* IMP_Encoder_YuvEncode callers pass a packed NV12 frame: the chroma
+     * plane starts right after width * height luma bytes, which is what the
+     * OEM YuvEncode reads, so forward exactly that many bytes. */
+    return t23_start_bridge(bridge, (uint64_t)width * height * 3u / 2u);
 }
 
 static int t23_encode_once(T23HelixBridge *bridge,
@@ -446,20 +474,19 @@ static int t23_recover_worker(T23HelixBridge *bridge)
     return t23_start_worker(bridge);
 }
 
-int OpenIMP_T23_HelixEncode(T23HelixBridge *bridge,
-                            const IMPFrameInfo *frame,
-                            HWStreamBuffer **stream)
+/* Encode one frame; on success *encoded points at the access unit inside
+ * the shared window, valid until the next request on this bridge. */
+static int t23_encode_frame(T23HelixBridge *bridge, const IMPFrameInfo *frame,
+                            unsigned char **encoded_out,
+                            uint32_t *length_out)
 {
     T23HelixIpcResponse response;
-    HWStreamBuffer *result;
     unsigned char *encoded;
-    void *copy;
     uint32_t frame_number;
 
-    if (!bridge || bridge->worker_pid <= 0 || !frame || !stream ||
-        !frame->virAddr || !bridge->input_size)
+    if (!bridge || bridge->worker_pid <= 0 || !frame || !frame->virAddr ||
+        !bridge->input_size || !encoded_out || !length_out)
         return -1;
-    *stream = NULL;
     frame_number = bridge->frames;
     if ((frame_number < 256u || frame_number % 100u == 0u) &&
         getenv("OPENIMP_T23_ENCODE_TRACE"))
@@ -494,20 +521,61 @@ int OpenIMP_T23_HelixEncode(T23HelixBridge *bridge,
                 "openimp/T23: leave helper encode frame=%u len=%u",
                 frame_number, response.output_length);
     t23_trace_annexb(frame_number, encoded, response.output_length);
+    *encoded_out = encoded;
+    *length_out = response.output_length;
+    return 0;
+}
 
-    copy = malloc(response.output_length);
+int OpenIMP_T23_HelixEncode(T23HelixBridge *bridge,
+                            const IMPFrameInfo *frame,
+                            HWStreamBuffer **stream)
+{
+    HWStreamBuffer *result;
+    unsigned char *encoded;
+    uint32_t length;
+    void *copy;
+
+    if (!stream)
+        return -1;
+    *stream = NULL;
+    if (t23_encode_frame(bridge, frame, &encoded, &length) != 0)
+        return -1;
+
+    copy = malloc(length);
     result = (HWStreamBuffer *)calloc(1, sizeof(*result));
     if (!copy || !result) {
         free(copy);
         free(result);
         return -1;
     }
-    memcpy(copy, encoded, response.output_length);
+    memcpy(copy, encoded, length);
     result->virt_addr = (uint32_t)(uintptr_t)copy;
-    result->length = response.output_length;
+    result->length = length;
     result->timestamp = (uint64_t)frame->timeStamp;
     bridge->frames++;
     *stream = result;
+    return 0;
+}
+
+int OpenIMP_T23_HelixEncodeInto(T23HelixBridge *bridge,
+                                const IMPFrameInfo *frame, void *output,
+                                uint32_t *length)
+{
+    unsigned char *encoded;
+    uint32_t encoded_length;
+
+    if (!output || !length ||
+        t23_encode_frame(bridge, frame, &encoded, &encoded_length) != 0)
+        return -1;
+    if (encoded_length > *length) {
+        t23_log(LOG_ERR,
+                "openimp/T23: YUV encode output %u exceeds buffer %u",
+                encoded_length, *length);
+        return -1;
+    }
+    memcpy(output, encoded, encoded_length);
+    *length = encoded_length;
+    bridge->frames++;
     return 0;
 }
 

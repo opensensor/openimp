@@ -8,17 +8,9 @@
 #define T23_HELIX_IPC_MAGIC 0x4f483233u /* "OH23" */
 #define T23_HELIX_IPC_VERSION 1u
 
-typedef struct {
-    IMPPayloadType type;
-    IMPEncoderAttrRcMode mode;
-    IMPEncoderFrmRate outFrmRate;
-    uint32_t maxGop;
-} T23EncoderYuvIn;
-
-typedef struct {
-    void *outAddr;
-    uint32_t outLen;
-} T23EncoderYuvOut;
+/* The OEM IMP_Encoder_Yuv* in/out structures (imp/imp_encoder.h). */
+typedef IMPEncoderYuvIn T23EncoderYuvIn;
+typedef IMPEncoderYuvOut T23EncoderYuvOut;
 
 enum {
     T23_HELIX_COMMAND_INIT = 1,

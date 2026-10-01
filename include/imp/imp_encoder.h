@@ -1292,6 +1292,34 @@ int IMP_Encoder_GetChnAveBitrate(int encChn, IMPEncoderStream *stream,
                                  int frames, int *bitrate);
 #endif
 
+#if defined(PLATFORM_T23)
+/* T23 1.3.0 unbound ("input YUV") encoder and its buffer helpers. */
+typedef struct {
+    IMPPayloadType type;            /**< Encoding type (H264 only) */
+    IMPEncoderAttrRcMode mode;      /**< Rate control */
+    IMPEncoderFrmRate outFrmRate;   /**< Frame rate */
+    uint32_t maxGop;                /**< GOP length */
+} IMPEncoderYuvIn;
+
+typedef struct {
+    void *outAddr;                  /**< Caller's output buffer */
+    uint32_t outLen;                /**< In: capacity, out: AU length */
+} IMPEncoderYuvOut;
+
+int IMP_Encoder_YuvInit(void **h, int inWidth, int inHeight,
+                        IMPEncoderYuvIn *encIn);
+int IMP_Encoder_YuvEncode(void *h, IMPFrameInfo frame,
+                          IMPEncoderYuvOut *encOut);
+int IMP_Encoder_YuvExit(void *h);
+int IMP_Encoder_YuvRequestIDR(void *h);
+void *IMP_Encoder_VbmAlloc(uint32_t size, uint32_t align);
+void IMP_Encoder_VbmFree(void *vaddr);
+intptr_t IMP_Encoder_VbmV2P(intptr_t vaddr);
+intptr_t IMP_Encoder_VbmP2V(intptr_t paddr);
+int IMP_Encoder_InputJpege(uint8_t *src, uint8_t *dst, int src_w, int src_h,
+                           int q, int *stream_length);
+#endif
+
 #ifdef __cplusplus
 }
 #endif

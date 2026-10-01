@@ -73,6 +73,7 @@ compile t23_platform_services src/t23/openimp_t23_services.c -Werror
 compile t23_helix_bridge src/t23/openimp_t23_helix_bridge.c -Werror
 compile t23_persist src/t23/openimp_t23_persist.c -Werror
 compile t23_audio src/t31/openimp_t31_audio.c -Werror
+compile t23_yuv src/t23/openimp_t23_yuv.c -Werror
 
 "$compiler" -shared -nostartfiles \
     -Wl,-soname,libimp.so \
@@ -105,6 +106,7 @@ compile t23_audio src/t31/openimp_t31_audio.c -Werror
     "$output_dir/t23_helix_bridge.o" \
     "$output_dir/t23_persist.o" \
     "$output_dir/t23_audio.o" \
+    "$output_dir/t23_yuv.o" \
     -ldl -lpthread -lrt
 
 "$compiler" $base_flags $repo_includes -Wall -Wextra -Werror \
@@ -121,7 +123,8 @@ then
 fi
 
 for symbol in IMP_AI_GetFrame IMP_AI_PollingFrame IMP_AO_SendFrame \
-    IMP_AO_FlushChnBuf
+    IMP_AO_FlushChnBuf IMP_Encoder_YuvInit IMP_Encoder_YuvEncode \
+    IMP_Encoder_VbmAlloc IMP_Encoder_InputJpege
 do
     if ! readelf --dyn-syms --wide "$output_dir/libimp.so" |
         awk -v s="$symbol" '$7 != "UND" && $8 == s {found=1} END {exit !found}'
