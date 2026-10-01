@@ -10,6 +10,7 @@
 #include <string.h>
 #include <sys/mman.h>
 #include <syslog.h>
+#include <time.h>
 #include <unistd.h>
 
 #include <imp/imp_common.h>
@@ -507,6 +508,9 @@ static int worker_encode(T23HelixWorker *worker,
     uintptr_t buffer_begin;
     uintptr_t buffer_end;
     unsigned char *shared_output;
+    struct timespec encode_start;
+    struct timespec encode_end;
+    uint32_t encode_us;
 
     if (!worker || !request || !response || !worker->encoder ||
         request->width != worker->width ||
@@ -550,9 +554,17 @@ static int worker_encode(T23HelixWorker *worker,
     worker_apply_frame_ctl(worker);
     output.outAddr = worker->output_buffer;
     output.outLen = worker->output_capacity;
+    clock_gettime(CLOCK_MONOTONIC, &encode_start);
     if (IMP_Encoder_YuvEncode(worker->encoder, frame, &output) != 0 ||
         !output.outAddr || !output.outLen)
         return -EIO;
+    clock_gettime(CLOCK_MONOTONIC, &encode_end);
+    /* the OEM encode time, for the bridge's OPENIMP_T23_PACE_STATS */
+    encode_us = (uint32_t)((encode_end.tv_sec - encode_start.tv_sec) *
+                               1000000 +
+                           (encode_end.tv_nsec - encode_start.tv_nsec) / 1000);
+    memcpy(response->param, &encode_us, sizeof(encode_us));
+    response->param_size = sizeof(encode_us);
 
     buffer_begin = (uintptr_t)worker->output_buffer;
     buffer_end = buffer_begin + worker->output_capacity;

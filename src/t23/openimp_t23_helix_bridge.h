@@ -48,6 +48,15 @@ typedef struct {
     int zero_copy;      /* frames are passed by physical address */
     uint32_t rmem_phys; /* the worker's slice of the rmem arena, 0: none */
     uint32_t rmem_size;
+    /* OPENIMP_T23_PACE_STATS window */
+    uint64_t stats_start_us;
+    uint32_t stats_frames;
+    uint64_t stats_flush_us;
+    uint64_t stats_exchange_us;
+    uint64_t stats_exchange_max_us;
+    uint64_t stats_oem_us;
+    uint64_t stats_oem_max_us;
+    uint64_t stats_bytes;
 } T23HelixBridge;
 
 int OpenIMP_T23_HelixInit(T23HelixBridge *bridge,

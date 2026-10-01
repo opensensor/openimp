@@ -15,6 +15,7 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <syslog.h>
+#include <time.h>
 #include <unistd.h>
 
 #include "openimp_t23_persist.h"
@@ -211,6 +212,23 @@ static int t23_zero_copy_requested(void)
     return requested;
 }
 
+/* OPENIMP_T23_PACE_STATS=<seconds>: the bridge side of an encode - the
+ * cache write-back of the frame, the worker round trip and the OEM encode
+ * inside it. */
+static uint64_t t23_stats_interval_us(void)
+{
+    static long seconds = -1;
+
+    if (seconds < 0) {
+        const char *text = getenv("OPENIMP_T23_PACE_STATS");
+
+        seconds = text ? strtol(text, NULL, 10) : 0;
+        if (seconds < 0)
+            seconds = 0;
+    }
+    return (uint64_t)seconds * 1000000u;
+}
+
 /*
  * The worker's slice of the reserved memory.  The OEM libimp in the worker
  * maps the whole rmem and, at its first allocation, sets up its own
@@ -221,38 +239,68 @@ static int t23_zero_copy_requested(void)
  * its own arena (OPENIMP_T23_HELIX_RMEM=<phys>:<bytes>); without it the
  * worker refuses to initialise.
  *
- * The size covers the OEM VBM allocations of one session: the H.264
- * bitstream/reference/reconstruction buffers, the output buffer and, when
- * frames are copied, the input buffer.  OPENIMP_T23_HELIX_RMEM_KB
- * overrides the estimate; the worker logs what it really used.
+ * Sized from what the OEM encoder allocates (measured at 1920x1080 on a
+ * T23N: 2076672 + 3907200 + 2146304 bytes):
+ *  - the bitstream buffer, t23_helix_bs_size();
+ *  - one block for the reference and reconstructed pictures, 3907200
+ *    bytes at 1920x1088 aligned, i.e. 15/8 bytes per aligned pixel;
+ *  - the output buffer, plus the page VbmAlloc adds;
+ *  - the input copy buffer, only when frames are copied;
+ *  - 128 KiB for the OEM's alignment and anything smaller.
+ * OPENIMP_T23_HELIX_RMEM_KB overrides it: one value for every worker, or
+ * per picture size, e.g. "1920x1080=8200,640x360=1800".
  */
-#define T23_HELIX_RMEM_SLACK (512u * 1024u)
+#define T23_HELIX_RMEM_MARGIN (128u * 1024u)
+
+static uint64_t t23_rmem_override(uint32_t width, uint32_t height)
+{
+    const char *text = getenv("OPENIMP_T23_HELIX_RMEM_KB");
+    const char *item = text;
+
+    while (item && *item) {
+        char *end = NULL;
+        unsigned long first = strtoul(item, &end, 10);
+        unsigned long kb = 0ul;
+
+        if (end && *end == 'x') {
+            unsigned long second = strtoul(end + 1, &end, 10);
+
+            if (!end || *end != '=')
+                return 0u;
+            kb = strtoul(end + 1, &end, 10);
+            if (first != width || second != height)
+                kb = 0ul;
+        } else {
+            kb = first;
+        }
+        if (!end || (*end && *end != ','))
+            return 0u;
+        if (kb > 0ul && kb < 0x200000ul)
+            return (uint64_t)kb * 1024u;
+        item = *end ? end + 1 : end;
+    }
+    return 0u;
+}
 
 static uint64_t t23_rmem_estimate(const T23HelixBridge *bridge,
                                   const T23HelixIpcRequest *init)
 {
-    const char *text = getenv("OPENIMP_T23_HELIX_RMEM_KB");
-    uint64_t frame;
-    uint64_t size;
+    uint64_t pixels;
+    uint64_t size = t23_rmem_override(bridge->width, bridge->height);
 
-    if (text && *text) {
-        char *end = NULL;
-        unsigned long kb = strtoul(text, &end, 10);
-
-        if (end && !*end && kb > 0ul && kb < 0x400000ul)
-            return (uint64_t)kb * 1024u;
-    }
-    frame = (((uint64_t)bridge->width + 15u) & ~15ull) *
-            (((uint64_t)bridge->height + 15u) & ~15ull) * 3u / 2u;
+    if (size)
+        return size;
+    pixels = (((uint64_t)bridge->width + 15u) & ~15ull) *
+             (((uint64_t)bridge->height + 15u) & ~15ull);
     if (init && init->command == T23_HELIX_COMMAND_DEC_INIT)
         /* decoded pictures held until released, plus the bitstream */
-        return frame * 3u + T23_HELIX_RMEM_SLACK;
-    /* the bitstream buffer, reference + reconstruction, motion/MB data,
-     * the output buffer */
-    size = t23_helix_bs_size(bridge->width, bridge->height) + frame * 2u +
-           frame / 4u + bridge->output_capacity + T23_HELIX_RMEM_SLACK;
+        return pixels * 3u / 2u * 3u + 1024u * 1024u;
+    size = t23_helix_bs_size(bridge->width, bridge->height) +
+           (pixels * 15u + 7u) / 8u +
+           bridge->output_capacity + T23_HELIX_PAGE_SIZE +
+           T23_HELIX_RMEM_MARGIN;
     if (!bridge->zero_copy)
-        size += bridge->input_capacity;
+        size += bridge->input_capacity + T23_HELIX_PAGE_SIZE;
     return size;
 }
 
@@ -273,6 +321,7 @@ static int t23_reserve_rmem(T23HelixBridge *bridge,
         t23_log(LOG_ERR, "openimp/T23: no %u KiB of rmem for the Helix "
                          "helper (OPENIMP_T23_HELIX_RMEM_KB sets the size)",
                 (unsigned int)(size / 1024u));
+        DMA_LogRmem("full");
         return -1;
     }
     bridge->rmem_phys = info.phys_addr;
@@ -280,6 +329,8 @@ static int t23_reserve_rmem(T23HelixBridge *bridge,
     t23_log(LOG_NOTICE, "openimp/T23: Helix helper rmem 0x%08x+%u KiB "
                         "for %ux%u", bridge->rmem_phys,
             bridge->rmem_size / 1024u, bridge->width, bridge->height);
+    if (t23_stats_interval_us())
+        DMA_LogRmem("after the Helix slice");
     return 0;
 }
 
@@ -646,12 +697,70 @@ static int helix_init_yuv(T23HelixBridge *bridge, uint32_t width,
     return t23_start_bridge(bridge, (uint64_t)width * height * 3u / 2u);
 }
 
+static uint64_t t23_now_us(void)
+{
+    struct timespec now;
+
+    clock_gettime(CLOCK_MONOTONIC, &now);
+    return (uint64_t)now.tv_sec * 1000000u + (uint64_t)now.tv_nsec / 1000u;
+}
+
+static void t23_stats_account(T23HelixBridge *bridge, uint64_t start_us,
+                              uint64_t flushed_us, uint64_t done_us,
+                              const T23HelixIpcResponse *response)
+{
+    uint64_t interval = t23_stats_interval_us();
+    uint64_t value;
+    uint32_t oem_us = 0u;
+
+    if (!interval)
+        return;
+    if (!bridge->stats_start_us)
+        bridge->stats_start_us = start_us;
+    bridge->stats_frames++;
+    bridge->stats_flush_us += flushed_us - start_us;
+    value = done_us - flushed_us;
+    bridge->stats_exchange_us += value;
+    if (value > bridge->stats_exchange_max_us)
+        bridge->stats_exchange_max_us = value;
+    if (response->param_size == sizeof(oem_us))
+        memcpy(&oem_us, response->param, sizeof(oem_us));
+    bridge->stats_oem_us += oem_us;
+    if (oem_us > bridge->stats_oem_max_us)
+        bridge->stats_oem_max_us = oem_us;
+    bridge->stats_bytes += response->output_length;
+    if (done_us - bridge->stats_start_us < interval)
+        return;
+    value = bridge->stats_frames;
+    t23_log(LOG_NOTICE,
+            "openimp/T23 helix %ux%u: %llu frames, flush %llu, round trip "
+            "%llu/%llu, OEM encode %llu/%llu us (avg/max), %llu kbit/s",
+            bridge->width, bridge->height, (unsigned long long)value,
+            (unsigned long long)(bridge->stats_flush_us / value),
+            (unsigned long long)(bridge->stats_exchange_us / value),
+            (unsigned long long)bridge->stats_exchange_max_us,
+            (unsigned long long)(bridge->stats_oem_us / value),
+            (unsigned long long)bridge->stats_oem_max_us,
+            (unsigned long long)(bridge->stats_bytes * 8u * 1000u /
+                                 (done_us - bridge->stats_start_us)));
+    bridge->stats_start_us = done_us;
+    bridge->stats_frames = 0u;
+    bridge->stats_flush_us = 0u;
+    bridge->stats_exchange_us = 0u;
+    bridge->stats_exchange_max_us = 0u;
+    bridge->stats_oem_us = 0u;
+    bridge->stats_oem_max_us = 0u;
+    bridge->stats_bytes = 0u;
+}
+
 static int t23_encode_once(T23HelixBridge *bridge,
                            const IMPFrameInfo *frame,
                            T23HelixIpcResponse *response)
 {
     T23HelixIpcRequest request;
     uint32_t physical = 0u;
+    uint64_t start_us = t23_now_us();
+    uint64_t flushed_us;
     int status;
 
     if (!bridge->shared_buffer || frame->size < bridge->input_size)
@@ -678,8 +787,12 @@ static int t23_encode_once(T23HelixBridge *bridge,
     else if (request.pixel_format == 0x3132564eu) /* V4L2_PIX_FMT_NV21 */
         request.pixel_format = PIX_FMT_NV21;
     request.timestamp = frame->timeStamp;
+    flushed_us = t23_now_us();
     status = t23_exchange(bridge, &request, response,
                           T23_HELIX_ENCODE_TIMEOUT_MS);
+    if (status == 0)
+        t23_stats_account(bridge, start_us, flushed_us, t23_now_us(),
+                          response);
     if (status == -EFAULT && physical) {
         /* The worker cannot reach this memory: copy from now on. */
         bridge->zero_copy = 0;

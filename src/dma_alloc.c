@@ -902,6 +902,48 @@ int DMA_Get_RMEM_Base(uint32_t *base_phys_out)
     return -1;
 }
 
+/* Log every live allocation in the reserved arena, lowest address first. */
+void DMA_LogRmem(const char *reason)
+{
+    uint32_t last = 0u;
+    size_t used;
+    size_t size;
+    size_t gap;
+    int count;
+
+    if (!g_is_rmem || g_rmem_virt_base == NULL)
+        return;
+    pthread_mutex_lock(&g_alloc_mutex);
+    used = g_rmem_arena.used;
+    size = g_rmem_arena.size;
+    gap = rmem_arena_largest_gap(&g_rmem_arena);
+    count = g_rmem_arena.count;
+    pthread_mutex_unlock(&g_alloc_mutex);
+    IMP_LOG_INFO("DMA", "rmem %s: %zu of %zu bytes in %d allocations, "
+                 "largest free block %zu", reason ? reason : "map", used,
+                 size, count, gap);
+    pthread_mutex_lock(&g_registry_mutex);
+    for (;;) {
+        DMABufferRecord *next = NULL;
+        int i;
+
+        for (i = 0; i < MAX_DMA_BUFFERS; i++) {
+            DMABufferRecord *buf = g_buffer_registry[i];
+
+            if (buf && (buf->flags & 0x2) && buf->phys_addr >= last &&
+                (!next || buf->phys_addr < next->phys_addr))
+                next = buf;
+        }
+        if (!next)
+            break;
+        IMP_LOG_INFO("DMA", "rmem  0x%08x +%-8u %s%s%s", next->phys_addr,
+                     next->size, next->tag, next->name[0] ? " " : "",
+                     next->name);
+        last = next->phys_addr + 1u;
+    }
+    pthread_mutex_unlock(&g_registry_mutex);
+}
+
 int DMA_Is_RMEM(void)
 {
     return (g_is_rmem && g_rmem_virt_base != NULL) ? 1 : 0;

@@ -83,6 +83,8 @@ int DMA_Get_RMEM_Base(uint32_t *base_phys_out);
  * @return 1 if RMEM is active, 0 otherwise
  */
 int DMA_Is_RMEM(void);
+/* Log the live reserved-arena allocations (syslog, LOG_INFO). */
+void DMA_LogRmem(const char *reason);
 
 /**
  * OEM-compatible cache flush via /dev/rmem ioctl 0xc00c7200.  Callers pass

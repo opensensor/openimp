@@ -30,6 +30,7 @@
 
 #include <imp/imp_common.h>
 #include <imp/imp_encoder.h>
+#include <imp/imp_system.h>
 
 #if defined(PLATFORM_T31)
 #include "t40/t31_stream_layout.h"
@@ -1463,6 +1464,113 @@ int IMP_Encoder_StopRecvPic(int channel)
 
 static int p2_polling_stream(int channel, uint32_t timeout_ms);
 
+#if defined(PLATFORM_T23)
+/*
+ * OPENIMP_T23_PACE_STATS=<seconds>: per encoder channel, where the time of
+ * a PollingStream cycle goes - the output-rate pacing sleep, the wait for a
+ * capture frame, the encode (Helix worker round trip) and the stream
+ * collection - plus how old the encoded frames are.  Off by default.
+ */
+typedef struct {
+    uint64_t window_start_us;
+    uint64_t frames;
+    uint64_t early;             /* returned before the frame was due */
+    uint64_t pace_us;
+    uint64_t wait_us;
+    uint64_t prep_us;           /* OSD, the shared encoder lock, JPEG copy */
+    uint64_t encode_us;
+    uint64_t collect_us;
+    uint64_t age_us;
+    uint64_t max_wait_us;
+    uint64_t max_encode_us;
+    uint64_t max_age_us;
+} T23PaceStats;
+
+static T23PaceStats t23_pace_stats[P2_MAX_CHANNELS];
+
+static uint64_t t23_pace_interval_us(void)
+{
+    static long seconds = -1;
+
+    if (seconds < 0) {
+        const char *text = getenv("OPENIMP_T23_PACE_STATS");
+
+        seconds = text ? strtol(text, NULL, 10) : 0;
+        if (seconds < 0)
+            seconds = 0;
+    }
+    return (uint64_t)seconds * 1000000u;
+}
+
+static void t23_pace_account(int channel, uint64_t start_us,
+                             uint64_t paced_us, uint64_t got_us,
+                             uint64_t frame_us,
+                             uint64_t encoded_us, uint64_t done_us,
+                             int have_frame, uint64_t captured)
+{
+    T23PaceStats *st = &t23_pace_stats[channel];
+    uint64_t interval = t23_pace_interval_us();
+    uint64_t now_ts;
+    uint64_t value;
+
+    if (!interval)
+        return;
+    if (!st->window_start_us)
+        st->window_start_us = start_us;
+    if (!have_frame) {
+        st->early++;
+    } else {
+        st->frames++;
+        st->pace_us += paced_us - start_us;
+        value = got_us - paced_us;
+        st->wait_us += value;
+        if (value > st->max_wait_us)
+            st->max_wait_us = value;
+        st->prep_us += frame_us - got_us;
+        value = encoded_us - frame_us;
+        st->encode_us += value;
+        if (value > st->max_encode_us)
+            st->max_encode_us = value;
+        st->collect_us += done_us - encoded_us;
+        now_ts = IMP_System_GetTimeStamp();
+        if (captured && now_ts > captured) {
+            value = now_ts - captured;
+            st->age_us += value;
+            if (value > st->max_age_us)
+                st->max_age_us = value;
+        }
+    }
+    if (done_us - st->window_start_us < interval)
+        return;
+    if (st->frames) {
+        uint64_t n = st->frames;
+        uint64_t span = done_us - st->window_start_us;
+
+        IMP_LOG(LOG_NOTICE, "Encoder",
+                "T23 pace ch=%d: %llu.%01llu fps (%llu frames, %llu early) "
+                "cycle %llu pace %llu wait %llu/%llu prep %llu "
+                "encode %llu/%llu "
+                "collect %llu age %llu/%llu us (avg/max)",
+                channel,
+                (unsigned long long)(n * 1000000u / span),
+                (unsigned long long)(n * 10000000u / span % 10u),
+                (unsigned long long)n, (unsigned long long)st->early,
+                (unsigned long long)(span / n),
+                (unsigned long long)(st->pace_us / n),
+                (unsigned long long)(st->wait_us / n),
+                (unsigned long long)st->max_wait_us,
+                (unsigned long long)(st->prep_us / n),
+                (unsigned long long)(st->encode_us / n),
+                (unsigned long long)st->max_encode_us,
+                (unsigned long long)(st->collect_us / n),
+                (unsigned long long)(st->age_us / n),
+                (unsigned long long)st->max_age_us);
+    }
+    memset(st, 0, sizeof(*st));
+    st->window_start_us = done_us;
+}
+#endif
+
 int IMP_Encoder_PollingStream(int channel, uint32_t timeout_ms)
 {
     P2EncoderChannel *ch;
@@ -1510,10 +1618,22 @@ static int p2_polling_stream(int channel, uint32_t timeout_ms)
     int result = -1;
     int process_result;
     OpenIMPProfileStamp poll_profile;
+#if defined(PLATFORM_T23)
+    uint64_t pace_start_us;
+    uint64_t pace_paced_us = 0;
+    uint64_t pace_frame_us = 0;
+    uint64_t pace_got_us = 0;
+    uint64_t pace_encoded_us = 0;
+    uint64_t pace_captured = 0;
+    int pace_have_frame = 0;
+#endif
 
     if (!p2_valid_channel(channel))
         return -1;
     poll_profile = openimp_profile_begin();
+#if defined(PLATFORM_T23)
+    pace_start_us = p2_monotonic_us();
+#endif
     if (__sync_add_and_fetch(&trace_count, 1u) <= 8u)
         p2_trace("openimp/P2: PollingStream enter ch=%d timeout=%u\n",
                  channel, timeout_ms);
@@ -1557,11 +1677,18 @@ static int p2_polling_stream(int channel, uint32_t timeout_ms)
     if (wait_us && (!timeout_ms || wait_us > timeout_us)) {
         if (timeout_us)
             p2_sleep_us(timeout_us);
+#if defined(PLATFORM_T23)
+        t23_pace_account(channel, pace_start_us, 0, 0, 0, 0,
+                         p2_monotonic_us(), 0, 0);
+#endif
         openimp_profile_end(OPENIMP_PROFILE_ENCODER_POLL, poll_profile);
         return -1;
     }
     if (wait_us)
         p2_sleep_us(wait_us);
+#if defined(PLATFORM_T23)
+    pace_paced_us = p2_monotonic_us();
+#endif
 
     pthread_mutex_lock(&ch->lock);
     if (!ch->created || !ch->registered || !ch->receiving || !ch->codec ||
@@ -1621,6 +1748,9 @@ static int p2_polling_stream(int channel, uint32_t timeout_ms)
             p2_sleep_us(1000u);
         }
 #endif
+#if defined(PLATFORM_T23)
+        pace_got_us = p2_monotonic_us();
+#endif
 #if defined(PLATFORM_T31)
         /* Overlay before the JPEG fan-out copy and the AVC encode, as the
          * stock OSD group sits between FrameSource and Encoder. */
@@ -1652,7 +1782,19 @@ static int p2_polling_stream(int channel, uint32_t timeout_ms)
         (void)p2_copy_requested_jpeg_frames(
             ch->source_channel, (const P2SyntheticFrame *)frame);
     }
+#if defined(PLATFORM_T23)
+    pace_frame_us = p2_monotonic_us();
+    if (ch->codec_type != IMP_ENC_TYPE_JPEG && frame) {
+        /* the capture time stamp, as the codec reads it (+0x28) */
+        memcpy(&pace_captured, (const uint8_t *)frame + 0x28,
+               sizeof(pace_captured));
+        pace_have_frame = 1;
+    }
+#endif
     process_result = AL_Codec_Encode_Process(ch->codec, frame, frame);
+#if defined(PLATFORM_T23)
+    pace_encoded_us = p2_monotonic_us();
+#endif
 #if defined(PLATFORM_T31)
     /* JPEG encodes synchronously: a lent capture frame is free again. */
     if (ch->codec_type == IMP_ENC_TYPE_JPEG)
@@ -1714,6 +1856,13 @@ static int p2_polling_stream(int channel, uint32_t timeout_ms)
     ch->raw_stream = stream;
     ch->codec_user = user;
     pthread_mutex_unlock(&ch->lock);
+#if defined(PLATFORM_T23)
+    if (pace_have_frame)
+        t23_pace_account(channel, pace_start_us, pace_paced_us,
+                         pace_got_us ? pace_got_us : pace_frame_us,
+                         pace_frame_us, pace_encoded_us, p2_monotonic_us(),
+                         1, pace_captured);
+#endif
     frame = NULL;
     stream = NULL;
     result = 0;
