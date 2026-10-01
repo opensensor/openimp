@@ -820,26 +820,36 @@ static const char *fs_dq_step_name(int step)
     return fs_dq_step_names[step];
 }
 
-/* Which T31 ISP driver is loaded, for the log only: the stop order does
- * not depend on it (see IMP_FrameSource_DisableChn). Both drivers load as
+/* Which T31 ISP driver is loaded, for the log only: the stop order and
+ * the cancel fallback depend on the DQBUF behaviour fs_dqbuf() observed
+ * (fs_dqbuf_nonblock_mode), not on this name. Both drivers load as
  * tx-isp-t31.ko; only the open one has the ae_freeze / isp_bypass_all
  * module parameters. Done once, at the first successful stream start. */
-static void fs_t31_log_isp_driver(void)
+static const char *fs_t31_isp_driver_name(void)
 {
-    static int logged;
-    const char *driver;
+    static const char *driver;
 
-    if (logged)
-        return;
-    logged = 1;
+    if (driver)
+        return driver;
     if (access("/sys/module/tx_isp_t31/parameters/ae_freeze", F_OK) == 0 ||
         access("/sys/module/tx_isp_t31/parameters/isp_bypass_all", F_OK) == 0)
         driver = "open tx-isp";
     else if (access("/sys/module/tx_isp_t31", F_OK) == 0)
         driver = "stock tx-isp";
     else
-        driver = "unknown (no /sys/module/tx_isp_t31)";
-    IMP_LOG_INFO("Framesource", "T31 ISP driver: %s", driver);
+        driver = "unknown tx-isp (no /sys/module/tx_isp_t31)";
+    return driver;
+}
+
+static void fs_t31_log_isp_driver(void)
+{
+    static int logged;
+
+    if (logged)
+        return;
+    logged = 1;
+    IMP_LOG_INFO("Framesource", "T31 ISP driver: %s",
+                 fs_t31_isp_driver_name());
 }
 #else
 #define FS_STEP(chn, step) do { } while (0)
@@ -2119,18 +2129,23 @@ int IMP_FrameSource_EnableChn(int chnNum)
  * the delivery of a frame it had already dequeued. Anything near a second
  * is a genuine hang (a consumer blocking notify, a VBM mutex, ...). */
 #define FS_WORKER_STOP_TIMEOUT_MS 1000
+/* Open driver only: how often a hung stop says it is still waiting. */
+#define FS_WORKER_STOP_REPORT_MS 5000
 
-/* Returns the time waited in ms, or -1 if the worker has not left. */
+/* Returns the time waited in ms (wall clock), or -1 if the worker has not
+ * left within timeout_ms. */
 static int fs_wait_worker_exit(int chn, int timeout_ms)
 {
-    int waited;
+    uint32_t start = fs_now_ms();
+    uint32_t waited = 0;
 
-    for (waited = 0; waited < timeout_ms; waited++) {
-        if (g_fs_thread_exited[chn])
-            return waited;
+    while (!g_fs_thread_exited[chn]) {
+        waited = fs_now_ms() - start;
+        if (waited >= (uint32_t)timeout_ms)
+            return -1;
         usleep(1000);
     }
-    return g_fs_thread_exited[chn] ? waited : -1;
+    return (int)(fs_now_ms() - start);
 }
 
 /* Stop the stream of every channel still enabled. Called on the way out of
@@ -2180,35 +2195,44 @@ int IMP_FrameSource_DisableChn(int chnNum)
 
     ctx->running = 0;
 #if defined(PLATFORM_T31)
-    /* STREAMOFF first, then let the worker leave by itself, cancel only as
-     * a last resort. This is the same for both T31 ISP drivers:
+    /* STREAMOFF first, then let the worker leave by itself. Where the
+     * worker can be waiting depends on the driver's DQBUF, which fs_dqbuf()
+     * has learnt from the frames so far (fs_dqbuf_nonblock_mode):
      *
-     * - Neither DQBUF honours O_NONBLOCK. The stock tx-isp DQBUF goes
-     *   straight to wait_event_interruptible() (no f_flags check in the
-     *   binary), the open tx-isp one to wait_event_interruptible(frame_wait,
-     *   frame_ready_count > 0 || !streaming). With no buffer queued to the
-     *   driver (all held by the VBM ready queue or a consumer: a short
-     *   enable without a reader, an idle snapshot channel) the worker sleeps
-     *   there until STREAMOFF, so a stop that waits for it before STREAMOFF
-     *   always waits its full timeout in those cases.
-     * - STREAMOFF is the only wake-up both drivers offer: the stock driver
-     *   clears the streaming flag and wakes the queue in __vb2_queue_cancel,
-     *   the woken DQBUF returns -EINVAL (its "Streaming off, will not wait
-     *   for buffers" line with a dump_stack() is the isp_printf error level,
-     *   not a fault); the open driver returns -EINVAL from the same wait.
-     * - A DQBUF entered after STREAMOFF returns -EINVAL at once on both
-     *   (the worker also checks running before every DQBUF).
-     * - pthread_cancel is a signal. The stock DQBUF re-enters its wait loop
-     *   on -ERESTARTSYS and, while the channel streams, never returns to
-     *   user space: a thread cancelled or killed in DQBUF while streaming
-     *   spins at 100 % sys and cannot be reaped. Cancelling after STREAMOFF
-     *   cannot hit that loop (the flag is checked before every wait), and a
-     *   worker that leaves by itself is never cancelled while it holds a
-     *   VBM mutex. */
+     * - Open tx-isp (DQBUF honours O_NONBLOCK, real poll): the worker
+     *   waits in select(), which STREAMOFF wakes with POLLERR (and which
+     *   times out after 25 ms anyway); its DQBUFs never sleep. It cannot be
+     *   stuck in the driver, so the cancel fallback is never needed. A
+     *   worker still running after the timeout is in a consumer (notify,
+     *   direct encode) or a VBM lock; cancelling it there could leave that
+     *   lock held, so keep waiting and say where it is.
+     * - Stock tx-isp (DQBUF ignores O_NONBLOCK, select() always ready):
+     *   the worker sleeps in DQBUF, in wait_event_interruptible() with no
+     *   f_flags check. With no buffer queued to the driver (all held by the
+     *   VBM ready queue or a consumer: a short enable without a reader, an
+     *   idle snapshot channel) it sleeps there until STREAMOFF, so a stop
+     *   that waited for it before STREAMOFF would always run into its
+     *   timeout. STREAMOFF clears the streaming flag and wakes the queue in
+     *   __vb2_queue_cancel; the woken DQBUF returns -EINVAL (its "Streaming
+     *   off, will not wait for buffers" line with a dump_stack() is the
+     *   isp_printf error level, not a fault). A DQBUF entered after
+     *   STREAMOFF returns -EINVAL at once (the worker also checks running
+     *   before every DQBUF). Only here a cancel stays as last resort.
+     * - Not known yet (no or too few DQBUFs, e.g. a short enable): treated
+     *   as stock. On the open driver the worker is then in select() or a
+     *   1 ms sleep and leaves long before the timeout.
+     *
+     * pthread_cancel is a signal. The stock DQBUF re-enters its wait loop on
+     * -ERESTARTSYS and, while the channel streams, never returns to user
+     * space: a thread cancelled or killed in DQBUF while streaming spins at
+     * 100 % sys and cannot be reaped. Cancelling after STREAMOFF cannot hit
+     * that loop (the flag is checked before every wait). */
     if (ctx->fd >= 0)
         fs_stream_off(ctx->fd);
     if (ctx->thread != 0) {
         int waited = fs_wait_worker_exit(chnNum, FS_WORKER_STOP_TIMEOUT_MS);
+        int nonblock = fs_dqbuf_nonblock_mode();
+        const char *driver = fs_t31_isp_driver_name();
 
         if (waited < 0) {
             static unsigned int timeouts;
@@ -2216,20 +2240,42 @@ int IMP_FrameSource_DisableChn(int chnNum)
             int step = g_fs_step[chnNum];
             int dq_step = openimp_vbm_dq_step[chnNum];
             uint32_t in_step = fs_now_ms() - g_fs_step_ms[chnNum];
+            int cancel = nonblock != FS_DQ_NONBLOCK_HONOURED;
 
-            /* Genuine hang: STREAMOFF did not release it. Say where it is
-             * (rate-limited: the first 20, then every 20th) and cancel. */
+            /* Genuine hang: say where it is (rate-limited: the first 20,
+             * then every 20th) and which driver it happened on. */
             if (n <= 20 || n % 20 == 0)
-                IMP_LOG_ERR("Framesource", "chn%d: pooling thread still running %d ms after STREAMOFF (#%u): in step %s (dq %s) for %u ms, iter %d, thread_entered %d, enabled_seen %d; cancelling it",
-                            chnNum, FS_WORKER_STOP_TIMEOUT_MS, n,
+                IMP_LOG_ERR("Framesource", "chn%d: pooling thread still running %d ms after STREAMOFF (#%u) on %s, DQBUF %s: in step %s (dq %s) for %u ms, iter %d, thread_entered %d, enabled_seen %d; %s",
+                            chnNum, FS_WORKER_STOP_TIMEOUT_MS, n, driver,
+                            fs_dqbuf_nonblock_name(nonblock),
                             fs_step_name(step), fs_dq_step_name(dq_step),
                             in_step, g_fs_step_iter[chnNum],
                             g_fs_thread_entered[chnNum],
-                            g_fs_thread_enabled_seen[chnNum]);
-            pthread_cancel(ctx->thread);
+                            g_fs_thread_enabled_seen[chnNum],
+                            cancel
+                                ? "cancelling it (blocking-DQBUF driver fallback)"
+                                : "not cancelling (not in the driver), waiting for it");
+            if (cancel) {
+                pthread_cancel(ctx->thread);
+            } else {
+                int total = FS_WORKER_STOP_TIMEOUT_MS;
+
+                while ((waited = fs_wait_worker_exit(
+                            chnNum, FS_WORKER_STOP_REPORT_MS)) < 0) {
+                    total += FS_WORKER_STOP_REPORT_MS;
+                    IMP_LOG_ERR("Framesource", "chn%d: pooling thread still running %d ms after STREAMOFF on %s: in step %s (dq %s)",
+                                chnNum, total, driver,
+                                fs_step_name(g_fs_step[chnNum]),
+                                fs_dq_step_name(openimp_vbm_dq_step[chnNum]));
+                }
+                IMP_LOG_WARN("Framesource", "chn%d: pooling thread left %d ms after STREAMOFF on %s",
+                             chnNum, total + waited, driver);
+            }
         } else {
-            fs_trace("libimp/FS: disable worker-stop ch=%d fd=%d after %d ms (last step %s)\n",
-                     chnNum, ctx->fd, waited, fs_step_name(g_fs_step[chnNum]));
+            IMP_LOG_INFO("Framesource", "chn%d: pooling thread left %d ms after STREAMOFF (%s, DQBUF %s, last step %s)",
+                         chnNum, waited, driver,
+                         fs_dqbuf_nonblock_name(nonblock),
+                         fs_step_name(g_fs_step[chnNum]));
         }
         pthread_join(ctx->thread, NULL);
         ctx->thread = 0;
