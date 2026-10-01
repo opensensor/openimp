@@ -790,7 +790,12 @@ static const char *const fs_dq_step_names[] = {
     "-", "ioctl", "ivs-capture", "queue-mutex", "requeue",
 };
 static volatile int g_fs_step[FS_MAX_CHANNELS];
-static volatile uint32_t g_fs_step_ms[FS_MAX_CHANNELS];
+/* Bumped by every FS_STEP: lets the stop path tell a worker that is stuck
+ * in one step from one that keeps moving, without a clock read per step. */
+static volatile unsigned int g_fs_step_seq[FS_MAX_CHANNELS];
+/* Written by fs_wait_worker_exit (the stopping thread): when it last saw
+ * the worker change step, i.e. a lower bound for how long it is in it. */
+static uint32_t g_fs_step_seen_ms[FS_MAX_CHANNELS];
 static volatile int g_fs_step_iter[FS_MAX_CHANNELS];
 
 static uint32_t fs_now_ms(void)
@@ -801,9 +806,12 @@ static uint32_t fs_now_ms(void)
     return (uint32_t)ts.tv_sec * 1000u + (uint32_t)(ts.tv_nsec / 1000000L);
 }
 
+/* No clock read here: on the 3.10 MIPS kernels without a vDSO every
+ * clock_gettime is a syscall, and this runs ~5 times per frame and
+ * channel. The stop path times a step by watching g_fs_step_seq. */
 #define FS_STEP(chn, step) do {                 \
-        g_fs_step_ms[(chn)] = fs_now_ms();      \
         g_fs_step[(chn)] = (step);              \
+        g_fs_step_seq[(chn)]++;                 \
     } while (0)
 
 static const char *fs_step_name(int step)
@@ -2138,9 +2146,19 @@ static int fs_wait_worker_exit(int chn, int timeout_ms)
 {
     uint32_t start = fs_now_ms();
     uint32_t waited = 0;
+    unsigned int seq = g_fs_step_seq[chn];
 
+    /* The worker stays in its current step at least from now on; every
+     * step change seen while waiting moves that point. */
+    g_fs_step_seen_ms[chn] = start;
     while (!g_fs_thread_exited[chn]) {
-        waited = fs_now_ms() - start;
+        uint32_t now = fs_now_ms();
+
+        if (g_fs_step_seq[chn] != seq) {
+            seq = g_fs_step_seq[chn];
+            g_fs_step_seen_ms[chn] = now;
+        }
+        waited = now - start;
         if (waited >= (uint32_t)timeout_ms)
             return -1;
         usleep(1000);
@@ -2239,13 +2257,15 @@ int IMP_FrameSource_DisableChn(int chnNum)
             unsigned int n = ++timeouts;
             int step = g_fs_step[chnNum];
             int dq_step = openimp_vbm_dq_step[chnNum];
-            uint32_t in_step = fs_now_ms() - g_fs_step_ms[chnNum];
+            /* At least this long: measured from STREAMOFF or from the
+             * last step change seen since. */
+            uint32_t in_step = fs_now_ms() - g_fs_step_seen_ms[chnNum];
             int cancel = nonblock != FS_DQ_NONBLOCK_HONOURED;
 
             /* Genuine hang: say where it is (rate-limited: the first 20,
              * then every 20th) and which driver it happened on. */
             if (n <= 20 || n % 20 == 0)
-                IMP_LOG_ERR("Framesource", "chn%d: pooling thread still running %d ms after STREAMOFF (#%u) on %s, DQBUF %s: in step %s (dq %s) for %u ms, iter %d, thread_entered %d, enabled_seen %d; %s",
+                IMP_LOG_ERR("Framesource", "chn%d: pooling thread still running %d ms after STREAMOFF (#%u) on %s, DQBUF %s: in step %s (dq %s) for >= %u ms, iter %d, thread_entered %d, enabled_seen %d; %s",
                             chnNum, FS_WORKER_STOP_TIMEOUT_MS, n, driver,
                             fs_dqbuf_nonblock_name(nonblock),
                             fs_step_name(step), fs_dq_step_name(dq_step),
