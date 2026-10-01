@@ -35,6 +35,9 @@
 #include "t40/t31_stream_layout.h"
 #include "t31/openimp_t31_osd.h"
 #endif
+#if defined(PLATFORM_T23)
+#include "t23/openimp_t23_osd.h"
+#endif
 
 #define P2_MAX_GROUPS 8
 #define P2_MAX_CHANNELS 8
@@ -1436,6 +1439,10 @@ static int p2_polling_stream(int channel, uint32_t timeout_ms)
          * stock OSD group sits between FrameSource and Encoder. */
         if (ch->osd_group >= 0)
             openimp_t31_osd_apply(ch->osd_group, frame);
+#elif defined(PLATFORM_T23)
+        /* OEM T23 osd_update: IPU covers/pictures, CPU lines and mosaics */
+        if (ch->osd_group >= 0)
+            openimp_t23_osd_apply(ch->osd_group, frame);
 #endif
     }
     if (trace_count <= 8u)
