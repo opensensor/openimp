@@ -44,6 +44,181 @@ extern int IMP_Decoder_ReleaseFrame(int chn, IMPFrameInfo *frame);
 #define T23_HELIX_PAGE_SIZE 4096u
 #define T23_CACHE_WBACK 1
 
+/*
+ * Confining the OEM rmem allocator.
+ *
+ * At its first IMP_Alloc (EncoderInit's "vpuBs", DecoderInit) the OEM
+ * libimp maps all of the reserved memory (alloc_kmem_init: rmem= from
+ * /proc/cmdline, /dev/rmem) and sets up its "continuous" allocator over
+ * it: continuous_init(virt, size) memsets the whole range to zero and
+ * continuous_alloc(size) hands out first-fit blocks from its base.  In
+ * this process that range is not ours: OpenIMP's arena in the parent holds
+ * the capture pools (being written by the ISP) at the same addresses, and
+ * a second worker (main + sub stream) would zero and reuse the first
+ * one's encoder buffers while its VPU runs on them.
+ *
+ * The libimp calls both through its GOT, so the definitions below take
+ * their place: the allocator gets (and clears) only the slice OpenIMP
+ * reserved for this worker (OPENIMP_T23_HELIX_RMEM=<phys>:<bytes>), while
+ * the OEM keeps its mapping of the whole rmem, so VbmP2V/V2P still reach
+ * the frames OpenIMP passes by physical address.  Without a slice the
+ * allocator is refused and the worker does not initialise.
+ */
+typedef int (*T23ContinuousInit)(void *base, int size);
+typedef void *(*T23ContinuousAlloc)(int size);
+
+static struct {
+    uint32_t phys;              /* the slice, from the environment */
+    uint32_t size;
+    uintptr_t virt;             /* the slice in the OEM mapping */
+    uint32_t rmem_phys;         /* rmem= from the kernel command line */
+    uint32_t rmem_size;
+    int confined;               /* continuous_init went through us */
+    uint32_t high_water;        /* bytes of the slice ever handed out */
+    T23ContinuousAlloc real_alloc;
+} t23_rmem;
+
+static int t23_parse_cmdline_rmem(uint32_t *base, uint32_t *size)
+{
+    char line[1024];
+    const char *field;
+    char *end = NULL;
+    unsigned long long bytes;
+    unsigned long long address;
+    FILE *file = fopen("/proc/cmdline", "r");
+    size_t length;
+
+    if (!file)
+        return -1;
+    length = fread(line, 1u, sizeof(line) - 1u, file);
+    fclose(file);
+    line[length] = '\0';
+    for (field = line; (field = strstr(field, "rmem=")) != NULL; field++)
+        if (field == line || field[-1] == ' ')
+            break;
+    if (!field)
+        return -1;
+    bytes = strtoull(field + 5, &end, 0);
+    if (end && (*end == 'K' || *end == 'k')) {
+        bytes <<= 10;
+        end++;
+    } else if (end && (*end == 'M' || *end == 'm')) {
+        bytes <<= 20;
+        end++;
+    }
+    if (!end || *end != '@')
+        return -1;
+    address = strtoull(end + 1, &end, 0);
+    if (!bytes || address + bytes > 0x100000000ull)
+        return -1;
+    *base = (uint32_t)address;
+    *size = (uint32_t)bytes;
+    return 0;
+}
+
+/* OPENIMP_T23_HELIX_RMEM=<phys>:<bytes>, inside the kernel's rmem. */
+static void t23_rmem_setup(void)
+{
+    const char *text = getenv("OPENIMP_T23_HELIX_RMEM");
+    char *end = NULL;
+    unsigned long phys;
+    unsigned long size;
+
+    if (!text || !*text)
+        return;
+    phys = strtoul(text, &end, 0);
+    if (!end || *end != ':')
+        return;
+    size = strtoul(end + 1, &end, 0);
+    if (!end || *end || !phys || !size || size > 0x7fffffffu ||
+        (phys | size) % T23_HELIX_PAGE_SIZE != 0u)
+        return;
+    if (t23_parse_cmdline_rmem(&t23_rmem.rmem_phys,
+                               &t23_rmem.rmem_size) != 0 ||
+        phys < t23_rmem.rmem_phys ||
+        (uint64_t)phys + size >
+            (uint64_t)t23_rmem.rmem_phys + t23_rmem.rmem_size) {
+        syslog(LOG_ERR, "openimp/T23 helper: rmem slice %s is not inside "
+                        "the kernel's rmem", text);
+        return;
+    }
+    t23_rmem.phys = (uint32_t)phys;
+    t23_rmem.size = (uint32_t)size;
+}
+
+int continuous_init(void *base, int size);
+void *continuous_alloc(int size);
+
+int continuous_init(void *base, int size)
+{
+    T23ContinuousInit real =
+        (T23ContinuousInit)dlsym(RTLD_NEXT, "continuous_init");
+
+    t23_rmem.real_alloc =
+        (T23ContinuousAlloc)dlsym(RTLD_NEXT, "continuous_alloc");
+    if (!real || !t23_rmem.real_alloc || !base || size <= 0) {
+        syslog(LOG_ERR, "openimp/T23 helper: OEM allocator not found");
+        return -1;
+    }
+    if (!t23_rmem.size) {
+        syslog(LOG_ERR, "openimp/T23 helper: no rmem slice given; refusing "
+                        "the OEM allocator over all of rmem");
+        return -1;
+    }
+    if ((uint32_t)size != t23_rmem.rmem_size) {
+        syslog(LOG_ERR, "openimp/T23 helper: OEM allocator covers %d bytes, "
+                        "rmem= has %u; refusing", size, t23_rmem.rmem_size);
+        return -1;
+    }
+    t23_rmem.virt = (uintptr_t)base + (t23_rmem.phys - t23_rmem.rmem_phys);
+    t23_rmem.confined = 1;
+    syslog(LOG_NOTICE, "openimp/T23 helper: OEM allocator confined to rmem "
+                       "0x%08x+%u", t23_rmem.phys, t23_rmem.size);
+    return real((void *)t23_rmem.virt, (int)t23_rmem.size);
+}
+
+/* The OEM allocator must reach the definitions above, and only a slice
+ * may be handed to it: checked before anything initialises the OEM. */
+static int t23_rmem_ready(void)
+{
+    if (!t23_rmem.size) {
+        syslog(LOG_ERR, "openimp/T23 helper: no rmem slice "
+                        "(OPENIMP_T23_HELIX_RMEM); refusing to start");
+        return 0;
+    }
+    if (dlsym(RTLD_DEFAULT, "continuous_init") != (void *)continuous_init ||
+        dlsym(RTLD_DEFAULT, "continuous_alloc") != (void *)continuous_alloc) {
+        syslog(LOG_ERR, "openimp/T23 helper: the OEM allocator does not "
+                        "resolve to the helper; refusing to start");
+        return 0;
+    }
+    return 1;
+}
+
+void *continuous_alloc(int size)
+{
+    void *block;
+    uintptr_t end;
+
+    if (!t23_rmem.real_alloc)
+        return NULL;
+    block = t23_rmem.real_alloc(size);
+    if (!block) {
+        syslog(LOG_ERR, "openimp/T23 helper: rmem slice of %u bytes full "
+                        "(%u used, %d more wanted); raise "
+                        "OPENIMP_T23_HELIX_RMEM_KB", t23_rmem.size,
+               t23_rmem.high_water, size);
+        return NULL;
+    }
+    end = (uintptr_t)block + (uint32_t)size - t23_rmem.virt;
+    if (end > t23_rmem.high_water)
+        t23_rmem.high_water = (uint32_t)end;
+    syslog(LOG_INFO, "openimp/T23 helper: rmem %d bytes at +0x%x, %u/%u used",
+           size, (unsigned int)((uintptr_t)block - t23_rmem.virt),
+           t23_rmem.high_water, t23_rmem.size);
+    return block;
+}
+
 typedef struct {
     int socket_fd;
     unsigned char *shared;
@@ -274,9 +449,19 @@ static int worker_init(T23HelixWorker *worker,
     required = (uint64_t)request->input_capacity + request->output_capacity;
     if (required > worker->shared_size)
         return -EINVAL;
-    if (EncoderInit() != 0)
+    /* EncoderInit allocates the bitstream buffer: size it first */
+    if (!t23_rmem_ready() ||
+        IMP_Encoder_SetPoolSize((int)t23_helix_bs_size(request->width,
+                                                       request->height)) !=
+            0 ||
+        EncoderInit() != 0)
         return -EIO;
     worker->subsystem_ready = 1;
+    if (!t23_rmem.confined) {
+        syslog(LOG_ERR, "openimp/T23 helper: the OEM allocator was not "
+                        "confined; refusing to encode");
+        return -EIO;
+    }
     if (IMP_Encoder_YuvInit(&worker->encoder, (int)request->width,
                             (int)request->height,
                             (T23EncoderYuvIn *)&request->encoder_input) != 0 ||
@@ -306,9 +491,9 @@ static int worker_init(T23HelixWorker *worker,
     worker->width = request->width;
     worker->height = request->height;
     syslog(LOG_NOTICE,
-           "openimp/T23 helper: Helix ready %ux%u input=%u output=%u",
-           worker->width, worker->height, worker->input_size,
-           worker->output_capacity);
+           "openimp/T23 helper: Helix ready %ux%u input=%u output=%u "
+           "rmem %u/%u", worker->width, worker->height, worker->input_size,
+           worker->output_capacity, t23_rmem.high_water, t23_rmem.size);
     return 0;
 }
 
@@ -390,8 +575,14 @@ static int worker_dec_init(T23HelixWorker *worker,
     if (worker->encoder || worker->decoder || request->param_size != 28u ||
         request->input_capacity > worker->shared_size)
         return -EINVAL;
-    if (DecoderInit() != 0)
+    if (!t23_rmem_ready() || DecoderInit() != 0)
         return -EIO;
+    if (!t23_rmem.confined) {
+        syslog(LOG_ERR, "openimp/T23 helper: the OEM allocator was not "
+                        "confined; refusing to decode");
+        DecoderExit();
+        return -EIO;
+    }
     if (IMP_Decoder_CreateChn(0, request->param) != 0) {
         DecoderExit();
         return -EIO;
@@ -402,7 +593,8 @@ static int worker_dec_init(T23HelixWorker *worker,
     worker->decoder = 2;
     worker->input_capacity = request->input_capacity;
     worker->output_capacity = request->output_capacity;
-    syslog(LOG_NOTICE, "openimp/T23 helper: JPEG decoder ready");
+    syslog(LOG_NOTICE, "openimp/T23 helper: JPEG decoder ready rmem %u/%u",
+           t23_rmem.high_water, t23_rmem.size);
     return 0;
 }
 
@@ -514,6 +706,7 @@ int main(int argc, char **argv)
         closelog();
         return 3;
     }
+    t23_rmem_setup();
     for (;;) {
         T23HelixIpcRequest request;
         T23HelixIpcResponse response;

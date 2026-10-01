@@ -211,6 +211,89 @@ static int t23_zero_copy_requested(void)
     return requested;
 }
 
+/*
+ * The worker's slice of the reserved memory.  The OEM libimp in the worker
+ * maps the whole rmem and, at its first allocation, sets up its own
+ * allocator over all of it: continuous_init() zeroes the complete range and
+ * then hands out buffers from its base, where OpenIMP's arena has the
+ * capture pools - and where every other worker puts its encoder buffers.
+ * The worker confines that allocator to a range OpenIMP reserves here from
+ * its own arena (OPENIMP_T23_HELIX_RMEM=<phys>:<bytes>); without it the
+ * worker refuses to initialise.
+ *
+ * The size covers the OEM VBM allocations of one session: the H.264
+ * bitstream/reference/reconstruction buffers, the output buffer and, when
+ * frames are copied, the input buffer.  OPENIMP_T23_HELIX_RMEM_KB
+ * overrides the estimate; the worker logs what it really used.
+ */
+#define T23_HELIX_RMEM_SLACK (512u * 1024u)
+
+static uint64_t t23_rmem_estimate(const T23HelixBridge *bridge,
+                                  const T23HelixIpcRequest *init)
+{
+    const char *text = getenv("OPENIMP_T23_HELIX_RMEM_KB");
+    uint64_t frame;
+    uint64_t size;
+
+    if (text && *text) {
+        char *end = NULL;
+        unsigned long kb = strtoul(text, &end, 10);
+
+        if (end && !*end && kb > 0ul && kb < 0x400000ul)
+            return (uint64_t)kb * 1024u;
+    }
+    frame = (((uint64_t)bridge->width + 15u) & ~15ull) *
+            (((uint64_t)bridge->height + 15u) & ~15ull) * 3u / 2u;
+    if (init && init->command == T23_HELIX_COMMAND_DEC_INIT)
+        /* decoded pictures held until released, plus the bitstream */
+        return frame * 3u + T23_HELIX_RMEM_SLACK;
+    /* the bitstream buffer, reference + reconstruction, motion/MB data,
+     * the output buffer */
+    size = t23_helix_bs_size(bridge->width, bridge->height) + frame * 2u +
+           frame / 4u + bridge->output_capacity + T23_HELIX_RMEM_SLACK;
+    if (!bridge->zero_copy)
+        size += bridge->input_capacity;
+    return size;
+}
+
+static int t23_reserve_rmem(T23HelixBridge *bridge,
+                            const T23HelixIpcRequest *init)
+{
+    IMPDMABufferInfo info;
+    uint64_t size = t23_rmem_estimate(bridge, init);
+
+    size = (size + T23_HELIX_PAGE_SIZE - 1u) &
+           ~((uint64_t)T23_HELIX_PAGE_SIZE - 1u);
+    if (bridge->rmem_phys)
+        return 0;
+    memset(&info, 0, sizeof(info));
+    if (size > 0x7fffffffu ||
+        DMA_AllocDescriptor(&info, (int)size, "helix") != 0 ||
+        !info.phys_addr) {
+        t23_log(LOG_ERR, "openimp/T23: no %u KiB of rmem for the Helix "
+                         "helper (OPENIMP_T23_HELIX_RMEM_KB sets the size)",
+                (unsigned int)(size / 1024u));
+        return -1;
+    }
+    bridge->rmem_phys = info.phys_addr;
+    bridge->rmem_size = (uint32_t)size;
+    t23_log(LOG_NOTICE, "openimp/T23: Helix helper rmem 0x%08x+%u KiB "
+                        "for %ux%u", bridge->rmem_phys,
+            bridge->rmem_size / 1024u, bridge->width, bridge->height);
+    return 0;
+}
+
+static void t23_release_rmem(T23HelixBridge *bridge)
+{
+    if (!bridge->rmem_phys)
+        return;
+    if (DMA_FreePhys(bridge->rmem_phys) != 0)
+        t23_log(LOG_WARNING, "openimp/T23: cannot free Helix rmem 0x%08x",
+                bridge->rmem_phys);
+    bridge->rmem_phys = 0u;
+    bridge->rmem_size = 0u;
+}
+
 static void t23_stop_worker(T23HelixBridge *bridge)
 {
     pid_t pid;
@@ -241,9 +324,25 @@ static void t23_stop_worker(T23HelixBridge *bridge)
         }
         if (pid > 0) {
             kill(pid, SIGKILL);
-            (void)waitpid(pid, NULL, WNOHANG);
+            /* the region below may only be reused once the worker and
+             * its encoder are gone */
+            for (attempt = 0; attempt < 100u; attempt++) {
+                pid_t result = waitpid(pid, NULL, WNOHANG);
+
+                if (result == pid || (result < 0 && errno == ECHILD)) {
+                    pid = -1;
+                    break;
+                }
+                usleep(10000);
+            }
         }
     }
+    if (pid > 0)
+        t23_log(LOG_ERR, "openimp/T23: Helix helper pid=%ld did not exit; "
+                         "keeping its rmem 0x%08x+%u",
+                (long)pid, bridge->rmem_phys, bridge->rmem_size);
+    else
+        t23_release_rmem(bridge);
     bridge->worker_pid = -1;
     if (bridge->shared_buffer && bridge->shared_size)
         munmap(bridge->shared_buffer, bridge->shared_size);
@@ -301,10 +400,12 @@ static void t23_replay_params(T23HelixBridge *bridge)
 static int t23_start_worker_with(T23HelixBridge *bridge,
                                  const T23HelixIpcRequest *init)
 {
-    static char *const helper_environment[] = {
+    char rmem_text[64];
+    char *helper_environment[] = {
         "PATH=/usr/bin:/bin",
         "LD_LIBRARY_PATH=/opt/openimp-t23",
         "OPENIMP_T23_HELIX_WORKER=1",
+        rmem_text,
         NULL,
     };
     T23HelixIpcRequest request;
@@ -336,6 +437,11 @@ static int t23_start_worker_with(T23HelixBridge *bridge,
                 helper);
         return -1;
     }
+    if (t23_reserve_rmem(bridge, init) != 0)
+        goto out;
+    snprintf(rmem_text, sizeof(rmem_text),
+             "OPENIMP_T23_HELIX_RMEM=0x%08x:%u", bridge->rmem_phys,
+             bridge->rmem_size);
     bridge->shared_fd = mkstemp(shared_path);
     if (bridge->shared_fd < 0 ||
         ftruncate(bridge->shared_fd, bridge->shared_size) != 0 ||
@@ -482,8 +588,8 @@ static int t23_start_bridge(T23HelixBridge *bridge, uint64_t input_size)
 
     input_capacity = (input_size + T23_HELIX_PAGE_SIZE - 1u) &
                      ~((uint64_t)T23_HELIX_PAGE_SIZE - 1u);
-    output_capacity = (uint64_t)bridge->width * bridge->height * 2u +
-                      65536u;
+    output_capacity =
+        (uint64_t)t23_helix_bs_size(bridge->width, bridge->height) + 65536u;
     output_capacity =
         (output_capacity + T23_HELIX_PAGE_SIZE - 1u) &
         ~((uint64_t)T23_HELIX_PAGE_SIZE - 1u);

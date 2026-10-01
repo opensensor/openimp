@@ -46,6 +46,8 @@ typedef struct {
     int failed;
     T23HelixParamCache *cache; /* lazily allocated, survives restarts */
     int zero_copy;      /* frames are passed by physical address */
+    uint32_t rmem_phys; /* the worker's slice of the rmem arena, 0: none */
+    uint32_t rmem_size;
 } T23HelixBridge;
 
 int OpenIMP_T23_HelixInit(T23HelixBridge *bridge,

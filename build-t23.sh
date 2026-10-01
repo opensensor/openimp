@@ -181,8 +181,13 @@ sha256sum "$output_dir/libimp.so"
 readelf -d "$output_dir/libimp.so" | grep -E 'SONAME|NEEDED'
 
 # Keep the proprietary T23 Helix implementation in a clean process.  RVD loads
-# OpenIMP, while this small worker resolves libimp from /usr/lib and exchanges
-# raw frames through tmpfs-backed shared memory.
+# OpenIMP from /usr/lib, while this small worker runs on the OEM libimp from
+# /opt/openimp-t23 and exchanges raw frames through tmpfs-backed shared
+# memory.  Its search path names only /opt/openimp-t23: a DT_RPATH of
+# /usr/lib wins over LD_LIBRARY_PATH and would load OpenIMP's libimp.so,
+# which the worker refuses.  Buildroot's fix-rpath keeps the directory
+# (it exists in the target) and may turn it into DT_RUNPATH, after which
+# the LD_LIBRARY_PATH the bridge sets still selects the same directory.
 # Link it against the OEM libimp.  With per-package directories the
 # package's own staging holds the OEM copy at build time (ingenic-lib), while
 # $target_dir/target only exists once the image is assembled, so a caller may
@@ -199,7 +204,9 @@ fi
 "$compiler" $base_flags $repo_includes -Wall -Wextra -Werror \
     "$project_dir/src/t23/openimp_t23_helix_worker.c" \
     -L"$oem_lib_dir" \
-    -Wl,-rpath,/usr/lib -Wl,-rpath-link,"$oem_lib_dir" \
+    -Wl,--disable-new-dtags -Wl,-rpath,/opt/openimp-t23 \
+    -Wl,-rpath-link,"$oem_lib_dir" \
+    -Wl,--dynamic-list="$project_dir/src/t23/openimp_t23_helix_worker.dynlist" \
     -limp -lalog -lpthread -ldl \
     -o "$output_dir/openimp-t23-helixd"
 "$stripper" --strip-unneeded "$output_dir/openimp-t23-helixd"
@@ -209,4 +216,20 @@ then
     echo "T23 Helix worker is not linked to the OEM libimp ABI" >&2
     exit 1
 fi
+if ! readelf -d "$output_dir/openimp-t23-helixd" |
+    grep -q 'Library rpath: \[/opt/openimp-t23\]'
+then
+    echo "T23 Helix worker does not search /opt/openimp-t23 first" >&2
+    exit 1
+fi
+# The worker confines the OEM rmem allocator by interposing these.
+for symbol in continuous_init continuous_alloc
+do
+    if ! readelf --dyn-syms --wide "$output_dir/openimp-t23-helixd" |
+        awk -v s="$symbol" '$7 != "UND" && $8 == s {found=1} END {exit !found}'
+    then
+        echo "T23 Helix worker does not export $symbol" >&2
+        exit 1
+    fi
+done
 ls -l "$output_dir/openimp-t23-helixd"

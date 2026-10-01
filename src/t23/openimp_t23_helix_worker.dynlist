@@ -1,0 +1,4 @@
+{
+    continuous_init;
+    continuous_alloc;
+};

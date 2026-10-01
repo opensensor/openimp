@@ -15,11 +15,34 @@
  *      T23_HELIX_INIT_ZERO_COPY flag of INIT.
  * The worker and libimp are built and installed together; a version
  * mismatch fails INIT. */
-#define T23_HELIX_IPC_VERSION 3u
+/* 4: the worker's OEM allocator works in an rmem slice that libimp
+ *    reserves and names in OPENIMP_T23_HELIX_RMEM=<phys>:<bytes>; a worker
+ *    without one refuses INIT/DEC_INIT.  The OEM bitstream buffer and the
+ *    output buffer are sized by t23_helix_bs_size(). */
+#define T23_HELIX_IPC_VERSION 4u
 #define T23_HELIX_PARAM_MAX 64u
 
 /* INIT flags */
 #define T23_HELIX_INIT_ZERO_COPY 0x1u /* allocate the input copy lazily */
+
+/* The OEM encoder's bitstream buffer ("vpuBs", IMP_Encoder_SetPoolSize):
+ * the OEM default is 1920 * 1080 bytes whatever the resolution.  One
+ * worker encodes one picture size, so it gets one luma plane's worth, at
+ * least 512 KiB, at most the OEM default; no coded picture is larger, so
+ * the output buffer is sized from it too. */
+#define T23_HELIX_BS_DEFAULT 2073600u
+#define T23_HELIX_BS_MIN (512u * 1024u)
+
+static inline uint32_t t23_helix_bs_size(uint32_t width, uint32_t height)
+{
+    uint64_t size = (uint64_t)width * height;
+
+    if (size < T23_HELIX_BS_MIN)
+        size = T23_HELIX_BS_MIN;
+    if (size > T23_HELIX_BS_DEFAULT)
+        size = T23_HELIX_BS_DEFAULT;
+    return (uint32_t)((size + 4095u) & ~4095ull);
+}
 
 /* The OEM IMP_Encoder_Yuv* in/out structures (imp/imp_encoder.h). */
 typedef IMPEncoderYuvIn T23EncoderYuvIn;
