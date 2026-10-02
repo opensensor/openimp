@@ -168,14 +168,18 @@ int IMP_FrameSource_SnapFrame(int chnNum, IMPPixelFormat fmt, int width, int hei
 
 /**
  * Set channel rotation (T31 only)
- * 
+ *
+ * Software rotation of the channel's NV12 frames, as in the vendor libimp
+ * (docs/T31_ROTATE.md). Set the encoder channel to the rotated size.
+ *
  * @param chnNum Channel number
- * @param rotation Rotation angle (0, 90, 180, 270)
- * @param height Height after rotation
- * @param width Width after rotation
+ * @param rotTo90 0: off, 1: 90 degrees counterclockwise, 2: 90 degrees
+ *                clockwise (vendor values); 3: 180 degrees (OpenIMP only)
+ * @param width Image width before rotation
+ * @param height Image height before rotation
  * @return 0 on success, negative on error
  */
-int IMP_FrameSource_SetChnRotate(int chnNum, int rotation, int height, int width);
+int IMP_FrameSource_SetChnRotate(int chnNum, int rotTo90, int width, int height);
 
 /* Additional framesource functions (raptor-hal parity) */
 int IMP_FrameSource_GetFrameDepth(int chnNum, int *depth);

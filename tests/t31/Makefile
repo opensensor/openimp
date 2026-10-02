@@ -9,12 +9,13 @@ FRAME_PIN_TEST_BIN := $(PROJECT_DIR)/build/tests/t31-frame-pin-test
 AO_SENDFRAME_TEST_BIN := $(PROJECT_DIR)/build/tests/t31-ao-sendframe-test
 HEVC_HEADERS_TEST_BIN := $(PROJECT_DIR)/build/tests/t31-hevc-headers-test
 AEC_TEST_BIN := $(PROJECT_DIR)/build/tests/t31-aec-test
+NV12_ROTATE_TEST_BIN := $(PROJECT_DIR)/build/tests/t31-nv12-rotate-test
 
 .PHONY: check clean
 
 check: $(STREAM_LAYOUT_TEST_BIN) $(RATE_CONTROL_TEST_BIN) \
 	$(READY_EVENT_TEST_BIN) $(ACODEC_TEST_BIN) $(FRAME_PIN_TEST_BIN) \
-	$(AO_SENDFRAME_TEST_BIN) $(HEVC_HEADERS_TEST_BIN) $(AEC_TEST_BIN)
+	$(AO_SENDFRAME_TEST_BIN) $(HEVC_HEADERS_TEST_BIN) $(AEC_TEST_BIN) $(NV12_ROTATE_TEST_BIN)
 	$(STREAM_LAYOUT_TEST_BIN)
 	$(RATE_CONTROL_TEST_BIN)
 	$(READY_EVENT_TEST_BIN)
@@ -23,6 +24,7 @@ check: $(STREAM_LAYOUT_TEST_BIN) $(RATE_CONTROL_TEST_BIN) \
 	$(AO_SENDFRAME_TEST_BIN)
 	$(HEVC_HEADERS_TEST_BIN)
 	$(AEC_TEST_BIN)
+	$(NV12_ROTATE_TEST_BIN)
 
 $(STREAM_LAYOUT_TEST_BIN): stream_layout_test.c \
 	$(PROJECT_DIR)/src/t40/t31_stream_layout.c \
@@ -31,6 +33,15 @@ $(STREAM_LAYOUT_TEST_BIN): stream_layout_test.c \
 	$(CC) $(CFLAGS) -I$(PROJECT_DIR)/src \
 		stream_layout_test.c \
 		$(PROJECT_DIR)/src/t40/t31_stream_layout.c \
+		-o "$@"
+
+$(NV12_ROTATE_TEST_BIN): nv12_rotate_test.c \
+	$(PROJECT_DIR)/src/framesource/nv12_rotate.c \
+	$(PROJECT_DIR)/src/framesource/nv12_rotate.h
+	mkdir -p "$(dir $@)"
+	$(CC) $(CFLAGS) -I$(PROJECT_DIR)/src \
+		nv12_rotate_test.c \
+		$(PROJECT_DIR)/src/framesource/nv12_rotate.c \
 		-o "$@"
 
 $(RATE_CONTROL_TEST_BIN): rate_control_test.c \
@@ -101,4 +112,4 @@ $(HEVC_HEADERS_TEST_BIN): hevc_headers_test.c \
 clean:
 	$(RM) $(STREAM_LAYOUT_TEST_BIN) $(RATE_CONTROL_TEST_BIN) \
 		$(READY_EVENT_TEST_BIN) $(ACODEC_TEST_BIN) $(FRAME_PIN_TEST_BIN) \
-		$(AO_SENDFRAME_TEST_BIN) $(HEVC_HEADERS_TEST_BIN) $(AEC_TEST_BIN)
+		$(AO_SENDFRAME_TEST_BIN) $(HEVC_HEADERS_TEST_BIN) $(AEC_TEST_BIN) $(NV12_ROTATE_TEST_BIN)

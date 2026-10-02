@@ -1039,6 +1039,15 @@ static uint32_t avpu_get_nv12_luma_plane_size(uint32_t width, uint32_t height)
     return width * avpu_get_nv12_luma_lines(height);
 }
 
+/* Byte offset of the CbCr plane in a capture (source) frame: the source
+ * pitch is ALIGN16(width) (avpu_get_enc1_src_pitch), so the luma plane is
+ * ALIGN16(width) * ALIGN16(height). Equal to the plane size above for
+ * 16-aligned widths; a 90/270-rotated 1080/360-wide frame needs this. */
+static uint32_t avpu_get_nv12_src_uv_offset(uint32_t width, uint32_t height)
+{
+    return avpu_align_up_u32(width, 16u) * avpu_get_nv12_luma_lines(height);
+}
+
 static size_t avpu_get_nv12_frame_size(uint32_t width, uint32_t height)
 {
     return ((size_t)avpu_get_nv12_luma_plane_size(width, height) * 3u) / 2u;
@@ -3186,7 +3195,7 @@ static int avpu_t41_fill_command(ALAvpuContext *ctx, void *slot,
 
     params.source_y = src_phys;
     params.source_uv = src_phys +
-        avpu_get_nv12_luma_plane_size(ctx->enc_w, ctx->enc_h);
+        avpu_get_nv12_src_uv_offset(ctx->enc_w, ctx->enc_h);
 
     params.reference_y = ctx->rec_buf.phy_addr;
     params.reference_uv = ctx->rec_buf.phy_addr + luma_size;
@@ -3451,7 +3460,8 @@ static void fill_cmd_regs_enc1(const ALAvpuContext* ctx, uint32_t* cmd,
         /* Source frame */
         if (src_phys) {
             cmd[0x20] = src_phys;                     /* src Y */
-            cmd[0x21] = src_phys + y_plane_sz;        /* src UV */
+            cmd[0x21] = src_phys +                    /* src UV */
+                avpu_get_nv12_src_uv_offset(ctx->enc_w, ctx->enc_h);
             cmd[0x22] = src_pitch & 0x3ffffu;         /* src pitch */
         }
 
@@ -3735,7 +3745,7 @@ static void fill_cmd_regs_enc1(const ALAvpuContext* ctx, uint32_t* cmd,
         cmd[0x1f] = 0u;
 
         cmd[0x20] = src_phys;
-        cmd[0x21] = src_phys + avpu_get_nv12_luma_plane_size(width, height);
+        cmd[0x21] = src_phys + avpu_get_nv12_src_uv_offset(width, height);
         cmd[0x22] = avpu_get_enc1_src_pitch(width, ctx->format_word);
         cmd[0x23] = ctx->interm_buf.phy_addr
                   + ctx->interm_ep1_size + ep1_row_table_size;
