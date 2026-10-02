@@ -80,6 +80,9 @@ int VBMCreatePool(int chn, void *fmt, void *ops, void *priv);
 int VBMDestroyPool(int chn);
 int VBMFillPool(int chn);
 int VBMFlushFrame(int chn);
+/* Returns once no VBMReleaseFrame of chn is running: one that started
+ * earlier may still have read the channel's previous frame-channel fd. */
+void VBMWaitReleases(int chn);
 int VBMGetFrame(int chn, void **frame);
 int VBMReleaseFrame(int chn, void *frame);
 int VBMLockFrame(void *frame);

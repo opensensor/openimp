@@ -2200,7 +2200,8 @@ static void fs_stop_worker(int chn, FsChnCtx *ctx)
 }
 
 /* Unpublish the channel's fd (release_Frame reads it from +0x1c4) before
- * closing it, so a late release cannot QBUF on it or on its reuse. */
+ * closing it, so a late release cannot QBUF on it or on its reuse; a
+ * release that read it just before is let finish first. */
 static void fs_close_chn_fd(int chn, FsChnCtx *ctx)
 {
     int fd = ctx->fd;
@@ -2209,6 +2210,7 @@ static void fs_close_chn_fd(int chn, FsChnCtx *ctx)
         return;
     *(int32_t *)(fs_channel_base(chn) + 0x1c4) = -1;
     ctx->fd = -1;
+    VBMWaitReleases(chn);
     fs_close_device(fd);
 }
 

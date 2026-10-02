@@ -2141,6 +2141,14 @@ int VBMFlushFrame(int chn) {
 
 static int vbm_get_frame(int chn, void **frame);
 
+void VBMWaitReleases(int chn)
+{
+    if (chn < 0 || chn >= MAX_VBM_POOLS)
+        return;
+    pthread_mutex_lock(&vbm_pool_lock[chn]);
+    pthread_mutex_unlock(&vbm_pool_lock[chn]);
+}
+
 int VBMGetFrame(int chn, void **frame) {
     int ret;
 
