@@ -489,7 +489,7 @@ int __wrap_ioctl(int fd, unsigned long request, ...)
         uint32_t window = reg_value(list, pairs, 0x30040) << 10;
         uint32_t start = reg_value(list, pairs, 0x30004);
 
-        assert(window >= (256u << 10) && window <= (1u << 20));
+        assert(window >= (256u << 10) && window <= (2u << 20));
         assert(start == (bitstream & ~0x7fu));
         assert(in_allocation(start, window));
         node->output_len = encode_picture(list, pairs, p,

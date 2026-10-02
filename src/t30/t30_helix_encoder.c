@@ -926,6 +926,9 @@ int OpenIMP_T30_HelixCreate(T30HelixEncoder **encoder_out,
     uint64_t aligned_luma_size;
     uint64_t reference_size;
     unsigned int i;
+#if defined(PLATFORM_T23)
+    int window_forced = 0;   /* OPENIMP_T23_HELIX_BS_KIB set */
+#endif
 
     /* The descriptors carry macroblock dimensions in eight bits.  The
      * slice programs the luma stride as the picture width but places the
@@ -1005,8 +1008,15 @@ int OpenIMP_T30_HelixCreate(T30HelixEncoder **encoder_out,
 
         if (window < (256u << 10))
             window = 256u << 10;
+#if defined(PLATFORM_T23)
+        /* T23: up to 2 MiB (1080p); the allocation below falls back to
+         * the 1 MiB T21 window when reserved memory is short */
+        if (window > (2u << 20))
+            window = 2u << 20;
+#else
         if (window > (1u << 20))
             window = 1u << 20;
+#endif
 #if defined(PLATFORM_T23)
         {
             /* OPENIMP_T23_HELIX_BS_KIB=<KiB>: a larger (or smaller)
@@ -1015,8 +1025,10 @@ int OpenIMP_T30_HelixCreate(T30HelixEncoder **encoder_out,
             const char *kib = getenv("OPENIMP_T23_HELIX_BS_KIB");
             unsigned long value = kib ? strtoul(kib, NULL, 0) : 0ul;
 
-            if (value >= 256ul && value <= 4096ul)
+            if (value >= 256ul && value <= 4096ul) {
                 window = ((uint64_t)value << 10) & ~(uint64_t)0xffffu;
+                window_forced = 1;
+            }
         }
 #endif
 #if defined(HELIX_SHARED_BITSTREAM)
@@ -1045,14 +1057,28 @@ int OpenIMP_T30_HelixCreate(T30HelixEncoder **encoder_out,
         encoder->reference[i].c = encoder->reference[i].y +
                                   (uint32_t)aligned_luma_size;
     }
-    /* the window starts at the 128-byte aligned slice data; a page of
-     * slack keeps even a full window inside the allocation */
+    /* The core does not stop at the window end (1080p: up to 1.79 MB
+     * written for a 1 MiB window).  The arena is allocated top-down, so
+     * the EMC scratch goes between the references and the bitstream
+     * buffer: a spill upwards runs into the scratch of the picture that
+     * is being dropped anyway, not into the reference the next P picture
+     * predicts from (the scratch is 2 MiB at 1080p, larger than the
+     * spills seen).  The window starts at the 128-byte aligned slice
+     * data; a page of slack keeps even a full window inside the
+     * allocation.  Short of reserved memory: the 1 MiB T21 window. */
+    if (t30_dma_allocate(&encoder->emc, encoder->scratch_size,
+                         "t23-helix-emc") != 0)
+        goto fail;
     if (t30_dma_allocate(&encoder->temporary,
                          (encoder->bitstream_kib << 10) + 4096u,
-                         "t23-helix-bs") != 0 ||
-        t30_dma_allocate(&encoder->emc, encoder->scratch_size,
-                         "t23-helix-emc") != 0 ||
-        t30_dma_allocate(&encoder->descriptor, T30_DESCRIPTOR_WINDOW,
+                         "t23-helix-bs") != 0) {
+        if (window_forced || encoder->bitstream_kib <= 1024u ||
+            t30_dma_allocate(&encoder->temporary, (1u << 20) + 4096u,
+                             "t23-helix-bs") != 0)
+            goto fail;
+        encoder->bitstream_kib = 1024u;
+    }
+    if (t30_dma_allocate(&encoder->descriptor, T30_DESCRIPTOR_WINDOW,
                          "t23-helix-desc") != 0)
         goto fail;
     t23_canary_arm(encoder);
