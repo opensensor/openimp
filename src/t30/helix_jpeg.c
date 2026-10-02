@@ -537,7 +537,6 @@ static struct {
     uint32_t rmem_reserve;
     int stats;                 /* OPENIMP_HELIX_JPEG_STATS=1 */
     int max_bs;                /* JPGC_MAX_BS limits the core */
-    int full_bitstream;        /* a limited buffer overflowed */
     uint32_t bs_divisor;       /* OPENIMP_HELIX_JPEG_BS_DIVISOR (max_bs) */
     uint32_t probe_limit;      /* JPGC_MAX_BS probe, bytes (0 = off) */
     IMPDMABufferInfo probe;
@@ -799,15 +798,14 @@ static void helix_pad_rows(const HelixJpegFrame *frame, uint32_t stride,
  * the stock T23 one (the encoder pool, 2.4 MB by default).  Without
  * JPGC_MAX_BS (T20/T21/T30) the core writes on regardless, so nothing
  * smaller is safe.  With it, OPENIMP_HELIX_JPEG_BS_DIVISOR=n uses 1/n of
- * NV12 (at least 256 KiB); a job that reaches the limit is then repeated
- * with the NV12 size, kept from then on. */
-static uint32_t helix_bitstream_capacity(uint32_t nv12, const uint8_t qt[128],
-                                         int full)
+ * NV12 (at least 256 KiB); like a full NV12 buffer, a picture that reaches
+ * the limit is repeated in the same buffer with coarser quantizers. */
+static uint32_t helix_bitstream_capacity(uint32_t nv12, const uint8_t qt[128])
 {
     uint32_t capacity = nv12;
 
     (void)qt;
-    if (!full && helix_jpeg.max_bs && helix_jpeg.bs_divisor > 1u)
+    if (helix_jpeg.max_bs && helix_jpeg.bs_divisor > 1u)
         capacity = nv12 / helix_jpeg.bs_divisor;
     if (capacity < HELIX_BITSTREAM_MIN)
         capacity = HELIX_BITSTREAM_MIN;
@@ -817,12 +815,28 @@ static uint32_t helix_bitstream_capacity(uint32_t nv12, const uint8_t qt[128],
 /* The kept command list + bitstream buffer, grown when too small. */
 static int helix_job_buffer(uint32_t capacity)
 {
+    IMPDMABufferInfo next;
+    int ret;
+
     if (helix_jpeg.job.phys_addr &&
         helix_jpeg.job.size >= HELIX_DESCRIPTOR_AREA + capacity)
         return 0;
-    helix_dma_release(&helix_jpeg.job);
-    return helix_dma_alloc(&helix_jpeg.job, HELIX_DESCRIPTOR_AREA + capacity,
-                           "helix-jpeg-bs");
+    /* grow: the old buffer stays until the new one exists */
+    ret = helix_dma_alloc(&next, HELIX_DESCRIPTOR_AREA + capacity,
+                          "helix-jpeg-bs");
+    if (ret == 0) {
+        helix_dma_release(&helix_jpeg.job);
+        helix_jpeg.job = next;
+        return 0;
+    }
+    /* with JPGC_MAX_BS a smaller buffer is still safe: the core stops at
+     * its end and a full picture is repeated with coarser steps */
+    if (helix_jpeg.job.phys_addr && helix_jpeg.max_bs &&
+        helix_jpeg.job.size > HELIX_DESCRIPTOR_AREA + HELIX_BITSTREAM_MIN) {
+        helix_jpeg.reason = NULL;
+        return 0;
+    }
+    return ret;
 }
 
 /* Probe buffer: command list, probe_limit bytes of bitstream, then a
@@ -998,6 +1012,7 @@ static int helix_jpeg_run_locked(const HelixJpegFrame *frame,
     uint8_t *output;
     size_t header;
     int overflow;
+    unsigned int attempt;
     int ret;
 
     memset(&slice, 0, sizeof(slice));
@@ -1054,35 +1069,31 @@ static int helix_jpeg_run_locked(const HelixJpegFrame *frame,
             ? HELIX_JPEG_PLANE_NV21 : HELIX_JPEG_PLANE_NV12;
     slice.qt = qt;
 
-    capacity = helix_bitstream_capacity(nv12, qt, helix_jpeg.full_bitstream);
+    capacity = helix_bitstream_capacity(nv12, qt);
     *capacity_out = capacity;
     ret = helix_jpeg_job_locked(&slice, capacity, &overflow, capacity_out);
-    if (ret == HELIX_RUN_FAILED && overflow && helix_jpeg.max_bs &&
-        !helix_jpeg.probe_limit) {
-        if (*capacity_out < ((nv12 + 0xfffu) & ~0xfffu)) {
-            /* a smaller buffer (OPENIMP_HELIX_JPEG_BS_DIVISOR): repeat
-             * with the NV12 size, and keep that size from now on */
-            helix_jpeg.full_bitstream = 1;
-            capacity = helix_bitstream_capacity(nv12, qt, 1);
-        } else {
-            /* even the NV12 size: repeat with steps doubled (about half
-             * the size) rather than drop the picture.  The stock T23
-             * library drops it and lowers the channel quality by 5 for
-             * the following pictures. */
-            unsigned int i;
+    /* Reached the JPGC_MAX_BS limit: repeat the picture in the same buffer
+     * (no allocation) with the steps doubled, then quadrupled, rather than
+     * drop it.  The stock T23 library drops it and lowers the channel
+     * quality by 5 for the following pictures. */
+    for (attempt = 1; attempt <= 2 && ret == HELIX_RUN_FAILED && overflow &&
+                      helix_jpeg.max_bs && !helix_jpeg.probe_limit;
+         attempt++) {
+        unsigned int i;
 
-            for (i = 0; i < 128u; i++)
-                coarse[i] = qt[i] >= 128u ? 255u : (uint8_t)(qt[i] * 2u);
-            slice.qt = coarse;
-            header_qt = coarse;
+        for (i = 0; i < 128u; i++) {
+            uint32_t step = (uint32_t)qt[i] << attempt;
+
+            coarse[i] = (uint8_t)(step > 255u ? 255u : step);
         }
+        slice.qt = coarse;
+        header_qt = coarse;
         IMP_LOG_WARN("Encoder", "Helix JPEG: %ux%u reached the %u-byte "
-                     "bitstream limit, repeating it %s", frame->width,
-                     frame->height, *capacity_out,
-                     header_qt == coarse ? "with coarser quantizers"
-                                         : "with the NV12 size");
-        *capacity_out = capacity;
-        ret = helix_jpeg_job_locked(&slice, capacity, &overflow, capacity_out);
+                     "bitstream limit, repeating it with %ux quantizer steps",
+                     frame->width, frame->height, *capacity_out,
+                     1u << attempt);
+        ret = helix_jpeg_job_locked(&slice, capacity, &overflow,
+                                    capacity_out);
     }
     if (ret != 0)
         return ret;
@@ -1221,15 +1232,20 @@ int OpenIMP_HelixJpeg_Reserve(uint32_t width, uint32_t height)
         pthread_mutex_unlock(&helix_jpeg.lock);
         return -1;
     }
-    ret = helix_job_buffer(helix_bitstream_capacity(
-        width * aligned_height * 3u / 2u, qt, helix_jpeg.full_bitstream));
-    (void)DMA_RmemStats(&used, &total, &largest);
-    IMP_LOG_INFO("Encoder", "Helix JPEG: %ux%u channel: bitstream buffer "
-                 "%u bytes %s (rmem used %zu of %zu, largest free %zu)",
-                 width, height, helix_jpeg.job.size,
-                 ret == 0 ? "reserved" : "not reserved, retried at the "
-                                         "first picture",
-                 used, total, largest);
+    {
+        uint32_t before = helix_jpeg.job.size;
+
+        ret = helix_job_buffer(helix_bitstream_capacity(
+            width * aligned_height * 3u / 2u, qt));
+        (void)DMA_RmemStats(&used, &total, &largest);
+        IMP_LOG_INFO("Encoder", "Helix JPEG: %ux%u channel: shared bitstream "
+                     "buffer %u bytes, %s (rmem used %zu of %zu, largest "
+                     "free %zu)", width, height, helix_jpeg.job.size,
+                     ret != 0 ? "not allocated, retried at the first picture"
+                     : helix_jpeg.job.size == before ? "already large enough"
+                     : before ? "grown" : "allocated",
+                     used, total, largest);
+    }
     pthread_mutex_unlock(&helix_jpeg.lock);
     return ret == 0 ? 0 : -1;
 }

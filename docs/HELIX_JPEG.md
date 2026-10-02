@@ -194,7 +194,8 @@ OpenIMP does the same (`HelixJpeg_QualityTables()`).
   with it (the stock T23 library programs its encoder pool size, 2.4 MB or
   600 KB by SoC variant, `IMP_Encoder_SetPoolSize`).
   `OPENIMP_HELIX_JPEG_BS_DIVISOR=n` (only with the limit) uses 1/n of NV12
-  and repeats a job that reaches the limit with the NV12 size.
+  (allocated once, never at run time; a picture that reaches the limit is
+  repeated in the same buffer like below).
 * Bitstream limit reached (T23): the job completes normally
   (ENDFLAG|JPGEND) with a truncated bitstream; the kernel returns
   `JPGC_ACT_BS` in `max_bs_act` and bit 29 flags the truncation (the stock
@@ -205,8 +206,9 @@ OpenIMP does the same (`HelixJpeg_QualityTables()`).
   log about the pool size). OpenIMP never serves a truncated picture:
   bit 29 (other cores: a length within 4 KiB of the limit), BSFULL or a
   length at the buffer end fails the job; with the limit it repeats the
-  picture once with doubled quantizers (the JPEG header carries the tables
-  used), otherwise the picture fails.
+  picture in the same buffer with doubled, then quadrupled quantizers (the
+  JPEG header carries the tables used), otherwise the picture fails. A
+  failed or skipped picture never changes how the next one is encoded.
 A source copy for frames
   outside rmem is per job. No allocation leaves less than the reserve free
   in rmem (1/16 of the arena, at least 512 KiB,

@@ -957,6 +957,30 @@ static void test_limit_retry(void)
     assert(file[25] == qt[0] * 2u && file[94] == qt[64] * 2u);
     check_picture(&stream, 1024u, 768u, 28.0);
     free((void *)(uintptr_t)stream.virt_addr);
+
+    /* OPENIMP_HELIX_JPEG_BS_DIVISOR=8: the limit is reached in the small
+     * buffer, the picture is repeated there (no allocation), and the next
+     * picture is encoded normally again */
+    OpenIMP_HelixJpeg_Shutdown();
+    setenv("OPENIMP_HELIX_JPEG_BS_DIVISOR", "8", 1);
+    assert(OpenIMP_HelixJpeg_Reserve(1024u, 768u) == 0);
+    {
+        unsigned int allocated = live_allocations;
+
+        force_act_once = 1;
+        run_count = runs;
+        assert(OpenIMP_HelixJpeg_Encode(&frame, qt, &stream) == 0);
+        assert(runs == run_count + 2u && live_allocations == allocated);
+        /* 1/8 of NV12 is below the 256 KiB floor */
+        assert(last_bitstream_buffer == 256u << 10);
+        free((void *)(uintptr_t)stream.virt_addr);
+        assert(OpenIMP_HelixJpeg_Encode(&frame, qt, &stream) == 0);
+        file = (const uint8_t *)(uintptr_t)stream.virt_addr;
+        assert(file[25] == qt[0] && live_allocations == allocated);
+        free((void *)(uintptr_t)stream.virt_addr);
+    }
+    OpenIMP_HelixJpeg_Shutdown();
+    unsetenv("OPENIMP_HELIX_JPEG_BS_DIVISOR");
     munmap(pixels, size + 4096u);
 }
 #endif
@@ -1002,6 +1026,7 @@ static void test_failures(void)
     uint32_t size;
     uint8_t *pixels = make_frame(256u, 32u, 256u * 32u, &size, 0);
     unsigned int i;
+    unsigned int releases0 = releases;
 
     memset(&frame, 0, sizeof(frame));
     frame.virt_addr = (uint32_t)(uintptr_t)pixels;
@@ -1043,8 +1068,8 @@ static void test_failures(void)
     i = runs;
     assert(OpenIMP_HelixJpeg_Encode(&frame, qt, &stream) < 0);
 #if defined(PLATFORM_T23)
-    /* JPGC_MAX_BS: repeated once with coarser quantizers, still full */
-    assert(runs == i + 2u);
+    /* JPGC_MAX_BS: repeated with 2x and 4x steps, still full */
+    assert(runs == i + 3u);
 #else
     assert(runs == i + 1u);
 #endif
@@ -1057,7 +1082,7 @@ static void test_failures(void)
 #if OPENIMP_SW_JPEG
     /* three in a row: the software encoder takes over for good */
     assert(!OpenIMP_HelixJpeg_Available());
-    assert(releases == 1u && live_allocations == 0u);
+    assert(releases == releases0 + 1u && live_allocations == 0u);
 #else
     /* no software encoder: keep trying the VPU */
     assert(OpenIMP_HelixJpeg_Available());
@@ -1065,7 +1090,7 @@ static void test_failures(void)
     assert(OpenIMP_HelixJpeg_Encode(&frame, qt, &stream) == 0);
     free((void *)(uintptr_t)stream.virt_addr);
     OpenIMP_HelixJpeg_Shutdown();
-    assert(releases == 1u && live_allocations == 0u);
+    assert(releases == releases0 + 1u && live_allocations == 0u);
 #endif
     fail_runs = 0;
     munmap(pixels, size + 4096u);
@@ -1116,7 +1141,11 @@ int main(void)
 #if defined(PLATFORM_T23)
     test_limit_retry();
 #endif
+#if defined(PLATFORM_T23)
+    assert(requests == 2u);   /* test_limit_retry reopens once */
+#else
     assert(requests == 1u);
+#endif
     test_failures();
     test_probe();
     printf("helix_jpeg_test (%s, software JPEG %s): ok\n",
