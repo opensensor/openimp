@@ -1,0 +1,15 @@
+# Races TSan reports in the FrameSource/VBM lifecycle test that are by
+# design: trace counters and trace arguments read without a lock (the
+# worker's status flags are atomics).
+# A new report outside these is a finding.
+
+# per-call trace budgets and log-once counters
+race:trace_budget
+race:qbuf_log_count
+race:dqbuf_log_count
+race:dqbuf_ok_log
+race:dbg_count
+race:eagain_count
+race:err_count
+# trace argument read outside the queue mutex
+race:VBMKernelDequeue

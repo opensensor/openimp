@@ -11,7 +11,7 @@ SOURCES := \
 	$(ROOT)/src/t30/h264enc/common.c \
 	$(ROOT)/src/t30/h264enc/set.c
 
-.PHONY: check clean ivs-bench
+.PHONY: check clean ivs-bench sanitize
 
 descriptor_test: $(SOURCES)
 	$(CC) $(CFLAGS) $(INCLUDES) -o $@ $(SOURCES)
@@ -89,9 +89,94 @@ ivs_move_bench_t20: $(IVS_BENCH_SOURCES) $(IVS_SRC)/openimp_t31_ivs_move.h \
 ivs-bench: ivs_move_bench_t20
 	./ivs_move_bench_t20 bench
 
+# FrameSource / VBM lifecycle against a fake frame-channel driver
+# (fs_lifecycle_test.c), as built for T21, T20 and T23.
+FS_SOURCES := fs_lifecycle_test.c \
+	$(ROOT)/src/framesource/framesource_tseries.c \
+	$(ROOT)/src/kernel_interface.c
+FS_DEPS := $(FS_SOURCES) $(ROOT)/src/kernel_interface.h \
+	$(ROOT)/src/vbm_dq_step.h $(ROOT)/src/openimp_ready_event.h
+FS_FLAGS = -Wno-unused-result '-D_Static_assert(c,m)=' -fno-pie -no-pie \
+	-I$(ROOT)/include -I$(ROOT)/src \
+	-Wl,--wrap=open,--wrap=close,--wrap=ioctl,--wrap=select
+# alignment: the 32-bit module layout stores pointers at 4-byte offsets
+FS_SANITIZE_ASAN := -O1 -g -fno-omit-frame-pointer \
+	-fsanitize=address,undefined -fno-sanitize=alignment \
+	-fno-sanitize-recover=undefined
+FS_SANITIZE_TSAN := -O1 -g -fsanitize=thread
+
+fs_lifecycle_test_t21: $(FS_DEPS)
+	$(CC) $(CFLAGS) $(FS_FLAGS) -DPLATFORM_T21 -o $@ $(FS_SOURCES) -pthread
+
+fs_lifecycle_test_t20: $(FS_DEPS)
+	$(CC) $(CFLAGS) $(FS_FLAGS) -DPLATFORM_T20 -DPLATFORM_T21 \
+		-o $@ $(FS_SOURCES) -pthread
+
+fs_lifecycle_test_t23: $(FS_DEPS)
+	$(CC) $(CFLAGS) $(FS_FLAGS) -DPLATFORM_T23 -o $@ $(FS_SOURCES) -pthread
+
+# IMP_System_Init/Exit and the timestamp base, as built for T21.
+SYSTEM_SOURCES := system_test.c $(ROOT)/src/t40/openimp_p0.c
+SYSTEM_FLAGS = -Wno-unused-result '-D_Static_assert(c,m)=' -DPLATFORM_T21 \
+	-I$(ROOT)/include -I$(ROOT)/src
+
+system_test: $(SYSTEM_SOURCES)
+	$(CC) $(CFLAGS) $(SYSTEM_FLAGS) -o $@ $(SYSTEM_SOURCES) -pthread
+
+# Host tests under the sanitizers: the FrameSource/VBM lifecycle for T21,
+# T20 and T23 (ASan+UBSan, TSan), the Helix encoder for T30, T21 and T20
+# (UBSan), the IVS framework for T21 and T20 (ASan+UBSan, TSan). Slowed
+# down, the IVS thread can still be busy when the next frame comes and
+# drops it, as on a loaded camera: a functional mismatch there (exit 1)
+# is tolerated, a sanitizer report (other exit codes) is not.
+SAN_CC = $(CC) -std=gnu11 -Wall -Wextra -Werror
+# The stream buffer address travels in a 32-bit field, so the encoder's
+# malloc must stay below 4 GiB: UBSan only, not ASan's high heap.
+HELIX_SANITIZE := -O1 -g -fsanitize=undefined -fno-sanitize=alignment \
+	-fno-sanitize-recover=undefined
+TSAN_RUN = TSAN_OPTIONS="halt_on_error=1 suppressions=$(CURDIR)/fs_lifecycle_tsan.supp"
+
+sanitize: $(FS_DEPS) $(HELIX_SOURCES) $(HELIX_T21_SOURCES) $(IVS_DEPS)
+	set -e; for soc in "T21" "T20 -DPLATFORM_T21" "T23"; do \
+		name=$$(echo $$soc | cut -d' ' -f1); \
+		$(SAN_CC) $(FS_FLAGS) $(FS_SANITIZE_ASAN) -DPLATFORM_$$soc \
+			-o fs_lifecycle_asan_$$name $(FS_SOURCES) -pthread; \
+		./fs_lifecycle_asan_$$name; \
+		$(SAN_CC) $(FS_FLAGS) $(FS_SANITIZE_TSAN) -DPLATFORM_$$soc \
+			-o fs_lifecycle_tsan_$$name $(FS_SOURCES) -pthread; \
+		$(TSAN_RUN) ./fs_lifecycle_tsan_$$name; \
+	done
+	$(SAN_CC) $(SYSTEM_FLAGS) $(FS_SANITIZE_TSAN) -o system_tsan \
+		$(SYSTEM_SOURCES) -pthread
+	TSAN_OPTIONS=halt_on_error=1 ./system_tsan
+	set -e; for soc in "T30:$(HELIX_SOURCES)" \
+		"T21:$(HELIX_T21_SOURCES)" \
+		"T20 -DPLATFORM_T21:$(HELIX_SOURCES)"; do \
+		defs=$${soc%%:*}; srcs=$${soc#*:}; name=$$(echo $$defs | cut -d' ' -f1); \
+		$(SAN_CC) $(HELIX_SANITIZE) -DPLATFORM_$$defs -fno-pie -no-pie \
+			-I$(ROOT)/include -I$(ROOT)/src $(INCLUDES) \
+			-Wl,--wrap=open,--wrap=close,--wrap=ioctl \
+			-o helix_encoder_asan_$$name $$srcs; \
+		./helix_encoder_asan_$$name; \
+	done
+	set -e; for soc in "T21" "T20 -DPLATFORM_T21"; do \
+		name=$$(echo $$soc | cut -d' ' -f1); \
+		$(SAN_CC) $(FS_SANITIZE_ASAN) -Wno-unused-function -DPLATFORM_$$soc \
+			-fno-pie -no-pie -I$(ROOT)/include -I$(ROOT)/src -I$(IVS_SRC) \
+			-o ivs_framework_asan_$$name $(IVS_SOURCES) -pthread; \
+		ASAN_OPTIONS=exitcode=86 UBSAN_OPTIONS=exitcode=86 \
+			./ivs_framework_asan_$$name || [ $$? -eq 1 ]; \
+		$(SAN_CC) $(FS_SANITIZE_TSAN) -Wno-unused-function -DPLATFORM_$$soc \
+			-fno-pie -no-pie -I$(ROOT)/include -I$(ROOT)/src -I$(IVS_SRC) \
+			-o ivs_framework_tsan_$$name $(IVS_SOURCES) -pthread; \
+		$(TSAN_RUN) ./ivs_framework_tsan_$$name || [ $$? -eq 1 ]; \
+	done
+
 check: descriptor_test annexb_test level_test helix_encoder_test \
 	helix_encoder_test_t21 helix_encoder_test_t20 \
-	ivs_framework_test_t21 ivs_framework_test_t20 ivs_move_bench_t20
+	ivs_framework_test_t21 ivs_framework_test_t20 ivs_move_bench_t20 \
+	fs_lifecycle_test_t21 fs_lifecycle_test_t20 fs_lifecycle_test_t23 \
+	system_test
 	./descriptor_test
 	./annexb_test
 	./level_test
@@ -101,8 +186,15 @@ check: descriptor_test annexb_test level_test helix_encoder_test \
 	./ivs_framework_test_t21
 	./ivs_framework_test_t20
 	./ivs_move_bench_t20 equiv
+	./fs_lifecycle_test_t21
+	./fs_lifecycle_test_t20
+	./fs_lifecycle_test_t23
+	./system_test
 
 clean:
 	$(RM) descriptor_test annexb_test level_test helix_encoder_test \
 		helix_encoder_test_t21 helix_encoder_test_t20 \
-		ivs_framework_test_t21 ivs_framework_test_t20 ivs_move_bench_t20
+		ivs_framework_test_t21 ivs_framework_test_t20 ivs_move_bench_t20 \
+		fs_lifecycle_test_t21 fs_lifecycle_test_t20 fs_lifecycle_test_t23 \
+		fs_lifecycle_asan_* fs_lifecycle_tsan_* helix_encoder_asan_* \
+		ivs_framework_asan_* ivs_framework_tsan_* system_test system_tsan

@@ -11,13 +11,16 @@ HEVC_HEADERS_TEST_BIN := $(PROJECT_DIR)/build/tests/t31-hevc-headers-test
 AEC_TEST_BIN := $(PROJECT_DIR)/build/tests/t31-aec-test
 NV12_ROTATE_TEST_BIN := $(PROJECT_DIR)/build/tests/t31-nv12-rotate-test
 LAMBDA_TEST_BIN := $(PROJECT_DIR)/build/tests/t31-lambda-test
+AI_LIFECYCLE_TEST_BIN := $(PROJECT_DIR)/build/tests/t31-ai-lifecycle-test
+FAKE_AUDIO_PROCESS_DIR := $(PROJECT_DIR)/build/tests/fake-audio-process
+FAKE_AUDIO_PROCESS := $(FAKE_AUDIO_PROCESS_DIR)/libaudioProcess.so
 
-.PHONY: check clean
+.PHONY: check clean sanitize
 
 check: $(STREAM_LAYOUT_TEST_BIN) $(RATE_CONTROL_TEST_BIN) \
 	$(READY_EVENT_TEST_BIN) $(ACODEC_TEST_BIN) $(FRAME_PIN_TEST_BIN) \
 	$(AO_SENDFRAME_TEST_BIN) $(HEVC_HEADERS_TEST_BIN) $(AEC_TEST_BIN) $(NV12_ROTATE_TEST_BIN) \
-	$(LAMBDA_TEST_BIN)
+	$(LAMBDA_TEST_BIN) $(AI_LIFECYCLE_TEST_BIN) $(FAKE_AUDIO_PROCESS)
 	$(STREAM_LAYOUT_TEST_BIN)
 	$(RATE_CONTROL_TEST_BIN)
 	$(READY_EVENT_TEST_BIN)
@@ -28,6 +31,7 @@ check: $(STREAM_LAYOUT_TEST_BIN) $(RATE_CONTROL_TEST_BIN) \
 	$(AEC_TEST_BIN)
 	$(NV12_ROTATE_TEST_BIN)
 	$(LAMBDA_TEST_BIN)
+	LD_LIBRARY_PATH=$(abspath $(FAKE_AUDIO_PROCESS_DIR)) $(AI_LIFECYCLE_TEST_BIN)
 
 $(LAMBDA_TEST_BIN): lambda_test.c $(PROJECT_DIR)/src/t40/t40_lambda.h
 	mkdir -p "$(dir $@)"
@@ -104,6 +108,40 @@ $(AO_SENDFRAME_TEST_BIN): ao_sendframe_test.c \
 		$(PROJECT_DIR)/src/audio/openimp_aec.c \
 		-Wl,--wrap=open,--wrap=ioctl,--wrap=close -lpthread -ldl -lm -o "$@"
 
+# AI/AO device lifecycle (same fake /dev/dsp approach) with a fake
+# libaudioProcess.so for the HPF/NS/AGC effects.
+AI_LIFECYCLE_SOURCES := ai_lifecycle_test.c \
+	$(PROJECT_DIR)/src/t31/openimp_t31_audio.c \
+	$(PROJECT_DIR)/src/audio/openimp_aec.c
+AI_LIFECYCLE_FLAGS := -std=gnu99 '-D_Static_assert(c,m)=' -Wno-unused-result \
+	-I$(PROJECT_DIR)/include -I$(PROJECT_DIR)/src \
+	-I$(PROJECT_DIR)/src/audio \
+	-Wl,--wrap=open,--wrap=ioctl,--wrap=close
+
+$(FAKE_AUDIO_PROCESS): fake_audio_process.c
+	mkdir -p "$(dir $@)"
+	$(CC) -std=gnu99 -O2 -Wall -Wextra -Werror -shared -fPIC \
+		fake_audio_process.c -o "$@"
+
+$(AI_LIFECYCLE_TEST_BIN): $(AI_LIFECYCLE_SOURCES)
+	mkdir -p "$(dir $@)"
+	$(CC) $(CFLAGS) $(AI_LIFECYCLE_FLAGS) $(AI_LIFECYCLE_SOURCES) \
+		-lpthread -ldl -lm -o "$@"
+
+# The AI lifecycle under ASan+UBSan and TSan.
+sanitize: $(AI_LIFECYCLE_SOURCES) $(FAKE_AUDIO_PROCESS)
+	$(CC) -O1 -g -Wall -Wextra -Werror $(AI_LIFECYCLE_FLAGS) \
+		-fsanitize=address,undefined -fno-sanitize-recover=undefined \
+		$(AI_LIFECYCLE_SOURCES) -lpthread -ldl -lm \
+		-o $(AI_LIFECYCLE_TEST_BIN)-asan
+	LD_LIBRARY_PATH=$(abspath $(FAKE_AUDIO_PROCESS_DIR)) \
+		$(AI_LIFECYCLE_TEST_BIN)-asan
+	$(CC) -O1 -g -Wall -Wextra -Werror $(AI_LIFECYCLE_FLAGS) \
+		-fsanitize=thread $(AI_LIFECYCLE_SOURCES) -lpthread -ldl -lm \
+		-o $(AI_LIFECYCLE_TEST_BIN)-tsan
+	LD_LIBRARY_PATH=$(abspath $(FAKE_AUDIO_PROCESS_DIR)) \
+		TSAN_OPTIONS=halt_on_error=1 $(AI_LIFECYCLE_TEST_BIN)-tsan
+
 $(HEVC_HEADERS_TEST_BIN): hevc_headers_test.c \
 	$(PROJECT_DIR)/src/t40/t31_hevc_headers.c \
 	$(PROJECT_DIR)/src/t40/t31_hevc_headers.h \
@@ -120,4 +158,6 @@ clean:
 	$(RM) $(STREAM_LAYOUT_TEST_BIN) $(RATE_CONTROL_TEST_BIN) \
 		$(READY_EVENT_TEST_BIN) $(ACODEC_TEST_BIN) $(FRAME_PIN_TEST_BIN) \
 		$(AO_SENDFRAME_TEST_BIN) $(HEVC_HEADERS_TEST_BIN) $(AEC_TEST_BIN) $(NV12_ROTATE_TEST_BIN) \
-		$(LAMBDA_TEST_BIN)
+		$(LAMBDA_TEST_BIN) $(AI_LIFECYCLE_TEST_BIN) \
+		$(AI_LIFECYCLE_TEST_BIN)-asan $(AI_LIFECYCLE_TEST_BIN)-tsan \
+		$(FAKE_AUDIO_PROCESS)

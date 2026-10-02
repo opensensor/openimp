@@ -623,7 +623,7 @@ int32_t dbg_misc_simple_cmd(void *arg1)
             int32_t a1_2 = *(int32_t *)((char *)arg1 + 0x14);
 
             if ((uint32_t)a1_2 >= 3) {
-                printf("err: param1 = %d\n");
+                printf("err: param1 = %d\n", a1_2);
                 *(int32_t *)((char *)arg1 + 0xc) = -1;
                 return 0;
             }
@@ -759,10 +759,15 @@ typedef struct FsChnCtx {
 
 static FsChnCtx g_fs_ctx[FS_MAX_CHANNELS];
 static pthread_mutex_t g_fs_lock = PTHREAD_MUTEX_INITIALIZER;
-static volatile int g_fs_thread_entered[FS_MAX_CHANNELS];
-static volatile int g_fs_thread_enabled_seen[FS_MAX_CHANNELS];
+/* Flags shared between the API threads and the pooling worker, accessed
+ * with FS_FLAG_LOAD/FS_FLAG_STORE (relaxed atomics: plain word loads and
+ * stores on MIPS; ordering comes from g_fs_lock and pthread_join). */
+#define FS_FLAG_LOAD(x)     __atomic_load_n(&(x), __ATOMIC_RELAXED)
+#define FS_FLAG_STORE(x, v) __atomic_store_n(&(x), (v), __ATOMIC_RELAXED)
+static int g_fs_thread_entered[FS_MAX_CHANNELS];
+static int g_fs_thread_enabled_seen[FS_MAX_CHANNELS];
 /* Set by the pooling worker when it leaves its loop (not when cancelled). */
-static volatile int g_fs_thread_exited[FS_MAX_CHANNELS];
+static int g_fs_thread_exited[FS_MAX_CHANNELS];
 
 #if defined(PLATFORM_T31)
 /* Stop diagnostics: the pooling worker records where it is, so a
@@ -799,9 +804,7 @@ static uint32_t g_fs_step_seen_ms[FS_MAX_CHANNELS];
 static volatile int g_fs_step_iter[FS_MAX_CHANNELS];
 #endif
 
-#if defined(PLATFORM_T31) || defined(PLATFORM_T23) || defined(PLATFORM_T20)
-/* Monotonic ms, for the worker-stop wait (T31, T23, T20) and the T31 stop
- * diagnostics. */
+/* Monotonic ms, for the worker-stop wait and the T31 stop diagnostics. */
 static uint32_t fs_now_ms(void)
 {
     struct timespec ts;
@@ -809,7 +812,6 @@ static uint32_t fs_now_ms(void)
     clock_gettime(CLOCK_MONOTONIC, &ts);
     return (uint32_t)ts.tv_sec * 1000u + (uint32_t)(ts.tv_nsec / 1000000L);
 }
-#endif
 
 #if defined(PLATFORM_T31)
 
@@ -944,13 +946,15 @@ static void framesource_publish_outputs(Module *module, void *frame)
 static inline void fs_chan_set_state(int chn, int32_t state)
 {
     uint8_t *c = fs_channel_base(chn);
-    if (c) *(int32_t *)(c + 0x1c) = state;
+    /* release/acquire: a worker that sees ENABLED also sees the module
+     * set up before it (EnableChn) */
+    if (c) __atomic_store_n((int32_t *)(c + 0x1c), state, __ATOMIC_RELEASE);
 }
 
 static inline int32_t fs_chan_get_state(int chn)
 {
     uint8_t *c = fs_channel_base(chn);
-    return c ? *(int32_t *)(c + 0x1c) : 0;
+    return c ? __atomic_load_n((int32_t *)(c + 0x1c), __ATOMIC_ACQUIRE) : 0;
 }
 
 /* ---------------------------------------------------------------------
@@ -1021,19 +1025,19 @@ static void *frame_pooling_thread(void *arg)
         return NULL;
     }
     ctx = &g_fs_ctx[chn];
-    g_fs_thread_entered[chn] = 1;
+    FS_FLAG_STORE(g_fs_thread_entered[chn], 1);
     FS_STEP(chn, FS_STEP_START);
     OPENIMP_TRACE_STDERR("FSDBG thread_entry\n");
 
     fs_bind_trace("libimp/FSB: pooling-thread start ch=%d ctx=%p arg=%p ra=%p\n",
                   chn, ctx, arg, fs_retaddr());
     fs_thread_trace("libimp/FS: thread-mark ch=%d step=start ctx=%p fd=%d running=%d\n",
-                    chn, ctx, ctx->fd, ctx->running);
+                    chn, ctx, ctx->fd, FS_FLAG_LOAD(ctx->running));
 
     snprintf(name, sizeof(name), "FS(%d)-tick", chn);
     prctl(PR_SET_NAME, name);
-    OPENIMP_TRACE_STDERR("FSDBG ch=%d step=post_prctl fd=%d running=%d\n", chn, ctx->fd, ctx->running);
-    while (ctx->running) {
+    OPENIMP_TRACE_STDERR("FSDBG ch=%d step=post_prctl fd=%d running=%d\n", chn, ctx->fd, FS_FLAG_LOAD(ctx->running));
+    while (FS_FLAG_LOAD(ctx->running)) {
         void *frame = NULL;
         Module *m;
         int ch_state;
@@ -1046,14 +1050,14 @@ static void *frame_pooling_thread(void *arg)
 #endif
         if (poll_count <= 2) {
             fs_thread_trace("libimp/FS: thread-mark ch=%d step=loop-top iter=%d fd=%d running=%d\n",
-                            chn, poll_count, ctx->fd, ctx->running);
+                            chn, poll_count, ctx->fd, FS_FLAG_LOAD(ctx->running));
             OPENIMP_TRACE_STDERR("FSDBG ch=%d step=loop_top iter=%d fd=%d running=%d\n",
-                    chn, poll_count, ctx->fd, ctx->running);
+                    chn, poll_count, ctx->fd, FS_FLAG_LOAD(ctx->running));
         }
         ch_state = fs_chan_get_state(chn);
         if (ch_state != last_state) {
             fs_trace("libimp/FS: thread-state ch=%d iter=%d state=%d fd=%d running=%d\n",
-                     chn, poll_count, ch_state, ctx->fd, ctx->running);
+                     chn, poll_count, ch_state, ctx->fd, FS_FLAG_LOAD(ctx->running));
             last_state = ch_state;
         }
 
@@ -1070,7 +1074,7 @@ static void *frame_pooling_thread(void *arg)
         state_wait_count = 0;
         if (!first_enabled_seen) {
             first_enabled_seen = 1;
-            g_fs_thread_enabled_seen[chn] = 1;
+            FS_FLAG_STORE(g_fs_thread_enabled_seen[chn], 1);
             fs_trace("libimp/FS: thread-enabled ch=%d iter=%d state=%d fd=%d\n",
                      chn, poll_count, ch_state, ctx->fd);
         }
@@ -1128,7 +1132,7 @@ static void *frame_pooling_thread(void *arg)
                  * keeps any QBUF from racing the STREAMOFF/join, and
                  * running is rechecked under it. */
                 if (pthread_mutex_trylock(&g_fs_lock) == 0) {
-                    if (ctx->running && fs_chan_get_state(chn) == 2) {
+                    if (FS_FLAG_LOAD(ctx->running) && fs_chan_get_state(chn) == 2) {
                         FS_STEP(chn, FS_STEP_IDLE_RECYCLE);
                         VBMRecycleIdleFrames(chn);
                     }
@@ -1152,7 +1156,7 @@ static void *frame_pooling_thread(void *arg)
                 /* No further DQBUF once DisableChn asked us to stop: it has
                  * issued STREAMOFF (or is about to), and a DQBUF on T31
                  * sleeps until the next frame, which may never come. */
-                if (!ctx->running)
+                if (!FS_FLAG_LOAD(ctx->running))
                     break;
                 if (poll_count <= 2) {
                     fs_thread_trace("libimp/FS: thread-mark ch=%d step=dq-drain iter=%d fd=%d state=%d errno=%d\n",
@@ -1175,6 +1179,18 @@ static void *frame_pooling_thread(void *arg)
                     if (dq_ret == 0 && frame != NULL) {
                         fs_user_trace("pooling dequeue-ok ch=%d fd=%d frame=%p", chn, ctx->fd, frame);
                     }
+                    /* Not streaming: expected while DisableChn stops the
+                     * channel (running cleared before STREAMOFF); while it
+                     * should run, the driver stopped the stream. */
+                    if (dq_ret == -3 && FS_FLAG_LOAD(ctx->running)) {
+                        static unsigned int not_streaming;
+                        unsigned int n = __atomic_add_fetch(&not_streaming, 1u,
+                                                            __ATOMIC_RELAXED);
+
+                        if (n <= 5u || n % 100u == 0u)
+                            IMP_LOG_ERR("Framesource", "chn%d: DQBUF: stream not running (driver stopped it?) (#%u)",
+                                        chn, n);
+                    }
                     if (dq_ret != 0 || frame == NULL) {
                         /* EAGAIN after at least one frame is the normal end
                          * of a drain on a driver with a real poll: go
@@ -1186,7 +1202,7 @@ static void *frame_pooling_thread(void *arg)
                          * while still running (POLLERR + -EINVAL when the
                          * driver stopped the stream by itself). */
                         if ((dq_ret == -2 && drained == 0) || dq_ret == 0 ||
-                            (dq_ret < 0 && dq_ret != -2 && ctx->running)) {
+                            (dq_ret < 0 && dq_ret != -2 && FS_FLAG_LOAD(ctx->running))) {
                             no_frame_cycles++;
                             if (no_frame_cycles <= 5 || (no_frame_cycles % 50) == 0) {
                                 fs_trace("libimp/FS: pooling dequeue-empty ch=%d fd=%d idle=%d state=%d ret=%d\n",
@@ -1249,9 +1265,9 @@ static void *frame_pooling_thread(void *arg)
     }
 
     fs_trace("libimp/FS: pooling-thread exit ch=%d fd=%d running=%d state=%d\n",
-             chn, ctx->fd, ctx->running, fs_chan_get_state(chn));
+             chn, ctx->fd, FS_FLAG_LOAD(ctx->running), fs_chan_get_state(chn));
     FS_STEP(chn, FS_STEP_EXIT);
-    g_fs_thread_exited[chn] = 1;
+    FS_FLAG_STORE(g_fs_thread_exited[chn], 1);
     return NULL;
 }
 
@@ -1349,7 +1365,7 @@ int IMP_FrameSource_SetChnAttr(int chnNum, IMPFSChnAttr *chn_attr)
         return -1;
     }
 
-    if (chnNum >= FS_MAX_CHANNELS) {
+    if ((unsigned int)chnNum >= FS_MAX_CHANNELS) {
         imp_log_fun(6, IMP_Log_Get_Option(), 2, "Framesource",
             "/home/user/git/proj/sdk-lv3/src/imp/framesource/framesource_tseries.c",
             0x4d0, tag, "%s(): Invalid chnNum %d\n", tag, chnNum);
@@ -1400,7 +1416,7 @@ int IMP_FrameSource_GetChnAttr(int chnNum, IMPFSChnAttr *chn_attr)
             0x4f3, tag, "%s(): chnAttr is NULL\n", tag);
         return -1;
     }
-    if (chnNum >= FS_MAX_CHANNELS) {
+    if ((unsigned int)chnNum >= FS_MAX_CHANNELS) {
         imp_log_fun(6, IMP_Log_Get_Option(), 2, "Framesource",
             "/home/user/git/proj/sdk-lv3/src/imp/framesource/framesource_tseries.c",
             0x4f8, tag, "%s(): Invalid chnNum %d\n", tag, chnNum);
@@ -1435,7 +1451,7 @@ int IMP_FrameSource_SetFrameDepthCopyType(int chnNum, int bNoCopy)
     int cur_depth;
     int result = -1;
 
-    if (chnNum >= FS_MAX_CHANNELS) {
+    if ((unsigned int)chnNum >= FS_MAX_CHANNELS) {
         imp_log_fun(6, IMP_Log_Get_Option(), 2, "Framesource",
             "/home/user/git/proj/sdk-lv3/src/imp/framesource/framesource_tseries.c",
             0x52a, tag, "%s(): Invalid chnNum %d\n", tag, chnNum);
@@ -1478,7 +1494,7 @@ int IMP_FrameSource_SetFrameDepth(int chnNum, int depth)
 {
     const char *tag = "IMP_FrameSource_SetFrameDepth";
 
-    if (chnNum >= FS_MAX_CHANNELS) {
+    if ((unsigned int)chnNum >= FS_MAX_CHANNELS) {
         imp_log_fun(6, IMP_Log_Get_Option(), 2, "Framesource",
             "/home/user/git/proj/sdk-lv3/src/imp/framesource/framesource_tseries.c",
             0x54c, tag, "%s(): Invalid chnNum %d\n", tag, chnNum);
@@ -1489,7 +1505,6 @@ int IMP_FrameSource_SetFrameDepth(int chnNum, int depth)
     {
         uint8_t *chan = fs_channel_base(chnNum);
         pthread_mutex_t *chan_lock = (pthread_mutex_t *)(chan + 0x208);
-        int state = *(int32_t *)(chan + 0x1c);
 
         if (depth <= 0) {
             int s6;
@@ -1519,7 +1534,8 @@ int IMP_FrameSource_SetFrameDepth(int chnNum, int depth)
                 pthread_mutex_unlock(chan_lock);
                 return -1;
             }
-            g_fs_ctx[chnNum].frame_depth = 0;
+            __atomic_store_n(&g_fs_ctx[chnNum].frame_depth, 0,
+                             __ATOMIC_RELAXED);
             pthread_mutex_unlock(chan_lock);
             return 0;
         }
@@ -1530,19 +1546,25 @@ int IMP_FrameSource_SetFrameDepth(int chnNum, int depth)
          * depth in the ctx and let the kernel pool carry the frame-depth
          * via fs_set_depth. This matches existing imp_framesource.c. */
         pthread_mutex_lock(chan_lock);
-        g_fs_ctx[chnNum].frame_depth = depth;
+        __atomic_store_n(&g_fs_ctx[chnNum].frame_depth, depth,
+                         __ATOMIC_RELAXED);
         *(int32_t *)(chan + 0x1cc) = depth;
         pthread_mutex_unlock(chan_lock);
-        if (state == 2 && g_fs_ctx[chnNum].fd >= 0) {
+        /* The fd belongs to Enable/DisableChn: check the state and use the
+         * fd under g_fs_lock, or the ioctl can land on a closed (or already
+         * reused) descriptor. */
+        pthread_mutex_lock(&g_fs_lock);
+        if (fs_chan_get_state(chnNum) == 2 && g_fs_ctx[chnNum].fd >= 0) {
             fs_set_depth(g_fs_ctx[chnNum].fd, depth);
         }
+        pthread_mutex_unlock(&g_fs_lock);
         return 0;
     }
 }
 
 int IMP_FrameSource_GetFrameDepth(int chnNum, int *depth)
 {
-    if (chnNum >= FS_MAX_CHANNELS || depth == NULL) {
+    if ((unsigned int)chnNum >= FS_MAX_CHANNELS || depth == NULL) {
         imp_log_fun(6, IMP_Log_Get_Option(), 2, "Framesource",
             "/home/user/git/proj/sdk-lv3/src/imp/framesource/framesource_tseries.c",
             0x5bd, "IMP_FrameSource_GetFrameDepth",
@@ -1584,7 +1606,7 @@ int IMP_FrameSource_CreateChn(int chnNum, IMPFSChnAttr *chn_attr)
             chn_attr->picWidth, chn_attr->picHeight);
         return -1;
     }
-    if (chnNum >= FS_MAX_CHANNELS) {
+    if ((unsigned int)chnNum >= FS_MAX_CHANNELS) {
         imp_log_fun(6, IMP_Log_Get_Option(), 2, "Framesource",
             "/home/user/git/proj/sdk-lv3/src/imp/framesource/framesource_tseries.c",
             0x5ef, tag, "Invalid channel num%d\n", chnNum);
@@ -1622,6 +1644,9 @@ int IMP_FrameSource_CreateChn(int chnNum, IMPFSChnAttr *chn_attr)
         pthread_cond_init((pthread_cond_t *)(chan + 0x1d8), NULL);
         pthread_cond_init((pthread_cond_t *)(chan + 0x278), NULL);
         sem_init(&g_fs_ctx[chnNum].ready_sem, 0, 0);
+        /* No device yet. Only here: a CreateChn on an enabled channel must
+         * not drop the fd DisableChn has to stop and close. */
+        g_fs_ctx[chnNum].fd = -1;
 
         IMP_FrameSource_SetFrameDepth(chnNum, 0);
         IMP_FrameSource_SetFrameDepthCopyType(chnNum, 0);
@@ -1678,7 +1703,6 @@ int IMP_FrameSource_CreateChn(int chnNum, IMPFSChnAttr *chn_attr)
 
     memcpy(&g_fs_ctx[chnNum].attr, chn_attr, sizeof(IMPFSChnAttr));
     g_fs_ctx[chnNum].created = 1;
-    g_fs_ctx[chnNum].fd = -1;
     pthread_mutex_unlock(&g_fs_lock);
     return 0;
 }
@@ -1691,7 +1715,7 @@ int IMP_FrameSource_DestroyChn(int chnNum)
 {
     const char *tag = "IMP_FrameSource_DestroyChn";
 
-    if (chnNum >= FS_MAX_CHANNELS) {
+    if ((unsigned int)chnNum >= FS_MAX_CHANNELS) {
         imp_log_fun(6, IMP_Log_Get_Option(), 2, "Framesource",
             "/home/user/git/proj/sdk-lv3/src/imp/framesource/framesource_tseries.c",
             0x613, tag, "%s(): Invalid chnNum %d\n", tag, chnNum);
@@ -1711,8 +1735,10 @@ int IMP_FrameSource_DestroyChn(int chnNum)
         return -1;
     }
     if (fs_chan_get_state(chnNum) == 0) {
+        /* vendor: a channel that was never created (or is already
+         * destroyed) is a successful no-op */
         pthread_mutex_unlock(&g_fs_lock);
-        return -1;
+        return 0;
     }
 
     if (g_fs_ctx[chnNum].subject != NULL) {
@@ -1723,7 +1749,7 @@ int IMP_FrameSource_DestroyChn(int chnNum)
     fs_chan_set_state(chnNum, 0);
     *(int32_t *)((char *)gFrameSource + 0x14) -= 1;
     g_fs_ctx[chnNum].created = 0;
-    g_fs_ctx[chnNum].running = 0;
+    FS_FLAG_STORE(g_fs_ctx[chnNum].running, 0);
 #if defined(PLATFORM_T31)
     fs_rotate_release(chnNum);
 #endif
@@ -1875,6 +1901,9 @@ static int framesource_unbind(void *src_module, void *dst_module, void *output_p
     return remove_observer_from_module(src_module, dst_module);
 }
 
+static void fs_stop_worker(int chn, FsChnCtx *ctx);
+static void fs_close_chn_fd(int chn, FsChnCtx *ctx);
+
 int IMP_FrameSource_EnableChn(int chnNum)
 {
     FsChnCtx *ctx;
@@ -1887,7 +1916,7 @@ int IMP_FrameSource_EnableChn(int chnNum)
     int vbm_count;
     int queued_ok;
     int initial_queued_ok;
-    int thread_started = 0;
+    int frame_depth;
 
     if (chnNum < 0 || chnNum >= FS_MAX_CHANNELS) return -1;
     if (gFrameSource == NULL) return -1;
@@ -1907,10 +1936,12 @@ int IMP_FrameSource_EnableChn(int chnNum)
 
     ctx = &g_fs_ctx[chnNum];
     chan = fs_channel_base(chnNum);
+    /* SetFrameDepth stores it under the channel lock, not g_fs_lock */
+    frame_depth = __atomic_load_n(&ctx->frame_depth, __ATOMIC_RELAXED);
     fs_trace("libimp/FS: enable start ch=%d state=%d ctx=%p fd=%d attr=%dx%d fmt=0x%x nrVBs=%d depth=%d\n",
              chnNum, fs_chan_get_state(chnNum), ctx, ctx->fd,
              ctx->attr.picWidth, ctx->attr.picHeight, ctx->attr.pixFmt,
-             ctx->attr.nrVBs, ctx->frame_depth);
+             ctx->attr.nrVBs, frame_depth);
 
     if (ctx->fd < 0) {
         ctx->fd = fs_open_device(chnNum);
@@ -1940,8 +1971,7 @@ int IMP_FrameSource_EnableChn(int chnNum)
 
     if (fs_set_format(ctx->fd, &fmt) < 0) {
         fs_trace("libimp/FS: enable set-format-fail ch=%d fd=%d\n", chnNum, ctx->fd);
-        fs_close_device(ctx->fd);
-        ctx->fd = -1;
+        fs_close_chn_fd(chnNum, ctx);
         pthread_mutex_unlock(&g_fs_lock);
         return -1;
     }
@@ -1967,19 +1997,17 @@ int IMP_FrameSource_EnableChn(int chnNum)
 
     if (VBMCreatePool(chnNum, vbm_fmt, g_fs_vbm_ops, gFrameSource) < 0) {
         fs_trace("libimp/FS: enable VBMCreatePool-fail ch=%d\n", chnNum);
-        fs_close_device(ctx->fd);
-        ctx->fd = -1;
+        fs_close_chn_fd(chnNum, ctx);
         pthread_mutex_unlock(&g_fs_lock);
         return -1;
     }
 
-    requested_bufcnt = vbm_count + (ctx->frame_depth > 0 ? ctx->frame_depth : 0);
+    requested_bufcnt = vbm_count + (frame_depth > 0 ? frame_depth : 0);
     bufcnt = fs_set_buffer_count(ctx->fd, requested_bufcnt);
     if (bufcnt < 0) {
         fs_trace("libimp/FS: enable set-bufcnt-fail ch=%d req=%d\n", chnNum, requested_bufcnt);
         VBMDestroyPool(chnNum);
-        fs_close_device(ctx->fd);
-        ctx->fd = -1;
+        fs_close_chn_fd(chnNum, ctx);
         pthread_mutex_unlock(&g_fs_lock);
         return -1;
     }
@@ -1993,7 +2021,7 @@ int IMP_FrameSource_EnableChn(int chnNum)
      * Use nrVBs because it matches the pool shape configured above. */
 #if defined(PLATFORM_T21) || defined(PLATFORM_T20)
     fs_trace("libimp/FS: enable set-banks-via-reqbufs ch=%d fd=%d banks=%d depth=%d\n",
-             chnNum, ctx->fd, vbm_count, ctx->frame_depth);
+             chnNum, ctx->fd, vbm_count, frame_depth);
 #else
     {
         int banks = ctx->attr.nrVBs;
@@ -2002,59 +2030,56 @@ int IMP_FrameSource_EnableChn(int chnNum)
         }
         if (fs_set_depth(ctx->fd, banks) < 0) {
             fs_trace("libimp/FS: enable set-banks-fail ch=%d fd=%d banks=%d depth=%d\n",
-                     chnNum, ctx->fd, banks, ctx->frame_depth);
+                     chnNum, ctx->fd, banks, frame_depth);
             VBMFlushFrame(chnNum);
+            fs_close_chn_fd(chnNum, ctx);
             VBMDestroyPool(chnNum);
-            fs_close_device(ctx->fd);
-            ctx->fd = -1;
-            ctx->running = 0;
+            FS_FLAG_STORE(ctx->running, 0);
             pthread_mutex_unlock(&g_fs_lock);
             return -1;
         }
         fs_trace("libimp/FS: enable set-banks-ok ch=%d fd=%d banks=%d depth=%d\n",
-                 chnNum, ctx->fd, banks, ctx->frame_depth);
+                 chnNum, ctx->fd, banks, frame_depth);
     }
 #endif
 
     queued_ok = VBMFillPool(chnNum);
     if (queued_ok < 0) {
         fs_trace("libimp/FS: enable VBMFillPool-fail ch=%d\n", chnNum);
+        fs_close_chn_fd(chnNum, ctx);
         VBMDestroyPool(chnNum);
-        fs_close_device(ctx->fd);
-        ctx->fd = -1;
         pthread_mutex_unlock(&g_fs_lock);
         return -1;
     }
     initial_queued_ok = queued_ok;
     fs_trace("libimp/FS: enable fill-pool-ok ch=%d queued_ok=%d\n", chnNum, queued_ok);
 
-    ctx->running = 1;
+    FS_FLAG_STORE(ctx->running, 1);
 
     {
         static int chn_id_storage[FS_MAX_CHANNELS];
         chn_id_storage[chnNum] = chnNum;
-        g_fs_thread_entered[chnNum] = 0;
-        g_fs_thread_enabled_seen[chnNum] = 0;
-        g_fs_thread_exited[chnNum] = 0;
+        FS_FLAG_STORE(g_fs_thread_entered[chnNum], 0);
+        FS_FLAG_STORE(g_fs_thread_enabled_seen[chnNum], 0);
+        FS_FLAG_STORE(g_fs_thread_exited[chnNum], 0);
         if (pthread_create(&ctx->thread, NULL, frame_pooling_thread,
                            &chn_id_storage[chnNum]) != 0) {
             fs_trace("libimp/FS: enable pthread-create-fail ch=%d fd=%d\n", chnNum, ctx->fd);
+            ctx->thread = 0;
+            FS_FLAG_STORE(ctx->running, 0);
             fs_stream_off(ctx->fd);
             VBMFlushFrame(chnNum);
+            fs_close_chn_fd(chnNum, ctx);
             VBMDestroyPool(chnNum);
-            fs_close_device(ctx->fd);
-            ctx->fd = -1;
-            ctx->running = 0;
             fs_chan_set_state(chnNum, 1);
             pthread_mutex_unlock(&g_fs_lock);
             return -1;
         }
-        thread_started = 1;
         fs_trace("libimp/FS: enable pthread-create-ok ch=%d tid=%p arg=%p\n",
                  chnNum, (void *)ctx->thread, &chn_id_storage[chnNum]);
         usleep(20000);
         fs_trace("libimp/FS: enable thread-probe ch=%d entered=%d kill0=%d errno=%d\n",
-                 chnNum, g_fs_thread_entered[chnNum], pthread_kill(ctx->thread, 0), errno);
+                 chnNum, FS_FLAG_LOAD(g_fs_thread_entered[chnNum]), pthread_kill(ctx->thread, 0), errno);
     }
 
     fs_trace("libimp/FS: enable thread-ready-skip ch=%d fd=%d\n", chnNum, ctx->fd);
@@ -2064,17 +2089,12 @@ int IMP_FrameSource_EnableChn(int chnNum)
 
     if (fs_stream_on(ctx->fd) < 0) {
         fs_trace("libimp/FS: enable stream-on-fail ch=%d fd=%d\n", chnNum, ctx->fd);
-        if (thread_started) {
-            pthread_cancel(ctx->thread);
-            pthread_join(ctx->thread, NULL);
-            ctx->thread = 0;
-            thread_started = 0;
-        }
+        /* The worker waits for the ENABLED state: it leaves at once. */
+        FS_FLAG_STORE(ctx->running, 0);
+        fs_stop_worker(chnNum, ctx);
         VBMFlushFrame(chnNum);
+        fs_close_chn_fd(chnNum, ctx);
         VBMDestroyPool(chnNum);
-        fs_close_device(ctx->fd);
-        ctx->fd = -1;
-        ctx->running = 0;
         fs_chan_set_state(chnNum, 1);
         pthread_mutex_unlock(&g_fs_lock);
         return -1;
@@ -2097,37 +2117,9 @@ int IMP_FrameSource_EnableChn(int chnNum)
                  chnNum, queued_ok, initial_queued_ok);
     }
 
-    fs_chan_set_state(chnNum, 2);
-    fs_trace("libimp/FS: enable state-promote ch=%d state=%d fd=%d\n",
-             chnNum, fs_chan_get_state(chnNum), ctx->fd);
-    {
-        int spins = 0;
-        while (spins < 100 && g_fs_thread_enabled_seen[chnNum] == 0) {
-            usleep(1000);
-            spins++;
-        }
-        fs_trace("libimp/FS: enable worker-sync ch=%d enabled_seen=%d spins=%d\n",
-                 chnNum, g_fs_thread_enabled_seen[chnNum], spins);
-    }
-
-    if (chnNum == 0 && initial_queued_ok <= 0 && queued_ok <= 0) {
-        fs_stream_off(ctx->fd);
-        if (thread_started) {
-            pthread_cancel(ctx->thread);
-            pthread_join(ctx->thread, NULL);
-            ctx->thread = 0;
-        }
-        VBMFlushFrame(chnNum);
-        VBMDestroyPool(chnNum);
-        fs_close_device(ctx->fd);
-        ctx->fd = -1;
-        ctx->running = 0;
-        fs_chan_set_state(chnNum, 1);
-        pthread_mutex_unlock(&g_fs_lock);
-        return -1;
-    }
-
-    /* Ensure bind/unbind function pointers on the module. */
+    /* Ensure bind/unbind function pointers on the module, before the
+     * worker sees ENABLED: from then on it publishes each frame in the
+     * output slot at +0x138, which this would clear again. */
     {
         Module *m = g_modules[0][chnNum];
         if (m != NULL) {
@@ -2141,13 +2133,38 @@ int IMP_FrameSource_EnableChn(int chnNum)
         }
     }
 
+    fs_chan_set_state(chnNum, 2);
+    fs_trace("libimp/FS: enable state-promote ch=%d state=%d fd=%d\n",
+             chnNum, fs_chan_get_state(chnNum), ctx->fd);
+    {
+        int spins = 0;
+        while (spins < 100 && FS_FLAG_LOAD(g_fs_thread_enabled_seen[chnNum]) == 0) {
+            usleep(1000);
+            spins++;
+        }
+        fs_trace("libimp/FS: enable worker-sync ch=%d enabled_seen=%d spins=%d\n",
+                 chnNum, FS_FLAG_LOAD(g_fs_thread_enabled_seen[chnNum]), spins);
+    }
+
+    if (chnNum == 0 && initial_queued_ok <= 0 && queued_ok <= 0) {
+        /* The worker already saw ENABLED: stop it as DisableChn does. */
+        FS_FLAG_STORE(ctx->running, 0);
+        fs_stream_off(ctx->fd);
+        fs_stop_worker(chnNum, ctx);
+        VBMFlushFrame(chnNum);
+        fs_close_chn_fd(chnNum, ctx);
+        VBMDestroyPool(chnNum);
+        fs_chan_set_state(chnNum, 1);
+        pthread_mutex_unlock(&g_fs_lock);
+        return -1;
+    }
+
     fs_trace("libimp/FS: enable done ch=%d state=%d fd=%d\n",
              chnNum, fs_chan_get_state(chnNum), ctx->fd);
     pthread_mutex_unlock(&g_fs_lock);
     return 0;
 }
 
-#if defined(PLATFORM_T31) || defined(PLATFORM_T23) || defined(PLATFORM_T20)
 /* After STREAMOFF the worker leaves within one select timeout (25 ms) plus
  * the delivery of a frame it had already dequeued. Anything near a second
  * is a genuine hang (a consumer blocking notify, a VBM mutex, ...). */
@@ -2168,7 +2185,7 @@ static int fs_wait_worker_exit(int chn, int timeout_ms)
      * step change seen while waiting moves that point. */
     g_fs_step_seen_ms[chn] = start;
 #endif
-    while (!g_fs_thread_exited[chn]) {
+    while (!FS_FLAG_LOAD(g_fs_thread_exited[chn])) {
         uint32_t now = fs_now_ms();
 
 #if defined(PLATFORM_T31)
@@ -2184,7 +2201,39 @@ static int fs_wait_worker_exit(int chn, int timeout_ms)
     }
     return (int)(fs_now_ms() - start);
 }
-#endif
+
+/* Stop the pooling worker once running is cleared and STREAMOFF issued
+ * (the driver's wake-up edge for a worker in select() or DQBUF): let it
+ * leave by itself and cancel only a worker still running after
+ * FS_WORKER_STOP_TIMEOUT_MS. A worker cancelled while it delivers a frame
+ * can leave a VBM, group or encoder mutex locked. */
+static void fs_stop_worker(int chn, FsChnCtx *ctx)
+{
+    if (ctx->thread == 0)
+        return;
+    if (fs_wait_worker_exit(chn, FS_WORKER_STOP_TIMEOUT_MS) < 0) {
+        IMP_LOG_ERR("Framesource", "chn%d: pooling thread still running %d ms after STREAMOFF; cancelling it",
+                    chn, FS_WORKER_STOP_TIMEOUT_MS);
+        pthread_cancel(ctx->thread);
+    }
+    pthread_join(ctx->thread, NULL);
+    ctx->thread = 0;
+}
+
+/* Unpublish the channel's fd (release_Frame reads it from +0x1c4) before
+ * closing it, so a late release cannot QBUF on it or on its reuse; a
+ * release that read it just before is let finish first. */
+static void fs_close_chn_fd(int chn, FsChnCtx *ctx)
+{
+    int fd = ctx->fd;
+
+    if (fd < 0)
+        return;
+    *(int32_t *)(fs_channel_base(chn) + 0x1c4) = -1;
+    ctx->fd = -1;
+    VBMWaitReleases(chn);
+    fs_close_device(fd);
+}
 
 #if defined(PLATFORM_T31)
 /* Stop the stream of every channel still enabled. Called on the way out of
@@ -2206,7 +2255,7 @@ void openimp_fs_stream_off_all(void)
 
         if (ctx->fd < 0 || ctx->thread == 0)
             continue;
-        ctx->running = 0;
+        FS_FLAG_STORE(ctx->running, 0);
         fs_stream_off_quiet(ctx->fd);
     }
 }
@@ -2232,7 +2281,7 @@ int IMP_FrameSource_DisableChn(int chnNum)
         return 0;
     }
 
-    ctx->running = 0;
+    FS_FLAG_STORE(ctx->running, 0);
 #if defined(PLATFORM_T31)
     /* STREAMOFF first, then let the worker leave by itself. Where the
      * worker can be waiting depends on the driver's DQBUF, which fs_dqbuf()
@@ -2291,8 +2340,8 @@ int IMP_FrameSource_DisableChn(int chnNum)
                             fs_dqbuf_nonblock_name(nonblock),
                             fs_step_name(step), fs_dq_step_name(dq_step),
                             in_step, g_fs_step_iter[chnNum],
-                            g_fs_thread_entered[chnNum],
-                            g_fs_thread_enabled_seen[chnNum],
+                            FS_FLAG_LOAD(g_fs_thread_entered[chnNum]),
+                            FS_FLAG_LOAD(g_fs_thread_enabled_seen[chnNum]),
                             cancel
                                 ? "cancelling it (blocking-DQBUF driver fallback)"
                                 : "not cancelling (not in the driver), waiting for it");
@@ -2329,38 +2378,17 @@ int IMP_FrameSource_DisableChn(int chnNum)
     if (ctx->fd >= 0) {
         fs_stream_off(ctx->fd);
     }
-    if (ctx->thread != 0) {
-#if defined(PLATFORM_T23) || defined(PLATFORM_T20)
-        /* Both drivers wake the worker on STREAMOFF (open tx-isp T23: the
-         * DQBUF wait ends with -EPIPE; T20 vb2: poll reports POLLERR and
-         * DQBUF fails), so let it leave by itself and cancel only a worker
-         * that is still running after FS_WORKER_STOP_TIMEOUT_MS. A worker
-         * cancelled while it delivers a frame can leave a VBM or encoder
-         * mutex locked. */
-        if (fs_wait_worker_exit(chnNum, FS_WORKER_STOP_TIMEOUT_MS) < 0) {
-            IMP_LOG_ERR("Framesource", "chn%d: pooling thread still running %d ms after STREAMOFF; cancelling it",
-                        chnNum, FS_WORKER_STOP_TIMEOUT_MS);
-            pthread_cancel(ctx->thread);
-        }
-#else
-        pthread_cancel(ctx->thread);
-#endif
-        pthread_join(ctx->thread, NULL);
-        ctx->thread = 0;
-    }
+    /* The drivers wake the worker on STREAMOFF (open tx-isp T23: the DQBUF
+     * wait ends with -EPIPE; vb2 on T20/T21: poll reports POLLERR and DQBUF
+     * fails) and it checks running before every DQBUF, so it leaves by
+     * itself; the cancel is only the fallback for a worker that does not. */
+    fs_stop_worker(chnNum, ctx);
 #endif
     VBMFlushFrame(chnNum);
     /* Close before the pool memory goes back to the allocator: the ISP
      * driver drops the buffer addresses still queued in its hardware FIFO
-     * on release, and freed pool pages are handed out again. Unpublish the
-     * fd first so a late ReleaseFrame cannot QBUF on it. */
-    if (ctx->fd >= 0) {
-        int fd = ctx->fd;
-
-        *(int32_t *)(fs_channel_base(chnNum) + 0x1c4) = -1;
-        ctx->fd = -1;
-        fs_close_device(fd);
-    }
+     * on release, and freed pool pages are handed out again. */
+    fs_close_chn_fd(chnNum, ctx);
     VBMDestroyPool(chnNum);
 
     fs_chan_set_state(chnNum, 1);

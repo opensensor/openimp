@@ -349,10 +349,41 @@ static void test_base_move(void)
     printf("base move: %d detections\n", detections);
 }
 
+/* One interface serves one channel: its instance (priv) is created by
+ * the first CreateChn and freed by DestroyChn, so a second channel on the
+ * same interface would keep using it after that. */
+static void test_shared_interface(void)
+{
+    IMP_IVS_MoveParam p;
+    IMPIVSInterface *inf;
+
+    memset(&p, 0, sizeof(p));
+    p.frameInfo.width = W;
+    p.frameInfo.height = H;
+    p.sense[0] = 4;
+    p.roiRect[0].p1.x = W - 1;
+    p.roiRect[0].p1.y = H - 1;
+    p.roiRectCnt = 1;
+    inf = IMP_IVS_CreateMoveInterface(&p);
+    CHECK(inf != NULL, "move interface");
+    if (!inf)
+        return;
+    CHECK(IMP_IVS_CreateChn(0, inf) == 0, "CreateChn 0");
+    CHECK(IMP_IVS_CreateChn(1, inf) < 0 && errno == EBUSY,
+          "CreateChn 1 with the interface of channel 0 accepted");
+    CHECK(IMP_IVS_DestroyChn(0) == 0, "DestroyChn 0");
+    IMP_IVS_DestroyChn(1);
+    /* free again once no channel uses it */
+    CHECK(IMP_IVS_CreateChn(1, inf) == 0, "CreateChn 1 after DestroyChn 0");
+    CHECK(IMP_IVS_DestroyChn(1) == 0, "DestroyChn 1");
+    IMP_IVS_DestroyMoveInterface(inf);
+}
+
 int main(void)
 {
     test_move();
     test_base_move();
+    test_shared_interface();
     if (failures) {
         fprintf(stderr, "%d check(s) failed\n", failures);
         return 1;

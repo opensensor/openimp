@@ -382,6 +382,8 @@ static void test_api(void)
     CHECK(snr_db(pcm, (const int16_t *)(const void *)decoded.stream, 160, 0) >
           30.0);
     CHECK(IMP_ADEC_ReleaseStream(1, &decoded) == 0);
+    /* a second release of the same stream would queue its node twice */
+    CHECK(IMP_ADEC_ReleaseStream(1, &decoded) == -1);
     stream.stream = expect;                            /* foreign pointer */
     CHECK(IMP_ADEC_ReleaseStream(1, &stream) == -1);
 

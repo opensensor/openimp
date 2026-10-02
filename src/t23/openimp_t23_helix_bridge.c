@@ -161,14 +161,17 @@ static int t23_exchange(T23HelixBridge *bridge,
                         const T23HelixIpcRequest *request,
                         T23HelixIpcResponse *response, int timeout_ms)
 {
-    if (!bridge || bridge->socket_fd < 0 || !request || !response ||
-        t23_send_all(bridge->socket_fd, request, sizeof(*request)) != 0 ||
+    if (!bridge || bridge->socket_fd < 0 || !request || !response)
+        return -1;
+    if (t23_send_all(bridge->socket_fd, request, sizeof(*request)) != 0 ||
         t23_receive_all(bridge->socket_fd, response, sizeof(*response),
                         timeout_ms) != 0 ||
         response->magic != T23_HELIX_IPC_MAGIC ||
         response->version != T23_HELIX_IPC_VERSION ||
-        response->command != request->command)
+        response->command != request->command) {
+        bridge->stream_lost = 1;
         return -1;
+    }
     return response->status;
 }
 
@@ -551,6 +554,7 @@ static int t23_start_worker_with(T23HelixBridge *bridge,
     sockets[1] = -1;
     bridge->socket_fd = sockets[0];
     sockets[0] = -1;
+    bridge->stream_lost = 0;
 
     if (init) {
         request = *init;
@@ -845,6 +849,21 @@ static int t23_recover_worker(T23HelixBridge *bridge)
 static void t23_check_idr(T23HelixBridge *bridge, const unsigned char *data,
                           uint32_t length);
 
+/* Restart a worker whose request stream is lost; without a restart left,
+ * stop it for good (as a failed start does). Either way the old worker is
+ * gone when this returns: it may have been reading a frame in place that
+ * the caller is about to release. */
+static int t23_replace_lost_worker(T23HelixBridge *bridge)
+{
+    if (t23_recover_worker(bridge) == 0)
+        return 0;
+    t23_log(LOG_ERR, "openimp/T23: Helix helper unresponsive and no restart "
+                     "left; stopping it");
+    t23_stop_worker(bridge);
+    bridge->failed = 1;
+    return -1;
+}
+
 static int t23_encode_frame(T23HelixBridge *bridge, const IMPFrameInfo *frame,
                             unsigned char **encoded_out,
                             uint32_t *length_out)
@@ -855,6 +874,10 @@ static int t23_encode_frame(T23HelixBridge *bridge, const IMPFrameInfo *frame,
 
     if (!bridge || bridge->worker_pid <= 0 || !frame || !frame->virAddr ||
         !bridge->input_size || !encoded_out || !length_out)
+        return -1;
+    /* A parameter request timed out earlier: the late reply is still in
+     * the socket and would be taken for this frame's. */
+    if (bridge->stream_lost && t23_replace_lost_worker(bridge) != 0)
         return -1;
     frame_number = bridge->frames;
     if ((frame_number < 256u || frame_number % 100u == 0u) &&
@@ -869,8 +892,13 @@ static int t23_encode_frame(T23HelixBridge *bridge, const IMPFrameInfo *frame,
                 "openimp/T23: Helix helper failed or timed out at frame %u",
                 frame_number);
         if (t23_recover_worker(bridge) != 0 ||
-            t23_encode_once(bridge, frame, &response) != 0)
+            t23_encode_once(bridge, frame, &response) != 0) {
+            /* The caller releases the frame now; a worker that did not
+             * answer may still read it in place (zero-copy). */
+            if (bridge->stream_lost && bridge->worker_pid > 0)
+                (void)t23_replace_lost_worker(bridge);
             return -1;
+        }
     }
     if (response.output_offset != bridge->input_capacity ||
         response.output_length == 0u ||

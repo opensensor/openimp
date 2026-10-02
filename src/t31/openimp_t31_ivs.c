@@ -817,6 +817,18 @@ int IMP_IVS_CreateChn(int channel, IMPIVSInterface *handler)
         pthread_mutex_unlock(&ivs_lock);
         return ivs_fail(EEXIST);
     }
+    /* An interface carries one instance (inf->priv, from init): a second
+     * channel would run it concurrently from its own thread, and its
+     * DestroyChn calls exit while the other channel still uses it. */
+    for (int i = 0; i < T31_IVS_CHANNELS; i++) {
+        if (ivs_channels[i].state != IVS_CHN_FREE &&
+            ivs_channels[i].inf == handler) {
+            pthread_mutex_unlock(&ivs_lock);
+            IMP_LOG_ERR("IVS", "CreateChn(%d): interface %p already used by "
+                        "channel %d", channel, (void *)handler, i);
+            return ivs_fail(EBUSY);
+        }
+    }
     c->state = IVS_CHN_BUSY;        /* reserved while it is set up */
     pthread_mutex_unlock(&ivs_lock);
 

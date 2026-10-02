@@ -58,6 +58,7 @@ static uint8_t payload[1u << 20];
 static uint32_t payload_length;
 static int run_result;
 static int run_sets_length = 1;
+static uint32_t run_length_override;
 static unsigned int runs;
 static uint64_t flushed_before_run;
 static uint64_t flushed_after_run;
@@ -168,7 +169,8 @@ int __wrap_ioctl(int fd, unsigned long request, ...)
     memcpy((uint8_t *)allocation("t30-helix-bs")->mapping + 256u, payload,
            payload_length);
     if (run_sets_length)
-        channel->output_len = payload_length;
+        channel->output_len = run_length_override ? run_length_override
+                                                  : payload_length;
     channel->status = 0x1;
     return 0;
 }
@@ -405,6 +407,16 @@ static void test_gop_and_failures(void)
     run_sets_length = 1;
     assert(encode(encoder, &info) == 0);
     assert(!info.idr && info.frame_num == 2u);
+
+    /* A length beyond the bitstream window (a confused or timed-out VPU)
+     * is a failure: nothing is read past the window. */
+    run_length_override = allocation("t30-helix-bs")->size;
+    assert(encode(encoder, &info) != 0);
+    run_length_override = 0xfffffff0u;
+    assert(encode(encoder, &info) != 0);
+    run_length_override = 0;
+    assert(encode(encoder, &info) == 0);
+    assert(!info.idr && info.frame_num == 3u);
 
     /* Per picture, only the command list is cleaned before RUN and only
      * the bytes the VPU reported are invalidated after it. */

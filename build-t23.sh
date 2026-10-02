@@ -1,5 +1,8 @@
 #!/bin/sh
 set -eu
+# The readelf checks below parse its English output.
+LC_ALL=C
+export LC_ALL
 
 project_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 output_dir=${T23_OUTPUT_DIR:-"$project_dir/build/t23"}
