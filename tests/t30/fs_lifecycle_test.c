@@ -594,6 +594,9 @@ static void test_bad_channels(void)
     CHECK(IMP_FrameSource_GetFrameDepth(-1, &depth) != 0, "get depth -1");
     CHECK(IMP_FrameSource_SetFrameDepthCopyType(-1, 1) != 0, "copy type -1");
     CHECK(IMP_FrameSource_DestroyChn(0) == 0, "destroy");
+    /* as the vendor: no channel there, nothing to do */
+    CHECK(IMP_FrameSource_DestroyChn(0) == 0, "destroy twice");
+    CHECK(IMP_FrameSource_DestroyChn(3) == 0, "destroy never created");
 }
 
 /* A frame a consumer still holds when the channel is disabled (and the

@@ -1735,8 +1735,10 @@ int IMP_FrameSource_DestroyChn(int chnNum)
         return -1;
     }
     if (fs_chan_get_state(chnNum) == 0) {
+        /* vendor: a channel that was never created (or is already
+         * destroyed) is a successful no-op */
         pthread_mutex_unlock(&g_fs_lock);
-        return -1;
+        return 0;
     }
 
     if (g_fs_ctx[chnNum].subject != NULL) {
