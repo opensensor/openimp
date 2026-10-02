@@ -3,7 +3,7 @@
 Everything changed, extended or fixed in OpenIMP, open-tx-isp, timps and the thingino
 integration since the test campaign started on 2026-09-30. Kept up to date during the campaign.
 
-Last update: 2026-10-02 18:10.
+Last update: 2026-10-02 21:00.
 
 Cameras are anonymised: cam-A (T31), cam-B (T23), cam-C (T20), cam-D (T21).
 
@@ -103,6 +103,17 @@ OpenIMP:
 - **OSD lines, rectangles, bitmaps** (`claude/osd-line-rect`, T31/T20/T21/T30): drawn like the vendor (were ignored). Review fixed a use-after-free on bitmap data and a cache hazard. cam-C: all shapes correct on both streams, clipping at the frame edge, 0 oops.
 - **T23 rate-control parameters** (`claude/t23-enc-rc-params`): quality level, change point, static time, QP steps, I-frame bias and SMART now reach the encoder at channel creation (were hard-coded) — in the vendor worker path and in the native encoder. Device test pending.
 - **Robustness audit, parts 2 and 3** (`claude/oimp-robust-2`, `claude/oimp-robust-3`): harmless DQBUF/EPIPE races at channel stop now quiet; atomic worker flags; AEC reference queue heap overflow; audio-effect switch during capture (use-after-free); double stream release in the audio codec; HPF overflow; spin lock without yield on a single core. cam-C: 5 restarts, fd count constant, 0 errors.
+
+
+Evening additions (all single branches now pushed, still not aggregated):
+- **T21 rmem on main↔sub switching** (`claude/rmem-keep`, on helix-jpeg): our T21 build needed ~27.4 MB rmem for main+sub+JPEG (23 MB available) → WebRTC main↔sub switch failed and the camera restarted. Now one shared bitstream buffer sized exactly like the vendor's vpuBs (2,073,600 B), encoder buffers per picture size and allocated at CreateChn, long-lived buffers at the top. cam-D: free rmem with main+sub 0.5 → 1.56 MB (vendor ≈1.2 MB), 32+40 switch cycles OK. T21 ignores the JPEG size-limit register → JPEG now encoded in stripes with restart markers so it can never overrun; the core also drops the last partial 128-byte burst of every job (vendor too) — compensated.
+- **Dedicated JPEG/MJPEG channel on T31** fixed too (cam-A MJPEG 24 frames/5 s, was 0 bytes).
+- **T21 white balance**: event callbacks run with IRQs off like the vendor (pool overflow at stream start gone; worst IRQs-off 1.05 ms, like vendor); review fixes incl. a real lifted-code bug (`fix_point_mult3_64` returned a·b·b instead of a·b·c in ae_tune2) (`claude/t21-review-fixes`); module RAM 688 → 638 KB (vendor 616) (`claude/t21-mem`).
+- **T23**: gain index for all gain-driven blocks was linear instead of log2 (denoise/sharpen far too strong from 2× gain) (`claude/t23-gain-index`); vendor AE0 chain lifted and emulator-identical in 6 scenes incl. 50 Hz flicker, behind `source_ae_oem` (default off) (`claude/t23-ae-lift`); AE resume by EV (`claude/t23-ae-resume-ev`); frame-path fixes (`claude/t23-hang-debug` 903b9e18).
+- **T23 hard hang** (3× in afternoon sun, silent, watchdog reboot): not reproduced in ~3 h of evening stress; kernel soc_vpu/helix defects found and patched for a future image (not yet built); an encoder that stops producing frames at very large frames (QP 10) was found and is being examined.
+- **T20 white balance**: presets/manual never applied (T20 uses OpenIMP's simple AWB; recovered firmware had several decompilation errors) — fixed, presets in the correct direction on cam-C (`claude/t20-wb-presets`); work on the vendor AWB chain continues (`claude/t20-oem-awb`).
+- **OpenIMP robustness 2+3, ISP gaps (scene mode, colour effects, T21 DRC/DNS), ISP probe tool, T20 log flood silenced**: pushed by a second session.
+- **T10L** (report from a Thingino maintainer): day/night panic, EFE job never completes, 8 MiB probe pool — under analysis.
 
 ## Independent review and fixes (2026-10-02)
 
