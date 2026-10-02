@@ -673,7 +673,9 @@ static int helix_jpeg_open_locked(void)
     helix_jpeg.dump_dir = getenv("OPENIMP_HELIX_JPEG_DUMP");
     helix_jpeg.probe_limit = helix_env_uint(
         "OPENIMP_HELIX_JPEG_PROBE_MAX_BS_KB", 0u, 1u, 4096u) << 10;
-    helix_jpeg.fd = open("/dev/soc_vpu", O_RDWR | O_CLOEXEC);
+    /* kept open after a shutdown, see OpenIMP_HelixJpeg_Shutdown */
+    if (helix_jpeg.fd < 0)
+        helix_jpeg.fd = open("/dev/soc_vpu", O_RDWR | O_CLOEXEC);
     if (helix_jpeg.fd < 0) {
         IMP_LOG_ERR("Encoder", "Helix JPEG: cannot open /dev/soc_vpu: %s",
                     strerror(errno));
@@ -686,8 +688,7 @@ static int helix_jpeg_open_locked(void)
     if (ioctl(helix_jpeg.fd, HELIX_CHANNEL_REQUEST, &helix_jpeg.channel) != 0) {
         IMP_LOG_ERR("Encoder", "Helix JPEG: channel request failed: %s",
                     strerror(errno));
-        close(helix_jpeg.fd);
-        helix_jpeg.fd = -1;
+        memset(&helix_jpeg.channel, 0, sizeof(helix_jpeg.channel));
         return -1;
     }
     IMP_LOG_INFO("Encoder", "Helix JPEG: hardware encoder ready channel=%u "
@@ -709,17 +710,24 @@ int OpenIMP_HelixJpeg_Available(void)
     return state > 0;
 }
 
+/* Releases the channel but keeps /dev/soc_vpu open until the process
+ * exits.  close() runs the kernel's release-on-close
+ * (soc_vpu.c soc_channel_vpu_release), which picks the VPUs to release by
+ * the closing thread's id without a lock: it can hand back and power down
+ * the VPU while the native H.264 encoder of this process has a job on it,
+ * and that job's own release then puts the VPU on the free list a second
+ * time (a self-linked list and a hard hang in soc_vpu_request).  The open
+ * descriptor carries no state; the next open reuses it. */
 void OpenIMP_HelixJpeg_Shutdown(void)
 {
-    if (helix_jpeg.fd >= 0) {
-        if (helix_jpeg.channel.clist) {
-            helix_jpeg.channel.workphase = HELIX_WORKPHASE_CLOSE;
-            (void)ioctl(helix_jpeg.fd, HELIX_CHANNEL_RELEASE,
-                        &helix_jpeg.channel);
-        }
-        close(helix_jpeg.fd);
+    if (helix_jpeg.fd >= 0 && helix_jpeg.channel.clist) {
+        /* a channel release with a VPU in vlist and CLOSE would power the
+         * VPU down; this channel holds none between jobs */
+        helix_jpeg.channel.vlist = 0;
+        helix_jpeg.channel.workphase = HELIX_WORKPHASE_CLOSE;
+        (void)ioctl(helix_jpeg.fd, HELIX_CHANNEL_RELEASE,
+                    &helix_jpeg.channel);
     }
-    helix_jpeg.fd = -1;
     memset(&helix_jpeg.channel, 0, sizeof(helix_jpeg.channel));
     helix_dma_release(&helix_jpeg.job);
     helix_dma_release(&helix_jpeg.source);
