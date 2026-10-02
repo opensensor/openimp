@@ -2441,6 +2441,11 @@ int IMP_FrameSource_SnapFrame(int chnNum, IMPPixelFormat fmt, int width,
     memcpy(out_buffer, src, expected);
     info->width = width;
     info->height = height;
+#if defined(PLATFORM_T31)
+    /* A rotated channel (SetChnRotate) delivers the rotated size. */
+    memcpy(&info->width, (const uint8_t *)frame + 0x08, sizeof(info->width));
+    memcpy(&info->height, (const uint8_t *)frame + 0x0c, sizeof(info->height));
+#endif
     VBMReleaseFrame(chnNum, frame);
     return 0;
 }
@@ -2464,16 +2469,213 @@ int IMP_FrameSource_DisableChnUndistort(int chnNum)
     return 0;
 }
 
-/* libimp rotates 90/270 degrees in software into an extra rmem buffer.
- * OpenIMP has no rotation path: report failure for rotTo90 1/2 so callers
- * (prudynt, timps) keep the stream unrotated with matching encoder
- * dimensions instead of believing the frames are rotated. */
-int IMP_FrameSource_SetChnRotate(int chnNum, int rotation, int height, int width)
+#if defined(PLATFORM_T31)
+/* ---------------------------------------------------------------------
+ * Channel rotation (HLIL 0xa3a90 IMP_FrameSource_SetChnRotate, rotate step
+ * of on_framesource_group_data_update at 0x9aa5c; docs/T31_ROTATE.md).
+ *
+ * The vendor rotates in software: every dequeued NV12 frame is rotated
+ * into a scratch buffer and copied back over the capture buffer before any
+ * consumer (OSD, IVS, encoder) sees it, and frame+0x28 (rotate_osdflag)
+ * is set. The encoder channel is created with the rotated size.
+ *
+ * Runs on the FrameSource dequeue thread through
+ * openimp_fs_rotate_capture() (kernel_interface.c), which owns the scratch
+ * buffer. The capture record keeps the landscape size in the vendor
+ * library; here it is updated to the rotated size so consumers that read
+ * the record (JPEG copy, OSD, IVS) see the geometry they get.
+ * ------------------------------------------------------------------- */
+#include "framesource/nv12_rotate.h"
+#include "dma_alloc.h"
+
+#define FS_FRAME_WIDTH       0x08
+#define FS_FRAME_HEIGHT      0x0c
+#define FS_FRAME_PIXFMT      0x10
+#define FS_FRAME_SIZE        0x14
+#define FS_FRAME_VIRT        0x1c
+#define FS_FRAME_ROTATE_FLAG 0x28   /* IMPFrameInfo.rotate_osdflag */
+#define FS_FOURCC_NV12       0x3231564eu
+#define FS_FOURCC_NV21       0x3132564eu
+
+typedef struct {
+    int      mode;          /* NV12_ROT_*, written by SetChnRotate */
+    uint32_t width;         /* pre-rotation size from SetChnRotate */
+    uint32_t height;
+    /* dequeue thread only */
+    uint8_t *scratch;
+    size_t   scratch_size;
+    int      warned;
+    uint32_t stats_frames;
+    uint64_t stats_us;
+    uint32_t stats_max_us;
+} FsRotate;
+
+static FsRotate g_fs_rotate[FS_MAX_CHANNELS];
+
+static int fs_rotate_stats(void)
 {
-    (void)height; (void)width;
-    if (chnNum < 0 || chnNum >= FS_MAX_CHANNELS) return -1;
-    return (rotation & 0xff) == 0 ? 0 : -1;
+    static int enabled = -1;
+
+    if (enabled < 0) {
+        const char *e = getenv("OPENIMP_FS_ROTATE_STATS");
+
+        enabled = e && e[0] && e[0] != '0';
+    }
+    return enabled;
 }
+
+static uint64_t fs_rotate_now_us(void)
+{
+    struct timespec ts;
+
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (uint64_t)ts.tv_sec * 1000000u + (uint64_t)ts.tv_nsec / 1000u;
+}
+
+static void fs_rotate_warn(int chn, FsRotate *r, const char *why,
+                           uint32_t a, uint32_t b)
+{
+    if (r->warned)
+        return;
+    r->warned = 1;
+    fprintf(stderr, "[FS] rotate ch%d disabled for this geometry: %s (%u, %u)\n",
+            chn, why, a, b);
+}
+
+/* Called for every dequeued capture buffer of channel chn, while the
+ * buffer is still private to the dequeue thread. */
+void openimp_fs_rotate_capture(int chn, void *frame)
+{
+    uint8_t *f = frame;
+    FsRotate *r;
+    int mode;
+    uint32_t w, h, ow, oh, fw, fh, pixfmt, size, virt, need, flag = 1;
+    uint64_t t0 = 0;
+
+    if (chn < 0 || chn >= FS_MAX_CHANNELS || !f)
+        return;
+    r = &g_fs_rotate[chn];
+    mode = __atomic_load_n(&r->mode, __ATOMIC_ACQUIRE);
+    if (mode == NV12_ROT_NONE) {
+        if (r->scratch) {
+            free(r->scratch);
+            r->scratch = NULL;
+            r->scratch_size = 0;
+        }
+        return;
+    }
+    w = r->width;
+    h = r->height;
+    if (nv12_rotate_out_dims(mode, w, h, &ow, &oh) != 0)
+        return;
+    memcpy(&fw, f + FS_FRAME_WIDTH, 4);
+    memcpy(&fh, f + FS_FRAME_HEIGHT, 4);
+    memcpy(&pixfmt, f + FS_FRAME_PIXFMT, 4);
+    memcpy(&size, f + FS_FRAME_SIZE, 4);
+    memcpy(&virt, f + FS_FRAME_VIRT, 4);
+    need = (uint32_t)nv12_rotate_frame_size(w, h);
+    if (pixfmt != FS_FOURCC_NV12 && pixfmt != FS_FOURCC_NV21 &&
+        pixfmt != PIX_FMT_NV12 && pixfmt != PIX_FMT_NV21) {
+        fs_rotate_warn(chn, r, "pixel format is not NV12/NV21", pixfmt, 0);
+        return;
+    }
+    /* The record holds the landscape size until the first rotated frame,
+     * the rotated one afterwards. */
+    if (!((fw == w && fh == h) || (fw == ow && fh == oh))) {
+        fs_rotate_warn(chn, r, "channel size differs from SetChnRotate",
+                       fw, fh);
+        return;
+    }
+    if (!virt || size < need) {
+        fs_rotate_warn(chn, r, "capture buffer too small", size, need);
+        return;
+    }
+    if (r->scratch_size < need) {
+        void *p = NULL;
+
+        free(r->scratch);
+        r->scratch = NULL;
+        r->scratch_size = 0;
+        if (posix_memalign(&p, 64, need) != 0) {
+            fs_rotate_warn(chn, r, "no memory for the rotate buffer", need, 0);
+            return;
+        }
+        r->scratch = p;
+        r->scratch_size = need;
+        fprintf(stderr, "[FS] rotate ch%d: %ux%u -> %ux%u mode %d (software)\n",
+                chn, w, h, ow, oh, mode);
+    }
+    if (fs_rotate_stats())
+        t0 = fs_rotate_now_us();
+
+    /* ISP DMA wrote the buffer: drop stale cached lines before reading;
+     * write the rotated picture back before OSD (IPU) / AVPU DMA read it. */
+    (void)DMA_RmemFlushCache((void *)(uintptr_t)virt, need, 2);
+    nv12_rotate((const uint8_t *)(uintptr_t)virt, r->scratch, w, h, mode);
+    memcpy((void *)(uintptr_t)virt, r->scratch, need);
+    (void)DMA_RmemFlushCache((void *)(uintptr_t)virt, need, 1);
+
+    memcpy(f + FS_FRAME_WIDTH, &ow, 4);
+    memcpy(f + FS_FRAME_HEIGHT, &oh, 4);
+    memcpy(f + FS_FRAME_ROTATE_FLAG, &flag, 4);
+
+    if (t0) {
+        uint32_t dt = (uint32_t)(fs_rotate_now_us() - t0);
+
+        r->stats_us += dt;
+        if (dt > r->stats_max_us)
+            r->stats_max_us = dt;
+        if (++r->stats_frames == 300u) {
+            fprintf(stderr, "[FS] rotate ch%d %ux%u mode %d: avg %u us max %u us /frame\n",
+                    chn, w, h, mode, (uint32_t)(r->stats_us / r->stats_frames),
+                    r->stats_max_us);
+            r->stats_frames = 0;
+            r->stats_us = 0;
+            r->stats_max_us = 0;
+        }
+    }
+}
+
+/* Vendor: stores rotTo90 and the pre-rotation size, returns 0; to be
+ * called before the channel is created, with the encoder channel set to
+ * the rotated size. Here it also takes effect on a running channel from
+ * its next frame. */
+int IMP_FrameSource_SetChnRotate(int chnNum, int rotTo90, int width, int height)
+{
+    FsRotate *r;
+    int mode = rotTo90 & 0xff;
+    uint32_t ow, oh;
+
+    if (chnNum < 0 || chnNum >= FS_MAX_CHANNELS) return -1;
+    r = &g_fs_rotate[chnNum];
+    if (mode == NV12_ROT_NONE) {
+        __atomic_store_n(&r->mode, NV12_ROT_NONE, __ATOMIC_RELEASE);
+        return 0;
+    }
+    if (nv12_rotate_out_dims(mode, 1, 1, &ow, &oh) != 0 ||
+        width <= 0 || height <= 0 || width > 4096 || height > 4096 ||
+        ((width | height) & 1)) {
+        fprintf(stderr, "[FS] SetChnRotate ch%d: unsupported rotTo90=%d %dx%d\n",
+                chnNum, mode, width, height);
+        return -1;
+    }
+    __atomic_store_n(&r->mode, NV12_ROT_NONE, __ATOMIC_RELEASE);
+    r->width = (uint32_t)width;
+    r->height = (uint32_t)height;
+    r->warned = 0;
+    __atomic_store_n(&r->mode, mode, __ATOMIC_RELEASE);
+    return 0;
+}
+#else
+/* No rotation path on this SoC: report failure for rotTo90 != 0 so callers
+ * keep the stream unrotated with matching encoder dimensions. */
+int IMP_FrameSource_SetChnRotate(int chnNum, int rotTo90, int width, int height)
+{
+    (void)width; (void)height;
+    if (chnNum < 0 || chnNum >= FS_MAX_CHANNELS) return -1;
+    return (rotTo90 & 0xff) == 0 ? 0 : -1;
+}
+#endif
 
 int IMP_FrameSource_ChnStatQuery(int chnNum, void *stat)
 {

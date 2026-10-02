@@ -68,6 +68,7 @@ compile core_device src/core/device.c
 compile core_group src/core/group.c
 compile core_module src/core/module.c
 compile framesource src/framesource/framesource_tseries.c
+compile nv12_rotate src/framesource/nv12_rotate.c -Werror
 compile isp src/isp/isp_tseries.c
 compile t31_compat src/t31/openimp_t31_compat.c
 compile t31_state src/t31/openimp_t31_state.c -Werror
@@ -106,6 +107,7 @@ compile t31_extras src/t31/openimp_t31_extras.c -Werror
     "$output_dir/core_group.o" \
     "$output_dir/core_module.o" \
     "$output_dir/framesource.o" \
+    "$output_dir/nv12_rotate.o" \
     "$output_dir/isp.o" \
     "$output_dir/t31_compat.o" \
     "$output_dir/t31_state.o" \
