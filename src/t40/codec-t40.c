@@ -7975,6 +7975,13 @@ int AL_Codec_Encode_Create(void **codec, void *params) {
             enc->hw_params.width, enc->hw_params.height,
             codec_param_read_bitrate_bps(enc->codec_param));
     }
+#if defined(PLATFORM_T30) || defined(PLATFORM_T23)
+    /* The stock encoder allocates a JPEG channel's bitstream buffer at
+     * channel creation: take it from the start-up rmem budget too. */
+    if (enc->hw_params.codec_type == IMP_ENC_TYPE_JPEG)
+        (void)OpenIMP_HelixJpeg_Reserve(enc->hw_params.width,
+                                        enc->hw_params.height);
+#endif
     enc->hw_params.fps_num = enc->fps_cache.frmRateNum;
     enc->hw_params.fps_den = enc->fps_cache.frmRateDen;
     enc->hw_params.gop_length = enc->gop_cache.gopLength ? enc->gop_cache.gopLength : 25u;

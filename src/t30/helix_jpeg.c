@@ -507,14 +507,21 @@ _Static_assert(sizeof(HelixJpegChannel) == 88, "T23 soc_vpu channel ABI");
 _Static_assert(sizeof(HelixJpegChannel) == 56, "soc_vpu channel ABI");
 #endif
 
-/* rmem is only held while a job runs: one allocation with the command list
- * first and the bitstream behind it (the kernel's RUN writes back and
- * invalidates the first MiB from the command list), plus a source copy for
- * frames outside rmem.  Nothing is allocated unless the largest free block
- * keeps this much on top (timps must be able to re-create an H.264
- * channel); OPENIMP_HELIX_JPEG_RMEM_RESERVE_KB overrides it. */
-#define HELIX_RMEM_RESERVE      (4096u << 10)
+/* rmem: like the stock encoder, which allocates its bitstream buffer (the
+ * NV12 picture size) and command list once per JPEG channel at channel
+ * creation (hwicodec_pf_jpege_init_bpool), one buffer with the command
+ * list first and the bitstream behind it (the kernel's RUN writes back and
+ * invalidates the first MiB from the command list) is allocated when a
+ * JPEG channel is created (OpenIMP_HelixJpeg_Reserve), shared by all JPEG
+ * channels and kept.  If that failed, the first picture tries again.  A
+ * source copy for frames outside rmem is per job.  Allocations keep a
+ * reserve free: 1/16 of the arena (min 512 KiB) unless
+ * OPENIMP_HELIX_JPEG_RMEM_RESERVE_KB says otherwise. */
+#define HELIX_RMEM_RESERVE_MIN  (512u << 10)
 #define HELIX_DESCRIPTOR_AREA   0x2000u
+/* OPENIMP_HELIX_JPEG_PROBE_MAX_BS_KB=n: device probe for JPGC_MAX_BS */
+#define HELIX_PROBE_GUARD       (1024u << 10)
+#define HELIX_PROBE_PATTERN     0xa5u
 #define HELIX_BITSTREAM_MIN     (256u << 10)
 
 static struct {
@@ -531,6 +538,9 @@ static struct {
     int stats;                 /* OPENIMP_HELIX_JPEG_STATS=1 */
     int max_bs;                /* JPGC_MAX_BS limits the core */
     int full_bitstream;        /* a limited buffer overflowed */
+    uint32_t probe_limit;      /* JPGC_MAX_BS probe, bytes (0 = off) */
+    IMPDMABufferInfo probe;
+    IMPDMABufferInfo *active;  /* buffer of the last job */
     const char *reason;        /* why the last job failed */
 } helix_jpeg = { .lock = PTHREAD_MUTEX_INITIALIZER, .fd = -1 };
 
@@ -639,9 +649,19 @@ static int helix_jpeg_open_locked(void)
      * OPENIMP_HELIX_JPEG_MAX_BS=1 tries the register there. */
     helix_jpeg.max_bs = HELIX_JPEG_VARIANT == HELIX_JPEG_T23 ||
                         helix_env_flag("OPENIMP_HELIX_JPEG_MAX_BS");
-    helix_jpeg.rmem_reserve = helix_env_uint(
-        "OPENIMP_HELIX_JPEG_RMEM_RESERVE_KB", HELIX_RMEM_RESERVE >> 10, 0u,
-        65536u) << 10;
+    {
+        size_t total = 0;
+        uint32_t reserve = HELIX_RMEM_RESERVE_MIN;
+
+        if (DMA_RmemStats(NULL, &total, NULL) == 0 &&
+            total / 16u > reserve)
+            reserve = (uint32_t)(total / 16u);
+        helix_jpeg.rmem_reserve = helix_env_uint(
+            "OPENIMP_HELIX_JPEG_RMEM_RESERVE_KB", reserve >> 10, 0u,
+            65536u) << 10;
+    }
+    helix_jpeg.probe_limit = helix_env_uint(
+        "OPENIMP_HELIX_JPEG_PROBE_MAX_BS_KB", 0u, 1u, 4096u) << 10;
     helix_jpeg.fd = open("/dev/soc_vpu", O_RDWR | O_CLOEXEC);
     if (helix_jpeg.fd < 0) {
         IMP_LOG_ERR("Encoder", "Helix JPEG: cannot open /dev/soc_vpu: %s",
@@ -692,6 +712,7 @@ void OpenIMP_HelixJpeg_Shutdown(void)
     memset(&helix_jpeg.channel, 0, sizeof(helix_jpeg.channel));
     helix_dma_release(&helix_jpeg.job);
     helix_dma_release(&helix_jpeg.source);
+    helix_dma_release(&helix_jpeg.probe);
     helix_jpeg.state = 0;
     helix_jpeg.failures = 0;
 }
@@ -795,24 +816,92 @@ static uint32_t helix_bitstream_capacity(uint32_t nv12, const uint8_t qt[128],
     return (capacity + 0xfffu) & ~0xfffu;
 }
 
+/* The kept command list + bitstream buffer, grown when too small. */
+static int helix_job_buffer(uint32_t capacity)
+{
+    if (helix_jpeg.job.phys_addr &&
+        helix_jpeg.job.size >= HELIX_DESCRIPTOR_AREA + capacity)
+        return 0;
+    helix_dma_release(&helix_jpeg.job);
+    return helix_dma_alloc(&helix_jpeg.job, HELIX_DESCRIPTOR_AREA + capacity,
+                           "helix-jpeg-bs");
+}
+
+/* Probe buffer: command list, probe_limit bytes of bitstream, then a
+ * 1 MiB guard filled with a pattern that shows whether the core stopped at
+ * JPGC_MAX_BS. */
+static int helix_probe_buffer(void)
+{
+    uint32_t size = HELIX_DESCRIPTOR_AREA + helix_jpeg.probe_limit +
+                    HELIX_PROBE_GUARD;
+    uint8_t *guard;
+    int ret;
+
+    helix_dma_release(&helix_jpeg.probe);
+    ret = helix_dma_alloc(&helix_jpeg.probe, size, "helix-jpeg-probe");
+    if (ret != 0)
+        return ret;
+    guard = (uint8_t *)(uintptr_t)helix_jpeg.probe.virt_addr +
+            HELIX_DESCRIPTOR_AREA + helix_jpeg.probe_limit;
+    memset(guard, HELIX_PROBE_PATTERN, HELIX_PROBE_GUARD);
+    return DMA_RmemFlushCache(guard, HELIX_PROBE_GUARD, 1) == 0 ? 0 : -1;
+}
+
+static void helix_probe_report(void)
+{
+    const uint8_t *guard = (const uint8_t *)(uintptr_t)
+        helix_jpeg.probe.virt_addr + HELIX_DESCRIPTOR_AREA +
+        helix_jpeg.probe_limit;
+    uint32_t written = 0, last = 0, i;
+
+    (void)DMA_RmemFlushCache((void *)guard, HELIX_PROBE_GUARD, 2);
+    for (i = 0; i < HELIX_PROBE_GUARD; i++)
+        if (guard[i] != HELIX_PROBE_PATTERN) {
+            written++;
+            last = i + 1u;
+        }
+    IMP_LOG_INFO("Encoder", "Helix JPEG probe: JPGC_MAX_BS=%u bytes "
+                 "status=0x%08x len=%u guard_bytes_written=%u "
+                 "guard_end=%u errno=%d -> %s", helix_jpeg.probe_limit,
+                 helix_jpeg.channel.status, helix_jpeg.channel.output_len,
+                 written, last, errno,
+                 written ? "LIMIT IGNORED (the core wrote past it)"
+                         : "limit respected");
+}
+
 /* One RUN with a bitstream of capacity bytes.  Returns 0, -1, or
  * HELIX_RUN_FAILED / HELIX_SKIPPED; *overflow is set when the job ran out
  * of bitstream. */
 static int helix_jpeg_job_locked(HelixJpegSlice *slice, uint32_t capacity,
-                                 int *overflow)
+                                 int *overflow, uint32_t *capacity_used)
 {
+    IMPDMABufferInfo *buffer;
     uint32_t *words;
     int pairs;
     int ret;
 
     *overflow = 0;
-    ret = helix_dma_alloc(&helix_jpeg.job, HELIX_DESCRIPTOR_AREA + capacity,
-                          "helix-jpeg-job");
-    if (ret != 0)
-        return ret;
-    words = (uint32_t *)(uintptr_t)helix_jpeg.job.virt_addr;
-    slice->bitstream = helix_jpeg.job.phys_addr + HELIX_DESCRIPTOR_AREA;
-    slice->bitstream_limit = helix_jpeg.max_bs ? capacity : 0u;
+    *capacity_used = capacity;
+    if (helix_jpeg.probe_limit) {
+        ret = helix_probe_buffer();
+        if (ret != 0)
+            return ret;
+        buffer = &helix_jpeg.probe;
+        capacity = helix_jpeg.probe_limit;
+        *capacity_used = capacity;
+    } else {
+        ret = helix_job_buffer(capacity);
+        if (ret != 0)
+            return ret;
+        buffer = &helix_jpeg.job;
+        /* the kept buffer may be larger (another channel): use all of it */
+        capacity = buffer->size - HELIX_DESCRIPTOR_AREA;
+        *capacity_used = capacity;
+    }
+    words = (uint32_t *)(uintptr_t)buffer->virt_addr;
+    slice->bitstream = buffer->phys_addr + HELIX_DESCRIPTOR_AREA;
+    slice->bitstream_limit = helix_jpeg.max_bs || helix_jpeg.probe_limit
+        ? capacity : 0u;
     pairs = HelixJpeg_BuildDescriptor(slice, words,
                                       HELIX_DESCRIPTOR_AREA /
                                           sizeof(uint32_t));
@@ -822,7 +911,7 @@ static int helix_jpeg_job_locked(HelixJpegSlice *slice, uint32_t capacity,
     }
     helix_jpeg.channel.vpu_id = (int32_t)HELIX_JPEG_CORE;
     helix_jpeg.channel.codecdir = HELIX_CODEC_JPEG_ENC;
-    helix_jpeg.channel.dma_addr = helix_jpeg.job.phys_addr;
+    helix_jpeg.channel.dma_addr = buffer->phys_addr;
     helix_jpeg.channel.thread_id = -1;
     helix_jpeg.channel.status = 0;
     helix_jpeg.channel.output_len = 0;
@@ -831,8 +920,12 @@ static int helix_jpeg_job_locked(HelixJpegSlice *slice, uint32_t capacity,
     helix_jpeg.channel.max_bs_act = 0;
     helix_jpeg.channel.time = 0;
 #endif
+    helix_jpeg.active = buffer;
     errno = 0;
-    if (ioctl(helix_jpeg.fd, HELIX_CHANNEL_RUN, &helix_jpeg.channel) != 0)
+    ret = ioctl(helix_jpeg.fd, HELIX_CHANNEL_RUN, &helix_jpeg.channel);
+    if (helix_jpeg.probe_limit)
+        helix_probe_report();
+    if (ret != 0)
         helix_jpeg.reason = errno == EBUSY ? "VPU busy" : "run/timeout";
     else if (helix_jpeg.channel.status & HELIX_STAT_BSFULL)
         helix_jpeg.reason = "bitstream full";
@@ -938,21 +1031,21 @@ static int helix_jpeg_run_locked(const HelixJpegFrame *frame,
 
     capacity = helix_bitstream_capacity(nv12, qt, helix_jpeg.full_bitstream);
     *capacity_out = capacity;
-    ret = helix_jpeg_job_locked(&slice, capacity, &overflow);
+    ret = helix_jpeg_job_locked(&slice, capacity, &overflow, capacity_out);
     if (ret == HELIX_RUN_FAILED && overflow && helix_jpeg.max_bs &&
-        capacity < ((nv12 + 0xfffu) & ~0xfffu)) {
+        !helix_jpeg.probe_limit &&
+        *capacity_out < ((nv12 + 0xfffu) & ~0xfffu)) {
         /* limited by JPGC_MAX_BS: repeat once with the NV12 size, and keep
          * that size from now on */
-        helix_dma_release(&helix_jpeg.job);
         helix_jpeg.full_bitstream = 1;
         capacity = helix_bitstream_capacity(nv12, qt, 1);
         *capacity_out = capacity;
-        ret = helix_jpeg_job_locked(&slice, capacity, &overflow);
+        ret = helix_jpeg_job_locked(&slice, capacity, &overflow, capacity_out);
     }
     if (ret != 0)
         return ret;
     length = helix_jpeg.channel.output_len;
-    if (DMA_RmemFlushCache((void *)(uintptr_t)(helix_jpeg.job.virt_addr +
+    if (DMA_RmemFlushCache((void *)(uintptr_t)(helix_jpeg.active->virt_addr +
                                                HELIX_DESCRIPTOR_AREA),
                            length, 2) != 0) {
         helix_jpeg.reason = "cache";
@@ -971,7 +1064,7 @@ static int helix_jpeg_run_locked(const HelixJpegFrame *frame,
         return -1;
     }
     memcpy(output + header,
-           (const void *)(uintptr_t)(helix_jpeg.job.virt_addr +
+           (const void *)(uintptr_t)(helix_jpeg.active->virt_addr +
                                      HELIX_DESCRIPTOR_AREA),
            length);
     output[header + length] = 0xff;
@@ -1025,9 +1118,10 @@ int OpenIMP_HelixJpeg_Encode(const HelixJpegFrame *frame,
     helix_jpeg.channel.status = 0;
     helix_jpeg.channel.output_len = 0;
     ret = helix_jpeg_run_locked(frame, qt, stream, &path, &capacity);
-    /* rmem is only held for the job */
-    helix_dma_release(&helix_jpeg.job);
+    /* the command list + bitstream buffer is kept; copies and probe
+     * buffers are per job */
     helix_dma_release(&helix_jpeg.source);
+    helix_dma_release(&helix_jpeg.probe);
     if (helix_jpeg.stats) {
         size_t used = 0, total = 0, largest = 0;
 
@@ -1060,6 +1154,40 @@ int OpenIMP_HelixJpeg_Encode(const HelixJpegFrame *frame,
         OpenIMP_HelixJpeg_Shutdown();
         helix_jpeg.state = -1;
     }
+    pthread_mutex_unlock(&helix_jpeg.lock);
+    return ret == 0 ? 0 : -1;
+}
+
+int OpenIMP_HelixJpeg_Reserve(uint32_t width, uint32_t height)
+{
+    uint8_t qt[128];
+    uint32_t aligned_height = (height + 15u) & ~15u;
+    size_t used = 0, total = 0, largest = 0;
+    int ret;
+
+    if (width < HELIX_JPEG_MIN_WIDTH || (width & 15u) ||
+        width > HELIX_JPEG_MAX_DIM || height < 16u ||
+        height > HELIX_JPEG_MAX_DIM || !OpenIMP_HelixJpeg_Available())
+        return -1;
+    /* =0: allocate at the first picture instead */
+    if (getenv("OPENIMP_HELIX_JPEG_RESERVE_AT_CREATE") &&
+        !strcmp(getenv("OPENIMP_HELIX_JPEG_RESERVE_AT_CREATE"), "0"))
+        return -1;
+    HelixJpeg_QualityTables(75u, qt);
+    pthread_mutex_lock(&helix_jpeg.lock);
+    if (helix_jpeg.state <= 0) {
+        pthread_mutex_unlock(&helix_jpeg.lock);
+        return -1;
+    }
+    ret = helix_job_buffer(helix_bitstream_capacity(
+        width * aligned_height * 3u / 2u, qt, helix_jpeg.full_bitstream));
+    (void)DMA_RmemStats(&used, &total, &largest);
+    IMP_LOG_INFO("Encoder", "Helix JPEG: %ux%u channel: bitstream buffer "
+                 "%u bytes %s (rmem used %zu of %zu, largest free %zu)",
+                 width, height, helix_jpeg.job.size,
+                 ret == 0 ? "reserved" : "not reserved, retried at the "
+                                         "first picture",
+                 used, total, largest);
     pthread_mutex_unlock(&helix_jpeg.lock);
     return ret == 0 ? 0 : -1;
 }

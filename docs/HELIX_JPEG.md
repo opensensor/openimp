@@ -175,18 +175,33 @@ OpenIMP does the same (`HelixJpeg_QualityTables()`).
   source rows invalidated first, as for H.264). Only T23 writes the frame
   back before the job (CPU OSD). `OPENIMP_HELIX_JPEG_SRC_COPY=1` copies
   instead (heap; the encoder then copies into rmem per job).
-* rmem is held only while a job runs: one buffer with the command list
-  (8 KiB) and the bitstream behind it (the kernel's RUN writes back and
-  invalidates the first MiB from the command list), plus a source copy for
-  frames outside rmem. Bitstream: T20/T21/T30 have no hardware limit (their
-  kernel and libimp never use `JPGC_MAX_BS`), so it holds the whole NV12
-  picture as in the stock library (3.0 MiB at 1080p, for the job only). T23
-  programs `JPGC_MAX_BS` with a quarter of NV12 (half or all of it for
-  average luma steps below 16 or 6), at least 256 KiB, and repeats a
-  bitstream-full job once with the NV12 size (kept from then on).
-  Nothing is allocated when the largest free rmem block would drop below
-  the reserve (4 MiB, `OPENIMP_HELIX_JPEG_RMEM_RESERVE_KB`): the picture is
-  skipped (not counted as a hardware failure).
+* rmem: the stock encoder allocates, per JPEG channel at channel creation
+  (`ijpege_init` -> `hwicodec_pf_jpege_init_bpool`, `hwicodec_cal_bufsize`),
+  one buffer of `width * (height + 16) * 3 / 2 + 256` bytes (1 KiB aligned)
+  plus 20 KiB for the command list, from the VBM (rmem), and keeps it.
+  OpenIMP allocates one buffer shared by all JPEG channels (jobs are
+  serialised) when a JPEG channel is created (`OpenIMP_HelixJpeg_Reserve`,
+  `OPENIMP_HELIX_JPEG_RESERVE_AT_CREATE=0` defers it to the first picture),
+  grows it for a larger channel and keeps it: the 8 KiB command list
+  followed by the bitstream (the kernel's RUN writes back and invalidates
+  the first MiB from the command list). Bitstream: T20/T21/T30 have no
+  hardware limit (their kernel and libimp never use `JPGC_MAX_BS`), so it
+  holds the whole NV12 picture as in the stock library (3.0 MiB at 1080p).
+  A strict worst case cannot be bounded below that: with Annex K codes a
+  block can take up to ~1500 bits at quality 75 and byte stuffing can
+  double it, several times the NV12 size; the stock library relies on
+  real pictures (about 1.5 bpp at most at quality 75). T23 programs
+  `JPGC_MAX_BS` with a quarter of NV12 (half or all of it for average luma
+  steps below 16 or 6), at least 256 KiB, and repeats a bitstream-full job
+  once with the NV12 size (kept from then on). A source copy for frames
+  outside rmem is per job. No allocation leaves less than the reserve free
+  in rmem (1/16 of the arena, at least 512 KiB,
+  `OPENIMP_HELIX_JPEG_RMEM_RESERVE_KB`); a miss skips the picture without
+  counting as a hardware failure.
+* `OPENIMP_HELIX_JPEG_PROBE_MAX_BS_KB=n` (device probe): every job gets an
+  n KiB bitstream limit with a 1 MiB guard behind it and logs
+  `Helix JPEG probe: ... guard_bytes_written=... -> limit respected` or
+  `LIMIT IGNORED`.
 * Completion: RUN must succeed with `SCH_STAT` ENDFLAG and JPGEND (0x11),
   no error bits, and a length below the buffer size. The kernel completes
   only on ENDFLAG or BSFULL, so an error interrupt makes RUN wait for the

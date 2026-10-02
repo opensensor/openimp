@@ -355,9 +355,13 @@ static uint32_t run_list(const uint32_t *list)
     /* one job buffer: the command list, then the bitstream at +8 KiB */
     assert(reg(0xe000c) == (uint32_t)(uintptr_t)list + 0x2000u);
 #if defined(PLATFORM_T23)
-    assert(reg(0xe0068) == (0x80000000u | writer.capacity));
+    /* the limit is the buffer, or less for the probe (guard behind) */
+    assert((reg(0xe0068) & 0x80000000u) &&
+           ((reg(0xe0068) & 0x7fffffffu) == writer.capacity ||
+            getenv("OPENIMP_HELIX_JPEG_PROBE_MAX_BS_KB")));
 #else
-    assert(reg(0xe0068) == 0u);
+    /* only the JPGC_MAX_BS probe programs the limit here */
+    assert(reg(0xe0068) == 0u || (reg(0xe0068) & 0x80000000u));
 #endif
     for (my = 0; my < mb_height; my++)
         for (mx = 0; mx < mb_width; mx++) {
@@ -885,7 +889,13 @@ static void test_framesource_tail(void)
     uint8_t qt[128];
     uint32_t size;
     uint8_t *pixels = make_frame(1920u, 1080u, 1920u * 1088u, &size, 0);
-    unsigned int before = live_allocations;
+    unsigned int before, run_count = runs;
+
+    /* channel creation takes the bitstream buffer, like the stock encoder */
+    assert(OpenIMP_HelixJpeg_Reserve(1920u, 1080u) == 0);
+    assert(OpenIMP_HelixJpeg_Reserve(1000u, 1080u) < 0);
+    assert(runs == run_count);
+    before = live_allocations;
 
     memset(&frame, 0, sizeof(frame));
     frame.virt_addr = (uint32_t)(uintptr_t)pixels;
@@ -966,7 +976,7 @@ static void test_rmem_budget(void)
     frame.chroma_offset = 256u * 144u;
     HelixJpeg_QualityTables(75u, qt);
     rmem_stats_on = 1;
-    rmem_largest = (4096u << 10) + 4096u;  /* less than copy + reserve */
+    rmem_largest = (512u << 10) + 4096u;  /* less than copy + reserve */
     for (i = 0; i < 4u; i++)
         assert(OpenIMP_HelixJpeg_Encode(&frame, qt, &stream) < 0);
     /* soft skips: no run, nothing held, hardware path still on */
@@ -1054,6 +1064,37 @@ static void test_failures(void)
     munmap(pixels, size + 4096u);
 }
 
+/* OPENIMP_HELIX_JPEG_PROBE_MAX_BS_KB: per-job probe buffer with the limit
+ * programmed; a core that keeps to it leaves the guard alone. */
+static void test_probe(void)
+{
+    HelixJpegFrame frame;
+    HWStreamBuffer stream;
+    uint8_t qt[128];
+    uint32_t size;
+    uint8_t *pixels = make_frame(256u, 144u, 256u * 144u, &size, 0);
+    unsigned int before;
+
+    OpenIMP_HelixJpeg_Shutdown();
+    setenv("OPENIMP_HELIX_JPEG_PROBE_MAX_BS_KB", "16", 1);
+    memset(&frame, 0, sizeof(frame));
+    frame.virt_addr = (uint32_t)(uintptr_t)pixels;
+    frame.phys_addr = frame.virt_addr;
+    frame.size = size;
+    frame.width = 256u;
+    frame.height = 144u;
+    HelixJpeg_QualityTables(75u, qt);
+    assert(OpenIMP_HelixJpeg_Encode(&frame, qt, &stream) == 0);
+    assert(reg(0xe0068) == (0x80000000u | (16u << 10)));
+    check_picture(&stream, 256u, 144u, 30.0);
+    free((void *)(uintptr_t)stream.virt_addr);
+    before = live_allocations;
+    OpenIMP_HelixJpeg_Shutdown();
+    assert(live_allocations < before || before == 0u);
+    unsetenv("OPENIMP_HELIX_JPEG_PROBE_MAX_BS_KB");
+    munmap(pixels, size + 4096u);
+}
+
 int main(void)
 {
     /* the stream carries 32-bit addresses: keep the heap low (no PIE, no
@@ -1070,6 +1111,7 @@ int main(void)
 #endif
     assert(requests == 1u);
     test_failures();
+    test_probe();
     printf("helix_jpeg_test (%s, software JPEG %s): ok\n",
            HELIX_JPEG_VARIANT == HELIX_JPEG_T23 ? "T23" : "T20/T21/T30",
            OPENIMP_SW_JPEG ? "built in" : "left out");

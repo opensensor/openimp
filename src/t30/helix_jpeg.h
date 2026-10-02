@@ -94,15 +94,22 @@ typedef struct {
  * encoder built in), after an initialisation failure, or after repeated
  * hardware errors.  Run-time options: OPENIMP_HELIX_JPEG_STATS=1 logs every
  * job (path, status, sizes, time, rmem, failure reason);
- * OPENIMP_HELIX_JPEG_RMEM_RESERVE_KB (default 1024) is the free rmem the
- * encoder never allocates into; OPENIMP_HELIX_JPEG_MAX_BS=1 also programs
- * the bitstream limit on T20/T21/T30. */
+ * OPENIMP_HELIX_JPEG_RMEM_RESERVE_KB (default 1/16 of the arena, at least
+ * 512) is the free rmem the encoder never allocates into;
+ * OPENIMP_HELIX_JPEG_MAX_BS=1 also programs the bitstream limit on
+ * T20/T21/T30; OPENIMP_HELIX_JPEG_PROBE_MAX_BS_KB=n runs every job with an
+ * n KiB limit in front of a guard and logs whether the core kept to it. */
 int OpenIMP_HelixJpeg_Available(void);
 /* Encodes one picture with the 128 quantizers qt.  On success stream holds
  * a heap JPEG (phys_addr 0, freed by the consumer).  Returns -1 on any
  * failure; nothing is allocated then. */
 int OpenIMP_HelixJpeg_Encode(const HelixJpegFrame *frame,
                              const uint8_t qt[128], HWStreamBuffer *stream);
+/* At JPEG channel creation: allocate (or grow) the shared command list +
+ * bitstream buffer for a width x height channel now, as the stock encoder
+ * does, so it is part of the start-up rmem budget.  -1 when the hardware
+ * path is off or rmem cannot spare it (the first picture tries again). */
+int OpenIMP_HelixJpeg_Reserve(uint32_t width, uint32_t height);
 /* Releases the VPU channel and DMA buffers (idempotent). */
 void OpenIMP_HelixJpeg_Shutdown(void);
 
