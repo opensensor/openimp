@@ -859,7 +859,10 @@ static int t31_capture_start(void)
         t31_audio.capture_buffer = buffer;
         t31_audio.capture_capacity = capacity;
     }
-    if (t31_audio.capture_ref_on && t31_ref_reserve(capacity) != 0)
+    /* also a reference queue left from an earlier AEC/reference session:
+     * the capture thread fills it alongside the larger buffer */
+    if ((t31_audio.capture_ref_on || t31_audio.capture_ref) &&
+        t31_ref_reserve(capacity) != 0)
         return -1;
     t31_audio.capture_limit = frame * depth;
     t31_audio.capture_frame_bytes = frame;
