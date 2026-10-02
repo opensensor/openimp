@@ -73,6 +73,16 @@ int HelixJpeg_BuildDescriptor(const HelixJpegSlice *slice, uint32_t *words,
 #define HELIX_JPEG_HEADER_SIZE 623u
 size_t HelixJpeg_WriteHeader(uint8_t *out, size_t capacity, uint32_t width,
                              uint32_t height, const uint8_t qt[128]);
+/* As HelixJpeg_WriteHeader, with a DRI segment (restart interval in MCUs,
+ * 1..65535) before SOS when restart_interval is not 0. */
+#define HELIX_JPEG_DRI_SIZE 6u
+size_t HelixJpeg_WriteHeaderEx(uint8_t *out, size_t capacity, uint32_t width,
+                               uint32_t height, const uint8_t qt[128],
+                               uint32_t restart_interval);
+/* Most bytes the core can write for one 4:2:0 MCU (four luma and two
+ * chroma blocks) with the Annex K codes: every coefficient coded with the
+ * longest code per position, byte stuffing after every byte. */
+uint32_t HelixJpeg_McuWorstBytes(void);
 
 /* Runtime encoder (one VPU channel for the process, serialised). */
 typedef struct {
@@ -119,7 +129,13 @@ int OpenIMP_HelixJpeg_Reserve(uint32_t width, uint32_t height);
 int OpenIMP_HelixJpeg_EncodeEx(const HelixJpegFrame *frame,
                                const uint8_t qt[128], HWStreamBuffer *stream,
                                uint32_t *flags);
-/* Releases the VPU channel and DMA buffers (idempotent). */
+/* Releases the VPU channel and DMA buffers (idempotent; with the encoder
+ * lock held or nothing else running). */
 void OpenIMP_HelixJpeg_Shutdown(void);
+/* JPEG channel destroyed (pairs with OpenIMP_HelixJpeg_Reserve at its
+ * creation): with the last one gone the JPEG buffers are freed. */
+void OpenIMP_HelixJpeg_Release(void);
+/* IMP_System_Exit: OpenIMP_HelixJpeg_Shutdown under the encoder lock. */
+void OpenIMP_HelixJpeg_Exit(void);
 
 #endif

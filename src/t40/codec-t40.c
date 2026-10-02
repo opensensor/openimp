@@ -8151,6 +8151,10 @@ int AL_Codec_Encode_Create(void **codec, void *params) {
     OpenIMP_T30_HelixDestroy(enc->t30_helix);
     enc->t30_helix = NULL;
 #endif
+#if defined(PLATFORM_T30) || defined(PLATFORM_T23)
+    if (enc->hw_params.codec_type == IMP_ENC_TYPE_JPEG)
+        OpenIMP_HelixJpeg_Release();
+#endif
     Fifo_Deinit(enc->fifo_frames);
     Fifo_Deinit(enc->fifo_streams);
     free(enc->fifo_frames);
@@ -8194,6 +8198,11 @@ static int al_codec_encode_destroy_impl(void *codec) {
 #if defined(PLATFORM_T30)
     OpenIMP_T30_HelixDestroy(enc->t30_helix);
     enc->t30_helix = NULL;
+#endif
+#if defined(PLATFORM_T30) || defined(PLATFORM_T23)
+    /* pairs with OpenIMP_HelixJpeg_Reserve in AL_Codec_Encode_Create */
+    if (enc->hw_params.codec_type == IMP_ENC_TYPE_JPEG)
+        OpenIMP_HelixJpeg_Release();
 #endif
 
     /* Deinitialize hardware encoder(s) - OEM parity: no separate deinit function */
