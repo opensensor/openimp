@@ -283,6 +283,9 @@ static struct {
 
 static pthread_mutex_t t31_capture_lock = PTHREAD_MUTEX_INITIALIZER;
 static pthread_mutex_t t31_aec_lock = PTHREAD_MUTEX_INITIALIZER;
+/* The microphone effects (HPF/NS/AGC handles and their enabled flags):
+ * IMP_AI_GetFrame runs them while the application may switch them. */
+static pthread_mutex_t t31_ai_fx_lock = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t t31_capture_cond;
 static pthread_once_t t31_capture_once = PTHREAD_ONCE_INIT;
 
@@ -493,7 +496,21 @@ static int t31_configure_fd(int fd, const IMPAudioIOAttr *attribute)
 }
 #endif
 
+static int t31_effects_load_locked(void);
+
+/* AI and AO effects may be enabled from different threads */
 static int t31_effects_load(void)
+{
+    static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
+    int result;
+
+    pthread_mutex_lock(&lock);
+    result = t31_effects_load_locked();
+    pthread_mutex_unlock(&lock);
+    return result;
+}
+
+static int t31_effects_load_locked(void)
 {
     if (t31_audio.effects_library)
         return 0;
@@ -1126,8 +1143,10 @@ int IMP_AI_GetFrame(int device, int channel, IMPAudioFrame *frame,
                                 !t31_audio.ref_frame_valid);
     }
     pthread_mutex_unlock(&t31_aec_lock);
+    pthread_mutex_lock(&t31_ai_fx_lock);
     t31_process_effects((int16_t *)t31_audio.frame_buffer,
                         (int)(bytes / sizeof(int16_t)));
+    pthread_mutex_unlock(&t31_ai_fx_lock);
     t31_apply_ai_volume((int16_t *)t31_audio.frame_buffer,
                         (int)(bytes / sizeof(int16_t)));
     memset(frame, 0, sizeof(*frame));
@@ -1243,18 +1262,22 @@ int IMP_AI_EnableHpf(IMPAudioIOAttr *attribute)
 {
     if (!t31_valid_attr(attribute) || t31_effects_load() != 0)
         return -1;
+    pthread_mutex_lock(&t31_ai_fx_lock);
     t31_hpf_setup(t31_audio.hpf_state,
                   attribute->samplerate == 8000 ? t31_hpf_coefficients_8k
                                                 : t31_hpf_coefficients);
     t31_audio.hpf_enabled = 1;
+    pthread_mutex_unlock(&t31_ai_fx_lock);
     return 0;
 }
 
 int IMP_AI_DisableHpf(void)
 {
+    pthread_mutex_lock(&t31_ai_fx_lock);
     if (t31_audio.hpf_enabled)
         t31_audio.hpf_free();
     t31_audio.hpf_enabled = 0;
+    pthread_mutex_unlock(&t31_ai_fx_lock);
     return 0;
 }
 
@@ -1275,21 +1298,27 @@ int IMP_AI_EnableNs(IMPAudioIOAttr *attribute, int mode)
     if (!t31_valid_attr(attribute) || mode < 0 || mode > 4 ||
         t31_effects_load() != 0)
         return -1;
+    pthread_mutex_lock(&t31_ai_fx_lock);
     if (!t31_audio.ns)
         t31_audio.ns = t31_audio.ns_create();
     if (!t31_audio.ns ||
-        t31_audio.ns_set_config(t31_audio.ns, attribute->samplerate, mode) != 0)
+        t31_audio.ns_set_config(t31_audio.ns, attribute->samplerate, mode) != 0) {
+        pthread_mutex_unlock(&t31_ai_fx_lock);
         return -1;
+    }
     t31_audio.ns_enabled = 1;
+    pthread_mutex_unlock(&t31_ai_fx_lock);
     return 0;
 }
 
 int IMP_AI_DisableNs(void)
 {
+    pthread_mutex_lock(&t31_ai_fx_lock);
     if (t31_audio.ns)
         (void)t31_audio.ns_free(t31_audio.ns);
     t31_audio.ns = NULL;
     t31_audio.ns_enabled = 0;
+    pthread_mutex_unlock(&t31_ai_fx_lock);
     return 0;
 }
 
@@ -1299,27 +1328,35 @@ int IMP_AI_EnableAgc(IMPAudioIOAttr *attribute, IMPAudioAgcConfig configuration)
 
     if (!t31_valid_attr(attribute) || t31_effects_load() != 0)
         return -1;
+    pthread_mutex_lock(&t31_ai_fx_lock);
     if (!t31_audio.agc)
         t31_audio.agc = t31_audio.agc_create();
-    if (!t31_audio.agc)
+    if (!t31_audio.agc) {
+        pthread_mutex_unlock(&t31_ai_fx_lock);
         return -1;
+    }
     config.target_level_dbfs = (int16_t)configuration.TargetLevelDbfs;
     config.compression_gain_db = (int16_t)configuration.CompressionGaindB;
     config.limiter_enable = 1;
     if (t31_audio.agc_set_config(t31_audio.agc, 0, 255,
                                  t31_audio.agc_mode,
-                                 attribute->samplerate, config) != 0)
+                                 attribute->samplerate, config) != 0) {
+        pthread_mutex_unlock(&t31_ai_fx_lock);
         return -1;
+    }
     t31_audio.agc_enabled = 1;
+    pthread_mutex_unlock(&t31_ai_fx_lock);
     return 0;
 }
 
 int IMP_AI_DisableAgc(void)
 {
+    pthread_mutex_lock(&t31_ai_fx_lock);
     if (t31_audio.agc)
         (void)t31_audio.agc_free(t31_audio.agc);
     t31_audio.agc = NULL;
     t31_audio.agc_enabled = 0;
+    pthread_mutex_unlock(&t31_ai_fx_lock);
     return 0;
 }
 
@@ -1327,7 +1364,9 @@ int IMP_AI_SetAgcMode(int mode)
 {
     if (mode < 1 || mode > 3)
         mode = 2;
+    pthread_mutex_lock(&t31_ai_fx_lock);
     t31_audio.agc_mode = mode;
+    pthread_mutex_unlock(&t31_ai_fx_lock);
     return 0;
 }
 
