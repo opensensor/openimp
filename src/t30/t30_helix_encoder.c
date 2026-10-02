@@ -633,9 +633,13 @@ static void t23_rc_log(const T30HelixEncoder *encoder, const char *what)
 }
 
 /* The last word of the bitstream allocation (behind the window and most of
- * its slack page).  An overflowed picture that changed it was written past
- * the window by the core: the report says so (the window is then not a
- * hard limit and the neighbouring allocation may have been hit). */
+ * its slack page).  The window size (0x30040) does not stop the core: with
+ * the BSFULL interrupt off (soc_vpu enables it only for the ISP-direct
+ * mode) it finishes the picture (status 0x301) and writes the bitstream
+ * linearly past the window, into the allocation above it - on vorne
+ * (sc2336 1080p) up to 1.79 MB for a 1 MiB window, i.e. 0.75 MB into the
+ * second reference buffer.  The canary tells such a spill apart when the
+ * length cannot be trusted. */
 #define T23_BS_CANARY 0x5a17c0deu
 
 static volatile uint32_t *t23_canary(const T30HelixEncoder *encoder)
@@ -701,10 +705,37 @@ static void t23_overflow_settle(T30HelixEncoder *encoder, int idr,
                      idr ? "IDR" : "P");
 }
 
+/* Whether the bitstream of an overflowed picture reached the reference the
+ * next P picture predicts from: the spill is [allocation end, window start
+ * + length), the whole rest of reserved memory when the length is unknown
+ * (BSFULL) and the canary was hit. */
+static int t23_overflow_hit_reference(const T30HelixEncoder *encoder,
+                                      uint32_t status, uint32_t length,
+                                      int past)
+{
+    const IMPDMABufferInfo *ref;
+    uint64_t spill_start = (uint64_t)encoder->temporary.phys_addr +
+                           encoder->temporary.size;
+    uint64_t spill_end;
+
+    if (!encoder->have_reference || !past)
+        return 0;
+    ref = &encoder->reference[encoder->reference_index].dma;
+    if (status & T23_SCH_STAT_BSFULL)
+        spill_end = UINT64_MAX;
+    else
+        spill_end = (uint64_t)encoder->temporary.phys_addr +
+                    T30_SLICE_OFFSET + length;
+    return spill_end > ref->phys_addr &&
+           spill_start < (uint64_t)ref->phys_addr + ref->size;
+}
+
 /* An overflowed picture is dropped, like a picture that never reached the
  * encoder: nothing is committed, so a P picture leaves the reference chain
  * and frame_num intact (the next P predicts from the same reference, no
  * IDR, which would be the largest picture of all), and an IDR stays due.
+ * Only when the spill (see T23_BS_CANARY) overwrote that reference does
+ * the GOP restart with an IDR.
  * The next picture of that type is encoded with a higher QP.  Returns 1
  * when the boost could still rise (the drop is recoverable), 0 at QP 51. */
 static int t23_overflow_drop(T30HelixEncoder *encoder, int idr, uint32_t qp,
@@ -713,6 +744,7 @@ static int t23_overflow_drop(T30HelixEncoder *encoder, int idr, uint32_t qp,
     unsigned int k = idr ? 1u : 0u;
     int recoverable = qp < 51u;
     int past;
+    int hit;
 
     (void)DMA_RmemFlushCache((void *)t23_canary(encoder), 4u, 2);
     past = *t23_canary(encoder) != T23_BS_CANARY;
@@ -727,17 +759,29 @@ static int t23_overflow_drop(T30HelixEncoder *encoder, int idr, uint32_t qp,
         if (encoder->ovf_boost[k] > 51u)
             encoder->ovf_boost[k] = 51u;
     }
+    hit = t23_overflow_hit_reference(encoder, status, length, past);
+    if (hit) {
+        /* the IDR that replaces the reference starts at least as high
+         * as the P pictures that overflowed */
+        encoder->force_idr = 1;
+        encoder->have_reference = 0;
+        if (encoder->ovf_boost[1] < encoder->ovf_boost[0])
+            encoder->ovf_boost[1] = encoder->ovf_boost[0];
+    }
     if (encoder->overflows <= 20u || encoder->overflows % 100u == 0u)
         IMP_LOG_WARN("Encoder", "T23 Helix: %ux%u frame=%u %s qp=%u "
                      "overflowed the %uK bitstream window (status=0x%08x "
-                     "len=%u%s%s), dropped; next %s qp +%u (%u overflows)",
+                     "len=%u%s%s%s), dropped; next %s qp +%u (%u "
+                     "overflows)",
                      encoder->params.width, encoder->params.height,
                      encoder->frame_number, idr ? "IDR" : "P", qp,
                      encoder->bitstream_kib, status, length,
                      (status & T23_SCH_STAT_BSFULL) ? " BSFULL, length not "
                          "trusted" : "",
                      past ? ", written past the window" : "",
-                     idr ? "IDR" : "P", encoder->ovf_boost[k],
+                     hit ? " into the reference: IDR next" : "",
+                     hit ? "IDR" : idr ? "IDR" : "P",
+                     encoder->ovf_boost[hit ? 1 : k],
                      encoder->overflows);
     return recoverable;
 }

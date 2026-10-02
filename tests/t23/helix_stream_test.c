@@ -92,10 +92,27 @@ int DMA_AllocDescriptor(IMPDMABufferInfo *info, int size, const char *tag)
     return 0;
 }
 
+/* Long-lived encoder buffers come from the top, downwards, as on the
+ * camera (the bitstream window then lies below the second reference),
+ * below the 2 MiB the tests keep their capture frames in. */
+static uint32_t rmem_top = RMEM_SIZE - (2u << 20);
+
 int DMA_AllocDescriptorTop(IMPDMABufferInfo *info, int size,
                            const char *tag)
 {
-    return DMA_AllocDescriptor(info, size, tag);
+    uint32_t aligned = ((uint32_t)size + 4095u) & ~4095u;
+
+    (void)tag;
+    if (rmem_top < rmem_used + aligned || allocation_count >= 64u)
+        return -1;
+    rmem_top -= aligned;
+    memset(info, 0, sizeof(*info));
+    info->virt_addr = (uint32_t)(uintptr_t)(rmem + rmem_top);
+    info->phys_addr = RMEM_PHYS + rmem_top;
+    info->size = (uint32_t)size;
+    allocations[allocation_count].phys = info->phys_addr;
+    allocations[allocation_count++].size = (uint32_t)size;
+    return 0;
 }
 
 int DMA_FreePhys(uint32_t phys)
@@ -267,7 +284,7 @@ typedef struct {
 } FakeNode;
 
 enum { FAULT_NONE, FAULT_BSFULL, FAULT_TIMEOUT, FAULT_LATE, FAULT_ODD,
-       FAULT_OVERSIZE };
+       FAULT_OVERSIZE, FAULT_SPILL };
 static int next_fault;
 static unsigned int jobs;
 static unsigned int channels_open;
@@ -483,6 +500,22 @@ int __wrap_ioctl(int fd, unsigned long request, ...)
              * length past the window end, as seen on the camera) */
             next_fault = FAULT_NONE;
             node->output_len = window + 19119u;
+        }
+        if (next_fault == FAULT_SPILL) {
+            /* the camera's core writes on past the window: overwrite
+             * the rest of the bitstream allocation and report BSFULL
+             * (length not trusted) */
+            unsigned int a;
+
+            next_fault = FAULT_NONE;
+            for (a = 0; a < allocation_count; a++)
+                if (start >= allocations[a].phys &&
+                    start < allocations[a].phys + allocations[a].size)
+                    memset(virt_of(start + window), 0xa5,
+                           allocations[a].phys + allocations[a].size -
+                               (start + window));
+            node->status = 0x301u | (1u << 20);
+            return 0;
         }
     }
     node->status = 0x301u;
@@ -894,6 +927,15 @@ static void overflow_test(void)
     assert(last_qp_seen[1] == 38u);
     assert(encode_one(encoder, mem, frame++, FAULT_NONE) == 0);
     assert(last_qp_seen[1] == 37u);
+    /* a spill past the allocation with an unknown length may have hit
+     * the reference: the GOP restarts with an IDR, at least at the P
+     * boost (+4 more for the P overflow itself: 37 + 4) */
+    assert(encode_one(encoder, mem, frame++, FAULT_SPILL) == -1);
+    assert(OpenIMP_T30_HelixFailures(encoder) == 0u);
+    assert(encode_one(encoder, mem, frame++, FAULT_NONE) == 1);
+    assert(last_qp_seen[0] == 41u);
+    assert(encode_one(encoder, mem, frame++, FAULT_NONE) == 0);
+    assert(last_qp_seen[1] == 41u);
     /* a failure that is not an overflow still counts (and restarts the
      * GOP) */
     assert(encode_one(encoder, mem, frame++, FAULT_TIMEOUT) == -1);
@@ -903,12 +945,12 @@ static void overflow_test(void)
     /* repeated overflows climb to QP 51; there an overflow can no longer
      * be recovered and counts toward the failure limit */
     {
-        static const uint32_t qps[] = { 37u, 41u, 45u, 49u, 51u };
+        static const uint32_t qps[] = { 41u, 45u, 49u, 51u };
 
-        for (i = 0; i < 5u; i++) {
+        for (i = 0; i < 4u; i++) {
             assert(encode_one(encoder, mem, frame++, FAULT_OVERSIZE) == -1);
             assert(last_qp_seen[1] == qps[i]);
-            assert(OpenIMP_T30_HelixFailures(encoder) == (i == 4u ? 1u : 0u));
+            assert(OpenIMP_T30_HelixFailures(encoder) == (i == 3u ? 1u : 0u));
         }
     }
     OpenIMP_T30_HelixDestroy(encoder);
