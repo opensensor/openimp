@@ -17,6 +17,7 @@
 
 #include <errno.h>
 #include <fcntl.h>
+#include <pthread.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -463,6 +464,30 @@ static void t30_start_rate_control(T30HelixEncoder *encoder,
             encoder->params.max_qp, initial_qp) == 0;
 }
 
+/* One /dev/soc_vpu descriptor for all native encoders, opened on first use
+ * and kept until the process exits.  close() runs the kernel's
+ * release-on-close (soc_vpu.c soc_channel_vpu_release), which picks the VPUs
+ * to release by the closing thread's id without a lock: it can hand back and
+ * power down the VPU while Helix JPEG or another encoder of this process has
+ * a job on it, and that job's own release then puts the VPU on the free list
+ * a second time (a self-linked list and a hard hang in soc_vpu_request).
+ * The descriptor carries no state; channels are requested and released per
+ * encoder. */
+static pthread_mutex_t t30_vpu_fd_lock = PTHREAD_MUTEX_INITIALIZER;
+static int t30_vpu_fd_shared = -1;
+
+static int t30_vpu_fd(void)
+{
+    int fd;
+
+    pthread_mutex_lock(&t30_vpu_fd_lock);
+    if (t30_vpu_fd_shared < 0)
+        t30_vpu_fd_shared = open("/dev/soc_vpu", O_RDWR | O_CLOEXEC);
+    fd = t30_vpu_fd_shared;
+    pthread_mutex_unlock(&t30_vpu_fd_lock);
+    return fd;
+}
+
 int OpenIMP_T30_HelixCreate(T30HelixEncoder **encoder_out,
                             const HWEncoderParams *params)
 {
@@ -500,7 +525,7 @@ int OpenIMP_T30_HelixCreate(T30HelixEncoder **encoder_out,
     encoder->input_size = (uint32_t)(aligned_luma_size +
                                      aligned_luma_size / 2u);
 #endif
-    encoder->fd = open("/dev/soc_vpu", O_RDWR | O_CLOEXEC);
+    encoder->fd = t30_vpu_fd();
     if (encoder->fd < 0)
         goto fail;
     memset(&encoder->channel, 0, sizeof(encoder->channel));
@@ -1157,11 +1182,12 @@ void OpenIMP_T30_HelixDestroy(T30HelixEncoder *encoder)
     if (!encoder)
         return;
     if (encoder->fd >= 0 && encoder->channel.clist) {
+        /* never a VPU in vlist with CLOSE: that powers the VPU down */
+        encoder->channel.vlist = 0;
         encoder->channel.workphase = T30_CHANNEL_CLOSE;
         (void)ioctl(encoder->fd, T30_CHANNEL_RELEASE, &encoder->channel);
     }
-    if (encoder->fd >= 0)
-        close(encoder->fd);
+    /* the shared descriptor stays open, see t30_vpu_fd */
     for (i = 0; i < 2u; i++)
         t30_dma_release(&encoder->reference[i].dma);
     t30_dma_release(&encoder->temporary);
