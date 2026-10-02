@@ -3,7 +3,7 @@
 Everything changed, extended or fixed in OpenIMP, open-tx-isp, timps and the thingino
 integration since the test campaign started on 2026-09-30. Kept up to date during the campaign.
 
-Last update: 2026-10-02 13:10.
+Last update: 2026-10-02 15:55.
 
 Cameras are anonymised: cam-A (T31), cam-B (T23), cam-C (T20), cam-D (T21).
 
@@ -86,6 +86,18 @@ OpenIMP: T20 green flicker in the bottom rows fixed by filling the encoder paddi
 
 Aggregates: `claude/open-tx-isp-all-4` and `claude/openimp-all-4` (pushed); 58 merged single branches removed. `claude/open-tx-isp-all-5` adds t21-robust and t31-robust-2 (T31: sensor flip with shvflip=1, unload leaks, lazy WDR buffers; MemFree drift per reload 460 → 45 KB); all four cameras flashed with -all-5 images.
 
+## Independent review and fixes (2026-10-02)
+
+An independent code review (no critical findings) led to these fixes, now in the -all-6 aggregates:
+
+- Kernel: deadlock between sensor unload and reading `/proc/jz/sensor/*` (shared sinfo code); orphan sensor slots no longer point at unloaded modules; T21 open/release counted every open as the first (same bug in the vendor driver) — now counted and serialised; T23/T31 last-close races with foreign frame-channel users; dead global tuning buffer removed (T31); T20 refuses to release the active sensor; T21 error paths; T23 LSC flip locked, small leak fixed; unreachable decompiled T23 setters disabled. Tested on cam-A (T31) and cam-D (T21): foreign open/close while streaming, proc reads during sensor unload, repeated reloads.
+- OpenIMP: T23 native reconfigure uses a parameter snapshot (no divide-by-zero race); T31 lambda tables are generated from a formula instead of being copied from the vendor binary (output bit-identical, 12 documented ±1 entries); top-level NOTICE incl. WebRTC AECM (BSD-3) and x264-derived H.264 code (GPL-2.0+); committed test binary removed; width alignment check; level recomputed on bitrate change; rotation state published atomically; T23 AEC uses the driver's reference offset.
+- timps (separate session): no OSD clamp on rotated streams under OpenIMP (tested on cam-A); motion detection uses the sub stream by default (walk test on cam-A, no false alarms; on a T31 with vendor libimp about 85 % less IVS CPU).
+
+## Branch consolidation
+
+Current aggregates: `claude/open-tx-isp-all-6` and `claude/openimp-all-6`. All single branches and older aggregates contained in them were deleted (2026-10-02: 58 + 3 + 4 branches). Kept: docs and test-result branches, plus three old unmerged branches pending a decision (`t31-isp-lifecycle`, `t31-isp-perf`, OpenIMP `t31-series`).
+
 ## timps and thingino
 - timps: AE IT max can be reset to 0 again (PR #3, merged).
 - thingino: per-camera pins for both packages; the open-stack switch (`THINGINO_ISP_OPEN`) set per device so OpenIMP replaces the vendor library; T23 keeps the vendor library only under `/opt/openimp-t23` for helixd.
@@ -133,9 +145,7 @@ Aggregates: `claude/open-tx-isp-all-4` and `claude/openimp-all-4` (pushed); 58 m
 
 | Repository | Aggregate | Contains |
 |---|---|---|
-| open-tx-isp | `claude/open-tx-isp-all-2` | t23-tuning-wiring, t23-tuning-rest, t21-image-fixes (incl. t21-exposure, t21-bringup), t20-stop-oops, t31-tuning-gaps, on top of open-tx-isp-all |
-| OpenIMP | `claude/openimp-all-2` | openimp-quickfixes (IVS stopgap reverted), exposure-readback, tseries-ivs, t31-ao-fix, t20-tuning-ptr, t23-sensorattr, t31-isp-gaps, on top of openimp-all |
-| OpenIMP | separate | t23-native-helix-2, t31-hevc, t23-tune-tool, tseries-daynight |
-| open-tx-isp | separate | t23-flip-dgain, t23-bss-shrink, t20-ae-limits |
+| open-tx-isp | `claude/open-tx-isp-all-6` | everything above (all SoCs, robustness, review fixes) |
+| OpenIMP | `claude/openimp-all-6` | everything above (quickfixes, IVS, AEC, rotation, HEVC, native T23 encoder, review fixes) |
 
 Numbers come from on-device measurements and host checks during the campaign.
