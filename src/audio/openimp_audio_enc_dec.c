@@ -77,6 +77,7 @@ typedef struct AcodecNode {
     int len;
     int64_t timestamp;
     int seq;
+    int held;                   /* handed out by GetStream, not released */
     uint8_t *data;
 } AcodecNode;
 
@@ -292,6 +293,7 @@ static int channel_get(AcodecChannel *ch, IMPAudioStream *stream,
         pthread_mutex_unlock(&ch->lock);
         return -1;
     }
+    node->held = 1;
     stream->stream = node->data;
     stream->phyAddr = 0;
     stream->len = node->len;
@@ -332,6 +334,14 @@ static int channel_release(AcodecChannel *ch, IMPAudioStream *stream)
         return -1;
     }
     index = (address - base) / (size_t)ch->capacity;
+    /* Only a stream GetStream handed out: a second release of the same
+     * stream (or of one still queued) would link its node into the free
+     * list twice and let two frames share it. */
+    if (!ch->nodes[index].held) {
+        pthread_mutex_unlock(&ch->lock);
+        return -1;
+    }
+    ch->nodes[index].held = 0;
     list_push(&ch->free_list, &ch->nodes[index]);
     pthread_cond_broadcast(&ch->cond);
     pthread_mutex_unlock(&ch->lock);
