@@ -623,7 +623,7 @@ int32_t dbg_misc_simple_cmd(void *arg1)
             int32_t a1_2 = *(int32_t *)((char *)arg1 + 0x14);
 
             if ((uint32_t)a1_2 >= 3) {
-                printf("err: param1 = %d\n");
+                printf("err: param1 = %d\n", a1_2);
                 *(int32_t *)((char *)arg1 + 0xc) = -1;
                 return 0;
             }
