@@ -190,10 +190,24 @@ OpenIMP does the same (`HelixJpeg_QualityTables()`).
   A strict worst case cannot be bounded below that: with Annex K codes a
   block can take up to ~1500 bits at quality 75 and byte stuffing can
   double it, several times the NV12 size; the stock library relies on
-  real pictures (about 1.5 bpp at most at quality 75). T23 programs
-  `JPGC_MAX_BS` with a quarter of NV12 (half or all of it for average luma
-  steps below 16 or 6), at least 256 KiB, and repeats a bitstream-full job
-  once with the NV12 size (kept from then on). A source copy for frames
+  real pictures. T23 uses the same NV12 size and programs `JPGC_MAX_BS`
+  with it (the stock T23 library programs its encoder pool size, 2.4 MB or
+  600 KB by SoC variant, `IMP_Encoder_SetPoolSize`).
+  `OPENIMP_HELIX_JPEG_BS_DIVISOR=n` (only with the limit) uses 1/n of NV12
+  and repeats a job that reaches the limit with the NV12 size.
+* Bitstream limit reached (T23): the job completes normally
+  (ENDFLAG|JPGEND) with a truncated bitstream; the kernel returns
+  `JPGC_ACT_BS` in `max_bs_act` and bit 29 flags the truncation (the stock
+  library tests it in `do_channel_process_jpege` and
+  `IMP_Encoder_InputJpege`). The stock T23 library then drops the picture
+  and lowers the channel's JPEG quality by 5 (starting from 70,
+  `MakeTables_Imp` tables) for the following pictures, down to 0 (error
+  log about the pool size). OpenIMP never serves a truncated picture:
+  bit 29 (other cores: a length within 4 KiB of the limit), BSFULL or a
+  length at the buffer end fails the job; with the limit it repeats the
+  picture once with doubled quantizers (the JPEG header carries the tables
+  used), otherwise the picture fails.
+A source copy for frames
   outside rmem is per job. No allocation leaves less than the reserve free
   in rmem (1/16 of the arena, at least 512 KiB,
   `OPENIMP_HELIX_JPEG_RMEM_RESERVE_KB`); a miss skips the picture without

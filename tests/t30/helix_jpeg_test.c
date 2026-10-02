@@ -77,6 +77,9 @@ static unsigned int runs, requests, releases;
 static int fail_runs;            /* RUN returns -1 */
 static uint32_t force_status;    /* reported instead of 0x11 */
 static int force_overflow;       /* report a length >= the buffer */
+#if defined(PLATFORM_T23)
+static int force_act_once;       /* JPGC_ACT_BS bit 29 on one job */
+#endif
 static uint32_t regs[0x100000 / 4];
 static uint32_t last_pairs;
 static uint32_t last_raw_y;
@@ -431,6 +434,10 @@ int __wrap_ioctl(int fd, unsigned long request, ...)
         channel->status = force_status ? force_status : 0x11u;
         if (force_overflow)
             channel->status |= (1u << 20);
+#if defined(PLATFORM_T23)
+        channel->max_bs_act = force_act_once ? (1u << 29) : 0u;
+        force_act_once = 0;
+#endif
         return 0;
     }
     return -1;
@@ -906,14 +913,8 @@ static void test_framesource_tail(void)
     HelixJpeg_QualityTables(75u, qt);
     assert(OpenIMP_HelixJpeg_Encode(&frame, qt, &stream) == 0);
     assert(last_raw_y == frame.phys_addr);
-#if defined(PLATFORM_T23)
-    /* JPGC_MAX_BS: a quarter of NV12 */
-    assert(last_bitstream_buffer ==
-           ((1920u * 1088u * 3u / 2u / 4u + 0xfffu) & ~0xfffu));
-#else
-    /* no hardware limit: the whole NV12 picture, as the stock library */
+    /* the whole NV12 picture, as the stock library */
     assert(last_bitstream_buffer == 1920u * 1088u * 3u / 2u);
-#endif
     assert(live_allocations == before);
     printf("  1920x1080 in place: %u bytes, bitstream buffer %u\n",
            stream.length, last_bitstream_buffer);
@@ -929,9 +930,10 @@ static void test_framesource_tail(void)
 }
 
 #if defined(PLATFORM_T23)
-/* JPGC_MAX_BS: a full quarter-NV12 bitstream repeats the job once with the
- * NV12 size, which is kept from then on. */
-static void test_bitstream_full_retry(void)
+/* A job that reached JPGC_MAX_BS completes with a truncated bitstream and
+ * JPGC_ACT_BS bit 29 set: it is repeated with coarser quantizers, and the
+ * file carries the tables that were used. */
+static void test_limit_retry(void)
 {
     HelixJpegFrame frame;
     HWStreamBuffer stream;
@@ -939,6 +941,7 @@ static void test_bitstream_full_retry(void)
     uint32_t size;
     uint8_t *pixels = make_frame(1024u, 768u, 1024u * 768u, &size, 0);
     unsigned int run_count = runs;
+    const uint8_t *file;
 
     memset(&frame, 0, sizeof(frame));
     frame.virt_addr = (uint32_t)(uintptr_t)pixels;
@@ -947,12 +950,12 @@ static void test_bitstream_full_retry(void)
     frame.width = 1024u;
     frame.height = 768u;
     HelixJpeg_QualityTables(75u, qt);
-    force_overflow = 1;
-    assert(OpenIMP_HelixJpeg_Encode(&frame, qt, &stream) < 0);
-    assert(runs == run_count + 2u);
-    force_overflow = 0;
+    force_act_once = 1;
     assert(OpenIMP_HelixJpeg_Encode(&frame, qt, &stream) == 0);
-    assert(last_bitstream_buffer == 1024u * 768u * 3u / 2u);
+    assert(runs == run_count + 2u && !force_act_once);
+    file = (const uint8_t *)(uintptr_t)stream.virt_addr;
+    assert(file[25] == qt[0] * 2u && file[94] == qt[64] * 2u);
+    check_picture(&stream, 1024u, 768u, 28.0);
     free((void *)(uintptr_t)stream.virt_addr);
     munmap(pixels, size + 4096u);
 }
@@ -1039,8 +1042,12 @@ static void test_failures(void)
     force_overflow = 1;
     i = runs;
     assert(OpenIMP_HelixJpeg_Encode(&frame, qt, &stream) < 0);
-    /* the 256 KiB floor already holds this NV12 picture: no repeat */
+#if defined(PLATFORM_T23)
+    /* JPGC_MAX_BS: repeated once with coarser quantizers, still full */
+    assert(runs == i + 2u);
+#else
     assert(runs == i + 1u);
+#endif
     force_overflow = 0;
     assert(OpenIMP_HelixJpeg_Encode(&frame, qt, &stream) == 0);
     free((void *)(uintptr_t)stream.virt_addr);
@@ -1107,7 +1114,7 @@ int main(void)
     test_framesource_tail();
     test_rmem_budget();
 #if defined(PLATFORM_T23)
-    test_bitstream_full_retry();
+    test_limit_retry();
 #endif
     assert(requests == 1u);
     test_failures();

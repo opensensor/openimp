@@ -538,6 +538,7 @@ static struct {
     int stats;                 /* OPENIMP_HELIX_JPEG_STATS=1 */
     int max_bs;                /* JPGC_MAX_BS limits the core */
     int full_bitstream;        /* a limited buffer overflowed */
+    uint32_t bs_divisor;       /* OPENIMP_HELIX_JPEG_BS_DIVISOR (max_bs) */
     uint32_t probe_limit;      /* JPGC_MAX_BS probe, bytes (0 = off) */
     IMPDMABufferInfo probe;
     IMPDMABufferInfo *active;  /* buffer of the last job */
@@ -660,6 +661,8 @@ static int helix_jpeg_open_locked(void)
             "OPENIMP_HELIX_JPEG_RMEM_RESERVE_KB", reserve >> 10, 0u,
             65536u) << 10;
     }
+    helix_jpeg.bs_divisor = helix_env_uint("OPENIMP_HELIX_JPEG_BS_DIVISOR",
+                                           1u, 1u, 16u);
     helix_jpeg.probe_limit = helix_env_uint(
         "OPENIMP_HELIX_JPEG_PROBE_MAX_BS_KB", 0u, 1u, 4096u) << 10;
     helix_jpeg.fd = open("/dev/soc_vpu", O_RDWR | O_CLOEXEC);
@@ -791,26 +794,21 @@ static void helix_pad_rows(const HelixJpegFrame *frame, uint32_t stride,
                              stride * (chroma_end - chroma_rows), 1);
 }
 
-/* Bitstream size for a picture.  Without JPGC_MAX_BS (T20/T21/T30) the core
- * writes on regardless, so the buffer holds the whole NV12 picture as in
- * the stock library.  With it (T23) a quarter of NV12 (half or all of it
- * for average luma steps below 16 or 6), at least 256 KiB; a full buffer
- * repeats the job with the NV12 size. */
+/* Bitstream size for a picture: the NV12 picture size, as the stock T21
+ * library (whose bitstream buffer is the picture size) and of the order of
+ * the stock T23 one (the encoder pool, 2.4 MB by default).  Without
+ * JPGC_MAX_BS (T20/T21/T30) the core writes on regardless, so nothing
+ * smaller is safe.  With it, OPENIMP_HELIX_JPEG_BS_DIVISOR=n uses 1/n of
+ * NV12 (at least 256 KiB); a job that reaches the limit is then repeated
+ * with the NV12 size, kept from then on. */
 static uint32_t helix_bitstream_capacity(uint32_t nv12, const uint8_t qt[128],
                                          int full)
 {
-    uint32_t sum = 0;
-    uint32_t capacity;
-    unsigned int i;
+    uint32_t capacity = nv12;
 
-    for (i = 0; i < 64u; i++)
-        sum += qt[i];
-    if (full || !helix_jpeg.max_bs || sum < 6u * 64u)
-        capacity = nv12;
-    else if (sum < 16u * 64u)
-        capacity = nv12 / 2u;
-    else
-        capacity = nv12 / 4u;
+    (void)qt;
+    if (!full && helix_jpeg.max_bs && helix_jpeg.bs_divisor > 1u)
+        capacity = nv12 / helix_jpeg.bs_divisor;
     if (capacity < HELIX_BITSTREAM_MIN)
         capacity = HELIX_BITSTREAM_MIN;
     return (capacity + 0xfffu) & ~0xfffu;
@@ -861,12 +859,34 @@ static void helix_probe_report(void)
             last = i + 1u;
         }
     IMP_LOG_INFO("Encoder", "Helix JPEG probe: JPGC_MAX_BS=%u bytes "
-                 "status=0x%08x len=%u guard_bytes_written=%u "
+                 "status=0x%08x len=%u act=0x%08x guard_bytes_written=%u "
                  "guard_end=%u errno=%d -> %s", helix_jpeg.probe_limit,
                  helix_jpeg.channel.status, helix_jpeg.channel.output_len,
+#if defined(PLATFORM_T23)
+                 helix_jpeg.channel.max_bs_act,
+#else
+                 0u,
+#endif
                  written, last, errno,
                  written ? "LIMIT IGNORED (the core wrote past it)"
                          : "limit respected");
+}
+
+/* A job that ran into JPGC_MAX_BS completes normally (ENDFLAG|JPGEND) with
+ * a truncated bitstream.  The T23 kernel returns JPGC_ACT_BS
+ * (max_bs_act), whose bit 29 the stock T23 library tests for this
+ * (do_channel_process_jpege, IMP_Encoder_InputJpege).  Other kernels do
+ * not return it: there a length within 4 KiB of the limit counts as
+ * reaching it. */
+static int helix_limit_reached(uint32_t capacity)
+{
+    if (!helix_jpeg.max_bs && !helix_jpeg.probe_limit)
+        return 0;
+#if defined(PLATFORM_T23)
+    if (helix_jpeg.channel.max_bs_act & (1u << 29))
+        return 1;
+#endif
+    return helix_jpeg.channel.output_len + 4096u >= capacity;
 }
 
 /* One RUN with a bitstream of capacity bytes.  Returns 0, -1, or
@@ -936,11 +956,14 @@ static int helix_jpeg_job_locked(HelixJpegSlice *slice, uint32_t capacity,
         helix_jpeg.reason = "not a JPEG completion";
     else if (!helix_jpeg.channel.output_len)
         helix_jpeg.reason = "no length";
+    else if (helix_limit_reached(capacity))
+        helix_jpeg.reason = "bitstream limit reached";
     else if (helix_jpeg.channel.output_len >= capacity)
         helix_jpeg.reason = "overflow";
     else
         return 0;
     *overflow = (helix_jpeg.channel.status & HELIX_STAT_BSFULL) ||
+                helix_limit_reached(capacity) ||
                 helix_jpeg.channel.output_len >= capacity;
     IMP_LOG_ERR("Encoder", "Helix JPEG: %ux%u %s errno=%d status=0x%08x "
                 "len=%u/%u", slice->width,
@@ -968,6 +991,8 @@ static int helix_jpeg_run_locked(const HelixJpegFrame *frame,
                       (uint64_t)stride * (aligned_height / 2u);
     uint64_t visible = (uint64_t)chroma_offset +
                        (uint64_t)stride * ((frame->height + 1u) / 2u);
+    const uint8_t *header_qt = qt;
+    uint8_t coarse[128];
     uint32_t capacity;
     uint32_t length;
     uint8_t *output;
@@ -1033,12 +1058,29 @@ static int helix_jpeg_run_locked(const HelixJpegFrame *frame,
     *capacity_out = capacity;
     ret = helix_jpeg_job_locked(&slice, capacity, &overflow, capacity_out);
     if (ret == HELIX_RUN_FAILED && overflow && helix_jpeg.max_bs &&
-        !helix_jpeg.probe_limit &&
-        *capacity_out < ((nv12 + 0xfffu) & ~0xfffu)) {
-        /* limited by JPGC_MAX_BS: repeat once with the NV12 size, and keep
-         * that size from now on */
-        helix_jpeg.full_bitstream = 1;
-        capacity = helix_bitstream_capacity(nv12, qt, 1);
+        !helix_jpeg.probe_limit) {
+        if (*capacity_out < ((nv12 + 0xfffu) & ~0xfffu)) {
+            /* a smaller buffer (OPENIMP_HELIX_JPEG_BS_DIVISOR): repeat
+             * with the NV12 size, and keep that size from now on */
+            helix_jpeg.full_bitstream = 1;
+            capacity = helix_bitstream_capacity(nv12, qt, 1);
+        } else {
+            /* even the NV12 size: repeat with steps doubled (about half
+             * the size) rather than drop the picture.  The stock T23
+             * library drops it and lowers the channel quality by 5 for
+             * the following pictures. */
+            unsigned int i;
+
+            for (i = 0; i < 128u; i++)
+                coarse[i] = qt[i] >= 128u ? 255u : (uint8_t)(qt[i] * 2u);
+            slice.qt = coarse;
+            header_qt = coarse;
+        }
+        IMP_LOG_WARN("Encoder", "Helix JPEG: %ux%u reached the %u-byte "
+                     "bitstream limit, repeating it %s", frame->width,
+                     frame->height, *capacity_out,
+                     header_qt == coarse ? "with coarser quantizers"
+                                         : "with the NV12 size");
         *capacity_out = capacity;
         ret = helix_jpeg_job_locked(&slice, capacity, &overflow, capacity_out);
     }
@@ -1057,7 +1099,7 @@ static int helix_jpeg_run_locked(const HelixJpegFrame *frame,
         return -1;
     }
     header = HelixJpeg_WriteHeader(output, HELIX_JPEG_HEADER_SIZE,
-                                   frame->width, frame->height, qt);
+                                   frame->width, frame->height, header_qt);
     if (!header) {
         free(output);
         helix_jpeg.reason = "header";
