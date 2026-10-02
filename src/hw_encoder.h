@@ -146,6 +146,15 @@ int HW_Encoder_SetParams(int fd, HWEncoderParams *params);
  */
 int HW_Encoder_Encode_Software(HWFrameBuffer *frame, HWStreamBuffer *stream, uint32_t codec_type);
 
+/* OPENIMP_SW_JPEG=0 leaves the software baseline JPEG encoder out of the
+ * library (the Helix SoCs build it out by default: their JPEG runs on the
+ * VPU, src/t30/helix_jpeg.c, and the stock libimp has no software path
+ * either).  Platforms without a build setting keep it. */
+#ifndef OPENIMP_SW_JPEG
+#define OPENIMP_SW_JPEG 1
+#endif
+
+#if OPENIMP_SW_JPEG
 int HW_Encoder_Encode_NV12_JPEG(HWFrameBuffer *frame,
                                 HWStreamBuffer *stream,
                                 uint32_t quality);
@@ -163,6 +172,7 @@ int HW_Encoder_Encode_NV12_JPEG_Tables(HWFrameBuffer *frame,
  * layout. ep1 must hold at least HW_JPEG_EP1_SIZE bytes. */
 #define HW_JPEG_EP1_SIZE 0x790u
 int HW_Encoder_BuildJpegEp1(uint8_t *ep1, size_t size, uint32_t quality);
+#endif /* OPENIMP_SW_JPEG */
 
 /**
  * Request IDR frame on next encode (software encoder)

@@ -15,13 +15,14 @@ AI_LIFECYCLE_TEST_BIN := $(PROJECT_DIR)/build/tests/t31-ai-lifecycle-test
 FAKE_AUDIO_PROCESS_DIR := $(PROJECT_DIR)/build/tests/fake-audio-process
 FAKE_AUDIO_PROCESS := $(FAKE_AUDIO_PROCESS_DIR)/libaudioProcess.so
 OSD_DRAW_TEST_BIN := $(PROJECT_DIR)/build/tests/t31-osd-draw-test
+P2_JPEG_SOURCE_TEST_BIN := $(PROJECT_DIR)/build/tests/t31-p2-jpeg-source-test
 
-.PHONY: check clean sanitize
+.PHONY: check clean sanitize p2-jpeg-source
 
 check: $(STREAM_LAYOUT_TEST_BIN) $(RATE_CONTROL_TEST_BIN) \
 	$(READY_EVENT_TEST_BIN) $(ACODEC_TEST_BIN) $(FRAME_PIN_TEST_BIN) \
 	$(AO_SENDFRAME_TEST_BIN) $(HEVC_HEADERS_TEST_BIN) $(AEC_TEST_BIN) $(NV12_ROTATE_TEST_BIN) \
-	$(LAMBDA_TEST_BIN) $(AI_LIFECYCLE_TEST_BIN) $(FAKE_AUDIO_PROCESS) $(OSD_DRAW_TEST_BIN)
+	$(LAMBDA_TEST_BIN) $(AI_LIFECYCLE_TEST_BIN) $(FAKE_AUDIO_PROCESS) $(OSD_DRAW_TEST_BIN) $(P2_JPEG_SOURCE_TEST_BIN)
 	$(STREAM_LAYOUT_TEST_BIN)
 	$(RATE_CONTROL_TEST_BIN)
 	$(READY_EVENT_TEST_BIN)
@@ -34,6 +35,7 @@ check: $(STREAM_LAYOUT_TEST_BIN) $(RATE_CONTROL_TEST_BIN) \
 	$(LAMBDA_TEST_BIN)
 	LD_LIBRARY_PATH=$(abspath $(FAKE_AUDIO_PROCESS_DIR)) $(AI_LIFECYCLE_TEST_BIN)
 	$(OSD_DRAW_TEST_BIN)
+	$(P2_JPEG_SOURCE_TEST_BIN)
 
 $(OSD_DRAW_TEST_BIN): osd_draw_test.c $(PROJECT_DIR)/src/t31/openimp_t31_osd_draw.h
 	mkdir -p "$(dir $@)"
@@ -166,4 +168,23 @@ clean:
 		$(AO_SENDFRAME_TEST_BIN) $(HEVC_HEADERS_TEST_BIN) $(AEC_TEST_BIN) $(NV12_ROTATE_TEST_BIN) \
 		$(LAMBDA_TEST_BIN) $(AI_LIFECYCLE_TEST_BIN) \
 		$(AI_LIFECYCLE_TEST_BIN)-asan $(AI_LIFECYCLE_TEST_BIN)-tsan \
-		$(FAKE_AUDIO_PROCESS)
+		$(FAKE_AUDIO_PROCESS) \
+		$(P2_JPEG_SOURCE_TEST_BIN)
+
+# A JPEG channel that is the only one on its framesource (timps' jpeg.*
+# channel) gets frames from PollingStream (p2_jpeg_frames_from_fanout), and
+# one next to a receiving video channel still gets the fan-out.
+$(P2_JPEG_SOURCE_TEST_BIN): p2_jpeg_source_test.c \
+	$(PROJECT_DIR)/src/t40/openimp_p2_encoder.c
+	mkdir -p "$(dir $@)"
+	$(CC) -std=gnu99 -O1 -g -Wall -Wextra -Werror -DPLATFORM_T31 \
+		'-D_Static_assert(c,m)=' -Wno-unused-result \
+		-I$(PROJECT_DIR)/include -I$(PROJECT_DIR)/src \
+		-I$(PROJECT_DIR)/src/t40 p2_jpeg_source_test.c \
+		$(PROJECT_DIR)/src/t40/openimp_p2_encoder.c \
+		$(PROJECT_DIR)/src/openimp_profile.c \
+		$(PROJECT_DIR)/src/t40/t31_stream_layout.c \
+		-lpthread -o $@
+
+p2-jpeg-source: $(P2_JPEG_SOURCE_TEST_BIN)
+	$(P2_JPEG_SOURCE_TEST_BIN)

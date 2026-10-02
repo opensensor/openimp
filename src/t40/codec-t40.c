@@ -49,6 +49,7 @@
 #endif
 #if defined(PLATFORM_T30) || defined(PLATFORM_T23)
 #include "t30/t30_helix_encoder.h"
+#include "t30/helix_jpeg.h"
 #endif
 #include "t40_ep1.h"
 #if defined(PLATFORM_T41)
@@ -6809,6 +6810,10 @@ struct AL_CodecEncode {
      * jpeg_ql_lock */
     int jpeg_user_tables;
     uint8_t jpeg_tables[128];
+    /* Helix JPEG bitstream limit reached: quality in use instead of the
+     * channel tables (0: none) and clean pictures since (encoder thread) */
+    uint32_t jpeg_limit_quality;
+    uint32_t jpeg_clean_pictures;
 #else
     /* JPEG quality 1..100 from iInitialQP at CreateChn (0: default 75) */
     uint32_t jpeg_quality;
@@ -6844,10 +6849,14 @@ int AL_Codec_Encode_SetJpegQl(void *codec, int enable,
     return 0;
 }
 
+/* JPEG of one picture: on the Helix VPU (src/t30/helix_jpeg.c), with the
+ * software encoder (when built in) for pictures the hardware path cannot
+ * take or after a hardware error. */
 static int codec_encode_jpeg_ql(AL_CodecEncode *enc, HWFrameBuffer *frame,
                                 HWStreamBuffer *stream)
 {
     uint8_t tables[128];
+    HelixJpegFrame picture;
     int user;
 
     pthread_mutex_lock(&jpeg_ql_lock);
@@ -6855,9 +6864,58 @@ static int codec_encode_jpeg_ql(AL_CodecEncode *enc, HWFrameBuffer *frame,
     if (user)
         memcpy(tables, enc->jpeg_tables, sizeof(tables));
     pthread_mutex_unlock(&jpeg_ql_lock);
-    /* 75 matches the built-in table set the T23 libimp starts with */
+    /* 75 is the built-in table set the T20/T21/T23 libimp starts with (its
+     * quality index 0) */
+    if (!user)
+        HelixJpeg_QualityTables(75u, tables);
+    /* After a picture reached the bitstream limit the stock T23 library
+     * encodes the channel at quality 70, 65, ... (MakeTables_Imp, also
+     * replacing user tables).  Recovering by 5 after 100 clean pictures is
+     * an OpenIMP addition (the stock library never goes back up). */
+    if (enc->jpeg_limit_quality)
+        HelixJpeg_QualityTables(enc->jpeg_limit_quality, tables);
+    memset(&picture, 0, sizeof(picture));
+    picture.virt_addr = frame->virt_addr;
+    picture.phys_addr = frame->phys_addr;
+    picture.size = frame->size;
+    picture.width = frame->width;
+    picture.height = frame->height;
+    picture.pixfmt = frame->pixfmt;
+    picture.timestamp = frame->timestamp;
+    {
+        uint32_t flags = 0;
+        int ret = OpenIMP_HelixJpeg_EncodeEx(&picture, tables, stream,
+                                             &flags);
+
+        if (flags & HELIX_JPEG_LIMIT_HIT) {
+            uint32_t q = enc->jpeg_limit_quality ? enc->jpeg_limit_quality
+                                                 : 70u;
+
+            enc->jpeg_limit_quality = q > 10u ? q - 5u : 5u;
+            enc->jpeg_clean_pictures = 0;
+            IMP_LOG_WARN("Encoder", "JPEG channel %d: bitstream limit "
+                         "reached, quality %u from now on",
+                         enc->channel_id - 1, enc->jpeg_limit_quality);
+        } else if (ret == 0 && enc->jpeg_limit_quality &&
+                   ++enc->jpeg_clean_pictures >= 100u) {
+            enc->jpeg_clean_pictures = 0;
+            enc->jpeg_limit_quality += 5u;
+            if (enc->jpeg_limit_quality >= 70u)
+                enc->jpeg_limit_quality = 0;
+            IMP_LOG_INFO("Encoder", "JPEG channel %d: quality back to %u",
+                         enc->channel_id - 1,
+                         enc->jpeg_limit_quality ? enc->jpeg_limit_quality
+                                                 : 75u);
+        }
+        if (ret == 0)
+            return 0;
+    }
+#if OPENIMP_SW_JPEG
     return user ? HW_Encoder_Encode_NV12_JPEG_Tables(frame, stream, 75u, tables)
                 : HW_Encoder_Encode_NV12_JPEG(frame, stream, 75u);
+#else
+    return -1;
+#endif
 }
 #else
 /* T31/T40/T41: the vendor encoder takes the JPEG quality from iInitialQP
@@ -7953,6 +8011,13 @@ int AL_Codec_Encode_Create(void **codec, void *params) {
             enc->hw_params.width, enc->hw_params.height,
             codec_param_read_bitrate_bps(enc->codec_param));
     }
+#if defined(PLATFORM_T30) || defined(PLATFORM_T23)
+    /* The stock encoder allocates a JPEG channel's bitstream buffer at
+     * channel creation: take it from the start-up rmem budget too. */
+    if (enc->hw_params.codec_type == IMP_ENC_TYPE_JPEG)
+        (void)OpenIMP_HelixJpeg_Reserve(enc->hw_params.width,
+                                        enc->hw_params.height);
+#endif
     enc->hw_params.fps_num = enc->fps_cache.frmRateNum;
     enc->hw_params.fps_den = enc->fps_cache.frmRateDen;
     enc->hw_params.gop_length = enc->gop_cache.gopLength ? enc->gop_cache.gopLength : 25u;

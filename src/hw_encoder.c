@@ -644,6 +644,7 @@ static int repack_with_epb(uint8_t *dst, size_t dst_size, const uint8_t *src_nal
 /**
  * Software fallback encoder with BN MCP-like AU sequencing and EPB insertion
  */
+#if OPENIMP_SW_JPEG
 /* Baseline JPEG encoder adapted from the public-domain stb_image_write JPEG
  * path. It consumes the ISP's native NV12/NV21 buffer directly, so preview
  * frames need neither an RGB conversion buffer nor a second capture dequeue. */
@@ -1264,6 +1265,7 @@ int HW_Encoder_Encode_NV12_JPEG_Tables(HWFrameBuffer *frame,
     return jpeg_encode_nv12(frame, stream, quality, tables);
 }
 #endif
+#endif /* OPENIMP_SW_JPEG */
 
 int HW_Encoder_Encode_Software(HWFrameBuffer *frame, HWStreamBuffer *stream, uint32_t codec_type) {
     if (frame == NULL || stream == NULL) {
@@ -1273,7 +1275,11 @@ int HW_Encoder_Encode_Software(HWFrameBuffer *frame, HWStreamBuffer *stream, uin
     static uint32_t frame_counter = 0;
 
     if (codec_type == HW_CODEC_JPEG) {
+#if OPENIMP_SW_JPEG
         return HW_Encoder_Encode_NV12_JPEG(frame, stream, 75u);
+#else
+        return -1;
+#endif
     }
 
     if (codec_type != HW_CODEC_H264) {

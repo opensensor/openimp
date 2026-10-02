@@ -56,6 +56,26 @@ helix_encoder_test_t20: $(HELIX_SOURCES) $(ROOT)/src/t30/t30_annexb.h $(ROOT)/sr
 		-Wl,--wrap=open,--wrap=close,--wrap=ioctl \
 		-o $@ $(HELIX_SOURCES)
 
+# Helix hardware JPEG against a fake /dev/soc_vpu that executes the command
+# list (no PIE: 32-bit addresses).  Built per command-list generation and
+# with and without the software JPEG fallback.
+HJPEG_DEPS := helix_jpeg_test.c $(ROOT)/src/t30/helix_jpeg.c \
+	$(ROOT)/src/t30/helix_jpeg.h
+HJPEG_FLAGS = $(CFLAGS) -fno-pie -no-pie -I$(ROOT)/include -I$(ROOT)/src \
+	-Wl,--wrap=open,--wrap=close,--wrap=ioctl
+
+helix_jpeg_test_t21: $(HJPEG_DEPS)
+	$(CC) $(HJPEG_FLAGS) -DPLATFORM_T21 -o $@ helix_jpeg_test.c \
+		$(ROOT)/src/t30/helix_jpeg.c -lm -pthread
+
+helix_jpeg_test_t20: $(HJPEG_DEPS)
+	$(CC) $(HJPEG_FLAGS) -DPLATFORM_T20 -DPLATFORM_T21 -DOPENIMP_SW_JPEG=0 \
+		-o $@ helix_jpeg_test.c $(ROOT)/src/t30/helix_jpeg.c -lm -pthread
+
+helix_jpeg_test_t23: $(HJPEG_DEPS)
+	$(CC) $(HJPEG_FLAGS) -DPLATFORM_T23 -DOPENIMP_SW_JPEG=0 -o $@ \
+		helix_jpeg_test.c $(ROOT)/src/t30/helix_jpeg.c -lm -pthread
+
 # IVS framework and move algorithm with the legacy T20/T21/T30 ABI; the test
 # source is shared with tests/t23. The frame record carries 32-bit
 # addresses: no PIE.
@@ -174,6 +194,7 @@ sanitize: $(FS_DEPS) $(HELIX_SOURCES) $(HELIX_T21_SOURCES) $(IVS_DEPS)
 
 check: descriptor_test annexb_test level_test helix_encoder_test \
 	helix_encoder_test_t21 helix_encoder_test_t20 \
+	helix_jpeg_test_t21 helix_jpeg_test_t20 helix_jpeg_test_t23 \
 	ivs_framework_test_t21 ivs_framework_test_t20 ivs_move_bench_t20 \
 	fs_lifecycle_test_t21 fs_lifecycle_test_t20 fs_lifecycle_test_t23 \
 	system_test
@@ -183,6 +204,9 @@ check: descriptor_test annexb_test level_test helix_encoder_test \
 	./helix_encoder_test
 	./helix_encoder_test_t21
 	./helix_encoder_test_t20
+	./helix_jpeg_test_t21
+	./helix_jpeg_test_t20
+	./helix_jpeg_test_t23
 	./ivs_framework_test_t21
 	./ivs_framework_test_t20
 	./ivs_move_bench_t20 equiv
@@ -194,6 +218,7 @@ check: descriptor_test annexb_test level_test helix_encoder_test \
 clean:
 	$(RM) descriptor_test annexb_test level_test helix_encoder_test \
 		helix_encoder_test_t21 helix_encoder_test_t20 \
+		helix_jpeg_test_t21 helix_jpeg_test_t20 helix_jpeg_test_t23 \
 		ivs_framework_test_t21 ivs_framework_test_t20 ivs_move_bench_t20 \
 		fs_lifecycle_test_t21 fs_lifecycle_test_t20 fs_lifecycle_test_t23 \
 		fs_lifecycle_asan_* fs_lifecycle_tsan_* helix_encoder_asan_* \
