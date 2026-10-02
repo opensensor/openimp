@@ -3,7 +3,7 @@
 Everything changed, extended or fixed in OpenIMP, open-tx-isp, timps and the thingino
 integration since the test campaign started on 2026-09-30. Kept up to date during the campaign.
 
-Last update: 2026-10-02 09:30.
+Last update: 2026-10-02 10:05.
 
 Cameras are anonymised: cam-A (T31), cam-B (T23), cam-C (T20), cam-D (T21).
 
@@ -78,11 +78,11 @@ Goal: identical image behaviour, but cleaner unload/reload, less memory and chec
 | T23 | `claude/t23-robust` | 10x timps stop/start incl. kill -9, 10x rmmod/insmod, 0 oops; two out-of-bounds writes fixed (2 KB and 18 KB past arrays); bss 434 → 180 KB |
 | T20 | `claude/t20-robust` | rmmod while streaming correctly refused; 10x stop/start + 10x reload, 0 oops; decompile fixes (1 KB copy to address 0, AE reading a kernel address); all 53 user copies checked |
 | T31 | `claude/t31-robust` | 10x reload with kill -9, vmalloc leak (252 KB/cycle) fixed, no stuck firmware thread; module 716 KB vs vendor 829 KB |
-| T21 | `claude/t21-robust` | sensor GPIO release, statistics buffers freed only after ISP reset, bss 259 → 106 KB; reload test in progress |
+| T21 | `claude/t21-robust` | 10x stop/start + rmmod/insmod with a snapshot each time, 0 oops; root cause of the old reload oops: ISP statistics DMA still writing into freed buffers, now the ISP is reset first; sensor GPIO release; bss 259 → 106 KB |
 
 OpenIMP: T20 green flicker in the bottom rows fixed by filling the encoder padding rows (`claude/t20-bottom-chroma`; 0 green pixels in 30 frames). Faster IVS (`claude/ivs-opt`; T20 timps CPU 4.1 % → 2.7 % with motion on).
 
-Aggregates: `claude/open-tx-isp-all-4` and `claude/openimp-all-4` (pushed).
+Aggregates: `claude/open-tx-isp-all-4` and `claude/openimp-all-4` (pushed); 58 merged single branches removed. Next: `claude/open-tx-isp-all-5` (+ t21-robust).
 
 ## timps and thingino
 - timps: AE IT max can be reset to 0 again (PR #3, merged).
