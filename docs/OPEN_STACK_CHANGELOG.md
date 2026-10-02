@@ -9,7 +9,7 @@ Cameras are anonymised: cam-A (T31), cam-B (T23), cam-C (T20), cam-D (T21).
 
 ## Where each camera stands
 
-All four test cameras run the open kernel driver (open-tx-isp), OpenIMP and timps.
+All five test cameras run the open kernel driver (open-tx-isp), OpenIMP and timps.
 "Live" means newer builds loaded from `/tmp` that are lost on reboot.
 
 | Camera | SoC | Stack | State |
@@ -17,7 +17,7 @@ All four test cameras run the open kernel driver (open-tx-isp), OpenIMP and timp
 | cam-A | T31 | fully open | Flashed 2026-10-02 11:00 with -all-5 image (robust driver incl. t31-robust-2, HEVC, faster IVS) |
 | cam-B | T23 | fully open (native encoder, no OEM helixd) | Flashed 2026-10-03 01:32 with -all-9 / openimp-all-8 + native-default image |
 | cam-C | T20 | fully open | Flashed 2026-10-03 00:35 with -all-9 / openimp-all-8 image (incl. soc_vpu kernel patches) |
-| cam-E | T10 | fully open (first open-stack boot on T10) | Flashed 2026-10-03 01:32: open-tx-isp t10 + OpenIMP (T20 build) + timps, boot guard auto |
+| cam-E | T10 | fully open (first open-stack boot on T10) | Flashed 2026-10-03 01:50 with the T10 drift-fix image (open-tx-isp t10 + OpenIMP T20 build with `claude/t10-drift-fix` + timps), boot guard auto |
 | cam-D | T21 | fully open | Flashed 2026-10-03 00:35 with -all-9 / openimp-all-8 image (incl. soc_vpu kernel patches) |
 
 ## OpenIMP (userspace libimp)
@@ -86,6 +86,13 @@ Goal: identical image behaviour, but cleaner unload/reload, less memory and chec
 OpenIMP: T20 green flicker in the bottom rows fixed by filling the encoder padding rows (`claude/t20-bottom-chroma`; 0 green pixels in 30 frames). Faster IVS (`claude/ivs-opt`; T20 timps CPU 4.1 % → 2.7 % with motion on).
 
 Aggregates: `claude/open-tx-isp-all-4` and `claude/openimp-all-4` (pushed); 58 merged single branches removed. `claude/open-tx-isp-all-5` adds t21-robust and t31-robust-2 (T31: sensor flip with shvflip=1, unload leaks, lazy WDR buffers; MemFree drift per reload 460 → 45 KB); all four cameras flashed with -all-5 images.
+
+## Night (2026-10-03)
+
+- **T10 picture drifting diagonally fixed** (`claude/t10-drift-fix`, OpenIMP): the T10 encoder added the 16-pixel reference border twice, once for motion prediction and once for the deblocker output, which adds the border itself. Every P frame was predicted from a reference shifted by 16×16 pixels, accumulating until the next I frame (16 px after 1 frame, 160 px after 10). Now the border is added only for the prediction read, like the vendor command lists show. The overrun past the reference planes measured the evening before was the same bug. cam-E: shift 0 on both streams, 0 decode errors, flashed 01:50. Day/night switch on T10 not yet tested.
+- **T21 white balance at dusk** (`claude/t21-awb-hyst`, kernel): hysteresis band (default 10 %) on the three AWB brightness thresholds, so the parameter set and the low-light register stop toggling at dusk (emulator: 39 switches → 0 in 40 frames). While in night mode AWB is frozen and the day gains are restored after night→day, so the first day picture no longer starts orange from IR light. Both settings at 0 give the vendor behaviour (10/10 scenes identical). cam-D: night checks OK, 0 oops; dusk itself still to test.
+- **timps** (other session): an externally changed day/night mode is adopted after 20 s instead of a permanent desync warning; WB mode 0..9; firmware hides custom WB on T10/T20/T30, highlights slider 0..10. Simulation only, device test pending.
+- **In work:** T23 JPEG shares the H.264 bitstream buffer, DPC/CCM follow the IQ bank, block bypass on load failure, vendor AE as T23 default, T23 motion grid empty in the web UI; replacing the remaining Ingenic libraries (libalog, libsysutils).
 
 ## In progress after the -all-7/-all-6 aggregates (2026-10-02 afternoon)
 
