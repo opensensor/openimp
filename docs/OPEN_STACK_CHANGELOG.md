@@ -3,7 +3,7 @@
 Everything changed, extended or fixed in OpenIMP, open-tx-isp, timps and the thingino
 integration since the test campaign started on 2026-09-30. Kept up to date during the campaign.
 
-Last update: 2026-10-02 13:05.
+Last update: 2026-10-02 18:10.
 
 Cameras are anonymised: cam-A (T31), cam-B (T23), cam-C (T20), cam-D (T21).
 
@@ -16,8 +16,8 @@ All four test cameras run the open kernel driver (open-tx-isp), OpenIMP and timp
 |---|---|---|---|
 | cam-A | T31 | fully open | Flashed 2026-10-02 11:00 with -all-5 image (robust driver incl. t31-robust-2, HEVC, faster IVS) |
 | cam-B | T23 | open, encoder via helixd (native selectable) | Flashed 2026-10-02 11:00 with -all-5 image (robust driver, smaller module); native encoder selectable |
-| cam-C | T20 | fully open | Flashed 2026-10-02 11:00 with -all-5 image (robust driver, bottom-stripe fix) |
-| cam-D | T21 | fully open | Flashed 2026-10-02 11:00 with -all-5 image (robust driver, sensor GPIO patch); boot guard auto |
+| cam-C | T20 | fully open | Flashed 2026-10-02 13:35 with -all-7 image (review fixes, sinfo module-notifier fix) |
+| cam-D | T21 | fully open | Flashed 2026-10-02 13:35 with -all-7 image (review fixes); boot guard auto |
 
 ## OpenIMP (userspace libimp)
 
@@ -86,6 +86,24 @@ OpenIMP: T20 green flicker in the bottom rows fixed by filling the encoder paddi
 
 Aggregates: `claude/open-tx-isp-all-4` and `claude/openimp-all-4` (pushed); 58 merged single branches removed. `claude/open-tx-isp-all-5` adds t21-robust and t31-robust-2 (T31: sensor flip with shvflip=1, unload leaks, lazy WDR buffers; MemFree drift per reload 460 → 45 KB); all four cameras flashed with -all-5 images.
 
+## In progress after the -all-7/-all-6 aggregates (2026-10-02 afternoon)
+
+Committed on single branches, tested as stated, **not yet in an aggregate** (next: -all-8 after the open items below).
+
+Kernel (open-tx-isp):
+- **T23 failed stream start and reload** (`claude/t23-iq-fail`): a reload test crashed cam-B in cycle 5: statistics DMA kept writing into freed buffers, corrupted the IQ file (CRC error -77), the ISP core refused to start but the scaler started anyway, then oopses. Now the core stats DMA is stopped on a refused start and at module exit, and STREAMON fails cleanly. cam-B: 10 reloads with kill -9, missing-IQ-file test (start refused, scaler not started), 0 oops.
+- **T23 sharpen block** (`claude/t23-sharpen-modeflags`): the sharpen parameters were never loaded (all 49 arrays read from offset 0, a latent NULL read); the block actually ran on reset values. Now loaded from the active IQ bank in vendor layout, refreshed with gain and on day/night switch; bypass bit follows the bank like vendor. cam-B: registers exactly as predicted from the IQ file.
+- **T23 overexposure after stream restarts** (`claude/t23-ae-minit`): every stream start reset the exposure to the longest step; AE needed ~4 s to come back, so on-demand snapshots in sun were blown out (64 % white). The vendor keeps the exposure across stream restarts; now the open driver does too (luma at target from the first frame). **Open:** cam-B hung hard twice ~45 s after loading this build (no oops, watchdog reboot); bisecting sharpen vs AE change.
+- **T21 white balance lifted from vendor** (`claude/t21-awb-lift`): AWB, CT detection, CT-driven CCM/LSC now vendor code (emulator: 10/10 scenes register-identical). cam-D: day colours match vendor (R/G 1.04 vs 1.05, B/G 0.93 vs 0.92), night mono fine, 0 oops. **Open:** first snapshot after start delayed (503 in 7/10 cycles at 25 s) and an "event free empty" burst at start.
+- **T31 tuning controls** (`claude/t31-tuning-stubs`): black level read-back, colour matrix presets 0–4 + user matrix, front crop get/set, scaler level now real (were stubs). Review found and fixed: crop read-back returned only the low byte, crop check used swapped axes, a colour-matrix register written with swapped bytes (wrong for limited-range presets). Boot image unchanged. Device test pending (cam-A).
+
+OpenIMP:
+- **Hardware JPEG on Helix without vendor library** (`claude/helix-jpeg`, T20/T21/T23): ~95 % less CPU for snapshots. cam-C passed; cam-D 10/10 (37 ms/job); cam-B 10/10 (29 ms/job). Fixed during testing: per-job memory exhaustion (buffer now allocated once per channel), truncated JPEGs could be served on T23 (now detected via the vendor's ACT_BS bit; retried with coarser tables, then quality lowered by 5 like the vendor, slowly recovered). Software fallback optional at build time (size).
+- **Dedicated JPEG channel got no frames** (same branch): timps' snapshot channel has its own frame source, OpenIMP only fed JPEG from video channels. timps then restarted the frame source every few seconds (exposure reset, snapshots 1.5–9 s). Fixed for T20/T21/T23/T30: cam-D snapshots 0.05–0.18 s, no restarts. Affects all earlier OpenIMP images.
+- **OSD lines, rectangles, bitmaps** (`claude/osd-line-rect`, T31/T20/T21/T30): drawn like the vendor (were ignored). Review fixed a use-after-free on bitmap data and a cache hazard. cam-C: all shapes correct on both streams, clipping at the frame edge, 0 oops.
+- **T23 rate-control parameters** (`claude/t23-enc-rc-params`): quality level, change point, static time, QP steps, I-frame bias and SMART now reach the encoder at channel creation (were hard-coded) — in the vendor worker path and in the native encoder. Device test pending.
+- **Robustness audit, parts 2 and 3** (`claude/oimp-robust-2`, `claude/oimp-robust-3`): harmless DQBUF/EPIPE races at channel stop now quiet; atomic worker flags; AEC reference queue heap overflow; audio-effect switch during capture (use-after-free); double stream release in the audio codec; HPF overflow; spin lock without yield on a single core. cam-C: 5 restarts, fd count constant, 0 errors.
+
 ## Independent review and fixes (2026-10-02)
 
 An independent code review (no critical findings) led to these fixes, now in the -all-6 aggregates:
@@ -135,11 +153,13 @@ Current aggregates: `claude/open-tx-isp-all-7` (all-6 + sinfo module-notifier fi
 | Kernel module, T23 | 857 KB | ~1,100 KB | After `t23-bss-shrink` (was 1,607 KB) |
 
 ## Still open
-- New images for all four cameras from the aggregate branches (building).
-- Kernel module memory on T21; T21 camera memory headroom.
-- T21 module reload oops (sensor GPIO not released); boot guard to `auto` once stable.
-- AEC test on T23; native T23 encoder as default after the soak; timps clamps OSD on rotated streams to the unrotated height; T40/T41 gaps.
-- Merge `tseries-daynight`, `t23-native-helix-2`, `t31-hevc`, `t23-flip-dgain`, `t23-bss-shrink`, `t20-ae-limits` and the newest `t21-image-fixes` into the next aggregates.
+- T23: hard hang with the AE/sharpen builds (bisecting); then -all-8 aggregates and images (user decision).
+- T21 AWB: delayed first snapshot and event-pool burst at start.
+- T23 JPEG sizes on cam-B are unusually large (~730 KB at q75 vs ~100 KB expected); dump tool added to find out why.
+- T20 driver floods the kernel log with debug trace lines (being silenced).
+- AEC device tests on T23/T21/T20; native T23 encoder as default; T31 tuning controls on cam-A.
+- Kernel module memory on T21; T40/T41 gaps.
+- Improvements beyond vendor behaviour are collected separately and decided by the maintainer.
 
 ## Branch map
 
