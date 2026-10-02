@@ -3,7 +3,7 @@
 Everything changed, extended or fixed in OpenIMP, open-tx-isp, timps and the thingino
 integration since the test campaign started on 2026-09-30. Kept up to date during the campaign.
 
-Last update: 2026-10-03 01:30.
+Last update: 2026-10-03 01:40.
 
 Cameras are anonymised: cam-A (T31), cam-B (T23), cam-C (T20), cam-D (T21).
 
@@ -15,9 +15,9 @@ All four test cameras run the open kernel driver (open-tx-isp), OpenIMP and timp
 | Camera | SoC | Stack | State |
 |---|---|---|---|
 | cam-A | T31 | fully open | Flashed 2026-10-02 11:00 with -all-5 image (robust driver incl. t31-robust-2, HEVC, faster IVS) |
-| cam-B | T23 | open, encoder via helixd (native selectable) | Flashed 2026-10-03 00:35 with -all-9 / openimp-all-8 image (incl. soc_vpu kernel patches) |
+| cam-B | T23 | fully open (native encoder, no OEM helixd) | Flashed 2026-10-03 01:32 with -all-9 / openimp-all-8 + native-default image |
 | cam-C | T20 | fully open | Flashed 2026-10-03 00:35 with -all-9 / openimp-all-8 image (incl. soc_vpu kernel patches) |
-| cam-E | T10 | vendor stack (test camera since 2.10. evening) | Open driver + OpenIMP tested from /tmp (all-9 / openimp-all-8); open-stack image being built |
+| cam-E | T10 | fully open (first open-stack boot on T10) | Flashed 2026-10-03 01:32: open-tx-isp t10 + OpenIMP (T20 build) + timps, boot guard auto |
 | cam-D | T21 | fully open | Flashed 2026-10-03 00:35 with -all-9 / openimp-all-8 image (incl. soc_vpu kernel patches) |
 
 ## OpenIMP (userspace libimp)
@@ -118,6 +118,9 @@ Evening additions (all single branches now pushed, still not aggregated):
 
 
 Late evening (aggregates built, more fixes on single branches):
+- **All five test cameras now run the open stack.** cam-B (T23) is fully open: native H.264 encoder is the default (`claude/t23-native-default`), the image no longer contains the OEM helixd worker or the vendor libimp (rootfs 324 KB smaller). cam-E (T10) booted the open stack for the first time (driver/t10, OpenIMP T20 build with runtime T10 detection, current timps/WebUI, boot guard). Both: MJPEG 25 frames/5 s, snapshots OK, no oops.
+- **T20 fixes** (`claude/t20-flip-sharpness`, not yet in an image): vertical flip computed the UV start from the 16-aligned height — the DMA wrote 12 chroma lines past the end of the frame buffer and the top rows got no colour (pink/green band); sharpness never applied in the default path because the firmware worker is parked — now updated in the compact AE loop (edge energy 13/230/700 for 0/128/255, was flat).
+- **T23 image controls** (`claude/t23-image-controls`): contrast only acts in the day bank (the sc2336 night bank disables the contrast curve, same on the vendor stack); AE compensation works; backlight/highlights and AE compensation fixed for the lifted vendor AE; WDR needs the dynamic ADR port (open).
 - **T10 integrated into the aggregates** (`open-tx-isp-all-9` fa7ac42b, `openimp-all-8` 9a2e33d2): merging uncovered a real bug — the T10 NVPU writes 21 KB (luma) / 10 KB (chroma) past each padded reference plane on every picture, which in the aggregate's top-down layout hit the bitstream window and made the stream undecodable; reference planes are now sized for it. `isp_printf` is exported only in the T10 module build. cam-E: 60 s / 1501 frames error-free, MJPEG, 3 day/night switches without oops. An open-stack image for cam-E is being built.
 - **cam-B to become fully open:** native H.264 encoder as T23 default and an image without the OEM helixd worker / vendor libimp are being prepared (until now the T23 default still used the OEM worker).
 - **New user reports being worked on:** T23 contrast, AE compensation, WDR and backlight without visible effect; T20 vertical flip gives pink stripes; T20 sharpness without effect.
