@@ -44,6 +44,11 @@ extern "C" {
 #define HW_RC_MODE_CBR          1
 #define HW_RC_MODE_VBR          2
 
+/* HWEncoderParams.rc_flags */
+#define HW_RC_FLAG_ADAPTIVE     0x1u    /* CBR adaptiveMode */
+#define HW_RC_FLAG_GOP_RELATION 0x2u    /* CBR/VBR gopRelation */
+#define HW_RC_FLAG_SMART        0x4u    /* IMP_ENC_RC_MODE_SMART (VBR-shaped) */
+
 /* Hardware encoder parameters */
 typedef struct {
     uint32_t codec_type;        /* 0x00: Codec type (H264/H265/JPEG) */
@@ -58,7 +63,17 @@ typedef struct {
     uint32_t qp;                /* 0x24: QP value (for FIXQP) */
     uint32_t max_qp;            /* 0x28: Max QP */
     uint32_t min_qp;            /* 0x2c: Min QP */
-    uint32_t reserved[16];      /* 0x30-0x6f: Reserved */
+    /* T23/T30-family Helix rate-control extras from the application's
+     * IMPEncoderAttrRcMode.  0 means "not set": the encoder bridge then
+     * uses its historic defaults, so zeroed params behave as before. */
+    uint32_t static_time;       /* 0x30: VBR/SMART staticTime */
+    uint32_t change_pos;        /* 0x34: VBR/SMART changePos */
+    uint32_t quality_level;     /* 0x38: VBR/SMART qualityLvl */
+    uint32_t frm_qp_step;       /* 0x3c: frmQPStep */
+    uint32_t gop_qp_step;       /* 0x40: gopQPStep */
+    int32_t bias_level;         /* 0x44: iBiasLvl */
+    uint32_t rc_flags;          /* 0x48: HW_RC_FLAG_* */
+    uint32_t reserved[9];       /* 0x4c-0x6f: Reserved */
 } HWEncoderParams;
 
 /* Hardware frame buffer */

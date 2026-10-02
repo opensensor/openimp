@@ -591,10 +591,19 @@ static int t23_start_worker(T23HelixBridge *bridge)
     return t23_start_worker_with(bridge, NULL);
 }
 
+/* Rate-control values the application passed in IMPEncoderAttrRcMode
+ * (carried in HWEncoderParams); 0 keeps the historic create-time default
+ * so unset params encode exactly as before. */
+static uint32_t t23_rc_or(uint32_t value, uint32_t fallback)
+{
+    return value ? value : fallback;
+}
+
 static void t23_fill_yuv_input(T23EncoderYuvIn *input,
                                const HWEncoderParams *params)
 {
     uint32_t bitrate_kbps;
+    uint32_t flags = params->rc_flags;
 
     memset(input, 0, sizeof(*input));
     input->type = PT_H264;
@@ -611,15 +620,21 @@ static void t23_fill_yuv_input(T23EncoderYuvIn *input,
         input->mode.attrH264FixQp.qp = params->qp ? params->qp : 26u;
         break;
     case HW_RC_MODE_VBR:
-        input->mode.rcMode = IMP_ENC_RC_MODE_VBR;
+        /* SMART shares the VBR attribute layout (IMPEncoderAttrH264Smart) */
+        input->mode.rcMode = (flags & HW_RC_FLAG_SMART) ?
+                             IMP_ENC_RC_MODE_SMART : IMP_ENC_RC_MODE_VBR;
         input->mode.attrH264Vbr.maxQp = params->max_qp;
         input->mode.attrH264Vbr.minQp = params->min_qp;
-        input->mode.attrH264Vbr.staticTime = 1u;
+        input->mode.attrH264Vbr.staticTime = t23_rc_or(params->static_time, 1u);
         input->mode.attrH264Vbr.maxBitRate = bitrate_kbps;
-        input->mode.attrH264Vbr.changePos = 80u;
-        input->mode.attrH264Vbr.qualityLvl = 2u;
-        input->mode.attrH264Vbr.frmQPStep = 3u;
-        input->mode.attrH264Vbr.gopQPStep = 3u;
+        input->mode.attrH264Vbr.iBiasLvl = params->bias_level;
+        input->mode.attrH264Vbr.changePos = t23_rc_or(params->change_pos, 80u);
+        input->mode.attrH264Vbr.qualityLvl =
+            t23_rc_or(params->quality_level, 2u);
+        input->mode.attrH264Vbr.frmQPStep = t23_rc_or(params->frm_qp_step, 3u);
+        input->mode.attrH264Vbr.gopQPStep = t23_rc_or(params->gop_qp_step, 3u);
+        input->mode.attrH264Vbr.gopRelation =
+            (flags & HW_RC_FLAG_GOP_RELATION) != 0;
         break;
     case HW_RC_MODE_CBR:
     default:
@@ -627,8 +642,13 @@ static void t23_fill_yuv_input(T23EncoderYuvIn *input,
         input->mode.attrH264Cbr.maxQp = params->max_qp;
         input->mode.attrH264Cbr.minQp = params->min_qp;
         input->mode.attrH264Cbr.outBitRate = bitrate_kbps;
-        input->mode.attrH264Cbr.frmQPStep = 3u;
-        input->mode.attrH264Cbr.gopQPStep = 3u;
+        input->mode.attrH264Cbr.iBiasLvl = params->bias_level;
+        input->mode.attrH264Cbr.frmQPStep = t23_rc_or(params->frm_qp_step, 3u);
+        input->mode.attrH264Cbr.gopQPStep = t23_rc_or(params->gop_qp_step, 3u);
+        input->mode.attrH264Cbr.adaptiveMode =
+            (flags & HW_RC_FLAG_ADAPTIVE) != 0;
+        input->mode.attrH264Cbr.gopRelation =
+            (flags & HW_RC_FLAG_GOP_RELATION) != 0;
         break;
     }
 }
