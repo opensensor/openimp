@@ -1349,7 +1349,7 @@ int IMP_FrameSource_SetChnAttr(int chnNum, IMPFSChnAttr *chn_attr)
         return -1;
     }
 
-    if (chnNum >= FS_MAX_CHANNELS) {
+    if ((unsigned int)chnNum >= FS_MAX_CHANNELS) {
         imp_log_fun(6, IMP_Log_Get_Option(), 2, "Framesource",
             "/home/user/git/proj/sdk-lv3/src/imp/framesource/framesource_tseries.c",
             0x4d0, tag, "%s(): Invalid chnNum %d\n", tag, chnNum);
@@ -1400,7 +1400,7 @@ int IMP_FrameSource_GetChnAttr(int chnNum, IMPFSChnAttr *chn_attr)
             0x4f3, tag, "%s(): chnAttr is NULL\n", tag);
         return -1;
     }
-    if (chnNum >= FS_MAX_CHANNELS) {
+    if ((unsigned int)chnNum >= FS_MAX_CHANNELS) {
         imp_log_fun(6, IMP_Log_Get_Option(), 2, "Framesource",
             "/home/user/git/proj/sdk-lv3/src/imp/framesource/framesource_tseries.c",
             0x4f8, tag, "%s(): Invalid chnNum %d\n", tag, chnNum);
@@ -1435,7 +1435,7 @@ int IMP_FrameSource_SetFrameDepthCopyType(int chnNum, int bNoCopy)
     int cur_depth;
     int result = -1;
 
-    if (chnNum >= FS_MAX_CHANNELS) {
+    if ((unsigned int)chnNum >= FS_MAX_CHANNELS) {
         imp_log_fun(6, IMP_Log_Get_Option(), 2, "Framesource",
             "/home/user/git/proj/sdk-lv3/src/imp/framesource/framesource_tseries.c",
             0x52a, tag, "%s(): Invalid chnNum %d\n", tag, chnNum);
@@ -1478,7 +1478,7 @@ int IMP_FrameSource_SetFrameDepth(int chnNum, int depth)
 {
     const char *tag = "IMP_FrameSource_SetFrameDepth";
 
-    if (chnNum >= FS_MAX_CHANNELS) {
+    if ((unsigned int)chnNum >= FS_MAX_CHANNELS) {
         imp_log_fun(6, IMP_Log_Get_Option(), 2, "Framesource",
             "/home/user/git/proj/sdk-lv3/src/imp/framesource/framesource_tseries.c",
             0x54c, tag, "%s(): Invalid chnNum %d\n", tag, chnNum);
@@ -1542,7 +1542,7 @@ int IMP_FrameSource_SetFrameDepth(int chnNum, int depth)
 
 int IMP_FrameSource_GetFrameDepth(int chnNum, int *depth)
 {
-    if (chnNum >= FS_MAX_CHANNELS || depth == NULL) {
+    if ((unsigned int)chnNum >= FS_MAX_CHANNELS || depth == NULL) {
         imp_log_fun(6, IMP_Log_Get_Option(), 2, "Framesource",
             "/home/user/git/proj/sdk-lv3/src/imp/framesource/framesource_tseries.c",
             0x5bd, "IMP_FrameSource_GetFrameDepth",
@@ -1584,7 +1584,7 @@ int IMP_FrameSource_CreateChn(int chnNum, IMPFSChnAttr *chn_attr)
             chn_attr->picWidth, chn_attr->picHeight);
         return -1;
     }
-    if (chnNum >= FS_MAX_CHANNELS) {
+    if ((unsigned int)chnNum >= FS_MAX_CHANNELS) {
         imp_log_fun(6, IMP_Log_Get_Option(), 2, "Framesource",
             "/home/user/git/proj/sdk-lv3/src/imp/framesource/framesource_tseries.c",
             0x5ef, tag, "Invalid channel num%d\n", chnNum);
@@ -1691,7 +1691,7 @@ int IMP_FrameSource_DestroyChn(int chnNum)
 {
     const char *tag = "IMP_FrameSource_DestroyChn";
 
-    if (chnNum >= FS_MAX_CHANNELS) {
+    if ((unsigned int)chnNum >= FS_MAX_CHANNELS) {
         imp_log_fun(6, IMP_Log_Get_Option(), 2, "Framesource",
             "/home/user/git/proj/sdk-lv3/src/imp/framesource/framesource_tseries.c",
             0x613, tag, "%s(): Invalid chnNum %d\n", tag, chnNum);
