@@ -20,6 +20,7 @@
 
 #include "dma_alloc.h"
 #include "hw_encoder.h"
+#include "t30/helix_jpeg.h"
 #include "openimp_t23_helix_bridge.h"
 
 #define T23_VBM_ALIGN 4096u
@@ -213,14 +214,18 @@ intptr_t IMP_Encoder_VbmP2V(intptr_t paddr)
 
 /* Standalone JPEG of a packed NV12 frame (chroma right after the
  * src_w * src_h luma bytes).  Like the OEM call there is no output capacity
- * argument: dst must hold the worst case.  Unlike the OEM call, whose header
- * marks q unsupported, q (1..100) selects the quantisation tables. */
+ * argument: dst must hold the worst case.  q (1..100) selects IJG-scaled
+ * quantisation tables, as the OEM call does (MakeTables_Imp); other values
+ * give quality 75.  The picture is coded on the Helix VPU, reading src in
+ * place when it is VBM (rmem) memory, otherwise from a copy; the software
+ * encoder (when built in) takes what the VPU cannot. */
 int IMP_Encoder_InputJpege(uint8_t *src, uint8_t *dst, int src_w, int src_h,
                            int q, int *stream_length)
 {
-    HWFrameBuffer frame;
+    HelixJpegFrame picture;
     HWStreamBuffer stream;
-    uint8_t *padded = NULL;
+    uint8_t tables[128];
+    uint32_t physical;
     size_t luma;
     size_t chroma;
     int result;
@@ -232,32 +237,52 @@ int IMP_Encoder_InputJpege(uint8_t *src, uint8_t *dst, int src_w, int src_h,
         return -1;
     luma = (size_t)src_w * (size_t)src_h;
     chroma = luma / 2u;
-    memset(&frame, 0, sizeof(frame));
-    frame.width = (uint32_t)src_w;
-    frame.height = (uint32_t)src_h;
-    frame.pixfmt = PIX_FMT_NV12;
-    if (src_h % 16) {
-        /* HW_Encoder_Encode_NV12_JPEG expects the framesource layout, whose
-         * chroma plane follows a 16-aligned luma plane. */
-        size_t padded_luma = (size_t)src_w * (((size_t)src_h + 15u) & ~15u);
-
-        padded = malloc(padded_luma + chroma);
-        if (!padded)
-            return -1;
-        memcpy(padded, src, luma);
-        memset(padded + luma, 0, padded_luma - luma);
-        memcpy(padded + padded_luma, src + luma, chroma);
-        frame.virt_addr = (uint32_t)(uintptr_t)padded;
-        frame.size = (uint32_t)(padded_luma + chroma);
-    } else {
-        frame.virt_addr = (uint32_t)(uintptr_t)src;
-        frame.size = (uint32_t)(luma + chroma);
-    }
+    HelixJpeg_QualityTables(q >= 1 && q <= 100 ? (uint32_t)q : 75u, tables);
+    physical = DMA_VirtToPhys(src);
+    memset(&picture, 0, sizeof(picture));
+    picture.virt_addr = (uint32_t)(uintptr_t)src;
+    /* DMA_VirtToPhys echoes addresses it does not own */
+    picture.phys_addr = physical != (uint32_t)(uintptr_t)src ? physical : 0u;
+    picture.size = (uint32_t)(luma + chroma);
+    picture.width = (uint32_t)src_w;
+    picture.height = (uint32_t)src_h;
+    picture.chroma_offset = (uint32_t)luma;
+    picture.pixfmt = PIX_FMT_NV12;
     memset(&stream, 0, sizeof(stream));
-    result = HW_Encoder_Encode_NV12_JPEG(&frame, &stream,
-                                         q >= 1 && q <= 100 ? (uint32_t)q
-                                                            : 75u);
-    free(padded);
+    result = OpenIMP_HelixJpeg_Encode(&picture, tables, &stream);
+#if OPENIMP_SW_JPEG
+    if (result != 0) {
+        HWFrameBuffer frame;
+        uint8_t *padded = NULL;
+
+        memset(&frame, 0, sizeof(frame));
+        frame.width = (uint32_t)src_w;
+        frame.height = (uint32_t)src_h;
+        frame.pixfmt = PIX_FMT_NV12;
+        if (src_h % 16) {
+            /* HW_Encoder_Encode_NV12_JPEG expects the framesource layout,
+             * whose chroma plane follows a 16-aligned luma plane. */
+            size_t padded_luma = (size_t)src_w *
+                                 (((size_t)src_h + 15u) & ~15u);
+
+            padded = malloc(padded_luma + chroma);
+            if (!padded)
+                return -1;
+            memcpy(padded, src, luma);
+            memset(padded + luma, 0, padded_luma - luma);
+            memcpy(padded + padded_luma, src + luma, chroma);
+            frame.virt_addr = (uint32_t)(uintptr_t)padded;
+            frame.size = (uint32_t)(padded_luma + chroma);
+        } else {
+            frame.virt_addr = (uint32_t)(uintptr_t)src;
+            frame.size = (uint32_t)(luma + chroma);
+        }
+        memset(&stream, 0, sizeof(stream));
+        result = HW_Encoder_Encode_NV12_JPEG_Tables(&frame, &stream, 75u,
+                                                    tables);
+        free(padded);
+    }
+#endif
     if (result != 0 || !stream.virt_addr || !stream.length ||
         stream.length > INT32_MAX) {
         free((void *)(uintptr_t)stream.virt_addr);

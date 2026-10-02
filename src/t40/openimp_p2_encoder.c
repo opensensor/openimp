@@ -21,11 +21,17 @@
 #include "openimp_profile.h"
 #include "imp_log_int.h"
 #include "trace_control.h"
-#if defined(PLATFORM_T41) || defined(PLATFORM_T31)
+#if defined(PLATFORM_T41) || defined(PLATFORM_T31) || \
+    defined(PLATFORM_T23) || defined(PLATFORM_T30)
 #include "dma_alloc.h"
 #endif
 #if defined(PLATFORM_T23) || defined(PLATFORM_T30)
 #include "t23/openimp_t23_persist.h"
+#endif
+#if defined(PLATFORM_T31) || defined(PLATFORM_T23) || defined(PLATFORM_T30)
+/* The JPEG frame copy lives in rmem, so a hardware JPEG core reads it by
+ * physical address (T31 AVPU JPEG, Helix JPGC). */
+#define P2_JPEG_RMEM_COPY 1
 #endif
 
 #include <imp/imp_common.h>
@@ -173,7 +179,7 @@ typedef struct {
     P2SyntheticFrame synthetic_frame;
     uint8_t *jpeg_frame_buffer;
     size_t jpeg_frame_capacity;
-    uint32_t jpeg_frame_phys;       /* rmem copy for the T31 hardware JPEG core */
+    uint32_t jpeg_frame_phys;       /* rmem copy for a hardware JPEG core */
 #if defined(PLATFORM_T31)
     void *jpeg_lent_frame;          /* capture frame lent by the AVC channel */
     int jpeg_lent_source;
@@ -369,6 +375,17 @@ static void p2_t31_check_au(const P2EncoderChannel *channel,
 }
 #endif
 
+#if defined(PLATFORM_T23) || defined(PLATFORM_T30)
+/* With the Helix JPEG encoder usable (src/t30/helix_jpeg.c) the copy goes
+ * into rmem; otherwise the software encoder reads a heap copy. */
+extern int OpenIMP_HelixJpeg_Available(void); /* t30/helix_jpeg.h */
+
+static int p2_jpeg_copy_in_rmem(void)
+{
+    return OpenIMP_HelixJpeg_Available();
+}
+#endif
+
 #if defined(PLATFORM_T31)
 /* With hardware JPEG (the default, OPENIMP_T31_HW_JPEG=0 turns it off) the
  * JPEG copy goes straight into rmem, so the hardware JPEG core reads it by
@@ -458,7 +475,7 @@ static int p2_release_source_frame(int channel, void *frame)
 
 static void p2_free_jpeg_frame_buffer(P2EncoderChannel *ch)
 {
-#if defined(PLATFORM_T31)
+#if defined(P2_JPEG_RMEM_COPY)
     if (ch->jpeg_frame_phys)
         DMA_FreePhys(ch->jpeg_frame_phys);
     else
@@ -546,14 +563,21 @@ static int p2_copy_requested_jpeg_frames(int source_channel,
 #endif
         if (jpeg->jpeg_frame_capacity < source->size) {
             resized = NULL;
-#if defined(PLATFORM_T31)
+#if defined(P2_JPEG_RMEM_COPY)
             if (p2_jpeg_copy_in_rmem()) {
                 IMPDMABufferInfo info;
 
                 p2_free_jpeg_frame_buffer(jpeg);
                 memset(&info, 0, sizeof(info));
+#if defined(PLATFORM_T23)
+                /* long-lived: keep it away from the FrameSource pools,
+                 * which T23 re-creates from the bottom of the arena */
+                if (DMA_AllocDescriptorTop(&info, (int)source->size,
+                                           "p2-jpeg-src") == 0 &&
+#else
                 if (DMA_AllocDescriptor(&info, (int)source->size,
                                         "p2-jpeg-src") == 0 &&
+#endif
                     info.virt_addr && info.phys_addr) {
                     jpeg->jpeg_frame_buffer = (uint8_t *)(uintptr_t)info.virt_addr;
                     jpeg->jpeg_frame_capacity = source->size;
@@ -578,7 +602,8 @@ static int p2_copy_requested_jpeg_frames(int source_channel,
                (const void *)(uintptr_t)source->virtual_address,
                source->size);
         /* The codec invalidates any source with a physical address before
-         * encoding; write the CPU copy back first so nothing is lost. */
+         * encoding; write the CPU copy back first so nothing is lost.  (The
+         * Helix JPEG encoder writes its source back itself.) */
 #if defined(PLATFORM_T31)
         if (jpeg->jpeg_frame_phys)
             DMA_RmemFlushCache(jpeg->jpeg_frame_buffer, source->size, 1);

@@ -1,5 +1,10 @@
 PREFIX ?= /usr/local
 PLATFORM ?= T31
+# T20/T21/T23/T30: OPENIMP_SW_JPEG=1 (make t21 OPENIMP_SW_JPEG=1) builds the
+# software JPEG fallback next to the Helix hardware encoder; default 0.
+ifdef OPENIMP_SW_JPEG
+export OPENIMP_SW_JPEG
+endif
 
 .PHONY: all t20 t21 t23 t30 t31 t40 t41 check clean install
 

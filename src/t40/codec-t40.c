@@ -49,6 +49,7 @@
 #endif
 #if defined(PLATFORM_T30) || defined(PLATFORM_T23)
 #include "t30/t30_helix_encoder.h"
+#include "t30/helix_jpeg.h"
 #endif
 #include "t40_ep1.h"
 #if defined(PLATFORM_T41)
@@ -6844,10 +6845,14 @@ int AL_Codec_Encode_SetJpegQl(void *codec, int enable,
     return 0;
 }
 
+/* JPEG of one picture: on the Helix VPU (src/t30/helix_jpeg.c), with the
+ * software encoder (when built in) for pictures the hardware path cannot
+ * take or after a hardware error. */
 static int codec_encode_jpeg_ql(AL_CodecEncode *enc, HWFrameBuffer *frame,
                                 HWStreamBuffer *stream)
 {
     uint8_t tables[128];
+    HelixJpegFrame picture;
     int user;
 
     pthread_mutex_lock(&jpeg_ql_lock);
@@ -6855,9 +6860,26 @@ static int codec_encode_jpeg_ql(AL_CodecEncode *enc, HWFrameBuffer *frame,
     if (user)
         memcpy(tables, enc->jpeg_tables, sizeof(tables));
     pthread_mutex_unlock(&jpeg_ql_lock);
-    /* 75 matches the built-in table set the T23 libimp starts with */
+    /* 75 is the built-in table set the T20/T21/T23 libimp starts with (its
+     * quality index 0) */
+    if (!user)
+        HelixJpeg_QualityTables(75u, tables);
+    memset(&picture, 0, sizeof(picture));
+    picture.virt_addr = frame->virt_addr;
+    picture.phys_addr = frame->phys_addr;
+    picture.size = frame->size;
+    picture.width = frame->width;
+    picture.height = frame->height;
+    picture.pixfmt = frame->pixfmt;
+    picture.timestamp = frame->timestamp;
+    if (OpenIMP_HelixJpeg_Encode(&picture, tables, stream) == 0)
+        return 0;
+#if OPENIMP_SW_JPEG
     return user ? HW_Encoder_Encode_NV12_JPEG_Tables(frame, stream, 75u, tables)
                 : HW_Encoder_Encode_NV12_JPEG(frame, stream, 75u);
+#else
+    return -1;
+#endif
 }
 #else
 /* T31/T40/T41: the vendor encoder takes the JPEG quality from iInitialQP

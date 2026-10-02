@@ -44,6 +44,15 @@ mkdir -p "$output_dir"
 base_flags="-std=gnu99 -O2 -mabi=32 -march=mips32r2 -mabicalls"
 platform_cppflags=${T21_PLATFORM_CPPFLAGS:--DPLATFORM_T21}
 base_flags="$base_flags -fPIC -G0 -fno-stack-protector $platform_cppflags -DVPU_BASE=0x13200000"
+# JPEG runs on the Helix VPU (src/t30/helix_jpeg.c).  OPENIMP_SW_JPEG=1 also
+# builds the software baseline encoder in, as a fallback for pictures the VPU
+# cannot take and for OPENIMP_HELIX_HW_JPEG=0 at run time; the default leaves
+# it out, as the stock libimp has none.
+case "${OPENIMP_SW_JPEG:-0}" in
+    0|1) ;;
+    *) echo "OPENIMP_SW_JPEG must be 0 or 1" >&2; exit 1 ;;
+esac
+base_flags="$base_flags -DOPENIMP_SW_JPEG=${OPENIMP_SW_JPEG:-0}"
 repo_includes="-I$project_dir/include -I$project_dir/src"
 
 compile()
@@ -95,6 +104,7 @@ compile t21_h264_cabac src/t30/h264enc/cabac.c -Werror
 compile t21_h264_set src/t30/h264enc/set.c -Werror
 compile t21_h264_slice src/t30/h264enc/slice.c -Werror
 compile t21_rate_control src/t40/t31_rate_control.c -Werror
+compile t21_helix_jpeg src/t30/helix_jpeg.c -Werror
 
 "$compiler" -shared -nostartfiles \
     -Wl,-soname,libimp.so \
@@ -135,6 +145,7 @@ compile t21_rate_control src/t40/t31_rate_control.c -Werror
     "$output_dir/t21_h264_set.o" \
     "$output_dir/t21_h264_slice.o" \
     "$output_dir/t21_rate_control.o" \
+    "$output_dir/t21_helix_jpeg.o" \
     "$output_dir/t21_ivs.o" \
     "$output_dir/t21_ivs_move.o" \
     -ldl -lpthread -lrt
