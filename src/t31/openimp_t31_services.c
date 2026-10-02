@@ -22,6 +22,7 @@
 
 #if !defined(PLATFORM_T23)
 #include "openimp_t31_osd_abi.h"
+#include "openimp_t31_osd_draw.h"
 #endif
 #include "imp/imp_system.h"
 
@@ -177,6 +178,15 @@ static void t31_osd_load_region(struct t31_osd_region *r)
         r->cover_word = t31_osd_cover_word(r->attr.data.coverData.color);
         return;
     }
+    if (r->attr.type == OSD_REG_LINE || r->attr.type == OSD_REG_RECT) {
+        r->cover_word = t31_osd_cover_word(r->attr.data.lineRectData.color);
+        r->active = -1;
+        return;
+    }
+    if (r->attr.type == OSD_REG_BITMAP) {
+        r->active = -1;
+        return;
+    }
     /* Until a bitmap matching the current rect is loaded, draw nothing: the
      * old one may be smaller than the new rect. */
     r->active = -1;
@@ -208,6 +218,39 @@ static void t31_osd_load_region(struct t31_osd_region *r)
     r->active = r->last = next;
 }
 
+/* Draw one LINE/RECT/BITMAP region into the frame like stock libimp: opaque,
+ * on the CPU, offPos added, clipped. Needs fmt MONOWHITE for LINE/RECT. */
+static void t31_osd_draw_cpu(struct osd_canvas *cv, const struct t31_osd_region *r)
+{
+    const IMPOSDRgnAttr *a = &r->attr;
+    const IMPOSDGrpRgnAttr *g = &r->group_attr;
+
+    switch (a->type) {
+    case OSD_REG_LINE:
+        if (a->fmt == T31_OSD_PIX_MONOWHITE)
+            osd_draw_line(cv, a->rect.p0.x, a->rect.p0.y, a->rect.p1.x,
+                          a->rect.p1.y, a->data.lineRectData.linewidth,
+                          r->cover_word, g->offPos.x, g->offPos.y);
+        break;
+    case OSD_REG_RECT:
+        if (a->fmt == T31_OSD_PIX_MONOWHITE)
+            osd_draw_rect(cv, a->rect.p0.x, a->rect.p0.y, a->rect.p1.x,
+                          a->rect.p1.y, a->data.lineRectData.linewidth,
+                          r->cover_word, g->offPos.x, g->offPos.y);
+        break;
+    case OSD_REG_BITMAP: {
+        uint32_t bw, bh;
+
+        if (a->data.bitmapData && t31_osd_rect_size(a, &bw, &bh) == 0)
+            osd_draw_bitmap(cv, a->data.bitmapData, a->rect.p0.x, a->rect.p0.y,
+                            bw, bh, g->offPos.x, g->offPos.y);
+        break;
+    }
+    default:
+        break;
+    }
+}
+
 void openimp_t31_osd_apply(int group, void *frame)
 {
     const uint8_t *fi = frame;
@@ -215,7 +258,8 @@ void openimp_t31_osd_apply(int group, void *frame)
     struct t31_ipu_param p;
     int order[T31_OSD_REGIONS];
     uint32_t band_y0[T31_OSD_REGIONS], band_y1[T31_OSD_REGIONS];
-    int count = 0, i;
+    int cpu_order[T31_OSD_REGIONS];
+    int count = 0, cpu_count = 0, i;
 
     if (!frame || !t31_osd_backend_enabled() || !valid_osd_group(group))
         return;
@@ -237,6 +281,17 @@ void openimp_t31_osd_apply(int group, void *frame)
         uint32_t w, h;
         int j;
 
+        if (r->created && r->group == group && r->group_attr.show &&
+            (r->attr.type == OSD_REG_LINE || r->attr.type == OSD_REG_RECT ||
+             r->attr.type == OSD_REG_BITMAP)) {
+            /* CPU-drawn types, in layer order; bounds are clipped later */
+            for (j = cpu_count; j > 0 && osd_regions[cpu_order[j - 1]].group_attr.layer >
+                                          r->group_attr.layer; j--)
+                cpu_order[j] = cpu_order[j - 1];
+            cpu_order[j] = i;
+            cpu_count++;
+            continue;
+        }
         if (!r->created || r->group != group || !r->group_attr.show ||
             t31_osd_rect_size(&r->attr, &w, &h) != 0 ||
             r->attr.rect.p0.x < 0 || r->attr.rect.p0.y < 0 ||
@@ -252,6 +307,27 @@ void openimp_t31_osd_apply(int group, void *frame)
             order[j] = order[j - 1];
         order[j] = i;
         count++;
+    }
+    /* LINE/RECT/BITMAP first (stock order), then write the touched rows back
+     * so the IPU pass and the encoder DMA see them. */
+    if (cpu_count > 0 && virt) {
+        struct osd_canvas cv;
+
+        osd_canvas_init(&cv, (uint8_t *)(uintptr_t)virt, width, height, width,
+                        (size_t)width * bg_h);
+        if (osd_canvas_valid(&cv)) {
+            for (i = 0; i < cpu_count; i++)
+                t31_osd_draw_cpu(&cv, &osd_regions[cpu_order[i]]);
+            if (cv.ymin <= cv.ymax) {
+                uint32_t y0 = (uint32_t)cv.ymin, y1 = (uint32_t)cv.ymax + 1u;
+
+                DMA_RmemFlushCache((void *)(uintptr_t)(virt + y0 * width),
+                                   (y1 - y0) * width, 1 /* write back */);
+                DMA_RmemFlushCache((void *)(uintptr_t)(virt + width * bg_h +
+                                                       (y0 / 2u) * width),
+                                   ((y1 + 1u) / 2u - y0 / 2u) * width, 1);
+            }
+        }
     }
     if (count > 0 && osd_ipu_fd < 0) {
         osd_ipu_fd = open("/dev/ipu", O_RDWR | O_CLOEXEC);

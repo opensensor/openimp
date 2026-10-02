@@ -11,13 +11,14 @@ HEVC_HEADERS_TEST_BIN := $(PROJECT_DIR)/build/tests/t31-hevc-headers-test
 AEC_TEST_BIN := $(PROJECT_DIR)/build/tests/t31-aec-test
 NV12_ROTATE_TEST_BIN := $(PROJECT_DIR)/build/tests/t31-nv12-rotate-test
 LAMBDA_TEST_BIN := $(PROJECT_DIR)/build/tests/t31-lambda-test
+OSD_DRAW_TEST_BIN := $(PROJECT_DIR)/build/tests/t31-osd-draw-test
 
 .PHONY: check clean
 
 check: $(STREAM_LAYOUT_TEST_BIN) $(RATE_CONTROL_TEST_BIN) \
 	$(READY_EVENT_TEST_BIN) $(ACODEC_TEST_BIN) $(FRAME_PIN_TEST_BIN) \
 	$(AO_SENDFRAME_TEST_BIN) $(HEVC_HEADERS_TEST_BIN) $(AEC_TEST_BIN) $(NV12_ROTATE_TEST_BIN) \
-	$(LAMBDA_TEST_BIN)
+	$(LAMBDA_TEST_BIN) $(OSD_DRAW_TEST_BIN)
 	$(STREAM_LAYOUT_TEST_BIN)
 	$(RATE_CONTROL_TEST_BIN)
 	$(READY_EVENT_TEST_BIN)
@@ -28,6 +29,11 @@ check: $(STREAM_LAYOUT_TEST_BIN) $(RATE_CONTROL_TEST_BIN) \
 	$(AEC_TEST_BIN)
 	$(NV12_ROTATE_TEST_BIN)
 	$(LAMBDA_TEST_BIN)
+	$(OSD_DRAW_TEST_BIN)
+
+$(OSD_DRAW_TEST_BIN): osd_draw_test.c $(PROJECT_DIR)/src/t31/openimp_t31_osd_draw.h
+	mkdir -p "$(dir $@)"
+	$(CC) $(CFLAGS) -I$(PROJECT_DIR)/src osd_draw_test.c -o "$@"
 
 $(LAMBDA_TEST_BIN): lambda_test.c $(PROJECT_DIR)/src/t40/t40_lambda.h
 	mkdir -p "$(dir $@)"
