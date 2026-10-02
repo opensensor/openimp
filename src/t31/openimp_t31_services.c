@@ -304,9 +304,14 @@ void openimp_t31_osd_apply(int group, void *frame)
     uint32_t band_y0[T31_OSD_REGIONS], band_y1[T31_OSD_REGIONS];
     int cpu_order[T31_OSD_REGIONS];
     int count = 0, cpu_count = 0, i;
+    int ipu_enabled;
 
-    if (!frame || !t31_osd_backend_enabled() || !valid_osd_group(group))
+    if (!frame || !valid_osd_group(group))
         return;
+    /* LINE/RECT/BITMAP are drawn on the CPU and must keep working even when
+     * the IPU backend is off (OPENIMP_T31_OSD=0, or a failed /dev/ipu open /
+     * IPU error disabled it): only the PIC/COVER IPU pass is gated on it. */
+    ipu_enabled = t31_osd_backend_enabled();
     memcpy(&width, fi + 0x08, 4);
     memcpy(&height, fi + 0x0c, 4);
     memcpy(&phys, fi + 0x18, 4);
@@ -388,7 +393,7 @@ void openimp_t31_osd_apply(int group, void *frame)
             }
         }
     }
-    if (count > 0 && osd_ipu_fd < 0) {
+    if (ipu_enabled && count > 0 && osd_ipu_fd < 0) {
         osd_ipu_fd = open("/dev/ipu", O_RDWR | O_CLOEXEC);
         if (osd_ipu_fd < 0) {
             pthread_mutex_unlock(&osd_lock);
@@ -396,7 +401,7 @@ void openimp_t31_osd_apply(int group, void *frame)
             return;
         }
     }
-    for (i = 0; i < count; i += 4) {
+    for (i = 0; ipu_enabled && i < count; i += 4) {
         int n = count - i < 4 ? count - i : 4;
 
         memset(&p, 0, sizeof(p));
@@ -456,7 +461,7 @@ void openimp_t31_osd_apply(int group, void *frame)
 
     /* The IPU wrote the frame behind the CPU cache; drop stale lines of the
      * blended bands so CPU readers (JPEG copy) see the overlay. */
-    if (count > 0 && virt) {
+    if (ipu_enabled && count > 0 && virt) {
         for (i = 0; i < count; i++) {
             uint32_t y0 = band_y0[i];
             uint32_t y1 = band_y1[i];
