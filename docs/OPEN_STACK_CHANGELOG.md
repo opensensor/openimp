@@ -3,7 +3,7 @@
 Everything changed, extended or fixed in OpenIMP, open-tx-isp, timps and the thingino
 integration since the test campaign started on 2026-09-30. Kept up to date during the campaign.
 
-Last update: 2026-10-02 21:00.
+Last update: 2026-10-02 23:30.
 
 Cameras are anonymised: cam-A (T31), cam-B (T23), cam-C (T20), cam-D (T21).
 
@@ -17,6 +17,7 @@ All four test cameras run the open kernel driver (open-tx-isp), OpenIMP and timp
 | cam-A | T31 | fully open | Flashed 2026-10-02 11:00 with -all-5 image (robust driver incl. t31-robust-2, HEVC, faster IVS) |
 | cam-B | T23 | open, encoder via helixd (native selectable) | Flashed 2026-10-02 11:00 with -all-5 image (robust driver, smaller module); native encoder selectable |
 | cam-C | T20 | fully open | Flashed 2026-10-02 13:35 with -all-7 image (review fixes, sinfo module-notifier fix) |
+| cam-E | T10 | vendor stack (test camera since 2.10. evening) | Open driver + OpenIMP tested from /tmp only |
 | cam-D | T21 | fully open | Flashed 2026-10-02 13:35 with -all-7 image (review fixes); boot guard auto |
 
 ## OpenIMP (userspace libimp)
@@ -114,6 +115,15 @@ Evening additions (all single branches now pushed, still not aggregated):
 - **T20 white balance**: presets/manual never applied (T20 uses OpenIMP's simple AWB; recovered firmware had several decompilation errors) — fixed, presets in the correct direction on cam-C (`claude/t20-wb-presets`); work on the vendor AWB chain continues (`claude/t20-oem-awb`).
 - **OpenIMP robustness 2+3, ISP gaps (scene mode, colour effects, T21 DRC/DNS), ISP probe tool, T20 log flood silenced**: pushed by a second session.
 - **T10L** (report from a Thingino maintainer): day/night panic, EFE job never completes, 8 MiB probe pool — under analysis.
+
+
+Late evening (aggregates built, more fixes on single branches):
+- **New aggregates pushed:** `claude/open-tx-isp-all-8` (bfdb0e3e) and `claude/openimp-all-7` (cb85922d) — everything from today except the T23 debug commit, the default-off T23 vendor-AE lift and work in progress. All modules/libimps build without new warnings; all host tests green. 24 merged single branches deleted.
+- **cam-D WebRTC main↔sub switching** confirmed working by the user with the rmem fix.
+- **T23 native H.264 bitstream overflow** (`claude/t23-enc-overflow`, local): a frame larger than the 1 MiB window was retried at the same QP until the channel stopped (timps then restarted the camera). Now dropped + QP raised (+4, decaying), IDR if the reference was damaged. Device finding: the core ignores the window and keeps writing up to 1.79 MB, overwriting the reference buffer behind it — a serious candidate for the afternoon hangs (sun → ~1 MB IDRs). The vendor only truncates the length.
+- **T10L** (report by a Thingino maintainer, now with a T10 test camera): day/night panic root cause found — our reconstruction of `wdr_mode()` zeroed the general FSM manager pointer (only hit when ispmem leaves room for WDR, i.e. on T10); the T10 encoder needs its own command list (captured from the vendor encoder, word-for-word host test) selected at run time; 8 MiB MMAP pool made optional. cam-E (T10): 720p H.264 25 fps error-free, 10 day/night switches without oops. Branches `claude/t10-fixes`, `claude/t10-efe` pushed.
+- **T20 vendor AWB chain** (`claude/t20-oem-awb`, behind `t20_simple_awb=0`, default unchanged): several decompilation errors fixed (mesh never called, wrong offsets, NR event FSM broken, firmware worker parked after the first pass); runs stable on cam-C, white-paper check in daylight pending.
+- **cam-B colours with IR/white LED**: not a driver bug — white balance was stored as manual in the streamer config (left over from the old WB-mode clamp).
 
 ## Independent review and fixes (2026-10-02)
 
