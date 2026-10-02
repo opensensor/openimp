@@ -135,3 +135,12 @@ gates. See [`docs/T30_STATUS.md`](docs/T30_STATUS.md) for the legacy Helix
 bring-up and its current limitations.
 See [`docs/PROFILING.md`](docs/PROFILING.md) for the opt-in on-device stage
 profiler, the current T41 QHD hotspot data, and the MXU2/MXU3 assessment.
+
+## Licensing
+
+Licensing is per file, and there is no project-wide license yet. See
+[`NOTICE`](NOTICE) for the files that do carry a license (LGPL-2.1-or-later,
+GPL-2.0-or-later x264-derived `src/t30/h264enc/`, and others). NOTICE also
+has a "Third-party code" section. The vendored WebRTC AECM in
+`src/audio/webrtc/` is BSD-3-Clause, with its own `LICENSE`, `PATENTS` and
+`LICENSE_THIRD_PARTY`.

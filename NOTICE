@@ -1,0 +1,51 @@
+OpenIMP licensing notice
+========================
+
+OpenIMP is an open implementation of Ingenic's libimp API.  The project
+has no single project-wide license file yet.  Licensing is per file:
+
+1. Files with an SPDX-License-Identifier or license header are under that
+   license.  At the time of writing:
+
+   - LGPL-2.1-or-later: include/openimp/openimp_avc.h,
+     src/t40/openimp_avc.c, src/t40/openimp_core_lease.h, src/jpeg_dct.h,
+     tests/t41/avc_import_test.c, tests/t41/core_lease_test.c
+   - GPL-2.0: tests/t41/v4l2_avc_test.c (test program only, not part of
+     libimp)
+   - GPL-2.0-or-later: src/t30/h264enc/ (derived from x264, Copyright (C)
+     2003-2014 x264 project; see the headers of cabac.c, set.h, slice.h,
+     bitstream.h).  These files are built into the T21, T23 and T30
+     libimp.so, so those binaries carry GPL-2.0-or-later obligations.
+   - BSD-3-Clause: src/audio/webrtc/ (third-party, see below).
+
+2. Files without a license header carry no explicit license grant.  They
+   remain the copyright of their authors (see `git log`).  Ask the
+   authors before redistributing them under specific terms.
+
+The repository also stores reverse-engineering notes and dumps of the
+vendor binary (e.g. libimp.so_hlil.txt).  These are documentation of the
+vendor ABI and are not compiled into libimp.
+
+Third-party code
+----------------
+
+WebRTC acoustic echo control for mobile (AECM)
+  Path:     src/audio/webrtc/ (common_audio, modules/audio_processing/aecm,
+            system_wrappers, typedefs.h)
+  Origin:   webrtc-audio-processing v0.3.1 (freedesktop.org, commit
+            e882a544), Copyright (c) 2011 The WebRTC project authors
+  Changes:  one change, marked "OpenIMP:", in WebRtcAecm_Create (calloc
+            instead of an unchecked malloc).  src/audio/openimp_aec.c
+            compiles the AECM sources as one translation unit.
+  License:  BSD-3-Clause, see src/audio/webrtc/LICENSE
+  Patents:  Additional IP rights grant, see src/audio/webrtc/PATENTS
+  Notes:    common_audio/signal_processing/spl_sqrt_floor.c (Wilco
+            Dijkstra) is under the permissive terms in
+            src/audio/webrtc/LICENSE_THIRD_PARTY.
+            Binary distributions must reproduce the copyright notice,
+            the conditions and the disclaimer from
+            src/audio/webrtc/LICENSE.
+
+x264 (H.264 bitstream helpers)
+  Path:     src/t30/h264enc/
+  License:  GPL-2.0-or-later (see the file headers)
