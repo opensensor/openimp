@@ -422,8 +422,14 @@ size_t T10_H264_ReferenceOffset(uint8_t mb_width, int chroma)
 size_t T10_H264_ReferencePlaneSize(uint8_t mb_width, uint8_t mb_height,
                                    int chroma)
 {
+    /* The padded plane, (mb_width + 2) x (mb_height + 2) macroblocks, plus
+     * the start offset once more: measured with canaries on a T10L
+     * (1280x720), the NVPU writes exactly ReferenceOffset() bytes past the
+     * padded plane, for luma and for chroma.  Without it the luma overrun
+     * lands in the chroma border and the chroma overrun in whatever
+     * buffer follows (the bitstream window with top-down allocation). */
     return ((size_t)mb_width + 2u) * ((size_t)mb_height + 2u) *
-           (chroma ? 128u : 256u);
+           (chroma ? 128u : 256u) + T10_H264_ReferenceOffset(mb_width, chroma);
 }
 
 int T10_H264_BuildDescriptor(const T30H264SliceConfig *config,

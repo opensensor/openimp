@@ -301,7 +301,8 @@ static void test_t10_matches_stock(const char *path, int p_slice)
     assert(descriptor[(count - 1u) * 2u + 1u] == 0xc0040000u);
     assert(T10_H264_ReferenceOffset(80, 0) == 0x5300u);
     assert(T10_H264_ReferenceOffset(80, 1) == 0x2980u);
-    assert(T10_H264_ReferencePlaneSize(80, 45, 0) == 82u * 47u * 256u);
+    assert(T10_H264_ReferencePlaneSize(80, 45, 0) ==
+           82u * 47u * 256u + 83u * 256u);
 }
 
 int main(void)
