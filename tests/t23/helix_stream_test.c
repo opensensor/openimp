@@ -597,6 +597,15 @@ static int encode(const char *stream_path, const char *ref_path)
             change.fps_num = 10;
             assert(OpenIMP_T30_HelixReconfigure(encoder, &change) == 0);
         }
+        if (frame == 13u) {
+            /* a bitrate above level 3.1's MaxBR raises the SPS level:
+             * new parameter sets with an IDR */
+            HWEncoderParams change = params;
+
+            change.bitrate = 20000000;
+            change.fps_num = 10;
+            assert(OpenIMP_T30_HelixReconfigure(encoder, &change) == 0);
+        }
         if (frame == 3u)
             next_fault = FAULT_LATE;    /* accepted, GOP continues */
         if (frame == 8u)
@@ -615,9 +624,10 @@ static int encode(const char *stream_path, const char *ref_path)
         n = nal_types((const uint8_t *)(uintptr_t)out->virt_addr,
                       out->length, types);
         /* GOP 5; 7 requested; 11 and 15 follow failed pictures; 12
-         * follows a frame-rate change */
+         * follows a frame-rate change, 13 a level change */
         expect_idr = frame == 0u || frame == 5u || frame == 7u ||
-                     frame == 11u || frame == 12u || frame == 15u;
+                     frame == 11u || frame == 12u || frame == 13u ||
+                     frame == 15u;
         if (expect_idr) {
             assert(n == 3u && types[0] == 7 && types[1] == 8 &&
                    types[2] == 5);

@@ -122,27 +122,30 @@ static uint32_t gcd_u32(uint32_t a, uint32_t b)
 }
 
 uint8_t openimp_t31_hevc_level_idc(uint32_t width, uint32_t height,
-                                   uint32_t fps_num, uint32_t fps_den)
+                                   uint32_t fps_num, uint32_t fps_den,
+                                   uint32_t bitrate)
 {
-    /* Table A.8: general_level_idc, MaxLumaPs, MaxLumaSr (Main tier). */
+    /* Tables A.6/A.8: general_level_idc, MaxLumaPs, MaxLumaSr and the Main
+     * tier MaxBR in kbit/s (CpbBrVclFactor 1000 for the Main profile). */
     static const struct {
         uint8_t idc;
         uint32_t max_luma_ps;
         uint64_t max_luma_sr;
+        uint32_t max_br_kbps;
     } levels[] = {
-        { 30u, 36864u, 552960u },
-        { 60u, 122880u, 3686400u },
-        { 63u, 245760u, 7372800u },
-        { 90u, 552960u, 16588800u },
-        { 93u, 983040u, 33177600u },
-        { 120u, 2228224u, 66846720u },
-        { 123u, 2228224u, 133693440u },
-        { 150u, 8912896u, 267386880u },
-        { 153u, 8912896u, 534773760u },
-        { 156u, 8912896u, 1069547520u },
-        { 180u, 35651584u, 1069547520u },
-        { 183u, 35651584u, 2139095040u },
-        { 186u, 35651584u, 4278190080u },
+        { 30u, 36864u, 552960u, 128u },
+        { 60u, 122880u, 3686400u, 1500u },
+        { 63u, 245760u, 7372800u, 3000u },
+        { 90u, 552960u, 16588800u, 6000u },
+        { 93u, 983040u, 33177600u, 10000u },
+        { 120u, 2228224u, 66846720u, 12000u },
+        { 123u, 2228224u, 133693440u, 20000u },
+        { 150u, 8912896u, 267386880u, 25000u },
+        { 153u, 8912896u, 534773760u, 40000u },
+        { 156u, 8912896u, 1069547520u, 60000u },
+        { 180u, 35651584u, 1069547520u, 60000u },
+        { 183u, 35651584u, 2139095040u, 120000u },
+        { 186u, 35651584u, 4278190080u, 240000u },
     };
     uint64_t picture = (uint64_t)width * height;
     uint64_t rate;
@@ -160,7 +163,8 @@ uint8_t openimp_t31_hevc_level_idc(uint32_t width, uint32_t height,
         if (picture <= levels[index].max_luma_ps &&
             rate <= levels[index].max_luma_sr &&
             (uint64_t)width * width <= limit &&
-            (uint64_t)height * height <= limit)
+            (uint64_t)height * height <= limit &&
+            (uint64_t)bitrate <= (uint64_t)levels[index].max_br_kbps * 1000u)
             return levels[index].idc;
     }
     return 186u;
@@ -185,7 +189,7 @@ void openimp_t31_hevc_default_config(OpenIMPT31HevcConfig *config,
     config->max_transform_depth_intra = 1u;
     config->log2_max_poc_lsb = 8u;
     config->level_idc = openimp_t31_hevc_level_idc(
-        width, height, config->fps_num, config->fps_den);
+        width, height, config->fps_num, config->fps_den, 0u);
     config->max_merge_cand = 5u;
     config->tmvp_enabled = 1u;
     config->strong_intra_smoothing = 1u;

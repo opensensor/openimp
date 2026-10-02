@@ -509,13 +509,19 @@ static void test_emulation_prevention(void)
 
 static void test_levels(void)
 {
-    CHECK_EQ(openimp_t31_hevc_level_idc(640, 360, 25, 1), 63);
-    CHECK_EQ(openimp_t31_hevc_level_idc(1280, 720, 30, 1), 93);
-    CHECK_EQ(openimp_t31_hevc_level_idc(1920, 1080, 25, 1), 120);
-    CHECK_EQ(openimp_t31_hevc_level_idc(1920, 1080, 60, 1), 123);
-    CHECK_EQ(openimp_t31_hevc_level_idc(2560, 1440, 25, 1), 150);
-    CHECK_EQ(openimp_t31_hevc_level_idc(2880, 1620, 20, 1), 150);
-    CHECK_EQ(openimp_t31_hevc_level_idc(3840, 2160, 60, 1), 153);
+    CHECK_EQ(openimp_t31_hevc_level_idc(640, 360, 25, 1, 0), 63);
+    CHECK_EQ(openimp_t31_hevc_level_idc(1280, 720, 30, 1, 0), 93);
+    CHECK_EQ(openimp_t31_hevc_level_idc(1920, 1080, 25, 1, 0), 120);
+    CHECK_EQ(openimp_t31_hevc_level_idc(1920, 1080, 60, 1, 0), 123);
+    CHECK_EQ(openimp_t31_hevc_level_idc(2560, 1440, 25, 1, 0), 150);
+    CHECK_EQ(openimp_t31_hevc_level_idc(2880, 1620, 20, 1, 0), 150);
+    CHECK_EQ(openimp_t31_hevc_level_idc(3840, 2160, 60, 1, 0), 153);
+    /* MaxBR (Main tier) raises the level for high bitrates */
+    CHECK_EQ(openimp_t31_hevc_level_idc(640, 360, 25, 1, 3000000), 63);
+    CHECK_EQ(openimp_t31_hevc_level_idc(640, 360, 25, 1, 3000001), 90);
+    CHECK_EQ(openimp_t31_hevc_level_idc(1920, 1080, 25, 1, 2000000), 120);
+    CHECK_EQ(openimp_t31_hevc_level_idc(1920, 1080, 25, 1, 15000000), 123);
+    CHECK_EQ(openimp_t31_hevc_level_idc(2560, 1440, 25, 1, 30000000), 153);
 }
 
 static void dump_stream(const char *path)

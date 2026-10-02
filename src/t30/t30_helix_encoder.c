@@ -979,6 +979,8 @@ int OpenIMP_T30_HelixReconfigure(T30HelixEncoder *encoder,
                                  const HWEncoderParams *params)
 {
     HWEncoderParams next;
+    uint32_t level;
+    int frame_rate_changed;
     int restart = 0;
 
     if (!encoder || !params)
@@ -1033,23 +1035,29 @@ int OpenIMP_T30_HelixReconfigure(T30HelixEncoder *encoder,
               encoder->params.height, next.rc_mode, next.bitrate,
               next.fps_num, next.fps_den, next.gop_length, next.qp,
               next.min_qp, next.max_qp);
-    if (next.fps_num != encoder->params.fps_num ||
-        next.fps_den != encoder->params.fps_den) {
-        /* The SPS carries the frame rate (VUI timing): send new parameter
-         * sets with the next picture, which must then be an IDR. */
-        encoder->params.fps_num = next.fps_num;
-        encoder->params.fps_den = next.fps_den;
-        t30_init_parameter_sets(encoder);
-        if (t30_generate_headers(encoder) != 0)
-            return -1;
-        encoder->force_idr = 1;
-    }
+    frame_rate_changed = next.fps_num != encoder->params.fps_num ||
+                         next.fps_den != encoder->params.fps_den;
+    encoder->params.fps_num = next.fps_num;
+    encoder->params.fps_den = next.fps_den;
     encoder->params.gop_length = next.gop_length;
     encoder->params.rc_mode = next.rc_mode;
     encoder->params.bitrate = next.bitrate;
     encoder->params.qp = next.qp;
     encoder->params.min_qp = next.min_qp;
     encoder->params.max_qp = next.max_qp;
+    /* The SPS carries the frame rate (VUI timing) and the level, which
+     * depends on frame rate and bitrate (MaxBR), as in UpdateParams: send
+     * new parameter sets with the next picture, which must then be an
+     * IDR. */
+    level = t30_h264_level(next.width, next.height, next.fps_num,
+                           next.fps_den, next.bitrate,
+                           (uint32_t)encoder->sps.i_num_ref_frames);
+    if (frame_rate_changed || level != (uint32_t)encoder->sps.i_level_idc) {
+        t30_init_parameter_sets(encoder);
+        if (t30_generate_headers(encoder) != 0)
+            return -1;
+        encoder->force_idr = 1;
+    }
     if (restart)
         return t23_rate_control_restart(encoder);
     return 0;

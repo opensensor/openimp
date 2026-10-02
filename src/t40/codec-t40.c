@@ -2630,6 +2630,10 @@ static void avpu_t31_hevc_config(const ALAvpuContext *ctx,
     openimp_t31_hevc_default_config(config, ctx->enc_w, ctx->enc_h,
                                     ctx->fps_num ? ctx->fps_num : 25u,
                                     ctx->fps_den ? ctx->fps_den : 1u);
+    /* rate-controlled streams must also stay within the level's MaxBR */
+    config->level_idc = openimp_t31_hevc_level_idc(
+        config->width, config->height, config->fps_num, config->fps_den,
+        ctx->rc_mode == HW_RC_MODE_FIXQP ? 0u : ctx->bitrate);
     config->log2_ctb_size = AVPU_T31_HEVC_LOG2_CTB;
     config->cu_qp_delta_enabled =
         avpu_t31_hevc_hwrc_enabled(ctx) ? 1u : 0u;

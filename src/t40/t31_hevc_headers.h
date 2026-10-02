@@ -65,12 +65,16 @@ typedef struct {
 
 /* The vendor T31 defaults: CTB 32, CB 8..32, TB 4..32, transform depth 1,
  * five merge candidates, TMVP, deblocking -1/-1, no scaling lists, no SAO,
- * no AMP.  The level follows from the picture size and rate. */
+ * no AMP.  The level follows from the picture size and rate (the caller
+ * raises it for the bitrate with openimp_t31_hevc_level_idc). */
 void openimp_t31_hevc_default_config(OpenIMPT31HevcConfig *config,
                                      uint32_t width, uint32_t height,
                                      uint32_t fps_num, uint32_t fps_den);
+/* bitrate in bit/s bounds the level by the Main tier MaxBR; 0 (fixed QP,
+ * unknown) leaves it to picture size and sample rate. */
 uint8_t openimp_t31_hevc_level_idc(uint32_t width, uint32_t height,
-                                   uint32_t fps_num, uint32_t fps_den);
+                                   uint32_t fps_num, uint32_t fps_den,
+                                   uint32_t bitrate);
 
 int openimp_t31_hevc_write_vps(uint8_t *dst, size_t capacity,
                                const OpenIMPT31HevcConfig *config);
