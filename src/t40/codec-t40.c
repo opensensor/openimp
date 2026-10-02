@@ -9334,8 +9334,14 @@ static int al_codec_encode_process_impl(void *codec, void *frame,
             return -1;
         }
         if (enc->t23_backend == T23_BACKEND_NATIVE) {
-            (void)OpenIMP_T30_HelixReconfigure(enc->t30_helix,
-                                               &enc->hw_params);
+            /* Setters (SetChnFps, SetChnBitRate, ...) write hw_params on
+             * the API thread.  Hand the encoder a snapshot, exactly like
+             * the T30 path above, so it never reads hw_params while a
+             * setter is half-way through updating them; Reconfigure
+             * validates the snapshot as a whole. */
+            HWEncoderParams current = enc->hw_params;
+
+            (void)OpenIMP_T30_HelixReconfigure(enc->t30_helix, &current);
             if (__sync_lock_test_and_set(&enc->force_next_idr, 0))
                 OpenIMP_T30_HelixRequestIDR(enc->t30_helix);
             if (OpenIMP_T30_HelixEncode(enc->t30_helix,
