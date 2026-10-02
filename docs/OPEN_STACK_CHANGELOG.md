@@ -3,7 +3,7 @@
 Everything changed, extended or fixed in OpenIMP, open-tx-isp, timps and the thingino
 integration since the test campaign started on 2026-09-30. Kept up to date during the campaign.
 
-Last update: 2026-10-02 15:55.
+Last update: 2026-10-02 13:05.
 
 Cameras are anonymised: cam-A (T31), cam-B (T23), cam-C (T20), cam-D (T21).
 
@@ -90,13 +90,13 @@ Aggregates: `claude/open-tx-isp-all-4` and `claude/openimp-all-4` (pushed); 58 m
 
 An independent code review (no critical findings) led to these fixes, now in the -all-6 aggregates:
 
-- Kernel: deadlock between sensor unload and reading `/proc/jz/sensor/*` (shared sinfo code); orphan sensor slots no longer point at unloaded modules; T21 open/release counted every open as the first (same bug in the vendor driver) — now counted and serialised; T23/T31 last-close races with foreign frame-channel users; dead global tuning buffer removed (T31); T20 refuses to release the active sensor; T21 error paths; T23 LSC flip locked, small leak fixed; unreachable decompiled T23 setters disabled. Tested on cam-A (T31) and cam-D (T21): foreign open/close while streaming, proc reads during sensor unload, repeated reloads.
+- Kernel: deadlock between sensor unload and reading `/proc/jz/sensor/*` (shared sinfo code); orphan sensor slots no longer point at unloaded modules; T21 open/release counted every open as the first (same bug in the vendor driver) — now counted and serialised; T23/T31 last-close races with foreign frame-channel users; dead global tuning buffer removed (T31); T20 refuses to release the active sensor; T21 error paths; T23 LSC flip locked, small leak fixed; unreachable decompiled T23 setters disabled. Tested on cam-A (T31), cam-D (T21) and cam-C (T20): foreign open/close while streaming, proc reads during sensor unload, repeated reloads. The T20 test exposed one more case: the T20 sensor module unloads without unregistering, leaving a dangling driver pointer that `/proc/jz/sensor/*/name` read after unload (oops). Fixed by a module notifier that clears slots of any module being unloaded (`claude/open-tx-isp-all-7`); retest on cam-C passed (10 sensor reloads during proc reads, 0 oops).
 - OpenIMP: T23 native reconfigure uses a parameter snapshot (no divide-by-zero race); T31 lambda tables are generated from a formula instead of being copied from the vendor binary (output bit-identical, 12 documented ±1 entries); top-level NOTICE incl. WebRTC AECM (BSD-3) and x264-derived H.264 code (GPL-2.0+); committed test binary removed; width alignment check; level recomputed on bitrate change; rotation state published atomically; T23 AEC uses the driver's reference offset.
 - timps (separate session): no OSD clamp on rotated streams under OpenIMP (tested on cam-A); motion detection uses the sub stream by default (walk test on cam-A, no false alarms; on a T31 with vendor libimp about 85 % less IVS CPU).
 
 ## Branch consolidation
 
-Current aggregates: `claude/open-tx-isp-all-6` and `claude/openimp-all-6`. All single branches and older aggregates contained in them were deleted (2026-10-02: 58 + 3 + 4 branches). Kept: docs and test-result branches, plus three old unmerged branches pending a decision (`t31-isp-lifecycle`, `t31-isp-perf`, OpenIMP `t31-series`).
+Current aggregates: `claude/open-tx-isp-all-7` (all-6 + sinfo module-notifier fix) and `claude/openimp-all-6`. All single branches and older aggregates contained in them were deleted (2026-10-02: 58 + 3 + 4 branches). Kept: docs and test-result branches, plus three old unmerged branches pending a decision (`t31-isp-lifecycle`, `t31-isp-perf`, OpenIMP `t31-series`).
 
 ## timps and thingino
 - timps: AE IT max can be reset to 0 again (PR #3, merged).
@@ -145,7 +145,7 @@ Current aggregates: `claude/open-tx-isp-all-6` and `claude/openimp-all-6`. All s
 
 | Repository | Aggregate | Contains |
 |---|---|---|
-| open-tx-isp | `claude/open-tx-isp-all-6` | everything above (all SoCs, robustness, review fixes) |
+| open-tx-isp | `claude/open-tx-isp-all-7` | everything above (all SoCs, robustness, review fixes) |
 | OpenIMP | `claude/openimp-all-6` | everything above (quickfixes, IVS, AEC, rotation, HEVC, native T23 encoder, review fixes) |
 
 Numbers come from on-device measurements and host checks during the campaign.
