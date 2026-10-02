@@ -9,6 +9,7 @@
 #include <string.h>
 #include <sys/mman.h>
 
+#include "dma_alloc.h"
 #include "t23/openimp_t23_helix_bridge.h"
 
 #define WIDTH 64u
@@ -47,6 +48,28 @@ int DMA_RmemFlushCache(void *virt, uint32_t size, int dir)
         return -1;
     writebacks++;
     return 0;
+}
+
+/* the worker start reserves a Helix rmem slice: only its address is kept */
+#define FAKE_SLICE_PHYS 0x02a00000u
+
+int DMA_AllocDescriptor(IMPDMABufferInfo *info_out, int size, const char *tag)
+{
+    (void)size;
+    (void)tag;
+    memset(info_out, 0, sizeof(*info_out));
+    info_out->phys_addr = FAKE_SLICE_PHYS;
+    return 0;
+}
+
+int DMA_FreePhys(uint32_t phys_addr)
+{
+    return phys_addr == FAKE_SLICE_PHYS ? 0 : -1;
+}
+
+void DMA_LogRmem(const char *reason)
+{
+    (void)reason;
 }
 /* --- */
 
