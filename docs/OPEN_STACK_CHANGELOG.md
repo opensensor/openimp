@@ -3,7 +3,7 @@
 Everything changed, extended or fixed in OpenIMP, open-tx-isp, timps and the thingino
 integration since the test campaign started on 2026-09-30. Kept up to date during the campaign.
 
-Last update: 2026-10-03 01:00.
+Last update: 2026-10-03 00:40.
 
 Cameras are anonymised: cam-A (T31), cam-B (T23), cam-C (T20), cam-D (T21).
 
@@ -15,10 +15,10 @@ All four test cameras run the open kernel driver (open-tx-isp), OpenIMP and timp
 | Camera | SoC | Stack | State |
 |---|---|---|---|
 | cam-A | T31 | fully open | Flashed 2026-10-02 11:00 with -all-5 image (robust driver incl. t31-robust-2, HEVC, faster IVS) |
-| cam-B | T23 | open, encoder via helixd (native selectable) | Flashed 2026-10-02 23:42 with -all-8 / openimp-all-7 image |
-| cam-C | T20 | fully open | Flashed 2026-10-02 23:42 with -all-8 / openimp-all-7 image |
+| cam-B | T23 | open, encoder via helixd (native selectable) | Flashed 2026-10-03 00:35 with -all-9 / openimp-all-8 image (incl. soc_vpu kernel patches) |
+| cam-C | T20 | fully open | Flashed 2026-10-03 00:35 with -all-9 / openimp-all-8 image (incl. soc_vpu kernel patches) |
 | cam-E | T10 | vendor stack (test camera since 2.10. evening) | Open driver + OpenIMP tested from /tmp only |
-| cam-D | T21 | fully open | Flashed 2026-10-02 23:42 with -all-8 / openimp-all-7 image; boot guard auto |
+| cam-D | T21 | fully open | Flashed 2026-10-03 00:35 with -all-9 / openimp-all-8 image (incl. soc_vpu kernel patches) |
 
 ## OpenIMP (userspace libimp)
 
@@ -118,6 +118,7 @@ Evening additions (all single branches now pushed, still not aggregated):
 
 
 Late evening (aggregates built, more fixes on single branches):
+- **-all-9 / openimp-all-8 flashed** on cam-B, cam-C, cam-D (00:35): `open-tx-isp-all-9` (T23 IRQ_NONE, T20 vendor-AWB chain behind a switch, T10 fixes, T23 vendor AE behind a switch) and `openimp-all-8` (MJPEG fix, T23 overflow v2 + optional hard limit, review nits), plus kernel soc_vpu patches 0095–0098. All up, no oops, MJPEG 25 frames/5 s, snapshots OK; flashed without the usual pre-reboot thanks to a fixed OTA script. T10 encoder support (`t10-cpuid`) is being merged into the aggregate and re-tested on cam-E.
 - **After midnight:** MJPEG regression fixed (`claude/oimp-jpeg-src-fix`: the fan-out decision is per poll again but only waits for a video channel that is actually receiving; cam-C 25 frames/5 s with and without a video consumer). T23 IRQ handlers return IRQ_NONE when nothing is pending, unused IVDC IRQ stays off (`claude/t23-irq-none`; cam-B clean). Kernel soc_vpu hardening patch 0098 (bounded waits, user-pointer validation, register ioctl restricted to the VPU window, per-file channel release) plus an optional hard bitstream limit for the T23 native encoder (`claude/t23-bsf-limit`, only active with the patched kernel). Small OpenIMP review fixes (`claude/oimp-nits`, written by another model, reviewed). Night device tests on cam-B/cam-D: restarts and channel cycling clean; T23 native rate-control parameters take effect; T21 tuning getters return defaults (being checked). 98 merged local worktrees removed. Next aggregates `open-tx-isp-all-9` / `openimp-all-8` and images for all four cameras are being built (not flashed).
 - **Status of the beyond-vendor improvement ideas** (maintainer decides each one): 16 implemented or approved, 2 rejected, 42 open. Approved tonight and in work: hardening of the kernel soc_vpu driver (bounded waits, user-pointer validation, register-ioctl restricted), a hard T23 bitstream limit via the BSF interrupt (needs the patched kernel), and T23 IRQ handlers returning IRQ_NONE when nothing is pending.
 - **-all-8 images flashed** on cam-B, cam-C, cam-D (23:42; cam-A pending): all up, no oops. Known regression found right after: the dedicated MJPEG/JPEG channel delivers no frames again (merge interaction in openimp-all-7), fix in progress. T23 overflow fix v2 (2 MiB window, scratch between bitstream and references) tested on cam-B: 0 decode errors, forced overflows handled without reference damage. T23 vendor AE (default off) tested at night: picture at target brightness where the substitute stayed black.
