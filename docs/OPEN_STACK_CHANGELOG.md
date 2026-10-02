@@ -3,7 +3,7 @@
 Everything changed, extended or fixed in OpenIMP, open-tx-isp, timps and the thingino
 integration since the test campaign started on 2026-09-30. Kept up to date during the campaign.
 
-Last update: 2026-10-02 23:30.
+Last update: 2026-10-02 23:50.
 
 Cameras are anonymised: cam-A (T31), cam-B (T23), cam-C (T20), cam-D (T21).
 
@@ -15,10 +15,10 @@ All four test cameras run the open kernel driver (open-tx-isp), OpenIMP and timp
 | Camera | SoC | Stack | State |
 |---|---|---|---|
 | cam-A | T31 | fully open | Flashed 2026-10-02 11:00 with -all-5 image (robust driver incl. t31-robust-2, HEVC, faster IVS) |
-| cam-B | T23 | open, encoder via helixd (native selectable) | Flashed 2026-10-02 11:00 with -all-5 image (robust driver, smaller module); native encoder selectable |
-| cam-C | T20 | fully open | Flashed 2026-10-02 13:35 with -all-7 image (review fixes, sinfo module-notifier fix) |
+| cam-B | T23 | open, encoder via helixd (native selectable) | Flashed 2026-10-02 23:42 with -all-8 / openimp-all-7 image |
+| cam-C | T20 | fully open | Flashed 2026-10-02 23:42 with -all-8 / openimp-all-7 image |
 | cam-E | T10 | vendor stack (test camera since 2.10. evening) | Open driver + OpenIMP tested from /tmp only |
-| cam-D | T21 | fully open | Flashed 2026-10-02 13:35 with -all-7 image (review fixes); boot guard auto |
+| cam-D | T21 | fully open | Flashed 2026-10-02 23:42 with -all-8 / openimp-all-7 image; boot guard auto |
 
 ## OpenIMP (userspace libimp)
 
@@ -118,6 +118,7 @@ Evening additions (all single branches now pushed, still not aggregated):
 
 
 Late evening (aggregates built, more fixes on single branches):
+- **-all-8 images flashed** on cam-B, cam-C, cam-D (23:42; cam-A pending): all up, no oops. Known regression found right after: the dedicated MJPEG/JPEG channel delivers no frames again (merge interaction in openimp-all-7), fix in progress. T23 overflow fix v2 (2 MiB window, scratch between bitstream and references) tested on cam-B: 0 decode errors, forced overflows handled without reference damage. T23 vendor AE (default off) tested at night: picture at target brightness where the substitute stayed black.
 - **New aggregates pushed:** `claude/open-tx-isp-all-8` (bfdb0e3e) and `claude/openimp-all-7` (cb85922d) — everything from today except the T23 debug commit, the default-off T23 vendor-AE lift and work in progress. All modules/libimps build without new warnings; all host tests green. 24 merged single branches deleted.
 - **cam-D WebRTC main↔sub switching** confirmed working by the user with the rmem fix.
 - **T23 native H.264 bitstream overflow** (`claude/t23-enc-overflow`, local): a frame larger than the 1 MiB window was retried at the same QP until the channel stopped (timps then restarted the camera). Now dropped + QP raised (+4, decaying), IDR if the reference was damaged. Device finding: the core ignores the window and keeps writing up to 1.79 MB, overwriting the reference buffer behind it — a serious candidate for the afternoon hangs (sun → ~1 MB IDRs). The vendor only truncates the length.
