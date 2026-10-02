@@ -44,6 +44,10 @@ typedef struct {
     int shared_fd;
     pid_t worker_pid;
     int failed;
+    /* A request went unanswered (timeout, I/O error) or got a reply that
+     * does not belong to it: the worker may still be busy with it and its
+     * next reply cannot be matched to a request. */
+    int stream_lost;
     T23HelixParamCache *cache; /* lazily allocated, survives restarts */
     int zero_copy;      /* frames are passed by physical address */
     uint32_t rmem_phys; /* the worker's slice of the rmem arena, 0: none */
