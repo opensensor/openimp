@@ -1063,6 +1063,12 @@ typedef struct {
     pthread_mutex_t mutex;  /* 0x10: Mutex */
 } VBMVolume;
 
+/* The frame array follows the pool header at the stock offset 0x180, or
+ * after the whole header where it is larger (64-bit host builds). */
+#define VBM_POOL_HEADER_SIZE \
+    (sizeof(VBMPool) > 0x180 ? (sizeof(VBMPool) + 15u) & ~(size_t)15u \
+                             : (size_t)0x180)
+
 static VBMPool *vbm_instance[MAX_VBM_POOLS] = {NULL};
 static VBMVolume g_framevolumes[30]; /* Global frame volumes array */
 
@@ -1177,9 +1183,9 @@ int VBMCreatePool(int chn, void *fmt, void *ops, void *priv) {
     }
 
     /* Allocate pool structure with proper alignment for MIPS */
-    size_t pool_size = frame_count * VBM_FRAME_SIZE + 0x180;
-    OPENIMP_TRACE_STDERR("[VBM] CreatePool: allocating pool_size=%zu (frame_count=%d * 0x%x + 0x180)\n",
-            pool_size, frame_count, VBM_FRAME_SIZE);
+    size_t pool_size = frame_count * VBM_FRAME_SIZE + VBM_POOL_HEADER_SIZE;
+    OPENIMP_TRACE_STDERR("[VBM] CreatePool: allocating pool_size=%zu (frame_count=%d * 0x%x + 0x%zx)\n",
+            pool_size, frame_count, VBM_FRAME_SIZE, VBM_POOL_HEADER_SIZE);
 
     VBMPool *pool = NULL;
     /* Use posix_memalign to ensure 16-byte alignment for MIPS */
@@ -1275,7 +1281,7 @@ int VBMCreatePool(int chn, void *fmt, void *ops, void *priv) {
 
     /* Initialize frames array pointer */
     uint8_t *pool_bytes = (uint8_t*)pool;
-    pool->frames = (VBMFrame*)(pool_bytes + 0x180);
+    pool->frames = (VBMFrame*)(pool_bytes + VBM_POOL_HEADER_SIZE);
 
     /* Initialize each frame using safe member access */
     for (int i = 0; i < frame_count; i++) {
