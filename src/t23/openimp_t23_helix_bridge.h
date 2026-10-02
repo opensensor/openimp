@@ -65,6 +65,10 @@ typedef struct {
     uint32_t idr_requests;
 } T23HelixBridge;
 
+/* Path of the OEM helper (OPENIMP_T23_HELIX_HELPER or the default) and
+ * whether it is executable; images without it run native-only. */
+const char *OpenIMP_T23_HelixHelperPath(void);
+int OpenIMP_T23_HelixHelperAvailable(void);
 int OpenIMP_T23_HelixInit(T23HelixBridge *bridge,
                           const HWEncoderParams *params);
 int OpenIMP_T23_HelixEncode(T23HelixBridge *bridge,

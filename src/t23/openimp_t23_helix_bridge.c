@@ -22,6 +22,18 @@
 #include "dma_alloc.h"
 
 #define T23_HELIX_HELPER_DEFAULT "/opt/openimp-t23/openimp-t23-helixd"
+const char *OpenIMP_T23_HelixHelperPath(void)
+{
+    const char *helper = getenv("OPENIMP_T23_HELIX_HELPER");
+
+    return (helper && *helper) ? helper : T23_HELIX_HELPER_DEFAULT;
+}
+
+int OpenIMP_T23_HelixHelperAvailable(void)
+{
+    return access(OpenIMP_T23_HelixHelperPath(), X_OK) == 0;
+}
+
 #define T23_HELIX_PAGE_SIZE 4096u
 #define T23_HELIX_MAX_RECOVERIES 8u
 #define T23_HELIX_INIT_TIMEOUT_MS 5000
@@ -502,9 +514,7 @@ static int t23_start_worker_with(T23HelixBridge *bridge,
                          "of the OEM libimp");
         return -1;
     }
-    helper = getenv("OPENIMP_T23_HELIX_HELPER");
-    if (!helper || !*helper)
-        helper = T23_HELIX_HELPER_DEFAULT;
+    helper = OpenIMP_T23_HelixHelperPath();
     if (access(helper, X_OK) != 0) {
         t23_log(LOG_ERR, "openimp/T23: Helix helper unavailable: %s",
                 helper);

@@ -6948,7 +6948,7 @@ static inline uint32_t codec_jpeg_quality(const AL_CodecEncode *enc)
  * OPENIMP_T23_ENCODER=native|worker selects it at run time; the build
  * default comes from T23_DEFAULT_ENCODER in build-t23.sh. */
 #ifndef OPENIMP_T23_DEFAULT_NATIVE
-#define OPENIMP_T23_DEFAULT_NATIVE 0
+#define OPENIMP_T23_DEFAULT_NATIVE 1
 #endif
 enum {
     T23_BACKEND_UNSET = 0,
@@ -6974,6 +6974,13 @@ static int t23_native_wanted(void)
         wanted = 0;
     else
         wanted = OPENIMP_T23_DEFAULT_NATIVE ? 1 : 0;
+    if (!wanted && !OpenIMP_T23_HelixHelperAvailable()) {
+        IMP_LOG_ERR("Encoder", "OPENIMP_T23_ENCODER=worker but the OEM "
+                    "helper %s is missing, using native Helix",
+                    OpenIMP_T23_HelixHelperPath());
+        wanted = 1;
+        value = NULL;
+    }
     IMP_LOG_INFO("Encoder", "T23 H.264 backend: %s%s",
                  wanted ? "native Helix" : "OEM worker",
                  value ? " (OPENIMP_T23_ENCODER)" : " (build default)");
@@ -9545,11 +9552,14 @@ static int al_codec_encode_process_impl(void *codec, void *frame,
                                             &enc->hw_params) == 0) {
                     enc->t23_backend = T23_BACKEND_NATIVE;
                     enc->use_hardware = 3;
-                } else if (!t23_native_fallback_allowed()) {
+                } else if (!t23_native_fallback_allowed() ||
+                           !OpenIMP_T23_HelixHelperAvailable()) {
                     enc->t23_backend = T23_BACKEND_NATIVE_STOPPED;
                     IMP_LOG_ERR("Encoder", "T23 channel %d: native Helix "
-                                "encoder unavailable and fallback disabled",
-                                enc->channel_id - 1);
+                                "encoder unavailable and no OEM fallback "
+                                "(%s)", enc->channel_id - 1,
+                                t23_native_fallback_allowed() ?
+                                "helper not installed" : "disabled");
                 } else {
                     IMP_LOG_ERR("Encoder", "T23 channel %d: native Helix "
                                 "encoder unavailable, using the OEM worker",
