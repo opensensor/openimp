@@ -18,6 +18,8 @@
 #include <fcntl.h>
 #include <pthread.h>
 #include <stdint.h>
+#include <stdarg.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/ioctl.h>
@@ -239,6 +241,20 @@ static struct {
     size_t ref_frame_capacity;
     int ref_frame_valid;
     OpenimpAec *aec;                /* IMP_AI_EnableAec processing */
+    struct {                        /* OPENIMP_AEC_STATS window */
+        unsigned int frames;
+        unsigned int noref;
+        unsigned int ref_active;
+        uint64_t samples;
+        uint64_t active_samples;
+        uint64_t mic_energy;
+        uint64_t out_energy;
+        uint64_t ref_energy;
+        uint64_t active_mic;
+        uint64_t active_out;
+    } stats;
+    int16_t *aec_mic;               /* stats copy of the unprocessed frame */
+    size_t aec_mic_capacity;
 #if defined(PLATFORM_T23)
     /* GET_STREAM bounce buffers: whole driver fragments, up to one frame,
      * and the reference of the same fragments (mono, like the AI) */
@@ -269,6 +285,142 @@ static pthread_cond_t t31_capture_cond;
 static pthread_once_t t31_capture_once = PTHREAD_ONCE_INIT;
 
 extern int64_t IMP_System_GetTimeStamp(void);
+
+/* OPENIMP_AEC_STATS=1 logs AEC state to stderr, =<path> appends it to a
+ * file: why EnableAec refused, and every T31_AEC_STATS_FRAMES processed
+ * frames the reference coverage, levels, ERLE and AECM's delay. */
+#define T31_AEC_STATS_FRAMES 50
+/* a reference frame quieter than about -60 dBFS counts as silent */
+#define T31_AEC_REF_ACTIVE_MS 1073U
+
+static FILE *t31_aec_stats_file;
+static pthread_once_t t31_aec_stats_once = PTHREAD_ONCE_INIT;
+
+static void t31_aec_stats_init(void)
+{
+    const char *setting = getenv("OPENIMP_AEC_STATS");
+
+    if (!setting || !*setting || !strcmp(setting, "0"))
+        return;
+    if (!strcmp(setting, "1")) {
+        t31_aec_stats_file = stderr;
+        return;
+    }
+    t31_aec_stats_file = fopen(setting, "a");
+    if (t31_aec_stats_file)
+        setvbuf(t31_aec_stats_file, NULL, _IOLBF, 0);
+}
+
+static FILE *t31_aec_stats_out(void)
+{
+    pthread_once(&t31_aec_stats_once, t31_aec_stats_init);
+    return t31_aec_stats_file;
+}
+
+static void t31_aec_log(const char *format, ...)
+    __attribute__((format(printf, 1, 2)));
+static void t31_aec_log(const char *format, ...)
+{
+    FILE *out = t31_aec_stats_out();
+    va_list arguments;
+
+    if (!out)
+        return;
+    fprintf(out, "[openimp-aec] ");
+    va_start(arguments, format);
+    vfprintf(out, format, arguments);
+    va_end(arguments);
+    fputc('\n', out);
+    fflush(out);
+}
+
+/* 10*log10(value) in tenths of a dB, integer only (libimp has no libm):
+ * log2 from the bit length plus log2(1+m) ~ m*(1.3465-0.3465m). */
+static int t31_db_tenths(uint64_t value)
+{
+    int bits;
+    uint64_t mantissa;
+    int64_t log2_q16;
+
+    if (!value)
+        return -9999;
+    bits = 63 - __builtin_clzll(value);
+    mantissa = bits >= 16 ? (value >> (bits - 16)) & 0xffffU
+                          : (value << (16 - bits)) & 0xffffU;
+    log2_q16 = ((int64_t)bits << 16) +
+               (int64_t)(mantissa * (88244U - ((22708U * mantissa) >> 16)) >>
+                         16);
+    return (int)(log2_q16 * 30103 / 1000 / 65536);
+}
+
+/* mean square of count S16 samples in tenths of dBFS */
+static int t31_dbfs_tenths(uint64_t energy, uint64_t count)
+{
+    if (!count || !energy)
+        return -9999;
+    return t31_db_tenths(energy) - t31_db_tenths(count) - 903;
+}
+
+static uint64_t t31_energy(const int16_t *samples, size_t count)
+{
+    uint64_t energy = 0;
+    size_t i;
+
+    for (i = 0; i < count; i++)
+        energy += (uint64_t)((int32_t)samples[i] * samples[i]);
+    return energy;
+}
+
+static void t31_aec_stats_frame(const int16_t *reference, const int16_t *mic,
+                                const int16_t *out, size_t count, int noref)
+{
+    FILE *stats = t31_aec_stats_out();
+    uint64_t ref_energy;
+
+    if (!stats)
+        return;
+    t31_audio.stats.frames++;
+    t31_audio.stats.samples += count;
+    if (noref) {
+        t31_audio.stats.noref++;
+    } else {
+        ref_energy = t31_energy(reference, count);
+        t31_audio.stats.ref_energy += ref_energy;
+        /* mean square above ~-60 dBFS */
+        if (ref_energy > (uint64_t)T31_AEC_REF_ACTIVE_MS * count) {
+            t31_audio.stats.ref_active++;
+            t31_audio.stats.active_samples += count;
+            t31_audio.stats.active_mic += t31_energy(mic, count);
+            t31_audio.stats.active_out += t31_energy(out, count);
+        }
+    }
+    t31_audio.stats.mic_energy += t31_energy(mic, count);
+    t31_audio.stats.out_energy += t31_energy(out, count);
+    if (t31_audio.stats.frames < T31_AEC_STATS_FRAMES)
+        return;
+    {
+        int mic = t31_dbfs_tenths(t31_audio.stats.mic_energy,
+                                  t31_audio.stats.samples);
+        int out_db = t31_dbfs_tenths(t31_audio.stats.out_energy,
+                                     t31_audio.stats.samples);
+        int ref = t31_dbfs_tenths(t31_audio.stats.ref_energy,
+                                  t31_audio.stats.samples);
+        int erle = t31_audio.stats.active_out && t31_audio.stats.active_mic
+                       ? t31_db_tenths(t31_audio.stats.active_mic) -
+                             t31_db_tenths(t31_audio.stats.active_out)
+                       : 0;
+
+        t31_aec_log("frames %u: ref %u active %u missing %u | mic %.1f "
+                    "ref %.1f out %.1f dBFS | ERLE(ref active) %.1f dB "
+                    "| delay ~%d ms",
+                    t31_audio.stats.frames,
+                    t31_audio.stats.frames - t31_audio.stats.noref,
+                    t31_audio.stats.ref_active, t31_audio.stats.noref,
+                    mic / 10.0, ref / 10.0, out_db / 10.0, erle / 10.0,
+                    openimp_aec_delay_ms(t31_audio.aec));
+    }
+    memset(&t31_audio.stats, 0, sizeof(t31_audio.stats));
+}
 
 static int t31_valid_attr(const IMPAudioIOAttr *attribute)
 {
@@ -938,15 +1090,33 @@ int IMP_AI_GetFrame(int device, int channel, IMPAudioFrame *frame,
     pthread_mutex_unlock(&t31_capture_lock);
     /* echo cancellation first, like libimp's record path; EnableAec
      * checked that frames are whole 10 ms blocks of mono samples */
-    if (t31_audio.ref_frame_valid) {
-        pthread_mutex_lock(&t31_aec_lock);
-        if (t31_audio.aec)
+    pthread_mutex_lock(&t31_aec_lock);
+    if (t31_audio.aec) {
+        const size_t count = bytes / sizeof(int16_t);
+        int16_t *mic = (int16_t *)(void *)t31_audio.frame_buffer;
+        int stats = t31_aec_stats_out() != NULL;
+
+        if (stats && bytes > t31_audio.aec_mic_capacity) {
+            void *buffer = realloc(t31_audio.aec_mic, bytes);
+
+            if (buffer) {
+                t31_audio.aec_mic = buffer;
+                t31_audio.aec_mic_capacity = bytes;
+            }
+        }
+        stats = stats && bytes <= t31_audio.aec_mic_capacity;
+        if (stats)
+            memcpy(t31_audio.aec_mic, mic, bytes);
+        if (t31_audio.ref_frame_valid)
             (void)openimp_aec_process(
                 t31_audio.aec, (const int16_t *)(void *)t31_audio.ref_frame,
-                (int16_t *)(void *)t31_audio.frame_buffer,
-                bytes / sizeof(int16_t));
-        pthread_mutex_unlock(&t31_aec_lock);
+                mic, count);
+        if (stats)
+            t31_aec_stats_frame((const int16_t *)(void *)t31_audio.ref_frame,
+                                t31_audio.aec_mic, mic, count,
+                                !t31_audio.ref_frame_valid);
     }
+    pthread_mutex_unlock(&t31_aec_lock);
     t31_process_effects((int16_t *)t31_audio.frame_buffer,
                         (int)(bytes / sizeof(int16_t)));
     t31_apply_ai_volume((int16_t *)t31_audio.frame_buffer,
@@ -1211,6 +1381,8 @@ static int t31_reference_set(int on)
 static void t31_aec_release(void)
 {
     pthread_mutex_lock(&t31_aec_lock);
+    if (t31_audio.aec)
+        t31_aec_log("AEC stopped");
     openimp_aec_free(t31_audio.aec);
     t31_audio.aec = NULL;
     pthread_mutex_unlock(&t31_aec_lock);
@@ -1227,20 +1399,43 @@ int IMP_AI_EnableAec(int ai_device, int ai_channel, int ao_device, int ao_channe
 
     (void)ao_device;
     if ((ai_device != 0 && ai_device != 1) || ai_channel != 0 ||
-        ao_channel != 0 || t31_audio.ai_fd < 0 ||
-        t31_audio.ai_attr.soundmode != AUDIO_SOUND_MODE_MONO)
+        ao_channel != 0) {
+        t31_aec_log("EnableAec(%d, %d, %d, %d) refused: bad device/channel",
+                    ai_device, ai_channel, ao_device, ao_channel);
         return -1;
+    }
+    if (t31_audio.ai_fd < 0) {
+        t31_aec_log("EnableAec refused: AI device not enabled");
+        return -1;
+    }
+    if (t31_audio.ai_attr.soundmode != AUDIO_SOUND_MODE_MONO) {
+        t31_aec_log("EnableAec refused: AI is stereo, AEC needs mono");
+        return -1;
+    }
     pthread_mutex_lock(&t31_aec_lock);
     running = t31_audio.aec != NULL;
     pthread_mutex_unlock(&t31_aec_lock);
-    if (running)
+    if (running) {
+        t31_aec_log("EnableAec: already running");
         return 0;
+    }
     aec = openimp_aec_create(t31_audio.ai_attr.samplerate);
-    if (!aec)
+    if (!aec) {
+        t31_aec_log("EnableAec refused: AI rate %d Hz, AECM needs 8000 or "
+                    "16000", t31_audio.ai_attr.samplerate);
         return -1;
+    }
     if ((size_t)t31_audio.ai_attr.numPerFrm %
-                openimp_aec_block_samples(aec) != 0 ||
-        t31_reference_set(1) != 0) {
+            openimp_aec_block_samples(aec) != 0) {
+        t31_aec_log("EnableAec refused: numPerFrm %d is not a multiple of "
+                    "10 ms (%zu samples)", t31_audio.ai_attr.numPerFrm,
+                    openimp_aec_block_samples(aec));
+        openimp_aec_free(aec);
+        return -1;
+    }
+    if (t31_reference_set(1) != 0) {
+        t31_aec_log("EnableAec refused: the driver did not enable the "
+                    "playback reference (errno %d)", errno);
         openimp_aec_free(aec);
         return -1;
     }
@@ -1248,9 +1443,13 @@ int IMP_AI_EnableAec(int ai_device, int ai_channel, int ao_device, int ao_channe
     if (!t31_audio.aec) {
         t31_audio.aec = aec;
         aec = NULL;
+        memset(&t31_audio.stats, 0, sizeof(t31_audio.stats));
     }
     pthread_mutex_unlock(&t31_aec_lock);
     openimp_aec_free(aec);
+    t31_aec_log("EnableAec: AECM running, %d Hz mono, %d samples per frame, "
+                "driver reference on", t31_audio.ai_attr.samplerate,
+                t31_audio.ai_attr.numPerFrm);
     return 0;
 }
 

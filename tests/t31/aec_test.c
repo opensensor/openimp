@@ -106,7 +106,7 @@ static int run(int rate, size_t frame, int report_cpu, double delay_ms)
     OpenimpAec *aec;
     struct timespec t0, t1;
     double erle, near_loss, dt_echo_in, dt_out, dt_near, dt_gain, dt_erle, cpu;
-    int failed = 0;
+    int failed = 0, delay_est;
 
     if (!far || !near || !rir || !far16 || !mic16 || !out16 || !echo16 ||
         !near16)
@@ -150,6 +150,7 @@ static int run(int rate, size_t frame, int report_cpu, double delay_ms)
             return 1;
         }
     clock_gettime(CLOCK_MONOTONIC, &t1);
+    delay_est = openimp_aec_delay_ms(aec);
     openimp_aec_free(aec);
     cpu = ((t1.tv_sec - t0.tv_sec) * 1e3 + (t1.tv_nsec - t0.tv_nsec) / 1e6) /
           SECONDS;
@@ -180,6 +181,7 @@ static int run(int rate, size_t frame, int report_cpu, double delay_ms)
            "echo reduced %.1f dB",
            rate, frame, delay_ms, erle, near_loss, 10 * log10(dt_echo_in / dt_near), dt_gain, dt_erle);
     (void)dt_out;
+    printf(", AECM delay %d ms", delay_est);
     if (report_cpu)
         printf(", %.2f ms CPU per s audio (%.2f%% of one host core)", cpu,
                cpu / 10.0);

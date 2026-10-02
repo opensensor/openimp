@@ -19,6 +19,8 @@ size_t openimp_aec_block_samples(const OpenimpAec *aec);
  * whole number of 10 ms blocks.  0 on success. */
 int openimp_aec_process(OpenimpAec *aec, const int16_t *far_end,
                         int16_t *near_end, size_t samples);
+/* AECM's current echo delay estimate in ms, -1 when unknown. */
+int openimp_aec_delay_ms(const OpenimpAec *aec);
 void openimp_aec_free(OpenimpAec *aec);
 
 #endif

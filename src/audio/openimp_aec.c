@@ -97,6 +97,22 @@ int openimp_aec_process(OpenimpAec *aec, const int16_t *far_end,
     return 0;
 }
 
+int openimp_aec_delay_ms(const OpenimpAec *aec)
+{
+    const AecMobile *mobile;
+
+    if (!aec || !aec->aecm)
+        return -1;
+    int delay;
+
+    mobile = (const AecMobile *)aec->aecm;
+    /* PART_LEN-sample partitions; -2 while the estimator is not sure */
+    delay = WebRtc_last_delay(mobile->aecmCore->delay_estimator);
+    if (delay < 0)
+        return -1;
+    return delay * PART_LEN * 1000 / mobile->sampFreq;
+}
+
 void openimp_aec_free(OpenimpAec *aec)
 {
     if (!aec)
