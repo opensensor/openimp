@@ -3,7 +3,7 @@
 Everything changed, extended or fixed in OpenIMP, open-tx-isp, timps and the thingino
 integration since the test campaign started on 2026-09-30. Kept up to date during the campaign.
 
-Last update: 2026-10-02 11:15.
+Last update: 2026-10-02 13:10.
 
 Cameras are anonymised: cam-A (T31), cam-B (T23), cam-C (T20), cam-D (T21).
 
@@ -39,6 +39,8 @@ All four test cameras run the open kernel driver (open-tx-isp), OpenIMP and timp
 | Audio out | Volume/mute ignored; partial OSS fragments dropped | Applied; whole-fragment writes | `claude/openimp-quickfixes`, `claude/t31-ao-fix` |
 | Framesource / VBM T21 | Idle teardown freed the pool; later allocations failed in 23 MB rmem | Pool parking and reuse | `claude/t21-bringup` |
 | T31 HW JPEG | Software JPEG only | Hardware JPEG path, hardened | `claude/t31-hwjpeg-default` |
+| Audio AEC T31/T23 | EnableAec only set a flag (T23) or returned fake success (T31) | Real WebRTC AECM (BSD-3) on the driver's speaker reference; errors when it cannot run; OPENIMP_AEC_STATS diagnostics | `claude/aec` |
+| Rotation T31 | SetChnRotate 90/270 returned -1 | Software rotation like the vendor (32x32 tiles) before OSD/IVS/encoder | `claude/t31-rotate` |
 | Tools | No way to exercise T23 tuning on device | `t23tune` (show, max gain, IT max, DRC, defog, sinter, flip, max dgain) | `claude/t23-tune-tool` |
 
 ## open-tx-isp (kernel driver)
@@ -105,6 +107,9 @@ Aggregates: `claude/open-tx-isp-all-4` and `claude/openimp-all-4` (pushed); 58 m
 | Night stability | T21 | ISP gain constant (was cycling 6↔25) |
 | Colour blotches | T21 | Chroma spatial σ 30 → 6 |
 | Day exposure | T21 | Mean Y 235 (blown out) → 120, natural colour |
+| AEC speech loopback | T31 | Echo vs pauses 29 → 9 dB (−18 dB); AECM ERLE 44 dB |
+| Rotation 1280x704 → 704x1280 | T31 | Correct picture; 9 ms/frame at 15 fps |
+| Native encoder soak (in progress) | T23 | 25 fps both streams, 0 encoder errors, ~6–7 % CPU |
 | Stock-lift equivalence (emulator) | T21 | AE 8/8, ADR 40/40, defog 40/40, dispatchers identical |
 
 ## Compared with the vendor stack
@@ -121,7 +126,7 @@ Aggregates: `claude/open-tx-isp-all-4` and `claude/openimp-all-4` (pushed); 58 m
 - New images for all four cameras from the aggregate branches (building).
 - Kernel module memory on T21; T21 camera memory headroom.
 - T21 module reload oops (sensor GPIO not released); boot guard to `auto` once stable.
-- Real echo cancellation; T31 rotation 90/270; T40/T41 gaps.
+- AEC test on T23; native T23 encoder as default after the soak; timps clamps OSD on rotated streams to the unrotated height; T40/T41 gaps.
 - Merge `tseries-daynight`, `t23-native-helix-2`, `t31-hevc`, `t23-flip-dgain`, `t23-bss-shrink`, `t20-ae-limits` and the newest `t21-image-fixes` into the next aggregates.
 
 ## Branch map
