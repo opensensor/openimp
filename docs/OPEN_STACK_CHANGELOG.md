@@ -3,7 +3,7 @@
 Everything changed, extended or fixed in OpenIMP, open-tx-isp, timps and the thingino
 integration since the test campaign started on 2026-09-30. Kept up to date during the campaign.
 
-Last update: 2026-10-02 01:20.
+Last update: 2026-10-02 09:30.
 
 Cameras are anonymised: cam-A (T31), cam-B (T23), cam-C (T20), cam-D (T21).
 
@@ -14,10 +14,10 @@ All four test cameras run the open kernel driver (open-tx-isp), OpenIMP and timp
 
 | Camera | SoC | Stack | State |
 |---|---|---|---|
-| cam-A | T31 | fully open | Flashed image from 2026-10-01 morning; HEVC, AO and tuning-gap fixes verified live; new image pending |
-| cam-B | T23 | open, encoder via helixd | Flashed 2026-10-02 with open-tx-isp-all-2 + OpenIMP t23-native-helix-2 (night mono in image); native encoder selectable via env; flip-dgain and bss-shrink not yet in an image |
-| cam-C | T20 | fully open | Flashed open image; aggregate driver, AE limits and day/night library running live |
-| cam-D | T21 | fully open, first bring-up | Flashed with boot guard (stack loaded manually); stock-equivalent AE, ADR, defog and controls running live |
+| cam-A | T31 | fully open | Flashed 2026-10-02 with -all-3 image (HEVC, tuning gaps, faster IVS); -all-4 driver tested live |
+| cam-B | T23 | open, encoder via helixd (native selectable) | Flashed 2026-10-02 with -all-3 image; -all-4 driver tested live |
+| cam-C | T20 | fully open | Flashed 2026-10-02 with -all-3 image; robust driver and bottom-stripe fix tested live |
+| cam-D | T21 | fully open | Flashed 2026-10-02 with -all-3 image; boot guard on auto; robust driver under test |
 
 ## OpenIMP (userspace libimp)
 
@@ -68,6 +68,21 @@ All four test cameras run the open kernel driver (open-tx-isp), OpenIMP and timp
 - Night mono, colour blotches (lens-shading gains doubled per channel) and overexposure (fixed ADR curve) fixed; ADR and defog lifted from stock.
 - Control dispatchers lifted from stock: anti-flicker, sensor FPS, readable brightness/contrast/saturation/sharpness, AE ROI/zone/histogram, flip.
 - All on `claude/t21-image-fixes`.
+
+## Robustness: better than the vendor driver (2026-10-02)
+
+Goal: identical image behaviour, but cleaner unload/reload, less memory and checked inputs.
+
+| SoC | Branch | Result on device |
+|---|---|---|
+| T23 | `claude/t23-robust` | 10x timps stop/start incl. kill -9, 10x rmmod/insmod, 0 oops; two out-of-bounds writes fixed (2 KB and 18 KB past arrays); bss 434 → 180 KB |
+| T20 | `claude/t20-robust` | rmmod while streaming correctly refused; 10x stop/start + 10x reload, 0 oops; decompile fixes (1 KB copy to address 0, AE reading a kernel address); all 53 user copies checked |
+| T31 | `claude/t31-robust` | 10x reload with kill -9, vmalloc leak (252 KB/cycle) fixed, no stuck firmware thread; module 716 KB vs vendor 829 KB |
+| T21 | `claude/t21-robust` | sensor GPIO release, statistics buffers freed only after ISP reset, bss 259 → 106 KB; reload test in progress |
+
+OpenIMP: T20 green flicker in the bottom rows fixed by filling the encoder padding rows (`claude/t20-bottom-chroma`; 0 green pixels in 30 frames). Faster IVS (`claude/ivs-opt`; T20 timps CPU 4.1 % → 2.7 % with motion on).
+
+Aggregates: `claude/open-tx-isp-all-4` and `claude/openimp-all-4` (pushed).
 
 ## timps and thingino
 - timps: AE IT max can be reset to 0 again (PR #3, merged).
