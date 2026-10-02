@@ -1486,7 +1486,6 @@ int IMP_FrameSource_SetFrameDepth(int chnNum, int depth)
     {
         uint8_t *chan = fs_channel_base(chnNum);
         pthread_mutex_t *chan_lock = (pthread_mutex_t *)(chan + 0x208);
-        int state = *(int32_t *)(chan + 0x1c);
 
         if (depth <= 0) {
             int s6;
@@ -1530,9 +1529,14 @@ int IMP_FrameSource_SetFrameDepth(int chnNum, int depth)
         g_fs_ctx[chnNum].frame_depth = depth;
         *(int32_t *)(chan + 0x1cc) = depth;
         pthread_mutex_unlock(chan_lock);
-        if (state == 2 && g_fs_ctx[chnNum].fd >= 0) {
+        /* The fd belongs to Enable/DisableChn: check the state and use the
+         * fd under g_fs_lock, or the ioctl can land on a closed (or already
+         * reused) descriptor. */
+        pthread_mutex_lock(&g_fs_lock);
+        if (fs_chan_get_state(chnNum) == 2 && g_fs_ctx[chnNum].fd >= 0) {
             fs_set_depth(g_fs_ctx[chnNum].fd, depth);
         }
+        pthread_mutex_unlock(&g_fs_lock);
         return 0;
     }
 }
