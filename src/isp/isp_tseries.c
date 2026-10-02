@@ -68,6 +68,8 @@ static pthread_cond_t tseries_tuning_cond;
 static pthread_once_t tseries_tuning_cond_once = PTHREAD_ONCE_INIT;
 static clockid_t tseries_tuning_clock = CLOCK_REALTIME;
 static int32_t tseries_tuning_last_total_gain = -1;
+#if !defined(PLATFORM_T21) || defined(PLATFORM_T20)
+/* cache-only RawDRC and denoise attributes (T21: driver, see below) */
 static IMPISPDrcAttr tseries_raw_drc = {
     .mode = IMPISP_DRC_MANUAL,
     .drc_strength = 128,
@@ -85,6 +87,7 @@ static IMPISPTemperDenoiseAttr tseries_temper_dns = {
     .type = IMPISP_TEMPER_AUTO,
     .temper_strength = 128,
 };
+#endif
 
 int IMP_ISP_Tuning_SetContrast_internal(uint32_t arg1, int32_t arg2);
 int IMP_ISP_Tuning_SetSharpness_internal(uint32_t arg1, int32_t arg2);
@@ -2207,6 +2210,196 @@ int IMP_ISP_Tuning_SetDRC_Strength(uint32_t ratio)
 }
 #endif /* !PLATFORM_T23 */
 
+#if defined(PLATFORM_T21) && !defined(PLATFORM_T20)
+/*
+ * T21 1.0.33 (isp_tseries.c.o 0x2778..0x3150). The vendor keeps the last
+ * DRC mode, temper type and the strengths in its tuning block (zeroed at
+ * EnableTuning) and only sends what changed:
+ *
+ *  - RawDRC: mode through VIDIOC_S_CTRL 0x8000168; in manual mode (0) the
+ *    attribute itself through tuning CID 0x80000a0. Get reads 0x80000a0
+ *    into the caller's attribute.
+ *  - SinterDnsAttr: a 112-byte driver block through tuning CID 0x800002c,
+ *    byte 70 = 1, and for MANUAL also bytes 10 and 98 = 1 and byte 43 =
+ *    strength. Get reports enable 1, type = (byte 10 != 0), strength =
+ *    byte 43. The vendor ignores the enable field on Set.
+ *  - TemperDnsAttr / TemperDnsCtl: type through VIDIOC_S_CTRL 0x8000167;
+ *    in MANUAL (2) the strength through tuning CID 0x8000083 (Attr, sent
+ *    every time) or 0x8000082 (Ctl, only when it changed). Get refreshes
+ *    type (G_CTRL 0x8000167) and strength (0x8000083) and returns them.
+ */
+#define TSERIES_T21_CID_DRC_MODE      0x8000168
+#define TSERIES_T21_CID_RAW_DRC       0x80000a0
+#define TSERIES_T21_CID_SINTER_DNS    0x800002c
+#define TSERIES_T21_CID_TEMPER_TYPE   0x8000167
+#define TSERIES_T21_CID_TEMPER_CTL    0x8000082
+#define TSERIES_T21_CID_TEMPER_ATTR   0x8000083
+#define TSERIES_T21_SINTER_BLOCK      112
+
+static struct {
+    uint32_t drc_mode;
+    uint8_t drc_strength;
+    uint32_t temper_type;
+    uint8_t temper_strength;
+} tseries_t21_dns_cache;
+
+int IMP_ISP_Tuning_SetRawDRC(IMPISPDrcAttr *attribute)
+{
+    int result = 0;
+    uint32_t mode;
+
+    if (attribute == NULL) {
+        return -1;
+    }
+    mode = (uint32_t)attribute->mode;
+    if (mode != tseries_t21_dns_cache.drc_mode) {
+        result = tseries_v4l2_set(TSERIES_T21_CID_DRC_MODE, (int32_t)mode);
+        if (result == 0) {
+            tseries_t21_dns_cache.drc_mode = mode;
+        }
+    }
+    if (mode != IMPISP_DRC_MANUAL ||
+        attribute->drc_strength == tseries_t21_dns_cache.drc_strength) {
+        return result;
+    }
+    result = tseries_tuning_set_ptr(TSERIES_T21_CID_RAW_DRC, attribute);
+    if (result == 0) {
+        tseries_t21_dns_cache.drc_strength = attribute->drc_strength;
+    }
+    return result;
+}
+
+int IMP_ISP_Tuning_GetRawDRC(IMPISPDrcAttr *attribute)
+{
+    int result;
+
+    if (attribute == NULL) {
+        return -1;
+    }
+    result = tseries_tuning_get_ptr(TSERIES_T21_CID_RAW_DRC, attribute);
+    if (result == 0) {
+        tseries_t21_dns_cache.drc_mode = (uint32_t)attribute->mode;
+        tseries_t21_dns_cache.drc_strength = attribute->drc_strength;
+    }
+    return result;
+}
+
+int IMP_ISP_Tuning_SetSinterDnsAttr(IMPISPSinterDenoiseAttr *attribute)
+{
+    uint8_t block[TSERIES_T21_SINTER_BLOCK];
+    int result;
+
+    if (attribute == NULL) {
+        return -1;
+    }
+    memset(block, 0, sizeof(block));
+    if (attribute->type == IMPISP_TUNING_OPS_TYPE_AUTO) {
+        block[70] = 1;
+    } else if (attribute->type == IMPISP_TUNING_OPS_TYPE_MANUAL) {
+        block[70] = 1;
+        block[10] = 1;
+        block[98] = 1;
+        block[43] = attribute->sinter_strength;
+    } else {
+        imp_log_fun(6, IMP_Log_Get_Option(), 2, "IMP-ISP",
+            "/home/user/git/proj/sdk-lv3/src/imp/isp/isp_tseries.c", 0x4ff,
+            "IMP_ISP_Tuning_SetSinterDnsAttr", "unknown sinter type %d\n",
+            (int)attribute->type);
+    }
+    result = tseries_tuning_set_ptr(TSERIES_T21_CID_SINTER_DNS, block);
+    if (result != 0) {
+        imp_log_fun(6, IMP_Log_Get_Option(), 2, "IMP-ISP",
+            "/home/user/git/proj/sdk-lv3/src/imp/isp/isp_tseries.c", 0x506,
+            "IMP_ISP_Tuning_SetSinterDnsAttr", "ioctl sinter attr failed\n");
+    }
+    return result;
+}
+
+int IMP_ISP_Tuning_GetSinterDnsAttr(IMPISPSinterDenoiseAttr *attribute)
+{
+    uint8_t block[TSERIES_T21_SINTER_BLOCK];
+    int result;
+
+    if (attribute == NULL) {
+        return -1;
+    }
+    memset(block, 0, sizeof(block));
+    result = tseries_tuning_get_ptr(TSERIES_T21_CID_SINTER_DNS, block);
+    if (result != 0) {
+        imp_log_fun(6, IMP_Log_Get_Option(), 2, "IMP-ISP",
+            "/home/user/git/proj/sdk-lv3/src/imp/isp/isp_tseries.c", 0x523,
+            "IMP_ISP_Tuning_GetSinterDnsAttr", "ioctl sinter attr failed\n");
+    }
+    /* the vendor fills the attribute whatever the ioctl returned */
+    attribute->enable = IMPISP_TUNING_OPS_MODE_ENABLE;
+    attribute->type = block[10] != 0 ? IMPISP_TUNING_OPS_TYPE_MANUAL
+                                     : IMPISP_TUNING_OPS_TYPE_AUTO;
+    attribute->sinter_strength = block[43];
+    return result;
+}
+
+static int tseries_t21_temper_set(const IMPISPTemperDenoiseAttr *attribute,
+                                  int32_t strength_cid, int only_changes)
+{
+    uint32_t type;
+    int result;
+
+    if (attribute == NULL) {
+        return -1;
+    }
+    type = (uint32_t)attribute->type;
+    if (type != tseries_t21_dns_cache.temper_type) {
+        result = tseries_v4l2_set(TSERIES_T21_CID_TEMPER_TYPE, (int32_t)type);
+        if (result != 0) {
+            return result;
+        }
+        tseries_t21_dns_cache.temper_type = type;
+    }
+    if (type != IMPISP_TEMPER_MANUAL ||
+        (only_changes && attribute->temper_strength ==
+                             tseries_t21_dns_cache.temper_strength)) {
+        return 0;
+    }
+    result = tseries_tuning_set_val(strength_cid, attribute->temper_strength);
+    if (result == 0) {
+        tseries_t21_dns_cache.temper_strength = attribute->temper_strength;
+    }
+    return result;
+}
+
+int IMP_ISP_Tuning_SetTemperDnsCtl(IMPISPTemperDenoiseAttr *attribute)
+{
+    return tseries_t21_temper_set(attribute, TSERIES_T21_CID_TEMPER_CTL, 1);
+}
+
+int IMP_ISP_Tuning_SetTemperDnsAttr(IMPISPTemperDenoiseAttr *attribute)
+{
+    return tseries_t21_temper_set(attribute, TSERIES_T21_CID_TEMPER_ATTR, 0);
+}
+
+int IMP_ISP_Tuning_GetTemperDnsAttr(IMPISPTemperDenoiseAttr *attribute)
+{
+    int32_t value;
+    int result;
+
+    if (attribute == NULL) {
+        return -1;
+    }
+    if (tseries_v4l2_get(TSERIES_T21_CID_TEMPER_TYPE, &value) == 0) {
+        tseries_t21_dns_cache.temper_type = (uint32_t)value;
+    } else if (gISP == NULL || gISP->tuning == NULL ||
+               gISP->tuning_state != 2) {
+        return -1;
+    }
+    result = tseries_tuning_get_val(TSERIES_T21_CID_TEMPER_ATTR, &value);
+    if (result == 0) {
+        tseries_t21_dns_cache.temper_strength = (uint8_t)value;
+    }
+    attribute->type = (IMPISPTemperMode)tseries_t21_dns_cache.temper_type;
+    attribute->temper_strength = tseries_t21_dns_cache.temper_strength;
+    return result;
+}
+#else
 int IMP_ISP_Tuning_SetRawDRC(IMPISPDrcAttr *attribute)
 {
     if (!attribute || attribute->mode > IMPISP_DRC_DISABLE)
@@ -2255,6 +2448,7 @@ int IMP_ISP_Tuning_GetTemperDnsAttr(IMPISPTemperDenoiseAttr *attribute)
     *attribute = tseries_temper_dns;
     return 0;
 }
+#endif /* PLATFORM_T21 && !PLATFORM_T20 */
 
 #if !defined(PLATFORM_T23) /* T23: isp_t23_tuning.c */
 int IMP_ISP_Tuning_GetDRC_Strength(uint32_t *pratio)
