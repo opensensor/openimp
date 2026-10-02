@@ -634,6 +634,33 @@ static int p2_copy_requested_jpeg_frames(int source_channel,
     return 0;
 }
 
+/* Whether a JPEG channel gets its frames from a video channel on the same
+ * framesource (fan-out above).  On T20/T21/T23/T30 a JPEG channel whose
+ * framesource feeds no receiving video channel - timps' dedicated jpeg.*
+ * channel has its own framesource and group - takes frames from the
+ * framesource itself, like the stock encoder does for any bound channel;
+ * waiting for a fan-out there never ended. */
+static int p2_jpeg_frames_from_fanout(const P2EncoderChannel *jpeg)
+{
+#if defined(PLATFORM_T23) || defined(PLATFORM_T30)
+    int channel;
+
+    for (channel = 0; channel < P2_MAX_CHANNELS; channel++) {
+        const P2EncoderChannel *other = &p2_channels[channel];
+
+        if (other != jpeg && other->created && other->registered &&
+            __atomic_load_n(&other->receiving, __ATOMIC_RELAXED) &&
+            other->codec_type != IMP_ENC_TYPE_JPEG &&
+            other->source_channel == jpeg->source_channel)
+            return 1;
+    }
+    return 0;
+#else
+    (void)jpeg;
+    return 1;
+#endif
+}
+
 static int p2_wait_for_jpeg_frame(P2EncoderChannel *channel,
                                   uint32_t timeout_ms, void **frame)
 {
@@ -1860,7 +1887,8 @@ static int p2_polling_stream(int channel, uint32_t timeout_ms)
     }
     pthread_mutex_unlock(&ch->lock);
 
-    if (ch->codec_type == IMP_ENC_TYPE_JPEG) {
+    if (ch->codec_type == IMP_ENC_TYPE_JPEG &&
+        p2_jpeg_frames_from_fanout(ch)) {
         if (p2_wait_for_jpeg_frame(ch, timeout_ms, &frame) != 0)
             goto done;
     } else {

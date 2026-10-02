@@ -6810,6 +6810,10 @@ struct AL_CodecEncode {
      * jpeg_ql_lock */
     int jpeg_user_tables;
     uint8_t jpeg_tables[128];
+    /* Helix JPEG bitstream limit reached: quality in use instead of the
+     * channel tables (0: none) and clean pictures since (encoder thread) */
+    uint32_t jpeg_limit_quality;
+    uint32_t jpeg_clean_pictures;
 #else
     /* JPEG quality 1..100 from iInitialQP at CreateChn (0: default 75) */
     uint32_t jpeg_quality;
@@ -6864,6 +6868,12 @@ static int codec_encode_jpeg_ql(AL_CodecEncode *enc, HWFrameBuffer *frame,
      * quality index 0) */
     if (!user)
         HelixJpeg_QualityTables(75u, tables);
+    /* After a picture reached the bitstream limit the stock T23 library
+     * encodes the channel at quality 70, 65, ... (MakeTables_Imp, also
+     * replacing user tables).  Recovering by 5 after 100 clean pictures is
+     * an OpenIMP addition (the stock library never goes back up). */
+    if (enc->jpeg_limit_quality)
+        HelixJpeg_QualityTables(enc->jpeg_limit_quality, tables);
     memset(&picture, 0, sizeof(picture));
     picture.virt_addr = frame->virt_addr;
     picture.phys_addr = frame->phys_addr;
@@ -6872,8 +6882,34 @@ static int codec_encode_jpeg_ql(AL_CodecEncode *enc, HWFrameBuffer *frame,
     picture.height = frame->height;
     picture.pixfmt = frame->pixfmt;
     picture.timestamp = frame->timestamp;
-    if (OpenIMP_HelixJpeg_Encode(&picture, tables, stream) == 0)
-        return 0;
+    {
+        uint32_t flags = 0;
+        int ret = OpenIMP_HelixJpeg_EncodeEx(&picture, tables, stream,
+                                             &flags);
+
+        if (flags & HELIX_JPEG_LIMIT_HIT) {
+            uint32_t q = enc->jpeg_limit_quality ? enc->jpeg_limit_quality
+                                                 : 70u;
+
+            enc->jpeg_limit_quality = q > 10u ? q - 5u : 5u;
+            enc->jpeg_clean_pictures = 0;
+            IMP_LOG_WARN("Encoder", "JPEG channel %d: bitstream limit "
+                         "reached, quality %u from now on",
+                         enc->channel_id - 1, enc->jpeg_limit_quality);
+        } else if (ret == 0 && enc->jpeg_limit_quality &&
+                   ++enc->jpeg_clean_pictures >= 100u) {
+            enc->jpeg_clean_pictures = 0;
+            enc->jpeg_limit_quality += 5u;
+            if (enc->jpeg_limit_quality >= 70u)
+                enc->jpeg_limit_quality = 0;
+            IMP_LOG_INFO("Encoder", "JPEG channel %d: quality back to %u",
+                         enc->channel_id - 1,
+                         enc->jpeg_limit_quality ? enc->jpeg_limit_quality
+                                                 : 75u);
+        }
+        if (ret == 0)
+            return 0;
+    }
 #if OPENIMP_SW_JPEG
     return user ? HW_Encoder_Encode_NV12_JPEG_Tables(frame, stream, 75u, tables)
                 : HW_Encoder_Encode_NV12_JPEG(frame, stream, 75u);

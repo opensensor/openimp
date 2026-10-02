@@ -17,6 +17,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <pthread.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/ioctl.h>
@@ -537,7 +538,10 @@ static struct {
     uint32_t rmem_reserve;
     int stats;                 /* OPENIMP_HELIX_JPEG_STATS=1 */
     int max_bs;                /* JPGC_MAX_BS limits the core */
-    uint32_t bs_divisor;       /* OPENIMP_HELIX_JPEG_BS_DIVISOR (max_bs) */
+    uint32_t bs_limit;         /* bitstream buffer cap with max_bs */
+    int limit_hit;             /* the last picture reached JPGC_MAX_BS */
+    const char *dump_dir;      /* OPENIMP_HELIX_JPEG_DUMP */
+    uint32_t dumps;
     uint32_t probe_limit;      /* JPGC_MAX_BS probe, bytes (0 = off) */
     IMPDMABufferInfo probe;
     IMPDMABufferInfo *active;  /* buffer of the last job */
@@ -660,8 +664,13 @@ static int helix_jpeg_open_locked(void)
             "OPENIMP_HELIX_JPEG_RMEM_RESERVE_KB", reserve >> 10, 0u,
             65536u) << 10;
     }
-    helix_jpeg.bs_divisor = helix_env_uint("OPENIMP_HELIX_JPEG_BS_DIVISOR",
-                                           1u, 1u, 16u);
+    /* the stock T23 library limits JPEG to its encoder pool (2.4 MB or
+     * 600 KB); 1 MiB holds a quality-75 1080p picture several times over */
+    helix_jpeg.bs_limit = helix_env_uint("OPENIMP_HELIX_JPEG_BS_KB",
+                                         HELIX_JPEG_VARIANT == HELIX_JPEG_T23
+                                             ? 1024u : 0u,
+                                         256u, 65536u) << 10;
+    helix_jpeg.dump_dir = getenv("OPENIMP_HELIX_JPEG_DUMP");
     helix_jpeg.probe_limit = helix_env_uint(
         "OPENIMP_HELIX_JPEG_PROBE_MAX_BS_KB", 0u, 1u, 4096u) << 10;
     helix_jpeg.fd = open("/dev/soc_vpu", O_RDWR | O_CLOEXEC);
@@ -793,20 +802,20 @@ static void helix_pad_rows(const HelixJpegFrame *frame, uint32_t stride,
                              stride * (chroma_end - chroma_rows), 1);
 }
 
-/* Bitstream size for a picture: the NV12 picture size, as the stock T21
- * library (whose bitstream buffer is the picture size) and of the order of
- * the stock T23 one (the encoder pool, 2.4 MB by default).  Without
- * JPGC_MAX_BS (T20/T21/T30) the core writes on regardless, so nothing
- * smaller is safe.  With it, OPENIMP_HELIX_JPEG_BS_DIVISOR=n uses 1/n of
- * NV12 (at least 256 KiB); like a full NV12 buffer, a picture that reaches
- * the limit is repeated in the same buffer with coarser quantizers. */
+/* Bitstream size for a picture.  Without JPGC_MAX_BS (T20/T21/T30) the core
+ * writes on regardless, so the buffer holds the NV12 picture as in the stock
+ * T21 library.  With it (T23) at most OPENIMP_HELIX_JPEG_BS_KB (default
+ * 1 MiB; the stock T23 library uses its 2.4 MB / 600 KB encoder pool); a
+ * picture that reaches the limit is repeated in the same buffer with
+ * coarser quantizers. */
 static uint32_t helix_bitstream_capacity(uint32_t nv12, const uint8_t qt[128])
 {
     uint32_t capacity = nv12;
 
     (void)qt;
-    if (helix_jpeg.max_bs && helix_jpeg.bs_divisor > 1u)
-        capacity = nv12 / helix_jpeg.bs_divisor;
+    if (helix_jpeg.max_bs && helix_jpeg.bs_limit &&
+        capacity > helix_jpeg.bs_limit)
+        capacity = helix_jpeg.bs_limit;
     if (capacity < HELIX_BITSTREAM_MIN)
         capacity = HELIX_BITSTREAM_MIN;
     return (capacity + 0xfffu) & ~0xfffu;
@@ -979,6 +988,8 @@ static int helix_jpeg_job_locked(HelixJpegSlice *slice, uint32_t capacity,
     *overflow = (helix_jpeg.channel.status & HELIX_STAT_BSFULL) ||
                 helix_limit_reached(capacity) ||
                 helix_jpeg.channel.output_len >= capacity;
+    if (*overflow)
+        helix_jpeg.limit_hit = 1;
     IMP_LOG_ERR("Encoder", "Helix JPEG: %ux%u %s errno=%d status=0x%08x "
                 "len=%u/%u", slice->width,
                 slice->mb_height * 16u, helix_jpeg.reason, errno,
@@ -988,6 +999,43 @@ static int helix_jpeg_job_locked(HelixJpegSlice *slice, uint32_t capacity,
         IMP_LOG_ERR("Encoder", "Helix JPEG: the core may have written past "
                     "the %u-byte bitstream buffer", capacity);
     return HELIX_RUN_FAILED;
+}
+
+/* OPENIMP_HELIX_JPEG_DUMP=dir: the first four pictures as the VPU read
+ * them (luma rows, then chroma rows, at the offsets programmed) and the
+ * JPEG made of them, for offline comparison. */
+static void helix_dump(const HelixJpegFrame *frame, const uint8_t *luma,
+                       uint32_t chroma_offset, uint32_t stride,
+                       uint32_t aligned_height, const uint8_t *jpeg,
+                       uint32_t length)
+{
+    char path[256];
+    FILE *file;
+    unsigned int index = helix_jpeg.dumps++;
+
+    snprintf(path, sizeof(path), "%s/helix-%u-%ux%u-s%u-c%u.nv12",
+             helix_jpeg.dump_dir, index, frame->width, frame->height, stride,
+             chroma_offset);
+    file = fopen(path, "wb");
+    if (file) {
+        (void)DMA_RmemFlushCache((void *)luma, stride * aligned_height, 2);
+        (void)DMA_RmemFlushCache((void *)(luma + chroma_offset),
+                                 stride * aligned_height / 2u, 2);
+        (void)fwrite(luma, 1, (size_t)stride * aligned_height, file);
+        (void)fwrite(luma + chroma_offset, 1,
+                     (size_t)stride * aligned_height / 2u, file);
+        fclose(file);
+    }
+    snprintf(path, sizeof(path), "%s/helix-%u-%ux%u.jpg", helix_jpeg.dump_dir,
+             index, frame->width, frame->height);
+    file = fopen(path, "wb");
+    if (file) {
+        (void)fwrite(jpeg, 1, length, file);
+        fclose(file);
+    }
+    IMP_LOG_INFO("Encoder", "Helix JPEG: dumped picture %u (size %u, pixfmt "
+                 "0x%x, chroma at +%u) to %s", index, frame->size,
+                 frame->pixfmt, chroma_offset, helix_jpeg.dump_dir);
 }
 
 static int helix_jpeg_run_locked(const HelixJpegFrame *frame,
@@ -1128,6 +1176,13 @@ static int helix_jpeg_run_locked(const HelixJpegFrame *frame,
     stream->timestamp = frame->timestamp;
     stream->frame_type = HW_FRAME_TYPE_I;
     helix_jpeg.pictures++;
+    if (helix_jpeg.dump_dir && helix_jpeg.dumps < 4u)
+        helix_dump(frame, slice.raw_y == frame->phys_addr && frame->phys_addr
+                       ? (const uint8_t *)(uintptr_t)frame->virt_addr
+                       : (const uint8_t *)(uintptr_t)
+                             helix_jpeg.source.virt_addr,
+                   slice.raw_c - slice.raw_y, stride, aligned_height,
+                   output, stream->length);
     if (!helix_jpeg.stats &&
         (helix_jpeg.pictures <= 3u || helix_jpeg.pictures % 500u == 0u))
         IMP_LOG_INFO("Encoder", "Helix JPEG: %ux%u -> %u bytes status=0x%08x"
@@ -1147,6 +1202,13 @@ static uint32_t helix_elapsed_us(const struct timespec *start)
 
 int OpenIMP_HelixJpeg_Encode(const HelixJpegFrame *frame,
                              const uint8_t qt[128], HWStreamBuffer *stream)
+{
+    return OpenIMP_HelixJpeg_EncodeEx(frame, qt, stream, NULL);
+}
+
+int OpenIMP_HelixJpeg_EncodeEx(const HelixJpegFrame *frame,
+                               const uint8_t qt[128], HWStreamBuffer *stream,
+                               uint32_t *flags)
 {
     struct timespec start;
     const char *path = "-";
@@ -1170,7 +1232,10 @@ int OpenIMP_HelixJpeg_Encode(const HelixJpegFrame *frame,
     helix_jpeg.jobs++;
     helix_jpeg.channel.status = 0;
     helix_jpeg.channel.output_len = 0;
+    helix_jpeg.limit_hit = 0;
     ret = helix_jpeg_run_locked(frame, qt, stream, &path, &capacity);
+    if (flags)
+        *flags = helix_jpeg.limit_hit ? HELIX_JPEG_LIMIT_HIT : 0u;
     /* the command list + bitstream buffer is kept; copies and probe
      * buffers are per job */
     helix_dma_release(&helix_jpeg.source);

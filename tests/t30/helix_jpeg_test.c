@@ -913,8 +913,13 @@ static void test_framesource_tail(void)
     HelixJpeg_QualityTables(75u, qt);
     assert(OpenIMP_HelixJpeg_Encode(&frame, qt, &stream) == 0);
     assert(last_raw_y == frame.phys_addr);
-    /* the whole NV12 picture, as the stock library */
+#if defined(PLATFORM_T23)
+    /* JPGC_MAX_BS: 1 MiB */
+    assert(last_bitstream_buffer == 1024u << 10);
+#else
+    /* no limit: the whole NV12 picture, as the stock library */
     assert(last_bitstream_buffer == 1920u * 1088u * 3u / 2u);
+#endif
     assert(live_allocations == before);
     printf("  1920x1080 in place: %u bytes, bitstream buffer %u\n",
            stream.length, last_bitstream_buffer);
@@ -958,11 +963,11 @@ static void test_limit_retry(void)
     check_picture(&stream, 1024u, 768u, 28.0);
     free((void *)(uintptr_t)stream.virt_addr);
 
-    /* OPENIMP_HELIX_JPEG_BS_DIVISOR=8: the limit is reached in the small
+    /* OPENIMP_HELIX_JPEG_BS_KB=256: the limit is reached in the small
      * buffer, the picture is repeated there (no allocation), and the next
      * picture is encoded normally again */
     OpenIMP_HelixJpeg_Shutdown();
-    setenv("OPENIMP_HELIX_JPEG_BS_DIVISOR", "8", 1);
+    setenv("OPENIMP_HELIX_JPEG_BS_KB", "256", 1);
     assert(OpenIMP_HelixJpeg_Reserve(1024u, 768u) == 0);
     {
         unsigned int allocated = live_allocations;
@@ -971,7 +976,6 @@ static void test_limit_retry(void)
         run_count = runs;
         assert(OpenIMP_HelixJpeg_Encode(&frame, qt, &stream) == 0);
         assert(runs == run_count + 2u && live_allocations == allocated);
-        /* 1/8 of NV12 is below the 256 KiB floor */
         assert(last_bitstream_buffer == 256u << 10);
         free((void *)(uintptr_t)stream.virt_addr);
         assert(OpenIMP_HelixJpeg_Encode(&frame, qt, &stream) == 0);
@@ -980,7 +984,7 @@ static void test_limit_retry(void)
         free((void *)(uintptr_t)stream.virt_addr);
     }
     OpenIMP_HelixJpeg_Shutdown();
-    unsetenv("OPENIMP_HELIX_JPEG_BS_DIVISOR");
+    unsetenv("OPENIMP_HELIX_JPEG_BS_KB");
     munmap(pixels, size + 4096u);
 }
 #endif

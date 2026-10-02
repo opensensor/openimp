@@ -97,7 +97,9 @@ typedef struct {
  * OPENIMP_HELIX_JPEG_RMEM_RESERVE_KB (default 1/16 of the arena, at least
  * 512) is the free rmem the encoder never allocates into;
  * OPENIMP_HELIX_JPEG_MAX_BS=1 also programs the bitstream limit on
- * T20/T21/T30; OPENIMP_HELIX_JPEG_PROBE_MAX_BS_KB=n runs every job with an
+ * T20/T21/T30; OPENIMP_HELIX_JPEG_BS_KB caps the buffer when the limit is
+ * programmed (T23 default 1024); OPENIMP_HELIX_JPEG_DUMP=dir saves the first
+ * pictures (source rows and JPEG); OPENIMP_HELIX_JPEG_PROBE_MAX_BS_KB=n runs every job with an
  * n KiB limit in front of a guard and logs whether the core kept to it. */
 int OpenIMP_HelixJpeg_Available(void);
 /* Encodes one picture with the 128 quantizers qt.  On success stream holds
@@ -110,6 +112,13 @@ int OpenIMP_HelixJpeg_Encode(const HelixJpegFrame *frame,
  * does, so it is part of the start-up rmem budget.  -1 when the hardware
  * path is off or rmem cannot spare it (the first picture tries again). */
 int OpenIMP_HelixJpeg_Reserve(uint32_t width, uint32_t height);
+/* As OpenIMP_HelixJpeg_Encode; *flags (may be NULL) reports
+ * HELIX_JPEG_LIMIT_HIT when the picture reached the bitstream limit (and was
+ * repeated with coarser steps, or failed). */
+#define HELIX_JPEG_LIMIT_HIT 1u
+int OpenIMP_HelixJpeg_EncodeEx(const HelixJpegFrame *frame,
+                               const uint8_t qt[128], HWStreamBuffer *stream,
+                               uint32_t *flags);
 /* Releases the VPU channel and DMA buffers (idempotent). */
 void OpenIMP_HelixJpeg_Shutdown(void);
 
