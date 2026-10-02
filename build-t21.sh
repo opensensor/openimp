@@ -86,6 +86,7 @@ compile t21_ivs_move src/t31/openimp_t31_ivs_move.c -Werror
 compile t21_platform_services src/t23/openimp_t23_services.c -Werror
 compile t21_persist src/t23/openimp_t23_persist.c -Werror
 compile t21_audio src/t31/openimp_t31_audio.c -Werror
+compile openimp_aec src/audio/openimp_aec.c -Werror -I"$project_dir/src/audio"
 compile t21_helix src/t30/t30_helix_encoder.c -Werror
 compile t21_h264_descriptor src/t21/t21_h264_descriptor.c -Werror
 compile t30_h264_descriptor src/t30/t30_h264_descriptor.c -Werror
@@ -125,6 +126,7 @@ compile t21_rate_control src/t40/t31_rate_control.c -Werror
     "$output_dir/t21_platform_services.o" \
     "$output_dir/t21_persist.o" \
     "$output_dir/t21_audio.o" \
+    "$output_dir/openimp_aec.o" \
     "$output_dir/t21_helix.o" \
     "$output_dir/t21_h264_descriptor.o" \
     "$output_dir/t30_h264_descriptor.o" \

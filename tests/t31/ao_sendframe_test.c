@@ -22,6 +22,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <math.h>
+#include <unistd.h>
 
 #include <imp/imp_audio.h>
 
@@ -29,6 +31,24 @@
 #define FRAGMENT   320u         /* 10 ms of 16 kHz mono S16 */
 
 #define T31_AO_SET_STREAM 0x40085069UL
+#define T31_AI_DISABLE_AEC 0x40045064UL
+#define T31_AI_ENABLE_AEC 0x40045065UL
+#define T31_AI_GET_STREAM 0x400c5068UL
+
+typedef struct {
+    void *data;
+    void *aec;
+    uint32_t size;
+} FakeInputStream;
+
+/* AI side: 10 ms chunks of a far-end signal (the driver reference) and
+ * of the microphone, which hears that signal through a short echo path */
+static int aec_enabled_in_driver;
+static int fail_aec_enable;
+static int16_t far_history[64];
+static uint32_t far_seed = 1;
+static unsigned long far_samples;
+static double mic_in_energy, far_in_energy;
 
 typedef struct {
     void *data;
@@ -78,6 +98,47 @@ int __wrap_ioctl(int fd, unsigned long request, void *arg)
         sink_len += take;
         stream->size = take;
         return 0;               /* OSS2: success is 0, not a byte count */
+    }
+    if (request == T31_AI_ENABLE_AEC) {
+        if (fail_aec_enable)
+            return -1;
+        aec_enabled_in_driver = 1;
+        return 0;
+    }
+    if (request == T31_AI_DISABLE_AEC) {
+        aec_enabled_in_driver = 0;
+        return 0;
+    }
+    if (request == T31_AI_GET_STREAM) {
+        FakeInputStream *stream = arg;
+        int16_t *mic = stream->data, *ref = stream->aec;
+        uint32_t i, n = 160;
+
+        if (stream->size < n * 2)
+            return -1;
+        for (i = 0; i < n; i++) {
+            int32_t far, echo;
+
+            far_seed = far_seed * 1664525u + 1013904223u;
+            /* syllable-like envelope: AECM tracks far-end activity
+             * against the far-end energy floor, so a stationary signal
+             * would look like no far end at all */
+            far = (int32_t)(((int32_t)(far_seed >> 16) % 8000 - 4000) *
+                            fabs(sin(far_samples++ * M_PI * 3 / 16000)));
+            memmove(far_history + 1, far_history,
+                    sizeof(far_history) - sizeof(far_history[0]));
+            far_history[0] = (int16_t)far;
+            echo = (far_history[3] * 6 + far_history[9] * 3 -
+                    far_history[30] * 2) / 10;
+            mic[i] = (int16_t)echo;
+            if (ref)
+                ref[i] = aec_enabled_in_driver ? (int16_t)far : 0;
+            mic_in_energy += (double)echo * echo;
+            far_in_energy += (double)far * far;
+        }
+        stream->size = n * 2;
+        usleep(1000);
+        return 0;
     }
     return 0;                   /* SPEED/CHANNELS/SETFMT/ENABLE/GAIN... */
 }
@@ -149,6 +210,75 @@ static long peak(void)
     return max;
 }
 
+static int ai_open(int rate, IMPAudioSoundMode mode, int per_frame)
+{
+    IMPAudioIOAttr attr;
+
+    memset(&attr, 0, sizeof(attr));
+    attr.samplerate = rate;
+    attr.bitwidth = AUDIO_BIT_WIDTH_16;
+    attr.soundmode = mode;
+    attr.frmNum = 20;
+    attr.numPerFrm = per_frame;
+    attr.chnCnt = 1;
+    return IMP_AI_SetPubAttr(0, &attr) == 0 && IMP_AI_Enable(0) == 0 ? 0
+                                                                     : -1;
+}
+
+/* IMP_AI_EnableAec must fail unless the canceller really runs, and when
+ * it runs the echo in GetFrame must drop. */
+static void aec_checks(void)
+{
+    double out_energy = 0, mic_energy = 0;
+    int i;
+
+    CHECK(IMP_AI_EnableAec(0, 0, 0, 0) != 0, "EnableAec before AI Enable");
+    CHECK(ai_open(16000, AUDIO_SOUND_MODE_STEREO, 640) == 0, "AI stereo");
+    CHECK(IMP_AI_EnableAec(0, 0, 0, 0) != 0, "EnableAec on a stereo AI");
+    IMP_AI_Disable(0);
+    CHECK(ai_open(44100, AUDIO_SOUND_MODE_MONO, 441) == 0, "AI 44.1k");
+    CHECK(IMP_AI_EnableAec(0, 0, 0, 0) != 0, "EnableAec at 44.1 kHz");
+    IMP_AI_Disable(0);
+    CHECK(ai_open(16000, AUDIO_SOUND_MODE_MONO, 400) == 0, "AI 25 ms");
+    CHECK(IMP_AI_EnableAec(0, 0, 0, 0) != 0, "EnableAec on 25 ms frames");
+    IMP_AI_Disable(0);
+    CHECK(ai_open(16000, AUDIO_SOUND_MODE_MONO, 640) == 0, "AI 16k mono");
+    fail_aec_enable = 1;
+    CHECK(IMP_AI_EnableAec(0, 0, 0, 0) != 0,
+          "EnableAec without the driver reference");
+    fail_aec_enable = 0;
+    CHECK(IMP_AI_SetChnParam(0, 0, &(IMPAudioIChnParam){.usrFrmDepth = 20}) ==
+              0 && IMP_AI_EnableChn(0, 0) == 0, "AI EnableChn");
+    CHECK(IMP_AI_EnableAec(0, 0, 0, 0) == 0 && aec_enabled_in_driver,
+          "EnableAec on 16 kHz mono 40 ms frames");
+    CHECK(IMP_AI_EnableAec(0, 0, 0, 0) == 0, "EnableAec twice");
+    for (i = 0; i < 100; i++) {         /* 4 s of audio */
+        IMPAudioFrame frame;
+        const int16_t *pcm;
+        int k;
+
+        if (IMP_AI_GetFrame(0, 0, &frame, BLOCK) != 0) {
+            CHECK(0, "GetFrame %d", i);
+            break;
+        }
+        pcm = (const int16_t *)(const void *)frame.virAddr;
+        if (i >= 50)                    /* after convergence */
+            for (k = 0; k < frame.len / 2; k++)
+                out_energy += (double)pcm[k] * pcm[k];
+        if (i == 49)
+            mic_energy = mic_in_energy;
+        IMP_AI_ReleaseFrame(0, 0, &frame);
+    }
+    mic_energy = mic_in_energy - mic_energy;
+    printf("T31 AI AEC through GetFrame: echo reduced %.1f dB\n",
+           10 * log10((mic_energy + 1) / (out_energy + 1)));
+    CHECK(out_energy * 100 < mic_energy, "echo reduced by less than 20 dB");
+    CHECK(IMP_AI_DisableAec(0, 0) == 0 && !aec_enabled_in_driver,
+          "DisableAec");
+    IMP_AI_DisableChn(0, 0);
+    IMP_AI_Disable(0);
+}
+
 int main(void)
 {
     IMPAudioIOAttr attr;
@@ -199,6 +329,7 @@ int main(void)
 
     CHECK(IMP_AO_DisableChn(0, 0) == 0, "DisableChn");
     CHECK(IMP_AO_Disable(0) == 0, "Disable");
+    aec_checks();
     if (failures) {
         fprintf(stderr, "%d check(s) failed\n", failures);
         return 1;
