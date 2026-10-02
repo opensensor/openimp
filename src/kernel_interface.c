@@ -1083,6 +1083,13 @@ static VBMVolume g_framevolumes[30]; /* Global frame volumes array */
 static pthread_mutex_t vbm_pool_lock[MAX_VBM_POOLS] = {
     [0 ... MAX_VBM_POOLS - 1] = PTHREAD_MUTEX_INITIALIZER
 };
+/* The last destroyed pool of each channel, kept allocated (header and
+ * frame records only; its buffers are freed). A consumer that still holds
+ * a frame from it releases a pointer into this block: as long as the block
+ * is not freed, the channel's next pool cannot be allocated at the same
+ * address, so the stale pointer never passes for one of its frames. */
+static VBMPool *vbm_retired[MAX_VBM_POOLS];
+
 /* g_framevolumes: registration, lookup and reference counts */
 static pthread_mutex_t vbm_volume_lock = PTHREAD_MUTEX_INITIALIZER;
 
@@ -1462,8 +1469,12 @@ int VBMDestroyPool(int chn) {
         DMA_FreePhys(pool->phys_base);
     }
 
-    /* Free pool structure */
-    free(pool);
+    /* Retire the pool structure (see vbm_retired) */
+    pool->available_queue = NULL;
+    pool->buf_in_userspace = NULL;
+    pool->phys_base = 0;
+    free(vbm_retired[chn]);
+    vbm_retired[chn] = pool;
     pthread_mutex_unlock(&vbm_pool_lock[chn]);
 
     OPENIMP_TRACE_STDERR("[VBM] DestroyPool: chn=%d destroyed\n", chn);
