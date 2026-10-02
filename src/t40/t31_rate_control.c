@@ -12,6 +12,12 @@
 #define T31_OVER_TARGET_GOPS   3u
 #define T31_UNDER_TARGET_GOPS  6u
 
+#if defined(PLATFORM_T23)
+#define T31_BAND(c, field, constant) ((c)->field ? (c)->field : (constant))
+#else
+#define T31_BAND(c, field, constant) (constant)
+#endif
+
 static uint32_t t31_clamp_qp(uint32_t qp, uint32_t min_qp, uint32_t max_qp)
 {
     if (qp < min_qp)
@@ -92,7 +98,8 @@ static uint32_t t31_select_recovery_qp(OpenIMPT31RateController *controller)
      * higher QP.  This smoothed path only recovers quality after sustained
      * headroom. */
     if ((uint64_t)current_prediction * 100u >=
-        (uint64_t)controller->target_bits * T31_LOWER_QP_PERCENT)
+        (uint64_t)controller->target_bits *
+            T31_BAND(controller, lower_qp_percent, T31_LOWER_QP_PERCENT))
         return controller->current_qp;
 
     for (qp = controller->min_qp; qp <= controller->max_qp; ++qp) {
@@ -128,12 +135,14 @@ static void t31_complete_gop(OpenIMPT31RateController *controller)
         (uint32_t)average,
         (int)controller->current_qp - (int)T31_MODEL_REFERENCE_QP);
     if ((uint64_t)measured_prediction * 100u >
-        (uint64_t)controller->target_bits * T31_RAISE_QP_PERCENT) {
+        (uint64_t)controller->target_bits *
+            T31_BAND(controller, raise_qp_percent, T31_RAISE_QP_PERCENT)) {
         ++controller->over_target_gops;
         controller->under_target_gops = 0u;
     } else if ((uint64_t)measured_prediction * 100u <
                (uint64_t)controller->target_bits *
-                   T31_LOWER_QP_PERCENT) {
+                   T31_BAND(controller, lower_qp_percent,
+                            T31_LOWER_QP_PERCENT)) {
         ++controller->under_target_gops;
         controller->over_target_gops = 0u;
     } else {
@@ -172,13 +181,16 @@ static void t31_complete_gop(OpenIMPT31RateController *controller)
             (T31_GOP_EMA_OLD_WEIGHT + 1u));
     }
     if (controller->completed_gops != 0u &&
-        controller->over_target_gops >= T31_OVER_TARGET_GOPS) {
+        controller->over_target_gops >=
+            T31_BAND(controller, over_target_limit, T31_OVER_TARGET_GOPS)) {
         if (controller->current_qp < controller->max_qp)
             ++controller->current_qp;
         controller->over_target_gops = 0u;
         controller->under_target_gops = 0u;
     } else if (controller->completed_gops != 0u &&
-               controller->under_target_gops >= T31_UNDER_TARGET_GOPS) {
+               controller->under_target_gops >=
+                   T31_BAND(controller, under_target_limit,
+                            T31_UNDER_TARGET_GOPS)) {
         if (controller->current_qp > controller->min_qp)
             --controller->current_qp;
         controller->over_target_gops = 0u;
@@ -350,6 +362,21 @@ int openimp_t31_rate_controller_complete(
         t31_complete_gop(controller);
     return 0;
 }
+
+#if defined(PLATFORM_T23)
+int openimp_t31_rate_controller_set_band(
+    OpenIMPT31RateController *controller, uint32_t lower_percent,
+    uint32_t raise_percent, uint32_t over_gops, uint32_t under_gops)
+{
+    if (!controller || !controller->initialized)
+        return -1;
+    controller->lower_qp_percent = lower_percent;
+    controller->raise_qp_percent = raise_percent;
+    controller->over_target_limit = over_gops;
+    controller->under_target_limit = under_gops;
+    return 0;
+}
+#endif
 
 uint32_t openimp_t31_rate_controller_qp(
     const OpenIMPT31RateController *controller)

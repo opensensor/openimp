@@ -41,6 +41,7 @@ check: $(ISP_TUNING_TEST_BIN) $(ACODEC_TEST_BIN) $(ZERO_COPY_TEST_BIN) \
 	$(HELIX_DESCRIPTOR)
 	$(RMEM_LAYOUT)
 	$(HELIX_STREAM) encode $(BUILD)/t23-helix.h264 $(BUILD)/t23-helix.ref
+	$(HELIX_STREAM) rc
 	@if command -v ffmpeg >/dev/null 2>&1; then \
 		ffmpeg -v error -err_detect explode -y \
 			-i $(BUILD)/t23-helix.h264 -fps_mode passthrough -f rawvideo \

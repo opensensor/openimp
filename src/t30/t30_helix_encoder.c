@@ -181,6 +181,54 @@ typedef struct {
     uint32_t c;
 } T30ReferenceFrame;
 
+#if defined(PLATFORM_T23)
+/* The Helix rate-control extras of the application's IMPEncoderAttrRcMode
+ * (HWEncoderParams with HW_RC_FLAG_APP), mapped onto the native GOP-level
+ * controller.  All zero - no extras, FIXQP, or values outside the OEM
+ * ranges - is the historic native behaviour, unchanged.
+ *
+ * Vendor-verified (T23 1.3.0 libimp: IMP_Encoder_YuvInit,
+ * i264e_param_default, i264e_ratecontrol_init): the accepted ranges
+ * (staticTime 1..60 s, changePos 50..100, qualityLvl 0..7, iBiasLvl -3..3,
+ * SMART -10..10), frmQPStep -> u8MaxPPQpDelta (P to P), gopQPStep ->
+ * u8MaxIPQpDelta (I to P), iBiasLvl -> s8IQpBias, SMART configured like VBR
+ * (same JZ_VPU_RC fields), adaptiveMode/gopRelation not part of the rate
+ * control configuration.  How the OEM controller uses them inside is not
+ * reverse engineered; the mapping below follows the SDK header text:
+ *   iBiasLvl    I-picture QP = P QP + bias (negative: more bits for I)
+ *   frmQPStep   max QP change from one P picture to the next
+ *   gopQPStep   max QP change of an IDR against the last P picture
+ *   changePos   VBR/SMART: the controller targets changePos% of
+ *               maxBitRate and raises QP above it
+ *   qualityLvl  VBR: lower QP again below maxBitRate * (80 - 10 * lvl)%
+ *               (the header's minBitRate); SMART 0..6, higher = better:
+ *               below maxBitRate * (20 + 10 * lvl)%
+ *   staticTime  VBR/SMART: the bitrate must stay over (under) the band for
+ *               staticTime seconds of GOPs (twice that) before QP moves */
+typedef struct {
+    uint32_t target_bitrate;    /* controller target, bit/s */
+    uint32_t lower_percent;     /* controller band, 0: built-in */
+    uint32_t raise_percent;
+    uint32_t over_gops;
+    uint32_t under_gops;
+    uint32_t frm_step;          /* 0: unlimited */
+    uint32_t gop_step;
+    int32_t bias;
+    int smart;
+    int app;
+} T23RcConfig;
+
+typedef struct {
+    uint32_t seconds;           /* report interval, 0: off */
+    uint32_t frames;
+    uint32_t idr_frames;
+    uint32_t qp_min[2];         /* [0] P, [1] IDR */
+    uint32_t qp_max[2];
+    uint64_t qp_sum[2];
+    uint64_t bytes;
+} T23RcStats;
+#endif
+
 struct T30HelixEncoder {
     int fd;
     T30ChannelNode channel;
@@ -214,6 +262,10 @@ struct T30HelixEncoder {
     uint32_t retries;           /* jobs repeated after an odd result */
     uint32_t late_status;       /* completed jobs with status 0x100 */
     int strict_status;          /* OPENIMP_T23_HELIX_STRICT_STATUS=1 */
+    T23RcConfig rc;             /* the application's RC extras, mapped */
+    uint32_t last_p_qp;         /* QP of the last P picture */
+    int have_p_qp;
+    T23RcStats stats;           /* OPENIMP_T23_RC_STATS window */
 #endif
 };
 
@@ -449,18 +501,220 @@ static void t30_normalize_params(HWEncoderParams *params,
     }
 }
 
+#if defined(PLATFORM_T23)
+static void t23_rc_config(const HWEncoderParams *params, T23RcConfig *rc)
+{
+    uint32_t change_pos = 0;
+    uint32_t floor_percent = 0;
+    int32_t bias_limit;
+
+    memset(rc, 0, sizeof(*rc));
+    rc->target_bitrate = params->bitrate;
+    if (!(params->rc_flags & HW_RC_FLAG_APP) ||
+        (params->rc_mode != HW_RC_MODE_CBR &&
+         params->rc_mode != HW_RC_MODE_VBR))
+        return;
+    rc->app = 1;
+    rc->smart = params->rc_mode == HW_RC_MODE_VBR &&
+                (params->rc_flags & HW_RC_FLAG_SMART);
+    rc->frm_step = params->frm_qp_step > 51u ? 51u : params->frm_qp_step;
+    rc->gop_step = params->gop_qp_step > 51u ? 51u : params->gop_qp_step;
+    bias_limit = rc->smart ? 10 : 3;
+    if (params->bias_level >= -bias_limit && params->bias_level <= bias_limit)
+        rc->bias = params->bias_level;
+    if (params->rc_mode != HW_RC_MODE_VBR)
+        return;
+
+    if (params->change_pos >= 50u && params->change_pos <= 100u) {
+        change_pos = params->change_pos;
+        rc->target_bitrate = (uint32_t)(((uint64_t)params->bitrate *
+                                         change_pos) / 100u);
+        rc->raise_percent = 100u;
+    }
+    if (rc->smart ? params->quality_level <= 6u
+                  : params->quality_level <= 7u)
+        floor_percent = rc->smart ? 20u + 10u * params->quality_level
+                                  : 80u - 10u * params->quality_level;
+    if (floor_percent) {
+        uint32_t raise = rc->raise_percent ? rc->raise_percent : 110u;
+        uint32_t lower = floor_percent * 100u /
+                         (change_pos ? change_pos : 100u);
+
+        /* keep a dead band between lowering and raising QP */
+        if (lower + 10u > raise)
+            lower = raise - 10u;
+        if (lower < 5u)
+            lower = 5u;
+        rc->lower_percent = lower;
+    }
+    if (params->static_time >= 1u && params->static_time <= 60u &&
+        params->fps_num && params->fps_den && params->gop_length) {
+        uint64_t frames = ((uint64_t)params->static_time *
+                               params->fps_num + params->fps_den / 2u) /
+                          params->fps_den;
+        uint64_t gops = (frames + params->gop_length / 2u) /
+                        params->gop_length;
+
+        if (gops < 1u)
+            gops = 1u;
+        if (gops > 10u)
+            gops = 10u;
+        rc->over_gops = (uint32_t)gops;
+        rc->under_gops = 2u * (uint32_t)gops;
+    }
+}
+
+static void t23_rc_apply_band(T30HelixEncoder *encoder)
+{
+    if (encoder->rate_control_enabled)
+        (void)openimp_t31_rate_controller_set_band(
+            &encoder->rate_control, encoder->rc.lower_percent,
+            encoder->rc.raise_percent, encoder->rc.over_gops,
+            encoder->rc.under_gops);
+}
+
+static const char *t23_rc_mode_name(const T30HelixEncoder *encoder)
+{
+    switch (encoder->params.rc_mode) {
+    case HW_RC_MODE_FIXQP:
+        return "FIXQP";
+    case HW_RC_MODE_CBR:
+        return "CBR";
+    default:
+        return encoder->rc.smart ? "SMART" : "VBR";
+    }
+}
+
+/* One line with the rate control in effect, at creation and whenever the
+ * rate-control parameters change. */
+static void t23_rc_log(const T30HelixEncoder *encoder, const char *what)
+{
+    const HWEncoderParams *p = &encoder->params;
+    const T23RcConfig *rc = &encoder->rc;
+
+    IMP_LOG_INFO("Encoder", "T23 Helix rc %s: %s max=%u target=%u bit/s "
+                 "qp=[%u,%u] band=%u-%u%% persist=%u/%u GOPs "
+                 "frmQPStep=%u gopQPStep=%u iBias=%d loop=%d app=%d "
+                 "staticTime=%u changePos=%u qualityLvl=%u (adaptive=%u "
+                 "gopRelation=%u: no effect)", what, t23_rc_mode_name(encoder),
+                 p->bitrate, rc->target_bitrate, p->min_qp, p->max_qp,
+                 rc->lower_percent ? rc->lower_percent : 80u,
+                 rc->raise_percent ? rc->raise_percent : 110u,
+                 rc->over_gops ? rc->over_gops : 3u,
+                 rc->under_gops ? rc->under_gops : 6u,
+                 rc->frm_step, rc->gop_step, rc->bias,
+                 encoder->rate_control_enabled, rc->app,
+                 p->static_time, p->change_pos, p->quality_level,
+                 (p->rc_flags & HW_RC_FLAG_ADAPTIVE) != 0,
+                 (p->rc_flags & HW_RC_FLAG_GOP_RELATION) != 0);
+}
+
+/* The picture's QP from the controller's GOP QP: the I bias, then the
+ * application's QP step limits against the last P picture.  Without
+ * extras this returns `qp` unchanged. */
+static uint32_t t23_rc_picture_qp(const T30HelixEncoder *encoder,
+                                  uint32_t qp, int idr)
+{
+    const T23RcConfig *rc = &encoder->rc;
+    int32_t value = (int32_t)qp;
+    uint32_t step;
+
+    if (idr)
+        value += rc->bias;
+    step = idr ? rc->gop_step : rc->frm_step;
+    if (step && encoder->have_p_qp) {
+        int32_t last = (int32_t)encoder->last_p_qp;
+
+        if (value > last + (int32_t)step)
+            value = last + (int32_t)step;
+        if (value < last - (int32_t)step)
+            value = last - (int32_t)step;
+    }
+    if (value == (int32_t)qp)
+        return qp;
+    if (value < (int32_t)encoder->params.min_qp)
+        value = (int32_t)encoder->params.min_qp;
+    if (value > (int32_t)encoder->params.max_qp)
+        value = (int32_t)encoder->params.max_qp;
+    return (uint32_t)value;
+}
+
+/* OPENIMP_T23_RC_STATS=<seconds>: per window, the delivered bitrate and the
+ * QPs used for IDR and P pictures. */
+static void t23_rc_stats(T30HelixEncoder *encoder, uint32_t qp, int idr,
+                         uint32_t bytes)
+{
+    T23RcStats *st = &encoder->stats;
+    unsigned int k = idr ? 1u : 0u;
+    uint64_t kbps;
+
+    if (!st->seconds || !encoder->params.fps_den)
+        return;
+    if (!st->frames) {
+        st->qp_min[0] = st->qp_min[1] = 51u;
+        st->qp_max[0] = st->qp_max[1] = 0u;
+        st->qp_sum[0] = st->qp_sum[1] = 0u;
+        st->idr_frames = 0u;
+        st->bytes = 0u;
+    }
+    st->frames++;
+    st->idr_frames += k;
+    st->bytes += bytes;
+    st->qp_sum[k] += qp;
+    if (qp < st->qp_min[k])
+        st->qp_min[k] = qp;
+    if (qp > st->qp_max[k])
+        st->qp_max[k] = qp;
+    if ((uint64_t)st->frames * encoder->params.fps_den <
+        (uint64_t)st->seconds * encoder->params.fps_num)
+        return;
+    kbps = st->bytes * 8u * encoder->params.fps_num /
+           ((uint64_t)st->frames * encoder->params.fps_den * 1000u);
+    IMP_LOG_INFO("Encoder", "T23 Helix rc stats: %ux%u %s %u frames "
+                 "%llu kbit/s (max %u, target %u) gop_qp=%u "
+                 "P qp avg %u [%u,%u] IDR %u qp avg %u [%u,%u]",
+                 encoder->params.width, encoder->params.height,
+                 t23_rc_mode_name(encoder), st->frames,
+                 (unsigned long long)kbps, encoder->params.bitrate / 1000u,
+                 encoder->rc.target_bitrate / 1000u,
+                 encoder->rate_control_enabled
+                     ? openimp_t31_rate_controller_qp(&encoder->rate_control)
+                     : encoder->params.qp,
+                 st->frames > st->idr_frames
+                     ? (uint32_t)(st->qp_sum[0] /
+                                  (st->frames - st->idr_frames)) : 0u,
+                 st->frames > st->idr_frames ? st->qp_min[0] : 0u,
+                 st->qp_max[0], st->idr_frames,
+                 st->idr_frames
+                     ? (uint32_t)(st->qp_sum[1] / st->idr_frames) : 0u,
+                 st->idr_frames ? st->qp_min[1] : 0u, st->qp_max[1]);
+    st->frames = 0u;
+}
+#endif
+
+/* The controller's bitrate target: on T23 the application's VBR changePos
+ * share of maxBitRate (t23_rc_config), else the bitrate itself. */
+#if defined(PLATFORM_T23)
+#define T30_RC_TARGET(encoder) ((encoder)->rc.target_bitrate)
+#else
+#define T30_RC_TARGET(encoder) ((encoder)->params.bitrate)
+#endif
+
 static void t30_start_rate_control(T30HelixEncoder *encoder,
                                    uint32_t initial_qp)
 {
     encoder->rate_control_enabled =
         encoder->params.rc_mode != HW_RC_MODE_FIXQP &&
-        encoder->params.bitrate && encoder->params.fps_num &&
+        T30_RC_TARGET(encoder) && encoder->params.fps_num &&
         encoder->params.fps_den &&
         openimp_t31_rate_controller_init(
-            &encoder->rate_control, encoder->params.bitrate,
+            &encoder->rate_control, T30_RC_TARGET(encoder),
             encoder->params.fps_num, encoder->params.fps_den,
             encoder->params.gop_length, encoder->params.min_qp,
             encoder->params.max_qp, initial_qp) == 0;
+#if defined(PLATFORM_T23)
+    t23_rc_apply_band(encoder);
+#endif
 }
 
 int OpenIMP_T30_HelixCreate(T30HelixEncoder **encoder_out,
@@ -495,6 +749,16 @@ int OpenIMP_T30_HelixCreate(T30HelixEncoder **encoder_out,
     encoder->fd = -1;
     encoder->params = *params;
     t30_normalize_params(&encoder->params, NULL);
+#if defined(PLATFORM_T23)
+    t23_rc_config(&encoder->params, &encoder->rc);
+    {
+        const char *stats = getenv("OPENIMP_T23_RC_STATS");
+        unsigned long seconds = stats ? strtoul(stats, NULL, 0) : 0ul;
+
+        if (seconds <= 3600ul)
+            encoder->stats.seconds = (uint32_t)seconds;
+    }
+#endif
 
 #if defined(PLATFORM_T23)
     encoder->input_size = (uint32_t)(aligned_luma_size +
@@ -611,6 +875,7 @@ int OpenIMP_T30_HelixCreate(T30HelixEncoder **encoder_out,
                  encoder->temporary.phys_addr, encoder->bitstream_kib,
                  encoder->reference[0].y, encoder->reference[1].y,
                  encoder->channel.mdelay);
+    t23_rc_log(encoder, "ready");
 #endif
     return 0;
 
@@ -724,6 +989,9 @@ int OpenIMP_T30_HelixEncode(T30HelixEncoder *encoder,
     qp = encoder->rate_control_enabled
         ? openimp_t31_rate_controller_qp(&encoder->rate_control)
         : encoder->params.qp;
+#if defined(PLATFORM_T23)
+    qp = t23_rc_picture_qp(encoder, qp, idr);
+#endif
     output_index = encoder->have_reference
         ? (encoder->reference_index ^ 1u) : 0u;
 
@@ -931,6 +1199,11 @@ int OpenIMP_T30_HelixEncode(T30HelixEncoder *encoder,
         (void)openimp_t31_rate_controller_complete(
             &encoder->rate_control, stream->length * 8u, qp, idr);
 #if defined(PLATFORM_T23)
+    if (!idr) {
+        encoder->last_p_qp = qp;
+        encoder->have_p_qp = 1;
+    }
+    t23_rc_stats(encoder, qp, idr, stream->length);
     if (encoder->frame_number <= 3u)
         IMP_LOG_INFO("Encoder", "T23 Helix: %ux%u frame=%u %s bytes=%u "
                      "qp=%u status=0x%08x pairs=%u", encoder->params.width,
@@ -964,14 +1237,15 @@ static int t23_rate_control_restart(T30HelixEncoder *encoder)
     if (qp > encoder->params.max_qp)
         qp = encoder->params.max_qp;
     if (encoder->params.rc_mode != HW_RC_MODE_FIXQP &&
-        encoder->params.bitrate && encoder->params.fps_num &&
+        encoder->rc.target_bitrate && encoder->params.fps_num &&
         encoder->params.fps_den &&
         openimp_t31_rate_controller_init(
-            &encoder->rate_control, encoder->params.bitrate,
+            &encoder->rate_control, encoder->rc.target_bitrate,
             encoder->params.fps_num, encoder->params.fps_den,
             encoder->params.gop_length, encoder->params.min_qp,
             encoder->params.max_qp, qp) == 0)
         encoder->rate_control_enabled = 1;
+    t23_rc_apply_band(encoder);
     return 0;
 }
 
@@ -979,8 +1253,10 @@ int OpenIMP_T30_HelixReconfigure(T30HelixEncoder *encoder,
                                  const HWEncoderParams *params)
 {
     HWEncoderParams next;
+    T23RcConfig rc;
     uint32_t level;
     int frame_rate_changed;
+    int extras_changed;
     int restart = 0;
 
     if (!encoder || !params)
@@ -1004,8 +1280,26 @@ int OpenIMP_T30_HelixReconfigure(T30HelixEncoder *encoder,
         next.max_qp = params->max_qp;
     if (next.min_qp > next.max_qp)
         next.min_qp = next.max_qp;
+    /* the rate-control extras are always set as a whole (CreateChn,
+     * SetChnAttrRcMode) */
+    next.static_time = params->static_time;
+    next.change_pos = params->change_pos;
+    next.quality_level = params->quality_level;
+    next.frm_qp_step = params->frm_qp_step;
+    next.gop_qp_step = params->gop_qp_step;
+    next.bias_level = params->bias_level;
+    next.rc_flags = params->rc_flags;
+    extras_changed =
+        next.static_time != encoder->params.static_time ||
+        next.change_pos != encoder->params.change_pos ||
+        next.quality_level != encoder->params.quality_level ||
+        next.frm_qp_step != encoder->params.frm_qp_step ||
+        next.gop_qp_step != encoder->params.gop_qp_step ||
+        next.bias_level != encoder->params.bias_level ||
+        next.rc_flags != encoder->params.rc_flags;
 
-    if (next.gop_length == encoder->params.gop_length &&
+    if (!extras_changed &&
+        next.gop_length == encoder->params.gop_length &&
         next.fps_num == encoder->params.fps_num &&
         next.fps_den == encoder->params.fps_den &&
         next.rc_mode == encoder->params.rc_mode &&
@@ -1015,7 +1309,8 @@ int OpenIMP_T30_HelixReconfigure(T30HelixEncoder *encoder,
         next.max_qp == encoder->params.max_qp)
         return 0;
 
-    if (next.bitrate != encoder->params.bitrate &&
+    t23_rc_config(&next, &rc);
+    if (next.bitrate != encoder->params.bitrate && !extras_changed &&
         next.gop_length == encoder->params.gop_length &&
         next.fps_num == encoder->params.fps_num &&
         next.fps_den == encoder->params.fps_den &&
@@ -1025,7 +1320,7 @@ int OpenIMP_T30_HelixReconfigure(T30HelixEncoder *encoder,
         encoder->rate_control_enabled) {
         /* bitrate only: keep the scene model */
         if (openimp_t31_rate_controller_set_bitrate(&encoder->rate_control,
-                                                    next.bitrate) != 0)
+                                                    rc.target_bitrate) != 0)
             return -1;
     } else {
         restart = 1;
@@ -1045,6 +1340,14 @@ int OpenIMP_T30_HelixReconfigure(T30HelixEncoder *encoder,
     encoder->params.qp = next.qp;
     encoder->params.min_qp = next.min_qp;
     encoder->params.max_qp = next.max_qp;
+    encoder->params.static_time = next.static_time;
+    encoder->params.change_pos = next.change_pos;
+    encoder->params.quality_level = next.quality_level;
+    encoder->params.frm_qp_step = next.frm_qp_step;
+    encoder->params.gop_qp_step = next.gop_qp_step;
+    encoder->params.bias_level = next.bias_level;
+    encoder->params.rc_flags = next.rc_flags;
+    encoder->rc = rc;
     /* The SPS carries the frame rate (VUI timing) and the level, which
      * depends on frame rate and bitrate (MaxBR), as in UpdateParams: send
      * new parameter sets with the next picture, which must then be an
@@ -1059,7 +1362,8 @@ int OpenIMP_T30_HelixReconfigure(T30HelixEncoder *encoder,
         encoder->force_idr = 1;
     }
     if (restart)
-        return t23_rate_control_restart(encoder);
+        (void)t23_rate_control_restart(encoder);
+    t23_rc_log(encoder, "reconfigured");
     return 0;
 }
 
