@@ -1515,7 +1515,8 @@ int IMP_FrameSource_SetFrameDepth(int chnNum, int depth)
                 pthread_mutex_unlock(chan_lock);
                 return -1;
             }
-            g_fs_ctx[chnNum].frame_depth = 0;
+            __atomic_store_n(&g_fs_ctx[chnNum].frame_depth, 0,
+                             __ATOMIC_RELAXED);
             pthread_mutex_unlock(chan_lock);
             return 0;
         }
@@ -1526,7 +1527,8 @@ int IMP_FrameSource_SetFrameDepth(int chnNum, int depth)
          * depth in the ctx and let the kernel pool carry the frame-depth
          * via fs_set_depth. This matches existing imp_framesource.c. */
         pthread_mutex_lock(chan_lock);
-        g_fs_ctx[chnNum].frame_depth = depth;
+        __atomic_store_n(&g_fs_ctx[chnNum].frame_depth, depth,
+                         __ATOMIC_RELAXED);
         *(int32_t *)(chan + 0x1cc) = depth;
         pthread_mutex_unlock(chan_lock);
         /* The fd belongs to Enable/DisableChn: check the state and use the
@@ -1893,6 +1895,7 @@ int IMP_FrameSource_EnableChn(int chnNum)
     int vbm_count;
     int queued_ok;
     int initial_queued_ok;
+    int frame_depth;
 
     if (chnNum < 0 || chnNum >= FS_MAX_CHANNELS) return -1;
     if (gFrameSource == NULL) return -1;
@@ -1912,10 +1915,12 @@ int IMP_FrameSource_EnableChn(int chnNum)
 
     ctx = &g_fs_ctx[chnNum];
     chan = fs_channel_base(chnNum);
+    /* SetFrameDepth stores it under the channel lock, not g_fs_lock */
+    frame_depth = __atomic_load_n(&ctx->frame_depth, __ATOMIC_RELAXED);
     fs_trace("libimp/FS: enable start ch=%d state=%d ctx=%p fd=%d attr=%dx%d fmt=0x%x nrVBs=%d depth=%d\n",
              chnNum, fs_chan_get_state(chnNum), ctx, ctx->fd,
              ctx->attr.picWidth, ctx->attr.picHeight, ctx->attr.pixFmt,
-             ctx->attr.nrVBs, ctx->frame_depth);
+             ctx->attr.nrVBs, frame_depth);
 
     if (ctx->fd < 0) {
         ctx->fd = fs_open_device(chnNum);
@@ -1976,7 +1981,7 @@ int IMP_FrameSource_EnableChn(int chnNum)
         return -1;
     }
 
-    requested_bufcnt = vbm_count + (ctx->frame_depth > 0 ? ctx->frame_depth : 0);
+    requested_bufcnt = vbm_count + (frame_depth > 0 ? frame_depth : 0);
     bufcnt = fs_set_buffer_count(ctx->fd, requested_bufcnt);
     if (bufcnt < 0) {
         fs_trace("libimp/FS: enable set-bufcnt-fail ch=%d req=%d\n", chnNum, requested_bufcnt);
@@ -1995,7 +2000,7 @@ int IMP_FrameSource_EnableChn(int chnNum)
      * Use nrVBs because it matches the pool shape configured above. */
 #if defined(PLATFORM_T21) || defined(PLATFORM_T20)
     fs_trace("libimp/FS: enable set-banks-via-reqbufs ch=%d fd=%d banks=%d depth=%d\n",
-             chnNum, ctx->fd, vbm_count, ctx->frame_depth);
+             chnNum, ctx->fd, vbm_count, frame_depth);
 #else
     {
         int banks = ctx->attr.nrVBs;
@@ -2004,7 +2009,7 @@ int IMP_FrameSource_EnableChn(int chnNum)
         }
         if (fs_set_depth(ctx->fd, banks) < 0) {
             fs_trace("libimp/FS: enable set-banks-fail ch=%d fd=%d banks=%d depth=%d\n",
-                     chnNum, ctx->fd, banks, ctx->frame_depth);
+                     chnNum, ctx->fd, banks, frame_depth);
             VBMFlushFrame(chnNum);
             fs_close_chn_fd(chnNum, ctx);
             VBMDestroyPool(chnNum);
@@ -2013,7 +2018,7 @@ int IMP_FrameSource_EnableChn(int chnNum)
             return -1;
         }
         fs_trace("libimp/FS: enable set-banks-ok ch=%d fd=%d banks=%d depth=%d\n",
-                 chnNum, ctx->fd, banks, ctx->frame_depth);
+                 chnNum, ctx->fd, banks, frame_depth);
     }
 #endif
 
