@@ -483,6 +483,91 @@ static void test_large_frame_level(void)
     OpenIMP_T30_HelixDestroy(encoder);
 }
 
+
+/* The ISP writes only the visible lines of a macroblock-aligned NV12
+ * buffer.  The encoder must replicate the last visible luma and chroma
+ * rows into the padding it encodes (1080 -> 1088, 360 -> 368) and leave
+ * the visible picture and macroblock-aligned frames untouched. */
+static void check_bottom_padding(uint32_t width, uint32_t height)
+{
+    T30HelixEncoder *encoder = create(width, height, 25, 25);
+    uint32_t aligned = (height + 15u) & ~15u;
+    uint32_t chroma_height = (height + 1u) / 2u;
+    size_t size = (size_t)width * aligned * 3u / 2u;
+    uint8_t *buffer;
+    uint8_t *expected;
+    uint8_t *chroma;
+    IMPFrameInfo frame;
+    HWStreamBuffer *stream = NULL;
+    uint64_t flushed;
+    uint32_t row;
+    size_t i;
+
+    buffer = mmap(NULL, size, PROT_READ | PROT_WRITE,
+                  MAP_PRIVATE | MAP_ANONYMOUS | MAP_32BIT, -1, 0);
+    assert(buffer != MAP_FAILED);
+    expected = malloc(size);
+    assert(expected);
+    chroma = buffer + (size_t)width * aligned;
+    for (i = 0; i < (size_t)width * height; i++)
+        buffer[i] = (uint8_t)(16u + (i * 7u) % 200u);
+    for (i = 0; i < (size_t)width * chroma_height; i++)
+        chroma[i] = (i & 1u) ? 0xa5u : 0x5au;  /* known U/V, not grey */
+    /* padding as an unwritten VBM buffer leaves it: zero (green) */
+    memcpy(expected, buffer, size);
+    for (row = height; row < aligned; row++)
+        memcpy(expected + (size_t)width * row,
+               expected + (size_t)width * (height - 1u), width);
+    for (row = chroma_height; row < aligned / 2u; row++)
+        memcpy(expected + (size_t)width * (aligned + row),
+               expected + (size_t)width * (aligned + chroma_height - 1u),
+               width);
+
+    memset(&frame, 0, sizeof(frame));
+    frame.width = width;
+    frame.height = height;
+    frame.size = (uint32_t)size;
+    frame.phyAddr = (uint32_t)(uintptr_t)buffer;
+    frame.virAddr = (uint32_t)(uintptr_t)buffer;
+    frame.timeStamp = 1;
+    in_run_window = 0;
+    flushed = flushed_before_run;
+    assert(OpenIMP_T30_HelixEncode(encoder, &frame, &stream) == 0);
+    assert(stream);
+    free((void *)(uintptr_t)stream->virt_addr);
+    free(stream);
+    assert(!memcmp(buffer, expected, size));
+    for (i = 0; i < (size_t)width * (aligned / 2u); i++)
+        assert(chroma[i] == ((i & 1u) ? 0xa5u : 0x5au));
+    /* the padding the CPU wrote is written back before the VPU runs */
+    assert(flushed_before_run - flushed >=
+           (uint64_t)width * (aligned - height) +
+           (uint64_t)width * (aligned / 2u - chroma_height));
+
+    /* a frame too small for the aligned picture is never written */
+    memset(buffer + (size_t)width * height, 0,
+           (size_t)width * (aligned - height));
+    frame.size = (uint32_t)(width * height * 3u / 2u);
+    frame.timeStamp++;
+    if (OpenIMP_T30_HelixEncode(encoder, &frame, &stream) == 0) {
+        free((void *)(uintptr_t)stream->virt_addr);
+        free(stream);
+    }
+    for (i = (size_t)width * height; i < (size_t)width * aligned; i++)
+        assert(aligned == height || buffer[i] == 0u);
+
+    free(expected);
+    munmap(buffer, size);
+    OpenIMP_T30_HelixDestroy(encoder);
+}
+
+static void test_bottom_padding(void)
+{
+    check_bottom_padding(1920, 1080);
+    check_bottom_padding(640, 360);
+    check_bottom_padding(1280, 720);
+}
+
 int main(void)
 {
     unsigned int i;
@@ -494,6 +579,7 @@ int main(void)
     test_runtime_parameters();
     test_large_frame_level();
     test_dma_footprint();
+    test_bottom_padding();
     for (i = 0; i < 16u; i++)
         assert(!allocations[i].mapping);
 #if defined(PLATFORM_T20)

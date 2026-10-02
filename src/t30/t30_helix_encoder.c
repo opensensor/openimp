@@ -619,6 +619,51 @@ fail:
     return -1;
 }
 
+#if !defined(PLATFORM_T23)
+/* The VPU encodes whole macroblocks, so a 1080-line picture is coded as
+ * 1088 lines and the decoder crops the last eight.  The T20/T21/T30 ISP
+ * frame channel lays NV12 out with the chroma plane at the
+ * macroblock-aligned height but only writes the visible lines: luma rows
+ * 1080..1087 and chroma rows 540..543 keep whatever the VBM buffer held
+ * (zeros or another frame).  Zero chroma is saturated green, and the
+ * encoder carries the padding into the visible rows of the last macroblock
+ * row (chroma DC transform across the 8x8 block, deblocking, P_Skip and
+ * motion compensation from the padded reference), which shows as a
+ * flickering green stripe at the bottom.  Replicate the last visible luma
+ * and chroma rows into the padding, as the H.264 cropping model expects. */
+static void t30_pad_input_rows(const T30HelixEncoder *encoder,
+                               const IMPFrameInfo *frame)
+{
+    uint32_t width = encoder->params.width;
+    uint32_t height = encoder->params.height;
+    uint32_t aligned_height = (uint32_t)encoder->sps.i_mb_height * 16u;
+    uint32_t chroma_height = (height + 1u) / 2u;
+    uint8_t *luma;
+    uint8_t *chroma;
+    uint32_t row;
+
+    if (height >= aligned_height || !frame->virAddr ||
+        (uint64_t)frame->size <
+            (uint64_t)width * aligned_height * 3u / 2u)
+        return;
+    luma = (uint8_t *)(uintptr_t)frame->virAddr;
+    chroma = luma + width * aligned_height;
+    /* the source rows were written by DMA; drop stale cache lines */
+    (void)DMA_RmemFlushCache(luma + width * (height - 1u), width, 0);
+    (void)DMA_RmemFlushCache(chroma + width * (chroma_height - 1u), width, 0);
+    for (row = height; row < aligned_height; row++)
+        memcpy(luma + width * row, luma + width * (height - 1u), width);
+    for (row = chroma_height; row < aligned_height / 2u; row++)
+        memcpy(chroma + width * row, chroma + width * (chroma_height - 1u),
+               width);
+    (void)DMA_RmemFlushCache(luma + width * height,
+                             width * (aligned_height - height), 1);
+    (void)DMA_RmemFlushCache(chroma + width * chroma_height,
+                             width * (aligned_height / 2u - chroma_height),
+                             1);
+}
+#endif
+
 int OpenIMP_T30_HelixEncode(T30HelixEncoder *encoder,
                             const IMPFrameInfo *frame,
                             HWStreamBuffer **stream_out)
@@ -664,6 +709,8 @@ int OpenIMP_T30_HelixEncode(T30HelixEncoder *encoder,
         IMP_LOG_ERR("Encoder", "T23 Helix: input flush failed");
         return -1;
     }
+#else
+    t30_pad_input_rows(encoder, frame);
 #endif
     idr = encoder->force_idr || !encoder->have_reference ||
           encoder->gop_position >= encoder->params.gop_length;
