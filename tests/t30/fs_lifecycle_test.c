@@ -386,6 +386,12 @@ int64_t IMP_System_GetTimeStamp(void) { return (int64_t)now_ms() * 1000; }
 int64_t OpenIMP_P0_NormalizeMonotonicTimeStamp(uint64_t t) { return (int64_t)t; }
 void *VBMGetInstance(void) { return NULL; }
 int VBMDumpPoolInfo(void) { return 0; }
+int DMA_RmemStats(size_t *used, size_t *size, size_t *largest_free)
+{
+    (void)used; (void)size; (void)largest_free;
+    return -1;
+}
+void DMA_LogRmem(const char *reason) { (void)reason; }
 int remove_observer_from_module(void *src, void *dst)
 {
     (void)src; (void)dst;

@@ -13,6 +13,11 @@ int IMP_System_Exit(void);
 int64_t IMP_System_GetTimeStamp(void);
 int IMP_System_RebaseTimeStamp(int64_t timestamp);
 
+/* Helix JPEG / shared bitstream buffer, called from Init/Exit on T21 */
+int OpenIMP_HelixBitstream_Init(void) { return 0; }
+void OpenIMP_HelixBitstream_Exit(void) {}
+void OpenIMP_HelixJpeg_Exit(void) {}
+
 static int failures;
 
 #define CHECK(cond, what) do {                                          \

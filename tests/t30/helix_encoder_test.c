@@ -442,7 +442,7 @@ static void test_gop_and_failures(void)
 
     /* A length beyond the bitstream window (a confused or timed-out VPU)
      * is a failure: nothing is read past the window. */
-    run_length_override = allocation("t30-helix-bs")->size;
+    run_length_override = allocation(BS_TAG)->size;
     assert(encode(encoder, &info) != 0);
     run_length_override = 0xfffffff0u;
     assert(encode(encoder, &info) != 0);
