@@ -406,10 +406,23 @@ int IMP_System_GetVersion(char *version)
     return 0;
 }
 
+#if defined(PLATFORM_T20)
+extern int32_t get_cpu_id(void);
+#endif
+
 const char *IMP_System_GetCPUInfo(void)
 {
 #if defined(PLATFORM_T20)
-    return "T20-X";
+    /* vendor IMP_System_GetCPUInfo: 0 "T10", 1/2 "T10-Lite" */
+    switch (get_cpu_id()) {
+    case 0:
+        return "T10";
+    case 1:
+    case 2:
+        return "T10-Lite";
+    default:
+        return "T20-X";
+    }
 #elif defined(PLATFORM_T21)
     return "T21-N";
 #elif defined(PLATFORM_T23)
