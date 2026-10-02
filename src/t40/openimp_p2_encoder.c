@@ -191,7 +191,9 @@ typedef struct {
     uint64_t jpeg_frame_generation;
     int jpeg_frame_requested;
     int jpeg_fanout;                /* JPEG frames from a video channel's
-                                     * fan-out, fixed at StartRecvPic */
+                                     * fan-out (last decision) */
+    int frame_readers;              /* video polls between the receiving
+                                     * check and the fan-out (atomic) */
     pthread_cond_t jpeg_frame_ready;
     IMPEncoderCHNAttr attr;
     IMPEncoderPack packs[P2_MAX_PUBLIC_PACKS];
@@ -639,24 +641,27 @@ static int p2_copy_requested_jpeg_frames(int source_channel,
 static int p2_find_source_channel(int encoder_group);
 
 /* Whether a JPEG channel gets its frames from a video channel on the same
- * framesource (fan-out above).  A JPEG channel whose framesource feeds no
- * registered video channel - timps' dedicated jpeg.* channel has its own
- * framesource and group - takes frames from the framesource itself, as the
- * stock encoder does for any bound channel; waiting for a fan-out there
- * never ended.  Decided at the JPEG channel's StartRecvPic from the bind
- * topology (registered channels, as the stock group membership), not per
- * poll from the video channels' receiving state: a video StopRecvPic then
- * cannot make the JPEG channel take frames from the framesource while the
- * video channel's last poll still does. */
+ * framesource (fan-out above), decided at every poll.  Only a video channel
+ * that is receiving, or whose last poll is still between its receiving
+ * check and the fan-out (frame_readers), fans frames out: a registered but
+ * idle video channel never polls - timps' JPEG-on-video channel shares the
+ * idle main stream's group and got no frame at all.  Otherwise the JPEG
+ * channel takes frames from the framesource itself, as the stock encoder
+ * does for any bound channel (timps' dedicated jpeg.* channel has its own
+ * framesource and group).  Counting the in-flight video poll keeps a video
+ * StopRecvPic from making the JPEG channel read the framesource while that
+ * poll still does. */
 static int p2_jpeg_frames_from_fanout(const P2EncoderChannel *jpeg)
 {
     int channel;
 
     for (channel = 0; channel < P2_MAX_CHANNELS; channel++) {
-        const P2EncoderChannel *other = &p2_channels[channel];
+        P2EncoderChannel *other = &p2_channels[channel];
 
         if (other != jpeg && other->created && other->registered &&
             other->codec_type != IMP_ENC_TYPE_JPEG &&
+            (__atomic_load_n(&other->receiving, __ATOMIC_ACQUIRE) ||
+             __atomic_load_n(&other->frame_readers, __ATOMIC_ACQUIRE)) &&
             p2_find_source_channel(other->group) == jpeg->source_channel)
             return 1;
     }
@@ -1811,6 +1816,7 @@ static int p2_polling_stream(int channel, uint32_t timeout_ms)
     uint64_t wait_us;
     uint64_t timeout_us;
     int core_locked = 0;
+    int reader_counted = 0;
     int result = -1;
     int process_result;
     OpenIMPProfileStamp poll_profile;
@@ -1893,6 +1899,12 @@ static int p2_polling_stream(int channel, uint32_t timeout_ms)
         openimp_profile_end(OPENIMP_PROFILE_ENCODER_POLL, poll_profile);
         return ch->raw_stream ? 0 : -1;
     }
+    if (ch->codec_type != IMP_ENC_TYPE_JPEG) {
+        /* counted under the lock that StopRecvPic clears receiving with:
+         * a JPEG channel keeps waiting for this poll's fan-out */
+        __atomic_add_fetch(&ch->frame_readers, 1, __ATOMIC_RELEASE);
+        reader_counted = 1;
+    }
     if (interval_us) {
         now_us = p2_monotonic_us();
         if (!ch->next_frame_due_us ||
@@ -1903,6 +1915,8 @@ static int p2_polling_stream(int channel, uint32_t timeout_ms)
     }
     pthread_mutex_unlock(&ch->lock);
 
+    if (ch->codec_type == IMP_ENC_TYPE_JPEG)
+        ch->jpeg_fanout = p2_jpeg_frames_from_fanout(ch);
     if (ch->codec_type == IMP_ENC_TYPE_JPEG && ch->jpeg_fanout) {
         if (p2_wait_for_jpeg_frame(ch, timeout_ms, &frame) != 0)
             goto done;
@@ -1978,6 +1992,8 @@ static int p2_polling_stream(int channel, uint32_t timeout_ms)
         core_locked = 1;
         (void)p2_copy_requested_jpeg_frames(
             ch->source_channel, (const P2SyntheticFrame *)frame);
+        __atomic_sub_fetch(&ch->frame_readers, 1, __ATOMIC_RELEASE);
+        reader_counted = 0;
     }
 #if defined(PLATFORM_T23)
     pace_frame_us = p2_monotonic_us();
@@ -2065,6 +2081,8 @@ static int p2_polling_stream(int channel, uint32_t timeout_ms)
     result = 0;
 
 done:
+    if (reader_counted)
+        __atomic_sub_fetch(&ch->frame_readers, 1, __ATOMIC_RELEASE);
     if (stream)
         AL_Codec_Encode_ReleaseStream(ch->codec, stream, user);
     if (frame && frame != &ch->synthetic_frame)

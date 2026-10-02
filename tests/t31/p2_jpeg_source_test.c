@@ -205,6 +205,33 @@ int main(void)
     CHECK(fs_gets[3] == 5 && !fs_outstanding[3],
           "%d frames taken in 5 polls, frame still held %d", fs_gets[3],
           fs_outstanding[3]);
+
+    /* timps' JPEG-on-video channel (jpeg_attach): registered into the main
+     * stream's group 0 on framesource 0, next to an H.264 channel that is
+     * created, registered and bound but idle (no RTSP client, no
+     * StartRecvPic, never polled).  The JPEG channel must read framesource
+     * 0 itself instead of waiting for a fan-out that never comes. */
+    {
+        IMPEncoderCHNAttr attr;
+        IMPCell src = { DEV_ID_FS, 0, 0 };
+        IMPCell dst = { DEV_ID_ENC, 0, 0 };
+
+        make_attr(&attr, 0);
+        CHECK(IMP_Encoder_CreateGroup(0) == 0 &&
+              IMP_Encoder_CreateChn(0, &attr) == 0 &&
+              IMP_Encoder_RegisterChn(0, 0) == 0 &&
+              IMP_System_Bind(&src, &dst) == 0, "idle video channel setup");
+        make_attr(&attr, 1);
+        CHECK(IMP_Encoder_CreateChn(1, &attr) == 0 &&
+              IMP_Encoder_RegisterChn(0, 1) == 0 &&
+              IMP_Encoder_StartRecvPic(1) == 0, "JPEG-on-video setup");
+        for (i = 0; i < 5; i++)
+            (void)IMP_Encoder_PollingStream(1, 200);
+        CHECK(fs_gets[0] == 5 && !fs_outstanding[0],
+              "JPEG next to an idle video channel took %d frames in 5 "
+              "polls (waited for a fan-out that never comes)", fs_gets[0]);
+    }
+
     if (failures) {
         fprintf(stderr, "p2 JPEG source: %d check(s) failed\n", failures);
         return 1;
