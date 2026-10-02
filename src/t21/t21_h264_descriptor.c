@@ -272,6 +272,34 @@ uint32_t T23_HelixScratchLayout(uint32_t mb_width, uint32_t mb_height,
     return offsets[3] + ((last + 4095u) & ~4095u) + 4096u;
 }
 
+/* T21 as the stock library lays it out: hwicodec_pf_h264e_t21 gives each
+ * channel one fixed 1 MiB pool buffer (descriptor 3 of its pool table) and
+ * h264_api_enc places the EMC buffers at fixed offsets in it, sized for
+ * 1920x1088: 0x30018 at +0x8000, 0x3004c at +0x38000, 0x30050 at +0xb8000,
+ * 0x30054 at +0xd8000 and 0x30058 at +0x158000.  Only 0x28000 bytes of the
+ * 0x30054 buffer and nothing of the 0x30058 buffer lie inside it.  On a
+ * PC420 (canary-filled scratch, 1080p and 360p, I and P pictures) the VPU
+ * writes only the 0x3004c buffer, 8 bytes per macroblock; the others hold
+ * input tables of features neither encoder enables.  So keep the stock
+ * buffer sizes inside its 1 MiB, per macroblock (24, 64, 16 and 20 bytes,
+ * page-rounded, a spare page each below 1080p) and one page for 0x30058:
+ * 996 KiB at 1080p (the stock offsets byte for byte), 140 KiB at 360p. */
+uint32_t T21_HelixScratchLayout(uint32_t mb_width, uint32_t mb_height,
+                                uint32_t offsets[4])
+{
+    static const uint32_t bytes_per_mb[4] = { 24u, 64u, 16u, 20u };
+    uint32_t mbs = mb_width * mb_height;
+    uint32_t spare = mbs >= 8160u ? 0u : 4096u;
+    uint32_t offset = 0;
+    unsigned int i;
+
+    for (i = 0; i < 4u; i++) {
+        offset += ((bytes_per_mb[i] * mbs + 4095u) & ~4095u) + spare;
+        offsets[i] = offset;
+    }
+    return offsets[3] + 4096u;
+}
+
 int T21_H264_BuildDescriptor(const T21H264SliceConfig *config,
                              size_t *pair_count)
 {

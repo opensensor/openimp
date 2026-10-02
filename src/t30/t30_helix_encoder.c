@@ -1048,13 +1048,20 @@ int OpenIMP_T30_HelixCreate(T30HelixEncoder **encoder_out,
 #if defined(HELIX_T21_SYNTAX)
     /* Size the per-channel buffers for the picture, as the stock encoder
      * sizes its per-channel buffer pool from the channel's resolution:
-     * EMC per-macroblock scratch (the captured 2 MiB layout at 1080p, 0.26
-     * MiB at 360p), and a bitstream window of one raw picture (an
+     * EMC per-macroblock scratch (T21: the stock 1 MiB layout, 996 KiB at
+     * 1080p, 140 KiB at 360p; T23: the captured 2 MiB layout at 1080p,
+     * 0.26 MiB at 360p), and a bitstream window of one raw picture (an
      * all-I_PCM picture fits; at least 256 KiB, at most the 1 MiB of the
      * T21 layout). */
+#if defined(PLATFORM_T23)
     encoder->scratch_size = T23_HelixScratchLayout(
         (params->width + 15u) / 16u, (params->height + 15u) / 16u,
         encoder->scratch_offset);
+#else
+    encoder->scratch_size = T21_HelixScratchLayout(
+        (params->width + 15u) / 16u, (params->height + 15u) / 16u,
+        encoder->scratch_offset);
+#endif
     {
         uint64_t window = (reference_size + 0xffffu) &
                           ~(uint64_t)0xffffu;
