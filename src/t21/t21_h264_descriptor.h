@@ -32,6 +32,11 @@ typedef struct {
      * them for a picture size; zero offsets select the T21 1080p layout. */
     uint32_t scratch_offset[4];
     uint32_t bitstream_kib;
+    /* T23: 0x30000 bit 19, set by the OEM builder in its ISP-direct mode
+     * (slice field +449): the core raises BSFULL and pauses at the window
+     * end instead of writing past it.  Only with a kernel that handles a
+     * BSFULL-only stop (thingino patches 0096/0098). */
+    uint8_t bsf_stop;
     uint32_t *descriptor;
     size_t descriptor_words;
 } T21H264SliceConfig;

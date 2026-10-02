@@ -217,6 +217,18 @@ static void check_scratch_layout(void)
     assert(value_of(pairs, 0x30054, 0) == c.scratch_base + offsets[2]);
     assert(value_of(pairs, 0x30058, 0) == c.scratch_base + offsets[3]);
     assert(value_of(pairs, 0x30040, 0) == 256u);
+    assert(!(value_of(pairs, 0x30000, 0) & (1u << 19)));
+
+    /* bitstream-full stop (OPENIMP_T23_HELIX_BSF): only 0x30000 bit 19
+     * changes, the register order stays the OEM's */
+    {
+        uint32_t plain = value_of(pairs, 0x30000, 0);
+
+        c.bsf_stop = 1;
+        assert(T21_H264_BuildDescriptor(&c, &pairs) == 0 && pairs == 1034u);
+        assert(value_of(pairs, 0x30000, 0) == (plain | (1u << 19)));
+        c.bsf_stop = 0;
+    }
 }
 
 static void check_refusals(void)

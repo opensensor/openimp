@@ -272,6 +272,7 @@ struct T30HelixEncoder {
     uint32_t retries;           /* jobs repeated after an odd result */
     uint32_t late_status;       /* completed jobs with status 0x100 */
     int strict_status;          /* OPENIMP_T23_HELIX_STRICT_STATUS=1 */
+    int bsf_stop;               /* core pauses at the window (t23_bsf_stop) */
     T23RcConfig rc;             /* the application's RC extras, mapped */
     uint32_t last_p_qp;         /* QP of the last P picture */
     int have_p_qp;
@@ -490,6 +491,9 @@ static void t30_fill_slice(T30HelixEncoder *encoder,
     memcpy(slice->scratch_offset, encoder->scratch_offset,
            sizeof(slice->scratch_offset));
     slice->bitstream_kib = encoder->bitstream_kib;
+#if defined(PLATFORM_T23)
+    slice->bsf_stop = (uint8_t)(encoder->bsf_stop != 0);
+#endif
 #else
     /* SDK 1.0.5 selects the alternate DCS threshold for its substream. */
     slice->dcs_oth = encoder->params.width <= 640u ? 1u : 0u;
@@ -641,6 +645,41 @@ static void t23_rc_log(const T30HelixEncoder *encoder, const char *what)
  * second reference buffer.  The canary tells such a spill apart when the
  * length cannot be trusted. */
 #define T23_BS_CANARY 0x5a17c0deu
+
+/* Kernel marker of thingino patch 0098: the Helix driver then reports a
+ * BSFULL-only stop with this job's length and resets the core before the
+ * VPU is handed back.  Older kernels report the previous job's length and
+ * leave the core paused mid-picture. */
+#define T23_BSF_KERNEL_MARKER "/sys/module/helix/parameters/bsf_stop"
+
+/* Whether to let the core stop at the window end (BSFULL interrupt,
+ * 0x30000 bit 19) instead of spilling past it.  OPENIMP_T23_HELIX_BSF:
+ * unset or 0 = off (default), 1 = on if the kernel has the marker,
+ * "force" = on without the marker (device tests only). */
+static int t23_bsf_stop(void)
+{
+    const char *value = getenv("OPENIMP_T23_HELIX_BSF");
+    char marker[4] = {0};
+    int fd;
+    ssize_t got;
+
+    if (!value || strcmp(value, "1") != 0)
+        return value && strcmp(value, "force") == 0;
+    fd = open(T23_BSF_KERNEL_MARKER, O_RDONLY | O_CLOEXEC);
+    if (fd < 0) {
+        IMP_LOG_WARN("Encoder", "T23 Helix: OPENIMP_T23_HELIX_BSF=1 ignored, "
+                     "kernel without %s", T23_BSF_KERNEL_MARKER);
+        return 0;
+    }
+    got = read(fd, marker, sizeof(marker) - 1u);
+    close(fd);
+    if (got <= 0 || marker[0] != '1') {
+        IMP_LOG_WARN("Encoder", "T23 Helix: OPENIMP_T23_HELIX_BSF=1 ignored, "
+                     "%s is not 1", T23_BSF_KERNEL_MARKER);
+        return 0;
+    }
+    return 1;
+}
 
 static volatile uint32_t *t23_canary(const T30HelixEncoder *encoder)
 {
@@ -988,6 +1027,7 @@ int OpenIMP_T30_HelixCreate(T30HelixEncoder **encoder_out,
 
         encoder->strict_status = strict && strict[0] == '1';
     }
+    encoder->bsf_stop = t23_bsf_stop();
 #endif
     encoder->channel.thread_id = -1;
     if (ioctl(encoder->fd, T30_CHANNEL_REQUEST, &encoder->channel) != 0)
@@ -1135,7 +1175,7 @@ int OpenIMP_T30_HelixCreate(T30HelixEncoder **encoder_out,
     IMP_LOG_INFO("Encoder", "T23 Helix: native encoder ready channel=%u "
                  "%ux%u rc=%u bitrate=%u fps=%u/%u gop=%u qp=%u [%u,%u] "
                  "desc=0x%08x emc=0x%08x/%uK bs=0x%08x/%uK "
-                 "ref=0x%08x/0x%08x timeout=%ums",
+                 "ref=0x%08x/0x%08x timeout=%ums bsf-stop=%s",
                  encoder->channel.channel_id,
                  params->width, params->height, encoder->params.rc_mode,
                  encoder->params.bitrate, encoder->params.fps_num,
@@ -1145,7 +1185,7 @@ int OpenIMP_T30_HelixCreate(T30HelixEncoder **encoder_out,
                  encoder->emc.phys_addr, encoder->scratch_size >> 10,
                  encoder->temporary.phys_addr, encoder->bitstream_kib,
                  encoder->reference[0].y, encoder->reference[1].y,
-                 encoder->channel.mdelay);
+                 encoder->channel.mdelay, encoder->bsf_stop ? "on" : "off");
     t23_rc_log(encoder, "ready");
 #endif
     return 0;

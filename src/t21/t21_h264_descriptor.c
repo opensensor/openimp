@@ -455,8 +455,14 @@ int T21_H264_BuildDescriptor(const T21H264SliceConfig *config,
     }
     EMIT(0x90004, 2);
 
+#if defined(T21_HELIX_T23_DELTAS)
+    EMIT(0x30000, (config->bsf_stop ? (1u << 19) : 0u) |
+                  ((uint32_t)config->last_mby << 8) |
+                  ((uint32_t)config->mb_width - 1u));
+#else
     EMIT(0x30000, ((uint32_t)config->last_mby << 8) |
                   ((uint32_t)config->mb_width - 1u));
+#endif
     EMIT(0x30004, config->bitstream & ~0x7fu);
     if (config->scratch_offset[0]) {
         EMIT(0x30018, config->scratch_base);
