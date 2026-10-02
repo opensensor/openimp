@@ -35,4 +35,14 @@ typedef struct {
 int T30_H264_BuildDescriptor(const T30H264SliceConfig *config,
                              size_t *pair_count);
 
+/* T10 JZ NVPU (shares the T20 libimp/build; selected at run time).
+ * Reconstructions use a one-macroblock border: allocate
+ * ReferencePlaneSize() per plane and pass plane base + ReferenceOffset()
+ * as output/reference addresses. */
+int T10_H264_BuildDescriptor(const T30H264SliceConfig *config,
+                             size_t *pair_count);
+size_t T10_H264_ReferenceOffset(uint8_t mb_width, int chroma);
+size_t T10_H264_ReferencePlaneSize(uint8_t mb_width, uint8_t mb_height,
+                                   int chroma);
+
 #endif

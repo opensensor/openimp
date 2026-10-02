@@ -375,3 +375,212 @@ int T30_H264_BuildDescriptor(const T30H264SliceConfig *config,
         *pair_count = (size_t)(writer.cursor - config->descriptor) / 2u;
     return 0;
 }
+
+/*
+ * T10 variant: Ingenic T10 JZ NVPU H.264 descriptor builder.
+ *
+ * The T10 and T20 share one stock libimp, which picks H264E_T10_SliceInit or
+ * H264E_T20_SliceInit at run time from the SoC id.  The T10 variant programs
+ * an older NVPU: a smaller VRAM layout, the classic MCE motion-estimation
+ * block for every slice, flat quantisation tables in VMAU instead of the T20
+ * VMAU CABAC contexts, and no T20-only EFE/VMAU/DBLK registers.  Writes to
+ * the T20-only registers stop the T10 VDMA walker before its terminal entry,
+ * so the job never raises ENDF.
+ *
+ * Order and values follow H264E_T10_SliceInit (stock T10/T20 libimp 3.12.0,
+ * md5 da38e940020f876183a1ed19520f2526) and the command lists the stock
+ * stack builds on a T10L (jxh42, 1280x720) - see
+ * tests/t30/descriptor_test.c for the comparison against that capture.
+ */
+
+#define T10_VRAM_EFE_COEF 0x132c0000u
+#define T10_VRAM_TOPMV    0x132c4000u
+#define T10_VRAM_TOPPA    0x132c4400u
+#define T10_VRAM_MAU      0x132c4800u
+#define T10_VRAM_DBLK     0x132c4c00u
+#define T10_VRAM_ME       0x132c5000u
+#define T10_VRAM_SDE      0x132c5200u
+#define T10_VRAM_RAW      0x132f0000u
+#define T10_VRAM_DUMMY    0x132ffffcu
+
+/* MCE configuration words that H264E_T10_SliceInit stores verbatim. */
+static const uint32_t t10_mce_table[32] = {
+    0x00000200u, 0, 0, 0, 0x80003004u, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0,
+    0x8000b004u, 0, 0, 0, 0x80000000u, 0x8000e020u, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0
+};
+
+size_t T10_H264_ReferenceOffset(uint8_t mb_width, int chroma)
+{
+    /* Reconstructions carry a one-macroblock border: the luma plane is
+     * (mb_width + 2) macroblocks wide and the picture starts one macroblock
+     * row plus one macroblock in (H264E_T10_SliceInit: 0x50304/0x50b04). */
+    return ((size_t)mb_width + 3u) * (chroma ? 128u : 256u);
+}
+
+size_t T10_H264_ReferencePlaneSize(uint8_t mb_width, uint8_t mb_height,
+                                   int chroma)
+{
+    return ((size_t)mb_width + 2u) * ((size_t)mb_height + 2u) *
+           (chroma ? 128u : 256u);
+}
+
+int T10_H264_BuildDescriptor(const T30H264SliceConfig *config,
+                             size_t *pair_count)
+{
+    T30DescriptorWriter writer;
+    uint32_t padded_stride;
+    uint32_t max_qp;
+    uint32_t reference_y;
+    uint32_t reference_c;
+    unsigned int i;
+
+    if (!config || !config->descriptor || !config->cabac_state ||
+        !config->mb_width || !config->mb_height ||
+        !config->width || !config->height || config->slice_type > 1u ||
+        config->descriptor_words < 1270u ||
+        !config->output_y || !config->output_c ||
+        (config->slice_type &&
+         (!config->reference_y || !config->reference_c))) {
+        errno = EINVAL;
+        return -1;
+    }
+    writer.cursor = config->descriptor;
+    writer.end = config->descriptor + config->descriptor_words;
+    padded_stride = (((uint32_t)config->mb_width + 2u) * 16u) & 0xfffu;
+    max_qp = config->qp < 39u ? config->qp + 13u : 51u;
+    /* The stock I slice still programs the MCE reference (with a stale
+     * base); point an I slice at its own reconstruction instead. */
+    reference_y = config->slice_type ? config->reference_y : config->output_y;
+    reference_c = config->slice_type ? config->reference_c : config->output_c;
+
+#define EMIT(reg, value)                                                     \
+    do {                                                                     \
+        if (t30_emit(&writer, (reg), (value)) != 0)                      \
+            return -1;                                                       \
+    } while (0)
+
+    EMIT(T30_TCSM_FLUSH, 0);
+    EMIT(0x40004, ((uint32_t)config->first_mby << 24) |
+                  ((uint32_t)config->last_mby << 8) |
+                  ((uint32_t)config->mb_width - 1u));
+    EMIT(0x4000c, T10_VRAM_EFE_COEF);
+    EMIT(0x40010, config->raw[0]);
+    EMIT(0x40014, config->raw[1]);
+    EMIT(0x40034, config->raw[2]);
+    EMIT(0x40038, (config->stride[0] << 16) | config->stride[1]);
+    EMIT(0x40018, T10_VRAM_TOPMV);
+    EMIT(0x4001c, T10_VRAM_TOPPA);
+    EMIT(0x40020, T10_VRAM_ME);
+    EMIT(0x40024, T10_VRAM_MAU);
+    EMIT(0x40028, T10_VRAM_DBLK);
+    EMIT(0x4002c, T10_VRAM_SDE);
+    EMIT(0x40030, T10_VRAM_RAW);
+    EMIT(0x40040, max_qp);
+    EMIT(0x40044, 0);
+    EMIT(0x40048, 0);
+    for (i = 0; i < 8u; i++)
+        EMIT(0x4004cu + i * 4u, 0);
+    EMIT(0x40108, 0);
+    EMIT(0x4010c, 0x00400000u);
+
+    /* Classic MCE, programmed for I and P slices alike. */
+    EMIT(0x50004, 7);
+    EMIT(0x50804, 7);
+    EMIT(0x50000, 0x0f7c0999u);
+    EMIT(0x5005c, 0xa4);
+    for (i = 0; i < 32u; i++)
+        EMIT(0x50d00u + i * 4u, t10_mce_table[i]);
+    EMIT(0x50030, 0x0cc04000u);
+    EMIT(0x50830, 0x0001c000u);
+    EMIT(0x50034, 0xa8100500u);
+    EMIT(0x50038, 0xa1100500u);
+    EMIT(0x5003c, 0x1414fb01u);
+    EMIT(0x50044, 0x1fb);
+    EMIT(0x50040, 0x1414fb01u);
+    EMIT(0x50048, 0x1fb);
+    EMIT(0x50304, reference_y);
+    EMIT(0x50b04, reference_c);
+    EMIT(0x50020, 0);
+    EMIT(0x50820, 0);
+    EMIT(0x50024, 0);
+    EMIT(0x50824, 0);
+    EMIT(0x50828, 0);
+    EMIT(0x5002c, 0);
+    EMIT(0x5082c, 0);
+    EMIT(0x5004c, (padded_stride << 16) | 0x1000u);
+    EMIT(0x5084c, padded_stride << 16);
+    EMIT(0x50050, ((uint32_t)config->mb_height << 20) |
+                  ((uint32_t)config->mb_width << 4));
+    EMIT(0x50058, 0x13200070u);
+    EMIT(0x5000c, 0x13240100u);
+    EMIT(0x50054, T10_VRAM_ME);
+
+    /* VMAU with flat (default) 4x4 quantisation tables. */
+    EMIT(0x80040, 4);
+    EMIT(0x80050, 0x80000b01u);
+    EMIT(0x8000c, T10_VRAM_MAU);
+    EMIT(0x8005c, T10_VRAM_DUMMY);
+    EMIT(0x80058, 0x13200074u);
+    EMIT(0x80054, (uint32_t)config->mb_width << 4);
+    EMIT(0x80044, 0x01000001u);
+    EMIT(0x80078, 0x0b150b15u);
+    for (i = 0; i < 16u; i++)
+        EMIT(0x88000u + i * 4u, 0x10101010u);
+    for (i = 0; i < 32u; i++)
+        EMIT(0x88040u + i * 4u, 0x00100010u);
+
+    /* Deblocking. */
+    EMIT(0x70060, 4);
+    EMIT(0x70000, T10_VRAM_DBLK);
+    EMIT(0x70078, 0x13200078u);
+    EMIT(0x70074, ((uint32_t)config->mb_height << 16) |
+                  config->mb_width);
+    EMIT(0x7007c, (uint32_t)config->first_mby << 16);
+    EMIT(0x70064, 0x11);
+    EMIT(0x70084, config->output_y);
+    EMIT(0x70088, config->output_c);
+    EMIT(0x7008c, T10_VRAM_DUMMY);
+    EMIT(0x70080, ((uint32_t)config->mb_width << 23) |
+                  ((uint32_t)config->mb_width << 8));
+    EMIT(0x70068, ((uint32_t)config->slice_type << 3) | 1u);
+    EMIT(0x70060, 8);
+
+    /* Syntax/data encoder and the 460 CABAC contexts. */
+    EMIT(0x90000, 0);
+    EMIT(0x9000c, 0x11);
+    EMIT(0x90008, ((uint32_t)config->mb_height << 24) |
+                  ((uint32_t)config->mb_width << 16) |
+                  ((uint32_t)config->first_mby << 8));
+    EMIT(0x90010, 2);
+    EMIT(0x90014, 3);
+    EMIT(0x90018, ((uint32_t)config->qp << 8) |
+                  (config->slice_type ? 0x12u : 0x11u));
+    EMIT(0x9001c, T10_VRAM_SDE);
+    EMIT(0x90020, 0x1320007cu);
+    EMIT(0x90024, config->bitstream);
+    for (i = 0; i < 460u; i++) {
+        uint32_t state = config->cabac_state[i];
+        uint32_t index = state <= 63u ? 63u - state : state - 64u;
+
+        EMIT(0x92000u + i * 4u,
+             t30_lps_range[index] | ((state >> 6) & 1u));
+    }
+    EMIT(0x90004, 2);
+
+    for (i = 0; i < 8u; i++)
+        EMIT(0x00060u + i * 4u, 0);
+    EMIT(0x00060, 0x0c0c0400u | ((uint32_t)config->slice_type << 2));
+    EMIT(0x00064, 0x97850fceu | config->slice_type);
+#undef EMIT
+    if (t30_emit_final(&writer, 0x40000,
+                 0xc0000000u | ((uint32_t)config->qp << 8) |
+                 ((uint32_t)config->slice_type << 4) |
+                 config->raw_format | 0x23u) != 0)
+        return -1;
+
+    if (pair_count)
+        *pair_count = (size_t)(writer.cursor - config->descriptor) / 2u;
+    return 0;
+}
