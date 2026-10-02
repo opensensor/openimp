@@ -799,9 +799,7 @@ static uint32_t g_fs_step_seen_ms[FS_MAX_CHANNELS];
 static volatile int g_fs_step_iter[FS_MAX_CHANNELS];
 #endif
 
-#if defined(PLATFORM_T31) || defined(PLATFORM_T23) || defined(PLATFORM_T20)
-/* Monotonic ms, for the worker-stop wait (T31, T23, T20) and the T31 stop
- * diagnostics. */
+/* Monotonic ms, for the worker-stop wait and the T31 stop diagnostics. */
 static uint32_t fs_now_ms(void)
 {
     struct timespec ts;
@@ -809,7 +807,6 @@ static uint32_t fs_now_ms(void)
     clock_gettime(CLOCK_MONOTONIC, &ts);
     return (uint32_t)ts.tv_sec * 1000u + (uint32_t)(ts.tv_nsec / 1000000L);
 }
-#endif
 
 #if defined(PLATFORM_T31)
 
@@ -1877,6 +1874,9 @@ static int framesource_unbind(void *src_module, void *dst_module, void *output_p
     return remove_observer_from_module(src_module, dst_module);
 }
 
+static void fs_stop_worker(int chn, FsChnCtx *ctx);
+static void fs_close_chn_fd(int chn, FsChnCtx *ctx);
+
 int IMP_FrameSource_EnableChn(int chnNum)
 {
     FsChnCtx *ctx;
@@ -1889,7 +1889,6 @@ int IMP_FrameSource_EnableChn(int chnNum)
     int vbm_count;
     int queued_ok;
     int initial_queued_ok;
-    int thread_started = 0;
 
     if (chnNum < 0 || chnNum >= FS_MAX_CHANNELS) return -1;
     if (gFrameSource == NULL) return -1;
@@ -1942,8 +1941,7 @@ int IMP_FrameSource_EnableChn(int chnNum)
 
     if (fs_set_format(ctx->fd, &fmt) < 0) {
         fs_trace("libimp/FS: enable set-format-fail ch=%d fd=%d\n", chnNum, ctx->fd);
-        fs_close_device(ctx->fd);
-        ctx->fd = -1;
+        fs_close_chn_fd(chnNum, ctx);
         pthread_mutex_unlock(&g_fs_lock);
         return -1;
     }
@@ -1969,8 +1967,7 @@ int IMP_FrameSource_EnableChn(int chnNum)
 
     if (VBMCreatePool(chnNum, vbm_fmt, g_fs_vbm_ops, gFrameSource) < 0) {
         fs_trace("libimp/FS: enable VBMCreatePool-fail ch=%d\n", chnNum);
-        fs_close_device(ctx->fd);
-        ctx->fd = -1;
+        fs_close_chn_fd(chnNum, ctx);
         pthread_mutex_unlock(&g_fs_lock);
         return -1;
     }
@@ -1980,8 +1977,7 @@ int IMP_FrameSource_EnableChn(int chnNum)
     if (bufcnt < 0) {
         fs_trace("libimp/FS: enable set-bufcnt-fail ch=%d req=%d\n", chnNum, requested_bufcnt);
         VBMDestroyPool(chnNum);
-        fs_close_device(ctx->fd);
-        ctx->fd = -1;
+        fs_close_chn_fd(chnNum, ctx);
         pthread_mutex_unlock(&g_fs_lock);
         return -1;
     }
@@ -2006,9 +2002,8 @@ int IMP_FrameSource_EnableChn(int chnNum)
             fs_trace("libimp/FS: enable set-banks-fail ch=%d fd=%d banks=%d depth=%d\n",
                      chnNum, ctx->fd, banks, ctx->frame_depth);
             VBMFlushFrame(chnNum);
+            fs_close_chn_fd(chnNum, ctx);
             VBMDestroyPool(chnNum);
-            fs_close_device(ctx->fd);
-            ctx->fd = -1;
             ctx->running = 0;
             pthread_mutex_unlock(&g_fs_lock);
             return -1;
@@ -2021,9 +2016,8 @@ int IMP_FrameSource_EnableChn(int chnNum)
     queued_ok = VBMFillPool(chnNum);
     if (queued_ok < 0) {
         fs_trace("libimp/FS: enable VBMFillPool-fail ch=%d\n", chnNum);
+        fs_close_chn_fd(chnNum, ctx);
         VBMDestroyPool(chnNum);
-        fs_close_device(ctx->fd);
-        ctx->fd = -1;
         pthread_mutex_unlock(&g_fs_lock);
         return -1;
     }
@@ -2041,17 +2035,16 @@ int IMP_FrameSource_EnableChn(int chnNum)
         if (pthread_create(&ctx->thread, NULL, frame_pooling_thread,
                            &chn_id_storage[chnNum]) != 0) {
             fs_trace("libimp/FS: enable pthread-create-fail ch=%d fd=%d\n", chnNum, ctx->fd);
+            ctx->thread = 0;
+            ctx->running = 0;
             fs_stream_off(ctx->fd);
             VBMFlushFrame(chnNum);
+            fs_close_chn_fd(chnNum, ctx);
             VBMDestroyPool(chnNum);
-            fs_close_device(ctx->fd);
-            ctx->fd = -1;
-            ctx->running = 0;
             fs_chan_set_state(chnNum, 1);
             pthread_mutex_unlock(&g_fs_lock);
             return -1;
         }
-        thread_started = 1;
         fs_trace("libimp/FS: enable pthread-create-ok ch=%d tid=%p arg=%p\n",
                  chnNum, (void *)ctx->thread, &chn_id_storage[chnNum]);
         usleep(20000);
@@ -2066,17 +2059,12 @@ int IMP_FrameSource_EnableChn(int chnNum)
 
     if (fs_stream_on(ctx->fd) < 0) {
         fs_trace("libimp/FS: enable stream-on-fail ch=%d fd=%d\n", chnNum, ctx->fd);
-        if (thread_started) {
-            pthread_cancel(ctx->thread);
-            pthread_join(ctx->thread, NULL);
-            ctx->thread = 0;
-            thread_started = 0;
-        }
-        VBMFlushFrame(chnNum);
-        VBMDestroyPool(chnNum);
-        fs_close_device(ctx->fd);
-        ctx->fd = -1;
+        /* The worker waits for the ENABLED state: it leaves at once. */
         ctx->running = 0;
+        fs_stop_worker(chnNum, ctx);
+        VBMFlushFrame(chnNum);
+        fs_close_chn_fd(chnNum, ctx);
+        VBMDestroyPool(chnNum);
         fs_chan_set_state(chnNum, 1);
         pthread_mutex_unlock(&g_fs_lock);
         return -1;
@@ -2113,17 +2101,13 @@ int IMP_FrameSource_EnableChn(int chnNum)
     }
 
     if (chnNum == 0 && initial_queued_ok <= 0 && queued_ok <= 0) {
-        fs_stream_off(ctx->fd);
-        if (thread_started) {
-            pthread_cancel(ctx->thread);
-            pthread_join(ctx->thread, NULL);
-            ctx->thread = 0;
-        }
-        VBMFlushFrame(chnNum);
-        VBMDestroyPool(chnNum);
-        fs_close_device(ctx->fd);
-        ctx->fd = -1;
+        /* The worker already saw ENABLED: stop it as DisableChn does. */
         ctx->running = 0;
+        fs_stream_off(ctx->fd);
+        fs_stop_worker(chnNum, ctx);
+        VBMFlushFrame(chnNum);
+        fs_close_chn_fd(chnNum, ctx);
+        VBMDestroyPool(chnNum);
         fs_chan_set_state(chnNum, 1);
         pthread_mutex_unlock(&g_fs_lock);
         return -1;
@@ -2149,7 +2133,6 @@ int IMP_FrameSource_EnableChn(int chnNum)
     return 0;
 }
 
-#if defined(PLATFORM_T31) || defined(PLATFORM_T23) || defined(PLATFORM_T20)
 /* After STREAMOFF the worker leaves within one select timeout (25 ms) plus
  * the delivery of a frame it had already dequeued. Anything near a second
  * is a genuine hang (a consumer blocking notify, a VBM mutex, ...). */
@@ -2186,7 +2169,37 @@ static int fs_wait_worker_exit(int chn, int timeout_ms)
     }
     return (int)(fs_now_ms() - start);
 }
-#endif
+
+/* Stop the pooling worker once running is cleared and STREAMOFF issued
+ * (the driver's wake-up edge for a worker in select() or DQBUF): let it
+ * leave by itself and cancel only a worker still running after
+ * FS_WORKER_STOP_TIMEOUT_MS. A worker cancelled while it delivers a frame
+ * can leave a VBM, group or encoder mutex locked. */
+static void fs_stop_worker(int chn, FsChnCtx *ctx)
+{
+    if (ctx->thread == 0)
+        return;
+    if (fs_wait_worker_exit(chn, FS_WORKER_STOP_TIMEOUT_MS) < 0) {
+        IMP_LOG_ERR("Framesource", "chn%d: pooling thread still running %d ms after STREAMOFF; cancelling it",
+                    chn, FS_WORKER_STOP_TIMEOUT_MS);
+        pthread_cancel(ctx->thread);
+    }
+    pthread_join(ctx->thread, NULL);
+    ctx->thread = 0;
+}
+
+/* Unpublish the channel's fd (release_Frame reads it from +0x1c4) before
+ * closing it, so a late release cannot QBUF on it or on its reuse. */
+static void fs_close_chn_fd(int chn, FsChnCtx *ctx)
+{
+    int fd = ctx->fd;
+
+    if (fd < 0)
+        return;
+    *(int32_t *)(fs_channel_base(chn) + 0x1c4) = -1;
+    ctx->fd = -1;
+    fs_close_device(fd);
+}
 
 #if defined(PLATFORM_T31)
 /* Stop the stream of every channel still enabled. Called on the way out of
@@ -2331,38 +2344,17 @@ int IMP_FrameSource_DisableChn(int chnNum)
     if (ctx->fd >= 0) {
         fs_stream_off(ctx->fd);
     }
-    if (ctx->thread != 0) {
-#if defined(PLATFORM_T23) || defined(PLATFORM_T20)
-        /* Both drivers wake the worker on STREAMOFF (open tx-isp T23: the
-         * DQBUF wait ends with -EPIPE; T20 vb2: poll reports POLLERR and
-         * DQBUF fails), so let it leave by itself and cancel only a worker
-         * that is still running after FS_WORKER_STOP_TIMEOUT_MS. A worker
-         * cancelled while it delivers a frame can leave a VBM or encoder
-         * mutex locked. */
-        if (fs_wait_worker_exit(chnNum, FS_WORKER_STOP_TIMEOUT_MS) < 0) {
-            IMP_LOG_ERR("Framesource", "chn%d: pooling thread still running %d ms after STREAMOFF; cancelling it",
-                        chnNum, FS_WORKER_STOP_TIMEOUT_MS);
-            pthread_cancel(ctx->thread);
-        }
-#else
-        pthread_cancel(ctx->thread);
-#endif
-        pthread_join(ctx->thread, NULL);
-        ctx->thread = 0;
-    }
+    /* The drivers wake the worker on STREAMOFF (open tx-isp T23: the DQBUF
+     * wait ends with -EPIPE; vb2 on T20/T21: poll reports POLLERR and DQBUF
+     * fails) and it checks running before every DQBUF, so it leaves by
+     * itself; the cancel is only the fallback for a worker that does not. */
+    fs_stop_worker(chnNum, ctx);
 #endif
     VBMFlushFrame(chnNum);
     /* Close before the pool memory goes back to the allocator: the ISP
      * driver drops the buffer addresses still queued in its hardware FIFO
-     * on release, and freed pool pages are handed out again. Unpublish the
-     * fd first so a late ReleaseFrame cannot QBUF on it. */
-    if (ctx->fd >= 0) {
-        int fd = ctx->fd;
-
-        *(int32_t *)(fs_channel_base(chnNum) + 0x1c4) = -1;
-        ctx->fd = -1;
-        fs_close_device(fd);
-    }
+     * on release, and freed pool pages are handed out again. */
+    fs_close_chn_fd(chnNum, ctx);
     VBMDestroyPool(chnNum);
 
     fs_chan_set_state(chnNum, 1);
