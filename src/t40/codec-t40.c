@@ -7576,9 +7576,22 @@ static void codec_sync_rc_cache(AL_CodecEncode *enc)
         rc->attrRcMode.attrH264Vbr.maxBitRate = bitrate_kbps / 1000u;
         rc->attrRcMode.attrH264Vbr.maxQp = enc->hw_params.max_qp;
         rc->attrRcMode.attrH264Vbr.minQp = enc->hw_params.min_qp;
+        /* The T23 worker keeps 0 as an application value, so the cache reports
+         * the extras verbatim there.  T30 keeps the historic read-back
+         * defaults until the application sets the mode (T20/T21 use the
+         * outFrmRate/maxGop layout below and have no such fields). */
+#if defined(PLATFORM_T23)
         rc->attrRcMode.attrH264Vbr.staticTime = enc->hw_params.static_time;
         rc->attrRcMode.attrH264Vbr.changePos = enc->hw_params.change_pos;
         rc->attrRcMode.attrH264Vbr.qualityLvl = enc->hw_params.quality_level;
+#else
+        rc->attrRcMode.attrH264Vbr.staticTime =
+            enc->hw_params.static_time ? enc->hw_params.static_time : 1u;
+        rc->attrRcMode.attrH264Vbr.changePos =
+            enc->hw_params.change_pos ? enc->hw_params.change_pos : 80u;
+        rc->attrRcMode.attrH264Vbr.qualityLvl =
+            enc->hw_params.quality_level ? enc->hw_params.quality_level : 2u;
+#endif
         rc->attrRcMode.attrH264Vbr.frmQPStep = enc->hw_params.frm_qp_step;
         rc->attrRcMode.attrH264Vbr.gopQPStep = enc->hw_params.gop_qp_step;
         rc->attrRcMode.attrH264Vbr.iBiasLvl = enc->hw_params.bias_level;

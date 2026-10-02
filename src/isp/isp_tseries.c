@@ -3268,6 +3268,55 @@ int IMP_ISP_Tuning_GetColorfxMode(IMPISPColorfxMode *pmode)
     }
     return result;
 }
+#else /* !PLATFORM_T21: T23/T30/T31 kernels expose no scene/colour-effect ctl */
+/* These are declared in the public header for every SoC but the vendor only
+ * wires them on T20/T21. Export failing stubs so a T23/T30/T31 app links
+ * (instead of hitting an undefined symbol) and reports the missing control
+ * once, mirroring the other unsupported calls in the tree. */
+static void tseries_scene_colorfx_unsupported(const char *name, int *reported)
+{
+    if (*reported) {
+        return;
+    }
+    *reported = 1;
+    fprintf(stderr, "[IMP-ISP] %s: not supported on this SoC\n", name);
+}
+
+int IMP_ISP_Tuning_SetSceneMode(IMPISPSceneMode mode)
+{
+    static int reported;
+
+    (void)mode;
+    tseries_scene_colorfx_unsupported("IMP_ISP_Tuning_SetSceneMode", &reported);
+    return -1;
+}
+
+int IMP_ISP_Tuning_GetSceneMode(IMPISPSceneMode *pmode)
+{
+    static int reported;
+
+    (void)pmode;
+    tseries_scene_colorfx_unsupported("IMP_ISP_Tuning_GetSceneMode", &reported);
+    return -1;
+}
+
+int IMP_ISP_Tuning_SetColorfxMode(IMPISPColorfxMode mode)
+{
+    static int reported;
+
+    (void)mode;
+    tseries_scene_colorfx_unsupported("IMP_ISP_Tuning_SetColorfxMode", &reported);
+    return -1;
+}
+
+int IMP_ISP_Tuning_GetColorfxMode(IMPISPColorfxMode *pmode)
+{
+    static int reported;
+
+    (void)pmode;
+    tseries_scene_colorfx_unsupported("IMP_ISP_Tuning_GetColorfxMode", &reported);
+    return -1;
+}
 #endif /* PLATFORM_T21 */
 
 int IMP_ISP_Tuning_SetShading(void *attr)
@@ -3326,6 +3375,63 @@ int IMP_ISP_Tuning_GetCsc_Attr(void *attr)
     return tseries_tuning_get_ptr(TISP_CID_CSC_ATTR, attr);
 }
 #endif /* !PLATFORM_T23 */
+
+#if defined(PLATFORM_T23)
+/* T23's tuning entry points live in isp_t23_tuning.c, which does not include
+ * the public header, so the Scene/Colorfx stubs are provided here where
+ * imp_isp.h already supplies the enum types.  The T23 image path has no
+ * scene-mode or colour-effect control, so report it once and fail, keeping
+ * the symbols exported for applications that reference them. */
+static void tseries_t23_scene_colorfx_unsupported(const char *name,
+                                                  int *reported)
+{
+    if (*reported) {
+        return;
+    }
+    *reported = 1;
+    fprintf(stderr, "[IMP-ISP] %s: not supported on this SoC\n", name);
+}
+
+int IMP_ISP_Tuning_SetSceneMode(IMPISPSceneMode mode)
+{
+    static int reported;
+
+    (void)mode;
+    tseries_t23_scene_colorfx_unsupported("IMP_ISP_Tuning_SetSceneMode",
+                                          &reported);
+    return -1;
+}
+
+int IMP_ISP_Tuning_GetSceneMode(IMPISPSceneMode *pmode)
+{
+    static int reported;
+
+    (void)pmode;
+    tseries_t23_scene_colorfx_unsupported("IMP_ISP_Tuning_GetSceneMode",
+                                          &reported);
+    return -1;
+}
+
+int IMP_ISP_Tuning_SetColorfxMode(IMPISPColorfxMode mode)
+{
+    static int reported;
+
+    (void)mode;
+    tseries_t23_scene_colorfx_unsupported("IMP_ISP_Tuning_SetColorfxMode",
+                                          &reported);
+    return -1;
+}
+
+int IMP_ISP_Tuning_GetColorfxMode(IMPISPColorfxMode *pmode)
+{
+    static int reported;
+
+    (void)pmode;
+    tseries_t23_scene_colorfx_unsupported("IMP_ISP_Tuning_GetColorfxMode",
+                                          &reported);
+    return -1;
+}
+#endif /* PLATFORM_T23 */
 
 /* Vendor ABI (T31): IMPISPWdrOutputMode *; the kernel copies 4 bytes. */
 int IMP_ISP_Tuning_SetWdr_OutputMode(void *mode)
@@ -4082,6 +4188,13 @@ int IMP_ISP_EnableTuning(void)
     if (tune == NULL) { close(tfd); return -1; }
     isp->tuning = tune;
     isp->tuning_state = 2;
+
+#if defined(PLATFORM_T21) && !defined(PLATFORM_T20)
+    /* The vendor zeroes its T21 denoise cache when tuning is enabled, so an
+     * unchanged RawDRC/Temper value is re-sent after DisableTuning followed
+     * by EnableTuning instead of being suppressed as "already applied". */
+    memset(&tseries_t21_dns_cache, 0, sizeof(tseries_t21_dns_cache));
+#endif
 
     int32_t mem_fd = open("/dev/mem", O_RDWR | O_SYNC);
     isp->mem_fd = mem_fd;
