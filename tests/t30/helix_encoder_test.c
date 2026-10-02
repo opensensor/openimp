@@ -24,6 +24,10 @@
 
 #include "dma_alloc.h"
 #include "t30/t30_helix_encoder.h"
+#if defined(PLATFORM_T21) && !defined(PLATFORM_T20)
+#include "t30/helix_bitstream.h"
+int IMP_Encoder_SetPoolSize(int size);
+#endif
 
 #define FAKE_FD 77
 #define T30_CHANNEL_REQUEST 0xc0386300u
@@ -91,6 +95,16 @@ int DMA_AllocDescriptor(IMPDMABufferInfo *info, int size, const char *tag)
     return 0;
 }
 
+/* The encoder keeps its buffers for the channel's lifetime: they must come
+ * from the top of rmem, clear of the FrameSource pools. */
+static unsigned int top_allocations;
+
+int DMA_AllocDescriptorTop(IMPDMABufferInfo *info, int size, const char *tag)
+{
+    top_allocations++;
+    return DMA_AllocDescriptor(info, size, tag);
+}
+
 int DMA_FreePhys(uint32_t phys_addr)
 {
     unsigned int i;
@@ -106,6 +120,17 @@ int DMA_FreePhys(uint32_t phys_addr)
     return -1;
 }
 
+int DMA_RmemStats(size_t *used, size_t *size, size_t *largest)
+{
+    if (used)
+        *used = 0;
+    if (size)
+        *size = 0;
+    if (largest)
+        *largest = 0;
+    return 0;
+}
+
 int DMA_RmemFlushCache(void *virt_addr, uint32_t size, int dir)
 {
     (void)virt_addr;
@@ -116,6 +141,13 @@ int DMA_RmemFlushCache(void *virt_addr, uint32_t size, int dir)
         flushed_before_run += size;
     return 0;
 }
+
+#if defined(PLATFORM_T21) && !defined(PLATFORM_T20)
+/* T21: one bitstream buffer shared by every channel (stock "vpuBs") */
+#define BS_TAG "helix-bs"
+#else
+#define BS_TAG "t30-helix-bs"
+#endif
 
 static FakeAllocation *allocation(const char *tag)
 {
@@ -166,7 +198,7 @@ int __wrap_ioctl(int fd, unsigned long request, ...)
         errno = EIO;
         return -1;
     }
-    memcpy((uint8_t *)allocation("t30-helix-bs")->mapping + 256u, payload,
+    memcpy((uint8_t *)allocation(BS_TAG)->mapping + 256u, payload,
            payload_length);
     if (run_sets_length)
         channel->output_len = run_length_override ? run_length_override
@@ -490,15 +522,46 @@ static void test_runtime_parameters(void)
 
 static void test_dma_footprint(void)
 {
+    unsigned int top_before = top_allocations;
     T30HelixEncoder *encoder = create(1920, 1080, 25, 25);
 
     assert(allocation("t30-helix-desc")->size == 16384u);
 #if defined(PLATFORM_T21) && !defined(PLATFORM_T20)
-    assert(allocation("t30-helix-emc") != NULL);
+    /* the captured 1080p EMC layout; the bitstream in the shared buffer */
+    assert(allocation("t30-helix-emc")->size == (2u << 20));
+    assert(allocation("t30-helix-bs") == NULL);
+    assert(allocation("helix-bs")->size >= (1u << 20) + 4096u);
 #else
     assert(allocation("t30-helix-emc") == NULL);
 #endif
     OpenIMP_T30_HelixDestroy(encoder);
+#if defined(PLATFORM_T21) && !defined(PLATFORM_T20)
+    /* 640x360: EMC scaled per macroblock (260 KiB), no buffer of its own
+     * for the bitstream */
+    encoder = create(640, 360, 25, 25);
+    assert(allocation("t30-helix-emc")->size == 266240u);
+    assert(allocation("t30-helix-bs") == NULL);
+    OpenIMP_T30_HelixDestroy(encoder);
+    /* the shared buffer is the stock pool size (1920 * 1080, page-rounded),
+     * and IMP_Encoder_SetPoolSize keeps the 1080p window inside a smaller
+     * pool: 600000 -> a 576 KiB window, no growth */
+    assert(allocation("helix-bs")->size == 2076672u);
+    OpenIMP_HelixBitstream_Exit();
+    assert(IMP_Encoder_SetPoolSize(600000) == 0);
+    encoder = create(1920, 1080, 25, 25);
+    assert(allocation("helix-bs")->size == 602112u);
+    {
+        PictureInfo info;
+
+        assert(encode(encoder, &info) == 0);
+    }
+    OpenIMP_T30_HelixDestroy(encoder);
+    OpenIMP_HelixBitstream_Exit();
+    assert(IMP_Encoder_SetPoolSize(0x1fa400) == 0);
+    assert(OpenIMP_HelixBitstream_Init() == 0);
+#endif
+    /* every encoder buffer is long-lived: all of them from the top */
+    assert(top_allocations > top_before);
 }
 
 static void test_large_frame_level(void)
@@ -609,8 +672,10 @@ int main(void)
     test_dma_footprint();
     test_bottom_padding();
     test_unaligned_width_rejected();
+    /* nothing leaks; the shared bitstream buffer is kept for the process */
     for (i = 0; i < 16u; i++)
-        assert(!allocations[i].mapping);
+        assert(!allocations[i].mapping ||
+               !strcmp(allocations[i].tag, "helix-bs"));
 #if defined(PLATFORM_T20)
     printf("T20 Helix encoder tests passed (%u runs)\n", runs);
 #elif defined(PLATFORM_T21)

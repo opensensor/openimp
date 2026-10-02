@@ -146,7 +146,9 @@ OpenIMP does the same (`HelixJpeg_QualityTables()`).
   OpenIMP adds the JFIF APP0 like its software encoder).
 * Bitstream buffer: the stock library sizes the JPEG output like the NV12
   picture (`aligned_w * aligned_h * 3 / 2`, `ijpege_init`); T20/T21/T30 have
-  no hardware overflow guard, T23 programs `JPGC_MAX_BS` (below).
+  no hardware overflow guard (OpenIMP encodes in stripes, below), T23
+  programs `JPGC_MAX_BS` (below). The core drops a job's final partial
+  128-byte burst (below).
 
 ## Differences between the SoCs
 
@@ -156,7 +158,7 @@ OpenIMP does the same (`HelixJpeg_QualityTables()`).
 | VPU base / SRAM | 0x13200000 / 0x132f0000 | same | same | 0x13100000 / 0x131f0000 |
 | channel node | 56 bytes | 56 | 56 | 88 (`max_bs_act`, IVDC fields) |
 | `vpu_id` | -1 | 0x02000001 | 0x02000001 | 0x02000001 |
-| `JPGC_MAX_BS` | - | - | - | yes |
+| `JPGC_MAX_BS` | - | ignored (PC420 probe) | - | yes |
 | EFE_CTRL extra bits | - | - | - | bit 7 (width % 16), bit 29 (IVDC) |
 | VDMA start register | `VDMA_TASKRG` | `VDMA_TASKRG_T21` | `VDMA_TASKRG` | `VDMA_TASKRG_T21` (kernel side only) |
 
@@ -178,22 +180,73 @@ OpenIMP does the same (`HelixJpeg_QualityTables()`).
 * rmem: the stock encoder allocates, per JPEG channel at channel creation
   (`ijpege_init` -> `hwicodec_pf_jpege_init_bpool`, `hwicodec_cal_bufsize`),
   one buffer of `width * (height + 16) * 3 / 2 + 256` bytes (1 KiB aligned)
-  plus 20 KiB for the command list, from the VBM (rmem), and keeps it.
-  OpenIMP allocates one buffer shared by all JPEG channels (jobs are
-  serialised) when a JPEG channel is created (`OpenIMP_HelixJpeg_Reserve`,
-  `OPENIMP_HELIX_JPEG_RESERVE_AT_CREATE=0` defers it to the first picture),
-  grows it for a larger channel and keeps it: the 8 KiB command list
-  followed by the bitstream (the kernel's RUN writes back and invalidates
-  the first MiB from the command list). Bitstream: T20/T21/T30 have no
-  hardware limit (their kernel and libimp never use `JPGC_MAX_BS`), so it
-  holds the whole NV12 picture as in the stock library (3.0 MiB at 1080p).
-  A strict worst case cannot be bounded below that: with Annex K codes a
-  block can take up to ~1500 bits at quality 75 and byte stuffing can
-  double it, several times the NV12 size; the stock library relies on
-  real pictures. T23 programs `JPGC_MAX_BS` and caps the buffer at 1 MiB
-  (`OPENIMP_HELIX_JPEG_BS_KB`); the stock T23 library uses one 2.4 MB
-  (600 KB on some variants) encoder pool shared by H.264 and JPEG
-  (`IMP_Encoder_SetPoolSize`) and programs `JPGC_MAX_BS` with its size.
+  plus 20 KiB for the command list, from the VBM (rmem), and keeps it
+  until DestroyChn. T20/T30: OpenIMP allocates one buffer shared by all
+  JPEG channels (jobs are serialised) when a JPEG channel is created
+  (`OpenIMP_HelixJpeg_Reserve`, `OPENIMP_HELIX_JPEG_RESERVE_AT_CREATE=0`
+  defers it to the first picture), the 8 KiB command list followed by the
+  NV12-sized bitstream as in the stock library (the kernel's RUN writes
+  back and invalidates the first MiB from the command list), and frees it
+  when the last JPEG channel is destroyed (`OpenIMP_HelixJpeg_Release`);
+  `IMP_System_Exit` closes the VPU channel and frees everything
+  (`OpenIMP_HelixJpeg_Exit`). T23 programs `JPGC_MAX_BS` and caps the
+  buffer at 1 MiB (`OPENIMP_HELIX_JPEG_BS_KB`); the stock T23 library uses
+  one 2.4 MB (600 KB on some variants) encoder pool shared by H.264 and
+  JPEG (`IMP_Encoder_SetPoolSize`) and programs `JPGC_MAX_BS` with its
+  size.
+* rmem on T21 (`src/t30/helix_bitstream.c`): the stock 1.0.33 library has
+  one bitstream buffer for everything, `EncoderInit`'s "vpuBs" (0x1fa400 =
+  1920 * 1080 bytes for the T21 CPU ids unless `IMP_Encoder_SetPoolSize`
+  set a size before `IMP_System_Init`), taken by every H.264 channel and
+  the JPEG encoder in turn (`bsbufsem`): in `hwicodec_init_soc_bpool` the
+  type-2 (bitstream) entries of both `hwicodec_pf_h264e_init_bpool` and
+  `hwicodec_pf_jpege_init_bpool` point at it. The `width * (height + 16) *
+  3 / 2` buffer above is the type-1 source copy, only made when the source
+  is not read in place. OpenIMP's T21 build does the same: `IMP_System_Init`
+  allocates the shared buffer with the pool size (page-rounded: 2076672
+  bytes), `IMP_Encoder_SetPoolSize` changes it, `IMP_System_Exit` frees
+  it; it is held from the command list to the copy into the stream. The
+  H.264 windows (at most 1 MiB + 4 KiB) are kept inside the pool size; a
+  smaller pool than one window or one JPEG stripe grows the buffer (the
+  larger one is allocated before the old one is freed). Cache maintenance
+  and the length check per H.264 picture cover its window only. All
+  long-lived Helix buffers (H.264 command list, EMC scratch, references,
+  shared bitstream) come from the top of rmem, the FrameSource pools from
+  the bottom.
+* Bitstream overflow guard (T20/T21/T30): these cores ignore `JPGC_MAX_BS`.
+  Probe on the PC420 (T21, `OPENIMP_HELIX_JPEG_PROBE_MAX_BS_KB=16`): with a
+  16 KiB limit programmed every 1080p job wrote 34 KB (18 KB into the
+  guard), status 0x11, no truncation flag: `LIMIT IGNORED`. A JPEG cannot
+  be bounded below several times its NV12 size (Annex K codes: a block can
+  take 1662 luma / 1410 chroma bits, byte stuffing doubles it: 2368 bytes
+  per MCU, `HelixJpeg_McuWorstBytes`), so a picture whose worst case does
+  not fit in the buffer is encoded in horizontal stripes of whole
+  macroblock rows, each job sized so that its worst case fits in the rest
+  of the buffer: no job can write past it, whatever the picture. Each job
+  starts with fresh DC predictors; the file joins the stripes with RST0..7
+  markers and a DRI of the stripe's MCU count (the core's own restart
+  register `JPGC_NRSM` showed no effect). 1080p in the 2 MB T21 buffer: 12
+  jobs of 6 (+1) rows, 41-68 ms per picture on the PC420 (one job before:
+  37-47 ms); 360p: 2 jobs.
+* Dropped final burst: the core writes its bitstream in 128-byte bursts
+  and drops the last, partial one of a job. On the PC420 the final 1..127
+  bytes of a job were not in memory after RUN (also 5 ms later), and the
+  next job's first bytes later landed at that old address. With one job
+  per picture, as in the stock library, every JPEG loses up to 127 bytes
+  at its end (decoders conceal it before EOI, but on a small picture it is
+  visible). OpenIMP therefore lets every job encode one more macroblock
+  row (two when narrower than 512 pixels: at least 128 bytes, a flat MCU
+  codes to 4 bytes) - the next stripe's first row, or for the last stripe
+  the memory behind the picture when that is rmem (read only, never
+  shown; otherwise the last stripe ends with its job like a stock
+  picture) - and cuts the stripe after its own MCUs: the entropy-coded data
+  is parsed on the CPU up to that MCU (Huffman codes only) and the last
+  byte padded with 1 bits. The next job starts behind the dropped burst.
+  Device check: 16 snapshots (1080p and 360p), every stripe decodes to
+  exactly its MCU count with 0..7 padding bits, ffmpeg reports no error
+  (before this, ffmpeg found errors at the stripe ends of every 1080p
+  picture). The host test's fake core drops the final partial burst of
+  every job the same way.
 * Bitstream limit reached (T23): the job completes normally
   (ENDFLAG|JPGEND) with a truncated bitstream; the kernel returns
   `JPGC_ACT_BS` in `max_bs_act` and bit 29 flags the truncation (the stock
@@ -215,7 +268,11 @@ OpenIMP does the same (`HelixJpeg_QualityTables()`).
 * JPEG channels whose framesource feeds no video channel (timps' dedicated
   `jpeg.*` channel with its own framesource and group) take their frames
   from the framesource directly; before, they waited for a video channel's
-  fan-out that never came.
+  fan-out that never came. The choice is made at the JPEG channel's
+  `IMP_Encoder_StartRecvPic` from the bind topology (a registered video
+  channel on the same framesource, as the stock group membership), not
+  per poll from the video channels' receiving state, so a video
+  `StopRecvPic` cannot make both take frames from the framesource.
 A source copy for frames
   outside rmem is per job. No allocation leaves less than the reserve free
   in rmem (1/16 of the arena, at least 512 KiB,
@@ -234,7 +291,10 @@ A source copy for frames
   quantizer, time, rmem use and largest free block, and the failure reason.
   `OPENIMP_HELIX_JPEG_MAX_BS=1` also programs `JPGC_MAX_BS` on T20/T21/T30
   (and then sizes the buffer as on T23) to test whether the register works
-  there.
+  there (it does not on the T21, see above).
+  `OPENIMP_HELIX_JPEG_STRIPE_ROWS=n` limits the stripes to n macroblock
+  rows (testing the striped path); the stats line shows the jobs
+  (`stripes=`).
 * `IMP_Encoder_InputJpege` (T23): reads VBM (rmem) sources in place, others
   from a copy.
 * Build: `OPENIMP_SW_JPEG=0` (default on these SoCs) leaves the software

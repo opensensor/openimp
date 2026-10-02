@@ -190,6 +190,8 @@ typedef struct {
 #endif
     uint64_t jpeg_frame_generation;
     int jpeg_frame_requested;
+    int jpeg_fanout;                /* JPEG frames from a video channel's
+                                     * fan-out, fixed at StartRecvPic */
     pthread_cond_t jpeg_frame_ready;
     IMPEncoderCHNAttr attr;
     IMPEncoderPack packs[P2_MAX_PUBLIC_PACKS];
@@ -634,12 +636,18 @@ static int p2_copy_requested_jpeg_frames(int source_channel,
     return 0;
 }
 
+static int p2_find_source_channel(int encoder_group);
+
 /* Whether a JPEG channel gets its frames from a video channel on the same
  * framesource (fan-out above).  A JPEG channel whose framesource feeds no
- * receiving video channel - timps' dedicated jpeg.* channel has its own
+ * registered video channel - timps' dedicated jpeg.* channel has its own
  * framesource and group - takes frames from the framesource itself, as the
  * stock encoder does for any bound channel; waiting for a fan-out there
- * never ended. */
+ * never ended.  Decided at the JPEG channel's StartRecvPic from the bind
+ * topology (registered channels, as the stock group membership), not per
+ * poll from the video channels' receiving state: a video StopRecvPic then
+ * cannot make the JPEG channel take frames from the framesource while the
+ * video channel's last poll still does. */
 static int p2_jpeg_frames_from_fanout(const P2EncoderChannel *jpeg)
 {
     int channel;
@@ -648,9 +656,8 @@ static int p2_jpeg_frames_from_fanout(const P2EncoderChannel *jpeg)
         const P2EncoderChannel *other = &p2_channels[channel];
 
         if (other != jpeg && other->created && other->registered &&
-            __atomic_load_n(&other->receiving, __ATOMIC_RELAXED) &&
             other->codec_type != IMP_ENC_TYPE_JPEG &&
-            other->source_channel == jpeg->source_channel)
+            p2_find_source_channel(other->group) == jpeg->source_channel)
             return 1;
     }
     return 0;
@@ -1603,10 +1610,14 @@ int IMP_Encoder_StartRecvPic(int channel)
     ch->osd_group = p2_find_osd_group(ch->group);
     ch->next_frame_due_us = 0;
     ch->output_timestamp_us = 0;
+    if (ch->codec_type == IMP_ENC_TYPE_JPEG)
+        ch->jpeg_fanout = p2_jpeg_frames_from_fanout(ch);
     ch->receiving = 1;
     pthread_mutex_unlock(&ch->lock);
-    p2_trace("openimp/P2: StartRecv ch=%d source=%d\n",
-             channel, ch->source_channel);
+    p2_trace("openimp/P2: StartRecv ch=%d source=%d%s\n",
+             channel, ch->source_channel,
+             ch->codec_type != IMP_ENC_TYPE_JPEG ? ""
+             : ch->jpeg_fanout ? " jpeg=fan-out" : " jpeg=framesource");
     return 0;
 }
 
@@ -1882,8 +1893,7 @@ static int p2_polling_stream(int channel, uint32_t timeout_ms)
     }
     pthread_mutex_unlock(&ch->lock);
 
-    if (ch->codec_type == IMP_ENC_TYPE_JPEG &&
-        p2_jpeg_frames_from_fanout(ch)) {
+    if (ch->codec_type == IMP_ENC_TYPE_JPEG && ch->jpeg_fanout) {
         if (p2_wait_for_jpeg_frame(ch, timeout_ms, &frame) != 0)
             goto done;
     } else {

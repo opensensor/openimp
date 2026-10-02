@@ -238,7 +238,6 @@ static unsigned int t21_mau_context_index(unsigned int index)
     return index + 0xd3u;
 }
 
-#if defined(PLATFORM_T23)
 /* The EMC block keeps per-macroblock side information in five buffers.
  * The T21 1080p layout (8160 macroblocks: offsets 0x30000, 0xb0000,
  * 0xd0000, 0x150000 in a 2 MiB scratch, as captured from the OEM encoder)
@@ -272,7 +271,6 @@ uint32_t T23_HelixScratchLayout(uint32_t mb_width, uint32_t mb_height,
     last = (uint32_t)(((uint64_t)0xb0000u * mbs + 8159u) / 8160u);
     return offsets[3] + ((last + 4095u) & ~4095u) + 4096u;
 }
-#endif
 
 int T21_H264_BuildDescriptor(const T21H264SliceConfig *config,
                              size_t *pair_count)
@@ -460,7 +458,6 @@ int T21_H264_BuildDescriptor(const T21H264SliceConfig *config,
     EMIT(0x30000, ((uint32_t)config->last_mby << 8) |
                   ((uint32_t)config->mb_width - 1u));
     EMIT(0x30004, config->bitstream & ~0x7fu);
-#if defined(PLATFORM_T23)
     if (config->scratch_offset[0]) {
         EMIT(0x30018, config->scratch_base);
         EMIT(0x3004c, config->scratch_base + config->scratch_offset[0]);
@@ -468,15 +465,14 @@ int T21_H264_BuildDescriptor(const T21H264SliceConfig *config,
         EMIT(0x30058, config->scratch_base + config->scratch_offset[3]);
         EMIT(0x30054, config->scratch_base + config->scratch_offset[2]);
         EMIT(0x30040, config->bitstream_kib ? config->bitstream_kib : 0x400u);
-    } else
-#endif
-    {
-    EMIT(0x30018, config->scratch_base);
-    EMIT(0x3004c, config->scratch_base + 0x30000u);
-    EMIT(0x30050, config->scratch_base + 0xb0000u);
-    EMIT(0x30058, config->scratch_base + 0x150000u);
-    EMIT(0x30054, config->scratch_base + 0xd0000u);
-    EMIT(0x30040, 0x400u);
+    } else {
+        /* the captured T21 1080p layout in a 2 MiB scratch */
+        EMIT(0x30018, config->scratch_base);
+        EMIT(0x3004c, config->scratch_base + 0x30000u);
+        EMIT(0x30050, config->scratch_base + 0xb0000u);
+        EMIT(0x30058, config->scratch_base + 0x150000u);
+        EMIT(0x30054, config->scratch_base + 0xd0000u);
+        EMIT(0x30040, 0x400u);
     }
     EMIT(0x30024, 1);
     for (i = 0; i < 8u; i++)

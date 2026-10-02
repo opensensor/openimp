@@ -41,6 +41,13 @@
 #define HELIX_SMALL_WINDOWS 1
 #endif
 
+#if defined(HELIX_T21_SYNTAX) && !defined(PLATFORM_T23)
+/* T21: one bitstream buffer for all channels and JPEG, like the stock
+ * "vpuBs" (src/t30/helix_bitstream.h). */
+#define HELIX_SHARED_BITSTREAM 1
+#include "t30/helix_bitstream.h"
+#endif
+
 #if defined(HELIX_T21_SYNTAX)
 #include "t21/t21_h264_descriptor.h"
 typedef T21H264SliceConfig PlatformH264SliceConfig;
@@ -84,10 +91,10 @@ typedef T30H264SliceConfig PlatformH264SliceConfig;
 /* The longest command list (T21 P slice) is 2060 words, about 8 KiB. */
 #define T30_DESCRIPTOR_WINDOW (1u << 14)
 #if defined(HELIX_SMALL_WINDOWS)
-/* T23 sizes its bitstream window per picture (OpenIMP_T30_HelixCreate) */
+/* T20's window; T21 and T23 size theirs per picture
+ * (OpenIMP_T30_HelixCreate) */
 #define T30_BITSTREAM_WINDOW  (1u << 20)
 #endif
-#define T30_EMC_SIZE          (1u << 21)
 #define T30_DBLK_SIZE         (1u << 20)
 #define T30_RECON_SIZE        (1u << 18)
 #define T30_MV_SIZE           (1u << 11)
@@ -206,12 +213,14 @@ struct T30HelixEncoder {
     int force_idr;
     OpenIMPT31RateController rate_control;
     int rate_control_enabled;
-#if defined(PLATFORM_T23)
-    uint32_t failures;          /* consecutive failed pictures */
-    uint32_t input_size;        /* NV12 bytes the VPU reads per frame */
+#if defined(HELIX_T21_SYNTAX)
     uint32_t scratch_offset[4]; /* EMC per-macroblock buffer layout */
     uint32_t scratch_size;
     uint32_t bitstream_kib;     /* EMC bitstream window (0x30040) */
+#endif
+#if defined(PLATFORM_T23)
+    uint32_t failures;          /* consecutive failed pictures */
+    uint32_t input_size;        /* NV12 bytes the VPU reads per frame */
     uint32_t retries;           /* jobs repeated after an odd result */
     uint32_t late_status;       /* completed jobs with status 0x100 */
     int strict_status;          /* OPENIMP_T23_HELIX_STRICT_STATUS=1 */
@@ -229,15 +238,13 @@ static void t30_dma_release(IMPDMABufferInfo *dma)
 static int t30_dma_allocate(IMPDMABufferInfo *dma, uint32_t size,
                             const char *tag)
 {
-#if defined(PLATFORM_T23)
-    /* Long-lived encoder buffers go to the top of the reserved arena, away
+    /* Long-lived encoder buffers (kept from the first picture or channel
+     * creation to DestroyChn) go to the top of the reserved arena, away
      * from the FrameSource pools that are freed and re-created from the
-     * bottom whenever a channel idles. */
+     * bottom whenever a channel idles; mixed in between them, a pool's
+     * hole would be cut up and its re-creation could fail. */
     if (size > INT32_MAX ||
         DMA_AllocDescriptorTop(dma, (int)size, tag) != 0 ||
-#else
-    if (size > INT32_MAX || DMA_AllocDescriptor(dma, (int)size, tag) != 0 ||
-#endif
         !dma->phys_addr || !dma->virt_addr) {
         LOG_CODEC("T30 Helix: DMA allocation failed tag=%s size=%u", tag,
                   size);
@@ -256,6 +263,16 @@ static int t30_dma_allocate(IMPDMABufferInfo *dma, uint32_t size,
     }
     return 0;
 }
+
+#if defined(HELIX_SHARED_BITSTREAM)
+/* Shared-buffer bytes one picture needs: the CPU-written slice header area
+ * and the window behind it, with a page of slack so even a full window
+ * stays inside the buffer. */
+static uint32_t t30_bitstream_bytes(const T30HelixEncoder *encoder)
+{
+    return (encoder->bitstream_kib << 10) + 4096u;
+}
+#endif
 
 static void t30_init_parameter_sets(T30HelixEncoder *encoder)
 {
@@ -411,11 +428,9 @@ static void t30_fill_slice(T30HelixEncoder *encoder,
     slice->descriptor_words = encoder->descriptor.size / sizeof(uint32_t);
 #if defined(HELIX_T21_SYNTAX)
     slice->scratch_base = encoder->emc.phys_addr;
-#if defined(PLATFORM_T23)
     memcpy(slice->scratch_offset, encoder->scratch_offset,
            sizeof(slice->scratch_offset));
     slice->bitstream_kib = encoder->bitstream_kib;
-#endif
 #else
     /* SDK 1.0.5 selects the alternate DCS threshold for its substream. */
     slice->dcs_oth = encoder->params.width <= 640u ? 1u : 0u;
@@ -549,11 +564,13 @@ int OpenIMP_T30_HelixCreate(T30HelixEncoder **encoder_out,
     encoder->channel.thread_id = -1;
     if (ioctl(encoder->fd, T30_CHANNEL_REQUEST, &encoder->channel) != 0)
         goto fail;
-#if defined(PLATFORM_T23)
-    /* Size the per-channel buffers for the picture: EMC per-macroblock
-     * scratch, and a bitstream window of one raw picture (an all-I_PCM
-     * picture fits; at least 256 KiB, at most the 1 MiB of the T21
-     * layout). */
+#if defined(HELIX_T21_SYNTAX)
+    /* Size the per-channel buffers for the picture, as the stock encoder
+     * sizes its per-channel buffer pool from the channel's resolution:
+     * EMC per-macroblock scratch (the captured 2 MiB layout at 1080p, 0.26
+     * MiB at 360p), and a bitstream window of one raw picture (an
+     * all-I_PCM picture fits; at least 256 KiB, at most the 1 MiB of the
+     * T21 layout). */
     encoder->scratch_size = T23_HelixScratchLayout(
         (params->width + 15u) / 16u, (params->height + 15u) / 16u,
         encoder->scratch_offset);
@@ -565,8 +582,23 @@ int OpenIMP_T30_HelixCreate(T30HelixEncoder **encoder_out,
             window = 256u << 10;
         if (window > (1u << 20))
             window = 1u << 20;
+#if defined(HELIX_SHARED_BITSTREAM)
+        /* the window lies in the shared buffer: keep it inside the pool
+         * size (IMP_Encoder_SetPoolSize), down to the 256 KiB minimum */
+        {
+            uint32_t pool = OpenIMP_HelixBitstream_PoolSize();
+
+            if (pool > 4096u && window + 4096u > pool) {
+                window = (pool - 4096u) & ~0xffffu;
+                if (window < (256u << 10))
+                    window = 256u << 10;
+            }
+        }
+#endif
         encoder->bitstream_kib = (uint32_t)(window >> 10);
     }
+#endif
+#if defined(PLATFORM_T23)
     for (i = 0; i < 2u; i++) {
         if (t30_dma_allocate(&encoder->reference[i].dma,
                              (uint32_t)reference_size,
@@ -588,18 +620,21 @@ int OpenIMP_T30_HelixCreate(T30HelixEncoder **encoder_out,
         goto fail;
 #else
     if (t30_dma_allocate(&encoder->descriptor, T30_DESCRIPTOR_WINDOW,
-                         "t30-helix-desc") != 0 ||
-#if defined(PLATFORM_T21) && !defined(PLATFORM_T20)
-        /* Only the T21 command list points the VPU at an EMC scratch area. */
-        t30_dma_allocate(&encoder->emc, T30_EMC_SIZE,
+                         "t30-helix-desc") != 0)
+        goto fail;
+#if defined(HELIX_SHARED_BITSTREAM)
+    /* Only the T21 command list points the VPU at an EMC scratch area.
+     * The bitstream goes to the shared buffer, taken per picture. */
+    if (t30_dma_allocate(&encoder->emc, encoder->scratch_size,
                          "t30-helix-emc") != 0 ||
-#endif
-#if defined(PLATFORM_T21)
-        t30_dma_allocate(&encoder->temporary, T30_BITSTREAM_WINDOW,
-#else
-        t30_dma_allocate(&encoder->temporary, (uint32_t)frame_size * 2u,
-#endif
+        OpenIMP_HelixBitstream_Reserve(t30_bitstream_bytes(encoder)) != 0)
+#elif defined(PLATFORM_T21)
+    if (t30_dma_allocate(&encoder->temporary, T30_BITSTREAM_WINDOW,
                          "t30-helix-bs") != 0)
+#else
+    if (t30_dma_allocate(&encoder->temporary, (uint32_t)frame_size * 2u,
+                         "t30-helix-bs") != 0)
+#endif
         goto fail;
     for (i = 0; i < 2u; i++) {
         if (t30_dma_allocate(&encoder->reference[i].dma,
@@ -621,6 +656,17 @@ int OpenIMP_T30_HelixCreate(T30HelixEncoder **encoder_out,
     LOG_CODEC("T30 Helix: native encoder ready channel=%u %ux%u desc=0x%08x",
               encoder->channel.channel_id, params->width, params->height,
               encoder->descriptor.phys_addr);
+#if defined(HELIX_T21_SYNTAX) && !defined(PLATFORM_T23)
+    IMP_LOG_INFO("Encoder", "T21 Helix: encoder ready channel=%u %ux%u "
+                 "rmem desc=0x%08x emc=0x%08x/%uK ref=0x%08x/0x%08x %uK "
+                 "each, bitstream window %uK in the shared %uK buffer",
+                 encoder->channel.channel_id, params->width, params->height,
+                 encoder->descriptor.phys_addr, encoder->emc.phys_addr,
+                 encoder->scratch_size >> 10, encoder->reference[0].y,
+                 encoder->reference[1].y, (uint32_t)(reference_size >> 10),
+                 encoder->bitstream_kib,
+                 OpenIMP_HelixBitstream_Size() >> 10);
+#endif
 #if defined(PLATFORM_T23)
     IMP_LOG_INFO("Encoder", "T23 Helix: native encoder ready channel=%u "
                  "%ux%u rc=%u bitrate=%u fps=%u/%u gop=%u qp=%u [%u,%u] "
@@ -696,9 +742,42 @@ static void t30_pad_input_rows(const T30HelixEncoder *encoder,
 }
 #endif
 
+static int t30_helix_encode_job(T30HelixEncoder *encoder,
+                                const IMPFrameInfo *frame,
+                                HWStreamBuffer **stream_out);
+
 int OpenIMP_T30_HelixEncode(T30HelixEncoder *encoder,
                             const IMPFrameInfo *frame,
                             HWStreamBuffer **stream_out)
+{
+#if defined(HELIX_SHARED_BITSTREAM)
+    int ret;
+
+    if (!encoder || !frame || !stream_out || !frame->phyAddr)
+        return -1;
+    /* The picture's bitstream goes to the shared buffer: hold it from the
+     * slice header to the copy into the access unit. */
+    if (OpenIMP_HelixBitstream_Lock(t30_bitstream_bytes(encoder),
+                                    &encoder->temporary) != 0) {
+        LOG_CODEC("T30 Helix: no shared bitstream buffer");
+        return -1;
+    }
+    /* this picture's part of the shared buffer: the slice header area and
+     * the window, so cache maintenance and the length check cover the
+     * window and not the whole (2 MB) buffer */
+    encoder->temporary.size = t30_bitstream_bytes(encoder);
+    ret = t30_helix_encode_job(encoder, frame, stream_out);
+    memset(&encoder->temporary, 0, sizeof(encoder->temporary));
+    OpenIMP_HelixBitstream_Unlock();
+    return ret;
+#else
+    return t30_helix_encode_job(encoder, frame, stream_out);
+#endif
+}
+
+static int t30_helix_encode_job(T30HelixEncoder *encoder,
+                                const IMPFrameInfo *frame,
+                                HWStreamBuffer **stream_out)
 {
     uint8_t *temporary;
     uint8_t *output;

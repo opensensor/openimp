@@ -6820,6 +6820,8 @@ struct AL_CodecEncode {
 #endif
 #if defined(PLATFORM_T30)
     T30HelixEncoder *t30_helix;    /* Native T30 /dev/soc_vpu encoder */
+    uint32_t t30_helix_width;      /* picture size t30_helix was made for */
+    uint32_t t30_helix_height;
 #endif
 #if defined(PLATFORM_T23)
     T30HelixEncoder *t30_helix;    /* Native T21-family Helix encoder */
@@ -7898,6 +7900,69 @@ int AL_Codec_Encode_SetStreamBufferCount(void *codec, int count)
  * AL_Codec_Encode_Create - based on decompilation at 0x7950c
  * Creates a codec encoder instance
  */
+#if defined(PLATFORM_T30)
+/* Fills the rate-control defaults the encoder needs and creates the native
+ * Helix encoder (command list, EMC scratch, bitstream window, the two
+ * reconstruction/reference pictures) for width x height. */
+static int codec_t30_helix_create(AL_CodecEncode *enc, uint32_t width,
+                                  uint32_t height)
+{
+    enc->hw_params.width = width;
+    enc->hw_params.height = height;
+    if (!enc->hw_params.fps_num)
+        enc->hw_params.fps_num = 25u;
+    if (!enc->hw_params.fps_den)
+        enc->hw_params.fps_den = 1u;
+    if (!enc->hw_params.gop_length)
+        enc->hw_params.gop_length = 25u;
+    if (!enc->hw_params.bitrate)
+        enc->hw_params.bitrate = 2000000u;
+    if (OpenIMP_T30_HelixCreate(&enc->t30_helix, &enc->hw_params) != 0) {
+        enc->t30_helix = NULL;
+        return -1;
+    }
+    enc->t30_helix_width = width;
+    enc->t30_helix_height = height;
+    enc->use_hardware = 3;
+    return 0;
+}
+
+/* The stock encoder allocates a channel's buffer pool (references, EMC,
+ * command list) in IMP_Encoder_CreateChn and keeps it until DestroyChn,
+ * so every channel's buffers are taken at start-up, in channel order,
+ * before the FrameSource pools start coming and going.  Do the same
+ * instead of waiting for the first picture: a channel that first streams
+ * while the other channel's pool is live then needs no new rmem.  If it
+ * fails here the first picture tries again.  OPENIMP_HELIX_LAZY_CREATE=1
+ * always waits for the first picture; T20/T30 do unless it is 0. */
+static void codec_t30_helix_precreate(AL_CodecEncode *enc)
+{
+    const char *lazy = getenv("OPENIMP_HELIX_LAZY_CREATE");
+    size_t used = 0, total = 0, largest = 0;
+
+    if (lazy && lazy[0] == '1')
+        return;
+#if !defined(PLATFORM_T21) || defined(PLATFORM_T20)
+    /* device-tested on T21 only: T20/T30 keep making it at the first
+     * picture unless OPENIMP_HELIX_LAZY_CREATE=0 asks for it */
+    if (!lazy || lazy[0] != '0')
+        return;
+#endif
+    if (codec_param_read_codec_type(enc->codec_param) != IMP_ENC_TYPE_AVC ||
+        !enc->hw_params.width || !enc->hw_params.height)
+        return;
+    if (codec_t30_helix_create(enc, enc->hw_params.width,
+                               enc->hw_params.height) == 0)
+        return;
+    (void)DMA_RmemStats(&used, &total, &largest);
+    IMP_LOG_WARN("Encoder", "Helix encoder for %ux%u not created at channel "
+                 "creation (rmem used %zu of %zu, largest free block %zu); "
+                 "retrying at the first picture",
+                 enc->hw_params.width, enc->hw_params.height, used, total,
+                 largest);
+}
+#endif
+
 int AL_Codec_Encode_Create(void **codec, void *params) {
     CODEC_STARTUP_MARKER("openimp/codec marker A0 Create entry\n");
     codec_startup_trace("openimp/codec startup: Create entry codec=%p params=%p\n",
@@ -8047,6 +8112,9 @@ int AL_Codec_Encode_Create(void **codec, void *params) {
     enc->loop_filter_tc_offset = 0;
 
     codec_sync_rc_cache(enc);
+#if defined(PLATFORM_T30)
+    codec_t30_helix_precreate(enc);
+#endif
     CODEC_STARTUP_MARKER("openimp/codec marker A6 params complete\n");
     codec_startup_trace("openimp/codec startup: params done size=%ux%u bitrate=%u qp=%u/%u/%u\n",
                         (unsigned int)enc->hw_params.width,
@@ -8079,6 +8147,14 @@ int AL_Codec_Encode_Create(void **codec, void *params) {
     pthread_mutex_unlock(&g_codec_mutex);
 
     /* No free slots */
+#if defined(PLATFORM_T30)
+    OpenIMP_T30_HelixDestroy(enc->t30_helix);
+    enc->t30_helix = NULL;
+#endif
+#if defined(PLATFORM_T30) || defined(PLATFORM_T23)
+    if (enc->hw_params.codec_type == IMP_ENC_TYPE_JPEG)
+        OpenIMP_HelixJpeg_Release();
+#endif
     Fifo_Deinit(enc->fifo_frames);
     Fifo_Deinit(enc->fifo_streams);
     free(enc->fifo_frames);
@@ -8122,6 +8198,11 @@ static int al_codec_encode_destroy_impl(void *codec) {
 #if defined(PLATFORM_T30)
     OpenIMP_T30_HelixDestroy(enc->t30_helix);
     enc->t30_helix = NULL;
+#endif
+#if defined(PLATFORM_T30) || defined(PLATFORM_T23)
+    /* pairs with OpenIMP_HelixJpeg_Reserve in AL_Codec_Encode_Create */
+    if (enc->hw_params.codec_type == IMP_ENC_TYPE_JPEG)
+        OpenIMP_HelixJpeg_Release();
 #endif
 
     /* Deinitialize hardware encoder(s) - OEM parity: no separate deinit function */
@@ -9317,23 +9398,20 @@ static int al_codec_encode_process_impl(void *codec, void *frame,
 
 #if defined(PLATFORM_T30)
     if (codec_param_read_codec_type(enc->codec_param) == IMP_ENC_TYPE_AVC) {
-        if (!enc->t30_helix) {
-            enc->hw_params.width = width;
-            enc->hw_params.height = height;
-            if (!enc->hw_params.fps_num)
-                enc->hw_params.fps_num = 25u;
-            if (!enc->hw_params.fps_den)
-                enc->hw_params.fps_den = 1u;
-            if (!enc->hw_params.gop_length)
-                enc->hw_params.gop_length = 25u;
-            if (!enc->hw_params.bitrate)
-                enc->hw_params.bitrate = 2000000u;
-            if (OpenIMP_T30_HelixCreate(&enc->t30_helix,
-                                        &enc->hw_params) != 0) {
-                codec_set_error(enc, -1);
-                return -1;
-            }
-            enc->use_hardware = 3;
+        if (enc->t30_helix && (enc->t30_helix_width != width ||
+                               enc->t30_helix_height != height)) {
+            /* made at CreateChn for another size than the source sends */
+            IMP_LOG_INFO("Encoder", "channel %d: pictures are %ux%u, the "
+                         "encoder was made for %ux%u: re-creating it",
+                         enc->channel_id - 1, width, height,
+                         enc->t30_helix_width, enc->t30_helix_height);
+            OpenIMP_T30_HelixDestroy(enc->t30_helix);
+            enc->t30_helix = NULL;
+        }
+        if (!enc->t30_helix &&
+            codec_t30_helix_create(enc, width, height) != 0) {
+            codec_set_error(enc, -1);
+            return -1;
         }
         {
             /* Setters run on the caller's thread and only touch hw_params;

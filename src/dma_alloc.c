@@ -95,6 +95,7 @@ static size_t g_rmem_size;
 static void *g_rmem_virt_base = NULL;
 static RmemArena g_rmem_arena;    /* under g_alloc_mutex */
 static int g_rmem_arena_ready = 0;
+static int g_rmem_oom_mapped = 0;   /* map logged at the first OOM */
 static char g_chosen_dev_path[64] = {0};
 
 static const uint32_t kCompatMaxAllocSize = 256u * 1024u * 1024u;
@@ -592,14 +593,7 @@ static int dma_free_buffer(DMABufferRecord *buf)
     return 0;
 }
 
-#if defined(PLATFORM_T23)
-#define DMA_TOP_PARAM , int top
-#define DMA_TOP_ARG(x) , (x)
-#else
-#define DMA_TOP_PARAM
-#define DMA_TOP_ARG(x)
-#endif
-static int dma_alloc_descriptor_internal(int pool_id, IMPDMABufferInfo *info_out, int size, const char *tag DMA_TOP_PARAM)
+static int dma_alloc_descriptor_internal(int pool_id, IMPDMABufferInfo *info_out, int size, const char *tag, int top)
 {
     if (info_out == NULL || size <= 0) {
         LOG_DMA("Alloc: invalid parameters");
@@ -611,6 +605,7 @@ static int dma_alloc_descriptor_internal(int pool_id, IMPDMABufferInfo *info_out
         return -1;
     }
 
+    int log_map = 0;
     DMABufferRecord *buf = (DMABufferRecord*)calloc(1, sizeof(DMABufferRecord));
     if (buf == NULL) {
         LOG_DMA("Alloc: calloc failed");
@@ -637,12 +632,8 @@ static int dma_alloc_descriptor_internal(int pool_id, IMPDMABufferInfo *info_out
                 rmem_arena_init(&g_rmem_arena, g_rmem_size);
                 g_rmem_arena_ready = 1;
             }
-#if defined(PLATFORM_T23)
             if ((top ? rmem_arena_alloc_top(&g_rmem_arena, (size_t)size, &off)
                      : rmem_arena_alloc(&g_rmem_arena, (size_t)size, &off)) == 0) {
-#else
-            if (rmem_arena_alloc(&g_rmem_arena, (size_t)size, &off) == 0) {
-#endif
                 buf->virt_addr = (void*)((uintptr_t)g_rmem_virt_base + off);
                 buf->phys_addr = g_rmem_base_phys + (uint32_t)off;
                 buf->flags |= 0x2;
@@ -650,9 +641,16 @@ static int dma_alloc_descriptor_internal(int pool_id, IMPDMABufferInfo *info_out
                         buf->name[0] ? buf->name : "(unnamed)", size, buf->phys_addr, buf->virt_addr, off,
                         g_rmem_arena.used, g_rmem_arena.size);
             } else {
-                IMP_LOG_ERR("DMA", "rmem out of memory: requested %d, used %zu of %zu, largest free block %zu, %d allocations",
-                            size, g_rmem_arena.used, g_rmem_arena.size,
+                IMP_LOG_ERR("DMA", "rmem out of memory: requested %d (%s), used %zu of %zu, largest free block %zu, %d allocations",
+                            size, buf->tag[0] ? buf->tag : "untagged",
+                            g_rmem_arena.used, g_rmem_arena.size,
                             rmem_arena_largest_gap(&g_rmem_arena), g_rmem_arena.count);
+                /* The map says who holds the arena; once per run is
+                 * enough (it is printed after the lock is dropped). */
+                if (!g_rmem_oom_mapped) {
+                    g_rmem_oom_mapped = 1;
+                    log_map = 1;
+                }
             }
         } else if (g_is_avpu) {
             struct avpu_dma_info info;
@@ -705,6 +703,8 @@ static int dma_alloc_descriptor_internal(int pool_id, IMPDMABufferInfo *info_out
 
     if (buf->virt_addr == NULL) {
         pthread_mutex_unlock(&g_alloc_mutex);
+        if (log_map)
+            DMA_LogRmem("at the first out-of-memory");
         LOG_DMA("Alloc: no DMA-backed storage for %s size=%d",
                 buf->name[0] ? buf->name : "(unnamed)", size);
         free(buf);
@@ -739,14 +739,14 @@ uintptr_t IMP_Alloc(void *name_or_size, intptr_t size, char *tag) {
     if (looks_like_pointer_style_alloc(arg1, size, tag)) {
         IMPDMABufferInfo info;
         memset(&info, 0, sizeof(info));
-        if (dma_alloc_descriptor_internal(-1, &info, (int)arg1, "compat" DMA_TOP_ARG(0)) != 0) {
+        if (dma_alloc_descriptor_internal(-1, &info, (int)arg1, "compat", 0) != 0) {
             return (uintptr_t)NULL;
         }
         LOG_DMA("Alloc compat: size=%u virt=0x%08x phys=0x%08x", (unsigned)arg1, info.virt_addr, info.phys_addr);
         return (uintptr_t)info.virt_addr;
     }
 
-    return (uintptr_t)dma_alloc_descriptor_internal(-1, (IMPDMABufferInfo*)name_or_size, (int)size, tag DMA_TOP_ARG(0));
+    return (uintptr_t)dma_alloc_descriptor_internal(-1, (IMPDMABufferInfo*)name_or_size, (int)size, tag, 0);
 }
 
 uintptr_t IMP_PoolAlloc(int pool_id, void *name_or_size, intptr_t size, char *tag) {
@@ -755,14 +755,14 @@ uintptr_t IMP_PoolAlloc(int pool_id, void *name_or_size, intptr_t size, char *ta
     if (looks_like_pointer_style_pool_alloc(arg2, size, tag)) {
         IMPDMABufferInfo info;
         memset(&info, 0, sizeof(info));
-        if (dma_alloc_descriptor_internal(pool_id, &info, (int)arg2, "compat_pool" DMA_TOP_ARG(0)) != 0) {
+        if (dma_alloc_descriptor_internal(pool_id, &info, (int)arg2, "compat_pool", 0) != 0) {
             return (uintptr_t)NULL;
         }
         LOG_DMA("PoolAlloc compat: pool=%d size=%u virt=0x%08x phys=0x%08x", pool_id, (unsigned)arg2, info.virt_addr, info.phys_addr);
         return (uintptr_t)info.virt_addr;
     }
 
-    return (uintptr_t)dma_alloc_descriptor_internal(pool_id, (IMPDMABufferInfo*)name_or_size, (int)size, tag DMA_TOP_ARG(0));
+    return (uintptr_t)dma_alloc_descriptor_internal(pool_id, (IMPDMABufferInfo*)name_or_size, (int)size, tag, 0);
 }
 
 int IMP_Free(uintptr_t phys_or_virt_addr) {
@@ -838,19 +838,17 @@ int IMP_Flush_Cache(uint32_t phys_addr, uint32_t size) {
 
 int DMA_AllocDescriptor(IMPDMABufferInfo *info_out, int size, const char *tag)
 {
-    return dma_alloc_descriptor_internal(-1, info_out, size, tag DMA_TOP_ARG(0));
+    return dma_alloc_descriptor_internal(-1, info_out, size, tag, 0);
 }
 
-#if defined(PLATFORM_T23)
 int DMA_AllocDescriptorTop(IMPDMABufferInfo *info_out, int size, const char *tag)
 {
     return dma_alloc_descriptor_internal(-1, info_out, size, tag, 1);
 }
-#endif
 
 int DMA_PoolAllocDescriptor(int pool_id, IMPDMABufferInfo *info_out, int size, const char *tag)
 {
-    return dma_alloc_descriptor_internal(pool_id, info_out, size, tag DMA_TOP_ARG(0));
+    return dma_alloc_descriptor_internal(pool_id, info_out, size, tag, 0);
 }
 
 int DMA_FreePhys(uint32_t phys_addr)

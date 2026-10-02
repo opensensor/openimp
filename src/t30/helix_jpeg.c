@@ -29,6 +29,14 @@
 #include "dma_alloc.h"
 #include "imp_log_int.h"
 
+#if defined(PLATFORM_T21) && !defined(PLATFORM_T20) && !defined(PLATFORM_T23)
+/* T21: the bitstream goes to the buffer the H.264 channels share (the
+ * stock "vpuBs", src/t30/helix_bitstream.h) instead of a JPEG buffer of
+ * its own. */
+#define HELIX_JPEG_SHARED_BS 1
+#include "t30/helix_bitstream.h"
+#endif
+
 #ifndef OPENIMP_SW_JPEG
 #define OPENIMP_SW_JPEG 1
 #endif
@@ -388,6 +396,13 @@ static uint8_t *helix_put_dht(uint8_t *p, uint8_t id, const uint8_t counts[16],
 size_t HelixJpeg_WriteHeader(uint8_t *out, size_t capacity, uint32_t width,
                              uint32_t height, const uint8_t qt[128])
 {
+    return HelixJpeg_WriteHeaderEx(out, capacity, width, height, qt, 0u);
+}
+
+size_t HelixJpeg_WriteHeaderEx(uint8_t *out, size_t capacity, uint32_t width,
+                               uint32_t height, const uint8_t qt[128],
+                               uint32_t restart_interval)
+{
     static const uint8_t app0[] = {
         0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 'J', 'F', 'I', 'F', 0x00, 0x01,
         0x01, 0x01, 0x00, 0x48, 0x00, 0x48, 0x00, 0x00
@@ -399,8 +414,10 @@ size_t HelixJpeg_WriteHeader(uint8_t *out, size_t capacity, uint32_t width,
     uint8_t *p = out;
     unsigned int table;
 
-    if (!out || !qt || capacity < HELIX_JPEG_HEADER_SIZE || !width ||
-        !height || width > HELIX_JPEG_MAX_DIM || height > HELIX_JPEG_MAX_DIM)
+    if (!out || !qt || !width || !height || width > HELIX_JPEG_MAX_DIM ||
+        height > HELIX_JPEG_MAX_DIM || restart_interval > 0xffffu ||
+        capacity < HELIX_JPEG_HEADER_SIZE +
+                       (restart_interval ? HELIX_JPEG_DRI_SIZE : 0u))
         return 0;
     memcpy(p, app0, sizeof(app0));
     p += sizeof(app0);
@@ -432,9 +449,77 @@ size_t HelixJpeg_WriteHeader(uint8_t *out, size_t capacity, uint32_t width,
                       sizeof(helix_dc_values));
     p = helix_put_dht(p, 0x11, helix_ac_chroma_counts,
                       helix_ac_chroma_values, sizeof(helix_ac_chroma_values));
+    if (restart_interval) {
+        *p++ = 0xff;
+        *p++ = 0xdd;
+        *p++ = 0x00;
+        *p++ = 0x04;
+        *p++ = (uint8_t)(restart_interval >> 8);
+        *p++ = (uint8_t)restart_interval;
+    }
     memcpy(p, sos, sizeof(sos));
     p += sizeof(sos);
     return (size_t)(p - out);
+}
+
+/* ---- worst-case bitstream size ---- */
+
+/* Most bits one block can take with a DC and an AC table: the longest DC
+ * code plus its magnitude bits, and for the 63 AC positions the most bits
+ * per position any AC symbol costs (code plus magnitude bits over the run
+ * of zeros and the coefficient it covers; ZRL over 16 positions), plus EOB.
+ * The core codes nothing outside these tables (categories 0..11, runs
+ * 0..15, sizes 1..10). */
+static uint32_t helix_block_worst_bits(const uint8_t dc_counts[16],
+                                       const uint8_t ac_counts[16],
+                                       const uint8_t ac_values[162])
+{
+    uint16_t code_of[256];
+    uint8_t length_of[256];
+    uint32_t dc = 0, cost = 0, positions = 1;
+    unsigned int i;
+
+    memset(length_of, 0, sizeof(length_of));
+    helix_huffman_codes(dc_counts, helix_dc_values, sizeof(helix_dc_values),
+                        code_of, length_of);
+    for (i = 0; i < sizeof(helix_dc_values); i++)
+        if (length_of[i] && length_of[i] + i > dc)
+            dc = length_of[i] + i;
+    memset(length_of, 0, sizeof(length_of));
+    helix_huffman_codes(ac_counts, ac_values, 162u, code_of, length_of);
+    for (i = 1; i < 256u; i++) {
+        uint32_t c, n;
+
+        if (!length_of[i])
+            continue;
+        if (i == 0xf0u) {
+            c = length_of[i];
+            n = 16u;
+        } else if ((i & 15u) && (i & 15u) <= 10u) {
+            c = length_of[i] + (i & 15u);
+            n = (i >> 4) + 1u;
+        } else {
+            continue;
+        }
+        if (c * positions > cost * n) {
+            cost = c;
+            positions = n;
+        }
+    }
+    return dc + (63u * cost + positions - 1u) / positions + length_of[0];
+}
+
+uint32_t HelixJpeg_McuWorstBytes(void)
+{
+    uint32_t bits = 4u * helix_block_worst_bits(helix_dc_luma_counts,
+                                                helix_ac_luma_counts,
+                                                helix_ac_luma_values) +
+                    2u * helix_block_worst_bits(helix_dc_chroma_counts,
+                                                helix_ac_chroma_counts,
+                                                helix_ac_chroma_values);
+
+    /* a 0x00 stuffed after every byte */
+    return 2u * ((bits + 7u) / 8u);
 }
 
 /* ---- runtime: one /dev/soc_vpu channel for the process ---- */
@@ -546,6 +631,10 @@ static struct {
     IMPDMABufferInfo probe;
     IMPDMABufferInfo *active;  /* buffer of the last job */
     const char *reason;        /* why the last job failed */
+    uint32_t bs_offset;        /* bitstream start behind the command list */
+    uint32_t stripe_rows;      /* OPENIMP_HELIX_JPEG_STRIPE_ROWS (0 = auto) */
+    uint32_t stripes;          /* jobs of the last picture */
+    uint32_t channels;         /* JPEG channels (Reserve .. Release) */
 } helix_jpeg = { .lock = PTHREAD_MUTEX_INITIALIZER, .fd = -1 };
 
 static void helix_dma_release(IMPDMABufferInfo *dma)
@@ -589,11 +678,9 @@ static int helix_dma_alloc(IMPDMABufferInfo *dma, uint32_t size,
         }
         return HELIX_SKIPPED;
     }
-#if defined(PLATFORM_T23)
+    /* With the encoder buffers at the top of rmem, clear of the
+     * FrameSource pools that come and go at the bottom. */
     ret = DMA_AllocDescriptorTop(dma, (int)size, tag);
-#else
-    ret = DMA_AllocDescriptor(dma, (int)size, tag);
-#endif
     if (ret != 0 || !dma->phys_addr || !dma->virt_addr) {
         memset(dma, 0, sizeof(*dma));
         helix_jpeg.reason = "rmem allocation";
@@ -673,6 +760,10 @@ static int helix_jpeg_open_locked(void)
     helix_jpeg.dump_dir = getenv("OPENIMP_HELIX_JPEG_DUMP");
     helix_jpeg.probe_limit = helix_env_uint(
         "OPENIMP_HELIX_JPEG_PROBE_MAX_BS_KB", 0u, 1u, 4096u) << 10;
+    /* fewer macroblock rows per job than the buffer allows (testing the
+     * striped path) */
+    helix_jpeg.stripe_rows = helix_env_uint(
+        "OPENIMP_HELIX_JPEG_STRIPE_ROWS", 0u, 1u, 4096u);
     /* kept open after a shutdown, see OpenIMP_HelixJpeg_Shutdown */
     if (helix_jpeg.fd < 0)
         helix_jpeg.fd = open("/dev/soc_vpu", O_RDWR | O_CLOEXEC);
@@ -708,6 +799,31 @@ int OpenIMP_HelixJpeg_Available(void)
     state = helix_jpeg.state;
     pthread_mutex_unlock(&helix_jpeg.lock);
     return state > 0;
+}
+
+void OpenIMP_HelixJpeg_Release(void)
+{
+    pthread_mutex_lock(&helix_jpeg.lock);
+    if (helix_jpeg.channels)
+        helix_jpeg.channels--;
+    if (!helix_jpeg.channels) {
+        /* as the stock DestroyChn frees the channel's buffer pool; the T21
+         * shared buffer stays (System_Exit), the VPU channel stays open */
+#if !defined(HELIX_JPEG_SHARED_BS)
+        helix_dma_release(&helix_jpeg.job);
+#endif
+        helix_dma_release(&helix_jpeg.source);
+        helix_dma_release(&helix_jpeg.probe);
+    }
+    pthread_mutex_unlock(&helix_jpeg.lock);
+}
+
+void OpenIMP_HelixJpeg_Exit(void)
+{
+    pthread_mutex_lock(&helix_jpeg.lock);
+    OpenIMP_HelixJpeg_Shutdown();
+    helix_jpeg.channels = 0;
+    pthread_mutex_unlock(&helix_jpeg.lock);
 }
 
 /* Releases the channel but keeps /dev/soc_vpu open until the process
@@ -835,6 +951,15 @@ static int helix_job_buffer(uint32_t capacity)
     IMPDMABufferInfo next;
     int ret;
 
+#if defined(HELIX_JPEG_SHARED_BS)
+    /* taken for this job, large enough, by OpenIMP_HelixJpeg_EncodeEx */
+    if (helix_jpeg.job.phys_addr &&
+        helix_jpeg.job.size >= HELIX_DESCRIPTOR_AREA + capacity)
+        return 0;
+    helix_jpeg.reason = "shared bitstream buffer";
+    return -1;
+#endif
+
     if (helix_jpeg.job.phys_addr &&
         helix_jpeg.job.size >= HELIX_DESCRIPTOR_AREA + capacity)
         return 0;
@@ -945,12 +1070,20 @@ static int helix_jpeg_job_locked(HelixJpegSlice *slice, uint32_t capacity,
         if (ret != 0)
             return ret;
         buffer = &helix_jpeg.job;
-        /* the kept buffer may be larger (another channel): use all of it */
-        capacity = buffer->size - HELIX_DESCRIPTOR_AREA;
+        /* the kept buffer may be larger (another channel): use all of it,
+         * from bs_offset on (stripes, HELIX_JPEG_SHARED_BS) */
+        if (helix_jpeg.bs_offset >= buffer->size - HELIX_DESCRIPTOR_AREA) {
+            helix_jpeg.reason = "bitstream offset";
+            return -1;
+        }
+        capacity = buffer->size - HELIX_DESCRIPTOR_AREA -
+                   helix_jpeg.bs_offset;
         *capacity_used = capacity;
     }
     words = (uint32_t *)(uintptr_t)buffer->virt_addr;
-    slice->bitstream = buffer->phys_addr + HELIX_DESCRIPTOR_AREA;
+    slice->bitstream = buffer->phys_addr + HELIX_DESCRIPTOR_AREA +
+                       (buffer == &helix_jpeg.job ? helix_jpeg.bs_offset
+                                                  : 0u);
     slice->bitstream_limit = helix_jpeg.max_bs || helix_jpeg.probe_limit
         ? capacity : 0u;
     pairs = HelixJpeg_BuildDescriptor(slice, words,
@@ -1046,6 +1179,495 @@ static void helix_dump(const HelixJpegFrame *frame, const uint8_t *luma,
                  frame->pixfmt, chroma_offset, helix_jpeg.dump_dir);
 }
 
+/*
+ * T20/T21/T30 have no bitstream limit (JPGC_MAX_BS is ignored: the probe on
+ * the T21 PC420 saw the core write 34 KB into a 16 KiB limit).  The stock
+ * T21 library points the JPEG bitstream into the 2 MB "vpuBs" shared with
+ * H.264, the T20/T30 ones into an NV12-sized buffer, both without any
+ * guard; a picture cannot be bounded below several times its NV12 size.
+ * OpenIMP encodes a picture whose worst case (every MCU taking
+ * HelixJpeg_McuWorstBytes()) does not fit in the buffer in horizontal
+ * stripes of whole macroblock rows, each job sized so that its worst case
+ * fits in the rest of the buffer: no job can write past the buffer,
+ * whatever the picture.  Each job starts with fresh DC predictors; the
+ * file joins the stripes with RST0..7 markers and a DRI of the stripe's
+ * MCU count.  (T23 programs JPGC_MAX_BS instead.)
+ *
+ * The core writes its bitstream in 128-byte bursts and drops the last,
+ * partial one: on the PC420 the final 1..127 bytes of a job were missing
+ * after RUN (also 5 ms later), and the next job's first bytes later landed
+ * at that old address.  A single job per picture, as in the stock library,
+ * loses that much at the end (decoders conceal it before EOI); a stripe
+ * must not, and a small picture loses a visible part.  So every job also
+ * encodes one or two macroblock rows more (at least 4 bytes per MCU, so at
+ * least 128 bytes behind the stripe's own data) - the next stripe's, or
+ * for the last stripe whatever lies behind the picture in rmem (read only,
+ * never shown; without such memory the last stripe ends with its job, as
+ * in the stock library) - and the stripe is cut after its own MCUs: the
+ * entropy-coded data is parsed on the CPU up to that MCU (Huffman codes
+ * only) and the last byte padded with 1 bits.  The next job starts behind
+ * the lost burst.
+ */
+#define HELIX_STRIPE_SLACK  256u  /* the core writes whole 128-byte bursts:
+                                   * up to 127 bytes past its length */
+#define HELIX_STRIPE_PIECES 64u   /* stripes held before a copy-out */
+#define HELIX_BURST         128u
+
+typedef struct {
+    uint32_t offset;           /* from the bitstream start */
+    uint32_t length;           /* the job's output */
+    uint32_t index;            /* stripe number in the picture */
+    uint32_t mcus;             /* the stripe's own MCUs (0: whole job) */
+} HelixStripe;
+
+static uint32_t helix_mcu_worst(void)
+{
+    static uint32_t bytes;
+
+    if (!bytes)
+        bytes = HelixJpeg_McuWorstBytes();
+    return bytes;
+}
+
+/* Whether the VPU may read [phys, phys + size): inside the reserved arena. */
+static int helix_in_rmem(uint32_t phys, uint32_t size)
+{
+    uint32_t base;
+    size_t total;
+
+    if (DMA_Get_RMEM_Base(&base) != 0 ||
+        DMA_RmemStats(NULL, &total, NULL) != 0)
+        return 0;
+    return phys >= base && (uint64_t)(phys - base) + size <= total;
+}
+
+/* Bitstream bytes one job of rows macroblock rows may need. */
+static uint32_t helix_stripe_bound(uint32_t mb_width, uint32_t rows)
+{
+    return mb_width * rows * helix_mcu_worst() + HELIX_STRIPE_SLACK;
+}
+
+/* Rows a stripe's job encodes after the stripe: at least 128 bytes. */
+static uint32_t helix_stripe_extra(uint32_t mb_width)
+{
+    return mb_width >= 32u ? 1u : 2u;
+}
+
+/* Buffer bytes a JPEG channel needs at least: the command list and one
+ * stripe of one row with its extra rows. */
+static uint32_t helix_stripe_minimum(uint32_t width)
+{
+    uint32_t mb_width = width / 16u;
+
+    return HELIX_DESCRIPTOR_AREA +
+           helix_stripe_bound(mb_width, 1u + helix_stripe_extra(mb_width));
+}
+
+/* ---- entropy-coded data: where an MCU ends ---- */
+
+typedef struct {
+    uint16_t maxcode[18];      /* largest code of each length, -1 none */
+    uint16_t valptr[17];
+    uint16_t mincode[17];
+    int16_t has[17];
+    const uint8_t *values;
+    uint8_t fast[256];         /* (length << 4) | index for codes <= 8 bits */
+    uint8_t fast_symbol[256];
+} HelixHuffDecode;
+
+static void helix_huff_decode_init(HelixHuffDecode *t,
+                                   const uint8_t counts[16],
+                                   const uint8_t *values)
+{
+    unsigned int length, i, k = 0;
+    uint16_t code = 0;
+
+    memset(t, 0, sizeof(*t));
+    t->values = values;
+    for (length = 1; length <= 16u; length++) {
+        t->valptr[length] = (uint16_t)k;
+        t->mincode[length] = code;
+        t->has[length] = counts[length - 1u] != 0;
+        for (i = 0; i < counts[length - 1u]; i++, k++, code++) {
+            if (length <= 8u) {
+                unsigned int first = (unsigned int)code << (8u - length);
+                unsigned int n = 1u << (8u - length), j;
+
+                for (j = 0; j < n; j++) {
+                    t->fast[first + j] = (uint8_t)length;
+                    t->fast_symbol[first + j] = values[k];
+                }
+            }
+        }
+        t->maxcode[length] = (uint16_t)(code - 1u);
+        code <<= 1;
+    }
+}
+
+typedef struct {
+    const uint8_t *data;
+    uint32_t size;
+    uint32_t position;         /* next byte to load (stuffed stream) */
+    uint32_t bits;             /* MSB-aligned */
+    int count;                 /* valid bits in bits */
+    uint32_t used;             /* unstuffed bits consumed */
+    int error;                 /* a code that is none */
+} HelixBitReader;
+
+static void helix_bits_fill(HelixBitReader *r)
+{
+    while (r->count <= 24) {
+        uint32_t byte = 0;
+
+        if (r->position < r->size) {
+            byte = r->data[r->position++];
+            /* a 0xff without its stuffed 0x00 can only be read ahead
+             * past the data (dropped burst): taken as data, never used */
+            if (byte == 0xffu && r->position < r->size &&
+                r->data[r->position] == 0u)
+                r->position++;
+        }
+        r->bits |= byte << (24 - r->count);
+        r->count += 8;
+    }
+}
+
+static uint32_t helix_bits_get(HelixBitReader *r, int n)
+{
+    uint32_t value;
+
+    if (!n)
+        return 0;
+    if (r->count < n)
+        helix_bits_fill(r);
+    value = r->bits >> (32 - n);
+    r->bits <<= n;
+    r->count -= n;
+    r->used += (uint32_t)n;
+    return value;
+}
+
+static int helix_huff_symbol(HelixBitReader *r, const HelixHuffDecode *t)
+{
+    unsigned int length;
+    uint32_t code;
+
+    if (r->count < 16)
+        helix_bits_fill(r);
+    length = t->fast[r->bits >> 24];
+    if (length) {
+        int symbol = t->fast_symbol[r->bits >> 24];
+
+        r->bits <<= length;
+        r->count -= (int)length;
+        r->used += length;
+        return symbol;
+    }
+    for (length = 9; length <= 16u; length++) {
+        code = r->bits >> (32u - length);
+        if (t->has[length] && code >= t->mincode[length] &&
+            code <= t->maxcode[length]) {
+            r->bits <<= length;
+            r->count -= (int)length;
+            r->used += length;
+            return t->values[t->valptr[length] + code - t->mincode[length]];
+        }
+    }
+    r->error = 1;
+    return -1;
+}
+
+static struct {
+    pthread_once_t once;
+    HelixHuffDecode dc[2], ac[2];
+} helix_parse = { .once = PTHREAD_ONCE_INIT };
+
+static void helix_parse_init(void)
+{
+    helix_huff_decode_init(&helix_parse.dc[0], helix_dc_luma_counts,
+                           helix_dc_values);
+    helix_huff_decode_init(&helix_parse.dc[1], helix_dc_chroma_counts,
+                           helix_dc_values);
+    helix_huff_decode_init(&helix_parse.ac[0], helix_ac_luma_counts,
+                           helix_ac_luma_values);
+    helix_huff_decode_init(&helix_parse.ac[1], helix_ac_chroma_counts,
+                           helix_ac_chroma_values);
+}
+
+/* Unstuffed bits of the first mcus 4:2:0 MCUs of data, or -1 when the data
+ * ends or breaks before. */
+static int64_t helix_mcus_bits(const uint8_t *data, uint32_t size,
+                               uint32_t mcus)
+{
+    HelixBitReader r;
+    uint32_t m;
+    unsigned int b;
+
+    (void)pthread_once(&helix_parse.once, helix_parse_init);
+    memset(&r, 0, sizeof(r));
+    r.data = data;
+    r.size = size;
+    for (m = 0; m < mcus; m++)
+        for (b = 0; b < 6u; b++) {
+            unsigned int table = b < 4u ? 0u : 1u;
+            int symbol = helix_huff_symbol(&r, &helix_parse.dc[table]);
+            unsigned int k = 1;
+
+            if (symbol < 0 || symbol > 11)
+                return -1;
+            (void)helix_bits_get(&r, symbol);
+            while (k < 64u) {
+                symbol = helix_huff_symbol(&r, &helix_parse.ac[table]);
+                if (symbol < 0)
+                    return -1;
+                if (symbol == 0)
+                    break;
+                if (symbol == 0xf0) {
+                    k += 16u;
+                    continue;
+                }
+                k += ((unsigned int)symbol >> 4) + 1u;
+                (void)helix_bits_get(&r, symbol & 15);
+            }
+            if (k > 64u)
+                return -1;
+            /* bits past the data are zeros: invalid once used */
+            if (r.used > (uint64_t)size * 8u)
+                return -1;
+        }
+    return (int64_t)r.used;
+}
+
+/* Stuffed length of the first n unstuffed bytes of data. */
+static uint32_t helix_stuffed_length(const uint8_t *data, uint32_t size,
+                                     uint32_t n)
+{
+    uint32_t position = 0;
+
+    while (n && position < size) {
+        if (data[position++] == 0xffu && position < size &&
+            data[position] == 0u)
+            position++;
+        n--;
+    }
+    return position;
+}
+
+/* Copies the held stripes into the file, RSTn in front of every stripe
+ * but the first, EOI after the last one when final.  A stripe with mcus
+ * is cut after its own MCUs, the last byte padded with 1 bits. */
+static int helix_stripes_out(uint8_t **file, size_t *length,
+                             const HelixStripe *stripes, unsigned int count,
+                             int final)
+{
+    const uint8_t *base = (const uint8_t *)(uintptr_t)
+        (helix_jpeg.job.virt_addr + HELIX_DESCRIPTOR_AREA);
+    size_t need = *length;
+    unsigned int i;
+    uint8_t *p;
+
+    for (i = 0; i < count; i++) {
+        /* the job's own data is read from here on */
+        if (DMA_RmemFlushCache((void *)(base + stripes[i].offset),
+                               stripes[i].length, 2) != 0) {
+            helix_jpeg.reason = "cache";
+            return -1;
+        }
+        need += stripes[i].length + 2u + (stripes[i].index ? 2u : 0u);
+    }
+    if (final)
+        need += 2u;
+    p = realloc(*file, need);
+    if (!p) {
+        helix_jpeg.reason = "malloc";
+        return -1;
+    }
+    *file = p;
+    p += *length;
+    for (i = 0; i < count; i++) {
+        const uint8_t *data = base + stripes[i].offset;
+        uint32_t copy = stripes[i].length;
+        int pad = -1;
+
+        if (stripes[i].index) {
+            *p++ = 0xff;
+            *p++ = (uint8_t)(0xd0u + ((stripes[i].index - 1u) & 7u));
+        }
+        if (stripes[i].mcus) {
+            int64_t bits = helix_mcus_bits(data, stripes[i].length,
+                                           stripes[i].mcus);
+            uint32_t whole;
+
+            if (bits < 0) {
+                helix_jpeg.reason = "stripe data";
+                IMP_LOG_ERR("Encoder", "Helix JPEG: stripe %u: no end of "
+                            "MCU %u in its %u bytes", stripes[i].index,
+                            stripes[i].mcus, stripes[i].length);
+                return HELIX_RUN_FAILED;
+            }
+            whole = (uint32_t)(bits / 8);
+            copy = helix_stuffed_length(data, stripes[i].length, whole);
+            if (bits % 8) {
+                uint32_t used = (uint32_t)(bits % 8);
+
+                if (copy >= stripes[i].length) {
+                    helix_jpeg.reason = "stripe data";
+                    return HELIX_RUN_FAILED;
+                }
+                pad = data[copy] | (0xffu >> used);
+            }
+        }
+        memcpy(p, data, copy);
+        p += copy;
+        if (pad >= 0) {
+            *p++ = (uint8_t)pad;
+            if (pad == 0xff)
+                *p++ = 0x00;
+        }
+    }
+    if (final) {
+        *p++ = 0xff;
+        *p++ = 0xd9;
+    }
+    *length = (size_t)(p - *file);
+    return 0;
+}
+
+/* The picture in stripes (or one job when its worst case fits); on success
+ * *file is the heap JFIF file. */
+static int helix_jpeg_stripes_locked(HelixJpegSlice *slice,
+                                     const HelixJpegFrame *frame,
+                                     const uint8_t qt[128], uint8_t **file,
+                                     size_t *file_length,
+                                     uint32_t *capacity_out)
+{
+    HelixStripe stripes[HELIX_STRIPE_PIECES];
+    const HelixJpegSlice whole = *slice;
+    uint32_t capacity;
+    uint32_t mb_width = whole.mb_width;
+    uint32_t extra = helix_stripe_extra(mb_width);
+    uint32_t rows, row, offset = 0, index = 0;
+    unsigned int held = 0;
+    uint8_t *out;
+    size_t length;
+    int overflow, ret = -1;
+
+#if !defined(HELIX_JPEG_SHARED_BS)
+    /* T20/T30: the channel's buffer, the NV12 picture as in the stock
+     * library; a smaller one kept from before still works */
+    ret = helix_job_buffer(helix_bitstream_capacity(
+        whole.stride * whole.mb_height * 16u * 3u / 2u, qt));
+    if (ret != 0 && (!helix_jpeg.job.phys_addr ||
+                     helix_jpeg.job.size <
+                         helix_stripe_minimum(whole.mb_width * 16u)))
+        return ret;
+    helix_jpeg.reason = NULL;
+#endif
+    capacity = helix_jpeg.job.size - HELIX_DESCRIPTOR_AREA;
+    *capacity_out = capacity;
+    if (helix_stripe_bound(mb_width, whole.mb_height + extra) <= capacity &&
+        !helix_jpeg.stripe_rows) {
+        rows = whole.mb_height;          /* one job, as the stock library */
+    } else {
+        rows = capacity > HELIX_STRIPE_SLACK
+            ? (capacity - HELIX_STRIPE_SLACK) /
+                  (mb_width * helix_mcu_worst())
+            : 0u;
+        rows = rows > extra ? rows - extra : 0u;
+        if (rows > whole.mb_height)
+            rows = whole.mb_height;
+        if (rows > 0xffffu / mb_width)
+            rows = 0xffffu / mb_width;
+        if (helix_jpeg.stripe_rows && rows > helix_jpeg.stripe_rows)
+            rows = helix_jpeg.stripe_rows;
+    }
+    if (!rows) {
+        helix_jpeg.reason = "bitstream buffer below one macroblock row";
+        return -1;
+    }
+    out = malloc(HELIX_JPEG_HEADER_SIZE + HELIX_JPEG_DRI_SIZE);
+    if (!out) {
+        helix_jpeg.reason = "malloc";
+        return -1;
+    }
+    length = HelixJpeg_WriteHeaderEx(out, HELIX_JPEG_HEADER_SIZE +
+                                              HELIX_JPEG_DRI_SIZE,
+                                     frame->width, frame->height, qt,
+                                     rows < whole.mb_height
+                                         ? rows * mb_width : 0u);
+    if (!length) {
+        helix_jpeg.reason = "header";
+        goto fail;
+    }
+    for (row = 0; row < whole.mb_height; row += rows, index++) {
+        uint32_t n = whole.mb_height - row < rows ? whole.mb_height - row
+                                                  : rows;
+        /* the next rows push the stripe's end out of the core; behind
+         * the last stripe, rows past the picture if that is rmem */
+        uint32_t more = whole.mb_height - row - n < extra
+            ? whole.mb_height - row - n : extra;
+
+        if (!more &&
+            helix_in_rmem(whole.raw_y + row * 16u * whole.stride,
+                          (n + extra) * 16u * whole.stride) &&
+            helix_in_rmem(whole.raw_c + row * 8u * whole.stride,
+                          (n + extra) * 8u * whole.stride))
+            more = extra;
+        uint32_t bound = helix_stripe_bound(mb_width, n + more);
+        uint32_t used;
+
+        if (held == HELIX_STRIPE_PIECES ||
+            (uint64_t)offset + bound > capacity) {
+            ret = helix_stripes_out(&out, &length, stripes, held, 0);
+            if (ret != 0)
+                goto fail;
+            ret = -1;
+            held = 0;
+            offset = 0;
+        }
+        slice->mb_height = n + more;
+        slice->raw_y = whole.raw_y + row * 16u * whole.stride;
+        slice->raw_c = whole.raw_c + row * 8u * whole.stride;
+        helix_jpeg.bs_offset = offset;
+        ret = helix_jpeg_job_locked(slice, capacity - offset, &overflow,
+                                    &used);
+        if (ret != 0)
+            goto fail;
+        if (helix_jpeg.channel.output_len > bound) {
+            /* cannot happen with the tables loaded; never trust the data */
+            helix_jpeg.reason = "stripe above its worst case";
+            IMP_LOG_ERR("Encoder", "Helix JPEG: stripe %u (%u rows) wrote "
+                        "%u bytes, more than its bound %u", index, n + more,
+                        helix_jpeg.channel.output_len, bound);
+            ret = HELIX_RUN_FAILED;
+            goto fail;
+        }
+        stripes[held].offset = offset;
+        stripes[held].length = helix_jpeg.channel.output_len;
+        stripes[held].index = index;
+        stripes[held].mcus = more ? n * mb_width : 0u;
+        held++;
+        /* past the burst the core dropped (the next job's first bytes go
+         * there) */
+        offset = (offset + helix_jpeg.channel.output_len + HELIX_BURST +
+                  HELIX_BURST - 1u) & ~(HELIX_BURST - 1u);
+    }
+    ret = helix_stripes_out(&out, &length, stripes, held, 1);
+    if (ret != 0)
+        goto fail;
+    helix_jpeg.stripes = index;
+    helix_jpeg.bs_offset = 0;
+    *slice = whole;
+    *file = out;
+    *file_length = length;
+    return 0;
+fail:
+    helix_jpeg.bs_offset = 0;
+    *slice = whole;
+    free(out);
+    return ret ? ret : -1;
+}
+
 static int helix_jpeg_run_locked(const HelixJpegFrame *frame,
                                  const uint8_t qt[128],
                                  HWStreamBuffer *stream, const char **path,
@@ -1125,6 +1747,19 @@ static int helix_jpeg_run_locked(const HelixJpegFrame *frame,
             ? HELIX_JPEG_PLANE_NV21 : HELIX_JPEG_PLANE_NV12;
     slice.qt = qt;
 
+    if (!helix_jpeg.max_bs && !helix_jpeg.probe_limit) {
+        size_t file_length = 0;
+
+        ret = helix_jpeg_stripes_locked(&slice, frame, qt, &output,
+                                        &file_length, capacity_out);
+        if (ret != 0)
+            return ret;
+        memset(stream, 0, sizeof(*stream));
+        stream->virt_addr = (uint32_t)(uintptr_t)output;
+        stream->length = (uint32_t)file_length;
+        goto done;
+    }
+    helix_jpeg.stripes = 1u;
     capacity = helix_bitstream_capacity(nv12, qt);
     *capacity_out = capacity;
     ret = helix_jpeg_job_locked(&slice, capacity, &overflow, capacity_out);
@@ -1181,6 +1816,7 @@ static int helix_jpeg_run_locked(const HelixJpegFrame *frame,
     memset(stream, 0, sizeof(*stream));
     stream->virt_addr = (uint32_t)(uintptr_t)output;
     stream->length = (uint32_t)(header + length + 2u);
+done:
     stream->timestamp = frame->timestamp;
     stream->frame_type = HW_FRAME_TYPE_I;
     helix_jpeg.pictures++;
@@ -1241,7 +1877,32 @@ int OpenIMP_HelixJpeg_EncodeEx(const HelixJpegFrame *frame,
     helix_jpeg.channel.status = 0;
     helix_jpeg.channel.output_len = 0;
     helix_jpeg.limit_hit = 0;
+    helix_jpeg.stripes = 0;
+#if defined(HELIX_JPEG_SHARED_BS)
+    {
+        /* Hold the shared bitstream buffer from the command list to the
+         * copy into the stream, as the stock library holds its bitstream
+         * semaphore.  Without a limit the picture goes in stripes: the
+         * buffer needs one macroblock row (it is the pool size, 2 MB). */
+        uint32_t aligned_height = (frame->height + 15u) & ~15u;
+        uint32_t need = !helix_jpeg.max_bs && !helix_jpeg.probe_limit
+            ? helix_stripe_minimum(frame->width)
+            : HELIX_DESCRIPTOR_AREA + helix_bitstream_capacity(
+                  frame->width * aligned_height * 3u / 2u, qt);
+
+        if (OpenIMP_HelixBitstream_Lock(need, &helix_jpeg.job) != 0) {
+            helix_jpeg.reason = "shared bitstream buffer";
+            ret = HELIX_SKIPPED;
+        } else {
+            ret = helix_jpeg_run_locked(frame, qt, stream, &path, &capacity);
+            memset(&helix_jpeg.job, 0, sizeof(helix_jpeg.job));
+            helix_jpeg.active = NULL;
+            OpenIMP_HelixBitstream_Unlock();
+        }
+    }
+#else
     ret = helix_jpeg_run_locked(frame, qt, stream, &path, &capacity);
+#endif
     if (flags)
         *flags = helix_jpeg.limit_hit ? HELIX_JPEG_LIMIT_HIT : 0u;
     /* the command list + bitstream buffer is kept; copies and probe
@@ -1253,7 +1914,8 @@ int OpenIMP_HelixJpeg_EncodeEx(const HelixJpegFrame *frame,
 
         (void)DMA_RmemStats(&used, &total, &largest);
         IMP_LOG_INFO("Encoder", "Helix JPEG stats: job=%u %ux%u %s %s "
-                     "status=0x%08x len=%u bytes=%u bs=%u q0=%u %uus "
+                     "status=0x%08x len=%u bytes=%u bs=%u stripes=%u q0=%u "
+                     "%uus "
                      "rmem used=%zu/%zu largest=%zu%s%s"
 #if defined(PLATFORM_T23)
                      " act=%u"
@@ -1261,7 +1923,8 @@ int OpenIMP_HelixJpeg_EncodeEx(const HelixJpegFrame *frame,
                      , helix_jpeg.jobs, frame->width, frame->height, path,
                      ret == 0 ? "ok" : ret == HELIX_SKIPPED ? "SKIP" : "FAIL",
                      helix_jpeg.channel.status, helix_jpeg.channel.output_len,
-                     ret == 0 ? stream->length : 0u, capacity, qt[0],
+                     ret == 0 ? stream->length : 0u, capacity,
+                     helix_jpeg.stripes, qt[0],
                      helix_elapsed_us(&start), used, total, largest,
                      helix_jpeg.reason ? " reason=" : "",
                      helix_jpeg.reason ? helix_jpeg.reason : ""
@@ -1291,6 +1954,11 @@ int OpenIMP_HelixJpeg_Reserve(uint32_t width, uint32_t height)
     size_t used = 0, total = 0, largest = 0;
     int ret;
 
+    /* one per JPEG channel, whatever happens below: the buffers are freed
+     * when the last channel is destroyed (OpenIMP_HelixJpeg_Release) */
+    pthread_mutex_lock(&helix_jpeg.lock);
+    helix_jpeg.channels++;
+    pthread_mutex_unlock(&helix_jpeg.lock);
     if (width < HELIX_JPEG_MIN_WIDTH || (width & 15u) ||
         width > HELIX_JPEG_MAX_DIM || height < 16u ||
         height > HELIX_JPEG_MAX_DIM || !OpenIMP_HelixJpeg_Available())
@@ -1305,6 +1973,26 @@ int OpenIMP_HelixJpeg_Reserve(uint32_t width, uint32_t height)
         pthread_mutex_unlock(&helix_jpeg.lock);
         return -1;
     }
+#if defined(HELIX_JPEG_SHARED_BS)
+    {
+        uint32_t before = OpenIMP_HelixBitstream_Size();
+        uint32_t after;
+
+        ret = OpenIMP_HelixBitstream_Reserve(
+            !helix_jpeg.max_bs && !helix_jpeg.probe_limit
+                ? helix_stripe_minimum(width)
+                : HELIX_DESCRIPTOR_AREA + helix_bitstream_capacity(
+                      width * aligned_height * 3u / 2u, qt));
+        after = OpenIMP_HelixBitstream_Size();
+        (void)DMA_RmemStats(&used, &total, &largest);
+        IMP_LOG_INFO("Encoder", "Helix JPEG: %ux%u channel: bitstream in the "
+                     "shared %u-byte buffer, %s (rmem used %zu of %zu, "
+                     "largest free %zu)", width, height, after,
+                     ret != 0 ? "not grown, retried at the first picture"
+                     : after == before ? "already large enough" : "grown",
+                     used, total, largest);
+    }
+#else
     {
         uint32_t before = helix_jpeg.job.size;
 
@@ -1319,6 +2007,7 @@ int OpenIMP_HelixJpeg_Reserve(uint32_t width, uint32_t height)
                      : before ? "grown" : "allocated",
                      used, total, largest);
     }
+#endif
     pthread_mutex_unlock(&helix_jpeg.lock);
     return ret == 0 ? 0 : -1;
 }

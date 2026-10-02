@@ -9,6 +9,19 @@
 #include <time.h>
 #include <unistd.h>
 
+#if defined(PLATFORM_T21) && !defined(PLATFORM_T20)
+/* T21: the stock EncoderInit allocates the shared Helix bitstream buffer
+ * ("vpuBs") */
+#include "t30/helix_bitstream.h"
+#define OPENIMP_HELIX_SHARED_BS 1
+#endif
+#if defined(PLATFORM_T21) || defined(PLATFORM_T30) || defined(PLATFORM_T23)
+/* Helix JPEG (src/t30/helix_jpeg.c): its buffers and VPU channel go at
+ * IMP_System_Exit, as the stock EncoderExit */
+#include "t30/helix_jpeg.h"
+#define OPENIMP_HELIX_JPEG 1
+#endif
+
 #define OPENIMP_P0_MAGIC             0x50305434U /* "P0T4" */
 #define OPENIMP_MAX_FS_CHANNELS      16
 #define OPENIMP_MAX_ENCODER_GROUPS   16
@@ -263,6 +276,10 @@ static int root_init(enum openimp_root_id root)
             state.encoder.channels[i].stream_pool_id = -1;
             state.encoder.channels[i].frame_pool_id = -1;
         }
+#if defined(OPENIMP_HELIX_SHARED_BS)
+        /* a failure is logged; the first channel tries again */
+        (void)OpenIMP_HelixBitstream_Init();
+#endif
         state.encoder.initialized = 1;
         break;
     case OPENIMP_ROOT_FB:
@@ -296,6 +313,12 @@ static void root_exit(enum openimp_root_id root)
         break;
     case OPENIMP_ROOT_ENCODER:
         memset(&state.encoder, 0, sizeof(state.encoder));
+#if defined(OPENIMP_HELIX_JPEG)
+        OpenIMP_HelixJpeg_Exit();
+#endif
+#if defined(OPENIMP_HELIX_SHARED_BS)
+        OpenIMP_HelixBitstream_Exit();
+#endif
         break;
     case OPENIMP_ROOT_FB:
         state.fb_initialized = 0;
