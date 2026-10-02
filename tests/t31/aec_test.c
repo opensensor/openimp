@@ -150,6 +150,10 @@ static int run(int rate, size_t frame, int report_cpu, double delay_ms)
             return 1;
         }
     clock_gettime(CLOCK_MONOTONIC, &t1);
+    if (openimp_aec_failed_blocks(aec) != 0) {
+        fprintf(stderr, "%lu blocks failed\n", openimp_aec_failed_blocks(aec));
+        return 1;
+    }
     delay_est = openimp_aec_delay_ms(aec);
     openimp_aec_free(aec);
     cpu = ((t1.tv_sec - t0.tv_sec) * 1e3 + (t1.tv_nsec - t0.tv_nsec) / 1e6) /

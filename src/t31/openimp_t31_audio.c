@@ -241,6 +241,8 @@ static struct {
     size_t ref_frame_capacity;
     int ref_frame_valid;
     OpenimpAec *aec;                /* IMP_AI_EnableAec processing */
+    unsigned long aec_failed_logged; /* failed blocks already reported */
+    int ref_offset_samples;         /* T23 ENABLE_AEC AI/AEC sample offset */
     struct {                        /* OPENIMP_AEC_STATS window */
         unsigned int frames;
         unsigned int noref;
@@ -410,14 +412,18 @@ static void t31_aec_stats_frame(const int16_t *reference, const int16_t *mic,
                              t31_db_tenths(t31_audio.stats.active_out)
                        : 0;
 
+        unsigned long failed = openimp_aec_failed_blocks(t31_audio.aec);
+
         t31_aec_log("frames %u: ref %u active %u missing %u | mic %.1f "
                     "ref %.1f out %.1f dBFS | ERLE(ref active) %.1f dB "
-                    "| delay ~%d ms",
+                    "| delay ~%d ms | failed blocks %lu",
                     t31_audio.stats.frames,
                     t31_audio.stats.frames - t31_audio.stats.noref,
                     t31_audio.stats.ref_active, t31_audio.stats.noref,
                     mic / 10.0, ref / 10.0, out_db / 10.0, erle / 10.0,
-                    openimp_aec_delay_ms(t31_audio.aec));
+                    openimp_aec_delay_ms(t31_audio.aec),
+                    failed - t31_audio.aec_failed_logged);
+        t31_audio.aec_failed_logged = failed;
     }
     memset(&t31_audio.stats, 0, sizeof(t31_audio.stats));
 }
@@ -1362,6 +1368,11 @@ static int t31_reference_set(int on)
         int sample_offset = 0;
 
         result = ioctl(t31_audio.ai_fd, T31_AI_ENABLE_AEC, &sample_offset);
+        if (result == 0) {
+            t31_audio.ref_offset_samples = sample_offset;
+            t31_aec_log("ENABLE_AEC: driver AI/AEC sample offset %d",
+                        sample_offset);
+        }
     } else {
         result = ioctl(t31_audio.ai_fd, T31_AI_DISABLE_AEC, 0);
     }
@@ -1439,11 +1450,22 @@ int IMP_AI_EnableAec(int ai_device, int ai_channel, int ao_device, int ao_channe
         openimp_aec_free(aec);
         return -1;
     }
+    if (t31_audio.ref_offset_samples > 0) {
+        /* the driver's reference trails the microphone by this many
+         * samples: report it to AECM as sound-card buffer delay */
+        int delay_ms = (int)((int64_t)t31_audio.ref_offset_samples * 1000 /
+                             t31_audio.ai_attr.samplerate);
+
+        openimp_aec_set_reference_delay_ms(aec, delay_ms);
+        t31_aec_log("EnableAec: reference delay %d ms (%d samples)",
+                    delay_ms, t31_audio.ref_offset_samples);
+    }
     pthread_mutex_lock(&t31_aec_lock);
     if (!t31_audio.aec) {
         t31_audio.aec = aec;
         aec = NULL;
         memset(&t31_audio.stats, 0, sizeof(t31_audio.stats));
+        t31_audio.aec_failed_logged = 0;
     }
     pthread_mutex_unlock(&t31_aec_lock);
     openimp_aec_free(aec);

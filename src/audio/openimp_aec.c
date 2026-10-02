@@ -47,6 +47,10 @@
 struct OpenimpAec {
     void *aecm;
     size_t block;
+    int16_t *out;               /* processed frame, committed when whole */
+    size_t out_capacity;        /* samples */
+    int16_t reference_delay_ms; /* msInSndCardBuf */
+    unsigned long failed_blocks;
 };
 
 OpenimpAec *openimp_aec_create(int sample_rate)
@@ -79,22 +83,55 @@ size_t openimp_aec_block_samples(const OpenimpAec *aec)
 int openimp_aec_process(OpenimpAec *aec, const int16_t *far_end,
                         int16_t *near_end, size_t samples)
 {
-    int16_t out[160];
     size_t offset;
+    unsigned long failed = 0;
 
     if (!aec || !far_end || !near_end || samples % aec->block)
         return -1;
+    if (samples > aec->out_capacity) {
+        int16_t *out = realloc(aec->out, samples * sizeof(*out));
+
+        if (!out)
+            return -1;
+        aec->out = out;
+        aec->out_capacity = samples;
+    }
     for (offset = 0; offset < samples; offset += aec->block) {
-        /* the reference is sample-aligned with the microphone (the codec
-         * records both), so no sound-card buffer delay is reported */
+        /* The reference is sample-aligned with the microphone (the codec
+         * records both); reference_delay_ms is what the driver reports
+         * beyond that (0 on T31).  Every block is fed, even after a
+         * failure, so the far-end buffer stays in step. */
         if (WebRtcAecm_BufferFarend(aec->aecm, far_end + offset,
                                     aec->block) != 0 ||
-            WebRtcAecm_Process(aec->aecm, near_end + offset, NULL, out,
-                               aec->block, 0) != 0)
-            return -1;
-        memcpy(near_end + offset, out, aec->block * sizeof(out[0]));
+            WebRtcAecm_Process(aec->aecm, near_end + offset, NULL,
+                               aec->out + offset, aec->block,
+                               aec->reference_delay_ms) != 0)
+            failed++;
     }
+    if (failed) {
+        /* leave the microphone frame as captured, not half-processed */
+        aec->failed_blocks += failed;
+        return -1;
+    }
+    memcpy(near_end, aec->out, samples * sizeof(*near_end));
     return 0;
+}
+
+void openimp_aec_set_reference_delay_ms(OpenimpAec *aec, int delay_ms)
+{
+    if (!aec)
+        return;
+    /* AECM clamps msInSndCardBuf to 0..500 itself */
+    if (delay_ms < 0)
+        delay_ms = 0;
+    if (delay_ms > 500)
+        delay_ms = 500;
+    aec->reference_delay_ms = (int16_t)delay_ms;
+}
+
+unsigned long openimp_aec_failed_blocks(const OpenimpAec *aec)
+{
+    return aec ? aec->failed_blocks : 0ul;
 }
 
 int openimp_aec_delay_ms(const OpenimpAec *aec)
@@ -119,5 +156,6 @@ void openimp_aec_free(OpenimpAec *aec)
         return;
     if (aec->aecm)
         WebRtcAecm_Free(aec->aecm);
+    free(aec->out);
     free(aec);
 }

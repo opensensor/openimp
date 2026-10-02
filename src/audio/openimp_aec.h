@@ -16,9 +16,15 @@ OpenimpAec *openimp_aec_create(int sample_rate);
  * multiple of it. */
 size_t openimp_aec_block_samples(const OpenimpAec *aec);
 /* Cancels the echo of far_end in near_end, in place.  samples must be a
- * whole number of 10 ms blocks.  0 on success. */
+ * whole number of 10 ms blocks.  0 on success; -1 leaves near_end
+ * unmodified (a failing block is counted, see openimp_aec_failed_blocks). */
 int openimp_aec_process(OpenimpAec *aec, const int16_t *far_end,
                         int16_t *near_end, size_t samples);
+/* Extra delay of the reference behind the microphone, passed to AECM as
+ * msInSndCardBuf (clamped to 0..500). */
+void openimp_aec_set_reference_delay_ms(OpenimpAec *aec, int delay_ms);
+/* Blocks WebRTC AECM rejected since create. */
+unsigned long openimp_aec_failed_blocks(const OpenimpAec *aec);
 /* AECM's current echo delay estimate in ms, -1 when unknown. */
 int openimp_aec_delay_ms(const OpenimpAec *aec);
 void openimp_aec_free(OpenimpAec *aec);
