@@ -1,0 +1,24 @@
+# Races TSan reports in the FrameSource/VBM lifecycle test that are by
+# design: word-sized status flags and trace counters read without a lock.
+# A new report outside these is a finding.
+
+# channel state word (chan + 0x1c): written under g_fs_lock, polled by the
+# pooling worker, which only waits for ENABLED with it
+race:fs_chan_get_state
+race:fs_chan_set_state
+# worker progress flags for the stop wait and the enable sync
+race:g_fs_thread_entered
+race:g_fs_thread_enabled_seen
+race:g_fs_thread_exited
+# ctx->running / ctx->fd as seen by the worker's loop and its trace lines
+race:frame_pooling_thread
+# per-call trace budgets and log-once counters
+race:trace_budget
+race:qbuf_log_count
+race:dqbuf_log_count
+race:dqbuf_ok_log
+race:dbg_count
+race:eagain_count
+race:err_count
+# trace argument read outside the queue mutex
+race:VBMKernelDequeue

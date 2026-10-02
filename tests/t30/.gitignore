@@ -7,3 +7,11 @@ ivs_framework_test_t21
 ivs_framework_test_t20
 ivs_move_bench_t20
 descriptor_test
+fs_lifecycle_test_t21
+fs_lifecycle_test_t20
+fs_lifecycle_test_t23
+fs_lifecycle_asan_*
+fs_lifecycle_tsan_*
+helix_encoder_asan_*
+ivs_framework_asan_*
+ivs_framework_tsan_*
