@@ -44,6 +44,16 @@ extern "C" {
 #define HW_RC_MODE_CBR          1
 #define HW_RC_MODE_VBR          2
 
+/* HWEncoderParams.rc_flags */
+#define HW_RC_FLAG_ADAPTIVE     0x1u    /* CBR adaptiveMode */
+#define HW_RC_FLAG_GOP_RELATION 0x2u    /* CBR/VBR gopRelation */
+#define HW_RC_FLAG_SMART        0x4u    /* IMP_ENC_RC_MODE_SMART (VBR-shaped) */
+/* The extras below came from the application's IMPEncoderAttrRcMode
+ * (IMP_Encoder_CreateChn / SetChnAttrRcMode) and hold its values as given,
+ * 0 included: 0 is a valid qualityLvl and iBiasLvl.  Without this flag the
+ * extras are unset and every consumer keeps its historic behaviour. */
+#define HW_RC_FLAG_APP          0x8u
+
 /* Hardware encoder parameters */
 typedef struct {
     uint32_t codec_type;        /* 0x00: Codec type (H264/H265/JPEG) */
@@ -58,8 +68,25 @@ typedef struct {
     uint32_t qp;                /* 0x24: QP value (for FIXQP) */
     uint32_t max_qp;            /* 0x28: Max QP */
     uint32_t min_qp;            /* 0x2c: Min QP */
-    uint32_t reserved[16];      /* 0x30-0x6f: Reserved */
+    /* T23/T30-family Helix rate-control extras from the application's
+     * IMPEncoderAttrRcMode, valid when rc_flags has HW_RC_FLAG_APP; all
+     * zero (no flag) keeps every encoder's historic behaviour.  This was
+     * reserved space: the struct size and the offsets above are unchanged
+     * (the legacy VENC ioctls only carry the first 16 bytes). */
+    uint32_t static_time;       /* 0x30: VBR/SMART staticTime */
+    uint32_t change_pos;        /* 0x34: VBR/SMART changePos */
+    uint32_t quality_level;     /* 0x38: VBR/SMART qualityLvl */
+    uint32_t frm_qp_step;       /* 0x3c: frmQPStep */
+    uint32_t gop_qp_step;       /* 0x40: gopQPStep */
+    int32_t bias_level;         /* 0x44: iBiasLvl */
+    uint32_t rc_flags;          /* 0x48: HW_RC_FLAG_* */
+    uint32_t reserved[9];       /* 0x4c-0x6f: Reserved */
 } HWEncoderParams;
+
+_Static_assert(sizeof(HWEncoderParams) == 0x70, "HWEncoderParams size");
+_Static_assert(offsetof(HWEncoderParams, static_time) == 0x30 &&
+               offsetof(HWEncoderParams, rc_flags) == 0x48,
+               "HWEncoderParams rate-control extras layout");
 
 /* Hardware frame buffer */
 typedef struct {

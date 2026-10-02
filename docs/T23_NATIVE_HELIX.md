@@ -94,6 +94,23 @@ keeps only the number of writes and an FNV-1a digest of the register order.
   rate, GOP and QP bounds set through the IMP API (timps) are applied
   between pictures from the codec's parameters; a bitrate-only change keeps
   the rate controller's scene model.
+- Helix rate-control extras of `IMPEncoderAttrRcMode` (CreateChn and
+  SetChnAttrRcMode hand them over with `HW_RC_FLAG_APP`; without them the
+  encoder behaves exactly as before). Vendor-verified from the T23 1.3.0
+  libimp (`IMP_Encoder_YuvInit`, `i264e_param_default`,
+  `i264e_ratecontrol_init`): the accepted ranges (staticTime 1..60,
+  changePos 50..100, qualityLvl 0..7, iBiasLvl -3..3, SMART -10..10, QP
+  steps != 0), frmQPStep = max P-to-P QP delta, gopQPStep = max I-to-P QP
+  delta, SMART configured like VBR, adaptiveMode/gopRelation not part of the
+  rate control. The native use is inferred from the SDK header:
+  I QP = P QP + iBiasLvl; frmQPStep/gopQPStep limit the QP change against
+  the last P picture; VBR/SMART target changePos% of maxBitRate and raise QP
+  above it, lower QP below maxBitRate * (80 - 10 * qualityLvl)% (SMART:
+  (20 + 10 * qualityLvl)%, higher = better); staticTime sets how many GOPs
+  the rate must stay outside that band before QP moves. Values out of range
+  disable the feature. The log shows the rate control in effect
+  (`T23 Helix rc ready:` / `rc reconfigured:`); `OPENIMP_T23_RC_STATS=<s>`
+  adds bitrate and I/P QP statistics every `<s>` seconds.
 - `src/t40/codec-t40.c`: backend selection, fallback and failure limit.
   Rate control (CBR/VBR/FixQP), GOP, IDR requests and the output path
   (`queue_encoded_stream`, P2 pack splitting) are shared with T30.

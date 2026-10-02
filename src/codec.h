@@ -115,6 +115,11 @@ int AL_Codec_Encode_SetBitRate(void *codec, int targetBitrate, int maxBitrate);
 
 int AL_Codec_Encode_GetRcParam(void *codec, void *rcAttr);
 int AL_Codec_Encode_SetRcParam(void *codec, void *rcAttr);
+#if defined(PLATFORM_T21) || defined(PLATFORM_T23) || defined(PLATFORM_T30)
+/* Helix rate-control extras (staticTime, changePos, qualityLvl, QP steps,
+ * iBiasLvl, SMART, ...) of an IMPEncoderAttrRcMode, for channel creation */
+int AL_Codec_Encode_SetRcExtras(void *codec, const void *rcMode);
+#endif
 int AL_Codec_Encode_GetFrameRate(void *codec, void *fps);
 int AL_Codec_Encode_SetFrameRate(void *codec, void *fps);
 int AL_Codec_Encode_SetQpIPDelta(void *codec, int delta);

@@ -726,9 +726,156 @@ static int verify(const char *decoded_path, const char *ref_path)
     return 0;
 }
 
+/* ---- rate-control extras (HW_RC_FLAG_APP) ---------------------------- */
+
+static uint32_t rc_frame(T30HelixEncoder *encoder, uint8_t *mem,
+                         uint32_t frame, int *idr)
+{
+    IMPFrameInfo info;
+    HWStreamBuffer *out = NULL;
+
+    make_frame(mem, frame);
+    memset(&info, 0, sizeof(info));
+    info.width = WIDTH;
+    info.height = HEIGHT;
+    info.pixfmt = 0x3231564eu;
+    info.size = FRAME_BYTES;
+    info.virAddr = (uint32_t)(uintptr_t)mem;
+    info.phyAddr = phys_of(mem);
+    info.timeStamp = (int64_t)frame * 66666;
+    assert(OpenIMP_T30_HelixEncode(encoder, &info, &out) == 0);
+    *idr = out->frame_type == HW_FRAME_TYPE_I;
+    free((void *)(uintptr_t)out->virt_addr);
+    free(out);
+    return last_qp_seen[*idr ? 0 : 1];
+}
+
+static void rc_params(HWEncoderParams *params, uint32_t mode)
+{
+    memset(params, 0, sizeof(*params));
+    params->width = WIDTH;
+    params->height = HEIGHT;
+    params->fps_num = 15;
+    params->fps_den = 1;
+    params->gop_length = GOP;
+    params->rc_mode = mode;
+    params->bitrate = 500000;
+    params->qp = 30;
+    params->min_qp = 20;
+    params->max_qp = 45;
+}
+
+/* Runs 40 pictures with a bitrate drop at picture 7 and returns the
+ * largest QP change between consecutive P pictures; checks the I bias and
+ * the I-to-P limit on the way. */
+static uint32_t rc_run(const HWEncoderParams *params,
+                       uint32_t frm_step, uint32_t gop_step,
+                       uint32_t *first_idr_qp)
+{
+    T30HelixEncoder *encoder = NULL;
+    uint8_t *mem = rmem + RMEM_SIZE - FRAME_BYTES - 4096u;
+    uint32_t frame, qp, last_p = 0, max_pp = 0;
+    int have_p = 0, idr;
+
+    assert(OpenIMP_T30_HelixCreate(&encoder, params) == 0);
+    for (frame = 0; frame < 40u; frame++) {
+        if (frame == 7u) {
+            HWEncoderParams change = *params;
+
+            change.bitrate = 20000;
+            assert(OpenIMP_T30_HelixReconfigure(encoder, &change) == 0);
+        }
+        qp = rc_frame(encoder, mem, frame, &idr);
+        assert(qp >= params->min_qp && qp <= params->max_qp);
+        if (frame == 0u) {
+            assert(idr);
+            *first_idr_qp = qp;
+        }
+        if (have_p) {
+            uint32_t delta = qp > last_p ? qp - last_p : last_p - qp;
+
+            if (idr && gop_step)
+                assert(delta <= gop_step);
+            if (!idr) {
+                if (frm_step)
+                    assert(delta <= frm_step);
+                if (delta > max_pp)
+                    max_pp = delta;
+            }
+        }
+        if (!idr) {
+            last_p = qp;
+            have_p = 1;
+        }
+    }
+    OpenIMP_T30_HelixDestroy(encoder);
+    return max_pp;
+}
+
+static int rc_test(void)
+{
+    HWEncoderParams params;
+    uint32_t first, plain_pp, limited_pp;
+
+    /* no extras: the historic controller, I and P at the same QP; the
+     * bitrate drop moves the P QP by more than one step at once */
+    rc_params(&params, HW_RC_MODE_CBR);
+    plain_pp = rc_run(&params, 0, 0, &first);
+    assert(first == 30u);
+    assert(plain_pp > 1u);
+
+    /* frmQPStep 1, gopQPStep 2, iBiasLvl -2 */
+    rc_params(&params, HW_RC_MODE_CBR);
+    params.rc_flags = HW_RC_FLAG_APP;
+    params.frm_qp_step = 1;
+    params.gop_qp_step = 2;
+    params.bias_level = -2;
+    limited_pp = rc_run(&params, 1, 2, &first);
+    assert(first == 28u);
+    assert(limited_pp == 1u);
+
+    /* out-of-range iBiasLvl (VBR: -3..3) is ignored like the OEM does */
+    rc_params(&params, HW_RC_MODE_VBR);
+    params.rc_flags = HW_RC_FLAG_APP;
+    params.bias_level = 5;
+    params.change_pos = 80;
+    params.quality_level = 0;
+    params.static_time = 2;
+    (void)rc_run(&params, 0, 0, &first);
+    assert(first == 30u);
+
+    /* SMART accepts -10..10; the I QP stays inside [min_qp, max_qp] */
+    rc_params(&params, HW_RC_MODE_VBR);
+    params.rc_flags = HW_RC_FLAG_APP | HW_RC_FLAG_SMART;
+    params.bias_level = 10;
+    params.change_pos = 50;
+    params.quality_level = 6;
+    params.static_time = 60;
+    params.frm_qp_step = 3;
+    params.gop_qp_step = 15;
+    (void)rc_run(&params, 3, 15, &first);
+    assert(first == 40u);
+    params.bias_level = -10;
+    params.min_qp = 25;
+    (void)rc_run(&params, 3, 15, &first);
+    assert(first == 25u);
+
+    /* FIXQP ignores the extras */
+    rc_params(&params, HW_RC_MODE_FIXQP);
+    params.rc_flags = HW_RC_FLAG_APP;
+    params.bias_level = -3;
+    params.frm_qp_step = 1;
+    (void)rc_run(&params, 0, 0, &first);
+    assert(first == 30u);
+
+    printf("rate-control extras: P-to-P QP change %u without, %u with "
+           "frmQPStep 1\n", plain_pp, limited_pp);
+    return 0;
+}
+
 int main(int argc, char **argv)
 {
-    if (argc != 4)
+    if (argc != 4 && !(argc == 2 && strcmp(argv[1], "rc") == 0))
         return 2;
     /* the encoder keeps addresses in 32-bit words, as on MIPS */
     mallopt(M_MMAP_MAX, 0);
@@ -739,5 +886,7 @@ int main(int argc, char **argv)
         return encode(argv[2], argv[3]);
     if (strcmp(argv[1], "verify") == 0)
         return verify(argv[2], argv[3]);
+    if (strcmp(argv[1], "rc") == 0)
+        return rc_test();
     return 2;
 }

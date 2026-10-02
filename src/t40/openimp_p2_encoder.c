@@ -919,6 +919,9 @@ extern int AL_Codec_Encode_SetFrameRate(void *codec, void *fps);
 extern int AL_Codec_Encode_SetBitRate(void *codec, int target_bitrate,
                                      int max_bitrate);
 extern int AL_Codec_Encode_SetRcParam(void *codec, void *rc_attr);
+#if defined(PLATFORM_T23)
+extern int AL_Codec_Encode_SetRcExtras(void *codec, const void *rc_mode);
+#endif
 extern int AL_Codec_Encode_SetQpBounds(void *codec, int min_qp, int max_qp);
 extern int AL_Codec_Encode_SetQpIPDelta(void *codec, int delta);
 extern int AL_Codec_Encode_SetQp(void *codec, void *qp);
@@ -1437,6 +1440,13 @@ int IMP_Encoder_CreateChn(int channel, IMPEncoderCHNAttr *attr)
         return -1;
     }
     P2_STARTUP_MARKER("openimp/P2 marker C8 codec create returned\n");
+#if defined(PLATFORM_T23)
+    /* The codec parameter block has no room for the Helix rate-control
+     * extras (staticTime, changePos, qualityLvl, QP steps, iBiasLvl, SMART):
+     * hand them over as the OEM CreateChn hands its encoder the whole
+     * rate-control attribute. */
+    (void)AL_Codec_Encode_SetRcExtras(ch->codec, &attr->rcAttr.attrRcMode);
+#endif
     p2_startup_trace("openimp/P2 startup: CreateChn codec created %p\n",
                      ch->codec);
 #if !defined(PLATFORM_T23) && !defined(PLATFORM_T30)

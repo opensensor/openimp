@@ -34,6 +34,15 @@ typedef struct OpenIMPT31RateController {
     uint32_t under_target_gops;
     int64_t virtual_buffer_bits;
     int initialized;
+#if defined(PLATFORM_T23)
+    /* Optional decision band (the T23 native encoder's VBR/SMART
+     * parameters); 0 keeps the built-in constant.  Other SoCs build the
+     * controller without it, unchanged. */
+    uint32_t lower_qp_percent;  /* lower QP below this % of the target */
+    uint32_t raise_qp_percent;  /* raise QP above this % of the target */
+    uint32_t over_target_limit; /* GOPs over before a raise */
+    uint32_t under_target_limit; /* GOPs under before a lower */
+#endif
 } OpenIMPT31RateController;
 
 int openimp_t31_rate_controller_init(OpenIMPT31RateController *controller,
@@ -55,5 +64,13 @@ int openimp_t31_rate_controller_complete(
 
 uint32_t openimp_t31_rate_controller_qp(
     const OpenIMPT31RateController *controller);
+
+#if defined(PLATFORM_T23)
+/* Set the decision band of an initialized controller; 0 for any value
+ * keeps its built-in constant.  init() resets the band. */
+int openimp_t31_rate_controller_set_band(
+    OpenIMPT31RateController *controller, uint32_t lower_percent,
+    uint32_t raise_percent, uint32_t over_gops, uint32_t under_gops);
+#endif
 
 #endif

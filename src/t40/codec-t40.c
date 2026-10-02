@@ -7429,6 +7429,63 @@ static void codec_set_error(AL_CodecEncode *enc, int err)
     enc->last_error = err;
 }
 
+static void codec_sync_rc_cache(AL_CodecEncode *enc);
+
+#if defined(PLATFORM_T23) || defined(PLATFORM_T30)
+/* The Helix rate-control fields of IMPEncoderAttrRcMode that HWEncoderParams
+ * has no core field for, taken as the application gave them (the encoders
+ * validate them: the OEM IMP_Encoder_YuvInit behind the T23 worker, the
+ * native encoder's own range checks).  FIXQP has none. */
+static void codec_store_rc_extras(HWEncoderParams *hw,
+                                  const IMPEncoderAttrRcMode *mode)
+{
+    hw->static_time = 0;
+    hw->change_pos = 0;
+    hw->quality_level = 0;
+    hw->frm_qp_step = 0;
+    hw->gop_qp_step = 0;
+    hw->bias_level = 0;
+    hw->rc_flags = 0;
+    switch (mode->rcMode) {
+    case IMP_ENC_RC_MODE_CBR:
+        hw->frm_qp_step = mode->attrH264Cbr.frmQPStep;
+        hw->gop_qp_step = mode->attrH264Cbr.gopQPStep;
+        hw->bias_level = mode->attrH264Cbr.iBiasLvl;
+        hw->rc_flags = HW_RC_FLAG_APP |
+            (mode->attrH264Cbr.adaptiveMode ? HW_RC_FLAG_ADAPTIVE : 0u) |
+            (mode->attrH264Cbr.gopRelation ? HW_RC_FLAG_GOP_RELATION : 0u);
+        break;
+    case IMP_ENC_RC_MODE_VBR:
+    case IMP_ENC_RC_MODE_SMART:
+        /* IMPEncoderAttrH264Smart is IMPEncoderAttrH264VBR */
+        hw->static_time = mode->attrH264Vbr.staticTime;
+        hw->change_pos = mode->attrH264Vbr.changePos;
+        hw->quality_level = mode->attrH264Vbr.qualityLvl;
+        hw->frm_qp_step = mode->attrH264Vbr.frmQPStep;
+        hw->gop_qp_step = mode->attrH264Vbr.gopQPStep;
+        hw->bias_level = mode->attrH264Vbr.iBiasLvl;
+        hw->rc_flags = HW_RC_FLAG_APP |
+            (mode->attrH264Vbr.gopRelation ? HW_RC_FLAG_GOP_RELATION : 0u) |
+            (mode->rcMode == IMP_ENC_RC_MODE_SMART ? HW_RC_FLAG_SMART : 0u);
+        break;
+    default:
+        break;
+    }
+}
+
+/* IMP_Encoder_CreateChn: the codec parameter block carries no room for
+ * these, so the channel hands its rate-control attribute over separately. */
+int AL_Codec_Encode_SetRcExtras(void *codec, const void *rcMode)
+{
+    if (codec == NULL || rcMode == NULL)
+        return -1;
+    codec_store_rc_extras(&((AL_CodecEncode *)codec)->hw_params,
+                          (const IMPEncoderAttrRcMode *)rcMode);
+    codec_sync_rc_cache((AL_CodecEncode *)codec);
+    return 0;
+}
+#endif
+
 static void codec_sync_rc_cache(AL_CodecEncode *enc)
 {
     IMPEncoderRcAttr *rc;
@@ -7452,6 +7509,10 @@ static void codec_sync_rc_cache(AL_CodecEncode *enc)
         break;
     case HW_RC_MODE_VBR:
         rc->attrRcMode.rcMode = IMP_ENC_RC_MODE_VBR;
+#if defined(PLATFORM_T23) || defined(PLATFORM_T30)
+        if (enc->hw_params.rc_flags & HW_RC_FLAG_SMART)
+            rc->attrRcMode.rcMode = IMP_ENC_RC_MODE_SMART;
+#endif
         break;
     default:
         rc->attrRcMode.rcMode = IMP_ENC_RC_MODE_FIXQP;
@@ -7474,11 +7535,13 @@ static void codec_sync_rc_cache(AL_CodecEncode *enc)
         rc->attrRcMode.attrH264Cbr.outBitRate = bitrate_kbps / 1000u;
         rc->attrRcMode.attrH264Cbr.maxQp = enc->hw_params.max_qp;
         rc->attrRcMode.attrH264Cbr.minQp = enc->hw_params.min_qp;
-        rc->attrRcMode.attrH264Cbr.iBiasLvl = 0;
-        rc->attrRcMode.attrH264Cbr.frmQPStep = 0;
-        rc->attrRcMode.attrH264Cbr.gopQPStep = 0;
-        rc->attrRcMode.attrH264Cbr.adaptiveMode = false;
-        rc->attrRcMode.attrH264Cbr.gopRelation = false;
+        rc->attrRcMode.attrH264Cbr.iBiasLvl = enc->hw_params.bias_level;
+        rc->attrRcMode.attrH264Cbr.frmQPStep = enc->hw_params.frm_qp_step;
+        rc->attrRcMode.attrH264Cbr.gopQPStep = enc->hw_params.gop_qp_step;
+        rc->attrRcMode.attrH264Cbr.adaptiveMode =
+            (enc->hw_params.rc_flags & HW_RC_FLAG_ADAPTIVE) != 0;
+        rc->attrRcMode.attrH264Cbr.gopRelation =
+            (enc->hw_params.rc_flags & HW_RC_FLAG_GOP_RELATION) != 0;
 #elif defined(PLATFORM_T31) || defined(PLATFORM_T40) || defined(PLATFORM_T41)
         rc->attrRcMode.attrH264Cbr.uTargetBitRate = bitrate_kbps;
         rc->attrRcMode.attrH264Cbr.iInitialQP = (int16_t)clamp_qp_u32(qp);
@@ -7513,9 +7576,14 @@ static void codec_sync_rc_cache(AL_CodecEncode *enc)
         rc->attrRcMode.attrH264Vbr.maxBitRate = bitrate_kbps / 1000u;
         rc->attrRcMode.attrH264Vbr.maxQp = enc->hw_params.max_qp;
         rc->attrRcMode.attrH264Vbr.minQp = enc->hw_params.min_qp;
-        rc->attrRcMode.attrH264Vbr.staticTime = 1;
-        rc->attrRcMode.attrH264Vbr.changePos = 80;
-        rc->attrRcMode.attrH264Vbr.qualityLvl = 2;
+        rc->attrRcMode.attrH264Vbr.staticTime = enc->hw_params.static_time;
+        rc->attrRcMode.attrH264Vbr.changePos = enc->hw_params.change_pos;
+        rc->attrRcMode.attrH264Vbr.qualityLvl = enc->hw_params.quality_level;
+        rc->attrRcMode.attrH264Vbr.frmQPStep = enc->hw_params.frm_qp_step;
+        rc->attrRcMode.attrH264Vbr.gopQPStep = enc->hw_params.gop_qp_step;
+        rc->attrRcMode.attrH264Vbr.iBiasLvl = enc->hw_params.bias_level;
+        rc->attrRcMode.attrH264Vbr.gopRelation =
+            (enc->hw_params.rc_flags & HW_RC_FLAG_GOP_RELATION) != 0;
 #elif defined(PLATFORM_T31) || defined(PLATFORM_T40) || defined(PLATFORM_T41)
         rc->attrRcMode.attrH264Vbr.uTargetBitRate = bitrate_kbps;
         rc->attrRcMode.attrH264Vbr.uMaxBitRate = bitrate_kbps;
@@ -11699,6 +11767,7 @@ int AL_Codec_Encode_SetRcParam(void *codec, void *rcAttr)
             clamp_qp_u32(src->attrRcMode.attrH264Cbr.maxQp);
         enc->hw_params.qp =
             (enc->hw_params.min_qp + enc->hw_params.max_qp) / 2u;
+        codec_store_rc_extras(&enc->hw_params, &src->attrRcMode);
 #elif defined(PLATFORM_T31) || defined(PLATFORM_T40) || defined(PLATFORM_T41)
         enc->hw_params.bitrate = src->attrRcMode.attrH264Cbr.uTargetBitRate;
         enc->hw_params.qp = clamp_qp_u32(src->attrRcMode.attrH264Cbr.iInitialQP);
@@ -11729,6 +11798,7 @@ int AL_Codec_Encode_SetRcParam(void *codec, void *rcAttr)
             clamp_qp_u32(src->attrRcMode.attrH264Vbr.maxQp);
         enc->hw_params.qp =
             (enc->hw_params.min_qp + enc->hw_params.max_qp) / 2u;
+        codec_store_rc_extras(&enc->hw_params, &src->attrRcMode);
 #elif defined(PLATFORM_T31) || defined(PLATFORM_T40) || defined(PLATFORM_T41)
         enc->hw_params.bitrate = src->attrRcMode.attrH264Vbr.uTargetBitRate;
         if (enc->hw_params.bitrate == 0)
@@ -11755,6 +11825,9 @@ int AL_Codec_Encode_SetRcParam(void *codec, void *rcAttr)
 #endif
         enc->hw_params.min_qp = enc->hw_params.qp;
         enc->hw_params.max_qp = enc->hw_params.qp;
+#if defined(PLATFORM_T23) || defined(PLATFORM_T30)
+        codec_store_rc_extras(&enc->hw_params, &src->attrRcMode);
+#endif
         break;
     }
 
