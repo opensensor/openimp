@@ -252,6 +252,156 @@ static void test_bitmap(void)
     free(f.mem);
 }
 
+/* Reference: stock-style full lw x lw stamps at every step (no incremental
+ * union), same floor rounding. The fast drawer must give identical frames. */
+static void ref_line(struct frame *f, int x0, int y0, int x1, int y1, int lw)
+{
+    int w1 = (int)W - 1, h1 = (int)H - 1;
+    int ax = x0 < 0 ? 0 : x0 > w1 ? w1 : x0, ay = y0 < 0 ? 0 : y0 > h1 ? h1 : y0;
+    int bx = x1 < 0 ? 0 : x1 > w1 ? w1 : x1, by = y1 < 0 ? 0 : y1 > h1 ? h1 : y1;
+    int dx = bx - ax, dy = by - ay, adx = dx < 0 ? -dx : dx, ady = dy < 0 ? -dy : dy;
+    int n = adx > ady ? adx : ady, k;
+
+    for (k = 0; k < n; k++) {
+        int px, py, xs, ys, xe, ye, x, y;
+
+        if (ady < adx) {
+            int s = dx > 0 ? k : -k;
+
+            px = ax + s;
+            py = ay + (int)osd_floordiv((int64_t)dy * s, dx);
+        } else {
+            int s = dy > 0 ? k : -k;
+
+            py = ay + s;
+            px = ax + (int)osd_floordiv((int64_t)dx * s, dy);
+        }
+        xs = osd_clampi((int64_t)px - lw / 2, 0, w1);
+        ys = osd_clampi((int64_t)py - lw / 2, 0, h1);
+        xe = osd_clampi((int64_t)xs + lw - 1, 0, w1);
+        ye = osd_clampi((int64_t)ys + lw - 1, 0, h1);
+        for (y = ys; y <= ye; y++)
+            for (x = xs; x <= xe; x++) {
+                f->base[(size_t)y * STRIDE + x] = 0x10;
+                f->base[(size_t)STRIDE * H + (size_t)(y / 2) * STRIDE + (x & ~1)] = 0x20;
+                f->base[(size_t)STRIDE * H + (size_t)(y / 2) * STRIDE + (x & ~1) + 1] = 0x30;
+            }
+    }
+}
+
+static void test_line_reference(void)
+{
+    static const int lws[] = {1, 2, 3, 4, 7};
+    unsigned seed = 12345, i, l;
+
+    for (i = 0; i < 400; i++) {
+        for (l = 0; l < sizeof(lws) / sizeof(lws[0]); l++) {
+            struct frame f, g;
+            struct osd_canvas c;
+            int x0, y0, x1, y1, dx;
+
+            seed = seed * 1103515245u + 12345u;
+            x0 = (int)(seed >> 8) % 80 - 8;
+            seed = seed * 1103515245u + 12345u;
+            y0 = (int)(seed >> 8) % 64 - 8;
+            seed = seed * 1103515245u + 12345u;
+            x1 = (int)(seed >> 8) % 80 - 8;
+            seed = seed * 1103515245u + 12345u;
+            y1 = (int)(seed >> 8) % 64 - 8;
+            dx = osd_clampi(x1, 0, W - 1) - osd_clampi(x0, 0, W - 1);
+            if (dx < 0)
+                dx = -dx;
+            if (dx < 2 * lws[l] || (x0 == x1 && y0 == y1))
+                continue;           /* box path, checked elsewhere */
+            frame_new(&f);
+            frame_new(&g);
+            canvas(&f, &c);
+            osd_draw_line(&c, x0, y0, x1, y1, (uint32_t)lws[l], WORD, 0, 0);
+            ref_line(&g, x0, y0, x1, y1, lws[l]);
+            CHECK(memcmp(f.mem, g.mem, f.size) == 0,
+                  "line (%d,%d)-(%d,%d) lw %d differs from full stamps",
+                  x0, y0, x1, y1, lws[l]);
+            free(f.mem);
+            free(g.mem);
+        }
+    }
+}
+
+static void test_stock_details(void)
+{
+    struct frame f, g;
+    struct osd_canvas c;
+    uint32_t x;
+
+    /* p0 == p1: stock draws nothing */
+    frame_new(&f);
+    canvas(&f, &c);
+    osd_draw_line(&c, 20, 20, 20, 20, 5, WORD, 0, 0);
+    CHECK(count_y(&f, 0x10) == 0 && c.ymax < c.ymin, "point line drawn");
+    free(f.mem);
+
+    /* right-to-left horizontal: positions p0 .. p1+1 */
+    frame_new(&f);
+    canvas(&f, &c);
+    osd_draw_line(&c, 30, 20, 5, 20, 2, WORD, 0, 0);
+    for (x = 0; x < W; x++)
+        CHECK(ypix(&f, x, 19) == (x >= 5 && x <= 30 ? 0x10 : 0), "rtl hline x=%u", x);
+    free(f.mem);
+
+    /* zero-width rect: the two point edges vanish, the vertical ones stay */
+    frame_new(&f);
+    canvas(&f, &c);
+    osd_draw_rect(&c, 20, 10, 20, 30, 2, WORD, 0, 0);
+    CHECK(ypix(&f, 19, 9) == 0x10 && ypix(&f, 20, 30) == 0x10 &&
+          ypix(&f, 19, 31) == 0 && ypix(&f, 21, 20) == 0, "zero-width rect");
+    free(f.mem);
+
+    /* raw coordinates are clamped before offPos is added */
+    frame_new(&f);
+    canvas(&f, &c);
+    osd_draw_line(&c, 5, 1000, 40, 1000, 1, WORD, 0, -10);
+    CHECK(ypix(&f, 10, H - 11) == 0x10 && count_y(&f, 0x10) == 35, "pre-offset clamp");
+    free(f.mem);
+
+    /* any lw >= 2 * frame size gives the same frame as the cap */
+    frame_new(&f);
+    frame_new(&g);
+    canvas(&f, &c);
+    osd_draw_line(&c, 3, 4, 50, 40, 0xffffffffu, WORD, 0, 0);
+    canvas(&g, &c);
+    osd_draw_line(&c, 3, 4, 50, 40, 2 * W, WORD, 0, 0);
+    CHECK(memcmp(f.mem, g.mem, f.size) == 0 && count_y(&f, 0x10) == (int)(W * H),
+          "huge lw");
+    free(f.mem);
+    free(g.mem);
+}
+
+static void test_dry(void)
+{
+    struct frame f, g;
+    struct osd_canvas c, d;
+    uint8_t bmp[16];
+
+    memset(bmp, 0x50, sizeof(bmp));
+    frame_new(&f);
+    frame_new(&g);
+    canvas(&f, &c);
+    canvas(&g, &d);
+    d.dry = 1;
+    osd_draw_rect(&c, 6, 7, 40, 20, 3, WORD, 2, 1);
+    osd_draw_line(&c, 1, 40, 60, 30, 2, WORD, 0, 0);
+    osd_draw_bitmap(&c, bmp, 50, -2, 4, 4, 0, 0);
+    osd_draw_rect(&d, 6, 7, 40, 20, 3, WORD, 2, 1);
+    osd_draw_line(&d, 1, 40, 60, 30, 2, WORD, 0, 0);
+    osd_draw_bitmap(&d, bmp, 50, -2, 4, 4, 0, 0);
+    CHECK(c.ymin == d.ymin && c.ymax == d.ymax, "dry band %d..%d vs %d..%d",
+          d.ymin, d.ymax, c.ymin, c.ymax);
+    CHECK(count_y(&g, 0x10) == 0 && count_y(&g, 0x50) == 0, "dry run wrote");
+    check_untouched(&g, "dry");
+    free(f.mem);
+    free(g.mem);
+}
+
 static void test_invalid_canvas(void)
 {
     struct osd_canvas c;
@@ -272,6 +422,9 @@ int main(void)
     test_line();
     test_border();
     test_bitmap();
+    test_line_reference();
+    test_stock_details();
+    test_dry();
     test_invalid_canvas();
     if (failures) {
         fprintf(stderr, "%d failure(s)\n", failures);
