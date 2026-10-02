@@ -3007,21 +3007,74 @@ int IMP_ISP_Tuning_SetWB_ALGO(int mode)
     return tseries_tuning_set_val(TISP_CID_WB_ALGO, mode);
 }
 
+/* Vendor (T21 1.0.33 0x6544): with tuning enabled, store the callback
+ * under the tuning mutex (NULL clears it) and return 0. It used to be
+ * written over the first word of the tuning block and NULL was refused. */
+static pthread_mutex_t tseries_video_drop_lock = PTHREAD_MUTEX_INITIALIZER;
+static void *tseries_video_drop_cb;
+
 int IMP_ISP_Tuning_SetVideoDrop(void *attr)
 {
     ISPDevice *isp;
 
-    if (attr == NULL) {
+    if (tseries_get_isp(&isp) != 0 || isp->tuning_state != 2) {
         return -1;
     }
 
-    if (tseries_get_isp(&isp) != 0 || isp->tuning == NULL) {
-        return -1;
-    }
-
-    *(void **)isp->tuning = attr;
+    pthread_mutex_lock(&tseries_video_drop_lock);
+    tseries_video_drop_cb = attr;
+    pthread_mutex_unlock(&tseries_video_drop_lock);
     return 0;
 }
+
+#if defined(PLATFORM_T21) /* T21 and T20 */
+/* T21 1.0.33 (0x3150/0x31b8/0x324c/0x32b4): VIDIOC_S/G_CTRL with the V4L2
+ * scene-mode and colour-effect controls; Get stores the value only when
+ * the ioctl succeeds. The T20 3.12.0 kernel handles both controls
+ * (apical scene mode and colorfx); the T21 kernel runs the OEM handler. */
+#define TSERIES_V4L2_CID_SCENE_MODE 0x009a091a
+#define TSERIES_V4L2_CID_COLORFX    0x0098091f
+
+int IMP_ISP_Tuning_SetSceneMode(IMPISPSceneMode mode)
+{
+    return tseries_v4l2_set(TSERIES_V4L2_CID_SCENE_MODE, (int32_t)mode);
+}
+
+int IMP_ISP_Tuning_GetSceneMode(IMPISPSceneMode *pmode)
+{
+    int32_t value;
+    int result;
+
+    if (pmode == NULL) {
+        return -1;
+    }
+    result = tseries_v4l2_get(TSERIES_V4L2_CID_SCENE_MODE, &value);
+    if (result == 0) {
+        *pmode = (IMPISPSceneMode)value;
+    }
+    return result;
+}
+
+int IMP_ISP_Tuning_SetColorfxMode(IMPISPColorfxMode mode)
+{
+    return tseries_v4l2_set(TSERIES_V4L2_CID_COLORFX, (int32_t)mode);
+}
+
+int IMP_ISP_Tuning_GetColorfxMode(IMPISPColorfxMode *pmode)
+{
+    int32_t value;
+    int result;
+
+    if (pmode == NULL) {
+        return -1;
+    }
+    result = tseries_v4l2_get(TSERIES_V4L2_CID_COLORFX, &value);
+    if (result == 0) {
+        *pmode = (IMPISPColorfxMode)value;
+    }
+    return result;
+}
+#endif /* PLATFORM_T21 */
 
 int IMP_ISP_Tuning_SetShading(void *attr)
 {

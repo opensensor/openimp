@@ -437,6 +437,40 @@ int IMP_ISP_Tuning_SetDPC_Strength(uint32_t ratio);
  */
 int IMP_ISP_Tuning_SetDRC_Strength(uint32_t ratio);
 int IMP_ISP_Tuning_GetDRC_Strength(uint32_t *ratio);
+/**
+ * Scene mode (T20/T21, vendor imp_isp.h; V4L2_CID_SCENE_MODE)
+ */
+typedef enum {
+    IMPISP_SCENE_MODE_AUTO = 0,
+    IMPISP_SCENE_MODE_BEACH_SNOW = 2,
+    IMPISP_SCENE_MODE_CANDLE_LIGHT = 3,
+    IMPISP_SCENE_MODE_DAWN_DUSK = 4,
+    IMPISP_SCENE_MODE_FALL_COLORS = 5,
+    IMPISP_SCENE_MODE_FIREWORKS = 6,
+    IMPISP_SCENE_MODE_LANDSCAPE = 7,
+    IMPISP_SCENE_MODE_NIGHT = 8,
+    IMPISP_SCENE_MODE_PARTY_INDOOR = 9,
+    IMPISP_SCENE_MODE_SPORTS = 11,
+    IMPISP_SCENE_MODE_SUNSET = 12,
+    IMPISP_SCENE_MODE_TEXT = 13,
+    IMPISP_SCENE_MODE_NIGHT_PORTRAIT = 14,
+} IMPISPSceneMode;
+
+/**
+ * Colour effect (T20/T21, vendor imp_isp.h; V4L2_CID_COLORFX)
+ */
+typedef enum {
+    IMPISP_COLORFX_MODE_AUTO = 0,
+    IMPISP_COLORFX_MODE_BW = 1,
+    IMPISP_COLORFX_MODE_SEPIA = 2,
+    IMPISP_COLORFX_MODE_NEGATIVE = 3,
+    IMPISP_COLORFX_MODE_VIVID = 9,
+} IMPISPColorfxMode;
+
+int IMP_ISP_Tuning_SetSceneMode(IMPISPSceneMode mode);
+int IMP_ISP_Tuning_GetSceneMode(IMPISPSceneMode *pmode);
+int IMP_ISP_Tuning_SetColorfxMode(IMPISPColorfxMode mode);
+int IMP_ISP_Tuning_GetColorfxMode(IMPISPColorfxMode *pmode);
 int IMP_ISP_Tuning_SetRawDRC(IMPISPDrcAttr *attribute);
 int IMP_ISP_Tuning_GetRawDRC(IMPISPDrcAttr *attribute);
 int IMP_ISP_Tuning_SetSinterDnsAttr(IMPISPSinterDenoiseAttr *attribute);
