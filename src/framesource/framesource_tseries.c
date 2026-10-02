@@ -2508,6 +2508,7 @@ typedef struct {
     uint32_t stats_frames;
     uint64_t stats_us;
     uint32_t stats_max_us;
+    uint32_t stats_total;
 } FsRotate;
 
 static FsRotate g_fs_rotate[FS_MAX_CHANNELS];
@@ -2625,7 +2626,8 @@ void openimp_fs_rotate_capture(int chn, void *frame)
         r->stats_us += dt;
         if (dt > r->stats_max_us)
             r->stats_max_us = dt;
-        if (++r->stats_frames == 300u) {
+        /* first frame at once, then every 100 frames */
+        if (++r->stats_frames == 100u || r->stats_total++ == 0u) {
             fprintf(stderr, "[FS] rotate ch%d %ux%u mode %d: avg %u us max %u us /frame\n",
                     chn, w, h, mode, (uint32_t)(r->stats_us / r->stats_frames),
                     r->stats_max_us);

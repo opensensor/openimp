@@ -102,12 +102,16 @@ and IVS bound to that channel also see the rotated picture.
   skipped, with one warning, if the capture record matches neither
   orientation of the given size, or if the buffer is too small.
 - `OPENIMP_FS_ROTATE_STATS=1` logs the average and maximum rotate time
-  every 300 frames.
+  after the first frame and then every 100 frames.
 
 Limits:
 
 - Turning rotation off on a running channel leaves the record at the
   rotated size. The vendor does not support that case either.
+- OSD and privacy covers: `IMP_OSD_SetRgnAttr` has no picHeight range
+  check in OpenIMP. The IPU draws after rotation and clips against the frame
+  record, which holds the rotated size (e.g. 704x1280). So regions may cover
+  the whole portrait frame.
 - IVS reads with stride = width. A rotated width that is not a multiple of
   16 (360) needs IVS on another channel.
 
