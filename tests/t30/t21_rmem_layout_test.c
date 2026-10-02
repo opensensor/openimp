@@ -47,6 +47,8 @@
 #define ISP_NCU 3772800u
 /* Helix JPEG: 8 KiB command list + the 1080p NV12 picture */
 #define JPEG_BS (0x2000u + FRAME(MAIN_W, MAIN_H))
+/* now: command list + two 1080p macroblock rows at 2368 bytes per MCU */
+#define JPEG_ROW (0x2000u + 2u * 120u * 2368u + 256u)
 #define OSD_PIECES 8u
 
 static const uint32_t osd_sizes[OSD_PIECES] = {
@@ -295,17 +297,24 @@ static int legacy_layout_fails(void)
     return fails;
 }
 
-/* timps' start-up: ISP, encoder channels (encoders made at CreateChn) and
- * JPEG channels, OSD regions, then chn0's pool. */
+/* timps' start-up: ISP, IMP_System_Init (the shared bitstream buffer, as
+ * the stock EncoderInit's vpuBs), encoder channels (encoders made at
+ * CreateChn) and JPEG channels, OSD regions, then chn0's pool. */
 static void start(void)
 {
     unsigned int i;
 
     rmem_arena_init(&arena, RMEM_SIZE);
     block_alloc(&isp, ISP_NCU, 0);
+    assert(OpenIMP_HelixBitstream_Init() == 0);
+    /* 1920 * 1080 bytes, page-rounded */
+    assert(OpenIMP_HelixBitstream_Size() == 2076672u);
     encoder_create(&main_encoder, MAIN_W, MAIN_H);
-    assert(OpenIMP_HelixBitstream_Reserve(JPEG_BS) == 0);
+    /* the JPEG channels need one macroblock row of the worst case
+     * (src/t30/helix_jpeg.c stripes): no growth */
+    assert(OpenIMP_HelixBitstream_Reserve(JPEG_ROW) == 0);
     encoder_create(&sub_encoder, SUB_W, SUB_H);
+    assert(OpenIMP_HelixBitstream_Size() == 2076672u);
     for (i = 0; i < OSD_PIECES; i++)
         block_alloc(&osd[i], osd_sizes[i], 1);
     pool_enable(&pool0, POOL0);
@@ -334,6 +343,8 @@ int main(void)
     pool_enable(&pool0, POOL0);
     printf("both channels streaming: used %zu of %zu, %zu bytes free\n",
            arena.used, arena.size, arena.size - arena.used);
+    /* 2068 KiB shared buffer instead of 3068 KiB: 1.6 MB stay free */
+    assert(arena.size - arena.used >= 1600000u);
 
     /* random idle/re-enable cycles in any order, OSD bitmaps re-made
      * larger now and then (a longer text), codec restarts while idle */

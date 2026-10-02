@@ -13,7 +13,9 @@
  * otherwise); every H.264 channel and the JPEG encoder have the VPU write
  * into it in turn (bsbufsem) and the data is copied out before the next
  * job.  Per-channel bitstream windows instead cost one window per channel
- * on top of it.
+ * on top of it.  OpenIMP allocates it the same way (IMP_System_Init, pool
+ * size); the H.264 windows fit in it, and JPEG is encoded in horizontal
+ * stripes that each fit (src/t30/helix_jpeg.c), so it does not grow.
  *
  * Lock() takes the buffer for one job, growing it to at least `size` bytes
  * first; the caller builds, runs and copies out its job and then calls
@@ -27,10 +29,23 @@ int OpenIMP_HelixBitstream_Lock(uint32_t size, IMPDMABufferInfo *dma);
 void OpenIMP_HelixBitstream_Unlock(void);
 
 /* Grows the buffer to size bytes now (channel creation, as the stock
- * library allocates its encoder buffers at start-up). */
+ * library allocates its encoder buffers at start-up).  A buffer made here
+ * or by Lock() is at least the pool size. */
 int OpenIMP_HelixBitstream_Reserve(uint32_t size);
+
+/* The stock EncoderInit (IMP_System_Init): allocates the buffer with the
+ * pool size, 1920 * 1080 bytes for the T21 parts (0x1fa400) unless
+ * IMP_Encoder_SetPoolSize set another size before. */
+int OpenIMP_HelixBitstream_Init(void);
+/* The stock EncoderExit (IMP_System_Exit): frees the buffer. */
+void OpenIMP_HelixBitstream_Exit(void);
 
 /* Current size in bytes (0: not allocated). */
 uint32_t OpenIMP_HelixBitstream_Size(void);
+/* The size Init() allocates. */
+uint32_t OpenIMP_HelixBitstream_PoolSize(void);
+
+/* Stock T21 default ("vpuBs" for the T21 CPU ids, EncoderInit). */
+#define OPENIMP_HELIX_BS_DEFAULT_POOL 0x1fa400u
 
 #endif

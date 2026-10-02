@@ -24,6 +24,10 @@
 
 #include "dma_alloc.h"
 #include "t30/t30_helix_encoder.h"
+#if defined(PLATFORM_T21) && !defined(PLATFORM_T20)
+#include "t30/helix_bitstream.h"
+int IMP_Encoder_SetPoolSize(int size);
+#endif
 
 #define FAKE_FD 77
 #define T30_CHANNEL_REQUEST 0xc0386300u
@@ -526,6 +530,23 @@ static void test_dma_footprint(void)
     assert(allocation("t30-helix-emc")->size == 266240u);
     assert(allocation("t30-helix-bs") == NULL);
     OpenIMP_T30_HelixDestroy(encoder);
+    /* the shared buffer is the stock pool size (1920 * 1080, page-rounded),
+     * and IMP_Encoder_SetPoolSize keeps the 1080p window inside a smaller
+     * pool: 600000 -> a 576 KiB window, no growth */
+    assert(allocation("helix-bs")->size == 2076672u);
+    OpenIMP_HelixBitstream_Exit();
+    assert(IMP_Encoder_SetPoolSize(600000) == 0);
+    encoder = create(1920, 1080, 25, 25);
+    assert(allocation("helix-bs")->size == 602112u);
+    {
+        PictureInfo info;
+
+        assert(encode(encoder, &info) == 0);
+    }
+    OpenIMP_T30_HelixDestroy(encoder);
+    OpenIMP_HelixBitstream_Exit();
+    assert(IMP_Encoder_SetPoolSize(0x1fa400) == 0);
+    assert(OpenIMP_HelixBitstream_Init() == 0);
 #endif
     /* every encoder buffer is long-lived: all of them from the top */
     assert(top_allocations > top_before);

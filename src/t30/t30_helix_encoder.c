@@ -557,6 +557,19 @@ int OpenIMP_T30_HelixCreate(T30HelixEncoder **encoder_out,
             window = 256u << 10;
         if (window > (1u << 20))
             window = 1u << 20;
+#if defined(HELIX_SHARED_BITSTREAM)
+        /* the window lies in the shared buffer: keep it inside the pool
+         * size (IMP_Encoder_SetPoolSize), down to the 256 KiB minimum */
+        {
+            uint32_t pool = OpenIMP_HelixBitstream_PoolSize();
+
+            if (pool > 4096u && window + 4096u > pool) {
+                window = (pool - 4096u) & ~0xffffu;
+                if (window < (256u << 10))
+                    window = 256u << 10;
+            }
+        }
+#endif
         encoder->bitstream_kib = (uint32_t)(window >> 10);
     }
 #endif
@@ -724,6 +737,10 @@ int OpenIMP_T30_HelixEncode(T30HelixEncoder *encoder,
         LOG_CODEC("T30 Helix: no shared bitstream buffer");
         return -1;
     }
+    /* this picture's part of the shared buffer: the slice header area and
+     * the window, so cache maintenance and the length check cover the
+     * window and not the whole (2 MB) buffer */
+    encoder->temporary.size = t30_bitstream_bytes(encoder);
     ret = t30_helix_encode_job(encoder, frame, stream_out);
     memset(&encoder->temporary, 0, sizeof(encoder->temporary));
     OpenIMP_HelixBitstream_Unlock();
