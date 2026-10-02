@@ -258,8 +258,9 @@ static void test_t10_matches_stock(const char *path, int p_slice)
         config.stride[0] = 1280;
         config.stride[1] = 1280;
         if (p_slice) {
-            config.reference_y = 0x035a1e00u;
-            config.reference_c = 0x03690680u;
+            /* plane bases: stock MCE reads base + border offset */
+            config.reference_y = 0x035a1e00u - 0x5300u;
+            config.reference_c = 0x03690680u - 0x2980u;
         }
         config.output_y = 0x0342b300u;
         config.output_c = 0x0351c500u;
@@ -282,8 +283,9 @@ static void test_t10_matches_stock(const char *path, int p_slice)
             if (!p_slice && ((reg & 0xffffcu) == 0x50304u ||
                              (reg & 0xffffcu) == 0x50b04u)) {
                 assert(descriptor[i * 2u] ==
-                       ((reg & 0xffffcu) == 0x50304u ? config.output_y
-                                                     : config.output_c));
+                       ((reg & 0xffffcu) == 0x50304u
+                            ? config.output_y + 0x5300u
+                            : config.output_c + 0x2980u));
                 assert(stock[i * 2u] ==
                        T10_H264_ReferenceOffset(80, (reg & 0xffffcu) ==
                                                         0x50b04u));
