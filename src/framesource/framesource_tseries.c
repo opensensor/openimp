@@ -1683,6 +1683,10 @@ int IMP_FrameSource_CreateChn(int chnNum, IMPFSChnAttr *chn_attr)
     return 0;
 }
 
+#if defined(PLATFORM_T31)
+static void fs_rotate_release(int chn);
+#endif
+
 int IMP_FrameSource_DestroyChn(int chnNum)
 {
     const char *tag = "IMP_FrameSource_DestroyChn";
@@ -1720,6 +1724,9 @@ int IMP_FrameSource_DestroyChn(int chnNum)
     *(int32_t *)((char *)gFrameSource + 0x14) -= 1;
     g_fs_ctx[chnNum].created = 0;
     g_fs_ctx[chnNum].running = 0;
+#if defined(PLATFORM_T31)
+    fs_rotate_release(chnNum);
+#endif
     pthread_mutex_unlock(&g_fs_lock);
     return 0;
 }
@@ -2497,13 +2504,22 @@ int IMP_FrameSource_DisableChnUndistort(int chnNum)
 #define FS_FOURCC_NV12       0x3231564eu
 #define FS_FOURCC_NV21       0x3132564eu
 
+/* SetChnRotate publishes {mode, pre-rotation width, height} as one
+ * 32-bit word so the dequeue thread never sees a mode with the other
+ * call's size: mode in bits 26..31, width in 13..25, height in 0..12
+ * (both <= 4096). */
+#define FS_ROT_CFG(mode, w, h) \
+    (((uint32_t)(mode) << 26) | ((uint32_t)(w) << 13) | (uint32_t)(h))
+#define FS_ROT_CFG_MODE(c)   ((int)((c) >> 26))
+#define FS_ROT_CFG_WIDTH(c)  (((c) >> 13) & 0x1fffu)
+#define FS_ROT_CFG_HEIGHT(c) ((c) & 0x1fffu)
+
 typedef struct {
-    int      mode;          /* NV12_ROT_*, written by SetChnRotate */
-    uint32_t width;         /* pre-rotation size from SetChnRotate */
-    uint32_t height;
-    /* dequeue thread only */
+    uint32_t cfg;           /* FS_ROT_CFG, written by SetChnRotate */
+    /* dequeue thread only (and DestroyChn, once the thread has stopped) */
     uint8_t *scratch;
     size_t   scratch_size;
+    uint32_t warned_cfg;    /* cfg the warning was printed for */
     int      warned;
     uint32_t stats_frames;
     uint64_t stats_us;
@@ -2550,13 +2566,18 @@ void openimp_fs_rotate_capture(int chn, void *frame)
     uint8_t *f = frame;
     FsRotate *r;
     int mode;
-    uint32_t w, h, ow, oh, fw, fh, pixfmt, size, virt, need, flag = 1;
+    uint32_t cfg, w, h, ow, oh, fw, fh, pixfmt, size, virt, need, flag = 1;
     uint64_t t0 = 0;
 
     if (chn < 0 || chn >= FS_MAX_CHANNELS || !f)
         return;
     r = &g_fs_rotate[chn];
-    mode = __atomic_load_n(&r->mode, __ATOMIC_ACQUIRE);
+    cfg = __atomic_load_n(&r->cfg, __ATOMIC_ACQUIRE);
+    mode = FS_ROT_CFG_MODE(cfg);
+    if (cfg != r->warned_cfg) {
+        r->warned_cfg = cfg;
+        r->warned = 0;
+    }
     if (mode == NV12_ROT_NONE) {
         if (r->scratch) {
             free(r->scratch);
@@ -2565,8 +2586,8 @@ void openimp_fs_rotate_capture(int chn, void *frame)
         }
         return;
     }
-    w = r->width;
-    h = r->height;
+    w = FS_ROT_CFG_WIDTH(cfg);
+    h = FS_ROT_CFG_HEIGHT(cfg);
     if (nv12_rotate_out_dims(mode, w, h, &ow, &oh) != 0)
         return;
     memcpy(&fw, f + FS_FRAME_WIDTH, 4);
@@ -2651,7 +2672,8 @@ int IMP_FrameSource_SetChnRotate(int chnNum, int rotTo90, int width, int height)
     if (chnNum < 0 || chnNum >= FS_MAX_CHANNELS) return -1;
     r = &g_fs_rotate[chnNum];
     if (mode == NV12_ROT_NONE) {
-        __atomic_store_n(&r->mode, NV12_ROT_NONE, __ATOMIC_RELEASE);
+        __atomic_store_n(&r->cfg, FS_ROT_CFG(NV12_ROT_NONE, 0, 0),
+                         __ATOMIC_RELEASE);
         return 0;
     }
     if (nv12_rotate_out_dims(mode, 1, 1, &ow, &oh) != 0 ||
@@ -2661,12 +2683,24 @@ int IMP_FrameSource_SetChnRotate(int chnNum, int rotTo90, int width, int height)
                 chnNum, mode, width, height);
         return -1;
     }
-    __atomic_store_n(&r->mode, NV12_ROT_NONE, __ATOMIC_RELEASE);
-    r->width = (uint32_t)width;
-    r->height = (uint32_t)height;
-    r->warned = 0;
-    __atomic_store_n(&r->mode, mode, __ATOMIC_RELEASE);
+    __atomic_store_n(&r->cfg, FS_ROT_CFG(mode, width, height),
+                     __ATOMIC_RELEASE);
     return 0;
+}
+
+/* DestroyChn: the dequeue thread has stopped (the channel is not
+ * running), so its scratch buffer can go. The SetChnRotate setting stays,
+ * as it is made before CreateChn. */
+static void fs_rotate_release(int chn)
+{
+    FsRotate *r;
+
+    if (chn < 0 || chn >= FS_MAX_CHANNELS)
+        return;
+    r = &g_fs_rotate[chn];
+    free(r->scratch);
+    r->scratch = NULL;
+    r->scratch_size = 0;
 }
 #else
 /* No rotation path on this SoC: report failure for rotTo90 != 0 so callers
