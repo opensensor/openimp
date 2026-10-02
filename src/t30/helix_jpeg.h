@@ -50,7 +50,9 @@ typedef struct {
     uint32_t mb_height;        /* MCU rows */
     uint8_t raw_format;        /* HELIX_JPEG_PLANE_* */
     uint32_t bitstream;        /* entropy-coded output */
-    uint32_t bitstream_limit;  /* T23 JPGC_MAX_BS, 0 = no limit */
+    uint32_t bitstream_limit;  /* JPGC_MAX_BS, 0 = no limit (the register
+                                * is written on T23 always, on the other
+                                * cores only for a limit) */
     const uint8_t *qt;         /* 128 quantizers: luma then chroma, DQT
                                 * (zigzag) order */
 } HelixJpegSlice;
@@ -76,7 +78,9 @@ size_t HelixJpeg_WriteHeader(uint8_t *out, size_t capacity, uint32_t width,
 typedef struct {
     uint32_t virt_addr;        /* CPU mapping of the NV12 frame */
     uint32_t phys_addr;        /* bus address, 0 = not DMA-able memory */
-    uint32_t size;             /* bytes readable at virt_addr */
+    uint32_t size;             /* bytes at virt_addr; a framesource-layout
+                                * frame with a bus address may end before
+                                * its padded chroma rows (sizeimage) */
     uint32_t width;
     uint32_t height;
     uint32_t chroma_offset;    /* chroma plane start relative to luma; 0 =
@@ -88,7 +92,11 @@ typedef struct {
 
 /* Off when OPENIMP_HELIX_HW_JPEG=0 (only honoured with the software
  * encoder built in), after an initialisation failure, or after repeated
- * hardware errors. */
+ * hardware errors.  Run-time options: OPENIMP_HELIX_JPEG_STATS=1 logs every
+ * job (path, status, sizes, time, rmem, failure reason);
+ * OPENIMP_HELIX_JPEG_RMEM_RESERVE_KB (default 1024) is the free rmem the
+ * encoder never allocates into; OPENIMP_HELIX_JPEG_MAX_BS=1 also programs
+ * the bitstream limit on T20/T21/T30. */
 int OpenIMP_HelixJpeg_Available(void);
 /* Encodes one picture with the 128 quantizers qt.  On success stream holds
  * a heap JPEG (phys_addr 0, freed by the consumer).  Returns -1 on any

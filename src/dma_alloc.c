@@ -963,6 +963,21 @@ void DMA_LogRmem(const char *reason)
     pthread_mutex_unlock(&g_registry_mutex);
 }
 
+int DMA_RmemStats(size_t *used, size_t *size, size_t *largest_free)
+{
+    if (!g_is_rmem || g_rmem_virt_base == NULL)
+        return -1;
+    pthread_mutex_lock(&g_alloc_mutex);
+    if (used)
+        *used = g_rmem_arena.used;
+    if (size)
+        *size = g_rmem_arena.size;
+    if (largest_free)
+        *largest_free = rmem_arena_largest_gap(&g_rmem_arena);
+    pthread_mutex_unlock(&g_alloc_mutex);
+    return 0;
+}
+
 int DMA_Is_RMEM(void)
 {
     return (g_is_rmem && g_rmem_virt_base != NULL) ? 1 : 0;

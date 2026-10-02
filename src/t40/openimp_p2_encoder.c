@@ -21,17 +21,22 @@
 #include "openimp_profile.h"
 #include "imp_log_int.h"
 #include "trace_control.h"
-#if defined(PLATFORM_T41) || defined(PLATFORM_T31) || \
-    defined(PLATFORM_T23) || defined(PLATFORM_T30)
+#if defined(PLATFORM_T41) || defined(PLATFORM_T31)
 #include "dma_alloc.h"
 #endif
 #if defined(PLATFORM_T23) || defined(PLATFORM_T30)
 #include "t23/openimp_t23_persist.h"
 #endif
-#if defined(PLATFORM_T31) || defined(PLATFORM_T23) || defined(PLATFORM_T30)
-/* The JPEG frame copy lives in rmem, so a hardware JPEG core reads it by
- * physical address (T31 AVPU JPEG, Helix JPGC). */
+#if defined(PLATFORM_T31)
+/* The JPEG frame copy lives in rmem, so the AVPU JPEG core reads it by
+ * physical address. */
 #define P2_JPEG_RMEM_COPY 1
+#endif
+#if defined(PLATFORM_T31) || defined(PLATFORM_T23) || defined(PLATFORM_T30)
+/* A hardware JPEG core (T31 AVPU JPEG, Helix JPGC) reads the capture frame
+ * lent by the AVC channel instead of a copy. */
+#define P2_JPEG_LEND 1
+#include "t40/p2_frame_pin.h"
 #endif
 
 #include <imp/imp_common.h>
@@ -42,7 +47,6 @@
 #include "t40/t31_stream_layout.h"
 #include "t31/openimp_t31_osd.h"
 #include "kernel_interface.h"
-#include "t40/p2_frame_pin.h"
 
 /* Longest single sleep while waiting for a capture frame: bounds how late
  * StopRecvPic is noticed when no frame comes (the frame itself wakes the
@@ -179,8 +183,8 @@ typedef struct {
     P2SyntheticFrame synthetic_frame;
     uint8_t *jpeg_frame_buffer;
     size_t jpeg_frame_capacity;
-    uint32_t jpeg_frame_phys;       /* rmem copy for a hardware JPEG core */
-#if defined(PLATFORM_T31)
+    uint32_t jpeg_frame_phys;       /* rmem copy for the T31 hardware JPEG core */
+#if defined(P2_JPEG_LEND)
     void *jpeg_lent_frame;          /* capture frame lent by the AVC channel */
     int jpeg_lent_source;
 #endif
@@ -375,17 +379,6 @@ static void p2_t31_check_au(const P2EncoderChannel *channel,
 }
 #endif
 
-#if defined(PLATFORM_T23) || defined(PLATFORM_T30)
-/* With the Helix JPEG encoder usable (src/t30/helix_jpeg.c) the copy goes
- * into rmem; otherwise the software encoder reads a heap copy. */
-extern int OpenIMP_HelixJpeg_Available(void); /* t30/helix_jpeg.h */
-
-static int p2_jpeg_copy_in_rmem(void)
-{
-    return OpenIMP_HelixJpeg_Available();
-}
-#endif
-
 #if defined(PLATFORM_T31)
 /* With hardware JPEG (the default, OPENIMP_T31_HW_JPEG=0 turns it off) the
  * JPEG copy goes straight into rmem, so the hardware JPEG core reads it by
@@ -410,7 +403,7 @@ static int p2_jpeg_copy_in_rmem(void)
 
 extern int IMP_FrameSource_ReleaseFrame(int channel, void *frame);
 
-#if defined(PLATFORM_T31)
+#if defined(P2_JPEG_LEND)
 /*
  * Hardware JPEG reads the capture frame itself. The AVC channel that
  * dequeued it lends it to each JPEG channel that asked for a frame instead
@@ -423,7 +416,17 @@ extern int IMP_FrameSource_ReleaseFrame(int channel, void *frame);
  * hold a capture buffer for a long time. OPENIMP_T31_HW_JPEG_SRC_COPY=1
  * keeps the copy (A/B).
  */
+#if defined(PLATFORM_T31)
 extern int OpenIMP_T31_HwJpegActive(void);
+#define P2_JPEG_SRC_COPY_ENV "OPENIMP_T31_HW_JPEG_SRC_COPY"
+#else
+/* Helix (src/t30/helix_jpeg.c): lent frames are read in place by the VPU,
+ * so a JPEG channel costs no rmem for a frame copy.  The software encoder
+ * (OPENIMP_SW_JPEG=1 builds) gets a heap copy instead.
+ * OPENIMP_HELIX_JPEG_SRC_COPY=1 keeps the copy (A/B). */
+extern int OpenIMP_HelixJpeg_Available(void); /* t30/helix_jpeg.h */
+#define P2_JPEG_SRC_COPY_ENV "OPENIMP_HELIX_JPEG_SRC_COPY"
+#endif
 
 static P2FramePinTable p2_frame_pins = P2_FRAME_PIN_TABLE_INITIALIZER;
 
@@ -432,13 +435,26 @@ static int p2_jpeg_src_copy_forced(void)
     static int forced = -1;
 
     if (forced < 0) {
-        const char *value = getenv("OPENIMP_T31_HW_JPEG_SRC_COPY");
+        const char *value = getenv(P2_JPEG_SRC_COPY_ENV);
 
         forced = value && value[0] == '1';
         if (forced)
-            IMP_LOG_INFO("Encoder", "JPEG: source frames are copied (OPENIMP_T31_HW_JPEG_SRC_COPY=1)");
+            IMP_LOG_INFO("Encoder", "JPEG: source frames are copied (%s=1)",
+                         P2_JPEG_SRC_COPY_ENV);
     }
     return forced;
+}
+
+/* Lend capture frames only while they go to a hardware JPEG core: a
+ * software encode would hold a capture buffer for a long time. */
+static int p2_jpeg_lend_wanted(void)
+{
+#if defined(PLATFORM_T31)
+    return p2_jpeg_copy_in_rmem() && !p2_jpeg_src_copy_forced() &&
+           OpenIMP_T31_HwJpegActive();
+#else
+    return !p2_jpeg_src_copy_forced() && OpenIMP_HelixJpeg_Available();
+#endif
 }
 
 static int p2_fs_release(int channel, void *frame)
@@ -493,7 +509,7 @@ static int p2_copy_requested_jpeg_frames(int source_channel,
 #if defined(PLATFORM_T41)
     int source_sync = 1;
 #endif
-#if defined(PLATFORM_T31)
+#if defined(P2_JPEG_LEND)
     int lend = -1;          /* decided once per frame, if anyone asks */
 #endif
 
@@ -535,10 +551,9 @@ static int p2_copy_requested_jpeg_frames(int source_channel,
             continue;
         }
 #endif
-#if defined(PLATFORM_T31)
+#if defined(P2_JPEG_LEND)
         if (lend < 0)
-            lend = source->physical_address && p2_jpeg_copy_in_rmem() &&
-                   !p2_jpeg_src_copy_forced() && OpenIMP_T31_HwJpegActive();
+            lend = source->physical_address && p2_jpeg_lend_wanted();
         if (lend && !jpeg->jpeg_lent_frame &&
             p2_frame_pin_lend(&p2_frame_pins, source_channel,
                               (void *)source) == 0) {
@@ -569,15 +584,8 @@ static int p2_copy_requested_jpeg_frames(int source_channel,
 
                 p2_free_jpeg_frame_buffer(jpeg);
                 memset(&info, 0, sizeof(info));
-#if defined(PLATFORM_T23)
-                /* long-lived: keep it away from the FrameSource pools,
-                 * which T23 re-creates from the bottom of the arena */
-                if (DMA_AllocDescriptorTop(&info, (int)source->size,
-                                           "p2-jpeg-src") == 0 &&
-#else
                 if (DMA_AllocDescriptor(&info, (int)source->size,
                                         "p2-jpeg-src") == 0 &&
-#endif
                     info.virt_addr && info.phys_addr) {
                     jpeg->jpeg_frame_buffer = (uint8_t *)(uintptr_t)info.virt_addr;
                     jpeg->jpeg_frame_capacity = source->size;
@@ -602,8 +610,7 @@ static int p2_copy_requested_jpeg_frames(int source_channel,
                (const void *)(uintptr_t)source->virtual_address,
                source->size);
         /* The codec invalidates any source with a physical address before
-         * encoding; write the CPU copy back first so nothing is lost.  (The
-         * Helix JPEG encoder writes its source back itself.) */
+         * encoding; write the CPU copy back first so nothing is lost. */
 #if defined(PLATFORM_T31)
         if (jpeg->jpeg_frame_phys)
             DMA_RmemFlushCache(jpeg->jpeg_frame_buffer, source->size, 1);
@@ -657,7 +664,7 @@ static int p2_wait_for_jpeg_frame(P2EncoderChannel *channel,
         channel->jpeg_frame_generation == generation) {
         channel->jpeg_frame_requested = 0;
         pthread_mutex_unlock(&channel->lock);
-#if defined(PLATFORM_T31)
+#if defined(P2_JPEG_LEND)
         /* Stopped right after a frame was lent: hand it back. */
         p2_jpeg_return_lent_frame(channel);
 #endif
@@ -1929,7 +1936,7 @@ static int p2_polling_stream(int channel, uint32_t timeout_ms)
 #if defined(PLATFORM_T23)
     pace_encoded_us = p2_monotonic_us();
 #endif
-#if defined(PLATFORM_T31)
+#if defined(P2_JPEG_LEND)
     /* JPEG encodes synchronously: a lent capture frame is free again. */
     if (ch->codec_type == IMP_ENC_TYPE_JPEG)
         p2_jpeg_return_lent_frame(ch);

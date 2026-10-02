@@ -92,6 +92,9 @@ int DMA_Get_RMEM_Base(uint32_t *base_phys_out);
  * @return 1 if RMEM is active, 0 otherwise
  */
 int DMA_Is_RMEM(void);
+/* Reserved-arena accounting: bytes in use, arena size and the largest free
+ * block.  Returns -1 (outputs untouched) when no arena is mapped. */
+int DMA_RmemStats(size_t *used, size_t *size, size_t *largest_free);
 /* Log the live reserved-arena allocations (syslog, LOG_INFO). */
 void DMA_LogRmem(const char *reason);
 

@@ -17,6 +17,7 @@
 #define _GNU_SOURCE
 #include <assert.h>
 #include <fcntl.h>
+#include <malloc.h>
 #include <math.h>
 #include <stdarg.h>
 #include <stdint.h>
@@ -78,6 +79,8 @@ static uint32_t force_status;    /* reported instead of 0x11 */
 static int force_overflow;       /* report a length >= the buffer */
 static uint32_t regs[0x100000 / 4];
 static uint32_t last_pairs;
+static uint32_t last_raw_y;
+static uint32_t last_bitstream_buffer;
 
 static void *fake_map(uint32_t size)
 {
@@ -131,6 +134,23 @@ int DMA_FreePhys(uint32_t phys_addr)
         }
     assert(!"freeing unknown DMA buffer");
     return -1;
+}
+
+/* fake arena accounting: off (no arena) unless a test sets it */
+static int rmem_stats_on;
+static size_t rmem_largest;
+
+int DMA_RmemStats(size_t *used, size_t *size, size_t *largest)
+{
+    if (!rmem_stats_on)
+        return -1;
+    if (used)
+        *used = 1u << 20;
+    if (size)
+        *size = 23u << 20;
+    if (largest)
+        *largest = rmem_largest;
+    return 0;
 }
 
 int DMA_RmemFlushCache(void *virt_addr, uint32_t size, int dir)
@@ -326,8 +346,11 @@ static uint32_t run_list(const uint32_t *list)
     memset(&writer, 0, sizeof(writer));
     writer.out = (uint8_t *)(uintptr_t)reg(0xe000c);
     writer.capacity = allocation_size(reg(0xe000c));
+    last_raw_y = reg(0x40010);
+    last_bitstream_buffer = writer.capacity;
 #if defined(PLATFORM_T23)
-    assert(reg(0xe0068) == (0x80000000u | writer.capacity));
+    /* the limit leaves the 64 KiB guard out */
+    assert(reg(0xe0068) == (0x80000000u | (writer.capacity - 0x10000u)));
 #endif
     for (my = 0; my < mb_height; my++)
         for (mx = 0; mx < mb_width; mx++) {
@@ -844,6 +867,72 @@ static void test_encode(void)
     encode_and_check(256u, 32u, 0u, 1, 0, 10u, 20.0);
 }
 
+/* A framesource frame that ends after the visible chroma rows is read in
+ * place (no copy); the bitstream buffer is a quarter of NV12 at q75. */
+static void test_framesource_tail(void)
+{
+    HelixJpegFrame frame;
+    HWStreamBuffer stream;
+    uint8_t qt[128];
+    uint32_t size;
+    uint8_t *pixels = make_frame(1920u, 1080u, 1920u * 1088u, &size, 0);
+    unsigned int before = live_allocations;
+
+    memset(&frame, 0, sizeof(frame));
+    frame.virt_addr = (uint32_t)(uintptr_t)pixels;
+    frame.phys_addr = frame.virt_addr;
+    frame.size = size;              /* 1920 * (1088 + 540) */
+    frame.width = 1920u;
+    frame.height = 1080u;
+    HelixJpeg_QualityTables(75u, qt);
+    assert(OpenIMP_HelixJpeg_Encode(&frame, qt, &stream) == 0);
+    assert(last_raw_y == frame.phys_addr);
+    assert(last_bitstream_buffer ==
+           ((1920u * 1088u * 3u / 2u / 4u + 0xfffu) & ~0xfffu) + 0x10000u);
+    assert(live_allocations == before);
+    printf("  1920x1080 in place: %u bytes, bitstream buffer %u\n",
+           stream.length, last_bitstream_buffer);
+    free((void *)(uintptr_t)stream.virt_addr);
+    /* a pool whose frame size is the kernel's width * height * 3 / 2,
+     * shorter than the padded layout: still read in place */
+    frame.size = 1920u * 1080u * 3u / 2u;
+    assert(OpenIMP_HelixJpeg_Encode(&frame, qt, &stream) == 0);
+    assert(last_raw_y == frame.phys_addr && live_allocations == before);
+    check_picture(&stream, 1920u, 1080u, 30.0);
+    free((void *)(uintptr_t)stream.virt_addr);
+    munmap(pixels, size + 4096u);
+}
+
+/* No allocation that would leave less than the reserve free in rmem. */
+static void test_rmem_budget(void)
+{
+    HelixJpegFrame frame;
+    HWStreamBuffer stream;
+    uint8_t qt[128];
+    uint32_t size;
+    uint8_t *pixels = make_frame(256u, 144u, 256u * 144u, &size, 0);
+    unsigned int before = live_allocations, run_count = runs;
+
+    memset(&frame, 0, sizeof(frame));
+    frame.virt_addr = (uint32_t)(uintptr_t)pixels;
+    frame.size = size;              /* not DMA memory: needs a copy */
+    frame.width = 256u;
+    frame.height = 144u;
+    frame.chroma_offset = 256u * 144u;
+    HelixJpeg_QualityTables(75u, qt);
+    rmem_stats_on = 1;
+    rmem_largest = (1024u << 10) + 4096u;  /* less than copy + reserve */
+    assert(OpenIMP_HelixJpeg_Encode(&frame, qt, &stream) < 0);
+    assert(runs == run_count && live_allocations == before);
+    rmem_largest = 8u << 20;
+    assert(OpenIMP_HelixJpeg_Encode(&frame, qt, &stream) == 0);
+    /* the per-job copy is gone again */
+    assert(live_allocations == before);
+    rmem_stats_on = 0;
+    free((void *)(uintptr_t)stream.virt_addr);
+    munmap(pixels, size + 4096u);
+}
+
 static void test_failures(void)
 {
     HelixJpegFrame frame;
@@ -908,10 +997,15 @@ static void test_failures(void)
 
 int main(void)
 {
+    /* the stream carries 32-bit addresses: keep the heap low (no PIE, no
+     * mmap-backed malloc) */
+    mallopt(M_MMAP_THRESHOLD, 64 << 20);
     test_tables();
     test_descriptor();
     test_header();
     test_encode();
+    test_framesource_tail();
+    test_rmem_budget();
     assert(requests == 1u);
     test_failures();
     printf("helix_jpeg_test (%s, software JPEG %s): ok\n",

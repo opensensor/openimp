@@ -146,9 +146,9 @@ OpenIMP does the same (`HelixJpeg_QualityTables()`).
   OpenIMP adds the JFIF APP0 like its software encoder).
 * Bitstream buffer: the stock library sizes the JPEG output like the NV12
   picture (`aligned_w * aligned_h * 3 / 2`, `ijpege_init`); T20/T21/T30 have
-  no hardware overflow guard, T23 programs `JPGC_MAX_BS`. OpenIMP uses an
-  NV12-sized bitstream buffer (T23: with `JPGC_MAX_BS` set to it) and
-  rejects a reported length that reaches the buffer end.
+  no hardware overflow guard, T23 programs `JPGC_MAX_BS`. OpenIMP sizes it
+  from the quantizers (below) and rejects a reported length that reaches
+  the buffer end.
 
 ## Differences between the SoCs
 
@@ -167,10 +167,25 @@ OpenIMP does the same (`HelixJpeg_QualityTables()`).
 * `src/t30/helix_jpeg.c`: tables, command list, header, and one process-wide
   VPU channel with its descriptor, bitstream and (for frames outside rmem)
   source buffers, guarded by a mutex.
-* JPEG channels (`codec-t40.c`, T20/T21/T30/T23): the P2 layer copies the
-  frame for the JPEG channel into rmem when the hardware path is usable, so
-  the VPU reads the copy directly; the missing bottom macroblock rows are
-  filled with the last picture row (as for H.264).
+* JPEG channels (`codec-t40.c`, T20/T21/T30/T23): while the hardware path
+  is usable the P2 layer lends the capture frame to the JPEG channel
+  (`p2_frame_pin.h`, as on T31) instead of copying it; the frame goes back
+  to the FrameSource when the H.264 picture and the JPEG job are done. The
+  VPU reads it in place, also when the pool's frame size is the kernel's
+  `width * height * 3 / 2`; the missing bottom macroblock rows are filled
+  with the last picture row (as for H.264). `OPENIMP_HELIX_JPEG_SRC_COPY=1`
+  copies instead (heap; the encoder then makes a per-job rmem copy).
+* rmem: one bitstream buffer, allocated at the first picture and kept: a
+  quarter of the NV12 size (half or all of it for average luma steps below
+  16 or 6, or after an overflow), at least 256 KiB, plus a 64 KiB guard;
+  1080p at quality 75 needs 0.81 MiB. Copies of frames outside rmem are
+  released after the job. Nothing is allocated when the largest free rmem
+  block would drop below the reserve (1 MiB,
+  `OPENIMP_HELIX_JPEG_RMEM_RESERVE_KB`): that picture fails instead.
+* `OPENIMP_HELIX_JPEG_STATS=1` logs every job: path (direct/copy), status,
+  core length, JPEG size, bitstream buffer, first quantizer, time, rmem use
+  and largest free block, and the failure reason. `OPENIMP_HELIX_JPEG_MAX_BS=1`
+  also programs `JPGC_MAX_BS` on T20/T21/T30 (not done by their libimp).
 * `IMP_Encoder_InputJpege` (T23): reads VBM (rmem) sources in place, others
   from a copy.
 * Build: `OPENIMP_SW_JPEG=0` (default on these SoCs) leaves the software
