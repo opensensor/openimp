@@ -472,8 +472,13 @@ int OpenIMP_T30_HelixCreate(T30HelixEncoder **encoder_out,
     uint64_t reference_size;
     unsigned int i;
 
-    /* The descriptors carry macroblock dimensions in eight bits. */
+    /* The descriptors carry macroblock dimensions in eight bits.  The
+     * slice programs the luma stride as the picture width but places the
+     * chroma plane at mb_width * 16 * mb_height * 16, and the bottom
+     * padding lays it out at width * aligned_height: both only agree when
+     * the width is a whole number of macroblocks. */
     if (!encoder_out || !params || !params->width || !params->height ||
+        (params->width & 15u) ||
         params->width > 255u * 16u || params->height > 255u * 16u)
         return -1;
     frame_size = (uint64_t)params->width * params->height;
@@ -648,9 +653,11 @@ static void t30_pad_input_rows(const T30HelixEncoder *encoder,
         return;
     luma = (uint8_t *)(uintptr_t)frame->virAddr;
     chroma = luma + width * aligned_height;
-    /* the source rows were written by DMA; drop stale cache lines */
-    (void)DMA_RmemFlushCache(luma + width * (height - 1u), width, 0);
-    (void)DMA_RmemFlushCache(chroma + width * (chroma_height - 1u), width, 0);
+    /* the source rows were written by DMA; drop stale cache lines
+     * (bidirectional, as the IVS path does: write back + invalidate is
+     * safe whatever the line state is) */
+    (void)DMA_RmemFlushCache(luma + width * (height - 1u), width, 2);
+    (void)DMA_RmemFlushCache(chroma + width * (chroma_height - 1u), width, 2);
     for (row = height; row < aligned_height; row++)
         memcpy(luma + width * row, luma + width * (height - 1u), width);
     for (row = chroma_height; row < aligned_height / 2u; row++)

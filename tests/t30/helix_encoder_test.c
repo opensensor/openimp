@@ -349,6 +349,22 @@ static T30HelixEncoder *create(uint32_t width, uint32_t height,
     return encoder;
 }
 
+static void test_unaligned_width_rejected(void)
+{
+    HWEncoderParams params;
+    T30HelixEncoder *encoder = NULL;
+
+    memset(&params, 0, sizeof(params));
+    params.width = 1918;
+    params.height = 1080;
+    params.fps_num = 25;
+    params.fps_den = 1;
+    params.gop_length = 25;
+    params.bitrate = 2000000;
+    assert(OpenIMP_T30_HelixCreate(&encoder, &params) != 0);
+    assert(!encoder);
+}
+
 static void test_gop_and_failures(void)
 {
     T30HelixEncoder *encoder = create(1920, 1080, 25, 4);
@@ -580,6 +596,7 @@ int main(void)
     test_large_frame_level();
     test_dma_footprint();
     test_bottom_padding();
+    test_unaligned_width_rejected();
     for (i = 0; i < 16u; i++)
         assert(!allocations[i].mapping);
 #if defined(PLATFORM_T20)
