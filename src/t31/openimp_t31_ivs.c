@@ -460,6 +460,7 @@ struct t31_ivs_channel {
     int users;                      /* callers waiting outside ivs_lock */
     int param_changed;
     int own;                        /* move / base move of this file */
+    unsigned int interval_phase;    /* OPENIMP_IVS_MOVE_INTERVAL, capture */
     IMPIVSInterface *inf;
     sem_t sem_start, sem_end, sem_result;
     pthread_t thread;
@@ -506,6 +507,26 @@ static int ivs_stats_enabled(void)
         enabled = value && value[0] == '1';
     }
     return enabled;
+}
+
+/* OPENIMP_IVS_MOVE_INTERVAL=N (2..1000, opt-in): a move channel sees
+ * only every Nth capture frame, as if the others did not exist; its
+ * skipFrameCnt then counts the frames it sees. Unset or 1: every frame,
+ * the vendor behaviour. Base move and foreign interfaces are unaffected. */
+static unsigned int ivs_move_interval(void)
+{
+    static int interval = -1;
+
+    if (interval < 0) {
+        const char *value = getenv("OPENIMP_IVS_MOVE_INTERVAL");
+        long n = value ? strtol(value, NULL, 10) : 1;
+
+        interval = n >= 2 && n <= 1000 ? (int)n : 1;
+        if (interval > 1)
+            IMP_LOG_INFO("IVS", "move: analysing every %dth frame "
+                         "(OPENIMP_IVS_MOVE_INTERVAL)", interval);
+    }
+    return (unsigned int)interval;
 }
 
 static void ivs_stats_report(struct t31_ivs_channel *c)
@@ -688,6 +709,10 @@ void openimp_t31_ivs_capture(int fs_chn, const void *frame)
             source = ivs_group_source(0);
         if (source != fs_chn)
             break;                  /* one group: nothing else to feed */
+        if (c->own && c->inf->preProcessSync == move_preprocess &&
+            ivs_move_interval() > 1 &&
+            c->interval_phase++ % ivs_move_interval() != 0)
+            continue;
         c->stats.frames++;
         if (sem_trywait(&c->sem_end) != 0) {
             c->stats.dropped++;     /* still busy: drop, as the vendor */
@@ -797,6 +822,7 @@ int IMP_IVS_CreateChn(int channel, IMPIVSInterface *handler)
 
     c->inf = handler;
     c->own = ivs_own_interface(handler);
+    c->interval_phase = 0;
     c->number = channel;
     c->group = -1;
     c->enabled = 0;

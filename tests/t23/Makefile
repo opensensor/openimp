@@ -58,6 +58,9 @@ check: $(ISP_TUNING_TEST_BIN) $(ACODEC_TEST_BIN) $(ZERO_COPY_TEST_BIN) \
 	$(IVS_DIGEST_T23) > $(BUILD)/t23-ivs-digest-t23abi.txt
 	cat $(BUILD)/t23-ivs-digest-t23abi.txt
 	cmp $(BUILD)/t23-ivs-digest-t31abi.txt $(BUILD)/t23-ivs-digest-t23abi.txt
+	# pinned: the result digest of the move / base move code before the
+	# claude/ivs-opt speed-ups; any change in what is detected shows here
+	grep -q "digest ca3d1021f2a30c82" $(BUILD)/t23-ivs-digest-t31abi.txt
 	$(IVS_FRAMEWORK)
 	$(JPEG_QL)
 

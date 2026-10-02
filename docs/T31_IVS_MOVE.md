@@ -94,6 +94,9 @@ Die generischen Header `include/imp/imp_ivs*.h` passen **nicht** zum T31-ABI
   - Kein Encoder-Lock ist beteiligt.
 - Dort passiert nur die Kopie:
   - move: die 2:1-Dezimation, und nur für Frames, die ein späterer Vergleich liest.
+    Ausnahme seit `claude/ivs-opt`: Wird der neue Frame später nicht mehr als Referenz
+    gebraucht (skipFrameCnt 1 oder ≥ 3), läuft die Detektion gleich hier direkt auf dem
+    Capture-Puffer (siehe 2.6).
   - base move: das Luma der Capture-Frames.
 - Vor der Kopie wird der Luma-Bereich im Cache invalidiert (`DMA_RmemFlushCache(virt, size, 2)`),
   weil der ISP per DMA in gecachtes rmem schreibt.
@@ -117,6 +120,51 @@ Gemessen gegen eine einfache Referenz-Implementierung desselben Verhaltens, glei
 - Der Vendor kopiert bei move in **jedem** Frame das volle Luma (2 MB bei 1080p). OpenIMP
   dezimiert bei skip 5 nur 2 von 6 Frames.
 - Die echten Zeiten auf der Kamera misst der Gerätetest (`OPENIMP_T31_IVS_STATS=1`).
+
+### 2.6 Beschleunigung (Branch `claude/ivs-opt`)
+
+Anlass: T20 (Wyze, 1080p-Hauptstream) zeigte timps mit Bewegungserkennung bei ~8 % CPU,
+ohne bei ~0,4 %. Die Ergebnisse bleiben bitgleich.
+
+- **Erosion auf Abruf:** Ausgabezeile y ist das UND der erodierten Zeilen y+sh−1, y+sh,
+  y+sh+1. Eine leere Zeile löscht also drei Ausgabezeilen. Die Zeilen werden erst bei
+  Bedarf berechnet, die unterste zuerst. In einer ruhigen Szene wird nur jede dritte Zeile
+  differenziert.
+- **Detektion direkt auf dem Capture-Puffer:** Liest kein späterer Vergleich den neuen
+  Frame (skipFrameCnt 1 oder ≥ 3), dezimiert `feed()` ihn nicht mehr komplett in den Ring.
+  Es rechnet die Detektion sofort gegen das Referenzbild und dezimiert nur die Zeilen,
+  die sie liest. `run()` vergleicht dann nur noch mit den Schwellen. Folge für die
+  Statistik: `copy` (Capture-Thread) enthält bei diesen Frames die Detektion, `process` ist
+  fast null.
+- **Differenztest in Byte-Lanes:** |a − b| > 20 für vier Pixel pro Wort über Floor- und
+  Ceiling-Mittelwert von a und 255 − b (≥ 138 bzw. ≤ 117). Bisher liefen zwei 16-Bit-Lanes.
+- **Optional, nur auf Wunsch:** `OPENIMP_IVS_MOVE_INTERVAL=N` (2…1000). Ein move-Kanal
+  sieht nur jeden N-ten Capture-Frame; `skipFrameCnt` zählt dann diese Frames. Ohne die
+  Variable (oder mit 1) bleibt alles wie beim Vendor. base move und fremde Interfaces sind
+  nicht betroffen.
+- **Prüfung:** `make -C tests/t30 check` lässt `ivs_move_bench_t20 equiv` laufen. Das
+  vergleicht den neuen Code Frame für Frame mit einer eingefrorenen Kopie des alten
+  (`tests/t23/ivs_move_ref.c`): 10 Größen bis 1920×1080 (auch ungerade), skip 0…9,
+  Gitter- und Zufalls-ROIs, Live-SetParam mit sense 0…8, fünf Szenen. `tests/t23` prüft
+  zusätzlich den festen Digest `ca3d1021f2a30c82` von `ivs_move_digest`.
+- **Host-Messung:** `make -C tests/t30 ivs-bench` (x86-64, gcc -O2, 4×4-ROI-Gitter,
+  ns pro Eingangsframe für feed + run, Szenen: ruhig mit ±3 Rauschen, Nacht ±24, bewegtes
+  Rechteck):
+
+| Fall | vorher | nachher | Faktor |
+|---|---|---|---|
+| 1080p ruhig, skip 5 | 175 µs | 82 µs | 2,1 |
+| 1080p ruhig, skip 0 | 744 µs | 417 µs | 1,8 |
+| 1080p Bewegung, skip 5 | 184 µs | 118 µs | 1,6 |
+| 1080p Nacht, skip 5 | 175 µs | 165 µs | 1,06 |
+| 360p ruhig, skip 5 | 14,4 µs | 6,6 µs | 2,2 |
+| 360p ruhig, skip 0 | 68 µs | 32 µs | 2,1 |
+| 360p Bewegung, skip 5 | 14,9 µs | 9,6 µs | 1,6 |
+| 360p Nacht, skip 5 | 14,5 µs | 13,8 µs | 1,05 |
+
+- Nicht gemacht: MXU-SIMD (kein `-mmxu`/MXU-Code im Projekt, die Toolchain wird ohne
+  gebaut). Arbeit ganz auslassen, wenn niemand pollt: timps pollt dauernd, also kein
+  Gewinn, aber ein Verhaltensrisiko.
 
 ---
 
