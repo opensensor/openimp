@@ -1060,7 +1060,6 @@ typedef struct {
     uint32_t phys_addr;     /* 0x04: Physical address */
     uint32_t virt_addr;     /* 0x08: Virtual address */
     int ref_count;          /* 0x0c: Reference count */
-    pthread_mutex_t mutex;  /* 0x10: Mutex */
 } VBMVolume;
 
 /* The frame array follows the pool header at the stock offset 0x180, or
@@ -1071,6 +1070,47 @@ typedef struct {
 
 static VBMPool *vbm_instance[MAX_VBM_POOLS] = {NULL};
 static VBMVolume g_framevolumes[30]; /* Global frame volumes array */
+
+/*
+ * Pool lifetime. vbm_instance[chn] is published, freed, and used by the
+ * calls an application or encoder thread makes (GetFrame, ReleaseFrame,
+ * Fill/FlushFrame) under vbm_pool_lock[chn], so DestroyPool can never free
+ * a pool one of them is using. The capture worker's own calls
+ * (KernelDequeue, RecycleIdleFrames) do not take it: DisableChn joins the
+ * worker before it destroys the pool, and a DQBUF must not hold up the
+ * readers. Lock order: vbm_pool_lock, then the pool's queue_mutex.
+ */
+static pthread_mutex_t vbm_pool_lock[MAX_VBM_POOLS] = {
+    [0 ... MAX_VBM_POOLS - 1] = PTHREAD_MUTEX_INITIALIZER
+};
+/* g_framevolumes: registration, lookup and reference counts */
+static pthread_mutex_t vbm_volume_lock = PTHREAD_MUTEX_INITIALIZER;
+
+/* Index of frame in pool's frame array, or -1 when it is not one of its
+ * records (a frame of a pool destroyed since, or of another channel). Only
+ * compares addresses: such a pointer may already be freed. */
+static int vbm_frame_index(const VBMPool *pool, const void *frame)
+{
+    uintptr_t base = (uintptr_t)pool->frames;
+    uintptr_t addr = (uintptr_t)frame;
+    uintptr_t index;
+
+    if (addr < base || (addr - base) % sizeof(VBMFrame) != 0)
+        return -1;
+    index = (addr - base) / sizeof(VBMFrame);
+    return index < (uintptr_t)pool->frame_count ? (int)index : -1;
+}
+
+static void vbm_unregister_volumes(int chn)
+{
+    pthread_mutex_lock(&vbm_volume_lock);
+    for (int i = 0; i < 30; i++) {
+        if (g_framevolumes[i].frame != NULL &&
+            g_framevolumes[i].frame->chn == chn)
+            memset(&g_framevolumes[i], 0, sizeof(g_framevolumes[i]));
+    }
+    pthread_mutex_unlock(&vbm_volume_lock);
+}
 
 static VBMVolume *vbm_find_volume_by_vaddr(uint32_t vaddr)
 {
@@ -1135,10 +1175,21 @@ static int calculate_frame_size(int width, int height, int pixfmt) {
     return size;
 }
 
+static int vbm_create_pool(int chn, void *fmt, void *ops, void *priv);
+
 int VBMCreatePool(int chn, void *fmt, void *ops, void *priv) {
+    int ret;
+
     if (chn < 0 || chn >= MAX_VBM_POOLS) {
         return -1;
     }
+    pthread_mutex_lock(&vbm_pool_lock[chn]);
+    ret = vbm_create_pool(chn, fmt, ops, priv);
+    pthread_mutex_unlock(&vbm_pool_lock[chn]);
+    return ret;
+}
+
+static int vbm_create_pool(int chn, void *fmt, void *ops, void *priv) {
 
     if (fmt == NULL) {
         fprintf(stderr, "[VBM] CreatePool: NULL format\n");
@@ -1283,6 +1334,21 @@ int VBMCreatePool(int chn, void *fmt, void *ops, void *priv) {
     uint8_t *pool_bytes = (uint8_t*)pool;
     pool->frames = (VBMFrame*)(pool_bytes + VBM_POOL_HEADER_SIZE);
 
+    /* Initialize frame queue */
+    pool->available_queue = (int*)calloc(frame_count, sizeof(int));
+    /* Per-buffer kernel ownership tracking: prevents double-QBUF when
+     * VBMReleaseFrame is called multiple times for the same buffer
+     * (OEM uses AL_Buffer refcounting; we track explicitly). */
+    pool->buf_in_userspace = (uint8_t*)calloc(frame_count, sizeof(uint8_t));
+    if (pool->available_queue == NULL || pool->buf_in_userspace == NULL) {
+        fprintf(stderr, "[VBM] CreatePool: failed to allocate queue\n");
+        free(pool->available_queue);
+        free(pool->buf_in_userspace);
+        DMA_FreePhys(pool->phys_base);
+        free(pool);
+        return -1;
+    }
+
     /* Initialize each frame using safe member access */
     for (int i = 0; i < frame_count; i++) {
         VBMFrame *frame = &pool->frames[i];
@@ -1338,31 +1404,18 @@ int VBMCreatePool(int chn, void *fmt, void *ops, void *priv) {
                 i, phys, virt, frame_fourcc, fps_num, fps_den);
 
         /* Register in global frame volumes */
+        pthread_mutex_lock(&vbm_volume_lock);
         for (int j = 0; j < 30; j++) {
             if (g_framevolumes[j].frame == NULL) {
                 g_framevolumes[j].frame = frame;
                 g_framevolumes[j].phys_addr = frame->phys_addr;
                 g_framevolumes[j].virt_addr = frame->virt_addr;
                 g_framevolumes[j].ref_count = 0;
-                pthread_mutex_init(&g_framevolumes[j].mutex, NULL);
                 break;
             }
         }
+        pthread_mutex_unlock(&vbm_volume_lock);
     }
-
-    /* Initialize frame queue */
-    pool->available_queue = (int*)calloc(frame_count, sizeof(int));
-    if (pool->available_queue == NULL) {
-        fprintf(stderr, "[VBM] CreatePool: failed to allocate queue\n");
-        DMA_FreePhys(pool->phys_base);
-        free(pool);
-        return -1;
-    }
-
-    /* Per-buffer kernel ownership tracking: prevents double-QBUF when
-     * VBMReleaseFrame is called multiple times for the same buffer
-     * (OEM uses AL_Buffer refcounting; we track explicitly). */
-    pool->buf_in_userspace = (uint8_t*)calloc(frame_count, sizeof(uint8_t));
 
     pool->queue_head = 0;
     pool->queue_tail = 0;
@@ -1380,26 +1433,18 @@ int VBMDestroyPool(int chn) {
         return -1;
     }
 
+    pthread_mutex_lock(&vbm_pool_lock[chn]);
     VBMPool *pool = vbm_instance[chn];
     if (pool == NULL) {
+        pthread_mutex_unlock(&vbm_pool_lock[chn]);
         return -1;
     }
+    vbm_instance[chn] = NULL;
 
     fprintf(stderr, "[VBM] DestroyPool: chn=%d\n", chn);
 
     /* Unregister frames from global volumes */
-    for (int i = 0; i < 30; i++) {
-        if (g_framevolumes[i].frame != NULL) {
-            VBMFrame *frame = g_framevolumes[i].frame;
-            if (frame->chn == chn) {
-                pthread_mutex_destroy(&g_framevolumes[i].mutex);
-                g_framevolumes[i].frame = NULL;
-                g_framevolumes[i].phys_addr = 0;
-                g_framevolumes[i].virt_addr = 0;
-                g_framevolumes[i].ref_count = 0;
-            }
-        }
-    }
+    vbm_unregister_volumes(chn);
 
     /* Destroy queue mutex */
     pthread_mutex_destroy(&pool->queue_mutex);
@@ -1419,7 +1464,7 @@ int VBMDestroyPool(int chn) {
 
     /* Free pool structure */
     free(pool);
-    vbm_instance[chn] = NULL;
+    pthread_mutex_unlock(&vbm_pool_lock[chn]);
 
     OPENIMP_TRACE_STDERR("[VBM] DestroyPool: chn=%d destroyed\n", chn);
     return 0;
@@ -1992,11 +2037,21 @@ int VBMKernelDequeue(int chn, int fd, void **frame_out) {
 }
 
 
+static int vbm_fill_pool(int chn);
+
 int VBMFillPool(int chn) {
+    int ret;
+
     if (chn < 0 || chn >= MAX_VBM_POOLS) {
         return -1;
     }
+    pthread_mutex_lock(&vbm_pool_lock[chn]);
+    ret = vbm_fill_pool(chn);
+    pthread_mutex_unlock(&vbm_pool_lock[chn]);
+    return ret;
+}
 
+static int vbm_fill_pool(int chn) {
     VBMPool *pool = vbm_instance[chn];
     if (pool == NULL) {
         return -1;
@@ -2049,8 +2104,10 @@ int VBMFlushFrame(int chn) {
         return -1;
     }
 
+    pthread_mutex_lock(&vbm_pool_lock[chn]);
     VBMPool *pool = vbm_instance[chn];
     if (pool == NULL) {
+        pthread_mutex_unlock(&vbm_pool_lock[chn]);
         return -1;
     }
 
@@ -2064,17 +2121,28 @@ int VBMFlushFrame(int chn) {
     pool->queue_count = 0;
 
     pthread_mutex_unlock(&pool->queue_mutex);
+    pthread_mutex_unlock(&vbm_pool_lock[chn]);
 
     OPENIMP_TRACE_STDERR("[VBM] FlushFrame: flushed all frames\n");
 
     return 0;
 }
 
+static int vbm_get_frame(int chn, void **frame);
+
 int VBMGetFrame(int chn, void **frame) {
+    int ret;
+
     if (chn < 0 || chn >= MAX_VBM_POOLS) {
         return -1;
     }
+    pthread_mutex_lock(&vbm_pool_lock[chn]);
+    ret = vbm_get_frame(chn, frame);
+    pthread_mutex_unlock(&vbm_pool_lock[chn]);
+    return ret;
+}
 
+static int vbm_get_frame(int chn, void **frame) {
     VBMPool *pool = vbm_instance[chn];
     if (pool == NULL) {
         *frame = NULL;
@@ -2131,14 +2199,39 @@ int VBMGetFrame(int chn, void **frame) {
     return 0;
 }
 
+static int vbm_release_frame(int chn, void *frame);
+
 int VBMReleaseFrame(int chn, void *frame) {
-    static int trace_budget = 96;
+    int ret;
+
     if (chn < 0 || chn >= MAX_VBM_POOLS) {
         return -1;
     }
+    pthread_mutex_lock(&vbm_pool_lock[chn]);
+    ret = vbm_release_frame(chn, frame);
+    pthread_mutex_unlock(&vbm_pool_lock[chn]);
+    return ret;
+}
 
+static int vbm_release_frame(int chn, void *frame) {
+    static int trace_budget = 96;
     VBMPool *pool = vbm_instance[chn];
     if (pool == NULL || frame == NULL) {
+        return -1;
+    }
+
+    /* Only a record of this pool is looked at: a consumer may still hold a
+     * frame of a pool DisableChn has destroyed (and EnableChn re-created),
+     * whose memory is gone and whose buffer must not be queued again. */
+    int frame_idx = vbm_frame_index(pool, frame);
+    if (frame_idx < 0) {
+        static int foreign_logged;
+
+        if (!foreign_logged) {
+            foreign_logged = 1;
+            fprintf(stderr, "[VBM] ReleaseFrame: chn=%d frame %p is not in this channel's pool (released after DisableChn?), ignored\n",
+                    chn, frame);
+        }
         return -1;
     }
 
@@ -2154,13 +2247,11 @@ int VBMReleaseFrame(int chn, void *frame) {
     }
 
     VBMFrame *vbm_frame = (VBMFrame*)frame;
-    int frame_idx = vbm_frame->index;
     int kernel_backed = (pool->fd >= 0);
-    int valid_idx = (frame_idx >= 0 && frame_idx < pool->frame_count);
 
     pthread_mutex_lock(&pool->queue_mutex);
 
-    if (valid_idx && pool->buf_in_userspace != NULL && pool->ops[1] != NULL) {
+    if (pool->buf_in_userspace != NULL && pool->ops[1] != NULL) {
         int in_userspace = pool->buf_in_userspace[frame_idx];
 
         if (trace_budget > 0) {
@@ -2198,7 +2289,7 @@ int VBMReleaseFrame(int chn, void *frame) {
     if (kernel_backed) {
         int in_userspace = 0;
 
-        if (valid_idx && pool->buf_in_userspace != NULL) {
+        if (pool->buf_in_userspace != NULL) {
             in_userspace = pool->buf_in_userspace[frame_idx];
         }
         if (trace_budget > 0) {
@@ -2210,7 +2301,7 @@ int VBMReleaseFrame(int chn, void *frame) {
 
         /* Duplicate releases are expected from higher layers; only the first
          * release after DQBUF should hand the buffer back to the kernel. */
-        if (!valid_idx || pool->buf_in_userspace == NULL || !in_userspace) {
+        if (pool->buf_in_userspace == NULL || !in_userspace) {
             pthread_mutex_unlock(&pool->queue_mutex);
             return 0;
         }
@@ -2242,11 +2333,6 @@ int VBMReleaseFrame(int chn, void *frame) {
         }
     }
 
-    if (!valid_idx) {
-        pthread_mutex_unlock(&pool->queue_mutex);
-        return -1;
-    }
-
     if (pool->queue_count >= pool->frame_count) {
         pool->queue_head = (pool->queue_head + 1) % pool->frame_count;
         pool->queue_count--;
@@ -2270,24 +2356,28 @@ int VBMReleaseFrame(int chn, void *frame) {
 int VBMLockFrameByVaddr(uint32_t vaddr)
 {
     static int trace_budget = 64;
-    VBMVolume *vol = vbm_find_volume_by_vaddr(vaddr);
+    VBMVolume *vol;
+
+    pthread_mutex_lock(&vbm_volume_lock);
+    vol = vbm_find_volume_by_vaddr(vaddr);
     if (vol == NULL) {
+        pthread_mutex_unlock(&vbm_volume_lock);
         fprintf(stderr, "[VBM] LockFrameByVaddr: vaddr=0x%x not found\n", vaddr);
         return -1;
     }
 
-    pthread_mutex_lock(&vol->mutex);
     int old_ref = vol->ref_count;
     vol->ref_count++;
     int new_ref = vol->ref_count;
     VBMFrame *frame = vol->frame;
+    int frame_chn = frame->chn;
+    int frame_index = frame->index;
     /* fprintf throttled — high-frequency per-frame path */
-    pthread_mutex_unlock(&vol->mutex);
+    pthread_mutex_unlock(&vbm_volume_lock);
     if (trace_budget > 0) {
         trace_budget--;
         ki_trace("libimp/VBMKI: lock vaddr=0x%x ref=%d->%d frame=%p chn=%d idx=%d\n",
-                 vaddr, old_ref, new_ref, frame,
-                 frame ? frame->chn : -1, frame ? frame->index : -1);
+                 vaddr, old_ref, new_ref, frame, frame_chn, frame_index);
     }
     return 0;
 }
@@ -2295,40 +2385,47 @@ int VBMLockFrameByVaddr(uint32_t vaddr)
 int VBMUnlockFrameByVaddr(uint32_t vaddr)
 {
     static int trace_budget = 96;
-    VBMVolume *vol = vbm_find_volume_by_vaddr(vaddr);
+    VBMVolume *vol;
+
+    pthread_mutex_lock(&vbm_volume_lock);
+    vol = vbm_find_volume_by_vaddr(vaddr);
     if (vol == NULL) {
+        pthread_mutex_unlock(&vbm_volume_lock);
         fprintf(stderr, "[VBM] UnlockFrameByVaddr: vaddr=0x%x not found\n", vaddr);
         return -1;
     }
 
-    pthread_mutex_lock(&vol->mutex);
     if (vol->ref_count <= 0) {
+        pthread_mutex_unlock(&vbm_volume_lock);
         fprintf(stderr, "[VBM] UnlockFrameByVaddr: vaddr=0x%x already unlocked\n", vaddr);
-        pthread_mutex_unlock(&vol->mutex);
         return -1;
     }
 
     int old_ref = vol->ref_count;
     vol->ref_count--;
     int ref_count = vol->ref_count;
+    /* The record is only read while it is registered (DestroyPool
+     * unregisters it under vbm_volume_lock before freeing it). */
     VBMFrame *frame = vol->frame;
-    pthread_mutex_unlock(&vol->mutex);
+    int frame_chn = frame->chn;
+    int frame_index = frame->index;
+    pthread_mutex_unlock(&vbm_volume_lock);
 
     OPENIMP_TRACE_STDERR("[VBM] UnlockFrameByVaddr: vaddr=0x%x ref=%d\n", vaddr, ref_count);
     if (trace_budget > 0) {
         trace_budget--;
         ki_trace("libimp/VBMKI: unlock vaddr=0x%x ref=%d->%d frame=%p chn=%d idx=%d\n",
-                 vaddr, old_ref, ref_count, frame,
-                 frame ? frame->chn : -1, frame ? frame->index : -1);
+                 vaddr, old_ref, ref_count, frame, frame_chn, frame_index);
     }
 
-    if (ref_count == 0 && frame != NULL) {
+    if (ref_count == 0) {
         if (trace_budget > 0) {
             trace_budget--;
             ki_trace("libimp/VBMKI: unlock-release vaddr=0x%x frame=%p chn=%d idx=%d\n",
-                     vaddr, frame, frame->chn, frame->index);
+                     vaddr, frame, frame_chn, frame_index);
         }
-        return VBMReleaseFrame(frame->chn, frame);
+        /* VBMReleaseFrame refuses the frame if its pool went away since. */
+        return VBMReleaseFrame(frame_chn, frame);
     }
 
     return 0;
