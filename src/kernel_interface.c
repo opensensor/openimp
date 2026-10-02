@@ -1405,6 +1405,8 @@ int VBMDestroyPool(int chn) {
     if (pool == NULL) {
         return -1;
     }
+    /* for the log line after the release (pool is gone by then) */
+    int pool_bytes = pool->frame_size * pool->frame_count;
 
     fprintf(stderr, "[VBM] DestroyPool: chn=%d\n", chn);
 
@@ -1439,14 +1441,10 @@ int VBMDestroyPool(int chn) {
     }
 
     /* Free pool structure */
-    {
-        int pool_bytes = pool->frame_size * pool->frame_count;
+    free(pool);
+    vbm_instance[chn] = NULL;
 
-        free(pool);
-        vbm_instance[chn] = NULL;
-        vbm_log_rmem("after releasing", chn, pool_bytes);
-    }
-
+    vbm_log_rmem("after releasing", chn, pool_bytes);
     OPENIMP_TRACE_STDERR("[VBM] DestroyPool: chn=%d destroyed\n", chn);
     return 0;
 }
