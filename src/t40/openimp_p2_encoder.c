@@ -635,14 +635,13 @@ static int p2_copy_requested_jpeg_frames(int source_channel,
 }
 
 /* Whether a JPEG channel gets its frames from a video channel on the same
- * framesource (fan-out above).  On T20/T21/T23/T30 a JPEG channel whose
- * framesource feeds no receiving video channel - timps' dedicated jpeg.*
- * channel has its own framesource and group - takes frames from the
- * framesource itself, like the stock encoder does for any bound channel;
- * waiting for a fan-out there never ended. */
+ * framesource (fan-out above).  A JPEG channel whose framesource feeds no
+ * receiving video channel - timps' dedicated jpeg.* channel has its own
+ * framesource and group - takes frames from the framesource itself, as the
+ * stock encoder does for any bound channel; waiting for a fan-out there
+ * never ended. */
 static int p2_jpeg_frames_from_fanout(const P2EncoderChannel *jpeg)
 {
-#if defined(PLATFORM_T23) || defined(PLATFORM_T30)
     int channel;
 
     for (channel = 0; channel < P2_MAX_CHANNELS; channel++) {
@@ -655,10 +654,6 @@ static int p2_jpeg_frames_from_fanout(const P2EncoderChannel *jpeg)
             return 1;
     }
     return 0;
-#else
-    (void)jpeg;
-    return 1;
-#endif
 }
 
 static int p2_wait_for_jpeg_frame(P2EncoderChannel *channel,
