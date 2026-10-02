@@ -161,13 +161,17 @@ int DMA_RmemFlushCache(void *virt_addr, uint32_t size, int dir)
     return 0;
 }
 
+/* bytes from address to the end of the DMA buffer holding it */
 static uint32_t allocation_size(uint32_t address)
 {
     unsigned int i;
 
-    for (i = 0; i < 16u; i++)
-        if ((uint32_t)(uintptr_t)allocations[i].mapping == address)
-            return allocations[i].size;
+    for (i = 0; i < 16u; i++) {
+        uint32_t base = (uint32_t)(uintptr_t)allocations[i].mapping;
+
+        if (base && address >= base && address < base + allocations[i].size)
+            return base + allocations[i].size - address;
+    }
     assert(!"not a DMA buffer");
     return 0;
 }
@@ -348,9 +352,12 @@ static uint32_t run_list(const uint32_t *list)
     writer.capacity = allocation_size(reg(0xe000c));
     last_raw_y = reg(0x40010);
     last_bitstream_buffer = writer.capacity;
+    /* one job buffer: the command list, then the bitstream at +8 KiB */
+    assert(reg(0xe000c) == (uint32_t)(uintptr_t)list + 0x2000u);
 #if defined(PLATFORM_T23)
-    /* the limit leaves the 64 KiB guard out */
-    assert(reg(0xe0068) == (0x80000000u | (writer.capacity - 0x10000u)));
+    assert(reg(0xe0068) == (0x80000000u | writer.capacity));
+#else
+    assert(reg(0xe0068) == 0u);
 #endif
     for (my = 0; my < mb_height; my++)
         for (mx = 0; mx < mb_width; mx++) {
@@ -418,6 +425,8 @@ int __wrap_ioctl(int fd, unsigned long request, ...)
             channel->output_len = allocation_size(
                 regs[0xe000c >> 2]);
         channel->status = force_status ? force_status : 0x11u;
+        if (force_overflow)
+            channel->status |= (1u << 20);
         return 0;
     }
     return -1;
@@ -887,8 +896,14 @@ static void test_framesource_tail(void)
     HelixJpeg_QualityTables(75u, qt);
     assert(OpenIMP_HelixJpeg_Encode(&frame, qt, &stream) == 0);
     assert(last_raw_y == frame.phys_addr);
+#if defined(PLATFORM_T23)
+    /* JPGC_MAX_BS: a quarter of NV12 */
     assert(last_bitstream_buffer ==
-           ((1920u * 1088u * 3u / 2u / 4u + 0xfffu) & ~0xfffu) + 0x10000u);
+           ((1920u * 1088u * 3u / 2u / 4u + 0xfffu) & ~0xfffu));
+#else
+    /* no hardware limit: the whole NV12 picture, as the stock library */
+    assert(last_bitstream_buffer == 1920u * 1088u * 3u / 2u);
+#endif
     assert(live_allocations == before);
     printf("  1920x1080 in place: %u bytes, bitstream buffer %u\n",
            stream.length, last_bitstream_buffer);
@@ -903,6 +918,36 @@ static void test_framesource_tail(void)
     munmap(pixels, size + 4096u);
 }
 
+#if defined(PLATFORM_T23)
+/* JPGC_MAX_BS: a full quarter-NV12 bitstream repeats the job once with the
+ * NV12 size, which is kept from then on. */
+static void test_bitstream_full_retry(void)
+{
+    HelixJpegFrame frame;
+    HWStreamBuffer stream;
+    uint8_t qt[128];
+    uint32_t size;
+    uint8_t *pixels = make_frame(1024u, 768u, 1024u * 768u, &size, 0);
+    unsigned int run_count = runs;
+
+    memset(&frame, 0, sizeof(frame));
+    frame.virt_addr = (uint32_t)(uintptr_t)pixels;
+    frame.phys_addr = frame.virt_addr;
+    frame.size = size;
+    frame.width = 1024u;
+    frame.height = 768u;
+    HelixJpeg_QualityTables(75u, qt);
+    force_overflow = 1;
+    assert(OpenIMP_HelixJpeg_Encode(&frame, qt, &stream) < 0);
+    assert(runs == run_count + 2u);
+    force_overflow = 0;
+    assert(OpenIMP_HelixJpeg_Encode(&frame, qt, &stream) == 0);
+    assert(last_bitstream_buffer == 1024u * 768u * 3u / 2u);
+    free((void *)(uintptr_t)stream.virt_addr);
+    munmap(pixels, size + 4096u);
+}
+#endif
+
 /* No allocation that would leave less than the reserve free in rmem. */
 static void test_rmem_budget(void)
 {
@@ -911,7 +956,7 @@ static void test_rmem_budget(void)
     uint8_t qt[128];
     uint32_t size;
     uint8_t *pixels = make_frame(256u, 144u, 256u * 144u, &size, 0);
-    unsigned int before = live_allocations, run_count = runs;
+    unsigned int before = live_allocations, run_count = runs, i;
 
     memset(&frame, 0, sizeof(frame));
     frame.virt_addr = (uint32_t)(uintptr_t)pixels;
@@ -921,10 +966,13 @@ static void test_rmem_budget(void)
     frame.chroma_offset = 256u * 144u;
     HelixJpeg_QualityTables(75u, qt);
     rmem_stats_on = 1;
-    rmem_largest = (1024u << 10) + 4096u;  /* less than copy + reserve */
-    assert(OpenIMP_HelixJpeg_Encode(&frame, qt, &stream) < 0);
+    rmem_largest = (4096u << 10) + 4096u;  /* less than copy + reserve */
+    for (i = 0; i < 4u; i++)
+        assert(OpenIMP_HelixJpeg_Encode(&frame, qt, &stream) < 0);
+    /* soft skips: no run, nothing held, hardware path still on */
     assert(runs == run_count && live_allocations == before);
-    rmem_largest = 8u << 20;
+    assert(OpenIMP_HelixJpeg_Available());
+    rmem_largest = 64u << 20;
     assert(OpenIMP_HelixJpeg_Encode(&frame, qt, &stream) == 0);
     /* the per-job copy is gone again */
     assert(live_allocations == before);
@@ -970,8 +1018,19 @@ static void test_failures(void)
     force_status = 0x11u | (1u << 7);
     assert(OpenIMP_HelixJpeg_Encode(&frame, qt, &stream) < 0);
     force_status = 0;
-    force_overflow = 1;
+    assert(OpenIMP_HelixJpeg_Encode(&frame, qt, &stream) == 0);
+    free((void *)(uintptr_t)stream.virt_addr);
+    /* ENDFLAG without JPGEND: the kernel's length is an H.264 one */
+    force_status = 0x01u;
     assert(OpenIMP_HelixJpeg_Encode(&frame, qt, &stream) < 0);
+    force_status = 0;
+    assert(OpenIMP_HelixJpeg_Encode(&frame, qt, &stream) == 0);
+    free((void *)(uintptr_t)stream.virt_addr);
+    force_overflow = 1;
+    i = runs;
+    assert(OpenIMP_HelixJpeg_Encode(&frame, qt, &stream) < 0);
+    /* the 256 KiB floor already holds this NV12 picture: no repeat */
+    assert(runs == i + 1u);
     force_overflow = 0;
     assert(OpenIMP_HelixJpeg_Encode(&frame, qt, &stream) == 0);
     free((void *)(uintptr_t)stream.virt_addr);
@@ -1006,6 +1065,9 @@ int main(void)
     test_encode();
     test_framesource_tail();
     test_rmem_budget();
+#if defined(PLATFORM_T23)
+    test_bitstream_full_retry();
+#endif
     assert(requests == 1u);
     test_failures();
     printf("helix_jpeg_test (%s, software JPEG %s): ok\n",

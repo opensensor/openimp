@@ -1498,7 +1498,6 @@ int IMP_Encoder_DestroyChn(int channel)
         AL_Codec_Encode_Destroy(ch->codec);
     p2_free_jpeg_frame_buffer(ch);
     ch->jpeg_frame_generation = 0;
-    ch->jpeg_frame_requested = 0;
     ch->codec = NULL;
     ch->created = 0;
     ch->receiving = 0;
@@ -1506,7 +1505,21 @@ int IMP_Encoder_DestroyChn(int channel)
     pthread_cond_broadcast(&ch->jpeg_frame_ready);
     ch->group = -1;
     ch->source_channel = -1;
+#if defined(P2_JPEG_LEND)
+    {
+        /* no PollingStream runs any more (p2_wait_poll_idle): a frame
+         * still lent to this channel goes back now */
+        void *lent = ch->jpeg_lent_frame;
+        int lent_source = ch->jpeg_lent_source;
+
+        ch->jpeg_lent_frame = NULL;
+        pthread_mutex_unlock(&ch->lock);
+        if (lent)
+            (void)p2_release_source_frame(lent_source, lent);
+    }
+#else
     pthread_mutex_unlock(&ch->lock);
+#endif
     return 0;
 }
 
