@@ -3,7 +3,7 @@
 Everything changed, extended or fixed in OpenIMP, open-tx-isp, timps and the thingino
 integration since the test campaign started on 2026-09-30. Kept up to date during the campaign.
 
-Last update: 2026-10-02 10:05.
+Last update: 2026-10-02 11:15.
 
 Cameras are anonymised: cam-A (T31), cam-B (T23), cam-C (T20), cam-D (T21).
 
@@ -14,10 +14,10 @@ All four test cameras run the open kernel driver (open-tx-isp), OpenIMP and timp
 
 | Camera | SoC | Stack | State |
 |---|---|---|---|
-| cam-A | T31 | fully open | Flashed 2026-10-02 with -all-3 image (HEVC, tuning gaps, faster IVS); -all-4 driver tested live |
-| cam-B | T23 | open, encoder via helixd (native selectable) | Flashed 2026-10-02 with -all-3 image; -all-4 driver tested live |
-| cam-C | T20 | fully open | Flashed 2026-10-02 with -all-3 image; robust driver and bottom-stripe fix tested live |
-| cam-D | T21 | fully open | Flashed 2026-10-02 with -all-3 image; boot guard on auto; robust driver under test |
+| cam-A | T31 | fully open | Flashed 2026-10-02 11:00 with -all-5 image (robust driver incl. t31-robust-2, HEVC, faster IVS) |
+| cam-B | T23 | open, encoder via helixd (native selectable) | Flashed 2026-10-02 11:00 with -all-5 image (robust driver, smaller module); native encoder selectable |
+| cam-C | T20 | fully open | Flashed 2026-10-02 11:00 with -all-5 image (robust driver, bottom-stripe fix) |
+| cam-D | T21 | fully open | Flashed 2026-10-02 11:00 with -all-5 image (robust driver, sensor GPIO patch); boot guard auto |
 
 ## OpenIMP (userspace libimp)
 
@@ -82,7 +82,7 @@ Goal: identical image behaviour, but cleaner unload/reload, less memory and chec
 
 OpenIMP: T20 green flicker in the bottom rows fixed by filling the encoder padding rows (`claude/t20-bottom-chroma`; 0 green pixels in 30 frames). Faster IVS (`claude/ivs-opt`; T20 timps CPU 4.1 % → 2.7 % with motion on).
 
-Aggregates: `claude/open-tx-isp-all-4` and `claude/openimp-all-4` (pushed); 58 merged single branches removed. Next: `claude/open-tx-isp-all-5` (+ t21-robust).
+Aggregates: `claude/open-tx-isp-all-4` and `claude/openimp-all-4` (pushed); 58 merged single branches removed. `claude/open-tx-isp-all-5` adds t21-robust and t31-robust-2 (T31: sensor flip with shvflip=1, unload leaks, lazy WDR buffers; MemFree drift per reload 460 → 45 KB); all four cameras flashed with -all-5 images.
 
 ## timps and thingino
 - timps: AE IT max can be reset to 0 again (PR #3, merged).
