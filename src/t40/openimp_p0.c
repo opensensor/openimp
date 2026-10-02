@@ -1,5 +1,6 @@
 /* Clean standalone OpenIMP T40 foundation.  No OEM libimp dependency. */
 
+#include <pthread.h>
 #include <stdint.h>
 #include <stddef.h>
 #include <stdio.h>
@@ -155,20 +156,20 @@ struct openimp_state {
 };
 
 static struct openimp_state state;
-static volatile uint32_t state_lock;
+/* A mutex, not a spin lock: these SoCs have one CPU, so a thread spinning
+ * for the lock (the FrameSource worker normalises every capture timestamp
+ * under it) keeps the holder from running until it is preempted, and for
+ * good if the spinner has a real-time priority. */
+static pthread_mutex_t state_lock = PTHREAD_MUTEX_INITIALIZER;
 
 static void lock_state(void)
 {
-    while (__sync_lock_test_and_set(&state_lock, 1)) {
-        while (state_lock)
-            ;
-    }
+    pthread_mutex_lock(&state_lock);
 }
 
 static void unlock_state(void)
 {
-    __sync_synchronize();
-    state_lock = 0;
+    pthread_mutex_unlock(&state_lock);
 }
 
 static uint64_t monotonic_us(void)
@@ -428,12 +429,18 @@ const char *IMP_System_GetCPUInfo(void)
 int64_t IMP_System_GetTimeStamp(void)
 {
     uint64_t now = monotonic_us();
+    uint64_t base;
 
     if (!now)
         return -1;
+    /* the 64-bit base is two words on MIPS32: read (and set) it under
+     * the lock, as Init and RebaseTimeStamp write it */
+    lock_state();
     if (!state.timestamp_base_us)
         state.timestamp_base_us = now;
-    return (int64_t)(now - state.timestamp_base_us);
+    base = state.timestamp_base_us;
+    unlock_state();
+    return (int64_t)(now - base);
 }
 
 /* FrameSource DQBUF timestamps use the same absolute monotonic clock as the

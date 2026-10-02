@@ -15,3 +15,5 @@ fs_lifecycle_tsan_*
 helix_encoder_asan_*
 ivs_framework_asan_*
 ivs_framework_tsan_*
+system_test
+system_tsan

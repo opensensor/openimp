@@ -115,6 +115,14 @@ fs_lifecycle_test_t20: $(FS_DEPS)
 fs_lifecycle_test_t23: $(FS_DEPS)
 	$(CC) $(CFLAGS) $(FS_FLAGS) -DPLATFORM_T23 -o $@ $(FS_SOURCES) -pthread
 
+# IMP_System_Init/Exit and the timestamp base, as built for T21.
+SYSTEM_SOURCES := system_test.c $(ROOT)/src/t40/openimp_p0.c
+SYSTEM_FLAGS = -Wno-unused-result '-D_Static_assert(c,m)=' -DPLATFORM_T21 \
+	-I$(ROOT)/include -I$(ROOT)/src
+
+system_test: $(SYSTEM_SOURCES)
+	$(CC) $(CFLAGS) $(SYSTEM_FLAGS) -o $@ $(SYSTEM_SOURCES) -pthread
+
 # Host tests under the sanitizers: the FrameSource/VBM lifecycle for T21,
 # T20 and T23 (ASan+UBSan, TSan), the Helix encoder for T30, T21 and T20
 # (UBSan), the IVS framework for T21 and T20 (ASan+UBSan, TSan). Slowed
@@ -138,6 +146,9 @@ sanitize: $(FS_DEPS) $(HELIX_SOURCES) $(HELIX_T21_SOURCES) $(IVS_DEPS)
 			-o fs_lifecycle_tsan_$$name $(FS_SOURCES) -pthread; \
 		$(TSAN_RUN) ./fs_lifecycle_tsan_$$name; \
 	done
+	$(SAN_CC) $(SYSTEM_FLAGS) $(FS_SANITIZE_TSAN) -o system_tsan \
+		$(SYSTEM_SOURCES) -pthread
+	TSAN_OPTIONS=halt_on_error=1 ./system_tsan
 	set -e; for soc in "T30:$(HELIX_SOURCES)" \
 		"T21:$(HELIX_T21_SOURCES)" \
 		"T20 -DPLATFORM_T21:$(HELIX_SOURCES)"; do \
@@ -164,7 +175,8 @@ sanitize: $(FS_DEPS) $(HELIX_SOURCES) $(HELIX_T21_SOURCES) $(IVS_DEPS)
 check: descriptor_test annexb_test level_test helix_encoder_test \
 	helix_encoder_test_t21 helix_encoder_test_t20 \
 	ivs_framework_test_t21 ivs_framework_test_t20 ivs_move_bench_t20 \
-	fs_lifecycle_test_t21 fs_lifecycle_test_t20 fs_lifecycle_test_t23
+	fs_lifecycle_test_t21 fs_lifecycle_test_t20 fs_lifecycle_test_t23 \
+	system_test
 	./descriptor_test
 	./annexb_test
 	./level_test
@@ -177,6 +189,7 @@ check: descriptor_test annexb_test level_test helix_encoder_test \
 	./fs_lifecycle_test_t21
 	./fs_lifecycle_test_t20
 	./fs_lifecycle_test_t23
+	./system_test
 
 clean:
 	$(RM) descriptor_test annexb_test level_test helix_encoder_test \
@@ -184,4 +197,4 @@ clean:
 		ivs_framework_test_t21 ivs_framework_test_t20 ivs_move_bench_t20 \
 		fs_lifecycle_test_t21 fs_lifecycle_test_t20 fs_lifecycle_test_t23 \
 		fs_lifecycle_asan_* fs_lifecycle_tsan_* helix_encoder_asan_* \
-		ivs_framework_asan_* ivs_framework_tsan_*
+		ivs_framework_asan_* ivs_framework_tsan_* system_test system_tsan
