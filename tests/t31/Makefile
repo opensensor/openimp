@@ -14,13 +14,14 @@ LAMBDA_TEST_BIN := $(PROJECT_DIR)/build/tests/t31-lambda-test
 AI_LIFECYCLE_TEST_BIN := $(PROJECT_DIR)/build/tests/t31-ai-lifecycle-test
 FAKE_AUDIO_PROCESS_DIR := $(PROJECT_DIR)/build/tests/fake-audio-process
 FAKE_AUDIO_PROCESS := $(FAKE_AUDIO_PROCESS_DIR)/libaudioProcess.so
+OSD_DRAW_TEST_BIN := $(PROJECT_DIR)/build/tests/t31-osd-draw-test
 
 .PHONY: check clean sanitize
 
 check: $(STREAM_LAYOUT_TEST_BIN) $(RATE_CONTROL_TEST_BIN) \
 	$(READY_EVENT_TEST_BIN) $(ACODEC_TEST_BIN) $(FRAME_PIN_TEST_BIN) \
 	$(AO_SENDFRAME_TEST_BIN) $(HEVC_HEADERS_TEST_BIN) $(AEC_TEST_BIN) $(NV12_ROTATE_TEST_BIN) \
-	$(LAMBDA_TEST_BIN) $(AI_LIFECYCLE_TEST_BIN) $(FAKE_AUDIO_PROCESS)
+	$(LAMBDA_TEST_BIN) $(AI_LIFECYCLE_TEST_BIN) $(FAKE_AUDIO_PROCESS) $(OSD_DRAW_TEST_BIN)
 	$(STREAM_LAYOUT_TEST_BIN)
 	$(RATE_CONTROL_TEST_BIN)
 	$(READY_EVENT_TEST_BIN)
@@ -32,6 +33,11 @@ check: $(STREAM_LAYOUT_TEST_BIN) $(RATE_CONTROL_TEST_BIN) \
 	$(NV12_ROTATE_TEST_BIN)
 	$(LAMBDA_TEST_BIN)
 	LD_LIBRARY_PATH=$(abspath $(FAKE_AUDIO_PROCESS_DIR)) $(AI_LIFECYCLE_TEST_BIN)
+	$(OSD_DRAW_TEST_BIN)
+
+$(OSD_DRAW_TEST_BIN): osd_draw_test.c $(PROJECT_DIR)/src/t31/openimp_t31_osd_draw.h
+	mkdir -p "$(dir $@)"
+	$(CC) $(CFLAGS) -I$(PROJECT_DIR)/src osd_draw_test.c -o "$@"
 
 $(LAMBDA_TEST_BIN): lambda_test.c $(PROJECT_DIR)/src/t40/t40_lambda.h
 	mkdir -p "$(dir $@)"
