@@ -22,6 +22,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/ioctl.h>
+#include <sys/mman.h>
 #include <unistd.h>
 
 #include "dma_alloc.h"
@@ -205,6 +206,9 @@ struct T30HelixEncoder {
     int force_idr;
     OpenIMPT31RateController rate_control;
     int rate_control_enabled;
+#if defined(PLATFORM_T20)
+    int t10;                    /* T10 NVPU: T10 command list, padded refs */
+#endif
 #if defined(PLATFORM_T23)
     uint32_t failures;          /* consecutive failed pictures */
     uint32_t input_size;        /* NV12 bytes the VPU reads per frame */
@@ -363,6 +367,41 @@ static int t30_generate_headers(T30HelixEncoder *encoder)
 #endif
     return 0;
 }
+
+#if defined(PLATFORM_T20)
+/* The stock T10/T20 libimp is one binary that picks its T10 or T20 slice
+ * programming from the SoC id (get_cpu_id: 0x1300002c, family 1, id 5 is
+ * T10, id 0x2000 is T20).  OPENIMP_HELIX_SOC=t10|t20 overrides the probe. */
+static int t30_soc_is_t10(void)
+{
+    const char *forced = getenv("OPENIMP_HELIX_SOC");
+    volatile uint32_t *regs;
+    uint32_t soc_id;
+    long page;
+    int fd;
+
+    if (forced && (forced[0] == 't' || forced[0] == 'T')) {
+        if (!strcmp(forced + 1, "10"))
+            return 1;
+        if (!strcmp(forced + 1, "20"))
+            return 0;
+    }
+    page = sysconf(_SC_PAGESIZE);
+    if (page <= 0)
+        page = 4096;
+    fd = open("/dev/mem", O_RDONLY | O_SYNC | O_CLOEXEC);
+    if (fd < 0)
+        return 0;
+    regs = mmap(NULL, (size_t)page, PROT_READ, MAP_SHARED, fd,
+                (off_t)(0x1300002cu & ~((uint32_t)page - 1u)));
+    close(fd);
+    if (regs == MAP_FAILED)
+        return 0;
+    soc_id = regs[(0x1300002cu & ((uint32_t)page - 1u)) / 4u];
+    munmap((void *)regs, (size_t)page);
+    return (soc_id >> 28) == 1u && ((soc_id >> 12) & 0xffffu) == 5u;
+}
+#endif
 
 static void t30_fill_slice(T30HelixEncoder *encoder,
                            const IMPFrameInfo *frame, uint32_t qp,
@@ -576,6 +615,28 @@ int OpenIMP_T30_HelixCreate(T30HelixEncoder **encoder_out,
 #endif
                          "t30-helix-bs") != 0)
         goto fail;
+#if defined(PLATFORM_T20)
+    encoder->t10 = t30_soc_is_t10();
+    if (encoder->t10) {
+        /* T10 reconstructions keep a one-macroblock border around both
+         * planes; output/reference addresses point inside it. */
+        uint8_t mbw = (uint8_t)(((uint32_t)params->width + 15u) / 16u);
+        uint8_t mbh = (uint8_t)(((uint32_t)params->height + 15u) / 16u);
+        uint32_t luma_plane = (uint32_t)T10_H264_ReferencePlaneSize(mbw, mbh, 0);
+        uint32_t chroma_plane = (uint32_t)T10_H264_ReferencePlaneSize(mbw, mbh, 1);
+
+        for (i = 0; i < 2u; i++) {
+            if (t30_dma_allocate(&encoder->reference[i].dma,
+                                 luma_plane + chroma_plane,
+                                 "t10-nvpu-ref") != 0)
+                goto fail;
+            encoder->reference[i].y = encoder->reference[i].dma.phys_addr +
+                (uint32_t)T10_H264_ReferenceOffset(mbw, 0);
+            encoder->reference[i].c = encoder->reference[i].dma.phys_addr +
+                luma_plane + (uint32_t)T10_H264_ReferenceOffset(mbw, 1);
+        }
+    } else
+#endif
     for (i = 0; i < 2u; i++) {
         if (t30_dma_allocate(&encoder->reference[i].dma,
                              (uint32_t)reference_size,
@@ -596,6 +657,11 @@ int OpenIMP_T30_HelixCreate(T30HelixEncoder **encoder_out,
     LOG_CODEC("T30 Helix: native encoder ready channel=%u %ux%u desc=0x%08x",
               encoder->channel.channel_id, params->width, params->height,
               encoder->descriptor.phys_addr);
+#if defined(PLATFORM_T20)
+    if (encoder->t10)
+        IMP_LOG_INFO("Encoder", "T10 NVPU: %ux%u uses the T10 command list "
+                     "(padded references)", params->width, params->height);
+#endif
 #if defined(PLATFORM_T23)
     IMP_LOG_INFO("Encoder", "T23 Helix: native encoder ready channel=%u "
                  "%ux%u rc=%u bitrate=%u fps=%u/%u gop=%u qp=%u [%u,%u] "
@@ -753,7 +819,12 @@ int OpenIMP_T30_HelixEncode(T30HelixEncoder *encoder,
     if (T21_H264_BuildDescriptor(&encoder->slice,
                                  &descriptor_pairs) != 0) {
 #else
-    if (T30_H264_BuildDescriptor(&encoder->slice,
+    if (
+#if defined(PLATFORM_T20)
+        encoder->t10 ? T10_H264_BuildDescriptor(&encoder->slice,
+                                                &descriptor_pairs) != 0 :
+#endif
+        T30_H264_BuildDescriptor(&encoder->slice,
                                  &descriptor_pairs) != 0) {
 #endif
         LOG_CODEC("T30 Helix: descriptor build failed: %s",
