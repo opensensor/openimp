@@ -2091,6 +2091,22 @@ int IMP_FrameSource_EnableChn(int chnNum)
                  chnNum, queued_ok, initial_queued_ok);
     }
 
+    /* Ensure bind/unbind function pointers on the module, before the
+     * worker sees ENABLED: from then on it publishes each frame in the
+     * output slot at +0x138, which this would clear again. */
+    {
+        Module *m = g_modules[0][chnNum];
+        if (m != NULL) {
+            *(uint32_t *)((char *)m + 0x134) = 1;
+            *(void **)((char *)m + 0x138) = NULL;
+            *(void **)((char *)m + 0x40) = (void *)framesource_bind;
+            *(void **)((char *)m + 0x44) = (void *)framesource_unbind;
+            fs_bind_trace("libimp/FSB: enable set-bind ch=%d module=%p outcnt=%u bind=%p unbind=%p\n",
+                          chnNum, m, *(uint32_t *)((char *)m + 0x134),
+                          framesource_bind, framesource_unbind);
+        }
+    }
+
     fs_chan_set_state(chnNum, 2);
     fs_trace("libimp/FS: enable state-promote ch=%d state=%d fd=%d\n",
              chnNum, fs_chan_get_state(chnNum), ctx->fd);
@@ -2115,20 +2131,6 @@ int IMP_FrameSource_EnableChn(int chnNum)
         fs_chan_set_state(chnNum, 1);
         pthread_mutex_unlock(&g_fs_lock);
         return -1;
-    }
-
-    /* Ensure bind/unbind function pointers on the module. */
-    {
-        Module *m = g_modules[0][chnNum];
-        if (m != NULL) {
-            *(uint32_t *)((char *)m + 0x134) = 1;
-            *(void **)((char *)m + 0x138) = NULL;
-            *(void **)((char *)m + 0x40) = (void *)framesource_bind;
-            *(void **)((char *)m + 0x44) = (void *)framesource_unbind;
-            fs_bind_trace("libimp/FSB: enable set-bind ch=%d module=%p outcnt=%u bind=%p unbind=%p\n",
-                          chnNum, m, *(uint32_t *)((char *)m + 0x134),
-                          framesource_bind, framesource_unbind);
-        }
     }
 
     fs_trace("libimp/FS: enable done ch=%d state=%d fd=%d\n",
