@@ -187,6 +187,7 @@ static int fake_qbuf_freed;     /* QBUF of memory that is not allocated */
 static int fake_closed_streaming; /* closed while streaming */
 static int fake_inject;
 static int fake_streamoffs;
+static unsigned int fake_dqbuf_delay_us; /* time spent "in the driver" */
 
 int __real_open(const char *path, int flags, ...);
 int __real_close(int fd);
@@ -239,6 +240,9 @@ int __wrap_ioctl(int fd, unsigned long request, void *arg)
     uint32_t *words = arg;
     int ret = 0;
 
+    /* A DQBUF that sleeps in the driver: STREAMOFF can come meanwhile. */
+    if ((uint32_t)request == 0xc0445611u && fake_dqbuf_delay_us)
+        usleep(fake_dqbuf_delay_us);
     pthread_mutex_lock(&fake_lock);
     if (fd < 0 || fd >= FAKE_FDS || !fake[fd].open) {
         fake_bad_ioctl++;
@@ -736,6 +740,42 @@ static void test_disable_during_delivery(void)
     check_clean("disable during delivery");
 }
 
+/* DisableChn while the worker sits in DQBUF: the driver ends that DQBUF
+ * with EINVAL once STREAMOFF has stopped the queue. That is the normal end
+ * of a stop, not an error to report (seen on the Wyze T20 when timps idles
+ * channel 0: "DQBUF failed ... Invalid argument" + "DQBUF error ret=-1"). */
+static void test_disable_during_dqbuf(void)
+{
+    IMPFSChnAttr a = attr_for(640, 360, 2);
+    FILE *saved = stderr, *log = tmpfile();
+    char line[512];
+    int i, errors = 0, streamoffs;
+
+    if (!log)
+        return;
+    CHECK(IMP_FrameSource_CreateChn(0, &a) == 0, "create");
+    fake_dqbuf_delay_us = 3000;
+    streamoffs = fake_streamoffs;
+    for (i = 0; i < 20; i++) {
+        CHECK(IMP_FrameSource_EnableChn(0) == 0, "enable");
+        sleep_ms(10);
+        stderr = log;
+        CHECK(IMP_FrameSource_DisableChn(0) == 0, "disable");
+        stderr = saved;
+    }
+    fake_dqbuf_delay_us = 0;
+    CHECK(fake_streamoffs - streamoffs == 20, "STREAMOFF per disable");
+    rewind(log);
+    while (fgets(line, sizeof(line), log))
+        if (strstr(line, "DQBUF failed") || strstr(line, "DQBUF error"))
+            errors++;
+    fclose(log);
+    CHECK(errors == 0, "%d DQBUF error lines for DQBUFs ended by STREAMOFF",
+          errors);
+    CHECK(IMP_FrameSource_DestroyChn(0) == 0, "destroy");
+    check_clean("disable during dqbuf");
+}
+
 int main(void)
 {
     report = fdopen(dup(2), "w");
@@ -765,6 +805,7 @@ int main(void)
     RUN(pull_during_disable);
     RUN(depth_during_disable);
     RUN(disable_during_delivery);
+    RUN(disable_during_dqbuf);
     if (failures) {
         fprintf(report, "fs_lifecycle_test: %d failure(s)\n", failures);
         return 1;

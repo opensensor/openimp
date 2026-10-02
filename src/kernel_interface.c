@@ -956,6 +956,13 @@ int fs_dqbuf(int fd, int *index_out, uint64_t *timestamp_out) {
             free(raw);
             return -2;
         }
+        /* A DQBUF waiting in the driver when DisableChn stops the stream
+         * ends with EINVAL: the normal end of a stop. The worker reports it
+         * when it happens while the channel is meant to run. */
+        if (saved_errno == EINVAL) {
+            free(raw);
+            return -3;
+        }
         fprintf(stderr, "[KernelIF] DQBUF failed: fd=%d %s\n", fd, strerror(saved_errno));
         free(raw);
         return -1;
@@ -1954,6 +1961,8 @@ int VBMKernelDequeue(int chn, int fd, void **frame_out) {
         }
         return -2; /* EAGAIN */
     }
+    if (ret == -3)
+        return -3; /* not streaming, see fs_dqbuf */
     if (ret != 0) {
         int c = ++err_count[chn];
         if (c <= 5 || (c % 50) == 0) {

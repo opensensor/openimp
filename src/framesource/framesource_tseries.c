@@ -1172,6 +1172,18 @@ static void *frame_pooling_thread(void *arg)
                     if (dq_ret == 0 && frame != NULL) {
                         fs_user_trace("pooling dequeue-ok ch=%d fd=%d frame=%p", chn, ctx->fd, frame);
                     }
+                    /* Not streaming: expected while DisableChn stops the
+                     * channel (running cleared before STREAMOFF); while it
+                     * should run, the driver stopped the stream. */
+                    if (dq_ret == -3 && ctx->running) {
+                        static unsigned int not_streaming;
+                        unsigned int n = __atomic_add_fetch(&not_streaming, 1u,
+                                                            __ATOMIC_RELAXED);
+
+                        if (n <= 5u || n % 100u == 0u)
+                            IMP_LOG_ERR("Framesource", "chn%d: DQBUF: stream not running (driver stopped it?) (#%u)",
+                                        chn, n);
+                    }
                     if (dq_ret != 0 || frame == NULL) {
                         /* EAGAIN after at least one frame is the normal end
                          * of a drain on a driver with a real poll: go
