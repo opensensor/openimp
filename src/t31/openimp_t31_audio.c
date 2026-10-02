@@ -1964,7 +1964,7 @@ int IMP_AO_EnableHpf(IMPAudioIOAttr *attribute)
         return -1;
     pthread_mutex_lock(&t31_ao_fx_lock);
     cutoff = t31_ao_fx.hpf_cutoff;
-    if (cutoff < 0 || cutoff * 2 >= (int)attribute->samplerate) {
+    if (cutoff < 0 || (int64_t)cutoff * 2 >= (int64_t)attribute->samplerate) {
         pthread_mutex_unlock(&t31_ao_fx_lock);
         return -1;                  /* "HPF cut-off frequency is illegal" */
     }
