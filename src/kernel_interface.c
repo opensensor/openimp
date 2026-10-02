@@ -18,6 +18,7 @@
 #include <time.h>
 #include <stdarg.h>
 #include "dma_alloc.h"
+#include "imp_log_int.h"
 #include "kernel_interface.h"
 #include "trace_control.h"
 #include "vbm_dq_step.h"
@@ -1129,6 +1130,8 @@ static int calculate_frame_size(int width, int height, int pixfmt) {
     return size;
 }
 
+static void vbm_log_rmem(const char *what, int chn, int size);
+
 int VBMCreatePool(int chn, void *fmt, void *ops, void *priv) {
     if (chn < 0 || chn >= MAX_VBM_POOLS) {
         return -1;
@@ -1364,9 +1367,33 @@ int VBMCreatePool(int chn, void *fmt, void *ops, void *priv) {
     pthread_mutex_init(&pool->queue_mutex, NULL);
 
     vbm_instance[chn] = pool;
+    vbm_log_rmem("after creating", chn, total_size);
 
     OPENIMP_TRACE_STDERR("[VBM] CreatePool: chn=%d created successfully\n", chn);
     return 0;
+}
+
+/* One line per FrameSource pool creation/release with the state of the
+ * reserved arena: the pools are the allocations that come and go with every
+ * DisableChn/EnableChn, so this is where fragmentation would show first.
+ * OPENIMP_RMEM_MAP=1 also logs every live allocation. */
+static void vbm_log_rmem(const char *what, int chn, int size)
+{
+    static int map = -1;
+    size_t used, total, largest;
+
+    if (DMA_RmemStats(&used, &total, &largest) != 0)
+        return;
+    IMP_LOG_INFO("DMA", "rmem %s vbm_chn%d (%d bytes): used %zu of %zu, "
+                 "largest free block %zu", what, chn, size, used, total,
+                 largest);
+    if (map < 0) {
+        const char *value = getenv("OPENIMP_RMEM_MAP");
+
+        map = value && value[0] == '1';
+    }
+    if (map)
+        DMA_LogRmem(what);
 }
 
 int VBMDestroyPool(int chn) {
@@ -1412,8 +1439,13 @@ int VBMDestroyPool(int chn) {
     }
 
     /* Free pool structure */
-    free(pool);
-    vbm_instance[chn] = NULL;
+    {
+        int pool_bytes = pool->frame_size * pool->frame_count;
+
+        free(pool);
+        vbm_instance[chn] = NULL;
+        vbm_log_rmem("after releasing", chn, pool_bytes);
+    }
 
     OPENIMP_TRACE_STDERR("[VBM] DestroyPool: chn=%d destroyed\n", chn);
     return 0;

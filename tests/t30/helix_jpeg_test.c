@@ -73,6 +73,13 @@ typedef struct {
 
 static FakeAllocation allocations[16];
 static unsigned int live_allocations;
+#if defined(PLATFORM_T21) && !defined(PLATFORM_T20) && !defined(PLATFORM_T23)
+/* T21: the bitstream buffer is the one the H.264 channels share, kept for
+ * the process (src/t30/helix_bitstream.c) */
+#define KEPT_BUFFERS 1u
+#else
+#define KEPT_BUFFERS 0u
+#endif
 static unsigned int runs, requests, releases;
 static int fail_runs;            /* RUN returns -1 */
 static uint32_t force_status;    /* reported instead of 0x11 */
@@ -1086,7 +1093,7 @@ static void test_failures(void)
 #if OPENIMP_SW_JPEG
     /* three in a row: the software encoder takes over for good */
     assert(!OpenIMP_HelixJpeg_Available());
-    assert(releases == releases0 + 1u && live_allocations == 0u);
+    assert(releases == releases0 + 1u && live_allocations == KEPT_BUFFERS);
 #else
     /* no software encoder: keep trying the VPU */
     assert(OpenIMP_HelixJpeg_Available());
@@ -1094,7 +1101,7 @@ static void test_failures(void)
     assert(OpenIMP_HelixJpeg_Encode(&frame, qt, &stream) == 0);
     free((void *)(uintptr_t)stream.virt_addr);
     OpenIMP_HelixJpeg_Shutdown();
-    assert(releases == releases0 + 1u && live_allocations == 0u);
+    assert(releases == releases0 + 1u && live_allocations == KEPT_BUFFERS);
 #endif
     fail_runs = 0;
     munmap(pixels, size + 4096u);
@@ -1126,7 +1133,7 @@ static void test_probe(void)
     free((void *)(uintptr_t)stream.virt_addr);
     before = live_allocations;
     OpenIMP_HelixJpeg_Shutdown();
-    assert(live_allocations < before || before == 0u);
+    assert(live_allocations < before || before == KEPT_BUFFERS);
     unsetenv("OPENIMP_HELIX_JPEG_PROBE_MAX_BS_KB");
     munmap(pixels, size + 4096u);
 }

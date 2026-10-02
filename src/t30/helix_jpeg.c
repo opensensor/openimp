@@ -29,6 +29,14 @@
 #include "dma_alloc.h"
 #include "imp_log_int.h"
 
+#if defined(PLATFORM_T21) && !defined(PLATFORM_T20) && !defined(PLATFORM_T23)
+/* T21: the bitstream goes to the buffer the H.264 channels share (the
+ * stock "vpuBs", src/t30/helix_bitstream.h) instead of a JPEG buffer of
+ * its own. */
+#define HELIX_JPEG_SHARED_BS 1
+#include "t30/helix_bitstream.h"
+#endif
+
 #ifndef OPENIMP_SW_JPEG
 #define OPENIMP_SW_JPEG 1
 #endif
@@ -589,11 +597,9 @@ static int helix_dma_alloc(IMPDMABufferInfo *dma, uint32_t size,
         }
         return HELIX_SKIPPED;
     }
-#if defined(PLATFORM_T23)
+    /* With the encoder buffers at the top of rmem, clear of the
+     * FrameSource pools that come and go at the bottom. */
     ret = DMA_AllocDescriptorTop(dma, (int)size, tag);
-#else
-    ret = DMA_AllocDescriptor(dma, (int)size, tag);
-#endif
     if (ret != 0 || !dma->phys_addr || !dma->virt_addr) {
         memset(dma, 0, sizeof(*dma));
         helix_jpeg.reason = "rmem allocation";
@@ -826,6 +832,15 @@ static int helix_job_buffer(uint32_t capacity)
 {
     IMPDMABufferInfo next;
     int ret;
+
+#if defined(HELIX_JPEG_SHARED_BS)
+    /* taken for this job, large enough, by OpenIMP_HelixJpeg_EncodeEx */
+    if (helix_jpeg.job.phys_addr &&
+        helix_jpeg.job.size >= HELIX_DESCRIPTOR_AREA + capacity)
+        return 0;
+    helix_jpeg.reason = "shared bitstream buffer";
+    return -1;
+#endif
 
     if (helix_jpeg.job.phys_addr &&
         helix_jpeg.job.size >= HELIX_DESCRIPTOR_AREA + capacity)
@@ -1233,7 +1248,28 @@ int OpenIMP_HelixJpeg_EncodeEx(const HelixJpegFrame *frame,
     helix_jpeg.channel.status = 0;
     helix_jpeg.channel.output_len = 0;
     helix_jpeg.limit_hit = 0;
+#if defined(HELIX_JPEG_SHARED_BS)
+    {
+        /* Hold the shared bitstream buffer from the command list to the
+         * copy into the stream, as the stock library holds its bitstream
+         * semaphore. */
+        uint32_t aligned_height = (frame->height + 15u) & ~15u;
+        uint32_t need = HELIX_DESCRIPTOR_AREA + helix_bitstream_capacity(
+            frame->width * aligned_height * 3u / 2u, qt);
+
+        if (OpenIMP_HelixBitstream_Lock(need, &helix_jpeg.job) != 0) {
+            helix_jpeg.reason = "shared bitstream buffer";
+            ret = HELIX_SKIPPED;
+        } else {
+            ret = helix_jpeg_run_locked(frame, qt, stream, &path, &capacity);
+            memset(&helix_jpeg.job, 0, sizeof(helix_jpeg.job));
+            helix_jpeg.active = NULL;
+            OpenIMP_HelixBitstream_Unlock();
+        }
+    }
+#else
     ret = helix_jpeg_run_locked(frame, qt, stream, &path, &capacity);
+#endif
     if (flags)
         *flags = helix_jpeg.limit_hit ? HELIX_JPEG_LIMIT_HIT : 0u;
     /* the command list + bitstream buffer is kept; copies and probe
@@ -1297,6 +1333,23 @@ int OpenIMP_HelixJpeg_Reserve(uint32_t width, uint32_t height)
         pthread_mutex_unlock(&helix_jpeg.lock);
         return -1;
     }
+#if defined(HELIX_JPEG_SHARED_BS)
+    {
+        uint32_t before = OpenIMP_HelixBitstream_Size();
+        uint32_t after;
+
+        ret = OpenIMP_HelixBitstream_Reserve(HELIX_DESCRIPTOR_AREA +
+            helix_bitstream_capacity(width * aligned_height * 3u / 2u, qt));
+        after = OpenIMP_HelixBitstream_Size();
+        (void)DMA_RmemStats(&used, &total, &largest);
+        IMP_LOG_INFO("Encoder", "Helix JPEG: %ux%u channel: bitstream in the "
+                     "shared %u-byte buffer, %s (rmem used %zu of %zu, "
+                     "largest free %zu)", width, height, after,
+                     ret != 0 ? "not grown, retried at the first picture"
+                     : after == before ? "already large enough" : "grown",
+                     used, total, largest);
+    }
+#else
     {
         uint32_t before = helix_jpeg.job.size;
 
@@ -1311,6 +1364,7 @@ int OpenIMP_HelixJpeg_Reserve(uint32_t width, uint32_t height)
                      : before ? "grown" : "allocated",
                      used, total, largest);
     }
+#endif
     pthread_mutex_unlock(&helix_jpeg.lock);
     return ret == 0 ? 0 : -1;
 }

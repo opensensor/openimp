@@ -41,13 +41,25 @@ helix_encoder_test: $(HELIX_SOURCES) $(ROOT)/src/t30/t30_annexb.h $(ROOT)/src/t3
 		-o $@ $(HELIX_SOURCES)
 
 HELIX_T21_SOURCES := $(filter-out %/t30_h264_descriptor.c,$(HELIX_SOURCES)) \
-	$(ROOT)/src/t21/t21_h264_descriptor.c
+	$(ROOT)/src/t21/t21_h264_descriptor.c $(ROOT)/src/t30/helix_bitstream.c
 
 helix_encoder_test_t21: $(HELIX_T21_SOURCES) $(ROOT)/src/t30/t30_annexb.h $(ROOT)/src/t30/t30_h264_level.h
 	$(CC) $(CFLAGS) -DPLATFORM_T21 -fno-pie -no-pie \
 		-I$(ROOT)/include -I$(ROOT)/src $(INCLUDES) \
 		-Wl,--wrap=open,--wrap=close,--wrap=ioctl \
 		-o $@ $(HELIX_T21_SOURCES)
+
+# T21 reserved-memory layout: OpenIMP's arena, the real encoder and shared
+# bitstream buffer through timps' idle/re-enable cycles (PC420 numbers).
+T21_RMEM_SOURCES := t21_rmem_layout_test.c \
+	$(filter-out helix_encoder_test.c,$(HELIX_T21_SOURCES))
+
+t21_rmem_layout_test: $(T21_RMEM_SOURCES) $(ROOT)/src/rmem_arena.h \
+	$(ROOT)/src/t30/helix_bitstream.h $(ROOT)/src/t30/t30_helix_encoder.h
+	$(CC) $(CFLAGS) -DPLATFORM_T21 -fno-pie -no-pie \
+		-I$(ROOT)/include -I$(ROOT)/src $(INCLUDES) \
+		-Wl,--wrap=open,--wrap=close,--wrap=ioctl \
+		-o $@ $(T21_RMEM_SOURCES) -pthread
 
 # T20 builds the T21 userspace with PLATFORM_T20 and the T30 descriptor.
 helix_encoder_test_t20: $(HELIX_SOURCES) $(ROOT)/src/t30/t30_annexb.h $(ROOT)/src/t30/t30_h264_level.h
@@ -64,9 +76,10 @@ HJPEG_DEPS := helix_jpeg_test.c $(ROOT)/src/t30/helix_jpeg.c \
 HJPEG_FLAGS = $(CFLAGS) -fno-pie -no-pie -I$(ROOT)/include -I$(ROOT)/src \
 	-Wl,--wrap=open,--wrap=close,--wrap=ioctl
 
-helix_jpeg_test_t21: $(HJPEG_DEPS)
+helix_jpeg_test_t21: $(HJPEG_DEPS) $(ROOT)/src/t30/helix_bitstream.c
 	$(CC) $(HJPEG_FLAGS) -DPLATFORM_T21 -o $@ helix_jpeg_test.c \
-		$(ROOT)/src/t30/helix_jpeg.c -lm -pthread
+		$(ROOT)/src/t30/helix_jpeg.c $(ROOT)/src/t30/helix_bitstream.c \
+		-lm -pthread
 
 helix_jpeg_test_t20: $(HJPEG_DEPS)
 	$(CC) $(HJPEG_FLAGS) -DPLATFORM_T20 -DPLATFORM_T21 -DOPENIMP_SW_JPEG=0 \
@@ -110,7 +123,7 @@ ivs-bench: ivs_move_bench_t20
 	./ivs_move_bench_t20 bench
 
 check: descriptor_test annexb_test level_test helix_encoder_test \
-	helix_encoder_test_t21 helix_encoder_test_t20 \
+	helix_encoder_test_t21 helix_encoder_test_t20 t21_rmem_layout_test \
 	helix_jpeg_test_t21 helix_jpeg_test_t20 helix_jpeg_test_t23 \
 	ivs_framework_test_t21 ivs_framework_test_t20 ivs_move_bench_t20
 	./descriptor_test
@@ -118,6 +131,7 @@ check: descriptor_test annexb_test level_test helix_encoder_test \
 	./level_test
 	./helix_encoder_test
 	./helix_encoder_test_t21
+	./t21_rmem_layout_test
 	./helix_encoder_test_t20
 	./helix_jpeg_test_t21
 	./helix_jpeg_test_t20
@@ -128,6 +142,6 @@ check: descriptor_test annexb_test level_test helix_encoder_test \
 
 clean:
 	$(RM) descriptor_test annexb_test level_test helix_encoder_test \
-		helix_encoder_test_t21 helix_encoder_test_t20 \
+		helix_encoder_test_t21 helix_encoder_test_t20 t21_rmem_layout_test \
 		helix_jpeg_test_t21 helix_jpeg_test_t20 helix_jpeg_test_t23 \
 		ivs_framework_test_t21 ivs_framework_test_t20 ivs_move_bench_t20

@@ -28,14 +28,14 @@ typedef struct {
  */
 int DMA_AllocDescriptor(IMPDMABufferInfo *info_out, int size, const char *tag);
 
-#if defined(PLATFORM_T23)
 /**
- * Allocate a long-lived DMA buffer from the top of the reserved arena (the
- * native Helix encoder), clear of the pools allocated from the bottom.
- * Without the reserved arena it behaves like DMA_AllocDescriptor.
+ * Allocate a long-lived DMA buffer (Helix encoder and JPEG buffers, OSD
+ * bitmaps) from the top of the reserved arena, clear of the FrameSource
+ * pools that are allocated from the bottom and freed and re-created on
+ * every DisableChn/EnableChn.  Without the reserved arena it behaves like
+ * DMA_AllocDescriptor.
  */
 int DMA_AllocDescriptorTop(IMPDMABufferInfo *info_out, int size, const char *tag);
-#endif
 
 /**
  * Allocate DMA buffer from a specific pool and return the OEM descriptor.

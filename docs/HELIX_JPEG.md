@@ -194,6 +194,20 @@ OpenIMP does the same (`HelixJpeg_QualityTables()`).
   (`OPENIMP_HELIX_JPEG_BS_KB`); the stock T23 library uses one 2.4 MB
   (600 KB on some variants) encoder pool shared by H.264 and JPEG
   (`IMP_Encoder_SetPoolSize`) and programs `JPGC_MAX_BS` with its size.
+* rmem on T21 (`src/t30/helix_bitstream.c`): the stock 1.0.33 library has
+  one bitstream buffer for everything, `EncoderInit`'s "vpuBs" (1920 * 1080
+  bytes on T21 unless `IMP_Encoder_SetPoolSize`), taken by every H.264
+  channel and the JPEG encoder in turn (`bsbufsem`): in
+  `hwicodec_init_soc_bpool` the type-2 (bitstream) entries of both
+  `hwicodec_pf_h264e_init_bpool` and `hwicodec_pf_jpege_init_bpool` point
+  at it. The `width * (height + 16) * 3 / 2` buffer above is the type-1
+  source copy, only made when the source is not read in place. OpenIMP's
+  T21 build does the same: the H.264 channels and JPEG share one buffer
+  (at least the JPEG size above, so 3.0 MiB with a 1080p JPEG channel),
+  held from the command list to the copy into the stream; the H.264
+  channels no longer have a 1 MiB window each. All long-lived Helix buffers
+  (H.264 command list, EMC scratch, references, shared bitstream) come from
+  the top of rmem, the FrameSource pools from the bottom.
 * Bitstream limit reached (T23): the job completes normally
   (ENDFLAG|JPGEND) with a truncated bitstream; the kernel returns
   `JPGC_ACT_BS` in `max_bs_act` and bit 29 flags the truncation (the stock

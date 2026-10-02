@@ -194,7 +194,15 @@ static void t31_osd_load_region(struct t31_osd_region *r)
             DMA_FreePhys(b->phys);
         memset(b, 0, sizeof(*b));
         memset(&info, 0, sizeof(info));
+#if defined(PLATFORM_T21)
+        /* T20/T21: the FrameSource pools share the reserved arena and are
+         * re-created at its bottom on every DisableChn/EnableChn; keep the
+         * long-lived bitmaps at the top, as the stock OSD pool is
+         * allocated once at start-up. */
+        if (DMA_AllocDescriptorTop(&info, (int)size, "osd-bitmap") != 0 ||
+#else
         if (DMA_AllocDescriptor(&info, (int)size, "osd-bitmap") != 0 ||
+#endif
             !info.virt_addr || !info.phys_addr) {
             IMP_LOG_INFO("OSD", "no rmem for a %ux%u OSD bitmap", w, h);
             return;
