@@ -76,11 +76,14 @@ $(FRAME_PIN_TEST_BIN): frame_pin_test.c \
 # IMP_AO_SendFrame against a fake OSS2 /dev/dsp (open/ioctl/close wrapped).
 # The 32-bit driver-ABI asserts do not hold on the 64-bit host.
 $(AO_SENDFRAME_TEST_BIN): ao_sendframe_test.c \
-	$(PROJECT_DIR)/src/t31/openimp_t31_audio.c
+	$(PROJECT_DIR)/src/t31/openimp_t31_audio.c \
+	$(PROJECT_DIR)/src/audio/openimp_aec.c
 	mkdir -p "$(dir $@)"
 	$(CC) $(CFLAGS) -std=gnu99 '-D_Static_assert(c,m)=' -Wno-unused-result \
 		-I$(PROJECT_DIR)/include -I$(PROJECT_DIR)/src \
+		-I$(PROJECT_DIR)/src/audio \
 		ao_sendframe_test.c $(PROJECT_DIR)/src/t31/openimp_t31_audio.c \
+		$(PROJECT_DIR)/src/audio/openimp_aec.c \
 		-Wl,--wrap=open,--wrap=ioctl,--wrap=close -lpthread -ldl -lm -o "$@"
 
 $(HEVC_HEADERS_TEST_BIN): hevc_headers_test.c \

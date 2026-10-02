@@ -89,6 +89,7 @@ compile t23_platform_services src/t23/openimp_t23_services.c -Werror
 compile t23_helix_bridge src/t23/openimp_t23_helix_bridge.c -Werror
 compile t23_persist src/t23/openimp_t23_persist.c -Werror
 compile t23_audio src/t31/openimp_t31_audio.c -Werror
+compile openimp_aec src/audio/openimp_aec.c -Werror -I"$project_dir/src/audio"
 compile t23_yuv src/t23/openimp_t23_yuv.c -Werror
 compile t23_osd src/t23/openimp_t23_osd.c -Werror
 compile t23_isp_osd src/t23/openimp_t23_isp_osd.c -Werror
@@ -141,6 +142,7 @@ compile t23_rate_control src/t40/t31_rate_control.c -Werror
     "$output_dir/t23_helix_bridge.o" \
     "$output_dir/t23_persist.o" \
     "$output_dir/t23_audio.o" \
+    "$output_dir/openimp_aec.o" \
     "$output_dir/t23_yuv.o" \
     "$output_dir/t23_osd.o" \
     "$output_dir/t23_isp_osd.o" \
