@@ -902,10 +902,10 @@ static void overflow_test(void)
     assert(encode_one(encoder, mem, frame++, FAULT_OVERSIZE) == -1);
     assert(jobs == before + 1u);
     assert(OpenIMP_T30_HelixFailures(encoder) == 0u);
-    assert(last_qp_seen[0] == 30u);
-    /* the IDR is still due, now at 34; the boost then steps back down */
+    assert(last_qp_seen[0] == 27u);
+    /* the IDR is still due, now at 31 (FIXQP IDRs are QP - 3); the boost then steps back down */
     assert(encode_one(encoder, mem, frame++, FAULT_NONE) == 1);
-    assert(last_qp_seen[0] == 34u);
+    assert(last_qp_seen[0] == 31u);
     assert(encode_one(encoder, mem, frame++, FAULT_NONE) == 0);
     assert(last_qp_seen[1] == 30u);
 
@@ -929,11 +929,11 @@ static void overflow_test(void)
     assert(last_qp_seen[1] == 37u);
     /* a spill past the allocation with an unknown length may have hit
      * the reference: the GOP restarts with an IDR, at least at the P
-     * boost (+4 more for the P overflow itself: 37 + 4) */
+     * boost (+4 more for the P overflow itself: 37 + 4, less the FIXQP IDR offset of 3) */
     assert(encode_one(encoder, mem, frame++, FAULT_SPILL) == -1);
     assert(OpenIMP_T30_HelixFailures(encoder) == 0u);
     assert(encode_one(encoder, mem, frame++, FAULT_NONE) == 1);
-    assert(last_qp_seen[0] == 41u);
+    assert(last_qp_seen[0] == 38u);
     assert(encode_one(encoder, mem, frame++, FAULT_NONE) == 0);
     assert(last_qp_seen[1] == 41u);
     /* a failure that is not an overflow still counts (and restarts the
@@ -1005,13 +1005,18 @@ static int rc_test(void)
     (void)rc_run(&params, 3, 15, &first);
     assert(first == 25u);
 
-    /* FIXQP ignores the extras */
+    /* FIXQP ignores the extras; the IDR is 3 below the QP, as the stock
+     * encoder's, and stays inside the QP range */
     rc_params(&params, HW_RC_MODE_FIXQP);
     params.rc_flags = HW_RC_FLAG_APP;
     params.bias_level = -3;
     params.frm_qp_step = 1;
     (void)rc_run(&params, 0, 0, &first);
-    assert(first == 30u);
+    assert(first == 27u);
+    rc_params(&params, HW_RC_MODE_FIXQP);
+    params.min_qp = 29;
+    (void)rc_run(&params, 0, 0, &first);
+    assert(first == 29u);
 
     printf("rate-control extras: P-to-P QP change %u without, %u with "
            "frmQPStep 1\n", plain_pp, limited_pp);

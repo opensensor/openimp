@@ -916,6 +916,19 @@ static void t23_rc_stats(T30HelixEncoder *encoder, uint32_t qp, int idr,
 #define T30_RC_TARGET(encoder) ((encoder)->params.bitrate)
 #endif
 
+/* FIXQP: the stock encoder codes I pictures 3 below the fixed QP
+ * (i264e_ratecontrol_init), clamped to the QP range. */
+static uint32_t t30_fixqp_idr_qp(const HWEncoderParams *params)
+{
+    uint32_t qp = params->qp > 3u ? params->qp - 3u : 0u;
+
+    if (qp < params->min_qp)
+        qp = params->min_qp;
+    if (qp > params->max_qp)
+        qp = params->max_qp;
+    return qp;
+}
+
 static void t30_start_rate_control(T30HelixEncoder *encoder,
                                    uint32_t initial_qp)
 {
@@ -1333,6 +1346,8 @@ static int t30_helix_encode_job(T30HelixEncoder *encoder,
     qp = encoder->rate_control_enabled
         ? openimp_t31_rate_controller_qp(&encoder->rate_control)
         : encoder->params.qp;
+    if (idr && encoder->params.rc_mode == HW_RC_MODE_FIXQP)
+        qp = t30_fixqp_idr_qp(&encoder->params);
 #if defined(PLATFORM_T23)
     qp = t23_rc_picture_qp(encoder, qp, idr);
     qp = t23_overflow_qp(encoder, qp, idr);
