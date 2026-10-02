@@ -301,7 +301,12 @@ int __wrap_ioctl(int fd, unsigned long request, void *arg)
     }
     case 0xc0445611u:                           /* DQBUF */
         if (!c->streaming) {
+            /* vb2 (T20/T21): EINVAL; open tx-isp T23: EPIPE */
+#if defined(PLATFORM_T23)
+            ret = fake_fail(EPIPE);
+#else
             ret = fake_fail(EINVAL);
+#endif
         } else if (!c->queued) {
             ret = fake_fail(EAGAIN);
         } else {
@@ -744,7 +749,8 @@ static void test_disable_during_delivery(void)
 }
 
 /* DisableChn while the worker sits in DQBUF: the driver ends that DQBUF
- * with EINVAL once STREAMOFF has stopped the queue. That is the normal end
+ * with EINVAL (vb2) or EPIPE (open tx-isp T23) once STREAMOFF has stopped
+ * the queue. That is the normal end
  * of a stop, not an error to report (seen on the Wyze T20 when timps idles
  * channel 0: "DQBUF failed ... Invalid argument" + "DQBUF error ret=-1"). */
 static void test_disable_during_dqbuf(void)

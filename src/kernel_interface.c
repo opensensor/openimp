@@ -957,9 +957,10 @@ int fs_dqbuf(int fd, int *index_out, uint64_t *timestamp_out) {
             return -2;
         }
         /* A DQBUF waiting in the driver when DisableChn stops the stream
-         * ends with EINVAL: the normal end of a stop. The worker reports it
-         * when it happens while the channel is meant to run. */
-        if (saved_errno == EINVAL) {
+         * ends with EINVAL (vb2: T20/T21/T30) or EPIPE (open tx-isp T23):
+         * the normal end of a stop. The worker reports it when it happens
+         * while the channel is meant to run. */
+        if (saved_errno == EINVAL || saved_errno == EPIPE) {
             free(raw);
             return -3;
         }

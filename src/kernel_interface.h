@@ -97,7 +97,7 @@ int VBMFrame_GetChannel(void *frame, int *chn_out);
 int fs_querybuf(int fd, int index, unsigned int *length_out);
 int fs_qbuf(int fd, int index, unsigned long phys, unsigned int length);
 /* 0, -2 nothing to dequeue (EAGAIN/EINTR), -3 the queue is not streaming
- * (EINVAL: STREAMOFF, or the driver stopped it; not logged here), -1 any
+ * (EINVAL/EPIPE: STREAMOFF, or the driver stopped it; not logged here), -1 any
  * other error. VBMKernelDequeue passes -2 and -3 on. */
 int fs_dqbuf(int fd, int *index_out, uint64_t *timestamp_out);
 
