@@ -1622,6 +1622,9 @@ int IMP_FrameSource_CreateChn(int chnNum, IMPFSChnAttr *chn_attr)
         pthread_cond_init((pthread_cond_t *)(chan + 0x1d8), NULL);
         pthread_cond_init((pthread_cond_t *)(chan + 0x278), NULL);
         sem_init(&g_fs_ctx[chnNum].ready_sem, 0, 0);
+        /* No device yet. Only here: a CreateChn on an enabled channel must
+         * not drop the fd DisableChn has to stop and close. */
+        g_fs_ctx[chnNum].fd = -1;
 
         IMP_FrameSource_SetFrameDepth(chnNum, 0);
         IMP_FrameSource_SetFrameDepthCopyType(chnNum, 0);
@@ -1678,7 +1681,6 @@ int IMP_FrameSource_CreateChn(int chnNum, IMPFSChnAttr *chn_attr)
 
     memcpy(&g_fs_ctx[chnNum].attr, chn_attr, sizeof(IMPFSChnAttr));
     g_fs_ctx[chnNum].created = 1;
-    g_fs_ctx[chnNum].fd = -1;
     pthread_mutex_unlock(&g_fs_lock);
     return 0;
 }
