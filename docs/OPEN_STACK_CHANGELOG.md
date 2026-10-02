@@ -3,7 +3,7 @@
 Everything changed, extended or fixed in OpenIMP, open-tx-isp, timps and the thingino
 integration since the test campaign started on 2026-09-30. Kept up to date during the campaign.
 
-Last update: 2026-10-03 00:40.
+Last update: 2026-10-03 01:30.
 
 Cameras are anonymised: cam-A (T31), cam-B (T23), cam-C (T20), cam-D (T21).
 
@@ -17,7 +17,7 @@ All four test cameras run the open kernel driver (open-tx-isp), OpenIMP and timp
 | cam-A | T31 | fully open | Flashed 2026-10-02 11:00 with -all-5 image (robust driver incl. t31-robust-2, HEVC, faster IVS) |
 | cam-B | T23 | open, encoder via helixd (native selectable) | Flashed 2026-10-03 00:35 with -all-9 / openimp-all-8 image (incl. soc_vpu kernel patches) |
 | cam-C | T20 | fully open | Flashed 2026-10-03 00:35 with -all-9 / openimp-all-8 image (incl. soc_vpu kernel patches) |
-| cam-E | T10 | vendor stack (test camera since 2.10. evening) | Open driver + OpenIMP tested from /tmp only |
+| cam-E | T10 | vendor stack (test camera since 2.10. evening) | Open driver + OpenIMP tested from /tmp (all-9 / openimp-all-8); open-stack image being built |
 | cam-D | T21 | fully open | Flashed 2026-10-03 00:35 with -all-9 / openimp-all-8 image (incl. soc_vpu kernel patches) |
 
 ## OpenIMP (userspace libimp)
@@ -118,6 +118,9 @@ Evening additions (all single branches now pushed, still not aggregated):
 
 
 Late evening (aggregates built, more fixes on single branches):
+- **T10 integrated into the aggregates** (`open-tx-isp-all-9` fa7ac42b, `openimp-all-8` 9a2e33d2): merging uncovered a real bug — the T10 NVPU writes 21 KB (luma) / 10 KB (chroma) past each padded reference plane on every picture, which in the aggregate's top-down layout hit the bitstream window and made the stream undecodable; reference planes are now sized for it. `isp_printf` is exported only in the T10 module build. cam-E: 60 s / 1501 frames error-free, MJPEG, 3 day/night switches without oops. An open-stack image for cam-E is being built.
+- **cam-B to become fully open:** native H.264 encoder as T23 default and an image without the OEM helixd worker / vendor libimp are being prepared (until now the T23 default still used the OEM worker).
+- **New user reports being worked on:** T23 contrast, AE compensation, WDR and backlight without visible effect; T20 vertical flip gives pink stripes; T20 sharpness without effect.
 - **cam-D memory:** T21 H.264 EMC scratch sized exactly like the vendor (1080p 996 KiB instead of 2 MiB; vendor offsets reproduced; only one sub-buffer is written by the hardware, measured on the device). Free rmem with main+sub+MJPEG 1.56 → 2.76 MB (vendor ≈1.2 MB). FIXQP IDR pictures now at QP−3 like the vendor (`claude/helix-emc-size`, not yet in an aggregate).
 - **-all-9 / openimp-all-8 flashed** on cam-B, cam-C, cam-D (00:35): `open-tx-isp-all-9` (T23 IRQ_NONE, T20 vendor-AWB chain behind a switch, T10 fixes, T23 vendor AE behind a switch) and `openimp-all-8` (MJPEG fix, T23 overflow v2 + optional hard limit, review nits), plus kernel soc_vpu patches 0095–0098. All up, no oops, MJPEG 25 frames/5 s, snapshots OK; flashed without the usual pre-reboot thanks to a fixed OTA script. T10 encoder support (`t10-cpuid`) is being merged into the aggregate and re-tested on cam-E.
 - **After midnight:** MJPEG regression fixed (`claude/oimp-jpeg-src-fix`: the fan-out decision is per poll again but only waits for a video channel that is actually receiving; cam-C 25 frames/5 s with and without a video consumer). T23 IRQ handlers return IRQ_NONE when nothing is pending, unused IVDC IRQ stays off (`claude/t23-irq-none`; cam-B clean). Kernel soc_vpu hardening patch 0098 (bounded waits, user-pointer validation, register ioctl restricted to the VPU window, per-file channel release) plus an optional hard bitstream limit for the T23 native encoder (`claude/t23-bsf-limit`, only active with the patched kernel). Small OpenIMP review fixes (`claude/oimp-nits`, written by another model, reviewed). Night device tests on cam-B/cam-D: restarts and channel cycling clean; T23 native rate-control parameters take effect; T21 tuning getters return defaults (being checked). 98 merged local worktrees removed. Next aggregates `open-tx-isp-all-9` / `openimp-all-8` and images for all four cameras are being built (not flashed).
