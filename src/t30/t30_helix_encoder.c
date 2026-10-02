@@ -272,10 +272,18 @@ struct T30HelixEncoder {
     uint32_t retries;           /* jobs repeated after an odd result */
     uint32_t late_status;       /* completed jobs with status 0x100 */
     int strict_status;          /* OPENIMP_T23_HELIX_STRICT_STATUS=1 */
+    int bsf_stop;               /* core pauses at the window (t23_bsf_stop) */
     T23RcConfig rc;             /* the application's RC extras, mapped */
     uint32_t last_p_qp;         /* QP of the last P picture */
     int have_p_qp;
     T23RcStats stats;           /* OPENIMP_T23_RC_STATS window */
+    /* Bitstream-window overflow recovery (t23_overflow_*): the QP added
+     * to P [0] and IDR [1] pictures after an overflow, and the run of
+     * small pictures since the last step back down. */
+    uint32_t ovf_boost[2];
+    uint32_t ovf_quiet[2];
+    uint32_t overflows;         /* pictures dropped on overflow */
+    uint32_t canary_hits;       /* overflows that wrote past the window */
 #endif
 };
 
@@ -483,6 +491,9 @@ static void t30_fill_slice(T30HelixEncoder *encoder,
     memcpy(slice->scratch_offset, encoder->scratch_offset,
            sizeof(slice->scratch_offset));
     slice->bitstream_kib = encoder->bitstream_kib;
+#if defined(PLATFORM_T23)
+    slice->bsf_stop = (uint8_t)(encoder->bsf_stop != 0);
+#endif
 #else
     /* SDK 1.0.5 selects the alternate DCS threshold for its substream. */
     slice->dcs_oth = encoder->params.width <= 640u ? 1u : 0u;
@@ -625,6 +636,195 @@ static void t23_rc_log(const T30HelixEncoder *encoder, const char *what)
                  (p->rc_flags & HW_RC_FLAG_GOP_RELATION) != 0);
 }
 
+/* The last word of the bitstream allocation (behind the window and most of
+ * its slack page).  The window size (0x30040) does not stop the core: with
+ * the BSFULL interrupt off (soc_vpu enables it only for the ISP-direct
+ * mode) it finishes the picture (status 0x301) and writes the bitstream
+ * linearly past the window, into the allocation above it - on vorne
+ * (sc2336 1080p) up to 1.79 MB for a 1 MiB window, i.e. 0.75 MB into the
+ * second reference buffer.  The canary tells such a spill apart when the
+ * length cannot be trusted. */
+#define T23_BS_CANARY 0x5a17c0deu
+
+/* Kernel marker of thingino patch 0098: the Helix driver then reports a
+ * BSFULL-only stop with this job's length and resets the core before the
+ * VPU is handed back.  Older kernels report the previous job's length and
+ * leave the core paused mid-picture. */
+#define T23_BSF_KERNEL_MARKER "/sys/module/helix/parameters/bsf_stop"
+
+/* Whether to let the core stop at the window end (BSFULL interrupt,
+ * 0x30000 bit 19) instead of spilling past it.  OPENIMP_T23_HELIX_BSF:
+ * unset or 0 = off (default), 1 = on if the kernel has the marker,
+ * "force" = on without the marker (device tests only). */
+static int t23_bsf_stop(void)
+{
+    const char *value = getenv("OPENIMP_T23_HELIX_BSF");
+    char marker[4] = {0};
+    int fd;
+    ssize_t got;
+
+    if (!value || strcmp(value, "1") != 0)
+        return value && strcmp(value, "force") == 0;
+    fd = open(T23_BSF_KERNEL_MARKER, O_RDONLY | O_CLOEXEC);
+    if (fd < 0) {
+        IMP_LOG_WARN("Encoder", "T23 Helix: OPENIMP_T23_HELIX_BSF=1 ignored, "
+                     "kernel without %s", T23_BSF_KERNEL_MARKER);
+        return 0;
+    }
+    got = read(fd, marker, sizeof(marker) - 1u);
+    close(fd);
+    if (got <= 0 || marker[0] != '1') {
+        IMP_LOG_WARN("Encoder", "T23 Helix: OPENIMP_T23_HELIX_BSF=1 ignored, "
+                     "%s is not 1", T23_BSF_KERNEL_MARKER);
+        return 0;
+    }
+    return 1;
+}
+
+static volatile uint32_t *t23_canary(const T30HelixEncoder *encoder)
+{
+    return (volatile uint32_t *)(uintptr_t)(encoder->temporary.virt_addr +
+                                            encoder->temporary.size - 4u);
+}
+
+static void t23_canary_arm(T30HelixEncoder *encoder)
+{
+    *t23_canary(encoder) = T23_BS_CANARY;
+    (void)DMA_RmemFlushCache((void *)t23_canary(encoder), 4u, 1);
+}
+
+/* Overflow recovery steps, in QP: +4 per overflowed picture (about 0.6x
+ * the bits), back down by one after a run of pictures that used less than
+ * half the window - every such IDR, every 8th such P picture - so a scene
+ * that keeps the encoder near the limit does not oscillate. */
+#define T23_OVF_STEP        4u
+#define T23_OVF_QUIET_P     8u
+
+/* The window is full when the core says so (BSFULL: the length is then
+ * whatever the kernel had left over - the current soc_vpu reports the
+ * previous job's - and is never used) or when a finished picture reports
+ * a length that reaches the window end. */
+static int t23_overflowed(const T30HelixEncoder *encoder, uint32_t status,
+                          uint32_t length)
+{
+    if (status & T23_SCH_STAT_BSFULL)
+        return 1;
+    return (status & (T23_SCH_STAT_ENDFLAG | T23_SCH_STAT_LATE)) &&
+           length >= (encoder->bitstream_kib << 10);
+}
+
+/* The picture's QP with the overflow boost added, at most 51. */
+static uint32_t t23_overflow_qp(const T30HelixEncoder *encoder, uint32_t qp,
+                                int idr)
+{
+    qp += encoder->ovf_boost[idr ? 1 : 0];
+    return qp > 51u ? 51u : qp;
+}
+
+/* A finished picture: step the boost back down after a quiet run. */
+static void t23_overflow_settle(T30HelixEncoder *encoder, int idr,
+                                uint32_t length)
+{
+    unsigned int k = idr ? 1u : 0u;
+
+    if (!encoder->ovf_boost[k])
+        return;
+    if (length >= (encoder->bitstream_kib << 9)) {
+        encoder->ovf_quiet[k] = 0;
+        return;
+    }
+    if (++encoder->ovf_quiet[k] < (idr ? 1u : T23_OVF_QUIET_P))
+        return;
+    encoder->ovf_quiet[k] = 0;
+    encoder->ovf_boost[k]--;
+    if (!encoder->ovf_boost[k])
+        IMP_LOG_INFO("Encoder", "T23 Helix: %ux%u %s pictures back at "
+                     "the configured QP after bitstream overflows",
+                     encoder->params.width, encoder->params.height,
+                     idr ? "IDR" : "P");
+}
+
+/* Whether the bitstream of an overflowed picture reached the reference the
+ * next P picture predicts from: the spill is [allocation end, window start
+ * + length), the whole rest of reserved memory when the length is unknown
+ * (BSFULL) and the canary was hit. */
+static int t23_overflow_hit_reference(const T30HelixEncoder *encoder,
+                                      uint32_t status, uint32_t length,
+                                      int past)
+{
+    const IMPDMABufferInfo *ref;
+    uint64_t spill_start = (uint64_t)encoder->temporary.phys_addr +
+                           encoder->temporary.size;
+    uint64_t spill_end;
+
+    if (!encoder->have_reference || !past)
+        return 0;
+    ref = &encoder->reference[encoder->reference_index].dma;
+    if (status & T23_SCH_STAT_BSFULL)
+        spill_end = UINT64_MAX;
+    else
+        spill_end = (uint64_t)encoder->temporary.phys_addr +
+                    T30_SLICE_OFFSET + length;
+    return spill_end > ref->phys_addr &&
+           spill_start < (uint64_t)ref->phys_addr + ref->size;
+}
+
+/* An overflowed picture is dropped, like a picture that never reached the
+ * encoder: nothing is committed, so a P picture leaves the reference chain
+ * and frame_num intact (the next P predicts from the same reference, no
+ * IDR, which would be the largest picture of all), and an IDR stays due.
+ * Only when the spill (see T23_BS_CANARY) overwrote that reference does
+ * the GOP restart with an IDR.
+ * The next picture of that type is encoded with a higher QP.  Returns 1
+ * when the boost could still rise (the drop is recoverable), 0 at QP 51. */
+static int t23_overflow_drop(T30HelixEncoder *encoder, int idr, uint32_t qp,
+                             uint32_t status, uint32_t length)
+{
+    unsigned int k = idr ? 1u : 0u;
+    int recoverable = qp < 51u;
+    int past;
+    int hit;
+
+    (void)DMA_RmemFlushCache((void *)t23_canary(encoder), 4u, 2);
+    past = *t23_canary(encoder) != T23_BS_CANARY;
+    if (past) {
+        encoder->canary_hits++;
+        t23_canary_arm(encoder);
+    }
+    encoder->overflows++;
+    encoder->ovf_quiet[k] = 0;
+    if (recoverable) {
+        encoder->ovf_boost[k] += T23_OVF_STEP;
+        if (encoder->ovf_boost[k] > 51u)
+            encoder->ovf_boost[k] = 51u;
+    }
+    hit = t23_overflow_hit_reference(encoder, status, length, past);
+    if (hit) {
+        /* the IDR that replaces the reference starts at least as high
+         * as the P pictures that overflowed */
+        encoder->force_idr = 1;
+        encoder->have_reference = 0;
+        if (encoder->ovf_boost[1] < encoder->ovf_boost[0])
+            encoder->ovf_boost[1] = encoder->ovf_boost[0];
+    }
+    if (encoder->overflows <= 20u || encoder->overflows % 100u == 0u)
+        IMP_LOG_WARN("Encoder", "T23 Helix: %ux%u frame=%u %s qp=%u "
+                     "overflowed the %uK bitstream window (status=0x%08x "
+                     "len=%u%s%s%s), dropped; next %s qp +%u (%u "
+                     "overflows)",
+                     encoder->params.width, encoder->params.height,
+                     encoder->frame_number, idr ? "IDR" : "P", qp,
+                     encoder->bitstream_kib, status, length,
+                     (status & T23_SCH_STAT_BSFULL) ? " BSFULL, length not "
+                         "trusted" : "",
+                     past ? ", written past the window" : "",
+                     hit ? " into the reference: IDR next" : "",
+                     hit ? "IDR" : idr ? "IDR" : "P",
+                     encoder->ovf_boost[hit ? 1 : k],
+                     encoder->overflows);
+    return recoverable;
+}
+
 /* The picture's QP from the controller's GOP QP: the I bias, then the
  * application's QP step limits against the last P picture.  Without
  * extras this returns `qp` unchanged. */
@@ -765,6 +965,9 @@ int OpenIMP_T30_HelixCreate(T30HelixEncoder **encoder_out,
     uint64_t aligned_luma_size;
     uint64_t reference_size;
     unsigned int i;
+#if defined(PLATFORM_T23)
+    int window_forced = 0;   /* OPENIMP_T23_HELIX_BS_KIB set */
+#endif
 
     /* The descriptors carry macroblock dimensions in eight bits.  The
      * slice programs the luma stride as the picture width but places the
@@ -824,6 +1027,7 @@ int OpenIMP_T30_HelixCreate(T30HelixEncoder **encoder_out,
 
         encoder->strict_status = strict && strict[0] == '1';
     }
+    encoder->bsf_stop = t23_bsf_stop();
 #endif
     encoder->channel.thread_id = -1;
     if (ioctl(encoder->fd, T30_CHANNEL_REQUEST, &encoder->channel) != 0)
@@ -844,8 +1048,29 @@ int OpenIMP_T30_HelixCreate(T30HelixEncoder **encoder_out,
 
         if (window < (256u << 10))
             window = 256u << 10;
+#if defined(PLATFORM_T23)
+        /* T23: up to 2 MiB (1080p); the allocation below falls back to
+         * the 1 MiB T21 window when reserved memory is short */
+        if (window > (2u << 20))
+            window = 2u << 20;
+#else
         if (window > (1u << 20))
             window = 1u << 20;
+#endif
+#if defined(PLATFORM_T23)
+        {
+            /* OPENIMP_T23_HELIX_BS_KIB=<KiB>: a larger (or smaller)
+             * window, 256 KiB .. 4 MiB in 64 KiB steps, for testing the
+             * core's window limit against reserved memory on a device */
+            const char *kib = getenv("OPENIMP_T23_HELIX_BS_KIB");
+            unsigned long value = kib ? strtoul(kib, NULL, 0) : 0ul;
+
+            if (value >= 256ul && value <= 4096ul) {
+                window = ((uint64_t)value << 10) & ~(uint64_t)0xffffu;
+                window_forced = 1;
+            }
+        }
+#endif
 #if defined(HELIX_SHARED_BITSTREAM)
         /* the window lies in the shared buffer: keep it inside the pool
          * size (IMP_Encoder_SetPoolSize), down to the 256 KiB minimum */
@@ -872,16 +1097,31 @@ int OpenIMP_T30_HelixCreate(T30HelixEncoder **encoder_out,
         encoder->reference[i].c = encoder->reference[i].y +
                                   (uint32_t)aligned_luma_size;
     }
-    /* the window starts at the 128-byte aligned slice data; a page of
-     * slack keeps even a full window inside the allocation */
+    /* The core does not stop at the window end (1080p: up to 1.79 MB
+     * written for a 1 MiB window).  The arena is allocated top-down, so
+     * the EMC scratch goes between the references and the bitstream
+     * buffer: a spill upwards runs into the scratch of the picture that
+     * is being dropped anyway, not into the reference the next P picture
+     * predicts from (the scratch is 2 MiB at 1080p, larger than the
+     * spills seen).  The window starts at the 128-byte aligned slice
+     * data; a page of slack keeps even a full window inside the
+     * allocation.  Short of reserved memory: the 1 MiB T21 window. */
+    if (t30_dma_allocate(&encoder->emc, encoder->scratch_size,
+                         "t23-helix-emc") != 0)
+        goto fail;
     if (t30_dma_allocate(&encoder->temporary,
                          (encoder->bitstream_kib << 10) + 4096u,
-                         "t23-helix-bs") != 0 ||
-        t30_dma_allocate(&encoder->emc, encoder->scratch_size,
-                         "t23-helix-emc") != 0 ||
-        t30_dma_allocate(&encoder->descriptor, T30_DESCRIPTOR_WINDOW,
+                         "t23-helix-bs") != 0) {
+        if (window_forced || encoder->bitstream_kib <= 1024u ||
+            t30_dma_allocate(&encoder->temporary, (1u << 20) + 4096u,
+                             "t23-helix-bs") != 0)
+            goto fail;
+        encoder->bitstream_kib = 1024u;
+    }
+    if (t30_dma_allocate(&encoder->descriptor, T30_DESCRIPTOR_WINDOW,
                          "t23-helix-desc") != 0)
         goto fail;
+    t23_canary_arm(encoder);
 #else
     if (t30_dma_allocate(&encoder->descriptor, T30_DESCRIPTOR_WINDOW,
                          "t30-helix-desc") != 0)
@@ -935,7 +1175,7 @@ int OpenIMP_T30_HelixCreate(T30HelixEncoder **encoder_out,
     IMP_LOG_INFO("Encoder", "T23 Helix: native encoder ready channel=%u "
                  "%ux%u rc=%u bitrate=%u fps=%u/%u gop=%u qp=%u [%u,%u] "
                  "desc=0x%08x emc=0x%08x/%uK bs=0x%08x/%uK "
-                 "ref=0x%08x/0x%08x timeout=%ums",
+                 "ref=0x%08x/0x%08x timeout=%ums bsf-stop=%s",
                  encoder->channel.channel_id,
                  params->width, params->height, encoder->params.rc_mode,
                  encoder->params.bitrate, encoder->params.fps_num,
@@ -945,7 +1185,7 @@ int OpenIMP_T30_HelixCreate(T30HelixEncoder **encoder_out,
                  encoder->emc.phys_addr, encoder->scratch_size >> 10,
                  encoder->temporary.phys_addr, encoder->bitstream_kib,
                  encoder->reference[0].y, encoder->reference[1].y,
-                 encoder->channel.mdelay);
+                 encoder->channel.mdelay, encoder->bsf_stop ? "on" : "off");
     t23_rc_log(encoder, "ready");
 #endif
     return 0;
@@ -1095,6 +1335,7 @@ static int t30_helix_encode_job(T30HelixEncoder *encoder,
         : encoder->params.qp;
 #if defined(PLATFORM_T23)
     qp = t23_rc_picture_qp(encoder, qp, idr);
+    qp = t23_overflow_qp(encoder, qp, idr);
 #endif
     output_index = encoder->have_reference
         ? (encoder->reference_index ^ 1u) : 0u;
@@ -1164,6 +1405,7 @@ static int t30_helix_encode_job(T30HelixEncoder *encoder,
         int attempt;
         int run_ret = -1;
         int late = 0;
+        int overflow = 0;
 
         for (attempt = 0; attempt < 2; attempt++) {
             uint32_t status;
@@ -1183,6 +1425,13 @@ static int t30_helix_encode_job(T30HelixEncoder *encoder,
                 encoder->channel.output_len <=
                     (encoder->bitstream_kib << 10))
                 break;
+            /* A full window is decided by the status (and a length at the
+             * window end), never retried: the same job overflows again. */
+            if (run_ret == 0 &&
+                t23_overflowed(encoder, status, encoder->channel.output_len)) {
+                overflow = 1;
+                break;
+            }
             /* Retry an unexplained result once with the identical job;
              * a timeout (the kernel already waited and reset the core)
              * or an error the core reported would only repeat. */
@@ -1200,6 +1449,12 @@ static int t30_helix_encode_job(T30HelixEncoder *encoder,
             (void)DMA_RmemFlushCache(temporary + T30_SLICE_OFFSET,
                                      encoder->temporary.size -
                                          T30_SLICE_OFFSET, 2);
+        }
+        if (overflow) {
+            if (!t23_overflow_drop(encoder, idr, qp, encoder->channel.status,
+                                   encoder->channel.output_len))
+                encoder->failures++;
+            return -1;
         }
         if (attempt >= 2) {
             /* A timed-out, errored or bitstream-full picture leaves no
@@ -1308,6 +1563,7 @@ static int t30_helix_encode_job(T30HelixEncoder *encoder,
         encoder->have_p_qp = 1;
     }
     t23_rc_stats(encoder, qp, idr, stream->length);
+    t23_overflow_settle(encoder, idr, encoder->channel.output_len);
     if (encoder->frame_number <= 3u)
         IMP_LOG_INFO("Encoder", "T23 Helix: %ux%u frame=%u %s bytes=%u "
                      "qp=%u status=0x%08x pairs=%u", encoder->params.width,

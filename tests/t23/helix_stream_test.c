@@ -50,7 +50,7 @@
 
 static uint8_t *rmem;
 static uint32_t rmem_used;
-static struct { uint32_t phys, size; } allocations[32];
+static struct { uint32_t phys, size; } allocations[64];
 static unsigned int allocation_count;
 
 static uint32_t phys_of(const void *virt)
@@ -80,7 +80,7 @@ int DMA_AllocDescriptor(IMPDMABufferInfo *info, int size, const char *tag)
     uint32_t aligned = ((uint32_t)size + 4095u) & ~4095u;
 
     (void)tag;
-    if (rmem_used + aligned > RMEM_SIZE || allocation_count >= 32u)
+    if (rmem_used + aligned > RMEM_SIZE || allocation_count >= 64u)
         return -1;
     memset(info, 0, sizeof(*info));
     info->virt_addr = (uint32_t)(uintptr_t)(rmem + rmem_used);
@@ -92,10 +92,27 @@ int DMA_AllocDescriptor(IMPDMABufferInfo *info, int size, const char *tag)
     return 0;
 }
 
+/* Long-lived encoder buffers come from the top, downwards, as on the
+ * camera (the bitstream window then lies below the second reference),
+ * below the 2 MiB the tests keep their capture frames in. */
+static uint32_t rmem_top = RMEM_SIZE - (2u << 20);
+
 int DMA_AllocDescriptorTop(IMPDMABufferInfo *info, int size,
                            const char *tag)
 {
-    return DMA_AllocDescriptor(info, size, tag);
+    uint32_t aligned = ((uint32_t)size + 4095u) & ~4095u;
+
+    (void)tag;
+    if (rmem_top < rmem_used + aligned || allocation_count >= 64u)
+        return -1;
+    rmem_top -= aligned;
+    memset(info, 0, sizeof(*info));
+    info->virt_addr = (uint32_t)(uintptr_t)(rmem + rmem_top);
+    info->phys_addr = RMEM_PHYS + rmem_top;
+    info->size = (uint32_t)size;
+    allocations[allocation_count].phys = info->phys_addr;
+    allocations[allocation_count++].size = (uint32_t)size;
+    return 0;
 }
 
 int DMA_FreePhys(uint32_t phys)
@@ -266,7 +283,8 @@ typedef struct {
     uint64_t time;
 } FakeNode;
 
-enum { FAULT_NONE, FAULT_BSFULL, FAULT_TIMEOUT, FAULT_LATE, FAULT_ODD };
+enum { FAULT_NONE, FAULT_BSFULL, FAULT_TIMEOUT, FAULT_LATE, FAULT_ODD,
+       FAULT_OVERSIZE, FAULT_SPILL };
 static int next_fault;
 static unsigned int jobs;
 static unsigned int channels_open;
@@ -471,12 +489,34 @@ int __wrap_ioctl(int fd, unsigned long request, ...)
         uint32_t window = reg_value(list, pairs, 0x30040) << 10;
         uint32_t start = reg_value(list, pairs, 0x30004);
 
-        assert(window >= (256u << 10) && window <= (1u << 20));
+        assert(window >= (256u << 10) && window <= (2u << 20));
         assert(start == (bitstream & ~0x7fu));
         assert(in_allocation(start, window));
         node->output_len = encode_picture(list, pairs, p,
                                           virt_of(bitstream),
                                           window - (bitstream - start));
+        if (next_fault == FAULT_OVERSIZE) {
+            /* a finished picture larger than the window (status 0x301,
+             * length past the window end, as seen on the camera) */
+            next_fault = FAULT_NONE;
+            node->output_len = window + 19119u;
+        }
+        if (next_fault == FAULT_SPILL) {
+            /* the camera's core writes on past the window: overwrite
+             * the rest of the bitstream allocation and report BSFULL
+             * (length not trusted) */
+            unsigned int a;
+
+            next_fault = FAULT_NONE;
+            for (a = 0; a < allocation_count; a++)
+                if (start >= allocations[a].phys &&
+                    start < allocations[a].phys + allocations[a].size)
+                    memset(virt_of(start + window), 0xa5,
+                           allocations[a].phys + allocations[a].size -
+                               (start + window));
+            node->status = 0x301u | (1u << 20);
+            return 0;
+        }
     }
     node->status = 0x301u;
     if (next_fault == FAULT_BSFULL) {
@@ -616,17 +656,21 @@ static int encode(const char *stream_path, const char *ref_path)
             next_fault = FAULT_TIMEOUT;
         if (frame == 10u || frame == 14u) {
             assert(OpenIMP_T30_HelixEncode(encoder, &info, &out) == -1);
-            assert(OpenIMP_T30_HelixFailures(encoder) == 1u);
+            /* an overflow drops the picture without counting toward the
+             * channel's failure limit */
+            assert(OpenIMP_T30_HelixFailures(encoder) ==
+                   (frame == 14u ? 1u : 0u));
             continue;
         }
         assert(OpenIMP_T30_HelixEncode(encoder, &info, &out) == 0);
         assert(OpenIMP_T30_HelixFailures(encoder) == 0u);
         n = nal_types((const uint8_t *)(uintptr_t)out->virt_addr,
                       out->length, types);
-        /* GOP 5; 7 requested; 11 and 15 follow failed pictures; 12
+        /* GOP 5; 7 requested; 15 follows a failed picture (10 only
+         * overflowed: a dropped P keeps the reference chain); 12
          * follows a frame-rate change, 13 a level change */
         expect_idr = frame == 0u || frame == 5u || frame == 7u ||
-                     frame == 11u || frame == 12u || frame == 13u ||
+                     frame == 12u || frame == 13u ||
                      frame == 15u;
         if (expect_idr) {
             assert(n == 3u && types[0] == 7 && types[1] == 8 &&
@@ -812,6 +856,107 @@ static uint32_t rc_run(const HWEncoderParams *params,
     return max_pp;
 }
 
+static int encode_one(T30HelixEncoder *encoder, uint8_t *mem,
+                      uint32_t frame, int fault)
+{
+    IMPFrameInfo info;
+    HWStreamBuffer *out = NULL;
+    int idr;
+
+    make_frame(mem, frame);
+    memset(&info, 0, sizeof(info));
+    info.width = WIDTH;
+    info.height = HEIGHT;
+    info.pixfmt = 0x3231564eu;
+    info.size = FRAME_BYTES;
+    info.virAddr = (uint32_t)(uintptr_t)mem;
+    info.phyAddr = phys_of(mem);
+    next_fault = fault;
+    if (OpenIMP_T30_HelixEncode(encoder, &info, &out) != 0)
+        return -1;
+    idr = out->frame_type == HW_FRAME_TYPE_I;
+    free((void *)(uintptr_t)out->virt_addr);
+    free(out);
+    return idr;
+}
+
+/* Bitstream-window overflow (fixed QP 30, GOP 5): the picture is dropped
+ * without a retry and without counting as a channel failure, the next
+ * picture of the same type gets QP +4, a dropped P keeps the GOP going
+ * (no IDR), a dropped IDR stays due, and the boost steps back down once
+ * pictures are small again. */
+static void overflow_test(void)
+{
+    HWEncoderParams params;
+    T30HelixEncoder *encoder = NULL;
+    uint8_t *mem = rmem + RMEM_SIZE - FRAME_BYTES - 4096u;
+    unsigned int before;
+    uint32_t frame = 0, i;
+
+    rc_params(&params, HW_RC_MODE_FIXQP);
+    params.gop_length = 100;
+    assert(OpenIMP_T30_HelixCreate(&encoder, &params) == 0);
+
+    /* IDR overflow (finished, length past the window): one job, dropped */
+    before = jobs;
+    assert(encode_one(encoder, mem, frame++, FAULT_OVERSIZE) == -1);
+    assert(jobs == before + 1u);
+    assert(OpenIMP_T30_HelixFailures(encoder) == 0u);
+    assert(last_qp_seen[0] == 30u);
+    /* the IDR is still due, now at 34; the boost then steps back down */
+    assert(encode_one(encoder, mem, frame++, FAULT_NONE) == 1);
+    assert(last_qp_seen[0] == 34u);
+    assert(encode_one(encoder, mem, frame++, FAULT_NONE) == 0);
+    assert(last_qp_seen[1] == 30u);
+
+    /* P overflow reported as BSFULL (length not trusted): dropped, the
+     * next picture is a P at 34, not an IDR */
+    before = jobs;
+    assert(encode_one(encoder, mem, frame++, FAULT_BSFULL) == -1);
+    assert(jobs == before + 1u);
+    assert(OpenIMP_T30_HelixFailures(encoder) == 0u);
+    assert(encode_one(encoder, mem, frame++, FAULT_NONE) == 0);
+    assert(last_qp_seen[1] == 34u);
+    /* twice more: 38, then 42 */
+    assert(encode_one(encoder, mem, frame++, FAULT_OVERSIZE) == -1);
+    assert(encode_one(encoder, mem, frame++, FAULT_NONE) == 0);
+    assert(last_qp_seen[1] == 38u);
+    /* one step down per 8 small P pictures (the first came above) */
+    for (i = 0; i < 7u; i++)
+        assert(encode_one(encoder, mem, frame++, FAULT_NONE) == 0);
+    assert(last_qp_seen[1] == 38u);
+    assert(encode_one(encoder, mem, frame++, FAULT_NONE) == 0);
+    assert(last_qp_seen[1] == 37u);
+    /* a spill past the allocation with an unknown length may have hit
+     * the reference: the GOP restarts with an IDR, at least at the P
+     * boost (+4 more for the P overflow itself: 37 + 4) */
+    assert(encode_one(encoder, mem, frame++, FAULT_SPILL) == -1);
+    assert(OpenIMP_T30_HelixFailures(encoder) == 0u);
+    assert(encode_one(encoder, mem, frame++, FAULT_NONE) == 1);
+    assert(last_qp_seen[0] == 41u);
+    assert(encode_one(encoder, mem, frame++, FAULT_NONE) == 0);
+    assert(last_qp_seen[1] == 41u);
+    /* a failure that is not an overflow still counts (and restarts the
+     * GOP) */
+    assert(encode_one(encoder, mem, frame++, FAULT_TIMEOUT) == -1);
+    assert(OpenIMP_T30_HelixFailures(encoder) == 1u);
+    assert(encode_one(encoder, mem, frame++, FAULT_NONE) == 1);
+    assert(OpenIMP_T30_HelixFailures(encoder) == 0u);
+    /* repeated overflows climb to QP 51; there an overflow can no longer
+     * be recovered and counts toward the failure limit */
+    {
+        static const uint32_t qps[] = { 41u, 45u, 49u, 51u };
+
+        for (i = 0; i < 4u; i++) {
+            assert(encode_one(encoder, mem, frame++, FAULT_OVERSIZE) == -1);
+            assert(last_qp_seen[1] == qps[i]);
+            assert(OpenIMP_T30_HelixFailures(encoder) == (i == 3u ? 1u : 0u));
+        }
+    }
+    OpenIMP_T30_HelixDestroy(encoder);
+    printf("overflow recovery ok (%u pictures)\n", frame);
+}
+
 static int rc_test(void)
 {
     HWEncoderParams params;
@@ -870,6 +1015,7 @@ static int rc_test(void)
 
     printf("rate-control extras: P-to-P QP change %u without, %u with "
            "frmQPStep 1\n", plain_pp, limited_pp);
+    overflow_test();
     return 0;
 }
 
