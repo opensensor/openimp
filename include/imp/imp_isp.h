@@ -88,7 +88,27 @@ typedef enum {
 } IMPISPAntiflickerAttr;
 
 /**
- * White balance mode
+ * White balance mode (vendor imp_isp.h). IMP_ISP_Tuning_SetWB passes the
+ * mode to the ISP driver, which applies it: 2..8 are presets with fixed
+ * R/B gains, MANUAL uses rgain/bgain, CUSTOM (T21/T23/T31, not T20/T30)
+ * scales the automatic result by (gain + 64) / 64.
+ */
+enum isp_core_wb_mode {
+    ISP_CORE_WB_MODE_AUTO = 0,          /**< Auto */
+    ISP_CORE_WB_MODE_MANUAL,            /**< Manual: rgain/bgain */
+    ISP_CORE_WB_MODE_DAY_LIGHT,         /**< Daylight */
+    ISP_CORE_WB_MODE_CLOUDY,            /**< Cloudy */
+    ISP_CORE_WB_MODE_INCANDESCENT,      /**< Incandescent */
+    ISP_CORE_WB_MODE_FLOURESCENT,       /**< Fluorescent */
+    ISP_CORE_WB_MODE_TWILIGHT,          /**< Twilight */
+    ISP_CORE_WB_MODE_SHADE,             /**< Shade */
+    ISP_CORE_WB_MODE_WARM_FLOURESCENT,  /**< Warm fluorescent */
+    ISP_CORE_WB_MODE_CUSTOM,            /**< Custom: relative to auto */
+};
+
+/**
+ * White balance mode, OpenIMP names for the first two values; the field
+ * takes every enum isp_core_wb_mode value.
  */
 typedef enum {
     IMPISP_WB_MODE_AUTO = 0,            /**< Auto white balance */
@@ -98,8 +118,8 @@ typedef enum {
 /**
  * White balance structure
  */
-typedef struct {
-    IMPISPWBMode mode;                  /**< WB mode */
+typedef struct isp_core_wb_attr {
+    IMPISPWBMode mode;                  /**< WB mode (enum isp_core_wb_mode) */
     uint16_t rgain;                     /**< Red gain */
     uint16_t bgain;                     /**< Blue gain */
 } IMPISPWB;
