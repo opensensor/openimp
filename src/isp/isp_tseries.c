@@ -4189,6 +4189,13 @@ int IMP_ISP_EnableTuning(void)
     isp->tuning = tune;
     isp->tuning_state = 2;
 
+#if defined(PLATFORM_T21) && !defined(PLATFORM_T20)
+    /* The vendor zeroes its T21 denoise cache when tuning is enabled, so an
+     * unchanged RawDRC/Temper value is re-sent after DisableTuning followed
+     * by EnableTuning instead of being suppressed as "already applied". */
+    memset(&tseries_t21_dns_cache, 0, sizeof(tseries_t21_dns_cache));
+#endif
+
     int32_t mem_fd = open("/dev/mem", O_RDWR | O_SYNC);
     isp->mem_fd = mem_fd;
     if (mem_fd <= 0) {
