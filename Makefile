@@ -33,6 +33,7 @@ check:
 	$(MAKE) -C tests/t31 check
 	$(MAKE) -C tests/t40 check
 	$(MAKE) -C tests/t41 check
+	$(MAKE) -C tests/device check
 
 clean:
 	$(RM) -r build/t20 build/t21 build/t23 build/t30 build/t31 build/t40 build/t41
