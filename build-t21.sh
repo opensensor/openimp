@@ -46,6 +46,9 @@ platform_cppflags=${T21_PLATFORM_CPPFLAGS:--DPLATFORM_T21}
 base_flags="$base_flags -fPIC -G0 -fno-stack-protector $platform_cppflags -DVPU_BASE=0x13200000"
 # Rootfs size: per-function/-datum sections so the link can drop what is unreferenced.
 base_flags="$base_flags -ffunction-sections -fdata-sections"
+# OPENIMP_T21_EPRC_AB=1 also builds in the T23 eprc revision for the
+# OPENIMP_T21_EPRC=23 A/B run; without it the link drops that controller.
+base_flags="$base_flags -DOPENIMP_T21_EPRC_AB=${OPENIMP_T21_EPRC_AB:-0}"
 # JPEG runs on the Helix VPU (src/t30/helix_jpeg.c).  OPENIMP_SW_JPEG=1 also
 # builds the software baseline encoder in, as a fallback for pictures the VPU
 # cannot take and for OPENIMP_HELIX_HW_JPEG=0 at run time; the default leaves
@@ -121,7 +124,8 @@ case " $platform_cppflags " in
         ;;
 esac
 # T21 only: the Helix eprc controllers (HELIX_T21_SYNTAX in
-# t30_helix_encoder.c); a T20/T10 libimp never calls them
+# t30_helix_encoder.c); a T20/T10 libimp never calls them.
+# OPENIMP_T21_EPRC_AB (base_flags above) selects the controller revisions.
 eprc_objects=
 case " $platform_cppflags " in
     *" -DPLATFORM_T20 "*) ;;

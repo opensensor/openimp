@@ -1298,6 +1298,18 @@ static void t23_rc_stats(T30HelixEncoder *encoder, uint32_t qp, int idr,
 #define HELIX_I264E_FRM_STEP    3u
 #define HELIX_I264E_GOP_STEP    15u
 
+/* T21: the T23 controller revision (OPENIMP_T21_EPRC=23, an A/B aid) is
+ * only built in with -DOPENIMP_T21_EPRC_AB=1 (build-t21.sh
+ * OPENIMP_T21_EPRC_AB=1); otherwise the T21 revision is the only one and
+ * the link drops eprc.c's controller (about 30 KiB). */
+#if defined(PLATFORM_T23)
+#define HELIX_EPRC_IS_T21(enc) 0
+#elif defined(OPENIMP_T21_EPRC_AB) && OPENIMP_T21_EPRC_AB
+#define HELIX_EPRC_IS_T21(enc) ((enc)->eprc_t21)
+#else
+#define HELIX_EPRC_IS_T21(enc) ((void)(enc), 1)
+#endif
+
 /* Which rate-control modes run the OEM picture rate controller (src/eprc),
  * and which revision.
  * T23 (OPENIMP_T23_EPRC): unset = SMART, "1" = FIXQP, CBR, VBR and SMART,
@@ -1324,8 +1336,15 @@ static int helix_eprc_wanted(const T30HelixEncoder *encoder)
     (void)smart;
     if (env && strcmp(env, "0") == 0)
         return 0;
-    if (env && strcmp(env, "23") == 0)
+    if (env && strcmp(env, "23") == 0) {
+#if defined(OPENIMP_T21_EPRC_AB) && OPENIMP_T21_EPRC_AB
         return 2;
+#else
+        IMP_LOG_WARN("Encoder", HELIX_EPRC_TAG " Helix eprc: " HELIX_EPRC_ENV
+                     "=23 needs a build with OPENIMP_T21_EPRC_AB=1, using "
+                     "the T21 revision");
+#endif
+    }
     return 1;
 #endif
 }
@@ -1334,7 +1353,7 @@ static void helix_eprc_stop(T30HelixEncoder *encoder)
 {
     if (encoder->eprc_on) {
 #if !defined(PLATFORM_T23)
-        if (encoder->eprc_t21)
+        if (HELIX_EPRC_IS_T21(encoder))
             EPRC21_Free(&encoder->eprc);
         else
 #endif
@@ -1478,7 +1497,7 @@ static int helix_eprc_scene_cut(const T30HelixEncoder *encoder)
         encoder->gop_position % gop != 0u || encoder->gop_position <= gop)
         return 0;
 #if !defined(PLATFORM_T23)
-    if (encoder->eprc_t21)
+    if (HELIX_EPRC_IS_T21(encoder))
         cls = EPRC21_PictureClass(&encoder->eprc);
     else
 #endif
@@ -1536,7 +1555,7 @@ static void helix_eprc_start(T30HelixEncoder *encoder)
     encoder->eprc_t21 = rev == 1;
     if ((
 #if !defined(PLATFORM_T23)
-         encoder->eprc_t21 ? EPRC21_Init(&encoder->eprc, &p, encoder->eprc_slice) :
+         HELIX_EPRC_IS_T21(encoder) ? EPRC21_Init(&encoder->eprc, &p, encoder->eprc_slice) :
 #endif
          EPRC_Init(&encoder->eprc, &p, encoder->eprc_slice)) != 0) {
         IMP_LOG_WARN("Encoder", HELIX_EPRC_TAG " Helix: OEM rate control "
@@ -1551,7 +1570,7 @@ static void helix_eprc_start(T30HelixEncoder *encoder)
 #if defined(PLATFORM_T23)
                  "",
 #else
-                 encoder->eprc_t21 ? " (T21 rev)" : " (T23 rev)",
+                 HELIX_EPRC_IS_T21(encoder) ? " (T21 rev)" : " (T23 rev)",
 #endif
                  p.rc_mode == EPRC_MODE_CQP ? "FIXQP" :
                  p.rc_mode == EPRC_MODE_CBR ? "CBR" :
@@ -1629,7 +1648,7 @@ static int helix_eprc_end(T30HelixEncoder *encoder, int idr, uint32_t *qp)
     }
     if ((
 #if !defined(PLATFORM_T23)
-         encoder->eprc_t21 ?
+         HELIX_EPRC_IS_T21(encoder) ?
              EPRC21_FrameEndEx(&encoder->eprc, encoder->channel.output_len,
                                regs, &pic, may_repeat) :
 #endif
@@ -1667,7 +1686,7 @@ static void helix_eprc_drop(T30HelixEncoder *encoder)
         return;
     memset(regs, 0, sizeof(regs));
 #if !defined(PLATFORM_T23)
-    if (encoder->eprc_t21)
+    if (HELIX_EPRC_IS_T21(encoder))
         (void)EPRC21_FrameEndEx(&encoder->eprc, bytes, regs, &pic, 0);
     else
 #endif
@@ -2655,7 +2674,7 @@ static int t30_helix_encode_job(T30HelixEncoder *encoder,
         in.frames_since_idr = idr ? 0u : encoder->gop_position;
         if ((
 #if !defined(PLATFORM_T23)
-             encoder->eprc_t21 ? EPRC21_FrameStart(&encoder->eprc, &in, &pic) :
+             HELIX_EPRC_IS_T21(encoder) ? EPRC21_FrameStart(&encoder->eprc, &in, &pic) :
 #endif
              EPRC_FrameStart(&encoder->eprc, &in, &pic)) == 0) {
             qp = pic.qp;
