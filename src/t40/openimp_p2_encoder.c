@@ -1165,14 +1165,48 @@ static int p2_codec_rc_mode(const IMPEncoderCHNAttr *attr, int channel)
     return HW_RC_MODE_VBR;
 }
 
+/* Clamps *value into [lo, hi]; a value outside is reported (the channel is
+ * still created, as with the stock library, which takes the attributes as
+ * given). */
+static int p2_rc_clamp(int channel, const char *name, int *value, int lo,
+                       int hi)
+{
+    if (*value >= lo && *value <= hi)
+        return 0;
+    IMP_LOG_WARN("Encoder",
+                 "CreateChn(%d): rate-control %s %d is outside %d..%d, "
+                 "using %d\n", channel, name, *value, lo, hi,
+                 *value < lo ? lo : hi);
+    *value = *value < lo ? lo : hi;
+    return 1;
+}
+
+static const char *p2_rc_mode_name(unsigned int mode)
+{
+    switch (mode) {
+    case IMP_ENC_RC_MODE_FIXQP: return "FixQP";
+    case IMP_ENC_RC_MODE_CBR: return "CBR";
+    case IMP_ENC_RC_MODE_VBR: return "VBR";
+#if defined(PLATFORM_T23) || defined(PLATFORM_T30)
+    case IMP_ENC_RC_MODE_SMART: return "SMART";
+#else
+    case IMP_ENC_RC_MODE_CAPPED_VBR: return "CappedVBR";
+    case IMP_ENC_RC_MODE_CAPPED_QUALITY: return "CappedQuality";
+#endif
+    default: return "?";
+    }
+}
+
 static void p2_codec_params(unsigned char *params, const IMPEncoderCHNAttr *attr,
-                            int hw_rc_mode)
+                            int hw_rc_mode, int channel)
 {
     uint32_t profile = p2_attr_profile(attr);
     uint32_t codec_type = p2_attr_codec_type(attr);
     uint32_t fps_num = attr->rcAttr.outFrmRate.frmRateNum;
     uint32_t fps_den = attr->rcAttr.outFrmRate.frmRateDen;
-    uint32_t bitrate = p2_attr_bitrate_kbps(attr) * 1000u;
+    uint32_t bitrate_kbps = p2_attr_bitrate_kbps(attr);
+    uint32_t bitrate = (bitrate_kbps > 0xffffffffu / 1000u
+                        ? 0xffffffffu / 1000u : bitrate_kbps) * 1000u;
     int qp = 26;
     int min_qp = 15;
     int max_qp = 45;
@@ -1186,8 +1220,12 @@ static void p2_codec_params(unsigned char *params, const IMPEncoderCHNAttr *attr
     *(uint16_t *)(params + 0x0e) = (uint16_t)p2_attr_height(attr);
     *(uint32_t *)(params + 0x20) = profile;
     *(uint32_t *)(params + 0x6c) = (uint32_t)hw_rc_mode;
-    *(uint16_t *)(params + 0x78) = (uint16_t)(fps_num ? fps_num : 25u);
-    *(uint16_t *)(params + 0x7a) = (uint16_t)((fps_den ? fps_den : 1u) * 1000u);
+    *(uint16_t *)(params + 0x78) = (uint16_t)(!fps_num ? 25u
+                                              : fps_num > 0xffffu ? 0xffffu
+                                              : fps_num);
+    *(uint16_t *)(params + 0x7a) = (uint16_t)((!fps_den ? 1u
+                                               : fps_den > 65u ? 65u
+                                               : fps_den) * 1000u);
     *(uint32_t *)(params + 0x7c) = bitrate;
     *(uint32_t *)(params + 0xb0) = p2_attr_gop_length(attr);
 
@@ -1228,21 +1266,68 @@ static void p2_codec_params(unsigned char *params, const IMPEncoderCHNAttr *attr
         max_qp = attr->rcAttr.attrRcMode.attrVbr.iMaxQP;
     }
 #endif
-    if (codec_type == IMP_ENC_TYPE_JPEG && qp < 1)
-        qp = 25;
-    if (qp < 1 || qp > 51)
-        qp = 26;
-    if (attr->rcAttr.attrRcMode.rcMode == IMP_ENC_RC_MODE_FIXQP) {
+    if (codec_type == IMP_ENC_TYPE_JPEG) {
+        /* the JPEG quality (1..100) reaches the encoder through its own
+         * setter; the H.264 style QP fields are only filled in here */
+        if (qp < 1)
+            qp = 25;
+        if (qp < 1 || qp > 51)
+            qp = 26;
         min_qp = qp;
         max_qp = qp;
+    } else {
+
+
+        if (attr->rcAttr.attrRcMode.rcMode == IMP_ENC_RC_MODE_FIXQP) {
+            (void)p2_rc_clamp(channel, "qp", &qp, 1, 51);
+            min_qp = qp;
+            max_qp = qp;
+        } else {
+            (void)p2_rc_clamp(channel, "minQp", &min_qp, 1, 51);
+            (void)p2_rc_clamp(channel, "maxQp", &max_qp, 1, 51);
+            /* the initial QP is derived (or given) inside the range */
+            if (qp < 1 || qp > 51)
+                qp = 26;
+            if (min_qp > max_qp)
+                IMP_LOG_WARN("Encoder",
+                             "CreateChn(%d): rate-control minQp %d is above "
+                             "maxQp %d (swapped by the encoder)\n", channel,
+                             min_qp, max_qp);
+        }
     }
-    if (min_qp < 1 || min_qp > 51)
-        min_qp = 15;
-    if (max_qp < 1 || max_qp > 51)
-        max_qp = 45;
+    if (bitrate / 1000u != p2_attr_bitrate_kbps(attr)) {
+        IMP_LOG_WARN("Encoder",
+                     "CreateChn(%d): rate-control bitrate %u kbps overflows, "
+                     "using %u kbps\n", channel, p2_attr_bitrate_kbps(attr),
+                     bitrate / 1000u);
+    }
+    if ((hw_rc_mode == HW_RC_MODE_CBR || hw_rc_mode == HW_RC_MODE_VBR) &&
+        codec_type != IMP_ENC_TYPE_JPEG && !bitrate)
+        IMP_LOG_WARN("Encoder",
+                     "CreateChn(%d): rate-control mode %s with a bitrate of "
+                     "0 kbps (the encoder falls back to its default)\n",
+                     channel, p2_rc_mode_name(attr->rcAttr.attrRcMode.rcMode));
+    if (!fps_num || !fps_den || fps_num > 0xffffu || fps_den > 65u ||
+        fps_num > 120u * fps_den)
+        IMP_LOG_WARN("Encoder",
+                     "CreateChn(%d): rate-control frame rate %u/%u is out of "
+                     "range (num 1..65535, den 1..65, at most 120 fps)%s\n",
+                     channel, fps_num, fps_den,
+                     !fps_num || !fps_den || fps_num > 0xffffu ||
+                     fps_den > 65u ? ", clamped" : "");
     *(uint16_t *)(params + 0x84) = (uint16_t)qp;
     *(uint8_t *)(params + 0x86) = (uint8_t)min_qp;
     *(uint16_t *)(params + 0x88) = (uint16_t)max_qp;
+    IMP_LOG_INFO("Encoder",
+                 "CreateChn(%d): rate control codec=%s mode=%s bitrate=%ukbps "
+                 "fps=%u/%u gop=%u qp=%d min=%d max=%d size=%ux%u\n", channel,
+                 codec_type == IMP_ENC_TYPE_JPEG ? "JPEG"
+                 : codec_type == IMP_ENC_TYPE_HEVC ? "HEVC" : "AVC",
+                 p2_rc_mode_name(attr->rcAttr.attrRcMode.rcMode),
+                 bitrate / 1000u, *(uint16_t *)(params + 0x78),
+                 *(uint16_t *)(params + 0x7a) / 1000u,
+                 p2_attr_gop_length(attr), qp, min_qp, max_qp,
+                 p2_attr_width(attr), p2_attr_height(attr));
     p2_startup_trace("openimp/P2 startup: codec params done rc=%u bitrate=%u qp=%d/%d/%d\n",
                      (unsigned int)attr->rcAttr.attrRcMode.rcMode,
                      (unsigned int)bitrate, qp, min_qp, max_qp);
@@ -1436,7 +1521,7 @@ int IMP_Encoder_CreateChn(int channel, IMPEncoderCHNAttr *attr)
         return -1;
     }
     P2_STARTUP_MARKER("openimp/P2 marker C5 before codec params\n");
-    p2_codec_params(params, attr, hw_rc_mode);
+    p2_codec_params(params, attr, hw_rc_mode, channel);
     P2_STARTUP_MARKER("openimp/P2 marker C6 codec params returned\n");
     p2_startup_trace("openimp/P2 startup: CreateChn calling codec create\n");
     P2_STARTUP_MARKER("openimp/P2 marker C7 before codec create\n");
