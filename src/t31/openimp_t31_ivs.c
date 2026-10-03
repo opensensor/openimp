@@ -244,18 +244,24 @@ static void v2_poll_isp(struct t31_move_v2 *v, int64_t now)
 #endif
 }
 
+/* OPENIMP_MOTION_V2_LOG=1: one line per change of the vendor or the v2
+ * decision (wall clock ms), for A/B evaluation in shadow mode. */
 static void v2_log_edges(struct t31_move_v2 *v, const OpenIMP_IVS_MoveOutputEx *ex)
 {
     int legacy = (ex->legacy_roi[0] | ex->legacy_roi[1]) != 0;
     int any = ex->obj_cnt != 0;
+    struct timespec ts;
+    long long ms;
 
+    clock_gettime(CLOCK_REALTIME, &ts);
+    ms = (long long)ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
     if (legacy != v->last_legacy)
-        fprintf(stderr, "[openimp] IVS move v2: seq %u legacy %d\n",
-                ex->seq, legacy);
+        fprintf(stderr, "[openimp] IVS move v2: %lld seq %u legacy %d\n",
+                ms, ex->seq, legacy);
     if (any != v->last_v2 || (ex->flags & OPENIMP_MOVE_EX_SUPPRESSED &&
                               ex->seq % 8 == 0)) {
-        fprintf(stderr, "[openimp] IVS move v2: seq %u v2 %d supp 0x%x",
-                ex->seq, any, ex->suppress);
+        fprintf(stderr, "[openimp] IVS move v2: %lld seq %u v2 %d supp 0x%x",
+                ms, ex->seq, any, ex->suppress);
         if (any)
             fprintf(stderr, " obj %d,%d-%d,%d s%u c%u a%u",
                     ex->obj[0].x0, ex->obj[0].y0, ex->obj[0].x1,
