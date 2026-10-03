@@ -2365,6 +2365,17 @@ static uint32_t avpu_t40_picture_qp(const ALAvpuContext *ctx, int is_idr)
             &ctx->t41_rate_controller);
 #endif
 #if defined(PLATFORM_T31)
+    if (ctx->t31_al_rc.valid) {
+        /* Il1i: the OEM slice QP for the next picture (I = 2, P = 1) */
+        T31AlRcPicture pic;
+        int16_t v;
+
+        memset(&pic, 0, sizeof(pic));
+        pic.type = is_idr ? 2u : 1u;
+        pic.flags = is_idr ? 3u : 2u;
+        v = t31_al_rc_picture_qp((T31AlRc *)&ctx->t31_al_rc, &pic);
+        return v < 0 ? 0u : v > 51 ? 51u : (uint32_t)v;
+    }
     if (ctx->t31_rate_controller.initialized)
         qp = openimp_t31_rate_controller_qp(
             &ctx->t31_rate_controller);
@@ -2497,6 +2508,148 @@ static int avpu_t31_vbr_loop(void)
     return enabled;
 }
 
+/* Feed one completed (or dropped) picture to the Allegro core as the OEM
+ * UpdateRateCtrl (0x665f4) does: o11i (filler, QP resync, size models) then
+ * the OOoI/Ooii update.  regs = the AVPU status register image. */
+static void avpu_t31_allegro_complete(ALAvpuContext *ctx, int buf_idx,
+                                      uint32_t size_bits, const uint8_t *regs,
+                                      unsigned int regs_len)
+{
+    T31AlRcPicture pic;
+    T31AlRcStatus status;
+    int32_t filler;
+    int is_idr = ctx->stream_is_idr[buf_idx] ? 1 : 0;
+
+    memset(&pic, 0, sizeof(pic));
+    pic.type = is_idr ? 2u : 1u;
+    pic.flags = is_idr ? 3u : 2u;
+    t31_al_rc_status_from_regs(&status, regs, regs_len);
+    status.bits = size_bits;
+    status.qp = (int16_t)ctx->t31_rate_control_qp_by_buf[buf_idx];
+    filler = t31_al_rc_picture_start(&ctx->t31_al_rc, &pic, &status, size_bits);
+    if (filler > 0)
+        ctx->t31_al_filler_bits = (uint32_t)(filler < 8 ? 8 : filler) * 8u;
+    t31_al_rc_update(&ctx->t31_al_rc, &pic, &status, size_bits, 0u,
+                     ctx->t31_al_filler_bits);
+    ++ctx->t31_al_pictures;
+    if (ctx->t31_al_pictures % 250u == 1u || ctx->t31_al_pictures <= 3u) {
+        const T31AlRcState *st = &ctx->t31_al_rc.st;
+        uint64_t sse = ((uint64_t)status.sse_hi << 32) | status.sse_lo;
+        int32_t psnr = regs ? t31_al_rc_psnr_x100(sse, st->num_pixels, st->max_pel) : 0;
+
+        IMP_LOG_INFO("Codec", "T31 allegro rc: pic=%u %s size=%u bits used_qp=%d "
+                     "next_qp=%d psnr=%d.%02d dB cap=%u idle=%u ticks pics=%u "
+                     "target/frame=%u ratio_i=%u ip=%d filler=%d",
+                     ctx->t31_al_pictures, is_idr ? "I" : "P", size_bits,
+                     status.qp, st->qp, psnr / 100, psnr % 100 < 0 ? -(psnr % 100) : psnr % 100,
+                     ctx->t31_al_rc.mode == 1u ? 0u : st->max_psnr,
+                     st->hrd.idle_ticks, st->hrd.pictures, st->target_frame,
+                     st->ratio_i, st->ip_delta, filler);
+    }
+}
+
+/* OPENIMP_T31_RC_CORE=allegro selects the OEM Allegro core
+ * (t31_al_rc.c) for VBR, CappedVBR and CappedQuality; anything else (the
+ * default, "legacy") keeps the OpenIMP controller.  Read once. */
+static int avpu_t31_rc_core_allegro(void)
+{
+    static int core = -1;
+
+    if (core < 0) {
+        const char *value = getenv("OPENIMP_T31_RC_CORE");
+
+        core = value && strcmp(value, "allegro") == 0 ? 1 : 0;
+        IMP_LOG_INFO("Codec", "T31 rate control core: %s%s",
+                     core ? "allegro (OEM libimp 1.1.6 port)" : "legacy",
+                     value ? " (OPENIMP_T31_RC_CORE)" : "");
+    }
+    return core;
+}
+
+/* AL_TRCParam as the OEM channel builds it: channel_encoder_set_rc_param
+ * (0x7e430) over AL_Codec_Encode_SetDefaultParam (0x790b8: uInitialRemDelay
+ * 216000, uCPBSize 270000 ticks), AL_Codec_Encode_ValidateRcParam (uMaxBitRate
+ * >= target) and AL_Common_Encoder_ComputeRCParam (0x449dc: iMinQP >= 10,
+ * iMaxQP >= iMinQP, iInitialQP within), uFrameRate/uClkRatio from
+ * AL_Codec_Encode_SetFrameRate with c_reduce_fraction. */
+static void avpu_t31_al_param(const ALAvpuContext *ctx, T31AlRcParam *p,
+                              T31AlGopParam *g)
+{
+    int32_t min_qp = (int32_t)(ctx->min_qp <= 51u ? ctx->min_qp : 51u);
+    int32_t max_qp = (int32_t)(ctx->max_qp <= 51u ? ctx->max_qp : 51u);
+    int32_t init_qp = (int32_t)(ctx->qp <= 51u ? ctx->qp : 26u);
+    uint32_t bitrate = ctx->bitrate ? ctx->bitrate : 2000000u;
+
+    memset(p, 0, sizeof(*p));
+    memset(g, 0, sizeof(*g));
+    p->mode = ctx->t31_al_mode ? ctx->t31_al_mode : 2u;
+    p->initial_rem_delay = 216000u;
+    p->cpb_size = 270000u;
+    t31_al_rc_frame_rate(ctx->fps_num ? ctx->fps_num : 25u,
+                         ctx->fps_den ? ctx->fps_den : 1u,
+                         &p->frame_rate, &p->clk_ratio);
+    p->target_bitrate = bitrate;
+    p->max_bitrate = ctx->t31_max_bitrate > bitrate ? ctx->t31_max_bitrate : bitrate;
+    if (min_qp < 10)
+        min_qp = 10;
+    if (max_qp < min_qp)
+        max_qp = min_qp;
+    if (init_qp < min_qp)
+        init_qp = min_qp;
+    if (init_qp > max_qp)
+        init_qp = max_qp;
+    p->initial_qp = (int16_t)init_qp;
+    p->min_qp = (int16_t)min_qp;
+    p->max_qp = (int16_t)max_qp;
+    p->ip_delta = (int16_t)ctx->qp_ip_delta;
+    p->pb_delta = (int16_t)ctx->t31_qp_pb_delta;
+    p->options = ctx->t31_rc_options;
+    p->num_pixels = ctx->enc_w * ctx->enc_h;
+    p->max_psnr_x100 = (uint16_t)(ctx->t31_quality_cap_x100 ? ctx->t31_quality_cap_x100 : 4200u);
+    p->max_pel = 255u;
+    g->mode = 2u;   /* AL_GOP_MODE_LOW_DELAY_P as the IMP channel */
+    g->length = (uint16_t)(ctx->gop_length ? ctx->gop_length : 25u);
+    g->num_b = 0u;
+}
+
+static int avpu_t31_prepare_picture_allegro(ALAvpuContext *ctx)
+{
+    T31AlRcParam p;
+    T31AlGopParam g;
+    uint32_t rc_mode;
+
+    if (ctx->rc_mode != HW_RC_MODE_VBR) {
+        /* CBR (IIii 0x53360) is not ported: the legacy controller runs. */
+        ctx->t31_al_rc.valid = 0;
+        return 1;
+    }
+    avpu_t31_al_param(ctx, &p, &g);
+    rc_mode = p.mode == 8u ? 9u : p.mode == 4u ? 8u : 1u;
+    if (!ctx->t31_al_rc.valid || ctx->t31_al_rc.mode != rc_mode) {
+        if (t31_al_rc_init(&ctx->t31_al_rc, rc_mode, &p, &g) != 0)
+            return -1;
+        ctx->t31_al_param = p;
+        ctx->t31_al_gop_length = g.length;
+        ctx->t31_al_filler_bits = 0u;
+        ctx->t31_al_pictures = 0u;
+        IMP_LOG_INFO("Codec", "T31 allegro rc: init mode=%u (AL %u) target=%u max=%u "
+                     "fps=%u/%u qp=%d bounds=%d/%d ip=%d pb=%d opts=%u gop=%u psnr_cap=%u",
+                     rc_mode, p.mode, p.target_bitrate, p.max_bitrate,
+                     p.frame_rate, p.clk_ratio, p.initial_qp, p.min_qp, p.max_qp,
+                     p.ip_delta, p.pb_delta, p.options, g.length, p.max_psnr_x100);
+    } else if (memcmp(&p, &ctx->t31_al_param, sizeof(p)) != 0 ||
+               ctx->t31_al_gop_length != g.length) {
+        /* run-time change: the OEM calls the controller's set-params slot */
+        t31_al_rc_set_params(&ctx->t31_al_rc, &p, &g);
+        ctx->t31_al_param = p;
+        ctx->t31_al_gop_length = g.length;
+        IMP_LOG_INFO("Codec", "T31 allegro rc: params target=%u max=%u fps=%u/%u "
+                     "bounds=%d/%d gop=%u", p.target_bitrate, p.max_bitrate,
+                     p.frame_rate, p.clk_ratio, p.min_qp, p.max_qp, g.length);
+    }
+    return 0;
+}
+
 static int avpu_t31_prepare_picture(ALAvpuContext *ctx)
 {
     OpenIMPT31RateController *controller;
@@ -2511,6 +2664,17 @@ static int avpu_t31_prepare_picture(ALAvpuContext *ctx)
     if (!ctx)
         return -1;
     controller = &ctx->t31_rate_controller;
+    if (avpu_t31_rc_core_allegro()) {
+        int r = avpu_t31_prepare_picture_allegro(ctx);
+
+        if (r <= 0) {
+            controller->initialized = 0;
+            return r;
+        }
+        /* r > 0: mode not covered by the core, fall through to legacy */
+    } else {
+        ctx->t31_al_rc.valid = 0;
+    }
     /* CBR, VBR and the OEM capped VBR modes (VBR with a PSNR cap) run the
      * closed loop.  Plain VBR is open loop only with
      * OPENIMP_T31_VBR_LOOP=0. */
@@ -5197,6 +5361,15 @@ static void avpu_end_encoding_callback(void *user_data)
         ctx->stream_buf_size > (int)AVPU_T31_PAYLOAD_OFFSET &&
         bitcount <= (uint32_t)ctx->stream_buf_size -
             AVPU_T31_PAYLOAD_OFFSET;
+    if (completed && ctx->t31_al_rc.valid) {
+        avpu_t31_allegro_complete(ctx, buf_idx, bitcount * 8u,
+                                  status_regs.raw, sizeof(status_regs.raw));
+    } else if (!completed && t31_overflow_bytes && ctx->t31_al_rc.valid) {
+        /* dropped picture: account the buffer it would have filled */
+        avpu_t31_allegro_complete(ctx, buf_idx,
+                                  ((uint32_t)ctx->stream_buf_size -
+                                   AVPU_T31_PAYLOAD_OFFSET) * 8u, NULL, 0u);
+    }
     if (completed && ctx->t31_rate_controller.initialized) {
         uint32_t used_qp = ctx->t31_rate_control_qp_by_buf[buf_idx];
         int controller_ret;
@@ -11996,6 +12169,11 @@ int AL_Codec_Encode_SetRcParam(void *codec, void *rcAttr)
         enc->hw_params.min_qp = clamp_qp_u32(src->attrRcMode.attrH264Cbr.iMinQP);
         enc->hw_params.max_qp = clamp_qp_u32(src->attrRcMode.attrH264Cbr.iMaxQP);
         enc->avpu.qp_ip_delta = src->attrRcMode.attrH264Cbr.iIPDelta;
+#if defined(PLATFORM_T31)
+        enc->avpu.t31_max_bitrate = src->attrRcMode.attrH264Cbr.uTargetBitRate;
+        enc->avpu.t31_rc_options = (uint32_t)src->attrRcMode.attrH264Cbr.eRcOptions;
+        enc->avpu.t31_qp_pb_delta = src->attrRcMode.attrH264Cbr.iPBDelta;
+#endif
 #else
         enc->hw_params.bitrate = src->attrRcMode.attrH264Cbr.maxGop;
         enc->hw_params.min_qp = clamp_qp_u32(src->attrRcMode.attrH264Cbr.minQp);
@@ -12029,6 +12207,11 @@ int AL_Codec_Encode_SetRcParam(void *codec, void *rcAttr)
         enc->hw_params.min_qp = clamp_qp_u32(src->attrRcMode.attrH264Vbr.iMinQP);
         enc->hw_params.max_qp = clamp_qp_u32(src->attrRcMode.attrH264Vbr.iMaxQP);
         enc->avpu.qp_ip_delta = src->attrRcMode.attrH264Vbr.iIPDelta;
+#if defined(PLATFORM_T31)
+        enc->avpu.t31_max_bitrate = src->attrRcMode.attrH264Vbr.uMaxBitRate;
+        enc->avpu.t31_rc_options = (uint32_t)src->attrRcMode.attrH264Vbr.eRcOptions;
+        enc->avpu.t31_qp_pb_delta = src->attrRcMode.attrH264Vbr.iPBDelta;
+#endif
 #else
         enc->hw_params.bitrate = src->attrRcMode.attrH264Vbr.maxGop;
         enc->hw_params.min_qp = clamp_qp_u32(src->attrRcMode.attrH264Vbr.minQp);
@@ -12138,6 +12321,11 @@ int AL_Codec_Encode_SetRcQualityCap(void *codec, int rcMode,
     }
     enc->rc_quality_cap_x100 = cap;
     enc->avpu.t31_quality_cap_x100 = cap;
+    /* AL eRCMode of channel_encoder_set_rc_param (0x7e430) */
+    enc->avpu.t31_al_mode =
+        rcMode == IMP_ENC_RC_MODE_VBR ? 2u :
+        rcMode == IMP_ENC_RC_MODE_CAPPED_VBR ? 4u :
+        rcMode == IMP_ENC_RC_MODE_CAPPED_QUALITY ? 8u : 0u;
     if (cap)
         IMP_LOG_INFO("Codec", "rate control: %s, closed-loop VBR with PSNR "
                      "cap %u.%02u dB (QP is not lowered while a picture is "

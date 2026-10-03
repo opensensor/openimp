@@ -28,6 +28,7 @@
 
 #if defined(PLATFORM_T31)
 #include "t40/t31_rate_control.h"
+#include "t40/t31_al_rc.h"
 #endif
 #if defined(PLATFORM_T41)
 #include "t40/t41_hw_rate_control.h"
@@ -278,6 +279,17 @@ typedef struct ALAvpuContext {
      * the codec at every AVPU setup; PSNR of the last completed picture. */
     uint32_t t31_quality_cap_x100;
     uint32_t t31_last_psnr_x100;
+    /* OEM Allegro rate-control core (OPENIMP_T31_RC_CORE=allegro) for VBR,
+     * CappedVBR and CappedQuality; t31_rate_controller stays the default. */
+    T31AlRc t31_al_rc;
+    T31AlRcParam t31_al_param;      /* parameters the core was given last */
+    uint32_t t31_al_gop_length;
+    uint32_t t31_al_mode;           /* AL eRCMode: 2 VBR, 4 CappedVBR, 8 CappedQuality */
+    uint32_t t31_max_bitrate;       /* uMaxBitRate in bit/s (0 = target) */
+    uint32_t t31_rc_options;        /* eRcOptions */
+    int32_t t31_qp_pb_delta;        /* iPBDelta */
+    uint32_t t31_al_filler_bits;    /* OEM frame+2848 (sticky filler) * 8 */
+    uint32_t t31_al_pictures;
     /* Published access-unit layout, handed to P2 for its AU check. */
     uint32_t t31_au_header_by_buf[16];
     uint32_t t31_ebsp_inserted_by_buf[16];

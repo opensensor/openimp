@@ -40,64 +40,46 @@ obfuscated (short `lIoi` names); its vtable shows the structure:
   `psnr > uMaxPSNR * 100`, a negative QP delta becomes 0: the QP is not
   lowered while the picture already looks better than the cap.  Increases
   are never blocked.
-* CappedVBR and CappedQuality differ in exactly two bytes of the controller
-  state, both set from the `AL_RateCtrl_Init` mode (8 = CappedVBR, 9 =
-  CappedQuality; AL mode 4 -> 8, AL mode 8 -> 9 in the `AL_EncChannel_Init`
-  table).  Confirmed under emulation (unicorn, `tools/t31_rc_emu/`): mode 8
-  with the two bytes patched to the mode-9 values is picture-for-picture
-  identical to mode 9 and vice versa, in static, busy and scene-change
-  scenarios.
-  1. Core flag `state+0x12f` (`oiii` a2): 1 for CappedVBR, 0 for
-     CappedQuality.  Read in exactly one place, `Ioii` 0x55218.  `Ioii`
-     (the per-picture analysis, called after every picture with flag bit 1,
-     i.e. every regular picture of a low-delay GOP) first computes the
-     picture's per-type target (`state+0x8c` = uTargetBitRate / fps for GOP
-     length < 2, otherwise the GOP budget split by the per-type size ratios
-     `state+0xf8..`).  A picture *smaller* than its target starts a
-     QP-lowering search: starting from delta 0, the picture size is scaled
-     by the type's one-QP ratio (`state+0xf8+4*type`, 1.1225 = 2^(1/6) in
-     1/10000) and delta decremented while the scaled size still stays below
-     the target and delta > -4 (`state+0x22`).  Before the search, the
-     controller compares the leaky-bucket idle time `state+0x84` (HRD object
-     `state+0x48`, field +0x3c: accumulated ticks at 90 kHz during which the
-     channel at uMaxBitRate had nothing to send because the picture would
-     have arrived more than uInitialRemDelay ahead of its removal time) with
-     5 % of the elapsed stream time (`pictures * clkRatio * 90000 / (fps *
-     1000) * 5 / 100`, computed in `Ioii` 0x549a8).  Idle < 5 %: the stream
-     has been running at the max rate; CappedVBR (flag 1) then skips the
-     search and keeps the QP, CappedQuality (flag 0) searches anyway.  The
-     mirrored test for a picture *larger* than its target (search up only
-     while idle <= (uMaxBitRate - 1.04 * uTargetBitRate) / uMaxBitRate of
-     the elapsed time) is the same in both modes.  Everything after the
-     search is shared: the remaining-GOP budget check against the buffer
-     (`i1Ii`/`IIIi` size predictions, a QP step +1 when the budget for the
-     rest of the GOP plus the next I picture does not fit), the static-scene
-     adjustment (`Ioli`), the +-4 clamp, and in `Ooii` the PSNR cap (a
-     negative delta becomes 0 while PSNR > uMaxPSNR) before the delta is
-     added to `state+0x20` and clamped to iMinQP..iMaxQP.
-  2. HRD flag `hrd+0x15` = (mode != 9): 1 for CappedVBR, 0 for
-     CappedQuality.  Read in exactly one place, the bucket update `i0Io`
-     0x5674c (called from `i0ii` for every picture with its size).  With
-     the flag set the function returns after accounting the picture; with
-     flag 0 it additionally lets the removal clock slip: when the picture's
-     arrival time (bits sent at uMaxBitRate) is later than its scheduled
-     removal time (one frame period after the previous one), the removal
-     time is set to the arrival time.  The bucket level (`OOlo`, removal
-     minus arrival in bits) therefore never goes negative in CappedQuality:
-     an overload does not produce an underflow and no emergency QP (`ooIi`
-     raises the QP to the maximum when a picture exceeds 75 % of the level),
-     the QP rises step by step through the remaining-GOP budget check
-     instead.  CappedVBR keeps the hard delivery schedule (and in the
-     emulated scene change jumped to iMaxQP and stayed there while the
-     bucket recovered).
-  In short: CappedVBR lowers the QP only while the bucket has been idle at
-  least 5 % of the time (true VBR headroom) and enforces the HRD schedule;
-  CappedQuality lowers the QP whenever a picture comes in under its target
-  (bounded by the PSNR cap, the GOP budget and +-4 per update) and treats
-  the delivery schedule as elastic.  The emulated static scene at 2 Mbit/s
-  target / 4 Mbit/s max: CappedVBR settles at one QP per GOP, CappedQuality
-  oscillates +-1 around a QP one to two steps lower and spends ~6 % more
-  bits.
+* CappedVBR and CappedQuality differ in exactly one byte of the controller
+  state: the core flag `state+0x12f` (`oiii` a2), 1 for CappedVBR
+  (`AL_RateCtrl_Init` mode 8, from AL eRCMode 4) and 0 for CappedQuality
+  (mode 9, from AL eRCMode 8; `AL_EncChannel_Init` table 0xe53e0).  Read in
+  exactly one place, `Ioii` 0x55218.  Confirmed under emulation
+  (`tools/t31_rc_emu/`): mode 8 with the byte patched is picture-for-
+  picture identical to mode 9 and vice versa.  (The HRD object also has a
+  flag `hrd+0x15 = (eRCMode != 9)` that lets the removal clock slip when 0,
+  but eRCMode 9 does not exist on the T31, so it is always 1.)
+  `Ioii` (the per-picture analysis, called after every picture with flag
+  bit 1, i.e. every regular picture of a low-delay GOP) first computes the
+  picture's per-type target (`state+0x8c` = uTargetBitRate / fps for GOP
+  length < 2, otherwise the GOP budget split by the per-type size ratios
+  `state+0xb0..`).  A picture *smaller* than its target starts a
+  QP-lowering search: starting from delta 0, the picture size is scaled
+  by the type's one-QP ratio (`state+0xf8+4*type`, 1.1225 = 2^(1/6) in
+  1/10000) and delta decremented while the scaled size still stays below
+  the target and delta > -4 (`state+0x22`).  Before the search, the
+  controller compares the leaky-bucket idle time `state+0x84` (HRD object
+  `state+0x48`, field +0x3c: accumulated ticks at 90 kHz during which the
+  channel at uMaxBitRate had nothing to send because the picture would
+  have arrived more than uInitialRemDelay ahead of its removal time) with
+  the share `(uMaxBitRate - 0.95 * uTargetBitRate) / uMaxBitRate` of the
+  elapsed stream time (`pictures * clkRatio * 90000 / (fps * 1000)`,
+  computed in `Ioii` 0x549a8; 5 % when max == target).  Idle below that
+  share: the stream has been running at the max rate; CappedVBR (flag 1)
+  then skips the search and keeps the QP, CappedQuality (flag 0) searches
+  anyway.  The mirrored test for a picture *larger* than its target (search
+  up only while idle <= (uMaxBitRate - 1.04 * uTargetBitRate) / uMaxBitRate
+  of the elapsed time) is the same in both modes.  Everything after the
+  search is shared: the remaining-GOP budget check against the buffer
+  (`i1Ii`/`IIIi` size predictions, a QP step +1 when the budget for the
+  rest of the GOP plus the next I picture does not fit), the static-scene
+  adjustment (`Ioli`), the +-4 clamp, and in `Ooii` the PSNR cap (a
+  negative delta becomes 0 while PSNR > uMaxPSNR) before the delta is
+  added to `state+0x20` and clamped to iMinQP..iMaxQP.
+  In short: CappedVBR lowers the QP only while the bucket has been idle
+  for the allowed share of the time (true VBR headroom); CappedQuality
+  lowers the QP whenever a picture comes in under its target, bounded by
+  the PSNR cap, the GOP budget and +-4 per update.
 
 `IMP_Encoder_GetChnAttrRcMode` returns the stored IMP attribute (36 bytes),
 so the read-back is the mode and values as given.
@@ -113,26 +95,49 @@ iInitialQP 26, uMaxBitRate = bitrate).  Not aligned: FIXQP/JPEG iInitialQP
 encTools 0x9c, HEVC level 50/tier 1, uGopCtrlMode 2 and uMaxSameSenceCnt
 >= 1.
 
-OpenIMP: CBR and VBR run the closed-loop T31 controller
-(`t31_rate_control.c`), as the OEM; `OPENIMP_T31_VBR_LOOP=0` restores the
-former open-loop VBR picture QP from the bitrate.
-CappedVBR and CappedQuality run the controller with the OEM PSNR cap
-(`AL_Codec_Encode_SetRcQualityCap`, uMaxPSNR clamped to 30..50 dB): the
-PSNR is computed from the status SSE as above (integer log10), and a QP
-decrease at a GOP decision is dropped while the last picture is above the
-cap.  An SSE of 0 means no measurement (logged once) and the cap is
-inactive; the OEM would read it as a perfect picture.  The OEM difference
-between the two modes (above) is not reproduced: OpenIMP's T31 controller is
-not the Allegro core (no leaky bucket at uMaxBitRate, no per-type targets,
-GOP-granular decisions), so the idle-time gate and the HRD slip have no
-counterpart and both modes behave the same.  A vendor-equal CappedVBR /
-CappedQuality needs the Allegro VBR core itself (init `lI1i`, picture QP
-`o11i`/`Il1i`, update `Ioii` with `i0ii`/`Ilii`/`O0ii`/`ooIi`/`i1Ii`/
-`IIIi`/`Ioli`/`l0ii`, HRD `l0io`/`i0Io`/`OOlo`/`l1Io`/`iiIo`, cap `Ooii`,
-about 2,800 instructions) and the macroblock statistics it reads from the
-status block (+0x14..+0x30).  The
-log shows `T31 capped rc: qp=.. psnr=.. cap=.. holds=..` every 250
-pictures.  Read-back: the attribute as given (as the OEM).
+OpenIMP: two T31 controllers exist, selected by `OPENIMP_T31_RC_CORE`
+(read once at the first picture):
+
+* `legacy` (default): CBR and VBR run the OpenIMP closed-loop controller
+  (`t31_rate_control.c`); `OPENIMP_T31_VBR_LOOP=0` restores the former
+  open-loop VBR picture QP from the bitrate.  CappedVBR and CappedQuality
+  run it with the OEM PSNR cap (`AL_Codec_Encode_SetRcQualityCap`, uMaxPSNR
+  clamped to 30..50 dB): the PSNR is computed from the status SSE as above
+  (integer log10), and a QP decrease at a GOP decision is dropped while the
+  last picture is above the cap.  An SSE of 0 means no measurement (logged
+  once) and the cap is inactive; the OEM would read it as a perfect
+  picture.  The OEM difference between the two capped modes has no
+  counterpart in this controller: both behave the same.  The log shows
+  `T31 capped rc: qp=.. psnr=.. cap=.. holds=..` every 250 pictures.
+* `allegro`: the OEM Allegro core ported instruction for instruction
+  (`src/t40/t31_al_rc.c`: `lI1i` init and parameter update, `lI0i`/`lo0i`
+  reset, `Il1i` picture QP, `o11i`/`l01i`/`llli`/`iili` picture start,
+  `Ioii` with `Ilii`/`i0ii`/`O0ii`/`ooIi`/`i1Ii`/`illi`/`IIIi`/`Ioli`/
+  `l0ii`, the HRD `l0io`/`i0Io`/`IIIo`/`OOlo`/`l1Io`/`i1Io`/`iiIo`, the
+  updates `OOoI` (VBR) and `Ooii` (capped), `l1OI`, `loii`) for VBR,
+  CappedVBR and CappedQuality.  The 328-byte state keeps the OEM layout;
+  `tests/t31/al_rc_trace_test.c` replays traces recorded from the OEM code
+  under emulation (`tools/t31_rc_emu/cq_trace.py`, 14 files, 2,100
+  pictures with parameter changes, resets, scene-change flags, re-encode
+  flags and fixed-QP pictures) and requires the state to be byte-identical
+  after every call; 72 further random traces of 400 pictures matched as
+  well.  The parameters are built as the OEM channel does (uInitialRemDelay
+  216000 and uCPBSize 270000 ticks from `AL_Codec_Encode_SetDefaultParam`,
+  uMaxBitRate raised to the target, iMinQP >= 10, iInitialQP within the
+  bounds, uFrameRate/uClkRatio from the reduced fps fraction, GOP mode 2,
+  eRcOptions/iPBDelta/uMaxBitRate from the IMP attribute), the macroblock
+  statistics from the status registers 0x10c..0x12c, the SSE from
+  0x158/0x15c, the picture size as the entropy byte count * 8.  Run-time
+  bitrate/fps/QP-bound changes go through the OEM parameter update.  CBR
+  (`IIii` 0x53360) is not ported: with the switch set, CBR still runs the
+  legacy controller.  Not reproduced: the OEM re-encode of a picture that
+  overflowed its stream buffer (the re-encode flag is always 0; a dropped
+  picture is accounted with the buffer size), the filler data the OEM
+  appends when the HRD says so (the count is fed back into the model but
+  no filler NAL is written), and the per-frame-object sticky filler value
+  (one value per channel).  Read-back: the attribute as given.  The log
+  shows `T31 allegro rc: pic=.. size=.. used_qp=.. next_qp=.. psnr=..
+  idle=..` for the first pictures and then every 250.
 
 ## T20 / T21 (Helix, OEM libimp T20 3.12.0, T21 1.0.33)
 
