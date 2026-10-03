@@ -243,56 +243,67 @@ fi
 sha256sum "$output_dir/libimp.so"
 readelf -d "$output_dir/libimp.so" | grep -E 'SONAME|NEEDED'
 
-# Keep the proprietary T23 Helix implementation in a clean process.  RVD loads
-# OpenIMP from /usr/lib, while this small worker runs on the OEM libimp from
-# /opt/openimp-t23 and exchanges raw frames through tmpfs-backed shared
-# memory.  Its search path names only /opt/openimp-t23: a DT_RPATH of
-# /usr/lib wins over LD_LIBRARY_PATH and would load OpenIMP's libimp.so,
-# which the worker refuses.  Buildroot's fix-rpath keeps the directory
-# (it exists in the target) and may turn it into DT_RUNPATH, after which
-# the LD_LIBRARY_PATH the bridge sets still selects the same directory.
-# Link it against the OEM libimp.  With per-package directories the
-# package's own staging holds the OEM copy at build time (ingenic-lib), while
-# $target_dir/target only exists once the image is assembled, so a caller may
-# point T23_OEM_LIB_DIR there.
-oem_lib_dir=${T23_OEM_LIB_DIR:-"$target_dir/target/usr/lib"}
-if [ ! -f "$oem_lib_dir/libimp.so" ] ||
-    readelf --dyn-syms --wide "$oem_lib_dir/libimp.so" |
-        awk '$7 != "UND" && $8 == "OpenIMP_P0_GetState" {found=1} END {exit !found}'
-then
-    echo "T23 Helix worker needs the OEM libimp.so in $oem_lib_dir" \
-        "(set T23_OEM_LIB_DIR)" >&2
-    exit 1
-fi
-"$compiler" $base_flags $repo_includes -Wall -Wextra -Werror \
-    "$project_dir/src/t23/openimp_t23_helix_worker.c" \
-    -L"$oem_lib_dir" \
-    -Wl,--disable-new-dtags -Wl,-rpath,/opt/openimp-t23 \
-    -Wl,-rpath-link,"$oem_lib_dir" \
-    -Wl,--dynamic-list="$project_dir/src/t23/openimp_t23_helix_worker.dynlist" \
-    -limp -lalog -lpthread -ldl \
-    -o "$output_dir/openimp-t23-helixd"
-"$stripper" --strip-unneeded "$output_dir/openimp-t23-helixd"
-if ! readelf -d "$output_dir/openimp-t23-helixd" |
-    grep -q 'Shared library: \[libimp.so\]'
-then
-    echo "T23 Helix worker is not linked to the OEM libimp ABI" >&2
-    exit 1
-fi
-if ! readelf -d "$output_dir/openimp-t23-helixd" |
-    grep -q 'Library rpath: \[/opt/openimp-t23\]'
-then
-    echo "T23 Helix worker does not search /opt/openimp-t23 first" >&2
-    exit 1
-fi
-# The worker confines the OEM rmem allocator by interposing these.
-for symbol in continuous_init continuous_alloc
-do
-    if ! readelf --dyn-syms --wide "$output_dir/openimp-t23-helixd" |
-        awk -v s="$symbol" '$7 != "UND" && $8 == s {found=1} END {exit !found}'
+# The OEM worker is optional: T23_BUILD_OEM_WORKER=1 builds it (needs the OEM
+# libimp.so, see T23_OEM_LIB_DIR).  Default 0: OpenIMP uses its native Helix
+# encoder and no vendor code, so no OEM libimp is required to build.  Without
+# the worker only OPENIMP_T23_ENCODER=worker, the native-create fallback and
+# the hardware JPEG IMP_Decoder are unavailable.
+case "${T23_BUILD_OEM_WORKER:-0}" in
+    0) ;;
+    1)
+    # Keep the proprietary T23 Helix implementation in a clean process.  RVD loads
+    # OpenIMP from /usr/lib, while this small worker runs on the OEM libimp from
+    # /opt/openimp-t23 and exchanges raw frames through tmpfs-backed shared
+    # memory.  Its search path names only /opt/openimp-t23: a DT_RPATH of
+    # /usr/lib wins over LD_LIBRARY_PATH and would load OpenIMP's libimp.so,
+    # which the worker refuses.  Buildroot's fix-rpath keeps the directory
+    # (it exists in the target) and may turn it into DT_RUNPATH, after which
+    # the LD_LIBRARY_PATH the bridge sets still selects the same directory.
+    # Link it against the OEM libimp.  With per-package directories the
+    # package's own staging holds the OEM copy at build time (ingenic-lib), while
+    # $target_dir/target only exists once the image is assembled, so a caller may
+    # point T23_OEM_LIB_DIR there.
+    oem_lib_dir=${T23_OEM_LIB_DIR:-"$target_dir/target/usr/lib"}
+    if [ ! -f "$oem_lib_dir/libimp.so" ] ||
+        readelf --dyn-syms --wide "$oem_lib_dir/libimp.so" |
+            awk '$7 != "UND" && $8 == "OpenIMP_P0_GetState" {found=1} END {exit !found}'
     then
-        echo "T23 Helix worker does not export $symbol" >&2
+        echo "T23 Helix worker needs the OEM libimp.so in $oem_lib_dir" \
+            "(set T23_OEM_LIB_DIR)" >&2
         exit 1
     fi
-done
-ls -l "$output_dir/openimp-t23-helixd"
+    "$compiler" $base_flags $repo_includes -Wall -Wextra -Werror \
+        "$project_dir/src/t23/openimp_t23_helix_worker.c" \
+        -L"$oem_lib_dir" \
+        -Wl,--disable-new-dtags -Wl,-rpath,/opt/openimp-t23 \
+        -Wl,-rpath-link,"$oem_lib_dir" \
+        -Wl,--dynamic-list="$project_dir/src/t23/openimp_t23_helix_worker.dynlist" \
+        -limp -lalog -lpthread -ldl \
+        -o "$output_dir/openimp-t23-helixd"
+    "$stripper" --strip-unneeded "$output_dir/openimp-t23-helixd"
+    if ! readelf -d "$output_dir/openimp-t23-helixd" |
+        grep -q 'Shared library: \[libimp.so\]'
+    then
+        echo "T23 Helix worker is not linked to the OEM libimp ABI" >&2
+        exit 1
+    fi
+    if ! readelf -d "$output_dir/openimp-t23-helixd" |
+        grep -q 'Library rpath: \[/opt/openimp-t23\]'
+    then
+        echo "T23 Helix worker does not search /opt/openimp-t23 first" >&2
+        exit 1
+    fi
+    # The worker confines the OEM rmem allocator by interposing these.
+    for symbol in continuous_init continuous_alloc
+    do
+        if ! readelf --dyn-syms --wide "$output_dir/openimp-t23-helixd" |
+            awk -v s="$symbol" '$7 != "UND" && $8 == s {found=1} END {exit !found}'
+        then
+            echo "T23 Helix worker does not export $symbol" >&2
+            exit 1
+        fi
+    done
+    ls -l "$output_dir/openimp-t23-helixd"
+        ;;
+    *) echo "T23_BUILD_OEM_WORKER must be 0 or 1" >&2; exit 1 ;;
+esac

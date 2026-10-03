@@ -15,6 +15,7 @@ Status: implemented, host-tested and brought up on the T23 test camera
 | Setting | Effect |
 | --- | --- |
 | `T23_DEFAULT_ENCODER=worker\|native ./build-t23.sh` | build default (default `native`) |
+| `T23_BUILD_OEM_WORKER=1 ./build-t23.sh` | also build openimp-t23-helixd (needs the OEM libimp.so, `T23_OEM_LIB_DIR`); default 0 = no vendor code needed. Without it the `worker` backend and the hardware JPEG `IMP_Decoder` are unavailable |
 | `OPENIMP_T23_ENCODER=native\|worker` | run-time choice, overrides the build default |
 | `OPENIMP_T23_NATIVE_FALLBACK=0` | do not fall back to the worker when the native encoder cannot be created |
 | `OPENIMP_T23_HELIX_TIMEOUT_MS=N` | soc_vpu wait/timeout per job, 100..20000 ms (default 2000) |
