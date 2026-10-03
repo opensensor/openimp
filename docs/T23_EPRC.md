@@ -112,17 +112,27 @@ maximum bit rate (qualLvls 0xee274 for the lower bound).
 ## IDR period and long-term references (i264e, not eprc)
 
 `i264e_decide_slice_type_and_rd` (0x34d78): IDR every GOP; with
-param[2756] > 0 (and the reference mode at +2768 0, 5 or 6) every
-param[2756] x GOP pictures, or earlier at a GOP boundary when the picture
-class (E+1596) is 5.  Long-term references (MMCO, `long_term_reference_flag`
-in `i264e_slice_header_write` 0x39xxx) are only generated for the HSkip
-reference modes 5/6 (H1M, `i264e_dec_ref_pic_remark` 0x355dc,
-`i264e_reconfig_hskip_set` 0x36cdc).  **The OEM SMART mode itself uses no
-long-term reference.**  Which IMP field sets param[2756] was not
-determined (no direct store in the library; it is not set by
-`i264e_param_default`); if it is 0, the OEM SMART codes an IDR every GOP and
-never produces type-6 pictures.  A capture of the OEM stream in SMART mode
-(IDR distance, slice types) settles it.
+rc[2756] > 0 (and the skip type at rc[2768] 0, 5 or 6, i.e. N1X, H1M_FALSE,
+H1M_TRUE) every rc[2756] x GOP pictures, or earlier at a GOP boundary when
+the picture class (E+1596) is 5.  This applies to every rate-control mode,
+not only SMART.  Long-term references (MMCO, `long_term_reference_flag`)
+are only generated for the HSkip reference modes 5/6 (H1M,
+`i264e_dec_ref_pic_remark` 0x355dc, `i264e_reconfig_hskip_set` 0x36cdc).
+**The OEM SMART mode itself uses no long-term reference.**
+
+rc[2756] is `rcAttr.attrHSkip.hSkipAttr.maxSameSceneCnt`:
+`IMP_Encoder_CreateChn` copies hSkipAttr {skipType, m, n, maxSameSceneCnt,
+bEnableScenecut, bBlackEnhance} into i264e param +172..+192 (0x4ece0..),
+`i264e_idr_reconfig` (0x36004) calls `i264e_init_skip_header` (0x34b60)
+with the skip header at rc+2752, whose word 1 (rc+2756) is
+maxSameSceneCnt and word 4 (rc+2768) skipType; the same rc[2756] is the
+SmartP background interval multiplier in `i264e_ratecontrol_init`.  timps
+and prudynt leave hSkipAttr zero, so the OEM codes an IDR every GOP (as
+OpenIMP measured on cam-B).  OpenIMP passes maxSameSceneCnt (skip types
+N1X/H1M only) from CreateChn as `HWEncoderParams.same_scene_gops`; with the
+eprc controller running the encoder codes an IDR every n GOPs and gives the
+controller the same multiplier.  Not reproduced: the scene-cut IDR (class
+5) and run-time `IMP_Encoder_SetChnHSkip`.
 
 ## Not reproduced
 
@@ -138,25 +148,64 @@ never produces type-6 pictures.  A capture of the OEM stream in SMART mode
 
 ## Other SoCs
 
-- **T21 1.0.33**: the same eprc (identical function sizes except
-  FRAME_START +976 bytes and REPEATE_JUDGE, where T23 calls the
-  macroblock part `h264_api_enc` separately); module usable as is.
+- **T21 1.0.33**: an older revision of the same controller, *not*
+  identical.  The i264e glue differs (no parameter word at +4: every
+  parameter offset 4 lower, "rc enabled" is p[0] == 4; E at rc+484;
+  E one word shorter from E+44, so the outputs sit at E+1588/E+1596; the
+  state block offsets differ), `eprc_default_set_T21` writes other
+  defaults (E+184..+196, +208/+210, +277, +288..+293 in T23 terms), and
+  FRAME_START (1797 against 2041 instructions), FRAME_REPEATE_JUDGE (an
+  `update_qp` helper instead of the inline 2^(QP/6) search), VIDEO_CFG and
+  FRAME_END differ in code.  `tools/eprc_oracle.py` runs either library
+  (layout picked by the `h264_api_enc` symbol); on the seven test
+  scenarios the T21 vendor sequence differs from the T23 one from the
+  first picture on (first IDR QP: T21 starts from the init QP / min QP,
+  e.g. 15 or 20, T23 at 36), 447 of 847 lines differ.  src/eprc is the
+  T23 controller, so OpenIMP T21 runs it only with `OPENIMP_T21_EPRC=1`
+  (an approximation that gives T21 the RC extras, not the vendor
+  decisions); a vendor-equal T21 needs a port of these differences.
+  Equal on both: the per-picture QP window and lambda (`h264_api_enc`,
+  checked under emulation for FIXQP/CBR/VBR): lambda 384 + 48 / 96 + 12
+  per QP above 33, window [QP - 12, min(QP + 13, 51)] - the low end is
+  max(.., 1) on T23 and wraps to 51 below QP 12 on T21 (OpenIMP: 0).
+  OpenIMP's T21 command list now carries this lambda too.
 - **T20 / T10 3.12.0**: a different, smaller controller
   (`JZ_VPU_RC_VIDEO_CFG_T20`, `JZ_VPU_RC_FRAME_RC_T20`,
   `eprc_default_set_t20`); needs its own port (M5).
 
-## In the native T23 encoder (M4)
+## In the native T21/T23 encoder (M4, M5)
 
-`src/t30/t30_helix_encoder.c`: `t23_eprc_start` (create, reconfigure; the
-OEM re-runs `i264e_ratecontrol_init` on every rate-control change),
-`EPRC_FrameStart` per picture (frames since IDR from the GOP position),
-`t23_eprc_statistics` + `EPRC_FrameEnd` after the run (coded size = VPU
-output length; the OEM uses i264e's slice byte count, a few header bytes
-apart), re-encode at the controller's QP.  `OPENIMP_T23_EPRC`: unset =
-SMART only, `1` = CBR/VBR/SMART, `0` = off.  `OPENIMP_T23_SMART_IDR_GOPS`:
-SMART IDR period in GOPs (param[2756]; unknown default, see above).
+`src/t30/t30_helix_encoder.c` (T21 and T23): `helix_eprc_start` (create,
+every rate-control change; the OEM re-runs `i264e_ratecontrol_init`) with
+the parameters as `IMP_Encoder_CreateChn` + `i264e_validate_parameters`
+(run time: `i264e_reconfig_rc_set`) leave them - the values
+`GetChnAttrRcMode` reads back: iBiasLvl -10..10, frm/gopQPStep 2..51
+(run time: negative -> 0), VBR/SMART staticTime <= 0 -> 1, changePos
+50..100 (run time 0..100), qualityLvl 0..6, maxBitRate >= 128 kbit/s; CBR
+has no staticTime/changePos/qualityLvl and keeps the i264e defaults 2/80/4
+(CreateChn 0x4ee74 copies only the CBR fields); without application
+extras all i264e defaults (steps 3/15).  `EPRC_FrameStart` per picture
+(frames since IDR), `helix_eprc_statistics` (25 x soc_vpu
+IOCTL_CHANNEL_WOR_VPU_REG: T23 0xc0586307 at 0x13100000, T21 0xc0386307 at
+0x13200000 as the OEM `hwicodec_pf_h264e_t21_enc` 0x1ffe4; the T21 kernel
+patch 0098 allows reads inside the Helix window) and `EPRC_FrameEndEx`
+after the run (coded size = VPU output length; the OEM uses i264e's slice
+byte count, a few header bytes apart), re-encode at the controller's QP.
 
-## Device test plan (cam-B, T23)
+Re-encoding and the shared reference ring (default on T21/T23 up to
+1080p): a P picture's reconstruction overwrites the reference rows it was
+predicted from (recon n lies 256 lines before reference n-1 in the ring),
+so a P picture is never coded a second time in ring mode; the controller
+then finishes it as a picture that was not judged
+(`EPRC_FrameEndEx(.., may_repeat = 0)`).  IDR pictures (no reference read)
+and pictures without the ring are re-encoded as the OEM does.
+
+Switches: `OPENIMP_T23_EPRC` unset = SMART, `1` = CBR/VBR/SMART, `0` = off;
+`OPENIMP_T21_EPRC` unset/`0` = off (the T21 GOP controller), `1` =
+CBR/VBR/SMART with the T23 controller (see "Other SoCs");
+`OPENIMP_T23_SMART_IDR_GOPS=n` overrides maxSameSceneCnt for SMART on T23.
+
+## Device test plan (cam-B T23, cam-D T21)
 
 Bind-mount the built libimp over `/usr/lib/libimp.so`, run timps on a
 config copy with `video0.rc_mode=smart`, `OPENIMP_T23_RC_STATS=10`.
@@ -177,3 +226,10 @@ config copy with `video0.rc_mode=smart`, `OPENIMP_T23_RC_STATS=10`.
    `ffprobe -debug qp` or `h264_analyze`).
 5. `OPENIMP_T23_EPRC=1` with `rc_mode=vbr` and `rc_mode=cbr`: bitrate on
    target, decode clean.
+6. Ring: the start log still says `reference sharing on`; with ring P
+   pictures are not re-encoded (only IDR `coding again` lines).
+7. T21 (cam-D, .24): first without switch (`T21 Helix eprc` absent, GOP
+   controller, but the lambda change of the command list is active for
+   QP > 33: decode clean, bitrate as before), then `OPENIMP_T21_EPRC=1`
+   with cbr/vbr/smart: `T21 Helix eprc: ...` line with the clamped
+   extras, no `reading 0x132... failed`, decode clean, bitrate vs target.

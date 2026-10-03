@@ -130,9 +130,24 @@ int DMA_FreePhys(uint32_t phys)
 {
     unsigned int i;
 
+    unsigned int n = 0;
+    uint32_t top = RMEM_SIZE - (2u << 20);
+
     for (i = 0; i < allocation_count; i++)
         if (allocations[i].phys == phys)
             allocations[i].size = 0;
+    /* drop freed entries and give the top region back once nothing in
+     * it is live: the tests create and destroy many encoders */
+    for (i = 0; i < allocation_count; i++) {
+        if (!allocations[i].size)
+            continue;
+        allocations[n++] = allocations[i];
+        if (allocations[i].phys - RMEM_PHYS >= rmem_used &&
+            allocations[i].phys - RMEM_PHYS < top)
+            top = allocations[i].phys - RMEM_PHYS;
+    }
+    allocation_count = n;
+    rmem_top = top;
     return 0;
 }
 

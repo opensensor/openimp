@@ -64,8 +64,11 @@ class Lib:
         self.brk = HEAP + 0x1000000
         self.lastpc = 0
         self.unaligned_count = 0
-        self.code = {a: self.r32(a) for a in range(0xbd600, 0xcce90, 4)}
-        uc.hook_add(UC_HOOK_CODE, self._track, begin=0xbd600, end=0xcce90)
+        # T23 1.3.0 has h264_api_enc as a function, T21 1.0.33 inlines it
+        self.lay = LAYOUT_T23 if 'h264_api_enc' in self.syms else LAYOUT_T21
+        lo, hi = self.lay['code']
+        self.code = {a: self.r32(a) for a in range(lo, hi, 4)}
+        uc.hook_add(UC_HOOK_CODE, self._track, begin=lo, end=hi)
         # enable FPU (CP0 Status.CU1); FR stays 0 (o32 fp32)
         st = uc.reg_read(UC_MIPS_REG_CP0_STATUS)
         uc.reg_write(UC_MIPS_REG_CP0_STATUS, st | (1 << 29))
@@ -215,7 +218,15 @@ class Lib:
     def w32(self, a, v): self.wr(a, struct.pack('<I', v & 0xffffffff))
     def w16(self, a, v): self.wr(a, struct.pack('<H', v & 0xffff))
     def w8(self, a, v): self.wr(a, bytes([v & 0xff]))
-TABLE_ADDR = 0xd7a40
+# The i264e glue around the (shared) eprc controller differs between the
+# T23 1.3.0 and T21 1.0.33 libraries: T21 lacks the i264e parameter word at
+# +4 (every parameter offset 4 lower, the "rc enabled" test is p[0] == 4
+# instead of p[4] in {4, 5}), its controller block E starts at rc + 484
+# (T23 rc + 496) and the picture outputs lie 4 bytes lower in E.
+LAYOUT_T23 = dict(name='T23', code=(0xbd600, 0xcce90), table=0xd7a40, pshift=0,
+                  enable=(4, 4), rc=4896, slice=3880, qp=2096)
+LAYOUT_T21 = dict(name='T21', code=(0x8edc0, 0x9d630), table=0xa7aa0, pshift=-4,
+                  enable=(0, 4), rc=4784, slice=3884, qp=2080)
 
 class Sim:
     def __init__(self, lib, mode=3, w=1920, h=1080, gop=25, fps=(25, 1), minqp=15, maxqp=45,
@@ -228,17 +239,22 @@ class Sim:
         L.wr(HEAP, bytes(0x40000))
         R = self.R
         L.call('i264e_param_default', R)
-        def p(o, v): L.w32(R + o, v)
-        p(4, 4); p(44, gop); p(56, w); p(60, h); p(408, fps[0]); p(412, fps[1])
+        lay = L.lay
+        def p(o, v): L.w32(R + o + (lay['pshift'] if o != 2756 else 0), v)
+        L.w32(R + lay['enable'][0], lay['enable'][1])
+        p(44, gop); p(56, w); p(60, h); p(408, fps[0]); p(412, fps[1])
         p(200, mode); p(208, minqp); p(212, maxqp); p(228, bitrate); p(240, bias & 0xffffffff)
         p(244, frm_step); p(248, gop_step); p(256, static_time); p(260, maxbitrate)
-        p(264, change_pos); p(268, quality); p(2756, bgmul)
+        p(264, change_pos); p(268, quality)
+        # skip header (i264e_init_skip_header at rc+2752 / +2700) word 1:
+        # hSkipAttr.maxSameSceneCnt
+        L.w32(R + (2756 if lay['name'] == 'T23' else 2704), bgmul)
         for o, v in (extra or {}).items(): p(o, v)
         L.call('i264e_ratecontrol_init', R, rclevel)
         H = self.H
-        L.w32(H + 4896, R); L.w32(H + 896, self.F); L.w32(H + 912, self.ST)
-        L.w32(H + 2876, self.TB); L.w32(H + 2872, 312); L.w32(H + 3880, self.SL)
-        tab = struct.unpack('<39I', L.rd(TABLE_ADDR, 156))
+        L.w32(H + lay['rc'], R); L.w32(H + 896, self.F); L.w32(H + 912, self.ST)
+        L.w32(H + 2876, self.TB); L.w32(H + 2872, 312); L.w32(H + lay['slice'], self.SL)
+        tab = struct.unpack('<39I', L.rd(lay['table'], 156))
         for i, o in enumerate(tab): L.w32(self.TB + 8 * i, o)
         self.n = 0
 
@@ -246,7 +262,7 @@ class Sim:
         L = self.L
         L.w32(self.H, self.n)
         L.call('i264e_ratecontrol_start', self.H)
-        return L.r32(self.R + 2088), L.rd(self.R + 2096, 1)[0]
+        return L.r32(self.R + L.lay['qp'] - 8), L.rd(self.R + L.lay['qp'], 1)[0]
 
     def end(self, nbytes, regs):
         L = self.L
@@ -306,11 +322,12 @@ def validated_vbv(lib, w, h):
     R = HEAP + 0x10000
     L.wr(HEAP, bytes(0x40000))
     L.call('i264e_param_default', R)
-    L.w32(R + 56, w)
-    L.w32(R + 60, h)
-    L.w32(R + 4, 4)
+    sh = L.lay['pshift']
+    L.w32(R + 56 + sh, w)
+    L.w32(R + 60 + sh, h)
+    L.w32(R + L.lay['enable'][0], L.lay['enable'][1])
     L.call('i264e_validate_parameters', R)
-    return {292: L.r32(R + 292), 296: L.r32(R + 296)}
+    return {292: L.r32(R + 292 + sh), 296: L.r32(R + 296 + sh)}
 
 
 def main():
@@ -329,7 +346,7 @@ def main():
             s.L.w32(s.H, since)
             s.L.call('i264e_ratecontrol_start', s.H)
             t = s.L.rd(s.SL, 1)[0]        # picture type (2 IDR, 6 GOP start, 0 P)
-            qp = s.L.rd(s.R + 2096, 1)[0]
+            qp = s.L.rd(s.R + s.L.lay['qp'], 1)[0]
             out = [t, qp]
             size = picture_bytes(f, qp, since == 0, w * h, n % 2)
             regs = statistics(f)
@@ -341,7 +358,7 @@ def main():
                 r = s.L.call('i264e_ratecontrol_is_reenc', s.H)
                 if r != 1:
                     break
-                qp = s.L.rd(s.R + 2096, 1)[0]
+                qp = s.L.rd(s.R + s.L.lay['qp'], 1)[0]
                 out.append(qp)
                 size = max(size // 2, 20)
             print('F', since, ' '.join(str(v) for v in out))

@@ -61,7 +61,7 @@ typedef T21H264SliceConfig PlatformH264SliceConfig;
 typedef T30H264SliceConfig PlatformH264SliceConfig;
 #endif
 #include "t40/t31_rate_control.h"
-#if defined(PLATFORM_T23)
+#if defined(HELIX_T21_SYNTAX)
 #include "eprc/eprc.h"
 #endif
 
@@ -318,12 +318,13 @@ struct T30HelixEncoder {
     uint32_t overflows;         /* pictures dropped on overflow */
     uint32_t canary_hits;       /* overflows that wrote past the window */
     int shared_bs;              /* bitstream in the shared area */
+#endif
+#if defined(HELIX_T21_SYNTAX)
     /* OEM picture rate control (src/eprc, docs/T23_EPRC.md) */
     Eprc eprc;
     uint8_t *eprc_slice;        /* OEM slice-parameter block */
     int eprc_on;
-    int eprc_qp;                /* >= 0: QP of a requested re-encode */
-    uint32_t eprc_idr_gops;     /* SMART IDR period in GOPs (0, 1: GOP) */
+    uint32_t eprc_idr_gops;     /* IDR period in GOPs (0, 1: every GOP) */
     uint32_t eprc_reencodes;
     uint32_t eprc_stat_errors;
 #endif
@@ -1195,13 +1196,42 @@ static void t23_rc_stats(T30HelixEncoder *encoder, uint32_t qp, int idr,
 #define T30_RC_TARGET(encoder) ((encoder)->params.bitrate)
 #endif
 
+#if defined(HELIX_T21_SYNTAX)
 #if defined(PLATFORM_T23)
-/* OPENIMP_T23_EPRC: which rate-control modes run the OEM picture rate
- * controller (src/eprc).  Unset: SMART; "1": CBR, VBR and SMART; "0": none
- * (the GOP controller with the band mapping, t23_rc_config). */
-static int t23_eprc_wanted(const T30HelixEncoder *encoder)
+#define HELIX_EPRC_TAG     "T23"
+#define HELIX_EPRC_ENV     "OPENIMP_T23_EPRC"
+/* soc_vpu IOCTL_CHANNEL_WOR_VPU_REG, _IOWR('c', 7, 88-byte node) */
+#define HELIX_REG_BASE     0x13100000u
+#define HELIX_CHANNEL_REG  0xc0586307u
+#define HELIX_NODE_WORDS   22
+#else
+#define HELIX_EPRC_TAG     "T21"
+#define HELIX_EPRC_ENV     "OPENIMP_T21_EPRC"
+/* the same ioctl with the 56-byte T21 node (OEM hwicodec_pf_h264e_t21_enc
+ * 0x1ffe4: 0xc0386307, 0x13200000 + offset) */
+#define HELIX_REG_BASE     0x13200000u
+#define HELIX_CHANNEL_REG  0xc0386307u
+#define HELIX_NODE_WORDS   14
+#endif
+/* i264e_param_default values IMP_Encoder_CreateChn leaves in place (CBR
+ * has no staticTime/changePos/qualityLvl; without HW_RC_FLAG_APP nothing
+ * came from the application) */
+#define HELIX_I264E_STATIC_TIME 2u
+#define HELIX_I264E_CHANGE_POS  80u
+#define HELIX_I264E_QUALITY_LVL 4u
+#define HELIX_I264E_FRM_STEP    3u
+#define HELIX_I264E_GOP_STEP    15u
+
+/* Which rate-control modes run the OEM picture rate controller (src/eprc).
+ * T23 (OPENIMP_T23_EPRC): unset = SMART, "1" = CBR, VBR and SMART, "0" =
+ * none (the GOP controller with the band mapping, t23_rc_config).
+ * T21 (OPENIMP_T21_EPRC): unset or "0" = none, "1" = CBR, VBR and SMART.
+ * src/eprc is the T23 1.3.0 controller; the T21 1.0.33 one is an older
+ * revision whose decisions differ (tools/eprc_oracle.py, docs/T23_EPRC.md),
+ * so T21 keeps its GOP controller by default. */
+static int helix_eprc_wanted(const T30HelixEncoder *encoder)
 {
-    const char *env = getenv("OPENIMP_T23_EPRC");
+    const char *env = getenv(HELIX_EPRC_ENV);
     int smart = encoder->params.rc_mode == HW_RC_MODE_VBR &&
                 (encoder->params.rc_flags & HW_RC_FLAG_SMART);
 
@@ -1211,29 +1241,108 @@ static int t23_eprc_wanted(const T30HelixEncoder *encoder)
         return 0;
     if (env && env[0] == '1')
         return 1;
+#if defined(PLATFORM_T23)
     return smart;
+#else
+    (void)smart;
+    return 0;
+#endif
 }
 
-static void t23_eprc_stop(T30HelixEncoder *encoder)
+static void helix_eprc_stop(T30HelixEncoder *encoder)
 {
     if (encoder->eprc_on)
         EPRC_Free(&encoder->eprc);
     encoder->eprc_on = 0;
-    encoder->eprc_qp = -1;
 }
 
-/* i264e_ratecontrol_init from the channel parameters: the extras as the
- * OEM validates them (t23_rc_config), the i264e defaults without them. */
-static void t23_eprc_start(T30HelixEncoder *encoder)
+static int32_t helix_rc_clip(int32_t value, int32_t lo, int32_t hi)
+{
+    return value < lo ? lo : value > hi ? hi : value;
+}
+
+/* frm/gopQPStep: CreateChn (i264e_validate_parameters) 2..51; a run-time
+ * SetChnAttrRcMode (i264e_reconfig_rc_set) only turns negative into 0 */
+static uint32_t helix_rc_step(uint32_t value, int runtime)
+{
+    if (runtime)
+        return (int32_t)value < 0 ? 0u : value;
+    return (uint32_t)helix_rc_clip((int32_t)value, 2, 51);
+}
+
+/* The i264e parameters i264e_ratecontrol_init hands the controller: the
+ * application's extras as IMP_Encoder_CreateChn copies them and
+ * i264e_validate_parameters (run time: i264e_reconfig_rc_set) clamps them -
+ * the same values IMP_Encoder_GetChnAttrRcMode reads back
+ * (src/t40/p2_rc_readback.h) - and the i264e defaults for the fields the
+ * mode has none of. */
+static void helix_eprc_params(const HWEncoderParams *hp, EprcParams *p)
+{
+    int app = (hp->rc_flags & HW_RC_FLAG_APP) != 0;
+    int runtime = (hp->rc_flags & HW_RC_FLAG_RUNTIME) != 0;
+    int vbr = hp->rc_mode == HW_RC_MODE_VBR;
+    int smart = vbr && (hp->rc_flags & HW_RC_FLAG_SMART);
+
+    memset(p, 0, sizeof(*p));
+    p->width = hp->width;
+    p->height = hp->height;
+    p->rc_mode = hp->rc_mode == HW_RC_MODE_CBR ? EPRC_MODE_CBR :
+                 smart ? EPRC_MODE_SMART : EPRC_MODE_VBR;
+    p->gop = hp->gop_length;
+    p->fps_num = hp->fps_num;
+    p->fps_den = hp->fps_den;
+    p->min_qp = hp->min_qp;
+    p->max_qp = hp->max_qp;
+    p->bitrate = hp->bitrate / 1000u;
+    p->max_bitrate = hp->bitrate / 1000u;
+    if (p->max_bitrate < 128u)
+        p->max_bitrate = 128u;
+    p->i_bias = app ? helix_rc_clip(hp->bias_level, -10, 10) : 0;
+    p->frm_qp_step = app ? helix_rc_step(hp->frm_qp_step, runtime)
+                         : HELIX_I264E_FRM_STEP;
+    p->gop_qp_step = app ? helix_rc_step(hp->gop_qp_step, runtime)
+                         : HELIX_I264E_GOP_STEP;
+    if (app && vbr) {
+        p->static_time = (int32_t)hp->static_time <= 0 ? 1u
+                                                       : hp->static_time;
+        p->change_pos = (uint32_t)helix_rc_clip((int32_t)hp->change_pos,
+                                                runtime ? 0 : 50, 100);
+        p->quality = (uint32_t)helix_rc_clip((int32_t)hp->quality_level,
+                                             0, 6);
+    } else {
+        p->static_time = HELIX_I264E_STATIC_TIME;
+        p->change_pos = HELIX_I264E_CHANGE_POS;
+        p->quality = HELIX_I264E_QUALITY_LVL;
+    }
+    p->init_qp = -1;
+}
+
+/* IDR period in GOPs: the application's maxSameSceneCnt (OEM skip header
+ * word 1 = i264e rc +2756: IDR every n GOPs, SMART background interval);
+ * OPENIMP_T23_SMART_IDR_GOPS overrides it for SMART on T23. */
+static uint32_t helix_eprc_idr_gops(const HWEncoderParams *hp, int smart)
+{
+    uint32_t gops = hp->same_scene_gops;
+#if defined(PLATFORM_T23)
+    const char *env = getenv("OPENIMP_T23_SMART_IDR_GOPS");
+
+    if (smart && env)
+        gops = (uint32_t)strtoul(env, NULL, 0);
+#else
+    (void)smart;
+#endif
+    return gops > 100u ? 100u : gops;
+}
+
+/* i264e_ratecontrol_init (create, and every rate-control change: the OEM
+ * re-runs it from i264e_reconfig). */
+static void helix_eprc_start(T30HelixEncoder *encoder)
 {
     const HWEncoderParams *hp = &encoder->params;
-    const T23RcConfig *rc = &encoder->rc;
     EprcParams p;
-    const char *env;
-    int smart;
 
-    t23_eprc_stop(encoder);
-    if (!t23_eprc_wanted(encoder) || !hp->fps_num || !hp->fps_den ||
+    helix_eprc_stop(encoder);
+    if (!helix_eprc_wanted(encoder) || !hp->fps_num || !hp->fps_den ||
         !hp->gop_length)
         return;
     if (!encoder->eprc_slice) {
@@ -1241,44 +1350,21 @@ static void t23_eprc_start(T30HelixEncoder *encoder)
         if (!encoder->eprc_slice)
             return;
     }
-    smart = hp->rc_mode == HW_RC_MODE_VBR && (hp->rc_flags & HW_RC_FLAG_SMART);
-    memset(&p, 0, sizeof(p));
-    p.width = hp->width;
-    p.height = hp->height;
-    p.rc_mode = hp->rc_mode == HW_RC_MODE_CBR ? EPRC_MODE_CBR :
-                smart ? EPRC_MODE_SMART : EPRC_MODE_VBR;
-    p.gop = hp->gop_length;
-    p.fps_num = hp->fps_num;
-    p.fps_den = hp->fps_den;
-    p.min_qp = hp->min_qp;
-    p.max_qp = hp->max_qp;
-    p.bitrate = hp->bitrate / 1000u;
-    p.max_bitrate = hp->bitrate / 1000u;
-    if (p.max_bitrate < 128u)
-        p.max_bitrate = 128u;
-    p.i_bias = rc->app ? rc->bias : 0;
-    p.frm_qp_step = rc->app ? rc->frm_step : T23_RC_DEF_FRM_STEP;
-    p.gop_qp_step = rc->app ? rc->gop_step : T23_RC_DEF_GOP_STEP;
-    p.static_time = rc->static_time ? rc->static_time : T23_RC_DEF_STATIC_TIME;
-    p.change_pos = rc->change_pos ? rc->change_pos : T23_RC_DEF_CHANGE_POS;
-    p.quality = rc->app && hp->rc_mode == HW_RC_MODE_VBR ? rc->quality_level :
-                T23_RC_DEF_QUALITY_LVL;
-    env = getenv("OPENIMP_T23_SMART_IDR_GOPS");
-    encoder->eprc_idr_gops = smart && env ? (uint32_t)strtoul(env, NULL, 0) : 0u;
-    if (encoder->eprc_idr_gops > 100u)
-        encoder->eprc_idr_gops = 100u;
+    helix_eprc_params(hp, &p);
+    encoder->eprc_idr_gops =
+        helix_eprc_idr_gops(hp, p.rc_mode == EPRC_MODE_SMART);
     p.bg_interval_gops = encoder->eprc_idr_gops;
-    p.init_qp = -1;
     memset(encoder->eprc_slice, 0, EPRC_SLICE_SIZE);
     if (EPRC_Init(&encoder->eprc, &p, encoder->eprc_slice) != 0) {
-        IMP_LOG_WARN("Encoder", "T23 Helix: OEM rate control init failed, "
-                     "using the GOP controller");
+        IMP_LOG_WARN("Encoder", HELIX_EPRC_TAG " Helix: OEM rate control "
+                     "init failed, using the GOP controller");
         return;
     }
     encoder->eprc_on = 1;
-    IMP_LOG_INFO("Encoder", "T23 Helix eprc: %s %ux%u gop=%u fps=%u/%u "
-                 "bitrate=%u kbit/s qp=[%u,%u] bias=%d steps=%u/%u "
-                 "static=%u changePos=%u quality=%u idr=%u gop(s)",
+    IMP_LOG_INFO("Encoder", HELIX_EPRC_TAG " Helix eprc: %s %ux%u gop=%u "
+                 "fps=%u/%u bitrate=%u kbit/s qp=[%u,%u] bias=%d "
+                 "steps=%u/%u static=%u changePos=%u quality=%u "
+                 "idr=%u gop(s)",
                  p.rc_mode == EPRC_MODE_CBR ? "CBR" :
                  p.rc_mode == EPRC_MODE_SMART ? "SMART" : "VBR",
                  p.width, p.height, p.gop, p.fps_num, p.fps_den,
@@ -1288,34 +1374,59 @@ static void t23_eprc_start(T30HelixEncoder *encoder)
                  encoder->eprc_idr_gops ? encoder->eprc_idr_gops : 1u);
 }
 
-/* The Helix statistics the OEM reads after each picture
- * (_jz_hwicodec_pf_h264e_t21_set_priv): soc_vpu IOCTL_CHANNEL_WOR_VPU_REG
- * reads one register word. */
-#define T23_HELIX_REG_BASE 0x13100000u
-#define T23_CHANNEL_REG    0xc0586307u
-
-static void t23_eprc_statistics(T30HelixEncoder *encoder,
-                                uint32_t regs[EPRC_STAT_REGS])
+/* The Helix statistics the OEM reads after each picture (T23
+ * _jz_hwicodec_pf_h264e_t21_set_priv, T21 hwicodec_pf_h264e_t21_enc): one
+ * register word per IOCTL_CHANNEL_WOR_VPU_REG. */
+static void helix_eprc_statistics(T30HelixEncoder *encoder,
+                                  uint32_t regs[EPRC_STAT_REGS])
 {
     unsigned int i;
 
     for (i = 0; i < EPRC_STAT_REGS; i++) {
-        /* struct reg_info { paddr, value, dir (0 read) }; the ioctl size
-         * is the 88-byte channel node */
-        uint32_t node[22];
+        /* struct reg_info { paddr, value, dir (0 read) } at the start of
+         * a node-sized buffer (the ioctl size) */
+        uint32_t node[HELIX_NODE_WORDS];
 
         memset(node, 0, sizeof(node));
-        node[0] = T23_HELIX_REG_BASE + EPRC_StatRegs[i];
-        if (ioctl(encoder->fd, T23_CHANNEL_REG, node) != 0) {
+        node[0] = HELIX_REG_BASE + EPRC_StatRegs[i];
+        if (ioctl(encoder->fd, HELIX_CHANNEL_REG, node) != 0) {
             if (encoder->eprc_stat_errors++ == 0)
-                IMP_LOG_WARN("Encoder", "T23 Helix eprc: reading 0x%08x "
-                             "failed (%s); statistics are 0",
+                IMP_LOG_WARN("Encoder", HELIX_EPRC_TAG " Helix eprc: "
+                             "reading 0x%08x failed (%s); statistics are 0",
                              node[0], strerror(errno));
             memset(regs, 0, EPRC_STAT_REGS * sizeof(regs[0]));
             return;
         }
         regs[i] = node[1];
     }
+}
+
+/* After a picture: statistics, FRAME_REPEATE_JUDGE and FRAME_END.  Returns
+ * 1 with *qp set when the picture is to be coded again.  With the shared
+ * reference ring a P picture is never coded again: its reconstruction has
+ * already overwritten the reference rows it was predicted from (the ring
+ * keeps only 256 spare lines), so a second run would predict from a
+ * damaged reference.  The controller then finishes the picture as the OEM
+ * i264e does without a re-encode request. */
+static int helix_eprc_end(T30HelixEncoder *encoder, int idr, uint32_t *qp)
+{
+    uint32_t regs[EPRC_STAT_REGS];
+    EprcPicture pic;
+    int may_repeat = !(encoder->ref_share && !idr);
+
+    helix_eprc_statistics(encoder, regs);
+    if (EPRC_FrameEndEx(&encoder->eprc, encoder->channel.output_len, regs,
+                        &pic, may_repeat) != 1)
+        return 0;
+    encoder->eprc_reencodes++;
+    if (encoder->eprc_reencodes <= 3u || encoder->eprc_reencodes % 100u == 0u)
+        IMP_LOG_INFO("Encoder", HELIX_EPRC_TAG " Helix eprc: frame=%u %s %u "
+                     "bytes too large at qp=%u, coding again at qp=%u "
+                     "(%u so far)", encoder->frame_number,
+                     idr ? "IDR" : "P", encoder->channel.output_len, *qp,
+                     pic.qp, encoder->eprc_reencodes);
+    *qp = pic.qp;
+    return 1;
 }
 #endif
 
@@ -1346,7 +1457,9 @@ static void t30_start_rate_control(T30HelixEncoder *encoder,
             encoder->params.max_qp, initial_qp) == 0;
 #if defined(PLATFORM_T23)
     t23_rc_apply_band(encoder);
-    t23_eprc_start(encoder);
+#endif
+#if defined(HELIX_T21_SYNTAX)
+    helix_eprc_start(encoder);
 #endif
 }
 
@@ -1963,7 +2076,7 @@ static int t30_helix_encode_job(T30HelixEncoder *encoder,
 #endif
     idr = encoder->force_idr || !encoder->have_reference ||
           encoder->gop_position >= encoder->params.gop_length
-#if defined(PLATFORM_T23)
+#if defined(HELIX_T21_SYNTAX)
               * (encoder->eprc_on && encoder->eprc_idr_gops ?
                  encoder->eprc_idr_gops : 1u)
 #endif
@@ -1973,8 +2086,7 @@ static int t30_helix_encode_job(T30HelixEncoder *encoder,
         : encoder->params.qp;
     if (idr && encoder->params.rc_mode == HW_RC_MODE_FIXQP)
         qp = t30_fixqp_idr_qp(&encoder->params);
-#if defined(PLATFORM_T23)
-    encoder->eprc_qp = -1;
+#if defined(HELIX_T21_SYNTAX)
     if (encoder->eprc_on) {
         EprcFrameIn in;
         EprcPicture pic;
@@ -1984,11 +2096,13 @@ static int t30_helix_encode_job(T30HelixEncoder *encoder,
         if (EPRC_FrameStart(&encoder->eprc, &in, &pic) == 0) {
             qp = pic.qp;
         } else {
-            IMP_LOG_WARN("Encoder", "T23 Helix eprc: picture start failed, "
-                         "using the GOP controller");
-            t23_eprc_stop(encoder);
+            IMP_LOG_WARN("Encoder", HELIX_EPRC_TAG " Helix eprc: picture "
+                         "start failed, using the GOP controller");
+            helix_eprc_stop(encoder);
         }
     }
+#endif
+#if defined(PLATFORM_T23)
     if (!encoder->eprc_on)
         qp = t23_rc_picture_qp(encoder, qp, idr);
     qp = t23_overflow_qp(encoder, qp, idr);
@@ -1999,7 +2113,7 @@ static int t30_helix_encode_job(T30HelixEncoder *encoder,
     if (encoder->ref_share)
         output_index = 0u;      /* one ring in reference[0] */
 #endif
-#if defined(PLATFORM_T23)
+#if defined(HELIX_T21_SYNTAX)
 again:
 #endif
 
@@ -2161,27 +2275,9 @@ again:
         }
     }
     encoder->failures = 0;
-    if (encoder->eprc_on) {
-        uint32_t regs[EPRC_STAT_REGS];
-        EprcPicture pic;
-
-        t23_eprc_statistics(encoder, regs);
-        if (EPRC_FrameEnd(&encoder->eprc, encoder->channel.output_len, regs,
-                          &pic) == 1) {
-            /* OEM FRAME_REPEATE_JUDGE: code the picture again with the
-             * raised QP (the reference input is untouched) */
-            encoder->eprc_reencodes++;
-            if (encoder->eprc_reencodes <= 3u ||
-                encoder->eprc_reencodes % 100u == 0u)
-                IMP_LOG_INFO("Encoder", "T23 Helix eprc: frame=%u %s %u bytes "
-                             "too large at qp=%u, coding again at qp=%u "
-                             "(%u so far)", encoder->frame_number,
-                             idr ? "IDR" : "P", encoder->channel.output_len,
-                             qp, pic.qp, encoder->eprc_reencodes);
-            qp = pic.qp;
-            goto again;
-        }
-    }
+    /* OEM FRAME_REPEATE_JUDGE: code the picture again with the raised QP */
+    if (encoder->eprc_on && helix_eprc_end(encoder, idr, &qp))
+        goto again;
 #else
     /* Never let a RUN that returns without reporting a length republish the
      * previous picture's size over stale bitstream bytes. */
@@ -2194,6 +2290,10 @@ again:
                   encoder->channel.output_len);
         return -1;
     }
+#if defined(HELIX_T21_SYNTAX)
+    if (encoder->eprc_on && helix_eprc_end(encoder, idr, &qp))
+        goto again;
+#endif
 #endif
     if (DMA_RmemFlushCache(temporary + T30_SLICE_OFFSET,
                            encoder->channel.output_len, 2) != 0) {
@@ -2304,7 +2404,7 @@ static int t23_rate_control_restart(T30HelixEncoder *encoder)
             encoder->params.max_qp, qp) == 0)
         encoder->rate_control_enabled = 1;
     t23_rc_apply_band(encoder);
-    t23_eprc_start(encoder);
+    helix_eprc_start(encoder);
     return 0;
 }
 
@@ -2423,7 +2523,7 @@ int OpenIMP_T30_HelixReconfigure(T30HelixEncoder *encoder,
     if (restart)
         (void)t23_rate_control_restart(encoder);
     else
-        t23_eprc_start(encoder);   /* the OEM re-runs i264e_ratecontrol_init */
+        helix_eprc_start(encoder); /* the OEM re-runs i264e_ratecontrol_init */
     t23_rc_log(encoder, "reconfigured");
     return 0;
 }
@@ -2462,6 +2562,18 @@ int OpenIMP_T30_HelixUpdateParams(T30HelixEncoder *encoder,
     next.qp = requested->qp;
     next.min_qp = requested->min_qp;
     next.max_qp = requested->max_qp;
+#if defined(HELIX_T21_SYNTAX)
+    /* the rate-control extras and the IDR period go to the eprc
+     * controller (CreateChn, SetChnAttrRcMode) */
+    next.static_time = requested->static_time;
+    next.change_pos = requested->change_pos;
+    next.quality_level = requested->quality_level;
+    next.frm_qp_step = requested->frm_qp_step;
+    next.gop_qp_step = requested->gop_qp_step;
+    next.bias_level = requested->bias_level;
+    next.rc_flags = requested->rc_flags;
+    next.same_scene_gops = requested->same_scene_gops;
+#endif
     t30_normalize_params(&next, &encoder->params);
     if (!memcmp(&next, &encoder->params, sizeof(next)))
         return 0;
@@ -2488,10 +2600,17 @@ int OpenIMP_T30_HelixUpdateParams(T30HelixEncoder *encoder,
                                                     next.bitrate) != 0)
             return -1;
         encoder->params = next;
+#if defined(HELIX_T21_SYNTAX)
+        helix_eprc_start(encoder);  /* OEM: i264e_ratecontrol_init again */
+#endif
     } else {
         encoder->params = next;
         if (model_changed || !encoder->rate_control_enabled)
             t30_start_rate_control(encoder, qp);
+#if defined(HELIX_T21_SYNTAX)
+        else
+            helix_eprc_start(encoder);
+#endif
     }
 
     /* The SPS carries the level (frame rate and bitrate dependent) and, on
@@ -2534,7 +2653,9 @@ void OpenIMP_T30_HelixDestroy(T30HelixEncoder *encoder)
 #if defined(PLATFORM_T23)
     if (encoder->shared_bs)
         t23_bs_detach(&encoder->emc);
-    t23_eprc_stop(encoder);
+#endif
+#if defined(HELIX_T21_SYNTAX)
+    helix_eprc_stop(encoder);
     free(encoder->eprc_slice);
 #endif
     t30_dma_release(&encoder->emc);

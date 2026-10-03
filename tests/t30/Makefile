@@ -41,13 +41,14 @@ helix_encoder_test: $(HELIX_SOURCES) $(ROOT)/src/t30/t30_annexb.h $(ROOT)/src/t3
 		-o $@ $(HELIX_SOURCES)
 
 HELIX_T21_SOURCES := $(filter-out %/t30_h264_descriptor.c,$(HELIX_SOURCES)) \
-	$(ROOT)/src/t21/t21_h264_descriptor.c $(ROOT)/src/t30/helix_bitstream.c
+	$(ROOT)/src/t21/t21_h264_descriptor.c $(ROOT)/src/t30/helix_bitstream.c \
+	$(ROOT)/src/eprc/eprc.c
 
 helix_encoder_test_t21: $(HELIX_T21_SOURCES) $(ROOT)/src/t30/t30_annexb.h $(ROOT)/src/t30/t30_h264_level.h
 	$(CC) $(CFLAGS) -DPLATFORM_T21 -fno-pie -no-pie \
 		-I$(ROOT)/include -I$(ROOT)/src $(INCLUDES) \
 		-Wl,--wrap=open,--wrap=close,--wrap=ioctl \
-		-o $@ $(HELIX_T21_SOURCES)
+		-o $@ $(HELIX_T21_SOURCES) -lm
 
 # T21 reserved-memory layout: OpenIMP's arena, the real encoder and shared
 # bitstream buffer through timps' idle/re-enable cycles (PC420 numbers).
@@ -59,7 +60,7 @@ t21_rmem_layout_test: $(T21_RMEM_SOURCES) $(ROOT)/src/rmem_arena.h \
 	$(CC) $(CFLAGS) -DPLATFORM_T21 -fno-pie -no-pie \
 		-I$(ROOT)/include -I$(ROOT)/src $(INCLUDES) \
 		-Wl,--wrap=open,--wrap=close,--wrap=ioctl \
-		-o $@ $(T21_RMEM_SOURCES) -pthread
+		-o $@ $(T21_RMEM_SOURCES) -pthread -lm
 
 # T23 with the reference ring: ring, EMC and the shared bitstream area.
 t23_ring_layout_test: $(T21_RMEM_SOURCES) $(ROOT)/src/rmem_arena.h \
@@ -67,7 +68,7 @@ t23_ring_layout_test: $(T21_RMEM_SOURCES) $(ROOT)/src/rmem_arena.h \
 	$(CC) $(CFLAGS) -DPLATFORM_T23 -fno-pie -no-pie \
 		-I$(ROOT)/include -I$(ROOT)/src $(INCLUDES) \
 		-Wl,--wrap=open,--wrap=close,--wrap=ioctl \
-		-o $@ $(T21_RMEM_SOURCES) -pthread
+		-o $@ $(T21_RMEM_SOURCES) -pthread -lm
 
 t21_sinter_map_test: t21_sinter_map_test.c $(ROOT)/src/isp/isp_t21_sinter.h
 	$(CC) $(CFLAGS) -I$(ROOT)/src -o $@ t21_sinter_map_test.c
@@ -200,7 +201,7 @@ sanitize: $(FS_DEPS) $(HELIX_SOURCES) $(HELIX_T21_SOURCES) $(IVS_DEPS)
 		$(SAN_CC) $(HELIX_SANITIZE) -DPLATFORM_$$defs -fno-pie -no-pie \
 			-I$(ROOT)/include -I$(ROOT)/src $(INCLUDES) \
 			-Wl,--wrap=open,--wrap=close,--wrap=ioctl \
-			-o helix_encoder_asan_$$name $$srcs; \
+			-o helix_encoder_asan_$$name $$srcs -lm; \
 		./helix_encoder_asan_$$name; \
 	done
 	set -e; for soc in "T21" "T20 -DPLATFORM_T21"; do \

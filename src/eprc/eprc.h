@@ -105,6 +105,12 @@ extern const uint32_t EPRC_StatRegs[EPRC_STAT_REGS];
  * FRAME_REPEATE_JUDGE), else 0. */
 int EPRC_FrameEnd(Eprc *rc, uint32_t bytes, const uint32_t regs[EPRC_STAT_REGS],
                   EprcPicture *pic);
+/* EPRC_FrameEnd; may_repeat 0 skips FRAME_REPEATE_JUDGE (as the OEM
+ * i264e_ratecontrol_is_reenc does when re-encoding is not enabled) and
+ * always finishes the picture: for a caller that cannot code it again. */
+int EPRC_FrameEndEx(Eprc *rc, uint32_t bytes,
+                    const uint32_t regs[EPRC_STAT_REGS], EprcPicture *pic,
+                    int may_repeat);
 void EPRC_GopInit(Eprc *rc);
 
 /* Internal steps, exposed for the emulator comparison (tests). */

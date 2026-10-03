@@ -7619,6 +7619,14 @@ int AL_Codec_Encode_SetRcExtras(void *codec, const void *rcMode)
     codec_sync_rc_cache((AL_CodecEncode *)codec);
     return 0;
 }
+
+int AL_Codec_Encode_SetSameSceneGops(void *codec, uint32_t gops)
+{
+    if (codec == NULL)
+        return -1;
+    ((AL_CodecEncode *)codec)->hw_params.same_scene_gops = gops;
+    return 0;
+}
 #endif
 
 static void codec_sync_rc_cache(AL_CodecEncode *enc)

@@ -1935,7 +1935,7 @@ done:
 
 /* JZ_VPU_RC_FRAME_REPEATE_JUDGE_T21 (0xcc828): 1 when the picture is too
  * large and is to be coded again with the QP raised. */
-static int eprc_repeat_judge(Eprc *rc)
+static int eprc_repeat_judge(Eprc *rc, int may_repeat)
 {
     uint8_t *E = rc->e;
     uint8_t *A = rc->p;
@@ -1952,6 +1952,11 @@ static int eprc_repeat_judge(Eprc *rc)
     }
     if (EU32(E, 8) == 0 || EI32(E, 100) != 2)
         return 0;
+    if (!may_repeat) {
+        /* as a picture within its size limit */
+        S32(64) = 0;
+        return 0;
+    }
     if (EU32(E, 44) != 0) {
         if (S32(28) != 2)
             return 0;
@@ -2026,13 +2031,20 @@ static int eprc_repeat_judge(Eprc *rc)
 int EPRC_FrameEnd(Eprc *rc, uint32_t bytes, const uint32_t regs[EPRC_STAT_REGS],
                   EprcPicture *pic)
 {
+    return EPRC_FrameEndEx(rc, bytes, regs, pic, 1);
+}
+
+int EPRC_FrameEndEx(Eprc *rc, uint32_t bytes,
+                    const uint32_t regs[EPRC_STAT_REGS], EprcPicture *pic,
+                    int may_repeat)
+{
     uint8_t *E = rc->e;
     uint32_t bits = bytes * 8u;
 
     /* i264e_ratecontrol_end (0x4238c) and i264e_ratecontrol_is_reenc
      * (0x424d8) */
     EU32(E, 316) = bits;
-    if (eprc_repeat_judge(rc) > 0) {
+    if (eprc_repeat_judge(rc, may_repeat) > 0) {
         if (pic)
             eprc_picture_fields(rc, pic);
         return 1;

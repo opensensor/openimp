@@ -1020,8 +1020,10 @@ extern int AL_Codec_Encode_SetFrameRate(void *codec, void *fps);
 extern int AL_Codec_Encode_SetBitRate(void *codec, int target_bitrate,
                                      int max_bitrate);
 extern int AL_Codec_Encode_SetRcParam(void *codec, void *rc_attr);
-#if defined(PLATFORM_T23)
+#if defined(PLATFORM_T23) || \
+    (defined(PLATFORM_T21) && !defined(PLATFORM_T20))
 extern int AL_Codec_Encode_SetRcExtras(void *codec, const void *rc_mode);
+extern int AL_Codec_Encode_SetSameSceneGops(void *codec, uint32_t gops);
 #endif
 #if defined(PLATFORM_T31)
 extern int AL_Codec_Encode_SetRcQualityCap(void *codec, int rc_mode,
@@ -1649,12 +1651,29 @@ int IMP_Encoder_CreateChn(int channel, IMPEncoderCHNAttr *attr)
         return -1;
     }
     P2_STARTUP_MARKER("openimp/P2 marker C8 codec create returned\n");
-#if defined(PLATFORM_T23)
+#if defined(PLATFORM_T23) || \
+    (defined(PLATFORM_T21) && !defined(PLATFORM_T20))
     /* The codec parameter block has no room for the Helix rate-control
      * extras (staticTime, changePos, qualityLvl, QP steps, iBiasLvl, SMART):
      * hand them over as the OEM CreateChn hands its encoder the whole
      * rate-control attribute. */
     (void)AL_Codec_Encode_SetRcExtras(ch->codec, &attr->rcAttr.attrRcMode);
+#endif
+#if defined(PLATFORM_T23) || \
+    (defined(PLATFORM_T21) && !defined(PLATFORM_T20))
+    {
+        /* OEM CreateChn: hSkipAttr -> i264e param +172..+192 ->
+         * i264e_init_skip_header; i264e_decide_slice_type_and_rd codes an
+         * IDR every maxSameSceneCnt GOPs for the skip types N1X and H1M */
+        const IMPEncoderAttrHSkip *hs = &attr->rcAttr.attrHSkip.hSkipAttr;
+        int ok = hs->skipType == IMP_Encoder_STYPE_N1X ||
+                 hs->skipType == IMP_Encoder_STYPE_H1M_FALSE ||
+                 hs->skipType == IMP_Encoder_STYPE_H1M_TRUE;
+
+        (void)AL_Codec_Encode_SetSameSceneGops(
+            ch->codec, ok && hs->maxSameSceneCnt > 0 ?
+                           (uint32_t)hs->maxSameSceneCnt : 0u);
+    }
 #endif
     p2_startup_trace("openimp/P2 startup: CreateChn codec created %p\n",
                      ch->codec);

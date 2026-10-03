@@ -353,8 +353,50 @@ static void test_vendor_t23(void)
     assert(hit == (1u << sizeof(seen)) - 1u);  /* every observed byte */
 }
 
+/* QP window and lambda as the OEM h264_api_enc sets them from the picture
+ * QP, in every rate-control mode (FIXQP included), on T21 1.0.33 and T23
+ * 1.3.0 alike (vendor values from tools/eprc_oracle.py runs): lambda
+ * 384 + 48 / 96 + 12 per QP above 33, window [QP - 12, min(QP + 13, 51)];
+ * QP - 12 has the floor 1 on T23 and 0 on T21 (whose OEM wraps to 51 below
+ * QP 12, not reproduced). */
+static void test_qp_fields(void)
+{
+    static const struct { uint8_t qp; uint16_t l0, l1; uint8_t lo, hi; }
+    v[] = {
+        { 30, 384, 96, 18, 43 },
+        { 33, 384, 96, 21, 46 },
+        { 36, 528, 132, 24, 49 },
+        { 40, 720, 180, 28, 51 },
+        { 48, 1104, 276, 36, 51 },
+#if defined(T21_HELIX_T23_DELTAS)
+        { 8, 384, 96, 1, 21 },
+        { 12, 384, 96, 1, 25 },
+#else
+        { 12, 384, 96, 0, 25 },
+#endif
+    };
+    unsigned int i;
+
+    for (i = 0; i < sizeof(v) / sizeof(v[0]); i++) {
+        T21H264SliceConfig c;
+        size_t pairs = 0;
+        uint32_t w;
+
+        fill(&c, 1, 640, 360);
+        c.qp = v[i].qp;
+        assert(T21_H264_BuildDescriptor(&c, &pairs) == 0);
+        assert(get(pairs, 0xb001c) == v[i].l0);
+        assert(get(pairs, 0xb0020) == ((uint32_t)v[i].l1 << 16 | v[i].l1));
+        assert(get(pairs, 0x40040) == v[i].hi);
+        w = get(pairs, 0x40074);
+        assert(((w >> 24) & 0xffu) == v[i].hi);
+        assert(((w >> 16) & 0xffu) == v[i].lo);
+    }
+}
+
 int main(void)
 {
+    test_qp_fields();
     /* 1080p: 3.7 MiB instead of 2 x 3.0 MiB */
     assert(t21_ref_ring_bytes(120, 68) == 3870976u);
     assert(t21_ref_ring_bytes(120, 68) < 2u * (1920u * 1088u * 3u / 2u));
