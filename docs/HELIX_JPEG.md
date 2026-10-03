@@ -185,12 +185,16 @@ OpenIMP does the same (`HelixJpeg_QualityTables()`).
   JPEG channels (jobs are serialised) when a JPEG channel is created
   (`OpenIMP_HelixJpeg_Reserve`, `OPENIMP_HELIX_JPEG_RESERVE_AT_CREATE=0`
   defers it to the first picture), the 8 KiB command list followed by the
-  NV12-sized bitstream as in the stock library (the kernel's RUN writes
+  bitstream (NV12-sized as in the stock library, but at most 1 MiB, see
+  below; the kernel's RUN writes
   back and invalidates the first MiB from the command list), and frees it
   when the last JPEG channel is destroyed (`OpenIMP_HelixJpeg_Release`);
   `IMP_System_Exit` closes the VPU channel and frees everything
-  (`OpenIMP_HelixJpeg_Exit`). T23 programs `JPGC_MAX_BS` and caps the
-  buffer at 1 MiB (`OPENIMP_HELIX_JPEG_BS_KB`); the stock T23 library uses
+  (`OpenIMP_HelixJpeg_Exit`). The buffer is capped at 1 MiB
+  (`OPENIMP_HELIX_JPEG_BS_KB`): T23 programs `JPGC_MAX_BS` and repeats an
+  oversize picture with coarser quantizers, T20/T21/T30 encode a picture whose
+  worst case exceeds the buffer in stripes that always fit it (an oversize
+  picture is cut into stripes, never written past the buffer); the stock T23 library uses
   one 2.4 MB (600 KB on some variants) encoder pool shared by H.264 and
   JPEG (`IMP_Encoder_SetPoolSize`) and programs `JPGC_MAX_BS` with its
   size.

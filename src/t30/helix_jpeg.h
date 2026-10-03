@@ -107,8 +107,8 @@ typedef struct {
  * OPENIMP_HELIX_JPEG_RMEM_RESERVE_KB (default 1/16 of the arena, at least
  * 512) is the free rmem the encoder never allocates into;
  * OPENIMP_HELIX_JPEG_MAX_BS=1 also programs the bitstream limit on
- * T20/T21/T30; OPENIMP_HELIX_JPEG_BS_KB caps the buffer when the limit is
- * programmed (T23 default 1024); OPENIMP_HELIX_JPEG_DUMP=dir saves the first
+ * T20/T21/T30; OPENIMP_HELIX_JPEG_BS_KB caps the buffer (default 1024; T20/T21/T30
+ * stripe pictures that exceed it); OPENIMP_HELIX_JPEG_DUMP=dir saves the first
  * pictures (source rows and JPEG); OPENIMP_HELIX_JPEG_PROBE_MAX_BS_KB=n runs every job with an
  * n KiB limit in front of a guard and logs whether the core kept to it. */
 int OpenIMP_HelixJpeg_Available(void);
