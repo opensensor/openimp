@@ -8,6 +8,3 @@ driver/
 thingino-streamer/
 .vscode/
 /logs/
-tests/t30/ref_ring_test
-tests/t30/ref_ring_test_t23
-tests/t30/t23_ring_layout_test

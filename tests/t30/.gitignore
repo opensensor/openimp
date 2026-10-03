@@ -21,3 +21,6 @@ helix_jpeg_test_t20
 helix_jpeg_test_t21
 helix_jpeg_test_t23
 t21_rmem_layout_test
+ref_ring_test
+ref_ring_test_t23
+t23_ring_layout_test
