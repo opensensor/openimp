@@ -13,6 +13,8 @@
 #include <linux/kernel.h>
 #include <linux/kfifo.h>
 #include <linux/mm.h>
+#include <linux/mutex.h>
+#include <linux/bitops.h>
 #include <linux/module.h>
 #include <linux/moduleparam.h>
 #include <linux/of.h>
@@ -333,7 +335,6 @@ static long jz_cmd_flush_cache(unsigned long arg)
 	struct mm_struct *mm = current->mm;
 	struct vm_area_struct *vma;
 	unsigned long addr, end;
-	long ret = 0;
 
 	if (copy_from_user(&info, (void __user *)arg, sizeof(info))) {
 		return -EFAULT;
@@ -351,9 +352,13 @@ static long jz_cmd_flush_cache(unsigned long arg)
 
 	/* dma_cache_sync() runs cache instructions on the user address. A hole
 	 * or an inaccessible mapping in the range faults in kernel mode without
-	 * a fixup and oopses, so require readable VMAs over the whole range.
-	 * The lock is dropped before the cache operation because faulting in a
-	 * page there takes mmap_sem again. */
+	 * a fixup and oopses, so only the accessible VMAs that run contiguously
+	 * from the start address are flushed. A caller that rounds a short
+	 * range up past the end of its buffer keeps the part that matters
+	 * instead of having the whole flush refused. Only a start
+	 * address outside any accessible mapping is an error. The lock is
+	 * dropped before the cache operation because faulting in a page there
+	 * takes mmap_sem again. */
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 8, 0)
 	mmap_read_lock(mm);
 #else
@@ -362,10 +367,8 @@ static long jz_cmd_flush_cache(unsigned long arg)
 	while (addr < end) {
 		vma = find_vma(mm, addr);
 		if (!vma || vma->vm_start > addr ||
-		    !(vma->vm_flags & (VM_READ | VM_WRITE))) {
-			ret = -EFAULT;
+		    !(vma->vm_flags & (VM_READ | VM_WRITE)))
 			break;
-		}
 		addr = vma->vm_end;
 	}
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 8, 0)
@@ -373,8 +376,10 @@ static long jz_cmd_flush_cache(unsigned long arg)
 #else
 	up_read(&mm->mmap_sem);
 #endif
-	if (ret)
-		return ret;
+	if (addr == info.addr)
+		return -EFAULT;
+	if (addr < end)
+		info.len = addr - info.addr;
 
 	dma_cache_sync(NULL, (void *)(unsigned long)info.addr, info.len,
 		       info.dir);
@@ -659,10 +664,36 @@ static void avpu_deinit_clocks(struct avpu_codec_desc *codec)
 }
 #endif
 
+/* Minors handed out by probe and given back by remove; a rebind reuses its
+ * number instead of walking past the registered chrdev region. */
+static DECLARE_BITMAP(avpu_minors, AVPU_NR_DEVS);
+static DEFINE_MUTEX(avpu_minor_lock);
+
+static int avpu_get_minor(void)
+{
+	int limit = min(avpu_codec_nr_devs, AVPU_NR_DEVS);
+	int minor;
+
+	mutex_lock(&avpu_minor_lock);
+	minor = find_first_zero_bit(avpu_minors, limit);
+	if (minor < limit)
+		set_bit(minor, avpu_minors);
+	else
+		minor = -EBUSY;
+	mutex_unlock(&avpu_minor_lock);
+	return minor;
+}
+
+static void avpu_put_minor(int minor)
+{
+	mutex_lock(&avpu_minor_lock);
+	clear_bit(minor, avpu_minors);
+	mutex_unlock(&avpu_minor_lock);
+}
+
 int avpu_codec_probe(struct platform_device *pdev)
 {
-	int err, irq;
-	static int current_minor;
+	int err, irq, minor;
 	struct resource *res;
 	struct avpu_codec_desc *codec
 		= devm_kzalloc(&pdev->dev, sizeof(*codec), GFP_KERNEL);
@@ -713,12 +744,20 @@ int avpu_codec_probe(struct platform_device *pdev)
 
 	platform_set_drvdata(pdev, codec);
 
-	err = avpu_setup_codec_cdev(codec, current_minor, DEV_NAME);
-	if (err)
+	minor = avpu_get_minor();
+	if (minor < 0) {
+		err = minor;
+		avpu_err("No free minor\n");
 		goto out_irq;
+	}
 
-	codec->minor = current_minor;
-	++current_minor;
+	err = avpu_setup_codec_cdev(codec, minor, DEV_NAME);
+	if (err) {
+		avpu_put_minor(minor);
+		goto out_irq;
+	}
+
+	codec->minor = minor;
 	printk("@@@@ avpu driver ok(version %s) @@@@@\n", AVPU_DRIVER_VERSION);
 
 	return 0;
@@ -740,6 +779,7 @@ int avpu_codec_remove(struct platform_device *pdev)
 
 	device_destroy(module_class, dev);
 	clean_up_avpu_codec_cdev(codec);
+	avpu_put_minor(codec->minor);
 
 	if (codec->irq >= 0)
 		devm_free_irq(codec->device, codec->irq, codec);
@@ -761,6 +801,11 @@ static struct platform_driver avpu_platform_driver = {
 	.driver			=       {
 		.name		= "avpu",
 		.of_match_table = of_match_ptr(avpu_codec_of_match),
+		/* remove() frees the codec while an open file still points at
+		 * it; its release() would then use freed memory. Without the
+		 * sysfs bind/unbind files remove() only runs on rmmod, which the
+		 * module reference held by every open file already prevents. */
+		.suppress_bind_attrs = true,
 	},
 };
 

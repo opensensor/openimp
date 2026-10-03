@@ -1092,25 +1092,32 @@ int DMA_RmemFlushCache(void *virt_addr, uint32_t size, int dir)
     if (g_is_avpu) {
         struct avpu_flush_cache_info info;
         DMABufferRecord *buf;
+        uint32_t offset = 0;
 
-        buf = lookup_buffer_containing_virt(virt_addr, NULL);
+        buf = lookup_buffer_containing_virt(virt_addr, &offset);
         if (buf == NULL)
             buf = lookup_buffer_containing_phys((uint32_t)(uintptr_t)virt_addr,
-                                                NULL);
-        if (buf == NULL) {
+                                                &offset);
+        if (buf == NULL || buf->virt_addr == NULL) {
             LOG_DMA("AvpuFlushCache: address %p is outside DMA allocations",
                     virt_addr);
             return -1;
         }
 
-        info.addr = (uint32_t)(uintptr_t)virt_addr;
+        /* The driver flushes user virtual addresses only: translate a
+         * physical address to the buffer's mapping, and keep the range
+         * inside the owning buffer (callers round short flushes up). */
+        info.addr = (uint32_t)((uintptr_t)buf->virt_addr + offset);
         info.len = size;
+        if (info.len > buf->size - offset)
+            info.len = buf->size - offset;
         info.dir = (uint32_t)dir;
         ret = ioctl(g_mem_fd, AVPU_FLUSH_CACHE, &info);
         index = __sync_add_and_fetch(&flush_count, 1);
         if (index <= 12 || ret != 0) {
             LOG_DMA("AvpuFlushCache: virt=%p phys=0x%08x size=0x%x dir=%d ret=%d [#%u]",
-                    virt_addr, buf->phys_addr, size, dir, ret, index);
+                    virt_addr, buf->phys_addr + offset, info.len, dir, ret,
+                    index);
         }
         return ret;
     }

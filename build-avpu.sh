@@ -5,9 +5,23 @@
 
 set -e  # Exit on any error
 
-export CROSS_COMPILE=mipsel-linux-
-export KDIR=/home/matteius/ingenic-linux/thingino-firmware/output/master/wyze_cam3_t31x_gc2053_rtl8189ftv-3.10.14-uclibc/build/linux-7354de1b0a8b9e9afc1699222f44101933244f04/
-export PATH=/home/matteius/ingenic-linux/thingino-firmware/output/master/wyze_cam3_t31x_gc2053_rtl8189ftv-3.10.14-uclibc/host/bin/:$PATH
+# Kernel tree and toolchain come from the environment, e.g. a thingino
+# output directory:
+#   O=.../output/<board>-3.10.14-uclibc
+#   KDIR=$O/build/linux-3.10.14 TOOLCHAIN_BIN=$O/host/bin ./build-avpu.sh
+export CROSS_COMPILE="${CROSS_COMPILE:-mipsel-linux-}"
+if [[ -z "${KDIR:-}" || ! -d "${KDIR}" ]]; then
+    echo "KDIR must point to a configured and built kernel tree" >&2
+    exit 1
+fi
+export KDIR
+if [[ -n "${TOOLCHAIN_BIN:-}" ]]; then
+    export PATH="${TOOLCHAIN_BIN}:$PATH"
+fi
+# Kernels without CONFIG_DMA_SHARED_BUFFER may need AVPU_NO_DMABUF=1.
+AVPU_NO_DMABUF="${AVPU_NO_DMABUF:-0}"
+# Module source directory (an out-of-tree copy keeps the tracked one clean).
+AVPU_SRC="${AVPU_SRC:-$PWD/avpu}"
 
 # Configuration
 TARGET="${TARGET:-t31}"                 # Default target, can be overridden
@@ -38,21 +52,21 @@ build_avpu() {
     
     # Set environment variables for the build
     export SOC="${TARGET}"
-    export AVPU_NO_DMABUF=0
+    export AVPU_NO_DMABUF
     
     # Clean previous build
     print_status "Cleaning previous build..."
-    make -C "${KDIR}" M="${PWD}/avpu" clean
+    make -C "${KDIR}" M="${AVPU_SRC}" clean
     
     # Build the module
     print_status "Compiling AVPU module..."
-    if make -C "${KDIR}" M="${PWD}/avpu" modules; then
+    if make -C "${KDIR}" M="${AVPU_SRC}" modules; then
         print_status "Build completed successfully!"
         
         # Check if the .ko file was created
-        if [[ -f "avpu/avpu.ko" ]]; then
-            print_status "AVPU module built: avpu/avpu.ko"
-            ls -lh avpu/avpu.ko
+        if [[ -f "${AVPU_SRC}/avpu.ko" ]]; then
+            print_status "AVPU module built: ${AVPU_SRC}/avpu.ko"
+            ls -lh "${AVPU_SRC}/avpu.ko"
         else
             print_error "Build succeeded but avpu.ko not found"
             exit 1
@@ -76,6 +90,10 @@ show_help() {
     echo "Environment variables:"
     echo "  TARGET               Override default target"
     echo "  KERNEL_VERSION       Override default kernel version (default: 3.10)"
+    echo "  KDIR                 Kernel build tree (required)"
+    echo "  CROSS_COMPILE        Toolchain prefix (default: mipsel-linux-)"
+    echo "  TOOLCHAIN_BIN        Directory prepended to PATH for the toolchain"
+    echo "  AVPU_NO_DMABUF       1 builds without the dma-buf export (default: 0)"
     echo ""
     echo "Examples:"
     echo "  $0                   # Use all defaults (t31)"
@@ -110,5 +128,5 @@ print_status "Kernel: ${KDIR}"
 build_avpu
 
 print_status "All operations completed successfully!"
-print_status "AVPU module ready: avpu/avpu.ko"
+print_status "AVPU module ready: ${AVPU_SRC}/avpu.ko"
 
