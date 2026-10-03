@@ -115,6 +115,17 @@ int DMA_AllocDescriptorTop(IMPDMABufferInfo *info, int size,
     return 0;
 }
 
+int DMA_RmemStats(size_t *used, size_t *size, size_t *largest)
+{
+    if (used)
+        *used = 0;
+    if (size)
+        *size = 0;
+    if (largest)
+        *largest = 0;
+    return 0;
+}
+
 int DMA_FreePhys(uint32_t phys)
 {
     unsigned int i;

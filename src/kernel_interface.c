@@ -1714,7 +1714,12 @@ int VBMRecycleIdleFrames(int chn)
     if (chn < 0 || chn >= MAX_VBM_POOLS || !vbm_pull_idle(chn))
         return 0;
     pool = vbm_instance[chn];
-    if (!pool || pool->fd < 0)
+    /* A buffer goes back to the driver either by QBUF on the pool's fd or,
+     * when the FrameSource owns the fd (T23: pool fd -1), through the
+     * pool's release callback.  A pool with neither would only take the
+     * frame into its own queue again. */
+    if (!pool || (pool->fd < 0 &&
+                  (!pool->buf_in_userspace || !pool->ops[1])))
         return 0;
     for (;;) {
         int idx;

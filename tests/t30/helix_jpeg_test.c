@@ -1217,6 +1217,80 @@ static void test_channel_release(void)
 }
 
 #if defined(PLATFORM_T23)
+/* The native H.264 encoder's shared bitstream area (t23_helix_bs.h). */
+static IMPDMABufferInfo t23_area;
+static unsigned int t23_area_locks, t23_area_held;
+
+int OpenIMP_T23_HelixBs_Lock(uint32_t size, IMPDMABufferInfo *dma)
+{
+    if (!t23_area.phys_addr || t23_area.size < size)
+        return -1;
+    assert(!t23_area_held);
+    t23_area_held = 1;
+    t23_area_locks++;
+    *dma = t23_area;
+    return 0;
+}
+
+void OpenIMP_T23_HelixBs_Unlock(void)
+{
+    assert(t23_area_held);
+    t23_area_held = 0;
+}
+
+uint32_t OpenIMP_T23_HelixBs_Size(void)
+{
+    return t23_area.size;
+}
+
+/* With the area present the picture is encoded there, a JPEG buffer of
+ * its own is freed and none is allocated; without it, the own buffer. */
+static void test_t23_shared_area(void)
+{
+    HelixJpegFrame frame;
+    HWStreamBuffer stream;
+    uint8_t qt[128];
+    uint32_t size;
+    uint8_t *pixels = make_frame(1024u, 768u, 1024u * 768u, &size, 0);
+    unsigned int before;
+
+    memset(&frame, 0, sizeof(frame));
+    frame.virt_addr = (uint32_t)(uintptr_t)pixels;
+    frame.phys_addr = frame.virt_addr;
+    frame.size = size;
+    frame.width = 1024u;
+    frame.height = 768u;
+    HelixJpeg_QualityTables(75u, qt);
+    OpenIMP_HelixJpeg_Shutdown();
+    before = live_allocations;
+    /* own buffer first (no H.264 channel yet) */
+    assert(OpenIMP_HelixJpeg_Reserve(1024u, 768u) == 0);
+    assert(live_allocations == before + 1u);
+    /* the encoder's area appears: the own buffer goes at the next picture */
+    assert(fake_alloc(&t23_area, (2 << 20) + 4096) == 0);
+    assert(OpenIMP_HelixJpeg_Encode(&frame, qt, &stream) == 0);
+    assert(t23_area_locks == 1u && !t23_area_held);
+    assert(live_allocations == before + 1u); /* only the area */
+    check_picture(&stream, 1024u, 768u, 28.0);
+    free((void *)(uintptr_t)stream.virt_addr);
+    /* truncation detection still works in the area */
+    force_act_once = 1;
+    assert(OpenIMP_HelixJpeg_Encode(&frame, qt, &stream) == 0);
+    assert(!force_act_once && t23_area_locks == 2u);
+    check_picture(&stream, 1024u, 768u, 28.0);
+    free((void *)(uintptr_t)stream.virt_addr);
+    /* a new channel with the area: nothing allocated */
+    assert(OpenIMP_HelixJpeg_Reserve(1024u, 768u) == 0);
+    assert(live_allocations == before + 1u);
+    OpenIMP_HelixJpeg_Release();
+    OpenIMP_HelixJpeg_Release();
+    DMA_FreePhys(t23_area.phys_addr);
+    memset(&t23_area, 0, sizeof(t23_area));
+    assert(live_allocations == before);
+    OpenIMP_HelixJpeg_Shutdown();
+    munmap(pixels, size + FRAME_SLACK);
+}
+
 /* A job that reached JPGC_MAX_BS completes with a truncated bitstream and
  * JPGC_ACT_BS bit 29 set: it is repeated with coarser quantizers, and the
  * file carries the tables that were used. */
@@ -1431,9 +1505,11 @@ int main(void)
     test_rmem_budget();
 #if defined(PLATFORM_T23)
     test_limit_retry();
+    test_t23_shared_area();
 #endif
 #if defined(PLATFORM_T23)
-    assert(requests == 2u);   /* test_limit_retry reopens once */
+    /* test_limit_retry and test_t23_shared_area reopen once each */
+    assert(requests == 3u);
 #else
     assert(requests == 1u);
 #endif

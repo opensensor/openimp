@@ -31,6 +31,9 @@
 #include "t30/h264enc/common.h"
 #include "t30/t30_annexb.h"
 #include "t30/t30_h264_level.h"
+#if defined(PLATFORM_T23)
+#include "t30/t23_helix_bs.h"
+#endif
 #if (defined(PLATFORM_T21) && !defined(PLATFORM_T20)) || \
     defined(PLATFORM_T23)
 /* T21-family command list, PPS and SPS (T21, T23). */
@@ -288,6 +291,7 @@ struct T30HelixEncoder {
     uint32_t ovf_quiet[2];
     uint32_t overflows;         /* pictures dropped on overflow */
     uint32_t canary_hits;       /* overflows that wrote past the window */
+    int shared_bs;              /* bitstream in the shared area */
 #endif
 };
 
@@ -327,6 +331,153 @@ static int t30_dma_allocate(IMPDMABufferInfo *dma, uint32_t size,
     }
     return 0;
 }
+
+#if defined(PLATFORM_T23)
+/* The shared bitstream area, see t30/t23_helix_bs.h.  Default size: the
+ * largest window (2 MiB, 1080p) and its page of slack. */
+#define T23_BS_AREA_SIZE ((2u << 20) + 4096u)
+
+/* helix_jpeg.c (libimp only): frees the JPEG encoder's own buffer once the
+ * area can take its pictures. */
+extern void OpenIMP_HelixJpeg_AreaReady(void) __attribute__((weak));
+
+static struct {
+    pthread_mutex_t lock;
+    IMPDMABufferInfo dma;      /* the area (0: none) */
+    IMPDMABufferInfo guard;    /* EMC scratch kept after its channel left */
+    const IMPDMABufferInfo *guard_emc; /* live channel scratch above it */
+    uint32_t users;            /* H.264 channels on the area */
+} t23_bs = { .lock = PTHREAD_MUTEX_INITIALIZER };
+
+/* An H.264 channel that just allocated its EMC scratch takes the area for
+ * its bitstream: a new area right below the scratch, or the existing one
+ * when the window fits.  0 = on the area, -1 = the caller allocates a
+ * window of its own (as before). */
+static int t23_bs_attach(uint32_t size, const IMPDMABufferInfo *emc)
+{
+    const char *env = getenv("OPENIMP_T23_SHARED_BS");
+    size_t used = 0, total = 0, largest = 0;
+    int ret = -1;
+
+    if (env && env[0] == '0')
+        return -1;
+    pthread_mutex_lock(&t23_bs.lock);
+    if (t23_bs.dma.phys_addr) {
+        if (t23_bs.dma.size >= size) {
+            t23_bs.users++;
+            ret = 0;
+        }
+    } else {
+        /* Like the stock pool, the area holds the largest window (1080p)
+         * whichever channel comes first, so a main channel created after
+         * the sub channel still fits; short of rmem, the size asked for.
+         * Top-down: the area must end where the scratch begins, or a
+         * spill could reach whatever lies in between. */
+        uint32_t sizes[2] = { T23_BS_AREA_SIZE, size };
+        unsigned int k;
+
+        for (k = size < T23_BS_AREA_SIZE ? 0u : 1u; k < 2u && ret; k++) {
+            if (t30_dma_allocate(&t23_bs.dma, sizes[k], "t23-helix-bs") != 0)
+                continue;
+            if ((uint64_t)t23_bs.dma.phys_addr + t23_bs.dma.size ==
+                emc->phys_addr) {
+                t23_bs.guard_emc = emc;
+                t23_bs.users = 1;
+                ret = 0;
+                break;
+            }
+            IMP_LOG_WARN("Encoder", "T23 Helix: shared bitstream area "
+                         "0x%08x/%u not below the EMC scratch 0x%08x",
+                         t23_bs.dma.phys_addr, t23_bs.dma.size,
+                         emc->phys_addr);
+            t30_dma_release(&t23_bs.dma);
+        }
+        if (ret)
+            IMP_LOG_WARN("Encoder", "T23 Helix: no shared bitstream area, "
+                         "using a window of its own");
+    }
+    if (ret == 0) {
+        (void)DMA_RmemStats(&used, &total, &largest);
+        IMP_LOG_INFO("Encoder", "T23 Helix: bitstream in the shared %u-byte "
+                     "area at 0x%08x (%u H.264 channel%s, JPEG borrows it; "
+                     "rmem used %zu of %zu, largest free %zu)",
+                     t23_bs.dma.size, t23_bs.dma.phys_addr, t23_bs.users,
+                     t23_bs.users == 1u ? "" : "s", used, total, largest);
+    }
+    pthread_mutex_unlock(&t23_bs.lock);
+    if (ret == 0 && OpenIMP_HelixJpeg_AreaReady)
+        OpenIMP_HelixJpeg_AreaReady();
+    return ret;
+}
+
+/* A channel being created takes over a kept guard as its own EMC scratch
+ * when it is large enough and the channel's window fits the area (it then
+ * attaches), so a re-created channel does not leave a second scratch
+ * allocated next to the kept one. */
+static int t23_bs_adopt_guard(IMPDMABufferInfo *emc, uint32_t scratch,
+                              uint32_t window)
+{
+    int ret = -1;
+
+    pthread_mutex_lock(&t23_bs.lock);
+    if (t23_bs.users && t23_bs.guard.phys_addr &&
+        t23_bs.guard.size >= scratch && t23_bs.dma.size >= window) {
+        *emc = t23_bs.guard;
+        memset(&t23_bs.guard, 0, sizeof(t23_bs.guard));
+        t23_bs.guard_emc = emc;
+        ret = 0;
+    }
+    pthread_mutex_unlock(&t23_bs.lock);
+    return ret;
+}
+
+/* A channel on the area is destroyed.  When its scratch is the guard, the
+ * allocation moves to this module (and *emc is cleared); the last channel
+ * frees the area and a kept guard. */
+static void t23_bs_detach(IMPDMABufferInfo *emc)
+{
+    pthread_mutex_lock(&t23_bs.lock);
+    if (t23_bs.guard_emc == emc) {
+        t23_bs.guard = *emc;
+        memset(emc, 0, sizeof(*emc));
+        t23_bs.guard_emc = NULL;
+    }
+    if (t23_bs.users && !--t23_bs.users) {
+        t30_dma_release(&t23_bs.dma);
+        t30_dma_release(&t23_bs.guard);
+        t23_bs.guard_emc = NULL;
+    }
+    pthread_mutex_unlock(&t23_bs.lock);
+}
+
+int OpenIMP_T23_HelixBs_Lock(uint32_t size, IMPDMABufferInfo *dma)
+{
+    if (!dma || !size)
+        return -1;
+    pthread_mutex_lock(&t23_bs.lock);
+    if (!t23_bs.users || !t23_bs.dma.phys_addr || t23_bs.dma.size < size) {
+        pthread_mutex_unlock(&t23_bs.lock);
+        return -1;
+    }
+    *dma = t23_bs.dma;
+    return 0;
+}
+
+void OpenIMP_T23_HelixBs_Unlock(void)
+{
+    pthread_mutex_unlock(&t23_bs.lock);
+}
+
+uint32_t OpenIMP_T23_HelixBs_Size(void)
+{
+    uint32_t size;
+
+    pthread_mutex_lock(&t23_bs.lock);
+    size = t23_bs.users ? t23_bs.dma.size : 0u;
+    pthread_mutex_unlock(&t23_bs.lock);
+    return size;
+}
+#endif
 
 #if defined(HELIX_SHARED_BITSTREAM)
 /* Shared-buffer bytes one picture needs: the CPU-written slice header area
@@ -1167,12 +1318,17 @@ int OpenIMP_T30_HelixCreate(T30HelixEncoder **encoder_out,
      * spills seen).  The window starts at the 128-byte aligned slice
      * data; a page of slack keeps even a full window inside the
      * allocation.  Short of reserved memory: the 1 MiB T21 window. */
-    if (t30_dma_allocate(&encoder->emc, encoder->scratch_size,
+    if (t23_bs_adopt_guard(&encoder->emc, encoder->scratch_size,
+                           (encoder->bitstream_kib << 10) + 4096u) != 0 &&
+        t30_dma_allocate(&encoder->emc, encoder->scratch_size,
                          "t23-helix-emc") != 0)
         goto fail;
-    if (t30_dma_allocate(&encoder->temporary,
-                         (encoder->bitstream_kib << 10) + 4096u,
-                         "t23-helix-bs") != 0) {
+    if (t23_bs_attach((encoder->bitstream_kib << 10) + 4096u,
+                      &encoder->emc) == 0) {
+        encoder->shared_bs = 1;
+    } else if (t30_dma_allocate(&encoder->temporary,
+                                (encoder->bitstream_kib << 10) + 4096u,
+                                "t23-helix-bs") != 0) {
         if (window_forced || encoder->bitstream_kib <= 1024u ||
             t30_dma_allocate(&encoder->temporary, (1u << 20) + 4096u,
                              "t23-helix-bs") != 0)
@@ -1182,7 +1338,8 @@ int OpenIMP_T30_HelixCreate(T30HelixEncoder **encoder_out,
     if (t30_dma_allocate(&encoder->descriptor, T30_DESCRIPTOR_WINDOW,
                          "t23-helix-desc") != 0)
         goto fail;
-    t23_canary_arm(encoder);
+    if (!encoder->shared_bs)
+        t23_canary_arm(encoder);
 #else
     if (t30_dma_allocate(&encoder->descriptor, T30_DESCRIPTOR_WINDOW,
                          "t30-helix-desc") != 0)
@@ -1365,6 +1522,28 @@ int OpenIMP_T30_HelixEncode(T30HelixEncoder *encoder,
     OpenIMP_HelixBitstream_Unlock();
     return ret;
 #else
+#if defined(PLATFORM_T23)
+    if (encoder && encoder->shared_bs) {
+        int ret;
+
+        if (!frame || !stream_out || !frame->phyAddr)
+            return -1;
+        /* this picture's window in the shared area, from the slice header
+         * to the copy into the access unit (stock bsbufsem); the canary
+         * at its end is armed per picture, other jobs write there */
+        if (OpenIMP_T23_HelixBs_Lock((encoder->bitstream_kib << 10) + 4096u,
+                                     &encoder->temporary) != 0) {
+            LOG_CODEC("T23 Helix: shared bitstream area missing");
+            return -1;
+        }
+        encoder->temporary.size = (encoder->bitstream_kib << 10) + 4096u;
+        t23_canary_arm(encoder);
+        ret = t30_helix_encode_job(encoder, frame, stream_out);
+        memset(&encoder->temporary, 0, sizeof(encoder->temporary));
+        OpenIMP_T23_HelixBs_Unlock();
+        return ret;
+    }
+#endif
     return t30_helix_encode_job(encoder, frame, stream_out);
 #endif
 }
@@ -1926,6 +2105,10 @@ void OpenIMP_T30_HelixDestroy(T30HelixEncoder *encoder)
     for (i = 0; i < 2u; i++)
         t30_dma_release(&encoder->reference[i].dma);
     t30_dma_release(&encoder->temporary);
+#if defined(PLATFORM_T23)
+    if (encoder->shared_bs)
+        t23_bs_detach(&encoder->emc);
+#endif
     t30_dma_release(&encoder->emc);
     t30_dma_release(&encoder->descriptor);
     free(encoder);
