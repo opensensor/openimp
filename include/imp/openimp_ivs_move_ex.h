@@ -50,10 +50,11 @@ typedef struct {
     uint32_t size;          /* sizeof(OpenIMP_IVS_MoveConfigEx) of the caller */
     uint32_t version;       /* OPENIMP_IVS_MOVE_EX_VERSION */
     uint32_t features;      /* OPENIMP_MOVE_F_*; 0 = vendor behaviour only */
+    /* parameters: 0 = default (in brackets), others clamped to the range */
     int32_t learn_shift;    /* background learning rate 1/2^n, 1..10 (4) */
     int32_t thresh_k;       /* cell threshold = k/16 x cell noise, 16..255 (48) */
     int32_t min_delta;      /* minimum cell mean change, luma levels 1..64 (10) */
-    int32_t suppress_ms;    /* hold-off after a switch / jump, 0..60000 (4000) */
+    int32_t suppress_ms;    /* hold-off after a switch / jump, 1..60000 (4000) */
     int32_t jump_pct;       /* gain / brightness jump that suppresses, 5..90 (25) */
     int32_t min_cells;      /* minimum object size in grid cells, 1..64 (3) */
     int32_t min_frames;     /* minimum object persistence, analysed frames 1..30 (2) */
@@ -107,8 +108,9 @@ int OpenIMP_IVS_MoveGetResultEx(int channel, OpenIMP_IVS_MoveOutputEx *out);
 
 /* Replace the v2 configuration of a move channel at run time (takes effect
  * with the next analysed frame; switching features on starts a new
- * background warm-up). Fields beyond cfg->size keep their defaults; values
- * out of range are clamped. features = 0 turns v2 off. */
+ * background warm-up). Parameter fields that are 0 or lie beyond cfg->size
+ * take their defaults; values out of range are clamped. features = 0
+ * turns v2 off. */
 int OpenIMP_IVS_MoveSetConfigEx(int channel, const OpenIMP_IVS_MoveConfigEx *cfg);
 int OpenIMP_IVS_MoveGetConfigEx(int channel, OpenIMP_IVS_MoveConfigEx *cfg);
 

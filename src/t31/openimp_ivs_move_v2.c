@@ -110,10 +110,20 @@ void ivs_move_v2_config_sanitize(OpenIMP_IVS_MoveConfigEx *dst,
     dst->size = sizeof(*dst);
     dst->version = OPENIMP_IVS_MOVE_EX_VERSION;
     dst->features &= OPENIMP_MOVE_F_ALL;
+    /* 0 = default, so a caller may set only the features */
+#define V2_DEF0(f) do { if (!dst->f) dst->f = v2_defaults.f; } while (0)
+    V2_DEF0(learn_shift);
+    V2_DEF0(thresh_k);
+    V2_DEF0(min_delta);
+    V2_DEF0(suppress_ms);
+    V2_DEF0(jump_pct);
+    V2_DEF0(min_cells);
+    V2_DEF0(min_frames);
+#undef V2_DEF0
     dst->learn_shift = clampi(dst->learn_shift, 1, 10);
     dst->thresh_k = clampi(dst->thresh_k, 16, 255);
     dst->min_delta = clampi(dst->min_delta, 1, 64);
-    dst->suppress_ms = clampi(dst->suppress_ms, 0, 60000);
+    dst->suppress_ms = clampi(dst->suppress_ms, 1, 60000);
     dst->jump_pct = clampi(dst->jump_pct, 5, 90);
     dst->min_cells = clampi(dst->min_cells, 1, 64);
     dst->min_frames = clampi(dst->min_frames, 1, 30);

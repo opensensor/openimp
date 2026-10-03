@@ -343,7 +343,7 @@ static void test_behaviour(void)
     int wrong_roi = 0;
 
     setenv("OPENIMP_MOTION_V2", "1", 1);
-    setenv("OPENIMP_MOTION_V2_SUPPRESS_MS", "0", 1);    /* frame-driven */
+    setenv("OPENIMP_MOTION_V2_SUPPRESS_MS", "1", 1);    /* 3-frame minimum */
     grid_param(&p, 0, 2);       /* timps default sensitivity */
     chan_open(&ch, &p);
     unsetenv("OPENIMP_MOTION_V2");
@@ -405,6 +405,27 @@ static void test_behaviour(void)
                         wrong_roi++;
             }
         }
+    }
+    {   /* a caller that sets only size + features gets the defaults */
+        OpenIMP_IVS_MoveConfigEx c, d;
+
+        memset(&c, 0, sizeof(c));
+        c.size = 12;
+        c.features = OPENIMP_MOVE_F_BLOBS;
+        CHECK(OpenIMP_IVS_MoveSetConfigEx(0, &c) == 0, "short SetConfigEx");
+        memset(&d, 0, sizeof(d));
+        d.size = sizeof(d);
+        CHECK(OpenIMP_IVS_MoveGetConfigEx(0, &d) == 0 &&
+              d.features == OPENIMP_MOVE_F_BLOBS && d.learn_shift == 4 &&
+              d.thresh_k == 64 && d.min_delta == 10 && d.suppress_ms == 4000 &&
+              d.jump_pct == 25 && d.min_cells == 3 && d.min_frames == 2 &&
+              d.version == OPENIMP_IVS_MOVE_EX_VERSION, "defaults");
+        c.size = 8;
+        CHECK(OpenIMP_IVS_MoveSetConfigEx(0, &c) < 0 && errno == EINVAL,
+              "size 8 accepted");
+        CHECK(OpenIMP_IVS_MoveGetResultEx(5, &(OpenIMP_IVS_MoveOutputEx){
+              .size = sizeof(OpenIMP_IVS_MoveOutputEx) }) < 0 &&
+              errno == ENOENT, "GetResultEx on an empty channel");
     }
     chan_close(&ch);
     printf("behaviour: noise legacy %d v2 %d | jump legacy %d v2 %d (suppressed "
