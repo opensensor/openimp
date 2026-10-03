@@ -361,7 +361,9 @@ struct T30HelixEncoder {
     int eprc_restart_pending;   /* run-time change, applied at the next IDR */
     int eprc_restarting;
     uint32_t eprc_reencodes;
+    uint32_t eprc_dropped;      /* pictures finished as dropped (helix_eprc_drop) */
     uint32_t eprc_stat_errors;
+    uint32_t eprc_stat_fail_run; /* consecutive pictures without statistics */
     /* eprc macroblock rate control (src/eprc/eprc_mbrc.c): the switch
      * (OPENIMP_EPRC_MBRC, IMP_Encoder_SetMbRC) and the registers of the
      * picture being coded */
@@ -1564,8 +1566,10 @@ static void helix_eprc_start(T30HelixEncoder *encoder)
 /* The Helix statistics the OEM reads after each picture (T23
  * _jz_hwicodec_pf_h264e_t21_set_priv, T21 hwicodec_pf_h264e_t21_enc): one
  * register word per IOCTL_CHANNEL_WOR_VPU_REG. */
-static void helix_eprc_statistics(T30HelixEncoder *encoder,
-                                  uint32_t regs[EPRC_STAT_REGS])
+#define HELIX_EPRC_STAT_FAIL_MAX 8u
+
+static int helix_eprc_statistics(T30HelixEncoder *encoder,
+                                 uint32_t regs[EPRC_STAT_REGS])
 {
     unsigned int i;
 
@@ -1582,10 +1586,11 @@ static void helix_eprc_statistics(T30HelixEncoder *encoder,
                              "reading 0x%08x failed (%s); statistics are 0",
                              node[0], strerror(errno));
             memset(regs, 0, EPRC_STAT_REGS * sizeof(regs[0]));
-            return;
+            return -1;
         }
         regs[i] = node[1];
     }
+    return 0;
 }
 
 /* After a picture: statistics, FRAME_REPEATE_JUDGE and FRAME_END.  Returns
@@ -1608,7 +1613,19 @@ static int helix_eprc_end(T30HelixEncoder *encoder, int idr, uint32_t *qp)
     EprcPicture pic;
     int may_repeat = !(encoder->ref_share && !idr);
 
-    helix_eprc_statistics(encoder, regs);
+    if (helix_eprc_statistics(encoder, regs) == 0) {
+        encoder->eprc_stat_fail_run = 0;
+    } else if (++encoder->eprc_stat_fail_run >= HELIX_EPRC_STAT_FAIL_MAX) {
+        /* Without the statistics the controller would run on zeros
+         * (scene judge, R-lambda update): fall back to the GOP
+         * controller instead of 25 failing ioctls per picture. */
+        IMP_LOG_WARN("Encoder", HELIX_EPRC_TAG " Helix eprc: statistics "
+                     "unreadable for %u pictures, using the GOP controller",
+                     encoder->eprc_stat_fail_run);
+        encoder->eprc_stat_fail_run = 0;
+        helix_eprc_stop(encoder);
+        return 0;
+    }
     if ((
 #if !defined(PLATFORM_T23)
          encoder->eprc_t21 ?
@@ -1630,6 +1647,31 @@ static int helix_eprc_end(T30HelixEncoder *encoder, int idr, uint32_t *qp)
     encoder->eprc_mbrc = pic.mbrc;
     memcpy(encoder->eprc_ctrl, pic.ctrl, sizeof(pic.ctrl));
     return 1;
+}
+
+/* A picture that was started (FRAME_START) but is dropped (T23 bitstream
+ * window overflow, timeout, errored RUN): finish it in the controller so
+ * the next FRAME_START does not run on the statistics of a picture that
+ * never ended.  Accounted as the full bitstream window with zero
+ * statistics and without FRAME_REPEATE_JUDGE, as the T31 Allegro path
+ * accounts its dropped pictures (codec-t40.c avpu_t31_allegro_complete). */
+static void helix_eprc_drop(T30HelixEncoder *encoder)
+{
+    uint32_t regs[EPRC_STAT_REGS];
+    EprcPicture pic;
+    uint32_t bytes = encoder->temporary.size > T30_SLICE_OFFSET
+        ? encoder->temporary.size - T30_SLICE_OFFSET : 0u;
+
+    if (!encoder->eprc_on)
+        return;
+    memset(regs, 0, sizeof(regs));
+#if !defined(PLATFORM_T23)
+    if (encoder->eprc_t21)
+        (void)EPRC21_FrameEndEx(&encoder->eprc, bytes, regs, &pic, 0);
+    else
+#endif
+        (void)EPRC_FrameEndEx(&encoder->eprc, bytes, regs, &pic, 0);
+    encoder->eprc_dropped++;
 }
 #endif
 
@@ -2803,6 +2845,7 @@ again:
             if (!t23_overflow_drop(encoder, idr, qp, encoder->channel.status,
                                    encoder->channel.output_len))
                 encoder->failures++;
+            helix_eprc_drop(encoder);
             return -1;
         }
         if (attempt >= 2) {
@@ -2819,6 +2862,7 @@ again:
             encoder->force_idr = 1;
             encoder->have_reference = 0;
             encoder->failures++;
+            helix_eprc_drop(encoder);
             return -1;
         }
         if (late) {
@@ -2851,6 +2895,9 @@ again:
         LOG_CODEC("T30 Helix: run failed frame=%u errno=%d status=0x%08x len=%u",
                   encoder->frame_number, errno, encoder->channel.status,
                   encoder->channel.output_len);
+#if defined(HELIX_T21_SYNTAX)
+        helix_eprc_drop(encoder);
+#endif
         return -1;
     }
 #if defined(HELIX_T21_SYNTAX)
