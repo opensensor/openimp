@@ -7,12 +7,14 @@
 /* OpenIMP-owned inputs to the T21 Helix command-list builder.  This is not
  * the private SDK structure recovered from libimp; every hardware address and
  * codec property used below is named and supplied explicitly. */
-#define T21_RING_P_FLAG    0x01u
-#define T21_RING_X10_START 0x02u
-#define T21_RING_X50_START 0x04u
-#define T21_RING_NO_WRAP   0x08u
-#define T21_RING_VENDOR_ME 0x10u  /* T23 vendor MCE words (0x50000 bits
-                                   * 9/10 clear, 0x50040/48/4c) */
+/* Ring-mode experiment flags (OPENIMP_REF_SHARE_FLAGS, hex).  Default on
+ * T23: T21_RING_VENDOR_ME (the vendor T23 command list); on T21: 0. */
+#define T21_RING_NO_WRAP     0x08u  /* wrap fields stay 0xff */
+#define T21_RING_VENDOR_ME   0x10u  /* T23 vendor MCE words: 0x50000 bits
+                                     * 9/10 clear, 0x50040/48/4c */
+#define T21_RING_VENDOR_MISC 0x20u  /* T23 vendor 0x4010c = 0x03400000,
+                                     * 0x801c0 = 0x30000006 (not ring
+                                     * related as far as known) */
 
 typedef struct {
     uint8_t slice_type; /* 0: I/IDR, 1: P */
@@ -54,16 +56,13 @@ typedef struct {
      * All zero (ref_share 0): the two separate reference pictures. */
     uint8_t ref_share;
     uint8_t ring_wrap_rows;
-    /* Experiments (OPENIMP_REF_SHARE_FLAGS, default 0; the vendor T23 has
-     * none of them: 0x50000 bit 6 clear, 0x80030 bit 14 clear):
-     * T21_RING_P_FLAG: the OEM share-mode P flag (ctx[21]: 0x50000 bit 6,
-     * 0x80030 bit 14, P pictures only); T21_RING_X10_START: 0x10014/18 =
-     * ring start instead of the ring reference; T21_RING_X50_START:
-     * 0x50074/78 = ring start instead of 0; T21_RING_NO_WRAP: 0xb0000
-     * bits 8..15 stay 0xff. */
+    /* Ring mode (vendor T23 command list, dumped per picture): 0x10014/18
+     * = 0 for the IDR and the ring start for P; 0x50000 bits 14..21 = the
+     * wrap row (same value as 0xb0000 bits 8..15; 0xff without ring);
+     * 0xb0000 low byte 0x21 for the IDR, 0x63 for P (T23). */
     uint8_t ring_flags;
-    /* 0xb0000 low byte in ring mode (OPENIMP_REF_SHARE_B0, hex): 0 = the
-     * build default (T23 0x63 as the vendor, T21 0xff). */
+    /* 0xb0000 low byte of P pictures in ring mode (OPENIMP_REF_SHARE_B0,
+     * hex): 0 = the build default (T23 0x63 as the vendor, T21 0xff). */
     uint8_t ring_b0;
     uint32_t ring_start_y, ring_start_c;
     uint32_t ring_end_y, ring_end_c;

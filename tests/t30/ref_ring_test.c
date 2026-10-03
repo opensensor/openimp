@@ -10,9 +10,11 @@
 
 #define WORDS 8192u
 #if defined(T21_HELIX_T23_DELTAS)
-#define RING_B0_LOW 0x00020063u      /* vendor T23 ring mode low byte */
+#define RING_B0_LOW 0x00020063u      /* vendor T23 ring mode, P */
+#define RING_B0_IDR 0x00020021u      /* vendor T23 ring mode, IDR */
 #else
 #define RING_B0_LOW 0x000200ffu      /* T21 template plus the two flags */
+#define RING_B0_IDR 0x000200bdu
 #endif
 static uint32_t descriptor[WORDS];
 static uint8_t cabac_state[1024];
@@ -191,17 +193,18 @@ static void test_registers(int p)
     c.ring_end_y = c.ring_start_y + 0x27d800u;
     c.ring_end_c = c.ring_start_c + 0x13ec00u;
     c.ring_wrap_rows = 15;
-    c.ring_flags = T21_RING_P_FLAG;
+    c.ring_flags = 0;
     assert(T21_H264_BuildDescriptor(&c, &on_pairs) == 0);
-    assert(get(on_pairs, 0xb0000) == (RING_B0_LOW | 0x0f00u));
-    /* the OEM share-mode P flag: 0x50000 bit 6 (P only), 0x80030 bit 14 */
-    assert((get(on_pairs, 0x80030) & 0x4000u) == (p ? 0x4000u : 0u));
+    /* vendor T23 lists: 0xb0000 byte, the same wrap row in 0x50000 bits
+     * 14..21, 0x10014/18 = 0 (IDR) / ring start (P) */
+    assert(get(on_pairs, 0xb0000) == (p ? (RING_B0_LOW | 0x0f00u)
+                                        : (RING_B0_IDR | 0x0f00u)));
     if (p) {
-        assert(get(on_pairs, 0x50000) == 0x547fdff1u);
+        assert(get(on_pairs, 0x50000) == (0x5440dfb1u | (15u << 14)));
         assert(get(on_pairs, 0x50074) == 0 && get(on_pairs, 0x50078) == 0);
     }
-    assert(get(on_pairs, 0x10014) == c.reference_y);
-    assert(get(on_pairs, 0x10018) == c.reference_c);
+    assert(get(on_pairs, 0x10014) == (p ? c.ring_start_y : 0u));
+    assert(get(on_pairs, 0x10018) == (p ? c.ring_start_c : 0u));
     /* same register sequence, only values differ */
     assert(on_pairs == off_pairs);
     for (i = 0; i < on_pairs; i++)
@@ -223,7 +226,7 @@ static void test_registers(int p)
         assert(get(on_pairs, 0x50070) == c.reference_c);
         assert(get(on_pairs, 0x50110) == c.ring_start_y);
         assert(get(on_pairs, 0x50114) == c.ring_start_c);
-        assert(get(on_pairs, 0x10014) == c.reference_y);
+        assert(get(on_pairs, 0x10014) == c.ring_start_y);
     }
     /* everything else unchanged */
     for (i = 0; i < on_pairs; i++) {
@@ -233,32 +236,25 @@ static void test_registers(int p)
             assert(reg == 0x60004 || reg == 0x60014 || reg == 0x60018 ||
                    reg == 0x6001c || reg == 0x60020 || reg == 0xb0030 ||
                    reg == 0xb0034 || reg == 0x50110 || reg == 0x50114 ||
-                   reg == 0xb0000 || reg == 0x50000 || reg == 0x80030 ||
-                   reg == 0x50040 || reg == 0x50048 || reg == 0x5004c);
+                   reg == 0xb0000 || reg == 0x50000 || reg == 0x10014 ||
+                   reg == 0x10018 || reg == 0x50040 || reg == 0x50048 ||
+                   reg == 0x5004c);
         }
     }
     /* experiment switches */
     if (p) {
-        c.ring_flags = T21_RING_X10_START | T21_RING_X50_START |
-                       T21_RING_NO_WRAP;
+        c.ring_flags = T21_RING_NO_WRAP;
         assert(T21_H264_BuildDescriptor(&c, &on_pairs) == 0);
-        assert(get(on_pairs, 0x10014) == c.ring_start_y);
-        assert(get(on_pairs, 0x10018) == c.ring_start_c);
-        assert(get(on_pairs, 0x50074) == c.ring_start_y);
-        assert(get(on_pairs, 0x50078) == c.ring_start_c);
         assert(get(on_pairs, 0xb0000) == (RING_B0_LOW | 0xff00u));
         assert(get(on_pairs, 0x50000) == 0x547fdfb1u);
-        assert((get(on_pairs, 0x80030) & 0x4000u) == 0);
-        c.ring_flags = 0;
+        c.ring_flags = T21_RING_VENDOR_MISC;
         assert(T21_H264_BuildDescriptor(&c, &on_pairs) == 0);
-        assert(get(on_pairs, 0x10014) == c.reference_y);
-        assert(get(on_pairs, 0x50074) == 0);
-        assert(get(on_pairs, 0xb0000) == (RING_B0_LOW | 0x0f00u));
-        assert(get(on_pairs, 0x50000) == 0x547fdfb1u);
+        assert(get(on_pairs, 0x4010c) == 0x03400000u);
+        assert(get(on_pairs, 0x801c0) == 0x30000006u);
         /* vendor T23 MCE words */
         c.ring_flags = T21_RING_VENDOR_ME;
         assert(T21_H264_BuildDescriptor(&c, &on_pairs) == 0);
-        assert(get(on_pairs, 0x50000) == 0x547fd9b1u);
+        assert(get(on_pairs, 0x50000) == (0x5440d9b1u | (15u << 14)));
         assert(get(on_pairs, 0x50040) == 0x871f5008u);
         assert(get(on_pairs, 0x50048) == 0x02000200u);
         assert(get(on_pairs, 0x5004c) == 0x08080303u);
@@ -289,9 +285,9 @@ static void test_picture(size_t i)
     c.ring_end_y = p.end_y;
     c.ring_end_c = p.end_c;
     c.ring_wrap_rows = p.wrap_rows;
-    c.ring_flags = T21_RING_P_FLAG;
+    c.ring_flags = 0;
     assert(T21_H264_BuildDescriptor(&c, &pairs) == 0);
-    assert((get(pairs, 0x80030) & 0x4000u) == (is_p ? 0x4000u : 0u));
+    assert(get(pairs, 0x10014) == (is_p ? 0x03000000u : 0u));
     /* T23 adds bit 31 */
     assert((get(pairs, 0x60004) & 0x7fffffffu) ==
            (0x40000000u | (1080u << 14) | 1920u));
@@ -306,13 +302,15 @@ static void test_picture(size_t i)
     assert(get(pairs, 0xb0030) == 0x03000000u);
     assert(get(pairs, 0xb0034) == 0x03276100u);
     assert(get(pairs, 0xb0000) ==
-           (RING_B0_LOW | ((uint32_t)oem_1080p[i].wrap << 8)));
+           ((is_p ? RING_B0_LOW : RING_B0_IDR) |
+            ((uint32_t)oem_1080p[i].wrap << 8)));
     if (is_p) {
         assert(get(pairs, 0x5006c) == oem_1080p[i].ref_y);
         assert(get(pairs, 0x50070) == oem_1080p[i].ref_c);
         assert(get(pairs, 0x50110) == 0x03000000u);
         assert(get(pairs, 0x50114) == 0x03276100u);
-        assert(get(pairs, 0x50000) & 0x40u);
+        assert(get(pairs, 0x50000) ==
+               (0x5440dfb1u | ((uint32_t)oem_1080p[i].wrap << 14)));
     }
 }
 

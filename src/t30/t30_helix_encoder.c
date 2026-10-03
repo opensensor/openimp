@@ -1230,7 +1230,12 @@ static int t30_ref_share_alloc(T30HelixEncoder *encoder, const char *tag)
     env = getenv("OPENIMP_REF_SHARE_DEBUG");
     encoder->ref_share_debug = env && env[0] == '1';
     env = getenv("OPENIMP_REF_SHARE_FLAGS");
-    encoder->ring_flags = env ? (uint8_t)strtoul(env, NULL, 16) : 0u;
+    encoder->ring_flags = env ? (uint8_t)strtoul(env, NULL, 16) :
+#if defined(PLATFORM_T23)
+                          T21_RING_VENDOR_ME;
+#else
+                          0u;
+#endif
     env = getenv("OPENIMP_REF_SHARE_B0");
     encoder->ring_b0 = env ? (uint8_t)strtoul(env, NULL, 16) : 0u;
     IMP_LOG_INFO("Encoder", "Helix: reference sharing on (ring %uK instead "
