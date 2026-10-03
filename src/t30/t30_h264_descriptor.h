@@ -37,8 +37,10 @@ int T30_H264_BuildDescriptor(const T30H264SliceConfig *config,
 
 /* T10 JZ NVPU (shares the T20 libimp/build; selected at run time).
  * Reconstructions use a one-macroblock border: allocate
- * ReferencePlaneSize() per plane and pass plane base + ReferenceOffset()
- * as output/reference addresses. */
+ * ReferencePlaneSize() per plane and pass the plane base as
+ * reference_y/c and output_y/c. The deblocker writes at the base (the
+ * NVPU applies the border itself); the builder adds ReferenceOffset()
+ * only to the MCE reference read. */
 int T10_H264_BuildDescriptor(const T30H264SliceConfig *config,
                              size_t *pair_count);
 size_t T10_H264_ReferenceOffset(uint8_t mb_width, int chroma);

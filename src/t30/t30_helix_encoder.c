@@ -1183,7 +1183,9 @@ int OpenIMP_T30_HelixCreate(T30HelixEncoder **encoder_out,
     encoder->t10 = t30_soc_is_t10();
     if (encoder->t10) {
         /* T10 reconstructions keep a one-macroblock border around both
-         * planes; output/reference addresses point inside it. */
+         * planes; y/c are the padded plane bases (the deblocker writes
+         * there, T10_H264_BuildDescriptor adds the border offset for the
+         * MCE reference read). */
         uint8_t mbw = (uint8_t)(((uint32_t)params->width + 15u) / 16u);
         uint8_t mbh = (uint8_t)(((uint32_t)params->height + 15u) / 16u);
         uint32_t luma_plane = (uint32_t)T10_H264_ReferencePlaneSize(mbw, mbh, 0);
@@ -1194,10 +1196,9 @@ int OpenIMP_T30_HelixCreate(T30HelixEncoder **encoder_out,
                                  luma_plane + chroma_plane,
                                  "t10-nvpu-ref") != 0)
                 goto fail;
-            encoder->reference[i].y = encoder->reference[i].dma.phys_addr +
-                (uint32_t)T10_H264_ReferenceOffset(mbw, 0);
+            encoder->reference[i].y = encoder->reference[i].dma.phys_addr;
             encoder->reference[i].c = encoder->reference[i].dma.phys_addr +
-                luma_plane + (uint32_t)T10_H264_ReferenceOffset(mbw, 1);
+                luma_plane;
         }
     } else
 #endif

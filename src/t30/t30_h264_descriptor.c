@@ -415,7 +415,10 @@ size_t T10_H264_ReferenceOffset(uint8_t mb_width, int chroma)
 {
     /* Reconstructions carry a one-macroblock border: the luma plane is
      * (mb_width + 2) macroblocks wide and the picture starts one macroblock
-     * row plus one macroblock in (H264E_T10_SliceInit: 0x50304/0x50b04). */
+     * row plus one macroblock in.  Only the MCE reference read (0x50304/
+     * 0x50b04) adds it (H264E_T10_SliceInit: plane base + offset, stale
+     * I-slice base 0 -> 0x5300/0x2980); the deblocker output (0x70084/
+     * 0x70088) takes the plane base and applies the border itself. */
     return ((size_t)mb_width + 3u) * (chroma ? 128u : 256u);
 }
 
@@ -423,11 +426,10 @@ size_t T10_H264_ReferencePlaneSize(uint8_t mb_width, uint8_t mb_height,
                                    int chroma)
 {
     /* The padded plane, (mb_width + 2) x (mb_height + 2) macroblocks, plus
-     * the start offset once more: measured with canaries on a T10L
-     * (1280x720), the NVPU writes exactly ReferenceOffset() bytes past the
-     * padded plane, for luma and for chroma.  Without it the luma overrun
-     * lands in the chroma border and the chroma overrun in whatever
-     * buffer follows (the bitstream window with top-down allocation). */
+     * ReferenceOffset() of slack.  The canary overrun measured on a T10L
+     * came from passing base + offset to the deblocker (which adds the
+     * border itself); with plane bases it stays inside the padded plane,
+     * the slack is kept as margin (stock planes are 0x400 larger too). */
     return ((size_t)mb_width + 2u) * ((size_t)mb_height + 2u) *
            (chroma ? 128u : 256u) + T10_H264_ReferenceOffset(mb_width, chroma);
 }
@@ -456,10 +458,14 @@ int T10_H264_BuildDescriptor(const T30H264SliceConfig *config,
     writer.end = config->descriptor + config->descriptor_words;
     padded_stride = (((uint32_t)config->mb_width + 2u) * 16u) & 0xfffu;
     max_qp = config->qp < 39u ? config->qp + 13u : 51u;
-    /* The stock I slice still programs the MCE reference (with a stale
-     * base); point an I slice at its own reconstruction instead. */
-    reference_y = config->slice_type ? config->reference_y : config->output_y;
-    reference_c = config->slice_type ? config->reference_c : config->output_c;
+    /* reference_* and output_* are padded plane bases; the MCE reads the
+     * picture origin inside the border.  The stock I slice still programs
+     * the MCE reference (with a stale base); point an I slice at its own
+     * reconstruction instead. */
+    reference_y = (config->slice_type ? config->reference_y : config->output_y) +
+                  (uint32_t)T10_H264_ReferenceOffset(config->mb_width, 0);
+    reference_c = (config->slice_type ? config->reference_c : config->output_c) +
+                  (uint32_t)T10_H264_ReferenceOffset(config->mb_width, 1);
 
 #define EMIT(reg, value)                                                     \
     do {                                                                     \
