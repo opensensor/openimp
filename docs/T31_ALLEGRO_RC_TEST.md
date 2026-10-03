@@ -1,6 +1,10 @@
 # T31 Allegro rate-control core: device test plan (cam-A, garage)
 
-Goal: confirm on the camera that `OPENIMP_T31_RC_CORE=allegro` runs VBR,
+Result (2026-10-03, cam-A T31 garage, main session): passed, see the end.
+Since then the Allegro core is the default; `OPENIMP_T31_RC_CORE=legacy`
+restores the former controller.
+
+Goal: confirm on the camera that the Allegro core (`OPENIMP_T31_RC_CORE=allegro`) runs VBR,
 CappedVBR and CappedQuality with the ported OEM controller, stays stable, and
 behaves as the OEM does on a static scene and on a scene change.  The garage
 is silent: no speaker, no AEC, no audio tests.  Nothing is flashed: the
@@ -21,8 +25,8 @@ Build: `claude/t31-capped-quality`, `libimp.so` md5 see the hand-over report
    `video0.rc_mode=capped_quality`; bitrate 2000 kbit/s, max bitrate
    2667 kbit/s (the IMP default 4/3), fps 25, GOP 50, uMaxPSNR default 42.
 4. Start the streamer with `OPENIMP_T31_RC_CORE=allegro` in its environment
-   and the /tmp config; a second run per mode without the variable (legacy)
-   is the reference.
+   and the /tmp config; a second run per mode with `=legacy` is the
+   reference (before the default changed: without the variable).
 
 ## Checks per run (3 minutes each, static garage scene)
 
@@ -61,8 +65,23 @@ QP must rise (log) instead of repeating the drop.
 
 ## Fallback
 
-* `OPENIMP_T31_RC_CORE` unset or any other value: the legacy controller
-  runs, log line `T31 rate control core: legacy`; behaviour as before.
-* CBR with the switch set: legacy controller (log `legacy` is not printed
-  for it; the init line of the allegro core does not appear).
+* `OPENIMP_T31_RC_CORE=legacy`: the former controller runs, log line
+  `T31 rate control core: legacy`; behaviour as before.  Unset or any other
+  value: allegro (default).
+* CBR: legacy controller in both settings (the init line of the allegro
+  core does not appear).
 * After the test: `umount /usr/lib/libimp.so`, restart the streamer.
+
+## Result 2026-10-03 (cam-A, T31, garage, main session)
+
+60 s per run, target 1200 kbit/s, no kernel oops, decode clean:
+
+| mode | allegro core | legacy controller |
+|---|---|---|
+| VBR | 1163 kbit/s | 732 kbit/s |
+| CappedVBR | 1177 kbit/s | - |
+| CappedQuality | 1174 kbit/s | 2030 kbit/s |
+
+The Allegro core holds all three modes at the target; the legacy
+controller under- (VBR) and overshoots (CappedQuality).  The user made the
+Allegro core the default.

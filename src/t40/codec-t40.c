@@ -2548,9 +2548,10 @@ static void avpu_t31_allegro_complete(ALAvpuContext *ctx, int buf_idx,
     }
 }
 
-/* OPENIMP_T31_RC_CORE=allegro selects the OEM Allegro core
- * (t31_al_rc.c) for VBR, CappedVBR and CappedQuality; anything else (the
- * default, "legacy") keeps the OpenIMP controller.  Read once. */
+/* The OEM Allegro core (t31_al_rc.c) runs VBR, CappedVBR and CappedQuality
+ * by default (device test cam-A 2026-10-03); OPENIMP_T31_RC_CORE=legacy
+ * restores the OpenIMP controller.  CBR runs the legacy controller in both
+ * settings.  Read once. */
 static int avpu_t31_rc_core_allegro(void)
 {
     static int core = -1;
@@ -2558,7 +2559,7 @@ static int avpu_t31_rc_core_allegro(void)
     if (core < 0) {
         const char *value = getenv("OPENIMP_T31_RC_CORE");
 
-        core = value && strcmp(value, "allegro") == 0 ? 1 : 0;
+        core = value && strcmp(value, "legacy") == 0 ? 0 : 1;
         IMP_LOG_INFO("Codec", "T31 rate control core: %s%s",
                      core ? "allegro (OEM libimp 1.1.6 port)" : "legacy",
                      value ? " (OPENIMP_T31_RC_CORE)" : "");

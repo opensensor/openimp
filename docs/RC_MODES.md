@@ -96,9 +96,10 @@ encTools 0x9c, HEVC level 50/tier 1, uGopCtrlMode 2 and uMaxSameSenceCnt
 >= 1.
 
 OpenIMP: two T31 controllers exist, selected by `OPENIMP_T31_RC_CORE`
-(read once at the first picture):
+(read once at the first picture; `allegro` is the default since the device
+test of 2026-10-03, `legacy` restores the former controller):
 
-* `legacy` (default): CBR and VBR run the OpenIMP closed-loop controller
+* `legacy`: CBR and VBR run the OpenIMP closed-loop controller
   (`t31_rate_control.c`); `OPENIMP_T31_VBR_LOOP=0` restores the former
   open-loop VBR picture QP from the bitrate.  CappedVBR and CappedQuality
   run it with the OEM PSNR cap (`AL_Codec_Encode_SetRcQualityCap`, uMaxPSNR
@@ -109,7 +110,7 @@ OpenIMP: two T31 controllers exist, selected by `OPENIMP_T31_RC_CORE`
   picture.  The OEM difference between the two capped modes has no
   counterpart in this controller: both behave the same.  The log shows
   `T31 capped rc: qp=.. psnr=.. cap=.. holds=..` every 250 pictures.
-* `allegro`: the OEM Allegro core ported instruction for instruction
+* `allegro` (default): the OEM Allegro core ported instruction for instruction
   (`src/t40/t31_al_rc.c`: `lI1i` init and parameter update, `lI0i`/`lo0i`
   reset, `Il1i` picture QP, `o11i`/`l01i`/`llli`/`iili` picture start,
   `Ioii` with `Ilii`/`i0ii`/`O0ii`/`ooIi`/`i1Ii`/`illi`/`IIIi`/`Ioli`/
@@ -129,8 +130,8 @@ OpenIMP: two T31 controllers exist, selected by `OPENIMP_T31_RC_CORE`
   statistics from the status registers 0x10c..0x12c, the SSE from
   0x158/0x15c, the picture size as the entropy byte count * 8.  Run-time
   bitrate/fps/QP-bound changes go through the OEM parameter update.  CBR
-  (`IIii` 0x53360) is not ported: with the switch set, CBR still runs the
-  legacy controller.  Not reproduced: the OEM re-encode of a picture that
+  (`IIii` 0x53360) is not ported: CBR runs the legacy controller in both
+  settings.  Not reproduced: the OEM re-encode of a picture that
   overflowed its stream buffer (the re-encode flag is always 0; a dropped
   picture is accounted with the buffer size), the filler data the OEM
   appends when the HRD says so (the count is fed back into the model but
