@@ -764,6 +764,11 @@ static struct platform_driver avpu_platform_driver = {
 	.driver			=       {
 		.name		= "avpu",
 		.of_match_table = of_match_ptr(avpu_codec_of_match),
+		/* remove() frees the codec while an open file still points at
+		 * it; its release() would then use freed memory. Without the
+		 * sysfs bind/unbind files remove() only runs on rmmod, which the
+		 * module reference held by every open file already prevents. */
+		.suppress_bind_attrs = true,
 	},
 };
 
