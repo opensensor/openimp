@@ -1929,6 +1929,8 @@ int OpenIMP_HelixJpeg_EncodeEx(const HelixJpegFrame *frame,
             frame->width * aligned_height * 3u / 2u, qt);
         IMPDMABufferInfo shared;
 
+        (void)may_skip; /* T23 never skips: the shared area lock waits */
+
         if (!helix_jpeg.probe_limit &&
             OpenIMP_T23_HelixBs_Lock(need, &shared) == 0) {
             if (helix_jpeg.job.phys_addr) {
