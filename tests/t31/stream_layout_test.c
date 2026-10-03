@@ -31,6 +31,136 @@ static int expect_trace(uint32_t capacity, uint32_t status_payload,
     return 0;
 }
 
+/* The byte-wise escaping copy the library used before its memchr fast
+ * path: the oracle the fast path must match byte for byte. */
+static uint32_t reference_copy_entropy_ebsp(uint8_t *destination,
+                                           uint32_t capacity,
+                                           const uint8_t *source,
+                                           uint32_t header_size,
+                                           uint32_t payload_offset,
+                                           uint32_t payload_size,
+                                           uint32_t *inserted_out)
+{
+    uint32_t inserted = 0u;
+    uint32_t zero_run = 0u;
+    uint32_t i;
+    uint32_t dst = header_size;
+    uint32_t slice_payload = 0u;
+
+    if (inserted_out)
+        *inserted_out = 0u;
+    if (!destination || !source || payload_offset > capacity ||
+        payload_size > capacity - payload_offset ||
+        header_size > capacity)
+        return 0u;
+
+    /* Seed the zero run from the host-generated slice header so an escape is
+     * also inserted when the forbidden sequence crosses the join boundary. */
+    for (i = 0u; i + 3u < header_size; ++i) {
+        if (destination[i] == 0u && destination[i + 1u] == 0u &&
+            destination[i + 2u] == 1u) {
+            slice_payload = i + 4u;
+        } else if (i + 4u < header_size &&
+                   destination[i] == 0u && destination[i + 1u] == 0u &&
+                   destination[i + 2u] == 0u &&
+                   destination[i + 3u] == 1u) {
+            slice_payload = i + 5u;
+        }
+    }
+    for (i = slice_payload; i < header_size; ++i)
+        zero_run = destination[i] == 0u ? zero_run + 1u : 0u;
+
+    for (i = 0u; i < payload_size; ++i) {
+        uint8_t byte = source[payload_offset + i];
+
+        if (zero_run >= 2u) {
+            if (byte <= 2u) {
+                if (dst >= capacity)
+                    return 0u;
+                destination[dst++] = 3u;
+                ++inserted;
+                zero_run = 0u;
+            } else if (byte == 3u) {
+                zero_run = 0u;
+            }
+        }
+        if (dst >= capacity)
+            return 0u;
+        destination[dst++] = byte;
+        if (byte == 0u)
+            ++zero_run;
+        else
+            zero_run = 0u;
+    }
+
+    if (inserted_out)
+        *inserted_out = inserted;
+    return dst;
+}
+
+static uint32_t ebsp_rng = 0x12345678u;
+
+static uint32_t ebsp_random(void)
+{
+    ebsp_rng = ebsp_rng * 1664525u + 1013904223u;
+    return ebsp_rng >> 8;
+}
+
+/* Random headers and payloads, from all-zero to zero-free, also with too
+ * small capacities: length, inserted count and bytes must equal the
+ * reference. */
+static int check_ebsp_against_reference(void)
+{
+    static uint8_t source[4096 + 0x220];
+    static uint8_t expect[8192];
+    static uint8_t actual[8192];
+    unsigned int round;
+
+    for (round = 0; round < 20000u; ++round) {
+        uint32_t zero_permille = ebsp_random() % 1001u;
+        uint32_t header = ebsp_random() % 48u;
+        uint32_t payload = ebsp_random() % 4096u;
+        uint32_t offset = 0x220u;
+        uint32_t capacity = (ebsp_random() & 3u) == 0u
+            ? ebsp_random() % (header + payload + payload / 2u + 2u)
+            : (uint32_t)sizeof(expect);
+        uint32_t i, n_expect, n_actual, ins_expect = 7u, ins_actual = 9u;
+
+        if (capacity < header)
+            capacity = header;
+        if (capacity < offset + payload && capacity != sizeof(expect))
+            capacity = offset + payload;  /* argument check, not the copy */
+        for (i = 0; i < offset + payload; ++i) {
+            uint32_t r = ebsp_random() % 1000u;
+
+            source[i] = r < zero_permille ? 0u
+                      : (uint8_t)(r % 5u == 0u ? ebsp_random() % 4u
+                                               : ebsp_random() & 0xffu);
+        }
+        for (i = 0; i < header; ++i) {
+            uint32_t r = ebsp_random() % 4u;
+
+            expect[i] = (uint8_t)(r == 0u ? 0u : r == 1u ? 1u
+                                  : ebsp_random() & 0xffu);
+        }
+        memcpy(actual, expect, header);
+        n_expect = reference_copy_entropy_ebsp(expect, capacity, source,
+                                               header, offset, payload,
+                                               &ins_expect);
+        n_actual = openimp_t31_copy_entropy_ebsp(actual, capacity, source,
+                                                 header, offset, payload,
+                                                 &ins_actual);
+        if (n_expect != n_actual || ins_expect != ins_actual ||
+            (n_expect && memcmp(expect, actual, n_expect) != 0)) {
+            fprintf(stderr, "EBSP copy differs from the reference in round "
+                    "%u: len %u/%u inserted %u/%u\n", round, n_actual,
+                    n_expect, ins_actual, ins_expect);
+            return 1;
+        }
+    }
+    return 0;
+}
+
 int main(void)
 {
     static const uint8_t idr_access_unit[] = {
@@ -189,6 +319,9 @@ int main(void)
             failed = 1;
         }
     }
+
+    if (check_ebsp_against_reference())
+        failed = 1;
 
     if (failed)
         return 1;

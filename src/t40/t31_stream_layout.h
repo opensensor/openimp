@@ -50,6 +50,18 @@ int openimp_t31_completion_payload_size(const void *status,
 int openimp_t31_stream_layout(uint32_t capacity, uint32_t payload_offset,
                               uint32_t header_size, uint32_t payload_size,
                               OpenIMPT31StreamLayout *layout);
+/* Copies [header (already in destination)][payload of source at
+ * payload_offset] into destination behind header_size bytes, inserting the
+ * emulation-prevention bytes the T31 entropy output lacks (existing
+ * 00 00 03 are kept).  Returns the destination length, 0 on bad arguments
+ * or when capacity is too small; *inserted_out counts the added bytes. */
+uint32_t openimp_t31_copy_entropy_ebsp(uint8_t *destination,
+                                       uint32_t capacity,
+                                       const uint8_t *source,
+                                       uint32_t header_size,
+                                       uint32_t payload_offset,
+                                       uint32_t payload_size,
+                                       uint32_t *inserted_out);
 int openimp_t31_annexb_nals(const uint8_t *data, uint32_t length,
                             OpenIMPT31AnnexBNAL *nals, uint32_t capacity);
 /* Same split for HEVC: nal_type is (byte >> 1) & 0x3f of the two-byte

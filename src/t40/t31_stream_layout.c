@@ -92,6 +92,110 @@ int openimp_t31_hevc_annexb_nals(const uint8_t *data, uint32_t length,
     return annexb_nals(data, length, nals, capacity, 1);
 }
 
+/*
+ * T31's inline Enc2 output is mostly already EBSP escaped, but live 1080p
+ * captures occasionally retain 00 00 {00,01,02} in the entropy payload.
+ * Annex-B then mistakes 00 00 01 for a new NAL boundary and publishes a
+ * truncated picture followed by a bogus NAL.  Preserve existing 00 00 03
+ * escape bytes and add only the missing ones while compacting the fixed
+ * +0x220 payload behind the host-generated slice prefix.
+ *
+ * Copy into a CPU-owned buffer while escaping so the published bytes never
+ * share storage with the still DMA-visible source.
+ *
+ * Only a zero byte, or the byte right after two zeros, can change the
+ * escaping state, so runs of non-zero bytes are found with memchr and
+ * copied with memcpy; the byte-wise state machine (the former whole-payload
+ * loop, output identical) only sees zeros and their successors.  This was
+ * about a third of the T31 completion thread's CPU time per picture.
+ */
+uint32_t openimp_t31_copy_entropy_ebsp(uint8_t *destination,
+                                       uint32_t capacity,
+                                       const uint8_t *source,
+                                       uint32_t header_size,
+                                       uint32_t payload_offset,
+                                       uint32_t payload_size,
+                                       uint32_t *inserted_out)
+{
+    uint32_t inserted = 0u;
+    uint32_t zero_run = 0u;
+    uint32_t i;
+    uint32_t dst = header_size;
+    uint32_t slice_payload = 0u;
+    const uint8_t *payload;
+
+    if (inserted_out)
+        *inserted_out = 0u;
+    if (!destination || !source || payload_offset > capacity ||
+        payload_size > capacity - payload_offset ||
+        header_size > capacity)
+        return 0u;
+
+    /* Seed the zero run from the host-generated slice header so an escape is
+     * also inserted when the forbidden sequence crosses the join boundary. */
+    for (i = 0u; i + 3u < header_size; ++i) {
+        if (destination[i] == 0u && destination[i + 1u] == 0u &&
+            destination[i + 2u] == 1u) {
+            slice_payload = i + 4u;
+        } else if (i + 4u < header_size &&
+                   destination[i] == 0u && destination[i + 1u] == 0u &&
+                   destination[i + 2u] == 0u &&
+                   destination[i + 3u] == 1u) {
+            slice_payload = i + 5u;
+        }
+    }
+    for (i = slice_payload; i < header_size; ++i)
+        zero_run = destination[i] == 0u ? zero_run + 1u : 0u;
+
+    payload = source + payload_offset;
+    i = 0u;
+    while (i < payload_size) {
+        uint8_t byte;
+
+        if (zero_run < 2u) {
+            /* non-zero bytes after fewer than two zeros pass unchanged and
+             * end the zero run */
+            const uint8_t *zero =
+                (const uint8_t *)memchr(payload + i, 0, payload_size - i);
+            uint32_t run = zero ? (uint32_t)(zero - (payload + i))
+                                : payload_size - i;
+
+            if (run) {
+                if (run > capacity - dst)
+                    return 0u;
+                memcpy(destination + dst, payload + i, run);
+                dst += run;
+                i += run;
+                zero_run = 0u;
+                continue;
+            }
+        }
+        byte = payload[i++];
+        if (zero_run >= 2u) {
+            if (byte <= 2u) {
+                if (dst >= capacity)
+                    return 0u;
+                destination[dst++] = 3u;
+                ++inserted;
+                zero_run = 0u;
+            } else if (byte == 3u) {
+                zero_run = 0u;
+            }
+        }
+        if (dst >= capacity)
+            return 0u;
+        destination[dst++] = byte;
+        if (byte == 0u)
+            ++zero_run;
+        else
+            zero_run = 0u;
+    }
+
+    if (inserted_out)
+        *inserted_out = inserted;
+    return dst;
+}
+
 /* Offset of the next 00 00 01 at or after offset, or length.  Skips three
  * bytes whenever the third byte cannot be part of a start code, so the scan
  * touches about a third of a CABAC payload. */
