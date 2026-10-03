@@ -44,6 +44,15 @@ Further items (evening 2026-10-03):
 - **T21 AWB faster than vendor:** the lifted AWB needs 0.95x of the vendor instructions (was 1.41x), output bit-identical, cam-D isp_fw_process -10 % (`claude/t21-size-awb-opt`); the kernel module is also smaller (760 to 494 KB). No switch, nothing to integrate.
 - **Smaller binaries (2026-10-03 evening):** gc-sections in OpenIMP (`claude/openimp-size`, 2040a03): T23 libimp 774 to 726 KB, T20 694 to 594 KB; stripped local symbols in open-tx-isp (`claude/open-tx-isp-size`, 15232deb): T23 module 1,211 to 1,047 KB, T20 819 to 775 KB. No API change; rootfs back to 0x4DE000 (T23) / 0x4DD000 (T20).
 
+Further items (night 2026-10-03):
+
+- **eprc complete (T21/T23, `claude/eprc-complete`):** FIXQP, scene-cut IDR, runtime RC/fps/GOP/HSkip changes applied at the next IDR like the vendor, `SetChnHSkip` on T21/T23; 0 oracle deviations. MB-level RC is not ported (separate task). The vendor-identical T21 eprc is now the default (`claude/eprc-t21-default`); cam-D at 1200 kbit/s: CBR 1326, VBR 1096, SMART 1071.
+- **T20 snapshot debounce (openimp `claude/openimp-t20-jpeg-align`, timps `claude/timps-jpeg-idle-nopoll`):** it no longer polls the JPEG encoder; with 1 snapshot/s on both channels chn0 14.4 / chn1 15.0 fps (was 11.2 / 14.3). A sub-stream height of 270 is rounded to 272 with a warning (the vendor scaler hangs on it).
+- **T10 Sinter/Temper strength acts** (the vendor treats it as a no-op): temporal noise 7.11 / 2.91 / 1.51 at temper 0 / 128 / 255, survives day/night (`claude/t10-t20-nr-wdr`).
+- **T41 (cam-F), device-verified:** module reload on the rev2 image, 10/10 rmmod/insmod cycles, refcnt 0, 0 oops, kill -9 of the streamer recovers 3/3 (root cause was a decompiled tuning-node helper overwriting .bss, `claude/t41-matrix-fixes`); brightness 255 gives Y 211, contrast 0 flat grey, saturation 0/255 chroma 0.1/7.1; bitrate 400/1200/3000 gives 518/1195/2777 kbit/s over 30 s each (`claude/t41-cbr-overshoot`). Open: the driver writes the sensor flip synchronously, but timps does not call SetHVFLIP live on T41; u-boot ignores the stored env (fw_env.config size mismatch), so changing rmem needs an env-partition image (user decision pending).
+- **Capability query (`claude/imp-querycaps`, timps `claude/timps-querycaps`, not merged to timps main):** caps may be restricted and extended by OpenIMP (simple setters only; never WB, sensor attributes, ae_it_max, T40/T41 flip). Vendor libimp gives byte-identical caps (`make test-image-caps`); a POST with only unsupported keys returns 422 `ok:false` and the keys are not persisted; timpsd grows by 0 to 4 KB. Device: T20 sinter/temper appear in the caps and act.
+
+
 ## 2. ISP tuning
 
 | Feature | SoC | API | Default | How a streamer uses it | Detect / disable | Status / branch |
@@ -212,11 +221,11 @@ bring-up/trace switches that are not described in the docs; treat them as intern
 ## 9. Unverified or not yet in this list
 
 - T31 `OPENIMP_T31_COMPANION` (mentioned only as a proposal in T31_HW_JPEG_RE.md; the implemented knob is `..._COMPANION_STAGE`).
-- SMART / vendor-equal eprc on T23, T21 (`claude/t23-smart`): in progress; SMART is still mapped to VBR on T10/T20/T21.
+- SMART / vendor-equal eprc on T23, T21: done (`claude/eprc-complete`, 0 oracle deviations); SMART is still mapped to VBR on T10/T20; MB-level RC not ported.
 - T23 live RC readback and which RC writes take effect on T10/T20/T21: partly stated in the matrix, per-field test not documented.
 - T21 AWB hysteresis at real dusk (night checks only).
 - AEC on T23 (implemented, device test open); AENC/ADEC double-release rejection (matrix cites it, no SoC test evidence).
 - T23 `OPENIMP_T23_HELIX_BSF=1` hard bitstream limit; T23 vendor AE (`source_ae_oem=1`) default switch (decided 2026-10-03: the lifted vendor AE becomes the default, after a night-switch test in the dark that is still pending).
 - IVS EBUSY and JPEG last-frame reuse: documented as implemented, no dedicated test report found.
 - Reference sharing on T41 and on T10/T20/T31: not applicable or unknown.
-- Module reload (rmmod+insmod): T10 is device-tested, 5 cycles while streaming, 0 oops (the earlier `Failed to get csi clock -22` oops came from a module built against the T20 kernel tree; the T10 build now refuses that with #error, `claude/t10-reload-safe`). T41: the cause is found statically (`tx_isp_fs_remove` freed the channel array while the framechan0..2 misc devices were still registered; four static work items were not drained); the fix is on `claude/t41-reload-safe`, device test pending (needs a boot without the old module, boot guard `isp_open=manual`). The boot-time load is fine everywhere. Not a beyond-vendor item, listed so streamers do not rely on reload on T41 yet.
+- Module reload (rmmod+insmod): T10 is device-tested, 5 cycles while streaming, 0 oops (the earlier `Failed to get csi clock -22` oops came from a module built against the T20 kernel tree; the T10 build now refuses that with #error, `claude/t10-reload-safe`). T41: the cause is found statically (`tx_isp_fs_remove` freed the channel array while the framechan0..2 misc devices were still registered; four static work items were not drained); the fix (`claude/t41-matrix-fixes`) is device-verified on the rev2 image: 10/10 cycles, 0 oops. The boot-time load is fine everywhere. Not a beyond-vendor item, listed so streamers know reload is now safe on T41 with the rev2 image.

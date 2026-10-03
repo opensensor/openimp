@@ -3,7 +3,7 @@
 Everything changed, extended or fixed in OpenIMP, open-tx-isp, timps and the thingino
 integration since the test campaign started on 2026-09-30. Kept up to date during the campaign.
 
-Last update: 2026-10-03 18:08.
+Last update: 2026-10-03 19:56.
 
 Cameras are anonymised: cam-A (T31), cam-B (T23), cam-C (T20), cam-D (T21), cam-E (T10), cam-F (T41).
 
@@ -87,6 +87,18 @@ Goal: identical image behaviour, but cleaner unload/reload, less memory and chec
 OpenIMP: T20 green flicker in the bottom rows fixed by filling the encoder padding rows (`claude/t20-bottom-chroma`; 0 green pixels in 30 frames). Faster IVS (`claude/ivs-opt`; T20 timps CPU 4.1 % → 2.7 % with motion on).
 
 Aggregates: `claude/open-tx-isp-all-4` and `claude/openimp-all-4` (pushed); 58 merged single branches removed. `claude/open-tx-isp-all-5` adds t21-robust and t31-robust-2 (T31: sensor flip with shvflip=1, unload leaks, lazy WDR buffers; MemFree drift per reload 460 → 45 KB); all four cameras flashed with -all-5 images.
+
+## Night (2026-10-03)
+
+- **T41 module reload fixed and verified:** rev2 image on cam-F: 10/10 rmmod/insmod cycles, refcnt 0, 0 oops; kill -9 of the streamer recovers 3/3. Root cause: a decompiled tuning-node helper overwrote .bss. Branch `claude/t41-matrix-fixes`.
+- **T41 picture controls and rate control:** brightness 255 gives Y 211, contrast 0 flat grey, saturation 0/255 chroma 0.1/7.1 (dark scene); `isp-m0` in vendor layout (run mode, BCSH, flip mode, anti-flicker, AE); bitrate 400/1200/3000 gives 518/1195/2777 kbit/s over 30 s each (`claude/t41-cbr-overshoot`). Forced day/night switch test pending.
+- **T41 open points:** the driver now writes the sensor flip synchronously (ret 0), but timps does not call SetHVFLIP live on T41 (under investigation). u-boot ignores the stored env (fw_env.config size mismatch), so changing rmem needs an env-partition image; user decision pending.
+- **T21 vendor-identical eprc is the default:** 0 oracle deviations; cam-D at 1200 kbit/s: CBR 1326, VBR 1096, SMART 1071. Branch `claude/eprc-t21-default`.
+- **eprc complete (T21/T23):** FIXQP, scene-cut IDR, runtime RC/fps/GOP/HSkip changes applied at the next IDR like the vendor, `SetChnHSkip` on T21/T23; 0 oracle deviations. MB-level RC is not ported (separate task). Branch `claude/eprc-complete`.
+- **T20 frame source:** the snapshot debounce no longer polls the JPEG encoder: with 1 snapshot/s on both channels chn0 14.4 / chn1 15.0 fps (was 11.2 / 14.3). A sub-stream height of 270 is rounded to 272 with a warning (was: scaler hang). Branches OpenIMP `claude/openimp-t20-jpeg-align`, timps `claude/timps-jpeg-idle-nopoll`.
+- **T10 noise reduction:** Sinter/Temper strength acts (vendor: no-op): temporal noise 7.11 / 2.91 / 1.51 at temper 0 / 128 / 255, survives day/night. Branch `claude/t10-t20-nr-wdr`.
+- **Capability query:** OpenIMP `IMP_ISP_QueryCaps` (`claude/imp-querycaps`) plus timps `claude/timps-querycaps`: caps may be restricted and extended by OpenIMP (only simple setters; never WB, sensor attributes, ae_it_max, T40/T41 flip). With a vendor libimp the caps are byte-identical (`make test-image-caps`); a POST with only unsupported keys gives 422 `ok:false` and the unsupported keys are not persisted; timpsd grows by 0 to 4 KB. Device (cam-C): sinter/temper appear in the caps and act. Not merged to timps main (user decides).
+- **T23 AE default:** the lifted vendor AE becomes the default after the night test (pending).
 
 ## Evening (2026-10-03)
 
