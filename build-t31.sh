@@ -50,6 +50,7 @@ compile openimp_p2_encoder src/t40/openimp_p2_encoder.c -Werror
 compile openimp_avc src/t40/openimp_avc.c -Werror
 compile t40_ep1 src/t40/t40_ep1.c -Werror
 compile t31_rate_control src/t40/t31_rate_control.c -Werror
+compile t31_al_rc src/t40/t31_al_rc.c -Werror
 compile t31_stream_layout src/t40/t31_stream_layout.c -Werror
 compile t31_hevc_headers src/t40/t31_hevc_headers.c -Werror
 compile enc_hw_scaling src/alcodec/EncHwScalingList.c
@@ -94,6 +95,7 @@ compile t31_extras src/t31/openimp_t31_extras.c -Werror
     "$output_dir/openimp_avc.o" \
     "$output_dir/t40_ep1.o" \
     "$output_dir/t31_rate_control.o" \
+    "$output_dir/t31_al_rc.o" \
     "$output_dir/t31_stream_layout.o" \
     "$output_dir/t31_hevc_headers.o" \
     "$output_dir/enc_hw_scaling.o" \
@@ -123,7 +125,7 @@ compile t31_extras src/t31/openimp_t31_extras.c -Werror
     "$output_dir/audio_enc_dec.o" \
     "$output_dir/t31_dmic.o" \
     "$output_dir/t31_extras.o" \
-    -ldl -lpthread -lrt
+    -ldl -lpthread -lrt -lm
 
 "$compiler" $base_flags $repo_includes -Wall -Wextra -Werror \
     "$project_dir/tools/openimp-tuningd.c" "$output_dir/openimp_tuning.o" \
