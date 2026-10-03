@@ -174,6 +174,15 @@ static void eprc_vbv_fields(const EprcParams *p, uint32_t *f292, uint32_t *f296)
     int32_t hi = (pixels * 12) / (p->width < 801u ? 3 : 6);
     int32_t v = 19660800;
 
+    /* i264e_validate_parameters (0x2a740) stops before these fields for a
+     * picture size it refuses (width < 256, width not a multiple of 16, odd
+     * height or below 16 lines); i264e then keeps the defaults (the OEM
+     * channel cannot be created with such a size, the oracle runs it). */
+    if (p->width < 256u || (p->width & 15u) || (p->height & 1u) || p->height < 16u) {
+        *f292 = 19660800u;
+        *f296 = 14043429u;
+        return;
+    }
     v = v < lo ? lo : v > hi ? hi : v;
     *f292 = (uint32_t)v;
     hi = (int32_t)((float)v / 1.4f);

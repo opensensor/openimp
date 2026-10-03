@@ -334,10 +334,41 @@ def validated_vbv(lib, w, h):
     return {292: L.r32(R + 292 + sh), 296: L.r32(R + 296 + sh)}
 
 
+def random_scenarios(seed, count):
+    """Random CBR/VBR/SMART scenarios (tools/eprc_oracle.py LIB --random SEED N)."""
+    import random
+    rnd = random.Random(seed)
+    sizes = [(320, 240), (640, 360), (1280, 720), (1920, 1080), (2304, 1296), (2560, 1440),
+             (2336, 1296), (2352, 1296), (176, 144), (801, 600), (1920, 1088)]
+    out = []
+    for _ in range(count):
+        mode = rnd.choice((1, 2, 3))
+        w, h = rnd.choice(sizes)
+        gop = rnd.randint(1, 120)
+        fps = rnd.randint(5, 30)
+        minqp = rnd.randint(5, 30)
+        maxqp = rnd.randint(max(minqp, 20), 51)
+        br = rnd.choice((128, 256, 512, 1000, 2000, 4000))
+        mbr = br * rnd.choice((1, 2, 3))
+        bgmul = rnd.choice((0, 0, 1, 2, 3))
+        idr = gop * (bgmul if bgmul and mode == 3 else 1)
+        if bgmul and mode != 3 and rnd.random() < 0.5:
+            idr = gop * bgmul
+        out.append((mode, w, h, gop, fps, minqp, maxqp, br, mbr, rnd.randint(1, 10),
+                    rnd.randint(1, 30), rnd.randint(-5, 5), rnd.randint(1, 8),
+                    rnd.randint(50, 100), rnd.randint(0, 6), bgmul,
+                    rnd.choice((-1, -1, rnd.randint(10, 45))), idr))
+    return out
+
+
 def main():
     lib = sys.argv[1]
     frames = 120
-    for n, sc in enumerate(SCENARIOS):
+    scenarios = SCENARIOS
+    if len(sys.argv) > 4 and sys.argv[2] == '--random':
+        scenarios = random_scenarios(int(sys.argv[3]), int(sys.argv[4]))
+        frames = int(sys.argv[5]) if len(sys.argv) > 5 else 150
+    for n, sc in enumerate(scenarios):
         (mode, w, h, gop, fps, minqp, maxqp, br, mbr, fstep, gstep, bias, static,
          cpos, qual, bgmul, initqp, idr) = sc
         s = Sim(lib, mode=mode, w=w, h=h, gop=gop, fps=(fps, 1), minqp=minqp, maxqp=maxqp,
