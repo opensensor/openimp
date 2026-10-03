@@ -333,6 +333,13 @@ struct T30HelixEncoder {
     int eprc_restarting;
     uint32_t eprc_reencodes;
     uint32_t eprc_stat_errors;
+    /* eprc macroblock rate control (src/eprc/eprc_mbrc.c): the switch
+     * (OPENIMP_EPRC_MBRC, IMP_Encoder_SetMbRC) and the registers of the
+     * picture being coded */
+    int mbrc_on;
+    EprcMbRc eprc_mbrc;
+    uint32_t mbrc_log;          /* OPENIMP_EPRC_MBRC_LOG: every n pictures */
+    uint32_t mbrc_pictures;
 #endif
 };
 
@@ -758,6 +765,22 @@ static void t30_fill_slice(T30HelixEncoder *encoder,
 #if defined(PLATFORM_T23)
     slice->bsf_stop = (uint8_t)(encoder->bsf_stop != 0);
 #endif
+    if (encoder->eprc_on && encoder->mbrc_on) {
+        slice->mbrc = 1;
+        slice->mbrc_qp_flags = encoder->eprc_mbrc.qp_flags;
+        memcpy(slice->mbrc_regs, encoder->eprc_mbrc.reg,
+               sizeof(slice->mbrc_regs));
+        if (encoder->mbrc_log &&
+            encoder->mbrc_pictures++ % encoder->mbrc_log == 0u)
+            IMP_LOG_INFO("Encoder", "Helix eprc: frame=%u qp=%u macroblock "
+                         "rate control 0x40074|=%x 0x40078=%08x "
+                         "0x4007c..88=%08x %08x %08x %08x SAS offsets "
+                         "%08x %08x", encoder->frame_number, qp,
+                         slice->mbrc_qp_flags, slice->mbrc_regs[0],
+                         slice->mbrc_regs[1], slice->mbrc_regs[2],
+                         slice->mbrc_regs[3], slice->mbrc_regs[4],
+                         slice->mbrc_regs[5], slice->mbrc_regs[6]);
+    }
 #else
     /* SDK 1.0.5 selects the alternate DCS threshold for its substream. */
     slice->dcs_oth = encoder->params.width <= 640u ? 1u : 0u;
@@ -1273,6 +1296,24 @@ static void helix_eprc_stop(T30HelixEncoder *encoder)
     encoder->eprc_on = 0;
 }
 
+/* HWEncoderParams.mb_rc (IMP_Encoder_SetMbRC); HW_MBRC_DEFAULT keeps the
+ * current setting.  Takes effect with the next picture: the controller
+ * computes the macroblock rate control for every picture either way (as
+ * the OEM), the switch only decides whether the Helix gets it. */
+static void helix_mbrc_set(T30HelixEncoder *encoder, uint32_t mb_rc)
+{
+    int on;
+
+    if (mb_rc != HW_MBRC_ON && mb_rc != HW_MBRC_OFF)
+        return;
+    on = mb_rc == HW_MBRC_ON;
+    if (on == encoder->mbrc_on)
+        return;
+    encoder->mbrc_on = on;
+    IMP_LOG_INFO("Encoder", HELIX_EPRC_TAG " Helix eprc: macroblock rate "
+                 "control %s", on ? "on" : "off");
+}
+
 static int32_t helix_rc_clip(int32_t value, int32_t lo, int32_t hi)
 {
     return value < lo ? lo : value > hi ? hi : value;
@@ -1421,7 +1462,20 @@ static void helix_eprc_start(T30HelixEncoder *encoder)
     encoder->eprc_idr_gops =
         helix_eprc_idr_gops(hp, p.rc_mode == EPRC_MODE_SMART);
     p.bg_interval_gops = encoder->eprc_idr_gops;
-    memset(encoder->eprc_slice, 0, EPRC_SLICE_SIZE);
+    {
+        /* the OEM slice block lives in the hwicodec layer and outlives an
+         * i264e_idr_reconfig: the first picture after a restart (no
+         * macroblock rate control computed yet) keeps the previous
+         * thresholds and enable bits, with the SAS offsets cleared */
+        uint8_t keep[EPRC_SLICE_MBRC_END - EPRC_SLICE_MBRC_START];
+
+        memcpy(keep, encoder->eprc_slice + EPRC_SLICE_MBRC_START,
+               sizeof(keep));
+        memset(encoder->eprc_slice, 0, EPRC_SLICE_SIZE);
+        if (encoder->eprc_restarting)
+            memcpy(encoder->eprc_slice + EPRC_SLICE_MBRC_START, keep,
+                   sizeof(keep));
+    }
     encoder->eprc_t21 = rev == 1;
     if ((
 #if !defined(PLATFORM_T23)
@@ -1518,6 +1572,7 @@ static int helix_eprc_end(T30HelixEncoder *encoder, int idr, uint32_t *qp)
                      pic.qp, encoder->eprc_reencodes);
     *qp = pic.qp;
     encoder->eprc_qp = pic.qp;
+    encoder->eprc_mbrc = pic.mbrc;
     return 1;
 }
 #endif
@@ -1674,6 +1729,15 @@ int OpenIMP_T30_HelixCreate(T30HelixEncoder **encoder_out,
     encoder->fd = -1;
 #if defined(HELIX_T21_SYNTAX)
     encoder->eprc_qp = -1;
+    {
+        /* off until device-tested; the OEM always runs it */
+        const char *mbrc = getenv("OPENIMP_EPRC_MBRC");
+
+        encoder->mbrc_on = mbrc && mbrc[0] == '1';
+        mbrc = getenv("OPENIMP_EPRC_MBRC_LOG");
+        encoder->mbrc_log = mbrc ? (uint32_t)strtoul(mbrc, NULL, 0) : 0u;
+    }
+    helix_mbrc_set(encoder, params->mb_rc);
 #endif
     encoder->params = *params;
     t30_normalize_params(&encoder->params, NULL);
@@ -2213,6 +2277,7 @@ static int t30_helix_encode_job(T30HelixEncoder *encoder,
              EPRC_FrameStart(&encoder->eprc, &in, &pic)) == 0) {
             qp = pic.qp;
             encoder->eprc_qp = pic.qp;
+            encoder->eprc_mbrc = pic.mbrc;
         } else {
             IMP_LOG_WARN("Encoder", HELIX_EPRC_TAG " Helix eprc: picture "
                          "start failed, using the GOP controller");
@@ -2680,6 +2745,9 @@ int OpenIMP_T30_HelixUpdateParams(T30HelixEncoder *encoder,
 
     if (!encoder || !requested)
         return -1;
+#if defined(HELIX_T21_SYNTAX)
+    helix_mbrc_set(encoder, requested->mb_rc);
+#endif
     next = encoder->params;
     next.fps_num = requested->fps_num;
     next.fps_den = requested->fps_den;

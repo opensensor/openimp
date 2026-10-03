@@ -389,10 +389,14 @@ int T21_H264_BuildDescriptor(const T21H264SliceConfig *config,
     EMIT(0x4010c, (config->ref_share &&
                    (config->ring_flags & T21_RING_VENDOR_MISC))
                       ? 0x03400000u : 0x00400000u);
+    /* + the macroblock rate control of the OEM h264_get_mb_qp, encoded as
+     * H264E_T21_SliceInit does (enable bits, SAS activity filter, class
+     * limits and per-class QP offsets) */
     EMIT(0x40074, (max_qp << 24) | (min_qp << 16) |
-                  ((uint32_t)config->qp << 8));
+                  ((uint32_t)config->qp << 8) |
+                  (config->mbrc ? config->mbrc_qp_flags : 0u));
     for (i = 0; i < 7u; i++)
-        EMIT(0x40078u + i * 4u, 0);
+        EMIT(0x40078u + i * 4u, config->mbrc ? config->mbrc_regs[i] : 0u);
     EMIT(0x400c0, 0x060407c1u);
     EMIT(0x400c4, 0x61615921u);
     EMIT(0x400c8, 0x12449240u);

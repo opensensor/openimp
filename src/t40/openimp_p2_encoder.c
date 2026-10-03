@@ -1024,6 +1024,7 @@ extern int AL_Codec_Encode_SetRcParam(void *codec, void *rc_attr);
     (defined(PLATFORM_T21) && !defined(PLATFORM_T20))
 extern int AL_Codec_Encode_SetRcExtras(void *codec, const void *rc_mode);
 extern int AL_Codec_Encode_SetSameSceneGops(void *codec, uint32_t gops);
+extern int AL_Codec_Encode_SetMbRC(void *codec, int enable);
 #endif
 #if defined(PLATFORM_T31)
 extern int AL_Codec_Encode_SetRcQualityCap(void *codec, int rc_mode,
@@ -1673,6 +1674,16 @@ int IMP_Encoder_CreateChn(int channel, IMPEncoderCHNAttr *attr)
         (void)AL_Codec_Encode_SetSameSceneGops(
             ch->codec, ok && hs->maxSameSceneCnt > 0 ?
                            (uint32_t)hs->maxSameSceneCnt : 0u);
+    }
+    {
+        /* eprc macroblock rate control: OPENIMP_EPRC_MBRC=1 turns it on
+         * (the OEM default; off until it is device-tested), then
+         * IMP_Encoder_SetMbRC */
+        const char *mbrc = getenv("OPENIMP_EPRC_MBRC");
+
+        ch->macroblock_rate_control = mbrc && mbrc[0] == '1';
+        (void)AL_Codec_Encode_SetMbRC(ch->codec,
+                                      ch->macroblock_rate_control);
     }
 #endif
     p2_startup_trace("openimp/P2 startup: CreateChn codec created %p\n",
@@ -3543,6 +3554,13 @@ int IMP_Encoder_SetMbRC(int channel, int enabled)
         pthread_mutex_unlock(&ch->lock);
         return -1;
     }
+#endif
+#if defined(PLATFORM_T23) || \
+    (defined(PLATFORM_T21) && !defined(PLATFORM_T20))
+    /* the native Helix encoder: eprc macroblock rate control
+     * (docs/T23_EPRC.md); the OEM only stores the flag */
+    if (ch->codec)
+        (void)AL_Codec_Encode_SetMbRC(ch->codec, enabled);
 #endif
     pthread_mutex_unlock(&ch->lock);
     return 0;

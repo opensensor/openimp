@@ -36,6 +36,9 @@
 #define EPRC_E_SIZE 1840u
 /* Size of the OEM slice-parameter block (the H264E_T21_SliceInit input). */
 #define EPRC_SLICE_SIZE 0x1200u
+/* The slice fields of the macroblock rate control (h264_get_mb_qp). */
+#define EPRC_SLICE_MBRC_START 752u
+#define EPRC_SLICE_MBRC_END   926u
 
 /* The i264e parameters the OEM i264e_ratecontrol_init reads (offsets in
  * the OEM i264e parameter block in brackets). */
@@ -75,12 +78,22 @@ typedef struct {
 
 #define EPRC_AE_ZONES 225u
 
+/* Macroblock rate control (eprc_mbrc.c, docs/T23_EPRC.md): bits ORed into
+ * 0x40074 next to the QP window, and registers 0x40078, 0x4007c, 0x40080,
+ * 0x40084, 0x40088, 0x4008c and 0x40090 (activity filter, class limits,
+ * SAS QP offsets).  All zero: off (the OEM's first picture). */
+typedef struct {
+    uint32_t qp_flags;
+    uint32_t reg[7];
+} EprcMbRc;
+
 /* What the picture is coded with. */
 typedef struct {
     int32_t type;               /* 2: IDR, 6: SMART GOP-start P, 0: P */
     uint8_t qp;
     uint8_t qp_max, qp_min;     /* macroblock QP window (0x40040, 0x40074) */
     uint16_t lambda[3];         /* 0xb001c, 0xb0020 */
+    EprcMbRc mbrc;              /* from the slice block (zero without) */
 } EprcPicture;
 
 typedef struct Eprc {
@@ -133,6 +146,14 @@ void EPRC_DefaultSet(uint8_t *e);
 void EPRC_SetupE(uint8_t *e, const EprcParams *params);
 int EPRC_VideoCfg(Eprc *rc);
 void EPRC_Layout(Eprc *rc, uint8_t *block);
+
+/* h264_get_mb_qp (T23 0xc1cbc, T21 0x93908) on the OEM blocks A, S and the
+ * slice block (may be NULL): EPRC_FrameStart runs it; exposed for the
+ * per-call comparison with the OEM code (tests). */
+void EPRC_MbQp(uint8_t *A, uint8_t *S, uint8_t *slice, int t21);
+/* H264E_T21_SliceInit: the slice block's macroblock rate-control fields as
+ * register values (T21 and T23). */
+void EPRC_MbRcRegs(const uint8_t *slice, EprcMbRc *out);
 
 /* The T21 1.0.33 revision of the controller (eprc_t21.c, docs/T23_EPRC.md
  * "Other SoCs"): same interface, the T21 OEM state layout and decisions.

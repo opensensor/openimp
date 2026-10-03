@@ -7627,6 +7627,15 @@ int AL_Codec_Encode_SetSameSceneGops(void *codec, uint32_t gops)
     ((AL_CodecEncode *)codec)->hw_params.same_scene_gops = gops;
     return 0;
 }
+
+int AL_Codec_Encode_SetMbRC(void *codec, int enable)
+{
+    if (codec == NULL)
+        return -1;
+    ((AL_CodecEncode *)codec)->hw_params.mb_rc =
+        enable ? HW_MBRC_ON : HW_MBRC_OFF;
+    return 0;
+}
 #endif
 
 static void codec_sync_rc_cache(AL_CodecEncode *enc)

@@ -88,8 +88,15 @@ typedef struct {
      * rcAttr.attrHSkip.hSkipAttr.maxSameSceneCnt (OEM: i264e skip header
      * word 1, i264e_decide_slice_type_and_rd), 0 or 1: every GOP */
     uint32_t same_scene_gops;
-    uint32_t reserved[8];       /* 0x50-0x6f: Reserved */
+    /* 0x50: T21/T23 eprc macroblock rate control (IMP_Encoder_SetMbRC):
+     * HW_MBRC_DEFAULT (OPENIMP_EPRC_MBRC), HW_MBRC_OFF, HW_MBRC_ON */
+    uint32_t mb_rc;
+    uint32_t reserved[7];       /* 0x54-0x6f: Reserved */
 } HWEncoderParams;
+
+#define HW_MBRC_DEFAULT 0u
+#define HW_MBRC_OFF     1u
+#define HW_MBRC_ON      2u
 
 _Static_assert(sizeof(HWEncoderParams) == 0x70, "HWEncoderParams size");
 _Static_assert(offsetof(HWEncoderParams, static_time) == 0x30 &&

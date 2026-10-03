@@ -64,6 +64,12 @@ typedef struct {
     /* 0xb0000 low byte of P pictures in ring mode (OPENIMP_REF_SHARE_B0,
      * hex): 0 = the build default (T23 0x63 as the vendor, T21 0xff). */
     uint8_t ring_b0;
+    /* eprc macroblock rate control (EprcMbRc, src/eprc/eprc_mbrc.c):
+     * mbrc_qp_flags ORed into 0x40074, mbrc_regs into 0x40078..0x40090;
+     * mbrc 0: all zero (the OEM's first picture) */
+    uint8_t mbrc;
+    uint32_t mbrc_qp_flags;
+    uint32_t mbrc_regs[7];
     uint32_t ring_start_y, ring_start_c;
     uint32_t ring_end_y, ring_end_c;
     uint32_t *descriptor;

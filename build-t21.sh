@@ -107,6 +107,7 @@ compile t21_h264_slice src/t30/h264enc/slice.c -Werror
 compile t21_rate_control src/t40/t31_rate_control.c -Werror
 compile t21_eprc src/eprc/eprc.c -Werror -ffp-contract=off
 compile t21_eprc_t21 src/eprc/eprc_t21.c -Werror -ffp-contract=off
+compile t21_eprc_mbrc src/eprc/eprc_mbrc.c -Werror -ffp-contract=off
 compile t21_helix_jpeg src/t30/helix_jpeg.c -Werror
 compile t21_helix_bitstream src/t30/helix_bitstream.c -Werror
 
@@ -152,6 +153,7 @@ compile t21_helix_bitstream src/t30/helix_bitstream.c -Werror
     "$output_dir/t21_rate_control.o" \
     "$output_dir/t21_eprc.o" \
     "$output_dir/t21_eprc_t21.o" \
+    "$output_dir/t21_eprc_mbrc.o" \
     "$output_dir/t21_helix_jpeg.o" \
     "$output_dir/t21_helix_bitstream.o" \
     "$output_dir/t21_ivs.o" \
