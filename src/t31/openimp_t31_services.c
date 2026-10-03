@@ -364,7 +364,12 @@ void openimp_t31_osd_apply(int group, void *frame)
      * then write its stale neighbour bytes back. So: find the touched rows
      * (dry pass), write back + invalidate them, draw, write them back for
      * the IPU pass and the encoder DMA. The CPU path only runs if the frame
-     * buffer holds the stock layout (UV plane at align16(height) rows). */
+     * buffer holds the stock layout (UV plane at align16(height) rows).
+     * One band per plane on purpose: the kernel caps the cost of a large
+     * range (whole-L1 blast from 32 KiB, whole-L2 blast from scache_size in
+     * arch/mips/xburst/core/sc-jz.c), while every extra range is one more
+     * rmem ioctl. Flushing only the drawn spans was measured on the host at
+     * thousands of ioctls per frame for a full-frame RECT - slower. */
     if (cpu_count > 0 && virt &&
         (!fsize || fsize >= width * bg_h + width * ((height + 1u) / 2u))) {
         struct osd_canvas cv;
