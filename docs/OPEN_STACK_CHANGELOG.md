@@ -3,7 +3,7 @@
 Everything changed, extended or fixed in OpenIMP, open-tx-isp, timps and the thingino
 integration since the test campaign started on 2026-09-30. Kept up to date during the campaign.
 
-Last update: 2026-10-03 22:50.
+Last update: 2026-10-04 00:00.
 
 Cameras are anonymised: cam-A (T31), cam-B (T23), cam-C (T20), cam-D (T21), cam-E (T10), cam-F (T41).
 
@@ -87,6 +87,15 @@ Goal: identical image behaviour, but cleaner unload/reload, less memory and chec
 OpenIMP: T20 green flicker in the bottom rows fixed by filling the encoder padding rows (`claude/t20-bottom-chroma`; 0 green pixels in 30 frames). Faster IVS (`claude/ivs-opt`; T20 timps CPU 4.1 % → 2.7 % with motion on).
 
 Aggregates: `claude/open-tx-isp-all-4` and `claude/openimp-all-4` (pushed); 58 merged single branches removed. `claude/open-tx-isp-all-5` adds t21-robust and t31-robust-2 (T31: sensor flip with shvflip=1, unload leaks, lazy WDR buffers; MemFree drift per reload 460 → 45 KB); all four cameras flashed with -all-5 images.
+
+## Night (2026-10-04, 00:00)
+
+- **H.265 on T41:** works: the HEVC channel now uses the AVPU path like T31 (it fell into a legacy probe that blocked the core and once rebooted the box). 1080p HEVC on cam-F decodes clean, 0 oops. A stuck AVPU job now times out after 2 s and resets the core instead of hanging the camera [openimp claude/t41-h265].
+- **OpenIMP review fixes:** complete O_CLOEXEC, eprc gets FRAME_END for dropped pictures, T31 Allegro RC lock, forced IDR after a YUV error, T20 MB-RC table bounds; T41 CBR overshoot fix now in the main line [claude/imp-review-fixes]. Optimisations: T20 MB-RC 590 → 58 KiB, no per-frame malloc/memset; libimp T31 −34 KB, T41 −20 KB, T21 −17.5 KiB text; eprc pow() → table (bit-identical).
+- **CPU:** profiling on cam-A/cam-D; optimised JPEG Huffman parsing (table), OSD cache invalidation, T31 EBSP copy: timpsd T31 8.7 → 7.9 %, T21 17.5 → 15.5 % [claude/imp-cpu-opt].
+- **all-19 building:** open-tx-isp all-18 + openimp claude/openimp-all-17 (0f6ca940) + timps main a34a5a2 with USE_OPENIMP=1 (timps now offers DPC/defog/DRC on T10/T20/T21 with OpenIMP). T41 image with H.265 in preparation.
+- **Motion detection v2 started:** opt-in: background model per grid cell, suppression after IR/exposure switches, blob grouping with minimum size/duration, bounding boxes and strength via a new versioned API; vendor output unchanged when off.
+- **Differences to the vendor (current):** less: T31 CBR without filler NAL, T41 tuning partly unverified, MB-RC opt-in only; deliberately different: H.265 rejected on T10/T20/T21/T23, T21 ring mode without P re-encode, stricter T23 front crop; more: see OPENIMP_BEYOND_VENDOR.md and OPENIMP_SOC_DIFFS.md.
 
 ## Late night (2026-10-03, 22:30)
 
