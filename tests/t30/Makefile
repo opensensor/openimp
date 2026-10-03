@@ -262,6 +262,7 @@ check: ref_ring_test ref_ring_test_t23 descriptor_test annexb_test level_test he
 	./rc_readback_test_t21
 	./rc_readback_test_t20
 	./rc_readback_test_t23
+	./check_exports.sh
 
 # GetChnAttrRcMode read-back of T21, T20 and T23 (src/t40/p2_rc_readback.h).
 rc_readback_test_t21: rc_readback_test.c $(ROOT)/src/t40/p2_rc_readback.h
