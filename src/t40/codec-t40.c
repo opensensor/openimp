@@ -3356,6 +3356,29 @@ static int avpu_t41_fill_command(ALAvpuContext *ctx, void *slot,
 
     if (openimp_t41_build_command(slot, ctx->cl_entry_size, &params) != 0)
         return -1;
+    {
+        /* OPENIMP_T41_DUMP_CMD=1: the non-zero words of the first two
+         * commands on stderr, for a diff against a vendor capture. */
+        static int dump = -1;
+
+        if (dump < 0) {
+            const char *value = getenv("OPENIMP_T41_DUMP_CMD");
+
+            dump = value && value[0] == '1';
+        }
+        if (dump && picture_number < 2u) {
+            const uint32_t *word = (const uint32_t *)slot;
+            unsigned int i;
+
+            fprintf(stderr, "openimp T41 cmd %s %ux%u picture=%u:",
+                    ctx->codec_hevc ? "HEVC" : "AVC", ctx->enc_w,
+                    ctx->enc_h, picture_number);
+            for (i = 0u; i < OPENIMP_T41_CL_SLOT_SIZE / 4u; ++i)
+                if (word[i])
+                    fprintf(stderr, " %u=%08x", i, word[i]);
+            fputc('\n', stderr);
+        }
+    }
     ctx->t41_rate_control_qp = rate_control_qp;
     ctx->t41_rate_control_qp_by_buf[stream_buf_idx] = rate_control_qp;
     ctx->t41_pending_luma_offset = params.reconstruction_luma_offset;
@@ -4508,6 +4531,9 @@ static void avpu_complete_frame(ALAvpuContext *ctx, const char *source)
      * belong to the hardware-completion side of the queue boundary.
      */
     if (buf_idx >= 0) {
+#if defined(PLATFORM_T41)
+        ctx->t41_timeouts = 0u;
+#endif
         avpu_promote_reference(ctx);
         frames_encoded = __sync_add_and_fetch(&ctx->frames_encoded, 1);
         queued = avpu_queue_completed_stream(ctx, buf_idx, frame_user_data, source, &frame_size, &flush_ret);
@@ -9982,8 +10008,9 @@ static int al_codec_encode_process_impl(void *codec, void *frame,
              * as soon as chn1 opened /dev/avpu, which matches the "no stream
              * on chn0" failure seen on target. */
             int try_avpu = (codec_type == IMP_ENC_TYPE_AVC);
-#if defined(PLATFORM_T31)
-            /* The T31 AVPU encodes HEVC as well (docs/T31_HEVC.md). */
+#if defined(PLATFORM_T31) || defined(PLATFORM_T41)
+            /* The T31 and T41 AVPU encode HEVC as well (docs/T31_HEVC.md,
+             * notes in t41_command_builder.c). */
             if (codec_type == IMP_ENC_TYPE_HEVC)
                 try_avpu = 1;
 #endif
@@ -10684,6 +10711,15 @@ static int al_codec_encode_process_impl(void *codec, void *frame,
                 if (codec_type == IMP_ENC_TYPE_JPEG) {
                     enc->use_hardware = 0;
                     LOG_CODEC("Process: JPEG channel selected direct software path");
+#if defined(PLATFORM_T41)
+                } else if (codec_type != IMP_ENC_TYPE_AVC) {
+                    /* The legacy probe ends with a VENC ioctl on /dev/avpu;
+                     * on T41 that wedged the shared core (H.265 test,
+                     * 2026-10-03: no stream, then a reboot). */
+                    enc->use_hardware = 0;
+                    IMP_LOG_ERR("Codec", "codec type %u has no T41 hardware path\n",
+                                codec_type);
+#endif
                 } else {
                     /* Fallback: try legacy non-avpu devices via HW_Encoder_Init */
                     int init_fd = -1;
@@ -11652,6 +11688,68 @@ static void t31_avc_recover_timeout(AL_CodecEncode *enc)
 }
 #endif
 
+#if defined(PLATFORM_T41)
+/* Completion watchdog.  T41 holds the core lease from submit to the
+ * completion IRQ; a command that never completes kept every channel
+ * blocked forever.  After 2 s without completion the owning channel resets
+ * the core, drops its pending commands, restarts with an IDR and releases
+ * the lease.  After T41_MAX_COMPLETION_TIMEOUTS consecutive timeouts the
+ * channel stops submitting and Process fails, instead of hammering a
+ * wedged core. */
+#define T41_COMPLETION_TIMEOUT_MS 2000u
+#define T41_MAX_COMPLETION_TIMEOUTS 3u
+
+static uint64_t t41_monotonic_ms(void)
+{
+    struct timespec now;
+
+    clock_gettime(CLOCK_MONOTONIC, &now);
+    return (uint64_t)now.tv_sec * 1000u + (uint64_t)now.tv_nsec / 1000000u;
+}
+
+static void t41_check_completion_timeout(AL_CodecEncode *enc)
+{
+    ALAvpuContext *ctx = &enc->avpu;
+    int buf_idx = -1;
+    int dropped = 0;
+    int owned;
+
+    pthread_mutex_lock(&g_t41_core.lock);
+    owned = g_t41_core.owner == ctx;
+    pthread_mutex_unlock(&g_t41_core.lock);
+    /* Only the channel whose command is stuck recovers it: another
+     * channel's context may be in teardown. */
+    if (!owned || enc->use_hardware != 2 || ctx->fd < 0 ||
+        t41_monotonic_ms() - ctx->t41_submit_ms < T41_COMPLETION_TIMEOUT_MS)
+        return;
+
+    pthread_mutex_lock(&g_tseries_irq_host_lock);
+    if (ctx->irq_mutex)
+        pthread_mutex_lock((pthread_mutex_t *)ctx->irq_mutex);
+    avpu_t41_reset_core(ctx->fd, 0);
+    avpu_write_reg(ctx->fd, AVPU_INTERRUPT, AVPU_IRQ_CLEAR_MASK);
+    while (avpu_complete_next_stream(ctx, &buf_idx, NULL)) {
+        if (buf_idx >= 0)
+            avpu_mark_stream_buffer_released(ctx, buf_idx);
+        buf_idx = -1;
+        dropped++;
+    }
+    ctx->reference_valid = 0;
+    ctx->t41_timeouts++;
+    if (g_tseries_irq_owner == ctx)
+        g_tseries_irq_owner = NULL;
+    if (ctx->irq_mutex)
+        pthread_mutex_unlock((pthread_mutex_t *)ctx->irq_mutex);
+    pthread_mutex_unlock(&g_tseries_irq_host_lock);
+    openimp_core_release(&g_t41_core, ctx);
+    IMP_LOG_ERR("Codec", "%s: completion timeout %u/%u, core reset, %d command(s) dropped%s\n",
+                ctx->codec_hevc ? "HEVC" : "AVC", ctx->t41_timeouts,
+                T41_MAX_COMPLETION_TIMEOUTS, dropped,
+                ctx->t41_timeouts >= T41_MAX_COMPLETION_TIMEOUTS
+                    ? ", channel stopped" : ", next frame IDR");
+}
+#endif
+
 int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data)
 {
 #if defined(PLATFORM_T41)
@@ -11662,13 +11760,22 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data)
     if (!enc || !frame ||
         codec_param_read_codec_type(enc->codec_param) == IMP_ENC_TYPE_JPEG)
         return al_codec_encode_process_impl(codec, frame, user_data);
-    if (openimp_core_acquire(&g_t41_core, &enc->avpu, 2000))
+    if (enc->avpu.t41_timeouts >= T41_MAX_COMPLETION_TIMEOUTS) {
+        errno = EIO;
         return -1;
+    }
+    if (openimp_core_acquire(&g_t41_core, &enc->avpu, 2000)) {
+        t41_check_completion_timeout(enc);
+        return -1;
+    }
     submitted_before = enc->avpu.frame_number;
     ret = al_codec_encode_process_impl(codec, frame, user_data);
     if (enc->use_hardware != 2 || enc->avpu.frame_number == submitted_before)
         openimp_core_release(&g_t41_core, &enc->avpu);
-    else if (ret)
+    else
+        enc->avpu.t41_submit_ms = t41_monotonic_ms();
+    if (enc->use_hardware == 2 && enc->avpu.frame_number != submitted_before &&
+        ret)
         /* Once submitted, the source is still DMA-owned even if a later
          * bookkeeping step failed. Keep it submitted for Dequeue/recovery. */
         ret = 0;
