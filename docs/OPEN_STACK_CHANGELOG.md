@@ -3,7 +3,7 @@
 Everything changed, extended or fixed in OpenIMP, open-tx-isp, timps and the thingino
 integration since the test campaign started on 2026-09-30. Kept up to date during the campaign.
 
-Last update: 2026-10-03 21:08.
+Last update: 2026-10-03 22:30.
 
 Cameras are anonymised: cam-A (T31), cam-B (T23), cam-C (T20), cam-D (T21), cam-E (T10), cam-F (T41).
 
@@ -87,6 +87,15 @@ Goal: identical image behaviour, but cleaner unload/reload, less memory and chec
 OpenIMP: T20 green flicker in the bottom rows fixed by filling the encoder padding rows (`claude/t20-bottom-chroma`; 0 green pixels in 30 frames). Faster IVS (`claude/ivs-opt`; T20 timps CPU 4.1 % → 2.7 % with motion on).
 
 Aggregates: `claude/open-tx-isp-all-4` and `claude/openimp-all-4` (pushed); 58 merged single branches removed. `claude/open-tx-isp-all-5` adds t21-robust and t31-robust-2 (T31: sensor flip with shvflip=1, unload leaks, lazy WDR buffers; MemFree drift per reload 460 → 45 KB); all four cameras flashed with -all-5 images.
+
+## Late night (2026-10-03, 22:30)
+
+- **all-17 on four cameras:** open-tx-isp claude/open-tx-isp-all-17 e7c86107 / openimp claude/openimp-all-15 afd2d072 flashed 22:15–22:18 on cam-A, cam-C, cam-D, cam-E: 30/30 snapshots, MJPEG, MP4, 0 oops, boot guard not tripped. New: T23 module 622 KB (vendor 857), T31 711 KB (vendor 829), T21 452 KB (vendor 616); T20/T10 vendor-identical rate controller default with working quality_lvl/change_pos; DPC on T10/T20/T21, DRC and defog (Iridix floor) on T20, scene/colour effects on T10 (beyond vendor); MB-RC opt-in. cam-B waits for the review fixes.
+- **T41 memory:** rmem 30 → 24 MB via a new u-boot env partition image (old env backed up, MAC kept). MemFree 7.8 MB idle; 5-min stress with 3 streams + 2 snapshot loops: no OOM, no reboot, min 2.6 MB free (before: OOM after 17 s).
+- **Kernel module review (independent):** 0 critical, 1 high (T23: lifted AE/ADR/defog works not cancelled before freeing the stats DMA on unload → use-after-free), 6 medium, 9 low, plus optimisations (T23 .bss placeholder arrays cost up to several MB RAM). Fixes in work on claude/review-fixes-20261003.
+- **Hardening:** claude/isp-hardening-qbuf-pin: QBUF buffers must lie in the rmem window from the kernel command line (qbuf_guard=0 disables); the sensor module is pinned while the ISP is open (T23 device-tested: rmmod of the sensor while streaming is refused, 6 clean cycles). OpenIMP opens all device nodes with O_CLOEXEC (claude/imp-cloexec), so helper processes no longer hold /dev/isp-m0.
+- **thingino ciao (maintained by the timps session):** openimp pinned to the Lu-Fi fork (9eefbae, pushed; T23 OEM helper now opt-in, saves ~328 KiB); open-tx-isp and openimp pins to all-17/all-15 committed locally; timps 110ab65 (silent boot probe for day/night) pushed; boot guard available as an opt-in package (local).
+- **Planned:** 03:00: A/B measurement vendor vs open stack (CPU, RAM, rmem, start-up, snapshot latency) on cam-B and cam-D.
 
 ## Night (2026-10-03, 20:39)
 
