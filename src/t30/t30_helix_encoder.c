@@ -270,6 +270,10 @@ struct T30HelixEncoder {
     uint32_t scratch_size;
     uint32_t bitstream_kib;     /* EMC bitstream window (0x30040) */
 #endif
+#if !defined(PLATFORM_T23)
+    uint32_t failures;          /* consecutive failed pictures */
+    uint32_t input_rejects;     /* frames refused for their size */
+#endif
 #if defined(PLATFORM_T23)
     uint32_t failures;          /* consecutive failed pictures */
     uint32_t input_size;        /* NV12 bytes the VPU reads per frame */
@@ -1064,6 +1068,17 @@ int OpenIMP_T30_HelixCreate(T30HelixEncoder **encoder_out,
         goto fail;
     memset(&encoder->channel, 0, sizeof(encoder->channel));
     encoder->channel.mdelay = T30_CHANNEL_DELAY_MS;
+#if !defined(PLATFORM_T23)
+    {
+        /* OPENIMP_T30_HELIX_TIMEOUT_MS=<ms>: a shorter soc_vpu wait than
+         * the OEM's 20 s (100 .. 20000), for testing the failure limit */
+        const char *timeout = getenv("OPENIMP_T30_HELIX_TIMEOUT_MS");
+        unsigned long value = timeout ? strtoul(timeout, NULL, 0) : 0ul;
+
+        if (value >= 100ul && value <= 20000ul)
+            encoder->channel.mdelay = (uint32_t)value;
+    }
+#endif
 #if defined(PLATFORM_T23)
     {
         const char *timeout = getenv("OPENIMP_T23_HELIX_TIMEOUT_MS");
@@ -1340,6 +1355,30 @@ static int t30_helix_encode_job(T30HelixEncoder *encoder,
                                 const IMPFrameInfo *frame,
                                 HWStreamBuffer **stream_out);
 
+#if !defined(PLATFORM_T23)
+/* T20/T21/T30: count consecutive failed pictures for the caller's failure
+ * limit (OpenIMP_T30_HelixFailures).  A frame refused for its size is the
+ * source's fault, not the encoder's, and does not count. */
+static int t30_helix_encode_job_counted(T30HelixEncoder *encoder,
+                                        const IMPFrameInfo *frame,
+                                        HWStreamBuffer **stream_out)
+{
+    uint32_t rejects = encoder->input_rejects;
+    int ret = t30_helix_encode_job(encoder, frame, stream_out);
+
+    if (ret == 0)
+        encoder->failures = 0;
+    else if (encoder->input_rejects == rejects)
+        encoder->failures++;
+    return ret;
+}
+
+uint32_t OpenIMP_T30_HelixFailures(const T30HelixEncoder *encoder)
+{
+    return encoder ? encoder->failures : 0u;
+}
+#endif
+
 int OpenIMP_T30_HelixEncode(T30HelixEncoder *encoder,
                             const IMPFrameInfo *frame,
                             HWStreamBuffer **stream_out)
@@ -1360,12 +1399,14 @@ int OpenIMP_T30_HelixEncode(T30HelixEncoder *encoder,
      * the window, so cache maintenance and the length check cover the
      * window and not the whole (2 MB) buffer */
     encoder->temporary.size = t30_bitstream_bytes(encoder);
-    ret = t30_helix_encode_job(encoder, frame, stream_out);
+    ret = t30_helix_encode_job_counted(encoder, frame, stream_out);
     memset(&encoder->temporary, 0, sizeof(encoder->temporary));
     OpenIMP_HelixBitstream_Unlock();
     return ret;
-#else
+#elif defined(PLATFORM_T23)
     return t30_helix_encode_job(encoder, frame, stream_out);
+#else
+    return t30_helix_encode_job_counted(encoder, frame, stream_out);
 #endif
 }
 
@@ -1415,6 +1456,20 @@ static int t30_helix_encode_job(T30HelixEncoder *encoder,
         return -1;
     }
 #else
+    /* The VPU reads the picture by physical address: refuse a frame that
+     * does not hold a whole visible NV12 picture (a size of 0 means the
+     * source did not say).  The macroblock-aligned size cannot be asked
+     * for: the T20/T21 1080p frame channel's sizeimage stops short of
+     * 1088 lines. */
+    if (frame->size &&
+        (uint64_t)frame->size < (uint64_t)encoder->params.width *
+                                    encoder->params.height * 3u / 2u) {
+        if (encoder->input_rejects++ < 5u)
+            IMP_LOG_ERR("Encoder", "Helix: rejecting a %u-byte frame for "
+                        "%ux%u NV12", frame->size, encoder->params.width,
+                        encoder->params.height);
+        return -1;
+    }
     t30_pad_input_rows(encoder, frame);
 #endif
     idr = encoder->force_idr || !encoder->have_reference ||
