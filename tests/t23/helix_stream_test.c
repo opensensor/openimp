@@ -1074,15 +1074,70 @@ static int rc_test(void)
     return 0;
 }
 
+/* IMP_Encoder_YuvSetCrop on the native encoder: SPS frame cropping.  Writes
+ * three pictures (full, cropped 320x200 at 16,8, cleared) to OUT.h264;
+ * every change is followed by an IDR carrying the new SPS. */
+static int crop_test(const char *path)
+{
+    T30HelixEncoder *encoder = NULL;
+    HWEncoderParams params;
+    uint8_t *mem = rmem + RMEM_SIZE - FRAME_BYTES - 4096u;
+    IMPFrameInfo info;
+    HWStreamBuffer *out = NULL;
+    FILE *f = fopen(path, "wb");
+    uint32_t x, y, w, h;
+    int en, frame, idr;
+
+    assert(f);
+    rc_params(&params, HW_RC_MODE_CBR);
+    assert(OpenIMP_T30_HelixCreate(&encoder, &params) == 0);
+    assert(OpenIMP_T30_HelixSetCrop(encoder, 1, 15, 8, 320, 200) != 0);
+    assert(OpenIMP_T30_HelixSetCrop(encoder, 1, 16, 8, 640, 200) != 0);
+    for (frame = 0; frame < 9; frame++) {
+        if (frame == 3) {
+            assert(OpenIMP_T30_HelixSetCrop(encoder, 1, 16, 8, 320, 200) == 0);
+            assert(OpenIMP_T30_HelixGetCrop(encoder, &en, &x, &y, &w, &h) == 0);
+            assert(en && x == 16 && y == 8 && w == 320 && h == 200);
+        }
+        if (frame == 6) {
+            assert(OpenIMP_T30_HelixSetCrop(encoder, 0, 0, 0, 0, 0) == 0);
+            assert(OpenIMP_T30_HelixGetCrop(encoder, &en, &x, &y, &w, &h) == 0);
+            assert(!en && w == WIDTH && h == HEIGHT);
+        }
+        make_frame(mem, (uint32_t)frame);
+        memset(&info, 0, sizeof(info));
+        info.width = WIDTH;
+        info.height = HEIGHT;
+        info.pixfmt = 0x3231564eu;
+        info.size = FRAME_BYTES;
+        info.virAddr = (uint32_t)(uintptr_t)mem;
+        info.phyAddr = phys_of(mem);
+        next_fault = 0;
+        assert(OpenIMP_T30_HelixEncode(encoder, &info, &out) == 0);
+        idr = out->frame_type == HW_FRAME_TYPE_I;
+        if (frame % 3 == 0)
+            assert(idr);
+        fwrite((void *)(uintptr_t)out->virt_addr, 1, out->length, f);
+        free((void *)(uintptr_t)out->virt_addr);
+        free(out);
+    }
+    OpenIMP_T30_HelixDestroy(encoder);
+    fclose(f);
+    return 0;
+}
+
 int main(int argc, char **argv)
 {
-    if (argc != 4 && !(argc == 2 && strcmp(argv[1], "rc") == 0))
+    if (argc != 4 && !(argc == 3 && strcmp(argv[1], "crop") == 0) &&
+        !(argc == 2 && strcmp(argv[1], "rc") == 0))
         return 2;
     /* the encoder keeps addresses in 32-bit words, as on MIPS */
     mallopt(M_MMAP_MAX, 0);
     rmem = mmap(NULL, RMEM_SIZE, PROT_READ | PROT_WRITE,
                 MAP_PRIVATE | MAP_ANONYMOUS | MAP_32BIT, -1, 0);
     assert(rmem != MAP_FAILED);
+    if (strcmp(argv[1], "crop") == 0)
+        return crop_test(argv[2]);
     if (strcmp(argv[1], "encode") == 0)
         return encode(argv[2], argv[3]);
     if (strcmp(argv[1], "verify") == 0)

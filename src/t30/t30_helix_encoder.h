@@ -15,6 +15,12 @@ int OpenIMP_T30_HelixEncode(T30HelixEncoder *encoder,
                             const IMPFrameInfo *frame,
                             HWStreamBuffer **stream);
 int OpenIMP_T30_HelixRequestIDR(T30HelixEncoder *encoder);
+/* SPS frame cropping (visible rectangle); next picture is an IDR. */
+int OpenIMP_T30_HelixSetCrop(T30HelixEncoder *encoder, int enable,
+                             uint32_t x, uint32_t y, uint32_t w, uint32_t h);
+int OpenIMP_T30_HelixGetCrop(const T30HelixEncoder *encoder, int *enable,
+                             uint32_t *x, uint32_t *y, uint32_t *w,
+                             uint32_t *h);
 /* Adopt the codec's current rate-control fields (fps, GOP, RC mode,
  * bitrate, QP and its bounds).  Call on the encoding thread before a
  * picture; zero or out-of-range fields keep their current value. */

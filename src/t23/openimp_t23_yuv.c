@@ -316,25 +316,30 @@ int IMP_Encoder_YuvExit(void *h)
 int IMP_Encoder_YuvSetCrop(void *h, IMPEncoderCropCfg *cfg)
 {
     T23YuvEncoder *encoder = h;
-    uint32_t aligned_w, aligned_h, value[5];
+    uint32_t aligned_w, aligned_h, value[5], pic_w, pic_h;
     int result;
 
-    if (encoder && encoder->native) {
-        /* the native encoder has no i264e crop parameter */
-        IMP_LOG_ERR("Encoder", "IMP_Encoder_YuvSetCrop: not supported by "
-                    "the native Helix encoder");
+    if (!encoder || !cfg)
         return -1;
-    }
-    if (!encoder || !cfg || ((cfg->x | cfg->y | cfg->w | cfg->h) & 1u) ||
-        cfg->x + cfg->w > encoder->bridge.width ||
-        cfg->y + cfg->h > encoder->bridge.height)
+    pic_w = encoder->native ? encoder->width : encoder->bridge.width;
+    pic_h = encoder->native ? encoder->height : encoder->bridge.height;
+    if (((cfg->x | cfg->y | cfg->w | cfg->h) & 1u) ||
+        cfg->x + cfg->w > pic_w || cfg->y + cfg->h > pic_h)
         return -1;
-    aligned_w = (encoder->bridge.width + 15u) & ~15u;
-    aligned_h = (encoder->bridge.height + 15u) & ~15u;
+    aligned_w = (pic_w + 15u) & ~15u;
+    aligned_h = (pic_h + 15u) & ~15u;
     if (cfg->x >= 510u || cfg->y >= 510u ||
         aligned_w - cfg->x - cfg->w >= 510u ||
         aligned_h - cfg->y - cfg->h >= 510u)
         return -1;
+    if (encoder->native) {
+        /* SPS frame cropping: the same visible rectangle as the OEM i264e */
+        pthread_mutex_lock(&encoder->lock);
+        result = OpenIMP_T30_HelixSetCrop(encoder->native, cfg->enable != 0,
+                                          cfg->x, cfg->y, cfg->w, cfg->h);
+        pthread_mutex_unlock(&encoder->lock);
+        return result == 0 ? 0 : -1;
+    }
     value[0] = cfg->enable ? 1u : 0u;
     value[1] = cfg->x;
     value[2] = cfg->w;
@@ -356,8 +361,23 @@ int IMP_Encoder_YuvGetCrop(void *h, IMPEncoderCropCfg *cfg)
     if (!encoder || !cfg)
         return -1;
     memset(cfg, 0, sizeof(*cfg));
-    if (encoder->native)
-        return 0;               /* never cropped */
+    if (encoder->native) {
+        int enable;
+        uint32_t x, y, w, h;
+
+        pthread_mutex_lock(&encoder->lock);
+        result = OpenIMP_T30_HelixGetCrop(encoder->native, &enable, &x, &y,
+                                          &w, &h);
+        pthread_mutex_unlock(&encoder->lock);
+        if (result != 0)
+            return -1;
+        cfg->enable = enable;
+        cfg->x = x;
+        cfg->y = y;
+        cfg->w = w;
+        cfg->h = h;
+        return 0;
+    }
     memset(value, 0, sizeof(value));
     pthread_mutex_lock(&encoder->lock);
     result = OpenIMP_T23_HelixGetParam(&encoder->bridge, T23_I264E_CROP, 0,
