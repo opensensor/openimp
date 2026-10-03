@@ -11,6 +11,10 @@ vendor library is copied into OpenIMP; it is read from the path you pass.
 
     pip install unicorn pyelftools
     tools/eprc_oracle.py T23/lib/1.3.0/uclibc/5.4.0/libimp.so > tests/eprc/eprc_vectors.txt
+    tools/eprc_oracle.py T21/lib/1.0.33/uclibc/5.4.0/libimp.so > tests/eprc/eprc_t21_vectors.txt
+
+The T21 1.0.33 library (the older controller revision, src/eprc/eprc_t21.c)
+is run with its own i264e glue layout (LAYOUT_T21 below).
 
 The OEM keeps int arrays at odd addresses (the Linux kernel fixes up the
 unaligned accesses on the camera); the emulator does the same in a code

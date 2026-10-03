@@ -1,6 +1,8 @@
 /* src/eprc against the OEM rate controller: eprc_vectors.txt was produced
  * by tools/eprc_oracle.py, which runs the OEM T23 1.3.0 code on the same
- * synthetic picture sizes and statistics as below. */
+ * synthetic picture sizes and statistics as below; eprc_t21_vectors.txt the
+ * same from the T21 1.0.33 library, checked against the T21 revision
+ * (eprc_t21.c) with "eprc-test eprc_t21_vectors.txt t21". */
 #include "eprc/eprc.h"
 
 #include <stdint.h>
@@ -129,6 +131,13 @@ static int qp_down_check(void)
 int main(int argc, char **argv)
 {
     const char *path = argc > 1 ? argv[1] : "eprc_vectors.txt";
+    int t21 = argc > 2 && strcmp(argv[2], "t21") == 0;
+    int (*init)(Eprc *, const EprcParams *, uint8_t *) = t21 ? EPRC21_Init : EPRC_Init;
+    void (*release)(Eprc *) = t21 ? EPRC21_Free : EPRC_Free;
+    int (*start)(Eprc *, const EprcFrameIn *, EprcPicture *) =
+        t21 ? EPRC21_FrameStart : EPRC_FrameStart;
+    int (*end)(Eprc *, uint32_t, const uint32_t *, EprcPicture *) =
+        t21 ? EPRC21_FrameEnd : EPRC_FrameEnd;
     FILE *f = fopen(path, "r");
     char line[512];
     Eprc rc;
@@ -152,7 +161,7 @@ int main(int argc, char **argv)
                        &v[17]) != 18)
                 return 2;
             if (active)
-                EPRC_Free(&rc);
+                release(&rc);
             memset(&p, 0, sizeof(p));
             p.rc_mode = (uint32_t)v[0];
             p.width = (uint32_t)v[1];
@@ -175,7 +184,7 @@ int main(int argc, char **argv)
             idr = v[17];
             pixels = (uint64_t)p.width * p.height;
             memset(slice, 0, sizeof(slice));
-            if (EPRC_Init(&rc, &p, slice) != 0)
+            if (init(&rc, &p, slice) != 0)
                 return 2;
             active = 1;
             scenario++;
@@ -200,7 +209,7 @@ int main(int argc, char **argv)
             in.frames_since_idr = (uint32_t)(frame % idr);
             if ((int)in.frames_since_idr != since || n < 2)
                 return 2;
-            if (EPRC_FrameStart(&rc, &in, &pic) != 0) {
+            if (start(&rc, &in, &pic) != 0) {
                 fprintf(stderr, "scenario %d frame %d: FrameStart failed\n", scenario, frame);
                 return 1;
             }
@@ -213,7 +222,7 @@ int main(int argc, char **argv)
             bytes = picture_bytes((uint32_t)frame, pic.qp, since == 0, pixels, scenario % 2);
             statistics((uint32_t)frame, regs);
             for (i = 2; ; i++) {
-                int r = EPRC_FrameEnd(&rc, bytes, regs, &pic);
+                int r = end(&rc, bytes, regs, &pic);
                 if (r != 1) {
                     if (i != n && failed++ < 10)
                         fprintf(stderr, "scenario %d frame %d: %d re-encodes, OEM %d\n",
@@ -234,9 +243,9 @@ int main(int argc, char **argv)
     }
     fclose(f);
     if (active)
-        EPRC_Free(&rc);
-    printf("eprc: %ld pictures checked against the OEM controller, %ld mismatches\n",
-           checked, failed);
+        release(&rc);
+    printf("eprc%s: %ld pictures checked against the OEM controller, %ld mismatches\n",
+           t21 ? " (T21)" : "", checked, failed);
     if (qp_down_check()) {
         fprintf(stderr, "eprc qp_down_max check failed\n");
         return 1;

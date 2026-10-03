@@ -18,7 +18,9 @@ libimp (addresses below are that library) and OpenIMP's reimplementation,
 - end to end on the host: `tests/eprc` (in `make check`) replays
   `tests/eprc/eprc_vectors.txt`, the picture type / QP / re-encode QP
   sequence of the OEM code for seven scenarios (873 pictures), produced by
-  `tools/eprc_oracle.py` from a vendor `libimp.so`.
+  `tools/eprc_oracle.py` from a vendor `libimp.so`; the same for the T21
+  revision (`src/eprc/eprc_t21.c`) with `tests/eprc/eprc_t21_vectors.txt`
+  from the T21 1.0.33 library.
 
 Not compared: the macroblock-level part of FRAME_START (`h264_api_enc`
 0xc3930, `h264_get_mb_qp` 0xc1cbc: state +5184..+5343 and the per-MB slice
@@ -169,27 +171,50 @@ controller the same multiplier.  Not reproduced: the scene-cut IDR (class
 
 ## Other SoCs
 
-- **T21 1.0.33**: an older revision of the same controller, *not*
-  identical.  The i264e glue differs (no parameter word at +4: every
-  parameter offset 4 lower, "rc enabled" is p[0] == 4; E at rc+484;
-  E one word shorter from E+44, so the outputs sit at E+1588/E+1596; the
-  state block offsets differ), `eprc_default_set_T21` writes other
-  defaults (E+184..+196, +208/+210, +277, +288..+293 in T23 terms), and
-  FRAME_START (1797 against 2041 instructions), FRAME_REPEATE_JUDGE (an
-  `update_qp` helper instead of the inline 2^(QP/6) search), VIDEO_CFG and
-  FRAME_END differ in code.  `tools/eprc_oracle.py` runs either library
-  (layout picked by the `h264_api_enc` symbol); on the seven test
-  scenarios the T21 vendor sequence differs from the T23 one from the
-  first picture on (first IDR QP: T21 starts from the init QP / min QP,
-  e.g. 15 or 20, T23 at 36), 447 of 847 lines differ.  src/eprc is the
-  T23 controller, so OpenIMP T21 runs it only with `OPENIMP_T21_EPRC=1`
-  (an approximation that gives T21 the RC extras, not the vendor
-  decisions); a vendor-equal T21 needs a port of these differences.
+- **T21 1.0.33**: an older revision of the same controller, ported
+  separately as `src/eprc/eprc_t21.c` (`EPRC21_*`, same interface).  It is
+  equal to the OEM T21 code in `tools/eprc_oracle.py`: the seven test
+  scenarios (`tests/eprc/eprc_t21_vectors.txt`, 873 pictures, in `make
+  check`) and 12 x 30 random CBR/VBR/SMART scenarios (picture sizes 320x240
+  to 2560x1440, GOP 1..120, 5..30 fps, all extras) with 0 differences, and
+  under the emulator state by state (E, A, S, the arrays and the slice QP
+  fields after every VIDEO_CFG, FRAME_START and FRAME_END).  The T21
+  differences:
+  - layout: i264e parameters without the word at +4 (every offset 4 lower,
+    maxSameSceneCnt at rc+2704), E at rc+484 and one word shorter from E+44
+    (no E+44 "param[52]" field: T23 E+48.. is T21 E+44..), no per-picture
+    inputs (T23 E+1796..1829, S+240..279: T21 S offsets from T23 S+280 are
+    40 lower), A 336 bytes, S = A + 336, header 7104 bytes;
+  - defaults (`eprc_default_set_T21` 0x96574): E+180/184/188 = 63/255/255
+    (T23 31/128/128), E+192 = 1 from 51 x 39 macroblocks on, E+204/206 = 1,
+    E+273 = 1, E+284/285 = 3/1, E+288 = 20 (T23 E+293);
+  - VIDEO_CFG (0x96ac0): A+200 (fluctuation bits), the CBR peak and the
+    CBR window shares A+472/476 and the VBR lower bound A+72 in 32-bit
+    integer arithmetic (x / 100) instead of float; field limits on A+158,
+    160, 164, 191, 193, 194, 204, 205; the bit-rate class only when A+196
+    is set (default 1); SmartP background interval clamped to [GOP, 65536];
+  - FRAME_START (0x990e0): picture type from the first-picture flag and
+    A+148 only (no per-picture inputs); the first IDR (no picture coded yet)
+    starts at init QP E+40 or, without one, at 26 + `update_qp` (0x906b8)
+    for bit rate (A+64 against 1000), frame rate (against 25) and picture
+    size (against 921600), then min/max QP (T23: 36);
+  - FRAME_REPEATE_JUDGE (0x9d390): size limit E+100 (IDR) / E+104 (P, no
+    "IDR only" option), first picture 1433600 or 1.4 x bit rate (T23: the
+    smaller of that and E+104); the QP step from `update_qp`;
+  - shared with T23 otherwise (gop_init, estimate_qp, scene judging, the
+    R-lambda model update, the per-picture QP window and lambda).
+  OpenIMP T21 runs it by default (as the OEM); `OPENIMP_T21_EPRC=0`
+  restores the old GOP controller, `OPENIMP_T21_EPRC=23` runs the T23
+  controller on T21 (the earlier approximation, for A/B).
   Equal on both: the per-picture QP window and lambda (`h264_api_enc`,
   checked under emulation for FIXQP/CBR/VBR): lambda 384 + 48 / 96 + 12
   per QP above 33, window [QP - 12, min(QP + 13, 51)] - the low end is
   max(.., 1) on T23 and wraps to 51 below QP 12 on T21 (OpenIMP: 0).
   OpenIMP's T21 command list now carries this lambda too.
+- Found with the T21 port and fixed in both: in a CBR P picture at GOP
+  position 2 with no P pictures left (S+60 <= 0, GOPs of 1 or 2) the OEM
+  sets the count to 1 (it stores its mode register) and still updates the
+  picture budget; `src/eprc` had skipped the update.
 - **T20 / T10 3.12.0**: a different, smaller controller
   (`JZ_VPU_RC_VIDEO_CFG_T20`, `JZ_VPU_RC_FRAME_RC_T20`,
   `eprc_default_set_t20`); needs its own port (M5).
@@ -222,8 +247,9 @@ then finishes it as a picture that was not judged
 and pictures without the ring are re-encoded as the OEM does.
 
 Switches: `OPENIMP_T23_EPRC` unset = SMART, `1` = CBR/VBR/SMART, `0` = off;
-`OPENIMP_T21_EPRC` unset/`0` = off (the T21 GOP controller), `1` =
-CBR/VBR/SMART with the T23 controller (see "Other SoCs");
+`OPENIMP_T21_EPRC` unset/`1` = CBR/VBR/SMART with the T21 revision
+(`eprc_t21.c`, the default), `0` = off (the old T21 GOP controller), `23` =
+the same with the T23 controller (see "Other SoCs");
 `OPENIMP_T23_SMART_IDR_GOPS=n` overrides maxSameSceneCnt for SMART on T23.
 
 ## Device test plan (cam-B T23, cam-D T21)
@@ -249,8 +275,12 @@ config copy with `video0.rc_mode=smart`, `OPENIMP_T23_RC_STATS=10`.
    target, decode clean.
 6. Ring: the start log still says `reference sharing on`; with ring P
    pictures are not re-encoded (only IDR `coding again` lines).
-7. T21 (cam-D, .24): first without switch (`T21 Helix eprc` absent, GOP
-   controller, but the lambda change of the command list is active for
-   QP > 33: decode clean, bitrate as before), then `OPENIMP_T21_EPRC=1`
-   with cbr/vbr/smart: `T21 Helix eprc: ...` line with the clamped
-   extras, no `reading 0x132... failed`, decode clean, bitrate vs target.
+7. T21 (cam-D, .24): first `OPENIMP_T21_EPRC=0` (`T21 Helix eprc` absent,
+   old GOP controller, but the lambda change of the command list is active
+   for QP > 33: decode clean, bitrate as before), then the default
+   (switch unset) with cbr/vbr/smart; device result at 1200 kbit/s: CBR
+   1326, VBR 1096, SMART 1071, 0 oops, decode clean (old controller: CBR
+   570): `T21 Helix eprc (T21 rev): ...` line with the
+   clamped extras, no `reading 0x132... failed`, decode clean, bitrate vs
+   target; A/B against `OPENIMP_T21_EPRC=23` (T23 controller) and the OEM
+   stack on the same scene (first IDR QP, IDR size, P QPs).

@@ -164,8 +164,13 @@ iBiasLvl as above.  The read-back then shows those.
 
 OpenIMP: `GetChnAttrRcMode` applies the same clamps
 (`src/t40/p2_rc_readback.h`; the run-time set after SetChnAttrRcMode, FIXQP
-qp 0..51).  The native Helix encoder runs its GOP controller for
-CBR/VBR/SMART alike, without the extras (unchanged).
+qp 0..51).  T21: the native Helix encoder runs the vendor-identical T21
+1.0.33 `eprc` controller (`src/eprc/eprc_t21.c`) for CBR/VBR/SMART by
+default, with the validated extras (see `docs/T23_EPRC.md`);
+`OPENIMP_T21_EPRC=0` restores the old GOP controller (no extras),
+`=23` runs the T23 controller (A/B only).  Device test cam-D at
+1200 kbit/s: CBR 1326, VBR 1096, SMART 1071 kbit/s, decode clean (the old
+controller: CBR 570).  T10/T20 still run the GOP controller (below).
 
 **T20 (since claude/t20-rc):** CBR, VBR and SMART run the OEM T20
 controller with `OPENIMP_T20_RC=1` (`src/rc_t20`, `docs/T20_RC.md`;
@@ -184,6 +189,9 @@ do not; OEM VBR re-codes pictures above superFrm/1024 bits at QP + 3.
 Default off (the GOP controller below) until tested on a T10.
 
 ### What a write does on T10/T20/T21 (OpenIMP)
+
+(T21 runs the vendor eprc by default, see above; the table below describes
+the GOP controller of T10/T20 and of T21 with `OPENIMP_T21_EPRC=0`.)
 
 T10 runs the T20 build (`t30_soc_is_t10`, only the command list differs),
 so all three share this path.  The VPU has no rate control: OpenIMP's GOP
