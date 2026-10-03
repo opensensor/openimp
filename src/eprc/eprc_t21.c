@@ -1133,14 +1133,14 @@ c1aa0:
 /* Hardware fields h264_api_enc (0x9553c) derives from the picture QP: the
  * slice block fields 448/808 (QP), 809/810 (QP window of the macroblock
  * rate control, 0x40040/0x40074) and 1058/1060/1062 (0xb001c/0xb0020).
- * The lambda table is the fixed one (the adaptive variant needs E+273). */
+ * The lambda table is the fixed one (the adaptive variant needs E+269). */
 static void eprc_picture_fields(Eprc *rc, EprcPicture *pic)
 {
     uint8_t *S = rc->p + 336;
     uint8_t *SL = rc->slice;
     int32_t qp = SS8(68);
     uint32_t hi = (uint8_t)(qp + 13);
-    uint32_t lo = qp < 13 ? 1u : (uint8_t)(qp - 12);
+    uint32_t lo = (uint8_t)(qp - 12);           /* T21: wraps below QP 12 */
     uint32_t over = (uint8_t)qp > 33u ? (uint8_t)qp - 33u : 0u;
 
     if (hi == 0)
