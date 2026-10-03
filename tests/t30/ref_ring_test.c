@@ -47,8 +47,8 @@ static void test_layout(uint32_t mbw, uint32_t mbh)
     uint64_t n;
 
     t21_ref_ring_init(&r, 0x03000000u, mbw, mbh);
-    assert(r.ring_y == (mbh * 16u + 256u) * stride);
-    assert(r.ring_c == (mbh * 8u + 128u) * stride);
+    assert(r.ring_y == (((mbh * 16u + 63u) & ~63u) + 256u) * stride);
+    assert(r.ring_c == (((mbh * 16u + 63u) & ~63u) / 2u + 128u) * stride);
     assert(r.base_c == r.base_y + r.ring_y + 0x100u);
     assert(t21_ref_ring_bytes(mbw, mbh) == r.ring_y + 0x100u + r.ring_c);
     t21_ref_ring_pos(&r, 0, &prev);
@@ -68,6 +68,10 @@ static void test_layout(uint32_t mbw, uint32_t mbh)
         assert(d == r.step_y % r.ring_y);
         d = (cur.ref_c - cur.recon_c + r.ring_c) % r.ring_c;
         assert(d == r.step_c % r.ring_c);
+        /* vendor granularity: the reference is a multiple of 64 lines
+         * from the ring end, wrap byte 3 mod 4 (360p: 640-line ring) */
+        assert((cur.end_y - cur.ref_y) % (64u * stride) == 0u);
+        assert((cur.wrap_rows & 3u) == 3u);
         /* recon + picture wraps at most once (picture < ring) */
         assert(cur.start_y == r.base_y && cur.end_y == r.base_y + r.ring_y);
         prev = cur;
@@ -401,11 +405,11 @@ int main(void)
     assert(t21_ref_ring_bytes(120, 68) == 3870976u);
     assert(t21_ref_ring_bytes(120, 68) < 2u * (1920u * 1088u * 3u / 2u));
     /* the sizes the device uses: 1080p and 360p both share (ring 3.69 MiB
-     * against 6.0 MiB, 585 KiB against 690 KiB), tiny pictures do not */
+     * against 6.0 MiB, 600 KiB against 690 KiB, 360p ring rounded to 384 lines), tiny pictures do not */
     assert(t21_ref_ring_saves(120, 68));
     assert(t21_ref_pair_bytes(120, 68) == 6266880u);
     assert(t21_ref_ring_saves(40, 23));
-    assert(t21_ref_ring_bytes(40, 23) == 599296u);
+    assert(t21_ref_ring_bytes(40, 23) == 614656u);
     assert(t21_ref_pair_bytes(40, 23) == 706560u);
     assert(t21_ref_ring_saves(80, 45));
     assert(!t21_ref_ring_saves(20, 12));     /* 320x180: H <= 256 */

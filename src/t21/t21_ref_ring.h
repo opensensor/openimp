@@ -32,6 +32,18 @@
  * 0x0326c000, 0x60018 = 0x0326c100, 0x60020 = 0x033a7100 at 1080p). */
 #define T21_REF_RING_CHROMA_GAP 0x100u
 
+/* Picture lines held by the ring: the macroblock height rounded up to 64
+ * lines.  The vendor ring positions are always multiples of 64 lines from
+ * the ring end (1080p: 1088 + 256 = 21 x 64, wrap byte 3 mod 4) and the
+ * reference readers wrap in 64-line units; a 16-line ring (360p: 368 + 256
+ * = 39 macroblock rows) puts the reference wrap inside such a unit and the
+ * P pictures predict from rows shifted by one to three macroblock rows
+ * (sub stream jumping by 8..24 lines, T21 and T23). */
+static inline uint32_t t21_ref_ring_lines(uint32_t mb_height)
+{
+    return (mb_height * 16u + 63u) & ~63u;
+}
+
 typedef struct {
     uint32_t base_y, base_c;    /* ring start */
     uint32_t ring_y, ring_c;    /* ring sizes in bytes */
@@ -54,9 +66,11 @@ static inline uint32_t t21_ref_ring_bytes(uint32_t mb_width,
 {
     uint32_t stride = mb_width * 16u;
 
-    return (mb_height * 16u + T21_REF_RING_EXTRA_LINES) * stride +
+    uint32_t lines = t21_ref_ring_lines(mb_height);
+
+    return (lines + T21_REF_RING_EXTRA_LINES) * stride +
            T21_REF_RING_CHROMA_GAP +
-           (mb_height * 8u + T21_REF_RING_EXTRA_LINES / 2u) * stride;
+           (lines / 2u + T21_REF_RING_EXTRA_LINES / 2u) * stride;
 }
 
 /* Bytes of the two separate reference pictures (one macroblock: 256 luma
@@ -86,9 +100,10 @@ static inline void t21_ref_ring_init(T21RefRing *r, uint32_t base,
                                      uint32_t mb_width, uint32_t mb_height)
 {
     uint32_t stride = mb_width * 16u;
+    uint32_t lines = t21_ref_ring_lines(mb_height);
 
-    r->ring_y = (mb_height * 16u + T21_REF_RING_EXTRA_LINES) * stride;
-    r->ring_c = (mb_height * 8u + T21_REF_RING_EXTRA_LINES / 2u) * stride;
+    r->ring_y = (lines + T21_REF_RING_EXTRA_LINES) * stride;
+    r->ring_c = (lines / 2u + T21_REF_RING_EXTRA_LINES / 2u) * stride;
     r->step_y = T21_REF_RING_EXTRA_LINES * stride;
     r->step_c = T21_REF_RING_EXTRA_LINES / 2u * stride;
     r->stride = stride;
