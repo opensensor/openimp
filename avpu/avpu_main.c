@@ -13,6 +13,8 @@
 #include <linux/kernel.h>
 #include <linux/kfifo.h>
 #include <linux/mm.h>
+#include <linux/mutex.h>
+#include <linux/bitops.h>
 #include <linux/module.h>
 #include <linux/moduleparam.h>
 #include <linux/of.h>
@@ -662,10 +664,36 @@ static void avpu_deinit_clocks(struct avpu_codec_desc *codec)
 }
 #endif
 
+/* Minors handed out by probe and given back by remove; a rebind reuses its
+ * number instead of walking past the registered chrdev region. */
+static DECLARE_BITMAP(avpu_minors, AVPU_NR_DEVS);
+static DEFINE_MUTEX(avpu_minor_lock);
+
+static int avpu_get_minor(void)
+{
+	int limit = min(avpu_codec_nr_devs, AVPU_NR_DEVS);
+	int minor;
+
+	mutex_lock(&avpu_minor_lock);
+	minor = find_first_zero_bit(avpu_minors, limit);
+	if (minor < limit)
+		set_bit(minor, avpu_minors);
+	else
+		minor = -EBUSY;
+	mutex_unlock(&avpu_minor_lock);
+	return minor;
+}
+
+static void avpu_put_minor(int minor)
+{
+	mutex_lock(&avpu_minor_lock);
+	clear_bit(minor, avpu_minors);
+	mutex_unlock(&avpu_minor_lock);
+}
+
 int avpu_codec_probe(struct platform_device *pdev)
 {
-	int err, irq;
-	static int current_minor;
+	int err, irq, minor;
 	struct resource *res;
 	struct avpu_codec_desc *codec
 		= devm_kzalloc(&pdev->dev, sizeof(*codec), GFP_KERNEL);
@@ -716,12 +744,20 @@ int avpu_codec_probe(struct platform_device *pdev)
 
 	platform_set_drvdata(pdev, codec);
 
-	err = avpu_setup_codec_cdev(codec, current_minor, DEV_NAME);
-	if (err)
+	minor = avpu_get_minor();
+	if (minor < 0) {
+		err = minor;
+		avpu_err("No free minor\n");
 		goto out_irq;
+	}
 
-	codec->minor = current_minor;
-	++current_minor;
+	err = avpu_setup_codec_cdev(codec, minor, DEV_NAME);
+	if (err) {
+		avpu_put_minor(minor);
+		goto out_irq;
+	}
+
+	codec->minor = minor;
 	printk("@@@@ avpu driver ok(version %s) @@@@@\n", AVPU_DRIVER_VERSION);
 
 	return 0;
@@ -743,6 +779,7 @@ int avpu_codec_remove(struct platform_device *pdev)
 
 	device_destroy(module_class, dev);
 	clean_up_avpu_codec_cdev(codec);
+	avpu_put_minor(codec->minor);
 
 	if (codec->irq >= 0)
 		devm_free_irq(codec->device, codec->irq, codec);
