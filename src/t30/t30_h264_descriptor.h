@@ -30,6 +30,16 @@ typedef struct {
     uint32_t bitstream;
     uint32_t *descriptor;
     size_t descriptor_words;
+    /* T20 rate control (src/rc_t20, OEM H264E_T20_SliceInit): 0 keeps the
+     * defaults.  max_qp_cap: macroblock QP cap 0x40040 (the OEM writes the
+     * application's maxQp); qp_table: run-length macroblock QP table
+     * (JZM_QPTabConv words) written into VPU memory 0xc5800 and enabled in
+     * 0x4006c; mb_tune: the OEM's macroblock mode tuning for pictures of
+     * at least 51x39 macroblocks in a moving scene (0x80034, 0x8003c). */
+    uint8_t max_qp_cap;
+    uint8_t mb_tune;
+    uint16_t qp_table_words;
+    const uint32_t *qp_table;
 } T30H264SliceConfig;
 
 int T30_H264_BuildDescriptor(const T30H264SliceConfig *config,

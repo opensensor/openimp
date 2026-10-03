@@ -13,9 +13,12 @@ OpenIMP; it is read from the path you pass.
     pip install unicorn pyelftools
     tools/rc_t20_oracle.py T20/lib/3.12.0/uclibc/4.7.2/libimp.so > tests/rc_t20/rc_t20_vectors.txt
 
-The macroblock rate control (param[268]) is off in these vectors.  libm
-calls are answered by the host libm; uClibc's logf/log2f are
-(float)log((double)x) / (float)log2((double)x) and are answered so.
+Scenarios 12 and up run the macroblock rate control (param[268], the OEM
+default) on synthetic luma pictures (rc_t20_test.c draws the same ones):
+H264_SMA_CalMBFlag uses Ingenic MXU2 SIMD instructions, which the code
+hook below executes.  libm calls are answered by the host libm; uClibc's
+logf/log2f are (float)log((double)x) / (float)log2((double)x) and are
+answered so.
 """
 import math
 import os
@@ -68,8 +71,57 @@ class Lib:
         # the OEM debug print "show" returns at once
         uc.hook_add(UC_HOOK_CODE, self._ret, begin=self.syms['show'], end=self.syms['show'])
         self.brk = HEAP + 0x1000000
+        # MXU2 (SIMD) instructions of H264_SMA_CalMBFlag
+        self.vr = [bytes(16)] * 32
+        fn = self.syms['H264_SMA_CalMBFlag']
+        uc.hook_add(UC_HOOK_CODE, self._mxu2, begin=fn, end=fn + 0x994)
         st = uc.reg_read(UC_MIPS_REG_CP0_STATUS)
         uc.reg_write(UC_MIPS_REG_CP0_STATUS, st | (1 << 29))  # FPU on, FR=0
+
+    def _mxu2(self, uc, addr, size, _):
+        w = struct.unpack('<I', bytes(uc.mem_read(addr, 4)))[0]
+        gpr = lambda r: uc.reg_read(UC_MIPS_REG_ZERO + r) & 0xffffffff
+        vd, vs, vt = (w >> 6) & 31, (w >> 11) & 31, (w >> 16) & 31
+        op, f = w >> 26, w & 63
+        if op == 0x12:                                  # COP2: vector ops
+            a, b = self.vr[vs], self.vr[vt]
+            key = ((w >> 21) & 31, f)
+            if key == (17, 12):                         # subua.b
+                r = bytes(abs(x - y) for x, y in zip(a, b))
+            elif key == (17, 25):                       # adduu.h
+                r = struct.pack('<8H', *[min(x + y, 0xffff) for x, y in
+                                         zip(struct.unpack('<8H', a), struct.unpack('<8H', b))])
+            elif key in ((18, 41), (18, 42), (18, 43)): # dotpu.h/.w/.d
+                n = {41: 1, 42: 2, 43: 4}[f]
+                fm = {1: 'B', 2: 'H', 4: 'I'}[n]
+                x, y = struct.unpack('<%d%s' % (16 // n, fm), a), struct.unpack('<%d%s' % (16 // n, fm), b)
+                fo = {1: 'H', 2: 'I', 4: 'Q'}[n]
+                mask = (1 << (16 * n)) - 1
+                r = struct.pack('<%d%s' % (8 // n, fo), *[(x[2 * i] * y[2 * i] + x[2 * i + 1] * y[2 * i + 1]) & mask
+                                                          for i in range(8 // n)])
+            else:
+                raise RuntimeError('MXU2 %08x at %x' % (w, addr))
+            self.vr[vd] = r
+        elif op == 0x1c and f in (0x0c, 0x0d, 0x0e):  # li.b/.h/.w
+            imm = (w >> 11) & 0x3ff
+            self.vr[vd] = (bytes([imm & 0xff]) * 16 if f == 0x0c else
+                           struct.pack('<H', imm) * 8 if f == 0x0d else struct.pack('<I', imm) * 4)
+        elif op == 0x1c and f in (0x14, 0x1c):          # lu1q / su1q
+            off = (w >> 11) & 0x3ff
+            ea = (gpr((w >> 21) & 31) + (off - 0x400 if off & 0x200 else off)) & 0xffffffff
+            if f == 0x14:
+                self.vr[vd] = bytes(uc.mem_read(ea, 16))
+            else:
+                uc.mem_write(ea, self.vr[vd])
+        elif op == 0x1c and f == 0x07 and ((w >> 11) & 31) in (0, 4):   # lu1qx / su1qx
+            ea = (gpr((w >> 21) & 31) + gpr((w >> 16) & 31)) & 0xffffffff
+            if (w >> 11) & 31 == 0:
+                self.vr[vd] = bytes(uc.mem_read(ea, 16))
+            else:
+                uc.mem_write(ea, self.vr[vd])
+        else:
+            return
+        uc.reg_write(UC_MIPS_REG_PC, addr + 4)
 
     def _ret(self, uc, addr, size, _):
         uc.reg_write(UC_MIPS_REG_PC, uc.reg_read(UC_MIPS_REG_RA))
@@ -139,8 +191,26 @@ class Lib:
     def w8(self, a, v): self.uc.mem_write(a, bytes([v & 0xff]))
 
 
+def picture(frame, stride, lines):
+    """Synthetic luma, drawn the same way by rc_t20_test.c."""
+    out = bytearray(stride * lines)
+    for y in range(lines):
+        for x in range(stride):
+            b = (x >> 4) + (y >> 4) * 3 + frame
+            if b % 4 == 0:
+                v = 30 + (frame * 7) % 60                       # dark flat
+            elif b % 4 == 1:
+                v = 140 + ((x + y) & 3)                         # bright flat
+            elif b % 4 == 2:
+                v = (x * 13 + y * 29 + frame * 5) & 0xff        # texture
+            else:
+                v = ((x * x + y * 7 + frame) * 2654435761 >> 13) & 0xff
+            out[y * stride + x] = v
+    return bytes(out)
+
+
 KEYS = ('method', 'w', 'h', 'gop', 'fpsn', 'fpsd', 'qp', 'min', 'max', 'bitrate', 'ibias', 'frm', 'gopstep',
-        'gopRel', 'static', 'maxbr', 'chg', 'qual', 'trig', 'newmax', 'superI', 'superP')
+        'gopRel', 'static', 'maxbr', 'chg', 'qual', 'trig', 'newmax', 'superI', 'superP', 'mbrc')
 
 
 class Oem:
@@ -164,10 +234,15 @@ class Oem:
         w32(P + 232, cfg['frm']); w32(P + 236, cfg['gopstep']); L.w8(P + 241, cfg['gopRel'])
         w32(P + 244, cfg['static']); w32(P + 248, cfg['maxbr']); w32(P + 252, cfg['chg'])
         w32(P + 256, cfg['qual']); w32(P + 260, fb(cfg['trig'])); w32(P + 264, cfg['newmax'])
-        w32(P + 268, 0); w32(P + 272, 1)               # macroblock rate control off
+        w32(P + 268, cfg['mbrc']); w32(P + 272, 1)    # macroblock rate control
         w32(P + 280, cfg['superI']); w32(P + 284, cfg['superP'])
         w32(P + 396, cfg['fpsn']); w32(P + 400, cfg['fpsd'])
         w32(P + RX + 1156, (cfg['w'] + 15) >> 4); w32(P + RX + 1160, (cfg['h'] + 15) >> 4)
+        w32(P + RX + 1076, L.alloc(64))               # ROI regions: none
+        stride = (cfg['w'] + 15) & ~15
+        self.stride = stride
+        self.luma = L.alloc(stride * (((cfg['h'] + 15) & ~15) + 16) + 64)
+        w32(self.fenc + 76, self.luma); w32(self.fenc + 100, stride)
         w32(self.h + 4672, P)
         w32(self.h + 896, self.fenc)
         for i, a in enumerate((0x800e4, 0x800e8, 0x800ec, 0x80034)):
@@ -178,11 +253,22 @@ class Oem:
 
     def start(self):
         L, h, f = self.L, self.h, self.frame
+        if self.cfg['mbrc']:
+            L.uc.mem_write(self.luma, picture(f, self.stride, ((self.cfg['h'] + 15) & ~15) + 16))
         idr = f % self.cfg['gop'] == 0
         L.w32(h + 0, f)
         L.w32(h + 904, self.stats[(f + 1) & 1]); L.w32(h + 908, self.stats[f & 1])
         L.call('i264e_ratecontrol_start', h)
         return idr, L.r32(h + 740)
+
+    def table(self):
+        """QP table of the picture: (words, sum of the words, mean QP)."""
+        L, E = self.L, self.param + 704
+        if not L.r32(E + RX + 348) & 0xff:
+            return 0, 0, 0
+        n = L.r32(E + RX + 344)
+        words = struct.unpack('<%dI' % n, bytes(L.uc.mem_read(E + 0x50158, 4 * n)))
+        return n, sum(words) & 0xffffffff, L.r32(E + RX + 352)
 
     def end(self, idr, cmpx, nbytes, regs):
         L, h = self.L, self.h
@@ -196,14 +282,16 @@ class Oem:
 def scenario(lib_path, seed, frames, out):
     rnd = random.Random(seed)
     method = (1, 2, 3, 0)[seed % 4]
-    w, hh = rnd.choice([(1920, 1080), (1280, 720), (640, 360), (320, 240)])
+    mbrc = 1 if seed >= 12 else 0
+    w, hh = rnd.choice([(320, 240), (256, 160), (176, 144)] if mbrc else
+                       [(1920, 1080), (1280, 720), (640, 360), (320, 240)])
     mx = rnd.randint(36, 51); mn = rnd.randint(0, 30)
     cfg = dict(method=method, w=w, h=hh, gop=rnd.choice([20, 25, 30, 50]), fpsn=rnd.choice([25, 15, 20]), fpsd=1,
                qp=rnd.randint(20, 40), min=mn, max=mx, bitrate=rnd.choice([256, 512, 1000, 2000]),
                ibias=rnd.randint(-3, 3), frm=rnd.randint(2, 6), gopstep=rnd.randint(2, 15), gopRel=rnd.randint(0, 1),
                static=rnd.randint(1, 10), maxbr=rnd.choice([512, 1000, 2000, 4000]), chg=rnd.randint(50, 100),
                qual=rnd.randint(0, 6), trig=rnd.choice([3.0, 2.0, 1.5]), newmax=rnd.choice([51, 48]),
-               superI=0x12c0000, superP=0xd64925)
+               superI=0x12c0000, superP=0xd64925, mbrc=mbrc)
     if seed % 3 == 2:   # small super-frame thresholds: re-encodes
         cfg['superI'] = rnd.randint(200000, 900000); cfg['superP'] = rnd.randint(60000, 300000)
     oem = Oem(Lib(lib_path), cfg)
@@ -215,6 +303,8 @@ def scenario(lib_path, seed, frames, out):
             cplx = rnd.uniform(0.2, 4.0)
         idr, qp = oem.start()
         out.write('F %d %d %d\n' % (f, int(idr), qp))
+        if mbrc:
+            out.write('T %d %d %d\n' % oem.table())
         moving = rnd.randint(0, mbs) if rnd.random() < 0.7 else rnd.randint(0, mbs // 10)
         for attempt in range(8):
             size = cplx * mbs * 5 * (2.0 ** ((30 - qp) / 6.0)) * (4.0 if idr else 1.0)
@@ -224,6 +314,8 @@ def scenario(lib_path, seed, frames, out):
             regs = [r0, rnd.randint(0, moving * 20 + 1), rnd.randint(0, moving * 20 + 1)]
             re_, nq = oem.end(idr, cmpx, nbytes, regs)
             out.write('E %d %d %d %d %d %d %d\n' % (cmpx, nbytes * 8, regs[0], regs[1], regs[2], re_, nq if re_ else 0))
+            if mbrc and re_:
+                out.write('T %d %d %d\n' % oem.table())
             if not re_:
                 break
             qp = nq
@@ -232,7 +324,7 @@ def scenario(lib_path, seed, frames, out):
 
 def main():
     lib_path = sys.argv[1]
-    scenarios = int(sys.argv[2]) if len(sys.argv) > 2 else 12
+    scenarios = int(sys.argv[2]) if len(sys.argv) > 2 else 16
     frames = int(sys.argv[3]) if len(sys.argv) > 3 else 120
     for seed in range(scenarios):
         scenario(lib_path, seed, frames, sys.stdout)

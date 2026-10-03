@@ -35,9 +35,16 @@ T21/T23 "eprc" controller (`docs/T23_EPRC.md`).
   build: 100 random CBR/VBR/SMART/FIXQP scenarios x 150 pictures with
   random picture sizes and statistics, the E, rcPara and rcSt blocks
   identical after every call (including super-frame re-encodes);
+- the macroblock rate control the same way, on synthetic luma pictures
+  (48 scenarios x 60 pictures; `H264_SMA_CalMBFlag` uses Ingenic MXU2 SIMD
+  instructions, which the emulator executes in a code hook: subua.b,
+  dotpu.h/.w/.d, adduu.h, li.b/.h/.w, lu1q(x), su1q(x)), plus function
+  level `H264_SMA_CalMBFlag`, `H264_SMA_CalMBQP` and `JZM_QPTabConv` on
+  random inputs;
 - on the host: `tests/rc_t20` (in `make check`) replays
-  `tests/rc_t20/rc_t20_vectors.txt` (12 scenarios, 1440 pictures, 2905
-  decisions incl. 25 re-encodes) from `tools/rc_t20_oracle.py`.
+  `tests/rc_t20/rc_t20_vectors.txt` (16 scenarios, 1920 pictures, 4347
+  decisions incl. re-encodes and 481 macroblock QP tables) from
+  `tools/rc_t20_oracle.py`.
 
 libm: the OEM calls `logf`, `log2f`, `log`, `pow`, `sqrt`.  uClibc's
 `logf`/`log2f` are `(float)log((double)x)` / `(float)log2((double)x)`
@@ -45,8 +52,9 @@ libm: the OEM calls `logf`, `log2f`, `log`, `pow`, `sqrt`.  uClibc's
 so on the camera both use the same uClibc functions.  Compiled with
 `-ffp-contract=off` (the emulator models MIPS32r2 `madd.fmt` as unfused).
 
-Not compared yet: the macroblock rate control (see below), which the OEM
-enables by default.
+Not reproduced: ROI regions in the macroblock QP map, the debug switches
+(files /tmp/smac0, /tmp/smac1, /tmp/smad, /tmp/roic, /tmp/rcdbg, "smooth"),
+the `show` logging.
 
 ## Blocks
 
@@ -209,20 +217,41 @@ What the RC attribute fields do (T20):
 | adaptiveMode (CBR) | not used |
 | I/P QP delta | no IMP field; FIXQP: I = qp - 3 |
 
-## Macroblock rate control (not reproduced yet)
+## Macroblock rate control
 
 `[268]` defaults to 1, so the OEM runs it for CBR, VBR and SMART (not
-FIXQP): `H264_SMA_CalMBFlag` (0xa4530, Ingenic MXU2 SIMD: per macroblock the
-vertical (rows 0-3-6 of each 8-row half) and horizontal (rows 0, 3, 6)
-absolute luma gradients, classified 1..7 with E+272..316, smoothed by the 8
-neighbours, counted into E+324/328/332) and `H264_SMA_CalMBQP` (0xa6eb0:
-class QP offsets from the class shares, dark-area offsets from log2 of the
-centre luma, ROI regions, `JZM_QPTabConv` 0xa3dec into the 256 KiB VPU QP
-table E+0x50158).  It does not change the picture QP decisions; it adds a
-per-macroblock QP map that `hwicodec_pf_h264e_t20_enc` hands to the VPU
-(slice fields +300..+312) and, for SMART, 7 macroblock tuning bytes.
-OpenIMP's T20 command list has no QP table yet, so `src/rc_t20` runs with
-`[268]` = 0 (rc_t20_mb.c is a stub).
+FIXQP), every picture (`src/rc_t20/rc_t20_mb.c`):
+
+- `H264_SMA_CalMBFlag` (0xa4530, Ingenic MXU2 SIMD): per macroblock the
+  vertical (|r0-r3| + |r3-r6|) and horizontal (|p - right| on rows 0, 3, 6)
+  absolute luma gradients of both 8-row halves, class 1..7 by the
+  thresholds E+272.. (vertical) and E+296.. (horizontal), the luma sample
+  at (8, 7) into E+0x40150; inner macroblocks re-classed by their 8
+  neighbours (>= 6 neighbours in classes 1-3 / 4-5 / 6-7), in place; class
+  counts E+324 (0..3), E+328 (4..5), E+332 (other).
+- `H264_SMA_CalMBQP` (0xa6eb0): E+0x90164 = share of flat macroblocks x
+  100; QP offsets per class from a 32-row table (0xd15ec; -1 for classes
+  1..4, 0 for 5, +3 for 6, +6/+7 for 7) chosen by the class shares and the
+  picture QP, none when flat macroblocks are < 12 % or > 91 % or QP < 25;
+  per macroblock QP = picture QP (capped at 40 from the first flat
+  macroblock on) + class offset, flat dark macroblocks (sample < 128)
+  further + log2(sample + 1) - 8, clamped 1..51; ROI regions; the map
+  run-length coded by `JZM_QPTabConv` (0xa3dec: qp | 0x80, repeat counts
+  up to 127, bytes from the top of each word) into E+0x50158, length
+  E+0x90158, mean QP E+0x90160.
+- With a super-frame re-encode the map is rebuilt from the classes at the
+  new QP (QP >= 41: flat macroblocks 35) or, for QP >= 49, dropped.
+
+It does not change the picture QP decisions (except the QP >= 49 re-encode
+above).  `hwicodec_pf_h264e_t20_enc` hands the table to the VPU:
+`H264E_T20_SliceInit` (0x20f40) writes register 0x4006c = words << 21 |
+0xc5800 | enable << 31 and the table words into VPU memory 0x132c5800..;
+0x40040 (macroblock QP cap) is the application's maxQp.  Independently of
+the macroblock rate control, pictures of at least 51 x 39 macroblocks get a
+different macroblock mode tuning while the scene class is not 0 (slice
++132..+155 -> 0x80034 = 0x896783e6 instead of 0x8202, 0x8003c =
+0x09000000).  The SMART tuning bytes E+0x90182.. reach the i264e io block
+but the T20 encoder does not read them.
 
 ## T10
 
@@ -253,15 +282,24 @@ On a T20 (not a T10: `t30_soc_is_t10`), CBR, VBR and SMART channels run
   0xc0386307); a re-encode request codes the picture again at the new QP
   (at most 4 times).
 - FIXQP keeps OpenIMP's handling (P = qp, IDR = qp - 3 as the OEM).
+- command list (`T30_H264_BuildDescriptor`, T20): 0x40040 = maxQp, the
+  macroblock mode tuning in moving scenes of >= 51 x 39 macroblocks, and
+  with `OPENIMP_T20_MBRC=1` the macroblock QP table (0x4006c and the table
+  writes; the T20 command-list buffer is 64 KiB for it).  The luma plane is
+  written back and invalidated before the classes read it.
 
 Environment:
 
 - `OPENIMP_T20_RC=0`: OpenIMP's GOP controller instead (as before).
+- `OPENIMP_T20_MBRC=1`: the macroblock rate control (the OEM default; off
+  in OpenIMP until tested on a camera: it costs about 1.3 M CPU operations
+  per 1080p picture without the OEM's SIMD).
 - `OPENIMP_T20_RC_STATS=<seconds>`: one log line per interval: bit rate,
   P and IDR QP average/min/max, scene class, re-encodes.
 
 The log shows `T20 rc: OEM <mode> ...` with the effective parameters when
 the controller starts.  `tests/t30` (helix_encoder_test_t20) checks the
 plumbing: every slice QP of the encoder against a second controller fed the
-same slice sizes, cmpx and register values, and that `OPENIMP_T20_RC=0`
-reads no registers.
+same slice sizes, cmpx and register values; with `OPENIMP_T20_MBRC=1` the
+QP table, its control word and the macroblock tuning in the command list;
+and that `OPENIMP_T20_RC=0` reads no registers.

@@ -102,6 +102,13 @@ void RCT20_Start(RcT20 *rc, int idr, const uint8_t *luma, uint32_t stride,
 /* Returns 1 when the picture is to be coded again with pic->qp. */
 int RCT20_End(RcT20 *rc, const RcT20Stats *stats, RcT20Picture *pic);
 
+/* After RCT20_Start: the macroblock QP table of the picture (OEM
+ * E+0x50158, length E+0x90158, active E+0x9015c), or 0 when there is none
+ * (macroblock rate control off, or dropped for a re-encode). */
+uint32_t RCT20_QpTable(const RcT20 *rc, const uint32_t **table);
+/* Scene class of the last decision (OEM E+0x90168: 0 static .. 4). */
+uint32_t RCT20_Scene(const RcT20 *rc);
+
 /* ---- OEM entry points and steps (byte blocks in the OEM layout) ---- */
 void RCT20_DefaultSet(uint8_t *E);
 void RCT20_SetupE(uint8_t *E, const RcT20Params *params);

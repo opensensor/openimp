@@ -1646,3 +1646,19 @@ int RCT20_End(RcT20 *rc, const RcT20Stats *stats, RcT20Picture *pic)
     }
     return 0;
 }
+
+uint32_t RCT20_QpTable(const RcT20 *rc, const uint32_t **table)
+{
+    const uint8_t *E = rc->e;
+
+    if (!E || rc->params.method < 1 || rc->params.method > 3 ||
+        !RU8(E, RX(348)) || RI32(E, RX(344)) <= 0)
+        return 0;
+    *table = (const uint32_t *)(const void *)(E + 0x50158);
+    return RU32(E, RX(344));
+}
+
+uint32_t RCT20_Scene(const RcT20 *rc)
+{
+    return rc->e ? RU32(rc->e, RX(360)) : 0u;
+}

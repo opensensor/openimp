@@ -95,8 +95,14 @@ typedef T30H264SliceConfig PlatformH264SliceConfig;
 #else
 #define T30_CHANNEL_DELAY_MS 20000u
 #endif
-/* The longest command list (T21 P slice) is 2060 words, about 8 KiB. */
+/* The longest command list (T21 P slice) is 2060 words, about 8 KiB.  The
+ * T20 adds the macroblock QP table of its rate control (src/rc_t20): up to
+ * one command per 4 macroblocks, 3072 at 2048x1536. */
+#if defined(PLATFORM_T20)
+#define T30_DESCRIPTOR_WINDOW (1u << 16)
+#else
 #define T30_DESCRIPTOR_WINDOW (1u << 14)
+#endif
 #if defined(HELIX_SMALL_WINDOWS)
 /* T20's window; T21 and T23 size theirs per picture
  * (OpenIMP_T30_HelixCreate) */
@@ -284,6 +290,7 @@ struct T30HelixEncoder {
     /* OEM T20 rate control (src/rc_t20, docs/T20_RC.md) */
     RcT20 t20rc;
     int t20rc_on;
+    int t20rc_mb;               /* OPENIMP_T20_MBRC: macroblock QP table */
     uint32_t t20rc_min_qp;      /* the application's QP range (before */
     uint32_t t20rc_max_qp;      /* t30_normalize_params) */
     uint32_t t20rc_reencodes;
@@ -1245,8 +1252,10 @@ static void t20_rc_start(T30HelixEncoder *encoder)
         /* no IMP attribute: the i264e_param_default values */
         p.static_time = 2u;
     }
-    /* macroblock rate control: not reproduced (docs/T20_RC.md) */
-    p.mb_rc = 0u;
+    /* macroblock rate control (the OEM's default): OPENIMP_T20_MBRC=1 */
+    env = getenv("OPENIMP_T20_MBRC");
+    encoder->t20rc_mb = env && env[0] == '1';
+    p.mb_rc = encoder->t20rc_mb ? 1u : 0u;
     encoder->t20rc.e = NULL;
     if (RCT20_Init(&encoder->t20rc, &p) != 0) {
         IMP_LOG_WARN("Encoder", "T20: OEM rate control init failed, using "
@@ -1259,12 +1268,12 @@ static void t20_rc_start(T30HelixEncoder *encoder)
     encoder->t20rc_frames = 0u;
     IMP_LOG_INFO("Encoder", "T20 rc: OEM %s %ux%u gop=%u fps=%u/%u "
                  "bitrate=%u kbit/s qp=[%u,%u] bias=%d steps=%u/%u "
-                 "changePos=%u quality=%u gopRelation=%u%s",
+                 "changePos=%u quality=%u gopRelation=%u mbrc=%u%s",
                  p.method == 1u ? "CBR" : p.method == 3u ? "SMART" : "VBR",
                  p.width, p.height, p.gop, p.fps_num, p.fps_den,
                  p.method == 1u ? p.bitrate : p.max_bitrate, p.min_qp,
                  p.max_qp, (int)p.i_bias, p.frm_qp_step, p.gop_qp_step,
-                 p.change_pos, p.quality, p.gop_relation,
+                 p.change_pos, p.quality, p.gop_relation, p.mb_rc,
                  runtime ? " (run-time set)" : "");
 }
 
@@ -1851,9 +1860,18 @@ static int t30_helix_encode_job(T30HelixEncoder *encoder,
 #if defined(PLATFORM_T20)
     if (encoder->t20rc_on) {
         RcT20Picture pic;
+        const uint8_t *luma = NULL;
 
-        /* macroblock rate control is off: no luma plane needed */
-        RCT20_Start(&encoder->t20rc, idr, NULL, 0u, &pic);
+        if (encoder->t20rc_mb && frame->virAddr) {
+            /* the macroblock classes read the luma plane the ISP wrote
+             * (write back + invalidate keeps CPU-drawn OSD) */
+            luma = (const uint8_t *)(uintptr_t)frame->virAddr;
+            (void)DMA_RmemFlushCache((void *)(uintptr_t)frame->virAddr,
+                                     encoder->params.width *
+                                     (uint32_t)encoder->sps.i_mb_height * 16u,
+                                     2);
+        }
+        RCT20_Start(&encoder->t20rc, idr, luma, encoder->params.width, &pic);
         qp = pic.qp;
     }
     t20_reencodes = 0u;
@@ -1888,6 +1906,22 @@ t20_again:
                             encoder->slice_header.i_cabac_init_idc);
 
     t30_fill_slice(encoder, frame, qp, idr, output_index);
+#if defined(PLATFORM_T20)
+    if (encoder->t20rc_on) {
+        /* the per-picture fields of the OEM T20 command list */
+        const uint32_t *table = NULL;
+        uint32_t words = RCT20_QpTable(&encoder->t20rc, &table);
+
+        encoder->slice.max_qp_cap = (uint8_t)encoder->t20rc.params.max_qp;
+        if (words && 2u * words <= encoder->slice.descriptor_words / 2u) {
+            encoder->slice.qp_table_words = (uint16_t)words;
+            encoder->slice.qp_table = table;
+        }
+        encoder->slice.mb_tune = encoder->sps.i_mb_width >= 51 &&
+                                 encoder->sps.i_mb_height >= 39 &&
+                                 RCT20_Scene(&encoder->t20rc) != 0u;
+    }
+#endif
 #if defined(HELIX_T21_SYNTAX)
     if (T21_H264_BuildDescriptor(&encoder->slice,
                                  &descriptor_pairs) != 0) {
