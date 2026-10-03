@@ -313,8 +313,8 @@ produced by `tools/rc_t20_oracle.py --t10`: 4231 decisions, 0 differ.
 
 ## In OpenIMP (T20 build, `src/t30/t30_helix_encoder.c`)
 
-On a T20 (not a T10: `t30_soc_is_t10`), CBR, VBR and SMART channels run
-`src/rc_t20` instead of OpenIMP's GOP controller (`t31_rate_control`):
+With `OPENIMP_T20_RC=1` on a T20 (not a T10: `t30_soc_is_t10`), CBR, VBR
+and SMART channels run `src/rc_t20` instead of OpenIMP's GOP controller (`t31_rate_control`):
 
 - `t20_rc_start` (at create and on every rate-control change, as the OEM
   re-runs `i264e_ratecontrol_init`): the i264e parameters from
@@ -339,7 +339,10 @@ On a T20 (not a T10: `t30_soc_is_t10`), CBR, VBR and SMART channels run
 
 Environment:
 
-- `OPENIMP_T20_RC=0`: OpenIMP's GOP controller instead (as before).
+- `OPENIMP_T20_RC=1`: run the OEM T20 controller (default off until a
+  camera test with the motion statistics passes; those need the kernel
+  to allow the soc_vpu register reads 0x132800e4/e8/ec, thingino local
+  patch 0101).  Without it the T20 keeps OpenIMP's GOP controller.
 - `OPENIMP_T20_MBRC=1`: the macroblock rate control (the OEM default; off
   in OpenIMP until tested on a camera: it costs about 1.3 M CPU operations
   per 1080p picture without the OEM's SIMD).
@@ -357,4 +360,4 @@ the controller starts.  `tests/t30` (helix_encoder_test_t20) checks the
 plumbing: every slice QP of the encoder against a second controller fed the
 same slice sizes, cmpx and register values; with `OPENIMP_T20_MBRC=1` the
 QP table, its control word and the macroblock tuning in the command list;
-and that `OPENIMP_T20_RC=0` reads no registers.
+and that the default (no `OPENIMP_T20_RC`) reads no registers.

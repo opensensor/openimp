@@ -1647,11 +1647,12 @@ int IMP_Encoder_CreateChn(int channel, IMPEncoderCHNAttr *attr)
         return -1;
     }
     P2_STARTUP_MARKER("openimp/P2 marker C8 codec create returned\n");
-#if defined(PLATFORM_T23)
+#if defined(PLATFORM_T23) || defined(PLATFORM_T20)
     /* The codec parameter block has no room for the Helix rate-control
      * extras (staticTime, changePos, qualityLvl, QP steps, iBiasLvl, SMART):
      * hand them over as the OEM CreateChn hands its encoder the whole
-     * rate-control attribute. */
+     * rate-control attribute.  T20: the OEM CreateChn runs SMART as i264e
+     * method 3 (its own SMART controller), not as VBR. */
     (void)AL_Codec_Encode_SetRcExtras(ch->codec, &attr->rcAttr.attrRcMode);
 #endif
     p2_startup_trace("openimp/P2 startup: CreateChn codec created %p\n",

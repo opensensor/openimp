@@ -101,13 +101,13 @@ qp 0..51).  The native Helix encoder runs its GOP controller for
 CBR/VBR/SMART alike, without the extras (unchanged).
 
 **T20 (since claude/t20-rc):** CBR, VBR and SMART run the OEM T20
-controller (`src/rc_t20`, `docs/T20_RC.md`; `OPENIMP_T20_RC=0` restores
-the GOP controller below).  The OEM T20 build has its own controller
+controller with `OPENIMP_T20_RC=1` (`src/rc_t20`, `docs/T20_RC.md`;
+default off until the camera test passes: the GOP controller below).  The OEM T20 build has its own controller
 (`JZ_VPU_RC_*_T20`), not the T21 eprc; there iBiasLvl, gopQPStep,
 changePos, qualityLvl and gopRelation take effect, frmQPStep only until
 the scene classifier replaces it, staticTime and adaptiveMode are unused,
 and there is no I/P QP delta (FIXQP: I = qp - 3).  The table below is the
-T10, the T21 and the T20 with `OPENIMP_T20_RC=0`.
+T10, the T21 and the T20 by default (without `OPENIMP_T20_RC=1`).
 
 **T10 (since claude/t20-rc, opt-in):** `OPENIMP_T10_RC=1` runs the OEM T10
 controller (`src/rc_t10`, `docs/T20_RC.md` "T10"), the older code base the

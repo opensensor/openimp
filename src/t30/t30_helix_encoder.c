@@ -1179,9 +1179,10 @@ static uint32_t t30_fixqp_idr_qp(const HWEncoderParams *params)
 }
 
 #if defined(PLATFORM_T20)
-/* OPENIMP_T20_RC: "0" keeps OpenIMP's GOP controller (t31_rate_control) on
- * the T20; anything else (default) runs the OEM T20 controller for CBR, VBR
- * and SMART.  On a T10 the OEM library runs another controller
+/* OPENIMP_T20_RC=1 runs the OEM T20 controller for CBR, VBR and SMART on
+ * the T20; by default (until tested on a camera with the motion statistics,
+ * which need kernel patch 0101 for the register reads) the T20 keeps
+ * OpenIMP's GOP controller (t31_rate_control).  On a T10 the OEM library runs another controller
  * (src/rc_t10, t10_rc_wanted below). */
 static int t20_rc_wanted(const T30HelixEncoder *encoder)
 {
@@ -1192,7 +1193,7 @@ static int t20_rc_wanted(const T30HelixEncoder *encoder)
     if (encoder->params.rc_mode != HW_RC_MODE_CBR &&
         encoder->params.rc_mode != HW_RC_MODE_VBR)
         return 0;
-    return !(env && env[0] == '0');
+    return env && env[0] == '1';
 }
 
 /* OPENIMP_T10_RC=1 runs the OEM T10 controller (the T10 branch of the

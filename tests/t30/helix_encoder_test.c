@@ -602,7 +602,7 @@ static void test_runtime_parameters(void)
 /* The OEM T20 rate control (src/rc_t20) chooses every slice QP from the
  * statistics the encoder hands it: the slice size, the channel's cmpx and
  * three VPU registers.  A second controller fed the same values here must
- * agree picture by picture.  OPENIMP_T20_RC=0 keeps the GOP controller. */
+ * agree picture by picture (OPENIMP_T20_RC=1; by default the GOP controller). */
 static void test_t20_rate_control(void)
 {
     T30HelixEncoder *encoder;
@@ -611,7 +611,7 @@ static void test_t20_rate_control(void)
     PictureInfo info;
     unsigned int i, reads;
 
-    unsetenv("OPENIMP_T20_RC");
+    setenv("OPENIMP_T20_RC", "1", 1);
     encoder = create(1280, 720, 25, 10);
     RCT20_DefaultParams(&p);
     p.method = 1;
@@ -698,7 +698,7 @@ static void test_t20_rate_control(void)
         free(luma);
     }
 
-    setenv("OPENIMP_T20_RC", "0", 1);
+    unsetenv("OPENIMP_T20_RC");     /* default: the GOP controller */
     encoder = create(1280, 720, 25, 10);
     reads = reg_reads;
     for (i = 0; i < 3u; i++)
