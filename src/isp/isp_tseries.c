@@ -15,6 +15,7 @@
 #include "core/globals.h"
 #include "imp/imp_isp.h"
 #include "isp_ioctl_compat.h"
+#include "isp_t21_sinter.h"
 #include "dma_alloc.h"
 #if defined(PLATFORM_T23)
 #include "t23/openimp_t23_persist.h"
@@ -1478,7 +1479,7 @@ static void tseries_table_baseline_reset(void)
     }
 }
 
-static int tseries_table_tuning_ratio(uint32_t table, uint32_t ratio)
+static __attribute__((unused)) int tseries_table_tuning_ratio(uint32_t table, uint32_t ratio)
 {
     TSeriesTableBaseline *bl = NULL;
     TSeriesTableReq req;
@@ -2169,7 +2170,11 @@ static uint32_t tseries_t20_temper_ratio = 100;
 
 #if defined(PLATFORM_T21) /* T21 and T20 */
 /* Same for sinter strength on T21 and T20. */
+#if defined(PLATFORM_T20)
 static uint32_t tseries_t2x_sinter_ratio = 100;
+#else
+static uint32_t tseries_t2x_sinter_ratio = 128; /* T21: neutral, see isp_t21_sinter.h */
+#endif
 #endif
 
 int IMP_ISP_Tuning_SetDPC_Strength(uint32_t ratio)
@@ -2294,12 +2299,9 @@ int IMP_ISP_Tuning_SetSinterDnsAttr(IMPISPSinterDenoiseAttr *attribute)
     }
     memset(block, 0, sizeof(block));
     if (attribute->type == IMPISP_TUNING_OPS_TYPE_AUTO) {
-        block[70] = 1;
+        t21_sinter_fill_block(block, 0, 0);
     } else if (attribute->type == IMPISP_TUNING_OPS_TYPE_MANUAL) {
-        block[70] = 1;
-        block[10] = 1;
-        block[98] = 1;
-        block[43] = attribute->sinter_strength;
+        t21_sinter_fill_block(block, 1, attribute->sinter_strength);
     } else {
         imp_log_fun(6, IMP_Log_Get_Option(), 2, "IMP-ISP",
             "/home/user/git/proj/sdk-lv3/src/imp/isp/isp_tseries.c", 0x4ff,
@@ -2536,8 +2538,20 @@ int IMP_ISP_Tuning_GetTemperStrength(uint32_t *pratio)
 #if !defined(PLATFORM_T23) /* T23: isp_t23_tuning.c */
 int IMP_ISP_Tuning_SetSinterStrength(uint32_t ratio)
 {
-#if defined(PLATFORM_T21) /* T21 and T20 */
-    /* T21 1.0.33 / T20 3.12.0: isp_table_tuning_ratio(109, min(ratio, 200));
+#if defined(PLATFORM_T21) && !defined(PLATFORM_T20)
+    /* T21: the stock table control 0x8000161 is a no-op in the OEM kernel;
+     * use SinterDnsAttr (0x800002c), see isp_t21_sinter.h.  128 = AUTO. */
+    uint8_t block[T21_SINTER_BLOCK_SIZE];
+    int result;
+
+    t21_sinter_strength_block(ratio, block);
+    result = tseries_tuning_set_ptr(TSERIES_T21_CID_SINTER_DNS, block);
+    if (result == 0) {
+        tseries_t2x_sinter_ratio = ratio;
+    }
+    return result;
+#elif defined(PLATFORM_T21) /* T20 */
+    /* T20 3.12.0: isp_table_tuning_ratio(109, min(ratio, 200));
      * the drivers reject 0x8000086 and have no sinter-strength control. */
     int result = tseries_table_tuning_ratio(TSERIES_TABLE_SINTER,
                                             ratio > 200 ? 200 : ratio);
@@ -2561,7 +2575,20 @@ int IMP_ISP_Tuning_GetSinterStrength(uint32_t *pratio)
         return -1;
     }
 
-#if defined(PLATFORM_T21) /* T21 and T20 */
+#if defined(PLATFORM_T21) && !defined(PLATFORM_T20)
+    {
+        uint8_t block[T21_SINTER_BLOCK_SIZE];
+
+        (void)value;
+        memset(block, 0, sizeof(block));
+        result = tseries_tuning_get_ptr(TSERIES_T21_CID_SINTER_DNS, block);
+        /* stock kernel (no 0x800002c support): fall back to the last value */
+        *pratio = result == 0 && block[T21_SINTER_B_VALID]
+                      ? t21_sinter_block_strength(block)
+                      : tseries_t2x_sinter_ratio;
+        return result;
+    }
+#elif defined(PLATFORM_T21) /* T20 */
     (void)value;
     result = 0;
     *pratio = tseries_t2x_sinter_ratio;
