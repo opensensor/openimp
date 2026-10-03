@@ -131,8 +131,8 @@ th small{font-weight:400;color:var(--muted)}
 <td class="s-ok"><span class="sym" title="supported">✅</span><span class="txt">black-picture incident not reproducible; timps does not call any WB function on T41 (only AWB attr in libimp)</span></td>
 </tr>
 <tr id="r-ccm"><td><a href="#n-ccm">CCM / LSC (lens shading)</a></td><td class="vend">CT-controlled</td>
-<td class="s-bug"><span class="sym" title="known defect / deviation">⚠️</span><span class="txt">vendor ISP, not observable (no register/isp-m0 readback); CT follows day/night (T20 8100 to 6400 K)</span></td>
-<td class="s-bug"><span class="sym" title="known defect / deviation">⚠️</span><span class="txt">vendor ISP, not observable (no register/isp-m0 readback); CT follows day/night (T20 8100 to 6400 K)</span></td>
+<td class="s-ok"><span class="sym" title="supported">✅</span><span class="txt">✅ CCM/LSC read back in isp-m0 (0x13380480.., 0x380–0x39c); CCM now updated every frame like vendor (was frozen at init matrix in IR scenes), follows day/night; LSC bypassed by the jxh42 IQ bank (vendor-identical); per-CT sweep pending daylight [claude/t1x-ccm-lsc-iridix]</span></td>
+<td class="s-ok"><span class="sym" title="supported">✅</span><span class="txt">✅ CCM/LSC read back in isp-m0; CCM follows day/night (mono at night), LSC enabled, strength 1024 day/3440 night; mesh mirror follows ISP hflip at mode reload (vendor-identical); per-CT sweep pending daylight [claude/t1x-ccm-lsc-iridix]</span></td>
 <td class="s-plus"><span class="sym" title="improved beyond vendor">✅+</span><span class="txt">CT-controlled CCM/LSC lifted; colour blotches gone (chroma sigma 30→6)</span></td>
 <td class="s-bug"><span class="sym" title="known defect / deviation">⚠️</span><span class="txt">CCM follows the IQ bank (as vendor) – green cast in daylight with vendor AE; LSC flip locked</span></td>
 <td class="s-ok"><span class="sym" title="supported">✅</span><span class="txt">CCM follows day/night (regs 0x5004-0x5018 differ), LSC LUT loaded and follows mode + flip; per-CT sweep not testable on a fixed scene</span></td>
@@ -163,8 +163,8 @@ th small{font-weight:400;color:var(--muted)}
 <td class="s-ok"><span class="sym" title="supported">✅</span><span class="txt">brightness 255 → Y 211, contrast 0 → flat grey, saturation 0/255 chroma 0.1/7.1 (dark scene) [claude/t41-matrix-fixes]</span></td>
 </tr>
 <tr id="r-flip"><td><a href="#n-flip">Mirror / flip</a></td><td class="vend">SetHVFlip / sensor flip</td>
-<td class="s-ok"><span class="sym" title="supported">✅</span><span class="txt">device-tested: flipped image correlation 0.964 on both flips</span></td>
-<td class="s-ok"><span class="sym" title="supported">✅</span><span class="txt">vflip UV address + DMA overwrite fixed (pink stripes)</span></td>
+<td class="s-ok"><span class="sym" title="supported">✅</span><span class="txt">device-tested: flipped image correlation 0.964 on both flips; isp-m0 Mirror/Flip line now shows the applied state (was always Enable)</span></td>
+<td class="s-ok"><span class="sym" title="supported">✅</span><span class="txt">vflip UV address + DMA overwrite fixed (pink stripes); isp-m0 Mirror/Flip line now shows the applied state (was always Enable)</span></td>
 <td class="s-ok"><span class="sym" title="supported">✅</span><span class="txt">flip dispatcher lifted; shvflip=1</span></td>
 <td class="s-ok"><span class="sym" title="supported">✅</span><span class="txt">flip, Bayer re-sync, LSC flip locked</span></td>
 <td class="s-ok"><span class="sym" title="supported">✅</span><span class="txt">sc4336p vflip no longer reports an error [-all-13]; MSCA flip takes effect only at the next channel start, as with the vendor</span></td>
@@ -179,7 +179,7 @@ th small{font-weight:400;color:var(--muted)}
 <td class="s-unk"><span class="sym" title="unknown">?</span><span class="txt"></span></td>
 </tr>
 <tr id="r-defog"><td><a href="#n-defog">Defog</a></td><td class="vend">vendor block</td>
-<td class="s-bug"><span class="sym" title="known defect / deviation">⚠️</span><span class="txt">hardware present (Iridix), but the jxh42 IQ bank bypasses Iridix: register-only effect; investigating enabling it</span></td>
+<td class="s-bug"><span class="sym" title="known defect / deviation">⚠️</span><span class="txt">⚠️ jxh42 IQ bank bypasses Iridix (day and night); vendor enables it only via SetRawDRC; forced enable measured: auto strength 10–12, Y +1.4, edges +10 % (IR night); enabling it beyond vendor is a pending user decision</span></td>
 <td class="s-plus"><span class="sym" title="improved beyond vendor">✅+</span><span class="txt">Iridix floor (no defog block in HW): 255 → Y +27, laplacian +106 [all-17]</span></td>
 <td class="s-plus"><span class="sym" title="improved beyond vendor">✅+</span><span class="txt">lifted, IRQ 21 registered (40/40 emulator)</span></td>
 <td class="s-plus"><span class="sym" title="improved beyond vendor">✅+</span><span class="txt">lifted incl. tisp_defog_soft_process (emulator-identical), IRQ 20 + process running on cam-B, defog strength works; 0xc bit 11 follows the bank like stock</span></td>
