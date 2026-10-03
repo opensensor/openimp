@@ -20,7 +20,9 @@
 
 #include "dma_alloc.h"
 #include "hw_encoder.h"
+#include "imp_log_int.h"
 #include "t30/helix_jpeg.h"
+#include "t30/t30_helix_encoder.h"
 #include "openimp_t23_helix_bridge.h"
 
 #define T23_VBM_ALIGN 4096u
@@ -31,7 +33,154 @@ _Static_assert(sizeof(IMPEncoderYuvOut) == 8, "IMPEncoderYuvOut ABI mismatch");
 typedef struct {
     T23HelixBridge bridge;
     pthread_mutex_t lock;
+    /* native Helix backend (NULL: the OEM worker in bridge is used) */
+    T30HelixEncoder *native;
+    uint32_t width, height;
+    /* macroblock-aligned NV12 copy for a frame the VPU cannot read in
+     * place (height not a multiple of 16, or not in reserved memory) */
+    void *staging;
+    uint32_t staging_size;
 } T23YuvEncoder;
+
+/* Same backend choice as the bound channels (codec-t40.c): the native Helix
+ * encoder unless OPENIMP_T23_ENCODER=worker asks for the OEM helper and it
+ * is installed.  The open stack ships no helper, so without this the
+ * unbound encoder (timps' software 90/270 rotate) could never start. */
+static int t23_yuv_native_wanted(void)
+{
+    const char *value = getenv("OPENIMP_T23_ENCODER");
+
+    if (value && strcmp(value, "worker") == 0 &&
+        OpenIMP_T23_HelixHelperAvailable())
+        return 0;
+    return 1;
+}
+
+/* IMPEncoderYuvIn -> the native encoder's parameters, the same fields the
+ * bound channels pass (codec-t40.c codec_store_rc_extras). */
+static void t23_yuv_native_params(HWEncoderParams *hw, uint32_t width,
+                                  uint32_t height, const IMPEncoderYuvIn *in)
+{
+    const IMPEncoderAttrRcMode *mode = &in->mode;
+
+    memset(hw, 0, sizeof(*hw));
+    hw->codec_type = IMP_ENC_TYPE_AVC;
+    hw->width = width;
+    hw->height = height;
+    hw->fps_num = in->outFrmRate.frmRateNum ? in->outFrmRate.frmRateNum : 25u;
+    hw->fps_den = in->outFrmRate.frmRateDen ? in->outFrmRate.frmRateDen : 1u;
+    hw->gop_length = in->maxGop ? in->maxGop : 25u;
+    switch (mode->rcMode) {
+    case IMP_ENC_RC_MODE_FIXQP:
+        hw->rc_mode = HW_RC_MODE_FIXQP;
+        hw->qp = mode->attrH264FixQp.qp;
+        hw->min_qp = hw->max_qp = hw->qp;
+        hw->bitrate = 2000000u;
+        break;
+    case IMP_ENC_RC_MODE_VBR:
+    case IMP_ENC_RC_MODE_SMART:
+        hw->rc_mode = HW_RC_MODE_VBR;
+        hw->bitrate = mode->attrH264Vbr.maxBitRate * 1000u;
+        hw->min_qp = mode->attrH264Vbr.minQp;
+        hw->max_qp = mode->attrH264Vbr.maxQp;
+        hw->static_time = mode->attrH264Vbr.staticTime;
+        hw->change_pos = mode->attrH264Vbr.changePos;
+        hw->quality_level = mode->attrH264Vbr.qualityLvl;
+        hw->frm_qp_step = mode->attrH264Vbr.frmQPStep;
+        hw->gop_qp_step = mode->attrH264Vbr.gopQPStep;
+        hw->bias_level = mode->attrH264Vbr.iBiasLvl;
+        hw->rc_flags = HW_RC_FLAG_APP |
+            (mode->attrH264Vbr.gopRelation ? HW_RC_FLAG_GOP_RELATION : 0u) |
+            (mode->rcMode == IMP_ENC_RC_MODE_SMART ? HW_RC_FLAG_SMART : 0u);
+        break;
+    case IMP_ENC_RC_MODE_CBR:
+    default:
+        hw->rc_mode = HW_RC_MODE_CBR;
+        hw->bitrate = mode->attrH264Cbr.outBitRate * 1000u;
+        hw->min_qp = mode->attrH264Cbr.minQp;
+        hw->max_qp = mode->attrH264Cbr.maxQp;
+        hw->frm_qp_step = mode->attrH264Cbr.frmQPStep;
+        hw->gop_qp_step = mode->attrH264Cbr.gopQPStep;
+        hw->bias_level = mode->attrH264Cbr.iBiasLvl;
+        hw->rc_flags = HW_RC_FLAG_APP |
+            (mode->attrH264Cbr.adaptiveMode ? HW_RC_FLAG_ADAPTIVE : 0u) |
+            (mode->attrH264Cbr.gopRelation ? HW_RC_FLAG_GOP_RELATION : 0u);
+        break;
+    }
+    if (!hw->bitrate)
+        hw->bitrate = 2000000u;
+    if (hw->rc_mode != HW_RC_MODE_FIXQP) {
+        /* start in the middle of the allowed QP range */
+        uint32_t lo = hw->min_qp, hi = hw->max_qp;
+
+        if (lo > hi) {
+            hw->min_qp = hi;
+            hw->max_qp = lo;
+        }
+        hw->qp = (hw->min_qp + hw->max_qp + 1u) / 2u;
+    }
+}
+
+static int t23_yuv_native_init(T23YuvEncoder *encoder, uint32_t width,
+                               uint32_t height, const IMPEncoderYuvIn *in)
+{
+    HWEncoderParams hw;
+    uint32_t aligned_h = (height + 15u) & ~15u;
+
+    if ((width & 15u) || width > 255u * 16u || height > 255u * 16u) {
+        IMP_LOG_ERR("Encoder", "IMP_Encoder_YuvInit: %ux%u unsupported (width "
+                    "must be a multiple of 16, both at most 4080)", width,
+                    height);
+        return -1;
+    }
+    t23_yuv_native_params(&hw, width, height, in);
+    if (OpenIMP_T30_HelixCreate(&encoder->native, &hw) != 0) {
+        encoder->native = NULL;
+        IMP_LOG_ERR("Encoder", "IMP_Encoder_YuvInit: native Helix encoder "
+                    "for %ux%u not created", width, height);
+        return -1;
+    }
+    encoder->width = width;
+    encoder->height = height;
+    encoder->staging_size = width * aligned_h * 3u / 2u;
+    return 0;
+}
+
+/* Hand the VPU a macroblock-aligned NV12 picture in reserved memory: the
+ * caller's frame when it already is one, else a copy (packed NV12 with the
+ * chroma plane right after width * height luma bytes, like the OEM call). */
+static int t23_yuv_native_frame(T23YuvEncoder *encoder,
+                                const IMPFrameInfo *in, IMPFrameInfo *out)
+{
+    uint32_t w = encoder->width, h = encoder->height;
+    uint32_t aligned_h = (h + 15u) & ~15u;
+    const uint8_t *src = (const uint8_t *)(uintptr_t)in->virAddr;
+    uint8_t *dst;
+
+    *out = *in;
+    out->pixfmt = 0;            /* packed NV12 by the YuvEncode contract */
+    if (h == aligned_h && in->phyAddr &&
+        in->size >= encoder->staging_size &&
+        DMA_VirtToPhys((const void *)(uintptr_t)in->virAddr) == in->phyAddr)
+        return 0;
+    if (in->size < w * h * 3u / 2u)
+        return -1;
+    if (!encoder->staging) {
+        encoder->staging = IMP_Encoder_VbmAlloc(encoder->staging_size,
+                                                T23_VBM_ALIGN);
+        if (!encoder->staging)
+            return -1;
+        memset(encoder->staging, 0, encoder->staging_size);
+    }
+    dst = encoder->staging;
+    memcpy(dst, src, (size_t)w * h);
+    memcpy(dst + (size_t)w * aligned_h, src + (size_t)w * h,
+           (size_t)w * h / 2u);
+    out->virAddr = (uint32_t)(uintptr_t)dst;
+    out->phyAddr = DMA_VirtToPhys(dst);
+    out->size = encoder->staging_size;
+    return 0;
+}
 
 int IMP_Encoder_YuvInit(void **h, int inWidth, int inHeight,
                         IMPEncoderYuvIn *encIn)
@@ -49,6 +198,18 @@ int IMP_Encoder_YuvInit(void **h, int inWidth, int inHeight,
     encoder = calloc(1, sizeof(*encoder));
     if (!encoder)
         return -1;
+    if (t23_yuv_native_wanted()) {
+        /* the native encoder enforces its geometry (width a multiple of
+         * 16) and clamps the rate-control fields like the bound channels */
+        if (t23_yuv_native_init(encoder, (uint32_t)inWidth,
+                                (uint32_t)inHeight, encIn) != 0) {
+            free(encoder);
+            return -1;
+        }
+        pthread_mutex_init(&encoder->lock, NULL);
+        *h = encoder;
+        return 0;
+    }
     /* geometry and rate-control limits are enforced by the OEM YuvInit in
      * the worker; its failure fails this call */
     if (OpenIMP_T23_HelixInitYuv(&encoder->bridge, (uint32_t)inWidth,
@@ -68,6 +229,34 @@ int IMP_Encoder_YuvEncode(void *h, IMPFrameInfo frame,
     uint32_t length;
     int result;
 
+    if (encoder && encoder->native) {
+        IMPFrameInfo input;
+        HWStreamBuffer *stream = NULL;
+
+        if (!encOut || !encOut->outAddr || !encOut->outLen ||
+            !frame.virAddr || frame.width != encoder->width ||
+            frame.height != encoder->height)
+            return -1;
+        pthread_mutex_lock(&encoder->lock);
+        result = t23_yuv_native_frame(encoder, &frame, &input);
+        if (result == 0)
+            result = OpenIMP_T30_HelixEncode(encoder->native, &input,
+                                             &stream);
+        if (result == 0 && (!stream || !stream->virt_addr ||
+                            stream->length > encOut->outLen)) {
+            if (stream)
+                IMP_LOG_ERR("Encoder", "YuvEncode: access unit %u exceeds "
+                            "buffer %u", stream->length, encOut->outLen);
+            result = -1;
+        }
+        if (result == 0) {
+            memcpy(encOut->outAddr, (const void *)(uintptr_t)stream->virt_addr,
+                   stream->length);
+            encOut->outLen = stream->length;
+        }
+        pthread_mutex_unlock(&encoder->lock);
+        return result == 0 ? 0 : -1;
+    }
     if (!encoder || !encOut || !encOut->outAddr || !encOut->outLen ||
         !frame.virAddr || frame.size < encoder->bridge.input_size ||
         frame.width != encoder->bridge.width ||
@@ -93,7 +282,10 @@ int IMP_Encoder_YuvRequestIDR(void *h)
     if (!encoder)
         return -1;
     pthread_mutex_lock(&encoder->lock);
-    result = OpenIMP_T23_HelixRequestIDR(&encoder->bridge);
+    if (encoder->native)
+        result = OpenIMP_T30_HelixRequestIDR(encoder->native);
+    else
+        result = OpenIMP_T23_HelixRequestIDR(&encoder->bridge);
     pthread_mutex_unlock(&encoder->lock);
     return result == 0 ? 0 : -1;
 }
@@ -105,7 +297,14 @@ int IMP_Encoder_YuvExit(void *h)
     if (!encoder)
         return -1;
     pthread_mutex_lock(&encoder->lock);
-    OpenIMP_T23_HelixExit(&encoder->bridge);
+    if (encoder->native) {
+        OpenIMP_T30_HelixDestroy(encoder->native);
+        encoder->native = NULL;
+        if (encoder->staging)
+            IMP_Encoder_VbmFree(encoder->staging);
+    } else {
+        OpenIMP_T23_HelixExit(&encoder->bridge);
+    }
     pthread_mutex_unlock(&encoder->lock);
     pthread_mutex_destroy(&encoder->lock);
     free(encoder);
@@ -120,6 +319,12 @@ int IMP_Encoder_YuvSetCrop(void *h, IMPEncoderCropCfg *cfg)
     uint32_t aligned_w, aligned_h, value[5];
     int result;
 
+    if (encoder && encoder->native) {
+        /* the native encoder has no i264e crop parameter */
+        IMP_LOG_ERR("Encoder", "IMP_Encoder_YuvSetCrop: not supported by "
+                    "the native Helix encoder");
+        return -1;
+    }
     if (!encoder || !cfg || ((cfg->x | cfg->y | cfg->w | cfg->h) & 1u) ||
         cfg->x + cfg->w > encoder->bridge.width ||
         cfg->y + cfg->h > encoder->bridge.height)
@@ -151,6 +356,8 @@ int IMP_Encoder_YuvGetCrop(void *h, IMPEncoderCropCfg *cfg)
     if (!encoder || !cfg)
         return -1;
     memset(cfg, 0, sizeof(*cfg));
+    if (encoder->native)
+        return 0;               /* never cropped */
     memset(value, 0, sizeof(value));
     pthread_mutex_lock(&encoder->lock);
     result = OpenIMP_T23_HelixGetParam(&encoder->bridge, T23_I264E_CROP, 0,
