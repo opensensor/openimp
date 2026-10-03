@@ -31,6 +31,7 @@
 #include "imp_log_fun.h"
 
 #include "isp_tseries_dev.h"
+#include "isp_mask_rgb2yuv.h"
 
 static char *bpath;
 #if defined(PLATFORM_T23)
@@ -3337,12 +3338,59 @@ int IMP_ISP_Tuning_SetScalerLv(void *scaler_level)
 
 int IMP_ISP_Tuning_SetMask(void *attr)
 {
+#if defined(PLATFORM_T31)
+    /* Stock T31: RGB masks (mask_type 0) are converted to YUV in the
+     * caller's struct once the ISP is up, then one ioctl; a failing ioctl
+     * is logged and its result returned. */
+    ISPDevice *isp;
+    int ret;
+
+    if (attr == NULL) {
+        return -1;
+    }
+    if (tseries_get_isp(&isp) != 0 || isp->tuning == NULL || isp->tuning_state != 2) {
+        return -1;
+    }
+    isp_mask_attr_rgb_to_yuv(attr);
+    ret = tseries_tuning_set_ptr(TISP_CID_MASK, attr);
+    if (ret != 0) {
+        imp_log_fun(6, IMP_Log_Get_Option(), 2, "IMP-ISP",
+            "/home/user/git/proj/sdk-lv3/src/imp/isp/isp_tseries.c", 0x10a9,
+            "IMP_ISP_Tuning_SetMask", "%s(%d),ioctl  IMP_ISP_Tuning_SetMask!\n",
+            "IMP_ISP_Tuning_SetMask", 0x10a9);
+    }
+    return ret;
+#else
     return tseries_tuning_set_ptr(TISP_CID_MASK, attr);
+#endif
 }
 
 int IMP_ISP_Tuning_GetMask(void *attr)
 {
+#if defined(PLATFORM_T31)
+    /* Stock T31: -1 for NULL or an ISP that is not up, else one ioctl
+     * (the kernel returns the attribute as set, i.e. YUV after an RGB
+     * SetMask); a failing ioctl is logged and its result returned. */
+    ISPDevice *isp;
+    int ret;
+
+    if (attr == NULL) {
+        return -1;
+    }
+    if (tseries_get_isp(&isp) != 0 || isp->tuning == NULL || isp->tuning_state != 2) {
+        return -1;
+    }
+    ret = tseries_tuning_get_ptr(TISP_CID_MASK, attr);
+    if (ret != 0) {
+        imp_log_fun(6, IMP_Log_Get_Option(), 2, "IMP-ISP",
+            "/home/user/git/proj/sdk-lv3/src/imp/isp/isp_tseries.c", 0x10c4,
+            "IMP_ISP_Tuning_GetMask", "%s(%d),ioctl  IMP_ISP_Tuning_GetMask!\n",
+            "IMP_ISP_Tuning_GetMask", 0x10c4);
+    }
+    return ret;
+#else
     return tseries_tuning_get_ptr(TISP_CID_MASK, attr);
+#endif
 }
 
 int IMP_ISP_Tuning_SetISPProcess(void *attr)
