@@ -49,16 +49,20 @@ obfuscated (short `lIoi` names); its vtable shows the structure:
 `IMP_Encoder_GetChnAttrRcMode` returns the stored IMP attribute (36 bytes),
 so the read-back is the mode and values as given.
 
-`IMP_Encoder_SetDefaultParam` (0x831a0), H.264/H.265: iInitialQP = the
-caller's value, iMinQP 15, iMaxQP 48, iIPDelta -1, iPBDelta -1, eRcOptions 1,
-uMaxPictureSize = 2 * bitrate; VBR and the capped modes uMaxBitRate =
-4/3 * bitrate; the capped modes uMaxPSNR 42.  OpenIMP sets uMaxPSNR 42 for
-the capped modes; its other defaults (iMaxQP 45, iInitialQP 26, uMaxBitRate
-= bitrate, no PB delta/options/picture size) differ and are unchanged.
+`IMP_Encoder_SetDefaultParam` (0x831a0, jump table 0xe9e34 on the rc
+mode), H.264/H.265: iInitialQP = the caller's value (unchecked), iMinQP 15,
+iMaxQP 48, iIPDelta -1, iPBDelta -1, eRcOptions 1, uMaxPictureSize =
+2 * bitrate; VBR and the capped modes uMaxBitRate = (bitrate * 4) / 3; the
+capped modes uMaxPSNR 42; modes 3/5/6/7 leave the rc fields 0.  OpenIMP T31
+fills the same values (T40/T41 keep the former defaults: iMaxQP 45,
+iInitialQP 26, uMaxBitRate = bitrate).  Not aligned: FIXQP/JPEG iInitialQP
+(OpenIMP 25 outside 1..99, OEM the value as given), encOptions 0x40028 /
+encTools 0x9c, HEVC level 50/tier 1, uGopCtrlMode 2 and uMaxSameSenceCnt
+>= 1.
 
-OpenIMP: CBR runs the closed-loop T31 controller (`t31_rate_control.c`),
-VBR an open-loop picture QP from the bitrate (unchanged; the OEM VBR is
-closed-loop, `OPENIMP_T31_VBR_LOOP=1` runs the controller for VBR too).
+OpenIMP: CBR and VBR run the closed-loop T31 controller
+(`t31_rate_control.c`), as the OEM; `OPENIMP_T31_VBR_LOOP=0` restores the
+former open-loop VBR picture QP from the bitrate.
 CappedVBR and CappedQuality run the controller with the OEM PSNR cap
 (`AL_Codec_Encode_SetRcQualityCap`, uMaxPSNR clamped to 30..50 dB): the
 PSNR is computed from the status SSE as above (integer log10), and a QP
@@ -83,9 +87,40 @@ the stored attribute.  An application that passes 0 therefore reads
 staticTime 1, changePos 50, qualityLvl 0, frmQPStep 2, gopQPStep 2 - not
 the i264e defaults 2/80/4/3/15, which CreateChn always overwrites.
 
+A run-time `IMP_Encoder_SetChnAttrRcMode` goes through `i264e_set_param` 3
+-> `i264e_reconfig_rc_set` (T23 1.3.0 0x37cf8; T20/T21 the same code) with
+other clamps: minQp and maxQp each 1..51 (no minQp <= maxQp), frm/gopQPStep
+only negative -> 0, changePos 0..100, staticTime/maxBitRate/qualityLvl/
+iBiasLvl as above.  The read-back then shows those.
+
 OpenIMP: `GetChnAttrRcMode` applies the same clamps
-(`src/t40/p2_rc_readback.h`).  The native Helix encoder runs its GOP
-controller for CBR/VBR/SMART alike, without the extras (unchanged).
+(`src/t40/p2_rc_readback.h`; the run-time set after SetChnAttrRcMode, FIXQP
+qp 0..51).  The native Helix encoder runs its GOP controller for
+CBR/VBR/SMART alike, without the extras (unchanged).
+
+### What a write does on T10/T20/T21 (OpenIMP)
+
+T10 runs the T20 build (`t30_soc_is_t10`, only the command list differs),
+so all three share this path.  The VPU has no rate control: OpenIMP's GOP
+controller (`t31_rate_control.c`) picks the slice QP.  CreateChn and
+`SetChnAttrRcMode` go through `AL_Codec_Encode_SetRcParam` into
+`hw_params`; `OpenIMP_T30_HelixUpdateParams` adopts them before the next
+picture.
+
+| group | CreateChn | run time | used by the encoder |
+|---|---|---|---|
+| rc mode FIXQP/CBR/VBR/SMART | yes | SetChnAttrRcMode | FIXQP: fixed QP; CBR, VBR, SMART: the same controller (SMART = VBR) |
+| bitrate | CBR outBitRate, VBR/SMART maxBitRate | SetChnAttrRcMode, SetChnBitRate (OpenIMP extra) | controller target (bitrate only: retarget, model kept) |
+| min/max QP | yes | SetChnAttrRcMode, SetChnQpBounds (extra) | controller bounds (restart) |
+| FIXQP qp | yes | SetChnAttrRcMode, SetChnQp (extra) | P = qp, I = qp (range = qp) |
+| I/P QP delta | no field | SetChnQpIPDelta (extra) accepted, ignored | no (I and P same QP) |
+| frmQPStep/gopQPStep | stored | stored | no |
+| staticTime/changePos/qualityLvl | stored | stored | no |
+| iBiasLvl, adaptiveMode, gopRelation | stored | stored | no |
+| GOP | maxGop | SetGOPSize/SetChnGopLength | yes |
+| fps | outFrmRate | SetChnFrmRate | yes (controller, VUI on T21) |
+
+Ignored writes are read back (clamped as the OEM) but have no effect.
 
 ## T23 (Helix, OEM libimp 1.3.0)
 
@@ -97,7 +132,19 @@ param[0xac4]`, `s8BgQpDelta 3`, `s8ViQpDelta 3`) instead of gopMode 0
 eprc controller and a SmartP GOP (long-term reference) in the native
 encoder; neither exists, so SMART keeps the documented band mapping
 (`T23_NATIVE_HELIX.md`).  The OEM `GetChnAttrRcMode` reads live values as
-on T21; OpenIMP T23 returns the attribute as given (unchanged).
+on T21: `IMP_Encoder_CreateChn` (0x4e164) copies the H.264 fields
+unconditionally, `i264e_validate_parameters` (0x33780) clamps them as on
+T21 (iBiasLvl -10..10), `i264e_reconfig_init` (0x35b50) copies them into
+the live block `i264e_reconfig_rc_get` (0x38070) returns.  OpenIMP T23 now
+reads back through `p2_rc_readback.h` as T20/T21.
+
+Open point: the native T23 encoder (commit 2021ad5) takes the
+`i264e_param_default` values for 0/out-of-range staticTime, changePos,
+qualityLvl, frmQPStep and gopQPStep.  That rule is `IMP_Encoder_YuvInit`
+(0x585f4); CreateChn has no such step, so the OEM channel runs with the
+clamped values (staticTime 0 -> 1, changePos 0 -> 50, frm/gopQPStep 0 -> 2,
+qualityLvl > 6 -> 6, iBiasLvl clamped to +-10).  The read-back follows the
+OEM; the encoder behaviour is unchanged until decided.
 
 ## T10 / T40 / T41
 

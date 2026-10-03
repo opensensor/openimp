@@ -347,6 +347,41 @@ int main(void)
           attr.rcAttr.attrRcMode.attrCappedVbr.uMaxPSNR == 0,
           "SetDefaultParam VBR sets a cap");
 
+    /* SetDefaultParam rc fields as the OEM T31 1.1.6 (0x831a0) */
+    {
+        const IMPEncoderAttrVbr *v = &attr.rcAttr.attrRcMode.attrVbr;
+        const IMPEncoderAttrCbr *c = &attr.rcAttr.attrRcMode.attrCbr;
+
+        CHECK(IMP_Encoder_SetDefaultParam(&attr, IMP_ENC_PROFILE_AVC_HIGH,
+                                          IMP_ENC_RC_MODE_VBR, 1920, 1080,
+                                          25, 1, 50, 1, 30, 3000) == 0 &&
+              v->uTargetBitRate == 3000 && v->uMaxBitRate == 4000 &&
+              v->iInitialQP == 30 && v->iMinQP == 15 && v->iMaxQP == 48 &&
+              v->iIPDelta == -1 && v->iPBDelta == -1 &&
+              v->eRcOptions == 1 && v->uMaxPictureSize == 6000 &&
+              v->uMaxPSNR == 0,
+              "SetDefaultParam VBR max %u qp %d/%d/%d pb %d opt %u pic %u",
+              v->uMaxBitRate, v->iInitialQP, v->iMinQP, v->iMaxQP,
+              v->iPBDelta, v->eRcOptions, v->uMaxPictureSize);
+        CHECK(IMP_Encoder_SetDefaultParam(&attr, IMP_ENC_PROFILE_AVC_HIGH,
+                                          IMP_ENC_RC_MODE_CAPPED_VBR, 1920,
+                                          1080, 25, 1, 50, 1, -1, 1000) == 0 &&
+              v->uMaxBitRate == 1333 && v->iInitialQP == -1 &&
+              v->uMaxPSNR == 42 && v->uMaxPictureSize == 2000,
+              "SetDefaultParam CappedVBR max %u qp %d", v->uMaxBitRate,
+              v->iInitialQP);
+        CHECK(IMP_Encoder_SetDefaultParam(&attr, IMP_ENC_PROFILE_HEVC_MAIN,
+                                          IMP_ENC_RC_MODE_CBR, 1920, 1080,
+                                          25, 1, 50, 1, -1, 2000) == 0 &&
+              c->uTargetBitRate == 2000 && c->iInitialQP == -1 &&
+              c->iMinQP == 15 && c->iMaxQP == 48 && c->iIPDelta == -1 &&
+              c->iPBDelta == -1 && c->eRcOptions == 1 &&
+              c->uMaxPictureSize == 4000,
+              "SetDefaultParam CBR qp %d/%d/%d pb %d opt %u pic %u",
+              c->iInitialQP, c->iMinQP, c->iMaxQP, c->iPBDelta,
+              c->eRcOptions, c->uMaxPictureSize);
+    }
+
     if (failures) {
         fprintf(stderr, "p2 rc mode: %d check(s) failed\n", failures);
         return 1;

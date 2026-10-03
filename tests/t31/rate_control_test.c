@@ -456,6 +456,17 @@ static int test_quality_cap_holds_qp(void)
     return 0;
 }
 
+/* Plain VBR is closed loop by default (OEM); only "0" opts out. */
+static int test_vbr_loop_default(void)
+{
+    EXPECT(openimp_t31_vbr_loop_from_env(NULL) == 1);
+    EXPECT(openimp_t31_vbr_loop_from_env("") == 1);
+    EXPECT(openimp_t31_vbr_loop_from_env("1") == 1);
+    EXPECT(openimp_t31_vbr_loop_from_env("0") == 0);
+    EXPECT(openimp_t31_vbr_loop_from_env("00") == 1);
+    return 0;
+}
+
 int main(void)
 {
     if (test_validation() || test_steady_target() ||
@@ -469,7 +480,8 @@ int main(void)
         test_large_completion_is_bounded() ||
         test_runtime_bitrate_retarget() ||
         test_psnr_matches_oem_formula() ||
-        test_quality_cap_holds_qp())
+        test_quality_cap_holds_qp() ||
+        test_vbr_loop_default())
         return 1;
     puts("T31 rate-control tests passed");
     return 0;

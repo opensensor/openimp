@@ -224,6 +224,9 @@ typedef struct {
     IMPEncoderH265TransCfg h265_transform;
     IMPEncoderQpgMode qpg_mode;
     int macroblock_rate_control;
+    /* rc attribute last set by SetChnAttrRcMode: the OEM read-back then
+     * shows the run-time clamps (p2_rc_readback.h) */
+    int rc_runtime;
 #endif
     uint64_t next_frame_due_us;
     uint64_t output_timestamp_us;
@@ -1690,6 +1693,7 @@ int IMP_Encoder_CreateChn(int channel, IMPEncoderCHNAttr *attr)
     ch->attr = *attr;
     ch->codec_type = (int)p2_attr_codec_type(attr);
 #if defined(PLATFORM_T23) || defined(PLATFORM_T30)
+    ch->rc_runtime = 0;
     if (ch->jpeg_quality.user_ql_en)
         (void)AL_Codec_Encode_SetJpegQl(ch->codec, 1,
                                         ch->jpeg_quality.qmem_table);
@@ -2619,6 +2623,42 @@ int IMP_Encoder_SetDefaultParam(IMPEncoderChnAttr *attr, IMPEncoderProfile profi
     if (codec_type == IMP_ENC_TYPE_JPEG || rc_mode == IMP_ENC_RC_MODE_FIXQP) {
         attr->rcAttr.attrRcMode.attrFixQp.iInitialQP =
             (int16_t)((quality >= 1 && quality <= 99) ? quality : 25);
+#if defined(PLATFORM_T31)
+    /* OEM T31 1.1.6 IMP_Encoder_SetDefaultParam (0x831a0, jump table
+     * 0xe9e34 on the rc mode): iInitialQP = the caller's value, iMinQP 15,
+     * iMaxQP 48, iIPDelta/iPBDelta -1, eRcOptions 1, uMaxPictureSize =
+     * 2 * bitrate; VBR and the capped modes uMaxBitRate = 4/3 * bitrate
+     * (unsigned 32-bit (bitrate * 4) / 3), the capped modes uMaxPSNR 42.
+     * Other modes leave the rc fields 0. */
+    } else if (rc_mode == IMP_ENC_RC_MODE_CBR) {
+        IMPEncoderAttrCbr *cbr = &attr->rcAttr.attrRcMode.attrCbr;
+
+        cbr->uTargetBitRate = (uint32_t)bitrate;
+        cbr->iInitialQP = (int16_t)quality;
+        cbr->iMinQP = 15;
+        cbr->iMaxQP = 48;
+        cbr->iIPDelta = -1;
+        cbr->iPBDelta = -1;
+        cbr->eRcOptions = 1;
+        cbr->uMaxPictureSize = (uint32_t)bitrate * 2u;
+    } else if (rc_mode == IMP_ENC_RC_MODE_VBR ||
+               rc_mode == IMP_ENC_RC_MODE_CAPPED_VBR ||
+               rc_mode == IMP_ENC_RC_MODE_CAPPED_QUALITY) {
+        IMPEncoderAttrVbr *vbr = &attr->rcAttr.attrRcMode.attrVbr;
+
+        vbr->uTargetBitRate = (uint32_t)bitrate;
+        vbr->uMaxBitRate = ((uint32_t)bitrate * 4u) / 3u;
+        vbr->iInitialQP = (int16_t)quality;
+        vbr->iMinQP = 15;
+        vbr->iMaxQP = 48;
+        vbr->iIPDelta = -1;
+        vbr->iPBDelta = -1;
+        vbr->eRcOptions = 1;
+        vbr->uMaxPictureSize = (uint32_t)bitrate * 2u;
+        if (rc_mode != IMP_ENC_RC_MODE_VBR)
+            attr->rcAttr.attrRcMode.attrCappedVbr.uMaxPSNR = 42;
+    }
+#else
     } else if (rc_mode == IMP_ENC_RC_MODE_CBR) {
         attr->rcAttr.attrRcMode.attrCbr.uTargetBitRate = (uint32_t)bitrate;
         attr->rcAttr.attrRcMode.attrCbr.iInitialQP = 26;
@@ -2639,6 +2679,7 @@ int IMP_Encoder_SetDefaultParam(IMPEncoderChnAttr *attr, IMPEncoderProfile profi
             attr->rcAttr.attrRcMode.attrCappedVbr.uMaxPSNR = 42;
 #endif
     }
+#endif
     return 0;
 }
 #endif
@@ -2805,9 +2846,9 @@ int IMP_Encoder_GetChnAttrRcMode(int channel, IMPEncoderAttrRcMode *mode)
     if (!p2_valid_channel(channel) || !mode || !p2_channels[channel].created)
         return -1;
     *mode = p2_channels[channel].attr.rcAttr.attrRcMode;
-#if defined(PLATFORM_T21)
+#if defined(PLATFORM_T21) || defined(PLATFORM_T23)
     /* the OEM reads back the clamped live values (p2_rc_readback.h) */
-    p2_t21_rc_effective(mode);
+    p2_t21_rc_effective(mode, p2_channels[channel].rc_runtime);
 #endif
     return 0;
 }
@@ -2898,6 +2939,9 @@ int IMP_Encoder_SetChnAttrRcMode(int channel, IMPEncoderAttrRcMode *mode)
         pthread_mutex_unlock(&ch->lock);
         return -1;
     }
+#endif
+#if defined(PLATFORM_T23) || defined(PLATFORM_T30)
+    ch->rc_runtime = 1;
 #endif
     pthread_mutex_unlock(&ch->lock);
     return 0;

@@ -90,6 +90,13 @@ void openimp_t31_rate_controller_note_psnr(
 uint32_t openimp_t31_psnr_x100(uint64_t sse, uint32_t num_pel,
                                uint32_t max_pel);
 
+/* Whether T31 plain VBR runs the closed-loop controller, from the value of
+ * OPENIMP_T31_VBR_LOOP: on unless it is exactly "0".  The OEM VBR is
+ * closed loop (libimp 1.1.6: AL mode 2 shares the CBR controller core,
+ * update 0x546f4); "0" keeps the former open-loop picture QP from the
+ * bitrate. */
+int openimp_t31_vbr_loop_from_env(const char *value);
+
 #if defined(PLATFORM_T23)
 /* Set the decision band of an initialized controller; 0 for any value
  * keeps its built-in constant.  init() resets the band. */

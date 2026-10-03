@@ -2481,16 +2481,18 @@ static void avpu_t31_note_picture_psnr(ALAvpuContext *ctx,
     openimp_t31_rate_controller_note_psnr(&ctx->t31_rate_controller, psnr);
 }
 
-/* OPENIMP_T31_VBR_LOOP=1: plain VBR runs the closed-loop controller too
- * (diagnostic, read once). */
+/* Plain VBR runs the closed-loop controller (see
+ * openimp_t31_vbr_loop_from_env); the environment is read once. */
 static int avpu_t31_vbr_loop(void)
 {
     static int enabled = -1;
 
     if (enabled < 0) {
-        const char *value = getenv("OPENIMP_T31_VBR_LOOP");
-
-        enabled = value && value[0] == '1' && value[1] == '\0';
+        enabled = openimp_t31_vbr_loop_from_env(
+            getenv("OPENIMP_T31_VBR_LOOP"));
+        if (!enabled)
+            IMP_LOG_INFO("Codec", "T31 VBR: open loop "
+                         "(OPENIMP_T31_VBR_LOOP=0)");
     }
     return enabled;
 }
@@ -2509,9 +2511,9 @@ static int avpu_t31_prepare_picture(ALAvpuContext *ctx)
     if (!ctx)
         return -1;
     controller = &ctx->t31_rate_controller;
-    /* CBR, and the OEM capped VBR modes (VBR with a PSNR cap), run the
-     * closed loop.  Plain VBR keeps its open-loop picture QP unless
-     * OPENIMP_T31_VBR_LOOP=1 (the OEM VBR is closed-loop as well). */
+    /* CBR, VBR and the OEM capped VBR modes (VBR with a PSNR cap) run the
+     * closed loop.  Plain VBR is open loop only with
+     * OPENIMP_T31_VBR_LOOP=0. */
     if (ctx->rc_mode != HW_RC_MODE_CBR &&
         !(ctx->rc_mode == HW_RC_MODE_VBR &&
           (ctx->t31_quality_cap_x100 != 0u || avpu_t31_vbr_loop()))) {
@@ -12264,6 +12266,17 @@ int AL_Codec_Encode_SetQp(void *codec, void *qp) {
 
     enc->hw_params.qp = new_qp;
     enc->avpu.qp = new_qp;
+#if defined(PLATFORM_T30)
+    /* T20/T21/T10 Helix FIXQP: CreateChn and SetChnAttrRcMode set the QP
+     * range to the fixed QP; without the same here the I pictures stayed
+     * clamped to the old QP while P pictures took the new one. */
+    if (enc->hw_params.rc_mode == HW_RC_MODE_FIXQP) {
+        enc->hw_params.min_qp = new_qp;
+        enc->hw_params.max_qp = new_qp;
+        enc->avpu.min_qp = new_qp;
+        enc->avpu.max_qp = new_qp;
+    }
+#endif
 
     LOG_CODEC("SetQp: codec=%p, qp_i=%u qp_p=%u -> active_qp=%u",
               codec, imp_qp->qp_i, imp_qp->qp_p, new_qp);

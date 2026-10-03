@@ -452,3 +452,8 @@ uint32_t openimp_t31_rate_controller_qp(
     return controller && controller->initialized
         ? controller->current_qp : 0u;
 }
+
+int openimp_t31_vbr_loop_from_env(const char *value)
+{
+    return !(value && value[0] == '0' && value[1] == '\0');
+}
