@@ -213,7 +213,9 @@ int T30_H264_BuildDescriptor(const T30H264SliceConfig *config,
     if (!config || !config->descriptor || !config->cabac_state ||
         !config->mb_width || !config->mb_height ||
         !config->width || !config->height || config->slice_type > 1u ||
-        config->descriptor_words < (config->slice_type ? 1570u : 1222u) ||
+        config->descriptor_words < (config->slice_type ? 1570u : 1222u) +
+                                   2u * config->qp_table_words ||
+        (config->qp_table_words && !config->qp_table) ||
         (config->slice_type &&
          (!config->reference_y || !config->reference_c))) {
         errno = EINVAL;
@@ -251,7 +253,11 @@ int T30_H264_BuildDescriptor(const T30H264SliceConfig *config,
     EMIT(0x4002c, T30_VRAM_SDE);
     EMIT(0x40030, T30_VRAM_RAW);
 
+#if defined(PLATFORM_T20)
+    EMIT(0x40040, config->max_qp_cap ? config->max_qp_cap : max_qp);
+#else
     EMIT(0x40040, max_qp);
+#endif
     EMIT(0x40044, 0);
     EMIT(0x40048, 0);
 #if defined(PLATFORM_T20)
@@ -265,7 +271,16 @@ int T30_H264_BuildDescriptor(const T30H264SliceConfig *config,
     for (i = 0; i < 16u; i++)
         EMIT(roi_position_registers[i], 0);
 #endif
+#if defined(PLATFORM_T20)
+    /* OEM H264E_T20_SliceInit 0x20f40: table length in words, VPU memory
+     * address 0xc5800, enable; then the table words written there */
+    EMIT(0x4006c, ((uint32_t)config->qp_table_words << 21) | 0x000c5800u |
+                  (config->qp_table_words ? 0x80000000u : 0u));
+    for (i = 0; i < config->qp_table_words; i++)
+        EMIT(0xc5800u + 4u * i, config->qp_table[i]);
+#else
     EMIT(0x4006c, 0x000c5800u);
+#endif
     EMIT(0x40120, 0);
     EMIT(0x40108, 0);
 #if defined(PLATFORM_T20)
@@ -296,12 +311,17 @@ int T30_H264_BuildDescriptor(const T30H264SliceConfig *config,
                   (((uint32_t)config->mb_width - 1u) << 16) |
                   (config->slice_type ? 2u : 1u));
 #if defined(PLATFORM_T20)
-    EMIT(0x80034, 0x00008202u);
+    /* hwicodec_pf_h264e_t20_enc 0x24600: slice +132..+155 */
+    EMIT(0x80034, config->mb_tune ? 0x896783e6u : 0x00008202u);
 #else
     EMIT(0x80034, 0x0000c202u);
 #endif
     EMIT(0x80038, 0xcccc0111u);
+#if defined(PLATFORM_T20)
+    EMIT(0x8003c, config->mb_tune ? 0x09000000u : 0u);
+#else
     EMIT(0x8003c, 0);
+#endif
     EMIT(0x800d8, 0);
     EMIT(0x800dc, 0);
 #if !defined(PLATFORM_T20)

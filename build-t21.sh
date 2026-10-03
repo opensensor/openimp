@@ -108,6 +108,17 @@ compile t21_rate_control src/t40/t31_rate_control.c -Werror
 compile t21_eprc src/eprc/eprc.c -Werror -ffp-contract=off
 compile t21_helix_jpeg src/t30/helix_jpeg.c -Werror
 compile t21_helix_bitstream src/t30/helix_bitstream.c -Werror
+# T20 only: the OEM T20 rate controller (src/rc_t20, docs/T20_RC.md),
+# without floating-point contraction like the OEM code
+rc_t20_objects=
+case " $platform_cppflags " in
+    *" -DPLATFORM_T20 "*)
+        compile rc_t20 src/rc_t20/rc_t20.c -Werror -ffp-contract=off
+        compile rc_t20_mb src/rc_t20/rc_t20_mb.c -Werror -ffp-contract=off
+        compile rc_t10 src/rc_t10/rc_t10.c -Werror -ffp-contract=off
+        rc_t20_objects="$output_dir/rc_t20.o $output_dir/rc_t20_mb.o $output_dir/rc_t10.o"
+        ;;
+esac
 
 "$compiler" -shared -nostartfiles \
     -Wl,-soname,libimp.so \
@@ -154,6 +165,7 @@ compile t21_helix_bitstream src/t30/helix_bitstream.c -Werror
     "$output_dir/t21_helix_bitstream.o" \
     "$output_dir/t21_ivs.o" \
     "$output_dir/t21_ivs_move.o" \
+    $rc_t20_objects \
     -ldl -lpthread -lrt -lm
 
 "$compiler" $base_flags $repo_includes -Wall -Wextra -Werror \

@@ -34,6 +34,8 @@ t41:
 
 check:
 	$(MAKE) -C tests/eprc check
+	$(MAKE) -C tests/rc_t20 check
+	$(MAKE) -C tests/rc_t10 check
 	$(MAKE) -C tests/t23 check
 	$(MAKE) -C tests/t30 check
 	$(MAKE) -C tests/t31 check

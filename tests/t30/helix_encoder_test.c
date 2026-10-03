@@ -24,6 +24,10 @@
 
 #include "dma_alloc.h"
 #include "t30/t30_helix_encoder.h"
+#if defined(PLATFORM_T20)
+#include "rc_t20/rc_t20.h"
+#include "rc_t10/rc_t10.h"
+#endif
 #if defined(PLATFORM_T21) && !defined(PLATFORM_T20)
 #include "t21/t21_h264_descriptor.h"
 #include "t30/helix_bitstream.h"
@@ -67,6 +71,20 @@ static uint32_t run_length_override;
 static unsigned int runs;
 #if defined(PLATFORM_T21) && !defined(PLATFORM_T20)
 static unsigned int reg_reads;
+#endif
+#if defined(PLATFORM_T20)
+static unsigned int reg_reads;
+/* the command list of the last RUN: 0x4006c, the QP table writes, 0x80034 */
+static uint32_t run_qptab_ctrl, run_qptab_words, run_80034;
+static uint32_t run_qptab[4096];
+static uint32_t frame_virt;     /* luma for the macroblock rate control */
+
+/* 0x800e4 (two moving-macroblock counts) after RUN number n: a moving
+ * scene every third picture */
+static uint32_t t20_moving(unsigned int n)
+{
+    return n % 3u == 0u ? 0x02000200u : 0x00400040u;
+}
 #endif
 static uint64_t flushed_before_run;
 static uint64_t flushed_after_run;
@@ -208,8 +226,43 @@ int __wrap_ioctl(int fd, unsigned long request, ...)
         return 0;
     }
 #endif
+#if defined(PLATFORM_T20)
+    if (request == 0xc0386307u) {
+        /* register read of the T20 rate control: node word 0 the
+         * address, word 1 the value */
+        uint32_t *node = (uint32_t *)channel;
+
+        assert(node[0] == 0x132800e4u || node[0] == 0x132800e8u ||
+               node[0] == 0x132800ecu);
+        node[1] = node[0] == 0x132800e4u ? t20_moving(runs) : 0x1000u;
+        reg_reads++;
+        return 0;
+    }
+#endif
     assert(request == T30_CHANNEL_RUN);
     runs++;
+#if defined(PLATFORM_T20)
+    {
+        const uint32_t *d =
+            (const uint32_t *)allocation("t30-helix-desc")->mapping;
+        uint32_t i;
+
+        run_qptab_words = 0;
+        for (i = 0; i + 1u < allocation("t30-helix-desc")->size / 4u; i += 2u) {
+            uint32_t reg = d[i + 1] & 0x3fffffffu;
+
+            if (reg == 0x4006cu)
+                run_qptab_ctrl = d[i];
+            else if (reg == 0x80034u)
+                run_80034 = d[i];
+            else if (reg >= 0xc5800u && reg < 0xc5800u + 4u * 4096u &&
+                     run_qptab_words < 4096u)
+                run_qptab[run_qptab_words++] = d[i];
+            if (d[i + 1] & 0x40000000u)     /* terminal command */
+                break;
+        }
+    }
+#endif
     in_run_window = 1;
     if (run_result) {
         errno = EIO;
@@ -221,6 +274,7 @@ int __wrap_ioctl(int fd, unsigned long request, ...)
         channel->output_len = run_length_override ? run_length_override
                                                   : payload_length;
     channel->status = 0x1;
+    channel->cmpx = payload_length * 37u;
     return 0;
 }
 
@@ -299,11 +353,20 @@ static uint32_t bits_ue(Bits *bits)
     return (1u << zeros) - 1u + bits_read(bits, zeros);
 }
 
+static int32_t bits_se(Bits *bits)
+{
+    uint32_t v = bits_ue(bits);
+
+    return (v & 1u) ? (int32_t)((v + 1u) / 2u) : -(int32_t)(v / 2u);
+}
+
 typedef struct {
     int idr;
     uint32_t frame_num;
     uint32_t idr_pic_id;
     uint32_t level;
+    uint32_t qp;                /* 26 (pic_init_qp) + slice_qp_delta */
+    uint32_t slice_bytes;       /* slice header and payload (RBSP) */
 } PictureInfo;
 
 /* Encode one picture and check its layout.  Returns 0 on success. */
@@ -318,6 +381,9 @@ static int encode(T30HelixEncoder *encoder, PictureInfo *info)
     uint32_t slice_type;
 
     frame.phyAddr = 0x10000000u;
+#if defined(PLATFORM_T20)
+    frame.virAddr = frame_virt;
+#endif
     frame.timeStamp++;
     in_run_window = 0;
     if (OpenIMP_T30_HelixEncode(encoder, &frame, &stream) != 0) {
@@ -356,6 +422,17 @@ static int encode(T30HelixEncoder *encoder, PictureInfo *info)
     assert(bits_ue(&bits) == 0u);                   /* pps id */
     info->frame_num = bits_read(&bits, 10);
     info->idr_pic_id = info->idr ? bits_ue(&bits) : 0u;
+    if (!info->idr) {
+        if (bits_read(&bits, 1))                    /* num_ref_idx override */
+            (void)bits_ue(&bits);
+        assert(!bits_read(&bits, 1));               /* no list reordering */
+        assert(!bits_read(&bits, 1));               /* no MMCO */
+        (void)bits_ue(&bits);                       /* cabac_init_idc */
+    } else {
+        (void)bits_read(&bits, 2);                  /* IDR marking flags */
+    }
+    info->qp = (uint32_t)(26 + bits_se(&bits));
+    info->slice_bytes = slice_length;
     assert(bits.offset <= (slice_length - payload_length) * 8u);
     assert(stream->timestamp == (uint64_t)frame.timeStamp);
 
@@ -537,12 +614,193 @@ static void test_runtime_parameters(void)
     OpenIMP_T30_HelixDestroy(encoder);
 }
 
+#if defined(PLATFORM_T20)
+/* The OEM T20 rate control (src/rc_t20) chooses every slice QP from the
+ * statistics the encoder hands it: the slice size, the channel's cmpx and
+ * three VPU registers.  A second controller fed the same values here must
+ * agree picture by picture (OPENIMP_T20_RC=1; by default the GOP controller). */
+static void test_t20_rate_control(void)
+{
+    T30HelixEncoder *encoder;
+    RcT20 rc;
+    RcT20Params p;
+    PictureInfo info;
+    unsigned int i, reads;
+
+    setenv("OPENIMP_T20_RC", "1", 1);
+    encoder = create(1280, 720, 25, 10);
+    RCT20_DefaultParams(&p);
+    p.method = 1;
+    p.width = 1280;
+    p.height = 720;
+    p.gop = 10;
+    p.fps_num = 25;
+    p.fps_den = 1;
+    p.qp = 30;
+    p.min_qp = 20;
+    p.max_qp = 45;
+    p.bitrate = 2000;
+    p.max_bitrate = 2000;
+    p.static_time = 2;
+    p.mb_rc = 0;
+    /* CBR: the I-aware P budget is OpenIMP's default; =0 gives the OEM
+     * decisions.  Both against a reference controller. */
+    setenv("OPENIMP_T20_RC_IAWARE", "0", 1);
+    OpenIMP_T30_HelixDestroy(encoder);
+    encoder = create(1280, 720, 25, 10);
+    p.iaware = 0;
+    for (unsigned int pass = 0; pass < 2u; pass++) {
+    if (pass == 1u) {
+        OpenIMP_T30_HelixDestroy(encoder);
+        RCT20_Free(&rc);
+        unsetenv("OPENIMP_T20_RC_IAWARE");
+        encoder = create(1280, 720, 25, 10);
+        p.iaware = 1;
+    }
+    memset(&rc, 0, sizeof(rc));
+    assert(RCT20_Init(&rc, &p) == 0);
+    for (i = 0; i < 45u; i++) {
+        RcT20Picture pic;
+        RcT20Stats st;
+
+        fill_payload(1500u + (i % 7u) * 2500u + (i > 25u ? 20000u : 0u), 30);
+        reads = reg_reads;
+        assert(encode(encoder, &info) == 0);
+        RCT20_Start(&rc, info.idr, NULL, 0u, &pic);
+        assert(pic.idr == info.idr);
+        assert(info.qp == pic.qp);
+        assert(reg_reads == reads + 3u);
+        st.cmpx = payload_length * 37u;
+        st.bits = info.slice_bytes * 8u;
+        st.reg[0] = t20_moving(runs);
+        st.reg[1] = 0x1000u;
+        st.reg[2] = 0x1000u;
+        assert(RCT20_End(&rc, &st, &pic) == 0);
+    }
+    }
+    OpenIMP_T30_HelixDestroy(encoder);
+    RCT20_Free(&rc);
+
+    /* OPENIMP_T20_MBRC=1: the macroblock QP table from the luma plane goes
+     * into the command list (0x4006c and VPU memory 0xc5800), with the
+     * OEM's macroblock tuning (0x80034) in moving scenes */
+    {
+        uint8_t *luma = malloc(1280u * 736u * 3u / 2u + 64u);
+        unsigned int tables = 0, tuned = 0;
+
+        assert(luma && (uintptr_t)luma < 0xffffffffu);
+        for (i = 0; i < 1280u * 736u * 3u / 2u + 64u; i++)
+            luma[i] = (uint8_t)((i % 1280u) / 16u % 2u ? (i * 7u) >> 3
+                                                          : 40u + (i / 1280u) % 9u);
+        frame_virt = (uint32_t)(uintptr_t)luma;
+        setenv("OPENIMP_T20_MBRC", "1", 1);
+        encoder = create(1280, 720, 25, 10);
+        p.mb_rc = 1;
+        assert(RCT20_Init(&rc, &p) == 0);
+        for (i = 0; i < 25u; i++) {
+            RcT20Picture pic;
+            RcT20Stats st;
+            const uint32_t *table = NULL;
+            uint32_t words;
+
+            fill_payload(1500u + (i % 5u) * 4000u, 30);
+            assert(encode(encoder, &info) == 0);
+            RCT20_Start(&rc, info.idr, luma, 1280u, &pic);
+            assert(info.qp == pic.qp);
+            words = RCT20_QpTable(&rc, &table);
+            assert(words && run_qptab_words == words);
+            assert(run_qptab_ctrl == (0x80000000u | (words << 21) | 0xc5800u));
+            assert(!memcmp(run_qptab, table, words * 4u));
+            assert(run_80034 == (RCT20_Scene(&rc) ? 0x896783e6u : 0x8202u));
+            tuned += RCT20_Scene(&rc) != 0u;
+            tables++;
+            st.cmpx = payload_length * 37u;
+            st.bits = info.slice_bytes * 8u;
+            st.reg[0] = t20_moving(runs);
+            st.reg[1] = 0x1000u;
+            st.reg[2] = 0x1000u;
+            (void)RCT20_End(&rc, &st, &pic);
+        }
+        assert(tables == 25u && tuned > 0u && tuned < tables);
+        OpenIMP_T30_HelixDestroy(encoder);
+        RCT20_Free(&rc);
+        unsetenv("OPENIMP_T20_MBRC");
+        frame_virt = 0;
+        free(luma);
+    }
+
+    unsetenv("OPENIMP_T20_RC");     /* default: the GOP controller */
+    encoder = create(1280, 720, 25, 10);
+    reads = reg_reads;
+    for (i = 0; i < 3u; i++)
+        assert(encode(encoder, &info) == 0);
+    assert(reg_reads == reads);
+    OpenIMP_T30_HelixDestroy(encoder);
+    unsetenv("OPENIMP_T20_RC");
+    fill_payload(5000, 30);
+}
+
+/* On a T10 (OPENIMP_HELIX_SOC=t10) OPENIMP_T10_RC=1 runs the OEM T10
+ * controller (src/rc_t10) instead: no VPU register reads, every slice QP
+ * as a second controller fed the slice size and cmpx chooses it. */
+static void test_t10_rate_control(void)
+{
+    T30HelixEncoder *encoder;
+    RcT10 rc;
+    RcT10Params p;
+    PictureInfo info;
+    unsigned int i, reads;
+
+    setenv("OPENIMP_HELIX_SOC", "t10", 1);
+    setenv("OPENIMP_T10_RC", "1", 1);
+    encoder = create(640, 360, 25, 10);
+    RCT10_DefaultParams(&p);
+    p.method = 1;
+    p.width = 640;
+    p.height = 360;
+    p.gop = 10;
+    p.fps_num = 25;
+    p.fps_den = 1;
+    p.qp = 30;
+    p.min_qp = 20;
+    p.max_qp = 45;
+    p.bitrate = 2000;
+    p.max_bitrate = 2000;
+    p.static_time = 2;
+    assert(RCT10_Init(&rc, &p) == 0);
+    reads = reg_reads;
+    for (i = 0; i < 45u; i++) {
+        RcT10Picture pic;
+        RcT10Stats st;
+
+        fill_payload(1500u + (i % 7u) * 2500u + (i > 25u ? 20000u : 0u), 30);
+        assert(encode(encoder, &info) == 0);
+        RCT10_Start(&rc, info.idr, &pic);
+        assert(pic.idr == info.idr);
+        assert(info.qp == pic.qp);
+        st.cmpx = payload_length * 37u;
+        st.bits = info.slice_bytes * 8u;
+        assert(RCT10_End(&rc, &st, &pic) == 0);
+    }
+    assert(reg_reads == reads);
+    OpenIMP_T30_HelixDestroy(encoder);
+    unsetenv("OPENIMP_T10_RC");
+    unsetenv("OPENIMP_HELIX_SOC");
+    fill_payload(5000, 30);
+}
+#endif
+
 static void test_dma_footprint(void)
 {
     unsigned int top_before = top_allocations;
     T30HelixEncoder *encoder = create(1920, 1080, 25, 25);
 
+#if defined(PLATFORM_T20)
+    /* room for the macroblock QP table of the T20 rate control */
+    assert(allocation("t30-helix-desc")->size == 65536u);
+#else
     assert(allocation("t30-helix-desc")->size == 16384u);
+#endif
 #if defined(PLATFORM_T21) && !defined(PLATFORM_T20)
     /* the stock 1 MiB EMC layout (996 KiB backed); the bitstream in the
      * shared buffer */
@@ -794,6 +1052,10 @@ int main(void)
     test_unaligned_width_rejected();
 #if defined(PLATFORM_T21) && !defined(PLATFORM_T20)
     test_eprc();
+#endif
+#if defined(PLATFORM_T20)
+    test_t20_rate_control();
+    test_t10_rate_control();
 #endif
     /* nothing leaks; the shared bitstream buffer is kept for the process */
     for (i = 0; i < 16u; i++)
