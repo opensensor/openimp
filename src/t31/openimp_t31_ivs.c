@@ -689,6 +689,28 @@ static void ivs_deliver(struct t31_ivs_channel *c, const T31IVSFrameInfo *frame)
     sem_post(&c->sem_start);
 }
 
+int openimp_t31_ivs_source_active(int fs_chn)
+{
+    int source = -2;
+    int active = 0;
+    int i;
+
+    if (!__atomic_load_n(&ivs_receiving, __ATOMIC_RELAXED))
+        return 0;
+    pthread_mutex_lock(&ivs_lock);
+    for (i = 0; i < T31_IVS_CHANNELS && !active; i++) {
+        struct t31_ivs_channel *c = &ivs_channels[i];
+
+        if (c->state != IVS_CHN_ACTIVE || !c->enabled || c->group < 0)
+            continue;
+        if (source == -2)
+            source = ivs_group_source(0);
+        active = source == fs_chn;
+    }
+    pthread_mutex_unlock(&ivs_lock);
+    return active;
+}
+
 void openimp_t31_ivs_capture(int fs_chn, const void *frame)
 {
     T31IVSFrameInfo info;
