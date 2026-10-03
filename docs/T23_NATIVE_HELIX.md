@@ -151,9 +151,63 @@ the ring holds the picture plus 256 lines (`(1117+1)*64`, the encoder sets
 0x6001c/0x60020 the ring end (luma/chroma), and the reconstruction pointer
 0x60008/0x6000c moves 256 lines down per picture modulo the ring while the
 reference (0x5006c/0x50070, 0xb0014/0xb0018) is the previous picture's
-position. For 1080p that is 3.7 MiB instead of 6.0 MiB. It is not
-implemented: the budget fits without it and the ring semantics of the
-reference readers are not verifiable on the host.
+position. For 1080p that is 3.7 MiB instead of 6.0 MiB. Implemented as
+opt-in `OPENIMP_REF_SHARE=1` (`src/t21/t21_ref_ring.h`, same arithmetic
+on T21 and T23).
+
+One register more than the addresses: the 0xb reference reader (0xb0014/18
+reference, 0xb0030/34 ring start, no ring end) gets the wrap row in bits
+8..15 of 0xb0000, `((end_y - ref_y) / stride >> 4) - 1` (macroblock rows
+from the reference position to the ring end minus one; 255 for the first
+P after the IDR, whose reference is at the ring start; 0xff is also the
+non-shared value, "never"). The first device run (T21 1080p, without it)
+showed exactly the signature of a reference read past the ring end: P
+pictures of 17/15/10/2 KiB in a static scene every 5.25 pictures (the ring
+period, 84 rows / 16 rows per picture), shrinking with the number of
+reference rows past the end, and chroma smears in the decoder. The OEM's
+0x10014/0x10018 keep the IMP-layer reference pointer (`ctx[632/636]`),
+not the ring position; OpenIMP writes the ring reference there.
+`OPENIMP_REF_SHARE_DEBUG=1` logs n, recon, reference and wrap per
+picture and the ring registers of the first eight command lists.
+
+Vendor T23 (libimp 1.3.0) live registers (devmem, 1080p; the vendor uses
+the ring unconditionally up to 1920x1088, `IMP_Encoder_SetRdBufShare` is
+a no-op): 0x60004 = 0xc10e0780, luma ring 0x02ff6000..0x0326c000
+(1920 x 1344), chroma ring 0x0326c100..0x033a7100 (1920 x 672, 0x100
+after the luma end), raw 0xb0008/0c constant and outside the ring (the
+source is not in the ring), recon only at multiples of 64 lines (the 21
+positions of the 256-line step in a 1344-line ring), 0xb0000 =
+0x0002xx62 at rest with the wrap byte xx (all 3 mod 4), 0x50000 bit 6 and
+0x80030 bit 14 clear, 0x50000 = 0x544xd9b0 (bits 9/10 clear, bits 16..23
+per picture), 0x50040/48/4c = 0x871f5008 / 0x02000200 / 0x08080303.
+Per-picture command lists of the vendor (LD_PRELOAD dump of the RUN
+ioctl, `scratchpad/hxdump`) settled the rest: the ring addresses and the
+0xb0000 wrap byte are as computed, and the same wrap row goes into bits
+14..21 of the MCE control word 0x50000 (0xff = never; this was the
+missing piece: the ME read the reference past the ring end, hence P
+pictures of hundreds of KiB with the 5.25-picture period); 0x10014/18
+are 0 for the IDR and the ring start for P; the 0xb0000 low byte is 0x21
+for the IDR and 0x63 for P.  With that the T23 ring encodes cleanly
+(cam-B: no timeouts, no decode errors, no artifacts).  OpenIMP's ring
+mode uses the 0x100 chroma gap, these bytes (T21: 0xbd/0xff), the wrap
+row in both registers, and on T23 the vendor MCE words by default
+(`OPENIMP_REF_SHARE_FLAGS`: 10 vendor ME words 0x50040/48/4c and 0x50000
+bits 9/10, 20 vendor 0x4010c/0x801c0, 8 no wrap; `OPENIMP_REF_SHARE_B0`
+overrides the P low byte).  The vendor also writes a few registers per
+picture through ioctl 0xc0586307 (0x131500e8..f0 among them), values not
+captured yet.
+
+Device results (2026-10-03): cam-B (T23, 1080p+360p, default flags) 30 s
+without run failures, timeouts, decode errors or artifacts, P pictures of
+a static scene 1.7-3.1 KiB (two separate reference pictures in the same
+scene: 3.8-6.0 KiB; with `OPENIMP_REF_SHARE_FLAGS=0`, i.e. OpenIMP's ME
+words, 2.9-5.3 KiB); PC420 (T21) P pictures 150-300 bytes without the
+ring period, no decode errors, with the default and with
+`OPENIMP_REF_SHARE_B0=bd`.  The ring is therefore the default on T21 and
+T23 for pictures up to 1920x1088 (the vendor's limit); `OPENIMP_REF_SHARE=0`
+restores the two reference pictures.  Builds of this state: T23 libimp.so
+72f6e5ae660adad37ecc883c7df4d6fb, T21 libimp.so
+ba69c74597346094cc6c02016e7bfba0.
 
 ## Status (WIP)
 

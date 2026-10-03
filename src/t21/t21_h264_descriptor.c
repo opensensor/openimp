@@ -149,6 +149,9 @@ static int t21_emit_final(T21DescriptorWriter *writer, uint32_t reg,
 static int t21_emit_motion_estimation(T21DescriptorWriter *writer,
                                       const T21H264SliceConfig *config)
 {
+    int vendor_me = config->ref_share &&
+                    (config->ring_flags & T21_RING_VENDOR_ME);
+
 #define MOTION_EMIT(reg, value)                                              \
     do {                                                                      \
         if (t21_emit(writer, (reg), (value)) != 0)                           \
@@ -163,19 +166,28 @@ static int t21_emit_motion_estimation(T21DescriptorWriter *writer,
     MOTION_EMIT(0x50064, (config->stride[1] << 16) |
                          config->stride[0]);
     MOTION_EMIT(0x50010, 0x800a8021u);
-    MOTION_EMIT(0x50040, 0x873f5008u);
+    MOTION_EMIT(0x50040, vendor_me ? 0x871f5008u : 0x873f5008u);
     MOTION_EMIT(0x50044, 0);
-    MOTION_EMIT(0x50048, 0x03fc03fcu);
+    MOTION_EMIT(0x50048, vendor_me ? 0x02000200u : 0x03fc03fcu);
     MOTION_EMIT(0x5006c, config->reference_y);
     MOTION_EMIT(0x50070, config->reference_c);
-    MOTION_EMIT(0x50110, config->raw[0]);
-    MOTION_EMIT(0x50114, config->raw[1]);
+    MOTION_EMIT(0x50110, config->ref_share ? config->ring_start_y
+                                           : config->raw[0]);
+    MOTION_EMIT(0x50114, config->ref_share ? config->ring_start_c
+                                           : config->raw[1]);
     MOTION_EMIT(0x50074, 0);
     MOTION_EMIT(0x50078, 0);
     MOTION_EMIT(0x50068, 0);
-    MOTION_EMIT(0x5004c, 0x88080303u);
+    MOTION_EMIT(0x5004c, vendor_me ? 0x08080303u : 0x88080303u);
     MOTION_EMIT(0x5007c, 0);
-    MOTION_EMIT(0x50000, 0x547fdfb1u);
+    /* bits 14..21: the ring wrap row of the reference (vendor T23 lists:
+     * the 0xb0000 byte again; 0xff = none); bits 9/10: ctx[54]/ctx[52],
+     * clear in the vendor T23 */
+    MOTION_EMIT(0x50000, (vendor_me ? 0x5440d9b1u : 0x5440dfb1u) |
+                         ((config->ref_share &&
+                           !(config->ring_flags & T21_RING_NO_WRAP)
+                               ? (uint32_t)config->ring_wrap_rows : 0xffu)
+                          << 14));
 
 #undef MOTION_EMIT
     return 0;
@@ -362,7 +374,9 @@ int T21_H264_BuildDescriptor(const T21H264SliceConfig *config,
     EMIT(0x4006c, 0x000c5800u);
     EMIT(0x40120, 0);
     EMIT(0x40108, 0);
-    EMIT(0x4010c, 0x00400000u);
+    EMIT(0x4010c, (config->ref_share &&
+                   (config->ring_flags & T21_RING_VENDOR_MISC))
+                      ? 0x03400000u : 0x00400000u);
     EMIT(0x40074, (max_qp << 24) | (min_qp << 16) |
                   ((uint32_t)config->qp << 8));
     for (i = 0; i < 7u; i++)
@@ -397,8 +411,13 @@ int T21_H264_BuildDescriptor(const T21H264SliceConfig *config,
     EMIT(0x1000c, 0);
     EMIT(0x10010, ((uint32_t)config->mb_width * 17u << 16) |
                   ((uint32_t)config->mb_width * 34u));
-    EMIT(0x10014, config->reference_y);
-    EMIT(0x10018, config->reference_c);
+    /* ring: 0 for the IDR, the ring start for P (vendor T23 lists) */
+    EMIT(0x10014, config->ref_share
+                      ? (config->slice_type ? config->ring_start_y : 0u)
+                      : config->reference_y);
+    EMIT(0x10018, config->ref_share
+                      ? (config->slice_type ? config->ring_start_c : 0u)
+                      : config->reference_c);
     EMIT(0x1001c, ((uint32_t)config->width << 16) |
                   ((uint32_t)config->width >> 1));
     EMIT(0x10020, 0);
@@ -447,7 +466,9 @@ int T21_H264_BuildDescriptor(const T21H264SliceConfig *config,
                                                         i)]);
     for (i = 0; i < 225u; i++)
         EMIT(0x80174, config->cabac_state[t21_mau_context_index(i)]);
-    EMIT(0x801c0, 0x70000006u);
+    EMIT(0x801c0, (config->ref_share &&
+                   (config->ring_flags & T21_RING_VENDOR_MISC))
+                      ? 0x30000006u : 0x70000006u);
     EMIT(0x801c4, 0x44444444u);
     EMIT(0x801c8, 0);
     EMIT(0x801cc, (uint32_t)config->last_mby << 16);
@@ -518,18 +539,22 @@ int T21_H264_BuildDescriptor(const T21H264SliceConfig *config,
     /* The OEM T23 builder always sets bit 31 here (bit 30 would select its
      * shared reference/reconstruction buffer mode, which is not used). */
     EMIT(0x60004, 0x80000000u | ((uint32_t)config->height << 14) |
-                  config->width);
+                  config->width | (config->ref_share ? 0x40000000u : 0u));
 #else
-    EMIT(0x60004, ((uint32_t)config->height << 14) | config->width);
+    EMIT(0x60004, ((uint32_t)config->height << 14) | config->width |
+                  (config->ref_share ? 0x40000000u : 0u));
 #endif
     EMIT(0x60008, config->output_y);
     EMIT(0x6000c, config->output_c);
     EMIT(0x60010, ((uint32_t)config->width << 16) |
                   ((uint32_t)config->width >> 1));
-    EMIT(0x60014, config->reference_y);
-    EMIT(0x60018, config->reference_c);
-    EMIT(0x6001c, 0);
-    EMIT(0x60020, 0);
+    /* shared ring: ring start here and ring end below (OEM, T21 and T23) */
+    EMIT(0x60014, config->ref_share ? config->ring_start_y
+                                    : config->reference_y);
+    EMIT(0x60018, config->ref_share ? config->ring_start_c
+                                    : config->reference_c);
+    EMIT(0x6001c, config->ref_share ? config->ring_end_y : 0);
+    EMIT(0x60020, config->ref_share ? config->ring_end_c : 0);
     EMIT(0x60000, 0x20u);
     EMIT(0xb0004, ((uint32_t)config->height - 1u) << 16 |
                   ((uint32_t)config->width - 1u));
@@ -537,12 +562,28 @@ int T21_H264_BuildDescriptor(const T21H264SliceConfig *config,
     EMIT(0xb000c, config->raw[1]);
     EMIT(0xb0014, config->reference_y);
     EMIT(0xb0018, config->reference_c);
-    EMIT(0xb0030, config->raw[0]);
-    EMIT(0xb0034, config->raw[1]);
+    EMIT(0xb0030, config->ref_share ? config->ring_start_y : config->raw[0]);
+    EMIT(0xb0034, config->ref_share ? config->ring_start_c : config->raw[1]);
     EMIT(0xb0010, (config->stride[0] << 16) | config->stride[1]);
     EMIT(0xb001c, 0x180u);
     EMIT(0xb0020, 0x00600060u);
-    EMIT(0xb0000, 0x0002ffbdu);
+    /* bits 8..15: ring wrap row of the reference reader (0xff: none).
+     * Low byte: bit 0 start, bits 1 and 6 the two SliceInit flags
+     * (ctx[1054], ctx[1052]) the vendor T23 sets in its ring mode (live
+     * 0x62 at rest); the vendor T23 has bits 2, 3, 4 and 7 (ctx[1056],
+     * ctx[1057], ctx[1053]) clear, the T21 template has them set. */
+    EMIT(0xb0000, 0x00020000u |
+                  (config->ref_share ?
+                       (config->ring_b0 ? config->ring_b0 | 1u :
+#if defined(T21_HELIX_T23_DELTAS)
+                        config->slice_type ? 0x63u : 0x21u
+#else
+                        config->slice_type ? 0xffu : 0xbdu
+#endif
+                       ) : 0xbdu) |
+                  ((config->ref_share &&
+                    !(config->ring_flags & T21_RING_NO_WRAP)
+                        ? (uint32_t)config->ring_wrap_rows : 0xffu) << 8));
     if (t21_emit_final(&writer, 0x40000,
                        0xc0000000u | ((uint32_t)config->qp << 8) |
                        ((uint32_t)config->slice_type << 4) |
