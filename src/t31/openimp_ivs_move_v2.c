@@ -34,7 +34,7 @@
 #define V2_MAX_COMPS  64
 #define V2_HIST_BINS  128       /* ratio bins of 1/32, 0..4 */
 #define V2_ACT_LIMIT  32        /* moving share above 1/8 (EMA over ~64 frames) */
-#define V2_TEX_FLOOR  (28 << 2) /* minimum texture change (2 per difference) */
+#define V2_TEX_FLOOR  (14 << 2) /* minimum texture change (2 per difference) */
 
 struct v2_comp {
     int x0, y0, x1, y1;         /* grid cells, inclusive */
@@ -292,8 +292,8 @@ int ivs_move_v2_next_frame(IvsMoveV2 *v2)
 
 /* Cell value: 2 sample rows (at cs/4 and 3cs/4) x 8 samples (every cs/8
  * pixels) = 16 samples; cell texture: sum of |sample - next sample| along
- * the rows (14 differences). At 8x8 cells the 8 samples of a row are 8
- * consecutive bytes, read as two words when the buffer allows it. */
+ * the first row (7 differences). At 8x8 cells the second row is summed
+ * as two words when the buffer allows it. */
 #define V2_ABS(a) ((a) < 0 ? -(a) : (a))
 static inline void v2_row(const uint8_t *b, uint32_t *sum, uint32_t *tex)
 {
@@ -309,28 +309,36 @@ void ivs_move_v2_feed(IvsMoveV2 *v2, const uint8_t *luma, uint32_t stride,
                       int64_t timestamp)
 {
     const uint32_t cs = v2->cs, gw = v2->gw, st = cs / 8;
-    uint32_t gx, gy, r, i;
+    const int words = st == 1 && !((uintptr_t)luma & 3) && !(stride & 3);
+    uint32_t gx, gy, i;
 
     for (gy = 0; gy < v2->gh; gy++) {
+        const uint8_t *p0 = luma + (size_t)(gy * cs + cs / 4) * stride;
+        const uint8_t *p1 = luma + (size_t)(gy * cs + 3 * cs / 4) * stride;
         uint16_t *acc = v2->cur + gy * gw;
         uint16_t *tx = v2->tex + gy * gw;
 
-        for (gx = 0; gx < gw; gx++) {
+        for (gx = 0; gx < gw; gx++, p0 += cs, p1 += cs) {
             uint32_t sum = 0, tex = 0;
 
-            for (r = 0; r < 2; r++) {
-                const uint8_t *p = luma + (size_t)(gy * cs + cs / 4 + r * cs / 2) *
-                                          stride + gx * cs;
+            if (st == 1) {
+                v2_row(p0, &sum, &tex);
+            } else {
+                uint8_t b[8];
 
-                if (st == 1) {
-                    v2_row(p, &sum, &tex);
-                } else {
-                    uint8_t b[8];
+                for (i = 0; i < 8; i++)
+                    b[i] = p0[i * st];
+                v2_row(b, &sum, &tex);
+            }
+            if (words) {
+                const uint32_t *w = (const uint32_t *)(const void *)p1;
+                uint32_t a = (w[0] & 0x00ff00ffu) + ((w[0] >> 8) & 0x00ff00ffu) +
+                             (w[1] & 0x00ff00ffu) + ((w[1] >> 8) & 0x00ff00ffu);
 
-                    for (i = 0; i < 8; i++)
-                        b[i] = p[i * st];
-                    v2_row(b, &sum, &tex);
-                }
+                sum += (a & 0xffffu) + (a >> 16);
+            } else {
+                for (i = 0; i < 8; i++)
+                    sum += p1[i * st];
             }
             acc[gx] = (uint16_t)sum;
             tx[gx] = (uint16_t)tex;
