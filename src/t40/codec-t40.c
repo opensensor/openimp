@@ -8022,7 +8022,8 @@ static int codec_t30_helix_create(AL_CodecEncode *enc, uint32_t width,
  * instead of waiting for the first picture: a channel that first streams
  * while the other channel's pool is live then needs no new rmem.  If it
  * fails here the first picture tries again.  OPENIMP_HELIX_LAZY_CREATE=1
- * always waits for the first picture (all T20/T21/T30). */
+ * always waits for the first picture; T20/T30 do unless
+ * OPENIMP_HELIX_EARLY_CREATE=1. */
 static void codec_t30_helix_precreate(AL_CodecEncode *enc)
 {
     const char *lazy = getenv("OPENIMP_HELIX_LAZY_CREATE");
@@ -8030,6 +8031,20 @@ static void codec_t30_helix_precreate(AL_CodecEncode *enc)
 
     if (lazy && lazy[0] == '1')
         return;
+#if !defined(PLATFORM_T21) || defined(PLATFORM_T20)
+    /* T20/T30: opt-in only.  T10 measurement: the encoders (~6 MB for
+     * two channels) are then held from start-up on, so the rmem peak while
+     * streaming is reached at once and stays (10.7 MB used with both pools,
+     * against 9.1 MB while the second channel's encoder did not exist
+     * yet); nothing is saved.  OPENIMP_HELIX_EARLY_CREATE=1 allocates them
+     * at CreateChn anyway. */
+    {
+        const char *early = getenv("OPENIMP_HELIX_EARLY_CREATE");
+
+        if (!early || early[0] != '1')
+            return;
+    }
+#endif
     if (codec_param_read_codec_type(enc->codec_param) != IMP_ENC_TYPE_AVC ||
         !enc->hw_params.width || !enc->hw_params.height)
         return;
