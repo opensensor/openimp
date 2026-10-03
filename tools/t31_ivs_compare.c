@@ -45,9 +45,10 @@
 
 /* Imported by the stock libimp from the process (normally libsysutils). */
 int IMP_Log_Get_Option(void) { return 0; }
-void imp_log_fun(int level, int option, int count, ...)
+int imp_log_fun(int level, int option, int count, ...)
 {
     (void)level; (void)option; (void)count;
+    return 0;
 }
 
 /* Stock base-move ring slot: public output plus the frame timestamp. */

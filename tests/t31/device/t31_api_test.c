@@ -62,12 +62,13 @@ int IMP_Log_Get_Option(void)
     return 0;
 }
 
-void imp_log_fun(int level, int option, int type, ...)
+int imp_log_fun(int level, int option, int type, ...)
 {
     (void)option;
     (void)type;
     if (getenv("T31_API_TEST_LOG"))
         fprintf(stderr, "imp_log level %d\n", level);
+    return 0;
 }
 
 #define CHECK(cond, ...)                                                      \

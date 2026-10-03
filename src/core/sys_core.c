@@ -14,8 +14,7 @@
 #include "imp/imp_common.h"
 #include "trace_control.h"
 
-int IMP_Log_Get_Option(void); /* forward decl, ported by T<N> later */
-void imp_log_fun(int level, int option, int type, ...); /* forward decl, ported by T<N> later */
+#include "imp_log_fun.h"
 Module *get_module(int32_t arg1, int32_t arg2); /* forward decl, ported by T<N> later */
 int32_t get_module_location(Module *arg1, int32_t *arg2, int32_t *arg3); /* forward decl, ported by T<N> later */
 int32_t BindObserverToSubject(Module *arg1, Module *arg2, void *arg3); /* forward decl, ported by T<N> later */

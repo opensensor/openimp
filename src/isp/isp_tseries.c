@@ -28,8 +28,7 @@
 #define TISP_TUNING_SENSOR_FIELD
 #endif
 
-int IMP_Log_Get_Option(void);
-void imp_log_fun(int level, int option, int type, ...);
+#include "imp_log_fun.h"
 
 #include "isp_tseries_dev.h"
 

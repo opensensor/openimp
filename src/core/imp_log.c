@@ -11,21 +11,38 @@
  * libimp.so removes the need for any vendor libalog.so / libsysutils.so.
  *
  * Levels (OEM): 3 DBG, 4 INFO, 5 WARN, 6 ERR.  WARN/ERR always go to
- * stderr + syslog; DBG/INFO only when OPENIMP_DEBUG_TRACE is set.
+ * stderr; DBG/INFO only when OPENIMP_DEBUG_TRACE is set.  Syslog is
+ * off by default and enabled with OPENIMP_LOG_SYSLOG=1.
  */
 #include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
 #include <syslog.h>
 
+#include <stdlib.h>
+
+#include "../imp_log_fun.h"
 #include "../trace_control.h"
 
 #define IMP_LOG_OPT_STDERR 0x1
 #define IMP_LOG_OPT_SYSLOG 0x2
 
+static int imp_log_syslog_enabled(void)
+{
+    static int cached = -1;
+
+    if (cached < 0) {
+        const char *e = getenv("OPENIMP_LOG_SYSLOG");
+
+        cached = e && e[0] == '1';
+    }
+    return cached;
+}
+
 int IMP_Log_Get_Option(void)
 {
-    return IMP_LOG_OPT_STDERR | IMP_LOG_OPT_SYSLOG;
+    return IMP_LOG_OPT_STDERR |
+           (imp_log_syslog_enabled() ? IMP_LOG_OPT_SYSLOG : 0);
 }
 
 int imp_log_fun(int level, int option, int type, ...)
@@ -33,6 +50,7 @@ int imp_log_fun(int level, int option, int type, ...)
     va_list ap;
     const char *tag, *file, *func, *fmt, *base;
     int line, prio, n;
+    size_t len;
     char buf[512];
     static int inited;
 
@@ -61,10 +79,11 @@ int imp_log_fun(int level, int option, int type, ...)
 
     if (option & IMP_LOG_OPT_STDERR) {
         fputs(buf, stderr);
-        if (buf[strlen(buf) - 1] != '\n')
+        len = strlen(buf);
+        if (!len || buf[len - 1] != '\n')
             fputc('\n', stderr);
     }
-    if (option & IMP_LOG_OPT_SYSLOG) {
+    if ((option & IMP_LOG_OPT_SYSLOG) && imp_log_syslog_enabled()) {
         if (!inited) {
             openlog("libimp", LOG_PID | LOG_NDELAY, LOG_USER);
             inited = 1;

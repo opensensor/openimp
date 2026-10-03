@@ -5,8 +5,7 @@
 #include <string.h>
 #include <unistd.h>
 
-int IMP_Log_Get_Option(void);
-int imp_log_fun(int level, int option, int type, ...);
+#include "imp_log_fun.h"
 
 int main(void)
 {
@@ -25,7 +24,9 @@ int main(void)
         printf("FAIL: %s", out);
         return 1;
     }
-    if (!IMP_Log_Get_Option()) return 1;
+    /* syslog is opt-in: default is stderr only */
+    if (IMP_Log_Get_Option() != 1) return 1;
+    imp_log_fun(6, 1, 2, "T", "f.c", 1, "f", "");
     puts("imp_log_test OK");
     return 0;
 }

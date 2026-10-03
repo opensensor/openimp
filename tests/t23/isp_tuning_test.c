@@ -47,9 +47,10 @@ int test_ioctl(int fd, unsigned long nr, ...);
 
 /* ---- environment stubs ------------------------------------------------ */
 int IMP_Log_Get_Option(void) { return 0; }
-void imp_log_fun(int level, int option, int type, ...)
+int imp_log_fun(int level, int option, int type, ...)
 {
     (void)level; (void)option; (void)type;
+    return 0;
 }
 static int idr_requests, changewait_calls, fps_num_seen, fps_den_seen;
 int IMP_Encoder_RequestIDR(int chn) { (void)chn; idr_requests++; return 0; }

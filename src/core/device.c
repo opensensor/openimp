@@ -2,8 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-int32_t IMP_Log_Get_Option(void); /* forward decl, ported by T<N> later */
-int32_t imp_log_fun(int32_t level, int32_t option, int32_t type, ...); /* forward decl, ported by T<N> later */
+#include "imp_log_fun.h"
 int32_t destroy_group(int32_t group_num, int32_t device_id); /* forward decl, ported by T<N> later */
 
 void *alloc_device(const char *arg1, size_t arg2)

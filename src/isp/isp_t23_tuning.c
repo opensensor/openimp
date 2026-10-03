@@ -34,8 +34,7 @@
 
 #include "isp_tseries_dev.h"
 
-int IMP_Log_Get_Option(void);
-void imp_log_fun(int level, int option, int type, ...);
+#include "imp_log_fun.h"
 int IMP_Encoder_RequestIDR(int encChn);
 int32_t set_framesource_fps(int32_t fps_num, int32_t fps_den);
 int32_t set_framesource_changewait_cnt(void);

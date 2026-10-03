@@ -28,7 +28,7 @@ ISPDevice *gISP;
 /* ---- libimp pieces the tuning layer calls (stubs, as in the device test) */
 int IMP_Log_Get_Option(void) { return 0; }
 
-void imp_log_fun(int level, int option, int type, ...)
+int imp_log_fun(int level, int option, int type, ...)
 {
     va_list ap;
     const char *fmt;
@@ -44,6 +44,7 @@ void imp_log_fun(int level, int option, int type, ...)
     fprintf(stderr, "  libimp[%d]: ", level);
     vfprintf(stderr, fmt, ap);
     va_end(ap);
+    return 0;
 }
 
 int IMP_Encoder_RequestIDR(int chn) { (void)chn; return 0; }
