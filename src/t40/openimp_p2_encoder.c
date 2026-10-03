@@ -1307,8 +1307,9 @@ static void p2_codec_params(unsigned char *params, const IMPEncoderCHNAttr *attr
                      "CreateChn(%d): rate-control mode %s with a bitrate of "
                      "0 kbps (the encoder falls back to its default)\n",
                      channel, p2_rc_mode_name(attr->rcAttr.attrRcMode.rcMode));
-    if (!fps_num || !fps_den || fps_num > 0xffffu || fps_den > 65u ||
-        fps_num > 120u * fps_den)
+    if (codec_type != IMP_ENC_TYPE_JPEG &&
+        (!fps_num || !fps_den || fps_num > 0xffffu || fps_den > 65u ||
+         fps_num > 120u * fps_den))
         IMP_LOG_WARN("Encoder",
                      "CreateChn(%d): rate-control frame rate %u/%u is out of "
                      "range (num 1..65535, den 1..65, at most 120 fps)%s\n",
