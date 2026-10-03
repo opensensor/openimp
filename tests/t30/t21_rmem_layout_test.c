@@ -343,8 +343,10 @@ int main(void)
     pool_enable(&pool0, POOL0);
     printf("both channels streaming: used %zu of %zu, %zu bytes free\n",
            arena.used, arena.size, arena.size - arena.used);
-    /* 2068 KiB shared buffer instead of 3068 KiB: 1.6 MB stay free */
-    assert(arena.size - arena.used >= 1600000u);
+    /* 2068 KiB shared buffer instead of 3068 KiB, and the stock 1 MiB EMC
+     * layout (996 KiB at 1080p, 140 KiB at 360p) instead of 2 MiB and
+     * 260 KiB: 2.8 MB stay free (1.6 MB with the 2 MiB EMC) */
+    assert(arena.size - arena.used >= 2800000u);
 
     /* random idle/re-enable cycles in any order, OSD bitmaps re-made
      * larger now and then (a longer text), codec restarts while idle */

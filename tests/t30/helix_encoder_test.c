@@ -25,6 +25,7 @@
 #include "dma_alloc.h"
 #include "t30/t30_helix_encoder.h"
 #if defined(PLATFORM_T21) && !defined(PLATFORM_T20)
+#include "t21/t21_h264_descriptor.h"
 #include "t30/helix_bitstream.h"
 int IMP_Encoder_SetPoolSize(int size);
 #endif
@@ -527,8 +528,21 @@ static void test_dma_footprint(void)
 
     assert(allocation("t30-helix-desc")->size == 16384u);
 #if defined(PLATFORM_T21) && !defined(PLATFORM_T20)
-    /* the captured 1080p EMC layout; the bitstream in the shared buffer */
-    assert(allocation("t30-helix-emc")->size == (2u << 20));
+    /* the stock 1 MiB EMC layout (996 KiB backed); the bitstream in the
+     * shared buffer */
+    assert(allocation("t30-helix-emc")->size == 0xf9000u);
+    {
+        uint32_t offsets[4];
+
+        /* 0x3004c/0x30050/0x30054/0x30058 as the stock h264_api_enc
+         * places them after 0x30018 */
+        assert(T21_HelixScratchLayout(120, 68, offsets) == 0xf9000u);
+        assert(offsets[0] == 0x30000u && offsets[1] == 0xb0000u &&
+               offsets[2] == 0xd0000u && offsets[3] == 0xf8000u);
+        /* the VPU writes 8 bytes per macroblock to 0x3004c */
+        assert(T21_HelixScratchLayout(40, 23, offsets) == 143360u);
+        assert(offsets[1] - offsets[0] >= 8u * 920u);
+    }
     assert(allocation("t30-helix-bs") == NULL);
     assert(allocation("helix-bs")->size >= (1u << 20) + 4096u);
 #else
@@ -536,10 +550,10 @@ static void test_dma_footprint(void)
 #endif
     OpenIMP_T30_HelixDestroy(encoder);
 #if defined(PLATFORM_T21) && !defined(PLATFORM_T20)
-    /* 640x360: EMC scaled per macroblock (260 KiB), no buffer of its own
+    /* 640x360: EMC scaled per macroblock (140 KiB), no buffer of its own
      * for the bitstream */
     encoder = create(640, 360, 25, 25);
-    assert(allocation("t30-helix-emc")->size == 266240u);
+    assert(allocation("t30-helix-emc")->size == 143360u);
     assert(allocation("t30-helix-bs") == NULL);
     OpenIMP_T30_HelixDestroy(encoder);
     /* the shared buffer is the stock pool size (1920 * 1080, page-rounded),

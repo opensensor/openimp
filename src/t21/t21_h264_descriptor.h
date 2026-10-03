@@ -45,6 +45,9 @@ typedef struct {
  * config->scratch_offset and returns the scratch size in bytes. */
 uint32_t T23_HelixScratchLayout(uint32_t mb_width, uint32_t mb_height,
                                 uint32_t offsets[4]);
+/* The T21 layout: the stock library's 1 MiB EMC buffer, per macroblock. */
+uint32_t T21_HelixScratchLayout(uint32_t mb_width, uint32_t mb_height,
+                                uint32_t offsets[4]);
 
 int T21_H264_BuildDescriptor(const T21H264SliceConfig *config,
                              size_t *pair_count);

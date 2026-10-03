@@ -955,6 +955,19 @@ static void t23_rc_stats(T30HelixEncoder *encoder, uint32_t qp, int idr,
 #define T30_RC_TARGET(encoder) ((encoder)->params.bitrate)
 #endif
 
+/* FIXQP: the stock encoder codes I pictures 3 below the fixed QP
+ * (i264e_ratecontrol_init), clamped to the QP range. */
+static uint32_t t30_fixqp_idr_qp(const HWEncoderParams *params)
+{
+    uint32_t qp = params->qp > 3u ? params->qp - 3u : 0u;
+
+    if (qp < params->min_qp)
+        qp = params->min_qp;
+    if (qp > params->max_qp)
+        qp = params->max_qp;
+    return qp;
+}
+
 static void t30_start_rate_control(T30HelixEncoder *encoder,
                                    uint32_t initial_qp)
 {
@@ -1074,13 +1087,22 @@ int OpenIMP_T30_HelixCreate(T30HelixEncoder **encoder_out,
 #if defined(HELIX_T21_SYNTAX)
     /* Size the per-channel buffers for the picture, as the stock encoder
      * sizes its per-channel buffer pool from the channel's resolution:
-     * EMC per-macroblock scratch (the captured 2 MiB layout at 1080p, 0.26
-     * MiB at 360p), and a bitstream window of one raw picture (an
+     * EMC per-macroblock scratch (T21: the stock 1 MiB layout, 996 KiB at
+     * 1080p, 140 KiB at 360p; T23: the captured 2 MiB layout at 1080p,
+     * 0.26 MiB at 360p), and a bitstream window of one raw picture (an
      * all-I_PCM picture fits; at least 256 KiB, at most the 1 MiB of the
      * T21 layout). */
+#if defined(PLATFORM_T23) || defined(PLATFORM_T20)
+    /* T20 (and T10 through the T20 build) keeps the earlier layout: the
+     * 1 MiB layout is only measured on a T21 (PC420) */
     encoder->scratch_size = T23_HelixScratchLayout(
         (params->width + 15u) / 16u, (params->height + 15u) / 16u,
         encoder->scratch_offset);
+#else
+    encoder->scratch_size = T21_HelixScratchLayout(
+        (params->width + 15u) / 16u, (params->height + 15u) / 16u,
+        encoder->scratch_offset);
+#endif
     {
         uint64_t window = (reference_size + 0xffffu) &
                           ~(uint64_t)0xffffu;
@@ -1400,6 +1422,8 @@ static int t30_helix_encode_job(T30HelixEncoder *encoder,
     qp = encoder->rate_control_enabled
         ? openimp_t31_rate_controller_qp(&encoder->rate_control)
         : encoder->params.qp;
+    if (idr && encoder->params.rc_mode == HW_RC_MODE_FIXQP)
+        qp = t30_fixqp_idr_qp(&encoder->params);
 #if defined(PLATFORM_T23)
     qp = t23_rc_picture_qp(encoder, qp, idr);
     qp = t23_overflow_qp(encoder, qp, idr);
