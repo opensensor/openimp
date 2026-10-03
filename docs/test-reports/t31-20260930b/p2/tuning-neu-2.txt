@@ -1,0 +1,38 @@
+== 5.8 (1 s Pause)
+128: 0x000D0053 0x00400040 0x00320032 
+200: 0x000D01E6 0x016D016D 0x01670167 
+200: 0x000D01E6 0x016D016D 0x01670167 
+128: 0x000D0053 0x00400040 0x00320032 
+60: 0x000D0027 0x001D001D 0x00170017 
+60: 0x000D0027 0x001D001D 0x00170017 
+128: 0x000D0053 0x00400040 0x00320032 
+== 5.9 (1 s Pause)
+128: 0x05050505 0x05050505 0x02020305 0x02020202 
+200: 0x0B0B0B0B 0x0B0B0B0B 0x09090A0B 0x09090909 
+200: 0x0B0B0B0B 0x0B0B0B0B 0x09090A0B 0x09090909 
+128: 0x05050505 0x05050505 0x02020305 0x02020202 
+60: 0x02020202 0x02020202 0x00000102 0x00000000 
+60: 0x02020202 0x02020202 0x00000102 0x00000000 
+128: 0x05050505 0x05050505 0x02020305 0x02020202 
+== 5.11 Gewichte
+225
+n=225
+sending 205 bytes
+/tmp/tune2.sh: line 7: cmp: not found
+Gewichte VERSCHIEDEN
+== 5.14 (halbe Belichtung)
+it=2246 set=1123
+sending 20 bytes
+mode=0 it=1123 it_min=2 it_max=2246 line_us=22
+mode=0 it=1123 it_min=2 it_max=2246 line_us=22
+c6 08 00 00 7b 61 00 00 14 22 0b 00 20 00 00 00
+sending 4 bytes
+mode=0 it=2246 it_min=2 it_max=2246 line_us=22
+== timps image.ae_it_max_us
+{"ok":true,"accepted":1,"changed":1,"rejected":0,"not_persisted":0,"deferred":0,"deferred_keys":[],"ignored":[],"applied":{}}
+21:21:38.310 [INF] DAYNIGHT     exposure sources: scrape ratio=1.0000 (it/max, max published) | IMP GetExpr ratio=1.0000 it=2996 max=2996 line=22us (=65912us/65912us) GetEVAttr expr_us=66577 us | scrape max is real - shadow read only, decides nothing
+21:27:45.007 [INF] HAL_ING      image.ae_it_max_us=10000 -> capped AE at 454 lines; GetExpr now reports max=454 lines (9988us), was 2246 lines (49412us)
+21:27:45.008 [INF] HAL_ING      control image.ae_it_max_us=10000
+21:27:45.008 [INF] CTRL         set image.ae_it_max_us = 10000
+mode=0 it=454 it_min=2 it_max=454 line_us=22
+mode=0 it=454 it_min=2 it_max=454 line_us=22

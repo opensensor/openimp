@@ -1,0 +1,34 @@
+mode=0 it=454 it_min=2 it_max=2246 line_us=22
+== 5.6
+fps=0xf0001 af=2
+983041 (0xf0001)
+2 (0x2)
+== 5.12
+0x00090000
+00 00 90 00 20 01 9c 01 0e 02 71 02 ca 02 1c 03 67 03 ad 03 
+== 5.11
+sending 225 bytes
+Gewichte gleich
+== 5.12
+0x00090000
+sending 258 bytes
+0x00090000
+sending 258 bytes
+0x000A0000
+sending 258 bytes
+0x00090000
+sending 40 bytes
+0x3BB0083F
+0x3E5D0010
+0x3DE607BC
+0x3DDF3F62
+0x000006BE
+nach 3 s:
+0x3BB0083F
+0x3E5D0010
+0x3DE607BC
+0x3DDF3F62
+0x000006BE
+01 01 00 00 3f 08 00 00 b0 3b 00 00 10 00 00 00
+sending 4 bytes
+00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00

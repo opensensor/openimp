@@ -1,0 +1,4 @@
+938e213dafc5e09a3d8262cd305b8555  /usr/lib/libimp.so
+stopped (waited 0x100ms)
+pid 8357
+76fb7000-77026000 r-xp 00000000 00:0d 18682      /usr/lib/libimp.so

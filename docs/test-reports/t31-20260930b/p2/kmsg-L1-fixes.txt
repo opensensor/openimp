@@ -1,0 +1,37 @@
+<4>[   89.799179] tx_isp_subdev_init: isp-m0 mem_region busy for 0x13300000-0x133fffff, continuing with shared ioremap
+<3>[   89.799279] Failed to register /dev/framechan0: -17
+<3>[   89.799287] *** tx_isp_core_probe: Failed to create frame channel devices: -17 ***
+<4>[   93.273012] tx_isp_subdev_init: isp-m0 mem_region busy for 0x13300000-0x133fffff, continuing with shared ioremap
+<3>[   93.273109] Failed to register /dev/framechan0: -17
+<3>[   93.273118] *** tx_isp_core_probe: Failed to create frame channel devices: -17 ***
+<4>[   96.784138] tx_isp_subdev_init: isp-m0 mem_region busy for 0x13300000-0x133fffff, continuing with shared ioremap
+<3>[   96.784234] Failed to register /dev/framechan0: -17
+<3>[   96.784243] *** tx_isp_core_probe: Failed to create frame channel devices: -17 ***
+<11>[  118.299005] libimp/ISP: Open entry gISP=(nil)
+<11>[  118.299043] libimp/ISP: Open entry, gISP=(nil) (before)
+<11>[  118.299083] libimp/ISP: Open calloc'd gISP=0x7799e028
+<11>[  118.299117] libimp/ISP: Open /dev/tx-isp fd=6 errno=0
+<11>[  118.299223] libimp/ISP: Open return=0 gISP=0x7799e028
+<11>[  118.299248] libimp/ISP: AddSensor entry gISP=0x7799e028
+<6>[  118.302851]   sensor+: 00000000: 00000000 00000000 00000000 00000000
+<6>[  118.302868]   sensor+: 00000010: 00000000 00000000 00000000 00000000
+<6>[  118.302879]   sensor+: 00000020: c0b76704 00000a00 000005a0 001e0001
+<6>[  118.302889]   sensor+: 00000030: 00000000 00000000 81b02a00 00000000
+<11>[  118.526692] libimp/ISP: AddSensor GET_BUF idx=167773600 size=8327120 struct_sz=8
+<11>[  118.562276] libimp/ISP: EnableSensor ENABLE_SENSOR ok
+<11>[  118.562308] libimp/ISP: EnableSensor CREATE_LINKS ok arg=0
+<11>[  118.562325] libimp/ISP: EnableSensor ENABLE_LINKS ok
+<11>[  118.562388] libimp/ISP: EnableTuning entry gISP=0x7799e028
+<11>[  118.562401] libimp/ISP: opened=3 tuning=(nil)
+<11>[  118.562491] libimp/ISP: open(/dev/isp-m0, O_RDWR) = 10 (errno=0 ok)
+<11>[  118.562508] libimp/ISP: EnableTuning opened /dev/isp-m0 as fd=10
+<11>[  118.563932] libimp/ISP: tuning gain/contrast update gain=256 contrast=128 packed=0x00010080 count=1
+<11>[  118.617919] libimp/ISP: EnsureLinkStreamOn STREAMON sensor=0 fd=6
+<11>[  118.617973] libimp/ISP: EnsureLinkStreamOn CREATE_LINKS sensor=0
+<11>[  118.617991] libimp/ISP: EnsureLinkStreamOn ENABLE_LINKS sensor=0
+<11>[  118.618009] libimp/ISP: EnsureLinkStreamOn done sensor=0
+<11>[  119.564127] libimp/ISP: tuning gain/contrast update gain=269 contrast=128 packed=0x00010d80 count=2
+<11>[  121.564513] libimp/ISP: tuning gain/contrast update gain=299 contrast=128 packed=0x00012b80 count=4
+<11>[  264.523703] libimp/ISP: EnsureLinkStreamOn already-started bypass_done=0
+<11>[  293.098419] libimp/ISP: EnsureLinkStreamOn already-started bypass_done=0
+<11>[  301.751708] libimp/ISP: EnsureLinkStreamOn already-started bypass_done=0

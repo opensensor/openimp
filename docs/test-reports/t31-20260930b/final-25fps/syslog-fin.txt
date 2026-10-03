@@ -1,0 +1,126 @@
+Sep 30 22:26:46 timpsd[1938]: [CONFIG] loaded 62 settings from /tmp/timps-25.conf
+Sep 30 22:26:46 timpsd[1938]: [CONFIG] sensor: sc4336p i2c=0x30 1920x1080 @25fps
+Sep 30 22:26:46 timpsd[1938]: [MAIN] timps v1.9.28-3-g311b0c4 starting (backend=ingenic)
+Sep 30 22:26:46 timpsd[1938]: [MAIN] /control token published to /run/timps.token
+Sep 30 22:26:46 kernel: [   80.857250] CPU: 0 PID: 1938 Comm: timpsd Tainted: G           O 3.10.14__isvp_swan_1.0__ #10
+Sep 30 22:26:46 timpsd[1938]: [HAL_ING] image tuning applied (bri=128 con=128 sat=128 sharp=128)
+Sep 30 22:26:46 timpsd[1938]: [HAL_ING] sensor fps: requested 25, driver holds 25/1, set rc=0
+Sep 30 22:26:46 timpsd[1938]: [HAL_ING] ISP up, sensor=sc4336p fps=25
+Sep 30 22:26:46 timpsd[1938]: [HAL_ING] chn0: fs 1920x1080 (sensor 1920x1080, scale=0) nrVBs=2
+Sep 30 22:26:46 timpsd[1938]: [HAL_ING] JPEG-on-video0: encoder chn 3 in group 0 (1920x1080 q75)
+Sep 30 22:26:46 timpsd[1938]: [OSD] OSD TrueType font /usr/share/fonts/default.ttf
+Sep 30 22:26:46 timpsd[1938]: [OSD] OSD stream 0: 4 overlay(s), 0 privacy mask(s), group 0 (1920x1080)
+Sep 30 22:26:46 timpsd[1938]: [HAL_ING] chn1: fs 640x360 (sensor 1920x1080, scale=1) nrVBs=2
+Sep 30 22:26:46 timpsd[1938]: [HAL_ING] JPEG-on-video1: encoder chn 4 in group 1 (640x360 q75)
+Sep 30 22:26:46 timpsd[1938]: [OSD] OSD stream 1: 4 overlay(s), 0 privacy mask(s), group 1 (640x360)
+Sep 30 22:26:46 libimp[1938]: [Framesource] T31 ISP driver: open tx-isp
+Sep 30 22:26:46 libimp[1938]: [HAL_ING] framesource 0 enabled
+Sep 30 22:26:47 libimp[1938]: [HAL_ING] faac AAC encoder: 16000Hz ch=1 frame=1024 max=8192
+Sep 30 22:26:47 libimp[1938]: [HAL_ING] audio.codec2: second stream PCMU 8000Hz (16k->8k) (WebRTC)
+Sep 30 22:26:47 libimp[1938]: [HAL_ING] audio in: 16000Hz AAC ch=1 vol=80 gain=25 numPerFrm=640
+Sep 30 22:26:47 libimp[1938]: [HAL_ING] framesource 0 disabled (idle)
+Sep 30 22:26:47 libimp[1938]: [MAIN] audio backchannel enabled (codec=0 rate=16000, native IMP_AO)
+Sep 30 22:26:47 libimp[1938]: [TLS] TLS server context ready (cert /etc/ssl/certs/timps.crt)
+Sep 30 22:26:47 libimp[1938]: [HTTP] HTTP and HTTPS both served on port 8880 (http.https=1, scheme detected per connection)
+Sep 30 22:26:47 libimp[1938]: [WEBRTC] WHEP endpoint /webrtc/whep ready (ICE-lite + DTLS-SRTP, H264 video0); fingerprint xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:FC:C5
+Sep 30 22:26:47 libimp[1938]: [WEBRTC] media udp 25000-25003, one port per session (4 slots)
+Sep 30 22:26:47 libimp[1938]: [REC] recorder ready (mode=motion dir=/mnt/mmcblk0p1)
+Sep 30 22:26:47 libimp[1938]: [TL] timelapse ready (idle, dir=/mnt/mmcblk0p1 interval=60s)
+Sep 30 22:26:47 libimp[1938]: [MAIN] running. rtsp://<ip>:554/ch0  https://<ip>:8880/
+Sep 30 22:26:47 libimp[1938]: [DAYNIGHT] detection thread started (mode=auto, day<10000 night>15000, probe: gap 600s jump 50% confirm 15s settle 8s, heartbeat 14400s/43200s, calendar=none, boot_probe=1, interval 2000ms, dwell 5s, isp=/proc/jz/isp/isp-
+Sep 30 22:26:47 libimp[1938]: [HTTP] listening on port 8880
+Sep 30 22:26:47 libimp[1938]: [DAYNIGHT] exposure sources: scrape ratio=0.8352 (it/max, max published) | IMP GetExpr ratio=0.8352 it=1500 max=1796 line=22us (=33000us/39512us) GetEVAttr expr_us=33333 us | scrape max is real - shadow read only, decides
+Sep 30 22:26:47 libimp[1938]: [RTSP] listening on port 554
+Sep 30 22:26:47 libimp[1938]: [DAYNIGHT] auto day/night enabled
+Sep 30 22:26:47 libimp[1938]: [spk] play-FIFO thread started (/run/timps/audio_out)
+Sep 30 22:26:48 libimp[1938]: [HAL_ING] framesource 0 enabled
+Sep 30 22:26:48 libimp[1938]: [HAL_ING] video chn0 streaming
+Sep 30 22:26:48 libimp[1938]: [HAL_ING] framesource 1 enabled
+Sep 30 22:26:48 libimp[1938]: [HAL_ING] video chn1 streaming
+Sep 30 22:26:48 libimp[1938]: [Codec] HWJPEG: T31 hardware JPEG enabled (OPENIMP_T31_HW_JPEG=0 selects the software encoder)
+Sep 30 22:26:48 libimp[1938]: [Codec] AVPU: T31 companion stage disabled
+Sep 30 22:26:48 libimp[1938]: [HAL_ING] chn0: first encoded frame packCount=3 aulen=37726 key=1
+Sep 30 22:26:48 libimp[1938]: [CLIENT] + rtsp/tcp 192.168.1.x:53052 chn=0 agent="Lavf62.3.100"
+Sep 30 22:26:48 libimp[1938]: [RTSP] PLAY session=0e87c761 vchn=0 TCP v=1 a=1
+Sep 30 22:26:48 libimp[1938]: [HAL_ING] audio resume: flushed 6 stale AI frame(s)
+Sep 30 22:26:48 libimp[1938]: [HAL_ING] chn1: first encoded frame packCount=3 aulen=4163 key=1
+Sep 30 22:26:48 libimp[1938]: [CLIENT] + rtsp/tcp 192.168.1.x:53066 chn=1 agent="Lavf62.3.100"
+Sep 30 22:26:48 libimp[1938]: [RTSP] PLAY session=e948ff7c vchn=1 TCP v=1 a=1
+Sep 30 22:26:48 libimp[1938]: [HAL_ING] AAC encoder producing (56 bytes/frame)
+Sep 30 22:27:09 libimp[1938]: [Codec] HWJPEG: ready, ep1=0x01da0000
+Sep 30 22:27:09 libimp[1938]: [Codec] HWJPEG: 1920x1080 q75 -> 102878 bytes [#1]
+Sep 30 22:27:09 libimp[1938]: [Codec] HWJPEG: 1920x1080 q75 -> 102895 bytes [#2]
+Sep 30 22:27:09 libimp[1938]: [Codec] HWJPEG: 1920x1080 q75 -> 103188 bytes [#3]
+Sep 30 22:27:13 libimp[1938]: [DAYNIGHT] boot: measuring before deciding - persisted running_mode=1 is a hint, not evidence (exposure 18530 in whatever mode we came up in); switching to the day pipeline and reading it in 8s
+Sep 30 22:27:13 libimp[1938]: [DAYNIGHT] probe (boot measure): exposure 18530 vs night reference -1, verdict in 8s
+Sep 30 22:27:13 libimp[1938]: [DAYNIGHT] switching to day (boot measure): daynight day [mode=day exp=18530 ref=-1 bar=10000]
+Sep 30 22:27:13 libimp[1938]: [HAL_ING] control image.running_mode=0
+Sep 30 22:27:14 libimp[1938]: [CTRL] set image.running_mode = 0
+Sep 30 22:27:14 libimp[1938]: [CONFIG] persisted 1 setting(s) to /tmp/timps-25.conf
+Sep 30 22:27:15 libimp[1938]: [DAYNIGHT] ISP confirmed the switch to day
+Sep 30 22:27:21 libimp[1938]: [DAYNIGHT] switching to night (boot: measured night, exposure 19047): daynight night [mode=night exp=19047 ref=-1 bar=10000]
+Sep 30 22:27:22 libimp[1938]: [DAYNIGHT] night reference 18530, proven by the probe (bar 9265)
+Sep 30 22:27:22 libimp[1938]: [HAL_ING] control image.running_mode=1
+Sep 30 22:27:22 libimp[1938]: [CTRL] set image.running_mode = 1
+Sep 30 22:27:22 libimp[1938]: [CONFIG] persisted 1 setting(s) to /tmp/timps-25.conf
+Sep 30 22:27:24 libimp[1938]: [DAYNIGHT] ISP confirmed the switch to night
+Sep 30 22:27:30 libimp[1938]: [HAL_ING] control image.running_mode=1
+Sep 30 22:27:30 libimp[1938]: [DAYNIGHT] re-asserting running_mode=1 after switch (1 left)
+Sep 30 22:27:38 libimp[1938]: [HAL_ING] control image.running_mode=1
+Sep 30 22:27:39 libimp[1938]: [DAYNIGHT] re-asserting running_mode=1 after switch (0 left)
+Sep 30 22:28:32 libimp[1938]: [Codec] HWJPEG: 1920x1080 q75 -> 212019 bytes [#100]
+Sep 30 22:29:55 libimp[1938]: [Codec] HWJPEG: 1920x1080 q75 -> 205318 bytes [#200]
+Sep 30 22:30:00 logcat: 1790800006.524575197 D/IMP-ISP( 1938): 22:26:46.534 [IMP_ISP_Open] ~~~~~~ IMP_ISP_Open[331] ~~~~~~~
+Sep 30 22:30:00 logcat: 1790800006.594574645 I/IMP-ISP( 1938): 22:26:46.595 [IMP_ISP_AddSensor] IMP_ISP_AddSensor,480: size = 0x7f0fd0
+Sep 30 22:31:26 libimp[1938]: [Codec] HWJPEG: 1920x1080 q75 -> 205074 bytes [#300]
+Sep 30 22:32:49 libimp[1938]: [Codec] HWJPEG: 1920x1080 q75 -> 204381 bytes [#400]
+Sep 30 22:34:20 libimp[1938]: [Codec] HWJPEG: 1920x1080 q75 -> 203533 bytes [#500]
+Sep 30 22:35:43 libimp[1938]: [Codec] HWJPEG: 1920x1080 q75 -> 202791 bytes [#600]
+Sep 30 22:37:14 libimp[1938]: [Codec] HWJPEG: 1920x1080 q75 -> 202196 bytes [#700]
+Sep 30 22:38:37 libimp[1938]: [Codec] HWJPEG: 1920x1080 q75 -> 201934 bytes [#800]
+Sep 30 22:40:08 libimp[1938]: [Codec] HWJPEG: 1920x1080 q75 -> 201283 bytes [#900]
+Sep 30 22:41:31 libimp[1938]: [Codec] HWJPEG: 1920x1080 q75 -> 201428 bytes [#1000]
+Sep 30 22:42:54 libimp[1938]: [Codec] HWJPEG: 1920x1080 q75 -> 201246 bytes [#1100]
+Sep 30 22:44:25 libimp[1938]: [Codec] HWJPEG: 1920x1080 q75 -> 200776 bytes [#1200]
+Sep 30 22:45:48 libimp[1938]: [Codec] HWJPEG: 1920x1080 q75 -> 200081 bytes [#1300]
+Sep 30 22:47:19 libimp[1938]: [Codec] HWJPEG: 1920x1080 q75 -> 200016 bytes [#1400]
+Sep 30 22:48:42 libimp[1938]: [Codec] HWJPEG: 1920x1080 q75 -> 199978 bytes [#1500]
+Sep 30 22:50:13 libimp[1938]: [Codec] HWJPEG: 1920x1080 q75 -> 199820 bytes [#1600]
+Sep 30 22:51:36 libimp[1938]: [Codec] HWJPEG: 1920x1080 q75 -> 199577 bytes [#1700]
+Sep 30 22:52:59 libimp[1938]: [Codec] HWJPEG: 1920x1080 q75 -> 199656 bytes [#1800]
+Sep 30 22:54:30 libimp[1938]: [Codec] HWJPEG: 1920x1080 q75 -> 199769 bytes [#1900]
+Sep 30 22:55:53 libimp[1938]: [Codec] HWJPEG: 1920x1080 q75 -> 199522 bytes [#2000]
+Sep 30 22:57:24 libimp[1938]: [Codec] HWJPEG: 1920x1080 q75 -> 199418 bytes [#2100]
+Sep 30 22:58:47 libimp[1938]: [Codec] HWJPEG: 1920x1080 q75 -> 199509 bytes [#2200]
+Sep 30 23:00:18 libimp[1938]: [Codec] HWJPEG: 1920x1080 q75 -> 199364 bytes [#2300]
+Sep 30 23:01:41 libimp[1938]: [Codec] HWJPEG: 1920x1080 q75 -> 199369 bytes [#2400]
+Sep 30 23:03:04 libimp[1938]: [Codec] HWJPEG: 1920x1080 q75 -> 199369 bytes [#2500]
+Sep 30 23:04:34 libimp[1938]: [Codec] HWJPEG: 1920x1080 q75 -> 199343 bytes [#2600]
+Sep 30 23:05:57 libimp[1938]: [Codec] HWJPEG: 1920x1080 q75 -> 199073 bytes [#2700]
+Sep 30 23:07:28 libimp[1938]: [Codec] HWJPEG: 1920x1080 q75 -> 199246 bytes [#2800]
+Sep 30 23:08:52 libimp[1938]: [Codec] HWJPEG: 1920x1080 q75 -> 199220 bytes [#2900]
+Sep 30 23:10:23 libimp[1938]: [Codec] HWJPEG: 1920x1080 q75 -> 199088 bytes [#3000]
+Sep 30 23:11:46 libimp[1938]: [Codec] HWJPEG: 1920x1080 q75 -> 199064 bytes [#3100]
+Sep 30 23:13:09 libimp[1938]: [Codec] HWJPEG: 1920x1080 q75 -> 199182 bytes [#3200]
+Sep 30 23:14:39 libimp[1938]: [Codec] HWJPEG: 1920x1080 q75 -> 198933 bytes [#3300]
+Sep 30 23:16:03 libimp[1938]: [Codec] HWJPEG: 1920x1080 q75 -> 198964 bytes [#3400]
+Sep 30 23:17:34 libimp[1938]: [Codec] HWJPEG: 1920x1080 q75 -> 199236 bytes [#3500]
+Sep 30 23:18:57 libimp[1938]: [Codec] HWJPEG: 1920x1080 q75 -> 198766 bytes [#3600]
+Sep 30 23:20:28 libimp[1938]: [Codec] HWJPEG: 1920x1080 q75 -> 198812 bytes [#3700]
+Sep 30 23:21:51 libimp[1938]: [Codec] HWJPEG: 1920x1080 q75 -> 198827 bytes [#3800]
+Sep 30 23:23:21 libimp[1938]: [Codec] HWJPEG: 1920x1080 q75 -> 199028 bytes [#3900]
+Sep 30 23:24:44 libimp[1938]: [Codec] HWJPEG: 1920x1080 q75 -> 198928 bytes [#4000]
+Sep 30 23:26:07 libimp[1938]: [Codec] HWJPEG: 1920x1080 q75 -> 199170 bytes [#4100]
+Sep 30 23:26:49 libimp[1938]: [RTSP] session=0e87c761: client disconnected after 3600s (Connection reset by peer)
+Sep 30 23:26:49 libimp[1938]: [CLIENT] - rtsp/tcp 192.168.1.x:53052 after 3600s, 525279811 bytes
+Sep 30 23:26:49 libimp[1938]: [RTSP] session=e948ff7c: client disconnected after 3600s (Connection reset by peer)
+Sep 30 23:26:49 libimp[1938]: [CLIENT] - rtsp/tcp 192.168.1.x:53066 after 3600s, 122620296 bytes
+Sep 30 23:26:51 libimp[1938]: [HAL_ING] framesource 0 disabled (idle)
+Sep 30 23:26:51 libimp[1938]: [HAL_ING] video chn0 idle
+Sep 30 23:26:51 libimp[1938]: [HAL_ING] framesource 1 disabled (idle)
+Sep 30 23:26:51 libimp[1938]: [HAL_ING] video chn1 idle
+Sep 30 23:26:57 libimp[1938]: [HAL_ING] framesource 0 enabled
+Sep 30 23:26:57 libimp[1938]: [HAL_ING] jpeg chn3: PollingStream idle (miss#1) - encoder emits no frames
+Sep 30 23:26:58 libimp[1938]: [HAL_ING] video chn0 streaming
+Sep 30 23:27:00 libimp[1938]: [HAL_ING] framesource 0 disabled (idle)
+Sep 30 23:27:00 libimp[1938]: [HAL_ING] video chn0 idle

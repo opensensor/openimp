@@ -1,0 +1,40 @@
+[143389.267758] [<8005fdac>] 0x8005fdac
+[143389.267765] [<c0118808>] 0xc0118808
+[143389.267772] [<800c0d7c>] 0x800c0d7c
+[143389.267780] [<800d7bd0>] 0x800d7bd0
+[143389.267788] [<800d89b4>] 0x800d89b4
+[143389.267795] [<80021ffc>] 0x80021ffc
+[143389.267804] [<800d8970>] 0x800d8970
+[143389.267814] [<c042c9b6>] 0xc042c9b6
+[143389.267819] 
+[143389.267824] Mem-Info:
+[143389.267830] Normal per-cpu:
+[143389.267838] CPU    0: hi:   18, btch:   3 usd:   0
+[143389.267854] active_anon:703 inactive_anon:499 isolated_anon:0
+[143389.267854]  active_file:375 inactive_file:569 isolated_file:0
+[143389.267854]  unevictable:0 dirty:0 writeback:0 unstable:0
+[143389.267854]  free:7393 slab_reclaimable:290 slab_unreclaimable:1003
+[143389.267854]  mapped:700 shmem:518 pagetables:76 bounce:0
+[143389.267854]  free_cma:0
+[143389.267896] Normal free:29572kB min:1084kB low:1352kB high:1624kB active_anon:2812kB inactive_anon:1996kB active_file:1500kB inactive_file:2276kB unevictable:0kB isolated(anon):0kB isolated(file):0kB present:79872kB managed:73896kB mlocked:0kB dirty:0kB writeback:0kB mapped:2800kB shmem:2072kB slab_reclaimable:1160kB slab_unreclaimable:4012kB kernel_stack:552kB pagetables:304kB unstable:0kB bounce:0kB free_cma:0kB writeback_tmp:0kB pages_scanned:0 all_unreclaimable? no
+[143389.267904] lowmem_reserve[]: 0 0
+[143389.267912] Normal: 549*4kB (U) 502*8kB (U) 304*16kB (U) 142*32kB (U) 62*64kB (U) 28*128kB (U) 5*256kB (U) 0*512kB 1*1024kB (U) 2*2048kB (UM) 0*4096kB 0*8192kB 0*16384kB 0*32768kB 0*65536kB = 29572kB
+[143389.267962] 1474 total pagecache pages
+[143389.267969] 0 pages in swap cache
+[143389.267976] Swap cache stats: add 0, delete 0, find 0/0
+[143389.267982] Free swap  = 0kB
+[143389.267988] Total swap = 0kB
+[143389.268984] 19968 pages RAM
+[143389.268992] 1449 pages reserved
+[143389.268997] 264215 pages shared
+[143389.269003] 3563 pages non-shared
+[143389.269018] avpu avpu.0: Can't alloc DMA buffer
+[143408.171878] allocated buffer cpu: a3100000, phy:51380224, offset:0
+[143408.174766] allocated buffer cpu: a1468000, phy:21397504, offset:4096
+[143408.175014] allocated buffer cpu: a2b66000, phy:45506560, offset:8192
+[143408.201105] allocated buffer cpu: a3180000, phy:51904512, offset:0
+[143408.203993] allocated buffer cpu: a0c60000, phy:12976128, offset:4096
+[143408.204622] allocated buffer cpu: a3200000, phy:52428800, offset:8192
+[143408.231519] allocated buffer cpu: a3280000, phy:52953088, offset:0
+[143408.234407] allocated buffer cpu: a1808000, phy:25198592, offset:4096
+[143408.235034] allocated buffer cpu: a3300000, phy:53477376, offset:8192

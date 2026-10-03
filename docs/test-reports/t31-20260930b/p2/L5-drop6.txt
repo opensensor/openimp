@@ -1,0 +1,28 @@
+6
+bytes nach reload: 16458
+nacht 1 51633
+tag   1 83345
+nacht 2 30522
+tag   2 87673
+nacht 3 89343
+tag   3 194200
+nacht 4 200883
+tag   4 149289
+nacht 5 200634
+tag   5 159530
+nacht 6 191812
+tag   6 137742
+nacht 7 211632
+tag   7 1370904
+nacht 8 1314308
+tag   8 1263730
+nacht 9 747063
+tag   9 329624
+nacht 10 428684
+tag   10 183136
+dauer-client 16469952
+== L5
+INFO total: 0
+23:37:12.504 [WRN] HAL_ING      chn0: PollingStream idle (rc=-1, miss#1) - encoder emits no frames
+23:37:38.490 [WRN] HAL_ING      chn0: PollingStream idle (rc=-1, miss#1) - encoder emits no frames
+23:38:47.741 [WRN] HAL_ING      chn0: PollingStream idle (rc=-1, miss#1) - encoder emits no frames

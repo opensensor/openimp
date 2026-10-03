@@ -1,0 +1,10 @@
+== s2-nosnap
+stopped (waited 0x100ms)
+pid 16364
+ch0: connects=1 frames=1351 intervals=8 min_per_10s=90 zero_intervals=0 intervals<140=1 [90]
+ch1: connects=1 frames=1350 intervals=8 min_per_10s=89 zero_intervals=0 intervals<140=1 [89]
+snapshots: 
+timpsd %CPU samples: 6.6 7.8 4.9 5.9 
+idle samples: 80.0 82.4 90.3 88.8 
+ffmpeg error lines main/sub: 0 / 0
+S2 frames=449 interval median=0.067 p99=0.089 max=0.101 >0.1s=4

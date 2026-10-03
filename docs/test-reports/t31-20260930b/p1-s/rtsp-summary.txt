@@ -1,0 +1,2 @@
+ch0: connects=1 frames=69397 intervals=467 min_per_10s=135 zero_intervals=0 intervals<140=2 [135, 139]
+ch1: connects=1 frames=69393 intervals=467 min_per_10s=142 zero_intervals=0 intervals<140=0 []

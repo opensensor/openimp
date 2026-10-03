@@ -1,0 +1,209 @@
+2026-09-30 14:46:20 start p1-c3 env: 
+14:46:20.808 [INF] CONFIG       loaded 61 settings from /tmp/timps.conf
+14:46:20.809 [INF] CONFIG       sensor: sc4336p i2c=0x30 1920x1080 @15fps
+14:46:20.810 [INF] MAIN         timps v1.9.28-3-g311b0c4 starting (backend=ingenic)
+14:46:20.810 [INF] MAIN         /control token published to /run/timps.token
+14:46:20.905 [INF] HAL_ING      image tuning applied (bri=128 con=128 sat=128 sharp=128)
+14:46:20.907 [INF] HAL_ING      sensor fps: requested 15, driver holds 15/1, set rc=0
+14:46:20.908 [INF] HAL_ING      ISP up, sensor=sc4336p fps=15
+14:46:20.909 [INF] HAL_ING      chn0: fs 1920x1080 (sensor 1920x1080, scale=0) nrVBs=2
+[Fifo] Init: size=4, max_elements=5
+[Fifo] Init: size=7, max_elements=8
+[Fifo] Init: size=4, max_elements=5
+[Fifo] Init: size=4, max_elements=5
+[Fifo] Init: size=7, max_elements=8
+[Fifo] Init: size=4, max_elements=5
+14:46:20.910 [INF] HAL_ING      JPEG-on-video0: encoder chn 3 in group 0 (1920x1080 q75)
+14:46:20.910 [INF] OSD          OSD TrueType font /usr/share/fonts/default.ttf
+14:46:20.926 [INF] OSD          OSD stream 0: 4 overlay(s), 0 privacy mask(s), group 0 (1920x1080)
+14:46:20.926 [INF] HAL_ING      chn1: fs 640x360 (sensor 1920x1080, scale=1) nrVBs=2
+[Fifo] Init: size=4, max_elements=5
+[Fifo] Init: size=7, max_elements=8
+[Fifo] Init: size=4, max_elements=5
+[Fifo] Init: size=4, max_elements=5
+[Fifo] Init: size=7, max_elements=8
+[Fifo] Init: size=4, max_elements=5
+14:46:20.927 [INF] HAL_ING      JPEG-on-video1: encoder chn 4 in group 1 (640x360 q75)
+14:46:20.933 [INF] OSD          OSD stream 1: 4 overlay(s), 0 privacy mask(s), group 1 (640x360)
+[KernelIF] Opened /dev/framechan0 (fd=16)
+[KernelIF] SET_FMT before ioctl:
+[KernelIF]   width=1920 height=1080 pixelformat=0x3231564e
+[KernelIF]   bytesperline=0 sizeimage=0 colorspace=8
+[KernelIF]   attr enable=0 attr=0x0 pic=0x0 fps=1/0
+[KernelIF]   crop_enable=1 crop=1920x1080+0+0
+[KernelIF]   scaler_enable=0 scaler_outwidth=1920 scaler_outheight=1080
+[KernelIF] SET_FMT after ioctl:
+[KernelIF]   width=1920 height=1080 sizeimage=3133440 bytesperline=2880
+[KernelIF]   crop=0 0x0+0+0 scaler=1 1920x1080 rate=0/0x1
+[KernelIF] Set format: 1920x1080 fmt=0xa (fourcc=0x3231564e) sizeimage=3133440 bytesperline=2880 colorspace=8
+[VBM] CreatePool: allocating pool_size=2512 (frame_count=2 * 0x428 + 0x180)
+[VBM] CreatePool: chn=0, 1920x1080 fmt=0xa fourcc=0x3231564e, fps=1/1, 2 frames, size=3133440 (req=3133440 calc=3133440 aligned=3133440)
+[VBM] Frame 0: phys=0x55f1000 virt=0x74cfd000 fourcc=0x3231564e fps=1/1
+[VBM] Frame 1: phys=0x58ee000 virt=0x74ffa000 fourcc=0x3231564e fps=1/1
+[VBM] CreatePool: chn=0 created successfully
+[KernelIF] Set frame depth: 2
+[VBM] FillPool: chn=0, filling 2 frames
+[VBM] FillPool: seeded 2/2 frames via release callback
+FSDBG thread_entry
+FSDBG ch=0 step=post_prctl fd=16 running=1
+[KernelIF] Stream started
+14:46:20.965 [INF] HAL_ING      framesource 0 enabled
+14:46:21.435 [INF] HAL_ING      faac AAC encoder: 16000Hz ch=1 frame=1024 max=8192
+14:46:21.436 [INF] HAL_ING      audio.codec2: second stream PCMU 8000Hz (16k->8k) (WebRTC)
+14:46:21.436 [INF] HAL_ING      audio in: 16000Hz AAC ch=1 vol=80 gain=25 numPerFrm=640
+[KernelIF] Stream stopped
+[VBM] FlushFrame: chn=0
+[VBM] FlushFrame: flushed all frames
+[KernelIF] Closed device (fd=16)
+[VBM] DestroyPool: chn=0
+[VBM] DestroyPool: chn=0 destroyed
+14:46:21.503 [INF] HAL_ING      framesource 0 disabled (idle)
+14:46:21.503 [INF] MAIN         audio backchannel enabled (codec=0 rate=16000, native IMP_AO)
+14:46:21.504 [INF] TLS          TLS server context ready (cert /etc/ssl/certs/timps.crt)
+14:46:21.505 [INF] HTTP         HTTP and HTTPS both served on port 8880 (http.https=1, scheme detected per connection)
+14:46:21.506 [INF] WEBRTC       WHEP endpoint /webrtc/whep ready (ICE-lite + DTLS-SRTP, H264 video0); fingerprint xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:4D:C9
+14:46:21.506 [INF] WEBRTC       media udp 25000-25003, one port per session (4 slots)
+14:46:21.506 [INF] REC          recorder ready (mode=motion dir=/mnt/mmcblk0p1)
+14:46:21.507 [INF] TL           timelapse ready (idle, dir=/mnt/mmcblk0p1 interval=60s)
+14:46:21.507 [INF] MAIN         running. rtsp://<ip>:554/ch0  https://<ip>:8880/
+14:46:21.508 [INF] DAYNIGHT     detection thread started (mode=auto, day<10000 night>15000, probe: gap 600s jump 50% confirm 15s settle 8s, heartbeat 14400s/43200s, calendar=none, boot_probe=1, interval 2000ms, dwell 5s, isp=/proc/jz/isp/isp-m0, cmd=daynight)
+14:46:21.511 [INF] DAYNIGHT     auto day/night enabled
+14:46:21.509 [INF] HTTP         listening on port 8880
+14:46:21.512 [INF] RTSP         listening on port 554
+14:46:21.512 [INF] spk          play-FIFO thread started (/run/timps/audio_out)
+[KernelIF] Opened /dev/framechan1 (fd=25)
+[KernelIF] SET_FMT before ioctl:
+[KernelIF]   width=640 height=360 pixelformat=0x3231564e
+[KernelIF]   bytesperline=0 sizeimage=0 colorspace=8
+[KernelIF]   attr enable=0 attr=0x0 pic=0x0 fps=1/0
+[KernelIF]   crop_enable=0 crop=1920x1080+0+0
+[KernelIF]   scaler_enable=1 scaler_outwidth=640 scaler_outheight=360
+[KernelIF] SET_FMT after ioctl:
+[KernelIF]   width=640 height=360 sizeimage=353280 bytesperline=960
+[KernelIF]   crop=0 0x0+0+0 scaler=1 640x360 rate=0/0x1
+[KernelIF] Set format: 640x360 fmt=0xa (fourcc=0x3231564e) sizeimage=353280 bytesperline=960 colorspace=8
+[VBM] CreatePool: allocating pool_size=2512 (frame_count=2 * 0x428 + 0x180)
+[VBM] CreatePool: chn=1, 640x360 fmt=0xa fourcc=0x3231564e, fps=1/1, 2 frames, size=353280 (req=353280 calc=353280 aligned=353280)
+[VBM] Frame 0: phys=0x55f1000 virt=0x74cfd000 fourcc=0x3231564e fps=1/1
+[VBM] Frame 1: phys=0x5647400 virt=0x74d53400 fourcc=0x3231564e fps=1/1
+[VBM] CreatePool: chn=1 created successfully
+[KernelIF] Set frame depth: 2
+[VBM] FillPool: chn=1, filling 2 frames
+[VBM] FillPool: seeded 2/2 frames via release callback
+FSDBG thread_entry
+FSDBG ch=1 step=post_prctl fd=25 running=1
+[KernelIF] Stream started
+14:46:23.031 [INF] HAL_ING      framesource 1 enabled
+14:46:23.032 [INF] HAL_ING      video chn1 streaming
+[KernelIF] Opened /dev/framechan0 (fd=26)
+[KernelIF] SET_FMT before ioctl:
+[KernelIF]   width=1920 height=1080 pixelformat=0x3231564e
+[KernelIF]   bytesperline=0 sizeimage=0 colorspace=8
+[KernelIF]   attr enable=0 attr=0x0 pic=0x0 fps=1/0
+[KernelIF]   crop_enable=1 crop=1920x1080+0+0
+[KernelIF]   scaler_enable=0 scaler_outwidth=1920 scaler_outheight=1080
+[KernelIF] SET_FMT after ioctl:
+[KernelIF]   width=1920 height=1080 sizeimage=3133440 bytesperline=2880
+[KernelIF]   crop=0 0x0+0+0 scaler=1 1920x1080 rate=0/0x1
+[KernelIF] Set format: 1920x1080 fmt=0xa (fourcc=0x3231564e) sizeimage=3133440 bytesperline=2880 colorspace=8
+[VBM] CreatePool: allocating pool_size=2512 (frame_count=2 * 0x428 + 0x180)
+[VBM] CreatePool: chn=0, 1920x1080 fmt=0xa fourcc=0x3231564e, fps=1/1, 2 frames, size=3133440 (req=3133440 calc=3133440 aligned=3133440)
+[VBM] Frame 0: phys=0x569e000 virt=0x74daa000 fourcc=0x3231564e fps=1/1
+[VBM] Frame 1: phys=0x599b000 virt=0x750a7000 fourcc=0x3231564e fps=1/1
+[VBM] CreatePool: chn=0 created successfully
+[KernelIF] Set frame depth: 2
+[VBM] FillPool: chn=0, filling 2 frames
+[VBM] FillPool: seeded 2/2 frames via release callback
+FSDBG thread_entry
+FSDBG ch=0 step=post_prctl fd=26 running=1
+[KernelIF] Stream started
+14:46:23.065 [INF] HAL_ING      framesource 0 enabled
+14:46:23.066 [INF] HAL_ING      video chn0 streaming
+[DevicePool] Init: device pool initialized
+[DevicePool] Open: opened '/dev/avpu' (fd=27, slot=0)
+[Codec] AVPU: T31 companion stage enabled
+14:46:23.166 [INF] HAL_ING      chn0: first encoded frame packCount=3 aulen=143576 key=1
+[DevicePool] Open: '/dev/avpu' already open (fd=27, refcount=2)
+14:46:23.209 [INF] HAL_ING      chn1: first encoded frame packCount=3 aulen=45674 key=1
+14:46:23.241 [INF] CLIENT       + rtsp/tcp 192.168.1.x:49568 chn=0 agent="Lavf62.3.100"
+14:46:23.242 [INF] RTSP         PLAY session=adcc7bd7 vchn=0 TCP v=1 a=1
+14:46:23.273 [INF] CLIENT       + rtsp/tcp 192.168.1.x:49560 chn=1 agent="Lavf62.3.100"
+14:46:23.274 [INF] RTSP         PLAY session=8c7435b5 vchn=1 TCP v=1 a=1
+14:46:42.802 [INF] HAL_ING      audio resume: flushed 512 stale AI frame(s)
+14:46:43.003 [INF] HAL_ING      AAC encoder producing (52 bytes/frame)
+14:47:03.441 [INF] CLIENT       + rtsp/tcp 192.168.1.x:43700 chn=0 agent="Lavf62.3.100"
+14:47:03.442 [INF] RTSP         PLAY session=24baae18 vchn=0 TCP v=1 a=1
+14:47:07.520 [INF] DAYNIGHT     boot: measuring before deciding - persisted running_mode=0 is a hint, not evidence (exposure 916 in whatever mode we came up in); switching to the day pipeline and reading it in 8s
+14:47:07.520 [DBG] DAYNIGHT     probe (boot measure): exposure 916 vs night reference -1, verdict in 8s
+14:47:07.520 [INF] DAYNIGHT     switching to day (boot measure): daynight day [mode=day exp=916 ref=-1 bar=10000]
+14:47:08.227 [INF] HAL_ING      control image.running_mode=0
+14:47:09.925 [DBG] DAYNIGHT     ISP confirmed the switch to day
+14:47:15.926 [INF] DAYNIGHT     boot: measured day - exposure 1173 (< 10000). The optics are already there, so the one switch_cmd this boot owed the board has been spent
+14:47:28.984 [INF] HTTP         sse client streaming (1/8)
+14:47:29.050 [INF] HTTP         sse client streaming (2/8)
+14:47:29.105 [INF] WEBRTC       no offered H264 matches profile 640033 - answering pt 102 with ours
+14:47:29.109 [INF] WEBRTC       5c763a519fb956bb95119b50295681c8: answered WHEP offer, ICE-lite candidate 192.168.1.x:25000, H264 pt=102, PCMU (codec2)
+14:47:29.154 [INF] WEBRTC       5c763a519fb956bb95119b50295681c8: ICE peer 192.168.1.x:36065
+14:47:29.205 [INF] HTTP         sse client streaming (3/8)
+14:47:29.587 [INF] CLIENT       + webrtc 192.168.1.x:36065 chn=0 agent="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36 Edg/153.0.0.0"
+14:47:29.587 [INF] WEBRTC       5c763a519fb956bb95119b50295681c8: DTLS+SRTP up, streaming video0 pt=102 ssrc=2714125257 + G.711 audio
+14:47:33.619 [INF] RTSP         session=24baae18: client disconnected after 30s (Broken pipe)
+14:47:33.620 [INF] CLIENT       - rtsp/tcp 192.168.1.x:43700 after 30s, 1786050 bytes
+14:47:55.147 [INF] WEBRTC       5c763a519fb956bb95119b50295681c8: peer closed DTLS
+14:47:55.147 [INF] CLIENT       - webrtc 192.168.1.x:36065 after 25s, 1216999 bytes
+14:48:03.933 [INF] HTTP         sse client disconnected (2 left)
+14:48:05.257 [INF] HTTP         sse client disconnected (1 left)
+14:48:56.015 [INF] HTTP         sse client disconnected (0 left)
+14:56:24.669 [INF] CLIENT       - rtsp/tcp 192.168.1.x:49560 after 601s, 19593386 bytes
+14:56:24.670 [INF] RTSP         client disconnect session=8c7435b5
+14:56:24.686 [INF] RTSP         session=adcc7bd7: client disconnected after 601s (Connection reset by peer)
+14:56:24.686 [INF] CLIENT       - rtsp/tcp 192.168.1.x:49568 after 601s, 74991301 bytes
+[KernelIF] Stream stopped
+[VBM] FlushFrame: chn=1
+[VBM] FlushFrame: flushed all frames
+[KernelIF] Closed device (fd=25)
+[VBM] DestroyPool: chn=1
+[VBM] DestroyPool: chn=1 destroyed
+14:56:26.773 [INF] HAL_ING      framesource 1 disabled (idle)
+14:56:26.774 [INF] HAL_ING      video chn1 idle
+[KernelIF] Stream stopped
+[VBM] FlushFrame: chn=0
+[VBM] FlushFrame: flushed all frames
+[KernelIF] Closed device (fd=26)
+[VBM] DestroyPool: chn=0
+[VBM] DestroyPool: chn=0 destroyed
+14:56:26.793 [INF] HAL_ING      framesource 0 disabled (idle)
+14:56:26.793 [INF] HAL_ING      video chn0 idle
+[KernelIF] Opened /dev/framechan0 (fd=23)
+[KernelIF] SET_FMT before ioctl:
+[KernelIF]   width=1920 height=1080 pixelformat=0x3231564e
+[KernelIF]   bytesperline=0 sizeimage=0 colorspace=8
+[KernelIF]   attr enable=0 attr=0x0 pic=0x0 fps=1/0
+[KernelIF]   crop_enable=1 crop=1920x1080+0+0
+[KernelIF]   scaler_enable=0 scaler_outwidth=1920 scaler_outheight=1080
+[KernelIF] SET_FMT after ioctl:
+[KernelIF]   width=1920 height=1080 sizeimage=3133440 bytesperline=2880
+[KernelIF]   crop=0 0x0+0+0 scaler=1 1920x1080 rate=0/0x1
+[KernelIF] Set format: 1920x1080 fmt=0xa (fourcc=0x3231564e) sizeimage=3133440 bytesperline=2880 colorspace=8
+[VBM] CreatePool: allocating pool_size=2512 (frame_count=2 * 0x428 + 0x180)
+[VBM] CreatePool: chn=0, 1920x1080 fmt=0xa fourcc=0x3231564e, fps=1/1, 2 frames, size=3133440 (req=3133440 calc=3133440 aligned=3133440)
+[VBM] Frame 0: phys=0x55f1000 virt=0x74cfd000 fourcc=0x3231564e fps=1/1
+[VBM] Frame 1: phys=0x58ee000 virt=0x74ffa000 fourcc=0x3231564e fps=1/1
+[VBM] CreatePool: chn=0 created successfully
+[KernelIF] Set frame depth: 2
+[VBM] FillPool: chn=0, filling 2 frames
+[VBM] FillPool: seeded 2/2 frames via release callback
+FSDBG thread_entry
+FSDBG ch=0 step=post_prctl fd=23 running=1
+[KernelIF] Stream started
+14:56:30.896 [INF] HAL_ING      framesource 0 enabled
+14:56:31.396 [WRN] HAL_ING      jpeg chn3: PollingStream idle (miss#1) - encoder emits no frames
+14:56:32.362 [INF] HAL_ING      video chn0 streaming
+14:56:34.739 [INF] HAL_ING      video chn0 idle
+[KernelIF] Stream stopped
+[VBM] FlushFrame: chn=0
+[VBM] FlushFrame: flushed all frames
+[KernelIF] Closed device (fd=23)
+[VBM] DestroyPool: chn=0
+[VBM] DestroyPool: chn=0 destroyed
+14:56:34.893 [INF] HAL_ING      framesource 0 disabled (idle)

@@ -1,0 +1,33 @@
+# /tmp/fc_nonblock_test 0 (timps gestoppt), Ausgabe gekürzt auf PASS/FAIL
+
+## 6caeb75e (geflashtes Modul), Testprogramm v1
+FAIL (a) first DQBUF on O_NONBLOCK fd blocked 66.0 ms and returned idx=0 (O_NONBLOCK ignored)
+PASS (b) poll POLLIN after 0.0 ms (revents=0x1), DQBUF: ok idx=1 in 32.919 ms
+FAIL (a2) DQBUF right after a frame on O_NONBLOCK fd blocked 33.7 ms, idx=2
+PASS (c) EINTR=yes, frame after re-queue=yes, 10/10 rounds, every buffer back=yes
+FAIL (d) DQBUF O_NONBLOCK: Invalid argument, blocking: Invalid argument, poll=1 revents=0x1
+RESULT: 2 PASS, 3 FAIL
+
+## 85fbd1fd (nur O_NONBLOCK in DQBUF), insmod aus /tmp
+PASS (a) first DQBUF on O_NONBLOCK fd: EAGAIN after 0.004 ms
+FAIL (b) poll POLLIN after 0.0 ms (revents=0x1), DQBUF: Resource temporarily unavailable
+PASS (c) EINTR=yes, frame after re-queue=yes, 10/10 rounds, every buffer back=yes
+FAIL (d) DQBUF EINVAL both, poll=1 revents=0x1
+RESULT: 2 PASS, 2 FAIL
+
+## 6caeb75e, Testprogramm v2 (mit b0)
+FAIL (b0) poll(timeout 0) with no frame ready: ret=1 revents=0x1
+PASS (b) poll POLLIN after 0.0 ms (revents=0x1), DQBUF: ok idx=1 in 32.886 ms
+FAIL (a2) DQBUF right after a frame on O_NONBLOCK fd blocked 33.7 ms
+PASS (c)
+FAIL (d) poll=1 revents=0x1
+RESULT: 2 PASS, 4 FAIL
+
+## 5fe6bbb2 (O_NONBLOCK + poll wirklich verdrahtet), insmod aus /tmp
+PASS (a) first DQBUF on O_NONBLOCK fd: EAGAIN after 0.003 ms
+PASS (b0) poll(timeout 0) with no frame ready: ret=0 revents=0x0
+PASS (b) poll POLLIN after 62.4 ms (revents=0x1), DQBUF: ok idx=0 in 0.010 ms
+PASS (a2) DQBUF right after a frame on O_NONBLOCK fd: EAGAIN after 0.003 ms
+PASS (c) EINTR=yes, frame after re-queue=yes, 10/10 rounds, every buffer back=yes
+PASS (d) DQBUF EINVAL both, poll=1 revents=0x8 (POLLERR)
+RESULT: 6 PASS, 0 FAIL

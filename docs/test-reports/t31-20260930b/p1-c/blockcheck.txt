@@ -1,0 +1,1 @@
+frames 50 max 16x16 block diff 239.5

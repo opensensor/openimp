@@ -1,0 +1,2 @@
+c ch0 frames= decode_err_lines=8 rec_err_lines=7 dur=0.0s fps=0.00 keyframes=0 maxgap=0.000s gaps>0.5s=0
+c ch1 frames=1567 decode_err_lines=14 rec_err_lines=0 dur=104.3s fps=15.01 keyframes=32 maxgap=0.102s gaps>0.5s=0

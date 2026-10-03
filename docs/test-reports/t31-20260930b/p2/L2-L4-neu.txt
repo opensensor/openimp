@@ -1,0 +1,18 @@
+8b48664e0c0252c99625d18340f9a274  /usr/lib/libimp.so
+bytes: 643597
+gesamt n=60000 max_us=697 <500:59985 500-999:15 1000-1999:0 >=2000:0
+gesamt n=120000 max_us=660 <500:119802 500-999:198 1000-1999:0 >=2000:0
+sec>1ms: 0
+t=100 max_us=647
+gesamt n=120000 max_us=660 <500:119802 500-999:198 1000-1999:0 >=2000:0
+t=45 max_us=660
+== L2-neu
+INFO total: 0
+0
+ 37:     374465   jz-intc  isp-m0
+ 38:      94189   jz-intc  isp-w02
+ctxt 4811121
+---
+ 37:     381730   jz-intc  isp-m0
+ 38:      95967   jz-intc  isp-w02
+ctxt 4968212

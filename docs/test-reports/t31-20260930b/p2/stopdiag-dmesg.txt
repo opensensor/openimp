@@ -1,0 +1,19 @@
+[ 2189.704132] [VBM] GetFrame: chn=0, frame=0x77e33ed8 (idx=1, 0 remaining)
+[ 2189.705898] MARK sigterm pid=16102
+[ 2189.706605] 20:58:45.260 [INF] MAIN         shutting down
+[ 2189.707745] 20:58:45.261 [INF] DAYNIGHT     detection thread stopped
+[ 2189.708893] 20:58:45.262 [INF] RTSP         all client threads gone after 0 ms
+[ 2189.710104] 20:58:45.263 [INF] CLIENT       - fmp4 127.0.0.1:38524 after 9s, 1607531 bytes
+[ 2189.722476] 20:58:45.276 [INF] HTTP         all connection threads gone after 10 ms
+[ 2189.771635] [VBM] GetFrame: chn=0, frame=0x77e33ab0 (idx=0, 0 remaining)
+[ 2189.774861] 20:58:45.328 [INF] spk          play-FIFO thread stopped
+[ 2189.804545] [KernelIF] Stream stopped
+[ 2189.804871] [VBM] FlushFrame: chn=0
+[ 2189.804901] [VBM] FlushFrame: flushed all frames
+[ 2189.804937] [KernelIF] Closed device (fd=24)
+[ 2189.804955] [VBM] DestroyPool: chn=0
+[ 2189.805083] [VBM] DestroyPool: chn=0 destroyed
+[ 2189.805231] 20:58:45.359 [INF] HAL_ING      framesource 0 disabled (idle)
+[ 2193.706617] timpsd: shutdown alarm fired - hard exit
+[ 2193.723497] codec_codec_ctl: set CODEC_TURN_OFF...
+[ 2193.724057] MARK exited

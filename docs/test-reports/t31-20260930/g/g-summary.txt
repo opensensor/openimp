@@ -1,0 +1,11 @@
+== g
+stopped (waited 0x100ms)
+pid 19223
+OPENIMP_T31_OSD=1
+ch0: connects=1 frames=4502 intervals=29 min_per_10s=91 zero_intervals=0 intervals<140=1 [91]
+ch1: connects=1 frames=4502 intervals=29 min_per_10s=91 zero_intervals=0 intervals<140=1 [91]
+snapshots:      27 200 
+snap ok avg 237748 B, avg 0.505 s, max 0.966 s
+timpsd %CPU samples: 9.0 33.2 21.0 23.9 25.8 21.2 
+idle samples: 81.8 51.0 60.1 64.4 61.9 58.4 
+ffmpeg error lines main/sub: 0 / 0

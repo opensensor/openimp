@@ -1,0 +1,10 @@
+buffers: src phys=0x00d80000 size=0x57000  ep1 phys=0x030c8000  stream phys=0x01b80000 size=0x49000
+before: board=0x72000460 misc=0x00000000 mask=0x00000010 pending=0x00000000 jclk=0x00010001
+0x85f8 before start: 0x00000000
+0x85f8 after: 0x00000000
+status: 0x8430=0x000075a8 len(0x8434)=7703 0x8438=0x00000000  mask=0x00000010
+hardware time: 0.91 ms
+first bytes: ff d8 ff e0 00 10 4a 46 49 46 00 01 01 00 00 01
+SOI present: hardware writes the JFIF headers
+EOI present
+wrote 7703 bytes to /tmp/hwjpeg-360.jpg

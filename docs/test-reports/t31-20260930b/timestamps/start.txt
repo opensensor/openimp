@@ -1,0 +1,3 @@
+stopped (waited 0x100ms)
+pid 6293
+779e7000-77a55000 r-xp 00000000 00:0d 13904      /usr/lib/libimp.so

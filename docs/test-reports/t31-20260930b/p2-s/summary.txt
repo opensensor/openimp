@@ -1,0 +1,11 @@
+ch0: connects=1 frames=26669 intervals=179 min_per_10s=88 zero_intervals=0 intervals<140=1 [88]
+ch1: connects=1 frames=26669 intervals=179 min_per_10s=89 zero_intervals=0 intervals<140=1 [89]
+    175 200
+snap avg 0.228 max 0.332
+completion timeout: 0
+without size writeback: 0
+keeps returning EINTR: 0
+\[ERR\]: 0
+\[WRN\]: 0
+still running: 0
+Mem:          74076       19568       33964           0       20544           0

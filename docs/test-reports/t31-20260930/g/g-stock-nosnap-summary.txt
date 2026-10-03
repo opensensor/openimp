@@ -1,0 +1,9 @@
+== g-stock-nosnap
+stopped (waited 0x100ms)
+pid 15285
+ch0: connects=1 frames=2223 intervals=14 min_per_10s=137 zero_intervals=0 intervals<140=1 [137]
+ch1: connects=1 frames=2223 intervals=14 min_per_10s=137 zero_intervals=0 intervals<140=1 [137]
+snapshots: 
+timpsd %CPU samples: 10.0 13.9 11.9 13.0 13.2 13.0 12.1 14.1 13.0 12.1 12.9 13.9 
+idle samples: 80.0 78.1 80.8 80.2 79.2 79.8 81.3 76.7 76.8 81.1 79.6 78.3 
+ffmpeg error lines main/sub: 0 / 0

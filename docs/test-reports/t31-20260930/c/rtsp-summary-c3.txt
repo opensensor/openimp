@@ -1,0 +1,2 @@
+ch0: connects=1 frames=9001 intervals=59 min_per_10s=90 zero_intervals=0 intervals<140=1 [90]
+ch1: connects=1 frames=9001 intervals=59 min_per_10s=90 zero_intervals=0 intervals<140=1 [90]

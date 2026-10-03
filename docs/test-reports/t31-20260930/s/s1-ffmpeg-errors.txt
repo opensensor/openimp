@@ -1,0 +1,5 @@
+ffmpeg-live-ch1.txt:09:17:23 connect #1 (left 7200s)
+ffmpeg-live-ch1.txt:11:17:24 ffmpeg exit #1
+ffmpeg-live-ch0.txt:09:17:23 connect #1 (left 7200s)
+ffmpeg-live-ch0.txt:11:17:24 ffmpeg exit #1
+dts warnings main: 3673 sub: 3117

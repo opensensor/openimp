@@ -1,0 +1,7 @@
+[h264 @ 0x55e57b0b4640] number of reference frames (0+2) exceeds max (1; probably corrupt input), discarding one
+[matroska @ 0x55e57b10e980] Can't write packet with unknown timestamp
+[vost#0:0/copy @ 0x55e57b10ec00] Error submitting a packet to the muxer: Invalid argument
+    Last message repeated 1 times
+[out#0/matroska @ 0x55e57b0b9e00] Error muxing a packet
+[out#0/matroska @ 0x55e57b0b9e00] Task finished with error code: -22 (Invalid argument)
+[out#0/matroska @ 0x55e57b0b9e00] Terminating thread with return code -22 (Invalid argument)

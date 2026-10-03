@@ -1,0 +1,15 @@
+b8035149d22f40270ee51b452eb0ec31  /usr/lib/libimp.so
+stopped (waited 0x100ms)
+pid 2226
+7777f000-777ea000 r-xp 00000000 00:0d 970307     /usr/lib/libimp.so
+cycle 1: ffmpeg_err_lines=7 probe_frames_3s= alloc_failed=14
+cycle 2: ffmpeg_err_lines=4 probe_frames_3s= alloc_failed=14
+cycle 3: ffmpeg_err_lines=4 probe_frames_3s= alloc_failed=14
+cycle 4: ffmpeg_err_lines=4 probe_frames_3s= alloc_failed=14
+cycle 5: ffmpeg_err_lines=4 probe_frames_3s= alloc_failed=14
+cycle 6: ffmpeg_err_lines=4 probe_frames_3s= alloc_failed=14
+0x55f1000 0x5beb000 0x6c18000 0x7212000 0x780c000 
+5
+08:14:08.171 [ERR] HAL_ING      jpeg chn3: encoder dead after 10 consecutive misses - forcing a framesource disable/enable cycle to recover (recovery attempt 3/5)
+08:14:09.991 [ERR] HAL_ING      chn0: encoder dead after 10 consecutive misses - forcing a framesource disable/enable cycle to recover (recovery attempt 4/5)
+08:14:14.998 [ERR] HAL_ING      chn0: 5 consecutive forced-recovery cycles never produced a frame - encoder/ISP is not coming back on its own; exiting (camera needs a manual/scheduled restart)

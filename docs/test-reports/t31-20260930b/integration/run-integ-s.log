@@ -1,0 +1,133 @@
+2026-10-01 07:04:10 start integ-s env: 
+07:04:10.995 [INF] CONFIG       loaded 62 settings from /tmp/timps-25.conf
+07:04:10.996 [INF] CONFIG       sensor: sc4336p i2c=0x30 1920x1080 @25fps
+07:04:10.996 [INF] MAIN         timps v1.9.28-3-g311b0c4 starting (backend=ingenic)
+07:04:10.997 [INF] MAIN         /control token published to /run/timps.token
+07:04:11.061 [INF] HAL_ING      image tuning applied (bri=128 con=128 sat=128 sharp=128)
+07:04:11.064 [INF] HAL_ING      sensor fps: requested 25, driver holds 25/1, set rc=0
+07:04:11.064 [INF] HAL_ING      ISP up, sensor=sc4336p fps=25
+07:04:11.065 [INF] HAL_ING      chn0: fs 1920x1080 (sensor 1920x1080, scale=0) nrVBs=2
+07:04:11.066 [INF] HAL_ING      JPEG-on-video0: encoder chn 3 in group 0 (1920x1080 q75)
+07:04:11.067 [INF] OSD          OSD TrueType font /usr/share/fonts/default.ttf
+07:04:11.085 [INF] OSD          OSD stream 0: 4 overlay(s), 0 privacy mask(s), group 0 (1920x1080)
+07:04:11.086 [INF] HAL_ING      chn1: fs 640x360 (sensor 1920x1080, scale=1) nrVBs=2
+07:04:11.086 [INF] HAL_ING      JPEG-on-video1: encoder chn 4 in group 1 (640x360 q75)
+07:04:11.092 [INF] OSD          OSD stream 1: 4 overlay(s), 0 privacy mask(s), group 1 (640x360)
+[KernelIF] Opened /dev/framechan0 (fd=16)
+[KernelIF] Set format: 1920x1080 fmt=0xa (fourcc=0x3231564e) sizeimage=3133440 bytesperline=2880 colorspace=8
+[VBM] CreatePool: chn=0, 1920x1080 fmt=0xa fourcc=0x3231564e, fps=1/1, 2 frames, size=3133440 (req=3133440 calc=3133440 aligned=3133440)
+[KernelIF] REQBUFS: requested=2 actual=2
+[KernelIF] Set frame depth: 2
+[KernelIF] Stream started
+[Framesource] T31 ISP driver: open tx-isp
+07:04:11.124 [INF] HAL_ING      framesource 0 enabled
+[KernelIF] frame timestamps use CLOCK_MONOTONIC_RAW (DQBUF 26512486234 us, raw now 26512486269 us)
+07:04:11.590 [INF] HAL_ING      faac AAC encoder: 16000Hz ch=1 frame=1024 max=8192
+07:04:11.591 [INF] HAL_ING      audio.codec2: second stream PCMU 8000Hz (16k->8k) (WebRTC)
+07:04:11.591 [INF] HAL_ING      audio in: 16000Hz AAC ch=1 vol=80 gain=25 numPerFrm=640
+[KernelIF] Stream stopped
+[KernelIF] DQBUF failed: fd=16 Invalid argument
+[VBM] VBMKernelDequeue chn=0: DQBUF error ret=-1
+[KernelIF] Closed device (fd=16)
+[VBM] DestroyPool: chn=0
+07:04:11.679 [INF] HAL_ING      framesource 0 disabled (idle)
+07:04:11.679 [INF] MAIN         audio backchannel enabled (codec=0 rate=16000, native IMP_AO)
+07:04:11.681 [INF] TLS          TLS server context ready (cert /etc/ssl/certs/timps.crt)
+07:04:11.681 [INF] HTTP         HTTP and HTTPS both served on port 8880 (http.https=1, scheme detected per connection)
+07:04:11.682 [INF] WEBRTC       WHEP endpoint /webrtc/whep ready (ICE-lite + DTLS-SRTP, H264 video0); fingerprint xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:28:4D
+07:04:11.682 [INF] WEBRTC       media udp 25000-25003, one port per session (4 slots)
+07:04:11.683 [INF] REC          recorder ready (mode=motion dir=/mnt/mmcblk0p1)
+07:04:11.683 [INF] TL           timelapse ready (idle, dir=/mnt/mmcblk0p1 interval=60s)
+07:04:11.683 [INF] MAIN         running. rtsp://<ip>:554/ch0  https://<ip>:8880/
+07:04:11.685 [INF] DAYNIGHT     detection thread started (mode=auto, day<10000 night>15000, probe: gap 600s jump 50% confirm 15s settle 8s, heartbeat 14400s/43200s, calendar=none, boot_probe=1, interval 2000ms, dwell 5s, isp=/proc/jz/isp/isp-m0, cmd=daynight)
+07:04:11.686 [INF] DAYNIGHT     exposure sources: scrape ratio=0.8352 (it/max, max published) | IMP GetExpr ratio=0.8352 it=1500 max=1796 line=22us (=33000us/39512us) GetEVAttr expr_us=33333 us | scrape max is real - shadow read only, decides nothing
+07:04:11.687 [INF] DAYNIGHT     auto day/night enabled
+07:04:11.687 [INF] RTSP         listening on port 554
+07:04:11.686 [INF] HTTP         listening on port 8880
+07:04:11.689 [INF] spk          play-FIFO thread started (/run/timps/audio_out)
+[KernelIF] Opened /dev/framechan0 (fd=25)
+[KernelIF] Set format: 1920x1080 fmt=0xa (fourcc=0x3231564e) sizeimage=3133440 bytesperline=2880 colorspace=8
+[VBM] CreatePool: chn=0, 1920x1080 fmt=0xa fourcc=0x3231564e, fps=1/1, 2 frames, size=3133440 (req=3133440 calc=3133440 aligned=3133440)
+[KernelIF] REQBUFS: requested=2 actual=2
+[KernelIF] Set frame depth: 2
+[KernelIF] Stream started
+07:04:13.205 [INF] HAL_ING      framesource 0 enabled
+07:04:13.205 [INF] HAL_ING      video chn0 streaming
+[KernelIF] Opened /dev/framechan1 (fd=26)
+[KernelIF] Set format: 640x360 fmt=0xa (fourcc=0x3231564e) sizeimage=353280 bytesperline=960 colorspace=8
+[VBM] CreatePool: chn=1, 640x360 fmt=0xa fourcc=0x3231564e, fps=1/1, 2 frames, size=353280 (req=353280 calc=353280 aligned=353280)
+[KernelIF] REQBUFS: requested=2 actual=2
+[KernelIF] Set frame depth: 2
+[KernelIF] Stream started
+[DevicePool] Init: device pool initialized
+[DevicePool] Open: opened '/dev/avpu' (fd=27, slot=0)
+07:04:13.239 [INF] HAL_ING      framesource 1 enabled
+07:04:13.239 [INF] HAL_ING      video chn1 streaming
+[Codec] HWJPEG: T31 hardware JPEG enabled (OPENIMP_T31_HW_JPEG=0 selects the software encoder)
+[Codec] AVPU: T31 companion stage disabled
+07:04:13.276 [INF] HAL_ING      chn0: first encoded frame packCount=3 aulen=142530 key=1
+[DevicePool] Open: '/dev/avpu' already open (fd=27, refcount=2)
+07:04:13.284 [INF] HAL_ING      chn1: first encoded frame packCount=3 aulen=25229 key=1
+07:04:13.303 [INF] CLIENT       + rtsp/tcp 192.168.1.x:40218 chn=0 agent="Lavf62.3.100"
+07:04:13.304 [INF] RTSP         PLAY session=b99629ba vchn=0 TCP v=1 a=1
+07:04:13.305 [INF] HAL_ING      audio resume: flushed 6 stale AI frame(s)
+07:04:13.303 [INF] CLIENT       + rtsp/tcp 192.168.1.x:40220 chn=1 agent="Lavf62.3.100"
+07:04:13.306 [INF] RTSP         PLAY session=943adeaf vchn=1 TCP v=1 a=1
+07:04:13.474 [INF] HAL_ING      AAC encoder producing (49 bytes/frame)
+07:04:17.689 [INF] DAYNIGHT     boot: measuring before deciding - persisted running_mode=1 is a hint, not evidence (exposure 19047 in whatever mode we came up in); switching to the day pipeline and reading it in 8s
+07:04:17.689 [DBG] DAYNIGHT     probe (boot measure): exposure 19047 vs night reference -1, verdict in 8s
+07:04:17.689 [INF] DAYNIGHT     switching to day (boot measure): daynight day [mode=day exp=19047 ref=-1 bar=10000]
+07:04:18.290 [INF] HAL_ING      control image.running_mode=0
+07:04:18.791 [INF] CTRL         set image.running_mode = 0
+07:04:18.793 [INF] CONFIG       persisted 1 setting(s) to /tmp/timps-25.conf
+07:04:20.095 [DBG] DAYNIGHT     ISP confirmed the switch to day
+07:04:26.097 [INF] DAYNIGHT     switching to night (boot: measured night, exposure 19047): daynight night [mode=night exp=19047 ref=-1 bar=10000]
+07:04:26.641 [INF] DAYNIGHT     night reference 19047, proven by the probe (bar 9524)
+07:04:26.693 [INF] HAL_ING      control image.running_mode=1
+07:04:27.195 [INF] CTRL         set image.running_mode = 1
+07:04:27.197 [INF] CONFIG       persisted 1 setting(s) to /tmp/timps-25.conf
+[DevicePool] Open: '/dev/avpu' already open (fd=27, refcount=3)
+[Codec] HWJPEG: ready, ep1=0x01cd8000
+[Codec] HWJPEG: 1920x1080 q75 -> 207005 bytes [#1]
+07:04:28.642 [DBG] DAYNIGHT     ISP confirmed the switch to night
+[Codec] HWJPEG: 1920x1080 q75 -> 206554 bytes [#2]
+[Codec] HWJPEG: 1920x1080 q75 -> 206060 bytes [#3]
+07:04:34.643 [INF] HAL_ING      control image.running_mode=1
+07:04:35.144 [DBG] DAYNIGHT     re-asserting running_mode=1 after switch (1 left)
+07:04:43.145 [INF] HAL_ING      control image.running_mode=1
+07:04:43.646 [DBG] DAYNIGHT     re-asserting running_mode=1 after switch (0 left)
+07:04:53.424 [INF] CLIENT       + rtsp/tcp 192.168.1.x:34444 chn=0 agent="Lavf62.3.100"
+07:04:53.426 [INF] RTSP         PLAY session=0fe8f10b vchn=0 TCP v=1 a=1
+07:05:23.505 [INF] RTSP         session=0fe8f10b: client disconnected after 30s (Connection reset by peer)
+07:05:23.506 [INF] CLIENT       - rtsp/tcp 192.168.1.x:34444 after 30s, 4234864 bytes
+[Codec] HWJPEG: 1920x1080 q75 -> 205335 bytes [#100]
+[Codec] HWJPEG: 1920x1080 q75 -> 205737 bytes [#200]
+[Codec] HWJPEG: 1920x1080 q75 -> 205878 bytes [#300]
+[Codec] HWJPEG: 1920x1080 q75 -> 206137 bytes [#400]
+[Codec] HWJPEG: 1920x1080 q75 -> 206006 bytes [#500]
+[Codec] HWJPEG: 1920x1080 q75 -> 206093 bytes [#600]
+[Codec] HWJPEG: 1920x1080 q75 -> 205905 bytes [#700]
+[Codec] HWJPEG: 1920x1080 q75 -> 205624 bytes [#800]
+[Codec] HWJPEG: 1920x1080 q75 -> 205624 bytes [#900]
+[Codec] HWJPEG: 1920x1080 q75 -> 205566 bytes [#1000]
+[Codec] HWJPEG: 1920x1080 q75 -> 205434 bytes [#1100]
+[Codec] HWJPEG: 1920x1080 q75 -> 205472 bytes [#1200]
+[Codec] HWJPEG: 1920x1080 q75 -> 205576 bytes [#1300]
+07:24:14.150 [INF] RTSP         session=b99629ba: client disconnected after 1200s (Connection reset by peer)
+07:24:14.151 [INF] CLIENT       - rtsp/tcp 192.168.1.x:40218 after 1200s, 186607319 bytes
+07:24:14.197 [INF] RTSP         session=943adeaf: client disconnected after 1200s (Broken pipe)
+07:24:14.197 [INF] CLIENT       - rtsp/tcp 192.168.1.x:40220 after 1200s, 44017275 bytes
+[KernelIF] Stream stopped
+[KernelIF] DQBUF failed: fd=26 Invalid argument
+[VBM] VBMKernelDequeue chn=1: DQBUF error ret=-1
+[KernelIF] Closed device (fd=26)
+[VBM] DestroyPool: chn=1
+07:24:16.219 [INF] HAL_ING      framesource 1 disabled (idle)
+07:24:16.219 [INF] HAL_ING      video chn1 idle
+[KernelIF] Stream stopped
+[KernelIF] DQBUF failed: fd=25 Invalid argument
+[VBM] VBMKernelDequeue chn=0: DQBUF error ret=-1
+[KernelIF] Closed device (fd=25)
+[VBM] DestroyPool: chn=0
+07:24:16.279 [INF] HAL_ING      framesource 0 disabled (idle)
+07:24:16.279 [INF] HAL_ING      video chn0 idle
