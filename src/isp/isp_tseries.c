@@ -3248,11 +3248,15 @@ int IMP_ISP_Tuning_SetVideoDrop(void *attr)
     return 0;
 }
 
-#if defined(PLATFORM_T21) /* T21 and T20 */
+#if defined(PLATFORM_T21) || defined(PLATFORM_T31) /* T21, T20 and T31 */
 /* T21 1.0.33 (0x3150/0x31b8/0x324c/0x32b4): VIDIOC_S/G_CTRL with the V4L2
  * scene-mode and colour-effect controls; Get stores the value only when
  * the ioctl succeeds. The T20 3.12.0 kernel handles both controls
- * (apical scene mode and colorfx); the T21 kernel runs the OEM handler. */
+ * (apical scene mode and colorfx); the T21 kernel runs the OEM handler.
+ * The stock T31 libimp does not export these calls (undefined symbol) and
+ * the stock T31 kernel accepts both controls as no-ops; the open-tx-isp
+ * T31 driver serves them (scene stored, colorfx AUTO/BW/VIVID/NEGATIVE),
+ * so T31 uses the same V4L2 controls (beyond vendor). */
 #define TSERIES_V4L2_CID_SCENE_MODE 0x009a091a
 #define TSERIES_V4L2_CID_COLORFX    0x0098091f
 
@@ -3295,9 +3299,9 @@ int IMP_ISP_Tuning_GetColorfxMode(IMPISPColorfxMode *pmode)
     }
     return result;
 }
-#else /* !PLATFORM_T21: T23/T30/T31 kernels expose no scene/colour-effect ctl */
+#else /* T30 (T23 has its own, T31 uses the T21 form): no scene/colour-effect ctl */
 /* These are declared in the public header for every SoC but the vendor only
- * wires them on T20/T21. Export failing stubs so a T23/T30/T31 app links
+ * wires them on T20/T21. Export failing stubs so a T30 app links
  * (instead of hitting an undefined symbol) and reports the missing control
  * once, mirroring the other unsupported calls in the tree. */
 static void tseries_scene_colorfx_unsupported(const char *name, int *reported)
@@ -3344,7 +3348,7 @@ int IMP_ISP_Tuning_GetColorfxMode(IMPISPColorfxMode *pmode)
     tseries_scene_colorfx_unsupported("IMP_ISP_Tuning_GetColorfxMode", &reported);
     return -1;
 }
-#endif /* PLATFORM_T21 */
+#endif /* PLATFORM_T21 || PLATFORM_T31 */
 
 int IMP_ISP_Tuning_SetShading(void *attr)
 {
@@ -3450,62 +3454,8 @@ int IMP_ISP_Tuning_GetCsc_Attr(void *attr)
 }
 #endif /* !PLATFORM_T23 */
 
-#if defined(PLATFORM_T23)
-/* T23's tuning entry points live in isp_t23_tuning.c, which does not include
- * the public header, so the Scene/Colorfx stubs are provided here where
- * imp_isp.h already supplies the enum types.  The T23 image path has no
- * scene-mode or colour-effect control, so report it once and fail, keeping
- * the symbols exported for applications that reference them. */
-static void tseries_t23_scene_colorfx_unsupported(const char *name,
-                                                  int *reported)
-{
-    if (*reported) {
-        return;
-    }
-    *reported = 1;
-    fprintf(stderr, "[IMP-ISP] %s: not supported on this SoC\n", name);
-}
-
-int IMP_ISP_Tuning_SetSceneMode(IMPISPSceneMode mode)
-{
-    static int reported;
-
-    (void)mode;
-    tseries_t23_scene_colorfx_unsupported("IMP_ISP_Tuning_SetSceneMode",
-                                          &reported);
-    return -1;
-}
-
-int IMP_ISP_Tuning_GetSceneMode(IMPISPSceneMode *pmode)
-{
-    static int reported;
-
-    (void)pmode;
-    tseries_t23_scene_colorfx_unsupported("IMP_ISP_Tuning_GetSceneMode",
-                                          &reported);
-    return -1;
-}
-
-int IMP_ISP_Tuning_SetColorfxMode(IMPISPColorfxMode mode)
-{
-    static int reported;
-
-    (void)mode;
-    tseries_t23_scene_colorfx_unsupported("IMP_ISP_Tuning_SetColorfxMode",
-                                          &reported);
-    return -1;
-}
-
-int IMP_ISP_Tuning_GetColorfxMode(IMPISPColorfxMode *pmode)
-{
-    static int reported;
-
-    (void)pmode;
-    tseries_t23_scene_colorfx_unsupported("IMP_ISP_Tuning_GetColorfxMode",
-                                          &reported);
-    return -1;
-}
-#endif /* PLATFORM_T23 */
+/* T23: IMP_ISP_Tuning_Set/GetSceneMode and Set/GetColorfxMode are in
+ * isp_t23_tuning.c (V4L2 controls, like the BCS controls). */
 
 /* Vendor ABI (T31): IMPISPWdrOutputMode *; the kernel copies 4 bytes. */
 int IMP_ISP_Tuning_SetWdr_OutputMode(void *mode)
