@@ -3,7 +3,7 @@
 Everything changed, extended or fixed in OpenIMP, open-tx-isp, timps and the thingino
 integration since the test campaign started on 2026-09-30. Kept up to date during the campaign.
 
-Last update: 2026-10-03 17:00.
+Last update: 2026-10-03 19:00.
 
 Cameras are anonymised: cam-A (T31), cam-B (T23), cam-C (T20), cam-D (T21), cam-E (T10), cam-F (T41).
 
@@ -87,6 +87,18 @@ Goal: identical image behaviour, but cleaner unload/reload, less memory and chec
 OpenIMP: T20 green flicker in the bottom rows fixed by filling the encoder padding rows (`claude/t20-bottom-chroma`; 0 green pixels in 30 frames). Faster IVS (`claude/ivs-opt`; T20 timps CPU 4.1 % → 2.7 % with motion on).
 
 Aggregates: `claude/open-tx-isp-all-4` and `claude/openimp-all-4` (pushed); 58 merged single branches removed. `claude/open-tx-isp-all-5` adds t21-robust and t31-robust-2 (T31: sensor flip with shvflip=1, unload leaks, lazy WDR buffers; MemFree drift per reload 460 → 45 KB); all four cameras flashed with -all-5 images.
+
+## Evening (2026-10-03)
+
+- **T10 rate control: super-frame fix default**: the super-frame fix (P1) is now the default inside the T10 OEM controller (`OPENIMP_T10_RC=1`; `OPENIMP_T10_RC_SUPERFRM=0` restores vendor-exact behaviour). cam-E at 1200 kbit/s: 450 to 822 kbit/s, re-encodes 800 to 0, CPU 8.3 to 5.5 %. Branch `claude/t10-rc-superfrm`.
+- **T20 rate control: I-aware P budget**: P2 is the default for CBR (`OPENIMP_T20_RC_IAWARE=0` = vendor; `=1` forces it for VBR/SMART too). cam-C: CBR 1583 to 1300 kbit/s at 1200 (stats 1244). VBR stays vendor (with P2 it fell to 866). Branch `claude/t20-rc-iaware`.
+- **T31 rate control:** the Allegro rate-control core is the default (`OPENIMP_T31_RC_CORE=legacy` restores the old one; CBR stays legacy). Branch `claude/t31-capped-quality`.
+- **T23 fixes:** brightness/contrast/saturation/hue now act (they were reset on every stream start); T10/T20 `ae_it_max_us` now limits the AE; T23 sub-stream rotation 90/270 works via the native encoder; T23 `IMP_Encoder_YuvSetCrop` implemented (host-tested only, timps does not call it); T23 contrast/gain feedback: the driver takes the low byte like the vendor and OpenIMP remembers the gain before sending (cam-B: user contrast 100 stays). Branches open-tx-isp `claude/t23-bcsh-aeit-fix`, openimp `claude/t23-yuv-native-aeit`.
+- **T21/T31 contrast:** OpenIMP sends the user contrast instead of the default 128 and remembers the gain before sending (commit 6ba6f17). Code done, device test pending.
+- **T10 build:** duplicate `isp_printf` export fixed in open-tx-isp (no local patch needed).
+- **Boot guard for T20, T23, T31:** `S10isp-guard` + `isp_open=auto` added (local image overlay, ships with the next image, not on the device yet). A load counts as stable after 300 s uptime with timpsd running; otherwise the next boot skips the ISP/sensor modules and timps until `S10isp-guard clear`.
+- **T21 smaller and faster:** kernel module 760 to 494 KB (RAM unchanged); the lifted AWB now needs 0.95x of the vendor instructions (was 1.41x), output bit-identical, cam-D isp_fw_process -10 %. Branch `claude/t21-size-awb-opt`.
+- **T41 (cam-F):** the bitrate setting had no effect because the OpenIMP T41 controller discarded a negative bucket level; fixed (`claude/t41-cbr-overshoot`), host-simulated, device test pending. In the dark the gc5603 shows strong column noise, so about 10 Mbit/s even at QP 45 (separate ISP issue). The spontaneous reboot is an OOM: rmem=30M leaves 29.6 MB for Linux; 3 parallel streams plus snapshots exhaust it and the watchdog resets. Proposal: rmem about 24 MB (the vendor image uses 19 MB). After an OOM kill the sensor stays registered and AddSensor returns EBUSY until reboot; a driver fix (`claude/t41-sensor-rereg`) crashed on the first device load and is being analysed. The black picture after a WB POST was not reproducible (timps does not call any WB function on T41).
 
 ## Late afternoon (2026-10-03)
 
