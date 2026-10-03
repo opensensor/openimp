@@ -2167,14 +2167,31 @@ typedef struct {
 
 /* Temper strength is a userspace table scale on T20 (see
  * tseries_table_tuning_ratio); there is nothing to read back, so report the
- * last ratio set (100 = tuning-bin table unchanged). */
-static uint32_t tseries_t20_temper_ratio = 100;
+ * last value set (128 = tuning-bin table unchanged, see below). */
+static uint32_t tseries_t20_temper_ratio = 128;
+
+/*
+ * T20/T10 Sinter/Temper strength scale.  The stock T20 3.12.0 libimp passes
+ * the caller's value to isp_table_tuning_ratio() as a percentage (100 =
+ * tuning table, capped at 200).  With the stock kernel that is a no-op
+ * anyway (the firmware renormalises the table onto the IQ min/max limits);
+ * open-tx-isp (claude/t10-t20-nr-wdr) makes the scale take effect.  Like
+ * T21 (isp_t21_sinter.h) the value is read on the timps/Thingino scale
+ * 0..255 with 128 = neutral, so the default 128 keeps the tuning picture:
+ * percent = v * 100 / 128 (rounded), capped at the vendor's 200.
+ */
+static uint32_t tseries_t20_nr_percent(uint32_t v)
+{
+    uint32_t pct = (v * 100u + 64u) / 128u;
+
+    return pct > 200u ? 200u : pct;
+}
 #endif
 
 #if defined(PLATFORM_T21) /* T21 and T20 */
 /* Same for sinter strength on T21 and T20. */
 #if defined(PLATFORM_T20)
-static uint32_t tseries_t2x_sinter_ratio = 100;
+static uint32_t tseries_t2x_sinter_ratio = 128; /* neutral, see tseries_t20_nr_percent */
 #else
 static uint32_t tseries_t2x_sinter_ratio = 128; /* T21: neutral, see isp_t21_sinter.h */
 #endif
@@ -2503,9 +2520,9 @@ int IMP_ISP_Tuning_SetTemperStrength(uint32_t ratio)
 {
 #if defined(PLATFORM_T20)
     /* T20 3.12.0: isp_table_tuning_ratio(132, min(ratio, 200)); the driver
-     * has no temper-strength control. */
+     * has no temper-strength control.  Value on the 128-neutral scale. */
     int result = tseries_table_tuning_ratio(TSERIES_TABLE_TEMPER,
-                                            ratio > 200 ? 200 : ratio);
+                                            tseries_t20_nr_percent(ratio));
 
     if (result == 0) {
         tseries_t20_temper_ratio = ratio;
@@ -2555,9 +2572,10 @@ int IMP_ISP_Tuning_SetSinterStrength(uint32_t ratio)
     return result;
 #elif defined(PLATFORM_T21) /* T20 */
     /* T20 3.12.0: isp_table_tuning_ratio(109, min(ratio, 200));
-     * the drivers reject 0x8000086 and have no sinter-strength control. */
+     * the drivers reject 0x8000086 and have no sinter-strength control.
+     * Value on the 128-neutral scale, see tseries_t20_nr_percent. */
     int result = tseries_table_tuning_ratio(TSERIES_TABLE_SINTER,
-                                            ratio > 200 ? 200 : ratio);
+                                            tseries_t20_nr_percent(ratio));
 
     if (result == 0) {
         tseries_t2x_sinter_ratio = ratio;
