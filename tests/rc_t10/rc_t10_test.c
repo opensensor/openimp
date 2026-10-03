@@ -10,6 +10,51 @@
 #include <stdio.h>
 #include <string.h>
 
+/* OpenIMP extra superfrm_bits: off (the default) must keep the OEM
+ * thresholds (bits / 1024: a T10 VBR picture above 13714 bits is coded
+ * again), on must compare in bits (no re-encode below 14 Mbit, still one
+ * above).  The OEM vectors above run with it off. */
+static int superfrm_check(void)
+{
+    RcT10Params p;
+    RcT10 rc;
+    RcT10Picture pic;
+    RcT10Stats st;
+    int on, i, again[2] = { 0, 0 }, big[2] = { 0, 0 };
+
+    for (on = 0; on < 2; on++) {
+        RCT10_DefaultParams(&p);
+        p.method = 2;           /* VBR */
+        p.width = 1920;
+        p.height = 1080;
+        p.gop = 25;
+        p.max_bitrate = 2000;
+        p.superfrm_bits = (uint32_t)on;
+        if (RCT10_Init(&rc, &p) != 0)
+            return 1;
+        if (*(const int32_t *)(rc.e + 88) != (on ? 19660800 : 19200) ||
+            *(const int32_t *)(rc.e + 92) != (on ? 14043429 : 13714))
+            return 1;
+        for (i = 0; i < 100; i++) {
+            RCT10_Start(&rc, i % 25 == 0, &pic);
+            st.cmpx = 400000u + 1000u * (uint32_t)(i % 7);
+            st.bits = i % 25 == 0 ? 600000u : 80000u;
+            if (i == 60)
+                st.bits = 20000000u;    /* a real super frame */
+            if (RCT10_End(&rc, &st, &pic) == 1) {
+                again[on]++;
+                if (i == 60)
+                    big[on] = 1;
+                st.bits /= 2;
+                RCT10_End(&rc, &st, &pic);
+            }
+        }
+    }
+    printf("rc_t10 superfrm: off %d re-encodes, on %d (super frame %d)\n",
+           again[0], again[1], big[1]);
+    return !(again[0] >= 90 && again[1] == 1 && big[1] == 1);
+}
+
 int main(int argc, char **argv)
 {
     const char *path = argc > 1 ? argv[1] : "rc_t10_vectors.txt";
@@ -88,5 +133,9 @@ int main(int argc, char **argv)
     fclose(f);
     printf("rc_t10: %ld decisions of %d scenarios checked, %ld differ\n",
            checked, scenario + 1, failed);
+    if (superfrm_check()) {
+        fprintf(stderr, "rc_t10 superfrm check failed\n");
+        return 1;
+    }
     return failed ? 1 : 0;
 }

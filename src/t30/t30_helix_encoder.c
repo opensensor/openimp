@@ -1302,6 +1302,10 @@ static void t20_rc_start(T30HelixEncoder *encoder)
         q.new_max_qp = p.new_max_qp;
         q.super_i_bits = p.super_i_bits;
         q.super_p_bits = p.super_p_bits;
+        /* OPENIMP_T10_RC_SUPERFRM=1: super-frame thresholds in bits (no
+         * OEM re-encode of nearly every VBR picture), see docs/T20_RC.md */
+        env = getenv("OPENIMP_T10_RC_SUPERFRM");
+        q.superfrm_bits = env && env[0] == '1';
         if (RCT10_Init(&encoder->t10rc, &q) != 0) {
             IMP_LOG_WARN("Encoder", "T10: OEM rate control init failed, "
                          "using the GOP controller");
@@ -1315,12 +1319,13 @@ static void t20_rc_start(T30HelixEncoder *encoder)
         encoder->t20rc_frames = 0u;
         IMP_LOG_INFO("Encoder", "T10 rc: OEM %s %ux%u gop=%u fps=%u/%u "
                      "bitrate=%u kbit/s qp=[%u,%u] bias=%d steps=%u/%u "
-                     "changePos=%u quality=%u gopRelation=%u%s",
+                     "changePos=%u quality=%u gopRelation=%u%s%s",
                      q.method == 1u ? "CBR" : q.method == 3u ? "SMART" : "VBR",
                      q.width, q.height, q.gop, q.fps_num, q.fps_den,
                      q.method == 1u ? q.bitrate : q.max_bitrate, q.min_qp,
                      q.max_qp, (int)q.i_bias, q.frm_qp_step, q.gop_qp_step,
                      q.change_pos, q.quality, q.gop_relation,
+                     q.superfrm_bits ? " superfrm=bits" : "",
                      runtime ? " (run-time set)" : "");
         return;
     }

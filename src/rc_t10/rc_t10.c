@@ -1264,6 +1264,11 @@ static int8_t rct10_ip_shift(float ipf)
 /* i264e_ratecontrol_init (0x3ab38), T10 branch: the E block. */
 void RCT10_SetupE(uint8_t *E, const RcT10Params *p)
 {
+    /* OEM: the super-frame thresholds are the parameter / 1024 compared
+     * with the picture's bits (every T10 VBR picture above 13714 bits is
+     * coded twice).  OpenIMP extra superfrm_bits = 1: compare the parameter
+     * in bits, as the T20 controller does (docs/T20_RC.md, "T10"). */
+    const int32_t sf_div = p->superfrm_bits ? 1 : 1024;
     uint8_t fps = (uint8_t)(p->fps_den ? p->fps_num / p->fps_den : 0);
     uint8_t maxq = (uint8_t)p->max_qp;
     float trig = p->new_max_qp_trig;
@@ -1323,7 +1328,7 @@ void RCT10_SetupE(uint8_t *E, const RcT10Params *p)
         RU32(E, 80) = 200;
         RU8(E, 101) = 3;
         RU8(E, 96) = (uint8_t)p->gop;
-        RI32(E, 92) = p->super_p_bits / 1024;
+        RI32(E, 92) = p->super_p_bits / sf_div;
         RU8(E, 97) = 1;
         RU8(E, 100) = 1;
         RU8(E, 108) = (uint8_t)p->gop_relation;
@@ -1331,7 +1336,7 @@ void RCT10_SetupE(uint8_t *E, const RcT10Params *p)
         RF32(E, 104) = 1.2f;
         RI8(E, 77) = rct10_ip_shift(p->ip_factor);
         RU32(E, 84) = fps ? 200u / fps : 0;
-        RI32(E, 88) = p->super_i_bits / 1024;
+        RI32(E, 88) = p->super_i_bits / sf_div;
         break;
     case 3:
         RU8(E, 128) = (uint8_t)p->frm_qp_step;
@@ -1350,7 +1355,7 @@ void RCT10_SetupE(uint8_t *E, const RcT10Params *p)
         RU8(E, 129) = (uint8_t)p->gop_qp_step;
         RU32(E, 136) = 200;
         RU8(E, 152) = (uint8_t)p->gop;
-        RI32(E, 148) = p->super_p_bits / 1024;
+        RI32(E, 148) = p->super_p_bits / sf_div;
         RU8(E, 153) = 1;
         RU8(E, 156) = 1;
         RU8(E, 157) = 3;
@@ -1358,7 +1363,7 @@ void RCT10_SetupE(uint8_t *E, const RcT10Params *p)
         RU32(E, 168) = 2;
         RF32(E, 160) = 1.2f;
         RU32(E, 140) = fps ? 200u / fps : 0;
-        RI32(E, 144) = p->super_i_bits / 1024;
+        RI32(E, 144) = p->super_i_bits / sf_div;
         RI8(E, 133) = rct10_ip_shift(p->ip_factor);
         break;
     default:

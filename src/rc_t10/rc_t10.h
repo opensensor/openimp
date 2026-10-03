@@ -43,6 +43,10 @@ typedef struct {
     int32_t super_i_bits;       /* [280] */
     int32_t super_p_bits;       /* [284] */
     float ip_factor;            /* [208] (default 1.4) */
+    /* OpenIMP extra, not an OEM field (0 = OEM): 1 compares the super
+     * frame thresholds super_i_bits / super_p_bits in bits instead of
+     * bits / 1024, so T10 VBR no longer codes most pictures twice. */
+    uint32_t superfrm_bits;
 } RcT10Params;
 
 void RCT10_DefaultParams(RcT10Params *params);
