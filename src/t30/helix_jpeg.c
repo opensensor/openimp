@@ -36,6 +36,12 @@
 #define HELIX_JPEG_SHARED_BS 1
 #include "t30/helix_bitstream.h"
 #endif
+#if defined(PLATFORM_T23)
+/* T23: the picture goes to the native H.264 encoder's shared bitstream
+ * area when one exists (stock vpuBs + bsbufsem), else to a buffer of its
+ * own (src/t30/t23_helix_bs.h). */
+#include "t30/t23_helix_bs.h"
+#endif
 
 #ifndef OPENIMP_SW_JPEG
 #define OPENIMP_SW_JPEG 1
@@ -635,6 +641,7 @@ static struct {
     uint32_t stripe_rows;      /* OPENIMP_HELIX_JPEG_STRIPE_ROWS (0 = auto) */
     uint32_t stripes;          /* jobs of the last picture */
     uint32_t channels;         /* JPEG channels (Reserve .. Release) */
+    int borrowed;              /* job is the T23 shared H.264 area */
 } helix_jpeg = { .lock = PTHREAD_MUTEX_INITIALIZER, .fd = -1 };
 
 static void helix_dma_release(IMPDMABufferInfo *dma)
@@ -959,6 +966,13 @@ static int helix_job_buffer(uint32_t capacity)
     helix_jpeg.reason = "shared bitstream buffer";
     return -1;
 #endif
+    if (helix_jpeg.borrowed) {
+        /* never grown or freed here: it belongs to the H.264 encoder */
+        if (helix_jpeg.job.size >= HELIX_DESCRIPTOR_AREA + capacity)
+            return 0;
+        helix_jpeg.reason = "shared bitstream area";
+        return -1;
+    }
 
     if (helix_jpeg.job.phys_addr &&
         helix_jpeg.job.size >= HELIX_DESCRIPTOR_AREA + capacity)
@@ -1900,6 +1914,34 @@ int OpenIMP_HelixJpeg_EncodeEx(const HelixJpegFrame *frame,
             OpenIMP_HelixBitstream_Unlock();
         }
     }
+#elif defined(PLATFORM_T23)
+    {
+        uint32_t aligned_height = (frame->height + 15u) & ~15u;
+        uint32_t need = HELIX_DESCRIPTOR_AREA + helix_bitstream_capacity(
+            frame->width * aligned_height * 3u / 2u, qt);
+        IMPDMABufferInfo shared;
+
+        if (!helix_jpeg.probe_limit &&
+            OpenIMP_T23_HelixBs_Lock(need, &shared) == 0) {
+            if (helix_jpeg.job.phys_addr) {
+                /* the area took over: the buffer of its own goes */
+                IMP_LOG_INFO("Encoder", "Helix JPEG: using the shared "
+                             "%u-byte H.264 bitstream area, freeing the "
+                             "%u-byte JPEG buffer", shared.size,
+                             helix_jpeg.job.size);
+                helix_dma_release(&helix_jpeg.job);
+            }
+            helix_jpeg.job = shared;
+            helix_jpeg.borrowed = 1;
+            ret = helix_jpeg_run_locked(frame, qt, stream, &path, &capacity);
+            helix_jpeg.borrowed = 0;
+            memset(&helix_jpeg.job, 0, sizeof(helix_jpeg.job));
+            helix_jpeg.active = NULL;
+            OpenIMP_T23_HelixBs_Unlock();
+        } else {
+            ret = helix_jpeg_run_locked(frame, qt, stream, &path, &capacity);
+        }
+    }
 #else
     ret = helix_jpeg_run_locked(frame, qt, stream, &path, &capacity);
 #endif
@@ -1947,6 +1989,27 @@ int OpenIMP_HelixJpeg_EncodeEx(const HelixJpegFrame *frame,
     return ret == 0 ? 0 : -1;
 }
 
+#if defined(PLATFORM_T23)
+/* The native H.264 encoder created the shared area: the JPEG buffer of
+ * its own is freed now rather than at the next picture, when the area
+ * holds a picture of the bitstream limit. */
+void OpenIMP_HelixJpeg_AreaReady(void)
+{
+    pthread_mutex_lock(&helix_jpeg.lock);
+    if (helix_jpeg.job.phys_addr && !helix_jpeg.borrowed &&
+        helix_jpeg.bs_limit &&
+        OpenIMP_T23_HelixBs_Size() >= HELIX_DESCRIPTOR_AREA +
+            ((helix_jpeg.bs_limit + 0xfffu) & ~0xfffu)) {
+        IMP_LOG_INFO("Encoder", "Helix JPEG: pictures go to the shared "
+                     "%u-byte H.264 bitstream area, freeing the %u-byte "
+                     "JPEG buffer", OpenIMP_T23_HelixBs_Size(),
+                     helix_jpeg.job.size);
+        helix_dma_release(&helix_jpeg.job);
+    }
+    pthread_mutex_unlock(&helix_jpeg.lock);
+}
+#endif
+
 int OpenIMP_HelixJpeg_Reserve(uint32_t width, uint32_t height)
 {
     uint8_t qt[128];
@@ -1993,6 +2056,18 @@ int OpenIMP_HelixJpeg_Reserve(uint32_t width, uint32_t height)
                      used, total, largest);
     }
 #else
+#if defined(PLATFORM_T23)
+    if (OpenIMP_T23_HelixBs_Size() >= HELIX_DESCRIPTOR_AREA +
+            helix_bitstream_capacity(width * aligned_height * 3u / 2u, qt)) {
+        (void)DMA_RmemStats(&used, &total, &largest);
+        IMP_LOG_INFO("Encoder", "Helix JPEG: %ux%u channel: bitstream in the "
+                     "shared %u-byte H.264 area (rmem used %zu of %zu, "
+                     "largest free %zu)", width, height,
+                     OpenIMP_T23_HelixBs_Size(), used, total, largest);
+        pthread_mutex_unlock(&helix_jpeg.lock);
+        return 0;
+    }
+#endif
     {
         uint32_t before = helix_jpeg.job.size;
 
