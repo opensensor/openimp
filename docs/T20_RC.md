@@ -354,16 +354,20 @@ Environment:
   T20, at most 4).  Off by default until tested on a T10 camera, also
   because OEM VBR codes most pictures twice (see "T10").  The log shows
   `T10 rc: OEM <mode> ...` when it starts.
-- `OPENIMP_T10_RC_SUPERFRM=1` (with `OPENIMP_T10_RC=1`, default off): an
-  OpenIMP extra (`RcT10Params.superfrm_bits`), not OEM behaviour: the
-  super-frame thresholds are compared in bits (19660800 / 14043429, as the
-  T20 controller does) instead of bits / 1024, so T10 VBR stops coding
-  nearly every picture twice; a picture above those sizes is still coded
-  again.  Host simulation (docs/RC_BEYOND_VENDOR_STUDY.md on
-  `claude/rc-beyond-vendor`, P1): re-encodes 0.97 -> 0 per picture, bit
-  rate and QP within +-3 %.  CBR and SMART never re-encode, unchanged.
-  The start log line ends in `superfrm=bits`; `tests/rc_t10` checks that
-  the default keeps the OEM decisions (vectors) and both settings.
+- `OPENIMP_T10_RC_SUPERFRM` (with `OPENIMP_T10_RC=1`): an OpenIMP extra
+  (`RcT10Params.superfrm_bits`), not OEM behaviour, **on by default**
+  whenever the T10 OEM controller runs: the super-frame thresholds are
+  compared in bits (19660800 / 14043429, as the T20 controller does)
+  instead of bits / 1024, so T10 VBR stops coding nearly every picture
+  twice; a picture above those sizes is still coded again.
+  `OPENIMP_T10_RC_SUPERFRM=0` restores the OEM decisions (bit-exact).
+  Device test (T10, VBR, 60 s, 1200 kbit/s): OEM 450 kbit/s, 800
+  re-encodes, CPU 8.3 %; with the extra 822 kbit/s, 0 re-encodes, CPU
+  5.5 % (the OEM re-encodes at QP + 3 kept the rate far below the target;
+  the host study had predicted the re-encode count, not this rate
+  effect).  The start log line ends in `superfrm=bits`; `tests/rc_t10`
+  checks that the OEM setting keeps the OEM decisions (vectors) and both
+  settings.
 
 The log shows `T20 rc: OEM <mode> ...` with the effective parameters when
 the controller starts.  `tests/t30` (helix_encoder_test_t20) checks the

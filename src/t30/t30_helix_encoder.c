@@ -1302,10 +1302,12 @@ static void t20_rc_start(T30HelixEncoder *encoder)
         q.new_max_qp = p.new_max_qp;
         q.super_i_bits = p.super_i_bits;
         q.super_p_bits = p.super_p_bits;
-        /* OPENIMP_T10_RC_SUPERFRM=1: super-frame thresholds in bits (no
-         * OEM re-encode of nearly every VBR picture), see docs/T20_RC.md */
+        /* Super-frame thresholds in bits (no OEM re-encode of nearly
+         * every VBR picture), default since the device test;
+         * OPENIMP_T10_RC_SUPERFRM=0 restores the OEM bits / 1024, see
+         * docs/T20_RC.md */
         env = getenv("OPENIMP_T10_RC_SUPERFRM");
-        q.superfrm_bits = env && env[0] == '1';
+        q.superfrm_bits = !(env && env[0] == '0');
         if (RCT10_Init(&encoder->t10rc, &q) != 0) {
             IMP_LOG_WARN("Encoder", "T10: OEM rate control init failed, "
                          "using the GOP controller");
