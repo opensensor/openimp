@@ -44,6 +44,8 @@ struct v2_comp {
 
 struct v2_track {
     int x0, y0, x1, y1;
+    int cx0, cy0;               /* first centre, half cells (x0 + x1) */
+    int moved;                  /* centre travelled min_move cells */
     int age, miss, label, reported;
     unsigned int cells, strength;
     uint16_t id;
@@ -96,7 +98,8 @@ static const OpenIMP_IVS_MoveConfigEx v2_defaults = {
     25,         /* jump_pct */
     3,          /* min_cells */
     2,          /* min_frames */
-    { 0, 0, 0, 0, 0, 0 }
+    3,          /* min_move */
+    { 0, 0, 0, 0, 0 }
 };
 
 static int32_t clampi(int32_t v, int32_t lo, int32_t hi)
@@ -128,6 +131,7 @@ void ivs_move_v2_config_sanitize(OpenIMP_IVS_MoveConfigEx *dst,
     V2_DEF0(jump_pct);
     V2_DEF0(min_cells);
     V2_DEF0(min_frames);
+    V2_DEF0(min_move);
 #undef V2_DEF0
     dst->learn_shift = clampi(dst->learn_shift, 1, 10);
     dst->thresh_k = clampi(dst->thresh_k, 16, 255);
@@ -136,6 +140,7 @@ void ivs_move_v2_config_sanitize(OpenIMP_IVS_MoveConfigEx *dst,
     dst->jump_pct = clampi(dst->jump_pct, 5, 90);
     dst->min_cells = clampi(dst->min_cells, 1, 64);
     dst->min_frames = clampi(dst->min_frames, 1, 30);
+    dst->min_move = dst->min_move < 0 ? -1 : clampi(dst->min_move, 1, 32);
     memset(dst->reserved, 0, sizeof(dst->reserved));
 }
 
@@ -187,6 +192,7 @@ void ivs_move_v2_config_env(OpenIMP_IVS_MoveConfigEx *cfg)
     env_int("OPENIMP_MOTION_V2_JUMP_PCT", &c.jump_pct);
     env_int("OPENIMP_MOTION_V2_MIN_CELLS", &c.min_cells);
     env_int("OPENIMP_MOTION_V2_MIN_FRAMES", &c.min_frames);
+    env_int("OPENIMP_MOTION_V2_MIN_MOVE", &c.min_move);
     ivs_move_v2_config_sanitize(cfg, &c);
 }
 
@@ -438,7 +444,8 @@ static void v2_report_tracks(IvsMoveV2 *v2)
         struct v2_track *t = &v2->tr[i];
 
         t->reported = t->miss == 0 &&
-                      t->age >= v2->cfg.min_frames;
+                      t->age >= v2->cfg.min_frames &&
+                      (t->moved || v2->cfg.min_move < 0);
         if (t->reported && t->label > 0)
             v2->rep[t->label] = 1;
     }
@@ -619,6 +626,9 @@ track:
             t->label = k->label;
             t->age++;
             t->miss = 0;
+            if (V2_ABS(k->x0 + k->x1 - t->cx0) + V2_ABS(k->y0 + k->y1 - t->cy0) >=
+                2 * v2->cfg.min_move)
+                t->moved = 1;
         } else {
             t->miss++;
             t->label = 0;
@@ -639,6 +649,8 @@ track:
         t = &v2->tr[v2->ntr++];
         memset(t, 0, sizeof(*t));
         t->x0 = k->x0; t->y0 = k->y0; t->x1 = k->x1; t->y1 = k->y1;
+        t->cx0 = k->x0 + k->x1;
+        t->cy0 = k->y0 + k->y1;
         t->cells = (unsigned int)k->cells;
         t->strength = v2_strength(v2, k->exc);
         t->label = k->label;

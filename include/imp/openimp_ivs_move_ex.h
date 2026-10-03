@@ -58,7 +58,10 @@ typedef struct {
     int32_t jump_pct;       /* gain / brightness jump that suppresses, 5..90 (25) */
     int32_t min_cells;      /* minimum object size in grid cells, 1..64 (3) */
     int32_t min_frames;     /* minimum object persistence, analysed frames 1..30 (2) */
-    int32_t reserved[6];    /* 0 */
+    int32_t min_move;       /* an object is reported once its centre moved this
+                               many grid cells, 1..32 (3); < 0 = no movement
+                               needed (lamps switching on count then) */
+    int32_t reserved[5];    /* 0 */
 } OpenIMP_IVS_MoveConfigEx;
 
 #define OPENIMP_IVS_MOVE_EX_MAX_OBJ 16

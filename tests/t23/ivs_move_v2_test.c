@@ -340,7 +340,7 @@ static void test_behaviour(void)
     OpenIMP_IVS_MoveConfigEx g;
     int t, i, legacy_noise = 0, v2_noise = 0, legacy_jump = 0, v2_jump = 0;
     int supp = 0, flicker = 0, box_frames = 0, box_hit = 0, box_ok = 1;
-    int wrong_roi = 0;
+    int wrong_roi = 0, lamp_legacy = 0, lamp = 0;
 
     setenv("OPENIMP_MOTION_V2", "1", 1);
     setenv("OPENIMP_MOTION_V2_SUPPRESS_MS", "1", 1);    /* 3-frame minimum */
@@ -372,6 +372,8 @@ static void test_behaviour(void)
         }
         if (t >= 100 && t < 130)        /* box walks right in grid row 2 */
             scene(ch.frame, 100, 8, 20 + (t - 100) * 12, 150, 48, 60, 235);
+        if (t >= 140)                   /* a lamp switches on and stays */
+            scene(ch.frame, 100, 8, 400, 40, 64, 40, 250);
         if (!chan_push(&ch, &out, &ex, 1))
             continue;
         legacy = (ex.legacy_roi[0] | ex.legacy_roi[1]) != 0;
@@ -390,6 +392,9 @@ static void test_behaviour(void)
             supp += !!(ex.flags & OPENIMP_MOVE_EX_SUPPRESSED);
         } else if (t >= 60 && t < 90) {
             flicker += any;
+        } else if (t >= 140) {
+            lamp_legacy += legacy;
+            lamp += any;
         } else if (t >= 102 && t < 130) {
             box_frames++;
             if (ex.obj_cnt) {
@@ -419,6 +424,7 @@ static void test_behaviour(void)
               d.features == OPENIMP_MOVE_F_BLOBS && d.learn_shift == 4 &&
               d.thresh_k == 64 && d.min_delta == 10 && d.suppress_ms == 4000 &&
               d.jump_pct == 25 && d.min_cells == 3 && d.min_frames == 2 &&
+              d.min_move == 3 &&
               d.version == OPENIMP_IVS_MOVE_EX_VERSION, "defaults");
         c.size = 8;
         CHECK(OpenIMP_IVS_MoveSetConfigEx(0, &c) < 0 && errno == EINVAL,
@@ -429,15 +435,18 @@ static void test_behaviour(void)
     }
     chan_close(&ch);
     printf("behaviour: noise legacy %d v2 %d | jump legacy %d v2 %d (suppressed "
-           "%d) | flicker v2 %d | box %d/%d frames, roi outside %d\n",
+           "%d) | flicker v2 %d | box %d/%d frames, roi outside %d | lamp legacy %d "
+           "v2 %d\n",
            legacy_noise, v2_noise, legacy_jump, v2_jump, supp, flicker,
-           box_hit, box_frames, wrong_roi);
+           box_hit, box_frames, wrong_roi, lamp_legacy, lamp);
     CHECK(v2_noise == 0, "v2 reported noise");
     CHECK(legacy_jump > 0, "the scene does not trigger the vendor algorithm");
     CHECK(v2_jump == 0 && supp > 0, "v2 reported the brightness jump");
     CHECK(flicker == 0, "v2 reported a one-cell flicker");
     CHECK(box_hit >= box_frames - 3 && box_ok, "box not tracked");
     CHECK(wrong_roi == 0, "box reported in a wrong ROI");
+    CHECK(lamp_legacy > 0 && lamp == 0, "a lamp switching on (no movement) "
+          "reported by v2");
 }
 
 int main(void)
