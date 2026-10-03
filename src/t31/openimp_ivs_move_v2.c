@@ -33,6 +33,8 @@
 #define V2_MAX_TRACKS OPENIMP_IVS_MOVE_EX_MAX_OBJ
 #define V2_MAX_COMPS  64
 #define V2_HIST_BINS  128       /* ratio bins of 1/32, 0..4 */
+#define V2_ACT_LIMIT  32        /* moving share above 1/8 (EMA over ~64 frames) */
+#define V2_TEX_FLOOR  (28 << 2) /* minimum texture change (2 per difference) */
 
 struct v2_comp {
     int x0, y0, x1, y1;         /* grid cells, inclusive */
@@ -52,12 +54,16 @@ struct IvsMoveV2 {
     uint32_t w, h, cs, step, off, gw, gh, ncell;
     uint32_t interval, phase;
     uint16_t *cur;              /* fed cell sums */
+    uint16_t *tex;              /* fed cell texture: sum |s[i] - s[i+1]| */
+    uint16_t *tbg;              /* background texture << 2 */
+    uint16_t *tdv;              /* running mean texture deviation << 2 */
     int fed;
     int64_t ts, last_ts;
     uint16_t *mu;               /* background, cell sum << 4 (< 2^16) */
     uint16_t *dev;              /* running mean |d|, cell sum << 4 */
     uint8_t *mov;               /* moving cells of the last run */
     uint8_t *exc;               /* |d| / threshold, Q4, capped at 64 */
+    uint8_t *act;               /* long-term moving share, Q8 (flicker) */
     uint16_t *lab;              /* component label per cell, 0 = none */
     uint16_t *parent;           /* union-find over labels */
     uint8_t *rep;               /* label belongs to a reported object */
@@ -71,6 +77,7 @@ struct IvsMoveV2 {
     int ncomp;
     struct v2_track tr[V2_MAX_TRACKS];
     int ntr;
+    int min_cells;              /* effective: config, vendor-sense area */
     uint16_t next_id;
     uint32_t seq;
 };
@@ -192,6 +199,7 @@ static void v2_restart(IvsMoveV2 *v2)
     v2->ntr = 0;
     v2->ncomp = 0;
     memset(v2->mov, 0, v2->ncell);
+    memset(v2->act, 0, v2->ncell);
     memset(v2->lab, 0, v2->ncell * sizeof(*v2->lab));
     memset(v2->rep, 0, v2->ncell + 2);
 }
@@ -222,14 +230,18 @@ IvsMoveV2 *ivs_move_v2_create(uint32_t width, uint32_t height,
     v2->last_mode = -1;
     v2->next_id = 1;
     v2->cur = calloc(v2->ncell, sizeof(*v2->cur));
+    v2->tex = calloc(v2->ncell, sizeof(*v2->tex));
+    v2->tbg = calloc(v2->ncell, sizeof(*v2->tbg));
+    v2->tdv = calloc(v2->ncell, sizeof(*v2->tdv));
     v2->mu = calloc(v2->ncell, sizeof(*v2->mu));
     v2->dev = calloc(v2->ncell, sizeof(*v2->dev));
     v2->mov = calloc(v2->ncell, 1);
     v2->exc = calloc(v2->ncell, 1);
+    v2->act = calloc(v2->ncell, 1);
     v2->lab = calloc(v2->ncell, sizeof(*v2->lab));
     v2->parent = calloc(v2->ncell + 2, sizeof(*v2->parent));
     v2->rep = calloc(v2->ncell + 2, 1);
-    if (!v2->cur || !v2->mu || !v2->dev || !v2->mov || !v2->exc ||
+    if (!v2->cur || !v2->tex || !v2->tbg || !v2->tdv || !v2->mu || !v2->dev || !v2->mov || !v2->exc || !v2->act ||
         !v2->lab || !v2->parent || !v2->rep) {
         ivs_move_v2_destroy(v2);
         return NULL;
@@ -243,10 +255,14 @@ void ivs_move_v2_destroy(IvsMoveV2 *v2)
     if (!v2)
         return;
     free(v2->cur);
+    free(v2->tex);
+    free(v2->tbg);
+    free(v2->tdv);
     free(v2->mu);
     free(v2->dev);
     free(v2->mov);
     free(v2->exc);
+    free(v2->act);
     free(v2->lab);
     free(v2->parent);
     free(v2->rep);
@@ -275,38 +291,49 @@ int ivs_move_v2_next_frame(IvsMoveV2 *v2)
 }
 
 /* Cell value: 2 sample rows (at cs/4 and 3cs/4) x 8 samples (every cs/8
- * pixels) = 16 samples. At 8x8 cells the 8 samples of a row are 8
+ * pixels) = 16 samples; cell texture: sum of |sample - next sample| along
+ * the rows (14 differences). At 8x8 cells the 8 samples of a row are 8
  * consecutive bytes, read as two words when the buffer allows it. */
+#define V2_ABS(a) ((a) < 0 ? -(a) : (a))
+static inline void v2_row(const uint8_t *b, uint32_t *sum, uint32_t *tex)
+{
+    int d0 = b[0] - b[1], d1 = b[1] - b[2], d2 = b[2] - b[3], d3 = b[3] - b[4];
+    int d4 = b[4] - b[5], d5 = b[5] - b[6], d6 = b[6] - b[7];
+
+    *sum += (uint32_t)(b[0] + b[1] + b[2] + b[3] + b[4] + b[5] + b[6] + b[7]);
+    *tex += (uint32_t)(V2_ABS(d0) + V2_ABS(d1) + V2_ABS(d2) + V2_ABS(d3) +
+                       V2_ABS(d4) + V2_ABS(d5) + V2_ABS(d6));
+}
+
 void ivs_move_v2_feed(IvsMoveV2 *v2, const uint8_t *luma, uint32_t stride,
                       int64_t timestamp)
 {
     const uint32_t cs = v2->cs, gw = v2->gw, st = cs / 8;
-    const int words = cs == 8 && !((uintptr_t)luma & 3) && !(stride & 3);
-    uint32_t gx, gy, r;
+    uint32_t gx, gy, r, i;
 
     for (gy = 0; gy < v2->gh; gy++) {
         uint16_t *acc = v2->cur + gy * gw;
+        uint16_t *tx = v2->tex + gy * gw;
 
-        memset(acc, 0, gw * sizeof(*acc));
-        for (r = 0; r < 2; r++) {
-            const uint8_t *p = luma + (size_t)(gy * cs + cs / 4 + r * cs / 2) *
-                                      stride;
+        for (gx = 0; gx < gw; gx++) {
+            uint32_t sum = 0, tex = 0;
 
-            if (words) {
-                const uint32_t *w = (const uint32_t *)(const void *)p;
+            for (r = 0; r < 2; r++) {
+                const uint8_t *p = luma + (size_t)(gy * cs + cs / 4 + r * cs / 2) *
+                                          stride + gx * cs;
 
-                for (gx = 0; gx < gw; gx++, w += 2) {
-                    uint32_t a = (w[0] & 0x00ff00ffu) + ((w[0] >> 8) & 0x00ff00ffu) +
-                                 (w[1] & 0x00ff00ffu) + ((w[1] >> 8) & 0x00ff00ffu);
+                if (st == 1) {
+                    v2_row(p, &sum, &tex);
+                } else {
+                    uint8_t b[8];
 
-                    acc[gx] = (uint16_t)(acc[gx] + (a & 0xffffu) + (a >> 16));
+                    for (i = 0; i < 8; i++)
+                        b[i] = p[i * st];
+                    v2_row(b, &sum, &tex);
                 }
-            } else {
-                for (gx = 0; gx < gw; gx++, p += cs)
-                    acc[gx] = (uint16_t)(acc[gx] + p[0] + p[st] + p[2 * st] +
-                                         p[3 * st] + p[4 * st] + p[5 * st] +
-                                         p[6 * st] + p[7 * st]);
             }
+            acc[gx] = (uint16_t)sum;
+            tx[gx] = (uint16_t)tex;
         }
     }
     v2->ts = timestamp;
@@ -554,7 +581,7 @@ static void v2_objects(IvsMoveV2 *v2)
         for (j = 0; j < v2->ncomp; j++) {
             struct v2_comp *k = &v2->comp[j];
 
-            if (k->used || k->cells < v2->cfg.min_cells)
+            if (k->used || k->cells < v2->min_cells)
                 continue;
             if (k->x1 < t->x0 - 1 || k->x0 > t->x1 + 1 ||
                 k->y1 < t->y0 - 1 || k->y0 > t->y1 + 1)
@@ -587,7 +614,7 @@ static void v2_objects(IvsMoveV2 *v2)
         struct v2_comp *k = &v2->comp[j];
         struct v2_track *t;
 
-        if (k->used || k->cells < v2->cfg.min_cells)
+        if (k->used || k->cells < v2->min_cells)
             continue;
         t = &v2->tr[v2->ntr++];
         memset(t, 0, sizeof(*t));
@@ -606,6 +633,11 @@ static void v2_objects(IvsMoveV2 *v2)
 /* Threshold scale (Q4) by the vendor sense of the most sensitive ROI:
  * sense 2 (timps default) = the configured thresholds, 0 = x2, 4 = x0.5. */
 static const uint8_t v2_sense_scale[9] = { 32, 24, 16, 12, 8, 7, 6, 5, 4 };
+/* Vendor move: an ROI fires when more than T[sense] pixels of the 2:1
+ * decimated, eroded difference remain. An object needs at least that area
+ * (x4 for full resolution) in v2 too, so a sensitivity setting means the
+ * same object size in both. */
+static const uint16_t v2_sense_area[9] = { 1365, 455, 151, 50, 16, 8, 4, 2, 1 };
 
 void ivs_move_v2_run(IvsMoveV2 *v2, int isp_mode, uint32_t total_gain,
                      int64_t now_ms, int sense)
@@ -616,6 +648,8 @@ void ivs_move_v2_run(IvsMoveV2 *v2, int isp_mode, uint32_t total_gain,
     const int32_t sc = v2_sense_scale[sense < 0 || sense > 8 ? 2 : sense];
     const int32_t mind = (cfg->min_delta << 8) * sc >> 4;
     const int32_t kk = cfg->thresh_k * sc >> 4;
+    const uint32_t area = (uint32_t)v2_sense_area[sense < 0 || sense > 8 ? 2 : sense] * 4u;
+    const uint32_t cell_px = v2->cs * v2->cs;
     uint32_t reason = 0, c;
     int32_t g;
     int suppressed, learning;
@@ -625,6 +659,9 @@ void ivs_move_v2_run(IvsMoveV2 *v2, int isp_mode, uint32_t total_gain,
     v2->fed = 0;
     v2->last_ts = v2->ts;
     v2->seq++;
+    v2->min_cells = (int)((area + cell_px / 2) / cell_px);
+    if (v2->min_cells < cfg->min_cells)
+        v2->min_cells = cfg->min_cells;
 
     if (isp_mode >= 0) {
         if (v2->last_mode >= 0 && isp_mode != v2->last_mode)
@@ -647,6 +684,8 @@ void ivs_move_v2_run(IvsMoveV2 *v2, int isp_mode, uint32_t total_gain,
 
         for (c = 0; c < v2->ncell; c++) {
             v2->mu[c] = (uint16_t)(v2->cur[c] << 4);
+            v2->tbg[c] = (uint16_t)(v2->tex[c] << 2);
+            v2->tdv[c] = V2_TEX_FLOOR;
             v2->dev[c] = (uint16_t)(dev0 > 65535 ? 65535 : dev0);
         }
         memset(v2->mov, 0, v2->ncell);
@@ -684,11 +723,34 @@ void ivs_move_v2_run(IvsMoveV2 *v2, int isp_mode, uint32_t total_gain,
         int32_t d = v4 - e;
         int32_t ad = d < 0 ? -d : d;
         int32_t thr = (kk * (int32_t)v2->dev[c]) >> 4;
+        int32_t t4, tb, tthr;
         int m;
 
         if (thr < mind)
             thr = mind;
+        /* flicker / foliage: a cell that keeps moving for a long time
+         * (lamps, leaves, water) needs three times the threshold */
+        if (bg && v2->act[c] > V2_ACT_LIMIT)
+            thr *= 3;
         m = !suppressed && !learning && ad > thr;
+        /* texture: a change of the cell mean that keeps the texture of the
+         * background, scaled by the cell's own brightness ratio, is light
+         * (shadow, lamp, reflection, headlights), not an object; very large
+         * mean changes count anyway */
+        t4 = (int32_t)v2->tex[c] << 2;
+        tb = v2->tbg[c];
+        tthr = (kk * (int32_t)v2->tdv[c]) >> 4;
+        if (tthr < V2_TEX_FLOOR)
+            tthr = V2_TEX_FLOOR;
+        if (m && bg && ad <= 3 * thr) {
+            int32_t r8 = (v4 << 8) / (mu > 64 ? mu : 64);
+            int32_t et = (tb * (r8 > 1024 ? 1024 : r8)) >> 8;
+
+            m = V2_ABS(t4 - et) > tthr;
+        }
+        if (bg && !suppressed && !learning)
+            v2->act[c] = (uint8_t)(v2->act[c] +
+                                   (((m ? 255 : 0) - (int)v2->act[c]) >> 6));
         v2->mov[c] = (uint8_t)m;
         if (m) {
             int32_t x = (ad << 4) / thr;
@@ -706,12 +768,31 @@ void ivs_move_v2_run(IvsMoveV2 *v2, int isp_mode, uint32_t total_gain,
         else
             mu += (v4 - mu) >> (ls + 4);
         v2->mu[c] = (uint16_t)mu;   /* between old mu and v4: fits */
+        if (suppressed || learning)
+            tb += (t4 - tb) >> 1;
+        else if (!bg)
+            tb = t4;
+        else if (!m)
+            tb += (t4 - tb) >> ls;
+        else
+            tb += (t4 - tb) >> (ls + 4);
+        v2->tbg[c] = (uint16_t)tb;
         if (!suppressed) {
             int32_t cl = ad < 2 * thr ? ad : 2 * thr;
             int32_t dv = (int32_t)v2->dev[c];
 
             dv += (cl - dv) >> (m ? 7 : 4);
             v2->dev[c] = (uint16_t)(dv < 1 ? 1 : dv > 65535 ? 65535 : dv);
+            {
+                int32_t eg = (int32_t)(((uint32_t)v2->tbg[c] * (uint32_t)g) >> 12);
+                int32_t dt = V2_ABS(t4 - eg);
+                int32_t tv = (int32_t)v2->tdv[c];
+
+                if (dt > 2 * tthr)
+                    dt = 2 * tthr;
+                tv += (dt - tv) >> (m ? 7 : 4);
+                v2->tdv[c] = (uint16_t)(tv < 1 ? 1 : tv > 65535 ? 65535 : tv);
+            }
         }
     }
     if (v2->warm < 0xffff)
