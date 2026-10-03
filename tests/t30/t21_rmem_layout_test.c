@@ -421,7 +421,9 @@ static void check_ring_layout(int main_first)
         assert(bs->phys + bs->size == emc->phys); /* bs directly below EMC */
     assert(find_tag("t23-helix-ref", main_idx ^ 1u, &r2));
     assert(find_tag("t23-helix-emc", main_idx ^ 1u, &e2));
-    assert(ring2->size >= 599296u && ring2->size <= 602112u);
+    /* 360p ring: picture part rounded up to 64 lines (640 lines) since the
+     * sub-stream reference fix, + chroma gap, page-rounded */
+    assert(ring2->size >= 614656u && ring2->size <= 617472u);
     assert(emc2->phys + emc2->size == ring2->phys);
     if (!main_first)
         assert(bs->phys + bs->size == emc2->phys);
