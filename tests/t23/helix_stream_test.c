@@ -342,6 +342,11 @@ static void check_addresses(const uint32_t *list, size_t pairs, int p)
     for (r = 0; r < sizeof(dma_registers) / sizeof(dma_registers[0]); r++) {
         uint32_t v = reg_value(list, pairs, dma_registers[r]);
 
+        /* reference ring (T23 default): the vendor list leaves 0x10014/18
+         * at 0 for the IDR, the ring start for P pictures */
+        if (!p && v == 0 &&
+            (dma_registers[r] == 0x10014 || dma_registers[r] == 0x10018))
+            continue;
         if (!in_allocation(v, 1) &&
             !(v >= reg_value(list, pairs, 0x40010) &&
               v < reg_value(list, pairs, 0x40010) + FRAME_BYTES)) {
