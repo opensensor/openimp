@@ -180,10 +180,22 @@ positions of the 256-line step in a 1344-line ring), 0xb0000 =
 0x0002xx62 at rest with the wrap byte xx (all 3 mod 4), 0x50000 bit 6 and
 0x80030 bit 14 clear, 0x50000 = 0x544xd9b0 (bits 9/10 clear, bits 16..23
 per picture), 0x50040/48/4c = 0x871f5008 / 0x02000200 / 0x08080303.
-OpenIMP's ring mode therefore uses the 0x100 chroma gap, 0xb0000 low
-byte 0x63 on T23 (0xff on T21: the T21 template bits plus the two flags
-ctx[1052]/ctx[1054] the vendor sets), no P flag, and offers the vendor
-MCE words as `OPENIMP_REF_SHARE_FLAGS=10`.
+Per-picture command lists of the vendor (LD_PRELOAD dump of the RUN
+ioctl, `scratchpad/hxdump`) settled the rest: the ring addresses and the
+0xb0000 wrap byte are as computed, and the same wrap row goes into bits
+14..21 of the MCE control word 0x50000 (0xff = never; this was the
+missing piece: the ME read the reference past the ring end, hence P
+pictures of hundreds of KiB with the 5.25-picture period); 0x10014/18
+are 0 for the IDR and the ring start for P; the 0xb0000 low byte is 0x21
+for the IDR and 0x63 for P.  With that the T23 ring encodes cleanly
+(cam-B: no timeouts, no decode errors, no artifacts).  OpenIMP's ring
+mode uses the 0x100 chroma gap, these bytes (T21: 0xbd/0xff), the wrap
+row in both registers, and on T23 the vendor MCE words by default
+(`OPENIMP_REF_SHARE_FLAGS`: 10 vendor ME words 0x50040/48/4c and 0x50000
+bits 9/10, 20 vendor 0x4010c/0x801c0, 8 no wrap; `OPENIMP_REF_SHARE_B0`
+overrides the P low byte).  The vendor also writes a few registers per
+picture through ioctl 0xc0586307 (0x131500e8..f0 among them), values not
+captured yet.
 
 ## Status (WIP)
 
