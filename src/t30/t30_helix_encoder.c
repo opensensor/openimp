@@ -1335,10 +1335,11 @@ static void t20_rc_start(T30HelixEncoder *encoder)
     env = getenv("OPENIMP_T20_MBRC");
     encoder->t20rc_mb = env && env[0] == '1';
     p.mb_rc = encoder->t20rc_mb ? 1u : 0u;
-    /* OPENIMP_T20_RC_IAWARE=1: I-aware P budget (OpenIMP extra, default
-     * off = OEM decisions), see docs/T20_RC.md */
+    /* I-aware P budget (OpenIMP extra, docs/T20_RC.md): default on for
+     * CBR (device test), off for VBR/SMART; OPENIMP_T20_RC_IAWARE=1 forces
+     * it on in every mode, =0 off (OEM decisions). */
     env = getenv("OPENIMP_T20_RC_IAWARE");
-    p.iaware = env && env[0] == '1';
+    p.iaware = env ? env[0] == '1' : p.method == 1u;
     encoder->t20rc.e = NULL;
     if (RCT20_Init(&encoder->t20rc, &p) != 0) {
         IMP_LOG_WARN("Encoder", "T20: OEM rate control init failed, using "

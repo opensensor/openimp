@@ -627,6 +627,20 @@ static void test_t20_rate_control(void)
     p.max_bitrate = 2000;
     p.static_time = 2;
     p.mb_rc = 0;
+    /* CBR: the I-aware P budget is OpenIMP's default; =0 gives the OEM
+     * decisions.  Both against a reference controller. */
+    setenv("OPENIMP_T20_RC_IAWARE", "0", 1);
+    OpenIMP_T30_HelixDestroy(encoder);
+    encoder = create(1280, 720, 25, 10);
+    p.iaware = 0;
+    for (unsigned int pass = 0; pass < 2u; pass++) {
+    if (pass == 1u) {
+        OpenIMP_T30_HelixDestroy(encoder);
+        RCT20_Free(&rc);
+        unsetenv("OPENIMP_T20_RC_IAWARE");
+        encoder = create(1280, 720, 25, 10);
+        p.iaware = 1;
+    }
     memset(&rc, 0, sizeof(rc));
     assert(RCT20_Init(&rc, &p) == 0);
     for (i = 0; i < 45u; i++) {
@@ -646,6 +660,7 @@ static void test_t20_rate_control(void)
         st.reg[1] = 0x1000u;
         st.reg[2] = 0x1000u;
         assert(RCT20_End(&rc, &st, &pic) == 0);
+    }
     }
     OpenIMP_T30_HelixDestroy(encoder);
     RCT20_Free(&rc);

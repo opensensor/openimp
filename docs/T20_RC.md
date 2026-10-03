@@ -354,8 +354,13 @@ Environment:
   T20, at most 4).  Off by default until tested on a T10 camera, also
   because OEM VBR codes most pictures twice (see "T10").  The log shows
   `T10 rc: OEM <mode> ...` when it starts.
-- `OPENIMP_T20_RC_IAWARE=1` (T20 controller, default off): an OpenIMP
-  extra (`RcT20Params.iaware`), not OEM behaviour.  The OEM P target
+- `OPENIMP_T20_RC_IAWARE` (T20 controller): an OpenIMP extra
+  (`RcT20Params.iaware`), not OEM behaviour.  **Default on for CBR**, off
+  for VBR/SMART; `=1` forces it on in every mode, `=0` off (OEM
+  decisions, bit-exact).  Device test (T20, 60 s, 1200 kbit/s, decode
+  clean): CBR 1583 kbit/s OEM -> 1300 (stats line 1244) with it; VBR 1284
+  -> 866 (stats 754: below the changePos target, hence not the VBR
+  default).  The OEM P target
   (`RC_H264_calcPFrameQp`) is half "remaining GOP budget / pictures left"
   and half the nominal bits per picture (rcSt+128), and the nominal alone
   once the GOP budget is spent - always after a large I picture - so the
@@ -369,7 +374,7 @@ Environment:
   2.0-2.4 x -> 1.05-1.26 x, buffer peak 61-84 s -> 8-18 s, mean QP +3
   (the price of meeting the rate).  `tests/rc_t20`: OEM vectors with it
   off, and a static scene (CBR 2.43 -> 1.16 x, VBR 2.01 -> 1.09 x).  The
-  start log line shows `iaware`.
+  start log line shows `iaware` when it is on.
 - `OPENIMP_T10_RC_SUPERFRM` (with `OPENIMP_T10_RC=1`): an OpenIMP extra
   (`RcT10Params.superfrm_bits`), not OEM behaviour, **on by default**
   whenever the T10 OEM controller runs: the super-frame thresholds are
