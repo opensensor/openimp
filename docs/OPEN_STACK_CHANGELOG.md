@@ -14,12 +14,12 @@ All six test cameras run the open kernel driver (open-tx-isp), OpenIMP and timps
 
 | Camera | SoC | Stack | State |
 |---|---|---|---|
-| cam-A | T31 | fully open | Flashed 2026-10-03 14:04 with open-tx-isp-all-13 / openimp-all-11 |
-| cam-B | T23 | fully open (native encoder, no OEM helixd) | Flashed 2026-10-03 ~14:10 with open-tx-isp-all-13 / openimp-all-11 (reference sharing on) |
-| cam-C | T20 | fully open | Re-flashed 2026-10-03 16:05 with -all-13 + kernel patch 0101 (NVPU statistics registers readable) |
-| cam-E | T10 | fully open | Flashed 2026-10-03 ~14:10 with open-tx-isp-all-13 / openimp-all-11, boot guard auto |
-| cam-D | T21 | fully open | Flashed 2026-10-03 ~14:10 with open-tx-isp-all-13 / openimp-all-11 (reference sharing on) |
-| cam-F | T41 | fully open | Flashed 2026-10-03 14:20 with open-tx-isp-all-13 / OpenIMP T41 (kernel and rootfs flashed separately) |
+| cam-A | T31 | fully open | Flashed 2026-10-03 ~19:07 with open-tx-isp-all-14 / openimp-all-12 / timps-all-14 (full OTA) |
+| cam-B | T23 | fully open (native encoder, no OEM helixd) | Flashed 2026-10-03 ~14:10 with open-tx-isp-all-13 / openimp-all-11 (reference sharing on); waits for a smaller rootfs for -all-14 |
+| cam-C | T20 | fully open | Flashed 2026-10-03 ~19:07 with -all-14 / openimp-all-12 (full OTA, kernel patch 0101) |
+| cam-E | T10 | fully open | Flashed 2026-10-03 ~19:07 with -all-14 / openimp-all-12 (full OTA), boot guard auto |
+| cam-D | T21 | fully open | Flashed 2026-10-03 ~19:07 with -all-14 / openimp-all-12 (full OTA, reference sharing on) |
+| cam-F | T41 | fully open | Flashed 2026-10-03 14:20 with open-tx-isp-all-13 / OpenIMP T41 (kernel and rootfs flashed separately); image rev 1 flashed later (isp-m0 in vendor layout), reload still failing |
 
 ## OpenIMP (userspace libimp)
 
@@ -109,6 +109,13 @@ Aggregates: `claude/open-tx-isp-all-4` and `claude/openimp-all-4` (pushed); 58 m
 - **T10 module reload (cam-E, `claude/t10-reload-safe`):** 5 rmmod/insmod cycles while streaming, 0 oops. The earlier 'csi clock -22' oops came from a module built against the T20 kernel tree; the T10 build now refuses that with #error.
 - **T41 module reload (cam-F, `claude/t41-reload-safe`):** cause found statically. tx_isp_fs_remove freed the channel array while the framechan0..2 misc devices were still registered, so the next insmod oopses in misc_register. Four static work items were also not drained on unload. The fix is not yet device-tested. Testing needs the box booted without the old module (boot guard isp_open=manual), because the old module's unload leaves the bug behind.
 - **User decisions (2026-10-03):** (a) T23 default AE becomes the lifted vendor AE (vendor default), after a night-switch test in the dark that is still pending. (b) T20/T10 Sinter/Temper strength acts by default: 128 = the IQ table, so the default picture is identical to the vendor; other values act, which goes beyond the vendor.
+- **All-14 aggregates flashed (19:20):** open-tx-isp `claude/open-tx-isp-all-14` (de10fed6), OpenIMP `claude/openimp-all-12` (787d534), timps `claude/timps-all-14` (9490547). Flashed 2026-10-03 ~19:07 on cam-A, cam-C, cam-D and cam-E (full OTA). cam-A, cam-D, cam-E: 30/30 snapshots, MJPEG, MP4 on both channels, 0 oops. cam-B waits for a smaller rootfs; cam-F stays on -all-13 (image rev 1).
+- **Image size fixes:** the rootfs of T23/T20 had grown past 0x4E0000. `claude/openimp-size` (2040a03, gc-sections) and `claude/open-tx-isp-size` (15232deb, strip local symbols): T23 libimp 774 to 726 KB, T20 libimp 694 to 594 KB, T23 module 1,211 to 1,047 KB, T20 module 819 to 775 KB; rootfs back to 0x4DE000 (T23) / 0x4DD000 (T20). Further driver shrinking is in work.
+- **T31 CBR on the vendor Allegro core:** `claude/t31-allegro-cbr`: CBR now uses the ported vendor core too (20 trace files + 72 x 400 random frames state-identical). Deviation: no filler NAL is written (the HRD model counts filler bits like the vendor, but a static scene's CBR stream stays below target where the vendor pads); the filler value is per picture like the vendor. Device test pending.
+- **eprc QP-down limit (P5) in the T21 vendor revision:** `claude/eprc-t21-qp-limit`, opt-in (`OPENIMP_EPRC_QP_DOWN1/2`). Device test pending.
+- **T41 module reload: root cause:** a decompiled tuning-node helper used the 4-byte module parameter `ivdc_threshold_line` as a struct cdev and overwrote about 60 B of .bss including `tx_isp_bringup_level`, so `tx_isp_exit()` bailed out early and left platform drivers, misc devices, IRQs and kthreads registered. Fixed in `claude/t41-matrix-fixes` (b4ef2cf8), device test pending. T41 image rev 1 (flashed): isp-m0 now in vendor layout; reload still failed with rev 1.
+- **Feature matrix: ? cells filled:** results of the evening matrix tests (audio input only, no sound played): T31 AWB presets and IR cut/IR LED device-tested; T31 CCM/LSC follow day/night and flip; T20/T10 ISP state not observable; defog/DPC on T10/T20/T21 have no control path (keys accepted but ignored); scaler tested on T10/T20/T21; T20 snapshots on both channels cost video frames; audio input device-tested on T10/T20/T21/T31.
+- **Feature detection:** the static caps matrix stays (agreed with the timps session); the new beyond-vendor `IMP_ISP_QueryCaps` (in work) can only restrict the caps.
 
 ## Late afternoon (2026-10-03)
 
