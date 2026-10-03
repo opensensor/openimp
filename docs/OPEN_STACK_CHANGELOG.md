@@ -3,22 +3,23 @@
 Everything changed, extended or fixed in OpenIMP, open-tx-isp, timps and the thingino
 integration since the test campaign started on 2026-09-30. Kept up to date during the campaign.
 
-Last update: 2026-10-03 01:40.
+Last update: 2026-10-03 16:00.
 
-Cameras are anonymised: cam-A (T31), cam-B (T23), cam-C (T20), cam-D (T21).
+Cameras are anonymised: cam-A (T31), cam-B (T23), cam-C (T20), cam-D (T21), cam-E (T10), cam-F (T41).
 
 ## Where each camera stands
 
-All five test cameras run the open kernel driver (open-tx-isp), OpenIMP and timps. Since -all-10 no Ingenic or neo helper libraries (libalog/libsysutils) remain on the images.
+All six test cameras run the open kernel driver (open-tx-isp), OpenIMP and timps. Since -all-10 no Ingenic or neo helper libraries (libalog/libsysutils) remain on the images.
 "Live" means newer builds loaded from `/tmp` that are lost on reboot.
 
 | Camera | SoC | Stack | State |
 |---|---|---|---|
-| cam-A | T31 | fully open | Flashed 2026-10-03 04:15 with -all-11 / openimp-all-10 image (kernel incl. soc_vpu patch 0099) |
-| cam-B | T23 | fully open (native encoder, no OEM helixd) | Flashed 2026-10-03 05:54 with -all-12 / openimp-all-10 image (HLIL AE default; lifted AE export + reconstruction memory-access fixes) |
-| cam-C | T20 | fully open | Flashed 2026-10-03 04:07 with -all-11 / openimp-all-10 image (kernel incl. soc_vpu patch 0099) |
-| cam-E | T10 | fully open | Flashed 2026-10-03 04:14 with -all-11 / openimp-all-10 image, boot guard auto |
-| cam-D | T21 | fully open | Flashed 2026-10-03 04:07 with -all-11 / openimp-all-10 image (kernel incl. soc_vpu patch 0099) |
+| cam-A | T31 | fully open | Flashed 2026-10-03 14:04 with open-tx-isp-all-13 / openimp-all-11 |
+| cam-B | T23 | fully open (native encoder, no OEM helixd) | Flashed 2026-10-03 ~14:10 with open-tx-isp-all-13 / openimp-all-11 (reference sharing on) |
+| cam-C | T20 | fully open | Flashed 2026-10-03 ~14:10 with open-tx-isp-all-13 / openimp-all-11 |
+| cam-E | T10 | fully open | Flashed 2026-10-03 ~14:10 with open-tx-isp-all-13 / openimp-all-11, boot guard auto |
+| cam-D | T21 | fully open | Flashed 2026-10-03 ~14:10 with open-tx-isp-all-13 / openimp-all-11 (reference sharing on) |
+| cam-F | T41 | fully open | Flashed 2026-10-03 14:20 with open-tx-isp-all-13 / OpenIMP T41 (kernel and rootfs flashed separately) |
 
 ## OpenIMP (userspace libimp)
 
@@ -86,6 +87,16 @@ Goal: identical image behaviour, but cleaner unload/reload, less memory and chec
 OpenIMP: T20 green flicker in the bottom rows fixed by filling the encoder padding rows (`claude/t20-bottom-chroma`; 0 green pixels in 30 frames). Faster IVS (`claude/ivs-opt`; T20 timps CPU 4.1 % → 2.7 % with motion on).
 
 Aggregates: `claude/open-tx-isp-all-4` and `claude/openimp-all-4` (pushed); 58 merged single branches removed. `claude/open-tx-isp-all-5` adds t21-robust and t31-robust-2 (T31: sensor flip with shvflip=1, unload leaks, lazy WDR buffers; MemFree drift per reload 460 → 45 KB); all four cameras flashed with -all-5 images.
+
+## Afternoon (2026-10-03)
+
+- **All six cameras on open-tx-isp-all-13 / openimp-all-11:** flashed 14:04–14:20: 30/30 snapshots, MJPEG and MP4, 0 oops; reference-buffer sharing active on T21/T23. cam-F (T41) now boots our driver and OpenIMP from flash (kernel and rootfs flashed separately, the full image does not fit RAM for OTA).
+- **Reference-buffer sharing on by default for T21/T23:** the artefacts came from a missing wrap byte in the ring register; with it the picture is clean. Saves ~1.4 MB video memory; `OPENIMP_REF_SHARE=0` turns it off.
+- **Rate control:** cam-A T31: plain VBR now closed loop (1514 kbit/s at 1500 target, before 280). cam-B T23: vendor eprc controller with the vendor's CreateChn clamps — SMART 1141, CBR 1253, VBR 1255 kbit/s at 1200, decode clean (old mapping: 3203). cam-D T21: eprc approximation behind `OPENIMP_T21_EPRC=1` (CBR 1338 vs 570 with the old controller); a vendor-identical T21 port is in work because the T21 vendor controller is an older revision. T20/T10: vendor controllers ported, bit-exact in the emulator (200×150 frames); on cam-C CBR overshoots 25 % because the hardened kernel denies one statistics register read — kernel allowlist fix in work, default off until then.
+- **T31 CappedQuality decoded:** differs from CappedVBR in two places: it keeps improving quality while at max bitrate and it never falls into the emergency max-QP after a scene change. A full port of the vendor rate-control core is in work, selectable and verified frame by frame in an emulator.
+- **Scene mode and colour effects on T23 and T31:** driver and OpenIMP support; device-tested on cam-B and cam-A: B/W, vivid, negative visible, invalid values rejected, 0 oops. timps gets `image.colorfx`/`image.scene` plus live fps/GOP (built, device test with next images).
+- **Docs for streamer authors:** new `docs/OPENIMP_BEYOND_VENDOR.md` lists everything where OpenIMP behaves beyond or differently from the vendor libimp, with env switches and how to integrate or disable it. Rule: only device-tested features go in.
+- **Branch cleanup:** forks pruned after a bundle backup: open-tx-isp 56 → 6 branches, openimp 13 → 10; the 50 old non-claude branches were unchanged copies of upstream. Test-report branches moved to `docs/test-reports/`.
 
 ## Late morning (2026-10-03)
 
