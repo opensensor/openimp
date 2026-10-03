@@ -124,8 +124,16 @@ int OpenIMP_HelixJpeg_Encode(const HelixJpegFrame *frame,
 int OpenIMP_HelixJpeg_Reserve(uint32_t width, uint32_t height);
 /* As OpenIMP_HelixJpeg_Encode; *flags (may be NULL) reports
  * HELIX_JPEG_LIMIT_HIT when the picture reached the bitstream limit (and was
- * repeated with coarser steps, or failed). */
+ * repeated with coarser steps, or failed) and HELIX_JPEG_SKIPPED when the
+ * picture was not encoded because rmem or the shared bitstream buffer could
+ * not be spared (a soft skip, not a VPU failure). */
 #define HELIX_JPEG_LIMIT_HIT 1u
+#define HELIX_JPEG_SKIPPED   2u
+/* In *flags on entry: the caller can do without this picture, so a busy
+ * shared bitstream buffer skips it after HELIX_JPEG_BUSY_WAIT_MS instead
+ * of queueing behind the H.264 jobs. */
+#define HELIX_JPEG_MAY_SKIP  4u
+#define HELIX_JPEG_BUSY_WAIT_MS 200u
 int OpenIMP_HelixJpeg_EncodeEx(const HelixJpegFrame *frame,
                                const uint8_t qt[128], HWStreamBuffer *stream,
                                uint32_t *flags);

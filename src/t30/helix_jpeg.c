@@ -1871,8 +1871,11 @@ int OpenIMP_HelixJpeg_EncodeEx(const HelixJpegFrame *frame,
     struct timespec start;
     const char *path = "-";
     uint32_t capacity = 0;
+    uint32_t may_skip = flags ? *flags & HELIX_JPEG_MAY_SKIP : 0u;
     int ret;
 
+    if (flags)
+        *flags = 0;
     if (!frame || !qt || !stream || !frame->virt_addr ||
         frame->width < HELIX_JPEG_MIN_WIDTH || (frame->width & 15u) ||
         frame->width > HELIX_JPEG_MAX_DIM || frame->height < 16u ||
@@ -1904,8 +1907,14 @@ int OpenIMP_HelixJpeg_EncodeEx(const HelixJpegFrame *frame,
             : HELIX_DESCRIPTOR_AREA + helix_bitstream_capacity(
                   frame->width * aligned_height * 3u / 2u, qt);
 
-        if (OpenIMP_HelixBitstream_Lock(need, &helix_jpeg.job) != 0) {
-            helix_jpeg.reason = "shared bitstream buffer";
+        int locked = may_skip
+            ? OpenIMP_HelixBitstream_LockTimeout(need, &helix_jpeg.job,
+                                                 HELIX_JPEG_BUSY_WAIT_MS)
+            : OpenIMP_HelixBitstream_Lock(need, &helix_jpeg.job);
+
+        if (locked != 0) {
+            helix_jpeg.reason = locked == -EBUSY ? "VPU busy"
+                                                 : "shared bitstream buffer";
             ret = HELIX_SKIPPED;
         } else {
             ret = helix_jpeg_run_locked(frame, qt, stream, &path, &capacity);
@@ -1943,10 +1952,12 @@ int OpenIMP_HelixJpeg_EncodeEx(const HelixJpegFrame *frame,
         }
     }
 #else
+    (void)may_skip;
     ret = helix_jpeg_run_locked(frame, qt, stream, &path, &capacity);
 #endif
     if (flags)
-        *flags = helix_jpeg.limit_hit ? HELIX_JPEG_LIMIT_HIT : 0u;
+        *flags = (helix_jpeg.limit_hit ? HELIX_JPEG_LIMIT_HIT : 0u) |
+                 (ret == HELIX_SKIPPED ? HELIX_JPEG_SKIPPED : 0u);
     /* the command list + bitstream buffer is kept; copies and probe
      * buffers are per job */
     helix_dma_release(&helix_jpeg.source);

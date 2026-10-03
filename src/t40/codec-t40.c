@@ -6818,6 +6818,12 @@ struct AL_CodecEncode {
     /* JPEG quality 1..100 from iInitialQP at CreateChn (0: default 75) */
     uint32_t jpeg_quality;
 #endif
+    /* AL_Codec_Encode_SetJpegSkip: the caller can stand in a picture of its
+     * own, so a JPEG that would wait for the busy core or for rmem fails
+     * at once (jpeg_skipped) instead of going to the software encoder.
+     * Encoder thread only. */
+    int jpeg_skip_allowed;
+    int jpeg_skipped;
 #if defined(PLATFORM_T30)
     T30HelixEncoder *t30_helix;    /* Native T30 /dev/soc_vpu encoder */
     uint32_t t30_helix_width;      /* picture size t30_helix was made for */
@@ -6885,10 +6891,15 @@ static int codec_encode_jpeg_ql(AL_CodecEncode *enc, HWFrameBuffer *frame,
     picture.pixfmt = frame->pixfmt;
     picture.timestamp = frame->timestamp;
     {
-        uint32_t flags = 0;
+        uint32_t flags = enc->jpeg_skip_allowed ? HELIX_JPEG_MAY_SKIP : 0u;
         int ret = OpenIMP_HelixJpeg_EncodeEx(&picture, tables, stream,
                                              &flags);
 
+        if (ret != 0 && (flags & HELIX_JPEG_SKIPPED) &&
+            enc->jpeg_skip_allowed) {
+            enc->jpeg_skipped = 1;
+            return -1;
+        }
         if (flags & HELIX_JPEG_LIMIT_HIT) {
             uint32_t q = enc->jpeg_limit_quality ? enc->jpeg_limit_quality
                                                  : 70u;
@@ -6939,6 +6950,29 @@ static inline uint32_t codec_jpeg_quality(const AL_CodecEncode *enc)
     return enc->jpeg_quality ? enc->jpeg_quality : 75u;
 }
 #endif
+
+/* The caller (p2 JPEG channel) holds a recent picture it can deliver
+ * instead: with allow set, a JPEG that would have to wait for the busy
+ * core or for rmem is skipped (AL_Codec_Encode_JpegSkipped) rather than
+ * handed to the much slower software encoder. */
+int AL_Codec_Encode_SetJpegSkip(void *codec, int allow)
+{
+    AL_CodecEncode *enc = (AL_CodecEncode *)codec;
+
+    if (!enc)
+        return -1;
+    enc->jpeg_skip_allowed = allow != 0;
+    enc->jpeg_skipped = 0;
+    return 0;
+}
+
+/* 1 when the last Process skipped its JPEG (see AL_Codec_Encode_SetJpegSkip) */
+int AL_Codec_Encode_JpegSkipped(void *codec)
+{
+    const AL_CodecEncode *enc = (const AL_CodecEncode *)codec;
+
+    return enc && enc->jpeg_skipped;
+}
 
 #if defined(PLATFORM_T23)
 
@@ -9162,17 +9196,55 @@ int OpenIMP_T31_HwJpegActive(void)
     return sessions > 0 && t31_hwjpeg_irq_waiter_running();
 }
 
+/* How long a JPEG that may be skipped waits for the AVPU (the AVC channels
+ * hold the core lock per command list, a few ms each). */
+#define T31_HWJPEG_BUSY_WAIT_MS 200
+
+/* -1 failed (the software encoder may take the picture), -EBUSY: may_skip
+ * and the core stayed busy for T31_HWJPEG_BUSY_WAIT_MS. */
 static int t31_hwjpeg_encode_locked(const HWFrameBuffer *frame,
-                                    HWStreamBuffer *stream, uint32_t quality)
+                                    HWStreamBuffer *stream, uint32_t quality,
+                                    int may_skip)
 {
     int ret;
 
     if (!t31_hwjpeg_requested() || g_t31_hwjpeg.state < 0)
         return -1;
-    pthread_mutex_lock(&g_t31_encode_core_lock);
+    if (may_skip) {
+        struct timespec deadline;
+
+        clock_gettime(CLOCK_REALTIME, &deadline);
+        deadline.tv_nsec += T31_HWJPEG_BUSY_WAIT_MS * 1000000L;
+        while (deadline.tv_nsec >= 1000000000L) {
+            deadline.tv_nsec -= 1000000000L;
+            deadline.tv_sec++;
+        }
+        if (pthread_mutex_timedlock(&g_t31_encode_core_lock, &deadline) != 0)
+            return -EBUSY;
+    } else {
+        pthread_mutex_lock(&g_t31_encode_core_lock);
+    }
     ret = t31_hwjpeg_encode(frame, stream, quality);
     pthread_mutex_unlock(&g_t31_encode_core_lock);
     return ret;
+}
+
+/* Hardware JPEG first; the software encoder takes the same quality when the
+ * core is unavailable or the frame overflows. A busy core with skipping
+ * allowed fails the picture instead (the caller reuses its last JPEG). */
+static int t31_encode_jpeg(AL_CodecEncode *enc, HWFrameBuffer *frame,
+                           HWStreamBuffer *stream)
+{
+    int ret = t31_hwjpeg_encode_locked(frame, stream, codec_jpeg_quality(enc),
+                                       enc->jpeg_skip_allowed);
+
+    if (ret == 0)
+        return 0;
+    if (ret == -EBUSY) {
+        enc->jpeg_skipped = 1;
+        return -1;
+    }
+    return HW_Encoder_Encode_NV12_JPEG(frame, stream, codec_jpeg_quality(enc));
 }
 
 /* The 0x8400-0x8428 block plus 0x85F0/0x85E4 is the stock libimp's JPEG core
@@ -11264,14 +11336,8 @@ static int al_codec_encode_process_impl(void *codec, void *frame,
                 ? t40_encode_gray_jpeg(width, height, timestamp, hw_stream)
                 : HW_Encoder_Encode_Software(&hw_frame, hw_stream, codec_type)) < 0
 #elif defined(PLATFORM_T31)
-            /* Hardware JPEG first; the software encoder takes the same
-             * quality when the core is unavailable or the frame overflows. */
             (codec_type == IMP_ENC_TYPE_JPEG
-                ? ((t31_hwjpeg_encode_locked(&hw_frame, hw_stream,
-                                             codec_jpeg_quality(enc)) == 0)
-                       ? 0
-                       : HW_Encoder_Encode_NV12_JPEG(&hw_frame, hw_stream,
-                                                     codec_jpeg_quality(enc)))
+                ? t31_encode_jpeg(enc, &hw_frame, hw_stream)
                 : HW_Encoder_Encode_Software(&hw_frame, hw_stream, codec_type)) < 0
 #elif defined(PLATFORM_T23) || defined(PLATFORM_T30)
             (codec_type == IMP_ENC_TYPE_JPEG

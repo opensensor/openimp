@@ -195,6 +195,15 @@ typedef struct {
     int frame_readers;              /* video polls between the receiving
                                      * check and the fan-out (atomic) */
     pthread_cond_t jpeg_frame_ready;
+    /* Last finished JPEG (heap copy, under lock), delivered again when the
+     * codec skips a picture: p2_jpeg_reuse_last() */
+    uint8_t *jpeg_last;
+    size_t jpeg_last_capacity;
+    uint32_t jpeg_last_length;
+    uint64_t jpeg_last_us;
+    P2HWStream jpeg_reuse;          /* raw_stream of a reused picture */
+    uint32_t jpeg_reused;           /* pictures stood in for */
+    uint64_t jpeg_reuse_log_us;
     IMPEncoderCHNAttr attr;
     IMPEncoderPack packs[P2_MAX_PUBLIC_PACKS];
     IMPEncoderJpegeQl jpeg_quality;
@@ -504,6 +513,87 @@ static void p2_free_jpeg_frame_buffer(P2EncoderChannel *ch)
     ch->jpeg_frame_buffer = NULL;
     ch->jpeg_frame_capacity = 0;
     ch->jpeg_frame_phys = 0;
+}
+
+/*
+ * A JPEG channel that holds a recent picture lets the codec skip one that
+ * would wait for the busy core (AVPU on T31, the shared Helix bitstream
+ * buffer on T21) or for rmem (Helix), and delivers that picture again: a
+ * snapshot or MJPEG client gets a valid JPEG at once instead of queueing
+ * behind the video channels or the slow software encoder.  Older pictures
+ * do not qualify; those channels encode as before.
+ */
+#define P2_JPEG_REUSE_MAX_AGE_US 5000000ull
+#define P2_JPEG_REUSE_LOG_US     10000000ull
+static char p2_jpeg_reuse_tag;
+#define P2_JPEG_REUSE_USER ((void *)&p2_jpeg_reuse_tag)
+
+/* Under ch->lock. */
+static int p2_jpeg_reuse_fresh(const P2EncoderChannel *ch, uint64_t now_us)
+{
+    return ch->jpeg_last_length &&
+           now_us - ch->jpeg_last_us <= P2_JPEG_REUSE_MAX_AGE_US;
+}
+
+/* Under ch->lock, with a finished JPEG about to be handed out. */
+static void p2_jpeg_keep_last(P2EncoderChannel *ch, const P2HWStream *raw)
+{
+    if (!raw || !raw->virt_addr || !raw->length)
+        return;
+    if (ch->jpeg_last_capacity < raw->length) {
+        size_t capacity = (size_t)raw->length + raw->length / 4u;
+        uint8_t *grown = (uint8_t *)realloc(ch->jpeg_last, capacity);
+
+        if (!grown) {
+            ch->jpeg_last_length = 0;
+            return;
+        }
+        ch->jpeg_last = grown;
+        ch->jpeg_last_capacity = capacity;
+    }
+    memcpy(ch->jpeg_last, (const void *)(uintptr_t)raw->virt_addr,
+           raw->length);
+    ch->jpeg_last_length = raw->length;
+    ch->jpeg_last_us = p2_monotonic_us();
+}
+
+/* Under ch->lock, the codec having skipped a picture: hands the last one
+ * out as this poll's stream (ReleaseStream knows it by its codec_user). */
+static int p2_jpeg_reuse_last(P2EncoderChannel *ch, uint64_t timestamp)
+{
+    uint64_t now_us = p2_monotonic_us();
+
+    if (ch->raw_stream || !p2_jpeg_reuse_fresh(ch, now_us))
+        return -1;
+    memset(&ch->jpeg_reuse, 0, sizeof(ch->jpeg_reuse));
+    ch->jpeg_reuse.virt_addr = (uint32_t)(uintptr_t)ch->jpeg_last;
+    ch->jpeg_reuse.length = ch->jpeg_last_length;
+    ch->jpeg_reuse.timestamp = timestamp;
+    ch->jpeg_reused++;
+    if (ch->jpeg_reused == 1u ||
+        now_us - ch->jpeg_reuse_log_us >= P2_JPEG_REUSE_LOG_US) {
+        ch->jpeg_reuse_log_us = now_us;
+        IMP_LOG_WARN("Encoder", "JPEG channel %d: encoder busy or rmem "
+                     "short, delivering the last picture again (%u bytes, "
+                     "%u ms old) [%u skipped]", (int)(ch - p2_channels),
+                     ch->jpeg_last_length,
+                     (unsigned int)((now_us - ch->jpeg_last_us) / 1000u),
+                     ch->jpeg_reused);
+    }
+    ch->raw_stream = &ch->jpeg_reuse;
+    ch->codec_user = P2_JPEG_REUSE_USER;
+    ch->source_frame = &ch->synthetic_frame;
+    return 0;
+}
+
+static void p2_jpeg_free_last(P2EncoderChannel *ch)
+{
+    free(ch->jpeg_last);
+    ch->jpeg_last = NULL;
+    ch->jpeg_last_capacity = 0;
+    ch->jpeg_last_length = 0;
+    ch->jpeg_reused = 0;
+    ch->jpeg_reuse_log_us = 0;
 }
 
 static int p2_copy_requested_jpeg_frames(int source_channel,
@@ -938,6 +1028,8 @@ extern int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data);
 extern int AL_Codec_Encode_GetStream(void *codec, void **stream, void **user_data);
 extern int AL_Codec_Encode_ReleaseStream(void *codec, void *stream, void *user_data);
 extern int AL_Codec_Encode_RequestIDR(void *codec);
+extern int AL_Codec_Encode_SetJpegSkip(void *codec, int allow);
+extern int AL_Codec_Encode_JpegSkipped(void *codec);
 #if defined(PLATFORM_T23) || defined(PLATFORM_T30)
 extern int AL_Codec_Encode_SetJpegQl(void *codec, int enable,
                                      const uint8_t tables[128]);
@@ -1541,6 +1633,7 @@ int IMP_Encoder_DestroyChn(int channel)
     if (ch->codec)
         AL_Codec_Encode_Destroy(ch->codec);
     p2_free_jpeg_frame_buffer(ch);
+    p2_jpeg_free_last(ch);
     ch->jpeg_frame_generation = 0;
     ch->codec = NULL;
     ch->created = 0;
@@ -1817,6 +1910,7 @@ static int p2_polling_stream(int channel, uint32_t timeout_ms)
     uint64_t timeout_us;
     int core_locked = 0;
     int reader_counted = 0;
+    int jpeg_may_skip = 0;
     int result = -1;
     int process_result;
     OpenIMPProfileStamp poll_profile;
@@ -2004,6 +2098,12 @@ static int p2_polling_stream(int channel, uint32_t timeout_ms)
         pace_have_frame = 1;
     }
 #endif
+    if (ch->codec_type == IMP_ENC_TYPE_JPEG) {
+        pthread_mutex_lock(&ch->lock);
+        jpeg_may_skip = p2_jpeg_reuse_fresh(ch, p2_monotonic_us());
+        pthread_mutex_unlock(&ch->lock);
+        (void)AL_Codec_Encode_SetJpegSkip(ch->codec, jpeg_may_skip);
+    }
     process_result = AL_Codec_Encode_Process(ch->codec, frame, frame);
 #if defined(PLATFORM_T23)
     pace_encoded_us = p2_monotonic_us();
@@ -2013,8 +2113,19 @@ static int p2_polling_stream(int channel, uint32_t timeout_ms)
     if (ch->codec_type == IMP_ENC_TYPE_JPEG)
         p2_jpeg_return_lent_frame(ch);
 #endif
-    if (process_result != 0)
+    if (process_result != 0) {
+        /* frame is the fan-out copy (synthetic_frame) or a FrameSource
+         * frame, both with the capture time stamp there; the latter is
+         * released below as for any failed poll */
+        if (jpeg_may_skip && frame && AL_Codec_Encode_JpegSkipped(ch->codec)) {
+            pthread_mutex_lock(&ch->lock);
+            if (p2_jpeg_reuse_last(
+                    ch, ((const P2SyntheticFrame *)frame)->timestamp) == 0)
+                result = 0;
+            pthread_mutex_unlock(&ch->lock);
+        }
         goto done;
+    }
 #if defined(PLATFORM_T23) || defined(PLATFORM_T30)
     if (ch->codec_type == IMP_ENC_TYPE_AVC &&
         __sync_add_and_fetch(&t23_avc_trace_count, 1u) <= 16u)
@@ -2065,6 +2176,8 @@ static int p2_polling_stream(int channel, uint32_t timeout_ms)
                  t23_avc_trace_count - 1u, frame);
 #endif
     pthread_mutex_lock(&ch->lock);
+    if (ch->codec_type == IMP_ENC_TYPE_JPEG)
+        p2_jpeg_keep_last(ch, (const P2HWStream *)stream);
     ch->source_frame = frame ? frame : &ch->synthetic_frame;
     ch->raw_stream = stream;
     ch->codec_user = user;
@@ -2287,7 +2400,9 @@ int IMP_Encoder_ReleaseStream(int channel, IMPEncoderStream *stream)
                  "source=%p\n", t23_release_trace_count - 1u, raw, user,
                  frame);
 #endif
-    result = AL_Codec_Encode_ReleaseStream(ch->codec, raw, user);
+    /* a reused JPEG (p2_jpeg_reuse_last) is no codec stream */
+    result = user == P2_JPEG_REUSE_USER
+        ? 0 : AL_Codec_Encode_ReleaseStream(ch->codec, raw, user);
     if (frame != &ch->synthetic_frame &&
         p2_release_source_frame(ch->source_channel, frame) != 0)
         result = -1;

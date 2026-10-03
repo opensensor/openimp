@@ -7,7 +7,9 @@
  *
  * Builds src/t40/openimp_p2_encoder.c (T31) against a stub codec and a
  * fake FrameSource that always has a frame. Also checks that a JPEG
- * channel next to a receiving video channel still works (fan-out).
+ * channel next to a receiving video channel still works (fan-out), and
+ * that a picture the codec skips (core busy, rmem short) is replaced by
+ * the channel's last JPEG.
  */
 #define _GNU_SOURCE
 #include <stdint.h>
@@ -97,11 +99,32 @@ int DMA_RmemFlushCache(void *virt, uint32_t size, int dir)
 
 /* ---- stub codec: Process records the frame, GetStream returns one ---- */
 
+/* the codec's stream record (P2HWStream) */
+typedef struct {
+    uint32_t phys_addr;
+    uint32_t virt_addr;
+    uint32_t length;
+    uint64_t timestamp;
+    uint32_t frame_type;
+    uint32_t slice_type;
+    uint32_t reserved[8];
+} StubStream;
+
 typedef struct {
     int pending;
     int encoded;
-    uint8_t stream[64];
+    int skip_allowed;
+    int skipped;
+    StubStream hw;
+    char jpeg[32];
 } StubCodec;
+
+/* stub_streams: GetStream hands out jpeg[] (non-PIE build: the 32-bit
+ * stream addresses hold the pointers); stub_busy: a JPEG that may be
+ * skipped is (AL_Codec_Encode_SetJpegSkip) */
+static int stub_streams;
+static int stub_busy;
+static int stub_released;       /* streams given back to the codec */
 
 int AL_Codec_Encode_Create(void **codec, void *params)
 {
@@ -117,6 +140,10 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user)
     (void)user;
     if (!frame)
         return -1;
+    if (stub_busy && c->skip_allowed) {
+        c->skipped = 1;
+        return -1;
+    }
     c->pending = 1;
     c->encoded++;
     return 0;
@@ -128,16 +155,41 @@ int AL_Codec_Encode_GetStream(void *codec, void **stream, void **user)
     if (!c->pending)
         return 1;
     c->pending = 0;
-    *stream = NULL;             /* nothing to hand out: PollingStream's
-                                   frame reached the codec, that is all
-                                   this test checks */
     *user = NULL;
+    if (!stub_streams) {
+        *stream = NULL;         /* nothing to hand out: PollingStream's
+                                   frame reached the codec, that is all
+                                   the source checks need */
+        return 0;
+    }
+    snprintf(c->jpeg, sizeof(c->jpeg), "JPEG#%d", c->encoded);
+    memset(&c->hw, 0, sizeof(c->hw));
+    c->hw.virt_addr = (uint32_t)(uintptr_t)c->jpeg;
+    c->hw.length = (uint32_t)strlen(c->jpeg) + 1u;
+    *stream = &c->hw;
     return 0;
 }
 int AL_Codec_Encode_ReleaseStream(void *codec, void *stream, void *user)
 {
-    (void)codec; (void)stream; (void)user;
+    StubCodec *c = codec;
+
+    (void)user;
+    if (stream != &c->hw)
+        return -1;
+    stub_released++;
     return 0;
+}
+int AL_Codec_Encode_SetJpegSkip(void *codec, int allow)
+{
+    StubCodec *c = codec;
+
+    c->skip_allowed = allow;
+    c->skipped = 0;
+    return 0;
+}
+int AL_Codec_Encode_JpegSkipped(void *codec)
+{
+    return ((StubCodec *)codec)->skipped;
 }
 #define STUB0(name) int name(void *codec) { (void)codec; return 0; }
 #define STUB1(name, t) int name(void *codec, t a) { (void)codec; (void)a; return 0; }
@@ -230,6 +282,47 @@ int main(void)
         CHECK(fs_gets[0] == 5 && !fs_outstanding[0],
               "JPEG next to an idle video channel took %d frames in 5 "
               "polls (waited for a fan-out that never comes)", fs_gets[0]);
+    }
+
+    /* A skipped JPEG: the channel delivers its last picture again, which
+     * is no codec stream (ReleaseStream must not hand it to the codec).
+     * Lone JPEG channel 2 on framesource 2. */
+    {
+        IMPEncoderStream stream;
+
+        stub_streams = 1;
+        stub_busy = 1;
+        CHECK(setup(2, 2, 2, 1) == 0, "reuse channel setup");
+        /* nothing to reuse yet: the codec may not skip */
+        CHECK(IMP_Encoder_PollingStream(2, 200) == 0, "first JPEG");
+        CHECK(IMP_Encoder_GetStream(2, &stream, 0) == 0 &&
+              stream.packCount == 1 &&
+              !strcmp((const char *)(uintptr_t)stream.virAddr, "JPEG#1"),
+              "first JPEG content");
+        CHECK(IMP_Encoder_ReleaseStream(2, &stream) == 0,
+              "first JPEG release");
+        CHECK(!fs_outstanding[2], "capture frame of the first JPEG held");
+        /* the codec skips the next one: JPEG#1 again, frame returned */
+        CHECK(IMP_Encoder_PollingStream(2, 200) == 0,
+              "skipped JPEG not replaced by the last one");
+        memset(&stream, 0, sizeof(stream));
+        CHECK(IMP_Encoder_GetStream(2, &stream, 0) == 0 &&
+              stream.packCount == 1 && stream.streamSize == 7 &&
+              !strcmp((const char *)(uintptr_t)stream.virAddr, "JPEG#1"),
+              "reused JPEG content");
+        CHECK(!fs_outstanding[2], "capture frame of the skipped JPEG held");
+        CHECK(IMP_Encoder_ReleaseStream(2, &stream) == 0 &&
+              stub_released == 1, "reused JPEG release (%d codec "
+              "releases, want 1)", stub_released);
+        /* the next encodes normally again */
+        stub_busy = 0;
+        CHECK(IMP_Encoder_PollingStream(2, 200) == 0 &&
+              IMP_Encoder_GetStream(2, &stream, 0) == 0 &&
+              !strcmp((const char *)(uintptr_t)stream.virAddr, "JPEG#2"),
+              "JPEG after the skip");
+        CHECK(IMP_Encoder_ReleaseStream(2, &stream) == 0 &&
+              stub_released == 2, "release (%d codec releases)",
+              stub_released);
     }
 
     if (failures) {

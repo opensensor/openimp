@@ -1099,6 +1099,49 @@ static pthread_mutex_t vbm_pool_lock[MAX_VBM_POOLS] = {
  * address, so the stale pointer never passes for one of its frames. */
 static VBMPool *vbm_retired[MAX_VBM_POOLS];
 
+/* rmem bytes of each FrameSource pool taken from the arena (0: none) */
+static size_t vbm_rmem_bytes[MAX_VBM_POOLS];
+
+/*
+ * Once per process, before a FrameSource pool is taken from rmem: warn when
+ * it no longer fits next to what is already allocated - the other pools and
+ * the fixed buffers (encoder, ISP, OSD, ...) - so an overcommitted
+ * configuration (resolutions x nrVBs too large for the rmem= reservation)
+ * is visible at start-up with its numbers, before the allocation failures or
+ * skipped pictures it causes.  Diagnosis only: nothing is changed.
+ */
+static void vbm_check_rmem_budget(int chn, int need)
+{
+    static int warned;
+    size_t used, total, largest, pools = 0;
+    int i, count = 0;
+
+    if (need <= 0 || __atomic_load_n(&warned, __ATOMIC_RELAXED) ||
+        DMA_RmemStats(&used, &total, &largest) != 0 || !total)
+        return;
+    if ((size_t)need <= total - (used < total ? used : total) &&
+        (size_t)need <= largest)
+        return;
+    if (__atomic_exchange_n(&warned, 1, __ATOMIC_RELAXED))
+        return;
+    for (i = 0; i < MAX_VBM_POOLS; i++) {
+        size_t bytes = __atomic_load_n(&vbm_rmem_bytes[i], __ATOMIC_RELAXED);
+
+        if (i != chn && bytes) {
+            pools += bytes;
+            count++;
+        }
+    }
+    IMP_LOG_WARN("DMA", "rmem budget exceeded: FrameSource pool vbm_chn%d "
+                 "needs %d bytes, but rmem has %zu of %zu bytes free "
+                 "(largest free block %zu); in use: %d other pool(s) %zu "
+                 "bytes, fixed buffers %zu bytes. Lower the resolutions or "
+                 "nrVBs, or enlarge rmem: allocations will fail or pictures "
+                 "be skipped",
+                 chn, need, used < total ? total - used : 0u, total, largest,
+                 count, pools, used > pools ? used - pools : 0u);
+}
+
 /* g_framevolumes: registration, lookup and reference counts */
 static pthread_mutex_t vbm_volume_lock = PTHREAD_MUTEX_INITIALIZER;
 
@@ -1330,7 +1373,11 @@ static int vbm_create_pool(int chn, void *fmt, void *ops, void *priv) {
     int ret;
 
     if (pool->pool_id < 0) {
+        vbm_check_rmem_budget(chn, total_size);
         ret = DMA_AllocDescriptor(&alloc_info, total_size, pool->name);
+        if (ret >= 0)
+            __atomic_store_n(&vbm_rmem_bytes[chn], (size_t)total_size,
+                             __ATOMIC_RELAXED);
     } else {
         ret = DMA_PoolAllocDescriptor(pool->pool_id, &alloc_info, total_size, pool->name);
     }
@@ -1511,6 +1558,7 @@ int VBMDestroyPool(int chn) {
     pool->phys_base = 0;
     free(vbm_retired[chn]);
     vbm_retired[chn] = pool;
+    __atomic_store_n(&vbm_rmem_bytes[chn], 0, __ATOMIC_RELAXED);
     pthread_mutex_unlock(&vbm_pool_lock[chn]);
 
     vbm_log_rmem("after releasing", chn, pool_bytes);

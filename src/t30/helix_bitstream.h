@@ -26,6 +26,10 @@
 /* Takes the buffer, at least size bytes; 0 with *dma filled (owned by this
  * module: never free it) and the lock held, -1 without the lock. */
 int OpenIMP_HelixBitstream_Lock(uint32_t size, IMPDMABufferInfo *dma);
+/* As Lock(), but -EBUSY when another job holds the buffer for longer than
+ * timeout_ms (a JPEG that can be skipped does not queue behind H.264). */
+int OpenIMP_HelixBitstream_LockTimeout(uint32_t size, IMPDMABufferInfo *dma,
+                                       uint32_t timeout_ms);
 void OpenIMP_HelixBitstream_Unlock(void);
 
 /* Grows the buffer to size bytes now (channel creation, as the stock
