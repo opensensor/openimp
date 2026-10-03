@@ -156,7 +156,7 @@ In progress: T23 reference ring port (claude/t23-ref-ring), rate-control follow-
 ### Stability, helper libraries, telemetry
 
 - **Kernel soc_vpu / Helix hardening**: Patch 0099 flashed in -all-11 (04:07–04:16), 0 VPU errors. Hard bitstream limit (OPENIMP_T23_HELIX_BSF=1) only with a patched kernel, bit 19 derived from disassembly, device test open.
-- **AVPU kernel driver (T31/T40/T41) review**: The AVPU module is shared by T31/T40/T41. Patch 0100 is a kernel patch (rmem flush ioctl validation); the module fixes are in the open-tx-isp branch claude/avpu-review-fixes.
+- **AVPU kernel driver (T31/T40/T41) review**: The AVPU module is shared by T31/T40/T41. Patch 0100 is a kernel patch (rmem flush ioctl validation); the module fixes are in the OpenIMP repo (avpu/), branch claude/avpu-review-fixes.
 - **Long-term stability / hangs**: T23: candidates: encoder overflow overwrites reference, soc_vpu lock leak, stats DMA into reused memory; countermeasures in the -all-9..12 state, but the daylight/sun test with vendor AE is pending. In addition an unexplained reboot with several MP4 streams (see memory).
 - **Helper libraries libalog / libsysutils**: The two libs were already open neo replacements; libimp now contains the two logging functions. Syslog only via OPENIMP_LOG_SYSLOG=1. On all five cameras since -all-10.
 - **Tuning getters / readback**: T21: defaults from getters are vendor behaviour (lifted OEM kernel). T23: tool t23tune for checking on the device. T31: AF getters return zeros (fixed focus, irrelevant).
