@@ -11,7 +11,7 @@
 --ok:#1d3326;--plus:#18432b;--bug:#4a3818;--wip:#1f2d4d;--plan:#34294d;--miss:#4a2323;--na:#262b32;--unk:#22262c;}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
-main{max-width:1200px;margin:0 auto;padding:16px}
+main{max-width:none;margin:0 auto;padding:16px}
 h1{font-size:1.45rem;margin:.2rem 0 .1rem}h2{font-size:1.1rem;margin:1.4rem 0 .5rem}
 .meta{color:var(--muted);font-size:.85rem;margin:0 0 .8rem}
 .card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin:0 0 12px}
@@ -20,13 +20,13 @@ h1{font-size:1.45rem;margin:.2rem 0 .1rem}h2{font-size:1.1rem;margin:1.4rem 0 .5
 .legend span{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:8px;padding:3px 8px;font-size:.85rem}
 .legend small{color:var(--muted)}
 .wrap{overflow-x:auto;border:1px solid var(--line);border-radius:10px;background:var(--card);max-width:100%}
-table{border-collapse:separate;border-spacing:0;width:max-content;min-width:100%;font-size:.82rem}
+table{border-collapse:separate;border-spacing:0;width:100%;table-layout:fixed;font-size:.8rem}
 th,td{padding:6px 8px;border-bottom:1px solid var(--line);border-right:1px solid var(--line);vertical-align:top;text-align:left}
 thead th{position:sticky;top:0;background:var(--head);z-index:3}
-th:first-child,td:first-child{position:sticky;left:0;z-index:2;background:var(--card);min-width:150px;max-width:150px;font-weight:600}
+th:first-child,td:first-child{position:sticky;left:0;z-index:2;background:var(--card);width:11%;font-weight:600}
 thead th:first-child{z-index:4;background:var(--head)}
-td.vend{min-width:130px;max-width:150px;color:var(--muted);font-size:.78rem}
-td.cellc,td[class^="s-"]{min-width:165px;max-width:200px}
+td.vend{color:var(--muted);font-size:.76rem}th:nth-child(2){width:10%}td{overflow-wrap:anywhere}@media (max-width:1100px){table{width:max-content;table-layout:auto}th:first-child,td:first-child{min-width:140px;max-width:140px}td.cellc,td[class^="s-"]{min-width:165px;max-width:200px}}
+
 tr.grp td{background:var(--head);font-weight:700;color:var(--accent);position:sticky;left:0}
 .sym{display:inline-block;margin-right:5px;font-weight:700;white-space:nowrap}
 .s-ok{background:var(--ok)}.s-plus{background:var(--plus)}.s-bug{background:var(--bug)}.s-wip{background:var(--wip)}
