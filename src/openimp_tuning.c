@@ -20,6 +20,7 @@
 #if defined(PLATFORM_T21) || defined(PLATFORM_T31)
 #define TISP_VIDIOC_TUNING 0xc00c56c6U
 #define TISP_VIDIOC_S_CTRL 0xc008561cU
+#define TISP_VIDIOC_G_CTRL 0xc008561bU
 #define TISP_CID_TOTAL_GAIN 0x08000027U
 #define TISP_V4L2_CID_BRIGHTNESS 0x00980900U
 #define TISP_V4L2_CID_CONTRAST 0x00980901U
@@ -216,6 +217,21 @@ static int t31_get_total_gain(OpenIMPTuningController *controller,
     return 0;
 }
 
+/* The contrast the application set (IMP_ISP_Tuning_SetContrast lands in the
+ * driver, which keeps the low byte).  A profile that owns the contrast
+ * (control_mask) wins; if the read fails the profile value is the fallback. */
+static uint32_t t31_user_contrast(OpenIMPTuningController *controller)
+{
+    struct t31_v4l2_control control = { (int32_t)TISP_V4L2_CID_CONTRAST, 0 };
+
+    if (controller->profile.control_mask & OPENIMP_TUNING_CONTROL_CONTRAST)
+        return controller->profile.contrast;
+    if (ioctl(controller->fd, TISP_VIDIOC_G_CTRL, &control) < 0 ||
+        control.value < 0 || control.value > 0xff)
+        return controller->profile.contrast;
+    return (uint32_t)control.value;
+}
+
 static int tuning_feedback(OpenIMPTuningController *controller)
 {
     int32_t total_gain = 0;
@@ -224,13 +240,14 @@ static int tuning_feedback(OpenIMPTuningController *controller)
     ret = t31_get_total_gain(controller, &total_gain);
     if (ret || total_gain < 0 || total_gain == controller->last_total_gain)
         return ret;
+    /* Remember the gain before sending, as the OEM daemon does: a driver
+     * that rejects the value must not be fed the same one every second. */
+    controller->last_total_gain = total_gain;
     ret = t31_set_control(controller->fd, TISP_V4L2_CID_CONTRAST,
         (int32_t)(((uint32_t)total_gain << 8) |
-                  controller->profile.contrast));
-    if (!ret) {
-        controller->last_total_gain = total_gain;
+                  t31_user_contrast(controller)));
+    if (!ret)
         controller->feedback_updates++;
-    }
     return ret;
 }
 #else
