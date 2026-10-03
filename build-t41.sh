@@ -99,6 +99,18 @@ done
     -c "$project_dir/src/alcodec/EncHwScalingList.c" \
     -o "$output_dir/backend-enc-hw-scaling-list.o"
 
+# OSD: the T23-family IPU OSD (T41 1.2.0 OSD ABI, /dev/ipu jz_ipu_v13);
+# IVS: the shared framework and move algorithm (T41 IMPFrameInfo ABI).
+"$compiler" $strict_flags $repo_includes \
+    -c "$project_dir/src/t23/openimp_t23_osd.c" \
+    -o "$output_dir/t41_osd.o"
+for source in openimp_t31_ivs openimp_t31_ivs_move
+do
+    "$compiler" $strict_flags $repo_includes -I"$project_dir/src/t31" \
+        -c "$project_dir/src/t31/$source.c" \
+        -o "$output_dir/t41_${source#openimp_t31_}.o"
+done
+
 for source in openimp_p3_controls openimp_p3_audio openimp_p3_compat
 do
     "$compiler" $strict_flags -I"$T41_HEADERS" \
@@ -130,6 +142,9 @@ done
     "$output_dir/openimp_p3_controls.o" \
     "$output_dir/openimp_p3_audio.o" \
     "$output_dir/openimp_p3_compat.o" \
+    "$output_dir/t41_osd.o" \
+    "$output_dir/t41_ivs.o" \
+    "$output_dir/t41_ivs_move.o" \
     "$output_dir/t40_ep1.o" \
     "$output_dir/t41_command_layout.o" \
     "$output_dir/t41_command_builder.o" \

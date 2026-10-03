@@ -421,6 +421,24 @@ uint32_t IMP_Virt_to_Phys(void *virtual_address)
     return p2_dma.base + (uint32_t)(address - base);
 }
 
+/* dma_alloc.h translations for code shared with the other platforms (the
+ * T23-family OSD on T41): an rmem address maps, anything else is returned
+ * as it is, like dma_alloc.c does. */
+void *DMA_PhysToVirt(uint32_t phys_addr)
+{
+    return IMP_Phys_to_Virt(phys_addr);
+}
+
+uint32_t DMA_VirtToPhys(const void *virt_addr)
+{
+    uint32_t phys;
+
+    if (!virt_addr)
+        return 0;
+    phys = IMP_Virt_to_Phys((void *)(uintptr_t)virt_addr);
+    return phys ? phys : (uint32_t)(uintptr_t)virt_addr;
+}
+
 void IMP_PoolFree(void *address)
 {
     (void)IMP_Free((uintptr_t)address);

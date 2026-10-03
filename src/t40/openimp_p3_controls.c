@@ -460,10 +460,12 @@ int IMP_ISP_Tuning_SetOsdPoolSize(int size)
     return size >= 0 ? 0 : -1;
 }
 
+#if !defined(PLATFORM_T41)   /* T41: src/t23/openimp_t23_osd.c */
 int IMP_OSD_SetPoolSize(int size)
 {
     return size >= 0 ? 0 : -1;
 }
+#endif
 
 static uint32_t p3_register_access(uint32_t address, const uint32_t *write_value,
                                    int *ok)

@@ -104,7 +104,11 @@ typedef struct {
 } T23ISPOSDBlockAttr;
 
 typedef struct {
+#if defined(PLATFORM_T41)
+    uint32_t words[6];              /* T41 1.2.0: a leading chx byte */
+#else
     uint32_t words[5];
+#endif
 } T23ISPMaskBlockAttr;
 
 typedef struct {
@@ -200,18 +204,39 @@ typedef struct {
 } IMPIspOsdAttrAsm;
 
 _Static_assert(sizeof(IMPOSDRgnAttrData) == 16, "T23 IMPOSDRgnAttrData");
+#if defined(PLATFORM_T41)
+/* T41 1.2.0 imp_osd.h (measured with the T41 toolchain): the same layout
+ * with a 24-byte IMPISPMaskBlockAttr, so the ISP draw block is 4 bytes
+ * longer and fontData/mosaicAttr move by 4. */
+_Static_assert(sizeof(IMPOSDIspDraw) == 76, "T41 IMPOSDIspDraw");
+#else
 _Static_assert(sizeof(IMPOSDIspDraw) == 72, "T23 IMPOSDIspDraw");
+#endif
 _Static_assert(sizeof(IMPOSDFontAttrData) == 280, "T23 IMPOSDFontAttrData");
 _Static_assert(sizeof(IMPOSDMosaicAttr) == 28, "T23 IMPOSDMosaicAttr");
 _Static_assert(__builtin_offsetof(IMPOSDRgnAttr, fmt) == 28, "T23 OSD fmt");
 _Static_assert(__builtin_offsetof(IMPOSDRgnAttr, data) == 32, "T23 OSD data");
 _Static_assert(__builtin_offsetof(IMPOSDRgnAttr, osdispdraw) == 48,
                "T23 OSD osdispdraw");
+#if defined(PLATFORM_T41)
+_Static_assert(__builtin_offsetof(IMPOSDRgnAttr, fontData) == 124,
+               "T41 OSD fontData");
+#else
 _Static_assert(__builtin_offsetof(IMPOSDRgnAttr, fontData) == 120,
                "T23 OSD fontData");
+#endif
+#if defined(PLATFORM_T41)
+_Static_assert(__builtin_offsetof(IMPOSDRgnAttr, mosaicAttr) == 404,
+               "T41 OSD mosaicAttr");
+#else
 _Static_assert(__builtin_offsetof(IMPOSDRgnAttr, mosaicAttr) == 400,
                "T23 OSD mosaicAttr");
+#endif
+#if defined(PLATFORM_T41)
+_Static_assert(sizeof(IMPOSDRgnAttr) == 432, "T41 IMPOSDRgnAttr");
+#else
 _Static_assert(sizeof(IMPOSDRgnAttr) == 428, "T23 IMPOSDRgnAttr");
+#endif
 _Static_assert(sizeof(IMPOSDGrpRgnAttr) == 36, "T23 IMPOSDGrpRgnAttr");
 _Static_assert(sizeof(T23ISPOSDBlockAttr) == 20, "T23 IMPISPOSDBlockAttr");
 _Static_assert(sizeof(IMPISPOSDSingleAttr) == 40, "T23 IMPISPOSDSingleAttr");

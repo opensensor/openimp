@@ -56,6 +56,8 @@
 #if defined(PLATFORM_T23)
 #include "t23/openimp_t23_osd.h"
 #include "t23/openimp_t23_encoder.h"
+#elif defined(PLATFORM_T41)
+#include "t23/openimp_t23_osd.h"
 #endif
 #if defined(PLATFORM_T30)
 /* T20/T21/T30 keep the T31 OSD state and blend PIC/COVER regions with the
@@ -2147,8 +2149,9 @@ static int p2_polling_stream(int channel, uint32_t timeout_ms)
          * writes the frame in memory, where the Helix VPU reads it. */
         if (ch->osd_group >= 0)
             openimp_t31_osd_apply(ch->osd_group, frame);
-#elif defined(PLATFORM_T23)
-        /* OEM T23 osd_update: IPU covers/pictures, CPU lines and mosaics */
+#elif defined(PLATFORM_T23) || defined(PLATFORM_T41)
+        /* OEM T23 osd_update: IPU covers/pictures, CPU lines and mosaics
+         * (T41: the same IPU and OSD ABI family, see openimp_t23_osd.c) */
         if (ch->osd_group >= 0)
             openimp_t23_osd_apply(ch->osd_group, frame);
 #endif

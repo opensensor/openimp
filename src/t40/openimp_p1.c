@@ -17,6 +17,9 @@
 
 #include "openimp_profile.h"
 #include "dma_alloc.h"
+#if defined(PLATFORM_T41)
+#include "t31/openimp_t31_ivs.h"
+#endif
 #include "t40/openimp_p2_dma.h"
 
 #define OPENIMP_P1_MAGIC        0x50315434U /* "P1T4" */
@@ -1086,6 +1089,12 @@ int IMP_FrameSource_GetFrame(int channel, IMPFrameInfo **frame)
     chn->frames_dequeued++;
     *frame = &buffer->frame;
     unlock_p1();
+#if defined(PLATFORM_T41)
+    /* T41 has no capture thread: IVS sees each frame as its consumer
+     * dequeues it, as the T31 capture thread hands it every frame
+     * (openimp_t31_ivs.c copies or pre-processes it synchronously). */
+    openimp_t31_ivs_capture(channel, &buffer->frame);
+#endif
     openimp_profile_end(OPENIMP_PROFILE_FRAME_SOURCE_WAIT, wait_profile);
     return 0;
 }
