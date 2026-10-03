@@ -45,8 +45,8 @@ Further items (evening 2026-10-03):
 
 Further items (night 2026-10-03):
 
-- **eprc macroblock RC (opt-in, `claude/eprc-mbrc` 9e2bc3a, device test pending):** 0 deviations against the vendor in the emulator on T23 and T21. Env `OPENIMP_EPRC_MBRC=1`; `IMP_Encoder_SetMbRC` works per channel at runtime (on the vendor SetMbRC has no effect and MB-RC always runs). The vendor uses SAS mode 3 (7 activity-class QP offsets), no per-MB QP map. Vendor bug (class-table index reads past a 9-byte table): OpenIMP uses 0.
-- **T21 `ae_it_max_us` acts (`claude/t21-ae-it-max` 840a57ff, beyond vendor, user decision pending):** the vendor T21 ignores the RANGE block of SetIntegrationTime. cam-D: cap 2000 us gives IT 68 lines, dgain 19 to 63; cap 5000 us gives 172 lines; cap 0 returns to 1125 lines. Caveat: a 4th module reload in one boot crashed (under investigation).
+- **eprc macroblock RC (opt-in, `claude/eprc-mbrc` 9e2bc3a, a8b483a: registers 0x400c0/0x400c4 per picture type like the vendor, T23 IDR 0x060404c1/0x61615921, P 0x030484c1/0x61615c21, T21 IDR 0x060407c1, P 0x030487c1; device test running):** 0 deviations against the vendor in the emulator on T23 and T21. Env `OPENIMP_EPRC_MBRC=1`; `IMP_Encoder_SetMbRC` works per channel at runtime (on the vendor SetMbRC has no effect and MB-RC always runs). The vendor uses SAS mode 3 (7 activity-class QP offsets), no per-MB QP map. Vendor bug (class-table index reads past a 9-byte table): OpenIMP uses 0.
+- **T21 `ae_it_max_us` acts (`claude/t21-ae-it-max` 840a57ff, beyond vendor, the user decided to keep it):** the vendor T21 ignores the RANGE block of SetIntegrationTime. cam-D: cap 2000 us gives IT 68 lines, dgain 19 to 63; cap 5000 us gives 172 lines; cap 0 returns to 1125 lines. Caveat: a 4th module reload in one boot crashed (under investigation).
 - **Smaller modules (`claude/open-tx-isp-size2` a7214c75):** T23 1,047 to 622 KB (vendor 857), T31 859 to 711 KB (vendor 829), T20 775 to 736 KB, T10 770 to 731 KB; device-tested on cam-A and cam-B. No API change.
 - **No vendor libimp hybrid on T23:** cam-B runs without it (~328 KiB less in the rootfs). Only the hardware JPEG `IMP_Decoder` needs the OEM worker, now optional (`T23_BUILD_OEM_WORKER=1`, `claude/t23-no-oem-worker` 9eefbae).
 - **T10/T20 OEM rate controller as default (`claude/t1x-oem-rc-default-a13` f05db18, device test pending):** `quality_lvl` / `change_pos` act as in the vendor firmware once it is the default.
@@ -153,7 +153,7 @@ bring-up/trace switches that are not described in the docs; treat them as intern
 ## 8. Unverified or not yet in this list
 
 - T31 `OPENIMP_T31_COMPANION` (mentioned only as a proposal in T31_HW_JPEG_RE.md; the implemented knob is `..._COMPANION_STAGE`).
-- SMART / vendor-equal eprc on T23, T21: done (`claude/eprc-complete`, 0 oracle deviations); SMART is still mapped to VBR on T10/T20; MB-level RC ported (opt-in, `claude/eprc-mbrc`, device test pending).
+- SMART / vendor-equal eprc on T23, T21: done (`claude/eprc-complete`, 0 oracle deviations); SMART is still mapped to VBR on T10/T20; MB-level RC ported (opt-in, `claude/eprc-mbrc`, a8b483a, device test running).
 - T23 live RC readback and which RC writes take effect on T10/T20/T21: partly stated in the matrix, per-field test not documented.
 - T21 AWB hysteresis at real dusk (night checks only).
 - AEC on T23 (implemented, device test open); AENC/ADEC double-release rejection (matrix cites it, no SoC test evidence).

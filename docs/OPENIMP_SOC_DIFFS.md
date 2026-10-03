@@ -1,6 +1,6 @@
 # OpenIMP vs vendor libimp: API-level differences per SoC (input for timps `USE_OPENIMP`)
 
-As of: 2026-10-03 20:39 (local time). Audience: timps maintainers. Cameras as in the changelog (cam-A T31, cam-B T23,
+As of: 2026-10-03 21:08 (local time). Audience: timps maintainers. Cameras as in the changelog (cam-A T31, cam-B T23,
 cam-C T20, cam-D T21, cam-E T10, cam-F T41).
 
 Purpose: timps gets a **compile-time** switch `USE_OPENIMP` (Makefile `USE_OPENIMP ?= 0`, `-DUSE_OPENIMP` in
@@ -81,10 +81,10 @@ call the vendor header lacks needs an own prototype under `USE_OPENIMP` (OpenIMP
 | `defog_strength` / `ISP_HAS_DEFOG` | off (vendor header lacks prototype) | **[+]** defog block lifted, IRQ 21 registered; control path being wired | in work (`claude/t1x-beyond-vendor-ctrls`) | `SetDefog_Strength(uint8_t *)` |
 | `dpc_strength` / `ISP_HAS_DPC` | off | **[+]** being added | in work | `SetDPC_Strength(uint32_t)` |
 | `ae_compensation` / `ISP_HAS_AECOMP` | off (missing from T21 SDK) | OpenIMP exports it, vendor dispatcher lifted | not device-tested individually: **do not enable** | `int IMP_ISP_Tuning_SetAeComp(int comp)` |
-| `ae_it_max_us` / `ISP_HAS_AE_IT_RANGE` | on, but the vendor T21 ignores the RANGE block | **[+]** acts on `claude/t21-ae-it-max` (840a57ff, user decision pending): cap 2000 us gives IT 68 lines, 5000 us gives 172, 0 returns to 1125; caveat: 4th module reload in one boot crashed (under investigation). Without that branch: no effect | device-tested on cam-D (branch, not yet in an aggregate) | `SetIntegrationTime(IMPISPITAttr*)` |
+| `ae_it_max_us` / `ISP_HAS_AE_IT_RANGE` | on, but the vendor T21 ignores the RANGE block | **[+]** acts on `claude/t21-ae-it-max` (840a57ff, beyond vendor, kept by user decision): cap 2000 us gives IT 68 lines, 5000 us gives 172, 0 returns to 1125; caveat: 4th module reload in one boot crashed (under investigation). Without that branch: no effect | device-tested on cam-D (branch, not yet in an aggregate) | `SetIntegrationTime(IMPISPITAttr*)` |
 | HSkip (no timps key yet) | vendor header has it | **[+]** run-time `SetChnHSkip` (maxSameSceneCnt as IDR period, OEM 1.0.33) | in work (`claude/eprc-complete`, host oracle 0 deviations, device test pending) | `int IMP_Encoder_SetChnHSkip(int encChn, const IMPEncoderAttrHSkip *attr)` |
 | live `fps`, `gop` (today restart keys) | timps restarts the channel | **[+]** run-time RC/fps/GOP changes reach the eprc controller at the next IDR (OEM `i264e_idr_reconfig`, no extra IDR) | in work (`claude/eprc-complete`) | `int IMP_Encoder_SetChnFrmRate(int, const IMPEncoderFrmRate*)`, `IMP_Encoder_SetGOPSize(int, const IMPEncoderGOPSizeCfg*)` |
-| rate control | vendor eprc | [=] vendor-identical T21 eprc is default (CBR 1326 / VBR 1096 / SMART 1071 at 1200 kbit/s); **[−]** MB-level RC not ported; MB-level RC ported, opt-in `OPENIMP_EPRC_MBRC=1` (`claude/eprc-mbrc`, emulator 0 deviations, device test pending; `IMP_Encoder_SetMbRC` per channel at runtime, vendor: no effect, always on); QP-down limit opt-in (`OPENIMP_EPRC_QP_DOWN1`, `claude/eprc-t21-qp-limit`, device test pending) | device-tested (default) | `SetChnAttrRcMode` |
+| rate control | vendor eprc | [=] vendor-identical T21 eprc is default (CBR 1326 / VBR 1096 / SMART 1071 at 1200 kbit/s); MB-level RC ported, opt-in `OPENIMP_EPRC_MBRC=1` (`claude/eprc-mbrc`, a8b483a: 0x400c0/0x400c4 per picture type like the vendor, IDR 0x060407c1 / P 0x030487c1; emulator 0 deviations, device test running; `IMP_Encoder_SetMbRC` per channel at runtime, vendor: no effect, always on); QP-down limit opt-in (`OPENIMP_EPRC_QP_DOWN1`, `claude/eprc-t21-qp-limit`, device test pending) | device-tested (default) | `SetChnAttrRcMode` |
 | `quality_lvl`, `change_pos` | live | **[−]** documented as ignored on the pre-eprc path; re-check with eprc default | open | `SetChnAttrRcMode` |
 | `hue`, `backlight_compensation` | off | not supported (no device evidence) | not supported | – |
 
@@ -103,7 +103,7 @@ The differences are in behaviour, not in which calls exist.
 | `backlight_compensation`, `highlight_depress` | on | [=] only with the lifted vendor AE (`source_ae_oem=1`, now the default again on `claude/t23-matrix-gaps`); **[−]** no effect with the HLIL substitute AE | device-tested with vendor AE | `SetBacklightComp`, `SetHiLightDepress` |
 | HSkip (no timps key) | vendor header has it | run-time path hands maxSameSceneCnt to the native encoder | in work (`claude/eprc-complete`) | `SetChnHSkip(int, const IMPEncoderAttrHSkip*)` |
 | live `fps`, `gop` | restart | **[+]** applied at the next IDR | in work (`claude/eprc-complete`) | `SetChnFrmRate`, `SetGOPSize` (const-pointer forms) |
-| rate control | vendor | [=] eprc controller, SMART 1141 / CBR 1253 / VBR 1255 at 1200 kbit/s; [+] MB-level RC ported, opt-in `OPENIMP_EPRC_MBRC=1` (`claude/eprc-mbrc`, emulator 0 deviations, device test pending) | device-tested (60 s) | `SetChnAttrRcMode` |
+| rate control | vendor | [=] eprc controller, SMART 1141 / CBR 1253 / VBR 1255 at 1200 kbit/s; [+] MB-level RC ported, opt-in `OPENIMP_EPRC_MBRC=1` (`claude/eprc-mbrc`, a8b483a: 0x400c0/0x400c4 per picture type like the vendor, IDR 0x060404c1/0x61615921, P 0x030484c1/0x61615c21; emulator 0 deviations, device test running) | device-tested (60 s) | `SetChnAttrRcMode` |
 | rotation 90/270 | sub-stream via native encoder | [=] main stream above 704x576 refused (software rotation) | device-tested | `rotate_caps.h` unchanged |
 
 ## T30 (no test camera)
@@ -243,7 +243,7 @@ Notes:
 |---|---|
 | `image.sinter_strength`, `image.temper_strength` | "T10/T20/T21: no effect with the vendor libimp (vendor firmware renormalises it); acts with USE_OPENIMP (128 = vendor picture)." |
 | `image.colorfx`, `image.scene` (timps-more-controls) | "Only with USE_OPENIMP: T20 T21 T23 T31 (T21/T20 vendor kernels ignore them). T10: in work." |
-| `image.ae_it_max_us` | "T21 with USE_OPENIMP: not advertised (no effect on the open stack)." Obsolete once `claude/t21-ae-it-max` (840a57ff) is in an aggregate and accepted: the vendor firmware ignores it too, so the user decision decides. |
+| `image.ae_it_max_us` | "T21 with USE_OPENIMP: not advertised (no effect on the open stack)." Obsolete once `claude/t21-ae-it-max` (840a57ff) is in an aggregate: the vendor firmware ignores it, but the user decided to keep it, so the key should be advertised on T21. |
 | `image.dpc_strength`, `image.defog_strength` | "T10/T20/T21 with USE_OPENIMP: in work, not yet in caps." |
 | `image.drc_strength` | "T10/T20 with USE_OPENIMP: in work, not yet in caps. T23: dynamic ADR with USE_OPENIMP." |
 | `videoN.quality_lvl`, `videoN.change_pos` | "T10/T20 with USE_OPENIMP: not live (ignored by the encoder)." Superseded: with the OEM controller as default (`claude/t1x-oem-rc-default-a13`) they act like the vendor firmware, so keep them live; wait for the device test. |

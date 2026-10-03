@@ -3,7 +3,7 @@
 Everything changed, extended or fixed in OpenIMP, open-tx-isp, timps and the thingino
 integration since the test campaign started on 2026-09-30. Kept up to date during the campaign.
 
-Last update: 2026-10-03 20:39.
+Last update: 2026-10-03 21:08.
 
 Cameras are anonymised: cam-A (T31), cam-B (T23), cam-C (T20), cam-D (T21), cam-E (T10), cam-F (T41).
 
@@ -97,6 +97,11 @@ Aggregates: `claude/open-tx-isp-all-4` and `claude/openimp-all-4` (pushed); 58 m
 - **eprc macroblock RC ported (`claude/eprc-mbrc` 9e2bc3a):** 0 deviations against the vendor in the emulator on T23 and T21 (20000 calls + 3x30 random scenes x 150 frames). The vendor uses SAS mode 3 (7 activity-class QP offsets, registers 0x40074/78/7c-84/8c/90), with no per-MB QP map. Opt-in: `OPENIMP_EPRC_MBRC=1`, and `IMP_Encoder_SetMbRC` works per channel at runtime (on the vendor, SetMbRC has no effect and MB-RC always runs). Vendor bug: a class-table index reads past a 9-byte table into the stack; OpenIMP uses 0 there. Device test pending.
 - **T20/T10 OEM rate controllers as default (`claude/t1x-oem-rc-default-a13` f05db18):** code done, device test pending. The keys quality_lvl/change_pos act as in the vendor firmware.
 - **timps USE_OPENIMP:** build switch pushed (timps a2dccce, thingino ciao c55f73817). It changes nothing yet.
+- **Stale cells refreshed (21:08):** T23 AE (lifted vendor AE is the default, night test on cam-B passed), T41 flip (sensor flip registers follow live: hflip 0x022c=0x01, vflip 0x0063=0x02, off 0x00; daylight picture check pending, `claude/t41-matrix-fixes`) and T41 white balance (black-picture incident not reproducible; timps calls no WB function on T41).
+- **T20 OEM rate controller default device-tested (`claude/t1x-oem-rc-default-a13`):** cam-C at 1200 kbit/s: CBR 1300 (P2 I-aware budget), VBR 1044, SMART 1019; quality_lvl 0/6 gives 1130/800 kbit/s, change_pos 50/100 gives 850/1210 kbit/s, also live via /control; decode clean, 0 oops.
+- **T21 `ae_it_max_us` kept:** beyond vendor, the user decided to keep it. The docs (matrix, beyond-vendor list, SoC differences) are updated accordingly.
+- **MB-level RC per picture type (`claude/eprc-mbrc` a8b483a):** registers 0x400c0/0x400c4 are now set per picture type like the vendor (T23 IDR 0x060404c1/0x61615921, P 0x030484c1/0x61615c21; T21 IDR 0x060407c1, P 0x030487c1). Device test is running.
+- **T10 boot guard tripped:** a flash reboot happened less than 300 s after a test restart, so the guard counted the load as unstable. The mark was cleared and the camera runs again. Idea: firmware updates should clear the guard's pending mark.
 
 ## Late evening (2026-10-03)
 
