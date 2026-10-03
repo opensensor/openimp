@@ -26,6 +26,7 @@
 #include "imp_log_int.h"
 #include "t23/openimp_t23_osd.h"
 #include "t23/openimp_t23_osd_abi.h"
+#include "t23/openimp_t23_osd_pack.h"
 
 #define T23_OSD_GROUPS  9
 #define T23_OSD_REGIONS 512
@@ -60,6 +61,7 @@ struct t23_osd_region {
     int active;                     /* bitmap[] drawn, -1 none */
     int last;                       /* bitmap[] written last, -1 none */
     uint32_t pic_phys;              /* IPU source of the active picture */
+    uint32_t pic_pitch;             /* its pitch in pixels = IPU src_w */
     uint32_t cover_word;            /* A,Y,U,V for COVER */
     uint8_t line_y, line_u, line_v, line_visible;
 };
@@ -169,77 +171,6 @@ static void free_bitmaps(struct t23_osd_region *r)
     r->pic_phys = 0;
 }
 
-/* Convert one picture row to BGRA8888 (little-endian B,G,R,A bytes). */
-static void row_to_bgra(uint8_t *dst, const uint8_t *src, uint32_t w, int fmt,
-                        uint32_t x_bit)
-{
-    uint32_t i;
-
-    switch (fmt) {
-    case T23_OSD_PIX_BGRA:
-        memcpy(dst, src, w * 4u);
-        return;
-    case T23_OSD_PIX_ARGB:          /* bytes A,R,G,B */
-        for (i = 0; i < w; i++, src += 4, dst += 4) {
-            dst[0] = src[3]; dst[1] = src[2]; dst[2] = src[1]; dst[3] = src[0];
-        }
-        return;
-    case T23_OSD_PIX_RGBA:          /* bytes R,G,B,A */
-        for (i = 0; i < w; i++, src += 4, dst += 4) {
-            dst[0] = src[2]; dst[1] = src[1]; dst[2] = src[0]; dst[3] = src[3];
-        }
-        return;
-    case T23_OSD_PIX_ABGR:          /* bytes A,B,G,R */
-        for (i = 0; i < w; i++, src += 4, dst += 4) {
-            dst[0] = src[1]; dst[1] = src[2]; dst[2] = src[3]; dst[3] = src[0];
-        }
-        return;
-    case T23_OSD_PIX_RGB555LE:      /* 1555: A in bit 15, R in 14..10 */
-    case T23_OSD_PIX_BGR555LE:
-        for (i = 0; i < w; i++, src += 2, dst += 4) {
-            uint32_t p = (uint32_t)src[0] | (uint32_t)src[1] << 8;
-            uint32_t hi = (p >> 10) & 31u, mid = (p >> 5) & 31u, lo = p & 31u;
-            uint8_t c_hi = (uint8_t)(hi << 3 | hi >> 2);
-            uint8_t c_mid = (uint8_t)(mid << 3 | mid >> 2);
-            uint8_t c_lo = (uint8_t)(lo << 3 | lo >> 2);
-
-            if (fmt == T23_OSD_PIX_RGB555LE) {
-                dst[0] = c_lo; dst[1] = c_mid; dst[2] = c_hi;
-            } else {
-                dst[0] = c_hi; dst[1] = c_mid; dst[2] = c_lo;
-            }
-            dst[3] = (p & 0x8000u) ? 0xff : 0x00;
-        }
-        return;
-    case T23_OSD_PIX_MONOWHITE:     /* 1 bpp, msb first, 1 = white */
-    default:
-        for (i = 0; i < w; i++, dst += 4) {
-            uint32_t bit = x_bit + i;
-            int on = (src[bit >> 3] >> (7u - (bit & 7u))) & 1;
-
-            dst[0] = dst[1] = dst[2] = on ? 0xff : 0x00;
-            dst[3] = on ? 0xff : 0x00;
-        }
-        return;
-    }
-}
-
-static uint32_t src_stride(int fmt, uint32_t w)
-{
-    switch (fmt) {
-    case T23_OSD_PIX_BGRA:
-    case T23_OSD_PIX_ARGB:
-    case T23_OSD_PIX_RGBA:
-    case T23_OSD_PIX_ABGR:
-        return w * 4u;
-    case T23_OSD_PIX_RGB555LE:
-    case T23_OSD_PIX_BGR555LE:
-        return w * 2u;
-    default:
-        return (w + 7u) / 8u;
-    }
-}
-
 static int picture_format_ok(int type, int fmt)
 {
     if (type == OSD_REG_BITMAP)
@@ -254,7 +185,7 @@ static void load_region(struct t23_osd_region *r)
 {
     const IMPOSDRgnAttr *a = &r->attr;
     const uint8_t *src = NULL;
-    uint32_t w, h, size, stride, y;
+    uint32_t w, h, size, pitch;
     struct t23_osd_bitmap *b;
     int fmt = a->type == OSD_REG_BITMAP ? T23_OSD_PIX_MONOWHITE : a->fmt;
     int next;
@@ -301,11 +232,12 @@ static void load_region(struct t23_osd_region *r)
         } else {
             src = (const uint8_t *)p;
         }
-        if (fmt == T23_OSD_PIX_BGRA) {
+        if (fmt == T23_OSD_PIX_BGRA && t23_osd_pic_pitch(w) == w) {
             r->pic_phys = DMA_VirtToPhys(src);
             if (r->pic_phys && r->pic_phys != (uint32_t)(uintptr_t)src) {
                 /* make CPU writes of the caller visible to the IPU */
                 DMA_RmemFlushCache((void *)(uintptr_t)src, w * h * 4u, 1);
+                r->pic_pitch = w;
                 r->active = 2;      /* in place, no own bitmap */
             } else {
                 r->pic_phys = 0;
@@ -319,7 +251,8 @@ static void load_region(struct t23_osd_region *r)
     if (!src)
         return;
 
-    size = w * h * 4u;
+    pitch = t23_osd_pic_pitch(w);
+    size = pitch * h * 4u;
     next = r->last == 0 ? 1 : 0;
     b = &r->bitmap[next];
     if (b->size < size) {
@@ -338,16 +271,11 @@ static void load_region(struct t23_osd_region *r)
         b->phys = info.phys_addr;
         b->size = size;
     }
-    stride = src_stride(fmt, w);
-    for (y = 0; y < h; y++) {
-        if (fmt == T23_OSD_PIX_MONOWHITE)
-            row_to_bgra(b->virt + y * w * 4u, src, w, fmt, y * w);
-        else
-            row_to_bgra(b->virt + y * w * 4u, src + y * stride, w, fmt, 0);
-    }
+    t23_osd_pack(b->virt, pitch, src, w, h, fmt);
     DMA_RmemFlushCache(b->virt, size, 1 /* write back */);
     r->active = r->last = next;
     r->pic_phys = b->phys;
+    r->pic_pitch = pitch;
 }
 
 /* ---- CPU drawing into the NV12 frame --------------------------------- */
@@ -600,6 +528,12 @@ void openimp_t23_osd_apply(int group, void *frame)
                 c->para = alpha << 3 |
                           ((global ? 0x020347FDu : 0x020347F9u) & 0xfffff807u);
                 c->buf_p = r->pic_phys;
+                /* the IPU reads lines at the 16-pixel pitch; a padded
+                 * picture at the right frame edge moves left so the
+                 * transparent padding stays inside the frame */
+                c->src_w = r->pic_pitch;
+                if (c->pos_x + c->src_w > width)
+                    c->pos_x = width - c->src_w;
             }
             p.cmd |= 1u << k;
         }
