@@ -1804,11 +1804,11 @@ static void eprc_frame_end(Eprc *rc)
             int32_t t5 = t6 + S32(5960) - S32(80);
             S32(5960) = t5;
             S32(5952) = S32(5952) - t6;
-            if (isp && S32(44) == 2) {
-                if (S32(60) > 0) {
-                    S32(5956) = t5;
-                    S32(5964) = (t5 - A32(200)) / S32(60);
-                }
+            if (isp && S32(44) == 2) {               /* 0xcbcac */
+                if (S32(60) <= 0)
+                    S32(60) = 1;    /* the OEM stores its mode register (1) */
+                S32(5956) = t5;
+                S32(5964) = (t5 - A32(200)) / S32(60);
             }
         }
     } else {                                         /* 0xcb3f8 */
