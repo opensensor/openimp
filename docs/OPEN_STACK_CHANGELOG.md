@@ -99,6 +99,7 @@ Aggregates: `claude/open-tx-isp-all-4` and `claude/openimp-all-4` (pushed); 58 m
 
 - **Feature matrix:** 9 more cells closed: DPC on T10/T20/T21, DRC and defog on T20, scene/colour effects on T10, T41 video memory and stability. Remaining open: CCM/LSC readback on T10/T20 and Iridix on T10 (in work), T23 CCM in daylight, T20 AWB under artificial light (no artificial light at night; daylight A/B equal), T23 long-term hangs.
 - **In work tonight:** T23 review fixes (use-after-free on unload, defog allocations, front-crop overflow, ADR/AE locking, RAM placeholders) for the cam-B image; independent review of OpenIMP; CPU profiling and optimisation of OpenIMP on cam-A/cam-D; remaining matrix '?' cells on T31/T21 (audio input only); overnight soak log of all six cameras every 10 min; A/B measurement vendor vs open stack at 03:00.
+- **H.265 on SoCs without HEVC hardware:** on T10/T20/T21/T23 (Helix is H.264/JPEG only; Radix only on T30) OpenIMP now fails IMP_Encoder_CreateChn(PT_H265) with -1 and one clear log line, so streamers fall back to H.264 at once. The vendor returns 0 and creates an empty channel that never encodes (beyond vendor, documented). Host-tested, T21 and T23 libimp build; branch claude/h265-reject. T41: AVPU HEVC port from T31 in work (claude/t41-h265).
 
 ## Night (2026-10-03, 20:39)
 

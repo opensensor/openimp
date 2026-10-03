@@ -57,6 +57,7 @@ call the vendor header lacks needs an own prototype under `USE_OPENIMP` (OpenIMP
 | `ae_it_max_us` / `ISP_HAS_AE_IT_RANGE` | on | [=] limits the AE | device-tested | `IMP_ISP_Tuning_SetIntegrationTime(IMPISPITAttr*)` (range mode) |
 | `rc_mode` SMART | vendor OEM controller | **[−]** SMART mapped to VBR unless `OPENIMP_T10_RC=1`; the OEM controller becomes the default on `claude/t1x-oem-rc-default-a13` (f05db18, device test pending) | default path device-tested; opt-in controller device test pending | `IMP_Encoder_CreateChn` / `SetChnAttrRcMode` |
 | `quality_lvl`, `change_pos` (classic `ENC_LIVE_KEYS`) | live | **[−]** accepted, ignored on the old path; act as in the vendor firmware with the OEM controller as default (`claude/t1x-oem-rc-default-a13`, f05db18, device test pending) | old path device-tested (readback only in the video attr) | `IMP_Encoder_SetChnAttrRcMode` |
+| H.265 | vendor returns 0, empty channel that never encodes (no HEVC hardware) | **[+]** `CreateChn(PT_H265)` returns -1 with a clear log line (beyond vendor) | built, host-tested (`claude/h265-reject`) | check the `CreateChn` return value, fall back to H.264 |
 
 ## T20 (cam-C)
 
@@ -70,6 +71,7 @@ call the vendor header lacks needs an own prototype under `USE_OPENIMP` (OpenIMP
 | `rc_mode` SMART, RC strength | vendor always runs the OEM controller | [=] OEM controller becomes the default on `claude/t1x-oem-rc-default-a13` (f05db18, device test pending; needs kernel patch 0101; `OPENIMP_T20_RC=0` = old path); before that: only with `OPENIMP_T20_RC=1`, default maps SMART to VBR | opt-in path device-tested (CBR 1300 at 1200 kbit/s with I-aware budget) | `SetChnAttrRcMode` |
 | `quality_lvl`, `change_pos` | live | **[−]** ignored on the old path (readback returns vendor-clamped values); act as in the vendor firmware with the OEM controller as default (`claude/t1x-oem-rc-default-a13`, f05db18, device test pending) | old path device-tested | `IMP_Encoder_GetChnAttrRcAttr` |
 | sub-stream height not a multiple of 8 | vendor scaler hangs (480x270: no frames) | **[+]** rounded up with a warning (270 to 272) | in work (`claude/openimp-t20-jpeg-align`, device-tested with timps `claude/timps-jpeg-idle-nopoll`, not in an aggregate) | `IMP_FrameSource_SetChnAttr` |
+| H.265 | vendor returns 0, empty channel that never encodes (no HEVC hardware) | **[+]** `CreateChn(PT_H265)` returns -1 with a clear log line (beyond vendor) | built, host-tested (`claude/h265-reject`) | check the `CreateChn` return value, fall back to H.264 |
 
 ## T21 (cam-D)
 
@@ -87,6 +89,7 @@ call the vendor header lacks needs an own prototype under `USE_OPENIMP` (OpenIMP
 | rate control | vendor eprc | [=] vendor-identical T21 eprc is default (CBR 1326 / VBR 1096 / SMART 1071 at 1200 kbit/s); MB-level RC ported, opt-in `OPENIMP_EPRC_MBRC=1` (`claude/eprc-mbrc`, a8b483a: 0x400c0/0x400c4 per picture type like the vendor, IDR 0x060407c1 / P 0x030487c1; emulator 0 deviations, device test running; `IMP_Encoder_SetMbRC` per channel at runtime, vendor: no effect, always on); QP-down limit opt-in (`OPENIMP_EPRC_QP_DOWN1`, `claude/eprc-t21-qp-limit`, device test pending) | device-tested (default) | `SetChnAttrRcMode` |
 | `quality_lvl`, `change_pos` | live | **[−]** documented as ignored on the pre-eprc path; re-check with eprc default | open | `SetChnAttrRcMode` |
 | `hue`, `backlight_compensation` | off | not supported (no device evidence) | not supported | – |
+| H.265 | vendor returns 0, empty channel that never encodes (no HEVC hardware) | **[+]** `CreateChn(PT_H265)` returns -1 with a clear log line (beyond vendor) | built, host-tested (`claude/h265-reject`) | check the `CreateChn` return value, fall back to H.264 |
 
 ## T23 (cam-B)
 
@@ -105,6 +108,7 @@ The differences are in behaviour, not in which calls exist.
 | live `fps`, `gop` | restart | **[+]** applied at the next IDR | in work (`claude/eprc-complete`) | `SetChnFrmRate`, `SetGOPSize` (const-pointer forms) |
 | rate control | vendor | [=] eprc controller, SMART 1141 / CBR 1253 / VBR 1255 at 1200 kbit/s; [+] MB-level RC ported, opt-in `OPENIMP_EPRC_MBRC=1` (`claude/eprc-mbrc`, a8b483a: 0x400c0/0x400c4 per picture type like the vendor, IDR 0x060404c1/0x61615921, P 0x030484c1/0x61615c21; emulator 0 deviations, device test running) | device-tested (60 s) | `SetChnAttrRcMode` |
 | rotation 90/270 | sub-stream via native encoder | [=] main stream above 704x576 refused (software rotation) | device-tested | `rotate_caps.h` unchanged |
+| H.265 | vendor returns 0, empty channel that never encodes (no HEVC hardware) | **[+]** `CreateChn(PT_H265)` returns -1 with a clear log line (beyond vendor) | built, host-tested (`claude/h265-reject`) | check the `CreateChn` return value, fall back to H.264 |
 
 ## T30 (no test camera)
 
