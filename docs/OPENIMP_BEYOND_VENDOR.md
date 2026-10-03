@@ -6,7 +6,7 @@ more than, the vendor libimp / kernel driver. Only items that are implemented an
 everything else is in "Unverified" at the end. Cameras are anonymised as in the changelog (cam-A T31,
 cam-B T23, cam-C T20, cam-D T21, cam-E T10, cam-F T41).
 
-Status tags: `[-all-13]` = tested, not yet in a flashed image. Rows marked "built, device test pending" are opt-in and not yet device-tested. Branch names refer to the open-stack repos.
+Status tags: `[-all-13]` = tested before the -all-15 aggregates (now contained in them; -all-15 is flashed on cam-A to cam-E). Rows marked "built, device test pending" are opt-in and not yet device-tested. Branch names refer to the open-stack repos.
 
 Integration rule of thumb: all behaviour below is reachable through the **standard IMP API** (same
 signatures as the vendor SDK). Nothing needs a new call; where a value is "different", it is in what the
@@ -45,7 +45,13 @@ Further items (evening 2026-10-03):
 
 Further items (night 2026-10-03):
 
-- **eprc complete (T21/T23, `claude/eprc-complete`):** FIXQP, scene-cut IDR, runtime RC/fps/GOP/HSkip changes applied at the next IDR like the vendor, `SetChnHSkip` on T21/T23; 0 oracle deviations. MB-level RC is not ported (separate task). The vendor-identical T21 eprc is now the default (`claude/eprc-t21-default`); cam-D at 1200 kbit/s: CBR 1326, VBR 1096, SMART 1071.
+- **eprc macroblock RC (opt-in, `claude/eprc-mbrc` 9e2bc3a, device test pending):** 0 deviations against the vendor in the emulator on T23 and T21. Env `OPENIMP_EPRC_MBRC=1`; `IMP_Encoder_SetMbRC` works per channel at runtime (on the vendor SetMbRC has no effect and MB-RC always runs). The vendor uses SAS mode 3 (7 activity-class QP offsets), no per-MB QP map. Vendor bug (class-table index reads past a 9-byte table): OpenIMP uses 0.
+- **T21 `ae_it_max_us` acts (`claude/t21-ae-it-max` 840a57ff, beyond vendor, user decision pending):** the vendor T21 ignores the RANGE block of SetIntegrationTime. cam-D: cap 2000 us gives IT 68 lines, dgain 19 to 63; cap 5000 us gives 172 lines; cap 0 returns to 1125 lines. Caveat: a 4th module reload in one boot crashed (under investigation).
+- **Smaller modules (`claude/open-tx-isp-size2` a7214c75):** T23 1,047 to 622 KB (vendor 857), T31 859 to 711 KB (vendor 829), T20 775 to 736 KB, T10 770 to 731 KB; device-tested on cam-A and cam-B. No API change.
+- **No vendor libimp hybrid on T23:** cam-B runs without it (~328 KiB less in the rootfs). Only the hardware JPEG `IMP_Decoder` needs the OEM worker, now optional (`T23_BUILD_OEM_WORKER=1`, `claude/t23-no-oem-worker` 9eefbae).
+- **T10/T20 OEM rate controller as default (`claude/t1x-oem-rc-default-a13` f05db18, device test pending):** `quality_lvl` / `change_pos` act as in the vendor firmware once it is the default.
+
+- **eprc complete (T21/T23, `claude/eprc-complete`):** FIXQP, scene-cut IDR, runtime RC/fps/GOP/HSkip changes applied at the next IDR like the vendor, `SetChnHSkip` on T21/T23; 0 oracle deviations. MB-level RC is ported separately (`claude/eprc-mbrc`, opt-in, device test pending). The vendor-identical T21 eprc is now the default (`claude/eprc-t21-default`); cam-D at 1200 kbit/s: CBR 1326, VBR 1096, SMART 1071.
 - **T20 snapshot debounce (openimp `claude/openimp-t20-jpeg-align`, timps `claude/timps-jpeg-idle-nopoll`):** it no longer polls the JPEG encoder; with 1 snapshot/s on both channels chn0 14.4 / chn1 15.0 fps (was 11.2 / 14.3). A sub-stream height of 270 is rounded to 272 with a warning (the vendor scaler hangs on it).
 - **T10 Sinter/Temper strength acts** (the vendor treats it as a no-op): temporal noise 7.11 / 2.91 / 1.51 at temper 0 / 128 / 255, survives day/night (`claude/t10-t20-nr-wdr`).
 - **T41 (cam-F), device-verified:** module reload on the rev2 image, 10/10 rmmod/insmod cycles, refcnt 0, 0 oops, kill -9 of the streamer recovers 3/3 (root cause was a decompiled tuning-node helper overwriting .bss, `claude/t41-matrix-fixes`); brightness 255 gives Y 211, contrast 0 flat grey, saturation 0/255 chroma 0.1/7.1; bitrate 400/1200/3000 gives 518/1195/2777 kbit/s over 30 s each (`claude/t41-cbr-overshoot`). Open: the driver writes the sensor flip synchronously, but timps does not call SetHVFLIP live on T41; u-boot ignores the stored env (fw_env.config size mismatch), so changing rmem needs an env-partition image (user decision pending).
@@ -122,6 +128,7 @@ set in production.
 | `OPENIMP_T31_HW_JPEG` | `0` selects the software JPEG encoder on T31 | on | user-facing |
 | `OPENIMP_T31_OSD` | `0` disables the IPU OSD backend on T31 | on | user-facing |
 | `OPENIMP_T20_RC` | `1` enables the T20 OEM rate controller (needs kernel patch 0101); deviation: the vendor always runs it | off | user-facing (opt-in) |
+| `OPENIMP_EPRC_MBRC` | `1` enables the eprc macroblock RC on T21/T23 (device test pending) | off | user-facing (opt-in) |
 | `OPENIMP_T10_RC` | `1` enables the T10 OEM-style rate controller | off | user-facing (opt-in) |
 | `OPENIMP_T10_RC_SUPERFRM` | `0` restores vendor-exact T10 VBR behaviour (super-frame fix off); only inside the OEM controller | on | user-facing |
 | `OPENIMP_T20_RC_IAWARE` | `0` = vendor P budget, `1` also for VBR/SMART; only inside the OEM controller | on for CBR | user-facing |
@@ -146,7 +153,7 @@ bring-up/trace switches that are not described in the docs; treat them as intern
 ## 8. Unverified or not yet in this list
 
 - T31 `OPENIMP_T31_COMPANION` (mentioned only as a proposal in T31_HW_JPEG_RE.md; the implemented knob is `..._COMPANION_STAGE`).
-- SMART / vendor-equal eprc on T23, T21: done (`claude/eprc-complete`, 0 oracle deviations); SMART is still mapped to VBR on T10/T20; MB-level RC not ported.
+- SMART / vendor-equal eprc on T23, T21: done (`claude/eprc-complete`, 0 oracle deviations); SMART is still mapped to VBR on T10/T20; MB-level RC ported (opt-in, `claude/eprc-mbrc`, device test pending).
 - T23 live RC readback and which RC writes take effect on T10/T20/T21: partly stated in the matrix, per-field test not documented.
 - T21 AWB hysteresis at real dusk (night checks only).
 - AEC on T23 (implemented, device test open); AENC/ADEC double-release rejection (matrix cites it, no SoC test evidence).

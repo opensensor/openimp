@@ -3,7 +3,7 @@
 Everything changed, extended or fixed in OpenIMP, open-tx-isp, timps and the thingino
 integration since the test campaign started on 2026-09-30. Kept up to date during the campaign.
 
-Last update: 2026-10-03 20:30.
+Last update: 2026-10-03 20:39.
 
 Cameras are anonymised: cam-A (T31), cam-B (T23), cam-C (T20), cam-D (T21), cam-E (T10), cam-F (T41).
 
@@ -14,11 +14,11 @@ All six test cameras run the open kernel driver (open-tx-isp), OpenIMP and timps
 
 | Camera | SoC | Stack | State |
 |---|---|---|---|
-| cam-A | T31 | fully open | Flashed 2026-10-03 ~19:07 with open-tx-isp-all-14 / openimp-all-12 / timps-all-14 (full OTA) |
-| cam-B | T23 | fully open (native encoder, no OEM helixd) | Flashed 2026-10-03 ~14:10 with open-tx-isp-all-13 / openimp-all-11 (reference sharing on); waits for a smaller rootfs for -all-14 |
-| cam-C | T20 | fully open | Flashed 2026-10-03 ~19:07 with -all-14 / openimp-all-12 (full OTA, kernel patch 0101) |
-| cam-E | T10 | fully open | Flashed 2026-10-03 ~19:07 with -all-14 / openimp-all-12 (full OTA), boot guard auto |
-| cam-D | T21 | fully open | Flashed 2026-10-03 ~19:07 with -all-14 / openimp-all-12 (full OTA, reference sharing on) |
+| cam-A | T31 | fully open | Flashed 2026-10-03 20:20-20:30 with open-tx-isp-all-15 / openimp-all-13 / timps-all-15 (full OTA) |
+| cam-B | T23 | fully open (native encoder, no OEM helixd) | Flashed 2026-10-03 20:20-20:30 with -all-15 / openimp-all-13 (full OTA); no vendor libimp hybrid any more (/opt/openimp-t23 gone, ~328 KiB saved) |
+| cam-C | T20 | fully open | Flashed 2026-10-03 20:20-20:30 with -all-15 / openimp-all-13 (full OTA, kernel patch 0101) |
+| cam-E | T10 | fully open | Flashed 2026-10-03 20:20-20:30 with -all-15 / openimp-all-13 (full OTA), boot guard auto |
+| cam-D | T21 | fully open | Flashed 2026-10-03 20:20-20:30 with -all-15 / openimp-all-13 (full OTA, reference sharing on); 26/30 snapshots (concurrent test restarted the streamer) |
 | cam-F | T41 | fully open | Flashed 2026-10-03 14:20 with open-tx-isp-all-13 / OpenIMP T41 (kernel and rootfs flashed separately); image rev 1 flashed later (isp-m0 in vendor layout), reload still failing |
 
 ## OpenIMP (userspace libimp)
@@ -87,6 +87,16 @@ Goal: identical image behaviour, but cleaner unload/reload, less memory and chec
 OpenIMP: T20 green flicker in the bottom rows fixed by filling the encoder padding rows (`claude/t20-bottom-chroma`; 0 green pixels in 30 frames). Faster IVS (`claude/ivs-opt`; T20 timps CPU 4.1 % → 2.7 % with motion on).
 
 Aggregates: `claude/open-tx-isp-all-4` and `claude/openimp-all-4` (pushed); 58 merged single branches removed. `claude/open-tx-isp-all-5` adds t21-robust and t31-robust-2 (T31: sensor flip with shvflip=1, unload leaks, lazy WDR buffers; MemFree drift per reload 460 → 45 KB); all four cameras flashed with -all-5 images.
+
+## Night (2026-10-03, 20:39)
+
+- **all-15 on all five cameras:** cam-A, B, C, D, E flashed 20:20-20:30 with full OTA. Result: 30/30 snapshots, MJPEG and MP4 on both channels, 0 oops. The one exception is cam-D at 26/30, because a concurrent test restarted the streamer; it was not a crash. Aggregates: open-tx-isp-all-15 f3f40f9e, openimp-all-13 07afe9a, timps-all-15 cc8cded.
+- **cam-B without the vendor libimp hybrid:** /opt/openimp-t23 is gone, which saves ~328 KiB in the rootfs. Only the T23 hardware JPEG IMP_Decoder still needs the OEM worker; the worker is now optional (T23_BUILD_OEM_WORKER=1, openimp `claude/t23-no-oem-worker` 9eefbae). thingino will pin openimp to the Lu-Fi fork (9eefbae) for all SoCs, after a build check by the thingino maintainer session.
+- **Module size (`claude/open-tx-isp-size2` a7214c75):** emulator-identical, device-tested on cam-A and cam-B: T23 1,047 to 622 KB (vendor 857), T31 859 to 711 KB (vendor 829), T20 775 to 736 KB, T10 770 to 731 KB. T23 and T31 are now smaller than the vendor module.
+- **T21 `ae_it_max_us` now acts (`claude/t21-ae-it-max` 840a57ff):** the GetExpr hook had been lost when the stock dispatchers were lifted, and the RANGE block of SetIntegrationTime was ignored. The vendor T21 also ignores RANGE, so this is beyond vendor; the user decision on it is pending. cam-D: cap 2000 us gives IT 68 lines and dgain 19 to 63; cap 5000 us gives 172 lines; cap 0 returns to 1125 lines. Caveat: a 4th module reload in the same boot led to segfaults and a watchdog reboot; under investigation.
+- **eprc macroblock RC ported (`claude/eprc-mbrc` 9e2bc3a):** 0 deviations against the vendor in the emulator on T23 and T21 (20000 calls + 3x30 random scenes x 150 frames). The vendor uses SAS mode 3 (7 activity-class QP offsets, registers 0x40074/78/7c-84/8c/90), with no per-MB QP map. Opt-in: `OPENIMP_EPRC_MBRC=1`, and `IMP_Encoder_SetMbRC` works per channel at runtime (on the vendor, SetMbRC has no effect and MB-RC always runs). Vendor bug: a class-table index reads past a 9-byte table into the stack; OpenIMP uses 0 there. Device test pending.
+- **T20/T10 OEM rate controllers as default (`claude/t1x-oem-rc-default-a13` f05db18):** code done, device test pending. The keys quality_lvl/change_pos act as in the vendor firmware.
+- **timps USE_OPENIMP:** build switch pushed (timps a2dccce, thingino ciao c55f73817). It changes nothing yet.
 
 ## Late evening (2026-10-03)
 
