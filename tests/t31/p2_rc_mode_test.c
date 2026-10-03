@@ -1,15 +1,13 @@
 /*
- * p2_jpeg_source_test - a JPEG channel that is the only channel on its
- * framesource (timps' dedicated jpeg.* channel: own framesource, own
- * group, no video channel) must get frames from IMP_Encoder_PollingStream,
- * as with the vendor libimp, where every bound encoder group receives the
- * framesource's frames.
+ * p2_rc_mode_test - T31 rate-control modes through the P2 encoder API.
  *
- * Builds src/t40/openimp_p2_encoder.c (T31) against a stub codec and a
- * fake FrameSource that always has a frame. Also checks that a JPEG
- * channel next to a receiving video channel still works (fan-out), and
- * that a picture the codec skips (core busy, rmem short) is replaced by
- * the channel's last JPEG.
+ * CappedVBR (4) and CappedQuality (8) run the codec's VBR with the OEM PSNR
+ * cap: CreateChn and SetChnAttrRcMode hand the mode and uMaxPSNR to
+ * AL_Codec_Encode_SetRcQualityCap, iIPDelta reaches the codec as for VBR,
+ * GetChnAttrRcMode returns the attribute as given (the OEM returns its
+ * stored copy).  Other modes clear the cap.
+ *
+ * Builds src/t40/openimp_p2_encoder.c (T31) against a stub codec.
  */
 #define _GNU_SOURCE
 #include <stdint.h>
@@ -205,131 +203,139 @@ int AL_Codec_Encode_SetDefaultParam(void *params) { (void)params; return 0; }
 int AL_Codec_Encode_SetFrameRate(void *c, int a, int b) { (void)c; (void)a; (void)b; return 0; }
 int AL_Codec_Encode_SetGopParam(void *c, void *p) { (void)c; (void)p; return 0; }
 int AL_Codec_Encode_SetQpBounds(void *c, int a, int b) { (void)c; (void)a; (void)b; return 0; }
-int AL_Codec_Encode_SetQpIPDelta(void *c, int a) { (void)c; (void)a; return 0; }
-int AL_Codec_Encode_SetRcParam(void *c, void *p) { (void)c; (void)p; return 0; }
-int AL_Codec_Encode_SetRcQualityCap(void *c, int m, unsigned int p) { (void)c; (void)m; (void)p; return 0; }
+
+
+/* ---- recorded rate-control calls ---- */
+static int cap_calls;
+static int cap_mode = -1;
+static unsigned int cap_psnr;
+static int ip_delta_calls;
+static int ip_delta;
+static int rc_param_calls;
+static unsigned int rc_param_mode;
+static unsigned int rc_param_target;
+static unsigned int rc_param_max;
+
+int AL_Codec_Encode_SetRcQualityCap(void *c, int mode, unsigned int psnr)
+{
+    (void)c;
+    cap_calls++;
+    cap_mode = mode;
+    cap_psnr = psnr;
+    return 0;
+}
+int AL_Codec_Encode_SetQpIPDelta(void *c, int a)
+{
+    (void)c;
+    ip_delta_calls++;
+    ip_delta = a;
+    return 0;
+}
+int AL_Codec_Encode_SetRcParam(void *c, void *p)
+{
+    IMPEncoderRcAttr *rc = p;
+
+    (void)c;
+    rc_param_calls++;
+    rc_param_mode = rc->attrRcMode.rcMode;
+    rc_param_target = rc->attrRcMode.attrCappedVbr.uTargetBitRate;
+    rc_param_max = rc->attrRcMode.attrCappedVbr.uMaxBitRate;
+    return 0;
+}
 
 /* ---- test ---- */
 
-extern int IMP_System_Bind(IMPCell *source, IMPCell *destination);
-
-static void make_attr(IMPEncoderCHNAttr *attr, int jpeg)
+static void make_attr(IMPEncoderCHNAttr *attr, IMPEncoderRcMode mode)
 {
     memset(attr, 0, sizeof(*attr));
-    attr->encAttr.profile = jpeg ? IMP_ENC_PROFILE_JPEG
-                                 : IMP_ENC_PROFILE_AVC_MAIN;
+    attr->encAttr.profile = IMP_ENC_PROFILE_AVC_HIGH;
     attr->encAttr.uWidth = 640;
     attr->encAttr.uHeight = 360;
-    attr->rcAttr.attrRcMode.rcMode = IMP_ENC_RC_MODE_FIXQP;
-    attr->rcAttr.attrRcMode.attrFixQp.iInitialQP = 30;
     attr->rcAttr.outFrmRate.frmRateNum = 25;
     attr->rcAttr.outFrmRate.frmRateDen = 1;
-}
-
-static int setup(int group, int channel, int fs, int jpeg)
-{
-    IMPEncoderCHNAttr attr;
-    IMPCell src = { DEV_ID_FS, fs, 0 };
-    IMPCell dst = { DEV_ID_ENC, group, 0 };
-
-    make_attr(&attr, jpeg);
-    if (IMP_Encoder_CreateGroup(group) != 0 ||
-        IMP_Encoder_CreateChn(channel, &attr) != 0 ||
-        IMP_Encoder_RegisterChn(group, channel) != 0 ||
-        IMP_System_Bind(&src, &dst) != 0 ||
-        IMP_Encoder_StartRecvPic(channel) != 0)
-        return -1;
-    return 0;
+    attr->gopAttr.uGopLength = 50;
+    attr->rcAttr.attrRcMode.rcMode = mode;
+    attr->rcAttr.attrRcMode.attrCappedVbr.uTargetBitRate = 1500;
+    attr->rcAttr.attrRcMode.attrCappedVbr.uMaxBitRate = 2500;
+    attr->rcAttr.attrRcMode.attrCappedVbr.iInitialQP = -1;
+    attr->rcAttr.attrRcMode.attrCappedVbr.iMinQP = 22;
+    attr->rcAttr.attrRcMode.attrCappedVbr.iMaxQP = 48;
+    attr->rcAttr.attrRcMode.attrCappedVbr.iIPDelta = -2;
+    attr->rcAttr.attrRcMode.attrCappedVbr.uMaxPictureSize = 2500;
+    if (mode == IMP_ENC_RC_MODE_CAPPED_VBR ||
+        mode == IMP_ENC_RC_MODE_CAPPED_QUALITY)
+        attr->rcAttr.attrRcMode.attrCappedVbr.uMaxPSNR = 42;
 }
 
 int main(void)
 {
-    int got = 0, i;
+    IMPEncoderCHNAttr attr;
+    IMPEncoderAttrRcMode mode;
+    static const IMPEncoderRcMode capped[] = {
+        IMP_ENC_RC_MODE_CAPPED_VBR, IMP_ENC_RC_MODE_CAPPED_QUALITY
+    };
+    unsigned int i;
 
-    /* timps' dedicated JPEG channel: framesource 3, group 3, channel 3,
-     * nothing else on framesource 3 */
-    CHECK(setup(3, 3, 3, 1) == 0, "JPEG channel setup");
-    for (i = 0; i < 5; i++)
-        got += IMP_Encoder_PollingStream(3, 200) == 0;
-    CHECK(fs_gets[3] > 0, "the lone JPEG channel never took a frame from "
-          "its framesource (%d PollingStream successes)", got);
-    /* one capture frame per PollingStream, each handed back (the stub
-     * codec returns no stream, so PollingStream itself reports -1) */
-    CHECK(fs_gets[3] == 5 && !fs_outstanding[3],
-          "%d frames taken in 5 polls, frame still held %d", fs_gets[3],
-          fs_outstanding[3]);
+    CHECK(IMP_Encoder_CreateGroup(0) == 0, "group");
+    for (i = 0; i < 2; i++) {
+        int chn = (int)i;
 
-    /* timps' JPEG-on-video channel (jpeg_attach): registered into the main
-     * stream's group 0 on framesource 0, next to an H.264 channel that is
-     * created, registered and bound but idle (no RTSP client, no
-     * StartRecvPic, never polled).  The JPEG channel must read framesource
-     * 0 itself instead of waiting for a fan-out that never comes. */
-    {
-        IMPEncoderCHNAttr attr;
-        IMPCell src = { DEV_ID_FS, 0, 0 };
-        IMPCell dst = { DEV_ID_ENC, 0, 0 };
-
-        make_attr(&attr, 0);
-        CHECK(IMP_Encoder_CreateGroup(0) == 0 &&
-              IMP_Encoder_CreateChn(0, &attr) == 0 &&
-              IMP_Encoder_RegisterChn(0, 0) == 0 &&
-              IMP_System_Bind(&src, &dst) == 0, "idle video channel setup");
-        make_attr(&attr, 1);
-        CHECK(IMP_Encoder_CreateChn(1, &attr) == 0 &&
-              IMP_Encoder_RegisterChn(0, 1) == 0 &&
-              IMP_Encoder_StartRecvPic(1) == 0, "JPEG-on-video setup");
-        for (i = 0; i < 5; i++)
-            (void)IMP_Encoder_PollingStream(1, 200);
-        CHECK(fs_gets[0] == 5 && !fs_outstanding[0],
-              "JPEG next to an idle video channel took %d frames in 5 "
-              "polls (waited for a fan-out that never comes)", fs_gets[0]);
+        cap_calls = ip_delta_calls = 0;
+        make_attr(&attr, capped[i]);
+        CHECK(IMP_Encoder_CreateChn(chn, &attr) == 0, "CreateChn mode %d",
+              capped[i]);
+        CHECK(cap_calls == 1 && cap_mode == (int)capped[i] &&
+              cap_psnr == 42u, "mode %d: cap calls %d mode %d psnr %u",
+              capped[i], cap_calls, cap_mode, cap_psnr);
+        CHECK(ip_delta_calls == 1 && ip_delta == -2,
+              "mode %d: iIPDelta not passed (%d calls, %d)", capped[i],
+              ip_delta_calls, ip_delta);
+        memset(&mode, 0, sizeof(mode));
+        CHECK(IMP_Encoder_GetChnAttrRcMode(chn, &mode) == 0 &&
+              mode.rcMode == capped[i] &&
+              mode.attrCappedVbr.uMaxPSNR == 42 &&
+              mode.attrCappedVbr.uTargetBitRate == 1500 &&
+              mode.attrCappedVbr.uMaxBitRate == 2500 &&
+              mode.attrCappedVbr.iMinQP == 22 &&
+              mode.attrCappedVbr.iMaxQP == 48,
+              "mode %d read back as %d psnr %u", capped[i], mode.rcMode,
+              mode.attrCappedVbr.uMaxPSNR);
     }
 
-    /* A skipped JPEG: the channel delivers its last picture again, which
-     * is no codec stream (ReleaseStream must not hand it to the codec).
-     * Lone JPEG channel 2 on framesource 2. */
-    {
-        IMPEncoderStream stream;
+    /* run time: a new cap, then CBR clears it */
+    mode.rcMode = IMP_ENC_RC_MODE_CAPPED_QUALITY;
+    mode.attrCappedQuality.uMaxPSNR = 38;
+    cap_calls = rc_param_calls = 0;
+    CHECK(IMP_Encoder_SetChnAttrRcMode(1, &mode) == 0, "SetChnAttrRcMode");
+    CHECK(rc_param_calls == 1 && rc_param_mode == IMP_ENC_RC_MODE_CAPPED_QUALITY
+          && rc_param_target == 1500000u && rc_param_max == 2500000u,
+          "codec rc %u target %u max %u", rc_param_mode, rc_param_target,
+          rc_param_max);
+    CHECK(cap_calls == 1 && cap_mode == IMP_ENC_RC_MODE_CAPPED_QUALITY &&
+          cap_psnr == 38u, "run-time cap %d/%u", cap_mode, cap_psnr);
+    memset(&mode, 0, sizeof(mode));
+    CHECK(IMP_Encoder_GetChnAttrRcMode(1, &mode) == 0 &&
+          mode.attrCappedQuality.uMaxPSNR == 38, "run-time read-back");
 
-        stub_streams = 1;
-        stub_busy = 1;
-        CHECK(setup(2, 2, 2, 1) == 0, "reuse channel setup");
-        /* nothing to reuse yet: the codec may not skip */
-        CHECK(IMP_Encoder_PollingStream(2, 200) == 0, "first JPEG");
-        CHECK(IMP_Encoder_GetStream(2, &stream, 0) == 0 &&
-              stream.packCount == 1 &&
-              !strcmp((const char *)(uintptr_t)stream.virAddr, "JPEG#1"),
-              "first JPEG content");
-        CHECK(IMP_Encoder_ReleaseStream(2, &stream) == 0,
-              "first JPEG release");
-        CHECK(!fs_outstanding[2], "capture frame of the first JPEG held");
-        /* the codec skips the next one: JPEG#1 again, frame returned */
-        CHECK(IMP_Encoder_PollingStream(2, 200) == 0,
-              "skipped JPEG not replaced by the last one");
-        memset(&stream, 0, sizeof(stream));
-        CHECK(IMP_Encoder_GetStream(2, &stream, 0) == 0 &&
-              stream.packCount == 1 && stream.streamSize == 7 &&
-              !strcmp((const char *)(uintptr_t)stream.virAddr, "JPEG#1"),
-              "reused JPEG content");
-        CHECK(!fs_outstanding[2], "capture frame of the skipped JPEG held");
-        CHECK(IMP_Encoder_ReleaseStream(2, &stream) == 0 &&
-              stub_released == 1, "reused JPEG release (%d codec "
-              "releases, want 1)", stub_released);
-        /* the next encodes normally again */
-        stub_busy = 0;
-        CHECK(IMP_Encoder_PollingStream(2, 200) == 0 &&
-              IMP_Encoder_GetStream(2, &stream, 0) == 0 &&
-              !strcmp((const char *)(uintptr_t)stream.virAddr, "JPEG#2"),
-              "JPEG after the skip");
-        CHECK(IMP_Encoder_ReleaseStream(2, &stream) == 0 &&
-              stub_released == 2, "release (%d codec releases)",
-              stub_released);
-    }
+    memset(&mode, 0, sizeof(mode));
+    mode.rcMode = IMP_ENC_RC_MODE_CBR;
+    mode.attrCbr.uTargetBitRate = 1000;
+    mode.attrCbr.iMinQP = 20;
+    mode.attrCbr.iMaxQP = 45;
+    cap_calls = 0;
+    CHECK(IMP_Encoder_SetChnAttrRcMode(1, &mode) == 0 && cap_calls == 1 &&
+          cap_mode == IMP_ENC_RC_MODE_CBR, "CBR does not clear the cap");
+
+    /* a VBR channel hands its mode over too (the codec clears the cap) */
+    cap_calls = 0;
+    make_attr(&attr, IMP_ENC_RC_MODE_VBR);
+    CHECK(IMP_Encoder_CreateChn(2, &attr) == 0 && cap_calls == 1 &&
+          cap_mode == IMP_ENC_RC_MODE_VBR, "VBR CreateChn cap call");
 
     if (failures) {
-        fprintf(stderr, "p2 JPEG source: %d check(s) failed\n", failures);
+        fprintf(stderr, "p2 rc mode: %d check(s) failed\n", failures);
         return 1;
     }
-    printf("p2 JPEG source tests passed\n");
+    printf("p2 rc mode tests passed\n");
     return 0;
 }

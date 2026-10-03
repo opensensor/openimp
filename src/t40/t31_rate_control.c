@@ -202,6 +202,16 @@ static void t31_complete_gop(OpenIMPT31RateController *controller)
             controller->under_target_gops = 0u;
         }
     }
+    /* CappedVBR/CappedQuality: the OEM controller drops a QP decrease while
+     * the picture just measured is above the PSNR cap (libimp 1.1.6
+     * 0x55540: a negative delta becomes 0), so a static scene that already
+     * looks good enough spends fewer bits instead of more. */
+    if (controller->max_psnr_x100 != 0u &&
+        controller->last_psnr_x100 > controller->max_psnr_x100 &&
+        controller->current_qp < previous_qp) {
+        controller->current_qp = previous_qp;
+        ++controller->quality_cap_holds;
+    }
     controller->picture_target_bits = controller->target_bits;
     controller->gop_model_bits = 0u;
     controller->gop_pictures = 0u;
@@ -377,6 +387,64 @@ int openimp_t31_rate_controller_set_band(
     return 0;
 }
 #endif
+
+int openimp_t31_rate_controller_set_quality_cap(
+    OpenIMPT31RateController *controller, uint32_t max_psnr_x100)
+{
+    if (!controller || !controller->initialized)
+        return -1;
+    controller->max_psnr_x100 = max_psnr_x100;
+    return 0;
+}
+
+void openimp_t31_rate_controller_note_psnr(
+    OpenIMPT31RateController *controller, uint32_t psnr_x100)
+{
+    if (controller)
+        controller->last_psnr_x100 = psnr_x100;
+}
+
+/* log2(x) in Q16 for x >= 1: integer part from the top bit, sixteen
+ * fraction bits by repeated squaring of the Q30-normalized mantissa. */
+static uint32_t t31_log2_q16(uint64_t x)
+{
+    uint32_t integer = 0u;
+    uint32_t fraction = 0u;
+    uint64_t y;
+    unsigned int bit;
+
+    while ((x >> integer) > 1u)
+        ++integer;
+    y = integer >= 30u ? x >> (integer - 30u) : x << (30u - integer);
+    for (bit = 0u; bit < 16u; ++bit) {
+        y = (y * y) >> 30;
+        if (y >= (2ull << 30)) {
+            y >>= 1;
+            fraction |= 1u << (15u - bit);
+        }
+    }
+    return (integer << 16) | fraction;
+}
+
+uint32_t openimp_t31_psnr_x100(uint64_t sse, uint32_t num_pel,
+                               uint32_t max_pel)
+{
+    uint64_t mse1000;
+    uint64_t ratio;
+
+    if (num_pel == 0u || max_pel == 0u)
+        return 0u;
+    mse1000 = sse > UINT64_MAX / 1000u ? UINT64_MAX / num_pel
+                                       : sse * 1000u / num_pel;
+    if (mse1000 == 0u)
+        mse1000 = 1u;
+    ratio = (uint64_t)max_pel * max_pel * 1000u / mse1000;
+    if (ratio == 0u)
+        return 0u;
+    /* 1000 * log10(ratio) = log2(ratio) * 301.03 */
+    return (uint32_t)(((uint64_t)t31_log2_q16(ratio) * 30103u) /
+                      (65536u * 100u));
+}
 
 uint32_t openimp_t31_rate_controller_qp(
     const OpenIMPT31RateController *controller)

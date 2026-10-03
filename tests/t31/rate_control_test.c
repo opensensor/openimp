@@ -1,3 +1,4 @@
+#include <math.h>
 #include <stdint.h>
 #include <stdio.h>
 
@@ -338,6 +339,123 @@ static int test_runtime_bitrate_retarget(void)
     return 0;
 }
 
+/* The OEM CappedVBR update (libimp 1.1.6 0x55540): mse1000 = max(1,
+ * sse * 1000 / pixels), PSNR = (int)(1000 * log10(255^2 * 1000 / mse1000))
+ * in dB * 100, all integer divisions. */
+static uint32_t oem_psnr_x100(uint64_t sse, uint32_t pixels)
+{
+    uint64_t mse1000 = sse * 1000u / pixels;
+    uint64_t ratio;
+
+    if (mse1000 == 0u)
+        mse1000 = 1u;
+    ratio = 255u * 255u * 1000u / mse1000;
+    return (uint32_t)(log10((double)ratio) * 1000.0);
+}
+
+static int test_psnr_matches_oem_formula(void)
+{
+    static const uint32_t pixels[] = { 640u * 360u, 1920u * 1080u,
+                                       2560u * 1440u };
+    static const uint32_t mse_x100[] = { 1u, 7u, 50u, 100u, 333u, 1000u,
+                                         4200u, 25000u, 650000u };
+    unsigned int p;
+    unsigned int m;
+
+    for (p = 0u; p < sizeof(pixels) / sizeof(pixels[0]); ++p) {
+        for (m = 0u; m < sizeof(mse_x100) / sizeof(mse_x100[0]); ++m) {
+            uint64_t sse = (uint64_t)pixels[p] * mse_x100[m] / 100u;
+            uint32_t want = oem_psnr_x100(sse, pixels[p]);
+            uint32_t got = openimp_t31_psnr_x100(sse, pixels[p], 255u);
+
+            EXPECT(got + 1u >= want && got <= want + 1u);
+        }
+    }
+    /* MSE 1: 48.13 dB; a perfect picture saturates like the OEM (78.13) */
+    EXPECT(openimp_t31_psnr_x100(640u * 360u, 640u * 360u, 255u) == 4813u);
+    EXPECT(openimp_t31_psnr_x100(1u, 640u * 360u, 255u) >= 7812u);
+    EXPECT(openimp_t31_psnr_x100(1u, 640u * 360u, 255u) <= 7813u);
+    EXPECT(openimp_t31_psnr_x100(1000u, 0u, 255u) == 0u);
+    EXPECT(openimp_t31_psnr_x100(1000u, 100u, 0u) == 0u);
+    return 0;
+}
+
+/* Feed a static scene far below the target: 25 fps, GOP 25, 20 GOPs. */
+static uint32_t run_quiet_scene(OpenIMPT31RateController *controller,
+                                uint32_t psnr_x100)
+{
+    unsigned int frame;
+
+    for (frame = 0u; frame < 25u * 20u; ++frame) {
+        uint32_t qp = openimp_t31_rate_controller_qp(controller);
+
+        openimp_t31_rate_controller_note_psnr(controller, psnr_x100);
+        if (openimp_t31_rate_controller_complete(
+                controller, scale_bits(6000u, (int)qp - 30),
+                qp, frame % 25u == 0u) != 0)
+            return 0u;
+    }
+    return openimp_t31_rate_controller_qp(controller);
+}
+
+static int test_quality_cap_holds_qp(void)
+{
+    OpenIMPT31RateController free_run;
+    OpenIMPT31RateController capped;
+    OpenIMPT31RateController below_cap;
+    OpenIMPT31RateController unmeasured;
+    uint32_t free_qp;
+
+    EXPECT(openimp_t31_rate_controller_set_quality_cap(NULL, 4200u) != 0);
+    EXPECT(openimp_t31_rate_controller_init(
+        &free_run, 1000000u, 25u, 1u, 25u, 20u, 45u, 35u) == 0);
+    EXPECT(free_run.max_psnr_x100 == 0u);
+    free_qp = run_quiet_scene(&free_run, 0u);
+    EXPECT(free_qp != 0u && free_qp < 35u);
+    EXPECT(free_run.quality_cap_holds == 0u);
+
+    /* above the cap: the QP never drops below where it started */
+    EXPECT(openimp_t31_rate_controller_init(
+        &capped, 1000000u, 25u, 1u, 25u, 20u, 45u, 35u) == 0);
+    EXPECT(openimp_t31_rate_controller_set_quality_cap(&capped, 4200u) == 0);
+    EXPECT(run_quiet_scene(&capped, 4500u) == 35u);
+    EXPECT(capped.quality_cap_holds > 0u);
+
+    /* below the cap, and without a measurement, the controller is free */
+    EXPECT(openimp_t31_rate_controller_init(
+        &below_cap, 1000000u, 25u, 1u, 25u, 20u, 45u, 35u) == 0);
+    EXPECT(openimp_t31_rate_controller_set_quality_cap(&below_cap,
+                                                       4200u) == 0);
+    EXPECT(run_quiet_scene(&below_cap, 3900u) == free_qp);
+    EXPECT(below_cap.quality_cap_holds == 0u);
+    EXPECT(openimp_t31_rate_controller_init(
+        &unmeasured, 1000000u, 25u, 1u, 25u, 20u, 45u, 35u) == 0);
+    EXPECT(openimp_t31_rate_controller_set_quality_cap(&unmeasured,
+                                                       4200u) == 0);
+    EXPECT(run_quiet_scene(&unmeasured, 0u) == free_qp);
+
+    /* the cap never stops a QP increase: overload above the cap */
+    {
+        unsigned int frame;
+
+        for (frame = 0u; frame < 25u * 12u; ++frame) {
+            uint32_t qp = openimp_t31_rate_controller_qp(&capped);
+
+            openimp_t31_rate_controller_note_psnr(&capped, 4500u);
+            EXPECT(openimp_t31_rate_controller_complete(
+                &capped, scale_bits(120000u, (int)qp - 30), qp,
+                frame % 25u == 0u) == 0);
+        }
+        EXPECT(openimp_t31_rate_controller_qp(&capped) > 35u);
+    }
+
+    /* init() clears the cap */
+    EXPECT(openimp_t31_rate_controller_init(
+        &capped, 1000000u, 25u, 1u, 25u, 20u, 45u, 35u) == 0);
+    EXPECT(capped.max_psnr_x100 == 0u && capped.quality_cap_holds == 0u);
+    return 0;
+}
+
 int main(void)
 {
     if (test_validation() || test_steady_target() ||
@@ -349,7 +467,9 @@ int main(void)
         test_sustained_motion_requires_fresh_persistence() ||
         test_bounds_and_scene_changes() ||
         test_large_completion_is_bounded() ||
-        test_runtime_bitrate_retarget())
+        test_runtime_bitrate_retarget() ||
+        test_psnr_matches_oem_formula() ||
+        test_quality_cap_holds_qp())
         return 1;
     puts("T31 rate-control tests passed");
     return 0;

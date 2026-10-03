@@ -21,6 +21,7 @@
 #include "openimp_profile.h"
 #include "imp_log_int.h"
 #include "trace_control.h"
+#include "p2_rc_readback.h"
 #if defined(PLATFORM_T41) || defined(PLATFORM_T31)
 #include "dma_alloc.h"
 #endif
@@ -1017,6 +1018,10 @@ extern int AL_Codec_Encode_SetRcParam(void *codec, void *rc_attr);
 #if defined(PLATFORM_T23)
 extern int AL_Codec_Encode_SetRcExtras(void *codec, const void *rc_mode);
 #endif
+#if defined(PLATFORM_T31)
+extern int AL_Codec_Encode_SetRcQualityCap(void *codec, int rc_mode,
+                                           unsigned int max_psnr);
+#endif
 extern int AL_Codec_Encode_SetQpBounds(void *codec, int min_qp, int max_qp);
 extern int AL_Codec_Encode_SetQpIPDelta(void *codec, int delta);
 extern int AL_Codec_Encode_SetQp(void *codec, void *qp);
@@ -1214,7 +1219,13 @@ static uint32_t p2_attr_bitrate_kbps(const IMPEncoderCHNAttr *attr)
  * and SMART (T21/T23/T30) channels were created as CBR.  Map them to VBR,
  * which carries the same target/max bitrate and QP fields (the attr structs
  * share the VBR layout) and is what SetChnAttrRcMode already does at run
- * time.  Returns the HW mode, or -1 for a mode with no counterpart. */
+ * time.  Returns the HW mode, or -1 for a mode with no counterpart.
+ *
+ * T31: the OEM library runs CappedVBR and CappedQuality on its VBR rate
+ * controller plus a PSNR cap (libimp 1.1.6, see AL_Codec_Encode_Set-
+ * RcQualityCap); OpenIMP does the same with its closed-loop controller.
+ * The mode itself is kept (GetChnAttrRcMode returns it, as the OEM
+ * library returns the stored attribute). */
 enum { /* HW_RC_MODE_* in hw_encoder.h, as codec_param_read_rc_mode reads */
     HW_RC_MODE_FIXQP = 0,
     HW_RC_MODE_CBR = 1,
@@ -1251,6 +1262,16 @@ static int p2_codec_rc_mode(const IMPEncoderCHNAttr *attr, int channel)
                     channel, mode);
         return -1;
     }
+#if defined(PLATFORM_T31)
+    if (mode == IMP_ENC_RC_MODE_CAPPED_VBR ||
+        mode == IMP_ENC_RC_MODE_CAPPED_QUALITY) {
+        IMP_LOG_INFO("Encoder",
+                     "CreateChn(%d): rate-control mode %s runs as VBR with "
+                     "a PSNR cap of %u dB\n", channel, name,
+                     (unsigned int)attr->rcAttr.attrRcMode.attrCappedVbr.uMaxPSNR);
+        return HW_RC_MODE_VBR;
+    }
+#endif
     IMP_LOG_INFO("Encoder",
                  "CreateChn(%d): rate-control mode %s runs as VBR "
                  "(no native %s rate control)\n", channel, name, name);
@@ -1636,9 +1657,18 @@ int IMP_Encoder_CreateChn(int channel, IMPEncoderCHNAttr *attr)
     if (attr->rcAttr.attrRcMode.rcMode == IMP_ENC_RC_MODE_CBR)
         AL_Codec_Encode_SetQpIPDelta(
             ch->codec, attr->rcAttr.attrRcMode.attrCbr.iIPDelta);
-    else if (attr->rcAttr.attrRcMode.rcMode == IMP_ENC_RC_MODE_VBR)
+    else if (attr->rcAttr.attrRcMode.rcMode == IMP_ENC_RC_MODE_VBR ||
+             attr->rcAttr.attrRcMode.rcMode == IMP_ENC_RC_MODE_CAPPED_VBR ||
+             attr->rcAttr.attrRcMode.rcMode ==
+                 IMP_ENC_RC_MODE_CAPPED_QUALITY)
+        /* the capped attributes share the VBR layout up to uMaxPSNR */
         AL_Codec_Encode_SetQpIPDelta(
             ch->codec, attr->rcAttr.attrRcMode.attrVbr.iIPDelta);
+#endif
+#if defined(PLATFORM_T31)
+    (void)AL_Codec_Encode_SetRcQualityCap(
+        ch->codec, (int)attr->rcAttr.attrRcMode.rcMode,
+        attr->rcAttr.attrRcMode.attrCappedVbr.uMaxPSNR);
 #endif
     if (AL_Codec_Encode_SetStreamBufferCount(ch->codec,
                                              ch->max_stream_count) != 0) {
@@ -2769,6 +2799,10 @@ int IMP_Encoder_GetChnAttrRcMode(int channel, IMPEncoderAttrRcMode *mode)
     if (!p2_valid_channel(channel) || !mode || !p2_channels[channel].created)
         return -1;
     *mode = p2_channels[channel].attr.rcAttr.attrRcMode;
+#if defined(PLATFORM_T21)
+    /* the OEM reads back the clamped live values (p2_rc_readback.h) */
+    p2_t21_rc_effective(mode);
+#endif
     return 0;
 }
 
@@ -2848,6 +2882,10 @@ int IMP_Encoder_SetChnAttrRcMode(int channel, IMPEncoderAttrRcMode *mode)
         pthread_mutex_unlock(&ch->lock);
         return -1;
     }
+#if defined(PLATFORM_T31)
+    (void)AL_Codec_Encode_SetRcQualityCap(ch->codec, (int)mode->rcMode,
+                                          mode->attrCappedVbr.uMaxPSNR);
+#endif
 #if defined(PLATFORM_T23)
     if (openimp_t23_enc_push_rc(ch->codec, ch->codec_type,
                                 &ch->attr.rcAttr.attrRcMode) != 0) {

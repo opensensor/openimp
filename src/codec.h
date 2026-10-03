@@ -120,6 +120,12 @@ int AL_Codec_Encode_SetRcParam(void *codec, void *rcAttr);
  * iBiasLvl, SMART, ...) of an IMPEncoderAttrRcMode, for channel creation */
 int AL_Codec_Encode_SetRcExtras(void *codec, const void *rcMode);
 #endif
+#if defined(PLATFORM_T31)
+/* CappedVBR/CappedQuality: the PSNR cap (uMaxPSNR, dB) of the OEM capped
+ * rate-control modes.  rcMode is the IMP mode; any other mode clears it. */
+int AL_Codec_Encode_SetRcQualityCap(void *codec, int rcMode,
+                                    unsigned int maxPsnr);
+#endif
 int AL_Codec_Encode_GetFrameRate(void *codec, void *fps);
 int AL_Codec_Encode_SetFrameRate(void *codec, void *fps);
 int AL_Codec_Encode_SetQpIPDelta(void *codec, int delta);

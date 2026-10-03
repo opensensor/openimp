@@ -21,3 +21,5 @@ helix_jpeg_test_t20
 helix_jpeg_test_t21
 helix_jpeg_test_t23
 t21_rmem_layout_test
+rc_readback_test_t21
+rc_readback_test_t20
