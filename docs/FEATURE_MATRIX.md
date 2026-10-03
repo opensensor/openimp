@@ -2,6 +2,8 @@
 
 As of: 2026-10-03 13:30 (local time). Camera mapping: cam-A = T31, cam-B = T23, cam-C = T20, cam-D = T21, cam-E = T10, cam-F = T41.
 
+See also: [OPENIMP_BEYOND_VENDOR.md](OPENIMP_BEYOND_VENDOR.md) (integration notes for streamer authors on everything marked beyond vendor).
+
 Open stack = open-tx-isp (kernel driver) + OpenIMP (libimp) + timps. Vendor = tx-isp-*.ko + Ingenic libimp.
 
 ## Summary
