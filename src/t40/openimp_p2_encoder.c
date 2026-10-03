@@ -1018,7 +1018,7 @@ extern int AL_Codec_Encode_SetFrameRate(void *codec, void *fps);
 extern int AL_Codec_Encode_SetBitRate(void *codec, int target_bitrate,
                                      int max_bitrate);
 extern int AL_Codec_Encode_SetRcParam(void *codec, void *rc_attr);
-#if defined(PLATFORM_T23)
+#if defined(PLATFORM_T23) || defined(PLATFORM_T20)
 extern int AL_Codec_Encode_SetRcExtras(void *codec, const void *rc_mode);
 #endif
 #if defined(PLATFORM_T31)
