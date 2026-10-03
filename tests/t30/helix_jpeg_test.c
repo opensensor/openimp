@@ -1490,6 +1490,103 @@ static void test_probe(void)
     munmap(pixels, size + FRAME_SLACK);
 }
 
+#if defined(HELIX_JPEG_TEST_REFERENCE)
+static uint32_t mcu_rng = 0x2468aceu;
+
+static uint32_t mcu_random(void)
+{
+    mcu_rng = mcu_rng * 1103515245u + 12345u;
+    return mcu_rng >> 8;
+}
+
+/* One block of random coefficients, entropy coded as the core does. */
+static void code_random_block(BitWriter *w, const uint32_t *ac,
+                              const uint32_t *dc, uint32_t density)
+{
+    int u, run = 0, bits;
+    int diff = (int)(mcu_random() % 4095u) - 2047;
+
+    if (mcu_random() % 4u)
+        diff >>= mcu_random() % 11u;
+    bits = magnitude_bits(diff);
+    put_hufe(w, dc[bits]);
+    if (bits)
+        put_bits(w, (uint32_t)(diff < 0 ? diff - 1 : diff) &
+                        ((1u << bits) - 1u), bits);
+    for (u = 1; u < 64; u++) {
+        int value = 0;
+
+        if (mcu_random() % 100u < density) {
+            value = (int)(mcu_random() % 1023u) + 1;
+            value >>= mcu_random() % 10u;
+            if (!value)
+                value = 1;
+            if (mcu_random() & 1u)
+                value = -value;
+        }
+        if (!value) {
+            run++;
+            continue;
+        }
+        while (run > 15) {
+            put_hufe(w, ac[161]);
+            run -= 16;
+        }
+        bits = magnitude_bits(value);
+        put_hufe(w, ac[run * 10 + bits - 1]);
+        put_bits(w, (uint32_t)(value < 0 ? value - 1 : value) &
+                        ((1u << bits) - 1u), bits);
+        run = 0;
+    }
+    if (run)
+        put_hufe(w, ac[160]);
+}
+
+/* The table-driven MCU parse against the symbol-by-symbol one it replaced:
+ * coded MCUs of every density, cut short, and random bytes. */
+static void test_mcus_bits(void)
+{
+    static uint8_t data[1u << 18];
+    uint32_t huffman[384];
+    unsigned int round;
+
+    HelixJpeg_HuffmanTable(huffman);
+    for (round = 0; round < 400u; round++) {
+        BitWriter w = { data, 0, sizeof(data), 0, 0 };
+        uint32_t mcus = 1u + mcu_random() % 120u;
+        uint32_t density = mcu_random() % 101u;
+        uint32_t m, b, size, cut;
+
+        for (m = 0; m < mcus; m++)
+            for (b = 0; b < 6u; b++)
+                code_random_block(&w, b < 4u ? huffman : huffman + 176,
+                                  b < 4u ? huffman + 352 : huffman + 368,
+                                  density);
+        while (w.count)
+            put_bits(&w, 1u, 1);    /* pad with 1 bits */
+        size = w.size;
+        for (m = 1; m <= mcus + 1u; m++) {
+            assert(HelixJpeg_McusBits(data, size, m) ==
+                   HelixJpeg_McusBitsReference(data, size, m));
+        }
+        cut = size ? mcu_random() % size : 0u;
+        assert(HelixJpeg_McusBits(data, cut, mcus) ==
+               HelixJpeg_McusBitsReference(data, cut, mcus));
+        assert(HelixJpeg_McusBits(data, size, mcus) > 0);
+    }
+    for (round = 0; round < 2000u; round++) {
+        uint32_t size = 1u + mcu_random() % 4096u, i;
+
+        for (i = 0; i < size; i++)
+            data[i] = (uint8_t)mcu_random();
+        for (i = 1; i <= 8u; i++)
+            assert(HelixJpeg_McusBits(data, size, i) ==
+                   HelixJpeg_McusBitsReference(data, size, i));
+    }
+    printf("MCU parse: table path matches the reference\n");
+}
+#endif
+
 int main(void)
 {
     /* the stream carries 32-bit addresses: keep the heap low (no PIE, no
@@ -1499,6 +1596,9 @@ int main(void)
      * the fake arena spans 2 GiB) */
     setenv("OPENIMP_HELIX_JPEG_RMEM_RESERVE_KB", "512", 1);
     test_tables();
+#if defined(HELIX_JPEG_TEST_REFERENCE)
+    test_mcus_bits();
+#endif
     test_descriptor();
     test_header();
     test_encode();

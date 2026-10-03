@@ -23,7 +23,7 @@
 #include "trace_control.h"
 #include "p2_rc_readback.h"
 #include "p2_hevc_policy.h"
-#if defined(PLATFORM_T41) || defined(PLATFORM_T31)
+#if defined(PLATFORM_T41) || defined(PLATFORM_T31) || defined(PLATFORM_T30)
 #include "dma_alloc.h"
 #endif
 #if defined(PLATFORM_T23) || defined(PLATFORM_T30)
@@ -609,6 +609,8 @@ static int p2_copy_requested_jpeg_frames(int source_channel,
     int channel;
 #if defined(PLATFORM_T41)
     int source_sync = 1;
+#elif defined(PLATFORM_T31) || defined(PLATFORM_T30)
+    int source_invalidated = 0;
 #endif
 #if defined(P2_JPEG_LEND)
     int lend = -1;          /* decided once per frame, if anyone asks */
@@ -707,6 +709,18 @@ static int p2_copy_requested_jpeg_frames(int source_channel,
                 jpeg->jpeg_frame_capacity = source->size;
             }
         }
+#if defined(PLATFORM_T31) || defined(PLATFORM_T30)
+        /* The CPU reads what ISP DMA and the IPU OSD blend wrote: drop
+         * stale cached lines once per frame before the first copy (the
+         * encoder's OSD pass leaves this to the CPU readers, see
+         * OPENIMP_T31_OSD_DMA_ONLY). */
+        if (!source_invalidated && source->physical_address) {
+            (void)DMA_RmemFlushCache(
+                (void *)(uintptr_t)source->virtual_address, source->size,
+                2 /* invalidate */);
+            source_invalidated = 1;
+        }
+#endif
         memcpy(jpeg->jpeg_frame_buffer,
                (const void *)(uintptr_t)source->virtual_address,
                source->size);
@@ -2216,8 +2230,12 @@ static int p2_polling_stream(int channel, uint32_t timeout_ms)
         /* Overlay before the JPEG fan-out copy and the AVC encode, as the
          * stock OSD group sits between FrameSource and Encoder. The IPU
          * writes the frame in memory, where the Helix VPU reads it. */
+        /* A video channel's frame is read by DMA only from here on; the
+         * JPEG fan-out copy invalidates before reading it. */
         if (ch->osd_group >= 0)
-            openimp_t31_osd_apply(ch->osd_group, frame);
+            openimp_t31_osd_apply_ex(ch->osd_group, frame,
+                                     ch->codec_type != IMP_ENC_TYPE_JPEG
+                                         ? OPENIMP_T31_OSD_DMA_ONLY : 0u);
 #elif defined(PLATFORM_T23) || defined(PLATFORM_T41)
         /* OEM T23 osd_update: IPU covers/pictures, CPU lines and mosaics
          * (T41: the same IPU and OSD ABI family, see openimp_t23_osd.c) */
