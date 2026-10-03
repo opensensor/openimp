@@ -50,6 +50,15 @@ typedef struct OpenIMPT41CommandParams {
     uint32_t mv_previous;
     uint32_t mv_current;
     uint32_t ep3;
+
+    /* HEVC (notes in t41_command_builder.c): codec 1 on the 32x32 CTB
+     * grid.  Zero keeps every AVC word unchanged.  The hevc_* switches
+     * only apply to HEVC; hevc_no_hwrc turns the hardware rate control words off (the PPS then
+     * carries cu_qp_delta_enabled_flag 0). */
+    uint32_t codec_hevc;
+    uint32_t hevc_no_hwrc;
+    uint32_t hevc_no_tmvp;
+    uint32_t hevc_cabac_init_idc0;
 } OpenIMPT41CommandParams;
 
 #define OPENIMP_T41_STREAM_PAYLOAD_OFFSET 0x0220u
@@ -70,6 +79,25 @@ uint32_t openimp_t41_motion_vector_slot_size(uint32_t width,
 uint32_t openimp_t41_reconstruction_manager_size(uint32_t width,
                                                  uint32_t height);
 uint32_t openimp_t41_hwrc_grid(uint32_t width, uint32_t height);
+
+/* Codec-aware variants: log2_ctb is 4 for AVC (the functions above) and 5
+ * for HEVC.  The circular reconstruction buffer keeps one CTB row plus the
+ * 16-line vertical search window (32 lines) beyond the picture
+ * (AL_GetAllocSize_EncReference), so it grows with the CTB size. */
+#define OPENIMP_T41_LOG2_CTB_AVC 4u
+#define OPENIMP_T41_LOG2_CTB_HEVC 5u
+uint32_t openimp_t41_reconstruction_margin_rows(uint32_t log2_ctb);
+uint32_t openimp_t41_reconstruction_luma_size_ctb(uint32_t width,
+                                                  uint32_t height,
+                                                  uint32_t log2_ctb);
+uint32_t openimp_t41_reconstruction_chroma_size_ctb(uint32_t width,
+                                                    uint32_t height,
+                                                    uint32_t log2_ctb);
+uint32_t openimp_t41_reconstruction_manager_size_ctb(uint32_t width,
+                                                     uint32_t height,
+                                                     uint32_t log2_ctb);
+uint32_t openimp_t41_hwrc_grid_ctb(uint32_t width, uint32_t height,
+                                   uint32_t log2_ctb);
 
 int openimp_t41_build_command(void *slot, size_t slot_size,
                               const OpenIMPT41CommandParams *params);

@@ -62,6 +62,30 @@ int main(void)
     assert(openimp_t41_update_ep1_lambda(ep1, 0xcfu, 1u) == -1);
     assert(openimp_t41_update_ep1_lambda(ep1, sizeof(ep1), 3u) == -1);
 
+    /* HEVC (T41 AL_GetLambda, HEVC_NEW_DEFAULT_LDA_TABLE): the I lane
+     * equals AVC's, P differs only at QP 37 (12 vs 13), B in many places;
+     * no scaling list. */
+    {
+        static uint8_t hevc[0x6400u];
+        unsigned int i;
+
+        memset(hevc, 0xa5, sizeof(hevc));
+        assert(openimp_t41_init_hevc_ep1(hevc, sizeof(hevc)) == 0);
+        assert(hevc[51u * 4u + 1u] == 67u && hevc[51u * 4u + 3u] == 59u);
+        assert(hevc[37u * 4u + 3u] == 12u && intra[37u * 4u + 3u] == 13u);
+        hevc[37u * 4u + 3u] = 13u;
+        assert(memcmp(hevc, intra, sizeof(intra)) == 0);
+        for (i = 0x100u; i < sizeof(hevc); ++i)
+            assert(hevc[i] == 0u);
+        assert(openimp_t41_update_ep1_lambda_codec(hevc, sizeof(hevc),
+                                                   0u, 1u) == 0);
+        assert(hevc[51u * 4u + 1u] == 104u);
+        assert(openimp_t41_update_ep1_lambda_codec(ep1, sizeof(ep1),
+                                                   0u, 0u) == 0);
+        assert(ep1[51u * 4u + 1u] == 91u);
+        assert(openimp_t41_init_hevc_ep1(hevc, 0x63ffu) == -1);
+    }
+
     puts("T41 EP1 lambda layout: OK");
     return 0;
 }
