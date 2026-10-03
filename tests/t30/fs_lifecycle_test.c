@@ -368,9 +368,10 @@ struct FrameSourceState *gFrameSource;
 Module *g_modules[6][6];
 
 int IMP_Log_Get_Option(void) { return 0; }
-void imp_log_fun(int level, int option, int type, ...)
+int imp_log_fun(int level, int option, int type, ...)
 {
     (void)level; (void)option; (void)type;
+    return 0;
 }
 void *alloc_device(const char *name, size_t size)
 {

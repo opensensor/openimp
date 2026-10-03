@@ -19,8 +19,7 @@ typedef struct ModuleQueueNode {
     struct ModuleQueueNode *next;
 } ModuleQueueNode;
 
-int IMP_Log_Get_Option(void); /* forward decl, ported by T<N> later */
-void imp_log_fun(int level, int option, int type, ...); /* forward decl, ported by T<N> later */
+#include "imp_log_fun.h"
 int VBMUnLockFrame(void *frame); /* forward decl, ported by T<N> later */
 uint64_t system_gettime(int clock_type); /* forward decl, ported by T<N> later */
 

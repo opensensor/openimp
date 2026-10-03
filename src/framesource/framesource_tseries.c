@@ -59,8 +59,7 @@
  * Compatibility forward declarations (functions ported in other tasks).
  * ------------------------------------------------------------------- */
 
-int32_t IMP_Log_Get_Option(void); /* T69 */
-void imp_log_fun(int level, int option, int type, ...); /* T69 */
+#include "imp_log_fun.h"
 
 extern void *alloc_device(const char *name, size_t size); /* T72/device.c */
 extern void free_device(void *dev);                        /* T72/device.c */

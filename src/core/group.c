@@ -10,8 +10,7 @@
 #include "core/module.h"
 #include "trace_control.h"
 
-int IMP_Log_Get_Option(void); /* forward decl, ported by T<N> later */
-void imp_log_fun(int level, int option, int type, ...); /* forward decl, ported by T<N> later */
+#include "imp_log_fun.h"
 int32_t VBMReleaseFrame(int chn, void *frame); /* forward decl, ported by T<N> later */
 Module *AllocModule(char *arg1, int32_t arg2); /* forward decl, ported by T<N> later */
 void FreeModule(Module *arg1); /* forward decl, ported by T<N> later */
