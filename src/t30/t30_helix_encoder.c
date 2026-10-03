@@ -1053,7 +1053,9 @@ int OpenIMP_T30_HelixCreate(T30HelixEncoder **encoder_out,
      * 0.26 MiB at 360p), and a bitstream window of one raw picture (an
      * all-I_PCM picture fits; at least 256 KiB, at most the 1 MiB of the
      * T21 layout). */
-#if defined(PLATFORM_T23)
+#if defined(PLATFORM_T23) || defined(PLATFORM_T20)
+    /* T20 (and T10 through the T20 build) keeps the earlier layout: the
+     * 1 MiB layout is only measured on a T21 (PC420) */
     encoder->scratch_size = T23_HelixScratchLayout(
         (params->width + 15u) / 16u, (params->height + 15u) / 16u,
         encoder->scratch_offset);
