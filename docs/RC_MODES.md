@@ -138,13 +138,13 @@ T21 (iBiasLvl -10..10), `i264e_reconfig_init` (0x35b50) copies them into
 the live block `i264e_reconfig_rc_get` (0x38070) returns.  OpenIMP T23 now
 reads back through `p2_rc_readback.h` as T20/T21.
 
-Open point: the native T23 encoder (commit 2021ad5) takes the
-`i264e_param_default` values for 0/out-of-range staticTime, changePos,
-qualityLvl, frmQPStep and gopQPStep.  That rule is `IMP_Encoder_YuvInit`
-(0x585f4); CreateChn has no such step, so the OEM channel runs with the
-clamped values (staticTime 0 -> 1, changePos 0 -> 50, frm/gopQPStep 0 -> 2,
-qualityLvl > 6 -> 6, iBiasLvl clamped to +-10).  The read-back follows the
-OEM; the encoder behaviour is unchanged until decided.
+The native T23 encoder uses the same values (`t23_rc_config`): the CreateChn
+clamps (staticTime 0 -> 1, changePos 0 -> 50, frm/gopQPStep 0 -> 2,
+qualityLvl > 6 -> 6, iBiasLvl -10..10 for every mode, maxBitRate >= 128
+kbit/s) and after a run-time SetChnAttrRcMode the reconfig_rc_set clamps.
+Before, it took the `i264e_param_default` values for 0 (2/80/4/3/15), a rule
+of `IMP_Encoder_YuvInit` (0x585f4), not of CreateChn.  Consequence: a VBR
+or SMART channel without extras now targets 50 % of maxBitRate (was 80 %).
 
 ## T10 / T40 / T41
 

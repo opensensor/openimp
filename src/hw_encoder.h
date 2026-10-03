@@ -53,6 +53,10 @@ extern "C" {
  * 0 included: 0 is a valid qualityLvl and iBiasLvl.  Without this flag the
  * extras are unset and every consumer keeps its historic behaviour. */
 #define HW_RC_FLAG_APP          0x8u
+/* With HW_RC_FLAG_APP: the extras came from a run-time
+ * IMP_Encoder_SetChnAttrRcMode (OEM i264e_reconfig_rc_set clamps), not from
+ * CreateChn (i264e_validate_parameters clamps). */
+#define HW_RC_FLAG_RUNTIME      0x10u
 
 /* Hardware encoder parameters */
 typedef struct {

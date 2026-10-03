@@ -12013,6 +12013,12 @@ int AL_Codec_Encode_SetRcParam(void *codec, void *rcAttr)
         break;
     }
 
+#if defined(PLATFORM_T23) || defined(PLATFORM_T30)
+    /* SetChnAttrRcMode at run time: the OEM clamps these extras with
+     * i264e_reconfig_rc_set, not i264e_validate_parameters */
+    if (enc->hw_params.rc_flags & HW_RC_FLAG_APP)
+        enc->hw_params.rc_flags |= HW_RC_FLAG_RUNTIME;
+#endif
     codec_param_write_bitrate_bps(enc->codec_param, enc->hw_params.bitrate);
     codec_param_write_qp_bounds(enc->codec_param,
                                 enc->hw_params.qp,

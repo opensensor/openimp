@@ -98,21 +98,25 @@ keeps only the number of writes and an FNV-1a digest of the register order.
   the rate controller's scene model.
 - Helix rate-control extras of `IMPEncoderAttrRcMode` (CreateChn and
   SetChnAttrRcMode hand them over with `HW_RC_FLAG_APP`; without them the
-  encoder behaves exactly as before). Vendor-verified from the T23 1.3.0
-  libimp (`IMP_Encoder_YuvInit`, `i264e_param_default`,
-  `i264e_ratecontrol_init`): the accepted ranges (staticTime 1..60,
-  changePos 50..100, qualityLvl 0..7, iBiasLvl -3..3, SMART -10..10, QP
-  steps != 0), frmQPStep = max P-to-P QP delta, gopQPStep = max I-to-P QP
-  delta, SMART configured like VBR, adaptiveMode/gopRelation not part of the
-  rate control. The native use is inferred from the SDK header:
-  I QP = P QP + iBiasLvl; frmQPStep/gopQPStep limit the QP change against
-  the last P picture; VBR/SMART target changePos% of maxBitRate and raise QP
-  above it, lower QP below maxBitRate * (80 - 10 * qualityLvl)% (SMART:
-  (20 + 10 * qualityLvl)%, higher = better); staticTime sets how many GOPs
-  the rate must stay outside that band before QP moves. A value of 0 or out of
-  range takes the OEM `i264e_param_default` value, as the OEM `YuvInit` does:
-  staticTime 2, changePos 80, qualityLvl 4 (0 is a valid qualityLvl and
-  iBiasLvl and stays), frmQPStep 3, gopQPStep 15. The log shows the rate control in effect
+  encoder behaves exactly as before). The values are the ones the OEM
+  channel runs with and `GetChnAttrRcMode` reads back (T23 1.3.0:
+  `IMP_Encoder_CreateChn` copies them as given,
+  `i264e_validate_parameters` clamps them): staticTime <= 0 -> 1, changePos
+  50..100, qualityLvl 0..6, frmQPStep/gopQPStep 2..51, iBiasLvl -10..10 (all
+  modes), maxBitRate >= 128 kbit/s.  A run-time `SetChnAttrRcMode`
+  (`HW_RC_FLAG_RUNTIME`, `i264e_reconfig_rc_set`) keeps changePos 0..100 and
+  QP steps >= 0 (0: no limit).  An application leaving the extras 0 thus runs
+  with staticTime 1, changePos 50, qualityLvl 0, QP steps 2/2.  (The
+  `i264e_param_default` values 2/80/4/3/15 for 0 belong to
+  `IMP_Encoder_YuvInit`, not to CreateChn.)  frmQPStep = max P-to-P QP delta,
+  gopQPStep = max I-to-P QP delta, SMART configured like VBR,
+  adaptiveMode/gopRelation not part of the rate control. The native use is
+  inferred from the SDK header: I QP = P QP + iBiasLvl; frmQPStep/gopQPStep
+  limit the QP change against the last P picture; VBR/SMART target
+  changePos% of maxBitRate and raise QP above it, lower QP below
+  maxBitRate * (80 - 10 * qualityLvl)% (SMART: (20 + 10 * qualityLvl)%,
+  higher = better); staticTime sets how many GOPs the rate must stay outside
+  that band before QP moves. The log shows the rate control in effect
   (`T23 Helix rc ready:` / `rc reconfigured:`); `OPENIMP_T23_RC_STATS=<s>`
   adds bitrate and I/P QP statistics every `<s>` seconds.
 - `src/t40/codec-t40.c`: backend selection, fallback and failure limit.

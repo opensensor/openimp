@@ -980,9 +980,10 @@ static int rc_test(void)
     assert(first == 30u);
     assert(plain_pp > 1u);
 
-    /* frmQPStep 1, gopQPStep 2, iBiasLvl -2 */
+    /* run time (SetChnAttrRcMode, OEM i264e_reconfig_rc_set): frmQPStep
+     * 1, gopQPStep 2 as given, iBiasLvl -2 */
     rc_params(&params, HW_RC_MODE_CBR);
-    params.rc_flags = HW_RC_FLAG_APP;
+    params.rc_flags = HW_RC_FLAG_APP | HW_RC_FLAG_RUNTIME;
     params.frm_qp_step = 1;
     params.gop_qp_step = 2;
     params.bias_level = -2;
@@ -990,32 +991,48 @@ static int rc_test(void)
     assert(first == 28u);
     assert(limited_pp == 1u);
 
-    /* app values of 0 (or out of range) take the OEM i264e defaults: QP
-     * steps 3/15 (not unlimited), also for CBR; first IDR is unbiased */
+    /* CreateChn (OEM i264e_validate_parameters): QP steps 2..51, so 1 -> 2
+     * and 0 -> 2 (not unlimited, not the i264e defaults 3/15) */
+    params.rc_flags = HW_RC_FLAG_APP;
+    (void)rc_run(&params, 2, 2, &first);
+    assert(first == 28u);
     rc_params(&params, HW_RC_MODE_CBR);
     params.rc_flags = HW_RC_FLAG_APP;
-    (void)rc_run(&params, 3, 15, &first);
+    (void)rc_run(&params, 2, 2, &first);
     assert(first == 30u);
-    rc_params(&params, HW_RC_MODE_VBR);
-    params.rc_flags = HW_RC_FLAG_APP;
-    params.change_pos = 7;      /* out of 50..100 -> 80 */
-    params.quality_level = 9;   /* out of 0..7 -> 4 */
-    (void)rc_run(&params, 3, 15, &first);
-    assert(first == 30u);
-    rc_params(&params, HW_RC_MODE_VBR);
-    params.rc_flags = HW_RC_FLAG_APP;
-    (void)rc_run(&params, 3, 15, &first);
-    assert(first == 30u);
+    /* run time: 0 stays 0, no limit */
+    params.rc_flags = HW_RC_FLAG_APP | HW_RC_FLAG_RUNTIME;
+    assert(rc_run(&params, 0, 0, &first) > 1u);
 
-    /* out-of-range iBiasLvl (VBR: -3..3) is ignored like the OEM does */
+    /* VBR without extras (timps' vbr/smart): staticTime 1, changePos 50,
+     * qualityLvl 0, steps 2/2; out-of-range values are clamped
+     * (changePos 7 -> 50, qualityLvl 9 -> 6) */
+    rc_params(&params, HW_RC_MODE_VBR);
+    params.rc_flags = HW_RC_FLAG_APP;
+    params.change_pos = 7;
+    params.quality_level = 9;
+    (void)rc_run(&params, 2, 2, &first);
+    assert(first == 30u);
+    rc_params(&params, HW_RC_MODE_VBR);
+    params.rc_flags = HW_RC_FLAG_APP;
+    (void)rc_run(&params, 2, 2, &first);
+    assert(first == 30u);
+    /* run time: changePos 0 is kept (a 1 % target, no division by 0) */
+    params.rc_flags = HW_RC_FLAG_APP | HW_RC_FLAG_RUNTIME;
+    (void)rc_run(&params, 0, 0, &first);
+
+    /* iBiasLvl is clamped to -10..10 for every mode, VBR included */
     rc_params(&params, HW_RC_MODE_VBR);
     params.rc_flags = HW_RC_FLAG_APP;
     params.bias_level = 5;
     params.change_pos = 80;
     params.quality_level = 0;
     params.static_time = 2;
-    (void)rc_run(&params, 0, 0, &first);
-    assert(first == 30u);
+    (void)rc_run(&params, 2, 2, &first);
+    assert(first == 35u);
+    params.bias_level = 12;
+    (void)rc_run(&params, 2, 2, &first);
+    assert(first == 40u);
 
     /* SMART accepts -10..10; the I QP stays inside [min_qp, max_qp] */
     rc_params(&params, HW_RC_MODE_VBR);
