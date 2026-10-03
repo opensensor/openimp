@@ -6,6 +6,7 @@
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/slab.h>
+#include <linux/mutex.h>
 #include <linux/anon_inodes.h>
 #include <linux/file.h>
 #include <linux/scatterlist.h>
@@ -82,7 +83,12 @@ struct dma_buf_list {
 	struct mutex lock;
 };
 
-static struct dma_buf_list db_list;
+/* Static initialisers: a zeroed list head oopses on the first list_add()
+ * and a zeroed 3.10 mutex reads as already locked. */
+static struct dma_buf_list db_list = {
+	.head = LIST_HEAD_INIT(db_list.head),
+	.lock = __MUTEX_INITIALIZER(db_list.lock),
+};
 
 __weak int dma_buf_release(struct inode *inode, struct file *file)
 {
