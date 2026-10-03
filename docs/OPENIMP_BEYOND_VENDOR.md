@@ -143,6 +143,13 @@ vendor header has no setter for). Bind it weakly so the same binary still runs o
 | T41 | BCSH, hue, running mode, anti-flicker | flip (no HVFLIP route in the dispatcher; cam-F: no flip), all others | – | cam-F 2026-10-03 |
 | T30 | – | – | everything (`known = 0`) | not covered |
 
+Device test cam-C (T20, 2026-10-03, own timpsd on /tmp, libimp bind-mounted, restored afterwards): with
+the production libimp (no export) and with the query, `caps.image` is the same 20 keys (the T20 table agrees
+with the timps baseline; log `all advertised image keys applied (known=0x7effff applied=0x7a3fef)`); POST
+`drc_strength`/`dpc_strength` answers 422 `not_supported_on_soc` with both in `"unsupported"`. With
+`OPENIMP_CAPS_DROP=60` hflip/vflip leave `caps.image` and a POST of `hflip` lands in `"unsupported"` while
+`brightness` is still accepted. Debug-only: `OPENIMP_CAPS_DROP=<hex>` (section 8).
+
 Branch: openimp `claude/imp-querycaps` (host test `tests/caps`, `make check`). A row that changes must change
 in `src/isp/openimp_caps.c` and here together.
 
@@ -158,6 +165,7 @@ set in production.
 | `OPENIMP_T31_OSD` | `0` disables the IPU OSD backend on T31 | on | user-facing |
 | `OPENIMP_T20_RC` | `1` enables the T20 OEM rate controller (needs kernel patch 0101); deviation: the vendor always runs it | off | user-facing (opt-in) |
 | `OPENIMP_T10_RC` | `1` enables the T10 OEM-style rate controller | off | user-facing (opt-in) |
+| `OPENIMP_CAPS_DROP` | hex mask of `IMP_ISP_CAP_*` bits that `IMP_ISP_QueryCaps` reports as known and not applied (restricts only), to test a streamer's handling of restricted keys | unset | debug-only |
 | `OPENIMP_T10_RC_SUPERFRM` | `0` restores vendor-exact T10 VBR behaviour (super-frame fix off); only inside the OEM controller | on | user-facing |
 | `OPENIMP_T20_RC_IAWARE` | `0` = vendor P budget, `1` also for VBR/SMART; only inside the OEM controller | on for CBR | user-facing |
 | `OPENIMP_T31_RC_CORE` | `legacy` restores the pre-Allegro rate-control core | allegro | user-facing |
