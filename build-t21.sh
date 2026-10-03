@@ -105,8 +105,6 @@ compile t21_h264_cabac src/t30/h264enc/cabac.c -Werror
 compile t21_h264_set src/t30/h264enc/set.c -Werror
 compile t21_h264_slice src/t30/h264enc/slice.c -Werror
 compile t21_rate_control src/t40/t31_rate_control.c -Werror
-compile t21_eprc src/eprc/eprc.c -Werror -ffp-contract=off
-compile t21_eprc_t21 src/eprc/eprc_t21.c -Werror -ffp-contract=off
 compile t21_helix_jpeg src/t30/helix_jpeg.c -Werror
 compile t21_helix_bitstream src/t30/helix_bitstream.c -Werror
 # T20 only: the OEM T20 rate controller (src/rc_t20, docs/T20_RC.md),
@@ -118,6 +116,17 @@ case " $platform_cppflags " in
         compile rc_t20_mb src/rc_t20/rc_t20_mb.c -Werror -ffp-contract=off
         compile rc_t10 src/rc_t10/rc_t10.c -Werror -ffp-contract=off
         rc_t20_objects="$output_dir/rc_t20.o $output_dir/rc_t20_mb.o $output_dir/rc_t10.o"
+        ;;
+esac
+# T21 only: the Helix eprc controllers (HELIX_T21_SYNTAX in
+# t30_helix_encoder.c); a T20/T10 libimp never calls them
+eprc_objects=
+case " $platform_cppflags " in
+    *" -DPLATFORM_T20 "*) ;;
+    *)
+        compile t21_eprc src/eprc/eprc.c -Werror -ffp-contract=off
+        compile t21_eprc_t21 src/eprc/eprc_t21.c -Werror -ffp-contract=off
+        eprc_objects="$output_dir/t21_eprc.o $output_dir/t21_eprc_t21.o"
         ;;
 esac
 
@@ -161,8 +170,7 @@ esac
     "$output_dir/t21_h264_set.o" \
     "$output_dir/t21_h264_slice.o" \
     "$output_dir/t21_rate_control.o" \
-    "$output_dir/t21_eprc.o" \
-    "$output_dir/t21_eprc_t21.o" \
+    $eprc_objects \
     "$output_dir/t21_helix_jpeg.o" \
     "$output_dir/t21_helix_bitstream.o" \
     "$output_dir/t21_ivs.o" \
