@@ -398,6 +398,123 @@ static void test_qp_fields(void)
     }
 }
 
+/* The 640x360 sub stream (cam-B T23 / cam-D T21, 2026-10-04): with the
+ * 624-line ring (23 macroblock rows + 256) the reference sat at 16-line
+ * steps from the ring end and the readers, which wrap in 64-line units,
+ * predicted from rows shifted by 16..48 lines.  In the recordings the P
+ * pictures that mispredicted (5..11 KiB in a static night scene, 60..200
+ * bytes otherwise) are exactly the n whose reference lies before the ring
+ * end at a non-multiple of 64 lines; the first one after the IDR (n = 4,
+ * 144 lines) breaks from row 192 down.  The period is 39 pictures (16 ring
+ * turns of 624 lines). */
+static const uint8_t bad_360p_624[] = { 4, 6, 7, 9, 14, 16, 17, 19, 23, 24,
+                                        26, 28, 29, 33, 34, 36, 38 };
+
+static void test_sub_stream_evidence(void)
+{
+    uint32_t n, i = 0;
+
+    for (n = 1; n < 39; n++) {
+        uint32_t rem = ((n - 1u) * 256u) % 624u;    /* old ring, ref n-1 */
+        int bad = rem != 0u && rem < 368u && rem % 64u != 0u;
+
+        if (bad) {
+            assert(i < sizeof(bad_360p_624));
+            assert(bad_360p_624[i++] == n);
+        }
+    }
+    assert(i == sizeof(bad_360p_624));
+}
+
+/* Command lists of the 640x360 ring over many pictures (both ring turns
+ * and the 39 and 5 picture periods): recon and reference at 64-line
+ * positions, the same wrap row in 0xb0000 and 0x50000, the ring and
+ * reference registers consistent with t21_ref_ring_pos. */
+static void test_sub_stream_lists(void)
+{
+    T21H264SliceConfig c;
+    T21RefRing r;
+    T21RefRingPos p, prev;
+    uint32_t stride = 640u, lines = 23u * 16u;
+    uint32_t n;
+
+    t21_ref_ring_init(&r, 0x02a00000u, 40, 23);
+    assert(r.ring_y % (64u * stride) == 0u);
+    assert(r.ring_c % (32u * stride) == 0u);
+    assert(r.ring_y == 640u * stride && r.ring_c == 320u * stride);
+    memset(&prev, 0, sizeof(prev));
+    for (n = 0; n < 400; n++) {
+        size_t pairs = 0;
+        uint32_t b0, mce;
+
+        t21_ref_ring_pos(&r, n, &p);
+        fill(&c, n != 0, 640, 360);
+        c.ref_share = 1;
+        c.reference_y = p.ref_y;
+        c.reference_c = p.ref_c;
+        c.output_y = p.recon_y;
+        c.output_c = p.recon_c;
+        c.ring_start_y = p.start_y;
+        c.ring_start_c = p.start_c;
+        c.ring_end_y = p.end_y;
+        c.ring_end_c = p.end_c;
+        c.ring_wrap_rows = p.wrap_rows;
+        c.ring_flags = 0;
+        assert(T21_H264_BuildDescriptor(&c, &pairs) == 0);
+        /* 64-line positions from the start and from the end */
+        assert((p.recon_y - r.base_y) % (64u * stride) == 0u);
+        assert((p.ref_y - r.base_y) % (64u * stride) == 0u);
+        assert((p.end_y - p.ref_y) % (64u * stride) == 0u);
+        assert((p.recon_c - r.base_c) % (32u * stride) == 0u);
+        assert((p.ref_c - r.base_c) % (32u * stride) == 0u);
+        assert((p.end_c - p.ref_c) % (32u * stride) == 0u);
+        assert(p.recon_y < p.end_y && p.ref_y < p.end_y);
+        assert(p.recon_c < p.end_c && p.ref_c < p.end_c);
+        /* the picture wraps at most once and at a 64-line boundary */
+        assert(p.recon_y + lines * stride < p.end_y + r.ring_y);
+        if (n) {
+            assert(p.ref_y == prev.recon_y && p.ref_c == prev.recon_c);
+            assert((p.wrap_rows & 3u) == 3u);
+            assert(p.wrap_rows + 1u == (p.end_y - p.ref_y) / stride / 16u);
+            assert((p.wrap_rows + 1u < 23u) ==
+                   (p.ref_y + lines * stride > p.end_y));
+        }
+        /* registers */
+        assert(get(pairs, 0x60008) == p.recon_y);
+        assert(get(pairs, 0x6000c) == p.recon_c);
+        assert(get(pairs, 0x60014) == r.base_y);
+        assert(get(pairs, 0x60018) == r.base_c);
+        assert(get(pairs, 0x6001c) == r.base_y + r.ring_y);
+        assert(get(pairs, 0x60020) == r.base_c + r.ring_c);
+        assert(get(pairs, 0x60004) & 0x40000000u);
+        assert(get(pairs, 0xb0014) == p.ref_y);
+        assert(get(pairs, 0xb0018) == p.ref_c);
+        assert(get(pairs, 0xb0030) == r.base_y);
+        assert(get(pairs, 0xb0034) == r.base_c);
+        b0 = get(pairs, 0xb0000);
+        assert(((b0 >> 8) & 0xffu) == p.wrap_rows);
+        if (n) {
+            mce = get(pairs, 0x50000);
+            assert(((mce >> 14) & 0xffu) == p.wrap_rows);
+            assert(((mce >> 14) & 0xffu) == ((b0 >> 8) & 0xffu));
+            assert(get(pairs, 0x5006c) == p.ref_y);
+            assert(get(pairs, 0x50070) == p.ref_c);
+            assert(get(pairs, 0x50110) == r.base_y);
+            assert(get(pairs, 0x50114) == r.base_c);
+            assert(get(pairs, 0x10014) == r.base_y);
+            assert(get(pairs, 0x10018) == r.base_c);
+        } else {
+            assert(get(pairs, 0x10014) == 0u && get(pairs, 0x10018) == 0u);
+        }
+        prev = p;
+    }
+    /* 640-line ring, 256-line step: five positions, period 5 */
+    t21_ref_ring_pos(&r, 5, &p);
+    assert(p.recon_y == r.base_y);
+    t21_ref_ring_pos(&r, 39, &p);
+    assert(p.recon_y != r.base_y);     /* the old 39-picture period is gone */
+}
+
 int main(void)
 {
     test_qp_fields();
@@ -423,6 +540,8 @@ int main(void)
     test_registers(1);
     test_oem_values();
     test_vendor_t23();
+    test_sub_stream_evidence();
+    test_sub_stream_lists();
     {
         size_t i;
 
