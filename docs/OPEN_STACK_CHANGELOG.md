@@ -88,7 +88,7 @@ OpenIMP: T20 green flicker in the bottom rows fixed by filling the encoder paddi
 
 Aggregates: `claude/open-tx-isp-all-4` and `claude/openimp-all-4` (pushed); 58 merged single branches removed. `claude/open-tx-isp-all-5` adds t21-robust and t31-robust-2 (T31: sensor flip with shvflip=1, unload leaks, lazy WDR buffers; MemFree drift per reload 460 → 45 KB); all four cameras flashed with -all-5 images.
 
-## Night (2026-10-03)
+## Late evening (2026-10-03)
 
 - **T41 module reload fixed and verified:** rev2 image on cam-F: 10/10 rmmod/insmod cycles, refcnt 0, 0 oops; kill -9 of the streamer recovers 3/3. Root cause: a decompiled tuning-node helper overwrote .bss. Branch `claude/t41-matrix-fixes`.
 - **T41 picture controls and rate control:** brightness 255 gives Y 211, contrast 0 flat grey, saturation 0/255 chroma 0.1/7.1 (dark scene); `isp-m0` in vendor layout (run mode, BCSH, flip mode, anti-flicker, AE); bitrate 400/1200/3000 gives 518/1195/2777 kbit/s over 30 s each (`claude/t41-cbr-overshoot`). Forced day/night switch test pending.
