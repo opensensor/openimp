@@ -75,9 +75,11 @@ pictures.  Read-back: the attribute as given (as the OEM).
 
 ## T20 / T21 (Helix, OEM libimp T20 3.12.0, T21 1.0.33)
 
-The OEM rate control is i264e `ratecontrol.c` on top of the `eprc` controller
-in `jzm_enc_api_nofpic_t21.o` (`JZ_VPU_RC_VIDEO_CFG_T21`, `FRAME_START`,
-`FRAME_END`; about 13,000 instructions).  CreateChn copies the H.264
+The OEM rate control is i264e `ratecontrol.c` on top of, on the T21, the
+`eprc` controller in `jzm_enc_api_nofpic_t21.o` (`JZ_VPU_RC_VIDEO_CFG_T21`,
+`FRAME_START`, `FRAME_END`; about 13,000 instructions) and, on the T20,
+its own `JZ_VPU_RC_*_T20` controller (`docs/T20_RC.md`; the T10 build uses a
+third one).  CreateChn copies the H.264
 CBR/VBR/SMART fields unconditionally; `i264e_validate_parameters` then
 clamps them (maxQp 0..51, minQp 0..maxQp, iBiasLvl -10..10 on T21, -3..3 on
 T20, frm/gopQPStep 2..51, staticTime <= 0 -> 1, maxBitRate >= 128,
@@ -97,6 +99,15 @@ OpenIMP: `GetChnAttrRcMode` applies the same clamps
 (`src/t40/p2_rc_readback.h`; the run-time set after SetChnAttrRcMode, FIXQP
 qp 0..51).  The native Helix encoder runs its GOP controller for
 CBR/VBR/SMART alike, without the extras (unchanged).
+
+**T20 (since claude/t20-rc):** CBR, VBR and SMART run the OEM T20
+controller (`src/rc_t20`, `docs/T20_RC.md`; `OPENIMP_T20_RC=0` restores
+the GOP controller below).  The OEM T20 build has its own controller
+(`JZ_VPU_RC_*_T20`), not the T21 eprc; there iBiasLvl, gopQPStep,
+changePos, qualityLvl and gopRelation take effect, frmQPStep only until
+the scene classifier replaces it, staticTime and adaptiveMode are unused,
+and there is no I/P QP delta (FIXQP: I = qp - 3).  The table below is the
+T10, the T21 and the T20 with `OPENIMP_T20_RC=0`.
 
 ### What a write does on T10/T20/T21 (OpenIMP)
 

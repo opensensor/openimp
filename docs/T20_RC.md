@@ -232,3 +232,36 @@ The T10 runs `JZ_VPU_RC_VIDEO_CFG` / `JZ_VPU_RC_FRAME_RC` /
 block at param + 476; its statistics are `io +116` from
 `hwicodec_pf_h264e_t10_enc` and the bits.  `src/rc_t20` must not be used on
 the T10.
+
+## In OpenIMP (T20 build, `src/t30/t30_helix_encoder.c`)
+
+On a T20 (not a T10: `t30_soc_is_t10`), CBR, VBR and SMART channels run
+`src/rc_t20` instead of OpenIMP's GOP controller (`t31_rate_control`):
+
+- `t20_rc_start` (at create and on every rate-control change, as the OEM
+  re-runs `i264e_ratecontrol_init`): the i264e parameters from
+  `HWEncoderParams` with the OEM clamps of CreateChn
+  (`i264e_validate_parameters`) or, after a run-time SetChnAttrRcMode
+  (`HW_RC_FLAG_RUNTIME`), of `i264e_reconfig_rc_set` (see
+  `src/t40/p2_rc_readback.h`); the application's QP range as given (OpenIMP
+  otherwise turns a min QP of 0 into 18); bit rates in kbit/s; macroblock
+  rate control off.
+- per picture: `RCT20_Start` with the IDR decision of the encoder, QP =
+  the controller's; after the run `RCT20_End` with the slice size (header +
+  VPU payload bytes x 8; the OEM counts i264e's slice bytes), the channel
+  node's `cmpx` and the registers 0x132800e4/e8/ec (soc_vpu ioctl
+  0xc0386307); a re-encode request codes the picture again at the new QP
+  (at most 4 times).
+- FIXQP keeps OpenIMP's handling (P = qp, IDR = qp - 3 as the OEM).
+
+Environment:
+
+- `OPENIMP_T20_RC=0`: OpenIMP's GOP controller instead (as before).
+- `OPENIMP_T20_RC_STATS=<seconds>`: one log line per interval: bit rate,
+  P and IDR QP average/min/max, scene class, re-encodes.
+
+The log shows `T20 rc: OEM <mode> ...` with the effective parameters when
+the controller starts.  `tests/t30` (helix_encoder_test_t20) checks the
+plumbing: every slice QP of the encoder against a second controller fed the
+same slice sizes, cmpx and register values, and that `OPENIMP_T20_RC=0`
+reads no registers.
