@@ -5,8 +5,10 @@ OpenIMP can encode T23 H.264 with its own Helix command lists over
 the OEM encoder in the `openimp-t23-helixd` worker. With the native backend
 no OEM code runs for video.
 
-Status: implemented and host-tested; **not yet run on hardware**. The build
-default stays `worker` until the on-device bring-up below has passed.
+Status: implemented, host-tested and brought up on the T23 test camera
+(flashed since 2026-10-03 01:32). `native` is the build default; the
+`worker` backend stays available as `T23_DEFAULT_ENCODER=worker` or
+`OPENIMP_T23_ENCODER=worker`.
 
 ## Selecting the backend
 
