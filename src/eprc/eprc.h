@@ -95,7 +95,8 @@ void EPRC_Free(Eprc *rc);
 int EPRC_FrameStart(Eprc *rc, const EprcFrameIn *in, EprcPicture *pic);
 
 /* Helix status registers read after each picture, in this order (OEM table
- * at 0xd7a40, read through soc_vpu ioctl 0xc0586307 at 0x13100000 + off):
+ * at 0xd7a40, T21 0xa7aa0, read through soc_vpu ioctl 0xc0586307 at
+ * 0x13100000 + off, T21 0xc0386307 at 0x13200000 + off):
  * 0x80120..0x8014c (12), 0x500e8, 0x500ec, 0x500f0, 0x80080, 0x40094,
  * 0x40098, 0x4009c, 0x400a0, 0x800e8, 0x800ec, 0x800e4, 0x800e0, 0x80168. */
 #define EPRC_STAT_REGS 25
@@ -118,5 +119,17 @@ void EPRC_DefaultSet(uint8_t *e);
 void EPRC_SetupE(uint8_t *e, const EprcParams *params);
 int EPRC_VideoCfg(Eprc *rc);
 void EPRC_Layout(Eprc *rc, uint8_t *block);
+
+/* The T21 1.0.33 revision of the controller (eprc_t21.c, docs/T23_EPRC.md
+ * "Other SoCs"): same interface, the T21 OEM state layout and decisions.
+ * The slice block is the T21 H264E_T21_SliceInit input. */
+int EPRC21_Init(Eprc *rc, const EprcParams *params, uint8_t *slice);
+void EPRC21_Free(Eprc *rc);
+int EPRC21_FrameStart(Eprc *rc, const EprcFrameIn *in, EprcPicture *pic);
+int EPRC21_FrameEnd(Eprc *rc, uint32_t bytes, const uint32_t regs[EPRC_STAT_REGS],
+                    EprcPicture *pic);
+int EPRC21_FrameEndEx(Eprc *rc, uint32_t bytes,
+                      const uint32_t regs[EPRC_STAT_REGS], EprcPicture *pic,
+                      int may_repeat);
 
 #endif

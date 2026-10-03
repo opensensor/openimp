@@ -8,12 +8,13 @@ EPRC_TEST := $(BUILD)/eprc-test
 
 check: $(EPRC_TEST)
 	$(EPRC_TEST) eprc_vectors.txt
+	$(EPRC_TEST) eprc_t21_vectors.txt t21
 
-$(EPRC_TEST): eprc_test.c $(PROJECT_DIR)/src/eprc/eprc.c \
+$(EPRC_TEST): eprc_test.c $(PROJECT_DIR)/src/eprc/eprc.c $(PROJECT_DIR)/src/eprc/eprc_t21.c \
 		$(PROJECT_DIR)/src/eprc/eprc.h $(PROJECT_DIR)/src/eprc/eprc_internal.h
 	@mkdir -p $(BUILD)
 	$(CC) $(CFLAGS) -I$(PROJECT_DIR)/src -o $@ eprc_test.c \
-		$(PROJECT_DIR)/src/eprc/eprc.c -lm
+		$(PROJECT_DIR)/src/eprc/eprc.c $(PROJECT_DIR)/src/eprc/eprc_t21.c -lm
 
 clean:
 	$(RM) $(EPRC_TEST)
