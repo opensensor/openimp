@@ -128,14 +128,31 @@ statement": keep your own assumption. Cost: a static table plus at most one sysf
 `IMP_System_Init`.
 
 How to use it: build your capability list from the vendor headers as before, then **remove** every feature
-that is `known` and not `applied`. Never add a feature because of it (a driver may apply something the SoC's
-vendor header has no setter for). Bind it weakly so the same binary still runs on a vendor libimp, for example
-`extern int q(void *) __asm__("IMP_ISP_QueryCaps") __attribute__((weak));`. timps does exactly this
-(`claude/timps-querycaps`): restricted keys disappear from `caps.image` and are reported under `"unsupported"`.
+that is `known` and not `applied`. You may also **add** an `applied` feature the SoC's vendor header lacks
+(the open driver doing more than the vendor), but only where you can call the setter safely: declare it
+yourself with the prototype the other SoCs' SDKs use, bind it weakly, call it only when the symbol is
+non-NULL, and keep the vendor value range. Bind the query weakly too so the same binary still runs on a
+vendor libimp, for example `extern int q(void *) __asm__("IMP_ISP_QueryCaps") __attribute__((weak));`.
+
+timps (`claude/timps-querycaps`) does both: restricted keys disappear from `caps.image` and are reported
+under `"unsupported"` (not persisted, 422 when nothing else was accepted); extension is limited to simple
+single-value setters (hue, AE comp, sinter/temper, DPC, defog, DRC, backlight, colorfx, scene) on the
+classic tuning API (not T40/T41), never WB, AE IT max, flips or sensor attributes. With a vendor libimp its
+`caps.image` is byte-identical to before. The ranges match, so `IMPISPCaps` carries none: sinter/temper
+are 0..255 with 128 = neutral (T10/T20/T21 table scale), colorfx/scene the V4L2 enums.
+
+Beyond-vendor features the table reports as applied: T10/T20 sinter/temper strength (table scale, open-tx-isp
+`claude/t10-t20-nr-wdr` + openimp `claude/t20-nr-strength`; the stock libimp/kernel renormalise it away) and
+AE IT max; T21 colorfx, scene, sinter, temper (`claude/t21-tuning-controls`); T23 DRC/ADR and defog
+(`claude/t23-adr-defog`, `claude/t23-matrix-gaps`); T23/T31 colorfx and scene (absent from the vendor T23/T31
+SDK). T23 front crop is beyond vendor too but is not a tuning setter, so it has no bit. With today's tables
+every applied bit is already in its SoC's vendor matrix as timps sees it, so timps extends nothing yet (T10
+would have gained colorfx/scene, which the T10 driver does not handle; reported not applied since openimp
+`3d29a12`). The mechanism is ready for the next driver feature that fills a vendor-header gap.
 
 | SoC (libimp build) | Applied | Known, not applied | No statement | Source |
 |---|---|---|---|---|
-| T10/T20 (one binary) | BCSH, flip, running mode, anti-flicker, AE comp, max again/dgain, sinter/temper, highlight, colorfx, scene, WB, AE IT max | hue, DPC, defog, backlight (no case in the Apical tuning switch) | DRC (T20 takes DRC_ATTR, T10 has no handler, not device-verified) | open-tx-isp all-14, cam-C/cam-E 2026-10-03 |
+| T10/T20 (one binary) | BCSH, flip, running mode, anti-flicker, AE comp, max again/dgain, sinter/temper, highlight, colorfx, scene (T20 only), WB, AE IT max | hue, DPC, defog, backlight (no case in the Apical tuning switch); on T10 (`/sys/module/tx_isp_t10` present) also colorfx/scene (driver/t10 has no handler) | DRC (T20 takes DRC_ATTR, T10 has no handler, not device-verified) | open-tx-isp all-14, cam-C/cam-E 2026-10-03 |
 | T21 | BCSH, flip, running mode, anti-flicker, max again/dgain, sinter/temper, DRC, highlight, colorfx, scene, WB | AE IT max (range mode accepted, AE ignores it; device test 2026-10-03) | hue, AE comp, DPC, defog, backlight (no T21 SDK setter) | cam-D |
 | T23 | all 23 | with `source_ae_oem=0` (HLIL substitute AE): AE comp, backlight, highlight | – | sysfs `/sys/module/tx_isp_t23/parameters/source_ae_oem`, default 1 |
 | T31 | all 23 | – | – | cam-A |
@@ -149,6 +166,12 @@ with the timps baseline; log `all advertised image keys applied (known=0x7effff 
 `drc_strength`/`dpc_strength` answers 422 `not_supported_on_soc` with both in `"unsupported"`. With
 `OPENIMP_CAPS_DROP=60` hflip/vflip leave `caps.image` and a POST of `hflip` lands in `"unsupported"` while
 `brightness` is still accepted. Debug-only: `OPENIMP_CAPS_DROP=<hex>` (section 8).
+
+Second run cam-C (2026-10-03, timps with restrict + extend, same procedure, restored afterwards): `caps.image`
+again the same 20 keys incl. `sinter_strength`/`temper_strength` (log `baseline caps unchanged`); sinter and
+temper act - snapshot 353 KB at 0/0, 84 KB at 255/255 (strong noise reduction); `hue`+`dpc_strength`+
+`drc_strength` alone answer 422 `not_supported_on_soc`, `"ok":false`, and none of them reaches the config
+file; mixed with `brightness` the reply is 200 with `dpc_strength` under `"unsupported"`.
 
 Branch: openimp `claude/imp-querycaps` (host test `tests/caps`, `make check`). A row that changes must change
 in `src/isp/openimp_caps.c` and here together.
