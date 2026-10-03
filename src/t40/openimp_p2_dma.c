@@ -13,6 +13,7 @@
 #include <string.h>
 #include <sys/ioctl.h>
 #include <sys/mman.h>
+#include <syslog.h>
 #include <unistd.h>
 #include "dma_alloc.h"
 #include "t40/openimp_p2_dma.h"
@@ -59,6 +60,8 @@ static uint32_t align_page(uint32_t value)
 {
     return (value + 4095U) & ~4095U;
 }
+
+static uint32_t p2_dma_high_water;
 
 static void p2_dma_recompute_next(void)
 {
@@ -243,6 +246,9 @@ int DMA_AllocDescriptor(IMPDMABufferInfo *out, int size, const char *tag)
     allocation_size = align_page((uint32_t)size);
     if (p2_dma_find_gap(allocation_size, &start) < 0 ||
         p2_dma_record_allocation(start, allocation_size) < 0) {
+        syslog(LOG_ERR, "openimp-dma: rmem exhausted: %s needs %u B, "
+               "high-water %u of %u B", tag ? tag : "?", allocation_size,
+               p2_dma_high_water - p2_dma.floor, p2_dma.size - p2_dma.floor);
         p2_unlock();
         errno = ENOMEM;
         return -1;
@@ -256,6 +262,13 @@ int DMA_AllocDescriptor(IMPDMABufferInfo *out, int size, const char *tag)
     out->size = (uint32_t)size;
     out->flags = 2U;
     p2_dma_recompute_next();
+    /* Sizing aid for the rmem= boot argument: log every new high-water. */
+    if (p2_dma.next > p2_dma_high_water) {
+        p2_dma_high_water = p2_dma.next;
+        syslog(LOG_INFO, "openimp-dma: rmem high-water %u of %u B (%s %u B)",
+               p2_dma_high_water - p2_dma.floor, p2_dma.size - p2_dma.floor,
+               tag ? tag : "?", allocation_size);
+    }
     p2_unlock();
     return 0;
 }
