@@ -1150,6 +1150,9 @@ enum {
     TISP_CID_2DNS_ATTR = 0x8000081,
     TISP_CID_3DNS_RATIO = 0x8000082,
     TISP_CID_DRC_ATTR = 0x80000a0,
+    /* Not in the stock T20 driver (-EPERM there); the open-tx-isp T10/T20
+     * driver serves the T21/T31 DRC ratio (128 = IQ Iridix strength). */
+    TISP_CID_DRC_RATIO = 0x80000a2,
 #else
     /* T21 1.0.33 SetTemperStrength/Set/GetDRC_Strength send 0x8000085 and
      * 0x80000a2, the T31 numbers. */
@@ -2219,10 +2222,16 @@ int IMP_ISP_Tuning_GetDPC_Strength(uint32_t *pratio)
 int IMP_ISP_Tuning_SetDRC_Strength(uint32_t ratio)
 {
 #if defined(PLATFORM_T20)
-    /* DRC_ATTR set applies attr.strength (IRIDIX_STRENGTH_ID); read the
-     * current struct first so the other fields are written back unchanged. */
+    /* Open T10/T20 driver: the T21/T31 DRC ratio acts on the auto Iridix
+     * strength (beyond vendor).  Stock kernel: -EPERM, then the vendor
+     * path. DRC_ATTR set applies attr.strength (IRIDIX_STRENGTH_ID, only
+     * effective with manual Iridix); read the current struct first so the
+     * other fields are written back unchanged. */
     TSeriesT20DrcAttr attr;
 
+    if (tseries_tuning_set_val(TISP_CID_DRC_RATIO, ratio > 255 ? 255 : ratio) == 0) {
+        return 0;
+    }
     memset(&attr, 0, sizeof(attr));
     if (tseries_tuning_get_ptr(TISP_CID_DRC_ATTR, &attr) != 0) {
         return -1;
@@ -2483,7 +2492,8 @@ int IMP_ISP_Tuning_GetDRC_Strength(uint32_t *pratio)
     }
 
 #if defined(PLATFORM_T20)
-    {
+    result = tseries_tuning_get_val(TISP_CID_DRC_RATIO, &value);
+    if (result != 0) {
         TSeriesT20DrcAttr attr;
 
         memset(&attr, 0, sizeof(attr));
