@@ -661,6 +661,10 @@ int EPRC21_Init(Eprc *rc, const EprcParams *params, uint8_t *slice)
     rc->qp_down_max = params->qp_down_max;
     rc->prev_type = -1;
     rc->e = rc->e_store;
+    /* The controller divides by these (the OEM traps on a zero divisor;
+     * i264e never passes one): refuse instead of SIGFPE. */
+    if (!params->gop || !params->fps_num || !params->fps_den)
+        return -1;
     EPRC21_SetupE(rc->e, params);
     size = eprc_block_size(rc->e, sz);
     block = calloc(1, size);
