@@ -897,7 +897,7 @@ static void fs_bind_trace(const char *fmt, ...)
             __sync_fetch_and_add(&capture_loop_trace_count, 1) >= 24)
             trace_kmsg = 0;
         if (trace_kmsg) {
-            int fd = open("/dev/kmsg", O_WRONLY);
+            int fd = open("/dev/kmsg", O_WRONLY | O_CLOEXEC);
             if (fd >= 0) {
                 write(fd, buf, (size_t)n);
                 close(fd);

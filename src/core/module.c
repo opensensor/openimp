@@ -143,7 +143,7 @@ static size_t module_append_dec(char *buf, size_t pos, size_t cap, int32_t value
 static void module_trace_quick_state(const char *tag, Module *module, int32_t message,
                                      int32_t result, void *dispatch_fn, void *notify_fn)
 {
-    int fd = open("/dev/kmsg", O_WRONLY);
+    int fd = open("/dev/kmsg", O_WRONLY | O_CLOEXEC);
     char buf[256];
     size_t len = 0;
 
@@ -175,7 +175,7 @@ static void module_trace(const char *fmt, ...)
 {
     if (!openimp_debug_trace_enabled()) return;
 
-    int fd = open("/dev/kmsg", O_WRONLY);
+    int fd = open("/dev/kmsg", O_WRONLY | O_CLOEXEC);
     if (fd < 0) return;
 
     char buf[512];

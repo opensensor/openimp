@@ -41,7 +41,7 @@ int HW_Encoder_Init(int *fd, HWEncoderParams *params) {
     const char *opened_device = NULL;
 
     for (int i = 0; device_paths[i] != NULL; i++) {
-        dev_fd = open(device_paths[i], O_RDWR);
+        dev_fd = open(device_paths[i], O_RDWR | O_CLOEXEC);
         if (dev_fd >= 0) {
             opened_device = device_paths[i];
             LOG_HW("Opened hardware encoder device: %s (fd=%d)", opened_device, dev_fd);

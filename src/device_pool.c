@@ -88,7 +88,7 @@ int AL_DevicePool_Open(const char *device_path) {
     for (int i = 0; i < MAX_DEVICES; i++) {
         if (g_device_pool[i].refcount == 0) {
             /* Empty slot - open device */
-            int fd = open(device_path, O_RDWR);
+            int fd = open(device_path, O_RDWR | O_CLOEXEC);
             if (fd < 0) {
                 LOG_DEVPOOL("Open: failed to open '%s': %s", device_path, strerror(errno));
                 result = -1;
