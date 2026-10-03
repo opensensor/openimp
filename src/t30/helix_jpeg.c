@@ -877,6 +877,12 @@ static int helix_copy_source(const HelixJpegFrame *frame, uint32_t stride,
     if (ret != 0)
         return ret;
     out = (uint8_t *)(uintptr_t)helix_jpeg.source.virt_addr;
+    /* a capture frame (lent by a video channel, whose OSD pass leaves the
+     * cache to CPU readers) was written by DMA: read memory, not stale
+     * cached lines */
+    if (frame->phys_addr)
+        (void)DMA_RmemFlushCache((void *)(uintptr_t)frame->virt_addr,
+                                 chroma_offset + stride * chroma_rows, 2);
     memcpy(out, luma, (size_t)stride * frame->height);
     for (row = frame->height; row < aligned_height; row++)
         memcpy(out + (size_t)stride * row,

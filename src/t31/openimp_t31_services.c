@@ -297,6 +297,11 @@ static void t31_osd_draw_cpu(struct osd_canvas *cv, const struct t31_osd_region 
 
 void openimp_t31_osd_apply(int group, void *frame)
 {
+    openimp_t31_osd_apply_ex(group, frame, 0u);
+}
+
+void openimp_t31_osd_apply_ex(int group, void *frame, unsigned int flags)
+{
     const uint8_t *fi = frame;
     uint32_t width, height, phys, virt, bg_h, fsize;
     struct t31_ipu_param p;
@@ -465,8 +470,13 @@ void openimp_t31_osd_apply(int group, void *frame)
     pthread_mutex_unlock(&osd_lock);
 
     /* The IPU wrote the frame behind the CPU cache; drop stale lines of the
-     * blended bands so CPU readers (JPEG copy) see the overlay. */
-    if (ipu_enabled && count > 0 && virt) {
+     * blended bands so CPU readers (JPEG copy) see the overlay.  A caller
+     * whose CPU readers invalidate for themselves skips this: on the
+     * encoder path it was two rmem ioctls per region on every frame (about
+     * 0.2 ms of CPU per frame on T31, 0.3 ms on T21) for a frame that only
+     * DMA reads afterwards. */
+    if (ipu_enabled && count > 0 && virt &&
+        !(flags & OPENIMP_T31_OSD_DMA_ONLY)) {
         for (i = 0; i < count; i++) {
             uint32_t y0 = band_y0[i];
             uint32_t y1 = band_y1[i];

@@ -84,6 +84,8 @@ int VBMWaitReady(int chn, unsigned int seq, uint32_t us)
 void VBMWakeReaders(int chn) { (void)chn; }
 int OpenIMP_T31_HwJpegActive(void) { return 0; }
 void openimp_t31_osd_apply(int group, void *frame) { (void)group; (void)frame; }
+void openimp_t31_osd_apply_ex(int group, void *frame, unsigned int flags)
+{ (void)group; (void)frame; (void)flags; }
 
 int DMA_AllocDescriptor(IMPDMABufferInfo *info, int size, const char *tag)
 {
