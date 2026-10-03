@@ -211,7 +211,7 @@ static int p2_dma_prepare(void)
         return -1;
     }
     p2_dma.size = size;
-    p2_dma.fd = open("/dev/rmem", O_RDWR | O_SYNC);
+    p2_dma.fd = open("/dev/rmem", O_RDWR | O_SYNC | O_CLOEXEC);
     if (p2_dma.fd < 0)
         return -1;
     p2_dma.mapping = mmap(NULL, p2_dma.size, PROT_READ | PROT_WRITE,

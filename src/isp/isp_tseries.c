@@ -104,7 +104,7 @@ int IMP_ISP_Open(void)
 
     /* Early kmsg trace — confirm this port's IMP_ISP_Open is the one invoked. */
     {
-        int kfd = open("/dev/kmsg", O_WRONLY);
+        int kfd = open("/dev/kmsg", O_WRONLY | O_CLOEXEC);
         if (kfd >= 0) {
             char buf[128];
             int n = snprintf(buf, sizeof(buf),
@@ -122,7 +122,7 @@ int IMP_ISP_Open(void)
 #endif
         gISP = v0_2;
         {
-            int kfd = open("/dev/kmsg", O_WRONLY);
+            int kfd = open("/dev/kmsg", O_WRONLY | O_CLOEXEC);
             if (kfd >= 0) {
                 char buf[128];
                 int n = snprintf(buf, sizeof(buf),
@@ -4174,7 +4174,7 @@ static void kmsg_trace(const char *fmt, ...)
     char buf[256];
     va_list ap;
 
-    if (kfd == -2) kfd = open("/dev/kmsg", O_WRONLY);
+    if (kfd == -2) kfd = open("/dev/kmsg", O_WRONLY | O_CLOEXEC);
     va_start(ap, fmt);
     int n = vsnprintf(buf, sizeof(buf), fmt, ap);
     va_end(ap);
@@ -4219,14 +4219,14 @@ int IMP_ISP_EnableTuning(void)
            "/dev/isp-m0"
 #endif
     );
-    int32_t tfd = open(isp->tuning_path, O_RDWR);
+    int32_t tfd = open(isp->tuning_path, O_RDWR | O_CLOEXEC);
     int32_t err1 = (tfd < 0) ? errno : 0;
     kmsg_trace("libimp/ISP: open(%s, O_RDWR) = %d (errno=%d %s)\n",
                isp->tuning_path, tfd, err1, err1 ? strerror(err1) : "ok");
 #if !defined(PLATFORM_T20)
     if (tfd < 0) {
         strcpy(isp->tuning_path, "/dev/isp-w02");
-        tfd = open(isp->tuning_path, O_RDWR);
+        tfd = open(isp->tuning_path, O_RDWR | O_CLOEXEC);
         int32_t err2 = (tfd < 0) ? errno : 0;
         kmsg_trace("libimp/ISP: open(/dev/isp-w02, O_RDWR) = %d (errno=%d %s)\n",
                    tfd, err2, err2 ? strerror(err2) : "ok");
@@ -4251,7 +4251,7 @@ int IMP_ISP_EnableTuning(void)
     memset(&tseries_t21_dns_cache, 0, sizeof(tseries_t21_dns_cache));
 #endif
 
-    int32_t mem_fd = open("/dev/mem", O_RDWR | O_SYNC);
+    int32_t mem_fd = open("/dev/mem", O_RDWR | O_SYNC | O_CLOEXEC);
     isp->mem_fd = mem_fd;
     if (mem_fd <= 0) {
         imp_log_fun(6, IMP_Log_Get_Option(), 2, "IMP-ISP",

@@ -124,7 +124,7 @@ static void sysbind_trace(const char *fmt, ...)
 {
     if (!openimp_debug_trace_enabled()) return;
 
-    int fd = open("/dev/kmsg", O_WRONLY);
+    int fd = open("/dev/kmsg", O_WRONLY | O_CLOEXEC);
     if (fd < 0) return;
 
     char buf[512];
@@ -182,7 +182,7 @@ int32_t regrw(int32_t arg1, int32_t *arg2, int32_t arg3)
         open_flags = 0x10;
     }
 
-    int32_t fd = open("/dev/mem", open_flags);
+    int32_t fd = open("/dev/mem", open_flags | O_CLOEXEC);
     if (fd < 0) {
         imp_log_fun(6, IMP_Log_Get_Option(), 2, "System",
             "/home/user/git/proj/sdk-lv3/src/imp/core/sys_core.c", 0x239,
@@ -614,7 +614,7 @@ int32_t get_mapped_addr(int32_t arg1, int32_t arg2, int32_t arg3, void **arg4, v
         open_flags = 0x12;
     }
 
-    int32_t fd = open("/dev/mem", open_flags);
+    int32_t fd = open("/dev/mem", open_flags | O_CLOEXEC);
     if (fd < 0) {
         imp_log_fun(6, IMP_Log_Get_Option(), 2, "System",
             "/home/user/git/proj/sdk-lv3/src/imp/core/sys_core.c", 0x273,
@@ -926,7 +926,7 @@ int32_t system_init(void)
          * the current value of gISP — if gISP becomes NULL mid-iteration, we
          * can see exactly which init zeroed it. */
         {
-            int kfd = open("/dev/kmsg", O_WRONLY);
+            int kfd = open("/dev/kmsg", O_WRONLY | O_CLOEXEC);
             if (kfd >= 0) {
                 char buf[160];
                 int n = snprintf(buf, sizeof(buf),
@@ -941,7 +941,7 @@ int32_t system_init(void)
             "system_init", "Calling %s\n", sys_funcs[i].name);
         result = sys_funcs[i].init();
         {
-            int kfd = open("/dev/kmsg", O_WRONLY);
+            int kfd = open("/dev/kmsg", O_WRONLY | O_CLOEXEC);
             if (kfd >= 0) {
                 char buf[160];
                 int n = snprintf(buf, sizeof(buf),

@@ -871,7 +871,7 @@ static void p2_trace(const char *format, ...)
         if (size > sizeof(message))
             size = sizeof(message);
         if (trace_kmsg) {
-            int fd = open("/dev/kmsg", O_WRONLY);
+            int fd = open("/dev/kmsg", O_WRONLY | O_CLOEXEC);
 
             if (fd >= 0) {
                 write(fd, message, size);
