@@ -76,10 +76,10 @@ class TraceRC(RC):
         self.out.write('R %s\n' % self.state_hex())
 
 def scenario(name, mode, seed, frames, out, al_mode=None):
-    """mode = AL_RateCtrl_Init mode (1 VBR, 8 CappedVBR, 9 CappedQuality); al_mode = the
+    """mode = AL_RateCtrl_Init mode (0 CBR, 1 VBR, 8 CappedVBR, 9 CappedQuality); al_mode = the
     AL eRCMode in the rc param (2 VBR, 4 CappedVBR, 8 CappedQuality on the T31)."""
     if al_mode is None:
-        al_mode = {1: 2, 8: 4, 9: 8}[mode]
+        al_mode = {0: 1, 1: 2, 8: 4, 9: 8}[mode]
     rnd = random.Random(seed)
     L = T31()
     gop_len = rnd.choice([10, 25, 30, 50, 1, 2])
@@ -151,8 +151,8 @@ def scenario(name, mode, seed, frames, out, al_mode=None):
 if __name__ == '__main__':
     outdir = sys.argv[1] if len(sys.argv) > 1 else '.'
     os.makedirs(outdir, exist_ok=True)
-    # T31 configurations: IMP VBR -> AL 2 / RateCtrl 1, CappedVBR -> 4 / 8, CappedQuality -> 8 / 9
-    runs = [('vbr', 1, 2), ('cappedvbr', 8, 4), ('cappedquality', 9, 8)]
+    # T31 configurations: IMP CBR -> AL 1 / RateCtrl 0, VBR -> AL 2 / RateCtrl 1, CappedVBR -> 4 / 8, CappedQuality -> 8 / 9
+    runs = [('vbr', 1, 2), ('cappedvbr', 8, 4), ('cappedquality', 9, 8), ('cbr', 0, 1)]
     for name, mode, al_mode in runs:
         for seed in range(1, 5):
             path = os.path.join(outdir, '%s_%d.trc' % (name, seed))

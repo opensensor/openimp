@@ -1219,6 +1219,419 @@ static void clamp_state_qp(T31AlRcState *st)
         st->qp = st->max_qp;
 }
 
+
+/* i1Ii 0x531ec: predicted B, P and special-P sizes at QP + delta */
+static void predict3(const T31AlRcState *st, int32_t delta, int32_t limit,
+                     int32_t *pb, int32_t *pp, int32_t *p3)
+{
+    int32_t base = st->qp + delta;
+    int32_t q0 = base + st->pb_delta;
+
+    if (q0 < 0) q0 = 0;
+    if (base < 0) base = 0;
+    *pb = predict_size_limited(st->model_size[0], st->model_qp[0] & 0xffffu,
+                               (uint32_t)q0 & 0xffffu, st->step_ratio[0],
+                               st->max_delta, limit);
+    *pp = predict_size_limited(st->model_size[1], st->model_qp[1] & 0xffffu,
+                               (uint32_t)base & 0xffffu, st->step_ratio[1],
+                               st->max_delta, limit);
+    *p3 = predict_size_limited(st->model_size[3], st->model_qp[3] & 0xffffu,
+                               (uint32_t)base & 0xffffu, st->step_ratio[3],
+                               st->max_delta, limit);
+}
+
+/* the word at state + 248 + 4 * t (step_ratio[t]; the OEM indexes past the
+ * array for picture types > 3) */
+static uint32_t step_ratio_at(const T31AlRcState *st, uint32_t t)
+{
+    uint32_t v = 0, off = 248u + 4u * t;
+
+    if (off + 4u <= sizeof(*st))
+        memcpy(&v, (const uint8_t *)st + off, 4);
+    return v;
+}
+
+static uint32_t div1000_or1(uint32_t a, uint32_t b)
+{
+    uint32_t v = LO32(udiv64(U64(a) * U64(b), 1000u));
+
+    return v ? v : 1u;
+}
+
+/* IIii 0x53360: the CBR update (picture analysis and QP change in one) */
+static void cbr_update(T31AlRcState *st, const T31AlRcPicture *pic,
+                       const T31AlRcStatus *status, uint32_t size_in,
+                       uint8_t fl, uint32_t extra)
+{
+    T31AlRcHrd *h = &st->hrd;
+    uint32_t tot, p32, p28, p20, p24;
+    uint32_t size = size_in;            /* sp172 */
+    uint32_t type = pic->type;          /* t2 */
+    uint32_t gl, gop_mode, nb, s5 = 0, target = 1u, sum = 0, s4k = 0, v1u, v0u;
+    int32_t static_flag, delta = 0, v, qp;
+    int32_t level0, tf, il_old, remaining, budget, cpb, m, tb10;
+    int32_t extra_i = 0;                /* sp116 */
+    int32_t pb = 0, pp = 0, p3 = 0, npc = 0;
+    uint8_t opt, f320;
+
+    mb_stats(status, size_in, &tot, &p32, &p28, &p20, &p24);
+    if (type != 2u && (pic->flags & 2u) && st->auto_ip)
+        adapt_ip_delta(st, (int32_t)p28);
+    static_flag = picture_account(st, pic, &size, extra, (int32_t)p32, (int32_t)p20);
+    if (st->opt_flag)
+        static_flag = 0;
+    if (fl) {
+        v = overflow_delta(st, static_flag);
+        goto apply;
+    }
+    if (extra) {
+        /* 0x53500: filler was appended, lower the QP */
+        if (static_flag)
+            v = (st->i_qp_ref < st->qp ? -2 : 0) * st->step;
+        else
+            v = -2 * st->step;
+        goto apply;
+    }
+    if (!(pic->flags & 2u) && !(st->gop_length < 2u)) {
+        v = 0;
+        goto apply;
+    }
+    /* 0x53554 */
+    level0 = hrd_level(h);
+    tf = (int32_t)st->target_frame;
+    il_old = (int32_t)st->init_level;
+    if (type != 2u && !((int32_t)p28 < 81) && level0 < (int32_t)size) {
+        st->qp = qp_for_target(size, st->qp, sdiv4(level0 * 3), st->step_ratio[2],
+                               st->min_qp, st->max_qp);
+        type = pic->type;
+    }
+    /* 0x535a4: per-type target */
+    f320 = st->flag320;
+    gop_mode = st->gop_mode;
+    gl = st->gop_length;
+    if (f320 && (gop_mode & 8u)) {
+        /* 0x53d98 */
+        uint32_t a2 = (uint32_t)st->flag321 * 1000u;
+
+        v0u = LO32(udiv64(U64(a2) * U64(tf), U64(st->ratio_3 + a2)));
+        extra_i = 0;
+        if (type == 2u) {
+            target = div1000_or1(v0u, st->ratio_i);
+            goto remaining_pictures;
+        }
+        if (pic->flags & 0x80u)
+            target = div1000_or1(v0u, st->ratio_3);
+        else
+            target = (int32_t)v0u > 0 ? v0u : 1u;
+        goto type1_target;
+    }
+    if (gl < 2u || (gop_mode & 8u)) {
+        /* 0x53790 */
+        target = (uint32_t)tf;
+        extra_i = 0;
+        goto type1_target;
+    }
+    /* 0x535d0 */
+    opt = st->opt_flag;
+    if (type == 2u && opt) {
+        /* 0x544e0: the I budget from the bitrate, the rest for the P pictures */
+        v0u = LO32(udiv64(U64(st->target_bitrate) * U64(gl * st->clk_ratio), U64(st->fps_1000)));
+        st->f144 = (uint32_t)sdiv32((int32_t)(v0u - size), (int32_t)gl - 1);
+    }
+    /* 0x535e4 */
+    {
+        int32_t np_nb, t5, a0 = 0;
+
+        nb = st->num_b;
+        np_nb = sdiv32((int32_t)gl, (int32_t)nb + 1) * (int32_t)nb;
+        t5 = (int32_t)gl - np_nb - 1;
+        if (f320)
+            a0 = sdiv32(t5, st->flag321);
+        npc = t5 - a0;
+        s4k = (uint32_t)npc * 1000u;
+        sum = (uint32_t)np_nb * st->ratio_b + (uint32_t)a0 * st->ratio_3 + s4k;
+    }
+    if (opt) {
+        /* 0x5414c */
+        v1u = LO32(udiv64(U64((gl - 1u) * 1000u) * U64(st->f144), U64(sum)));
+        if (type == 1u) {
+            /* 0x545ac */
+            target = (int32_t)v1u > 0 ? v1u : 1u;
+            extra_i = (int32_t)predict_size(st->model_size[2], st->model_qp[2] & 0xffffu,
+                                            ((uint32_t)(uint16_t)st->qp - (uint32_t)st->ip_delta) & 0xffffu,
+                                            st->step_ratio[2],
+                                            st->max_qp - (int32_t)st->model_qp[2]);
+            goto special_p;
+        }
+        extra_i = 0;
+        if (type == 0u) {
+            target = div1000_or1(v1u, st->ratio_b);
+            goto type1_target;
+        }
+        /* type 2 (OEM: assert(897) for any other type) */
+        target = div1000_or1(st->ratio_i, v1u);
+        goto type1_target;
+    }
+    sum += st->ratio_i;
+    v1u = LO32(udiv64(U64(st->f144) * U64(gl * 1000u), U64(sum))) + st->f188;
+    extra_i = 0;
+    if (type == 1u) {
+        target = (int32_t)v1u > 0 ? v1u : 1u;
+        goto special_p;
+    }
+    if (type == 0u) {
+        target = div1000_or1(v1u, st->ratio_b);
+        goto type1_target;
+    }
+    /* type 2 (OEM: assert(897) for any other type) */
+    target = div1000_or1(v1u, st->ratio_i);
+    goto i_correction;
+special_p:
+    /* 0x54460 */
+    if (pic->flags & 0x80u)
+        target = div1000_or1(v1u, st->ratio_3);
+    if (opt || type != 2u)
+        goto type1_target;
+i_correction:
+    /* 0x53710: running correction of the P budget from the I picture */
+    if (npc > 0) {
+        int32_t d = (int32_t)(target - size);
+        uint32_t q;
+
+        if (d >= 0) {
+            q = LO32(udiv64((uint64_t)(int64_t)d * U64(s4k), U64(sum)));
+            st->f188 = q / (uint32_t)npc;
+        } else {
+            d = -d;
+            q = LO32(udiv64((uint64_t)(int64_t)d * U64(s4k), U64(sum)));
+            st->f188 = (uint32_t)-(int32_t)(q / (uint32_t)npc);
+        }
+    }
+    goto remaining_pictures;
+type1_target:
+    if (type == 1u)
+        st->f236 = target;
+remaining_pictures:
+    /* 0x537ac */
+    remaining = (int32_t)st->gop_pictures < (int32_t)gl ? (int32_t)gl - st->gop_pictures : 1;
+    if (gop_mode & 8u) {
+        int32_t cur = st->f284;
+
+        v = cur - st->f296;
+        remaining = cur;
+        if (v < st->f288)
+            st->f284 = st->f288;
+        else
+            st->f284 = v < st->f292 ? v : st->f292;
+    }
+    cpb = (int32_t)h->cpb_bits;
+    predict3(st, 0, cpb, &pb, &pp, &p3);
+    nb = st->num_b;
+    if (st->gop_mode == 9u)
+        v = pb;
+    else if (nb != 0u || !st->flag320)
+        v = sdiv32((int32_t)(nb * (uint32_t)pb + (uint32_t)pp), (int32_t)nb + 1);
+    else
+        v = sdiv32((int32_t)((uint32_t)st->flag321 * (uint32_t)pp + (uint32_t)p3),
+                   (int32_t)st->flag321 + 1);
+    /* 0x53894 */
+    budget = (int32_t)((uint32_t)level0 + (uint32_t)(tf - v) * (uint32_t)remaining);
+    tb10 = (int32_t)st->target_bitrate / 10;
+    m = tb10;
+    if (!(m < (int32_t)(h->cpb_bits - (uint32_t)il_old)))
+        m = (int32_t)(h->cpb_bits - (uint32_t)il_old);
+    delta = 0;
+    if ((int32_t)size < (int32_t)target) {
+        if (m + il_old < budget) {
+            /* 0x5391c: lower the QP while the scaled picture stays below the target */
+            uint32_t t = type, ratio, s6 = size, s4 = size;
+            uint64_t tgt = U64(target) * 10000u;
+
+            if (st->flag320 && (pic->flags & 0x80u))
+                t = pic->type == 2u ? 2u : 3u;
+            else
+                t = pic->type;
+            ratio = step_ratio_at(st, t);
+            for (;;) {
+                s6 = LO32(udiv64(U64(s6) * U64(ratio), 10000u));
+                delta -= 1;
+                s4 = s6;
+                if (!(ratio < LO32(udiv64(tgt, U64(s6)))))
+                    break;
+                if (!(-(int32_t)st->max_delta < delta))
+                    break;
+            }
+            size = s4;
+        }
+    } else if ((int32_t)target < (int32_t)size) {
+        /* 0x53c08: the bitrate share alone, not bounded by the free buffer */
+        int32_t mn = tb10 < il_old ? tb10 : il_old;
+
+        if (budget < il_old - mn) {
+            /* 0x53c2c: raise the QP */
+            uint32_t t, ratio, s6 = size, s4 = size;
+
+            if (st->flag320 && (pic->flags & 0x80u))
+                t = pic->type == 2u ? 2u : 3u;
+            else
+                t = pic->type;
+            ratio = step_ratio_at(st, t);
+            for (;;) {
+                s4 = LO32(udiv64(U64(s6) * 10000u, U64(ratio)));
+                v0u = LO32(udiv64(U64(s4) * 10000u, U64(target)));
+                s6 = s4;
+                delta += 1;
+                if (!(ratio < v0u))
+                    break;
+                if (!(delta < st->max_delta))
+                    break;
+            }
+            size = s4;
+        }
+    }
+    (void)size;
+#ifdef T31_AL_RC_DEBUG
+    fprintf(stderr, "iiii: lvl0=%d tf=%d target=%u size_in=%u rem=%d budget=%d m=%d delta=%d static=%d\n", level0, tf, target, size_in, remaining, budget, m, delta, static_flag);
+#endif
+    /* 0x53a30 */
+    predict3(st, delta, cpb, &pb, &pp, &p3);
+    gop_mode = st->gop_mode;
+    f320 = st->flag320;
+    nb = st->num_b;
+    if (gop_mode & 8u) {
+        uint32_t il = st->init_level, lo, hi;
+
+        if (gop_mode == 9u) {
+            budget = (int32_t)((uint32_t)tf * (uint32_t)remaining + (uint32_t)level0 -
+                               (uint32_t)remaining * (uint32_t)pb);
+            lo = LO32(udiv64(U64(il) * 90u, 100u));
+            hi = LO32(udiv64(U64(il) * 110u, 100u));
+            s5 = nb;
+        } else {
+            uint32_t base = (uint32_t)tf * (uint32_t)remaining + (uint32_t)level0;
+
+            if (nb == 0u && f320) {
+                uint32_t k = st->flag321;
+
+                budget = (int32_t)(base - LO32(udiv64(U64(remaining) * U64(k * (uint32_t)pp + (uint32_t)p3),
+                                                      (uint64_t)(int64_t)(int32_t)(k + 1u))));
+                s5 = 0;
+            } else {
+                budget = (int32_t)(base - LO32(udiv64(U64(remaining) * U64(nb * (uint32_t)pb + (uint32_t)pp),
+                                                      (uint64_t)(int64_t)(int32_t)(nb + 1u))));
+                s5 = nb;
+            }
+            lo = LO32(udiv64(U64(il) * 85u, 100u));
+            hi = LO32(udiv64(U64(il) * 115u, 100u));
+        }
+        /* 0x53b40 */
+        if (budget < (int32_t)lo) {
+            if (delta <= 0)
+                delta += st->step;
+            else if ((int32_t)hi < budget)
+                delta -= st->step;
+        } else if ((int32_t)hi < budget && delta >= 0) {
+            delta -= st->step;
+        }
+    } else if (gl < 2u || pic->type == 2u) {
+        /* 0x53f24 */
+        s5 = nb;
+        if ((uint32_t)il_old == st->init_level) {
+            int32_t now = hrd_level(h);
+            int32_t third = sdiv3(cpb);
+
+            if (now < third)
+                delta += st->step;
+            else if (third * 5 < now)
+                delta -= st->step;
+        }
+    } else if ((uint32_t)il_old != st->init_level) {
+        s5 = nb;
+    } else {
+        /* 0x53f6c */
+        uint32_t base = (uint32_t)tf * (uint32_t)remaining + (uint32_t)level0;
+        int32_t c4;
+
+        if (!st->opt_flag)
+            extra_i = (int32_t)LO32(udiv64(U64(st->ratio_i) * U64(pp), 1000u));
+        if (nb == 0u && f320) {
+            uint32_t k = st->flag321;
+
+            budget = (int32_t)(base - LO32(udiv64(U64(remaining) * U64((uint32_t)pp * k + (uint32_t)p3),
+                                                  (uint64_t)(int64_t)(int32_t)(k + 1u))));
+            s5 = 0;
+        } else {
+            budget = (int32_t)(base - LO32(udiv64(U64(remaining) * U64(nb * (uint32_t)pb + (uint32_t)pp),
+                                                  (uint64_t)(int64_t)(int32_t)(nb + 1u))));
+            s5 = nb;
+        }
+        /* 0x54024 */
+        c4 = sdiv4(cpb);
+        if (budget < extra_i + c4) {
+            if (delta <= 0)
+                delta += st->step;
+            else if (3 * c4 < budget)
+                delta -= st->step;
+        } else if (3 * c4 < budget && delta >= 0) {
+            delta -= st->step;
+        }
+    }
+    /* 0x53b70 */
+#ifdef T31_AL_RC_DEBUG
+    fprintf(stderr, "iiii: b70 delta=%d budget=%d s5=%u\n", delta, budget, s5);
+#endif
+    gl = st->gop_length;
+    type = pic->type;
+    if (f320 && (pic->flags & 0x80u)) {
+        if ((int32_t)(gl - s5) < 3)
+            goto static_adjust;
+        goto no_change;
+    }
+    /* 0x54074 */
+    if ((int32_t)(gl - s5) < 3)
+        goto static_adjust;
+    if (type - 2u < 2u)
+        goto no_change;
+    if (delta < 0) {
+        st->f281 = 1;
+        goto after_i;
+    }
+    if (!st->f281)
+        goto after_i;
+    st->f281 = 0;
+    if ((int32_t)p28 < 30) {
+        delta = 0;
+        if (budget > 0)
+            goto after_i;
+    }
+    delta = st->step;
+    goto after_i;
+no_change:
+    st->f281 = 0;
+    delta = 0;
+after_i:
+    /* 0x53f5c */
+    if (st->prev_type == 2)
+        delta = 0;
+static_adjust:
+    /* 0x53ba0 */
+    if (static_flag) {
+        delta = static_scene_delta(st, delta);
+        if (!(budget < cpb) && !(delta < 1))
+            delta = 0;
+    }
+    if (st->max_delta < delta)
+        v = st->max_delta;
+    else
+        v = delta < -(int32_t)st->max_delta ? -(int32_t)st->max_delta : delta;
+apply:
+    /* 0x53484 */
+    qp = st->qp + v;
+    if (qp < st->min_qp)
+        st->qp = st->min_qp;
+    else
+        st->qp = s16(qp < st->max_qp ? qp : st->max_qp);
+}
 /* ------------------------------------------------------------ public */
 
 int t31_al_rc_init(T31AlRc *rc, uint32_t mode, const T31AlRcParam *rcp,
@@ -1228,7 +1641,7 @@ int t31_al_rc_init(T31AlRc *rc, uint32_t mode, const T31AlRcParam *rcp,
 
     if (!rc || !rcp || !gop)
         return -1;
-    if (mode != 1u && mode != 8u && mode != 9u)
+    if (mode != 0u && mode != 1u && mode != 8u && mode != 9u)
         return -1;
     memset(rc, 0, sizeof(*rc));
     st = &rc->st;
@@ -1579,6 +1992,10 @@ void t31_al_rc_update(T31AlRc *rc, const T31AlRcPicture *pic,
     if (!rc || !rc->valid || !pic || !status)
         return;
     st = &rc->st;
+    if (rc->mode == 0u) {
+        cbr_update(st, pic, status, size_bits, overflow, extra_bits);
+        return;
+    }
     analyse(st, pic, status, size_bits, overflow, extra_bits, &delta, &out_t,
             &out_idle5);
     if (rc->mode != 1u) {

@@ -4,8 +4,8 @@
 /*
  * T31 Allegro rate controller (OEM libimp 1.1.6, lib_rate_ctrl/RateCtrl_21.c,
  * functions 0x50860..0x56bf0), ported instruction for instruction for the
- * VBR (AL_RateCtrl mode 1), CappedVBR (mode 8) and CappedQuality (mode 9)
- * controllers.  CBR (mode 0, update IIii 0x53360) is not ported.
+ * CBR (AL_RateCtrl mode 0, update IIii 0x53360), VBR (mode 1, OOoI),
+ * CappedVBR (mode 8, Ooii) and CappedQuality (mode 9, Ooii) controllers.
  *
  * The state block keeps the OEM layout (328 bytes, offsets in the comments)
  * so that a run can be compared byte for byte with the OEM code under
@@ -15,7 +15,7 @@
 
 /* AL_TRCParam as the T31 libimp fills it (channel param +0x68). */
 typedef struct T31AlRcParam {
-    uint32_t mode;          /* +0  AL_RateCtrl_Init mode: 1 VBR, 8 CappedVBR, 9 CappedQuality */
+    uint32_t mode;          /* +0  AL eRCMode: 1 CBR, 2 VBR, 4 CappedVBR, 8 CappedQuality */
     uint32_t initial_rem_delay; /* +4  90 kHz ticks (T31 default 216000) */
     uint32_t cpb_size;      /* +8  90 kHz ticks (T31 default 270000), >= initial_rem_delay */
     uint16_t frame_rate;    /* +12 reduced frame-rate numerator */
@@ -172,7 +172,7 @@ typedef struct T31AlRc {
     int valid;
 } T31AlRc;
 
-/* AL_RateCtrl_Init + lI1i: construct the controller for mode 1/8/9 and
+/* AL_RateCtrl_Init + lI1i: construct the controller for mode 0/1/8/9 and
  * initialise it from the parameters.  Returns 0, -1 on bad mode. */
 int t31_al_rc_init(T31AlRc *rc, uint32_t mode, const T31AlRcParam *rcp,
                    const T31AlGopParam *gop);
@@ -187,7 +187,7 @@ int16_t t31_al_rc_picture_qp(T31AlRc *rc, const T31AlRcPicture *pic);
  * (0 or -1 for the ported modes). */
 int32_t t31_al_rc_picture_start(T31AlRc *rc, const T31AlRcPicture *pic,
                                 const T31AlRcStatus *status, uint32_t size_bits);
-/* OOoI / Ooii: the per-picture update.  overflow = frame re-encode flag,
+/* IIii / OOoI / Ooii: the per-picture update.  overflow = frame re-encode flag,
  * extra_bits = filler bits added to the picture size. */
 void t31_al_rc_update(T31AlRc *rc, const T31AlRcPicture *pic,
                       const T31AlRcStatus *status, uint32_t size_bits,

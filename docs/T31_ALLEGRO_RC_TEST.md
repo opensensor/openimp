@@ -68,8 +68,8 @@ QP must rise (log) instead of repeating the drop.
 * `OPENIMP_T31_RC_CORE=legacy`: the former controller runs, log line
   `T31 rate control core: legacy`; behaviour as before.  Unset or any other
   value: allegro (default).
-* CBR: legacy controller in both settings (the init line of the allegro
-  core does not appear).
+* CBR: since `claude/t31-allegro-cbr` the Allegro core (`IIii`) by
+  default, the legacy controller with `=legacy` (see the CBR plan below).
 * After the test: `umount /usr/lib/libimp.so`, restart the streamer.
 
 ## Result 2026-10-03 (cam-A, T31, garage, main session)
@@ -85,3 +85,49 @@ QP must rise (log) instead of repeating the drop.
 The Allegro core holds all three modes at the target; the legacy
 controller under- (VBR) and overshoots (CappedQuality).  The user made the
 Allegro core the default.
+
+## CBR (claude/t31-allegro-cbr): device test plan
+
+Build `claude/t31-allegro-cbr`, `scratchpad/t31cbr/libimp.so` (md5 in the
+hand-over report).  cam-A only, silent: no speaker playback, no AEC, no
+audio tests at all; nothing flashed, bind-mount as above.
+
+Config: `video0.rc_mode=cbr`, fps 25, GOP 50, iInitialQP/bounds as the
+streamer sets them (IMP default iMinQP 15, iMaxQP 48, eRcOptions 1).  Four
+runs of 60 s each on the same (static garage) scene, alternating so the
+light does not drift between the pair:
+
+| run | bitrate | core |
+|---|---|---|
+| 1 | 1200 kbit/s | allegro (no variable) |
+| 2 | 1200 kbit/s | `OPENIMP_T31_RC_CORE=legacy` |
+| 3 | 3000 kbit/s | allegro |
+| 4 | 3000 kbit/s | legacy |
+
+Optional runs 5/6: 1200 kbit/s allegro/legacy with one scene change
+(walk through the picture or switch the light at 20 s and 40 s).
+
+Measure per run (record the stream with a client, e.g. `ffmpeg -i
+rtsp://.. -c copy -t 60 run.mp4`, then `ffprobe -show_packets`):
+
+* Bitrate accuracy: mean over the 60 s (bytes * 8 / 60) against the
+  target, and the mean of each 2 s GOP window (min/max of the 30 windows).
+* Peak behaviour: largest 1 s window (25 pictures), largest I picture and
+  largest P picture in bytes, the I/P size ratio, and the largest picture
+  against the HRD buffer (CPB 270000 ticks = 3 s * bitrate).
+* Log: `T31 rate control core: allegro (OEM libimp 1.1.6 port)`, `T31
+  allegro rc: init mode=0 (AL 1) target=.. max=<target> ..`, then
+  `pic=..` lines with `next_qp`, `filler=.. (N pictures)` (N = pictures
+  for which the OEM would have written filler data); legacy runs show no
+  `T31 allegro rc` lines.
+* Stability as before: decode clean, no stalls, `dmesg` clean, no encoder
+  restarts, streamer memory flat.
+
+Expected: allegro holds the GOP windows close to the target as long as the
+scene needs the bits; on a static scene at 3000 kbit/s the QP reaches
+iMinQP or the HRD asks for filler (`filler` count grows), and the stream
+then stays below the target because OpenIMP writes no filler NAL (the OEM
+pads to the target there).  QP steps of at most 4 per picture (more only
+for a mostly-intra P picture larger than 3/4 of the buffer level), a P
+picture right after an I picture keeps the QP.  Legacy: the former
+closed-loop result as reference.
