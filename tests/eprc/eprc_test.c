@@ -70,7 +70,7 @@ static uint32_t cliff_bytes(uint32_t frame, int32_t qp, int32_t ref, int idr)
     return (uint32_t)b;
 }
 
-static int qp_down_check(void)
+static int qp_down_check(int t21)
 {
     static uint8_t slice[EPRC_SLICE_SIZE];
     uint32_t regs[EPRC_STAT_REGS];
@@ -95,14 +95,14 @@ static int qp_down_check(void)
         p.change_pos = 80; p.quality = 4; p.init_qp = -1;
         p.qp_down_max = on ? 1u : 0u;
         memset(slice, 0, sizeof(slice));
-        if (EPRC_Init(&rc, &p, slice) != 0)
+        if ((t21 ? EPRC21_Init : EPRC_Init)(&rc, &p, slice) != 0)
             return 1;
         for (n = 0; n < 300; n++) {
             uint32_t over;
 
             memset(&in, 0, sizeof(in));
             in.frames_since_idr = n % 50u;
-            if (EPRC_FrameStart(&rc, &in, &pic) != 0)
+            if ((t21 ? EPRC21_FrameStart : EPRC_FrameStart)(&rc, &in, &pic) != 0)
                 return 1;
             over = pic.qp > 33 ? pic.qp - 33u : 0u;
             if (slice[448] != pic.qp || slice[808] != pic.qp ||
@@ -113,18 +113,18 @@ static int qp_down_check(void)
             if (pic.type == 0 && prev_type == 0 && pic.qp < prev - 1)
                 big[on]++;
             seq[on][n] = pic.qp;
-            EPRC_FrameEndEx(&rc, cliff_bytes(n, pic.qp, ref, pic.type == 2),
+            (t21 ? EPRC21_FrameEndEx : EPRC_FrameEndEx)(&rc, cliff_bytes(n, pic.qp, ref, pic.type == 2),
                             regs, &pic, 0);
             prev = pic.qp;
             prev_type = pic.type;
             ref = pic.qp;
         }
-        EPRC_Free(&rc);
+        (t21 ? EPRC21_Free : EPRC_Free)(&rc);
     }
     for (int i = 0; i < 300; i++)
         diff += seq[0][i] != seq[1][i];
-    printf("eprc qp_down_max: QP falls > 1 after P: off %d, on %d; %d of 300 "
-           "pictures differ; slice field errors %d\n", big[0], big[1], diff, bad);
+    printf("eprc%s qp_down_max: QP falls > 1 after P: off %d, on %d; %d of 300 "
+           "pictures differ; slice field errors %d\n", t21 ? " (T21)" : "", big[0], big[1], diff, bad);
     return !(big[0] > 0 && big[1] == 0 && diff > 0 && bad == 0);
 }
 
@@ -246,7 +246,7 @@ int main(int argc, char **argv)
         release(&rc);
     printf("eprc%s: %ld pictures checked against the OEM controller, %ld mismatches\n",
            t21 ? " (T21)" : "", checked, failed);
-    if (qp_down_check()) {
+    if (qp_down_check(t21)) {
         fprintf(stderr, "eprc qp_down_max check failed\n");
         return 1;
     }

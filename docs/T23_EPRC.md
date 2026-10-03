@@ -126,8 +126,9 @@ QP per 100 pictures in recordings of OpenIMP's eprc stack).  Host study
 QP flicker -8..27 %, mean QP -0.1..-0.4 at the same bit rate, no
 regression in 90 runs; VBR/SMART similar.  frmQPStep = 1 would also cut
 the flicker but slows the reaction to motion (burst buffer +35 %).
-Switch: `OPENIMP_EPRC_QP_DOWN1=1` (CBR), `=2` (CBR, VBR, SMART); T23, and
-T21 with `OPENIMP_T21_EPRC=1`.  The start log line ends in `qp-down<=1`.
+Switch: `OPENIMP_EPRC_QP_DOWN1=1` (CBR), `=2` (CBR, VBR, SMART); T23 and the
+T21 revision (eprc_t21.c, the T21 default; same limit in both).  The start
+log line ends in `qp-down<=1` only when the limit is active.
 `tests/eprc` checks the OEM vectors with it off and, on a static
 noise-cliff scene, that it removes every fall > 1 and keeps the slice
 fields consistent.
