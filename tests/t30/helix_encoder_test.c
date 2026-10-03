@@ -618,7 +618,8 @@ static void test_runtime_parameters(void)
 /* The OEM T20 rate control (src/rc_t20) chooses every slice QP from the
  * statistics the encoder hands it: the slice size, the channel's cmpx and
  * three VPU registers.  A second controller fed the same values here must
- * agree picture by picture (OPENIMP_T20_RC=1; by default the GOP controller). */
+ * agree picture by picture (the default; OPENIMP_T20_RC=0 the GOP
+ * controller). */
 static void test_t20_rate_control(void)
 {
     T30HelixEncoder *encoder;
@@ -729,7 +730,15 @@ static void test_t20_rate_control(void)
         free(luma);
     }
 
-    unsetenv("OPENIMP_T20_RC");     /* default: the GOP controller */
+    unsetenv("OPENIMP_T20_RC");     /* default: the OEM controller */
+    encoder = create(1280, 720, 25, 10);
+    reads = reg_reads;
+    for (i = 0; i < 3u; i++)
+        assert(encode(encoder, &info) == 0);
+    assert(reg_reads > reads);
+    OpenIMP_T30_HelixDestroy(encoder);
+
+    setenv("OPENIMP_T20_RC", "0", 1);  /* =0: the GOP controller */
     encoder = create(1280, 720, 25, 10);
     reads = reg_reads;
     for (i = 0; i < 3u; i++)
@@ -740,8 +749,8 @@ static void test_t20_rate_control(void)
     fill_payload(5000, 30);
 }
 
-/* On a T10 (OPENIMP_HELIX_SOC=t10) OPENIMP_T10_RC=1 runs the OEM T10
- * controller (src/rc_t10) instead: no VPU register reads, every slice QP
+/* On a T10 (OPENIMP_HELIX_SOC=t10) the OEM T10 controller runs by default
+ * (OPENIMP_T10_RC=0: the GOP controller) (src/rc_t10) instead: no VPU register reads, every slice QP
  * as a second controller fed the slice size and cmpx chooses it. */
 static void test_t10_rate_control(void)
 {

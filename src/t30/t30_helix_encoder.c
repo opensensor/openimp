@@ -307,7 +307,7 @@ struct T30HelixEncoder {
     uint32_t t20rc_frames, t20rc_idrs;
     uint64_t t20rc_bytes, t20rc_qp_sum[2];
     uint32_t t20rc_qp_min[2], t20rc_qp_max[2];
-    /* OEM T10 rate control (src/rc_t10, OPENIMP_T10_RC=1); shares the
+    /* OEM T10 rate control (src/rc_t10, default; OPENIMP_T10_RC=0 off); shares the
      * QP range, re-encode and statistics fields above */
     RcT10 t10rc;
     int t10rc_on;
@@ -1585,11 +1585,11 @@ static uint32_t t30_fixqp_idr_qp(const HWEncoderParams *params)
 }
 
 #if defined(PLATFORM_T20)
-/* OPENIMP_T20_RC=1 runs the OEM T20 controller for CBR, VBR and SMART on
- * the T20; by default (until tested on a camera with the motion statistics,
- * which need kernel patch 0101 for the register reads) the T20 keeps
- * OpenIMP's GOP controller (t31_rate_control).  On a T10 the OEM library runs another controller
- * (src/rc_t10, t10_rc_wanted below). */
+/* The OEM T20 controller (src/rc_t20) runs CBR, VBR and SMART on the T20
+ * by default (device-tested with kernel patch 0101 for the motion
+ * statistics register reads); OPENIMP_T20_RC=0 restores OpenIMP's GOP
+ * controller (t31_rate_control).  On a T10 the OEM library runs another
+ * controller (src/rc_t10, t10_rc_wanted below). */
 static int t20_rc_wanted(const T30HelixEncoder *encoder)
 {
     const char *env = getenv("OPENIMP_T20_RC");
@@ -1599,12 +1599,12 @@ static int t20_rc_wanted(const T30HelixEncoder *encoder)
     if (encoder->params.rc_mode != HW_RC_MODE_CBR &&
         encoder->params.rc_mode != HW_RC_MODE_VBR)
         return 0;
-    return env && env[0] == '1';
+    return !(env && env[0] == '0');
 }
 
-/* OPENIMP_T10_RC=1 runs the OEM T10 controller (the T10 branch of the
- * same OEM library, src/rc_t10) for CBR, VBR and SMART on a T10; by
- * default the T10 keeps the GOP controller. */
+/* The OEM T10 controller (the T10 branch of the same OEM library,
+ * src/rc_t10) runs CBR, VBR and SMART on a T10 by default;
+ * OPENIMP_T10_RC=0 restores the GOP controller. */
 static int t10_rc_wanted(const T30HelixEncoder *encoder)
 {
     const char *env = getenv("OPENIMP_T10_RC");
@@ -1614,7 +1614,7 @@ static int t10_rc_wanted(const T30HelixEncoder *encoder)
     if (encoder->params.rc_mode != HW_RC_MODE_CBR &&
         encoder->params.rc_mode != HW_RC_MODE_VBR)
         return 0;
-    return env && env[0] == '1';
+    return !(env && env[0] == '0');
 }
 
 static void t20_rc_stop(T30HelixEncoder *encoder)
