@@ -3,7 +3,7 @@
 Everything changed, extended or fixed in OpenIMP, open-tx-isp, timps and the thingino
 integration since the test campaign started on 2026-09-30. Kept up to date during the campaign.
 
-Last update: 2026-10-03 19:56.
+Last update: 2026-10-03 20:30.
 
 Cameras are anonymised: cam-A (T31), cam-B (T23), cam-C (T20), cam-D (T21), cam-E (T10), cam-F (T41).
 
@@ -100,6 +100,11 @@ Aggregates: `claude/open-tx-isp-all-4` and `claude/openimp-all-4` (pushed); 58 m
 - **Unsupported keys (timps `claude/timps-unsupported-keys`):** a POST with only keys the SoC cannot apply returns 422 `not_supported_on_soc` with `ok:false`; unsupported keys are no longer persisted (audio `CAP_ALC`/`CAP_SPK` count as not supported without the hardware path). `IMP_ISP_QueryCaps` was prototyped and withdrawn by the maintainer; not part of any release.
 - **T23 AE default:** the lifted vendor AE becomes the default after the night test (pending).
 - **T31 Allegro CBR and T21 eprc device results (20:13):** T31 (vendor Allegro core, default): CBR 1210 kbit/s at 1200 target and 2973 at 3000 (legacy controller 1511 / 3786, +26 % with large peaks); VBR 1163, CappedVBR 1177, CappedQuality 1174 at 1200; decode clean, 0 oops; no filler NAL written (filler=0 also at 3000). Branch `claude/t31-allegro-cbr`. T21 eprc complete: SMART/CBR/VBR at 1200 kbit/s gave 1090/1305/1042; runtime HSkip N=4 gives an IDR every 4 GOPs; decode clean, 0 oops; a day/night switch does not trigger the scene-cut IDR (vendor condition: scene class 5). Branch `claude/eprc-complete`. T23 eprc-complete device test is pending.
+
+- **Aggregate all-15:** open-tx-isp claude/open-tx-isp-all-15 f3f40f9e, openimp claude/openimp-all-13 07afe9a, timps claude/timps-all-15 cc8cded (all without the withdrawn QueryCaps). New over all-14: smaller libimp and modules (T23/T20 rootfs back to the old layout), T31 CBR on the vendor Allegro core, eprc complete on T21/T23, P5 on the T21 revision, T20 sub-stream height and snapshot frame-rate fixes, timps 422 / unsupported keys not persisted. Flashing on cam-A, B, D, E started 20:2x; cam-C follows.
+- **cam-B night test with the lifted vendor AE (default since all-14):** switches to night (exposure 109303 > 4096), AE regulates (IT 1200 of 1436 lines, analog gain 133 of 160, gain reported). The all-11 problem (gain reported as 1x, never night) is gone. One night→day→night flip in the first 90 s after start, the same timps boot-measure issue as on cam-C; a timps fix is in work.
+- **timps USE_OPENIMP:** build switch pushed to timps main (a2dccce) and thingino ciao (timps.mk); it changes nothing yet. OpenIMP-only features are enabled under it once device-tested and present on timps main. Two premature changes were reverted: the vendor firmware does honour T21 ae_it_max and T10/T20 quality_lvl/change_pos, so we fix the open stack instead (T21 AE limit fix and T20/T10 OEM rate controller as default are in work).
+- **Per-SoC difference list:** new docs/OPENIMP_SOC_DIFFS.md: OpenIMP vs vendor per SoC in both directions, with API signatures and device-test status.
 
 ## Evening (2026-10-03)
 
