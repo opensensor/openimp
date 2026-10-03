@@ -20,6 +20,13 @@ adjust them.
   mode 1 for the CBR HRD and filler path, mode 9 for the removal-clock
   slip).  `scenario(name, mode, seed, frames, out, al_mode)` can be called
   for larger local runs.
+* `cq_trace.py` also records `cbr_1..4` (IMP CBR: AL eRCMode 1,
+  `AL_RateCtrl_Init` mode 0, update `IIii`).
+* `cq_random_cbr.py <outdir> <seed_from> <seed_to> <frames>`: random CBR
+  traces, including the GOP / rc-param variants the T31 IMP never sets
+  (`P34=1 GM='[8,9,10,12]'` biases towards them), and the `IIii`
+  instruction coverage; `synthetic_cbrgop_1/2` in the test come from it
+  (seeds 103 with `P34=1 GM='[8,9,8|2,12]'`, and 7, 150 pictures).
 * `cq_replay.py <trace> <line>`: replays a trace in the OEM code and prints
   the `Ioii` intermediates (targets, idle budget, search result, remaining
   pictures, size predictions, delta before the clamp, PSNR cap) for the
