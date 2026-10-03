@@ -21,6 +21,7 @@
 #include "openimp_profile.h"
 #include "imp_log_int.h"
 #include "trace_control.h"
+#include "p2_rc_readback.h"
 #if defined(PLATFORM_T41) || defined(PLATFORM_T31)
 #include "dma_alloc.h"
 #endif
@@ -223,6 +224,9 @@ typedef struct {
     IMPEncoderH265TransCfg h265_transform;
     IMPEncoderQpgMode qpg_mode;
     int macroblock_rate_control;
+    /* rc attribute last set by SetChnAttrRcMode: the OEM read-back then
+     * shows the run-time clamps (p2_rc_readback.h) */
+    int rc_runtime;
 #endif
     uint64_t next_frame_due_us;
     uint64_t output_timestamp_us;
@@ -1017,6 +1021,10 @@ extern int AL_Codec_Encode_SetRcParam(void *codec, void *rc_attr);
 #if defined(PLATFORM_T23)
 extern int AL_Codec_Encode_SetRcExtras(void *codec, const void *rc_mode);
 #endif
+#if defined(PLATFORM_T31)
+extern int AL_Codec_Encode_SetRcQualityCap(void *codec, int rc_mode,
+                                           unsigned int max_psnr);
+#endif
 extern int AL_Codec_Encode_SetQpBounds(void *codec, int min_qp, int max_qp);
 extern int AL_Codec_Encode_SetQpIPDelta(void *codec, int delta);
 extern int AL_Codec_Encode_SetQp(void *codec, void *qp);
@@ -1214,7 +1222,13 @@ static uint32_t p2_attr_bitrate_kbps(const IMPEncoderCHNAttr *attr)
  * and SMART (T21/T23/T30) channels were created as CBR.  Map them to VBR,
  * which carries the same target/max bitrate and QP fields (the attr structs
  * share the VBR layout) and is what SetChnAttrRcMode already does at run
- * time.  Returns the HW mode, or -1 for a mode with no counterpart. */
+ * time.  Returns the HW mode, or -1 for a mode with no counterpart.
+ *
+ * T31: the OEM library runs CappedVBR and CappedQuality on its VBR rate
+ * controller plus a PSNR cap (libimp 1.1.6, see AL_Codec_Encode_Set-
+ * RcQualityCap); OpenIMP does the same with its closed-loop controller.
+ * The mode itself is kept (GetChnAttrRcMode returns it, as the OEM
+ * library returns the stored attribute). */
 enum { /* HW_RC_MODE_* in hw_encoder.h, as codec_param_read_rc_mode reads */
     HW_RC_MODE_FIXQP = 0,
     HW_RC_MODE_CBR = 1,
@@ -1251,6 +1265,16 @@ static int p2_codec_rc_mode(const IMPEncoderCHNAttr *attr, int channel)
                     channel, mode);
         return -1;
     }
+#if defined(PLATFORM_T31)
+    if (mode == IMP_ENC_RC_MODE_CAPPED_VBR ||
+        mode == IMP_ENC_RC_MODE_CAPPED_QUALITY) {
+        IMP_LOG_INFO("Encoder",
+                     "CreateChn(%d): rate-control mode %s runs as VBR with "
+                     "a PSNR cap of %u dB\n", channel, name,
+                     (unsigned int)attr->rcAttr.attrRcMode.attrCappedVbr.uMaxPSNR);
+        return HW_RC_MODE_VBR;
+    }
+#endif
     IMP_LOG_INFO("Encoder",
                  "CreateChn(%d): rate-control mode %s runs as VBR "
                  "(no native %s rate control)\n", channel, name, name);
@@ -1636,9 +1660,18 @@ int IMP_Encoder_CreateChn(int channel, IMPEncoderCHNAttr *attr)
     if (attr->rcAttr.attrRcMode.rcMode == IMP_ENC_RC_MODE_CBR)
         AL_Codec_Encode_SetQpIPDelta(
             ch->codec, attr->rcAttr.attrRcMode.attrCbr.iIPDelta);
-    else if (attr->rcAttr.attrRcMode.rcMode == IMP_ENC_RC_MODE_VBR)
+    else if (attr->rcAttr.attrRcMode.rcMode == IMP_ENC_RC_MODE_VBR ||
+             attr->rcAttr.attrRcMode.rcMode == IMP_ENC_RC_MODE_CAPPED_VBR ||
+             attr->rcAttr.attrRcMode.rcMode ==
+                 IMP_ENC_RC_MODE_CAPPED_QUALITY)
+        /* the capped attributes share the VBR layout up to uMaxPSNR */
         AL_Codec_Encode_SetQpIPDelta(
             ch->codec, attr->rcAttr.attrRcMode.attrVbr.iIPDelta);
+#endif
+#if defined(PLATFORM_T31)
+    (void)AL_Codec_Encode_SetRcQualityCap(
+        ch->codec, (int)attr->rcAttr.attrRcMode.rcMode,
+        attr->rcAttr.attrRcMode.attrCappedVbr.uMaxPSNR);
 #endif
     if (AL_Codec_Encode_SetStreamBufferCount(ch->codec,
                                              ch->max_stream_count) != 0) {
@@ -1660,6 +1693,7 @@ int IMP_Encoder_CreateChn(int channel, IMPEncoderCHNAttr *attr)
     ch->attr = *attr;
     ch->codec_type = (int)p2_attr_codec_type(attr);
 #if defined(PLATFORM_T23) || defined(PLATFORM_T30)
+    ch->rc_runtime = 0;
     if (ch->jpeg_quality.user_ql_en)
         (void)AL_Codec_Encode_SetJpegQl(ch->codec, 1,
                                         ch->jpeg_quality.qmem_table);
@@ -2589,6 +2623,42 @@ int IMP_Encoder_SetDefaultParam(IMPEncoderChnAttr *attr, IMPEncoderProfile profi
     if (codec_type == IMP_ENC_TYPE_JPEG || rc_mode == IMP_ENC_RC_MODE_FIXQP) {
         attr->rcAttr.attrRcMode.attrFixQp.iInitialQP =
             (int16_t)((quality >= 1 && quality <= 99) ? quality : 25);
+#if defined(PLATFORM_T31)
+    /* OEM T31 1.1.6 IMP_Encoder_SetDefaultParam (0x831a0, jump table
+     * 0xe9e34 on the rc mode): iInitialQP = the caller's value, iMinQP 15,
+     * iMaxQP 48, iIPDelta/iPBDelta -1, eRcOptions 1, uMaxPictureSize =
+     * 2 * bitrate; VBR and the capped modes uMaxBitRate = 4/3 * bitrate
+     * (unsigned 32-bit (bitrate * 4) / 3), the capped modes uMaxPSNR 42.
+     * Other modes leave the rc fields 0. */
+    } else if (rc_mode == IMP_ENC_RC_MODE_CBR) {
+        IMPEncoderAttrCbr *cbr = &attr->rcAttr.attrRcMode.attrCbr;
+
+        cbr->uTargetBitRate = (uint32_t)bitrate;
+        cbr->iInitialQP = (int16_t)quality;
+        cbr->iMinQP = 15;
+        cbr->iMaxQP = 48;
+        cbr->iIPDelta = -1;
+        cbr->iPBDelta = -1;
+        cbr->eRcOptions = 1;
+        cbr->uMaxPictureSize = (uint32_t)bitrate * 2u;
+    } else if (rc_mode == IMP_ENC_RC_MODE_VBR ||
+               rc_mode == IMP_ENC_RC_MODE_CAPPED_VBR ||
+               rc_mode == IMP_ENC_RC_MODE_CAPPED_QUALITY) {
+        IMPEncoderAttrVbr *vbr = &attr->rcAttr.attrRcMode.attrVbr;
+
+        vbr->uTargetBitRate = (uint32_t)bitrate;
+        vbr->uMaxBitRate = ((uint32_t)bitrate * 4u) / 3u;
+        vbr->iInitialQP = (int16_t)quality;
+        vbr->iMinQP = 15;
+        vbr->iMaxQP = 48;
+        vbr->iIPDelta = -1;
+        vbr->iPBDelta = -1;
+        vbr->eRcOptions = 1;
+        vbr->uMaxPictureSize = (uint32_t)bitrate * 2u;
+        if (rc_mode != IMP_ENC_RC_MODE_VBR)
+            attr->rcAttr.attrRcMode.attrCappedVbr.uMaxPSNR = 42;
+    }
+#else
     } else if (rc_mode == IMP_ENC_RC_MODE_CBR) {
         attr->rcAttr.attrRcMode.attrCbr.uTargetBitRate = (uint32_t)bitrate;
         attr->rcAttr.attrRcMode.attrCbr.iInitialQP = 26;
@@ -2602,7 +2672,14 @@ int IMP_Encoder_SetDefaultParam(IMPEncoderChnAttr *attr, IMPEncoderProfile profi
         attr->rcAttr.attrRcMode.attrVbr.iMinQP = 15;
         attr->rcAttr.attrRcMode.attrVbr.iMaxQP = 45;
         attr->rcAttr.attrRcMode.attrVbr.iIPDelta = -1;
+#if !defined(PLATFORM_T41)
+        /* OEM T31 1.1.6 default for CappedVBR/CappedQuality: 42 dB */
+        if (rc_mode == IMP_ENC_RC_MODE_CAPPED_VBR ||
+            rc_mode == IMP_ENC_RC_MODE_CAPPED_QUALITY)
+            attr->rcAttr.attrRcMode.attrCappedVbr.uMaxPSNR = 42;
+#endif
     }
+#endif
     return 0;
 }
 #endif
@@ -2769,6 +2846,10 @@ int IMP_Encoder_GetChnAttrRcMode(int channel, IMPEncoderAttrRcMode *mode)
     if (!p2_valid_channel(channel) || !mode || !p2_channels[channel].created)
         return -1;
     *mode = p2_channels[channel].attr.rcAttr.attrRcMode;
+#if defined(PLATFORM_T21) || defined(PLATFORM_T23)
+    /* the OEM reads back the clamped live values (p2_rc_readback.h) */
+    p2_t21_rc_effective(mode, p2_channels[channel].rc_runtime);
+#endif
     return 0;
 }
 
@@ -2848,12 +2929,19 @@ int IMP_Encoder_SetChnAttrRcMode(int channel, IMPEncoderAttrRcMode *mode)
         pthread_mutex_unlock(&ch->lock);
         return -1;
     }
+#if defined(PLATFORM_T31)
+    (void)AL_Codec_Encode_SetRcQualityCap(ch->codec, (int)mode->rcMode,
+                                          mode->attrCappedVbr.uMaxPSNR);
+#endif
 #if defined(PLATFORM_T23)
     if (openimp_t23_enc_push_rc(ch->codec, ch->codec_type,
                                 &ch->attr.rcAttr.attrRcMode) != 0) {
         pthread_mutex_unlock(&ch->lock);
         return -1;
     }
+#endif
+#if defined(PLATFORM_T23) || defined(PLATFORM_T30)
+    ch->rc_runtime = 1;
 #endif
     pthread_mutex_unlock(&ch->lock);
     return 0;

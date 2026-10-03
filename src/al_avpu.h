@@ -274,6 +274,10 @@ typedef struct ALAvpuContext {
     uint32_t t31_payload_size_by_buf[16];
     uint32_t t31_rate_control_qp_by_buf[16];
     OpenIMPT31RateController t31_rate_controller;
+    /* CappedVBR/CappedQuality: PSNR cap in dB * 100 (0 = none), copied from
+     * the codec at every AVPU setup; PSNR of the last completed picture. */
+    uint32_t t31_quality_cap_x100;
+    uint32_t t31_last_psnr_x100;
     /* Published access-unit layout, handed to P2 for its AU check. */
     uint32_t t31_au_header_by_buf[16];
     uint32_t t31_ebsp_inserted_by_buf[16];

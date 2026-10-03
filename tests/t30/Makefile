@@ -229,7 +229,7 @@ check: ref_ring_test ref_ring_test_t23 descriptor_test annexb_test level_test he
 	helix_jpeg_test_t21 helix_jpeg_test_t20 helix_jpeg_test_t23 \
 	ivs_framework_test_t21 ivs_framework_test_t20 ivs_move_bench_t20 \
 	fs_lifecycle_test_t21 fs_lifecycle_test_t20 fs_lifecycle_test_t23 \
-	system_test
+	system_test rc_readback_test_t21 rc_readback_test_t20 rc_readback_test_t23
 	./ref_ring_test
 	./ref_ring_test_t23
 	./descriptor_test
@@ -250,9 +250,26 @@ check: ref_ring_test ref_ring_test_t23 descriptor_test annexb_test level_test he
 	./fs_lifecycle_test_t20
 	./fs_lifecycle_test_t23
 	./system_test
+	./rc_readback_test_t21
+	./rc_readback_test_t20
+	./rc_readback_test_t23
+
+# GetChnAttrRcMode read-back of T21, T20 and T23 (src/t40/p2_rc_readback.h).
+rc_readback_test_t21: rc_readback_test.c $(ROOT)/src/t40/p2_rc_readback.h
+	$(CC) $(CFLAGS) -DPLATFORM_T21 '-D_Static_assert(c,m)=' -I$(ROOT)/include -I$(ROOT)/src \
+		-o $@ rc_readback_test.c
+
+rc_readback_test_t20: rc_readback_test.c $(ROOT)/src/t40/p2_rc_readback.h
+	$(CC) $(CFLAGS) -DPLATFORM_T20 -DPLATFORM_T21 '-D_Static_assert(c,m)=' -I$(ROOT)/include \
+		-I$(ROOT)/src -o $@ rc_readback_test.c
+
+rc_readback_test_t23: rc_readback_test.c $(ROOT)/src/t40/p2_rc_readback.h
+	$(CC) $(CFLAGS) -DPLATFORM_T23 '-D_Static_assert(c,m)=' -I$(ROOT)/include \
+		-I$(ROOT)/src -o $@ rc_readback_test.c
 
 clean:
 	$(RM) descriptor_test annexb_test level_test helix_encoder_test \
+		rc_readback_test_t21 rc_readback_test_t20 rc_readback_test_t23 \
 		helix_encoder_test_t21 helix_encoder_test_t20 t21_rmem_layout_test t23_ring_layout_test \
 		helix_jpeg_test_t21 helix_jpeg_test_t20 helix_jpeg_test_t23 \
 		ivs_framework_test_t21 ivs_framework_test_t20 ivs_move_bench_t20 \

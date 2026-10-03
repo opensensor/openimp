@@ -207,6 +207,7 @@ int AL_Codec_Encode_SetGopParam(void *c, void *p) { (void)c; (void)p; return 0; 
 int AL_Codec_Encode_SetQpBounds(void *c, int a, int b) { (void)c; (void)a; (void)b; return 0; }
 int AL_Codec_Encode_SetQpIPDelta(void *c, int a) { (void)c; (void)a; return 0; }
 int AL_Codec_Encode_SetRcParam(void *c, void *p) { (void)c; (void)p; return 0; }
+int AL_Codec_Encode_SetRcQualityCap(void *c, int m, unsigned int p) { (void)c; (void)m; (void)p; return 0; }
 
 /* ---- test ---- */
 

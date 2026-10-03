@@ -2446,6 +2446,57 @@ static uint32_t avpu_t40_picture_qp(const ALAvpuContext *ctx, int is_idr)
 }
 
 #if defined(PLATFORM_T31)
+/* The picture's sum of squared errors, as the OEM EncodingStatusRegsTo-
+ * SliceStatus reads it (status +0x158 high word, +0x15c low word; cmd[9]
+ * bit 27, set in every T31 template, has the core compute it), turned into
+ * the PSNR the capped modes compare against their cap. */
+static void avpu_t31_note_picture_psnr(ALAvpuContext *ctx,
+                                       const uint8_t *status,
+                                       size_t status_size)
+{
+    uint32_t high = 0u;
+    uint32_t low = 0u;
+    uint64_t sse;
+    uint32_t psnr = 0u;
+
+    if (status_size >= 0x160u) {
+        memcpy(&high, status + 0x158u, sizeof(high));
+        memcpy(&low, status + 0x15cu, sizeof(low));
+    }
+    sse = ((uint64_t)high << 32) | low;
+    /* No measurement (0): no cap decision.  The OEM code would read it as
+     * a perfect picture and always hold the QP. */
+    if (sse != 0u)
+        psnr = openimp_t31_psnr_x100(sse, ctx->enc_w * ctx->enc_h, 255u);
+    else {
+        static int warned;
+
+        if (!warned) {
+            warned = 1;
+            IMP_LOG_WARN("Codec", "T31 capped rc: the core reported no "
+                         "SSE, the PSNR cap is inactive");
+        }
+    }
+    ctx->t31_last_psnr_x100 = psnr;
+    openimp_t31_rate_controller_note_psnr(&ctx->t31_rate_controller, psnr);
+}
+
+/* Plain VBR runs the closed-loop controller (see
+ * openimp_t31_vbr_loop_from_env); the environment is read once. */
+static int avpu_t31_vbr_loop(void)
+{
+    static int enabled = -1;
+
+    if (enabled < 0) {
+        enabled = openimp_t31_vbr_loop_from_env(
+            getenv("OPENIMP_T31_VBR_LOOP"));
+        if (!enabled)
+            IMP_LOG_INFO("Codec", "T31 VBR: open loop "
+                         "(OPENIMP_T31_VBR_LOOP=0)");
+    }
+    return enabled;
+}
+
 static int avpu_t31_prepare_picture(ALAvpuContext *ctx)
 {
     OpenIMPT31RateController *controller;
@@ -2460,7 +2511,12 @@ static int avpu_t31_prepare_picture(ALAvpuContext *ctx)
     if (!ctx)
         return -1;
     controller = &ctx->t31_rate_controller;
-    if (ctx->rc_mode != HW_RC_MODE_CBR) {
+    /* CBR, VBR and the OEM capped VBR modes (VBR with a PSNR cap) run the
+     * closed loop.  Plain VBR is open loop only with
+     * OPENIMP_T31_VBR_LOOP=0. */
+    if (ctx->rc_mode != HW_RC_MODE_CBR &&
+        !(ctx->rc_mode == HW_RC_MODE_VBR &&
+          (ctx->t31_quality_cap_x100 != 0u || avpu_t31_vbr_loop()))) {
         controller->initialized = 0;
         return 0;
     }
@@ -2493,10 +2549,14 @@ static int avpu_t31_prepare_picture(ALAvpuContext *ctx)
                 controller, bitrate, fps_num, fps_den, gop_length,
                 min_qp, max_qp, initial_qp) != 0)
             return -1;
-        LOG_CODEC("AVPU: T31 rate controller initialized bitrate=%u fps=%u/%u gop=%u qp=%u bounds=%u/%u",
+        LOG_CODEC("AVPU: T31 rate controller initialized bitrate=%u fps=%u/%u gop=%u qp=%u bounds=%u/%u psnr_cap=%u",
                   bitrate, fps_num, fps_den, gop_length,
-                  controller->current_qp, min_qp, max_qp);
+                  controller->current_qp, min_qp, max_qp,
+                  ctx->t31_quality_cap_x100);
     }
+    if (controller->max_psnr_x100 != ctx->t31_quality_cap_x100)
+        (void)openimp_t31_rate_controller_set_quality_cap(
+            controller, ctx->t31_quality_cap_x100);
     return 0;
 }
 #endif
@@ -5139,9 +5199,26 @@ static void avpu_end_encoding_callback(void *user_data)
             AVPU_T31_PAYLOAD_OFFSET;
     if (completed && ctx->t31_rate_controller.initialized) {
         uint32_t used_qp = ctx->t31_rate_control_qp_by_buf[buf_idx];
-        int controller_ret = openimp_t31_rate_controller_complete(
+        int controller_ret;
+
+        if (ctx->t31_quality_cap_x100 != 0u)
+            avpu_t31_note_picture_psnr(ctx, status_regs.raw,
+                                       sizeof(status_regs.raw));
+        controller_ret = openimp_t31_rate_controller_complete(
             &ctx->t31_rate_controller, bitcount * 8u, used_qp,
             ctx->stream_is_idr[buf_idx]);
+        if (ctx->t31_quality_cap_x100 != 0u &&
+            ctx->t31_rate_controller.completed_pictures % 250u == 1u)
+            IMP_LOG_INFO("Codec", "T31 capped rc: qp=%u psnr=%u.%02u dB "
+                         "cap=%u.%02u dB holds=%u target=%u bit/s gops=%u",
+                         ctx->t31_rate_controller.current_qp,
+                         ctx->t31_last_psnr_x100 / 100u,
+                         ctx->t31_last_psnr_x100 % 100u,
+                         ctx->t31_quality_cap_x100 / 100u,
+                         ctx->t31_quality_cap_x100 % 100u,
+                         ctx->t31_rate_controller.quality_cap_holds,
+                         ctx->t31_rate_controller.bitrate,
+                         ctx->t31_rate_controller.completed_gops);
 
         if (ctx->frames_encoded < 16 || ctx->frames_encoded % 50 == 0) {
             LOG_CODEC("T31 rate controller: buf=%d idr=%u used=%u next=%u target=%u picture_target=%u p_model=%u@%u idr_ema=%u gop_ema=%u gops=%u streak=%u/%u vb=%lld complete=%u/%u ret=%d",
@@ -5165,6 +5242,7 @@ static void avpu_end_encoding_callback(void *user_data)
         /* The picture did not fit and is dropped (next one IDR). Report at
          * least the buffer size so QP rises; otherwise the next, larger
          * IDR overflows again and the stream stays frozen. */
+        openimp_t31_rate_controller_note_psnr(&ctx->t31_rate_controller, 0u);
         (void)openimp_t31_rate_controller_complete(
             &ctx->t31_rate_controller, t31_overflow_bytes * 8u,
             ctx->t31_rate_control_qp_by_buf[buf_idx],
@@ -6792,6 +6870,9 @@ struct AL_CodecEncode {
     int force_next_idr;             /* Per-codec RequestIDR latch */
     int last_error;                 /* Best-effort OEM-like sticky error */
     IMPEncoderRcAttr rc_attr_cache; /* Control-plane cache for wrapper APIs */
+#if defined(PLATFORM_T31)
+    uint32_t rc_quality_cap_x100;   /* CappedVBR/CappedQuality PSNR cap */
+#endif
     IMPEncoderFrmRate fps_cache;
     IMPEncoderGopAttr gop_cache;
     int loop_filter_beta_offset;
@@ -7379,6 +7460,9 @@ static void avpu_sync_runtime_encode_state(AL_CodecEncode *enc)
     enc->avpu.min_qp = enc->hw_params.min_qp;
     enc->avpu.max_qp = enc->hw_params.max_qp;
     enc->avpu.entropy_mode = enc->entropy_mode;
+#if defined(PLATFORM_T31)
+    enc->avpu.t31_quality_cap_x100 = enc->rc_quality_cap_x100;
+#endif
     enc->avpu.gop_length = enc->gop_cache.gopLength ? enc->gop_cache.gopLength : enc->hw_params.gop_length;
     enc->avpu.format_word = *(uint32_t *)(enc->codec_param + 0x10);
 #if defined(PLATFORM_T31) || defined(PLATFORM_T40) || defined(PLATFORM_T41)
@@ -11929,6 +12013,12 @@ int AL_Codec_Encode_SetRcParam(void *codec, void *rcAttr)
         break;
     }
 
+#if defined(PLATFORM_T23) || defined(PLATFORM_T30)
+    /* SetChnAttrRcMode at run time: the OEM clamps these extras with
+     * i264e_reconfig_rc_set, not i264e_validate_parameters */
+    if (enc->hw_params.rc_flags & HW_RC_FLAG_APP)
+        enc->hw_params.rc_flags |= HW_RC_FLAG_RUNTIME;
+#endif
     codec_param_write_bitrate_bps(enc->codec_param, enc->hw_params.bitrate);
     codec_param_write_qp_bounds(enc->codec_param,
                                 enc->hw_params.qp,
@@ -11978,6 +12068,46 @@ int AL_Codec_Encode_SetFrameRate(void *codec, void *fps)
     codec_set_error(enc, 0);
     return 0;
 }
+
+#if defined(PLATFORM_T31)
+/* OEM T31 (libimp 1.1.6): channel_encoder_set_rc_param passes CappedVBR (4)
+ * and CappedQuality (8) to the Allegro rate control as their own modes with
+ * uMaxPSNR * 100 at AL_TRCParam+0x30; AL_Codec_Encode_ValidateRcParam clamps
+ * that to 3000..5000 (30..50 dB) and AL_Common_Encoder_ComputeRCParam adds
+ * the pixel count and the 8-bit peak 255.  Both modes run the VBR
+ * controller and drop a QP decrease while the last picture's PSNR is above
+ * the cap (t31_rate_control.c).  OpenIMP runs its own T31 controller for
+ * them, with that cap. */
+int AL_Codec_Encode_SetRcQualityCap(void *codec, int rcMode,
+                                    unsigned int maxPsnr)
+{
+    AL_CodecEncode *enc;
+    uint32_t cap = 0u;
+
+    if (codec == NULL)
+        return -1;
+    enc = (AL_CodecEncode *)codec;
+    if (rcMode == IMP_ENC_RC_MODE_CAPPED_VBR ||
+        rcMode == IMP_ENC_RC_MODE_CAPPED_QUALITY) {
+        cap = maxPsnr < 30u ? 30u : maxPsnr > 50u ? 50u : maxPsnr;
+        if (cap != maxPsnr)
+            IMP_LOG_WARN("Codec", "rate control: uMaxPSNR %u dB outside "
+                         "30..50, using %u dB (as the OEM library)",
+                         maxPsnr, cap);
+        cap *= 100u;
+    }
+    enc->rc_quality_cap_x100 = cap;
+    enc->avpu.t31_quality_cap_x100 = cap;
+    if (cap)
+        IMP_LOG_INFO("Codec", "rate control: %s, closed-loop VBR with PSNR "
+                     "cap %u.%02u dB (QP is not lowered while a picture is "
+                     "above it)",
+                     rcMode == IMP_ENC_RC_MODE_CAPPED_VBR ? "CappedVBR"
+                                                          : "CappedQuality",
+                     cap / 100u, cap % 100u);
+    return 0;
+}
+#endif
 
 int AL_Codec_Encode_SetQpIPDelta(void *codec, int delta)
 {
@@ -12142,6 +12272,17 @@ int AL_Codec_Encode_SetQp(void *codec, void *qp) {
 
     enc->hw_params.qp = new_qp;
     enc->avpu.qp = new_qp;
+#if defined(PLATFORM_T30)
+    /* T20/T21/T10 Helix FIXQP: CreateChn and SetChnAttrRcMode set the QP
+     * range to the fixed QP; without the same here the I pictures stayed
+     * clamped to the old QP while P pictures took the new one. */
+    if (enc->hw_params.rc_mode == HW_RC_MODE_FIXQP) {
+        enc->hw_params.min_qp = new_qp;
+        enc->hw_params.max_qp = new_qp;
+        enc->avpu.min_qp = new_qp;
+        enc->avpu.max_qp = new_qp;
+    }
+#endif
 
     LOG_CODEC("SetQp: codec=%p, qp_i=%u qp_p=%u -> active_qp=%u",
               codec, imp_qp->qp_i, imp_qp->qp_p, new_qp);

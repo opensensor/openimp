@@ -197,24 +197,32 @@ typedef struct {
 #if defined(PLATFORM_T23)
 /* The Helix rate-control extras of the application's IMPEncoderAttrRcMode
  * (HWEncoderParams with HW_RC_FLAG_APP), mapped onto the native GOP-level
- * controller.  All zero - no extras, FIXQP, or values outside the OEM
- * ranges - is the historic native behaviour, unchanged.
+ * controller.  Without HW_RC_FLAG_APP and for FIXQP the historic native
+ * behaviour is unchanged.
  *
- * Vendor-verified (T23 1.3.0 libimp: IMP_Encoder_YuvInit,
- * i264e_param_default, i264e_ratecontrol_init): the accepted ranges
- * (staticTime 1..60 s, changePos 50..100, qualityLvl 0..7, iBiasLvl -3..3,
- * SMART -10..10), frmQPStep -> u8MaxPPQpDelta (P to P), gopQPStep ->
- * u8MaxIPQpDelta (I to P), iBiasLvl -> s8IQpBias, SMART configured like VBR
- * (same JZ_VPU_RC fields), adaptiveMode/gopRelation not part of the rate
- * control configuration.  How the OEM controller uses them inside is not
- * reverse engineered; the mapping below follows the SDK header text:
+ * The values are the ones the OEM channel runs with and
+ * IMP_Encoder_GetChnAttrRcMode reads back (src/t40/p2_rc_readback.h, T23
+ * 1.3.0): IMP_Encoder_CreateChn (0x4e164) copies the application's fields
+ * as given and i264e_validate_parameters (0x33780) clamps them - staticTime
+ * <= 0 -> 1, changePos 50..100, qualityLvl 0..6, frm/gopQPStep 2..51,
+ * iBiasLvl -10..10, maxBitRate >= 128 kbit/s.  A run-time SetChnAttrRcMode
+ * (HW_RC_FLAG_RUNTIME) goes through i264e_reconfig_rc_set (0x37cf8)
+ * instead: changePos 0..100, frm/gopQPStep only negative -> 0, the rest as
+ * above.  (The keep-the-i264e_param_default rule for 0 belongs to
+ * IMP_Encoder_YuvInit, not to CreateChn.)
+ *
+ * frmQPStep -> u8MaxPPQpDelta (P to P), gopQPStep -> u8MaxIPQpDelta (I to
+ * P), iBiasLvl -> s8IQpBias, SMART configured like VBR (same JZ_VPU_RC
+ * fields), adaptiveMode/gopRelation not part of the rate control
+ * configuration.  How the OEM controller uses them inside is not reverse
+ * engineered; the mapping below follows the SDK header text:
  *   iBiasLvl    I-picture QP = P QP + bias (negative: more bits for I)
- *   frmQPStep   max QP change from one P picture to the next
+ *   frmQPStep   max QP change from one P picture to the next (0: none)
  *   gopQPStep   max QP change of an IDR against the last P picture
  *   changePos   VBR/SMART: the controller targets changePos% of
  *               maxBitRate and raises QP above it
  *   qualityLvl  VBR: lower QP again below maxBitRate * (80 - 10 * lvl)%
- *               (the header's minBitRate); SMART 0..6, higher = better:
+ *               (the header's minBitRate); SMART, higher = better:
  *               below maxBitRate * (20 + 10 * lvl)%
  *   staticTime  VBR/SMART: the bitrate must stay over (under) the band for
  *               staticTime seconds of GOPs (twice that) before QP moves */
@@ -227,6 +235,9 @@ typedef struct {
     uint32_t frm_step;          /* 0: unlimited */
     uint32_t gop_step;
     int32_t bias;
+    uint32_t static_time;       /* effective (OEM-clamped) values */
+    uint32_t change_pos;
+    uint32_t quality_level;
     int smart;
     int app;
 } T23RcConfig;
@@ -760,11 +771,28 @@ static void t30_normalize_params(HWEncoderParams *params,
 }
 
 #if defined(PLATFORM_T23)
+static int32_t t23_rc_clip(int32_t value, int32_t lo, int32_t hi)
+{
+    return value < lo ? lo : value > hi ? hi : value;
+}
+
+/* QP step: CreateChn 2..51; run time only a negative value becomes 0 */
+static uint32_t t23_rc_step(uint32_t value, int runtime)
+{
+    if (runtime)
+        return (int32_t)value < 0 ? 0u : value;
+    return (uint32_t)t23_rc_clip((int32_t)value, 2, 51);
+}
+
 static void t23_rc_config(const HWEncoderParams *params, T23RcConfig *rc)
 {
-    uint32_t change_pos = 0;
+    uint32_t change_pos;
+    uint32_t quality_level;
+    uint32_t static_time;
+    uint32_t maximum;
+    uint32_t share;
     uint32_t floor_percent = 0;
-    int32_t bias_limit;
+    int runtime;
 
     memset(rc, 0, sizeof(*rc));
     rc->target_bitrate = params->bitrate;
@@ -772,31 +800,36 @@ static void t23_rc_config(const HWEncoderParams *params, T23RcConfig *rc)
         (params->rc_mode != HW_RC_MODE_CBR &&
          params->rc_mode != HW_RC_MODE_VBR))
         return;
+    runtime = (params->rc_flags & HW_RC_FLAG_RUNTIME) != 0;
     rc->app = 1;
     rc->smart = params->rc_mode == HW_RC_MODE_VBR &&
                 (params->rc_flags & HW_RC_FLAG_SMART);
-    rc->frm_step = params->frm_qp_step > 51u ? 51u : params->frm_qp_step;
-    rc->gop_step = params->gop_qp_step > 51u ? 51u : params->gop_qp_step;
-    bias_limit = rc->smart ? 10 : 3;
-    if (params->bias_level >= -bias_limit && params->bias_level <= bias_limit)
-        rc->bias = params->bias_level;
+    rc->frm_step = t23_rc_step(params->frm_qp_step, runtime);
+    rc->gop_step = t23_rc_step(params->gop_qp_step, runtime);
+    rc->bias = t23_rc_clip(params->bias_level, -10, 10);
     if (params->rc_mode != HW_RC_MODE_VBR)
         return;
 
-    if (params->change_pos >= 50u && params->change_pos <= 100u) {
-        change_pos = params->change_pos;
-        rc->target_bitrate = (uint32_t)(((uint64_t)params->bitrate *
-                                         change_pos) / 100u);
-        rc->raise_percent = 100u;
-    }
-    if (rc->smart ? params->quality_level <= 6u
-                  : params->quality_level <= 7u)
-        floor_percent = rc->smart ? 20u + 10u * params->quality_level
-                                  : 80u - 10u * params->quality_level;
+    change_pos = (uint32_t)t23_rc_clip((int32_t)params->change_pos,
+                                       runtime ? 0 : 50, 100);
+    quality_level = (uint32_t)t23_rc_clip((int32_t)params->quality_level,
+                                          0, 6);
+    static_time = (int32_t)params->static_time <= 0 ? 1u
+                                                    : params->static_time;
+    rc->static_time = static_time;
+    rc->change_pos = change_pos;
+    rc->quality_level = quality_level;
+    /* maxBitRate >= 128 kbit/s */
+    maximum = params->bitrate < 128000u ? 128000u : params->bitrate;
+    /* a run-time changePos 0 still leaves the controller a target */
+    share = change_pos ? change_pos : 1u;
+    rc->target_bitrate = (uint32_t)(((uint64_t)maximum * share) / 100u);
+    rc->raise_percent = 100u;
+    floor_percent = rc->smart ? 20u + 10u * quality_level
+                              : 80u - 10u * quality_level;
     if (floor_percent) {
-        uint32_t raise = rc->raise_percent ? rc->raise_percent : 110u;
-        uint32_t lower = floor_percent * 100u /
-                         (change_pos ? change_pos : 100u);
+        uint32_t raise = rc->raise_percent;
+        uint32_t lower = floor_percent * 100u / share;
 
         /* keep a dead band between lowering and raising QP */
         if (lower + 10u > raise)
@@ -805,9 +838,8 @@ static void t23_rc_config(const HWEncoderParams *params, T23RcConfig *rc)
             lower = 5u;
         rc->lower_percent = lower;
     }
-    if (params->static_time >= 1u && params->static_time <= 60u &&
-        params->fps_num && params->fps_den && params->gop_length) {
-        uint64_t frames = ((uint64_t)params->static_time *
+    if (params->fps_num && params->fps_den && params->gop_length) {
+        uint64_t frames = ((uint64_t)static_time *
                                params->fps_num + params->fps_den / 2u) /
                           params->fps_den;
         uint64_t gops = (frames + params->gop_length / 2u) /
@@ -853,7 +885,7 @@ static void t23_rc_log(const T30HelixEncoder *encoder, const char *what)
     IMP_LOG_INFO("Encoder", "T23 Helix rc %s: %s max=%u target=%u bit/s "
                  "qp=[%u,%u] band=%u-%u%% persist=%u/%u GOPs "
                  "frmQPStep=%u gopQPStep=%u iBias=%d loop=%d app=%d "
-                 "staticTime=%u changePos=%u qualityLvl=%u (adaptive=%u "
+                 "staticTime=%u changePos=%u qualityLvl=%u (app %u/%u/%u; adaptive=%u "
                  "gopRelation=%u: no effect)", what, t23_rc_mode_name(encoder),
                  p->bitrate, rc->target_bitrate, p->min_qp, p->max_qp,
                  rc->lower_percent ? rc->lower_percent : 80u,
@@ -862,6 +894,7 @@ static void t23_rc_log(const T30HelixEncoder *encoder, const char *what)
                  rc->under_gops ? rc->under_gops : 6u,
                  rc->frm_step, rc->gop_step, rc->bias,
                  encoder->rate_control_enabled, rc->app,
+                 rc->static_time, rc->change_pos, rc->quality_level,
                  p->static_time, p->change_pos, p->quality_level,
                  (p->rc_flags & HW_RC_FLAG_ADAPTIVE) != 0,
                  (p->rc_flags & HW_RC_FLAG_GOP_RELATION) != 0);
