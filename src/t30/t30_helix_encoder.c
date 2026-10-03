@@ -355,6 +355,11 @@ struct T30HelixEncoder {
     int eprc_on;
     int eprc_t21;               /* T21: the T21 1.0.33 revision (eprc_t21.c) */
     uint32_t eprc_idr_gops;     /* IDR period in GOPs (0, 1: every GOP) */
+    uint32_t eprc_scene_idrs;   /* IDRs early on a scene cut (class 5) */
+    int eprc_qp;                /* the QP of the last picture (i264e
+                                 * picture +0x2e4), -1: none coded yet */
+    int eprc_restart_pending;   /* run-time change, applied at the next IDR */
+    int eprc_restarting;
     uint32_t eprc_reencodes;
     uint32_t eprc_stat_errors;
 #endif
@@ -1263,9 +1268,9 @@ static void t23_rc_stats(T30HelixEncoder *encoder, uint32_t qp, int idr,
 
 /* Which rate-control modes run the OEM picture rate controller (src/eprc),
  * and which revision.
- * T23 (OPENIMP_T23_EPRC): unset = SMART, "1" = CBR, VBR and SMART, "0" =
- * none (the GOP controller with the band mapping, t23_rc_config).
- * T21 (OPENIMP_T21_EPRC): unset or "1" = CBR, VBR and SMART with the T21
+ * T23 (OPENIMP_T23_EPRC): unset = SMART, "1" = FIXQP, CBR, VBR and SMART,
+ * "0" = none (the GOP controller with the band mapping, t23_rc_config).
+ * T21 (OPENIMP_T21_EPRC): unset or "1" = FIXQP, CBR, VBR and SMART with the T21
  * 1.0.33 revision (eprc_t21.c, equal to the OEM T21 controller in
  * tools/eprc_oracle.py; the default, as the OEM), "0" = none (the old GOP
  * controller), "23" = the same with the T23 1.3.0 controller (eprc.c, an
@@ -1277,8 +1282,6 @@ static int helix_eprc_wanted(const T30HelixEncoder *encoder)
     int smart = encoder->params.rc_mode == HW_RC_MODE_VBR &&
                 (encoder->params.rc_flags & HW_RC_FLAG_SMART);
 
-    if (encoder->params.rc_mode == HW_RC_MODE_FIXQP)
-        return 0;
 #if defined(PLATFORM_T23)
     if (env && env[0] == '0')
         return 0;
@@ -1338,8 +1341,21 @@ static void helix_eprc_params(const HWEncoderParams *hp, EprcParams *p)
     memset(p, 0, sizeof(*p));
     p->width = hp->width;
     p->height = hp->height;
-    p->rc_mode = hp->rc_mode == HW_RC_MODE_CBR ? EPRC_MODE_CBR :
+    p->rc_mode = hp->rc_mode == HW_RC_MODE_FIXQP ? EPRC_MODE_CQP :
+                 hp->rc_mode == HW_RC_MODE_CBR ? EPRC_MODE_CBR :
                  smart ? EPRC_MODE_SMART : EPRC_MODE_VBR;
+    p->cqp = hp->qp;
+#if defined(PLATFORM_T23)
+    {
+        /* param[52] = IMP_Encoder_SetRdBufShare (OEM CreateChn 0x4ed78,
+         * default 1): the shared reference ring (hwicodec cfg +0x2c ->
+         * BUF_SHARE_CFG), and FRAME_REPEATE_JUDGE codes only IDR pictures
+         * again.  OPENIMP_REF_SHARE=0 is the SetRdBufShare(0) case. */
+        const char *env = getenv("OPENIMP_REF_SHARE");
+
+        p->field52 = !(env && env[0] == '0');
+    }
+#endif
     p->gop = hp->gop_length;
     p->fps_num = hp->fps_num;
     p->fps_den = hp->fps_den;
@@ -1396,6 +1412,30 @@ static uint32_t helix_eprc_idr_gops(const HWEncoderParams *hp, int smart)
     return gops > 100u ? 100u : gops;
 }
 
+/* The scene-cut IDR of i264e_decide_slice_type_and_rd (T23 0x34f94, T21
+ * 0x2c018), for the skip types with an IDR period (maxSameSceneCnt > 0):
+ * at a GOP boundary from the second one after the IDR on, when the class
+ * the controller gave the previous picture is 5 (scene change); not in
+ * FIXQP.  The class comes from scene_judge_enc_frame (FRAME_END) on the
+ * Helix statistics, no region input (scene_judge_ncu) is involved. */
+static int helix_eprc_scene_cut(const T30HelixEncoder *encoder)
+{
+    uint32_t gop = encoder->params.gop_length;
+    int32_t cls;
+
+    if (!encoder->eprc_on || !encoder->eprc_idr_gops || !gop ||
+        encoder->params.rc_mode == HW_RC_MODE_FIXQP ||
+        encoder->gop_position % gop != 0u || encoder->gop_position <= gop)
+        return 0;
+#if !defined(PLATFORM_T23)
+    if (encoder->eprc_t21)
+        cls = EPRC21_PictureClass(&encoder->eprc);
+    else
+#endif
+        cls = EPRC_PictureClass(&encoder->eprc);
+    return cls == 5;
+}
+
 /* i264e_ratecontrol_init (create, and every rate-control change: the OEM
  * re-runs it from i264e_reconfig). */
 static void helix_eprc_start(T30HelixEncoder *encoder)
@@ -1405,6 +1445,13 @@ static void helix_eprc_start(T30HelixEncoder *encoder)
 
     int rev;
 
+    if (encoder->eprc_qp >= 0 && !encoder->eprc_restarting) {
+        /* OEM: i264e_reconfig_rc_set/_fps_set/_gop_set/_hskip_set only
+         * mark the change; i264e_encode runs i264e_idr_reconfig when the
+         * next picture is an IDR anyway (0x3d804) */
+        encoder->eprc_restart_pending = 1;
+        return;
+    }
     helix_eprc_stop(encoder);
     rev = helix_eprc_wanted(encoder);
     if (!rev || !hp->fps_num || !hp->fps_den || !hp->gop_length)
@@ -1415,6 +1462,10 @@ static void helix_eprc_start(T30HelixEncoder *encoder)
             return;
     }
     helix_eprc_params(hp, &p);
+    if (encoder->eprc_qp >= 0)
+        /* i264e_idr_reconfig: i264e_ratecontrol_init from the QP of the
+         * last picture (i264e picture +0x2e4) */
+        p.init_qp = encoder->eprc_qp;
     encoder->eprc_idr_gops =
         helix_eprc_idr_gops(hp, p.rc_mode == EPRC_MODE_SMART);
     p.bg_interval_gops = encoder->eprc_idr_gops;
@@ -1439,6 +1490,7 @@ static void helix_eprc_start(T30HelixEncoder *encoder)
 #else
                  encoder->eprc_t21 ? " (T21 rev)" : " (T23 rev)",
 #endif
+                 p.rc_mode == EPRC_MODE_CQP ? "FIXQP" :
                  p.rc_mode == EPRC_MODE_CBR ? "CBR" :
                  p.rc_mode == EPRC_MODE_SMART ? "SMART" : "VBR",
                  p.width, p.height, p.gop, p.fps_num, p.fps_den,
@@ -1481,8 +1533,15 @@ static void helix_eprc_statistics(T30HelixEncoder *encoder,
  * reference ring a P picture is never coded again: its reconstruction has
  * already overwritten the reference rows it was predicted from (the ring
  * keeps only 256 spare lines), so a second run would predict from a
- * damaged reference.  The controller then finishes the picture as the OEM
- * i264e does without a re-encode request. */
+ * damaged reference.  The OEM T23 gets there in the controller: the ring
+ * comes with param[52] (SetRdBufShare, default on), with which
+ * FRAME_REPEATE_JUDGE codes only IDR pictures again (helix_eprc_params).
+ * The OEM BUF_SHARE_CFG would not keep the reference either: it advances
+ * the ring position with every SliceInit, a second run of picture n
+ * predicts from the rejected first reconstruction of n.  The OEM T21 has
+ * no param[52] and leaves the ring off (param[48] 0), so it re-encodes P
+ * pictures; OpenIMP T21 runs the ring by default and then finishes such a
+ * P picture as one that was not judged (OPENIMP_REF_SHARE=0: as the OEM). */
 static int helix_eprc_end(T30HelixEncoder *encoder, int idr, uint32_t *qp)
 {
     uint32_t regs[EPRC_STAT_REGS];
@@ -1507,6 +1566,7 @@ static int helix_eprc_end(T30HelixEncoder *encoder, int idr, uint32_t *qp)
                      idr ? "IDR" : "P", encoder->channel.output_len, *qp,
                      pic.qp, encoder->eprc_reencodes);
     *qp = pic.qp;
+    encoder->eprc_qp = pic.qp;
     return 1;
 }
 #endif
@@ -1934,6 +1994,9 @@ int OpenIMP_T30_HelixCreate(T30HelixEncoder **encoder_out,
     if (!encoder)
         return -1;
     encoder->fd = -1;
+#if defined(HELIX_T21_SYNTAX)
+    encoder->eprc_qp = -1;
+#endif
     encoder->params = *params;
 #if defined(PLATFORM_T20)
     /* the application's QP range as given (t30_normalize_params turns a
@@ -2444,6 +2507,24 @@ static int t30_helix_encode_job(T30HelixEncoder *encoder,
                  encoder->eprc_idr_gops : 1u)
 #endif
           ;
+#if defined(HELIX_T21_SYNTAX)
+    if (!idr && helix_eprc_scene_cut(encoder)) {
+        idr = 1;
+        encoder->eprc_scene_idrs++;
+        if (encoder->eprc_scene_idrs <= 3u ||
+            encoder->eprc_scene_idrs % 100u == 0u)
+            IMP_LOG_INFO("Encoder", HELIX_EPRC_TAG " Helix eprc: frame=%u "
+                         "scene cut, IDR after %u pictures (%u so far)",
+                         encoder->frame_number, encoder->gop_position,
+                         encoder->eprc_scene_idrs);
+    }
+    if (idr && encoder->eprc_restart_pending) {
+        encoder->eprc_restart_pending = 0;
+        encoder->eprc_restarting = 1;
+        helix_eprc_start(encoder);
+        encoder->eprc_restarting = 0;
+    }
+#endif
     qp = encoder->rate_control_enabled
         ? openimp_t31_rate_controller_qp(&encoder->rate_control)
         : encoder->params.qp;
@@ -2462,6 +2543,7 @@ static int t30_helix_encode_job(T30HelixEncoder *encoder,
 #endif
              EPRC_FrameStart(&encoder->eprc, &in, &pic)) == 0) {
             qp = pic.qp;
+            encoder->eprc_qp = pic.qp;
         } else {
             IMP_LOG_WARN("Encoder", HELIX_EPRC_TAG " Helix eprc: picture "
                          "start failed, using the GOP controller");
@@ -2799,6 +2881,10 @@ again:
         encoder->ring_n = (idr || !encoder->have_reference)
             ? 0u : encoder->ring_n + 1u;
 #endif
+#if defined(HELIX_T21_SYNTAX)
+    if (!encoder->eprc_on)
+        encoder->eprc_qp = (int)qp;
+#endif
     encoder->reference_index = output_index;
     encoder->have_reference = 1;
     encoder->gop_position++;
@@ -2903,7 +2989,11 @@ int OpenIMP_T30_HelixReconfigure(T30HelixEncoder *encoder,
     next.gop_qp_step = params->gop_qp_step;
     next.bias_level = params->bias_level;
     next.rc_flags = params->rc_flags;
+    /* IMP_Encoder_SetChnHSkip at run time (OEM i264e_reconfig_hskip_set ->
+     * i264e_idr_reconfig: new skip header, IDR, rate control again) */
+    next.same_scene_gops = params->same_scene_gops;
     extras_changed =
+        next.same_scene_gops != encoder->params.same_scene_gops ||
         next.static_time != encoder->params.static_time ||
         next.change_pos != encoder->params.change_pos ||
         next.quality_level != encoder->params.quality_level ||
@@ -2961,6 +3051,7 @@ int OpenIMP_T30_HelixReconfigure(T30HelixEncoder *encoder,
     encoder->params.gop_qp_step = next.gop_qp_step;
     encoder->params.bias_level = next.bias_level;
     encoder->params.rc_flags = next.rc_flags;
+    encoder->params.same_scene_gops = next.same_scene_gops;
     encoder->rc = rc;
     /* The SPS carries the frame rate (VUI timing) and the level, which
      * depends on frame rate and bitrate (MaxBR), as in UpdateParams: send

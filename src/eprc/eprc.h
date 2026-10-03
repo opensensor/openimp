@@ -70,7 +70,14 @@ typedef struct {
     uint32_t r2820;             /* i264e rc+2820 (0 by default) */
     uint32_t r11832;            /* i264e rc+11832 (0 by default) */
     uint32_t pic[7];            /* i264e picture +392..+404 (0 by default) */
+    /* T23: the ISP AE zone statistics of the picture (IMPISPZone, 15 x 15
+     * words, IMP_ISP_Tuning_GetAeZone), which the OEM VBMGetFrame attaches
+     * to the frames of frame source channel 0 (i264e picture +0x1e0/+0x1e4,
+     * eprc E+641/E+672).  NULL: none (other channels, the T21 revision). */
+    const uint32_t *ae_zone;
 } EprcFrameIn;
+
+#define EPRC_AE_ZONES 225u
 
 /* What the picture is coded with. */
 typedef struct {
@@ -120,6 +127,13 @@ int EPRC_FrameEndEx(Eprc *rc, uint32_t bytes,
                     const uint32_t regs[EPRC_STAT_REGS], EprcPicture *pic,
                     int may_repeat);
 void EPRC_GopInit(Eprc *rc);
+
+/* The picture class (0..6, 5: scene change) the last EPRC_FrameStart
+ * reported to i264e (T23 E+1596, T21 E+1592), which
+ * i264e_decide_slice_type_and_rd reads for the next picture's scene-cut
+ * IDR. */
+int32_t EPRC_PictureClass(const Eprc *rc);
+int32_t EPRC21_PictureClass(const Eprc *rc);
 
 /* Internal steps, exposed for the emulator comparison (tests). */
 void EPRC_DefaultSet(uint8_t *e);

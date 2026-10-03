@@ -1338,6 +1338,12 @@ int IMP_Encoder_EnableAllNCUDenoise(void);
 int IMP_Encoder_DisableAllNCUDenoise(void);
 #endif
 
+#if defined(PLATFORM_T21) && !defined(PLATFORM_T20) && !defined(PLATFORM_T23)
+/* T21 1.0.33: run-time HSkip attribute (IDR period maxSameSceneCnt) */
+int IMP_Encoder_SetChnHSkip(int encChn, const IMPEncoderAttrHSkip *attr);
+int IMP_Encoder_GetChnHSkip(int encChn, IMPEncoderAttrHSkip *attr);
+#endif
+
 #ifdef __cplusplus
 }
 #endif

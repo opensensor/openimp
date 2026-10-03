@@ -1034,6 +1034,43 @@ static void test_eprc(void)
     }
     unsetenv("OPENIMP_T21_EPRC");
 }
+
+/* IMP_Encoder_SetChnHSkip at run time (same_scene_gops): as the OEM
+ * i264e_idr_reconfig the change waits for the next IDR, which follows the
+ * old period, then the new period counts (no extra IDR). */
+static void test_eprc_runtime_hskip(void)
+{
+    HWEncoderParams params;
+    T30HelixEncoder *encoder = NULL;
+    PictureInfo info;
+    unsigned int frame;
+
+    unsetenv("OPENIMP_T21_EPRC");
+    memset(&params, 0, sizeof(params));
+    params.width = 640;
+    params.height = 360;
+    params.fps_num = 15;
+    params.fps_den = 1;
+    params.gop_length = 5;
+    params.rc_mode = HW_RC_MODE_CBR;
+    params.bitrate = 500000;
+    params.qp = 30;
+    params.min_qp = 20;
+    params.max_qp = 51;
+    params.rc_flags = HW_RC_FLAG_APP;
+    assert(OpenIMP_T30_HelixCreate(&encoder, &params) == 0);
+    for (frame = 0; frame < 7u; frame++) {
+        assert(encode(encoder, &info) == 0);
+        assert(info.idr == (frame % 5u == 0u));
+    }
+    params.same_scene_gops = 2;
+    assert(OpenIMP_T30_HelixUpdateParams(encoder, &params) == 0);
+    for (; frame < 31u; frame++) {
+        assert(encode(encoder, &info) == 0);
+        assert(info.idr == (frame == 10u || frame == 20u || frame == 30u));
+    }
+    OpenIMP_T30_HelixDestroy(encoder);
+}
 #endif
 
 int main(void)
@@ -1052,6 +1089,7 @@ int main(void)
     test_unaligned_width_rejected();
 #if defined(PLATFORM_T21) && !defined(PLATFORM_T20)
     test_eprc();
+    test_eprc_runtime_hskip();
 #endif
 #if defined(PLATFORM_T20)
     test_t20_rate_control();

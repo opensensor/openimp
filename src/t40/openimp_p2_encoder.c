@@ -3485,6 +3485,50 @@ int IMP_Encoder_InsertUserData(int channel, void *data, uint32_t size)
     return 0;
 }
 
+#if defined(PLATFORM_T21) && !defined(PLATFORM_T20) && !defined(PLATFORM_T23)
+/* OEM T21 1.0.33 IMP_Encoder_SetChnHSkip/GetChnHSkip (i264e_reconfig_hskip_set
+ * -> i264e_idr_reconfig): the skip type up to the channel's maxHSkipType;
+ * the native Helix encoder takes the IDR period in GOPs (maxSameSceneCnt
+ * for N1X/H1M, as CreateChn) with the next picture and then codes an IDR
+ * and restarts the rate control (OpenIMP_T30_HelixUpdateParams).  The skip
+ * reference structure itself is not coded (no HSkip on the native path). */
+int IMP_Encoder_SetChnHSkip(int channel, const IMPEncoderAttrHSkip *attr)
+{
+    P2EncoderChannel *ch = p2_legacy_config_channel(channel);
+    int ok;
+
+    if (!ch || !attr)
+        return -1;
+    pthread_mutex_lock(&ch->lock);
+    if (attr->skipType > ch->attr.rcAttr.attrHSkip.maxHSkipType) {
+        pthread_mutex_unlock(&ch->lock);
+        return -1;
+    }
+    ch->attr.rcAttr.attrHSkip.hSkipAttr = *attr;
+    ok = attr->skipType == IMP_Encoder_STYPE_N1X ||
+         attr->skipType == IMP_Encoder_STYPE_H1M_FALSE ||
+         attr->skipType == IMP_Encoder_STYPE_H1M_TRUE;
+    if (ch->codec)
+        (void)AL_Codec_Encode_SetSameSceneGops(
+            ch->codec, ok && attr->maxSameSceneCnt > 0
+                           ? (uint32_t)attr->maxSameSceneCnt : 0u);
+    pthread_mutex_unlock(&ch->lock);
+    return 0;
+}
+
+int IMP_Encoder_GetChnHSkip(int channel, IMPEncoderAttrHSkip *attr)
+{
+    P2EncoderChannel *ch = p2_legacy_config_channel(channel);
+
+    if (!ch || !attr)
+        return -1;
+    pthread_mutex_lock(&ch->lock);
+    *attr = ch->attr.rcAttr.attrHSkip.hSkipAttr;
+    pthread_mutex_unlock(&ch->lock);
+    return 0;
+}
+#endif
+
 int IMP_Encoder_SetMbRC(int channel, int enabled)
 {
     P2EncoderChannel *ch = p2_legacy_config_channel(channel);

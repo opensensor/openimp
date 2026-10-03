@@ -211,6 +211,8 @@ class Lib:
         uc.reg_write(UC_MIPS_REG_RA, END)
         for r, v in zip(A, args):
             uc.reg_write(r, v)
+        for i, v in enumerate(args[4:]):        # o32: stack arguments from sp+16
+            self.w32(STACK + 16 + 4 * i, v)
         uc.emu_start(fn, END, count=limit)
         if uc.reg_read(UC_MIPS_REG_PC) != END:
             raise RuntimeError('no return pc=%x' % uc.reg_read(UC_MIPS_REG_PC))
@@ -334,24 +336,134 @@ def validated_vbv(lib, w, h):
     return {292: L.r32(R + 292 + sh), 296: L.r32(R + 296 + sh)}
 
 
+def random_scenarios(seed, count):
+    """Random CBR/VBR/SMART scenarios (tools/eprc_oracle.py LIB --random SEED N)."""
+    import random
+    rnd = random.Random(seed)
+    sizes = [(320, 240), (640, 360), (1280, 720), (1920, 1080), (2304, 1296), (2560, 1440),
+             (2336, 1296), (2352, 1296), (176, 144), (801, 600), (1920, 1088)]
+    out = []
+    for _ in range(count):
+        mode = rnd.choice((1, 2, 3))
+        w, h = rnd.choice(sizes)
+        gop = rnd.randint(1, 120)
+        fps = rnd.randint(5, 30)
+        minqp = rnd.randint(5, 30)
+        maxqp = rnd.randint(max(minqp, 20), 51)
+        br = rnd.choice((128, 256, 512, 1000, 2000, 4000))
+        mbr = br * rnd.choice((1, 2, 3))
+        bgmul = rnd.choice((0, 0, 1, 2, 3))
+        idr = gop * (bgmul if bgmul and mode == 3 else 1)
+        if bgmul and mode != 3 and rnd.random() < 0.5:
+            idr = gop * bgmul
+        out.append((mode, w, h, gop, fps, minqp, maxqp, br, mbr, rnd.randint(1, 10),
+                    rnd.randint(1, 30), rnd.randint(-5, 5), rnd.randint(1, 8),
+                    rnd.randint(50, 100), rnd.randint(0, 6), bgmul,
+                    rnd.choice((-1, -1, rnd.randint(10, 45))), idr))
+    return out
+
+
+def ae_zones(frame):
+    """The 225 AE zone words of picture `frame` (as the test)."""
+    state = 0x2545f491 ^ (frame * 0x9e3779b1 & 0xffffffff)
+    out = []
+    for _ in range(225):
+        state = xorshift(state)
+        out.append(state & 0xfffff)
+    return out
+
+
+def fnv1a(data):
+    h = 0x811c9dc5
+    for b in data:
+        h = ((h ^ b) * 0x01000193) & 0xffffffff
+    return h
+
+
+# Extended scenario fields (after the 18 of SCENARIOS): param[52] (T23:
+# re-encode IDR pictures only, set by IMP_Encoder_SetRdBufShare, the OEM
+# default 1), the FIXQP QP param[204], and flags: 1 = AE zones as the OEM
+# frame source channel 0 attaches them (a 'Z' line: FNV-1a of the
+# controller's zone buffer after FRAME_START), 2 = picture types from the
+# OEM i264e_decide_slice_type_and_rd (skip type N1X, maxSameSceneCnt =
+# bgmul: IDR every bgmul GOPs or at a GOP boundary on a scene cut).
+EXTENDED = [
+    # T23 default: IDR-only re-encode (ring), SMART / CBR / VBR
+    (3, 1920, 1080, 25, 25, 15, 45, 1000, 2000, 3, 15, 0, 2, 80, 4, 0, -1, 25, 1, 0, 0),
+    (1, 1280, 720, 30, 15, 22, 51, 512, 1024, 3, 15, 0, 2, 80, 4, 0, -1, 30, 1, 0, 1),
+    # FIXQP
+    (0, 1920, 1080, 25, 25, 15, 45, 1000, 2000, 3, 15, 0, 2, 80, 4, 0, -1, 25, 0, 30, 0),
+    (0, 640, 360, 10, 25, 22, 40, 256, 512, 3, 15, 0, 2, 80, 4, 0, -1, 10, 0, 20, 1),
+    (0, 1280, 720, 15, 30, 10, 40, 256, 512, 3, 15, 0, 2, 80, 4, 0, -1, 15, 1, 2, 0),
+    (0, 1280, 720, 15, 30, 10, 40, 256, 512, 3, 15, 0, 2, 80, 4, 0, -1, 15, 0, 1, 0),
+    (0, 640, 360, 12, 30, 10, 40, 256, 512, 3, 15, 0, 2, 80, 4, 0, -1, 12, 0, 60, 0),
+    # AE zones
+    (3, 1920, 1080, 20, 25, 15, 45, 1000, 2000, 3, 15, 0, 2, 80, 4, 2, -1, 40, 1, 0, 1),
+    (2, 1920, 1080, 20, 25, 15, 45, 1000, 2000, 3, 15, 0, 2, 80, 4, 2, -1, 40, 0, 0, 1),
+    # scene-cut IDR (vendor picture type decision)
+    (3, 1280, 720, 5, 25, 15, 45, 1000, 2000, 3, 15, 0, 2, 80, 4, 4, -1, 0, 1, 0, 2),
+    (1, 1280, 720, 5, 25, 15, 45, 800, 1600, 3, 15, 0, 2, 80, 4, 3, -1, 0, 1, 0, 3),
+    (2, 640, 360, 4, 15, 10, 51, 256, 512, 2, 15, 0, 2, 80, 4, 5, -1, 0, 0, 0, 2),
+]
+
+
 def main():
     lib = sys.argv[1]
     frames = 120
-    for n, sc in enumerate(SCENARIOS):
+    scenarios = SCENARIOS
+    if len(sys.argv) > 4 and sys.argv[2] == '--random':
+        scenarios = random_scenarios(int(sys.argv[3]), int(sys.argv[4]))
+        frames = int(sys.argv[5]) if len(sys.argv) > 5 else 150
+    elif len(sys.argv) > 2 and sys.argv[2] == '--extended':
+        # T21: no param[52]; the picture type decision is only run on T23
+        # (the T21 rule is the same, 0x2bfd4)
+        t21 = Lib(lib).lay['name'] == 'T21'
+        scenarios = [sc for sc in EXTENDED if not t21 or (sc[18] == 0 and not sc[20] & 2)]
+        frames = 200
+    for n, sc in enumerate(scenarios):
         (mode, w, h, gop, fps, minqp, maxqp, br, mbr, fstep, gstep, bias, static,
-         cpos, qual, bgmul, initqp, idr) = sc
+         cpos, qual, bgmul, initqp, idr) = sc[:18]
+        f52, cqp, flags = (tuple(sc[18:]) + (0, 0, 0))[:3]
+        extra = validated_vbv(lib, w, h)
+        sh = 0 if Lib(lib).lay['name'] == 'T23' else -4
+        if f52:
+            if sh:
+                raise RuntimeError('param[52] exists on T23 only')
+            extra[52] = f52
+        extra[204] = cqp
         s = Sim(lib, mode=mode, w=w, h=h, gop=gop, fps=(fps, 1), minqp=minqp, maxqp=maxqp,
                 bitrate=br, maxbitrate=mbr, frm_step=fstep, gop_step=gstep, bias=bias,
                 static_time=static, change_pos=cpos, quality=qual, bgmul=bgmul,
-                rclevel=initqp & 0xffffffff, extra=validated_vbv(lib, w, h))
+                rclevel=initqp & 0xffffffff, extra=extra)
+        L = s.L
+        E = s.R + (496 if sh == 0 else 484)
+        zbuf = L.r32(L.r32(E + (1620 if sh == 0 else 1616)) + (7148 if sh == 0 else 7092))
+        ZONES = HEAP + 0x3c000
+        if flags & 2:
+            if sh:
+                raise RuntimeError('vendor picture types: T23 only')
+            out2 = HEAP + 0x3e000
+            L.call('i264e_init_skip_header', s.R + 0xac0, gop, 0, 0, 0, bgmul, 0,
+                   out2, out2 + 4, 0, f52)
+            L.w32(s.R + 0x3dd8, s.H)
+            L.w32(s.H, 0xffffffff)
         print('S', ' '.join(str(v) for v in sc))
         for f in range(frames):
-            since = f % idr
-            s.L.w32(s.H, since)
-            s.L.call('i264e_ratecontrol_start', s.H)
-            t = s.L.rd(s.SL, 1)[0]        # picture type (2 IDR, 6 GOP start, 0 P)
-            qp = s.L.rd(s.R + s.L.lay['qp'], 1)[0]
+            if flags & 2:
+                L.call('i264e_decide_slice_type_and_rd', s.R, s.H)
+                since = L.r32(s.H)
+            else:
+                since = f % idr
+                L.w32(s.H, since)
+            if flags & 1:
+                L.wr(ZONES, struct.pack('<225I', *ae_zones(f)))
+                L.w8(s.F + 0x1e0, 1)
+                L.w32(s.F + 0x1e4, ZONES)
+            L.call('i264e_ratecontrol_start', s.H)
+            t = L.rd(s.SL, 1)[0]          # picture type (2 IDR, 6 GOP start, 0 P)
+            qp = L.rd(s.R + L.lay['qp'], 1)[0]
             out = [t, qp]
+            zcrc = fnv1a(L.rd(zbuf, 3648)) if flags & 1 else None
             size = picture_bytes(f, qp, since == 0, w * h, n % 2)
             regs = statistics(f)
             while True:
@@ -366,6 +478,8 @@ def main():
                 out.append(qp)
                 size = max(size // 2, 20)
             print('F', since, ' '.join(str(v) for v in out))
+            if zcrc is not None:
+                print('Z', zcrc)
 
 
 if __name__ == '__main__':

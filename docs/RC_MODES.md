@@ -165,8 +165,9 @@ iBiasLvl as above.  The read-back then shows those.
 OpenIMP: `GetChnAttrRcMode` applies the same clamps
 (`src/t40/p2_rc_readback.h`; the run-time set after SetChnAttrRcMode, FIXQP
 qp 0..51).  T21: the native Helix encoder runs the vendor-identical T21
-1.0.33 `eprc` controller (`src/eprc/eprc_t21.c`) for CBR/VBR/SMART by
-default, with the validated extras (see `docs/T23_EPRC.md`);
+1.0.33 `eprc` controller (`src/eprc/eprc_t21.c`) for FIXQP/CBR/VBR/SMART
+by default, with the validated extras (see `docs/T23_EPRC.md`; FIXQP: I =
+qp - 3, P = qp, at most 51, below qp 3 the I QP is 51, no QP range);
 `OPENIMP_T21_EPRC=0` restores the old GOP controller (no extras),
 `=23` runs the T23 controller (A/B only).  Device test cam-D at
 1200 kbit/s: CBR 1326, VBR 1096, SMART 1071 kbit/s, decode clean (the old
@@ -241,8 +242,12 @@ or SMART channel without extras now targets 50 % of maxBitRate (was 80 %).
 
 OpenIMP: `src/eprc` reimplements the OEM controller (bit-exact under
 emulation, `tests/eprc`); the native encoder feeds it the same validated
-values (`t23_rc_config`) and runs it for SMART by default and for CBR/VBR
-with `OPENIMP_T23_EPRC=1` (`=0`: the band mapping for all, as before).
+values (`t23_rc_config`) and runs it for SMART by default and for
+FIXQP/CBR/VBR with `OPENIMP_T23_EPRC=1` (`=0`: the band mapping for all, as
+before).  Run-time changes (SetChnAttrRcMode, frame rate, GOP, HSkip) take
+effect at the next IDR, the controller restarting from the last QP (OEM
+`i264e_idr_reconfig`); with maxSameSceneCnt > 0 a scene change (picture
+class 5) codes an IDR early at a GOP boundary.
 
 ## T10 / T40 / T41
 
