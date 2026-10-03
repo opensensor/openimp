@@ -14,6 +14,7 @@ IVS_DEPS := $(IVS_SRC)/openimp_t31_ivs_move.c $(IVS_SRC)/openimp_t31_ivs_move.h 
 IVS_DIGEST_T31 := $(BUILD)/t23-ivs-digest-t31abi
 IVS_DIGEST_T23 := $(BUILD)/t23-ivs-digest-t23abi
 IVS_FRAMEWORK := $(BUILD)/t23-ivs-framework-test
+IVS_MOVE_V2 := $(BUILD)/t23-ivs-move-v2-test
 JPEG_QL := $(BUILD)/t23-jpeg-ql-test
 HELIX_DESCRIPTOR := $(BUILD)/t23-helix-descriptor-test
 HELIX_STREAM := $(BUILD)/t23-helix-stream-test
@@ -40,7 +41,7 @@ HELIX_INCLUDES := -DPLATFORM_T23 '-D_Static_assert(c,m)=' -Wno-unused-result \
 # build without PIE so the test's data lies below 4 GiB.
 check: $(ISP_TUNING_TEST_BIN) $(ACODEC_TEST_BIN) $(ZERO_COPY_TEST_BIN) \
 	$(FAKE_HELIXD_BIN) $(IVS_DIGEST_T31) $(IVS_DIGEST_T23) \
-	$(IVS_FRAMEWORK) $(JPEG_QL) $(HELIX_DESCRIPTOR) $(HELIX_STREAM) \
+	$(IVS_FRAMEWORK) $(IVS_MOVE_V2) $(JPEG_QL) $(HELIX_DESCRIPTOR) $(HELIX_STREAM) \
 	$(RMEM_LAYOUT)
 	$(HELIX_DESCRIPTOR)
 	$(RMEM_LAYOUT)
@@ -74,6 +75,7 @@ check: $(ISP_TUNING_TEST_BIN) $(ACODEC_TEST_BIN) $(ZERO_COPY_TEST_BIN) \
 	# claude/ivs-opt speed-ups; any change in what is detected shows here
 	grep -q "digest ca3d1021f2a30c82" $(BUILD)/t23-ivs-digest-t31abi.txt
 	$(IVS_FRAMEWORK)
+	$(IVS_MOVE_V2)
 	$(JPEG_QL)
 
 $(ISP_TUNING_TEST_BIN): isp_tuning_test.c \
@@ -221,7 +223,6 @@ $(T23TUNE_BIN): t23tune.c $(PROJECT_DIR)/src/isp/isp_t23_tuning.c
 
 # Motion v2 (opt-in, beyond vendor): bit-identity with v2 off / in shadow
 # mode and the v2 behaviour, through the IVS framework (T23 ABI).
-IVS_MOVE_V2 := $(BUILD)/t23-ivs-move-v2-test
 $(IVS_MOVE_V2): ivs_move_v2_test.c $(IVS_SRC)/openimp_t31_ivs.c \
 	$(IVS_SRC)/openimp_t31_ivs.h $(IVS_DEPS) \
 	$(PROJECT_DIR)/include/imp/openimp_ivs_move_ex.h
