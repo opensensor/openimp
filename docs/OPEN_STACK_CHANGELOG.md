@@ -15,7 +15,7 @@ All five test cameras run the open kernel driver (open-tx-isp), OpenIMP and timp
 | Camera | SoC | Stack | State |
 |---|---|---|---|
 | cam-A | T31 | fully open | Flashed 2026-10-03 04:15 with -all-11 / openimp-all-10 image (kernel incl. soc_vpu patch 0099) |
-| cam-B | T23 | fully open (native encoder, no OEM helixd) | Flashed 2026-10-03 04:24 with -all-11b / openimp-all-10 image (HLIL AE default) |
+| cam-B | T23 | fully open (native encoder, no OEM helixd) | Flashed 2026-10-03 05:54 with -all-12 / openimp-all-10 image (HLIL AE default; lifted AE export + reconstruction memory-access fixes) |
 | cam-C | T20 | fully open | Flashed 2026-10-03 04:07 with -all-11 / openimp-all-10 image (kernel incl. soc_vpu patch 0099) |
 | cam-E | T10 | fully open | Flashed 2026-10-03 04:14 with -all-11 / openimp-all-10 image, boot guard auto |
 | cam-D | T21 | fully open | Flashed 2026-10-03 04:07 with -all-11 / openimp-all-10 image (kernel incl. soc_vpu patch 0099) |
@@ -100,7 +100,8 @@ Aggregates: `claude/open-tx-isp-all-4` and `claude/openimp-all-4` (pushed); 58 m
 - **T20/T30 memory:** JPEG bitstream buffer 1 MiB instead of a frame-sized buffer (cam-E −328 KiB; more on 1080p). Allocating encoder buffers at channel creation was measured to raise the peak and stays opt-in.
 - **Encoder diagnostics:** one log line with the effective rate control per channel; out-of-range QP/fps values are clamped with a warning instead of silently replaced.
 - **JPEG robustness:** if the encoder is busy or video memory is short, the last JPEG is delivered again instead of blocking; one startup warning when pools plus fixed buffers exceed video memory.
-- **In work:** audit of the remaining mis-resolved memory accesses in the reconstructed T23 code (some sit in hooked paths such as the ISP interrupt routine); T20/T21 encoder error limit (re-create after 3 failures, stop after 2 re-creates) waits for a device test.
+- **T23 reconstruction audit (-all-12):** a call-graph audit of all mis-resolved memory accesses in the decompiled T23 code found none on the default path; every reachable one (ops-table ISR and IVDC ISR counters, sensor release list walk, CCM state, an AE histogram stack overflow, AF parameter copies, MDNS/DPC/mask state) now targets the vendor's variables. cam-B: 3 module reload cycles and 90 snapshots, 0 oops; flashed 05:54.
+- **In work:** T20/T21 encoder error limit (re-create after 3 failures, stop after 2 re-creates) waits for a device test.
 
 ## Night (2026-10-03)
 
