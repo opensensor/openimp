@@ -205,12 +205,25 @@ sanitize: $(FS_DEPS) $(HELIX_SOURCES) $(HELIX_T21_SOURCES) $(IVS_DEPS)
 		$(TSAN_RUN) ./ivs_framework_tsan_$$name || [ $$? -eq 1 ]; \
 	done
 
-check: descriptor_test annexb_test level_test helix_encoder_test \
+# Shared reference ring (OPENIMP_REF_SHARE) layout and command list
+ref_ring_test: ref_ring_test.c $(ROOT)/src/t21/t21_h264_descriptor.c \
+	$(ROOT)/src/t21/t21_ref_ring.h
+	$(CC) $(CFLAGS) -I$(ROOT)/src -o $@ ref_ring_test.c \
+		$(ROOT)/src/t21/t21_h264_descriptor.c
+
+ref_ring_test_t23: ref_ring_test.c $(ROOT)/src/t21/t21_h264_descriptor.c \
+	$(ROOT)/src/t21/t21_ref_ring.h
+	$(CC) $(CFLAGS) -DT21_HELIX_T23_DELTAS -I$(ROOT)/src -o $@ \
+		ref_ring_test.c $(ROOT)/src/t21/t21_h264_descriptor.c
+
+check: ref_ring_test ref_ring_test_t23 descriptor_test annexb_test level_test helix_encoder_test \
 	helix_encoder_test_t21 helix_encoder_test_t20 t21_rmem_layout_test \
 	helix_jpeg_test_t21 helix_jpeg_test_t20 helix_jpeg_test_t23 \
 	ivs_framework_test_t21 ivs_framework_test_t20 ivs_move_bench_t20 \
 	fs_lifecycle_test_t21 fs_lifecycle_test_t20 fs_lifecycle_test_t23 \
 	system_test
+	./ref_ring_test
+	./ref_ring_test_t23
 	./descriptor_test
 	./annexb_test
 	./level_test

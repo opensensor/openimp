@@ -37,6 +37,15 @@ typedef struct {
      * end instead of writing past it.  Only with a kernel that handles a
      * BSFULL-only stop (thingino patches 0096/0098). */
     uint8_t bsf_stop;
+    /* Shared reference/reconstruction ring (t21_ref_ring.h, OEM
+     * BUF_SHARE_CFG): reference_* is the previous picture inside the ring,
+     * output_* the new one, the ring start replaces the raw-address copies
+     * in 0x50110/0x50114 and 0xb0030/0xb0034 as the OEM does, the ring end
+     * goes to 0x6001c/0x60020 and bit 30 of 0x60004 is set.  All zero
+     * (ref_share 0): the two separate reference pictures. */
+    uint8_t ref_share;
+    uint32_t ring_start_y, ring_start_c;
+    uint32_t ring_end_y, ring_end_c;
     uint32_t *descriptor;
     size_t descriptor_words;
 } T21H264SliceConfig;

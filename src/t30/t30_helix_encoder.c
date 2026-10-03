@@ -54,6 +54,7 @@
 
 #if defined(HELIX_T21_SYNTAX)
 #include "t21/t21_h264_descriptor.h"
+#include "t21/t21_ref_ring.h"
 typedef T21H264SliceConfig PlatformH264SliceConfig;
 #else
 #include "t30/t30_h264_descriptor.h"
@@ -269,6 +270,9 @@ struct T30HelixEncoder {
     int t10;                    /* T10 NVPU: T10 command list, padded refs */
 #endif
 #if defined(HELIX_T21_SYNTAX)
+    int ref_share;              /* OPENIMP_REF_SHARE=1: one reference ring */
+    T21RefRing ring;            /* in reference[0].dma */
+    uint64_t ring_n;            /* picture index (0 = IDR) of the last picture */
     uint32_t scratch_offset[4]; /* EMC per-macroblock buffer layout */
     uint32_t scratch_size;
     uint32_t bitstream_kib;     /* EMC bitstream window (0x30040) */
@@ -673,6 +677,24 @@ static void t30_fill_slice(T30HelixEncoder *encoder,
 #endif
     slice->output_y = encoder->reference[output_index].y;
     slice->output_c = encoder->reference[output_index].c;
+#if defined(HELIX_T21_SYNTAX)
+    if (encoder->ref_share) {
+        T21RefRingPos pos;
+
+        t21_ref_ring_pos(&encoder->ring,
+                         (idr || !encoder->have_reference)
+                             ? 0u : encoder->ring_n + 1u, &pos);
+        slice->ref_share = 1;
+        slice->reference_y = pos.ref_y;
+        slice->reference_c = pos.ref_c;
+        slice->output_y = pos.recon_y;
+        slice->output_c = pos.recon_c;
+        slice->ring_start_y = pos.start_y;
+        slice->ring_start_c = pos.start_c;
+        slice->ring_end_y = pos.end_y;
+        slice->ring_end_c = pos.end_c;
+    }
+#endif
     slice->bitstream = encoder->temporary.phys_addr + T30_SLICE_OFFSET;
     slice->descriptor = (uint32_t *)(uintptr_t)encoder->descriptor.virt_addr;
     slice->descriptor_words = encoder->descriptor.size / sizeof(uint32_t);
@@ -1160,6 +1182,48 @@ static int t30_vpu_fd(void)
     return fd;
 }
 
+#if defined(HELIX_T21_SYNTAX)
+/* OPENIMP_REF_SHARE=1: one shared reference/reconstruction ring instead of
+ * two reference pictures (t21_ref_ring.h).  0 on success or when off. */
+static int t30_ref_share_alloc(T30HelixEncoder *encoder, const char *tag)
+{
+    const char *env = getenv("OPENIMP_REF_SHARE");
+    uint32_t mbw = encoder->sps.i_mb_width ? (uint32_t)encoder->sps.i_mb_width
+                                           : (encoder->params.width + 15u) / 16u;
+    uint32_t mbh = (encoder->params.height + 15u) / 16u;
+
+    if (!env || env[0] != '1')
+        return 0;
+    if (t21_ref_ring_bytes(mbw, mbh) >= mbw * mbh * 384u) {
+        /* the 256 extra lines cost more than the second picture saves */
+        IMP_LOG_INFO("Encoder", "Helix: reference sharing skipped, picture "
+                     "too small");
+        return 0;
+    }
+    if (t30_dma_allocate(&encoder->reference[0].dma,
+                         t21_ref_ring_bytes(mbw, mbh), tag) != 0)
+        return -1;
+    t21_ref_ring_init(&encoder->ring, encoder->reference[0].dma.phys_addr,
+                      mbw, mbh);
+    encoder->reference[0].y = encoder->ring.base_y;
+    encoder->reference[0].c = encoder->ring.base_c;
+    encoder->ref_share = 1;
+    IMP_LOG_INFO("Encoder", "Helix: reference sharing on (ring %uK instead "
+                 "of 2 x %uK)", encoder->reference[0].dma.size >> 10,
+                 (mbw * mbh * 384u) >> 10);
+    return 0;
+}
+#else
+static void t30_ref_share_ignored(void)
+{
+    const char *env = getenv("OPENIMP_REF_SHARE");
+
+    if (env && env[0] == '1')
+        IMP_LOG_INFO("Encoder", "OPENIMP_REF_SHARE ignored: reference "
+                     "sharing exists only on T21/T23");
+}
+#endif
+
 int OpenIMP_T30_HelixCreate(T30HelixEncoder **encoder_out,
                             const HWEncoderParams *params)
 {
@@ -1300,7 +1364,9 @@ int OpenIMP_T30_HelixCreate(T30HelixEncoder **encoder_out,
     }
 #endif
 #if defined(PLATFORM_T23)
-    for (i = 0; i < 2u; i++) {
+    if (t30_ref_share_alloc(encoder, "t23-helix-ref") != 0)
+        goto fail;
+    for (i = 0; !encoder->ref_share && i < 2u; i++) {
         if (t30_dma_allocate(&encoder->reference[i].dma,
                              (uint32_t)reference_size,
                              "t23-helix-ref") != 0)
@@ -1381,7 +1447,15 @@ int OpenIMP_T30_HelixCreate(T30HelixEncoder **encoder_out,
         }
     } else
 #endif
-    for (i = 0; i < 2u; i++) {
+#if defined(HELIX_T21_SYNTAX)
+    if (t30_ref_share_alloc(encoder, "t21-helix-ref") != 0)
+        goto fail;
+#endif
+    for (i = 0; i < 2u
+#if defined(HELIX_T21_SYNTAX)
+         && !encoder->ref_share
+#endif
+         ; i++) {
         if (t30_dma_allocate(&encoder->reference[i].dma,
                              (uint32_t)reference_size,
                              "t30-helix-ref") != 0)
@@ -1390,6 +1464,9 @@ int OpenIMP_T30_HelixCreate(T30HelixEncoder **encoder_out,
         encoder->reference[i].c = encoder->reference[i].y +
                                   (uint32_t)aligned_luma_size;
     }
+#endif
+#if !defined(HELIX_T21_SYNTAX)
+    t30_ref_share_ignored();
 #endif
     t30_init_parameter_sets(encoder);
     h264_cabac_init();
@@ -1609,6 +1686,10 @@ static int t30_helix_encode_job(T30HelixEncoder *encoder,
 #endif
     output_index = encoder->have_reference
         ? (encoder->reference_index ^ 1u) : 0u;
+#if defined(HELIX_T21_SYNTAX)
+    if (encoder->ref_share)
+        output_index = 0u;      /* one ring in reference[0] */
+#endif
 
     h264e_slice_header_init(&encoder->slice_header, &encoder->sps,
                             &encoder->pps,
@@ -1825,6 +1906,11 @@ static int t30_helix_encode_job(T30HelixEncoder *encoder,
     }
     if (encoder->channel.output_len > encoder->max_output_len)
         encoder->max_output_len = encoder->channel.output_len;
+#if defined(HELIX_T21_SYNTAX)
+    if (encoder->ref_share)
+        encoder->ring_n = (idr || !encoder->have_reference)
+            ? 0u : encoder->ring_n + 1u;
+#endif
     encoder->reference_index = output_index;
     encoder->have_reference = 1;
     encoder->gop_position++;
