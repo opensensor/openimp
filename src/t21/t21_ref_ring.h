@@ -25,6 +25,10 @@
  * Opt-in: OPENIMP_REF_SHARE=1.  Saves one of the two reference pictures
  * minus 256 lines (1080p: 6.0 -> 3.7 MiB). */
 #define T21_REF_RING_EXTRA_LINES 256u
+/* The vendor T23 (1.3.0, ring always on up to 1080p) places the chroma
+ * ring 256 bytes after the luma ring end (0x60014 = 0x02ff6000, 0x6001c =
+ * 0x0326c000, 0x60018 = 0x0326c100, 0x60020 = 0x033a7100 at 1080p). */
+#define T21_REF_RING_CHROMA_GAP 0x100u
 
 typedef struct {
     uint32_t base_y, base_c;    /* ring start */
@@ -39,6 +43,7 @@ typedef struct {
     uint32_t start_y, start_c;
     uint32_t end_y, end_c;
     uint8_t wrap_rows;          /* 0xb0000 bits 8..15 (OEM BUF_SHARE_CFG) */
+    uint8_t wrap_rows_t21;      /* same, with the T21 1.0.33 special case */
 } T21RefRingPos;
 
 /* Bytes for one macroblock-aligned mb_width x mb_height picture. */
@@ -48,6 +53,7 @@ static inline uint32_t t21_ref_ring_bytes(uint32_t mb_width,
     uint32_t stride = mb_width * 16u;
 
     return (mb_height * 16u + T21_REF_RING_EXTRA_LINES) * stride +
+           T21_REF_RING_CHROMA_GAP +
            (mb_height * 8u + T21_REF_RING_EXTRA_LINES / 2u) * stride;
 }
 
@@ -77,7 +83,7 @@ static inline void t21_ref_ring_init(T21RefRing *r, uint32_t base,
     r->step_c = T21_REF_RING_EXTRA_LINES / 2u * stride;
     r->stride = stride;
     r->base_y = base;
-    r->base_c = base + r->ring_y;
+    r->base_c = base + r->ring_y + T21_REF_RING_CHROMA_GAP;
 }
 
 /* Address of picture n (n >= 0) in the plane described by base/ring/step. */
@@ -107,15 +113,12 @@ static inline void t21_ref_ring_pos(const T21RefRing *r, uint64_t n,
     p->start_c = r->base_c;
     p->end_y = r->base_y + r->ring_y;
     p->end_c = r->base_c + r->ring_c;
-    /* OEM BUF_SHARE_CFG byte output: ((end - ref) / stride >> 4) - 1, and
-     * 255 for the first picture after the IDR (the P flag is set and the
-     * counter is still 0: reference at the ring start, nothing wraps).
-     * n == 0 (IDR) keeps the formula value, the reference is not read. */
-    if (n == 1u)
-        p->wrap_rows = 0xffu;
-    else
-        p->wrap_rows = (uint8_t)(((p->end_y - p->ref_y) / r->stride >> 4) -
-                                 1u);
+    /* OEM BUF_SHARE_CFG byte output: ((end - ref) / stride >> 4) - 1
+     * (T23 1.3.0 always; T21 1.0.33 gives 255 for the first picture after
+     * the IDR, whose reference is at the ring start).  n == 0 (IDR) keeps
+     * the formula value, the reference is not read. */
+    p->wrap_rows = (uint8_t)(((p->end_y - p->ref_y) / r->stride >> 4) - 1u);
+    p->wrap_rows_t21 = n == 1u ? 0xffu : p->wrap_rows;
 }
 
 #endif

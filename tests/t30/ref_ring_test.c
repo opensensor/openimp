@@ -9,6 +9,11 @@
 #include "t21/t21_ref_ring.h"
 
 #define WORDS 8192u
+#if defined(T21_HELIX_T23_DELTAS)
+#define RING_B0_LOW 0x00020063u      /* vendor T23 ring mode low byte */
+#else
+#define RING_B0_LOW 0x000200ffu      /* T21 template plus the two flags */
+#endif
 static uint32_t descriptor[WORDS];
 static uint8_t cabac_state[1024];
 
@@ -42,8 +47,8 @@ static void test_layout(uint32_t mbw, uint32_t mbh)
     t21_ref_ring_init(&r, 0x03000000u, mbw, mbh);
     assert(r.ring_y == (mbh * 16u + 256u) * stride);
     assert(r.ring_c == (mbh * 8u + 128u) * stride);
-    assert(r.base_c == r.base_y + r.ring_y);
-    assert(t21_ref_ring_bytes(mbw, mbh) == r.ring_y + r.ring_c);
+    assert(r.base_c == r.base_y + r.ring_y + 0x100u);
+    assert(t21_ref_ring_bytes(mbw, mbh) == r.ring_y + 0x100u + r.ring_c);
     t21_ref_ring_pos(&r, 0, &prev);
     assert(prev.recon_y == r.base_y && prev.recon_c == r.base_c);
     assert(prev.ref_y == prev.recon_y && prev.ref_c == prev.recon_c);
@@ -72,23 +77,24 @@ static void test_layout(uint32_t mbw, uint32_t mbh)
  * disassembly: ring_y = (1088 + 256) * 1920 = 0x276000, ring_c =
  * (544 + 128) * 1920 = 0x13b000, step 0x78000 / 0x3c000, recon(n) = end -
  * (n * step mod ring) or the start, reference = recon(n - 1), byte output
- * (0xb0000 bits 8..15) = ((end_y - ref_y) / stride >> 4) - 1, 255 for the
- * first P after the IDR. */
+ * (0xb0000 bits 8..15) = ((end_y - ref_y) / stride >> 4) - 1 (T21 1.0.33:
+ * 255 for the first P after the IDR).  The chroma ring starts 0x100 after
+ * the luma ring end (vendor T23 layout). */
 static const struct {
     uint64_t n;
     uint32_t recon_y, recon_c, ref_y, ref_c;
     uint8_t wrap;
 } oem_1080p[] = {
-    { 0, 0x03000000u, 0x03276000u, 0x03000000u, 0x03276000u, 83 },
-    { 1, 0x031fe000u, 0x03375000u, 0x03000000u, 0x03276000u, 255 },
-    { 2, 0x03186000u, 0x03339000u, 0x031fe000u, 0x03375000u, 15 },
-    { 3, 0x0310e000u, 0x032fd000u, 0x03186000u, 0x03339000u, 31 },
-    { 4, 0x03096000u, 0x032c1000u, 0x0310e000u, 0x032fd000u, 47 },
-    { 5, 0x0301e000u, 0x03285000u, 0x03096000u, 0x032c1000u, 63 },
-    { 6, 0x0321c000u, 0x03384000u, 0x0301e000u, 0x03285000u, 79 },
-    { 20, 0x03078000u, 0x032b2000u, 0x030f0000u, 0x032ee000u, 51 },
-    { 21, 0x03000000u, 0x03276000u, 0x03078000u, 0x032b2000u, 67 },
-    { 22, 0x031fe000u, 0x03375000u, 0x03000000u, 0x03276000u, 83 },
+    { 0, 0x03000000u, 0x03276100u, 0x03000000u, 0x03276100u, 83 },
+    { 1, 0x031fe000u, 0x03375100u, 0x03000000u, 0x03276100u, 83 },
+    { 2, 0x03186000u, 0x03339100u, 0x031fe000u, 0x03375100u, 15 },
+    { 3, 0x0310e000u, 0x032fd100u, 0x03186000u, 0x03339100u, 31 },
+    { 4, 0x03096000u, 0x032c1100u, 0x0310e000u, 0x032fd100u, 47 },
+    { 5, 0x0301e000u, 0x03285100u, 0x03096000u, 0x032c1100u, 63 },
+    { 6, 0x0321c000u, 0x03384100u, 0x0301e000u, 0x03285100u, 79 },
+    { 20, 0x03078000u, 0x032b2100u, 0x030f0000u, 0x032ee100u, 51 },
+    { 21, 0x03000000u, 0x03276100u, 0x03078000u, 0x032b2100u, 67 },
+    { 22, 0x031fe000u, 0x03375100u, 0x03000000u, 0x03276100u, 83 },
 };
 
 static void test_oem_values(void)
@@ -108,8 +114,10 @@ static void test_oem_values(void)
         assert(p.ref_y == oem_1080p[i].ref_y);
         assert(p.ref_c == oem_1080p[i].ref_c);
         assert(p.wrap_rows == oem_1080p[i].wrap);
+        assert(p.wrap_rows_t21 == (oem_1080p[i].n == 1 ? 255u
+                                                        : oem_1080p[i].wrap));
         assert(p.start_y == 0x03000000u && p.end_y == 0x03276000u);
-        assert(p.start_c == 0x03276000u && p.end_c == 0x033b1000u);
+        assert(p.start_c == 0x03276100u && p.end_c == 0x033b1100u);
     }
     /* the wrap row is where the reference picture leaves the ring: the
      * reference rows after it continue at the ring start (84 rows ring,
@@ -185,7 +193,7 @@ static void test_registers(int p)
     c.ring_wrap_rows = 15;
     c.ring_flags = T21_RING_P_FLAG;
     assert(T21_H264_BuildDescriptor(&c, &on_pairs) == 0);
-    assert(get(on_pairs, 0xb0000) == 0x00020fbdu);
+    assert(get(on_pairs, 0xb0000) == (RING_B0_LOW | 0x0f00u));
     /* the OEM share-mode P flag: 0x50000 bit 6 (P only), 0x80030 bit 14 */
     assert((get(on_pairs, 0x80030) & 0x4000u) == (p ? 0x4000u : 0u));
     if (p) {
@@ -225,7 +233,8 @@ static void test_registers(int p)
             assert(reg == 0x60004 || reg == 0x60014 || reg == 0x60018 ||
                    reg == 0x6001c || reg == 0x60020 || reg == 0xb0030 ||
                    reg == 0xb0034 || reg == 0x50110 || reg == 0x50114 ||
-                   reg == 0xb0000 || reg == 0x50000 || reg == 0x80030);
+                   reg == 0xb0000 || reg == 0x50000 || reg == 0x80030 ||
+                   reg == 0x50040 || reg == 0x50048 || reg == 0x5004c);
         }
     }
     /* experiment switches */
@@ -237,14 +246,22 @@ static void test_registers(int p)
         assert(get(on_pairs, 0x10018) == c.ring_start_c);
         assert(get(on_pairs, 0x50074) == c.ring_start_y);
         assert(get(on_pairs, 0x50078) == c.ring_start_c);
-        assert(get(on_pairs, 0xb0000) == 0x0002ffbdu);
+        assert(get(on_pairs, 0xb0000) == (RING_B0_LOW | 0xff00u));
         assert(get(on_pairs, 0x50000) == 0x547fdfb1u);
         assert((get(on_pairs, 0x80030) & 0x4000u) == 0);
         c.ring_flags = 0;
         assert(T21_H264_BuildDescriptor(&c, &on_pairs) == 0);
         assert(get(on_pairs, 0x10014) == c.reference_y);
         assert(get(on_pairs, 0x50074) == 0);
-        assert(get(on_pairs, 0xb0000) == 0x00020fbdu);
+        assert(get(on_pairs, 0xb0000) == (RING_B0_LOW | 0x0f00u));
+        assert(get(on_pairs, 0x50000) == 0x547fdfb1u);
+        /* vendor T23 MCE words */
+        c.ring_flags = T21_RING_VENDOR_ME;
+        assert(T21_H264_BuildDescriptor(&c, &on_pairs) == 0);
+        assert(get(on_pairs, 0x50000) == 0x547fd9b1u);
+        assert(get(on_pairs, 0x50040) == 0x871f5008u);
+        assert(get(on_pairs, 0x50048) == 0x02000200u);
+        assert(get(on_pairs, 0x5004c) == 0x08080303u);
     }
     (void)t;
 }
@@ -281,35 +298,74 @@ static void test_picture(size_t i)
     assert(get(pairs, 0x60008) == oem_1080p[i].recon_y);
     assert(get(pairs, 0x6000c) == oem_1080p[i].recon_c);
     assert(get(pairs, 0x60014) == 0x03000000u);
-    assert(get(pairs, 0x60018) == 0x03276000u);
+    assert(get(pairs, 0x60018) == 0x03276100u);
     assert(get(pairs, 0x6001c) == 0x03276000u);
-    assert(get(pairs, 0x60020) == 0x033b1000u);
+    assert(get(pairs, 0x60020) == 0x033b1100u);
     assert(get(pairs, 0xb0014) == oem_1080p[i].ref_y);
     assert(get(pairs, 0xb0018) == oem_1080p[i].ref_c);
     assert(get(pairs, 0xb0030) == 0x03000000u);
-    assert(get(pairs, 0xb0034) == 0x03276000u);
+    assert(get(pairs, 0xb0034) == 0x03276100u);
     assert(get(pairs, 0xb0000) ==
-           (0x000200bdu | ((uint32_t)oem_1080p[i].wrap << 8)));
+           (RING_B0_LOW | ((uint32_t)oem_1080p[i].wrap << 8)));
     if (is_p) {
         assert(get(pairs, 0x5006c) == oem_1080p[i].ref_y);
         assert(get(pairs, 0x50070) == oem_1080p[i].ref_c);
         assert(get(pairs, 0x50110) == 0x03000000u);
-        assert(get(pairs, 0x50114) == 0x03276000u);
+        assert(get(pairs, 0x50114) == 0x03276100u);
         assert(get(pairs, 0x50000) & 0x40u);
     }
+}
+
+/* Live registers of the vendor T23 (libimp 1.3.0, 1080p, ring always on,
+ * devmem samples): luma ring 0x02ff6000..0x0326c000, chroma ring
+ * 0x0326c100..0x033a7100, recon (0x60008) only at multiples of 64 lines
+ * from the ring start, 0xb0000 = 0x0002xx62 at rest (start bit cleared)
+ * with xx in {0x47, 0x0f, 0x1b, 0x27, 0x23, 0x2f, 0x2b, 0x37, 0x33, 0x3f,
+ * 0x4b, 0x07, 0x13, 0x1f}: all 3 mod 4, as 64-line positions give. */
+static void test_vendor_t23(void)
+{
+    static const uint8_t seen[] = { 0x47, 0x0f, 0x1b, 0x27, 0x23, 0x2f,
+                                    0x2b, 0x37, 0x33, 0x3f, 0x4b, 0x07,
+                                    0x13, 0x1f };
+    T21RefRing r;
+    T21RefRingPos p;
+    uint32_t hit = 0, lines_seen = 0;
+    size_t i, n;
+
+    t21_ref_ring_init(&r, 0x02ff6000u, 120, 68);
+    t21_ref_ring_pos(&r, 0, &p);
+    assert(p.start_y == 0x02ff6000u && p.end_y == 0x0326c000u);
+    assert(p.start_c == 0x0326c100u && p.end_c == 0x033a7100u);
+    assert(t21_ref_ring_bytes(120, 68) == 0x033a7100u - 0x02ff6000u);
+    for (n = 0; n < 21; n++) {
+        uint32_t lines;
+
+        t21_ref_ring_pos(&r, n, &p);
+        lines = (p.recon_y - r.base_y) / 1920u;
+        assert(lines % 64u == 0 && lines < 1344u);
+        lines_seen |= 1u << (lines / 64u);
+        assert((p.recon_c - r.base_c) / 1920u == lines / 2u);
+        if (n >= 2)
+            assert(p.wrap_rows % 4u == 3u);
+        for (i = 0; i < sizeof(seen); i++)
+            if (n >= 2 && p.wrap_rows == seen[i])
+                hit |= 1u << i;
+    }
+    assert(lines_seen == 0x1fffffu);     /* all 21 positions */
+    assert(hit == (1u << sizeof(seen)) - 1u);  /* every observed byte */
 }
 
 int main(void)
 {
     /* 1080p: 3.7 MiB instead of 2 x 3.0 MiB */
-    assert(t21_ref_ring_bytes(120, 68) == 3870720u);
+    assert(t21_ref_ring_bytes(120, 68) == 3870976u);
     assert(t21_ref_ring_bytes(120, 68) < 2u * (1920u * 1088u * 3u / 2u));
     /* the sizes the device uses: 1080p and 360p both share (ring 3.69 MiB
      * against 6.0 MiB, 585 KiB against 690 KiB), tiny pictures do not */
     assert(t21_ref_ring_saves(120, 68));
     assert(t21_ref_pair_bytes(120, 68) == 6266880u);
     assert(t21_ref_ring_saves(40, 23));
-    assert(t21_ref_ring_bytes(40, 23) == 599040u);
+    assert(t21_ref_ring_bytes(40, 23) == 599296u);
     assert(t21_ref_pair_bytes(40, 23) == 706560u);
     assert(t21_ref_ring_saves(80, 45));
     assert(!t21_ref_ring_saves(20, 12));     /* 320x180: H <= 256 */
@@ -322,6 +378,7 @@ int main(void)
     test_registers(0);
     test_registers(1);
     test_oem_values();
+    test_vendor_t23();
     {
         size_t i;
 

@@ -168,7 +168,22 @@ reference rows past the end, and chroma smears in the decoder. The OEM's
 0x10014/0x10018 keep the IMP-layer reference pointer (`ctx[632/636]`),
 not the ring position; OpenIMP writes the ring reference there.
 `OPENIMP_REF_SHARE_DEBUG=1` logs n, recon, reference and wrap per
-picture.
+picture and the ring registers of the first eight command lists.
+
+Vendor T23 (libimp 1.3.0) live registers (devmem, 1080p; the vendor uses
+the ring unconditionally up to 1920x1088, `IMP_Encoder_SetRdBufShare` is
+a no-op): 0x60004 = 0xc10e0780, luma ring 0x02ff6000..0x0326c000
+(1920 x 1344), chroma ring 0x0326c100..0x033a7100 (1920 x 672, 0x100
+after the luma end), raw 0xb0008/0c constant and outside the ring (the
+source is not in the ring), recon only at multiples of 64 lines (the 21
+positions of the 256-line step in a 1344-line ring), 0xb0000 =
+0x0002xx62 at rest with the wrap byte xx (all 3 mod 4), 0x50000 bit 6 and
+0x80030 bit 14 clear, 0x50000 = 0x544xd9b0 (bits 9/10 clear, bits 16..23
+per picture), 0x50040/48/4c = 0x871f5008 / 0x02000200 / 0x08080303.
+OpenIMP's ring mode therefore uses the 0x100 chroma gap, 0xb0000 low
+byte 0x63 on T23 (0xff on T21: the T21 template bits plus the two flags
+ctx[1052]/ctx[1054] the vendor sets), no P flag, and offers the vendor
+MCE words as `OPENIMP_REF_SHARE_FLAGS=10`.
 
 ## Status (WIP)
 

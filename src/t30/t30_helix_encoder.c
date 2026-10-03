@@ -696,7 +696,11 @@ static void t30_fill_slice(T30HelixEncoder *encoder,
         slice->ring_start_c = pos.start_c;
         slice->ring_end_y = pos.end_y;
         slice->ring_end_c = pos.end_c;
+#if defined(PLATFORM_T23)
         slice->ring_wrap_rows = pos.wrap_rows;
+#else
+        slice->ring_wrap_rows = pos.wrap_rows_t21;
+#endif
         slice->ring_flags = encoder->ring_flags;
         if (encoder->ref_share_debug)
             IMP_LOG_INFO("Encoder", "Helix ring: n=%llu %s recon=%08x/%08x "
@@ -704,7 +708,7 @@ static void t30_fill_slice(T30HelixEncoder *encoder,
                          (unsigned long long)((idr || !encoder->have_reference)
                              ? 0u : encoder->ring_n + 1u),
                          idr ? "IDR" : "P", pos.recon_y, pos.recon_c,
-                         pos.ref_y, pos.ref_c, pos.wrap_rows,
+                         pos.ref_y, pos.ref_c, slice->ring_wrap_rows,
                          encoder->ring_flags);
     }
 #endif
@@ -1224,8 +1228,7 @@ static int t30_ref_share_alloc(T30HelixEncoder *encoder, const char *tag)
     env = getenv("OPENIMP_REF_SHARE_DEBUG");
     encoder->ref_share_debug = env && env[0] == '1';
     env = getenv("OPENIMP_REF_SHARE_FLAGS");
-    encoder->ring_flags = env ? (uint8_t)strtoul(env, NULL, 16)
-                              : T21_RING_P_FLAG;
+    encoder->ring_flags = env ? (uint8_t)strtoul(env, NULL, 16) : 0u;
     IMP_LOG_INFO("Encoder", "Helix: reference sharing on (ring %uK instead "
                  "of 2 x %uK)", encoder->reference[0].dma.size >> 10,
                  t21_ref_pair_bytes(mbw, mbh) >> 11);

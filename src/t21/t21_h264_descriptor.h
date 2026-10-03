@@ -11,6 +11,8 @@
 #define T21_RING_X10_START 0x02u
 #define T21_RING_X50_START 0x04u
 #define T21_RING_NO_WRAP   0x08u
+#define T21_RING_VENDOR_ME 0x10u  /* T23 vendor MCE words (0x50000 bits
+                                   * 9/10 clear, 0x50040/48/4c) */
 
 typedef struct {
     uint8_t slice_type; /* 0: I/IDR, 1: P */
@@ -52,7 +54,8 @@ typedef struct {
      * All zero (ref_share 0): the two separate reference pictures. */
     uint8_t ref_share;
     uint8_t ring_wrap_rows;
-    /* Experiments (OPENIMP_REF_SHARE_FLAGS, default T21_RING_P_FLAG):
+    /* Experiments (OPENIMP_REF_SHARE_FLAGS, default 0; the vendor T23 has
+     * none of them: 0x50000 bit 6 clear, 0x80030 bit 14 clear):
      * T21_RING_P_FLAG: the OEM share-mode P flag (ctx[21]: 0x50000 bit 6,
      * 0x80030 bit 14, P pictures only); T21_RING_X10_START: 0x10014/18 =
      * ring start instead of the ring reference; T21_RING_X50_START:
