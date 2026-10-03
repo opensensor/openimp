@@ -826,7 +826,7 @@ static void avpu_release_dma_buf(AvpuDMABuf *buf)
  * /dev/mem with MAP_SHARED + O_SYNC gives an uncached mapping on MIPS. */
 static void *avpu_remap_uncached(uint32_t phys_addr, size_t size)
 {
-    int fd = open("/dev/mem", O_RDWR | O_SYNC);
+    int fd = open("/dev/mem", O_RDWR | O_SYNC | O_CLOEXEC);
     if (fd < 0) {
         LOG_CODEC("AVPU: /dev/mem open failed: %s", strerror(errno));
         return NULL;
@@ -6988,7 +6988,7 @@ static uint32_t avpu_stream_buffer_effective_size(ALAvpuContext *ctx, int buf_id
             snprintf(dump_path, sizeof(dump_path),
                      "%s/openimp-t41-%ux%u-first.h264",
                      dump_dir, ctx->enc_w, ctx->enc_h);
-            dump_fd = open(dump_path, O_WRONLY | O_CREAT | O_EXCL, 0600);
+            dump_fd = open(dump_path, O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC, 0600);
             if (dump_fd >= 0) {
                 size_t written = 0u;
 
@@ -8998,7 +8998,7 @@ static void avpu_t31_dump_source_once(int channel_id, uint32_t width,
     snprintf(dump_path, sizeof(dump_path),
              "%s/openimp-source-ch%d-%ux%u.nv12", dump_dir, channel_id,
              width, height);
-    dump_fd = open(dump_path, O_WRONLY | O_CREAT | O_EXCL, 0600);
+    dump_fd = open(dump_path, O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC, 0600);
     if (dump_fd < 0) {
         LOG_CODEC("AVPU: source dump open failed path=%s errno=%d",
                   dump_path, errno);

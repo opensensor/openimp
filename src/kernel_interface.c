@@ -42,7 +42,7 @@ static void ki_trace(const char *fmt, ...)
     if ((strstr(fmt, "DQBUF") != NULL || strstr(fmt, "KernelDequeue") != NULL) &&
         __sync_fetch_and_add(&dequeue_trace_count, 1) >= 24)
         return;
-    int fd = open("/dev/kmsg", O_WRONLY);
+    int fd = open("/dev/kmsg", O_WRONLY | O_CLOEXEC);
     if (fd < 0) return;
 
     char buf[256];

@@ -20,7 +20,7 @@ static void group_trace(const char *fmt, ...)
 {
     if (!openimp_debug_trace_enabled()) return;
 
-    int fd = open("/dev/kmsg", O_WRONLY);
+    int fd = open("/dev/kmsg", O_WRONLY | O_CLOEXEC);
     if (fd < 0) return;
 
     char buf[256];

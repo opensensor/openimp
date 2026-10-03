@@ -755,7 +755,7 @@ static uint32_t t31_register_access(uint32_t address,
     page_mask = (uint32_t)page_size - 1U;
     page_address = address & ~page_mask;
     page_offset = address & page_mask;
-    fd = open("/dev/mem", O_RDWR | O_SYNC);
+    fd = open("/dev/mem", O_RDWR | O_SYNC | O_CLOEXEC);
     if (fd < 0)
         return 0;
     mapping = mmap(NULL, (size_t)page_size, PROT_READ | PROT_WRITE,
