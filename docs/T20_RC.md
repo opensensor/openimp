@@ -313,8 +313,10 @@ produced by `tools/rc_t20_oracle.py --t10`: 4231 decisions, 0 differ.
 
 ## In OpenIMP (T20 build, `src/t30/t30_helix_encoder.c`)
 
-With `OPENIMP_T20_RC=1` on a T20 (not a T10: `t30_soc_is_t10`), CBR, VBR
-and SMART channels run `src/rc_t20` instead of OpenIMP's GOP controller (`t31_rate_control`):
+By default (since claude/t1x-oem-rc-default) on a T20 (not a T10:
+`t30_soc_is_t10`), CBR, VBR and SMART channels run `src/rc_t20` instead of
+OpenIMP's GOP controller (`t31_rate_control`); `OPENIMP_T20_RC=0` restores
+the GOP controller:
 
 - `t20_rc_start` (at create and on every rate-control change, as the OEM
   re-runs `i264e_ratecontrol_init`): the i264e parameters from
@@ -339,21 +341,25 @@ and SMART channels run `src/rc_t20` instead of OpenIMP's GOP controller (`t31_ra
 
 Environment:
 
-- `OPENIMP_T20_RC=1`: run the OEM T20 controller (default off until a
-  camera test with the motion statistics passes; those need the kernel
-  to allow the soc_vpu register reads 0x132800e4/e8/ec, thingino local
-  patch 0101).  Without it the T20 keeps OpenIMP's GOP controller.
+- `OPENIMP_T20_RC`: the OEM T20 controller, **default on** (since
+  claude/t1x-oem-rc-default, after the device tests at 1200 kbit/s: CBR
+  1300, VBR 1329, SMART 983 kbit/s; the GOP controller CBR 942).  The
+  motion statistics need the kernel to allow the soc_vpu register reads
+  0x132800e4/e8/ec (thingino local patch 0101); without it the reads fail
+  (one warning) and the motion statistics are 0.
+  `OPENIMP_T20_RC=0` restores OpenIMP's GOP controller.
 - `OPENIMP_T20_MBRC=1`: the macroblock rate control (the OEM default; off
   in OpenIMP until tested on a camera: it costs about 1.3 M CPU operations
   per 1080p picture without the OEM's SIMD).
 - `OPENIMP_T20_RC_STATS=<seconds>`: one log line per interval: bit rate,
   P and IDR QP average/min/max, scene class, re-encodes (also on the T10).
-- `OPENIMP_T10_RC=1` (T10 only, default off): CBR, VBR and SMART run
-  `src/rc_t10` instead of the GOP controller (`RCT10_Start` / `RCT10_End`
-  with the IDR decision, the slice size and cmpx; re-encodes as on the
-  T20, at most 4).  Off by default until tested on a T10 camera, also
-  because OEM VBR codes most pictures twice (see "T10").  The log shows
-  `T10 rc: OEM <mode> ...` when it starts.
+- `OPENIMP_T10_RC` (T10 only, **default on** since
+  claude/t1x-oem-rc-default): CBR, VBR and SMART run `src/rc_t10` instead
+  of the GOP controller (`RCT10_Start` / `RCT10_End` with the IDR
+  decision, the slice size and cmpx; re-encodes as on the T20, at most 4),
+  with the super-frame fix below (OEM VBR would code most pictures twice,
+  see "T10").  `OPENIMP_T10_RC=0` restores the GOP controller.  The log
+  shows `T10 rc: OEM <mode> ...` when it starts.
 - `OPENIMP_T20_RC_IAWARE` (T20 controller): an OpenIMP extra
   (`RcT20Params.iaware`), not OEM behaviour.  **Default on for CBR**, off
   for VBR/SMART; `=1` forces it on in every mode, `=0` off (OEM
@@ -375,7 +381,7 @@ Environment:
   (the price of meeting the rate).  `tests/rc_t20`: OEM vectors with it
   off, and a static scene (CBR 2.43 -> 1.16 x, VBR 2.01 -> 1.09 x).  The
   start log line shows `iaware` when it is on.
-- `OPENIMP_T10_RC_SUPERFRM` (with `OPENIMP_T10_RC=1`): an OpenIMP extra
+- `OPENIMP_T10_RC_SUPERFRM` (with the T10 OEM controller): an OpenIMP extra
   (`RcT10Params.superfrm_bits`), not OEM behaviour, **on by default**
   whenever the T10 OEM controller runs: the super-frame thresholds are
   compared in bits (19660800 / 14043429, as the T20 controller does)
@@ -395,4 +401,5 @@ the controller starts.  `tests/t30` (helix_encoder_test_t20) checks the
 plumbing: every slice QP of the encoder against a second controller fed the
 same slice sizes, cmpx and register values; with `OPENIMP_T20_MBRC=1` the
 QP table, its control word and the macroblock tuning in the command list;
-and that the default (no `OPENIMP_T20_RC`) reads no registers.
+that the default (no `OPENIMP_T20_RC`) reads the registers and that
+`OPENIMP_T20_RC=0` (the GOP controller) reads none.

@@ -211,28 +211,33 @@ qp - 3, P = qp, at most 51, below qp 3 the I QP is 51, no QP range);
 `OPENIMP_T21_EPRC=0` restores the old GOP controller (no extras),
 `=23` runs the T23 controller (A/B only).  Device test cam-D at
 1200 kbit/s: CBR 1326, VBR 1096, SMART 1071 kbit/s, decode clean (the old
-controller: CBR 570).  T10/T20 still run the GOP controller (below).
+controller: CBR 570).  T10/T20 run their OEM controllers by default
+(below).
 
-**T20 (since claude/t20-rc):** CBR, VBR and SMART run the OEM T20
-controller with `OPENIMP_T20_RC=1` (`src/rc_t20`, `docs/T20_RC.md`;
-default off until the camera test passes: the GOP controller below).  The OEM T20 build has its own controller
+**T20 (since claude/t20-rc, default since claude/t1x-oem-rc-default):**
+CBR, VBR and SMART run the OEM T20 controller (`src/rc_t20`,
+`docs/T20_RC.md`; `OPENIMP_T20_RC=0` restores the GOP controller below).
+The OEM T20 build has its own controller
 (`JZ_VPU_RC_*_T20`), not the T21 eprc; there iBiasLvl, gopQPStep,
 changePos, qualityLvl and gopRelation take effect, frmQPStep only until
 the scene classifier replaces it, staticTime and adaptiveMode are unused,
 and there is no I/P QP delta (FIXQP: I = qp - 3).  The table below is the
-T10, the T21 and the T20 by default (without `OPENIMP_T20_RC=1`).
+GOP controller of the T10 and T20 with `OPENIMP_T10_RC=0` /
+`OPENIMP_T20_RC=0`, and of the T21 with `OPENIMP_T21_EPRC=0`.
 
-**T10 (since claude/t20-rc, opt-in):** `OPENIMP_T10_RC=1` runs the OEM T10
-controller (`src/rc_t10`, `docs/T20_RC.md` "T10"), the older code base the
+**T10 (since claude/t20-rc, default since claude/t1x-oem-rc-default):**
+CBR, VBR and SMART run the OEM T10 controller (`src/rc_t10`, `docs/T20_RC.md` "T10"), the older code base the
 same OEM library selects on a T10: frmQPStep/gopQPStep/iBiasLvl/
 changePos/qualityLvl/gopRelation take effect, staticTime and the I/P delta
-do not; OEM VBR re-codes pictures above superFrm/1024 bits at QP + 3.
-Default off (the GOP controller below) until tested on a T10.
+do not; OEM VBR re-codes pictures above superFrm/1024 bits at QP + 3,
+OpenIMP compares in bits (`OPENIMP_T10_RC_SUPERFRM`, default on).
+`OPENIMP_T10_RC=0` restores the GOP controller below.
 
 ### What a write does on T10/T20/T21 (OpenIMP)
 
-(T21 runs the vendor eprc by default, see above; the table below describes
-the GOP controller of T10/T20 and of T21 with `OPENIMP_T21_EPRC=0`.)
+(T10/T20/T21 run the vendor controllers by default, see above; the table
+below describes the GOP controller of T10/T20 with `OPENIMP_T10_RC=0` /
+`OPENIMP_T20_RC=0` and of T21 with `OPENIMP_T21_EPRC=0`.)
 
 T10 runs the T20 build (`t30_soc_is_t10`, only the command list differs),
 so all three share this path.  The VPU has no rate control: OpenIMP's GOP
