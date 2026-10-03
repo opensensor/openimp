@@ -7,6 +7,11 @@
 /* OpenIMP-owned inputs to the T21 Helix command-list builder.  This is not
  * the private SDK structure recovered from libimp; every hardware address and
  * codec property used below is named and supplied explicitly. */
+#define T21_RING_P_FLAG    0x01u
+#define T21_RING_X10_START 0x02u
+#define T21_RING_X50_START 0x04u
+#define T21_RING_NO_WRAP   0x08u
+
 typedef struct {
     uint8_t slice_type; /* 0: I/IDR, 1: P */
     uint8_t mb_width;
@@ -47,6 +52,13 @@ typedef struct {
      * All zero (ref_share 0): the two separate reference pictures. */
     uint8_t ref_share;
     uint8_t ring_wrap_rows;
+    /* Experiments (OPENIMP_REF_SHARE_FLAGS, default T21_RING_P_FLAG):
+     * T21_RING_P_FLAG: the OEM share-mode P flag (ctx[21]: 0x50000 bit 6,
+     * 0x80030 bit 14, P pictures only); T21_RING_X10_START: 0x10014/18 =
+     * ring start instead of the ring reference; T21_RING_X50_START:
+     * 0x50074/78 = ring start instead of 0; T21_RING_NO_WRAP: 0xb0000
+     * bits 8..15 stay 0xff. */
+    uint8_t ring_flags;
     uint32_t ring_start_y, ring_start_c;
     uint32_t ring_end_y, ring_end_c;
     uint32_t *descriptor;

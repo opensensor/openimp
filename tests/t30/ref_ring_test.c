@@ -170,6 +170,9 @@ static void test_registers(int p)
     assert(get(off_pairs, 0xb0030) == c.raw[0]);
     assert(get(off_pairs, 0x6001c) == 0 && get(off_pairs, 0x60020) == 0);
     assert(get(off_pairs, 0xb0000) == 0x0002ffbdu);
+    assert((get(off_pairs, 0x80030) & 0x4000u) == 0);
+    if (p)
+        assert(get(off_pairs, 0x50000) == 0x547fdfb1u);
     base4 = get(off_pairs, 0x60004) & 0x40000000u;
     assert(base4 == 0);
 
@@ -180,8 +183,17 @@ static void test_registers(int p)
     c.ring_end_y = c.ring_start_y + 0x27d800u;
     c.ring_end_c = c.ring_start_c + 0x13ec00u;
     c.ring_wrap_rows = 15;
+    c.ring_flags = T21_RING_P_FLAG;
     assert(T21_H264_BuildDescriptor(&c, &on_pairs) == 0);
     assert(get(on_pairs, 0xb0000) == 0x00020fbdu);
+    /* the OEM share-mode P flag: 0x50000 bit 6 (P only), 0x80030 bit 14 */
+    assert((get(on_pairs, 0x80030) & 0x4000u) == (p ? 0x4000u : 0u));
+    if (p) {
+        assert(get(on_pairs, 0x50000) == 0x547fdff1u);
+        assert(get(on_pairs, 0x50074) == 0 && get(on_pairs, 0x50078) == 0);
+    }
+    assert(get(on_pairs, 0x10014) == c.reference_y);
+    assert(get(on_pairs, 0x10018) == c.reference_c);
     /* same register sequence, only values differ */
     assert(on_pairs == off_pairs);
     for (i = 0; i < on_pairs; i++)
@@ -213,8 +225,26 @@ static void test_registers(int p)
             assert(reg == 0x60004 || reg == 0x60014 || reg == 0x60018 ||
                    reg == 0x6001c || reg == 0x60020 || reg == 0xb0030 ||
                    reg == 0xb0034 || reg == 0x50110 || reg == 0x50114 ||
-                   reg == 0xb0000);
+                   reg == 0xb0000 || reg == 0x50000 || reg == 0x80030);
         }
+    }
+    /* experiment switches */
+    if (p) {
+        c.ring_flags = T21_RING_X10_START | T21_RING_X50_START |
+                       T21_RING_NO_WRAP;
+        assert(T21_H264_BuildDescriptor(&c, &on_pairs) == 0);
+        assert(get(on_pairs, 0x10014) == c.ring_start_y);
+        assert(get(on_pairs, 0x10018) == c.ring_start_c);
+        assert(get(on_pairs, 0x50074) == c.ring_start_y);
+        assert(get(on_pairs, 0x50078) == c.ring_start_c);
+        assert(get(on_pairs, 0xb0000) == 0x0002ffbdu);
+        assert(get(on_pairs, 0x50000) == 0x547fdfb1u);
+        assert((get(on_pairs, 0x80030) & 0x4000u) == 0);
+        c.ring_flags = 0;
+        assert(T21_H264_BuildDescriptor(&c, &on_pairs) == 0);
+        assert(get(on_pairs, 0x10014) == c.reference_y);
+        assert(get(on_pairs, 0x50074) == 0);
+        assert(get(on_pairs, 0xb0000) == 0x00020fbdu);
     }
     (void)t;
 }
@@ -242,7 +272,9 @@ static void test_picture(size_t i)
     c.ring_end_y = p.end_y;
     c.ring_end_c = p.end_c;
     c.ring_wrap_rows = p.wrap_rows;
+    c.ring_flags = T21_RING_P_FLAG;
     assert(T21_H264_BuildDescriptor(&c, &pairs) == 0);
+    assert((get(pairs, 0x80030) & 0x4000u) == (is_p ? 0x4000u : 0u));
     /* T23 adds bit 31 */
     assert((get(pairs, 0x60004) & 0x7fffffffu) ==
            (0x40000000u | (1080u << 14) | 1920u));
@@ -263,6 +295,7 @@ static void test_picture(size_t i)
         assert(get(pairs, 0x50070) == oem_1080p[i].ref_c);
         assert(get(pairs, 0x50110) == 0x03000000u);
         assert(get(pairs, 0x50114) == 0x03276000u);
+        assert(get(pairs, 0x50000) & 0x40u);
     }
 }
 

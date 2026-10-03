@@ -272,6 +272,8 @@ struct T30HelixEncoder {
 #if defined(HELIX_T21_SYNTAX)
     int ref_share;              /* OPENIMP_REF_SHARE=1: one reference ring */
     int ref_share_debug;        /* OPENIMP_REF_SHARE_DEBUG=1: ring log */
+    uint8_t ring_flags;         /* OPENIMP_REF_SHARE_FLAGS (T21_RING_*) */
+    unsigned int ring_dumped;   /* command lists logged so far */
     T21RefRing ring;            /* in reference[0].dma */
     uint64_t ring_n;            /* picture index (0 = IDR) of the last picture */
     uint32_t scratch_offset[4]; /* EMC per-macroblock buffer layout */
@@ -695,13 +697,15 @@ static void t30_fill_slice(T30HelixEncoder *encoder,
         slice->ring_end_y = pos.end_y;
         slice->ring_end_c = pos.end_c;
         slice->ring_wrap_rows = pos.wrap_rows;
+        slice->ring_flags = encoder->ring_flags;
         if (encoder->ref_share_debug)
             IMP_LOG_INFO("Encoder", "Helix ring: n=%llu %s recon=%08x/%08x "
-                         "ref=%08x/%08x wrap=%u",
+                         "ref=%08x/%08x wrap=%u flags=%x",
                          (unsigned long long)((idr || !encoder->have_reference)
                              ? 0u : encoder->ring_n + 1u),
                          idr ? "IDR" : "P", pos.recon_y, pos.recon_c,
-                         pos.ref_y, pos.ref_c, pos.wrap_rows);
+                         pos.ref_y, pos.ref_c, pos.wrap_rows,
+                         encoder->ring_flags);
     }
 #endif
     slice->bitstream = encoder->temporary.phys_addr + T30_SLICE_OFFSET;
@@ -1219,6 +1223,9 @@ static int t30_ref_share_alloc(T30HelixEncoder *encoder, const char *tag)
     encoder->ref_share = 1;
     env = getenv("OPENIMP_REF_SHARE_DEBUG");
     encoder->ref_share_debug = env && env[0] == '1';
+    env = getenv("OPENIMP_REF_SHARE_FLAGS");
+    encoder->ring_flags = env ? (uint8_t)strtoul(env, NULL, 16)
+                              : T21_RING_P_FLAG;
     IMP_LOG_INFO("Encoder", "Helix: reference sharing on (ring %uK instead "
                  "of 2 x %uK)", encoder->reference[0].dma.size >> 10,
                  t21_ref_pair_bytes(mbw, mbh) >> 11);
@@ -1581,6 +1588,35 @@ static void t30_pad_input_rows(const T30HelixEncoder *encoder,
 }
 #endif
 
+#if defined(HELIX_T21_SYNTAX)
+/* OPENIMP_REF_SHARE_DEBUG=1: the ring registers of the first command
+ * lists, to compare with the stock sequence. */
+static void t30_ring_dump(T30HelixEncoder *encoder, size_t pairs)
+{
+    static const uint32_t regs[] = {
+        0x10014, 0x10018, 0x50000, 0x5006c, 0x50070, 0x50074, 0x50078,
+        0x50110, 0x50114, 0x60004, 0x60008, 0x6000c, 0x60014, 0x60018,
+        0x6001c, 0x60020, 0x80030, 0xb0000, 0xb0008, 0xb0014, 0xb0018,
+        0xb0030, 0xb0034
+    };
+    const uint32_t *d = (const uint32_t *)(uintptr_t)encoder->descriptor.virt_addr;
+    char line[400];
+    size_t n = 0, i, j;
+
+    if (!encoder->ref_share_debug || encoder->ring_dumped >= 8u)
+        return;
+    encoder->ring_dumped++;
+    for (i = 0; i < sizeof(regs) / sizeof(regs[0]); i++)
+        for (j = 0; j < pairs; j++)
+            if ((d[2 * j + 1] & 0xffffcu) == regs[i]) {
+                n += (size_t)snprintf(line + n, sizeof(line) - n,
+                                      " %x=%08x", regs[i], d[2 * j]);
+                break;
+            }
+    IMP_LOG_INFO("Encoder", "Helix ring regs:%s", line);
+}
+#endif
+
 static int t30_helix_encode_job(T30HelixEncoder *encoder,
                                 const IMPFrameInfo *frame,
                                 HWStreamBuffer **stream_out);
@@ -1740,6 +1776,10 @@ static int t30_helix_encode_job(T30HelixEncoder *encoder,
                   strerror(errno));
         return -1;
     }
+#if defined(HELIX_T21_SYNTAX)
+    if (encoder->ref_share)
+        t30_ring_dump(encoder, descriptor_pairs);
+#endif
     /* Publish the CPU-built command list before the VPU fetches it.  The
      * VPU-written buffers hold no dirty lines: their allocation zeroes were
      * written back at create, and the CPU only ever reads the bitstream

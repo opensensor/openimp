@@ -172,12 +172,20 @@ static int t21_emit_motion_estimation(T21DescriptorWriter *writer,
                                            : config->raw[0]);
     MOTION_EMIT(0x50114, config->ref_share ? config->ring_start_c
                                            : config->raw[1]);
-    MOTION_EMIT(0x50074, 0);
-    MOTION_EMIT(0x50078, 0);
+    MOTION_EMIT(0x50074, (config->ref_share &&
+                          (config->ring_flags & T21_RING_X50_START))
+                             ? config->ring_start_y : 0);
+    MOTION_EMIT(0x50078, (config->ref_share &&
+                          (config->ring_flags & T21_RING_X50_START))
+                             ? config->ring_start_c : 0);
     MOTION_EMIT(0x50068, 0);
     MOTION_EMIT(0x5004c, 0x88080303u);
     MOTION_EMIT(0x5007c, 0);
-    MOTION_EMIT(0x50000, 0x547fdfb1u);
+    /* bit 6: the OEM share-mode P flag (SliceInit ctx[21]) */
+    MOTION_EMIT(0x50000, 0x547fdfb1u |
+                         ((config->ref_share &&
+                           (config->ring_flags & T21_RING_P_FLAG))
+                              ? 0x40u : 0u));
 
 #undef MOTION_EMIT
     return 0;
@@ -399,8 +407,12 @@ int T21_H264_BuildDescriptor(const T21H264SliceConfig *config,
     EMIT(0x1000c, 0);
     EMIT(0x10010, ((uint32_t)config->mb_width * 17u << 16) |
                   ((uint32_t)config->mb_width * 34u));
-    EMIT(0x10014, config->reference_y);
-    EMIT(0x10018, config->reference_c);
+    EMIT(0x10014, (config->ref_share &&
+                   (config->ring_flags & T21_RING_X10_START))
+                      ? config->ring_start_y : config->reference_y);
+    EMIT(0x10018, (config->ref_share &&
+                   (config->ring_flags & T21_RING_X10_START))
+                      ? config->ring_start_c : config->reference_c);
     EMIT(0x1001c, ((uint32_t)config->width << 16) |
                   ((uint32_t)config->width >> 1));
     EMIT(0x10020, 0);
@@ -423,9 +435,12 @@ int T21_H264_BuildDescriptor(const T21H264SliceConfig *config,
     EMIT(0x80078, 0x0b150b15u);
     EMIT(0x8019c, 0x0b5552d5u);
     EMIT(0x80028, T21_VRAM_TOPPA);
+    /* bit 14: the OEM share-mode P flag (SliceInit ctx[21]) */
     EMIT(0x80030, ((uint32_t)config->last_mby << 24) |
                   (((uint32_t)config->mb_width - 1u) << 16) |
-                  (config->slice_type ? 0x8002u : 0x8001u));
+                  (config->slice_type ? 0x8002u : 0x8001u) |
+                  ((config->slice_type && config->ref_share &&
+                    (config->ring_flags & T21_RING_P_FLAG)) ? 0x4000u : 0u));
     EMIT(0x80034, 0x0000c200u);
     EMIT(0x80038, 0xcc000000u);
     EMIT(0x8003c, 0);
@@ -550,8 +565,9 @@ int T21_H264_BuildDescriptor(const T21H264SliceConfig *config,
     EMIT(0xb0020, 0x00600060u);
     /* bits 8..15: ring wrap row of the reference reader (0xff: none) */
     EMIT(0xb0000, 0x000200bdu |
-                  ((config->ref_share ? (uint32_t)config->ring_wrap_rows
-                                      : 0xffu) << 8));
+                  ((config->ref_share &&
+                    !(config->ring_flags & T21_RING_NO_WRAP)
+                        ? (uint32_t)config->ring_wrap_rows : 0xffu) << 8));
     if (t21_emit_final(&writer, 0x40000,
                        0xc0000000u | ((uint32_t)config->qp << 8) |
                        ((uint32_t)config->slice_type << 4) |
