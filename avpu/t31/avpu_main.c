@@ -333,7 +333,6 @@ static long jz_cmd_flush_cache(unsigned long arg)
 	struct mm_struct *mm = current->mm;
 	struct vm_area_struct *vma;
 	unsigned long addr, end;
-	long ret = 0;
 
 	if (copy_from_user(&info, (void __user *)arg, sizeof(info))) {
 		return -EFAULT;
@@ -351,9 +350,13 @@ static long jz_cmd_flush_cache(unsigned long arg)
 
 	/* dma_cache_sync() runs cache instructions on the user address. A hole
 	 * or an inaccessible mapping in the range faults in kernel mode without
-	 * a fixup and oopses, so require readable VMAs over the whole range.
-	 * The lock is dropped before the cache operation because faulting in a
-	 * page there takes mmap_sem again. */
+	 * a fixup and oopses, so only the accessible VMAs that run contiguously
+	 * from the start address are flushed. A caller that rounds a short
+	 * range up past the end of its buffer keeps the part that matters
+	 * instead of having the whole flush refused. Only a start
+	 * address outside any accessible mapping is an error. The lock is
+	 * dropped before the cache operation because faulting in a page there
+	 * takes mmap_sem again. */
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 8, 0)
 	mmap_read_lock(mm);
 #else
@@ -362,10 +365,8 @@ static long jz_cmd_flush_cache(unsigned long arg)
 	while (addr < end) {
 		vma = find_vma(mm, addr);
 		if (!vma || vma->vm_start > addr ||
-		    !(vma->vm_flags & (VM_READ | VM_WRITE))) {
-			ret = -EFAULT;
+		    !(vma->vm_flags & (VM_READ | VM_WRITE)))
 			break;
-		}
 		addr = vma->vm_end;
 	}
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 8, 0)
@@ -373,8 +374,10 @@ static long jz_cmd_flush_cache(unsigned long arg)
 #else
 	up_read(&mm->mmap_sem);
 #endif
-	if (ret)
-		return ret;
+	if (addr == info.addr)
+		return -EFAULT;
+	if (addr < end)
+		info.len = addr - info.addr;
 
 	dma_cache_sync(NULL, (void *)(unsigned long)info.addr, info.len,
 		       info.dir);
