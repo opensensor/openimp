@@ -2065,18 +2065,18 @@ static int eprc_repeat_judge(Eprc *rc, int may_repeat)
         delta = -1;
         if (ratio < 1.0f) {
             if (qp < 52) {
-                double num = pow(2.0, (double)((qp - 4) / 6));
+                double num = eprc_pow2i((qp - 4) / 6);
                 for (s1 = 51; s1 >= qp; s1--) {
-                    if (r < num / pow(2.0, (double)((s1 - 4) / 6))) {
+                    if (r < num / eprc_pow2i((s1 - 4) / 6)) {
                         delta = s1 - qp;
                         break;
                     }
                 }
             }
         } else if (qp >= 0) {
-            double num = pow(2.0, (double)((qp - 4) / 6));
+            double num = eprc_pow2i((qp - 4) / 6);
             for (s1 = qp; s1 >= 0; s1--) {
-                if (r < num / pow(2.0, (double)((s1 - 4) / 6))) {
+                if (r < num / eprc_pow2i((s1 - 4) / 6)) {
                     delta = s1 - qp;
                     break;
                 }
