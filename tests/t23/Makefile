@@ -9,6 +9,7 @@ ZERO_COPY_TEST_BIN := $(BUILD)/t23-helix-zero-copy-test
 FAKE_HELIXD_BIN := $(BUILD)/t23-fake-helixd
 IVS_SRC := $(PROJECT_DIR)/src/t31
 IVS_DEPS := $(IVS_SRC)/openimp_t31_ivs_move.c $(IVS_SRC)/openimp_t31_ivs_move.h \
+	$(IVS_SRC)/openimp_ivs_move_v2.c $(IVS_SRC)/openimp_ivs_move_v2.h \
 	$(IVS_SRC)/openimp_t31_ivs_abi.h
 IVS_DIGEST_T31 := $(BUILD)/t23-ivs-digest-t31abi
 IVS_DIGEST_T23 := $(BUILD)/t23-ivs-digest-t23abi
@@ -127,6 +128,7 @@ $(IVS_FRAMEWORK): ivs_framework_test.c $(IVS_SRC)/openimp_t31_ivs.c \
 	$(CC) $(CFLAGS) -DPLATFORM_T23 -I$(PROJECT_DIR)/include \
 		-I$(PROJECT_DIR)/src -I$(IVS_SRC) ivs_framework_test.c \
 		$(IVS_SRC)/openimp_t31_ivs.c $(IVS_SRC)/openimp_t31_ivs_move.c \
+		$(IVS_SRC)/openimp_ivs_move_v2.c \
 		-pthread -o "$@"
 
 # IMP_Encoder_SetJpegeQl tables in the software JPEG encoder. hw_encoder.c
@@ -216,3 +218,18 @@ $(T23TUNE_BIN): t23tune.c $(PROJECT_DIR)/src/isp/isp_t23_tuning.c
 		-I$(PROJECT_DIR)/include -I$(PROJECT_DIR)/src \
 		t23tune.c -lpthread -o "$@"
 	$(CROSS_COMPILE)strip "$@"
+
+# Motion v2 (opt-in, beyond vendor): bit-identity with v2 off / in shadow
+# mode and the v2 behaviour, through the IVS framework (T23 ABI).
+IVS_MOVE_V2 := $(BUILD)/t23-ivs-move-v2-test
+$(IVS_MOVE_V2): ivs_move_v2_test.c $(IVS_SRC)/openimp_t31_ivs.c \
+	$(IVS_SRC)/openimp_t31_ivs.h $(IVS_DEPS) \
+	$(PROJECT_DIR)/include/imp/openimp_ivs_move_ex.h
+	mkdir -p "$(dir $@)"
+	$(CC) $(CFLAGS) -DPLATFORM_T23 -fno-pie -no-pie -I$(PROJECT_DIR)/include \
+		-I$(PROJECT_DIR)/src -I$(IVS_SRC) ivs_move_v2_test.c \
+		$(IVS_SRC)/openimp_t31_ivs.c $(IVS_SRC)/openimp_t31_ivs_move.c \
+		$(IVS_SRC)/openimp_ivs_move_v2.c -pthread -o "$@"
+
+ivs-move-v2: $(IVS_MOVE_V2)
+	$(IVS_MOVE_V2)

@@ -104,7 +104,7 @@ done
 "$compiler" $strict_flags $repo_includes \
     -c "$project_dir/src/t23/openimp_t23_osd.c" \
     -o "$output_dir/t41_osd.o"
-for source in openimp_t31_ivs openimp_t31_ivs_move
+for source in openimp_t31_ivs openimp_t31_ivs_move openimp_ivs_move_v2
 do
     "$compiler" $strict_flags $repo_includes -I"$project_dir/src/t31" \
         -c "$project_dir/src/t31/$source.c" \
@@ -145,6 +145,7 @@ done
     "$output_dir/t41_osd.o" \
     "$output_dir/t41_ivs.o" \
     "$output_dir/t41_ivs_move.o" \
+    "$output_dir/t41_openimp_ivs_move_v2.o" \
     "$output_dir/t40_ep1.o" \
     "$output_dir/t41_command_layout.o" \
     "$output_dir/t41_command_builder.o" \

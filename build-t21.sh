@@ -95,6 +95,7 @@ compile t21_state src/t31/openimp_t31_state.c -Werror
 compile t21_services src/t31/openimp_t31_services.c -Werror
 compile t21_ivs src/t31/openimp_t31_ivs.c -Werror
 compile t21_ivs_move src/t31/openimp_t31_ivs_move.c -Werror
+compile t21_ivs_move_v2 src/t31/openimp_ivs_move_v2.c -Werror
 compile t21_platform_services src/t23/openimp_t23_services.c -Werror
 compile t21_persist src/t23/openimp_t23_persist.c -Werror
 compile t21_audio src/t31/openimp_t31_audio.c -Werror
@@ -178,6 +179,7 @@ esac
     "$output_dir/t21_helix_bitstream.o" \
     "$output_dir/t21_ivs.o" \
     "$output_dir/t21_ivs_move.o" \
+    "$output_dir/t21_ivs_move_v2.o" \
     $rc_t20_objects \
     -ldl -lpthread -lrt -lm
 

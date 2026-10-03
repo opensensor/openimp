@@ -110,7 +110,8 @@ helix_jpeg_test_t23: $(HJPEG_DEPS)
 # addresses: no PIE.
 IVS_SRC := $(ROOT)/src/t31
 IVS_SOURCES := $(ROOT)/tests/t23/ivs_framework_test.c \
-	$(IVS_SRC)/openimp_t31_ivs.c $(IVS_SRC)/openimp_t31_ivs_move.c
+	$(IVS_SRC)/openimp_t31_ivs.c $(IVS_SRC)/openimp_t31_ivs_move.c \
+	$(IVS_SRC)/openimp_ivs_move_v2.c
 IVS_DEPS := $(IVS_SOURCES) $(IVS_SRC)/openimp_t31_ivs.h \
 	$(IVS_SRC)/openimp_t31_ivs_abi.h $(IVS_SRC)/openimp_t31_ivs_move.h
 

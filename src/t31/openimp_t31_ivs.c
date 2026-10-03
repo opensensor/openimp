@@ -36,7 +36,9 @@
 
 #include <errno.h>
 #include <pthread.h>
+#include <stdio.h>
 #include <semaphore.h>
+#include <stddef.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -51,6 +53,8 @@
 #include "openimp_t31_ivs.h"
 #include "openimp_t31_ivs_abi.h"
 #include "openimp_t31_ivs_move.h"
+#include "openimp_ivs_move_v2.h"
+#include "imp/openimp_ivs_move_ex.h"
 
 #define T31_IVS_GROUPS   1
 #define T31_IVS_CHANNELS 64
@@ -125,13 +129,143 @@ struct t31_move_iface {
     IMP_IVS_MoveParam param;        /* inf.param, written by SetParam */
 };
 
+/* Motion v2 (beyond vendor, opt-in, openimp_ivs_move_v2.c). With
+ * cfg.features == 0 none of it runs and the vendor path is untouched; the
+ * extension ring only records the vendor bits for MoveGetResultEx. */
+struct t31_move_v2 {
+    IvsMoveV2 *alg;                 /* created when first switched on */
+    OpenIMP_IVS_MoveConfigEx cfg;   /* applied, IVS thread */
+    int on;                         /* cfg.features != 0 and alg exists */
+    int fed;                        /* capture: this frame went to alg */
+    pthread_mutex_t lock;           /* pending config */
+    int dirty;
+    OpenIMP_IVS_MoveConfigEx pending;
+    int log;                        /* OPENIMP_MOTION_V2_LOG=1 */
+    int isp_ok;                     /* 1 mode, 2 gain getter usable */
+    int64_t isp_next_ms;
+    int isp_mode;
+    uint32_t isp_gain;
+    uint32_t seq;
+    int last_legacy, last_v2;
+    OpenIMP_IVS_MoveOutputEx ring[T31_IVS_RESULTS];
+};
+
 struct t31_move_priv {
     T31IvsMove *alg;
     int pending;
     int warned;
     int rd, wr;
     IMP_IVS_MoveOutput ring[T31_IVS_RESULTS];
+    struct t31_move_v2 v2;
 };
+
+#if defined(PLATFORM_T41)
+extern int IMP_ISP_Tuning_GetISPRunningMode(int num, int *mode)
+    __attribute__((weak));
+#else
+extern int IMP_ISP_Tuning_GetISPRunningMode(int *mode) __attribute__((weak));
+extern int IMP_ISP_Tuning_GetTotalGain(uint32_t *gain) __attribute__((weak));
+#endif
+
+static int64_t v2_now_ms(void)
+{
+    struct timespec ts;
+
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (int64_t)ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
+}
+
+/* IVS thread: make the pending configuration current. */
+static void v2_apply_config(struct t31_move_priv *p)
+{
+    struct t31_move_v2 *v = &p->v2;
+    OpenIMP_IVS_MoveConfigEx cfg;
+    int dirty;
+
+    pthread_mutex_lock(&v->lock);
+    dirty = v->dirty;
+    v->dirty = 0;
+    cfg = v->pending;
+    pthread_mutex_unlock(&v->lock);
+    if (!dirty)
+        return;
+    if (cfg.features && !v->alg) {
+        IMP_IVS_MoveParam param;
+        uint32_t width, height;
+
+        t31_ivs_move_get_param(p->alg, &param);
+        t31_ivs_move_frame_size(p->alg, &width, &height);
+        v->alg = ivs_move_v2_create(width, height,
+                                    (uint32_t)(param.skipFrameCnt > 0 ?
+                                               param.skipFrameCnt + 1 : 1),
+                                    &cfg);
+        if (!v->alg)
+            IMP_LOG_ERR("IVS", "move v2: cannot create (%ux%u), v2 off",
+                        width, height);
+    } else if (v->alg) {
+        ivs_move_v2_set_config(v->alg, &cfg);
+    }
+    v->cfg = cfg;
+    v->on = cfg.features && v->alg;
+    v->isp_ok = 3;
+    if (v->log)
+        fprintf(stderr, "[openimp] IVS move v2: features 0x%x %s\n",
+                cfg.features, v->on ? "on" : "off");
+}
+
+/* IVS thread, at most every 250 ms: ISP running mode and total gain. */
+static void v2_poll_isp(struct t31_move_v2 *v, int64_t now)
+{
+    if (now < v->isp_next_ms)
+        return;
+    v->isp_next_ms = now + 250;
+    if (!(v->cfg.features & OPENIMP_MOVE_F_SUPPRESS))
+        return;
+    if ((v->isp_ok & 1) && IMP_ISP_Tuning_GetISPRunningMode) {
+        int mode = 0;
+#if defined(PLATFORM_T41)
+        if (IMP_ISP_Tuning_GetISPRunningMode(0, &mode) == 0)
+#else
+        if (IMP_ISP_Tuning_GetISPRunningMode(&mode) == 0)
+#endif
+            v->isp_mode = mode;
+        else
+            v->isp_ok &= ~1;
+    }
+#if !defined(PLATFORM_T41)
+    if ((v->isp_ok & 2) && IMP_ISP_Tuning_GetTotalGain) {
+        uint32_t gain = 0;
+
+        if (IMP_ISP_Tuning_GetTotalGain(&gain) == 0)
+            v->isp_gain = gain;
+        else
+            v->isp_ok &= ~2;
+    }
+#endif
+}
+
+static void v2_log_edges(struct t31_move_v2 *v, const OpenIMP_IVS_MoveOutputEx *ex)
+{
+    int legacy = (ex->legacy_roi[0] | ex->legacy_roi[1]) != 0;
+    int any = ex->obj_cnt != 0;
+
+    if (legacy != v->last_legacy)
+        fprintf(stderr, "[openimp] IVS move v2: seq %u legacy %d\n",
+                ex->seq, legacy);
+    if (any != v->last_v2 || (ex->flags & OPENIMP_MOVE_EX_SUPPRESSED &&
+                              ex->seq % 8 == 0)) {
+        fprintf(stderr, "[openimp] IVS move v2: seq %u v2 %d supp 0x%x",
+                ex->seq, any, ex->suppress);
+        if (any)
+            fprintf(stderr, " obj %d,%d-%d,%d s%u c%u a%u",
+                    ex->obj[0].x0, ex->obj[0].y0, ex->obj[0].x1,
+                    ex->obj[0].y1, ex->obj[0].strength, ex->obj[0].cells,
+                    ex->obj[0].age);
+        fprintf(stderr, " n%u\n", ex->obj_cnt);
+    }
+    v->last_legacy = legacy;
+    v->last_v2 = any;
+}
 
 static int move_init(IMPIVSInterface *inf)
 {
@@ -148,6 +282,17 @@ static int move_init(IMPIVSInterface *inf)
         free(p);
         return -1;
     }
+    pthread_mutex_init(&p->v2.lock, NULL);
+    p->v2.isp_mode = -1;
+    {
+        const char *log = getenv("OPENIMP_MOTION_V2_LOG");
+
+        p->v2.log = log && *log == '1';
+    }
+    ivs_move_v2_config_env(&p->v2.pending);
+    p->v2.cfg = p->v2.pending;
+    p->v2.cfg.features = 0;
+    p->v2.dirty = p->v2.pending.features != 0;
     inf->priv = p;
     return 0;
 }
@@ -159,6 +304,8 @@ static void move_exit(IMPIVSInterface *inf)
     if (!p)
         return;
     t31_ivs_move_destroy(p->alg);
+    ivs_move_v2_destroy(p->v2.alg);
+    pthread_mutex_destroy(&p->v2.lock);
     free(p);
     inf->priv = NULL;
 }
@@ -182,6 +329,15 @@ static int move_preprocess(IMPIVSInterface *inf, T31IVSFrameInfo *frame)
     t31_ivs_move_feed(p->alg,
                       need ? (const uint8_t *)(uintptr_t)frame->virAddr : NULL,
                       stride);
+    p->v2.fed = 0;
+    if (p->v2.on && ivs_move_v2_next_frame(p->v2.alg)) {
+        if (!need)
+            ivs_invalidate(frame->virAddr, stride * height);
+        ivs_move_v2_feed(p->v2.alg,
+                         (const uint8_t *)(uintptr_t)frame->virAddr, stride,
+                         frame->timeStamp);
+        p->v2.fed = 1;
+    }
     p->pending = 1;
     return 0;
 }
@@ -195,9 +351,62 @@ static int move_process(IMPIVSInterface *inf, T31IVSFrameInfo *frame)
     if (!p || !p->pending)
         return 1;
     p->pending = 0;
+    if (p->v2.on && p->v2.fed) {
+        int64_t now = v2_now_ms();
+
+        IMP_IVS_MoveParam param;
+        int i, sense = -1;
+
+        t31_ivs_move_get_param(p->alg, &param);
+        for (i = 0; i < param.roiRectCnt && i < IMP_IVS_MOVE_MAX_ROI_CNT; i++)
+            if (param.sense[i] > sense)
+                sense = param.sense[i];
+        v2_poll_isp(&p->v2, now);
+        ivs_move_v2_run(p->v2.alg, p->v2.isp_mode, p->v2.isp_gain, now, sense);
+    }
     ret = t31_ivs_move_run(p->alg, p->ring[p->wr].retRoi);
-    if (ret == 0)
+    if (ret == 0) {
+        OpenIMP_IVS_MoveOutputEx *ex = &p->v2.ring[p->wr];
+        int *roi = p->ring[p->wr].retRoi;
+        IMP_IVS_MoveParam param;
+        uint32_t width, height;
+        int i, cnt;
+
+        t31_ivs_move_get_param(p->alg, &param);
+        t31_ivs_move_frame_size(p->alg, &width, &height);
+        cnt = param.roiRectCnt < 0 ? 0 :
+              param.roiRectCnt > IMP_IVS_MOVE_MAX_ROI_CNT ?
+              IMP_IVS_MOVE_MAX_ROI_CNT : param.roiRectCnt;
+        memset(ex, 0, offsetof(OpenIMP_IVS_MoveOutputEx, obj));
+        ex->size = sizeof(*ex);
+        ex->version = OPENIMP_IVS_MOVE_EX_VERSION;
+        ex->seq = ++p->v2.seq;
+        ex->frame_w = width;
+        ex->frame_h = height;
+        for (i = 0; i < cnt; i++)
+            if (roi[i])
+                ex->legacy_roi[i >> 5] |= 1u << (i & 31);
+        if (p->v2.on) {
+            int x0[IMP_IVS_MOVE_MAX_ROI_CNT], y0[IMP_IVS_MOVE_MAX_ROI_CNT];
+            int x1[IMP_IVS_MOVE_MAX_ROI_CNT], y1[IMP_IVS_MOVE_MAX_ROI_CNT];
+            int override = (p->v2.cfg.features & OPENIMP_MOVE_F_OVERRIDE) != 0;
+
+            for (i = 0; i < cnt; i++) {
+                x0[i] = param.roiRect[i].p0.x;
+                y0[i] = param.roiRect[i].p0.y;
+                x1[i] = param.roiRect[i].p1.x;
+                y1[i] = param.roiRect[i].p1.y;
+            }
+            ivs_move_v2_result(p->v2.alg, ex, cnt, x0, y0, x1, y1,
+                               override ? roi : NULL);
+            if (override)
+                ex->flags |= OPENIMP_MOVE_EX_OVERRIDE;
+            if (p->v2.log)
+                v2_log_edges(&p->v2, ex);
+        }
         p->wr = (p->wr + 1) % T31_IVS_RESULTS;
+    }
+    v2_apply_config(p);
     return ret;
 }
 
@@ -1194,5 +1403,92 @@ int IMP_IVS_SetParam(int channel, void *param)
     memcpy(c->inf->param, param, (size_t)c->inf->paramSize);
     c->param_changed = 1;
     pthread_mutex_unlock(&ivs_lock);
+    return 0;
+}
+
+/* ============ beyond vendor: move extension (openimp_ivs_move_ex.h) ============ */
+
+/* Locks ivs_lock and returns the move private data of the channel, or NULL
+ * (lock released, errno set). */
+static struct t31_move_priv *ivs_move_priv_lock(int channel)
+{
+    struct t31_ivs_channel *c;
+
+    if (!ivs_valid_channel(channel)) {
+        errno = EINVAL;
+        return NULL;
+    }
+    c = &ivs_channels[channel];
+    pthread_mutex_lock(&ivs_lock);
+    if (c->state != IVS_CHN_ACTIVE || !c->inf ||
+        c->inf->preProcessSync != move_preprocess || !c->inf->priv) {
+        pthread_mutex_unlock(&ivs_lock);
+        errno = ENOENT;
+        return NULL;
+    }
+    return c->inf->priv;
+}
+
+int OpenIMP_IVS_MoveGetResultEx(int channel, OpenIMP_IVS_MoveOutputEx *out)
+{
+    struct t31_move_priv *p;
+    uint32_t n;
+
+    if (!out || out->size < 16) {
+        errno = EINVAL;
+        return -1;
+    }
+    p = ivs_move_priv_lock(channel);
+    if (!p)
+        return -1;
+    n = out->size < sizeof(*out) ? out->size : (uint32_t)sizeof(*out);
+    /* the entry of the result GetResult handed out last */
+    memcpy(out, &p->v2.ring[(p->rd + T31_IVS_RESULTS - 1) % T31_IVS_RESULTS],
+           n);
+    pthread_mutex_unlock(&ivs_lock);
+    out->size = n;
+    out->version = OPENIMP_IVS_MOVE_EX_VERSION;
+    return 0;
+}
+
+int OpenIMP_IVS_MoveSetConfigEx(int channel, const OpenIMP_IVS_MoveConfigEx *cfg)
+{
+    struct t31_move_priv *p;
+
+    if (!cfg || cfg->size < 12) {
+        errno = EINVAL;
+        return -1;
+    }
+    p = ivs_move_priv_lock(channel);
+    if (!p)
+        return -1;
+    pthread_mutex_lock(&p->v2.lock);
+    ivs_move_v2_config_sanitize(&p->v2.pending, cfg);
+    p->v2.dirty = 1;
+    pthread_mutex_unlock(&p->v2.lock);
+    pthread_mutex_unlock(&ivs_lock);
+    return 0;
+}
+
+int OpenIMP_IVS_MoveGetConfigEx(int channel, OpenIMP_IVS_MoveConfigEx *cfg)
+{
+    struct t31_move_priv *p;
+    OpenIMP_IVS_MoveConfigEx c;
+    uint32_t n;
+
+    if (!cfg || cfg->size < 12) {
+        errno = EINVAL;
+        return -1;
+    }
+    p = ivs_move_priv_lock(channel);
+    if (!p)
+        return -1;
+    pthread_mutex_lock(&p->v2.lock);
+    c = p->v2.dirty ? p->v2.pending : p->v2.cfg;
+    pthread_mutex_unlock(&p->v2.lock);
+    pthread_mutex_unlock(&ivs_lock);
+    n = cfg->size < sizeof(c) ? cfg->size : (uint32_t)sizeof(c);
+    memcpy(cfg, &c, n);
+    cfg->size = n;
     return 0;
 }

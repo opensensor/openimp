@@ -13,6 +13,7 @@
         OpenIMP_P0_GetState;
         OpenIMP_P1_GetState;
         OpenIMP_P2_DMAState;
+        OpenIMP_IVS_Move*;
     local:
         *;
 };

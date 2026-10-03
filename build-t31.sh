@@ -77,6 +77,7 @@ compile t31_state src/t31/openimp_t31_state.c -Werror
 compile t31_services src/t31/openimp_t31_services.c -Werror
 compile t31_ivs src/t31/openimp_t31_ivs.c -Werror
 compile t31_ivs_move src/t31/openimp_t31_ivs_move.c -Werror
+compile t31_ivs_move_v2 src/t31/openimp_ivs_move_v2.c -Werror
 compile t31_audio src/t31/openimp_t31_audio.c -Werror
 compile openimp_aec src/audio/openimp_aec.c -Werror -I"$project_dir/src/audio"
 compile audio_codec src/audio/openimp_audio_codec.c -Werror
@@ -119,6 +120,7 @@ compile t31_extras src/t31/openimp_t31_extras.c -Werror
     "$output_dir/t31_services.o" \
     "$output_dir/t31_ivs.o" \
     "$output_dir/t31_ivs_move.o" \
+    "$output_dir/t31_ivs_move_v2.o" \
     "$output_dir/t31_audio.o" \
     "$output_dir/openimp_aec.o" \
     "$output_dir/audio_codec.o" \

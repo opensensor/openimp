@@ -92,6 +92,7 @@ compile t23_state src/t31/openimp_t31_state.c -Werror
 compile t23_services src/t31/openimp_t31_services.c -Werror
 compile t30_ivs src/t31/openimp_t31_ivs.c -Werror
 compile t30_ivs_move src/t31/openimp_t31_ivs_move.c -Werror
+compile t30_ivs_move_v2 src/t31/openimp_ivs_move_v2.c -Werror
 compile t23_platform_services src/t23/openimp_t23_services.c -Werror
 compile t23_persist src/t23/openimp_t23_persist.c -Werror
 compile t30_helix src/t30/t30_helix_encoder.c -Werror
@@ -143,6 +144,7 @@ compile t30_helix_jpeg src/t30/helix_jpeg.c -Werror
     "$output_dir/t30_helix_jpeg.o" \
     "$output_dir/t30_ivs.o" \
     "$output_dir/t30_ivs_move.o" \
+    "$output_dir/t30_ivs_move_v2.o" \
 	-ldl -lpthread -lrt
 
 "$compiler" $base_flags $repo_includes -Wall -Wextra -Werror \
