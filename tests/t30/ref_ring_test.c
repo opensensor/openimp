@@ -163,6 +163,17 @@ int main(void)
     /* 1080p: 3.7 MiB instead of 2 x 3.0 MiB */
     assert(t21_ref_ring_bytes(120, 68) == 3870720u);
     assert(t21_ref_ring_bytes(120, 68) < 2u * (1920u * 1088u * 3u / 2u));
+    /* the sizes the device uses: 1080p and 360p both share (ring 3.69 MiB
+     * against 6.0 MiB, 585 KiB against 690 KiB), tiny pictures do not */
+    assert(t21_ref_ring_saves(120, 68));
+    assert(t21_ref_pair_bytes(120, 68) == 6266880u);
+    assert(t21_ref_ring_saves(40, 23));
+    assert(t21_ref_ring_bytes(40, 23) == 599040u);
+    assert(t21_ref_pair_bytes(40, 23) == 706560u);
+    assert(t21_ref_ring_saves(80, 45));
+    assert(!t21_ref_ring_saves(20, 12));     /* 320x180: H <= 256 */
+    assert(!t21_ref_ring_saves(1, 1));
+    assert(!t21_ref_ring_saves(40, 16));     /* 640x256: ring == pair */
     test_layout(120, 68);
     test_layout(80, 45);
     test_layout(40, 23);

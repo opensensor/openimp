@@ -1194,7 +1194,7 @@ static int t30_ref_share_alloc(T30HelixEncoder *encoder, const char *tag)
 
     if (!env || env[0] != '1')
         return 0;
-    if (t21_ref_ring_bytes(mbw, mbh) >= mbw * mbh * 384u) {
+    if (!t21_ref_ring_saves(mbw, mbh)) {
         /* the 256 extra lines cost more than the second picture saves */
         IMP_LOG_INFO("Encoder", "Helix: reference sharing skipped, picture "
                      "too small");
@@ -1210,7 +1210,7 @@ static int t30_ref_share_alloc(T30HelixEncoder *encoder, const char *tag)
     encoder->ref_share = 1;
     IMP_LOG_INFO("Encoder", "Helix: reference sharing on (ring %uK instead "
                  "of 2 x %uK)", encoder->reference[0].dma.size >> 10,
-                 (mbw * mbh * 384u) >> 10);
+                 t21_ref_pair_bytes(mbw, mbh) >> 11);
     return 0;
 }
 #else

@@ -40,6 +40,21 @@ static inline uint32_t t21_ref_ring_bytes(uint32_t mb_width,
            (mb_height * 8u + T21_REF_RING_EXTRA_LINES / 2u) * stride;
 }
 
+/* Bytes of the two separate reference pictures (one macroblock: 256 luma
+ * + 128 chroma bytes per picture). */
+static inline uint32_t t21_ref_pair_bytes(uint32_t mb_width,
+                                          uint32_t mb_height)
+{
+    return 2u * mb_width * mb_height * 384u;
+}
+
+/* The ring only pays off when it is smaller than the two references. */
+static inline int t21_ref_ring_saves(uint32_t mb_width, uint32_t mb_height)
+{
+    return t21_ref_ring_bytes(mb_width, mb_height) <
+           t21_ref_pair_bytes(mb_width, mb_height);
+}
+
 static inline void t21_ref_ring_init(T21RefRing *r, uint32_t base,
                                      uint32_t mb_width, uint32_t mb_height)
 {
