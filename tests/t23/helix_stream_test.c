@@ -299,7 +299,10 @@ enum { FAULT_NONE, FAULT_BSFULL, FAULT_TIMEOUT, FAULT_LATE, FAULT_ODD,
 static int next_fault;
 static unsigned int jobs;
 static unsigned int channels_open;
+static unsigned int reg_reads;
 static uint32_t last_qp_seen[2];
+static uint32_t qp_log[8];
+static unsigned int qp_log_n;
 
 int __real_open(const char *path, int flags, ...);
 int __real_close(int fd);
@@ -395,6 +398,9 @@ static uint32_t encode_picture(const uint32_t *list, size_t pairs, int p,
     assert(mbw == MBW && mbh == MBH && stride == WIDTH);
     assert((sde & 0xffu) == (p ? 0x32u : 0x31u));
     last_qp_seen[p] = qp;
+    if (qp_log_n < 8u)
+        qp_log[qp_log_n] = qp;
+    qp_log_n++;
     memset(&c, 0, sizeof(c));
     memset(out, 0, capacity);
     c.out = out;
@@ -470,6 +476,13 @@ int __wrap_ioctl(int fd, unsigned long request, ...)
         return 0;
     case 0xc0586302u:                       /* RUN */
         break;
+    case 0xc0586307u:                       /* WOR_VPU_REG: read */
+        /* struct reg_info { paddr, value, dir } at the node start */
+        assert(node->clist >= 0x13100000u && node->clist < 0x13200000u);
+        assert((node->clist & 3u) == 0u && node->mdelay == 0u);
+        node->vlist = (node->clist * 2654435761u) >> (node->clist & 15u);
+        reg_reads++;
+        return 0;
     default:
         fprintf(stderr, "fake VPU: unexpected ioctl 0x%lx\n", request);
         abort();
@@ -825,6 +838,68 @@ static void rc_params(HWEncoderParams *params, uint32_t mode)
     params->max_qp = 45;
 }
 
+static uint32_t rc_run(const HWEncoderParams *params,
+                       uint32_t frm_step, uint32_t gop_step,
+                       uint32_t *first_idr_qp);
+
+/* The OEM picture rate control (src/eprc) in the encoder: the default
+ * runs it for SMART only, OPENIMP_T23_EPRC=1 for CBR/VBR too; the encoder
+ * reads the 25 Helix statistics registers after every picture and codes
+ * with the controller's QPs (same sequence as the module on its own). */
+static void eprc_test(void)
+{
+    HWEncoderParams params;
+    uint32_t first, reads;
+    static const uint32_t modes[3] = { HW_RC_MODE_CBR, HW_RC_MODE_VBR,
+                                       HW_RC_MODE_VBR };
+    unsigned int k, jobs_before;
+
+    unsetenv("OPENIMP_T23_EPRC");
+    rc_params(&params, HW_RC_MODE_VBR);
+    params.rc_flags = HW_RC_FLAG_APP;
+    reads = reg_reads;
+    (void)rc_run(&params, 3, 15, &first);
+    assert(reg_reads == reads);              /* VBR: GOP controller */
+
+    /* SMART: OEM controller.  The fake core's pictures do not shrink with
+     * the QP and exceed the OEM limit (VBV size from the picture size), so
+     * the first IDR starts at the OEM first-IDR QP 36 and is coded again
+     * with the QP raised (OEM FRAME_REPEATE_JUDGE, up to QP 51, at most
+     * fps/2 times). */
+    setenv("OPENIMP_T23_EPRC", "", 1);
+    for (k = 0; k < 4u; k++) {
+        rc_params(&params, k < 3u ? modes[k] : HW_RC_MODE_VBR);
+        params.max_qp = 51;
+        params.rc_flags = HW_RC_FLAG_APP |
+                          (k >= 2u ? HW_RC_FLAG_SMART : 0u);
+        params.static_time = 2;
+        params.change_pos = 80;
+        params.quality_level = 4;
+        if (k == 3u)
+            setenv("OPENIMP_T23_EPRC", "0", 1);
+        else if (k < 2u)
+            setenv("OPENIMP_T23_EPRC", "1", 1);
+        else
+            unsetenv("OPENIMP_T23_EPRC");
+        reads = reg_reads;
+        jobs_before = jobs;
+        qp_log_n = 0;
+        (void)rc_run(&params, 0, 0, &first);
+        if (k == 3u) {
+            assert(reg_reads == reads);      /* OPENIMP_T23_EPRC=0 */
+            continue;
+        }
+        assert(reg_reads - reads >= 40u * 25u);
+        assert(qp_log[0] == 36u);
+        assert(qp_log[1] > 36u && qp_log[2] > qp_log[1]);
+        assert(first == 51u);
+        assert(jobs - jobs_before > 40u);
+    }
+    unsetenv("OPENIMP_T23_EPRC");
+    printf("eprc: OEM picture rate control in the encoder (%u register "
+           "reads)\n", reg_reads);
+}
+
 /* Runs 40 pictures with a bitrate drop at picture 7 and returns the
  * largest QP change between consecutive P pictures; checks the I bias and
  * the I-to-P limit on the way. */
@@ -978,6 +1053,10 @@ static int rc_test(void)
     HWEncoderParams params;
     uint32_t first, plain_pp, limited_pp;
 
+    /* the checks below are for the GOP controller with the band mapping
+     * (OPENIMP_T23_EPRC=0); the OEM controller follows */
+    setenv("OPENIMP_T23_EPRC", "0", 1);
+
     /* no extras: the historic controller, I and P at the same QP; the
      * bitrate drop moves the P QP by more than one step at once */
     rc_params(&params, HW_RC_MODE_CBR);
@@ -1070,6 +1149,7 @@ static int rc_test(void)
 
     printf("rate-control extras: P-to-P QP change %u without, %u with "
            "frmQPStep 1\n", plain_pp, limited_pp);
+    eprc_test();
     overflow_test();
     return 0;
 }
