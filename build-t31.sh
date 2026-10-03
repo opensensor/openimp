@@ -31,6 +31,8 @@ mkdir -p "$output_dir"
 
 base_flags="-std=gnu99 -O2 -mabi=32 -march=mips32r2 -mabicalls"
 base_flags="$base_flags -fPIC -G0 -fno-stack-protector -DPLATFORM_T31"
+# Rootfs size: per-function/-datum sections so the link can drop what is unreferenced.
+base_flags="$base_flags -ffunction-sections -fdata-sections"
 repo_includes="-I$project_dir/include -I$project_dir/src"
 
 compile()
@@ -85,7 +87,7 @@ compile t31_dmic src/t31/openimp_t31_dmic.c -Werror
 compile t31_extras src/t31/openimp_t31_extras.c -Werror
 
 "$compiler" -shared -nostartfiles \
-    -Wl,-soname,libimp.so \
+    -Wl,-soname,libimp.so -Wl,--gc-sections \
     -Wl,--version-script="$project_dir/src/t40/libimp.map" \
     -o "$output_dir/libimp.so" \
     "$output_dir/openimp_p0.o" \
