@@ -8,7 +8,7 @@ Open stack = open-tx-isp (kernel driver) + OpenIMP (libimp) + timps. Vendor = tx
 
 **What is complete**
 
-- All six test cameras (cam-A T31, cam-B T23, cam-C T20, cam-D T21, cam-E T10, cam-F T41) run fully on the open kernel driver, OpenIMP and timps; no Ingenic/neo helper libraries any more, and on T23 no helixd and no vendor libimp either.
+- All five original test cameras (cam-A T31, cam-B T23, cam-C T20, cam-D T21, cam-E T10) run fully on the open kernel driver, OpenIMP and timps from flashed images; cam-F (T41) runs the open stack too, so far with the fixed driver loaded by hand (image with the fix pending); no Ingenic/neo helper libraries any more, and on T23 no helixd and no vendor libimp either.
 - Core functions are backed by evidence: H.264 on all six SoCs (soaks up to 2 h 53 without errors), HEVC on T31, hardware JPEG/MJPEG, second stream, OSD (text, bitmap, rectangle, line), real motion detection, day/night, flip.
 - Beyond the vendor: reload/stop robustness (0 oops in 10 cycles each), smaller libimp (~0.5–0.6 MB instead of 1.0–1.3 MB), more free video memory on T21 (2.76 MB instead of ~1.2 MB), T31 module smaller than vendor, T21 controls and noise reduction take effect (the vendor ignores them), T31 AEC with −18 dB echo, reference-frame sharing on T21/T23 (~1.5 MB less video memory, on by default).
 
