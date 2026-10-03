@@ -173,7 +173,9 @@ clean:
 
 # A JPEG channel that is the only one on its framesource (timps' jpeg.*
 # channel) gets frames from PollingStream (p2_jpeg_frames_from_fanout), and
-# one next to a receiving video channel still gets the fan-out.
+# one next to a receiving video channel still gets the fan-out; a skipped
+# JPEG is replaced by the last one.  -no-pie: the 32-bit stream addresses of
+# the p2 ABI must hold the test's (static and small heap) pointers.
 $(P2_JPEG_SOURCE_TEST_BIN): p2_jpeg_source_test.c \
 	$(PROJECT_DIR)/src/t40/openimp_p2_encoder.c
 	mkdir -p "$(dir $@)"
@@ -184,7 +186,7 @@ $(P2_JPEG_SOURCE_TEST_BIN): p2_jpeg_source_test.c \
 		$(PROJECT_DIR)/src/t40/openimp_p2_encoder.c \
 		$(PROJECT_DIR)/src/openimp_profile.c \
 		$(PROJECT_DIR)/src/t40/t31_stream_layout.c \
-		-lpthread -o $@
+		-no-pie -lpthread -o $@
 
 p2-jpeg-source: $(P2_JPEG_SOURCE_TEST_BIN)
 	$(P2_JPEG_SOURCE_TEST_BIN)

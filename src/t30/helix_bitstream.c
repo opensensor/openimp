@@ -1,7 +1,9 @@
 /* One Helix bitstream buffer shared by all jobs; see helix_bitstream.h. */
+#include <errno.h>
 #include <pthread.h>
 #include <stddef.h>
 #include <string.h>
+#include <time.h>
 
 #include "imp_log_int.h"
 #include "t30/helix_bitstream.h"
@@ -116,6 +118,30 @@ int OpenIMP_HelixBitstream_Lock(uint32_t size, IMPDMABufferInfo *dma)
     if (!dma || !size)
         return -1;
     pthread_mutex_lock(&helix_bs.lock);
+    if (helix_bs_grow_locked(size) != 0) {
+        pthread_mutex_unlock(&helix_bs.lock);
+        return -1;
+    }
+    *dma = helix_bs.dma;
+    return 0;
+}
+
+int OpenIMP_HelixBitstream_LockTimeout(uint32_t size, IMPDMABufferInfo *dma,
+                                       uint32_t timeout_ms)
+{
+    struct timespec deadline;
+
+    if (!dma || !size)
+        return -1;
+    clock_gettime(CLOCK_REALTIME, &deadline);
+    deadline.tv_sec += timeout_ms / 1000u;
+    deadline.tv_nsec += (long)(timeout_ms % 1000u) * 1000000L;
+    if (deadline.tv_nsec >= 1000000000L) {
+        deadline.tv_sec++;
+        deadline.tv_nsec -= 1000000000L;
+    }
+    if (pthread_mutex_timedlock(&helix_bs.lock, &deadline) != 0)
+        return -EBUSY;
     if (helix_bs_grow_locked(size) != 0) {
         pthread_mutex_unlock(&helix_bs.lock);
         return -1;
