@@ -22,6 +22,7 @@
 #include "imp_log_int.h"
 #include "trace_control.h"
 #include "p2_rc_readback.h"
+#include "p2_hevc_policy.h"
 #if defined(PLATFORM_T41) || defined(PLATFORM_T31)
 #include "dma_alloc.h"
 #endif
@@ -1614,9 +1615,14 @@ int IMP_Encoder_CreateChn(int channel, IMPEncoderCHNAttr *attr)
          * other backends (native and OEM Helix, software) are H.264/JPEG
          * only and used to create an HEVC channel that produced no stream
          * at all.  Fail here so the caller can fall back to H.264. */
+#if P2_HEVC_NO_HARDWARE
+        /* nothing is allocated or locked yet: a clean -1 */
+        IMP_LOG_ERR("Encoder", P2_HEVC_NO_HW_MSG "\n");
+#else
         IMP_LOG_ERR("Encoder",
                     "CreateChn(%d): H.265/HEVC encoding is not supported "
                     "by OpenIMP on this SoC; use H.264\n", channel);
+#endif
         return -1;
     }
 #endif
