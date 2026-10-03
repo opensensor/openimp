@@ -117,7 +117,7 @@ T31 already has the full classic ISP cap set in timps. OpenIMP is mostly vendor 
 
 | key | vendor (timps today) | OpenIMP | status | API |
 |---|---|---|---|---|
-| rate control VBR / CappedVBR / CappedQuality | vendor Allegro core | [=] Allegro RC core ported instruction by instruction (20 traces + 72x400 random frames state-identical); **[−]** CappedQuality behaves like CappedVBR | device-tested (cam-A) | `IMP_Encoder_CreateChn`, `SetChnAttrRcMode` |
+| rate control VBR / CappedVBR / CappedQuality | vendor Allegro core | [=] Allegro RC core ported instruction by instruction (20 traces + 72x400 random frames state-identical); CappedQuality vendor-identical by default (legacy core via OPENIMP_T31_RC_CORE=legacy treats it like CappedVBR) | device-tested (cam-A) | `IMP_Encoder_CreateChn`, `SetChnAttrRcMode` |
 | CBR | vendor, pads with filler NAL | **[+]** CBR on the same Allegro core; **[−]** no filler NAL: static scenes stay below target | in work (`claude/t31-allegro-cbr`, device test pending) | `IMP_ENC_RC_MODE_CBR` |
 | H.265 | vendor | [=] real HEVC on AVPU | device-tested | `CreateChn` H.265 profile |
 | colorfx / scene (timps-more-controls) | vendor header has no prototype | [=] colorfx 0/1/3/9 ok, unsupported values EINVAL | device-tested (not in an aggregate) | own prototype needed |
