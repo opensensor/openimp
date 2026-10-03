@@ -57,6 +57,10 @@ typedef struct {
     uint32_t bg_interval_gops;  /* [2756] SMART background interval in GOPs */
     int32_t init_qp;            /* i264e_ratecontrol_init a1; < 0: none */
     uint32_t field52;           /* [52] */
+    /* OpenIMP extra, not OEM (0 = OEM): a P picture following a P picture
+     * gets a QP at most this much below the previous picture's coded QP
+     * (stops the static-scene QP sawtooth; rises are not limited). */
+    uint32_t qp_down_max;
 } EprcParams;
 
 /* Per-picture inputs (i264e_ratecontrol_start, 0x420e8). */
@@ -84,6 +88,9 @@ typedef struct Eprc {
     uint8_t *a1628, *a1632, *a1636, *a1640, *a304, *a7140, *a7144, *a7148;
     uint8_t *slice;             /* OEM slice-parameter block */
     uint8_t e_store[EPRC_E_SIZE];
+    /* OpenIMP extra state (EprcParams.qp_down_max) */
+    uint32_t qp_down_max;
+    int32_t cur_type, prev_type, prev_qp;
 } Eprc;
 
 /* i264e_ratecontrol_init + eprc_default_set_T21 + JZ_VPU_RC_VIDEO_CFG_T21.

@@ -588,6 +588,8 @@ int EPRC_Init(Eprc *rc, const EprcParams *params, uint8_t *slice)
     uint8_t *block;
 
     memset(rc, 0, sizeof(*rc));
+    rc->qp_down_max = params->qp_down_max;
+    rc->prev_type = -1;
     rc->e = rc->e_store;
     EPRC_SetupE(rc->e, params);
     size = eprc_block_size(rc->e, sz);
@@ -1503,6 +1505,17 @@ clamp_qp:                                            /* 0xc938c */
         SS8(68) = AS8(60);
     else if (AS8(59) < SS8(68))
         SS8(68) = AS8(59);
+    /* OpenIMP extra (qp_down_max, 0 = OEM): P after P falls at most
+     * qp_down_max below the last coded QP.  Applied before the picture
+     * fields, so slice QP, QP window and lambda follow, and FRAME_END
+     * reads the QP actually coded (E+1600). */
+    rc->cur_type = S32(28);
+    if (rc->qp_down_max && S32(28) == 0 && rc->prev_type == 0 &&
+        rc->prev_qp > 0 && SS8(68) < rc->prev_qp - (int32_t)rc->qp_down_max) {
+        int32_t q = rc->prev_qp - (int32_t)rc->qp_down_max;
+
+        SS8(68) = (int8_t)(q > AS8(59) ? AS8(59) : q);
+    }
 
     /* 0xc8414 */
     EPTR(S, 6780, (uintptr_t)EU32(E, 1616));
@@ -2063,6 +2076,8 @@ int EPRC_FrameEndEx(Eprc *rc, uint32_t bytes,
     EU32(E, 344) = (((regs[23] >> 16) & 0x7fffu) >> 4) +
                    ((regs[24] & 0x7fffu) >> 2) + (regs[23] & 0x7fffu);
     memcpy(E + 404, regs + 16, 16);
+    rc->prev_type = rc->cur_type;
+    rc->prev_qp = EU8(E, 1600);
     eprc_frame_end(rc);
     return 0;
 }

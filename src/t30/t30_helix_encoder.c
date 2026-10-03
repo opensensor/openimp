@@ -1315,6 +1315,16 @@ static void helix_eprc_params(const HWEncoderParams *hp, EprcParams *p)
         p->quality = HELIX_I264E_QUALITY_LVL;
     }
     p->init_qp = -1;
+    /* OpenIMP extra, default off (OEM decisions): OPENIMP_EPRC_QP_DOWN1=1
+     * lets a P picture's QP fall by at most 1 per picture in CBR, =2 in
+     * every eprc mode (docs/T23_EPRC.md, "QP down-step limit"). */
+    {
+        const char *env = getenv("OPENIMP_EPRC_QP_DOWN1");
+
+        if (env && (env[0] == '2' ||
+                    (env[0] == '1' && p->rc_mode == EPRC_MODE_CBR)))
+            p->qp_down_max = 1u;
+    }
 }
 
 /* IDR period in GOPs: the application's maxSameSceneCnt (OEM skip header
@@ -1364,14 +1374,15 @@ static void helix_eprc_start(T30HelixEncoder *encoder)
     IMP_LOG_INFO("Encoder", HELIX_EPRC_TAG " Helix eprc: %s %ux%u gop=%u "
                  "fps=%u/%u bitrate=%u kbit/s qp=[%u,%u] bias=%d "
                  "steps=%u/%u static=%u changePos=%u quality=%u "
-                 "idr=%u gop(s)",
+                 "idr=%u gop(s)%s",
                  p.rc_mode == EPRC_MODE_CBR ? "CBR" :
                  p.rc_mode == EPRC_MODE_SMART ? "SMART" : "VBR",
                  p.width, p.height, p.gop, p.fps_num, p.fps_den,
                  p.rc_mode == EPRC_MODE_CBR ? p.bitrate : p.max_bitrate,
                  p.min_qp, p.max_qp, (int)p.i_bias, p.frm_qp_step,
                  p.gop_qp_step, p.static_time, p.change_pos, p.quality,
-                 encoder->eprc_idr_gops ? encoder->eprc_idr_gops : 1u);
+                 encoder->eprc_idr_gops ? encoder->eprc_idr_gops : 1u,
+                 p.qp_down_max ? " qp-down<=1" : "");
 }
 
 /* The Helix statistics the OEM reads after each picture (T23

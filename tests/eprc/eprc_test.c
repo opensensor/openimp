@@ -43,6 +43,89 @@ static uint32_t picture_bytes(uint32_t frame, uint32_t qp, int idr,
     return size < 20u ? 20u : (uint32_t)size;
 }
 
+/* OpenIMP extra qp_down_max: off is the OEM controller (vectors above);
+ * on, a P picture after a P picture never falls more than qp_down_max
+ * below the last coded QP, and the slice fields follow the QP.  Static
+ * scene with a noise cliff (the case that makes the OEM QP saw-tooth). */
+static uint32_t cliff_bytes(uint32_t frame, int32_t qp, int32_t ref, int idr)
+{
+    double b;
+
+    if (idr) {
+        b = 700000.0;
+        for (int32_t i = 30; i < qp; i++)
+            b *= 0.906;
+    } else {
+        b = 30000.0 / (1.0 + (double)(1u << (qp > 28 ? (qp - 28 > 20 ? 20 : qp - 28) : 0)));
+        if (qp < 28)
+            b = 30000.0;
+        for (int32_t d = ref - qp; d > 0; d--)
+            b *= 1.7;
+        for (int32_t d = ref - qp; d < 0; d++)
+            b /= 1.7;
+        b += 60.0 + (double)(frame % 5u) * 10.0;
+    }
+    return (uint32_t)b;
+}
+
+static int qp_down_check(void)
+{
+    static uint8_t slice[EPRC_SLICE_SIZE];
+    uint32_t regs[EPRC_STAT_REGS];
+    int on, big[2] = { 0, 0 }, diff = 0, bad = 0;
+    uint8_t seq[2][300];
+
+    memset(regs, 0, sizeof(regs));
+    regs[15] = 2000000u;
+    for (on = 0; on < 2; on++) {
+        EprcParams p;
+        Eprc rc;
+        EprcFrameIn in;
+        EprcPicture pic;
+        int32_t prev = -1, prev_type = -1, ref = 35;
+        uint32_t n;
+
+        memset(&p, 0, sizeof(p));
+        p.width = 1920; p.height = 1080; p.rc_mode = EPRC_MODE_CBR;
+        p.gop = 50; p.fps_num = 15; p.fps_den = 1; p.min_qp = 15;
+        p.max_qp = 45; p.bitrate = 1500; p.max_bitrate = 1500;
+        p.frm_qp_step = 3; p.gop_qp_step = 15; p.static_time = 2;
+        p.change_pos = 80; p.quality = 4; p.init_qp = -1;
+        p.qp_down_max = on ? 1u : 0u;
+        memset(slice, 0, sizeof(slice));
+        if (EPRC_Init(&rc, &p, slice) != 0)
+            return 1;
+        for (n = 0; n < 300; n++) {
+            uint32_t over;
+
+            memset(&in, 0, sizeof(in));
+            in.frames_since_idr = n % 50u;
+            if (EPRC_FrameStart(&rc, &in, &pic) != 0)
+                return 1;
+            over = pic.qp > 33 ? pic.qp - 33u : 0u;
+            if (slice[448] != pic.qp || slice[808] != pic.qp ||
+                slice[809] != (pic.qp + 13 > 51 ? 51 : pic.qp + 13) ||
+                *(uint16_t *)(slice + 1058) != 384u + 48u * over ||
+                *(uint16_t *)(slice + 1060) != 96u + 12u * over)
+                bad++;
+            if (pic.type == 0 && prev_type == 0 && pic.qp < prev - 1)
+                big[on]++;
+            seq[on][n] = pic.qp;
+            EPRC_FrameEndEx(&rc, cliff_bytes(n, pic.qp, ref, pic.type == 2),
+                            regs, &pic, 0);
+            prev = pic.qp;
+            prev_type = pic.type;
+            ref = pic.qp;
+        }
+        EPRC_Free(&rc);
+    }
+    for (int i = 0; i < 300; i++)
+        diff += seq[0][i] != seq[1][i];
+    printf("eprc qp_down_max: QP falls > 1 after P: off %d, on %d; %d of 300 "
+           "pictures differ; slice field errors %d\n", big[0], big[1], diff, bad);
+    return !(big[0] > 0 && big[1] == 0 && diff > 0 && bad == 0);
+}
+
 int main(int argc, char **argv)
 {
     const char *path = argc > 1 ? argv[1] : "eprc_vectors.txt";
@@ -154,5 +237,9 @@ int main(int argc, char **argv)
         EPRC_Free(&rc);
     printf("eprc: %ld pictures checked against the OEM controller, %ld mismatches\n",
            checked, failed);
+    if (qp_down_check()) {
+        fprintf(stderr, "eprc qp_down_max check failed\n");
+        return 1;
+    }
     return failed ? 1 : 0;
 }

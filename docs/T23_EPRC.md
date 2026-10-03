@@ -109,6 +109,27 @@ CBR keeps a statistics window of staticTime x fps pictures and a
 fluctuation level (fluctLvls 0xee254); VBR/SMART target changePos % of the
 maximum bit rate (qualLvls 0xee274 for the lower bound).
 
+## QP down-step limit (OpenIMP extra, default off)
+`EprcParams.qp_down_max` (not an OEM field; 0 = the OEM controller,
+bit-exact): after the OEM QP limits of FRAME_START, a P picture that
+follows a P picture gets at most `qp_down_max` less than the QP the last
+picture was coded with (E+1600 after FRAME_END, re-encodes included);
+rises are not limited.  It is applied before the picture fields, so the
+slice QP, the macroblock QP window and the lambdas follow, and FRAME_END
+reads the QP actually coded.  Why: in static scenes the OEM walks the P QP
+down by up to frmQPStep per picture into the sensor-noise cliff, one
+picture becomes 10-50 x larger and the QP jumps back (14-27 jumps of >= 2
+QP per 100 pictures in recordings of OpenIMP's eprc stack).  Host study
+(docs/RC_BEYOND_VENDOR_STUDY.md on `claude/rc-beyond-vendor`, P5): CBR
+QP flicker -8..27 %, mean QP -0.1..-0.4 at the same bit rate, no
+regression in 90 runs; VBR/SMART similar.  frmQPStep = 1 would also cut
+the flicker but slows the reaction to motion (burst buffer +35 %).
+Switch: `OPENIMP_EPRC_QP_DOWN1=1` (CBR), `=2` (CBR, VBR, SMART); T23, and
+T21 with `OPENIMP_T21_EPRC=1`.  The start log line ends in `qp-down<=1`.
+`tests/eprc` checks the OEM vectors with it off and, on a static
+noise-cliff scene, that it removes every fall > 1 and keeps the slice
+fields consistent.
+
 ## IDR period and long-term references (i264e, not eprc)
 
 `i264e_decide_slice_type_and_rd` (0x34d78): IDR every GOP; with
