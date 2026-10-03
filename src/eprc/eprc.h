@@ -59,13 +59,31 @@ typedef struct {
     uint32_t field52;           /* [52] */
 } EprcParams;
 
+/* Per-picture inputs (i264e_ratecontrol_start, 0x420e8). */
+typedef struct {
+    uint32_t frames_since_idr;  /* 0: IDR picture */
+    uint32_t gop_ctrl;          /* i264e rc+2768 (0 by default) */
+    uint32_t r2820;             /* i264e rc+2820 (0 by default) */
+    uint32_t r11832;            /* i264e rc+11832 (0 by default) */
+    uint32_t pic[7];            /* i264e picture +392..+404 (0 by default) */
+} EprcFrameIn;
+
+/* What the picture is coded with. */
+typedef struct {
+    int32_t type;               /* 2: IDR, 6: SMART GOP-start P, 0: P */
+    uint8_t qp;
+    uint8_t qp_max, qp_min;     /* macroblock QP window (0x40040, 0x40074) */
+    uint16_t lambda[3];         /* 0xb001c, 0xb0020 */
+} EprcPicture;
+
 typedef struct Eprc {
-    uint8_t e[EPRC_E_SIZE];     /* OEM rc + 496 */
+    uint8_t *e;                 /* OEM rc + 496 (e_store) */
     uint8_t *p;                 /* OEM state block (rc + 496 + 1620) */
     uint32_t p_size;
     /* the arrays the OEM keeps behind the state block */
     uint8_t *a1628, *a1632, *a1636, *a1640, *a304, *a7140, *a7144, *a7148;
     uint8_t *slice;             /* OEM slice-parameter block */
+    uint8_t e_store[EPRC_E_SIZE];
 } Eprc;
 
 /* i264e_ratecontrol_init + eprc_default_set_T21 + JZ_VPU_RC_VIDEO_CFG_T21.
@@ -73,6 +91,21 @@ typedef struct Eprc {
  * the caller once) receives the hardware fields at each FrameStart. */
 int EPRC_Init(Eprc *rc, const EprcParams *params, uint8_t *slice);
 void EPRC_Free(Eprc *rc);
+
+int EPRC_FrameStart(Eprc *rc, const EprcFrameIn *in, EprcPicture *pic);
+
+/* Helix status registers read after each picture, in this order (OEM table
+ * at 0xd7a40, read through soc_vpu ioctl 0xc0586307 at 0x13100000 + off):
+ * 0x80120..0x8014c (12), 0x500e8, 0x500ec, 0x500f0, 0x80080, 0x40094,
+ * 0x40098, 0x4009c, 0x400a0, 0x800e8, 0x800ec, 0x800e4, 0x800e0, 0x80168. */
+#define EPRC_STAT_REGS 25
+extern const uint32_t EPRC_StatRegs[EPRC_STAT_REGS];
+
+/* Returns 1 when the picture is to be coded again with pic (OEM
+ * FRAME_REPEATE_JUDGE), else 0. */
+int EPRC_FrameEnd(Eprc *rc, uint32_t bytes, const uint32_t regs[EPRC_STAT_REGS],
+                  EprcPicture *pic);
+void EPRC_GopInit(Eprc *rc);
 
 /* Internal steps, exposed for the emulator comparison (tests). */
 void EPRC_DefaultSet(uint8_t *e);
