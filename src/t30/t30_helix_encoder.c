@@ -303,6 +303,7 @@ struct T30HelixEncoder {
     uint32_t t20rc_max_qp;      /* t30_normalize_params) */
     uint32_t t20rc_reencodes;
     uint32_t t20rc_stat_errors;
+    uint32_t t20rc_qptab_drops;  /* MB-RC tables over T20_QP_TABLE_MAX_WORDS */
     uint32_t t20rc_stats_seconds;   /* OPENIMP_T20_RC_STATS */
     uint32_t t20rc_frames, t20rc_idrs;
     uint64_t t20rc_bytes, t20rc_qp_sum[2];
@@ -1876,6 +1877,8 @@ static void t20_rc_start(T30HelixEncoder *encoder)
  * complexity and three registers (i264e_ratecontrol_priv_init, read with
  * soc_vpu ioctl 0xc0386307, node word 0 the address, word 1 the value). */
 #define T20_RC_REG_BASE 0x13200000u
+/* 10-bit length field of the 0x4006c QP-table word (OEM H264E_T20_SliceInit) */
+#define T20_QP_TABLE_MAX_WORDS 1023u
 #define T20_CHANNEL_REG 0xc0386307u
 
 static void t20_rc_statistics(T30HelixEncoder *encoder, RcT20Stats *st,
@@ -2735,7 +2738,16 @@ again:
         uint32_t words = RCT20_QpTable(&encoder->t20rc, &table);
 
         encoder->slice.max_qp_cap = (uint8_t)encoder->t20rc.params.max_qp;
-        if (words && 2u * words <= encoder->slice.descriptor_words / 2u) {
+        if (words > T20_QP_TABLE_MAX_WORDS) {
+            /* 0x4006c carries the length in bits 21..30: a longer table
+             * would be truncated with the mode enabled (bit 31).  Code
+             * the picture at the slice QP instead. */
+            if (encoder->t20rc_qptab_drops++ % 1000u == 0u)
+                IMP_LOG_WARN("Encoder", "T20 rc: macroblock QP table of "
+                             "%u words exceeds %u, not used (%u so far)",
+                             words, T20_QP_TABLE_MAX_WORDS,
+                             encoder->t20rc_qptab_drops);
+        } else if (words && 2u * words <= encoder->slice.descriptor_words / 2u) {
             encoder->slice.qp_table_words = (uint16_t)words;
             encoder->slice.qp_table = table;
         }
