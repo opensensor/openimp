@@ -49,6 +49,13 @@ obfuscated (short `lIoi` names); its vtable shows the structure:
 `IMP_Encoder_GetChnAttrRcMode` returns the stored IMP attribute (36 bytes),
 so the read-back is the mode and values as given.
 
+`IMP_Encoder_SetDefaultParam` (0x831a0), H.264/H.265: iInitialQP = the
+caller's value, iMinQP 15, iMaxQP 48, iIPDelta -1, iPBDelta -1, eRcOptions 1,
+uMaxPictureSize = 2 * bitrate; VBR and the capped modes uMaxBitRate =
+4/3 * bitrate; the capped modes uMaxPSNR 42.  OpenIMP sets uMaxPSNR 42 for
+the capped modes; its other defaults (iMaxQP 45, iInitialQP 26, uMaxBitRate
+= bitrate, no PB delta/options/picture size) differ and are unchanged.
+
 OpenIMP: CBR runs the closed-loop T31 controller (`t31_rate_control.c`),
 VBR an open-loop picture QP from the bitrate (unchanged; the OEM VBR is
 closed-loop, `OPENIMP_T31_VBR_LOOP=1` runs the controller for VBR too).

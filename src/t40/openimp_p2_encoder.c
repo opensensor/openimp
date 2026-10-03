@@ -2632,6 +2632,12 @@ int IMP_Encoder_SetDefaultParam(IMPEncoderChnAttr *attr, IMPEncoderProfile profi
         attr->rcAttr.attrRcMode.attrVbr.iMinQP = 15;
         attr->rcAttr.attrRcMode.attrVbr.iMaxQP = 45;
         attr->rcAttr.attrRcMode.attrVbr.iIPDelta = -1;
+#if !defined(PLATFORM_T41)
+        /* OEM T31 1.1.6 default for CappedVBR/CappedQuality: 42 dB */
+        if (rc_mode == IMP_ENC_RC_MODE_CAPPED_VBR ||
+            rc_mode == IMP_ENC_RC_MODE_CAPPED_QUALITY)
+            attr->rcAttr.attrRcMode.attrCappedVbr.uMaxPSNR = 42;
+#endif
     }
     return 0;
 }

@@ -332,6 +332,21 @@ int main(void)
     CHECK(IMP_Encoder_CreateChn(2, &attr) == 0 && cap_calls == 1 &&
           cap_mode == IMP_ENC_RC_MODE_VBR, "VBR CreateChn cap call");
 
+    /* SetDefaultParam: the OEM default cap is 42 dB */
+    CHECK(IMP_Encoder_SetDefaultParam(&attr, IMP_ENC_PROFILE_AVC_HIGH,
+                                      IMP_ENC_RC_MODE_CAPPED_QUALITY, 1920,
+                                      1080, 25, 1, 50, 1, -1, 3000) == 0 &&
+          attr.rcAttr.attrRcMode.rcMode == IMP_ENC_RC_MODE_CAPPED_QUALITY &&
+          attr.rcAttr.attrRcMode.attrCappedQuality.uMaxPSNR == 42 &&
+          attr.rcAttr.attrRcMode.attrCappedQuality.uTargetBitRate == 3000,
+          "SetDefaultParam CappedQuality psnr %u",
+          attr.rcAttr.attrRcMode.attrCappedQuality.uMaxPSNR);
+    CHECK(IMP_Encoder_SetDefaultParam(&attr, IMP_ENC_PROFILE_AVC_HIGH,
+                                      IMP_ENC_RC_MODE_VBR, 1920, 1080, 25, 1,
+                                      50, 1, -1, 3000) == 0 &&
+          attr.rcAttr.attrRcMode.attrCappedVbr.uMaxPSNR == 0,
+          "SetDefaultParam VBR sets a cap");
+
     if (failures) {
         fprintf(stderr, "p2 rc mode: %d check(s) failed\n", failures);
         return 1;
