@@ -87,6 +87,16 @@ OpenIMP: T20 green flicker in the bottom rows fixed by filling the encoder paddi
 
 Aggregates: `claude/open-tx-isp-all-4` and `claude/openimp-all-4` (pushed); 58 merged single branches removed. `claude/open-tx-isp-all-5` adds t21-robust and t31-robust-2 (T31: sensor flip with shvflip=1, unload leaks, lazy WDR buffers; MemFree drift per reload 460 → 45 KB); all four cameras flashed with -all-5 images.
 
+## Late morning (2026-10-03)
+
+- **T23 daylight green cast — found and fixed** (`claude/t23-day-color`, device-tested on cam-B, not flashed yet): every on-demand snapshot restarts the stream, and our driver reset the white-balance gains to 1× on every stream start, so the snapshot was taken before AWB had re-converged. The vendor keeps the AWB state across stream restarts; now we do too. A side-by-side run of the original vendor stack in the same sunlit scene gave neutral colours and confirmed the cause was ours; the register comparison also corrected three stream-start values (top 0x1c, GIB 0x1008/0x1010). The HLIL AE now reaches correct exposure ~4 s after a driver reload (was ~2 min).
+- **Vendor T23 uses reference-buffer sharing by default:** measured on cam-B with the vendor stack (ring bit set, luma ring = picture + 256 lines); the vendor libimp forces it on for ≤1080p. A register capture is being used to align our port (`claude/t23-ref-ring`); the T21 opt-in stays off meanwhile.
+- **Rate control** (`claude/rc-modes`): T31 CappedVBR/CappedQuality now run the closed-loop regulator with the vendor's PSNR cap (42 dB); T20/T21 report the vendor-clamped RC values. In work: T31 plain VBR closed loop by default and vendor defaults, T23 live readback, which RC writes take effect on T10/T20/T21, and vendor-equal SMART on T23 (eprc controller + long-term background reference).
+- **AVPU kernel module review** (outside review, verified): fixes for a minor-number leak, a use-after-free on sysfs unbind, an uninitialised list mutex and the flush range (`claude/avpu-review-fixes`); kernel patch 0100 makes the rmem flush ioctl reject invalid directions instead of crashing. cam-A: reload, 3× kill -9, 5× rmmod/insmod, 0 oops.
+- **New T41 test camera (cam-F):** OpenIMP runs against the vendor T41 driver with video, JPEG, OSD and motion detection (`claude/t41-libimp`): a kernel oops from the cache flush was fixed (the T41 kernel expects a physical address), motion detection gets frames without a viewer. timps CPU ~10–12 % vs ~27 % with the vendor libimp. Our T41 driver needs an image for testing (vendor module oopses on unload); image being prepared.
+- **timps:** the OSD clock in the first snapshot after an idle period was stale (minutes to hours) — fixed (redraw on idle→active), comes with the next images; T23 access-unit limit 2 MiB + 64 KiB.
+- **Feature matrix** (English) now in `docs/FEATURE_MATRIX.md` / `docs/feature-matrix.html`.
+
 ## Morning (2026-10-03)
 
 Done and device-tested, waiting for the next aggregate (-all-13):
