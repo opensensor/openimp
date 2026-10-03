@@ -9,16 +9,16 @@ Cameras are anonymised: cam-A (T31), cam-B (T23), cam-C (T20), cam-D (T21).
 
 ## Where each camera stands
 
-All five test cameras run the open kernel driver (open-tx-isp), OpenIMP and timps.
+All five test cameras run the open kernel driver (open-tx-isp), OpenIMP and timps. Since -all-10 no Ingenic or neo helper libraries (libalog/libsysutils) remain on the images.
 "Live" means newer builds loaded from `/tmp` that are lost on reboot.
 
 | Camera | SoC | Stack | State |
 |---|---|---|---|
-| cam-A | T31 | fully open | Flashed 2026-10-02 11:00 with -all-5 image (robust driver incl. t31-robust-2, HEVC, faster IVS) |
-| cam-B | T23 | fully open (native encoder, no OEM helixd) | Flashed 2026-10-03 01:32 with -all-9 / openimp-all-8 + native-default image |
-| cam-C | T20 | fully open | Flashed 2026-10-03 00:35 with -all-9 / openimp-all-8 image (incl. soc_vpu kernel patches) |
-| cam-E | T10 | fully open (first open-stack boot on T10) | Flashed 2026-10-03 02:31 with the T10 drift-fix + sub-stream scaler fix image (open-tx-isp `claude/t10-ch1-scaler`, OpenIMP `claude/t10-drift-fix`, timps), boot guard auto |
-| cam-D | T21 | fully open | Flashed 2026-10-03 00:35 with -all-9 / openimp-all-8 image (incl. soc_vpu kernel patches) |
+| cam-A | T31 | fully open | Flashed 2026-10-03 04:15 with -all-11 / openimp-all-10 image (kernel incl. soc_vpu patch 0099) |
+| cam-B | T23 | fully open (native encoder, no OEM helixd) | Flashed 2026-10-03 04:24 with -all-11b / openimp-all-10 image (HLIL AE default) |
+| cam-C | T20 | fully open | Flashed 2026-10-03 04:07 with -all-11 / openimp-all-10 image (kernel incl. soc_vpu patch 0099) |
+| cam-E | T10 | fully open | Flashed 2026-10-03 04:14 with -all-11 / openimp-all-10 image, boot guard auto |
+| cam-D | T21 | fully open | Flashed 2026-10-03 04:07 with -all-11 / openimp-all-10 image (kernel incl. soc_vpu patch 0099) |
 
 ## OpenIMP (userspace libimp)
 
@@ -86,6 +86,21 @@ Goal: identical image behaviour, but cleaner unload/reload, less memory and chec
 OpenIMP: T20 green flicker in the bottom rows fixed by filling the encoder padding rows (`claude/t20-bottom-chroma`; 0 green pixels in 30 frames). Faster IVS (`claude/ivs-opt`; T20 timps CPU 4.1 % → 2.7 % with motion on).
 
 Aggregates: `claude/open-tx-isp-all-4` and `claude/openimp-all-4` (pushed); 58 merged single branches removed. `claude/open-tx-isp-all-5` adds t21-robust and t31-robust-2 (T31: sensor flip with shvflip=1, unload leaks, lazy WDR buffers; MemFree drift per reload 460 → 45 KB); all four cameras flashed with -all-5 images.
+
+## Early morning (2026-10-03)
+
+- **Aggregates -all-10 / openimp-all-9 and -all-11 / openimp-all-10** flashed on all five cameras (incl. cam-A, which moved up from -all-5). Checks on every camera: 30/30 valid snapshots on both channels, MJPEG and both MP4 streams, 0 oops, 0 encoder errors. -all-11 was flashed staged (cam-D and cam-C first) because it carries a new kernel.
+- **Vendor helper libraries gone:** libimp now contains the two logging functions it used from libalog; libalog/libsysutils are no longer built into the images.
+- **Kernel soc_vpu (patch 0099):** requesting a busy VPU sleeps instead of busy-waiting up to 200 ms; on T20/T10 an encoder error interrupt now ends the wait immediately (with reset) instead of running into the timeout; per-instance bitstream counter on Helix.
+- **T23 motion detection fixed:** after the last sub-stream viewer left, capture buffers stayed parked and motion detection got no frames (empty motion grid in the web UI). Frames are now recycled for callback-backed pools too.
+- **T23 memory:** JPEG shares the H.264 bitstream area like the vendor pool (1.44 MB less video memory, main window back to 2 MiB).
+- **T23 image pipeline:** DPC and CCM follow the IQ bank flags like the vendor (less night noise); a block whose parameters fail to load on a day/night switch is bypassed instead of running with the other bank's values; user bypass bits survive day/night switches.
+- **T23 vendor AE (lifted, source_ae_oem=1):** first picture after a stream restart no longer black, day/night refresh and gain limits wired like the vendor, AE compensation works at night. Default briefly switched to it in -all-11, but the driver then reported a constant 1× gain, so timps never switched cam-B to night — reverted in -all-11b (HLIL AE default). Follow-up branch `claude/t23-ae-oem-export` exports the lifted AE's live gain/EV exactly like the vendor getters, feeds AWB/CCM/BCSH/ADR/Defog with the real EV, and repairs ADR/Defog state that the reconstruction had mapped onto unrelated memory (an event table, a CLM LUT word, a module parameter). Verified on cam-B at night in both AE modes; default stays HLIL until a daylight test.
+- **T21:** colour-temperature updates only when CT moves by more than 50 K (emulator: 62 % fewer register writes, same final state); module reload on cam-D OK.
+- **T20/T30 memory:** JPEG bitstream buffer 1 MiB instead of a frame-sized buffer (cam-E −328 KiB; more on 1080p). Allocating encoder buffers at channel creation was measured to raise the peak and stays opt-in.
+- **Encoder diagnostics:** one log line with the effective rate control per channel; out-of-range QP/fps values are clamped with a warning instead of silently replaced.
+- **JPEG robustness:** if the encoder is busy or video memory is short, the last JPEG is delivered again instead of blocking; one startup warning when pools plus fixed buffers exceed video memory.
+- **In work:** audit of the remaining mis-resolved memory accesses in the reconstructed T23 code (some sit in hooked paths such as the ISP interrupt routine); T20/T21 encoder error limit (re-create after 3 failures, stop after 2 re-creates) waits for a device test.
 
 ## Night (2026-10-03)
 
