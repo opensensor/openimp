@@ -73,6 +73,8 @@ int IMP_ISP_GetDefaultBinPath(char *path);
 #define T23_CID_VFLIP 0x00980915U
 #define T23_CID_POWER_LINE_FREQUENCY 0x00980918U
 #define T23_CID_SHARPNESS 0x0098091bU
+#define T23_CID_COLORFX 0x0098091fU
+#define T23_CID_SCENE_MODE 0x009a091aU
 
 /* IMAGE_TUNING_CID_* of the T23 libimp. */
 enum {
@@ -862,6 +864,69 @@ int IMP_ISP_MultiCamera_Tuning_SetBrightness(int num, unsigned char v)
 int IMP_ISP_MultiCamera_Tuning_GetBrightness(int num, unsigned char *v)
 {
     return t23_get_bcs(__func__, num, T23_CID_BRIGHTNESS, v, t23_brightness);
+}
+
+/*
+ * Scene mode and colour effect: not in the stock T23 1.3.0 libimp (the
+ * symbols are undefined there) and no-ops in the stock kernel.  The
+ * open-tx-isp T23 driver serves V4L2_CID_SCENE_MODE (stored) and
+ * V4L2_CID_COLORFX (AUTO, BW, NEGATIVE, VIVID) over the same S/G_CTRL
+ * path as the BCS controls (beyond vendor); other values fail with the
+ * ioctl error.
+ */
+static int t23_set_int_ctrl(const char *fn, int num, uint32_t id, int value)
+{
+    ISPDevice *isp;
+    int ret = t23_prologue(fn, num, NULL, 0, &isp);
+
+    if (ret)
+        return ret;
+    (void)isp;
+    ret = t23_ctrl_set(num, id, value);
+    if (ret < 0)
+        T23_LOG_ERR(fn, "%s(%d), set VIDIOC_S_CTRL failed\n", fn, __LINE__);
+    return ret;
+}
+
+static int t23_get_int_ctrl(const char *fn, int num, uint32_t id, int *out)
+{
+    ISPDevice *isp;
+    uint32_t nr;
+    T23Ctrl ctrl = { id, -1 };
+    int ret = t23_prologue(fn, num, out, T23F_NULLCHK, &isp);
+
+    if (ret)
+        return ret;
+    nr = t23_ctrl_ioctl(num, 1);
+    if (!nr)
+        return -1;
+    ret = ioctl(isp->tuning_fd, nr, &ctrl);
+    if (ret) {
+        T23_LOG_ERR(fn, "%s(%d), get VIDIOC_G_CTRL failed\n", fn, __LINE__);
+        return ret;
+    }
+    *out = ctrl.value;
+    return 0;
+}
+
+int IMP_ISP_MultiCamera_Tuning_SetSceneMode(int num, int mode)
+{
+    return t23_set_int_ctrl(__func__, num, T23_CID_SCENE_MODE, mode);
+}
+
+int IMP_ISP_MultiCamera_Tuning_GetSceneMode(int num, int *mode)
+{
+    return t23_get_int_ctrl(__func__, num, T23_CID_SCENE_MODE, mode);
+}
+
+int IMP_ISP_MultiCamera_Tuning_SetColorfxMode(int num, int mode)
+{
+    return t23_set_int_ctrl(__func__, num, T23_CID_COLORFX, mode);
+}
+
+int IMP_ISP_MultiCamera_Tuning_GetColorfxMode(int num, int *mode)
+{
+    return t23_get_int_ctrl(__func__, num, T23_CID_COLORFX, mode);
 }
 
 int IMP_ISP_MultiCamera_Tuning_SetSaturation(int num, unsigned char v)
@@ -1889,6 +1954,10 @@ T23_WRAP1(GetSharpness, unsigned char *)
 T23_WRAP1(SetBcshHue, unsigned char)
 T23_WRAP1(GetBcshHue, unsigned char *)
 T23_WRAP1(SetSaturation, unsigned char)
+T23_WRAP1(SetSceneMode, int)
+T23_WRAP1(GetSceneMode, int *)
+T23_WRAP1(SetColorfxMode, int)
+T23_WRAP1(GetColorfxMode, int *)
 T23_WRAP1(GetSaturation, unsigned char *)
 T23_WRAP1(GetTotalGain, uint32_t *)
 T23_WRAP1(SetISPHflip, int)
