@@ -270,7 +270,7 @@ struct T30HelixEncoder {
     int t10;                    /* T10 NVPU: T10 command list, padded refs */
 #endif
 #if defined(HELIX_T21_SYNTAX)
-    int ref_share;              /* OPENIMP_REF_SHARE=1: one reference ring */
+    int ref_share;              /* one reference ring (OPENIMP_REF_SHARE=0 off) */
     int ref_share_debug;        /* OPENIMP_REF_SHARE_DEBUG=1: ring log */
     uint8_t ring_flags;         /* OPENIMP_REF_SHARE_FLAGS (T21_RING_*) */
     uint8_t ring_b0;            /* OPENIMP_REF_SHARE_B0: 0xb0000 low byte */
@@ -1202,8 +1202,10 @@ static int t30_vpu_fd(void)
 }
 
 #if defined(HELIX_T21_SYNTAX)
-/* OPENIMP_REF_SHARE=1: one shared reference/reconstruction ring instead of
- * two reference pictures (t21_ref_ring.h).  0 on success or when off. */
+/* One shared reference/reconstruction ring instead of two reference
+ * pictures (t21_ref_ring.h), as the vendor T23 does for pictures up to
+ * 1920x1088; default on, OPENIMP_REF_SHARE=0 restores the two pictures.
+ * 0 on success or when off. */
 static int t30_ref_share_alloc(T30HelixEncoder *encoder, const char *tag)
 {
     const char *env = getenv("OPENIMP_REF_SHARE");
@@ -1211,8 +1213,13 @@ static int t30_ref_share_alloc(T30HelixEncoder *encoder, const char *tag)
                                            : (encoder->params.width + 15u) / 16u;
     uint32_t mbh = (encoder->params.height + 15u) / 16u;
 
-    if (!env || env[0] != '1')
+    if (env && env[0] == '0')
         return 0;
+    if (mbw > 120u || mbh > 68u) {
+        IMP_LOG_INFO("Encoder", "Helix: reference sharing skipped above "
+                     "1920x1088 (as the vendor)");
+        return 0;
+    }
     if (!t21_ref_ring_saves(mbw, mbh)) {
         /* the 256 extra lines cost more than the second picture saves */
         IMP_LOG_INFO("Encoder", "Helix: reference sharing skipped, picture "
@@ -1249,8 +1256,8 @@ static void t30_ref_share_ignored(void)
     const char *env = getenv("OPENIMP_REF_SHARE");
 
     if (env && env[0] == '1')
-        IMP_LOG_INFO("Encoder", "OPENIMP_REF_SHARE ignored: reference "
-                     "sharing exists only on T21/T23");
+        IMP_LOG_INFO("Encoder", "OPENIMP_REF_SHARE: reference sharing "
+                     "exists only on T21/T23");
 }
 #endif
 

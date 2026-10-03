@@ -354,7 +354,7 @@ static void start(void)
 #endif
 
 #if defined(PLATFORM_T23)
-/* T23 with the reference ring (OPENIMP_REF_SHARE=1): the encoder buffers
+/* T23 with the reference ring (the default): the encoder buffers
  * come from the top of the arena in creation order, so the layout is ring,
  * EMC scratch directly below it and the shared bitstream area (2 MiB +
  * 4 KiB, one per process) directly below the first EMC - as logged on the
@@ -430,7 +430,7 @@ static void check_ring_layout(int main_first)
 int main(void)
 {
     mallopt(M_MMAP_MAX, 0);
-    setenv("OPENIMP_REF_SHARE", "1", 1);
+    unsetenv("OPENIMP_REF_SHARE");
     rmem_arena_init(&arena, RMEM_SIZE);
     block_alloc(&isp, ISP_NCU, 0);
     encoder_create(&main_encoder, MAIN_W, MAIN_H);

@@ -23,8 +23,9 @@
  * pictures whenever the reference wraps (4 of every 5.25 pictures at
  * 1080p) and chroma smears.
  *
- * Opt-in: OPENIMP_REF_SHARE=1.  Saves one of the two reference pictures
- * minus 256 lines (1080p: 6.0 -> 3.7 MiB). */
+ * Default on T21 and T23 up to 1920x1088 (the vendor T23 does the same),
+ * OPENIMP_REF_SHARE=0 switches back to two reference pictures.  Saves one
+ * of the two reference pictures minus 256 lines (1080p: 6.0 -> 3.7 MiB). */
 #define T21_REF_RING_EXTRA_LINES 256u
 /* The vendor T23 (1.3.0, ring always on up to 1080p) places the chroma
  * ring 256 bytes after the luma ring end (0x60014 = 0x02ff6000, 0x6001c =
