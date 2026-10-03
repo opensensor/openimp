@@ -40,11 +40,64 @@ obfuscated (short `lIoi` names); its vtable shows the structure:
   `psnr > uMaxPSNR * 100`, a negative QP delta becomes 0: the QP is not
   lowered while the picture already looks better than the cap.  Increases
   are never blocked.
-* The core flag (+0x12f), the only difference between CappedVBR and
-  CappedQuality, gates a QP-lowering search inside `Ioii` (0x55218): with
-  flag 0 (CappedQuality) the search runs in a case where VBR/CappedVBR skip
-  it.  The condition compares state fields that were not identified, so the
-  CappedQuality-specific part is **not determined**.
+* CappedVBR and CappedQuality differ in exactly two bytes of the controller
+  state, both set from the `AL_RateCtrl_Init` mode (8 = CappedVBR, 9 =
+  CappedQuality; AL mode 4 -> 8, AL mode 8 -> 9 in the `AL_EncChannel_Init`
+  table).  Confirmed under emulation (unicorn, `tools/t31_rc_emu/`): mode 8
+  with the two bytes patched to the mode-9 values is picture-for-picture
+  identical to mode 9 and vice versa, in static, busy and scene-change
+  scenarios.
+  1. Core flag `state+0x12f` (`oiii` a2): 1 for CappedVBR, 0 for
+     CappedQuality.  Read in exactly one place, `Ioii` 0x55218.  `Ioii`
+     (the per-picture analysis, called after every picture with flag bit 1,
+     i.e. every regular picture of a low-delay GOP) first computes the
+     picture's per-type target (`state+0x8c` = uTargetBitRate / fps for GOP
+     length < 2, otherwise the GOP budget split by the per-type size ratios
+     `state+0xf8..`).  A picture *smaller* than its target starts a
+     QP-lowering search: starting from delta 0, the picture size is scaled
+     by the type's one-QP ratio (`state+0xf8+4*type`, 1.1225 = 2^(1/6) in
+     1/10000) and delta decremented while the scaled size still stays below
+     the target and delta > -4 (`state+0x22`).  Before the search, the
+     controller compares the leaky-bucket idle time `state+0x84` (HRD object
+     `state+0x48`, field +0x3c: accumulated ticks at 90 kHz during which the
+     channel at uMaxBitRate had nothing to send because the picture would
+     have arrived more than uInitialRemDelay ahead of its removal time) with
+     5 % of the elapsed stream time (`pictures * clkRatio * 90000 / (fps *
+     1000) * 5 / 100`, computed in `Ioii` 0x549a8).  Idle < 5 %: the stream
+     has been running at the max rate; CappedVBR (flag 1) then skips the
+     search and keeps the QP, CappedQuality (flag 0) searches anyway.  The
+     mirrored test for a picture *larger* than its target (search up only
+     while idle <= (uMaxBitRate - 1.04 * uTargetBitRate) / uMaxBitRate of
+     the elapsed time) is the same in both modes.  Everything after the
+     search is shared: the remaining-GOP budget check against the buffer
+     (`i1Ii`/`IIIi` size predictions, a QP step +1 when the budget for the
+     rest of the GOP plus the next I picture does not fit), the static-scene
+     adjustment (`Ioli`), the +-4 clamp, and in `Ooii` the PSNR cap (a
+     negative delta becomes 0 while PSNR > uMaxPSNR) before the delta is
+     added to `state+0x20` and clamped to iMinQP..iMaxQP.
+  2. HRD flag `hrd+0x15` = (mode != 9): 1 for CappedVBR, 0 for
+     CappedQuality.  Read in exactly one place, the bucket update `i0Io`
+     0x5674c (called from `i0ii` for every picture with its size).  With
+     the flag set the function returns after accounting the picture; with
+     flag 0 it additionally lets the removal clock slip: when the picture's
+     arrival time (bits sent at uMaxBitRate) is later than its scheduled
+     removal time (one frame period after the previous one), the removal
+     time is set to the arrival time.  The bucket level (`OOlo`, removal
+     minus arrival in bits) therefore never goes negative in CappedQuality:
+     an overload does not produce an underflow and no emergency QP (`ooIi`
+     raises the QP to the maximum when a picture exceeds 75 % of the level),
+     the QP rises step by step through the remaining-GOP budget check
+     instead.  CappedVBR keeps the hard delivery schedule (and in the
+     emulated scene change jumped to iMaxQP and stayed there while the
+     bucket recovered).
+  In short: CappedVBR lowers the QP only while the bucket has been idle at
+  least 5 % of the time (true VBR headroom) and enforces the HRD schedule;
+  CappedQuality lowers the QP whenever a picture comes in under its target
+  (bounded by the PSNR cap, the GOP budget and +-4 per update) and treats
+  the delivery schedule as elastic.  The emulated static scene at 2 Mbit/s
+  target / 4 Mbit/s max: CappedVBR settles at one QP per GOP, CappedQuality
+  oscillates +-1 around a QP one to two steps lower and spends ~6 % more
+  bits.
 
 `IMP_Encoder_GetChnAttrRcMode` returns the stored IMP attribute (36 bytes),
 so the read-back is the mode and values as given.
@@ -68,8 +121,16 @@ CappedVBR and CappedQuality run the controller with the OEM PSNR cap
 PSNR is computed from the status SSE as above (integer log10), and a QP
 decrease at a GOP decision is dropped while the last picture is above the
 cap.  An SSE of 0 means no measurement (logged once) and the cap is
-inactive; the OEM would read it as a perfect picture.  The undetermined
-CappedQuality search is not reproduced: both modes behave the same.  The
+inactive; the OEM would read it as a perfect picture.  The OEM difference
+between the two modes (above) is not reproduced: OpenIMP's T31 controller is
+not the Allegro core (no leaky bucket at uMaxBitRate, no per-type targets,
+GOP-granular decisions), so the idle-time gate and the HRD slip have no
+counterpart and both modes behave the same.  A vendor-equal CappedVBR /
+CappedQuality needs the Allegro VBR core itself (init `lI1i`, picture QP
+`o11i`/`Il1i`, update `Ioii` with `i0ii`/`Ilii`/`O0ii`/`ooIi`/`i1Ii`/
+`IIIi`/`Ioli`/`l0ii`, HRD `l0io`/`i0Io`/`OOlo`/`l1Io`/`iiIo`, cap `Ooii`,
+about 2,800 instructions) and the macroblock statistics it reads from the
+status block (+0x14..+0x30).  The
 log shows `T31 capped rc: qp=.. psnr=.. cap=.. holds=..` every 250
 pictures.  Read-back: the attribute as given (as the OEM).
 
