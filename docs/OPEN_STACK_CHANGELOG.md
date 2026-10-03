@@ -99,6 +99,7 @@ Aggregates: `claude/open-tx-isp-all-4` and `claude/openimp-all-4` (pushed); 58 m
 - **T10 noise reduction:** Sinter/Temper strength acts (vendor: no-op): temporal noise 7.11 / 2.91 / 1.51 at temper 0 / 128 / 255, survives day/night. Branch `claude/t10-t20-nr-wdr`.
 - **Unsupported keys (timps `claude/timps-unsupported-keys`):** a POST with only keys the SoC cannot apply returns 422 `not_supported_on_soc` with `ok:false`; unsupported keys are no longer persisted (audio `CAP_ALC`/`CAP_SPK` count as not supported without the hardware path). `IMP_ISP_QueryCaps` was prototyped and withdrawn by the maintainer; not part of any release.
 - **T23 AE default:** the lifted vendor AE becomes the default after the night test (pending).
+- **T31 Allegro CBR and T21 eprc device results (20:13):** T31 (vendor Allegro core, default): CBR 1210 kbit/s at 1200 target and 2973 at 3000 (legacy controller 1511 / 3786, +26 % with large peaks); VBR 1163, CappedVBR 1177, CappedQuality 1174 at 1200; decode clean, 0 oops; no filler NAL written (filler=0 also at 3000). Branch `claude/t31-allegro-cbr`. T21 eprc complete: SMART/CBR/VBR at 1200 kbit/s gave 1090/1305/1042; runtime HSkip N=4 gives an IDR every 4 GOPs; decode clean, 0 oops; a day/night switch does not trigger the scene-cut IDR (vendor condition: scene class 5). Branch `claude/eprc-complete`. T23 eprc-complete device test is pending.
 
 ## Evening (2026-10-03)
 
