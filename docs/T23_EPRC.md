@@ -144,3 +144,36 @@ never produces type-6 pictures.  A capture of the OEM stream in SMART mode
 - **T20 / T10 3.12.0**: a different, smaller controller
   (`JZ_VPU_RC_VIDEO_CFG_T20`, `JZ_VPU_RC_FRAME_RC_T20`,
   `eprc_default_set_t20`); needs its own port (M5).
+
+## In the native T23 encoder (M4)
+
+`src/t30/t30_helix_encoder.c`: `t23_eprc_start` (create, reconfigure; the
+OEM re-runs `i264e_ratecontrol_init` on every rate-control change),
+`EPRC_FrameStart` per picture (frames since IDR from the GOP position),
+`t23_eprc_statistics` + `EPRC_FrameEnd` after the run (coded size = VPU
+output length; the OEM uses i264e's slice byte count, a few header bytes
+apart), re-encode at the controller's QP.  `OPENIMP_T23_EPRC`: unset =
+SMART only, `1` = CBR/VBR/SMART, `0` = off.  `OPENIMP_T23_SMART_IDR_GOPS`:
+SMART IDR period in GOPs (param[2756]; unknown default, see above).
+
+## Device test plan (cam-B, T23)
+
+Bind-mount the built libimp over `/usr/lib/libimp.so`, run timps on a
+config copy with `video0.rc_mode=smart`, `OPENIMP_T23_RC_STATS=10`.
+
+1. Log: `T23 Helix eprc: SMART ...` at start; no `reading 0x131... failed`
+   (register reads allowed by soc_vpu; else statistics are 0 and scene
+   judging degenerates); count `coding again` lines (should be rare).
+2. Record 60 s static scene and 60 s with motion (RTSP, ffmpeg `-c copy`).
+   `ffmpeg -v error -i rec.h264 -f null -` clean.  `ffprobe -show_frames
+   -select_streams v -show_entries frame=pict_type,pkt_size` : IDR every
+   GOP (or every n GOPs with `OPENIMP_T23_SMART_IDR_GOPS=n`), only I/P.
+3. Bitrate: static well below maxBitRate, motion close to changePos% of
+   maxBitRate; QP (`rc stats` lines) higher in motion, lower when static,
+   P-to-P steps <= frmQPStep.
+4. A/B: same with `OPENIMP_T23_EPRC=0` (band mapping) and the OEM stack in
+   SMART mode on the same scene (IDR distance, sizes, QPs via
+   `ffprobe -show_entries frame=pkt_size`, QP from the slice header with
+   `ffprobe -debug qp` or `h264_analyze`).
+5. `OPENIMP_T23_EPRC=1` with `rc_mode=vbr` and `rc_mode=cbr`: bitrate on
+   target, decode clean.

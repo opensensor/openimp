@@ -308,6 +308,9 @@ int T21_H264_BuildDescriptor(const T21H264SliceConfig *config,
     uint32_t aligned_height;
     uint32_t min_qp;
     uint32_t max_qp;
+#if defined(T21_HELIX_T23_DELTAS)
+    uint32_t lambda_step;
+#endif
     uint32_t crop_flag;
     unsigned int i;
 
@@ -327,7 +330,13 @@ int T21_H264_BuildDescriptor(const T21H264SliceConfig *config,
     writer.end = config->descriptor + config->descriptor_words;
     aligned_width = (uint32_t)config->mb_width * 16u;
     aligned_height = (uint32_t)config->mb_height * 16u;
+#if defined(T21_HELIX_T23_DELTAS)
+    /* OEM h264_api_enc (T23 0xc3930): slice fields +809/+810 */
+    min_qp = config->qp > 12u ? config->qp - 12u : 1u;
+    lambda_step = config->qp > 33u ? config->qp - 33u : 0u;
+#else
     min_qp = config->qp > 12u ? config->qp - 12u : 0u;
+#endif
     max_qp = config->qp < 39u ? config->qp + 13u : 51u;
     crop_flag = (config->height & 15u) != 0u ? 0x80u : 0u;
 
@@ -540,8 +549,15 @@ int T21_H264_BuildDescriptor(const T21H264SliceConfig *config,
     EMIT(0xb0030, config->raw[0]);
     EMIT(0xb0034, config->raw[1]);
     EMIT(0xb0010, (config->stride[0] << 16) | config->stride[1]);
+#if defined(T21_HELIX_T23_DELTAS)
+    /* OEM h264_api_enc: lambda 384 + 48 / 96 + 12 per QP above 33 (the
+     * fixed table; slice fields +1058..+1063) */
+    EMIT(0xb001c, 0x180u + 48u * lambda_step);
+    EMIT(0xb0020, (0x60u + 12u * lambda_step) * 0x00010001u);
+#else
     EMIT(0xb001c, 0x180u);
     EMIT(0xb0020, 0x00600060u);
+#endif
     EMIT(0xb0000, 0x0002ffbdu);
     if (t21_emit_final(&writer, 0x40000,
                        0xc0000000u | ((uint32_t)config->qp << 8) |

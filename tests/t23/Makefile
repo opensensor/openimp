@@ -23,7 +23,8 @@ HELIX_NATIVE_SOURCES := $(PROJECT_DIR)/src/t30/t30_helix_encoder.c \
 	$(PROJECT_DIR)/src/t30/h264enc/common.c \
 	$(PROJECT_DIR)/src/t30/h264enc/set.c \
 	$(PROJECT_DIR)/src/t30/h264enc/slice.c \
-	$(PROJECT_DIR)/src/t40/t31_rate_control.c
+	$(PROJECT_DIR)/src/t40/t31_rate_control.c \
+	$(PROJECT_DIR)/src/eprc/eprc.c
 # The IMP headers pin the 32-bit MIPS ABI with _Static_assert; the Helix
 # bridge host build (x86_64, both ends of the IPC built alike) only checks
 # the bridge's input path, so those layout checks are compiled out there.
@@ -146,7 +147,7 @@ $(HELIX_STREAM): helix_stream_test.c $(HELIX_NATIVE_SOURCES) \
 	$(CC) $(CFLAGS) $(HELIX_INCLUDES) -U_FORTIFY_SOURCE \
 		-D_FORTIFY_SOURCE=0 -Wno-missing-field-initializers \
 		helix_stream_test.c $(HELIX_NATIVE_SOURCES) -no-pie \
-		-Wl,--wrap=open,--wrap=close,--wrap=ioctl -o "$@"
+		-Wl,--wrap=open,--wrap=close,--wrap=ioctl -lm -o "$@"
 
 # Reserved-memory layout with the native encoder: OpenIMP's arena and the
 # real encoder buffer sizes through timps' idle/re-enable cycles.
@@ -156,7 +157,7 @@ $(RMEM_LAYOUT): rmem_layout_test.c $(HELIX_NATIVE_SOURCES) \
 	$(CC) $(CFLAGS) $(HELIX_INCLUDES) -U_FORTIFY_SOURCE \
 		-D_FORTIFY_SOURCE=0 -Wno-missing-field-initializers \
 		rmem_layout_test.c $(HELIX_NATIVE_SOURCES) -no-pie \
-		-Wl,--wrap=open,--wrap=close,--wrap=ioctl -o "$@"
+		-Wl,--wrap=open,--wrap=close,--wrap=ioctl -lm -o "$@"
 
 clean:
 	rm -f $(HELIX_DESCRIPTOR) $(HELIX_STREAM) $(RMEM_LAYOUT) $(BUILD)/t23-helix.h264 \

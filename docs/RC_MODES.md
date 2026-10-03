@@ -91,13 +91,17 @@ controller for CBR/VBR/SMART alike, without the extras (unchanged).
 
 i264e_ratecontrol_init (same eprc code as T21): VBR -> eprc rcMode 2, SMART
 -> eprc rcMode 3 with the same VBR fields and, in addition, gopMode 1
-(SmartP: background long-term reference, `gopSmartP.u32BgInterval = gop *
-param[0xac4]`, `s8BgQpDelta 3`, `s8ViQpDelta 3`) instead of gopMode 0
-(`gopNormalP.s8IPQpDelta 3`).  A vendor-equal SMART therefore needs both the
-eprc controller and a SmartP GOP (long-term reference) in the native
-encoder; neither exists, so SMART keeps the documented band mapping
-(`T23_NATIVE_HELIX.md`).  The OEM `GetChnAttrRcMode` reads live values as
-on T21; OpenIMP T23 returns the attribute as given (unchanged).
+(SmartP fields: `u32BgInterval = gop * param[0xac4]`, `s8BgQpDelta 3`,
+`s8ViQpDelta 3`) instead of gopMode 0 (`gopNormalP.s8IPQpDelta 3`).
+`docs/T23_EPRC.md` has the controller in detail: the SmartP fields are not
+read by the picture QP path, and the OEM SMART uses no long-term reference
+(long-term references belong to the HSkip modes H1M).
+
+OpenIMP: `src/eprc` reimplements the OEM controller (bit-exact under
+emulation, `tests/eprc`); the native encoder runs it for SMART by default
+and for CBR/VBR with `OPENIMP_T23_EPRC=1` (`=0`: the band mapping for all,
+as before).  The OEM `GetChnAttrRcMode` reads live values as on T21;
+OpenIMP T23 returns the attribute as given (unchanged).
 
 ## T10 / T40 / T41
 
