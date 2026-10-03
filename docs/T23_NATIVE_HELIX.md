@@ -5,14 +5,16 @@ OpenIMP can encode T23 H.264 with its own Helix command lists over
 the OEM encoder in the `openimp-t23-helixd` worker. With the native backend
 no OEM code runs for video.
 
-Status: implemented and host-tested; **not yet run on hardware**. The build
-default stays `worker` until the on-device bring-up below has passed.
+Status: implemented, host-tested and brought up on the T23 test camera
+(flashed since 2026-10-03 01:32). `native` is the build default; the
+`worker` backend stays available as `T23_DEFAULT_ENCODER=worker` or
+`OPENIMP_T23_ENCODER=worker`.
 
 ## Selecting the backend
 
 | Setting | Effect |
 | --- | --- |
-| `T23_DEFAULT_ENCODER=worker\|native ./build-t23.sh` | build default (default `worker`) |
+| `T23_DEFAULT_ENCODER=worker\|native ./build-t23.sh` | build default (default `native`) |
 | `OPENIMP_T23_ENCODER=native\|worker` | run-time choice, overrides the build default |
 | `OPENIMP_T23_NATIVE_FALLBACK=0` | do not fall back to the worker when the native encoder cannot be created |
 | `OPENIMP_T23_HELIX_TIMEOUT_MS=N` | soc_vpu wait/timeout per job, 100..20000 ms (default 2000) |
@@ -171,7 +173,7 @@ Next:
 - device retest of the status handling (plan below, "Status retest");
 - optional: OEM reference sharing (above) if more headroom is needed.
 
-Current builds (`T23_DEFAULT_ENCODER=worker` default):
+Current builds (`T23_DEFAULT_ENCODER=native` default):
 
 | Build | md5 |
 | --- | --- |

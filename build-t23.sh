@@ -47,7 +47,7 @@ base_flags="$base_flags -DOPENIMP_SW_JPEG=${OPENIMP_SW_JPEG:-0}"
 # H.264 backend when OPENIMP_T23_ENCODER is not set at run time: "worker"
 # (the OEM encoder in openimp-t23-helixd) or "native" (OpenIMP's own Helix
 # command lists over /dev/soc_vpu).
-case "${T23_DEFAULT_ENCODER:-worker}" in
+case "${T23_DEFAULT_ENCODER:-native}" in
     worker) default_encoder_flag=-DOPENIMP_T23_DEFAULT_NATIVE=0 ;;
     native) default_encoder_flag=-DOPENIMP_T23_DEFAULT_NATIVE=1 ;;
     *)
