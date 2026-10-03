@@ -87,6 +87,25 @@ OpenIMP: T20 green flicker in the bottom rows fixed by filling the encoder paddi
 
 Aggregates: `claude/open-tx-isp-all-4` and `claude/openimp-all-4` (pushed); 58 merged single branches removed. `claude/open-tx-isp-all-5` adds t21-robust and t31-robust-2 (T31: sensor flip with shvflip=1, unload leaks, lazy WDR buffers; MemFree drift per reload 460 → 45 KB); all four cameras flashed with -all-5 images.
 
+## Morning (2026-10-03)
+
+Done and device-tested, waiting for the next aggregate (-all-13):
+- **T31 privacy mask** (`claude/t31-privacy-mask`): the ISP mask block is now implemented like the vendor driver (4 rectangles per channel, YUV fill, follows mirror/flip). Emulator: 400/400 random sequences register-identical to the vendor module. cam-A: black and red rectangles at the right place and colour, get/clear OK. OpenIMP converts RGB mask colours to YUV like the vendor libimp (`claude/t31-mask-rgb2yuv`).
+- **T21 tuning controls** (`claude/t21-tuning-controls`, beyond vendor — the vendor kernel ignores them): scene is stored, colour effects black-and-white / vivid / negative work, Sinter and Temper denoise strength act on the hardware, getters return what was set; defaults stay vendor-identical. timps' `sinter_strength` now works on T21 (`claude/t21-sinter-strength`, 128 = vendor picture). cam-D: effects and denoise visible, 0 oops.
+- **T21 debug parameters removed** (`claude/t21-drop-debug`): module 13.8 KB smaller.
+- **T20/T21 encoder error limit** (`claude/helix-error-limit`): after 3 failed pictures the encoder is re-created, after 2 fruitless re-creates the channel stops instead of waiting 20 s per picture. cam-C and cam-D soak OK.
+- **T23 RC defaults** (`claude/t23-rc-app-defaults`): app value 0 for QP step / static time / change position now means the vendor default (3/15/2/80) instead of "off", taken from the vendor libimp 1.3.0.
+- **cam-A sensor driver:** vertical flip no longer reports a false error (local thingino patch).
+- **timps:** T23 access-unit limit raised to 2 MiB + 64 KiB to match the encoder window, so large night IDRs are no longer dropped (other session, after review).
+
+Investigated, not adopted:
+- **Reference buffer sharing** (vendor BUF_SHARE_CFG): only the T21/T23 Helix hardware has the ring mode. On cam-D it saved ~1.4 MB video memory but produced magenta/green reference artefacts in the first seconds; stays off while the cause is analysed.
+- **timps flip reset on client connect:** not a bug — timps re-applies the live config value; the test had written the register behind timps' back.
+
+In work:
+- **T23 by day:** with the lifted vendor AE exposure is right at once and AE compensation/highlight work, but the picture is green; with the HLIL AE the first ~2 minutes after a driver reload are overexposed. Cause under analysis (CCM bypassed since it follows the IQ bank). The lifted AE becomes default only after this is fixed.
+- **New T41 test camera** (vendor stack): build fixes for the T41 driver and an OpenIMP T41 build are being prepared.
+
 ## Early morning (2026-10-03)
 
 - **Aggregates -all-10 / openimp-all-9 and -all-11 / openimp-all-10** flashed on all five cameras (incl. cam-A, which moved up from -all-5). Checks on every camera: 30/30 valid snapshots on both channels, MJPEG and both MP4 streams, 0 oops, 0 encoder errors. -all-11 was flashed staged (cam-D and cam-C first) because it carries a new kernel.
