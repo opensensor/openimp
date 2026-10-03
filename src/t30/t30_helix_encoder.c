@@ -324,6 +324,7 @@ struct T30HelixEncoder {
     Eprc eprc;
     uint8_t *eprc_slice;        /* OEM slice-parameter block */
     int eprc_on;
+    int eprc_t21;               /* T21: the T21 1.0.33 revision (eprc_t21.c) */
     uint32_t eprc_idr_gops;     /* IDR period in GOPs (0, 1: every GOP) */
     uint32_t eprc_reencodes;
     uint32_t eprc_stat_errors;
@@ -1222,13 +1223,15 @@ static void t23_rc_stats(T30HelixEncoder *encoder, uint32_t qp, int idr,
 #define HELIX_I264E_FRM_STEP    3u
 #define HELIX_I264E_GOP_STEP    15u
 
-/* Which rate-control modes run the OEM picture rate controller (src/eprc).
+/* Which rate-control modes run the OEM picture rate controller (src/eprc),
+ * and which revision.
  * T23 (OPENIMP_T23_EPRC): unset = SMART, "1" = CBR, VBR and SMART, "0" =
  * none (the GOP controller with the band mapping, t23_rc_config).
- * T21 (OPENIMP_T21_EPRC): unset or "0" = none, "1" = CBR, VBR and SMART.
- * src/eprc is the T23 1.3.0 controller; the T21 1.0.33 one is an older
- * revision whose decisions differ (tools/eprc_oracle.py, docs/T23_EPRC.md),
- * so T21 keeps its GOP controller by default. */
+ * T21 (OPENIMP_T21_EPRC): unset or "0" = none (the GOP controller), "1" =
+ * CBR, VBR and SMART with the T21 1.0.33 revision (eprc_t21.c, equal to
+ * the OEM T21 controller in tools/eprc_oracle.py), "23" = the same with the
+ * T23 1.3.0 controller (eprc.c, an approximation on T21; A/B only).
+ * Returns 0 (off), 1 (T21 revision) or 2 (T23 controller). */
 static int helix_eprc_wanted(const T30HelixEncoder *encoder)
 {
     const char *env = getenv(HELIX_EPRC_ENV);
@@ -1237,22 +1240,32 @@ static int helix_eprc_wanted(const T30HelixEncoder *encoder)
 
     if (encoder->params.rc_mode == HW_RC_MODE_FIXQP)
         return 0;
+#if defined(PLATFORM_T23)
     if (env && env[0] == '0')
         return 0;
     if (env && env[0] == '1')
-        return 1;
-#if defined(PLATFORM_T23)
-    return smart;
+        return 2;
+    return smart ? 2 : 0;
 #else
     (void)smart;
+    if (env && strcmp(env, "1") == 0)
+        return 1;
+    if (env && strcmp(env, "23") == 0)
+        return 2;
     return 0;
 #endif
 }
 
 static void helix_eprc_stop(T30HelixEncoder *encoder)
 {
-    if (encoder->eprc_on)
-        EPRC_Free(&encoder->eprc);
+    if (encoder->eprc_on) {
+#if !defined(PLATFORM_T23)
+        if (encoder->eprc_t21)
+            EPRC21_Free(&encoder->eprc);
+        else
+#endif
+            EPRC_Free(&encoder->eprc);
+    }
     encoder->eprc_on = 0;
 }
 
@@ -1341,9 +1354,11 @@ static void helix_eprc_start(T30HelixEncoder *encoder)
     const HWEncoderParams *hp = &encoder->params;
     EprcParams p;
 
+    int rev;
+
     helix_eprc_stop(encoder);
-    if (!helix_eprc_wanted(encoder) || !hp->fps_num || !hp->fps_den ||
-        !hp->gop_length)
+    rev = helix_eprc_wanted(encoder);
+    if (!rev || !hp->fps_num || !hp->fps_den || !hp->gop_length)
         return;
     if (!encoder->eprc_slice) {
         encoder->eprc_slice = calloc(1, EPRC_SLICE_SIZE);
@@ -1355,16 +1370,26 @@ static void helix_eprc_start(T30HelixEncoder *encoder)
         helix_eprc_idr_gops(hp, p.rc_mode == EPRC_MODE_SMART);
     p.bg_interval_gops = encoder->eprc_idr_gops;
     memset(encoder->eprc_slice, 0, EPRC_SLICE_SIZE);
-    if (EPRC_Init(&encoder->eprc, &p, encoder->eprc_slice) != 0) {
+    encoder->eprc_t21 = rev == 1;
+    if ((
+#if !defined(PLATFORM_T23)
+         encoder->eprc_t21 ? EPRC21_Init(&encoder->eprc, &p, encoder->eprc_slice) :
+#endif
+         EPRC_Init(&encoder->eprc, &p, encoder->eprc_slice)) != 0) {
         IMP_LOG_WARN("Encoder", HELIX_EPRC_TAG " Helix: OEM rate control "
                      "init failed, using the GOP controller");
         return;
     }
     encoder->eprc_on = 1;
-    IMP_LOG_INFO("Encoder", HELIX_EPRC_TAG " Helix eprc: %s %ux%u gop=%u "
+    IMP_LOG_INFO("Encoder", HELIX_EPRC_TAG " Helix eprc%s: %s %ux%u gop=%u "
                  "fps=%u/%u bitrate=%u kbit/s qp=[%u,%u] bias=%d "
                  "steps=%u/%u static=%u changePos=%u quality=%u "
                  "idr=%u gop(s)",
+#if defined(PLATFORM_T23)
+                 "",
+#else
+                 encoder->eprc_t21 ? " (T21 rev)" : " (T23 rev)",
+#endif
                  p.rc_mode == EPRC_MODE_CBR ? "CBR" :
                  p.rc_mode == EPRC_MODE_SMART ? "SMART" : "VBR",
                  p.width, p.height, p.gop, p.fps_num, p.fps_den,
@@ -1415,8 +1440,14 @@ static int helix_eprc_end(T30HelixEncoder *encoder, int idr, uint32_t *qp)
     int may_repeat = !(encoder->ref_share && !idr);
 
     helix_eprc_statistics(encoder, regs);
-    if (EPRC_FrameEndEx(&encoder->eprc, encoder->channel.output_len, regs,
-                        &pic, may_repeat) != 1)
+    if ((
+#if !defined(PLATFORM_T23)
+         encoder->eprc_t21 ?
+             EPRC21_FrameEndEx(&encoder->eprc, encoder->channel.output_len,
+                               regs, &pic, may_repeat) :
+#endif
+             EPRC_FrameEndEx(&encoder->eprc, encoder->channel.output_len,
+                             regs, &pic, may_repeat)) != 1)
         return 0;
     encoder->eprc_reencodes++;
     if (encoder->eprc_reencodes <= 3u || encoder->eprc_reencodes % 100u == 0u)
@@ -2093,7 +2124,11 @@ static int t30_helix_encode_job(T30HelixEncoder *encoder,
 
         memset(&in, 0, sizeof(in));
         in.frames_since_idr = idr ? 0u : encoder->gop_position;
-        if (EPRC_FrameStart(&encoder->eprc, &in, &pic) == 0) {
+        if ((
+#if !defined(PLATFORM_T23)
+             encoder->eprc_t21 ? EPRC21_FrameStart(&encoder->eprc, &in, &pic) :
+#endif
+             EPRC_FrameStart(&encoder->eprc, &in, &pic)) == 0) {
             qp = pic.qp;
         } else {
             IMP_LOG_WARN("Encoder", HELIX_EPRC_TAG " Helix eprc: picture "

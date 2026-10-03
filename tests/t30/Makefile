@@ -42,7 +42,7 @@ helix_encoder_test: $(HELIX_SOURCES) $(ROOT)/src/t30/t30_annexb.h $(ROOT)/src/t3
 
 HELIX_T21_SOURCES := $(filter-out %/t30_h264_descriptor.c,$(HELIX_SOURCES)) \
 	$(ROOT)/src/t21/t21_h264_descriptor.c $(ROOT)/src/t30/helix_bitstream.c \
-	$(ROOT)/src/eprc/eprc.c
+	$(ROOT)/src/eprc/eprc.c $(ROOT)/src/eprc/eprc_t21.c
 
 helix_encoder_test_t21: $(HELIX_T21_SOURCES) $(ROOT)/src/t30/t30_annexb.h $(ROOT)/src/t30/t30_h264_level.h
 	$(CC) $(CFLAGS) -DPLATFORM_T21 -fno-pie -no-pie \
