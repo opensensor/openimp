@@ -97,7 +97,7 @@ Aggregates: `claude/open-tx-isp-all-4` and `claude/openimp-all-4` (pushed); 58 m
 - **eprc complete (T21/T23):** FIXQP, scene-cut IDR, runtime RC/fps/GOP/HSkip changes applied at the next IDR like the vendor, `SetChnHSkip` on T21/T23; 0 oracle deviations. MB-level RC is not ported (separate task). Branch `claude/eprc-complete`.
 - **T20 frame source:** the snapshot debounce no longer polls the JPEG encoder: with 1 snapshot/s on both channels chn0 14.4 / chn1 15.0 fps (was 11.2 / 14.3). A sub-stream height of 270 is rounded to 272 with a warning (was: scaler hang). Branches OpenIMP `claude/openimp-t20-jpeg-align`, timps `claude/timps-jpeg-idle-nopoll`.
 - **T10 noise reduction:** Sinter/Temper strength acts (vendor: no-op): temporal noise 7.11 / 2.91 / 1.51 at temper 0 / 128 / 255, survives day/night. Branch `claude/t10-t20-nr-wdr`.
-- **Capability query:** OpenIMP `IMP_ISP_QueryCaps` (`claude/imp-querycaps`) plus timps `claude/timps-querycaps`: caps may be restricted and extended by OpenIMP (only simple setters; never WB, sensor attributes, ae_it_max, T40/T41 flip). With a vendor libimp the caps are byte-identical (`make test-image-caps`); a POST with only unsupported keys gives 422 `ok:false` and the unsupported keys are not persisted; timpsd grows by 0 to 4 KB. Device (cam-C): sinter/temper appear in the caps and act. Not merged to timps main (user decides).
+- **Unsupported keys (timps `claude/timps-unsupported-keys`):** a POST with only keys the SoC cannot apply returns 422 `not_supported_on_soc` with `ok:false`; unsupported keys are no longer persisted (audio `CAP_ALC`/`CAP_SPK` count as not supported without the hardware path). `IMP_ISP_QueryCaps` was prototyped and withdrawn by the maintainer; not part of any release.
 - **T23 AE default:** the lifted vendor AE becomes the default after the night test (pending).
 
 ## Evening (2026-10-03)
@@ -127,7 +127,7 @@ Aggregates: `claude/open-tx-isp-all-4` and `claude/openimp-all-4` (pushed); 58 m
 - **eprc QP-down limit (P5) in the T21 vendor revision:** `claude/eprc-t21-qp-limit`, opt-in (`OPENIMP_EPRC_QP_DOWN1/2`). Device test pending.
 - **T41 module reload: root cause:** a decompiled tuning-node helper used the 4-byte module parameter `ivdc_threshold_line` as a struct cdev and overwrote about 60 B of .bss including `tx_isp_bringup_level`, so `tx_isp_exit()` bailed out early and left platform drivers, misc devices, IRQs and kthreads registered. Fixed in `claude/t41-matrix-fixes` (b4ef2cf8), device test pending. T41 image rev 1 (flashed): isp-m0 now in vendor layout; reload still failed with rev 1.
 - **Feature matrix: ? cells filled:** results of the evening matrix tests (audio input only, no sound played): T31 AWB presets and IR cut/IR LED device-tested; T31 CCM/LSC follow day/night and flip; T20/T10 ISP state not observable; defog/DPC on T10/T20/T21 have no control path (keys accepted but ignored); scaler tested on T10/T20/T21; T20 snapshots on both channels cost video frames; audio input device-tested on T10/T20/T21/T31.
-- **Feature detection:** the static caps matrix stays (agreed with the timps session); the new beyond-vendor `IMP_ISP_QueryCaps` (in work) can only restrict the caps.
+- **Feature detection:** the static caps matrix stays (agreed with the timps session); `IMP_ISP_QueryCaps` was withdrawn by the maintainer.
 
 ## Late afternoon (2026-10-03)
 
