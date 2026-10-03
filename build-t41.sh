@@ -19,6 +19,16 @@ if [ -z "$firmware_dir" ]; then
         fi
     done
 fi
+if [ -z "$firmware_dir" ]; then
+    # any Thingino checkout with a built T41 target (output/<profile>/...)
+    for candidate in "$project_dir"/../thingino*/output/*/*t41*-4.4.94-uclibc
+    do
+        if [ -x "$candidate/host/bin/mipsel-linux-gcc" ]; then
+            firmware_dir=${candidate%/output/*}
+            break
+        fi
+    done
+fi
 
 : "${firmware_dir:?set THINGINO_DIR to a Thingino firmware checkout}"
 target_name=${T41_TARGET:-wyze_cam4_t41nq_os04d10_atbm6062s-4.4.94-uclibc}
@@ -28,7 +38,8 @@ compiler="${toolchain_prefix}-gcc"
 
 if [ ! -x "$compiler" ] && [ -z "${TOOLCHAIN_PREFIX:-}" ]; then
     for candidate in \
-        "$firmware_dir"/output/master/*-uclibc/host/bin/mipsel-linux-gcc
+        "$firmware_dir"/output/master/*-uclibc/host/bin/mipsel-linux-gcc \
+        "$firmware_dir"/output/*/*t41*-uclibc/host/bin/mipsel-linux-gcc
     do
         if [ -x "$candidate" ]; then
             compiler=$candidate
@@ -37,11 +48,17 @@ if [ ! -x "$compiler" ] && [ -z "${TOOLCHAIN_PREFIX:-}" ]; then
         fi
     done
 fi
+# the target the toolchain belongs to (for the header and RVD/RAD lookups)
+if [ ! -d "$target_dir" ] && [ -x "$compiler" ]; then
+    target_dir=${compiler%/host/bin/*}
+fi
 
 if [ -z "${T41_HEADERS:-}" ]; then
     for candidate in \
         "$target_dir"/build/thingino-raptor-hal-*/ingenic-headers/T41/1.2.0/zh \
-        "$firmware_dir"/output/master/*-uclibc/build/thingino-raptor-hal-*/ingenic-headers/T41/1.2.0/zh
+        "$firmware_dir"/output/master/*-uclibc/build/thingino-raptor-hal-*/ingenic-headers/T41/1.2.0/zh \
+        "$firmware_dir"/dl/thingino-raptor-hal/git/ingenic-headers/T41/1.2.0/zh \
+        "$project_dir"/../timps/include/T41/1.2.0/zh
     do
         if [ -f "$candidate/imp/imp_audio.h" ]; then
             T41_HEADERS=$candidate
