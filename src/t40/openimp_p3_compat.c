@@ -85,7 +85,9 @@ P3_UNSUPPORTED(IMP_ISP_Tuning_GetCCMAttr)
 P3_UNSUPPORTED(IMP_ISP_Tuning_GetGammaAttr)
 P3_UNSUPPORTED(IMP_ISP_Tuning_GetMask)
 P3_UNSUPPORTED(IMP_ISP_Tuning_GetModuleControl)
+#if !defined(PLATFORM_T41)   /* T41: openimp_p3_controls.c */
 P3_UNSUPPORTED(IMP_ISP_Tuning_GetSensorAttr)
+#endif
 P3_UNSUPPORTED(IMP_ISP_Tuning_SetAfWeight)
 P3_UNSUPPORTED(IMP_ISP_Tuning_SetCCMAttr)
 P3_UNSUPPORTED(IMP_ISP_Tuning_SetGammaAttr)
@@ -97,6 +99,9 @@ P3_UNSUPPORTED(IMP_ISP_Tuning_ShowOsdRgn)
 P3_UNSUPPORTED(IMP_ISP_WDR_ENABLE)
 P3_UNSUPPORTED(IMP_ISP_WDR_ENABLE_GET)
 
+#if !defined(PLATFORM_T41)
+/* T41 has IVS (src/t31/openimp_t31_ivs*.c) and the IPU OSD
+ * (src/t23/openimp_t23_osd.c) */
 P3_UNSUPPORTED_PTR(IMP_IVS_CreateBaseMoveInterface)
 P3_UNSUPPORTED(IMP_IVS_CreateChn)
 P3_UNSUPPORTED(IMP_IVS_CreateGroup)
@@ -131,3 +136,4 @@ P3_UNSUPPORTED(IMP_OSD_Start)
 P3_UNSUPPORTED(IMP_OSD_Stop)
 P3_UNSUPPORTED(IMP_OSD_UnRegisterRgn)
 P3_UNSUPPORTED(IMP_OSD_UpdateRgnAttrData)
+#endif

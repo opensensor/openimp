@@ -8,4 +8,9 @@
  * layout. Cheap when no IVS channel is receiving. */
 void openimp_t31_ivs_capture(int fs_chn, const void *frame);
 
+/* Whether a receiving IVS channel is bound to FrameSource channel fs_chn
+ * (T41: the FrameSource feeds such a channel itself while no consumer
+ * dequeues frames). */
+int openimp_t31_ivs_source_active(int fs_chn);
+
 #endif

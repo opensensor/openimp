@@ -14,9 +14,16 @@
 #include <sys/mman.h>
 #include <syslog.h>
 #include <unistd.h>
+#if defined(PLATFORM_T41)
+#include <pthread.h>
+#include <time.h>
+#endif
 
 #include "openimp_profile.h"
 #include "dma_alloc.h"
+#if defined(PLATFORM_T41)
+#include "t31/openimp_t31_ivs.h"
+#endif
 #include "t40/openimp_p2_dma.h"
 
 #define OPENIMP_P1_MAGIC        0x50315434U /* "P1T4" */
@@ -266,6 +273,10 @@ struct openimp_fs_channel {
     uint32_t buffer_count;
     uint32_t sizeimage;
     uint32_t frames_dequeued;
+#if defined(PLATFORM_T41)
+    uint64_t last_dequeue_us;       /* by a consumer other than the IVS
+                                     * feeder, CLOCK_MONOTONIC */
+#endif
     IMPFSChnAttr attr;
     struct openimp_fs_buffer buffers[OPENIMP_FS_BUFFERS];
 };
@@ -886,6 +897,101 @@ static void fill_qbuf(uint32_t *words, uint32_t index, uint32_t physical,
     words[14] = size;
 }
 
+#if defined(PLATFORM_T41)
+/*
+ * T41 has no capture thread: frames leave the driver only when a consumer
+ * calls IMP_FrameSource_GetFrame, and the IVS sees them there.  A bound IVS
+ * channel (timps' motion on an idle stream) would otherwise get nothing,
+ * whereas the vendor IVS group receives the framesource's frames whether
+ * or not an encoder pulls them.  This thread takes a frame through the
+ * ordinary GetFrame/ReleaseFrame path for a channel with a receiving IVS
+ * binding when no other consumer has dequeued one for three frame
+ * intervals, so it is quiet while an encoder consumes the channel; the
+ * driver hands each buffer to one DQBUF only, so it never shares a buffer
+ * with the encoder, and the IVS sees every frame either of them takes.
+ */
+#define P1_IVS_POLL_US    20000u
+
+static pthread_once_t p1_ivs_feeder_once = PTHREAD_ONCE_INIT;
+static __thread int p1_in_ivs_feeder;   /* GetFrame called by the feeder */
+
+int IMP_FrameSource_GetFrame(int channel, IMPFrameInfo **frame);
+int IMP_FrameSource_ReleaseFrame(int channel, IMPFrameInfo *frame);
+
+static uint64_t p1_monotonic_us(void)
+{
+    struct timespec now;
+
+    clock_gettime(CLOCK_MONOTONIC, &now);
+    return (uint64_t)now.tv_sec * 1000000u + (uint64_t)now.tv_nsec / 1000u;
+}
+
+/* No consumer for three frame intervals (100..500 ms): the channel is
+ * idle and the feeder takes over at the full frame rate, so the move
+ * algorithm (one result per skipFrameCnt frames) keeps the rate the
+ * application expects; timps calls a second without a result a stall. */
+static uint64_t p1_ivs_idle_us(const struct openimp_fs_channel *chn)
+{
+    uint64_t idle = 120000u;
+
+    if (chn->attr.outFrmRateNum > 0 && chn->attr.outFrmRateDen > 0)
+        idle = 3000000ull * (uint32_t)chn->attr.outFrmRateDen /
+               (uint32_t)chn->attr.outFrmRateNum;
+    if (idle < 100000u)
+        idle = 100000u;
+    if (idle > 500000u)
+        idle = 500000u;
+    return idle;
+}
+
+static void *p1_ivs_feeder(void *arg)
+{
+    (void)arg;
+    p1_in_ivs_feeder = 1;
+    for (;;) {
+        int channel;
+        int fed = 0;
+
+        for (channel = 0; channel < OPENIMP_FS_CHANNELS; channel++) {
+            IMPFrameInfo *frame = NULL;
+            int due;
+
+            lock_p1();
+            due = p1.channels[channel].enabled &&
+                  p1_monotonic_us() - p1.channels[channel].last_dequeue_us >=
+                      p1_ivs_idle_us(&p1.channels[channel]);
+            unlock_p1();
+            if (!due || !openimp_t31_ivs_source_active(channel))
+                continue;
+            /* GetFrame waits for the next frame: one frame per pass, at
+             * the channel's rate */
+            if (IMP_FrameSource_GetFrame(channel, &frame) == 0 && frame) {
+                (void)IMP_FrameSource_ReleaseFrame(channel, frame);
+                fed = 1;
+            }
+        }
+        if (!fed)
+            usleep(P1_IVS_POLL_US);
+    }
+    return NULL;
+}
+
+static void p1_ivs_feeder_start(void)
+{
+    pthread_attr_t attr;
+    pthread_t thread;
+
+    if (pthread_attr_init(&attr) != 0)
+        return;
+    pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
+    if (pthread_create(&thread, &attr, p1_ivs_feeder, NULL) != 0)
+        syslog(LOG_ERR, "openimp-p1: IVS frame feeder thread not started");
+    pthread_attr_destroy(&attr);
+}
+#else
+#define p1_monotonic_us() 0u
+#endif
+
 int IMP_FrameSource_EnableChn(int channel)
 {
     struct openimp_fs_channel *chn;
@@ -984,11 +1090,18 @@ int IMP_FrameSource_EnableChn(int channel)
         goto done;
     trace_p1("P1_INNER STREAMON_END\n");
     chn->enabled = 1;
+#if defined(PLATFORM_T41)
+    chn->last_dequeue_us = p1_monotonic_us();
+#endif
     result = 0;
 done:
     if (result && chn->buffer_count)
         release_capture_queue(chn);
     unlock_p1();
+#if defined(PLATFORM_T41)
+    if (!result)
+        (void)pthread_once(&p1_ivs_feeder_once, p1_ivs_feeder_start);
+#endif
     return result;
 }
 
@@ -1084,8 +1197,18 @@ int IMP_FrameSource_GetFrame(int channel, IMPFrameInfo **frame)
     buffer->frame.timeStamp = IMP_System_GetTimeStamp();
 #endif
     chn->frames_dequeued++;
+#if defined(PLATFORM_T41)
+    if (!p1_in_ivs_feeder)
+        chn->last_dequeue_us = p1_monotonic_us();
+#endif
     *frame = &buffer->frame;
     unlock_p1();
+#if defined(PLATFORM_T41)
+    /* T41 has no capture thread: IVS sees each frame as its consumer
+     * dequeues it, as the T31 capture thread hands it every frame
+     * (openimp_t31_ivs.c copies or pre-processes it synchronously). */
+    openimp_t31_ivs_capture(channel, &buffer->frame);
+#endif
     openimp_profile_end(OPENIMP_PROFILE_FRAME_SOURCE_WAIT, wait_profile);
     return 0;
 }

@@ -78,8 +78,26 @@ static int osd_ipu_errors;
 static int osd_ipu_disabled;
 static int osd_state;               /* 0 unknown, 1 on, -1 off */
 
+#if defined(PLATFORM_T41)
+/* T41 builds this OSD for its IPU path (/dev/ipu, the same jz_ipu_v13 as
+ * T23 and T31).  The T41 ISP OSD (OSD_REG_ISP_*) has its own ioctls and is
+ * not implemented: those regions are accepted and not drawn. */
+static int IMP_OSD_SetRgnAttr_ISP(IMPOSDRgnAttr *attr, int show)
+{
+    static int reported;
+
+    (void)attr;
+    (void)show;
+    if (!reported) {
+        reported = 1;
+        IMP_LOG_INFO("OSD", "T41: ISP OSD regions are not drawn");
+    }
+    return -1;
+}
+#else
 /* ISP drawing of OSD_REG_ISP_* regions lives in openimp_t23_isp_osd.c */
 extern int IMP_OSD_SetRgnAttr_ISP(IMPOSDRgnAttr *attr, int show);
+#endif
 
 static int t23_osd_enabled(void)
 {

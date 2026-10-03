@@ -19,6 +19,16 @@ if [ -z "$firmware_dir" ]; then
         fi
     done
 fi
+if [ -z "$firmware_dir" ]; then
+    # any Thingino checkout with a built T41 target (output/<profile>/...)
+    for candidate in "$project_dir"/../thingino*/output/*/*t41*-4.4.94-uclibc
+    do
+        if [ -x "$candidate/host/bin/mipsel-linux-gcc" ]; then
+            firmware_dir=${candidate%/output/*}
+            break
+        fi
+    done
+fi
 
 : "${firmware_dir:?set THINGINO_DIR to a Thingino firmware checkout}"
 target_name=${T41_TARGET:-wyze_cam4_t41nq_os04d10_atbm6062s-4.4.94-uclibc}
@@ -28,7 +38,8 @@ compiler="${toolchain_prefix}-gcc"
 
 if [ ! -x "$compiler" ] && [ -z "${TOOLCHAIN_PREFIX:-}" ]; then
     for candidate in \
-        "$firmware_dir"/output/master/*-uclibc/host/bin/mipsel-linux-gcc
+        "$firmware_dir"/output/master/*-uclibc/host/bin/mipsel-linux-gcc \
+        "$firmware_dir"/output/*/*t41*-uclibc/host/bin/mipsel-linux-gcc
     do
         if [ -x "$candidate" ]; then
             compiler=$candidate
@@ -37,11 +48,17 @@ if [ ! -x "$compiler" ] && [ -z "${TOOLCHAIN_PREFIX:-}" ]; then
         fi
     done
 fi
+# the target the toolchain belongs to (for the header and RVD/RAD lookups)
+if [ ! -d "$target_dir" ] && [ -x "$compiler" ]; then
+    target_dir=${compiler%/host/bin/*}
+fi
 
 if [ -z "${T41_HEADERS:-}" ]; then
     for candidate in \
         "$target_dir"/build/thingino-raptor-hal-*/ingenic-headers/T41/1.2.0/zh \
-        "$firmware_dir"/output/master/*-uclibc/build/thingino-raptor-hal-*/ingenic-headers/T41/1.2.0/zh
+        "$firmware_dir"/output/master/*-uclibc/build/thingino-raptor-hal-*/ingenic-headers/T41/1.2.0/zh \
+        "$firmware_dir"/dl/thingino-raptor-hal/git/ingenic-headers/T41/1.2.0/zh \
+        "$project_dir"/../timps/include/T41/1.2.0/zh
     do
         if [ -f "$candidate/imp/imp_audio.h" ]; then
             T41_HEADERS=$candidate
@@ -82,6 +99,18 @@ done
     -c "$project_dir/src/alcodec/EncHwScalingList.c" \
     -o "$output_dir/backend-enc-hw-scaling-list.o"
 
+# OSD: the T23-family IPU OSD (T41 1.2.0 OSD ABI, /dev/ipu jz_ipu_v13);
+# IVS: the shared framework and move algorithm (T41 IMPFrameInfo ABI).
+"$compiler" $strict_flags $repo_includes \
+    -c "$project_dir/src/t23/openimp_t23_osd.c" \
+    -o "$output_dir/t41_osd.o"
+for source in openimp_t31_ivs openimp_t31_ivs_move
+do
+    "$compiler" $strict_flags $repo_includes -I"$project_dir/src/t31" \
+        -c "$project_dir/src/t31/$source.c" \
+        -o "$output_dir/t41_${source#openimp_t31_}.o"
+done
+
 for source in openimp_p3_controls openimp_p3_audio openimp_p3_compat
 do
     "$compiler" $strict_flags -I"$T41_HEADERS" \
@@ -113,6 +142,9 @@ done
     "$output_dir/openimp_p3_controls.o" \
     "$output_dir/openimp_p3_audio.o" \
     "$output_dir/openimp_p3_compat.o" \
+    "$output_dir/t41_osd.o" \
+    "$output_dir/t41_ivs.o" \
+    "$output_dir/t41_ivs_move.o" \
     "$output_dir/t40_ep1.o" \
     "$output_dir/t41_command_layout.o" \
     "$output_dir/t41_command_builder.o" \

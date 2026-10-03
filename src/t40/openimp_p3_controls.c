@@ -96,6 +96,15 @@ static int p3_tuning_scalar(IMPVI_NUM num, int32_t direction,
     return result;
 }
 
+#if defined(PLATFORM_T41)
+/* Vendor T41 1.2.0: the pointer tuning ioctl, get, control 0x8000033,
+ * filling {hts, vts, fps, width, height}. */
+int32_t IMP_ISP_Tuning_GetSensorAttr(IMPVI_NUM num, IMPISPSENSORAttr *attr)
+{
+    return p3_tuning_pointer(num, 1, 0x8000033, attr);
+}
+#endif
+
 int32_t IMP_ISP_Tuning_GetAeExprInfo(IMPVI_NUM num,
                                      IMPISPAEExprInfo *exprinfo)
 {
@@ -460,10 +469,12 @@ int IMP_ISP_Tuning_SetOsdPoolSize(int size)
     return size >= 0 ? 0 : -1;
 }
 
+#if !defined(PLATFORM_T41)   /* T41: src/t23/openimp_t23_osd.c */
 int IMP_OSD_SetPoolSize(int size)
 {
     return size >= 0 ? 0 : -1;
 }
+#endif
 
 static uint32_t p3_register_access(uint32_t address, const uint32_t *write_value,
                                    int *ok)

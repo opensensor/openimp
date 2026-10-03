@@ -65,7 +65,14 @@ int IMP_IVS_SetParam(int channel, void *param);
 #define BW 64
 #define BH 48
 
-#if defined(PLATFORM_T21) || defined(PLATFORM_T30)
+#if defined(PLATFORM_T41)
+#define ABI_NAME            "T41"
+#define REC_TIMESTAMP       0x28
+#define MOVE_PARAM_SIZE     0x450
+#define MOVE_ROI_RECT       0x108
+#define MOVE_ROI_RECT_CNT   0x448
+#define BASE_PARAM_SIZE     0x40
+#elif defined(PLATFORM_T21) || defined(PLATFORM_T30)
 #define ABI_NAME            "T20/T21/T30"
 #define REC_TIMESTAMP       0x20
 #define MOVE_PARAM_SIZE     0x448
