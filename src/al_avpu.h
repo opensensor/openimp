@@ -284,11 +284,12 @@ typedef struct ALAvpuContext {
     T31AlRc t31_al_rc;
     T31AlRcParam t31_al_param;      /* parameters the core was given last */
     uint32_t t31_al_gop_length;
-    uint32_t t31_al_mode;           /* AL eRCMode: 2 VBR, 4 CappedVBR, 8 CappedQuality */
+    uint32_t t31_al_mode;           /* AL eRCMode: 1 CBR, 2 VBR, 4 CappedVBR, 8 CappedQuality */
     uint32_t t31_max_bitrate;       /* uMaxBitRate in bit/s (0 = target) */
     uint32_t t31_rc_options;        /* eRcOptions */
     int32_t t31_qp_pb_delta;        /* iPBDelta */
-    uint32_t t31_al_filler_bits;    /* OEM frame+2848 (sticky filler) * 8 */
+    uint32_t t31_al_filler_bits;    /* filler of the last picture (OEM request +2848) * 8 */
+    uint32_t t31_al_filler_pictures; /* pictures the CBR HRD wanted stuffed */
     uint32_t t31_al_pictures;
     /* Published access-unit layout, handed to P2 for its AU check. */
     uint32_t t31_au_header_by_buf[16];

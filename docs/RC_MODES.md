@@ -80,6 +80,37 @@ obfuscated (short `lIoi` names); its vtable shows the structure:
   for the allowed share of the time (true VBR headroom); CappedQuality
   lowers the QP whenever a picture comes in under its target, bounded by
   the PSNR cap, the GOP budget and +-4 per update.
+* CBR (`AL_RateCtrl_Init` mode 0, constructor `IOOi` 0x5468c, update
+  `IIii` 0x53360): the same core and state (flag +0x12f = 1), the HRD in
+  CBR mode (`hrd+0x14` = 1: no idle time, the arrival clock never waits
+  for the removal clock, `IIIo` returns the bytes to stuff so the CPB does
+  not overflow).  `IIii` is analysis and QP change in one, without the
+  idle-time tests of `Ioii`:
+  - re-encode flag: `l0ii` (+3 steps); filler bits > 0 for this picture
+    (the OEM request +2848 = max(filler, 8) bytes): QP -2 steps (0 on a
+    static scene while QP <= the initial QP), no analysis;
+  - per-type target as `Ioii`, except: with `+0x12d` set ((eRcOptions & 5)
+    != 1; the IMP default 1 clears it) the P budget comes from
+    `state+0x90`, which every I picture sets to (bitrate * GOP time - I
+    size) / (GOP length - 1); with it clear the P target carries a running
+    correction `state+0xbc`, the I picture's miss against its target spread
+    over the P pictures of the GOP; P targets are also stored at
+    `state+0xec`;
+  - budget = buffer level + (target per picture - predicted average P/B
+    size at the current QP) * remaining GOP pictures;
+  - a picture below its target searches the QP down (one-QP size ratios,
+    max -4) only while budget > min(bitrate / 10, CPB - initial level) +
+    initial level; above its target it searches up only while budget <
+    initial level - min(bitrate / 10, initial level);
+  - after the search, the budget at the new QP against the initial level
+    (85 %/115 % for adaptive GOPs, 90 %/110 % for GOP mode 9, CPB/4 + the
+    predicted I size and 3/4 CPB for a P picture, CPB/3 and 5/3 CPB of
+    the HRD level for an I picture or GOP length 1) adds or removes one
+    step; a P picture following an I picture keeps the QP; a P picture
+    that lowered the QP marks +0x119 and the next one that would not lower
+    it raises it by a step instead (keeps it when it is under 30 % intra
+    and the budget is positive); the static-scene adjustment (`Ioli`, no increase while the
+    budget is at or above the CPB), the +-4 clamp and the QP bounds close.
 
 `IMP_Encoder_GetChnAttrRcMode` returns the stored IMP attribute (36 bytes),
 so the read-back is the mode and values as given.
@@ -115,28 +146,37 @@ test of 2026-10-03, `legacy` restores the former controller):
   reset, `Il1i` picture QP, `o11i`/`l01i`/`llli`/`iili` picture start,
   `Ioii` with `Ilii`/`i0ii`/`O0ii`/`ooIi`/`i1Ii`/`illi`/`IIIi`/`Ioli`/
   `l0ii`, the HRD `l0io`/`i0Io`/`IIIo`/`OOlo`/`l1Io`/`i1Io`/`iiIo`, the
-  updates `OOoI` (VBR) and `Ooii` (capped), `l1OI`, `loii`) for VBR,
-  CappedVBR and CappedQuality.  The 328-byte state keeps the OEM layout;
+  updates `IIii` (CBR), `OOoI` (VBR) and `Ooii` (capped), `l1OI`, `loii`)
+  for CBR, VBR, CappedVBR and CappedQuality.  The 328-byte state keeps the OEM layout;
   `tests/t31/al_rc_trace_test.c` replays traces recorded from the OEM code
-  under emulation (`tools/t31_rc_emu/cq_trace.py`, 14 files, 2,100
-  pictures with parameter changes, resets, scene-change flags, re-encode
-  flags and fixed-QP pictures) and requires the state to be byte-identical
-  after every call; 72 further random traces of 400 pictures matched as
-  well.  The parameters are built as the OEM channel does (uInitialRemDelay
+  under emulation (`tools/t31_rc_emu/cq_trace.py` and `cq_random_cbr.py`,
+  20 files, 3,000 pictures with parameter changes, resets, scene-change
+  flags, re-encode flags, filler and fixed-QP pictures) and requires the
+  state to be byte-identical after every call; 72 further random traces of
+  400 pictures matched for the VBR modes, and for CBR 72 random traces of
+  400 pictures with the IMP configuration plus 80 with the GOP and rc
+  parameter variants the IMP never sets (B pictures, GOP modes 3/8/9,
+  special-P flag, all eRcOptions), together 1,199 of the 1,227 `IIii`
+  instructions (the rest: an I target that rounds to 0, the assert, and
+  two branches on an initial-level change that cannot happen inside
+  `IIii`).  The parameters are built as the OEM channel does (uInitialRemDelay
   216000 and uCPBSize 270000 ticks from `AL_Codec_Encode_SetDefaultParam`,
   uMaxBitRate raised to the target, iMinQP >= 10, iInitialQP within the
   bounds, uFrameRate/uClkRatio from the reduced fps fraction, GOP mode 2,
   eRcOptions/iPBDelta/uMaxBitRate from the IMP attribute), the macroblock
   statistics from the status registers 0x10c..0x12c, the SSE from
   0x158/0x15c, the picture size as the entropy byte count * 8.  Run-time
-  bitrate/fps/QP-bound changes go through the OEM parameter update.  CBR
-  (`IIii` 0x53360) is not ported: CBR runs the legacy controller in both
-  settings.  Not reproduced: the OEM re-encode of a picture that
-  overflowed its stream buffer (the re-encode flag is always 0; a dropped
-  picture is accounted with the buffer size), the filler data the OEM
-  appends when the HRD says so (the count is fed back into the model but
-  no filler NAL is written), and the per-frame-object sticky filler value
-  (one value per channel).  Read-back: the attribute as given.  The log
+  bitrate/fps/QP-bound changes go through the OEM parameter update.  The
+  filler value is per picture as in the OEM (the request object, +2848,
+  is cleared by `AddNewRequest` 0x64d0c for every picture; until the CBR
+  port OpenIMP kept it per channel, which never mattered because the VBR
+  HRD never asks for filler).  Not reproduced: the OEM re-encode of a
+  picture that overflowed its stream buffer (the re-encode flag is always
+  0; a dropped picture is accounted with the buffer size) and the filler
+  data the OEM appends in CBR when the HRD says so (`WriteFillerData`
+  0x47e60; the count is fed back into the model, which therefore matches
+  the OEM, but no filler NAL is written: on a static scene the CBR stream
+  is smaller than the target where the OEM pads it).  Read-back: the attribute as given.  The log
   shows `T31 allegro rc: pic=.. size=.. used_qp=.. next_qp=.. psnr=..
   idle=..` for the first pictures and then every 250.
 

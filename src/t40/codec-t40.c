@@ -2510,7 +2510,10 @@ static int avpu_t31_vbr_loop(void)
 
 /* Feed one completed (or dropped) picture to the Allegro core as the OEM
  * UpdateRateCtrl (0x665f4) does: o11i (filler, QP resync, size models) then
- * the OOoI/Ooii update.  regs = the AVPU status register image. */
+ * the IIii/OOoI/Ooii update.  regs = the AVPU status register image.  The
+ * filler value lives in the OEM request object (+2848), which AddNewRequest
+ * (0x64d0c) clears for every picture: the update sees max(filler, 8) * 8
+ * bits for a picture the HRD wants stuffed, 0 otherwise. */
 static void avpu_t31_allegro_complete(ALAvpuContext *ctx, int buf_idx,
                                       uint32_t size_bits, const uint8_t *regs,
                                       unsigned int regs_len)
@@ -2527,8 +2530,9 @@ static void avpu_t31_allegro_complete(ALAvpuContext *ctx, int buf_idx,
     status.bits = size_bits;
     status.qp = (int16_t)ctx->t31_rate_control_qp_by_buf[buf_idx];
     filler = t31_al_rc_picture_start(&ctx->t31_al_rc, &pic, &status, size_bits);
+    ctx->t31_al_filler_bits = filler > 0 ? (uint32_t)(filler < 8 ? 8 : filler) * 8u : 0u;
     if (filler > 0)
-        ctx->t31_al_filler_bits = (uint32_t)(filler < 8 ? 8 : filler) * 8u;
+        ++ctx->t31_al_filler_pictures;
     t31_al_rc_update(&ctx->t31_al_rc, &pic, &status, size_bits, 0u,
                      ctx->t31_al_filler_bits);
     ++ctx->t31_al_pictures;
@@ -2539,19 +2543,19 @@ static void avpu_t31_allegro_complete(ALAvpuContext *ctx, int buf_idx,
 
         IMP_LOG_INFO("Codec", "T31 allegro rc: pic=%u %s size=%u bits used_qp=%d "
                      "next_qp=%d psnr=%d.%02d dB cap=%u idle=%u ticks pics=%u "
-                     "target/frame=%u ratio_i=%u ip=%d filler=%d",
+                     "target/frame=%u ratio_i=%u ip=%d filler=%d (%u pictures)",
                      ctx->t31_al_pictures, is_idr ? "I" : "P", size_bits,
                      status.qp, st->qp, psnr / 100, psnr % 100 < 0 ? -(psnr % 100) : psnr % 100,
-                     ctx->t31_al_rc.mode == 1u ? 0u : st->max_psnr,
+                     ctx->t31_al_rc.mode <= 1u ? 0u : st->max_psnr,
                      st->hrd.idle_ticks, st->hrd.pictures, st->target_frame,
-                     st->ratio_i, st->ip_delta, filler);
+                     st->ratio_i, st->ip_delta, filler, ctx->t31_al_filler_pictures);
     }
 }
 
-/* The OEM Allegro core (t31_al_rc.c) runs VBR, CappedVBR and CappedQuality
- * by default (device test cam-A 2026-10-03); OPENIMP_T31_RC_CORE=legacy
- * restores the OpenIMP controller.  CBR runs the legacy controller in both
- * settings.  Read once. */
+/* The OEM Allegro core (t31_al_rc.c) runs CBR, VBR, CappedVBR and
+ * CappedQuality by default (device test cam-A 2026-10-03, CBR since the
+ * IIii port); OPENIMP_T31_RC_CORE=legacy restores the OpenIMP controller for
+ * all of them.  Read once. */
 static int avpu_t31_rc_core_allegro(void)
 {
     static int core = -1;
@@ -2583,7 +2587,10 @@ static void avpu_t31_al_param(const ALAvpuContext *ctx, T31AlRcParam *p,
 
     memset(p, 0, sizeof(*p));
     memset(g, 0, sizeof(*g));
-    p->mode = ctx->t31_al_mode ? ctx->t31_al_mode : 2u;
+    if (ctx->rc_mode == HW_RC_MODE_CBR)
+        p->mode = 1u;
+    else
+        p->mode = ctx->t31_al_mode == 4u || ctx->t31_al_mode == 8u ? ctx->t31_al_mode : 2u;
     p->initial_rem_delay = 216000u;
     p->cpb_size = 270000u;
     t31_al_rc_frame_rate(ctx->fps_num ? ctx->fps_num : 25u,
@@ -2619,19 +2626,20 @@ static int avpu_t31_prepare_picture_allegro(ALAvpuContext *ctx)
     T31AlGopParam g;
     uint32_t rc_mode;
 
-    if (ctx->rc_mode != HW_RC_MODE_VBR) {
-        /* CBR (IIii 0x53360) is not ported: the legacy controller runs. */
+    if (ctx->rc_mode != HW_RC_MODE_VBR && ctx->rc_mode != HW_RC_MODE_CBR) {
         ctx->t31_al_rc.valid = 0;
         return 1;
     }
     avpu_t31_al_param(ctx, &p, &g);
-    rc_mode = p.mode == 8u ? 9u : p.mode == 4u ? 8u : 1u;
+    /* AL_EncChannel_Init table 0xe53e0: AL 1 -> 0 (CBR), 2 -> 1, 4 -> 8, 8 -> 9 */
+    rc_mode = p.mode == 1u ? 0u : p.mode == 8u ? 9u : p.mode == 4u ? 8u : 1u;
     if (!ctx->t31_al_rc.valid || ctx->t31_al_rc.mode != rc_mode) {
         if (t31_al_rc_init(&ctx->t31_al_rc, rc_mode, &p, &g) != 0)
             return -1;
         ctx->t31_al_param = p;
         ctx->t31_al_gop_length = g.length;
         ctx->t31_al_filler_bits = 0u;
+        ctx->t31_al_filler_pictures = 0u;
         ctx->t31_al_pictures = 0u;
         IMP_LOG_INFO("Codec", "T31 allegro rc: init mode=%u (AL %u) target=%u max=%u "
                      "fps=%u/%u qp=%d bounds=%d/%d ip=%d pb=%d opts=%u gop=%u psnr_cap=%u",
@@ -12324,6 +12332,7 @@ int AL_Codec_Encode_SetRcQualityCap(void *codec, int rcMode,
     enc->avpu.t31_quality_cap_x100 = cap;
     /* AL eRCMode of channel_encoder_set_rc_param (0x7e430) */
     enc->avpu.t31_al_mode =
+        rcMode == IMP_ENC_RC_MODE_CBR ? 1u :
         rcMode == IMP_ENC_RC_MODE_VBR ? 2u :
         rcMode == IMP_ENC_RC_MODE_CAPPED_VBR ? 4u :
         rcMode == IMP_ENC_RC_MODE_CAPPED_QUALITY ? 8u : 0u;
