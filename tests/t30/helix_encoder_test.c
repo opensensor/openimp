@@ -673,6 +673,42 @@ static void test_bottom_padding(void)
     check_bottom_padding(1280, 720);
 }
 
+/* Consecutive failures are counted for the caller's limit and reset by a
+ * good picture; a frame too small for the visible picture is refused
+ * before RUN and is not counted (a size of 0 is unknown and accepted). */
+static void test_failure_count_and_input_size(void)
+{
+    T30HelixEncoder *encoder = create(640, 360, 25, 4);
+    IMPFrameInfo frame;
+    HWStreamBuffer *stream = NULL;
+    PictureInfo info;
+    unsigned int before;
+
+    assert(OpenIMP_T30_HelixFailures(encoder) == 0u);
+    run_result = -1;
+    assert(encode(encoder, &info) != 0);
+    assert(encode(encoder, &info) != 0);
+    assert(encode(encoder, &info) != 0);
+    assert(OpenIMP_T30_HelixFailures(encoder) == 3u);
+    run_result = 0;
+    assert(encode(encoder, &info) == 0);
+    assert(OpenIMP_T30_HelixFailures(encoder) == 0u);
+
+    memset(&frame, 0, sizeof(frame));
+    frame.phyAddr = 0x10000000u;
+    frame.size = 640u * 360u * 3u / 2u - 1u;
+    before = runs;
+    assert(OpenIMP_T30_HelixEncode(encoder, &frame, &stream) != 0);
+    assert(!stream && runs == before);
+    assert(OpenIMP_T30_HelixFailures(encoder) == 0u);
+    frame.size = 640u * 360u * 3u / 2u;
+    assert(OpenIMP_T30_HelixEncode(encoder, &frame, &stream) == 0);
+    assert(stream && runs == before + 1u);
+    free((void *)(uintptr_t)stream->virt_addr);
+    free(stream);
+    OpenIMP_T30_HelixDestroy(encoder);
+}
+
 int main(void)
 {
     unsigned int i;
@@ -681,6 +717,7 @@ int main(void)
     mallopt(M_MMAP_THRESHOLD, 1 << 30);
     fill_payload(5000, 30);
     test_gop_and_failures();
+    test_failure_count_and_input_size();
     test_runtime_parameters();
     test_large_frame_level();
     test_dma_footprint();

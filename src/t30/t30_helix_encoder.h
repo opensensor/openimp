@@ -28,8 +28,8 @@ void OpenIMP_T30_HelixDestroy(T30HelixEncoder *encoder);
  * a no-op; zero fields keep the current value. */
 int OpenIMP_T30_HelixReconfigure(T30HelixEncoder *encoder,
                                  const HWEncoderParams *params);
+#endif
 /* Consecutive failed pictures since the last good one. */
 uint32_t OpenIMP_T30_HelixFailures(const T30HelixEncoder *encoder);
-#endif
 
 #endif

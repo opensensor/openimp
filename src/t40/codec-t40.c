@@ -6832,6 +6832,14 @@ static uint32_t avpu_stream_buffer_effective_size(ALAvpuContext *ctx, int buf_id
 /* Size: 0x924 bytes */
 typedef struct AL_CodecEncode AL_CodecEncode;
 
+#if defined(PLATFORM_T30)
+/* T20/T21/T30 Helix: consecutive failed pictures before the encoder is
+ * re-created, and re-creations without a good picture before the channel
+ * stops (with the OEM's 20 s soc_vpu wait: about one minute per round). */
+#define T30_HELIX_MAX_FAILURES 3u
+#define T30_HELIX_MAX_RESTARTS 2u
+#endif
+
 struct AL_CodecEncode {
     void *g_pCodec;                 /* 0x000: Global codec pointer */
     uint8_t codec_param[0x794];     /* 0x004: Codec parameters */
@@ -6909,6 +6917,8 @@ struct AL_CodecEncode {
     T30HelixEncoder *t30_helix;    /* Native T30 /dev/soc_vpu encoder */
     uint32_t t30_helix_width;      /* picture size t30_helix was made for */
     uint32_t t30_helix_height;
+    uint32_t t30_helix_restarts;   /* re-creations without a good picture */
+    int t30_helix_stopped;         /* H.264 output given up */
 #endif
 #if defined(PLATFORM_T23)
     T30HelixEncoder *t30_helix;    /* Native T21-family Helix encoder */
@@ -9651,6 +9661,10 @@ static int al_codec_encode_process_impl(void *codec, void *frame,
 
 #if defined(PLATFORM_T30)
     if (codec_param_read_codec_type(enc->codec_param) == IMP_ENC_TYPE_AVC) {
+        if (enc->t30_helix_stopped) {
+            codec_set_error(enc, -1);
+            return -1;
+        }
         if (enc->t30_helix && (enc->t30_helix_width != width ||
                                enc->t30_helix_height != height)) {
             /* made at CreateChn for another size than the source sends */
@@ -9678,9 +9692,35 @@ static int al_codec_encode_process_impl(void *codec, void *frame,
         if (OpenIMP_T30_HelixEncode(enc->t30_helix,
                                     (const IMPFrameInfo *)frame,
                                     &hw_stream) != 0) {
+            /* Each failed picture can be a full soc_vpu wait (the OEM's
+             * 20 s).  After a few in a row the channel is re-created on the
+             * next frame (a new soc_vpu channel and buffers); when that
+             * does not help either, this channel's H.264 output stops and
+             * every further picture fails at once instead of waiting. */
+            uint32_t failures = OpenIMP_T30_HelixFailures(enc->t30_helix);
+
+            if (failures >= T30_HELIX_MAX_FAILURES) {
+                OpenIMP_T30_HelixDestroy(enc->t30_helix);
+                enc->t30_helix = NULL;
+                if (++enc->t30_helix_restarts > T30_HELIX_MAX_RESTARTS) {
+                    enc->t30_helix_stopped = 1;
+                    IMP_LOG_ERR("Encoder", "channel %d: %u consecutive "
+                                "Helix failures after %u re-creations, "
+                                "stopping this channel's H.264 output",
+                                enc->channel_id - 1, failures,
+                                T30_HELIX_MAX_RESTARTS);
+                } else {
+                    IMP_LOG_ERR("Encoder", "channel %d: %u consecutive "
+                                "Helix failures, re-creating the encoder "
+                                "(%u of %u)", enc->channel_id - 1, failures,
+                                enc->t30_helix_restarts,
+                                T30_HELIX_MAX_RESTARTS);
+                }
+            }
             codec_set_error(enc, -1);
             return -1;
         }
+        enc->t30_helix_restarts = 0;
         goto queue_encoded_stream;
     }
 #endif
