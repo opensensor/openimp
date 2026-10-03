@@ -10,7 +10,8 @@ Status tags: `[-all-13]` = tested, not yet in a flashed image. Rows marked "buil
 
 Integration rule of thumb: all behaviour below is reachable through the **standard IMP API** (same
 signatures as the vendor SDK). Nothing needs a new call; where a value is "different", it is in what the
-call now returns or what the hardware now does.
+call now returns or what the hardware now does. The one optional addition is the capability query in
+section 7 (`IMP_ISP_QueryCaps`), which tells a streamer which tuning setters really act.
 
 ## 1. Encoder / rate control
 
@@ -103,7 +104,49 @@ Further items (evening 2026-10-03):
 | T31 OSD drawn by the IPU, default on | T31 | `OPENIMP_T31_OSD=0` disables | OSD also in HW-JPEG snapshots; timps about 8 % CPU | cam-A |
 | T20/T21 OSD via IPU hook | T20, T21 | vendor path never drew | OSD regions work | `claude/t20-osd` |
 
-## 7. Environment variables
+## 7. Capability query
+
+`int IMP_ISP_QueryCaps(IMPISPCaps *caps)` (header `include/openimp/openimp_caps.h`, no vendor equivalent)
+reports per ISP tuning feature whether the open driver **really applies** it on this SoC: the hardware acts
+on the setter, as opposed to "returns 0 but is stored and ignored" or "-EINVAL from the driver". The vendor
+headers only say which setters exist.
+
+```c
+typedef struct {
+    uint32_t size;      /* in: sizeof(IMPISPCaps); the library never writes past it */
+    uint32_t version;   /* out: IMP_ISP_CAPS_VERSION (1) */
+    uint64_t known;     /* out: bits the library makes a statement about */
+    uint64_t applied;   /* out: subset of known the hardware acts on */
+} IMPISPCaps;           /* returns 0, or -1 for NULL / size < 24 */
+```
+
+ABI: bit numbers are fixed forever (`IMP_ISP_CAP_*`, 0 brightness, 1 contrast, 2 saturation, 3 sharpness,
+4 hue, 5 hflip, 6 vflip, 7 running mode, 8 anti-flicker, 9 AE comp, 10 max again, 11 max dgain, 12 sinter,
+13 temper, 14 DPC, 15 defog, 16 DRC, 17 highlight, 18 backlight, 19 colorfx, 20 scene, 21 WB, 22 AE IT max);
+new features only get new bits, new fields are appended after `applied`. A bit outside `known` means "no
+statement": keep your own assumption. Cost: a static table plus at most one sysfs read; callable before
+`IMP_System_Init`.
+
+How to use it: build your capability list from the vendor headers as before, then **remove** every feature
+that is `known` and not `applied`. Never add a feature because of it (a driver may apply something the SoC's
+vendor header has no setter for). Bind it weakly so the same binary still runs on a vendor libimp, for example
+`extern int q(void *) __asm__("IMP_ISP_QueryCaps") __attribute__((weak));`. timps does exactly this
+(`claude/timps-querycaps`): restricted keys disappear from `caps.image` and are reported under `"unsupported"`.
+
+| SoC (libimp build) | Applied | Known, not applied | No statement | Source |
+|---|---|---|---|---|
+| T10/T20 (one binary) | BCSH, flip, running mode, anti-flicker, AE comp, max again/dgain, sinter/temper, highlight, colorfx, scene, WB, AE IT max | hue, DPC, defog, backlight (no case in the Apical tuning switch) | DRC (T20 takes DRC_ATTR, T10 has no handler, not device-verified) | open-tx-isp all-14, cam-C/cam-E 2026-10-03 |
+| T21 | BCSH, flip, running mode, anti-flicker, max again/dgain, sinter/temper, DRC, highlight, colorfx, scene, WB | AE IT max (range mode accepted, AE ignores it; device test 2026-10-03) | hue, AE comp, DPC, defog, backlight (no T21 SDK setter) | cam-D |
+| T23 | all 23 | with `source_ae_oem=0` (HLIL substitute AE): AE comp, backlight, highlight | – | sysfs `/sys/module/tx_isp_t23/parameters/source_ae_oem`, default 1 |
+| T31 | all 23 | – | – | cam-A |
+| T40 | BCSH, hue, flip, running mode, anti-flicker | all others (no setter in the reworked API) | – | open-tx-isp t40 (HVFLIP route present) |
+| T41 | BCSH, hue, running mode, anti-flicker | flip (no HVFLIP route in the dispatcher; cam-F: no flip), all others | – | cam-F 2026-10-03 |
+| T30 | – | – | everything (`known = 0`) | not covered |
+
+Branch: openimp `claude/imp-querycaps` (host test `tests/caps`, `make check`). A row that changes must change
+in `src/isp/openimp_caps.c` and here together.
+
+## 8. Environment variables
 
 User-facing = safe for a streamer to set in production. Debug-only = diagnostics or A/B rollback; do **not**
 set in production.
@@ -135,7 +178,7 @@ set in production.
 Further `OPENIMP_*` knobs exist in the source (`P1_*`, `P2_*`, `HELIX_*`, `T23_HELIX_*`, `RMEM_*`, ...) but are
 bring-up/trace switches that are not described in the docs; treat them as internal.
 
-## 8. Unverified or not yet in this list
+## 9. Unverified or not yet in this list
 
 - T31 `OPENIMP_T31_COMPANION` (mentioned only as a proposal in T31_HW_JPEG_RE.md; the implemented knob is `..._COMPANION_STAGE`).
 - SMART / vendor-equal eprc on T23, T21 (`claude/t23-smart`): in progress; SMART is still mapped to VBR on T10/T20/T21.
