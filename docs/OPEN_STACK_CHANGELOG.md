@@ -3,7 +3,7 @@
 Everything changed, extended or fixed in OpenIMP, open-tx-isp, timps and the thingino
 integration since the test campaign started on 2026-09-30. Kept up to date during the campaign.
 
-Last update: 2026-10-03 17:36.
+Last update: 2026-10-03 18:08.
 
 Cameras are anonymised: cam-A (T31), cam-B (T23), cam-C (T20), cam-D (T21), cam-E (T10), cam-F (T41).
 
@@ -106,6 +106,9 @@ Aggregates: `claude/open-tx-isp-all-4` and `claude/openimp-all-4` (pushed); 58 m
 - **Other results:** T20 daylight A/B of simple AWB vs vendor chain: gains 492/393 vs 488/395, neutral ROIs within 0.007, both converge in under 4 s, tungsten test open. T31 anti-flicker with a 22 ms IT cap: IT 1000/900/750 lines for off/50/60 Hz, gain compensates, daylight test pending.
 - **T23 dynamic ADR and defog lifted (cam-B, `claude/t23-adr-defog`, 17:50):** lifted from the vendor module including `tisp_defog_soft_process`; 44/44 emulator cases are identical. The core ISR now dispatches the ADR/defog IRQ callbacks (ADR was static before). Device: DRC 255 gives meanY 158 vs 119, DRC 0 gives 114; defog 255 and day/night switching work, 0 oops. Module parameter `source_adr_oem=1` is the default, `0` selects the old static path.
 - **T23 module size (cam-B, `claude/t23-ko-size`, 17:50):** 1,282,492 to 1,071,956 B stripped (tparams zero tail moved to .bss, `-mno-pdr`); stream OK on cam-B. The ADR lift adds ~138 KB; with both branches merged the module is ~1.21 MB.
+- **T10 module reload (cam-E, `claude/t10-reload-safe`):** 5 rmmod/insmod cycles while streaming, 0 oops. The earlier 'csi clock -22' oops came from a module built against the T20 kernel tree; the T10 build now refuses that with #error.
+- **T41 module reload (cam-F, `claude/t41-reload-safe`):** cause found statically. tx_isp_fs_remove freed the channel array while the framechan0..2 misc devices were still registered, so the next insmod oopses in misc_register. Four static work items were also not drained on unload. The fix is not yet device-tested. Testing needs the box booted without the old module (boot guard isp_open=manual), because the old module's unload leaves the bug behind.
+- **User decisions (2026-10-03):** (a) T23 default AE becomes the lifted vendor AE (vendor default), after a night-switch test in the dark that is still pending. (b) T20/T10 Sinter/Temper strength acts by default: 128 = the IQ table, so the default picture is identical to the vendor; other values act, which goes beyond the vendor.
 
 ## Late afternoon (2026-10-03)
 
