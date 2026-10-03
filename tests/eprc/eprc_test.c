@@ -167,6 +167,85 @@ static int32_t decide_since(int32_t prev, uint32_t gop, uint32_t n,
     return (int32_t)(next % (n * gop));
 }
 
+/* The Helix activity-class counts (0x40094..0x400a0) of picture `frame`
+ * (tools/eprc_oracle.py sas_histogram) */
+static void sas_histogram(uint32_t frame, uint32_t mbs, uint32_t scene,
+                          uint32_t out[4])
+{
+    uint32_t s = 0x6a09e667u ^ (frame * 0x27d4eb2du) ^ (scene * 0x165667b1u);
+    uint32_t dom = (frame / 13u + scene) % 7u, w[7], c[7], total = 0, sum = 0;
+    int i;
+
+    for (i = 0; i < 7; i++) {
+        s = xorshift(s);
+        w[i] = 1u + (s & 0x3fu) + ((uint32_t)i == dom ? 0x200u + (s >> 20) : 0u);
+        total += w[i];
+    }
+    for (i = 0; i < 7; i++) {
+        c[i] = (uint32_t)((uint64_t)mbs * w[i] / total);
+        sum += c[i];
+    }
+    c[dom] += mbs - sum;
+    for (i = 0; i < 7; i++)
+        if (c[i] > 0xffffu)
+            c[i] = 0xffffu;
+    out[0] = c[0] | c[1] << 16;
+    out[1] = c[2] | c[3] << 16;
+    out[2] = c[4] | c[5] << 16;
+    out[3] = c[6];
+}
+
+/* slice +752..+925 without the pointers +820, +864, +868 */
+static uint32_t mbrc_slice_hash(const uint8_t *slice)
+{
+    uint8_t b[174];
+
+    memcpy(b, slice + 752, sizeof(b));
+    memset(b + 68, 0, 4);
+    memset(b + 112, 0, 8);
+    return fnv1a(b, sizeof(b));
+}
+
+/* 'C' line: one h264_get_mb_qp call (tools/eprc_oracle.py --mbrc-calls) */
+static int mbrc_call(const char *line, int t21)
+{
+    static uint8_t A[400], S[7000], slice[EPRC_SLICE_SIZE];
+    long long v[20];
+    int d = t21 ? -40 : 0, n = 0, i;
+    const char *p = line + 1;
+    char *e;
+
+    while (n < 20) {
+        v[n] = strtoll(p, &e, 10);
+        if (e == p)
+            break;
+        n++;
+        p = e;
+    }
+    if (n != 20)
+        return -1;
+    memset(A, 0, sizeof(A));
+    memset(S, 0, sizeof(S));
+    memset(slice, 0, sizeof(slice));
+    memcpy(A + 40, &(uint32_t){(uint32_t)v[0]}, 4);
+    memcpy(A + 44, &(uint32_t){(uint32_t)v[1]}, 4);
+    memcpy(A + 52, &(int32_t){(int32_t)v[2]}, 4);
+    memcpy(A + 208, &(uint32_t){0x30u}, 4);
+    memcpy(A + 212, &(uint32_t){0x30u}, 4);
+    memcpy(S + 0, &(uint32_t){(uint32_t)v[3]}, 4);
+    memcpy(S + 28, &(uint32_t){(uint32_t)v[4]}, 4);
+    S[68] = (uint8_t)v[5];
+    memcpy(S + 88, &(uint32_t){(uint32_t)v[6]}, 4);
+    for (i = 0; i < 4; i++)
+        memcpy(S + 4488 + d + 4 * i, &(uint32_t){(uint32_t)v[7 + i]}, 4);
+    slice[859] = (uint8_t)v[11];
+    EPRC_MbQp(A, S, slice, t21);
+    for (i = 0; i < 7; i++)
+        if ((int8_t)S[5336 + d + i] != v[12 + i])
+            return 1;
+    return mbrc_slice_hash(slice) != (uint32_t)v[19] ? 1 : 0;
+}
+
 int main(int argc, char **argv)
 {
     const char *path = argc > 1 ? argv[1] : "eprc_vectors.txt";
@@ -184,10 +263,13 @@ int main(int argc, char **argv)
     EprcParams p;
     int scenario = -1, frame = 0, idr = 1, active = 0, flags = 0;
     int32_t prev_since = -1;
+    int i10;
     uint32_t zcrc = 0;
     int32_t (*picture_class)(const Eprc *) = t21 ? EPRC21_PictureClass : EPRC_PictureClass;
     long checked = 0, failed = 0;
     uint64_t pixels = 0;
+    uint32_t mbs = 0, mline[12];
+    int have_mline = 0;
 
     if (!f) {
         perror(path);
@@ -230,6 +312,7 @@ int main(int argc, char **argv)
             flags = v[20];
             prev_since = -1;
             pixels = (uint64_t)p.width * p.height;
+            mbs = ((p.width + 15u) / 16u) * ((p.height + 15u) / 16u);
             memset(slice, 0, sizeof(slice));
             if (init(&rc, &p, slice) != 0)
                 return 2;
@@ -280,6 +363,23 @@ int main(int argc, char **argv)
             checked++;
             if (flags & 1)
                 zcrc = fnv1a(rc.a7148, 3648);
+            if (flags & 4) {
+                /* the macroblock rate control of the picture */
+                const uint8_t *S = rc.p + (t21 ? 336 : 352);
+                int d = t21 ? -40 : 0;
+                uint8_t st[168];
+
+                mline[0] = pic.mbrc.qp_flags;
+                for (i = 0; i < 7; i++)
+                    mline[1 + i] = pic.mbrc.reg[i];
+                mline[8] = mbrc_slice_hash(slice);
+                memcpy(st, S + 368 + d, 8);
+                memcpy(st + 8, S + 5184 + d, 160);
+                mline[9] = fnv1a(st, sizeof(st));
+                mline[10] = pic.ctrl[0];
+                mline[11] = pic.ctrl[1];
+                have_mline = 1;
+            }
             if (pic.type != want[0] || pic.qp != want[1]) {
                 if (failed++ < 10)
                     fprintf(stderr, "scenario %d frame %d: type/qp %d/%d, OEM %d/%d\n",
@@ -288,6 +388,8 @@ int main(int argc, char **argv)
             bytes = picture_bytes((uint32_t)frame, pic.qp, in.frames_since_idr == 0,
                                   pixels, scenario % 2);
             statistics((uint32_t)frame, regs);
+            if (flags & 4)
+                sas_histogram((uint32_t)frame, mbs, (uint32_t)scenario, regs + 16);
             for (i = 2; ; i++) {
                 int r = end(&rc, bytes, regs, &pic);
                 if (r != 1) {
@@ -306,6 +408,29 @@ int main(int argc, char **argv)
                 bytes = bytes / 2u < 20u ? 20u : bytes / 2u;
             }
             frame++;
+        } else if (line[0] == 'M' && active) {
+            uint32_t want[12];
+            char *s = line + 1;
+
+            for (i10 = 0; i10 < 12; i10++)
+                want[i10] = (uint32_t)strtoul(s, &s, 10);
+            checked++;
+            if ((!have_mline || memcmp(want, mline, sizeof(want))) && failed++ < 10)
+                fprintf(stderr, "scenario %d frame %d: macroblock rate control "
+                        "%x %x %x %x %08x %08x %08x %08x, OEM %x %x %x %x %08x "
+                        "%08x %08x %08x\n",
+                        scenario, frame - 1, mline[0], mline[1], mline[6], mline[7],
+                        mline[8], mline[9], mline[10], mline[11], want[0], want[1],
+                        want[6], want[7], want[8], want[9], want[10], want[11]);
+            have_mline = 0;
+        } else if (line[0] == 'C') {
+            int r = mbrc_call(line, t21);
+
+            checked++;
+            if (r < 0)
+                return 2;
+            if (r && failed++ < 10)
+                fprintf(stderr, "h264_get_mb_qp call differs: %s", line);
         } else if (line[0] == 'Z' && active) {
             uint32_t want = (uint32_t)strtoul(line + 1, NULL, 10);
 

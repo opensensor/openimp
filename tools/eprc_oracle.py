@@ -16,6 +16,19 @@ vendor library is copied into OpenIMP; it is read from the path you pass.
 The T21 1.0.33 library (the older controller revision, src/eprc/eprc_t21.c)
 is run with its own i264e glue layout (LAYOUT_T21 below).
 
+Macroblock rate control (src/eprc/eprc_mbrc.c):
+
+    tools/eprc_oracle.py LIB --mbrc SEED N [FRAMES]   random scenes, 'M' lines
+    tools/eprc_oracle.py LIB --mbrc-calls SEED N      single h264_get_mb_qp calls
+
+'--mbrc' runs random scenarios with the Helix activity-class histogram
+(registers 0x40094..0x400a0, sas_histogram) and prints after each picture
+the macroblock rate-control registers that the OEM H264E_T21_SliceInit
+makes of the slice block (and 0x400c0/0x400c4), and FNV-1a hashes of the slice fields and the
+controller state h264_get_mb_qp writes.  '--mbrc-calls' calls the OEM
+h264_get_mb_qp on random state ('C' lines: inputs, the SAS offsets, the
+slice hash).
+
 The OEM keeps int arrays at odd addresses (the Linux kernel fixes up the
 unaligned accesses on the camera); the emulator does the same in a code
 hook.
@@ -407,8 +420,158 @@ EXTENDED = [
 ]
 
 
+def sas_histogram(frame, mbs, scene):
+    """The Helix activity-class counts (7 x 16 bits in 0x40094..0x400a0) of
+    picture `frame` (as the test): a dominant class that moves every 13
+    pictures, summing to `mbs`."""
+    state = (0x6a09e667 ^ (frame * 0x27d4eb2d) ^ (scene * 0x165667b1)) & 0xffffffff
+    dom = (frame // 13 + scene) % 7
+    w = []
+    for i in range(7):
+        state = xorshift(state)
+        w.append(1 + (state & 0x3f) + ((0x200 + (state >> 20)) if i == dom else 0))
+    total = sum(w)
+    c = [mbs * x // total for x in w]
+    c[dom] += mbs - sum(c)
+    c = [min(v, 0xffff) for v in c]
+    return [c[0] | c[1] << 16, c[2] | c[3] << 16, c[4] | c[5] << 16, c[6]]
+
+
+def mbrc_registers(sim):
+    """The OEM command list of the current slice block (H264E_T21_SliceInit
+    on a copy): qp flags of 0x40074, 0x40078..0x40090 and the picture
+    control registers 0x400c0/0x400c4."""
+    L = sim.L
+    CL = HEAP + 0x3000000
+    keep = L.rd(sim.SL, 0x1200)
+    L.w32(sim.SL + 672, CL)
+    L.wr(CL, bytes(0x8000))
+    L.call('H264E_T21_SliceInit', sim.SL)
+    w = struct.unpack('<8192I', L.rd(CL, 0x8000))
+    L.wr(sim.SL, keep)
+    regs = {}
+    for i in range(0, len(w) - 1, 2):
+        if w[i] == 0 and w[i + 1] == 0:
+            break
+        regs.setdefault(w[i + 1] & 0xffffc, w[i])
+    out = [regs[0x40074] & 0xc0c0c0ff]
+    out += [regs[0x40078 + 4 * i] for i in range(7)]
+    return out + [regs[0x400c0], regs[0x400c4]]
+
+
+def mbrc_hashes(sim):
+    """FNV-1a of slice +752..+925 (without the pointers +820, +864, +868:
+    h264_api_enc buffer addresses on the first picture) and of the
+    state h264_get_mb_qp writes (S+368..375, S+5184..5343; T21 40 lower)."""
+    L = sim.L
+    t21 = L.lay['name'] == 'T21'
+    E = sim.R + (484 if t21 else 496)
+    S = L.r32(E + (1616 if t21 else 1620)) + (336 if t21 else 352)
+    d = -40 if t21 else 0
+    sl = bytearray(L.rd(sim.SL + 752, 174))
+    sl[68:72] = bytes(4)
+    sl[112:120] = bytes(8)
+    st = L.rd(S + 368 + d, 8) + L.rd(S + 5184 + d, 160)
+    return fnv1a(sl), fnv1a(st)
+
+
+def mbrc_scenes(lib, seed, count, frames):
+    """--mbrc: random scenarios (flag 4) with the macroblock rate control
+    outputs after every FRAME_START."""
+    for n, sc in enumerate(random_scenarios(seed, count)):
+        (mode, w, h, gop, fps, minqp, maxqp, br, mbr, fstep, gstep, bias, static,
+         cpos, qual, bgmul, initqp, idr) = sc
+        extra = validated_vbv(lib, w, h)
+        extra[204] = 0
+        s = Sim(lib, mode=mode, w=w, h=h, gop=gop, fps=(fps, 1), minqp=minqp, maxqp=maxqp,
+                bitrate=br, maxbitrate=mbr, frm_step=fstep, gop_step=gstep, bias=bias,
+                static_time=static, change_pos=cpos, quality=qual, bgmul=bgmul,
+                rclevel=initqp & 0xffffffff, extra=extra)
+        L = s.L
+        mbs = ((w + 15) // 16) * ((h + 15) // 16)
+        print('S', ' '.join(str(v) for v in sc), 0, 0, 4)
+        for f in range(frames):
+            since = f % idr
+            L.w32(s.H, since)
+            L.call('i264e_ratecontrol_start', s.H)
+            t = L.rd(s.SL, 1)[0]
+            qp = L.rd(s.R + L.lay['qp'], 1)[0]
+            out = [t, qp]
+            regs_cl = mbrc_registers(s)
+            mline = regs_cl[:8] + list(mbrc_hashes(s)) + regs_cl[8:]
+            size = picture_bytes(f, qp, since == 0, w * h, n % 2)
+            regs = statistics(f)
+            regs[16:20] = sas_histogram(f, mbs, n)
+            while True:
+                for i, v in enumerate(regs):
+                    L.w32(s.TB + 8 * i + 4, v)
+                L.w32(s.H + 3888, size)
+                L.w32(s.H + 736, 1)
+                if L.call('i264e_ratecontrol_is_reenc', s.H) != 1:
+                    break
+                out.append(L.rd(s.R + L.lay['qp'], 1)[0])
+                size = max(size // 2, 20)
+            print('F', since, ' '.join(str(v) for v in out))
+            print('M', ' '.join(str(v) for v in mline))
+
+
+def mbrc_calls(lib, seed, count):
+    """--mbrc-calls: h264_get_mb_qp on random controller state.  'C' line:
+    mbw mbh mbs(A+52) frame(S+0) type(S+28) qp(S+68) S+88 4 counter words
+    slice+859 | the 7 SAS offsets (S+5336) | FNV-1a of slice +752..+925
+    (without the pointers; the slice zero but +859 before)."""
+    import random
+    rnd = random.Random(seed)
+    L = Lib(lib)
+    t21 = L.lay['name'] == 'T21'
+    d = -40 if t21 else 0
+    A, S, SL = HEAP, HEAP + 0x1000, HEAP + 0x6000
+    marks = [7, 12, 16, 20, 22, 35, 40, 52, 70, 80, 82, 92, 100]
+    for _ in range(count):
+        mbw, mbh = rnd.randint(1, 160), rnd.randint(1, 90)
+        mbs = rnd.choice([mbw * mbh, mbw * mbh, rnd.randint(1, 9000), 0, -5])
+        m = max(mbs, 1)
+
+        def pick(k):
+            if rnd.random() < 0.5:
+                v = int(round(rnd.choice(marks) * m / 100)) + rnd.choice((-1, 0, 1))
+            else:
+                v = rnd.randint(0, m)
+            return [min(0xffff, max(v, 0) // k)] * k
+        c = pick(3) + pick(2) + pick(2)
+        words = [c[0] | c[1] << 16, c[2] | c[3] << 16, c[4] | c[5] << 16,
+                 c[6] | rnd.getrandbits(16) << 16]
+        frame = rnd.choice((0, 1, rnd.randint(2, 100000)))
+        typ = rnd.choice((0, 2, 6))
+        qp = rnd.randint(0, 51)
+        s88 = rnd.getrandbits(32)
+        s859 = rnd.choice((0, rnd.randint(1, 255)))
+        L.wr(HEAP, bytes(0x8000))
+        L.w32(A + 40, mbw); L.w32(A + 44, mbh); L.w32(A + 52, mbs)
+        L.w32(A + 208, 0x30); L.w32(A + 212, 0x30)
+        L.w32(S, frame); L.w32(S + 28, typ); L.w8(S + 68, qp); L.w32(S + 88, s88)
+        for i, v in enumerate(words):
+            L.w32(S + 4488 + d + 4 * i, v)
+        L.w32(S + 6772 + d, SL)
+        L.w8(SL + 859, s859)
+        L.call('h264_get_mb_qp', A, S, HEAP + 0x4000)
+        ofs = struct.unpack('<7b', L.rd(S + 5336 + d, 7))
+        sl = bytearray(L.rd(SL + 752, 174))
+        sl[68:72] = bytes(4)
+        sl[112:120] = bytes(8)
+        print('C', mbw, mbh, mbs, frame, typ, qp, s88, ' '.join(str(v) for v in words), s859,
+              ' '.join(str(v) for v in ofs), fnv1a(sl))
+
+
 def main():
     lib = sys.argv[1]
+    if len(sys.argv) > 4 and sys.argv[2] == '--mbrc':
+        mbrc_scenes(lib, int(sys.argv[3]), int(sys.argv[4]),
+                    int(sys.argv[5]) if len(sys.argv) > 5 else 100)
+        return
+    if len(sys.argv) > 4 and sys.argv[2] == '--mbrc-calls':
+        mbrc_calls(lib, int(sys.argv[3]), int(sys.argv[4]))
+        return
     frames = 120
     scenarios = SCENARIOS
     if len(sys.argv) > 4 and sys.argv[2] == '--random':

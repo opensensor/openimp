@@ -123,6 +123,7 @@ compile t23_h264_set src/t30/h264enc/set.c -Werror
 compile t23_h264_slice src/t30/h264enc/slice.c -Werror
 compile t23_rate_control src/t40/t31_rate_control.c -Werror
 compile t23_eprc src/eprc/eprc.c -Werror -ffp-contract=off
+compile t23_eprc_mbrc src/eprc/eprc_mbrc.c -Werror -ffp-contract=off
 compile t23_helix_jpeg src/t30/helix_jpeg.c -Werror
 
 "$compiler" -shared -nostartfiles \
@@ -177,7 +178,7 @@ compile t23_helix_jpeg src/t30/helix_jpeg.c -Werror
     "$output_dir/t23_h264_set.o" \
     "$output_dir/t23_h264_slice.o" \
     "$output_dir/t23_rate_control.o" \
-    "$output_dir/t23_eprc.o" \
+    "$output_dir/t23_eprc.o" "$output_dir/t23_eprc_mbrc.o" \
     "$output_dir/t23_helix_jpeg.o" \
     -ldl -lpthread -lrt -lm
 
@@ -196,6 +197,7 @@ compile t23_helix_jpeg src/t30/helix_jpeg.c -Werror
     "$output_dir/t23_h264_common.o" "$output_dir/t23_h264_cabac.o" \
     "$output_dir/t23_h264_set.o" "$output_dir/t23_h264_slice.o" \
     "$output_dir/t23_rate_control.o" "$output_dir/t23_eprc.o" \
+    "$output_dir/t23_eprc_mbrc.o" \
     "$output_dir/dma_alloc.o" \
     -lpthread -lm -o "$output_dir/openimp-t23-helix-selftest"
 "$stripper" --strip-unneeded "$output_dir/openimp-t23-helix-selftest"

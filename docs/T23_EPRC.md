@@ -31,9 +31,15 @@ libimp (addresses below are that library) and OpenIMP's reimplementation,
   `i264e_validate_parameters` refuses).  Seeds 1..8 x 30 scenarios: 0
   deviations on both.
 
-Not compared: the macroblock-level part of FRAME_START (`h264_api_enc`
-0xc3930, `h264_get_mb_qp` 0xc1cbc: state +5184..+5343 and the per-MB slice
-fields), see "Not reproduced".
+The macroblock rate control (`h264_get_mb_qp`, "Macroblock rate control"
+below) is compared the same way: `eprc_mbrc_vectors.txt` /
+`eprc_t21_mbrc_vectors.txt` (`eprc_oracle.py LIB --mbrc SEED N FRAMES`:
+random scenes with an activity-class histogram, after every picture the
+registers the OEM `H264E_T21_SliceInit` makes of the slice block and
+hashes of the slice fields and the state it writes; `--mbrc-calls SEED N`:
+single `h264_get_mb_qp` calls on random state, NaN shares and class
+limits included).  Locally seeds 11..13 x 30 scenes x 150 pictures and
+20000 calls per library: 0 deviations on both.
 
 ## Call sequence (i264e)
 
@@ -212,19 +218,90 @@ re-encode (FRAME_REPEATE_JUDGE needs a mode).  Ported in both revisions
 and in the vectors; the Helix encoder runs FIXQP through it where its mode
 set includes FIXQP (T21 by default, T23 with `OPENIMP_T23_EPRC=1`).
 
+## Macroblock rate control
+
+`h264_api_enc` (T23 0xc3930; T21 inlined) runs `h264_get_mb_qp` (T23
+0xc1cbc, T21 0x93908: same code, S offsets from 280 on 40 lower) for every
+picture; `H264E_T21_SliceInit` (T23 0x25b9c, T21 0x1ce20, same encoding)
+turns its slice fields into Helix registers.  It never changes the picture
+QP.  OpenIMP: `src/eprc/eprc_mbrc.c` (`EPRC_MbQp` from `EPRC_FrameStart` /
+`EPRC21_FrameStart`, `EPRC_MbRcRegs` -> `EprcPicture.mbrc`).
+
+Mode words A+208 (IDR) / A+212 (P), from E+168/E+172 = i264e h+10692/
+h+10696, the OEM rate-control file defaults (`i264e_ratecontrolfile_init`;
+without a file 0x30): bits 0..3 the QP map (0: none), 4..7 the SAS mode
+(3), 8..11 the basic-unit mode (0).  No IMP call changes them: QP maps
+(modes 1..3: the S+6784 map, the run-length list at S+376 -> slice
++812/+816/+820 -> 0x30000 bit 17, 0x4006c, 0x40074 bits 22/23, regions
+0x40044..0x40068), SAS modes 0..2 (CRP, skin tables) and basic units are
+not reachable and not ported (`EPRC_MbQp` does nothing for another mode
+word).  `IMP_Encoder_SetMbRC` (`i264e_mb_rc_set` -> h+10836 ->
+param[280]): stored, re-read by `i264e_reconfig`, nothing else reads it
+(T23 1.3.0 and T21 1.0.33) - the OEM always runs the macroblock rate
+control (emulator: identical slice blocks with param[280] 0 and 1).
+
+Per picture (default mode words):
+- S+368 = 0, S+372 = 0, S+5184..5239 = 0 (no QP map); slice +752..807
+  (regions) = S+5184.., +812 = 0, +816 = S+372, +820 = &S+376.
+- SAS offsets S+5336..5342 from the activity-class histogram of the
+  previous picture (statistics registers 0x40094..0x400a0 -> E+404 ->
+  S+4488..4503: seven 16-bit counts): x, y, z = 100 x (classes 0-2, 3-4,
+  5-6) / A+52 in float.  None (all 0) for x < 12, x >= 92 or QP < 20;
+  else band b by x (12, 22, 52, 82, 92), q = QP - 20 < 16 (band 4: < 13)
+  and a (y, z) class from the 9-byte table 0xee040, which the OEM indexes
+  with 8 | flags: 8 (class 3) when y <= lo and z <= hi or y <= hi and z
+  <= lo (lo/hi 40/80, 35/70, 20/40, 7/16 per band), else 9..15 - a read
+  behind the table into uninitialised stack.  The emulator (and OpenIMP)
+  read 0 there (class 0); a device reads whatever an earlier call left
+  (any of the four classes).  Row `h264_sasm_ofst[class | q << 2 | b <<
+  3]` (32 x 7, -8..+5).
+- First picture (S+0 = 0): slice +842..849 = 0, nothing else (registers
+  all zero, as before this port).  Then: +824 = 1, +825 = 0, +826 = 1,
+  +842..848 = the offsets, +828..841 `sas_mb_thd_init` (activity limits
+  150, 300, 400, 1000, 2000, 4000), +850..854 `sas_flt_thd_init` (2 3 4 4
+  4), basic-unit fields +855..+924 (+862 = 1, +872 = S+88, sizes; no
+  register reads them in mode 0), +892..+914 the `rc_bu_*`/`rc_mb_*` QP
+  offset tables.
+
+Registers (`H264E_T21_SliceInit`, found by perturbing the slice under
+emulation; T23 and T21 alike):
+
+| register | fields |
+|---|---|
+| 0x40074 | QP window/QP as before, OR +824 bit 0, +825 bit 1, +826 bits 2-3, +862 bits 4-5, +857 bit 7, +863 bits 14-15, +812 bits 22-23, +855 bit 23, +858 bits 30-31 (default 0x15) |
+| 0x40078 | +850..854, 3 bits each at 4-bit steps (0x00044432) |
+| 0x4007c, 0x40080, 0x40084 | 16-bit pairs +828/830, +832/834, +836/838 (0x012c0096, 0x03e80190, 0x0fa007d0) |
+| 0x40088 | +840 (16 bits, 0) |
+| 0x4008c, 0x40090 | +842..845, +846..849: 6-bit fields per byte (SAS offsets) |
+
+A vendor T23 command-list capture (hxdump, 12 pictures) shows these
+values after the first pictures, with zero SAS offsets in that scene.
+
+Not part of the macroblock rate control, but per picture in the OEM list
+and now in OpenIMP too: 0x400c0/0x400c4 (`EPRC_PictureCtrl`, from the
+`h264_api_enc` slice fields +976..+1052, which come from A+311..+327 by
+picture type; `EPRC_PictureCtrlRegs` encodes them as `SliceInit`, bit
+map found by perturbation).  OEM values: T23 IDR 0x060404c1 / 0x61615921,
+P 0x030484c1 / 0x61615c21 (below 256 pixels width 0x06040441 / 0x21211921,
+0x03048441 / 0x21211c21); T21 IDR 0x060407c1 / 0x61615921, P 0x030487c1 /
+0x61615c21 (T21 sets +1050/+1051).  OpenIMP sent 0x060407c1 / 0x61615921
+for every picture before.  The command list takes the controller's values
+when eprc runs, else the same values by picture type and width.  Checked
+in the `--mbrc` vectors (last two 'M' fields: the OEM SliceInit registers).
+
+OpenIMP switch: `OPENIMP_EPRC_MBRC=1` (the OEM behaviour) or 0/unset (the
+default until the device test: registers as before), per channel at run
+time with `IMP_Encoder_SetMbRC` (HWEncoderParams.mb_rc, from the next
+picture; `IMP_Encoder_GetMbRC` returns the switch).  It needs the eprc
+controller (`OPENIMP_T23_EPRC`, `OPENIMP_T21_EPRC`); the controller
+computes the fields either way.  `OPENIMP_EPRC_MBRC_LOG=n` logs the
+registers every n pictures.  After a controller restart (run-time RC
+change, IDR) the slice fields stay as the OEM hwicodec slice block does.
+
 ## Not reproduced
 
-- Macroblock-level rate control (`h264_api_enc` 0xc3930 / `h264_get_mb_qp`
-  0xc1cbc, about 3600 instructions: SAS/CRP offsets, skin detection, the
-  per-macroblock QP table and registers 0x40078..0x40084, 0x400c0/0x400c4,
-  state S+5184..+5343).  It is reachable: `h264_get_mb_qp` runs for every
-  picture, i264e param[280] (`IMP_Encoder_SetMbRC`, `i264e_mb_rc_set` ->
-  h+0x2a54 -> param[280]) defaults to 1.  It does not change the picture
-  QP decisions (state compared without it), but the hardware gets
-  per-picture values where OpenIMP's command list keeps constants.  A port
-  needs the two functions emulator-identical plus the command-list wiring
-  of their outputs (registers and the macroblock QP table) and device
-  tests; left for its own task (stability first).
+- Macroblock rate control modes other than the defaults (see above) and
+  the stack bytes behind the (y, z) class table.
 - The region input (`scene_judge_ncu` with regions): never set through IMP
   (see Inputs).
 - The rate-distortion model (A+180 = 0), `T21_show` logging.
@@ -370,3 +447,44 @@ kernel oops, timps alive.
    T21, decode clean); 2 and 3 with the preload (`HSKIP_N=4
    HSKIP_DELAY=5` before the day/night switches - T21 has no IDR_GOPS
    env); 4 without env (FIXQP I = qp - 3).
+
+### Macroblock rate control (cam-B T23, cam-D T21)
+
+Same setup; the camera fixed on a scene with flat areas (wall, sky) and
+texture (foliage, text) side by side, daylight, no motion for the
+quality runs.  T23 with eprc on (SMART default, or `OPENIMP_T23_EPRC=1`
+for CBR/VBR), T21 default.  Each run 3 min, recorded via RTSP.
+
+1. Off (no env): log `macroblock rate control` absent; 
+   `OPENIMP_EPRC_MBRC_LOG=25` prints nothing.  Baseline recording A.
+2. On (`OPENIMP_EPRC_MBRC=1 OPENIMP_EPRC_MBRC_LOG=25`): the log shows
+   `0x40074|=15 0x40078=00044432 0x4007c..88=012c0096 03e80190 0fa007d0
+   00000000` from the second picture on, SAS offsets changing with the
+   scene (6-bit two's complement bytes, -8..+5).  Recording B.  Optional:
+   hxdump of the command list (LD_PRELOAD on the RUN ioctl) compared with
+   the OEM stack on the same scene: 0x40074 low byte, 0x40078..0x40090
+   equal (SAS offsets may differ where the OEM reads stack bytes, see
+   "Macroblock rate control").
+3. Compare A and B per mode CBR (fixed bitrate: quality differs) and VBR /
+   SMART (quality level: bitrate differs): average bitrate over 60 s
+   (`ffprobe -show_packets`), mean frame QP; PSNR/SSIM of decoded B and A
+   against a lossless-ish reference (FIXQP 15 recording of the same
+   static scene, `ffmpeg -lavfi psnr/ssim` on cropped flat and textured
+   regions separately): expected with MB-RC lower QP (more detail, fewer
+   blocking/banding steps) in flat regions, higher QP in texture, similar
+   overall bitrate in CBR.  Visual check of flat gradients (banding) and
+   fine texture at 1:1.
+4. Decode cleanliness, on and off: `ffmpeg -v error -i rec.h264 -f null -`
+   no errors, no green/smeared macroblocks, no `T23 Helix` failures or
+   retries in the log, no kernel messages, 30 min soak with on.
+5. Run-time switch: `tools/mbrc_preload.c` (`LD_PRELOAD=/tmp/mbrc_preload.so
+   MBRC_CHN=0 MBRC_PERIOD=20 MBRC_COUNT=6`, without the env of 2: on, off,
+   ... every 20 s): log `macroblock rate control on/off`, the
+   register log follows from the next picture, no IDR, decode clean
+   across the switches; `IMP_Encoder_GetMbRC` returns the value set.
+6. Day/night switch and an RC change at run time (restart at the next
+   IDR) with MB-RC on: no failures; the first picture after the restart
+   keeps 0x40074|=15 with SAS offsets 0.
+
+If 1-6 pass on both cameras, make `OPENIMP_EPRC_MBRC` default to on (the
+OEM behaviour).

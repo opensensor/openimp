@@ -197,6 +197,12 @@ int __wrap_close(int fd)
     return fd == FAKE_FD ? 0 : __real_close(fd);
 }
 
+#if defined(PLATFORM_T21) && !defined(PLATFORM_T20)
+/* 0x40074 and 0x40078..0x40090 of the last command list */
+static uint32_t list_mbrc[8];
+static uint32_t list_ctrl[2];       /* 0x400c0, 0x400c4 */
+#endif
+
 int __wrap_ioctl(int fd, unsigned long request, ...)
 {
     FakeChannel *channel;
@@ -264,6 +270,27 @@ int __wrap_ioctl(int fd, unsigned long request, ...)
     }
 #endif
     in_run_window = 1;
+#if defined(PLATFORM_T21) && !defined(PLATFORM_T20)
+    {
+        /* the macroblock rate-control registers of the command list
+         * (value, register pairs) */
+        const FakeAllocation *list = allocation("t30-helix-desc");
+        const uint32_t *w = list ? (const uint32_t *)list->mapping : NULL;
+        size_t i;
+
+        memset(list_mbrc, 0, sizeof(list_mbrc));
+        for (i = 0; w && i + 1u < 4096u; i += 2u) {
+            uint32_t reg = w[i + 1u] & 0xffffcu;
+
+            if (reg == 0x40074u)
+                list_mbrc[0] = w[i];
+            else if (reg == 0x400c0u || reg == 0x400c4u)
+                list_ctrl[(reg - 0x400c0u) / 4u] = w[i];
+            else if (reg >= 0x40078u && reg <= 0x40090u)
+                list_mbrc[1u + (reg - 0x40078u) / 4u] = w[i];
+        }
+    }
+#endif
     if (run_result) {
         errno = EIO;
         return -1;
@@ -1073,6 +1100,68 @@ static void test_eprc_runtime_hskip(void)
 }
 #endif
 
+#if defined(PLATFORM_T21) && !defined(PLATFORM_T20)
+/* eprc macroblock rate control: off by default (OPENIMP_EPRC_MBRC unset),
+ * on with OPENIMP_EPRC_MBRC=1 from the second picture (the OEM's first
+ * picture has none), IMP_Encoder_SetMbRC (HWEncoderParams.mb_rc) switches
+ * it from the next picture. */
+static void test_eprc_mbrc(void)
+{
+    HWEncoderParams params;
+    T30HelixEncoder *encoder = NULL;
+    PictureInfo info;
+    unsigned int frame, k;
+
+    unsetenv("OPENIMP_T21_EPRC");
+    for (k = 0; k < 2u; k++) {
+        if (k)
+            setenv("OPENIMP_EPRC_MBRC", "1", 1);
+        else
+            unsetenv("OPENIMP_EPRC_MBRC");
+        memset(&params, 0, sizeof(params));
+        params.width = 640;
+        params.height = 360;
+        params.fps_num = 15;
+        params.fps_den = 1;
+        params.gop_length = 5;
+        params.rc_mode = HW_RC_MODE_CBR;
+        params.bitrate = 500000;
+        params.qp = 30;
+        params.min_qp = 20;
+        params.max_qp = 51;
+        params.rc_flags = HW_RC_FLAG_APP;
+        assert(OpenIMP_T30_HelixCreate(&encoder, &params) == 0);
+        for (frame = 0; frame < 4u; frame++) {
+            assert(encode(encoder, &info) == 0);
+            /* the OEM T21 picture control registers by picture type */
+            assert(list_ctrl[0] == (info.idr ? 0x060407c1u : 0x030487c1u));
+            assert(list_ctrl[1] == (info.idr ? 0x61615921u : 0x61615c21u));
+            if (k && frame) {
+                assert((list_mbrc[0] & 0xffu) == 0x15u);
+                assert(list_mbrc[1] == 0x00044432u);
+                assert(list_mbrc[2] == 0x012c0096u &&
+                       list_mbrc[3] == 0x03e80190u &&
+                       list_mbrc[4] == 0x0fa007d0u && list_mbrc[5] == 0u);
+            } else {
+                assert((list_mbrc[0] & 0xffu) == 0u && list_mbrc[1] == 0u &&
+                       list_mbrc[2] == 0u);
+            }
+        }
+        params.mb_rc = k ? HW_MBRC_OFF : HW_MBRC_ON;
+        assert(OpenIMP_T30_HelixUpdateParams(encoder, &params) == 0);
+        assert(encode(encoder, &info) == 0);
+        assert(k ? list_mbrc[1] == 0u : list_mbrc[1] == 0x00044432u);
+        params.mb_rc = HW_MBRC_DEFAULT;
+        assert(OpenIMP_T30_HelixUpdateParams(encoder, &params) == 0);
+        assert(encode(encoder, &info) == 0);
+        assert(k ? list_mbrc[1] == 0u : list_mbrc[1] == 0x00044432u);
+        OpenIMP_T30_HelixDestroy(encoder);
+        encoder = NULL;
+    }
+    unsetenv("OPENIMP_EPRC_MBRC");
+}
+#endif
+
 int main(void)
 {
     unsigned int i;
@@ -1090,6 +1179,7 @@ int main(void)
 #if defined(PLATFORM_T21) && !defined(PLATFORM_T20)
     test_eprc();
     test_eprc_runtime_hskip();
+    test_eprc_mbrc();
 #endif
 #if defined(PLATFORM_T20)
     test_t20_rate_control();

@@ -128,7 +128,8 @@ case " $platform_cppflags " in
     *)
         compile t21_eprc src/eprc/eprc.c -Werror -ffp-contract=off
         compile t21_eprc_t21 src/eprc/eprc_t21.c -Werror -ffp-contract=off
-        eprc_objects="$output_dir/t21_eprc.o $output_dir/t21_eprc_t21.o"
+        compile t21_eprc_mbrc src/eprc/eprc_mbrc.c -Werror -ffp-contract=off
+        eprc_objects="$output_dir/t21_eprc.o $output_dir/t21_eprc_t21.o $output_dir/t21_eprc_mbrc.o"
         ;;
 esac
 

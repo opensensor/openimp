@@ -13,12 +13,15 @@ check: $(EPRC_TEST)
 	$(EPRC_TEST) eprc_t21_ext_vectors.txt t21
 	$(EPRC_TEST) eprc_random_vectors.txt
 	$(EPRC_TEST) eprc_t21_random_vectors.txt t21
+	$(EPRC_TEST) eprc_mbrc_vectors.txt
+	$(EPRC_TEST) eprc_t21_mbrc_vectors.txt t21
 
-$(EPRC_TEST): eprc_test.c $(PROJECT_DIR)/src/eprc/eprc.c $(PROJECT_DIR)/src/eprc/eprc_t21.c \
+$(EPRC_TEST): eprc_test.c $(PROJECT_DIR)/src/eprc/eprc.c $(PROJECT_DIR)/src/eprc/eprc_t21.c $(PROJECT_DIR)/src/eprc/eprc_mbrc.c \
 		$(PROJECT_DIR)/src/eprc/eprc.h $(PROJECT_DIR)/src/eprc/eprc_internal.h
 	@mkdir -p $(BUILD)
 	$(CC) $(CFLAGS) -I$(PROJECT_DIR)/src -o $@ eprc_test.c \
-		$(PROJECT_DIR)/src/eprc/eprc.c $(PROJECT_DIR)/src/eprc/eprc_t21.c -lm
+		$(PROJECT_DIR)/src/eprc/eprc.c $(PROJECT_DIR)/src/eprc/eprc_t21.c \
+		$(PROJECT_DIR)/src/eprc/eprc_mbrc.c -lm
 
 clean:
 	$(RM) $(EPRC_TEST)
