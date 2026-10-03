@@ -231,8 +231,9 @@ static void EPRC21_SetupE(uint8_t *e, const EprcParams *p)
         EU32(e, 44) = p->gop;
         EU32(e, 48) = p->fps_num;
         EU32(e, 52) = p->fps_den;
-        EU8(e, 56) = (uint8_t)(p->cqp - 3u);
-        EU8(e, 57) = (uint8_t)p->cqp;
+        /* unsigned: below QP 3 the I QP is 51 */
+        EU8(e, 56) = (uint8_t)(p->cqp - 3u > 51u ? 51u : p->cqp - 3u);
+        EU8(e, 57) = (uint8_t)(p->cqp > 51u ? 51u : p->cqp);
     } else if (mode == EPRC_MODE_CBR) {         /* 0x376f8 */
         EU32(e, 8) = 1;
         EU32(e, 44) = p->gop;
@@ -1177,6 +1178,30 @@ static void eprc_picture_fields(Eprc *rc, EprcPicture *pic)
     }
 }
 
+/* FRAME_START 0x992bc: the AE zones (E+668, 912 bytes) to the buffer at
+ * S+6756 (a7148), as T23 (eprc.c eprc_ae_zones). */
+static void eprc_ae_zones(Eprc *rc)
+{
+    uint8_t *E = rc->e;
+    uint8_t *S = rc->p + 336;
+    uint8_t *buf = rc->a7148;
+    int r, c;
+
+    memcpy(buf, E + 668, 912);
+    if (S32(28) == 0 && (uint32_t)S32(0) >= 6u) {
+        for (r = 0; r < 15; r++)
+            for (c = 0; c < 15; c++) {
+                int o = (r * 15 + c) * 4;
+                uint32_t d = (uint32_t)eprc_ld32(buf + o) -
+                             (uint32_t)eprc_ld32(buf + 912 + o);
+                int32_t v = (int32_t)d;
+
+                eprc_st32(buf + 1824 + o, v < 0 ? (int32_t)(0u - d) : v);
+            }
+    }
+    memcpy(buf + 912, buf, 912);
+}
+
 /* JZ_VPU_RC_FRAME_START_T21 (0x990e0) without the region/QP-map inputs. */
 static int eprc_frame_start(Eprc *rc, EprcPicture *pic)
 {
@@ -1191,9 +1216,11 @@ static int eprc_frame_start(Eprc *rc, EprcPicture *pic)
     S8(5) = EU8(E, 636);
     EPTR(S, 5928, E + 640);
     memset(rc->a1640, 0, (size_t)EU16(E, 4) * EU16(E, 6));
-    if (SS8(5) != 0 || EI8(E, 637) != 0)
-        return -1;              /* region / macroblock QP map: not supported */
+    if (SS8(5) != 0)
+        return -1;              /* regions: never set through IMP (T23_EPRC.md) */
     S8(6) = 0;
+    if (EI8(E, 637) != 0)
+        eprc_ae_zones(rc);
 
     S8(41) = 0;                                      /* 0x991b0 */
     S8(40) = 0;
@@ -1216,8 +1243,13 @@ static int eprc_frame_start(Eprc *rc, EprcPicture *pic)
         }
     }
     S32(88) = 0;
-    if (A32(144) == 0)
-        return -1;              /* FIXQP is not run through this module */
+    if (A32(144) == 0) {
+        /* FIXQP (0x99218): the I or P QP of VIDEO_CFG */
+        int32_t q = SS8(41) != 0 ? AS8(57) : AS8(58);
+
+        SS8(68) = (int8_t)(q < 0 ? 0 : q > 51 ? 51 : q);
+        goto fields;
+    }
 
     /* 0x99c48 */
     if (S32(0) != 0 && A8(207) != 0 && (uint32_t)A32(184) < 2u)
@@ -1506,7 +1538,7 @@ clamp_qp:                                            /* 0x9a040 */
     else if (AS8(59) < SS8(68))
         SS8(68) = AS8(59);
 
-    /* 0x99240 */
+fields:                                              /* 0x99240 */
     EPTR(S, 6740, (uintptr_t)EU32(E, 1612));
     EPTR(S, 6732, SL);
     if (SL)
@@ -1523,10 +1555,12 @@ int EPRC21_FrameStart(Eprc *rc, const EprcFrameIn *in, EprcPicture *pic)
 {
     uint8_t *E = rc->e;
 
-    /* i264e_ratecontrol_start (0x38504); no region / QP-map input */
+    /* i264e_ratecontrol_start (0x38504); no region input */
     EPTR(E, 1608, rc->slice);
     EU8(E, 636) = 0;
-    EU8(E, 637) = 0;
+    EU8(E, 637) = in->ae_zone != NULL;
+    if (in->ae_zone)
+        memcpy(E + 668, in->ae_zone, EPRC_AE_ZONES * 4u);
     EU32(E, 1612) = in->r11832;
     EU32(E, 1568) = 0;
     EU32(E, 1572) = 0;
@@ -2012,4 +2046,9 @@ int EPRC21_FrameEndEx(Eprc *rc, uint32_t bytes,
     memcpy(E + 400, regs + 16, 16);
     eprc_frame_end(rc);
     return 0;
+}
+
+int32_t EPRC21_PictureClass(const Eprc *rc)
+{
+    return EI32(rc->e, 1592);
 }
