@@ -51,15 +51,18 @@
 #define JPEG_ROW (0x2000u + 2u * 120u * 2368u + 256u)
 #define OSD_PIECES 8u
 
+#if !defined(PLATFORM_T23)
 static const uint32_t osd_sizes[OSD_PIECES] = {
     67392u, 77376u, 27456u, 12000u, 10912u, 12496u, 4576u, 12000u
 };
+#endif
 
 static RmemArena arena;
 static int top_allocations;
-static struct { uint32_t phys; void *virt; } shadows[64];
+static struct { uint32_t phys; void *virt; const char *tag; uint32_t size; } shadows[64];
 
-static int arena_alloc(IMPDMABufferInfo *info, int size, int top)
+static int arena_alloc(IMPDMABufferInfo *info, int size, int top,
+                       const char *tag)
 {
     size_t off;
     unsigned int i;
@@ -79,6 +82,8 @@ static int arena_alloc(IMPDMABufferInfo *info, int size, int top)
         if (!shadows[i].phys) {
             shadows[i].phys = info->phys_addr;
             shadows[i].virt = virt;
+            shadows[i].tag = tag;
+            shadows[i].size = (uint32_t)size;
             return 0;
         }
     abort();
@@ -86,19 +91,31 @@ static int arena_alloc(IMPDMABufferInfo *info, int size, int top)
 
 int DMA_AllocDescriptor(IMPDMABufferInfo *info, int size, const char *tag)
 {
-    (void)tag;
-    return arena_alloc(info, size, 0);
+    return arena_alloc(info, size, 0, tag);
 }
 
 int DMA_AllocDescriptorTop(IMPDMABufferInfo *info, int size,
                            const char *tag)
 {
-    (void)tag;
-    if (arena_alloc(info, size, 1) != 0)
+    if (arena_alloc(info, size, 1, tag) != 0)
         return -1;
     top_allocations++;
     return 0;
 }
+
+#if defined(PLATFORM_T23)
+uint32_t DMA_VirtToPhys(const void *virt_addr)
+{
+    unsigned int i;
+
+    for (i = 0; i < 64u; i++)
+        if (shadows[i].phys && (const char *)virt_addr >= (char *)shadows[i].virt &&
+            (const char *)virt_addr < (char *)shadows[i].virt + shadows[i].size)
+            return shadows[i].phys +
+                   (uint32_t)((const char *)virt_addr - (char *)shadows[i].virt);
+    return 0;
+}
+#endif
 
 int DMA_FreePhys(uint32_t phys)
 {
@@ -156,11 +173,12 @@ int __wrap_ioctl(int fd, unsigned long request, ...)
     node = va_arg(args, uint32_t *);
     va_end(args);
     assert(fd == FAKE_FD);
-    if (request == 0xc0386300u) {
+    /* T21: 56-byte node, T23: 88-byte node */
+    if (request == 0xc0386300u || request == 0xc0586300u) {
         node[0] = 0x8000u;          /* clist */
         return 0;
     }
-    assert(request == 0xc0386301u);
+    assert(request == 0xc0386301u || request == 0xc0586301u);
     return 0;
 }
 
@@ -171,15 +189,22 @@ typedef struct {
     int live;
 } Block;
 
-static Block isp, pool0, pool1, osd[OSD_PIECES];
+static Block isp;
+#if !defined(PLATFORM_T23)
+static Block pool0, pool1, osd[OSD_PIECES];
+#endif
 static T30HelixEncoder *main_encoder, *sub_encoder;
+#if !defined(PLATFORM_T23)
 static size_t worst_free = (size_t)-1;
+#endif
+#if !defined(PLATFORM_T23)
 static unsigned int pool_enables;
+#endif
 
 static int block_try(Block *b, uint32_t size, int top)
 {
     assert(!b->live);
-    if (arena_alloc(&b->info, (int)size, top) != 0)
+    if (arena_alloc(&b->info, (int)size, top, "block") != 0)
         return -1;
     b->live = 1;
     return 0;
@@ -202,12 +227,15 @@ static void block_free(Block *b)
     b->live = 0;
 }
 
+#if !defined(PLATFORM_T23)
 static void note_free(void)
 {
     if (arena.size - arena.used < worst_free)
         worst_free = arena.size - arena.used;
 }
 
+#endif
+#if !defined(PLATFORM_T23)
 static void pool_enable(Block *pool, uint32_t size)
 {
     if (pool->live)
@@ -216,6 +244,8 @@ static void pool_enable(Block *pool, uint32_t size)
     pool_enables++;
     note_free();
 }
+
+#endif
 
 static void encoder_create(T30HelixEncoder **encoder, uint32_t w,
                            uint32_t h)
@@ -249,6 +279,7 @@ static void encoder_destroy(T30HelixEncoder **encoder)
     *encoder = NULL;
 }
 
+#if !defined(PLATFORM_T23)
 /* The previous layout replayed in the camera's order: JPEG buffer and OSD
  * at start-up, the main encoder made at chn0's first picture, chn0 idles,
  * the sub channel streams (its encoder made at its first picture), then
@@ -320,6 +351,108 @@ static void start(void)
     pool_enable(&pool0, POOL0);
 }
 
+#endif
+
+#if defined(PLATFORM_T23)
+/* T23 with the reference ring (OPENIMP_REF_SHARE=1): the encoder buffers
+ * come from the top of the arena in creation order, so the layout is ring,
+ * EMC scratch directly below it and the shared bitstream area (2 MiB +
+ * 4 KiB, one per process) directly below the first EMC - as logged on the
+ * camera (bs 0x0374b000 + 0x201000 = emc 0x0394c000, emc + 0x200000 = ring
+ * 0x03b4c000, ring 0x3b1100 bytes).  The second channel (360p) only
+ * borrows the bitstream area. */
+typedef struct { uint32_t phys, size; } TagBlock;
+
+static int find_tag(const char *tag, unsigned int nth, TagBlock *out)
+{
+    unsigned int i, best = 0;
+    uint32_t phys = 0;
+
+    /* nth highest block of that tag */
+    for (;;) {
+        uint32_t cand = 0;
+
+        for (i = 0; i < 64u; i++)
+            if (shadows[i].phys && shadows[i].tag &&
+                !strcmp(shadows[i].tag, tag) &&
+                (!phys || shadows[i].phys < phys) && shadows[i].phys > cand) {
+                cand = shadows[i].phys;
+                best = i;
+            }
+        if (!cand)
+            return 0;
+        phys = cand;
+        if (nth-- == 0u)
+            break;
+    }
+    out->phys = shadows[best].phys;
+    out->size = shadows[best].size;
+    return 1;
+}
+
+static unsigned int count_tag(const char *tag)
+{
+    unsigned int i, n = 0;
+
+    for (i = 0; i < 64u; i++)
+        if (shadows[i].phys && shadows[i].tag && !strcmp(shadows[i].tag, tag))
+            n++;
+    return n;
+}
+
+static void check_ring_layout(int main_first)
+{
+    TagBlock r, e, b, r2, e2;
+    const TagBlock *ring = &r, *emc = &e, *bs = &b, *ring2 = &r2, *emc2 = &e2;
+    unsigned int main_idx = main_first ? 0u : 1u;
+
+    assert(count_tag("t23-helix-ref") == 2u);     /* one ring per channel */
+    assert(count_tag("t23-helix-bs") == 1u);      /* shared area once */
+    assert(count_tag("t23-helix-emc") == 2u);
+    assert(find_tag("t23-helix-ref", main_idx, &r));
+    assert(find_tag("t23-helix-emc", main_idx, &e));
+    assert(find_tag("t23-helix-bs", 0, &b));
+    /* 1080p ring + chroma gap, page-rounded by the allocator */
+    assert(ring->size >= 0x3b1100u && ring->size <= 0x3b2000u);
+    assert(emc->size == 2u << 20);
+    assert(bs->size == (2u << 20) + 4096u);
+    assert(emc->phys + emc->size == ring->phys);  /* EMC directly below */
+    if (main_first)
+        assert(bs->phys + bs->size == emc->phys); /* bs directly below EMC */
+    assert(find_tag("t23-helix-ref", main_idx ^ 1u, &r2));
+    assert(find_tag("t23-helix-emc", main_idx ^ 1u, &e2));
+    assert(ring2->size >= 599296u && ring2->size <= 602112u);
+    assert(emc2->phys + emc2->size == ring2->phys);
+    if (!main_first)
+        assert(bs->phys + bs->size == emc2->phys);
+}
+
+int main(void)
+{
+    mallopt(M_MMAP_MAX, 0);
+    setenv("OPENIMP_REF_SHARE", "1", 1);
+    rmem_arena_init(&arena, RMEM_SIZE);
+    block_alloc(&isp, ISP_NCU, 0);
+    encoder_create(&main_encoder, MAIN_W, MAIN_H);
+    encoder_create(&sub_encoder, SUB_W, SUB_H);
+    check_ring_layout(1);
+    printf("T23 ring layout: ring/EMC/shared bitstream contiguous, used %zu "
+           "of %zu\n", arena.used, arena.size);
+    /* codec restart in the other order, and again */
+    encoder_destroy(&main_encoder);
+    encoder_destroy(&sub_encoder);
+    assert(count_tag("t23-helix-bs") == 0u);      /* released with the last user */
+    encoder_create(&sub_encoder, SUB_W, SUB_H);
+    encoder_create(&main_encoder, MAIN_W, MAIN_H);
+    check_ring_layout(0);
+    encoder_destroy(&sub_encoder);
+    encoder_destroy(&main_encoder);
+    block_free(&isp);
+    assert(arena.used == 0);
+    printf("T23 ring layout simulation passed\n");
+    return 0;
+}
+#else
 int main(void)
 {
     unsigned int step, i;
@@ -398,3 +531,4 @@ int main(void)
     printf("T21 rmem layout simulation passed\n");
     return 0;
 }
+#endif

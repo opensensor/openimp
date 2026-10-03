@@ -62,6 +62,9 @@ typedef struct {
      * 0x50074/78 = ring start instead of 0; T21_RING_NO_WRAP: 0xb0000
      * bits 8..15 stay 0xff. */
     uint8_t ring_flags;
+    /* 0xb0000 low byte in ring mode (OPENIMP_REF_SHARE_B0, hex): 0 = the
+     * build default (T23 0x63 as the vendor, T21 0xff). */
+    uint8_t ring_b0;
     uint32_t ring_start_y, ring_start_c;
     uint32_t ring_end_y, ring_end_c;
     uint32_t *descriptor;

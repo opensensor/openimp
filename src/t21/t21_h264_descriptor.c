@@ -574,12 +574,13 @@ int T21_H264_BuildDescriptor(const T21H264SliceConfig *config,
      * ctx[1057], ctx[1053]) clear, the T21 template has them set. */
     EMIT(0xb0000, 0x00020000u |
                   (config->ref_share ?
+                       (config->ring_b0 ? config->ring_b0 | 1u :
 #if defined(T21_HELIX_T23_DELTAS)
-                       0x63u
+                        0x63u
 #else
-                       0xffu
+                        0xffu
 #endif
-                       : 0xbdu) |
+                       ) : 0xbdu) |
                   ((config->ref_share &&
                     !(config->ring_flags & T21_RING_NO_WRAP)
                         ? (uint32_t)config->ring_wrap_rows : 0xffu) << 8));

@@ -61,6 +61,14 @@ t21_rmem_layout_test: $(T21_RMEM_SOURCES) $(ROOT)/src/rmem_arena.h \
 		-Wl,--wrap=open,--wrap=close,--wrap=ioctl \
 		-o $@ $(T21_RMEM_SOURCES) -pthread
 
+# T23 with the reference ring: ring, EMC and the shared bitstream area.
+t23_ring_layout_test: $(T21_RMEM_SOURCES) $(ROOT)/src/rmem_arena.h \
+	$(ROOT)/src/t21/t21_ref_ring.h $(ROOT)/src/t30/t30_helix_encoder.h
+	$(CC) $(CFLAGS) -DPLATFORM_T23 -fno-pie -no-pie \
+		-I$(ROOT)/include -I$(ROOT)/src $(INCLUDES) \
+		-Wl,--wrap=open,--wrap=close,--wrap=ioctl \
+		-o $@ $(T21_RMEM_SOURCES) -pthread
+
 # T20 builds the T21 userspace with PLATFORM_T20 and the T30 descriptor.
 helix_encoder_test_t20: $(HELIX_SOURCES) $(ROOT)/src/t30/t30_annexb.h $(ROOT)/src/t30/t30_h264_level.h
 	$(CC) $(CFLAGS) -DPLATFORM_T20 -DPLATFORM_T21 -fno-pie -no-pie \
@@ -217,7 +225,7 @@ ref_ring_test_t23: ref_ring_test.c $(ROOT)/src/t21/t21_h264_descriptor.c \
 		ref_ring_test.c $(ROOT)/src/t21/t21_h264_descriptor.c
 
 check: ref_ring_test ref_ring_test_t23 descriptor_test annexb_test level_test helix_encoder_test \
-	helix_encoder_test_t21 helix_encoder_test_t20 t21_rmem_layout_test \
+	helix_encoder_test_t21 helix_encoder_test_t20 t21_rmem_layout_test t23_ring_layout_test \
 	helix_jpeg_test_t21 helix_jpeg_test_t20 helix_jpeg_test_t23 \
 	ivs_framework_test_t21 ivs_framework_test_t20 ivs_move_bench_t20 \
 	fs_lifecycle_test_t21 fs_lifecycle_test_t20 fs_lifecycle_test_t23 \
@@ -230,6 +238,7 @@ check: ref_ring_test ref_ring_test_t23 descriptor_test annexb_test level_test he
 	./helix_encoder_test
 	./helix_encoder_test_t21
 	./t21_rmem_layout_test
+	./t23_ring_layout_test
 	./helix_encoder_test_t20
 	./helix_jpeg_test_t21
 	./helix_jpeg_test_t20
@@ -244,7 +253,7 @@ check: ref_ring_test ref_ring_test_t23 descriptor_test annexb_test level_test he
 
 clean:
 	$(RM) descriptor_test annexb_test level_test helix_encoder_test \
-		helix_encoder_test_t21 helix_encoder_test_t20 t21_rmem_layout_test \
+		helix_encoder_test_t21 helix_encoder_test_t20 t21_rmem_layout_test t23_ring_layout_test \
 		helix_jpeg_test_t21 helix_jpeg_test_t20 helix_jpeg_test_t23 \
 		ivs_framework_test_t21 ivs_framework_test_t20 ivs_move_bench_t20 \
 		fs_lifecycle_test_t21 fs_lifecycle_test_t20 fs_lifecycle_test_t23 \

@@ -2,6 +2,7 @@
 #define OPENIMP_T21_REF_RING_H
 
 #include <stdint.h>
+#include <stdlib.h>
 
 /* Shared reference/reconstruction ring of the T21-family Helix core (OEM
  * BUF_SHARE_CFG, libimp 1.0.33 T21 and 1.3.0 T23, same arithmetic).
@@ -72,6 +73,14 @@ static inline int t21_ref_ring_saves(uint32_t mb_width, uint32_t mb_height)
            t21_ref_pair_bytes(mb_width, mb_height);
 }
 
+/* OPENIMP_REF_SHARE_GAP=0 drops the chroma gap (experiment). */
+static inline uint32_t t21_ref_ring_gap(void)
+{
+    const char *env = getenv("OPENIMP_REF_SHARE_GAP");
+
+    return env && env[0] == '0' ? 0u : T21_REF_RING_CHROMA_GAP;
+}
+
 static inline void t21_ref_ring_init(T21RefRing *r, uint32_t base,
                                      uint32_t mb_width, uint32_t mb_height)
 {
@@ -83,7 +92,7 @@ static inline void t21_ref_ring_init(T21RefRing *r, uint32_t base,
     r->step_c = T21_REF_RING_EXTRA_LINES / 2u * stride;
     r->stride = stride;
     r->base_y = base;
-    r->base_c = base + r->ring_y + T21_REF_RING_CHROMA_GAP;
+    r->base_c = base + r->ring_y + t21_ref_ring_gap();
 }
 
 /* Address of picture n (n >= 0) in the plane described by base/ring/step. */
