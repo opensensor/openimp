@@ -17,6 +17,7 @@ JPEG_QL := $(BUILD)/t23-jpeg-ql-test
 HELIX_DESCRIPTOR := $(BUILD)/t23-helix-descriptor-test
 HELIX_STREAM := $(BUILD)/t23-helix-stream-test
 RMEM_LAYOUT := $(BUILD)/t23-rmem-layout-test
+HEVC_POLICY := $(BUILD)/t23-hevc-policy-test
 HELIX_NATIVE_SOURCES := $(PROJECT_DIR)/src/t30/t30_helix_encoder.c \
 	$(PROJECT_DIR)/src/t21/t21_h264_descriptor.c \
 	$(PROJECT_DIR)/src/t30/h264enc/cabac.c \
@@ -32,7 +33,7 @@ HELIX_NATIVE_SOURCES := $(PROJECT_DIR)/src/t30/t30_helix_encoder.c \
 HELIX_INCLUDES := -DPLATFORM_T23 '-D_Static_assert(c,m)=' -Wno-unused-result \
 	-I$(PROJECT_DIR)/include -I$(PROJECT_DIR)/src
 
-.PHONY: check clean device t23tune
+.PHONY: check clean hevc-policy device t23tune
 
 # The code under test passes pointers through 32-bit words, as on MIPS:
 # build without PIE so the test's data lies below 4 GiB.
@@ -42,6 +43,7 @@ check: $(ISP_TUNING_TEST_BIN) $(ACODEC_TEST_BIN) $(ZERO_COPY_TEST_BIN) \
 	$(RMEM_LAYOUT)
 	$(HELIX_DESCRIPTOR)
 	$(RMEM_LAYOUT)
+	$(MAKE) hevc-policy
 	$(HELIX_STREAM) encode $(BUILD)/t23-helix.h264 $(BUILD)/t23-helix.ref
 	$(HELIX_STREAM) rc
 	$(HELIX_STREAM) crop $(BUILD)/t23-helix-crop.h264
@@ -165,6 +167,18 @@ $(RMEM_LAYOUT): rmem_layout_test.c $(HELIX_NATIVE_SOURCES) \
 		-D_FORTIFY_SOURCE=0 -Wno-missing-field-initializers \
 		rmem_layout_test.c $(HELIX_NATIVE_SOURCES) -no-pie \
 		-Wl,--wrap=open,--wrap=close,--wrap=ioctl -lm -o "$@"
+
+# H.265 CreateChn policy: T20/T21/T23 reject, T31/T41-style builds do not.
+hevc-policy: hevc_policy_test.c $(PROJECT_DIR)/src/t40/p2_hevc_policy.h
+	mkdir -p "$(BUILD)"
+	for p in T23 T21 T20; do \
+		$(CC) $(CFLAGS) -DEXPECT_REJECT -DPLATFORM_$$p -I$(PROJECT_DIR)/src \
+			hevc_policy_test.c -o $(HEVC_POLICY)-$$p && $(HEVC_POLICY)-$$p || exit 1; \
+	done
+	for p in T30 T31 T40 T41; do \
+		$(CC) $(CFLAGS) -DPLATFORM_$$p -I$(PROJECT_DIR)/src \
+			hevc_policy_test.c -o $(HEVC_POLICY)-$$p && $(HEVC_POLICY)-$$p || exit 1; \
+	done
 
 clean:
 	rm -f $(HELIX_DESCRIPTOR) $(HELIX_STREAM) $(RMEM_LAYOUT) $(BUILD)/t23-helix.h264 \
