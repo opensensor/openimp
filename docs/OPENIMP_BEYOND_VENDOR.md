@@ -94,6 +94,90 @@ Further items (night 2026-10-03):
 | Sub-stream default for IVS: about 85 % less IVS CPU than the vendor libimp | T31 | internal | on | Prefer the sub-stream as IVS source | n/a | cam-A |
 | Motion works without a viewer (feeder thread), CPU about 10-12 % vs 27 % with vendor libimp | T41 | internal | on | Nothing | n/a | cam-F, `claude/t41-libimp` |
 
+### 4.1 Motion v2 (opt-in, beyond vendor)
+
+OpenIMP branch `claude/imp-motion-v2` (from `claude/openimp-all-16`). **Default off: with it off, `IMP_IVS_MoveOutput` is
+bit-identical to the vendor algorithm** (host test `tests/t23/ivs_move_v2_test.c`, also in shadow mode). Status: built for
+T20/T21/T23/T30/T31/T41, device test on cam-C (T20) and cam-B (T23), see the changelog.
+
+What it does, next to the vendor frame difference of `IMP_IVS_CreateMoveInterface`:
+
+| Feature (bit) | Behaviour |
+|---|---|
+| `BACKGROUND` (0x1) | Per-cell background model (8x8-pixel cells at 640x360, grid at most 80x60): running mean plus running noise level per cell, global brightness compensation (median cell ratio). Without it the reference is the previous analysed frame |
+| `SUPPRESS` (0x2) | Hold-off of `suppress_ms` (default 4 s, at least 3 analysed frames) after an ISP running-mode change (IR / day-night), a total-gain jump or a global brightness jump above `jump_pct` (default 25 %); the background re-learns fast meanwhile |
+| `BLOBS` (0x4) | Moving cells are grouped 8-connected into objects; an object needs `min_cells` (3) cells and must be seen `min_frames` (2) analysed frames in a row; leaves, noise and single-cell flicker drop out |
+| `OVERRIDE` (0x8) | `retRoi[i]` comes from v2 (an object covers ROI i) instead of the vendor difference, so an unmodified streamer benefits. Without it v2 runs in **shadow mode**: vendor `retRoi`, v2 only in the extension result |
+
+The vendor `sense` of the most sensitive ROI scales the v2 thresholds (2 = as configured, 0 = x2, 4 = x0.5), so an existing
+sensitivity slider keeps working. Analysis runs on the frames the channel already receives, every `skipFrameCnt + 1`-th
+frame.
+
+**Switches**
+
+| Variable | Meaning |
+|---|---|
+| `OPENIMP_MOTION_V2` | `1`/`on`/`all` = all four features; `shadow` = all but OVERRIDE; a number = feature mask; unset/`0` = off |
+| `OPENIMP_MOTION_V2_BG`, `_SUPPRESS`, `_BLOBS`, `_OVERRIDE` | `0`/`1` clears/sets one feature on top of the above |
+| `OPENIMP_MOTION_V2_LEARN`, `_K`, `_MIN_DELTA`, `_SUPPRESS_MS`, `_JUMP_PCT`, `_MIN_CELLS`, `_MIN_FRAMES` | parameters, see the config struct |
+| `OPENIMP_MOTION_V2_LOG` | `1` = one stderr line per change of the vendor or the v2 decision (debug, A/B) |
+
+The environment is read when the move interface is created. A streamer can instead (or later) set the configuration per
+channel with `OpenIMP_IVS_MoveSetConfigEx()`.
+
+**API** (header `include/imp/openimp_ivs_move_ex.h`, exported as `OpenIMP_IVS_Move*`)
+
+```c
+int OpenIMP_IVS_MoveGetResultEx(int chn, OpenIMP_IVS_MoveOutputEx *out); /* after IMP_IVS_GetResult */
+int OpenIMP_IVS_MoveSetConfigEx(int chn, const OpenIMP_IVS_MoveConfigEx *cfg);
+int OpenIMP_IVS_MoveGetConfigEx(int chn, OpenIMP_IVS_MoveConfigEx *cfg);
+```
+
+- `OpenIMP_IVS_MoveOutputEx` (version 1, 336 bytes): `size`, `version`, `timestamp` (frame), `seq`, `flags`
+  (`ACTIVE`, `SUPPRESSED`, `OVERRIDE`, `WARMUP`), `suppress` (reasons `DAYNIGHT`, `GAIN`, `LUMA`), `frame_w`/`frame_h`
+  (the IVS input = the bound stream, e.g. 640x360), `grid_w`/`grid_h`, `legacy_roi[2]` (vendor `retRoi` bits),
+  `v2_roi[2]`, `obj_cnt` and up to 16 `OpenIMP_IVS_MoveObject {x0, y0, x1, y1 (inclusive, frame pixels), strength 0..1000,
+  cells, age (frames), id}`. Scale the box by `stream_w / frame_w` for another stream.
+- It returns the extension data of the result the last `IMP_IVS_GetResult()` handed out; call it before the next
+  `GetResult`. With v2 off it still fills `seq`, `frame_*` and `legacy_roi`, `flags` is 0.
+- `OpenIMP_IVS_MoveConfigEx` (version 1, 64 bytes): `features`, `learn_shift` (1..10, 4), `thresh_k` (16..255, 64 =
+  4x noise), `min_delta` (luma levels, 10), `suppress_ms` (4000), `jump_pct` (25), `min_cells` (3), `min_frames` (2).
+  Parameter fields that are 0 or beyond the caller's `size` take the default; out-of-range values are clamped.
+  `features = 0` turns v2 off.
+  The configuration takes effect with the next analysed frame; switching features restarts a 4-frame warm-up.
+
+**ABI rules:** every struct starts with `size` and `version`; set `size = sizeof(struct)` and `version =
+OPENIMP_IVS_MOVE_EX_VERSION`. The library reads and writes at most `min(size, own size)` bytes and reports its version.
+Fields are only appended, never moved. Errors: -1 with `errno` `EINVAL` (channel, NULL, size too small) or `ENOENT` (no
+move interface on the channel).
+
+**Use from a streamer (weak symbols, works against vendor libimp too):**
+
+```c
+#include "openimp_ivs_move_ex.h"   /* copy the header; it has no other dependencies */
+#pragma weak OpenIMP_IVS_MoveGetResultEx
+#pragma weak OpenIMP_IVS_MoveSetConfigEx
+
+/* after IMP_IVS_CreateChn/StartRecvPic, optional: switch v2 on for this channel */
+if (OpenIMP_IVS_MoveSetConfigEx) {
+    OpenIMP_IVS_MoveConfigEx c = { .size = sizeof c, .version = OPENIMP_IVS_MOVE_EX_VERSION,
+                                   .features = OPENIMP_MOVE_F_ALL };   /* parameters 0 = defaults */
+    OpenIMP_IVS_MoveSetConfigEx(chn, &c);
+}
+/* in the result loop */
+IMP_IVS_GetResult(chn, (void **)&res);           /* vendor yes/no per ROI as before */
+if (OpenIMP_IVS_MoveGetResultEx) {
+    OpenIMP_IVS_MoveOutputEx ex = { .size = sizeof ex };
+    if (OpenIMP_IVS_MoveGetResultEx(chn, &ex) == 0 && (ex.flags & OPENIMP_MOVE_EX_ACTIVE))
+        for (unsigned i = 0; i < ex.obj_cnt; i++)
+            publish_box(ex.obj[i].x0, ex.obj[i].y0, ex.obj[i].x1, ex.obj[i].y1, ex.obj[i].strength, ex.obj[i].id);
+}
+IMP_IVS_ReleaseResult(chn, res);
+```
+
+Detect / disable: the symbols are absent on vendor libimp and older OpenIMP; `GetConfigEx` shows the features in
+force; unset `OPENIMP_MOTION_V2` (or `features = 0`) is the vendor behaviour.
+
 ## 5. Reference buffer sharing
 
 | Feature | SoC | Env | Default | How a streamer uses it | Detect / disable | Status |
@@ -135,6 +219,8 @@ set in production.
 | `OPENIMP_T20_RC_IAWARE` | `0` = vendor P budget, `1` also for VBR/SMART; only inside the OEM controller | on for CBR | user-facing |
 | `OPENIMP_T31_RC_CORE` | `legacy` restores the pre-Allegro rate-control core | allegro | user-facing |
 | `OPENIMP_EPRC_QP_DOWN1` | `1` / `2` enables the eprc QP-down limit; built, device test pending | off | user-facing (opt-in) |
+| `OPENIMP_MOTION_V2` (+ `_BG`, `_SUPPRESS`, `_BLOBS`, `_OVERRIDE`, parameters) | opt-in motion v2, section 4.1; `shadow` = analysis without changing `retRoi` | off | user-facing (opt-in) |
+| `OPENIMP_MOTION_V2_LOG` | `1` logs every vendor / v2 decision change (A/B) | off | debug-only |
 | `OPENIMP_LOG_SYSLOG` | `1` also logs to syslog | off | user-facing |
 | `OPENIMP_PROFILE`, `OPENIMP_PROFILE_INTERVAL` | `1` enables a periodic profile report; interval in completed frames (docs/PROFILING.md) | off | debug-only |
 | `OPENIMP_T31_VBR_LOOP` | `0` forces open-loop VBR on T31 | on (closed loop) | debug-only |

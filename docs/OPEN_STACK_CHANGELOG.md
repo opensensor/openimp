@@ -3,7 +3,7 @@
 Everything changed, extended or fixed in OpenIMP, open-tx-isp, timps and the thingino
 integration since the test campaign started on 2026-09-30. Kept up to date during the campaign.
 
-Last update: 2026-10-04 00:00.
+Last update: 2026-10-04 00:30.
 
 Cameras are anonymised: cam-A (T31), cam-B (T23), cam-C (T20), cam-D (T21), cam-E (T10), cam-F (T41).
 
@@ -96,6 +96,12 @@ Aggregates: `claude/open-tx-isp-all-4` and `claude/openimp-all-4` (pushed); 58 m
 - **all-19 building:** open-tx-isp all-18 + openimp claude/openimp-all-17 (0f6ca940) + timps main a34a5a2 with USE_OPENIMP=1 (timps now offers DPC/defog/DRC on T10/T20/T21 with OpenIMP). T41 image with H.265 in preparation.
 - **Motion detection v2 started:** opt-in: background model per grid cell, suppression after IR/exposure switches, blob grouping with minimum size/duration, bounding boxes and strength via a new versioned API; vendor output unchanged when off.
 - **Differences to the vendor (current):** less: T31 CBR without filler NAL, T41 tuning partly unverified, MB-RC opt-in only; deliberately different: H.265 rejected on T10/T20/T21/T23, T21 ring mode without P re-encode, stricter T23 front crop; more: see OPENIMP_BEYOND_VENDOR.md and OPENIMP_SOC_DIFFS.md.
+
+- **all-19 flashed:** on cam-A, cam-D, cam-E at 00:00 (open-tx-isp all-18 e8ed540c, openimp all-17 0f6ca940, timps main a34a5a2 with USE_OPENIMP): 30/30 snapshots, 0 oops; timps now lists dpc/defog/drc strength. cam-F got rev5 (H.265, reclaim fixes, timps main). cam-B and cam-C wait for the sub-stream fix.
+- **Regression found: sub-stream corruption on Helix SoCs:** on T21 and T23 the 640x360 sub stream shows P-frames predicting from a wrong reference (content jumps up 8–24 px, block artefacts), correlated with helix VPU error 0x100. Main stream clean; T31/T10 clean. Present in all-16/all-17; analysis in progress (suspects: reference-ring sharing on the small channel, eprc long-term reference changes). Workaround: use the main stream.
+- **T41 env bug (thingino):** after an OTA the firmware runs fw_setenv with a 32 KiB env while U-Boot 2026.07 uses 64 KiB → CRC mismatch → U-Boot defaults (rmem back to 30 MB). Env rewritten by hand on cam-F; permanent fix in the thingino ciao branch (fw_env.config 0x10000), not pushed yet.
+- **T30 readiness without hardware:** kernel module and OpenIMP build for a real T30 kernel; 810/837 functions match the vendor; H.264 command-list register order identical to the vendor (emulator oracle); fixed a missing isp_printf export (every sensor module would have failed) and an IMPEncoderCHNAttr ABI size bug (4-byte overrun). Missing: audio (being added via the T21 path, otherwise timps would not start), T30 rate controller, 11 tuning functions, Radix H.265. Report T30-READINESS.md.
+- **Intensive driver review:** 0 critical, 3 high (T23 4 MB snapraw buffer allocated at insmod, VIC error IRQs not restarting the VIC on T23/T41, T31 stats DMA freed while active), 8 medium, 14 low; previous fixes verified correct. Fixes in work.
 
 ## Late night (2026-10-03, 22:30)
 
