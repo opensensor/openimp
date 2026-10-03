@@ -119,6 +119,18 @@ keeps only the number of writes and an FNV-1a digest of the register order.
   that band before QP moves. The log shows the rate control in effect
   (`T23 Helix rc ready:` / `rc reconfigured:`); `OPENIMP_T23_RC_STATS=<s>`
   adds bitrate and I/P QP statistics every `<s>` seconds.
+- OEM picture rate control (`src/eprc`, `docs/T23_EPRC.md`): SMART runs the
+  reimplemented OEM controller (JZ_VPU_RC_*_T21) instead of the band mapping
+  above; `OPENIMP_T23_EPRC=1` runs it for CBR and VBR too, `=0` for none.
+  After each picture the encoder reads the 25 Helix statistics registers
+  the OEM reads (soc_vpu `IOCTL_CHANNEL_WOR_VPU_REG`) and feeds them with the
+  coded size to the controller; a picture the controller rejects as too
+  large (OEM FRAME_REPEATE_JUDGE) is coded again at the raised QP.
+  `OPENIMP_T23_SMART_IDR_GOPS=<n>` sets the SMART IDR period to n GOPs (the
+  OEM i264e parameter param[2756]; default 1).  Log: `T23 Helix eprc:`.
+  The command list carries the OEM QP window (+809/+810, minimum QP 1) and
+  lambda (0xb001c/0xb0020: 384 + 48 / 96 + 12 per QP above 33) for every
+  rate-control mode.
 - `src/t40/codec-t40.c`: backend selection, fallback and failure limit.
   Rate control (CBR/VBR/FixQP), GOP, IDR requests and the output path
   (`queue_encoded_stream`, P2 pack splitting) are shared with T30.

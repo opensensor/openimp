@@ -320,6 +320,7 @@ int T21_H264_BuildDescriptor(const T21H264SliceConfig *config,
     uint32_t aligned_height;
     uint32_t min_qp;
     uint32_t max_qp;
+    uint32_t lambda_step;
     uint32_t crop_flag;
     unsigned int i;
 
@@ -339,7 +340,18 @@ int T21_H264_BuildDescriptor(const T21H264SliceConfig *config,
     writer.end = config->descriptor + config->descriptor_words;
     aligned_width = (uint32_t)config->mb_width * 16u;
     aligned_height = (uint32_t)config->mb_height * 16u;
+    /* OEM h264_api_enc (T23 0xc3930, inlined in the T21 1.0.33
+     * JZ_VPU_RC_FRAME_START_T21), every rate-control mode including FIXQP:
+     * slice fields +809 = min(QP + 13, 51), +810 = QP - 12 (T23 at least 1;
+     * T21 0 at QP 12, and 51 below it - an unsigned wrap that is not
+     * reproduced, OpenIMP keeps 0) and the lambda +1058..+1063, all checked
+     * under emulation (tools/eprc_oracle.py) */
+#if defined(T21_HELIX_T23_DELTAS)
+    min_qp = config->qp > 12u ? config->qp - 12u : 1u;
+#else
     min_qp = config->qp > 12u ? config->qp - 12u : 0u;
+#endif
+    lambda_step = config->qp > 33u ? config->qp - 33u : 0u;
     max_qp = config->qp < 39u ? config->qp + 13u : 51u;
     crop_flag = (config->height & 15u) != 0u ? 0x80u : 0u;
 
@@ -565,8 +577,10 @@ int T21_H264_BuildDescriptor(const T21H264SliceConfig *config,
     EMIT(0xb0030, config->ref_share ? config->ring_start_y : config->raw[0]);
     EMIT(0xb0034, config->ref_share ? config->ring_start_c : config->raw[1]);
     EMIT(0xb0010, (config->stride[0] << 16) | config->stride[1]);
-    EMIT(0xb001c, 0x180u);
-    EMIT(0xb0020, 0x00600060u);
+    /* OEM h264_api_enc: lambda 384 + 48 / 96 + 12 per QP above 33 (the
+     * fixed table; slice fields +1058..+1063; T21 and T23) */
+    EMIT(0xb001c, 0x180u + 48u * lambda_step);
+    EMIT(0xb0020, (0x60u + 12u * lambda_step) * 0x00010001u);
     /* bits 8..15: ring wrap row of the reference reader (0xff: none).
      * Low byte: bit 0 start, bits 1 and 6 the two SliceInit flags
      * (ctx[1054], ctx[1052]) the vendor T23 sets in its ring mode (live

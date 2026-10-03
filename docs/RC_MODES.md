@@ -126,17 +126,17 @@ Ignored writes are read back (clamped as the OEM) but have no effect.
 
 i264e_ratecontrol_init (same eprc code as T21): VBR -> eprc rcMode 2, SMART
 -> eprc rcMode 3 with the same VBR fields and, in addition, gopMode 1
-(SmartP: background long-term reference, `gopSmartP.u32BgInterval = gop *
-param[0xac4]`, `s8BgQpDelta 3`, `s8ViQpDelta 3`) instead of gopMode 0
-(`gopNormalP.s8IPQpDelta 3`).  A vendor-equal SMART therefore needs both the
-eprc controller and a SmartP GOP (long-term reference) in the native
-encoder; neither exists, so SMART keeps the documented band mapping
-(`T23_NATIVE_HELIX.md`).  The OEM `GetChnAttrRcMode` reads live values as
-on T21: `IMP_Encoder_CreateChn` (0x4e164) copies the H.264 fields
-unconditionally, `i264e_validate_parameters` (0x33780) clamps them as on
-T21 (iBiasLvl -10..10), `i264e_reconfig_init` (0x35b50) copies them into
-the live block `i264e_reconfig_rc_get` (0x38070) returns.  OpenIMP T23 now
-reads back through `p2_rc_readback.h` as T20/T21.
+(SmartP fields: `u32BgInterval = gop * param[0xac4]`, `s8BgQpDelta 3`,
+`s8ViQpDelta 3`) instead of gopMode 0 (`gopNormalP.s8IPQpDelta 3`).
+`docs/T23_EPRC.md` has the controller in detail: the SmartP fields are not
+read by the picture QP path, and the OEM SMART uses no long-term reference
+(long-term references belong to the HSkip modes H1M).  The OEM
+`GetChnAttrRcMode` reads live values as on T21: `IMP_Encoder_CreateChn`
+(0x4e164) copies the H.264 fields unconditionally,
+`i264e_validate_parameters` (0x33780) clamps them as on T21 (iBiasLvl
+-10..10), `i264e_reconfig_init` (0x35b50) copies them into the live block
+`i264e_reconfig_rc_get` (0x38070) returns.  OpenIMP T23 reads back through
+`p2_rc_readback.h` as T20/T21.
 
 The native T23 encoder uses the same values (`t23_rc_config`): the CreateChn
 clamps (staticTime 0 -> 1, changePos 0 -> 50, frm/gopQPStep 0 -> 2,
@@ -145,6 +145,11 @@ kbit/s) and after a run-time SetChnAttrRcMode the reconfig_rc_set clamps.
 Before, it took the `i264e_param_default` values for 0 (2/80/4/3/15), a rule
 of `IMP_Encoder_YuvInit` (0x585f4), not of CreateChn.  Consequence: a VBR
 or SMART channel without extras now targets 50 % of maxBitRate (was 80 %).
+
+OpenIMP: `src/eprc` reimplements the OEM controller (bit-exact under
+emulation, `tests/eprc`); the native encoder feeds it the same validated
+values (`t23_rc_config`) and runs it for SMART by default and for CBR/VBR
+with `OPENIMP_T23_EPRC=1` (`=0`: the band mapping for all, as before).
 
 ## T10 / T40 / T41
 

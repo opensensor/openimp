@@ -65,6 +65,9 @@ static int run_result;
 static int run_sets_length = 1;
 static uint32_t run_length_override;
 static unsigned int runs;
+#if defined(PLATFORM_T21) && !defined(PLATFORM_T20)
+static unsigned int reg_reads;
+#endif
 static uint64_t flushed_before_run;
 static uint64_t flushed_after_run;
 static int in_run_window;
@@ -192,6 +195,19 @@ int __wrap_ioctl(int fd, unsigned long request, ...)
     }
     if (request == T30_CHANNEL_RELEASE)
         return 0;
+#if defined(PLATFORM_T21) && !defined(PLATFORM_T20)
+    if (request == 0xc0386307u) {
+        /* IOCTL_CHANNEL_WOR_VPU_REG: struct reg_info { paddr, value,
+         * dir } read of a Helix statistics register (OEM T21 base) */
+        uint32_t *reg = (uint32_t *)channel;
+
+        assert(reg[0] >= 0x13200000u && reg[0] < 0x13300000u &&
+               !(reg[0] & 3u) && reg[2] == 0u);
+        reg[1] = reg[0] * 2654435761u >> 7;
+        reg_reads++;
+        return 0;
+    }
+#endif
     assert(request == T30_CHANNEL_RUN);
     runs++;
     in_run_window = 1;
@@ -709,6 +725,59 @@ static void test_failure_count_and_input_size(void)
     OpenIMP_T30_HelixDestroy(encoder);
 }
 
+#if defined(PLATFORM_T21) && !defined(PLATFORM_T20)
+/* OPENIMP_T21_EPRC=1: the OEM picture rate controller (src/eprc) with the
+ * statistics registers read after every picture; the IDR period follows
+ * maxSameSceneCnt (same_scene_gops); unset: the GOP controller, no reads. */
+static void test_eprc(void)
+{
+    static const uint32_t modes[3] = { HW_RC_MODE_CBR, HW_RC_MODE_VBR,
+                                       HW_RC_MODE_VBR };
+    unsigned int k, frame, reads, pictures;
+
+    for (k = 0; k < 4u; k++) {
+        HWEncoderParams params;
+        T30HelixEncoder *encoder = NULL;
+        PictureInfo info;
+        unsigned int idrs = 0;
+
+        if (k < 3u)
+            setenv("OPENIMP_T21_EPRC", "1", 1);
+        else
+            unsetenv("OPENIMP_T21_EPRC");
+        memset(&params, 0, sizeof(params));
+        params.width = 640;
+        params.height = 360;
+        params.fps_num = 15;
+        params.fps_den = 1;
+        params.gop_length = 5;
+        params.rc_mode = k < 3u ? modes[k] : HW_RC_MODE_CBR;
+        params.bitrate = 500000;
+        params.qp = 30;
+        params.min_qp = 20;
+        params.max_qp = 51;
+        params.rc_flags = HW_RC_FLAG_APP | (k == 2u ? HW_RC_FLAG_SMART : 0u);
+        params.same_scene_gops = k == 1u ? 2u : 0u;
+        assert(OpenIMP_T30_HelixCreate(&encoder, &params) == 0);
+        reads = reg_reads;
+        pictures = runs;
+        for (frame = 0; frame < 20u; frame++) {
+            assert(encode(encoder, &info) == 0);
+            if (info.idr) {
+                idrs++;
+                assert(frame % (k == 1u ? 10u : 5u) == 0u);
+            }
+        }
+        assert(idrs == (k == 1u ? 2u : 4u));
+        pictures = runs - pictures;
+        assert(pictures >= 20u);
+        assert(reg_reads - reads == (k < 3u ? 25u * pictures : 0u));
+        OpenIMP_T30_HelixDestroy(encoder);
+    }
+    unsetenv("OPENIMP_T21_EPRC");
+}
+#endif
+
 int main(void)
 {
     unsigned int i;
@@ -723,6 +792,9 @@ int main(void)
     test_dma_footprint();
     test_bottom_padding();
     test_unaligned_width_rejected();
+#if defined(PLATFORM_T21) && !defined(PLATFORM_T20)
+    test_eprc();
+#endif
     /* nothing leaks; the shared bitstream buffer is kept for the process */
     for (i = 0; i < 16u; i++)
         assert(!allocations[i].mapping ||

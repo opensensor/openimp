@@ -84,7 +84,11 @@ typedef struct {
     uint32_t gop_qp_step;       /* 0x40: gopQPStep */
     int32_t bias_level;         /* 0x44: iBiasLvl */
     uint32_t rc_flags;          /* 0x48: HW_RC_FLAG_* */
-    uint32_t reserved[9];       /* 0x4c-0x6f: Reserved */
+    /* 0x4c: T21/T23 IDR period in GOPs from the application's
+     * rcAttr.attrHSkip.hSkipAttr.maxSameSceneCnt (OEM: i264e skip header
+     * word 1, i264e_decide_slice_type_and_rd), 0 or 1: every GOP */
+    uint32_t same_scene_gops;
+    uint32_t reserved[8];       /* 0x50-0x6f: Reserved */
 } HWEncoderParams;
 
 _Static_assert(sizeof(HWEncoderParams) == 0x70, "HWEncoderParams size");

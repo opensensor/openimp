@@ -119,6 +119,9 @@ int AL_Codec_Encode_SetRcParam(void *codec, void *rcAttr);
 /* Helix rate-control extras (staticTime, changePos, qualityLvl, QP steps,
  * iBiasLvl, SMART, ...) of an IMPEncoderAttrRcMode, for channel creation */
 int AL_Codec_Encode_SetRcExtras(void *codec, const void *rcMode);
+/* rcAttr.attrHSkip.hSkipAttr.maxSameSceneCnt as the OEM i264e uses it: the
+ * IDR period in GOPs (skip types N1X, H1M only; else 0) */
+int AL_Codec_Encode_SetSameSceneGops(void *codec, uint32_t gops);
 #endif
 #if defined(PLATFORM_T31)
 /* CappedVBR/CappedQuality: the PSNR cap (uMaxPSNR, dB) of the OEM capped
