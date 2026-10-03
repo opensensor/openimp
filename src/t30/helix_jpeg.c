@@ -735,8 +735,8 @@ static int helix_jpeg_open_locked(void)
                             20000u);
     helix_jpeg.stats = helix_env_flag("OPENIMP_HELIX_JPEG_STATS");
     /* T23 limits the bitstream like its libimp.  The T20/T21/T30 kernels
-     * never read JPGC_MAX_BS and their libimp does not program it, so there
-     * the buffer must hold the whole NV12 picture;
+     * never read JPGC_MAX_BS and their libimp does not program it, so
+     * there the picture is bounded by striping instead;
      * OPENIMP_HELIX_JPEG_MAX_BS=1 tries the register there. */
     helix_jpeg.max_bs = HELIX_JPEG_VARIANT == HELIX_JPEG_T23 ||
                         helix_env_flag("OPENIMP_HELIX_JPEG_MAX_BS");
@@ -754,8 +754,7 @@ static int helix_jpeg_open_locked(void)
     /* the stock T23 library limits JPEG to its encoder pool (2.4 MB or
      * 600 KB); 1 MiB holds a quality-75 1080p picture several times over */
     helix_jpeg.bs_limit = helix_env_uint("OPENIMP_HELIX_JPEG_BS_KB",
-                                         HELIX_JPEG_VARIANT == HELIX_JPEG_T23
-                                             ? 1024u : 0u,
+                                         1024u,
                                          256u, 65536u) << 10;
     helix_jpeg.dump_dir = getenv("OPENIMP_HELIX_JPEG_DUMP");
     helix_jpeg.probe_limit = helix_env_uint(
@@ -926,19 +925,19 @@ static void helix_pad_rows(const HelixJpegFrame *frame, uint32_t stride,
                              stride * (chroma_end - chroma_rows), 1);
 }
 
-/* Bitstream size for a picture.  Without JPGC_MAX_BS (T20/T21/T30) the core
- * writes on regardless, so the buffer holds the NV12 picture as in the stock
- * T21 library.  With it (T23) at most OPENIMP_HELIX_JPEG_BS_KB (default
- * 1 MiB; the stock T23 library uses its 2.4 MB / 600 KB encoder pool); a
- * picture that reaches the limit is repeated in the same buffer with
- * coarser quantizers. */
+/* Bitstream size for a picture: at most OPENIMP_HELIX_JPEG_BS_KB (default
+ * 1 MiB, like the stock JPGC maximum bitstream; the stock T23 library uses
+ * its 2.4 MB / 600 KB encoder pool).  With JPGC_MAX_BS (T23) a picture that
+ * reaches the limit is repeated in the same buffer with coarser quantizers.
+ * Without it (T20/T21/T30: the core writes on regardless) the picture goes
+ * in stripes whose worst case fits the buffer (helix_jpeg_stripes_locked),
+ * so a buffer smaller than the NV12 picture never overflows. */
 static uint32_t helix_bitstream_capacity(uint32_t nv12, const uint8_t qt[128])
 {
     uint32_t capacity = nv12;
 
     (void)qt;
-    if (helix_jpeg.max_bs && helix_jpeg.bs_limit &&
-        capacity > helix_jpeg.bs_limit)
+    if (helix_jpeg.bs_limit && capacity > helix_jpeg.bs_limit)
         capacity = helix_jpeg.bs_limit;
     if (capacity < HELIX_BITSTREAM_MIN)
         capacity = HELIX_BITSTREAM_MIN;

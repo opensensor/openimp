@@ -1075,10 +1075,11 @@ static void test_framesource_tail(void)
     assert(last_raw_y == frame.phys_addr + 66u * 16u * 1920u);
     check_picture(&stream, 1920u, 1080u, 30.0);
 #elif defined(HELIX_STRIPES)
-    /* the NV12-sized buffer of the stock library: 11 rows per job, 10 of
-     * them the stripe's, 7 jobs */
-    assert(runs == run_count + 7u && last_mb_rows == 68u - 6u * 10u + 1u);
-    assert(last_raw_y == frame.phys_addr + 60u * 16u * 1920u);
+    /* the 1 MiB buffer: 3 rows per job at the worst case of 2368 bytes
+     * per MCU, 2 of them the stripe's: 34 jobs, the last one with a row
+     * more behind the picture (rmem) */
+    assert(runs == run_count + 34u && last_mb_rows == 2u + 1u);
+    assert(last_raw_y == frame.phys_addr + 66u * 16u * 1920u);
     check_picture(&stream, 1920u, 1080u, 30.0);
 #else
     assert(last_raw_y == frame.phys_addr);
@@ -1103,7 +1104,7 @@ static void test_framesource_tail(void)
     assert(last_raw_y == frame.phys_addr + 66u * 16u * 1920u &&
            live_allocations == before);
 #elif defined(HELIX_STRIPES)
-    assert(last_raw_y == frame.phys_addr + 60u * 16u * 1920u &&
+    assert(last_raw_y == frame.phys_addr + 66u * 16u * 1920u &&
            live_allocations == before);
 #else
     assert(last_raw_y == frame.phys_addr && live_allocations == before);
@@ -1183,8 +1184,8 @@ static void test_stripes(void)
            OpenIMP_HelixBitstream_Size() == 2076672u);
     encode_1080p(pixels, size, 12u, 11u);
 #else
-    /* T20/T30: the NV12 buffer, 10 rows per job */
-    encode_1080p(pixels, size, 7u, 6u);
+    /* T20/T30: the 1 MiB buffer, 2 rows per job */
+    encode_1080p(pixels, size, 34u, 33u);
 #endif
     munmap(pixels, size + FRAME_SLACK);
 }

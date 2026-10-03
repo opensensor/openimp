@@ -8022,7 +8022,7 @@ static int codec_t30_helix_create(AL_CodecEncode *enc, uint32_t width,
  * instead of waiting for the first picture: a channel that first streams
  * while the other channel's pool is live then needs no new rmem.  If it
  * fails here the first picture tries again.  OPENIMP_HELIX_LAZY_CREATE=1
- * always waits for the first picture; T20/T30 do unless it is 0. */
+ * always waits for the first picture (all T20/T21/T30). */
 static void codec_t30_helix_precreate(AL_CodecEncode *enc)
 {
     const char *lazy = getenv("OPENIMP_HELIX_LAZY_CREATE");
@@ -8030,12 +8030,6 @@ static void codec_t30_helix_precreate(AL_CodecEncode *enc)
 
     if (lazy && lazy[0] == '1')
         return;
-#if !defined(PLATFORM_T21) || defined(PLATFORM_T20)
-    /* device-tested on T21 only: T20/T30 keep making it at the first
-     * picture unless OPENIMP_HELIX_LAZY_CREATE=0 asks for it */
-    if (!lazy || lazy[0] != '0')
-        return;
-#endif
     if (codec_param_read_codec_type(enc->codec_param) != IMP_ENC_TYPE_AVC ||
         !enc->hw_params.width || !enc->hw_params.height)
         return;
