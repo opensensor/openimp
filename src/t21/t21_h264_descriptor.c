@@ -548,7 +548,10 @@ int T21_H264_BuildDescriptor(const T21H264SliceConfig *config,
     EMIT(0xb0010, (config->stride[0] << 16) | config->stride[1]);
     EMIT(0xb001c, 0x180u);
     EMIT(0xb0020, 0x00600060u);
-    EMIT(0xb0000, 0x0002ffbdu);
+    /* bits 8..15: ring wrap row of the reference reader (0xff: none) */
+    EMIT(0xb0000, 0x000200bdu |
+                  ((config->ref_share ? (uint32_t)config->ring_wrap_rows
+                                      : 0xffu) << 8));
     if (t21_emit_final(&writer, 0x40000,
                        0xc0000000u | ((uint32_t)config->qp << 8) |
                        ((uint32_t)config->slice_type << 4) |

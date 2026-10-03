@@ -41,9 +41,12 @@ typedef struct {
      * BUF_SHARE_CFG): reference_* is the previous picture inside the ring,
      * output_* the new one, the ring start replaces the raw-address copies
      * in 0x50110/0x50114 and 0xb0030/0xb0034 as the OEM does, the ring end
-     * goes to 0x6001c/0x60020 and bit 30 of 0x60004 is set.  All zero
-     * (ref_share 0): the two separate reference pictures. */
+     * goes to 0x6001c/0x60020 and bit 30 of 0x60004 is set; ring_wrap_rows
+     * (macroblock rows from the reference to the ring end minus one, 0xff
+     * never) goes to bits 8..15 of 0xb0000, which is 0xff without sharing.
+     * All zero (ref_share 0): the two separate reference pictures. */
     uint8_t ref_share;
+    uint8_t ring_wrap_rows;
     uint32_t ring_start_y, ring_start_c;
     uint32_t ring_end_y, ring_end_c;
     uint32_t *descriptor;

@@ -271,6 +271,7 @@ struct T30HelixEncoder {
 #endif
 #if defined(HELIX_T21_SYNTAX)
     int ref_share;              /* OPENIMP_REF_SHARE=1: one reference ring */
+    int ref_share_debug;        /* OPENIMP_REF_SHARE_DEBUG=1: ring log */
     T21RefRing ring;            /* in reference[0].dma */
     uint64_t ring_n;            /* picture index (0 = IDR) of the last picture */
     uint32_t scratch_offset[4]; /* EMC per-macroblock buffer layout */
@@ -693,6 +694,14 @@ static void t30_fill_slice(T30HelixEncoder *encoder,
         slice->ring_start_c = pos.start_c;
         slice->ring_end_y = pos.end_y;
         slice->ring_end_c = pos.end_c;
+        slice->ring_wrap_rows = pos.wrap_rows;
+        if (encoder->ref_share_debug)
+            IMP_LOG_INFO("Encoder", "Helix ring: n=%llu %s recon=%08x/%08x "
+                         "ref=%08x/%08x wrap=%u",
+                         (unsigned long long)((idr || !encoder->have_reference)
+                             ? 0u : encoder->ring_n + 1u),
+                         idr ? "IDR" : "P", pos.recon_y, pos.recon_c,
+                         pos.ref_y, pos.ref_c, pos.wrap_rows);
     }
 #endif
     slice->bitstream = encoder->temporary.phys_addr + T30_SLICE_OFFSET;
@@ -1208,6 +1217,8 @@ static int t30_ref_share_alloc(T30HelixEncoder *encoder, const char *tag)
     encoder->reference[0].y = encoder->ring.base_y;
     encoder->reference[0].c = encoder->ring.base_c;
     encoder->ref_share = 1;
+    env = getenv("OPENIMP_REF_SHARE_DEBUG");
+    encoder->ref_share_debug = env && env[0] == '1';
     IMP_LOG_INFO("Encoder", "Helix: reference sharing on (ring %uK instead "
                  "of 2 x %uK)", encoder->reference[0].dma.size >> 10,
                  t21_ref_pair_bytes(mbw, mbh) >> 11);

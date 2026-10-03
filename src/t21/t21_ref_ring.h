@@ -13,6 +13,15 @@
  * ring end.  Picture n predicts from picture n-1.  Chroma uses the same
  * rule with half the lines.  An IDR restarts at n = 0 (recon at the start).
  *
+ * The 0xb unit (reference/raw reader, registers 0xb0014/18 reference and
+ * 0xb0030/34 ring start) has no ring end register: the OEM tells it in
+ * bits 8..15 of 0xb0000 after how many macroblock rows from the reference
+ * position the ring wraps (rows to the ring end minus one; 0xff, the
+ * non-shared value, means never).  Without it the rows of the reference
+ * that lie past the ring end are read from beyond the ring: large P
+ * pictures whenever the reference wraps (4 of every 5.25 pictures at
+ * 1080p) and chroma smears.
+ *
  * Opt-in: OPENIMP_REF_SHARE=1.  Saves one of the two reference pictures
  * minus 256 lines (1080p: 6.0 -> 3.7 MiB). */
 #define T21_REF_RING_EXTRA_LINES 256u
@@ -21,6 +30,7 @@ typedef struct {
     uint32_t base_y, base_c;    /* ring start */
     uint32_t ring_y, ring_c;    /* ring sizes in bytes */
     uint32_t step_y, step_c;    /* bytes per picture step */
+    uint32_t stride;            /* luma bytes per line (mb_width * 16) */
 } T21RefRing;
 
 typedef struct {
@@ -28,6 +38,7 @@ typedef struct {
     uint32_t ref_y, ref_c;
     uint32_t start_y, start_c;
     uint32_t end_y, end_c;
+    uint8_t wrap_rows;          /* 0xb0000 bits 8..15 (OEM BUF_SHARE_CFG) */
 } T21RefRingPos;
 
 /* Bytes for one macroblock-aligned mb_width x mb_height picture. */
@@ -64,6 +75,7 @@ static inline void t21_ref_ring_init(T21RefRing *r, uint32_t base,
     r->ring_c = (mb_height * 8u + T21_REF_RING_EXTRA_LINES / 2u) * stride;
     r->step_y = T21_REF_RING_EXTRA_LINES * stride;
     r->step_c = T21_REF_RING_EXTRA_LINES / 2u * stride;
+    r->stride = stride;
     r->base_y = base;
     r->base_c = base + r->ring_y;
 }
@@ -95,6 +107,15 @@ static inline void t21_ref_ring_pos(const T21RefRing *r, uint64_t n,
     p->start_c = r->base_c;
     p->end_y = r->base_y + r->ring_y;
     p->end_c = r->base_c + r->ring_c;
+    /* OEM BUF_SHARE_CFG byte output: ((end - ref) / stride >> 4) - 1, and
+     * 255 for the first picture after the IDR (the P flag is set and the
+     * counter is still 0: reference at the ring start, nothing wraps).
+     * n == 0 (IDR) keeps the formula value, the reference is not read. */
+    if (n == 1u)
+        p->wrap_rows = 0xffu;
+    else
+        p->wrap_rows = (uint8_t)(((p->end_y - p->ref_y) / r->stride >> 4) -
+                                 1u);
 }
 
 #endif

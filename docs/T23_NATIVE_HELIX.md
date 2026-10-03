@@ -151,9 +151,24 @@ the ring holds the picture plus 256 lines (`(1117+1)*64`, the encoder sets
 0x6001c/0x60020 the ring end (luma/chroma), and the reconstruction pointer
 0x60008/0x6000c moves 256 lines down per picture modulo the ring while the
 reference (0x5006c/0x50070, 0xb0014/0xb0018) is the previous picture's
-position. For 1080p that is 3.7 MiB instead of 6.0 MiB. It is not
-implemented: the budget fits without it and the ring semantics of the
-reference readers are not verifiable on the host.
+position. For 1080p that is 3.7 MiB instead of 6.0 MiB. Implemented as
+opt-in `OPENIMP_REF_SHARE=1` (`src/t21/t21_ref_ring.h`, same arithmetic
+on T21 and T23).
+
+One register more than the addresses: the 0xb reference reader (0xb0014/18
+reference, 0xb0030/34 ring start, no ring end) gets the wrap row in bits
+8..15 of 0xb0000, `((end_y - ref_y) / stride >> 4) - 1` (macroblock rows
+from the reference position to the ring end minus one; 255 for the first
+P after the IDR, whose reference is at the ring start; 0xff is also the
+non-shared value, "never"). The first device run (T21 1080p, without it)
+showed exactly the signature of a reference read past the ring end: P
+pictures of 17/15/10/2 KiB in a static scene every 5.25 pictures (the ring
+period, 84 rows / 16 rows per picture), shrinking with the number of
+reference rows past the end, and chroma smears in the decoder. The OEM's
+0x10014/0x10018 keep the IMP-layer reference pointer (`ctx[632/636]`),
+not the ring position; OpenIMP writes the ring reference there.
+`OPENIMP_REF_SHARE_DEBUG=1` logs n, recon, reference and wrap per
+picture.
 
 ## Status (WIP)
 
