@@ -94,6 +94,8 @@ typedef struct {
     uint8_t qp_max, qp_min;     /* macroblock QP window (0x40040, 0x40074) */
     uint16_t lambda[3];         /* 0xb001c, 0xb0020 */
     EprcMbRc mbrc;              /* from the slice block (zero without) */
+    uint32_t ctrl[2];           /* 0x400c0, 0x400c4 (zero without a slice
+                                 * block) */
 } EprcPicture;
 
 typedef struct Eprc {
@@ -154,6 +156,11 @@ void EPRC_MbQp(uint8_t *A, uint8_t *S, uint8_t *slice, int t21);
 /* H264E_T21_SliceInit: the slice block's macroblock rate-control fields as
  * register values (T21 and T23). */
 void EPRC_MbRcRegs(const uint8_t *slice, EprcMbRc *out);
+/* h264_api_enc: the slice fields of the picture control registers
+ * 0x400c0/0x400c4 (A, S, E: the OEM blocks), and their encoding. */
+void EPRC_PictureCtrl(const uint8_t *A, const uint8_t *S, const uint8_t *E,
+                      uint8_t *slice, int t21);
+void EPRC_PictureCtrlRegs(const uint8_t *slice, uint32_t out[2]);
 
 /* The T21 1.0.33 revision of the controller (eprc_t21.c, docs/T23_EPRC.md
  * "Other SoCs"): same interface, the T21 OEM state layout and decisions.

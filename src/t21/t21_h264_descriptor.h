@@ -68,6 +68,10 @@ typedef struct {
      * mbrc_qp_flags ORed into 0x40074, mbrc_regs into 0x40078..0x40090;
      * mbrc 0: all zero (the OEM's first picture) */
     uint8_t mbrc;
+    /* 0x400c0/0x400c4 from the eprc controller (EprcPicture.ctrl) when
+     * ctrl_set, else the OEM values for the picture type and width */
+    uint8_t ctrl_set;
+    uint32_t ctrl[2];
     uint32_t mbrc_qp_flags;
     uint32_t mbrc_regs[7];
     uint32_t ring_start_y, ring_start_c;

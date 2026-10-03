@@ -182,6 +182,7 @@ int __wrap_close(int fd)
 #if defined(PLATFORM_T21) && !defined(PLATFORM_T20)
 /* 0x40074 and 0x40078..0x40090 of the last command list */
 static uint32_t list_mbrc[8];
+static uint32_t list_ctrl[2];       /* 0x400c0, 0x400c4 */
 #endif
 
 int __wrap_ioctl(int fd, unsigned long request, ...)
@@ -230,6 +231,8 @@ int __wrap_ioctl(int fd, unsigned long request, ...)
 
             if (reg == 0x40074u)
                 list_mbrc[0] = w[i];
+            else if (reg == 0x400c0u || reg == 0x400c4u)
+                list_ctrl[(reg - 0x400c0u) / 4u] = w[i];
             else if (reg >= 0x40078u && reg <= 0x40090u)
                 list_mbrc[1u + (reg - 0x40078u) / 4u] = w[i];
         }
@@ -872,6 +875,9 @@ static void test_eprc_mbrc(void)
         assert(OpenIMP_T30_HelixCreate(&encoder, &params) == 0);
         for (frame = 0; frame < 4u; frame++) {
             assert(encode(encoder, &info) == 0);
+            /* the OEM T21 picture control registers by picture type */
+            assert(list_ctrl[0] == (info.idr ? 0x060407c1u : 0x030487c1u));
+            assert(list_ctrl[1] == (info.idr ? 0x61615921u : 0x61615c21u));
             if (k && frame) {
                 assert((list_mbrc[0] & 0xffu) == 0x15u);
                 assert(list_mbrc[1] == 0x00044432u);

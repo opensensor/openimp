@@ -255,12 +255,17 @@ emulation; T23 and T21 alike):
 A vendor T23 command-list capture (hxdump, 12 pictures) shows these
 values after the first pictures, with zero SAS offsets in that scene.
 
-Not part of the macroblock rate control but per picture in the OEM list
-where OpenIMP keeps constants: 0x400c0/0x400c4 (`h264_api_enc` slice
-+976..+1052 from A+311..+327, by picture type): T23 IDR 0x060404c1 /
-0x61615921, P 0x030484c1 / 0x61615c21; T21 IDR 0x060407c1 / 0x61615921, P
-0x030487c1 / 0x61615c21; OpenIMP 0x060407c1 / 0x61615921 always (the T21
-IDR values).  Left as they are (device-tested), noted for a later task.
+Not part of the macroblock rate control, but per picture in the OEM list
+and now in OpenIMP too: 0x400c0/0x400c4 (`EPRC_PictureCtrl`, from the
+`h264_api_enc` slice fields +976..+1052, which come from A+311..+327 by
+picture type; `EPRC_PictureCtrlRegs` encodes them as `SliceInit`, bit
+map found by perturbation).  OEM values: T23 IDR 0x060404c1 / 0x61615921,
+P 0x030484c1 / 0x61615c21 (below 256 pixels width 0x06040441 / 0x21211921,
+0x03048441 / 0x21211c21); T21 IDR 0x060407c1 / 0x61615921, P 0x030487c1 /
+0x61615c21 (T21 sets +1050/+1051).  OpenIMP sent 0x060407c1 / 0x61615921
+for every picture before.  The command list takes the controller's values
+when eprc runs, else the same values by picture type and width.  Checked
+in the `--mbrc` vectors (last two 'M' fields: the OEM SliceInit registers).
 
 OpenIMP switch: `OPENIMP_EPRC_MBRC=1` (the OEM behaviour) or 0/unset (the
 default until the device test: registers as before), per channel at run

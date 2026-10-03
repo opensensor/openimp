@@ -185,7 +185,7 @@ int main(int argc, char **argv)
     int32_t (*picture_class)(const Eprc *) = t21 ? EPRC21_PictureClass : EPRC_PictureClass;
     long checked = 0, failed = 0;
     uint64_t pixels = 0;
-    uint32_t mbs = 0, mline[10];
+    uint32_t mbs = 0, mline[12];
     int have_mline = 0;
 
     if (!f) {
@@ -293,6 +293,8 @@ int main(int argc, char **argv)
                 memcpy(st, S + 368 + d, 8);
                 memcpy(st + 8, S + 5184 + d, 160);
                 mline[9] = fnv1a(st, sizeof(st));
+                mline[10] = pic.ctrl[0];
+                mline[11] = pic.ctrl[1];
                 have_mline = 1;
             }
             if (pic.type != want[0] || pic.qp != want[1]) {
@@ -324,18 +326,19 @@ int main(int argc, char **argv)
             }
             frame++;
         } else if (line[0] == 'M' && active) {
-            uint32_t want[10];
+            uint32_t want[12];
             char *s = line + 1;
 
-            for (i10 = 0; i10 < 10; i10++)
+            for (i10 = 0; i10 < 12; i10++)
                 want[i10] = (uint32_t)strtoul(s, &s, 10);
             checked++;
             if ((!have_mline || memcmp(want, mline, sizeof(want))) && failed++ < 10)
                 fprintf(stderr, "scenario %d frame %d: macroblock rate control "
-                        "%x %x %x %x %08x %08x, OEM %x %x %x %x %08x %08x\n",
+                        "%x %x %x %x %08x %08x %08x %08x, OEM %x %x %x %x %08x "
+                        "%08x %08x %08x\n",
                         scenario, frame - 1, mline[0], mline[1], mline[6], mline[7],
-                        mline[8], mline[9], want[0], want[1], want[6], want[7],
-                        want[8], want[9]);
+                        mline[8], mline[9], mline[10], mline[11], want[0], want[1],
+                        want[6], want[7], want[8], want[9], want[10], want[11]);
             have_mline = 0;
         } else if (line[0] == 'C') {
             int r = mbrc_call(line, t21);

@@ -1167,6 +1167,7 @@ static void eprc_picture_fields(Eprc *rc, EprcPicture *pic)
     pic->lambda[1] = (uint16_t)(96u + 12u * over);
     pic->lambda[2] = pic->lambda[1];
     EPRC_MbRcRegs(SL, &pic->mbrc);
+    EPRC_PictureCtrlRegs(SL, pic->ctrl);
     if (SL) {
         EU8(SL, 0) = (uint8_t)S32(28);
         EU8(SL, 448) = (uint8_t)qp;
@@ -1544,7 +1545,8 @@ fields:                                              /* 0x99240 */
     EPTR(S, 6732, SL);
     if (SL)
         EU32(SL, 980) = EU32(E, 1644);
-    EPRC_MbQp(rc->p, S, SL, 1);         /* h264_api_enc */
+    EPRC_PictureCtrl(rc->p, S, E, SL, 1);  /* h264_api_enc */
+    EPRC_MbQp(rc->p, S, SL, 1);
     eprc_picture_fields(rc, pic);
     EI32(E, 1584) = S32(44);
     EU8(E, 1596) = S8(68);

@@ -321,6 +321,7 @@ int T21_H264_BuildDescriptor(const T21H264SliceConfig *config,
     uint32_t min_qp;
     uint32_t max_qp;
     uint32_t lambda_step;
+    uint32_t ctrl0, ctrl1;
     uint32_t crop_flag;
     unsigned int i;
 
@@ -397,8 +398,25 @@ int T21_H264_BuildDescriptor(const T21H264SliceConfig *config,
                   (config->mbrc ? config->mbrc_qp_flags : 0u));
     for (i = 0; i < 7u; i++)
         EMIT(0x40078u + i * 4u, config->mbrc ? config->mbrc_regs[i] : 0u);
-    EMIT(0x400c0, 0x060407c1u);
-    EMIT(0x400c4, 0x61615921u);
+    /* OEM h264_api_enc + H264E_T21_SliceInit (EPRC_PictureCtrl): by
+     * picture type from the controller defaults; T23 0x400c0 bits 8/9
+     * clear, and below 256 pixels width a fixed set */
+    if (config->ctrl_set) {
+        ctrl0 = config->ctrl[0];
+        ctrl1 = config->ctrl[1];
+    } else {
+        ctrl0 = config->slice_type ? 0x030487c1u : 0x060407c1u;
+        ctrl1 = config->slice_type ? 0x61615c21u : 0x61615921u;
+#if defined(T21_HELIX_T23_DELTAS)
+        ctrl0 &= ~0x300u;
+        if (config->width < 256u) {
+            ctrl0 &= ~0x80u;
+            ctrl1 &= ~0x40404000u;
+        }
+#endif
+    }
+    EMIT(0x400c0, ctrl0);
+    EMIT(0x400c4, ctrl1);
     EMIT(0x400c8, 0x12449240u);
     EMIT(0x400cc, 0x12492492u);
     EMIT(0x400d0, 0x0a0006dbu);

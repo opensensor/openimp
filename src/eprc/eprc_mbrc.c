@@ -204,3 +204,73 @@ void EPRC_MbRcRegs(const uint8_t *SL, EprcMbRc *out)
         out->reg[6] |= (uint32_t)(EU8(SL, 846 + i) & 0x3fu) << (8 * i);
     }
 }
+
+/* h264_api_enc (T23 0xc43a0..0xc48d0, T21 0x95f90..0x962ec): the slice
+ * fields of the picture control registers 0x400c0/0x400c4 (by picture type
+ * from the configuration A+311..A+327; T23: small pictures and the region
+ * input).  Not part of the macroblock rate control. */
+void EPRC_PictureCtrl(const uint8_t *A, const uint8_t *S, const uint8_t *E,
+                      uint8_t *SL, int t21)
+{
+    int32_t type = EI32(S, 28), n = EI32(S, 44);
+    int32_t width = EI32(A, 32);
+    int small;
+
+    if (!SL)
+        return;
+    EU8(SL, 976) = 0;
+    EU8(SL, 984) = EU8(A, 317);
+    EU8(SL, 985) = EU8(A, 322);
+    EU8(SL, 986) = EU8(A, 313) && type == 0 && n != 0 && n == n / 5 * 5 &&
+                   EU32(S, 148) >= 4u;
+    EU8(SL, 987) = EU8(A, 314);
+    EU8(SL, 988) = EU8(A, 315);
+    EU8(SL, 989) = EU8(A, 316);
+    EU8(SL, 990) = 1;
+    EU8(SL, 991) = 0;
+    EU8(SL, 992) = 0;
+    EU8(SL, 993) = EU8(A, type == 2 ? 318 : 319);
+    EU8(SL, 994) = EU8(A, 320);
+    EU8(SL, 995) = EU8(A, 321);
+    EU8(SL, 996) = EU8(A, type == 2 ? 323 : 324);
+    /* T23: below 256 pixels width (or with E+1572 < 0, not a multiple of
+     * 128) the fixed set; T21 refuses such sizes */
+    small = !t21 && ((EI32(E, 1572) < 0 && (width & 0x7f) != 0) ||
+                     width < 256);
+    EU8(SL, 997) = small ? 0 : EU8(A, 325);
+    EU8(SL, 998) = 10;
+    EU8(SL, 999) = 33;
+    EU8(SL, 1000) = 33;
+    EU8(SL, 1001) = !small;
+    EU8(SL, 1002) = !small;
+    EU8(SL, 1048) = small ? 1 : EU8(A, 311);
+    EU8(SL, 1049) = small ? 0 : EU8(A, 312);
+    EU8(SL, 1050) = (uint8_t)t21;
+    EU8(SL, 1051) = (uint8_t)t21;
+    EU8(SL, 1052) = EU8(A, 326) && type != 2;
+    /* T23 after h264_get_mb_qp: the region input (E+1800/E+1804) or a
+     * region count (S+264) */
+    if (!t21 && (EI32(E, 1800) == 1 || EI32(E, 1804) == 1 || EI32(S, 264) != 0))
+        EU8(SL, 976) = 1;
+}
+
+/* H264E_T21_SliceInit (T23 and T21 alike): 0x400c0 and 0x400c4. */
+void EPRC_PictureCtrlRegs(const uint8_t *SL, uint32_t out[2])
+{
+    out[0] = out[1] = 0;
+    if (!SL)
+        return;
+    out[0] = (EU8(SL, 985) & 1u) | (EU8(SL, 986) & 1u) << 1 |
+             (EU8(SL, 987) & 1u) << 2 | (EU8(SL, 988) & 7u) << 3 |
+             (EU8(SL, 1048) & 1u) << 6 | (EU8(SL, 1049) & 1u) << 7 |
+             (EU8(SL, 1050) & 1u) << 8 | (EU8(SL, 1051) & 1u) << 9 |
+             (EU8(SL, 990) & 1u) << 10 | (EU8(SL, 991) & 1u) << 11 |
+             (EU8(SL, 992) & 3u) << 12 | (EU8(SL, 976) & 1u) << 14 |
+             (EU8(SL, 1052) & 1u) << 15 | (uint32_t)EU8(SL, 989) << 16 |
+             (uint32_t)EU8(SL, 993) << 24;
+    out[1] = (EU8(SL, 994) & 63u) | (EU8(SL, 995) & 1u) << 6 |
+             (EU8(SL, 996) & 63u) << 8 | (EU8(SL, 997) & 1u) << 14 |
+             (EU8(SL, 999) & 63u) << 16 | (EU8(SL, 1001) & 1u) << 22 |
+             (uint32_t)(EU8(SL, 1000) & 63u) << 24 |
+             (uint32_t)(EU8(SL, 1002) & 1u) << 30;
+}

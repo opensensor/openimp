@@ -338,6 +338,7 @@ struct T30HelixEncoder {
      * picture being coded */
     int mbrc_on;
     EprcMbRc eprc_mbrc;
+    uint32_t eprc_ctrl[2];      /* 0x400c0/0x400c4 of the picture */
     uint32_t mbrc_log;          /* OPENIMP_EPRC_MBRC_LOG: every n pictures */
     uint32_t mbrc_pictures;
 #endif
@@ -765,6 +766,11 @@ static void t30_fill_slice(T30HelixEncoder *encoder,
 #if defined(PLATFORM_T23)
     slice->bsf_stop = (uint8_t)(encoder->bsf_stop != 0);
 #endif
+    if (encoder->eprc_on) {
+        slice->ctrl_set = 1;
+        slice->ctrl[0] = encoder->eprc_ctrl[0];
+        slice->ctrl[1] = encoder->eprc_ctrl[1];
+    }
     if (encoder->eprc_on && encoder->mbrc_on) {
         slice->mbrc = 1;
         slice->mbrc_qp_flags = encoder->eprc_mbrc.qp_flags;
@@ -1573,6 +1579,7 @@ static int helix_eprc_end(T30HelixEncoder *encoder, int idr, uint32_t *qp)
     *qp = pic.qp;
     encoder->eprc_qp = pic.qp;
     encoder->eprc_mbrc = pic.mbrc;
+    memcpy(encoder->eprc_ctrl, pic.ctrl, sizeof(pic.ctrl));
     return 1;
 }
 #endif
@@ -2278,6 +2285,7 @@ static int t30_helix_encode_job(T30HelixEncoder *encoder,
             qp = pic.qp;
             encoder->eprc_qp = pic.qp;
             encoder->eprc_mbrc = pic.mbrc;
+            memcpy(encoder->eprc_ctrl, pic.ctrl, sizeof(pic.ctrl));
         } else {
             IMP_LOG_WARN("Encoder", HELIX_EPRC_TAG " Helix eprc: picture "
                          "start failed, using the GOP controller");

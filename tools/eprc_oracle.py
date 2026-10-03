@@ -24,7 +24,7 @@ Macroblock rate control (src/eprc/eprc_mbrc.c):
 '--mbrc' runs random scenarios with the Helix activity-class histogram
 (registers 0x40094..0x400a0, sas_histogram) and prints after each picture
 the macroblock rate-control registers that the OEM H264E_T21_SliceInit
-makes of the slice block, and FNV-1a hashes of the slice fields and the
+makes of the slice block (and 0x400c0/0x400c4), and FNV-1a hashes of the slice fields and the
 controller state h264_get_mb_qp writes.  '--mbrc-calls' calls the OEM
 h264_get_mb_qp on random state ('C' lines: inputs, the SAS offsets, the
 slice hash).
@@ -439,7 +439,8 @@ def sas_histogram(frame, mbs, scene):
 
 def mbrc_registers(sim):
     """The OEM command list of the current slice block (H264E_T21_SliceInit
-    on a copy): qp flags of 0x40074 and 0x40078..0x40090."""
+    on a copy): qp flags of 0x40074, 0x40078..0x40090 and the picture
+    control registers 0x400c0/0x400c4."""
     L = sim.L
     CL = HEAP + 0x3000000
     keep = L.rd(sim.SL, 0x1200)
@@ -455,7 +456,7 @@ def mbrc_registers(sim):
         regs.setdefault(w[i + 1] & 0xffffc, w[i])
     out = [regs[0x40074] & 0xc0c0c0ff]
     out += [regs[0x40078 + 4 * i] for i in range(7)]
-    return out
+    return out + [regs[0x400c0], regs[0x400c4]]
 
 
 def mbrc_hashes(sim):
@@ -496,7 +497,8 @@ def mbrc_scenes(lib, seed, count, frames):
             t = L.rd(s.SL, 1)[0]
             qp = L.rd(s.R + L.lay['qp'], 1)[0]
             out = [t, qp]
-            mline = mbrc_registers(s) + list(mbrc_hashes(s))
+            regs_cl = mbrc_registers(s)
+            mline = regs_cl[:8] + list(mbrc_hashes(s)) + regs_cl[8:]
             size = picture_bytes(f, qp, since == 0, w * h, n % 2)
             regs = statistics(f)
             regs[16:20] = sas_histogram(f, mbs, n)
