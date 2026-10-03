@@ -1568,18 +1568,32 @@ void RCT20_SetupE(uint8_t *E, const RcT20Params *p)
     }
 }
 
+uint32_t RCT20_ESize(const RcT20Params *params)
+{
+    uint32_t n = ((params->width + 15u) >> 4) * ((params->height + 15u) >> 4);
+
+    return RCT20_E_BYTES(n);
+}
+
 int RCT20_Init(RcT20 *rc, const RcT20Params *params)
 {
     uint8_t *e = rc->e;
+    uint32_t size = RCT20_ESize(params);
 
-    if (!e) {
-        e = calloc(1, RCT20_E_SIZE);
-        if (!e)
+    if (e && rc->e_size >= size) {
+        size = rc->e_size;
+        memset(e, 0, size);
+    } else {
+        free(e);
+        e = calloc(1, size);
+        if (!e) {
+            rc->e = NULL;
             return -1;
+        }
     }
     memset(rc, 0, sizeof(*rc));
-    memset(e, 0, RCT20_E_SIZE);
     rc->e = e;
+    rc->e_size = size;
     rc->params = *params;
     RCT20_DefaultSet(e);
     RCT20_SetupE(e, params);
@@ -1591,6 +1605,7 @@ void RCT20_Free(RcT20 *rc)
 {
     free(rc->e);
     rc->e = NULL;
+    rc->e_size = 0;
 }
 
 /* i264e_ratecontrol_start (0x3caa8), T20 */
@@ -1663,7 +1678,7 @@ uint32_t RCT20_QpTable(const RcT20 *rc, const uint32_t **table)
     if (!E || rc->params.method < 1 || rc->params.method > 3 ||
         !RU8(E, RX(348)) || RI32(E, RX(344)) <= 0)
         return 0;
-    *table = (const uint32_t *)(const void *)(E + 0x50158);
+    *table = (const uint32_t *)(const void *)(E + MB_QPTAB(rct20_mbs(E)));
     return RU32(E, RX(344));
 }
 

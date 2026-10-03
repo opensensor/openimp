@@ -11,8 +11,11 @@
  * kept in the three OEM blocks so that every step can be compared with the
  * OEM code under an emulator:
  *
- *   E  the "eprc_t20" block (i264e parameter + 704), RCT20_E_SIZE bytes:
- *      configuration, per-picture inputs/outputs and the macroblock maps;
+ *   E  the "eprc_t20" block (i264e parameter + 704): configuration,
+ *      per-picture inputs/outputs and the macroblock maps.  The OEM fields
+ *      below 336 keep their byte offsets; the OEM state at E+0x90000+o is
+ *      at E+RCT20_RX_BASE+o, followed by the macroblock maps sized to the
+ *      picture (the OEM reserves 576 KiB for 64 Ki macroblocks);
  *   P  rcPara (RCT20_P_SIZE), S  rcSt (RCT20_S_SIZE).
  *
  * Per picture the caller runs RCT20_Start() (type and QP of the picture
@@ -24,7 +27,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#define RCT20_E_SIZE (0x90000u + 400u)
+/* E+RCT20_RX_BASE+o: the OEM state block E+0x90000+o (400 bytes) */
+#define RCT20_RX_BASE 336u
 #define RCT20_P_SIZE 128u
 #define RCT20_S_SIZE 872u
 
@@ -85,7 +89,8 @@ typedef struct {
 } RcT20Stats;
 
 typedef struct RcT20 {
-    uint8_t *e;                 /* RCT20_E_SIZE bytes (allocated by Init) */
+    uint8_t *e;                 /* allocated by Init (RCT20_ESize bytes) */
+    uint32_t e_size;            /* allocated size of e */
     uint8_t p[RCT20_P_SIZE];
     uint8_t s[RCT20_S_SIZE];
     RcT20Params params;
@@ -99,7 +104,10 @@ typedef struct {
     uint8_t qp;
 } RcT20Picture;
 
-/* rc->e may point to RCT20_E_SIZE bytes to reuse, else NULL. */
+/* Size of the E block for params (macroblock maps by the picture size). */
+uint32_t RCT20_ESize(const RcT20Params *params);
+/* rc->e may point to rc->e_size bytes to reuse (kept when large enough),
+ * else NULL. */
 int RCT20_Init(RcT20 *rc, const RcT20Params *params);
 void RCT20_Free(RcT20 *rc);
 
@@ -111,7 +119,7 @@ void RCT20_Start(RcT20 *rc, int idr, const uint8_t *luma, uint32_t stride,
 int RCT20_End(RcT20 *rc, const RcT20Stats *stats, RcT20Picture *pic);
 
 /* After RCT20_Start: the macroblock QP table of the picture (OEM
- * E+0x50158, length E+0x90158, active E+0x9015c), or 0 when there is none
+ * E+0x50158, length E+0x90158, active E+0x9015c; OpenIMP: E+MB_QPTAB), or 0 when there is none
  * (macroblock rate control off, or dropped for a re-encode). */
 uint32_t RCT20_QpTable(const RcT20 *rc, const uint32_t **table);
 /* Scene class of the last decision (OEM E+0x90168: 0 static .. 4). */

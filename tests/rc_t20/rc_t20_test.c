@@ -47,7 +47,7 @@ static int table_differs(const RcT20 *rc, const char *line)
         s += t[i];
     if (n != words || s != sum)
         return 1;
-    return n && *(const uint32_t *)(const void *)(rc->e + 0x90160) != mean;
+    return n && *(const uint32_t *)(const void *)(rc->e + RCT20_RX_BASE + 352) != mean;
 }
 
 /* OpenIMP extra iaware: off is the OEM controller (vectors above); on a
