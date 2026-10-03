@@ -43,6 +43,12 @@ check: $(ISP_TUNING_TEST_BIN) $(ACODEC_TEST_BIN) $(ZERO_COPY_TEST_BIN) \
 	$(RMEM_LAYOUT)
 	$(HELIX_STREAM) encode $(BUILD)/t23-helix.h264 $(BUILD)/t23-helix.ref
 	$(HELIX_STREAM) rc
+	$(HELIX_STREAM) crop $(BUILD)/t23-helix-crop.h264
+	@if command -v ffprobe >/dev/null 2>&1; then \
+		test "$$(ffprobe -v error -flags unaligned -show_entries frame=width,height \
+			-of csv=p=0 $(BUILD)/t23-helix-crop.h264 | tr '\n' ' ')" = \
+			"640,360 640,360 640,360 320,200 320,200 320,200 640,360 640,360 640,360 "; \
+	fi
 	@if command -v ffmpeg >/dev/null 2>&1; then \
 		ffmpeg -v error -err_detect explode -y \
 			-i $(BUILD)/t23-helix.h264 -fps_mode passthrough -f rawvideo \

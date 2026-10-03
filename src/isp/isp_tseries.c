@@ -1667,11 +1667,14 @@ static void *tseries_tuning_worker(void *unused)
             uint32_t packed =
                 ((uint32_t)total_gain << 8) | (uint32_t)TSERIES_CUSTOM_CONTRAST;
 
+            /* Remember the gain before sending, as the OEM daemon does: a
+             * driver that rejects the value must not be fed the same one
+             * again every second. */
+            tseries_tuning_last_total_gain = total_gain;
             if (tseries_v4l2_set(TISP_V4L2_CID_CONTRAST,
                                  (int32_t)packed) == 0) {
                 static unsigned int update_count;
 
-                tseries_tuning_last_total_gain = total_gain;
                 update_count++;
                 if (update_count <= 4u || (update_count % 100u) == 0u)
                     kmsg_trace("libimp/ISP: tuning gain/contrast update gain=%d contrast=%u packed=0x%08x count=%u\n",

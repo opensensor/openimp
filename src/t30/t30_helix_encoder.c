@@ -281,6 +281,9 @@ struct T30HelixEncoder {
     h264_cabac_t cabac;
     uint8_t headers[T30_HEADER_CAPACITY];
     uint32_t headers_size;
+    /* visible rectangle in the SPS (frame_cropping); crop_on = 0: the whole
+     * picture, only the macroblock padding is cropped */
+    uint32_t crop_on, crop_x, crop_y, crop_w, crop_h;
     uint32_t frame_number;
     uint32_t max_output_len;
     uint32_t gop_position;
@@ -589,6 +592,15 @@ static void t30_init_parameter_sets(T30HelixEncoder *encoder)
         sps->b_crop = 1;
         sps->crop.i_right = (int)(aligned_width - encoder->params.width);
         sps->crop.i_bottom = (int)(aligned_height - encoder->params.height);
+    }
+    if (encoder->crop_on) {
+        sps->b_crop = 1;
+        sps->crop.i_left = (int)encoder->crop_x;
+        sps->crop.i_top = (int)encoder->crop_y;
+        sps->crop.i_right = (int)(aligned_width - encoder->crop_x -
+                                  encoder->crop_w);
+        sps->crop.i_bottom = (int)(aligned_height - encoder->crop_y -
+                                   encoder->crop_h);
     }
 
     memset(pps, 0, sizeof(*pps));
@@ -2940,6 +2952,50 @@ uint32_t OpenIMP_T30_HelixFailures(const T30HelixEncoder *encoder)
     return encoder ? encoder->failures : 0u;
 }
 #endif
+
+/* Visible rectangle of the stream: the SPS frame cropping, as the OEM i264e
+ * crop does (the VPU still codes the whole macroblock-aligned picture).
+ * Even values inside the picture; call with the encoder idle (between
+ * pictures).  The next picture is an IDR carrying the new SPS. */
+int OpenIMP_T30_HelixSetCrop(T30HelixEncoder *encoder, int enable,
+                             uint32_t x, uint32_t y, uint32_t w, uint32_t h)
+{
+    uint32_t sx = 0, sy = 0, sw, sh;
+
+    if (!encoder)
+        return -1;
+    sw = encoder->params.width;
+    sh = encoder->params.height;
+    if (enable) {
+        if (((x | y | w | h) & 1u) || !w || !h || x + w > sw || y + h > sh)
+            return -1;
+        sx = x; sy = y; sw = w; sh = h;
+    }
+    encoder->crop_on = enable ? 1u : 0u;
+    encoder->crop_x = sx;
+    encoder->crop_y = sy;
+    encoder->crop_w = sw;
+    encoder->crop_h = sh;
+    t30_init_parameter_sets(encoder);
+    if (t30_generate_headers(encoder) != 0)
+        return -1;
+    encoder->force_idr = 1;
+    return 0;
+}
+
+int OpenIMP_T30_HelixGetCrop(const T30HelixEncoder *encoder, int *enable,
+                             uint32_t *x, uint32_t *y, uint32_t *w,
+                             uint32_t *h)
+{
+    if (!encoder)
+        return -1;
+    *enable = encoder->crop_on != 0;
+    *x = encoder->crop_x;
+    *y = encoder->crop_y;
+    *w = encoder->crop_w;
+    *h = encoder->crop_h;
+    return 0;
+}
 
 int OpenIMP_T30_HelixRequestIDR(T30HelixEncoder *encoder)
 {
