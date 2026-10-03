@@ -3,7 +3,7 @@
 Everything changed, extended or fixed in OpenIMP, open-tx-isp, timps and the thingino
 integration since the test campaign started on 2026-09-30. Kept up to date during the campaign.
 
-Last update: 2026-10-03 17:22.
+Last update: 2026-10-03 17:36.
 
 Cameras are anonymised: cam-A (T31), cam-B (T23), cam-C (T20), cam-D (T21), cam-E (T10), cam-F (T41).
 
@@ -99,6 +99,11 @@ Aggregates: `claude/open-tx-isp-all-4` and `claude/openimp-all-4` (pushed); 58 m
 - **Boot guard for T20, T23, T31:** `S10isp-guard` + `isp_open=auto` added (local image overlay, ships with the next image, not on the device yet). A load counts as stable after 300 s uptime with timpsd running; otherwise the next boot skips the ISP/sensor modules and timps until `S10isp-guard clear`.
 - **T21 smaller and faster:** kernel module 760 to 494 KB (RAM unchanged); the lifted AWB now needs 0.95x of the vendor instructions (was 1.41x), output bit-identical, cam-D isp_fw_process -10 %. Branch `claude/t21-size-awb-opt`.
 - **T41 (cam-F):** the bitrate setting had no effect because the OpenIMP T41 controller discarded a negative bucket level; fixed (`claude/t41-cbr-overshoot`), host-simulated, device test pending. In the dark the gc5603 shows strong column noise, so about 10 Mbit/s even at QP 45 (separate ISP issue). The spontaneous reboot is an OOM: rmem=30M leaves 29.6 MB for Linux; 3 parallel streams plus snapshots exhaust it and the watchdog resets. Proposal: rmem about 24 MB (the vendor image uses 19 MB). After an OOM kill the sensor stays registered and AddSensor returns EBUSY until reboot; a driver fix (`claude/t41-sensor-rereg`) crashed on the first device load and is being analysed. The black picture after a WB POST was not reproducible (timps does not call any WB function on T41).
+- **T23 matrix gaps (cam-B, `claude/t23-matrix-gaps`, open-tx-isp, device-tested):** front crop now uses the vendor path (960x540 crop OK); the MASK control returns -EINVAL exactly as the vendor does (no stock handler). The lifted vendor AE now honours anti-flicker and reports AE luma, so backlight/highlight/AE comp work with it (backlight 10: luma 68 to 112, highlight 10: 48). Making the lifted AE the default is a pending user decision; as default, AE IT max has no effect, exactly as on the vendor. Anti-flicker device values: vendor AE 50/60/off gives IT 720/900/971, HLIL AE 720/600/711. Not bugs: IR cut/LED auto night (timps auto switches IR cut, ir850 and mono, and back) and the JPEG size (q75 tables are the IJG tables, size matches libjpeg, scene-driven).
+- **T41 module reload (cam-F):** a rebuilt tx-isp-t41.ko with the sensor re-registration fix (`claude/t41-sensor-rereg`, not in any aggregate) crashed on insmod twice (rc 139) and the box needed a power cycle. Likely cause: rmmod+insmod of tx_isp_t41 is not safe in general; a control test with the installed module is pending. The T41 kernel has no netconsole/pstore, so an oops cannot be captured after the network dies.
+- **T10 module reload (cam-E):** rmmod/insmod of tx_isp_t10 gives 'Failed to get csi clock -22' and a NULL oops in isp_csi_set_clk at stream start; module reload is unsafe on T10, the boot-time load is fine.
+- **Noise reduction strength (T10/T20, `claude/t10-t20-nr-wdr` + OpenIMP `claude/t20-nr-strength`):** the vendor firmware renormalises the scaled Sinter/Temper table onto the IQ min/max, so only 0 acts. Now strength acts: T20 device-tested, temper 0/64/128/200 gives 0/42/85/132, sinter 0/17/35/69 at high gain, 128 = IQ, kept across day/night. T10 device test pending (reload oops). Default for T10/T20 is a pending user decision. T31: SDNS (H-S regs 0 to 0, 255 to 15), DPC thresholds and impulses vendor-identical on cam-A; T10 isp-m0 WDR flag fixed.
+- **Other results:** T20 daylight A/B of simple AWB vs vendor chain: gains 492/393 vs 488/395, neutral ROIs within 0.007, both converge in under 4 s, tungsten test open. T31 anti-flicker with a 22 ms IT cap: IT 1000/900/750 lines for off/50/60 Hz, gain compensates, daylight test pending.
 
 ## Late afternoon (2026-10-03)
 
