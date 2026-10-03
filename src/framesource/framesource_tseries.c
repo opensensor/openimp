@@ -1398,6 +1398,30 @@ int IMP_FrameSource_SetChnAttr(int chnNum, IMPFSChnAttr *chn_attr)
         return -1;
     }
 
+    IMPFSChnAttr fixed;
+    memcpy(&fixed, chn_attr, sizeof(fixed));
+#ifdef PLATFORM_T20
+    /* The T20 ISP scaler / VPU path wedges on an output height that is not a
+     * multiple of 8 (480x270: first frame, then no more, soc_vpu start
+     * timeout; 1080 is fine).  The OEM width check already demands 16; the
+     * height is rounded up here with a warning instead of leaving the
+     * channel stuck. */
+    if (fixed.pixFmt != PIX_FMT_RAW) {
+        if (fixed.scaler.enable && (fixed.scaler.outheight & 0x7)) {
+            int h = (fixed.scaler.outheight + 7) & ~7;
+            fprintf(stderr, "[FS] WARNING chn%d scaler.outheight=%d is not a multiple of 8, using %d\n",
+                    chnNum, fixed.scaler.outheight, h);
+            fixed.scaler.outheight = h;
+        }
+        if (fixed.picHeight & 0x7) {
+            int h = (fixed.picHeight + 7) & ~7;
+            fprintf(stderr, "[FS] WARNING chn%d picHeight=%d is not a multiple of 8, using %d\n",
+                    chnNum, fixed.picHeight, h);
+            fixed.picHeight = h;
+        }
+    }
+#endif
+    chn_attr = &fixed;
     pthread_mutex_lock(&g_fs_lock);
     memcpy(fs_channel_base(chnNum) + 0x20, chn_attr, sizeof(IMPFSChnAttr));
     memcpy(&g_fs_ctx[chnNum].attr, chn_attr, sizeof(IMPFSChnAttr));
