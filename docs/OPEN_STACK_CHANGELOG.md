@@ -3,7 +3,7 @@
 Everything changed, extended or fixed in OpenIMP, open-tx-isp, timps and the thingino
 integration since the test campaign started on 2026-09-30. Kept up to date during the campaign.
 
-Last update: 2026-10-03 16:00.
+Last update: 2026-10-03 17:00.
 
 Cameras are anonymised: cam-A (T31), cam-B (T23), cam-C (T20), cam-D (T21), cam-E (T10), cam-F (T41).
 
@@ -16,7 +16,7 @@ All six test cameras run the open kernel driver (open-tx-isp), OpenIMP and timps
 |---|---|---|---|
 | cam-A | T31 | fully open | Flashed 2026-10-03 14:04 with open-tx-isp-all-13 / openimp-all-11 |
 | cam-B | T23 | fully open (native encoder, no OEM helixd) | Flashed 2026-10-03 ~14:10 with open-tx-isp-all-13 / openimp-all-11 (reference sharing on) |
-| cam-C | T20 | fully open | Flashed 2026-10-03 ~14:10 with open-tx-isp-all-13 / openimp-all-11 |
+| cam-C | T20 | fully open | Re-flashed 2026-10-03 16:05 with -all-13 + kernel patch 0101 (NVPU statistics registers readable) |
 | cam-E | T10 | fully open | Flashed 2026-10-03 ~14:10 with open-tx-isp-all-13 / openimp-all-11, boot guard auto |
 | cam-D | T21 | fully open | Flashed 2026-10-03 ~14:10 with open-tx-isp-all-13 / openimp-all-11 (reference sharing on) |
 | cam-F | T41 | fully open | Flashed 2026-10-03 14:20 with open-tx-isp-all-13 / OpenIMP T41 (kernel and rootfs flashed separately) |
@@ -87,6 +87,15 @@ Goal: identical image behaviour, but cleaner unload/reload, less memory and chec
 OpenIMP: T20 green flicker in the bottom rows fixed by filling the encoder padding rows (`claude/t20-bottom-chroma`; 0 green pixels in 30 frames). Faster IVS (`claude/ivs-opt`; T20 timps CPU 4.1 % → 2.7 % with motion on).
 
 Aggregates: `claude/open-tx-isp-all-4` and `claude/openimp-all-4` (pushed); 58 merged single branches removed. `claude/open-tx-isp-all-5` adds t21-robust and t31-robust-2 (T31: sensor flip with shvflip=1, unload leaks, lazy WDR buffers; MemFree drift per reload 460 → 45 KB); all four cameras flashed with -all-5 images.
+
+## Late afternoon (2026-10-03)
+
+- **T31 rate control: vendor core ported:** the Allegro VBR/CappedVBR/CappedQuality controller is ported instruction by instruction and matches the vendor code frame by frame in an emulator (2,100 trace frames + 72 random traces, 0 differences). cam-A at 1200 kbit/s: VBR 1163, CappedVBR 1177, CappedQuality 1174 kbit/s (old controller: 732 / – / 2030). Becomes the default; `OPENIMP_T31_RC_CORE=legacy` restores the old one; CBR stays on the old controller for now.
+- **T21 rate control: vendor-identical:** the T21 vendor controller (an older eprc revision) is ported; 0 differences in 873 oracle frames and 360 random scenarios. cam-D: CBR 1326, VBR 1096, SMART 1071 kbit/s at 1200. Opt-in via `OPENIMP_T21_EPRC=1`; a bug found on the way also affected T23 (CBR with very short GOPs).
+- **T20/T10 rate control:** kernel patch 0101 lets the vendor T20 controller read its statistics registers (the hardened kernel denied it). cam-C re-flashed: CBR 1435 (+19 %, the vendor controller itself overshoots), VBR 1329, SMART 983 kbit/s — SMART was treated as VBR before, fixed. Opt-in via `OPENIMP_T20_RC=1` / `OPENIMP_T10_RC=1`.
+- **Better than the vendor: rate-control study:** an offline simulation of all ported controllers found six improvements. Device-tested on cam-E: the T10 VBR super-frame fix stops the vendor's double encoding of nearly every frame (re-encodes 800 → 0, CPU 8.3 → 5.5 %) and becomes the default inside the T10 controller. Being built: an I-frame-aware P budget against the T20 overshoot (opt-in). The eprc QP-step limit showed no measurable effect in a day scene and stays opt-in.
+- **Fixes from the feature-matrix tests:** T23 brightness/contrast/saturation/hue now act (they were reset on every stream start); T10/T20 max integration time now limits the AE (cam-C 300 µs → 10 lines); T23 sub-stream rotation 90°/270° works with the native encoder (the vendor helper process is not needed). 56 of 105 open matrix cells tested.
+- **Open:** T41 (cam-F): bitrate setting has no effect (~8.2 Mbit/s), one unexplained reboot, white-balance POST once gave a black picture — in work.
 
 ## Afternoon (2026-10-03)
 
