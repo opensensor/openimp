@@ -199,6 +199,13 @@ static int t31_avc_legacy(void)
  * with the IRQ host lock and irq_mutex held, never the other way round.
  */
 static pthread_mutex_t g_t31_completion_lock = PTHREAD_MUTEX_INITIALIZER;
+#if defined(PLATFORM_T31)
+/* The Allegro rate-control state (ctx->t31_al_rc) is read and advanced by
+ * the submit thread (picture QP, init / set-params on a mode or parameter
+ * change) and updated by the IRQ thread (avpu_t31_allegro_complete).  A
+ * leaf lock: nothing else is taken while it is held. */
+static pthread_mutex_t g_t31_al_rc_lock = PTHREAD_MUTEX_INITIALIZER;
+#endif
 static pthread_cond_t g_t31_completion_cond = PTHREAD_COND_INITIALIZER;
 static pthread_once_t g_t31_completion_once = PTHREAD_ONCE_INIT;
 
@@ -2373,7 +2380,9 @@ static uint32_t avpu_t40_picture_qp(const ALAvpuContext *ctx, int is_idr)
         memset(&pic, 0, sizeof(pic));
         pic.type = is_idr ? 2u : 1u;
         pic.flags = is_idr ? 3u : 2u;
+        pthread_mutex_lock(&g_t31_al_rc_lock);
         v = t31_al_rc_picture_qp((T31AlRc *)&ctx->t31_al_rc, &pic);
+        pthread_mutex_unlock(&g_t31_al_rc_lock);
         return v < 0 ? 0u : v > 51 ? 51u : (uint32_t)v;
     }
     if (ctx->t31_rate_controller.initialized)
@@ -2529,6 +2538,7 @@ static void avpu_t31_allegro_complete(ALAvpuContext *ctx, int buf_idx,
     t31_al_rc_status_from_regs(&status, regs, regs_len);
     status.bits = size_bits;
     status.qp = (int16_t)ctx->t31_rate_control_qp_by_buf[buf_idx];
+    pthread_mutex_lock(&g_t31_al_rc_lock);
     filler = t31_al_rc_picture_start(&ctx->t31_al_rc, &pic, &status, size_bits);
     ctx->t31_al_filler_bits = filler > 0 ? (uint32_t)(filler < 8 ? 8 : filler) * 8u : 0u;
     if (filler > 0)
@@ -2550,6 +2560,7 @@ static void avpu_t31_allegro_complete(ALAvpuContext *ctx, int buf_idx,
                      st->hrd.idle_ticks, st->hrd.pictures, st->target_frame,
                      st->ratio_i, st->ip_delta, filler, ctx->t31_al_filler_pictures);
     }
+    pthread_mutex_unlock(&g_t31_al_rc_lock);
 }
 
 /* The OEM Allegro core (t31_al_rc.c) runs CBR, VBR, CappedVBR and
@@ -2627,14 +2638,21 @@ static int avpu_t31_prepare_picture_allegro(ALAvpuContext *ctx)
     uint32_t rc_mode;
 
     if (ctx->rc_mode != HW_RC_MODE_VBR && ctx->rc_mode != HW_RC_MODE_CBR) {
+        pthread_mutex_lock(&g_t31_al_rc_lock);
         ctx->t31_al_rc.valid = 0;
+        pthread_mutex_unlock(&g_t31_al_rc_lock);
         return 1;
     }
     avpu_t31_al_param(ctx, &p, &g);
     /* AL_EncChannel_Init table 0xe53e0: AL 1 -> 0 (CBR), 2 -> 1, 4 -> 8, 8 -> 9 */
     rc_mode = p.mode == 1u ? 0u : p.mode == 8u ? 9u : p.mode == 4u ? 8u : 1u;
     if (!ctx->t31_al_rc.valid || ctx->t31_al_rc.mode != rc_mode) {
-        if (t31_al_rc_init(&ctx->t31_al_rc, rc_mode, &p, &g) != 0)
+        int ret;
+
+        pthread_mutex_lock(&g_t31_al_rc_lock);
+        ret = t31_al_rc_init(&ctx->t31_al_rc, rc_mode, &p, &g);
+        pthread_mutex_unlock(&g_t31_al_rc_lock);
+        if (ret != 0)
             return -1;
         ctx->t31_al_param = p;
         ctx->t31_al_gop_length = g.length;
@@ -2649,7 +2667,9 @@ static int avpu_t31_prepare_picture_allegro(ALAvpuContext *ctx)
     } else if (memcmp(&p, &ctx->t31_al_param, sizeof(p)) != 0 ||
                ctx->t31_al_gop_length != g.length) {
         /* run-time change: the OEM calls the controller's set-params slot */
+        pthread_mutex_lock(&g_t31_al_rc_lock);
         t31_al_rc_set_params(&ctx->t31_al_rc, &p, &g);
+        pthread_mutex_unlock(&g_t31_al_rc_lock);
         ctx->t31_al_param = p;
         ctx->t31_al_gop_length = g.length;
         IMP_LOG_INFO("Codec", "T31 allegro rc: params target=%u max=%u fps=%u/%u "
@@ -2682,7 +2702,9 @@ static int avpu_t31_prepare_picture(ALAvpuContext *ctx)
         }
         /* r > 0: mode not covered by the core, fall through to legacy */
     } else {
+        pthread_mutex_lock(&g_t31_al_rc_lock);
         ctx->t31_al_rc.valid = 0;
+        pthread_mutex_unlock(&g_t31_al_rc_lock);
     }
     /* CBR, VBR and the OEM capped VBR modes (VBR with a PSNR cap) run the
      * closed loop.  Plain VBR is open loop only with

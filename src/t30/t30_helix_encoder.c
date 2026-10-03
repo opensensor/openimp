@@ -303,6 +303,7 @@ struct T30HelixEncoder {
     uint32_t t20rc_max_qp;      /* t30_normalize_params) */
     uint32_t t20rc_reencodes;
     uint32_t t20rc_stat_errors;
+    uint32_t t20rc_qptab_drops;  /* MB-RC tables over T20_QP_TABLE_MAX_WORDS */
     uint32_t t20rc_stats_seconds;   /* OPENIMP_T20_RC_STATS */
     uint32_t t20rc_frames, t20rc_idrs;
     uint64_t t20rc_bytes, t20rc_qp_sum[2];
@@ -361,7 +362,9 @@ struct T30HelixEncoder {
     int eprc_restart_pending;   /* run-time change, applied at the next IDR */
     int eprc_restarting;
     uint32_t eprc_reencodes;
+    uint32_t eprc_dropped;      /* pictures finished as dropped (helix_eprc_drop) */
     uint32_t eprc_stat_errors;
+    uint32_t eprc_stat_fail_run; /* consecutive pictures without statistics */
     /* eprc macroblock rate control (src/eprc/eprc_mbrc.c): the switch
      * (OPENIMP_EPRC_MBRC, IMP_Encoder_SetMbRC) and the registers of the
      * picture being coded */
@@ -1295,6 +1298,18 @@ static void t23_rc_stats(T30HelixEncoder *encoder, uint32_t qp, int idr,
 #define HELIX_I264E_FRM_STEP    3u
 #define HELIX_I264E_GOP_STEP    15u
 
+/* T21: the T23 controller revision (OPENIMP_T21_EPRC=23, an A/B aid) is
+ * only built in with -DOPENIMP_T21_EPRC_AB=1 (build-t21.sh
+ * OPENIMP_T21_EPRC_AB=1); otherwise the T21 revision is the only one and
+ * the link drops eprc.c's controller (about 30 KiB). */
+#if defined(PLATFORM_T23)
+#define HELIX_EPRC_IS_T21(enc) 0
+#elif defined(OPENIMP_T21_EPRC_AB) && OPENIMP_T21_EPRC_AB
+#define HELIX_EPRC_IS_T21(enc) ((enc)->eprc_t21)
+#else
+#define HELIX_EPRC_IS_T21(enc) ((void)(enc), 1)
+#endif
+
 /* Which rate-control modes run the OEM picture rate controller (src/eprc),
  * and which revision.
  * T23 (OPENIMP_T23_EPRC): unset = SMART, "1" = FIXQP, CBR, VBR and SMART,
@@ -1321,8 +1336,15 @@ static int helix_eprc_wanted(const T30HelixEncoder *encoder)
     (void)smart;
     if (env && strcmp(env, "0") == 0)
         return 0;
-    if (env && strcmp(env, "23") == 0)
+    if (env && strcmp(env, "23") == 0) {
+#if defined(OPENIMP_T21_EPRC_AB) && OPENIMP_T21_EPRC_AB
         return 2;
+#else
+        IMP_LOG_WARN("Encoder", HELIX_EPRC_TAG " Helix eprc: " HELIX_EPRC_ENV
+                     "=23 needs a build with OPENIMP_T21_EPRC_AB=1, using "
+                     "the T21 revision");
+#endif
+    }
     return 1;
 #endif
 }
@@ -1331,7 +1353,7 @@ static void helix_eprc_stop(T30HelixEncoder *encoder)
 {
     if (encoder->eprc_on) {
 #if !defined(PLATFORM_T23)
-        if (encoder->eprc_t21)
+        if (HELIX_EPRC_IS_T21(encoder))
             EPRC21_Free(&encoder->eprc);
         else
 #endif
@@ -1475,7 +1497,7 @@ static int helix_eprc_scene_cut(const T30HelixEncoder *encoder)
         encoder->gop_position % gop != 0u || encoder->gop_position <= gop)
         return 0;
 #if !defined(PLATFORM_T23)
-    if (encoder->eprc_t21)
+    if (HELIX_EPRC_IS_T21(encoder))
         cls = EPRC21_PictureClass(&encoder->eprc);
     else
 #endif
@@ -1533,7 +1555,7 @@ static void helix_eprc_start(T30HelixEncoder *encoder)
     encoder->eprc_t21 = rev == 1;
     if ((
 #if !defined(PLATFORM_T23)
-         encoder->eprc_t21 ? EPRC21_Init(&encoder->eprc, &p, encoder->eprc_slice) :
+         HELIX_EPRC_IS_T21(encoder) ? EPRC21_Init(&encoder->eprc, &p, encoder->eprc_slice) :
 #endif
          EPRC_Init(&encoder->eprc, &p, encoder->eprc_slice)) != 0) {
         IMP_LOG_WARN("Encoder", HELIX_EPRC_TAG " Helix: OEM rate control "
@@ -1548,7 +1570,7 @@ static void helix_eprc_start(T30HelixEncoder *encoder)
 #if defined(PLATFORM_T23)
                  "",
 #else
-                 encoder->eprc_t21 ? " (T21 rev)" : " (T23 rev)",
+                 HELIX_EPRC_IS_T21(encoder) ? " (T21 rev)" : " (T23 rev)",
 #endif
                  p.rc_mode == EPRC_MODE_CQP ? "FIXQP" :
                  p.rc_mode == EPRC_MODE_CBR ? "CBR" :
@@ -1564,8 +1586,10 @@ static void helix_eprc_start(T30HelixEncoder *encoder)
 /* The Helix statistics the OEM reads after each picture (T23
  * _jz_hwicodec_pf_h264e_t21_set_priv, T21 hwicodec_pf_h264e_t21_enc): one
  * register word per IOCTL_CHANNEL_WOR_VPU_REG. */
-static void helix_eprc_statistics(T30HelixEncoder *encoder,
-                                  uint32_t regs[EPRC_STAT_REGS])
+#define HELIX_EPRC_STAT_FAIL_MAX 8u
+
+static int helix_eprc_statistics(T30HelixEncoder *encoder,
+                                 uint32_t regs[EPRC_STAT_REGS])
 {
     unsigned int i;
 
@@ -1582,10 +1606,11 @@ static void helix_eprc_statistics(T30HelixEncoder *encoder,
                              "reading 0x%08x failed (%s); statistics are 0",
                              node[0], strerror(errno));
             memset(regs, 0, EPRC_STAT_REGS * sizeof(regs[0]));
-            return;
+            return -1;
         }
         regs[i] = node[1];
     }
+    return 0;
 }
 
 /* After a picture: statistics, FRAME_REPEATE_JUDGE and FRAME_END.  Returns
@@ -1608,10 +1633,22 @@ static int helix_eprc_end(T30HelixEncoder *encoder, int idr, uint32_t *qp)
     EprcPicture pic;
     int may_repeat = !(encoder->ref_share && !idr);
 
-    helix_eprc_statistics(encoder, regs);
+    if (helix_eprc_statistics(encoder, regs) == 0) {
+        encoder->eprc_stat_fail_run = 0;
+    } else if (++encoder->eprc_stat_fail_run >= HELIX_EPRC_STAT_FAIL_MAX) {
+        /* Without the statistics the controller would run on zeros
+         * (scene judge, R-lambda update): fall back to the GOP
+         * controller instead of 25 failing ioctls per picture. */
+        IMP_LOG_WARN("Encoder", HELIX_EPRC_TAG " Helix eprc: statistics "
+                     "unreadable for %u pictures, using the GOP controller",
+                     encoder->eprc_stat_fail_run);
+        encoder->eprc_stat_fail_run = 0;
+        helix_eprc_stop(encoder);
+        return 0;
+    }
     if ((
 #if !defined(PLATFORM_T23)
-         encoder->eprc_t21 ?
+         HELIX_EPRC_IS_T21(encoder) ?
              EPRC21_FrameEndEx(&encoder->eprc, encoder->channel.output_len,
                                regs, &pic, may_repeat) :
 #endif
@@ -1630,6 +1667,31 @@ static int helix_eprc_end(T30HelixEncoder *encoder, int idr, uint32_t *qp)
     encoder->eprc_mbrc = pic.mbrc;
     memcpy(encoder->eprc_ctrl, pic.ctrl, sizeof(pic.ctrl));
     return 1;
+}
+
+/* A picture that was started (FRAME_START) but is dropped (T23 bitstream
+ * window overflow, timeout, errored RUN): finish it in the controller so
+ * the next FRAME_START does not run on the statistics of a picture that
+ * never ended.  Accounted as the full bitstream window with zero
+ * statistics and without FRAME_REPEATE_JUDGE, as the T31 Allegro path
+ * accounts its dropped pictures (codec-t40.c avpu_t31_allegro_complete). */
+static void helix_eprc_drop(T30HelixEncoder *encoder)
+{
+    uint32_t regs[EPRC_STAT_REGS];
+    EprcPicture pic;
+    uint32_t bytes = encoder->temporary.size > T30_SLICE_OFFSET
+        ? encoder->temporary.size - T30_SLICE_OFFSET : 0u;
+
+    if (!encoder->eprc_on)
+        return;
+    memset(regs, 0, sizeof(regs));
+#if !defined(PLATFORM_T23)
+    if (HELIX_EPRC_IS_T21(encoder))
+        (void)EPRC21_FrameEndEx(&encoder->eprc, bytes, regs, &pic, 0);
+    else
+#endif
+        (void)EPRC_FrameEndEx(&encoder->eprc, bytes, regs, &pic, 0);
+    encoder->eprc_dropped++;
 }
 #endif
 
@@ -1834,6 +1896,8 @@ static void t20_rc_start(T30HelixEncoder *encoder)
  * complexity and three registers (i264e_ratecontrol_priv_init, read with
  * soc_vpu ioctl 0xc0386307, node word 0 the address, word 1 the value). */
 #define T20_RC_REG_BASE 0x13200000u
+/* 10-bit length field of the 0x4006c QP-table word (OEM H264E_T20_SliceInit) */
+#define T20_QP_TABLE_MAX_WORDS 1023u
 #define T20_CHANNEL_REG 0xc0386307u
 
 static void t20_rc_statistics(T30HelixEncoder *encoder, RcT20Stats *st,
@@ -2610,7 +2674,7 @@ static int t30_helix_encode_job(T30HelixEncoder *encoder,
         in.frames_since_idr = idr ? 0u : encoder->gop_position;
         if ((
 #if !defined(PLATFORM_T23)
-             encoder->eprc_t21 ? EPRC21_FrameStart(&encoder->eprc, &in, &pic) :
+             HELIX_EPRC_IS_T21(encoder) ? EPRC21_FrameStart(&encoder->eprc, &in, &pic) :
 #endif
              EPRC_FrameStart(&encoder->eprc, &in, &pic)) == 0) {
             qp = pic.qp;
@@ -2693,7 +2757,16 @@ again:
         uint32_t words = RCT20_QpTable(&encoder->t20rc, &table);
 
         encoder->slice.max_qp_cap = (uint8_t)encoder->t20rc.params.max_qp;
-        if (words && 2u * words <= encoder->slice.descriptor_words / 2u) {
+        if (words > T20_QP_TABLE_MAX_WORDS) {
+            /* 0x4006c carries the length in bits 21..30: a longer table
+             * would be truncated with the mode enabled (bit 31).  Code
+             * the picture at the slice QP instead. */
+            if (encoder->t20rc_qptab_drops++ % 1000u == 0u)
+                IMP_LOG_WARN("Encoder", "T20 rc: macroblock QP table of "
+                             "%u words exceeds %u, not used (%u so far)",
+                             words, T20_QP_TABLE_MAX_WORDS,
+                             encoder->t20rc_qptab_drops);
+        } else if (words && 2u * words <= encoder->slice.descriptor_words / 2u) {
             encoder->slice.qp_table_words = (uint16_t)words;
             encoder->slice.qp_table = table;
         }
@@ -2803,6 +2876,7 @@ again:
             if (!t23_overflow_drop(encoder, idr, qp, encoder->channel.status,
                                    encoder->channel.output_len))
                 encoder->failures++;
+            helix_eprc_drop(encoder);
             return -1;
         }
         if (attempt >= 2) {
@@ -2819,6 +2893,7 @@ again:
             encoder->force_idr = 1;
             encoder->have_reference = 0;
             encoder->failures++;
+            helix_eprc_drop(encoder);
             return -1;
         }
         if (late) {
@@ -2851,6 +2926,9 @@ again:
         LOG_CODEC("T30 Helix: run failed frame=%u errno=%d status=0x%08x len=%u",
                   encoder->frame_number, errno, encoder->channel.status,
                   encoder->channel.output_len);
+#if defined(HELIX_T21_SYNTAX)
+        helix_eprc_drop(encoder);
+#endif
         return -1;
     }
 #if defined(HELIX_T21_SYNTAX)

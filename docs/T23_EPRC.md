@@ -185,6 +185,20 @@ N1X/H1M only) from CreateChn as `HWEncoderParams.same_scene_gops`; with the
 eprc controller running the encoder codes an IDR every n GOPs and gives the
 controller the same multiplier.
 
+**Streamer note (review H-3, 2026-10-03): maxSameSceneCnt sets the IDR
+period.**  This is vendor-identical and stays the default, but it is a
+visible change against older OpenIMP builds, which ignored the field: a
+channel created with skip type N1X / H1M and maxSameSceneCnt = n > 1 (the
+Ingenic sample code uses 6) gets an IDR only every n GOPs on T21 (eprc on
+by default) and on T23 SMART, apart from scene-cut IDRs.  RTSP clients
+then wait up to n x GOP for the first decodable picture and recorders
+segment on IDRs n times less often; the HSkip reference structure itself
+is not coded by the native encoder, so nothing is gained in return.
+Streamers that want an IDR every GOP set it explicitly: either skip type
+`IMP_Encoder_STYPE_N1X` with maxSameSceneCnt 0 or 1, or leave hSkipAttr
+zero (timps and prudynt do; that is IDR every GOP).  T23 SMART can also be
+forced with `OPENIMP_T23_SMART_IDR_GOPS=1`.
+
 Scene-cut IDR (`i264e_decide_slice_type_and_rd` 0x34f94, T21 0x2c018, the
 same rule): with maxSameSceneCnt n > 0 and the skip type 0, 5 or 6, the
 picture after v0 pictures since the IDR is an IDR when (v0 + 1) % GOP == 0,

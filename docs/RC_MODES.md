@@ -209,7 +209,8 @@ qp 0..51).  T21: the native Helix encoder runs the vendor-identical T21
 by default, with the validated extras (see `docs/T23_EPRC.md`; FIXQP: I =
 qp - 3, P = qp, at most 51, below qp 3 the I QP is 51, no QP range);
 `OPENIMP_T21_EPRC=0` restores the old GOP controller (no extras),
-`=23` runs the T23 controller (A/B only).  Device test cam-D at
+`=23` runs the T23 controller (A/B only; needs a build with
+`OPENIMP_T21_EPRC_AB=1`, otherwise the T23 revision is not linked in).  Device test cam-D at
 1200 kbit/s: CBR 1326, VBR 1096, SMART 1071 kbit/s, decode clean (the old
 controller: CBR 570).  T10/T20 run their OEM controllers by default
 (below).

@@ -607,6 +607,10 @@ int EPRC_Init(Eprc *rc, const EprcParams *params, uint8_t *slice)
     rc->qp_down_max = params->qp_down_max;
     rc->prev_type = -1;
     rc->e = rc->e_store;
+    /* The controller divides by these (the OEM traps on a zero divisor;
+     * i264e never passes one): refuse instead of SIGFPE. */
+    if (!params->gop || !params->fps_num || !params->fps_den)
+        return -1;
     EPRC_SetupE(rc->e, params);
     size = eprc_block_size(rc->e, sz);
     block = calloc(1, size);
@@ -2065,18 +2069,18 @@ static int eprc_repeat_judge(Eprc *rc, int may_repeat)
         delta = -1;
         if (ratio < 1.0f) {
             if (qp < 52) {
-                double num = pow(2.0, (double)((qp - 4) / 6));
+                double num = eprc_pow2i((qp - 4) / 6);
                 for (s1 = 51; s1 >= qp; s1--) {
-                    if (r < num / pow(2.0, (double)((s1 - 4) / 6))) {
+                    if (r < num / eprc_pow2i((s1 - 4) / 6)) {
                         delta = s1 - qp;
                         break;
                     }
                 }
             }
         } else if (qp >= 0) {
-            double num = pow(2.0, (double)((qp - 4) / 6));
+            double num = eprc_pow2i((qp - 4) / 6);
             for (s1 = qp; s1 >= 0; s1--) {
-                if (r < num / pow(2.0, (double)((s1 - 4) / 6))) {
+                if (r < num / eprc_pow2i((s1 - 4) / 6)) {
                     delta = s1 - qp;
                     break;
                 }

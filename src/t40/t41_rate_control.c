@@ -633,14 +633,20 @@ static int openimp_t41_rate_control_residual(
     uint64_t prediction;
     int64_t value;
 
-    if (!residual || history_bits < 0 ||
-        (pictures_remaining != 0u &&
-         picture_bits > UINT64_MAX / pictures_remaining))
+    /* history_bits is the signed leaky-bucket level from
+     * openimp_t41_rate_control_window_target(): negative means the channel
+     * has already spent more than its budget.  That is exactly the state in
+     * which the controller has to raise QP, so it must not be rejected -
+     * doing so failed every P-picture completion once the stream overshot
+     * and left QP frozen at its initial value (8-12 Mbit/s at a 400 kbit/s
+     * CBR target on cam-F).  pictures_remaining <= gop_length and both bit
+     * counts are 32-bit, so the 64-bit sums below cannot overflow. */
+    if (!residual)
         return -1;
     budget = (uint64_t)pictures_remaining * picture_bits;
     prediction = (uint64_t)pictures_remaining * predicted_bits;
-    if (budget > (uint64_t)INT64_MAX - (uint32_t)history_bits ||
-        prediction > (uint64_t)INT64_MAX)
+    if (budget > (uint64_t)INT64_MAX / 2u ||
+        prediction > (uint64_t)INT64_MAX / 2u)
         return -1;
     value = (int64_t)budget + history_bits;
     *residual = value - (int64_t)prediction;
@@ -964,7 +970,12 @@ int openimp_t41_rate_control_complete_idr_picture(
                 next_selector.allocation_budget_bits;
     allocation_target = (int64_t)(numerator / denominator) +
                         next_selector.allocation_compensation_bits;
-    if (allocation_target < 0 || allocation_target > UINT32_MAX)
+    /* A large overshoot drives the compensation below the allocation;
+     * clamp like the P-picture selector does (target < 1 -> 1) instead of
+     * failing the IDR completion and freezing the controller. */
+    if (allocation_target < 0)
+        allocation_target = 0;
+    if (allocation_target > UINT32_MAX)
         return -1;
 
     weighted_target = (uint64_t)allocation_target *

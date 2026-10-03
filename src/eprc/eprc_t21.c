@@ -661,6 +661,10 @@ int EPRC21_Init(Eprc *rc, const EprcParams *params, uint8_t *slice)
     rc->qp_down_max = params->qp_down_max;
     rc->prev_type = -1;
     rc->e = rc->e_store;
+    /* The controller divides by these (the OEM traps on a zero divisor;
+     * i264e never passes one): refuse instead of SIGFPE. */
+    if (!params->gop || !params->fps_num || !params->fps_den)
+        return -1;
     EPRC21_SetupE(rc->e, params);
     size = eprc_block_size(rc->e, sz);
     block = calloc(1, size);
@@ -720,17 +724,17 @@ static int32_t eprc_update_qp(int32_t qp, int32_t ref, int32_t real)
     if (ratio < 1.0f) {                              /* 0x90960 */
         if (qp >= 52)
             return 0;
-        num = pow(2.0, (double)((qp - 4) / 6));
+        num = eprc_pow2i((qp - 4) / 6);
         for (s = 51; s >= qp; s--)
-            if (r < num / pow(2.0, (double)((s - 4) / 6)))
+            if (r < num / eprc_pow2i((s - 4) / 6))
                 return (int8_t)(s - qp);
         return 0;
     }
     if (qp < 0)                                      /* 0x9072c */
         return 0;
-    num = pow(2.0, (double)((qp - 4) / 6));
+    num = eprc_pow2i((qp - 4) / 6);
     for (s = qp; s >= 0; s--)
-        if (r < num / pow(2.0, (double)((s - 4) / 6)))
+        if (r < num / eprc_pow2i((s - 4) / 6))
             return (int8_t)(s - qp);
     return 0;
 }

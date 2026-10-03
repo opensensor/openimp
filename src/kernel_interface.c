@@ -240,7 +240,7 @@ int fs_open_device(int chn) {
 #if defined(PLATFORM_T20)
                       O_RDWR | O_CLOEXEC,
 #else
-                      O_RDWR | O_NONBLOCK,
+                      O_RDWR | O_NONBLOCK | O_CLOEXEC,
 #endif
                       0);
         if (fd >= 0) {

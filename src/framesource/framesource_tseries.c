@@ -1409,14 +1409,16 @@ int IMP_FrameSource_SetChnAttr(int chnNum, IMPFSChnAttr *chn_attr)
     if (fixed.pixFmt != PIX_FMT_RAW) {
         if (fixed.scaler.enable && (fixed.scaler.outheight & 0x7)) {
             int h = (fixed.scaler.outheight + 7) & ~7;
-            fprintf(stderr, "[FS] WARNING chn%d scaler.outheight=%d is not a multiple of 8, using %d\n",
-                    chnNum, fixed.scaler.outheight, h);
+            IMP_LOG_WARN("Framesource", "chn%d: scaler.outheight=%d is not a "
+                         "multiple of 8, using %d (as GetChnAttr reports)",
+                         chnNum, fixed.scaler.outheight, h);
             fixed.scaler.outheight = h;
         }
         if (fixed.picHeight & 0x7) {
             int h = (fixed.picHeight + 7) & ~7;
-            fprintf(stderr, "[FS] WARNING chn%d picHeight=%d is not a multiple of 8, using %d\n",
-                    chnNum, fixed.picHeight, h);
+            IMP_LOG_WARN("Framesource", "chn%d: picHeight=%d is not a multiple "
+                         "of 8, using %d (as GetChnAttr reports)",
+                         chnNum, fixed.picHeight, h);
             fixed.picHeight = h;
         }
     }

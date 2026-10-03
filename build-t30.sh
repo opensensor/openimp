@@ -43,6 +43,8 @@ mkdir -p "$output_dir"
 
 base_flags="-std=gnu99 -O2 -mabi=32 -march=mips32r2 -mabicalls"
 base_flags="$base_flags -fPIC -G0 -fno-stack-protector -DPLATFORM_T30 -DVPU_BASE=0x13200000"
+# Rootfs size: per-function/-datum sections so the link can drop what is unreferenced.
+base_flags="$base_flags -ffunction-sections -fdata-sections"
 # JPEG runs on the Helix VPU (src/t30/helix_jpeg.c).  OPENIMP_SW_JPEG=1 also
 # builds the software baseline encoder in, as a fallback for pictures the VPU
 # cannot take and for OPENIMP_HELIX_HW_JPEG=0 at run time; the default leaves
@@ -104,7 +106,7 @@ compile t30_rate_control src/t40/t31_rate_control.c -Werror
 compile t30_helix_jpeg src/t30/helix_jpeg.c -Werror
 
 "$compiler" -shared -nostartfiles \
-    -Wl,-soname,libimp.so \
+    -Wl,-soname,libimp.so -Wl,--gc-sections \
     -Wl,--version-script="$project_dir/src/t40/libimp.map" \
     -o "$output_dir/libimp.so" \
     "$output_dir/openimp_p0.o" \

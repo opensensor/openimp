@@ -8,3 +8,5 @@ driver/
 thingino-streamer/
 .vscode/
 /logs/
+__pycache__/
+*.pyc

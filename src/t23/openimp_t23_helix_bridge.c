@@ -1,3 +1,6 @@
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE /* mkostemp */
+#endif
 #include "openimp_t23_helix_bridge.h"
 
 #include <errno.h>
@@ -525,10 +528,13 @@ static int t23_start_worker_with(T23HelixBridge *bridge,
     snprintf(rmem_text, sizeof(rmem_text),
              "OPENIMP_T23_HELIX_RMEM=0x%08x:%u", bridge->rmem_phys,
              bridge->rmem_size);
-    bridge->shared_fd = mkstemp(shared_path);
+    /* Close-on-exec in the streamer, so a helper it forks (irprobe etc.)
+     * does not inherit them; the Helix helper gets its two fds cleared of
+     * FD_CLOEXEC in the child below, between fork and execve. */
+    bridge->shared_fd = mkostemp(shared_path, O_CLOEXEC);
     if (bridge->shared_fd < 0 ||
         ftruncate(bridge->shared_fd, bridge->shared_size) != 0 ||
-        socketpair(AF_UNIX, SOCK_STREAM, 0, sockets) != 0)
+        socketpair(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0, sockets) != 0)
         goto out;
     bridge->shared_buffer =
         mmap(NULL, bridge->shared_size, PROT_READ | PROT_WRITE, MAP_SHARED,
@@ -553,6 +559,9 @@ static int t23_start_worker_with(T23HelixBridge *bridge,
     pid = fork();
     if (pid == 0) {
         close(sockets[0]);
+        if (fcntl(sockets[1], F_SETFD, 0) != 0 ||
+            fcntl(bridge->shared_fd, F_SETFD, 0) != 0)
+            _exit(127);
         execve(helper, helper_argv, helper_environment);
         _exit(127);
     }

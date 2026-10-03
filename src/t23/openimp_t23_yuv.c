@@ -247,6 +247,10 @@ int IMP_Encoder_YuvEncode(void *h, IMPFrameInfo frame,
             if (stream)
                 IMP_LOG_ERR("Encoder", "YuvEncode: access unit %u exceeds "
                             "buffer %u", stream->length, encOut->outLen);
+            /* The encoder has already taken this picture as the reference
+             * for the next one; the caller never gets it, so the next
+             * picture is coded as an IDR instead of predicting from it. */
+            (void)OpenIMP_T30_HelixRequestIDR(encoder->native);
             result = -1;
         }
         if (result == 0) {

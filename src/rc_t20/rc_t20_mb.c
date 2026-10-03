@@ -11,12 +11,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-/* E offsets of the macroblock maps */
-#define MB_CLASS   336          /* int per macroblock */
-#define MB_LUMA    0x40150      /* byte per macroblock: centre luma */
-#define MB_DELTA   0x5014f      /* + class (1..7): QP offset (byte) */
-#define MB_QPTAB   0x50158      /* VPU QP table */
-#define MB_QPTAB_SIZE 0x40000u
+/* E offsets of the macroblock maps: rc_t20_internal.h (MB_*) */
 
 static inline uint32_t absdiff(uint8_t a, uint8_t b)
 {
@@ -53,6 +48,7 @@ void RCT20_CalMBFlag(uint8_t *E, const uint8_t *luma)
 {
     uint32_t stride = RU32(E, 224);
     int32_t rows = RI32(E, 232), cols = RI32(E, 228);
+    uint32_t n = rct20_mbs(E);
     int32_t r, c, i;
 
     if (luma && rows > 0 && cols > 0) {
@@ -75,7 +71,7 @@ void RCT20_CalMBFlag(uint8_t *E, const uint8_t *luma)
                 if (!cls)
                     cls = (v < RU32(E, 292) && h < RU32(E, 316)) ? 6u : 7u;
                 RU32(E, MB_CLASS + 4 * (r * cols + c)) = cls;
-                RU8(E, MB_LUMA + r * cols + c) = bottom[16 * c + 7];
+                RU8(E, MB_LUMA(n) + r * cols + c) = bottom[16 * c + 7];
             }
         }
     }
@@ -195,8 +191,10 @@ static void rct20_publish_table(uint8_t *E, const uint8_t *qp, int32_t n,
 {
     float mean;
 
-    memset(E + MB_QPTAB, 0, MB_QPTAB_SIZE);
-    RI32(E, RX(344)) = RCT20_QPTabConv(qp, n, E + MB_QPTAB);
+    uint32_t m = rct20_mbs(E);      /* == n when n > 0 */
+
+    memset(E + MB_QPTAB(m), 0, MB_QPTAB_SIZE(m));
+    RI32(E, RX(344)) = RCT20_QPTabConv(qp, n, E + MB_QPTAB(m));
     mean = (float)(int64_t)sum / (float)n;
     RU32(E, RX(352)) = (mean >= 2147483648.0f)
         ? ((uint32_t)rct20_trunc_f(mean - 2147483648.0f) | 0x80000000u)
@@ -211,10 +209,8 @@ void RCT20_MBQpReencode(uint8_t *E)
     int32_t n = rct20_mul(cols, rows), r, c;
     uint32_t qp = RU8(E, 217);
     uint64_t sum = 0;
-    uint8_t *map = malloc(n > 0 ? (size_t)n : 1u);
+    uint8_t *map = E + MB_MAP(rct20_mbs(E));
 
-    if (!map)
-        return;
     for (r = 0; r < rows; r++) {
         for (c = 0; c < cols; c++) {
             int32_t mb = r * cols + c;
@@ -230,7 +226,6 @@ void RCT20_MBQpReencode(uint8_t *E)
         }
     }
     rct20_publish_table(E, map, n, sum);
-    free(map);
 }
 
 /* Class QP offsets by scene (0xd15ec, copied to the stack by CalMBQP):
@@ -321,9 +316,7 @@ void RCT20_CalMBQP(uint8_t *E)
     if (!skip && row < 32)
         for (i = 0; i < 7; i++)
             RU8(E, MB_DELTA + 1 + i) = (uint8_t)rct20_mb_offsets[row][i];
-    map = malloc(n > 0 ? (size_t)n : 1u);
-    if (!map)
-        return;
+    map = E + MB_MAP(rct20_mbs(E));
     for (r = 0; r < rows; r++) {
         for (c = 0; c < cols; c++) {
             int32_t mb = r * cols + c;
@@ -331,7 +324,7 @@ void RCT20_CalMBQP(uint8_t *E)
             uint32_t d = RU8(E, MB_DELTA + cls), q;
 
             if (cls < 4u) {
-                uint8_t y = RU8(E, MB_LUMA + mb);
+                uint8_t y = RU8(E, MB_LUMA(n) + mb);
 
                 if (!(q0 < 41u))
                     q0 = 40;            /* stays for the rest of the picture */
@@ -355,5 +348,4 @@ void RCT20_CalMBQP(uint8_t *E)
         }
     }
     rct20_publish_table(E, map, n, sum);
-    free(map);
 }

@@ -74,6 +74,8 @@ mkdir -p "$output_dir"
 
 base_flags="-std=gnu99 -O2 -mabi=32 -march=mips32r2 -mabicalls"
 base_flags="$base_flags -fPIC -G0 -fno-stack-protector -DPLATFORM_T41"
+# Rootfs size: per-function/-datum sections so the link can drop what is unreferenced.
+base_flags="$base_flags -ffunction-sections -fdata-sections"
 strict_flags="$base_flags -Wall -Wextra -Werror"
 repo_includes="-I$project_dir/include -I$project_dir/src"
 
@@ -129,7 +131,7 @@ do
 done
 
 "$compiler" -shared -nostartfiles \
-    -Wl,-soname,libimp.so \
+    -Wl,-soname,libimp.so -Wl,--gc-sections \
     -Wl,--version-script="$project_dir/src/t40/libimp.map" \
     -o "$output_dir/libimp.so" \
     "$output_dir/openimp_p0.o" \
