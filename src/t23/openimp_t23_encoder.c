@@ -24,6 +24,7 @@
 
 #include <imp/imp_encoder.h>
 
+#include "codec.h"
 #include "imp_log_int.h"
 #include "t23/openimp_t23_encoder.h"
 #include "t23/openimp_t23_helix_bridge.h"
@@ -385,6 +386,20 @@ static int set_hskip_cb(OpenIMPT23P2View *v, void *arg)
         if (push(v->codec, v->codec_type, T23_I264E_HSKIP, 0, attr,
                  sizeof(*attr)) != 0)
             return -1;
+        /* native encoder: the IDR period in GOPs (maxSameSceneCnt for the
+         * skip types N1X and H1M, as CreateChn); the OEM
+         * i264e_reconfig_hskip_set -> i264e_idr_reconfig codes an IDR and
+         * restarts the rate control, so does the Helix encoder on the
+         * change (OpenIMP_T30_HelixReconfigure) */
+        if (v->codec) {
+            int ok = attr->skipType == IMP_Encoder_STYPE_N1X ||
+                     attr->skipType == IMP_Encoder_STYPE_H1M_FALSE ||
+                     attr->skipType == IMP_Encoder_STYPE_H1M_TRUE;
+
+            (void)AL_Codec_Encode_SetSameSceneGops(
+                v->codec, ok && attr->maxSameSceneCnt > 0
+                              ? (uint32_t)attr->maxSameSceneCnt : 0u);
+        }
     }
     /* OEM: the channel attribute follows (also for idle channels) */
     v->attr->rcAttr.attrHSkip.hSkipAttr = *attr;
@@ -751,8 +766,11 @@ int IMP_Encoder_GetFisheyeEnableStatus(int channel, int *enable)
     return 0;
 }
 
-/* OEM: share one stream read buffer between channels, before creation.
- * Each Helix session owns its buffers here. */
+/* OEM: before creation; CreateChn turns it into i264e param[52] (default
+ * 1): one shared reference/reconstruction ring per channel (hwicodec cfg
+ * +0x2c -> BUF_SHARE_CFG) and the rate controller re-encodes only IDR
+ * pictures.  Kept only: the native Helix encoder follows
+ * OPENIMP_REF_SHARE (unset = on, as the OEM default). */
 int IMP_Encoder_SetRdBufShare(int channel, int enable)
 {
     if (!valid_channel(channel) ||
