@@ -43,14 +43,14 @@
 
 #define FAKE_FD 4242
 #define RMEM_PHYS 0x02a00000u
-#define RMEM_SIZE (24u << 20)
+#define RMEM_SIZE (48u << 20)
 
 /* ------------------------------------------------------------------ */
 /* fake reserved memory                                                */
 
 static uint8_t *rmem;
 static uint32_t rmem_used;
-static struct { uint32_t phys, size; } allocations[64];
+static struct { uint32_t phys, size; } allocations[128];
 static unsigned int allocation_count;
 
 static uint32_t phys_of(const void *virt)
@@ -80,7 +80,7 @@ int DMA_AllocDescriptor(IMPDMABufferInfo *info, int size, const char *tag)
     uint32_t aligned = ((uint32_t)size + 4095u) & ~4095u;
 
     (void)tag;
-    if (rmem_used + aligned > RMEM_SIZE || allocation_count >= 64u)
+    if (rmem_used + aligned > RMEM_SIZE || allocation_count >= 128u)
         return -1;
     memset(info, 0, sizeof(*info));
     info->virt_addr = (uint32_t)(uintptr_t)(rmem + rmem_used);
@@ -103,7 +103,7 @@ int DMA_AllocDescriptorTop(IMPDMABufferInfo *info, int size,
     uint32_t aligned = ((uint32_t)size + 4095u) & ~4095u;
 
     (void)tag;
-    if (rmem_top < rmem_used + aligned || allocation_count >= 64u)
+    if (rmem_top < rmem_used + aligned || allocation_count >= 128u)
         return -1;
     rmem_top -= aligned;
     memset(info, 0, sizeof(*info));
@@ -989,6 +989,23 @@ static int rc_test(void)
     limited_pp = rc_run(&params, 1, 2, &first);
     assert(first == 28u);
     assert(limited_pp == 1u);
+
+    /* app values of 0 (or out of range) take the OEM i264e defaults: QP
+     * steps 3/15 (not unlimited), also for CBR; first IDR is unbiased */
+    rc_params(&params, HW_RC_MODE_CBR);
+    params.rc_flags = HW_RC_FLAG_APP;
+    (void)rc_run(&params, 3, 15, &first);
+    assert(first == 30u);
+    rc_params(&params, HW_RC_MODE_VBR);
+    params.rc_flags = HW_RC_FLAG_APP;
+    params.change_pos = 7;      /* out of 50..100 -> 80 */
+    params.quality_level = 9;   /* out of 0..7 -> 4 */
+    (void)rc_run(&params, 3, 15, &first);
+    assert(first == 30u);
+    rc_params(&params, HW_RC_MODE_VBR);
+    params.rc_flags = HW_RC_FLAG_APP;
+    (void)rc_run(&params, 3, 15, &first);
+    assert(first == 30u);
 
     /* out-of-range iBiasLvl (VBR: -3..3) is ignored like the OEM does */
     rc_params(&params, HW_RC_MODE_VBR);

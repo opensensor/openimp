@@ -196,8 +196,9 @@ typedef struct {
 #if defined(PLATFORM_T23)
 /* The Helix rate-control extras of the application's IMPEncoderAttrRcMode
  * (HWEncoderParams with HW_RC_FLAG_APP), mapped onto the native GOP-level
- * controller.  All zero - no extras, FIXQP, or values outside the OEM
- * ranges - is the historic native behaviour, unchanged.
+ * controller.  Without HW_RC_FLAG_APP and for FIXQP the historic native
+ * behaviour is unchanged; with it, a 0 or out-of-range value takes the OEM
+ * i264e default (see T23_RC_DEF_*), as the OEM YuvInit does.
  *
  * Vendor-verified (T23 1.3.0 libimp: IMP_Encoder_YuvInit,
  * i264e_param_default, i264e_ratecontrol_init): the accepted ranges
@@ -226,6 +227,9 @@ typedef struct {
     uint32_t frm_step;          /* 0: unlimited */
     uint32_t gop_step;
     int32_t bias;
+    uint32_t static_time;       /* effective values after defaults */
+    uint32_t change_pos;
+    uint32_t quality_level;
     int smart;
     int app;
 } T23RcConfig;
@@ -719,9 +723,21 @@ static void t30_normalize_params(HWEncoderParams *params,
 }
 
 #if defined(PLATFORM_T23)
+/* The OEM YuvInit leaves the i264e_param_default value in place when the
+ * application passes 0 or a value outside the accepted range (T23 1.3.0
+ * i264e_param_default: staticTime 2, changePos 80, qualityLvl 4, frmQPStep 3,
+ * gopQPStep 15; iBiasLvl 0).  qualityLvl and iBiasLvl accept 0 as given. */
+#define T23_RC_DEF_STATIC_TIME  2u
+#define T23_RC_DEF_CHANGE_POS   80u
+#define T23_RC_DEF_QUALITY_LVL  4u
+#define T23_RC_DEF_FRM_STEP     3u
+#define T23_RC_DEF_GOP_STEP     15u
+
 static void t23_rc_config(const HWEncoderParams *params, T23RcConfig *rc)
 {
-    uint32_t change_pos = 0;
+    uint32_t change_pos;
+    uint32_t quality_level;
+    uint32_t static_time;
     uint32_t floor_percent = 0;
     int32_t bias_limit;
 
@@ -734,28 +750,39 @@ static void t23_rc_config(const HWEncoderParams *params, T23RcConfig *rc)
     rc->app = 1;
     rc->smart = params->rc_mode == HW_RC_MODE_VBR &&
                 (params->rc_flags & HW_RC_FLAG_SMART);
-    rc->frm_step = params->frm_qp_step > 51u ? 51u : params->frm_qp_step;
-    rc->gop_step = params->gop_qp_step > 51u ? 51u : params->gop_qp_step;
+    /* The OEM YuvInit keeps its i264e_param_default value for a QP step
+     * of 0 (frmQPStep 3, gopQPStep 15), so 0 is not "unlimited". */
+    rc->frm_step = !params->frm_qp_step ? T23_RC_DEF_FRM_STEP :
+                   params->frm_qp_step > 51u ? 51u : params->frm_qp_step;
+    rc->gop_step = !params->gop_qp_step ? T23_RC_DEF_GOP_STEP :
+                   params->gop_qp_step > 51u ? 51u : params->gop_qp_step;
     bias_limit = rc->smart ? 10 : 3;
     if (params->bias_level >= -bias_limit && params->bias_level <= bias_limit)
         rc->bias = params->bias_level;
     if (params->rc_mode != HW_RC_MODE_VBR)
         return;
 
-    if (params->change_pos >= 50u && params->change_pos <= 100u) {
-        change_pos = params->change_pos;
-        rc->target_bitrate = (uint32_t)(((uint64_t)params->bitrate *
-                                         change_pos) / 100u);
-        rc->raise_percent = 100u;
-    }
-    if (rc->smart ? params->quality_level <= 6u
-                  : params->quality_level <= 7u)
-        floor_percent = rc->smart ? 20u + 10u * params->quality_level
-                                  : 80u - 10u * params->quality_level;
+    change_pos = params->change_pos;
+    if (change_pos < 50u || change_pos > 100u)
+        change_pos = T23_RC_DEF_CHANGE_POS;
+    quality_level = params->quality_level;
+    if (quality_level > (rc->smart ? 6u : 7u))
+        quality_level = T23_RC_DEF_QUALITY_LVL;
+    static_time = params->static_time;
+    if (static_time < 1u || static_time > 60u)
+        static_time = T23_RC_DEF_STATIC_TIME;
+    rc->static_time = static_time;
+    rc->change_pos = change_pos;
+    rc->quality_level = quality_level;
+    rc->target_bitrate = (uint32_t)(((uint64_t)params->bitrate *
+                                     change_pos) / 100u);
+    rc->raise_percent = 100u;
+    floor_percent = rc->smart ? 20u + 10u * quality_level
+                              : 80u - 10u * quality_level;
     if (floor_percent) {
         uint32_t raise = rc->raise_percent ? rc->raise_percent : 110u;
         uint32_t lower = floor_percent * 100u /
-                         (change_pos ? change_pos : 100u);
+                         change_pos;
 
         /* keep a dead band between lowering and raising QP */
         if (lower + 10u > raise)
@@ -764,9 +791,8 @@ static void t23_rc_config(const HWEncoderParams *params, T23RcConfig *rc)
             lower = 5u;
         rc->lower_percent = lower;
     }
-    if (params->static_time >= 1u && params->static_time <= 60u &&
-        params->fps_num && params->fps_den && params->gop_length) {
-        uint64_t frames = ((uint64_t)params->static_time *
+    if (params->fps_num && params->fps_den && params->gop_length) {
+        uint64_t frames = ((uint64_t)static_time *
                                params->fps_num + params->fps_den / 2u) /
                           params->fps_den;
         uint64_t gops = (frames + params->gop_length / 2u) /
@@ -812,7 +838,7 @@ static void t23_rc_log(const T30HelixEncoder *encoder, const char *what)
     IMP_LOG_INFO("Encoder", "T23 Helix rc %s: %s max=%u target=%u bit/s "
                  "qp=[%u,%u] band=%u-%u%% persist=%u/%u GOPs "
                  "frmQPStep=%u gopQPStep=%u iBias=%d loop=%d app=%d "
-                 "staticTime=%u changePos=%u qualityLvl=%u (adaptive=%u "
+                 "staticTime=%u changePos=%u qualityLvl=%u (app %u/%u/%u; adaptive=%u "
                  "gopRelation=%u: no effect)", what, t23_rc_mode_name(encoder),
                  p->bitrate, rc->target_bitrate, p->min_qp, p->max_qp,
                  rc->lower_percent ? rc->lower_percent : 80u,
@@ -821,6 +847,7 @@ static void t23_rc_log(const T30HelixEncoder *encoder, const char *what)
                  rc->under_gops ? rc->under_gops : 6u,
                  rc->frm_step, rc->gop_step, rc->bias,
                  encoder->rate_control_enabled, rc->app,
+                 rc->static_time, rc->change_pos, rc->quality_level,
                  p->static_time, p->change_pos, p->quality_level,
                  (p->rc_flags & HW_RC_FLAG_ADAPTIVE) != 0,
                  (p->rc_flags & HW_RC_FLAG_GOP_RELATION) != 0);

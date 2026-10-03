@@ -109,8 +109,10 @@ keeps only the number of writes and an FNV-1a digest of the register order.
   the last P picture; VBR/SMART target changePos% of maxBitRate and raise QP
   above it, lower QP below maxBitRate * (80 - 10 * qualityLvl)% (SMART:
   (20 + 10 * qualityLvl)%, higher = better); staticTime sets how many GOPs
-  the rate must stay outside that band before QP moves. Values out of range
-  disable the feature. The log shows the rate control in effect
+  the rate must stay outside that band before QP moves. A value of 0 or out of
+  range takes the OEM `i264e_param_default` value, as the OEM `YuvInit` does:
+  staticTime 2, changePos 80, qualityLvl 4 (0 is a valid qualityLvl and
+  iBiasLvl and stays), frmQPStep 3, gopQPStep 15. The log shows the rate control in effect
   (`T23 Helix rc ready:` / `rc reconfigured:`); `OPENIMP_T23_RC_STATS=<s>`
   adds bitrate and I/P QP statistics every `<s>` seconds.
 - `src/t40/codec-t40.c`: backend selection, fallback and failure limit.
