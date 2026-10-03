@@ -77,6 +77,8 @@ struct IvsMoveV2 {
     int ncomp;
     struct v2_track tr[V2_MAX_TRACKS];
     int ntr;
+    int nmov;                   /* moving cells of the last run */
+    int lab_dirty;              /* lab[] holds labels */
     int min_cells;              /* effective: config, vendor-sense area */
     uint16_t next_id;
     uint32_t seq;
@@ -370,11 +372,11 @@ static void uf_union(uint16_t *parent, uint16_t a, uint16_t b)
 }
 
 /* Global brightness ratio frame / background, Q12: median of the per-cell
- * ratios of every third cell (Q5 histogram; cells that moved last frame
+ * ratios of every fifth cell (Q5 histogram; cells that moved last frame
  * left out unless that is most of them), refined by the mean ratio of the
  * cells around the median. The ratios are parked in exc[] (the cell loop
  * rewrites it afterwards). */
-#define V2_RATIO_STEP 3
+#define V2_RATIO_STEP 5
 static int32_t v2_gain_ratio(IvsMoveV2 *v2)
 {
     uint32_t hist[V2_HIST_BINS];
@@ -463,6 +465,7 @@ static void v2_objects(IvsMoveV2 *v2)
         struct v2_track *t = &v2->tr[0];
         int any = 0, exc = 0;
 
+        v2->lab_dirty = 1;
         t->x0 = (int)gw; t->y0 = (int)gh; t->x1 = -1; t->y1 = -1;
         t->cells = 0;
         for (c = 0; c < v2->ncell; c++) {
@@ -502,6 +505,14 @@ static void v2_objects(IvsMoveV2 *v2)
         return;
     }
 
+    /* nothing moves: no labelling, the tracks just miss a frame */
+    if (!v2->nmov) {
+        if (v2->lab_dirty)
+            memset(v2->lab, 0, v2->ncell * sizeof(*v2->lab));
+        v2->lab_dirty = 0;
+        goto track;
+    }
+    v2->lab_dirty = 1;
     /* 8-connected components, two passes with union-find */
     for (y = 0; y < gh; y++) {
         for (x = 0; x < gw; x++) {
@@ -581,6 +592,7 @@ static void v2_objects(IvsMoveV2 *v2)
             k->exc += v2->exc[c];
         }
     }
+track:
     /* track: match each existing track to the largest overlapping component */
     for (i = 0; i < v2->ntr; i++) {
         struct v2_track *t = &v2->tr[i];
@@ -658,7 +670,8 @@ void ivs_move_v2_run(IvsMoveV2 *v2, int isp_mode, uint32_t total_gain,
     const int32_t kk = cfg->thresh_k * sc >> 4;
     const uint32_t area = (uint32_t)v2_sense_area[sense < 0 || sense > 8 ? 2 : sense] * 4u;
     const uint32_t cell_px = v2->cs * v2->cs;
-    uint32_t reason = 0, c;
+    uint32_t reason = 0, c, phase;
+    int nmov;
     int32_t g;
     int suppressed, learning;
 
@@ -724,6 +737,11 @@ void ivs_move_v2_run(IvsMoveV2 *v2, int isp_mode, uint32_t total_gain,
         v2->supp_reason = 0;
     learning = v2->warm < V2_WARMUP;
 
+    /* The noise statistics (dev, tdv) and the flicker share (act) of a
+     * quarter of the cells are updated per frame, at four times the rate:
+     * the same time constants for a quarter of the work. */
+    phase = v2->seq & 3;
+    nmov = 0;
     for (c = 0; c < v2->ncell; c++) {
         int32_t v4 = (int32_t)v2->cur[c] << 4;
         int32_t mu = v2->mu[c];
@@ -731,8 +749,9 @@ void ivs_move_v2_run(IvsMoveV2 *v2, int isp_mode, uint32_t total_gain,
         int32_t d = v4 - e;
         int32_t ad = d < 0 ? -d : d;
         int32_t thr = (kk * (int32_t)v2->dev[c]) >> 4;
-        int32_t t4, tb, tthr;
-        int m;
+        int32_t t4 = (int32_t)v2->tex[c] << 2;
+        int32_t tb = v2->tbg[c];
+        int m = 0;
 
         if (thr < mind)
             thr = mind;
@@ -740,26 +759,24 @@ void ivs_move_v2_run(IvsMoveV2 *v2, int isp_mode, uint32_t total_gain,
          * (lamps, leaves, water) needs three times the threshold */
         if (bg && v2->act[c] > V2_ACT_LIMIT)
             thr *= 3;
-        m = !suppressed && !learning && ad > thr;
-        /* texture: a change of the cell mean that keeps the texture of the
-         * background, scaled by the cell's own brightness ratio, is light
-         * (shadow, lamp, reflection, headlights), not an object; very large
-         * mean changes count anyway */
-        t4 = (int32_t)v2->tex[c] << 2;
-        tb = v2->tbg[c];
-        tthr = (kk * (int32_t)v2->tdv[c]) >> 4;
-        if (tthr < V2_TEX_FLOOR)
-            tthr = V2_TEX_FLOOR;
-        if (m && bg && ad <= 3 * thr) {
-            int32_t r8 = (v4 << 8) / (mu > 64 ? mu : 64);
-            int32_t et = (tb * (r8 > 1024 ? 1024 : r8)) >> 8;
+        if (ad > thr && !suppressed && !learning) {
+            m = 1;
+            /* texture: a change of the cell mean that keeps the texture of
+             * the background, scaled by the cell's own brightness ratio, is
+             * light (shadow, lamp, reflection, headlights), not an object;
+             * very large mean changes count anyway */
+            if (bg && ad <= 3 * thr) {
+                int32_t tthr = (kk * (int32_t)v2->tdv[c]) >> 4;
+                int32_t r8 = (v4 << 8) / (mu > 64 ? mu : 64);
+                int32_t et = (tb * (r8 > 1024 ? 1024 : r8)) >> 8;
 
-            m = V2_ABS(t4 - et) > tthr;
+                if (tthr < V2_TEX_FLOOR)
+                    tthr = V2_TEX_FLOOR;
+                m = V2_ABS(t4 - et) > tthr;
+            }
         }
-        if (bg && !suppressed && !learning)
-            v2->act[c] = (uint8_t)(v2->act[c] +
-                                   (((m ? 255 : 0) - (int)v2->act[c]) >> 6));
         v2->mov[c] = (uint8_t)m;
+        nmov += m;
         if (m) {
             int32_t x = (ad << 4) / thr;
 
@@ -767,42 +784,45 @@ void ivs_move_v2_run(IvsMoveV2 *v2, int isp_mode, uint32_t total_gain,
         } else {
             v2->exc[c] = 0;
         }
-        if (suppressed || learning)
+        if (suppressed || learning) {
             mu += (v4 - mu) >> 1;
-        else if (!bg)
-            mu = v4;
-        else if (!m)
-            mu += (v4 - mu) >> ls;
-        else
-            mu += (v4 - mu) >> (ls + 4);
-        v2->mu[c] = (uint16_t)mu;   /* between old mu and v4: fits */
-        if (suppressed || learning)
             tb += (t4 - tb) >> 1;
-        else if (!bg)
+        } else if (!bg) {
+            mu = v4;
             tb = t4;
-        else if (!m)
+        } else if (!m) {
+            mu += (v4 - mu) >> ls;
             tb += (t4 - tb) >> ls;
-        else
+        } else {
+            mu += (v4 - mu) >> (ls + 4);
             tb += (t4 - tb) >> (ls + 4);
+        }
+        v2->mu[c] = (uint16_t)mu;   /* between old and new value: fits */
         v2->tbg[c] = (uint16_t)tb;
-        if (!suppressed) {
+        if ((c & 3) != phase || suppressed)
+            continue;
+        if (bg && !learning)
+            v2->act[c] = (uint8_t)(v2->act[c] +
+                                   (((m ? 255 : 0) - (int)v2->act[c]) >> 4));
+        {
             int32_t cl = ad < 2 * thr ? ad : 2 * thr;
             int32_t dv = (int32_t)v2->dev[c];
+            int32_t tthr = (kk * (int32_t)v2->tdv[c]) >> 4;
+            int32_t eg = (int32_t)(((uint32_t)tb * (uint32_t)g) >> 12);
+            int32_t dt = V2_ABS(t4 - eg);
+            int32_t tv = (int32_t)v2->tdv[c];
 
-            dv += (cl - dv) >> (m ? 7 : 4);
+            dv += (cl - dv) >> (m ? 5 : 2);
             v2->dev[c] = (uint16_t)(dv < 1 ? 1 : dv > 65535 ? 65535 : dv);
-            {
-                int32_t eg = (int32_t)(((uint32_t)v2->tbg[c] * (uint32_t)g) >> 12);
-                int32_t dt = V2_ABS(t4 - eg);
-                int32_t tv = (int32_t)v2->tdv[c];
-
-                if (dt > 2 * tthr)
-                    dt = 2 * tthr;
-                tv += (dt - tv) >> (m ? 7 : 4);
-                v2->tdv[c] = (uint16_t)(tv < 1 ? 1 : tv > 65535 ? 65535 : tv);
-            }
+            if (tthr < V2_TEX_FLOOR)
+                tthr = V2_TEX_FLOOR;
+            if (dt > 2 * tthr)
+                dt = 2 * tthr;
+            tv += (dt - tv) >> (m ? 5 : 2);
+            v2->tdv[c] = (uint16_t)(tv < 1 ? 1 : tv > 65535 ? 65535 : tv);
         }
     }
+    v2->nmov = nmov;
     if (v2->warm < 0xffff)
         v2->warm++;
     if (suppressed || learning) {
