@@ -354,6 +354,22 @@ Environment:
   T20, at most 4).  Off by default until tested on a T10 camera, also
   because OEM VBR codes most pictures twice (see "T10").  The log shows
   `T10 rc: OEM <mode> ...` when it starts.
+- `OPENIMP_T20_RC_IAWARE=1` (T20 controller, default off): an OpenIMP
+  extra (`RcT20Params.iaware`), not OEM behaviour.  The OEM P target
+  (`RC_H264_calcPFrameQp`) is half "remaining GOP budget / pictures left"
+  and half the nominal bits per picture (rcSt+128), and the nominal alone
+  once the GOP budget is spent - always after a large I picture - so the
+  I picture is never paid back: with the 50-150 x I/P size ratios of
+  static 1080p scenes every GOP overshoots by about its I picture (device:
+  CBR +19 % at 1200 kbit/s; host study 2-2.4 x in static scenes).  With
+  the extra the nominal is (nominal x GOP - bits of the last I) /
+  (GOP - 1), at least nominal / 8; the last I size is kept in rcSt+868,
+  which the OEM code does not use.  Host study
+  (docs/RC_BEYOND_VENDOR_STUDY.md on `claude/rc-beyond-vendor`, P2): rate
+  2.0-2.4 x -> 1.05-1.26 x, buffer peak 61-84 s -> 8-18 s, mean QP +3
+  (the price of meeting the rate).  `tests/rc_t20`: OEM vectors with it
+  off, and a static scene (CBR 2.43 -> 1.16 x, VBR 2.01 -> 1.09 x).  The
+  start log line shows `iaware`.
 - `OPENIMP_T10_RC_SUPERFRM` (with `OPENIMP_T10_RC=1`): an OpenIMP extra
   (`RcT10Params.superfrm_bits`), not OEM behaviour, **on by default**
   whenever the T10 OEM controller runs: the super-frame thresholds are

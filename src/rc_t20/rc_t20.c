@@ -268,6 +268,13 @@ void RCT20_CalcPFrameQp(uint8_t *P, uint8_t *S)
     used = rct20_sub(cur, RI32(S, 220));
     RI32(S, 212) = used;
     tgt = RI32(S, 128);
+    if (RI32(S, 868) > 0 && gop > 1) {                  /* OpenIMP iaware */
+        int64_t v = ((int64_t)tgt * gop - RI32(S, 868)) / (gop - 1);
+
+        if (v < tgt / 8)
+            v = tgt / 8;
+        tgt = (int32_t)v;
+    }
     if (RI32(S, 216) >= 0) {
         int32_t per = rct20_div(RI32(S, 216), rct20_sub(gop, n));
         int32_t dev = rct20_trunc_d(w * (double)rct20_sub(used, base));
@@ -1644,6 +1651,8 @@ int RCT20_End(RcT20 *rc, const RcT20Stats *stats, RcT20Picture *pic)
         pic->qp = RU8(E, 217);
         return 1;
     }
+    if (rc->params.iaware && RI8(E, 213))               /* OpenIMP iaware */
+        RI32(rc->s, 868) = stats->bits ? (int32_t)stats->bits : 1;
     return 0;
 }
 

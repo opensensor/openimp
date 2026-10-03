@@ -50,6 +50,70 @@ static int table_differs(const RcT20 *rc, const char *line)
     return n && *(const uint32_t *)(const void *)(rc->e + 0x90160) != mean;
 }
 
+/* OpenIMP extra iaware: off is the OEM controller (vectors above); on a
+ * static scene with I pictures ~70 x the P pictures (as recorded at
+ * 1080p), the OEM overshoots the CBR bit rate by about the I pictures,
+ * the I-aware P budget brings it back near the target. */
+static double iaware_rate(uint32_t method, uint32_t on)
+{
+    RcT20Params p;
+    RcT20 rc;
+    RcT20Picture pic;
+    RcT20Stats st;
+    double total = 0.0;
+    uint32_t n;
+
+    RCT20_DefaultParams(&p);
+    p.method = method;
+    p.width = 1920;
+    p.height = 1080;
+    p.gop = 50;
+    p.fps_num = 15;
+    p.min_qp = 15;
+    p.max_qp = 45;
+    p.bitrate = 1500;
+    p.max_bitrate = 1500;
+    p.mb_rc = 0;
+    p.iaware = on;
+    memset(&rc, 0, sizeof(rc));
+    if (RCT20_Init(&rc, &p) != 0)
+        return -1.0;
+    for (n = 0; n < 450; n++) {
+        int idr = n % 50u == 0;
+        double b;
+        int q;
+
+        RCT20_Start(&rc, idr, NULL, 0, &pic);
+        b = idr ? 4200000.0 : 60000.0;
+        for (q = 30; q < pic.qp; q++)
+            b *= idr ? 0.906 : 0.891;
+        for (q = pic.qp; q < 30; q++)
+            b /= idr ? 0.906 : 0.891;
+        memset(&st, 0, sizeof(st));
+        st.cmpx = idr ? 8100000u : 2073600u + 5000u * (n % 7u);
+        st.bits = (uint32_t)b;
+        st.reg[0] = 80u | 80u << 16;
+        st.reg[1] = 240u;
+        st.reg[2] = 240u;
+        total += b;
+        for (q = 0; q < 4 && RCT20_End(&rc, &st, &pic) == 1; q++)
+            ;
+    }
+    RCT20_Free(&rc);
+    return total / (450.0 / 15.0) / 1000.0 / 1500.0;
+}
+
+static int iaware_check(void)
+{
+    double off = iaware_rate(1, 0), on = iaware_rate(1, 1);
+    double voff = iaware_rate(2, 0), von = iaware_rate(2, 1);
+
+    printf("rc_t20 iaware: CBR rate %.2f -> %.2f, VBR %.2f -> %.2f "
+           "(x configured bit rate)\n", off, on, voff, von);
+    return !(off > 1.5 && on < 0.75 * off && on > 0.6 && on < 1.4 &&
+             von < 0.8 * voff);
+}
+
 int main(int argc, char **argv)
 {
     const char *path = argc > 1 ? argv[1] : "rc_t20_vectors.txt";
@@ -145,5 +209,9 @@ int main(int argc, char **argv)
     RCT20_Free(&rc);
     printf("rc_t20: %ld decisions of %d scenarios checked, %ld differ\n",
            checked, scenario + 1, failed);
+    if (iaware_check()) {
+        fprintf(stderr, "rc_t20 iaware check failed\n");
+        return 1;
+    }
     return failed ? 1 : 0;
 }

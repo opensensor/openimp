@@ -65,6 +65,14 @@ typedef struct {
     uint32_t mb_rc2;            /* [272] (default 1) */
     int32_t super_i_bits;       /* [280] (default 19660800) */
     int32_t super_p_bits;       /* [284] (default 14043429) */
+    /* OpenIMP extra, not OEM (0 = OEM): I-aware P budget.  The OEM P
+     * target falls back to the nominal bits per picture (rcSt+128) once
+     * the GOP budget is spent, so a large I picture is never paid back
+     * (2-3 x the bit rate in static scenes); with iaware the nominal is
+     * (nominal x GOP - bits of the last I) / (GOP - 1), at least
+     * nominal / 8.  Keeps the last I size in rcSt+868 (unused by the OEM
+     * code; stays 0 when off). */
+    uint32_t iaware;
 } RcT20Params;
 
 void RCT20_DefaultParams(RcT20Params *params);

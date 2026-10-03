@@ -1335,6 +1335,10 @@ static void t20_rc_start(T30HelixEncoder *encoder)
     env = getenv("OPENIMP_T20_MBRC");
     encoder->t20rc_mb = env && env[0] == '1';
     p.mb_rc = encoder->t20rc_mb ? 1u : 0u;
+    /* OPENIMP_T20_RC_IAWARE=1: I-aware P budget (OpenIMP extra, default
+     * off = OEM decisions), see docs/T20_RC.md */
+    env = getenv("OPENIMP_T20_RC_IAWARE");
+    p.iaware = env && env[0] == '1';
     encoder->t20rc.e = NULL;
     if (RCT20_Init(&encoder->t20rc, &p) != 0) {
         IMP_LOG_WARN("Encoder", "T20: OEM rate control init failed, using "
@@ -1347,12 +1351,13 @@ static void t20_rc_start(T30HelixEncoder *encoder)
     encoder->t20rc_frames = 0u;
     IMP_LOG_INFO("Encoder", "T20 rc: OEM %s %ux%u gop=%u fps=%u/%u "
                  "bitrate=%u kbit/s qp=[%u,%u] bias=%d steps=%u/%u "
-                 "changePos=%u quality=%u gopRelation=%u mbrc=%u%s",
+                 "changePos=%u quality=%u gopRelation=%u mbrc=%u%s%s",
                  p.method == 1u ? "CBR" : p.method == 3u ? "SMART" : "VBR",
                  p.width, p.height, p.gop, p.fps_num, p.fps_den,
                  p.method == 1u ? p.bitrate : p.max_bitrate, p.min_qp,
                  p.max_qp, (int)p.i_bias, p.frm_qp_step, p.gop_qp_step,
                  p.change_pos, p.quality, p.gop_relation, p.mb_rc,
+                 p.iaware ? " iaware" : "",
                  runtime ? " (run-time set)" : "");
 }
 
