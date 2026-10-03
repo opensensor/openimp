@@ -15,12 +15,13 @@ AI_LIFECYCLE_TEST_BIN := $(PROJECT_DIR)/build/tests/t31-ai-lifecycle-test
 FAKE_AUDIO_PROCESS_DIR := $(PROJECT_DIR)/build/tests/fake-audio-process
 FAKE_AUDIO_PROCESS := $(FAKE_AUDIO_PROCESS_DIR)/libaudioProcess.so
 OSD_DRAW_TEST_BIN := $(PROJECT_DIR)/build/tests/t31-osd-draw-test
+OSD_THICK_BENCH_BIN := $(PROJECT_DIR)/build/tests/t31-osd-thick-bench
 P2_JPEG_SOURCE_TEST_BIN := $(PROJECT_DIR)/build/tests/t31-p2-jpeg-source-test
 P2_RC_MODE_TEST_BIN := $(PROJECT_DIR)/build/tests/t31-p2-rc-mode-test
 MASK_RGB2YUV_TEST_BIN := $(PROJECT_DIR)/build/tests/t31-mask-rgb2yuv-test
 AL_RC_TRACE_TEST_BIN := $(PROJECT_DIR)/build/tests/t31-al-rc-trace-test
 
-.PHONY: check clean sanitize p2-jpeg-source
+.PHONY: check clean sanitize p2-jpeg-source bench
 
 check: $(STREAM_LAYOUT_TEST_BIN) $(RATE_CONTROL_TEST_BIN) \
 	$(READY_EVENT_TEST_BIN) $(ACODEC_TEST_BIN) $(FRAME_PIN_TEST_BIN) \
@@ -48,9 +49,20 @@ $(MASK_RGB2YUV_TEST_BIN): mask_rgb2yuv_test.c $(PROJECT_DIR)/src/isp/isp_mask_rg
 	mkdir -p "$(dir $@)"
 	$(CC) $(CFLAGS) -I$(PROJECT_DIR)/src mask_rgb2yuv_test.c -o "$@"
 
-$(OSD_DRAW_TEST_BIN): osd_draw_test.c $(PROJECT_DIR)/src/t31/openimp_t31_osd_draw.h
+$(OSD_DRAW_TEST_BIN): osd_draw_test.c osd_draw_old.h \
+	$(PROJECT_DIR)/src/t31/openimp_t31_osd_draw.h
 	mkdir -p "$(dir $@)"
-	$(CC) $(CFLAGS) -I$(PROJECT_DIR)/src osd_draw_test.c -o "$@"
+	$(CC) $(CFLAGS) -I$(PROJECT_DIR)/src osd_draw_test.c -lm -o "$@"
+
+# Old (stock staircase) vs new (uniform band) line drawer on a 1080p frame.
+# Not part of `check`: it is a timing measurement, run it on demand.
+bench: $(OSD_THICK_BENCH_BIN)
+	$(OSD_THICK_BENCH_BIN)
+
+$(OSD_THICK_BENCH_BIN): osd_thick_bench.c osd_draw_old.h \
+	$(PROJECT_DIR)/src/t31/openimp_t31_osd_draw.h
+	mkdir -p "$(dir $@)"
+	$(CC) $(CFLAGS) -I$(PROJECT_DIR)/src osd_thick_bench.c -o "$@"
 
 $(LAMBDA_TEST_BIN): lambda_test.c $(PROJECT_DIR)/src/t40/t40_lambda.h
 	mkdir -p "$(dir $@)"
@@ -189,6 +201,7 @@ clean:
 		$(LAMBDA_TEST_BIN) $(AI_LIFECYCLE_TEST_BIN) $(MASK_RGB2YUV_TEST_BIN) \
 		$(AI_LIFECYCLE_TEST_BIN)-asan $(AI_LIFECYCLE_TEST_BIN)-tsan \
 		$(FAKE_AUDIO_PROCESS) \
+		$(OSD_DRAW_TEST_BIN) $(OSD_THICK_BENCH_BIN) \
 		$(P2_JPEG_SOURCE_TEST_BIN) $(P2_RC_MODE_TEST_BIN)
 
 # A JPEG channel that is the only one on its framesource (timps' jpeg.*

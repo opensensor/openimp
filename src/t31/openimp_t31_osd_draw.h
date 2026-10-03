@@ -11,11 +11,28 @@
  *  - endpoints are clamped to the frame, the group offPos is added, and the
  *    result is clamped again (stock clamps negative raw coordinates to w-1
  *    through an unsigned compare; here they go to 0)
- *  - near-vertical lines (|dx| < 2*lw) are one filled box centred on the
- *    midpoint x; other lines step the dominant axis from p0 towards p1 (p1
- *    itself excluded) and stamp lw x lw squares at y0 + floor(s * dy / dx)
- *    (stock: float slope, truncated). Only the part of each stamp that the
- *    previous one did not cover is written, so a line costs O(len * lw).
+ *  - exact horizontal (dy == 0) and exact vertical (dx == 0) lines keep the
+ *    stock geometry byte for byte: a horizontal line is the union of the
+ *    lw x lw stamps at p0 .. p1 (p1 excluded), a vertical one (and a
+ *    horizontal one shorter than 2*lw, which the stock dispatch also sends
+ *    there) is one filled box centred on x. Diagonals (dx and dy both
+ *    non-zero) use osd_draw_diagonal below instead of the stock lw x lw
+ *    stamp sequence. That sequence advances one stamp per step of the
+ *    dominant axis, so with x dominant it covers lw + (lw - 1) * tan(angle)
+ *    rows per step, i.e. lw * cos + (lw - 1) * sin across the line (and the
+ *    mirror image with y dominant): 2*lw - 1 rows, (2*lw - 1) / sqrt(2) =
+ *    1.41*lw, at 45 degrees. The stroke is therefore always thicker than
+ *    requested, up to a factor 1.41 for a large lw halfway through the
+ *    quadrant. The replacement steps the dominant axis and draws a run along
+ *    the minor axis whose length is round(lw * hypot / major), so the stroke
+ *    is a band of perpendicular width lw everywhere - within half a pixel,
+ *    which is the best an integer run can do. It costs one run per step and
+ *    writes every pixel of the band once. The band is extended by lw/2 at both
+ *    ends, like the stamps: its ends are parallelogram corners rather than
+ *    perpendicular caps and stick out at most lw/2 + 1/2 pixels along the line
+ *    normal. A one-pixel line (lw == 1) keeps the stock routine completely - a
+ *    single pixel has no width to distribute - so only lw >= 2 diagonals are
+ *    drawn as a band.
  *  - RECT is the four edges p0.x/p1.x/p0.y/p1.y
  * Every write is clipped to the frame; nothing outside [0,w) x [0,h) of the
  * Y plane or the matching chroma bytes is touched. */
@@ -136,28 +153,6 @@ static inline struct osd_box osd_stamp_box(const struct osd_canvas *c, int64_t x
 static inline int osd_maxi(int a, int b) { return a > b ? a : b; }
 static inline int osd_mini(int a, int b) { return a < b ? a : b; }
 
-/* Fill n minus o (o == NULL: all of n). The union of all stamps is the same
- * as stamping each one fully, since every pixel of n not written here is in
- * o, which was written before. */
-static inline void osd_fill_new(struct osd_canvas *c, const struct osd_box *n,
-                                const struct osd_box *o, uint32_t word)
-{
-    int ox0, ox1;
-
-    if (!o || n->xa > o->xb || n->xb < o->xa || n->ya > o->yb || n->yb < o->ya) {
-        osd_fill_box(c, n->xa, n->ya, n->xb, n->yb, word);
-        return;
-    }
-    /* columns of n outside o, all rows of n */
-    osd_fill_box(c, n->xa, n->ya, osd_mini(n->xb, o->xa - 1), n->yb, word);
-    osd_fill_box(c, osd_maxi(n->xa, o->xb + 1), n->ya, n->xb, n->yb, word);
-    /* columns shared with o, rows of n outside o */
-    ox0 = osd_maxi(n->xa, o->xa);
-    ox1 = osd_mini(n->xb, o->xb);
-    osd_fill_box(c, ox0, n->ya, ox1, osd_mini(n->yb, o->ya - 1), word);
-    osd_fill_box(c, ox0, osd_maxi(n->ya, o->yb + 1), ox1, n->yb, word);
-}
-
 /* floor(n / d), d != 0 */
 static inline int64_t osd_floordiv(int64_t n, int64_t d)
 {
@@ -168,14 +163,167 @@ static inline int64_t osd_floordiv(int64_t n, int64_t d)
     return q;
 }
 
+/* Integer square root (floor) of a 64-bit value. Called once per diagonal
+ * line (not per pixel) to scale the line direction. */
+static inline uint64_t osd_isqrt64(uint64_t v)
+{
+    uint64_t res = 0, bit = 1ULL << 62;
+
+    while (bit > v)
+        bit >>= 2;
+    while (bit) {
+        if (v >= res + bit) {
+            v -= res + bit;
+            res = (res >> 1) + bit;
+        } else {
+            res >>= 1;
+        }
+        bit >>= 2;
+    }
+    return res;
+}
+
+/* Length of the perpendicular stroke run along the minor axis when the major
+ * axis advances by one pixel: t = round(lw * hypot(adx, ady) / max). A run of
+ * t pixels projects onto the line normal as t * major / hypot, which is the
+ * requested width lw (within half a pixel, the best an integer run can do).
+ * hypot is evaluated in 1/1024 pixel units so that even a one-pixel 45 degree
+ * step keeps the rounding right. */
+static inline int osd_thick_span(int lw, int adx, int ady)
+{
+    int major = adx > ady ? adx : ady;
+    uint64_t hq = osd_isqrt64(((uint64_t)adx * adx + (uint64_t)ady * ady) << 20);
+    int64_t t = ((int64_t)lw * (int64_t)hq + ((int64_t)major << 9)) /
+                ((int64_t)major << 10);
+
+    if (t < 1)
+        t = 1;
+    if (t > OSD_DRAW_MAX_LW)
+        t = OSD_DRAW_MAX_LW;
+    return (int)t;
+}
+
+/* One column, rows [ya, yb] already inside the frame: the Y bytes plus the
+ * chroma pair of every row, exactly as osd_fill_box does for a one-pixel-wide
+ * box (so both rows of a chroma pair still write the same bytes). */
+static inline void osd_fill_col(struct osd_canvas *c, int x, int ya, int yb,
+                                uint32_t word)
+{
+    uint8_t y = (uint8_t)(word >> 16), u = (uint8_t)(word >> 8),
+            v = (uint8_t)word;
+    int row;
+
+    if (c->dry)
+        goto band;
+    for (row = ya; row <= yb; row++) {
+        c->base[(size_t)row * c->stride + x] = y;
+        if (!(row & 1) || row == ya) {
+            uint8_t *uv = c->base + c->uv_off +
+                          (size_t)(row >> 1) * c->stride + (x & ~1);
+
+            uv[0] = u;
+            uv[1] = v;
+        }
+    }
+band:
+    if (ya < c->ymin)
+        c->ymin = ya;
+    if (yb > c->ymax)
+        c->ymax = yb;
+}
+
+/* Diagonal stroke of uniform perpendicular width lw (lw >= 2; lw == 1 keeps
+ * the stock path). The dominant axis is stepped from half a line width before
+ * one end to half a line width past the other, the same end overhang the
+ * lw x lw stamps give. The minor coordinate follows floor(slope * s) and is
+ * clamped to the endpoints, so the overhang runs straight along the dominant
+ * axis: the two ends are parallelogram corners, not perpendicular caps, and
+ * stick out at most lw/2 + 1/2 pixels measured along the line normal. Every
+ * step draws one run of osd_thick_span() pixels across the line, which makes
+ * the drawn set a band of perpendicular width lw. The overhang also means that
+ * only the interior steps keep the stock step count: the two ends add lw/2
+ * each, i.e. up to lw + 1 steps in total.
+ *
+ * At lw == 1 the run is a single pixel and the overhang would add one step at
+ * the end point, so p1 is excluded there exactly like in the stock loop (which
+ * runs from p0 towards p1, p1 itself excluded) and the result stays byte
+ * identical to the stock drawer. */
+static inline void osd_draw_diagonal(struct osd_canvas *c, int ax, int ay,
+                                     int bx, int by, int lw, uint32_t word)
+{
+    int w1 = (int)c->width - 1, h1 = (int)c->height - 1;
+    int dx = bx - ax, dy = by - ay;
+    int adx = dx < 0 ? -dx : dx, ady = dy < 0 ? -dy : dy;
+    int lo = ax < bx ? ax : bx, hi = ax < bx ? bx : ax;
+    int ylo = ay < by ? ay : by, yhi = ay < by ? by : ay;
+    int i, t;
+
+    if (adx >= ady) {
+        /* shallow: a vertical run of t pixels per column */
+        int start = lo - lw / 2, stop = hi + lw / 2;
+
+        if (lw == 1) {          /* stock: p0 included, p1 excluded */
+            if (dx > 0)
+                stop = hi - 1;
+            else
+                start = lo + 1;
+        }
+        t = osd_thick_span(lw, adx, ady);
+        for (i = start; i <= stop; i++) {
+            int64_t yy, r0, r1;
+
+            if (i < 0)
+                continue;
+            if (i > w1)
+                break;
+            yy = osd_clampi((int64_t)ay +
+                                osd_floordiv((int64_t)dy * ((int64_t)i - ax), dx),
+                            ylo, yhi);
+            r0 = yy - t / 2;
+            r1 = r0 + t - 1;
+            if (r1 < 0 || r0 > h1)
+                continue;
+            osd_fill_col(c, i, r0 < 0 ? 0 : (int)r0,
+                         r1 > h1 ? h1 : (int)r1, word);
+        }
+    } else {
+        /* steep: a horizontal run of t pixels per row */
+        int start = ylo - lw / 2, stop = yhi + lw / 2;
+
+        if (lw == 1) {          /* stock: p0 included, p1 excluded */
+            if (dy > 0)
+                stop = yhi - 1;
+            else
+                start = ylo + 1;
+        }
+        t = osd_thick_span(lw, adx, ady);
+        for (i = start; i <= stop; i++) {
+            int64_t xx, c0, c1;
+
+            if (i < 0)
+                continue;
+            if (i > h1)
+                break;
+            xx = osd_clampi((int64_t)ax +
+                                osd_floordiv((int64_t)dx * ((int64_t)i - ay), dy),
+                            lo, hi);
+            c0 = xx - t / 2;
+            c1 = c0 + t - 1;
+            if (c1 < 0 || c0 > w1)
+                continue;
+            osd_fill_box(c, c0 < 0 ? 0 : (int)c0, i,
+                         c1 > w1 ? w1 : (int)c1, i, word);
+        }
+    }
+}
+
 static inline void osd_draw_line(struct osd_canvas *c, int x0, int y0, int x1,
                                  int y1, uint32_t linewidth, uint32_t word,
                                  int offx, int offy)
 {
     int w1 = (int)c->width - 1, h1 = (int)c->height - 1;
     int lw = linewidth > OSD_DRAW_MAX_LW ? OSD_DRAW_MAX_LW : (int)linewidth;
-    int ax, ay, bx, by, dx, dy, adx, ady, k;
-    struct osd_box prev = {0, 0, -1, -1}, cur;
+    int ax, ay, bx, by, dx, dy, adx, ady;
 
     /* stock osd_draw_line returns at once for p0 == p1 */
     if (lw <= 0 || (x0 == x1 && y0 == y1) || !osd_canvas_valid(c))
@@ -190,53 +338,36 @@ static inline void osd_draw_line(struct osd_canvas *c, int x0, int y0, int x1,
     adx = dx < 0 ? -dx : dx;
     ady = dy < 0 ? -dy : dy;
 
-    if (adx < 2 * lw) {
-        /* near vertical: one box, columns centred on the midpoint (start
-         * clamped first, so the box keeps its width at the border), rows
-         * clipped */
-        int mid = (ax + bx) / 2;
-        int xs = osd_clampi((int64_t)mid - lw / 2, 0, w1);
-        int ylo = ay < by ? ay : by, yhi = ay < by ? by : ay;
+    /* The axis-aligned cases keep the stock geometry byte for byte, and so
+     * does any lw == 1 line: a single pixel has no width to distribute, and
+     * the stock |dx| < 2*lw dispatch (|dx| <= 1 at lw == 1) plus the stock
+     * step range that osd_draw_diagonal keeps for lw == 1 reproduce it
+     * exactly. Every other line has a non-zero dx and dy and gets the uniform
+     * band. */
+    if (adx == 0 || ady == 0 || (lw == 1 && adx < 2 * lw)) {
+        if (adx < 2 * lw) {
+            /* near vertical: one box, columns centred on the midpoint (start
+             * clamped first, so the box keeps its width at the border), rows
+             * clipped */
+            int mid = (ax + bx) / 2;
+            int xs = osd_clampi((int64_t)mid - lw / 2, 0, w1);
+            int ylo = ay < by ? ay : by, yhi = ay < by ? by : ay;
 
-        osd_box_clip(c, xs, (int64_t)ylo - lw / 2, (int64_t)xs + lw - 1,
-                     (int64_t)yhi - lw / 2 + lw - 1, word);
+            osd_box_clip(c, xs, (int64_t)ylo - lw / 2, (int64_t)xs + lw - 1,
+                         (int64_t)yhi - lw / 2 + lw - 1, word);
+        } else {
+            /* horizontal: the union of the stamps at p0 .. p1 (p1 excluded),
+             * i.e. positions [pmin, pmax] */
+            int pmin = ax < bx ? ax : bx + 1;
+            int pmax = ax < bx ? bx - 1 : ax;
+            struct osd_box lo = osd_stamp_box(c, pmin, ay, lw);
+            struct osd_box hi = osd_stamp_box(c, pmax, ay, lw);
+
+            osd_fill_box(c, lo.xa, lo.ya, hi.xb, lo.yb, word);
+        }
         return;
     }
-    /* here adx >= 2 * lw > 0 */
-    if (ady == 0) {
-        /* horizontal: the union of the stamps at p0 .. p1 (p1 excluded),
-         * i.e. positions [pmin, pmax] */
-        int pmin = ax < bx ? ax : bx + 1;
-        int pmax = ax < bx ? bx - 1 : ax;
-        struct osd_box lo = osd_stamp_box(c, pmin, ay, lw);
-        struct osd_box hi = osd_stamp_box(c, pmax, ay, lw);
-
-        osd_fill_box(c, lo.xa, lo.ya, hi.xb, lo.yb, word);
-        return;
-    }
-    if (ady < adx) {
-        int dir = dx > 0 ? 1 : -1;
-
-        for (k = 0; k < adx; k++) {
-            int s = k * dir;
-
-            cur = osd_stamp_box(c, (int64_t)ax + s,
-                                ay + osd_floordiv((int64_t)dy * s, dx), lw);
-            osd_fill_new(c, &cur, k ? &prev : NULL, word);
-            prev = cur;
-        }
-    } else {
-        int dir = dy > 0 ? 1 : -1;
-
-        for (k = 0; k < ady; k++) {
-            int s = k * dir;
-
-            cur = osd_stamp_box(c, ax + osd_floordiv((int64_t)dx * s, dy),
-                                (int64_t)ay + s, lw);
-            osd_fill_new(c, &cur, k ? &prev : NULL, word);
-            prev = cur;
-        }
-    }
+    osd_draw_diagonal(c, ax, ay, bx, by, lw, word);
 }
 
 static inline void osd_draw_rect(struct osd_canvas *c, int x0, int y0, int x1,

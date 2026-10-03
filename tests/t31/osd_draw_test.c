@@ -2,8 +2,10 @@
  * NV12 Y+UV writes, clipping and guard-byte checks (no write outside the
  * visible area, whatever the coordinates). */
 #include "t31/openimp_t31_osd_draw.h"
+#include "osd_draw_old.h"       /* frozen stock drawer, used as the reference */
 
 #include <limits.h>
+#include <math.h>               /* cos/sin/lround: test only, never the drawer */
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -166,10 +168,10 @@ static void test_line(void)
     check_untouched(&f, "hline");
     free(f.mem);
 
-    /* near vertical (dx < 2*lw) is a box centred on the mid x */
+    /* exactly vertical (dy != 0, dx == 0): stock box centred on the mid x */
     frame_new(&f);
     canvas(&f, &c);
-    osd_draw_line(&c, 10, 5, 12, 15, 4, WORD, 0, 0);
+    osd_draw_line(&c, 11, 5, 11, 15, 4, WORD, 0, 0);
     CHECK(ypix(&f, 9, 4) == 0x10 && ypix(&f, 12, 4) == 0x10 && ypix(&f, 13, 4) == 0 &&
           ypix(&f, 8, 4) == 0, "vbox columns");
     CHECK(ypix(&f, 10, 2) == 0 && ypix(&f, 10, 3) == 0x10 &&
@@ -252,79 +254,518 @@ static void test_bitmap(void)
     free(f.mem);
 }
 
-/* Reference: stock-style full lw x lw stamps at every step (no incremental
- * union), same floor rounding. The fast drawer must give identical frames. */
-static void ref_line(struct frame *f, int x0, int y0, int x1, int y1, int lw)
+/* ------------------------------------------------------------------------- *
+ * Axis-aligned geometry is unchanged: exact horizontal and vertical lines and
+ * the four edges of a rect must still be byte identical to the frozen stock
+ * drawer in osd_draw_old.h. Only the diagonals are allowed to differ.
+ * ------------------------------------------------------------------------- */
+static void test_axis_identity(void)
 {
-    int w1 = (int)W - 1, h1 = (int)H - 1;
-    int ax = x0 < 0 ? 0 : x0 > w1 ? w1 : x0, ay = y0 < 0 ? 0 : y0 > h1 ? h1 : y0;
-    int bx = x1 < 0 ? 0 : x1 > w1 ? w1 : x1, by = y1 < 0 ? 0 : y1 > h1 ? h1 : y1;
-    int dx = bx - ax, dy = by - ay, adx = dx < 0 ? -dx : dx, ady = dy < 0 ? -dy : dy;
-    int n = adx > ady ? adx : ady, k;
+    static const uint32_t lws[] = {1, 2, 3, 4, 7, 9, 100, 0xffffffffu};
+    unsigned seed = 20240607u, i;
 
-    for (k = 0; k < n; k++) {
-        int px, py, xs, ys, xe, ye, x, y;
+    for (i = 0; i < 600; i++) {
+        struct frame f, g;
+        struct osd_canvas c, d;
+        uint32_t lw;
+        int x0, y0, x1, y1, offx, offy;
 
-        if (ady < adx) {
-            int s = dx > 0 ? k : -k;
+        seed = seed * 1103515245u + 12345u; x0 = (int)((seed >> 9) % 96u) - 16;
+        seed = seed * 1103515245u + 12345u; y0 = (int)((seed >> 9) % 80u) - 16;
+        seed = seed * 1103515245u + 12345u; x1 = (int)((seed >> 9) % 96u) - 16;
+        seed = seed * 1103515245u + 12345u; y1 = (int)((seed >> 9) % 80u) - 16;
+        seed = seed * 1103515245u + 12345u; offx = (int)((seed >> 9) % 9u) - 4;
+        seed = seed * 1103515245u + 12345u; offy = (int)((seed >> 9) % 9u) - 4;
+        seed = seed * 1103515245u + 12345u;
+        lw = lws[(seed >> 9) % (sizeof(lws) / sizeof(lws[0]))];
 
-            px = ax + s;
-            py = ay + (int)osd_floordiv((int64_t)dy * s, dx);
-        } else {
-            int s = dy > 0 ? k : -k;
+        /* a rect is four axis-aligned edges in both implementations */
+        frame_new(&f);
+        frame_new(&g);
+        canvas(&f, &c);
+        canvas(&g, &d);
+        osd_draw_rect(&c, x0, y0, x1, y1, lw, WORD, offx, offy);
+        osd_draw_rect_old(&d, x0, y0, x1, y1, lw, WORD, offx, offy);
+        CHECK(memcmp(f.mem, g.mem, f.size) == 0,
+              "rect (%d,%d)-(%d,%d) lw %u off %d,%d changed", x0, y0, x1, y1,
+              lw, offx, offy);
+        CHECK(c.ymin == d.ymin && c.ymax == d.ymax, "rect band %d..%d vs %d..%d",
+              c.ymin, c.ymax, d.ymin, d.ymax);
+        free(f.mem);
+        free(g.mem);
 
-            py = ay + s;
-            px = ax + (int)osd_floordiv((int64_t)dx * s, dy);
-        }
-        xs = osd_clampi((int64_t)px - lw / 2, 0, w1);
-        ys = osd_clampi((int64_t)py - lw / 2, 0, h1);
-        xe = osd_clampi((int64_t)xs + lw - 1, 0, w1);
-        ye = osd_clampi((int64_t)ys + lw - 1, 0, h1);
-        for (y = ys; y <= ye; y++)
-            for (x = xs; x <= xe; x++) {
-                f->base[(size_t)y * STRIDE + x] = 0x10;
-                f->base[(size_t)STRIDE * H + (size_t)(y / 2) * STRIDE + (x & ~1)] = 0x20;
-                f->base[(size_t)STRIDE * H + (size_t)(y / 2) * STRIDE + (x & ~1) + 1] = 0x30;
-            }
+        /* half of the cases horizontal, half vertical: the clamp and offPos
+         * cannot turn them into a diagonal */
+        if (i & 1u)
+            x1 = x0;
+        else
+            y1 = y0;
+        frame_new(&f);
+        frame_new(&g);
+        canvas(&f, &c);
+        canvas(&g, &d);
+        osd_draw_line(&c, x0, y0, x1, y1, lw, WORD, offx, offy);
+        osd_draw_line_old(&d, x0, y0, x1, y1, lw, WORD, offx, offy);
+        CHECK(memcmp(f.mem, g.mem, f.size) == 0,
+              "%s line (%d,%d)-(%d,%d) lw %u off %d,%d changed",
+              (i & 1u) ? "vertical" : "horizontal", x0, y0, x1, y1, lw, offx, offy);
+        CHECK(c.ymin == d.ymin && c.ymax == d.ymax, "line band %d..%d vs %d..%d",
+              c.ymin, c.ymax, d.ymin, d.ymax);
+        free(f.mem);
+        free(g.mem);
     }
 }
 
-static void test_line_reference(void)
+/* ------------------------------------------------------------------------- *
+ * lw == 1 is one pixel per step: there is no width to distribute, and the
+ * overhang of the band would add a step at the end point, so the stock routine
+ * is kept for it - the stock |dx| < 2*lw dispatch (|dx| <= 1) and the stock
+ * step range from p0 towards p1 with p1 excluded. Diagonal lines with lw == 1
+ * must therefore still be byte identical to the frozen stock drawer, band
+ * included.
+ * ------------------------------------------------------------------------- */
+static void check_lw1(int x0, int y0, int x1, int y1, int offx, int offy)
 {
-    static const int lws[] = {1, 2, 3, 4, 7};
-    unsigned seed = 12345, i, l;
+    struct frame f, g;
+    struct osd_canvas c, d;
 
+    frame_new(&f);
+    frame_new(&g);
+    canvas(&f, &c);
+    canvas(&g, &d);
+    osd_draw_line(&c, x0, y0, x1, y1, 1, WORD, offx, offy);
+    osd_draw_line_old(&d, x0, y0, x1, y1, 1, WORD, offx, offy);
+    CHECK(memcmp(f.mem, g.mem, f.size) == 0,
+          "lw 1 line (%d,%d)-(%d,%d) off %d,%d changed", x0, y0, x1, y1, offx,
+          offy);
+    CHECK(c.ymin == d.ymin && c.ymax == d.ymax,
+          "lw 1 line (%d,%d)-(%d,%d) off %d,%d band %d..%d vs %d..%d", x0, y0,
+          x1, y1, offx, offy, c.ymin, c.ymax, d.ymin, d.ymax);
+    free(f.mem);
+    free(g.mem);
+}
+
+static void test_lw1_identity(void)
+{
+    /* corners, edges, one- and two-pixel dx (the stock box dispatch), 45
+     * degrees, coordinates far outside and the int extremes */
+    static const int fixed[][4] = {
+        {0, 0, 63, 47}, {63, 47, 0, 0}, {-40, 10, 90, 60}, {70, -30, -20, 55},
+        {0, 0, 1, 5}, {5, 1, 0, 0}, {0, 0, 2, 9}, {9, 2, 0, 0},
+        {5, 5, 6, 6}, {31, 20, 32, 21}, {-1, -1, 65, 50},
+        {-1000, -1000, 1000, 1000}, {INT_MIN, 3, INT_MAX, 44},
+        {3, INT_MIN, 44, INT_MAX}, {INT_MIN, INT_MIN, INT_MAX, INT_MAX},
+    };
+    static const int offs[][2] = {{0, 0}, {1, -1}, {-3, 2}};
+    unsigned seed = 20261003u, i, o;
+    size_t k;
+
+    for (k = 0; k < sizeof(fixed) / sizeof(fixed[0]); k++)
+        for (o = 0; o < sizeof(offs) / sizeof(offs[0]); o++)
+            check_lw1(fixed[k][0], fixed[k][1], fixed[k][2], fixed[k][3],
+                      offs[o][0], offs[o][1]);
+
+    /* 400 random diagonals inside the frame, at and over its edges */
     for (i = 0; i < 400; i++) {
+        int x0, y0, x1, y1, offx, offy;
+
+        seed = seed * 1103515245u + 12345u; x0 = (int)((seed >> 9) % 96u) - 16;
+        seed = seed * 1103515245u + 12345u; y0 = (int)((seed >> 9) % 80u) - 16;
+        seed = seed * 1103515245u + 12345u; x1 = (int)((seed >> 9) % 96u) - 16;
+        seed = seed * 1103515245u + 12345u; y1 = (int)((seed >> 9) % 80u) - 16;
+        seed = seed * 1103515245u + 12345u; offx = (int)((seed >> 9) % 9u) - 4;
+        seed = seed * 1103515245u + 12345u; offy = (int)((seed >> 9) % 9u) - 4;
+        if (x1 == x0)               /* keep both deltas non-zero: no axis case */
+            x1 += 1;
+        if (y1 == y0)
+            y1 += 1;
+        check_lw1(x0, y0, x1, y1, offx, offy);
+    }
+}
+
+/* ------------------------------------------------------------------------- *
+ * Uniform stroke thickness of the diagonals. The stock drawer advances one
+ * lw x lw stamp per step of the dominant axis, so its cross section along the
+ * minor axis is more than lw pixels wide: 2*lw-1 at 45 degrees (i.e.
+ * (2*lw-1)/sqrt(2) = 1.41*lw across the line instead of lw) and still wider at
+ * shallow/steep angles (10.4 px for lw 8 at 30 and 60 degrees). The band
+ * drawer must stay within one pixel of lw everywhere; both are printed below.
+ *
+ * Measured on a 512 x 512 frame, far away from the clipping: a band of
+ * perpendicular width lw crosses every dominant-axis step in a single run of
+ * n pixels along the minor axis, and a run of n pixels projects onto the line
+ * normal as n * major / hypot. The interior steps (one line width away from
+ * the ends, where the run is clamped) are checked one by one: there the new
+ * and the stock drawer step the same dominant axis, so the interior step
+ * counts match. The ends do not: the band is extended by lw/2 at either end
+ * like the stamps, so it can add up to lw + 1 steps, and those end rows form
+ * parallelogram corners rather than perpendicular caps, up to lw/2 + 1/2
+ * pixels past the normal.
+ * ------------------------------------------------------------------------- */
+#define BIGW 512u
+#define BIGH 512u
+#define BIGSTRIDE 512u
+#define BIGBODY ((size_t)BIGSTRIDE * BIGH * 3 / 2)
+
+struct bigframe {
+    uint8_t *mem;
+};
+
+static void big_new(struct bigframe *b)
+{
+    b->mem = malloc(BIGBODY);
+    memset(b->mem, 0, BIGBODY);
+}
+
+static void big_canvas(const struct bigframe *b, struct osd_canvas *c)
+{
+    osd_canvas_init(c, b->mem, BIGW, BIGH, BIGSTRIDE, (size_t)BIGSTRIDE * BIGH);
+}
+
+static size_t big_at(int x, int y) { return (size_t)y * BIGSTRIDE + x; }
+
+static double seg_len(int adx, int ady)
+{
+    return (double)osd_isqrt64(((uint64_t)adx * adx + (uint64_t)ady * ady) << 20) /
+           1024.0;
+}
+
+static double perp_width(int n, int adx, int ady)
+{
+    int major = adx > ady ? adx : ady;
+
+    return (double)n * (double)major / seg_len(adx, ady);
+}
+
+/* Pixels of the single run in column x: -1 if the column holds more than one
+ * run (a hole in the band), 0 if it holds none. */
+static int col_run(const struct bigframe *b, int x, int *ya, int *yb)
+{
+    int y, n = 0, runs = 0, prev = -2;
+
+    for (y = 0; y < (int)BIGH; y++) {
+        if (b->mem[big_at(x, y)] != 0x10)
+            continue;
+        if (!n) {
+            *ya = y;
+            *yb = y;
+            runs = 1;
+        } else if (y == prev + 1) {
+            *yb = y;
+        } else {
+            runs++;
+        }
+        prev = y;
+        n++;
+    }
+    return runs > 1 ? -1 : n;
+}
+
+static int row_run(const struct bigframe *b, int y, int *xa, int *xb)
+{
+    int x, n = 0, runs = 0, prev = -2;
+
+    for (x = 0; x < (int)BIGW; x++) {
+        if (b->mem[big_at(x, y)] != 0x10)
+            continue;
+        if (!n) {
+            *xa = x;
+            *xb = x;
+            runs = 1;
+        } else if (x == prev + 1) {
+            *xb = x;
+        } else {
+            runs++;
+        }
+        prev = x;
+        n++;
+    }
+    return runs > 1 ? -1 : n;
+}
+
+static int big_count(const struct bigframe *b)
+{
+    int x, y, n = 0;
+
+    for (y = 0; y < (int)BIGH; y++)
+        for (x = 0; x < (int)BIGW; x++)
+            n += b->mem[big_at(x, y)] == 0x10;
+    return n;
+}
+
+static void measure(const struct bigframe *b, int x0, int y0, int x1, int y1,
+                    int lw, double *pmin, double *pmax, double *pmean,
+                    int *steps, int *holes)
+{
+    int dx = x1 - x0, dy = y1 - y0;
+    int adx = dx < 0 ? -dx : dx, ady = dy < 0 ? -dy : dy;
+    int lo, hi, i, m = lw + 4;
+
+    *pmin = 1e30;
+    *pmax = 0;
+    *pmean = 0;
+    *steps = 0;
+    *holes = 0;
+    if (adx >= ady) {
+        lo = x0 < x1 ? x0 : x1;
+        hi = x0 < x1 ? x1 : x0;
+        for (i = lo + m; i <= hi - m; i++) {
+            int ya, yb, n = col_run(b, i, &ya, &yb);
+            double w;
+
+            if (!n)
+                continue;
+            if (n < 0) {
+                (*holes)++;
+                continue;
+            }
+            w = perp_width(n, adx, ady);
+            if (w < *pmin)
+                *pmin = w;
+            if (w > *pmax)
+                *pmax = w;
+            *pmean += w;
+            (*steps)++;
+        }
+    } else {
+        lo = y0 < y1 ? y0 : y1;
+        hi = y0 < y1 ? y1 : y0;
+        for (i = lo + m; i <= hi - m; i++) {
+            int xa, xb, n = row_run(b, i, &xa, &xb);
+            double w;
+
+            if (!n)
+                continue;
+            if (n < 0) {
+                (*holes)++;
+                continue;
+            }
+            w = perp_width(n, adx, ady);
+            if (w < *pmin)
+                *pmin = w;
+            if (w > *pmax)
+                *pmax = w;
+            *pmean += w;
+            (*steps)++;
+        }
+    }
+    if (*steps)
+        *pmean /= *steps;
+}
+
+/* Outside the two straight caps nothing may be drawn further away from the
+ * line than half a line width plus the half pixel the integer rasterisation
+ * can add: 4 * cross^2 <= (lw + 3)^2 * hypot^2 with
+ * cross = dy*(x-x0) - dx*(y-y0) tests exactly that without floats. The caps
+ * are left out: there the run is clamped to the endpoint and the intended
+ * half-line-width overhang reaches a little past the band around the
+ * infinite line. */
+static void check_no_stray(const struct bigframe *b, int x0, int y0, int x1, int y1,
+                           int lw)
+{
+    int dx = x1 - x0, dy = y1 - y0;
+    int adx = dx < 0 ? -dx : dx, ady = dy < 0 ? -dy : dy;
+    int64_t h2 = (int64_t)adx * adx + (int64_t)ady * ady;
+    int64_t lim = (int64_t)(lw + 3) * (lw + 3) * h2;
+    int m = lw + 4, lo, hi, x, y, bad = 0;
+
+    if (adx >= ady) {
+        lo = (x0 < x1 ? x0 : x1) + m;
+        hi = (x0 < x1 ? x1 : x0) - m;
+    } else {
+        lo = (y0 < y1 ? y0 : y1) + m;
+        hi = (y0 < y1 ? y1 : y0) - m;
+    }
+    for (y = 0; y < (int)BIGH; y++)
+        for (x = 0; x < (int)BIGW; x++) {
+            int64_t cross;
+            int c = adx >= ady ? x : y;
+
+            if (c < lo || c > hi)
+                continue;
+            if (b->mem[big_at(x, y)] != 0x10)
+                continue;
+            cross = (int64_t)dy * (x - x0) - (int64_t)dx * (y - y0);
+            if (4 * cross * cross > lim)
+                bad++;
+        }
+    CHECK(bad == 0, "line (%d,%d)-(%d,%d) lw %d: %d pixel(s) outside the band",
+          x0, y0, x1, y1, lw, bad);
+}
+
+static void test_diagonal_thickness(void)
+{
+    static const int seg[3][4] = {
+        {120, 120, 420, 420},   /* 45 degrees */
+        {120, 160, 420, 333},   /* 30 degrees, dy/dx = 173/300 */
+        {160, 120, 260, 293},   /* 60 degrees, dy/dx = 173/100 */
+    };
+    static const char *deg[3] = {"45", "30", "60"};
+    static const int lws[] = {1, 2, 4, 8};
+    unsigned s, l;
+
+    puts("diagonal stroke thickness (perpendicular, interior steps):");
+    for (s = 0; s < 3; s++)
+        for (l = 0; l < sizeof(lws) / sizeof(lws[0]); l++) {
+            struct bigframe nf, of;
+            struct osd_canvas c;
+            double nmin, nmax, nmean, omin, omax, omean;
+            int nsteps, nholes, osteps, oholes, lw = lws[l];
+            int x0 = seg[s][0], y0 = seg[s][1], x1 = seg[s][2], y1 = seg[s][3];
+            int adx = x1 - x0, ady = y1 - y0, area, use;
+
+            big_new(&nf);
+            big_new(&of);
+            big_canvas(&nf, &c);
+            osd_draw_line(&c, x0, y0, x1, y1, (uint32_t)lw, WORD, 0, 0);
+            big_canvas(&of, &c);
+            osd_draw_line_old(&c, x0, y0, x1, y1, (uint32_t)lw, WORD, 0, 0);
+
+            measure(&nf, x0, y0, x1, y1, lw, &nmin, &nmax, &nmean, &nsteps, &nholes);
+            measure(&of, x0, y0, x1, y1, lw, &omin, &omax, &omean, &osteps, &oholes);
+            printf("  %s deg lw %d over %d steps: new %.2f..%.2f (mean %.2f), "
+                   "old %.2f..%.2f (mean %.2f)\n", deg[s], lw, nsteps, nmin, nmax,
+                   nmean, omin, omax, omean);
+
+            CHECK(nsteps > 100, "%s deg lw %d: only %d step(s) measured", deg[s], lw,
+                  nsteps);
+            CHECK(nholes == 0, "%s deg lw %d: %d step(s) not one contiguous run",
+                  deg[s], lw, nholes);
+            /* the requested tolerance */
+            CHECK(nmin >= lw - 1.0 && nmax <= lw + 1.0,
+                  "%s deg lw %d: perpendicular width %.2f..%.2f outside lw +- 1",
+                  deg[s], lw, nmin, nmax);
+            /* the same stroke on every step: no taper along the line */
+            CHECK(nmax - nmin <= 1.0, "%s deg lw %d: width varies %.2f..%.2f",
+                  deg[s], lw, nmin, nmax);
+            CHECK(osteps == nsteps,
+                  "%s deg lw %d: interior steps %d vs old %d", deg[s], lw,
+                  nsteps, osteps);
+            check_no_stray(&nf, x0, y0, x1, y1, lw);
+
+            /* covered area / length is the mean width including the caps */
+            area = big_count(&nf);
+            use = (int)((double)lw * seg_len(adx, ady));
+            CHECK(area >= use - (int)seg_len(adx, ady) &&
+                  area <= use + (int)seg_len(adx, ady),
+                  "%s deg lw %d: %d pixels, expected about %d", deg[s], lw, area, use);
+            free(nf.mem);
+            free(of.mem);
+        }
+}
+
+/* ------------------------------------------------------------------------- *
+ * Fixed sweep over the whole angle range: 0..180 degrees in one-degree steps
+ * for lw 2..8, the segment 200 px long in the middle of the 512 x 512 frame so
+ * that neither the ends nor the clipping enter the measurement. For every
+ * angle and width the perpendicular width of the band must stay within half a
+ * pixel of lw (the run length is an integer rounded to the nearest pixel, so
+ * half a pixel is the best that can be achieved) and every interior step must
+ * be covered by exactly one run - no gaps, no split runs.
+ * ------------------------------------------------------------------------- */
+static void test_angle_sweep(void)
+{
+    static const int lws[] = {2, 3, 4, 5, 6, 7, 8};
+    const double len = 100.0, pi = 3.14159265358979323846;
+    const int cx = (int)BIGW / 2, cy = (int)BIGH / 2;
+    unsigned l;
+    int ang;
+    double worst = 0;
+
+    for (l = 0; l < sizeof(lws) / sizeof(lws[0]); l++)
+        for (ang = 0; ang <= 180; ang++) {
+            struct bigframe nf;
+            struct osd_canvas c;
+            double a = (double)ang * pi / 180.0;
+            double nmin, nmax, nmean;
+            int nsteps, nholes, lw = lws[l];
+            int x0 = (int)lround((double)cx - len * cos(a));
+            int y0 = (int)lround((double)cy - len * sin(a));
+            int x1 = (int)lround((double)cx + len * cos(a));
+            int y1 = (int)lround((double)cy + len * sin(a));
+            int adx = x1 - x0 < 0 ? x0 - x1 : x1 - x0;
+            int ady = y1 - y0 < 0 ? y0 - y1 : y1 - y0;
+            int major = adx > ady ? adx : ady;
+            int m = lw + 4;
+            int expect = major - 2 * m + 1;
+
+            big_new(&nf);
+            big_canvas(&nf, &c);
+            osd_draw_line(&c, x0, y0, x1, y1, (uint32_t)lw, WORD, 0, 0);
+            measure(&nf, x0, y0, x1, y1, lw, &nmin, &nmax, &nmean, &nsteps,
+                    &nholes);
+            free(nf.mem);
+
+            CHECK(expect > 50 && nsteps == expect,
+                  "sweep %d deg lw %d: %d of %d interior steps covered, width "
+                  "%.2f..%.2f", ang, lw, nsteps, expect, nmin, nmax);
+            CHECK(nholes == 0, "sweep %d deg lw %d: %d step(s) not one run",
+                  ang, lw, nholes);
+            CHECK(nmin >= lw - 0.500001 && nmax <= lw + 0.500001,
+                  "sweep %d deg lw %d: perpendicular width %.3f..%.3f outside "
+                  "lw +- 0.5", ang, lw, nmin, nmax);
+            if (nsteps == expect) {
+                double dev = nmax - lw;
+
+                if ((double)lw - nmin > dev)
+                    dev = (double)lw - nmin;
+                if (dev > worst)
+                    worst = dev;
+            }
+        }
+    printf("angle sweep 0..180 deg, lw 2..8: worst |width - lw| = %.3f px\n",
+           worst);
+}
+
+/* Diagonals that leave the frame on every side, with caps that extend past the
+ * edge: nothing outside the visible area, and the rows of a dry pass must
+ * cover every row the real pass writes. */
+static void test_diagonal_clip_dry(void)
+{
+    static const int seg[][4] = {
+        {-30, -30, 40, 70}, {-30, -30, 90, 40}, {70, -10, -20, 60},
+        {70, 60, -20, -10}, {0, 0, (int)W - 1, (int)H - 1},
+        {(int)W - 1, 0, 0, (int)H - 1}, {-1000, 5, 1000, 20}, {5, -1000, 20, 1000},
+        {-1000, -1000, 1000, 1000}, {INT_MIN, INT_MIN, INT_MAX, INT_MAX},
+        {INT_MIN, 20, INT_MAX, 40}, {20, INT_MIN, 40, INT_MAX},
+        {30, 10, 31, 11}, {-1, -1, 1, 1},
+    };
+    static const uint32_t lws[] = {1, 2, 3, 8, 0xffffffffu};
+    size_t i;
+    unsigned l;
+
+    for (i = 0; i < sizeof(seg) / sizeof(seg[0]); i++)
         for (l = 0; l < sizeof(lws) / sizeof(lws[0]); l++) {
             struct frame f, g;
-            struct osd_canvas c;
-            int x0, y0, x1, y1, dx;
+            struct osd_canvas c, d;
+            uint32_t y;
 
-            seed = seed * 1103515245u + 12345u;
-            x0 = (int)(seed >> 8) % 80 - 8;
-            seed = seed * 1103515245u + 12345u;
-            y0 = (int)(seed >> 8) % 64 - 8;
-            seed = seed * 1103515245u + 12345u;
-            x1 = (int)(seed >> 8) % 80 - 8;
-            seed = seed * 1103515245u + 12345u;
-            y1 = (int)(seed >> 8) % 64 - 8;
-            dx = osd_clampi(x1, 0, W - 1) - osd_clampi(x0, 0, W - 1);
-            if (dx < 0)
-                dx = -dx;
-            if (dx < 2 * lws[l] || (x0 == x1 && y0 == y1))
-                continue;           /* box path, checked elsewhere */
             frame_new(&f);
             frame_new(&g);
             canvas(&f, &c);
-            osd_draw_line(&c, x0, y0, x1, y1, (uint32_t)lws[l], WORD, 0, 0);
-            ref_line(&g, x0, y0, x1, y1, lws[l]);
-            CHECK(memcmp(f.mem, g.mem, f.size) == 0,
-                  "line (%d,%d)-(%d,%d) lw %d differs from full stamps",
-                  x0, y0, x1, y1, lws[l]);
+            canvas(&g, &d);
+            d.dry = 1;
+            osd_draw_line(&c, seg[i][0], seg[i][1], seg[i][2], seg[i][3], lws[l],
+                          WORD, 1, -1);
+            osd_draw_line(&d, seg[i][0], seg[i][1], seg[i][2], seg[i][3], lws[l],
+                          WORD, 1, -1);
+            for (y = 0; y < H; y++) {
+                uint32_t x;
+                int any = 0;
+
+                for (x = 0; x < W; x++)
+                    any |= ypix(&f, x, y) == 0x10;
+                CHECK(!any || ((int)y >= d.ymin && (int)y <= d.ymax),
+                      "diagonal (%d,%d)-(%d,%d) lw %u: row %u outside dry band "
+                      "%d..%d", seg[i][0], seg[i][1], seg[i][2], seg[i][3], lws[l],
+                      y, d.ymin, d.ymax);
+            }
+            CHECK(count_y(&g, 0x10) == 0, "dry diagonal wrote Y");
+            check_untouched(&f, "diagonal clip");
+            check_untouched(&g, "diagonal dry");
             free(f.mem);
             free(g.mem);
         }
-    }
 }
 
 static void test_stock_details(void)
@@ -422,7 +863,11 @@ int main(void)
     test_line();
     test_border();
     test_bitmap();
-    test_line_reference();
+    test_axis_identity();
+    test_lw1_identity();
+    test_diagonal_thickness();
+    test_angle_sweep();
+    test_diagonal_clip_dry();
     test_stock_details();
     test_dry();
     test_invalid_canvas();

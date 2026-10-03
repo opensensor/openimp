@@ -376,6 +376,16 @@ Wort = A<<24 | Y<<16 | U<<8 | V
 - RECT = 4 Linien (`H:112502–112530`).
 - Koordinaten + `offPos`, abgeschnitten auf `[0, w-1] × [0, h-1]`.
 
+> **Abweichung in OpenIMP** (Branch `claude/osd-thick-lines`): Die
+> Stock-Stempelkette ist quer zur Linie **nicht** `lw` breit, sondern
+> `lw*cos(θ) + (lw-1)*sin(θ)` — bei 45° genau `2*lw - 1` Zeilen = `1,41*lw` (bei `lw = 8`
+> gemessen 10,6 px statt 8). OpenIMP zeichnet Diagonalen deshalb **ab `lw >= 2`** als Bande der
+> Breite `lw` (`round(lw*hypot/major)` Pixel pro Schritt, nur Integer-Arithmetik). Unverändert
+> bzw. byte-gleich zum Stock bleiben `lw = 1` (jede Richtung), exakt waagerechte und senkrechte
+> Linien und damit RECT. Die Änderung ist bewusst und sichtbar: Diagonalen werden **dünner** als
+> im Stock gezeichnet. Details, Messwerte und der noch offene Gerätetest:
+> `HANDOVER_OIMP_OSDTHICK.md`.
+
 **BITMAP** (`H:112554–112745`):
 - 1 Byte pro Pixel (Größe `w*h`, `H:113470`).
 - Für jedes Byte `!= 0` wird `Y := Byte` und an der Chroma-Position `(x, y/2)` `0x80`
