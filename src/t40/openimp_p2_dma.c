@@ -263,6 +263,9 @@ int DMA_AllocDescriptor(IMPDMABufferInfo *out, int size, const char *tag)
 int DMA_RmemFlushCache(void *address, uint32_t length, int direction)
 {
     struct p2_flush_info info;
+    uintptr_t virt = (uintptr_t)address;
+    uintptr_t base;
+    uint32_t offset;
 
     if (!address || !length)
         return -1;
@@ -271,7 +274,35 @@ int DMA_RmemFlushCache(void *address, uint32_t length, int direction)
         p2_unlock();
         return -1;
     }
-    info.address = (uint32_t)(uintptr_t)address;
+#if defined(PLATFORM_T41)
+    /* The T41 rmem driver hands the address to dma_sync_single_for_device() as
+     * a dma_addr_t, i.e. a physical address, and the kernel turns it into
+     * KSEG0 + address.  A user virtual address (0x7xxxxxxx) becomes an
+     * unmapped kernel address and oopses in the cache maintenance (T41:
+     * "Unable to handle kernel paging request at f5d9d000" from the OSD
+     * bitmap write-back).  Translate the rmem mapping to its physical
+     * range, clip the range to the reserved memory (callers round small
+     * ranges up to 1 MiB) and refuse anything outside it. */
+    base = (uintptr_t)p2_dma.mapping;
+    if (virt >= base && virt < base + p2_dma.size) {
+        offset = (uint32_t)(virt - base);
+    } else if (virt >= p2_dma.base && virt < (uintptr_t)p2_dma.base + p2_dma.size) {
+        offset = (uint32_t)virt - p2_dma.base;     /* already physical */
+    } else {
+        p2_unlock();
+        errno = EINVAL;
+        return -1;
+    }
+    if (length > p2_dma.size - offset)
+        length = p2_dma.size - offset;
+    info.address = p2_dma.base + offset;
+#else
+    /* T40's rmem driver runs dma_cache_sync() on the caller's virtual
+     * address, which is valid for any mapping of the calling process. */
+    (void)base;
+    (void)offset;
+    info.address = (uint32_t)virt;
+#endif
     info.length = length;
     info.direction = (uint32_t)direction;
     direction = ioctl(p2_dma.fd, P2_RMEM_FLUSH_IOCTL, &info);

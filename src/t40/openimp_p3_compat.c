@@ -85,7 +85,9 @@ P3_UNSUPPORTED(IMP_ISP_Tuning_GetCCMAttr)
 P3_UNSUPPORTED(IMP_ISP_Tuning_GetGammaAttr)
 P3_UNSUPPORTED(IMP_ISP_Tuning_GetMask)
 P3_UNSUPPORTED(IMP_ISP_Tuning_GetModuleControl)
+#if !defined(PLATFORM_T41)   /* T41: openimp_p3_controls.c */
 P3_UNSUPPORTED(IMP_ISP_Tuning_GetSensorAttr)
+#endif
 P3_UNSUPPORTED(IMP_ISP_Tuning_SetAfWeight)
 P3_UNSUPPORTED(IMP_ISP_Tuning_SetCCMAttr)
 P3_UNSUPPORTED(IMP_ISP_Tuning_SetGammaAttr)

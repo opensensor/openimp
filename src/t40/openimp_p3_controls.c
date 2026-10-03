@@ -96,6 +96,15 @@ static int p3_tuning_scalar(IMPVI_NUM num, int32_t direction,
     return result;
 }
 
+#if defined(PLATFORM_T41)
+/* Vendor T41 1.2.0: the pointer tuning ioctl, get, control 0x8000033,
+ * filling {hts, vts, fps, width, height}. */
+int32_t IMP_ISP_Tuning_GetSensorAttr(IMPVI_NUM num, IMPISPSENSORAttr *attr)
+{
+    return p3_tuning_pointer(num, 1, 0x8000033, attr);
+}
+#endif
+
 int32_t IMP_ISP_Tuning_GetAeExprInfo(IMPVI_NUM num,
                                      IMPISPAEExprInfo *exprinfo)
 {
