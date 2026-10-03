@@ -89,7 +89,7 @@ helix_encoder_test_t20: $(HELIX_T20_SOURCES) $(ROOT)/src/t30/t30_annexb.h $(ROOT
 # with and without the software JPEG fallback.
 HJPEG_DEPS := helix_jpeg_test.c $(ROOT)/src/t30/helix_jpeg.c \
 	$(ROOT)/src/t30/helix_jpeg.h
-HJPEG_FLAGS = $(CFLAGS) -fno-pie -no-pie -I$(ROOT)/include -I$(ROOT)/src \
+HJPEG_FLAGS = $(CFLAGS) -DHELIX_JPEG_TEST_REFERENCE -fno-pie -no-pie -I$(ROOT)/include -I$(ROOT)/src \
 	-Wl,--wrap=open,--wrap=close,--wrap=ioctl
 
 helix_jpeg_test_t21: $(HJPEG_DEPS) $(ROOT)/src/t30/helix_bitstream.c

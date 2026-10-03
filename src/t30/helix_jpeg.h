@@ -83,6 +83,13 @@ size_t HelixJpeg_WriteHeaderEx(uint8_t *out, size_t capacity, uint32_t width,
  * chroma blocks) with the Annex K codes: every coefficient coded with the
  * longest code per position, byte stuffing after every byte. */
 uint32_t HelixJpeg_McuWorstBytes(void);
+/* Unstuffed bits of the first mcus 4:2:0 MCUs of baseline entropy-coded
+ * data in the standard tables, or -1 when the data ends or breaks before. */
+int64_t HelixJpeg_McusBits(const uint8_t *data, uint32_t size, uint32_t mcus);
+#if defined(HELIX_JPEG_TEST_REFERENCE)
+int64_t HelixJpeg_McusBitsReference(const uint8_t *data, uint32_t size,
+                                    uint32_t mcus);
+#endif
 
 /* Runtime encoder (one VPU channel for the process, serialised). */
 typedef struct {

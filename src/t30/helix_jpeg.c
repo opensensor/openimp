@@ -1292,7 +1292,14 @@ typedef struct {
     const uint8_t *values;
     uint8_t fast[256];         /* (length << 4) | index for codes <= 8 bits */
     uint8_t fast_symbol[256];
+    /* AC only: a code and its magnitude bits together when they fit in
+     * HELIX_FAST_AC_BITS, see helix_fast_ac_init(); 0 = slow path */
+    uint16_t fast_ac[1u << 9];
 } HelixHuffDecode;
+
+#define HELIX_FAST_AC_BITS 9u
+#define HELIX_FAST_AC_EOB 0x20u     /* end of block */
+#define HELIX_FAST_AC_STEP 0x1fu    /* coefficients the symbol advances */
 
 static void helix_huff_decode_init(HelixHuffDecode *t,
                                    const uint8_t counts[16],
@@ -1401,6 +1408,38 @@ static struct {
     HelixHuffDecode dc[2], ac[2];
 } helix_parse = { .once = PTHREAD_ONCE_INIT };
 
+/* For every HELIX_FAST_AC_BITS-bit lookahead whose AC code and magnitude
+ * bits both fit in it: (bits consumed << 8) | EOB flag | coefficient step,
+ * the same step and bit count the symbol-then-magnitude path takes. */
+static void helix_fast_ac_init(HelixHuffDecode *t)
+{
+    unsigned int index;
+
+    for (index = 0; index < (1u << HELIX_FAST_AC_BITS); index++) {
+        unsigned int length;
+
+        t->fast_ac[index] = 0;
+        for (length = 1; length <= HELIX_FAST_AC_BITS; length++) {
+            uint32_t code = index >> (HELIX_FAST_AC_BITS - length);
+            unsigned int symbol, size, step;
+
+            if (!t->has[length] || code < t->mincode[length] ||
+                code > t->maxcode[length])
+                continue;
+            symbol = t->values[t->valptr[length] + code -
+                               t->mincode[length]];
+            size = symbol == 0xf0 ? 0u : symbol & 15u;
+            if (length + size > HELIX_FAST_AC_BITS)
+                break;
+            step = symbol == 0 ? 0u
+                 : symbol == 0xf0 ? 16u : (symbol >> 4) + 1u;
+            t->fast_ac[index] = (uint16_t)(((length + size) << 8) |
+                (symbol == 0 ? HELIX_FAST_AC_EOB : step));
+            break;
+        }
+    }
+}
+
 static void helix_parse_init(void)
 {
     helix_huff_decode_init(&helix_parse.dc[0], helix_dc_luma_counts,
@@ -1411,11 +1450,76 @@ static void helix_parse_init(void)
                            helix_ac_luma_values);
     helix_huff_decode_init(&helix_parse.ac[1], helix_ac_chroma_counts,
                            helix_ac_chroma_values);
+    helix_fast_ac_init(&helix_parse.ac[0]);
+    helix_fast_ac_init(&helix_parse.ac[1]);
 }
 
 /* Unstuffed bits of the first mcus 4:2:0 MCUs of data, or -1 when the data
- * ends or breaks before. */
-static int64_t helix_mcus_bits(const uint8_t *data, uint32_t size,
+ * ends or breaks before.  AC coefficients whose code and magnitude fit in
+ * HELIX_FAST_AC_BITS take one table lookup (helix_fast_ac_init); the rest,
+ * and every DC, the symbol path.  The whole picture is parsed on every
+ * single-job JPEG, which made this most of the T21 JPEG CPU time. */
+int64_t HelixJpeg_McusBits(const uint8_t *data, uint32_t size,
+                               uint32_t mcus)
+{
+    HelixBitReader r;
+    uint32_t m;
+    unsigned int b;
+
+    (void)pthread_once(&helix_parse.once, helix_parse_init);
+    memset(&r, 0, sizeof(r));
+    r.data = data;
+    r.size = size;
+    for (m = 0; m < mcus; m++)
+        for (b = 0; b < 6u; b++) {
+            unsigned int table = b < 4u ? 0u : 1u;
+            int symbol = helix_huff_symbol(&r, &helix_parse.dc[table]);
+            unsigned int k = 1;
+
+            if (symbol < 0 || symbol > 11)
+                return -1;
+            (void)helix_bits_get(&r, symbol);
+            while (k < 64u) {
+                uint16_t fast;
+
+                if (r.count < 16)
+                    helix_bits_fill(&r);
+                fast = helix_parse.ac[table].fast_ac[
+                    r.bits >> (32u - HELIX_FAST_AC_BITS)];
+                if (fast) {
+                    unsigned int n = (unsigned int)fast >> 8;
+
+                    r.bits <<= n;
+                    r.count -= (int)n;
+                    r.used += n;
+                    if (fast & HELIX_FAST_AC_EOB)
+                        break;
+                    k += fast & HELIX_FAST_AC_STEP;
+                    continue;
+                }
+                symbol = helix_huff_symbol(&r, &helix_parse.ac[table]);
+                if (symbol < 0)
+                    return -1;
+                if (symbol == 0)
+                    break;
+                if (symbol == 0xf0) {
+                    k += 16u;
+                    continue;
+                }
+                k += ((unsigned int)symbol >> 4) + 1u;
+                (void)helix_bits_get(&r, symbol & 15);
+            }
+            if (k > 64u)
+                return -1;
+            /* bits past the data are zeros: invalid once used */
+            if (r.used > (uint64_t)size * 8u)
+                return -1;
+        }
+    return (int64_t)r.used;
+}
+#if defined(HELIX_JPEG_TEST_REFERENCE)
+/* The symbol-by-symbol parse helix_mcus_bits() replaced: the tests' oracle. */
+int64_t HelixJpeg_McusBitsReference(const uint8_t *data, uint32_t size,
                                uint32_t mcus)
 {
     HelixBitReader r;
@@ -1456,6 +1560,7 @@ static int64_t helix_mcus_bits(const uint8_t *data, uint32_t size,
         }
     return (int64_t)r.used;
 }
+#endif
 
 /* Stuffed length of the first n unstuffed bytes of data. */
 static uint32_t helix_stuffed_length(const uint8_t *data, uint32_t size,
@@ -1513,7 +1618,7 @@ static int helix_stripes_out(uint8_t **file, size_t *length,
             *p++ = (uint8_t)(0xd0u + ((stripes[i].index - 1u) & 7u));
         }
         if (stripes[i].mcus) {
-            int64_t bits = helix_mcus_bits(data, stripes[i].length,
+            int64_t bits = HelixJpeg_McusBits(data, stripes[i].length,
                                            stripes[i].mcus);
             uint32_t whole;
 
