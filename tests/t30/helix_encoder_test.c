@@ -726,9 +726,9 @@ static void test_failure_count_and_input_size(void)
 }
 
 #if defined(PLATFORM_T21) && !defined(PLATFORM_T20)
-/* OPENIMP_T21_EPRC=1: the OEM picture rate controller (src/eprc) with the
- * statistics registers read after every picture; the IDR period follows
- * maxSameSceneCnt (same_scene_gops); unset: the GOP controller, no reads. */
+/* OPENIMP_T21_EPRC unset: the OEM picture rate controller (src/eprc) with
+ * the statistics registers read after every picture; the IDR period follows
+ * maxSameSceneCnt (same_scene_gops); =0: the GOP controller, no reads. */
 static void test_eprc(void)
 {
     static const uint32_t modes[3] = { HW_RC_MODE_CBR, HW_RC_MODE_VBR,
@@ -742,9 +742,9 @@ static void test_eprc(void)
         unsigned int idrs = 0;
 
         if (k < 3u)
-            setenv("OPENIMP_T21_EPRC", "1", 1);
-        else
             unsetenv("OPENIMP_T21_EPRC");
+        else
+            setenv("OPENIMP_T21_EPRC", "0", 1);
         memset(&params, 0, sizeof(params));
         params.width = 640;
         params.height = 360;

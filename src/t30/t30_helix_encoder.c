@@ -1227,10 +1227,11 @@ static void t23_rc_stats(T30HelixEncoder *encoder, uint32_t qp, int idr,
  * and which revision.
  * T23 (OPENIMP_T23_EPRC): unset = SMART, "1" = CBR, VBR and SMART, "0" =
  * none (the GOP controller with the band mapping, t23_rc_config).
- * T21 (OPENIMP_T21_EPRC): unset or "0" = none (the GOP controller), "1" =
- * CBR, VBR and SMART with the T21 1.0.33 revision (eprc_t21.c, equal to
- * the OEM T21 controller in tools/eprc_oracle.py), "23" = the same with the
- * T23 1.3.0 controller (eprc.c, an approximation on T21; A/B only).
+ * T21 (OPENIMP_T21_EPRC): unset or "1" = CBR, VBR and SMART with the T21
+ * 1.0.33 revision (eprc_t21.c, equal to the OEM T21 controller in
+ * tools/eprc_oracle.py; the default, as the OEM), "0" = none (the old GOP
+ * controller), "23" = the same with the T23 1.3.0 controller (eprc.c, an
+ * approximation on T21; A/B only).
  * Returns 0 (off), 1 (T21 revision) or 2 (T23 controller). */
 static int helix_eprc_wanted(const T30HelixEncoder *encoder)
 {
@@ -1248,11 +1249,11 @@ static int helix_eprc_wanted(const T30HelixEncoder *encoder)
     return smart ? 2 : 0;
 #else
     (void)smart;
-    if (env && strcmp(env, "1") == 0)
-        return 1;
+    if (env && strcmp(env, "0") == 0)
+        return 0;
     if (env && strcmp(env, "23") == 0)
         return 2;
-    return 0;
+    return 1;
 #endif
 }
 

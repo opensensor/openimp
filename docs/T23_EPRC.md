@@ -182,8 +182,9 @@ controller the same multiplier.  Not reproduced: the scene-cut IDR (class
     smaller of that and E+104); the QP step from `update_qp`;
   - shared with T23 otherwise (gop_init, estimate_qp, scene judging, the
     R-lambda model update, the per-picture QP window and lambda).
-  OpenIMP T21 runs it with `OPENIMP_T21_EPRC=1`; `OPENIMP_T21_EPRC=23`
-  runs the T23 controller on T21 (the earlier approximation, for A/B).
+  OpenIMP T21 runs it by default (as the OEM); `OPENIMP_T21_EPRC=0`
+  restores the old GOP controller, `OPENIMP_T21_EPRC=23` runs the T23
+  controller on T21 (the earlier approximation, for A/B).
   Equal on both: the per-picture QP window and lambda (`h264_api_enc`,
   checked under emulation for FIXQP/CBR/VBR): lambda 384 + 48 / 96 + 12
   per QP above 33, window [QP - 12, min(QP + 13, 51)] - the low end is
@@ -225,9 +226,9 @@ then finishes it as a picture that was not judged
 and pictures without the ring are re-encoded as the OEM does.
 
 Switches: `OPENIMP_T23_EPRC` unset = SMART, `1` = CBR/VBR/SMART, `0` = off;
-`OPENIMP_T21_EPRC` unset/`0` = off (the T21 GOP controller), `1` =
-CBR/VBR/SMART with the T21 revision (`eprc_t21.c`), `23` = the same with
-the T23 controller (see "Other SoCs");
+`OPENIMP_T21_EPRC` unset/`1` = CBR/VBR/SMART with the T21 revision
+(`eprc_t21.c`, the default), `0` = off (the old T21 GOP controller), `23` =
+the same with the T23 controller (see "Other SoCs");
 `OPENIMP_T23_SMART_IDR_GOPS=n` overrides maxSameSceneCnt for SMART on T23.
 
 ## Device test plan (cam-B T23, cam-D T21)
@@ -253,10 +254,12 @@ config copy with `video0.rc_mode=smart`, `OPENIMP_T23_RC_STATS=10`.
    target, decode clean.
 6. Ring: the start log still says `reference sharing on`; with ring P
    pictures are not re-encoded (only IDR `coding again` lines).
-7. T21 (cam-D, .24): first without switch (`T21 Helix eprc` absent, GOP
-   controller, but the lambda change of the command list is active for
-   QP > 33: decode clean, bitrate as before), then `OPENIMP_T21_EPRC=1`
-   with cbr/vbr/smart: `T21 Helix eprc (T21 rev): ...` line with the
+7. T21 (cam-D, .24): first `OPENIMP_T21_EPRC=0` (`T21 Helix eprc` absent,
+   old GOP controller, but the lambda change of the command list is active
+   for QP > 33: decode clean, bitrate as before), then the default
+   (switch unset) with cbr/vbr/smart; device result at 1200 kbit/s: CBR
+   1326, VBR 1096, SMART 1071, 0 oops, decode clean (old controller: CBR
+   570): `T21 Helix eprc (T21 rev): ...` line with the
    clamped extras, no `reading 0x132... failed`, decode clean, bitrate vs
    target; A/B against `OPENIMP_T21_EPRC=23` (T23 controller) and the OEM
    stack on the same scene (first IDR QP, IDR size, P QPs).
