@@ -114,7 +114,8 @@ case " $platform_cppflags " in
     *" -DPLATFORM_T20 "*)
         compile rc_t20 src/rc_t20/rc_t20.c -Werror -ffp-contract=off
         compile rc_t20_mb src/rc_t20/rc_t20_mb.c -Werror -ffp-contract=off
-        rc_t20_objects="$output_dir/rc_t20.o $output_dir/rc_t20_mb.o"
+        compile rc_t10 src/rc_t10/rc_t10.c -Werror -ffp-contract=off
+        rc_t20_objects="$output_dir/rc_t20.o $output_dir/rc_t20_mb.o $output_dir/rc_t10.o"
         ;;
 esac
 

@@ -26,6 +26,7 @@
 #include "t30/t30_helix_encoder.h"
 #if defined(PLATFORM_T20)
 #include "rc_t20/rc_t20.h"
+#include "rc_t10/rc_t10.h"
 #endif
 #if defined(PLATFORM_T21) && !defined(PLATFORM_T20)
 #include "t21/t21_h264_descriptor.h"
@@ -707,6 +708,55 @@ static void test_t20_rate_control(void)
     unsetenv("OPENIMP_T20_RC");
     fill_payload(5000, 30);
 }
+
+/* On a T10 (OPENIMP_HELIX_SOC=t10) OPENIMP_T10_RC=1 runs the OEM T10
+ * controller (src/rc_t10) instead: no VPU register reads, every slice QP
+ * as a second controller fed the slice size and cmpx chooses it. */
+static void test_t10_rate_control(void)
+{
+    T30HelixEncoder *encoder;
+    RcT10 rc;
+    RcT10Params p;
+    PictureInfo info;
+    unsigned int i, reads;
+
+    setenv("OPENIMP_HELIX_SOC", "t10", 1);
+    setenv("OPENIMP_T10_RC", "1", 1);
+    encoder = create(640, 360, 25, 10);
+    RCT10_DefaultParams(&p);
+    p.method = 1;
+    p.width = 640;
+    p.height = 360;
+    p.gop = 10;
+    p.fps_num = 25;
+    p.fps_den = 1;
+    p.qp = 30;
+    p.min_qp = 20;
+    p.max_qp = 45;
+    p.bitrate = 2000;
+    p.max_bitrate = 2000;
+    p.static_time = 2;
+    assert(RCT10_Init(&rc, &p) == 0);
+    reads = reg_reads;
+    for (i = 0; i < 45u; i++) {
+        RcT10Picture pic;
+        RcT10Stats st;
+
+        fill_payload(1500u + (i % 7u) * 2500u + (i > 25u ? 20000u : 0u), 30);
+        assert(encode(encoder, &info) == 0);
+        RCT10_Start(&rc, info.idr, &pic);
+        assert(pic.idr == info.idr);
+        assert(info.qp == pic.qp);
+        st.cmpx = payload_length * 37u;
+        st.bits = info.slice_bytes * 8u;
+        assert(RCT10_End(&rc, &st, &pic) == 0);
+    }
+    assert(reg_reads == reads);
+    OpenIMP_T30_HelixDestroy(encoder);
+    unsetenv("OPENIMP_T10_RC");
+    unsetenv("OPENIMP_HELIX_SOC");
+    fill_payload(5000, 30);
+}
 #endif
 
 static void test_dma_footprint(void)
@@ -881,6 +931,7 @@ int main(void)
     test_unaligned_width_rejected();
 #if defined(PLATFORM_T20)
     test_t20_rate_control();
+    test_t10_rate_control();
 #endif
     /* nothing leaks; the shared bitstream buffer is kept for the process */
     for (i = 0; i < 16u; i++)

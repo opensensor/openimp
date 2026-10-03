@@ -63,10 +63,10 @@ t21_rmem_layout_test: $(T21_RMEM_SOURCES) $(ROOT)/src/rmem_arena.h \
 
 # T20 builds the T21 userspace with PLATFORM_T20 and the T30 descriptor.
 HELIX_T20_SOURCES := $(HELIX_SOURCES) $(ROOT)/src/rc_t20/rc_t20.c \
-	$(ROOT)/src/rc_t20/rc_t20_mb.c
+	$(ROOT)/src/rc_t20/rc_t20_mb.c $(ROOT)/src/rc_t10/rc_t10.c
 
 helix_encoder_test_t20: $(HELIX_T20_SOURCES) $(ROOT)/src/t30/t30_annexb.h $(ROOT)/src/t30/t30_h264_level.h \
-	$(ROOT)/src/rc_t20/rc_t20.h $(ROOT)/src/rc_t20/rc_t20_internal.h
+	$(ROOT)/src/rc_t20/rc_t20.h $(ROOT)/src/rc_t20/rc_t20_internal.h $(ROOT)/src/rc_t10/rc_t10.h
 	$(CC) $(CFLAGS) -ffp-contract=off -DPLATFORM_T20 -DPLATFORM_T21 -fno-pie -no-pie \
 		-I$(ROOT)/include -I$(ROOT)/src $(INCLUDES) \
 		-Wl,--wrap=open,--wrap=close,--wrap=ioctl \

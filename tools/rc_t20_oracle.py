@@ -12,6 +12,11 @@ OpenIMP; it is read from the path you pass.
 
     pip install unicorn pyelftools
     tools/rc_t20_oracle.py T20/lib/3.12.0/uclibc/4.7.2/libimp.so > tests/rc_t20/rc_t20_vectors.txt
+    tools/rc_t20_oracle.py --t10 T20/lib/3.12.0/uclibc/4.7.2/libimp.so 16 120 > tests/rc_t10/rc_t10_vectors.txt
+
+--t10 runs the T10 branch of the same library (param[0] = 1, what
+get_cpu_id selects on a T10: JZ_VPU_RC_VIDEO_CFG / JZ_VPU_RC_FRAME_RC /
+JZ_VPU_RC_FRAME_REPEATE_JUDGE) for tests/rc_t10; no macroblock scenarios.
 
 Scenarios 12 and up run the macroblock rate control (param[268], the OEM
 default) on synthetic luma pictures (rc_t20_test.c draws the same ones):
@@ -226,7 +231,7 @@ class Oem:
         self.fenc = L.alloc(256)
         w32 = L.w32
         fb = lambda x: struct.unpack('<I', struct.pack('<f', x))[0]
-        w32(P + 0, 2)                                  # T20 rate control
+        w32(P + 0, 1 if T10 else 2)                    # T10 / T20 rate control
         w32(P + 40, cfg['gop']); w32(P + 44, cfg['w']); w32(P + 48, cfg['h'])
         w32(P + 188, cfg['method']); w32(P + 192, cfg['qp'])
         w32(P + 196, cfg['min']); w32(P + 200, cfg['max']); w32(P + 208, fb(1.4))
@@ -282,7 +287,7 @@ class Oem:
 def scenario(lib_path, seed, frames, out):
     rnd = random.Random(seed)
     method = (1, 2, 3, 0)[seed % 4]
-    mbrc = 1 if seed >= 12 else 0
+    mbrc = 1 if seed >= 12 and not T10 else 0
     w, hh = rnd.choice([(320, 240), (256, 160), (176, 144)] if mbrc else
                        [(1920, 1080), (1280, 720), (640, 360), (320, 240)])
     mx = rnd.randint(36, 51); mn = rnd.randint(0, 30)
@@ -322,10 +327,18 @@ def scenario(lib_path, seed, frames, out):
         oem.frame += 1
 
 
+T10 = False
+
+
 def main():
-    lib_path = sys.argv[1]
-    scenarios = int(sys.argv[2]) if len(sys.argv) > 2 else 16
-    frames = int(sys.argv[3]) if len(sys.argv) > 3 else 120
+    global T10
+    args = sys.argv[1:]
+    if args and args[0] == '--t10':
+        T10 = True
+        args = args[1:]
+    lib_path = args[0]
+    scenarios = int(args[1]) if len(args) > 1 else 16
+    frames = int(args[2]) if len(args) > 2 else 120
     for seed in range(scenarios):
         scenario(lib_path, seed, frames, sys.stdout)
 

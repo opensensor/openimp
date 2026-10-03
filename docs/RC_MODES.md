@@ -109,6 +109,13 @@ the scene classifier replaces it, staticTime and adaptiveMode are unused,
 and there is no I/P QP delta (FIXQP: I = qp - 3).  The table below is the
 T10, the T21 and the T20 with `OPENIMP_T20_RC=0`.
 
+**T10 (since claude/t20-rc, opt-in):** `OPENIMP_T10_RC=1` runs the OEM T10
+controller (`src/rc_t10`, `docs/T20_RC.md` "T10"), the older code base the
+same OEM library selects on a T10: frmQPStep/gopQPStep/iBiasLvl/
+changePos/qualityLvl/gopRelation take effect, staticTime and the I/P delta
+do not; OEM VBR re-codes pictures above superFrm/1024 bits at QP + 3.
+Default off (the GOP controller below) until tested on a T10.
+
 ### What a write does on T10/T20/T21 (OpenIMP)
 
 T10 runs the T20 build (`t30_soc_is_t10`, only the command list differs),

@@ -62,6 +62,7 @@ typedef T30H264SliceConfig PlatformH264SliceConfig;
 #include "t40/t31_rate_control.h"
 #if defined(PLATFORM_T20)
 #include "rc_t20/rc_t20.h"
+#include "rc_t10/rc_t10.h"
 #endif
 
 #if defined(PLATFORM_T23)
@@ -299,6 +300,10 @@ struct T30HelixEncoder {
     uint32_t t20rc_frames, t20rc_idrs;
     uint64_t t20rc_bytes, t20rc_qp_sum[2];
     uint32_t t20rc_qp_min[2], t20rc_qp_max[2];
+    /* OEM T10 rate control (src/rc_t10, OPENIMP_T10_RC=1); shares the
+     * QP range, re-encode and statistics fields above */
+    RcT10 t10rc;
+    int t10rc_on;
 #endif
 #if defined(HELIX_T21_SYNTAX)
     uint32_t scratch_offset[4]; /* EMC per-macroblock buffer layout */
@@ -1176,8 +1181,8 @@ static uint32_t t30_fixqp_idr_qp(const HWEncoderParams *params)
 #if defined(PLATFORM_T20)
 /* OPENIMP_T20_RC: "0" keeps OpenIMP's GOP controller (t31_rate_control) on
  * the T20; anything else (default) runs the OEM T20 controller for CBR, VBR
- * and SMART.  The T10 build of the OEM library uses another controller:
- * the T10 always keeps the GOP controller. */
+ * and SMART.  On a T10 the OEM library runs another controller
+ * (src/rc_t10, t10_rc_wanted below). */
 static int t20_rc_wanted(const T30HelixEncoder *encoder)
 {
     const char *env = getenv("OPENIMP_T20_RC");
@@ -1190,11 +1195,27 @@ static int t20_rc_wanted(const T30HelixEncoder *encoder)
     return !(env && env[0] == '0');
 }
 
+/* OPENIMP_T10_RC=1 runs the OEM T10 controller (the T10 branch of the
+ * same OEM library, src/rc_t10) for CBR, VBR and SMART on a T10; by
+ * default the T10 keeps the GOP controller. */
+static int t10_rc_wanted(const T30HelixEncoder *encoder)
+{
+    const char *env = getenv("OPENIMP_T10_RC");
+
+    if (!encoder->t10)
+        return 0;
+    if (encoder->params.rc_mode != HW_RC_MODE_CBR &&
+        encoder->params.rc_mode != HW_RC_MODE_VBR)
+        return 0;
+    return env && env[0] == '1';
+}
+
 static void t20_rc_stop(T30HelixEncoder *encoder)
 {
     if (encoder->t20rc_on)
         RCT20_Free(&encoder->t20rc);
     encoder->t20rc_on = 0;
+    encoder->t10rc_on = 0;
 }
 
 static uint32_t t20_rc_clip(uint32_t value, int32_t lo, int32_t hi)
@@ -1217,8 +1238,8 @@ static void t20_rc_start(T30HelixEncoder *encoder)
     RcT20Params p;
 
     t20_rc_stop(encoder);
-    if (!t20_rc_wanted(encoder) || !hp->fps_num || !hp->fps_den ||
-        !hp->gop_length)
+    if ((!t20_rc_wanted(encoder) && !t10_rc_wanted(encoder)) ||
+        !hp->fps_num || !hp->fps_den || !hp->gop_length)
         return;
     RCT20_DefaultParams(&p);
     p.method = hp->rc_mode == HW_RC_MODE_CBR ? 1u : smart ? 3u : 2u;
@@ -1251,6 +1272,56 @@ static void t20_rc_start(T30HelixEncoder *encoder)
     } else {
         /* no IMP attribute: the i264e_param_default values */
         p.static_time = 2u;
+    }
+    if (encoder->t10) {
+        RcT10Params q;
+
+        /* the same i264e parameters; the T10 controller has no
+         * macroblock rate control */
+        RCT10_DefaultParams(&q);
+        q.method = p.method;
+        q.width = p.width;
+        q.height = p.height;
+        q.gop = p.gop;
+        q.fps_num = p.fps_num;
+        q.fps_den = p.fps_den;
+        q.qp = p.qp;
+        q.min_qp = p.min_qp;
+        q.max_qp = p.max_qp;
+        q.bitrate = p.bitrate;
+        q.i_bias = p.i_bias;
+        q.frm_qp_step = p.frm_qp_step;
+        q.gop_qp_step = p.gop_qp_step;
+        q.gop_relation = p.gop_relation;
+        q.static_time = p.static_time;
+        q.max_bitrate = p.max_bitrate;
+        q.change_pos = p.change_pos;
+        q.quality = p.quality;
+        q.new_max_qp_trig = p.new_max_qp_trig;
+        q.new_max_qp = p.new_max_qp;
+        q.super_i_bits = p.super_i_bits;
+        q.super_p_bits = p.super_p_bits;
+        if (RCT10_Init(&encoder->t10rc, &q) != 0) {
+            IMP_LOG_WARN("Encoder", "T10: OEM rate control init failed, "
+                         "using the GOP controller");
+            return;
+        }
+        encoder->t10rc_on = 1;
+        encoder->t20rc_mb = 0;
+        env = getenv("OPENIMP_T20_RC_STATS");
+        encoder->t20rc_stats_seconds =
+            env ? (uint32_t)strtoul(env, NULL, 0) : 0u;
+        encoder->t20rc_frames = 0u;
+        IMP_LOG_INFO("Encoder", "T10 rc: OEM %s %ux%u gop=%u fps=%u/%u "
+                     "bitrate=%u kbit/s qp=[%u,%u] bias=%d steps=%u/%u "
+                     "changePos=%u quality=%u gopRelation=%u%s",
+                     q.method == 1u ? "CBR" : q.method == 3u ? "SMART" : "VBR",
+                     q.width, q.height, q.gop, q.fps_num, q.fps_den,
+                     q.method == 1u ? q.bitrate : q.max_bitrate, q.min_qp,
+                     q.max_qp, (int)q.i_bias, q.frm_qp_step, q.gop_qp_step,
+                     q.change_pos, q.quality, q.gop_relation,
+                     runtime ? " (run-time set)" : "");
+        return;
     }
     /* macroblock rate control (the OEM's default): OPENIMP_T20_MBRC=1 */
     env = getenv("OPENIMP_T20_MBRC");
@@ -1355,7 +1426,9 @@ static void t20_rc_report(T30HelixEncoder *encoder, uint32_t qp, int idr,
                      : 0u,
                  encoder->t20rc_idrs ? encoder->t20rc_qp_min[1] : 0u,
                  encoder->t20rc_qp_max[1],
-                 *(const uint32_t *)(encoder->t20rc.s + 176),
+                 encoder->t10rc_on
+                     ? *(const uint32_t *)(encoder->t10rc.s + 780)
+                     : *(const uint32_t *)(encoder->t20rc.s + 176),
                  encoder->t20rc_reencodes);
     encoder->t20rc_frames = 0u;
 }
@@ -1873,6 +1946,11 @@ static int t30_helix_encode_job(T30HelixEncoder *encoder,
         }
         RCT20_Start(&encoder->t20rc, idr, luma, encoder->params.width, &pic);
         qp = pic.qp;
+    } else if (encoder->t10rc_on) {
+        RcT10Picture pic;
+
+        RCT10_Start(&encoder->t10rc, idr, &pic);
+        qp = pic.qp;
     }
     t20_reencodes = 0u;
 t20_again:
@@ -2074,27 +2152,43 @@ t20_again:
         return -1;
     }
 #if defined(PLATFORM_T20)
-    if (encoder->t20rc_on) {
-        RcT20Stats st;
-        RcT20Picture pic;
+    if (encoder->t20rc_on || encoder->t10rc_on) {
+        uint32_t new_qp = qp;
+        int again;
 
         /* the OEM counts the slice bytes (header and payload) */
-        t20_rc_statistics(encoder, &st,
-                          header_length + encoder->channel.output_len);
-        pic.qp = (uint8_t)qp;
-        if (RCT20_End(&encoder->t20rc, &st, &pic) == 1 &&
-            t20_reencodes < 4u) {
+        if (encoder->t10rc_on) {
+            RcT10Stats st;
+            RcT10Picture pic;
+
+            st.cmpx = encoder->channel.cmpx;
+            st.bits = (header_length + encoder->channel.output_len) * 8u;
+            pic.qp = (uint8_t)qp;
+            again = RCT10_End(&encoder->t10rc, &st, &pic) == 1;
+            new_qp = pic.qp;
+        } else {
+            RcT20Stats st;
+            RcT20Picture pic;
+
+            t20_rc_statistics(encoder, &st,
+                              header_length + encoder->channel.output_len);
+            pic.qp = (uint8_t)qp;
+            again = RCT20_End(&encoder->t20rc, &st, &pic) == 1;
+            new_qp = pic.qp;
+        }
+        if (again && t20_reencodes < 4u) {
             /* OEM FRAME_REPEATE_JUDGE: code the picture again at the
              * new QP (the reference input is untouched) */
             encoder->t20rc_reencodes++;
             if (encoder->t20rc_reencodes <= 3u ||
                 encoder->t20rc_reencodes % 100u == 0u)
-                IMP_LOG_INFO("Encoder", "T20 rc: frame=%u %s %u bytes at "
+                IMP_LOG_INFO("Encoder", "%s rc: frame=%u %s %u bytes at "
                              "qp=%u, coding again at qp=%u (%u so far)",
+                             encoder->t10rc_on ? "T10" : "T20",
                              encoder->frame_number, idr ? "IDR" : "P",
                              header_length + encoder->channel.output_len,
-                             qp, pic.qp, encoder->t20rc_reencodes);
-            qp = pic.qp;
+                             qp, new_qp, encoder->t20rc_reencodes);
+            qp = new_qp;
             t20_reencodes++;
             goto t20_again;
         }
@@ -2150,7 +2244,7 @@ t20_again:
         (void)openimp_t31_rate_controller_complete(
             &encoder->rate_control, stream->length * 8u, qp, idr);
 #if defined(PLATFORM_T20)
-    if (encoder->t20rc_on)
+    if (encoder->t20rc_on || encoder->t10rc_on)
         t20_rc_report(encoder, qp, idr, stream->length);
 #endif
 #if defined(PLATFORM_T23)
@@ -2405,7 +2499,8 @@ int OpenIMP_T30_HelixUpdateParams(T30HelixEncoder *encoder,
 
 #if defined(PLATFORM_T20)
     /* the OEM re-runs i264e_ratecontrol_init on every rate-control change */
-    if (encoder->t20rc_on || t20_rc_wanted(encoder) || t20_range_changed)
+    if (encoder->t20rc_on || encoder->t10rc_on || t20_rc_wanted(encoder) ||
+        t10_rc_wanted(encoder) || t20_range_changed)
         model_changed = 1;
 #endif
     if (next.bitrate != encoder->params.bitrate && !model_changed &&

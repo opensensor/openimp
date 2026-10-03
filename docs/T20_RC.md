@@ -16,7 +16,8 @@ CPU id 3..5 (SoC id 0x2000, **T20**) -> 2.
 
 This document describes the **T20** controller and OpenIMP's
 reimplementation `src/rc_t20/` (platform neutral, libc/libm only).  The T10
-controller is a different (older) code base; see "T10" below.
+controller is a different (older) code base, reimplemented in `src/rc_t10/`;
+see "T10" below.
 
 The controller is a JM-style quadratic R-Q model (JM `rc_quadratic.c`:
 `RCModelEstimator`, `MADModelEstimator`, `updateRCModel`), with a GOP bit
@@ -258,9 +259,57 @@ but the T20 encoder does not read them.
 The T10 runs `JZ_VPU_RC_VIDEO_CFG` / `JZ_VPU_RC_FRAME_RC` /
 `JZ_VPU_RC_FRAME_REPEATE_JUDGE` with the exported `RC_H264_*` helpers
 (0x9eec0..0xa2b2c, about 2,800 instructions, no macroblock part) on the
-block at param + 476; its statistics are `io +116` from
-`hwicodec_pf_h264e_t10_enc` and the bits.  `src/rc_t20` must not be used on
-the T10.
+block at param + 476 (E; rcPara P 88 bytes and rcSt S 808 bytes behind the
+pointers E+216/E+220).  `src/rc_t20` must not be used on the T10;
+`src/rc_t10` is its reimplementation (same layout rules as `src/rc_t20`).
+
+Inputs per picture (`i264e_ratecontrol_start` 0x3cb64, T10 path): E+212 =
+IDR, and only for P pictures E+188 = cmpx and E+192 = bits of the previous
+picture (an IDR keeps the values of the picture before; OEM).  cmpx is
+`io +116` of `hwicodec_pf_h264e_t10_enc`, i.e. the channel node +44 after
+the run ioctl 0xc0386302, as on the T20; bits = slice bytes x 8.  No VPU
+registers.  After coding (`i264e_ratecontrol_is_reenc`): E+192 = bits,
+`FRAME_REPEATE_JUDGE`, QP E+177.
+
+Differences to the T20 controller:
+
+- R-Q / MAD model window up to 20 pictures (T20: 4); the outlier threshold
+  divides by n (T20: n - 2).
+- `RC_H264_updateQp`: 13 ratio steps 1.0 .. 4.0 (index of the first step
+  above the ratio; exactly 4.0 gives 0).
+- Scene class S+780 from the complexity ratio of the last P picture to the
+  last I picture (SMART: the GOP head): ratio >= 41 % or P > I: 2, < 26 %: 0,
+  else 1.  In CBR/VBR it only matters when the GOP budget is used up or
+  the estimate falls below 3/5 of the per-picture budget: class 0 then
+  targets 3/5 of it, otherwise all of it.  SMART switches the GOP budget
+  between the quality minimum (class 0), the bit rate (1) and the
+  maximum (2).
+- I QP: the first from bits per picture and picture size
+  (`calcFirstIQp`, using P+44 << 8), then the average P QP of the last GOP
+  minus min(gop/15, 2), limited by `frmQPStep`/`gopQPStep`.
+- frmQPStep (P+24) and gopQPStep (P+28) are used as given (no scene
+  overwrite): a P QP stays within +-frmQPStep of the last coded QP and
+  within +-gopQPStep of the last I QP; staticTime and the I/P delta are not
+  used (as on the T20).  iBiasLvl is added to every I QP.
+- NewMaxQp: maxQp + (newMaxQp - maxQp) when the GOP used more than
+  `trig` x its budget.
+- Super frame / re-encode (`FRAME_REPEATE_JUDGE`): VBR only.  The
+  thresholds are `superFrm` bits / 1024 compared with the picture's bits,
+  so with the default thresholds (19660800 / 14043429) every I picture above
+  19200 bits and every P picture above 13714 bits is coded once more at
+  QP + 3 (E+100 = 1 time, E+101 = 3).  The SMART branch reads the VBR mode
+  word E+112 (0 for SMART): SMART never re-encodes.  CBR never re-encodes.
+- FIXQP does not run the controller: `i264e_ratecontrol_start` gives IDR =
+  clip(qp - 6 x log2(ipFactor 1.4) + 0.5) = qp - 3, P = qp.
+- Not reproduced: the start paths for param[RX+1532] = 5/6 (they set
+  E+224 to 1/2; never set by the IMP encoder path) - E+224 stays 0.
+
+Verification: `sim10.py` (OEM `i264e_ratecontrol_init/_start/_is_reenc`
+with param[0] = 1 against `src/rc_t10` built for mipsel, both under
+unicorn, E/P/S compared byte for byte after every call): 200 random
+scenarios x 150 pictures (CBR/VBR/SMART/FIXQP, 7675 re-encodes) identical.
+`tests/rc_t10` (in `make check`) replays 16 scenarios x 120 pictures
+produced by `tools/rc_t20_oracle.py --t10`: 4231 decisions, 0 differ.
 
 ## In OpenIMP (T20 build, `src/t30/t30_helix_encoder.c`)
 
@@ -295,7 +344,13 @@ Environment:
   in OpenIMP until tested on a camera: it costs about 1.3 M CPU operations
   per 1080p picture without the OEM's SIMD).
 - `OPENIMP_T20_RC_STATS=<seconds>`: one log line per interval: bit rate,
-  P and IDR QP average/min/max, scene class, re-encodes.
+  P and IDR QP average/min/max, scene class, re-encodes (also on the T10).
+- `OPENIMP_T10_RC=1` (T10 only, default off): CBR, VBR and SMART run
+  `src/rc_t10` instead of the GOP controller (`RCT10_Start` / `RCT10_End`
+  with the IDR decision, the slice size and cmpx; re-encodes as on the
+  T20, at most 4).  Off by default until tested on a T10 camera, also
+  because OEM VBR codes most pictures twice (see "T10").  The log shows
+  `T10 rc: OEM <mode> ...` when it starts.
 
 The log shows `T20 rc: OEM <mode> ...` with the effective parameters when
 the controller starts.  `tests/t30` (helix_encoder_test_t20) checks the
