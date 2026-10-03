@@ -3,7 +3,7 @@
 Everything changed, extended or fixed in OpenIMP, open-tx-isp, timps and the thingino
 integration since the test campaign started on 2026-09-30. Kept up to date during the campaign.
 
-Last update: 2026-10-03 22:30.
+Last update: 2026-10-03 22:50.
 
 Cameras are anonymised: cam-A (T31), cam-B (T23), cam-C (T20), cam-D (T21), cam-E (T10), cam-F (T41).
 
@@ -96,6 +96,9 @@ Aggregates: `claude/open-tx-isp-all-4` and `claude/openimp-all-4` (pushed); 58 m
 - **Hardening:** claude/isp-hardening-qbuf-pin: QBUF buffers must lie in the rmem window from the kernel command line (qbuf_guard=0 disables); the sensor module is pinned while the ISP is open (T23 device-tested: rmmod of the sensor while streaming is refused, 6 clean cycles). OpenIMP opens all device nodes with O_CLOEXEC (claude/imp-cloexec), so helper processes no longer hold /dev/isp-m0.
 - **thingino ciao (maintained by the timps session):** openimp pinned to the Lu-Fi fork (9eefbae, pushed; T23 OEM helper now opt-in, saves ~328 KiB); open-tx-isp and openimp pins to all-17/all-15 committed locally; timps 110ab65 (silent boot probe for day/night) pushed; boot guard available as an opt-in package (local).
 - **Planned:** 03:00: A/B measurement vendor vs open stack (CPU, RAM, rmem, start-up, snapshot latency) on cam-B and cam-D.
+
+- **Feature matrix:** 9 more cells closed: DPC on T10/T20/T21, DRC and defog on T20, scene/colour effects on T10, T41 video memory and stability. Remaining open: CCM/LSC readback on T10/T20 and Iridix on T10 (in work), T23 CCM in daylight, T20 AWB under artificial light (no artificial light at night; daylight A/B equal), T23 long-term hangs.
+- **In work tonight:** T23 review fixes (use-after-free on unload, defog allocations, front-crop overflow, ADR/AE locking, RAM placeholders) for the cam-B image; independent review of OpenIMP; CPU profiling and optimisation of OpenIMP on cam-A/cam-D; remaining matrix '?' cells on T31/T21 (audio input only); overnight soak log of all six cameras every 10 min; A/B measurement vendor vs open stack at 03:00.
 
 ## Night (2026-10-03, 20:39)
 
