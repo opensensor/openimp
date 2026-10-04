@@ -1,0 +1,51 @@
+[IVS] chn0: 149 frames, 0 dropped busy, 25 results; copy avg 1774 us max 14084 us; process avg 1252 us max 15297 us
+== 19:40:16 start position 2641,0
+"enabled":1,stalled:0,"active":[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],last_ms=-1== 19:40:16 quiet scene 120 s
+  samples=240 active_samples=0 last_ms=-1
+== 19:42:59 PTZ pan +150 and back, sensitivity 128
+  samples=30 active_samples=3 last_ms=13748
+== 19:43:20 sensitivity 255
+{"ok":true,"accepted":1,"changed":1,"rejected":0,"not_persisted":0,"deferred":0,"deferred_keys":[],"ignored":[],"applied":{}}
+ quiet 30 s:
+  samples=60 active_samples=0 last_ms=57894
+ pan:
+  samples=30 active_samples=3 last_ms=13745
+== 19:44:25 sensitivity 0
+{"ok":true,"accepted":1,"changed":1,"rejected":0,"not_persisted":0,"deferred":0,"deferred_keys":[],"ignored":[],"applied":{}}
+ quiet 30 s:
+  samples=60 active_samples=0 last_ms=58058
+ pan:
+  samples=30 active_samples=3 last_ms=13851
+{"ok":true,"accepted":1,"changed":1,"rejected":0,"not_persisted":0,"deferred":0,"deferred_keys":[],"ignored":[],"applied":{}}
+== 19:45:30 top with motion enabled
+CPU: 25.0% usr  8.3% sys  0.0% nic 66.6% idle  0.0% io  0.0% irq  0.0% sirq
+ 1852     1 root     S     6504  8.7   0  8.3 /usr/bin/timpsd -c /tmp/timps-ivs.conf
+ 7956  2436 root     S      320  0.4   0  0.0 grep -E ^CPU|timpsd
+CPU: 10.4% usr 12.8% sys  0.0% nic 76.2% idle  0.0% io  0.0% irq  0.3% sirq
+ 1852     1 root     S     6504  8.7   0 10.2 /usr/bin/timpsd -c /tmp/timps-ivs.conf
+ 7956  2436 root     S      424  0.5   0  0.0 grep -E ^CPU|timpsd
+CPU:  8.4% usr  7.1% sys  0.0% nic 84.2% idle  0.0% io  0.0% irq  0.2% sirq
+ 1852     1 root     S     6504  8.7   0 10.6 /usr/bin/timpsd -c /tmp/timps-ivs.conf
+ 7956  2436 root     S      424  0.5   0  0.0 grep -E ^CPU|timpsd
+CPU:  7.7% usr  7.0% sys  0.0% nic 83.9% idle  0.0% io  0.0% irq  1.2% sirq
+ 1852     1 root     S     6504  8.7   0 11.1 /usr/bin/timpsd -c /tmp/timps-ivs.conf
+ 7956  2436 root     S      424  0.5   0  0.0 grep -E ^CPU|timpsd
+== 19:45:45 motion disabled
+{"ok":true,"accepted":1,"changed":1,"rejected":0,"not_persisted":0,"deferred":0,"deferred_keys":[],"ignored":[],"applied":{}}
+"enabled":0,stalled:0,"active":[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],last_ms=35129CPU: 10.0% usr  0.0% sys  0.0% nic 90.0% idle  0.0% io  0.0% irq  0.0% sirq
+ 1852     1 root     S     4472  6.0   0  0.0 /usr/bin/timpsd -c /tmp/timps-ivs.conf
+ 8014  2436 root     S      320  0.4   0  0.0 grep -E ^CPU|timpsd
+CPU:  3.9% usr  8.3% sys  0.0% nic 87.7% idle  0.0% io  0.0% irq  0.0% sirq
+ 1852     1 root     S     4472  6.0   0  7.9 /usr/bin/timpsd -c /tmp/timps-ivs.conf
+ 8014  2436 root     S      424  0.5   0  0.0 grep -E ^CPU|timpsd
+CPU:  4.8% usr  4.6% sys  0.0% nic 89.7% idle  0.0% io  0.0% irq  0.6% sirq
+ 1852     1 root     S     4472  6.0   0  6.2 /usr/bin/timpsd -c /tmp/timps-ivs.conf
+ 8014  2436 root     S      424  0.5   0  0.0 grep -E ^CPU|timpsd
+CPU:  2.6% usr  3.2% sys  0.0% nic 93.6% idle  0.0% io  0.0% irq  0.4% sirq
+ 1852     1 root     S     4472  6.0   0  3.9 /usr/bin/timpsd -c /tmp/timps-ivs.conf
+ 8014  2436 root     S      424  0.5   0  0.0 grep -E ^CPU|timpsd
+== 19:46:06 motion re-enabled
+{"ok":true,"accepted":1,"changed":1,"rejected":0,"not_persisted":0,"deferred":0,"deferred_keys":[],"ignored":[],"applied":{}}
+"enabled":1,stalled:0,"active":[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],last_ms=65614 pan after re-enable:
+  samples=30 active_samples=2 last_ms=13672
+== 19:46:42 end position 2641,0 (start 2641,0)

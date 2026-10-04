@@ -1,0 +1,32 @@
+cycle 1 (streaming at stop): clean
+cycle 2 (idle at stop): clean
+cycle 3 (streaming at stop): clean
+cycle 4 (idle at stop): clean
+cycle 5 (streaming at stop): clean
+cycle 6 (idle at stop): clean
+cycle 7 (streaming at stop): clean
+cycle 8 (idle at stop): clean
+stop 0.5s after disconnect: clean
+stop 1s after disconnect: clean
+stop 1.5s after disconnect: clean
+stop 2s after disconnect: clean
+stop 2.5s after disconnect: clean
+stop 3s after disconnect: clean
+stop 0.5s after disconnect: clean
+stop 1s after disconnect: clean
+stop 1.5s after disconnect: clean
+stop 2s after disconnect: clean
+pipe cycle 1: clean
+0
+pipe cycle 2: clean
+0
+pipe cycle 3: clean
+0
+pipe cycle 4: clean
+0
+double-TERM cycle 1: clean 0
+double-TERM cycle 2: clean /tmp/run-dk2.log:1
+double-TERM cycle 3: clean /tmp/run-dk3.log:0
+double-TERM cycle 4: clean /tmp/run-dk4.log:1
+double-TERM cycle 5: clean /tmp/run-dk5.log:0
+double-TERM cycle 6: clean /tmp/run-dk6.log:1

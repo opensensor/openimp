@@ -1,0 +1,11 @@
+== e-stock
+stopped (waited 0x100ms)
+pid 2117
+ch0: connects=1 frames=2668 intervals=17 min_per_10s=137 zero_intervals=0 intervals<140=1 [137]
+ch1: connects=1 frames=2667 intervals=17 min_per_10s=136 zero_intervals=0 intervals<140=1 [136]
+snapshots:     129 200 
+snap ok avg 290013 B, avg 0.293 s, max 0.552 s
+timpsd %CPU samples: 11.1 18.9 19.4 19.2 19.4 20.0 
+idle samples: 77.7 64.2 64.3 63.5 64.7 66.8 
+ffmpeg error lines main/sub: 0 / 0
+S2 frames=442 interval median=0.067 p99=0.069 max=0.071 >0.1s=0

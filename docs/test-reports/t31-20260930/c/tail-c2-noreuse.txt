@@ -1,0 +1,20 @@
+09:04:22.647 [WRN] HAL_ING      chn0: PollingStream idle (rc=-1, miss#1) - encoder emits no frames
+09:04:23.084 [WRN] HAL_ING      chn1: PollingStream idle (rc=-1, miss#1) - encoder emits no frames
+09:04:27.592 [ERR] HAL_ING      chn1: encoder dead after 10 consecutive misses - forcing a framesource disable/enable cycle to recover (recovery attempt 1/5)
+[DMA] rmem out of memory: requested 706560, used 51888128 of 52428800, largest free block 540672, 26 allocations
+09:04:28.093 [WRN] HAL_ING      chn1: PollingStream idle (rc=-1, miss#1) - encoder emits no frames
+09:04:32.600 [ERR] HAL_ING      chn1: encoder dead after 10 consecutive misses - forcing a framesource disable/enable cycle to recover (recovery attempt 2/5)
+[DMA] rmem out of memory: requested 706560, used 51888128 of 52428800, largest free block 540672, 26 allocations
+09:04:33.101 [WRN] HAL_ING      chn1: PollingStream idle (rc=-1, miss#1) - encoder emits no frames
+09:04:37.605 [ERR] HAL_ING      chn1: encoder dead after 10 consecutive misses - forcing a framesource disable/enable cycle to recover (recovery attempt 3/5)
+[DMA] rmem out of memory: requested 706560, used 51888128 of 52428800, largest free block 540672, 26 allocations
+09:04:38.106 [WRN] HAL_ING      chn1: PollingStream idle (rc=-1, miss#1) - encoder emits no frames
+09:04:42.611 [ERR] HAL_ING      chn1: encoder dead after 10 consecutive misses - forcing a framesource disable/enable cycle to recover (recovery attempt 4/5)
+[DMA] rmem out of memory: requested 706560, used 51888128 of 52428800, largest free block 540672, 26 allocations
+09:04:43.113 [WRN] HAL_ING      chn1: PollingStream idle (rc=-1, miss#1) - encoder emits no frames
+09:04:47.618 [ERR] HAL_ING      chn1: 5 consecutive forced-recovery cycles never produced a frame - encoder/ISP is not coming back on its own; exiting (camera needs a manual/scheduled restart)
+[147520.821558] codec_codec_ctl: set CODEC_TURN_OFF...
+[147521.017710] libimp/ISP: DisableSensor GET_SENSOR_INDEX=0
+[147521.017737] libimp/ISP: DisableSensor DISABLE_LINKS ok
+[147521.017755] libimp/ISP: DisableSensor DESTROY_LINKS ok arg=0
+[147521.018175] libimp/ISP: DisableSensor DISABLE_SENSOR ok

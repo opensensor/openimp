@@ -1,0 +1,8 @@
+     30 ffd8
+snaps n=30 avg=195319 min=78688
+t4 client 24889765
+== T4
+INFO total: 0
+t5 client 4374672
+== T5
+INFO total: 0

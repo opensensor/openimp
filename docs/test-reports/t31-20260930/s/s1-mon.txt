@@ -1,0 +1,252 @@
+=== 08:30:40
+Mem: 63616K used, 10460K free, 6516K shrd, 2864K buff, 14700K cached
+CPU: 81.8% usr  9.0% sys  0.0% nic  0.0% idle  0.0% io  0.0% irq  9.0% sirq
+Load average: 1.83 1.42 1.45 2/98 7039
+  PID  PPID USER     STAT   RSS %RSS CPU %CPU COMMAND
+ 6705  6702 root     S     4192  5.6   0 45.3 /usr/bin/timpsd -c /tmp/timps.conf
+ 7034  7027 root     R     1604  2.1   0 36.3 curl -sk -m 20 -o /tmp/snap-last.jpg -w %{http_code} %{size_download} %{time_total} -H X-Timps-Token: <token> https://127.0.0.1:8880/snapshot.jpg?chn=0
+ 7038  7029 root     R      456  0.6   0  9.0 top -b -n1
+  884     1 root     S     1236  1.6   0  0.0 /usr/sbin/wpa_supplicant -i wlan0 -P /run/wpa_supplicant.wlan0.pid -B -c /etc/wpa_supplicant.conf
+ 1688     1 root     S      856  1.1   0  0.0 /usr/sbin/onvif_notify_server -c /etc/onvif.json -p /run/onvif_notify_server.pid
+ 1696   750 root     S      744  1.0   0  0.0 /usr/sbin/dropbear -k -K 300 -R -2 9
+ 1196     1 root     S      700  0.9   0  0.0 /usr/bin/motors-daemon -p
+ 1697  1696 root     S      624  0.8   0  0.0 -sh
+ 1160     1 root     S      536  0.7   0  0.0 /usr/sbin/mdnsd -s
+ 7029     1 root     S      520  0.7   0  0.0 {mon.sh} /bin/sh /tmp/mon.sh s1 7200 600
+              total        used        free      shared  buff/cache   available
+Mem:          74076       44760       10456           0       18860           0
+Node 0, zone   Normal      4      3     56     32     23     27      6      0      0      1      0      0      0      0      0 
+=== 08:40:40
+Mem: 67372K used, 6704K free, 6740K shrd, 2936K buff, 15012K cached
+CPU: 10.0% usr 10.0% sys  0.0% nic 80.0% idle  0.0% io  0.0% irq  0.0% sirq
+Load average: 2.00 1.81 1.65 1/96 9471
+  PID  PPID USER     STAT   RSS %RSS CPU %CPU COMMAND
+ 6705  6702 root     S     7712 10.4   0  6.6 /usr/bin/timpsd -c /tmp/timps.conf
+ 9470  7029 root     R      452  0.6   0  6.6 top -b -n1
+ 6712     2 root     DW       0  0.0   0  6.6 [isp_fw_process]
+  884     1 root     S     1236  1.6   0  0.0 /usr/sbin/wpa_supplicant -i wlan0 -P /run/wpa_supplicant.wlan0.pid -B -c /etc/wpa_supplicant.conf
+ 1688     1 root     S      856  1.1   0  0.0 /usr/sbin/onvif_notify_server -c /etc/onvif.json -p /run/onvif_notify_server.pid
+ 1696   750 root     S      744  1.0   0  0.0 /usr/sbin/dropbear -k -K 300 -R -2 9
+ 1196     1 root     S      700  0.9   0  0.0 /usr/bin/motors-daemon -p
+ 1697  1696 root     S      624  0.8   0  0.0 -sh
+ 7027     1 root     S      544  0.7   0  0.0 {oi.sh} /bin/sh /tmp/oi.sh snaps 700 10 /tmp/snaps-s1.txt
+ 1160     1 root     S      536  0.7   0  0.0 /usr/sbin/mdnsd -s
+              total        used        free      shared  buff/cache   available
+Mem:          74076       48112        6712           0       19252           0
+Node 0, zone   Normal     14     17     13      9      4     17      6      0      0      1      0      0      0      0      0 
+=== 09:17:38
+Mem: 64280K used, 9796K free, 7040K shrd, 2936K buff, 15320K cached
+CPU: 90.0% usr  0.0% sys  0.0% nic  0.0% idle  0.0% io  0.0% irq 10.0% sirq
+Load average: 2.19 1.81 1.63 2/97 19285
+  PID  PPID USER     STAT   RSS %RSS CPU %CPU COMMAND
+18928 18925 root     S     4196  5.6   0 50.0 /usr/bin/timpsd -c /tmp/timps.conf
+19281 19270 root     R     1604  2.1   0 40.0 curl -sk -m 20 -o /tmp/snap-last.jpg -w %{http_code} %{size_download} %{time_total} -H X-Timps-Token: <token> https://127.0.0.1:8880/snapshot.jpg?chn=0
+19284 19272 root     R      456  0.6   0 10.0 top -b -n1
+  884     1 root     S     1236  1.6   0  0.0 /usr/sbin/wpa_supplicant -i wlan0 -P /run/wpa_supplicant.wlan0.pid -B -c /etc/wpa_supplicant.conf
+ 1688     1 root     S      856  1.1   0  0.0 /usr/sbin/onvif_notify_server -c /etc/onvif.json -p /run/onvif_notify_server.pid
+12864   750 root     S      764  1.0   0  0.0 /usr/sbin/dropbear -k -K 300 -R -2 9
+ 1196     1 root     S      700  0.9   0  0.0 /usr/bin/motors-daemon -p
+12865 12864 root     S      624  0.8   0  0.0 -sh
+ 1160     1 root     S      536  0.7   0  0.0 /usr/sbin/mdnsd -s
+19272     1 root     S      520  0.7   0  0.0 {mon.sh} /bin/sh /tmp/mon.sh s1 7200 600
+              total        used        free      shared  buff/cache   available
+Mem:          74076       44660        9852           0       19564           0
+Node 0, zone   Normal     41     23     70     45     23     15      6      0      0      1      0      0      0      0      0 
+=== 09:27:39
+Mem: 67976K used, 6100K free, 7260K shrd, 2936K buff, 15540K cached
+CPU:  9.0% usr  0.0% sys  0.0% nic 81.8% idle  0.0% io  0.0% irq  9.0% sirq
+Load average: 1.65 1.69 1.64 1/95 21614
+  PID  PPID USER     STAT   RSS %RSS CPU %CPU COMMAND
+18928 18925 root     S     7860 10.6   0  6.0 /usr/bin/timpsd -c /tmp/timps.conf
+21613 19272 root     R      452  0.6   0  6.0 top -b -n1
+18934     2 root     DW       0  0.0   0  6.0 [isp_fw_process]
+  884     1 root     S     1236  1.6   0  0.0 /usr/sbin/wpa_supplicant -i wlan0 -P /run/wpa_supplicant.wlan0.pid -B -c /etc/wpa_supplicant.conf
+ 1688     1 root     S      856  1.1   0  0.0 /usr/sbin/onvif_notify_server -c /etc/onvif.json -p /run/onvif_notify_server.pid
+12864   750 root     S      764  1.0   0  0.0 /usr/sbin/dropbear -k -K 300 -R -2 9
+ 1196     1 root     S      700  0.9   0  0.0 /usr/bin/motors-daemon -p
+12865 12864 root     S      624  0.8   0  0.0 -sh
+19270     1 root     S      548  0.7   0  0.0 {oi.sh} /bin/sh /tmp/oi.sh snaps 715 10 /tmp/snaps-s1.txt
+ 1160     1 root     S      536  0.7   0  0.0 /usr/sbin/mdnsd -s
+              total        used        free      shared  buff/cache   available
+Mem:          74076       48200        6096           0       19780           0
+Node 0, zone   Normal     12     26      2      2      4     15      6      0      0      1      0      0      0      0      0 
+=== 09:37:39
+Mem: 67984K used, 6092K free, 7272K shrd, 2936K buff, 15556K cached
+CPU:  0.0% usr 10.0% sys  0.0% nic 90.0% idle  0.0% io  0.0% irq  0.0% sirq
+Load average: 1.42 1.69 1.70 1/95 23938
+  PID  PPID USER     STAT   RSS %RSS CPU %CPU COMMAND
+18928 18925 root     S     7864 10.6   0  3.3 /usr/bin/timpsd -c /tmp/timps.conf
+23937 19272 root     R      452  0.6   0  3.3 top -b -n1
+18934     2 root     DW       0  0.0   0  3.3 [isp_fw_process]
+  884     1 root     S     1236  1.6   0  0.0 /usr/sbin/wpa_supplicant -i wlan0 -P /run/wpa_supplicant.wlan0.pid -B -c /etc/wpa_supplicant.conf
+ 1688     1 root     S      856  1.1   0  0.0 /usr/sbin/onvif_notify_server -c /etc/onvif.json -p /run/onvif_notify_server.pid
+12864   750 root     S      764  1.0   0  0.0 /usr/sbin/dropbear -k -K 300 -R -2 9
+ 1196     1 root     S      700  0.9   0  0.0 /usr/bin/motors-daemon -p
+12865 12864 root     S      624  0.8   0  0.0 -sh
+19270     1 root     S      548  0.7   0  0.0 {oi.sh} /bin/sh /tmp/oi.sh snaps 715 10 /tmp/snaps-s1.txt
+ 1160     1 root     S      536  0.7   0  0.0 /usr/sbin/mdnsd -s
+              total        used        free      shared  buff/cache   available
+Mem:          74076       48192        6088           0       19796           0
+Node 0, zone   Normal     14     22      9      5      1     15      6      0      0      1      0      0      0      0      0 
+=== 09:47:39
+Mem: 67528K used, 6548K free, 7280K shrd, 2936K buff, 15564K cached
+CPU:  0.0% usr 25.0% sys  0.0% nic 75.0% idle  0.0% io  0.0% irq  0.0% sirq
+Load average: 1.61 1.69 1.71 1/95 26273
+  PID  PPID USER     STAT   RSS %RSS CPU %CPU COMMAND
+18928 18925 root     S     7452 10.0   0  8.3 /usr/bin/timpsd -c /tmp/timps.conf
+26272 19272 root     R      452  0.6   0  8.3 top -b -n1
+18934     2 root     DW       0  0.0   0  8.3 [isp_fw_process]
+  884     1 root     S     1236  1.6   0  0.0 /usr/sbin/wpa_supplicant -i wlan0 -P /run/wpa_supplicant.wlan0.pid -B -c /etc/wpa_supplicant.conf
+ 1688     1 root     S      856  1.1   0  0.0 /usr/sbin/onvif_notify_server -c /etc/onvif.json -p /run/onvif_notify_server.pid
+12864   750 root     S      764  1.0   0  0.0 /usr/sbin/dropbear -k -K 300 -R -2 9
+ 1196     1 root     S      700  0.9   0  0.0 /usr/bin/motors-daemon -p
+12865 12864 root     S      624  0.8   0  0.0 -sh
+19270     1 root     S      548  0.7   0  0.0 {oi.sh} /bin/sh /tmp/oi.sh snaps 715 10 /tmp/snaps-s1.txt
+ 1160     1 root     S      536  0.7   0  0.0 /usr/sbin/mdnsd -s
+              total        used        free      shared  buff/cache   available
+Mem:          74076       47724        6544           0       19808           0
+Node 0, zone   Normal     16     26     17      2      7     15      6      0      0      1      0      0      0      0      0 
+=== 09:57:39
+Mem: 68092K used, 5984K free, 7292K shrd, 2936K buff, 15576K cached
+CPU: 80.0% usr  0.0% sys  0.0% nic 20.0% idle  0.0% io  0.0% irq  0.0% sirq
+Load average: 2.20 1.81 1.75 4/95 28638
+  PID  PPID USER     STAT   RSS %RSS CPU %CPU COMMAND
+18928 18925 root     S     7856 10.6   0 70.0 /usr/bin/timpsd -c /tmp/timps.conf
+28637 19272 root     R      456  0.6   0 10.0 top -b -n1
+  884     1 root     S     1236  1.6   0  0.0 /usr/sbin/wpa_supplicant -i wlan0 -P /run/wpa_supplicant.wlan0.pid -B -c /etc/wpa_supplicant.conf
+ 1688     1 root     S      856  1.1   0  0.0 /usr/sbin/onvif_notify_server -c /etc/onvif.json -p /run/onvif_notify_server.pid
+12864   750 root     S      764  1.0   0  0.0 /usr/sbin/dropbear -k -K 300 -R -2 9
+ 1196     1 root     S      700  0.9   0  0.0 /usr/bin/motors-daemon -p
+12865 12864 root     S      624  0.8   0  0.0 -sh
+19270     1 root     S      548  0.7   0  0.0 {oi.sh} /bin/sh /tmp/oi.sh snaps 715 10 /tmp/snaps-s1.txt
+ 1160     1 root     S      536  0.7   0  0.0 /usr/sbin/mdnsd -s
+19272     1 root     S      524  0.7   0  0.0 {mon.sh} /bin/sh /tmp/mon.sh s1 7200 600
+              total        used        free      shared  buff/cache   available
+Mem:          74076       48232        6028           0       19816           0
+Node 0, zone   Normal     15     18      3      5      4     14      6      0      0      1      0      0      0      0      0 
+=== 10:07:39
+Mem: 67592K used, 6484K free, 7300K shrd, 2936K buff, 15584K cached
+CPU:  8.3% usr 16.6% sys  0.0% nic 75.0% idle  0.0% io  0.0% irq  0.0% sirq
+Load average: 2.04 1.82 1.76 1/94 30938
+  PID  PPID USER     STAT   RSS %RSS CPU %CPU COMMAND
+30937 19272 root     R      452  0.6   0  8.3 top -b -n1
+18934     2 root     DW       0  0.0   0  8.3 [isp_fw_process]
+18928 18925 root     S     7420 10.0   0  0.0 /usr/bin/timpsd -c /tmp/timps.conf
+  884     1 root     S     1236  1.6   0  0.0 /usr/sbin/wpa_supplicant -i wlan0 -P /run/wpa_supplicant.wlan0.pid -B -c /etc/wpa_supplicant.conf
+ 1688     1 root     S      856  1.1   0  0.0 /usr/sbin/onvif_notify_server -c /etc/onvif.json -p /run/onvif_notify_server.pid
+12864   750 root     S      764  1.0   0  0.0 /usr/sbin/dropbear -k -K 300 -R -2 9
+ 1196     1 root     S      700  0.9   0  0.0 /usr/bin/motors-daemon -p
+12865 12864 root     S      624  0.8   0  0.0 -sh
+19270     1 root     S      548  0.7   0  0.0 {oi.sh} /bin/sh /tmp/oi.sh snaps 715 10 /tmp/snaps-s1.txt
+ 1160     1 root     S      536  0.7   0  0.0 /usr/sbin/mdnsd -s
+              total        used        free      shared  buff/cache   available
+Mem:          74076       47772        6480           0       19824           0
+Node 0, zone   Normal     22     21     14      4      8     14      6      0      0      1      0      0      0      0      0 
+=== 10:17:39
+Mem: 67568K used, 6508K free, 7308K shrd, 2936K buff, 15592K cached
+CPU:  0.0% usr 18.1% sys  0.0% nic 81.8% idle  0.0% io  0.0% irq  0.0% sirq
+Load average: 2.04 1.83 1.77 1/95 823
+  PID  PPID USER     STAT   RSS %RSS CPU %CPU COMMAND
+18934     2 root     DW       0  0.0   0  9.0 [isp_fw_process]
+18928 18925 root     S     7436 10.0   0  0.0 /usr/bin/timpsd -c /tmp/timps.conf
+  884     1 root     S     1236  1.6   0  0.0 /usr/sbin/wpa_supplicant -i wlan0 -P /run/wpa_supplicant.wlan0.pid -B -c /etc/wpa_supplicant.conf
+ 1688     1 root     S      856  1.1   0  0.0 /usr/sbin/onvif_notify_server -c /etc/onvif.json -p /run/onvif_notify_server.pid
+12864   750 root     S      764  1.0   0  0.0 /usr/sbin/dropbear -k -K 300 -R -2 9
+ 1196     1 root     S      700  0.9   0  0.0 /usr/bin/motors-daemon -p
+12865 12864 root     S      624  0.8   0  0.0 -sh
+19270     1 root     S      548  0.7   0  0.0 {oi.sh} /bin/sh /tmp/oi.sh snaps 715 10 /tmp/snaps-s1.txt
+ 1160     1 root     S      536  0.7   0  0.0 /usr/sbin/mdnsd -s
+19272     1 root     S      524  0.7   0  0.0 {mon.sh} /bin/sh /tmp/mon.sh s1 7200 600
+              total        used        free      shared  buff/cache   available
+Mem:          74076       47736        6504           0       19836           0
+Node 0, zone   Normal     18     18     14      2     10     14      6      0      0      1      0      0      0      0      0 
+=== 10:27:39
+Mem: 69584K used, 4492K free, 7320K shrd, 3176K buff, 16716K cached
+CPU: 72.7% usr  9.0% sys  0.0% nic 18.1% idle  0.0% io  0.0% irq  0.0% sirq
+Load average: 1.70 1.80 1.78 2/96 3211
+  PID  PPID USER     STAT   RSS %RSS CPU %CPU COMMAND
+18928 18925 root     S     7916 10.6   0 36.3 /usr/bin/timpsd -c /tmp/timps.conf
+ 3207 19272 root     R      456  0.6   0  9.0 top -b -n1
+ 3210 19270 root     S     1416  1.9   0  0.0 curl -sk -m 20 -o /tmp/snap-last.jpg -w %{http_code} %{size_download} %{time_total} -H X-Timps-Token: <token> https://127.0.0.1:8880/snapshot.jpg?chn=0
+  884     1 root     S     1236  1.6   0  0.0 /usr/sbin/wpa_supplicant -i wlan0 -P /run/wpa_supplicant.wlan0.pid -B -c /etc/wpa_supplicant.conf
+ 1688     1 root     S      856  1.1   0  0.0 /usr/sbin/onvif_notify_server -c /etc/onvif.json -p /run/onvif_notify_server.pid
+12864   750 root     S      764  1.0   0  0.0 /usr/sbin/dropbear -k -K 300 -R -2 9
+ 1196     1 root     S      700  0.9   0  0.0 /usr/bin/motors-daemon -p
+12865 12864 root     S      624  0.8   0  0.0 -sh
+19270     1 root     S      548  0.7   0  0.0 {oi.sh} /bin/sh /tmp/oi.sh snaps 715 10 /tmp/snaps-s1.txt
+ 1160     1 root     S      536  0.7   0  0.0 /usr/sbin/mdnsd -s
+              total        used        free      shared  buff/cache   available
+Mem:          74076       48352        4516           0       21208           0
+Node 0, zone   Normal      9     14     16      7      7      3      4      0      0      1      0      0      0      0      0 
+=== 10:37:40
+Mem: 69540K used, 4536K free, 7328K shrd, 3176K buff, 16724K cached
+CPU: 16.6% usr 16.6% sys  0.0% nic 66.6% idle  0.0% io  0.0% irq  0.0% sirq
+Load average: 1.82 1.79 1.78 1/95 5524
+  PID  PPID USER     STAT   RSS %RSS CPU %CPU COMMAND
+18928 18925 root     S     7916 10.6   0  8.3 /usr/bin/timpsd -c /tmp/timps.conf
+ 5523 19272 root     R      456  0.6   0  8.3 top -b -n1
+  806     2 root     SW       0  0.0   0  8.3 [ssv6xxx_rx_task]
+  884     1 root     S     1236  1.6   0  0.0 /usr/sbin/wpa_supplicant -i wlan0 -P /run/wpa_supplicant.wlan0.pid -B -c /etc/wpa_supplicant.conf
+ 1688     1 root     S      856  1.1   0  0.0 /usr/sbin/onvif_notify_server -c /etc/onvif.json -p /run/onvif_notify_server.pid
+12864   750 root     S      764  1.0   0  0.0 /usr/sbin/dropbear -k -K 300 -R -2 9
+ 1196     1 root     S      700  0.9   0  0.0 /usr/bin/motors-daemon -p
+12865 12864 root     S      624  0.8   0  0.0 -sh
+19270     1 root     S      548  0.7   0  0.0 {oi.sh} /bin/sh /tmp/oi.sh snaps 715 10 /tmp/snaps-s1.txt
+ 1160     1 root     S      536  0.7   0  0.0 /usr/sbin/mdnsd -s
+              total        used        free      shared  buff/cache   available
+Mem:          74076       48340        4520           0       21216           0
+Node 0, zone   Normal     19     21      9      8      7      3      4      0      0      1      0      0      0      0      0 
+=== 10:47:40
+Mem: 69424K used, 4652K free, 7340K shrd, 3176K buff, 16736K cached
+CPU: 10.0% usr  0.0% sys  0.0% nic 90.0% idle  0.0% io  0.0% irq  0.0% sirq
+Load average: 1.92 1.76 1.76 1/95 7853
+  PID  PPID USER     STAT   RSS %RSS CPU %CPU COMMAND
+18928 18925 root     S     7920 10.6   0  3.3 /usr/bin/timpsd -c /tmp/timps.conf
+ 7852 19272 root     R      452  0.6   0  3.3 top -b -n1
+  804     2 root     SW       0  0.0   0  3.3 [ssv6xxx_hci_tx_]
+  884     1 root     S     1236  1.6   0  0.0 /usr/sbin/wpa_supplicant -i wlan0 -P /run/wpa_supplicant.wlan0.pid -B -c /etc/wpa_supplicant.conf
+ 1688     1 root     S      856  1.1   0  0.0 /usr/sbin/onvif_notify_server -c /etc/onvif.json -p /run/onvif_notify_server.pid
+12864   750 root     S      764  1.0   0  0.0 /usr/sbin/dropbear -k -K 300 -R -2 9
+ 1196     1 root     S      700  0.9   0  0.0 /usr/bin/motors-daemon -p
+12865 12864 root     S      624  0.8   0  0.0 -sh
+19270     1 root     S      548  0.7   0  0.0 {oi.sh} /bin/sh /tmp/oi.sh snaps 715 10 /tmp/snaps-s1.txt
+ 1160     1 root     S      536  0.7   0  0.0 /usr/sbin/mdnsd -s
+              total        used        free      shared  buff/cache   available
+Mem:          74076       48172        4672           0       21232           0
+Node 0, zone   Normal     22     18     15      9      7      3      4      0      0      1      0      0      0      0      0 
+=== 10:57:40
+Mem: 69468K used, 4608K free, 7352K shrd, 3176K buff, 16748K cached
+CPU: 10.0% usr 10.0% sys  0.0% nic 80.0% idle  0.0% io  0.0% irq  0.0% sirq
+Load average: 1.84 1.81 1.78 1/95 10179
+  PID  PPID USER     STAT   RSS %RSS CPU %CPU COMMAND
+18928 18925 root     S     7920 10.6   0 13.3 /usr/bin/timpsd -c /tmp/timps.conf
+10178 19272 root     R      456  0.6   0  6.6 top -b -n1
+  884     1 root     S     1236  1.6   0  0.0 /usr/sbin/wpa_supplicant -i wlan0 -P /run/wpa_supplicant.wlan0.pid -B -c /etc/wpa_supplicant.conf
+ 1688     1 root     S      856  1.1   0  0.0 /usr/sbin/onvif_notify_server -c /etc/onvif.json -p /run/onvif_notify_server.pid
+12864   750 root     S      764  1.0   0  0.0 /usr/sbin/dropbear -k -K 300 -R -2 9
+ 1196     1 root     S      700  0.9   0  0.0 /usr/bin/motors-daemon -p
+12865 12864 root     S      624  0.8   0  0.0 -sh
+19270     1 root     S      548  0.7   0  0.0 {oi.sh} /bin/sh /tmp/oi.sh snaps 715 10 /tmp/snaps-s1.txt
+ 1160     1 root     S      536  0.7   0  0.0 /usr/sbin/mdnsd -s
+19272     1 root     S      524  0.7   0  0.0 {mon.sh} /bin/sh /tmp/mon.sh s1 7200 600
+              total        used        free      shared  buff/cache   available
+Mem:          74076       48232        4604           0       21240           0
+Node 0, zone   Normal     11     26     13     10      6      3      4      0      0      1      0      0      0      0      0 
+=== 11:07:40
+Mem: 69600K used, 4476K free, 7364K shrd, 3176K buff, 16760K cached
+CPU: 70.0% usr 20.0% sys  0.0% nic  0.0% idle  0.0% io  0.0% irq 10.0% sirq
+Load average: 1.80 1.80 1.78 2/95 12516
+  PID  PPID USER     STAT   RSS %RSS CPU %CPU COMMAND
+18928 18925 root     S     8036 10.8   0 80.0 /usr/bin/timpsd -c /tmp/timps.conf
+12510 19272 root     R      452  0.6   0 10.0 top -b -n1
+  884     1 root     S     1236  1.6   0  0.0 /usr/sbin/wpa_supplicant -i wlan0 -P /run/wpa_supplicant.wlan0.pid -B -c /etc/wpa_supplicant.conf
+ 1688     1 root     S      856  1.1   0  0.0 /usr/sbin/onvif_notify_server -c /etc/onvif.json -p /run/onvif_notify_server.pid
+12864   750 root     S      764  1.0   0  0.0 /usr/sbin/dropbear -k -K 300 -R -2 9
+ 1196     1 root     S      700  0.9   0  0.0 /usr/bin/motors-daemon -p
+12865 12864 root     S      624  0.8   0  0.0 -sh
+19270     1 root     S      548  0.7   0  0.0 {oi.sh} /bin/sh /tmp/oi.sh snaps 715 10 /tmp/snaps-s1.txt
+ 1160     1 root     S      536  0.7   0  0.0 /usr/sbin/mdnsd -s
+19272     1 root     S      524  0.7   0  0.0 {mon.sh} /bin/sh /tmp/mon.sh s1 7200 600
+              total        used        free      shared  buff/cache   available
+Mem:          74076       48328        4496           0       21252           0
+Node 0, zone   Normal      9     13     11      8      7      3      4      0      0      1      0      0      0      0      0 

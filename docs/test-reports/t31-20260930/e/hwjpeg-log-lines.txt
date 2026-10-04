@@ -1,0 +1,15 @@
+[Codec] HWJPEG: T31 hardware JPEG requested (OPENIMP_T31_HW_JPEG=1)
+[Codec] HWJPEG: no AVC IRQ waiter yet, software until one runs
+[Codec] AVPU: T31 companion stage disabled
+[Codec] HWJPEG: ready, ep1=0x00df0000
+[Codec] HWJPEG: 1920x1080 q75 -> 294175 bytes [#1]
+[Codec] HWJPEG: 1920x1080 q75 -> 292294 bytes [#2]
+[Codec] HWJPEG: 1920x1080 q75 -> 290905 bytes [#3]
+[Codec] HWJPEG: 1920x1080 q75 -> 222274 bytes [#100]
+[Codec] HWJPEG: 1920x1080 q75 -> 290227 bytes [#200]
+[Codec] HWJPEG: 1920x1080 q75 -> 290178 bytes [#300]
+[Codec] HWJPEG: 1920x1080 q75 -> 290984 bytes [#400]
+[Codec] HWJPEG: 1920x1080 q75 -> 290967 bytes [#500]
+[Codec] HWJPEG: 1920x1080 q75 -> 289593 bytes [#600]
+[Codec] HWJPEG: 1920x1080 q75 -> 293005 bytes [#700]
+[Codec] HWJPEG: 1920x1080 q75 -> 295808 bytes [#800]

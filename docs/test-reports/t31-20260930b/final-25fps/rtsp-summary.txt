@@ -1,0 +1,4 @@
+ch0: connects=1 frames=88800 intervals=359 min_per_10s=234 zero_intervals=0 intervals<140=0 []
+ch1: connects=1 frames=88824 intervals=359 min_per_10s=233 zero_intervals=0 intervals<140=0 []
+/tmp/claude-1000/-mnt-NVMe-git-rdwrapper/110bf918-81a3-44cf-9b12-ff1a2d758431/scratchpad/results/fin/ffmpeg-live-ch0.txt:0
+/tmp/claude-1000/-mnt-NVMe-git-rdwrapper/110bf918-81a3-44cf-9b12-ff1a2d758431/scratchpad/results/fin/ffmpeg-live-ch1.txt:0

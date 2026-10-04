@@ -1,0 +1,4 @@
+stock path: scalar
+move: frames same=8591 differ=0 oob-differ=49 (results 3708)
+base: frames same=11520 differ=0 (detections 5120)
+rc=0

@@ -1,0 +1,10 @@
+== g-osd-nosnap
+stopped (waited 0x100ms)
+pid 13626
+OPENIMP_T31_OSD=1
+ch0: connects=1 frames=2251 intervals=14 min_per_10s=90 zero_intervals=0 intervals<140=1 [90]
+ch1: connects=1 frames=2251 intervals=14 min_per_10s=91 zero_intervals=0 intervals<140=1 [91]
+snapshots: 
+timpsd %CPU samples: 0.0 8.6 7.6 8.9 7.4 7.1 7.8 8.0 8.6 8.2 6.3 8.0 
+idle samples: 100 83.2 86.3 77.0 86.4 87.0 85.9 85.2 83.5 85.1 88.6 84.8 
+ffmpeg error lines main/sub: 0 / 0

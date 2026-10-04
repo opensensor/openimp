@@ -1,0 +1,23 @@
+nacht 1 57336
+tag   1 180363
+nacht 2 162055
+tag   2 179185
+nacht 3 187515
+tag   3 180668
+nacht 4 154316
+tag   4 197216
+nacht 5 200961
+tag   5 120820
+nacht 6 184570
+tag   6 121420
+nacht 7 174259
+tag   7 141355
+nacht 8 1262512
+tag   8 2113194
+nacht 9 845757
+tag   9 509401
+nacht 10 482546
+tag   10 325736
+dauer-client 52780537
+== T2
+INFO total: 0

@@ -1,0 +1,22 @@
+runde 1 9804=0x00000000 zombie=0
+neu 1 415532
+runde 2 9804=0x00000000 zombie=0
+neu 2 654736
+runde 3 9804=0x00000000 zombie=0
+neu 3 414533
+runde 4 9804=0x00000000 zombie=0
+neu 4 656249
+runde 5 9804=0x00000000 zombie=0
+neu 5 403057
+runde 6 9804=0x00000000 zombie=0
+neu 6 655509
+runde 7 9804=0x00000000 zombie=0
+neu 7 389161
+runde 8 9804=0x00000000 zombie=0
+neu 8 659606
+runde 9 9804=0x00000000 zombie=0
+neu 9 378341
+runde 10 9804=0x00000000 zombie=0
+neu 10 648210
+== T3
+INFO total: 0

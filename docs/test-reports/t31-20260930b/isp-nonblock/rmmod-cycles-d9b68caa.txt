@@ -1,0 +1,19 @@
+1aff5b83fae20e5cdcddb56014c27067  /tmp/tx-isp-nb.ko
+== flashed module: fc test (DelSensor) then rmmod
+RESULT: 2 PASS, 4 FAIL
+rmmod_flashed_ok
+== cycle 1 (kill): RESULT: 6 PASS, 0 FAIL
+  timps pid 3756 fs0=1 err=0
+  rmmod sensor ok
+  rmmod tx_isp ok
+== cycle 2 (clean): RESULT: 6 PASS, 0 FAIL
+  timps pid 4020 fs0=1 err=0
+stopped (waited 2x100ms)
+  rmmod sensor ok
+  rmmod tx_isp ok
+== cycle 3 (kill): RESULT: 6 PASS, 0 FAIL
+  timps pid 4291 fs0=1 err=0
+  rmmod sensor ok
+  rmmod tx_isp ok
+== reload new module for final state check
+RESULT: 6 PASS, 0 FAIL

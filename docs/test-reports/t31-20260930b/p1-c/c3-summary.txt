@@ -1,0 +1,8 @@
+ch0: connects=1 frames=8891 intervals=59 min_per_10s=89 zero_intervals=0 intervals<140=1 [89]
+ch1: connects=1 frames=8890 intervals=59 min_per_10s=88 zero_intervals=0 intervals<140=1 [88]
+snapshots:      56 200 
+snap ok avg 357944 B, avg 0.532 s, max 1.097 s
+timpsd %CPU samples: 6.0 29.4 27.6 19.7 31.7 13.0 
+idle samples: 81.8 49.7 61.6 70.6 30.3 66.6 
+ffmpeg error lines main/sub: 0 / 0
+S2 frames=443 interval median=0.067 p99=0.073 max=0.080 >0.1s=0

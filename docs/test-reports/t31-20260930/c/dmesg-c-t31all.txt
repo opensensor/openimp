@@ -1,0 +1,133 @@
+[144003.674313] libimp/ISP: Open entry gISP=(nil)
+[144003.674346] libimp/ISP: Open entry, gISP=(nil) (before)
+[144003.674385] libimp/ISP: Open calloc'd gISP=0x78591028
+[144003.674431] libimp/ISP: Open /dev/tx-isp fd=6 errno=0
+[144003.674556] libimp/ISP: Open return=0 gISP=0x78591028
+[144003.674582] libimp/ISP: AddSensor entry gISP=0x78591028
+[144003.754764] tisp_netlink_init,77: create netlink socket error.
+[144003.754784] CPU: 0 PID: 31734 Comm: timpsd Tainted: G           O 3.10.14__isvp_swan_1.0__ #2
+[144003.754790] Stack : 00000000 00000000 80453142 00000051 00000000 00000000 00000000 00000000
+[144003.754866] Call Trace:[<8001f388>] 0x8001f388
+[144003.755081] 
+[144003.882011] libimp/ISP: AddSensor GET_BUF idx=167773600 size=8327120 struct_sz=8
+[144003.883483] libimp/ISP: AddSensor SET_BUF phys=0x4e00000 size=8327120 struct_sz=8
+[144003.883519] libimp/ISP: EnableSensor entry gISP=0x78591028
+[144003.883537] libimp/ISP: EnableSensor GET_SENSOR_INDEX=0
+[144003.915907] libimp/ISP: EnableSensor ENABLE_SENSOR ok
+[144003.915943] libimp/ISP: EnableSensor CREATE_LINKS ok arg=0
+[144003.915956] libimp/ISP: EnableSensor ENABLE_LINKS ok
+[144003.916025] libimp/ISP: EnableTuning entry gISP=0x78591028
+[144003.916040] libimp/ISP: opened=3 tuning=(nil)
+[144003.916091] libimp/ISP: open(/dev/isp-m0, O_RDWR) = 9 (errno=0 ok)
+[144003.916107] libimp/ISP: EnableTuning opened /dev/isp-m0 as fd=9
+[144003.924069] libimp/ISP: tuning gain/contrast update gain=0 contrast=128 packed=0x00000080 count=1
+[144003.948030] codec_codec_ctl: set sample rate...
+[144003.948171] codec_codec_ctl: set device...
+[144003.973074] libimp/ISP: EnsureLinkStreamOn STREAMON sensor=0 fd=6
+[144003.973116] libimp/ISP: EnsureLinkStreamOn CREATE_LINKS sensor=0
+[144003.973133] libimp/ISP: EnsureLinkStreamOn ENABLE_LINKS sensor=0
+[144003.973149] libimp/ISP: EnsureLinkStreamOn done sensor=0
+[144004.402290] codec_set_device: set device: MIC...
+[144004.513018] Streaming off, will not wait for buffers,chan index 0
+[144004.513038] CPU: 0 PID: 31754 Comm: FS(0)-tick Tainted: G           O 3.10.14__isvp_swan_1.0__ #2
+[144004.513046] Stack : 00000000 00000000 80453142 00000055 00000000 00000000 00000000 00000000
+[144004.513120] Call Trace:[<8001f388>] 0x8001f388
+[144004.513190] 
+[144004.924280] libimp/ISP: tuning gain/contrast update gain=19840 contrast=128 packed=0x004d8080 count=2
+[144010.991587] libimp/ISP: EnsureLinkStreamOn already-started bypass_done=0
+[144011.532622] Streaming off, will not wait for buffers,chan index 0
+[144011.532643] CPU: 0 PID: 31914 Comm: FS(0)-tick Tainted: G           O 3.10.14__isvp_swan_1.0__ #2
+[144011.532650] Stack : 00000000 00000000 80453142 00000055 00000000 00000000 00000000 00000000
+[144011.532726] Call Trace:[<8001f388>] 0x8001f388
+[144011.532802] 
+[144011.925278] libimp/ISP: tuning gain/contrast update gain=15872 contrast=128 packed=0x003e0080 count=3
+[144019.311332] libimp/ISP: EnsureLinkStreamOn already-started bypass_done=0
+[144019.872938] Streaming off, will not wait for buffers,chan index 0
+[144019.872958] CPU: 0 PID: 32043 Comm: FS(0)-tick Tainted: G           O 3.10.14__isvp_swan_1.0__ #2
+[144019.872965] Stack : 00000000 00000000 80453142 00000055 00000000 00000000 00000000 00000000
+[144019.873040] Call Trace:[<8001f388>] 0x8001f388
+[144019.873115] 
+[144019.926392] libimp/ISP: tuning gain/contrast update gain=16988 contrast=128 packed=0x00425c80 count=4
+[144027.269333] libimp/ISP: EnsureLinkStreamOn already-started bypass_done=0
+[144027.813290] Streaming off, will not wait for buffers,chan index 0
+[144027.813310] CPU: 0 PID: 32073 Comm: FS(0)-tick Tainted: G           O 3.10.14__isvp_swan_1.0__ #2
+[144027.813318] Stack : 00000000 00000000 80453142 00000055 00000000 00000000 00000000 00000000
+[144027.813393] Call Trace:[<8001f388>] 0x8001f388
+[144027.813470] 
+[144035.842717] libimp/ISP: EnsureLinkStreamOn already-started bypass_done=0
+[144036.383613] Streaming off, will not wait for buffers,chan index 0
+[144036.383632] CPU: 0 PID: 32087 Comm: FS(0)-tick Tainted: G           O 3.10.14__isvp_swan_1.0__ #2
+[144036.383640] Stack : 00000000 00000000 80453142 00000055 00000000 00000000 00000000 00000000
+[144036.383715] Call Trace:[<8001f388>] 0x8001f388
+[144036.383790] 
+[144074.792106] libimp/ISP: EnsureLinkStreamOn already-started bypass_done=0
+[144074.881855] timpsd: page allocation failure: order:10, mode:0x10d0
+[144074.881875] CPU: 0 PID: 31748 Comm: timpsd Tainted: G           O 3.10.14__isvp_swan_1.0__ #2
+[144074.881882] Stack : 00000000 00000000 80453142 00000051 00000000 00000000 00000000 00000000
+[144074.881958] Call Trace:[<8001f388>] 0x8001f388
+[144074.882084] 
+[144074.882089] Mem-Info:
+[144074.882095] Normal per-cpu:
+[144074.882103] CPU    0: hi:   18, btch:   3 usd:   0
+[144074.882119] active_anon:2502 inactive_anon:848 isolated_anon:0
+[144074.882119]  active_file:1561 inactive_file:1143 isolated_file:0
+[144074.882119]  unevictable:0 dirty:0 writeback:0 unstable:0
+[144074.882119]  free:2472 slab_reclaimable:323 slab_unreclaimable:1022
+[144074.882119]  mapped:1070 shmem:1617 pagetables:99 bounce:0
+[144074.882119]  free_cma:0
+[144074.882161] Normal free:9888kB min:1084kB low:1352kB high:1624kB active_anon:10008kB inactive_anon:3392kB active_file:6244kB inactive_file:4572kB unevictable:0kB isolated(anon):0kB isolated(file):0kB present:79872kB managed:73896kB mlocked:0kB dirty:0kB writeback:0kB mapped:4280kB shmem:6468kB slab_reclaimable:1292kB slab_unreclaimable:4088kB kernel_stack:720kB pagetables:396kB unstable:0kB bounce:0kB free_cma:0kB writeback_tmp:0kB pages_scanned:0 all_unreclaimable? no
+[144074.882170] lowmem_reserve[]: 0 0
+[144074.882178] Normal: 44*4kB (U) 2*8kB (U) 0*16kB 1*32kB (U) 41*64kB (U) 27*128kB (U) 6*256kB (U) 0*512kB 0*1024kB 1*2048kB (M) 0*4096kB 0*8192kB 0*16384kB 0*32768kB 0*65536kB = 9888kB
+[144074.882224] 4321 total pagecache pages
+[144074.882231] 0 pages in swap cache
+[144074.882239] Swap cache stats: add 0, delete 0, find 0/0
+[144074.882245] Free swap  = 0kB
+[144074.882251] Total swap = 0kB
+[144074.883243] 19968 pages RAM
+[144074.883249] 1449 pages reserved
+[144074.883255] 265500 pages shared
+[144074.883261] 6740 pages non-shared
+[144074.883277] avpu avpu.0: Can't alloc DMA buffer
+[144074.897084] timpsd: page allocation failure: order:10, mode:0x10d0
+[144074.897103] CPU: 0 PID: 31748 Comm: timpsd Tainted: G           O 3.10.14__isvp_swan_1.0__ #2
+[144074.897111] Stack : 00000000 00000000 80453142 00000051 00000000 00000000 00000000 00000000
+[144074.897185] Call Trace:[<8001f388>] 0x8001f388
+[144074.897311] 
+[144074.897316] Mem-Info:
+[144074.897323] Normal per-cpu:
+[144074.897330] CPU    0: hi:   18, btch:   3 usd:   0
+[144074.897346] active_anon:2505 inactive_anon:847 isolated_anon:0
+[144074.897346]  active_file:1525 inactive_file:1147 isolated_file:0
+[144074.897346]  unevictable:0 dirty:0 writeback:0 unstable:0
+[144074.897346]  free:2498 slab_reclaimable:323 slab_unreclaimable:1022
+[144074.897346]  mapped:1070 shmem:1617 pagetables:99 bounce:0
+[144074.897346]  free_cma:0
+[144074.897389] Normal free:9992kB min:1084kB low:1352kB high:1624kB active_anon:10020kB inactive_anon:3388kB active_file:6100kB inactive_file:4588kB unevictable:0kB isolated(anon):0kB isolated(file):0kB present:79872kB managed:73896kB mlocked:0kB dirty:0kB writeback:0kB mapped:4280kB shmem:6468kB slab_reclaimable:1292kB slab_unreclaimable:4088kB kernel_stack:736kB pagetables:396kB unstable:0kB bounce:0kB free_cma:0kB writeback_tmp:0kB pages_scanned:0 all_unreclaimable? no
+[144074.897397] lowmem_reserve[]: 0 0
+[144074.897405] Normal: 68*4kB (U) 3*8kB (U) 0*16kB 1*32kB (U) 41*64kB (U) 27*128kB (U) 6*256kB (U) 0*512kB 0*1024kB 1*2048kB (M) 0*4096kB 0*8192kB 0*16384kB 0*32768kB 0*65536kB = 9992kB
+[144074.897451] 4289 total pagecache pages
+[144074.897459] 0 pages in swap cache
+[144074.897467] Swap cache stats: add 0, delete 0, find 0/0
+[144074.897473] Free swap  = 0kB
+[144074.898346] Total swap = 0kB
+[144074.899343] 19968 pages RAM
+[144074.899351] 1449 pages reserved
+[144074.899357] 265500 pages shared
+[144074.899363] 6712 pages non-shared
+[144074.899381] avpu avpu.0: Can't alloc DMA buffer
+[144074.913831] libimp/ISP: EnsureLinkStreamOn already-started bypass_done=0
+[144082.415326] Streaming off, will not wait for buffers,chan index 0
+[144082.415346] CPU: 0 PID: 32264 Comm: FS(0)-tick Tainted: G           O 3.10.14__isvp_swan_1.0__ #2
+[144082.415352] Stack : 00000000 00000000 80453142 00000055 00000000 00000000 00000000 00000000
+[144082.415428] Call Trace:[<8001f388>] 0x8001f388
+[144082.415497] 
+[144179.738555] codec_codec_ctl: set CODEC_TURN_OFF...
+[144179.848968] Streaming off, will not wait for buffers,chan index 1
+[144179.848988] CPU: 0 PID: 32270 Comm: FS(1)-tick Tainted: G           O 3.10.14__isvp_swan_1.0__ #2
+[144179.848996] Stack : 00000000 00000000 80453142 00000055 00000000 00000000 00000000 00000000
+[144179.849071] Call Trace:[<8001f388>] 0x8001f388
+[144179.849140] 
+[144179.931269] libimp/ISP: DisableSensor GET_SENSOR_INDEX=0
+[144179.931296] libimp/ISP: DisableSensor DISABLE_LINKS ok
+[144179.931315] libimp/ISP: DisableSensor DESTROY_LINKS ok arg=0
+[144179.931736] libimp/ISP: DisableSensor DISABLE_SENSOR ok

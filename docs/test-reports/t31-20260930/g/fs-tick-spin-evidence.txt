@@ -1,0 +1,470 @@
+== ps
+ 2087 root         0 Z    [timpsd]
+== thread 2434
+2434 (FS(0)-tick) S 1 2075 2075 0 -1 4202560 0 20852 0 0 0 19246 1 4 20 0 2 0 6434 77242368 940 2147483647 2012782592 2013162960 2146736592 1950264776 2009991688 256 0 4100 26274 2148047092 0 0 -1 0 0 0 0 0 0 2013167096 2013174924 2015518720 2146737899 2146737934 2146737934 2146738156 0
+
+State:	S (sleeping)
+voluntary_ctxt_switches:	106
+nonvoluntary_ctxt_switches:	61770
+== top
+Mem: 34396K used, 39680K free, 776K shrd, 4716K buff, 13832K cached
+CPU:  0.0% usr  100% sys  0.0% nic  0.0% idle  0.0% io  0.0% irq  0.0% sirq
+Load average: 2.35 1.40 0.59 3/76 3725
+  PID  PPID USER     STAT   RSS %RSS CPU %CPU COMMAND
+ 2087     1 root     Z        0  0.0   0 90.7 [timpsd]
+ 3723  3717 root     R      456  0.6   0  9.0 top -b -n1
+== dmesg
+[    0.000000] Initializing cgroup subsys cpu
+[    0.000000] Initializing cgroup subsys cpuacct
+[    0.000000] Linux version 3.10.14__isvp_swan_1.0__ (user@host) (buildroot-gcc-16.1.0) #2 PREEMPT Mon Sep 28 15:58:36 CEST 2026
+[    0.000000] CPU0 RESET ERROR PC:801A39C4
+[    0.000000] [<801a39c4>] 0x801a39c4
+[    0.000000] CPU0 revision is: 00d00100 (Ingenic Xburst)
+[    0.000000] FPU revision is: 00b70000
+[    0.000000] cgu_get_rate, parent = 1392000000, rate = 0, m = 129, n = 255, reg val = 0x081000ff
+[    0.000000] cgu_get_rate, parent = 1392000000, rate = 0, m = 129, n = 255, reg val = 0x081000ff
+[    0.000000] CCLK:1392MHz L2CLK:696Mhz H0CLK:200MHz H2CLK:200Mhz PCLK:100Mhz
+[    0.000000] Determined physical RAM map:
+[    0.000000]  memory: 00412000 @ 00010000 (usable)
+[    0.000000]  memory: 0002e000 @ 00422000 (usable after init)
+[    0.000000] User-defined physical RAM map:
+[    0.000000]  memory: 04e00000 @ 00000000 (usable)
+[    0.000000] Zone ranges:
+[    0.000000]   Normal   [mem 0x00000000-0x04dfffff]
+[    0.000000] Movable zone start for each node
+[    0.000000] Early memory node ranges
+[    0.000000]   node   0: [mem 0x00000000-0x04dfffff]
+[    0.000000] On node 0 totalpages: 19968
+[    0.000000] free_area_init_node: node 0, pgdat 8041f2a0, node_mem_map 81000000
+[    0.000000]   Normal zone: 156 pages used for memmap
+[    0.000000]   Normal zone: 0 pages reserved
+[    0.000000]   Normal zone: 19968 pages, LIFO batch:3
+[    0.000000] Primary instruction cache 32kB, 8-way, VIPT, linesize 32 bytes.
+[    0.000000] Primary data cache 32kB, 8-way, VIPT, no aliases, linesize 32 bytes
+[    0.000000] pls check processor_id[0x00d00100],sc_jz not support!
+[    0.000000] MIPS secondary cache 128kB, 8-way, linesize 32 bytes.
+[    0.000000] pcpu-alloc: s0 r0 d32768 u32768 alloc=1*32768
+[    0.000000] pcpu-alloc: [0] 0 
+[    0.000000] Built 1 zonelists in Zone order, mobility grouping off.  Total pages: 19812
+[    0.000000] Kernel command line: mem=78M@0x0 rmem=50M@0x4e00000 console=ttyS1,115200n8 panic=2 root=/dev/mtdblock4 rootfstype=squashfs init=/init mtdparts=jz_sfc:320k(boot),64k(env),64k(backup),1600k(kernel),5056k(rootfs),9280k(data),16384k@0(all)
+[    0.000000] PID hash table entries: 512 (order: -1, 2048 bytes)
+[    0.000000] Dentry cache hash table entries: 16384 (order: 4, 65536 bytes)
+[    0.000000] Inode-cache hash table entries: 8192 (order: 3, 32768 bytes)
+[    0.000000] Memory: 73892k/79872k available (3519k kernel code, 5980k reserved, 647k data, 184k init, 0k highmem)
+[    0.000000] SLUB: HWalign=32, Order=0-3, MinObjects=0, CPUs=1, Nodes=1
+[    0.000000] Preemptible hierarchical RCU implementation.
+[    0.000000] NR_IRQS:358
+[    0.000000] clockevents_config_and_register success.
+[    0.000012] Calibrating delay loop... 1391.00 BogoMIPS (lpj=6955008)
+[    0.090038] pid_max: default: 32768 minimum: 301
+[    0.090193] Mount-cache hash table entries: 512
+[    0.090578] Initializing cgroup subsys debug
+[    0.090595] Initializing cgroup subsys freezer
+[    0.091449] devtmpfs: initialized
+[    0.092900] regulator-dummy: no parameters
+[    0.093155] NET: Registered protocol family 16
+[    0.096630] set gpio strength: 32-2
+[    0.096641] set gpio strength: 33-2
+[    0.096646] set gpio strength: 34-2
+[    0.096652] set gpio strength: 35-2
+[    0.096657] set gpio strength: 36-2
+[    0.096662] set gpio strength: 37-2
+[    0.107020] bio: create slab <bio-0> at 0
+[    0.112433] jz-dma jz-dma: JZ SoC DMA initialized
+[    0.113540] usbcore: registered new interface driver usbfs
+[    0.113710] usbcore: registered new interface driver hub
+[    0.113915] usbcore: registered new device driver usb
+[    0.114219]  (null): set:249  hold:250 dev=100000000 h=500 l=500
+[    0.116523] cfg80211: Calling CRDA to update world regulatory domain
+[    0.117614] Switching to clocksource jz_clocksource
+[    0.119922] dwc2 otg probe start
+[    0.119949] jz-dwc2 jz-dwc2: cgu clk gate get error
+[    0.119972] DWC IN OTG MODE
+[    0.120828] dwc2 dwc2: Keep PHY ON
+[    0.120840] dwc2 dwc2: Using Buffer DMA mode
+[    0.120850] dwc2 dwc2: Core Release: 3.00a
+[    0.120890] dwc2 dwc2: DesignWare USB2.0 High-Speed Host Controller
+[    0.120910] dwc2 dwc2: new USB bus registered, assigned bus number 1
+[    0.121875] hub 1-0:1.0: USB hub found
+[    0.121906] hub 1-0:1.0: 1 port detected
+[    0.121998] dwc2 dwc2: DWC2 Host Initialized
+[    0.122338] dwc2 dwc2: enter dwc2_gadget_plug_change:2588: plugin = 1 pullup_on = 0 suspend = 0
+[    0.122355] dwc2 otg probe success
+[    0.122601] NET: Registered protocol family 2
+[    0.122925] TCP established hash table entries: 1024 (order: 1, 8192 bytes)
+[    0.122955] TCP bind hash table entries: 1024 (order: 0, 4096 bytes)
+[    0.122976] TCP: Hash tables configured (established 1024 bind 1024)
+[    0.123020] TCP: reno registered
+[    0.123031] UDP hash table entries: 256 (order: 0, 4096 bytes)
+[    0.123050] UDP-Lite hash table entries: 256 (order: 0, 4096 bytes)
+[    0.123224] NET: Registered protocol family 1
+[    0.123508] RPC: Registered named UNIX socket transport module.
+[    0.123519] RPC: Registered udp transport module.
+[    0.123524] RPC: Registered tcp transport module.
+[    0.123529] RPC: Registered tcp NFSv4.1 backchannel transport module.
+[    0.124062] freq_udelay_jiffys[0].max_num = 10
+[    0.124070] cpufreq 	udelay 	loops_per_jiffy	
+[    0.124076] 12000	 59956	 59956	
+[    0.124081] 24000	 119913	 119913	
+[    0.124087] 60000	 299784	 299784	
+[    0.124092] 120000	 599569	 599569	
+[    0.124098] 200000	 999282	 999282	
+[    0.124103] 300000	 1498924	 1498924	
+[    0.124108] 600000	 2997848	 2997848	
+[    0.124114] 792000	 3957159	 3957159	
+[    0.124120] 1008000	 5036385	 5036385	
+[    0.124125] 1200000	 5995696	 5995696	
+[    0.134805] squashfs: version 4.0 (2009/01/31) Phillip Lougher
+[    0.135978] jffs2: version 2.2. © 2001-2006 Red Hat, Inc.
+[    0.136550] msgmni has been set to 144
+[    0.137482] io scheduler noop registered
+[    0.137514] io scheduler cfq registered (default)
+[    0.144396] jz-uart.1: ttyS1 at MMIO 0x10031000 (irq = 58) is a uart1
+[    0.222577] dwc2 dwc2: ID PIN CHANGED!
+[    0.627347] console [ttyS1] enabled
+[    0.631634] logger: created 256K log 'log_main'
+[    0.638133] jz TCU driver register completed
+[    0.643460] the id code = a14018, the flash name is FM25Q128A
+[    0.649465] JZ SFC Controller for SFC channel 0 driver register
+[    0.655592] 7 cmdlinepart partitions found on MTD device jz_sfc
+[    0.661716] Creating 7 MTD partitions on "jz_sfc":
+[    0.666661] 0x000000000000-0x000000050000 : "boot"
+[    0.672758] 0x000000050000-0x000000060000 : "env"
+[    0.678669] 0x000000060000-0x000000070000 : "backup"
+[    0.684803] 0x000000070000-0x000000200000 : "kernel"
+[    0.691059] 0x000000200000-0x0000006f0000 : "rootfs"
+[    0.697209] 0x0000006f0000-0x000001000000 : "data"
+[    0.703296] 0x000000000000-0x000001000000 : "all"
+[    0.709294] SPI NOR MTD LOAD OK
+[    0.712701] i2c /dev entries driver
+[    0.717122] jz-wdt: watchdog initialized
+[    0.722303] TCP: cubic registered
+[    0.726701] NET: Registered protocol family 10
+[    0.732189] NET: Registered protocol family 17
+[    0.738080] input: gpio-keys as /devices/platform/gpio-keys/input/input0
+[    0.749729] VFS: Mounted root (squashfs filesystem) readonly on device 31:4.
+[    0.759291] devtmpfs: mounted
+[    0.762596] Freeing unused kernel memory: 184K (80422000 - 80450000)
+[    1.239482] jffs2: notice: (403) jffs2_build_xattr_subsystem: complete building xattr subsystem, 1 of xdatum (0 unchecked, 0 orphan) and 1 of xref (0 dead, 0 orphan) found.
+[    4.813253] wait stable.[289][cgu_msc0]
+[    4.813274] jzmmc_v1.2 jzmmc_v1.2.0: vmmc regulator missing
+[    4.816457] jzmmc_v1.2 jzmmc_v1.2.0: register success!
+[    4.816514] jzmmc_v1.2 jzmmc_v1.2.1: vmmc regulator missing
+[    4.822618] jzmmc_v1.2 jzmmc_v1.2.1: register success!
+[    4.926647] exFAT: Version 1.2.9
+[    4.952721] @@@@ avpu driver ok(version H20220825a) @@@@@
+[    5.159028] @@@@ tx-isp-probe ok(version H20221206a), compiler date=Dec  6 2022 @@@@@
+[    5.189871] request spk en gpio 7 ok!
+[    5.189885] jz_codec_register: probe() successful!
+[    5.189974] cgu_set_rate, parent = 1392000000, rate = 2048000, n = 10875, reg val = 0x01002a7b
+[    5.189982] cgu_enable,cgu_i2s_spk reg val = 0x21002a7b
+[    5.189999] cgu_set_rate, parent = 1392000000, rate = 2048000, n = 10875, reg val = 0x01002a7b
+[    5.190007] cgu_enable,cgu_i2s_mic reg val = 0x21002a7b
+[    5.307649] jzmmc_v1.2 jzmmc_v1.2.0: card inserted, state=0
+[    5.597860] dma dma0chan24: Channel 24 have been requested.(phy id 7,type 0x06 desc a0694000)
+[    5.598152] dma dma0chan25: Channel 25 have been requested.(phy id 6,type 0x06 desc a0705000)
+[    5.598476] dma dma0chan26: Channel 26 have been requested.(phy id 5,type 0x04 desc a064e000)
+[    5.649676] usbcore: registered new interface driver cdc_ether
+[    5.661416] usbcore: registered new interface driver cdc_ncm
+[    5.673536] usbcore: registered new interface driver asix
+[    5.756894] input: gpio-keys as /devices/platform/gpio-keys/input/input1
+[    5.760270] Additional GPIO keys device registered with 1 buttons
+[    6.157736] jzmmc_v1.2 jzmmc_v1.2.1: card insert via sysfs
+[    6.273342] 
+[    6.273355] =======================================================
+[    6.273361] ==== Launching Wi-Fi driver! (Powered by Allwiner) ====
+[    6.273365] =======================================================
+[    6.273371] SSV6158 SDIO WiFi driver (Powered by Allwinner init.
+[    6.273375] wlan.c initWlan
+[    6.273383] 
+[    6.273383] *** _import_default_cfg, /usr/share/wifi/ssv6x5x-wifi.cfg ***
+[    6.273383] 
+[    6.334716] ssv6xxx_hci_init() start
+[    6.335118] ssv6xxx_sdio_init
+[    6.358370] mmc1: new SDIO card at address 0001
+[    6.361813] =======================================
+[    6.361825] ==           RUN SDIO                ==
+[    6.361830] =======================================
+[    6.361835] max block count: 511
+[    6.364729] ssv6xxx_set_sdio_clk: set sdio clk 24000000Hz
+[    6.397811] SSV6XXX_SDIO mmc1:0001:1: vendor = 0x5653 device = 0x2060
+[    6.397822] ssv6xxx_sdio_power_on
+[    6.417765] SSV6XXX_SDIO mmc1:0001:1: dataIOPort 0x10000 regIOPort 0x10020
+[    6.417852] jzmmc_v1.2 jzmmc_v1.2.1: Error status->0x1F000960: cmd=52, state=1
+[    6.461969] SSV6XXX_SDIO mmc1:0001:1: dataIOPort 0x10000 regIOPort 0x10020
+[    6.462145] SSV6XXX_SDIO mmc1:0001:1: CHIP ID: SSV6020C0        
+[    6.462158] Attach SSV6020 family HWIF HAL function  
+[    6.462219] Chip type a0
+[    6.462224] Load SSV6020 ASIC HAL HWIF function 
+[    6.462559] ssv6xxx_dev_probe(): SSV6X5X device "SSV6020C" found !
+[    6.462597] SSV6020C
+[    6.462602] Attach SSV6020 family HAL function  
+[    6.462656] Load SSV6020 common code
+[    6.462663] Load SSV6020 HAL MAC function 
+[    6.462668] Load SSV6020 HAL PHY function 
+[    6.462673] Load SSV6020 HAL BB-RF function 
+[    6.462698] Chip type a0
+[    6.462703] Load SSV6020 HAL ASIC EXT BB-RF function 
+[    6.465501] CHIP TAG: 2020072900201427 
+[    6.465661] MAC address from e-fuse
+[    6.465665] EFUSE configuration
+[    6.465671] Read efuse chip identity[6ff1ffff]
+[    6.465676] crystal_frequency_offset- dc
+[    6.465681] tx_power_index_1- 9
+[    6.465688] MAC address - xx:xx:xx:xx:xx:xx
+[    6.465693] rate_table_1- 0
+[    6.465697] rate_table_2- 59
+[    6.465756] flash_file /tmp/flash.bin not found
+[    6.465763]  ssv6020_if_chk_mac2: is not need to check MAC addres 2 for this model 
+[    6.465772] freq xi/xo use value 220/220
+[    6.465777] rate gain b use value 5
+[    6.465782] rate gain legacy use default value
+[    6.465787] rate gain ht20 use default value
+[    6.465792] rate gain ht40 use value 9
+[    6.465797] band gain offset 4, value 13
+[    6.465803] band gain use 13
+[    6.465807] ble gain use default value
+[    6.465886] SSV6XXX HCI TX Task started.
+[    6.465995] SSV6XXX RX Task started.
+[    6.466140] ssv6xxx_sdio_irq_disable
+[    6.478088] Enable HCI TX aggregation
+[    6.492197] Using firmware "ssv6x5x-sw.bin".
+[    6.492214] ssv6xxx_set_sdio_clk: set sdio clk 24000000Hz
+[    6.557679] wait stable.[289][cgu_msc0]
+[    6.579839] block_count = 0x007c003e, reg = 0x007c003e
+[    6.597739] mmc0: new high speed SD card at address 2173
+[    6.600987] mmcblk0: mmc0:2173 APPSD 121 MiB 
+[    6.602197]  mmcblk0: p1
+[    6.670643] FAT-fs (mmcblk0p1): Volume was not properly unmounted. Some data may be corrupt. Please run fsck.
+[    6.697657] ssv6xxx_set_sdio_clk: set sdio clk 24000000Hz
+[    6.737767] Firmware version 8089
+[    6.917732] chan change ch 6, type 1, off_chan 0
+[    6.946180] INIT SSV CONTROL GENERIC NETLINK MODULE
+[    6.946218] ieee80211 phy0: SSV6X5X of iComm-semi
+[    7.467410] SVN version 8090
+[    7.467423] SVN ROOT URL http://x.x.x.x/svn/wifi/host/SMAC/trunk/ssv6x5x 
+[    7.467428] COMPILER HOST ssv-Veriton-M490-1 
+[    7.467434] COMPILER DATE 04-01-2021-16:04:44 
+[    7.467438] COMPILER OS linux 
+[    7.467444] COMPILER OS ARCH x86_64-linux-gnu-thread-multi 
+[    7.507888] ssv6200_start(): current channel: 1,sc->ps_status=0
+[    7.507904] chan change ch 1, type 0, off_chan 0
+[    7.537716] [I] ssv6200_add_interface(): 
+[    7.537731] ssv6xxx_config_vif_res id[0].
+[    7.537743] SSV WLAN driver SSV6020C: Set new macaddr
+[    7.577713] SSV WLAN driver SSV6020C: VIF xx:xx:xx:xx:xx:xx of type 2 is added.
+[    7.577727] BSS Changed use_short_preamble[0]
+[    7.577733] BSS Changed use_cts_prot[0]
+[    7.577738] BSS_CHANGED_ERP_SLOT: use_short_slot[0]
+[    7.577776] NL80211_IFTYPE_STATION!!
+[    7.577782] [I] ssv6200_bss_info_changed(): leave
+[    7.577800] [I] sv6200_conf_tx vif[0] qos[0] queue[0] aifsn[2] cwmin[15] cwmax[1023] txop[0] 
+[    7.577883] [I] sv6200_conf_tx vif[0] qos[0] queue[1] aifsn[2] cwmin[15] cwmax[1023] txop[0] 
+[    7.577949] [I] sv6200_conf_tx vif[0] qos[0] queue[2] aifsn[2] cwmin[15] cwmax[1023] txop[0] 
+[    7.578016] [I] sv6200_conf_tx vif[0] qos[0] queue[3] aifsn[2] cwmin[15] cwmax[1023] txop[0] 
+[    7.578079] NL80211_IFTYPE_STATION!!
+[    7.578084] [I] ssv6200_bss_info_changed(): leave
+[    7.578092] IEEE80211_CONF_CHANGE_POWER change power level to 20
+[    7.578098] Disable IEEE80211_CONF_PS ps_aid=0
+[    7.578103] Disable IEEE80211_CONF_MONITOR
+[    7.578130] SSV WLAN driver SSV6020C: Change to the same channel 1
+[    7.578196] IPv6: ADDRCONF(NETDEV_UP): wlan0: link is not ready
+[    7.759546] --------------ssv6200_sw_scan_start(): 
+[    7.759903] SSV WLAN driver SSV6020C: Change to the same channel 1
+[    7.819116] chan change ch 2, type 0, off_chan 1
+[    7.878907] chan change ch 3, type 0, off_chan 1
+[    7.938776] chan change ch 4, type 0, off_chan 1
+[    7.998756] chan change ch 5, type 0, off_chan 1
+[    8.058713] chan change ch 6, type 0, off_chan 1
+[    8.118694] chan change ch 7, type 0, off_chan 1
+[    8.178701] chan change ch 8, type 0, off_chan 1
+[    8.258695] chan change ch 9, type 0, off_chan 1
+[    8.318705] chan change ch 10, type 0, off_chan 1
+[    8.378689] chan change ch 11, type 0, off_chan 1
+[    8.438710] chan change ch 12, type 0, off_chan 1
+[    8.498690] chan change ch 13, type 0, off_chan 1
+[    8.558708] chan change ch 14, type 0, off_chan 1
+[    8.620840] wlan0: authenticate with xx:xx:xx:xx:xx:xx
+[    8.637790] chan change ch 1, type 0, off_chan 0
+[    8.644935] ==============ssv6200_sw_scan_complete(): 
+[    8.645014] chan change ch 11, type 1, off_chan 0
+[    8.652271] NL80211_IFTYPE_STATION!!
+[    8.652286] [I] ssv6200_bss_info_changed(): leave
+[    8.652291] NL80211_IFTYPE_STATION!!
+[    8.652296] [I] ssv6200_bss_info_changed(): leave
+[    8.652334] BSS_CHANGED_BSSID: xx:xx:xx:xx:xx:xx
+[    8.652339] ssv6xxx_rc_update_basic_rate!!
+[    8.652343] NL80211_IFTYPE_STATION!!
+[    8.652634] [I] ssv6200_bss_info_changed(): leave
+[    8.652661] wlan0: send auth to xx:xx:xx:xx:xx:xx (try 1/3)
+[    8.656760] wlan0: authenticated
+[    8.659012] wlan0: associate with xx:xx:xx:xx:xx:xx (try 1/3)
+[    8.664684] wlan0: RX AssocResp from xx:xx:xx:xx:xx:xx (capab=0x31 status=0 aid=1)
+[    8.664706] [I] ssv6200_sta_add(): vif[0] Add xx:xx:xx:xx:xx:xx to VIF 0 sw_idx=0, wsid=0
+[    8.664982] [I] sv6200_conf_tx vif[0] qos[0] queue[2] aifsn[3] cwmin[15] cwmax[1023] txop[0] 
+[    8.665052] [I] sv6200_conf_tx vif[0] qos[0] queue[3] aifsn[7] cwmin[15] cwmax[1023] txop[0] 
+[    8.665119] [I] sv6200_conf_tx vif[0] qos[0] queue[1] aifsn[2] cwmin[7] cwmax[15] txop[94] 
+[    8.665186] [I] sv6200_conf_tx vif[0] qos[0] queue[0] aifsn[2] cwmin[3] cwmax[7] txop[47] 
+[    8.665265] BSS Changed use_short_preamble[1]
+[    8.665270] NL80211_IFTYPE_STATION!!
+[    8.678037] !!info->aid = 1
+[    8.678090] [I] ssv6200_bss_info_changed(): leave
+[    8.678115] wlan0: associated
+[    8.678177] IPv6: ADDRCONF(NETDEV_CHANGE): wlan0: link becomes ready
+[    8.686257] SSV WLAN driver SSV6020C: Set key VIF 0 VIF type 2 STA 0 algorithm = 4, key->keyidx = 0, cmd = 0
+[    8.686274] SSV WLAN driver SSV6020C: STA 0 uses HW encrypter for pairwise.
+[    8.686280] Set parewise key type 4
+[    8.686290] _ssv6020_set_pairwise_cipher_type, wsid_idx 0, cipher 4
+[    8.686532] SSV WLAN driver SSV6020C: Set STA 0's pair-wise key of 16 bytes.
+[    8.686544] _ssv6020_write_pairwise_keyidx_to_hw, wsid_idx 0, key_idx 0
+[    8.686734] _ssv6020_write_pairwise_key_to_hw, wsid_idx 0, key_idx 0, key_len 16, alg 4
+[    8.686919] sta: hw_en:1, sw_en:0, hw_de:1, sw_de:0,
+[    8.686928] vif: hw_en:0, sw_en:0, hw_de:0, sw_de:0, valid:0
+[    8.686933] SET KEY 0
+[    8.687394] SSV WLAN driver SSV6020C: Set key VIF 0 VIF type 2 STA -1 algorithm = 4, key->keyidx = 2, cmd = 0
+[    8.687411] SSV WLAN driver SSV6020C: VIF 0 uses HW CCMP cipher for group.
+[    8.687418] Set group key type 4
+[    8.687427] _ssv6020_set_group_cipher_type, vif_idx 0, cipher 4
+[    8.689563] SSV WLAN driver SSV6020C: Setting VIF 0 group key 2 of length 16 to WSID -1.
+[    8.689575] Set CCMP/TKIP group key index 2 to WSID 0.
+[    8.689584] SSV WLAN driver SSV6020C: Write group key index 2 to VIF 0 
+[    8.689594] _ssv6020_write_group_keyidx_to_hw, vif_idx 0, ptr->key_idx 2
+[    8.689828] _ssv6020_write_group_key_to_hw, vif_idx 0, key_idx 2, key_len 16, alg 4
+[    8.690022] vif: hw_en:1, sw_en:0, hw_de:1, sw_de:0, valid:1
+[    8.690029] SET KEY 0
+[    8.717666] AMPDU_TX_START xx:xx:xx:xx:xx:xx 0.
+[    8.717688] ssv6xxx_ampdu_opertaion() tid 0, wsid 0
+[    8.802256] AMPDU_TX_OPERATIONAL xx:xx:xx:xx:xx:xx 0.
+[    9.101318] IEEE80211_AMPDU_RX_START xx:xx:xx:xx:xx:xx 0.
+[   10.183161] NL80211_IFTYPE_STATION!!
+[   10.183176] [I] ssv6200_bss_info_changed(): leave
+[   10.397690] AMPDU_TX_START xx:xx:xx:xx:xx:xx 2.
+[   10.397705] ssv6xxx_ampdu_opertaion() tid 2, wsid 0
+[   10.420158] AMPDU_TX_OPERATIONAL xx:xx:xx:xx:xx:xx 2.
+[   15.065880] TCU: channel 2 claimed by motor
+[   15.065906] tcu_chn2 tcu_chn2.2: 'Pan motor' GPIOs: ST1 61, ST2 62, ST3 63, ST4 51, hmax 4050, vmax 1000
+[   15.065924] tcu_chn2 tcu_chn2.2: 'Tilt motor' GPIOs: ST1 54, ST2 52, ST3 53, ST4 64, hmax 4050, vmax 1000
+[   22.178331] cgu_set_rate, parent = 1392000000, rate = 4096000, n = 10875, reg val = 0x22002a7b
+[   22.178344] codec_codec_ctl: set sample rate...
+[   22.178491] codec_codec_ctl: set device...
+[   22.638205] codec_set_device: set device: MIC...
+[   24.534539] wireguard: WireGuard 1.0.20220627 loaded. See www.wireguard.com for information.
+[   24.534554] wireguard: Copyright (C) 2015-2019 Jason A. Donenfeld <Jason@zx2c4.com>. All Rights Reserved.
+[   37.831471] codec_codec_ctl: set CODEC_TURN_OFF...
+[   42.184000] libimp/ISP: Open entry gISP=(nil)
+[   42.184037] libimp/ISP: Open entry, gISP=(nil) (before)
+[   42.184077] libimp/ISP: Open calloc'd gISP=0x78226028
+[   42.184121] libimp/ISP: Open /dev/tx-isp fd=6 errno=0
+[   42.184243] libimp/ISP: Open return=0 gISP=0x78226028
+[   42.184266] libimp/ISP: AddSensor entry gISP=0x78226028
+[   42.261871] tisp_netlink_init,77: create netlink socket error.
+[   42.261889] CPU: 0 PID: 2087 Comm: timpsd Tainted: G           O 3.10.14__isvp_swan_1.0__ #2
+[   42.261895] Stack : 00000000 00000000 80453142 00000050 00000000 00000000 00000000 00000000
+[   42.261895] 	  00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+[   42.261895] 	  00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+[   42.261895] 	  00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+[   42.261895] 	  00000000 00000000 00000000 00000000 00000000 00000000 00000000 8132fae8
+[   42.261895] 	  ...
+[   42.261969] Call Trace:[<8001f388>] 0x8001f388
+[   42.261983] [<8001f388>] 0x8001f388
+[   42.261995] [<c0233070>] 0xc0233070
+[   42.262003] [<c024492c>] 0xc024492c
+[   42.262011] [<c0247ad0>] 0xc0247ad0
+[   42.262018] [<c029b674>] 0xc029b674
+[   42.262025] [<c0249cc0>] 0xc0249cc0
+[   42.262032] [<c0240000>] 0xc0240000
+[   42.262041] [<c0242560>] 0xc0242560
+[   42.262048] [<c029c0a0>] 0xc029c0a0
+[   42.262055] [<c029a1bc>] 0xc029a1bc
+[   42.262063] [<c02999b4>] 0xc02999b4
+[   42.262071] [<c0240318>] 0xc0240318
+[   42.262082] [<c0236648>] 0xc0236648
+[   42.262089] [<c0237160>] 0xc0237160
+[   42.262095] [<8037cd44>] 0x8037cd44
+[   42.262102] [<c02372ac>] 0xc02372ac
+[   42.262108] [<800c0bf0>] 0x800c0bf0
+[   42.262114] [<800ae5fc>] 0x800ae5fc
+[   42.262122] [<c02995b8>] 0xc02995b8
+[   42.262128] [<80018c08>] 0x80018c08
+[   42.262135] [<c02410f0>] 0xc02410f0
+[   42.262141] [<8005c758>] 0x8005c758
+[   42.262148] [<80024038>] 0x80024038
+[   42.262157] [<800d7bd0>] 0x800d7bd0
+[   42.262165] [<800d89b4>] 0x800d89b4
+[   42.262171] [<80021ffc>] 0x80021ffc
+[   42.262180] 
+[   42.389128] libimp/ISP: AddSensor GET_BUF idx=167773600 size=8327120 struct_sz=8
+[   42.390550] libimp/ISP: AddSensor SET_BUF phys=0x4e00000 size=8327120 struct_sz=8
+[   42.390598] libimp/ISP: EnableSensor entry gISP=0x78226028
+[   42.390618] libimp/ISP: EnableSensor GET_SENSOR_INDEX=0
+[   42.423008] libimp/ISP: EnableSensor ENABLE_SENSOR ok
+[   42.423044] libimp/ISP: EnableSensor CREATE_LINKS ok arg=0
+[   42.423056] libimp/ISP: EnableSensor ENABLE_LINKS ok
+[   42.423114] libimp/ISP: EnableTuning entry gISP=0x78226028
+[   42.423128] libimp/ISP: opened=3 tuning=(nil)
+[   42.423175] libimp/ISP: open(/dev/isp-m0, O_RDWR) = 9 (errno=0 ok)
+[   42.423189] libimp/ISP: EnableTuning opened /dev/isp-m0 as fd=9
+[   42.431091] libimp/ISP: tuning gain/contrast update gain=0 contrast=128 packed=0x00000080 count=1
+[   42.460344] codec_codec_ctl: set sample rate...
+[   42.460490] codec_codec_ctl: set device...
+[   42.485405] libimp/ISP: EnsureLinkStreamOn STREAMON sensor=0 fd=6
+[   42.485445] libimp/ISP: EnsureLinkStreamOn CREATE_LINKS sensor=0
+[   42.485461] libimp/ISP: EnsureLinkStreamOn ENABLE_LINKS sensor=0
+[   42.485476] libimp/ISP: EnsureLinkStreamOn done sensor=0
+[   42.919372] codec_set_device: set device: MIC...
+[   43.030217] Streaming off, will not wait for buffers,chan index 0
+[   43.030236] CPU: 0 PID: 2107 Comm: FS(0)-tick Tainted: G           O 3.10.14__isvp_swan_1.0__ #2
+[   43.030243] Stack : 00000000 00000000 80453142 00000054 00000000 00000000 00000000 00000000
+[   43.030243] 	  00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+[   43.030243] 	  00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+[   43.030243] 	  00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+[   43.030243] 	  00000000 00000000 00000000 00000000 00000000 00000000 00000000 81da7d70
+[   43.030243] 	  ...
+[   43.030317] Call Trace:[<8001f388>] 0x8001f388
+[   43.030331] [<8001f388>] 0x8001f388
+[   43.030342] [<c0233070>] 0xc0233070
+[   43.030350] [<c023f2e4>] 0xc023f2e4
+[   43.030359] [<800d7bd0>] 0x800d7bd0
+[   43.030365] [<800d89b4>] 0x800d89b4
+[   43.030372] [<80021ffc>] 0x80021ffc
+[   43.030381] 
+[   43.431318] libimp/ISP: tuning gain/contrast update gain=15050 contrast=128 packed=0x003aca80 count=2
+[   44.431537] libimp/ISP: tuning gain/contrast update gain=13252 contrast=128 packed=0x0033c480 count=3
+[   45.431762] libimp/ISP: tuning gain/contrast update gain=13089 contrast=128 packed=0x00332180 count=4
+[   53.529108] libimp/ISP: EnsureLinkStreamOn already-started bypass_done=0
+[   54.090142] Streaming off, will not wait for buffers,chan index 0
+[   54.090161] CPU: 0 PID: 2247 Comm: FS(0)-tick Tainted: G           O 3.10.14__isvp_swan_1.0__ #2
+[   54.090168] Stack : 00000000 00000000 80453142 00000054 00000000 00000000 00000000 00000000
+[   54.090168] 	  00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+[   54.090168] 	  00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+[   54.090168] 	  00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+[   54.090168] 	  00000000 00000000 00000000 00000000 00000000 00000000 00000000 81af9d70
+[   54.090168] 	  ...
+[   54.090243] Call Trace:[<8001f388>] 0x8001f388
+[   54.090256] [<8001f388>] 0x8001f388
+[   54.090268] [<c0233070>] 0xc0233070
+[   54.090275] [<c023f2e4>] 0xc023f2e4
+[   54.090284] [<800d7bd0>] 0x800d7bd0
+[   54.090291] [<800d89b4>] 0x800d89b4
+[   54.090297] [<80021ffc>] 0x80021ffc
+[   54.090305] [<80075208>] 0x80075208
+[   54.090313] 
+[   61.839357] libimp/ISP: EnsureLinkStreamOn already-started bypass_done=0
+[   62.400941] Streaming off, will not wait for buffers,chan index 0
+[   62.400961] CPU: 0 PID: 2430 Comm: FS(0)-tick Tainted: G           O 3.10.14__isvp_swan_1.0__ #2
+[   62.400968] Stack : 00000000 00000000 80453142 00000054 00000000 00000000 00000000 00000000
+[   62.400968] 	  00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+[   62.400968] 	  00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+[   62.400968] 	  00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+[   62.400968] 	  00000000 00000000 00000000 00000000 00000000 00000000 00000000 81fe3d70
+[   62.400968] 	  ...
+[   62.401043] Call Trace:[<8001f388>] 0x8001f388
+[   62.401056] [<8001f388>] 0x8001f388
+[   62.401067] [<c0233070>] 0xc0233070
+[   62.401075] [<c023f2e4>] 0xc023f2e4
+[   62.401084] [<800d7bd0>] 0x800d7bd0
+[   62.401091] [<800d89b4>] 0x800d89b4
+[   62.401097] [<80021ffc>] 0x80021ffc
+[   62.401105] [<80075208>] 0x80075208
+[   62.401113] 
+[   64.381784] libimp/ISP: EnsureLinkStreamOn already-started bypass_done=0

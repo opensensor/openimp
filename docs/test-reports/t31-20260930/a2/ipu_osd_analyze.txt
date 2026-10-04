@@ -1,0 +1,27 @@
+frame 640x368: 27879 luma pixels changed
+- pic pixel-alpha: 7937 of 8192 changed (x 33..159, y 32..95)
+- pic pixel*global(128): 7654 of 8192 changed (x 33..159, y 128..191)
+- cover red a=255: 6144 of 6144 changed (x 224..319, y 32..95)
+- cover blue a=128: 6144 of 6144 changed (x 224..319, y 128..191)
+- outside the layer boxes: 0 changed
+
+pic pixel-alpha, luma fit (mean |error| over the region):
+  bt601-studio       a/255       5.30
+  bt601-studio       >>8         5.85
+  bt601-studio       (a+1)>>8    5.63
+  bt601-studio       +128>>8     5.52
+  kernel-analog+16   a/255       0.44
+  kernel-analog+16   >>8         0.26
+  kernel-analog+16   (a+1)>>8    0.37
+  kernel-analog+16   +128>>8     0.10
+  full-range         a/255       6.16
+  full-range         >>8         6.53
+  full-range         (a+1)>>8    6.50
+  full-range         +128>>8     6.21
+  best: kernel-analog+16 with +128>>8 (mean |err| 0.10)
+pic pixel*global(128): mean |err| with alpha*128/255 = 0.05
+cover red a=255: Y mean 66.0 (bg 108.5), U 90.0, V 240.0
+cover blue a=128: Y mean 66.5 (bg 108.5), U 184.0, V 119.0
+  expected stock colour words: red Y=82 U=90 V=240 (no +16), blue Y=41 U=240 V=110
+
+previews: test-results/a2/ipu-before.png, test-results/a2/ipu-after.png
