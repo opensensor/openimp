@@ -124,7 +124,7 @@ th small{font-weight:400;color:var(--muted)}
 <tr class="grp"><td colspan="8">Colour and image quality</td></tr>
 <tr id="r-awb"><td><a href="#n-awb">White balance (AWB, presets, manual)</a></td><td class="vend">vendor AWB chain</td>
 <td class="s-ok"><span class="sym" title="supported">✅</span><span class="txt">device-tested: manual R/B gains, Cb/Cr −21..−28</span></td>
-<td class="s-bug"><span class="sym" title="known defect / deviation">⚠️</span><span class="txt">default simple AWB; daylight A/B vs vendor chain: gains 492/393 vs 488/395, neutral ROIs within 0.007, both converge &lt; 4 s; tungsten test open</span></td>
+<td class="s-ok"><span class="sym" title="supported">✅</span><span class="txt">✅ default simple AWB; daylight A/B vs vendor chain: gains 492/393 vs 488/395, neutral ROIs within 0.007, both converge &lt; 4 s; artificial light sweep 2200-6500 K (2026-10-04, smart bulbs): AWB follows (CT estimate 2300/2300/2500/4100 K), 4000 K neutral (R/G 0.99), very warm light stays slightly warm (lower limit ~2300 K, typical)</span></td>
 <td class="s-plus"><span class="sym" title="improved beyond vendor">✅+</span><span class="txt">AWB lifted (10/10 scenes register-identical) + hysteresis + IR night freeze; dusk test open</span></td>
 <td class="s-ok"><span class="sym" title="supported">✅</span><span class="txt">[-all-13] daylight green cast fixed on claude/t23-day-color (bc70f10b), tested on cam-B in sunlight: neutral colours, WB gains kept (0x710/0x7c0); not flashed yet</span></td>
 <td class="s-ok"><span class="sym" title="supported">✅</span><span class="txt">device-tested: manual R/B gains + presets 3/4/7 read back; chroma follows (Cb/Cr), auto restores</span></td>
