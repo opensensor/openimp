@@ -96,21 +96,36 @@ Further items (night 2026-10-03):
 
 ### 4.1 Motion v2 (opt-in, beyond vendor)
 
-OpenIMP branch `claude/imp-motion-v2` (from `claude/openimp-all-16`). **Default off: with it off, `IMP_IVS_MoveOutput` is
-bit-identical to the vendor algorithm** (host test `tests/t23/ivs_move_v2_test.c`, also in shadow mode). Status: built for
-T20/T21/T23/T30/T31/T41, device test on cam-C (T20) and cam-B (T23), see the changelog.
+OpenIMP branch `claude/imp-motion-v2` (51032e8, from `claude/openimp-all-16`). **Default off: with it off,
+`IMP_IVS_MoveOutput` is bit-identical to the vendor algorithm** (host test `tests/t23/ivs_move_v2_test.c`, also in shadow
+mode). Status: built for T20/T21/T23/T30/T31/T41; **device-tested on cam-C (T20) and cam-B (T23) for one night (opt-in,
+not yet in an aggregate; enabling it is the user's decision)**.
+
+Device results 2026-10-04 (timps, sub stream 640x360, 5x5 grid, sensitivity 128, skip 5; legacy and v2 counted on the same
+frames in shadow mode; events merged within 5 s, classified from recordings):
+
+| Period | cam-C T20 vendor / v2 | cam-B T23 vendor / v2 |
+|---|---|---|
+| 00:38-04:27 shadow | 13 (about 7 false: blinking lights, room light) / 11 (about 2 false) | 3 (2 false) / 2 (1 car, its headlights) |
+| 04:27-06:41 OVERRIDE (timps sees v2) | 0 / 0 | 5 / 1 (headlights) |
+| 06:41-07:20 day/night on, IR probe + switch | not tested (indoor) | 5 / 0 (suppressed: DAYNIGHT, GAIN, LUMA) |
+
+Known limit: car headlights sweeping the scene can still form a moving object. CPU (in timps, per 25 fps input frame,
+`OPENIMP_T31_IVS_STATS`): v2 adds about 225 us on T20 and 175 us on T23 (+0.6 % / +0.4 % of a core); bench per
+analysed 640x360 frame: v2 1.8 ms (T20), 1.2 ms (T23), vendor move 1.6 / 1.0 ms.
 
 What it does, next to the vendor frame difference of `IMP_IVS_CreateMoveInterface`:
 
 | Feature (bit) | Behaviour |
 |---|---|
-| `BACKGROUND` (0x1) | Per-cell background model (8x8-pixel cells at 640x360, grid at most 80x60): running mean plus running noise level per cell, global brightness compensation (median cell ratio). Without it the reference is the previous analysed frame |
+| `BACKGROUND` (0x1) | Per-cell background model (8x8-pixel cells at 640x360, grid at most 80x60): running mean, texture and noise level per cell, global brightness compensation (median cell ratio). A brightness change that keeps the cell's texture is light (shadow, lamp, reflection), not an object; cells that keep moving (flicker, foliage) need 3x the threshold. Without it the reference is the previous analysed frame |
 | `SUPPRESS` (0x2) | Hold-off of `suppress_ms` (default 4 s, at least 3 analysed frames) after an ISP running-mode change (IR / day-night), a total-gain jump or a global brightness jump above `jump_pct` (default 25 %); the background re-learns fast meanwhile |
-| `BLOBS` (0x4) | Moving cells are grouped 8-connected into objects; an object needs `min_cells` (3) cells and must be seen `min_frames` (2) analysed frames in a row; leaves, noise and single-cell flicker drop out |
+| `BLOBS` (0x4) | Moving cells are grouped 8-connected into objects; an object needs the vendor-equivalent area (below) and at least `min_cells` (3) cells, must be seen `min_frames` (2) analysed frames in a row and its centre must travel `min_move` (3) cells; leaves, noise, single-cell flicker and lamps switching on in place drop out |
 | `OVERRIDE` (0x8) | `retRoi[i]` comes from v2 (an object covers ROI i) instead of the vendor difference, so an unmodified streamer benefits. Without it v2 runs in **shadow mode**: vendor `retRoi`, v2 only in the extension result |
 
-The vendor `sense` of the most sensitive ROI scales the v2 thresholds (2 = as configured, 0 = x2, 4 = x0.5), so an existing
-sensitivity slider keeps working. Analysis runs on the frames the channel already receives, every `skipFrameCnt + 1`-th
+The vendor `sense` of the most sensitive ROI scales the v2 thresholds (2 = as configured, 0 = x2, 4 = x0.5) and sets the
+minimum object area to the vendor ROI threshold (4 x T[sense] pixels, sense 2 = 604 px = 9 cells at 640x360), so an
+existing sensitivity slider keeps working and means the same object size. Analysis runs on the frames the channel already receives, every `skipFrameCnt + 1`-th
 frame.
 
 **Switches**
@@ -119,7 +134,7 @@ frame.
 |---|---|
 | `OPENIMP_MOTION_V2` | `1`/`on`/`all` = all four features; `shadow` = all but OVERRIDE; a number = feature mask; unset/`0` = off |
 | `OPENIMP_MOTION_V2_BG`, `_SUPPRESS`, `_BLOBS`, `_OVERRIDE` | `0`/`1` clears/sets one feature on top of the above |
-| `OPENIMP_MOTION_V2_LEARN`, `_K`, `_MIN_DELTA`, `_SUPPRESS_MS`, `_JUMP_PCT`, `_MIN_CELLS`, `_MIN_FRAMES` | parameters, see the config struct |
+| `OPENIMP_MOTION_V2_LEARN`, `_K`, `_MIN_DELTA`, `_SUPPRESS_MS`, `_JUMP_PCT`, `_MIN_CELLS`, `_MIN_FRAMES`, `_MIN_MOVE` | parameters, see the config struct |
 | `OPENIMP_MOTION_V2_LOG` | `1` = one stderr line per change of the vendor or the v2 decision (debug, A/B) |
 
 The environment is read when the move interface is created. A streamer can instead (or later) set the configuration per
@@ -141,7 +156,8 @@ int OpenIMP_IVS_MoveGetConfigEx(int chn, OpenIMP_IVS_MoveConfigEx *cfg);
 - It returns the extension data of the result the last `IMP_IVS_GetResult()` handed out; call it before the next
   `GetResult`. With v2 off it still fills `seq`, `frame_*` and `legacy_roi`, `flags` is 0.
 - `OpenIMP_IVS_MoveConfigEx` (version 1, 64 bytes): `features`, `learn_shift` (1..10, 4), `thresh_k` (16..255, 64 =
-  4x noise), `min_delta` (luma levels, 10), `suppress_ms` (4000), `jump_pct` (25), `min_cells` (3), `min_frames` (2).
+  4x noise), `min_delta` (luma levels, 10), `suppress_ms` (4000), `jump_pct` (25), `min_cells` (3), `min_frames` (2),
+  `min_move` (cells, 3; negative = report objects that do not move).
   Parameter fields that are 0 or beyond the caller's `size` take the default; out-of-range values are clamped.
   `features = 0` turns v2 off.
   The configuration takes effect with the next analysed frame; switching features restarts a 4-frame warm-up.
