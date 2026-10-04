@@ -3,23 +3,23 @@
 Everything changed, extended or fixed in OpenIMP, open-tx-isp, timps and the thingino
 integration since the test campaign started on 2026-09-30. Kept up to date during the campaign.
 
-Last update: 2026-10-04 21:00.
+Last update: 2026-10-04 21:00. Branch names (`claude/...`) in the tables and sections below are historic: the branches were merged into `next` and deleted.
 
 Cameras are anonymised: cam-A (T31), cam-B (T23), cam-C (T20), cam-D (T21), cam-E (T10), cam-F (T41).
 
 ## Where each camera stands
 
-All six test cameras run the open kernel driver (open-tx-isp), OpenIMP and timps. Since -all-10 no Ingenic or neo helper libraries (libalog/libsysutils) remain on the images.
-"Live" means newer builds loaded from `/tmp` that are lost on reboot.
+All test cameras run the open kernel driver (open-tx-isp), OpenIMP and timps. No Ingenic or neo helper libraries (libalog/libsysutils) remain on the images. Since 2026-10-04 17:39-17:47 every camera runs a full OTA image built from thingino `aperto` with open-tx-isp `next` and OpenIMP `next` (30/30 snapshots, 0 oops, 0 VPU errors); a 24 h soak runs since 17:50 and the first release tag follows after it.
 
 | Camera | SoC | Stack | State |
 |---|---|---|---|
-| cam-A | T31 | fully open | Flashed 2026-10-04 10:17 with all-21 (open-tx-isp/openimp `next`, timps main a34a5a2, full OTA); sensor pin active, IP delta read-back fixed |
-| cam-B | T23 | fully open (native encoder, no OEM helixd) | Flashed 2026-10-04 10:13 with all-21 (full OTA): AWB flip fix, sub-stream + OSD fixes; sporadic Helix encode error under investigation |
-| cam-C | T20 | fully open | Flashed 2026-10-04 10:14 with all-21 (full OTA, kernel patch 0101); A/B vs vendor measured before |
-| cam-E | T10 | fully open | Flashed 2026-10-04 10:19 with all-21 (full OTA), boot guard auto |
-| cam-D | T21 | fully open | Flashed 2026-10-04 10:13 with all-21 (full OTA, reference sharing on): sensor pin active, sub stream 0 shifts |
-| cam-F | T41 | fully open | Flashed 2026-10-03 14:20 with open-tx-isp-all-13 / OpenIMP T41 (kernel and rootfs flashed separately); image rev 1 flashed later (isp-m0 in vendor layout), reload still failing |
+| cam-A | T31 | fully open | `aperto` image; H.264, H.265, hardware JPEG, OSD, AEC; rmem 36 MB |
+| cam-B | T23 | fully open (native encoder, no vendor helper) | `aperto` image; sporadic Helix encode error under investigation |
+| cam-C | T20 | fully open | `aperto` image with kernel patch 0101; OEM rate controller default; A/B vs vendor measured |
+| cam-D | T21 | fully open | `aperto` image; reference sharing on; vendor-identical eprc |
+| cam-E | T10 | fully open | `aperto` image, boot guard auto; ispmem 6 MB |
+| cam-F | T41 | fully open | `aperto` image (rootfs rev7, rmem 26M); H.264 and H.265; open: flip, night column noise, short IVS gaps |
+| cam-G, cam-H | T23 | fully open | two further T23 cameras (other sensors); cam-H is part of the `aperto` image run |
 
 ## OpenIMP (userspace libimp)
 
@@ -119,7 +119,7 @@ Aggregates: `claude/open-tx-isp-all-4` and `claude/openimp-all-4` (pushed); 58 m
 - **T41 test plan:** anti-flicker and VPU load ✅; QP limits live ⚠; AE compensation, gain limits, WDR, defog/DRC, noise reduction, DPC, scene, crop and rotation have no control path yet — being implemented in OpenIMP (the streamer now answers "unsupported" instead of a silent ok).
 - **Motion detection v2 is on by default** (`OPENIMP_MOTION_V2=0` restores the vendor algorithm). The streamer exposes boxes, strength and suppress reasons via the versioned `OpenIMP_IVS_MoveGetResultEx` API.
 - **Memory with reserve:** cam-E (T10) ispmem 8 → 6 MB (temper still fits, +2 MB for Linux); cam-A (T31) rmem 50 → 36 MB (+14 MB for Linux, 3 RTSP clients + MJPEG + snapshots without allocation errors). T23/T21/T20 stay as they are (reserve too small to gain anything). Rule: measured peak or computed worst case + ≥25 % and ≥2 MB.
-- **Repos:** 82 merged branches deleted; tracked files cleaned (privacy: real camera/room names, IPs and local paths replaced; ~16 MB of old notes, dumps and binaries archived or removed); new README with logo, badges and changelog; `main` = `next`; documentation wiki at the OpenIMP repo.
+- **Repos:** 82 merged branches deleted; tracked files cleaned (privacy: real camera/room names, IPs and local paths replaced; ~16 MB of old notes, dumps and binaries archived or removed); new README with logo, badges and changelog; `main` = `next` at that time (later not kept in sync; `next` is authoritative); documentation wiki at the OpenIMP repo.
 - **24 h soak** of all five cameras started at 14:15.
 
 ## Noon (2026-10-04, 11:40 - 12:15)
@@ -417,8 +417,8 @@ Current aggregates: `claude/open-tx-isp-all-7` (all-6 + sinfo module-notifier fi
 
 ## timps and thingino
 - timps: AE IT max can be reset to 0 again (PR #3, merged).
-- thingino: per-camera pins for both packages; the open-stack switch (`THINGINO_ISP_OPEN`) set per device so OpenIMP replaces the vendor library; T23 keeps the vendor library only under `/opt/openimp-t23` for helixd.
-- T21 boot guard `S10isp-guard` with u-boot `isp_open=manual|auto|off`, so a bad driver cannot boot-loop the camera.
+- thingino: the packages `openimp` and `open-tx-isp` are in the upstream branch `aperto` ([#1756](https://github.com/themactep/thingino-firmware/pull/1756)), selected with `BR2_PACKAGE_THINGINO_ISP_OPEN` and pinned by commit SHA to the Lu-Fi forks (`next`); T23 runs fully on OpenIMP, the vendor library under `/opt/openimp-t23` and the helixd hybrid are gone. A tag will be pinned once release tags exist.
+- Merged upstream (`aperto`): kernel VPU/rmem stability patches (#1748, #1752), optional boot guard `S10isp-guard` with u-boot `isp_open=manual|auto|off` (#1749, default off), SC2336 flip fixes (#1750, #1751), OTA fix (#1747), timps tarball hash (#1746). Closed without merge (superseded by the `aperto` versions): #1736, #1738 (64 KiB `fw_env.config` and `fw_setenv` guard for T41; not upstream), #1739, #1743.
 - T21 image: sensor `shvflip=1`, TLS and WebRTC enabled.
 
 ## Evidence
@@ -448,23 +448,20 @@ Current aggregates: `claude/open-tx-isp-all-7` (all-6 + sinfo module-notifier fi
 | libimp code + data, T21 | ~1.0 MB | ~0.5 MB | Open saves about half |
 | libimp code + data, T23 | ~1.26 MB | ~0.6 MB | Native encoder also drops the helixd vendor library |
 | libimp code + data, T31 | ~1.05 MB | ~0.57 MB | |
-| Kernel module, T21 | 616 KB | 805 KB | Static frames from lifted AE/ADR; reduction planned |
-| Kernel module, T23 | 857 KB | ~1,100 KB | After `t23-bss-shrink` (was 1,607 KB) |
+| Kernel module, T21 | 616 KB | 452 KB | After the size work of 2026-10-03/04 (was 805 KB) |
+| Kernel module, T23 | 857 KB | 622 KB | After `t23-bss-shrink` and the size work (was 1,607 KB) |
+| Kernel module, T31 | 829 KB | 711 KB | |
 
-## Still open
-- T23: hard hang with the AE/sharpen builds (bisecting); then -all-8 aggregates and images (user decision).
-- T21 AWB: delayed first snapshot and event-pool burst at start.
-- T23 JPEG sizes on cam-B are unusually large (~730 KB at q75 vs ~100 KB expected); dump tool added to find out why.
-- T20 driver floods the kernel log with debug trace lines (being silenced).
-- AEC device tests on T23/T21/T20; native T23 encoder as default; T31 tuning controls on cam-A.
-- Kernel module memory on T21; T40/T41 gaps.
+## Still open (2026-10-04)
+- T23: sporadic single Helix encode error (errno 5); real WDR missing.
+- T41: flip, night column noise (gc5603), short IVS gaps, OOM with three parallel streams, `AddSensor` EBUSY after an OOM kill; day/night and AE/AWB quality untested.
+- T21: a 4th module reload in one boot crashed once (under investigation).
+- AEC device tests on T23/T21/T20 (no speaker tests on the shared test cameras).
+- First release tag after the 24 h soak; `release` branch not created yet.
 - Improvements beyond vendor behaviour are collected separately and decided by the maintainer.
 
 ## Branch map
 
-| Repository | Aggregate | Contains |
-|---|---|---|
-| open-tx-isp | `claude/open-tx-isp-all-7` | everything above (all SoCs, robustness, review fixes) |
-| OpenIMP | `claude/openimp-all-6` | everything above (quickfixes, IVS, AEC, rotation, HEVC, native T23 encoder, review fixes) |
+Both repositories: `next` is the tested integration branch (fast-forward only); `main` is the fork default branch and is not kept in sync (it lags behind `next`; `next` is authoritative). All aggregate and topic branches (`claude/*-all-N` and the single branches) that were merged into `next` have been deleted; branch names in the tables above are historic. Planned: `release` and date tags `vYYYY.MM.DD` after the first clean soak.
 
 Numbers come from on-device measurements and host checks during the campaign.

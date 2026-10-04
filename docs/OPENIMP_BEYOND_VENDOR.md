@@ -6,7 +6,7 @@ more than, the vendor libimp / kernel driver. Only items that are implemented an
 everything else is in "Unverified" at the end. Cameras are anonymised as in the changelog (cam-A T31,
 cam-B T23, cam-C T20, cam-D T21, cam-E T10, cam-F T41).
 
-Status tags: `[-all-13]` = tested before the -all-15 aggregates (now contained in them; -all-15 is flashed on cam-A to cam-E). Rows marked "built, device test pending" are opt-in and not yet device-tested. Branch names refer to the open-stack repos.
+Status tags: `[-all-13]` is a historic tag (tested before the later aggregates; everything so tagged is contained in `next`). Rows marked "built, device test pending" are opt-in and not yet device-tested. Branch names (`claude/...`) are historic: those branches were merged into `next` and deleted. Defaults described here are the defaults in `next` (section 7 lists the environment variables).
 
 Integration rule of thumb: all behaviour below is reachable through the **standard IMP API** (same
 signatures as the vendor SDK). Nothing needs a new call; where a value is "different", it is in what the
@@ -49,8 +49,8 @@ Further items (night 2026-10-03):
 - **eprc macroblock RC (opt-in, `claude/eprc-mbrc` 9e2bc3a, a8b483a: registers 0x400c0/0x400c4 per picture type like the vendor, T23 IDR 0x060404c1/0x61615921, P 0x030484c1/0x61615c21, T21 IDR 0x060407c1, P 0x030487c1; device test running):** 0 deviations against the vendor in the emulator on T23 and T21. Env `OPENIMP_EPRC_MBRC=1`; `IMP_Encoder_SetMbRC` works per channel at runtime (on the vendor SetMbRC has no effect and MB-RC always runs). The vendor uses SAS mode 3 (7 activity-class QP offsets), no per-MB QP map. Vendor bug (class-table index reads past a 9-byte table): OpenIMP uses 0.
 - **T21 `ae_it_max_us` acts (`claude/t21-ae-it-max` 840a57ff, beyond vendor, the user decided to keep it):** the vendor T21 ignores the RANGE block of SetIntegrationTime. cam-D: cap 2000 us gives IT 68 lines, dgain 19 to 63; cap 5000 us gives 172 lines; cap 0 returns to 1125 lines. Caveat: a 4th module reload in one boot crashed (under investigation).
 - **Smaller modules (`claude/open-tx-isp-size2` a7214c75):** T23 1,047 to 622 KB (vendor 857), T31 859 to 711 KB (vendor 829), T20 775 to 736 KB, T10 770 to 731 KB; device-tested on cam-A and cam-B. No API change.
-- **No vendor libimp hybrid on T23:** cam-B runs without it (~328 KiB less in the rootfs). Only the hardware JPEG `IMP_Decoder` needs the OEM worker, now optional (`T23_BUILD_OEM_WORKER=1`, `claude/t23-no-oem-worker` 9eefbae).
-- **T10/T20 OEM rate controller as default (`claude/t1x-oem-rc-default-a13` f05db18, device test pending):** `quality_lvl` / `change_pos` act as in the vendor firmware once it is the default.
+- **No vendor libimp hybrid on T23:** cam-B runs without it (~328 KiB less in the rootfs). The OEM worker option and the hybrid install were removed from the thingino package afterwards; T23 runs fully on OpenIMP.
+- **T10/T20 OEM rate controller as default (device-tested on cam-C and cam-E):** `quality_lvl` / `change_pos` act as in the vendor firmware.
 
 - **eprc complete (T21/T23, `claude/eprc-complete`):** FIXQP, scene-cut IDR, runtime RC/fps/GOP/HSkip changes applied at the next IDR like the vendor, `SetChnHSkip` on T21/T23; 0 oracle deviations. MB-level RC is ported separately (`claude/eprc-mbrc`, opt-in, device test pending). The vendor-identical T21 eprc is now the default (`claude/eprc-t21-default`); cam-D at 1200 kbit/s: CBR 1326, VBR 1096, SMART 1071.
 - **T20 snapshot debounce (openimp `claude/openimp-t20-jpeg-align`, timps `claude/timps-jpeg-idle-nopoll`):** it no longer polls the JPEG encoder; with 1 snapshot/s on both channels chn0 14.4 / chn1 15.0 fps (was 11.2 / 14.3). A sub-stream height of 270 is rounded to 272 with a warning (the vendor scaler hangs on it).
@@ -94,12 +94,12 @@ Further items (night 2026-10-03):
 | Sub-stream default for IVS: about 85 % less IVS CPU than the vendor libimp | T31 | internal | on | Prefer the sub-stream as IVS source | n/a | cam-A |
 | Motion works without a viewer (feeder thread), CPU about 10-12 % vs 27 % with vendor libimp | T41 | internal | on | Nothing | n/a | cam-F, `claude/t41-libimp` |
 
-### 4.1 Motion v2 (opt-in, beyond vendor)
+### 4.1 Motion v2 (on by default, beyond vendor)
 
-OpenIMP branch `claude/imp-motion-v2` (51032e8, from `claude/openimp-all-16`). **Default off: with it off,
-`IMP_IVS_MoveOutput` is bit-identical to the vendor algorithm** (host test `tests/t23/ivs_move_v2_test.c`, also in shadow
-mode). Status: built for T20/T21/T23/T30/T31/T41; **device-tested on cam-C (T20) and cam-B (T23) for one night (opt-in,
-not yet in an aggregate; enabling it is the user's decision)**.
+**On by default since 2026-10-04 (in `next`); `OPENIMP_MOTION_V2=0` restores the vendor algorithm, and then
+`IMP_IVS_MoveOutput` is bit-identical to the vendor** (host test `tests/t23/ivs_move_v2_test.c`, also in shadow
+mode). Status: built for T20/T21/T23/T30/T31/T41; **device-tested on cam-C (T20) and cam-B (T23) for one night in shadow
+and override mode** (results below).
 
 Device results 2026-10-04 (timps, sub stream 640x360, 5x5 grid, sensitivity 128, skip 5; legacy and v2 counted on the same
 frames in shadow mode; events merged within 5 s, classified from recordings):
@@ -234,8 +234,11 @@ set in production.
 | `OPENIMP_T10_RC_SUPERFRM` | `0` restores vendor-exact T10 VBR behaviour (super-frame fix off); only inside the OEM controller | on | user-facing |
 | `OPENIMP_T20_RC_IAWARE` | `0` = vendor P budget, `1` also for VBR/SMART; only inside the OEM controller | on for CBR | user-facing |
 | `OPENIMP_T31_RC_CORE` | `legacy` restores the pre-Allegro rate-control core | allegro | user-facing |
+| `OPENIMP_T21_EPRC` | T21: `0` restores the old GOP controller (the vendor-identical eprc is the default) | on | user-facing |
+| `OPENIMP_T23_EPRC` | T23: `1` runs eprc for CBR/VBR too, `0` never; unset = eprc for SMART only | SMART only | user-facing |
+| `OPENIMP_T20_MBRC` | `1` enables the macroblock-level rate control inside the T20 OEM controller | off | user-facing (opt-in) |
 | `OPENIMP_EPRC_QP_DOWN1` | `1` / `2` enables the eprc QP-down limit; built, device test pending | off | user-facing (opt-in) |
-| `OPENIMP_MOTION_V2` (+ `_BG`, `_SUPPRESS`, `_BLOBS`, `_OVERRIDE`, parameters) | opt-in motion v2, section 4.1; `shadow` = analysis without changing `retRoi` | off | user-facing (opt-in) |
+| `OPENIMP_MOTION_V2` (+ `_BG`, `_SUPPRESS`, `_BLOBS`, `_OVERRIDE`, parameters) | motion v2, section 4.1; `0`/`off`/`vendor` = vendor algorithm; `shadow` = analysis without changing `retRoi` | on | user-facing |
 | `OPENIMP_MOTION_V2_LOG` | `1` logs every vendor / v2 decision change (A/B) | off | debug-only |
 | `OPENIMP_LOG_SYSLOG` | `1` also logs to syslog | off | user-facing |
 | `OPENIMP_PROFILE`, `OPENIMP_PROFILE_INTERVAL` | `1` enables a periodic profile report; interval in completed frames (docs/PROFILING.md) | off | debug-only |
@@ -246,7 +249,7 @@ set in production.
 | `OPENIMP_RMEM_NO_REUSE` | `1` restores the old rmem behaviour (no reuse) | off | debug-only |
 | `OPENIMP_DEBUG_TRACE` | per-frame detail trace (very verbose) | off | debug-only |
 | `OPENIMP_T31_IVS_STATS`, `OPENIMP_AEC_STATS`, `OPENIMP_SOURCE_STATS`, `OPENIMP_T31_FULL_FRAME_STATS`, `OPENIMP_T23_RC_STATS` | periodic statistics output | off | debug-only |
-| `OPENIMP_T31_DROP_IRQ_EVERY`, `OPENIMP_T31_DUMP_SOURCE_DIR` | fault injection / source dumps | off | debug-only |
+| `OPENIMP_T31_DUMP_SOURCE_DIR` | dump source frames to a directory | off | debug-only |
 | `OPENIMP_T23_HELIX_BSF` | `1` hard bitstream limit; needs a patched kernel, device test open | off | debug-only |
 | `OPENIMP_T41_STREAM_COPY_MODE`, `OPENIMP_T41_RATE_CONTROL_COUPLING`, `OPENIMP_T41_UNCACHED_COMMAND_RING`, `OPENIMP_T41_UNCACHED_EP3_RING` | `=0` rolls back T41 behaviour for A/B (docs/T41_STATUS.md, PROFILING.md) | new behaviour on | debug-only |
 

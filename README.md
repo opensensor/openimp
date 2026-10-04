@@ -43,7 +43,7 @@ Open stack = open-tx-isp + OpenIMP + timps. State on `next` (2026-10-04):
 | T30 | Builds against a real T30 kernel; H.264 command lists match the vendor in an emulator. No device in the test campaign, so not device-verified here. |
 | T31 | Reference SoC. H.264, HEVC, hardware JPEG, OSD, rotation, AEC; 2 h 53 min soak without errors. |
 | T40 | Builds; AVPU H.264 path from upstream work. Not part of the device campaign. |
-| T41 | Runs from a flashed image with H.264 and H.265. Open: flip, night column noise, short IVS gaps, OOM with three parallel streams. |
+| T41 | Runs from a flashed image with H.264 and H.265. Open: live flip, night column noise, short IVS gaps, OOM with three parallel streams at 30 MB rmem (26 MB in the test image works); day/night and AE/AWB quality untested. |
 
 Details per feature and SoC: [FEATURE_MATRIX](docs/FEATURE_MATRIX.md).
 History: [CHANGELOG.md](CHANGELOG.md) and the full
@@ -66,8 +66,9 @@ Other points, all device-tested:
 - libimp is about 0.5-0.6 MB instead of 1.0-1.3 MB; T21 has 2.76 MB instead of ~1.2 MB free video memory.
 - Reference-frame sharing on T21/T23 saves ~1.5 MB.
 - Reload and stop robustness: 10 stop/start and reload cycles without an oops.
-- Controls and noise reduction that the vendor ignores act on T10/T21; real motion detection on T20/T21/T30; HEVC fails cleanly on SoCs without HEVC hardware.
-- Optional motion detection v2 (bounding boxes, strength) through a versioned API.
+- Controls and noise reduction that the vendor ignores act on T10/T20/T21; real motion detection on T20/T21/T30; HEVC fails cleanly on SoCs without HEVC hardware.
+- Motion detection v2 (per-cell background model, suppression after IR/gain jumps, bounding boxes and strength through the versioned `OpenIMP_IVS_MoveGetResultEx` API) is on by default; `OPENIMP_MOTION_V2=0` restores the vendor algorithm. Device-tested on T20 and T23 over one night.
+- Memory diagnostics: rmem peak logging and a shortfall message with a concrete `rmem=<n>M` suggestion instead of silent degradation (see the wiki page Memory).
 
 Integration notes for streamer authors, env switches and defaults:
 [OPENIMP_BEYOND_VENDOR](docs/OPENIMP_BEYOND_VENDOR.md).
@@ -93,18 +94,25 @@ make t31                    # or t20 t21 t23 t30 t40 t41; equivalent: ./build-fo
 
 ## Integration in Thingino
 
-In [thingino-firmware](https://github.com/themactep/thingino-firmware) the package `openimp`
-(OpenIMP) and `open-tx-isp` (kernel driver) are selected with `BR2_PACKAGE_THINGINO_ISP_OPEN`
-(menu "ISP stack"). Both replace the proprietary `libimp.so` and `tx-isp-<soc>.ko`; the SDK
-sensor, audio and AVPU modules stay. The streamer is built with `USE_OPENIMP=1` to enable
-features that exist only in OpenIMP. Each device pins both packages to a commit; once release
-tags exist, a tag can be pinned instead.
+The packages `openimp` (this repository) and `open-tx-isp` (kernel driver) are in the upstream
+[thingino-firmware](https://github.com/themactep/thingino-firmware) branch `aperto`
+([#1756](https://github.com/themactep/thingino-firmware/pull/1756)), selected with
+`BR2_PACKAGE_THINGINO_ISP_OPEN` (menu "ISP stack") and pinned by commit SHA to the `next`
+branches of the Lu-Fi forks. Both replace the proprietary `libimp.so` and `tx-isp-<soc>.ko`; the
+SDK sensor, audio and AVPU modules stay; T23 runs fully on OpenIMP without any vendor helper. The
+kernel VPU/rmem stability patches
+([#1748](https://github.com/themactep/thingino-firmware/pull/1748),
+[#1752](https://github.com/themactep/thingino-firmware/pull/1752)) and the optional boot guard
+`BR2_PACKAGE_THINGINO_ISP_GUARD` ([#1749](https://github.com/themactep/thingino-firmware/pull/1749),
+default off) are merged there as well. The streamer is built with `USE_OPENIMP=1` to enable
+features that exist only in OpenIMP. Once release tags exist, thingino will pin a tag instead of a
+SHA.
 
 ## Branches and releases
 
 - `main`: fork default branch, not the tested stack.
 - `next`: tested integration branch. Everything on it was flashed and checked on cameras.
-- `release`: fast-forward only from `next` after a clean soak (planned, not created yet).
+- `release`: fast-forward only from `next` after a clean soak (planned, not created yet; the first tag follows after the 24 h soak that started 2026-10-04).
 - Tags `vYYYY.MM.DD` on `release` (planned), so firmware can pin a tag instead of a SHA.
 - Work happens on `claude/<topic>` branches and is merged into `next` after device tests.
 
@@ -133,12 +141,17 @@ loaded at runtime from `libaudioProcess-neo`. Acoustic echo cancellation uses th
 
 ## Documentation
 
+- [Wiki](https://github.com/Lu-Fi/openimp/wiki): build and install, module parameters, `OPENIMP_*` variables, memory sizing, troubleshooting, release scheme (one wiki for OpenIMP and open-tx-isp).
 - [`docs/FEATURE_MATRIX.md`](docs/FEATURE_MATRIX.md) (also as [`feature-matrix.html`](docs/feature-matrix.html)): what works on which SoC.
 - [`docs/OPEN_STACK_CHANGELOG.md`](docs/OPEN_STACK_CHANGELOG.md) and [`CHANGELOG.md`](CHANGELOG.md): history of the open stack.
 - [`docs/OPENIMP_BEYOND_VENDOR.md`](docs/OPENIMP_BEYOND_VENDOR.md) and [`docs/OPENIMP_SOC_DIFFS.md`](docs/OPENIMP_SOC_DIFFS.md): differences to the vendor stack, for streamer authors.
 - [`docs/test-reports/`](docs/test-reports): raw device test reports.
 - [`docs/re/`](docs/re): reverse-engineering dumps (vendor `libimp.so` HLIL, register traces) used by the RE notes.
 - [`docs/archive/`](docs/archive): historical status and design notes from the early OpenIMP work (kept for reference, may be outdated).
+
+## Reporting problems
+
+Open an issue at [Lu-Fi/openimp](https://github.com/Lu-Fi/openimp/issues) (library, encoder, streamer integration) or [Lu-Fi/open-tx-isp](https://github.com/Lu-Fi/open-tx-isp/issues) (kernel driver, ISP, memory). Please include the SoC and sensor, the revisions of open-tx-isp, OpenIMP and the streamer, `dmesg`, the streamer log (including the `rmem peak` and "effective rate control" lines), the stream set and the `rmem`/`ispmem` values. Do not post addresses, credentials or location names. Details: [Troubleshooting](https://github.com/Lu-Fi/openimp/wiki/Troubleshooting#reporting-a-problem).
 
 ## Credits
 

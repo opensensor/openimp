@@ -1,7 +1,19 @@
 # OpenIMP vs vendor libimp: API-level differences per SoC (input for timps `USE_OPENIMP`)
 
-As of: 2026-10-03 21:08 (local time). Audience: timps maintainers. Cameras as in the changelog (cam-A T31, cam-B T23,
+As of: 2026-10-03 21:08 (local time), with a status note of 2026-10-04 below. Audience: timps maintainers. Cameras as in the changelog (cam-A T31, cam-B T23,
 cam-C T20, cam-D T21, cam-E T10, cam-F T41).
+
+**Status note 2026-10-04 (read first).** This page is a snapshot of the proposal made on 2026-10-03; the tables and the
+diff sketch below were not rewritten. Changes since then, all in `next`: the T10/T20 OEM rate controller is the default
+(device-tested on cam-C and cam-E), so `quality_lvl`/`change_pos` act as in the vendor firmware and should stay live keys
+on T10/T20 (the `ENC_LIVE_KEYS` removal in the sketch is superseded); T21 `ae_it_max_us` acts (beyond the vendor, kept by
+decision), so the key stays advertised on T21 (the `#undef ISP_HAS_AE_IT_RANGE` in the sketch is superseded); the
+T21/T23 eprc work (live fps/GOP/HSkip, `SetChnHSkip`), T31 CBR on the Allegro core, scene/colour effects on T23/T31,
+H.265 rejection on SoCs without HEVC and the sub-stream height rounding on T20 are merged into `next` (statuses "in work"
+or "not in an aggregate" below are outdated for them); motion detection v2 is on by default. Branch names and commit ids
+are historic (the branches were merged into `next` and deleted). Whether and how timps enables any of this is decided by
+the timps maintainers; the current state per feature is in [FEATURE_MATRIX.md](FEATURE_MATRIX.md) and
+[OPENIMP_BEYOND_VENDOR.md](OPENIMP_BEYOND_VENDOR.md).
 
 Purpose: timps gets a **compile-time** switch `USE_OPENIMP` (Makefile `USE_OPENIMP ?= 0`, `-DUSE_OPENIMP` in
 CFLAGS, set by thingino `package/timps/timps.mk` as `USE_OPENIMP=$(if $(BR2_PACKAGE_OPENIMP),1,0)`, same
