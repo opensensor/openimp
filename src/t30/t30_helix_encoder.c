@@ -24,6 +24,7 @@
 #include <string.h>
 #include <sys/ioctl.h>
 #include <sys/mman.h>
+#include <time.h>
 #include <unistd.h>
 
 #include "dma_alloc.h"
@@ -334,6 +335,8 @@ struct T30HelixEncoder {
     uint32_t input_size;        /* NV12 bytes the VPU reads per frame */
     uint32_t retries;           /* jobs repeated after an odd result */
     uint32_t late_status;       /* completed jobs with status 0x100 */
+    uint32_t error_irqs;        /* RUNs the kernel failed early (error IRQ) */
+    uint32_t timeouts;          /* RUNs that ran into the job timeout */
     int strict_status;          /* OPENIMP_T23_HELIX_STRICT_STATUS=1 */
     int bsf_stop;               /* core pauses at the window (t23_bsf_stop) */
     T23RcConfig rc;             /* the application's RC extras, mapped */
@@ -2829,15 +2832,24 @@ again:
         int late = 0;
         int overflow = 0;
 
+        int run_errno = 0;
+        uint32_t run_ms = 0;
+
         for (attempt = 0; attempt < 2; attempt++) {
             uint32_t status;
+            struct timespec t0, t1;
 
             encoder->channel.status = 0;
             encoder->channel.output_len = 0;
             encoder->channel.frame_type = 0;
             encoder->channel.time = 0;
+            (void)clock_gettime(CLOCK_MONOTONIC, &t0);
             errno = 0;
             run_ret = ioctl(encoder->fd, T30_CHANNEL_RUN, &encoder->channel);
+            run_errno = errno;
+            (void)clock_gettime(CLOCK_MONOTONIC, &t1);
+            run_ms = (uint32_t)((t1.tv_sec - t0.tv_sec) * 1000 +
+                                (t1.tv_nsec - t0.tv_nsec) / 1000000);
             status = encoder->channel.status;
             late = run_ret == 0 && !(status & T23_SCH_STAT_ENDFLAG) &&
                    (status & T23_SCH_STAT_LATE) && !encoder->strict_status;
@@ -2884,12 +2896,37 @@ again:
              * usable reconstruction: restart the GOP.  soc_vpu has already
              * reset the core on a timeout and resets it again before the
              * next job. */
+            const char *why;
+
+            /* soc_vpu copies no status back when RUN fails, so the cause
+             * is told apart by the time the ioctl took: a failure well
+             * inside the job timeout is helix vpu_wait_complete() ending
+             * the job on an interrupt without ENDFLAG ("vpu error
+             * interrupt" in dmesg, core reset).  Status 0x100 there is
+             * the residue of a second interrupt for a job that had
+             * already finished (see T23_SCH_STAT_LATE): with the kernel
+             * patch 0098 that now fails the picture instead of reaching
+             * userspace as a late status. */
+            if (run_ret != 0 && run_ms + 100u < encoder->channel.mdelay) {
+                encoder->error_irqs++;
+                why = "kernel VPU error irq (dmesg status 100 = late irq "
+                      "of a finished job)";
+            } else if (run_ret != 0) {
+                encoder->timeouts++;
+                why = "job timeout, core reset";
+            } else if (encoder->channel.status & T23_SCH_STAT_ERRORS) {
+                why = "error bits in status";
+            } else {
+                why = "no length after a retry";
+            }
             IMP_LOG_ERR("Encoder", "T23 Helix: %ux%u run failed frame=%u "
-                        "%s qp=%u ret=%d errno=%d status=0x%08x len=%u",
+                        "%s qp=%u ret=%d errno=%d status=0x%x len=%u "
+                        "%ums: %s; dropped, next IDR (irq %u, tmo %u)",
                         encoder->params.width, encoder->params.height,
                         encoder->frame_number, idr ? "IDR" : "P", qp,
-                        run_ret, errno, encoder->channel.status,
-                        encoder->channel.output_len);
+                        run_ret, run_errno, encoder->channel.status,
+                        encoder->channel.output_len, run_ms, why,
+                        encoder->error_irqs, encoder->timeouts);
             encoder->force_idr = 1;
             encoder->have_reference = 0;
             encoder->failures++;
@@ -2912,6 +2949,12 @@ again:
                              encoder->late_status);
         }
     }
+    if (encoder->failures)
+        IMP_LOG_INFO("Encoder", "T23 Helix: %ux%u recovered at frame=%u "
+                     "(%s, %u bytes) after %u failed picture(s)",
+                     encoder->params.width, encoder->params.height,
+                     encoder->frame_number, idr ? "IDR" : "P",
+                     encoder->channel.output_len, encoder->failures);
     encoder->failures = 0;
     /* OEM FRAME_REPEATE_JUDGE: code the picture again with the raised QP */
     if (encoder->eprc_on && helix_eprc_end(encoder, idr, &qp))
