@@ -18,9 +18,12 @@ TEST_BINS := $(IVS_FRAMEWORK_TEST_BIN) $(CORE_LEASE_TEST_BIN) $(COMMAND_TEST_BIN
 	$(STREAM_LAYOUT_TEST_BIN) $(TUNING_AWB_TEST_BIN) $(TUNING_STARTUP_TEST_BIN) $(TUNING_POLICY_TEST_BIN) $(JPEG_DCT_TEST_BIN) \
 	$(RMEM_FIT_TEST_BIN) $(RMEM_FIT_T40_TEST_BIN)
 
-.PHONY: check clean
+P3_CONTROLS_TEST_BIN := $(PROJECT_DIR)/build/tests/t41-p3-controls-test
+
+.PHONY: check clean p3-controls
 
 check: $(TEST_BINS)
+	$(MAKE) p3-controls
 	$(RMEM_FIT_TEST_BIN)
 	$(RMEM_FIT_T40_TEST_BIN)
 	$(IVS_FRAMEWORK_TEST_BIN)
@@ -120,3 +123,16 @@ $(RMEM_FIT_T40_TEST_BIN): rmem_fit_test.c $(PROJECT_DIR)/src/t40/openimp_p2_dma.
 	mkdir -p "$(dir $@)"
 	$(CC) $(CFLAGS) -Wno-unused-function -D_GNU_SOURCE \
 		-I$(PROJECT_DIR)/include -I$(PROJECT_DIR)/src $< -o "$@"
+
+# ISP tuning pass-through (vendor control IDs and envelope).  Needs the
+# vendor T41 1.2.0 headers; skipped when T41_HEADERS is not set.
+p3-controls:
+ifneq ($(T41_HEADERS),)
+	mkdir -p "$(dir $(P3_CONTROLS_TEST_BIN))"
+	$(CC) -std=gnu99 -O2 -Wall -Wextra -Werror -DPLATFORM_T41 -I$(T41_HEADERS) \
+		p3_controls_test.c $(PROJECT_DIR)/src/t40/openimp_p3_controls.c \
+		-o "$(P3_CONTROLS_TEST_BIN)"
+	$(P3_CONTROLS_TEST_BIN)
+else
+	@echo "t41 p3 controls test skipped (set T41_HEADERS)"
+endif
