@@ -3,7 +3,7 @@
 Everything changed, extended or fixed in OpenIMP, open-tx-isp, timps and the thingino
 integration since the test campaign started on 2026-09-30. Kept up to date during the campaign.
 
-Last update: 2026-10-04 11:40.
+Last update: 2026-10-04 12:15.
 
 Cameras are anonymised: cam-A (T31), cam-B (T23), cam-C (T20), cam-D (T21), cam-E (T10), cam-F (T41).
 
@@ -88,7 +88,7 @@ OpenIMP: T20 green flicker in the bottom rows fixed by filling the encoder paddi
 
 Aggregates: `claude/open-tx-isp-all-4` and `claude/openimp-all-4` (pushed); 58 merged single branches removed. `claude/open-tx-isp-all-5` adds t21-robust and t31-robust-2 (T31: sensor flip with shvflip=1, unload leaks, lazy WDR buffers; MemFree drift per reload 460 → 45 KB); all four cameras flashed with -all-5 images.
 
-## Noon (2026-10-04, 11:40)
+## Noon (2026-10-04, 11:40 - 12:15)
 
 - **+8 MB RAM on T20/T10:** the 8 MiB V4L2-MMAP frame pool is now off by default (`isp_mmap_pool_kb=0`, parameter kept); only the recovered firmware unit stays -O0 (module −140 KB). MemFree with streams running: cam-C 46.7 → 55 MB, cam-E 1.9 → ~9.7 MB. The open stack now leaves more RAM free than the vendor stack on T20. [open-tx-isp claude/t20-mem-pool]
 - **Shortfall logging instead of silent degradation:** the T20/T10 driver logs once with have/need/missing and a concrete value when reserved memory is too small (e.g. "set isp_mmap_pool_kb=8104", "set ispmem >= N KB" when temper/WDR would be switched off). OpenIMP logs the rmem peak at stream start and on every new peak, and on an allocation failure "raise rmem by at least M KB (suggest rmem=<n>M)". cam-D peak: 18.4 of 23.5 MB. [claude/t20-mem-pool, openimp claude/imp-rmem-highwater]
@@ -100,6 +100,14 @@ Aggregates: `claude/open-tx-isp-all-4` and `claude/openimp-all-4` (pushed); 58 m
 - **Image checks:** cam-B (T23) colour in direct sun with the vendor AE is neutral (R/G 0.94, B/G 0.93); cam-C (T20) white balance follows smart bulbs from 2200 to 6500 K (lower limit ~2300 K keeps very warm light slightly warm). Both matrix cells are now ✅.
 - **thingino integration:** the T23 OEM Helix helper option and the hybrid install (/opt/openimp-t23) are removed from the openimp package; T23 runs fully open. Kernel VPU/rmem stability patches and sensor fixes are being prepared as pull requests against thingino `ciao`.
 - **T41 U-Boot environment:** boot scripts writing the environment with the old 32 KiB size broke the 64 KiB environment again (U-Boot fell back to rmem=30M). Restored; the 64 KiB fix needs a guard that refuses to write when the environment already has a bad CRC (otherwise a valid but minimal environment with a network boot command could be written).
+
+- **T41 U-Boot environment fixed for good on cam-F:** with `/etc/fw_env.config` at 64 KiB the environment reads without "Bad CRC"; a guarded `fw_setenv` refuses to write when the CRC is bad and otherwise leaves the environment byte-identical; after a clean reboot U-Boot uses it again (rmem=24M).
+- **Upstream pull requests (thingino `ciao`):**
+  - [#1736](https://github.com/themactep/thingino-firmware/pull/1736) kernel 3.10.14: VPU (Helix/NVPU) and rmem hardening — bounded and killable waits, no double free on close, validated user pointers and register windows, cache-flush direction/range checks.
+  - [#1737](https://github.com/themactep/thingino-firmware/pull/1737) sensor fixes: T21 jxf23 releases only its own GPIOs, T31 sc4336p vflip reports the real result.
+  - [#1738](https://github.com/themactep/thingino-firmware/pull/1738) 64 KiB U-Boot environment for 20xx U-Boot plus a guard against writing over a bad CRC.
+  - [#1739](https://github.com/themactep/thingino-firmware/pull/1739) ISP boot guard as an opt-in package.
+- **Feature matrix:** boot guard shipped (T20/T23/T31), T41 H.265 and T23/T41 microphone verified; speaker/AEC cells stay untested on purpose (test cameras must not play audio). T41 open cells are being tested now.
 
 ## Midday (2026-10-04, 11:00)
 
