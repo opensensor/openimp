@@ -1,10 +1,10 @@
 # T31 Hardware-JPEG im Allegro-AVPU: Reverse-Engineering-Bericht für OpenIMP
 
 Stand: 2026-09-29. Grundlage ist die Binary-Ninja-HLIL der T31-`libimp.so`
-(`libimp.so_hlil.txt` (Repo-Wurzel), im Folgenden `L<zeile>` bzw.
+(`docs/re/libimp.so_hlil.txt`, im Folgenden `L<zeile>` bzw.
 `0x<adresse>`), der OpenIMP-Quellstand bei Commit `9cab219`,
 der dort mitgelieferte T31-`avpu`-Kerneltreiber (`avpu/t31/`) und ein Stock-Registertrace
-(`stock_logs.txt`, aufgenommen mit einem WR/RD-loggenden `avpu.ko`, prudynt mit
+(`docs/re/stock_logs.txt`, aufgenommen mit einem WR/RD-loggenden `avpu.ko`, prudynt mit
 1080p-H.264 + zwei JPEG-Kanälen 1920x1080 und 640x360).
 
 Kennzeichnung:
@@ -83,7 +83,7 @@ ITU-T T.81, Annex K.
 | `AL_EncCore_Init` | L72514 `0x6c8d8` | registriert `EndEncoding` an Slot `core*4` und `EndAvcEntropy` an Slot `core*4+2`, `ResetCore` (`0x83F0` ← 1, 2, 4), `0x8018 ← 0xFFFFFF`, `0x8054 ← 0x80`, Codec-Liste {1, 0} (HEVC, AVC) [V] |
 | `AL_EncJpegCore_Init` | L72491 `0x6c7fc` | registriert nur `EndEncoding` an Slot `core*4` (`0x6c894`), Codec-Liste {4} = JPEG (`0x6c8a4`/`0x6c8ac`), **kein Reset**, **kein IRQ-Clear** [V] |
 | `getCompatibleCores` | L65725 `0x61230` | vergleicht `eProfile>>24` mit der Codec-Liste des Cores und iteriert Cores `0…numCore` (einschließlich JPEG-Core). JPEG-Kanäle landen daher zwangsläufig auf Core 1 [V] |
-| Stock-Trace | `stock_logs.txt` Z. 146–190 | `WR 0x85f4=1`, `0x8014=0x11`, `0x85f0=1`, `0x8400…0x8428`, `0x85e4=1` [V] |
+| Stock-Trace | `docs/re/stock_logs.txt` Z. 146–190 | `WR 0x85f4=1`, `0x8014=0x11`, `0x85f0=1`, `0x8400…0x8428`, `0x85e4=1` [V] |
 
 Per-Core-Register (Basis `B = core<<9`, für JPEG gilt `B = 0x200`):
 
@@ -482,7 +482,7 @@ rekonstruierbar]:
   - **`0x841C` = der *andere* AVC-Stream-Puffer**
   - `0x8420/24/28`
   - **`0x85E4 = 1`**
-- Das ist exakt die JPEG-Zone von Core 1 und ihr Startbefehl. `CURRENT_STATUS.md`
+- Das ist exakt die JPEG-Zone von Core 1 und ihr Startbefehl. `docs/archive/CURRENT_STATUS.md`
   Z. 90–92/118/143 führt den Block als ungelöstes AVC-Paritätsthema.
 - Im Herstellercode ist `WriteZoneRegisters` ausschließlich aus `AL_EncCore_EncodeJpeg`
   aufrufbar (einziger Aufrufer L72719). Ohne JPEG-Kanal schreibt die Stock-libimp diesen
@@ -579,7 +579,7 @@ Hardwarelatenz ≈ 8 ms bei 1080p.
 ### Phase 2 – Byte-Abgleich gegen Stock (0,5–1 Tag)
 
 - Mit Stock-libimp und JPEG-Kanal den Registertrace aufnehmen (WR-loggender `avpu.ko` wie
-  bei `stock_logs.txt`).
+  bei `docs/re/stock_logs.txt`).
 - Den EP1-Bereich (Physadresse aus `WR 0x8418`, 0x790 B) per `/dev/mem`/devmem bzw. einer
   Dump-Erweiterung des Debug-Treibers beim Schreiben von `0x85E4` sichern. Die
   AVC-CL-Dump-Funktion im Trace ist das Vorbild.
@@ -671,7 +671,7 @@ Hardwarelatenz ≈ 8 ms bei 1080p.
 
 ---
 
-## Anhang A – Fundstellen (HLIL `libimp.so_hlil.txt`)
+## Anhang A – Fundstellen (HLIL `docs/re/libimp.so_hlil.txt`)
 
 | Funktion/Daten | Zeile | Adresse |
 |---|---|---|
@@ -724,4 +724,4 @@ Hardwarelatenz ≈ 8 ms bei 1080p.
 - `src/al_avpu.c`: IpCtrl/Waiter/EncCore-Nachbau (Slots `core*4`, `core*4+2`).
 - `src/hw_encoder.c:25–85` (Legacy-Probe mit rohem `open("/dev/avpu")` und `VENC_IOCTL_INIT`), `:915` (Software-JPEG).
 - `avpu/t31/avpu_ip.c` (Bind/Unbind, Hardirq), `avpu/t31/avpu_main.c` (ioctls, Registerfenster).
-- `stock_logs.txt` Z. 80–700 (Init, AVC-CL, JPEG-Sequenzen, Masken- und Timing-Belege).
+- `docs/re/stock_logs.txt` Z. 80–700 (Init, AVC-CL, JPEG-Sequenzen, Masken- und Timing-Belege).

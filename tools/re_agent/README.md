@@ -355,5 +355,5 @@ Part of the OpenIMP project. See main project LICENSE.
 - [OpenIMP Project](../../README.md)
 - [Binary Ninja MCP Documentation](https://docs.binary.ninja/)
 - [Reverse Engineering Summary](../../REVERSE_ENGINEERING_SUMMARY.md)
-- [Architecture Documentation](../../assets/ARCHITECTURE.md)
+- [Architecture Documentation](../../docs/assets/ARCHITECTURE.md)
 

@@ -6,8 +6,8 @@ keine Repository-Dateien geändert.
 
 Quellen:
 
-- HLIL `libimp.so_hlil.txt` (`L<zeile>` / `0x<adresse>`)
-- Stock-Trace `stock_logs.txt` (`T<zeile>`)
+- HLIL `docs/re/libimp.so_hlil.txt` (`L<zeile>` / `0x<adresse>`)
+- Stock-Trace `docs/re/stock_logs.txt` (`T<zeile>`)
 - Kernel `avpu/t31/*.c`
 - Code (`datei:zeile`)
 

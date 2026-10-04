@@ -4,8 +4,8 @@
 
 Stand: 2026-09-29. Untersucht wurde der Arbeitsbaum `/home/user/openimp-wt`, Branch `claude/t31-re`, Commit `e7cf6b9`.
 Vergleichsbasis:
-- Binary-Ninja-HLIL der Stock-T31-`libimp.so` 1.1.6 (`libimp.so_hlil.txt`, im Folgenden „HLIL Lnnn“ mit Adresse)
-- Stock-Registertrace `stock_logs.txt` (rvd, 1080p H.264 + JPEG)
+- Binary-Ninja-HLIL der Stock-T31-`libimp.so` 1.1.6 (`docs/re/libimp.so_hlil.txt`, im Folgenden „HLIL Lnnn“ mit Adresse)
+- Stock-Registertrace `docs/re/stock_logs.txt` (rvd, 1080p H.264 + JPEG)
 - T31-`avpu`-Treiberquellen `avpu/t31/`
 
 Der Bericht enthält keine Vendor-Disassembly. Das Verhalten ist beschrieben, die Fundstellen sind zitiert.
@@ -67,7 +67,7 @@ Hinweis: thingino pinnt in `package/openimp/openimp.mk` den Upstream-Commit `ope
 **Warum destabilisierend**
 - Stock hat kein Timeout-Konstrukt dieser Art.
 - `AL_EncChannel_EndEncoding` (HLIL L72029, `0x6b82c`) ordnet eine Completion über die *laufende FIFO des Cores* (`getFifoRunning`) dem Kanal zu.
-- Der Scheduler startet den nächsten Kanal aus dem Completion-Kontext. Im Trace kommen `0x83f4=0x10000` → `0x83f4=1` → Reset → `CL_PUSH` des Sub-Kanals aus demselben Thread-Stack (`0x75044xxx`) wie das WAIT_IRQ-ioctl (`stock_logs.txt:252–288`).
+- Der Scheduler startet den nächsten Kanal aus dem Completion-Kontext. Im Trace kommen `0x83f4=0x10000` → `0x83f4=1` → Reset → `CL_PUSH` des Sub-Kanals aus demselben Thread-Stack (`0x75044xxx`) wie das WAIT_IRQ-ioctl (`docs/re/stock_logs.txt:252–288`).
 - In OpenIMP reichen dagegen ein einziger verlorener IRQ oder ein fremder Reset (F4), um erst beide Streams für über eine Stunde einzufrieren und danach einen Kanal dauerhaft zu töten.
 
 **Fix (clean-room)**
@@ -262,7 +262,7 @@ Hinweis: thingino pinnt in `package/openimp/openimp.mk` den Upstream-Commit `ope
 
 **Fundstellen**
 - `src/t40/codec-t40.c:9063–9135` (bei `!session_ready`: `0x8010 = 0x1000`, `0x83f0 = 1,2,4`, `0x8018 = 0xffffff`, `0x8054 = 0x80`)
-- Stock-Trace: genau **einmal** `WR 0x8010`/`0x8018`/`0x8054` (`stock_logs.txt:69, 81, 84`) bei 34 CL-Pushes für Main + Sub.
+- Stock-Trace: genau **einmal** `WR 0x8010`/`0x8018`/`0x8054` (`docs/re/stock_logs.txt:69, 81, 84`) bei 34 CL-Pushes für Main + Sub.
 
 **Ist-Zustand**
 - Der zweite AVC-Kanal setzt beim ersten Frame den Core zurück und löscht alle IRQ-Bits, auch das JPEG-Core-Bit 4.
@@ -355,7 +355,7 @@ Hinweis: thingino pinnt in `package/openimp/openimp.mk` den Upstream-Commit `ope
   - Payload: Lesen über den uncached Alias, danach Kopie in einen CPU-eigenen Puffer. Im DMA-Puffer wird nicht mehr kompaktiert.
   - Quell-Frame: Invalidierung vor dem Submit (`:8040–8069`).
   - EP1/EP2/EP3: einmal bei der Init geschrieben und per WBACK zurückgeschrieben (`:8698`, `:8783–8795`). Auf T31 schreibt die CPU sie pro Frame nicht neu.
-- **Register-Parität pro Frame** [V], gegen `stock_logs.txt:100–122` (Main) und `:266–288` (Sub):
+- **Register-Parität pro Frame** [V], gegen `docs/re/stock_logs.txt:100–122` (Main) und `:266–288` (Sub):
   - `0x83f4` TurnOnGC (RMW) → `0x83f0 = 1,2,4` → `0x8014 |=` Enc1 (RMW) → `0x83e0` → `0x83e4 = 2`.
   - Nach der Completion: DisableEnc1 und `0x83f4 = …0000` TurnOffGC (`:314–319`).
   - OpenIMP entspricht dem bis auf die bekannten Punkte (absolutes `0x8014 = 0` statt RMW `&~1`; Bit 4 nicht gesetzt; Companion-Stage) und F7.

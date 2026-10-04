@@ -178,7 +178,7 @@ NV12, YU12, BG12, AB12, GB12, RG12, RGBP, YUYV, UYVY, BGR3, BGR4, ARGB8888, RGBA
 
 ## Architecture Documentation
 
-See the `assets/` directory for comprehensive architecture documentation:
+See the `docs/assets/` directory for comprehensive architecture documentation:
 
 - **ARCHITECTURE.md**: Complete architecture documentation
 - **data-flow.mmd**: End-to-end data flow diagram (Mermaid)

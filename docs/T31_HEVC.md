@@ -2,7 +2,7 @@
 
 Reverse-engineering notes for the HEVC path of the T31 AVPU (`/dev/avpu`,
 Allegro AL5E core) and how OpenIMP drives it.  Source: the vendor
-`libimp.so` T31 1.1.6 HLIL (`libimp.so_hlil.txt` in this repository).
+`libimp.so` T31 1.1.6 HLIL (`docs/re/libimp.so_hlil.txt` in this repository).
 Function names below are the vendor symbols; addresses are HLIL addresses.
 
 Status: implemented from the HLIL only.  Nothing in this document has been

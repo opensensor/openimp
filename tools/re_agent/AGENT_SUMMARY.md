@@ -387,5 +387,5 @@ The MIPS Reverse Engineering Agent is a complete, production-ready tool that sig
 - See [README.md](README.md) for quick reference
 - Read [GUIDE.md](GUIDE.md) for detailed workflows
 - Check [examples/](examples/) for working code
-- Review OpenIMP [REVERSE_ENGINEERING_SUMMARY.md](../../REVERSE_ENGINEERING_SUMMARY.md) for context
+- Review OpenIMP [REVERSE_ENGINEERING_SUMMARY.md](../../docs/archive/REVERSE_ENGINEERING_SUMMARY.md) for context
 

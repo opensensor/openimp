@@ -250,6 +250,6 @@ For production builds, consider:
 ## Additional Resources
 
 - [README.md](README.md) - Project overview
-- [IMPLEMENTATION_SUMMARY.md](IMPLEMENTATION_SUMMARY.md) - Implementation details
+- [IMPLEMENTATION_SUMMARY.md](docs/archive/IMPLEMENTATION_SUMMARY.md) - Implementation details
 - [include/imp/](include/imp/) - API headers
 
