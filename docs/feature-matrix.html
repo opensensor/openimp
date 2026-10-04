@@ -95,7 +95,7 @@ th small{font-weight:400;color:var(--muted)}
 <td class="s-plus"><span class="sym" title="improved beyond vendor">✅+</span><span class="txt">AE lifted 1:1 from vendor (incl. ae_tune2), night flicker gone; a·b·b bug found</span></td>
 <td class="s-ok"><span class="sym" title="supported">✅</span><span class="txt">lifted vendor AE is the default (all-14/15); night test on cam-B: switches to night, AE regulates (IT 1200/1436 lines, analog gain 133/160), gain reported; backlight/highlight/AE comp act</span></td>
 <td class="s-ok"><span class="sym" title="supported">✅</span><span class="txt">reference SoC; 2 h 53 soak without errors</span></td>
-<td class="s-unk"><span class="sym" title="unknown">?</span><span class="txt"></span></td>
+<td class="s-bug"><span class="sym" title="known defect / deviation">⚠️</span><span class="txt">no control path in timps; isp-m0 shows AE values but they stayed fixed in a dark scene (gain at max); AE quality untested (dark room, 2026-10-04)</span></td>
 </tr>
 <tr id="r-aecomp"><td><a href="#n-aecomp">AE compensation, backlight, highlight</a></td><td class="vend">IMP_ISP_Tuning_SetAeComp / Backlight / Highlight</td>
 <td class="s-ok"><span class="sym" title="supported">✅</span><span class="txt">device-tested: ae_comp 30/230 moves Y by −78/+143, highlight works; backlight cap absent</span></td>
@@ -103,7 +103,7 @@ th small{font-weight:400;color:var(--muted)}
 <td class="s-plus"><span class="sym" title="improved beyond vendor">✅+</span><span class="txt">vendor dispatcher lifted; individual test not documented</span></td>
 <td class="s-ok"><span class="sym" title="supported">✅</span><span class="txt">device-tested with the lifted vendor AE: backlight 10 luma 68→112, highlight 10 →48, AE comp works (decided: lifted vendor AE becomes the default after a pending night-switch test in the dark) [claude/t23-matrix-gaps]</span></td>
 <td class="s-ok"><span class="sym" title="supported">✅</span><span class="txt">device-tested: ae_comp (Y +13/−21), backlight (Y +19), highlight (Y −13)</span></td>
-<td class="s-unk"><span class="sym" title="unknown">?</span><span class="txt"></span></td>
+<td class="s-miss"><span class="sym" title="missing">❌</span><span class="txt">no control path (key accepted/stored only, no effect; T41 libimp has no SetAeComp)</span></td>
 </tr>
 <tr id="r-gain"><td><a href="#n-gain">Max gain, IT max, sensor FPS</a></td><td class="vend">MaxAgain/MaxDgain/AE_IT_MAX/SetSensorFPS</td>
 <td class="s-ok"><span class="sym" title="supported">✅</span><span class="txt">max_again and ae_it_max_us limit the AE</span></td>
@@ -111,7 +111,7 @@ th small{font-weight:400;color:var(--muted)}
 <td class="s-plus"><span class="sym" title="improved beyond vendor">✅+</span><span class="txt">ae_it_max_us acts (claude/t21-ae-it-max 840a57ff; beyond vendor, the vendor ignores the RANGE block; the user decided to keep it): cam-D cap 2000 us gives IT 68 lines and dgain 19 to 63, cap 5000 us gives 172 lines, cap 0 returns to 1125 lines; max gain acts as before. Caveat: a 4th module reload in the same boot gave segfaults and a watchdog reboot (under investigation)</span></td>
 <td class="s-ok"><span class="sym" title="supported">✅</span><span class="txt">MaxAgain/MaxDgain, IT max, SetSensorFPS, additional ISP digital-gain stage; t23tune passed</span></td>
 <td class="s-ok"><span class="sym" title="supported">✅</span><span class="txt">EXPR setter, AE ROI, histogram edges</span></td>
-<td class="s-unk"><span class="sym" title="unknown">?</span><span class="txt"></span></td>
+<td class="s-miss"><span class="sym" title="missing">❌</span><span class="txt">no control path (max_again/max_dgain stored only; AeMaxAGain in isp-m0 unchanged)</span></td>
 </tr>
 <tr id="r-flicker"><td><a href="#n-flicker">Anti-flicker (50/60 Hz)</a></td><td class="vend">POWER_LINE / flicker dispatcher</td>
 <td class="s-ok"><span class="sym" title="supported">✅</span><span class="txt">device-tested: IT 748/675/896 lines for 60 Hz/50 Hz/off</span></td>
@@ -119,7 +119,7 @@ th small{font-weight:400;color:var(--muted)}
 <td class="s-ok"><span class="sym" title="supported">✅</span><span class="txt">lifted vendor dispatcher</span></td>
 <td class="s-ok"><span class="sym" title="supported">✅</span><span class="txt">device-tested: vendor AE 50/60/off IT 720/900/971; HLIL 720/600/711</span></td>
 <td class="s-ok"><span class="sym" title="supported">✅</span><span class="txt">device-tested with 22 ms IT cap: IT 1000/900/750 lines off/50/60 Hz, gain compensates; daylight test pending</span></td>
-<td class="s-unk"><span class="sym" title="unknown">?</span><span class="txt">repo docs: dispatcher defect on a different T41 device, not cam-F</span></td>
+<td class="s-ok"><span class="sym" title="supported">✅</span><span class="txt">✅ device-tested: off/50/60 Hz readback in isp-m0, AE integration time follows (2092/1575/1750 lines)</span></td>
 </tr>
 <tr class="grp"><td colspan="8">Colour and image quality</td></tr>
 <tr id="r-awb"><td><a href="#n-awb">White balance (AWB, presets, manual)</a></td><td class="vend">vendor AWB chain</td>
@@ -136,7 +136,7 @@ th small{font-weight:400;color:var(--muted)}
 <td class="s-plus"><span class="sym" title="improved beyond vendor">✅+</span><span class="txt">CT-controlled CCM/LSC lifted; colour blotches gone (chroma sigma 30→6)</span></td>
 <td class="s-ok"><span class="sym" title="supported">✅</span><span class="txt">✅ CCM follows the IQ bank (as vendor); daylight with vendor AE neutral (sun, 2026-10-04: R/G 0.94, B/G 0.93, no green or blue cast). Green cast fixed earlier (WB gains reset on every stream start, claude/t23-day-color); blue AWB flip with vendor AE fixed (GIB black level cleared by the stream-enable write, claude/t23-ae-awb-flip); LSC flip locked</span></td>
 <td class="s-ok"><span class="sym" title="supported">✅</span><span class="txt">CCM follows day/night (regs 0x5004-0x5018 differ), LSC LUT loaded and follows mode + flip; per-CT sweep not testable on a fixed scene</span></td>
-<td class="s-unk"><span class="sym" title="unknown">?</span><span class="txt"></span></td>
+<td class="s-unk"><span class="sym" title="unknown">?</span><span class="txt">no control path, not observable (no isp-m0 line); libimp has Get/SetCCMAttr but timps does not use it</span></td>
 </tr>
 <tr id="r-dn"><td><a href="#n-dn">Day/night switching (ISP side)</a></td><td class="vend">bank switch + mono matrix</td>
 <td class="s-ok"><span class="sym" title="supported">✅</span><span class="txt">10 switches without oops; not re-tested after the drift fix</span></td>
@@ -176,7 +176,7 @@ th small{font-weight:400;color:var(--muted)}
 <td class="s-plus"><span class="sym" title="improved beyond vendor">✅+</span><span class="txt">ADR lifted (40/40 emulator), DRC reaches the driver; day Y 120 instead of 235</span></td>
 <td class="s-plus"><span class="sym" title="improved beyond vendor">✅+</span><span class="txt">dynamic ADR lifted from the vendor module (44/44 emulator-identical, claude/t23-adr-defog); DRC strength 0/255 visibly effective on cam-B; sc2336 has no WDR mode</span></td>
 <td class="s-ok"><span class="sym" title="supported">✅</span><span class="txt">WDR buffer lazy; AE1 (short frame) stub = vendor no-op without WDR sensor</span></td>
-<td class="s-unk"><span class="sym" title="unknown">?</span><span class="txt"></span></td>
+<td class="s-miss"><span class="sym" title="missing">❌</span><span class="txt">no control path, no isp-m0 field</span></td>
 </tr>
 <tr id="r-defog"><td><a href="#n-defog">Defog</a></td><td class="vend">vendor block</td>
 <td class="s-ok"><span class="sym" title="supported">✅</span><span class="txt">vendor-identical: the jxh42 IQ bank bypasses Iridix (day and night), so DRC/defog have no picture effect – same as the vendor. Forcing Iridix on was measured (Y +1.4, edges +10 %) and rejected by the maintainer as not worth it.</span></td>
@@ -184,7 +184,7 @@ th small{font-weight:400;color:var(--muted)}
 <td class="s-plus"><span class="sym" title="improved beyond vendor">✅+</span><span class="txt">lifted, IRQ 21 registered (40/40 emulator)</span></td>
 <td class="s-plus"><span class="sym" title="improved beyond vendor">✅+</span><span class="txt">lifted incl. tisp_defog_soft_process (emulator-identical), IRQ 20 + process running on cam-B, defog strength works; 0xc bit 11 follows the bank like stock</span></td>
 <td class="s-ok"><span class="sym" title="supported">✅</span><span class="txt">device-tested: defog 255 (Y −10, laplacian +193)</span></td>
-<td class="s-unk"><span class="sym" title="unknown">?</span><span class="txt"></span></td>
+<td class="s-miss"><span class="sym" title="missing">❌</span><span class="txt">no control path (keys accepted but not applied)</span></td>
 </tr>
 <tr id="r-dns"><td><a href="#n-dns">Noise reduction (2DNR/3DNR, Sinter, Temper)</a></td><td class="vend">table-driven</td>
 <td class="s-plus"><span class="sym" title="improved beyond vendor">✅+</span><span class="txt">Sinter/Temper strength acts (vendor: no-op): temporal noise 7.11/2.91/1.51 at temper 0/128/255, survives day/night [claude/t10-t20-nr-wdr]</span></td>
@@ -192,7 +192,7 @@ th small{font-weight:400;color:var(--muted)}
 <td class="s-plus"><span class="sym" title="improved beyond vendor">✅+</span><span class="txt">2DNR/gain tracking repaired; Sinter/Temper strength now takes effect (vendor ignores it) [-all-13]</span></td>
 <td class="s-ok"><span class="sym" title="supported">✅</span><span class="txt">gain index now log2 (before: noise reduction too strong from 2x), Sinter non-compounding, sharpness/DPC follow the bank</span></td>
 <td class="s-ok"><span class="sym" title="supported">✅</span><span class="txt">vendor-identical: SDNS H-S regs 0→0, 255→15 (OEM cap 16); temper 0: temporal std 4.60 vs 1.64; sinter effect small by OEM design</span></td>
-<td class="s-unk"><span class="sym" title="unknown">?</span><span class="txt"></span></td>
+<td class="s-miss"><span class="sym" title="missing">❌</span><span class="txt">no control path on T41 libimp (sinter/temper keys stored only)</span></td>
 </tr>
 <tr id="r-dpc"><td><a href="#n-dpc">DPC (defect pixels)</a></td><td class="vend">vendor block</td>
 <td class="s-plus"><span class="sym" title="improved beyond vendor">✅+</span><span class="txt">DPC strength via open driver (vendor: no-op): impulses 2846/2397/1784 at 0/128/255 [claude/t1x-beyond-vendor-ctrls, in all-17]</span></td>
@@ -200,7 +200,7 @@ th small{font-weight:400;color:var(--muted)}
 <td class="s-plus"><span class="sym" title="improved beyond vendor">✅+</span><span class="txt">m1 thresholds scaled like OEM T23; impulses 3857/3841/3498 [all-17]</span></td>
 <td class="s-ok"><span class="sym" title="supported">✅</span><span class="txt">follows the IQ bank as vendor, less night noise</span></td>
 <td class="s-ok"><span class="sym" title="supported">✅</span><span class="txt">vendor-identical: m1/m3 thresholds 0→(d1000,f5), 255→(d5,f1191); impulses −6 % (defect pixels only)</span></td>
-<td class="s-unk"><span class="sym" title="unknown">?</span><span class="txt"></span></td>
+<td class="s-miss"><span class="sym" title="missing">❌</span><span class="txt">no control path (key accepted/stored, not applied)</span></td>
 </tr>
 <tr id="r-scene"><td><a href="#n-scene">Scene mode / colour effects (B/W, negative, sepia, vivid)</a></td><td class="vend">SetSceneMode/SetColorfxMode (no-op in the vendor on T21)</td>
 <td class="s-plus"><span class="sym" title="improved beyond vendor">✅+</span><span class="txt">NEGATIVE/BW work, scene presets act (TEXT laplacian +14 %) [all-17]</span></td>
@@ -208,7 +208,7 @@ th small{font-weight:400;color:var(--muted)}
 <td class="s-plus"><span class="sym" title="improved beyond vendor">✅+</span><span class="txt">B/W, vivid, negative work (confirmed with light on); getters return what was set [-all-13]</span></td>
 <td class="s-ok"><span class="sym" title="supported">✅</span><span class="txt">device-tested: B/W, vivid, negative work; invalid values give EINVAL (claude/t23-t31-scene-colorfx, not yet in an aggregate)</span></td>
 <td class="s-ok"><span class="sym" title="supported">✅</span><span class="txt">device-tested: as T23 (claude/t23-t31-scene-colorfx, not yet in an aggregate)</span></td>
-<td class="s-unk"><span class="sym" title="unknown">?</span><span class="txt"></span></td>
+<td class="s-miss"><span class="sym" title="missing">❌</span><span class="txt">no control path on T41 (no cap, no libimp function)</span></td>
 </tr>
 <tr id="r-mask"><td><a href="#n-mask">Privacy mask (ISP hardware block)</a></td><td class="vend">4 rectangles/channel, YUV fill</td>
 <td class="s-ok"><span class="sym" title="supported">✅</span><span class="txt">device-tested: both streams, green fill</span></td>
@@ -224,7 +224,7 @@ th small{font-weight:400;color:var(--muted)}
 <td class="s-ok"><span class="sym" title="supported">✅</span><span class="txt">scaler device-tested (480x272, 24.9 fps); front crop / CSC: no control path</span></td>
 <td class="s-ok"><span class="sym" title="supported">✅</span><span class="txt">front crop via vendor path (960x540 crop ok); MASK -EINVAL as vendor (no stock handler)</span></td>
 <td class="s-ok"><span class="sym" title="supported">✅</span><span class="txt">BLC get, CSC presets 0–4 + user matrix, crop get/set, scaler level (tested on garage)</span></td>
-<td class="s-unk"><span class="sym" title="unknown">?</span><span class="txt"></span></td>
+<td class="s-miss"><span class="sym" title="missing">❌</span><span class="txt">no control path (no key in timps)</span></td>
 </tr>
 <tr id="r-rot"><td><a href="#n-rot">Rotation 90°/270°</a></td><td class="vend">software rotation (32×32 tiles)</td>
 <td class="s-na"><span class="sym" title="hardware does not have it">—</span><span class="txt">coerced to 0 (&quot;unsupported on this SoC&quot;)</span></td>
@@ -232,7 +232,7 @@ th small{font-weight:400;color:var(--muted)}
 <td class="s-na"><span class="sym" title="hardware does not have it">—</span><span class="txt">coerced to 0 (&quot;unsupported on this SoC&quot;)</span></td>
 <td class="s-ok"><span class="sym" title="supported">✅</span><span class="txt">sub-stream rotation 90/270 works via the native encoder; main stream above 704x576 refused (software rotation); IMP_Encoder_YuvSetCrop implemented (host-tested only, timps does not call it)</span></td>
 <td class="s-ok"><span class="sym" title="supported">✅</span><span class="txt">704×1280 correct, 9 ms/frame @15 fps, before OSD/IVS/encoder</span></td>
-<td class="s-unk"><span class="sym" title="unknown">?</span><span class="txt"></span></td>
+<td class="s-miss"><span class="sym" title="missing">❌</span><span class="txt">timps build coerces 90/180/270 to 0 (HW I2D path not enabled)</span></td>
 </tr>
 <tr class="grp"><td colspan="8">Video encoder and streams</td></tr>
 <tr id="r-h264"><td><a href="#n-h264">H.264</a></td><td class="vend">Helix (T20/T21/T23), AVPU (T31), NVPU (T10)</td>
@@ -281,7 +281,7 @@ th small{font-weight:400;color:var(--muted)}
 <td class="s-ok"><span class="sym" title="supported">✅</span><span class="txt">readback as T20 [-all-13]</span></td>
 <td class="s-ok"><span class="sym" title="supported">✅</span><span class="txt">uses the vendor CreateChn clamps (1/50/2/2); parameters reach the native encoder (changePos min 50); app value 0 = vendor default 3/15/2/80 [-all-13]</span></td>
 <td class="s-ok"><span class="sym" title="supported">✅</span><span class="txt">T31 defaults like the vendor (max QP 48, max bitrate 4/3, ...) [-all-13] (claude/rc-modes-2)</span></td>
-<td class="s-unk"><span class="sym" title="unknown">?</span><span class="txt"></span></td>
+<td class="s-bug"><span class="sym" title="known defect / deviation">⚠️</span><span class="txt">device-tested: min/max QP live and effective; quality_lvl/change_pos/i_bias restart-only (readback in video block)</span></td>
 </tr>
 <tr id="r-osd"><td><a href="#n-osd">OSD: text, bitmap, rectangle, line, cover</a></td><td class="vend">IPU OSD / vendor libimp</td>
 <td class="s-ok"><span class="sym" title="supported">✅</span><span class="txt">device-tested: 4 items (text, uptime, logo) on both streams</span></td>
@@ -363,7 +363,7 @@ th small{font-weight:400;color:var(--muted)}
 <td class="s-plus"><span class="sym" title="improved beyond vendor">✅+</span><span class="txt">works (claude/t23-ref-ring) [-all-13]: P-frames 150-300 B in a static scene on cam-D, no artefacts; saves ~1.5 MB video memory at 1080p; on by default (&lt;=1920x1088), OPENIMP_REF_SHARE=0 disables</span></td>
 <td class="s-plus"><span class="sym" title="improved beyond vendor">✅+</span><span class="txt">works (claude/t23-ref-ring) [-all-13]: no artefacts on cam-B, P-frame sizes equal or smaller than without the ring; saves ~1.5 MB at 1080p; on by default (&lt;=1920x1088, like the vendor), OPENIMP_REF_SHARE=0 disables</span></td>
 <td class="s-na"><span class="sym" title="hardware does not have it">—</span><span class="txt">hardware missing</span></td>
-<td class="s-unk"><span class="sym" title="unknown">?</span><span class="txt"></span></td>
+<td class="s-unk"><span class="sym" title="unknown">?</span><span class="txt">not wired in timps (SetbufshareChn exists in libimp); not tested</span></td>
 </tr>
 <tr id="r-cpu"><td><a href="#n-cpu">CPU load (documented figures)</a></td><td class="vend">vendor comparison values mostly missing</td>
 <td class="s-ok"><span class="sym" title="supported">✅</span><span class="txt">timps 5–9 % with 2 streams at 25 fps (17 % momentary with 1 stream)</span></td>
@@ -380,7 +380,7 @@ th small{font-weight:400;color:var(--muted)}
 <td class="s-plus"><span class="sym" title="improved beyond vendor">✅+</span><span class="txt">patches 0095–0099 (bounded waits, pointer checks, register ioctl restricted to the VPU window)</span></td>
 <td class="s-plus"><span class="sym" title="improved beyond vendor">✅+</span><span class="txt">patches 0095–0099, IRQ_NONE, hard BSF limit optional</span></td>
 <td class="s-na"><span class="sym" title="hardware does not have it">—</span><span class="txt">SOC_VPU not built</span></td>
-<td class="s-unk"><span class="sym" title="unknown">?</span><span class="txt"></span></td>
+<td class="s-ok"><span class="sym" title="supported">✅</span><span class="txt">✅ device-tested: 5 min, 3 RTSP clients (2x1080p + 1x360p) plus snapshots, 0 VPU/AVPU errors, 0 oops, no reboot; note: 1080p main stream SPS says Baseline/level 3.1/1 ref while 2 refs are used - decoders reject it (under investigation)</span></td>
 </tr>
 <tr id="r-avpu"><td><a href="#n-avpu">AVPU kernel driver (T31/T40/T41) review</a></td><td class="vend">–</td>
 <td class="s-na"><span class="sym" title="hardware does not have it">—</span><span class="txt">other VPU</span></td>
@@ -420,7 +420,7 @@ th small{font-weight:400;color:var(--muted)}
 <td class="s-plus"><span class="sym" title="improved beyond vendor">✅+</span><span class="txt">ditto</span></td>
 <td class="s-plus"><span class="sym" title="improved beyond vendor">✅+</span><span class="txt">ditto</span></td>
 <td class="s-plus"><span class="sym" title="improved beyond vendor">✅+</span><span class="txt">ditto</span></td>
-<td class="s-unk"><span class="sym" title="unknown">?</span><span class="txt"></span></td>
+<td class="s-bug"><span class="sym" title="known defect / deviation">⚠️</span><span class="txt">isp-m0 shows AE/AWB/anti-flicker/flip; encoder rc readback ok; query counters stayed 0 under load; other /proc/jz/isp nodes unreadable</span></td>
 </tr>
 </tbody></table></div>
 <h2>Notes per row</h2><div class="card">
