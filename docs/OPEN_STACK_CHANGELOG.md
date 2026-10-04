@@ -3,7 +3,7 @@
 Everything changed, extended or fixed in OpenIMP, open-tx-isp, timps and the thingino
 integration since the test campaign started on 2026-09-30. Kept up to date during the campaign.
 
-Last update: 2026-10-04 12:15.
+Last update: 2026-10-04 14:40.
 
 Cameras are anonymised: cam-A (T31), cam-B (T23), cam-C (T20), cam-D (T21), cam-E (T10), cam-F (T41).
 
@@ -87,6 +87,17 @@ Goal: identical image behaviour, but cleaner unload/reload, less memory and chec
 OpenIMP: T20 green flicker in the bottom rows fixed by filling the encoder padding rows (`claude/t20-bottom-chroma`; 0 green pixels in 30 frames). Faster IVS (`claude/ivs-opt`; T20 timps CPU 4.1 % → 2.7 % with motion on).
 
 Aggregates: `claude/open-tx-isp-all-4` and `claude/openimp-all-4` (pushed); 58 merged single branches removed. `claude/open-tx-isp-all-5` adds t21-robust and t31-robust-2 (T31: sensor flip with shvflip=1, unload leaks, lazy WDR buffers; MemFree drift per reload 460 → 45 KB); all four cameras flashed with -all-5 images.
+
+## Afternoon (2026-10-04, 14:40)
+
+- **all-22 on cam-A…cam-E (full OTA, 13:01-13:07):** open-tx-isp `next` + T20/T10 memory pool off + kernel hardening + T20 AE restart fix; OpenIMP `next` + hardening + rmem peak logging + Helix logging; local kernel patch 0102 (Helix residual interrupt). 30/30 snapshots, 0 oops, 0 VPU errors on every camera; sensor pin refuses `rmmod` on cam-A and cam-D. These components are now in `next` (OpenIMP 2dc60dd, open-tx-isp f9939d64).
+- **Helix frame drops fixed:** cam-B lost 4-6 pictures per hour because the bounded-wait kernel patch treated a residual Helix interrupt (status 0x100 after a finished job) as an error. With the residue ignored: 60 min, 0 errors. Upstream: [#1736](https://github.com/themactep/thingino-firmware/pull/1736) was reduced to the safe patches (VPU open/close races, rmem cache-flush `BUG()`), the bounded waits follow with the fix in [#1743](https://github.com/themactep/thingino-firmware/pull/1743).
+- **T41 1080p stream fixed:** rmem was exhausted, so the main channel fell back to a broken software encoder (Baseline header, grey frames). Now: stream buffers sized like the vendor (1080p 0.95 instead of 2 MB), capture buffers allocated from the bottom and everything else from the top (best fit) so an idle/restart cycle no longer fragments rmem, the software fallback is refused for video with a clear log line, and an allocation failure logs a concrete rmem suggestion. cam-F: both streams High@5.1, 5 idle/restart cycles clean. cam-F now runs rev6 (rootfs) with rmem 26M and the 64 KiB U-Boot env + Bad-CRC guard; the env stays valid across reboots.
+- **T41 test plan:** anti-flicker and VPU load ✅; QP limits live ⚠; AE compensation, gain limits, WDR, defog/DRC, noise reduction, DPC, scene, crop and rotation have no control path yet — being implemented in OpenIMP (the streamer now answers "unsupported" instead of a silent ok).
+- **Motion detection v2 is on by default** (`OPENIMP_MOTION_V2=0` restores the vendor algorithm). The streamer exposes boxes, strength and suppress reasons via the versioned `OpenIMP_IVS_MoveGetResultEx` API.
+- **Memory with reserve:** cam-E (T10) ispmem 8 → 6 MB (temper still fits, +2 MB for Linux); cam-A (T31) rmem 50 → 36 MB (+14 MB for Linux, 3 RTSP clients + MJPEG + snapshots without allocation errors). T23/T21/T20 stay as they are (reserve too small to gain anything). Rule: measured peak or computed worst case + ≥25 % and ≥2 MB.
+- **Repos:** 82 merged branches deleted; tracked files cleaned (privacy: real camera/room names, IPs and local paths replaced; ~16 MB of old notes, dumps and binaries archived or removed); new README with logo, badges and changelog; `main` = `next`; documentation wiki at the OpenIMP repo.
+- **24 h soak** of all five cameras started at 14:15.
 
 ## Noon (2026-10-04, 11:40 - 12:15)
 

@@ -23,9 +23,9 @@ call now returns or what the hardware now does.
 | **Deviation (less than vendor):** T31 CBR writes no filler NAL. The HRD model counts filler bits like the vendor (the filler value is per picture), but the stream is not padded: a static scene's CBR stream stays below the target bitrate where the vendor pads up to it | T31 | `IMP_ENC_RC_MODE_CBR` | – | Do not rely on CBR output being exactly at the target; static scenes come out below it (this saves bandwidth) | compare measured bitrate with the target | `claude/t31-allegro-cbr`, device test pending |
 | T10 VBR super-frame fix (P1): VBR no longer misjudges a frame spanning several super-frames; the vendor re-encodes nearly every frame. Measured at 1200 kbit/s: 450 to 822 kbit/s, re-encodes 800 to 0, CPU 8.3 to 5.5 % | T10 | env `OPENIMP_T10_RC_SUPERFRM` (inside the OEM controller `OPENIMP_T10_RC=1`) | on (inside the OEM controller) | Nothing to do | `OPENIMP_T10_RC_SUPERFRM=0` restores vendor-exact behaviour | cam-E, `claude/t10-rc-superfrm` |
 | **Built, device test pending:** eprc QP-down limit (restricts how fast QP may fall) | T21 (also in the T21 vendor revision), T23 (eprc controller) | env `OPENIMP_EPRC_QP_DOWN1=1` / `=2` (two limit levels) | off (opt-in) | Opt-in for A/B tests | env var | built, device test pending (`claude/eprc-t21-qp-limit` for the T21 vendor revision) |
-| **Deviation (opt-in, default off):** T20 OEM rate controller port, which reads the NVPU statistics registers (needs kernel patch 0101). The vendor always runs this controller; here it is off by default. Measured 60 s at 1200 kbit/s: CBR 1435 (the vendor controller overshoots by itself), VBR 1329, SMART 983; old controller CBR 942 | T20 | env `OPENIMP_T20_RC=1` | off (opt-in) | Enable to get real SMART and tighter VBR; expect a CBR overshoot like the vendor | env var; effective-RC log line | cam-C, device-tested, not yet in an aggregate |
+| T20 OEM rate controller port, which reads the NVPU statistics registers (needs kernel patch 0101). Now the default, like the vendor (which always runs it). Measured 60 s at 1200 kbit/s: CBR 1435 (the vendor controller overshoots by itself; P2 below tightens it), VBR 1329, SMART 983; old GOP controller CBR 942 | T20 | env `OPENIMP_T20_RC=0` restores the old GOP controller | on (vendor-identical) | Real SMART and tighter VBR | env var; effective-RC log line | cam-C, device-tested, in all-20 and later |
 | T20 I-aware P budget (P2): CBR spreads the I-frame cost over the following P frames, which tightens the CBR overshoot. cam-C at 1200 kbit/s: CBR 1583 to 1300 (stats 1244). VBR is left as the vendor (with P2 it fell to 866) | T20 | env `OPENIMP_T20_RC_IAWARE` (inside the OEM controller `OPENIMP_T20_RC=1`) | on for CBR, vendor for VBR/SMART | Nothing to do | `=0` is vendor; `=1` forces it for VBR/SMART too (not recommended) | cam-C, `claude/t20-rc-iaware` |
-| T10 OEM-style rate controller (opt-in) | T10 | env `OPENIMP_T10_RC=1` | off (opt-in) | Opt-in for A/B tests; CBR overshoot of the old path was +55 % at 2500 kbit/s | env var; effective-RC log line | cam-E, built, device test pending |
+| T10 OEM-style rate controller | T10 | env `OPENIMP_T10_RC=0` restores the old GOP controller | on | CBR overshoot of the old path was +55 % at 2500 kbit/s | env var; effective-RC log line | cam-E, device-tested, in all-20 and later |
 | Effective-RC log line | all | log tag `Encoder` | on | Parse it to see what the encoder really runs (requested mode may map to a different one) | grep the log at channel creation | all cams |
 | Out-of-range QP / fps clamped **with a warning** instead of silent replacement | all | `minQp/maxQp`, `fps` in `IMP_Encoder_CreateChn`/`SetChnAttr` | on | Validate your own values; the warning names the clamped field | grep log for the clamp warning | all cams |
 | RC readback returns the vendor-clamped values | T20, T21 | `IMP_Encoder_GetChnAttrRcAttr` | on | Do not assume what you set equals what you read back; use the read value | compare set vs get | `claude/rc-modes-2` [-all-13] |
@@ -132,7 +132,7 @@ frame.
 
 | Variable | Meaning |
 |---|---|
-| `OPENIMP_MOTION_V2` | `1`/`on`/`all` = all four features; `shadow` = all but OVERRIDE; a number = feature mask; unset/`0` = off |
+| `OPENIMP_MOTION_V2` | unset (default since 2026-10-04) or `1`/`on`/`all` = all four features; `0`/`off`/`vendor` = vendor algorithm; `shadow` = all but OVERRIDE; a number = feature mask |
 | `OPENIMP_MOTION_V2_BG`, `_SUPPRESS`, `_BLOBS`, `_OVERRIDE` | `0`/`1` clears/sets one feature on top of the above |
 | `OPENIMP_MOTION_V2_LEARN`, `_K`, `_MIN_DELTA`, `_SUPPRESS_MS`, `_JUMP_PCT`, `_MIN_CELLS`, `_MIN_FRAMES`, `_MIN_MOVE` | parameters, see the config struct |
 | `OPENIMP_MOTION_V2_LOG` | `1` = one stderr line per change of the vendor or the v2 decision (debug, A/B) |
@@ -192,7 +192,7 @@ IMP_IVS_ReleaseResult(chn, res);
 ```
 
 Detect / disable: the symbols are absent on vendor libimp and older OpenIMP; `GetConfigEx` shows the features in
-force; unset `OPENIMP_MOTION_V2` (or `features = 0`) is the vendor behaviour.
+force; `OPENIMP_MOTION_V2=0` (or `features = 0` via `SetConfigEx`) is the vendor behaviour; since 2026-10-04 v2 is on by default.
 
 ## 5. Reference buffer sharing
 
@@ -228,9 +228,9 @@ set in production.
 | `OPENIMP_REF_SHARE` | `0` disables the T21/T23 reference ring | on | user-facing |
 | `OPENIMP_T31_HW_JPEG` | `0` selects the software JPEG encoder on T31 | on | user-facing |
 | `OPENIMP_T31_OSD` | `0` disables the IPU OSD backend on T31 | on | user-facing |
-| `OPENIMP_T20_RC` | `1` enables the T20 OEM rate controller (needs kernel patch 0101); deviation: the vendor always runs it | off | user-facing (opt-in) |
+| `OPENIMP_T20_RC` | `0` disables the T20 OEM rate controller (needs kernel patch 0101) and falls back to the GOP controller | on (as vendor) | user-facing |
 | `OPENIMP_EPRC_MBRC` | `1` enables the eprc macroblock RC on T21/T23 (device test pending) | off | user-facing (opt-in) |
-| `OPENIMP_T10_RC` | `1` enables the T10 OEM-style rate controller | off | user-facing (opt-in) |
+| `OPENIMP_T10_RC` | `0` disables the T10 OEM-style rate controller | on | user-facing |
 | `OPENIMP_T10_RC_SUPERFRM` | `0` restores vendor-exact T10 VBR behaviour (super-frame fix off); only inside the OEM controller | on | user-facing |
 | `OPENIMP_T20_RC_IAWARE` | `0` = vendor P budget, `1` also for VBR/SMART; only inside the OEM controller | on for CBR | user-facing |
 | `OPENIMP_T31_RC_CORE` | `legacy` restores the pre-Allegro rate-control core | allegro | user-facing |
@@ -260,7 +260,7 @@ bring-up/trace switches that are not described in the docs; treat them as intern
 - T23 live RC readback and which RC writes take effect on T10/T20/T21: partly stated in the matrix, per-field test not documented.
 - T21 AWB hysteresis at real dusk (night checks only).
 - AEC on T23 (implemented, device test open); AENC/ADEC double-release rejection (matrix cites it, no SoC test evidence).
-- T23 `OPENIMP_T23_HELIX_BSF=1` hard bitstream limit; T23 vendor AE (`source_ae_oem=1`) default switch (decided 2026-10-03: the lifted vendor AE becomes the default, after a night-switch test in the dark that is still pending).
+- T23 `OPENIMP_T23_HELIX_BSF=1` hard bitstream limit; T23 vendor AE (`source_ae_oem=1`) is the default since all-20 (night and daylight tested; the AWB flip it caused in daylight is fixed by restoring the GIB black level after stream enable, open-tx-isp next).
 - IVS EBUSY and JPEG last-frame reuse: documented as implemented, no dedicated test report found.
 - Reference sharing on T41 and on T10/T20/T31: not applicable or unknown.
 - Module reload (rmmod+insmod): T10 is device-tested, 5 cycles while streaming, 0 oops (the earlier `Failed to get csi clock -22` oops came from a module built against the T20 kernel tree; the T10 build now refuses that with #error, `claude/t10-reload-safe`). T41: the cause is found statically (`tx_isp_fs_remove` freed the channel array while the framechan0..2 misc devices were still registered; four static work items were not drained); the fix (`claude/t41-matrix-fixes`) is device-verified on the rev2 image: 10/10 cycles, 0 oops. The boot-time load is fine everywhere. Not a beyond-vendor item, listed so streamers know reload is now safe on T41 with the rev2 image.
