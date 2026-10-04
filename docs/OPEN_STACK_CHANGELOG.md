@@ -100,7 +100,6 @@ Aggregates: `claude/open-tx-isp-all-4` and `claude/openimp-all-4` (pushed); 58 m
 - **Image checks:** cam-B (T23) colour in direct sun with the vendor AE is neutral (R/G 0.94, B/G 0.93); cam-C (T20) white balance follows smart bulbs from 2200 to 6500 K (lower limit ~2300 K keeps very warm light slightly warm). Both matrix cells are now ✅.
 - **thingino integration:** the T23 OEM Helix helper option and the hybrid install (/opt/openimp-t23) are removed from the openimp package; T23 runs fully open. Kernel VPU/rmem stability patches and sensor fixes are being prepared as pull requests against thingino `ciao`.
 - **T41 U-Boot environment:** boot scripts writing the environment with the old 32 KiB size broke the 64 KiB environment again (U-Boot fell back to rmem=30M). Restored; the 64 KiB fix needs a guard that refuses to write when the environment already has a bad CRC (otherwise a valid but minimal environment with a network boot command could be written).
-
 - **T41 U-Boot environment fixed for good on cam-F:** with `/etc/fw_env.config` at 64 KiB the environment reads without "Bad CRC"; a guarded `fw_setenv` refuses to write when the CRC is bad and otherwise leaves the environment byte-identical; after a clean reboot U-Boot uses it again (rmem=24M).
 - **Upstream pull requests (thingino `ciao`):**
   - [#1736](https://github.com/themactep/thingino-firmware/pull/1736) kernel 3.10.14: VPU (Helix/NVPU) and rmem hardening — bounded and killable waits, no double free on close, validated user pointers and register windows, cache-flush direction/range checks.
