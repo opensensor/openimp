@@ -3,7 +3,7 @@
 Everything changed, extended or fixed in OpenIMP, open-tx-isp, timps and the thingino
 integration since the test campaign started on 2026-09-30. Kept up to date during the campaign.
 
-Last update: 2026-10-04 09:50.
+Last update: 2026-10-04 11:00.
 
 Cameras are anonymised: cam-A (T31), cam-B (T23), cam-C (T20), cam-D (T21), cam-E (T10), cam-F (T41).
 
@@ -14,11 +14,11 @@ All six test cameras run the open kernel driver (open-tx-isp), OpenIMP and timps
 
 | Camera | SoC | Stack | State |
 |---|---|---|---|
-| cam-A | T31 | fully open | Flashed 2026-10-04 01:20 with all-20 (open-tx-isp-all-19 / openimp-all-19 / timps main a34a5a2, full OTA); timps QA pass except one IP-delta finding |
-| cam-B | T23 | fully open (native encoder, no OEM helixd) | Flashed 2026-10-04 07:22 with all-20 (full OTA): sub-stream reference fix + OSD stride fix; sub stream 0 shifts, OSD date clean |
-| cam-C | T20 | fully open | Flashed 2026-10-04 07:23 with all-20 (full OTA, kernel patch 0101) |
-| cam-E | T10 | fully open | Flashed 2026-10-04 01:21 with all-20 (full OTA), boot guard auto |
-| cam-D | T21 | fully open | Flashed 2026-10-04 01:16 with all-20 (full OTA, reference sharing on): sub stream 0 shifts, 0 VPU errors |
+| cam-A | T31 | fully open | Flashed 2026-10-04 10:17 with all-21 (open-tx-isp/openimp `next`, timps main a34a5a2, full OTA); sensor pin active, IP delta read-back fixed |
+| cam-B | T23 | fully open (native encoder, no OEM helixd) | Flashed 2026-10-04 10:13 with all-21 (full OTA): AWB flip fix, sub-stream + OSD fixes; sporadic Helix encode error under investigation |
+| cam-C | T20 | fully open | Flashed 2026-10-04 10:14 with all-21 (full OTA, kernel patch 0101); A/B vs vendor measured before |
+| cam-E | T10 | fully open | Flashed 2026-10-04 10:19 with all-21 (full OTA), boot guard auto |
+| cam-D | T21 | fully open | Flashed 2026-10-04 10:13 with all-21 (full OTA, reference sharing on): sensor pin active, sub stream 0 shifts |
 | cam-F | T41 | fully open | Flashed 2026-10-03 14:20 with open-tx-isp-all-13 / OpenIMP T41 (kernel and rootfs flashed separately); image rev 1 flashed later (isp-m0 in vendor layout), reload still failing |
 
 ## OpenIMP (userspace libimp)
@@ -87,6 +87,19 @@ Goal: identical image behaviour, but cleaner unload/reload, less memory and chec
 OpenIMP: T20 green flicker in the bottom rows fixed by filling the encoder padding rows (`claude/t20-bottom-chroma`; 0 green pixels in 30 frames). Faster IVS (`claude/ivs-opt`; T20 timps CPU 4.1 % → 2.7 % with motion on).
 
 Aggregates: `claude/open-tx-isp-all-4` and `claude/openimp-all-4` (pushed); 58 merged single branches removed. `claude/open-tx-isp-all-5` adds t21-robust and t31-robust-2 (T31: sensor flip with shvflip=1, unload leaks, lazy WDR buffers; MemFree drift per reload 460 → 45 KB); all four cameras flashed with -all-5 images.
+
+## Midday (2026-10-04, 11:00)
+
+- **all-21 on all five cameras (full OTA, 10:13-10:19):** open-tx-isp `next` 1559bf60 (all-19 + sensor pin + T23 AWB fix), openimp `next` b83ebbb (all-19 + IP delta read-back), timps main a34a5a2. 30/30 snapshots and 0 oops on every camera; sub stream 0 shifts on cam-B and cam-D; `rmmod` of the sensor is refused while streaming on cam-A and cam-D.
+- **`next` branches now track the tested aggregate** (fast-forward only); `release` and the first date tag follow after a clean soak.
+- **Open issue (stability):** cam-B (T23) logs a single "Helix run failed errno=5 / vpu error status=100" every few minutes on main or sub stream; one frame is lost, the stream continues. Present since before the sub-stream fix; root-cause work started [openimp claude/t23-helix-errno5].
+- **Memory review (kernel + userspace):** the ~5 MB MemFree gap to the vendor stack on T20 is fully explained by an 8 MiB V4L2-MMAP frame pool that the T20/T10 driver allocates in lowmem at load time and OpenIMP never uses (the vendor driver has no such pool); timpsd itself needs 3 MB less than with the vendor libimp. In work (stability and image quality first):
+  - pool off by default on T20/T10 (≈ +8 MB for Linux, ~20 % of the T10's RAM), parameter kept;
+  - T20/T10 driver: only the recovered firmware unit stays -O0 (≈ −140 KB);
+  - shortfall logging: the driver and OpenIMP will log once with have/need/missing and a concrete suggestion (ispmem=, rmem=, isp_mmap_pool_kb=) when reserved memory is too small instead of silently degrading;
+  - rmem high-water logging in OpenIMP as the basis for shrinking rmem per camera later;
+  - T41: five 16 KB arrays look like decompiler artefacts (constants read as addresses) — checked as a possible arithmetic bug (−80 KB).
+  Later, only with image checks: smaller ispmem on T20 (11→8 MB) and T10 (8→4 MB), smaller rmem after the high-water data.
 
 ## Late morning (2026-10-04, 09:50)
 
