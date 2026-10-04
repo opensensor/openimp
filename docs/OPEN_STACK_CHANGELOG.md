@@ -3,7 +3,7 @@
 Everything changed, extended or fixed in OpenIMP, open-tx-isp, timps and the thingino
 integration since the test campaign started on 2026-09-30. Kept up to date during the campaign.
 
-Last update: 2026-10-04 21:00. Branch names (`claude/...`) in the tables and sections below are historic: the branches were merged into `next` and deleted.
+Last update: 2026-10-04 23:10. Branch names (`claude/...`) in the tables and sections below are historic: the branches were merged into `next` and deleted.
 
 Cameras are anonymised: cam-A (T31), cam-B (T23), cam-C (T20), cam-D (T21), cam-E (T10), cam-F (T41).
 
@@ -87,6 +87,14 @@ Goal: identical image behaviour, but cleaner unload/reload, less memory and chec
 OpenIMP: T20 green flicker in the bottom rows fixed by filling the encoder padding rows (`claude/t20-bottom-chroma`; 0 green pixels in 30 frames). Faster IVS (`claude/ivs-opt`; T20 timps CPU 4.1 % → 2.7 % with motion on).
 
 Aggregates: `claude/open-tx-isp-all-4` and `claude/openimp-all-4` (pushed); 58 merged single branches removed. `claude/open-tx-isp-all-5` adds t21-robust and t31-robust-2 (T31: sensor flip with shvflip=1, unload leaks, lazy WDR buffers; MemFree drift per reload 460 → 45 KB); all four cameras flashed with -all-5 images.
+
+## Late evening (2026-10-04, 23:10)
+
+- **Soak:** 5 h on the `aperto` images, all six cameras: 0 streamer restarts, 0 encoder/VPU errors, 0 oops, every snapshot 200. On cam-F timps was restarted a few times between 21:10 and 21:45 for timps tests (no reboot, no kernel change); this is noted in the soak log.
+- **T41 ioctl stack overflow fixed (open-tx-isp, not yet device-tested):** commands that the typed handlers did not catch fell through into decompiled code that copied 8-80 bytes from userspace into 4-byte locals on `/dev/tx-isp`, `/dev/isp-fsN` and `/dev/isp-m0`. Unknown or legacy commands now get one `pr_warn_once` and `-ENOTTY`; every command libimp/OpenIMP uses is unchanged. Stack per call shrinks slightly (184 → 168 bytes main ioctl). Only T41 was affected. A custom ISP bin path (non-default) now returns an error instead of crashing. Device test plan (wrong sizes, unknown commands, repeat during live capture) is in `driver/t41/README`; it runs with the next aggregate image.
+- **T41 controls in timps:** AE compensation and 2D noise reduction (sinter) are wired in timps main; gain and exposure caps follow (units: `AeMaxAGain` linear Q10, `AeMaxIntegrationTime` in sensor lines at the current frame rate). DRC, DPC, defog, HLC, BLC, WDR, CCM and gamma stay unwired because the T41 driver reports them as not supported. 3D noise reduction (temper) shows no measurable effect yet and is being checked in the driver.
+- **T41 main stream:** an early-morning matrix run saw an undecodable 1080p stream; that was before the rmem best-fit fix. The main stream now reports High profile 1920x1080 and decodes cleanly.
+- **Release branch named `aperto` everywhere:** the planned release branch is called `aperto` in the Lu-Fi forks (README, CHANGELOG, wiki) and will be added as `aperto` in the original opensensor repositories, whose `main` stays the original author's line. thingino `aperto` will pin the date tag.
 
 ## Evening (2026-10-04, 21:00)
 
@@ -454,7 +462,7 @@ Current aggregates: `claude/open-tx-isp-all-7` (all-6 + sinfo module-notifier fi
 
 ## Still open (2026-10-04)
 - T23: sporadic single Helix encode error (errno 5); real WDR missing.
-- T41: flip, night column noise (gc5603), short IVS gaps, OOM with three parallel streams, `AddSensor` EBUSY after an OOM kill; day/night and AE/AWB quality untested.
+- T41: flip, night column noise (gc5603), short IVS gaps, OOM with three parallel streams, `AddSensor` EBUSY after an OOM kill; day/night and AE/AWB quality untested; ioctl hardening awaits its device test; temper effect; crop/rotation (I2D).
 - T21: a 4th module reload in one boot crashed once (under investigation).
 - AEC device tests on T23/T21/T20 (no speaker tests on the shared test cameras).
 - First release tag after the 24 h soak; `aperto` branch not created yet.
