@@ -346,7 +346,7 @@ static void test_behaviour(void)
     setenv("OPENIMP_MOTION_V2_SUPPRESS_MS", "1", 1);    /* 3-frame minimum */
     grid_param(&p, 0, 2);       /* timps default sensitivity */
     chan_open(&ch, &p);
-    unsetenv("OPENIMP_MOTION_V2");
+    setenv("OPENIMP_MOTION_V2", "0", 1);  /* v2 is on by default: force the vendor algorithm */
     unsetenv("OPENIMP_MOTION_V2_SUPPRESS_MS");
     memset(&g, 0, sizeof(g));
     g.size = sizeof(g);
@@ -451,7 +451,7 @@ static void test_behaviour(void)
 
 int main(void)
 {
-    unsetenv("OPENIMP_MOTION_V2");
+    setenv("OPENIMP_MOTION_V2", "0", 1);  /* v2 is on by default: force the vendor algorithm */
     test_identity(0, 0, 4);
     test_identity(0, 5, 2);
     test_identity(1, 0, 4);

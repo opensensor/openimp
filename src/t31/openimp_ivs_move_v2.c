@@ -90,7 +90,7 @@ struct IvsMoveV2 {
 
 static const OpenIMP_IVS_MoveConfigEx v2_defaults = {
     sizeof(OpenIMP_IVS_MoveConfigEx), OPENIMP_IVS_MOVE_EX_VERSION,
-    0,          /* features */
+    OPENIMP_MOVE_F_ALL, /* features: on by default (OPENIMP_MOTION_V2=0 restores the vendor algorithm) */
     4,          /* learn_shift */
     64,         /* thresh_k (4.0) */
     10,         /* min_delta */
@@ -174,7 +174,9 @@ void ivs_move_v2_config_env(OpenIMP_IVS_MoveConfigEx *cfg)
     int32_t v;
 
     if (s && *s) {
-        if (!strcmp(s, "1") || !strcmp(s, "on") || !strcmp(s, "all"))
+        if (!strcmp(s, "0") || !strcmp(s, "off") || !strcmp(s, "vendor"))
+            c.features = 0;
+        else if (!strcmp(s, "1") || !strcmp(s, "on") || !strcmp(s, "all"))
             c.features = OPENIMP_MOVE_F_ALL;
         else if (!strcmp(s, "shadow"))
             c.features = OPENIMP_MOVE_F_ALL & ~OPENIMP_MOVE_F_OVERRIDE;
