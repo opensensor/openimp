@@ -3,7 +3,7 @@
 Everything changed, extended or fixed in OpenIMP, open-tx-isp, timps and the thingino
 integration since the test campaign started on 2026-09-30. Kept up to date during the campaign.
 
-Last update: 2026-10-04 23:10. Branch names (`claude/...`) in the tables and sections below are historic: the branches were merged into `next` and deleted.
+Last update: 2026-10-05 00:30. Branch names (`claude/...`) in the tables and sections below are historic: the branches were merged into `next` and deleted.
 
 Cameras are anonymised: cam-A (T31), cam-B (T23), cam-C (T20), cam-D (T21), cam-E (T10), cam-F (T41).
 
@@ -87,6 +87,14 @@ Goal: identical image behaviour, but cleaner unload/reload, less memory and chec
 OpenIMP: T20 green flicker in the bottom rows fixed by filling the encoder padding rows (`claude/t20-bottom-chroma`; 0 green pixels in 30 frames). Faster IVS (`claude/ivs-opt`; T20 timps CPU 4.1 % → 2.7 % with motion on).
 
 Aggregates: `claude/open-tx-isp-all-4` and `claude/openimp-all-4` (pushed); 58 merged single branches removed. `claude/open-tx-isp-all-5` adds t21-robust and t31-robust-2 (T31: sensor flip with shvflip=1, unload leaks, lazy WDR buffers; MemFree drift per reload 460 → 45 KB); all four cameras flashed with -all-5 images.
+
+## Night (2026-10-05, 00:30)
+
+- **T23 AWB at cold start and at night – real bug, fixed (not yet daylight-tested):** the "AWB HLIL ... ret=-61" lines were not harmless. At night/IR no zone falls into the colour-temperature weight mesh (all zones R/G ≈ B/G ≈ 1.2, dark/IR noise). The vendor AWB then applies the static white-balance gains of the tuning file (CT 5000); the open driver kept the last gains instead, e.g. warm 2300 K evening gains across every streamer restart. Invisible in the greyscale IR image, but a colour cast is possible when starting in day mode in the dark and at the night → day switch. In about one in three starts the first statistics snapshot also came 17 ms after stream-on with 1 of 225 zones filled and was used anyway. Fix: behave like the vendor (unit ratios on the static gains, CT 5000, not entered into the history) and drop a first snapshot with fewer than half of the zones. Checked bit-exact against the vendor AWB in an emulator with real night zones; on cam-G at night: no -61, 0 oops, snapshots 200. Side finding: with an IQ history window > 1 the open driver smooths in the ratio domain, the vendor in the gain domain (not relevant for cam-G's sensor, window 1).
+- **Next aggregate built (not flashed):** OpenIMP `claude/agg-23` (review-3 fixes, small fixes, Paul's audio patch, Helix T20 test flake) and open-tx-isp `claude/agg-23` (T23 cold-start MSCA fix, T23 log switch, ISP small fixes, Paul's patches, T41 prototypes and ioctl hardening, T23 AWB fix). Images for all eight cameras keep the memory split each camera runs today (rmem/ispmem unchanged). Flash and device tests follow after the 24 h soak.
+- **Soak at 6 h:** 0 restarts, 0 encoder/VPU errors, 0 oops. Low MemFree on the 64 MB cameras is page cache (9-14 MB reclaimable); unreclaimable slab 4-5 MB and the streamer's RSS 3.3-4.6 MB.
+- **Docs:** feature matrix rewritten to the current state; T10/T20 use the pre-Helix NVPU encoder (wiki corrected); T21/T23 have no H.265 encoder in vendor libimp or hardware (`docs/T23_H265.md`); Helix wording aligned (frame drops fixed, rare single errno-5 error still open).
+- **Housekeeping:** merged and superseded branches removed from the forks; two leftovers from an early T21 bring-up branch (VBM rmem block parking, Helix create back-off) will be ported and tested on cam-D; a T31 LSC fix (mirror the shading mesh only for V flip) waits for a device test.
 
 ## Late evening (2026-10-04, 23:10)
 
@@ -463,7 +471,8 @@ Current aggregates: `claude/open-tx-isp-all-7` (all-6 + sinfo module-notifier fi
 ## Still open (2026-10-04)
 - T23: rare single Helix encode error (errno 5; the frequent frame drops are fixed, see 2026-10-04 afternoon); real WDR missing.
 - T41: flip, night column noise (gc5603), short IVS gaps, OOM with three parallel streams, `AddSensor` EBUSY after an OOM kill; day/night and AE/AWB quality untested; ioctl hardening awaits its device test; temper effect; crop/rotation (I2D).
-- T21: a 4th module reload in one boot crashed once (under investigation).
+- T21: a 4th module reload in one boot crashed once (under investigation); VBM rmem block parking and Helix create back-off to be ported.
+- T23: AWB fix (static gains when no zone matches) awaits a daylight test.
 - AEC device tests on T23/T21/T20 (no speaker tests on the shared test cameras).
 - First release tag after the 24 h soak; `aperto` branch not created yet.
 - Improvements beyond vendor behaviour are collected separately and decided by the maintainer.
