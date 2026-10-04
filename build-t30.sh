@@ -66,7 +66,7 @@ compile()
 }
 
 # The T30 public ABI feeds the native legacy Helix/soc_vpu backend through the
-# T-series stock-driver seam. Audio remains in the OEM libimp used by RAD.
+# T-series stock-driver seam. Audio uses the T21 /dev/dsp path (see below).
 compile openimp_p0 src/t40/openimp_p0.c -Werror
 compile openimp_profile src/openimp_profile.c -Werror
 compile openimp_tuning src/openimp_tuning.c -Werror
@@ -104,6 +104,14 @@ compile t30_h264_set src/t30/h264enc/set.c -Werror
 compile t30_h264_slice src/t30/h264enc/slice.c -Werror
 compile t30_rate_control src/t40/t31_rate_control.c -Werror
 compile t30_helix_jpeg src/t30/helix_jpeg.c -Werror
+# Audio: the T21 path (src/t31/openimp_t31_audio.c without PLATFORM_T23).
+# The ingenic-sdk T21 and T30 oss2/oss3 audio drivers are byte-identical.
+compile t30_audio src/t31/openimp_t31_audio.c -Werror
+compile openimp_aec src/audio/openimp_aec.c -Werror -I"$project_dir/src/audio"
+# AENC/ADEC: the OEM T30 1.0.5 G.726 codec opens at 16000 and its
+# GetStream does not stamp the wall clock, as on T31 (the non-T23 defaults).
+compile audio_codec src/audio/openimp_audio_codec.c -Werror
+compile audio_enc_dec src/audio/openimp_audio_enc_dec.c -Werror
 
 "$compiler" -shared -nostartfiles \
     -Wl,-soname,libimp.so -Wl,--gc-sections \
@@ -143,9 +151,13 @@ compile t30_helix_jpeg src/t30/helix_jpeg.c -Werror
     "$output_dir/t30_h264_slice.o" \
     "$output_dir/t30_rate_control.o" \
     "$output_dir/t30_helix_jpeg.o" \
+    "$output_dir/t30_audio.o" \
+    "$output_dir/openimp_aec.o" \
+    "$output_dir/audio_codec.o" \
+    "$output_dir/audio_enc_dec.o" \
     "$output_dir/t30_ivs.o" \
     "$output_dir/t30_ivs_move.o" \
-	-ldl -lpthread -lrt
+	-ldl -lpthread -lrt -lm
 
 "$compiler" $base_flags $repo_includes -Wall -Wextra -Werror \
     "$project_dir/tools/openimp-tuningd.c" "$output_dir/openimp_tuning.o" \
@@ -160,13 +172,8 @@ then
     exit 1
 fi
 
-if readelf --dyn-syms --wide "$output_dir/libimp.so" |
-    awk '$7 != "UND" && $8 ~ /^IMP_(AI|AO|AENC|ADEC|DMIC)_/ {found=1} END {exit !found}'
-then
-    echo "T30 build exports audio APIs" >&2
-    exit 1
-fi
 
+READELF=readelf "$project_dir/tests/t30/check_exports.sh" "$output_dir/libimp.so"
 rvd=${T30_RVD:-"$target_dir/target/usr/bin/rvd"}
 if [ -f "$rvd" ]; then
     readelf --dyn-syms --wide "$rvd" |

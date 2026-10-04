@@ -430,7 +430,10 @@ typedef IMPEncoderAttr IMPEncoderAttrJpeg;
 typedef struct {
     IMPEncoderAttr encAttr;
     IMPEncoderRcAttr rcAttr;
-#if !defined(PLATFORM_T21)
+    /* T23 only: the T21 1.0.33 and T30 1.0.5 SDKs end the channel attribute
+     * at rcAttr (0xa0 bytes; the OEM T30 IMP_Encoder_GetChnAttr copies
+     * exactly 160 bytes), so a 0xa4-byte copy would overrun the caller. */
+#if !defined(PLATFORM_T21) && !defined(PLATFORM_T30)
     bool bEnableIvdc;
 #endif
 } IMPEncoderCHNAttr;
@@ -515,9 +518,9 @@ _Static_assert(sizeof(IMPEncoderAttr) == 0x30,
                "legacy IMPEncoderAttr ABI mismatch");
 _Static_assert(offsetof(IMPEncoderCHNAttr, rcAttr) == 0x30,
                "legacy IMPEncoderCHNAttr.rcAttr ABI mismatch");
-#if defined(PLATFORM_T21)
+#if defined(PLATFORM_T21) || defined(PLATFORM_T30)
 _Static_assert(sizeof(IMPEncoderCHNAttr) == 0xa0,
-               "T21 IMPEncoderCHNAttr ABI mismatch");
+               "T21/T30 IMPEncoderCHNAttr ABI mismatch");
 #else
 _Static_assert(offsetof(IMPEncoderCHNAttr, bEnableIvdc) == 0xa0,
                "T23 IMPEncoderCHNAttr.bEnableIvdc ABI mismatch");
