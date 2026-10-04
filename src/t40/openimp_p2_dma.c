@@ -32,6 +32,7 @@ struct p2_dma_allocation {
     uint32_t start;
     uint32_t size;
     int active;
+    char tag[16];
 };
 
 static struct {
@@ -81,47 +82,136 @@ static void p2_dma_recompute_next(void)
     p2_dma.next = next;
 }
 
-/* Return the first page-aligned gap in the shared capture/encoder ledger.
- * Allocations are few and long-lived, so a bounded linear scan is both
- * deterministic and less error-prone than maintaining a second linked-list
- * allocator inside libimp. */
-static int p2_dma_find_gap(uint32_t size, uint32_t *start_out)
+/* Placement policy.
+ *
+ * T40 keeps the original first-fit from the bottom.  On T41 the per-stream
+ * capture buffers come and go (FrameSource idles a channel without clients
+ * and re-enables it on demand) while codec, ISP, OSD and JPEG buffers live
+ * for the whole run.  With a single first-fit ledger, anything allocated
+ * while a channel idles (OSD bitmaps growing, the JPEG source copy, the other
+ * channel's capture queue) lands in the hole that channel left, and the
+ * 1080p queue (2 x 3 MB) then finds no contiguous block any more.  So the
+ * T41 arena is split: capture buffers stack up from the bottom, everything
+ * else stacks down from the top, each best-fit (smallest gap that fits,
+ * closest to its own end).  A capture hole is then only reused by capture
+ * buffers, or by long-lived buffers once the middle gap is gone - which is
+ * real rmem shortage and is reported as such. */
+#if defined(PLATFORM_T41)
+#define P2_DMA_SPLIT_ARENA 1
+#else
+#define P2_DMA_SPLIT_ARENA 0
+#endif
+
+struct p2_dma_gap {
+    uint32_t start;
+    uint32_t end;
+};
+
+/* Collect the free gaps of [floor, size) in address order.  Allocations are
+ * few (P2_DMA_MAX_ALLOCS), so an insertion sort per call is cheap and keeps
+ * the ledger a plain table. */
+static unsigned int p2_dma_gaps(struct p2_dma_gap *gaps)
 {
-    uint32_t candidate = p2_dma.floor;
-    unsigned int pass;
+    uint32_t starts[P2_DMA_MAX_ALLOCS], ends[P2_DMA_MAX_ALLOCS];
+    unsigned int count = 0, gap_count = 0, i;
+    uint32_t cursor = p2_dma.floor;
+
+    for (i = 0; i < P2_DMA_MAX_ALLOCS; ++i) {
+        const struct p2_dma_allocation *allocation = &p2_dma.allocations[i];
+        unsigned int j;
+
+        if (!allocation->active)
+            continue;
+        for (j = count; j > 0 && starts[j - 1] > allocation->start; --j) {
+            starts[j] = starts[j - 1];
+            ends[j] = ends[j - 1];
+        }
+        starts[j] = allocation->start;
+        ends[j] = allocation->start + allocation->size;
+        ++count;
+    }
+    for (i = 0; i <= count; ++i) {
+        uint32_t limit = i < count ? starts[i] : p2_dma.size;
+
+        if (limit > cursor) {
+            gaps[gap_count].start = cursor;
+            gaps[gap_count].end = limit;
+            ++gap_count;
+        }
+        if (i < count && ends[i] > cursor)
+            cursor = align_page(ends[i]);
+    }
+    return gap_count;
+}
+
+static uint32_t p2_dma_used_bytes(void)
+{
+    uint32_t used = 0;
+    unsigned int i;
+
+    for (i = 0; i < P2_DMA_MAX_ALLOCS; ++i)
+        if (p2_dma.allocations[i].active)
+            used += p2_dma.allocations[i].size;
+    return used;
+}
+
+static uint32_t p2_dma_largest_gap(void)
+{
+    struct p2_dma_gap gaps[P2_DMA_MAX_ALLOCS + 1U];
+    unsigned int count = p2_dma_gaps(gaps), i;
+    uint32_t largest = 0;
+
+    for (i = 0; i < count; ++i)
+        if (gaps[i].end - gaps[i].start > largest)
+            largest = gaps[i].end - gaps[i].start;
+    return largest;
+}
+
+static int p2_dma_is_capture(const char *tag)
+{
+    return tag && !strncmp(tag, "capture", 7);
+}
+
+/* Pick a page-aligned start for size bytes; see the policy above. */
+static int p2_dma_find_gap(uint32_t size, const char *tag,
+                           uint32_t *start_out)
+{
+    struct p2_dma_gap gaps[P2_DMA_MAX_ALLOCS + 1U];
+    unsigned int count, i;
+    int best = -1, from_top = 0;
 
     if (!start_out || !size)
         return -1;
-    for (pass = 0; pass <= P2_DMA_MAX_ALLOCS; ++pass) {
-        unsigned int i;
-        int moved = 0;
+    count = p2_dma_gaps(gaps);
+    if (P2_DMA_SPLIT_ARENA)
+        from_top = !p2_dma_is_capture(tag);
+    for (i = 0; i < count; ++i) {
+        uint32_t length = gaps[i].end - gaps[i].start;
 
-        if (candidate > p2_dma.size || size > p2_dma.size - candidate)
-            return -1;
-        for (i = 0; i < P2_DMA_MAX_ALLOCS; ++i) {
-            const struct p2_dma_allocation *allocation =
-                &p2_dma.allocations[i];
-            uint32_t allocation_end;
-
-            if (!allocation->active)
-                continue;
-            allocation_end = allocation->start + allocation->size;
-            if (candidate < allocation_end &&
-                allocation->start < candidate + size) {
-                candidate = align_page(allocation_end);
-                moved = 1;
-                break;
-            }
+        if (length < size)
+            continue;
+        if (!P2_DMA_SPLIT_ARENA) {      /* T40: first fit */
+            best = (int)i;
+            break;
         }
-        if (!moved) {
-            *start_out = candidate;
-            return 0;
-        }
+        if (best < 0 ||
+            length < gaps[best].end - gaps[best].start ||
+            (length == gaps[best].end - gaps[best].start && from_top))
+            best = (int)i;
     }
-    return -1;
+    if (best < 0)
+        return -1;
+    if (from_top)
+        *start_out = (gaps[best].end - size) & ~4095U;
+    else
+        *start_out = gaps[best].start;
+    if (*start_out < gaps[best].start)
+        return -1;
+    return 0;
 }
 
-static int p2_dma_record_allocation(uint32_t start, uint32_t size)
+static int p2_dma_record_allocation(uint32_t start, uint32_t size,
+                                    const char *tag)
 {
     unsigned int i;
 
@@ -130,10 +220,58 @@ static int p2_dma_record_allocation(uint32_t start, uint32_t size)
             p2_dma.allocations[i].start = start;
             p2_dma.allocations[i].size = size;
             p2_dma.allocations[i].active = 1;
+            memset(p2_dma.allocations[i].tag, 0,
+                   sizeof(p2_dma.allocations[i].tag));
+            if (tag)
+                strncpy(p2_dma.allocations[i].tag, tag,
+                        sizeof(p2_dma.allocations[i].tag) - 1U);
             return 0;
         }
     }
     return -1;
+}
+
+/* A failed allocation says what is missing and how much more rmem= would
+ * cover it (same wording as dma_alloc.c on the other SoCs), then lists the
+ * live allocations once per run so fragmentation is visible in the log. */
+static int p2_dma_oom_mapped;
+
+static void p2_dma_log_alloc_failed(uint32_t size, const char *tag,
+                                    int table_full)
+{
+    uint32_t arena = p2_dma.size - p2_dma.floor;
+    uint32_t used = p2_dma_used_bytes();
+    uint32_t free_bytes = arena > used ? arena - used : 0;
+    uint32_t largest = p2_dma_largest_gap();
+    uint32_t missing = size > largest ? size - largest : 0;
+    uint64_t suggest = ((uint64_t)p2_dma.size + missing + 0xfffffU) >> 20;
+    unsigned int i;
+
+    if (table_full) {
+        syslog(LOG_ERR, "openimp-dma: rmem allocation of %u KB for %s "
+               "failed: allocation table full (%u entries), free %u KB",
+               (size + 1023U) / 1024U, tag ? tag : "?",
+               P2_DMA_MAX_ALLOCS, free_bytes / 1024U);
+    } else {
+        syslog(LOG_ERR, "openimp-dma: rmem allocation of %u KB for %s "
+               "failed: used %u KB of %u KB, free %u KB, largest block "
+               "%u KB%s; raise rmem by at least %u KB (suggest rmem=%lluM)",
+               (size + 1023U) / 1024U, tag ? tag : "?", used / 1024U,
+               arena / 1024U, free_bytes / 1024U, largest / 1024U,
+               free_bytes >= size ? " (fragmented)" : "",
+               (missing + 1023U) / 1024U, (unsigned long long)suggest);
+    }
+    if (p2_dma_oom_mapped)
+        return;
+    p2_dma_oom_mapped = 1;
+    for (i = 0; i < P2_DMA_MAX_ALLOCS; ++i) {
+        const struct p2_dma_allocation *allocation = &p2_dma.allocations[i];
+
+        if (allocation->active)
+            syslog(LOG_ERR, "openimp-dma: rmem  +0x%07x %8u B %s",
+                   allocation->start, allocation->size,
+                   allocation->tag[0] ? allocation->tag : "?");
+    }
 }
 
 static int p2_rmem_from_cmdline(uint32_t *base_out, uint32_t *size_out)
@@ -235,6 +373,7 @@ int DMA_AllocDescriptor(IMPDMABufferInfo *out, int size, const char *tag)
 {
     uint32_t start;
     uint32_t allocation_size;
+    uint32_t used;
 
     if (!out || size <= 0)
         return -1;
@@ -244,11 +383,14 @@ int DMA_AllocDescriptor(IMPDMABufferInfo *out, int size, const char *tag)
         return -1;
     }
     allocation_size = align_page((uint32_t)size);
-    if (p2_dma_find_gap(allocation_size, &start) < 0 ||
-        p2_dma_record_allocation(start, allocation_size) < 0) {
-        syslog(LOG_ERR, "openimp-dma: rmem exhausted: %s needs %u B, "
-               "high-water %u of %u B", tag ? tag : "?", allocation_size,
-               p2_dma_high_water - p2_dma.floor, p2_dma.size - p2_dma.floor);
+    if (p2_dma_find_gap(allocation_size, tag, &start) < 0) {
+        p2_dma_log_alloc_failed(allocation_size, tag, 0);
+        p2_unlock();
+        errno = ENOMEM;
+        return -1;
+    }
+    if (p2_dma_record_allocation(start, allocation_size, tag) < 0) {
+        p2_dma_log_alloc_failed(allocation_size, tag, 1);
         p2_unlock();
         errno = ENOMEM;
         return -1;
@@ -262,12 +404,21 @@ int DMA_AllocDescriptor(IMPDMABufferInfo *out, int size, const char *tag)
     out->size = (uint32_t)size;
     out->flags = 2U;
     p2_dma_recompute_next();
-    /* Sizing aid for the rmem= boot argument: log every new high-water. */
-    if (p2_dma.next > p2_dma_high_water) {
-        p2_dma_high_water = p2_dma.next;
-        syslog(LOG_INFO, "openimp-dma: rmem high-water %u of %u B (%s %u B)",
-               p2_dma_high_water - p2_dma.floor, p2_dma.size - p2_dma.floor,
-               tag ? tag : "?", allocation_size);
+#if defined(P2_DMA_TRACE)
+    syslog(LOG_INFO, "openimp-dma: alloc +0x%07x %u B %s", start,
+           allocation_size, tag ? tag : "?");
+#endif
+    /* Sizing aid for the rmem= boot argument: log every new peak of the
+     * bytes in use, with what is left and the largest free block. */
+    used = p2_dma_used_bytes();
+    if (used > p2_dma_high_water) {
+        p2_dma_high_water = used;
+        syslog(LOG_INFO, "openimp-dma: rmem peak %u KB of %u KB (free %u KB, "
+               "largest block %u KB) after %s %u B",
+               used / 1024U, (p2_dma.size - p2_dma.floor) / 1024U,
+               (p2_dma.size - p2_dma.floor - used) / 1024U,
+               p2_dma_largest_gap() / 1024U, tag ? tag : "?",
+               allocation_size);
     }
     p2_unlock();
     return 0;
@@ -331,7 +482,7 @@ int OpenIMP_P2_DMAState(uint32_t *base, uint32_t *used)
     if (base)
         *base = p2_dma.base;
     if (used)
-        *used = p2_dma.next;
+        *used = p2_dma_used_bytes();
     ready = p2_dma.mapping != NULL;
     p2_unlock();
     return ready ? 0 : -1;
@@ -423,6 +574,10 @@ int IMP_Free(uintptr_t address)
 
         if (!allocation->active || offset != allocation->start)
             continue;
+#if defined(P2_DMA_TRACE)
+        syslog(LOG_INFO, "openimp-dma: free  +0x%07x %u B %s",
+               allocation->start, allocation->size, allocation->tag);
+#endif
         allocation->active = 0;
         allocation->start = 0;
         allocation->size = 0;
