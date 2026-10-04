@@ -3,7 +3,7 @@
 Everything changed, extended or fixed in OpenIMP, open-tx-isp, timps and the thingino
 integration since the test campaign started on 2026-09-30. Kept up to date during the campaign.
 
-Last update: 2026-10-04 16:30 (evening update 16:45).
+Last update: 2026-10-04 21:00.
 
 Cameras are anonymised: cam-A (T31), cam-B (T23), cam-C (T20), cam-D (T21), cam-E (T10), cam-F (T41).
 
@@ -87,6 +87,14 @@ Goal: identical image behaviour, but cleaner unload/reload, less memory and chec
 OpenIMP: T20 green flicker in the bottom rows fixed by filling the encoder padding rows (`claude/t20-bottom-chroma`; 0 green pixels in 30 frames). Faster IVS (`claude/ivs-opt`; T20 timps CPU 4.1 % → 2.7 % with motion on).
 
 Aggregates: `claude/open-tx-isp-all-4` and `claude/openimp-all-4` (pushed); 58 merged single branches removed. `claude/open-tx-isp-all-5` adds t21-robust and t31-robust-2 (T31: sensor flip with shvflip=1, unload leaks, lazy WDR buffers; MemFree drift per reload 460 → 45 KB); all four cameras flashed with -all-5 images.
+
+## Evening (2026-10-04, 21:00)
+
+- **Upstream thingino `aperto` (Paul's open ISP stack branch) now carries the open stack.** Merged: [#1746](https://github.com/themactep/thingino-firmware/pull/1746) timps tarball hash (fresh builds failed), [#1747](https://github.com/themactep/thingino-firmware/pull/1747) OTA stage-2 copy on a full overlay, [#1748](https://github.com/themactep/thingino-firmware/pull/1748) + [#1752](https://github.com/themactep/thingino-firmware/pull/1752) kernel VPU/rmem fixes (open/close races, double free, cache-flush `BUG()`, bounded killable waits, validated ioctls, Helix residual interrupt), [#1749](https://github.com/themactep/thingino-firmware/pull/1749) opt-in ISP boot guard, [#1750](https://github.com/themactep/thingino-firmware/pull/1750) SC2336/T31 flip result (device-tested on a production camera), [#1751](https://github.com/themactep/thingino-firmware/pull/1751) SC2336/T23 flip race, [#1756](https://github.com/themactep/thingino-firmware/pull/1756) OpenIMP and open-tx-isp built from the Lu-Fi forks, T23 fully on OpenIMP. In the `ciao` streamer branch: [#1737](https://github.com/themactep/thingino-firmware/pull/1737) JXF23 GPIO ownership, reset pulse on every detect after review.
+- **All test cameras run images built from `aperto`** (cam-A…cam-F, cam-H; 17:39-17:47): 30/30 snapshots, 0 oops, 0 VPU errors; a new 24 h soak started at 17:50 (3 h so far: no streamer restart, 0 encoder errors, 0 oops). The earlier all-22 soak ran 3 h without errors.
+- **T23 snapshot 503 on a second channel – root cause:** stale buffer addresses stay in a channel's MSCA address FIFOs after a stream stops (the vendor clears them on STREAMOFF, the open driver did not); when a second channel starts on an already running core, the hardware works through the stale addresses first and sometimes never reaches the fresh buffers. Fix: clear the FIFOs and re-arm the queued buffers before the channel's MSCA start (`msca_fifo_rearm`, default on): 260 cold-start cycles without a failure (before ~1-7 %). The "AWB HLIL ... ret=-61" lines at start are expected (no zone in the colour-temperature mesh while AE settles or at night) and are now info level. Soak pending before it enters `next`.
+- **T23 log switch:** Paul's idea adapted with an explicit allow-list of pure progress messages behind `t23_runtime_trace`; all errors, unknown warnings and failed results stay visible. Boot/stream-start log 522 → 78 lines, module +3.5 KB.
+- **Memory on cam-B:** the slowly falling MemFree is reclaimable kernel cache (dentries/inodes); unreclaimable slab and the streamer's RSS are flat.
 
 ## Late afternoon (2026-10-04, 15:50 - 16:30)
 

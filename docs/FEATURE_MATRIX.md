@@ -29,7 +29,7 @@ Open stack = open-tx-isp (kernel driver) + OpenIMP (libimp) + timps. Vendor = tx
 - Update 2026-10-03 21:08: T20 OEM RC default device-tested; T21 ae_it_max_us kept (beyond vendor); T41 flip registers verified, T41 WB incident not reproducible; MB-RC per picture type (a8b483a), device test running.
 - Not yet exposed by timps (static caps): DPC strength, defog/Iridix floor, DRC strength and the scene/colour effects. The thingino maintainer session will enable them under the USE_OPENIMP build switch once ciao pins all-17/all-15.
 
-Current state: cam-A, cam-B, cam-C, cam-D and cam-E flashed 2026-10-04 13:01-13:07 (full OTA) with all-22 (open-tx-isp next f9939d64 / OpenIMP next 2dc60dd / timps main a34a5a2 + local kernel patch 0102): 30/30 snapshots, 0 oops on every camera. cam-F (T41) runs rev6 (rootfs, OpenIMP next 636b6ac, rmem 26M, 64 KiB U-Boot env with Bad-CRC guard).
+Current state: all test cameras run images built from thingino `aperto` (Lu-Fi fork) since 2026-10-04 17:39-17:47: open-tx-isp next 40cc77ec / OpenIMP next (db760431) / timps v1.9.31, kernel VPU/rmem patches as merged upstream; cam-F (T41) rootfs rev7 with rmem 26M. 24 h soak running since 17:50.
 
 Marked [-all-13] = tested before the -all-14 aggregates; they are now contained in -all-14, which is flashed on four of the six cameras (cam-B and cam-F not yet).
 
