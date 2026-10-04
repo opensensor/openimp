@@ -140,8 +140,10 @@ int Fifo_Queue(void *fifo_ptr, void *item, int timeout_ms) {
     /* Wait for semaphore (space available) */
     int ret;
     if (timeout_ms < 0) {
-        /* Infinite wait */
-        ret = sem_wait(&fifo->semaphore);
+        /* Infinite wait; a signal is no reason to drop the item */
+        do {
+            ret = sem_wait(&fifo->semaphore);
+        } while (ret != 0 && errno == EINTR);
     } else if (timeout_ms == 0) {
         /* Try without waiting */
         ret = sem_trywait(&fifo->semaphore);
@@ -155,7 +157,9 @@ int Fifo_Queue(void *fifo_ptr, void *item, int timeout_ms) {
             ts.tv_sec++;
             ts.tv_nsec -= 1000000000;
         }
-        ret = sem_timedwait(&fifo->semaphore, &ts);
+        do {
+            ret = sem_timedwait(&fifo->semaphore, &ts);
+        } while (ret != 0 && errno == EINTR);
     }
 
     if (ret != 0) {

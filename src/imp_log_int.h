@@ -48,6 +48,17 @@ static inline void imp_log_ensure_init(void) {
 #define IMP_LOG_INFO(tag, fmt, ...) IMP_LOG(LOG_INFO,    tag, fmt, ##__VA_ARGS__)
 
 /*
+ * IMP_LOG_LIMITED(prio, tag, fmt, ...): IMP_LOG for a line a caller bug or a
+ * driver fault can repeat on every call or frame; per call site the first 8
+ * and then every 1024th line are written (see openimp_log_allow()).
+ */
+#define IMP_LOG_LIMITED(prio, tag, fmt, ...) do {                 \
+    static unsigned int imp_log_limited_count;                    \
+    if (openimp_log_allow(&imp_log_limited_count))                \
+        IMP_LOG((prio), tag, fmt, ##__VA_ARGS__);                 \
+} while (0)
+
+/*
  * Codec, hardware, and DMA messages are reverse-engineering traces.  Some of
  * them run once or more per encoded frame, so sending them to syslog and
  * stderr by default can steal meaningful encode time on the single-core T31.

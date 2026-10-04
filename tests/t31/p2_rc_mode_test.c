@@ -384,6 +384,34 @@ int main(void)
               c->eRcOptions, c->uMaxPictureSize);
     }
 
+    /* API boundary: a bad handle or NULL pointer is -1 (one limited log
+     * line), never a crash, and does not disturb the channel table. */
+    {
+        IMPEncoderCHNAttr bad_attr;
+        IMPEncoderStream bad_stream;
+        int bad_value = 0;
+
+        memset(&bad_attr, 0, sizeof(bad_attr));
+        memset(&bad_stream, 0, sizeof(bad_stream));
+        CHECK(IMP_Encoder_CreateChn(-1, &bad_attr) == -1, "CreateChn(-1)");
+        CHECK(IMP_Encoder_CreateChn(4096, &bad_attr) == -1, "CreateChn(4096)");
+        CHECK(IMP_Encoder_CreateChn(0, NULL) == -1, "CreateChn(NULL)");
+        CHECK(IMP_Encoder_GetStream(-5, &bad_stream, 0) == -1, "GetStream(-5)");
+        CHECK(IMP_Encoder_GetStream(0, NULL, 0) == -1, "GetStream(NULL)");
+        CHECK(IMP_Encoder_ReleaseStream(0, NULL) == -1, "ReleaseStream(NULL)");
+        CHECK(IMP_Encoder_ReleaseStream(99999, &bad_stream) == -1,
+              "ReleaseStream(99999)");
+        CHECK(IMP_Encoder_StartRecvPic(-1) == -1, "StartRecvPic(-1)");
+        CHECK(IMP_Encoder_StopRecvPic(1 << 20) == -1, "StopRecvPic(huge)");
+        CHECK(IMP_Encoder_PollingStream(-1, 10) == -1, "PollingStream(-1)");
+        CHECK(IMP_Encoder_DestroyChn(-1) == -1, "DestroyChn(-1)");
+        CHECK(IMP_Encoder_CreateGroup(-1) == -1, "CreateGroup(-1)");
+        CHECK(IMP_Encoder_RegisterChn(-1, 0) == -1, "RegisterChn(-1,0)");
+        CHECK(IMP_Encoder_GetMaxStreamCnt(0, NULL) == -1, "GetMaxStreamCnt(NULL)");
+        CHECK(IMP_Encoder_GetMaxStreamCnt(-1, &bad_value) == -1,
+              "GetMaxStreamCnt(-1)");
+    }
+
     if (failures) {
         fprintf(stderr, "p2 rc mode: %d check(s) failed\n", failures);
         return 1;

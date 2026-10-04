@@ -262,7 +262,10 @@ static int32_t update(Module *arg1, void *arg2)
                  (void *)(uintptr_t)value);
 
     if (value != 0) {
-        sem_wait(module_sem_outputs(arg1));
+        /* A signal must not let the update take a free node it did not
+         * reserve (the list ends in the sentinel: NULL dereference). */
+        while (sem_wait(module_sem_outputs(arg1)) != 0 && errno == EINTR)
+            ;
         pthread_mutex_lock(module_mutex(arg1));
 
         ModuleQueueNode *node = *module_queue_free_ptr(arg1);
@@ -382,7 +385,8 @@ void *module_thread(void *arg1)
     while (1) {
         *module_in_process_ptr(module) = 0;
         pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, NULL);
-        sem_wait(module_sem_inputs(module));
+        while (sem_wait(module_sem_inputs(module)) != 0 && errno == EINTR)
+            ;
         pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, NULL);
         *module_in_process_ptr(module) = 1;
         pthread_mutex_lock(module_mutex(module));
@@ -773,6 +777,12 @@ int32_t flush_module_tree_sync(Module *arg1)
 char *dump_ob_modules(Module *arg1, int32_t arg2)
 {
     char str[0x40];
+
+    /* 4 blanks per level in a 64 byte buffer: a deeper (or cyclic) observer
+     * chain would write past it and recurse until the stack is gone. It is
+     * a debug dump; stop at 12 levels. */
+    if (arg2 < 0 || arg2 > 12 || arg1 == NULL)
+        return NULL;
     memset(str, 0, sizeof(str));
 
     int32_t bytes = arg2 << 2;
@@ -796,8 +806,10 @@ char *dump_ob_modules(Module *arg1, int32_t arg2)
     }
 
     int32_t observer_count = *(int32_t *)((char *)arg1 + 0x3c);
-    char *result = str + indent_len;
-    *result = '\0';
+    /* The return value was the address of the local buffer (dangling);
+     * the only caller ignores it. */
+    char *result = NULL;
+    str[indent_len] = '\0';
 
     if (observer_count > 0) {
         Module **slot = (Module **)((char *)arg1 + 0x14);

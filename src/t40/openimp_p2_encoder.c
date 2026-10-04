@@ -1066,14 +1066,36 @@ extern int AL_Codec_Encode_SetJpegQuality(void *codec, int quality);
 extern int IMP_FrameSource_GetFrame(int channel, void **frame);
 extern int IMP_FrameSource_ReleaseFrame(int channel, void *frame);
 
-static int p2_valid_group(int group)
+/* API argument checks: the answer is the same as ever (-1 from the caller),
+ * but a bad handle now leaves a rate-limited line naming the entry point. */
+static int p2_valid_group_at(int group, const char *function)
 {
-    return group >= 0 && group < P2_MAX_GROUPS;
+    if (group >= 0 && group < P2_MAX_GROUPS)
+        return 1;
+    IMP_LOG_LIMITED(LOG_ERR, "Encoder", "%s: invalid group %d (0..%d)",
+                    function, group, P2_MAX_GROUPS - 1);
+    return 0;
 }
 
-static int p2_valid_channel(int channel)
+static int p2_valid_channel_at(int channel, const char *function)
 {
-    return channel >= 0 && channel < P2_MAX_CHANNELS;
+    if (channel >= 0 && channel < P2_MAX_CHANNELS)
+        return 1;
+    IMP_LOG_LIMITED(LOG_ERR, "Encoder", "%s: invalid channel %d (0..%d)",
+                    function, channel, P2_MAX_CHANNELS - 1);
+    return 0;
+}
+
+#define p2_valid_group(group) p2_valid_group_at((group), __func__)
+#define p2_valid_channel(channel) p2_valid_channel_at((channel), __func__)
+
+/* A NULL out/attr pointer of an API call: one limited line, then -1. */
+static int p2_null_arg(const char *function, const void *pointer)
+{
+    if (pointer)
+        return 0;
+    IMP_LOG_LIMITED(LOG_ERR, "Encoder", "%s: NULL argument", function);
+    return 1;
 }
 
 static int p2_cell_equal(const IMPCell *a, const IMPCell *b)
@@ -1621,7 +1643,7 @@ int IMP_Encoder_CreateChn(int channel, IMPEncoderCHNAttr *attr)
     int hw_rc_mode;
 
     P2_STARTUP_MARKER("openimp/P2 marker C0 CreateChn entry\n");
-    if (!p2_valid_channel(channel) || !attr)
+    if (!p2_valid_channel(channel) || p2_null_arg(__func__, attr))
         return -1;
 #if !defined(PLATFORM_T31) && !defined(PLATFORM_T41)
     if (p2_attr_codec_type(attr) == IMP_ENC_TYPE_HEVC) {
@@ -2443,7 +2465,7 @@ int IMP_Encoder_GetStream(int channel, IMPEncoderStream *stream, int block)
     uint32_t pack_count;
 #endif
 
-    if (!p2_valid_channel(channel) || !stream)
+    if (!p2_valid_channel(channel) || p2_null_arg(__func__, stream))
         return -1;
     ch = &p2_channels[channel];
     if (!ch->raw_stream && block && IMP_Encoder_PollingStream(channel, 1000) != 0)
@@ -2564,7 +2586,7 @@ int IMP_Encoder_ReleaseStream(int channel, IMPEncoderStream *stream)
     void *frame;
     int result;
 
-    if (!p2_valid_channel(channel) || !stream)
+    if (!p2_valid_channel(channel) || p2_null_arg(__func__, stream))
         return -1;
     ch = &p2_channels[channel];
     pthread_mutex_lock(&ch->lock);
