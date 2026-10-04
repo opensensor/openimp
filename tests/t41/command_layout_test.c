@@ -202,6 +202,130 @@ static void test_builder_validation(void)
 
 }
 
+/* HEVC (docs/T41_HEVC.md): the AVC image with codec 1 on the 32x32 CTB
+ * grid, POC steps of one, the HEVC PCM size and ME width, no scaling list
+ * and no inline entropy block. */
+static void test_hevc_command(void)
+{
+    uint32_t slot[OPENIMP_T41_CL_SLOT_SIZE / sizeof(uint32_t)];
+    uint32_t avc[OPENIMP_T41_CL_SLOT_SIZE / sizeof(uint32_t)];
+    const uint32_t *entropy =
+        slot + OPENIMP_T41_CL_ENTROPY_OFFSET / sizeof(uint32_t);
+    OpenIMPT41CommandParams params = {
+        .width = 1920, .height = 1080, .bitrate = 3000000,
+        .fps_num = 25, .fps_den = 1,
+        .min_qp = 15, .picture_qp = 30, .max_qp = 51,
+        .rate_control_qp = 30,
+        .picture_number = 3, .is_idr = 0,
+        .source_y = 0x06b0ad00, .source_uv = 0x06d08d00,
+        .reference_y = 0x0634b200, .reference_uv = 0x0655fa00,
+        .reference_map_luma = 0x06669e00,
+        .reference_map_chroma = 0x0666c000,
+        .reconstruction_y = 0x0634b200,
+        .reconstruction_uv = 0x0655fa00,
+        .reconstruction_map_luma = 0x0666d200,
+        .reconstruction_map_chroma = 0x06670400,
+        .stream_buffer = 0x066fe700,
+        .stream_part_offset = 0x000e7a80,
+        .ep2 = 0x066f6680, .ep1 = 0x066f0000,
+        .mv_previous = 0x06670700, .mv_current = 0x066b0400,
+        .ep3 = 0x06335d00,
+        .codec_hevc = 1,
+    };
+    size_t i;
+
+    assert(openimp_t41_build_command(slot, sizeof(slot), &params) == 0);
+    assert(slot[0] == 0x81700c01u);
+    assert(slot[3] == 0x40000d50u);
+    /* 60 x 34 CTBs */
+    assert(slot[5] == 60u * 34u - 1u);
+    assert(slot[8] == 3u && slot[9] == 2u && slot[11] == 2u &&
+           slot[12] == 1u && slot[13] == 0xffffffffu);
+    assert(slot[27] == ((33u << 12) | 59u | 0x400u));
+    assert(slot[29] == 0x5000u);
+    assert(slot[32] == (0x80000000u | (33u << 12) | 59u));
+    assert(slot[34] == (59u << 12));
+    assert(openimp_t41_reconstruction_luma_size_ctb(1920, 1080, 5u) ==
+           0x1e00u * ((1088u + 64u) >> 2));
+    assert(slot[110] == 0x21c000u && slot[111] == 0x10e000u);
+    assert(slot[152] == 0xb6u);
+    assert(slot[153] == 0x203bu);
+    assert(slot[176] == 0xf400010bu);
+    assert(slot[181] == 1u);
+    for (i = 0; i < 15u; ++i)
+        assert(entropy[i] == 0u);
+
+    /* Same picture as AVC: only the codec dependent words differ. */
+    params.codec_hevc = 0;
+    assert(openimp_t41_build_command(avc, sizeof(avc), &params) == 0);
+    for (i = 0; i < sizeof(slot) / sizeof(slot[0]); ++i) {
+        static const uint16_t differ[] = {
+            0, 5, 8, 9, 11, 12, 27, 29, 32, 34, 110, 111, 126, 127,
+            152, 176, 177, 178, 180,
+            OPENIMP_T41_CL_ENTROPY_OFFSET / 4u + 0u,
+            OPENIMP_T41_CL_ENTROPY_OFFSET / 4u + 1u,
+            OPENIMP_T41_CL_ENTROPY_OFFSET / 4u + 3u,
+            OPENIMP_T41_CL_ENTROPY_OFFSET / 4u + 4u,
+        };
+        size_t k;
+        int may_differ = 0;
+
+        for (k = 0; k < sizeof(differ) / sizeof(differ[0]); ++k)
+            may_differ |= differ[k] == i;
+        if (!may_differ && slot[i] != avc[i]) {
+            fprintf(stderr, "HEVC word %zu: %08x, AVC %08x\n",
+                    i, slot[i], avc[i]);
+            assert(0);
+        }
+    }
+
+    /* IDR: AVC sentinels, POC 0. */
+    params.codec_hevc = 1;
+    params.is_idr = 1;
+    params.picture_number = 0;
+    assert(openimp_t41_build_command(slot, sizeof(slot), &params) == 0);
+    assert(slot[8] == 0u && slot[9] == 0u && slot[12] == 0xffffffffu);
+    assert(slot[153] == 0x007fe7ffu);
+    assert(slot[24] == (0x21000000u | (30u << 16)));
+
+    /* 640x360 P: 20 x 12 CTBs, horizontal search range = width. */
+    params.width = 640;
+    params.height = 360;
+    params.is_idr = 0;
+    params.picture_number = 1;
+    assert(openimp_t41_build_command(slot, sizeof(slot), &params) == 0);
+    assert(slot[5] == 20u * 12u - 1u);
+    assert(slot[8] == 1u && slot[9] == 0u && slot[12] == 0xffffffffu);
+    assert(slot[153] == 0x2013u);
+    assert(slot[176] == openimp_t41_hwrc_grid_ctb(640, 360, 5u));
+    assert(slot[180] >> 30 == 3u);
+
+    /* No hardware RC: the HWRC words stay clear. */
+    params.hevc_no_hwrc = 1;
+    params.hevc_no_tmvp = 1;
+    params.hevc_cabac_init_idc0 = 1;
+    assert(openimp_t41_build_command(slot, sizeof(slot), &params) == 0);
+    for (i = 176u; i <= 181u; ++i)
+        assert(slot[i] == 0u);
+    assert(slot[182] == params.ep3);
+    assert(slot[3] == 0x00000c50u);
+
+    /* The switches do not touch AVC. */
+    params.codec_hevc = 0;
+    assert(openimp_t41_build_command(slot, sizeof(slot), &params) == 0);
+    assert(slot[181] == 1u && slot[3] == 0x40000d50u);
+
+    /* AVC sizes are the CTB-16 case of the codec-aware helpers. */
+    assert(openimp_t41_reconstruction_luma_size_ctb(1920, 1080, 4u) ==
+           openimp_t41_reconstruction_luma_size(1920, 1080));
+    assert(openimp_t41_reconstruction_manager_size_ctb(2560, 1440, 4u) ==
+           openimp_t41_reconstruction_manager_size(2560, 1440));
+    assert(openimp_t41_reconstruction_manager_size_ctb(1920, 1080, 5u) >
+           openimp_t41_reconstruction_manager_size(1920, 1080));
+    assert(openimp_t41_hwrc_grid_ctb(1920, 1080, 4u) ==
+           openimp_t41_hwrc_grid(1920, 1080));
+}
+
 static void test_encoding_status_oracle(void)
 {
     uint32_t slot[OPENIMP_T41_CL_SLOT_SIZE / sizeof(uint32_t)];
@@ -564,6 +688,7 @@ int main(void)
     test_main_idr_oracle();
     test_sub_first_p_oracle();
     test_builder_validation();
+    test_hevc_command();
     test_encoding_status_oracle();
     test_rate_control_statistics_oracle();
     test_entropy_status_oracle();

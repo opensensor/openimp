@@ -147,23 +147,38 @@ int openimp_t41_init_ep1(void *ep1, size_t size)
 int openimp_t41_update_ep1_lambda(void *ep1, size_t size,
                                   unsigned int picture_type)
 {
+    return openimp_t41_update_ep1_lambda_codec(ep1, size, picture_type, 0u);
+}
+
+int openimp_t41_update_ep1_lambda_codec(void *ep1, size_t size,
+                                        unsigned int picture_type,
+                                        unsigned int hevc)
+{
     uint8_t *output = (uint8_t *)ep1;
-    uint8_t avc_default_lda[T40_LAMBDA_TABLE_SIZE];
+    uint8_t default_lda[T40_LAMBDA_TABLE_SIZE];
     unsigned int qp;
 
-    if (!output || size < sizeof(avc_default_lda) || picture_type > 2u)
+    if (!output || size < sizeof(default_lda) || picture_type > 2u)
         return -1;
-    t40_lambda_default_table(avc_default_lda, 0);
+    t40_lambda_default_table(default_lda, hevc ? 1 : 0);
 
     /* Exact T41 AL_GetLambda layout: each QP is two big-endian 16-bit
-     * lanes, so only bytes 1 and 3 carry the selected AVC lambda values.
+     * lanes, so only bytes 1 and 3 carry the selected lambda values.
      * OEM prepares type 2 for IDR/I pictures and rewrites type 1 for P. */
     for (qp = 0u; qp < 52u; ++qp) {
         output[qp * 4u] = 0u;
         output[qp * 4u + 1u] =
-            avc_default_lda[qp * 4u + picture_type];
+            default_lda[qp * 4u + picture_type];
         output[qp * 4u + 2u] = 0u;
-        output[qp * 4u + 3u] = avc_default_lda[qp * 4u + 3u];
+        output[qp * 4u + 3u] = default_lda[qp * 4u + 3u];
     }
     return 0;
+}
+
+int openimp_t41_init_hevc_ep1(void *ep1, size_t size)
+{
+    if (ep1 == NULL || size < 0x6400u)
+        return -1;
+    memset(ep1, 0, size);
+    return openimp_t41_update_ep1_lambda_codec(ep1, size, 2u, 1u);
 }

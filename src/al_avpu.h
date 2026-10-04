@@ -269,6 +269,10 @@ typedef struct ALAvpuContext {
     uint32_t t41_rate_control_qp_by_buf[16];
     OpenIMPT41RateController t41_rate_controller;
     OpenIMPT41HWRCLevelState t41_hwrc_level;
+    /* Completion watchdog: CLOCK_MONOTONIC ms of the last submit, and the
+     * number of consecutive commands that never completed. */
+    uint64_t t41_submit_ms;
+    uint32_t t41_timeouts;
 #endif
 #if defined(PLATFORM_T31)
     /* Exact entropy bytes reported at completion status +0x104. */
