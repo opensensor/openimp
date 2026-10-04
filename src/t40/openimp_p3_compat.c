@@ -81,18 +81,30 @@ P3_UNSUPPORTED(IMP_ISP_SetSensorRegister)
 P3_UNSUPPORTED(IMP_ISP_Tuning_CreateOsdRgn)
 P3_UNSUPPORTED(IMP_ISP_Tuning_DestroyOsdRgn)
 P3_UNSUPPORTED(IMP_ISP_Tuning_GetAfWeight)
+#if !defined(PLATFORM_T41)   /* T41: openimp_p3_controls.c */
 P3_UNSUPPORTED(IMP_ISP_Tuning_GetCCMAttr)
+#endif
+#if !defined(PLATFORM_T41)   /* T41: openimp_p3_controls.c */
 P3_UNSUPPORTED(IMP_ISP_Tuning_GetGammaAttr)
+#endif
 P3_UNSUPPORTED(IMP_ISP_Tuning_GetMask)
+#if !defined(PLATFORM_T41)   /* T41: openimp_p3_controls.c */
 P3_UNSUPPORTED(IMP_ISP_Tuning_GetModuleControl)
+#endif
 #if !defined(PLATFORM_T41)   /* T41: openimp_p3_controls.c */
 P3_UNSUPPORTED(IMP_ISP_Tuning_GetSensorAttr)
 #endif
 P3_UNSUPPORTED(IMP_ISP_Tuning_SetAfWeight)
+#if !defined(PLATFORM_T41)   /* T41: openimp_p3_controls.c */
 P3_UNSUPPORTED(IMP_ISP_Tuning_SetCCMAttr)
+#endif
+#if !defined(PLATFORM_T41)   /* T41: openimp_p3_controls.c */
 P3_UNSUPPORTED(IMP_ISP_Tuning_SetGammaAttr)
+#endif
 P3_UNSUPPORTED(IMP_ISP_Tuning_SetMask)
+#if !defined(PLATFORM_T41)   /* T41: openimp_p3_controls.c */
 P3_UNSUPPORTED(IMP_ISP_Tuning_SetModuleControl)
+#endif
 P3_UNSUPPORTED(IMP_ISP_Tuning_SetOsdRgnAttr)
 P3_UNSUPPORTED(IMP_ISP_Tuning_SetVideoDrop)
 P3_UNSUPPORTED(IMP_ISP_Tuning_ShowOsdRgn)

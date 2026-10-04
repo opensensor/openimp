@@ -362,6 +362,45 @@ int IMP_ISP_Tuning_Awb_GetRgbCoefft(IMPVI_NUM num, IMPISPCoefftWb *attr)
 {
     return p3_tuning_pointer(num, 1, TISP_CID_AWB_RGB_COEFFT, attr);
 }
+
+/*
+ * Vendor T41 libimp (1.1.0/1.2.5 control numbering, the one the driver and
+ * the controls above use): each of these is a plain pointer pass-through of
+ * the public structure on the tuning ioctl.  open-tx-isp implements
+ *   AeScenceAttr  - AeTargetComp (0..255, 128 neutral) on the open AE,
+ *   AeExprInfo    - AeMaxIntegrationTime / AeMaxAGain caps (SET),
+ *   Module_Ratio  - SINTER (2D NR) and TEMPER (3D NR) strength;
+ * and answers -EOPNOTSUPP for HLC/BLC, manual exposure, DRC/DPC/defog
+ * ratios, CCM, gamma, CSC, module bypass, auto zoom and WDR output mode,
+ * so callers see the failure instead of an acknowledged no-op.
+ */
+#define TISP_CID_AE_SCENCE 0x08000024
+#define TISP_CID_GAMMA 0x08000025
+#define TISP_CID_WDR_OUTPUT_MODE 0x08000054
+#define TISP_CID_MODULE_CONTROL 0x08000072
+#define TISP_CID_AUTOZOOM 0x08000077
+#define TISP_CID_CCM 0x08000080
+#define TISP_CID_CSC 0x08000096
+#define TISP_CID_MODULE_RATIO 0x080000a4
+
+#define P3_T41_POINTER_PAIR(Name, Type, id)                                   \
+    int32_t IMP_ISP_Tuning_Set##Name(IMPVI_NUM num, Type *attr)               \
+    {                                                                         \
+        return p3_tuning_pointer(num, 0, (id), attr);                         \
+    }                                                                         \
+    int32_t IMP_ISP_Tuning_Get##Name(IMPVI_NUM num, Type *attr)               \
+    {                                                                         \
+        return p3_tuning_pointer(num, 1, (id), attr);                         \
+    }
+
+P3_T41_POINTER_PAIR(AeScenceAttr, IMPISPAEScenceAttr, TISP_CID_AE_SCENCE)
+P3_T41_POINTER_PAIR(Module_Ratio, IMPISPModuleRatioAttr, TISP_CID_MODULE_RATIO)
+P3_T41_POINTER_PAIR(CCMAttr, IMPISPCCMAttr, TISP_CID_CCM)
+P3_T41_POINTER_PAIR(GammaAttr, IMPISPGammaAttr, TISP_CID_GAMMA)
+P3_T41_POINTER_PAIR(ISPCSCAttr, IMPISPCSCAttr, TISP_CID_CSC)
+P3_T41_POINTER_PAIR(ModuleControl, IMPISPModuleCtl, TISP_CID_MODULE_CONTROL)
+P3_T41_POINTER_PAIR(AutoZoom, IMPISPAutoZoom, TISP_CID_AUTOZOOM)
+P3_T41_POINTER_PAIR(WdrOutputMode, IMPISPWdrOutputMode, TISP_CID_WDR_OUTPUT_MODE)
 #endif
 
 int32_t IMP_ISP_Tuning_SetISPRunningMode(IMPVI_NUM num,
