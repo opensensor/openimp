@@ -3,7 +3,7 @@
 Everything changed, extended or fixed in OpenIMP, open-tx-isp, timps and the thingino
 integration since the test campaign started on 2026-09-30. Kept up to date during the campaign.
 
-Last update: 2026-10-04 07:30.
+Last update: 2026-10-04 09:50.
 
 Cameras are anonymised: cam-A (T31), cam-B (T23), cam-C (T20), cam-D (T21), cam-E (T10), cam-F (T41).
 
@@ -87,6 +87,26 @@ Goal: identical image behaviour, but cleaner unload/reload, less memory and chec
 OpenIMP: T20 green flicker in the bottom rows fixed by filling the encoder padding rows (`claude/t20-bottom-chroma`; 0 green pixels in 30 frames). Faster IVS (`claude/ivs-opt`; T20 timps CPU 4.1 % → 2.7 % with motion on).
 
 Aggregates: `claude/open-tx-isp-all-4` and `claude/openimp-all-4` (pushed); 58 merged single branches removed. `claude/open-tx-isp-all-5` adds t21-robust and t31-robust-2 (T31: sensor flip with shvflip=1, unload leaks, lazy WDR buffers; MemFree drift per reload 460 → 45 KB); all four cameras flashed with -all-5 images.
+
+## Late morning (2026-10-04, 09:50)
+
+- **A/B vendor vs open stack (cam-C, T20, night, same scene, same timps a34a5a2; only libimp + tx-isp differ, both full OTA images):**
+
+  | Metric | Vendor stack | Open stack |
+  |---|---|---|
+  | timpsd CPU (all threads) | 25.2 % | **10.5 %** |
+  | System CPU busy | 33.5 % | **15.3 %** |
+  | timpsd RSS / threads | 6.8 MB / 30 | **3.7 MB / 21** |
+  | Start to first image | 3.0 s | **2.5 s** |
+  | Snapshot latency (avg of 10) | 0.45 s | **0.20 s** |
+  | Bitrate main / sub | 1248 / 261 kbit/s | 1311 / 200 kbit/s |
+  | MemFree | **52.3 MB** | 46.9 MB |
+
+  The open stack needs less than half the CPU and answers snapshots twice as fast; MemFree is ~5 MB lower because the open driver module is larger and keeps more in RAM. cam-C is back on all-20.
+- **Sensor module pin fixed on T21/T31/T41:** the sensor i2c driver was registered with the ISP module as owner, so the pin held the wrong module; rmmod of a sensor during streaming caused use-after-free oopses on T21. Now `rmmod` is refused while streaming, 0 oops (cam-A, cam-D); T20/T10 were already correct. [open-tx-isp claude/sensor-pin-all]
+- **T23 white balance flip with the vendor AE fixed:** the stream start cleared one black-level channel (register shared with stream enable) and the vendor AE did not rewrite it, so AWB saw +50 % blue and jumped to ~10000 K. Black level is now rewritten after stream start: stable R/B, ~5300 K on cam-B. [open-tx-isp claude/t23-ae-awb-flip]
+- **T31 IP delta read-back:** `SetChnQpIPDelta` now updates the value `GetChnAttrRcMode` returns, like the vendor; timps QA 8b on cam-A: 46 pass, 0 fail. [openimp claude/t31-ipdelta-readback]
+- **Release branches:** `next` created in openimp (d894109) and open-tx-isp (4df00ba).
 
 ## Morning (2026-10-04, 07:30)
 
