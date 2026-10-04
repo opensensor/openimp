@@ -393,6 +393,7 @@ int DMA_RmemStats(size_t *used, size_t *size, size_t *largest_free)
     return -1;
 }
 void DMA_LogRmem(const char *reason) { (void)reason; }
+void DMA_RmemStreamStarted(void) {}
 int remove_observer_from_module(void *src, void *dst)
 {
     (void)src; (void)dst;

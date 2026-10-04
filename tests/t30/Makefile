@@ -62,6 +62,11 @@ t21_rmem_layout_test: $(T21_RMEM_SOURCES) $(ROOT)/src/rmem_arena.h \
 		-Wl,--wrap=open,--wrap=close,--wrap=ioctl \
 		-o $@ $(T21_RMEM_SOURCES) -pthread -lm
 
+rmem_highwater_test: rmem_highwater_test.c $(ROOT)/src/dma_alloc.c \
+	$(ROOT)/src/dma_alloc.h $(ROOT)/src/rmem_arena.h
+	$(CC) $(CFLAGS) -Wno-unused-function -I$(ROOT)/include -I$(ROOT)/src \
+		-o $@ rmem_highwater_test.c -pthread
+
 # T23 with the reference ring: ring, EMC and the shared bitstream area.
 t23_ring_layout_test: $(T21_RMEM_SOURCES) $(ROOT)/src/rmem_arena.h \
 	$(ROOT)/src/t21/t21_ref_ring.h $(ROOT)/src/t30/t30_helix_encoder.h
@@ -232,12 +237,13 @@ ref_ring_test_t23: ref_ring_test.c $(ROOT)/src/t21/t21_h264_descriptor.c \
 	$(CC) $(CFLAGS) -DT21_HELIX_T23_DELTAS -I$(ROOT)/src -o $@ \
 		ref_ring_test.c $(ROOT)/src/t21/t21_h264_descriptor.c
 
-check: ref_ring_test ref_ring_test_t23 descriptor_test annexb_test level_test helix_encoder_test \
+check: rmem_highwater_test ref_ring_test ref_ring_test_t23 descriptor_test annexb_test level_test helix_encoder_test \
 	helix_encoder_test_t21 helix_encoder_test_t20 t21_rmem_layout_test t23_ring_layout_test \
 	t21_sinter_map_test helix_jpeg_test_t21 helix_jpeg_test_t20 helix_jpeg_test_t23 \
 	ivs_framework_test_t21 ivs_framework_test_t20 ivs_move_bench_t20 \
 	fs_lifecycle_test_t21 fs_lifecycle_test_t20 fs_lifecycle_test_t23 \
 	system_test rc_readback_test_t21 rc_readback_test_t20 rc_readback_test_t23
+	./rmem_highwater_test
 	./ref_ring_test
 	./ref_ring_test_t23
 	./descriptor_test

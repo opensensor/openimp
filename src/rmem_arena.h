@@ -29,6 +29,7 @@ typedef struct {
     size_t size;                /* arena bytes */
     size_t used;                /* bytes in live extents */
     size_t high_water;          /* end of the highest extent ever placed */
+    size_t peak_used;           /* highest value 'used' ever reached */
     int count;
     RmemExtent ext[RMEM_ARENA_MAX_EXTENTS];
 } RmemArena;
@@ -43,6 +44,7 @@ static inline void rmem_arena_init(RmemArena *a, size_t size)
     a->size = size;
     a->used = 0;
     a->high_water = 0;
+    a->peak_used = 0;
     a->count = 0;
 }
 
@@ -59,6 +61,14 @@ static inline size_t rmem_arena_largest_gap(const RmemArena *a)
     if (a->size > prev_end && a->size - prev_end > best)
         best = a->size - prev_end;
     return best;
+}
+
+/* Free bytes behind the highest extent: the only gap a larger arena grows. */
+static inline size_t rmem_arena_tail_gap(const RmemArena *a)
+{
+    size_t end = a->count ? a->ext[a->count - 1].off + a->ext[a->count - 1].len : 0;
+
+    return a->size > end ? a->size - end : 0;
 }
 
 /* Returns 0 and the page-aligned offset, or -1 if nothing fits. */
@@ -92,6 +102,8 @@ static inline int rmem_arena_alloc(RmemArena *a, size_t size, size_t *off_out)
     a->ext[best_idx].len = len;
     a->count++;
     a->used += len;
+    if (a->used > a->peak_used)
+        a->peak_used = a->used;
     if (best_off + len > a->high_water)
         a->high_water = best_off + len;
     *off_out = best_off;
@@ -130,6 +142,8 @@ static inline int rmem_arena_alloc_top(RmemArena *a, size_t size,
     a->ext[best_idx].len = len;
     a->count++;
     a->used += len;
+    if (a->used > a->peak_used)
+        a->peak_used = a->used;
     if (best_off + len > a->high_water)
         a->high_water = best_off + len;
     *off_out = best_off;

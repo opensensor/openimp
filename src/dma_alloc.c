@@ -95,6 +95,8 @@ static size_t g_rmem_size;
 static void *g_rmem_virt_base = NULL;
 static RmemArena g_rmem_arena;    /* under g_alloc_mutex */
 static int g_rmem_arena_ready = 0;
+static int g_rmem_stream_started;   /* under g_alloc_mutex */
+static size_t g_rmem_peak_logged;   /* under g_alloc_mutex */
 static int g_rmem_oom_mapped = 0;   /* map logged at the first OOM */
 static char g_chosen_dev_path[64] = {0};
 
@@ -593,6 +595,39 @@ static int dma_free_buffer(DMABufferRecord *buf)
     return 0;
 }
 
+/* Peak and shortage reporting.  Neither runs per frame: the peak line is
+ * printed when the peak grows after a stream started, the shortage line
+ * when an allocation fails. */
+static void rmem_log_peak(size_t peak, size_t size)
+{
+    IMP_LOG_INFO("DMA", "rmem peak %zu KB of %zu KB (free %zu KB)",
+                 peak / 1024u, size / 1024u,
+                 (size - (peak < size ? peak : size)) / 1024u);
+}
+
+static void rmem_log_alloc_failed(const RmemArena *a, size_t req,
+                                  const char *owner)
+{
+    size_t len = rmem_arena_round(req);
+    size_t tail = rmem_arena_tail_gap(a);
+    size_t largest = rmem_arena_largest_gap(a);
+    size_t free_b = a->size - (a->used < a->size ? a->used : a->size);
+    size_t missing, new_size;
+
+    if (a->count >= RMEM_ARENA_MAX_EXTENTS) {
+        IMP_LOG_ERR("DMA", "rmem allocation of %zu KB for %s failed: allocation table full (%d extents), free %zu KB",
+                    (req + 1023u) / 1024u, owner, a->count, free_b / 1024u);
+        return;
+    }
+    /* Growing the arena only enlarges the gap behind the last extent. */
+    missing = len > tail ? len - tail : 0;
+    new_size = (a->size + missing + 0xfffffu) & ~(size_t)0xfffffu;
+    IMP_LOG_ERR("DMA", "rmem allocation of %zu KB for %s failed: free %zu KB, largest block %zu KB; raise rmem by at least %zu KB (suggest rmem=%zuM)",
+                (req + 1023u) / 1024u, owner, free_b / 1024u,
+                largest / 1024u, (missing + 1023u) / 1024u,
+                new_size >> 20);
+}
+
 static int dma_alloc_descriptor_internal(int pool_id, IMPDMABufferInfo *info_out, int size, const char *tag, int top)
 {
     if (info_out == NULL || size <= 0) {
@@ -606,6 +641,7 @@ static int dma_alloc_descriptor_internal(int pool_id, IMPDMABufferInfo *info_out
     }
 
     int log_map = 0;
+    size_t log_peak = 0, log_peak_size = 0;
     DMABufferRecord *buf = (DMABufferRecord*)calloc(1, sizeof(DMABufferRecord));
     if (buf == NULL) {
         LOG_DMA("Alloc: calloc failed");
@@ -637,14 +673,18 @@ static int dma_alloc_descriptor_internal(int pool_id, IMPDMABufferInfo *info_out
                 buf->virt_addr = (void*)((uintptr_t)g_rmem_virt_base + off);
                 buf->phys_addr = g_rmem_base_phys + (uint32_t)off;
                 buf->flags |= 0x2;
+                if (g_rmem_stream_started &&
+                    g_rmem_arena.peak_used > g_rmem_peak_logged) {
+                    g_rmem_peak_logged = g_rmem_arena.peak_used;
+                    log_peak = g_rmem_arena.peak_used;
+                    log_peak_size = g_rmem_arena.size;
+                }
                 LOG_DMA("Alloc: %s size=%d phys=0x%x virt=%p (rmem off=0x%zx used=%zu/%zu)",
                         buf->name[0] ? buf->name : "(unnamed)", size, buf->phys_addr, buf->virt_addr, off,
                         g_rmem_arena.used, g_rmem_arena.size);
             } else {
-                IMP_LOG_ERR("DMA", "rmem out of memory: requested %d (%s), used %zu of %zu, largest free block %zu, %d allocations",
-                            size, buf->tag[0] ? buf->tag : "untagged",
-                            g_rmem_arena.used, g_rmem_arena.size,
-                            rmem_arena_largest_gap(&g_rmem_arena), g_rmem_arena.count);
+                rmem_log_alloc_failed(&g_rmem_arena, (size_t)size,
+                                      buf->tag[0] ? buf->tag : "untagged");
                 /* The map says who holds the arena; once per run is
                  * enough (it is printed after the lock is dropped). */
                 if (!g_rmem_oom_mapped) {
@@ -711,6 +751,8 @@ static int dma_alloc_descriptor_internal(int pool_id, IMPDMABufferInfo *info_out
         return -1;
     }
     pthread_mutex_unlock(&g_alloc_mutex);
+    if (log_peak)
+        rmem_log_peak(log_peak, log_peak_size);
 
     if (register_buffer(buf) < 0) {
         LOG_DMA("Alloc: failed to register buffer");
@@ -974,6 +1016,38 @@ int DMA_RmemStats(size_t *used, size_t *size, size_t *largest_free)
         *largest_free = rmem_arena_largest_gap(&g_rmem_arena);
     pthread_mutex_unlock(&g_alloc_mutex);
     return 0;
+}
+
+int DMA_RmemPeak(size_t *peak)
+{
+    if (!g_is_rmem || g_rmem_virt_base == NULL)
+        return -1;
+    pthread_mutex_lock(&g_alloc_mutex);
+    if (peak)
+        *peak = g_rmem_arena.peak_used;
+    pthread_mutex_unlock(&g_alloc_mutex);
+    return 0;
+}
+
+void DMA_RmemStreamStarted(void)
+{
+    size_t peak, size;
+    int first;
+
+    if (!g_is_rmem || g_rmem_virt_base == NULL)
+        return;
+    pthread_mutex_lock(&g_alloc_mutex);
+    first = !g_rmem_stream_started;
+    g_rmem_stream_started = 1;
+    peak = g_rmem_arena.peak_used;
+    size = g_rmem_arena_ready ? g_rmem_arena.size : g_rmem_size;
+    if (peak > g_rmem_peak_logged)
+        g_rmem_peak_logged = peak;
+    else if (!first)
+        peak = 0;
+    pthread_mutex_unlock(&g_alloc_mutex);
+    if (first || peak)
+        rmem_log_peak(peak, size);
 }
 
 int DMA_Is_RMEM(void)
