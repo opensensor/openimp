@@ -1943,8 +1943,17 @@ int IMP_FrameSource_EnableChn(int chnNum)
     int initial_queued_ok;
     int frame_depth;
 
-    if (chnNum < 0 || chnNum >= FS_MAX_CHANNELS) return -1;
-    if (gFrameSource == NULL) return -1;
+    if (chnNum < 0 || chnNum >= FS_MAX_CHANNELS) {
+        IMP_LOG_LIMITED(LOG_ERR, "Framesource",
+                        "EnableChn: invalid chnNum %d", chnNum);
+        return -1;
+    }
+    if (gFrameSource == NULL) {
+        IMP_LOG_LIMITED(LOG_ERR, "Framesource",
+                        "EnableChn(%d): FrameSource is not initialised "
+                        "(IMP_System_Init / CreateChn first)", chnNum);
+        return -1;
+    }
 
     fs_bind_trace("libimp/FSB: EnableChn enter ch=%d gFrameSource=%p ra=%p\n",
                   chnNum, gFrameSource, fs_retaddr());
@@ -1956,6 +1965,9 @@ int IMP_FrameSource_EnableChn(int chnNum)
     }
     if (fs_chan_get_state(chnNum) != 1) {
         pthread_mutex_unlock(&g_fs_lock);
+        IMP_LOG_LIMITED(LOG_ERR, "Framesource",
+                        "EnableChn(%d): channel was not created "
+                        "(CreateChn first)", chnNum);
         return -1;
     }
 
@@ -1973,6 +1985,10 @@ int IMP_FrameSource_EnableChn(int chnNum)
         if (ctx->fd < 0) {
             fs_trace("libimp/FS: enable open-fail ch=%d\n", chnNum);
             pthread_mutex_unlock(&g_fs_lock);
+            IMP_LOG_LIMITED(LOG_ERR, "Framesource",
+                            "EnableChn(%d): cannot open the frame device "
+                            "(ISP driver not loaded or sensor not enabled?)",
+                            chnNum);
             return -1;
         }
         fs_trace("libimp/FS: enable open-ok ch=%d fd=%d\n", chnNum, ctx->fd);
@@ -1996,6 +2012,7 @@ int IMP_FrameSource_EnableChn(int chnNum)
 
     if (fs_set_format(ctx->fd, &fmt) < 0) {
         fs_trace("libimp/FS: enable set-format-fail ch=%d fd=%d\n", chnNum, ctx->fd);
+        IMP_LOG_LIMITED(LOG_ERR, "Framesource", "EnableChn(%d): set format failed", chnNum);
         fs_close_chn_fd(chnNum, ctx);
         pthread_mutex_unlock(&g_fs_lock);
         return -1;
@@ -2022,6 +2039,7 @@ int IMP_FrameSource_EnableChn(int chnNum)
 
     if (VBMCreatePool(chnNum, vbm_fmt, g_fs_vbm_ops, gFrameSource) < 0) {
         fs_trace("libimp/FS: enable VBMCreatePool-fail ch=%d\n", chnNum);
+        IMP_LOG_LIMITED(LOG_ERR, "Framesource", "EnableChn(%d): cannot create the frame pool (rmem exhausted?)", chnNum);
         fs_close_chn_fd(chnNum, ctx);
         pthread_mutex_unlock(&g_fs_lock);
         return -1;
@@ -2031,6 +2049,7 @@ int IMP_FrameSource_EnableChn(int chnNum)
     bufcnt = fs_set_buffer_count(ctx->fd, requested_bufcnt);
     if (bufcnt < 0) {
         fs_trace("libimp/FS: enable set-bufcnt-fail ch=%d req=%d\n", chnNum, requested_bufcnt);
+        IMP_LOG_LIMITED(LOG_ERR, "Framesource", "EnableChn(%d): cannot set the buffer count", chnNum);
         VBMDestroyPool(chnNum);
         fs_close_chn_fd(chnNum, ctx);
         pthread_mutex_unlock(&g_fs_lock);
@@ -2056,6 +2075,7 @@ int IMP_FrameSource_EnableChn(int chnNum)
         if (fs_set_depth(ctx->fd, banks) < 0) {
             fs_trace("libimp/FS: enable set-banks-fail ch=%d fd=%d banks=%d depth=%d\n",
                      chnNum, ctx->fd, banks, frame_depth);
+            IMP_LOG_LIMITED(LOG_ERR, "Framesource", "EnableChn(%d): cannot set the bank count", chnNum);
             VBMFlushFrame(chnNum);
             fs_close_chn_fd(chnNum, ctx);
             VBMDestroyPool(chnNum);
@@ -2071,6 +2091,7 @@ int IMP_FrameSource_EnableChn(int chnNum)
     queued_ok = VBMFillPool(chnNum);
     if (queued_ok < 0) {
         fs_trace("libimp/FS: enable VBMFillPool-fail ch=%d\n", chnNum);
+        IMP_LOG_LIMITED(LOG_ERR, "Framesource", "EnableChn(%d): cannot queue the frame buffers", chnNum);
         fs_close_chn_fd(chnNum, ctx);
         VBMDestroyPool(chnNum);
         pthread_mutex_unlock(&g_fs_lock);
@@ -2090,6 +2111,7 @@ int IMP_FrameSource_EnableChn(int chnNum)
         if (pthread_create(&ctx->thread, NULL, frame_pooling_thread,
                            &chn_id_storage[chnNum]) != 0) {
             fs_trace("libimp/FS: enable pthread-create-fail ch=%d fd=%d\n", chnNum, ctx->fd);
+            IMP_LOG_LIMITED(LOG_ERR, "Framesource", "EnableChn(%d): cannot start the capture thread", chnNum);
             ctx->thread = 0;
             FS_FLAG_STORE(ctx->running, 0);
             fs_stream_off(ctx->fd);
@@ -2114,6 +2136,7 @@ int IMP_FrameSource_EnableChn(int chnNum)
 
     if (fs_stream_on(ctx->fd) < 0) {
         fs_trace("libimp/FS: enable stream-on-fail ch=%d fd=%d\n", chnNum, ctx->fd);
+        IMP_LOG_LIMITED(LOG_ERR, "Framesource", "EnableChn(%d): STREAMON failed", chnNum);
         /* The worker waits for the ENABLED state: it leaves at once. */
         FS_FLAG_STORE(ctx->running, 0);
         fs_stop_worker(chnNum, ctx);
@@ -2173,6 +2196,8 @@ int IMP_FrameSource_EnableChn(int chnNum)
 
     if (chnNum == 0 && initial_queued_ok <= 0 && queued_ok <= 0) {
         /* The worker already saw ENABLED: stop it as DisableChn does. */
+        IMP_LOG_LIMITED(LOG_ERR, "Framesource",
+                        "EnableChn(0): no frame buffer could be queued to the ISP driver");
         FS_FLAG_STORE(ctx->running, 0);
         fs_stream_off(ctx->fd);
         fs_stop_worker(chnNum, ctx);
@@ -2296,8 +2321,17 @@ int IMP_FrameSource_DisableChn(int chnNum)
 {
     FsChnCtx *ctx;
 
-    if (chnNum < 0 || chnNum >= FS_MAX_CHANNELS) return -1;
-    if (gFrameSource == NULL) return -1;
+    if (chnNum < 0 || chnNum >= FS_MAX_CHANNELS) {
+        IMP_LOG_LIMITED(LOG_ERR, "Framesource",
+                        "DisableChn: invalid chnNum %d", chnNum);
+        return -1;
+    }
+    if (gFrameSource == NULL) {
+        IMP_LOG_LIMITED(LOG_ERR, "Framesource",
+                        "DisableChn(%d): FrameSource is not initialised "
+                        "(IMP_System_Init / CreateChn first)", chnNum);
+        return -1;
+    }
 
     pthread_mutex_lock(&g_fs_lock);
     ctx = &g_fs_ctx[chnNum];
@@ -2436,7 +2470,12 @@ int IMP_FrameSource_SetSource(int extchnNum, int sourcechnNum)
 
 int IMP_FrameSource_GetFrame(int chnNum, void **frame)
 {
-    if (frame == NULL || chnNum < 0 || chnNum >= FS_MAX_CHANNELS) return -1;
+    if (frame == NULL || chnNum < 0 || chnNum >= FS_MAX_CHANNELS) {
+        IMP_LOG_LIMITED(LOG_ERR, "Framesource",
+                        "GetFrame: invalid argument (chnNum %d, frame %p)",
+                        chnNum, (void *)frame);
+        return -1;
+    }
     return VBMGetFrame(chnNum, frame);
 }
 
@@ -2453,7 +2492,12 @@ int IMP_FrameSource_GetTimedFrame(int chnNum, void *framets, int block,
 
 int IMP_FrameSource_ReleaseFrame(int chnNum, void *frame)
 {
-    if (chnNum < 0 || chnNum >= FS_MAX_CHANNELS || frame == NULL) return -1;
+    if (chnNum < 0 || chnNum >= FS_MAX_CHANNELS || frame == NULL) {
+        IMP_LOG_LIMITED(LOG_ERR, "Framesource",
+                        "ReleaseFrame: invalid argument (chnNum %d, frame %p)",
+                        chnNum, frame);
+        return -1;
+    }
     return VBMReleaseFrame(chnNum, frame);
 }
 
@@ -2466,11 +2510,21 @@ int IMP_FrameSource_SnapFrame(int chnNum, IMPPixelFormat fmt, int width,
     int src_size = 0;
     size_t expected = 0;
 
-    if (out_buffer == NULL || info == NULL) return -1;
-    if (chnNum < 0 || chnNum >= FS_MAX_CHANNELS) return -1;
+    if (out_buffer == NULL || info == NULL ||
+        chnNum < 0 || chnNum >= FS_MAX_CHANNELS) {
+        IMP_LOG_LIMITED(LOG_ERR, "Framesource",
+                        "SnapFrame: invalid argument (chnNum %d, buffer %p, "
+                        "info %p)", chnNum, out_buffer, (void *)info);
+        return -1;
+    }
     if (IMP_FrameSource_GetChnAttr(chnNum, &attr) < 0) return -1;
     if (attr.picWidth != width || attr.picHeight != height ||
         attr.pixFmt != fmt) {
+        IMP_LOG_LIMITED(LOG_ERR, "Framesource",
+                        "SnapFrame(%d): %dx%d fmt 0x%x does not match the "
+                        "channel (%dx%d fmt 0x%x)", chnNum, width, height,
+                        (unsigned int)fmt, attr.picWidth, attr.picHeight,
+                        (unsigned int)attr.pixFmt);
         return -1;
     }
 

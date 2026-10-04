@@ -30,6 +30,7 @@
 #endif
 
 #include "imp_log_fun.h"
+#include "imp_log_int.h"
 
 #include "isp_tseries_dev.h"
 #include "isp_mask_rgb2yuv.h"
@@ -353,7 +354,15 @@ int IMP_ISP_WDR_ENABLE(int arg1)
 
 int IMP_ISP_WDR_ENABLE_Get(int *arg1)
 {
-    int32_t v0_1 = ((ISPDevice *)gISP)->wdr_mode;
+    int32_t v0_1;
+
+    if (arg1 == NULL || gISP == NULL) {
+        IMP_LOG_LIMITED(LOG_ERR, "IMP-ISP",
+                        "WDR_ENABLE_Get: %s", arg1 == NULL
+                        ? "NULL result pointer" : "ISP is not opened");
+        return -1;
+    }
+    v0_1 = ((ISPDevice *)gISP)->wdr_mode;
 
     if (v0_1 == 0) {
         *arg1 = 0;
@@ -460,6 +469,11 @@ int IMP_ISP_GetSensorRegister(uint32_t arg1, uint32_t *arg2)
     int32_t v0_1;
     int32_t v1_6;
 
+    if (arg2 == NULL) {
+        IMP_LOG_LIMITED(LOG_ERR, "IMP-ISP",
+                        "GetSensorRegister: NULL value pointer");
+        return -1;
+    }
     if (gISP_1 == NULL) {
         v0_1 = IMP_Log_Get_Option();
         var_54 = "ISPDEV cannot open\n";
@@ -538,6 +552,11 @@ int IMP_ISP_Tuning_GetTotalGain(uint32_t *arg1)
 {
     ISPDevice *gISP_1 = gISP;
 
+    if (arg1 == NULL) {
+        IMP_LOG_LIMITED(LOG_ERR, "IMP-ISP",
+                        "Tuning_GetTotalGain: NULL result pointer");
+        return -1;
+    }
     if (gISP_1 == NULL || gISP_1->tuning == NULL) {
         imp_log_fun(6, IMP_Log_Get_Option(), 2, "IMP-ISP",
             "/home/user/git/proj/sdk-lv3/src/imp/isp/isp_tseries.c", 0x550,
@@ -3916,6 +3935,11 @@ int IMP_ISP_AddSensor(IMPSensorInfo *pinfo)
     uint8_t *isp_b = (uint8_t *)isp;
     kmsg_trace("libimp/ISP: AddSensor entry gISP=%p\n", (void *)isp);
     char *name = (char *)pinfo;
+
+    if (pinfo == NULL) {
+        IMP_LOG_LIMITED(LOG_ERR, "IMP-ISP", "AddSensor: NULL sensor info");
+        return -1;
+    }
 
     if (isp == NULL) {
         imp_log_fun(6, IMP_Log_Get_Option(), 2, "IMP-ISP",
