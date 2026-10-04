@@ -3,7 +3,7 @@
 Everything changed, extended or fixed in OpenIMP, open-tx-isp, timps and the thingino
 integration since the test campaign started on 2026-09-30. Kept up to date during the campaign.
 
-Last update: 2026-10-04 14:40.
+Last update: 2026-10-04 15:50.
 
 Cameras are anonymised: cam-A (T31), cam-B (T23), cam-C (T20), cam-D (T21), cam-E (T10), cam-F (T41).
 
@@ -87,6 +87,13 @@ Goal: identical image behaviour, but cleaner unload/reload, less memory and chec
 OpenIMP: T20 green flicker in the bottom rows fixed by filling the encoder padding rows (`claude/t20-bottom-chroma`; 0 green pixels in 30 frames). Faster IVS (`claude/ivs-opt`; T20 timps CPU 4.1 % → 2.7 % with motion on).
 
 Aggregates: `claude/open-tx-isp-all-4` and `claude/openimp-all-4` (pushed); 58 merged single branches removed. `claude/open-tx-isp-all-5` adds t21-robust and t31-robust-2 (T31: sensor flip with shvflip=1, unload leaks, lazy WDR buffers; MemFree drift per reload 460 → 45 KB); all four cameras flashed with -all-5 images.
+
+## Late afternoon (2026-10-04, 15:50)
+
+- **T41 control paths:** AE compensation (`AeScenceAttr.AeTargetComp`), gain and exposure caps (`AeExprInfo`: `AeMaxAGain` linear Q10, `AeMaxIntegrationTime` in sensor lines) and 2D/3D noise reduction (`Module_Ratio` index 0/1) now reach the ISP on cam-F (measured: comp 2 lowers the target 65 → 1, gain cap 8x holds 6.9x, sinter 255 cuts wall noise from ~7 to ~1). The T41 driver used to acknowledge unknown tuning IDs with 0; DRC, DPC, defog, HLC, BLC, WDR, CCM, gamma now return "not supported" instead of a silent success. Crop/rotation (I2D) still open. AE itself regulates correctly (it was saturated at max gain in a dark room). cam-F anti-flicker set to 50 Hz.
+- **Two new T23 test cameras on the open stack:** cam-G (T23, SC1A4T) and cam-H (T23, SC2336P), full OTA with the boot guard, rmem 22 MB: both streams High profile, 0 oops, 0 VPU errors; rmem peak 17.3 MB and 19.0 MB. First devices with these two sensors on the open stack.
+- **Branch layout in thingino:** the open-stack work moves from the user's `ciao` fork branch to an `aperto` branch based on upstream `aperto` (Paul's open ISP stack branch, U-Boot 2013.07 like ciao); `ciao` was reverted to upstream plus the streamer work. Streamer changes land only in `ciao` and are merged into `aperto` automatically. The upstream PRs were closed and will be resubmitted against `aperto`; the 64 KiB U-Boot env fix stays local because `ciao`/`aperto` build U-Boot 2013.07.
+- **Pins:** thingino will pin the Lu-Fi forks of OpenIMP and open-tx-isp by release tag (first tag after the 24 h soak).
 
 ## Afternoon (2026-10-04, 14:40)
 
