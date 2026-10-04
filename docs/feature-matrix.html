@@ -82,10 +82,10 @@ th small{font-weight:400;color:var(--muted)}
 </tr>
 <tr id="r-bootguard"><td><a href="#n-bootguard">Boot guard (protection against boot loops)</a></td><td class="vend">not present</td>
 <td class="s-plus"><span class="sym" title="improved beyond vendor">✅+</span><span class="txt">isp_open=auto</span></td>
-<td class="s-wip"><span class="sym" title="in progress">🔧</span><span class="txt">S10isp-guard + isp_open=auto in the local image overlay; ships with the next image, not on the device yet</span></td>
+<td class="s-ok"><span class="sym" title="supported">✅</span><span class="txt">✅ S10isp-guard + isp_open=auto ship in the all-20/all-21 images (local thingino overlay); active on all test cameras</span></td>
 <td class="s-plus"><span class="sym" title="improved beyond vendor">✅+</span><span class="txt">S10isp-guard, u-boot isp_open=manual|auto|off</span></td>
-<td class="s-wip"><span class="sym" title="in progress">🔧</span><span class="txt">S10isp-guard + isp_open=auto in the local image overlay; ships with the next image, not on the device yet</span></td>
-<td class="s-wip"><span class="sym" title="in progress">🔧</span><span class="txt">S10isp-guard + isp_open=auto in the local image overlay; ships with the next image, not on the device yet</span></td>
+<td class="s-ok"><span class="sym" title="supported">✅</span><span class="txt">✅ S10isp-guard + isp_open=auto ship in the all-20/all-21 images (local thingino overlay); active on all test cameras</span></td>
+<td class="s-ok"><span class="sym" title="supported">✅</span><span class="txt">✅ S10isp-guard + isp_open=auto ship in the all-20/all-21 images (local thingino overlay); active on all test cameras</span></td>
 <td class="s-na"><span class="sym" title="hardware does not have it">—</span><span class="txt"></span></td>
 </tr>
 <tr class="grp"><td colspan="8">Exposure (AE)</td></tr>
@@ -249,7 +249,7 @@ th small{font-weight:400;color:var(--muted)}
 <td class="s-na"><span class="sym" title="hardware does not have it">—</span><span class="txt">— no HEVC hardware; OpenIMP rejects PT_H265 with -1 and a clear log (vendor: silent empty channel) [claude/h265-reject]</span></td>
 <td class="s-na"><span class="sym" title="hardware does not have it">—</span><span class="txt">— no HEVC hardware; OpenIMP rejects PT_H265 with -1 and a clear log (vendor: silent empty channel) [claude/h265-reject]</span></td>
 <td class="s-ok"><span class="sym" title="supported">✅</span><span class="txt">real HEVC on AVPU (VPS/SPS/PPS, CABAC); 2×900 frames, 0 errors</span></td>
-<td class="s-wip"><span class="sym" title="in progress">🔧</span><span class="txt">in work: AVPU HEVC path ported from T31 [claude/t41-h265]</span></td>
+<td class="s-ok"><span class="sym" title="supported">✅</span><span class="txt">✅ AVPU HEVC path (as T31): 1080p H.265 decodes clean, a stuck AVPU job times out after 2 s and resets the core [claude/t41-h265, rev5 image]</span></td>
 </tr>
 <tr id="r-jpeg"><td><a href="#n-jpeg">JPEG / MJPEG / snapshot</a></td><td class="vend">hardware JPEG via vendor libimp/helixd</td>
 <td class="s-ok"><span class="sym" title="supported">✅</span><span class="txt">snapshots + MJPEG 25 B/5 s; JPEG buffer 1 MiB (−328 KiB)</span></td>
@@ -312,23 +312,23 @@ th small{font-weight:400;color:var(--muted)}
 <td class="s-ok"><span class="sym" title="supported">✅</span><span class="txt">device-tested: AAC 16 kHz mono 32 kbit/s in RTSP + fMP4, volume/gain/mute work, gain clamp 31 (ambient levels, gain 31 reading noisy)</span></td>
 <td class="s-ok"><span class="sym" title="supported">✅</span><span class="txt">device-tested: AAC 16 kHz mono 32 kbit/s in RTSP + fMP4, volume/gain/mute work, gain clamp 31 (little gain effect, -75 dB floor)</span></td>
 <td class="s-ok"><span class="sym" title="supported">✅</span><span class="txt">device-tested: AAC 16 kHz mono 32 kbit/s in RTSP + fMP4, volume/gain/mute work, gain clamp 31</span></td>
-<td class="s-unk"><span class="sym" title="unknown">?</span><span class="txt"></span></td>
+<td class="s-ok"><span class="sym" title="supported">✅</span><span class="txt">✅ microphone in the RTSP stream (AAC 16 kHz), real room-noise signal (mean -64 dB, peak -46 dB; T31 reference -57/-43 dB); no speech test</span></td>
 <td class="s-ok"><span class="sym" title="supported">✅</span><span class="txt">device-tested: AAC 16 kHz mono 32 kbit/s in RTSP + fMP4, volume/gain/mute work, gain clamp 31; also PCMU 8 kHz via RTSP (not in fMP4)</span></td>
-<td class="s-unk"><span class="sym" title="unknown">?</span><span class="txt"></span></td>
+<td class="s-ok"><span class="sym" title="supported">✅</span><span class="txt">✅ microphone in the RTSP stream (AAC 16 kHz), real room-noise signal (mean -64 dB, peak -53 dB); no speech test</span></td>
 </tr>
 <tr id="r-ao"><td><a href="#n-ao">Audio output (AO, speaker)</a></td><td class="vend">IMP_AO</td>
-<td class="s-unk"><span class="sym" title="unknown">?</span><span class="txt"></span></td>
-<td class="s-unk"><span class="sym" title="unknown">?</span><span class="txt"></span></td>
-<td class="s-unk"><span class="sym" title="unknown">?</span><span class="txt"></span></td>
-<td class="s-unk"><span class="sym" title="unknown">?</span><span class="txt"></span></td>
+<td class="s-unk"><span class="sym" title="unknown">?</span><span class="txt">not tested on purpose: the maintainer does not allow test cameras to play audio</span></td>
+<td class="s-unk"><span class="sym" title="unknown">?</span><span class="txt">not tested on purpose: the maintainer does not allow test cameras to play audio</span></td>
+<td class="s-unk"><span class="sym" title="unknown">?</span><span class="txt">not tested on purpose: the maintainer does not allow test cameras to play audio</span></td>
+<td class="s-unk"><span class="sym" title="unknown">?</span><span class="txt">not tested on purpose: the maintainer does not allow test cameras to play audio</span></td>
 <td class="s-ok"><span class="sym" title="supported">✅</span><span class="txt">volume/mute work, whole OSS fragments (tested on garage)</span></td>
-<td class="s-unk"><span class="sym" title="unknown">?</span><span class="txt"></span></td>
+<td class="s-unk"><span class="sym" title="unknown">?</span><span class="txt">not tested on purpose: the maintainer does not allow test cameras to play audio</span></td>
 </tr>
 <tr id="r-aec"><td><a href="#n-aec">Echo cancellation (AEC)</a></td><td class="vend">IMP_AI_EnableAec</td>
 <td class="s-unk"><span class="sym" title="unknown">?</span><span class="txt">changelog mentions only T31/T23</span></td>
 <td class="s-unk"><span class="sym" title="unknown">?</span><span class="txt">device test open</span></td>
 <td class="s-unk"><span class="sym" title="unknown">?</span><span class="txt">device test open</span></td>
-<td class="s-wip"><span class="sym" title="in progress">🔧</span><span class="txt">implemented (WebRTC AECM, driver reference offset); device test open</span></td>
+<td class="s-wip"><span class="sym" title="in progress">🔧</span><span class="txt">implemented (WebRTC AECM, driver reference offset); device test needs speaker playback, which is not allowed on the test cameras</span></td>
 <td class="s-plus"><span class="sym" title="improved beyond vendor">✅+</span><span class="txt">real AECM: echo −18 dB, ERLE 44 dB (loopback); before: fake success</span></td>
 <td class="s-unk"><span class="sym" title="unknown">?</span><span class="txt"></span></td>
 </tr>
