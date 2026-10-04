@@ -149,6 +149,7 @@ static void fs_user_trace(const char *fmt, ...)
  * CreateChn so the module can be bindable before EnableChn runs. */
 int IMP_FrameSource_CreateChn(int chnNum, IMPFSChnAttr *chn_attr);
 int IMP_FrameSource_EnableChn(int chnNum);
+void DMA_RmemStreamStarted(void);   /* dma_alloc.h */
 int32_t on_framesource_group_data_update(int32_t *arg1);
 static void *frame_pooling_thread(void *arg);
 static int framesource_bind(void *src_module, void *dst_module, void *output_ptr);
@@ -2187,6 +2188,7 @@ int IMP_FrameSource_EnableChn(int chnNum)
     fs_trace("libimp/FS: enable done ch=%d state=%d fd=%d\n",
              chnNum, fs_chan_get_state(chnNum), ctx->fd);
     pthread_mutex_unlock(&g_fs_lock);
+    DMA_RmemStreamStarted();
     return 0;
 }
 

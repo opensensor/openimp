@@ -95,6 +95,13 @@ int DMA_Is_RMEM(void);
 /* Reserved-arena accounting: bytes in use, arena size and the largest free
  * block.  Returns -1 (outputs untouched) when no arena is mapped. */
 int DMA_RmemStats(size_t *used, size_t *size, size_t *largest_free);
+/* Peak accounting: highest bytes ever in use.  Returns -1 when no arena is
+ * mapped. */
+int DMA_RmemPeak(size_t *peak);
+/* Call once a stream is running (after FrameSource EnableChn succeeded).
+ * Logs "rmem peak X KB of Y KB (free Z KB)" at INFO the first time and from
+ * then on whenever the peak grows; never per frame. */
+void DMA_RmemStreamStarted(void);
 /* Log the live reserved-arena allocations (syslog, LOG_INFO). */
 void DMA_LogRmem(const char *reason);
 
