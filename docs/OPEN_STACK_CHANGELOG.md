@@ -3,7 +3,7 @@
 Everything changed, extended or fixed in OpenIMP, open-tx-isp, timps and the thingino
 integration since the test campaign started on 2026-09-30. Kept up to date during the campaign.
 
-Last update: 2026-10-04 15:50.
+Last update: 2026-10-04 16:30.
 
 Cameras are anonymised: cam-A (T31), cam-B (T23), cam-C (T20), cam-D (T21), cam-E (T10), cam-F (T41).
 
@@ -88,12 +88,17 @@ OpenIMP: T20 green flicker in the bottom rows fixed by filling the encoder paddi
 
 Aggregates: `claude/open-tx-isp-all-4` and `claude/openimp-all-4` (pushed); 58 merged single branches removed. `claude/open-tx-isp-all-5` adds t21-robust and t31-robust-2 (T31: sensor flip with shvflip=1, unload leaks, lazy WDR buffers; MemFree drift per reload 460 → 45 KB); all four cameras flashed with -all-5 images.
 
-## Late afternoon (2026-10-04, 15:50)
+## Late afternoon (2026-10-04, 15:50 - 16:30)
 
 - **T41 control paths:** AE compensation (`AeScenceAttr.AeTargetComp`), gain and exposure caps (`AeExprInfo`: `AeMaxAGain` linear Q10, `AeMaxIntegrationTime` in sensor lines) and 2D/3D noise reduction (`Module_Ratio` index 0/1) now reach the ISP on cam-F (measured: comp 2 lowers the target 65 → 1, gain cap 8x holds 6.9x, sinter 255 cuts wall noise from ~7 to ~1). The T41 driver used to acknowledge unknown tuning IDs with 0; DRC, DPC, defog, HLC, BLC, WDR, CCM, gamma now return "not supported" instead of a silent success. Crop/rotation (I2D) still open. AE itself regulates correctly (it was saturated at max gain in a dark room). cam-F anti-flicker set to 50 Hz.
 - **Two new T23 test cameras on the open stack:** cam-G (T23, SC1A4T) and cam-H (T23, SC2336P), full OTA with the boot guard, rmem 22 MB: both streams High profile, 0 oops, 0 VPU errors; rmem peak 17.3 MB and 19.0 MB. First devices with these two sensors on the open stack.
 - **Branch layout in thingino:** the open-stack work moves from the user's `ciao` fork branch to an `aperto` branch based on upstream `aperto` (Paul's open ISP stack branch, U-Boot 2013.07 like ciao); `ciao` was reverted to upstream plus the streamer work. Streamer changes land only in `ciao` and are merged into `aperto` automatically. The upstream PRs were closed and will be resubmitted against `aperto`; the 64 KiB U-Boot env fix stays local because `ciao`/`aperto` build U-Boot 2013.07.
 - **Pins:** thingino will pin the Lu-Fi forks of OpenIMP and open-tx-isp by release tag (first tag after the 24 h soak).
+
+- **`aperto` in the user's thingino fork is live:** upstream `aperto` plus the open-stack layer (streamer `USE_OPENIMP`, opt-in boot guard, DPC slider, VPU/rmem kernel patches as 0098-0105 on top of Paul's 0097, OpenIMP/open-tx-isp packages pinned to the Lu-Fi forks by release tag, T23 fully on OpenIMP without vendor blobs, sensor fixes for jxf23/T21, sc4336p/T31, sc2336/T31 and the sc2336/T23 flip race, fw_ota stage-2 fix, a corrected timps tarball hash) and a merge of the streamer branch `ciao` (timps v1.9.31). A test image for cam-B builds (rootfs 20 KB below the 8 MB flash limit — tight). Streamer changes now land only in `ciao`; a GitHub Action merges `ciao` into `aperto` (or opens a PR on conflicts).
+- **Paul's upstream `aperto` patches** for OpenIMP/open-tx-isp (written against the opensensor repos) are being reviewed; the useful ones will be ported to the forks with Paul as author.
+- **cam-H (T23, SC2336P):** lying upside down on the bench — image turned 180° via the streamer's hflip+vflip.
+- **First snapshot after idle:** a snapshot that wakes an idle main channel can time out once (HTTP 503 after 3 s) while the sensor/ISP spins up; reported to the streamer for a longer cold-start wait.
 
 ## Afternoon (2026-10-04, 14:40)
 
