@@ -7,6 +7,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <stddef.h>
 #include <stdlib.h>
 #include <string.h>
@@ -372,7 +373,8 @@ static void dma_deinit(void)
     p1.dma.fd = -1;
 }
 
-static int dma_alloc(uint32_t size, uint32_t *physical, void **virtual_address)
+static int dma_alloc(uint32_t size, const char *tag, uint32_t *physical,
+                     void **virtual_address)
 {
     IMPDMABufferInfo allocation;
 
@@ -380,7 +382,7 @@ static int dma_alloc(uint32_t size, uint32_t *physical, void **virtual_address)
         return -1;
     if (dma_init() < 0)
         return -1;
-    if (DMA_AllocDescriptor(&allocation, (int)size, "capture") < 0)
+    if (DMA_AllocDescriptor(&allocation, (int)size, tag) < 0)
         return -1;
     *physical = allocation.phys_addr;
     *virtual_address = (void *)(uintptr_t)allocation.virt_addr;
@@ -504,7 +506,7 @@ int IMP_ISP_AddSensor(IMPVI_NUM num, IMPSensorInfo *info)
         unlock_p1();
         return -1;
     }
-    if (mdns.size && dma_alloc(mdns.size, &mdns.paddr,
+    if (mdns.size && dma_alloc(mdns.size, "isp-mdns", &mdns.paddr,
                                &p1.mdns_virtual) < 0) {
         unlock_p1();
         return -1;
@@ -1002,9 +1004,13 @@ int IMP_FrameSource_EnableChn(int channel)
     uint32_t count;
     uint32_t i;
     int result = -1;
+    char capture_tag[16];
 
     if (channel < 0 || channel >= OPENIMP_FS_CHANNELS)
         return -1;
+    /* "capture<n>": the T41 allocator keeps capture queues apart from the
+     * long-lived buffers and names the channel in shortage reports. */
+    snprintf(capture_tag, sizeof(capture_tag), "capture%d", channel);
     lock_p1();
     prepare_p1();
     chn = &p1.channels[channel];
@@ -1068,7 +1074,7 @@ int IMP_FrameSource_EnableChn(int channel)
         struct openimp_fs_buffer *buffer = &chn->buffers[i];
 
         trace_p1("P1_INNER ALLOC_BEGIN\n");
-        if (dma_alloc(chn->sizeimage, &buffer->physical,
+        if (dma_alloc(chn->sizeimage, capture_tag, &buffer->physical,
                       &buffer->virtual_address) < 0) {
             syslog(LOG_ERR,
                    "openimp-p1: enable chn=%d DMA alloc index=%u size=%u failed",
