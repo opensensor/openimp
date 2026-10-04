@@ -739,8 +739,11 @@ int fs_poll_frame(int fd, unsigned int *ready_out, int timeout_ms)
     if (ret < 0) {
         if (err == EINTR)
             return -2;
-        fprintf(stderr, "[KernelIF] POLL_FRAME failed: fd=%d %s\n", fd,
-                strerror(err));
+        static unsigned int poll_fail;
+
+        if (OPENIMP_LOG_ALLOW(&poll_fail))
+            fprintf(stderr, "[KernelIF] POLL_FRAME failed: fd=%d %s (#%u)\n",
+                    fd, strerror(err), poll_fail);
         return -1;
     }
     if (ready_out)
@@ -817,8 +820,13 @@ int fs_qbuf(int fd, int index, unsigned long phys, unsigned int length) {
 
     int ret = ioctl(fd, VIDIOC_QBUF, b);
     if (ret < 0) {
-        fprintf(stderr, "[KernelIF] QBUF failed: idx=%d phys=0x%lx len=%u err=%s\n",
-                index, phys, length, strerror(errno));
+        static unsigned int qbuf_fail;
+        int qbuf_errno = errno;
+
+        if (OPENIMP_LOG_ALLOW(&qbuf_fail))
+            fprintf(stderr, "[KernelIF] QBUF failed: idx=%d phys=0x%lx len=%u err=%s (#%u)\n",
+                    index, phys, length, strerror(qbuf_errno), qbuf_fail);
+        errno = qbuf_errno;
         ki_trace("libimp/KI: QBUF fail fd=%d idx=%d phys=0x%lx len=%u err=%d\n",
                  fd, index, phys, length, errno);
         free(raw);
@@ -965,7 +973,11 @@ int fs_dqbuf(int fd, int *index_out, uint64_t *timestamp_out) {
             free(raw);
             return -3;
         }
-        fprintf(stderr, "[KernelIF] DQBUF failed: fd=%d %s\n", fd, strerror(saved_errno));
+        static unsigned int dqbuf_fail;
+
+        if (OPENIMP_LOG_ALLOW(&dqbuf_fail))
+            fprintf(stderr, "[KernelIF] DQBUF failed: fd=%d %s (#%u)\n", fd,
+                    strerror(saved_errno), dqbuf_fail);
         free(raw);
         return -1;
     }
@@ -2054,7 +2066,10 @@ int VBMKernelDequeue(int chn, int fd, void **frame_out) {
         return -1;
     }
     if (idx < 0 || idx >= pool->frame_count) {
-        fprintf(stderr, "[VBM] VBMKernelDequeue chn=%d: invalid idx=%d (frame_count=%d)\n", chn, idx, pool->frame_count);
+        static unsigned int bad_idx;
+
+        if (OPENIMP_LOG_ALLOW(&bad_idx))
+            fprintf(stderr, "[VBM] VBMKernelDequeue chn=%d: invalid idx=%d (frame_count=%d)\n", chn, idx, pool->frame_count);
         return -1;
     }
 #if defined(PLATFORM_T31)
@@ -2432,7 +2447,10 @@ static int vbm_release_frame(int chn, void *frame) {
                 return 0;
             }
 
-            fprintf(stderr, "[VBM] ReleaseFrame: fs_qbuf failed for idx=%d (len=%u)\n", frame_idx, qlen);
+            static unsigned int qbuf_fail;
+
+            if (OPENIMP_LOG_ALLOW(&qbuf_fail))
+                fprintf(stderr, "[VBM] ReleaseFrame: fs_qbuf failed for idx=%d (len=%u)\n", frame_idx, qlen);
             if (trace_budget > 0) {
                 trace_budget--;
                 ki_trace("libimp/VBMKI: release-qbuf-fail chn=%d idx=%d phys=0x%lx len=%u\n",
@@ -2473,7 +2491,10 @@ int VBMLockFrameByVaddr(uint32_t vaddr)
     vol = vbm_find_volume_by_vaddr(vaddr);
     if (vol == NULL) {
         pthread_mutex_unlock(&vbm_volume_lock);
-        fprintf(stderr, "[VBM] LockFrameByVaddr: vaddr=0x%x not found\n", vaddr);
+        static unsigned int not_found;
+
+        if (OPENIMP_LOG_ALLOW(&not_found))
+            fprintf(stderr, "[VBM] LockFrameByVaddr: vaddr=0x%x not found\n", vaddr);
         return -1;
     }
 
@@ -2502,13 +2523,19 @@ int VBMUnlockFrameByVaddr(uint32_t vaddr)
     vol = vbm_find_volume_by_vaddr(vaddr);
     if (vol == NULL) {
         pthread_mutex_unlock(&vbm_volume_lock);
-        fprintf(stderr, "[VBM] UnlockFrameByVaddr: vaddr=0x%x not found\n", vaddr);
+        static unsigned int not_found;
+
+        if (OPENIMP_LOG_ALLOW(&not_found))
+            fprintf(stderr, "[VBM] UnlockFrameByVaddr: vaddr=0x%x not found\n", vaddr);
         return -1;
     }
 
     if (vol->ref_count <= 0) {
         pthread_mutex_unlock(&vbm_volume_lock);
-        fprintf(stderr, "[VBM] UnlockFrameByVaddr: vaddr=0x%x already unlocked\n", vaddr);
+        static unsigned int unlocked;
+
+        if (OPENIMP_LOG_ALLOW(&unlocked))
+            fprintf(stderr, "[VBM] UnlockFrameByVaddr: vaddr=0x%x already unlocked\n", vaddr);
         return -1;
     }
 

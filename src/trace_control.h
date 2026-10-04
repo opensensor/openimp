@@ -44,4 +44,23 @@ static inline int openimp_startup_trace_enabled(void)
         fprintf(stderr, __VA_ARGS__);                             \
 } while (0)
 
+/*
+ * Rate limit for log lines that a persistent fault would repeat per frame
+ * (a failing DQBUF/QBUF retried every millisecond, a caller passing a bad
+ * handle in its loop).  One static counter per call site: the first 8 lines
+ * and then every 1024th go through, so the cause is in the log without the
+ * log filling stderr/syslog and stealing CPU.  Cost: one relaxed atomic add.
+ *
+ *   static unsigned int n;
+ *   if (OPENIMP_LOG_ALLOW(&n)) fprintf(stderr, ...);
+ */
+static inline int openimp_log_allow(unsigned int *counter)
+{
+    unsigned int n = __atomic_add_fetch(counter, 1u, __ATOMIC_RELAXED);
+
+    return n <= 8u || (n & 1023u) == 0u;
+}
+
+#define OPENIMP_LOG_ALLOW(counter) openimp_log_allow(counter)
+
 #endif /* OPENIMP_TRACE_CONTROL_H */
