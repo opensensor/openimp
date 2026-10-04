@@ -101,9 +101,9 @@ Aggregates: `claude/open-tx-isp-all-4` and `claude/openimp-all-4` (pushed); 58 m
 - **T41 control paths:** AE compensation (`AeScenceAttr.AeTargetComp`), gain and exposure caps (`AeExprInfo`: `AeMaxAGain` linear Q10, `AeMaxIntegrationTime` in sensor lines) and 2D/3D noise reduction (`Module_Ratio` index 0/1) now reach the ISP on cam-F (measured: comp 2 lowers the target 65 → 1, gain cap 8x holds 6.9x, sinter 255 cuts wall noise from ~7 to ~1). The T41 driver used to acknowledge unknown tuning IDs with 0; DRC, DPC, defog, HLC, BLC, WDR, CCM, gamma now return "not supported" instead of a silent success. Crop/rotation (I2D) still open. AE itself regulates correctly (it was saturated at max gain in a dark room). cam-F anti-flicker set to 50 Hz.
 - **Two new T23 test cameras on the open stack:** cam-G (T23, SC1A4T) and cam-H (T23, SC2336P), full OTA with the boot guard, rmem 22 MB: both streams High profile, 0 oops, 0 VPU errors; rmem peak 17.3 MB and 19.0 MB. First devices with these two sensors on the open stack.
 - **Branch layout in thingino:** the open-stack work moves from the user's `ciao` fork branch to an `aperto` branch based on upstream `aperto` (Paul's open ISP stack branch, U-Boot 2013.07 like ciao); `ciao` was reverted to upstream plus the streamer work. Streamer changes land only in `ciao` and are merged into `aperto` automatically. The upstream PRs were closed and will be resubmitted against `aperto`; the 64 KiB U-Boot env fix stays local because `ciao`/`aperto` build U-Boot 2013.07.
-- **Pins:** thingino will pin the Lu-Fi forks of OpenIMP and open-tx-isp by release tag (first tag after the 24 h soak).
+- **Pins:** thingino will pin the Lu-Fi forks of OpenIMP and open-tx-isp by date tag from the `aperto` branch (first tag after the 24 h soak).
 
-- **`aperto` in the user's thingino fork is live:** upstream `aperto` plus the open-stack layer (streamer `USE_OPENIMP`, opt-in boot guard, DPC slider, VPU/rmem kernel patches as 0098-0105 on top of Paul's 0097, OpenIMP/open-tx-isp packages pinned to the Lu-Fi forks by release tag, T23 fully on OpenIMP without vendor blobs, sensor fixes for jxf23/T21, sc4336p/T31, sc2336/T31 and the sc2336/T23 flip race, fw_ota stage-2 fix, a corrected timps tarball hash) and a merge of the streamer branch `ciao` (timps v1.9.31). A test image for cam-B builds (rootfs 20 KB below the 8 MB flash limit — tight). Streamer changes now land only in `ciao`; a GitHub Action merges `ciao` into `aperto` (or opens a PR on conflicts).
+- **`aperto` in the user's thingino fork is live:** upstream `aperto` plus the open-stack layer (streamer `USE_OPENIMP`, opt-in boot guard, DPC slider, VPU/rmem kernel patches as 0098-0105 on top of Paul's 0097, OpenIMP/open-tx-isp packages pinned to the Lu-Fi forks by date tag from their `aperto` branch, T23 fully on OpenIMP without vendor blobs, sensor fixes for jxf23/T21, sc4336p/T31, sc2336/T31 and the sc2336/T23 flip race, fw_ota stage-2 fix, a corrected timps tarball hash) and a merge of the streamer branch `ciao` (timps v1.9.31). A test image for cam-B builds (rootfs 20 KB below the 8 MB flash limit — tight). Streamer changes now land only in `ciao`; a GitHub Action merges `ciao` into `aperto` (or opens a PR on conflicts).
 - **Paul's upstream `aperto` patches** for OpenIMP/open-tx-isp (written against the opensensor repos) are being reviewed; the useful ones will be ported to the forks with Paul as author.
 - **cam-H (T23, SC2336P):** lying upside down on the bench — image turned 180° via the streamer's hflip+vflip.
 - **First snapshot after idle:** a snapshot that wakes an idle main channel can time out once (HTTP 503 after 3 s) while the sensor/ISP spins up; reported to the streamer for a longer cold-start wait.
@@ -145,7 +145,7 @@ Aggregates: `claude/open-tx-isp-all-4` and `claude/openimp-all-4` (pushed); 58 m
 ## Midday (2026-10-04, 11:00)
 
 - **all-21 on all five cameras (full OTA, 10:13-10:19):** open-tx-isp `next` 1559bf60 (all-19 + sensor pin + T23 AWB fix), openimp `next` b83ebbb (all-19 + IP delta read-back), timps main a34a5a2. 30/30 snapshots and 0 oops on every camera; sub stream 0 shifts on cam-B and cam-D; `rmmod` of the sensor is refused while streaming on cam-A and cam-D.
-- **`next` branches now track the tested aggregate** (fast-forward only); `release` and the first date tag follow after a clean soak.
+- **`next` branches now track the tested aggregate** (fast-forward only); `aperto` (release branch) and the first date tag follow after a clean soak.
 - **Open issue (stability):** cam-B (T23) logs a single "Helix run failed errno=5 / vpu error status=100" every few minutes on main or sub stream; one frame is lost, the stream continues. Present since before the sub-stream fix; root-cause work started [openimp claude/t23-helix-errno5].
 - **Memory review (kernel + userspace):** the ~5 MB MemFree gap to the vendor stack on T20 is fully explained by an 8 MiB V4L2-MMAP frame pool that the T20/T10 driver allocates in lowmem at load time and OpenIMP never uses (the vendor driver has no such pool); timpsd itself needs 3 MB less than with the vendor libimp. In work (stability and image quality first):
   - pool off by default on T20/T10 (≈ +8 MB for Linux, ~20 % of the T10's RAM), parameter kept;
@@ -182,7 +182,7 @@ Aggregates: `claude/open-tx-isp-all-4` and `claude/openimp-all-4` (pushed); 58 m
 - **T23 OSD:** the date/time text on cam-B is clean on main and sub stream after the IPU row-pitch fix.
 - **timps QA script on cam-A (T31):** quiet run (no backchannel tone, no reboot), with on-device checks: RTSP main/sub/UDP all pass (A/V drift < 0.07 s, monotonic timestamps); HTTP part 110 pass / 2 warn / 1 fail. Fail: `video1.i_bias_lvl` reports applied but the encoder IP delta read-back stays -1 (under investigation).
 - **Motion detection v2 finished (opt-in, default vendor-identical):** overnight shadow/override runs on cam-C and cam-B: false alarms cam-C ~7 → ~2, cam-B 2 → 0-1, IR switch at dawn 5 → 0; real events (car, passing shadows) still detected. Bounding boxes, strength, id, age and suppress reasons via the versioned `OpenIMP_IVS_MoveGetResultEx` API; +0.4-0.6 % CPU. Car headlights sweeping the scene can still trigger. [openimp claude/imp-motion-v2]
-- **Release scheme agreed:** fixed branches `next` (integration) and `release` (fast-forward only) plus date tags `vYYYY.MM.DD` in openimp and open-tx-isp, so thingino can pin a tag instead of a SHA on a changing branch.
+- **Release scheme agreed:** fixed branches `next` (integration) and `aperto` (release branch, fast-forward only; originally planned under the name `release`) plus date tags `vYYYY.MM.DD` on `aperto` in openimp and open-tx-isp, so thingino's `aperto` branch can pin a tag instead of a SHA on a changing branch.
 
 ## Night (2026-10-04, 00:00)
 
@@ -417,7 +417,7 @@ Current aggregates: `claude/open-tx-isp-all-7` (all-6 + sinfo module-notifier fi
 
 ## timps and thingino
 - timps: AE IT max can be reset to 0 again (PR #3, merged).
-- thingino: the packages `openimp` and `open-tx-isp` are in the upstream branch `aperto` ([#1756](https://github.com/themactep/thingino-firmware/pull/1756)), selected with `BR2_PACKAGE_THINGINO_ISP_OPEN` and pinned by commit SHA to the Lu-Fi forks (`next`); T23 runs fully on OpenIMP, the vendor library under `/opt/openimp-t23` and the helixd hybrid are gone. A tag will be pinned once release tags exist.
+- thingino: the packages `openimp` and `open-tx-isp` are in the upstream branch `aperto` ([#1756](https://github.com/themactep/thingino-firmware/pull/1756)), selected with `BR2_PACKAGE_THINGINO_ISP_OPEN` and pinned by commit SHA to the Lu-Fi forks (`next`); T23 runs fully on OpenIMP, the vendor library under `/opt/openimp-t23` and the helixd hybrid are gone. A tag will be pinned once the first date tag exists on `aperto`.
 - Merged upstream (`aperto`): kernel VPU/rmem stability patches (#1748, #1752), optional boot guard `S10isp-guard` with u-boot `isp_open=manual|auto|off` (#1749, default off), SC2336 flip fixes (#1750, #1751), OTA fix (#1747), timps tarball hash (#1746). Closed without merge (superseded by the `aperto` versions): #1736, #1738 (64 KiB `fw_env.config` and `fw_setenv` guard for T41; not upstream), #1739, #1743.
 - T21 image: sensor `shvflip=1`, TLS and WebRTC enabled.
 
@@ -457,11 +457,11 @@ Current aggregates: `claude/open-tx-isp-all-7` (all-6 + sinfo module-notifier fi
 - T41: flip, night column noise (gc5603), short IVS gaps, OOM with three parallel streams, `AddSensor` EBUSY after an OOM kill; day/night and AE/AWB quality untested.
 - T21: a 4th module reload in one boot crashed once (under investigation).
 - AEC device tests on T23/T21/T20 (no speaker tests on the shared test cameras).
-- First release tag after the 24 h soak; `release` branch not created yet.
+- First release tag after the 24 h soak; `aperto` branch not created yet.
 - Improvements beyond vendor behaviour are collected separately and decided by the maintainer.
 
 ## Branch map
 
-Both repositories: `next` is the tested integration branch (fast-forward only); `main` is the fork default branch and is not kept in sync (it lags behind `next`; `next` is authoritative). All aggregate and topic branches (`claude/*-all-N` and the single branches) that were merged into `next` have been deleted; branch names in the tables above are historic. Planned: `release` and date tags `vYYYY.MM.DD` after the first clean soak.
+Both repositories: `next` is the tested integration branch (fast-forward only); `main` is the fork default branch and is not kept in sync (it lags behind `next`; `next` is authoritative). All aggregate and topic branches (`claude/*-all-N` and the single branches) that were merged into `next` have been deleted; branch names in the tables above are historic. Planned: `aperto` (release branch, fast-forward only) and date tags `vYYYY.MM.DD` after the first clean soak.
 
 Numbers come from on-device measurements and host checks during the campaign.

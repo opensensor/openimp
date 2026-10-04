@@ -105,15 +105,14 @@ kernel VPU/rmem stability patches
 [#1752](https://github.com/themactep/thingino-firmware/pull/1752)) and the optional boot guard
 `BR2_PACKAGE_THINGINO_ISP_GUARD` ([#1749](https://github.com/themactep/thingino-firmware/pull/1749),
 default off) are merged there as well. The streamer is built with `USE_OPENIMP=1` to enable
-features that exist only in OpenIMP. Once release tags exist, thingino will pin a tag instead of a
-SHA.
+features that exist only in OpenIMP. Once the first date tag exists on `aperto`, thingino's `aperto` branch will pin that tag instead of a SHA.
 
 ## Branches and releases
 
 - `main`: fork default branch, not the tested stack.
 - `next`: tested integration branch. Everything on it was flashed and checked on cameras.
-- `release`: fast-forward only from `next` after a clean soak (planned, not created yet; the first tag follows after the 24 h soak that started 2026-10-04).
-- Tags `vYYYY.MM.DD` on `release` (planned), so firmware can pin a tag instead of a SHA.
+- `aperto`: release branch; fast-forward only from `next` after a clean soak (planned, not created yet; the first tag follows after the 24 h soak that started 2026-10-04). It carries the date tags, and thingino's `aperto` branch pins the tag.
+- Tags `vYYYY.MM.DD` on `aperto` (planned), so firmware can pin a tag instead of a SHA.
 - Work happens on `claude/<topic>` branches and is merged into `next` after device tests.
 
 ## Architecture
