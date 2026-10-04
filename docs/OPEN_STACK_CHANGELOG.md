@@ -3,7 +3,7 @@
 Everything changed, extended or fixed in OpenIMP, open-tx-isp, timps and the thingino
 integration since the test campaign started on 2026-09-30. Kept up to date during the campaign.
 
-Last update: 2026-10-04 00:30.
+Last update: 2026-10-04 07:30.
 
 Cameras are anonymised: cam-A (T31), cam-B (T23), cam-C (T20), cam-D (T21), cam-E (T10), cam-F (T41).
 
@@ -14,11 +14,11 @@ All six test cameras run the open kernel driver (open-tx-isp), OpenIMP and timps
 
 | Camera | SoC | Stack | State |
 |---|---|---|---|
-| cam-A | T31 | fully open | Flashed 2026-10-03 20:20-20:30 with open-tx-isp-all-15 / openimp-all-13 / timps-all-15 (full OTA) |
-| cam-B | T23 | fully open (native encoder, no OEM helixd) | Flashed 2026-10-03 20:20-20:30 with -all-15 / openimp-all-13 (full OTA); no vendor libimp hybrid any more (/opt/openimp-t23 gone, ~328 KiB saved) |
-| cam-C | T20 | fully open | Flashed 2026-10-03 20:20-20:30 with -all-15 / openimp-all-13 (full OTA, kernel patch 0101) |
-| cam-E | T10 | fully open | Flashed 2026-10-03 20:20-20:30 with -all-15 / openimp-all-13 (full OTA), boot guard auto |
-| cam-D | T21 | fully open | Flashed 2026-10-03 20:20-20:30 with -all-15 / openimp-all-13 (full OTA, reference sharing on); 26/30 snapshots (concurrent test restarted the streamer) |
+| cam-A | T31 | fully open | Flashed 2026-10-04 01:20 with all-20 (open-tx-isp-all-19 / openimp-all-19 / timps main a34a5a2, full OTA); timps QA pass except one IP-delta finding |
+| cam-B | T23 | fully open (native encoder, no OEM helixd) | Flashed 2026-10-04 07:22 with all-20 (full OTA): sub-stream reference fix + OSD stride fix; sub stream 0 shifts, OSD date clean |
+| cam-C | T20 | fully open | Flashed 2026-10-04 07:23 with all-20 (full OTA, kernel patch 0101) |
+| cam-E | T10 | fully open | Flashed 2026-10-04 01:21 with all-20 (full OTA), boot guard auto |
+| cam-D | T21 | fully open | Flashed 2026-10-04 01:16 with all-20 (full OTA, reference sharing on): sub stream 0 shifts, 0 VPU errors |
 | cam-F | T41 | fully open | Flashed 2026-10-03 14:20 with open-tx-isp-all-13 / OpenIMP T41 (kernel and rootfs flashed separately); image rev 1 flashed later (isp-m0 in vendor layout), reload still failing |
 
 ## OpenIMP (userspace libimp)
@@ -87,6 +87,15 @@ Goal: identical image behaviour, but cleaner unload/reload, less memory and chec
 OpenIMP: T20 green flicker in the bottom rows fixed by filling the encoder padding rows (`claude/t20-bottom-chroma`; 0 green pixels in 30 frames). Faster IVS (`claude/ivs-opt`; T20 timps CPU 4.1 % → 2.7 % with motion on).
 
 Aggregates: `claude/open-tx-isp-all-4` and `claude/openimp-all-4` (pushed); 58 merged single branches removed. `claude/open-tx-isp-all-5` adds t21-robust and t31-robust-2 (T31: sensor flip with shvflip=1, unload leaks, lazy WDR buffers; MemFree drift per reload 460 → 45 KB); all four cameras flashed with -all-5 images.
+
+## Morning (2026-10-04, 07:30)
+
+- **all-20 on five cameras (full OTA):** open-tx-isp claude/open-tx-isp-all-19 (all-18 + second driver review fixes), openimp claude/openimp-all-19 (sub-stream reference fix + T23 OSD stride fix), timps main a34a5a2 with USE_OPENIMP=1. cam-A/B/C/D/E: 30/30 snapshots, 0 oops, 0 VPU errors.
+- **Sub-stream fix confirmed:** the T21/T23 640x360 sub stream no longer scrolls: 0 row shifts on cam-B and cam-D over 30 s captures. cam-B logged one isolated Helix error right after a channel restart during the post-flash check; watching.
+- **T23 OSD:** the date/time text on cam-B is clean on main and sub stream after the IPU row-pitch fix.
+- **timps QA script on cam-A (T31):** quiet run (no backchannel tone, no reboot), with on-device checks: RTSP main/sub/UDP all pass (A/V drift < 0.07 s, monotonic timestamps); HTTP part 110 pass / 2 warn / 1 fail. Fail: `video1.i_bias_lvl` reports applied but the encoder IP delta read-back stays -1 (under investigation).
+- **Motion detection v2 finished (opt-in, default vendor-identical):** overnight shadow/override runs on cam-C and cam-B: false alarms cam-C ~7 → ~2, cam-B 2 → 0-1, IR switch at dawn 5 → 0; real events (car, passing shadows) still detected. Bounding boxes, strength, id, age and suppress reasons via the versioned `OpenIMP_IVS_MoveGetResultEx` API; +0.4-0.6 % CPU. Car headlights sweeping the scene can still trigger. [openimp claude/imp-motion-v2]
+- **Release scheme agreed:** fixed branches `next` (integration) and `release` (fast-forward only) plus date tags `vYYYY.MM.DD` in openimp and open-tx-isp, so thingino can pin a tag instead of a SHA on a changing branch.
 
 ## Night (2026-10-04, 00:00)
 
