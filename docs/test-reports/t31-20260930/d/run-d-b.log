@@ -126,9 +126,9 @@ FSDBG ch=0 step=post_prctl fd=25 running=1
 12:49:08.947 [INF] HAL_ING      chn1: first encoded frame packCount=3 aulen=37229 key=1
 [DevicePool] Open: '/dev/avpu' already open (fd=26, refcount=2)
 12:49:09.001 [INF] HAL_ING      chn0: first encoded frame packCount=3 aulen=142505 key=1
-12:49:09.018 [INF] CLIENT       + rtsp/tcp 192.168.1.x:48724 chn=1 agent="Lavf62.3.100"
+12:49:09.018 [INF] CLIENT       + rtsp/tcp 192.0.2.x:48724 chn=1 agent="Lavf62.3.100"
 12:49:09.019 [INF] RTSP         PLAY session=6c70d5a7 vchn=1 TCP v=1 a=1
-12:49:09.086 [INF] CLIENT       + rtsp/tcp 192.168.1.x:48716 chn=0 agent="Lavf62.3.100"
+12:49:09.086 [INF] CLIENT       + rtsp/tcp 192.0.2.x:48716 chn=0 agent="Lavf62.3.100"
 12:49:09.086 [INF] RTSP         PLAY session=3968617f vchn=0 TCP v=1 a=1
 12:49:19.519 [INF] DAYNIGHT     boot: measuring before deciding - persisted running_mode=1 is a hint, not evidence (exposure 9972 in whatever mode we came up in); switching to the day pipeline and reading it in 8s
 12:49:19.520 [DBG] DAYNIGHT     probe (boot measure): exposure 9972 vs night reference -1, verdict in 8s
@@ -149,14 +149,14 @@ FSDBG ch=0 step=post_prctl fd=25 running=1
 12:49:36.895 [DBG] DAYNIGHT     re-asserting running_mode=1 after switch (1 left)
 12:49:44.898 [INF] HAL_ING      control image.running_mode=1
 12:49:45.398 [DBG] DAYNIGHT     re-asserting running_mode=1 after switch (0 left)
-12:49:49.303 [INF] CLIENT       + rtsp/tcp 192.168.1.x:55886 chn=0 agent="Lavf62.3.100"
+12:49:49.303 [INF] CLIENT       + rtsp/tcp 192.0.2.x:55886 chn=0 agent="Lavf62.3.100"
 12:49:49.304 [INF] RTSP         PLAY session=60d0a1bd vchn=0 TCP v=1 a=1
 12:50:19.456 [INF] RTSP         session=60d0a1bd: client disconnected after 30s (Connection reset by peer)
-12:50:19.456 [INF] CLIENT       - rtsp/tcp 192.168.1.x:55886 after 30s, 2709093 bytes
+12:50:19.456 [INF] CLIENT       - rtsp/tcp 192.0.2.x:55886 after 30s, 2709093 bytes
 12:54:10.353 [INF] RTSP         session=6c70d5a7: client disconnected after 301s (Broken pipe)
-12:54:10.353 [INF] CLIENT       - rtsp/tcp 192.168.1.x:48724 after 301s, 9054550 bytes
+12:54:10.353 [INF] CLIENT       - rtsp/tcp 192.0.2.x:48724 after 301s, 9054550 bytes
 12:54:10.464 [INF] RTSP         session=3968617f: client disconnected after 301s (Connection reset by peer)
-12:54:10.464 [INF] CLIENT       - rtsp/tcp 192.168.1.x:48716 after 301s, 43066454 bytes
+12:54:10.464 [INF] CLIENT       - rtsp/tcp 192.0.2.x:48716 after 301s, 43066454 bytes
 [KernelIF] Stream stopped
 [VBM] FlushFrame: chn=1
 [VBM] FlushFrame: flushed all frames

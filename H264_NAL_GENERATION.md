@@ -182,7 +182,7 @@ static void write_exp_golomb(uint8_t *buf, int *bit_pos, uint32_t value) {
 ## Build
 
 ```bash
-cd /home/matteius/openimp
+cd /home/user/openimp
 make clean && make
 ```
 

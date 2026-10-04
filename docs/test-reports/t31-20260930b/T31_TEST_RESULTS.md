@@ -1,7 +1,7 @@
 # T31-Testergebnisse, Runde 2: OpenIMP `claude/t31-all` (`dfbd90f`) und open-tx-isp `claude/t31-isp-all`
 
 Testlauf am 2026-09-30 nach der Übergabe aus der Cloud-Sitzung. Ausgeführt von einer lokalen
-Claude-Code-Session per SSH. Kamera anonymisiert (`cam-A`, `192.168.1.x`). Runde 1 (Original-
+Claude-Code-Session per SSH. Kamera anonymisiert (`cam-A`, `192.0.2.x`). Runde 1 (Original-
 Stack, OpenIMP `3f501a2`) steht auf dem Branch `claude/t31-test-results-20260930`.
 
 ## Kopf

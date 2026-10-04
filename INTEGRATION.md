@@ -16,7 +16,7 @@ OpenIMP provides a stub implementation of the Ingenic Media Platform (IMP) libra
 ### For Native Development (x86_64)
 
 ```bash
-cd /home/matteius/openimp
+cd /home/user/openimp
 make clean
 make
 ```
@@ -24,7 +24,7 @@ make
 ### For Cross-Compilation (MIPS)
 
 ```bash
-cd /home/matteius/openimp
+cd /home/user/openimp
 make clean
 make CC=mipsel-linux-gnu-gcc PLATFORM=T31
 ```
@@ -62,7 +62,7 @@ You can link directly against the libraries in the `lib/` directory without inst
 If you installed OpenIMP to a standard location:
 
 ```bash
-cd /home/matteius/openimp/prudynt-t
+cd /home/user/openimp/prudynt-t
 make clean
 make
 ```
@@ -72,7 +72,7 @@ The build system should automatically find the libraries in `/usr/local`.
 ### Method 2: Using Custom Install Location
 
 ```bash
-cd /home/matteius/openimp/prudynt-t
+cd /home/user/openimp/prudynt-t
 export PKG_CONFIG_PATH=$HOME/.local/lib/pkgconfig
 export LD_LIBRARY_PATH=$HOME/.local/lib
 make clean
@@ -84,8 +84,8 @@ make
 Modify prudynt-t's Makefile to point to OpenIMP:
 
 ```makefile
-IMP_INC = /home/matteius/openimp/include
-IMP_LIB = /home/matteius/openimp/lib
+IMP_INC = /home/user/openimp/include
+IMP_LIB = /home/user/openimp/lib
 
 CFLAGS += -I$(IMP_INC)
 LDFLAGS += -L$(IMP_LIB) -limp -lsysutils
@@ -96,13 +96,13 @@ LDFLAGS += -L$(IMP_LIB) -limp -lsysutils
 ### Set Library Path
 
 ```bash
-export LD_LIBRARY_PATH=/home/matteius/openimp/lib:$LD_LIBRARY_PATH
+export LD_LIBRARY_PATH=/home/user/openimp/lib:$LD_LIBRARY_PATH
 ```
 
 ### Run the Application
 
 ```bash
-cd /home/matteius/openimp/prudynt-t
+cd /home/user/openimp/prudynt-t
 ./prudynt
 ```
 
@@ -213,7 +213,7 @@ When you're ready to use real hardware:
 
 ```bash
 # Development (OpenIMP)
-export LD_LIBRARY_PATH=/home/matteius/openimp/lib
+export LD_LIBRARY_PATH=/home/user/openimp/lib
 
 # Production (Ingenic IMP)
 export LD_LIBRARY_PATH=/usr/lib
@@ -234,7 +234,7 @@ export LD_LIBRARY_PATH=/usr/lib
 
 **Solution**: Add include path:
 ```bash
--I/home/matteius/openimp/include
+-I/home/user/openimp/include
 ```
 
 ### Runtime Errors
@@ -243,7 +243,7 @@ export LD_LIBRARY_PATH=/usr/lib
 
 **Solution**: Set LD_LIBRARY_PATH:
 ```bash
-export LD_LIBRARY_PATH=/home/matteius/openimp/lib:$LD_LIBRARY_PATH
+export LD_LIBRARY_PATH=/home/user/openimp/lib:$LD_LIBRARY_PATH
 ```
 
 **Problem**: Wrong library version loaded
@@ -255,7 +255,7 @@ ldd ./prudynt | grep libimp
 
 Should show:
 ```
-libimp.so => /home/matteius/openimp/lib/libimp.so
+libimp.so => /home/user/openimp/lib/libimp.so
 ```
 
 ### Application Hangs
@@ -297,7 +297,7 @@ Integrate libx264 or libx265 for actual encoding.
 
 ```bash
 # 1. Build OpenIMP
-cd /home/matteius/openimp
+cd /home/user/openimp
 make clean
 make PLATFORM=T31
 
@@ -305,7 +305,7 @@ make PLATFORM=T31
 make install PREFIX=$HOME/.local
 
 # 3. Build prudynt-t
-cd /home/matteius/openimp/prudynt-t
+cd /home/user/openimp/prudynt-t
 export PKG_CONFIG_PATH=$HOME/.local/lib/pkgconfig
 export LD_LIBRARY_PATH=$HOME/.local/lib
 make clean

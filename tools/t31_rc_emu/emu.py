@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """Load a vendor libimp.so into unicorn (MIPS32 LE) and call its functions (host RE aid; from the T23 eprc work)."""
 import math, re, struct, subprocess, sys
-sys.path.insert(0, '/mnt/NVMe/git/scratch-clones/t23native/pylib')
+sys.path.insert(0, '<path>/t23native/pylib')
 from elftools.elf.elffile import ELFFile
 from unicorn import Uc, UcError, UC_ARCH_MIPS, UC_MODE_MIPS32, UC_MODE_LITTLE_ENDIAN, UC_HOOK_CODE, UC_ERR_READ_UNALIGNED, UC_ERR_WRITE_UNALIGNED
 from unicorn.mips_const import *
 
-LIB = '/mnt/NVMe/git/thingino-firmware-LuFi/dl/ingenic-lib/git/T23/lib/1.3.0/uclibc/5.4.0/libimp.so'
+LIB = '<thingino>/dl/ingenic-lib/git/T23/lib/1.3.0/uclibc/5.4.0/libimp.so'
 STUB, STACK, END, HEAP = 0x70000000, 0x60000000, 0x7ff00000, 0x50000000
 A = [UC_MIPS_REG_A0, UC_MIPS_REG_A1, UC_MIPS_REG_A2, UC_MIPS_REG_A3]
 

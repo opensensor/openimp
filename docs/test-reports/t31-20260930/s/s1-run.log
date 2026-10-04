@@ -126,6 +126,6 @@ FSDBG ch=0 step=post_prctl fd=25 running=1
 09:17:23.442 [INF] HAL_ING      chn1: first encoded frame packCount=3 aulen=24905 key=1
 [DevicePool] Open: '/dev/avpu' already open (fd=26, refcount=2)
 09:17:23.504 [INF] HAL_ING      chn0: first encoded frame packCount=3 aulen=141475 key=1
-09:17:23.507 [INF] CLIENT       + rtsp/tcp 192.168.1.x:42072 chn=1 agent="Lavf62.3.100"
+09:17:23.507 [INF] CLIENT       + rtsp/tcp 192.0.2.x:42072 chn=1 agent="Lavf62.3.100"
 09:17:23.507 [INF] RTSP         PLAY session=ab0e6a0e vchn=1 TCP v=1 a=1
-09:17:23.578 [INF] CLIENT       + rtsp/tcp 192.168.1.x:42066 chn=0 agent="Lavf62.3.100"
+09:17:23.578 [INF] CLIENT       + rtsp/tcp 192.0.2.x:42066 chn=0 agent="Lavf62.3.100"

@@ -120,11 +120,11 @@ FSDBG ch=1 step=post_prctl fd=27 running=1
 19:39:51.215 [INF] HAL_ING      video chn1 streaming
 [IVS] chn0: 3 frames, 0 dropped busy, 2 results; copy avg 44 us max 68 us; process avg 5 us max 14 us
 19:39:51.246 [INF] MOTION       IVS move results resumed after a stall
-19:39:51.254 [INF] CLIENT       + rtsp/tcp 192.168.1.x:51942 chn=0 agent="Lavf62.3.100"
+19:39:51.254 [INF] CLIENT       + rtsp/tcp 192.0.2.x:51942 chn=0 agent="Lavf62.3.100"
 19:39:51.255 [INF] RTSP         PLAY session=8e2feb2e vchn=0 TCP v=1 a=1
 [DevicePool] Open: '/dev/avpu' already open (fd=26, refcount=2)
 19:39:51.406 [INF] HAL_ING      chn1: first encoded frame packCount=3 aulen=25354 key=1
-19:39:51.439 [INF] CLIENT       + rtsp/tcp 192.168.1.x:51958 chn=1 agent="Lavf62.3.100"
+19:39:51.439 [INF] CLIENT       + rtsp/tcp 192.0.2.x:51958 chn=1 agent="Lavf62.3.100"
 19:39:51.440 [INF] RTSP         PLAY session=39896962 vchn=1 TCP v=1 a=1
 [IVS] chn0: 149 frames, 0 dropped busy, 25 results; copy avg 1782 us max 14691 us; process avg 1076 us max 14184 us
 19:40:10.796 [INF] HAL_ING      audio resume: flushed 512 stale AI frame(s)

@@ -223,7 +223,7 @@ th small{font-weight:400;color:var(--muted)}
 <td class="s-ok"><span class="sym" title="supported">✅</span><span class="txt">scaler device-tested (640x360 and 480x272, 15.0 fps); front crop / CSC: no control path</span></td>
 <td class="s-ok"><span class="sym" title="supported">✅</span><span class="txt">scaler device-tested (480x272, 24.9 fps); front crop / CSC: no control path</span></td>
 <td class="s-ok"><span class="sym" title="supported">✅</span><span class="txt">front crop via vendor path (960x540 crop ok); MASK -EINVAL as vendor (no stock handler)</span></td>
-<td class="s-ok"><span class="sym" title="supported">✅</span><span class="txt">BLC get, CSC presets 0–4 + user matrix, crop get/set, scaler level (tested on garage)</span></td>
+<td class="s-ok"><span class="sym" title="supported">✅</span><span class="txt">BLC get, CSC presets 0–4 + user matrix, crop get/set, scaler level (tested on cam-A)</span></td>
 <td class="s-miss"><span class="sym" title="missing">❌</span><span class="txt">no control path (no key in timps)</span></td>
 </tr>
 <tr id="r-rot"><td><a href="#n-rot">Rotation 90°/270°</a></td><td class="vend">software rotation (32×32 tiles)</td>
@@ -264,7 +264,7 @@ th small{font-weight:400;color:var(--muted)}
 <td class="s-ok"><span class="sym" title="supported">✅</span><span class="txt">ch1 different scaler path, no regression</span></td>
 <td class="s-ok"><span class="sym" title="supported">✅</span><span class="txt">WebRTC main↔sub switching confirmed (rmem fix), 32+40 cycles</span></td>
 <td class="s-ok"><span class="sym" title="supported">✅</span><span class="txt">idle teardown bug (motion detection without frames) fixed</span></td>
-<td class="s-ok"><span class="sym" title="supported">✅</span><span class="txt">garage 25 fps ch0+ch1 4.5 h</span></td>
+<td class="s-ok"><span class="sym" title="supported">✅</span><span class="txt">cam-A 25 fps ch0+ch1 4.5 h</span></td>
 <td class="s-ok"><span class="sym" title="supported">✅</span><span class="txt">640x360 snapshot and MP4 ok on cam-F with the open driver (claude/t41-gc5603-fix)</span></td>
 </tr>
 <tr id="r-rc"><td><a href="#n-rc">Rate-control mode (CBR/VBR/FixQP/Capped*/SMART)</a></td><td class="vend">all modes in the vendor libimp</td>
@@ -321,7 +321,7 @@ th small{font-weight:400;color:var(--muted)}
 <td class="s-unk"><span class="sym" title="unknown">?</span><span class="txt">not tested on purpose: the maintainer does not allow test cameras to play audio</span></td>
 <td class="s-unk"><span class="sym" title="unknown">?</span><span class="txt">not tested on purpose: the maintainer does not allow test cameras to play audio</span></td>
 <td class="s-unk"><span class="sym" title="unknown">?</span><span class="txt">not tested on purpose: the maintainer does not allow test cameras to play audio</span></td>
-<td class="s-ok"><span class="sym" title="supported">✅</span><span class="txt">volume/mute work, whole OSS fragments (tested on garage)</span></td>
+<td class="s-ok"><span class="sym" title="supported">✅</span><span class="txt">volume/mute work, whole OSS fragments (tested on cam-A)</span></td>
 <td class="s-unk"><span class="sym" title="unknown">?</span><span class="txt">not tested on purpose: the maintainer does not allow test cameras to play audio</span></td>
 </tr>
 <tr id="r-aec"><td><a href="#n-aec">Echo cancellation (AEC)</a></td><td class="vend">IMP_AI_EnableAec</td>
@@ -454,7 +454,7 @@ th small{font-weight:400;color:var(--muted)}
 <details id="n-osd"><summary>OSD: text, bitmap, rectangle, line, cover</summary><p>Lines/rectangles are drawn by the CPU (opaque, same as vendor). Review fixed a use-after-free on bitmap data. Not adopted: cache flush of the edge lines only (the kernel caps the band, the proposal would be slower); open ideas: IPU mask layers, alpha for lines. Thick lines (claude/osd-thick-lines, local, reviewed: adopted with changes, changes done): diagonal lines with lw&gt;=2 are drawn with uniform perpendicular width (sweep 0-180 degrees, max deviation 0.46 px) and 2x faster; lw=1, axis lines and rectangles are byte-identical to the vendor; device test pending.</p></details>
 <details id="n-ivs"><summary>IVS / motion detection</summary><p>IVS channel in use → EBUSY (beyond vendor, user decision). New motion detection (background model, blobs) = &quot;later&quot;, very low priority.</p></details>
 <details id="n-fsrc"><summary>Frame source / VBM pool</summary><p>T21: in the 23 MB rmem the allocation failed after idle teardown.</p></details>
-<details id="n-ai"><summary>Audio input (AI)</summary><p>Mentioned only indirectly in the changelog (HPF overflow, AENC/ADEC double release rejected = beyond vendor). No SoC-specific evidence. Input only, no sound played. Levels are garage/room ambient, not a calibrated source; volume 0 gives -59..-90 dB, mute removes the audio track. A quiet-box calibrated run would be better. T23/T41 not tested yet.</p></details>
+<details id="n-ai"><summary>Audio input (AI)</summary><p>Mentioned only indirectly in the changelog (HPF overflow, AENC/ADEC double release rejected = beyond vendor). No SoC-specific evidence. Input only, no sound played. Levels are cam-A/room ambient, not a calibrated source; volume 0 gives -59..-90 dB, mute removes the audio track. A quiet-box calibrated run would be better. T23/T41 not tested yet.</p></details>
 <details id="n-ao"><summary>Audio output (AO, speaker)</summary><p>The quick fix applies generically in OpenIMP; a SoC-specific test is documented only for T31.</p></details>
 <details id="n-aec"><summary>Echo cancellation (AEC)</summary><p>Error when AEC cannot run (instead of fake success); diagnostics OPENIMP_AEC_STATS. Source: claude/aec. No audio tests as part of this matrix.</p></details>
 <details id="n-libimp"><summary>libimp size (code + data)</summary><p>Figures from the changelog section &quot;Compared with the vendor stack&quot;. 2026-10-03 evening: gc-sections (claude/openimp-size, 2040a03) cuts T23 libimp 774 to 726 KB and T20 694 to 594 KB; together with the module change the rootfs is back at 0x4DE000 (T23) / 0x4DD000 (T20). 2026-10-03 night: cam-B runs without the vendor libimp hybrid; /opt/openimp-t23 is gone (~328 KiB less in the rootfs). Only the T23 hardware JPEG IMP_Decoder still needs the OEM worker; the worker is optional now (T23_BUILD_OEM_WORKER=1, openimp claude/t23-no-oem-worker 9eefbae). thingino will pin openimp to the Lu-Fi fork (9eefbae) for all SoCs after a build check by the thingino maintainer session.</p></details>

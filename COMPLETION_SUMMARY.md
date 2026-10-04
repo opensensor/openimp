@@ -250,7 +250,7 @@ This stub library enables:
 
 ```bash
 # Build the library
-cd /home/matteius/openimp
+cd /home/user/openimp
 make PLATFORM=T31
 
 # Run tests
@@ -260,7 +260,7 @@ make test
 make install PREFIX=$HOME/.local
 
 # Use with prudynt-t
-cd /home/matteius/openimp/prudynt-t
+cd /home/user/openimp/prudynt-t
 export LD_LIBRARY_PATH=$HOME/.local/lib
 make
 ./prudynt

@@ -6,14 +6,14 @@
 set -e  # Exit on any error
 
 export CROSS_COMPILE=mipsel-linux-
-export KDIR=/home/matteius/output/wyze_cam3_t31x_gc2053_rtl8189ftv/build/linux-4fb8bc9f91c2951629f818014b7d3b5cc2a1ec81/
-export PATH=/home/matteius/output/wyze_cam3_t31x_gc2053_rtl8189ftv/per-package/toolchain-external-custom/host/bin/:$PATH
+export KDIR=/home/user/output/wyze_cam3_t31x_gc2053_rtl8189ftv/build/linux-4fb8bc9f91c2951629f818014b7d3b5cc2a1ec81/
+export PATH=/home/user/output/wyze_cam3_t31x_gc2053_rtl8189ftv/per-package/toolchain-external-custom/host/bin/:$PATH
 
 
 # Configuration
 SENSOR_MODEL="${SENSOR_MODEL:-gc2053}"  # Default sensor model, can be overridden
 TARGET="${TARGET:-t31}"                 # Default target, can be overridden
-REMOTE_HOST="${REMOTE_HOST:-192.168.50.215}"  # Default remote host
+REMOTE_HOST="${REMOTE_HOST:-192.0.2.15}"  # Default remote host
 REMOTE_PATH="${REMOTE_PATH:-/tmp/}"     # Default remote path
 
 # Determine if we're in SDK directory or ISP root
@@ -76,7 +76,7 @@ upload_modules() {
     fi
     
     # Upload the files using sshpass
-    if sshpass -p "Ami23plop" scp -O "${ko_files[@]}" "root@${REMOTE_HOST}:${REMOTE_PATH}"; then
+    if sshpass -p "<password>" scp -O "${ko_files[@]}" "root@${REMOTE_HOST}:${REMOTE_PATH}"; then
         print_status "Kernel modules uploaded successfully"
     else
         print_error "Failed to upload kernel modules"
@@ -157,7 +157,7 @@ show_help() {
     echo "Options:"
     echo "  -s, --sensor MODEL    Set sensor model (default: gc2053)"
     echo "  -t, --target TARGET   Set build target (default: t31)"
-    echo "  -r, --remote HOST     Set remote host IP (default: 192.168.50.211)"
+    echo "  -r, --remote HOST     Set remote host IP (default: 192.0.2.11)"
     echo "  -p, --path PATH       Set remote path (default: /tmp/)"
     echo "  -h, --help           Show this help message"
     echo ""
@@ -170,7 +170,7 @@ show_help() {
     echo "Examples:"
     echo "  $0                           # Use all defaults"
     echo "  $0 -s gc4653 -t t21         # Custom sensor and target"
-    echo "  $0 -r 192.168.1.100         # Custom remote host"
+    echo "  $0 -r 192.0.2.100         # Custom remote host"
     echo "  SENSOR_MODEL=ov2735 $0       # Using environment variable"
 }
 

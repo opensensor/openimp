@@ -355,7 +355,7 @@ FSDBG ch=0 step=post_prctl fd=19 running=1
 08:13:55.001 [INF] HAL_ING      framesource 0 disabled (idle)
 08:13:55.001 [INF] HAL_ING      video chn0 idle
 08:13:56.654 [INF] DAYNIGHT     night reference deferred: only 1 units of AE reserve, so 19827 is a clip, not a level - waiting for the meter to come off the rail
-08:13:56.971 [INF] CLIENT       + rtsp/tcp 192.168.1.x:42728 chn=0 agent="Lavf62.3.100"
+08:13:56.971 [INF] CLIENT       + rtsp/tcp 192.0.2.x:42728 chn=0 agent="Lavf62.3.100"
 [KernelIF] Opened /dev/framechan0 (fd=23)
 [KernelIF] SET_FMT before ioctl:
 [KernelIF]   width=1920 height=1080 pixelformat=0x3231564e
@@ -462,7 +462,7 @@ FSDBG ch=0 step=post_prctl fd=19 running=1
 08:14:14.998 [INF] HAL_ING      framesource 0 disabled (idle)
 08:14:15.528 [INF] MAIN         shutting down
 08:14:15.529 [INF] DAYNIGHT     detection thread stopped
-08:14:15.530 [INF] CLIENT       - rtsp/tcp 192.168.1.x:42728 after 18s, 0 bytes
+08:14:15.530 [INF] CLIENT       - rtsp/tcp 192.0.2.x:42728 after 18s, 0 bytes
 08:14:15.530 [INF] RTSP         client disconnect session=4e14fbfc
 08:14:15.540 [INF] RTSP         all client threads gone after 10 ms
 08:14:15.541 [INF] HTTP         all connection threads gone after 0 ms

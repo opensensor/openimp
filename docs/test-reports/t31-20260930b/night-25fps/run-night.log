@@ -136,10 +136,10 @@
 00:15:52.426 [INF] HAL_ING      chn0: first encoded frame packCount=3 aulen=142575 key=1
 [DevicePool] Open: '/dev/avpu' already open (fd=28, refcount=2)
 00:15:52.435 [INF] HAL_ING      chn1: first encoded frame packCount=3 aulen=25744 key=1
-00:15:52.460 [INF] CLIENT       + rtsp/tcp 192.168.1.x:33012 chn=0 agent="Lavf62.3.100"
+00:15:52.460 [INF] CLIENT       + rtsp/tcp 192.0.2.x:33012 chn=0 agent="Lavf62.3.100"
 00:15:52.461 [INF] RTSP         PLAY session=c1d5c208 vchn=0 TCP v=1 a=1
 00:15:52.462 [INF] HAL_ING      audio resume: flushed 6 stale AI frame(s)
-00:15:52.465 [INF] CLIENT       + rtsp/tcp 192.168.1.x:33014 chn=1 agent="Lavf62.3.100"
+00:15:52.465 [INF] CLIENT       + rtsp/tcp 192.0.2.x:33014 chn=1 agent="Lavf62.3.100"
 00:15:52.465 [INF] RTSP         PLAY session=72c68a4c vchn=1 TCP v=1 a=1
 00:15:52.624 [INF] HAL_ING      AAC encoder producing (54 bytes/frame)
 [DevicePool] Open: '/dev/avpu' already open (fd=28, refcount=3)
@@ -426,9 +426,9 @@
 [Codec] HWJPEG: 1920x1080 q75 -> 204499 bytes [#27600]
 [Codec] HWJPEG: 1920x1080 q75 -> 204197 bytes [#27700]
 06:55:53.332 [INF] RTSP         session=72c68a4c: client disconnected after 24000s (Connection reset by peer)
-06:55:53.332 [INF] CLIENT       - rtsp/tcp 192.168.1.x:33014 after 24000s, 864162390 bytes
+06:55:53.332 [INF] CLIENT       - rtsp/tcp 192.0.2.x:33014 after 24000s, 864162390 bytes
 06:55:53.348 [INF] RTSP         session=c1d5c208: client disconnected after 24000s (Connection reset by peer)
-06:55:53.349 [INF] CLIENT       - rtsp/tcp 192.168.1.x:33012 after 24000s, 3714429291 bytes
+06:55:53.349 [INF] CLIENT       - rtsp/tcp 192.0.2.x:33012 after 24000s, 3714429291 bytes
 [KernelIF] Stream stopped
 [KernelIF] DQBUF failed: fd=27 Invalid argument
 [VBM] VBMKernelDequeue chn=1: DQBUF error ret=-1

@@ -126,11 +126,11 @@ FSDBG ch=0 step=post_prctl fd=26 running=1
 21:42:48.944 [INF] HAL_ING      framesource 0 enabled
 21:42:48.945 [INF] HAL_ING      video chn0 streaming
 21:42:48.950 [INF] HAL_ING      chn1: first encoded frame packCount=3 aulen=32447 key=1
-21:42:48.969 [INF] CLIENT       + rtsp/tcp 192.168.1.x:60364 chn=1 agent="Lavf62.3.100"
+21:42:48.969 [INF] CLIENT       + rtsp/tcp 192.0.2.x:60364 chn=1 agent="Lavf62.3.100"
 21:42:48.970 [INF] RTSP         PLAY session=e4d386e9 vchn=1 TCP v=1 a=1
 [DevicePool] Open: '/dev/avpu' already open (fd=27, refcount=2)
 21:42:49.045 [INF] HAL_ING      chn0: first encoded frame packCount=3 aulen=142461 key=1
-21:42:49.080 [INF] CLIENT       + rtsp/tcp 192.168.1.x:60356 chn=0 agent="Lavf62.3.100"
+21:42:49.080 [INF] CLIENT       + rtsp/tcp 192.0.2.x:60356 chn=0 agent="Lavf62.3.100"
 21:42:49.080 [INF] RTSP         PLAY session=3b19f2dc vchn=0 TCP v=1 a=1
 [DevicePool] Open: '/dev/avpu' already open (fd=27, refcount=3)
 [Codec] HWJPEG: ready, ep1=0x01d50000
@@ -177,10 +177,10 @@ FSDBG ch=0 step=post_prctl fd=26 running=1
 [Codec] HWJPEG: 1920x1080 q75 -> 205685 bytes [#1900]
 [Codec] HWJPEG: 1920x1080 q75 -> 205433 bytes [#2000]
 [Codec] HWJPEG: 1920x1080 q75 -> 205491 bytes [#2100]
-22:12:50.371 [INF] CLIENT       - rtsp/tcp 192.168.1.x:60364 after 1801s, 43016393 bytes
+22:12:50.371 [INF] CLIENT       - rtsp/tcp 192.0.2.x:60364 after 1801s, 43016393 bytes
 22:12:50.371 [INF] RTSP         client disconnect session=e4d386e9
 22:12:50.482 [INF] RTSP         session=3b19f2dc: client disconnected after 1801s (Connection reset by peer)
-22:12:50.482 [INF] CLIENT       - rtsp/tcp 192.168.1.x:60356 after 1801s, 230520100 bytes
+22:12:50.482 [INF] CLIENT       - rtsp/tcp 192.0.2.x:60356 after 1801s, 230520100 bytes
 [Codec] HWJPEG: 1920x1080 q75 -> 205670 bytes [#2200]
 [KernelIF] Stream stopped
 [VBM] FlushFrame: chn=1

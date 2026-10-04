@@ -141,7 +141,7 @@ Create a minimal test that just:
 ### Manual build:
 ```bash
 export CROSS_COMPILE=mipsel-linux-
-export PATH=/home/matteius/output/wyze_cam3_t31x_gc2053_rtl8189ftv/per-package/toolchain-external-custom/host/bin/:$PATH
+export PATH=/home/user/output/wyze_cam3_t31x_gc2053_rtl8189ftv/per-package/toolchain-external-custom/host/bin/:$PATH
 make clean
 make CROSS_COMPILE=mipsel-linux- PLATFORM=T31
 make CROSS_COMPILE=mipsel-linux- strip
@@ -177,7 +177,7 @@ scp lib/libsysutils.so root@device:/usr/lib/
 
 ## References
 
-- Binary Ninja MCP server: `/home/matteius/ingenic-lib-new/T31/lib/1.1.6/uclibc/5.4.0/libimp.so`
+- Binary Ninja MCP server: `/home/user/ingenic-lib-new/T31/lib/1.1.6/uclibc/5.4.0/libimp.so`
 - Decompilation addresses documented in source code comments
 - Kernel driver: Part of stock firmware (proprietary)
 

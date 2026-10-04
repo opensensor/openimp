@@ -79,17 +79,17 @@ size_t total_size = stream_cnt * stream_size;
 
 ### Current Status
 - Library compiled successfully
-- Deployed to device at 192.168.50.211
+- Deployed to device at 192.0.2.11
 - Streamer restarted
 - **NEEDS TESTING**: ffprobe/VLC connection to verify frames are now being transmitted
 
 ### Test Commands
 ```bash
 # Test with ffprobe
-ffprobe -v debug -rtsp_flags prefer_tcp -i rtsp://admin:admin@192.168.50.211:554/ch0
+ffprobe -v debug -rtsp_flags prefer_tcp -i rtsp://admin:admin@192.0.2.11:554/ch0
 
 # Test with VLC
-vlc rtsp://admin:admin@192.168.50.211:554/ch0
+vlc rtsp://admin:admin@192.0.2.11:554/ch0
 ```
 
 ### Expected Behavior After Fix
@@ -107,7 +107,7 @@ vlc rtsp://admin:admin@192.168.50.211:554/ch0
    - Check if the frame data is being properly copied to the stream buffers
 3. **Monitor logs** on device:
    ```bash
-   ssh root@192.168.50.211 "tail -f /tmp/streamer.log"
+   ssh root@192.0.2.11 "tail -f /tmp/streamer.log"
    ```
 
 ## Related Files

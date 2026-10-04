@@ -1,12 +1,12 @@
-# T31 Allegro rate-control core: device test plan (cam-A, garage)
+# T31 Allegro rate-control core: device test plan (cam-A)
 
-Result (2026-10-03, cam-A T31 garage, main session): passed, see the end.
+Result (2026-10-03, cam-A T31, main session): passed, see the end.
 Since then the Allegro core is the default; `OPENIMP_T31_RC_CORE=legacy`
 restores the former controller.
 
 Goal: confirm on the camera that the Allegro core (`OPENIMP_T31_RC_CORE=allegro`) runs VBR,
 CappedVBR and CappedQuality with the ported OEM controller, stays stable, and
-behaves as the OEM does on a static scene and on a scene change.  The garage
+behaves as the OEM does on a static scene and on a scene change.  The scene
 is silent: no speaker, no AEC, no audio tests.  Nothing is flashed: the
 library is bind-mounted.
 
@@ -28,7 +28,7 @@ Build: `claude/t31-capped-quality`, `libimp.so` md5 see the hand-over report
    and the /tmp config; a second run per mode with `=legacy` is the
    reference (before the default changed: without the variable).
 
-## Checks per run (3 minutes each, static garage scene)
+## Checks per run (3 minutes each, static scene)
 
 * Log: one `T31 rate control core: allegro (OEM libimp 1.1.6 port)
   (OPENIMP_T31_RC_CORE)` line; one `T31 allegro rc: init mode=.. (AL ..)
@@ -54,7 +54,7 @@ Build: `claude/t31-capped-quality`, `libimp.so` md5 see the hand-over report
 
 ## Scene change (one run per mode)
 
-Switch the garage light on or off (or walk through the picture) twice per
+Switch the room light on or off (or walk through the picture) twice per
 run, 30 s apart, while watching the `T31 allegro rc` lines (set
 `IMP_LOG_LEVEL` to info).  Expected: `next_qp` rises by up to 4 per picture
 on the big picture (the OOoI/Ooii clamp), then falls back over the following
@@ -72,7 +72,7 @@ QP must rise (log) instead of repeating the drop.
   default, the legacy controller with `=legacy` (see the CBR plan below).
 * After the test: `umount /usr/lib/libimp.so`, restart the streamer.
 
-## Result 2026-10-03 (cam-A, T31, garage, main session)
+## Result 2026-10-03 (cam-A, T31, main session)
 
 60 s per run, target 1200 kbit/s, no kernel oops, decode clean:
 
@@ -94,7 +94,7 @@ audio tests at all; nothing flashed, bind-mount as above.
 
 Config: `video0.rc_mode=cbr`, fps 25, GOP 50, iInitialQP/bounds as the
 streamer sets them (IMP default iMinQP 15, iMaxQP 48, eRcOptions 1).  Four
-runs of 60 s each on the same (static garage) scene, alternating so the
+runs of 60 s each on the same ((static)) scene, alternating so the
 light does not drift between the pair:
 
 | run | bitrate | core |

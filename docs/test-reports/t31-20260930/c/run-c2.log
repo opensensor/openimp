@@ -173,11 +173,11 @@ FSDBG ch=0 step=post_prctl fd=23 running=1
 [DevicePool] Open: opened '/dev/avpu' (fd=24, slot=0)
 [Codec] AVPU: T31 companion stage enabled
 08:53:09.743 [INF] HAL_ING      chn0: first encoded frame packCount=3 aulen=141659 key=1
-08:53:09.828 [INF] CLIENT       + rtsp/udp 192.168.1.x:36522 chn=0 agent="Lavf62.3.100"
+08:53:09.828 [INF] CLIENT       + rtsp/udp 192.0.2.x:36522 chn=0 agent="Lavf62.3.100"
 08:53:09.829 [INF] RTSP         PLAY session=02ec0463 vchn=0 UDP v=1 a=1
 08:53:12.138 [INF] HAL_ING      control image.running_mode=1
 08:53:12.638 [DBG] DAYNIGHT     re-asserting running_mode=1 after switch (1 left)
-08:53:14.269 [INF] CLIENT       - rtsp/udp 192.168.1.x:36522 after 4s, 1201293 bytes
+08:53:14.269 [INF] CLIENT       - rtsp/udp 192.0.2.x:36522 after 4s, 1201293 bytes
 08:53:14.269 [INF] RTSP         client disconnect session=02ec0463
 [KernelIF] Stream stopped
 [VBM] FlushFrame: chn=0
@@ -221,7 +221,7 @@ FSDBG ch=0 step=post_prctl fd=20 running=1
 08:53:21.207 [DBG] DAYNIGHT     re-asserting running_mode=1 after switch (0 left)
 08:53:29.379 [INF] HAL_ING      audio resume: flushed 512 stale AI frame(s)
 08:53:35.211 [INF] DAYNIGHT     night reference deferred: only 1 units of AE reserve, so 19839 is a clip, not a level - waiting for the meter to come off the rail
-08:53:35.787 [INF] CLIENT       + rtsp/tcp 192.168.1.x:44540 chn=0 agent="Lavf62.3.100"
+08:53:35.787 [INF] CLIENT       + rtsp/tcp 192.0.2.x:44540 chn=0 agent="Lavf62.3.100"
 [KernelIF] Opened /dev/framechan0 (fd=23)
 [KernelIF] SET_FMT before ioctl:
 [KernelIF]   width=1920 height=1080 pixelformat=0x3231564e
@@ -247,7 +247,7 @@ FSDBG ch=0 step=post_prctl fd=23 running=1
 [KernelIF] Stream started
 08:53:35.821 [INF] HAL_ING      framesource 0 enabled
 08:53:35.821 [INF] HAL_ING      video chn0 streaming
-08:53:45.171 [INF] CLIENT       - rtsp/tcp 192.168.1.x:44540 after 9s, 365164 bytes
+08:53:45.171 [INF] CLIENT       - rtsp/tcp 192.0.2.x:44540 after 9s, 365164 bytes
 08:53:45.171 [INF] RTSP         client disconnect session=cbce66cd
 [KernelIF] Opened /dev/framechan1 (fd=25)
 [KernelIF] SET_FMT before ioctl:
@@ -275,7 +275,7 @@ FSDBG ch=1 step=post_prctl fd=25 running=1
 08:53:45.335 [INF] HAL_ING      video chn1 streaming
 [DevicePool] Open: '/dev/avpu' already open (fd=24, refcount=2)
 08:53:45.386 [INF] HAL_ING      chn1: first encoded frame packCount=3 aulen=24864 key=1
-08:53:45.469 [INF] CLIENT       + rtsp/tcp 192.168.1.x:41754 chn=1 agent="Lavf62.3.100"
+08:53:45.469 [INF] CLIENT       + rtsp/tcp 192.0.2.x:41754 chn=1 agent="Lavf62.3.100"
 08:53:45.471 [INF] RTSP         PLAY session=1e517d41 vchn=1 TCP v=1 a=1
 [KernelIF] Stream stopped
 [VBM] FlushFrame: chn=0
@@ -285,7 +285,7 @@ FSDBG ch=1 step=post_prctl fd=25 running=1
 [KernelIF] Closed device (fd=23)
 08:53:47.357 [INF] HAL_ING      framesource 0 disabled (idle)
 08:53:47.357 [INF] HAL_ING      video chn0 idle
-08:53:50.675 [INF] CLIENT       - rtsp/tcp 192.168.1.x:41754 after 5s, 60157 bytes
+08:53:50.675 [INF] CLIENT       - rtsp/tcp 192.0.2.x:41754 after 5s, 60157 bytes
 08:53:50.675 [INF] RTSP         client disconnect session=1e517d41
 [KernelIF] Stream stopped
 [VBM] FlushFrame: chn=1
@@ -296,7 +296,7 @@ FSDBG ch=1 step=post_prctl fd=25 running=1
 08:53:52.867 [INF] HAL_ING      framesource 1 disabled (idle)
 08:53:52.867 [INF] HAL_ING      video chn1 idle
 08:53:55.332 [INF] HAL_ING      audio resume: flushed 512 stale AI frame(s)
-08:53:56.376 [INF] CLIENT       + rtsp/tcp 192.168.1.x:57010 chn=0 agent="Lavf62.3.100"
+08:53:56.376 [INF] CLIENT       + rtsp/tcp 192.0.2.x:57010 chn=0 agent="Lavf62.3.100"
 [KernelIF] Opened /dev/framechan0 (fd=23)
 [KernelIF] SET_FMT before ioctl:
 [KernelIF]   width=1920 height=1080 pixelformat=0x3231564e
@@ -323,8 +323,8 @@ FSDBG ch=0 step=post_prctl fd=23 running=1
 08:53:56.413 [INF] HAL_ING      framesource 0 enabled
 08:53:56.413 [INF] HAL_ING      video chn0 streaming
 08:54:05.763 [INF] RTSP         session=c06ffeb1: client disconnected after 9s (Connection reset by peer)
-08:54:05.763 [INF] CLIENT       - rtsp/tcp 192.168.1.x:57010 after 9s, 522644 bytes
-08:54:05.941 [INF] CLIENT       + rtsp/tcp 192.168.1.x:34162 chn=1 agent="Lavf62.3.100"
+08:54:05.763 [INF] CLIENT       - rtsp/tcp 192.0.2.x:57010 after 9s, 522644 bytes
+08:54:05.941 [INF] CLIENT       + rtsp/tcp 192.0.2.x:34162 chn=1 agent="Lavf62.3.100"
 [KernelIF] Opened /dev/framechan1 (fd=25)
 [KernelIF] SET_FMT before ioctl:
 [KernelIF]   width=640 height=360 pixelformat=0x3231564e
@@ -358,7 +358,7 @@ FSDBG ch=1 step=post_prctl fd=25 running=1
 [KernelIF] Closed device (fd=23)
 08:54:07.947 [INF] HAL_ING      framesource 0 disabled (idle)
 08:54:07.947 [INF] HAL_ING      video chn0 idle
-08:54:11.114 [INF] CLIENT       - rtsp/tcp 192.168.1.x:34162 after 5s, 77799 bytes
+08:54:11.114 [INF] CLIENT       - rtsp/tcp 192.0.2.x:34162 after 5s, 77799 bytes
 08:54:11.114 [INF] RTSP         client disconnect session=49e6d2c4
 [KernelIF] Stream stopped
 [VBM] FlushFrame: chn=1
@@ -369,7 +369,7 @@ FSDBG ch=1 step=post_prctl fd=25 running=1
 08:54:13.288 [INF] HAL_ING      framesource 1 disabled (idle)
 08:54:13.288 [INF] HAL_ING      video chn1 idle
 08:54:15.923 [INF] HAL_ING      audio resume: flushed 512 stale AI frame(s)
-08:54:16.807 [INF] CLIENT       + rtsp/tcp 192.168.1.x:53516 chn=0 agent="Lavf62.3.100"
+08:54:16.807 [INF] CLIENT       + rtsp/tcp 192.0.2.x:53516 chn=0 agent="Lavf62.3.100"
 [KernelIF] Opened /dev/framechan0 (fd=23)
 [KernelIF] SET_FMT before ioctl:
 [KernelIF]   width=1920 height=1080 pixelformat=0x3231564e
@@ -396,8 +396,8 @@ FSDBG ch=0 step=post_prctl fd=23 running=1
 08:54:16.841 [INF] HAL_ING      framesource 0 enabled
 08:54:16.841 [INF] HAL_ING      video chn0 streaming
 08:54:26.257 [INF] RTSP         session=93860391: client disconnected after 9s (Connection reset by peer)
-08:54:26.257 [INF] CLIENT       - rtsp/tcp 192.168.1.x:53516 after 9s, 615243 bytes
-08:54:26.505 [INF] CLIENT       + rtsp/tcp 192.168.1.x:56852 chn=1 agent="Lavf62.3.100"
+08:54:26.257 [INF] CLIENT       - rtsp/tcp 192.0.2.x:53516 after 9s, 615243 bytes
+08:54:26.505 [INF] CLIENT       + rtsp/tcp 192.0.2.x:56852 chn=1 agent="Lavf62.3.100"
 08:54:26.505 [INF] RTSP         PLAY session=9a6b7bc6 vchn=1 TCP v=1 a=1
 [KernelIF] Opened /dev/framechan1 (fd=25)
 [KernelIF] SET_FMT before ioctl:
@@ -432,7 +432,7 @@ FSDBG ch=1 step=post_prctl fd=25 running=1
 08:54:28.447 [INF] HAL_ING      framesource 0 disabled (idle)
 08:54:28.447 [INF] HAL_ING      video chn0 idle
 08:54:31.727 [INF] RTSP         session=9a6b7bc6: client disconnected after 5s (Broken pipe)
-08:54:31.728 [INF] CLIENT       - rtsp/tcp 192.168.1.x:56852 after 5s, 177977 bytes
+08:54:31.728 [INF] CLIENT       - rtsp/tcp 192.0.2.x:56852 after 5s, 177977 bytes
 [KernelIF] Stream stopped
 [VBM] FlushFrame: chn=1
 [VBM] FlushFrame: flushed all frames
@@ -442,7 +442,7 @@ FSDBG ch=1 step=post_prctl fd=25 running=1
 08:54:33.867 [INF] HAL_ING      framesource 1 disabled (idle)
 08:54:33.867 [INF] HAL_ING      video chn1 idle
 08:54:36.452 [INF] HAL_ING      audio resume: flushed 512 stale AI frame(s)
-08:54:37.773 [INF] CLIENT       + rtsp/tcp 192.168.1.x:49558 chn=0 agent="Lavf62.3.100"
+08:54:37.773 [INF] CLIENT       + rtsp/tcp 192.0.2.x:49558 chn=0 agent="Lavf62.3.100"
 [KernelIF] Opened /dev/framechan0 (fd=23)
 [KernelIF] SET_FMT before ioctl:
 [KernelIF]   width=1920 height=1080 pixelformat=0x3231564e
@@ -469,8 +469,8 @@ FSDBG ch=0 step=post_prctl fd=23 running=1
 08:54:37.809 [INF] HAL_ING      framesource 0 enabled
 08:54:37.809 [INF] HAL_ING      video chn0 streaming
 08:54:47.158 [INF] RTSP         session=43941c03: client disconnected after 9s (Connection reset by peer)
-08:54:47.158 [INF] CLIENT       - rtsp/tcp 192.168.1.x:49558 after 9s, 652273 bytes
-08:54:47.340 [INF] CLIENT       + rtsp/tcp 192.168.1.x:47232 chn=1 agent="Lavf62.3.100"
+08:54:47.158 [INF] CLIENT       - rtsp/tcp 192.0.2.x:49558 after 9s, 652273 bytes
+08:54:47.340 [INF] CLIENT       + rtsp/tcp 192.0.2.x:47232 chn=1 agent="Lavf62.3.100"
 [KernelIF] Opened /dev/framechan1 (fd=25)
 [KernelIF] SET_FMT before ioctl:
 [KernelIF]   width=640 height=360 pixelformat=0x3231564e
@@ -505,7 +505,7 @@ FSDBG ch=1 step=post_prctl fd=25 running=1
 08:54:49.327 [INF] HAL_ING      framesource 0 disabled (idle)
 08:54:49.327 [INF] HAL_ING      video chn0 idle
 08:54:52.582 [INF] RTSP         session=a3426b08: client disconnected after 5s (Connection reset by peer)
-08:54:52.582 [INF] CLIENT       - rtsp/tcp 192.168.1.x:47232 after 5s, 185899 bytes
+08:54:52.582 [INF] CLIENT       - rtsp/tcp 192.0.2.x:47232 after 5s, 185899 bytes
 [KernelIF] Stream stopped
 [VBM] FlushFrame: chn=1
 [VBM] FlushFrame: flushed all frames
@@ -515,7 +515,7 @@ FSDBG ch=1 step=post_prctl fd=25 running=1
 08:54:54.767 [INF] HAL_ING      framesource 1 disabled (idle)
 08:54:54.767 [INF] HAL_ING      video chn1 idle
 08:54:57.342 [INF] HAL_ING      audio resume: flushed 512 stale AI frame(s)
-08:54:58.383 [INF] CLIENT       + rtsp/tcp 192.168.1.x:54294 chn=0 agent="Lavf62.3.100"
+08:54:58.383 [INF] CLIENT       + rtsp/tcp 192.0.2.x:54294 chn=0 agent="Lavf62.3.100"
 08:54:58.383 [INF] RTSP         PLAY session=b9e925d3 vchn=0 TCP v=1 a=1
 [KernelIF] Opened /dev/framechan0 (fd=23)
 [KernelIF] SET_FMT before ioctl:
@@ -542,8 +542,8 @@ FSDBG ch=0 step=post_prctl fd=23 running=1
 08:54:58.416 [INF] HAL_ING      framesource 0 enabled
 08:54:58.417 [INF] HAL_ING      video chn0 streaming
 08:55:07.833 [INF] RTSP         session=b9e925d3: client disconnected after 9s (Connection reset by peer)
-08:55:07.833 [INF] CLIENT       - rtsp/tcp 192.168.1.x:54294 after 9s, 699959 bytes
-08:55:08.088 [INF] CLIENT       + rtsp/tcp 192.168.1.x:38900 chn=1 agent="Lavf62.3.100"
+08:55:07.833 [INF] CLIENT       - rtsp/tcp 192.0.2.x:54294 after 9s, 699959 bytes
+08:55:08.088 [INF] CLIENT       + rtsp/tcp 192.0.2.x:38900 chn=1 agent="Lavf62.3.100"
 [KernelIF] Opened /dev/framechan1 (fd=25)
 [KernelIF] SET_FMT before ioctl:
 [KernelIF]   width=640 height=360 pixelformat=0x3231564e
@@ -578,7 +578,7 @@ FSDBG ch=1 step=post_prctl fd=25 running=1
 08:55:10.017 [INF] HAL_ING      framesource 0 disabled (idle)
 08:55:10.017 [INF] HAL_ING      video chn0 idle
 08:55:13.233 [INF] DAYNIGHT     night reference 19840 (probe bar 9920)
-08:55:13.263 [INF] CLIENT       - rtsp/tcp 192.168.1.x:38900 after 5s, 182820 bytes
+08:55:13.263 [INF] CLIENT       - rtsp/tcp 192.0.2.x:38900 after 5s, 182820 bytes
 08:55:13.264 [INF] RTSP         client disconnect session=724ca790
 [KernelIF] Stream stopped
 [VBM] FlushFrame: chn=1
@@ -589,7 +589,7 @@ FSDBG ch=1 step=post_prctl fd=25 running=1
 08:55:15.447 [INF] HAL_ING      framesource 1 disabled (idle)
 08:55:15.448 [INF] HAL_ING      video chn1 idle
 08:55:17.913 [INF] HAL_ING      audio resume: flushed 512 stale AI frame(s)
-08:55:18.962 [INF] CLIENT       + rtsp/tcp 192.168.1.x:44224 chn=0 agent="Lavf62.3.100"
+08:55:18.962 [INF] CLIENT       + rtsp/tcp 192.0.2.x:44224 chn=0 agent="Lavf62.3.100"
 [KernelIF] Opened /dev/framechan0 (fd=23)
 [KernelIF] SET_FMT before ioctl:
 [KernelIF]   width=1920 height=1080 pixelformat=0x3231564e
@@ -616,8 +616,8 @@ FSDBG ch=0 step=post_prctl fd=23 running=1
 08:55:18.998 [INF] HAL_ING      framesource 0 enabled
 08:55:18.998 [INF] HAL_ING      video chn0 streaming
 08:55:29.617 [INF] RTSP         session=e6a1c6f8: client disconnected after 10s (Connection reset by peer)
-08:55:29.617 [INF] CLIENT       - rtsp/tcp 192.168.1.x:44224 after 10s, 874681 bytes
-08:55:29.857 [INF] CLIENT       + rtsp/tcp 192.168.1.x:55140 chn=1 agent="Lavf62.3.100"
+08:55:29.617 [INF] CLIENT       - rtsp/tcp 192.0.2.x:44224 after 10s, 874681 bytes
+08:55:29.857 [INF] CLIENT       + rtsp/tcp 192.0.2.x:55140 chn=1 agent="Lavf62.3.100"
 [KernelIF] Opened /dev/framechan1 (fd=25)
 [KernelIF] SET_FMT before ioctl:
 [KernelIF]   width=640 height=360 pixelformat=0x3231564e
@@ -651,7 +651,7 @@ FSDBG ch=1 step=post_prctl fd=25 running=1
 [KernelIF] Closed device (fd=23)
 08:55:31.717 [INF] HAL_ING      framesource 0 disabled (idle)
 08:55:31.717 [INF] HAL_ING      video chn0 idle
-08:55:35.030 [INF] CLIENT       - rtsp/tcp 192.168.1.x:55140 after 5s, 146269 bytes
+08:55:35.030 [INF] CLIENT       - rtsp/tcp 192.0.2.x:55140 after 5s, 146269 bytes
 08:55:35.030 [INF] RTSP         client disconnect session=34c6b68e
 [KernelIF] Stream stopped
 [VBM] FlushFrame: chn=1
@@ -662,7 +662,7 @@ FSDBG ch=1 step=post_prctl fd=25 running=1
 08:55:37.217 [INF] HAL_ING      framesource 1 disabled (idle)
 08:55:37.217 [INF] HAL_ING      video chn1 idle
 08:55:38.504 [INF] HAL_ING      audio resume: flushed 512 stale AI frame(s)
-08:55:40.715 [INF] CLIENT       + rtsp/tcp 192.168.1.x:34268 chn=0 agent="Lavf62.3.100"
+08:55:40.715 [INF] CLIENT       + rtsp/tcp 192.0.2.x:34268 chn=0 agent="Lavf62.3.100"
 [KernelIF] Opened /dev/framechan0 (fd=23)
 [KernelIF] SET_FMT before ioctl:
 [KernelIF]   width=1920 height=1080 pixelformat=0x3231564e
@@ -689,8 +689,8 @@ FSDBG ch=0 step=post_prctl fd=23 running=1
 08:55:40.749 [INF] HAL_ING      framesource 0 enabled
 08:55:40.749 [INF] HAL_ING      video chn0 streaming
 08:55:50.098 [INF] RTSP         session=cca37767: client disconnected after 9s (Connection reset by peer)
-08:55:50.099 [INF] CLIENT       - rtsp/tcp 192.168.1.x:34268 after 9s, 960135 bytes
-08:55:50.268 [INF] CLIENT       + rtsp/tcp 192.168.1.x:48858 chn=1 agent="Lavf62.3.100"
+08:55:50.099 [INF] CLIENT       - rtsp/tcp 192.0.2.x:34268 after 9s, 960135 bytes
+08:55:50.268 [INF] CLIENT       + rtsp/tcp 192.0.2.x:48858 chn=1 agent="Lavf62.3.100"
 [KernelIF] Opened /dev/framechan1 (fd=25)
 [KernelIF] SET_FMT before ioctl:
 [KernelIF]   width=640 height=360 pixelformat=0x3231564e
@@ -724,7 +724,7 @@ FSDBG ch=1 step=post_prctl fd=25 running=1
 [KernelIF] Closed device (fd=23)
 08:55:52.267 [INF] HAL_ING      framesource 0 disabled (idle)
 08:55:52.267 [INF] HAL_ING      video chn0 idle
-08:55:55.441 [INF] CLIENT       - rtsp/tcp 192.168.1.x:48858 after 5s, 147359 bytes
+08:55:55.441 [INF] CLIENT       - rtsp/tcp 192.0.2.x:48858 after 5s, 147359 bytes
 08:55:55.441 [INF] RTSP         client disconnect session=857fab04
 [KernelIF] Stream stopped
 [VBM] FlushFrame: chn=1
@@ -735,7 +735,7 @@ FSDBG ch=1 step=post_prctl fd=25 running=1
 08:55:57.567 [INF] HAL_ING      framesource 1 disabled (idle)
 08:55:57.567 [INF] HAL_ING      video chn1 idle
 08:56:00.255 [INF] HAL_ING      audio resume: flushed 512 stale AI frame(s)
-08:56:01.438 [INF] CLIENT       + rtsp/tcp 192.168.1.x:47876 chn=0 agent="Lavf62.3.100"
+08:56:01.438 [INF] CLIENT       + rtsp/tcp 192.0.2.x:47876 chn=0 agent="Lavf62.3.100"
 [KernelIF] Opened /dev/framechan0 (fd=23)
 [KernelIF] SET_FMT before ioctl:
 [KernelIF]   width=1920 height=1080 pixelformat=0x3231564e
@@ -762,8 +762,8 @@ FSDBG ch=0 step=post_prctl fd=23 running=1
 08:56:01.473 [INF] HAL_ING      framesource 0 enabled
 08:56:01.473 [INF] HAL_ING      video chn0 streaming
 08:56:10.889 [INF] RTSP         session=6ab8a8dc: client disconnected after 9s (Connection reset by peer)
-08:56:10.890 [INF] CLIENT       - rtsp/tcp 192.168.1.x:47876 after 9s, 1063114 bytes
-08:56:11.044 [INF] CLIENT       + rtsp/tcp 192.168.1.x:43800 chn=1 agent="Lavf62.3.100"
+08:56:10.890 [INF] CLIENT       - rtsp/tcp 192.0.2.x:47876 after 9s, 1063114 bytes
+08:56:11.044 [INF] CLIENT       + rtsp/tcp 192.0.2.x:43800 chn=1 agent="Lavf62.3.100"
 [KernelIF] Opened /dev/framechan1 (fd=25)
 [KernelIF] SET_FMT before ioctl:
 [KernelIF]   width=640 height=360 pixelformat=0x3231564e
@@ -798,7 +798,7 @@ FSDBG ch=1 step=post_prctl fd=25 running=1
 08:56:12.987 [INF] HAL_ING      framesource 0 disabled (idle)
 08:56:12.987 [INF] HAL_ING      video chn0 idle
 08:56:16.247 [INF] RTSP         session=ece1f442: client disconnected after 5s (Broken pipe)
-08:56:16.248 [INF] CLIENT       - rtsp/tcp 192.168.1.x:43800 after 5s, 181532 bytes
+08:56:16.248 [INF] CLIENT       - rtsp/tcp 192.0.2.x:43800 after 5s, 181532 bytes
 [KernelIF] Stream stopped
 [VBM] FlushFrame: chn=1
 [VBM] FlushFrame: flushed all frames
@@ -808,7 +808,7 @@ FSDBG ch=1 step=post_prctl fd=25 running=1
 08:56:18.387 [INF] HAL_ING      framesource 1 disabled (idle)
 08:56:18.387 [INF] HAL_ING      video chn1 idle
 08:56:20.986 [INF] HAL_ING      audio resume: flushed 512 stale AI frame(s)
-08:56:21.927 [INF] CLIENT       + rtsp/tcp 192.168.1.x:57424 chn=0 agent="Lavf62.3.100"
+08:56:21.927 [INF] CLIENT       + rtsp/tcp 192.0.2.x:57424 chn=0 agent="Lavf62.3.100"
 [KernelIF] Opened /dev/framechan0 (fd=23)
 [KernelIF] SET_FMT before ioctl:
 [KernelIF]   width=1920 height=1080 pixelformat=0x3231564e
@@ -835,8 +835,8 @@ FSDBG ch=0 step=post_prctl fd=23 running=1
 08:56:21.961 [INF] HAL_ING      framesource 0 enabled
 08:56:21.962 [INF] HAL_ING      video chn0 streaming
 08:56:31.377 [INF] RTSP         session=32d53a52: client disconnected after 9s (Connection reset by peer)
-08:56:31.378 [INF] CLIENT       - rtsp/tcp 192.168.1.x:57424 after 9s, 967238 bytes
-08:56:31.807 [INF] CLIENT       + rtsp/tcp 192.168.1.x:47452 chn=1 agent="Lavf62.3.100"
+08:56:31.378 [INF] CLIENT       - rtsp/tcp 192.0.2.x:57424 after 9s, 967238 bytes
+08:56:31.807 [INF] CLIENT       + rtsp/tcp 192.0.2.x:47452 chn=1 agent="Lavf62.3.100"
 08:56:31.807 [INF] RTSP         PLAY session=6892a76f vchn=1 TCP v=1 a=1
 [KernelIF] Opened /dev/framechan1 (fd=25)
 [KernelIF] SET_FMT before ioctl:
@@ -871,7 +871,7 @@ FSDBG ch=1 step=post_prctl fd=25 running=1
 08:56:33.457 [INF] HAL_ING      framesource 0 disabled (idle)
 08:56:33.458 [INF] HAL_ING      video chn0 idle
 08:56:37.046 [INF] RTSP         session=6892a76f: client disconnected after 5s (Connection reset by peer)
-08:56:37.046 [INF] CLIENT       - rtsp/tcp 192.168.1.x:47452 after 5s, 186632 bytes
+08:56:37.046 [INF] CLIENT       - rtsp/tcp 192.0.2.x:47452 after 5s, 186632 bytes
 [KernelIF] Stream stopped
 [VBM] FlushFrame: chn=1
 [VBM] FlushFrame: flushed all frames
@@ -881,7 +881,7 @@ FSDBG ch=1 step=post_prctl fd=25 running=1
 08:56:39.217 [INF] HAL_ING      framesource 1 disabled (idle)
 08:56:39.218 [INF] HAL_ING      video chn1 idle
 08:56:41.516 [INF] HAL_ING      audio resume: flushed 512 stale AI frame(s)
-08:56:42.702 [INF] CLIENT       + rtsp/tcp 192.168.1.x:35146 chn=0 agent="Lavf62.3.100"
+08:56:42.702 [INF] CLIENT       + rtsp/tcp 192.0.2.x:35146 chn=0 agent="Lavf62.3.100"
 [KernelIF] Opened /dev/framechan0 (fd=23)
 [KernelIF] SET_FMT before ioctl:
 [KernelIF]   width=1920 height=1080 pixelformat=0x3231564e
@@ -908,8 +908,8 @@ FSDBG ch=0 step=post_prctl fd=23 running=1
 08:56:42.737 [INF] HAL_ING      framesource 0 enabled
 08:56:42.738 [INF] HAL_ING      video chn0 streaming
 08:56:52.087 [INF] RTSP         session=9107eae9: client disconnected after 9s (Connection reset by peer)
-08:56:52.087 [INF] CLIENT       - rtsp/tcp 192.168.1.x:35146 after 9s, 1061172 bytes
-08:56:52.278 [INF] CLIENT       + rtsp/tcp 192.168.1.x:52748 chn=1 agent="Lavf62.3.100"
+08:56:52.087 [INF] CLIENT       - rtsp/tcp 192.0.2.x:35146 after 9s, 1061172 bytes
+08:56:52.278 [INF] CLIENT       + rtsp/tcp 192.0.2.x:52748 chn=1 agent="Lavf62.3.100"
 [KernelIF] Opened /dev/framechan1 (fd=25)
 [KernelIF] SET_FMT before ioctl:
 [KernelIF]   width=640 height=360 pixelformat=0x3231564e
@@ -943,7 +943,7 @@ FSDBG ch=1 step=post_prctl fd=25 running=1
 [KernelIF] Closed device (fd=23)
 08:56:54.269 [INF] HAL_ING      framesource 0 disabled (idle)
 08:56:54.269 [INF] HAL_ING      video chn0 idle
-08:56:57.453 [INF] CLIENT       - rtsp/tcp 192.168.1.x:52748 after 5s, 183784 bytes
+08:56:57.453 [INF] CLIENT       - rtsp/tcp 192.0.2.x:52748 after 5s, 183784 bytes
 08:56:57.454 [INF] RTSP         client disconnect session=92b5606f
 [KernelIF] Stream stopped
 [VBM] FlushFrame: chn=1
@@ -954,7 +954,7 @@ FSDBG ch=1 step=post_prctl fd=25 running=1
 08:56:59.637 [INF] HAL_ING      framesource 1 disabled (idle)
 08:56:59.637 [INF] HAL_ING      video chn1 idle
 08:57:02.246 [INF] HAL_ING      audio resume: flushed 512 stale AI frame(s)
-08:57:03.435 [INF] CLIENT       + rtsp/tcp 192.168.1.x:36574 chn=0 agent="Lavf62.3.100"
+08:57:03.435 [INF] CLIENT       + rtsp/tcp 192.0.2.x:36574 chn=0 agent="Lavf62.3.100"
 08:57:03.435 [INF] RTSP         PLAY session=9f187d48 vchn=0 TCP v=1 a=1
 [KernelIF] Opened /dev/framechan0 (fd=23)
 [KernelIF] SET_FMT before ioctl:
@@ -981,8 +981,8 @@ FSDBG ch=0 step=post_prctl fd=23 running=1
 08:57:03.469 [INF] HAL_ING      framesource 0 enabled
 08:57:03.470 [INF] HAL_ING      video chn0 streaming
 08:57:12.819 [INF] RTSP         session=9f187d48: client disconnected after 9s (Connection reset by peer)
-08:57:12.819 [INF] CLIENT       - rtsp/tcp 192.168.1.x:36574 after 9s, 957356 bytes
-08:57:13.005 [INF] CLIENT       + rtsp/tcp 192.168.1.x:53504 chn=1 agent="Lavf62.3.100"
+08:57:12.819 [INF] CLIENT       - rtsp/tcp 192.0.2.x:36574 after 9s, 957356 bytes
+08:57:13.005 [INF] CLIENT       + rtsp/tcp 192.0.2.x:53504 chn=1 agent="Lavf62.3.100"
 [KernelIF] Opened /dev/framechan1 (fd=25)
 [KernelIF] SET_FMT before ioctl:
 [KernelIF]   width=640 height=360 pixelformat=0x3231564e
@@ -1016,7 +1016,7 @@ FSDBG ch=1 step=post_prctl fd=25 running=1
 [KernelIF] Closed device (fd=23)
 08:57:14.987 [INF] HAL_ING      framesource 0 disabled (idle)
 08:57:14.987 [INF] HAL_ING      video chn0 idle
-08:57:18.180 [INF] CLIENT       - rtsp/tcp 192.168.1.x:53504 after 5s, 147171 bytes
+08:57:18.180 [INF] CLIENT       - rtsp/tcp 192.0.2.x:53504 after 5s, 147171 bytes
 08:57:18.180 [INF] RTSP         client disconnect session=f75e2ac7
 [KernelIF] Stream stopped
 [VBM] FlushFrame: chn=1
@@ -1027,7 +1027,7 @@ FSDBG ch=1 step=post_prctl fd=25 running=1
 08:57:20.347 [INF] HAL_ING      framesource 1 disabled (idle)
 08:57:20.347 [INF] HAL_ING      video chn1 idle
 08:57:22.975 [INF] HAL_ING      audio resume: flushed 512 stale AI frame(s)
-08:57:23.951 [INF] CLIENT       + rtsp/tcp 192.168.1.x:54156 chn=0 agent="Lavf62.3.100"
+08:57:23.951 [INF] CLIENT       + rtsp/tcp 192.0.2.x:54156 chn=0 agent="Lavf62.3.100"
 [KernelIF] Opened /dev/framechan0 (fd=23)
 [KernelIF] SET_FMT before ioctl:
 [KernelIF]   width=1920 height=1080 pixelformat=0x3231564e
@@ -1054,8 +1054,8 @@ FSDBG ch=0 step=post_prctl fd=23 running=1
 08:57:23.985 [INF] HAL_ING      framesource 0 enabled
 08:57:23.986 [INF] HAL_ING      video chn0 streaming
 08:57:33.335 [INF] RTSP         session=8f72cb51: client disconnected after 9s (Connection reset by peer)
-08:57:33.335 [INF] CLIENT       - rtsp/tcp 192.168.1.x:54156 after 9s, 1061691 bytes
-08:57:33.512 [INF] CLIENT       + rtsp/tcp 192.168.1.x:59750 chn=1 agent="Lavf62.3.100"
+08:57:33.335 [INF] CLIENT       - rtsp/tcp 192.0.2.x:54156 after 9s, 1061691 bytes
+08:57:33.512 [INF] CLIENT       + rtsp/tcp 192.0.2.x:59750 chn=1 agent="Lavf62.3.100"
 [KernelIF] Opened /dev/framechan1 (fd=25)
 [KernelIF] SET_FMT before ioctl:
 [KernelIF]   width=640 height=360 pixelformat=0x3231564e
@@ -1089,7 +1089,7 @@ FSDBG ch=1 step=post_prctl fd=25 running=1
 [KernelIF] Closed device (fd=23)
 08:57:35.507 [INF] HAL_ING      framesource 0 disabled (idle)
 08:57:35.507 [INF] HAL_ING      video chn0 idle
-08:57:38.687 [INF] CLIENT       - rtsp/tcp 192.168.1.x:59750 after 5s, 147729 bytes
+08:57:38.687 [INF] CLIENT       - rtsp/tcp 192.0.2.x:59750 after 5s, 147729 bytes
 08:57:38.687 [INF] RTSP         client disconnect session=b73f629a
 [KernelIF] Stream stopped
 [VBM] FlushFrame: chn=1
@@ -1100,7 +1100,7 @@ FSDBG ch=1 step=post_prctl fd=25 running=1
 08:57:40.877 [INF] HAL_ING      framesource 1 disabled (idle)
 08:57:40.877 [INF] HAL_ING      video chn1 idle
 08:57:43.505 [INF] HAL_ING      audio resume: flushed 512 stale AI frame(s)
-08:57:44.412 [INF] CLIENT       + rtsp/tcp 192.168.1.x:60276 chn=0 agent="Lavf62.3.100"
+08:57:44.412 [INF] CLIENT       + rtsp/tcp 192.0.2.x:60276 chn=0 agent="Lavf62.3.100"
 08:57:44.413 [INF] RTSP         PLAY session=a5dc080c vchn=0 TCP v=1 a=1
 [KernelIF] Opened /dev/framechan0 (fd=23)
 [KernelIF] SET_FMT before ioctl:
@@ -1127,8 +1127,8 @@ FSDBG ch=0 step=post_prctl fd=23 running=1
 08:57:44.446 [INF] HAL_ING      framesource 0 enabled
 08:57:44.446 [INF] HAL_ING      video chn0 streaming
 08:57:53.795 [INF] RTSP         session=a5dc080c: client disconnected after 9s (Connection reset by peer)
-08:57:53.796 [INF] CLIENT       - rtsp/tcp 192.168.1.x:60276 after 9s, 1060255 bytes
-08:57:54.018 [INF] CLIENT       + rtsp/tcp 192.168.1.x:59732 chn=1 agent="Lavf62.3.100"
+08:57:53.796 [INF] CLIENT       - rtsp/tcp 192.0.2.x:60276 after 9s, 1060255 bytes
+08:57:54.018 [INF] CLIENT       + rtsp/tcp 192.0.2.x:59732 chn=1 agent="Lavf62.3.100"
 [KernelIF] Opened /dev/framechan1 (fd=25)
 [KernelIF] SET_FMT before ioctl:
 [KernelIF]   width=640 height=360 pixelformat=0x3231564e
@@ -1162,7 +1162,7 @@ FSDBG ch=1 step=post_prctl fd=25 running=1
 [KernelIF] Closed device (fd=23)
 08:57:55.917 [INF] HAL_ING      framesource 0 disabled (idle)
 08:57:55.917 [INF] HAL_ING      video chn0 idle
-08:57:59.193 [INF] CLIENT       - rtsp/tcp 192.168.1.x:59732 after 5s, 180570 bytes
+08:57:59.193 [INF] CLIENT       - rtsp/tcp 192.0.2.x:59732 after 5s, 180570 bytes
 08:57:59.193 [INF] RTSP         client disconnect session=71023063
 [KernelIF] Stream stopped
 [VBM] FlushFrame: chn=1
@@ -1173,7 +1173,7 @@ FSDBG ch=1 step=post_prctl fd=25 running=1
 08:58:01.357 [INF] HAL_ING      framesource 1 disabled (idle)
 08:58:01.357 [INF] HAL_ING      video chn1 idle
 08:58:04.015 [INF] HAL_ING      audio resume: flushed 512 stale AI frame(s)
-08:58:05.190 [INF] CLIENT       + rtsp/tcp 192.168.1.x:40078 chn=0 agent="Lavf62.3.100"
+08:58:05.190 [INF] CLIENT       + rtsp/tcp 192.0.2.x:40078 chn=0 agent="Lavf62.3.100"
 08:58:05.190 [INF] RTSP         PLAY session=ccf9e111 vchn=0 TCP v=1 a=1
 [KernelIF] Opened /dev/framechan0 (fd=23)
 [KernelIF] SET_FMT before ioctl:
@@ -1200,8 +1200,8 @@ FSDBG ch=0 step=post_prctl fd=23 running=1
 08:58:05.223 [INF] HAL_ING      framesource 0 enabled
 08:58:05.224 [INF] HAL_ING      video chn0 streaming
 08:58:14.573 [INF] RTSP         session=ccf9e111: client disconnected after 9s (Connection reset by peer)
-08:58:14.573 [INF] CLIENT       - rtsp/tcp 192.168.1.x:40078 after 9s, 1063421 bytes
-08:58:14.726 [INF] CLIENT       + rtsp/tcp 192.168.1.x:58098 chn=1 agent="Lavf62.3.100"
+08:58:14.573 [INF] CLIENT       - rtsp/tcp 192.0.2.x:40078 after 9s, 1063421 bytes
+08:58:14.726 [INF] CLIENT       + rtsp/tcp 192.0.2.x:58098 chn=1 agent="Lavf62.3.100"
 [KernelIF] Opened /dev/framechan1 (fd=25)
 [KernelIF] SET_FMT before ioctl:
 [KernelIF]   width=640 height=360 pixelformat=0x3231564e
@@ -1235,7 +1235,7 @@ FSDBG ch=1 step=post_prctl fd=25 running=1
 [KernelIF] Closed device (fd=23)
 08:58:16.757 [INF] HAL_ING      framesource 0 disabled (idle)
 08:58:16.758 [INF] HAL_ING      video chn0 idle
-08:58:19.899 [INF] CLIENT       - rtsp/tcp 192.168.1.x:58098 after 5s, 186005 bytes
+08:58:19.899 [INF] CLIENT       - rtsp/tcp 192.0.2.x:58098 after 5s, 186005 bytes
 08:58:19.899 [INF] RTSP         client disconnect session=b8323604
 [KernelIF] Stream stopped
 [VBM] FlushFrame: chn=1
@@ -1246,7 +1246,7 @@ FSDBG ch=1 step=post_prctl fd=25 running=1
 08:58:22.087 [INF] HAL_ING      framesource 1 disabled (idle)
 08:58:22.087 [INF] HAL_ING      video chn1 idle
 08:58:24.725 [INF] HAL_ING      audio resume: flushed 512 stale AI frame(s)
-08:58:25.600 [INF] CLIENT       + rtsp/tcp 192.168.1.x:40298 chn=0 agent="Lavf62.3.100"
+08:58:25.600 [INF] CLIENT       + rtsp/tcp 192.0.2.x:40298 chn=0 agent="Lavf62.3.100"
 [KernelIF] Opened /dev/framechan0 (fd=23)
 [KernelIF] SET_FMT before ioctl:
 [KernelIF]   width=1920 height=1080 pixelformat=0x3231564e
@@ -1273,8 +1273,8 @@ FSDBG ch=0 step=post_prctl fd=23 running=1
 08:58:25.635 [INF] HAL_ING      framesource 0 enabled
 08:58:25.635 [INF] HAL_ING      video chn0 streaming
 08:58:34.985 [INF] RTSP         session=d3ff80dc: client disconnected after 9s (Connection reset by peer)
-08:58:34.985 [INF] CLIENT       - rtsp/tcp 192.168.1.x:40298 after 9s, 1059286 bytes
-08:58:35.149 [INF] CLIENT       + rtsp/tcp 192.168.1.x:46646 chn=1 agent="Lavf62.3.100"
+08:58:34.985 [INF] CLIENT       - rtsp/tcp 192.0.2.x:40298 after 9s, 1059286 bytes
+08:58:35.149 [INF] CLIENT       + rtsp/tcp 192.0.2.x:46646 chn=1 agent="Lavf62.3.100"
 [KernelIF] Opened /dev/framechan1 (fd=25)
 [KernelIF] SET_FMT before ioctl:
 [KernelIF]   width=640 height=360 pixelformat=0x3231564e
@@ -1308,7 +1308,7 @@ FSDBG ch=1 step=post_prctl fd=25 running=1
 [KernelIF] Closed device (fd=23)
 08:58:37.157 [INF] HAL_ING      framesource 0 disabled (idle)
 08:58:37.157 [INF] HAL_ING      video chn0 idle
-08:58:40.322 [INF] CLIENT       - rtsp/tcp 192.168.1.x:46646 after 5s, 184883 bytes
+08:58:40.322 [INF] CLIENT       - rtsp/tcp 192.0.2.x:46646 after 5s, 184883 bytes
 08:58:40.322 [INF] RTSP         client disconnect session=13f7b723
 [KernelIF] Stream stopped
 [VBM] FlushFrame: chn=1
@@ -1319,7 +1319,7 @@ FSDBG ch=1 step=post_prctl fd=25 running=1
 08:58:42.507 [INF] HAL_ING      framesource 1 disabled (idle)
 08:58:42.507 [INF] HAL_ING      video chn1 idle
 08:58:45.255 [INF] HAL_ING      audio resume: flushed 512 stale AI frame(s)
-08:58:45.981 [INF] CLIENT       + rtsp/tcp 192.168.1.x:36434 chn=0 agent="Lavf62.3.100"
+08:58:45.981 [INF] CLIENT       + rtsp/tcp 192.0.2.x:36434 chn=0 agent="Lavf62.3.100"
 [KernelIF] Opened /dev/framechan0 (fd=23)
 [KernelIF] SET_FMT before ioctl:
 [KernelIF]   width=1920 height=1080 pixelformat=0x3231564e
@@ -1346,8 +1346,8 @@ FSDBG ch=0 step=post_prctl fd=23 running=1
 08:58:46.016 [INF] HAL_ING      framesource 0 enabled
 08:58:46.016 [INF] HAL_ING      video chn0 streaming
 08:58:55.366 [INF] RTSP         session=45e762b5: client disconnected after 9s (Connection reset by peer)
-08:58:55.366 [INF] CLIENT       - rtsp/tcp 192.168.1.x:36434 after 9s, 1061908 bytes
-08:58:55.535 [INF] CLIENT       + rtsp/tcp 192.168.1.x:56162 chn=1 agent="Lavf62.3.100"
+08:58:55.366 [INF] CLIENT       - rtsp/tcp 192.0.2.x:36434 after 9s, 1061908 bytes
+08:58:55.535 [INF] CLIENT       + rtsp/tcp 192.0.2.x:56162 chn=1 agent="Lavf62.3.100"
 [KernelIF] Opened /dev/framechan1 (fd=25)
 [KernelIF] SET_FMT before ioctl:
 [KernelIF]   width=640 height=360 pixelformat=0x3231564e
@@ -1381,7 +1381,7 @@ FSDBG ch=1 step=post_prctl fd=25 running=1
 [KernelIF] Closed device (fd=23)
 08:58:57.557 [INF] HAL_ING      framesource 0 disabled (idle)
 08:58:57.558 [INF] HAL_ING      video chn0 idle
-08:59:00.709 [INF] CLIENT       - rtsp/tcp 192.168.1.x:56162 after 5s, 147747 bytes
+08:59:00.709 [INF] CLIENT       - rtsp/tcp 192.0.2.x:56162 after 5s, 147747 bytes
 08:59:00.709 [INF] RTSP         client disconnect session=cb2dfe9a
 [KernelIF] Stream stopped
 [VBM] FlushFrame: chn=1
@@ -1392,7 +1392,7 @@ FSDBG ch=1 step=post_prctl fd=25 running=1
 08:59:02.877 [INF] HAL_ING      framesource 1 disabled (idle)
 08:59:02.877 [INF] HAL_ING      video chn1 idle
 08:59:05.765 [INF] HAL_ING      audio resume: flushed 512 stale AI frame(s)
-08:59:06.400 [INF] CLIENT       + rtsp/tcp 192.168.1.x:40044 chn=0 agent="Lavf62.3.100"
+08:59:06.400 [INF] CLIENT       + rtsp/tcp 192.0.2.x:40044 chn=0 agent="Lavf62.3.100"
 [KernelIF] Opened /dev/framechan0 (fd=23)
 [KernelIF] SET_FMT before ioctl:
 [KernelIF]   width=1920 height=1080 pixelformat=0x3231564e
@@ -1419,8 +1419,8 @@ FSDBG ch=0 step=post_prctl fd=23 running=1
 08:59:06.435 [INF] HAL_ING      framesource 0 enabled
 08:59:06.435 [INF] HAL_ING      video chn0 streaming
 08:59:15.718 [INF] RTSP         session=689dfc0c: client disconnected after 9s (Connection reset by peer)
-08:59:15.719 [INF] CLIENT       - rtsp/tcp 192.168.1.x:40044 after 9s, 1059419 bytes
-08:59:15.891 [INF] CLIENT       + rtsp/tcp 192.168.1.x:40052 chn=1 agent="Lavf62.3.100"
+08:59:15.719 [INF] CLIENT       - rtsp/tcp 192.0.2.x:40044 after 9s, 1059419 bytes
+08:59:15.891 [INF] CLIENT       + rtsp/tcp 192.0.2.x:40052 chn=1 agent="Lavf62.3.100"
 [KernelIF] Opened /dev/framechan1 (fd=25)
 [KernelIF] SET_FMT before ioctl:
 [KernelIF]   width=640 height=360 pixelformat=0x3231564e
@@ -1454,7 +1454,7 @@ FSDBG ch=1 step=post_prctl fd=25 running=1
 [KernelIF] Closed device (fd=23)
 08:59:17.837 [INF] HAL_ING      framesource 0 disabled (idle)
 08:59:17.838 [INF] HAL_ING      video chn0 idle
-08:59:21.065 [INF] CLIENT       - rtsp/tcp 192.168.1.x:40052 after 5s, 147580 bytes
+08:59:21.065 [INF] CLIENT       - rtsp/tcp 192.0.2.x:40052 after 5s, 147580 bytes
 08:59:21.065 [INF] RTSP         client disconnect session=6515e777
 [KernelIF] Stream stopped
 [VBM] FlushFrame: chn=1
@@ -1465,7 +1465,7 @@ FSDBG ch=1 step=post_prctl fd=25 running=1
 08:59:23.237 [INF] HAL_ING      framesource 1 disabled (idle)
 08:59:23.237 [INF] HAL_ING      video chn1 idle
 08:59:26.296 [INF] HAL_ING      audio resume: flushed 512 stale AI frame(s)
-08:59:26.758 [INF] CLIENT       + rtsp/tcp 192.168.1.x:34260 chn=0 agent="Lavf62.3.100"
+08:59:26.758 [INF] CLIENT       + rtsp/tcp 192.0.2.x:34260 chn=0 agent="Lavf62.3.100"
 [KernelIF] Opened /dev/framechan0 (fd=23)
 [KernelIF] SET_FMT before ioctl:
 [KernelIF]   width=1920 height=1080 pixelformat=0x3231564e
@@ -1492,8 +1492,8 @@ FSDBG ch=0 step=post_prctl fd=23 running=1
 08:59:26.792 [INF] HAL_ING      framesource 0 enabled
 08:59:26.792 [INF] HAL_ING      video chn0 streaming
 08:59:36.142 [INF] RTSP         session=a3621a2f: client disconnected after 9s (Connection reset by peer)
-08:59:36.142 [INF] CLIENT       - rtsp/tcp 192.168.1.x:34260 after 9s, 963996 bytes
-08:59:36.332 [INF] CLIENT       + rtsp/tcp 192.168.1.x:34274 chn=1 agent="Lavf62.3.100"
+08:59:36.142 [INF] CLIENT       - rtsp/tcp 192.0.2.x:34260 after 9s, 963996 bytes
+08:59:36.332 [INF] CLIENT       + rtsp/tcp 192.0.2.x:34274 chn=1 agent="Lavf62.3.100"
 08:59:36.333 [INF] RTSP         PLAY session=f4c5187c vchn=1 TCP v=1 a=1
 [KernelIF] Opened /dev/framechan1 (fd=25)
 [KernelIF] SET_FMT before ioctl:
@@ -1527,7 +1527,7 @@ FSDBG ch=1 step=post_prctl fd=25 running=1
 [KernelIF] Closed device (fd=23)
 08:59:38.327 [INF] HAL_ING      framesource 0 disabled (idle)
 08:59:38.328 [INF] HAL_ING      video chn0 idle
-08:59:41.499 [INF] CLIENT       - rtsp/tcp 192.168.1.x:34274 after 5s, 181129 bytes
+08:59:41.499 [INF] CLIENT       - rtsp/tcp 192.0.2.x:34274 after 5s, 181129 bytes
 08:59:41.499 [INF] RTSP         client disconnect session=f4c5187c
 [KernelIF] Stream stopped
 [VBM] FlushFrame: chn=1
@@ -1538,7 +1538,7 @@ FSDBG ch=1 step=post_prctl fd=25 running=1
 08:59:43.607 [INF] HAL_ING      framesource 1 disabled (idle)
 08:59:43.607 [INF] HAL_ING      video chn1 idle
 08:59:46.806 [INF] HAL_ING      audio resume: flushed 512 stale AI frame(s)
-08:59:47.228 [INF] CLIENT       + rtsp/tcp 192.168.1.x:41084 chn=0 agent="Lavf62.3.100"
+08:59:47.228 [INF] CLIENT       + rtsp/tcp 192.0.2.x:41084 chn=0 agent="Lavf62.3.100"
 [KernelIF] Opened /dev/framechan0 (fd=23)
 [KernelIF] SET_FMT before ioctl:
 [KernelIF]   width=1920 height=1080 pixelformat=0x3231564e
@@ -1565,8 +1565,8 @@ FSDBG ch=0 step=post_prctl fd=23 running=1
 08:59:47.263 [INF] HAL_ING      framesource 0 enabled
 08:59:47.263 [INF] HAL_ING      video chn0 streaming
 08:59:56.548 [INF] RTSP         session=ee7d0576: client disconnected after 9s (Connection reset by peer)
-08:59:56.549 [INF] CLIENT       - rtsp/tcp 192.168.1.x:41084 after 9s, 1057957 bytes
-08:59:56.721 [INF] CLIENT       + rtsp/tcp 192.168.1.x:33790 chn=1 agent="Lavf62.3.100"
+08:59:56.549 [INF] CLIENT       - rtsp/tcp 192.0.2.x:41084 after 9s, 1057957 bytes
+08:59:56.721 [INF] CLIENT       + rtsp/tcp 192.0.2.x:33790 chn=1 agent="Lavf62.3.100"
 [KernelIF] Opened /dev/framechan1 (fd=25)
 [KernelIF] SET_FMT before ioctl:
 [KernelIF]   width=640 height=360 pixelformat=0x3231564e
@@ -1601,7 +1601,7 @@ FSDBG ch=1 step=post_prctl fd=25 running=1
 08:59:58.737 [INF] HAL_ING      framesource 0 disabled (idle)
 08:59:58.737 [INF] HAL_ING      video chn0 idle
 09:00:01.961 [INF] RTSP         session=0e012ee2: client disconnected after 5s (Connection reset by peer)
-09:00:01.961 [INF] CLIENT       - rtsp/tcp 192.168.1.x:33790 after 5s, 187276 bytes
+09:00:01.961 [INF] CLIENT       - rtsp/tcp 192.0.2.x:33790 after 5s, 187276 bytes
 [KernelIF] Stream stopped
 [VBM] FlushFrame: chn=1
 [VBM] FlushFrame: flushed all frames
@@ -1611,7 +1611,7 @@ FSDBG ch=1 step=post_prctl fd=25 running=1
 09:00:04.127 [INF] HAL_ING      framesource 1 disabled (idle)
 09:00:04.127 [INF] HAL_ING      video chn1 idle
 09:00:07.335 [INF] HAL_ING      audio resume: flushed 512 stale AI frame(s)
-09:00:07.999 [INF] CLIENT       + rtsp/tcp 192.168.1.x:35658 chn=0 agent="Lavf62.3.100"
+09:00:07.999 [INF] CLIENT       + rtsp/tcp 192.0.2.x:35658 chn=0 agent="Lavf62.3.100"
 [KernelIF] Opened /dev/framechan0 (fd=23)
 [KernelIF] SET_FMT before ioctl:
 [KernelIF]   width=1920 height=1080 pixelformat=0x3231564e
@@ -1638,8 +1638,8 @@ FSDBG ch=0 step=post_prctl fd=23 running=1
 09:00:08.028 [INF] HAL_ING      framesource 0 enabled
 09:00:08.028 [INF] HAL_ING      video chn0 streaming
 09:00:17.377 [INF] RTSP         session=13401241: client disconnected after 9s (Connection reset by peer)
-09:00:17.378 [INF] CLIENT       - rtsp/tcp 192.168.1.x:35658 after 9s, 963062 bytes
-09:00:17.577 [INF] CLIENT       + rtsp/tcp 192.168.1.x:38868 chn=1 agent="Lavf62.3.100"
+09:00:17.378 [INF] CLIENT       - rtsp/tcp 192.0.2.x:35658 after 9s, 963062 bytes
+09:00:17.577 [INF] CLIENT       + rtsp/tcp 192.0.2.x:38868 chn=1 agent="Lavf62.3.100"
 09:00:17.577 [INF] RTSP         PLAY session=fd0ea7ae vchn=1 TCP v=1 a=1
 [KernelIF] Opened /dev/framechan1 (fd=25)
 [KernelIF] SET_FMT before ioctl:
@@ -1673,7 +1673,7 @@ FSDBG ch=1 step=post_prctl fd=25 running=1
 [KernelIF] Closed device (fd=23)
 09:00:19.567 [INF] HAL_ING      framesource 0 disabled (idle)
 09:00:19.567 [INF] HAL_ING      video chn0 idle
-09:00:22.751 [INF] CLIENT       - rtsp/tcp 192.168.1.x:38868 after 5s, 184467 bytes
+09:00:22.751 [INF] CLIENT       - rtsp/tcp 192.0.2.x:38868 after 5s, 184467 bytes
 09:00:22.751 [INF] RTSP         client disconnect session=fd0ea7ae
 [KernelIF] Stream stopped
 [VBM] FlushFrame: chn=1
@@ -1684,7 +1684,7 @@ FSDBG ch=1 step=post_prctl fd=25 running=1
 09:00:24.917 [INF] HAL_ING      framesource 1 disabled (idle)
 09:00:24.917 [INF] HAL_ING      video chn1 idle
 09:00:27.845 [INF] HAL_ING      audio resume: flushed 512 stale AI frame(s)
-09:00:28.406 [INF] CLIENT       + rtsp/tcp 192.168.1.x:54726 chn=0 agent="Lavf62.3.100"
+09:00:28.406 [INF] CLIENT       + rtsp/tcp 192.0.2.x:54726 chn=0 agent="Lavf62.3.100"
 [KernelIF] Opened /dev/framechan0 (fd=23)
 [KernelIF] SET_FMT before ioctl:
 [KernelIF]   width=1920 height=1080 pixelformat=0x3231564e
@@ -1711,8 +1711,8 @@ FSDBG ch=0 step=post_prctl fd=23 running=1
 09:00:28.439 [INF] HAL_ING      framesource 0 enabled
 09:00:28.440 [INF] HAL_ING      video chn0 streaming
 09:00:37.789 [INF] RTSP         session=4c8f4d53: client disconnected after 9s (Connection reset by peer)
-09:00:37.790 [INF] CLIENT       - rtsp/tcp 192.168.1.x:54726 after 9s, 1066220 bytes
-09:00:38.007 [INF] CLIENT       + rtsp/tcp 192.168.1.x:36728 chn=1 agent="Lavf62.3.100"
+09:00:37.790 [INF] CLIENT       - rtsp/tcp 192.0.2.x:54726 after 9s, 1066220 bytes
+09:00:38.007 [INF] CLIENT       + rtsp/tcp 192.0.2.x:36728 chn=1 agent="Lavf62.3.100"
 [KernelIF] Opened /dev/framechan1 (fd=25)
 [KernelIF] SET_FMT before ioctl:
 [KernelIF]   width=640 height=360 pixelformat=0x3231564e
@@ -1746,7 +1746,7 @@ FSDBG ch=1 step=post_prctl fd=25 running=1
 [KernelIF] Closed device (fd=23)
 09:00:39.907 [INF] HAL_ING      framesource 0 disabled (idle)
 09:00:39.907 [INF] HAL_ING      video chn0 idle
-09:00:43.180 [INF] CLIENT       - rtsp/tcp 192.168.1.x:36728 after 5s, 147264 bytes
+09:00:43.180 [INF] CLIENT       - rtsp/tcp 192.0.2.x:36728 after 5s, 147264 bytes
 09:00:43.181 [INF] RTSP         client disconnect session=151ad6c3
 [KernelIF] Stream stopped
 [VBM] FlushFrame: chn=1
@@ -1757,7 +1757,7 @@ FSDBG ch=1 step=post_prctl fd=25 running=1
 09:00:45.307 [INF] HAL_ING      framesource 1 disabled (idle)
 09:00:45.307 [INF] HAL_ING      video chn1 idle
 09:00:48.375 [INF] HAL_ING      audio resume: flushed 512 stale AI frame(s)
-09:00:48.833 [INF] CLIENT       + rtsp/tcp 192.168.1.x:37296 chn=0 agent="Lavf62.3.100"
+09:00:48.833 [INF] CLIENT       + rtsp/tcp 192.0.2.x:37296 chn=0 agent="Lavf62.3.100"
 [KernelIF] Opened /dev/framechan0 (fd=23)
 [KernelIF] SET_FMT before ioctl:
 [KernelIF]   width=1920 height=1080 pixelformat=0x3231564e
@@ -1784,8 +1784,8 @@ FSDBG ch=0 step=post_prctl fd=23 running=1
 09:00:48.869 [INF] HAL_ING      framesource 0 enabled
 09:00:48.869 [INF] HAL_ING      video chn0 streaming
 09:00:58.218 [INF] RTSP         session=b35074cb: client disconnected after 9s (Connection reset by peer)
-09:00:58.219 [INF] CLIENT       - rtsp/tcp 192.168.1.x:37296 after 9s, 1066754 bytes
-09:00:58.397 [INF] CLIENT       + rtsp/tcp 192.168.1.x:37434 chn=1 agent="Lavf62.3.100"
+09:00:58.219 [INF] CLIENT       - rtsp/tcp 192.0.2.x:37296 after 9s, 1066754 bytes
+09:00:58.397 [INF] CLIENT       + rtsp/tcp 192.0.2.x:37434 chn=1 agent="Lavf62.3.100"
 [KernelIF] Opened /dev/framechan1 (fd=25)
 [KernelIF] SET_FMT before ioctl:
 [KernelIF]   width=640 height=360 pixelformat=0x3231564e
@@ -1819,7 +1819,7 @@ FSDBG ch=1 step=post_prctl fd=25 running=1
 [KernelIF] Closed device (fd=23)
 09:01:00.387 [INF] HAL_ING      framesource 0 disabled (idle)
 09:01:00.387 [INF] HAL_ING      video chn0 idle
-09:01:03.571 [INF] CLIENT       - rtsp/tcp 192.168.1.x:37434 after 5s, 148001 bytes
+09:01:03.571 [INF] CLIENT       - rtsp/tcp 192.0.2.x:37434 after 5s, 148001 bytes
 09:01:03.571 [INF] RTSP         client disconnect session=7f21f807
 [KernelIF] Stream stopped
 [VBM] FlushFrame: chn=1
@@ -1830,7 +1830,7 @@ FSDBG ch=1 step=post_prctl fd=25 running=1
 09:01:05.757 [INF] HAL_ING      framesource 1 disabled (idle)
 09:01:05.757 [INF] HAL_ING      video chn1 idle
 09:01:08.885 [INF] HAL_ING      audio resume: flushed 512 stale AI frame(s)
-09:01:09.321 [INF] CLIENT       + rtsp/tcp 192.168.1.x:49118 chn=0 agent="Lavf62.3.100"
+09:01:09.321 [INF] CLIENT       + rtsp/tcp 192.0.2.x:49118 chn=0 agent="Lavf62.3.100"
 09:01:09.321 [INF] RTSP         PLAY session=f4d0ec0c vchn=0 TCP v=1 a=1
 [KernelIF] Opened /dev/framechan0 (fd=23)
 [KernelIF] SET_FMT before ioctl:
@@ -1857,8 +1857,8 @@ FSDBG ch=0 step=post_prctl fd=23 running=1
 09:01:09.354 [INF] HAL_ING      framesource 0 enabled
 09:01:09.354 [INF] HAL_ING      video chn0 streaming
 09:01:18.704 [INF] RTSP         session=f4d0ec0c: client disconnected after 9s (Connection reset by peer)
-09:01:18.704 [INF] CLIENT       - rtsp/tcp 192.168.1.x:49118 after 9s, 1063161 bytes
-09:01:18.897 [INF] CLIENT       + rtsp/tcp 192.168.1.x:35864 chn=1 agent="Lavf62.3.100"
+09:01:18.704 [INF] CLIENT       - rtsp/tcp 192.0.2.x:49118 after 9s, 1063161 bytes
+09:01:18.897 [INF] CLIENT       + rtsp/tcp 192.0.2.x:35864 chn=1 agent="Lavf62.3.100"
 [KernelIF] Opened /dev/framechan1 (fd=25)
 [KernelIF] SET_FMT before ioctl:
 [KernelIF]   width=640 height=360 pixelformat=0x3231564e
@@ -1893,7 +1893,7 @@ FSDBG ch=1 step=post_prctl fd=25 running=1
 09:01:20.807 [INF] HAL_ING      framesource 0 disabled (idle)
 09:01:20.808 [INF] HAL_ING      video chn0 idle
 09:01:24.102 [INF] RTSP         session=86a77144: client disconnected after 5s (Broken pipe)
-09:01:24.103 [INF] CLIENT       - rtsp/tcp 192.168.1.x:35864 after 5s, 181461 bytes
+09:01:24.103 [INF] CLIENT       - rtsp/tcp 192.0.2.x:35864 after 5s, 181461 bytes
 [KernelIF] Stream stopped
 [VBM] FlushFrame: chn=1
 [VBM] FlushFrame: flushed all frames
@@ -1903,7 +1903,7 @@ FSDBG ch=1 step=post_prctl fd=25 running=1
 09:01:26.237 [INF] HAL_ING      framesource 1 disabled (idle)
 09:01:26.237 [INF] HAL_ING      video chn1 idle
 09:01:29.417 [INF] HAL_ING      audio resume: flushed 512 stale AI frame(s)
-09:01:29.751 [INF] CLIENT       + rtsp/tcp 192.168.1.x:37114 chn=0 agent="Lavf62.3.100"
+09:01:29.751 [INF] CLIENT       + rtsp/tcp 192.0.2.x:37114 chn=0 agent="Lavf62.3.100"
 [KernelIF] Opened /dev/framechan0 (fd=23)
 [KernelIF] SET_FMT before ioctl:
 [KernelIF]   width=1920 height=1080 pixelformat=0x3231564e
@@ -1930,8 +1930,8 @@ FSDBG ch=0 step=post_prctl fd=23 running=1
 09:01:29.785 [INF] HAL_ING      framesource 0 enabled
 09:01:29.786 [INF] HAL_ING      video chn0 streaming
 09:01:39.135 [INF] RTSP         session=ca3dc71e: client disconnected after 9s (Connection reset by peer)
-09:01:39.135 [INF] CLIENT       - rtsp/tcp 192.168.1.x:37114 after 9s, 1056923 bytes
-09:01:39.322 [INF] CLIENT       + rtsp/tcp 192.168.1.x:49592 chn=1 agent="Lavf62.3.100"
+09:01:39.135 [INF] CLIENT       - rtsp/tcp 192.0.2.x:37114 after 9s, 1056923 bytes
+09:01:39.322 [INF] CLIENT       + rtsp/tcp 192.0.2.x:49592 chn=1 agent="Lavf62.3.100"
 [KernelIF] Opened /dev/framechan1 (fd=25)
 [KernelIF] SET_FMT before ioctl:
 [KernelIF]   width=640 height=360 pixelformat=0x3231564e
@@ -1966,7 +1966,7 @@ FSDBG ch=1 step=post_prctl fd=25 running=1
 09:01:41.257 [INF] HAL_ING      framesource 0 disabled (idle)
 09:01:41.257 [INF] HAL_ING      video chn0 idle
 09:01:44.497 [INF] RTSP         session=8eb32903: client disconnected after 5s (Connection reset by peer)
-09:01:44.498 [INF] CLIENT       - rtsp/tcp 192.168.1.x:49592 after 5s, 186168 bytes
+09:01:44.498 [INF] CLIENT       - rtsp/tcp 192.0.2.x:49592 after 5s, 186168 bytes
 [KernelIF] Stream stopped
 [VBM] FlushFrame: chn=1
 [VBM] FlushFrame: flushed all frames
@@ -1976,7 +1976,7 @@ FSDBG ch=1 step=post_prctl fd=25 running=1
 09:01:46.597 [INF] HAL_ING      framesource 1 disabled (idle)
 09:01:46.597 [INF] HAL_ING      video chn1 idle
 09:01:49.927 [INF] HAL_ING      audio resume: flushed 512 stale AI frame(s)
-09:01:50.151 [INF] CLIENT       + rtsp/tcp 192.168.1.x:42006 chn=0 agent="Lavf62.3.100"
+09:01:50.151 [INF] CLIENT       + rtsp/tcp 192.0.2.x:42006 chn=0 agent="Lavf62.3.100"
 [KernelIF] Opened /dev/framechan0 (fd=23)
 [KernelIF] SET_FMT before ioctl:
 [KernelIF]   width=1920 height=1080 pixelformat=0x3231564e
@@ -2003,8 +2003,8 @@ FSDBG ch=0 step=post_prctl fd=23 running=1
 09:01:50.185 [INF] HAL_ING      framesource 0 enabled
 09:01:50.186 [INF] HAL_ING      video chn0 streaming
 09:01:59.469 [INF] RTSP         session=232a0c13: client disconnected after 9s (Connection reset by peer)
-09:01:59.469 [INF] CLIENT       - rtsp/tcp 192.168.1.x:42006 after 9s, 1053864 bytes
-09:01:59.631 [INF] CLIENT       + rtsp/tcp 192.168.1.x:41114 chn=1 agent="Lavf62.3.100"
+09:01:59.469 [INF] CLIENT       - rtsp/tcp 192.0.2.x:42006 after 9s, 1053864 bytes
+09:01:59.631 [INF] CLIENT       + rtsp/tcp 192.0.2.x:41114 chn=1 agent="Lavf62.3.100"
 [KernelIF] Opened /dev/framechan1 (fd=25)
 [KernelIF] SET_FMT before ioctl:
 [KernelIF]   width=640 height=360 pixelformat=0x3231564e
@@ -2038,7 +2038,7 @@ FSDBG ch=1 step=post_prctl fd=25 running=1
 [KernelIF] Closed device (fd=23)
 09:02:01.657 [INF] HAL_ING      framesource 0 disabled (idle)
 09:02:01.657 [INF] HAL_ING      video chn0 idle
-09:02:06.072 [INF] CLIENT       - rtsp/tcp 192.168.1.x:41114 after 6s, 200746 bytes
+09:02:06.072 [INF] CLIENT       - rtsp/tcp 192.0.2.x:41114 after 6s, 200746 bytes
 09:02:06.072 [INF] RTSP         client disconnect session=c33608bc
 [KernelIF] Stream stopped
 [VBM] FlushFrame: chn=1

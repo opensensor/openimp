@@ -122,9 +122,9 @@ FSDBG ch=1 step=post_prctl fd=26 running=1
 21:11:40.592 [INF] HAL_ING      chn0: first encoded frame packCount=3 aulen=141264 key=1
 [DevicePool] Open: '/dev/avpu' already open (fd=27, refcount=2)
 21:11:40.602 [INF] HAL_ING      chn1: first encoded frame packCount=3 aulen=25647 key=1
-21:11:40.612 [INF] CLIENT       + rtsp/tcp 192.168.1.x:39354 chn=0 agent="Lavf62.3.100"
+21:11:40.612 [INF] CLIENT       + rtsp/tcp 192.0.2.x:39354 chn=0 agent="Lavf62.3.100"
 21:11:40.612 [INF] RTSP         PLAY session=c2723e93 vchn=0 TCP v=1 a=1
-21:11:40.620 [INF] CLIENT       + rtsp/tcp 192.168.1.x:39360 chn=1 agent="Lavf62.3.100"
+21:11:40.620 [INF] CLIENT       + rtsp/tcp 192.0.2.x:39360 chn=1 agent="Lavf62.3.100"
 21:11:40.622 [INF] RTSP         PLAY session=5bcbcefd vchn=1 TCP v=1 a=1
 [IVS] chn0: 149 frames, 0 dropped busy, 25 results; copy avg 1546 us max 9387 us; process avg 967 us max 8087 us
 [IVS] chn0: 149 frames, 0 dropped busy, 25 results; copy avg 1526 us max 9566 us; process avg 1068 us max 7079 us
@@ -136,8 +136,8 @@ FSDBG ch=1 step=post_prctl fd=26 running=1
 [IVS] chn0: 149 frames, 0 dropped busy, 25 results; copy avg 1625 us max 8877 us; process avg 1131 us max 8451 us
 21:12:41.958 [INF] RTSP         session=c2723e93: client disconnected after 61s (Connection reset by peer)
 21:12:41.959 [INF] RTSP         session=5bcbcefd: client disconnected after 61s (Broken pipe)
-21:12:41.959 [INF] CLIENT       - rtsp/tcp 192.168.1.x:39360 after 61s, 1232274 bytes
-21:12:41.960 [INF] CLIENT       - rtsp/tcp 192.168.1.x:39354 after 61s, 7407973 bytes
+21:12:41.959 [INF] CLIENT       - rtsp/tcp 192.0.2.x:39360 after 61s, 1232274 bytes
+21:12:41.960 [INF] CLIENT       - rtsp/tcp 192.0.2.x:39354 after 61s, 7407973 bytes
 [KernelIF] Stream stopped
 [VBM] FlushFrame: chn=1
 [VBM] FlushFrame: flushed all frames

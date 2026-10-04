@@ -391,7 +391,7 @@
   "firstStartTime": "2025-09-06T18:45:06.398Z",
   "userID": "1eabbc4fdec053993f40ca779e67014c3256994f175d5c1f4acea02c0e4b42ac",
   "projects": {
-    "/home/matteius": {
+    "/home/user": {
       "allowedTools": [],
       "mcpContextUris": [],
       "mcpServers": {
@@ -467,7 +467,7 @@
         "hook_duration_ms_p99": 533.8
       }
     },
-    "/home/matteius/nvr_soft": {
+    "/home/user/nvr_soft": {
       "allowedTools": [],
       "mcpContextUris": [],
       "mcpServers": {},
@@ -486,7 +486,7 @@
       ],
       "exampleFilesGeneratedAt": 1757184488506
     },
-    "/home/matteius/isp-latest": {
+    "/home/user/isp-latest": {
       "allowedTools": [],
       "mcpContextUris": [],
       "mcpServers": {
@@ -644,7 +644,7 @@
   },
   "githubRepoPaths": {
     "opensensor/isp": [
-      "/home/matteius/isp-latest"
+      "/home/user/isp-latest"
     ]
   },
   "ideHintShownCount": 5,

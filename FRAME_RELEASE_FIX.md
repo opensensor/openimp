@@ -151,7 +151,7 @@ This allows the encoder to call it to release frames back to the VBM pool.
 ## Build
 
 ```bash
-cd /home/matteius/openimp
+cd /home/user/openimp
 make clean && make
 ```
 

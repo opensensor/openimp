@@ -266,12 +266,12 @@ FSDBG ch=1 step=post_prctl fd=27 running=1
 [DevicePool] Open: opened '/dev/avpu' (fd=26, slot=0)
 [Codec] AVPU: T31 companion stage enabled
 08:07:22.232 [INF] HAL_ING      chn1: first encoded frame packCount=3 aulen=23870 key=1
-08:07:22.266 [INF] CLIENT       + rtsp/tcp 192.168.1.x:55576 chn=0 agent="Lavf62.3.100"
+08:07:22.266 [INF] CLIENT       + rtsp/tcp 192.0.2.x:55576 chn=0 agent="Lavf62.3.100"
 08:07:22.267 [INF] RTSP         PLAY session=8823115d vchn=0 TCP v=1 a=1
-08:07:22.310 [INF] CLIENT       + rtsp/tcp 192.168.1.x:55580 chn=1 agent="Lavf62.3.100"
+08:07:22.310 [INF] CLIENT       + rtsp/tcp 192.0.2.x:55580 chn=1 agent="Lavf62.3.100"
 08:07:22.311 [INF] RTSP         PLAY session=dba871fd vchn=1 TCP v=1 a=1
 08:07:27.478 [INF] RTSP         session=8823115d: client disconnected after 5s (Connection reset by peer)
-08:07:27.478 [INF] CLIENT       - rtsp/tcp 192.168.1.x:55576 after 5s, 22283 bytes
+08:07:27.478 [INF] CLIENT       - rtsp/tcp 192.0.2.x:55576 after 5s, 22283 bytes
 [KernelIF] Stream stopped
 [VBM] FlushFrame: chn=0
 [VBM] FlushFrame: flushed all frames
@@ -646,7 +646,7 @@ FSDBG ch=1 step=post_prctl fd=27 running=1
 08:09:06.677 [INF] HAL_ING      framesource 0 disabled (idle)
 08:09:06.786 [INF] MAIN         shutting down
 08:09:06.787 [INF] DAYNIGHT     detection thread stopped
-08:09:06.788 [INF] CLIENT       - rtsp/tcp 192.168.1.x:55580 after 104s, 2595916 bytes
+08:09:06.788 [INF] CLIENT       - rtsp/tcp 192.0.2.x:55580 after 104s, 2595916 bytes
 08:09:06.788 [INF] RTSP         client disconnect session=dba871fd
 08:09:06.798 [INF] RTSP         all client threads gone after 10 ms
 08:09:06.809 [INF] HTTP         all connection threads gone after 10 ms

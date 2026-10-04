@@ -3840,33 +3840,33 @@ Mar 30 17:59:39 udhcpc[1598]: broadcasting discover
 Mar 30 17:59:40 udhcpc[1598]: broadcasting discover
 Mar 30 17:59:41 udhcpc[1598]: broadcasting discover
 Mar 30 17:59:42 udhcpc[1598]: broadcasting discover
-Mar 30 17:59:42 udhcpc[1598]: broadcasting select for 192.168.50.215, server 192.168.50.1
-Mar 30 17:59:43 udhcpc[1598]: lease of 192.168.50.215 obtained from 192.168.50.1, lease time 86400
+Mar 30 17:59:42 udhcpc[1598]: broadcasting select for 192.0.2.15, server 192.0.2.1
+Mar 30 17:59:43 udhcpc[1598]: lease of 192.0.2.15 obtained from 192.0.2.1, lease time 86400
 Mar 30 17:59:43 ntpd[1803]: /sbin/ntpd -- -n -S /etc/ntpd_callback
 Mar 30 17:59:43 crond[1834]: /sbin/crond -- -f -c /etc/cron/crontabs
 Mar 30 17:59:43 crond[1861]: crond (busybox 1.37.0) started, log level 8
-Mar 30 17:59:43 dropbear[1876]: Child connection from 192.168.50.153:42172
+Mar 30 17:59:43 dropbear[1876]: Child connection from 192.0.2.53:42172
 Mar 30 17:59:43 mdnsd[1863]: /sbin/mdnsd -- -i wlan0 -s
 Mar 30 17:59:43 mdnsd[1895]: mdnsd 0.12 starting.
-Apr  2 00:57:45 dropbear[1876]: Exit before auth from <192.168.50.153:42172>: (user 'root', 0 fails): Exited normally
-Apr  2 00:57:46 dropbear[2137]: Child connection from 192.168.50.153:42188
+Apr  2 00:57:45 dropbear[1876]: Exit before auth from <192.0.2.53:42172>: (user 'root', 0 fails): Exited normally
+Apr  2 00:57:46 dropbear[2137]: Child connection from 192.0.2.53:42188
 Apr  2 00:57:47 telegrambot[2172]: /sbin/telegrambot -- 
 Apr  2 00:57:47 telegrambot[2198]: Missing token in config
 Apr  2 00:57:47 telegrambot[2198]: Failed to load config: /etc/telegrambot.json
 Apr  2 00:57:47 /etc/init.d/S94rc.local: Ciao
-Apr  2 00:57:48 dropbear[2137]: Password auth succeeded for 'root' from 192.168.50.153:42188
+Apr  2 00:57:48 dropbear[2137]: Password auth succeeded for 'root' from 192.0.2.53:42188
 Apr  2 00:57:48 dropbear[2306]: wtmpx_write: problem opening /var/log/wtmp: No such file or directory
 Apr  2 00:57:48 : starting pid 2341, tty '/dev/console': '/bin/sh -c 'debug=$(fw_printenv -n debug); if [ "$debug" -ge "1" ] 2>/dev/null; then 
 Apr  2 00:57:58 dropbear[2137]: wtmpx_write: problem opening /var/log/wtmp: No such file or directory
-Apr  2 00:57:58 dropbear[2137]: Exit (root) from <192.168.50.153:42188>: Disconnect received
+Apr  2 00:57:58 dropbear[2137]: Exit (root) from <192.0.2.53:42188>: Disconnect received
 Apr  2 00:58:00 crond[1861]: time disparity of 3298 minutes detected
-Apr  2 00:58:43 dropbear[2345]: Child connection from 192.168.50.153:55156
-Apr  2 00:58:44 dropbear[2345]: Exit before auth from <192.168.50.153:55156>: (user 'root', 0 fails): Exited normally
-Apr  2 00:58:48 dropbear[2346]: Child connection from 192.168.50.153:55168
-Apr  2 00:58:50 dropbear[2346]: Password auth succeeded for 'root' from 192.168.50.153:55168
-Apr  2 00:58:51 dropbear[2346]: Exit (root) from <192.168.50.153:55168>: Disconnect received
-Apr  2 00:58:58 dropbear[2348]: Child connection from 192.168.50.153:47040
-Apr  2 00:58:59 dropbear[2348]: Password auth succeeded for 'root' from 192.168.50.153:47040
+Apr  2 00:58:43 dropbear[2345]: Child connection from 192.0.2.53:55156
+Apr  2 00:58:44 dropbear[2345]: Exit before auth from <192.0.2.53:55156>: (user 'root', 0 fails): Exited normally
+Apr  2 00:58:48 dropbear[2346]: Child connection from 192.0.2.53:55168
+Apr  2 00:58:50 dropbear[2346]: Password auth succeeded for 'root' from 192.0.2.53:55168
+Apr  2 00:58:51 dropbear[2346]: Exit (root) from <192.0.2.53:55168>: Disconnect received
+Apr  2 00:58:58 dropbear[2348]: Child connection from 192.0.2.53:47040
+Apr  2 00:58:59 dropbear[2348]: Password auth succeeded for 'root' from 192.0.2.53:47040
 Apr  2 00:58:59 dropbear[2349]: wtmpx_write: problem opening /var/log/wtmp: No such file or directory
 Apr  2 00:59:38 rvd[2413]: [INFO] src/rss_daemon.c:285: rvd starting
 Apr  2 00:59:38 rvd[2413]: [INFO] rvd_pipeline.c:152: sensor name from procfs: gc2053
@@ -3971,33 +3971,33 @@ Mar 30 17:59:39 udhcpc[1598]: broadcasting discover
 Mar 30 17:59:40 udhcpc[1598]: broadcasting discover
 Mar 30 17:59:41 udhcpc[1598]: broadcasting discover
 Mar 30 17:59:42 udhcpc[1598]: broadcasting discover
-Mar 30 17:59:42 udhcpc[1598]: broadcasting select for 192.168.50.215, server 192.168.50.1
-Mar 30 17:59:43 udhcpc[1598]: lease of 192.168.50.215 obtained from 192.168.50.1, lease time 86400
+Mar 30 17:59:42 udhcpc[1598]: broadcasting select for 192.0.2.15, server 192.0.2.1
+Mar 30 17:59:43 udhcpc[1598]: lease of 192.0.2.15 obtained from 192.0.2.1, lease time 86400
 Mar 30 17:59:43 ntpd[1803]: /sbin/ntpd -- -n -S /etc/ntpd_callback
 Mar 30 17:59:43 crond[1834]: /sbin/crond -- -f -c /etc/cron/crontabs
 Mar 30 17:59:43 crond[1861]: crond (busybox 1.37.0) started, log level 8
-Mar 30 17:59:43 dropbear[1876]: Child connection from 192.168.50.153:42172
+Mar 30 17:59:43 dropbear[1876]: Child connection from 192.0.2.53:42172
 Mar 30 17:59:43 mdnsd[1863]: /sbin/mdnsd -- -i wlan0 -s
 Mar 30 17:59:43 mdnsd[1895]: mdnsd 0.12 starting.
-Apr  2 00:57:45 dropbear[1876]: Exit before auth from <192.168.50.153:42172>: (user 'root', 0 fails): Exited normally
-Apr  2 00:57:46 dropbear[2137]: Child connection from 192.168.50.153:42188
+Apr  2 00:57:45 dropbear[1876]: Exit before auth from <192.0.2.53:42172>: (user 'root', 0 fails): Exited normally
+Apr  2 00:57:46 dropbear[2137]: Child connection from 192.0.2.53:42188
 Apr  2 00:57:47 telegrambot[2172]: /sbin/telegrambot -- 
 Apr  2 00:57:47 telegrambot[2198]: Missing token in config
 Apr  2 00:57:47 telegrambot[2198]: Failed to load config: /etc/telegrambot.json
 Apr  2 00:57:47 /etc/init.d/S94rc.local: Ciao
-Apr  2 00:57:48 dropbear[2137]: Password auth succeeded for 'root' from 192.168.50.153:42188
+Apr  2 00:57:48 dropbear[2137]: Password auth succeeded for 'root' from 192.0.2.53:42188
 Apr  2 00:57:48 dropbear[2306]: wtmpx_write: problem opening /var/log/wtmp: No such file or directory
 Apr  2 00:57:48 : starting pid 2341, tty '/dev/console': '/bin/sh -c 'debug=$(fw_printenv -n debug); if [ "$debug" -ge "1" ] 2>/dev/null; then 
 Apr  2 00:57:58 dropbear[2137]: wtmpx_write: problem opening /var/log/wtmp: No such file or directory
-Apr  2 00:57:58 dropbear[2137]: Exit (root) from <192.168.50.153:42188>: Disconnect received
+Apr  2 00:57:58 dropbear[2137]: Exit (root) from <192.0.2.53:42188>: Disconnect received
 Apr  2 00:58:00 crond[1861]: time disparity of 3298 minutes detected
-Apr  2 00:58:43 dropbear[2345]: Child connection from 192.168.50.153:55156
-Apr  2 00:58:44 dropbear[2345]: Exit before auth from <192.168.50.153:55156>: (user 'root', 0 fails): Exited normally
-Apr  2 00:58:48 dropbear[2346]: Child connection from 192.168.50.153:55168
-Apr  2 00:58:50 dropbear[2346]: Password auth succeeded for 'root' from 192.168.50.153:55168
-Apr  2 00:58:51 dropbear[2346]: Exit (root) from <192.168.50.153:55168>: Disconnect received
-Apr  2 00:58:58 dropbear[2348]: Child connection from 192.168.50.153:47040
-Apr  2 00:58:59 dropbear[2348]: Password auth succeeded for 'root' from 192.168.50.153:47040
+Apr  2 00:58:43 dropbear[2345]: Child connection from 192.0.2.53:55156
+Apr  2 00:58:44 dropbear[2345]: Exit before auth from <192.0.2.53:55156>: (user 'root', 0 fails): Exited normally
+Apr  2 00:58:48 dropbear[2346]: Child connection from 192.0.2.53:55168
+Apr  2 00:58:50 dropbear[2346]: Password auth succeeded for 'root' from 192.0.2.53:55168
+Apr  2 00:58:51 dropbear[2346]: Exit (root) from <192.0.2.53:55168>: Disconnect received
+Apr  2 00:58:58 dropbear[2348]: Child connection from 192.0.2.53:47040
+Apr  2 00:58:59 dropbear[2348]: Password auth succeeded for 'root' from 192.0.2.53:47040
 Apr  2 00:58:59 dropbear[2349]: wtmpx_write: problem opening /var/log/wtmp: No such file or directory
 Apr  2 00:59:38 rvd[2413]: [INFO] src/rss_daemon.c:285: rvd starting
 Apr  2 00:59:38 rvd[2413]: [INFO] rvd_pipeline.c:152: sensor name from procfs: gc2053
@@ -4103,6 +4103,6 @@ root@ing-wyze-cam3-fbea ~# cat /proc/interrupts
 134:          0    GPIO B  mmc-insert-detect
 ERR:          0
 root@ing-wyze-cam3-fbea ~# reboot & exit
-Connection to 192.168.50.215 closed.
-matteius@matteius-Ryzen9:~/isp-latest/external/ingenic-sdk$ 
+Connection to 192.0.2.15 closed.
+user@host:~/isp-latest/external/ingenic-sdk$ 
 

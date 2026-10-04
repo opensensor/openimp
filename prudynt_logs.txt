@@ -154,12 +154,12 @@ set jpeg streamMngCtx suceess
 [DEBUG:RTSP.cpp]: Got PPS (H264)
 [DEBUG:IMPDeviceSource.cpp]: IMPDeviceSource video/pps/sps/vps destructed, encoder channel:0
 [DEBUG:RTSP.cpp]: Got necessary NAL Units.
-[INFO:RTSP.cpp]: stream 0 available at: rtsp://192.168.50.211/ch0
+[INFO:RTSP.cpp]: stream 0 available at: rtsp://192.0.2.11/ch0
 [DEBUG:RTSP.cpp]: identify stream 1
 [DEBUG:IMPDeviceSource.cpp]: IMPDeviceSource video/pps/sps/vps constructed, encoder channel:1
 [DEBUG:RTSP.cpp]: Got SPS (H264)
 [DEBUG:RTSP.cpp]: Got PPS (H264)
 [DEBUG:IMPDeviceSource.cpp]: IMPDeviceSource video/pps/sps/vps destructed, encoder channel:1
 [DEBUG:RTSP.cpp]: Got necessary NAL Units.
-[INFO:RTSP.cpp]: stream 1 available at: rtsp://192.168.50.211/ch1
+[INFO:RTSP.cpp]: stream 1 available at: rtsp://192.0.2.11/ch1
 ^C

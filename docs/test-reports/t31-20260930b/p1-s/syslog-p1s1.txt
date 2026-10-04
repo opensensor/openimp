@@ -37,9 +37,9 @@ Sep 30 14:56:52 timpsd[6249]: [HAL_ING] video chn0 streaming
 Sep 30 14:56:52 libimp[6249]: [Codec] AVPU: T31 companion stage enabled
 Sep 30 14:56:52 libimp[6249]: [HAL_ING] chn1: first encoded frame packCount=3 aulen=45191 key=1
 Sep 30 14:56:53 libimp[6249]: [HAL_ING] chn0: first encoded frame packCount=3 aulen=142879 key=1
-Sep 30 14:56:53 libimp[6249]: [CLIENT] + rtsp/tcp 192.168.1.x:42530 chn=1 agent="Lavf62.3.100"
+Sep 30 14:56:53 libimp[6249]: [CLIENT] + rtsp/tcp 192.0.2.x:42530 chn=1 agent="Lavf62.3.100"
 Sep 30 14:56:53 libimp[6249]: [RTSP] PLAY session=bb0132b4 vchn=1 TCP v=1 a=1
-Sep 30 14:56:53 libimp[6249]: [CLIENT] + rtsp/tcp 192.168.1.x:42538 chn=0 agent="Lavf62.3.100"
+Sep 30 14:56:53 libimp[6249]: [CLIENT] + rtsp/tcp 192.0.2.x:42538 chn=0 agent="Lavf62.3.100"
 Sep 30 14:56:53 libimp[6249]: [RTSP] PLAY session=fe8892e7 vchn=0 TCP v=1 a=1
 Sep 30 14:56:57 libimp[6249]: [DAYNIGHT] boot: measuring before deciding - persisted running_mode=0 is a hint, not evidence (exposure 4910 in whatever mode we came up in); switching to the day pipeline and reading it in 8s
 Sep 30 14:56:57 libimp[6249]: [DAYNIGHT] probe (boot measure): exposure 4910 vs night reference -1, verdict in 8s
@@ -49,9 +49,9 @@ Sep 30 14:56:59 libimp[6249]: [DAYNIGHT] ISP confirmed the switch to day
 Sep 30 14:57:05 libimp[6249]: [DAYNIGHT] boot: measured day - exposure 4917 (< 10000). The optics are already there, so the one switch_cmd this boot owed the board has been spent
 Sep 30 14:57:12 libimp[6249]: [HAL_ING] audio resume: flushed 512 stale AI frame(s)
 Sep 30 14:57:12 libimp[6249]: [HAL_ING] AAC encoder producing (49 bytes/frame)
-Sep 30 15:19:23 libimp[6249]: [CLIENT] + rtsp/udp 192.168.1.x:37800 chn=0 agent="Lavf62.3.100"
+Sep 30 15:19:23 libimp[6249]: [CLIENT] + rtsp/udp 192.0.2.x:37800 chn=0 agent="Lavf62.3.100"
 Sep 30 15:19:23 libimp[6249]: [RTSP] PLAY session=918ce1d0 vchn=0 UDP v=1 a=1
-Sep 30 15:19:28 libimp[6249]: [CLIENT] - rtsp/udp 192.168.1.x:37800 after 5s, 989452 bytes
+Sep 30 15:19:28 libimp[6249]: [CLIENT] - rtsp/udp 192.0.2.x:37800 after 5s, 989452 bytes
 Sep 30 15:19:28 libimp[6249]: [RTSP] client disconnect session=918ce1d0
 Sep 30 15:20:13 libimp[6249]: [HTTP] sse client streaming (1/8)
 Sep 30 15:20:37 libimp[6249]: [HTTP] sse client disconnected (0 left)

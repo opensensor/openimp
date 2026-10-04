@@ -168,7 +168,7 @@ FSDBG ch=0 step=loop_top iter=2 fd=26 running=1
 [VBM] GetFrame: chn=0, frame=0x77ff0400 (idx=0, 0 remaining)
 00:03:32.832 [INF] HAL_ING      chn1: first encoded frame packCount=3 aulen=2185 key=1
 [DevicePool] Open: '/dev/avpu' already open (fd=27, refcount=2)
-00:03:32.856 [INF] CLIENT       + rtsp/tcp 192.168.1.x:40622 chn=1 agent="Lavf62.3.100"
+00:03:32.856 [INF] CLIENT       + rtsp/tcp 192.0.2.x:40622 chn=1 agent="Lavf62.3.100"
 00:03:32.856 [INF] RTSP         PLAY session=0db671a8 vchn=1 TCP v=1 a=1
 00:03:32.858 [INF] HAL_ING      audio resume: flushed 6 stale AI frame(s)
 00:03:32.858 [INF] HAL_ING      chn0: first encoded frame packCount=3 aulen=51015 key=1
@@ -176,7 +176,7 @@ FSDBG ch=0 step=loop_top iter=2 fd=26 running=1
 [VBM] VBMKernelDequeue chn=1: attempting DQBUF...
 [VBM] GetFrame: chn=1, frame=0x77fef948 (idx=1, 0 remaining)
 [VBM] GetFrame: chn=0, frame=0x77ff0828 (idx=1, 0 remaining)
-00:03:32.895 [INF] CLIENT       + rtsp/tcp 192.168.1.x:40620 chn=0 agent="Lavf62.3.100"
+00:03:32.895 [INF] CLIENT       + rtsp/tcp 192.0.2.x:40620 chn=0 agent="Lavf62.3.100"
 00:03:32.896 [INF] RTSP         PLAY session=12f7a28a vchn=0 TCP v=1 a=1
 [VBM] VBMKernelDequeue chn=1: DQBUF ret=0 idx=0
 [VBM] GetFrame: chn=1, frame=0x77fef520 (idx=0, 0 remaining)
@@ -1386,7 +1386,7 @@ FSDBG ch=0 step=loop_top iter=2 fd=26 running=1
 [VBM] GetFrame: chn=1, frame=0x77fef948 (idx=1, 0 remaining)
 [VBM] GetFrame: chn=0, frame=0x77ff0400 (idx=0, 0 remaining)
 [VBM] GetFrame: chn=1, frame=0x77fef520 (idx=0, 0 remaining)
-00:04:12.982 [INF] CLIENT       + rtsp/tcp 192.168.1.x:57270 chn=0 agent="Lavf62.3.100"
+00:04:12.982 [INF] CLIENT       + rtsp/tcp 192.0.2.x:57270 chn=0 agent="Lavf62.3.100"
 00:04:12.983 [INF] RTSP         PLAY session=1ae1bd96 vchn=0 TCP v=1 a=1
 [VBM] GetFrame: chn=1, frame=0x77fef948 (idx=1, 0 remaining)
 [VBM] GetFrame: chn=0, frame=0x77ff0828 (idx=1, 0 remaining)
@@ -2293,7 +2293,7 @@ FSDBG ch=0 step=loop_top iter=2 fd=26 running=1
 [VBM] GetFrame: chn=1, frame=0x77fef948 (idx=1, 0 remaining)
 [VBM] GetFrame: chn=0, frame=0x77ff0828 (idx=1, 0 remaining)
 00:04:43.127 [INF] RTSP         session=1ae1bd96: client disconnected after 30s (Connection reset by peer)
-00:04:43.128 [INF] CLIENT       - rtsp/tcp 192.168.1.x:57270 after 30s, 6029414 bytes
+00:04:43.128 [INF] CLIENT       - rtsp/tcp 192.0.2.x:57270 after 30s, 6029414 bytes
 [VBM] GetFrame: chn=1, frame=0x77fef520 (idx=0, 0 remaining)
 [VBM] GetFrame: chn=0, frame=0x77ff0400 (idx=0, 0 remaining)
 [VBM] GetFrame: chn=1, frame=0x77fef948 (idx=1, 0 remaining)
@@ -9158,10 +9158,10 @@ FSDBG ch=0 step=loop_top iter=2 fd=26 running=1
 [VBM] GetFrame: chn=1, frame=0x77fef520 (idx=0, 0 remaining)
 [VBM] GetFrame: chn=1, frame=0x77fef948 (idx=1, 0 remaining)
 [VBM] GetFrame: chn=0, frame=0x77ff0828 (idx=1, 0 remaining)
-00:08:34.207 [INF] CLIENT       - rtsp/tcp 192.168.1.x:40622 after 301s, 7083432 bytes
+00:08:34.207 [INF] CLIENT       - rtsp/tcp 192.0.2.x:40622 after 301s, 7083432 bytes
 00:08:34.207 [INF] RTSP         client disconnect session=0db671a8
 00:08:34.267 [INF] RTSP         session=12f7a28a: client disconnected after 301s (Connection reset by peer)
-00:08:34.268 [INF] CLIENT       - rtsp/tcp 192.168.1.x:40620 after 301s, 55086734 bytes
+00:08:34.268 [INF] CLIENT       - rtsp/tcp 192.0.2.x:40620 after 301s, 55086734 bytes
 [VBM] GetFrame: chn=0, frame=0x77ff0400 (idx=0, 0 remaining)
 [VBM] GetFrame: chn=1, frame=0x77fef520 (idx=0, 0 remaining)
 [VBM] GetFrame: chn=0, frame=0x77ff0828 (idx=1, 0 remaining)

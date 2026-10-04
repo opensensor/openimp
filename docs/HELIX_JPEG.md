@@ -158,7 +158,7 @@ OpenIMP does the same (`HelixJpeg_QualityTables()`).
 | VPU base / SRAM | 0x13200000 / 0x132f0000 | same | same | 0x13100000 / 0x131f0000 |
 | channel node | 56 bytes | 56 | 56 | 88 (`max_bs_act`, IVDC fields) |
 | `vpu_id` | -1 | 0x02000001 | 0x02000001 | 0x02000001 |
-| `JPGC_MAX_BS` | - | ignored (PC420 probe) | - | yes |
+| `JPGC_MAX_BS` | - | ignored (cam-D probe) | - | yes |
 | EFE_CTRL extra bits | - | - | - | bit 7 (width % 16), bit 29 (IVDC) |
 | VDMA start register | `VDMA_TASKRG` | `VDMA_TASKRG_T21` | `VDMA_TASKRG` | `VDMA_TASKRG_T21` (kernel side only) |
 
@@ -218,7 +218,7 @@ OpenIMP does the same (`HelixJpeg_QualityTables()`).
   shared bitstream) come from the top of rmem, the FrameSource pools from
   the bottom.
 * Bitstream overflow guard (T20/T21/T30): these cores ignore `JPGC_MAX_BS`.
-  Probe on the PC420 (T21, `OPENIMP_HELIX_JPEG_PROBE_MAX_BS_KB=16`): with a
+  Probe on cam-D (T21, `OPENIMP_HELIX_JPEG_PROBE_MAX_BS_KB=16`): with a
   16 KiB limit programmed every 1080p job wrote 34 KB (18 KB into the
   guard), status 0x11, no truncation flag: `LIMIT IGNORED`. A JPEG cannot
   be bounded below several times its NV12 size (Annex K codes: a block can
@@ -230,10 +230,10 @@ OpenIMP does the same (`HelixJpeg_QualityTables()`).
   starts with fresh DC predictors; the file joins the stripes with RST0..7
   markers and a DRI of the stripe's MCU count (the core's own restart
   register `JPGC_NRSM` showed no effect). 1080p in the 2 MB T21 buffer: 12
-  jobs of 6 (+1) rows, 41-68 ms per picture on the PC420 (one job before:
+  jobs of 6 (+1) rows, 41-68 ms per picture on cam-D (one job before:
   37-47 ms); 360p: 2 jobs.
 * Dropped final burst: the core writes its bitstream in 128-byte bursts
-  and drops the last, partial one of a job. On the PC420 the final 1..127
+  and drops the last, partial one of a job. On cam-D the final 1..127
   bytes of a job were not in memory after RUN (also 5 ms later), and the
   next job's first bytes later landed at that old address. With one job
   per picture, as in the stock library, every JPEG loses up to 127 bytes

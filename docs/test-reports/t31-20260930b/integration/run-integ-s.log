@@ -68,10 +68,10 @@
 07:04:13.276 [INF] HAL_ING      chn0: first encoded frame packCount=3 aulen=142530 key=1
 [DevicePool] Open: '/dev/avpu' already open (fd=27, refcount=2)
 07:04:13.284 [INF] HAL_ING      chn1: first encoded frame packCount=3 aulen=25229 key=1
-07:04:13.303 [INF] CLIENT       + rtsp/tcp 192.168.1.x:40218 chn=0 agent="Lavf62.3.100"
+07:04:13.303 [INF] CLIENT       + rtsp/tcp 192.0.2.x:40218 chn=0 agent="Lavf62.3.100"
 07:04:13.304 [INF] RTSP         PLAY session=b99629ba vchn=0 TCP v=1 a=1
 07:04:13.305 [INF] HAL_ING      audio resume: flushed 6 stale AI frame(s)
-07:04:13.303 [INF] CLIENT       + rtsp/tcp 192.168.1.x:40220 chn=1 agent="Lavf62.3.100"
+07:04:13.303 [INF] CLIENT       + rtsp/tcp 192.0.2.x:40220 chn=1 agent="Lavf62.3.100"
 07:04:13.306 [INF] RTSP         PLAY session=943adeaf vchn=1 TCP v=1 a=1
 07:04:13.474 [INF] HAL_ING      AAC encoder producing (49 bytes/frame)
 07:04:17.689 [INF] DAYNIGHT     boot: measuring before deciding - persisted running_mode=1 is a hint, not evidence (exposure 19047 in whatever mode we came up in); switching to the day pipeline and reading it in 8s
@@ -96,10 +96,10 @@
 07:04:35.144 [DBG] DAYNIGHT     re-asserting running_mode=1 after switch (1 left)
 07:04:43.145 [INF] HAL_ING      control image.running_mode=1
 07:04:43.646 [DBG] DAYNIGHT     re-asserting running_mode=1 after switch (0 left)
-07:04:53.424 [INF] CLIENT       + rtsp/tcp 192.168.1.x:34444 chn=0 agent="Lavf62.3.100"
+07:04:53.424 [INF] CLIENT       + rtsp/tcp 192.0.2.x:34444 chn=0 agent="Lavf62.3.100"
 07:04:53.426 [INF] RTSP         PLAY session=0fe8f10b vchn=0 TCP v=1 a=1
 07:05:23.505 [INF] RTSP         session=0fe8f10b: client disconnected after 30s (Connection reset by peer)
-07:05:23.506 [INF] CLIENT       - rtsp/tcp 192.168.1.x:34444 after 30s, 4234864 bytes
+07:05:23.506 [INF] CLIENT       - rtsp/tcp 192.0.2.x:34444 after 30s, 4234864 bytes
 [Codec] HWJPEG: 1920x1080 q75 -> 205335 bytes [#100]
 [Codec] HWJPEG: 1920x1080 q75 -> 205737 bytes [#200]
 [Codec] HWJPEG: 1920x1080 q75 -> 205878 bytes [#300]
@@ -114,9 +114,9 @@
 [Codec] HWJPEG: 1920x1080 q75 -> 205472 bytes [#1200]
 [Codec] HWJPEG: 1920x1080 q75 -> 205576 bytes [#1300]
 07:24:14.150 [INF] RTSP         session=b99629ba: client disconnected after 1200s (Connection reset by peer)
-07:24:14.151 [INF] CLIENT       - rtsp/tcp 192.168.1.x:40218 after 1200s, 186607319 bytes
+07:24:14.151 [INF] CLIENT       - rtsp/tcp 192.0.2.x:40218 after 1200s, 186607319 bytes
 07:24:14.197 [INF] RTSP         session=943adeaf: client disconnected after 1200s (Broken pipe)
-07:24:14.197 [INF] CLIENT       - rtsp/tcp 192.168.1.x:40220 after 1200s, 44017275 bytes
+07:24:14.197 [INF] CLIENT       - rtsp/tcp 192.0.2.x:40220 after 1200s, 44017275 bytes
 [KernelIF] Stream stopped
 [KernelIF] DQBUF failed: fd=26 Invalid argument
 [VBM] VBMKernelDequeue chn=1: DQBUF error ret=-1

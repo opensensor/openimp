@@ -50,7 +50,7 @@ Load average: 1.79 2.30 1.56 2/99 21752
   514     1 root     S      284  0.3   0  0.0 {S02kmsgd} /bin/sh /etc/init.d/S02kmsgd start
  9019   739 root     S      280  0.3   0  0.0 /usr/sbin/dropbear -k -K 300 -R -2 9
   739     1 root     S      272  0.3   0  0.0 /usr/sbin/dropbear -k -K 300 -R
-  492     1 root     S      260  0.3   0  0.0 /sbin/syslogd -n -C64 -S -t -D -R 192.168.1.x:514 -L -L
+  492     1 root     S      260  0.3   0  0.0 /sbin/syslogd -n -C64 -S -t -D -R 192.0.2.x:514 -L -L
  1084     1 root     S      248  0.3   0  0.0 /usr/sbin/ntpd -n -S /etc/ntpd_callback
   856     1 root     S      232  0.3   0  0.0 /usr/sbin/wpa_supplicant -i wlan0 -P /run/wpa_supplicant.wlan0.pid -B -c /etc/wpa_supplicant.conf
   512     1 root     S      204  0.2   0  0.0 /sbin/klogd -n
@@ -160,7 +160,7 @@ Load average: 1.73 2.28 1.55 1/99 21851
  1195     1 root     S      296  0.4   0  0.0 /usr/bin/motors-daemon -p
   514     1 root     S      284  0.3   0  0.0 {S02kmsgd} /bin/sh /etc/init.d/S02kmsgd start
   739     1 root     S      272  0.3   0  0.0 /usr/sbin/dropbear -k -K 300 -R
-  492     1 root     S      260  0.3   0  0.0 /sbin/syslogd -n -C64 -S -t -D -R 192.168.1.x:514 -L -L
+  492     1 root     S      260  0.3   0  0.0 /sbin/syslogd -n -C64 -S -t -D -R 192.0.2.x:514 -L -L
  1084     1 root     S      248  0.3   0  0.0 /usr/sbin/ntpd -n -S /etc/ntpd_callback
   856     1 root     S      232  0.3   0  0.0 /usr/sbin/wpa_supplicant -i wlan0 -P /run/wpa_supplicant.wlan0.pid -B -c /etc/wpa_supplicant.conf
   512     1 root     S      204  0.2   0  0.0 /sbin/klogd -n

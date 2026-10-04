@@ -17,7 +17,7 @@ See [ADDED_SYMBOLS.md](ADDED_SYMBOLS.md) for detailed documentation of each func
 ### 1. Build OpenIMP Libraries
 
 ```bash
-cd /home/matteius/openimp
+cd /home/user/openimp
 make clean
 make
 ```
@@ -56,27 +56,27 @@ make install PREFIX=/path/to/install
 ### Option 1: Use LD_LIBRARY_PATH
 
 ```bash
-cd /home/matteius/openimp/thingino-streamer
-LD_LIBRARY_PATH=/home/matteius/openimp/lib:$LD_LIBRARY_PATH ./streamer
+cd /home/user/openimp/thingino-streamer
+LD_LIBRARY_PATH=/home/user/openimp/lib:$LD_LIBRARY_PATH ./streamer
 ```
 
 ### Option 2: Copy Libraries to System Path
 
 ```bash
 # Copy to device's library path
-cp /home/matteius/openimp/lib/libimp.so /usr/lib/
-cp /home/matteius/openimp/lib/libsysutils.so /usr/lib/
+cp /home/user/openimp/lib/libimp.so /usr/lib/
+cp /home/user/openimp/lib/libsysutils.so /usr/lib/
 ldconfig  # Update library cache
 
 # Now run streamer normally
-cd /home/matteius/openimp/thingino-streamer
+cd /home/user/openimp/thingino-streamer
 ./streamer
 ```
 
 ### Option 3: Copy Libraries to Streamer Directory
 
 ```bash
-cd /home/matteius/openimp/thingino-streamer
+cd /home/user/openimp/thingino-streamer
 cp ../lib/libimp.so .
 cp ../lib/libsysutils.so .
 

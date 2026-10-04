@@ -51,7 +51,7 @@ helix_encoder_test_t21: $(HELIX_T21_SOURCES) $(ROOT)/src/t30/t30_annexb.h $(ROOT
 		-o $@ $(HELIX_T21_SOURCES) -lm
 
 # T21 reserved-memory layout: OpenIMP's arena, the real encoder and shared
-# bitstream buffer through timps' idle/re-enable cycles (PC420 numbers).
+# bitstream buffer through timps' idle/re-enable cycles (cam-D numbers).
 T21_RMEM_SOURCES := t21_rmem_layout_test.c \
 	$(filter-out helix_encoder_test.c,$(HELIX_T21_SOURCES))
 

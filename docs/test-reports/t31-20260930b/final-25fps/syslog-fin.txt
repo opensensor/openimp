@@ -40,11 +40,11 @@ Sep 30 22:26:48 libimp[1938]: [HAL_ING] video chn1 streaming
 Sep 30 22:26:48 libimp[1938]: [Codec] HWJPEG: T31 hardware JPEG enabled (OPENIMP_T31_HW_JPEG=0 selects the software encoder)
 Sep 30 22:26:48 libimp[1938]: [Codec] AVPU: T31 companion stage disabled
 Sep 30 22:26:48 libimp[1938]: [HAL_ING] chn0: first encoded frame packCount=3 aulen=37726 key=1
-Sep 30 22:26:48 libimp[1938]: [CLIENT] + rtsp/tcp 192.168.1.x:53052 chn=0 agent="Lavf62.3.100"
+Sep 30 22:26:48 libimp[1938]: [CLIENT] + rtsp/tcp 192.0.2.x:53052 chn=0 agent="Lavf62.3.100"
 Sep 30 22:26:48 libimp[1938]: [RTSP] PLAY session=0e87c761 vchn=0 TCP v=1 a=1
 Sep 30 22:26:48 libimp[1938]: [HAL_ING] audio resume: flushed 6 stale AI frame(s)
 Sep 30 22:26:48 libimp[1938]: [HAL_ING] chn1: first encoded frame packCount=3 aulen=4163 key=1
-Sep 30 22:26:48 libimp[1938]: [CLIENT] + rtsp/tcp 192.168.1.x:53066 chn=1 agent="Lavf62.3.100"
+Sep 30 22:26:48 libimp[1938]: [CLIENT] + rtsp/tcp 192.0.2.x:53066 chn=1 agent="Lavf62.3.100"
 Sep 30 22:26:48 libimp[1938]: [RTSP] PLAY session=e948ff7c vchn=1 TCP v=1 a=1
 Sep 30 22:26:48 libimp[1938]: [HAL_ING] AAC encoder producing (56 bytes/frame)
 Sep 30 22:27:09 libimp[1938]: [Codec] HWJPEG: ready, ep1=0x01da0000
@@ -112,9 +112,9 @@ Sep 30 23:23:21 libimp[1938]: [Codec] HWJPEG: 1920x1080 q75 -> 199028 bytes [#39
 Sep 30 23:24:44 libimp[1938]: [Codec] HWJPEG: 1920x1080 q75 -> 198928 bytes [#4000]
 Sep 30 23:26:07 libimp[1938]: [Codec] HWJPEG: 1920x1080 q75 -> 199170 bytes [#4100]
 Sep 30 23:26:49 libimp[1938]: [RTSP] session=0e87c761: client disconnected after 3600s (Connection reset by peer)
-Sep 30 23:26:49 libimp[1938]: [CLIENT] - rtsp/tcp 192.168.1.x:53052 after 3600s, 525279811 bytes
+Sep 30 23:26:49 libimp[1938]: [CLIENT] - rtsp/tcp 192.0.2.x:53052 after 3600s, 525279811 bytes
 Sep 30 23:26:49 libimp[1938]: [RTSP] session=e948ff7c: client disconnected after 3600s (Connection reset by peer)
-Sep 30 23:26:49 libimp[1938]: [CLIENT] - rtsp/tcp 192.168.1.x:53066 after 3600s, 122620296 bytes
+Sep 30 23:26:49 libimp[1938]: [CLIENT] - rtsp/tcp 192.0.2.x:53066 after 3600s, 122620296 bytes
 Sep 30 23:26:51 libimp[1938]: [HAL_ING] framesource 0 disabled (idle)
 Sep 30 23:26:51 libimp[1938]: [HAL_ING] video chn0 idle
 Sep 30 23:26:51 libimp[1938]: [HAL_ING] framesource 1 disabled (idle)

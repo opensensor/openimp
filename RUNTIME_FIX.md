@@ -171,5 +171,5 @@ If frame channels still don't work:
 - ISP Close: 0x8b8d8
 - ISP AddSensor: 0x8bd6c
 - ISP EnableSensor: 0x98450
-- Binary: `/home/matteius/ingenic-lib-new/T31/lib/1.1.6/uclibc/5.4.0/libimp.so`
+- Binary: `/home/user/ingenic-lib-new/T31/lib/1.1.6/uclibc/5.4.0/libimp.so`
 

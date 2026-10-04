@@ -125,13 +125,13 @@ FSDBG ch=0 step=post_prctl fd=26 running=1
 14:46:23.166 [INF] HAL_ING      chn0: first encoded frame packCount=3 aulen=143576 key=1
 [DevicePool] Open: '/dev/avpu' already open (fd=27, refcount=2)
 14:46:23.209 [INF] HAL_ING      chn1: first encoded frame packCount=3 aulen=45674 key=1
-14:46:23.241 [INF] CLIENT       + rtsp/tcp 192.168.1.x:49568 chn=0 agent="Lavf62.3.100"
+14:46:23.241 [INF] CLIENT       + rtsp/tcp 192.0.2.x:49568 chn=0 agent="Lavf62.3.100"
 14:46:23.242 [INF] RTSP         PLAY session=adcc7bd7 vchn=0 TCP v=1 a=1
-14:46:23.273 [INF] CLIENT       + rtsp/tcp 192.168.1.x:49560 chn=1 agent="Lavf62.3.100"
+14:46:23.273 [INF] CLIENT       + rtsp/tcp 192.0.2.x:49560 chn=1 agent="Lavf62.3.100"
 14:46:23.274 [INF] RTSP         PLAY session=8c7435b5 vchn=1 TCP v=1 a=1
 14:46:42.802 [INF] HAL_ING      audio resume: flushed 512 stale AI frame(s)
 14:46:43.003 [INF] HAL_ING      AAC encoder producing (52 bytes/frame)
-14:47:03.441 [INF] CLIENT       + rtsp/tcp 192.168.1.x:43700 chn=0 agent="Lavf62.3.100"
+14:47:03.441 [INF] CLIENT       + rtsp/tcp 192.0.2.x:43700 chn=0 agent="Lavf62.3.100"
 14:47:03.442 [INF] RTSP         PLAY session=24baae18 vchn=0 TCP v=1 a=1
 14:47:07.520 [INF] DAYNIGHT     boot: measuring before deciding - persisted running_mode=0 is a hint, not evidence (exposure 916 in whatever mode we came up in); switching to the day pipeline and reading it in 8s
 14:47:07.520 [DBG] DAYNIGHT     probe (boot measure): exposure 916 vs night reference -1, verdict in 8s
@@ -142,22 +142,22 @@ FSDBG ch=0 step=post_prctl fd=26 running=1
 14:47:28.984 [INF] HTTP         sse client streaming (1/8)
 14:47:29.050 [INF] HTTP         sse client streaming (2/8)
 14:47:29.105 [INF] WEBRTC       no offered H264 matches profile 640033 - answering pt 102 with ours
-14:47:29.109 [INF] WEBRTC       5c763a519fb956bb95119b50295681c8: answered WHEP offer, ICE-lite candidate 192.168.1.x:25000, H264 pt=102, PCMU (codec2)
-14:47:29.154 [INF] WEBRTC       5c763a519fb956bb95119b50295681c8: ICE peer 192.168.1.x:36065
+14:47:29.109 [INF] WEBRTC       5c763a519fb956bb95119b50295681c8: answered WHEP offer, ICE-lite candidate 192.0.2.x:25000, H264 pt=102, PCMU (codec2)
+14:47:29.154 [INF] WEBRTC       5c763a519fb956bb95119b50295681c8: ICE peer 192.0.2.x:36065
 14:47:29.205 [INF] HTTP         sse client streaming (3/8)
-14:47:29.587 [INF] CLIENT       + webrtc 192.168.1.x:36065 chn=0 agent="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36 Edg/153.0.0.0"
+14:47:29.587 [INF] CLIENT       + webrtc 192.0.2.x:36065 chn=0 agent="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36 Edg/153.0.0.0"
 14:47:29.587 [INF] WEBRTC       5c763a519fb956bb95119b50295681c8: DTLS+SRTP up, streaming video0 pt=102 ssrc=2714125257 + G.711 audio
 14:47:33.619 [INF] RTSP         session=24baae18: client disconnected after 30s (Broken pipe)
-14:47:33.620 [INF] CLIENT       - rtsp/tcp 192.168.1.x:43700 after 30s, 1786050 bytes
+14:47:33.620 [INF] CLIENT       - rtsp/tcp 192.0.2.x:43700 after 30s, 1786050 bytes
 14:47:55.147 [INF] WEBRTC       5c763a519fb956bb95119b50295681c8: peer closed DTLS
-14:47:55.147 [INF] CLIENT       - webrtc 192.168.1.x:36065 after 25s, 1216999 bytes
+14:47:55.147 [INF] CLIENT       - webrtc 192.0.2.x:36065 after 25s, 1216999 bytes
 14:48:03.933 [INF] HTTP         sse client disconnected (2 left)
 14:48:05.257 [INF] HTTP         sse client disconnected (1 left)
 14:48:56.015 [INF] HTTP         sse client disconnected (0 left)
-14:56:24.669 [INF] CLIENT       - rtsp/tcp 192.168.1.x:49560 after 601s, 19593386 bytes
+14:56:24.669 [INF] CLIENT       - rtsp/tcp 192.0.2.x:49560 after 601s, 19593386 bytes
 14:56:24.670 [INF] RTSP         client disconnect session=8c7435b5
 14:56:24.686 [INF] RTSP         session=adcc7bd7: client disconnected after 601s (Connection reset by peer)
-14:56:24.686 [INF] CLIENT       - rtsp/tcp 192.168.1.x:49568 after 601s, 74991301 bytes
+14:56:24.686 [INF] CLIENT       - rtsp/tcp 192.0.2.x:49568 after 601s, 74991301 bytes
 [KernelIF] Stream stopped
 [VBM] FlushFrame: chn=1
 [VBM] FlushFrame: flushed all frames

@@ -40,7 +40,7 @@ export OPENAI_API_KEY="your-api-key-here"
 ```bash
 # Let AI fix your code automatically (uses git for version control)
 python full_review_workflow.py \
-  --project-dir /home/matteius/openimp \
+  --project-dir /home/user/openimp \
   --apply-fixes
 
 # Review changes
@@ -56,7 +56,7 @@ git restore src/
 
 ```bash
 # Review without editing
-python full_review_workflow.py --project-dir /home/matteius/openimp
+python full_review_workflow.py --project-dir /home/user/openimp
 
 # Check the results
 cat full_review_output/review_report.txt      # Comprehensive report

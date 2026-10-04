@@ -263,11 +263,11 @@ FSDBG ch=1 step=post_prctl fd=26 running=1
 09:06:45.856 [INF] HAL_ING      chn0: first encoded frame packCount=3 aulen=142397 key=1
 [DevicePool] Open: '/dev/avpu' already open (fd=27, refcount=2)
 09:06:45.867 [INF] HAL_ING      chn1: first encoded frame packCount=3 aulen=24777 key=1
-09:06:45.939 [INF] CLIENT       + rtsp/tcp 192.168.1.x:59254 chn=0 agent="Lavf62.3.100"
+09:06:45.939 [INF] CLIENT       + rtsp/tcp 192.0.2.x:59254 chn=0 agent="Lavf62.3.100"
 09:06:45.940 [INF] RTSP         PLAY session=90ee2eb8 vchn=0 TCP v=1 a=1
-09:06:45.958 [INF] CLIENT       + rtsp/tcp 192.168.1.x:59240 chn=1 agent="Lavf62.3.100"
+09:06:45.958 [INF] CLIENT       + rtsp/tcp 192.0.2.x:59240 chn=1 agent="Lavf62.3.100"
 09:06:45.959 [INF] RTSP         PLAY session=687f1e1b vchn=1 TCP v=1 a=1
 09:06:50.431 [INF] DAYNIGHT     night reference deferred: only 1 units of AE reserve, so 19838 is a clip, not a level - waiting for the meter to come off the rail
 09:07:05.488 [INF] HAL_ING      audio resume: flushed 512 stale AI frame(s)
 09:07:05.689 [INF] HAL_ING      AAC encoder producing (47 bytes/frame)
-09:07:35.345 [INF] CLIENT       + rtsp/udp 192.168.1.x:49048 chn=0 agent="Lavf62.3.100"
+09:07:35.345 [INF] CLIENT       + rtsp/udp 192.0.2.x:49048 chn=0 agent="Lavf62.3.100"

@@ -6,7 +6,7 @@ A production-ready OpenAI-powered agent for reverse engineering MIPS drivers wit
 
 **Created**: 2025-10-20  
 **Status**: ✅ Complete and Ready to Use  
-**Location**: `/home/matteius/openimp/tools/re_agent/`
+**Location**: `/home/user/openimp/tools/re_agent/`
 
 ## What Was Built
 
@@ -354,7 +354,7 @@ cd tools/re_agent
 export OPENAI_API_KEY="your-key-here"
 
 # 4. Process entire project
-./full_review_workflow.py --project-dir /home/matteius/openimp
+./full_review_workflow.py --project-dir /home/user/openimp
 
 # 5. Review results
 cat full_review_output/review_report.txt

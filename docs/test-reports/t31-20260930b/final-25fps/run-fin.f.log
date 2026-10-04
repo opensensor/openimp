@@ -127,11 +127,11 @@ FSDBG ch=1 step=post_prctl fd=26 running=1
 [Codec] AVPU: T31 companion stage disabled
 22:26:48.745 [INF] HAL_ING      chn0: first encoded frame packCount=3 aulen=37726 key=1
 [DevicePool] Open: '/dev/avpu' already open (fd=27, refcount=2)
-22:26:48.767 [INF] CLIENT       + rtsp/tcp 192.168.1.x:53052 chn=0 agent="Lavf62.3.100"
+22:26:48.767 [INF] CLIENT       + rtsp/tcp 192.0.2.x:53052 chn=0 agent="Lavf62.3.100"
 22:26:48.768 [INF] RTSP         PLAY session=0e87c761 vchn=0 TCP v=1 a=1
 22:26:48.769 [INF] HAL_ING      audio resume: flushed 6 stale AI frame(s)
 22:26:48.770 [INF] HAL_ING      chn1: first encoded frame packCount=3 aulen=4163 key=1
-22:26:48.787 [INF] CLIENT       + rtsp/tcp 192.168.1.x:53066 chn=1 agent="Lavf62.3.100"
+22:26:48.787 [INF] CLIENT       + rtsp/tcp 192.0.2.x:53066 chn=1 agent="Lavf62.3.100"
 22:26:48.788 [INF] RTSP         PLAY session=e948ff7c vchn=1 TCP v=1 a=1
 22:26:48.965 [INF] HAL_ING      AAC encoder producing (56 bytes/frame)
 [DevicePool] Open: '/dev/avpu' already open (fd=27, refcount=3)
@@ -198,9 +198,9 @@ FSDBG ch=1 step=post_prctl fd=26 running=1
 [Codec] HWJPEG: 1920x1080 q75 -> 198928 bytes [#4000]
 [Codec] HWJPEG: 1920x1080 q75 -> 199170 bytes [#4100]
 23:26:49.588 [INF] RTSP         session=0e87c761: client disconnected after 3600s (Connection reset by peer)
-23:26:49.589 [INF] CLIENT       - rtsp/tcp 192.168.1.x:53052 after 3600s, 525279811 bytes
+23:26:49.589 [INF] CLIENT       - rtsp/tcp 192.0.2.x:53052 after 3600s, 525279811 bytes
 23:26:49.617 [INF] RTSP         session=e948ff7c: client disconnected after 3600s (Connection reset by peer)
-23:26:49.618 [INF] CLIENT       - rtsp/tcp 192.168.1.x:53066 after 3600s, 122620296 bytes
+23:26:49.618 [INF] CLIENT       - rtsp/tcp 192.0.2.x:53066 after 3600s, 122620296 bytes
 [KernelIF] Stream stopped
 [VBM] FlushFrame: chn=0
 [VBM] FlushFrame: flushed all frames

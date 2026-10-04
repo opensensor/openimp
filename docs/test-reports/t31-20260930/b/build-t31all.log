@@ -1,88 +1,88 @@
-/mnt/NVMe/git/openimp-t31all/src/t40/codec-t40.c: In function ‘fill_cmd_regs_enc1’:
-/mnt/NVMe/git/openimp-t31all/src/t40/codec-t40.c:3199:22: warning: unused variable ‘wpp_addr’ [-Wunused-variable]
+<path>/openimp-t31all/src/t40/codec-t40.c: In function ‘fill_cmd_regs_enc1’:
+<path>/openimp-t31all/src/t40/codec-t40.c:3199:22: warning: unused variable ‘wpp_addr’ [-Wunused-variable]
  3199 |             uint32_t wpp_addr = ep1_addr + ctx->interm_ep1_size;
       |                      ^~~~~~~~
-/mnt/NVMe/git/openimp-t31all/src/t40/codec-t40.c: In function ‘fifo_queue’:
-/mnt/NVMe/git/openimp-t31all/src/t40/codec-t40.c:4395:60: warning: unused parameter ‘timeout_ms’ [-Wunused-parameter]
+<path>/openimp-t31all/src/t40/codec-t40.c: In function ‘fifo_queue’:
+<path>/openimp-t31all/src/t40/codec-t40.c:4395:60: warning: unused parameter ‘timeout_ms’ [-Wunused-parameter]
  4395 | static int fifo_queue(long *fifo, void *item, unsigned int timeout_ms)
       |                                               ~~~~~~~~~~~~~^~~~~~~~~~
-/mnt/NVMe/git/openimp-t31all/src/t40/codec-t40.c: In function ‘al_codec_encode_process_impl’:
-/mnt/NVMe/git/openimp-t31all/src/t40/codec-t40.c:8324:22: warning: variable ‘luma_mean’ set but not used [-Wunused-but-set-variable=]
+<path>/openimp-t31all/src/t40/codec-t40.c: In function ‘al_codec_encode_process_impl’:
+<path>/openimp-t31all/src/t40/codec-t40.c:8324:22: warning: variable ‘luma_mean’ set but not used [-Wunused-but-set-variable=]
  8324 |             uint32_t luma_mean;
       |                      ^~~~~~~~~
-/mnt/NVMe/git/openimp-t31all/src/t40/codec-t40.c:10088:1: warning: label ‘queue_encoded_stream’ defined but not used [-Wunused-label]
+<path>/openimp-t31all/src/t40/codec-t40.c:10088:1: warning: label ‘queue_encoded_stream’ defined but not used [-Wunused-label]
 10088 | queue_encoded_stream:
       | ^~~~~~~~~~~~~~~~~~~~
-/mnt/NVMe/git/openimp-t31all/src/t40/codec-t40.c: In function ‘AL_Codec_Encode_SetDefaultParam’:
-/mnt/NVMe/git/openimp-t31all/src/t40/codec-t40.c:7036:5: warning: ‘strncpy’ output truncated before terminating nul copying 4 bytes from a string of the same length [-Wstringop-truncation]
+<path>/openimp-t31all/src/t40/codec-t40.c: In function ‘AL_Codec_Encode_SetDefaultParam’:
+<path>/openimp-t31all/src/t40/codec-t40.c:7036:5: warning: ‘strncpy’ output truncated before terminating nul copying 4 bytes from a string of the same length [-Wstringop-truncation]
  7036 |     strncpy((char*)(p + 0x764), "NV12", 4);
       |     ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-/mnt/NVMe/git/openimp-t31all/src/t40/codec-t40.c: At top level:
-/mnt/NVMe/git/openimp-t31all/src/t40/codec-t40.c:4991:13: warning: ‘avpu_probe_reg_write’ defined but not used [-Wunused-function]
+<path>/openimp-t31all/src/t40/codec-t40.c: At top level:
+<path>/openimp-t31all/src/t40/codec-t40.c:4991:13: warning: ‘avpu_probe_reg_write’ defined but not used [-Wunused-function]
  4991 | static void avpu_probe_reg_write(int fd, const char *tag, unsigned int off, unsigned int expected,
       |             ^~~~~~~~~~~~~~~~~~~~
-/mnt/NVMe/git/openimp-t31all/src/t40/codec-t40.c:4417:14: warning: ‘fifo_dequeue’ defined but not used [-Wunused-function]
+<path>/openimp-t31all/src/t40/codec-t40.c:4417:14: warning: ‘fifo_dequeue’ defined but not used [-Wunused-function]
  4417 | static void* fifo_dequeue(long *fifo, unsigned int timeout_ms)
       |              ^~~~~~~~~~~~
-/mnt/NVMe/git/openimp-t31all/src/t40/codec-t40.c:4395:12: warning: ‘fifo_queue’ defined but not used [-Wunused-function]
+<path>/openimp-t31all/src/t40/codec-t40.c:4395:12: warning: ‘fifo_queue’ defined but not used [-Wunused-function]
  4395 | static int fifo_queue(long *fifo, void *item, unsigned int timeout_ms)
       |            ^~~~~~~~~~
-/mnt/NVMe/git/openimp-t31all/src/t40/codec-t40.c:4359:12: warning: ‘fifo_init’ defined but not used [-Wunused-function]
+<path>/openimp-t31all/src/t40/codec-t40.c:4359:12: warning: ‘fifo_init’ defined but not used [-Wunused-function]
  4359 | static int fifo_init(long *fifo, int max_elements)
       |            ^~~~~~~~~
-/mnt/NVMe/git/openimp-t31all/src/t40/codec-t40.c:4268:13: warning: ‘avpu_clear_interrupts’ defined but not used [-Wunused-function]
+<path>/openimp-t31all/src/t40/codec-t40.c:4268:13: warning: ‘avpu_clear_interrupts’ defined but not used [-Wunused-function]
  4268 | static void avpu_clear_interrupts(int fd)
       |             ^~~~~~~~~~~~~~~~~~~~~
-/mnt/NVMe/git/openimp-t31all/src/t40/codec-t40.c:3709:13: warning: ‘log_first_enc2_cmd_window’ defined but not used [-Wunused-function]
+<path>/openimp-t31all/src/t40/codec-t40.c:3709:13: warning: ‘log_first_enc2_cmd_window’ defined but not used [-Wunused-function]
  3709 | static void log_first_enc2_cmd_window(ALAvpuContext* ctx, uint32_t idx, const uint32_t* cmd)
       |             ^~~~~~~~~~~~~~~~~~~~~~~~~
-/mnt/NVMe/git/openimp-t31all/src/t40/codec-t40.c:3641:13: warning: ‘fill_cmd_regs_enc2’ defined but not used [-Wunused-function]
+<path>/openimp-t31all/src/t40/codec-t40.c:3641:13: warning: ‘fill_cmd_regs_enc2’ defined but not used [-Wunused-function]
  3641 | static void fill_cmd_regs_enc2(const ALAvpuContext *ctx, uint32_t *cmd,
       |             ^~~~~~~~~~~~~~~~~~
-/mnt/NVMe/git/openimp-t31all/src/t40/codec-t40.c:1593:17: warning: ‘avpu_get_hw_hdr_offset’ defined but not used [-Wunused-function]
+<path>/openimp-t31all/src/t40/codec-t40.c:1593:17: warning: ‘avpu_get_hw_hdr_offset’ defined but not used [-Wunused-function]
  1593 | static uint32_t avpu_get_hw_hdr_offset(uint32_t hdr_offset)
       |                 ^~~~~~~~~~~~~~~~~~~~~~
-/mnt/NVMe/git/openimp-t31all/src/t40/codec-t40.c:1448:17: warning: ‘avpu_pack_enc1_cmd18’ defined but not used [-Wunused-function]
+<path>/openimp-t31all/src/t40/codec-t40.c:1448:17: warning: ‘avpu_pack_enc1_cmd18’ defined but not used [-Wunused-function]
  1448 | static uint32_t avpu_pack_enc1_cmd18(uint32_t map_addr, uint32_t data_addr)
       |                 ^~~~~~~~~~~~~~~~~~~~
-/mnt/NVMe/git/openimp-t31all/src/t40/codec-t40.c:1208:17: warning: ‘avpu_get_enc1_comp_map_size’ defined but not used [-Wunused-function]
+<path>/openimp-t31all/src/t40/codec-t40.c:1208:17: warning: ‘avpu_get_enc1_comp_map_size’ defined but not used [-Wunused-function]
  1208 | static uint32_t avpu_get_enc1_comp_map_size(uint32_t width, uint32_t height)
       |                 ^~~~~~~~~~~~~~~~~~~~~~~~~~~
-/mnt/NVMe/git/openimp-t31all/src/fifo.c: In function ‘fifo_alloc’:
-/mnt/NVMe/git/openimp-t31all/src/fifo.c:306:5: warning: ‘strncpy’ output truncated before terminating nul copying 4 bytes from a string of the same length [-Wstringop-truncation]
+<path>/openimp-t31all/src/fifo.c: In function ‘fifo_alloc’:
+<path>/openimp-t31all/src/fifo.c:306:5: warning: ‘strncpy’ output truncated before terminating nul copying 4 bytes from a string of the same length [-Wstringop-truncation]
   306 |     strncpy((char *)result, "OFIF", 4);
       |     ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-/mnt/NVMe/git/openimp-t31all/src/hw_encoder.c:617:12: warning: ‘build_sei_picture_timing_rbsp’ defined but not used [-Wunused-function]
+<path>/openimp-t31all/src/hw_encoder.c:617:12: warning: ‘build_sei_picture_timing_rbsp’ defined but not used [-Wunused-function]
   617 | static int build_sei_picture_timing_rbsp(uint8_t *rbsp, uint32_t cpb_removal_delay,
       |            ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-/mnt/NVMe/git/openimp-t31all/src/hw_encoder.c:601:12: warning: ‘build_sei_buffering_period_rbsp’ defined but not used [-Wunused-function]
+<path>/openimp-t31all/src/hw_encoder.c:601:12: warning: ‘build_sei_buffering_period_rbsp’ defined but not used [-Wunused-function]
   601 | static int build_sei_buffering_period_rbsp(uint8_t *rbsp, uint32_t init_delay, uint32_t init_offset) {
       |            ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-/mnt/NVMe/git/openimp-t31all/src/time64_shim.c: In function ‘__nanosleep_time64’:
-/mnt/NVMe/git/openimp-t31all/src/time64_shim.c:68:25: warning: comparison is always false due to limited range of data type [-Wtype-limits]
+<path>/openimp-t31all/src/time64_shim.c: In function ‘__nanosleep_time64’:
+<path>/openimp-t31all/src/time64_shim.c:68:25: warning: comparison is always false due to limited range of data type [-Wtype-limits]
    68 |         if (req->tv_sec > (int64_t)INT32_MAX)
       |                         ^
-/mnt/NVMe/git/openimp-t31all/src/time64_shim.c: In function ‘__select_time64’:
-/mnt/NVMe/git/openimp-t31all/src/time64_shim.c:91:42: warning: comparison is always false due to limited range of data type [-Wtype-limits]
+<path>/openimp-t31all/src/time64_shim.c: In function ‘__select_time64’:
+<path>/openimp-t31all/src/time64_shim.c:91:42: warning: comparison is always false due to limited range of data type [-Wtype-limits]
    91 |                 t32.tv_sec = (tv->tv_sec > (int64_t)INT32_MAX) ? INT32_MAX
       |                                          ^
-/mnt/NVMe/git/openimp-t31all/src/time64_shim.c: In function ‘__pthread_cond_timedwait_time64’:
-/mnt/NVMe/git/openimp-t31all/src/time64_shim.c:125:29: warning: comparison is always false due to limited range of data type [-Wtype-limits]
+<path>/openimp-t31all/src/time64_shim.c: In function ‘__pthread_cond_timedwait_time64’:
+<path>/openimp-t31all/src/time64_shim.c:125:29: warning: comparison is always false due to limited range of data type [-Wtype-limits]
   125 |         if (abstime->tv_sec > (int64_t)INT32_MAX)
       |                             ^
-/mnt/NVMe/git/openimp-t31all/src/core/module.c: In function ‘dump_ob_modules’:
-/mnt/NVMe/git/openimp-t31all/src/core/module.c:821:12: warning: function may return address of local variable [-Wreturn-local-addr]
+<path>/openimp-t31all/src/core/module.c: In function ‘dump_ob_modules’:
+<path>/openimp-t31all/src/core/module.c:821:12: warning: function may return address of local variable [-Wreturn-local-addr]
   821 |     return result;
       |            ^~~~~~
-/mnt/NVMe/git/openimp-t31all/src/core/module.c:776:10: note: declared here
+<path>/openimp-t31all/src/core/module.c:776:10: note: declared here
   776 |     char str[0x40];
       |          ^~~
-/mnt/NVMe/git/openimp-t31all/src/framesource/framesource_tseries.c: In function ‘dbg_misc_simple_cmd’:
-/mnt/NVMe/git/openimp-t31all/src/framesource/framesource_tseries.c:624:40: warning: format ‘%d’ expects a matching ‘int’ argument [-Wformat=]
+<path>/openimp-t31all/src/framesource/framesource_tseries.c: In function ‘dbg_misc_simple_cmd’:
+<path>/openimp-t31all/src/framesource/framesource_tseries.c:624:40: warning: format ‘%d’ expects a matching ‘int’ argument [-Wformat=]
   624 |                 printf("err: param1 = %d\n");
       |                                       ~^
       |                                        |
       |                                        int
-99b2355c255fafb79e0938ac9e758417f148668656e94ac7052efbc617a9ba15  /mnt/NVMe/git/openimp-t31all/build/t31/libimp.so
+99b2355c255fafb79e0938ac9e758417f148668656e94ac7052efbc617a9ba15  <path>/openimp-t31all/build/t31/libimp.so
  0x00000001 (NEEDED)                     Gemeinsame Bibliothek [libc.so.0]
  0x0000000e (SONAME)                     soname der Bibliothek: [libimp.so]

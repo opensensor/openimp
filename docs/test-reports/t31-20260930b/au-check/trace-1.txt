@@ -8,13 +8,13 @@ ffmpeg version 8.0.1-3ubuntu2 Copyright (c) 2000-2025 the FFmpeg developers
   libavfilter    11.  4.100 / 11.  4.100
   libswscale      9.  1.100 /  9.  1.100
   libswresample   6.  1.100 /  6.  1.100
-[tcp @ 0x5e874c649940] Starting connection attempt to 192.168.1.x port 554
-[tcp @ 0x5e874c649940] Successfully connected to 192.168.1.x port 554
+[tcp @ 0x5e874c649940] Starting connection attempt to 192.0.2.x port 554
+[tcp @ 0x5e874c649940] Successfully connected to 192.0.2.x port 554
 [rtsp @ 0x5e874c646f00] SDP:
 v=0
-o=- 3999795052 3999795052 IN IP4 192.168.1.x
+o=- 3999795052 3999795052 IN IP4 192.0.2.x
 s=timps
-c=IN IP4 192.168.1.x
+c=IN IP4 192.0.2.x
 t=0 0
 a=range:npt=now-
 a=control:*
@@ -34,7 +34,7 @@ a=control:trackID=1
 [rtsp @ 0x5e874c646f00] setting jitter buffer size to 0
     Last message repeated 1 times
 [h264 @ 0x5e874c64b640] Reinit context to 1920x1088, pix_fmt: yuv420p
-Input #0, rtsp, from 'rtsp://<user>:<pass>@192.168.1.x:554/ch0':
+Input #0, rtsp, from 'rtsp://<user>:<pass>@192.0.2.x:554/ch0':
   Metadata:
     title           : timps
   Duration: N/A, start: 0.000000, bitrate: N/A
@@ -1379,7 +1379,7 @@ frame=   43 fps= 43 q=-1.0 size=N/A time=00:00:02.97 bitrate=N/A speed=2.97x ela
 [out#0/null @ 0x5e874c698bc0]   Total: 44 packets (492488 bytes) muxed
 [out#0/null @ 0x5e874c698bc0] video:481KiB audio:0KiB subtitle:0KiB other streams:0KiB global headers:0KiB muxing overhead: unknown
 frame=   44 fps= 39 q=-1.0 Lsize=N/A time=00:00:03.03 bitrate=N/A speed=2.67x elapsed=0:00:01.13    
-[in#0/rtsp @ 0x5e874c646c40] Input file #0 (rtsp://<user>:<pass>@192.168.1.x:554/ch0):
+[in#0/rtsp @ 0x5e874c646c40] Input file #0 (rtsp://<user>:<pass>@192.0.2.x:554/ch0):
 [in#0/rtsp @ 0x5e874c646c40]   Input stream #0:0 (video): 45 packets read (498429 bytes); 
 [in#0/rtsp @ 0x5e874c646c40]   Total: 45 packets (498429 bytes) demuxed
 

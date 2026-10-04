@@ -220,7 +220,7 @@ Device results (2026-10-03): cam-B (T23, 1080p+360p, default flags) 30 s
 without run failures, timeouts, decode errors or artifacts, P pictures of
 a static scene 1.7-3.1 KiB (two separate reference pictures in the same
 scene: 3.8-6.0 KiB; with `OPENIMP_REF_SHARE_FLAGS=0`, i.e. OpenIMP's ME
-words, 2.9-5.3 KiB); PC420 (T21) P pictures 150-300 bytes without the
+words, 2.9-5.3 KiB); cam-D (T21) P pictures 150-300 bytes without the
 ring period, no decode errors, with the default and with
 `OPENIMP_REF_SHARE_B0=bd`.  The ring is therefore the default on T21 and
 T23 for pictures up to 1920x1088 (the vendor's limit); `OPENIMP_REF_SHARE=0`

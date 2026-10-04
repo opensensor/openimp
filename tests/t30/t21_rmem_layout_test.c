@@ -1,5 +1,5 @@
 /* Host simulation of the T21 reserved-memory arena with the native Helix
- * encoder (Victure PC420: rmem=23M, 1920x1080 main + 640x360 sub, two-buffer
+ * encoder (Victure T21 camera (cam-D): rmem=23M, 1920x1080 main + 640x360 sub, two-buffer
  * FrameSource pools, a 1080p and a 360p JPEG channel).
  *
  * The arena is OpenIMP's real allocator (src/rmem_arena.h, the code

@@ -17,7 +17,7 @@ When the agent starts, it loads all known functions from the OEM binary:
 
 ```bash
 python full_review_workflow.py \
-  --project-dir /home/matteius/openimp \
+  --project-dir /home/user/openimp \
   --binary port_9009 \
   --apply-fixes
 ```
@@ -63,7 +63,7 @@ cd tools/re_agent
 export OPENAI_API_KEY="your-key"
 
 python full_review_workflow.py \
-  --project-dir /home/matteius/openimp \
+  --project-dir /home/user/openimp \
   --binary port_9009 \
   --apply-fixes
 ```
@@ -74,7 +74,7 @@ Output:
 FULL PROJECT WORKFLOW - FIX MODE - EDITING FILES
 ================================================================================
 
-Project: /home/matteius/openimp
+Project: /home/user/openimp
 Binary:  port_9009
 
 ⚠️  WARNING: This will MODIFY your source files!

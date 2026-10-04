@@ -97,10 +97,10 @@ FSDBG ch=1 step=post_prctl fd=26 running=1
 12:39:27.915 [INF] HAL_ING      video chn1 streaming
 12:39:27.972 [INF] MOTION       IVS move results resumed after a stall
 [DevicePool] Open: '/dev/avpu' already open (fd=25, refcount=2)
-12:39:27.983 [INF] CLIENT       + rtsp/tcp 192.168.1.x:35540 chn=0 agent="Lavf62.3.100"
+12:39:27.983 [INF] CLIENT       + rtsp/tcp 192.0.2.x:35540 chn=0 agent="Lavf62.3.100"
 12:39:27.983 [INF] RTSP         PLAY session=b2213f71 vchn=0 TCP v=1 a=1
 12:39:27.989 [INF] HAL_ING      chn1: first encoded frame packCount=3 aulen=37604 key=1
-12:39:28.073 [INF] CLIENT       + rtsp/tcp 192.168.1.x:35538 chn=1 agent="Lavf62.3.100"
+12:39:28.073 [INF] CLIENT       + rtsp/tcp 192.0.2.x:35538 chn=1 agent="Lavf62.3.100"
 12:39:28.073 [INF] RTSP         PLAY session=c075680f vchn=1 TCP v=1 a=1
 [IVS] chn0: 125 frames, 0 dropped busy, 23 results; copy avg 1734 us max 9834 us; process avg 1093 us max 8433 us
 12:39:40.528 [INF] DAYNIGHT     boot: measuring before deciding - persisted running_mode=1 is a hint, not evidence (exposure 8564 in whatever mode we came up in); switching to the day pipeline and reading it in 8s
@@ -190,9 +190,9 @@ FSDBG ch=1 step=post_prctl fd=26 running=1
 [IVS] chn0: 151 frames, 0 dropped busy, 25 results; copy avg 1937 us max 11585 us; process avg 1281 us max 16587 us
 12:47:15.426 [INF] MAIN         shutting down
 12:47:15.427 [INF] DAYNIGHT     detection thread stopped
-12:47:15.428 [INF] CLIENT       - rtsp/tcp 192.168.1.x:35540 after 467s, 69252224 bytes
+12:47:15.428 [INF] CLIENT       - rtsp/tcp 192.0.2.x:35540 after 467s, 69252224 bytes
 12:47:15.430 [INF] RTSP         client disconnect session=b2213f71
-12:47:15.430 [INF] CLIENT       - rtsp/tcp 192.168.1.x:35538 after 467s, 15420735 bytes
+12:47:15.430 [INF] CLIENT       - rtsp/tcp 192.0.2.x:35538 after 467s, 15420735 bytes
 12:47:15.431 [INF] RTSP         client disconnect session=c075680f
 12:47:15.438 [INF] RTSP         all client threads gone after 10 ms
 12:47:15.439 [INF] HTTP         all connection threads gone after 0 ms

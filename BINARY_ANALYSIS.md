@@ -4,7 +4,7 @@ This document contains findings from reverse engineering the actual libimp.so bi
 
 ## Binary Information
 
-- **File**: `/home/matteius/ingenic-lib-new/T31/lib/1.1.6/uclibc/5.4.0/libimp.so`
+- **File**: `/home/user/ingenic-lib-new/T31/lib/1.1.6/uclibc/5.4.0/libimp.so`
 - **Version**: IMP-1.1.6
 - **Architecture**: MIPS32 (uclibc)
 - **Platform**: Ingenic T31

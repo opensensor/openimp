@@ -7,14 +7,14 @@ Diese Fassung enthält die Nachbesserungen aus dem Review: `lw = 1` ist jetzt by
 Stock (Endpunkt p1 ausgenommen), der vollständige Winkelsweep ist als fester Host-Test drin,
 und die Aussagen zur Schrittzahl und zu den Kappen sind korrigiert (Abschnitt 4.2).
 
-Branch `claude/osd-thick-lines`, Worktree `/mnt/NVMe/git/openimp-osdthick`.
+Branch `claude/osd-thick-lines`, Worktree `<path>/openimp-osdthick`.
 
 ---
 
 ## 1. Auftrag (Original, wörtlich)
 
 > Aufgabe (OpenIMP, nur Host-Arbeit, keine Kamera): OSD-Linien mit gleichmäßiger Dicke.
-> Repo: /mnt/NVMe/git/openimp. Basis: origin/claude/openimp-all-10 (4c1ffe1). Lege einen eigenen
+> Repo: <path>/openimp. Basis: origin/claude/openimp-all-10 (4c1ffe1). Lege einen eigenen
 > Worktree an und einen neuen Branch claude/osd-thick-lines. Lokal committen, NICHT pushen.
 >
 > Anforderungen: gleichmäßige Strichdicke für Linien mit Winkel ≠ 0°/90° (Bresenham mit

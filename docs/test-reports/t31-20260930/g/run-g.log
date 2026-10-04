@@ -127,10 +127,10 @@ FSDBG ch=0 step=post_prctl fd=25 running=1
 [Codec] AVPU: T31 companion stage enabled
 11:35:00.299 [INF] HAL_ING      chn1: first encoded frame packCount=3 aulen=29773 key=1
 [DevicePool] Open: '/dev/avpu' already open (fd=29, refcount=2)
-11:35:00.384 [INF] CLIENT       + rtsp/tcp 192.168.1.x:50216 chn=1 agent="Lavf62.3.100"
+11:35:00.384 [INF] CLIENT       + rtsp/tcp 192.0.2.x:50216 chn=1 agent="Lavf62.3.100"
 11:35:00.384 [INF] RTSP         PLAY session=4d1b7b3b vchn=1 TCP v=1 a=1
 11:35:00.403 [INF] HAL_ING      chn0: first encoded frame packCount=3 aulen=142383 key=1
-11:35:00.574 [INF] CLIENT       + rtsp/tcp 192.168.1.x:50218 chn=0 agent="Lavf62.3.100"
+11:35:00.574 [INF] CLIENT       + rtsp/tcp 192.0.2.x:50218 chn=0 agent="Lavf62.3.100"
 11:35:00.583 [INF] RTSP         PLAY session=03731921 vchn=0 TCP v=1 a=1
 11:35:04.945 [INF] DAYNIGHT     boot: measuring before deciding - persisted running_mode=1 is a hint, not evidence (exposure 19409 in whatever mode we came up in); switching to the day pipeline and reading it in 8s
 11:35:04.945 [DBG] DAYNIGHT     probe (boot measure): exposure 19409 vs night reference -1, verdict in 8s
@@ -140,9 +140,9 @@ FSDBG ch=0 step=post_prctl fd=25 running=1
 11:35:06.052 [INF] CONFIG       persisted 1 setting(s) to /tmp/timps.conf
 11:35:07.345 [DBG] DAYNIGHT     ISP confirmed the switch to day
 11:35:12.390 [INF] WEBRTC       no offered H264 matches profile 640033 - answering pt 102 with ours
-11:35:12.391 [INF] WEBRTC       bcbc04da79a9636df4b47611930b2312: answered WHEP offer, ICE-lite candidate 192.168.1.x:25000, H264 pt=102, PCMU (codec2)
-11:35:12.425 [INF] WEBRTC       bcbc04da79a9636df4b47611930b2312: ICE peer 192.168.1.x:43244
-11:35:12.554 [INF] CLIENT       + webrtc 192.168.1.x:43244 chn=0 agent="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36 Edg/153.0.0.0"
+11:35:12.391 [INF] WEBRTC       bcbc04da79a9636df4b47611930b2312: answered WHEP offer, ICE-lite candidate 192.0.2.x:25000, H264 pt=102, PCMU (codec2)
+11:35:12.425 [INF] WEBRTC       bcbc04da79a9636df4b47611930b2312: ICE peer 192.0.2.x:43244
+11:35:12.554 [INF] CLIENT       + webrtc 192.0.2.x:43244 chn=0 agent="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36 Edg/153.0.0.0"
 11:35:12.555 [INF] WEBRTC       bcbc04da79a9636df4b47611930b2312: DTLS+SRTP up, streaming video0 pt=102 ssrc=2484611669 + G.711 audio
 11:35:13.347 [INF] DAYNIGHT     switching to night (boot: measured night, exposure 15872): daynight night [mode=night exp=15872 ref=-1 bar=10000]
 11:35:13.895 [INF] DAYNIGHT     probe found night, but the pre-probe level 19409 had only 2 units of AE reserve - the reference stays unset until the meter can answer
@@ -156,19 +156,19 @@ FSDBG ch=0 step=post_prctl fd=25 running=1
 11:35:22.398 [DBG] DAYNIGHT     re-asserting running_mode=1 after switch (1 left)
 11:35:30.400 [INF] HAL_ING      control image.running_mode=1
 11:35:30.900 [DBG] DAYNIGHT     re-asserting running_mode=1 after switch (0 left)
-11:35:33.483 [INF] CLIENT       + rtsp/tcp 192.168.1.x:57312 chn=0 agent="Lavf62.3.100"
+11:35:33.483 [INF] CLIENT       + rtsp/tcp 192.0.2.x:57312 chn=0 agent="Lavf62.3.100"
 11:35:33.486 [INF] RTSP         PLAY session=c7db6376 vchn=0 TCP v=1 a=1
-11:35:37.821 [INF] CLIENT       - rtsp/tcp 192.168.1.x:57312 after 4s, 309872 bytes
+11:35:37.821 [INF] CLIENT       - rtsp/tcp 192.0.2.x:57312 after 4s, 309872 bytes
 11:35:37.821 [INF] RTSP         client disconnect session=c7db6376
-11:35:38.074 [INF] CLIENT       + rtsp/tcp 192.168.1.x:41072 chn=1 agent="Lavf62.3.100"
+11:35:38.074 [INF] CLIENT       + rtsp/tcp 192.0.2.x:41072 chn=1 agent="Lavf62.3.100"
 11:35:38.075 [INF] RTSP         PLAY session=2e67f9f7 vchn=1 TCP v=1 a=1
-11:35:42.363 [INF] CLIENT       - rtsp/tcp 192.168.1.x:41072 after 4s, 174157 bytes
+11:35:42.363 [INF] CLIENT       - rtsp/tcp 192.0.2.x:41072 after 4s, 174157 bytes
 11:35:42.364 [INF] RTSP         client disconnect session=2e67f9f7
 11:35:44.905 [INF] DAYNIGHT     night reference 17286 (probe bar 8643)
-11:40:01.681 [INF] CLIENT       - rtsp/tcp 192.168.1.x:50216 after 301s, 9566483 bytes
+11:40:01.681 [INF] CLIENT       - rtsp/tcp 192.0.2.x:50216 after 301s, 9566483 bytes
 11:40:01.681 [INF] RTSP         client disconnect session=4d1b7b3b
 11:40:02.000 [INF] RTSP         session=03731921: client disconnected after 301s (Connection reset by peer)
-11:40:02.001 [INF] CLIENT       - rtsp/tcp 192.168.1.x:50218 after 301s, 33668017 bytes
+11:40:02.001 [INF] CLIENT       - rtsp/tcp 192.0.2.x:50218 after 301s, 33668017 bytes
 [KernelIF] Stream stopped
 [VBM] FlushFrame: chn=1
 [VBM] FlushFrame: flushed all frames

@@ -186,7 +186,7 @@ If you get "command not found" errors:
 
 ```bash
 # Verify toolchain path
-export PATH=/home/matteius/output/wyze_cam3_t31x_gc2053_rtl8189ftv/per-package/toolchain-external-custom/host/bin/:$PATH
+export PATH=/home/user/output/wyze_cam3_t31x_gc2053_rtl8189ftv/per-package/toolchain-external-custom/host/bin/:$PATH
 
 # Verify compiler exists
 which mipsel-linux-gcc

@@ -2,7 +2,7 @@
 
 Testlauf am 2026-09-30 nach [`docs/T31_TEST_PLAN.md`](../../T31_TEST_PLAN.md), ausgeführt von
 einer lokalen Claude-Code-Session per SSH. Die Kamera ist im Bericht anonymisiert (`cam-A`,
-`192.168.1.x`), die Dateien unter `test-results/` ebenso.
+`192.0.2.x`), die Dateien unter `test-results/` ebenso.
 
 ## Kopf
 
@@ -136,7 +136,7 @@ Y inklusive +16 tragen; die IPU addiert nichts.
 ## B. `libimp.so` bauen und einhängen – **bestanden**
 
 ```sh
-TC=<thingino>/output/ciao/wuuk_y0510_t31x_sc4336p_ssv6158-3.10.14-uclibc-192.168.1.x/host/bin/mipsel-linux
+TC=<thingino>/output/ciao/wuuk_y0510_t31x_sc4336p_ssv6158-3.10.14-uclibc-192.0.2.x/host/bin/mipsel-linux
 THINGINO_DIR=<thingino> TOOLCHAIN_PREFIX=$TC T31_OUTPUT_DIR=$PWD/build/t31 sh build-t31.sh
 # Kamera:
 cp /usr/lib/libimp.so /tmp/libimp-orig.so
