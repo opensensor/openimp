@@ -1,11 +1,1 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" role="img" aria-label="Open camera stack logo: an open lens ring around an RGGB Bayer sensor grid">
-  <title>Open camera stack: open lens ring around an RGGB sensor grid</title>
-  <!-- open lens ring: the gap at the upper right stands for "open" -->
-  <path d="M 128 24 A 104 104 0 1 0 232 128" fill="none" stroke="#e5e7eb" stroke-width="22" stroke-linecap="round" transform="rotate(-8 128 128)"/>
-  <circle cx="213" cy="43" r="11" fill="#6e8bff"/>
-  <!-- RGGB Bayer cell -->
-  <rect x="66" y="66" width="58" height="58" rx="11" fill="#e5484d"/>
-  <rect x="132" y="66" width="58" height="58" rx="11" fill="#30a46c"/>
-  <rect x="66" y="132" width="58" height="58" rx="11" fill="#30a46c"/>
-  <rect x="132" y="132" width="58" height="58" rx="11" fill="#3e63dd"/>
-</svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100" height="100" role="img" aria-label="Open Ingenic Stack"><title>Open Ingenic Stack</title><g fill="#3fd8e6"><path transform="translate(5.22 2.16) scale(0.93)" d="M50.00 27.00L96.83 54.04A47 47 0 0 0 76.91 11.46Z"/><path transform="translate(3.80 5.66) scale(0.93)" d="M69.92 61.50L23.09 88.54A47 47 0 0 0 69.92 92.57Z"/><path transform="translate(1.78 4.84) scale(0.93)" d="M50.00 73.00L3.17 45.96A47 47 0 0 0 23.09 88.54Z"/><path transform="translate(1.48 2.68) scale(0.93)" d="M30.08 61.50L30.08 7.43A47 47 0 0 0 3.17 45.96Z"/><path transform="translate(3.20 1.34) scale(0.93)" d="M30.08 38.50L76.91 11.46A47 47 0 0 0 30.08 7.43Z"/></g><path d="M50.00 27.00L69.92 38.50L69.92 61.50L50.00 73.00L30.08 61.50L30.08 38.50Z" fill="#ffb629"/></svg>

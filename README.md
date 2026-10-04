@@ -1,7 +1,7 @@
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/logo-dark.svg">
-    <img src="docs/assets/logo.svg" alt="OpenIMP logo" width="160" height="160">
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/banner-dark.svg">
+    <img src="docs/assets/banner.svg" alt="Open Ingenic - open source ISP driver &amp; libimp for Ingenic SoCs" width="560">
   </picture>
 </p>
 
@@ -155,3 +155,7 @@ files that carry a license (LGPL-2.1-or-later, GPL-2.0-or-later x264-derived `sr
 and others) and the "Third-party code" section. The vendored WebRTC AECM in `src/audio/webrtc/`
 is BSD-3-Clause with its own `LICENSE`, `PATENTS` and `LICENSE_THIRD_PARTY`. Files without a
 header carry no explicit grant.
+
+---
+
+<sub>Not affiliated with or endorsed by Ingenic Semiconductor. "Ingenic" is used only to name the SoCs this project supports.</sub>
