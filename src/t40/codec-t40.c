@@ -1068,7 +1068,7 @@ static uint32_t avpu_get_stream_buffer_size(uint32_t width, uint32_t height,
     uint64_t picture_bytes = (uint64_t)width * (uint64_t)height;
     uint64_t aligned;
 
-#if defined(PLATFORM_T31)
+#if defined(PLATFORM_T31) || defined(PLATFORM_T41)
     uint64_t lcu_rows = ((uint64_t)height + 15u) >> 4;
     uint64_t block64_count =
         (((uint64_t)width + 63u) >> 6) *
@@ -1100,6 +1100,31 @@ static uint32_t avpu_get_stream_buffer_size(uint32_t width, uint32_t height,
         (((uint64_t)bitrate * 3u) + 15u) / 16u +
         (lcu_rows + 1u) * 0x200u;
     picture_bytes = rate_size > geometry_size ? rate_size : geometry_size;
+#if defined(PLATFORM_T41)
+    /*
+     * T41 1.2.0 GetStreamBufPoolConfig (0x2b638) uses the same
+     * max(AL_GetMitigatedMaxNalSize, 1.5 * bitrate / 8 + rows) rule and
+     * then, for pictures below 0x1fe000 pixels, scales the result by
+     * trunc(log10(2073600 / (w * h)) + 1).  The former one-byte-per-pixel
+     * sizing made a 1080p channel ask for 4 x 2.0 MiB, exhausted the 24 MiB
+     * rmem arena before the reconstruction buffer and silently dropped the
+     * channel onto the grey software stub (Baseline 3.1 SPS, broken refs).
+     */
+    {
+        uint64_t pixels = (uint64_t)width * (uint64_t)height;
+
+        if (pixels != 0u && pixels < 0x1fe000u) {
+            uint64_t mult = 1u;
+            uint64_t scaled = pixels * 10u;
+
+            while (scaled <= 2073600u) {
+                ++mult;
+                scaled *= 10u;
+            }
+            picture_bytes *= mult;
+        }
+    }
+#endif
     aligned = (picture_bytes + 0x1fu) & ~0x1full;
 #else
     /*
