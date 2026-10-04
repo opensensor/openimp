@@ -3248,9 +3248,38 @@ int IMP_Encoder_SetChnQp(int channel, int qp_value)
 
 int IMP_Encoder_SetChnQpIPDelta(int channel, int delta)
 {
+    P2EncoderChannel *ch;
+    int ret;
+
     if (!p2_valid_channel(channel) || !p2_channels[channel].created)
         return -1;
-    return AL_Codec_Encode_SetQpIPDelta(p2_channels[channel].codec, delta);
+    ch = &p2_channels[channel];
+    pthread_mutex_lock(&ch->lock);
+    ret = AL_Codec_Encode_SetQpIPDelta(ch->codec, delta);
+#if defined(PLATFORM_T31) || defined(PLATFORM_T40) || defined(PLATFORM_T41)
+    /* GetChnAttrRcMode reads ch->attr: keep iIPDelta in step with the
+     * codec, like the OEM read-back */
+    if (ret == 0) {
+        IMPEncoderAttrRcMode *rc = &ch->attr.rcAttr.attrRcMode;
+
+        switch (rc->rcMode) {
+        case IMP_ENC_RC_MODE_CBR:
+            rc->attrCbr.iIPDelta = (int16_t)delta;
+            break;
+        case IMP_ENC_RC_MODE_VBR:
+            rc->attrVbr.iIPDelta = (int16_t)delta;
+            break;
+        case IMP_ENC_RC_MODE_CAPPED_VBR:
+        case IMP_ENC_RC_MODE_CAPPED_QUALITY:
+            rc->attrCappedVbr.iIPDelta = (int16_t)delta;
+            break;
+        default:
+            break;
+        }
+    }
+#endif
+    pthread_mutex_unlock(&ch->lock);
+    return ret;
 }
 
 int IMP_Encoder_SetChnEntropyMode(int channel, IMPEncoderEntropyMode mode)
