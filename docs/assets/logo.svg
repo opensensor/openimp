@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" role="img" aria-label="Open camera stack logo: an open lens ring around an RGGB Bayer sensor grid">
+  <title>Open camera stack: open lens ring around an RGGB sensor grid</title>
+  <!-- open lens ring: the gap at the upper right stands for "open" -->
+  <path d="M 128 24 A 104 104 0 1 0 232 128" fill="none" stroke="#1f2937" stroke-width="22" stroke-linecap="round" transform="rotate(-8 128 128)"/>
+  <circle cx="213" cy="43" r="11" fill="#3e63dd"/>
+  <!-- RGGB Bayer cell -->
+  <rect x="66" y="66" width="58" height="58" rx="11" fill="#e5484d"/>
+  <rect x="132" y="66" width="58" height="58" rx="11" fill="#30a46c"/>
+  <rect x="66" y="132" width="58" height="58" rx="11" fill="#30a46c"/>
+  <rect x="132" y="132" width="58" height="58" rx="11" fill="#3e63dd"/>
+</svg>
