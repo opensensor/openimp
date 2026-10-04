@@ -999,7 +999,7 @@ static void t23_rc_log(const T30HelixEncoder *encoder, const char *what)
  * its slack page).  The window size (0x30040) does not stop the core: with
  * the BSFULL interrupt off (soc_vpu enables it only for the ISP-direct
  * mode) it finishes the picture (status 0x301) and writes the bitstream
- * linearly past the window, into the allocation above it - on vorne
+ * linearly past the window, into the allocation above it - on cam-A
  * (sc2336 1080p) up to 1.79 MB for a 1 MiB window, i.e. 0.75 MB into the
  * second reference buffer.  The canary tells such a spill apart when the
  * length cannot be trusted. */
@@ -2204,7 +2204,7 @@ int OpenIMP_T30_HelixCreate(T30HelixEncoder **encoder_out,
      * T21 layout). */
 #if defined(PLATFORM_T23) || defined(PLATFORM_T20)
     /* T20 (and T10 through the T20 build) keeps the earlier layout: the
-     * 1 MiB layout is only measured on a T21 (PC420) */
+     * 1 MiB layout is only measured on a T21 (cam-D) */
     encoder->scratch_size = T23_HelixScratchLayout(
         (params->width + 15u) / 16u, (params->height + 15u) / 16u,
         encoder->scratch_offset);

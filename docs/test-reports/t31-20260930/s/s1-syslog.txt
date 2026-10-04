@@ -1,0 +1,85 @@
+Sep 30 09:17:21 timpsd[18928]: [CONFIG] loaded 63 settings from /tmp/timps.conf
+Sep 30 09:17:21 timpsd[18928]: [CONFIG] sensor: sc4336p i2c=0x30 2560x1440 @30fps
+Sep 30 09:17:21 timpsd[18928]: [MAIN] timps v1.9.28 starting (backend=ingenic)
+Sep 30 09:17:21 timpsd[18928]: [MAIN] /control token published to /run/timps.token
+Sep 30 09:17:21 kernel: [148274.188158] CPU: 0 PID: 18928 Comm: timpsd Tainted: G           O 3.10.14__isvp_swan_1.0__ #2
+Sep 30 09:17:21 timpsd[18928]: [HAL_ING] image tuning applied (bri=128 con=128 sat=128 sharp=128)
+Sep 30 09:17:21 timpsd[18928]: [HAL_ING] sensor fps: requested 30, driver holds 30/1, set rc=0
+Sep 30 09:17:21 timpsd[18928]: [HAL_ING] ISP up, sensor=sc4336p fps=30
+Sep 30 09:17:21 timpsd[18928]: [HAL_ING] chn0: fs 1920x1080 (sensor 2560x1440, scale=1) nrVBs=2
+Sep 30 09:17:21 timpsd[18928]: [HAL_ING] JPEG-on-video0: encoder chn 3 in group 0 (1920x1080 q75)
+Sep 30 09:17:21 timpsd[18928]: [OSD] OSD TrueType font /usr/share/fonts/default.ttf
+Sep 30 09:17:21 timpsd[18928]: [OSD] OSD stream 0: 4 overlay(s), 0 privacy mask(s), group 0 (1920x1080)
+Sep 30 09:17:21 timpsd[18928]: [HAL_ING] chn1: fs 640x360 (sensor 2560x1440, scale=1) nrVBs=2
+Sep 30 09:17:21 timpsd[18928]: [HAL_ING] JPEG-on-video1: encoder chn 4 in group 1 (640x360 q75)
+Sep 30 09:17:21 timpsd[18928]: [OSD] OSD stream 1: 4 overlay(s), 0 privacy mask(s), group 1 (640x360)
+Sep 30 09:17:21 timpsd[18928]: [HAL_ING] framesource 0 enabled
+Sep 30 09:17:21 timpsd[18928]: [HAL_ING] faac AAC encoder: 16000Hz ch=1 frame=1024 max=8192
+Sep 30 09:17:21 timpsd[18928]: [HAL_ING] audio.codec2: second stream PCMU 8000Hz (16k->8k) (WebRTC)
+Sep 30 09:17:21 timpsd[18928]: [HAL_ING] audio in: 16000Hz AAC ch=1 vol=80 gain=25 numPerFrm=640
+Sep 30 09:17:22 timpsd[18928]: [HAL_ING] framesource 0 disabled (idle)
+Sep 30 09:17:22 timpsd[18928]: [MAIN] audio backchannel enabled (codec=0 rate=16000, native IMP_AO)
+Sep 30 09:17:22 timpsd[18928]: [TLS] TLS server context ready (cert /etc/ssl/certs/timps.crt)
+Sep 30 09:17:22 timpsd[18928]: [HTTP] HTTP and HTTPS both served on port 8880 (http.https=1, scheme detected per connection)
+Sep 30 09:17:22 timpsd[18928]: [WEBRTC] WHEP endpoint /webrtc/whep ready (ICE-lite + DTLS-SRTP, H264 video0); fingerprint xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:CE:73
+Sep 30 09:17:22 timpsd[18928]: [WEBRTC] media udp 25000-25003, one port per session (4 slots)
+Sep 30 09:17:22 timpsd[18928]: [REC] recorder ready (mode=motion dir=/mnt/mmcblk0p1)
+Sep 30 09:17:22 timpsd[18928]: [TL] timelapse ready (idle, dir=/mnt/mmcblk0p1 interval=60s)
+Sep 30 09:17:22 timpsd[18928]: [MAIN] running. rtsp://<ip>:554/ch0  https://<ip>:8880/
+Sep 30 09:17:22 timpsd[18928]: [HTTP] listening on port 8880
+Sep 30 09:17:22 timpsd[18928]: [RTSP] listening on port 554
+Sep 30 09:17:22 timpsd[18928]: [spk] play-FIFO thread started (/run/timps/audio_out)
+Sep 30 09:17:22 timpsd[18928]: [DAYNIGHT] detection thread started (mode=auto, day<10000 night>15000, probe: gap 600s jump 50% confirm 15s settle 8s, heartbeat 14400s/43200s, calendar=none, boot_probe=1, interval 2000ms, dwell 5s, isp=/proc/jz/isp/isp
+Sep 30 09:17:22 timpsd[18928]: [DAYNIGHT] exposure sources: scrape ratio=1.0000 (it/max, max published) | IMP GetExpr ratio=1.0000 it=1496 max=1496 line=22us (=32912us/32912us) GetEVAttr expr_us=33244 us | scrape max is real - shadow read only, decide
+Sep 30 09:17:22 timpsd[18928]: [DAYNIGHT] auto day/night enabled
+Sep 30 09:17:23 timpsd[18928]: [HAL_ING] framesource 1 enabled
+Sep 30 09:17:23 timpsd[18928]: [HAL_ING] video chn1 streaming
+Sep 30 09:17:23 libimp[18928]: [Codec] AVPU: T31 companion stage enabled
+Sep 30 09:17:23 libimp[18928]: [HAL_ING] framesource 0 enabled
+Sep 30 09:17:23 libimp[18928]: [HAL_ING] video chn0 streaming
+Sep 30 09:17:23 libimp[18928]: [HAL_ING] chn1: first encoded frame packCount=3 aulen=24905 key=1
+Sep 30 09:17:23 libimp[18928]: [HAL_ING] chn0: first encoded frame packCount=3 aulen=141475 key=1
+Sep 30 09:17:23 libimp[18928]: [CLIENT] + rtsp/tcp 192.0.2.x:42072 chn=1 agent="Lavf62.3.100"
+Sep 30 09:17:23 libimp[18928]: [RTSP] PLAY session=ab0e6a0e vchn=1 TCP v=1 a=1
+Sep 30 09:17:23 libimp[18928]: [CLIENT] + rtsp/tcp 192.0.2.x:42066 chn=0 agent="Lavf62.3.100"
+Sep 30 09:17:23 libimp[18928]: [RTSP] PLAY session=3c4c1d5e vchn=0 TCP v=1 a=1
+Sep 30 09:17:28 libimp[18928]: [DAYNIGHT] boot: measuring before deciding - persisted running_mode=1 is a hint, not evidence (exposure 19840 in whatever mode we came up in); switching to the day pipeline and reading it in 8s
+Sep 30 09:17:28 libimp[18928]: [DAYNIGHT] probe (boot measure): exposure 19840 vs night reference -1, verdict in 8s
+Sep 30 09:17:28 libimp[18928]: [DAYNIGHT] switching to day (boot measure): daynight day [mode=day exp=19840 ref=-1 bar=10000]
+Sep 30 09:17:28 libimp[18928]: [HAL_ING] control image.running_mode=0
+Sep 30 09:17:29 libimp[18928]: [CTRL] set image.running_mode = 0
+Sep 30 09:17:29 libimp[18928]: [CONFIG] persisted 1 setting(s) to /tmp/timps.conf
+Sep 30 09:17:30 libimp[18928]: [DAYNIGHT] ISP confirmed the switch to day
+Sep 30 09:17:36 libimp[18928]: [DAYNIGHT] switching to night (boot: measured night, exposure 15872): daynight night [mode=night exp=15872 ref=-1 bar=10000]
+Sep 30 09:17:36 libimp[18928]: [DAYNIGHT] probe found night, but the pre-probe level 19840 had only 1 units of AE reserve - the reference stays unset until the meter can answer
+Sep 30 09:17:36 libimp[18928]: [HAL_ING] control image.running_mode=1
+Sep 30 09:17:37 libimp[18928]: [CTRL] set image.running_mode = 1
+Sep 30 09:17:37 libimp[18928]: [CONFIG] persisted 1 setting(s) to /tmp/timps.conf
+Sep 30 09:17:38 libimp[18928]: [DAYNIGHT] ISP confirmed the switch to night
+Sep 30 09:17:43 libimp[18928]: [HAL_ING] audio resume: flushed 512 stale AI frame(s)
+Sep 30 09:17:43 libimp[18928]: [HAL_ING] AAC encoder producing (53 bytes/frame)
+Sep 30 09:17:44 libimp[18928]: [HAL_ING] control image.running_mode=1
+Sep 30 09:17:45 libimp[18928]: [DAYNIGHT] re-asserting running_mode=1 after switch (1 left)
+Sep 30 09:17:53 libimp[18928]: [HAL_ING] control image.running_mode=1
+Sep 30 09:17:53 libimp[18928]: [DAYNIGHT] re-asserting running_mode=1 after switch (0 left)
+Sep 30 09:18:07 libimp[18928]: [DAYNIGHT] night reference deferred: only 1 units of AE reserve, so 19839 is a clip, not a level - waiting for the meter to come off the rail
+Sep 30 09:19:45 libimp[18928]: [DAYNIGHT] night reference 19840 (probe bar 9920)
+Sep 30 09:20:00 logcat: 1790752641.179912910 D/IMP-ISP(18928): ~~~~~~ IMP_ISP_Open[331] ~~~~~~~
+Sep 30 09:20:00 logcat: 1790752641.389904677 I/IMP-ISP(18928): IMP_ISP_AddSensor,480: size = 0x7f0fd0
+Sep 30 11:12:00 libimp[18928]: [CLIENT] + rtsp/udp 192.0.2.x:42556 chn=0 agent="Lavf62.3.100"
+Sep 30 11:12:00 libimp[18928]: [RTSP] PLAY session=3f9c147c vchn=0 UDP v=1 a=1
+Sep 30 11:12:12 libimp[18928]: [CLIENT] - rtsp/udp 192.0.2.x:42556 after 12s, 1670948 bytes
+Sep 30 11:12:12 libimp[18928]: [RTSP] client disconnect session=3f9c147c
+Sep 30 11:12:26 libimp[18928]: [WEBRTC] no offered H264 matches profile 640033 - answering pt 102 with ours
+Sep 30 11:12:26 libimp[18928]: [WEBRTC] 61bb8de6b2875d77b87a62f4dd1537d5: answered WHEP offer, ICE-lite candidate 192.0.2.x:25000, H264 pt=102, PCMU (codec2)
+Sep 30 11:12:26 libimp[18928]: [HTTP] sse client streaming (1/8)
+Sep 30 11:12:26 libimp[18928]: [WEBRTC] 61bb8de6b2875d77b87a62f4dd1537d5: ICE peer 192.0.2.x:43678
+Sep 30 11:12:26 libimp[18928]: [CLIENT] + webrtc 192.0.2.x:43678 chn=0 agent="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36 Edg/153.0.0.0"
+Sep 30 11:12:26 libimp[18928]: [WEBRTC] 61bb8de6b2875d77b87a62f4dd1537d5: DTLS+SRTP up, streaming video0 pt=102 ssrc=1887727593 + G.711 audio
+Sep 30 11:12:38 libimp[18928]: [HTTP] sse client streaming (3/8)
+Sep 30 11:17:24 libimp[18928]: [RTSP] session=ab0e6a0e: client disconnected after 7201s (Broken pipe)
+Sep 30 11:17:24 libimp[18928]: [CLIENT] - rtsp/tcp 192.0.2.x:42072 after 7201s, 219525837 bytes
+Sep 30 11:17:24 libimp[18928]: [RTSP] session=3c4c1d5e: client disconnected after 7201s (Connection reset by peer)
+Sep 30 11:17:24 libimp[18928]: [CLIENT] - rtsp/tcp 192.0.2.x:42066 after 7201s, 1093015177 bytes
+Sep 30 11:17:26 libimp[18928]: [HAL_ING] framesource 1 disabled (idle)
+Sep 30 11:17:26 libimp[18928]: [HAL_ING] video chn1 idle

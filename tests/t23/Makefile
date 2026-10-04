@@ -9,10 +9,12 @@ ZERO_COPY_TEST_BIN := $(BUILD)/t23-helix-zero-copy-test
 FAKE_HELIXD_BIN := $(BUILD)/t23-fake-helixd
 IVS_SRC := $(PROJECT_DIR)/src/t31
 IVS_DEPS := $(IVS_SRC)/openimp_t31_ivs_move.c $(IVS_SRC)/openimp_t31_ivs_move.h \
+	$(IVS_SRC)/openimp_ivs_move_v2.c $(IVS_SRC)/openimp_ivs_move_v2.h \
 	$(IVS_SRC)/openimp_t31_ivs_abi.h
 IVS_DIGEST_T31 := $(BUILD)/t23-ivs-digest-t31abi
 IVS_DIGEST_T23 := $(BUILD)/t23-ivs-digest-t23abi
 IVS_FRAMEWORK := $(BUILD)/t23-ivs-framework-test
+IVS_MOVE_V2 := $(BUILD)/t23-ivs-move-v2-test
 JPEG_QL := $(BUILD)/t23-jpeg-ql-test
 HELIX_DESCRIPTOR := $(BUILD)/t23-helix-descriptor-test
 HELIX_STREAM := $(BUILD)/t23-helix-stream-test
@@ -40,7 +42,7 @@ HELIX_INCLUDES := -DPLATFORM_T23 '-D_Static_assert(c,m)=' -Wno-unused-result \
 # build without PIE so the test's data lies below 4 GiB.
 check: $(ISP_TUNING_TEST_BIN) $(ACODEC_TEST_BIN) $(ZERO_COPY_TEST_BIN) \
 	$(FAKE_HELIXD_BIN) $(IVS_DIGEST_T31) $(IVS_DIGEST_T23) \
-	$(IVS_FRAMEWORK) $(JPEG_QL) $(HELIX_DESCRIPTOR) $(HELIX_STREAM) \
+	$(IVS_FRAMEWORK) $(IVS_MOVE_V2) $(JPEG_QL) $(HELIX_DESCRIPTOR) $(HELIX_STREAM) \
 	$(RMEM_LAYOUT) $(OSD_PACK)
 	$(HELIX_DESCRIPTOR)
 	$(RMEM_LAYOUT)
@@ -75,6 +77,7 @@ check: $(ISP_TUNING_TEST_BIN) $(ACODEC_TEST_BIN) $(ZERO_COPY_TEST_BIN) \
 	# claude/ivs-opt speed-ups; any change in what is detected shows here
 	grep -q "digest ca3d1021f2a30c82" $(BUILD)/t23-ivs-digest-t31abi.txt
 	$(IVS_FRAMEWORK)
+	$(IVS_MOVE_V2)
 	$(JPEG_QL)
 
 $(ISP_TUNING_TEST_BIN): isp_tuning_test.c \
@@ -129,6 +132,7 @@ $(IVS_FRAMEWORK): ivs_framework_test.c $(IVS_SRC)/openimp_t31_ivs.c \
 	$(CC) $(CFLAGS) -DPLATFORM_T23 -I$(PROJECT_DIR)/include \
 		-I$(PROJECT_DIR)/src -I$(IVS_SRC) ivs_framework_test.c \
 		$(IVS_SRC)/openimp_t31_ivs.c $(IVS_SRC)/openimp_t31_ivs_move.c \
+		$(IVS_SRC)/openimp_ivs_move_v2.c \
 		-pthread -o "$@"
 
 # IMP_Encoder_SetJpegeQl tables in the software JPEG encoder. hw_encoder.c
@@ -223,3 +227,17 @@ $(T23TUNE_BIN): t23tune.c $(PROJECT_DIR)/src/isp/isp_t23_tuning.c
 		-I$(PROJECT_DIR)/include -I$(PROJECT_DIR)/src \
 		t23tune.c -lpthread -o "$@"
 	$(CROSS_COMPILE)strip "$@"
+
+# Motion v2 (opt-in, beyond vendor): bit-identity with v2 off / in shadow
+# mode and the v2 behaviour, through the IVS framework (T23 ABI).
+$(IVS_MOVE_V2): ivs_move_v2_test.c $(IVS_SRC)/openimp_t31_ivs.c \
+	$(IVS_SRC)/openimp_t31_ivs.h $(IVS_DEPS) \
+	$(PROJECT_DIR)/include/imp/openimp_ivs_move_ex.h
+	mkdir -p "$(dir $@)"
+	$(CC) $(CFLAGS) -DPLATFORM_T23 -fno-pie -no-pie -I$(PROJECT_DIR)/include \
+		-I$(PROJECT_DIR)/src -I$(IVS_SRC) ivs_move_v2_test.c \
+		$(IVS_SRC)/openimp_t31_ivs.c $(IVS_SRC)/openimp_t31_ivs_move.c \
+		$(IVS_SRC)/openimp_ivs_move_v2.c -pthread -o "$@"
+
+ivs-move-v2: $(IVS_MOVE_V2)
+	$(IVS_MOVE_V2)

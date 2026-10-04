@@ -6,7 +6,7 @@ Markierungen: **[V]** = verifiziert (Quelle direkt gelesen), **[I]** = abgeleite
 **[?]** = offen, nur auf dem Gerät zu klären.
 
 Quellen:
-- `H:` = `libimp.so_hlil.txt` (Repo-Wurzel) (Binary-Ninja-HLIL der T31-libimp, Zeilennummern
+- `H:` = `docs/re/libimp.so_hlil.txt` (Binary-Ninja-HLIL der T31-libimp, Zeilennummern
   plus Adresse)
 - `OI:` = OpenIMP (Fork `Lu-Fi/openimp`, Branch `claude/t31-hw-jpeg`, Commit `01e7eff`)
 - `K:` = IPU-Kerneltreiber (GPL) aus Thingino,
@@ -384,7 +384,7 @@ Wort = A<<24 | Y<<16 | U<<8 | V
 > bzw. byte-gleich zum Stock bleiben `lw = 1` (jede Richtung), exakt waagerechte und senkrechte
 > Linien und damit RECT. Die Änderung ist bewusst und sichtbar: Diagonalen werden **dünner** als
 > im Stock gezeichnet. Details, Messwerte und der noch offene Gerätetest:
-> `HANDOVER_OIMP_OSDTHICK.md`.
+> `docs/archive/HANDOVER_OIMP_OSDTHICK.md`.
 
 **BITMAP** (`H:112554–112745`):
 - 1 Byte pro Pixel (Größe `w*h`, `H:113470`).

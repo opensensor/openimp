@@ -3,7 +3,7 @@
  * dependencies so it can be unit tested on the host (tests/t31/osd_draw_test.c).
  *
  * Semantics follow the stock libimp osd_draw_line / OSD bitmap path
- * (libimp.so_hlil.txt, docs/T31_OSD_RE.md section 3.6):
+ * (docs/re/libimp.so_hlil.txt, docs/T31_OSD_RE.md section 3.6):
  *  - opaque writes: Y byte per pixel, U,V pair at (x & ~1) of chroma row y/2
  *  - colour is the stock word 0xAAYYUUVV (alpha ignored when drawing)
  *  - line width lw: a pixel position p covers [p - lw/2, p - lw/2 + lw - 1]

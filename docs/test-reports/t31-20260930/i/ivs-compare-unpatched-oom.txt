@@ -1,0 +1,2 @@
+[  636.490622] timpsd invoked oom-killer: gfp_mask=0x201da, order=0, oom_score_adj=0
+[  636.495986] Killed process 10418 (t31_ivs_compare) total-vm:52868kB, anon-rss:50828kB, file-rss:184kB

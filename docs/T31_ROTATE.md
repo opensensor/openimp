@@ -1,6 +1,6 @@
 # T31 channel rotation (IMP_FrameSource_SetChnRotate)
 
-Source: `libimp.so_hlil.txt` (T31 libimp 1.1.6, HLIL) and the 1.1.6
+Source: `docs/re/libimp.so_hlil.txt` (T31 libimp 1.1.6, HLIL) and the 1.1.6
 `imp_framesource.h`. Addresses are from that build.
 
 ## Vendor API

@@ -1,0 +1,6 @@
+== 12:47:45 stop of ivs2 run while main+sub RTSP clients were streaming
+2217 timpsd Z utime=4 stime=9
+2265 FS(1)-tick R utime=29 stime=2712
+Mem: 37964K used, 36112K free, 1616K shrd, 4644K buff, 14616K cached
+CPU:  0.0% usr  100% sys  0.0% nic  0.0% idle  0.0% io  0.0% irq  0.0% sirq
+Load average: 1.92 1.58 0.85 2/71 9271

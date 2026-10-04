@@ -36,7 +36,7 @@ LD_LIBRARY_PATH=/opt /opt/S31raptor start
 ```
 
 - Device:
-  - IP: `192.168.50.215`
+  - IP: `192.0.2.15`
   - User: `root`
 
 - Before each smoke run, preload:

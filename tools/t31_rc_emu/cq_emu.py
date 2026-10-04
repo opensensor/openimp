@@ -7,7 +7,7 @@ import emu
 from unicorn import UC_HOOK_CODE
 from unicorn.mips_const import *
 
-LIB = '/mnt/NVMe/git/thingino-firmware-LuFi/dl/ingenic-lib/git/T31/lib/1.1.6/uclibc/5.4.0/libimp.so'
+LIB = '<thingino>/dl/ingenic-lib/git/T31/lib/1.1.6/uclibc/5.4.0/libimp.so'
 emu.LIB = LIB
 
 class T31(emu.Lib):

@@ -1,0 +1,465 @@
+Mem: 35096K used, 38980K free, 2532K shrd, 3340K buff, 10688K cached
+CPU:  9.0% usr  9.0% sys  0.0% nic 81.8% idle  0.0% io  0.0% irq  0.0% sirq
+Load average: 1.74 2.33 1.55 1/100 21264
+  PID  PPID USER     STAT   RSS %RSS CPU %CPU COMMAND
+19223 19220 root     S     8288 11.1   0  9.0 /usr/bin/timpsd -c /tmp/timps.conf
+21264 21263 root     R      456  0.6   0  9.0 top -b -n 6 -d 5
+19947     1 root     S      548  0.7   0  0.0 {oi.sh} /bin/sh /tmp/oi.sh snaps 27 10 /tmp/snaps-g.txt
+19221     1 root     S      532  0.7   0  0.0 awk !/GetFrame|DQBUF|QBUF|VBMKernelDequeue|FSDBG ch=[0-9] step=loop  {print; fflush()}
+21263 19948 root     S      496  0.6   0  0.0 {oi.sh} /bin/sh /tmp/oi.sh top /tmp/top-g.txt 6 5
+17666  9020 root     S      492  0.6   0  0.0 top
+ 1691     1 root     S      448  0.6   0  0.0 {S99heartbeat} /bin/sh /etc/init.d/S99heartbeat start
+ 1209     1 root     S      420  0.5   0  0.0 /usr/bin/uhttpd -h /var/www -x /x -t 0 -T 15 -k 10 -n 20 -N 100 -s 443 -C /etc/ssl/certs/uhttpd.crt -K /etc/ssl/private/uhttpd.key -p 80 -E /x/legacy-url-recovery.cgi
+ 1163     1 root     S      412  0.5   0  0.0 /usr/sbin/mdnsd -s
+ 9020  9019 root     S      404  0.5   0  0.0 -sh
+ 3036  1209 root     S      400  0.5   0  0.0 {json-heartbeat.} /bin/sh /var/www/x/json-heartbeat.cgi
+ 1680     1 root     S      396  0.5   0  0.0 /usr/sbin/onvif_notify_server -c /etc/onvif.json -p /run/onvif_notify_server.pid
+21166  1691 root     S      328  0.4   0  0.0 sleep 5
+21259  3036 root     S      328  0.4   0  0.0 sleep 5
+21160 19947 root     S      328  0.4   0  0.0 sleep 10
+19220     1 root     S      320  0.4   0  0.0 {oi.sh} /bin/sh /tmp/oi.sh start g OPENIMP_T31_OSD=1
+  965     1 root     S      316  0.4   0  0.0 udhcpc -x hostname:cam-A -S -T1 -t15 -R -b -O search -O 100 -O 101 -O 160 -p /var/run/udhcpc.wlan0.pid -i wlan0
+ 1092     1 root     S      304  0.4   0  0.0 /usr/sbin/crond -f -c /etc/cron/crontabs
+ 1194     1 root     S      296  0.4   0  0.0 /usr/bin/motors-daemon -p
+  514     1 root     S      284  0.3   0  0.0 {S02kmsgd} /bin/sh /etc/init.d/S02kmsgd start
+ 9019   739 root     S      280  0.3   0  0.0 /usr/sbin/dropbear -k -K 300 -R -2 9
+  739     1 root     S      272  0.3   0  0.0 /usr/sbin/dropbear -k -K 300 -R
+  492     1 root     S      260  0.3   0  0.0 /sbin/syslogd -n -C64 -S -t -D -R 192.0.2.x:514 -L -L
+ 1084     1 root     S      248  0.3   0  0.0 /usr/sbin/ntpd -n -S /etc/ntpd_callback
+19948     1 root     S      240  0.3   0  0.0 sh -c (/tmp/oi.sh snaps 27 10 /tmp/snaps-g.txt > /dev/null 2>&1 &); (sleep 60; /tmp/oi.sh top /tmp/top-g.txt 6 5; top -b -H -n 2 -d 5 > /tmp/topH-g.txt) > /dev/null 2>&1 &
+  856     1 root     S      232  0.3   0  0.0 /usr/sbin/wpa_supplicant -i wlan0 -P /run/wpa_supplicant.wlan0.pid -B -c /etc/wpa_supplicant.conf
+  512     1 root     S      204  0.2   0  0.0 /sbin/klogd -n
+ 1353     1 root     S      176  0.2   0  0.0 /usr/sbin/wsd_simple_server -i wlan0 -x http://%s/onvif/device_service -n thingino -p /run/wsd_simple_server_wlan0.pid
+  972     1 root     S      136  0.1   0  0.0 /sbin/odhcp6c -d -p /var/run/odhcp6c_wlan0.pid -t120 wlan0
+    1     0 root     S      112  0.1   0  0.0 init
+  440     1 root     S       92  0.1   0  0.0 /usr/sbin/watchdog -T 60 /dev/watchdog
+ 1003     1 root     S       84  0.1   0  0.0 /usr/sbin/ifplugd -n -M -i eth0
+ 1705     1 root     S       80  0.1   0  0.0 /sbin/getty -L console 0 vt100
+  732     1 root     S       68  0.0   0  0.0 /usr/bin/thingino-button -d
+ 1283     1 root     S       56  0.0   0  0.0 /usr/libexec/agent/listener --listen 127.0.0.1 --port 1998
+  791     2 root     SW       0  0.0   0  0.0 [ssv6xxx_hci_tx_]
+  798     2 root     SW       0  0.0   0  0.0 [ksdioirqd/mmc1]
+  679     2 root     SW       0  0.0   0  0.0 [irq/37-isp-m0]
+  793     2 root     SW       0  0.0   0  0.0 [ssv6xxx_rx_task]
+19231     2 root     DW       0  0.0   0  0.0 [isp_fw_process]
+11108     2 root     SW       0  0.0   0  0.0 [kworker/0:1]
+    7     2 root     SW       0  0.0   0  0.0 [rcu_preempt]
+ 4554     2 root     SW       0  0.0   0  0.0 [kworker/u2:1]
+    3     2 root     SW       0  0.0   0  0.0 [ksoftirqd/0]
+12159     2 root     SW       0  0.0   0  0.0 [kworker/u2:2]
+  215     2 root     SW       0  0.0   0  0.0 [kswapd0]
+  792     2 root     SW<      0  0.0   0  0.0 [ssv6xxx_cong_wq]
+    9     2 root     SW       0  0.0   0  0.0 [rcu_sched]
+  794     2 root     SW<      0  0.0   0  0.0 [ssv6xxx_house_k]
+  795     2 root     SW<      0  0.0   0  0.0 [ssv6xxx_tx_done]
+  122     2 root     SW<      0  0.0   0  0.0 [writeback]
+   10     2 root     SW       0  0.0   0  0.0 [watchdog/0]
+   11     2 root     SW<      0  0.0   0  0.0 [khelper]
+   12     2 root     SW       0  0.0   0  0.0 [kdevtmpfs]
+    2     0 root     SW       0  0.0   0  0.0 [kthreadd]
+  796     2 root     SW<      0  0.0   0  0.0 [ssv6xxx_scan_wq]
+    5     2 root     SW<      0  0.0   0  0.0 [kworker/0:0H]
+  805     2 root     SW       0  0.0   0  0.0 [mmcqd/0]
+    8     2 root     SW       0  0.0   0  0.0 [rcu_bh]
+  274     2 root     SW<      0  0.0   0  0.0 [crypto]
+  323     2 root     SW       0  0.0   0  0.0 [kworker/0:2]
+  391     2 root     SW<      0  0.0   0  0.0 [deferwq]
+  395     2 root     SW<      0  0.0   0  0.0 [kworker/0:1H]
+  404     2 root     SWN      0  0.0   0  0.0 [jffs2_gcd_mtd5]
+  124     2 root     SW<      0  0.0   0  0.0 [bioset]
+  126     2 root     SW<      0  0.0   0  0.0 [kblockd]
+  168     2 root     SW       0  0.0   0  0.0 [khubd]
+  185     2 root     SW<      0  0.0   0  0.0 [cfg80211]
+  208     2 root     SW<      0  0.0   0  0.0 [rpciod]
+  681     2 root     SW       0  0.0   0  0.0 [irq/38-isp-w02]
+  264     2 root     SW       0  0.0   0  0.0 [fsnotify_mark]
+  266     2 root     SW<      0  0.0   0  0.0 [nfsiod]
+  786     2 root     SW<      0  0.0   0  0.0 [ssv6xxx_sdio_wq]
+Mem: 35140K used, 38936K free, 2540K shrd, 3340K buff, 10696K cached
+CPU: 36.7% usr 11.7% sys  0.0% nic 51.0% idle  0.0% io  0.0% irq  0.4% sirq
+Load average: 1.92 2.35 1.56 2/100 21371
+  PID  PPID USER     STAT   RSS %RSS CPU %CPU COMMAND
+19223 19220 root     S     8316 11.2   0 33.2 /usr/bin/timpsd -c /tmp/timps.conf
+19231     2 root     DW       0  0.0   0  3.3 [isp_fw_process]
+19221     1 root     S      532  0.7   0  2.0 awk !/GetFrame|DQBUF|QBUF|VBMKernelDequeue|FSDBG ch=[0-9] step=loop  {print; fflush()}
+  791     2 root     RW       0  0.0   0  1.0 [ssv6xxx_hci_tx_]
+  798     2 root     SW       0  0.0   0  0.8 [ksdioirqd/mmc1]
+  793     2 root     SW       0  0.0   0  0.8 [ssv6xxx_rx_task]
+  679     2 root     SW       0  0.0   0  0.4 [irq/37-isp-m0]
+21264 21263 root     R      496  0.6   0  0.2 top -b -n 6 -d 5
+17666  9020 root     S      492  0.6   0  0.2 top
+ 1691     1 root     S      448  0.6   0  0.2 {S99heartbeat} /bin/sh /etc/init.d/S99heartbeat start
+11108     2 root     SW       0  0.0   0  0.2 [kworker/0:1]
+12159     2 root     SW       0  0.0   0  0.2 [kworker/u2:2]
+19947     1 root     S      548  0.7   0  0.0 {oi.sh} /bin/sh /tmp/oi.sh snaps 27 10 /tmp/snaps-g.txt
+21263 19948 root     S      496  0.6   0  0.0 {oi.sh} /bin/sh /tmp/oi.sh top /tmp/top-g.txt 6 5
+ 1209     1 root     S      420  0.5   0  0.0 /usr/bin/uhttpd -h /var/www -x /x -t 0 -T 15 -k 10 -n 20 -N 100 -s 443 -C /etc/ssl/certs/uhttpd.crt -K /etc/ssl/private/uhttpd.key -p 80 -E /x/legacy-url-recovery.cgi
+ 1163     1 root     S      412  0.5   0  0.0 /usr/sbin/mdnsd -s
+ 9020  9019 root     S      404  0.5   0  0.0 -sh
+ 3036  1209 root     S      400  0.5   0  0.0 {json-heartbeat.} /bin/sh /var/www/x/json-heartbeat.cgi
+ 1680     1 root     S      396  0.5   0  0.0 /usr/sbin/onvif_notify_server -c /etc/onvif.json -p /run/onvif_notify_server.pid
+21269  1691 root     S      328  0.4   0  0.0 sleep 5
+21371  3036 root     S      324  0.4   0  0.0 sleep 5
+21348 19947 root     S      324  0.4   0  0.0 sleep 10
+19220     1 root     S      320  0.4   0  0.0 {oi.sh} /bin/sh /tmp/oi.sh start g OPENIMP_T31_OSD=1
+  965     1 root     S      316  0.4   0  0.0 udhcpc -x hostname:cam-A -S -T1 -t15 -R -b -O search -O 100 -O 101 -O 160 -p /var/run/udhcpc.wlan0.pid -i wlan0
+ 1092     1 root     S      304  0.4   0  0.0 /usr/sbin/crond -f -c /etc/cron/crontabs
+ 1194     1 root     S      296  0.4   0  0.0 /usr/bin/motors-daemon -p
+  514     1 root     S      284  0.3   0  0.0 {S02kmsgd} /bin/sh /etc/init.d/S02kmsgd start
+ 9019   739 root     S      280  0.3   0  0.0 /usr/sbin/dropbear -k -K 300 -R -2 9
+  739     1 root     S      272  0.3   0  0.0 /usr/sbin/dropbear -k -K 300 -R
+  492     1 root     S      260  0.3   0  0.0 /sbin/syslogd -n -C64 -S -t -D -R 192.0.2.x:514 -L -L
+ 1084     1 root     S      248  0.3   0  0.0 /usr/sbin/ntpd -n -S /etc/ntpd_callback
+19948     1 root     S      240  0.3   0  0.0 sh -c (/tmp/oi.sh snaps 27 10 /tmp/snaps-g.txt > /dev/null 2>&1 &); (sleep 60; /tmp/oi.sh top /tmp/top-g.txt 6 5; top -b -H -n 2 -d 5 > /tmp/topH-g.txt) > /dev/null 2>&1 &
+  856     1 root     S      232  0.3   0  0.0 /usr/sbin/wpa_supplicant -i wlan0 -P /run/wpa_supplicant.wlan0.pid -B -c /etc/wpa_supplicant.conf
+  512     1 root     S      204  0.2   0  0.0 /sbin/klogd -n
+ 1353     1 root     S      176  0.2   0  0.0 /usr/sbin/wsd_simple_server -i wlan0 -x http://%s/onvif/device_service -n thingino -p /run/wsd_simple_server_wlan0.pid
+  972     1 root     S      136  0.1   0  0.0 /sbin/odhcp6c -d -p /var/run/odhcp6c_wlan0.pid -t120 wlan0
+    1     0 root     S      112  0.1   0  0.0 init
+  440     1 root     S       92  0.1   0  0.0 /usr/sbin/watchdog -T 60 /dev/watchdog
+ 1003     1 root     S       84  0.1   0  0.0 /usr/sbin/ifplugd -n -M -i eth0
+ 1705     1 root     S       80  0.1   0  0.0 /sbin/getty -L console 0 vt100
+  732     1 root     S       68  0.0   0  0.0 /usr/bin/thingino-button -d
+ 1283     1 root     S       56  0.0   0  0.0 /usr/libexec/agent/listener --listen 127.0.0.1 --port 1998
+    7     2 root     SW       0  0.0   0  0.0 [rcu_preempt]
+ 4554     2 root     SW       0  0.0   0  0.0 [kworker/u2:1]
+    3     2 root     SW       0  0.0   0  0.0 [ksoftirqd/0]
+  215     2 root     SW       0  0.0   0  0.0 [kswapd0]
+  792     2 root     SW<      0  0.0   0  0.0 [ssv6xxx_cong_wq]
+    9     2 root     SW       0  0.0   0  0.0 [rcu_sched]
+  794     2 root     SW<      0  0.0   0  0.0 [ssv6xxx_house_k]
+  795     2 root     SW<      0  0.0   0  0.0 [ssv6xxx_tx_done]
+  122     2 root     SW<      0  0.0   0  0.0 [writeback]
+   10     2 root     SW       0  0.0   0  0.0 [watchdog/0]
+   11     2 root     SW<      0  0.0   0  0.0 [khelper]
+   12     2 root     SW       0  0.0   0  0.0 [kdevtmpfs]
+    2     0 root     SW       0  0.0   0  0.0 [kthreadd]
+  796     2 root     SW<      0  0.0   0  0.0 [ssv6xxx_scan_wq]
+    5     2 root     SW<      0  0.0   0  0.0 [kworker/0:0H]
+  805     2 root     SW       0  0.0   0  0.0 [mmcqd/0]
+    8     2 root     SW       0  0.0   0  0.0 [rcu_bh]
+  274     2 root     SW<      0  0.0   0  0.0 [crypto]
+  323     2 root     SW       0  0.0   0  0.0 [kworker/0:2]
+  391     2 root     SW<      0  0.0   0  0.0 [deferwq]
+  395     2 root     SW<      0  0.0   0  0.0 [kworker/0:1H]
+  404     2 root     SWN      0  0.0   0  0.0 [jffs2_gcd_mtd5]
+  124     2 root     SW<      0  0.0   0  0.0 [bioset]
+  126     2 root     SW<      0  0.0   0  0.0 [kblockd]
+  168     2 root     SW       0  0.0   0  0.0 [khubd]
+  185     2 root     SW<      0  0.0   0  0.0 [cfg80211]
+  208     2 root     SW<      0  0.0   0  0.0 [rpciod]
+  681     2 root     SW       0  0.0   0  0.0 [irq/38-isp-w02]
+  264     2 root     SW       0  0.0   0  0.0 [fsnotify_mark]
+  266     2 root     SW<      0  0.0   0  0.0 [nfsiod]
+  786     2 root     SW<      0  0.0   0  0.0 [ssv6xxx_sdio_wq]
+Mem: 35112K used, 38964K free, 2544K shrd, 3340K buff, 10700K cached
+CPU: 22.8% usr 16.0% sys  0.0% nic 60.1% idle  0.0% io  0.0% irq  0.9% sirq
+Load average: 1.93 2.35 1.56 1/100 21497
+  PID  PPID USER     STAT   RSS %RSS CPU %CPU COMMAND
+19223 19220 root     S     8292 11.1   0 21.0 /usr/bin/timpsd -c /tmp/timps.conf
+19231     2 root     DW       0  0.0   0  2.9 [isp_fw_process]
+  791     2 root     RW       0  0.0   0  0.9 [ssv6xxx_hci_tx_]
+  798     2 root     SW       0  0.0   0  0.7 [ksdioirqd/mmc1]
+  793     2 root     SW       0  0.0   0  0.7 [ssv6xxx_rx_task]
+  679     2 root     SW       0  0.0   0  0.3 [irq/37-isp-m0]
+11108     2 root     SW       0  0.0   0  0.3 [kworker/0:1]
+17666  9020 root     S      492  0.6   0  0.2 top
+ 1680     1 root     S      396  0.5   0  0.2 /usr/sbin/onvif_notify_server -c /etc/onvif.json -p /run/onvif_notify_server.pid
+ 9019   739 root     S      280  0.3   0  0.2 /usr/sbin/dropbear -k -K 300 -R -2 9
+12159     2 root     SW       0  0.0   0  0.2 [kworker/u2:2]
+19947     1 root     S      548  0.7   0  0.0 {oi.sh} /bin/sh /tmp/oi.sh snaps 27 10 /tmp/snaps-g.txt
+19221     1 root     S      532  0.7   0  0.0 awk !/GetFrame|DQBUF|QBUF|VBMKernelDequeue|FSDBG ch=[0-9] step=loop  {print; fflush()}
+21264 21263 root     R      496  0.6   0  0.0 top -b -n 6 -d 5
+21263 19948 root     S      496  0.6   0  0.0 {oi.sh} /bin/sh /tmp/oi.sh top /tmp/top-g.txt 6 5
+ 1691     1 root     S      448  0.6   0  0.0 {S99heartbeat} /bin/sh /etc/init.d/S99heartbeat start
+ 1209     1 root     S      420  0.5   0  0.0 /usr/bin/uhttpd -h /var/www -x /x -t 0 -T 15 -k 10 -n 20 -N 100 -s 443 -C /etc/ssl/certs/uhttpd.crt -K /etc/ssl/private/uhttpd.key -p 80 -E /x/legacy-url-recovery.cgi
+ 1163     1 root     S      412  0.5   0  0.0 /usr/sbin/mdnsd -s
+ 9020  9019 root     S      404  0.5   0  0.0 -sh
+ 3036  1209 root     S      400  0.5   0  0.0 {json-heartbeat.} /bin/sh /var/www/x/json-heartbeat.cgi
+21497  3036 root     S      328  0.4   0  0.0 sleep 5
+21348 19947 root     S      324  0.4   0  0.0 sleep 10
+21399  1691 root     S      324  0.4   0  0.0 sleep 5
+19220     1 root     S      320  0.4   0  0.0 {oi.sh} /bin/sh /tmp/oi.sh start g OPENIMP_T31_OSD=1
+  965     1 root     S      316  0.4   0  0.0 udhcpc -x hostname:cam-A -S -T1 -t15 -R -b -O search -O 100 -O 101 -O 160 -p /var/run/udhcpc.wlan0.pid -i wlan0
+ 1092     1 root     S      304  0.4   0  0.0 /usr/sbin/crond -f -c /etc/cron/crontabs
+ 1194     1 root     S      296  0.4   0  0.0 /usr/bin/motors-daemon -p
+  514     1 root     S      284  0.3   0  0.0 {S02kmsgd} /bin/sh /etc/init.d/S02kmsgd start
+  739     1 root     S      272  0.3   0  0.0 /usr/sbin/dropbear -k -K 300 -R
+  492     1 root     S      260  0.3   0  0.0 /sbin/syslogd -n -C64 -S -t -D -R 192.0.2.x:514 -L -L
+ 1084     1 root     S      248  0.3   0  0.0 /usr/sbin/ntpd -n -S /etc/ntpd_callback
+19948     1 root     S      240  0.3   0  0.0 sh -c (/tmp/oi.sh snaps 27 10 /tmp/snaps-g.txt > /dev/null 2>&1 &); (sleep 60; /tmp/oi.sh top /tmp/top-g.txt 6 5; top -b -H -n 2 -d 5 > /tmp/topH-g.txt) > /dev/null 2>&1 &
+  856     1 root     S      232  0.3   0  0.0 /usr/sbin/wpa_supplicant -i wlan0 -P /run/wpa_supplicant.wlan0.pid -B -c /etc/wpa_supplicant.conf
+  512     1 root     S      204  0.2   0  0.0 /sbin/klogd -n
+ 1353     1 root     S      176  0.2   0  0.0 /usr/sbin/wsd_simple_server -i wlan0 -x http://%s/onvif/device_service -n thingino -p /run/wsd_simple_server_wlan0.pid
+  972     1 root     S      136  0.1   0  0.0 /sbin/odhcp6c -d -p /var/run/odhcp6c_wlan0.pid -t120 wlan0
+    1     0 root     S      112  0.1   0  0.0 init
+  440     1 root     S       92  0.1   0  0.0 /usr/sbin/watchdog -T 60 /dev/watchdog
+ 1003     1 root     S       84  0.1   0  0.0 /usr/sbin/ifplugd -n -M -i eth0
+ 1705     1 root     S       80  0.1   0  0.0 /sbin/getty -L console 0 vt100
+  732     1 root     S       68  0.0   0  0.0 /usr/bin/thingino-button -d
+ 1283     1 root     S       56  0.0   0  0.0 /usr/libexec/agent/listener --listen 127.0.0.1 --port 1998
+    7     2 root     SW       0  0.0   0  0.0 [rcu_preempt]
+ 4554     2 root     SW       0  0.0   0  0.0 [kworker/u2:1]
+    3     2 root     SW       0  0.0   0  0.0 [ksoftirqd/0]
+  215     2 root     SW       0  0.0   0  0.0 [kswapd0]
+  792     2 root     SW<      0  0.0   0  0.0 [ssv6xxx_cong_wq]
+    9     2 root     SW       0  0.0   0  0.0 [rcu_sched]
+  794     2 root     SW<      0  0.0   0  0.0 [ssv6xxx_house_k]
+  795     2 root     SW<      0  0.0   0  0.0 [ssv6xxx_tx_done]
+  122     2 root     SW<      0  0.0   0  0.0 [writeback]
+   10     2 root     SW       0  0.0   0  0.0 [watchdog/0]
+   11     2 root     SW<      0  0.0   0  0.0 [khelper]
+   12     2 root     SW       0  0.0   0  0.0 [kdevtmpfs]
+    2     0 root     SW       0  0.0   0  0.0 [kthreadd]
+  796     2 root     SW<      0  0.0   0  0.0 [ssv6xxx_scan_wq]
+    5     2 root     SW<      0  0.0   0  0.0 [kworker/0:0H]
+  805     2 root     SW       0  0.0   0  0.0 [mmcqd/0]
+    8     2 root     SW       0  0.0   0  0.0 [rcu_bh]
+  274     2 root     SW<      0  0.0   0  0.0 [crypto]
+  323     2 root     SW       0  0.0   0  0.0 [kworker/0:2]
+  391     2 root     SW<      0  0.0   0  0.0 [deferwq]
+  395     2 root     SW<      0  0.0   0  0.0 [kworker/0:1H]
+  404     2 root     SWN      0  0.0   0  0.0 [jffs2_gcd_mtd5]
+  124     2 root     SW<      0  0.0   0  0.0 [bioset]
+  126     2 root     SW<      0  0.0   0  0.0 [kblockd]
+  168     2 root     SW       0  0.0   0  0.0 [khubd]
+  185     2 root     SW<      0  0.0   0  0.0 [cfg80211]
+  208     2 root     SW<      0  0.0   0  0.0 [rpciod]
+  681     2 root     SW       0  0.0   0  0.0 [irq/38-isp-w02]
+  264     2 root     SW       0  0.0   0  0.0 [fsnotify_mark]
+  266     2 root     SW<      0  0.0   0  0.0 [nfsiod]
+  786     2 root     SW<      0  0.0   0  0.0 [ssv6xxx_sdio_wq]
+Mem: 35664K used, 38412K free, 2556K shrd, 3340K buff, 10712K cached
+CPU: 24.3% usr 10.8% sys  0.0% nic 64.4% idle  0.0% io  0.0% irq  0.4% sirq
+Load average: 1.85 2.33 1.56 3/102 21540
+  PID  PPID USER     STAT   RSS %RSS CPU %CPU COMMAND
+19223 19220 root     S     8488 11.4   0 23.9 /usr/bin/timpsd -c /tmp/timps.conf
+19231     2 root     DW       0  0.0   0  3.3 [isp_fw_process]
+  791     2 root     SW       0  0.0   0  1.0 [ssv6xxx_hci_tx_]
+  798     2 root     SW       0  0.0   0  0.8 [ksdioirqd/mmc1]
+  793     2 root     SW       0  0.0   0  0.8 [ssv6xxx_rx_task]
+19947     1 root     S      548  0.7   0  0.2 {oi.sh} /bin/sh /tmp/oi.sh snaps 27 10 /tmp/snaps-g.txt
+21264 21263 root     R      496  0.6   0  0.2 top -b -n 6 -d 5
+17666  9020 root     S      492  0.6   0  0.2 top
+ 1163     1 root     S      412  0.5   0  0.2 /usr/sbin/mdnsd -s
+ 9019   739 root     S      280  0.3   0  0.2 /usr/sbin/dropbear -k -K 300 -R -2 9
+  679     2 root     SW       0  0.0   0  0.2 [irq/37-isp-m0]
+11108     2 root     SW       0  0.0   0  0.2 [kworker/0:1]
+12159     2 root     SW       0  0.0   0  0.2 [kworker/u2:2]
+21540 21538 root     R      592  0.8   0  0.0 sed -n s/.*"audio":{[^}]*"enabled":\([01]\).*/\1/p
+19221     1 root     S      532  0.7   0  0.0 awk !/GetFrame|DQBUF|QBUF|VBMKernelDequeue|FSDBG ch=[0-9] step=loop  {print; fflush()}
+21263 19948 root     S      496  0.6   0  0.0 {oi.sh} /bin/sh /tmp/oi.sh top /tmp/top-g.txt 6 5
+ 1691     1 root     S      448  0.6   0  0.0 {S99heartbeat} /bin/sh /etc/init.d/S99heartbeat start
+ 1209     1 root     S      420  0.5   0  0.0 /usr/bin/uhttpd -h /var/www -x /x -t 0 -T 15 -k 10 -n 20 -N 100 -s 443 -C /etc/ssl/certs/uhttpd.crt -K /etc/ssl/private/uhttpd.key -p 80 -E /x/legacy-url-recovery.cgi
+ 9020  9019 root     S      404  0.5   0  0.0 -sh
+ 3036  1209 root     S      400  0.5   0  0.0 {json-heartbeat.} /bin/sh /var/www/x/json-heartbeat.cgi
+ 1680     1 root     S      396  0.5   0  0.0 /usr/sbin/onvif_notify_server -c /etc/onvif.json -p /run/onvif_notify_server.pid
+21517  3036 root     S      336  0.4   0  0.0 {json-heartbeat.} /bin/sh /var/www/x/json-heartbeat.cgi
+21516 19947 root     S      328  0.4   0  0.0 sleep 10
+21502  1691 root     S      324  0.4   0  0.0 sleep 5
+19220     1 root     S      320  0.4   0  0.0 {oi.sh} /bin/sh /tmp/oi.sh start g OPENIMP_T31_OSD=1
+  965     1 root     S      316  0.4   0  0.0 udhcpc -x hostname:cam-A -S -T1 -t15 -R -b -O search -O 100 -O 101 -O 160 -p /var/run/udhcpc.wlan0.pid -i wlan0
+ 1092     1 root     S      304  0.4   0  0.0 /usr/sbin/crond -f -c /etc/cron/crontabs
+ 1194     1 root     S      296  0.4   0  0.0 /usr/bin/motors-daemon -p
+  514     1 root     S      284  0.3   0  0.0 {S02kmsgd} /bin/sh /etc/init.d/S02kmsgd start
+  739     1 root     S      272  0.3   0  0.0 /usr/sbin/dropbear -k -K 300 -R
+21538 21517 root     S      264  0.3   0  0.0 {json-heartbeat.} /bin/sh /var/www/x/json-heartbeat.cgi
+  492     1 root     S      260  0.3   0  0.0 /sbin/syslogd -n -C64 -S -t -D -R 192.0.2.x:514 -L -L
+ 1084     1 root     S      248  0.3   0  0.0 /usr/sbin/ntpd -n -S /etc/ntpd_callback
+19948     1 root     S      240  0.3   0  0.0 sh -c (/tmp/oi.sh snaps 27 10 /tmp/snaps-g.txt > /dev/null 2>&1 &); (sleep 60; /tmp/oi.sh top /tmp/top-g.txt 6 5; top -b -H -n 2 -d 5 > /tmp/topH-g.txt) > /dev/null 2>&1 &
+  856     1 root     S      232  0.3   0  0.0 /usr/sbin/wpa_supplicant -i wlan0 -P /run/wpa_supplicant.wlan0.pid -B -c /etc/wpa_supplicant.conf
+  512     1 root     S      204  0.2   0  0.0 /sbin/klogd -n
+ 1353     1 root     S      176  0.2   0  0.0 /usr/sbin/wsd_simple_server -i wlan0 -x http://%s/onvif/device_service -n thingino -p /run/wsd_simple_server_wlan0.pid
+  972     1 root     S      136  0.1   0  0.0 /sbin/odhcp6c -d -p /var/run/odhcp6c_wlan0.pid -t120 wlan0
+    1     0 root     S      112  0.1   0  0.0 init
+  440     1 root     S       92  0.1   0  0.0 /usr/sbin/watchdog -T 60 /dev/watchdog
+ 1003     1 root     S       84  0.1   0  0.0 /usr/sbin/ifplugd -n -M -i eth0
+ 1705     1 root     S       80  0.1   0  0.0 /sbin/getty -L console 0 vt100
+  732     1 root     S       68  0.0   0  0.0 /usr/bin/thingino-button -d
+ 1283     1 root     S       56  0.0   0  0.0 /usr/libexec/agent/listener --listen 127.0.0.1 --port 1998
+    7     2 root     SW       0  0.0   0  0.0 [rcu_preempt]
+ 4554     2 root     SW       0  0.0   0  0.0 [kworker/u2:1]
+    3     2 root     SW       0  0.0   0  0.0 [ksoftirqd/0]
+  215     2 root     SW       0  0.0   0  0.0 [kswapd0]
+    9     2 root     SW       0  0.0   0  0.0 [rcu_sched]
+  794     2 root     SW<      0  0.0   0  0.0 [ssv6xxx_house_k]
+  795     2 root     SW<      0  0.0   0  0.0 [ssv6xxx_tx_done]
+  122     2 root     SW<      0  0.0   0  0.0 [writeback]
+   11     2 root     SW<      0  0.0   0  0.0 [khelper]
+   12     2 root     SW       0  0.0   0  0.0 [kdevtmpfs]
+    2     0 root     SW       0  0.0   0  0.0 [kthreadd]
+  796     2 root     SW<      0  0.0   0  0.0 [ssv6xxx_scan_wq]
+    5     2 root     SW<      0  0.0   0  0.0 [kworker/0:0H]
+  805     2 root     SW       0  0.0   0  0.0 [mmcqd/0]
+    8     2 root     SW       0  0.0   0  0.0 [rcu_bh]
+  274     2 root     SW<      0  0.0   0  0.0 [crypto]
+   10     2 root     SW       0  0.0   0  0.0 [watchdog/0]
+  391     2 root     SW<      0  0.0   0  0.0 [deferwq]
+  395     2 root     SW<      0  0.0   0  0.0 [kworker/0:1H]
+  404     2 root     SWN      0  0.0   0  0.0 [jffs2_gcd_mtd5]
+  124     2 root     SW<      0  0.0   0  0.0 [bioset]
+  126     2 root     SW<      0  0.0   0  0.0 [kblockd]
+  168     2 root     SW       0  0.0   0  0.0 [khubd]
+  185     2 root     SW<      0  0.0   0  0.0 [cfg80211]
+  208     2 root     SW<      0  0.0   0  0.0 [rpciod]
+  681     2 root     SW       0  0.0   0  0.0 [irq/38-isp-w02]
+  264     2 root     SW       0  0.0   0  0.0 [fsnotify_mark]
+  266     2 root     SW<      0  0.0   0  0.0 [nfsiod]
+  786     2 root     SW<      0  0.0   0  0.0 [ssv6xxx_sdio_wq]
+  323     2 root     SW       0  0.0   0  0.0 [kworker/0:2]
+  792     2 root     SW<      0  0.0   0  0.0 [ssv6xxx_cong_wq]
+Mem: 35224K used, 38852K free, 2560K shrd, 3340K buff, 10716K cached
+CPU: 26.4% usr 11.1% sys  0.0% nic 61.9% idle  0.0% io  0.0% irq  0.3% sirq
+Load average: 1.86 2.32 1.56 2/100 21617
+  PID  PPID USER     STAT   RSS %RSS CPU %CPU COMMAND
+19223 19220 root     S     8296 11.1   0 25.8 /usr/bin/timpsd -c /tmp/timps.conf
+19231     2 root     DW       0  0.0   0  2.9 [isp_fw_process]
+  791     2 root     SW       0  0.0   0  0.9 [ssv6xxx_hci_tx_]
+  798     2 root     DW       0  0.0   0  0.8 [ksdioirqd/mmc1]
+  793     2 root     SW       0  0.0   0  0.8 [ssv6xxx_rx_task]
+  679     2 root     SW       0  0.0   0  0.4 [irq/37-isp-m0]
+21264 21263 root     R      496  0.6   0  0.2 top -b -n 6 -d 5
+17666  9020 root     S      492  0.6   0  0.2 top
+ 1691     1 root     S      448  0.6   0  0.2 {S99heartbeat} /bin/sh /etc/init.d/S99heartbeat start
+11108     2 root     SW       0  0.0   0  0.2 [kworker/0:1]
+12159     2 root     SW       0  0.0   0  0.2 [kworker/u2:2]
+19947     1 root     S      548  0.7   0  0.0 {oi.sh} /bin/sh /tmp/oi.sh snaps 27 10 /tmp/snaps-g.txt
+19221     1 root     S      532  0.7   0  0.0 awk !/GetFrame|DQBUF|QBUF|VBMKernelDequeue|FSDBG ch=[0-9] step=loop  {print; fflush()}
+21263 19948 root     S      496  0.6   0  0.0 {oi.sh} /bin/sh /tmp/oi.sh top /tmp/top-g.txt 6 5
+ 1209     1 root     S      420  0.5   0  0.0 /usr/bin/uhttpd -h /var/www -x /x -t 0 -T 15 -k 10 -n 20 -N 100 -s 443 -C /etc/ssl/certs/uhttpd.crt -K /etc/ssl/private/uhttpd.key -p 80 -E /x/legacy-url-recovery.cgi
+ 1163     1 root     S      412  0.5   0  0.0 /usr/sbin/mdnsd -s
+ 9020  9019 root     S      404  0.5   0  0.0 -sh
+ 3036  1209 root     S      400  0.5   0  0.0 {json-heartbeat.} /bin/sh /var/www/x/json-heartbeat.cgi
+ 1680     1 root     S      396  0.5   0  0.0 /usr/sbin/onvif_notify_server -c /etc/onvif.json -p /run/onvif_notify_server.pid
+21516 19947 root     S      328  0.4   0  0.0 sleep 10
+21604  3036 root     S      328  0.4   0  0.0 sleep 5
+21611  1691 root     S      324  0.4   0  0.0 sleep 5
+19220     1 root     S      320  0.4   0  0.0 {oi.sh} /bin/sh /tmp/oi.sh start g OPENIMP_T31_OSD=1
+  965     1 root     S      316  0.4   0  0.0 udhcpc -x hostname:cam-A -S -T1 -t15 -R -b -O search -O 100 -O 101 -O 160 -p /var/run/udhcpc.wlan0.pid -i wlan0
+ 1092     1 root     S      304  0.4   0  0.0 /usr/sbin/crond -f -c /etc/cron/crontabs
+ 1194     1 root     S      296  0.4   0  0.0 /usr/bin/motors-daemon -p
+  514     1 root     S      284  0.3   0  0.0 {S02kmsgd} /bin/sh /etc/init.d/S02kmsgd start
+ 9019   739 root     S      280  0.3   0  0.0 /usr/sbin/dropbear -k -K 300 -R -2 9
+  739     1 root     S      272  0.3   0  0.0 /usr/sbin/dropbear -k -K 300 -R
+  492     1 root     S      260  0.3   0  0.0 /sbin/syslogd -n -C64 -S -t -D -R 192.0.2.x:514 -L -L
+ 1084     1 root     S      248  0.3   0  0.0 /usr/sbin/ntpd -n -S /etc/ntpd_callback
+19948     1 root     S      240  0.3   0  0.0 sh -c (/tmp/oi.sh snaps 27 10 /tmp/snaps-g.txt > /dev/null 2>&1 &); (sleep 60; /tmp/oi.sh top /tmp/top-g.txt 6 5; top -b -H -n 2 -d 5 > /tmp/topH-g.txt) > /dev/null 2>&1 &
+  856     1 root     S      232  0.3   0  0.0 /usr/sbin/wpa_supplicant -i wlan0 -P /run/wpa_supplicant.wlan0.pid -B -c /etc/wpa_supplicant.conf
+  512     1 root     S      204  0.2   0  0.0 /sbin/klogd -n
+ 1353     1 root     S      176  0.2   0  0.0 /usr/sbin/wsd_simple_server -i wlan0 -x http://%s/onvif/device_service -n thingino -p /run/wsd_simple_server_wlan0.pid
+  972     1 root     S      136  0.1   0  0.0 /sbin/odhcp6c -d -p /var/run/odhcp6c_wlan0.pid -t120 wlan0
+    1     0 root     S      112  0.1   0  0.0 init
+  440     1 root     S       92  0.1   0  0.0 /usr/sbin/watchdog -T 60 /dev/watchdog
+ 1003     1 root     S       84  0.1   0  0.0 /usr/sbin/ifplugd -n -M -i eth0
+ 1705     1 root     S       80  0.1   0  0.0 /sbin/getty -L console 0 vt100
+  732     1 root     S       68  0.0   0  0.0 /usr/bin/thingino-button -d
+ 1283     1 root     S       56  0.0   0  0.0 /usr/libexec/agent/listener --listen 127.0.0.1 --port 1998
+    7     2 root     SW       0  0.0   0  0.0 [rcu_preempt]
+ 4554     2 root     SW       0  0.0   0  0.0 [kworker/u2:1]
+    3     2 root     SW       0  0.0   0  0.0 [ksoftirqd/0]
+  215     2 root     SW       0  0.0   0  0.0 [kswapd0]
+  792     2 root     SW<      0  0.0   0  0.0 [ssv6xxx_cong_wq]
+    9     2 root     SW       0  0.0   0  0.0 [rcu_sched]
+  794     2 root     SW<      0  0.0   0  0.0 [ssv6xxx_house_k]
+  795     2 root     SW<      0  0.0   0  0.0 [ssv6xxx_tx_done]
+  122     2 root     SW<      0  0.0   0  0.0 [writeback]
+   10     2 root     SW       0  0.0   0  0.0 [watchdog/0]
+   11     2 root     SW<      0  0.0   0  0.0 [khelper]
+   12     2 root     SW       0  0.0   0  0.0 [kdevtmpfs]
+    2     0 root     SW       0  0.0   0  0.0 [kthreadd]
+  796     2 root     SW<      0  0.0   0  0.0 [ssv6xxx_scan_wq]
+    5     2 root     SW<      0  0.0   0  0.0 [kworker/0:0H]
+  805     2 root     SW       0  0.0   0  0.0 [mmcqd/0]
+    8     2 root     SW       0  0.0   0  0.0 [rcu_bh]
+  274     2 root     SW<      0  0.0   0  0.0 [crypto]
+  323     2 root     SW       0  0.0   0  0.0 [kworker/0:2]
+  391     2 root     SW<      0  0.0   0  0.0 [deferwq]
+  395     2 root     SW<      0  0.0   0  0.0 [kworker/0:1H]
+  404     2 root     SWN      0  0.0   0  0.0 [jffs2_gcd_mtd5]
+  124     2 root     SW<      0  0.0   0  0.0 [bioset]
+  126     2 root     SW<      0  0.0   0  0.0 [kblockd]
+  168     2 root     SW       0  0.0   0  0.0 [khubd]
+  185     2 root     SW<      0  0.0   0  0.0 [cfg80211]
+  208     2 root     SW<      0  0.0   0  0.0 [rpciod]
+  681     2 root     SW       0  0.0   0  0.0 [irq/38-isp-w02]
+  264     2 root     SW       0  0.0   0  0.0 [fsnotify_mark]
+  266     2 root     SW<      0  0.0   0  0.0 [nfsiod]
+  786     2 root     SW<      0  0.0   0  0.0 [ssv6xxx_sdio_wq]
+Mem: 35236K used, 38840K free, 2564K shrd, 3340K buff, 10720K cached
+CPU: 24.4% usr 15.7% sys  0.0% nic 58.4% idle  0.0% io  0.0% irq  1.3% sirq
+Load average: 1.79 2.30 1.56 2/101 21752
+  PID  PPID USER     STAT   RSS %RSS CPU %CPU COMMAND
+19223 19220 root     S     8332 11.2   0 21.2 /usr/bin/timpsd -c /tmp/timps.conf
+19231     2 root     DW       0  0.0   0  2.9 [isp_fw_process]
+  791     2 root     SW       0  0.0   0  1.1 [ssv6xxx_hci_tx_]
+  798     2 root     SW       0  0.0   0  0.9 [ksdioirqd/mmc1]
+  793     2 root     SW       0  0.0   0  0.9 [ssv6xxx_rx_task]
+  679     2 root     SW       0  0.0   0  0.4 [irq/37-isp-m0]
+21264 21263 root     R      496  0.6   0  0.2 top -b -n 6 -d 5
+17666  9020 root     S      492  0.6   0  0.2 top
+ 1194     1 root     S      296  0.4   0  0.2 /usr/bin/motors-daemon -p
+ 9019   739 root     S      280  0.3   0  0.2 /usr/sbin/dropbear -k -K 300 -R -2 9
+11108     2 root     SW       0  0.0   0  0.2 [kworker/0:1]
+    7     2 root     SW       0  0.0   0  0.2 [rcu_preempt]
+19947     1 root     S      548  0.7   0  0.0 {oi.sh} /bin/sh /tmp/oi.sh snaps 27 10 /tmp/snaps-g.txt
+19221     1 root     S      532  0.7   0  0.0 awk !/GetFrame|DQBUF|QBUF|VBMKernelDequeue|FSDBG ch=[0-9] step=loop  {print; fflush()}
+21263 19948 root     S      496  0.6   0  0.0 {oi.sh} /bin/sh /tmp/oi.sh top /tmp/top-g.txt 6 5
+ 1691     1 root     S      448  0.6   0  0.0 {S99heartbeat} /bin/sh /etc/init.d/S99heartbeat start
+ 1209     1 root     S      420  0.5   0  0.0 /usr/bin/uhttpd -h /var/www -x /x -t 0 -T 15 -k 10 -n 20 -N 100 -s 443 -C /etc/ssl/certs/uhttpd.crt -K /etc/ssl/private/uhttpd.key -p 80 -E /x/legacy-url-recovery.cgi
+ 1163     1 root     S      412  0.5   0  0.0 /usr/sbin/mdnsd -s
+ 9020  9019 root     S      404  0.5   0  0.0 -sh
+ 3036  1209 root     S      400  0.5   0  0.0 {json-heartbeat.} /bin/sh /var/www/x/json-heartbeat.cgi
+ 1680     1 root     S      396  0.5   0  0.0 /usr/sbin/onvif_notify_server -c /etc/onvif.json -p /run/onvif_notify_server.pid
+21734  1691 root     S      328  0.4   0  0.0 sleep 5
+21706  3036 root     S      328  0.4   0  0.0 sleep 5
+21752 19947 root     S      324  0.4   0  0.0 sleep 10
+19220     1 root     S      320  0.4   0  0.0 {oi.sh} /bin/sh /tmp/oi.sh start g OPENIMP_T31_OSD=1
+  965     1 root     S      316  0.4   0  0.0 udhcpc -x hostname:cam-A -S -T1 -t15 -R -b -O search -O 100 -O 101 -O 160 -p /var/run/udhcpc.wlan0.pid -i wlan0
+ 1092     1 root     S      304  0.4   0  0.0 /usr/sbin/crond -f -c /etc/cron/crontabs
+  514     1 root     S      284  0.3   0  0.0 {S02kmsgd} /bin/sh /etc/init.d/S02kmsgd start
+  739     1 root     S      272  0.3   0  0.0 /usr/sbin/dropbear -k -K 300 -R
+  492     1 root     S      260  0.3   0  0.0 /sbin/syslogd -n -C64 -S -t -D -R 192.0.2.x:514 -L -L
+ 1084     1 root     S      248  0.3   0  0.0 /usr/sbin/ntpd -n -S /etc/ntpd_callback
+19948     1 root     S      240  0.3   0  0.0 sh -c (/tmp/oi.sh snaps 27 10 /tmp/snaps-g.txt > /dev/null 2>&1 &); (sleep 60; /tmp/oi.sh top /tmp/top-g.txt 6 5; top -b -H -n 2 -d 5 > /tmp/topH-g.txt) > /dev/null 2>&1 &
+  856     1 root     S      232  0.3   0  0.0 /usr/sbin/wpa_supplicant -i wlan0 -P /run/wpa_supplicant.wlan0.pid -B -c /etc/wpa_supplicant.conf
+  512     1 root     S      204  0.2   0  0.0 /sbin/klogd -n
+ 1353     1 root     S      176  0.2   0  0.0 /usr/sbin/wsd_simple_server -i wlan0 -x http://%s/onvif/device_service -n thingino -p /run/wsd_simple_server_wlan0.pid
+  972     1 root     S      136  0.1   0  0.0 /sbin/odhcp6c -d -p /var/run/odhcp6c_wlan0.pid -t120 wlan0
+    1     0 root     S      112  0.1   0  0.0 init
+  440     1 root     S       92  0.1   0  0.0 /usr/sbin/watchdog -T 60 /dev/watchdog
+ 1003     1 root     S       84  0.1   0  0.0 /usr/sbin/ifplugd -n -M -i eth0
+ 1705     1 root     S       80  0.1   0  0.0 /sbin/getty -L console 0 vt100
+  732     1 root     S       68  0.0   0  0.0 /usr/bin/thingino-button -d
+ 1283     1 root     S       56  0.0   0  0.0 /usr/libexec/agent/listener --listen 127.0.0.1 --port 1998
+ 4554     2 root     SW       0  0.0   0  0.0 [kworker/u2:1]
+    3     2 root     SW       0  0.0   0  0.0 [ksoftirqd/0]
+12159     2 root     SW       0  0.0   0  0.0 [kworker/u2:2]
+  215     2 root     SW       0  0.0   0  0.0 [kswapd0]
+21627     2 root     SW       0  0.0   0  0.0 [kworker/u2:0]
+    9     2 root     SW       0  0.0   0  0.0 [rcu_sched]
+  794     2 root     SW<      0  0.0   0  0.0 [ssv6xxx_house_k]
+  795     2 root     SW<      0  0.0   0  0.0 [ssv6xxx_tx_done]
+  122     2 root     SW<      0  0.0   0  0.0 [writeback]
+  792     2 root     SW<      0  0.0   0  0.0 [ssv6xxx_cong_wq]
+   11     2 root     SW<      0  0.0   0  0.0 [khelper]
+   12     2 root     SW       0  0.0   0  0.0 [kdevtmpfs]
+    2     0 root     SW       0  0.0   0  0.0 [kthreadd]
+  796     2 root     SW<      0  0.0   0  0.0 [ssv6xxx_scan_wq]
+    5     2 root     SW<      0  0.0   0  0.0 [kworker/0:0H]
+  805     2 root     SW       0  0.0   0  0.0 [mmcqd/0]
+    8     2 root     SW       0  0.0   0  0.0 [rcu_bh]
+  274     2 root     SW<      0  0.0   0  0.0 [crypto]
+   10     2 root     SW       0  0.0   0  0.0 [watchdog/0]
+  391     2 root     SW<      0  0.0   0  0.0 [deferwq]
+  395     2 root     SW<      0  0.0   0  0.0 [kworker/0:1H]
+  404     2 root     SWN      0  0.0   0  0.0 [jffs2_gcd_mtd5]
+  124     2 root     SW<      0  0.0   0  0.0 [bioset]
+  126     2 root     SW<      0  0.0   0  0.0 [kblockd]
+  168     2 root     SW       0  0.0   0  0.0 [khubd]
+  185     2 root     SW<      0  0.0   0  0.0 [cfg80211]
+  208     2 root     SW<      0  0.0   0  0.0 [rpciod]
+  681     2 root     SW       0  0.0   0  0.0 [irq/38-isp-w02]
+  264     2 root     SW       0  0.0   0  0.0 [fsnotify_mark]
+  266     2 root     SW<      0  0.0   0  0.0 [nfsiod]
+  786     2 root     SW<      0  0.0   0  0.0 [ssv6xxx_sdio_wq]
+  323     2 root     SW       0  0.0   0  0.0 [kworker/0:2]

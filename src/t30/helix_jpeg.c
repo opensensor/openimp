@@ -1200,7 +1200,7 @@ static void helix_dump(const HelixJpegFrame *frame, const uint8_t *luma,
 
 /*
  * T20/T21/T30 have no bitstream limit (JPGC_MAX_BS is ignored: the probe on
- * the T21 PC420 saw the core write 34 KB into a 16 KiB limit).  The stock
+ * the T21 cam-D saw the core write 34 KB into a 16 KiB limit).  The stock
  * T21 library points the JPEG bitstream into the 2 MB "vpuBs" shared with
  * H.264, the T20/T30 ones into an NV12-sized buffer, both without any
  * guard; a picture cannot be bounded below several times its NV12 size.
@@ -1213,7 +1213,7 @@ static void helix_dump(const HelixJpegFrame *frame, const uint8_t *luma,
  * MCU count.  (T23 programs JPGC_MAX_BS instead.)
  *
  * The core writes its bitstream in 128-byte bursts and drops the last,
- * partial one: on the PC420 the final 1..127 bytes of a job were missing
+ * partial one: on cam-D the final 1..127 bytes of a job were missing
  * after RUN (also 5 ms later), and the next job's first bytes later landed
  * at that old address.  A single job per picture, as in the stock library,
  * loses that much at the end (decoders conceal it before EOI); a stripe

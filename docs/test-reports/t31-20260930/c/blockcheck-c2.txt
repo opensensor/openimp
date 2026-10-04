@@ -1,0 +1,1 @@
+frames 50 overall max block diff 7.7

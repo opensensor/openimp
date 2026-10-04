@@ -288,7 +288,7 @@ def main():
         epilog="""
 Examples:
   # Process entire project
-  python full_review_workflow.py --project-dir /home/matteius/openimp
+  python full_review_workflow.py --project-dir /home/user/openimp
   
   # Process specific logs and sources
   python full_review_workflow.py --logs "logs/*.log" --sources "src/imp/*.c"

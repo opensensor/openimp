@@ -2,7 +2,7 @@
 
 Reverse-engineering notes for the HEVC path of the T31 AVPU (`/dev/avpu`,
 Allegro AL5E core) and how OpenIMP drives it.  Source: the vendor
-`libimp.so` T31 1.1.6 HLIL (`libimp.so_hlil.txt` in this repository).
+`libimp.so` T31 1.1.6 HLIL (`docs/re/libimp.so_hlil.txt` in this repository).
 Function names below are the vendor symbols; addresses are HLIL addresses.
 
 Status: implemented from the HLIL only.  Nothing in this document has been
@@ -31,7 +31,7 @@ Offsets below are channel-parameter offsets (codec-param offset = +4).
 It accepts `0x1000001` only when `get_cpu_id() - 0x15 >= 2`; CPU ids 0x15 and
 0x16 get "only support avc baseline, avc main, avc high, jpeg".  So some
 T31 variants have no HEVC in the vendor library.  Which variants report
-0x15/0x16 is not recovered; check the garage cam's CPU id if the HEVC
+0x15/0x16 is not recovered; check the T31 camera's CPU id if the HEVC
 command list hangs the core.
 
 ### 1.2 Channel parameter defaults (`AL_Settings_SetDefaults`, 0x3de4c)

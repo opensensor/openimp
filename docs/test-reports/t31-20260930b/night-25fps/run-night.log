@@ -1,0 +1,570 @@
+2026-10-01 00:15:08 start night env: 
+00:15:08.817 [INF] CONFIG       loaded 62 settings from /tmp/timps-25.conf
+00:15:08.818 [INF] CONFIG       sensor: sc4336p i2c=0x30 1920x1080 @25fps
+00:15:08.818 [INF] MAIN         timps v1.9.28-3-g311b0c4 starting (backend=ingenic)
+00:15:08.819 [INF] MAIN         /control token published to /run/timps.token
+00:15:08.884 [INF] HAL_ING      image tuning applied (bri=128 con=128 sat=128 sharp=128)
+00:15:08.887 [INF] HAL_ING      sensor fps: requested 25, driver holds 25/1, set rc=0
+00:15:08.887 [INF] HAL_ING      ISP up, sensor=sc4336p fps=25
+00:15:08.887 [INF] HAL_ING      chn0: fs 1920x1080 (sensor 1920x1080, scale=0) nrVBs=2
+00:15:08.891 [INF] HAL_ING      JPEG-on-video0: encoder chn 3 in group 0 (1920x1080 q75)
+00:15:08.892 [INF] OSD          OSD TrueType font /usr/share/fonts/default.ttf
+00:15:08.908 [INF] OSD          OSD stream 0: 4 overlay(s), 0 privacy mask(s), group 0 (1920x1080)
+00:15:08.909 [INF] HAL_ING      chn1: fs 640x360 (sensor 1920x1080, scale=1) nrVBs=2
+00:15:08.910 [INF] HAL_ING      JPEG-on-video1: encoder chn 4 in group 1 (640x360 q75)
+00:15:08.915 [INF] OSD          OSD stream 1: 4 overlay(s), 0 privacy mask(s), group 1 (640x360)
+[KernelIF] Opened /dev/framechan0 (fd=16)
+[KernelIF] Set format: 1920x1080 fmt=0xa (fourcc=0x3231564e) sizeimage=3133440 bytesperline=2880 colorspace=8
+[VBM] CreatePool: chn=0, 1920x1080 fmt=0xa fourcc=0x3231564e, fps=1/1, 2 frames, size=3133440 (req=3133440 calc=3133440 aligned=3133440)
+[KernelIF] REQBUFS: requested=2 actual=2
+[KernelIF] Set frame depth: 2
+[KernelIF] Stream started
+[Framesource] T31 ISP driver: open tx-isp
+00:15:08.950 [INF] HAL_ING      framesource 0 enabled
+00:15:09.420 [INF] HAL_ING      faac AAC encoder: 16000Hz ch=1 frame=1024 max=8192
+00:15:09.421 [INF] HAL_ING      audio.codec2: second stream PCMU 8000Hz (16k->8k) (WebRTC)
+00:15:09.421 [INF] HAL_ING      audio in: 16000Hz AAC ch=1 vol=80 gain=25 numPerFrm=640
+[KernelIF] Stream stopped
+[KernelIF] DQBUF failed: fd=16 Invalid argument
+[VBM] VBMKernelDequeue chn=0: DQBUF error ret=-1
+[KernelIF] Closed device (fd=16)
+[VBM] DestroyPool: chn=0
+00:15:09.509 [INF] HAL_ING      framesource 0 disabled (idle)
+00:15:09.509 [INF] MAIN         audio backchannel enabled (codec=0 rate=16000, native IMP_AO)
+00:15:09.511 [INF] TLS          TLS server context ready (cert /etc/ssl/certs/timps.crt)
+00:15:09.511 [INF] HTTP         HTTP and HTTPS both served on port 8880 (http.https=1, scheme detected per connection)
+00:15:09.512 [INF] WEBRTC       WHEP endpoint /webrtc/whep ready (ICE-lite + DTLS-SRTP, H264 video0); fingerprint xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:28:4D
+00:15:09.512 [INF] WEBRTC       media udp 25000-25003, one port per session (4 slots)
+00:15:09.513 [INF] REC          recorder ready (mode=motion dir=/mnt/mmcblk0p1)
+00:15:09.513 [INF] TL           timelapse ready (idle, dir=/mnt/mmcblk0p1 interval=60s)
+00:15:09.513 [INF] MAIN         running. rtsp://<ip>:554/ch0  https://<ip>:8880/
+00:15:09.515 [INF] DAYNIGHT     detection thread started (mode=auto, day<10000 night>15000, probe: gap 600s jump 50% confirm 15s settle 8s, heartbeat 14400s/43200s, calendar=none, boot_probe=1, interval 2000ms, dwell 5s, isp=/proc/jz/isp/isp-m0, cmd=daynight)
+00:15:09.516 [INF] HTTP         listening on port 8880
+00:15:09.518 [INF] RTSP         listening on port 554
+00:15:09.518 [INF] DAYNIGHT     exposure sources: scrape ratio=0.8352 (it/max, max published) | IMP GetExpr ratio=0.8352 it=1500 max=1796 line=22us (=33000us/39512us) GetEVAttr expr_us=33333 us | scrape max is real - shadow read only, decides nothing
+00:15:09.519 [INF] DAYNIGHT     auto day/night enabled
+00:15:09.520 [INF] spk          play-FIFO thread started (/run/timps/audio_out)
+00:15:25.522 [INF] DAYNIGHT     boot: measuring before deciding - persisted running_mode=0 is a hint, not evidence (exposure 14207 in whatever mode we came up in); switching to the day pipeline and reading it in 8s
+00:15:25.523 [DBG] DAYNIGHT     probe (boot measure): exposure 14207 vs night reference -1, verdict in 8s
+00:15:25.523 [INF] DAYNIGHT     switching to day (boot measure): daynight day [mode=day exp=14207 ref=-1 bar=10000]
+00:15:25.962 [INF] HAL_ING      control image.running_mode=0
+[KernelIF] Opened /dev/framechan0 (fd=24)
+[KernelIF] Set format: 1920x1080 fmt=0xa (fourcc=0x3231564e) sizeimage=3133440 bytesperline=2880 colorspace=8
+[VBM] CreatePool: chn=0, 1920x1080 fmt=0xa fourcc=0x3231564e, fps=1/1, 2 frames, size=3133440 (req=3133440 calc=3133440 aligned=3133440)
+[KernelIF] REQBUFS: requested=2 actual=2
+[KernelIF] Set frame depth: 2
+[KernelIF] Stream started
+00:15:25.994 [INF] HAL_ING      framesource 0 enabled
+[KernelIF] Stream stopped
+[KernelIF] DQBUF failed: fd=24 Invalid argument
+[VBM] VBMKernelDequeue chn=0: DQBUF error ret=-1
+[KernelIF] Closed device (fd=24)
+[VBM] DestroyPool: chn=0
+00:15:26.549 [INF] HAL_ING      framesource 0 disabled (idle)
+00:15:27.826 [DBG] DAYNIGHT     ISP confirmed the switch to day
+00:15:33.828 [INF] DAYNIGHT     switching to night (boot: measured night, exposure 18192): daynight night [mode=night exp=18192 ref=-1 bar=10000]
+00:15:34.232 [INF] DAYNIGHT     night reference 14207, proven by the probe (bar 7104)
+00:15:34.270 [INF] HAL_ING      control image.running_mode=1
+[KernelIF] Opened /dev/framechan0 (fd=24)
+[KernelIF] Set format: 1920x1080 fmt=0xa (fourcc=0x3231564e) sizeimage=3133440 bytesperline=2880 colorspace=8
+[VBM] CreatePool: chn=0, 1920x1080 fmt=0xa fourcc=0x3231564e, fps=1/1, 2 frames, size=3133440 (req=3133440 calc=3133440 aligned=3133440)
+[KernelIF] REQBUFS: requested=2 actual=2
+[KernelIF] Set frame depth: 2
+[KernelIF] Stream started
+00:15:34.304 [INF] HAL_ING      framesource 0 enabled
+[KernelIF] Stream stopped
+[KernelIF] DQBUF failed: fd=24 Invalid argument
+[VBM] VBMKernelDequeue chn=0: DQBUF error ret=-1
+[KernelIF] Closed device (fd=24)
+[VBM] DestroyPool: chn=0
+00:15:34.859 [INF] HAL_ING      framesource 0 disabled (idle)
+00:15:34.859 [INF] CTRL         set image.running_mode = 1
+00:15:34.861 [INF] CONFIG       persisted 1 setting(s) to /tmp/timps-25.conf
+00:15:36.232 [DBG] DAYNIGHT     ISP confirmed the switch to night
+00:15:42.233 [INF] HAL_ING      control image.running_mode=1
+[KernelIF] Opened /dev/framechan0 (fd=23)
+[KernelIF] Set format: 1920x1080 fmt=0xa (fourcc=0x3231564e) sizeimage=3133440 bytesperline=2880 colorspace=8
+[VBM] CreatePool: chn=0, 1920x1080 fmt=0xa fourcc=0x3231564e, fps=1/1, 2 frames, size=3133440 (req=3133440 calc=3133440 aligned=3133440)
+[KernelIF] REQBUFS: requested=2 actual=2
+[KernelIF] Set frame depth: 2
+[KernelIF] Stream started
+00:15:42.266 [INF] HAL_ING      framesource 0 enabled
+[KernelIF] Stream stopped
+[KernelIF] DQBUF failed: fd=23 Invalid argument
+[VBM] VBMKernelDequeue chn=0: DQBUF error ret=-1
+[KernelIF] Closed device (fd=23)
+[VBM] DestroyPool: chn=0
+00:15:42.779 [INF] HAL_ING      framesource 0 disabled (idle)
+00:15:42.779 [DBG] DAYNIGHT     re-asserting running_mode=1 after switch (1 left)
+00:15:50.781 [INF] HAL_ING      control image.running_mode=1
+[KernelIF] Opened /dev/framechan0 (fd=23)
+[KernelIF] Set format: 1920x1080 fmt=0xa (fourcc=0x3231564e) sizeimage=3133440 bytesperline=2880 colorspace=8
+[VBM] CreatePool: chn=0, 1920x1080 fmt=0xa fourcc=0x3231564e, fps=1/1, 2 frames, size=3133440 (req=3133440 calc=3133440 aligned=3133440)
+[KernelIF] REQBUFS: requested=2 actual=2
+[KernelIF] Set frame depth: 2
+[KernelIF] Stream started
+00:15:50.813 [INF] HAL_ING      framesource 0 enabled
+[KernelIF] Stream stopped
+[KernelIF] DQBUF failed: fd=23 Invalid argument
+[VBM] VBMKernelDequeue chn=0: DQBUF error ret=-1
+[KernelIF] Closed device (fd=23)
+[VBM] DestroyPool: chn=0
+00:15:51.329 [INF] HAL_ING      framesource 0 disabled (idle)
+00:15:51.329 [DBG] DAYNIGHT     re-asserting running_mode=1 after switch (0 left)
+[KernelIF] Opened /dev/framechan0 (fd=23)
+[KernelIF] Set format: 1920x1080 fmt=0xa (fourcc=0x3231564e) sizeimage=3133440 bytesperline=2880 colorspace=8
+[VBM] CreatePool: chn=0, 1920x1080 fmt=0xa fourcc=0x3231564e, fps=1/1, 2 frames, size=3133440 (req=3133440 calc=3133440 aligned=3133440)
+[KernelIF] REQBUFS: requested=2 actual=2
+[KernelIF] Set frame depth: 2
+[KernelIF] Stream started
+00:15:51.387 [INF] HAL_ING      framesource 0 enabled
+00:15:51.888 [WRN] HAL_ING      jpeg chn3: PollingStream idle (miss#1) - encoder emits no frames
+[KernelIF] Opened /dev/framechan1 (fd=27)
+[KernelIF] Set format: 640x360 fmt=0xa (fourcc=0x3231564e) sizeimage=353280 bytesperline=960 colorspace=8
+[VBM] CreatePool: chn=1, 640x360 fmt=0xa fourcc=0x3231564e, fps=1/1, 2 frames, size=353280 (req=353280 calc=353280 aligned=353280)
+[KernelIF] REQBUFS: requested=2 actual=2
+[KernelIF] Set frame depth: 2
+[KernelIF] Stream started
+00:15:52.347 [INF] HAL_ING      framesource 1 enabled
+00:15:52.347 [INF] HAL_ING      video chn1 streaming
+00:15:52.348 [INF] HAL_ING      video chn0 streaming
+[Codec] HWJPEG: T31 hardware JPEG enabled (OPENIMP_T31_HW_JPEG=0 selects the software encoder)
+[Codec] HWJPEG: no AVC IRQ waiter yet, software until one runs
+[DevicePool] Init: device pool initialized
+[DevicePool] Open: opened '/dev/avpu' (fd=28, slot=0)
+[Codec] AVPU: T31 companion stage disabled
+00:15:52.426 [INF] HAL_ING      chn0: first encoded frame packCount=3 aulen=142575 key=1
+[DevicePool] Open: '/dev/avpu' already open (fd=28, refcount=2)
+00:15:52.435 [INF] HAL_ING      chn1: first encoded frame packCount=3 aulen=25744 key=1
+00:15:52.460 [INF] CLIENT       + rtsp/tcp 192.0.2.x:33012 chn=0 agent="Lavf62.3.100"
+00:15:52.461 [INF] RTSP         PLAY session=c1d5c208 vchn=0 TCP v=1 a=1
+00:15:52.462 [INF] HAL_ING      audio resume: flushed 6 stale AI frame(s)
+00:15:52.465 [INF] CLIENT       + rtsp/tcp 192.0.2.x:33014 chn=1 agent="Lavf62.3.100"
+00:15:52.465 [INF] RTSP         PLAY session=72c68a4c vchn=1 TCP v=1 a=1
+00:15:52.624 [INF] HAL_ING      AAC encoder producing (54 bytes/frame)
+[DevicePool] Open: '/dev/avpu' already open (fd=28, refcount=3)
+[Codec] HWJPEG: ready, ep1=0x008d8000
+[Codec] HWJPEG: 1920x1080 q75 -> 210162 bytes [#1]
+[Codec] HWJPEG: 1920x1080 q75 -> 210305 bytes [#2]
+[Codec] HWJPEG: 1920x1080 q75 -> 210238 bytes [#3]
+[Codec] HWJPEG: 1920x1080 q75 -> 209873 bytes [#100]
+[Codec] HWJPEG: 1920x1080 q75 -> 209007 bytes [#200]
+[Codec] HWJPEG: 1920x1080 q75 -> 209344 bytes [#300]
+[Codec] HWJPEG: 1920x1080 q75 -> 208836 bytes [#400]
+[Codec] HWJPEG: 1920x1080 q75 -> 208525 bytes [#500]
+[Codec] HWJPEG: 1920x1080 q75 -> 214125 bytes [#600]
+[Codec] HWJPEG: 1920x1080 q75 -> 213946 bytes [#700]
+[Codec] HWJPEG: 1920x1080 q75 -> 213196 bytes [#800]
+[Codec] HWJPEG: 1920x1080 q75 -> 212942 bytes [#900]
+[Codec] HWJPEG: 1920x1080 q75 -> 212781 bytes [#1000]
+[Codec] HWJPEG: 1920x1080 q75 -> 206209 bytes [#1100]
+[Codec] HWJPEG: 1920x1080 q75 -> 205866 bytes [#1200]
+[Codec] HWJPEG: 1920x1080 q75 -> 206071 bytes [#1300]
+[Codec] HWJPEG: 1920x1080 q75 -> 205690 bytes [#1400]
+[Codec] HWJPEG: 1920x1080 q75 -> 205590 bytes [#1500]
+[Codec] HWJPEG: 1920x1080 q75 -> 205669 bytes [#1600]
+[Codec] HWJPEG: 1920x1080 q75 -> 205329 bytes [#1700]
+[Codec] HWJPEG: 1920x1080 q75 -> 205543 bytes [#1800]
+[Codec] HWJPEG: 1920x1080 q75 -> 205296 bytes [#1900]
+[Codec] HWJPEG: 1920x1080 q75 -> 205276 bytes [#2000]
+[Codec] HWJPEG: 1920x1080 q75 -> 205088 bytes [#2100]
+[Codec] HWJPEG: 1920x1080 q75 -> 204978 bytes [#2200]
+[Codec] HWJPEG: 1920x1080 q75 -> 204984 bytes [#2300]
+[Codec] HWJPEG: 1920x1080 q75 -> 205212 bytes [#2400]
+[Codec] HWJPEG: 1920x1080 q75 -> 205074 bytes [#2500]
+[Codec] HWJPEG: 1920x1080 q75 -> 204981 bytes [#2600]
+[Codec] HWJPEG: 1920x1080 q75 -> 205061 bytes [#2700]
+[Codec] HWJPEG: 1920x1080 q75 -> 205116 bytes [#2800]
+[Codec] HWJPEG: 1920x1080 q75 -> 204789 bytes [#2900]
+[Codec] HWJPEG: 1920x1080 q75 -> 204910 bytes [#3000]
+[Codec] HWJPEG: 1920x1080 q75 -> 204658 bytes [#3100]
+[Codec] HWJPEG: 1920x1080 q75 -> 204534 bytes [#3200]
+[Codec] HWJPEG: 1920x1080 q75 -> 204814 bytes [#3300]
+[Codec] HWJPEG: 1920x1080 q75 -> 204697 bytes [#3400]
+[Codec] HWJPEG: 1920x1080 q75 -> 204628 bytes [#3500]
+[Codec] HWJPEG: 1920x1080 q75 -> 204578 bytes [#3600]
+[Codec] HWJPEG: 1920x1080 q75 -> 204373 bytes [#3700]
+[Codec] HWJPEG: 1920x1080 q75 -> 204618 bytes [#3800]
+[Codec] HWJPEG: 1920x1080 q75 -> 204647 bytes [#3900]
+[Codec] HWJPEG: 1920x1080 q75 -> 204716 bytes [#4000]
+[Codec] HWJPEG: 1920x1080 q75 -> 204641 bytes [#4100]
+[Codec] HWJPEG: 1920x1080 q75 -> 204656 bytes [#4200]
+[Codec] HWJPEG: 1920x1080 q75 -> 204629 bytes [#4300]
+[Codec] HWJPEG: 1920x1080 q75 -> 204471 bytes [#4400]
+[Codec] HWJPEG: 1920x1080 q75 -> 204653 bytes [#4500]
+[Codec] HWJPEG: 1920x1080 q75 -> 204562 bytes [#4600]
+[Codec] HWJPEG: 1920x1080 q75 -> 204727 bytes [#4700]
+[Codec] HWJPEG: 1920x1080 q75 -> 204688 bytes [#4800]
+[Codec] HWJPEG: 1920x1080 q75 -> 204527 bytes [#4900]
+[Codec] HWJPEG: 1920x1080 q75 -> 204465 bytes [#5000]
+[Codec] HWJPEG: 1920x1080 q75 -> 204362 bytes [#5100]
+[Codec] HWJPEG: 1920x1080 q75 -> 204580 bytes [#5200]
+[Codec] HWJPEG: 1920x1080 q75 -> 204512 bytes [#5300]
+[Codec] HWJPEG: 1920x1080 q75 -> 204756 bytes [#5400]
+[Codec] HWJPEG: 1920x1080 q75 -> 211003 bytes [#5500]
+[Codec] HWJPEG: 1920x1080 q75 -> 210733 bytes [#5600]
+[Codec] HWJPEG: 1920x1080 q75 -> 210651 bytes [#5700]
+[Codec] HWJPEG: 1920x1080 q75 -> 204348 bytes [#5800]
+[Codec] HWJPEG: 1920x1080 q75 -> 204344 bytes [#5900]
+[Codec] HWJPEG: 1920x1080 q75 -> 204394 bytes [#6000]
+[Codec] HWJPEG: 1920x1080 q75 -> 204197 bytes [#6100]
+[Codec] HWJPEG: 1920x1080 q75 -> 204496 bytes [#6200]
+[Codec] HWJPEG: 1920x1080 q75 -> 203798 bytes [#6300]
+[Codec] HWJPEG: 1920x1080 q75 -> 204296 bytes [#6400]
+[Codec] HWJPEG: 1920x1080 q75 -> 204130 bytes [#6500]
+[Codec] HWJPEG: 1920x1080 q75 -> 204064 bytes [#6600]
+[Codec] HWJPEG: 1920x1080 q75 -> 204308 bytes [#6700]
+[Codec] HWJPEG: 1920x1080 q75 -> 204306 bytes [#6800]
+[Codec] HWJPEG: 1920x1080 q75 -> 204132 bytes [#6900]
+[Codec] HWJPEG: 1920x1080 q75 -> 204078 bytes [#7000]
+[Codec] HWJPEG: 1920x1080 q75 -> 204401 bytes [#7100]
+[Codec] HWJPEG: 1920x1080 q75 -> 204158 bytes [#7200]
+[Codec] HWJPEG: 1920x1080 q75 -> 204287 bytes [#7300]
+[Codec] HWJPEG: 1920x1080 q75 -> 204162 bytes [#7400]
+[Codec] HWJPEG: 1920x1080 q75 -> 204427 bytes [#7500]
+[Codec] HWJPEG: 1920x1080 q75 -> 204301 bytes [#7600]
+[Codec] HWJPEG: 1920x1080 q75 -> 203922 bytes [#7700]
+[Codec] HWJPEG: 1920x1080 q75 -> 203900 bytes [#7800]
+[Codec] HWJPEG: 1920x1080 q75 -> 203854 bytes [#7900]
+[Codec] HWJPEG: 1920x1080 q75 -> 204393 bytes [#8000]
+[Codec] HWJPEG: 1920x1080 q75 -> 204262 bytes [#8100]
+[Codec] HWJPEG: 1920x1080 q75 -> 203857 bytes [#8200]
+[Codec] HWJPEG: 1920x1080 q75 -> 203932 bytes [#8300]
+[Codec] HWJPEG: 1920x1080 q75 -> 204010 bytes [#8400]
+[Codec] HWJPEG: 1920x1080 q75 -> 204223 bytes [#8500]
+[Codec] HWJPEG: 1920x1080 q75 -> 204153 bytes [#8600]
+[Codec] HWJPEG: 1920x1080 q75 -> 204147 bytes [#8700]
+[Codec] HWJPEG: 1920x1080 q75 -> 204365 bytes [#8800]
+[Codec] HWJPEG: 1920x1080 q75 -> 203943 bytes [#8900]
+[Codec] HWJPEG: 1920x1080 q75 -> 203856 bytes [#9000]
+[Codec] HWJPEG: 1920x1080 q75 -> 204142 bytes [#9100]
+[Codec] HWJPEG: 1920x1080 q75 -> 204197 bytes [#9200]
+[Codec] HWJPEG: 1920x1080 q75 -> 203845 bytes [#9300]
+[Codec] HWJPEG: 1920x1080 q75 -> 204014 bytes [#9400]
+[Codec] HWJPEG: 1920x1080 q75 -> 204004 bytes [#9500]
+[Codec] HWJPEG: 1920x1080 q75 -> 203988 bytes [#9600]
+[Codec] HWJPEG: 1920x1080 q75 -> 204189 bytes [#9700]
+[Codec] HWJPEG: 1920x1080 q75 -> 204269 bytes [#9800]
+[Codec] HWJPEG: 1920x1080 q75 -> 204198 bytes [#9900]
+[Codec] HWJPEG: 1920x1080 q75 -> 203837 bytes [#10000]
+[Codec] HWJPEG: 1920x1080 q75 -> 204256 bytes [#10100]
+[Codec] HWJPEG: 1920x1080 q75 -> 204142 bytes [#10200]
+[Codec] HWJPEG: 1920x1080 q75 -> 204269 bytes [#10300]
+[Codec] HWJPEG: 1920x1080 q75 -> 204158 bytes [#10400]
+[Codec] HWJPEG: 1920x1080 q75 -> 204222 bytes [#10500]
+[Codec] HWJPEG: 1920x1080 q75 -> 204091 bytes [#10600]
+[Codec] HWJPEG: 1920x1080 q75 -> 204094 bytes [#10700]
+[Codec] HWJPEG: 1920x1080 q75 -> 204065 bytes [#10800]
+[Codec] HWJPEG: 1920x1080 q75 -> 204507 bytes [#10900]
+[Codec] HWJPEG: 1920x1080 q75 -> 204474 bytes [#11000]
+[Codec] HWJPEG: 1920x1080 q75 -> 204268 bytes [#11100]
+[Codec] HWJPEG: 1920x1080 q75 -> 204150 bytes [#11200]
+[Codec] HWJPEG: 1920x1080 q75 -> 204242 bytes [#11300]
+[Codec] HWJPEG: 1920x1080 q75 -> 204138 bytes [#11400]
+[Codec] HWJPEG: 1920x1080 q75 -> 203899 bytes [#11500]
+[Codec] HWJPEG: 1920x1080 q75 -> 204139 bytes [#11600]
+[Codec] HWJPEG: 1920x1080 q75 -> 203799 bytes [#11700]
+[Codec] HWJPEG: 1920x1080 q75 -> 204233 bytes [#11800]
+[Codec] HWJPEG: 1920x1080 q75 -> 204055 bytes [#11900]
+[Codec] HWJPEG: 1920x1080 q75 -> 204007 bytes [#12000]
+[Codec] HWJPEG: 1920x1080 q75 -> 204233 bytes [#12100]
+[Codec] HWJPEG: 1920x1080 q75 -> 203896 bytes [#12200]
+[Codec] HWJPEG: 1920x1080 q75 -> 204195 bytes [#12300]
+[Codec] HWJPEG: 1920x1080 q75 -> 204050 bytes [#12400]
+[Codec] HWJPEG: 1920x1080 q75 -> 204366 bytes [#12500]
+[Codec] HWJPEG: 1920x1080 q75 -> 204395 bytes [#12600]
+[Codec] HWJPEG: 1920x1080 q75 -> 204046 bytes [#12700]
+[Codec] HWJPEG: 1920x1080 q75 -> 204072 bytes [#12800]
+[Codec] HWJPEG: 1920x1080 q75 -> 204328 bytes [#12900]
+[Codec] HWJPEG: 1920x1080 q75 -> 204238 bytes [#13000]
+[Codec] HWJPEG: 1920x1080 q75 -> 204492 bytes [#13100]
+[Codec] HWJPEG: 1920x1080 q75 -> 204262 bytes [#13200]
+[Codec] HWJPEG: 1920x1080 q75 -> 203849 bytes [#13300]
+[Codec] HWJPEG: 1920x1080 q75 -> 204241 bytes [#13400]
+[Codec] HWJPEG: 1920x1080 q75 -> 204094 bytes [#13500]
+[Codec] HWJPEG: 1920x1080 q75 -> 203934 bytes [#13600]
+[Codec] HWJPEG: 1920x1080 q75 -> 203974 bytes [#13700]
+[Codec] HWJPEG: 1920x1080 q75 -> 204162 bytes [#13800]
+[Codec] HWJPEG: 1920x1080 q75 -> 204425 bytes [#13900]
+[Codec] HWJPEG: 1920x1080 q75 -> 204102 bytes [#14000]
+[Codec] HWJPEG: 1920x1080 q75 -> 204254 bytes [#14100]
+[Codec] HWJPEG: 1920x1080 q75 -> 204054 bytes [#14200]
+[Codec] HWJPEG: 1920x1080 q75 -> 204163 bytes [#14300]
+[Codec] HWJPEG: 1920x1080 q75 -> 204050 bytes [#14400]
+[Codec] HWJPEG: 1920x1080 q75 -> 204108 bytes [#14500]
+[Codec] HWJPEG: 1920x1080 q75 -> 204159 bytes [#14600]
+[Codec] HWJPEG: 1920x1080 q75 -> 204118 bytes [#14700]
+[Codec] HWJPEG: 1920x1080 q75 -> 204342 bytes [#14800]
+[Codec] HWJPEG: 1920x1080 q75 -> 204127 bytes [#14900]
+[Codec] HWJPEG: 1920x1080 q75 -> 204064 bytes [#15000]
+[Codec] HWJPEG: 1920x1080 q75 -> 204144 bytes [#15100]
+[Codec] HWJPEG: 1920x1080 q75 -> 204140 bytes [#15200]
+[Codec] HWJPEG: 1920x1080 q75 -> 204100 bytes [#15300]
+[Codec] HWJPEG: 1920x1080 q75 -> 204156 bytes [#15400]
+[Codec] HWJPEG: 1920x1080 q75 -> 204094 bytes [#15500]
+[Codec] HWJPEG: 1920x1080 q75 -> 204374 bytes [#15600]
+[Codec] HWJPEG: 1920x1080 q75 -> 204255 bytes [#15700]
+[Codec] HWJPEG: 1920x1080 q75 -> 204212 bytes [#15800]
+[Codec] HWJPEG: 1920x1080 q75 -> 204040 bytes [#15900]
+[Codec] HWJPEG: 1920x1080 q75 -> 204101 bytes [#16000]
+[Codec] HWJPEG: 1920x1080 q75 -> 204156 bytes [#16100]
+[Codec] HWJPEG: 1920x1080 q75 -> 204145 bytes [#16200]
+[Codec] HWJPEG: 1920x1080 q75 -> 203886 bytes [#16300]
+[Codec] HWJPEG: 1920x1080 q75 -> 204119 bytes [#16400]
+[Codec] HWJPEG: 1920x1080 q75 -> 203940 bytes [#16500]
+[Codec] HWJPEG: 1920x1080 q75 -> 203975 bytes [#16600]
+04:15:34.069 [INF] DAYNIGHT     heartbeat due but nothing has happened since the last probe (sustained brightest 18498, would need 12787) - deferring, forced at 43200s
+[Codec] HWJPEG: 1920x1080 q75 -> 204304 bytes [#16700]
+[Codec] HWJPEG: 1920x1080 q75 -> 204285 bytes [#16800]
+[Codec] HWJPEG: 1920x1080 q75 -> 203857 bytes [#16900]
+[Codec] HWJPEG: 1920x1080 q75 -> 203815 bytes [#17000]
+[Codec] HWJPEG: 1920x1080 q75 -> 204191 bytes [#17100]
+[Codec] HWJPEG: 1920x1080 q75 -> 204026 bytes [#17200]
+[Codec] HWJPEG: 1920x1080 q75 -> 204239 bytes [#17300]
+[Codec] HWJPEG: 1920x1080 q75 -> 203851 bytes [#17400]
+[Codec] HWJPEG: 1920x1080 q75 -> 204232 bytes [#17500]
+[Codec] HWJPEG: 1920x1080 q75 -> 204052 bytes [#17600]
+[Codec] HWJPEG: 1920x1080 q75 -> 203854 bytes [#17700]
+[Codec] HWJPEG: 1920x1080 q75 -> 204523 bytes [#17800]
+[Codec] HWJPEG: 1920x1080 q75 -> 204143 bytes [#17900]
+[Codec] HWJPEG: 1920x1080 q75 -> 204325 bytes [#18000]
+[Codec] HWJPEG: 1920x1080 q75 -> 204228 bytes [#18100]
+[Codec] HWJPEG: 1920x1080 q75 -> 204030 bytes [#18200]
+[Codec] HWJPEG: 1920x1080 q75 -> 204495 bytes [#18300]
+[Codec] HWJPEG: 1920x1080 q75 -> 204214 bytes [#18400]
+[Codec] HWJPEG: 1920x1080 q75 -> 203826 bytes [#18500]
+[Codec] HWJPEG: 1920x1080 q75 -> 204260 bytes [#18600]
+[Codec] HWJPEG: 1920x1080 q75 -> 204080 bytes [#18700]
+[Codec] HWJPEG: 1920x1080 q75 -> 204173 bytes [#18800]
+[Codec] HWJPEG: 1920x1080 q75 -> 203908 bytes [#18900]
+[Codec] HWJPEG: 1920x1080 q75 -> 203985 bytes [#19000]
+[Codec] HWJPEG: 1920x1080 q75 -> 204102 bytes [#19100]
+[Codec] HWJPEG: 1920x1080 q75 -> 204271 bytes [#19200]
+[Codec] HWJPEG: 1920x1080 q75 -> 204115 bytes [#19300]
+[Codec] HWJPEG: 1920x1080 q75 -> 204093 bytes [#19400]
+[Codec] HWJPEG: 1920x1080 q75 -> 204177 bytes [#19500]
+[Codec] HWJPEG: 1920x1080 q75 -> 204210 bytes [#19600]
+[Codec] HWJPEG: 1920x1080 q75 -> 204155 bytes [#19700]
+[Codec] HWJPEG: 1920x1080 q75 -> 204422 bytes [#19800]
+[Codec] HWJPEG: 1920x1080 q75 -> 204411 bytes [#19900]
+[Codec] HWJPEG: 1920x1080 q75 -> 204111 bytes [#20000]
+[Codec] HWJPEG: 1920x1080 q75 -> 203990 bytes [#20100]
+[Codec] HWJPEG: 1920x1080 q75 -> 204244 bytes [#20200]
+[Codec] HWJPEG: 1920x1080 q75 -> 204156 bytes [#20300]
+[Codec] HWJPEG: 1920x1080 q75 -> 204039 bytes [#20400]
+[Codec] HWJPEG: 1920x1080 q75 -> 203936 bytes [#20500]
+[Codec] HWJPEG: 1920x1080 q75 -> 204096 bytes [#20600]
+[Codec] HWJPEG: 1920x1080 q75 -> 204281 bytes [#20700]
+[Codec] HWJPEG: 1920x1080 q75 -> 204186 bytes [#20800]
+[Codec] HWJPEG: 1920x1080 q75 -> 204185 bytes [#20900]
+[Codec] HWJPEG: 1920x1080 q75 -> 204086 bytes [#21000]
+[Codec] HWJPEG: 1920x1080 q75 -> 204089 bytes [#21100]
+[Codec] HWJPEG: 1920x1080 q75 -> 204011 bytes [#21200]
+[Codec] HWJPEG: 1920x1080 q75 -> 204052 bytes [#21300]
+[Codec] HWJPEG: 1920x1080 q75 -> 204042 bytes [#21400]
+[Codec] HWJPEG: 1920x1080 q75 -> 204337 bytes [#21500]
+[Codec] HWJPEG: 1920x1080 q75 -> 204361 bytes [#21600]
+[Codec] HWJPEG: 1920x1080 q75 -> 203978 bytes [#21700]
+[Codec] HWJPEG: 1920x1080 q75 -> 204725 bytes [#21800]
+[Codec] HWJPEG: 1920x1080 q75 -> 204073 bytes [#21900]
+[Codec] HWJPEG: 1920x1080 q75 -> 204159 bytes [#22000]
+[Codec] HWJPEG: 1920x1080 q75 -> 204361 bytes [#22100]
+[Codec] HWJPEG: 1920x1080 q75 -> 204122 bytes [#22200]
+[Codec] HWJPEG: 1920x1080 q75 -> 204366 bytes [#22300]
+[Codec] HWJPEG: 1920x1080 q75 -> 204201 bytes [#22400]
+[Codec] HWJPEG: 1920x1080 q75 -> 204000 bytes [#22500]
+[Codec] HWJPEG: 1920x1080 q75 -> 204770 bytes [#22600]
+[Codec] HWJPEG: 1920x1080 q75 -> 204369 bytes [#22700]
+[Codec] HWJPEG: 1920x1080 q75 -> 204405 bytes [#22800]
+[Codec] HWJPEG: 1920x1080 q75 -> 203826 bytes [#22900]
+[Codec] HWJPEG: 1920x1080 q75 -> 204246 bytes [#23000]
+[Codec] HWJPEG: 1920x1080 q75 -> 204301 bytes [#23100]
+[Codec] HWJPEG: 1920x1080 q75 -> 204262 bytes [#23200]
+[Codec] HWJPEG: 1920x1080 q75 -> 204465 bytes [#23300]
+[Codec] HWJPEG: 1920x1080 q75 -> 204299 bytes [#23400]
+[Codec] HWJPEG: 1920x1080 q75 -> 204040 bytes [#23500]
+[Codec] HWJPEG: 1920x1080 q75 -> 204258 bytes [#23600]
+[Codec] HWJPEG: 1920x1080 q75 -> 204155 bytes [#23700]
+[Codec] HWJPEG: 1920x1080 q75 -> 204235 bytes [#23800]
+[Codec] HWJPEG: 1920x1080 q75 -> 204331 bytes [#23900]
+[Codec] HWJPEG: 1920x1080 q75 -> 204197 bytes [#24000]
+[Codec] HWJPEG: 1920x1080 q75 -> 204208 bytes [#24100]
+[Codec] HWJPEG: 1920x1080 q75 -> 204373 bytes [#24200]
+[Codec] HWJPEG: 1920x1080 q75 -> 203934 bytes [#24300]
+[Codec] HWJPEG: 1920x1080 q75 -> 204146 bytes [#24400]
+[Codec] HWJPEG: 1920x1080 q75 -> 204480 bytes [#24500]
+[Codec] HWJPEG: 1920x1080 q75 -> 204256 bytes [#24600]
+[Codec] HWJPEG: 1920x1080 q75 -> 204218 bytes [#24700]
+[Codec] HWJPEG: 1920x1080 q75 -> 203896 bytes [#24800]
+[Codec] HWJPEG: 1920x1080 q75 -> 204144 bytes [#24900]
+[Codec] HWJPEG: 1920x1080 q75 -> 204118 bytes [#25000]
+[Codec] HWJPEG: 1920x1080 q75 -> 204063 bytes [#25100]
+[Codec] HWJPEG: 1920x1080 q75 -> 204151 bytes [#25200]
+[Codec] HWJPEG: 1920x1080 q75 -> 204213 bytes [#25300]
+[Codec] HWJPEG: 1920x1080 q75 -> 204596 bytes [#25400]
+[Codec] HWJPEG: 1920x1080 q75 -> 204166 bytes [#25500]
+[Codec] HWJPEG: 1920x1080 q75 -> 204380 bytes [#25600]
+[Codec] HWJPEG: 1920x1080 q75 -> 204690 bytes [#25700]
+[Codec] HWJPEG: 1920x1080 q75 -> 204231 bytes [#25800]
+[Codec] HWJPEG: 1920x1080 q75 -> 204215 bytes [#25900]
+[Codec] HWJPEG: 1920x1080 q75 -> 204267 bytes [#26000]
+[Codec] HWJPEG: 1920x1080 q75 -> 204089 bytes [#26100]
+[Codec] HWJPEG: 1920x1080 q75 -> 204390 bytes [#26200]
+[Codec] HWJPEG: 1920x1080 q75 -> 204271 bytes [#26300]
+[Codec] HWJPEG: 1920x1080 q75 -> 204095 bytes [#26400]
+[Codec] HWJPEG: 1920x1080 q75 -> 204319 bytes [#26500]
+[Codec] HWJPEG: 1920x1080 q75 -> 204307 bytes [#26600]
+[Codec] HWJPEG: 1920x1080 q75 -> 203798 bytes [#26700]
+[Codec] HWJPEG: 1920x1080 q75 -> 204256 bytes [#26800]
+[Codec] HWJPEG: 1920x1080 q75 -> 204144 bytes [#26900]
+[Codec] HWJPEG: 1920x1080 q75 -> 204264 bytes [#27000]
+[Codec] HWJPEG: 1920x1080 q75 -> 204181 bytes [#27100]
+[Codec] HWJPEG: 1920x1080 q75 -> 204127 bytes [#27200]
+[Codec] HWJPEG: 1920x1080 q75 -> 204402 bytes [#27300]
+[Codec] HWJPEG: 1920x1080 q75 -> 204131 bytes [#27400]
+[Codec] HWJPEG: 1920x1080 q75 -> 204293 bytes [#27500]
+[Codec] HWJPEG: 1920x1080 q75 -> 204499 bytes [#27600]
+[Codec] HWJPEG: 1920x1080 q75 -> 204197 bytes [#27700]
+06:55:53.332 [INF] RTSP         session=72c68a4c: client disconnected after 24000s (Connection reset by peer)
+06:55:53.332 [INF] CLIENT       - rtsp/tcp 192.0.2.x:33014 after 24000s, 864162390 bytes
+06:55:53.348 [INF] RTSP         session=c1d5c208: client disconnected after 24000s (Connection reset by peer)
+06:55:53.349 [INF] CLIENT       - rtsp/tcp 192.0.2.x:33012 after 24000s, 3714429291 bytes
+[KernelIF] Stream stopped
+[KernelIF] DQBUF failed: fd=27 Invalid argument
+[VBM] VBMKernelDequeue chn=1: DQBUF error ret=-1
+[KernelIF] Closed device (fd=27)
+[VBM] DestroyPool: chn=1
+06:55:55.409 [INF] HAL_ING      framesource 1 disabled (idle)
+06:55:55.410 [INF] HAL_ING      video chn1 idle
+[KernelIF] Stream stopped
+[KernelIF] DQBUF failed: fd=23 Invalid argument
+[KernelIF] Closed device (fd=23)
+[VBM] DestroyPool: chn=0
+06:55:55.469 [INF] HAL_ING      framesource 0 disabled (idle)
+06:55:55.469 [INF] HAL_ING      video chn0 idle
+[KernelIF] Opened /dev/framechan0 (fd=23)
+[KernelIF] Set format: 1920x1080 fmt=0xa (fourcc=0x3231564e) sizeimage=3133440 bytesperline=2880 colorspace=8
+[VBM] CreatePool: chn=0, 1920x1080 fmt=0xa fourcc=0x3231564e, fps=1/1, 2 frames, size=3133440 (req=3133440 calc=3133440 aligned=3133440)
+[KernelIF] REQBUFS: requested=2 actual=2
+[KernelIF] Set frame depth: 2
+[KernelIF] Stream started
+06:55:59.425 [INF] HAL_ING      framesource 0 enabled
+06:55:59.925 [WRN] HAL_ING      jpeg chn3: PollingStream idle (miss#1) - encoder emits no frames
+06:56:00.892 [INF] HAL_ING      video chn0 streaming
+[KernelIF] Stream stopped
+[KernelIF] DQBUF failed: fd=23 Invalid argument
+[KernelIF] Closed device (fd=23)
+[VBM] DestroyPool: chn=0
+06:56:03.039 [INF] HAL_ING      framesource 0 disabled (idle)
+06:56:03.039 [INF] HAL_ING      video chn0 idle
+[KernelIF] Opened /dev/framechan0 (fd=23)
+[KernelIF] Set format: 1920x1080 fmt=0xa (fourcc=0x3231564e) sizeimage=3133440 bytesperline=2880 colorspace=8
+[VBM] CreatePool: chn=0, 1920x1080 fmt=0xa fourcc=0x3231564e, fps=1/1, 2 frames, size=3133440 (req=3133440 calc=3133440 aligned=3133440)
+[KernelIF] REQBUFS: requested=2 actual=2
+[KernelIF] Set frame depth: 2
+[KernelIF] Stream started
+06:56:11.129 [INF] HAL_ING      framesource 0 enabled
+06:56:11.630 [WRN] HAL_ING      jpeg chn3: PollingStream idle (miss#1) - encoder emits no frames
+06:56:12.596 [INF] HAL_ING      video chn0 streaming
+[KernelIF] Stream stopped
+[KernelIF] DQBUF failed: fd=23 Invalid argument
+[KernelIF] Closed device (fd=23)
+[VBM] DestroyPool: chn=0
+06:56:14.739 [INF] HAL_ING      framesource 0 disabled (idle)
+06:56:14.740 [INF] HAL_ING      video chn0 idle
+[KernelIF] Opened /dev/framechan0 (fd=23)
+[KernelIF] Set format: 1920x1080 fmt=0xa (fourcc=0x3231564e) sizeimage=3133440 bytesperline=2880 colorspace=8
+[VBM] CreatePool: chn=0, 1920x1080 fmt=0xa fourcc=0x3231564e, fps=1/1, 2 frames, size=3133440 (req=3133440 calc=3133440 aligned=3133440)
+[KernelIF] REQBUFS: requested=2 actual=2
+[KernelIF] Set frame depth: 2
+[KernelIF] Stream started
+06:56:22.840 [INF] HAL_ING      framesource 0 enabled
+06:56:23.340 [WRN] HAL_ING      jpeg chn3: PollingStream idle (miss#1) - encoder emits no frames
+06:56:24.307 [INF] HAL_ING      video chn0 streaming
+[KernelIF] DQBUF failed: fd=23 Invalid argument
+[KernelIF] Stream stopped
+[KernelIF] Closed device (fd=23)
+[VBM] DestroyPool: chn=0
+06:56:26.438 [INF] HAL_ING      framesource 0 disabled (idle)
+06:56:26.439 [INF] HAL_ING      video chn0 idle
+[KernelIF] Opened /dev/framechan0 (fd=23)
+[KernelIF] Set format: 1920x1080 fmt=0xa (fourcc=0x3231564e) sizeimage=3133440 bytesperline=2880 colorspace=8
+[VBM] CreatePool: chn=0, 1920x1080 fmt=0xa fourcc=0x3231564e, fps=1/1, 2 frames, size=3133440 (req=3133440 calc=3133440 aligned=3133440)
+[KernelIF] REQBUFS: requested=2 actual=2
+[KernelIF] Set frame depth: 2
+[KernelIF] Stream started
+06:56:34.547 [INF] HAL_ING      framesource 0 enabled
+06:56:35.047 [WRN] HAL_ING      jpeg chn3: PollingStream idle (miss#1) - encoder emits no frames
+06:56:36.014 [INF] HAL_ING      video chn0 streaming
+[KernelIF] DQBUF failed: fd=23 Invalid argument
+[KernelIF] Stream stopped
+[KernelIF] Closed device (fd=23)
+[VBM] DestroyPool: chn=0
+06:56:38.188 [INF] HAL_ING      framesource 0 disabled (idle)
+06:56:38.189 [INF] HAL_ING      video chn0 idle
+[KernelIF] Opened /dev/framechan0 (fd=23)
+[KernelIF] Set format: 1920x1080 fmt=0xa (fourcc=0x3231564e) sizeimage=3133440 bytesperline=2880 colorspace=8
+[VBM] CreatePool: chn=0, 1920x1080 fmt=0xa fourcc=0x3231564e, fps=1/1, 2 frames, size=3133440 (req=3133440 calc=3133440 aligned=3133440)
+[KernelIF] REQBUFS: requested=2 actual=2
+[KernelIF] Set frame depth: 2
+[KernelIF] Stream started
+06:56:46.280 [INF] HAL_ING      framesource 0 enabled
+06:56:46.781 [WRN] HAL_ING      jpeg chn3: PollingStream idle (miss#1) - encoder emits no frames
+06:56:47.749 [INF] HAL_ING      video chn0 streaming
+[KernelIF] Stream stopped
+[KernelIF] DQBUF failed: fd=23 Invalid argument
+[KernelIF] Closed device (fd=23)
+[VBM] DestroyPool: chn=0
+06:56:49.889 [INF] HAL_ING      framesource 0 disabled (idle)
+06:56:49.890 [INF] HAL_ING      video chn0 idle
+[KernelIF] Opened /dev/framechan0 (fd=23)
+[KernelIF] Set format: 1920x1080 fmt=0xa (fourcc=0x3231564e) sizeimage=3133440 bytesperline=2880 colorspace=8
+[VBM] CreatePool: chn=0, 1920x1080 fmt=0xa fourcc=0x3231564e, fps=1/1, 2 frames, size=3133440 (req=3133440 calc=3133440 aligned=3133440)
+[KernelIF] REQBUFS: requested=2 actual=2
+[KernelIF] Set frame depth: 2
+[KernelIF] Stream started
+06:56:57.996 [INF] HAL_ING      framesource 0 enabled
+06:56:58.496 [WRN] HAL_ING      jpeg chn3: PollingStream idle (miss#1) - encoder emits no frames
+06:56:59.464 [INF] HAL_ING      video chn0 streaming
+[KernelIF] DQBUF failed: fd=23 Invalid argument
+[KernelIF] Stream stopped
+[KernelIF] Closed device (fd=23)
+[VBM] DestroyPool: chn=0
+06:57:01.638 [INF] HAL_ING      framesource 0 disabled (idle)
+06:57:01.639 [INF] HAL_ING      video chn0 idle
+[KernelIF] Opened /dev/framechan0 (fd=23)
+[KernelIF] Set format: 1920x1080 fmt=0xa (fourcc=0x3231564e) sizeimage=3133440 bytesperline=2880 colorspace=8
+[VBM] CreatePool: chn=0, 1920x1080 fmt=0xa fourcc=0x3231564e, fps=1/1, 2 frames, size=3133440 (req=3133440 calc=3133440 aligned=3133440)
+[KernelIF] REQBUFS: requested=2 actual=2
+[KernelIF] Set frame depth: 2
+[KernelIF] Stream started
+06:57:09.731 [INF] HAL_ING      framesource 0 enabled
+06:57:10.231 [WRN] HAL_ING      jpeg chn3: PollingStream idle (miss#1) - encoder emits no frames
+06:57:11.198 [INF] HAL_ING      video chn0 streaming
+[Codec] HWJPEG: 1920x1080 q75 -> 203796 bytes [#27800]
+[KernelIF] Stream stopped
+[KernelIF] DQBUF failed: fd=23 Invalid argument
+[KernelIF] Closed device (fd=23)
+[VBM] DestroyPool: chn=0
+06:57:13.339 [INF] HAL_ING      framesource 0 disabled (idle)
+06:57:13.340 [INF] HAL_ING      video chn0 idle
+[KernelIF] Opened /dev/framechan0 (fd=23)
+[KernelIF] Set format: 1920x1080 fmt=0xa (fourcc=0x3231564e) sizeimage=3133440 bytesperline=2880 colorspace=8
+[VBM] CreatePool: chn=0, 1920x1080 fmt=0xa fourcc=0x3231564e, fps=1/1, 2 frames, size=3133440 (req=3133440 calc=3133440 aligned=3133440)
+[KernelIF] REQBUFS: requested=2 actual=2
+[KernelIF] Set frame depth: 2
+[KernelIF] Stream started
+06:57:21.437 [INF] HAL_ING      framesource 0 enabled
+06:57:21.938 [WRN] HAL_ING      jpeg chn3: PollingStream idle (miss#1) - encoder emits no frames
+06:57:22.904 [INF] HAL_ING      video chn0 streaming
+[KernelIF] Stream stopped
+[KernelIF] DQBUF failed: fd=23 Invalid argument
+[KernelIF] Closed device (fd=23)
+[VBM] DestroyPool: chn=0
+06:57:25.049 [INF] HAL_ING      framesource 0 disabled (idle)
+06:57:25.050 [INF] HAL_ING      video chn0 idle
+06:58:55.681 [INF] MAIN         shutting down
+06:58:55.682 [INF] DAYNIGHT     detection thread stopped
+06:58:55.682 [INF] RTSP         all client threads gone after 0 ms
+06:58:55.683 [INF] HTTP         all connection threads gone after 0 ms
+timpsd: shutdown alarm fired - hard exit

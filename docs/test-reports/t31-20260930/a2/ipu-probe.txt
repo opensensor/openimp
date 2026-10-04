@@ -1,0 +1,10 @@
+frame phys=0x03380000 640x368  bitmap phys=0x00ea8000
+ch0 fmt=5 para=0x020347f9 bak=0x00000000 pos=(32,32) 128x64 buf=0x00ea8000
+ch1 fmt=5 para=0x02034405 bak=0x00000000 pos=(32,128) 128x64 buf=0x00ea8000
+ch2 fmt=5 para=0x028007f9 bak=0xff425af0 pos=(224,32) 96x64 buf=0x00000000
+ch3 fmt=5 para=0x02800401 bak=0x8019f06e pos=(224,128) 96x64 buf=0x00000000
+IOCTL_IPU_START ok, 379 us
+wrote /tmp/ipu-{before,after}.nv12 (640x368), ipu-bitmap.bgra (128x64), ipu-samples.csv
+timing: 4 layers in one pass: 352.2 us/pass
+timing: one pass per layer:   375.1 us/frame
+timing: IOCTL_IPU_BUF_FLUSH_CACHE 356352 bytes: 80.1 us (stock: once per region per frame)

@@ -1,0 +1,11 @@
+== e-sw
+stopped (waited 4x100ms)
+pid 16977
+ch0: connects=1 frames=2701 intervals=17 min_per_10s=90 zero_intervals=0 intervals<140=1 [90]
+ch1: connects=1 frames=2700 intervals=17 min_per_10s=90 zero_intervals=0 intervals<140=1 [90]
+snapshots:     112 200 
+snap ok avg 283421 B, avg 0.461 s, max 1.000 s
+timpsd %CPU samples: 5.0 66.5 63.0 73.0 67.9 64.3 
+idle samples: 90.0 18.7 21.8 11.4 15.1 20.8 
+ffmpeg error lines main/sub: 0 / 0
+S2 frames=449 interval median=0.067 p99=0.102 max=0.149 >0.1s=33

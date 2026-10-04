@@ -1,0 +1,3 @@
+hwjpeg.jpg YCbCr all 54.7dB, top 52.9dB, checker infdB, bottom 52.9dB
+hwjpeg-360.jpg YCbCr all 55.6dB, top 54.3dB, checker infdB, bottom 53.5dB
+dri8-360.jpg YCbCr all 55.6dB, top 54.3dB, checker infdB, bottom 53.5dB

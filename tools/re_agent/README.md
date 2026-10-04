@@ -40,7 +40,7 @@ export OPENAI_API_KEY="your-api-key-here"
 ```bash
 # Let AI fix your code automatically (uses git for version control)
 python full_review_workflow.py \
-  --project-dir /home/matteius/openimp \
+  --project-dir /home/user/openimp \
   --apply-fixes
 
 # Review changes
@@ -56,7 +56,7 @@ git restore src/
 
 ```bash
 # Review without editing
-python full_review_workflow.py --project-dir /home/matteius/openimp
+python full_review_workflow.py --project-dir /home/user/openimp
 
 # Check the results
 cat full_review_output/review_report.txt      # Comprehensive report
@@ -355,5 +355,5 @@ Part of the OpenIMP project. See main project LICENSE.
 - [OpenIMP Project](../../README.md)
 - [Binary Ninja MCP Documentation](https://docs.binary.ninja/)
 - [Reverse Engineering Summary](../../REVERSE_ENGINEERING_SUMMARY.md)
-- [Architecture Documentation](../../assets/ARCHITECTURE.md)
+- [Architecture Documentation](../../docs/assets/ARCHITECTURE.md)
 

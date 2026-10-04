@@ -23,9 +23,9 @@
  *       frames must arrive
  *
  * Build (static, against the OpenIMP T31 objects of build-t31.sh):
- *   B=/mnt/NVMe/git/openimp-t31api/build/t31
+ *   B=<path>/openimp-t31api/build/t31
  *   CC=.../host/bin/mipsel-linux-gcc
- *   $CC -std=gnu99 -static -O2 -Wall -I/mnt/NVMe/git/openimp-t31api/include \
+ *   $CC -std=gnu99 -static -O2 -Wall -I<path>/openimp-t31api/include \
  *     -o t31_api_test t31_api_test.c $B/[all .o] -lpthread -lrt -lm -ldl
  * (all objects in $B except openimp-tuningd's), then strip.
  * A static uClibc binary cannot dlopen libaudioProcess.so, so for -e build

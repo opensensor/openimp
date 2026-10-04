@@ -388,6 +388,8 @@ static void test_shared_interface(void)
 
 int main(void)
 {
+    /* compares against the vendor algorithm: motion v2 is on by default */
+    setenv("OPENIMP_MOTION_V2", "0", 1);
     test_move();
     test_base_move();
     test_shared_interface();

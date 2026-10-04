@@ -1,12 +1,34 @@
-prudynt-t
+# build output
 /build/
+/lib/
 *.o
 *.so
 *.a
-.idea
-driver/
-thingino-streamer/
-.vscode/
-/logs/
+*.ko
+*.mips
+*.mod
+*.mod.c
+*.mod.o
+modules.order
+Module.symvers
+.tmp_versions/
+*.cmd
+.*.cmd
+
+# python / editor
 __pycache__/
 *.pyc
+.idea/
+.vscode/
+
+# local tool configs, logs and scratch (never commit)
+.claude.json
+.mcp.json
+.claude/
+/logs/
+*.log.local
+/prudynt-t/
+/thingino-streamer/
+/binary_ninja_mcp/
+/prudynt-t-*/
+/driver/

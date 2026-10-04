@@ -1,0 +1,191 @@
+2026-09-30 19:38:47 start p1-ivs0 env: OPENIMP_T31_IVS_STATS=1
+19:38:47.939 [INF] CONFIG       loaded 65 settings from /tmp/timps-ivs.conf
+19:38:47.940 [INF] CONFIG       sensor: sc4336p i2c=0x30 1920x1080 @15fps
+19:38:47.940 [INF] MAIN         timps v1.9.28-3-g311b0c4 starting (backend=ingenic)
+19:38:47.941 [INF] MAIN         /control token published to /run/timps.token
+19:38:48.004 [INF] HAL_ING      image tuning applied (bri=128 con=128 sat=128 sharp=128)
+19:38:48.007 [INF] HAL_ING      sensor fps: requested 15, driver holds 15/1, set rc=0
+19:38:48.007 [INF] HAL_ING      ISP up, sensor=sc4336p fps=15
+19:38:48.007 [INF] HAL_ING      chn0: fs 1920x1080 (sensor 1920x1080, scale=0) nrVBs=2
+[Fifo] Init: size=4, max_elements=5
+[Fifo] Init: size=7, max_elements=8
+[Fifo] Init: size=4, max_elements=5
+[Fifo] Init: size=4, max_elements=5
+[Fifo] Init: size=7, max_elements=8
+[Fifo] Init: size=4, max_elements=5
+19:38:48.008 [INF] HAL_ING      JPEG-on-video0: encoder chn 3 in group 0 (1920x1080 q75)
+19:38:48.009 [INF] OSD          OSD TrueType font /usr/share/fonts/default.ttf
+19:38:48.024 [INF] OSD          OSD stream 0: 4 overlay(s), 0 privacy mask(s), group 0 (1920x1080)
+19:38:48.025 [INF] HAL_ING      chn1: fs 640x360 (sensor 1920x1080, scale=1) nrVBs=2
+[Fifo] Init: size=4, max_elements=5
+[Fifo] Init: size=7, max_elements=8
+[Fifo] Init: size=4, max_elements=5
+[Fifo] Init: size=4, max_elements=5
+[Fifo] Init: size=7, max_elements=8
+[Fifo] Init: size=4, max_elements=5
+19:38:48.026 [INF] HAL_ING      JPEG-on-video1: encoder chn 4 in group 1 (640x360 q75)
+19:38:48.032 [INF] OSD          OSD stream 1: 4 overlay(s), 0 privacy mask(s), group 1 (640x360)
+19:38:48.033 [INF] MOTION       motion detection started (1920x1080 grid 5x5=25 cells, sense=2/4, max 52, hold=800ms)
+[KernelIF] Opened /dev/framechan0 (fd=16)
+[KernelIF] SET_FMT before ioctl:
+[KernelIF]   width=1920 height=1080 pixelformat=0x3231564e
+[KernelIF]   bytesperline=0 sizeimage=0 colorspace=8
+[KernelIF]   attr enable=0 attr=0x0 pic=0x0 fps=1/0
+[KernelIF]   crop_enable=1 crop=1920x1080+0+0
+[KernelIF]   scaler_enable=0 scaler_outwidth=1920 scaler_outheight=1080
+[KernelIF] SET_FMT after ioctl:
+[KernelIF]   width=1920 height=1080 sizeimage=3133440 bytesperline=2880
+[KernelIF]   crop=0 0x0+0+0 scaler=1 1920x1080 rate=0/0x1
+[KernelIF] Set format: 1920x1080 fmt=0xa (fourcc=0x3231564e) sizeimage=3133440 bytesperline=2880 colorspace=8
+[VBM] CreatePool: allocating pool_size=2512 (frame_count=2 * 0x428 + 0x180)
+[VBM] CreatePool: chn=0, 1920x1080 fmt=0xa fourcc=0x3231564e, fps=1/1, 2 frames, size=3133440 (req=3133440 calc=3133440 aligned=3133440)
+[VBM] Frame 0: phys=0x55f1000 virt=0x74ed7000 fourcc=0x3231564e fps=1/1
+[VBM] Frame 1: phys=0x58ee000 virt=0x751d4000 fourcc=0x3231564e fps=1/1
+[VBM] CreatePool: chn=0 created successfully
+[KernelIF] Set frame depth: 2
+[VBM] FillPool: chn=0, filling 2 frames
+[VBM] FillPool: seeded 2/2 frames via release callback
+FSDBG thread_entry
+FSDBG ch=0 step=post_prctl fd=16 running=1
+[KernelIF] Stream started
+19:38:48.066 [INF] HAL_ING      framesource 0 enabled
+19:38:48.535 [INF] HAL_ING      faac AAC encoder: 16000Hz ch=1 frame=1024 max=8192
+19:38:48.535 [INF] HAL_ING      audio.codec2: second stream PCMU 8000Hz (16k->8k) (WebRTC)
+19:38:48.536 [INF] HAL_ING      audio in: 16000Hz AAC ch=1 vol=80 gain=25 numPerFrm=640
+19:38:48.567 [INF] MAIN         audio backchannel enabled (codec=0 rate=16000, native IMP_AO)
+19:38:48.569 [INF] TLS          TLS server context ready (cert /etc/ssl/certs/timps.crt)
+19:38:48.569 [INF] HTTP         HTTP and HTTPS both served on port 8880 (http.https=1, scheme detected per connection)
+19:38:48.570 [INF] WEBRTC       WHEP endpoint /webrtc/whep ready (ICE-lite + DTLS-SRTP, H264 video0); fingerprint xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:4D:C9
+19:38:48.570 [INF] WEBRTC       media udp 25000-25003, one port per session (4 slots)
+19:38:48.570 [INF] REC          recorder ready (mode=motion dir=/mnt/mmcblk0p1)
+19:38:48.571 [INF] TL           timelapse ready (idle, dir=/mnt/mmcblk0p1 interval=60s)
+19:38:48.571 [INF] MAIN         running. rtsp://<ip>:554/ch0  https://<ip>:8880/
+19:38:48.573 [INF] DAYNIGHT     detection thread started (mode=auto, day<10000 night>15000, probe: gap 600s jump 50% confirm 15s settle 8s, heartbeat 14400s/43200s, calendar=none, boot_probe=1, interval 2000ms, dwell 5s, isp=/proc/jz/isp/isp-m0, cmd=daynight)
+19:38:48.574 [INF] DAYNIGHT     auto day/night enabled
+19:38:48.573 [INF] HTTP         listening on port 8880
+19:38:48.574 [INF] RTSP         listening on port 554
+19:38:48.576 [INF] spk          play-FIFO thread started (/run/timps/audio_out)
+19:38:59.273 [ERR] MOTION       no IVS move results for over 10000ms - cycling the move channel to recover
+19:39:06.577 [INF] DAYNIGHT     boot: measuring before deciding - persisted running_mode=1 is a hint, not evidence (exposure 12426 in whatever mode we came up in); switching to the day pipeline and reading it in 8s
+19:39:06.577 [DBG] DAYNIGHT     probe (boot measure): exposure 12426 vs night reference -1, verdict in 8s
+19:39:06.577 [INF] DAYNIGHT     switching to day (boot measure): daynight day [mode=day exp=12426 ref=-1 bar=10000]
+19:39:07.014 [INF] HAL_ING      control image.running_mode=0
+19:39:07.514 [INF] CTRL         set image.running_mode = 0
+19:39:07.516 [INF] CONFIG       persisted 1 setting(s) to /tmp/timps-ivs.conf
+19:39:08.860 [DBG] DAYNIGHT     ISP confirmed the switch to day
+19:39:09.275 [ERR] MOTION       no IVS move results for over 10000ms - cycling the move channel to recover
+19:39:14.862 [INF] DAYNIGHT     switching to night (boot: measured night, exposure 15404): daynight night [mode=night exp=15404 ref=-1 bar=10000]
+19:39:15.266 [INF] DAYNIGHT     night reference 12426, proven by the probe (bar 6213)
+19:39:15.301 [INF] HAL_ING      control image.running_mode=1
+19:39:15.801 [INF] CTRL         set image.running_mode = 1
+19:39:15.804 [INF] CONFIG       persisted 1 setting(s) to /tmp/timps-ivs.conf
+19:39:17.266 [DBG] DAYNIGHT     ISP confirmed the switch to night
+19:39:19.277 [ERR] MOTION       no IVS move results for over 10000ms - cycling the move channel to recover
+19:39:23.267 [INF] HAL_ING      control image.running_mode=1
+19:39:23.768 [DBG] DAYNIGHT     re-asserting running_mode=1 after switch (1 left)
+19:39:29.277 [ERR] MOTION       no IVS move results for over 10000ms - cycling the move channel to recover
+19:39:31.769 [INF] HAL_ING      control image.running_mode=1
+19:39:32.269 [DBG] DAYNIGHT     re-asserting running_mode=1 after switch (0 left)
+19:39:39.279 [ERR] MOTION       no IVS move results for over 10000ms - cycling the move channel to recover
+19:39:49.280 [ERR] MOTION       no IVS move results for over 10000ms - cycling the move channel to recover
+19:39:51.176 [INF] HAL_ING      video chn0 streaming
+[DevicePool] Init: device pool initialized
+[DevicePool] Open: opened '/dev/avpu' (fd=26, slot=0)
+[KernelIF] Opened /dev/framechan1 (fd=27)
+[KernelIF] SET_FMT before ioctl:
+[KernelIF]   width=640 height=360 pixelformat=0x3231564e
+[KernelIF]   bytesperline=0 sizeimage=0 colorspace=8
+[KernelIF]   attr enable=0 attr=0x0 pic=0x0 fps=1/0
+[KernelIF]   crop_enable=0 crop=1920x1080+0+0
+[KernelIF]   scaler_enable=1 scaler_outwidth=640 scaler_outheight=360
+[KernelIF] SET_FMT after ioctl:
+[KernelIF]   width=640 height=360 sizeimage=353280 bytesperline=960
+[KernelIF]   crop=0 0x0+0+0 scaler=1 640x360 rate=0/0x1
+[KernelIF] Set format: 640x360 fmt=0xa (fourcc=0x3231564e) sizeimage=353280 bytesperline=960 colorspace=8
+[VBM] CreatePool: allocating pool_size=2512 (frame_count=2 * 0x428 + 0x180)
+[VBM] CreatePool: chn=1, 640x360 fmt=0xa fourcc=0x3231564e, fps=1/1, 2 frames, size=353280 (req=353280 calc=353280 aligned=353280)
+[VBM] Frame 0: phys=0x5f8b000 virt=0x75871000 fourcc=0x3231564e fps=1/1
+[VBM] Frame 1: phys=0x5fe1400 virt=0x758c7400 fourcc=0x3231564e fps=1/1
+[VBM] CreatePool: chn=1 created successfully
+[KernelIF] Set frame depth: 2
+[VBM] FillPool: chn=1, filling 2 frames
+[VBM] FillPool: seeded 2/2 frames via release callback
+FSDBG thread_entry
+FSDBG ch=1 step=post_prctl fd=27 running=1
+[Codec] HWJPEG: T31 hardware JPEG enabled (OPENIMP_T31_HW_JPEG=0 selects the software encoder)
+[Codec] AVPU: T31 companion stage disabled
+[KernelIF] Stream started
+19:39:51.213 [INF] HAL_ING      chn0: first encoded frame packCount=3 aulen=142180 key=1
+19:39:51.214 [INF] HAL_ING      framesource 1 enabled
+19:39:51.215 [INF] HAL_ING      video chn1 streaming
+[IVS] chn0: 3 frames, 0 dropped busy, 2 results; copy avg 44 us max 68 us; process avg 5 us max 14 us
+19:39:51.246 [INF] MOTION       IVS move results resumed after a stall
+19:39:51.254 [INF] CLIENT       + rtsp/tcp 192.0.2.x:51942 chn=0 agent="Lavf62.3.100"
+19:39:51.255 [INF] RTSP         PLAY session=8e2feb2e vchn=0 TCP v=1 a=1
+[DevicePool] Open: '/dev/avpu' already open (fd=26, refcount=2)
+19:39:51.406 [INF] HAL_ING      chn1: first encoded frame packCount=3 aulen=25354 key=1
+19:39:51.439 [INF] CLIENT       + rtsp/tcp 192.0.2.x:51958 chn=1 agent="Lavf62.3.100"
+19:39:51.440 [INF] RTSP         PLAY session=39896962 vchn=1 TCP v=1 a=1
+[IVS] chn0: 149 frames, 0 dropped busy, 25 results; copy avg 1782 us max 14691 us; process avg 1076 us max 14184 us
+19:40:10.796 [INF] HAL_ING      audio resume: flushed 512 stale AI frame(s)
+19:40:10.997 [INF] HAL_ING      AAC encoder producing (59 bytes/frame)
+[IVS] chn0: 149 frames, 0 dropped busy, 25 results; copy avg 1774 us max 14084 us; process avg 1252 us max 15297 us
+[IVS] chn0: 149 frames, 0 dropped busy, 25 results; copy avg 1624 us max 10808 us; process avg 1246 us max 24524 us
+[IVS] chn0: 149 frames, 0 dropped busy, 25 results; copy avg 1613 us max 9086 us; process avg 1216 us max 15633 us
+[IVS] chn0: 149 frames, 0 dropped busy, 25 results; copy avg 1607 us max 10052 us; process avg 1197 us max 11136 us
+[IVS] chn0: 149 frames, 0 dropped busy, 24 results; copy avg 1742 us max 10154 us; process avg 1209 us max 14185 us
+[IVS] chn0: 149 frames, 0 dropped busy, 25 results; copy avg 1544 us max 9671 us; process avg 1241 us max 12722 us
+[IVS] chn0: 149 frames, 0 dropped busy, 25 results; copy avg 1554 us max 9612 us; process avg 1275 us max 17701 us
+[IVS] chn0: 149 frames, 0 dropped busy, 25 results; copy avg 1521 us max 9555 us; process avg 1180 us max 9551 us
+[IVS] chn0: 149 frames, 0 dropped busy, 25 results; copy avg 1531 us max 8980 us; process avg 1142 us max 9759 us
+[IVS] chn0: 149 frames, 0 dropped busy, 25 results; copy avg 1571 us max 8899 us; process avg 1153 us max 11787 us
+[IVS] chn0: 149 frames, 0 dropped busy, 24 results; copy avg 1717 us max 9789 us; process avg 1143 us max 16211 us
+[IVS] chn0: 149 frames, 0 dropped busy, 25 results; copy avg 1623 us max 9501 us; process avg 1310 us max 17329 us
+[IVS] chn0: 149 frames, 0 dropped busy, 25 results; copy avg 1625 us max 9658 us; process avg 1368 us max 20137 us
+[IVS] chn0: 149 frames, 0 dropped busy, 25 results; copy avg 1676 us max 12150 us; process avg 1193 us max 11844 us
+[IVS] chn0: 149 frames, 0 dropped busy, 25 results; copy avg 1570 us max 9986 us; process avg 1221 us max 10497 us
+[IVS] chn0: 149 frames, 0 dropped busy, 25 results; copy avg 1599 us max 8832 us; process avg 1201 us max 9487 us
+[IVS] chn0: 149 frames, 0 dropped busy, 24 results; copy avg 1590 us max 9732 us; process avg 1125 us max 11974 us
+[IVS] chn0: 149 frames, 0 dropped busy, 25 results; copy avg 1528 us max 10724 us; process avg 1272 us max 20151 us
+19:43:02.417 [INF] MOTION       motion detected
+[IVS] chn0: 149 frames, 0 dropped busy, 25 results; copy avg 1619 us max 11797 us; process avg 1320 us max 14762 us
+19:43:20.895 [INF] CTRL         set motion.sensitivity = 255
+19:43:20.895 [INF] MOTION       motion sensitivity updated live to 4/4 (25 ROIs, no rebuild)
+19:43:20.897 [INF] CONFIG       persisted 1 setting(s) to /tmp/timps-ivs.conf
+[IVS] chn0: 149 frames, 0 dropped busy, 25 results; copy avg 1552 us max 8847 us; process avg 1154 us max 9628 us
+[IVS] chn0: 149 frames, 0 dropped busy, 25 results; copy avg 1551 us max 8822 us; process avg 1235 us max 12023 us
+[IVS] chn0: 149 frames, 0 dropped busy, 25 results; copy avg 1742 us max 12746 us; process avg 1236 us max 16017 us
+[IVS] chn0: 149 frames, 0 dropped busy, 24 results; copy avg 1837 us max 14882 us; process avg 1225 us max 15130 us
+[IVS] chn0: 149 frames, 0 dropped busy, 25 results; copy avg 1744 us max 14202 us; process avg 1445 us max 23149 us
+19:44:07.204 [INF] MOTION       motion detected
+[IVS] chn0: 149 frames, 0 dropped busy, 25 results; copy avg 1582 us max 9330 us; process avg 1369 us max 19249 us
+[IVS] chn0: 149 frames, 0 dropped busy, 25 results; copy avg 1749 us max 9752 us; process avg 1097 us max 10243 us
+19:44:25.698 [INF] CTRL         set motion.sensitivity = 0
+19:44:25.698 [INF] MOTION       motion sensitivity updated live to 0/4 (25 ROIs, no rebuild)
+19:44:25.700 [INF] CONFIG       persisted 1 setting(s) to /tmp/timps-ivs.conf
+[IVS] chn0: 149 frames, 0 dropped busy, 25 results; copy avg 1578 us max 9803 us; process avg 1294 us max 22376 us
+[IVS] chn0: 149 frames, 0 dropped busy, 25 results; copy avg 1609 us max 10381 us; process avg 1273 us max 14538 us
+[IVS] chn0: 149 frames, 0 dropped busy, 24 results; copy avg 1639 us max 8655 us; process avg 1198 us max 12590 us
+[IVS] chn0: 149 frames, 0 dropped busy, 25 results; copy avg 1632 us max 9743 us; process avg 1300 us max 20168 us
+19:45:12.009 [INF] MOTION       motion detected
+[IVS] chn0: 149 frames, 0 dropped busy, 25 results; copy avg 1576 us max 8562 us; process avg 1351 us max 14984 us
+[IVS] chn0: 149 frames, 0 dropped busy, 25 results; copy avg 1646 us max 8734 us; process avg 1239 us max 12042 us
+19:45:30.572 [INF] CTRL         set motion.sensitivity = 128
+19:45:30.572 [INF] MOTION       motion sensitivity updated live to 2/4 (25 ROIs, no rebuild)
+19:45:30.575 [INF] CONFIG       persisted 1 setting(s) to /tmp/timps-ivs.conf
+[IVS] chn0: 149 frames, 0 dropped busy, 25 results; copy avg 1679 us max 9178 us; process avg 1121 us max 11856 us
+[IVS] chn0: 149 frames, 0 dropped busy, 25 results; copy avg 1590 us max 9011 us; process avg 1081 us max 7988 us
+19:45:45.886 [INF] CTRL         set motion.enabled = 0
+19:45:46.030 [INF] MOTION       motion detection stopped
+19:45:46.030 [INF] HAL_ING      IVS motion grid re-synced (batched, once per request)
+19:45:46.032 [INF] CONFIG       persisted 1 setting(s) to /tmp/timps-ivs.conf
+19:46:06.507 [INF] CTRL         set motion.enabled = 1
+19:46:06.508 [INF] MOTION       motion detection started (1920x1080 grid 5x5=25 cells, sense=2/4, max 52, hold=800ms)
+19:46:06.508 [INF] HAL_ING      IVS motion grid re-synced (batched, once per request)
+19:46:06.510 [INF] CONFIG       persisted 1 setting(s) to /tmp/timps-ivs.conf
+[IVS] chn0: 150 frames, 0 dropped busy, 27 results; copy avg 1566 us max 9252 us; process avg 1031 us max 8768 us
+19:46:24.093 [INF] MOTION       motion detected
+[IVS] chn0: 149 frames, 0 dropped busy, 25 results; copy avg 1574 us max 8901 us; process avg 1190 us max 12988 us
+[IVS] chn0: 149 frames, 0 dropped busy, 25 results; copy avg 1604 us max 12772 us; process avg 1296 us max 15951 us
+[IVS] chn0: 149 frames, 0 dropped busy, 24 results; copy avg 1620 us max 10426 us; process avg 1094 us max 12666 us
+[IVS] chn0: 149 frames, 0 dropped busy, 25 results; copy avg 1508 us max 9548 us; process avg 1112 us max 8090 us

@@ -1,0 +1,116 @@
+Sep 30 14:56:50 timpsd[6249]: [CONFIG] loaded 61 settings from /tmp/timps.conf
+Sep 30 14:56:50 timpsd[6249]: [CONFIG] sensor: sc4336p i2c=0x30 1920x1080 @15fps
+Sep 30 14:56:50 timpsd[6249]: [MAIN] timps v1.9.28-3-g311b0c4 starting (backend=ingenic)
+Sep 30 14:56:50 timpsd[6249]: [MAIN] /control token published to /run/timps.token
+Sep 30 14:56:50 timpsd[6249]: [HAL_ING] image tuning applied (bri=128 con=128 sat=128 sharp=128)
+Sep 30 14:56:50 timpsd[6249]: [HAL_ING] sensor fps: requested 15, driver holds 15/1, set rc=0
+Sep 30 14:56:50 timpsd[6249]: [HAL_ING] ISP up, sensor=sc4336p fps=15
+Sep 30 14:56:50 timpsd[6249]: [HAL_ING] chn0: fs 1920x1080 (sensor 1920x1080, scale=0) nrVBs=2
+Sep 30 14:56:50 timpsd[6249]: [HAL_ING] JPEG-on-video0: encoder chn 3 in group 0 (1920x1080 q75)
+Sep 30 14:56:50 timpsd[6249]: [OSD] OSD TrueType font /usr/share/fonts/default.ttf
+Sep 30 14:56:50 timpsd[6249]: [OSD] OSD stream 0: 4 overlay(s), 0 privacy mask(s), group 0 (1920x1080)
+Sep 30 14:56:50 timpsd[6249]: [HAL_ING] chn1: fs 640x360 (sensor 1920x1080, scale=1) nrVBs=2
+Sep 30 14:56:50 timpsd[6249]: [HAL_ING] JPEG-on-video1: encoder chn 4 in group 1 (640x360 q75)
+Sep 30 14:56:50 timpsd[6249]: [OSD] OSD stream 1: 4 overlay(s), 0 privacy mask(s), group 1 (640x360)
+Sep 30 14:56:50 timpsd[6249]: [HAL_ING] framesource 0 enabled
+Sep 30 14:56:51 timpsd[6249]: [HAL_ING] faac AAC encoder: 16000Hz ch=1 frame=1024 max=8192
+Sep 30 14:56:51 timpsd[6249]: [HAL_ING] audio.codec2: second stream PCMU 8000Hz (16k->8k) (WebRTC)
+Sep 30 14:56:51 timpsd[6249]: [HAL_ING] audio in: 16000Hz AAC ch=1 vol=80 gain=25 numPerFrm=640
+Sep 30 14:56:51 timpsd[6249]: [HAL_ING] framesource 0 disabled (idle)
+Sep 30 14:56:51 timpsd[6249]: [MAIN] audio backchannel enabled (codec=0 rate=16000, native IMP_AO)
+Sep 30 14:56:51 timpsd[6249]: [TLS] TLS server context ready (cert /etc/ssl/certs/timps.crt)
+Sep 30 14:56:51 timpsd[6249]: [HTTP] HTTP and HTTPS both served on port 8880 (http.https=1, scheme detected per connection)
+Sep 30 14:56:51 timpsd[6249]: [WEBRTC] WHEP endpoint /webrtc/whep ready (ICE-lite + DTLS-SRTP, H264 video0); fingerprint xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:4D:C9
+Sep 30 14:56:51 timpsd[6249]: [WEBRTC] media udp 25000-25003, one port per session (4 slots)
+Sep 30 14:56:51 timpsd[6249]: [REC] recorder ready (mode=motion dir=/mnt/mmcblk0p1)
+Sep 30 14:56:51 timpsd[6249]: [TL] timelapse ready (idle, dir=/mnt/mmcblk0p1 interval=60s)
+Sep 30 14:56:51 timpsd[6249]: [MAIN] running. rtsp://<ip>:554/ch0  https://<ip>:8880/
+Sep 30 14:56:51 timpsd[6249]: [DAYNIGHT] detection thread started (mode=auto, day<10000 night>15000, probe: gap 600s jump 50% confirm 15s settle 8s, heartbeat 14400s/43200s, calendar=none, boot_probe=1, interval 2000ms, dwell 5s, isp=/proc/jz/isp/isp-
+Sep 30 14:56:51 timpsd[6249]: [HTTP] listening on port 8880
+Sep 30 14:56:51 timpsd[6249]: [RTSP] listening on port 554
+Sep 30 14:56:51 timpsd[6249]: [DAYNIGHT] auto day/night enabled
+Sep 30 14:56:51 timpsd[6249]: [spk] play-FIFO thread started (/run/timps/audio_out)
+Sep 30 14:56:52 timpsd[6249]: [HAL_ING] framesource 1 enabled
+Sep 30 14:56:52 timpsd[6249]: [HAL_ING] video chn1 streaming
+Sep 30 14:56:52 timpsd[6249]: [HAL_ING] framesource 0 enabled
+Sep 30 14:56:52 timpsd[6249]: [HAL_ING] video chn0 streaming
+Sep 30 14:56:52 libimp[6249]: [Codec] AVPU: T31 companion stage enabled
+Sep 30 14:56:52 libimp[6249]: [HAL_ING] chn1: first encoded frame packCount=3 aulen=45191 key=1
+Sep 30 14:56:53 libimp[6249]: [HAL_ING] chn0: first encoded frame packCount=3 aulen=142879 key=1
+Sep 30 14:56:53 libimp[6249]: [CLIENT] + rtsp/tcp 192.0.2.x:42530 chn=1 agent="Lavf62.3.100"
+Sep 30 14:56:53 libimp[6249]: [RTSP] PLAY session=bb0132b4 vchn=1 TCP v=1 a=1
+Sep 30 14:56:53 libimp[6249]: [CLIENT] + rtsp/tcp 192.0.2.x:42538 chn=0 agent="Lavf62.3.100"
+Sep 30 14:56:53 libimp[6249]: [RTSP] PLAY session=fe8892e7 vchn=0 TCP v=1 a=1
+Sep 30 14:56:57 libimp[6249]: [DAYNIGHT] boot: measuring before deciding - persisted running_mode=0 is a hint, not evidence (exposure 4910 in whatever mode we came up in); switching to the day pipeline and reading it in 8s
+Sep 30 14:56:57 libimp[6249]: [DAYNIGHT] probe (boot measure): exposure 4910 vs night reference -1, verdict in 8s
+Sep 30 14:56:57 libimp[6249]: [DAYNIGHT] switching to day (boot measure): daynight day [mode=day exp=4910 ref=-1 bar=10000]
+Sep 30 14:56:57 libimp[6249]: [HAL_ING] control image.running_mode=0
+Sep 30 14:56:59 libimp[6249]: [DAYNIGHT] ISP confirmed the switch to day
+Sep 30 14:57:05 libimp[6249]: [DAYNIGHT] boot: measured day - exposure 4917 (< 10000). The optics are already there, so the one switch_cmd this boot owed the board has been spent
+Sep 30 14:57:12 libimp[6249]: [HAL_ING] audio resume: flushed 512 stale AI frame(s)
+Sep 30 14:57:12 libimp[6249]: [HAL_ING] AAC encoder producing (49 bytes/frame)
+Sep 30 15:19:23 libimp[6249]: [CLIENT] + rtsp/udp 192.0.2.x:37800 chn=0 agent="Lavf62.3.100"
+Sep 30 15:19:23 libimp[6249]: [RTSP] PLAY session=918ce1d0 vchn=0 UDP v=1 a=1
+Sep 30 15:19:28 libimp[6249]: [CLIENT] - rtsp/udp 192.0.2.x:37800 after 5s, 989452 bytes
+Sep 30 15:19:28 libimp[6249]: [RTSP] client disconnect session=918ce1d0
+Sep 30 15:20:13 libimp[6249]: [HTTP] sse client streaming (1/8)
+Sep 30 15:20:37 libimp[6249]: [HTTP] sse client disconnected (0 left)
+Sep 30 15:21:45 libimp[6249]: [DAYNIGHT] switching to night (exposure 17715 > 15000): daynight night [mode=night exp=17715 ref=-1 bar=10000]
+Sep 30 15:21:47 libimp[6249]: [HAL_ING] control image.running_mode=1
+Sep 30 15:21:47 libimp[6249]: [CTRL] set image.running_mode = 1
+Sep 30 15:21:47 libimp[6249]: [CONFIG] persisted 1 setting(s) to /tmp/timps.conf
+Sep 30 15:21:49 libimp[6249]: [DAYNIGHT] ISP confirmed the switch to night
+Sep 30 15:21:55 libimp[6249]: [HAL_ING] control image.running_mode=1
+Sep 30 15:21:55 libimp[6249]: [DAYNIGHT] re-asserting running_mode=1 after switch (1 left)
+Sep 30 15:22:03 libimp[6249]: [HAL_ING] control image.running_mode=1
+Sep 30 15:22:04 libimp[6249]: [DAYNIGHT] re-asserting running_mode=1 after switch (0 left)
+Sep 30 15:22:26 libimp[6249]: [DAYNIGHT] night reference 4223 (probe bar 2112)
+Sep 30 15:23:50 libimp[6249]: [DAYNIGHT] silent probe (trend): illuminator off, reading in 8s (lit level 3718)
+Sep 30 15:23:58 libimp[6249]: [DAYNIGHT] silent probe (trend): r=1.20 with 257619 units of AE reserve - the room supplies the light, not the illuminator
+Sep 30 15:23:58 libimp[6249]: [DAYNIGHT] probe: r=1.20 lit=3718 dark=4451 hr=257619 verdict=day mode=night ref=4223 why=trend lit_hr=257619
+Sep 30 15:23:58 libimp[6249]: [DAYNIGHT] switching to day (IR ratio 1.20): daynight day [mode=day exp=-1 ref=4223 bar=10000]
+Sep 30 15:23:59 libimp[6249]: [HAL_ING] control image.running_mode=0
+Sep 30 15:23:59 libimp[6249]: [CTRL] set image.running_mode = 0
+Sep 30 15:23:59 libimp[6249]: [CONFIG] persisted 1 setting(s) to /tmp/timps.conf
+Sep 30 15:24:00 libimp[6249]: [DAYNIGHT] ISP confirmed the switch to day
+Sep 30 15:24:06 libimp[6249]: [HAL_ING] control image.running_mode=0
+Sep 30 15:24:07 libimp[6249]: [DAYNIGHT] re-asserting running_mode=0 after switch (1 left)
+Sep 30 15:24:15 libimp[6249]: [HAL_ING] control image.running_mode=0
+Sep 30 15:24:15 libimp[6249]: [DAYNIGHT] re-asserting running_mode=0 after switch (0 left)
+Sep 30 15:31:31 libimp[6249]: [DAYNIGHT] night level 3718 from 453759ms ago is too stale to cost this dusk's 17088 against - filter_cost stays unmeasured, the veto stays off
+Sep 30 15:31:31 libimp[6249]: [DAYNIGHT] switching to night (exposure 17088 > 15000): daynight night [mode=night exp=17088 ref=-1 bar=10000]
+Sep 30 15:31:32 libimp[6249]: [HAL_ING] control image.running_mode=1
+Sep 30 15:31:33 libimp[6249]: [CTRL] set image.running_mode = 1
+Sep 30 15:31:33 libimp[6249]: [CONFIG] persisted 1 setting(s) to /tmp/timps.conf
+Sep 30 15:31:34 libimp[6249]: [DAYNIGHT] ISP confirmed the switch to night
+Sep 30 15:31:40 libimp[6249]: [HAL_ING] control image.running_mode=1
+Sep 30 15:31:40 libimp[6249]: [DAYNIGHT] re-asserting running_mode=1 after switch (1 left)
+Sep 30 15:31:48 libimp[6249]: [HAL_ING] control image.running_mode=1
+Sep 30 15:31:49 libimp[6249]: [DAYNIGHT] re-asserting running_mode=1 after switch (0 left)
+Sep 30 15:32:07 libimp[6249]: [DAYNIGHT] night reference 6445 (probe bar 3223)
+Sep 30 15:34:41 libimp[6249]: [DAYNIGHT] silent probe (trend): illuminator off, reading in 8s (lit level 6208)
+Sep 30 15:34:49 libimp[6249]: [DAYNIGHT] silent probe (trend): r=1.32 with 257619 units of AE reserve - the room supplies the light, not the illuminator
+Sep 30 15:34:49 libimp[6249]: [DAYNIGHT] probe: r=1.32 lit=6208 dark=8175 hr=257619 verdict=day mode=night ref=6445 why=trend lit_hr=257619
+Sep 30 15:34:49 libimp[6249]: [DAYNIGHT] switching to day (IR ratio 1.32): daynight day [mode=day exp=-1 ref=6445 bar=10000]
+Sep 30 15:34:50 libimp[6249]: [HAL_ING] control image.running_mode=0
+Sep 30 15:34:51 libimp[6249]: [CTRL] set image.running_mode = 0
+Sep 30 15:34:51 libimp[6249]: [CONFIG] persisted 1 setting(s) to /tmp/timps.conf
+Sep 30 15:34:52 libimp[6249]: [DAYNIGHT] ISP confirmed the switch to day
+Sep 30 15:34:58 libimp[6249]: [HAL_ING] control image.running_mode=0
+Sep 30 15:34:58 libimp[6249]: [DAYNIGHT] re-asserting running_mode=0 after switch (1 left)
+Sep 30 15:35:06 libimp[6249]: [HAL_ING] control image.running_mode=0
+Sep 30 15:35:07 libimp[6249]: [DAYNIGHT] re-asserting running_mode=0 after switch (0 left)
+Sep 30 15:35:35 libimp[6249]: [DAYNIGHT] day mode reads 2.75x the night level here (17089 vs 6208) - a ratio verdict now needs the night reading below 5449
+Sep 30 15:35:35 libimp[6249]: [DAYNIGHT] switching to night (exposure 17089 > 15000): daynight night [mode=night exp=17089 ref=-1 bar=10000]
+Sep 30 15:35:35 libimp[6249]: [HAL_ING] control image.running_mode=1
+Sep 30 15:35:36 libimp[6249]: [CTRL] set image.running_mode = 1
+Sep 30 15:35:36 libimp[6249]: [CONFIG] persisted 1 setting(s) to /tmp/timps.conf
+Sep 30 15:35:37 libimp[6249]: [DAYNIGHT] ISP confirmed the switch to night
+Sep 30 15:35:43 libimp[6249]: [HAL_ING] control image.running_mode=1
+Sep 30 15:35:44 libimp[6249]: [DAYNIGHT] re-asserting running_mode=1 after switch (1 left)
+Sep 30 15:35:52 libimp[6249]: [HAL_ING] control image.running_mode=1
+Sep 30 15:35:52 libimp[6249]: [DAYNIGHT] re-asserting running_mode=1 after switch (0 left)
+Sep 30 15:36:10 libimp[6249]: [DAYNIGHT] night reference 6580 (probe bar 3290)
+Sep 30 15:39:11 libimp[6249]: [DAYNIGHT] silent probe (trend): illuminator off, reading in 8s (lit level 7454)
+Sep 30 15:39:19 libimp[6249]: [DAYNIGHT] silent probe (trend): r=1.32 - the room supplies the light, but day mode would read ~20519 (2.75x the night level) against night_gain 15000, staying night
+Sep 30 15:39:19 libimp[6249]: [DAYNIGHT] probe: r=1.32 lit=7454 dark=9816 hr=257619 verdict=night mode=night ref=6580 why=trend lit_hr=257619

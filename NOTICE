@@ -23,7 +23,7 @@ has no single project-wide license file yet.  Licensing is per file:
    authors before redistributing them under specific terms.
 
 The repository also stores reverse-engineering notes and dumps of the
-vendor binary (e.g. libimp.so_hlil.txt).  These are documentation of the
+vendor binary (e.g. docs/re/libimp.so_hlil.txt).  These are documentation of the
 vendor ABI and are not compiled into libimp.
 
 Third-party code

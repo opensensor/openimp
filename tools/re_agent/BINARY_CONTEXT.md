@@ -26,7 +26,7 @@ When you run the workflow, it loads all functions from the binary:
 
 ```bash
 python full_review_workflow.py \
-  --project-dir /home/matteius/openimp \
+  --project-dir /home/user/openimp \
   --binary port_9009 \
   --apply-fixes
 ```
@@ -252,7 +252,7 @@ The binary context is automatically used in the full workflow:
 
 ```bash
 python full_review_workflow.py \
-  --project-dir /home/matteius/openimp \
+  --project-dir /home/user/openimp \
   --binary port_9009 \
   --apply-fixes
 ```

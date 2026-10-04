@@ -1,0 +1,9 @@
+== g-plain-nosnap
+stopped (waited 4x100ms)
+pid 14436
+ch0: connects=1 frames=2251 intervals=14 min_per_10s=91 zero_intervals=0 intervals<140=1 [91]
+ch1: connects=1 frames=2251 intervals=14 min_per_10s=91 zero_intervals=0 intervals<140=1 [91]
+snapshots: 
+timpsd %CPU samples: 5.0 7.8 7.6 7.7 8.0 8.6 6.9 8.4 8.1 7.6 6.4 8.3 
+idle samples: 90.0 83.0 80.9 76.8 84.5 82.1 86.5 81.2 83.7 86.2 87.3 81.1 
+ffmpeg error lines main/sub: 0 / 0

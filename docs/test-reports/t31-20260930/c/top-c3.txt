@@ -1,0 +1,12 @@
+CPU:  0.0% usr  0.0% sys  0.0% nic  100% idle  0.0% io  0.0% irq  0.0% sirq
+16030 16027 root     S     7884 10.6   0  0.0 /usr/bin/timpsd -c /tmp/timps.conf
+CPU:  3.1% usr  8.7% sys  0.0% nic 87.2% idle  0.0% io  0.0% irq  0.8% sirq
+16030 16027 root     S     7884 10.6   0  6.8 /usr/bin/timpsd -c /tmp/timps.conf
+CPU: 44.0% usr  9.7% sys  0.0% nic 45.8% idle  0.0% io  0.0% irq  0.4% sirq
+16030 16027 root     S     7884 10.6   0 45.2 /usr/bin/timpsd -c /tmp/timps.conf
+CPU:  2.8% usr  8.2% sys  0.0% nic 87.8% idle  0.0% io  0.0% irq  1.0% sirq
+16030 16027 root     S     7884 10.6   0  6.9 /usr/bin/timpsd -c /tmp/timps.conf
+CPU: 42.8% usr  8.8% sys  0.0% nic 47.2% idle  0.0% io  0.0% irq  1.0% sirq
+16030 16027 root     S     7884 10.6   0 44.6 /usr/bin/timpsd -c /tmp/timps.conf
+CPU:  2.5% usr  6.2% sys  0.0% nic 90.4% idle  0.0% io  0.0% irq  0.6% sirq
+16030 16027 root     S     7884 10.6   0  5.2 /usr/bin/timpsd -c /tmp/timps.conf

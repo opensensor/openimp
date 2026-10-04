@@ -290,7 +290,7 @@ uint32_t T23_HelixScratchLayout(uint32_t mb_width, uint32_t mb_height,
  * 1920x1088: 0x30018 at +0x8000, 0x3004c at +0x38000, 0x30050 at +0xb8000,
  * 0x30054 at +0xd8000 and 0x30058 at +0x158000.  Only 0x28000 bytes of the
  * 0x30054 buffer and nothing of the 0x30058 buffer lie inside it.  On a
- * PC420 (canary-filled scratch, 1080p and 360p, I and P pictures) the VPU
+ * cam-D (canary-filled scratch, 1080p and 360p, I and P pictures) the VPU
  * writes only the 0x3004c buffer, 8 bytes per macroblock; the others hold
  * input tables of features neither encoder enables.  So keep the stock
  * buffer sizes inside its 1 MiB, per macroblock (24, 64, 16 and 20 bytes,

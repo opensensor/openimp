@@ -1,0 +1,6 @@
+[h264 @ 0x5612eb4f0800] number of reference frames (0+2) exceeds max (1; probably corrupt input), discarding one
+[h264 @ 0x5612eb8a8500] number of reference frames (0+2) exceeds max (1; probably corrupt input), discarding one
+[h264 @ 0x5612eb83bd00] number of reference frames (0+2) exceeds max (1; probably corrupt input), discarding one
+[h264 @ 0x5612eb816180] number of reference frames (0+2) exceeds max (1; probably corrupt input), discarding one
+[h264 @ 0x5612eb8d3000] number of reference frames (0+2) exceeds max (1; probably corrupt input), discarding one
+[h264 @ 0x5612eb8ad5c0] number of reference frames (0+2) exceeds max (1; probably corrupt input), discarding one

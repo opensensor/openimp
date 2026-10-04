@@ -1,0 +1,2 @@
+c-ref ch0 frames=4442 decode_err_lines=0 rec_err_lines=0 dur=300.0s fps=14.81 keyframes=75 maxgap=0.269s gaps>0.5s=0
+c-ref ch1 frames=4445 decode_err_lines=1 rec_err_lines=0 dur=300.0s fps=14.81 keyframes=75 maxgap=0.087s gaps>0.5s=0

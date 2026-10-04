@@ -11,7 +11,7 @@ This agent doesn't just analyze - it **actually edits your source files** with A
 ```bash
 cd tools/re_agent
 export OPENAI_API_KEY="your-key"
-python full_review_workflow.py --project-dir /home/matteius/openimp --apply-fixes
+python full_review_workflow.py --project-dir /home/user/openimp --apply-fixes
 ```
 
 ### 2. It Scans Your Project
@@ -137,7 +137,7 @@ The agent uses GPT-4 to:
 FULL PROJECT WORKFLOW - FIX MODE - EDITING FILES
 ================================================================================
 
-Project: /home/matteius/openimp
+Project: /home/user/openimp
 ⚠️  WARNING: This will MODIFY your source files!
    Use 'git diff' to review changes
    Use 'git restore <file>' to undo changes

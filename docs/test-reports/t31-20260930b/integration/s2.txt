@@ -1,0 +1,1 @@
+S2 frames=738 interval median=0.040 p99=0.041 max=0.047 >0.1s=0

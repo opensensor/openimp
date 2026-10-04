@@ -10,7 +10,7 @@ export OPENAI_API_KEY="your-key"
 
 # This will EDIT your source files with AI corrections
 python full_review_workflow.py \
-  --project-dir /home/matteius/openimp \
+  --project-dir /home/user/openimp \
   --binary port_9009 \
   --apply-fixes
 ```
@@ -28,7 +28,7 @@ python full_review_workflow.py \
 
 ```bash
 # Review mode - no edits, just analysis
-python full_review_workflow.py --project-dir /home/matteius/openimp
+python full_review_workflow.py --project-dir /home/user/openimp
 ```
 
 ## Setup (One Time)
@@ -46,7 +46,7 @@ export OPENAI_API_KEY="your-openai-key"
 ```bash
 # Let AI fix all your code
 python full_review_workflow.py \
-  --project-dir /home/matteius/openimp \
+  --project-dir /home/user/openimp \
   --apply-fixes
 ```
 
@@ -63,7 +63,7 @@ python full_review_workflow.py \
 
 ```bash
 # Just analyze, don't edit
-python full_review_workflow.py --project-dir /home/matteius/openimp
+python full_review_workflow.py --project-dir /home/user/openimp
 ```
 
 ### 3. Review One File
@@ -127,7 +127,7 @@ full_review_output/
 # 2. Run the agent to fix your code
 cd tools/re_agent
 python full_review_workflow.py \
-  --project-dir /home/matteius/openimp \
+  --project-dir /home/user/openimp \
   --apply-fixes
 
 # 3. Review what changed
@@ -192,7 +192,7 @@ value = *(uint32_t*)(ptr + 0x10);  // UNSAFE!
 
 ```bash
 # Full project review
-python full_review_workflow.py --project-dir /home/matteius/openimp
+python full_review_workflow.py --project-dir /home/user/openimp
 
 # Specific files
 python full_review_workflow.py --logs "logs/*.log" --sources "src/imp/*.c"

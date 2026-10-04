@@ -15,7 +15,7 @@ cd tools/re_agent
 export OPENAI_API_KEY="your-key-here"
 
 # Process the entire OpenIMP project
-python full_review_workflow.py --project-dir /home/matteius/openimp
+python full_review_workflow.py --project-dir /home/user/openimp
 ```
 
 ### What It Does
@@ -207,7 +207,7 @@ int32_t IMP_Encoder_CreateGroup(int32_t grpNum) {
 cd tools/re_agent
 
 # Process everything
-python full_review_workflow.py --project-dir /home/matteius/openimp
+python full_review_workflow.py --project-dir /home/user/openimp
 
 # Review findings
 less full_review_output/review_report.txt

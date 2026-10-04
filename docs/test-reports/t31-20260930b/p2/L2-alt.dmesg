@@ -1,0 +1,4 @@
+[23018.610894] libimp/ISP: tuning gain/contrast update gain=22270 contrast=128 packed=0x0056fe80 count=2
+[23019.611096] libimp/ISP: tuning gain/contrast update gain=20951 contrast=128 packed=0x0051d780 count=3
+[23020.612399] libimp/ISP: tuning gain/contrast update gain=22806 contrast=128 packed=0x00591680 count=4
+[23121.627912] libimp/ISP: tuning gain/contrast update gain=11599 contrast=128 packed=0x002d4f80 count=100

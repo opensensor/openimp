@@ -1,0 +1,11 @@
+stopped (waited 0x100ms)
+pid 2117
+OPENIMP_T31_COMPANION_STAGE=0
+ch0: connects=1 frames=4501 intervals=29 min_per_10s=90 zero_intervals=0 intervals<140=1 [90]
+ch1: connects=1 frames=4501 intervals=29 min_per_10s=91 zero_intervals=0 intervals<140=1 [91]
+snapshots:      27 200 
+snap ok avg 280664 B, avg 0.444 s, max 0.561 s
+timpsd %CPU samples: 0.0 40.0 11.9 33.5 20.0 25.9 
+idle samples: 75.0 48.8 72.1 56.0 72.8 61.2 
+ffmpeg error lines main/sub: 0 / 0
+S2 frames=448 interval median=0.067 p99=0.101 max=0.138 >0.1s=15

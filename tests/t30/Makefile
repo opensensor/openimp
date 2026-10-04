@@ -51,7 +51,7 @@ helix_encoder_test_t21: $(HELIX_T21_SOURCES) $(ROOT)/src/t30/t30_annexb.h $(ROOT
 		-o $@ $(HELIX_T21_SOURCES) -lm
 
 # T21 reserved-memory layout: OpenIMP's arena, the real encoder and shared
-# bitstream buffer through timps' idle/re-enable cycles (PC420 numbers).
+# bitstream buffer through timps' idle/re-enable cycles (cam-D numbers).
 T21_RMEM_SOURCES := t21_rmem_layout_test.c \
 	$(filter-out helix_encoder_test.c,$(HELIX_T21_SOURCES))
 
@@ -115,7 +115,8 @@ helix_jpeg_test_t23: $(HJPEG_DEPS)
 # addresses: no PIE.
 IVS_SRC := $(ROOT)/src/t31
 IVS_SOURCES := $(ROOT)/tests/t23/ivs_framework_test.c \
-	$(IVS_SRC)/openimp_t31_ivs.c $(IVS_SRC)/openimp_t31_ivs_move.c
+	$(IVS_SRC)/openimp_t31_ivs.c $(IVS_SRC)/openimp_t31_ivs_move.c \
+	$(IVS_SRC)/openimp_ivs_move_v2.c
 IVS_DEPS := $(IVS_SOURCES) $(IVS_SRC)/openimp_t31_ivs.h \
 	$(IVS_SRC)/openimp_t31_ivs_abi.h $(IVS_SRC)/openimp_t31_ivs_move.h
 

@@ -58,9 +58,9 @@ Always start from a fresh boot and preload stock modules before the smoke run.
 
 ### Device
 
-- IP: `192.168.50.215`
+- IP: `192.0.2.15`
 - User: `root`
-- Password: `Ami23plop`
+- Password: `<password>`
 
 ### Stock modules to preload
 
@@ -76,14 +76,14 @@ Always start from a fresh boot and preload stock modules before the smoke run.
 ### Stage libraries to device
 
 ```bash
-cat lib/libimp.so | sshpass -p Ami23plop ssh -F /dev/null -o StrictHostKeyChecking=no root@192.168.50.215 'cat >/opt/libimp.so'
-cat lib/libsysutils.so | sshpass -p Ami23plop ssh -F /dev/null -o StrictHostKeyChecking=no root@192.168.50.215 'cat >/opt/libsysutils.so'
+cat lib/libimp.so | sshpass -p <password> ssh -F /dev/null -o StrictHostKeyChecking=no root@192.0.2.15 'cat >/opt/libimp.so'
+cat lib/libsysutils.so | sshpass -p <password> ssh -F /dev/null -o StrictHostKeyChecking=no root@192.0.2.15 'cat >/opt/libsysutils.so'
 ```
 
 ### Start smoke
 
 ```bash
-sshpass -p Ami23plop ssh -F /dev/null -o StrictHostKeyChecking=no root@192.168.50.215 \
+sshpass -p <password> ssh -F /dev/null -o StrictHostKeyChecking=no root@192.0.2.15 \
   "insmod /lib/modules/3.10.14__isvp_swan_1.0__/ingenic/tx-isp-t31.ko 2>/dev/null || true; \
    insmod /lib/modules/3.10.14__isvp_swan_1.0__/ingenic/sensor_gc2053_t31.ko 2>/dev/null || true; \
    rm -f /tmp/openimp-smoke.out; \
@@ -94,7 +94,7 @@ sshpass -p Ami23plop ssh -F /dev/null -o StrictHostKeyChecking=no root@192.168.5
 ### Collect logs
 
 ```bash
-sshpass -p Ami23plop ssh -F /dev/null -o StrictHostKeyChecking=no root@192.168.50.215 \
+sshpass -p <password> ssh -F /dev/null -o StrictHostKeyChecking=no root@192.0.2.15 \
   "sleep 8; \
    echo '===DMESG==='; dmesg 2>/dev/null; \
    echo '===LOGREAD==='; logread 2>/dev/null; \
@@ -106,7 +106,7 @@ sshpass -p Ami23plop ssh -F /dev/null -o StrictHostKeyChecking=no root@192.168.5
 ### End every experiment with a reboot
 
 ```bash
-sshpass -p Ami23plop ssh -F /dev/null -o StrictHostKeyChecking=no root@192.168.50.215 reboot
+sshpass -p <password> ssh -F /dev/null -o StrictHostKeyChecking=no root@192.0.2.15 reboot
 ```
 
 ## Source-of-truth constraints
@@ -504,23 +504,23 @@ Per user direction, the historical commit:
 
 has been materialized as a detached sibling worktree at:
 
-- `/home/matteius/openimp-bc7c4cb-avpu-rtsp`
+- `/home/user/openimp-bc7c4cb-avpu-rtsp`
 
 This is important because that revision is still on the older flat AVPU path.
 It does **not** use the later `src/alcodec/` scheduler/core-manager stack now
 under active bring-up. The first comparison targets for the next session should
 therefore be:
 
-1. `/home/matteius/openimp-bc7c4cb-avpu-rtsp/src/codec.c`
+1. `/home/user/openimp-bc7c4cb-avpu-rtsp/src/codec.c`
    versus current `src/codec.c`
-2. `/home/matteius/openimp-bc7c4cb-avpu-rtsp/src/imp_encoder.c`
+2. `/home/user/openimp-bc7c4cb-avpu-rtsp/src/imp_encoder.c`
    versus current `src/imp_encoder.c`
-3. `/home/matteius/openimp-bc7c4cb-avpu-rtsp/src/al_avpu.c`
+3. `/home/user/openimp-bc7c4cb-avpu-rtsp/src/al_avpu.c`
    and `src/al_avpu.h`
 4. the historical notes in:
-   - `/home/matteius/openimp-bc7c4cb-avpu-rtsp/thingino-streamer.md`
-   - `/home/matteius/openimp-bc7c4cb-avpu-rtsp/ALIGNMENT_FIXES.md`
-   - `/home/matteius/openimp-bc7c4cb-avpu-rtsp/STREAM_BUFFER_SIZE_FIX.md`
+   - `/home/user/openimp-bc7c4cb-avpu-rtsp/thingino-streamer.md`
+   - `/home/user/openimp-bc7c4cb-avpu-rtsp/ALIGNMENT_FIXES.md`
+   - `/home/user/openimp-bc7c4cb-avpu-rtsp/STREAM_BUFFER_SIZE_FIX.md`
 
 Useful current observations about that legacy tree:
 
@@ -535,9 +535,9 @@ Useful current observations about that legacy tree:
 ### Toolchain path restored
 
 - `build-for-device.sh` now auto-detects the real T31 toolchain path instead of
-  hardcoding the stale `...-192.168.50.215/host/bin` suffix.
+  hardcoding the stale `...-192.0.2.15/host/bin` suffix.
 - The currently valid local path is:
-  - `/home/matteius/thingino-firmware-opensensor-master/output/master/wyze_cam3_t31x_gc2053_rtl8189ftv-3.10.14-uclibc/host/bin/`
+  - `/home/user/thingino-firmware-opensensor-master/output/master/wyze_cam3_t31x_gc2053_rtl8189ftv-3.10.14-uclibc/host/bin/`
 
 ### Legacy-side comparison result that directly affected the active fix
 
@@ -641,7 +641,7 @@ Focus on why the stream buffer remains untouched even with `w1e` restored:
 Loaded MCP server:
 
 - `port_9009`
-- binary: `/home/matteius/output/wyze_cam3_t31x_gc2053_rtl8189ftv/target/usr/lib/libimp.so`
+- binary: `/home/user/output/wyze_cam3_t31x_gc2053_rtl8189ftv/target/usr/lib/libimp.so`
 
 Useful decompiler observations:
 
@@ -698,8 +698,8 @@ Meaning:
 After the failed inline-drain smoke, the camera responds to ping but SSH stays
 refused:
 
-- `ping 192.168.50.215` succeeds
-- `ssh root@192.168.50.215` returns `Connection refused`
+- `ping 192.0.2.15` succeeds
+- `ssh root@192.0.2.15` returns `Connection refused`
 
 Likely next action:
 
@@ -730,7 +730,7 @@ Signals:
   - `kex_exchange_identification: read: Connection reset by peer`
   - then persistent `Connection refused`
 - during the refusal window:
-  - `ping 192.168.50.215` still worked
+  - `ping 192.0.2.15` still worked
   - ports `22`, `322`, `8554`, and `8443` all refused
 
 Meaning:

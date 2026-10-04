@@ -1,0 +1,204 @@
+2026-09-30 14:56:50 start p1s1 env: 
+14:56:50.662 [INF] CONFIG       loaded 61 settings from /tmp/timps.conf
+14:56:50.663 [INF] CONFIG       sensor: sc4336p i2c=0x30 1920x1080 @15fps
+14:56:50.664 [INF] MAIN         timps v1.9.28-3-g311b0c4 starting (backend=ingenic)
+14:56:50.665 [INF] MAIN         /control token published to /run/timps.token
+14:56:50.725 [INF] HAL_ING      image tuning applied (bri=128 con=128 sat=128 sharp=128)
+14:56:50.728 [INF] HAL_ING      sensor fps: requested 15, driver holds 15/1, set rc=0
+14:56:50.728 [INF] HAL_ING      ISP up, sensor=sc4336p fps=15
+14:56:50.729 [INF] HAL_ING      chn0: fs 1920x1080 (sensor 1920x1080, scale=0) nrVBs=2
+[Fifo] Init: size=4, max_elements=5
+[Fifo] Init: size=7, max_elements=8
+[Fifo] Init: size=4, max_elements=5
+[Fifo] Init: size=4, max_elements=5
+[Fifo] Init: size=7, max_elements=8
+[Fifo] Init: size=4, max_elements=5
+14:56:50.730 [INF] HAL_ING      JPEG-on-video0: encoder chn 3 in group 0 (1920x1080 q75)
+14:56:50.731 [INF] OSD          OSD TrueType font /usr/share/fonts/default.ttf
+14:56:50.746 [INF] OSD          OSD stream 0: 4 overlay(s), 0 privacy mask(s), group 0 (1920x1080)
+14:56:50.747 [INF] HAL_ING      chn1: fs 640x360 (sensor 1920x1080, scale=1) nrVBs=2
+[Fifo] Init: size=4, max_elements=5
+[Fifo] Init: size=7, max_elements=8
+[Fifo] Init: size=4, max_elements=5
+[Fifo] Init: size=4, max_elements=5
+[Fifo] Init: size=7, max_elements=8
+[Fifo] Init: size=4, max_elements=5
+14:56:50.748 [INF] HAL_ING      JPEG-on-video1: encoder chn 4 in group 1 (640x360 q75)
+14:56:50.753 [INF] OSD          OSD stream 1: 4 overlay(s), 0 privacy mask(s), group 1 (640x360)
+[KernelIF] Opened /dev/framechan0 (fd=16)
+[KernelIF] SET_FMT before ioctl:
+[KernelIF]   width=1920 height=1080 pixelformat=0x3231564e
+[KernelIF]   bytesperline=0 sizeimage=0 colorspace=8
+[KernelIF]   attr enable=0 attr=0x0 pic=0x0 fps=1/0
+[KernelIF]   crop_enable=1 crop=1920x1080+0+0
+[KernelIF]   scaler_enable=0 scaler_outwidth=1920 scaler_outheight=1080
+[KernelIF] SET_FMT after ioctl:
+[KernelIF]   width=1920 height=1080 sizeimage=3133440 bytesperline=2880
+[KernelIF]   crop=0 0x0+0+0 scaler=1 1920x1080 rate=0/0x1
+[KernelIF] Set format: 1920x1080 fmt=0xa (fourcc=0x3231564e) sizeimage=3133440 bytesperline=2880 colorspace=8
+[VBM] CreatePool: allocating pool_size=2512 (frame_count=2 * 0x428 + 0x180)
+[VBM] CreatePool: chn=0, 1920x1080 fmt=0xa fourcc=0x3231564e, fps=1/1, 2 frames, size=3133440 (req=3133440 calc=3133440 aligned=3133440)
+[VBM] Frame 0: phys=0x55f1000 virt=0x743b9000 fourcc=0x3231564e fps=1/1
+[VBM] Frame 1: phys=0x58ee000 virt=0x746b6000 fourcc=0x3231564e fps=1/1
+[VBM] CreatePool: chn=0 created successfully
+[KernelIF] Set frame depth: 2
+[VBM] FillPool: chn=0, filling 2 frames
+[VBM] FillPool: seeded 2/2 frames via release callback
+FSDBG thread_entry
+FSDBG ch=0 step=post_prctl fd=16 running=1
+[KernelIF] Stream started
+14:56:50.786 [INF] HAL_ING      framesource 0 enabled
+14:56:51.255 [INF] HAL_ING      faac AAC encoder: 16000Hz ch=1 frame=1024 max=8192
+14:56:51.255 [INF] HAL_ING      audio.codec2: second stream PCMU 8000Hz (16k->8k) (WebRTC)
+14:56:51.256 [INF] HAL_ING      audio in: 16000Hz AAC ch=1 vol=80 gain=25 numPerFrm=640
+[KernelIF] Stream stopped
+[VBM] FlushFrame: chn=0
+[VBM] FlushFrame: flushed all frames
+[KernelIF] Closed device (fd=16)
+[VBM] DestroyPool: chn=0
+[VBM] DestroyPool: chn=0 destroyed
+14:56:51.323 [INF] HAL_ING      framesource 0 disabled (idle)
+14:56:51.323 [INF] MAIN         audio backchannel enabled (codec=0 rate=16000, native IMP_AO)
+14:56:51.324 [INF] TLS          TLS server context ready (cert /etc/ssl/certs/timps.crt)
+14:56:51.325 [INF] HTTP         HTTP and HTTPS both served on port 8880 (http.https=1, scheme detected per connection)
+14:56:51.326 [INF] WEBRTC       WHEP endpoint /webrtc/whep ready (ICE-lite + DTLS-SRTP, H264 video0); fingerprint xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:4D:C9
+14:56:51.326 [INF] WEBRTC       media udp 25000-25003, one port per session (4 slots)
+14:56:51.326 [INF] REC          recorder ready (mode=motion dir=/mnt/mmcblk0p1)
+14:56:51.327 [INF] TL           timelapse ready (idle, dir=/mnt/mmcblk0p1 interval=60s)
+14:56:51.327 [INF] MAIN         running. rtsp://<ip>:554/ch0  https://<ip>:8880/
+14:56:51.328 [INF] DAYNIGHT     detection thread started (mode=auto, day<10000 night>15000, probe: gap 600s jump 50% confirm 15s settle 8s, heartbeat 14400s/43200s, calendar=none, boot_probe=1, interval 2000ms, dwell 5s, isp=/proc/jz/isp/isp-m0, cmd=daynight)
+14:56:51.329 [INF] HTTP         listening on port 8880
+14:56:51.330 [INF] RTSP         listening on port 554
+14:56:51.333 [INF] DAYNIGHT     auto day/night enabled
+14:56:51.333 [INF] spk          play-FIFO thread started (/run/timps/audio_out)
+[KernelIF] Opened /dev/framechan1 (fd=25)
+[KernelIF] SET_FMT before ioctl:
+[KernelIF]   width=640 height=360 pixelformat=0x3231564e
+[KernelIF]   bytesperline=0 sizeimage=0 colorspace=8
+[KernelIF]   attr enable=0 attr=0x0 pic=0x0 fps=1/0
+[KernelIF]   crop_enable=0 crop=1920x1080+0+0
+[KernelIF]   scaler_enable=1 scaler_outwidth=640 scaler_outheight=360
+[KernelIF] SET_FMT after ioctl:
+[KernelIF]   width=640 height=360 sizeimage=353280 bytesperline=960
+[KernelIF]   crop=0 0x0+0+0 scaler=1 640x360 rate=0/0x1
+[KernelIF] Set format: 640x360 fmt=0xa (fourcc=0x3231564e) sizeimage=353280 bytesperline=960 colorspace=8
+[VBM] CreatePool: allocating pool_size=2512 (frame_count=2 * 0x428 + 0x180)
+[VBM] CreatePool: chn=1, 640x360 fmt=0xa fourcc=0x3231564e, fps=1/1, 2 frames, size=353280 (req=353280 calc=353280 aligned=353280)
+[VBM] Frame 0: phys=0x55f1000 virt=0x743b9000 fourcc=0x3231564e fps=1/1
+[VBM] Frame 1: phys=0x5647400 virt=0x7440f400 fourcc=0x3231564e fps=1/1
+[VBM] CreatePool: chn=1 created successfully
+[KernelIF] Set frame depth: 2
+[VBM] FillPool: chn=1, filling 2 frames
+[VBM] FillPool: seeded 2/2 frames via release callback
+FSDBG thread_entry
+FSDBG ch=1 step=post_prctl fd=25 running=1
+[KernelIF] Stream started
+14:56:52.893 [INF] HAL_ING      framesource 1 enabled
+14:56:52.893 [INF] HAL_ING      video chn1 streaming
+[KernelIF] Opened /dev/framechan0 (fd=26)
+[KernelIF] SET_FMT before ioctl:
+[KernelIF]   width=1920 height=1080 pixelformat=0x3231564e
+[KernelIF]   bytesperline=0 sizeimage=0 colorspace=8
+[KernelIF]   attr enable=0 attr=0x0 pic=0x0 fps=1/0
+[KernelIF]   crop_enable=1 crop=1920x1080+0+0
+[KernelIF]   scaler_enable=0 scaler_outwidth=1920 scaler_outheight=1080
+[KernelIF] SET_FMT after ioctl:
+[KernelIF]   width=1920 height=1080 sizeimage=3133440 bytesperline=2880
+[KernelIF]   crop=0 0x0+0+0 scaler=1 1920x1080 rate=0/0x1
+[KernelIF] Set format: 1920x1080 fmt=0xa (fourcc=0x3231564e) sizeimage=3133440 bytesperline=2880 colorspace=8
+[VBM] CreatePool: allocating pool_size=2512 (frame_count=2 * 0x428 + 0x180)
+[VBM] CreatePool: chn=0, 1920x1080 fmt=0xa fourcc=0x3231564e, fps=1/1, 2 frames, size=3133440 (req=3133440 calc=3133440 aligned=3133440)
+[VBM] Frame 0: phys=0x569e000 virt=0x74466000 fourcc=0x3231564e fps=1/1
+[VBM] Frame 1: phys=0x599b000 virt=0x74763000 fourcc=0x3231564e fps=1/1
+[VBM] CreatePool: chn=0 created successfully
+[KernelIF] Set frame depth: 2
+[VBM] FillPool: chn=0, filling 2 frames
+[VBM] FillPool: seeded 2/2 frames via release callback
+FSDBG thread_entry
+FSDBG ch=0 step=post_prctl fd=26 running=1
+[KernelIF] Stream started
+14:56:52.926 [INF] HAL_ING      framesource 0 enabled
+14:56:52.926 [INF] HAL_ING      video chn0 streaming
+[DevicePool] Init: device pool initialized
+[DevicePool] Open: opened '/dev/avpu' (fd=27, slot=0)
+[Codec] AVPU: T31 companion stage enabled
+14:56:52.963 [INF] HAL_ING      chn1: first encoded frame packCount=3 aulen=45191 key=1
+[DevicePool] Open: '/dev/avpu' already open (fd=27, refcount=2)
+14:56:53.052 [INF] HAL_ING      chn0: first encoded frame packCount=3 aulen=142879 key=1
+14:56:53.053 [INF] CLIENT       + rtsp/tcp 192.0.2.x:42530 chn=1 agent="Lavf62.3.100"
+14:56:53.055 [INF] RTSP         PLAY session=bb0132b4 vchn=1 TCP v=1 a=1
+14:56:53.167 [INF] CLIENT       + rtsp/tcp 192.0.2.x:42538 chn=0 agent="Lavf62.3.100"
+14:56:53.168 [INF] RTSP         PLAY session=fe8892e7 vchn=0 TCP v=1 a=1
+14:56:57.335 [INF] DAYNIGHT     boot: measuring before deciding - persisted running_mode=0 is a hint, not evidence (exposure 4910 in whatever mode we came up in); switching to the day pipeline and reading it in 8s
+14:56:57.335 [DBG] DAYNIGHT     probe (boot measure): exposure 4910 vs night reference -1, verdict in 8s
+14:56:57.335 [INF] DAYNIGHT     switching to day (boot measure): daynight day [mode=day exp=4910 ref=-1 bar=10000]
+14:56:57.903 [INF] HAL_ING      control image.running_mode=0
+14:56:59.726 [DBG] DAYNIGHT     ISP confirmed the switch to day
+14:57:05.728 [INF] DAYNIGHT     boot: measured day - exposure 4917 (< 10000). The optics are already there, so the one switch_cmd this boot owed the board has been spent
+14:57:12.604 [INF] HAL_ING      audio resume: flushed 512 stale AI frame(s)
+14:57:12.805 [INF] HAL_ING      AAC encoder producing (49 bytes/frame)
+15:19:23.755 [INF] CLIENT       + rtsp/udp 192.0.2.x:37800 chn=0 agent="Lavf62.3.100"
+15:19:23.756 [INF] RTSP         PLAY session=918ce1d0 vchn=0 UDP v=1 a=1
+15:19:28.932 [INF] CLIENT       - rtsp/udp 192.0.2.x:37800 after 5s, 989452 bytes
+15:19:28.933 [INF] RTSP         client disconnect session=918ce1d0
+15:20:13.676 [INF] HTTP         sse client streaming (1/8)
+15:20:37.700 [INF] HTTP         sse client disconnected (0 left)
+15:21:45.998 [INF] DAYNIGHT     switching to night (exposure 17715 > 15000): daynight night [mode=night exp=17715 ref=-1 bar=10000]
+15:21:47.296 [INF] HAL_ING      control image.running_mode=1
+15:21:47.796 [INF] CTRL         set image.running_mode = 1
+15:21:47.799 [INF] CONFIG       persisted 1 setting(s) to /tmp/timps.conf
+15:21:49.055 [DBG] DAYNIGHT     ISP confirmed the switch to night
+15:21:55.056 [INF] HAL_ING      control image.running_mode=1
+15:21:55.556 [DBG] DAYNIGHT     re-asserting running_mode=1 after switch (1 left)
+15:22:03.558 [INF] HAL_ING      control image.running_mode=1
+15:22:04.058 [DBG] DAYNIGHT     re-asserting running_mode=1 after switch (0 left)
+15:22:26.062 [INF] DAYNIGHT     night reference 4223 (probe bar 2112)
+15:23:50.157 [DBG] DAYNIGHT     silent probe (trend): illuminator off, reading in 8s (lit level 3718)
+15:23:58.240 [DBG] DAYNIGHT     silent probe (trend): r=1.20 with 257619 units of AE reserve - the room supplies the light, not the illuminator
+15:23:58.240 [DBG] DAYNIGHT     probe: r=1.20 lit=3718 dark=4451 hr=257619 verdict=day mode=night ref=4223 why=trend lit_hr=257619
+15:23:58.240 [INF] DAYNIGHT     switching to day (IR ratio 1.20): daynight day [mode=day exp=-1 ref=4223 bar=10000]
+15:23:59.119 [INF] HAL_ING      control image.running_mode=0
+15:23:59.619 [INF] CTRL         set image.running_mode = 0
+15:23:59.623 [INF] CONFIG       persisted 1 setting(s) to /tmp/timps.conf
+15:24:00.831 [DBG] DAYNIGHT     ISP confirmed the switch to day
+15:24:06.832 [INF] HAL_ING      control image.running_mode=0
+15:24:07.332 [DBG] DAYNIGHT     re-asserting running_mode=0 after switch (1 left)
+15:24:15.334 [INF] HAL_ING      control image.running_mode=0
+15:24:15.834 [DBG] DAYNIGHT     re-asserting running_mode=0 after switch (0 left)
+15:31:31.918 [DBG] DAYNIGHT     night level 3718 from 453759ms ago is too stale to cost this dusk's 17088 against - filter_cost stays unmeasured, the veto stays off
+15:31:31.918 [INF] DAYNIGHT     switching to night (exposure 17088 > 15000): daynight night [mode=night exp=17088 ref=-1 bar=10000]
+15:31:32.591 [INF] HAL_ING      control image.running_mode=1
+15:31:33.091 [INF] CTRL         set image.running_mode = 1
+15:31:33.093 [INF] CONFIG       persisted 1 setting(s) to /tmp/timps.conf
+15:31:34.490 [DBG] DAYNIGHT     ISP confirmed the switch to night
+15:31:40.491 [INF] HAL_ING      control image.running_mode=1
+15:31:40.991 [DBG] DAYNIGHT     re-asserting running_mode=1 after switch (1 left)
+15:31:48.993 [INF] HAL_ING      control image.running_mode=1
+15:31:49.493 [DBG] DAYNIGHT     re-asserting running_mode=1 after switch (0 left)
+15:32:07.497 [INF] DAYNIGHT     night reference 6445 (probe bar 3223)
+15:34:41.608 [DBG] DAYNIGHT     silent probe (trend): illuminator off, reading in 8s (lit level 6208)
+15:34:49.691 [DBG] DAYNIGHT     silent probe (trend): r=1.32 with 257619 units of AE reserve - the room supplies the light, not the illuminator
+15:34:49.691 [DBG] DAYNIGHT     probe: r=1.32 lit=6208 dark=8175 hr=257619 verdict=day mode=night ref=6445 why=trend lit_hr=257619
+15:34:49.691 [INF] DAYNIGHT     switching to day (IR ratio 1.32): daynight day [mode=day exp=-1 ref=6445 bar=10000]
+15:34:50.535 [INF] HAL_ING      control image.running_mode=0
+15:34:51.037 [INF] CTRL         set image.running_mode = 0
+15:34:51.038 [INF] CONFIG       persisted 1 setting(s) to /tmp/timps.conf
+15:34:52.282 [DBG] DAYNIGHT     ISP confirmed the switch to day
+15:34:58.283 [INF] HAL_ING      control image.running_mode=0
+15:34:58.783 [DBG] DAYNIGHT     re-asserting running_mode=0 after switch (1 left)
+15:35:06.784 [INF] HAL_ING      control image.running_mode=0
+15:35:07.285 [DBG] DAYNIGHT     re-asserting running_mode=0 after switch (0 left)
+15:35:35.290 [INF] DAYNIGHT     day mode reads 2.75x the night level here (17089 vs 6208) - a ratio verdict now needs the night reading below 5449
+15:35:35.291 [INF] DAYNIGHT     switching to night (exposure 17089 > 15000): daynight night [mode=night exp=17089 ref=-1 bar=10000]
+15:35:35.874 [INF] HAL_ING      control image.running_mode=1
+15:35:36.375 [INF] CTRL         set image.running_mode = 1
+15:35:36.377 [INF] CONFIG       persisted 1 setting(s) to /tmp/timps.conf
+15:35:37.796 [DBG] DAYNIGHT     ISP confirmed the switch to night
+15:35:43.797 [INF] HAL_ING      control image.running_mode=1
+15:35:44.297 [DBG] DAYNIGHT     re-asserting running_mode=1 after switch (1 left)
+15:35:52.299 [INF] HAL_ING      control image.running_mode=1
+15:35:52.799 [DBG] DAYNIGHT     re-asserting running_mode=1 after switch (0 left)
+15:36:10.803 [INF] DAYNIGHT     night reference 6580 (probe bar 3290)
+15:39:11.125 [DBG] DAYNIGHT     silent probe (trend): illuminator off, reading in 8s (lit level 7454)
+15:39:19.207 [DBG] DAYNIGHT     silent probe (trend): r=1.32 - the room supplies the light, but day mode would read ~20519 (2.75x the night level) against night_gain 15000, staying night
+15:39:19.208 [DBG] DAYNIGHT     probe: r=1.32 lit=7454 dark=9816 hr=257619 verdict=night mode=night ref=6580 why=trend lit_hr=257619

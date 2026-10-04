@@ -1,0 +1,63 @@
+== 12:30:30 after stopping e-hw run (OPENIMP_T31_HW_JPEG=1, 3 min, 1 snapshot/s)
+18884 timpsd Z utime=3 stime=9
+21211 FS(0)-tick R utime=0 stime=5202
+Mem: 40548K used, 33528K free, 3596K shrd, 4644K buff, 16632K cached
+CPU:  0.0% usr  100% sys  0.0% nic  0.0% idle  0.0% io  0.0% irq  0.0% sirq
+Load average: 2.34 2.05 1.62 2/74 22135
+  PID  PPID USER     STAT   RSS %RSS CPU %CPU COMMAND
+22134 22126 root     R      452  0.6   0  9.0 top -b -n1
+[ 2228.253336] Call Trace:[<8001f388>] 0x8001f388
+[ 2228.253350] [<8001f388>] 0x8001f388
+[ 2228.253362] [<c0233070>] 0xc0233070
+[ 2228.253370] [<c023f2e4>] 0xc023f2e4
+[ 2228.253379] [<800d7bd0>] 0x800d7bd0
+[ 2228.253386] [<800d89b4>] 0x800d89b4
+[ 2228.253393] [<80021ffc>] 0x80021ffc
+[ 2228.646020] libimp/ISP: EnsureLinkStreamOn already-started bypass_done=0
+[ 2232.273357] Streaming off, will not wait for buffers,chan index 0
+[ 2232.273377] CPU: 0 PID: 21144 Comm: FS(0)-tick Tainted: G           O 3.10.14__isvp_swan_1.0__ #2
+[ 2232.273384] Stack : 00000000 00000000 80453142 00000055 00000000 00000000 00000000 00000000
+[ 2232.273384] 	  00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+[ 2232.273384] 	  00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+[ 2232.273384] 	  00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+[ 2232.273384] 	  00000000 00000000 00000000 00000000 00000000 00000000 00000000 8080fd70
+[ 2232.273384] 	  ...
+[ 2232.273459] Call Trace:[<8001f388>] 0x8001f388
+[ 2232.273473] [<8001f388>] 0x8001f388
+[ 2232.273485] [<c0233070>] 0xc0233070
+[ 2232.273494] [<c023f2e4>] 0xc023f2e4
+[ 2232.273503] [<800d7bd0>] 0x800d7bd0
+[ 2232.273510] [<800d89b4>] 0x800d89b4
+[ 2232.273517] [<80021ffc>] 0x80021ffc
+[ 2232.807010] libimp/ISP: EnsureLinkStreamOn already-started bypass_done=0
+[ 2236.413482] Streaming off, will not wait for buffers,chan index 0
+[ 2236.413503] CPU: 0 PID: 21189 Comm: FS(0)-tick Tainted: G           O 3.10.14__isvp_swan_1.0__ #2
+[ 2236.413510] Stack : 00000000 00000000 80453142 00000055 00000000 00000000 00000000 00000000
+[ 2236.413510] 	  00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+[ 2236.413510] 	  00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+[ 2236.413510] 	  00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+[ 2236.413510] 	  00000000 00000000 00000000 00000000 00000000 00000000 00000000 8080fd70
+[ 2236.413510] 	  ...
+[ 2236.413585] Call Trace:[<8001f388>] 0x8001f388
+[ 2236.413599] [<8001f388>] 0x8001f388
+[ 2236.413611] [<c0233070>] 0xc0233070
+[ 2236.413619] [<c023f2e4>] 0xc023f2e4
+[ 2236.413628] [<800d7bd0>] 0x800d7bd0
+[ 2236.413635] [<800d89b4>] 0x800d89b4
+[ 2236.413642] [<80021ffc>] 0x80021ffc
+[ 2236.769214] libimp/ISP: EnsureLinkStreamOn already-started bypass_done=0
+Sep 30 12:29:22 libimp[18884]: [Codec] HWJPEG: 1920x1080 q75 -> 294796 bytes [#900]
+Sep 30 12:29:24 libimp[18884]: [HAL_ING] framesource 0 disabled (idle)
+Sep 30 12:29:24 libimp[18884]: [HAL_ING] video chn0 idle
+Sep 30 12:29:24 libimp[18884]: [HAL_ING] framesource 0 enabled
+Sep 30 12:29:25 libimp[18884]: [HAL_ING] jpeg chn3: PollingStream idle (miss#1) - encoder emits no frames
+Sep 30 12:29:26 libimp[18884]: [HAL_ING] video chn0 streaming
+Sep 30 12:29:28 libimp[18884]: [HAL_ING] framesource 0 disabled (idle)
+Sep 30 12:29:28 libimp[18884]: [HAL_ING] video chn0 idle
+Sep 30 12:29:28 libimp[18884]: [HAL_ING] framesource 0 enabled
+Sep 30 12:29:29 libimp[18884]: [HAL_ING] jpeg chn3: PollingStream idle (miss#1) - encoder emits no frames
+Sep 30 12:29:30 libimp[18884]: [HAL_ING] video chn0 streaming
+Sep 30 12:29:31 libimp[18884]: [MAIN] shutting down
+Sep 30 12:29:31 libimp[18884]: [DAYNIGHT] detection thread stopped
+Sep 30 12:29:31 libimp[18884]: [RTSP] all client threads gone after 0 ms
+Sep 30 12:29:31 libimp[18884]: [HTTP] all connection threads gone after 10 ms
