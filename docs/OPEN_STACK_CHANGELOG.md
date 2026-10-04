@@ -3,7 +3,7 @@
 Everything changed, extended or fixed in OpenIMP, open-tx-isp, timps and the thingino
 integration since the test campaign started on 2026-09-30. Kept up to date during the campaign.
 
-Last update: 2026-10-04 11:00.
+Last update: 2026-10-04 11:40.
 
 Cameras are anonymised: cam-A (T31), cam-B (T23), cam-C (T20), cam-D (T21), cam-E (T10), cam-F (T41).
 
@@ -87,6 +87,19 @@ Goal: identical image behaviour, but cleaner unload/reload, less memory and chec
 OpenIMP: T20 green flicker in the bottom rows fixed by filling the encoder padding rows (`claude/t20-bottom-chroma`; 0 green pixels in 30 frames). Faster IVS (`claude/ivs-opt`; T20 timps CPU 4.1 % → 2.7 % with motion on).
 
 Aggregates: `claude/open-tx-isp-all-4` and `claude/openimp-all-4` (pushed); 58 merged single branches removed. `claude/open-tx-isp-all-5` adds t21-robust and t31-robust-2 (T31: sensor flip with shvflip=1, unload leaks, lazy WDR buffers; MemFree drift per reload 460 → 45 KB); all four cameras flashed with -all-5 images.
+
+## Noon (2026-10-04, 11:40)
+
+- **+8 MB RAM on T20/T10:** the 8 MiB V4L2-MMAP frame pool is now off by default (`isp_mmap_pool_kb=0`, parameter kept); only the recovered firmware unit stays -O0 (module −140 KB). MemFree with streams running: cam-C 46.7 → 55 MB, cam-E 1.9 → ~9.7 MB. The open stack now leaves more RAM free than the vendor stack on T20. [open-tx-isp claude/t20-mem-pool]
+- **Shortfall logging instead of silent degradation:** the T20/T10 driver logs once with have/need/missing and a concrete value when reserved memory is too small (e.g. "set isp_mmap_pool_kb=8104", "set ispmem >= N KB" when temper/WDR would be switched off). OpenIMP logs the rmem peak at stream start and on every new peak, and on an allocation failure "raise rmem by at least M KB (suggest rmem=<n>M)". cam-D peak: 18.4 of 23.5 MB. [claude/t20-mem-pool, openimp claude/imp-rmem-highwater]
+- **Hardening (no measurable cost):**
+  - Kernel: T31 proc writes bounded, VIC stop busy-wait bounded (~10 ms), AE handle wait with 2 s timeout; T20/T10 IRQ registered before its data was published (oops on an early interrupt) fixed. 10 min stream + restarts on cam-A, ISR load unchanged. [open-tx-isp claude/isp-hardening-3]
+  - OpenIMP: repeated driver errors are rate-limited (they could log every millisecond), silent `-1` returns now logged, four NULL crashes, a buffer overflow in the module-chain dump, lost items on EINTR and an OSD size overflow fixed. [openimp claude/imp-hardening-2]
+- **T20 AE after a streamer restart:** with a very bright scene the exposure could stay overexposed after restarting timps without reloading the module (sensor exposure cache and AE state survived the sensor reset). The cache is now invalidated on every sensor sync and the AE state is reset like on a fresh load; 5/5 restarts converge on cam-C and cam-E. [open-tx-isp claude/t20-ae-restart]
+- **T41 in `next`:** the T41 unload/flip/BCSH/isp-m0 fixes are merged into open-tx-isp `next` (9e5eb1ea); all six SoC modules build. Three module reloads on cam-F clean, module 80 KB smaller. The decompiler artefacts (addresses used as constants for AWB/LSC colour temperature, ivdc registers) were already fixed there.
+- **Image checks:** cam-B (T23) colour in direct sun with the vendor AE is neutral (R/G 0.94, B/G 0.93); cam-C (T20) white balance follows smart bulbs from 2200 to 6500 K (lower limit ~2300 K keeps very warm light slightly warm). Both matrix cells are now ✅.
+- **thingino integration:** the T23 OEM Helix helper option and the hybrid install (/opt/openimp-t23) are removed from the openimp package; T23 runs fully open. Kernel VPU/rmem stability patches and sensor fixes are being prepared as pull requests against thingino `ciao`.
+- **T41 U-Boot environment:** boot scripts writing the environment with the old 32 KiB size broke the 64 KiB environment again (U-Boot fell back to rmem=30M). Restored; the 64 KiB fix needs a guard that refuses to write when the environment already has a bad CRC (otherwise a valid but minimal environment with a network boot command could be written).
 
 ## Midday (2026-10-04, 11:00)
 
