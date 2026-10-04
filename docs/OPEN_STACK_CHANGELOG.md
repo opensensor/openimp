@@ -3,7 +3,7 @@
 Everything changed, extended or fixed in OpenIMP, open-tx-isp, timps and the thingino
 integration since the test campaign started on 2026-09-30. Kept up to date during the campaign.
 
-Last update: 2026-10-04 16:30.
+Last update: 2026-10-04 16:30 (evening update 16:45).
 
 Cameras are anonymised: cam-A (T31), cam-B (T23), cam-C (T20), cam-D (T21), cam-E (T10), cam-F (T41).
 
@@ -99,6 +99,9 @@ Aggregates: `claude/open-tx-isp-all-4` and `claude/openimp-all-4` (pushed); 58 m
 - **Paul's upstream `aperto` patches** for OpenIMP/open-tx-isp (written against the opensensor repos) are being reviewed; the useful ones will be ported to the forks with Paul as author.
 - **cam-H (T23, SC2336P):** lying upside down on the bench — image turned 180° via the streamer's hflip+vflip.
 - **First snapshot after idle:** a snapshot that wakes an idle main channel can time out once (HTTP 503 after 3 s) while the sensor/ISP spins up; reported to the streamer for a longer cold-start wait.
+
+- **Paul's upstream patches reviewed:** two ported with Paul as author — the audio capture read size now always covers whole driver fragments (OpenIMP; a real bug: at 48 kHz, 44.1 kHz or stereo the fixed 1280-byte read was not a multiple of the driver fragment and could hang the audio driver unkillably; tested on cam-A and cam-C, 8 k to 48 k) and the T20 scaler cap without crop (open-tx-isp). Not ported because the fork already does it better: sample-clock audio timestamps (fork stamps in the capture thread, ±0.1 ms), a 30 s give-up on missing frames (the fork fixed the busy loop and keeps the channel recoverable), an alternative T20 WDR oops fix (the fork's fix follows the OEM code). The soc_vpu TLB experiments are left out (off by default, no benefit shown). His T23 log switch is being adapted so that only informational messages are behind it; warnings and errors stay visible.
+- **Builds switched to `aperto`:** one build tree, one per-camera user directory, one build script with the per-camera memory sizes (rmem/ispmem) decided today; T41 from an `aperto` worktree with the local U-Boot 2026 env fix. First full build of all eight test cameras from `aperto` is running.
 
 ## Afternoon (2026-10-04, 14:40)
 
