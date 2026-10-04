@@ -127,8 +127,9 @@ static struct t23_osd_region *region_of(IMPRgnHandle handle)
 
 static int rect_size(const IMPOSDRgnAttr *attr, uint32_t *w, uint32_t *h)
 {
-    int rw = attr->rect.p1.x - attr->rect.p0.x + 1;
-    int rh = attr->rect.p1.y - attr->rect.p0.y + 1;
+    /* 64-bit: corner coordinates near INT_MIN/INT_MAX must not wrap */
+    long long rw = (long long)attr->rect.p1.x - attr->rect.p0.x + 1;
+    long long rh = (long long)attr->rect.p1.y - attr->rect.p0.y + 1;
 
     if (rw <= 0 || rh <= 0 || rw > 4096 || rh > 4096)
         return -1;
