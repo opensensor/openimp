@@ -39,7 +39,7 @@ Open stack = open-tx-isp + OpenIMP + timps. State on `next` (2026-10-04):
 | T10 | Runs the open stack from a flashed image (H.264, hardware JPEG/MJPEG, second stream, OSD, motion detection, day/night). Image controls and AE/AWB quality only partly documented. |
 | T20 | Fully open from a flashed image; long soaks (1 h 44 min at 25 fps) without errors; OEM rate controller default, A/B against the vendor stack measured. |
 | T21 | Fully open from a flashed image; vendor-identical rate controller, reference-buffer sharing on. |
-| T23 | Fully open, native Helix H.264 encoder, no vendor helper (2 h 34 min soak). Known: sporadic single Helix encode error, no real WDR yet. |
+| T23 | Fully open, native Helix H.264 encoder, no vendor helper (2 h 34 min soak). Frequent Helix frame drops fixed (residual interrupt 0x100, kernel patch merged upstream); still open: a rare single Helix encode error (errno 5), no real WDR yet. |
 | T30 | Builds against a real T30 kernel; H.264 command lists match the vendor in an emulator. No device in the test campaign, so not device-verified here. |
 | T31 | Reference SoC. H.264, HEVC, hardware JPEG, OSD, rotation, AEC; 2 h 53 min soak without errors. |
 | T40 | Builds; AVPU H.264 path from upstream work. Not part of the device campaign. |

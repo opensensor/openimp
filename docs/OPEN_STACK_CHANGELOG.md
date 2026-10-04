@@ -14,7 +14,7 @@ All test cameras run the open kernel driver (open-tx-isp), OpenIMP and timps. No
 | Camera | SoC | Stack | State |
 |---|---|---|---|
 | cam-A | T31 | fully open | `aperto` image; H.264, H.265, hardware JPEG, OSD, AEC; rmem 36 MB |
-| cam-B | T23 | fully open (native encoder, no vendor helper) | `aperto` image; sporadic Helix encode error under investigation |
+| cam-B | T23 | fully open (native encoder, no vendor helper) | `aperto` image; frequent Helix frame drops fixed (residual interrupt); a rare single Helix encode error (errno 5) is still open |
 | cam-C | T20 | fully open | `aperto` image with kernel patch 0101; OEM rate controller default; A/B vs vendor measured |
 | cam-D | T21 | fully open | `aperto` image; reference sharing on; vendor-identical eprc |
 | cam-E | T10 | fully open | `aperto` image, boot guard auto; ispmem 6 MB |
@@ -461,7 +461,7 @@ Current aggregates: `claude/open-tx-isp-all-7` (all-6 + sinfo module-notifier fi
 | Kernel module, T31 | 829 KB | 711 KB | |
 
 ## Still open (2026-10-04)
-- T23: sporadic single Helix encode error (errno 5); real WDR missing.
+- T23: rare single Helix encode error (errno 5; the frequent frame drops are fixed, see 2026-10-04 afternoon); real WDR missing.
 - T41: flip, night column noise (gc5603), short IVS gaps, OOM with three parallel streams, `AddSensor` EBUSY after an OOM kill; day/night and AE/AWB quality untested; ioctl hardening awaits its device test; temper effect; crop/rotation (I2D).
 - T21: a 4th module reload in one boot crashed once (under investigation).
 - AEC device tests on T23/T21/T20 (no speaker tests on the shared test cameras).

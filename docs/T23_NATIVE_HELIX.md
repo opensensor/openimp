@@ -312,7 +312,7 @@ otherwise timeout), keeps per-encoder counters, and a "recovered at
 frame=N (IDR ...)" line confirms the restart. The fix belongs in the
 kernel: the error branch must ignore a status without ENDFLAG and without
 ORESERR/BSERR/ACFGERR (keep the finished job's status and length, do not
-complete). Proposed as `0100-helix-ignore-late-interrupt-residue`.
+complete). Fixed: the local kernel patch 0102 (originally proposed as `0100-helix-ignore-late-interrupt-residue`) ignores the residue; it is part of the thingino `aperto` VPU patch series (merged upstream). cam-B: 60 min with 0 errors, then a 5 h soak on the `aperto` images with 0 encoder errors. A rare single errno 5 error remains listed open in the open-stack changelog.
 
 ### Status retest
 

@@ -1,6 +1,6 @@
 /* OpenIMP beyond-vendor extension of the IVS "move" interface.
  *
- * Opt-in motion analysis ("motion v2") that runs next to the vendor
+ * Motion analysis ("motion v2", on by default) that runs next to the vendor
  * frame-difference algorithm of IMP_IVS_CreateMoveInterface():
  *
  *   - a background model per grid cell (running mean + running noise level,
@@ -11,11 +11,11 @@
  *     minimum persistence;
  *   - bounding boxes and a strength per object.
  *
- * Nothing changes unless it is switched on, either with the environment
- * (OPENIMP_MOTION_V2=1, read when the move interface is created) or with
- * OpenIMP_IVS_MoveSetConfigEx(). With every feature off the vendor
- * IMP_IVS_MoveOutput results are bit-identical to an OpenIMP without this
- * extension. IMP_IVS_MoveOutput itself is never changed.
+ * Motion v2 is on by default. OPENIMP_MOTION_V2=0/off/vendor (read when the
+ * move interface is created) or OpenIMP_IVS_MoveSetConfigEx() with every
+ * feature off restores the vendor algorithm: the vendor IMP_IVS_MoveOutput
+ * results are then bit-identical to an OpenIMP without this extension.
+ * IMP_IVS_MoveOutput itself is never changed.
  *
  * ABI rules (stable, versioned):
  *   - every struct starts with `size` and `version`; the caller sets size to
