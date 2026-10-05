@@ -3,7 +3,7 @@
 Everything changed, extended or fixed in OpenIMP, open-tx-isp, timps and the thingino
 integration since the test campaign started on 2026-09-30. Kept up to date during the campaign.
 
-Last update: 2026-10-05 15:30. Branch names (`claude/...`) in the tables and sections below are historic: the branches were merged into `next` and deleted.
+Last update: 2026-10-05 14:55. Branch names (`claude/...`) in the tables and sections below are historic: the branches were merged into `next` and deleted.
 
 Cameras are anonymised: cam-A (T31), cam-B (T23), cam-C (T20), cam-D (T21), cam-E (T10), cam-F (T41).
 
@@ -88,14 +88,25 @@ OpenIMP: T20 green flicker in the bottom rows fixed by filling the encoder paddi
 
 Aggregates: `claude/open-tx-isp-all-4` and `claude/openimp-all-4` (pushed); 58 merged single branches removed. `claude/open-tx-isp-all-5` adds t21-robust and t31-robust-2 (T31: sensor flip with shvflip=1, unload leaks, lazy WDR buffers; MemFree drift per reload 460 → 45 KB); all four cameras flashed with -all-5 images.
 
-## Afternoon (2026-10-05, 15:30)
+## Afternoon (2026-10-05, 14:55)
+
+- **Aggregate agg-24 on the cameras:** OpenIMP `claude/agg-24` and open-tx-isp `claude/agg-24` (T20/T10 optimised and vendor-matched firmware incl. the white-balance fix, T21 stability with rollback and AF getters, VBM parking and Helix back-off, quieter T20/T10 logs, new test runner; 58/58 host tests, vendor comparison 0 differences) were flashed on cam-A…cam-E, cam-I and cam-J: 30/30 snapshots, both streams, 0 oops each. The T20/T10 ISP module in RAM is now 325/323 KB instead of 477/475 KB. Short soaks (about 3 h) are used while features are still landing; a long soak comes before the release tag.
+- **Boot guard fix submitted (aperto PR #1773):** the false trips came from the OTA script stopping the guard only after the root file system was already read-only, from guard state kept in `/overlay` across images, and from the stable check that only knew `timpsd`. Now a boot is stable after 300 s when any process holds the ISP device nodes (900 s without any ISP client), the guard is stopped before flashing, and the first boot of a different image resets its state; a real crash loop still trips. Host harness 27/27; device test pending.
+- **soc_vpu log fix submitted (aperto PR #1774):** an encode wait aborted by a dying streamer is no longer logged as "wait timeout / start vpu failed"; real timeouts still are. Kernel builds for T21, T20 and T31; not yet run on a device.
+- **raptor bug reported upstream:** raptor-hal passed a 0x420-byte structure to `IMP_IVS_Get/SetParam`, which writes 0x448 (T10/T20/T21/T30), 0x450 (T31–T41) or 0x458 (T23) bytes — a stack overflow on every SoC plus a wrong field layout. Fix proposed in gtxaspec/raptor-hal#15.
+- **Streamers over the network (cam-G):** prudynt: both streams decode without errors, two parallel clients, reconnect, ~2.1 s to the first frame; timps on the same camera: comparable (1080p instead of 720p main stream, 2.2–2.3 s to the first frame, snapshots 0.38 s on average). raptor is being measured.
+- **T41:** a spontaneous reboot occurred during a long sequence of RTSP client starts (second unexplained reboot of cam-F today); an investigation with a continuous kernel log runs. Code ready for device tests: sensor flip with correct register sequence (the gc5603 SDK driver OR-ed old and new flip bits) and automatic re-apply after a sensor restart (beyond vendor), a frame-source race fix for motion detection, ioctl polish (EFAULT for bad pointers, ioctl trace lines off by default, `/dev/aisp` hardened). Temper (3D noise reduction) is confirmed to work at high gain (frame-to-frame noise 4–6× lower than with temper off).
+- **T10/T20/T21 rotation (code ready):** sub-stream rotation 90/270 via the T31 frame-source path (up to 704×576, sizes multiple of 16; estimated 5–7 % CPU at 640×368/15 fps); the main stream is refused with a clear log line.
+- **White-balance gain ranges per SoC** (for streamers): T10/T20/T30 8 bit (128 = 1.0, max 255), T21/T23/T31 Q8 with a saturating 14-bit register (max 4095), T40/T41 Q10 (max 16383).
+
+## Afternoon (2026-10-05, 13:20)
 
 - **prudynt and raptor run on the open stack:** both streamers were built against the aggregate state and run on cam-G (T23) instead of timps, without any OpenIMP change: 0 of 149 IMP/SU imports missing for prudynt, none for raptor (one optional weak symbol); no vendor helper libraries needed (the open `ingenic-system-libs-neo` / `libaudioprocess-neo` packages cover them). Main and sub stream, JPEG, OSD, 5 restarts and a 30 min run each without oops or VPU errors; CPU prudynt ~2.4 % without a viewer, raptor ~19 % in total including its audio encoder. Network RTSP/HTTP was not tested yet (streams were captured on the camera). Found outside the open stack: raptor's video daemon crashes when motion detection is enabled (it passes a 0x420-byte structure to `IMP_IVS_GetParam`, which writes 0x458 bytes — a raptor stack overflow that would hit the vendor libimp too); raptor's AAC build fails with the faac version in thingino; thingino disables prudynt's hardware motion detection on the open stack.
 - **Boot guard and other streamers:** the guard only treats a boot as stable when `timpsd` runs, so with prudynt or raptor its pending mark is never cleared and any unclean reboot disables the ISP stack. Together with the OTA case from noon this goes into a follow-up for the guard.
 - **T41 on the aggregate state:** 10 module reloads, double open, `rmmod` while open fails cleanly, ioctl fuzzing during a live stream (more than 50,000 unknown, oversized, NULL and short-buffer calls return only ENOTTY/EFAULT/EINVAL, one warning per device node, no oops), 1 h soak without findings. The T41 top-5 indirect-call fixes could only be exercised superficially on this camera and one unexplained reboot occurred during the first run with that module (not reproducible in three repeats); they stay out of the next aggregate until a run with a serial console.
 - **Next aggregate in preparation:** OpenIMP and open-tx-isp `claude/agg-24` combine the aggregate with today's device-tested branches (T20/T10 optimised and vendor-matched firmware incl. the white-balance fix, T21 stability with rollback and AF getters, VBM parking and Helix back-off, quieter T20/T10 logs, new test runner). A soak of the current aggregate runs on five cameras as the release candidate.
 
-## Early afternoon (2026-10-05, 14:00)
+## Early afternoon (2026-10-05, 12:50)
 
 - **Soak ended after 17 h (on request):** 6 cameras × 69 samples, 0 encoder/VPU errors, 0 oops, all snapshots 200, no reboots. The next aggregate (OpenIMP `claude/agg-23`, open-tx-isp `claude/agg-23`) was then flashed on cam-A…cam-G (cam-F rootfs only): 30/30 snapshots, both streams, 0 oops each. A new soak of this state runs on five cameras; it is the candidate for the first release tag.
 - **Boot guard vs. full OTA:** after the OTA reboot the boot guard on cam-B treated the previous boot as a crash (`pending` mark left behind) and skipped the ISP stack. Fixed on the camera with `S10isp-guard clear` + `load`; cause (OTA reboot inside the 300 s window) to be fixed in the guard/OTA script. After every flash the guard state is now checked.
