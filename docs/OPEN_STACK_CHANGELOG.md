@@ -3,7 +3,7 @@
 Everything changed, extended or fixed in OpenIMP, open-tx-isp, timps and the thingino
 integration since the test campaign started on 2026-09-30. Kept up to date during the campaign.
 
-Last update: 2026-10-05 00:30. Branch names (`claude/...`) in the tables and sections below are historic: the branches were merged into `next` and deleted.
+Last update: 2026-10-05 02:30. Branch names (`claude/...`) in the tables and sections below are historic: the branches were merged into `next` and deleted.
 
 Cameras are anonymised: cam-A (T31), cam-B (T23), cam-C (T20), cam-D (T21), cam-E (T10), cam-F (T41).
 
@@ -87,6 +87,14 @@ Goal: identical image behaviour, but cleaner unload/reload, less memory and chec
 OpenIMP: T20 green flicker in the bottom rows fixed by filling the encoder padding rows (`claude/t20-bottom-chroma`; 0 green pixels in 30 frames). Faster IVS (`claude/ivs-opt`; T20 timps CPU 4.1 % → 2.7 % with motion on).
 
 Aggregates: `claude/open-tx-isp-all-4` and `claude/openimp-all-4` (pushed); 58 merged single branches removed. `claude/open-tx-isp-all-5` adds t21-robust and t31-robust-2 (T31: sensor flip with shvflip=1, unload leaks, lazy WDR buffers; MemFree drift per reload 460 → 45 KB); all four cameras flashed with -all-5 images.
+
+## Early morning (2026-10-05, 02:30)
+
+- **T20/T10 recovered ISP firmware builds optimised (branch, not yet device-tested):** the decompiled firmware unit (`tx_isp_t20_firmware.c`, also used by T10) had to be built with `-O0`. A new host harness (`tests/t20_fw`) runs it as a host binary through init, 239 frames, AE/AWB (simple and OEM), day/night and a tuning get/set sweep, and compares register traces, outputs and state between `-O0`, `-Os` and `-O2`: identical (375 of 517 functions executed). Against the old code the harness catches the problems (the `-Os` build crashes). About ten real reconstruction errors were fixed to match the vendor disassembly: dropped call arguments, a table overrun, state kept on the stack instead of static, a too-small stack buffer, an inline-asm jump without return, a missing return value. Also fixed: `selftest_sensor_id` jumped into data (oops on call), and the OEM AE target divided by the high word instead of the histogram population, i.e. by zero on every OEM-AE frame (the default simple AE was not affected). Module T20 590 → 409 KB, T10 587 → 406 KB, largest stack frame 624 → 280 bytes; `TX_ISP_FW_O0=1` restores `-O0` for A/B. An independent review runs; device tests on cam-C and cam-E follow after the soak.
+- **Open findings from that work:** the OEM AE path stalls at minimum exposure in the harness (cause open); four further misreconstructions in rarely used paths (exp LUT accumulator, flash init, I2C sample data, API buffer size reset). A function-by-function comparison against the vendor module in an emulator (as done for the T23 AWB) is planned.
+- **T41 unresolved indirect calls:** the recovery turned about 126 unresolved `jalr` targets into calls of a pure math helper (`private_math_exp2`); about 45 sit in compiled code (ioctl fallback, sensor allocation, suspend/resume, an interrupt handler) and do nothing today. No memory corruption, but possible functional gaps; a classification is in progress.
+- **Code fixes on branches (next aggregate):** T21 `tisp_af_set_attr` wrote 20 bytes past a 4-byte object and one byte to a wild address, its refresh read from an absolute address (latent: no caller today); T41 temper reaches the 3D-noise-reduction registers (host test added; measurable only as frame-to-frame noise at high gain); OpenIMP tests share one fake rmem allocator.
+- **T20 measured now (day mode):** ISP module 466 KB, MemFree 54.9 MB (vendor measured earlier 52.3 MB), streamer CPU 9.1 %, system 17.5 %, RSS 4.3 MB, 21 threads, snapshot 0.34 s average. A fresh A/B against the vendor under identical light is still open.
 
 ## Night (2026-10-05, 00:30)
 
