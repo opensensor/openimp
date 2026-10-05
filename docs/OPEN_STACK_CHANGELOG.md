@@ -3,7 +3,7 @@
 Everything changed, extended or fixed in OpenIMP, open-tx-isp, timps and the thingino
 integration since the test campaign started on 2026-09-30. Kept up to date during the campaign.
 
-Last update: 2026-10-05 14:00. Branch names (`claude/...`) in the tables and sections below are historic: the branches were merged into `next` and deleted.
+Last update: 2026-10-05 15:30. Branch names (`claude/...`) in the tables and sections below are historic: the branches were merged into `next` and deleted.
 
 Cameras are anonymised: cam-A (T31), cam-B (T23), cam-C (T20), cam-D (T21), cam-E (T10), cam-F (T41).
 
@@ -87,6 +87,13 @@ Goal: identical image behaviour, but cleaner unload/reload, less memory and chec
 OpenIMP: T20 green flicker in the bottom rows fixed by filling the encoder padding rows (`claude/t20-bottom-chroma`; 0 green pixels in 30 frames). Faster IVS (`claude/ivs-opt`; T20 timps CPU 4.1 % → 2.7 % with motion on).
 
 Aggregates: `claude/open-tx-isp-all-4` and `claude/openimp-all-4` (pushed); 58 merged single branches removed. `claude/open-tx-isp-all-5` adds t21-robust and t31-robust-2 (T31: sensor flip with shvflip=1, unload leaks, lazy WDR buffers; MemFree drift per reload 460 → 45 KB); all four cameras flashed with -all-5 images.
+
+## Afternoon (2026-10-05, 15:30)
+
+- **prudynt and raptor run on the open stack:** both streamers were built against the aggregate state and run on cam-G (T23) instead of timps, without any OpenIMP change: 0 of 149 IMP/SU imports missing for prudynt, none for raptor (one optional weak symbol); no vendor helper libraries needed (the open `ingenic-system-libs-neo` / `libaudioprocess-neo` packages cover them). Main and sub stream, JPEG, OSD, 5 restarts and a 30 min run each without oops or VPU errors; CPU prudynt ~2.4 % without a viewer, raptor ~19 % in total including its audio encoder. Network RTSP/HTTP was not tested yet (streams were captured on the camera). Found outside the open stack: raptor's video daemon crashes when motion detection is enabled (it passes a 0x420-byte structure to `IMP_IVS_GetParam`, which writes 0x458 bytes — a raptor stack overflow that would hit the vendor libimp too); raptor's AAC build fails with the faac version in thingino; thingino disables prudynt's hardware motion detection on the open stack.
+- **Boot guard and other streamers:** the guard only treats a boot as stable when `timpsd` runs, so with prudynt or raptor its pending mark is never cleared and any unclean reboot disables the ISP stack. Together with the OTA case from noon this goes into a follow-up for the guard.
+- **T41 on the aggregate state:** 10 module reloads, double open, `rmmod` while open fails cleanly, ioctl fuzzing during a live stream (more than 50,000 unknown, oversized, NULL and short-buffer calls return only ENOTTY/EFAULT/EINVAL, one warning per device node, no oops), 1 h soak without findings. The T41 top-5 indirect-call fixes could only be exercised superficially on this camera and one unexplained reboot occurred during the first run with that module (not reproducible in three repeats); they stay out of the next aggregate until a run with a serial console.
+- **Next aggregate in preparation:** OpenIMP and open-tx-isp `claude/agg-24` combine the aggregate with today's device-tested branches (T20/T10 optimised and vendor-matched firmware incl. the white-balance fix, T21 stability with rollback and AF getters, VBM parking and Helix back-off, quieter T20/T10 logs, new test runner). A soak of the current aggregate runs on five cameras as the release candidate.
 
 ## Early afternoon (2026-10-05, 14:00)
 
