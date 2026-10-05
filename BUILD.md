@@ -48,7 +48,7 @@ This will create:
 The easiest way to cross-compile for Ingenic T31 devices:
 
 ```bash
-./build-for-device.sh
+./build-for-device.sh <SOC>   # e.g. T31 (default when omitted), T20, T23, T41
 ```
 
 This script will:
@@ -79,12 +79,15 @@ make CROSS_COMPILE=mipsel-linux- strip
 
 You can specify the target platform with the `PLATFORM` variable:
 
+- `T20` - Ingenic T20
 - `T21` - Ingenic T21
 - `T23` - Ingenic T23
+- `T30` - Ingenic T30 (builds against a real T30 kernel; not device-verified here)
 - `T31` - Ingenic T31 (default)
-- `C100` - Ingenic C100
 - `T40` - Ingenic T40
 - `T41` - Ingenic T41
+
+`build-for-device.sh` rejects any other platform (C100 is not covered).
 
 Example:
 ```bash

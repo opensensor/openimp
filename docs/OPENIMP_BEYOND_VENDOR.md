@@ -41,7 +41,7 @@ call now returns or what the hardware now does.
 Further items (evening 2026-10-03):
 
 - **T41 AddSensor reclaim (pending):** after an OOM kill the T41 sensor stays registered and `AddSensor` returns EBUSY until reboot (vendor behaviour). A driver fix that re-registers the sensor (`claude/t41-sensor-rereg`) crashed on the first device load and is being analysed; not usable yet.
-- **T21 AWB faster than vendor:** the lifted AWB needs 0.95x of the vendor instructions (was 1.41x), output bit-identical, cam-D isp_fw_process -10 % (`claude/t21-size-awb-opt`); the kernel module is also smaller (760 to 494 KB). No switch, nothing to integrate.
+- **T21 AWB faster than vendor:** the lifted AWB needs 0.95x of the vendor instructions (was 1.41x), output bit-identical, cam-D isp_fw_process -10 % (`claude/t21-size-awb-opt`); the kernel module is also smaller (760 to 452 KB). No switch, nothing to integrate.
 - **Smaller binaries (2026-10-03 evening):** gc-sections in OpenIMP (`claude/openimp-size`, 2040a03): T23 libimp 774 to 726 KB, T20 694 to 594 KB; stripped local symbols in open-tx-isp (`claude/open-tx-isp-size`, 15232deb): T23 module 1,211 to 1,047 KB, T20 819 to 775 KB. No API change; rootfs back to 0x4DE000 (T23) / 0x4DD000 (T20).
 
 Further items (night 2026-10-03):
@@ -253,8 +253,9 @@ set in production.
 | `OPENIMP_T23_HELIX_BSF` | `1` hard bitstream limit; needs a patched kernel, device test open | off | debug-only |
 | `OPENIMP_T41_STREAM_COPY_MODE`, `OPENIMP_T41_RATE_CONTROL_COUPLING`, `OPENIMP_T41_UNCACHED_COMMAND_RING`, `OPENIMP_T41_UNCACHED_EP3_RING` | `=0` rolls back T41 behaviour for A/B (docs/T41_STATUS.md, PROFILING.md) | new behaviour on | debug-only |
 
-Further `OPENIMP_*` knobs exist in the source (`P1_*`, `P2_*`, `HELIX_*`, `T23_HELIX_*`, `RMEM_*`, ...) but are
-bring-up/trace switches that are not described in the docs; treat them as internal.
+Further `OPENIMP_*` knobs exist in the source. The rmem, reference-sharing tuning, startup-trace, Helix SoC/timeout
+and per-SoC statistics variables are listed in the wiki page "Environment variables"; the remaining bring-up/trace
+switches (`P1_*`, `P2_*`, ...) are not described anywhere; treat them as internal.
 
 ## 8. Unverified or not yet in this list
 

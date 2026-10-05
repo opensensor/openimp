@@ -144,6 +144,7 @@ loaded at runtime from `libaudioProcess-neo`. Acoustic echo cancellation uses th
 - [`docs/FEATURE_MATRIX.md`](docs/FEATURE_MATRIX.md) (also as [`feature-matrix.html`](docs/feature-matrix.html), [rendered](https://htmlpreview.github.io/?https://github.com/Lu-Fi/openimp/blob/next/docs/feature-matrix.html)): what works on which SoC.
 - [`docs/OPEN_STACK_CHANGELOG.md`](docs/OPEN_STACK_CHANGELOG.md) and [`CHANGELOG.md`](CHANGELOG.md): history of the open stack.
 - [`docs/OPENIMP_BEYOND_VENDOR.md`](docs/OPENIMP_BEYOND_VENDOR.md) and [`docs/OPENIMP_SOC_DIFFS.md`](docs/OPENIMP_SOC_DIFFS.md): differences to the vendor stack, for streamer authors.
+- [`docs/PERFORMANCE.md`](docs/PERFORMANCE.md): performance and resources, open stack versus vendor stack, per SoC, with sources and caveats.
 - [`docs/test-reports/`](docs/test-reports): raw device test reports.
 - [`docs/re/`](docs/re): reverse-engineering dumps (vendor `libimp.so` HLIL, register traces) used by the RE notes.
 - [`docs/archive/`](docs/archive): historical status and design notes from the early OpenIMP work (kept for reference, may be outdated).
