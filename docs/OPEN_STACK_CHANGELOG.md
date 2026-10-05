@@ -3,7 +3,7 @@
 Everything changed, extended or fixed in OpenIMP, open-tx-isp, timps and the thingino
 integration since the test campaign started on 2026-09-30. Kept up to date during the campaign.
 
-Last update: 2026-10-05 14:55. Branch names (`claude/...`) in the tables and sections below are historic: the branches were merged into `next` and deleted.
+Last update: 2026-10-05 14:35. Branch names (`claude/...`) in the tables and sections below are historic: the branches were merged into `next` and deleted.
 
 Cameras are anonymised: cam-A (T31), cam-B (T23), cam-C (T20), cam-D (T21), cam-E (T10), cam-F (T41).
 
@@ -88,7 +88,7 @@ OpenIMP: T20 green flicker in the bottom rows fixed by filling the encoder paddi
 
 Aggregates: `claude/open-tx-isp-all-4` and `claude/openimp-all-4` (pushed); 58 merged single branches removed. `claude/open-tx-isp-all-5` adds t21-robust and t31-robust-2 (T31: sensor flip with shvflip=1, unload leaks, lazy WDR buffers; MemFree drift per reload 460 → 45 KB); all four cameras flashed with -all-5 images.
 
-## Afternoon (2026-10-05, 14:55)
+## Afternoon (2026-10-05, 14:35)
 
 - **Aggregate agg-24 on the cameras:** OpenIMP `claude/agg-24` and open-tx-isp `claude/agg-24` (T20/T10 optimised and vendor-matched firmware incl. the white-balance fix, T21 stability with rollback and AF getters, VBM parking and Helix back-off, quieter T20/T10 logs, new test runner; 58/58 host tests, vendor comparison 0 differences) were flashed on cam-A…cam-E, cam-I and cam-J: 30/30 snapshots, both streams, 0 oops each. The T20/T10 ISP module in RAM is now 325/323 KB instead of 477/475 KB. Short soaks (about 3 h) are used while features are still landing; a long soak comes before the release tag.
 - **Boot guard fix submitted (aperto PR #1773):** the false trips came from the OTA script stopping the guard only after the root file system was already read-only, from guard state kept in `/overlay` across images, and from the stable check that only knew `timpsd`. Now a boot is stable after 300 s when any process holds the ISP device nodes (900 s without any ISP client), the guard is stopped before flashing, and the first boot of a different image resets its state; a real crash loop still trips. Host harness 27/27; device test pending.
