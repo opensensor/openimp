@@ -3,7 +3,7 @@
 Everything changed, extended or fixed in OpenIMP, open-tx-isp, timps and the thingino
 integration since the test campaign started on 2026-09-30. Kept up to date during the campaign.
 
-Last update: 2026-10-05 02:30. Branch names (`claude/...`) in the tables and sections below are historic: the branches were merged into `next` and deleted.
+Last update: 2026-10-05 11:30. Branch names (`claude/...`) in the tables and sections below are historic: the branches were merged into `next` and deleted.
 
 Cameras are anonymised: cam-A (T31), cam-B (T23), cam-C (T20), cam-D (T21), cam-E (T10), cam-F (T41).
 
@@ -87,6 +87,14 @@ Goal: identical image behaviour, but cleaner unload/reload, less memory and chec
 OpenIMP: T20 green flicker in the bottom rows fixed by filling the encoder padding rows (`claude/t20-bottom-chroma`; 0 green pixels in 30 frames). Faster IVS (`claude/ivs-opt`; T20 timps CPU 4.1 % → 2.7 % with motion on).
 
 Aggregates: `claude/open-tx-isp-all-4` and `claude/openimp-all-4` (pushed); 58 merged single branches removed. `claude/open-tx-isp-all-5` adds t21-robust and t31-robust-2 (T31: sensor flip with shvflip=1, unload leaks, lazy WDR buffers; MemFree drift per reload 460 → 45 KB); all four cameras flashed with -all-5 images.
+
+## Late morning (2026-10-05, 11:30)
+
+- **T20/T10 firmware compared with the vendor module (branch, device test pending):** a differential harness (`tests/t20_fw/vdiff`) runs the vendor `tx-isp-t20.ko` and our recovered firmware side by side in a MIPS emulator: lockstep scenario (day, dusk, night bank, manual exposure, AE modes, full API get/set sweep), per-function replay from recorded vendor machine state, and fuzzing of math helpers and API accessors. Before: 530 divergent scenario steps, 79 of 357 functions and 52 of 68 fuzz candidates differed; after 27 fixes: 0 (at `-O0` and `-Os`). Found and fixed, among others: the OEM AE divided by zero every frame (exposure target always 0, the reason the OEM AE stalled) and lacked histogram weights; the colour matrix used wrong source matrices; the Iridix gain dropped to 0 whenever exposure fell (exp2 of negative inputs); exposure partitioning used one walking accumulator instead of two; analog-gain hysteresis, long-exposure callback pointer, sharpening and flash init; 51 API setters stored nothing (e.g. manual white balance, gain, Iridix) and register API IDs were shifted by one. Most fixes also change the default path, so colour, dynamic range and sharpness may change visibly (towards the vendor picture). Independent review and A/B device tests with image comparison on cam-I (T20) and cam-E (T10) follow. 110 vendor functions are not reached yet (DIS, WDR-FS, SPI/sbus, IIR).
+- **T41 unresolved indirect calls, top 5 fixed (branch, device test pending):** proc write path of the IVDC block now allocates and frees real DMA memory (before: a garbage return value was used as a CPU pointer and DMA address); IVDC interrupt delivers event 0x1000007 to the notify handler; sensor mode changes send event 0x200000d; suspend/resume call the real callbacks; the two analog-gain setters whose target struct was lost by the recovery now return with a one-time warning instead of a fake success. Verified against `libt41-firmware-1.2.6-720-4494`.
+- **T21 stability (branches, device tests running on cam-J):** module unload freed the tuning memory before the last function that reads it (NULL access on rmmod after a failed open; the vendor driver has the same order); AF attribute/metric getters read wrong addresses (reachable via ioctl) and now mirror the vendor; VBM pool rmem block kept per channel across disable/enable (`OPENIMP_VBM_PARK=0` disables) and a 1 s back-off after a failed Helix create.
+- **New test cameras:** cam-I (T20 Pan v1, jxf22) and cam-J (second T21 PC420) were backed up, measured on the vendor stack and flashed with the open stack (30/30 snapshots, 0 oops). A full OTA keeps `/overlay`: an old `/etc` file from the previous image can override new image defaults (seen on cam-J: sensor flip parameter), check `/overlay/etc` after flashing.
+- **Docs:** consistency pass over README, changelog, matrix and wikis (T21 module size 452 KB everywhere, T23 vendor AE default) and a new performance page in progress; part of this preparation was drafted by another model and verified before use.
 
 ## Early morning (2026-10-05, 02:30)
 
