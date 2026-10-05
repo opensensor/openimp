@@ -351,6 +351,8 @@ Gaps (cache-only, stub, error, missing, ?) of functions that at least one of tim
 
 ### OSD
 
+All regular OSD functions (`OSD_CreateGroup`, `CreateRgn`, `RegisterRgn`, `Set/GetRgnAttr`, `Set/GetGrpRgnAttr`, `ShowRgn`, `UpdateRgnAttrData`, `Start/StopGroup` ...) are done on every SoC (OSD is device-tested on T10, T20, T21, T23, T31 and T41, see the OSD row in the matrix above) and are therefore not listed here. The rows below are the ISP-OSD variants (`*_ISP`, `ISP_Tuning_*Osd*`) that only the T23/T41 vendor API has, plus single helpers; **n.a. means the function does not exist in that SoC's vendor API, not that OSD is missing.**
+
 | Vendor function | T10 | T20 | T21 | T23 | T31 | T41 | Used by | Note |
 |---|---|---|---|---|---|---|---|---|
 | **► `ISP_Tuning_CreateOsdRgn`** | n.a. | n.a. | n.a. | done (?) | n.a. | error | **raptor†** | T41: ENOTSUP stub (returns -1) |
