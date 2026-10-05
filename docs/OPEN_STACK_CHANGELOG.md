@@ -3,7 +3,7 @@
 Everything changed, extended or fixed in OpenIMP, open-tx-isp, timps and the thingino
 integration since the test campaign started on 2026-09-30. Kept up to date during the campaign.
 
-Last update: 2026-10-05 14:55. Branch names (`claude/...`) in the tables and sections below are historic: the branches were merged into `next` and deleted.
+Last update: 2026-10-05 22:50. Branch names (`claude/...`) in the tables and sections below are historic: the branches were merged into `next` and deleted.
 
 Cameras are anonymised: cam-A (T31), cam-B (T23), cam-C (T20), cam-D (T21), cam-E (T10), cam-F (T41).
 
@@ -87,6 +87,26 @@ Goal: identical image behaviour, but cleaner unload/reload, less memory and chec
 OpenIMP: T20 green flicker in the bottom rows fixed by filling the encoder padding rows (`claude/t20-bottom-chroma`; 0 green pixels in 30 frames). Faster IVS (`claude/ivs-opt`; T20 timps CPU 4.1 % → 2.7 % with motion on).
 
 Aggregates: `claude/open-tx-isp-all-4` and `claude/openimp-all-4` (pushed); 58 merged single branches removed. `claude/open-tx-isp-all-5` adds t21-robust and t31-robust-2 (T31: sensor flip with shvflip=1, unload leaks, lazy WDR buffers; MemFree drift per reload 460 → 45 KB); all four cameras flashed with -all-5 images.
+
+## Evening (2026-10-05, 22:50)
+
+Device-tested this evening (results on the cameras, pictures kept private):
+
+| Area | Result | Branch |
+|---|---|---|
+| T21 OSD on the first snapshot | The first snapshot after a (re)start or idle wake had no OSD: the IPU blend has no effect for about 2 s after a wake. OpenIMP now verifies the blend on a glyph pixel and withholds JPEG frames without a confirmed overlay; the first snapshot now carries the OSD (about 2 s later). The vendor stack (Ingenic driver + libimp, tested side by side) shows the same missing first-snapshot OSD, so this is beyond vendor. Root cause of the 2 s IPU delay still open. | `claude/t21-osd-first-jpeg` (in `claude/agg-26`) |
+| T31 stack overwrites | `GetAfHist` wrote 88 bytes into the 24-byte vendor struct (vendor kernel bug, now 24 bytes at the boundary); `Get/SetAeAttr` overran the caller by 80 bytes. Verified with guard arenas on cam-A: every AF/AE get writes exactly the vendor size, get/set round trips return 0. | `claude/t31-af`, `claude/connect-round3` (in agg-25) |
+| T31 autofocus statistics | AF chain rebuilt (focus value, 15x15 zones, weights, histogram); metric reacts to the scene, invalid weights rejected, settings survive day/night. | `claude/t31-af` |
+| T23 gamma | `SetGamma` takes effect at once (steep/linear curves visible, falling curve rejected, restore ok) on cam-B. | `claude/t23-t31-connect` |
+| T20 ROI + chroma QP offset | Vendor EFE ROI registers rebuilt: in the H.264 stream a QP-51 region is visibly coarse, a QP-15 region fine; chroma QP offset 12 without colour shift. Note: an absolute ROI QP bypasses CBR (bitrate rose 1.4 → 9.9 Mbit/s), vendor semantics to be checked. | `claude/t1x-roi` |
+| Front crop / CSC on T10/T20/T21 | Front crop (mid, top-left), invalid-value rejection and 10 on/off cycles pass on all three; CSC modes neutral in night mode. CSC mode 4 was green on T10/T20 (sign handling) – fixed, daylight check pending. | `claude/t1x-crop-csc` (in agg-25) |
+| T21 rotation with OSD | Rotation 0/90/270 via timps with correct colours and OSD, also across day → night → day. | `claude/t1x-rotation` (in agg-25) |
+| T21 colours vs vendor | Two T21 cameras side by side under lamp light: open driver and Ingenic driver give nearly the same picture (AWB gains R 0x534/0x530, B 0x9d8/0x984); Bayer phase confirmed (RGGB). timps' flip path keeps correct colours. Open: magenta with the ISP tuning flip call and with re-setting AWB auto (image-function test), daylight comparison pending. | – |
+| T41 channel-restart hang | Restarting one channel while the other streams hung the SoC. Proven: hangs follow a live MSCA reprogram / no-op flip update request. Fix (flip update only on a real change, output kept like vendor on stream-off, address-only QBUF): targeted repro 35/35, start matrix 38/38, 40 min soak with diagnostics, client-mix load test running. | `claude/t41-chan-restart-hang` (in agg-26) |
+| T23 cam-B silent reboots | Cause found: right after a streamer start the day/night logic switches and re-asserts the mode several times; each set restarts channel 0, and the T23 driver hard-hangs on such a restart with live input (DMA into freed buffers after a process restart was also seen). Driver fix in progress (not yet proven on the device); the streamer will additionally get an option to keep the frame source enabled. | `claude/t23-chan-restart-hang` (in progress) |
+| Image-function test tool | `imgfx`: one picture per image-changing IMP function per SoC with an automatic "set returned 0 but nothing changed" check; first run on T21. | `claude/imgfx-tool` |
+| Boot guard follow-up | One `ls` per client check instead of a `readlink` per fd, comment fixes (upstream review). | thingino PR #1776 |
+| Feature matrix | New section "Missing / incomplete functions" per SoC and area. | `next` |
 
 ## Afternoon (2026-10-05, 14:55)
 
