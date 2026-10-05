@@ -3,7 +3,7 @@
 Everything changed, extended or fixed in OpenIMP, open-tx-isp, timps and the thingino
 integration since the test campaign started on 2026-09-30. Kept up to date during the campaign.
 
-Last update: 2026-10-05 14:35. Branch names (`claude/...`) in the tables and sections below are historic: the branches were merged into `next` and deleted.
+Last update: 2026-10-05 14:50. Branch names (`claude/...`) in the tables and sections below are historic: the branches were merged into `next` and deleted.
 
 Cameras are anonymised: cam-A (T31), cam-B (T23), cam-C (T20), cam-D (T21), cam-E (T10), cam-F (T41).
 
@@ -87,6 +87,17 @@ Goal: identical image behaviour, but cleaner unload/reload, less memory and chec
 OpenIMP: T20 green flicker in the bottom rows fixed by filling the encoder padding rows (`claude/t20-bottom-chroma`; 0 green pixels in 30 frames). Faster IVS (`claude/ivs-opt`; T20 timps CPU 4.1 % → 2.7 % with motion on).
 
 Aggregates: `claude/open-tx-isp-all-4` and `claude/openimp-all-4` (pushed); 58 merged single branches removed. `claude/open-tx-isp-all-5` adds t21-robust and t31-robust-2 (T31: sensor flip with shvflip=1, unload leaks, lazy WDR buffers; MemFree drift per reload 460 → 45 KB); all four cameras flashed with -all-5 images.
+
+## Afternoon (2026-10-05, 14:50)
+
+- **T41 hard hang reproduced:** the camera freezes completely (both CPUs stop, the hardware watchdog resets it after ~60 s; no kernel panic) when one channel was stopped by the streamer's idle stop while the other channel kept streaming, and the stopped channel is started again — 3 of 3 times with a targeted sequence, while 38 cold starts without that overlap were clean. Suspected: per-channel MSCA state left behind on a single-channel stop and global scaler registers reprogrammed under a lock with interrupts off at the restart. A fix against the vendor code is in progress; this has the highest priority.
+- **T41 slow first frame explained:** video (SPS and IDR) arrives 0.07–0.27 s after PLAY, but clients wait ~19 s for audio: the streamer drains up to 512 audio frames with non-blocking reads while OpenIMP's T41 `IMP_AI_GetFrame` ignored the non-blocking flag (512 × ~38 ms). A fix is in progress.
+- **Streamer timestamps on cam-B (T23):** frame intervals in the RTSP stream alternate between ~40 and ~80 ms instead of a steady 66.7 ms at 15 fps (no backward steps); ffmpeg reports many non-monotonic timestamps on that camera, other cameras show 0–3 per 10 s and no picture errors. Being measured together with the streamer maintainers.
+- **Main stream size:** the streamer timps defaults to 1920×1080 even on a 1280×720 sensor (upscaling), prudynt and raptor follow the sensor size; reported to the streamer maintainers.
+- **raptor over the network:** main and sub stream decode without errors, two parallel clients, reconnect, ~2.2 s to the first frame, HTTPS snapshots ~0.96 s. All three streamers (timps, prudynt, raptor) therefore run on the open stack over the network.
+- **T10/T20/T21 crop and CSC (code ready, beyond vendor):** the vendor libimp has no front-crop or CSC API on these SoCs (headers of T20 3.9.0 and T21 1.0.33); OpenIMP now offers them with the T31 control IDs: CSC presets 0–4 (T21 CSC block; T10/T20 via the RGB-to-YUV calibration table), kept across day/night; front crop full-frame only so far, a crop/zoom (ePTZ) via crop + downscaling on T21 and on the T20/T10 sub channels is being implemented and tested.
+- **Unconnected functions audit:** every vendor IMP/SU function per SoC is being classified (real, cache-only, stub, missing, error, driver gap) and checked against what the streamers call; these gaps come first after the current feature work.
+- **Soak policy:** no daytime soaks while the driver is being finished; a 6 h soak runs overnight.
 
 ## Afternoon (2026-10-05, 14:35)
 
