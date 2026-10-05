@@ -126,6 +126,8 @@ T10 uses the T20 userspace build (and the T20 SDK tuning code in the driver), so
 | error | exported but fails (returns -1/ENOTSUP, driver -EINVAL/-EPERM/-EOPNOTSUPP) or has a known defect |
 | n.a. | not in that SoC's vendor API (header set of that SoC) |
 | ? | cause or state not determined |
+**Used by** (column added 2026-10-05): which streamers import the function, determined from real imports, not guesses. `timps`: `nm -D --undefined-only` of the `timpsd` binaries of the per-camera builds (T10 secuplug, T20 wyze cam2 + campan1 (identical import set), T21 victure pc420 + the vendor-stack build, T23 galayou, T31 wuuk, T41 vanhua) incl. weak imports; the timps source has no dlsym use, so nothing is hidden behind dlsym. `prudynt`, `raptor`: T23 is binary-verified (nm of `prudynt`, `rvd`, `rad` of the T23 build, raptor-hal linked in statically); for the other SoCs the sources were run through the C preprocessor with `-DPLATFORM_Txx` and the vendor header set of that SoC and the identifiers were collected. That method reproduces the T23 binary imports exactly (19/19 prudynt, 51/51 raptor rows), so it is trusted, but a name marked **†** is **source-only** (no T10/T20/T21/T31/T41 binary of that streamer was built). Without a †, the entry is binary-verified. `–` = none of the three imports it on any SoC where the function exists. `T21: ...; T23: ...` = the set differs per SoC (only SoCs that have the function). Variants (`_Sec`, `MultiCamera_`) count for the base function. **Bold** used-by text and a leading `►` on the function name = a priority row: at least one streamer imports it and its cell on that SoC is a gap (missing, error, cache-only, stub or ?). `vendor no-op` and `done (...)` rows are not counted as priority gaps.
+
 
 ### Summary counts per SoC
 
@@ -140,223 +142,236 @@ Counts are per vendor function of that SoC (T23 folded: base function = one). "g
 | T31 | 405 | 6 | 23 | 338 | 4 | 4 | 4 | 1 | 25 | **34** | 65 |
 | T41 | 445 | 0 | 37 | 218 | 0 | 8 | 2 | 48 | 132 | **190** | 227 |
 
+### Streamer-relevant gaps per SoC (priority)
+
+Gaps (cache-only, stub, error, missing, ?) of functions that at least one of timps / prudynt / raptor imports on that SoC; derived as described under "Used by" in the legend. Raptor and prudynt entries for T10/T20/T21/T31/T41 are source-only (no binary built); timps and T23 are binary-verified.
+
+| SoC | gaps used by at least one streamer | timps | prudynt | raptor | functions (state; streamers) |
+|---|---|---|---|---|---|
+| T10 | **1** | 0 | 1 | 1 | `Encoder_Get/SetJpegeQl` (cache-only; prudynt+raptor) |
+| T20 | **1** | 1 | 1 | 1 | `Encoder_Get/SetJpegeQl` (cache-only; prudynt+raptor+timps) |
+| T21 | **4** | 1 | 1 | 4 | `Encoder_Get/SetChnDenoise` (error; raptor), `Encoder_Get/SetH265TransCfg` (cache-only; raptor), `Encoder_Get/SetJpegeQl` (cache-only; prudynt+raptor+timps), `Encoder_Get/SetQpgMode` (error; raptor) |
+| T23 | **6** | 0 | 1 | 6 | `ISP_Tuning_GetBlcAttr` (error; raptor), `ISP_Tuning_SetAutoZoom` (error; raptor), `ISP_Tuning_SetScalerLv` (error; raptor), `ISP_Tuning_Get/SetAwbClust` (cache-only; raptor), `ISP_Tuning_Get/SetAwbCtTrend` (cache-only; raptor), `AI_SetHpfCoFrequency` (cache-only; prudynt+raptor) |
+| T31 | **4** | 0 | 2 | 4 | `ISP_Tuning_DisableMovestate` (stub; raptor), `ISP_Tuning_EnableMovestate` (stub; raptor), `Encoder_SetbufshareChn` (stub; prudynt+raptor), `AI_SetHpfCoFrequency` (cache-only; prudynt+raptor) |
+| T41 | **27** | 0 | 7 | 24 | `ISP_Get/SetFrameDrop` (error; raptor), `ISP_Get/SetISPBypass` (missing; prudynt), `ISP_Tuning_Get/SetModuleControl` (error; raptor), `ISP_Tuning_SetAutoZoom` (error; prudynt), `ISP_Tuning_SetMaskBlock` (error; raptor), `ISP_Tuning_SetScalerLv` (error; raptor), `ISP_Tuning_SwitchBin` (missing; prudynt), `ISP_WDR_ENABLE` (error; raptor), `ISP_WDR_ENABLE_GET` (error; raptor), `ISP_Tuning_Get/SetAfWeight` (error; raptor), `Encoder_SetChnMaxPictureSize` (cache-only; raptor), `Encoder_SetbufshareChn` (stub; prudynt+raptor), `FrameSource_Get/SetChnFifoAttr` (cache-only; prudynt+raptor), `FrameSource_Get/SetDelay` (error; raptor), `FrameSource_Get/SetFrameDepth` (cache-only; prudynt+raptor), `FrameSource_Get/SetI2dAttr` (error; raptor), `FrameSource_Get/SetMaxDelay` (error; raptor), `FrameSource_Get/SetPool` (cache-only; raptor), `FrameSource_GetTimedFrame` (error; raptor), `ISP_Tuning_CreateOsdRgn` (error; raptor), `ISP_Tuning_DestroyOsdRgn` (error; raptor), `ISP_Tuning_SetOsdPoolSize` (stub; raptor), `ISP_Tuning_SetOsdRgnAttr` (error; raptor), `ISP_Tuning_ShowOsdRgn` (error; raptor), `AI_SetHpfCoFrequency` (cache-only; prudynt+raptor), `DMIC_*` (error; raptor), `DMIC_DisableAecRefFrame` (error; raptor) |
+
 ### ISP tuning
 
-| Vendor function | T10 | T20 | T21 | T23 | T31 | T41 | Note |
-|---|---|---|---|---|---|---|---|
-| `ISP_Get/SetCsccrMode` | n.a. | n.a. | n.a. | n.a. | n.a. | missing |  |
-| `ISP_Get/SetFrameDrop` | n.a. | n.a. | n.a. | done (?) | done (?) | error | T41: ENOTSUP stub (returns -1) |
-| `ISP_Get/SetISPBypass` | n.a. | n.a. | n.a. | n.a. | n.a. | missing |  |
-| `ISP_Get/SetInternalChnAttr` | n.a. | n.a. | n.a. | n.a. | n.a. | missing |  |
-| `ISP_Get/SetSensorRegister` | done (?) | done (?) | done (?) | done (?) | done (?) | done (host) | T41: claude/t41-isp-round2 (not in agg-25); not device-tested |
-| `ISP_LDC_Get/SetAttr` | n.a. | n.a. | n.a. | n.a. | n.a. | missing |  |
-| `ISP_LDC_INIT` | n.a. | n.a. | n.a. | n.a. | n.a. | missing |  |
-| `ISP_RAW_RwControl` | n.a. | n.a. | n.a. | n.a. | n.a. | missing |  |
-| `ISP_SET_GPIO_INIT_OR_FREE` | n.a. | n.a. | n.a. | done (?) | done (?) | missing |  |
-| `ISP_SET_GPIO_STA` | n.a. | n.a. | n.a. | done (?) | done (?) | missing |  |
-| `ISP_SetFixedContraster` | n.a. | n.a. | n.a. | done (host) | stub | n.a. | T23: driver routes 0x8000102 (agg-25); T31: (void)mode; return 0 |
-| `ISP_SetSwitchgpio` | n.a. | n.a. | n.a. | done (host) | n.a. | n.a. | T23: ioctl (claude/t23t31-cacheonly, not in agg-25) |
-| `ISP_SetVicDoneCbFunc` | n.a. | n.a. | n.a. | n.a. | n.a. | missing |  |
-| `ISP_StartNightMode` | n.a. | n.a. | n.a. | n.a. | n.a. | missing |  |
-| `ISP_Tuning_DisableMovestate` | done (?) | done (?) | done (?) | vendor no-op | stub | n.a. | T23: stock driver also no-op (OEM-same); T31: driver answers 0 without effect |
-| `ISP_Tuning_EnableDRC` | n.a. | n.a. | n.a. | done (?) | done (host) | n.a. | T31: wired to the driver (agg-25) |
-| `ISP_Tuning_EnableMovestate` | done (?) | done (?) | done (?) | vendor no-op | stub | n.a. | T23: stock driver also no-op (OEM-same); T31: driver answers 0 without effect |
-| `ISP_Tuning_Get/SetCCMAttr` | n.a. | n.a. | n.a. | done (?) | done (?) | done (host) | T41: vendor 1.2.6 error ladder (claude/t41-isp-round2, not in agg-25); not device-tested |
-| `ISP_Tuning_Get/SetDrawBlock` | n.a. | n.a. | n.a. | error | n.a. | missing | T23: driver rejects 0x8000180 (-EINVAL) |
-| `ISP_Tuning_Get/SetFrontCrop` | n.a. | n.a. | n.a. | done (?) | done (host) | n.a. | T31: wired to driver 0x80000e3 / 0x80000e7 (agg-25); T10/T20/T21 crop device-tested but not a vendor call there |
-| `ISP_Tuning_Get/SetGamma` | done (?) | done (?) | done (?) | done (dev) | done (?) | n.a. | T23: applied at once (beyond stock); curve test, falling curve rejected, restore ok on cam-B 2026-10-05 |
-| `ISP_Tuning_Get/SetGammaAttr` | n.a. | n.a. | n.a. | n.a. | n.a. | done (host) | T41: vendor 1.2.6 error ladder (claude/t41-isp-round2, not in agg-25); not device-tested |
-| `ISP_Tuning_Get/SetISPCSCAttr` | n.a. | n.a. | n.a. | n.a. | n.a. | done (host) | T41: vendor 1.2.6 error ladder (claude/t41-isp-round2, not in agg-25); not device-tested |
-| `ISP_Tuning_Get/SetISPCustomMode` | n.a. | n.a. | n.a. | done (?) | done (host) | n.a. | T31: wired to driver 0x80000e3 / 0x80000e7 (agg-25); T10/T20/T21 crop device-tested but not a vendor call there |
-| `ISP_Tuning_Get/SetISPHVflip` | missing | missing | n.a. | n.a. | n.a. | n.a. |  |
-| `ISP_Tuning_Get/SetMask` | n.a. | n.a. | n.a. | vendor no-op | done (?) | n.a. | T23: stock tx-isp-t23.ko leaves 0x80000e5 unhandled (-1) |
-| `ISP_Tuning_Get/SetModuleControl` | n.a. | n.a. | done (host) | done (?) | done (?) | error | T21: tuning 0x80000e2 (agg-25); T41: driver rejects 0x8000072 (-EINVAL) |
-| `ISP_Tuning_Get/SetSinterDnsAttr` | done (host) | done (host) | done (?) | n.a. | n.a. | n.a. | T10+T20: reach the driver (agg-25, T20 vendor layout); T10 shares the build |
-| `ISP_Tuning_Get/SetStatisConfig` | n.a. | n.a. | n.a. | n.a. | n.a. | missing |  |
-| `ISP_Tuning_Get/SetTemperDnsAttr` | done (host) | done (host) | done (?) | n.a. | n.a. | n.a. | T10+T20: reach the driver (agg-25, T20 vendor layout); T10 shares the build |
-| `ISP_Tuning_Get/SetTmoCurve` | n.a. | n.a. | n.a. | n.a. | n.a. | missing |  |
-| `ISP_Tuning_Get/SetWDRAttr` | missing | missing | n.a. | n.a. | n.a. | n.a. |  |
-| `ISP_Tuning_Get/SetWdrOutputMode` | n.a. | n.a. | n.a. | n.a. | n.a. | error | T41: driver has no stock handler, refuses (claude/t41-isp-round2) |
-| `ISP_Tuning_Get/SetWdr_OutputMode` | n.a. | n.a. | n.a. | n.a. | done (host) | n.a. | T31: reaches the WDR tool block (agg-25) |
-| `ISP_Tuning_GetAutoZoom` | n.a. | n.a. | n.a. | error | n.a. | error | T23: driver rejects 0x80000e8 (-EINVAL); T41: driver has no stock handler, refuses (claude/t41-isp-round2) |
-| `ISP_Tuning_GetBlcAttr` | n.a. | n.a. | n.a. | error | done (?) | n.a. | T23: driver rejects 0x80000a5 (-EINVAL) |
-| `ISP_Tuning_GetHVFlip` | n.a. | n.a. | n.a. | done (?) | done (?) | missing |  |
-| `ISP_Tuning_GetMaskBlock` | n.a. | n.a. | n.a. | done (host) | n.a. | missing | T23: 0x8000183 in claude/t23-awb-runtime only (not in agg-25) |
-| `ISP_Tuning_GetRawDRC` | done (host) | done (host) | done (?) | n.a. | n.a. | n.a. | T10+T20: reach the driver (agg-25, T20 vendor layout); T10 shares the build |
-| `ISP_Tuning_GetSensorAttr` | n.a. | n.a. | n.a. | done (?) | done (?) | done (host) | T41: driver claude/t41-connect (agg-25); host tests 58/58 |
-| `ISP_Tuning_SaveAllParam` | missing | missing | missing | n.a. | n.a. | n.a. |  |
-| `ISP_Tuning_SetAntiFogAttr` | missing | missing | missing | n.a. | n.a. | n.a. |  |
-| `ISP_Tuning_SetAutoZoom` | n.a. | n.a. | n.a. | error | done (host) | error | T23: driver rejects 0x80000e8 (-EINVAL); T31: programs scaler/crop, refuses size change (agg-25); T41: driver has no stock handler, refuses (claude/t41-isp-round2) |
-| `ISP_Tuning_SetBrightness` | done (?) | done (?) | vendor no-op | done (?) | done (?) | done (?) | T21: imgfx 2026-10-05: no picture change; vendor no-op or measurement issue (which one: unverified) |
-| `ISP_Tuning_SetDPStrength` | missing | missing | missing | n.a. | missing | n.a. |  |
-| `ISP_Tuning_SetMaskBlock` | n.a. | n.a. | n.a. | done (host) | n.a. | error | T23: 0x8000183 in claude/t23-awb-runtime only (not in agg-25); T41: driver has no handler, fails with -EPERM since agg-25 (was silent 0); vendor behaviour unverified |
-| `ISP_Tuning_SetMeshShadingScale` | missing | missing | n.a. | n.a. | n.a. | n.a. |  |
-| `ISP_Tuning_SetRawDRC` | done (host) | done (host) | vendor no-op | n.a. | n.a. | n.a. | T10+T20: reach the driver (agg-25, T20 vendor layout); T10 shares the build; T21: imgfx 2026-10-05: no picture change; vendor no-op or measurement issue (which one: unverified) |
-| `ISP_Tuning_SetScalerLv` | n.a. | n.a. | n.a. | error | done (?) | error | T23: driver rejects 0x80000e9 (-EINVAL); T41: driver has no handler, fails with -EPERM since agg-25 (was silent 0); vendor behaviour unverified |
-| `ISP_Tuning_SetSceneMode` | done (?) | done (?) | vendor no-op | n.a. | n.a. | n.a. | T21: imgfx 2026-10-05: no picture change; vendor no-op or measurement issue (which one: unverified) |
-| `ISP_Tuning_SetSensorFPS` | done (?) | done (?) | done (?) | done (?) | done (?) | done (host) | T41: reaches the sensor (agg-25); -EOPNOTSUPP on the gc5603 of cam-F |
-| `ISP_Tuning_SetSharpness` | done (?) | done (?) | vendor no-op | done (?) | done (?) | done (?) | T21: imgfx 2026-10-05: no picture change; vendor no-op or measurement issue (which one: unverified) |
-| `ISP_Tuning_SetTemperDnsCtl` | done (host) | done (host) | done (?) | n.a. | n.a. | n.a. | T10+T20: newly exported (agg-25) |
-| `ISP_Tuning_SetTmoFaceae` | n.a. | n.a. | n.a. | n.a. | n.a. | missing |  |
-| `ISP_Tuning_SetVideoDrop` | done (host) | done (host) | done (host) | done (host) | done (host) | done (host) | all: callback after 2/4/6 s without frames (agg-25); host-tested; video demand rule |
-| `ISP_Tuning_SwitchBin` | n.a. | n.a. | n.a. | error | n.a. | missing | T23: driver rejects 0x8000185 (-EINVAL) |
-| `ISP_Tuning_WaitFrame` | done (host) | done (host) | done (host) | done (host) | done (?) | n.a. | T10+T20+T21: waits for the frame end (agg-25; T20 ms, not jiffies); T23: stock 24-byte block, driver routed (agg-25), no device test |
-| `ISP_Tuning_WaitFrameDone` | n.a. | n.a. | n.a. | n.a. | n.a. | missing |  |
-| `ISP_WDR_ENABLE` | n.a. | n.a. | n.a. | n.a. | done (?) | error | T41: ENOTSUP stub (returns -1) |
-| `ISP_WDR_ENABLE_GET` | n.a. | n.a. | n.a. | n.a. | n.a. | error | T41: ENOTSUP stub (returns -1) |
-| `ISP_WDR_OPEN` | n.a. | n.a. | n.a. | n.a. | n.a. | missing |  |
+| Vendor function | T10 | T20 | T21 | T23 | T31 | T41 | Used by | Note |
+|---|---|---|---|---|---|---|---|---|
+| `ISP_Get/SetCsccrMode` | n.a. | n.a. | n.a. | n.a. | n.a. | missing | – |  |
+| **► `ISP_Get/SetFrameDrop`** | n.a. | n.a. | n.a. | done (?) | done (?) | error | **T41: raptor†** | T41: ENOTSUP stub (returns -1) |
+| **► `ISP_Get/SetISPBypass`** | n.a. | n.a. | n.a. | n.a. | n.a. | missing | **prudynt†** |  |
+| `ISP_Get/SetInternalChnAttr` | n.a. | n.a. | n.a. | n.a. | n.a. | missing | – |  |
+| `ISP_Get/SetSensorRegister` | done (?) | done (?) | done (?) | done (?) | done (?) | done (host) | raptor† | T41: claude/t41-isp-round2 (not in agg-25); not device-tested |
+| `ISP_LDC_Get/SetAttr` | n.a. | n.a. | n.a. | n.a. | n.a. | missing | – |  |
+| `ISP_LDC_INIT` | n.a. | n.a. | n.a. | n.a. | n.a. | missing | – |  |
+| `ISP_RAW_RwControl` | n.a. | n.a. | n.a. | n.a. | n.a. | missing | – |  |
+| `ISP_SET_GPIO_INIT_OR_FREE` | n.a. | n.a. | n.a. | done (?) | done (?) | missing | – |  |
+| `ISP_SET_GPIO_STA` | n.a. | n.a. | n.a. | done (?) | done (?) | missing | – |  |
+| `ISP_SetFixedContraster` | n.a. | n.a. | n.a. | done (host) | stub | n.a. | – | T23: driver routes 0x8000102 (agg-25); T31: (void)mode; return 0 |
+| `ISP_SetSwitchgpio` | n.a. | n.a. | n.a. | done (host) | n.a. | n.a. | – | T23: ioctl (claude/t23t31-cacheonly, not in agg-25) |
+| `ISP_SetVicDoneCbFunc` | n.a. | n.a. | n.a. | n.a. | n.a. | missing | – |  |
+| `ISP_StartNightMode` | n.a. | n.a. | n.a. | n.a. | n.a. | missing | – |  |
+| **► `ISP_Tuning_DisableMovestate`** | done (?) | done (?) | done (?) | vendor no-op | stub | n.a. | **raptor†** | T23: stock driver also no-op (OEM-same); T31: driver answers 0 without effect |
+| `ISP_Tuning_EnableDRC` | n.a. | n.a. | n.a. | done (?) | done (host) | n.a. | raptor† | T31: wired to the driver (agg-25) |
+| **► `ISP_Tuning_EnableMovestate`** | done (?) | done (?) | done (?) | vendor no-op | stub | n.a. | **raptor†** | T23: stock driver also no-op (OEM-same); T31: driver answers 0 without effect |
+| `ISP_Tuning_Get/SetCCMAttr` | n.a. | n.a. | n.a. | done (?) | done (?) | done (host) | T41: raptor† | T41: vendor 1.2.6 error ladder (claude/t41-isp-round2, not in agg-25); not device-tested |
+| `ISP_Tuning_Get/SetDrawBlock` | n.a. | n.a. | n.a. | error | n.a. | missing | – | T23: driver rejects 0x8000180 (-EINVAL) |
+| `ISP_Tuning_Get/SetFrontCrop` | n.a. | n.a. | n.a. | done (?) | done (host) | n.a. | raptor† | T31: wired to driver 0x80000e3 / 0x80000e7 (agg-25); T10/T20/T21 crop device-tested but not a vendor call there |
+| `ISP_Tuning_Get/SetGamma` | done (?) | done (?) | done (?) | done (dev) | done (?) | n.a. | prudynt†, raptor† | T23: applied at once (beyond stock); curve test, falling curve rejected, restore ok on cam-B 2026-10-05 |
+| `ISP_Tuning_Get/SetGammaAttr` | n.a. | n.a. | n.a. | n.a. | n.a. | done (host) | prudynt†, raptor† | T41: vendor 1.2.6 error ladder (claude/t41-isp-round2, not in agg-25); not device-tested |
+| `ISP_Tuning_Get/SetISPCSCAttr` | n.a. | n.a. | n.a. | n.a. | n.a. | done (host) | – | T41: vendor 1.2.6 error ladder (claude/t41-isp-round2, not in agg-25); not device-tested |
+| `ISP_Tuning_Get/SetISPCustomMode` | n.a. | n.a. | n.a. | done (?) | done (host) | n.a. | raptor† | T31: wired to driver 0x80000e3 / 0x80000e7 (agg-25); T10/T20/T21 crop device-tested but not a vendor call there |
+| `ISP_Tuning_Get/SetISPHVflip` | missing | missing | n.a. | n.a. | n.a. | n.a. | – |  |
+| `ISP_Tuning_Get/SetMask` | n.a. | n.a. | n.a. | vendor no-op | done (?) | n.a. | raptor† | T23: stock tx-isp-t23.ko leaves 0x80000e5 unhandled (-1) |
+| **► `ISP_Tuning_Get/SetModuleControl`** | n.a. | n.a. | done (host) | done (?) | done (?) | error | **T31/T41: raptor†** | T21: tuning 0x80000e2 (agg-25); T41: driver rejects 0x8000072 (-EINVAL) |
+| `ISP_Tuning_Get/SetSinterDnsAttr` | done (host) | done (host) | done (?) | n.a. | n.a. | n.a. | prudynt† | T10+T20: reach the driver (agg-25, T20 vendor layout); T10 shares the build |
+| `ISP_Tuning_Get/SetStatisConfig` | n.a. | n.a. | n.a. | n.a. | n.a. | missing | – |  |
+| `ISP_Tuning_Get/SetTemperDnsAttr` | done (host) | done (host) | done (?) | n.a. | n.a. | n.a. | prudynt† | T10+T20: reach the driver (agg-25, T20 vendor layout); T10 shares the build |
+| `ISP_Tuning_Get/SetTmoCurve` | n.a. | n.a. | n.a. | n.a. | n.a. | missing | – |  |
+| `ISP_Tuning_Get/SetWDRAttr` | missing | missing | n.a. | n.a. | n.a. | n.a. | – |  |
+| `ISP_Tuning_Get/SetWdrOutputMode` | n.a. | n.a. | n.a. | n.a. | n.a. | error | – | T41: driver has no stock handler, refuses (claude/t41-isp-round2) |
+| `ISP_Tuning_Get/SetWdr_OutputMode` | n.a. | n.a. | n.a. | n.a. | done (host) | n.a. | raptor† | T31: reaches the WDR tool block (agg-25) |
+| `ISP_Tuning_GetAutoZoom` | n.a. | n.a. | n.a. | error | n.a. | error | – | T23: driver rejects 0x80000e8 (-EINVAL); T41: driver has no stock handler, refuses (claude/t41-isp-round2) |
+| **► `ISP_Tuning_GetBlcAttr`** | n.a. | n.a. | n.a. | error | done (?) | n.a. | **raptor†** | T23: driver rejects 0x80000a5 (-EINVAL) |
+| `ISP_Tuning_GetHVFlip` | n.a. | n.a. | n.a. | done (?) | done (?) | missing | T23/T31: raptor† |  |
+| `ISP_Tuning_GetMaskBlock` | n.a. | n.a. | n.a. | done (host) | n.a. | missing | – | T23: 0x8000183 in claude/t23-awb-runtime only (not in agg-25) |
+| `ISP_Tuning_GetRawDRC` | done (host) | done (host) | done (?) | n.a. | n.a. | n.a. | prudynt† | T10+T20: reach the driver (agg-25, T20 vendor layout); T10 shares the build |
+| `ISP_Tuning_GetSensorAttr` | n.a. | n.a. | n.a. | done (?) | done (?) | done (host) | T23/T31: timps; T41: raptor†, timps | T41: driver claude/t41-connect (agg-25); host tests 58/58 |
+| `ISP_Tuning_SaveAllParam` | missing | missing | missing | n.a. | n.a. | n.a. | – |  |
+| `ISP_Tuning_SetAntiFogAttr` | missing | missing | missing | n.a. | n.a. | n.a. | – |  |
+| **► `ISP_Tuning_SetAutoZoom`** | n.a. | n.a. | n.a. | error | done (host) | error | **T23: raptor**; T31: prudynt†, raptor†; **T41: prudynt†** | T23: driver rejects 0x80000e8 (-EINVAL); T31: programs scaler/crop, refuses size change (agg-25); T41: driver has no stock handler, refuses (claude/t41-isp-round2) |
+| `ISP_Tuning_SetBrightness` | done (?) | done (?) | vendor no-op | done (?) | done (?) | done (?) | prudynt†, raptor†, timps | T21: imgfx 2026-10-05: no picture change; vendor no-op or measurement issue (which one: unverified) |
+| `ISP_Tuning_SetDPStrength` | missing | missing | missing | n.a. | missing | n.a. | – |  |
+| **► `ISP_Tuning_SetMaskBlock`** | n.a. | n.a. | n.a. | done (host) | n.a. | error | **T41: raptor†** | T23: 0x8000183 in claude/t23-awb-runtime only (not in agg-25); T41: driver has no handler, fails with -EPERM since agg-25 (was silent 0); vendor behaviour unverified |
+| `ISP_Tuning_SetMeshShadingScale` | missing | missing | n.a. | n.a. | n.a. | n.a. | – |  |
+| `ISP_Tuning_SetRawDRC` | done (host) | done (host) | vendor no-op | n.a. | n.a. | n.a. | prudynt† | T10+T20: reach the driver (agg-25, T20 vendor layout); T10 shares the build; T21: imgfx 2026-10-05: no picture change; vendor no-op or measurement issue (which one: unverified) |
+| **► `ISP_Tuning_SetScalerLv`** | n.a. | n.a. | n.a. | error | done (?) | error | **raptor†** | T23: driver rejects 0x80000e9 (-EINVAL); T41: driver has no handler, fails with -EPERM since agg-25 (was silent 0); vendor behaviour unverified |
+| `ISP_Tuning_SetSceneMode` | done (?) | done (?) | vendor no-op | n.a. | n.a. | n.a. | timps | T21: imgfx 2026-10-05: no picture change; vendor no-op or measurement issue (which one: unverified) |
+| `ISP_Tuning_SetSensorFPS` | done (?) | done (?) | done (?) | done (?) | done (?) | done (host) | prudynt†, raptor†, timps | T41: reaches the sensor (agg-25); -EOPNOTSUPP on the gc5603 of cam-F |
+| `ISP_Tuning_SetSharpness` | done (?) | done (?) | vendor no-op | done (?) | done (?) | done (?) | prudynt†, raptor†, timps | T21: imgfx 2026-10-05: no picture change; vendor no-op or measurement issue (which one: unverified) |
+| `ISP_Tuning_SetTemperDnsCtl` | done (host) | done (host) | done (?) | n.a. | n.a. | n.a. | – | T10+T20: newly exported (agg-25) |
+| `ISP_Tuning_SetTmoFaceae` | n.a. | n.a. | n.a. | n.a. | n.a. | missing | – |  |
+| `ISP_Tuning_SetVideoDrop` | done (host) | done (host) | done (host) | done (host) | done (host) | done (host) | raptor† | all: callback after 2/4/6 s without frames (agg-25); host-tested; video demand rule |
+| **► `ISP_Tuning_SwitchBin`** | n.a. | n.a. | n.a. | error | n.a. | missing | **T41: prudynt†** | T23: driver rejects 0x8000185 (-EINVAL) |
+| `ISP_Tuning_WaitFrame` | done (host) | done (host) | done (host) | done (host) | done (?) | n.a. | raptor† | T10+T20+T21: waits for the frame end (agg-25; T20 ms, not jiffies); T23: stock 24-byte block, driver routed (agg-25), no device test |
+| `ISP_Tuning_WaitFrameDone` | n.a. | n.a. | n.a. | n.a. | n.a. | missing | – |  |
+| **► `ISP_WDR_ENABLE`** | n.a. | n.a. | n.a. | n.a. | done (?) | error | **raptor†** | T41: ENOTSUP stub (returns -1) |
+| **► `ISP_WDR_ENABLE_GET`** | n.a. | n.a. | n.a. | n.a. | n.a. | error | **raptor†** | T41: ENOTSUP stub (returns -1) |
+| `ISP_WDR_OPEN` | n.a. | n.a. | n.a. | n.a. | n.a. | missing | – |  |
 
 ### AE / AWB / AF
 
-| Vendor function | T10 | T20 | T21 | T23 | T31 | T41 | Note |
-|---|---|---|---|---|---|---|---|
-| `ISP_SetAeAlgoFunc` | n.a. | n.a. | n.a. | done (?) | done (?) | missing |  |
-| `ISP_SetAwbAlgoFunc` | n.a. | n.a. | n.a. | done (?) | done (?) | missing |  |
-| `ISP_Tuning_AE_Get/SetROI` | done (?) | done (?) | done (?) | done (host) | done (?) | n.a. | T23: stock handlers routed (open-tx-isp agg-25), no device test; _Sec/MultiCamera_ variants unverified |
-| `ISP_Tuning_AwbSync` | n.a. | n.a. | n.a. | error | n.a. | n.a. | T23: driver rejects 0x8000011 (-EINVAL) |
-| `ISP_Tuning_Awb_Get/SetCwfShift` | done (host) | done (host) | n.a. | n.a. | n.a. | n.a. | T10+T20: newly exported (agg-25) |
-| `ISP_Tuning_Awb_Get/SetRgbCoefft` | done (?) | done (?) | done (?) | done (host) | done (?) | done (host) | T23: stock handlers routed (open-tx-isp agg-25), no device test; T41: driver claude/t41-connect (agg-25); host tests 58/58 |
-| `ISP_Tuning_Get/SetAeAttr` | n.a. | n.a. | n.a. | done (host) | done (?) | n.a. | T23: stock handlers routed (open-tx-isp agg-25), no device test; _Sec/MultiCamera_ variants unverified |
-| `ISP_Tuning_Get/SetAeConvergeStep` | n.a. | n.a. | n.a. | n.a. | n.a. | missing |  |
-| `ISP_Tuning_Get/SetAeExpList` | n.a. | n.a. | n.a. | n.a. | n.a. | missing |  |
-| `ISP_Tuning_Get/SetAeHist` | done (?) | done (?) | done (?) | done (host) | done (?) | n.a. | T23: stock handlers routed (open-tx-isp agg-25), no device test; _Sec/MultiCamera_ variants unverified |
-| `ISP_Tuning_Get/SetAeMin` | n.a. | n.a. | done (?) | done (host) | done (?) | n.a. | T23: stock handlers routed (open-tx-isp agg-25), no device test; _Sec/MultiCamera_ variants unverified |
-| `ISP_Tuning_Get/SetAeStrategy` | done (host) | done (host) | done (host) | n.a. | n.a. | n.a. | T10+T20+T21: newly exported (agg-25); T10 shares the T20 build |
-| `ISP_Tuning_Get/SetAeTargetList` | n.a. | n.a. | n.a. | done (host) | done (?) | n.a. | T23: stock handlers routed (open-tx-isp agg-25), no device test; _Sec/MultiCamera_ variants unverified |
-| `ISP_Tuning_Get/SetAeWeight` | done (?) | done (?) | done (?) | done (host) | done (?) | done (host) | T23: stock handlers routed (open-tx-isp agg-25), no device test; _Sec/MultiCamera_ variants unverified; T41: driver claude/t41-connect (agg-25); host tests 58/58 |
-| `ISP_Tuning_Get/SetAfHist` | done (?) | done (?) | done (?) | done (host) | done (dev) | n.a. | T23: AF statistics chain from the stock module, off by default (source_af=0); no device test; T31: reconstructed AF chain; metrics/zone/weight/hist verified on cam-A 2026-10-05, Get->Set roundtrip 0 |
-| `ISP_Tuning_Get/SetAfWeight` | n.a. | n.a. | done (?) | done (host) | done (dev) | error | T23: AF statistics chain from the stock module, off by default (source_af=0); no device test; T31: reconstructed AF chain; metrics/zone/weight/hist verified on cam-A 2026-10-05, Get->Set roundtrip 0; T41: ENOTSUP stub (returns -1) |
-| `ISP_Tuning_Get/SetAwbClust` | n.a. | n.a. | n.a. | cache-only | done (?) | n.a. | T23: stock objects stored, open AWB does not read them in agg-25; effective in claude/t23-awb-runtime (host-tested) |
-| `ISP_Tuning_Get/SetAwbConvergeStep` | n.a. | n.a. | n.a. | n.a. | n.a. | missing |  |
-| `ISP_Tuning_Get/SetAwbCtTrend` | n.a. | n.a. | n.a. | cache-only | done (?) | n.a. | T23: stock objects stored, open AWB does not read them in agg-25; effective in claude/t23-awb-runtime (host-tested) |
-| `ISP_Tuning_Get/SetAwbCtTrendOffset` | n.a. | n.a. | n.a. | n.a. | n.a. | missing |  |
-| `ISP_Tuning_Get/SetAwbHist` | done (?) | done (?) | done (?) | vendor no-op | vendor no-op | n.a. | T23+T31: stock driver also no-op (OEM-same) |
-| `ISP_Tuning_Get/SetAwbWeight` | done (?) | done (?) | done (?) | vendor no-op | vendor no-op | done (?) | T23+T31: stock driver also no-op (OEM-same) |
-| `ISP_Tuning_Get/SetAwbZoneWeight` | n.a. | n.a. | n.a. | done (host) | n.a. | n.a. | T23: stock handlers routed (open-tx-isp agg-25), no device test |
-| `ISP_Tuning_Get/SetFaceAe` | n.a. | n.a. | n.a. | n.a. | n.a. | missing |  |
-| `ISP_Tuning_Get/SetFaceAeWeiget` | n.a. | n.a. | n.a. | n.a. | n.a. | missing |  |
-| `ISP_Tuning_GetAEEvList` | n.a. | n.a. | n.a. | n.a. | n.a. | missing |  |
-| `ISP_Tuning_GetAEFlickerFlag` | n.a. | n.a. | n.a. | n.a. | n.a. | missing |  |
-| `ISP_Tuning_GetAFMetrices` | n.a. | n.a. | done (?) | done (host) | done (dev) | n.a. | T23: AF statistics chain from the stock module, off by default (source_af=0); no device test; T31: reconstructed AF chain; metrics/zone/weight/hist verified on cam-A 2026-10-05, Get->Set roundtrip 0 |
-| `ISP_Tuning_GetAFMetricesInfo` | n.a. | n.a. | n.a. | n.a. | n.a. | missing |  |
-| `ISP_Tuning_GetAWBCt` | n.a. | n.a. | n.a. | done (host) | done (?) | n.a. | T23: stock handlers routed (open-tx-isp agg-25), no device test |
-| `ISP_Tuning_GetAeAtList` | n.a. | n.a. | n.a. | n.a. | n.a. | missing |  |
-| `ISP_Tuning_GetAeBv` | n.a. | n.a. | n.a. | n.a. | n.a. | missing |  |
-| `ISP_Tuning_GetAeEvList` | n.a. | n.a. | n.a. | n.a. | n.a. | missing |  |
-| `ISP_Tuning_GetAeHist_Origin` | n.a. | n.a. | n.a. | done (host) | done (?) | n.a. | T23: stock handlers routed (open-tx-isp agg-25), no device test; _Sec/MultiCamera_ variants unverified |
-| `ISP_Tuning_GetAeState` | n.a. | n.a. | n.a. | done (host) | done (?) | n.a. | T23: stock handlers routed (open-tx-isp agg-25), no device test; _Sec/MultiCamera_ variants unverified |
-| `ISP_Tuning_GetAeZone` | done (host) | done (host) | done (?) | done (host) | done (?) | n.a. | T10+T20: vendor T20 ids/ABI (agg-25); T10 shares the build; T23: stock handlers routed (agg-25), no device test |
-| `ISP_Tuning_GetAfStatistics` | n.a. | n.a. | n.a. | n.a. | n.a. | missing |  |
-| `ISP_Tuning_GetAfZone` | n.a. | n.a. | n.a. | done (host) | done (dev) | n.a. | T23: AF statistics chain from the stock module, off by default (source_af=0); no device test; T31: reconstructed AF chain; metrics/zone/weight/hist verified on cam-A 2026-10-05, Get->Set roundtrip 0 |
-| `ISP_Tuning_GetAwbZone` | done (host) | done (host) | n.a. | done (host) | done (?) | n.a. | T10+T20: vendor T20 ids/ABI (agg-25); T10 shares the build; T23: stock handlers routed (agg-25), no device test |
-| `ISP_Tuning_GetFaceAeLuma` | n.a. | n.a. | n.a. | n.a. | n.a. | missing |  |
-| `ISP_Tuning_SetAeFreeze` | n.a. | n.a. | n.a. | done (host) | done (?) | n.a. | T23: stock handlers routed (open-tx-isp agg-25), no device test; _Sec/MultiCamera_ variants unverified |
-| `ISP_Tuning_SetAwbCt` | n.a. | n.a. | n.a. | done (host) | done (?) | n.a. | T23: stock handlers routed (open-tx-isp agg-25), no device test |
-| `ISP_Tuning_SetExpr` | done (?) | done (?) | done (?) | done (host) | done (?) | n.a. | T23: stock handlers routed (open-tx-isp agg-25), no device test; _Sec/MultiCamera_ variants unverified |
-| `ISP_Tuning_SetWB_ALGO` | n.a. | n.a. | n.a. | error | done (?) | n.a. | T23: driver does not route 0x800000c (HLIL AWB has no light-source table) |
+| Vendor function | T10 | T20 | T21 | T23 | T31 | T41 | Used by | Note |
+|---|---|---|---|---|---|---|---|---|
+| `ISP_SetAeAlgoFunc` | n.a. | n.a. | n.a. | done (?) | done (?) | missing | – |  |
+| `ISP_SetAwbAlgoFunc` | n.a. | n.a. | n.a. | done (?) | done (?) | missing | – |  |
+| `ISP_Tuning_AE_Get/SetROI` | done (?) | done (?) | done (?) | done (host) | done (?) | n.a. | T10/T20: prudynt†; T21/T23/T31: prudynt†, raptor† | T23: stock handlers routed (open-tx-isp agg-25), no device test; _Sec/MultiCamera_ variants unverified |
+| `ISP_Tuning_AwbSync` | n.a. | n.a. | n.a. | error | n.a. | n.a. | – | T23: driver rejects 0x8000011 (-EINVAL) |
+| `ISP_Tuning_Awb_Get/SetCwfShift` | done (host) | done (host) | n.a. | n.a. | n.a. | n.a. | – | T10+T20: newly exported (agg-25) |
+| `ISP_Tuning_Awb_Get/SetRgbCoefft` | done (?) | done (?) | done (?) | done (host) | done (?) | done (host) | raptor† | T23: stock handlers routed (open-tx-isp agg-25), no device test; T41: driver claude/t41-connect (agg-25); host tests 58/58 |
+| `ISP_Tuning_Get/SetAeAttr` | n.a. | n.a. | n.a. | done (host) | done (?) | n.a. | prudynt†, raptor† | T23: stock handlers routed (open-tx-isp agg-25), no device test; _Sec/MultiCamera_ variants unverified |
+| `ISP_Tuning_Get/SetAeConvergeStep` | n.a. | n.a. | n.a. | n.a. | n.a. | missing | – |  |
+| `ISP_Tuning_Get/SetAeExpList` | n.a. | n.a. | n.a. | n.a. | n.a. | missing | – |  |
+| `ISP_Tuning_Get/SetAeHist` | done (?) | done (?) | done (?) | done (host) | done (?) | n.a. | prudynt†, raptor† | T23: stock handlers routed (open-tx-isp agg-25), no device test; _Sec/MultiCamera_ variants unverified |
+| `ISP_Tuning_Get/SetAeMin` | n.a. | n.a. | done (?) | done (host) | done (?) | n.a. | T23: prudynt; T31: prudynt†, raptor† | T23: stock handlers routed (open-tx-isp agg-25), no device test; _Sec/MultiCamera_ variants unverified |
+| `ISP_Tuning_Get/SetAeStrategy` | done (host) | done (host) | done (host) | n.a. | n.a. | n.a. | – | T10+T20+T21: newly exported (agg-25); T10 shares the T20 build |
+| `ISP_Tuning_Get/SetAeTargetList` | n.a. | n.a. | n.a. | done (host) | done (?) | n.a. | raptor† | T23: stock handlers routed (open-tx-isp agg-25), no device test; _Sec/MultiCamera_ variants unverified |
+| `ISP_Tuning_Get/SetAeWeight` | done (?) | done (?) | done (?) | done (host) | done (?) | done (host) | prudynt†, raptor† | T23: stock handlers routed (open-tx-isp agg-25), no device test; _Sec/MultiCamera_ variants unverified; T41: driver claude/t41-connect (agg-25); host tests 58/58 |
+| `ISP_Tuning_Get/SetAfHist` | done (?) | done (?) | done (?) | done (host) | done (dev) | n.a. | raptor† | T23: AF statistics chain from the stock module, off by default (source_af=0); no device test; T31: reconstructed AF chain; metrics/zone/weight/hist verified on cam-A 2026-10-05, Get->Set roundtrip 0 |
+| **► `ISP_Tuning_Get/SetAfWeight`** | n.a. | n.a. | done (?) | done (host) | done (dev) | error | **raptor†** | T23: AF statistics chain from the stock module, off by default (source_af=0); no device test; T31: reconstructed AF chain; metrics/zone/weight/hist verified on cam-A 2026-10-05, Get->Set roundtrip 0; T41: ENOTSUP stub (returns -1) |
+| **► `ISP_Tuning_Get/SetAwbClust`** | n.a. | n.a. | n.a. | cache-only | done (?) | n.a. | **raptor†** | T23: stock objects stored, open AWB does not read them in agg-25; effective in claude/t23-awb-runtime (host-tested) |
+| `ISP_Tuning_Get/SetAwbConvergeStep` | n.a. | n.a. | n.a. | n.a. | n.a. | missing | – |  |
+| **► `ISP_Tuning_Get/SetAwbCtTrend`** | n.a. | n.a. | n.a. | cache-only | done (?) | n.a. | **raptor†** | T23: stock objects stored, open AWB does not read them in agg-25; effective in claude/t23-awb-runtime (host-tested) |
+| `ISP_Tuning_Get/SetAwbCtTrendOffset` | n.a. | n.a. | n.a. | n.a. | n.a. | missing | – |  |
+| `ISP_Tuning_Get/SetAwbHist` | done (?) | done (?) | done (?) | vendor no-op | vendor no-op | n.a. | prudynt†, raptor† | T23+T31: stock driver also no-op (OEM-same) |
+| `ISP_Tuning_Get/SetAwbWeight` | done (?) | done (?) | done (?) | vendor no-op | vendor no-op | done (?) | prudynt†, raptor† | T23+T31: stock driver also no-op (OEM-same) |
+| `ISP_Tuning_Get/SetAwbZoneWeight` | n.a. | n.a. | n.a. | done (host) | n.a. | n.a. | – | T23: stock handlers routed (open-tx-isp agg-25), no device test |
+| `ISP_Tuning_Get/SetFaceAe` | n.a. | n.a. | n.a. | n.a. | n.a. | missing | – |  |
+| `ISP_Tuning_Get/SetFaceAeWeiget` | n.a. | n.a. | n.a. | n.a. | n.a. | missing | – |  |
+| `ISP_Tuning_GetAEEvList` | n.a. | n.a. | n.a. | n.a. | n.a. | missing | – |  |
+| `ISP_Tuning_GetAEFlickerFlag` | n.a. | n.a. | n.a. | n.a. | n.a. | missing | – |  |
+| `ISP_Tuning_GetAFMetrices` | n.a. | n.a. | done (?) | done (host) | done (dev) | n.a. | raptor† | T23: AF statistics chain from the stock module, off by default (source_af=0); no device test; T31: reconstructed AF chain; metrics/zone/weight/hist verified on cam-A 2026-10-05, Get->Set roundtrip 0 |
+| `ISP_Tuning_GetAFMetricesInfo` | n.a. | n.a. | n.a. | n.a. | n.a. | missing | – |  |
+| `ISP_Tuning_GetAWBCt` | n.a. | n.a. | n.a. | done (host) | done (?) | n.a. | T23: raptor; T31: prudynt†, raptor† | T23: stock handlers routed (open-tx-isp agg-25), no device test |
+| `ISP_Tuning_GetAeAtList` | n.a. | n.a. | n.a. | n.a. | n.a. | missing | – |  |
+| `ISP_Tuning_GetAeBv` | n.a. | n.a. | n.a. | n.a. | n.a. | missing | – |  |
+| `ISP_Tuning_GetAeEvList` | n.a. | n.a. | n.a. | n.a. | n.a. | missing | – |  |
+| `ISP_Tuning_GetAeHist_Origin` | n.a. | n.a. | n.a. | done (host) | done (?) | n.a. | T23: prudynt; T31: prudynt†, raptor† | T23: stock handlers routed (open-tx-isp agg-25), no device test; _Sec/MultiCamera_ variants unverified |
+| `ISP_Tuning_GetAeState` | n.a. | n.a. | n.a. | done (host) | done (?) | n.a. | raptor† | T23: stock handlers routed (open-tx-isp agg-25), no device test; _Sec/MultiCamera_ variants unverified |
+| `ISP_Tuning_GetAeZone` | done (host) | done (host) | done (?) | done (host) | done (?) | n.a. | prudynt†, raptor† | T10+T20: vendor T20 ids/ABI (agg-25); T10 shares the build; T23: stock handlers routed (agg-25), no device test |
+| `ISP_Tuning_GetAfStatistics` | n.a. | n.a. | n.a. | n.a. | n.a. | missing | – |  |
+| `ISP_Tuning_GetAfZone` | n.a. | n.a. | n.a. | done (host) | done (dev) | n.a. | raptor† | T23: AF statistics chain from the stock module, off by default (source_af=0); no device test; T31: reconstructed AF chain; metrics/zone/weight/hist verified on cam-A 2026-10-05, Get->Set roundtrip 0 |
+| `ISP_Tuning_GetAwbZone` | done (host) | done (host) | n.a. | done (host) | done (?) | n.a. | T10/T20: prudynt†; T23/T31: prudynt†, raptor† | T10+T20: vendor T20 ids/ABI (agg-25); T10 shares the build; T23: stock handlers routed (agg-25), no device test |
+| `ISP_Tuning_GetFaceAeLuma` | n.a. | n.a. | n.a. | n.a. | n.a. | missing | – |  |
+| `ISP_Tuning_SetAeFreeze` | n.a. | n.a. | n.a. | done (host) | done (?) | n.a. | raptor† | T23: stock handlers routed (open-tx-isp agg-25), no device test; _Sec/MultiCamera_ variants unverified |
+| `ISP_Tuning_SetAwbCt` | n.a. | n.a. | n.a. | done (host) | done (?) | n.a. | raptor† | T23: stock handlers routed (open-tx-isp agg-25), no device test |
+| `ISP_Tuning_SetExpr` | done (?) | done (?) | done (?) | done (host) | done (?) | n.a. | T23/T31: raptor† | T23: stock handlers routed (open-tx-isp agg-25), no device test; _Sec/MultiCamera_ variants unverified |
+| `ISP_Tuning_SetWB_ALGO` | n.a. | n.a. | n.a. | error | done (?) | n.a. | – | T23: driver does not route 0x800000c (HLIL AWB has no light-source table) |
 
 ### Encoder (and decoder)
 
-| Vendor function | T10 | T20 | T21 | T23 | T31 | T41 | Note |
-|---|---|---|---|---|---|---|---|
-| `Decoder_*` (8 functions) | missing | missing | missing | done (?) | missing | missing | functions: CreateChn, DestroyChn, GetFrame, PollingFrame, ReleaseFrame, SendStreamTimeout, StartRecvPic, StopRecvPic. |
-| `Encoder_FlushStream` | done (host) | done (host) | done (host) | done (host) | done (host) | done (host) | all: drops the encoded stream nobody fetched (agg-25) |
-| `Encoder_Get/SetChangeRef` | missing | missing | missing | done (?) | n.a. | n.a. |  |
-| `Encoder_Get/SetChnColor2Grey` | done (host) | done (host) | done (host) | done (?) | n.a. | n.a. | T10+T20+T21: codes grey pictures (agg-25) |
-| `Encoder_Get/SetChnDemask` | missing | missing | n.a. | n.a. | n.a. | n.a. |  |
-| `Encoder_Get/SetChnDenoise` | error | error | error | done (?) | n.a. | n.a. | T10+T20+T21: refused (-1): Helix/NVPU cannot do it (agg-25); vendor behaviour unverified |
-| `Encoder_Get/SetChnFrmUsedMode` | missing | missing | missing | done (host) | n.a. | n.a. | T23: stored in the channel attribute (claude/t23-enc-rest, not in agg-25) |
-| `Encoder_Get/SetChnH264Demask` | missing | missing | n.a. | n.a. | n.a. | n.a. |  |
-| `Encoder_Get/SetChnH264Denoise` | missing | missing | n.a. | n.a. | n.a. | n.a. |  |
-| `Encoder_Get/SetChnH264FrmUsedMode` | missing | missing | n.a. | n.a. | n.a. | n.a. |  |
-| `Encoder_Get/SetChnHSkip` | missing | missing | done (?) | done (?) | n.a. | n.a. |  |
-| `Encoder_Get/SetChnROI` | done (host) | done (dev) | vendor no-op | done (?) | n.a. | n.a. | T10: claude/t1x-roi (not in agg-25): EFE ROI registers per the OEM slice init; T10 unverified on a device; T20: claude/t1x-roi (not in agg-25): QP51 region blocky, QP15 fine on cam-C 2026-10-05; absolute QP 15 raises the bitrate 1.4 to 9.9 Mbit/s (CBR bypassed, vendor semantics unverified); T21: vendor 1.0.33 never programs IMP ROIs; ours only with OPENIMP_T21_ROI=1 (claude/t1x-roi, beyond vendor, user decision pending); without it the call is refused in agg-25 |
-| `Encoder_Get/SetChnRcAttr` | missing | missing | n.a. | n.a. | n.a. | n.a. |  |
-| `Encoder_Get/SetChnRoiAttr` | n.a. | n.a. | n.a. | n.a. | n.a. | missing |  |
-| `Encoder_Get/SetChnSeiAttr` | n.a. | n.a. | n.a. | n.a. | n.a. | missing |  |
-| `Encoder_Get/SetFisheyeEnableStatus` | missing | missing | missing | cache-only | cache-only | missing | T23+T31: kept for getter only (documented in source) |
-| `Encoder_Get/SetH264TransCfg` | cache-only | done (dev) | done (host) | done (?) | n.a. | n.a. | T10: T10 has no chroma-offset register, stays 0; T20: chroma QP offset via PPS + reg 0x40120 (claude/t1x-roi, not in agg-25): verified on cam-C, no colour shift; T21: chroma QP offset, PPS rewrite (claude/t1x-roi, not in agg-25); not device-tested |
-| `Encoder_Get/SetH265TransCfg` | n.a. | n.a. | cache-only | cache-only | n.a. | n.a. | T21+T23: stored in channel, never pushed |
-| `Encoder_Get/SetJpegeQl` | cache-only | cache-only | cache-only | done (?) | n.a. | done (host) | T10+T20+T21: only applied at CreateChn (p2_encoder.c:1771); live change ignored; T41: live and at CreateChn (agg-25); T10/T20/T21 still applied at CreateChn only |
-| `Encoder_Get/SetMbRC` | ? | done (host) | done (?) | done (?) | n.a. | n.a. | T10: commit names T20 only; T10 shares the build; T20: switches the macroblock QP table (agg-25) |
-| `Encoder_Get/SetQpgMode` | n.a. | n.a. | error | done (?) | n.a. | n.a. | T21: refused (-1) since agg-25; vendor behaviour unverified |
-| `Encoder_Get/SetSuperFrameCfg` | done (host) | done (host) | done (host) | done (?) | n.a. | n.a. | T10+T20+T21: reaches the rate control or fails (agg-25) |
-| `Encoder_Get/Setframelossthd` | n.a. | n.a. | n.a. | cache-only | n.a. | n.a. | T23: kept for getter only (documented in source) |
-| `Encoder_GetChnEvalInfo` | n.a. | n.a. | n.a. | n.a. | done (host) | n.a. | T31: claude/t23-enc-rest (not in agg-25) |
-| `Encoder_GetChnMaxPictureSize` | n.a. | n.a. | n.a. | done (host) | n.a. | n.a. | T23: as the OEM stores it, re-encode on overshoot (claude/t23-enc-rest, not in agg-25) |
-| `Encoder_GetGOPSize` | missing | missing | missing | done (?) | n.a. | n.a. |  |
-| `Encoder_InputJpege` | n.a. | n.a. | n.a. | done (?) | n.a. | missing |  |
-| `Encoder_InputJpege_Ex` | n.a. | n.a. | n.a. | n.a. | n.a. | missing |  |
-| `Encoder_SetAvpuBsShare` | n.a. | n.a. | n.a. | n.a. | n.a. | missing |  |
-| `Encoder_SetAvpuBsSize` | n.a. | n.a. | n.a. | n.a. | n.a. | missing |  |
-| `Encoder_SetAvpuJpegQp` | n.a. | n.a. | n.a. | n.a. | n.a. | missing |  |
-| `Encoder_SetChnHSkipBlackEnhance` | missing | missing | missing | done (?) | n.a. | n.a. |  |
-| `Encoder_SetChnMapRoi` | n.a. | n.a. | n.a. | n.a. | n.a. | missing |  |
-| `Encoder_SetChnMaxPictureSize` | n.a. | n.a. | n.a. | done (host) | n.a. | cache-only | T23: as the OEM stores it, re-encode on overshoot (claude/t23-enc-rest, not in agg-25); T41: written into rcAttr copy, codec not updated (T23: loss threshold kept only) |
-| `Encoder_SetFrameRelease` | n.a. | n.a. | n.a. | n.a. | cache-only | missing | T31: kept for getter only (documented in source) |
-| `Encoder_SetIvpuBsSize` | n.a. | n.a. | n.a. | n.a. | n.a. | missing |  |
-| `Encoder_SetMultiSectionMode` | n.a. | n.a. | n.a. | cache-only | n.a. | n.a. | T23: kept for getter only (documented in source) |
-| `Encoder_SetbufshareChn` | n.a. | n.a. | n.a. | n.a. | stub | stub | T31+T41: validates channel numbers, returns 0 |
-| `Encoder_VbmAlloc` | n.a. | n.a. | n.a. | done (?) | n.a. | missing |  |
-| `Encoder_VbmAlloc_Ex` | n.a. | n.a. | n.a. | n.a. | n.a. | missing |  |
-| `Encoder_VbmFree` | n.a. | n.a. | n.a. | done (?) | n.a. | missing |  |
-| `Encoder_VbmFree_Ex` | n.a. | n.a. | n.a. | n.a. | n.a. | missing |  |
-| `Encoder_VbmP2V` | n.a. | n.a. | n.a. | done (?) | n.a. | missing |  |
-| `Encoder_VbmV2P` | n.a. | n.a. | n.a. | done (?) | n.a. | missing |  |
-| `Encoder_YuvEncode` | n.a. | n.a. | n.a. | done (?) | n.a. | missing |  |
-| `Encoder_YuvEncode_Ex` | n.a. | n.a. | n.a. | n.a. | n.a. | missing |  |
-| `Encoder_YuvExit` | n.a. | n.a. | n.a. | done (?) | n.a. | missing |  |
-| `Encoder_YuvExit_Ex` | n.a. | n.a. | n.a. | n.a. | n.a. | missing |  |
-| `Encoder_YuvInit` | n.a. | n.a. | n.a. | done (?) | n.a. | missing |  |
-| `Encoder_YuvInit_Ex` | n.a. | n.a. | n.a. | n.a. | n.a. | missing |  |
+| Vendor function | T10 | T20 | T21 | T23 | T31 | T41 | Used by | Note |
+|---|---|---|---|---|---|---|---|---|
+| `Decoder_*` (8 functions) | missing | missing | missing | done (?) | missing | missing | – | functions: CreateChn, DestroyChn, GetFrame, PollingFrame, ReleaseFrame, SendStreamTimeout, StartRecvPic, StopRecvPic. |
+| `Encoder_FlushStream` | done (host) | done (host) | done (host) | done (host) | done (host) | done (host) | prudynt†, raptor† | all: drops the encoded stream nobody fetched (agg-25) |
+| `Encoder_Get/SetChangeRef` | missing | missing | missing | done (?) | n.a. | n.a. | – |  |
+| `Encoder_Get/SetChnColor2Grey` | done (host) | done (host) | done (host) | done (?) | n.a. | n.a. | T21: raptor† | T10+T20+T21: codes grey pictures (agg-25) |
+| `Encoder_Get/SetChnDemask` | missing | missing | n.a. | n.a. | n.a. | n.a. | – |  |
+| **► `Encoder_Get/SetChnDenoise`** | error | error | error | done (?) | n.a. | n.a. | **T21: raptor†** | T10+T20+T21: refused (-1): Helix/NVPU cannot do it (agg-25); vendor behaviour unverified |
+| `Encoder_Get/SetChnFrmUsedMode` | missing | missing | missing | done (host) | n.a. | n.a. | – | T23: stored in the channel attribute (claude/t23-enc-rest, not in agg-25) |
+| `Encoder_Get/SetChnH264Demask` | missing | missing | n.a. | n.a. | n.a. | n.a. | – |  |
+| `Encoder_Get/SetChnH264Denoise` | missing | missing | n.a. | n.a. | n.a. | n.a. | – |  |
+| `Encoder_Get/SetChnH264FrmUsedMode` | missing | missing | n.a. | n.a. | n.a. | n.a. | – |  |
+| `Encoder_Get/SetChnHSkip` | missing | missing | done (?) | done (?) | n.a. | n.a. | – |  |
+| `Encoder_Get/SetChnROI` | done (host) | done (dev) | vendor no-op | done (?) | n.a. | n.a. | T21: raptor† | T10: claude/t1x-roi (not in agg-25): EFE ROI registers per the OEM slice init; T10 unverified on a device; T20: claude/t1x-roi (not in agg-25): QP51 region blocky, QP15 fine on cam-C 2026-10-05; absolute QP 15 raises the bitrate 1.4 to 9.9 Mbit/s (CBR bypassed, vendor semantics unverified); T21: vendor 1.0.33 never programs IMP ROIs; ours only with OPENIMP_T21_ROI=1 (claude/t1x-roi, beyond vendor, user decision pending); without it the call is refused in agg-25 |
+| `Encoder_Get/SetChnRcAttr` | missing | missing | n.a. | n.a. | n.a. | n.a. | – |  |
+| `Encoder_Get/SetChnRoiAttr` | n.a. | n.a. | n.a. | n.a. | n.a. | missing | – |  |
+| `Encoder_Get/SetChnSeiAttr` | n.a. | n.a. | n.a. | n.a. | n.a. | missing | – |  |
+| `Encoder_Get/SetFisheyeEnableStatus` | missing | missing | missing | cache-only | cache-only | missing | – | T23+T31: kept for getter only (documented in source) |
+| `Encoder_Get/SetH264TransCfg` | cache-only | done (dev) | done (host) | done (?) | n.a. | n.a. | T21: raptor† | T10: T10 has no chroma-offset register, stays 0; T20: chroma QP offset via PPS + reg 0x40120 (claude/t1x-roi, not in agg-25): verified on cam-C, no colour shift; T21: chroma QP offset, PPS rewrite (claude/t1x-roi, not in agg-25); not device-tested |
+| **► `Encoder_Get/SetH265TransCfg`** | n.a. | n.a. | cache-only | cache-only | n.a. | n.a. | **T21: raptor†** | T21+T23: stored in channel, never pushed |
+| **► `Encoder_Get/SetJpegeQl`** | cache-only | cache-only | cache-only | done (?) | n.a. | done (host) | **T10: prudynt†, raptor†**; **T20/T21/T23: prudynt†, raptor†, timps** | T10+T20+T21: only applied at CreateChn (p2_encoder.c:1771); live change ignored; T41: live and at CreateChn (agg-25); T10/T20/T21 still applied at CreateChn only |
+| `Encoder_Get/SetMbRC` | ? | done (host) | done (?) | done (?) | n.a. | n.a. | T21: raptor† | T10: commit names T20 only; T10 shares the build; T20: switches the macroblock QP table (agg-25) |
+| **► `Encoder_Get/SetQpgMode`** | n.a. | n.a. | error | done (?) | n.a. | n.a. | **T21: raptor†** | T21: refused (-1) since agg-25; vendor behaviour unverified |
+| `Encoder_Get/SetSuperFrameCfg` | done (host) | done (host) | done (host) | done (?) | n.a. | n.a. | T21: raptor† | T10+T20+T21: reaches the rate control or fails (agg-25) |
+| `Encoder_Get/Setframelossthd` | n.a. | n.a. | n.a. | cache-only | n.a. | n.a. | – | T23: kept for getter only (documented in source) |
+| `Encoder_GetChnEvalInfo` | n.a. | n.a. | n.a. | n.a. | done (host) | n.a. | raptor† | T31: claude/t23-enc-rest (not in agg-25) |
+| `Encoder_GetChnMaxPictureSize` | n.a. | n.a. | n.a. | done (host) | n.a. | n.a. | – | T23: as the OEM stores it, re-encode on overshoot (claude/t23-enc-rest, not in agg-25) |
+| `Encoder_GetGOPSize` | missing | missing | missing | done (?) | n.a. | n.a. | – |  |
+| `Encoder_InputJpege` | n.a. | n.a. | n.a. | done (?) | n.a. | missing | T23: timps |  |
+| `Encoder_InputJpege_Ex` | n.a. | n.a. | n.a. | n.a. | n.a. | missing | – |  |
+| `Encoder_SetAvpuBsShare` | n.a. | n.a. | n.a. | n.a. | n.a. | missing | – |  |
+| `Encoder_SetAvpuBsSize` | n.a. | n.a. | n.a. | n.a. | n.a. | missing | – |  |
+| `Encoder_SetAvpuJpegQp` | n.a. | n.a. | n.a. | n.a. | n.a. | missing | – |  |
+| `Encoder_SetChnHSkipBlackEnhance` | missing | missing | missing | done (?) | n.a. | n.a. | – |  |
+| `Encoder_SetChnMapRoi` | n.a. | n.a. | n.a. | n.a. | n.a. | missing | – |  |
+| **► `Encoder_SetChnMaxPictureSize`** | n.a. | n.a. | n.a. | done (host) | n.a. | cache-only | **T41: raptor†** | T23: as the OEM stores it, re-encode on overshoot (claude/t23-enc-rest, not in agg-25); T41: written into rcAttr copy, codec not updated (T23: loss threshold kept only) |
+| `Encoder_SetFrameRelease` | n.a. | n.a. | n.a. | n.a. | cache-only | missing | – | T31: kept for getter only (documented in source) |
+| `Encoder_SetIvpuBsSize` | n.a. | n.a. | n.a. | n.a. | n.a. | missing | – |  |
+| `Encoder_SetMultiSectionMode` | n.a. | n.a. | n.a. | cache-only | n.a. | n.a. | – | T23: kept for getter only (documented in source) |
+| **► `Encoder_SetbufshareChn`** | n.a. | n.a. | n.a. | n.a. | stub | stub | **prudynt†, raptor†** | T31+T41: validates channel numbers, returns 0 |
+| `Encoder_VbmAlloc` | n.a. | n.a. | n.a. | done (?) | n.a. | missing | T23: timps |  |
+| `Encoder_VbmAlloc_Ex` | n.a. | n.a. | n.a. | n.a. | n.a. | missing | – |  |
+| `Encoder_VbmFree` | n.a. | n.a. | n.a. | done (?) | n.a. | missing | T23: timps |  |
+| `Encoder_VbmFree_Ex` | n.a. | n.a. | n.a. | n.a. | n.a. | missing | – |  |
+| `Encoder_VbmP2V` | n.a. | n.a. | n.a. | done (?) | n.a. | missing | – |  |
+| `Encoder_VbmV2P` | n.a. | n.a. | n.a. | done (?) | n.a. | missing | T23: timps |  |
+| `Encoder_YuvEncode` | n.a. | n.a. | n.a. | done (?) | n.a. | missing | T23: timps |  |
+| `Encoder_YuvEncode_Ex` | n.a. | n.a. | n.a. | n.a. | n.a. | missing | – |  |
+| `Encoder_YuvExit` | n.a. | n.a. | n.a. | done (?) | n.a. | missing | T23: timps |  |
+| `Encoder_YuvExit_Ex` | n.a. | n.a. | n.a. | n.a. | n.a. | missing | – |  |
+| `Encoder_YuvInit` | n.a. | n.a. | n.a. | done (?) | n.a. | missing | T23: timps |  |
+| `Encoder_YuvInit_Ex` | n.a. | n.a. | n.a. | n.a. | n.a. | missing | – |  |
 
 ### Framesource
 
-| Vendor function | T10 | T20 | T21 | T23 | T31 | T41 | Note |
-|---|---|---|---|---|---|---|---|
-| `EmuFrameSource_*` (4 functions) | n.a. | n.a. | n.a. | n.a. | missing | missing | functions: CreateChn, DestroyChn, DisableChn, EnableChn. |
-| `FB_*` (5 functions) | n.a. | n.a. | n.a. | n.a. | missing | n.a. | functions: CreateGroup, DestroyGroup, DisableDev, EnableDev, GetDevInfo. |
-| `FrameSource_DequeueBuffer` | n.a. | n.a. | n.a. | n.a. | n.a. | missing |  |
-| `FrameSource_ExternInject_CreateChn` | n.a. | n.a. | n.a. | n.a. | n.a. | missing |  |
-| `FrameSource_ExternInject_DestroyChn` | n.a. | n.a. | n.a. | n.a. | n.a. | missing |  |
-| `FrameSource_ExternInject_DisableChn` | n.a. | n.a. | n.a. | n.a. | n.a. | missing |  |
-| `FrameSource_ExternInject_EnableChn` | n.a. | n.a. | n.a. | n.a. | n.a. | missing |  |
-| `FrameSource_Get/SetChnFifoAttr` | done (host) | done (host) | done (host) | done (host) | done (host) | cache-only | T10+T20+T21+T23+T31: = SetMaxDelay(maxdepth) (agg-25); FIFO_DATA_PRIORITY refused for maxdepth>0; T41: FIFO attr stored, no FIFO behind it |
-| `FrameSource_Get/SetDelay` | done (host) | done (host) | done (host) | done (host) | done (host) | error | T10+T20+T21+T23+T31: real delay FIFO (agg-25); T10 shares the T20 build; FIFO_DATA_PRIORITY refused for maxdepth>0; T41: ENOTSUP stub (returns -1) |
-| `FrameSource_Get/SetFrameDepth` | done (?) | done (?) | done (?) | done (?) | done (?) | cache-only | T41: depth stored, GetFrame ignores it (T41 p1) |
-| `FrameSource_Get/SetI2dAttr` | n.a. | n.a. | n.a. | n.a. | n.a. | error | T41: ENOTSUP stub (returns -1) |
-| `FrameSource_Get/SetMaxDelay` | done (host) | done (host) | done (host) | done (host) | done (host) | error | T10+T20+T21+T23+T31: real delay FIFO (agg-25); T10 shares the T20 build; FIFO_DATA_PRIORITY refused for maxdepth>0; T41: ENOTSUP stub (returns -1) |
-| `FrameSource_Get/SetPool` | n.a. | n.a. | n.a. | done (host) | done (host) | cache-only | T23+T31: real memory pools (claude/t23t31-cacheonly, not in agg-25); T41: pool id recorded only |
-| `FrameSource_GetFrameEx` | n.a. | n.a. | n.a. | n.a. | n.a. | missing |  |
-| `FrameSource_GetTimedFrame` | done (host) | done (host) | done (host) | done (host) | done (host) | error | T10+T20+T21+T23+T31: agg-25; T41: ENOTSUP stub (returns -1) |
-| `FrameSource_QueueBuffer` | n.a. | n.a. | n.a. | n.a. | n.a. | missing |  |
-| `FrameSource_ReleaseFrameEx` | n.a. | n.a. | n.a. | n.a. | n.a. | missing |  |
-| `FrameSource_SetYuvAlign` | n.a. | n.a. | n.a. | n.a. | n.a. | missing |  |
-| `FrameSource_SnapFrame` | done (?) | done (?) | done (?) | done (?) | done (?) | done (host) | T41: copies the next consumer frame, packed NV12 (agg-25); user earlier did not want it |
+| Vendor function | T10 | T20 | T21 | T23 | T31 | T41 | Used by | Note |
+|---|---|---|---|---|---|---|---|---|
+| `EmuFrameSource_*` (4 functions) | n.a. | n.a. | n.a. | n.a. | missing | missing | – | functions: CreateChn, DestroyChn, DisableChn, EnableChn. |
+| `FB_*` (5 functions) | n.a. | n.a. | n.a. | n.a. | missing | n.a. | – | functions: CreateGroup, DestroyGroup, DisableDev, EnableDev, GetDevInfo. |
+| `FrameSource_DequeueBuffer` | n.a. | n.a. | n.a. | n.a. | n.a. | missing | – |  |
+| `FrameSource_ExternInject_CreateChn` | n.a. | n.a. | n.a. | n.a. | n.a. | missing | – |  |
+| `FrameSource_ExternInject_DestroyChn` | n.a. | n.a. | n.a. | n.a. | n.a. | missing | – |  |
+| `FrameSource_ExternInject_DisableChn` | n.a. | n.a. | n.a. | n.a. | n.a. | missing | – |  |
+| `FrameSource_ExternInject_EnableChn` | n.a. | n.a. | n.a. | n.a. | n.a. | missing | – |  |
+| **► `FrameSource_Get/SetChnFifoAttr`** | done (host) | done (host) | done (host) | done (host) | done (host) | cache-only | **prudynt†, raptor†** | T10+T20+T21+T23+T31: = SetMaxDelay(maxdepth) (agg-25); FIFO_DATA_PRIORITY refused for maxdepth>0; T41: FIFO attr stored, no FIFO behind it |
+| **► `FrameSource_Get/SetDelay`** | done (host) | done (host) | done (host) | done (host) | done (host) | error | **T31/T41: raptor†** | T10+T20+T21+T23+T31: real delay FIFO (agg-25); T10 shares the T20 build; FIFO_DATA_PRIORITY refused for maxdepth>0; T41: ENOTSUP stub (returns -1) |
+| **► `FrameSource_Get/SetFrameDepth`** | done (?) | done (?) | done (?) | done (?) | done (?) | cache-only | **T10/T20/T21/T31/T41: prudynt†, raptor†**; T23: prudynt, raptor, timps | T41: depth stored, GetFrame ignores it (T41 p1) |
+| **► `FrameSource_Get/SetI2dAttr`** | n.a. | n.a. | n.a. | n.a. | n.a. | error | **raptor†** | T41: ENOTSUP stub (returns -1) |
+| **► `FrameSource_Get/SetMaxDelay`** | done (host) | done (host) | done (host) | done (host) | done (host) | error | **T31/T41: raptor†** | T10+T20+T21+T23+T31: real delay FIFO (agg-25); T10 shares the T20 build; FIFO_DATA_PRIORITY refused for maxdepth>0; T41: ENOTSUP stub (returns -1) |
+| **► `FrameSource_Get/SetPool`** | n.a. | n.a. | n.a. | done (host) | done (host) | cache-only | **T31/T41: raptor†** | T23+T31: real memory pools (claude/t23t31-cacheonly, not in agg-25); T41: pool id recorded only |
+| `FrameSource_GetFrameEx` | n.a. | n.a. | n.a. | n.a. | n.a. | missing | – |  |
+| **► `FrameSource_GetTimedFrame`** | done (host) | done (host) | done (host) | done (host) | done (host) | error | **raptor†** | T10+T20+T21+T23+T31: agg-25; T41: ENOTSUP stub (returns -1) |
+| `FrameSource_QueueBuffer` | n.a. | n.a. | n.a. | n.a. | n.a. | missing | – |  |
+| `FrameSource_ReleaseFrameEx` | n.a. | n.a. | n.a. | n.a. | n.a. | missing | – |  |
+| `FrameSource_SetYuvAlign` | n.a. | n.a. | n.a. | n.a. | n.a. | missing | – |  |
+| `FrameSource_SnapFrame` | done (?) | done (?) | done (?) | done (?) | done (?) | done (host) | raptor† | T41: copies the next consumer frame, packed NV12 (agg-25); user earlier did not want it |
 
 ### OSD
 
-| Vendor function | T10 | T20 | T21 | T23 | T31 | T41 | Note |
-|---|---|---|---|---|---|---|---|
-| `ISP_Tuning_CreateOsdRgn` | n.a. | n.a. | n.a. | done (?) | n.a. | error | T41: ENOTSUP stub (returns -1) |
-| `ISP_Tuning_DestroyOsdRgn` | n.a. | n.a. | n.a. | done (?) | n.a. | error | T41: ENOTSUP stub (returns -1) |
-| `ISP_Tuning_Get/SetOSDAttr` | n.a. | n.a. | n.a. | error | n.a. | missing | T23: driver rejects 0x8000181 (-EINVAL) |
-| `ISP_Tuning_Get/SetOSDBlock` | n.a. | n.a. | n.a. | error | n.a. | missing | T23: driver rejects 0x8000182 (-EINVAL) |
-| `ISP_Tuning_GetOsdRgnAttr` | n.a. | n.a. | n.a. | done (?) | n.a. | missing |  |
-| `ISP_Tuning_SetOsdPoolSize` | n.a. | n.a. | n.a. | done (?) | n.a. | stub | T41: 2 insns, returns ? |
-| `ISP_Tuning_SetOsdRgnAttr` | n.a. | n.a. | n.a. | done (?) | n.a. | error | T41: ENOTSUP stub (returns -1) |
-| `ISP_Tuning_ShowOsdRgn` | n.a. | n.a. | n.a. | done (?) | n.a. | error | T41: ENOTSUP stub (returns -1) |
-| `OSD_AttachToGroup` | missing | missing | missing | done (?) | done (?) | done (?) |  |
-| `OSD_CreateRgn_ISP` | n.a. | n.a. | n.a. | done (?) | n.a. | missing |  |
-| `OSD_DestroyRgn_ISP` | n.a. | n.a. | n.a. | done (?) | n.a. | missing |  |
-| `OSD_Exit_ISP` | n.a. | n.a. | n.a. | done (?) | n.a. | missing |  |
-| `OSD_Get/SetRgnAttr_ISP` | n.a. | n.a. | n.a. | done (?) | n.a. | missing |  |
-| `OSD_GetRegionLuma` | n.a. | n.a. | n.a. | missing | n.a. | missing |  |
-| `OSD_GetRgnAttr_ISPPic` | n.a. | n.a. | n.a. | done (?) | n.a. | missing |  |
-| `OSD_SetGroupCallback` | n.a. | n.a. | n.a. | n.a. | n.a. | missing |  |
-| `OSD_SetPoolSize_ISP` | n.a. | n.a. | n.a. | done (host) | n.a. | missing | T23: ISP OSD pictures from the pool (claude/t23t31-cacheonly, not in agg-25) |
-| `OSD_SetRgnAttr_PicISP` | n.a. | n.a. | n.a. | done (?) | n.a. | missing |  |
-| `OSD_ShowRgn_ISP` | n.a. | n.a. | n.a. | done (?) | n.a. | missing |  |
+| Vendor function | T10 | T20 | T21 | T23 | T31 | T41 | Used by | Note |
+|---|---|---|---|---|---|---|---|---|
+| **► `ISP_Tuning_CreateOsdRgn`** | n.a. | n.a. | n.a. | done (?) | n.a. | error | **raptor†** | T41: ENOTSUP stub (returns -1) |
+| **► `ISP_Tuning_DestroyOsdRgn`** | n.a. | n.a. | n.a. | done (?) | n.a. | error | **raptor†** | T41: ENOTSUP stub (returns -1) |
+| `ISP_Tuning_Get/SetOSDAttr` | n.a. | n.a. | n.a. | error | n.a. | missing | – | T23: driver rejects 0x8000181 (-EINVAL) |
+| `ISP_Tuning_Get/SetOSDBlock` | n.a. | n.a. | n.a. | error | n.a. | missing | – | T23: driver rejects 0x8000182 (-EINVAL) |
+| `ISP_Tuning_GetOsdRgnAttr` | n.a. | n.a. | n.a. | done (?) | n.a. | missing | – |  |
+| **► `ISP_Tuning_SetOsdPoolSize`** | n.a. | n.a. | n.a. | done (?) | n.a. | stub | **raptor†** | T41: 2 insns, returns ? |
+| **► `ISP_Tuning_SetOsdRgnAttr`** | n.a. | n.a. | n.a. | done (?) | n.a. | error | **raptor†** | T41: ENOTSUP stub (returns -1) |
+| **► `ISP_Tuning_ShowOsdRgn`** | n.a. | n.a. | n.a. | done (?) | n.a. | error | **raptor†** | T41: ENOTSUP stub (returns -1) |
+| `OSD_AttachToGroup` | missing | missing | missing | done (?) | done (?) | done (?) | – |  |
+| `OSD_CreateRgn_ISP` | n.a. | n.a. | n.a. | done (?) | n.a. | missing | – |  |
+| `OSD_DestroyRgn_ISP` | n.a. | n.a. | n.a. | done (?) | n.a. | missing | – |  |
+| `OSD_Exit_ISP` | n.a. | n.a. | n.a. | done (?) | n.a. | missing | – |  |
+| `OSD_Get/SetRgnAttr_ISP` | n.a. | n.a. | n.a. | done (?) | n.a. | missing | – |  |
+| `OSD_GetRegionLuma` | n.a. | n.a. | n.a. | missing | n.a. | missing | – |  |
+| `OSD_GetRgnAttr_ISPPic` | n.a. | n.a. | n.a. | done (?) | n.a. | missing | – |  |
+| `OSD_SetGroupCallback` | n.a. | n.a. | n.a. | n.a. | n.a. | missing | – |  |
+| `OSD_SetPoolSize_ISP` | n.a. | n.a. | n.a. | done (host) | n.a. | missing | – | T23: ISP OSD pictures from the pool (claude/t23t31-cacheonly, not in agg-25) |
+| `OSD_SetRgnAttr_PicISP` | n.a. | n.a. | n.a. | done (?) | n.a. | missing | – |  |
+| `OSD_ShowRgn_ISP` | n.a. | n.a. | n.a. | done (?) | n.a. | missing | – |  |
 
 ### IVS
 
@@ -364,42 +379,42 @@ No vendor function of this area is marked missing or incomplete (see the notes b
 
 ### Audio
 
-| Vendor function | T10 | T20 | T21 | T23 | T31 | T41 | Note |
-|---|---|---|---|---|---|---|---|
-| `ADEC_ReleaseDecoder` | missing | missing | n.a. | n.a. | missing | n.a. |  |
-| `AENC_* / ADEC_*` (17 functions) | done (host) | done (host) | done (host) | done (?) | done (?) | done (host) | functions: ClearChnBuf, CreateChn, DestroyChn, GetStream, PollingStream, RegisterDecoder, ReleaseStream, SendStream, UnRegisterDecoder, CreateChn, DestroyChn, GetStream, PollingStream, RegisterEncoder, ReleaseStream, SendFrame, UnRegisterEncoder. T10+T20+T21+T41: claude/aenc-adec-all (in agg-25): shared software codecs; device encode test open |
-| `AENC_ReleaseEncoder` | missing | missing | n.a. | n.a. | missing | n.a. |  |
-| `AI_DisableAlgo` | n.a. | n.a. | n.a. | done (?) | n.a. | missing |  |
-| `AI_DisableGetRaw` | n.a. | n.a. | n.a. | n.a. | n.a. | missing |  |
-| `AI_DisableHs` | n.a. | n.a. | n.a. | done (?) | n.a. | missing |  |
-| `AI_EnableAlgo` | n.a. | n.a. | n.a. | done (?) | n.a. | missing |  |
-| `AI_EnableGetRaw` | n.a. | n.a. | n.a. | n.a. | n.a. | missing |  |
-| `AI_EnableHs` | n.a. | n.a. | n.a. | done (?) | n.a. | missing |  |
-| `AI_Get/SetDigitalGain` | n.a. | n.a. | n.a. | n.a. | n.a. | missing |  |
-| `AI_GetFrameAndRaw` | n.a. | n.a. | n.a. | n.a. | n.a. | missing |  |
-| `AI_SetHpfCoFrequency` | n.a. | n.a. | n.a. | cache-only | cache-only | cache-only | T23+T31+T41: cutoff recorded, fixed 300 Hz HPF used |
-| `AO_CacheSwitch` | done (host) | done (host) | done (host) | done (host) | done (host) | done (host) | all: implemented with vendor semantics, default off (OPENIMP_AO_CACHE=1 = vendor default on); quiet device test open (audio output only on T31) |
-| `AO_DisableAlgo` | n.a. | n.a. | n.a. | done (?) | n.a. | missing |  |
-| `AO_EnableAlgo` | n.a. | n.a. | n.a. | done (?) | n.a. | missing |  |
-| `AO_Get/SetDigitalGain` | n.a. | n.a. | n.a. | n.a. | n.a. | missing |  |
-| `Audio_Select_Codec` | n.a. | n.a. | n.a. | n.a. | n.a. | missing |  |
-| `DMIC_*` (20 functions) | n.a. | n.a. | n.a. | n.a. | done (?) | error | functions: Disable, DisableAec, DisableChn, Enable, EnableAec, EnableAecRefFrame, EnableChn, Get/SetChnParam, GetFrame, GetFrameAndRef, Get/SetGain, Get/SetPubAttr, Get/SetVol, PollingFrame, ReleaseFrame, SetUserInfo. T41: ENOTSUP stub (returns -1) |
-| `DMIC_DisableAecRefFrame` | n.a. | n.a. | n.a. | n.a. | n.a. | error | T41: ENOTSUP stub (returns -1) |
+| Vendor function | T10 | T20 | T21 | T23 | T31 | T41 | Used by | Note |
+|---|---|---|---|---|---|---|---|---|
+| `ADEC_ReleaseDecoder` | missing | missing | n.a. | n.a. | missing | n.a. | – |  |
+| `AENC_* / ADEC_*` (17 functions) | done (host) | done (host) | done (host) | done (?) | done (?) | done (host) | raptor† | functions: ClearChnBuf, CreateChn, DestroyChn, GetStream, PollingStream, RegisterDecoder, ReleaseStream, SendStream, UnRegisterDecoder, CreateChn, DestroyChn, GetStream, PollingStream, RegisterEncoder, ReleaseStream, SendFrame, UnRegisterEncoder. T10+T20+T21+T41: claude/aenc-adec-all (in agg-25): shared software codecs; device encode test open |
+| `AENC_ReleaseEncoder` | missing | missing | n.a. | n.a. | missing | n.a. | – |  |
+| `AI_DisableAlgo` | n.a. | n.a. | n.a. | done (?) | n.a. | missing | – |  |
+| `AI_DisableGetRaw` | n.a. | n.a. | n.a. | n.a. | n.a. | missing | – |  |
+| `AI_DisableHs` | n.a. | n.a. | n.a. | done (?) | n.a. | missing | – |  |
+| `AI_EnableAlgo` | n.a. | n.a. | n.a. | done (?) | n.a. | missing | – |  |
+| `AI_EnableGetRaw` | n.a. | n.a. | n.a. | n.a. | n.a. | missing | – |  |
+| `AI_EnableHs` | n.a. | n.a. | n.a. | done (?) | n.a. | missing | – |  |
+| `AI_Get/SetDigitalGain` | n.a. | n.a. | n.a. | n.a. | n.a. | missing | – |  |
+| `AI_GetFrameAndRaw` | n.a. | n.a. | n.a. | n.a. | n.a. | missing | – |  |
+| **► `AI_SetHpfCoFrequency`** | n.a. | n.a. | n.a. | cache-only | cache-only | cache-only | **prudynt†, raptor†** | T23+T31+T41: cutoff recorded, fixed 300 Hz HPF used |
+| `AO_CacheSwitch` | done (host) | done (host) | done (host) | done (host) | done (host) | done (host) | raptor† | all: implemented with vendor semantics, default off (OPENIMP_AO_CACHE=1 = vendor default on); quiet device test open (audio output only on T31) |
+| `AO_DisableAlgo` | n.a. | n.a. | n.a. | done (?) | n.a. | missing | – |  |
+| `AO_EnableAlgo` | n.a. | n.a. | n.a. | done (?) | n.a. | missing | – |  |
+| `AO_Get/SetDigitalGain` | n.a. | n.a. | n.a. | n.a. | n.a. | missing | – |  |
+| `Audio_Select_Codec` | n.a. | n.a. | n.a. | n.a. | n.a. | missing | – |  |
+| **► `DMIC_*` (20 functions)** | n.a. | n.a. | n.a. | n.a. | done (?) | error | **raptor†** | functions: Disable, DisableAec, DisableChn, Enable, EnableAec, EnableAecRefFrame, EnableChn, Get/SetChnParam, GetFrame, GetFrameAndRef, Get/SetGain, Get/SetPubAttr, Get/SetVol, PollingFrame, ReleaseFrame, SetUserInfo. T41: ENOTSUP stub (returns -1) |
+| **► `DMIC_DisableAecRefFrame`** | n.a. | n.a. | n.a. | n.a. | n.a. | error | **raptor†** | T41: ENOTSUP stub (returns -1) |
 
 ### System / sysutils / log
 
-| Vendor function | T10 | T20 | T21 | T23 | T31 | T41 | Note |
-|---|---|---|---|---|---|---|---|
-| `Log_Get_Option` | done (?) | done (?) | done (?) | done (?) | done (?) | missing |  |
-| `Log_Set_Option` | missing | missing | missing | missing | missing | missing |  |
-| `SU_Base_SetWkupMode` | n.a. | n.a. | n.a. | n.a. | n.a. | error | T41: writes the mode number to /sys/power/state; neo PR #1 covers related struct overflows, unmerged |
-| `SU_Base_Shutdown` | error | error | error | error | error | error | all: kill(1,SIGCHLD) does not power off busybox init; fix in neo PR #1 (SIGUSR2), unmerged; no streamer uses it |
-| `SU_Battery_GetCapacity` | missing | missing | missing | missing | missing | missing |  |
-| `SU_Battery_GetEvent` | missing | missing | missing | missing | missing | missing |  |
-| `SU_Battery_GetStatus` | missing | missing | missing | missing | missing | missing |  |
-| `SU_Battery_GetVoltageUV` | missing | missing | missing | missing | missing | missing |  |
-| `System_MemPoolFree` | n.a. | n.a. | n.a. | n.a. | done (host) | n.a. | T31: real memory pools (claude/t23t31-cacheonly, not in agg-25) |
-| `System_MemPoolRequest` | n.a. | n.a. | n.a. | done (host) | done (host) | missing | T23+T31: real memory pools (claude/t23t31-cacheonly, not in agg-25) |
+| Vendor function | T10 | T20 | T21 | T23 | T31 | T41 | Used by | Note |
+|---|---|---|---|---|---|---|---|---|
+| `Log_Get_Option` | done (?) | done (?) | done (?) | done (?) | done (?) | missing | – |  |
+| `Log_Set_Option` | missing | missing | missing | missing | missing | missing | – |  |
+| `SU_Base_SetWkupMode` | n.a. | n.a. | n.a. | n.a. | n.a. | error | – | T41: writes the mode number to /sys/power/state; neo PR #1 covers related struct overflows, unmerged |
+| `SU_Base_Shutdown` | error | error | error | error | error | error | – | all: kill(1,SIGCHLD) does not power off busybox init; fix in neo PR #1 (SIGUSR2), unmerged; no streamer uses it |
+| `SU_Battery_GetCapacity` | missing | missing | missing | missing | missing | missing | – |  |
+| `SU_Battery_GetEvent` | missing | missing | missing | missing | missing | missing | – |  |
+| `SU_Battery_GetStatus` | missing | missing | missing | missing | missing | missing | – |  |
+| `SU_Battery_GetVoltageUV` | missing | missing | missing | missing | missing | missing | – |  |
+| `System_MemPoolFree` | n.a. | n.a. | n.a. | n.a. | done (host) | n.a. | – | T31: real memory pools (claude/t23t31-cacheonly, not in agg-25) |
+| `System_MemPoolRequest` | n.a. | n.a. | n.a. | done (host) | done (host) | missing | – | T23+T31: real memory pools (claude/t23t31-cacheonly, not in agg-25) |
 
 ### Notes
 
