@@ -1,9 +1,48 @@
 # Changelog (OpenIMP)
 
-Condensed from the open-stack campaign changelog; only OpenIMP (userspace libimp) changes.
-Newest first, grouped by date. Everything listed was device-tested on the SoC named unless
-marked otherwise. Branch names refer to the `claude/*` topic branches merged into `next`.
-Release tags `vYYYY.MM.DD` on the `aperto` branch are planned (the first one after the 24 h soak that started 2026-10-04); until then dates are the reference. Branch names are historic: the topic branches were merged into `next` and deleted.
+**Where to read what**
+
+- **This file**: release-oriented summary per area (what changed against the vendor stack and against the original upstream line, [opensensor/openimp](https://github.com/opensensor/openimp)), followed by the condensed OpenIMP-only log by date.
+- **Full campaign log**: [docs/OPEN_STACK_CHANGELOG.md](docs/OPEN_STACK_CHANGELOG.md): every change of OpenIMP, open-tx-isp, timps and the thingino integration since 2026-09-30, per session, with device-test evidence and numbers. The same text is on the wiki page *Changelog*.
+- **Current state per feature and SoC**: [docs/FEATURE_MATRIX.md](docs/FEATURE_MATRIX.md) (HTML view: [docs/feature-matrix.html](docs/feature-matrix.html)); what goes beyond the vendor: [docs/OPENIMP_BEYOND_VENDOR.md](docs/OPENIMP_BEYOND_VENDOR.md).
+
+Release tags `vYYYY.MM.DD` on the `aperto` branch are planned (the first one after the 24 h soak that started 2026-10-04); until then dates are the reference. Branch names (`claude/...`) are historic: the topic branches were merged into `next` and deleted. Cameras are anonymised: cam-A (T31), cam-B (T23), cam-C (T20), cam-D (T21), cam-E (T10), cam-F (T41); cam-G and cam-H are further T23 cameras.
+
+## Summary by area (state of 2026-10-05)
+
+All test cameras run the open stack (open-tx-isp kernel driver + OpenIMP + timps) from full OTA images built from thingino `aperto`; no Ingenic or neo helper libraries remain, and T23 runs without helixd and without vendor libimp.
+
+### OpenIMP (userspace libimp)
+
+- **Against the vendor library**
+  - Functions that were stubs or silent no-ops in the vendor stack now act: T21 controls and noise reduction, T10 noise-reduction strength, `ae_it_max_us` on T21, T23 brightness/contrast/saturation/hue, getters that return what was set.
+  - Smaller: libimp about 0.5-0.6 MB instead of 1.0-1.3 MB (`gc-sections`, tables generated instead of copied); more free video memory on T21 (2.76 MB instead of about 1.2 MB); reference-frame sharing on T21/T23 (about 1.5 MB less video memory, on by default).
+  - More robust: checked inputs, rate-limited error logs, bounded waits, clean stop/reload (0 oops in 10 cycles per SoC); clear errors instead of silent `-1`/0 (for example H.265 on SoCs without HEVC fails at once so streamers fall back to H.264).
+  - Beyond the vendor API (documented for streamer authors in OPENIMP_BEYOND_VENDOR.md): motion detection v2 with bounding boxes and strength (`OPENIMP_MOTION_V2=0` restores the vendor algorithm), rmem high-water logging and shortfall hints, effective rate control logged per channel.
+- **Against the original opensensor/openimp line**
+  - Encoders: real HEVC and hardware JPEG on T31; native Helix H.264 on T23 (no vendor helper); hardware JPEG on T20/T21/T23 without the vendor library; H.265 on T41 (AVPU).
+  - Rate control: vendor Allegro core on T31, OEM controllers on T10/T20 (default), eprc on T21/T23 (0 oracle deviations), capped modes mapped properly instead of silent CBR.
+  - Image and audio: OSD (text, bitmap, rectangle, line) on T20/T21/T30, real frame-diff motion detection on T20/T21/T30, software rotation on T31, real AECM echo cancellation on T31 (-18 dB echo), volume/mute and whole-fragment audio writes.
+  - SoC coverage: T41 stream buffers, flip, BCSH and unload fixes; T30 builds against a real kernel (no device in the campaign).
+  - Hardening from audits and an independent review: NULL crashes, buffer overflows (T31 AF/AE getters, module-chain dump, OSD size, ABI struct sizes), EINTR and `O_CLOEXEC` handling, T23 reconfigure race.
+
+### open-tx-isp (kernel driver)
+
+- **Against the vendor driver**: lifecycle hardening on all SoCs (locking, use-after-free, STREAMOFF races, last-close races, bounded tuning access, checked user copies); module reload clean on every SoC including T41; modules smaller than the vendor ones on T21 (452 vs 616 KB), T23 (622 vs 857 KB) and T31 (711 vs 829 KB); sensor module pinned while the ISP is open; sensor registry under `/proc/jz/sensor`; optional 8 MB MMAP pool on T10/T20; unknown control IDs are rejected instead of silently succeeding.
+- **Against the original line**: exposure readback and vendor-format `isp-m0` on all T-series; T21 stock AE, ADR and control dispatchers lifted instruction by instruction (night flicker gone); T23 about 45 control IDs wired and the vendor AE lifted (default on); T20 simple AE/AWB with limits; T31 AF/AE statistics, SensorAttr and WaitFrame through the driver; T41 gc5603 tuning fix and the channel-restart hang fix.
+
+### timps and thingino
+
+- timps changes are made by the timps maintainers; OpenIMP only provides what the streamer calls (for example AE IT max reset to 0).
+- thingino: packages `openimp` and `open-tx-isp` are in upstream branch `aperto` ([#1756](https://github.com/themactep/thingino-firmware/pull/1756)), pinned to the Lu-Fi forks; kernel VPU/rmem stability patches (#1748, #1752), optional boot guard (#1749) and SC2336 flip fixes (#1750, #1751) are merged there.
+
+### Known open items
+
+T23 sporadic single Helix encode error (errno 5; the frequent frame drops are fixed) and T23 real WDR; T41 flip, night column noise, short IVS gaps, day/night and AE/AWB quality; T21 a 4th module reload in one boot crashed once; AEC device tests on T23/T21/T20 (no speaker tests on shared cameras); first release tag after the 24 h soak. Details: the "Still open" section of the full log and the feature matrix.
+
+## OpenIMP changes by date (condensed)
+
+Only OpenIMP (userspace libimp) changes, newest first. Everything listed was device-tested on the SoC named unless marked otherwise.
 
 ## 2026-10-04
 
