@@ -1,137 +1,176 @@
-# OpenIMP
+> **The maintained line of this project is the [`aperto`](../../tree/aperto) branch.**
+> `main` is kept as the original author's line; all current code, documentation and releases (tags `vYYYY.MM.DD`) live on `aperto`. Please base work and pull requests on `aperto`.
 
-OpenIMP is an open implementation of Ingenic's `libimp` video API. It runs
-against the stock ISP, sensor, FrameSource, and AVPU kernel drivers.
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/banner-dark.svg">
+    <img src="docs/assets/banner.svg" alt="Open Ingenic - open source ISP driver &amp; libimp for Ingenic SoCs" width="560">
+  </picture>
+</p>
 
-## Architecture
+<h1 align="center">OpenIMP</h1>
 
-The public encoder graph is shared by T23, T30, T31, T40, and T41. The
-hardware backend is selected only where the SoC ABI actually differs:
+<p align="center">
 
-- `src/t40/openimp_p2_encoder.c` owns the public encoder lifecycle.
-- `src/t40/codec-t40.c` owns the shared AVPU codec backend.
-- `include/openimp/openimp_avc.h` exposes that backend independently of the
-  IMP graph for physically contiguous NV12 producers such as V4L2 DMA-BUF.
-- `include/openimp/openimp_tuning.h` and `openimp-tuningd` keep image policy
-  and gain feedback independent of capture/encoder ownership. See
-  [`docs/TUNING_DAEMON.md`](docs/TUNING_DAEMON.md).
-- `src/al_avpu.c`, `src/device_pool.c`, `src/fifo.c`, and
-  `src/hw_encoder.c` provide the common hardware path.
-- `src/t30/` provides the native T30 Helix descriptor and legacy
-  `/dev/soc_vpu` channel adapter.
-- `src/t31/`, `src/framesource/framesource_tseries.c`,
-  `src/isp/isp_tseries.c`, `src/kernel_interface.c`, and `src/dma_alloc.c`
-  are the T31 stock-driver ABI seam.
-- `src/t40/openimp_p1.c` and `src/t40/openimp_p2_dma.c` are the corresponding
-  T4 stock-driver seam, with explicit T40/T41 ABI branches.
+[![license](https://img.shields.io/badge/license-per%20file-blue)](NOTICE)
+[![SoCs](https://img.shields.io/badge/SoC-T10%20%C2%B7%20T20%20%C2%B7%20T21%20%C2%B7%20T23%20%C2%B7%20T30%20%C2%B7%20T31%20%C2%B7%20T41-3e63dd)](#status)
+[![status](https://img.shields.io/badge/open%20stack-device%20tested-30a46c)](#status)
+[![branch aperto](https://img.shields.io/badge/branch-aperto-e5484d)](https://github.com/opensensor/openimp/tree/aperto)
+[![thingino](https://img.shields.io/badge/thingino-integrated-orange)](https://github.com/themactep/thingino-firmware)
+[![platform](https://img.shields.io/badge/platform-MIPS%20%C2%B7%20Linux%203.10%20%26%204.4-lightgrey)](#build)
+[![last commit](https://img.shields.io/github/last-commit/opensensor/openimp/aperto)](https://github.com/opensensor/openimp/commits/aperto)
+[![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen)](https://github.com/opensensor/openimp/pulls)
 
-T31 does not carry a separate scheduler, rate-control graph, or codec
-implementation. Platform conditionals are restricted to real ABI differences
-such as public structure sizes, ioctl layouts, device behavior, and cache
-maintenance.
+</p>
 
-Audio processing belongs to
-[`libaudioProcess-neo`](https://github.com/gtxaspec/libaudioProcess-neo).
-Logging and system support libraries belong to
-[`ingenic-system-libs-neo`](https://github.com/gtxaspec/ingenic-system-libs-neo).
-OpenIMP provides the native IMP audio I/O layer on T31 and T40/T41. HPF,
-noise suppression, and AGC are loaded at runtime from the installed
-`libaudioProcess-neo`; OpenIMP does not replace that effects library or build
-replacement `libsysutils`/`libalog` libraries.
+OpenIMP is an open replacement for Ingenic's closed `libimp.so` (the IMP video,
+encoder, OSD, IVS and audio API). Together with
+[open-tx-isp](https://github.com/opensensor/open-tx-isp) (the open ISP kernel driver) and a
+streamer such as [timps](https://github.com/Lu-Fi/timps) it forms an open camera stack
+for Ingenic T10, T20, T21, T23, T30, T31, T40 and T41 SoCs. The public API is the
+vendor IMP API, so existing streamers (prudynt, raptor, timps) link against it unchanged.
+
+The `aperto` branch carries the released open stack (device-test campaign work for
+T10/T20/T21/T23/T31/T41) on top of the original `main` line; see [Branches and releases](#branches-and-releases).
+
+## Status
+
+Open stack = open-tx-isp + OpenIMP + timps. State on `aperto` (2026-10-04):
+
+| SoC | Status |
+|---|---|
+| T10 | Runs the open stack from a flashed image (H.264, hardware JPEG/MJPEG, second stream, OSD, motion detection, day/night). Image controls and AE/AWB quality only partly documented. |
+| T20 | Fully open from a flashed image; long soaks (1 h 44 min at 25 fps) without errors; OEM rate controller default, A/B against the vendor stack measured. |
+| T21 | Fully open from a flashed image; vendor-identical rate controller, reference-buffer sharing on. |
+| T23 | Fully open, native Helix H.264 encoder, no vendor helper (2 h 34 min soak). Frequent Helix frame drops fixed (residual interrupt 0x100, kernel patch merged upstream); still open: a rare single Helix encode error (errno 5), no real WDR yet. |
+| T30 | Builds against a real T30 kernel; H.264 command lists match the vendor in an emulator. No device in the test campaign, so not device-verified here. |
+| T31 | Reference SoC. H.264, HEVC, hardware JPEG, OSD, rotation, AEC; 2 h 53 min soak without errors. |
+| T40 | Builds; AVPU H.264 path from upstream work. Not part of the device campaign. |
+| T41 | Runs from a flashed image with H.264 and H.265. Open: live flip, night column noise, short IVS gaps, OOM with three parallel streams at 30 MB rmem (26 MB in the test image works); day/night and AE/AWB quality untested. |
+
+Details per feature and SoC: [FEATURE_MATRIX](docs/FEATURE_MATRIX.md).
+History: [CHANGELOG.md](CHANGELOG.md) and the full
+[OPEN_STACK_CHANGELOG](docs/OPEN_STACK_CHANGELOG.md).
+Only device-tested behaviour is listed as working; everything else is marked as pending.
+
+## Where it is better than the vendor stack
+
+Measured on a T20 at night, same scene, same streamer, only libimp and the ISP driver differ:
+
+| Metric | Vendor | Open |
+|---|---|---|
+| streamer CPU (all threads) | 25.2 % | 10.5 % |
+| snapshot latency (mean of 10) | 0.45 s | 0.20 s |
+| streamer RSS | 6.8 MB | 3.7 MB |
+
+Other points, all device-tested:
+
+- T20 and T10: about 8 MB more free RAM after the unused V4L2 frame pool was switched off.
+- libimp is about 0.5-0.6 MB instead of 1.0-1.3 MB; T21 has 2.76 MB instead of ~1.2 MB free video memory.
+- Reference-frame sharing on T21/T23 saves ~1.5 MB.
+- Reload and stop robustness: 10 stop/start and reload cycles without an oops.
+- Controls and noise reduction that the vendor ignores act on T10/T20/T21; real motion detection on T20/T21/T30; HEVC fails cleanly on SoCs without HEVC hardware.
+- Motion detection v2 (per-cell background model, suppression after IR/gain jumps, bounding boxes and strength through the versioned `OpenIMP_IVS_MoveGetResultEx` API) is on by default; `OPENIMP_MOTION_V2=0` restores the vendor algorithm. Device-tested on T20 and T23 over one night.
+- Memory diagnostics: rmem peak logging and a shortfall message with a concrete `rmem=<n>M` suggestion instead of silent degradation (see the wiki page Memory).
+
+Integration notes for streamer authors, env switches and defaults:
+[OPENIMP_BEYOND_VENDOR](docs/OPENIMP_BEYOND_VENDOR.md).
 
 ## Build
 
+OpenIMP is cross-built for MIPS against a Thingino firmware checkout that already built
+the target (toolchain and headers come from its `output/` tree).
+
 ```sh
-# T20/T20X
-./build-for-device.sh T20
-# or
-make t20
-
-# T21/T21N
-./build-for-device.sh T21
-# or
-make t21
-
-# T23
-./build-for-device.sh T23
-# or
-make t23
-
-# T30/T30X
-./build-for-device.sh T30
-# or
-make t30
-
-# T31 (default)
-./build-for-device.sh
-# or
-make t31
-
-# T40/T40XP
-./build-for-device.sh T40
-# or
-make t40
-
-# T41/T41NQ
-./build-for-device.sh T41
-# or
-make t41
+export THINGINO_DIR=/path/to/thingino-firmware      # checkout with a built target
+make t31                    # or t20 t21 t23 t30 t40 t41; equivalent: ./build-for-device.sh T31
 ```
 
-Outputs:
+- Each `build-<soc>.sh` takes the toolchain from `THINGINO_DIR` (override with
+  `TOOLCHAIN_PREFIX`, `<SOC>_TARGET`, `<SOC>_OUTPUT_DIR`; T20 reuses the T21 script).
+  T40/T41 additionally need the vendor header root (`T41_HEADERS`, auto-detected in the Thingino build tree via `thingino-raptor-hal`).
+- Output: `build/<soc>/libimp.so` and `build/<soc>/openimp-tuningd`. A build is rejected if the library depends on an OEM `libimp.so`.
+- `make t21 OPENIMP_SW_JPEG=1` builds the software JPEG fallback for T20/T21/T23/T30.
+- `make install PLATFORM=T31 PREFIX=...` installs headers, library and tuning daemon.
+- `make check` runs the host tests (rate-control oracles, T23/T30/T31/T40/T41 checks).
+- `BUILD.md` describes an older host build and is outdated; the scripts above are authoritative.
 
-- `build/t20/libimp.so`
-- `build/t21/libimp.so`
-- `build/t23/libimp.so`
-- `build/t30/libimp.so`
-- `build/t31/libimp.so`
-- `build/t40/libimp.so`
-- `build/t41/libimp.so`
+## Integration in Thingino
 
-Each target build rejects a produced library that depends on an OEM
-`libimp.so`. Target builds record RVD import coverage where a matching Raptor
-binary is available.
+The packages `openimp` (this repository) and `open-tx-isp` (kernel driver) are in the upstream
+[thingino-firmware](https://github.com/themactep/thingino-firmware) branch `aperto`
+([#1756](https://github.com/themactep/thingino-firmware/pull/1756)), selected with
+`BR2_PACKAGE_THINGINO_ISP_OPEN` (menu "ISP stack") and pinned by commit SHA to the `aperto`
+branches of the opensensor repositories. Both replace the proprietary `libimp.so` and `tx-isp-<soc>.ko`; the
+SDK sensor, audio and AVPU modules stay; T23 runs fully on OpenIMP without any vendor helper. The
+kernel VPU/rmem stability patches
+([#1748](https://github.com/themactep/thingino-firmware/pull/1748),
+[#1752](https://github.com/themactep/thingino-firmware/pull/1752)) and the optional boot guard
+`BR2_PACKAGE_THINGINO_ISP_GUARD` ([#1749](https://github.com/themactep/thingino-firmware/pull/1749),
+default off) are merged there as well. The streamer is built with `USE_OPENIMP=1` to enable
+features that exist only in OpenIMP. Once the first date tag exists on `aperto`, thingino's `aperto` branch will pin that tag instead of a SHA.
 
-## Current status
+## Branches and releases
 
-- T30: source-only native Helix H.264 through the stock 3.10.14
-  `/dev/soc_vpu` ABI. A T30X VDB1 streams both configured channels over RTSP;
-  main and sub rings sustain 25 fps with decoder-clean I/P GOPs, ping-pong
-  reconstruction, and feedback rate control. The 1920x1080 Main stream runs
-  near the OEM bitrate under the same Raptor configuration.
-- T40: decoder-clean, resolution-independent H.264 streaming through the
-  stock T40XP ISP and AVPU drivers. The V4L2/OpenIMP QHD path validates the
-  AVPU's exact `0x8304` entropy-byte count instead of scanning the complete
-  3.7 MiB stream buffer. On a Wyze Cam v3 Pro at 2560x1440/25, this restored
-  AVPU cadence from 12.5 to 24.8 fps and reduced RVD CPU from 20.4% to 3.3%.
-- T31: the shared T40-derived encoder ran for more than 1,000 hardware frames
-  on a stock-driver GC2053 camera. Main 1920x1080 H.264 and AAC probed and
-  decoded without H.264 errors during the device smoke cycle. The T31
-  FrameSource seam now preserves the kernel DQBUF completion timestamp in the
-  OEM `frameInfo.timeStamp` slot at offset `0x20`; the shared encoder copies
-  that capture timestamp into each public pack instead of substituting
-  encoder-start wall time. A 30-second live decode completed 721 frames with
-  zero duplicate/non-monotonic DTS warnings, compared with 11 warnings in the
-  prior 12-second checkpoint.
-- Capture ownership is an explicit platform policy: T31 returns a frame after
-  AVPU completion, while T40 returns it immediately after submission. This
-  preserves full-rate capture on both stock-driver ABIs.
-- T41: active correctness bring-up. The build covers every RVD/RAD IMP import,
-  the shared pipeline runs dual-channel FrameSource capture, and the native
-  AVPU backend emits decoder-clean High-profile H.264 at both configured
-  geometries. Raptor currently uses embedded-ring copy mode for correctness;
-  its cross-process cached-rmem reference path is not yet coherent. ISP parity
-  and configured-rate delivery remain in progress.
-- T41's standalone V4L2 path exports capture buffers as DMA-BUF and submits
-  their bus addresses directly to the shared OpenIMP AVC backend. A 250-frame
-  2560x1440 High-profile sample completed in 10.20 seconds, reported 25/1 fps,
-  and decoded without warnings or pixel copies.
-- Sensor configuration and tuning remain owned by the stock ISP driver, so
-  the userspace encoder is sensor-independent.
+- `main`: the original author's line (opensensor). It is left untouched and is a strict ancestor of `aperto`.
+- `aperto`: the open stack release line: OpenIMP + open-tx-isp, as used by the thingino `aperto` branch. Fast-forward only; every commit was flashed and checked on cameras. Releases are tagged `vYYYY.MM.DD` on this branch, and thingino pins a tag instead of a SHA.
+- Development and the device-test campaign happen in the [Lu-Fi forks](https://github.com/Lu-Fi/openimp) (branch `next` = integration, `claude/<topic>` = topic branches); tested work reaches `aperto` from `next` after a clean soak.
+- Companion repository: [opensensor/open-tx-isp](https://github.com/opensensor/open-tx-isp) (branch `aperto`). Both repositories are released together; use matching tags.
 
-See [`docs/T40_STATUS.md`](docs/T40_STATUS.md) and
-[`docs/T41_STATUS.md`](docs/T41_STATUS.md) for the corresponding runtime
-gates. See [`docs/T30_STATUS.md`](docs/T30_STATUS.md) for the legacy Helix
-bring-up and its current limitations.
-See [`docs/PROFILING.md`](docs/PROFILING.md) for the opt-in on-device stage
-profiler, the current T41 QHD hotspot data, and the MXU2/MXU3 assessment.
+## Architecture
+
+The public encoder graph is shared by T23, T30, T31, T40 and T41; the hardware backend is
+selected only where the SoC ABI differs.
+
+- `src/t40/openimp_p2_encoder.c`: public encoder lifecycle; `src/t40/codec-t40.c`: shared AVPU backend.
+- `include/openimp/openimp_avc.h`: that backend without the IMP graph, for contiguous NV12 producers such as V4L2 DMA-BUF.
+- `include/openimp/openimp_tuning.h` and `openimp-tuningd`: image policy and gain feedback, see [`docs/TUNING_DAEMON.md`](docs/TUNING_DAEMON.md).
+- `src/al_avpu.c`, `src/device_pool.c`, `src/fifo.c`, `src/hw_encoder.c`: common hardware path.
+- `src/t30/`: Helix descriptor and `/dev/soc_vpu` adapter (T20/T21/T23/T30 Helix encoder, native T23 encoder).
+- `src/t31/`, `src/framesource/framesource_tseries.c`, `src/isp/isp_tseries.c`, `src/kernel_interface.c`, `src/dma_alloc.c`: T31 stock-driver ABI seam.
+- `src/t40/openimp_p1.c`, `src/t40/openimp_p2_dma.c`: T40/T41 seam.
+
+Platform conditionals are limited to real ABI differences (structure sizes, ioctl layouts,
+device behaviour, cache maintenance). Status notes per SoC: [`docs/T30_STATUS.md`](docs/T30_STATUS.md),
+[`docs/T40_STATUS.md`](docs/T40_STATUS.md), [`docs/T41_STATUS.md`](docs/T41_STATUS.md),
+profiling: [`docs/PROFILING.md`](docs/PROFILING.md).
+
+Audio processing belongs to [`libaudioProcess-neo`](https://github.com/gtxaspec/libaudioProcess-neo),
+logging and system libraries to [`ingenic-system-libs-neo`](https://github.com/gtxaspec/ingenic-system-libs-neo).
+OpenIMP provides the native IMP audio I/O layer on T31 and T40/T41; HPF, noise suppression and AGC are
+loaded at runtime from `libaudioProcess-neo`. Acoustic echo cancellation uses the bundled WebRTC AECM.
+
+## Documentation
+
+- [Wiki](https://github.com/opensensor/openimp/wiki): build and install, module parameters, `OPENIMP_*` variables, memory sizing, troubleshooting, release scheme (one wiki for OpenIMP and open-tx-isp).
+- [`docs/FEATURE_MATRIX.md`](docs/FEATURE_MATRIX.md) (also as [`feature-matrix.html`](docs/feature-matrix.html), [rendered](https://htmlpreview.github.io/?https://github.com/opensensor/openimp/blob/aperto/docs/feature-matrix.html)): what works on which SoC.
+- [`docs/OPEN_STACK_CHANGELOG.md`](docs/OPEN_STACK_CHANGELOG.md) and [`CHANGELOG.md`](CHANGELOG.md): history of the open stack.
+- [`docs/OPENIMP_BEYOND_VENDOR.md`](docs/OPENIMP_BEYOND_VENDOR.md) and [`docs/OPENIMP_SOC_DIFFS.md`](docs/OPENIMP_SOC_DIFFS.md): differences to the vendor stack, for streamer authors.
+- [`docs/PERFORMANCE.md`](docs/PERFORMANCE.md): performance and resources, open stack versus vendor stack, per SoC, with sources and caveats.
+- [`docs/test-reports/`](docs/test-reports): raw device test reports.
+- [`docs/re/`](docs/re): reverse-engineering dumps (vendor `libimp.so` HLIL, register traces) used by the RE notes.
+- [`docs/archive/`](docs/archive): historical status and design notes from the early OpenIMP work (kept for reference, may be outdated).
+
+## Reporting problems
+
+Open an issue at [opensensor/openimp](https://github.com/opensensor/openimp/issues) (library, encoder, streamer integration) or [opensensor/open-tx-isp](https://github.com/opensensor/open-tx-isp/issues) (kernel driver, ISP, memory). Please include the SoC and sensor, the revisions of open-tx-isp, OpenIMP and the streamer, `dmesg`, the streamer log (including the `rmem peak` and "effective rate control" lines), the stream set and the `rmem`/`ispmem` values. Do not post addresses, credentials or location names. Details: [Troubleshooting](https://github.com/opensensor/openimp/wiki/Troubleshooting#reporting-a-problem).
+
+## Credits
+
+OpenIMP started as [opensensor/openimp](https://github.com/opensensor/openimp). It builds on the
+Thingino and Ingenic reverse-engineering community: [thingino-firmware](https://github.com/themactep/thingino-firmware),
+[ingenic-sdk](https://github.com/themactep/ingenic-sdk), `libaudioProcess-neo` and
+`ingenic-system-libs-neo` (gtxaspec). Vendored third-party code: WebRTC AECM (BSD-3-Clause),
+x264 bitstream helpers (GPL-2.0-or-later).
+
+## Licensing
+
+Licensing is per file, and there is no project-wide license yet. See [`NOTICE`](NOTICE) for the
+files that carry a license (LGPL-2.1-or-later, GPL-2.0-or-later x264-derived `src/t30/h264enc/`,
+and others) and the "Third-party code" section. The vendored WebRTC AECM in `src/audio/webrtc/`
+is BSD-3-Clause with its own `LICENSE`, `PATENTS` and `LICENSE_THIRD_PARTY`. Files without a
+header carry no explicit grant.
+
+---
+
+<sub>Not affiliated with or endorsed by Ingenic Semiconductor. "Ingenic" is used only to name the SoCs this project supports.</sub>
