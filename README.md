@@ -12,7 +12,7 @@
 
 <p align="center">
 
-[![license](https://img.shields.io/badge/license-per%20file-blue)](NOTICE)
+[![license](https://img.shields.io/badge/license-per%20file-blue)](../../blob/aperto/NOTICE)
 [![SoCs](https://img.shields.io/badge/SoC-T10%20%C2%B7%20T20%20%C2%B7%20T21%20%C2%B7%20T23%20%C2%B7%20T30%20%C2%B7%20T31%20%C2%B7%20T41-3e63dd)](#status)
 [![status](https://img.shields.io/badge/open%20stack-device%20tested-30a46c)](#status)
 [![branch aperto](https://img.shields.io/badge/branch-aperto-e5484d)](https://github.com/opensensor/openimp/tree/aperto)
@@ -48,9 +48,9 @@ Open stack = open-tx-isp + OpenIMP + timps. State on `aperto` (2026-10-04):
 | T40 | Builds; AVPU H.264 path from upstream work. Not part of the device campaign. |
 | T41 | Runs from a flashed image with H.264 and H.265. Open: live flip, night column noise, short IVS gaps, OOM with three parallel streams at 30 MB rmem (26 MB in the test image works); day/night and AE/AWB quality untested. |
 
-Details per feature and SoC: [FEATURE_MATRIX](docs/FEATURE_MATRIX.md).
-History: [CHANGELOG.md](CHANGELOG.md) and the full
-[OPEN_STACK_CHANGELOG](docs/OPEN_STACK_CHANGELOG.md).
+Details per feature and SoC: [FEATURE_MATRIX](../../blob/aperto/docs/FEATURE_MATRIX.md).
+History: [CHANGELOG.md](../../blob/aperto/CHANGELOG.md) and the full
+[OPEN_STACK_CHANGELOG](../../blob/aperto/docs/OPEN_STACK_CHANGELOG.md).
 Only device-tested behaviour is listed as working; everything else is marked as pending.
 
 ## Where it is better than the vendor stack
@@ -74,7 +74,7 @@ Other points, all device-tested:
 - Memory diagnostics: rmem peak logging and a shortfall message with a concrete `rmem=<n>M` suggestion instead of silent degradation (see the wiki page Memory).
 
 Integration notes for streamer authors, env switches and defaults:
-[OPENIMP_BEYOND_VENDOR](docs/OPENIMP_BEYOND_VENDOR.md).
+[OPENIMP_BEYOND_VENDOR](../../blob/aperto/docs/OPENIMP_BEYOND_VENDOR.md).
 
 ## Build
 
@@ -124,16 +124,16 @@ selected only where the SoC ABI differs.
 
 - `src/t40/openimp_p2_encoder.c`: public encoder lifecycle; `src/t40/codec-t40.c`: shared AVPU backend.
 - `include/openimp/openimp_avc.h`: that backend without the IMP graph, for contiguous NV12 producers such as V4L2 DMA-BUF.
-- `include/openimp/openimp_tuning.h` and `openimp-tuningd`: image policy and gain feedback, see [`docs/TUNING_DAEMON.md`](docs/TUNING_DAEMON.md).
+- `include/openimp/openimp_tuning.h` and `openimp-tuningd`: image policy and gain feedback, see [`docs/TUNING_DAEMON.md`](../../blob/aperto/docs/TUNING_DAEMON.md).
 - `src/al_avpu.c`, `src/device_pool.c`, `src/fifo.c`, `src/hw_encoder.c`: common hardware path.
 - `src/t30/`: Helix descriptor and `/dev/soc_vpu` adapter (T20/T21/T23/T30 Helix encoder, native T23 encoder).
 - `src/t31/`, `src/framesource/framesource_tseries.c`, `src/isp/isp_tseries.c`, `src/kernel_interface.c`, `src/dma_alloc.c`: T31 stock-driver ABI seam.
 - `src/t40/openimp_p1.c`, `src/t40/openimp_p2_dma.c`: T40/T41 seam.
 
 Platform conditionals are limited to real ABI differences (structure sizes, ioctl layouts,
-device behaviour, cache maintenance). Status notes per SoC: [`docs/T30_STATUS.md`](docs/T30_STATUS.md),
-[`docs/T40_STATUS.md`](docs/T40_STATUS.md), [`docs/T41_STATUS.md`](docs/T41_STATUS.md),
-profiling: [`docs/PROFILING.md`](docs/PROFILING.md).
+device behaviour, cache maintenance). Status notes per SoC: [`docs/T30_STATUS.md`](../../blob/aperto/docs/T30_STATUS.md),
+[`docs/T40_STATUS.md`](../../blob/aperto/docs/T40_STATUS.md), [`docs/T41_STATUS.md`](../../blob/aperto/docs/T41_STATUS.md),
+profiling: [`docs/PROFILING.md`](../../blob/aperto/docs/PROFILING.md).
 
 Audio processing belongs to [`libaudioProcess-neo`](https://github.com/gtxaspec/libaudioProcess-neo),
 logging and system libraries to [`ingenic-system-libs-neo`](https://github.com/gtxaspec/ingenic-system-libs-neo).
@@ -143,13 +143,13 @@ loaded at runtime from `libaudioProcess-neo`. Acoustic echo cancellation uses th
 ## Documentation
 
 - [Wiki](https://github.com/opensensor/openimp/wiki): build and install, module parameters, `OPENIMP_*` variables, memory sizing, troubleshooting, release scheme (one wiki for OpenIMP and open-tx-isp).
-- [`docs/FEATURE_MATRIX.md`](docs/FEATURE_MATRIX.md) (also as [`feature-matrix.html`](docs/feature-matrix.html), [rendered](https://htmlpreview.github.io/?https://github.com/opensensor/openimp/blob/aperto/docs/feature-matrix.html)): what works on which SoC.
-- [`docs/OPEN_STACK_CHANGELOG.md`](docs/OPEN_STACK_CHANGELOG.md) and [`CHANGELOG.md`](CHANGELOG.md): history of the open stack.
-- [`docs/OPENIMP_BEYOND_VENDOR.md`](docs/OPENIMP_BEYOND_VENDOR.md) and [`docs/OPENIMP_SOC_DIFFS.md`](docs/OPENIMP_SOC_DIFFS.md): differences to the vendor stack, for streamer authors.
-- [`docs/PERFORMANCE.md`](docs/PERFORMANCE.md): performance and resources, open stack versus vendor stack, per SoC, with sources and caveats.
-- [`docs/test-reports/`](docs/test-reports): raw device test reports.
-- [`docs/re/`](docs/re): reverse-engineering dumps (vendor `libimp.so` HLIL, register traces) used by the RE notes.
-- [`docs/archive/`](docs/archive): historical status and design notes from the early OpenIMP work (kept for reference, may be outdated).
+- [`docs/FEATURE_MATRIX.md`](../../blob/aperto/docs/FEATURE_MATRIX.md) (also as [`feature-matrix.html`](../../blob/aperto/docs/feature-matrix.html), [rendered](https://htmlpreview.github.io/?https://github.com/opensensor/openimp/blob/aperto/docs/feature-matrix.html)): what works on which SoC.
+- [`docs/OPEN_STACK_CHANGELOG.md`](../../blob/aperto/docs/OPEN_STACK_CHANGELOG.md) and [`CHANGELOG.md`](../../blob/aperto/CHANGELOG.md): history of the open stack.
+- [`docs/OPENIMP_BEYOND_VENDOR.md`](../../blob/aperto/docs/OPENIMP_BEYOND_VENDOR.md) and [`docs/OPENIMP_SOC_DIFFS.md`](../../blob/aperto/docs/OPENIMP_SOC_DIFFS.md): differences to the vendor stack, for streamer authors.
+- [`docs/PERFORMANCE.md`](../../blob/aperto/docs/PERFORMANCE.md): performance and resources, open stack versus vendor stack, per SoC, with sources and caveats.
+- [`docs/test-reports/`](../../blob/aperto/docs/test-reports): raw device test reports.
+- [`docs/re/`](../../blob/aperto/docs/re): reverse-engineering dumps (vendor `libimp.so` HLIL, register traces) used by the RE notes.
+- [`docs/archive/`](../../blob/aperto/docs/archive): historical status and design notes from the early OpenIMP work (kept for reference, may be outdated).
 
 ## Reporting problems
 
@@ -165,7 +165,7 @@ x264 bitstream helpers (GPL-2.0-or-later).
 
 ## Licensing
 
-Licensing is per file, and there is no project-wide license yet. See [`NOTICE`](NOTICE) for the
+Licensing is per file, and there is no project-wide license yet. See [`NOTICE`](../../blob/aperto/NOTICE) for the
 files that carry a license (LGPL-2.1-or-later, GPL-2.0-or-later x264-derived `src/t30/h264enc/`,
 and others) and the "Third-party code" section. The vendored WebRTC AECM in `src/audio/webrtc/`
 is BSD-3-Clause with its own `LICENSE`, `PATENTS` and `LICENSE_THIRD_PARTY`. Files without a
