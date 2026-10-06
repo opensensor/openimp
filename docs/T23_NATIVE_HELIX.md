@@ -296,7 +296,7 @@ fails every job whose saved status lacks ENDFLAG/BSFULL ("vpu error
 interrupt, status = 100", core reset, RUN returns -1/EIO and copies no
 status back). The 0x100 residue above has no error bit, so a finished
 picture is now dropped whenever the second interrupt lands before the
-woken thread reads the status: on cam-vorne (T23, 360p continuous, 1080p
+woken thread reads the status: on cam-B (T23, 360p continuous, 1080p
 for the per-minute snapshot) about 4 per hour on all-20/all-21, both
 sizes, no correlation with framesource enable/disable, JPEG snapshots,
 ring size or BUF_SHARE (the soak before 0098 saw the same residue as
