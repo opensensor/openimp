@@ -8,6 +8,10 @@
 
 Release plan: `next` goes to `aperto` (fast-forward only) after the long soak of the release candidate and is tagged `vYYYY.MM.DD`; until then dates are the reference. The first release covers T10, T20, T21, T23 and T31; T10 has not been re-tested on the open stack today ("not re-tested"); T41 is not part of the first release. Branch names (`claude/...`) are historic: the topic branches were merged into `next` and deleted. Cameras are anonymised: cam-A (T31), cam-B (T23), cam-C (T20), cam-D (T21), cam-E (T10), cam-F (T41); cam-G and cam-H are further T23 cameras, cam-I a second T20, cam-J a second T21.
 
+## Log level (branch claude/log-level, 2026-10-10, host-tested only)
+
+- `OPENIMP_LOG_LEVEL` (0..7, syslog numbering) gates `IMP_LOG` for syslog and stderr; default 4 (warning), `OPENIMP_DEBUG_TRACE` forces 7. INFO lines (allegro rc per IDR, HWJPEG counter, rmem peak, ...) are silent by default; OSD and HWJPEG/AVC faults are WARNING, one-shot status lines are NOTICE (level 5). Details: [docs/OPEN_STACK_CHANGELOG.md](docs/OPEN_STACK_CHANGELOG.md), env table in [docs/OPENIMP_BEYOND_VENDOR.md](docs/OPENIMP_BEYOND_VENDOR.md).
+
 ## Release candidate agg-34 (state of 2026-10-09 evening)
 
 OpenIMP `agg-34` (838f8147) = agg-32 (8980cae) + encoder ROI clamp (fec3e69, 8545fb9) + reviewed DeepSeek patches (11abe42 and 17 patches); open-tx-isp `agg-34` (da9baf1e) = agg-32 (3cf9bdac) + front-crop fixes for T31, T23, T20 and T10 (d940ba20 to 10bac52f, 164225e5) + T20 `isp-m0` gain cap (da9baf1e). The first release still covers T10, T20, T21, T23 and T31; T41 is experimental and not part of it. The combination agg-34 has not run on the cameras as a whole; the individual fixes below were device-tested on the SoC named.

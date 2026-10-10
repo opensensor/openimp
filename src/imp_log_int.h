@@ -15,6 +15,7 @@
 #include <syslog.h>
 #include <unistd.h>
 #include <string.h>
+#include <stdlib.h>
 
 #include "trace_control.h"
 
@@ -28,14 +29,47 @@ static inline void imp_log_ensure_init(void) {
 }
 
 /*
+ * Runtime log level (syslog numbering 0..7, 4 = LOG_WARNING).  A line is
+ * written only when its priority is <= the level.
+ *   OPENIMP_LOG_LEVEL=n  0..7; unset or invalid = LOG_WARNING, so production
+ *                        cameras log errors and warnings only
+ *   OPENIMP_DEBUG_TRACE  set (not "0"): LOG_DEBUG, everything as before
+ * imp_log_level_parse() is the pure rule (host-tested); imp_log_level() caches
+ * it in a static int, so the per-call cost is one load and one compare.
+ */
+#define IMP_LOG_LEVEL_DEFAULT LOG_WARNING
+
+static inline int imp_log_level_parse(const char *env, int trace)
+{
+    if (trace)
+        return LOG_DEBUG;
+    if (env && env[0] >= '0' && env[0] <= '7' && env[1] == '\0')
+        return env[0] - '0';
+    return IMP_LOG_LEVEL_DEFAULT;
+}
+
+static inline int imp_log_level(void)
+{
+    static int level = -1;
+
+    if (level < 0)
+        level = imp_log_level_parse(getenv("OPENIMP_LOG_LEVEL"),
+                                    openimp_debug_trace_enabled());
+    return level;
+}
+
+/*
  * IMP_LOG(priority, tag, fmt, ...)
- *   priority: LOG_ERR, LOG_WARNING, LOG_INFO, LOG_DEBUG
+ *   priority: LOG_ERR, LOG_WARNING, LOG_NOTICE, LOG_INFO, LOG_DEBUG
  *   tag:      short module name, e.g. "ISP", "System", "Encoder"
+ * Dropped silently (no syslog, no stderr) above the runtime level.
  */
 #define IMP_LOG(prio, tag, fmt, ...) do {                         \
-    imp_log_ensure_init();                                        \
-    syslog((prio), "[%s] " fmt, (tag), ##__VA_ARGS__);            \
-    fprintf(stderr, "[%s] " fmt "\n", (tag), ##__VA_ARGS__);      \
+    if ((prio) <= imp_log_level()) {                              \
+        imp_log_ensure_init();                                    \
+        syslog((prio), "[%s] " fmt, (tag), ##__VA_ARGS__);        \
+        fprintf(stderr, "[%s] " fmt "\n", (tag), ##__VA_ARGS__);  \
+    }                                                             \
 } while (0)
 
 /*

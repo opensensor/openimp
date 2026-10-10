@@ -869,7 +869,7 @@ static void fs_t31_log_isp_driver(void)
     if (logged)
         return;
     logged = 1;
-    IMP_LOG_INFO("Framesource", "T31 ISP driver: %s",
+    IMP_LOG(LOG_NOTICE, "Framesource", "T31 ISP driver: %s",
                  fs_t31_isp_driver_name());
 }
 #else

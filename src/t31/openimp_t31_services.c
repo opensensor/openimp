@@ -157,7 +157,7 @@ static int t31_osd_backend_enabled(void)
 static void t31_osd_backend_disable(const char *reason)
 {
     osd_backend_state = -1;
-    IMP_LOG_INFO("OSD", "T31 IPU OSD backend disabled: %s (errno=%d %s, "
+    IMP_LOG(LOG_WARNING, "OSD", "T31 IPU OSD backend disabled: %s (errno=%d %s, "
                  "%d consecutive IPU errors)", reason, errno,
                  strerror(errno), osd_ipu_errors);
 }
@@ -215,7 +215,7 @@ static void t31_osd_load_mask(struct t31_osd_region *r)
         uint8_t *m = malloc(size);
 
         if (!m) {
-            IMP_LOG_INFO("OSD", "no memory for a %ux%u OSD bitmap", w, h);
+            IMP_LOG(LOG_WARNING, "OSD", "no memory for a %ux%u OSD bitmap", w, h);
             return;
         }
         free(r->mask);
@@ -274,7 +274,7 @@ static void t31_osd_load_region(struct t31_osd_region *r)
         if (DMA_AllocDescriptor(&info, (int)size, "osd-bitmap") != 0 ||
 #endif
             !info.virt_addr || !info.phys_addr) {
-            IMP_LOG_INFO("OSD", "no rmem for a %ux%u OSD bitmap", w, h);
+            IMP_LOG(LOG_WARNING, "OSD", "no rmem for a %ux%u OSD bitmap", w, h);
             return;
         }
         b->virt = (uint8_t *)(uintptr_t)info.virt_addr;
@@ -667,7 +667,7 @@ int openimp_t31_osd_apply_ex(int group, void *frame, unsigned int flags)
             static unsigned int ipu_fail_count;
 
             if (ipu_fail_count < 8u || ipu_fail_count % 1000u == 0u)
-                IMP_LOG_INFO("OSD", "IPU_START failed: ret=-1 errno=%d (%s), "
+                IMP_LOG(LOG_WARNING, "OSD", "IPU_START failed: ret=-1 errno=%d (%s), "
                              "bg %ux%u, %d layer(s) in this pass, "
                              "consecutive errors %d (%u failures total)",
                              ipu_errno, strerror(ipu_errno), width, bg_h, n,

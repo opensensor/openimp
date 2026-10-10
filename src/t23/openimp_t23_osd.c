@@ -311,7 +311,7 @@ static void load_region(struct t23_osd_region *r)
         memset(&info, 0, sizeof(info));
         if (DMA_AllocDescriptor(&info, (int)size, "osd-bitmap") != 0 ||
             !info.virt_addr || !info.phys_addr) {
-            IMP_LOG_INFO("OSD", "no rmem for a %ux%u OSD picture", w, h);
+            IMP_LOG(LOG_WARNING, "OSD", "no rmem for a %ux%u OSD picture", w, h);
             return;
         }
         b->virt = (uint8_t *)(uintptr_t)info.virt_addr;
@@ -474,7 +474,7 @@ static int ipu_open_locked(void)
     osd_ipu_fd = open("/dev/ipu", O_RDWR | O_CLOEXEC);
     if (osd_ipu_fd < 0) {
         osd_ipu_disabled = 1;
-        IMP_LOG_INFO("OSD", "T23 OSD: cannot open /dev/ipu, pictures and "
+        IMP_LOG(LOG_WARNING, "OSD", "T23 OSD: cannot open /dev/ipu, pictures and "
                      "covers are not drawn");
         return -1;
     }
@@ -589,7 +589,7 @@ void openimp_t23_osd_apply(int group, void *frame)
                 osd_ipu_disabled = 1;
                 close(osd_ipu_fd);
                 osd_ipu_fd = -1;
-                IMP_LOG_INFO("OSD", "T23 OSD: repeated IPU errors, pictures "
+                IMP_LOG(LOG_WARNING, "OSD", "T23 OSD: repeated IPU errors, pictures "
                              "and covers are no longer drawn");
                 count = i;
                 break;

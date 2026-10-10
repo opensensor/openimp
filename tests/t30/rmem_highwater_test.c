@@ -6,6 +6,7 @@
 #include <fcntl.h>
 #include <stdarg.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <syslog.h>
 
@@ -47,6 +48,8 @@ int main(void)
     IMPDMABufferInfo a, b, c, big;
     size_t peak = 0;
 
+    /* the lines under test are INFO: above the default log level */
+    setenv("OPENIMP_LOG_LEVEL", "7", 1);
     g_dma_initialized = 1;
     g_rmem_supported = 1;
     g_mem_fd = open("/dev/null", O_RDWR);
