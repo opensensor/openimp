@@ -12,7 +12,7 @@ CAMERA_INPUT_TEST_BIN := $(PROJECT_DIR)/build/tests/t40-camera-input-test
 IVS_SRC := $(PROJECT_DIR)/src/t31
 IVS_FRAMEWORK_TEST_BIN := $(PROJECT_DIR)/build/tests/t40-ivs-framework-test
 
-check: $(STREAM_LAYOUT_TEST_BIN) $(DENOISE_TEST_BIN) $(CAMERA_INPUT_TEST_BIN) $(IVS_FRAMEWORK_TEST_BIN) p3-controls abi-layout frame-ts
+check: $(STREAM_LAYOUT_TEST_BIN) $(DENOISE_TEST_BIN) $(CAMERA_INPUT_TEST_BIN) $(IVS_FRAMEWORK_TEST_BIN) p3-controls isp-osd abi-layout frame-ts
 	$(STREAM_LAYOUT_TEST_BIN)
 	$(DENOISE_TEST_BIN)
 	$(CAMERA_INPUT_TEST_BIN)
@@ -45,6 +45,22 @@ else
 	@echo "t40 p3 controls test skipped (set T40_HEADERS)"
 endif
 
+.PHONY: isp-osd
+ISP_OSD_TEST_BIN := $(PROJECT_DIR)/build/tests/t40-isp-osd-test
+
+# ISP-drawn OSD region table and the 0x080000a2 driver control (vendor T40
+# libimp 1.3.x).  Needs the vendor T40 1.3.1 headers; skipped without them.
+isp-osd:
+ifneq ($(T40_HEADERS),)
+	mkdir -p "$(dir $(ISP_OSD_TEST_BIN))"
+	$(CC) -std=gnu99 -O2 -Wall -Wextra -Werror -DPLATFORM_T40 -I$(T40_HEADERS) \
+		-I$(PROJECT_DIR)/src isp_osd_test.c $(PROJECT_DIR)/src/t40/openimp_t40_isp_osd.c \
+		-pthread -o "$(ISP_OSD_TEST_BIN)"
+	$(ISP_OSD_TEST_BIN)
+else
+	@echo "t40 isp osd test skipped (set T40_HEADERS)"
+endif
+
 # host-only: private ioctl fixture, no camera
 $(CAMERA_INPUT_TEST_BIN): camera_input_test.c $(PROJECT_DIR)/src/t40/openimp_p1.c
 	mkdir -p "$(dir $@)"
@@ -66,7 +82,7 @@ $(DENOISE_TEST_BIN): denoise_test.c $(PROJECT_DIR)/src/t40/p2_denoise.h
 	$(CC) $(CFLAGS) -I$(PROJECT_DIR)/src denoise_test.c -o "$@"
 
 clean:
-	$(RM) $(STREAM_LAYOUT_TEST_BIN) $(DENOISE_TEST_BIN) $(CAMERA_INPUT_TEST_BIN) $(P3_CONTROLS_TEST_BIN) $(IVS_FRAMEWORK_TEST_BIN)
+	$(RM) $(STREAM_LAYOUT_TEST_BIN) $(DENOISE_TEST_BIN) $(CAMERA_INPUT_TEST_BIN) $(P3_CONTROLS_TEST_BIN) $(ISP_OSD_TEST_BIN) $(IVS_FRAMEWORK_TEST_BIN)
 
 # Struct sizes and offsets against the vendor T40 1.3.1 headers and OpenIMP's
 # own T40 ABI headers.  Compile-only with a 32-bit MIPS compiler; skipped when

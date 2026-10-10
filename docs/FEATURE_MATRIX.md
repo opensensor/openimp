@@ -386,7 +386,7 @@ Per feature: the vendor-stack behaviour and the full per-SoC cell text (chronolo
 - **T23:** ✅ device-tested: both streams, green fill
 - **T30:** ? no privacy-mask call in the T30 vendor export list
 - **T31:** ✅ as vendor, follows mirror/flip; emulator 400/400 identical; cam-A black+red ok [-all-13]
-- **T40:** ❌ `Get/SetMask` return ENOTSUP (`openimp_p3_compat.c`)
+- **T40:** ✅ device-tested 2026-10-10 (vendor driver): cover at the right place in both streams, crop SSIM 0.9998 vs the vendor library (branch `claude/t40-isp-osd`)
 - **T41:** ✅ device-tested on chn1 (chn0 value missing because the camera rebooted in that run)
 
 ##### 20. Front crop / scaler level / CSC presets
@@ -794,7 +794,7 @@ Gaps (cache-only, stub, error, missing, ?) of functions that at least one of tim
 - **T23**: 0 (no gap in a function that a streamer imports)
 - **T30**: 2 (timps 0, prudynt 0, raptor 2): `DMIC_*` (missing; raptor), `DMIC_DisableAecRefFrame` (missing; raptor)
 - **T31**: 0 (no gap in a function that a streamer imports)
-- **T40**: 41 (timps 25, prudynt 17, raptor 40): `ISP_Tuning_Get/SetGammaAttr` (error; prudynt+raptor), `ISP_Tuning_Get/SetMask` (error; raptor), `ISP_Tuning_GetSensorAttr` (error; timps), `ISP_Tuning_Awb_Get/SetRgbCoefft` (missing; raptor), `FrameSource_SnapFrame` (error; raptor), `ISP_Tuning_CreateOsdRgn` (error; raptor), `ISP_Tuning_DestroyOsdRgn` (error; raptor), `ISP_Tuning_SetOsdRgnAttr` (error; raptor), `ISP_Tuning_ShowOsdRgn` (error; raptor), `OSD_CreateGroup` (error; prudynt+raptor+timps), `OSD_CreateRgn` (error; prudynt+raptor+timps), `OSD_DestroyGroup` (error; prudynt+raptor+timps), `OSD_DestroyRgn` (error; prudynt+raptor+timps), `OSD_Get/SetGrpRgnAttr` (error; prudynt+raptor+timps), `OSD_Get/SetRgnAttr` (error; prudynt+raptor+timps), `OSD_RegisterRgn` (error; prudynt+raptor+timps), `OSD_SetRgnAttrWithTimestamp` (error; raptor), `OSD_ShowRgn` (error; prudynt+raptor+timps), `OSD_Start` (error; prudynt+raptor+timps), `OSD_Stop` (error; raptor), `OSD_UnRegisterRgn` (error; prudynt+raptor+timps), `OSD_UpdateRgnAttrData` (error; prudynt+raptor), `IVS_CreateBaseMoveInterface` (error; raptor), `IVS_CreateChn` (error; raptor+timps), `IVS_CreateGroup` (error; raptor+timps), `IVS_CreateMoveInterface` (error; raptor+timps), `IVS_DestroyBaseMoveInterface` (error; raptor), `IVS_DestroyChn` (error; prudynt+raptor+timps), `IVS_DestroyGroup` (error; prudynt+raptor+timps), `IVS_DestroyMoveInterface` (error; prudynt+raptor+timps), `IVS_Get/SetParam` (error; raptor+timps), `IVS_GetResult` (error; raptor+timps), `IVS_PollingResult` (error; raptor+timps), `IVS_RegisterChn` (error; raptor+timps), `IVS_ReleaseData` (error; raptor), `IVS_ReleaseResult` (error; raptor+timps), `IVS_StartRecvPic` (error; raptor+timps), `IVS_StopRecvPic` (error; prudynt+raptor+timps), `IVS_UnRegisterChn` (error; prudynt+raptor+timps), `DMIC_*` (error; raptor), `DMIC_DisableAecRefFrame` (error; raptor)
+- **T40**: 36 (timps 25, prudynt 17, raptor 35; ISP-OSD and mask done in `claude/t40-isp-osd`, 2026-10-10): `ISP_Tuning_Get/SetGammaAttr` (error; prudynt+raptor), `ISP_Tuning_GetSensorAttr` (error; timps), `ISP_Tuning_Awb_Get/SetRgbCoefft` (missing; raptor), `FrameSource_SnapFrame` (error; raptor), `OSD_CreateGroup` (error; prudynt+raptor+timps), `OSD_CreateRgn` (error; prudynt+raptor+timps), `OSD_DestroyGroup` (error; prudynt+raptor+timps), `OSD_DestroyRgn` (error; prudynt+raptor+timps), `OSD_Get/SetGrpRgnAttr` (error; prudynt+raptor+timps), `OSD_Get/SetRgnAttr` (error; prudynt+raptor+timps), `OSD_RegisterRgn` (error; prudynt+raptor+timps), `OSD_SetRgnAttrWithTimestamp` (error; raptor), `OSD_ShowRgn` (error; prudynt+raptor+timps), `OSD_Start` (error; prudynt+raptor+timps), `OSD_Stop` (error; raptor), `OSD_UnRegisterRgn` (error; prudynt+raptor+timps), `OSD_UpdateRgnAttrData` (error; prudynt+raptor), `IVS_CreateBaseMoveInterface` (error; raptor), `IVS_CreateChn` (error; raptor+timps), `IVS_CreateGroup` (error; raptor+timps), `IVS_CreateMoveInterface` (error; raptor+timps), `IVS_DestroyBaseMoveInterface` (error; raptor), `IVS_DestroyChn` (error; prudynt+raptor+timps), `IVS_DestroyGroup` (error; prudynt+raptor+timps), `IVS_DestroyMoveInterface` (error; prudynt+raptor+timps), `IVS_Get/SetParam` (error; raptor+timps), `IVS_GetResult` (error; raptor+timps), `IVS_PollingResult` (error; raptor+timps), `IVS_RegisterChn` (error; raptor+timps), `IVS_ReleaseData` (error; raptor), `IVS_ReleaseResult` (error; raptor+timps), `IVS_StartRecvPic` (error; raptor+timps), `IVS_StopRecvPic` (error; prudynt+raptor+timps), `IVS_UnRegisterChn` (error; prudynt+raptor+timps), `DMIC_*` (error; raptor), `DMIC_DisableAecRefFrame` (error; raptor)
 - **T41**: 26 (timps 0, prudynt 6, raptor 23): `ISP_Get/SetFrameDrop` (error; raptor), `ISP_Get/SetISPBypass` (missing; prudynt), `ISP_Tuning_Get/SetModuleControl` (error; raptor), `ISP_Tuning_SetAutoZoom` (error; prudynt), `ISP_Tuning_SetMaskBlock` (error; raptor), `ISP_Tuning_SetScalerLv` (error; raptor), `ISP_Tuning_SwitchBin` (missing; prudynt), `ISP_WDR_ENABLE` (error; raptor), `ISP_WDR_ENABLE_GET` (error; raptor), `ISP_Tuning_Get/SetAfWeight` (error; raptor), `Encoder_SetChnMaxPictureSize` (cache-only; raptor), `Encoder_SetbufshareChn` (stub; prudynt+raptor), `FrameSource_Get/SetChnFifoAttr` (cache-only; prudynt+raptor), `FrameSource_Get/SetDelay` (error; raptor), `FrameSource_Get/SetFrameDepth` (cache-only; prudynt+raptor), `FrameSource_Get/SetI2dAttr` (error; raptor), `FrameSource_Get/SetMaxDelay` (error; raptor), `FrameSource_Get/SetPool` (cache-only; raptor), `FrameSource_GetTimedFrame` (error; raptor), `ISP_Tuning_CreateOsdRgn` (error; raptor), `ISP_Tuning_DestroyOsdRgn` (error; raptor), `ISP_Tuning_SetOsdPoolSize` (stub; raptor), `ISP_Tuning_SetOsdRgnAttr` (error; raptor), `ISP_Tuning_ShowOsdRgn` (error; raptor), `DMIC_*` (error; raptor), `DMIC_DisableAecRefFrame` (error; raptor)
 
 ### ISP tuning
@@ -824,7 +824,7 @@ Gaps (cache-only, stub, error, missing, ?) of functions that at least one of tim
 | `ISP_Tuning_Get/SetHLDCAttr` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | miss | n.a. | – |
 | `ISP_Tuning_Get/SetISPCSCAttr` [49] | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | miss | host | – |
 | `ISP_Tuning_Get/SetISPHVflip` [89] | dev | dev | n.a. | n.a. | miss | n.a. | n.a. | n.a. | – |
-| ► `ISP_Tuning_Get/SetMask` [55] | n.a. | n.a. | n.a. | no-op | n.a. | aud | err | n.a. | r† |
+| `ISP_Tuning_Get/SetMask` [55] | n.a. | n.a. | n.a. | no-op | n.a. | aud | dev | n.a. | r† |
 | ► `ISP_Tuning_Get/SetModuleControl` [4] | n.a. | n.a. | host | aud | n.a. | aud | err | err | T31/T41: r† |
 | `ISP_Tuning_Get/SetModule_Ratio` [58] | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | miss | aud | – |
 | `ISP_Tuning_Get/SetStatisConfig` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | miss | miss | – |
@@ -938,7 +938,7 @@ Notes:
 | `ISP_Tuning_Get/SetISPRunningMode` [52] | aud | dev | dev | dev | ? | dev | ? | aud | p† r† t |
 | `ISP_Tuning_Get/SetISPVflip` [53] | aud | aud | aud | aud | ? | aud | n.a. | n.a. | p† t |
 | `ISP_Tuning_Get/SetIntegrationTime` [54] | aud | dev | dev | n.a. | ? | n.a. | n.a. | n.a. | t |
-| ► `ISP_Tuning_Get/SetMask` [55] | n.a. | n.a. | n.a. | no-op | n.a. | aud | err | n.a. | r† |
+| `ISP_Tuning_Get/SetMask` [55] | n.a. | n.a. | n.a. | no-op | n.a. | aud | dev | n.a. | r† |
 | `ISP_Tuning_Get/SetMaxAgain` [56] | aud | dev | dev | dev | ? | dev | n.a. | n.a. | p† r† t |
 | `ISP_Tuning_Get/SetMaxDgain` [57] | aud | dev | dev | dev | ? | dev | n.a. | n.a. | p† r† t |
 | ► `ISP_Tuning_Get/SetModuleControl` [4] | n.a. | n.a. | host | aud | n.a. | aud | err | err | T31/T41: r† |
@@ -1604,15 +1604,15 @@ All regular OSD functions (`OSD_CreateGroup`, `CreateRgn`, `RegisterRgn`, `Set/G
 |---|---|---|---|---|---|---|---|---|---|
 | `ISP_Get/SetDrawAttr` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | miss | n.a. | – |
 | `ISP_Get/SetOSDAttr` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | miss | n.a. | – |
-| `ISP_Get/SetSingleOSDAttr` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | miss | n.a. | – |
-| ► `ISP_Tuning_CreateOsdRgn` [1] | n.a. | n.a. | n.a. | aud | n.a. | n.a. | err | err | r† |
-| ► `ISP_Tuning_DestroyOsdRgn` [2] | n.a. | n.a. | n.a. | aud | n.a. | n.a. | err | err | r† |
+| `ISP_Get/SetSingleOSDAttr` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | dev | n.a. | – |
+| ► `ISP_Tuning_CreateOsdRgn` [1] | n.a. | n.a. | n.a. | aud | n.a. | n.a. | dev | err | r† |
+| ► `ISP_Tuning_DestroyOsdRgn` [2] | n.a. | n.a. | n.a. | aud | n.a. | n.a. | dev | err | r† |
 | `ISP_Tuning_Get/SetOSDAttr` [3] | n.a. | n.a. | n.a. | err | n.a. | n.a. | n.a. | miss | – |
 | `ISP_Tuning_Get/SetOSDBlock` [4] | n.a. | n.a. | n.a. | err | n.a. | n.a. | n.a. | miss | – |
-| `ISP_Tuning_GetOsdRgnAttr` | n.a. | n.a. | n.a. | aud | n.a. | n.a. | miss | miss | – |
-| ► `ISP_Tuning_SetOsdPoolSize` [5] | n.a. | n.a. | n.a. | aud | n.a. | n.a. | ? | stub | r† |
-| ► `ISP_Tuning_SetOsdRgnAttr` [6] | n.a. | n.a. | n.a. | aud | n.a. | n.a. | err | err | r† |
-| ► `ISP_Tuning_ShowOsdRgn` [7] | n.a. | n.a. | n.a. | aud | n.a. | n.a. | err | err | r† |
+| `ISP_Tuning_GetOsdRgnAttr` | n.a. | n.a. | n.a. | aud | n.a. | n.a. | dev | miss | – |
+| ► `ISP_Tuning_SetOsdPoolSize` [5] | n.a. | n.a. | n.a. | aud | n.a. | n.a. | dev | stub | r† |
+| ► `ISP_Tuning_SetOsdRgnAttr` [6] | n.a. | n.a. | n.a. | aud | n.a. | n.a. | dev | err | r† |
+| ► `ISP_Tuning_ShowOsdRgn` [7] | n.a. | n.a. | n.a. | aud | n.a. | n.a. | dev | err | r† |
 | `OSD_AttachToGroup` [27] | host | host | host | aud | miss | aud | miss | aud | – |
 | ► `OSD_CreateGroup` [9] | aud | dev | dev | dev | ? | dev | err | aud | p† r† t |
 | ► `OSD_CreateRgn` [10] | aud | dev | dev | dev | ? | dev | err | aud | p† r† t |
@@ -1662,15 +1662,15 @@ Notes:
 |---|---|---|---|---|---|---|---|---|---|
 | `ISP_Get/SetDrawAttr` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | miss | n.a. | – |
 | `ISP_Get/SetOSDAttr` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | miss | n.a. | – |
-| `ISP_Get/SetSingleOSDAttr` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | miss | n.a. | – |
-| ► `ISP_Tuning_CreateOsdRgn` [1] | n.a. | n.a. | n.a. | aud | n.a. | n.a. | err | err | r† |
-| ► `ISP_Tuning_DestroyOsdRgn` [2] | n.a. | n.a. | n.a. | aud | n.a. | n.a. | err | err | r† |
+| `ISP_Get/SetSingleOSDAttr` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | dev | n.a. | – |
+| ► `ISP_Tuning_CreateOsdRgn` [1] | n.a. | n.a. | n.a. | aud | n.a. | n.a. | dev | err | r† |
+| ► `ISP_Tuning_DestroyOsdRgn` [2] | n.a. | n.a. | n.a. | aud | n.a. | n.a. | dev | err | r† |
 | `ISP_Tuning_Get/SetOSDAttr` [3] | n.a. | n.a. | n.a. | err | n.a. | n.a. | n.a. | miss | – |
 | `ISP_Tuning_Get/SetOSDBlock` [4] | n.a. | n.a. | n.a. | err | n.a. | n.a. | n.a. | miss | – |
-| `ISP_Tuning_GetOsdRgnAttr` | n.a. | n.a. | n.a. | aud | n.a. | n.a. | miss | miss | – |
-| ► `ISP_Tuning_SetOsdPoolSize` [5] | n.a. | n.a. | n.a. | aud | n.a. | n.a. | ? | stub | r† |
-| ► `ISP_Tuning_SetOsdRgnAttr` [6] | n.a. | n.a. | n.a. | aud | n.a. | n.a. | err | err | r† |
-| ► `ISP_Tuning_ShowOsdRgn` [7] | n.a. | n.a. | n.a. | aud | n.a. | n.a. | err | err | r† |
+| `ISP_Tuning_GetOsdRgnAttr` | n.a. | n.a. | n.a. | aud | n.a. | n.a. | dev | miss | – |
+| ► `ISP_Tuning_SetOsdPoolSize` [5] | n.a. | n.a. | n.a. | aud | n.a. | n.a. | dev | stub | r† |
+| ► `ISP_Tuning_SetOsdRgnAttr` [6] | n.a. | n.a. | n.a. | aud | n.a. | n.a. | dev | err | r† |
+| ► `ISP_Tuning_ShowOsdRgn` [7] | n.a. | n.a. | n.a. | aud | n.a. | n.a. | dev | err | r† |
 | `OSD_AttachToGroup` [27] | host | host | host | aud | miss | aud | miss | aud | – |
 | ► `OSD_CreateGroup` [9] | aud | dev | dev | dev | ? | dev | err | aud | p† r† t |
 | ► `OSD_CreateRgn` [10] | aud | dev | dev | dev | ? | dev | err | aud | p† r† t |
