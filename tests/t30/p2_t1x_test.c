@@ -25,6 +25,7 @@
 int IMP_Encoder_SetChnColor2Grey(int, const IMPEncoderColor2GreyCfg *);
 int IMP_Encoder_GetChnColor2Grey(int, IMPEncoderColor2GreyCfg *);
 int IMP_Encoder_SetChnROI(int, const IMPEncoderROICfg *);
+int IMP_Encoder_GetChnAttr(int, IMPEncoderCHNAttr *);
 int IMP_Encoder_SetChnDenoise(int, const IMPEncoderAttrDenoise *);
 int IMP_Encoder_GetChnDenoise(int, IMPEncoderAttrDenoise *);
 int IMP_Encoder_SetMbRC(int, int);
@@ -141,6 +142,50 @@ int main(void)
     CHECK(IMP_Encoder_CreateChn(0, &attr) == 0);
     make_attr(&attr, 1);
     CHECK(IMP_Encoder_CreateChn(1, &attr) == 0);
+
+    /* CreateChn denoise (vendor T21 1.0.33): a disabled denoise has its type
+     * cleared in the channel attribute; an enabled one keeps the caller's
+     * dnType in GetChnAttr while GetChnDenoise reads the encoder's 0; an
+     * enabled type >= 3 fails validation, so the create fails */
+#if defined(PLATFORM_T21) && !defined(PLATFORM_T20)
+    {
+        IMPEncoderCHNAttr got;
+        IMPEncoderAttrDenoise gdn;
+
+        make_attr(&attr, 0);
+        attr.rcAttr.attrDenoise.dnType = 2;
+        attr.rcAttr.attrDenoise.dnIQp = 21;
+        CHECK(IMP_Encoder_CreateChn(2, &attr) == 0);
+        memset(&got, 0x5a, sizeof(got));
+        CHECK(IMP_Encoder_GetChnAttr(2, &got) == 0);
+        CHECK(!got.rcAttr.attrDenoise.enable && got.rcAttr.attrDenoise.dnType == 0 &&
+              got.rcAttr.attrDenoise.dnIQp == 21);
+        CHECK(IMP_Encoder_DestroyChn(2) == 0);
+
+        make_attr(&attr, 1);
+        attr.rcAttr.attrDenoise.dnType = 1;
+        attr.rcAttr.attrDenoise.dnIQp = 22;
+        CHECK(IMP_Encoder_CreateChn(2, &attr) == 0);
+        CHECK(IMP_Encoder_GetChnAttr(2, &got) == 0);
+        CHECK(got.rcAttr.attrDenoise.enable && got.rcAttr.attrDenoise.dnType == 1 &&
+              got.rcAttr.attrDenoise.dnIQp == 22);
+        memset(&gdn, 0x5a, sizeof(gdn));
+        CHECK(IMP_Encoder_GetChnDenoise(2, &gdn) == 0 && gdn.dnType == 0 &&
+              gdn.dnIQp == 0);        /* T21 validation clears type and QPs */
+        CHECK(IMP_Encoder_DestroyChn(2) == 0);
+
+        attr.rcAttr.attrDenoise.dnType = 3;
+        CHECK(IMP_Encoder_CreateChn(2, &attr) == -1);
+        attr.rcAttr.attrDenoise.dnType = -1;
+        CHECK(IMP_Encoder_CreateChn(2, &attr) == -1);
+        attr.rcAttr.attrDenoise.enable = 0;     /* disabled: type forced to 0 */
+        attr.rcAttr.attrDenoise.dnType = 7;
+        CHECK(IMP_Encoder_CreateChn(2, &attr) == 0);
+        CHECK(IMP_Encoder_GetChnAttr(2, &got) == 0 &&
+              got.rcAttr.attrDenoise.dnType == 0);
+        CHECK(IMP_Encoder_DestroyChn(2) == 0);
+    }
+#endif
 
     /* Color2Grey */
     c2g.enable = 1;
