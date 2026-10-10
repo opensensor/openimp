@@ -22,9 +22,10 @@ TEST_BINS := $(IVS_FRAMEWORK_TEST_BIN) $(CORE_LEASE_TEST_BIN) $(COMMAND_TEST_BIN
 
 P3_CONTROLS_TEST_BIN := $(PROJECT_DIR)/build/tests/t41-p3-controls-test
 
+P2_BUFSHARE_TEST_BIN := $(PROJECT_DIR)/build/tests/t41-p2-bufshare-test
 .PHONY: check clean p3-controls
 
-check: $(TEST_BINS)
+check: $(TEST_BINS) $(P2_BUFSHARE_TEST_BIN)
 	$(MAKE) p3-controls
 	$(RMEM_FIT_TEST_BIN)
 	$(RMEM_FIT_T40_TEST_BIN)
@@ -40,6 +41,7 @@ check: $(TEST_BINS)
 	$(JPEG_DCT_TEST_BIN)
 	$(JPEG_QL_TEST_BIN)
 	$(SNAP_TEST_BIN)
+	$(P2_BUFSHARE_TEST_BIN)
 
 # IMP_Encoder_SetJpegeQl tables in the T41 software JPEG (the test source is
 # shared with tests/t23; -no-pie keeps the 32-bit buffer addresses valid).
@@ -153,3 +155,16 @@ ifneq ($(T41_HEADERS),)
 else
 	@echo "t41 p3 controls test skipped (set T41_HEADERS)"
 endif
+
+# IMP_Encoder_SetbufshareChn (vendor argument checks, return codes, stored
+# value over CreateChn / DestroyChn); the test source is shared with tests/t31.
+$(P2_BUFSHARE_TEST_BIN): ../t31/p2_bufshare_test.c \
+	$(PROJECT_DIR)/src/t40/openimp_p2_encoder.c
+	mkdir -p "$(dir $@)"
+	$(CC) -std=gnu99 -O1 -g -Wall -Wextra -Werror -DPLATFORM_T41 \
+		'-D_Static_assert(c,m)=' -Wno-unused-result \
+		-I$(PROJECT_DIR)/include -I$(PROJECT_DIR)/src \
+		-I$(PROJECT_DIR)/src/t40 ../t31/p2_bufshare_test.c \
+		$(PROJECT_DIR)/src/openimp_profile.c \
+		$(PROJECT_DIR)/src/t40/t31_stream_layout.c \
+		-no-pie -lpthread -o $@

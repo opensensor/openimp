@@ -290,6 +290,10 @@ typedef struct {
     uint32_t sequence;
     uint32_t stream_buf_size;
     int max_stream_count;
+    /* IMP_Encoder_SetbufshareChn: channel whose stream buffers a JPEG
+     * channel would share, -1 none (the vendor's default and its value
+     * after DestroyChn).  Bookkeeping only, see the function. */
+    int bufshare_chn;
     int pool_id;
     int entropy_mode;
     int entropy_mode_set;
@@ -1663,6 +1667,7 @@ int EncoderInit(void)
             p2_channels[i].group = -1;
             p2_channels[i].source_channel = -1;
             p2_channels[i].max_stream_count = P2_DEFAULT_STREAM_COUNT;
+            p2_channels[i].bufshare_chn = -1;
             p2_channels[i].pool_id = -1;
             pthread_mutex_init(&p2_channels[i].lock, NULL);
             pthread_cond_init(&p2_channels[i].jpeg_frame_ready, NULL);
@@ -1845,6 +1850,41 @@ static void p2_debug_roi_chroma(int channel)
 }
 #endif
 
+#if defined(PLATFORM_T31) || defined(PLATFORM_T40) || defined(PLATFORM_T41)
+/* CreateChn of a JPEG channel with IMP_Encoder_SetbufshareChn set: where
+ * the vendor would fail because the share channel holds no video encoder
+ * yet (created later, or itself a JPEG channel), say so.  Nothing is shared
+ * either way (see IMP_Encoder_SetbufshareChn), so the creation goes on.
+ * The two channel locks are taken one after the other, never nested. */
+static void p2_bufshare_check(int channel, const IMPEncoderCHNAttr *attr)
+{
+    P2EncoderChannel *ch = &p2_channels[channel];
+    P2EncoderChannel *other;
+    int share, ready;
+
+    if (p2_attr_codec_type(attr) != IMP_ENC_TYPE_JPEG)
+        return;
+    pthread_mutex_lock(&ch->lock);
+    share = ch->bufshare_chn;
+    pthread_mutex_unlock(&ch->lock);
+    if (share < 0 || share >= P2_MAX_CHANNELS)
+        return;
+    other = &p2_channels[share];
+    pthread_mutex_lock(&other->lock);
+    ready = other->created && other->codec_type != (int)IMP_ENC_TYPE_JPEG &&
+            share != channel;
+    pthread_mutex_unlock(&other->lock);
+    if (!ready)
+        IMP_LOG_WARN("Encoder", "CreateChn(%d): JPEG channel shares the "
+                     "buffers of channel %d, which holds no video encoder "
+                     "(the stock libimp fails here: create the video channel "
+                     "first); OpenIMP gives the JPEG channel its own and "
+                     "goes on", channel, share);
+}
+#else
+#define p2_bufshare_check(channel, attr) ((void)0)
+#endif
+
 int IMP_Encoder_CreateChn(int channel, IMPEncoderCHNAttr *attr)
 {
     P2EncoderChannel *ch;
@@ -1877,6 +1917,7 @@ int IMP_Encoder_CreateChn(int channel, IMPEncoderCHNAttr *attr)
         return -1;
     P2_STARTUP_MARKER("openimp/P2 marker C1 args valid\n");
     EncoderInit();
+    p2_bufshare_check(channel, attr);
     P2_STARTUP_MARKER("openimp/P2 marker C2 EncoderInit returned\n");
     p2_startup_trace("openimp/P2 startup: CreateChn after EncoderInit\n");
     p2_trace("openimp/P2: CreateChn begin ch=%d profile=0x%x size=%ux%u\n",
@@ -2157,6 +2198,8 @@ int IMP_Encoder_DestroyChn(int channel)
     ch->jpeg_frame_generation = 0;
     ch->codec = NULL;
     ch->created = 0;
+    ch->bufshare_chn = -1;          /* the vendor clears the record and
+                                     * sets the share channel to -1 again */
     ch->receiving = 0;
     ch->jpeg_frame_requested = 0;
     pthread_cond_broadcast(&ch->jpeg_frame_ready);
@@ -3316,14 +3359,62 @@ static void p2_drop_unread_stream(P2EncoderChannel *ch)
     }
 }
 
-/* Vendor T31 libimp (1.1.1..1.1.6, disassembled): checks both numbers,
- * stores share_channel in the channel record (offset 640/672, kept over
- * CreateChn's memset) and logs it; nothing in libimp ever reads it back, so
- * there is nothing to apply.  Returning 0 after the checks is the vendor
- * behaviour (T23 libimp has no such function). */
+/* IMP_Encoder_SetbufshareChn(encChn, shareChn).
+ *
+ * Vendor (T31 1.1.6 0x83570, T40 1.3.1 0x692d4, T41 1.2.6 0x38414,
+ * disassembled): encChn must be below the channel limit and so must shareChn
+ * - a negative shareChn passes and means "no sharing", the default and the
+ * value after DestroyChn.  The value is stored in the channel record (T31
+ * +512, T40 +984, T41 +1304) and logged.  IMP_Encoder_CreateChn keeps it
+ * over its memset and reads it for a JPEG channel only: with shareChn >= 0
+ * the video channel's record must already hold its encoder (else "Jpeg
+ * channel need create after channel 0" and CreateChn fails), and the JPEG
+ * channel then borrows that channel's stream manager and stream contexts
+ * (AL_Set_StreamMngrCtx / AL_Set_StreampCtx) and skips building its own pool
+ * of stream buffers (the PutStreamBuffer loop of AL_Codec_Encode_Create);
+ * T41 also rejects IMP_ENC_OPT_MMA then.  Nothing else reads it.  A bad
+ * number fails with -1 on T31/T40 and 0x80040001 on T41.
+ *
+ * OpenIMP has no per-JPEG-channel stream buffer pool to skip: JPEG is
+ * software on T40/T41 (heap output, no AVPU stream buffer) and the T31
+ * hardware JPEG core uses one process-wide stream buffer for all JPEG
+ * channels.  Sharing the video channel's buffers would save no rmem and only
+ * tie the JPEG channel to the video encoder's lifetime, so the value is kept
+ * as the vendor keeps it, the argument checks and return codes are the
+ * vendor's, and CreateChn only warns (instead of failing) where the vendor
+ * would fail. */
+#if defined(PLATFORM_T41)
+#define P2_BUFSHARE_ERROR ((int)0x80040001u)
+#else
+#define P2_BUFSHARE_ERROR (-1)
+#endif
+
 int IMP_Encoder_SetbufshareChn(int channel, int share_channel)
 {
+#if defined(PLATFORM_T31) || defined(PLATFORM_T40) || defined(PLATFORM_T41)
+    P2EncoderChannel *ch;
+
+    if (channel < 0 || channel >= P2_MAX_CHANNELS) {
+        IMP_LOG_LIMITED(LOG_ERR, "Encoder", "encChn Channel Num: %d", channel);
+        return P2_BUFSHARE_ERROR;
+    }
+    if (share_channel >= P2_MAX_CHANNELS) {
+        IMP_LOG_LIMITED(LOG_ERR, "Encoder", "Invalid share Channel Num: %d",
+                        share_channel);
+        return P2_BUFSHARE_ERROR;
+    }
+    EncoderInit();
+    ch = &p2_channels[channel];
+    pthread_mutex_lock(&ch->lock);
+    ch->bufshare_chn = share_channel;
+    pthread_mutex_unlock(&ch->lock);
+    p2_trace("openimp/P2: SetbufshareChn ch=%d share=%d\n", channel,
+             share_channel);
+    return 0;
+#else
+    /* no such function in the vendor libimp of these SoCs */
     return p2_valid_channel(channel) && p2_valid_channel(share_channel) ? 0 : -1;
+#endif
 }
 
 int IMP_Encoder_SetJpegeQl(int channel, IMPEncoderJpegeQl *quality)
