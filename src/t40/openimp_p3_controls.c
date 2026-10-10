@@ -13,6 +13,8 @@
 
 #include <imp/imp_isp.h>
 
+#include "../isp/isp_mask_rgb2yuv.h"
+
 #if defined(PLATFORM_T41)
 #define TISP_VIDIOC_DEFAULT_TUNING 0xc0105435U
 #else
@@ -48,6 +50,7 @@
 #define TISP_CID_CCM 0x08000080
 #define TISP_CID_SCALER_LV 0x080000a6
 #define TISP_CID_MODULE_RATIO 0x080000a4
+#define TISP_CID_MASK 0x08000074      /* T40 SetMask/GetMask, 288 bytes */
 #if defined(PLATFORM_T41)
 #define TISP_CID_MASK_BLOCK 0x08000074
 #define TISP_CID_AWB_RGB_COEFFT 0x08000098
@@ -451,6 +454,76 @@ int32_t IMP_ISP_Tuning_GetBcshHue(IMPVI_NUM num, unsigned char *value)
     *value = p3_controls.hue;
     return result;
 }
+
+#if !defined(PLATFORM_T41)
+/* T40 IMP_ISP_Tuning_SetMask / GetMask (vendor 1.3.1 libimp disassembly).
+ * IMPISPMASKAttr is 3 channels x 4 blocks of 24 bytes = 288 bytes: mask_en at
+ * +0, mask_type at +12 (0 RGB, 1 YUV), the colour at +16 (r g b) and +19
+ * (y u v).  Set: num < 4 (-4), mask (-9); for every enabled RGB block it
+ * computes the YUV bytes from the RGB ones (IMP_ISP_Tuning_DumpMask, BT.601
+ * full range, written to +19..+21, the RGB bytes stay), keeps a 288-byte copy
+ * per input and sends the pointer tuning ioctl (control 0x08000074, payload =
+ * the caller's struct; -6 if it fails).  Get: ioctl get into the caller's
+ * struct, then mask_type and the RGB bytes of every block are restored from
+ * the Set copy (the driver hands back its own YUV form).  The DumpMask
+ * constants are not readable in the disassembly; the operation order is the
+ * T31 one (isp_mask_rgb2yuv.h).  Device-untested. */
+#define P3_MASK_SIZE 288
+#define P3_MASK_BLOCK 24
+_Static_assert(sizeof(IMPISPMASKAttr) == P3_MASK_SIZE, "mask attr is 288 bytes");
+_Static_assert(sizeof(IMPISPMASKAttr) == 12 * P3_MASK_BLOCK, "12 blocks of 24");
+_Static_assert(offsetof(IMPISP_MASK_BLOCK_PAR, mask_type) == 12, "type at 12");
+_Static_assert(offsetof(IMPISP_MASK_BLOCK_PAR, mask_value) == 16, "colour at 16");
+static unsigned char p3_mask_cache[4][P3_MASK_SIZE];
+
+int32_t IMP_ISP_Tuning_SetMask(IMPVI_NUM num, IMPISPMASKAttr *mask)
+{
+    unsigned char *bytes = (unsigned char *)mask;
+    unsigned block;
+
+    if ((unsigned)num >= 4U)
+        return -4;
+    if (!mask)
+        return -9;
+    for (block = 0; block < 12; block++) {
+        unsigned char *b = bytes + block * P3_MASK_BLOCK;
+        uint32_t type;
+
+        memcpy(&type, b + 12, sizeof(type));
+        if (b[0] && type == 0) {
+            unsigned char c[3] = { b[16], b[17], b[18] };
+
+            isp_mask_rgb_to_yuv(c);
+            memcpy(b + 19, c, 3);
+        }
+    }
+    memcpy(p3_mask_cache[num], bytes, P3_MASK_SIZE);
+    if (p3_tuning_pointer(num, 0, TISP_CID_MASK, mask) != 0)
+        return -6;
+    return 0;
+}
+
+int32_t IMP_ISP_Tuning_GetMask(IMPVI_NUM num, IMPISPMASKAttr *mask)
+{
+    unsigned char *bytes = (unsigned char *)mask;
+    unsigned block;
+
+    if ((unsigned)num >= 4U)
+        return -4;
+    if (!mask)
+        return -9;
+    if (p3_tuning_pointer(num, 1, TISP_CID_MASK, mask) != 0)
+        return -6;
+    for (block = 0; block < 12; block++) {
+        unsigned char *b = bytes + block * P3_MASK_BLOCK;
+        const unsigned char *c = p3_mask_cache[num] + block * P3_MASK_BLOCK;
+
+        memcpy(b + 12, c + 12, 4);
+        memcpy(b + 16, c + 16, 3);
+    }
+    return 0;
+}
+#endif
 
 #if defined(PLATFORM_T41)
 int32_t IMP_ISP_Tuning_SetSensorFPS(IMPVI_NUM num, IMPISPSensorFps *fps)

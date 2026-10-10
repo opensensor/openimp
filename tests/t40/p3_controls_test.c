@@ -225,6 +225,39 @@ int main(void)
         assert(ccm.ColorMatrix[0] == c);
     }
 
+    /* Get/SetMask (vendor T40 1.3.1): 288-byte payload, control 0x08000074,
+     * YUV bytes computed for enabled RGB blocks, Get restores type + RGB. */
+    {
+        IMPISPMASKAttr mk, back;
+        unsigned char *b = (unsigned char *)&mk;
+
+        memset(&mk, 0, sizeof mk);
+        mk.mask_chx[1][2].mask_en = 1;
+        mk.mask_chx[1][2].mask_type = IMPISP_MASK_TYPE_RGB;
+        mk.mask_chx[1][2].mask_value.mask_argb.r_value = 255;
+        mk.mask_chx[1][2].mask_value.mask_argb.g_value = 255;
+        mk.mask_chx[1][2].mask_value.mask_argb.b_value = 255;
+        mk.mask_chx[0][0].mask_value.mask_argb.r_value = 9;   /* disabled */
+        EXPECT(IMP_ISP_Tuning_SetMask(IMPVI_MAIN, &mk), 0, 0x08000074, &mk);
+        assert(mk.mask_chx[1][2].mask_value.mask_ayuv.y_value == 255);
+        assert(mk.mask_chx[1][2].mask_value.mask_ayuv.u_value == 128);
+        assert(mk.mask_chx[1][2].mask_value.mask_ayuv.v_value == 128);
+        assert(mk.mask_chx[0][0].mask_value.mask_ayuv.y_value == 0);
+        assert((b + (1 * 4 + 2) * 24)[19] == 255);
+        memset(&back, 0, sizeof back);                  /* driver reply */
+        back.mask_chx[1][2].mask_en = 1;
+        back.mask_chx[1][2].mask_type = IMPISP_MASK_TYPE_YUV;
+        EXPECT(IMP_ISP_Tuning_GetMask(IMPVI_MAIN, &back), 1, 0x08000074, &back);
+        assert(back.mask_chx[1][2].mask_type == IMPISP_MASK_TYPE_RGB);
+        assert(back.mask_chx[1][2].mask_value.mask_argb.r_value == 255);
+        assert(IMP_ISP_Tuning_SetMask(IMPVI_MAIN, NULL) == -9);
+        assert(IMP_ISP_Tuning_GetMask((IMPVI_NUM)4, &back) == -4);
+        last.result = -1;
+        assert(IMP_ISP_Tuning_SetMask(IMPVI_MAIN, &mk) == -6);
+        assert(IMP_ISP_Tuning_GetMask(IMPVI_MAIN, &back) == -6);
+        last.result = 0;
+    }
+
     puts("T40 P3 controls: all checks passed");
     return 0;
 }
