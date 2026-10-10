@@ -2157,6 +2157,19 @@ int OpenIMP_P1_GetSensorName(char name[32], int32_t *cbus_type)
     return 0;
 }
 
+/* 1 while the ISP tuning node is enabled (the vendor "ISP state == 3"
+ * test of IMP_ISP_Tuning_SwitchBin); helper for P3, not public ABI. */
+int OpenIMP_P1_TuningEnabled(void)
+{
+    int enabled;
+
+    lock_p1();
+    prepare_p1();
+    enabled = p1.tuning_enabled && p1.tuning_fd >= 0;
+    unlock_p1();
+    return enabled;
+}
+
 /* P3 control-plane hook.  Keep ownership of the tuning descriptor in P1 so
  * later units do not duplicate ISP lifetime state or reach into this private
  * structure.  The helper is intentionally not part of the public IMP ABI. */

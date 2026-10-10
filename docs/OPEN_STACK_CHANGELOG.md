@@ -25,6 +25,7 @@ All test cameras run the open kernel driver (open-tx-isp), OpenIMP and timps. No
 
 | Area | Was | Now | Branch |
 |---|---|---|---|
+| ISP tuning (T40/T41) | `IMP_ISP_Tuning_SwitchBin` missing (prudynt calls it on day/night when a night bin exists) | Control 0x80000a5 as the vendor libimp (T40 1.3.1, T41 1.2.6): vendor check order and return codes, NUL-terminated name copy; T40 device-tested on the Eufy with the vendor kernel driver (bin A to copy B, back, default; stream decodes cleanly, picture unchanged); T41 library host-tested, kernel side in open-tx-isp `claude/switchbin-t41` (no device test yet) | `claude/switchbin-t4x` |
 | ISP tuning | Contrast/sharpness started at 0 instead of 0x80 | Vendor defaults | `claude/openimp-quickfixes` |
 | ISP tuning T20/T21 | T31 control IDs sent; wrong AeLuma ID; TotalGain/RunningMode/FPS without result pointer | SDK control IDs, pointer semantics as vendor | `claude/openimp-quickfixes`, `claude/exposure-readback`, `claude/t20-tuning-ptr` |
 | Day/night T20/T21 | Brightness/contrast/saturation/sharpness not re-sent on switch; sinter/temper sent to rejected IDs | Re-sent like vendor; table-based sinter/temper | `claude/tseries-daynight` |

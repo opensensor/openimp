@@ -44,6 +44,16 @@ int OpenIMP_P1_GetDefaultBinPath(IMPVI_NUM num, char *path, size_t size)
     return -1;
 }
 
+/* IMP_ISP_Tuning_SwitchBin: ISP-enabled flag and the kernel's view */
+static int sb_enabled;
+static struct { uint32_t enable; char bname[128]; } sb_seen;
+
+int OpenIMP_P1_TuningEnabled(void);
+int OpenIMP_P1_TuningEnabled(void)
+{
+    return sb_enabled;
+}
+
 static struct {
     uint32_t command;
     int32_t vinum, direction, control;
@@ -68,6 +78,8 @@ int OpenIMP_P1_TuningIOCtl(uint32_t command, void *argument)
     last.control = request->control;
     last.payload = request->payload;
     last.calls++;
+    if (request->control == 0x080000a5)
+        memcpy(&sb_seen, (const void *)request->payload, sizeof(sb_seen) > 68 ? 68 : sizeof(sb_seen));
     if (request->control == 0x08000080) {       /* CCM: 40-byte payload */
         if (request->direction) {
             memcpy((void *)request->payload, last.reply, 40);
@@ -223,6 +235,57 @@ int main(void)
         memcpy(wire + 4, &w, 4);
         assert(IMP_ISP_Tuning_GetCCMAttr(IMPVI_MAIN, &ccm) == 0);
         assert(ccm.ColorMatrix[0] == c);
+    }
+
+
+    /* IMP_ISP_Tuning_SwitchBin (vendor T40 1.3.1 libimp disassembly): control
+     * 0x80000a5 set, payload = IMPISPBinAttr (68 bytes), vendor check
+     * order and return codes, NUL-terminated copy to the kernel. */
+    {
+        IMPISPBinAttr bin;
+        int n;
+
+        assert(sizeof(IMPISPBinAttr) == 68);
+        memset(&bin, 0, sizeof(bin));
+        bin.enable = IMPISP_TUNING_OPS_MODE_ENABLE;
+        strcpy(bin.bname, "/tmp/night-bin");
+        n = last.calls;
+        sb_enabled = 1;
+        assert(IMP_ISP_Tuning_SwitchBin(IMPVI_MAIN, &bin) == 0);
+        assert(last.calls == n + 1);
+        assert(last.command == 0xc0105436U);
+        assert(last.vinum == IMPVI_MAIN && last.direction == 0);
+        assert(last.control == 0x080000a5);
+        assert(last.payload != 0 && last.payload != (uintptr_t)&bin);
+        assert(sb_seen.enable == 1 && !strcmp(sb_seen.bname, "/tmp/night-bin"));
+        /* enable 0 = back to the default bin; reaches the kernel too */
+        bin.enable = IMPISP_TUNING_OPS_MODE_DISABLE;
+        assert(IMP_ISP_Tuning_SwitchBin(IMPVI_MAIN, &bin) == 0);
+        assert(sb_seen.enable == 0 && last.calls == n + 2);
+        /* an unterminated name is cut before the kernel sees it */
+        memset(bin.bname, 'x', sizeof(bin.bname));
+        bin.enable = IMPISP_TUNING_OPS_MODE_ENABLE;
+        assert(IMP_ISP_Tuning_SwitchBin(IMPVI_MAIN, &bin) == 0);
+        assert(sb_seen.bname[sizeof(bin.bname) - 1] == '\0');
+        assert(sb_seen.bname[sizeof(bin.bname) - 2] == 'x');
+        assert(bin.bname[sizeof(bin.bname) - 1] == 'x');    /* caller intact */
+        n = last.calls;
+        /* vendor refusals: no ioctl, vendor codes */
+        assert(IMP_ISP_Tuning_SwitchBin(IMPVI_MAIN, NULL) == -9);
+        assert(IMP_ISP_Tuning_SwitchBin((IMPVI_NUM)4, &bin) == -4);
+        bin.enable = (IMPISPTuningOpsMode)2;
+        assert(IMP_ISP_Tuning_SwitchBin(IMPVI_MAIN, &bin) == -10);
+        bin.enable = IMPISP_TUNING_OPS_MODE_ENABLE;
+        sb_enabled = 0;                                 /* ISP not running */
+        assert(IMP_ISP_Tuning_SwitchBin(IMPVI_MAIN, &bin) == -5);
+        sb_enabled = 1;
+        assert(last.calls == n);
+        /* T40 order: sensor number before the NULL test */
+        assert(IMP_ISP_Tuning_SwitchBin((IMPVI_NUM)4, NULL) == -4);
+
+        last.result = -1;                               /* driver refuses */
+        assert(IMP_ISP_Tuning_SwitchBin(IMPVI_MAIN, &bin) == -6);
+        last.result = 0;
     }
 
     puts("T40 P3 controls: all checks passed");
