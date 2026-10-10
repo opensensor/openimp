@@ -746,6 +746,21 @@ static unsigned int ivs_move_interval(void)
     return (unsigned int)interval;
 }
 
+/* OPENIMP_IVS_VENDOR_ORDER=1 (opt-in): post the result semaphore before
+ * the channel-free one, as the vendor does; a frame fed right after the
+ * result is then dropped as busy. Default: channel free first. */
+static int ivs_vendor_order(void)
+{
+    static int vendor = -1;
+
+    if (vendor < 0) {
+        const char *value = getenv("OPENIMP_IVS_VENDOR_ORDER");
+
+        vendor = value && value[0] == '1';
+    }
+    return vendor;
+}
+
 static void ivs_stats_report(struct t31_ivs_channel *c)
 {
     int64_t now = (int64_t)(ivs_now_ns() / 1000000u);
@@ -850,15 +865,27 @@ static void *ivs_thread(void *arg)
         } else {
             ret = inf->processAsync ? inf->processAsync(inf, &c->work) : 1;
         }
-        if (ret == 0) {
-            sem_post(&c->sem_result);
-        } else if (ret < 0 && !c->proc_error_logged) {
+        if (ret < 0 && !c->proc_error_logged) {
             /* The vendor ends the thread here; keep serving frames. */
             c->proc_error_logged = 1;
             IMP_LOG_ERR("IVS", "channel %d: ivs process failed (%d)",
                         c->number, ret);
         }
-        sem_post(&c->sem_end);
+        /* The processing of this frame is complete (c->work and c->copy are
+         * no longer used, the result sits in the interface ring). Mark the
+         * channel free BEFORE announcing the result: an application that
+         * feeds the next frame right after GetResult/ReleaseResult then no
+         * longer meets a busy channel. The result slot stays valid: the
+         * ring has T31_IVS_RESULTS slots, a new frame writes the next one.
+         * OPENIMP_IVS_VENDOR_ORDER=1 restores the vendor order. */
+        if (ret == 0 && ivs_vendor_order()) {
+            sem_post(&c->sem_result);
+            sem_post(&c->sem_end);
+        } else {
+            sem_post(&c->sem_end);
+            if (ret == 0)
+                sem_post(&c->sem_result);
+        }
     }
     return NULL;
 }

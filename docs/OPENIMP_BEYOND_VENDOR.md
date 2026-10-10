@@ -116,6 +116,7 @@ Rules, tables and numbers: `docs/ROI.md`.
 | Motion keeps working after the sub-stream goes idle; frames recycled for callback-backed pools | T23 | internal | on | Nothing | web grid not empty | cam-B |
 | Sub-stream default for IVS: about 85 % less IVS CPU than the vendor libimp | T31 | internal | on | Prefer the sub-stream as IVS source | n/a | cam-A |
 | Motion works without a viewer (feeder thread), CPU about 10-12 % vs 27 % with vendor libimp | T41 | internal | on | Nothing | n/a | cam-F, `claude/t41-libimp` |
+| Fewer dropped IVS frames: the channel is marked free **before** the result is announced, so a frame fed right after `IMP_IVS_PollingResult`/`GetResult`/`ReleaseResult` is accepted (the vendor posts the result first and drops such a frame as busy) | T23, T30, T31, T40, T41 | `IMP_IVS_*` (any interface) | on | Nothing; applications that feed frames themselves keep every frame. Result slots stay valid until `ReleaseResult` (ring of 6, unchanged). For the vendor order set `OPENIMP_IVS_VENDOR_ORDER=1` | host test: 500 back-to-back frames under CPU load, 0 dropped (not device-tested) | `claude/ivs-order` |
 
 ### 4.1 Motion v2 (on by default, beyond vendor)
 
@@ -251,6 +252,7 @@ set in production.
 
 | Variable | Purpose | Default | Class |
 |---|---|---|---|
+| `OPENIMP_IVS_VENDOR_ORDER` | `1` posts the IVS result before the channel-free semaphore as the vendor does (a frame fed right after the result is dropped as busy) | off | user-facing (opt-in) |
 | `OPENIMP_REF_SHARE` | `0` disables the T21/T23 reference ring | on | user-facing |
 | `OPENIMP_T31_HW_JPEG` | `0` selects the software JPEG encoder on T31 | on | user-facing |
 | `OPENIMP_T31_OSD` | `0` disables the IPU OSD backend on T31 | on | user-facing |

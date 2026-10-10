@@ -34,6 +34,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <pthread.h>
+#include <unistd.h>
 #include <sys/mman.h>
 
 #include "imp/imp_common.h"
@@ -372,6 +374,79 @@ static void test_base_move(void)
     printf("base move: %d detections\n", detections);
 }
 
+/* Frames fed back-to-back, right after ReleaseResult: the channel is marked
+ * free before the result is announced, so none may be dropped (the vendor
+ * order drops them). 500 frames while all CPUs are busy with load threads. */
+static volatile int load_stop;
+
+static void *load_thread(void *arg)
+{
+    static volatile unsigned int x;
+
+    (void)arg;
+    while (!load_stop)
+        x = x + 1;
+    (void)x;
+    return NULL;
+}
+
+static void test_back_to_back(void)
+{
+    const size_t fsize = (size_t)BW * ((BH + 15) & ~15) * 3 / 2;
+    uint8_t *frame = map_low(fsize);
+    uint8_t rec[0x428];
+    IMP_IVS_BaseMoveParam p;
+    IMPIVSInterface *inf;
+    pthread_t load[8];
+    int nload = (int)sysconf(_SC_NPROCESSORS_ONLN), t, i, dropped = 0;
+
+    if (nload < 2)
+        nload = 2;
+    if (nload > 8)
+        nload = 8;
+    memset(frame, 128, fsize);
+    memset(&p, 0, sizeof(p));
+    p.referenceNum = 1;
+    p.sense = 3;
+    p.frameInfo.width = BW;
+    p.frameInfo.height = BH;
+    CHECK(IMP_IVS_CreateGroup(0) == 0, "CreateGroup");
+    inf = IMP_IVS_CreateBaseMoveInterface(&p);
+    CHECK(inf && IMP_IVS_CreateChn(1, inf) == 0, "CreateChn");
+    CHECK(IMP_IVS_RegisterChn(0, 1) == 0, "RegisterChn");
+    bound = 1;
+    CHECK(IMP_IVS_StartRecvPic(1) == 0, "StartRecvPic");
+    load_stop = 0;
+    for (i = 0; i < nload; i++)
+        pthread_create(&load[i], NULL, load_thread, NULL);
+    for (t = 0; t < 500; t++) {
+        IMP_IVS_BaseMoveOutput *out = NULL;
+
+        memset(frame, (t & 1) ? 67 : 100, (size_t)BW * BH);
+        make_record(rec, frame, BW, BH, t % 4, 9000000 + t * 33333);
+        openimp_t31_ivs_capture(FS_CHN, rec);       /* no retry: a drop fails */
+        if (IMP_IVS_PollingResult(1, 2000) != 0) {
+            dropped++;
+            continue;
+        }
+        CHECK(IMP_IVS_GetResult(1, (void **)&out) == 0 && out &&
+              out->datalen == (BW / 8) * (BH / 8), "b2b GetResult t=%d", t);
+        IMP_IVS_ReleaseResult(1, out);
+    }
+    load_stop = 1;
+    for (i = 0; i < nload; i++)
+        pthread_join(load[i], NULL);
+    CHECK(dropped == 0, "back-to-back: %d of 500 frames dropped busy", dropped);
+    CHECK(IMP_IVS_StopRecvPic(1) == 0, "StopRecvPic");
+    bound = 0;
+    CHECK(IMP_IVS_UnRegisterChn(1) == 0, "UnRegisterChn");
+    CHECK(IMP_IVS_DestroyChn(1) == 0, "DestroyChn");
+    IMP_IVS_DestroyBaseMoveInterface(inf);
+    CHECK(IMP_IVS_DestroyGroup(0) == 0, "DestroyGroup");
+    fake_rmem_unmap(frame, fsize);
+    printf("back-to-back: 500 frames, %d dropped\n", dropped);
+}
+
 /* One interface serves one channel: its instance (priv) is created by
  * the first CreateChn and freed by DestroyChn, so a second channel on the
  * same interface would keep using it after that. */
@@ -409,6 +484,7 @@ int main(void)
     test_move();
     test_base_move();
     test_shared_interface();
+    test_back_to_back();
     if (failures) {
         fprintf(stderr, "%d check(s) failed\n", failures);
         return 1;
