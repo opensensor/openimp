@@ -29,15 +29,15 @@ static inline void imp_log_ensure_init(void) {
 }
 
 /*
- * Runtime log level (syslog numbering 0..7, 4 = LOG_WARNING).  A line is
+ * Runtime log level (syslog numbering 0..7, 5 = LOG_NOTICE).  A line is
  * written only when its priority is <= the level.
- *   OPENIMP_LOG_LEVEL=n  0..7; unset or invalid = LOG_WARNING, so production
- *                        cameras log errors and warnings only
+ *   OPENIMP_LOG_LEVEL=n  0..7; unset or invalid = LOG_NOTICE, so production
+ *                        cameras log errors, warnings and one-shot status lines
  *   OPENIMP_DEBUG_TRACE  set (not "0"): LOG_DEBUG, everything as before
  * imp_log_level_parse() is the pure rule (host-tested); imp_log_level() caches
  * it in a static int, so the per-call cost is one load and one compare.
  */
-#define IMP_LOG_LEVEL_DEFAULT LOG_WARNING
+#define IMP_LOG_LEVEL_DEFAULT LOG_NOTICE
 
 static inline int imp_log_level_parse(const char *env, int trace)
 {

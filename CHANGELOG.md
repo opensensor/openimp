@@ -10,7 +10,7 @@ Release plan: `next` goes to `aperto` (fast-forward only) after the long soak of
 
 ## Log level (branch claude/log-level, 2026-10-10, host-tested only)
 
-- `OPENIMP_LOG_LEVEL` (0..7, syslog numbering) gates `IMP_LOG` for syslog and stderr; default 4 (warning), `OPENIMP_DEBUG_TRACE` forces 7. INFO lines (allegro rc per IDR, HWJPEG counter, rmem peak, ...) are silent by default; OSD and HWJPEG/AVC faults are WARNING, one-shot status lines are NOTICE (level 5). Details: [docs/OPEN_STACK_CHANGELOG.md](docs/OPEN_STACK_CHANGELOG.md), env table in [docs/OPENIMP_BEYOND_VENDOR.md](docs/OPENIMP_BEYOND_VENDOR.md).
+- `OPENIMP_LOG_LEVEL` (0..7, syslog numbering) gates `IMP_LOG` for syslog and stderr; default 5 = notice (one-shot status lines visible, per-frame INFO silent; 6/7 or `OPENIMP_DEBUG_TRACE=1` for verbose), `OPENIMP_DEBUG_TRACE` forces 7. INFO lines (allegro rc per IDR, HWJPEG counter, rmem peak, ...) are silent by default; OSD and HWJPEG/AVC faults are WARNING, one-shot status lines are NOTICE. Details: [docs/OPEN_STACK_CHANGELOG.md](docs/OPEN_STACK_CHANGELOG.md), env table in [docs/OPENIMP_BEYOND_VENDOR.md](docs/OPENIMP_BEYOND_VENDOR.md).
 
 ## Release candidate agg-34 (state of 2026-10-09 evening)
 

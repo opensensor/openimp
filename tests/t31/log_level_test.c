@@ -56,28 +56,28 @@ static int run_case(const char *level, const char *trace)
 int main(void)
 {
     /* pure rule */
-    assert(imp_log_level_parse(NULL, 0) == LOG_WARNING);
-    assert(imp_log_level_parse("", 0) == LOG_WARNING);
-    assert(imp_log_level_parse("x", 0) == LOG_WARNING);
-    assert(imp_log_level_parse("8", 0) == LOG_WARNING);
-    assert(imp_log_level_parse("44", 0) == LOG_WARNING);
+    assert(imp_log_level_parse(NULL, 0) == LOG_NOTICE);
+    assert(imp_log_level_parse("", 0) == LOG_NOTICE);
+    assert(imp_log_level_parse("x", 0) == LOG_NOTICE);
+    assert(imp_log_level_parse("8", 0) == LOG_NOTICE);
+    assert(imp_log_level_parse("44", 0) == LOG_NOTICE);
     assert(imp_log_level_parse("0", 0) == 0);
     assert(imp_log_level_parse("3", 0) == LOG_ERR);
     assert(imp_log_level_parse("7", 0) == LOG_DEBUG);
     assert(imp_log_level_parse("2", 1) == LOG_DEBUG);
     assert(imp_log_level_parse(NULL, 1) == LOG_DEBUG);
 
-    /* default: ERR + WARNING only (INFO and DEBUG, also via IMP_LOG_INFO, dropped) */
-    assert(run_case(NULL, NULL) == 2);
-    assert(run_case("garbage", NULL) == 2);
-    assert(run_case(NULL, "0") == 2);          /* DEBUG_TRACE=0 is off */
+    /* default: ERR, WARNING, NOTICE (INFO and DEBUG, also via IMP_LOG_INFO, dropped) */
+    assert(run_case(NULL, NULL) == 3);
+    assert(run_case("garbage", NULL) == 3);
+    assert(run_case(NULL, "0") == 3);          /* DEBUG_TRACE=0 is off */
     /* env override */
     assert(run_case("3", NULL) == 1);          /* errors only */
     assert(run_case("0", NULL) == 0);
-    assert(run_case("5", NULL) == 3);          /* + NOTICE */
+    assert(run_case("4", NULL) == 2);
+    assert(run_case("5", NULL) == 3);
     assert(run_case("6", NULL) == 5);          /* + INFO, also IMP_LOG_INFO */
     assert(run_case("7", NULL) == 6);
-    assert(run_case("4", NULL) == 2);
     /* OPENIMP_DEBUG_TRACE wins over a lower level, like before the knob */
     assert(run_case(NULL, "1") == 6);
     assert(run_case("3", "1") == 6);
