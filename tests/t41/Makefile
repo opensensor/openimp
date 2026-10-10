@@ -22,10 +22,11 @@ TEST_BINS := $(IVS_FRAMEWORK_TEST_BIN) $(CORE_LEASE_TEST_BIN) $(COMMAND_TEST_BIN
 
 P3_CONTROLS_TEST_BIN := $(PROJECT_DIR)/build/tests/t41-p3-controls-test
 
-.PHONY: check clean p3-controls
+.PHONY: check clean p3-controls p3-ao-mute
 
 check: $(TEST_BINS)
 	$(MAKE) p3-controls
+	$(MAKE) p3-ao-mute
 	$(RMEM_FIT_TEST_BIN)
 	$(RMEM_FIT_T40_TEST_BIN)
 	$(IVS_FRAMEWORK_TEST_BIN)
@@ -153,3 +154,11 @@ ifneq ($(T41_HEADERS),)
 else
 	@echo "t41 p3 controls test skipped (set T41_HEADERS)"
 endif
+
+# software-mute IMP_AO_SendFrame from two threads
+p3-ao-mute: p3_ao_mute_test.c $(PROJECT_DIR)/src/t40/openimp_p3_audio.c
+	mkdir -p "$(PROJECT_DIR)/build/tests"
+	$(CC) -std=gnu99 -O1 -g -Wall -Wextra -Wno-unused-function -DPLATFORM_T41 \
+		-I$(PROJECT_DIR)/include -I$(PROJECT_DIR)/src \
+		p3_ao_mute_test.c -pthread -ldl -o "$(PROJECT_DIR)/build/tests/t41-p3-ao-mute-test"
+	$(PROJECT_DIR)/build/tests/t41-p3-ao-mute-test
