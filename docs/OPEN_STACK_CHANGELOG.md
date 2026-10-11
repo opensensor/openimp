@@ -3,9 +3,28 @@
 Everything changed, extended or fixed in OpenIMP, open-tx-isp, timps and the thingino
 integration since the test campaign started on 2026-09-30. Kept up to date during the campaign.
 
-Last update: 2026-10-10 afternoon (docs-1010b: front crop vs flip, AeComp, agg-34.1, T41 notes; docs-1010: results of 2026-10-10 collected; items marked "in branch" are not yet in an aggregate). Branch names (`claude/...`) in the tables and sections below are historic: the branches were merged into `next` and deleted.
+Last update: 2026-10-11 (RC1 v2026.10.11-rc1: openimp claude/rc1 (agg-35 687a68e4 + docs), open-tx-isp 6e464ac7; agg-35 soak clean). Before that 2026-10-10 evening (cam-K first T40 device run, T41 audio/driver controls, audio on T10..T31, agg-35 build; before that docs-1010b: front crop vs flip, AeComp, agg-34.1, T41 notes; docs-1010: results of 2026-10-10 collected; items marked "in branch" are not yet in an aggregate). Branch names (`claude/...`) in the tables and sections below are historic: the branches were merged into `next` and deleted.
 
 Cameras are anonymised: cam-A (T31), cam-B (T23), cam-C (T20), cam-D (T21), cam-E (T10), cam-F (T41); cam-G and cam-H are further T23 cameras, cam-I a second T20 and cam-J a second T21.
+
+## RC1 (v2026.10.11-rc1)
+
+RC1 v2026.10.11-rc1: openimp claude/rc1 (agg-35 687a68e4 + docs), open-tx-isp 6e464ac7.
+
+**Soak evidence:** agg-35 ran on 10 cameras from 2026-10-10 18:04 to 2026-10-11 08:00 (about 14 h): 0 kernel oopses, 0 unexplained reboots, 0 streamer (`timpsd`) restarts, VA-API decode check 54/54. The soaked images carry timps f1565f7 (the source of the timps tag v1.10.0) plus the timps firmware package patches, on thingino `aperto` base a4bcc1c86.
+
+**Supported SoCs:** release: T10, T20, T21, T23, T31. Experimental (not part of the release promise): T30 (no device in the lab, host/build evidence only), T40 (first device run only, see the matrix) and T41 (channel 1 and night colour open).
+
+**Recommended streamer:** timps v1.10.0.
+
+**Known issues (RC1):**
+- **T41 channel 1 (sub-stream) colour at night** differs from channel 0 (picture soak finding); T41 stays experimental.
+- **T31, black picture of about 80 s** seen once during a streamer-driven day/night probe; not understood yet.
+- **T23, dusk flapping:** with one streamer (raptor) a T23 camera switched between day and night several times at dusk. The day/night decision is streamer logic; the driver and OpenIMP only report the sensor values.
+- **Day/night in a poorly lit location** also follows the streamer's logic; tune the streamer thresholds, not the driver.
+- T40: CBR delivers only about 20 % of the target rate, H.265 not supported yet. T41: no audio hardware on the test board (API level only).
+
+**Next (after RC1, agg-36):** work that is not in agg-35 and therefore not part of this release candidate: T40 rate control and H.265, T40 ISP-drawn OSD, further vendor-API gap work (T30, T1x, T23/T31), T41 mask/zoom, log level default, IVS result ordering and review fixes.
 
 ## Where each camera stands
 
@@ -119,6 +138,19 @@ Operations findings (no branch):
 - T20/T21 encoder ROI QA flake: timing only. A ROI change applies at the next IDR, so a check taken before that IDR sees the old QP map; no driver issue.
 - T30 and T40 columns added to the matrix (host/build evidence; T40 device test running).
 - AEC device-tested on 2026-10-10 (OpenIMP AECM, mono 16 kHz, `EnableAec` returns 0): ERLE on a speech segment T10 25 dB, T20 24 dB, T21 20 dB (vendor stack on the same model 16 dB), T23 19 dB, T31 25 dB; T41 not measurable (microphone shows no response to playback). AECM does not cancel pure tones; on T21 a microphone gain above 0 raises the noise floor to -11..-32 dBFS (hardware, open and vendor alike). Matrix row 33 updated.
+
+### T40 device run, T41 and audio results (evening 2026-10-10)
+
+| Area | Result | Status |
+|---|---|---|
+| T40 first OpenIMP device run (cam-K) | T40XP board, vendor kernel driver `tx_isp_t40`, vendor libimp 1.3.0; OpenIMP via `LD_LIBRARY_PATH`; every result is OpenIMP vs vendor. PASS/dev: `AddSensor`/`EnableSensor`; FrameSource ch0 3840x2160 + ch1 640x360 with `GetFrame` (timestamps monotonic, non-zero); H.264 on ch0 + ch1 (10 s, clean strict decode); OSD PIC + COVER (OpenIMP draws COVER on NV12, the vendor library fails with "COVER cannot support this format"); IVS move (20 s); `FrameSource_SnapFrame`; JPEG on ch1 (software JPEG since 257ba9d); ISP `GetSensorAttr`, Gamma get, CCM get, ModuleControl get, `AeScenceAttr` get/set; `GetCameraInputMode`. The matrix cells for exactly these functions are dev, the rest of T40 stays host | device-tested 2026-10-10, code in agg-35 |
+| T40 fixes during the run | The stream timestamp was 0: now copied from the frame record at 0x28 (a5d9b03). JPEG was a grey placeholder: snapshot channels now encode the captured NV12 with the software baseline encoder (257ba9d) | in agg-35 |
+| T40 open | CBR delivers only about 20 % of the target bit rate (rate control); H.265 not supported by OpenIMP T40 yet; `GetBrightness` returns -1; the pixel-format enum is reported as 10 (vendor 0); frame size is 16-line aligned (353280 B vs 345600 B); `P1_INNER` traces always go to stderr; JPEG at 4K not tested (out of memory in the test process, 60 MB RAM). Vendor note: `GetAeExpList` hung the vendor kernel driver; the magenta cast seen with timps stopped was the IR cut left open, not the library | open |
+| T41 audio mute (API level) | `AI_SetVolMute`, `AO_SetVolMute`, `AO_Soft_Mute`/`UNMute` are a software mute as in the vendor library (no ioctl); tested at API level without playback (rc 0, invalid argument -1). The T41 test board has no microphone and no speaker, so all T41 audio results are API-level only (matrix: host; AO and AEC rows `—`) | in agg-35 |
+| T41 driver controls | `FrameDrop`, `SensorRegister`, `ISP_WDR_ENABLE`/`_GET` and `AfWeight` device-tested (`claude/t41-driver-gaps`, in agg-35). `Get/SetWdrOutputMode`: the driver has no stock handler (explained, vendor no-op). `AutoZoom`, `SetMaskBlock`, `SetScalerLv` deferred (live MSCA reprogramming carries a hang risk) | in agg-35 / deferred |
+| Audio T10/T20/T21/T23/T31 | AEC device test: `IMP_AO` enable/`SendFrame` and `SetVol` played a known signal at several volumes that was recorded back; `IMP_AI` enable/`GetFrame`, `SetVol`/`SetGain`, mono 16 kHz recorded it; `EnableAec` returns 0. AO/AI rows and function cells are now dev for these SoCs. T21: a microphone gain above 0 drives the noise floor up (hardware, open and vendor stack alike) | device-tested 2026-10-10 |
+| Build | agg-35 (openimp 687a68e4, open-tx-isp 6e464ac7) built 2026-10-10; soak 2026-10-10 18:04 to 2026-10-11 08:00 clean (10 cameras) | built |
+
 
 ## 2026-10-07 to 2026-10-10: agg-32 soak and release candidate agg-34
 

@@ -8,6 +8,36 @@
 
 Release plan: `next` goes to `aperto` (fast-forward only) after the long soak of the release candidate and is tagged `vYYYY.MM.DD`; until then dates are the reference. The first release covers T10, T20, T21, T23 and T31; T10 has not been re-tested on the open stack today ("not re-tested"); T41 is not part of the first release. Branch names (`claude/...`) are historic: the topic branches were merged into `next` and deleted. Cameras are anonymised: cam-A (T31), cam-B (T23), cam-C (T20), cam-D (T21), cam-E (T10), cam-F (T41); cam-G and cam-H are further T23 cameras, cam-I a second T20, cam-J a second T21.
 
+## Release candidate RC1 (v2026.10.11-rc1, state of 2026-10-11)
+
+RC1 v2026.10.11-rc1: openimp claude/rc1 (agg-35 687a68e4 + docs), open-tx-isp 6e464ac7. RC1 is exactly the soaked agg-35 code; the branch `claude/rc1` adds documentation only.
+
+**Soak evidence:** agg-35 ran on 10 cameras from 2026-10-10 18:04 to 2026-10-11 08:00 (about 14 h): 0 kernel oopses, 0 unexplained reboots, 0 streamer (`timpsd`) restarts, VA-API decode check 54/54. The soaked images carry timps f1565f7 (the source of the timps tag v1.10.0) plus the timps firmware package patches, on thingino `aperto` base a4bcc1c86.
+
+**Supported SoCs:** release: T10, T20, T21, T23, T31. Experimental (not part of the release promise): T30 (no device in the lab, host/build evidence only), T40 (first device run only, see the matrix) and T41 (channel 1 and night colour open).
+
+**Recommended streamer:** timps v1.10.0.
+
+**Highlights since the last `aperto` state (c855925; open-tx-isp ca9cbf0e):** about 190 commits in each repository.
+- **Encoder ROI:** T31 gets an ROI the vendor library does not have (AVPU QP table, H.264); T10/T20/T21 apply `SetChnROI` and the chroma QP offset on the Helix/NVPU; every path produces valid H.264 (deltas clamped, picture QP inside 0..51).
+- **Front crop (open-tx-isp):** the T31 scaler stall on a too small window is refused with -EINVAL, the T23 crop hang is fixed, T20/T10 keep a window until the channel opens.
+- **T20/T10 day/night:** `isp-m0` reports the analog gain cap the AE really reaches (needs the matching timps change).
+- **Hardening:** reviewed and host-tested patches (ABI struct sizes, encoder group bounds, IVS channel limits, `PollingStream` guards, idempotent IVS group create/destroy), channel-restart and reload robustness.
+- **Audio:** AI/AO/AEC calls device-tested on T10, T20, T21, T23 and T31; T41 has no audio hardware on the test board.
+- **T41 driver controls** (frame drop, sensor register, WDR enable, AF weight) device-tested; **T40** first OpenIMP device run (H.264 on two channels, OSD, IVS move, JPEG, ISP get/set).
+- **Docs:** the feature matrix has T30 and T40 columns, strict Get/Set rows and the wording "not in this SoC's encoder" for reference-frame sharing.
+
+**Known issues (RC1):**
+- **T41 channel 1 (sub-stream) colour at night** differs from channel 0 (picture soak finding); T41 stays experimental.
+- **T31, black picture of about 80 s** seen once during a streamer-driven day/night probe; not understood yet.
+- **T23, dusk flapping:** with one streamer (raptor) a T23 camera switched between day and night several times at dusk. The day/night decision is streamer logic; the driver and OpenIMP only report the sensor values.
+- **Day/night in a poorly lit location** also follows the streamer's logic; tune the streamer thresholds, not the driver.
+- T40: CBR delivers only about 20 % of the target rate, H.265 not supported yet. T41: no audio hardware on the test board (API level only).
+
+**Next (after RC1, agg-36):** work that is not in agg-35 and therefore not part of this release candidate: T40 rate control and H.265, T40 ISP-drawn OSD, further vendor-API gap work (T30, T1x, T23/T31), T41 mask/zoom, log level default, IVS result ordering and review fixes.
+
+Details: [docs/OPEN_STACK_CHANGELOG.md](docs/OPEN_STACK_CHANGELOG.md); per-function state: [docs/FEATURE_MATRIX.md](docs/FEATURE_MATRIX.md).
+
 ## Release candidate agg-34 (state of 2026-10-09 evening)
 
 OpenIMP `agg-34` (838f8147) = agg-32 (8980cae) + encoder ROI clamp (fec3e69, 8545fb9) + reviewed DeepSeek patches (11abe42 and 17 patches); open-tx-isp `agg-34` (da9baf1e) = agg-32 (3cf9bdac) + front-crop fixes for T31, T23, T20 and T10 (d940ba20 to 10bac52f, 164225e5) + T20 `isp-m0` gain cap (da9baf1e). The first release still covers T10, T20, T21, T23 and T31; T41 is experimental and not part of it. The combination agg-34 has not run on the cameras as a whole; the individual fixes below were device-tested on the SoC named.

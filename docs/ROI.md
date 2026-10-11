@@ -174,7 +174,7 @@ through the bridge. With no region set the command list is unchanged
 `OPENIMP_T23_ROI=0` switches the programming off. `OPENIMP_DEBUG_ROI` works on
 T23 too.
 
-Device run 2026-10-10 (T23 Tapo, sc2336p, 1920x1080, `tools/roitest`, dark
+Device run 2026-10-10 (T23, sc2336p, 1920x1080, `tools/roitest`, dark
 room, maximum gain, very noisy picture; window 640x384 at (640,352) = 12 % of
 the picture; 4 s phases at 10 fps):
 

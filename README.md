@@ -32,7 +32,7 @@ T10/T20/T21/T23/T31/T41) on top of the original `main` line; see [Branches and r
 
 ## Status
 
-Open stack = open-tx-isp + OpenIMP + timps. State on `aperto` (2026-10-04):
+Open stack = open-tx-isp + OpenIMP + timps. **State: RC1 v2026.10.11-rc1: openimp claude/rc1 (agg-35 687a68e4 + docs), open-tx-isp 6e464ac7.** Release SoCs: T10, T20, T21, T23, T31; T30, T40 and T41 are experimental. The agg-35 soak of 2026-10-10/11 on 10 cameras was clean (0 oopses, 0 unexplained reboots, 0 streamer restarts); recommended streamer: timps v1.10.0. Release notes and known issues: [CHANGELOG.md](CHANGELOG.md). The per-SoC table below dates from 2026-10-04; the matrix is newer.
 
 | SoC | Status |
 |---|---|

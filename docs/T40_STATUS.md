@@ -75,7 +75,7 @@ maintained `libaudioProcess-neo`; logging uses the target's
   `IMP_ISP_Tuning_DumpMask`; the payload the T40 kernel expects is not settled).
   `OSD_REG_ISP_*` regions are accepted and not drawn.
 
-## T40 on the T41 code paths (host tests only, no camera yet)
+## T40 on the T41 code paths (host tests; device run on cam-K 2026-10-10 below)
 
 Compared with the vendor libimp 1.3.1 disassembly (the camera runs 1.3.0, which
 is not available here; its OSD attribute is also larger than the 1.3.1 header):
@@ -95,6 +95,33 @@ is not available here; its OSD attribute is also larger than the 1.3.1 header):
   `Get/SetCCMAttr` (0x80, 40-byte payload with the vendor sign/13-bit
   conversion).  Control numbers are the same as on T41; the tuning ioctl is
   0xc0105436 on T40 (T41: 0xc0105435).
+
+## First OpenIMP device run (cam-K, 2026-10-10)
+
+T40XP board, vendor kernel driver `tx_isp_t40`, vendor libimp 1.3.0; OpenIMP is
+loaded through `LD_LIBRARY_PATH`. Every result is OpenIMP versus the vendor library.
+
+PASS: `AddSensor`/`EnableSensor`; FrameSource ch0 3840x2160 and ch1 640x360 with
+`GetFrame` (timestamps monotonic, non-zero); H.264 on ch0 and ch1 (10 s, clean strict
+decode); OSD PIC and COVER (OpenIMP draws COVER on NV12, the vendor library fails
+with "COVER cannot support this format"); IVS move (20 s); `FrameSource_SnapFrame`;
+JPEG on ch1 (software JPEG since 257ba9d); ISP `GetSensorAttr`, Gamma get, CCM get,
+ModuleControl get, `AeScenceAttr` get/set; `GetCameraInputMode`.
+
+Fixed during the run: the stream timestamp was 0 (a5d9b03); the JPEG was a grey
+placeholder (257ba9d).
+
+Open: CBR delivers only about 20 % of the target bit rate (rate control); H.265 is
+not supported by OpenIMP T40 yet; `GetBrightness` returns -1; the pixel-format enum is
+reported as 10 (vendor 0); the frame size is 16-line aligned (353280 B vs 345600 B);
+`P1_INNER` traces always go to stderr; JPEG at 4K not tested (out of memory in the
+test process, 60 MB RAM).
+
+Vendor note: `GetAeExpList` hung the vendor kernel driver. The magenta cast seen with
+timps stopped was the IR cut left open, not the library.
+
+Only the functions listed under PASS are marked device-tested in
+`FEATURE_MATRIX.md`; everything else on T40 stays host or unknown.
 
 ## Build
 
