@@ -2224,6 +2224,98 @@ int IMP_ISP_Tuning_GetWDRAttr(IMPISPTuningOpsMode *pmode)
 }
 #endif /* PLATFORM_T20 */
 
+#if defined(PLATFORM_T30)
+/* T30 1.0.5 Set/GetISPHVflip (0xc8658, 0xc89d0): both ISP flips in one call.
+ * The vendor sends one module-control word (0x80000e2 through the 0xc00c56c6
+ * tuning ioctl, hflip in bits 16..), as T20/T10 does.  Not every driver
+ * serves that word (the open T20 driver does not), so this is the
+ * SetISPHflip/SetISPVflip pair, which is served everywhere. */
+int IMP_ISP_Tuning_SetISPHVflip(IMPISPTuningOpsMode hmode, IMPISPTuningOpsMode vmode)
+{
+    int result = IMP_ISP_Tuning_SetISPHflip(hmode);
+
+    if (result != 0) {
+        return result;
+    }
+    return IMP_ISP_Tuning_SetISPVflip(vmode);
+}
+
+int IMP_ISP_Tuning_GetISPHVflip(IMPISPTuningOpsMode *phmode, IMPISPTuningOpsMode *pvmode)
+{
+    int result;
+
+    if (phmode == NULL || pvmode == NULL) {
+        return -1;
+    }
+    result = IMP_ISP_Tuning_GetISPHflip(phmode);
+    if (result != 0) {
+        return result;
+    }
+    return IMP_ISP_Tuning_GetISPVflip(pvmode);
+}
+
+/* T30 1.0.5 Set/GetWDRAttr (0xc684c, 0xc6904): the WDR switch is the V4L2
+ * control 0x8000169 (VIDIOC_S_CTRL / G_CTRL).  The vendor caches the last
+ * mode in its tuning block (initially 0) and Set returns 0 without a driver
+ * call when the mode is unchanged; a failed Get hands out the cached mode
+ * together with the driver's error.  Both need tuning running. */
+#define TSERIES_CID_WDR_T30 0x8000169
+static int tseries_wdr_cached;
+
+int IMP_ISP_Tuning_SetWDRAttr(IMPISPTuningOpsMode mode)
+{
+    ISPDevice *isp;
+    int result;
+
+    if (tseries_get_isp(&isp) != 0 || isp->tuning == NULL || isp->tuning_state != 2) {
+        return -1;
+    }
+    if (tseries_wdr_cached == (int)mode) {
+        return 0;
+    }
+    result = tseries_v4l2_set(TSERIES_CID_WDR_T30, (int32_t)mode);
+    if (result == 0) {
+        tseries_wdr_cached = (int)mode;
+    }
+    return result;
+}
+
+int IMP_ISP_Tuning_GetWDRAttr(IMPISPTuningOpsMode *pmode)
+{
+    ISPDevice *isp;
+    int32_t value = -1;
+    int result;
+
+    if (pmode == NULL || tseries_get_isp(&isp) != 0 || isp->tuning == NULL ||
+        isp->tuning_state != 2) {
+        return -1;
+    }
+    result = tseries_v4l2_get(TSERIES_CID_WDR_T30, &value);
+    if (result == 0) {
+        tseries_wdr_cached = (int)value;
+    }
+    *pmode = (IMPISPTuningOpsMode)tseries_wdr_cached;
+    return result;
+}
+
+/* T30 1.0.5 SetAFThreshold (0xcbb3c): stores the 16-bit threshold in the
+ * vendor tuning block (+0x884) and raises a flag (+0x88c) for its AF
+ * thread; -1 without tuning.  OpenIMP has no AF algorithm to feed, so the
+ * value is only kept. */
+static uint16_t tseries_af_threshold;
+
+int IMP_ISP_Tuning_SetAFThreshold(uint32_t threshold)
+{
+    ISPDevice *isp;
+
+    if (tseries_get_isp(&isp) != 0 || isp->tuning == NULL) {
+        return -1;
+    }
+    tseries_af_threshold = (uint16_t)threshold;
+    return 0;
+}
+#endif /* PLATFORM_T30 */
+
 int IMP_ISP_Tuning_SetMaxAgain(uint32_t gain)
 {
     return tseries_tuning_set_val(TISP_CID_MAX_AGAIN, gain);
@@ -2345,8 +2437,11 @@ int IMP_ISP_Tuning_GetDPC_Strength(uint32_t *pratio)
     return result;
 }
 
-#if defined(PLATFORM_T21)
-/* T20 3.12.0 (0x60138) does the same call: capped at 200, then
+#if defined(PLATFORM_T21) || defined(PLATFORM_T30)
+/* T30 1.0.5 (0xcb1c8) is the same code as T21 1.0.33: cap 200, then
+ * isp_table_tuning_ratio(83, v) with tuning running.
+ *
+ * T20 3.12.0 (0x60138) does the same call: capped at 200, then
  * isp_table_tuning_ratio(83, v) with tuning running.
  *
  * T21 1.0.33 SetDPStrength (0x5635c): with tuning running, the caller's
@@ -2362,10 +2457,11 @@ int IMP_ISP_Tuning_SetDPStrength(uint32_t ratio)
 
     return tseries_tuning_set_val(TISP_CID_DPC_RATIO, (int32_t)(scaled > 255u ? 255u : scaled));
 }
-#endif /* T21 and T20: SetDPStrength */
+#endif /* T21, T20 and T30: SetDPStrength */
 
-#if defined(PLATFORM_T21) && !defined(PLATFORM_T20)
-/* T21 1.0.33 SetAntiFogAttr (0x56448): the attribute enum (0 disable,
+#if (defined(PLATFORM_T21) && !defined(PLATFORM_T20)) || defined(PLATFORM_T30)
+/* T30 1.0.5 SetAntiFogAttr (0xcb2b4) is the same code with the same control.
+ * T21 1.0.33 SetAntiFogAttr (0x56448): the attribute enum (0 disable,
  * 1 strong, 2 medium, 3 weak) is sent as the value of the 0x8000163 control
  * (VIDIOC_S_CTRL); 0 when the kernel accepts it. */
 int IMP_ISP_Tuning_SetAntiFogAttr(int attr)
@@ -2932,6 +3028,16 @@ int IMP_ISP_Tuning_GetTemperDnsAttr(IMPISPTemperDenoiseAttr *attribute)
     *attribute = tseries_temper_dns;
     return 0;
 }
+
+#if defined(PLATFORM_T30)
+/* T30 1.0.5 SetTemperDnsCtl (0xc637c; same code as T21 1.0.33): the run-time
+ * variant of SetTemperDnsAttr.  Like the Attr call of this build it only
+ * keeps the value (no driver control), so both share the cache. */
+int IMP_ISP_Tuning_SetTemperDnsCtl(IMPISPTemperDenoiseAttr *attribute)
+{
+    return IMP_ISP_Tuning_SetTemperDnsAttr(attribute);
+}
+#endif
 #endif /* PLATFORM_T21 && !PLATFORM_T20 */
 
 #if !defined(PLATFORM_T23) /* T23: isp_t23_tuning.c */
@@ -4297,8 +4403,8 @@ int IMP_ISP_Tuning_Awb_GetRgbCoefft(void *attr)
     return tseries_tuning_get_ptr(TISP_CID_AWB_CWF_SHIFT, attr);
 }
 
-#if defined(PLATFORM_T21)
-/* T20 3.12.0 / T21 1.0.33: the strategy as a value through tuning
+#if defined(PLATFORM_T21) || defined(PLATFORM_T30)
+/* T20 3.12.0 / T21 1.0.33 / T30 1.0.5: the strategy as a value through tuning
  * 0x8000022 (IMAGE_TUNING_CID_AE_STRATEGY in the T20 SDK) */
 #define TSERIES_CID_AE_STRATEGY 0x8000022
 
@@ -4323,8 +4429,8 @@ int IMP_ISP_Tuning_GetAeStrategy(IMPISPAeStrategy *strategy)
 }
 #endif
 
-#if defined(PLATFORM_T20)
-/* T20 3.12.0: the CWF light source as rgain << 16 | bgain through tuning
+#if defined(PLATFORM_T20) || defined(PLATFORM_T30)
+/* T20 3.12.0 and T30 1.0.5 (0xc9294/0xc9188, same control): the CWF light source as rgain << 16 | bgain through tuning
  * 0x8000001 (IMAGE_TUNING_CID_AWB_CWF_SHIFT; the driver writes it into the
  * LIGHT_SRC calibration of the current day/night bank) */
 #define TSERIES_T20_CID_CWF_SHIFT 0x8000001

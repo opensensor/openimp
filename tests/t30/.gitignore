@@ -39,3 +39,7 @@ p2_gap_test_t20
 osd_attach_test
 isp_gap_test_t21
 isp_gap_test_t20
+p2_gap_test_t30
+osd_attach_test_t30
+isp_gap_test_t30
+dmic_t30_test

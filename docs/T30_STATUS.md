@@ -68,6 +68,39 @@ tests showed 16 percent loss while camera-local ring capture remained at full
 rate. Runtime codec gates therefore use lossless camera-local capture followed
 by offline decoding, separately from the network-path observation.
 
+## Vendor API coverage (host and build evidence, 2026-10-10)
+
+`build-t30.sh` checks the exports of `libimp.so` against the T30 1.0.5 vendor
+library (`tests/t30/fixtures/t30_vendor_1.0.5_imp_exports.txt`, 334 names).
+Gap work of 2026-10-10 (no T30 camera, vendor libimp 1.0.5 disassembled and
+compared with T21 1.0.33 and T31 1.1.6): 317 of 334 names are exported (was
+271), audio 68 of 68. None of the 63 names that were missing is imported by
+timps, prudynt or the raptor RVD.
+
+- Host-tested, same code as T20/T21 in the vendor library:
+  `Encoder_Get/SetChnFrmUsedMode`, `Encoder_GetGOPSize`,
+  `ISP_Tuning_SetDPStrength`, `SetAntiFogAttr`, `Get/SetAeStrategy`,
+  `Awb_Get/SetCwfShift`, `Get/SetWDRAttr`, `Get/SetISPHVflip` (ISP calls
+  against a fake tuning ioctl: whether the open T30 driver serves each control
+  is not checked), `OSD_AttachToGroup`.
+- DMIC (21 functions): the T31 implementation is compiled into the T30 build.
+  The T30 libimp has the same DMIC code and the T30 oss2 `/dev/dsp` driver the
+  same DMIC ioctls; one microphone per device on T30. Host test with a fake
+  `/dev/dsp`; the AEC calls are not run.
+- Stored only (the effect is in the closed vendor encoder or needs a device):
+  `Encoder_Get/SetChangeRef`, `Get/SetFisheyeEnableStatus`,
+  `SetChnHSkipBlackEnhance`, `Get/SetChnHSkip` (the IDR period is not handed
+  to the Helix encoder), `SetPoolSize`, `SetChnRcTrigLevel`,
+  `ISP_Tuning_SetTemperDnsCtl`, `SetAFThreshold`.
+- Still missing (17 names): `Decoder_*` (8) and `Encoder_Get/SetChnCrop`,
+  `ISP_Tuning_SetISPLDC` (need a T30 device or driver work);
+  `Encoder_Enable/DisableAllNCUDenoise`, `PadFrame`, `SetPadFrameAttr`,
+  `Get/SetRencFirstFrameMult` (not worth it: closed-encoder or chip-specific).
+
+Nothing in this list has run on a T30 camera. Wishlist for a T30 tester: the
+tuning controls above against the open T30 driver, a DMIC capture, and
+`Encoder_SetChnHSkip` with the IDR period.
+
 ## Build
 
 ```sh

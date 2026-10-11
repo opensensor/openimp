@@ -563,6 +563,10 @@ int IMP_ISP_Tuning_GetAeStrategy(IMPISPAeStrategy *strategy);
 /* T20: the CWF light source of the AWB (rgain/bgain) */
 int IMP_ISP_Tuning_Awb_SetCwfShift(IMPISPWB *isp_wb_attr);
 int IMP_ISP_Tuning_Awb_GetCwfShift(IMPISPWB *isp_wb_attr);
+#if defined(PLATFORM_T30)
+/* T30 1.0.5 (not in the vendor header): AF threshold of the AF thread */
+int IMP_ISP_Tuning_SetAFThreshold(uint32_t threshold);
+#endif
 
 /**
  * Set highlight depress

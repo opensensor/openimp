@@ -8,6 +8,9 @@
  * Includes src/t40/openimp_p2_encoder.c so the test can mark a channel
  * created without a codec; the codec calls are stubbed.
  * Build with -DPLATFORM_T21, or -DPLATFORM_T20 -DPLATFORM_T21 for T20/T10.
+ * -DPLATFORM_T30 (T30 1.0.5 libimp, same code as T21 apart from the HSkip
+ * idle channel and GetChangeRef of a created channel) also covers
+ * SetPoolSize and SetChnRcTrigLevel.
  */
 #include "../../src/t40/openimp_p2_encoder.c"
 
@@ -60,9 +63,18 @@ int main(void)
     CHECK(IMP_Encoder_SetFisheyeEnableStatus(2, 1) == -1);    /* too late */
     CHECK(IMP_Encoder_GetFisheyeEnableStatus(2, &v) == 0 && v == 0);
     CHECK(IMP_Encoder_SetChangeRef(2, 3) == 0);
+#if defined(PLATFORM_T21)
     CHECK(IMP_Encoder_GetChangeRef(2, &v) == 0 && v == 1);
     CHECK(IMP_Encoder_SetChangeRef(2, 0) == 0);
     CHECK(IMP_Encoder_GetChangeRef(2, &v) == 0 && v == 0);
+#else
+    /* T30 1.0.5: "unsupport to change ref channel" for a created channel */
+    v = 99;
+    CHECK(IMP_Encoder_GetChangeRef(2, &v) == -1 && v == 99);
+    CHECK(p2_channels[2].change_ref == 1);
+    CHECK(IMP_Encoder_SetChangeRef(2, 0) == 0);
+    CHECK(p2_channels[2].change_ref == 0);
+#endif
     CHECK(IMP_Encoder_GetChangeRef(2, NULL) == -1);
     CHECK(IMP_Encoder_GetGOPSize(2, &gop) == 0 && gop.gopsize == 50);
     CHECK(IMP_Encoder_GetGOPSize(2, NULL) == -1);
@@ -75,8 +87,26 @@ int main(void)
     {
         IMPEncoderAttrHSkip hs = { IMP_Encoder_STYPE_N2X, 4, 5, 6, 1, 1 }, gh;
 
+#if defined(PLATFORM_T21)
         CHECK(IMP_Encoder_SetChnHSkip(1, &hs) == -1);        /* idle */
         CHECK(IMP_Encoder_GetChnHSkip(1, &gh) == -1);
+#else
+        /* T30 1.0.5: an idle channel reads as zeros and takes the value
+         * (within its maxHSkipType, 0 until CreateChn) */
+        memset(&gh, 0xff, sizeof(gh));
+        CHECK(IMP_Encoder_GetChnHSkip(1, &gh) == 0 && gh.skipType == 0 &&
+              gh.m == 0 && gh.n == 0 && gh.maxSameSceneCnt == 0);
+        CHECK(IMP_Encoder_GetChnHSkip(1, NULL) == -1);
+        CHECK(IMP_Encoder_GetChnHSkip(P2_MAX_CHANNELS, &gh) == -1);
+        CHECK(IMP_Encoder_SetChnHSkip(1, &hs) == -1);        /* above max 0 */
+        hs.skipType = 0;
+        CHECK(IMP_Encoder_SetChnHSkip(1, &hs) == 0);
+        CHECK(p2_channels[1].attr.rcAttr.attrHSkip.hSkipAttr.m == 4 &&
+              p2_channels[1].attr.rcAttr.attrHSkip.hSkipAttr.n == 5);
+        memset(&gh, 0xff, sizeof(gh));                 /* idle still reads 0 */
+        CHECK(IMP_Encoder_GetChnHSkip(1, &gh) == 0 && gh.m == 0 && gh.n == 0);
+        hs.skipType = IMP_Encoder_STYPE_N2X;
+#endif
         p2_channels[2].attr.rcAttr.attrHSkip.maxHSkipType = IMP_Encoder_STYPE_N2X;
         CHECK(IMP_Encoder_SetChnHSkip(2, &hs) == 0);
         memset(&gh, 0, sizeof(gh));
@@ -87,6 +117,18 @@ int main(void)
         CHECK(IMP_Encoder_SetChnHSkip(2, &hs) == -1);        /* above the maximum */
         CHECK(IMP_Encoder_SetChnHSkip(2, NULL) == -1);
     }
+#if defined(PLATFORM_T30) && !defined(PLATFORM_T21)
+    /* --- SetPoolSize, SetChnRcTrigLevel (T30 only) ----------------------- */
+    CHECK(IMP_Encoder_SetPoolSize(0) == -1);
+    CHECK(IMP_Encoder_SetPoolSize(-5) == -1);
+    CHECK(IMP_Encoder_SetPoolSize(4 << 20) == 0 && p2_pool_size == (4 << 20));
+    CHECK(IMP_Encoder_SetChnRcTrigLevel(P2_MAX_CHANNELS, 0.5f, 1) == -1);
+    CHECK(IMP_Encoder_SetChnRcTrigLevel(4, 0.5f, 1) == 0);   /* idle: ignored */
+    CHECK(p2_rc_trig[4].mode == 0);
+    p2_channels[4].created = 1;
+    CHECK(IMP_Encoder_SetChnRcTrigLevel(4, 0.5f, 3) == 0);
+    CHECK(p2_rc_trig[4].level == 0.5f && p2_rc_trig[4].mode == 3);
+#endif
 #if defined(PLATFORM_T20)
     /* --- ChnDemask (T20/T10): stored as given, no created check ---------- */
     {

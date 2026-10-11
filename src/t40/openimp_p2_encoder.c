@@ -314,7 +314,7 @@ typedef struct {
     IMPEncoderH265TransCfg h265_transform;
     IMPEncoderQpgMode qpg_mode;
     int macroblock_rate_control;
-#if defined(PLATFORM_T21) && !defined(PLATFORM_T23)
+#if defined(PLATFORM_T30) && !defined(PLATFORM_T23)
     /* stored like the OEM T20/T21 channel record (see the block after
      * IMP_Encoder_GetChnHSkip) */
     IMPEncoderAttrFrmUsed frm_used;
@@ -4540,7 +4540,7 @@ int IMP_Encoder_InsertUserData(int channel, void *data, uint32_t size)
 #endif
 }
 
-#if defined(PLATFORM_T21) && !defined(PLATFORM_T23)
+#if defined(PLATFORM_T30) && !defined(PLATFORM_T23)
 /* OEM T20 3.12.0 (0x49dc8) behaves alike: created channel, skipType up to
  * maxHSkipType, the six words stored; the T20 Helix path does not take the
  * IDR period (no same-scene call).
@@ -4553,7 +4553,14 @@ int IMP_Encoder_InsertUserData(int channel, void *data, uint32_t size)
  * reference structure itself is not coded (no HSkip on the native path). */
 int IMP_Encoder_SetChnHSkip(int channel, const IMPEncoderAttrHSkip *attr)
 {
+#if defined(PLATFORM_T21)
     P2EncoderChannel *ch = p2_legacy_config_channel(channel);
+#else
+    /* OEM T30 1.0.5 (0xb3330): an idle channel takes the value too (the
+     * six words go into the channel attribute, 0 is returned) */
+    P2EncoderChannel *ch = p2_valid_channel(channel) ? &p2_channels[channel]
+                                                      : NULL;
+#endif
 
     if (!ch || !attr)
         return -1;
@@ -4563,7 +4570,11 @@ int IMP_Encoder_SetChnHSkip(int channel, const IMPEncoderAttrHSkip *attr)
         return -1;
     }
     ch->attr.rcAttr.attrHSkip.hSkipAttr = *attr;
-#if !defined(PLATFORM_T20)
+#if !defined(PLATFORM_T20) && defined(PLATFORM_T21)
+    /* T30 build: the value is only stored.  Its CreateChn does not hand the
+     * IDR period to the Helix encoder (T21 does), so changing it here would
+     * make the encoder behave differently after the call than after create;
+     * enabling it needs a T30 device run. */
     {
         int ok = attr->skipType == IMP_Encoder_STYPE_N1X ||
                  attr->skipType == IMP_Encoder_STYPE_H1M_FALSE ||
@@ -4583,6 +4594,13 @@ int IMP_Encoder_GetChnHSkip(int channel, IMPEncoderAttrHSkip *attr)
 {
     P2EncoderChannel *ch = p2_legacy_config_channel(channel);
 
+#if !defined(PLATFORM_T21)
+    /* OEM T30 1.0.5 (0xb36fc): an idle channel reads as all zeros, 0 */
+    if (!ch && attr && p2_valid_channel(channel)) {
+        memset(attr, 0, sizeof(*attr));
+        return 0;
+    }
+#endif
     if (!ch || !attr)
         return -1;
     pthread_mutex_lock(&ch->lock);
@@ -4592,7 +4610,7 @@ int IMP_Encoder_GetChnHSkip(int channel, IMPEncoderAttrHSkip *attr)
 }
 #endif
 
-#if defined(PLATFORM_T21) && !defined(PLATFORM_T23)
+#if defined(PLATFORM_T30) && !defined(PLATFORM_T23)
 /* ---- vendor channel bookkeeping, T20/T21 (gap work 2026-10-10) -----------
  * Disassembly of libimp T21 1.0.33 and T20/T10 3.12.0 (identical build for
  * both): every function below reads or writes the 0x908 (T21) / 0x810 (T20)
@@ -4708,8 +4726,16 @@ int IMP_Encoder_GetChangeRef(int channel, int *enable)
         return -1;
     EncoderInit();
     pthread_mutex_lock(&p2_channels[channel].lock);
-    if (p2_channels[channel].created)
+    if (p2_channels[channel].created) {
+#if defined(PLATFORM_T21)
         *enable = p2_channels[channel].change_ref;
+#else
+        /* OEM T30 1.0.5 (same code as T21 1.0.33): a created channel logs
+         * "unsupport to change ref channel" and returns -1; the value
+         * is only readable while the channel is idle (0). */
+        ret = -1;
+#endif
+    }
 #if defined(PLATFORM_T20)
     else
         ret = -1;
@@ -4762,6 +4788,44 @@ int IMP_Encoder_SetChnHSkipBlackEnhance(int channel, const int enable)
     pthread_mutex_unlock(&p2_channels[channel].lock);
     return 0;
 }
+
+#if !defined(PLATFORM_T21)
+/* ---- T30 1.0.5 only (gap work 2026-10-10) --------------------------------
+ * OEM IMP_Encoder_SetPoolSize (0xb45b0): logs, stores a size > 0 in a global
+ * for the next EncoderInit and returns 0, otherwise -1.  The T30 Helix path
+ * sizes its stream buffers from the picture (src/t30/t30_helix_encoder.c),
+ * so the value is only kept. */
+static int p2_pool_size;
+
+int IMP_Encoder_SetPoolSize(int size)
+{
+    if (size <= 0)
+        return -1;
+    p2_pool_size = size;
+    return 0;
+}
+
+/* OEM IMP_Encoder_SetChnRcTrigLevel (0xb1994): a created H.264 channel
+ * hands {float level, int mode} to its i264e (parameter 4: the trigger of
+ * the OEM re-encode rate control); an idle channel or an H.265 one returns
+ * 0 without doing anything; channel >= 6 is -1.  The Helix rate control has
+ * no such trigger, so the pair is only kept (the OEM has no getter). */
+static struct { float level; int mode; } p2_rc_trig[P2_MAX_CHANNELS];
+
+int IMP_Encoder_SetChnRcTrigLevel(int channel, float level, int mode)
+{
+    if (!p2_valid_channel(channel))
+        return -1;
+    EncoderInit();
+    pthread_mutex_lock(&p2_channels[channel].lock);
+    if (p2_channels[channel].created) {
+        p2_rc_trig[channel].level = level;
+        p2_rc_trig[channel].mode = mode;
+    }
+    pthread_mutex_unlock(&p2_channels[channel].lock);
+    return 0;
+}
+#endif /* !PLATFORM_T21 */
 #endif
 
 int IMP_Encoder_SetMbRC(int channel, int enabled)

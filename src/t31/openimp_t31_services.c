@@ -966,8 +966,9 @@ int IMP_OSD_Stop(int group)
     return 0;
 }
 
-#if defined(PLATFORM_T21)
-/* OEM T21/T20 IMP_OSD_AttachToGroup: a thin wrapper around system_attach();
+#if defined(PLATFORM_T21) || defined(PLATFORM_T30)
+/* OEM T21/T20/T30 IMP_OSD_AttachToGroup (T30 1.0.5 0xfd8ac is the same
+ * code): a thin wrapper around system_attach();
  * <0 is logged and returned as -1.  system_attach() inserts "from" between
  * "to" and the cell that currently feeds it, i.e. src->to becomes
  * src->from->to, and rolls the binds back on a failure.  The encoder looks
@@ -993,7 +994,7 @@ int IMP_OSD_AttachToGroup(IMPCell *from, IMPCell *to)
     }
     return 0;
 }
-#endif /* PLATFORM_T21 */
+#endif /* PLATFORM_T21 || PLATFORM_T30 */
 #endif /* !PLATFORM_T23 */
 
 

@@ -114,6 +114,9 @@ compile openimp_aec src/audio/openimp_aec.c -Werror -I"$project_dir/src/audio"
 # GetStream does not stamp the wall clock, as on T31 (the non-T23 defaults).
 compile audio_codec src/audio/openimp_audio_codec.c -Werror
 compile audio_enc_dec src/audio/openimp_audio_enc_dec.c -Werror
+# DMIC: the T31 implementation; the T30 1.0.5 libimp and its oss2 driver have
+# the same DMIC code and ioctls (one microphone per device on T30).
+compile t30_dmic src/t31/openimp_t31_dmic.c -Werror
 
 "$compiler" -shared -nostartfiles \
     -Wl,-soname,libimp.so -Wl,--gc-sections \
@@ -158,6 +161,7 @@ compile audio_enc_dec src/audio/openimp_audio_enc_dec.c -Werror
     "$output_dir/openimp_aec.o" \
     "$output_dir/audio_codec.o" \
     "$output_dir/audio_enc_dec.o" \
+    "$output_dir/t30_dmic.o" \
     "$output_dir/t30_ivs.o" \
     "$output_dir/t30_ivs_move.o" \
     "$output_dir/t30_ivs_move_v2.o" \

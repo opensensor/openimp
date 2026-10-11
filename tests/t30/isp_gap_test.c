@@ -25,6 +25,11 @@ void *IMP_Alloc(void *info, int size, const char *owner) { (void)info; (void)siz
 int DMA_FreePhys(uint32_t phys) { (void)phys; return 0; }
 int openimp_video_drop_set(void (*cb)(void)) { (void)cb; return 0; }
 
+#if defined(PLATFORM_T30)
+#define WDR_CID 0x8000169      /* T30 1.0.5 */
+#else
+#define WDR_CID 0x98e912       /* T20/T10 3.12.0 */
+#endif
 #define TUNING_FD 77
 #define G_CTRL 0xc008561bUL
 #define S_CTRL 0xc008561cUL
@@ -66,7 +71,7 @@ int __wrap_ioctl(int fd, unsigned long request, ...)
         } else {
             g_calls++;
         }
-        if (c->id == 0x98e912 && wdr_ret) {
+        if (c->id == WDR_CID && wdr_ret) {
             errno = wdr_ret;
             return -1;
         }
@@ -91,7 +96,7 @@ int __wrap_ioctl(int fd, unsigned long request, ...)
 int main(void)
 {
     static ISPDevice isp;
-#if defined(PLATFORM_T20)
+#if defined(PLATFORM_T20) || defined(PLATFORM_T30)
     IMPISPTuningOpsMode h, v;
 #endif
 
@@ -111,10 +116,11 @@ int main(void)
     isp.tuning_state = 2;
 
 #if !defined(PLATFORM_T20)
-    /* T21 SetAntiFogAttr: the enum travels as control 0x8000163 */
+    /* T21/T30 SetAntiFogAttr: the enum travels as control 0x8000163 */
     CHECK(IMP_ISP_Tuning_SetAntiFogAttr(2) == 0);
     CHECK(last_id == 0x8000163 && last_val == 2);
-#else
+#endif
+#if defined(PLATFORM_T20) || defined(PLATFORM_T30)
     /* ISPHVflip = the two flip controls, hflip first */
     s_calls = 0;
     CHECK(IMP_ISP_Tuning_SetISPHVflip(IMPISP_TUNING_OPS_MODE_ENABLE,
@@ -129,12 +135,13 @@ int main(void)
     CHECK(IMP_ISP_Tuning_GetISPHVflip(NULL, &v) == -1);
     CHECK(IMP_ISP_Tuning_GetISPHVflip(&h, NULL) == -1);
 
-    /* WDR: V4L2 control 0x98e912, unchanged mode answers without the driver */
+    /* WDR: V4L2 control (T20 0x98e912, T30 0x8000169), unchanged mode
+     * answers without the driver */
     s_calls = 0;
     CHECK(IMP_ISP_Tuning_SetWDRAttr(IMPISP_TUNING_OPS_MODE_DISABLE) == 0);
     CHECK(s_calls == 0);                                 /* cached 0 */
     CHECK(IMP_ISP_Tuning_SetWDRAttr(IMPISP_TUNING_OPS_MODE_ENABLE) == 0);
-    CHECK(s_calls == 1 && last_id == 0x98e912 && last_val == 1);
+    CHECK(s_calls == 1 && last_id == WDR_CID && last_val == 1);
     CHECK(IMP_ISP_Tuning_SetWDRAttr(IMPISP_TUNING_OPS_MODE_ENABLE) == 0);
     CHECK(s_calls == 1);
     CHECK(IMP_ISP_Tuning_GetWDRAttr(&h) == 0 && h == IMPISP_TUNING_OPS_MODE_ENABLE);
@@ -147,6 +154,42 @@ int main(void)
     isp.tuning_state = 1;
     CHECK(IMP_ISP_Tuning_SetWDRAttr(IMPISP_TUNING_OPS_MODE_DISABLE) == -1);
     CHECK(IMP_ISP_Tuning_GetWDRAttr(&h) == -1);
+    isp.tuning_state = 2;
+#endif
+#if defined(PLATFORM_T30)
+    {
+        IMPISPWB wb = { .rgain = 0x123, .bgain = 0x2ab }, got;
+        IMPISPAeStrategy st = IMPISP_AE_STRATEGY_BUTT;
+        IMPISPTemperDenoiseAttr tn = { .type = IMPISP_TEMPER_MANUAL,
+                                       .temper_strength = 77 }, tg;
+
+        /* AE strategy: tuning control 0x8000022 (value) */
+        t_calls = 0;
+        CHECK(IMP_ISP_Tuning_SetAeStrategy((IMPISPAeStrategy)1) == 0);
+        CHECK(last_tuning_sub == 0x8000022 && last_tuning_val == 1);
+        CHECK(IMP_ISP_Tuning_GetAeStrategy(&st) == 0);
+        CHECK(IMP_ISP_Tuning_GetAeStrategy(NULL) == -1);
+        /* CWF shift: tuning control 0x8000001, rgain << 16 | bgain */
+        CHECK(IMP_ISP_Tuning_Awb_SetCwfShift(&wb) == 0);
+        CHECK(last_tuning_sub == 0x8000001 &&
+              (uint32_t)last_tuning_val == ((0x123u << 16) | 0x2ab));
+        CHECK(IMP_ISP_Tuning_Awb_SetCwfShift(NULL) == -1);
+        CHECK(IMP_ISP_Tuning_Awb_GetCwfShift(NULL) == -1);
+        memset(&got, 0, sizeof(got));
+        CHECK(IMP_ISP_Tuning_Awb_GetCwfShift(&got) == 0);
+        /* AF threshold: needs a tuning block, no driver call */
+        t_calls = 0;
+        CHECK(IMP_ISP_Tuning_SetAFThreshold(0x1234) == 0 && t_calls == 0);
+        isp.tuning = NULL;
+        CHECK(IMP_ISP_Tuning_SetAFThreshold(1) == -1);
+        isp.tuning = &isp;
+        /* temper control shares the cache of SetTemperDnsAttr */
+        CHECK(IMP_ISP_Tuning_SetTemperDnsCtl(&tn) == 0);
+        memset(&tg, 0, sizeof(tg));
+        CHECK(IMP_ISP_Tuning_GetTemperDnsAttr(&tg) == 0 &&
+              tg.type == IMPISP_TEMPER_MANUAL && tg.temper_strength == 77);
+        CHECK(IMP_ISP_Tuning_SetTemperDnsCtl(NULL) == -1);
+    }
 #endif
     if (failures) {
         fprintf(stderr, "isp_gap_test: %d failure(s)\n", failures);
