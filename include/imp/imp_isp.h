@@ -421,13 +421,23 @@ int IMP_ISP_Tuning_SetISPVflip(IMPISPTuningOpsMode mode);
 /* Vendor calls of the T10/T20/T21 libimp (not in the T31-style header set):
  * both ISP flips at once and the WDR switch (T10/T20), the data-pixel
  * correction strength in percent, capped at 200 (T20/T21), and the anti-fog
- * level 0 disable, 1 strong, 2 medium, 3 weak (T21). */
+ * level 0 disable, 1 strong, 2 medium, 3 weak (T10/T20/T21). */
 int IMP_ISP_Tuning_SetISPHVflip(IMPISPTuningOpsMode hmode, IMPISPTuningOpsMode vmode);
 int IMP_ISP_Tuning_GetISPHVflip(IMPISPTuningOpsMode *phmode, IMPISPTuningOpsMode *pvmode);
 int IMP_ISP_Tuning_SetWDRAttr(IMPISPTuningOpsMode mode);
 int IMP_ISP_Tuning_GetWDRAttr(IMPISPTuningOpsMode *pmode);
 int IMP_ISP_Tuning_SetDPStrength(uint32_t ratio);
 int IMP_ISP_Tuning_SetAntiFogAttr(int attr);
+
+/* Lens-shading scale (T10/T20 3.12.0): the 3-bit mesh scale field of the
+ * lens-shading block. */
+typedef enum {
+    IMPISP_SHAD_SCALE_L,
+    IMPISP_SHAD_SCALE_M,
+    IMPISP_SHAD_SCALE_H,
+    IMPISP_SHAD_SCALE_U,
+} IMPISPMeshShadingScale;
+int IMP_ISP_Tuning_SetMeshShadingScale(IMPISPMeshShadingScale scale);
 
 /**
  * Set brightness
