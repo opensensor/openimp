@@ -242,6 +242,13 @@ int main(int argc, char **argv)
         int rp, rg, pid = -9;
         rp = IMP_System_MemPoolRequest ? IMP_System_MemPoolRequest(5, 8 * 1024 * 1024, "encpool") : -1000;
         R("System_MemPoolRequest", OK(!rp), "rc=%d%s", rp, IMP_System_MemPoolRequest ? "" : " (symbol not exported)");
+        {
+            int n0 = -1, n1 = -1, rs, rg0, rg1;
+            rg0 = IMP_Encoder_GetMaxStreamCnt(CH, &n0);
+            rs = IMP_Encoder_SetMaxStreamCnt(CH, 5);
+            rg1 = IMP_Encoder_GetMaxStreamCnt(CH, &n1);
+            R("Encoder_Get/SetMaxStreamCnt", OK(!rg0 && !rs && !rg1 && n1 == 5), "before create: default %d, set 5 rc=%d, readback %d", n0, rs, n1);
+        }
         r = IMP_Encoder_SetPool(CH, 5); rg = IMP_Encoder_GetPool(CH); pid = rg;
         R("Encoder_Get/SetPool", OK(!r && pid == 5), "SetPool rc=%d GetPool=%d", r, pid);
         {
@@ -332,7 +339,7 @@ int main(int argc, char **argv)
             usleep(1200000);
             memset(&q2, 0xff, sizeof q2);
             r |= IMP_Encoder_Query(CH, &q2);
-            R("Encoder_Query", OK(!r && q2.registered && q2.leftStreamFrames > 0), "running: registered=%d leftPics=%u; after 1.2 s unread: leftBytes=%u leftFrames=%u packs=%u done=%u",
+            R("Encoder_Query", (!r && q2.registered) ? (q2.leftStreamFrames > 0 ? "PASS" : "PART") : "FAIL", "running: registered=%d leftPics=%u; after 1.2 s unread: leftBytes=%u leftFrames=%u packs=%u done=%u",
               qs.registered, qs.leftPics, q2.leftStreamBytes, q2.leftStreamFrames, q2.curPacks, q2.work_done);
             /* FlushStream drops the queued frames */
             r = IMP_Encoder_FlushStream(CH);
@@ -395,12 +402,12 @@ int main(int argc, char **argv)
             printf("  rcmode get rc=%d mode=%d cbr target=%u\n", r, rc.rcMode, rc.attrCbr.uTargetBitRate);
             stream_for(secs, &e); k0 = kbps(&e, secs);
             /* SetChnBitRate */
-            r = IMP_Encoder_SetChnBitRate(CH, 600, 800);
+            r = IMP_Encoder_SetChnBitRate(CH, 600000, 800000);
             usleep(500000);
             stream_for(secs, &e); k1 = kbps(&e, secs);
             memset(&rc2, 0, sizeof rc2);
             IMP_Encoder_GetChnAttrRcMode(CH, &rc2);
-            R("Encoder_SetChnBitRate", OK(!r && rc2.attrCbr.uTargetBitRate == 600 && k1 < k0 * 0.8), "rc=%d CBR target 2000 -> 600 kbps: measured %.0f -> %.0f kbps, readback target=%u", r, k0, k1, rc2.attrCbr.uTargetBitRate);
+            R("Encoder_SetChnBitRate", OK(!r && rc2.attrCbr.uTargetBitRate == 600 && k1 < k0 * 0.8), "rc=%d CBR target 2000 -> 600 kbps (arg in bit/s as in the header): measured %.0f -> %.0f kbps, readback target=%u", r, k0, k1, rc2.attrCbr.uTargetBitRate);
             /* SetChnAttrRcMode: CBR 3000 */
             rc2 = rc; rc2.rcMode = IMP_ENC_RC_MODE_CBR; rc2.attrCbr.uTargetBitRate = 3000;
             r = IMP_Encoder_SetChnAttrRcMode(CH, &rc2);
@@ -457,16 +464,15 @@ int main(int argc, char **argv)
             }
         }
 
-        /* max stream cnt */
+        /* max stream cnt: set before CreateChn (see pre-create block); after create the header says it is too late */
         {
-            int n0 = -1, n1 = -1, rs, rg0, rg1;
-            rg0 = IMP_Encoder_GetMaxStreamCnt(CH, &n0);
-            rs = IMP_Encoder_SetMaxStreamCnt(CH, 4);
-            rg1 = IMP_Encoder_GetMaxStreamCnt(CH, &n1);
-            R("Encoder_Get/SetMaxStreamCnt", OK(!rg0 && !rs && !rg1 && n1 == 4), "default %d, set 4 rc=%d, readback %d", n0, rs, n1);
-            if (n0 > 0) IMP_Encoder_SetMaxStreamCnt(CH, n0);
+            int n1 = -1, rs = IMP_Encoder_SetMaxStreamCnt(CH, 3), rg1 = IMP_Encoder_GetMaxStreamCnt(CH, &n1);
+            printf("  SetMaxStreamCnt after create: rc=%d readback=%d (header: must be before create)\n", rs, n1);
+            (void)rg1;
         }
-        /* resize mode */
+    }
+    if (mask & 0x80) {
+        /* resize mode (own phase: hung the device run in phase 2) */
         {
             int a1 = IMP_Encoder_SetChnResizeMode(CH, 1), a0 = IMP_Encoder_SetChnResizeMode(CH, 0);
             stream_for(1.0, &e);

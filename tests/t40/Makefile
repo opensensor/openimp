@@ -132,6 +132,13 @@ fs-hold:
 		-o $(PROJECT_DIR)/build/tests/t40-fs-hold-test
 	$(PROJECT_DIR)/build/tests/t40-fs-hold-test
 
+.PHONY: mempool
+mempool:
+	mkdir -p $(PROJECT_DIR)/build/tests
+	$(CC) -std=gnu99 -Wall -Wextra -Werror -I$(PROJECT_DIR)/src mempool_test.c -pthread \
+		-o $(PROJECT_DIR)/build/tests/t40-mempool-test
+	$(PROJECT_DIR)/build/tests/t40-mempool-test
+
 .PHONY: frame-rc
 frame-rc:
 	mkdir -p $(PROJECT_DIR)/build/tests
