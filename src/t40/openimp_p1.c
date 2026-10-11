@@ -868,6 +868,8 @@ int IMP_ISP_DisableTuning(void)
  * (GetFrame, thus also the IVS feeder) and, for a blocking GetTimedFrame, by
  * the call itself.  A cached frame is a copy: the capture buffer goes back
  * to the driver as usual.  GetFrame itself is not delayed.
+ * Cost: one full-frame memcpy per GetFrame while the delay is above 0
+ * (about 12 MB per frame at 4K NV12), see docs/T40_STATUS.md.
  */
 #define FS_ERR_CHN      ((int)0x80010001u)  /* IMP_ERR_FS_INVALID_CHNID */
 #define FS_ERR_PARAM    ((int)0x80010002u)  /* IMP_ERR_FS_ILLEGAL_PARAM */

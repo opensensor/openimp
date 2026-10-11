@@ -207,6 +207,19 @@ checked by `tests/t40/vendor_cmd_test.c`:
 `OPENIMP_T40_{FIXQP_NOHWRC,FIXQP_LDA,CMD12,POC,HWRC_TARGET}=0` restore the old
 words one by one for comparisons.
 
+### Frame delay cache costs memory bandwidth
+
+While `IMP_FrameSource_SetMaxDelay` is above 0 (and `SetDelay` > 0), every
+`GetFrame` copies the whole frame into the delay cache
+(`fs_delay_store` in `src/t40/openimp_p1.c`; the capture buffer itself goes back
+to the driver at once).  That is one full-frame `memcpy` per frame on the
+consumer thread, for example about 12 MB per frame at 4K NV12 (3840x2160x1.5),
+about 3 MB at 1080p NV12, plus up to `delay` cached frames of RAM per channel
+(`delay` <= 100).  At 4K and 25 fps that is roughly 300 MB/s of extra copy
+traffic.  With `SetMaxDelay(0)` (default) there is no cost.  Enable it only
+on channels where `GetTimedFrame` is really used and keep `delay` small.
+Host-tested only, not measured on a camera.
+
 ## Build
 
 ```sh

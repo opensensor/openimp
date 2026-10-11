@@ -17,6 +17,10 @@
 #if defined(PLATFORM_T21)
 #define PLATFORM_T30 1
 #endif
+/* Note for all "PLATFORM_T30" blocks below (and the T30 gap code at the end
+ * of this file): because of the define above, PLATFORM_T30 is also set in the
+ * T21 build, so these functions are compiled for T21 as well and are not
+ * lost there.  Code that must differ uses PLATFORM_T21 explicitly. */
 
 #include "openimp_profile.h"
 #include "imp_log_int.h"
@@ -1938,6 +1942,19 @@ int IMP_Encoder_CreateChn(int channel, IMPEncoderCHNAttr *attr)
         return -1;
     }
 #endif
+#if defined(PLATFORM_T21) && !defined(PLATFORM_T20)
+    /* Vendor T21 1.0.33: channel_i264e_encoder_init hands the created dnType
+     * to i264e_validate_parameters (0x2a988), which fails for a type >= 3
+     * (0x2aa5c) while the denoise is enabled; a disabled denoise forces the
+     * type to 0 first (0x3e5c0).  Disassembly only, no device run. */
+    if (attr->rcAttr.attrDenoise.enable &&
+        (attr->rcAttr.attrDenoise.dnType < 0 ||
+         attr->rcAttr.attrDenoise.dnType >= 3)) {
+        IMP_LOG_ERR("Encoder", "CreateChn(%d): invalid denoise type %d\n",
+                    channel, attr->rcAttr.attrDenoise.dnType);
+        return -1;
+    }
+#endif
     hw_rc_mode = p2_codec_rc_mode(attr, channel);
     if (hw_rc_mode < 0)
         return -1;
@@ -2050,6 +2067,15 @@ int IMP_Encoder_CreateChn(int channel, IMPEncoderCHNAttr *attr)
     ch->attr = *attr;
 #if defined(PLATFORM_T20) || defined(PLATFORM_T21)
     ch->denoise = attr->rcAttr.attrDenoise;
+#if defined(PLATFORM_T21) && !defined(PLATFORM_T20)
+    /* GetChnAttr returns the created attribute as is (vendor 0x43a7c copies
+     * the channel's copy), except that a disabled denoise has its type
+     * cleared at create (0x3e5c0).  With the denoise enabled GetChnAttr keeps
+     * the caller's dnType while GetChnDenoise reads the encoder's 0
+     * (P2_DENOISE_HW_ACTIVE false): vendor behaviour, not a mismatch. */
+    if (!attr->rcAttr.attrDenoise.enable)
+        ch->attr.rcAttr.attrDenoise.dnType = 0;
+#endif
     {
         P2DenoiseCache c = {0, 0, 0};
 
@@ -4232,10 +4258,53 @@ int IMP_Encoder_GetChnColor2Grey(int channel,
     return 0;
 }
 
+/* One-time warning for an ROI QP outside the range the H.264 slice header
+ * can carry (the value is clamped by Helix_H264_RoiEntry). */
+static void p2_roi_warn_range(const IMPEncoderROICfg *config)
+{
+    static int warned;
+
+    if (!config->bEnable || warned)
+        return;
+    if (config->bRelatedQp ? (config->s32Qp < AVPU_ROI_DELTA_MIN ||
+                              config->s32Qp > AVPU_ROI_DELTA_MAX)
+                           : (config->s32Qp < 0 || config->s32Qp > 51)) {
+        warned = 1;
+        IMP_LOG_WARN("Encoder", "ROI QP %d out of range: relative "
+                     "-25..25, absolute 0..51 (clamped; H.264 "
+                     "mb_qp_delta is -26..25)", config->s32Qp);
+    }
+}
+
+/* What GetChnROI returns for an H.264 channel: the table entry, x16 (OEM
+ * T21 1.0.33 and T23 1.3.0 read the entry back from the encoder). */
+static void p2_roi_stored(const IMPEncoderROICfg *config, const uint8_t entry[7],
+                          IMPEncoderROICfg *stored)
+{
+    memset(stored, 0, sizeof(*stored));
+    stored->u32Index = config->u32Index;
+    stored->bEnable = entry[0] != 0;
+    stored->bRelatedQp = entry[1] != 0;
+    stored->s32Qp = (int8_t)entry[2];
+    stored->rect.x = entry[3] * 16;
+    stored->rect.y = entry[5] * 16;
+    stored->rect.width = entry[4] * 16;     /* p1.x */
+    stored->rect.height = entry[6] * 16;    /* p1.y */
+}
+
 int IMP_Encoder_SetChnROI(int channel, const IMPEncoderROICfg *config)
 {
     P2EncoderChannel *ch = p2_legacy_config_channel(channel);
 
+#if defined(PLATFORM_T23)
+    /* OEM T23 1.3.0 (0x53ea0): channel >= 9 or no config: -1; a channel
+     * that is not created (its slot is zeroed) or not H.264: nothing, 0.
+     * Only then the table entry goes to the encoder handle. */
+    if (!p2_valid_channel(channel) || !config)
+        return -1;
+    if (!ch)
+        return 0;
+#endif
     if (!ch || !config || config->u32Index >= 8u)
         return -1;
 #if !defined(PLATFORM_T23)
@@ -4258,34 +4327,11 @@ int IMP_Encoder_SetChnROI(int channel, const IMPEncoderROICfg *config)
         uint8_t entry[7];
         IMPEncoderROICfg stored;
 
-        if (config->bEnable) {
-            static int warned;
-
-            if (config->bRelatedQp ? (config->s32Qp < AVPU_ROI_DELTA_MIN ||
-                                      config->s32Qp > AVPU_ROI_DELTA_MAX)
-                                   : (config->s32Qp < 0 ||
-                                      config->s32Qp > 51)) {
-                if (!warned) {
-                    warned = 1;
-                    IMP_LOG_WARN("Encoder", "ROI QP %d out of range: relative "
-                                 "-25..25, absolute 0..51 (clamped; H.264 "
-                                 "mb_qp_delta is -26..25)", config->s32Qp);
-                }
-            }
-        }
+        p2_roi_warn_range(config);
         Helix_H264_RoiEntry(config->bEnable, config->bRelatedQp,
                             config->s32Qp, config->rect.x, config->rect.y,
                             config->rect.width, config->rect.height, entry);
-        /* what GetChnROI returns: the table entry, x16 */
-        memset(&stored, 0, sizeof(stored));
-        stored.u32Index = config->u32Index;
-        stored.bEnable = entry[0] != 0;
-        stored.bRelatedQp = entry[1] != 0;
-        stored.s32Qp = (int8_t)entry[2];
-        stored.rect.x = entry[3] * 16;
-        stored.rect.y = entry[5] * 16;
-        stored.rect.width = entry[4] * 16;      /* p1.x */
-        stored.rect.height = entry[6] * 16;     /* p1.y */
+        p2_roi_stored(config, entry, &stored);
         pthread_mutex_lock(&ch->lock);
         if (AL_Codec_Encode_SetRoi(ch->codec, config->u32Index,
                                    entry) != 0) {
@@ -4303,22 +4349,37 @@ int IMP_Encoder_SetChnROI(int channel, const IMPEncoderROICfg *config)
      * table into every picture's slice (+752) and H264E_T21_SliceInit
      * programs 0x40044..0x40068.  The native Helix encoder takes the entry
      * here (Helix_H264_RoiSanitize clamps it per picture, as on T21); the
-     * OEM worker gets it through the bridge (no-op when native). */
-    if (ch->codec_type == IMP_ENC_TYPE_AVC && ch->codec) {
-        uint8_t entry[7];
+     * OEM worker gets it through the bridge (no-op when native).  Like T21
+     * and the OEM GetChnROI the stored value is the entry, x16. */
+    {
+        IMPEncoderROICfg stored = *config;
 
-        Helix_H264_RoiEntry(config->bEnable, config->bRelatedQp,
-                            config->s32Qp, config->rect.x, config->rect.y,
-                            config->rect.width, config->rect.height, entry);
-        if (AL_Codec_Encode_SetRoi(ch->codec, config->u32Index,
-                                   entry) != 0) {
+        if (ch->codec_type == IMP_ENC_TYPE_AVC) {
+            uint8_t entry[7];
+
+            if (!ch->codec) {               /* as T21: nothing to take it */
+                pthread_mutex_unlock(&ch->lock);
+                return -1;
+            }
+            p2_roi_warn_range(config);
+            Helix_H264_RoiEntry(config->bEnable, config->bRelatedQp,
+                                config->s32Qp, config->rect.x, config->rect.y,
+                                config->rect.width, config->rect.height,
+                                entry);
+            if (AL_Codec_Encode_SetRoi(ch->codec, config->u32Index,
+                                       entry) != 0) {
+                pthread_mutex_unlock(&ch->lock);
+                return -1;
+            }
+            p2_roi_stored(config, entry, &stored);
+        }
+        if (openimp_t23_enc_push_roi(ch->codec, ch->codec_type, config) != 0) {
             pthread_mutex_unlock(&ch->lock);
             return -1;
         }
-    }
-    if (openimp_t23_enc_push_roi(ch->codec, ch->codec_type, config) != 0) {
+        ch->roi[config->u32Index] = stored;
         pthread_mutex_unlock(&ch->lock);
-        return -1;
+        return 0;
     }
 #endif
     ch->roi[config->u32Index] = *config;
@@ -4443,6 +4504,9 @@ int IMP_Encoder_GetChnDenoise(int channel, IMPEncoderAttrDenoise *config)
     return 0;
 }
 
+/* The T30 gap code below: PLATFORM_T30 is also defined for the T21 build
+ * (line 18 above), so the T21 functions are not lost; T21 is still listed
+ * explicitly where it matters for readers. */
 #if defined(PLATFORM_T20) || defined(PLATFORM_T21) || defined(PLATFORM_T23) || defined(PLATFORM_T30)
 extern int AL_Codec_Encode_InsertUserData(void *codec, const void *data,
                                           uint32_t size, uint32_t max_cnt,
