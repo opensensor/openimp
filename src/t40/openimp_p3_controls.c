@@ -1055,13 +1055,12 @@ P3_T40_POINTER_PAIR(WdrOutputMode, IMPISPWdrOutputMode,
  * ioctl request as above; each vendor function checks the sensor number,
  * the ISP device, the pointer and "tuning running" and then hands the public
  * structure to the kernel unchanged):
- *   StatisConfig 0x8000000, WaitFrameDone 0x8000091, AfStatistics 0x8000031,
+ *   AfStatistics 0x8000031 (StatisConfig and WaitFrameDone: below, shared
+ *   with T41),
  *   AFMetricesInfo 0x8000034, FaceAe 0x8000035, FaceAwb 0x8000014,
  *   HLDCAttr 0x8000097, FixedContraster 0x8000098 (set only), AeExpList
  *   0x8000099, AeSpeed 0x800009a.
  */
-#define TISP_CID_STATIS_CONFIG_T40  0x08000000
-#define TISP_CID_WAIT_FRAME_DONE    0x08000091
 #define TISP_CID_AF_STATIS          0x08000031
 #define TISP_CID_AF_METRICS         0x08000034
 #define TISP_CID_FACE_AE            0x08000035
@@ -1071,7 +1070,6 @@ P3_T40_POINTER_PAIR(WdrOutputMode, IMPISPWdrOutputMode,
 #define TISP_CID_AE_EXP_LIST        0x08000099
 #define TISP_CID_AE_SPEED           0x0800009a
 
-P3_T40_POINTER_PAIR(StatisConfig, IMPISPStatisConfig, TISP_CID_STATIS_CONFIG_T40)
 P3_T40_POINTER_PAIR(FaceAe, IMPISPFaceAttr, TISP_CID_FACE_AE)
 P3_T40_POINTER_PAIR(FaceAwb, IMPISPFaceAttr, TISP_CID_FACE_AWB)
 P3_T40_POINTER_PAIR(HLDCAttr, IMPISPHLDCAttr, TISP_CID_HLDC)
@@ -1093,25 +1091,6 @@ int32_t IMP_ISP_Tuning_SetFixedContraster(IMPVI_NUM num,
                                           IMPISPFixedContrastAttr *attr)
 {
     return p3_tuning_pointer(num, 0, TISP_CID_FIXED_CONTRAST, attr);
-}
-
-/* Vendor WaitFrameDone: a 24-byte scratch block whose first word is the
- * caller's timeout goes out as a get; on success the kernel's frame counter
- * (offset 8, 8 bytes) and IRQ type (offset 16) are copied back to the
- * caller's structure (offset 4 stays untouched). */
-int32_t IMP_ISP_Tuning_WaitFrameDone(IMPVI_NUM num, IMPISPWaitFrameAttr *attr)
-{
-    unsigned char scratch[24];
-    int32_t result;
-
-    if (!attr)
-        return -1;
-    memset(scratch, 0, sizeof(scratch));
-    memcpy(scratch, attr, 4);
-    result = p3_tuning_pointer(num, 1, TISP_CID_WAIT_FRAME_DONE, scratch);
-    if (result == 0)
-        memcpy((unsigned char *)attr + 8, scratch + 8, 12);
-    return result;
 }
 
 /* Vendor IMP_ISP_SetOSDAttr / GetOSDAttr (T40 name without "Tuning"):
@@ -1551,3 +1530,139 @@ int32_t IMP_System_WriteReg32(uint32_t address, uint32_t value)
     (void)p3_register_access(address, &value, &ok);
     return ok ? 0 : -1;
 }
+
+/*
+ * T40 1.3.1 and T41 1.2.6 (vendor libimp disassembly of both, same control
+ * numbers): StatisConfig 0x8000000 is a pointer pass-through of the 72-byte
+ * IMPISPStatisConfig; WaitFrameDone 0x8000091 a get with a scratch block.
+ */
+#define TISP_CID_STATIS_CONFIG   0x08000000
+#define TISP_CID_WAIT_FRAME_DONE 0x08000091
+
+int32_t IMP_ISP_Tuning_SetStatisConfig(IMPVI_NUM num,
+                                       IMPISPStatisConfig *statis_config)
+{
+    return p3_tuning_pointer(num, 0, TISP_CID_STATIS_CONFIG, statis_config);
+}
+
+int32_t IMP_ISP_Tuning_GetStatisConfig(IMPVI_NUM num,
+                                       IMPISPStatisConfig *statis_config)
+{
+    return p3_tuning_pointer(num, 1, TISP_CID_STATIS_CONFIG, statis_config);
+}
+
+/* Vendor WaitFrameDone: a 24-byte scratch block whose first word is the
+ * caller's timeout goes out as a get; on success the kernel's frame counter
+ * (offset 8, 8 bytes) and IRQ type (offset 16) are copied back to the
+ * caller's structure (offset 4 stays untouched). */
+int32_t IMP_ISP_Tuning_WaitFrameDone(IMPVI_NUM num, IMPISPWaitFrameAttr *attr)
+{
+    unsigned char scratch[24];
+    int32_t result;
+
+    if (!attr)
+        return -1;
+    memset(scratch, 0, sizeof(scratch));
+    memcpy(scratch, attr, 4);
+    result = p3_tuning_pointer(num, 1, TISP_CID_WAIT_FRAME_DONE, scratch);
+    if (result == 0)
+        memcpy((unsigned char *)attr + 8, scratch + 8, 12);
+    return result;
+}
+
+#if defined(PLATFORM_T41)
+/*
+ * T41 1.2.6 tuning controls (vendor libimp 1.2.6 disassembly: each checks
+ * the sensor number, the ISP device, the pointer and "tuning running" and
+ * hands the public structure to the tuning ioctl unchanged).  The 1.2.0
+ * headers this file is built with do not have the types; the local ones
+ * below have the 1.2.6 layouts (checked by the static asserts).
+ *   AwbCtTrendOffset 0x8000015, AwbConvergeStep 0x8000016,
+ *   AeConvergeStep 0x8000028, GetAeEvList 0x8000038, GetAeAtList
+ *   0x8000039, TmoCurve 0x8000063.
+ * Not provided: GetAeBv (0x80000b3) and GetAEFlickerFlag (0x800003a); the
+ * open driver does not keep the vendor-AE state they report.
+ */
+#define TISP_CID_AWB_CT_TREND  0x08000015
+#define TISP_CID_AWB_CONVERGE  0x08000016
+#define TISP_CID_AE_CONVERGE   0x08000028
+#define TISP_CID_AE_EV_LIST    0x08000038
+#define TISP_CID_AE_AT_LIST    0x08000039
+#define TISP_CID_TMO_CURVE     0x08000063
+
+typedef struct { uint16_t ae_step[4]; } P3AeConvergeStep;
+typedef struct { uint32_t awb_step[5]; } P3AwbConvergeStep;
+typedef struct {
+    uint16_t thres_hm;
+    uint16_t thres_lm;
+    IMPISPAWBGain gain_h;
+    IMPISPAWBGain gain_m;
+    IMPISPAWBGain gain_l;
+} P3AwbCtTrendOffset;
+typedef struct {
+    IMPISPTuningOpsMode enable;
+    uint64_t v[15];
+} P3AeList;
+typedef struct {
+    uint8_t transfer_flag;
+    uint8_t id;
+    uint16_t value[201];
+} P3TmoCurve;
+
+_Static_assert(sizeof(P3AeConvergeStep) == 8, "IMPISPAeConvergeStep is 8 bytes");
+_Static_assert(sizeof(P3AwbConvergeStep) == 20, "IMPISPAwbConvergeStep is 20 bytes");
+_Static_assert(sizeof(P3AwbCtTrendOffset) == 28, "IMPISPAwbCtTrendOffset is 28 bytes");
+_Static_assert(sizeof(P3AeList) == 128, "IMPISPAeEvList/AtList are 128 bytes");
+_Static_assert(sizeof(P3TmoCurve) == 404, "IMPISPTmoCurve is 404 bytes");
+
+int32_t IMP_ISP_Tuning_SetAeConvergeStep(IMPVI_NUM num, P3AeConvergeStep *step);
+int32_t IMP_ISP_Tuning_GetAeConvergeStep(IMPVI_NUM num, P3AeConvergeStep *step);
+int32_t IMP_ISP_Tuning_SetAwbConvergeStep(IMPVI_NUM num, P3AwbConvergeStep *step);
+int32_t IMP_ISP_Tuning_GetAwbConvergeStep(IMPVI_NUM num, P3AwbConvergeStep *step);
+int32_t IMP_ISP_Tuning_SetAwbCtTrendOffset(IMPVI_NUM num, P3AwbCtTrendOffset *offset);
+int32_t IMP_ISP_Tuning_GetAwbCtTrendOffset(IMPVI_NUM num, P3AwbCtTrendOffset *offset);
+int32_t IMP_ISP_Tuning_GetAeEvList(IMPVI_NUM num, P3AeList *attr);
+int32_t IMP_ISP_Tuning_GetAEEvList(IMPVI_NUM num, P3AeList *attr);
+int32_t IMP_ISP_Tuning_GetAeAtList(IMPVI_NUM num, P3AeList *attr);
+int32_t IMP_ISP_Tuning_SetTmoCurve(IMPVI_NUM num, P3TmoCurve *attr);
+int32_t IMP_ISP_Tuning_GetTmoCurve(IMPVI_NUM num, P3TmoCurve *attr);
+int32_t IMP_ISP_Tuning_GetHVFlip(IMPVI_NUM num, IMPISPHVFLIPAttr *flip);
+
+#define P3_T41_POINTER_PAIR(Name, Type, id)                                   \
+    int32_t IMP_ISP_Tuning_Set##Name(IMPVI_NUM num, Type *attr)               \
+    {                                                                         \
+        return p3_tuning_pointer(num, 0, (id), attr);                         \
+    }                                                                         \
+    int32_t IMP_ISP_Tuning_Get##Name(IMPVI_NUM num, Type *attr)               \
+    {                                                                         \
+        return p3_tuning_pointer(num, 1, (id), attr);                         \
+    }
+
+P3_T41_POINTER_PAIR(AeConvergeStep, P3AeConvergeStep, TISP_CID_AE_CONVERGE)
+P3_T41_POINTER_PAIR(AwbConvergeStep, P3AwbConvergeStep, TISP_CID_AWB_CONVERGE)
+P3_T41_POINTER_PAIR(AwbCtTrendOffset, P3AwbCtTrendOffset, TISP_CID_AWB_CT_TREND)
+P3_T41_POINTER_PAIR(TmoCurve, P3TmoCurve, TISP_CID_TMO_CURVE)
+
+int32_t IMP_ISP_Tuning_GetAeEvList(IMPVI_NUM num, P3AeList *attr)
+{
+    return p3_tuning_pointer(num, 1, TISP_CID_AE_EV_LIST, attr);
+}
+
+/* The 1.2.5/1.2.6 English header declares GetAEEvList; the library
+ * exports GetAeEvList.  Both names, one function. */
+int32_t IMP_ISP_Tuning_GetAEEvList(IMPVI_NUM num, P3AeList *attr)
+{
+    return IMP_ISP_Tuning_GetAeEvList(num, attr);
+}
+
+int32_t IMP_ISP_Tuning_GetAeAtList(IMPVI_NUM num, P3AeList *attr)
+{
+    return p3_tuning_pointer(num, 1, TISP_CID_AE_AT_LIST, attr);
+}
+
+/* T41 1.0.1 name of GetHVFLIP (same IMPISPHVFLIPAttr). */
+int32_t IMP_ISP_Tuning_GetHVFlip(IMPVI_NUM num, IMPISPHVFLIPAttr *flip)
+{
+    return IMP_ISP_Tuning_GetHVFLIP(num, flip);
+}
+#endif

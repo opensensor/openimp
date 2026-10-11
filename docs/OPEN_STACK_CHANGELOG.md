@@ -7,6 +7,13 @@ Last update: 2026-10-11 (aggregate agg-36 after RC1, build and host tests only; 
 
 Cameras are anonymised: cam-A (T31), cam-B (T23), cam-C (T20), cam-D (T21), cam-E (T10), cam-F (T41); cam-G and cam-H are further T23 cameras, cam-I a second T20 and cam-J a second T21.
 
+## T41 ISP tuning handlers (2026-10-11, branch `claude/t41-isp-handlers`, host tests and builds only)
+
+OpenIMP and open-tx-isp branches `claude/t41-isp-handlers` on agg-37 (OpenIMP dc20d0e, open-tx-isp e40d7313). Not run on a camera; not in an aggregate.
+
+- **T41 ISP tuning calls of the vendor libimp 1.2.6 now exported** (vendor control numbers and pointer pass-through from the 1.2.6 disassembly; need the open-tx-isp driver handlers of the same branch, host tests only): `Get/SetAeConvergeStep`, `Get/SetAwbConvergeStep`, `Get/SetAwbCtTrendOffset`, `GetAeEvList` (also as `GetAEEvList`, the name of the English 1.2.5/1.2.6 header), `GetAeAtList`, `Get/SetTmoCurve`, `Get/SetStatisConfig`, `WaitFrameDone`, and `GetHVFlip` (the T41 1.0.1 name of `GetHVFLIP`). `StatisConfig` and `WaitFrameDone` share the T40 code. The 1.2.0 headers lack the new types; local types with the 1.2.6 layouts are used (size-checked). Not exported: `GetAeBv`, `GetAEFlickerFlag` (they report vendor-AE state that the open driver does not keep). `AeConvergeStep` is stored only: the default open AE keeps its own step (matrix cell cache).
+- **open-tx-isp T41:** the matching `/dev/isp-m0` controls are routed with the stock `libt41-firmware` 1.2.6 semantics (size-checked user copies, the locks of the neighbouring controls): AWB converge step and CT trend offset on the native AWB parameters; TMO curves on the TMO parameters (the per-frame TMO map uses them from the next frame); EV/AT list from the AE parameters the open AE reads; AE converge step stored in the AE parameters (read only by the recovered vendor AE); StatisConfig stored, an enabled AWB part moves the AWB zone grid (-EBUSY for a geometry change while streaming); WaitFrameDone waits for the next frame done without holding the tuning mutex (timeout in jiffies as stock, capped at 60 s). Module text +2.6 KB. Wire layouts: open-tx-isp `docs/T41_TUNING_CONTROLS.md`.
+
 ## After RC1: aggregate agg-36 (2026-10-11, build and host tests only)
 
 Branches `claude/agg-36` in OpenIMP (on `next` 5a83603 = RC1 fe9307c + docs) and open-tx-isp (on `next` da645b5d = RC1 191be6c5 + docs). Nothing of agg-36 is part of RC1; no soak and no device run of the aggregate yet (the T40 items below were device-tested on their branches).

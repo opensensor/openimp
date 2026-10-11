@@ -8,6 +8,12 @@
 
 Release plan: `next` goes to `aperto` (fast-forward only) after the long soak of the release candidate and is tagged `vYYYY.MM.DD`; until then dates are the reference. The first release covers T10, T20, T21, T23 and T31; T10 has not been re-tested on the open stack today ("not re-tested"); T41 is not part of the first release. Branch names (`claude/...`) are historic: the topic branches were merged into `next` and deleted. Cameras are anonymised: cam-A (T31), cam-B (T23), cam-C (T20), cam-D (T21), cam-E (T10), cam-F (T41); cam-G and cam-H are further T23 cameras, cam-I a second T20, cam-J a second T21.
 
+## Branch `claude/t41-isp-handlers` (2026-10-11, not in an aggregate)
+
+On agg-37 (dc20d0e); driver side: open-tx-isp `claude/t41-isp-handlers`. Host tests and builds only, not run on a camera.
+
+- **T41 ISP tuning calls of the vendor libimp 1.2.6 now exported** (vendor control numbers and pointer pass-through from the 1.2.6 disassembly; need the open-tx-isp driver handlers of the same branch, host tests only): `Get/SetAeConvergeStep`, `Get/SetAwbConvergeStep`, `Get/SetAwbCtTrendOffset`, `GetAeEvList` (also as `GetAEEvList`, the name of the English 1.2.5/1.2.6 header), `GetAeAtList`, `Get/SetTmoCurve`, `Get/SetStatisConfig`, `WaitFrameDone`, and `GetHVFlip` (the T41 1.0.1 name of `GetHVFLIP`). `StatisConfig` and `WaitFrameDone` share the T40 code. The 1.2.0 headers lack the new types; local types with the 1.2.6 layouts are used (size-checked). Not exported: `GetAeBv`, `GetAEFlickerFlag` (they report vendor-AE state that the open driver does not keep). `AeConvergeStep` is stored only: the default open AE keeps its own step (matrix cell cache).
+
 ## After RC1: aggregate agg-37 (state of 2026-10-11, not released)
 
 `claude/agg-37` = agg-36 + `claude/agg-37-size`, `claude/agg36-lib-drv`, `claude/agg37-t40`, `claude/funcsearch-release-check` (with `funcsearch-export-check`, `-t40-roi`, `-t40-ispctl`), `claude/agg37-rc-live`, `claude/agg37-smallfix`, `claude/agg37-shutdown`. Build and host tests only (`make check`, `make release-check`); no soak, device tests pending unless an item says otherwise.
