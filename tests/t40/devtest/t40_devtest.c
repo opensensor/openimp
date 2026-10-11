@@ -10,7 +10,8 @@
  *           100 night 2026-10-12 fixes (Query fields, FrameRelease, SEI,
  *               DrawAttr; T40D_DUMP=<file> writes the SEI test stream)
  *           200 StartNightMode before AddSensor (run it on its own)
- *           400 OSD group with SetGroupCallback in the pipeline */
+ *           400 OSD group with SetGroupCallback in the pipeline
+ *           800 AI digital gain (microphone only, no playback) */
 #include <errno.h>
 #include <poll.h>
 #include <signal.h>
@@ -28,6 +29,7 @@
 #include <imp/imp_framesource.h>
 #include <imp/imp_encoder.h>
 #include <imp/imp_osd.h>
+#include <imp/imp_audio.h>
 
 static void R(const char *fn, const char *v, const char *fmt, ...)
 {
@@ -242,6 +244,25 @@ static int osd_cb(int group, IMPFrameInfo *frame)
 }
 static IMPCell osd_cell;
 static int osd_made, osd_att, osd_cb_rc = -99;
+
+
+/* microphone RMS over secs (AI dev 0 chn 0 must be enabled) */
+static double mic_rms(double secs, unsigned *frames)
+{
+    double t0 = now_s(), acc = 0;
+    unsigned long n = 0;
+    *frames = 0;
+    while (now_s() - t0 < secs) {
+        IMPAudioFrame fr;
+        int i;
+        if (IMP_AI_PollingFrame(0, 0, 500) != 0) continue;
+        if (IMP_AI_GetFrame(0, 0, &fr, BLOCK) != 0) break;
+        for (i = 0; i < fr.len / 2; i++) { double v = ((int16_t *)fr.virAddr)[i]; acc += v * v; n++; }
+        (*frames)++;
+        IMP_AI_ReleaseFrame(0, 0, &fr);
+    }
+    return n ? __builtin_sqrt(acc / n) : -1;
+}
 
 static IMPSensorInfo sinfo;
 static IMPEncoderChnAttr eattr;
@@ -943,6 +964,31 @@ int main(int argc, char **argv)
         R("ISP_StartNightMode", (!night_rc && a.ok) ? "PART" : "FAIL",
           "rc=%d before AddSensor; first pictures: chroma=%.1f Y=%.1f, running mode get rc=%d mode=%d; after set DAY chroma=%.1f (night = low chroma)",
           night_rc, a.chroma, a.y, rg, m, b.chroma);
+    }
+
+    if (mask & 0x800) {
+        /* microphone only (no playback): AI digital gain 100 vs 220 */
+        IMPAudioIOAttr aa; IMPAudioIChnParam cp; int re, rc, r1, r2, rg, g = -1; unsigned f1, f2; double lo, hi;
+        memset(&aa, 0, sizeof aa);
+        aa.samplerate = AUDIO_SAMPLE_RATE_16000; aa.bitwidth = AUDIO_BIT_WIDTH_16; aa.soundmode = AUDIO_SOUND_MODE_MONO;
+        aa.frmNum = 20; aa.numPerFrm = 640; aa.chnCnt = 1;
+        memset(&cp, 0, sizeof cp); cp.usrFrmDepth = 20;
+        IMP_AI_SetPubAttr(0, &aa);
+        re = IMP_AI_Enable(0);
+        IMP_AI_SetChnParam(0, 0, &cp);
+        rc = IMP_AI_EnableChn(0, 0);
+        r1 = IMP_AI_SetDigitalGain(0, 0, 100);
+        mic_rms(0.5, &f1);
+        lo = mic_rms(1.5, &f1);
+        r2 = IMP_AI_SetDigitalGain(0, 0, 220);
+        mic_rms(0.5, &f2);
+        hi = mic_rms(1.5, &f2);
+        rg = IMP_AI_GetDigitalGain(0, 0, &g);
+        IMP_AI_DisableChn(0, 0);
+        IMP_AI_Disable(0);
+        R("AI_Get/SetDigitalGain", OK(!re && !rc && !r1 && !r2 && !rg && g == 220 && f1 > 10 && f2 > 10 && hi > lo * 4),
+          "enable rc=%d/%d; dgain 100: RMS %.1f (%u frames); dgain 220: RMS %.1f (%u frames); get rc=%d %d (60 steps = 30 dB, expect x30)",
+          re, rc, lo, f1, hi, f2, rg, g);
     }
 
     if (mask & 0x400) {

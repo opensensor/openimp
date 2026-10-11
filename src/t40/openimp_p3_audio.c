@@ -19,6 +19,7 @@
 
 #include <time.h>
 #include <imp/imp_audio.h>
+#include "../imp_log_int.h"
 #include "../audio/openimp_ao_cache.h"
 
 #define P3_SIOR(number, type) _IOC(_IOC_READ, 'P', (number), sizeof(type))
@@ -137,6 +138,8 @@ static struct {
     IMPAudioIChnParam ai_channel;
     int ai_volume;
     int ai_gain;
+    int ai_dgain;       /* IMP_AI_SetDigitalGain (raw 0..255) */
+    int ao_dgain;       /* IMP_AO_SetDigitalGain (raw 0..255) */
     int ao_volume;
     int ao_gain;
     int ai_mute;        /* software mute, like the vendor T41 libimp (no driver ioctl) */
@@ -1023,6 +1026,62 @@ int IMP_AO_SendFrame(int device, int channel, IMPAudioFrame *frame,
                                    p3_ao_bytes_per_sec(), p3_ao_driver_write,
                                    NULL);
 }
+
+#if !defined(PLATFORM_T41)
+/* T40 IMP_AI/AO_Set/GetDigitalGain (vendor 1.3.1 0xa4508/0xa46e4 and
+ * 0xaa168/0xaa3a4): the digital gain is the raw codec register value
+ * 0..255 (0.5 dB steps; the header: -97..30 dB), clamped like the vendor.
+ * AI: device < 2 and channel 0 (-1), ioctl AMIC_AI_SET_VOLUME (0x400c505b,
+ * __ai_dev_set_dgain); AO: device 0, AO enabled, channel 0 (-1), ioctl
+ * AMIC_SPK_SET_VOLUME (0x400c5059, __ao_dev_set_dgain).  As in the vendor a
+ * failing ioctl is only logged: the value is kept and 0 returned.  Get
+ * answers the kept value (no ioctl).  Note: OpenIMP's IMP_AI_SetVol /
+ * IMP_AO_SetVol program the same registers (mapped from the IMP volume
+ * scale), so the call made last wins. */
+int IMP_AI_SetDigitalGain(int device, int channel, int dgain)
+{
+    if (device >= 2 || channel > 0)
+        return -1;
+    if (dgain < 0)
+        dgain = 0;
+    else if (dgain > 255)
+        dgain = 255;
+    if (p3_set_volume(AMIC_AI_SET_VOLUME, 0, dgain) != 0)
+        IMP_LOG_LIMITED(LOG_ERR, "AI", "IMP_AI_SetDigitalGain: set dgain %d failed", dgain);
+    p3_audio.ai_dgain = dgain;
+    return 0;
+}
+
+int IMP_AI_GetDigitalGain(int device, int channel, int *dgain)
+{
+    if (device >= 2 || channel > 0 || !dgain)
+        return -1;
+    *dgain = p3_audio.ai_dgain;
+    return 0;
+}
+
+int IMP_AO_SetDigitalGain(int device, int channel, int dgain)
+{
+    if (device > 0 || !p3_audio.ao_enabled || channel != 0)
+        return -1;
+    if (dgain < 0)
+        dgain = 0;
+    else if (dgain > 255)
+        dgain = 255;
+    if (p3_set_volume(AMIC_SPK_SET_VOLUME, 0, dgain) != 0)
+        IMP_LOG_LIMITED(LOG_ERR, "AO", "IMP_AO_SetDigitalGain: set dgain %d failed", dgain);
+    p3_audio.ao_dgain = dgain;
+    return 0;
+}
+
+int IMP_AO_GetDigitalGain(int device, int channel, int *dgain)
+{
+    if (device != 0 || !p3_audio.ao_enabled || channel != 0 || !dgain)
+        return -1;
+    *dgain = p3_audio.ao_dgain;
+    return 0;
+}
+#endif
 
 int IMP_AO_SetVol(int device, int channel, int value)
 {

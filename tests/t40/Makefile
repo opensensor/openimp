@@ -16,11 +16,13 @@ IVS_FRAMEWORK_TEST_BIN := $(PROJECT_DIR)/build/tests/t40-ivs-framework-test
 QUERY_TEST_BIN := $(PROJECT_DIR)/build/tests/t40-query-test
 SEI_TEST_BIN := $(PROJECT_DIR)/build/tests/t40-sei-test
 OSD_CB_TEST_BIN := $(PROJECT_DIR)/build/tests/t40-osd-callback-test
+DGAIN_TEST_BIN := $(PROJECT_DIR)/build/tests/t40-audio-dgain-test
 
-check: $(QUERY_TEST_BIN) $(SEI_TEST_BIN) $(OSD_CB_TEST_BIN) $(P2_BUFSHARE_TEST_BIN) $(STREAM_LAYOUT_TEST_BIN) $(DENOISE_TEST_BIN) $(CAMERA_INPUT_TEST_BIN) $(IVS_FRAMEWORK_TEST_BIN) p3-controls isp-osd abi-layout frame-ts frame-rc vendor-cmd
+check: $(QUERY_TEST_BIN) $(SEI_TEST_BIN) $(OSD_CB_TEST_BIN) $(DGAIN_TEST_BIN) $(P2_BUFSHARE_TEST_BIN) $(STREAM_LAYOUT_TEST_BIN) $(DENOISE_TEST_BIN) $(CAMERA_INPUT_TEST_BIN) $(IVS_FRAMEWORK_TEST_BIN) p3-controls isp-osd abi-layout frame-ts frame-rc vendor-cmd
 	$(QUERY_TEST_BIN)
 	$(SEI_TEST_BIN)
 	$(OSD_CB_TEST_BIN)
+	$(DGAIN_TEST_BIN)
 	$(P2_BUFSHARE_TEST_BIN)
 	$(STREAM_LAYOUT_TEST_BIN)
 	$(DENOISE_TEST_BIN)
@@ -92,6 +94,13 @@ $(OSD_CB_TEST_BIN): osd_callback_test.c $(PROJECT_DIR)/src/t23/openimp_t23_osd.c
 		-I$(PROJECT_DIR)/include -I$(PROJECT_DIR)/src osd_callback_test.c \
 		$(PROJECT_DIR)/src/t23/openimp_t23_osd.c $(PROJECT_DIR)/src/core/imp_log_emit.c \
 		-pthread -Wl,--unresolved-symbols=ignore-all -o "$@"
+
+# AI/AO digital gain, the driver ioctl faked (no audio device)
+$(DGAIN_TEST_BIN): audio_dgain_test.c $(PROJECT_DIR)/src/t40/openimp_p3_audio.c
+	mkdir -p "$(dir $@)"
+	$(CC) -std=gnu99 -O1 -g -Wall -Wextra -Wno-unused-function -DPLATFORM_T40 \
+		-I$(PROJECT_DIR)/include -I$(PROJECT_DIR)/src \
+		audio_dgain_test.c $(PROJECT_DIR)/src/core/imp_log_emit.c -pthread -ldl -o "$@"
 
 # host-only: private ioctl fixture, no camera
 $(CAMERA_INPUT_TEST_BIN): camera_input_test.c $(PROJECT_DIR)/src/t40/openimp_p1.c
