@@ -246,6 +246,10 @@ T23 and T31 were reflashed with the agg-32 recipe plus the crop fix of their SoC
 4. T10 `isp-m0` maximum analog gain 144 at boot (128 when set explicitly); release of the T20/T10 crop window at tuning-session close not verified.
 5. The long soak of the release (the combined agg-34 passed the mandatory device tests of 2026-10-10).
 
+### IVS: channel free before result (2026-10-10, branch claude/ivs-order, host-tested only)
+
+The IVS channel thread now posts the "channel free" semaphore before the result semaphore, so an application that feeds the next frame immediately after `GetResult`/`ReleaseResult` no longer loses that frame as busy (the vendor drops it). The result slot lifetime is unchanged (ring of 6 slots, valid until `ReleaseResult`). `OPENIMP_IVS_VENDOR_ORDER=1` restores the vendor order. New host test: 500 back-to-back frames under CPU load, 0 dropped. Beyond-vendor change, see OPENIMP_BEYOND_VENDOR.md section 4.
+
 ### Vendor-API gaps T23/T31 (2026-10-10, branch claude/gaps-t23-t31)
 
 Gap work 2026-10-10 (branch claude/gaps-t1x, T10/T20/T21, vendor export check only, host-only, no device session): the 4 vendor libimp builds per SoC (T10 3.9.0/3.12.0, T20 3.9.0/3.12.0, T21 1.0.33) and their libsysutils were checked with nm. Exported by none, so now n.a.: `ISP_Tuning_SaveAllParam` (T10/T20/T21), `ADEC_ReleaseDecoder`/`AENC_ReleaseEncoder` (T10/T20), `SU_Battery_*` (T10/T20/T21). Gaps in functions: T10 28 to 21, T20 27 to 20, T21 14 to 9. Everything else stays open; the vendor libimp does export ChangeRef, FrmUsedMode, GOPSize, HSkipBlackEnhance, OSD_AttachToGroup, Decoder_* (T21), and the T10/T20 H264 variants, WDRAttr, ISPHVflip, MeshShadingScale, AntiFogAttr, DPStrength (T10/T20), so these are classes b/c and not yet worked (low priority: no streamer uses them).
