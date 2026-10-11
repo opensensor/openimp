@@ -50,6 +50,9 @@ static const char *const profile_stage_names[OPENIMP_PROFILE_STAGE_COUNT] = {
     "irq_completion",
     "stream_finalize",
     "stream_compact",
+    "stream_clear",
+    "submit_pre",
+    "submit_mid",
 };
 
 static const char *const profile_counter_names[OPENIMP_PROFILE_COUNTER_COUNT] = {

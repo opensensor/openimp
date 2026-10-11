@@ -97,17 +97,70 @@ OpenIMP 337 + 349 pictures (17.0 / 17.5 fps), vendor 375 + 359
 teardown after this run (killed; device and streaming application fine), so the
 throughput gap is not profiled yet.
 
-Open points:
-- FixQP 4K +33 % bit rate at equal SSIM (IDR smaller, P larger than the
-  vendor): the FixQP lambda table of H.264 (`avpu_t40_fixqp_lambdas`) is
-  not applied to HEVC yet.
+Open points (the first two were closed in claude/agg37-t40, see below):
+- FixQP 4K +33 % bit rate at equal SSIM: the FixQP lambda table of H.264
+  was not applied to HEVC.
 - 4K throughput: 3 % (one channel) and about 10 % (two channels) fewer
-  pictures than the vendor with identical command words; the H.264 path
-  reaches 19.9 fps at 4K.  Candidates: CPU work per picture (AU check /
-  EBSP scan of the payload), missing overlap of the next submit with the
-  previous completion.  Needs per-picture timing on the device.
+  pictures than the vendor with identical command words.
 - Slice header POC counts 1 per picture, the vendor 2 (cmd[0x0c..0x11]
   already use 2n); harmless for one reference.
+
+## FixQP lambdas and 4K throughput (claude/agg37-t40, 2026-10-11)
+
+**FixQP lambda table.** The vendor HEVC command lists (captured at QP 22
+and 30, 3840x2160 and 1280x720; EP1 words 0..51, rest zero) carry exactly
+the tables of the H.264 FixQP path: P pictures `00 v v v` per QP (v = 1
+up to QP 19, then the `avc_fixqp_lda` ramp), IDR pictures only the intra
+lane (byte 2 of the P table).  They do not depend on the QP.  OpenIMP wrote
+them for AVC only; HEVC kept the generated default table.  The per-picture
+rewrite (`avpu_t40_fixqp_lambdas()`) now runs for HEVC too
+(`OPENIMP_T40_FIXQP_LDA=0` restores the old table).
+
+**Throughput.** The profile (`OPENIMP_PROFILE=1`) showed that the AVPU was
+idle for about 8 ms per picture between the completion interrupt and the
+next command push, which is 16 % of the 50 ms picture period at 20 fps:
+
+| stage (4K HEVC CBR, average per picture) | before | after |
+|------------------------------------------|--------|-------|
+| `stream_clear` (memset of the whole stream buffer) | 3560 us | 49 us |
+| `stream_finalize` (fixed `usleep(2000)` drain)     | 2160 us | 69 us |
+| `encode_submit` (CPU time of the submit)           | 3920 us | 339 us |
+| `irq_completion` (wall)                            | 2335 us | 254 us |
+| `encoder_poll` (CPU time)                          | 3786 us | 507 us |
+
+1. The stream buffer was cleared completely before every picture so that
+   the fallback end scan could not see stale bytes.  Now only what the
+   previous picture left behind is cleared (`stream_dirty_by_buf`: the
+   payload end of the last completion, 0 = unknown = clear all, set to 0
+   again at every submit until the completion has validated the extent) and
+   only that range plus the header prefix is written back.
+   `OPENIMP_T40_STREAM_CLEAR_EXTENT=0` clears everything again.
+2. The 2 ms sleep before reading the completion count was a guess at the
+   time the last DMA burst needs.  The buffer is zero beyond what the AVPU
+   wrote and the last byte of a slice is never zero (stop bit, or the 0x03
+   of `cabac_zero_words`), so after the cache invalidate a zero last byte
+   means the burst is late; it is awaited in 100 us steps (limit 4 ms)
+   instead of always sleeping.  `OPENIMP_T40_DRAIN_VERIFY=0` restores the
+   fixed 2 ms.  `OPENIMP_T40_DRAIN_CHECK=1` (debug) additionally waits 2 ms
+   and compares the whole payload and the 0x8304 count with the early
+   reading: 297 + 237 pictures at 4K, 0 mismatches, 0 late bursts.
+
+Device results (Eufy T40XP, IR-cut day, streaming application stopped, one session each,
+`ffmpeg -err_detect aggressive` and VA-API clean for every stream below;
+SSIM against the vendor FixQP 22 stream of the same session):
+
+| 4K HEVC | vendor | before | after |
+|---------|--------|--------|-------|
+| CBR 4000, 20 s | 19.91 fps, 4100 kbit/s | 19.30 fps, 4081 | 19.90 fps, 4123 |
+| FixQP 30, 10 s | 19.83 fps, 2890 kbit/s (I 128.5 KB, P 16.5 KB) | 19.25 fps, 3682 (+27 %; I 86.9 KB, P 22.9 KB) | 19.79 fps, 2862 (I 129.5 KB, P 16.4 KB) |
+| FixQP 30 SSIM | 0.9260 | 0.9256 | 0.9249 |
+| 720p FixQP 30, 8 s | 201.2 kbit/s | 234.7 (+17 %) | 201.5 |
+| two channels, 20 s (4K CBR 4000 + 720p CBR 1000) | 377 + 356 pictures | 338 + 341 | 393 + 379 |
+
+H.264 (same code path, 4K CBR 6000, 15 s): vendor 19.90 fps, before 19.81,
+after 19.83; 640x360 CBR 1000: 19.90 / 19.88.  The vendor two-channel test
+process hung at teardown again (killed; device and streaming application
+fine).
 
 ## Implementation
 

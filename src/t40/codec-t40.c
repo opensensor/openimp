@@ -4135,12 +4135,14 @@ static void avpu_t40_hwrc_targets(const ALAvpuContext *ctx, int is_idr,
 }
 
 /* FixQP lambdas per picture type, as the vendor rewrites EP1 before each
- * picture (only when the type changes; EP1 is at the start of interm_buf). */
+ * picture (only when the type changes; EP1 is at the start of interm_buf).
+ * The vendor HEVC command lists carry the same 52-entry tables as AVC
+ * (captured at QP 22 and 30, 4K and 720p). */
 static void avpu_t40_fixqp_lambdas(ALAvpuContext *ctx, int is_idr)
 {
     uint32_t type = is_idr ? 2u : 1u;
 
-    if (ctx->rc_mode != HW_RC_MODE_FIXQP || ctx->codec_hevc ||
+    if (ctx->rc_mode != HW_RC_MODE_FIXQP ||
         !ctx->interm_buf.map || ctx->t40_ep1_lambda_type == type ||
         !avpu_t40_knob(AVPU_T40_KNOB_FIXQP_LDA, "OPENIMP_T40_FIXQP_LDA"))
         return;
@@ -7057,6 +7059,21 @@ static int avpu_t31_au_gate_enabled(void)
 }
 #endif
 
+#if defined(PLATFORM_T40) && !defined(PLATFORM_T41)
+/* OPENIMP_T40_<name>=0 restores the previous behaviour (cached). */
+static int avpu_t40_stream_knob(int *cache, const char *name)
+{
+    if (*cache < 0) {
+        const char *value = getenv(name);
+
+        *cache = value && value[0] == '0' ? 0 : 1;
+    }
+    return *cache;
+}
+#define AVPU_T40_STREAM_KNOB(name) \
+    ({ static int knob_cache_ = -1; avpu_t40_stream_knob(&knob_cache_, name); })
+#endif
+
 static uint32_t avpu_stream_buffer_effective_size(ALAvpuContext *ctx, int buf_idx,
                                                   int *flush_ret_out)
 {
@@ -7151,6 +7168,11 @@ static uint32_t avpu_stream_buffer_effective_size(ALAvpuContext *ctx, int buf_id
         if (drain_us)
             usleep(drain_us);
     }
+#elif defined(PLATFORM_T40) && !defined(PLATFORM_T41)
+    /* T40: the payload count and the last payload byte are verified below
+     * instead of sleeping 2 ms for every picture. */
+    if (!AVPU_T40_STREAM_KNOB("OPENIMP_T40_DRAIN_VERIFY"))
+        usleep(2000);
 #else
     usleep(2000);
 #endif
@@ -7207,6 +7229,65 @@ static uint32_t avpu_stream_buffer_effective_size(ALAvpuContext *ctx, int buf_id
         if (flush_ret_out)
             *flush_ret_out = inv_ret;
     }
+
+#if defined(PLATFORM_T40) && !defined(PLATFORM_T41)
+    /* The cleared buffer is zero beyond what the AVPU has written, and the
+     * last byte of a coded slice is never zero (rbsp stop bit, or the 0x03
+     * of cabac_zero_words).  A zero last byte means the final DMA burst is
+     * not visible yet: wait in 100 us steps (the old fixed drain was 2 ms). */
+    if (have_t40_layout && AVPU_T40_STREAM_KNOB("OPENIMP_T40_DRAIN_VERIFY")) {
+        static unsigned int late_count, late_bytes_diff, checked_count;
+        const volatile uint8_t *tail =
+            (const volatile uint8_t *)ctx->stream_bufs[buf_idx].map;
+        unsigned int tries = 0u;
+
+        while (tail[t40_layout.payload_end - 1u] == 0u && tries < 40u) {
+            usleep(100);
+            (void)avpu_flush_cache_profiled(
+                ctx->fd, ctx->stream_bufs[buf_idx].map,
+                t40_layout.payload_end, 0 /* BIDIRECTIONAL */,
+                OPENIMP_PROFILE_CACHE_STREAM_COMPLETE);
+            ++tries;
+        }
+        if (tries) {
+            unsigned int n = __sync_add_and_fetch(&late_count, 1u);
+
+            if (n <= 8u || (n % 256u) == 0u)
+                IMP_LOG_WARN("Codec", "T40 stream tail late buf[%d] tries=%u total=%u%s",
+                          buf_idx, tries, n,
+                          tries >= 40u ? " (gave up)" : "");
+        }
+        if (getenv("OPENIMP_T40_DRAIN_CHECK")) {
+            /* debug: compare with the state after the old fixed drain */
+            unsigned int again = 0u;
+            uint32_t pe = t40_layout.payload_end;
+            uint8_t *before = malloc(pe);
+            int differs;
+
+            if (before)
+                memcpy(before, (const void *)tail, pe);
+            usleep(2000);
+            (void)avpu_flush_cache_profiled(
+                ctx->fd, ctx->stream_bufs[buf_idx].map, pe,
+                0 /* BIDIRECTIONAL */, OPENIMP_PROFILE_CACHE_STREAM_COMPLETE);
+            differs = avpu_read_reg_quiet(ctx->fd, 0x8304u, &again) != 0 ||
+                ((again ^ t40_payload_status) & OPENIMP_T40_PAYLOAD_SIZE_MASK) ||
+                (before && memcmp(before, (const void *)tail, pe));
+            free(before);
+            if (differs) {
+                (void)__sync_add_and_fetch(&late_bytes_diff, 1u);
+                IMP_LOG_WARN("Codec", "T40 DRAIN_CHECK MISMATCH buf[%d] status %08x -> %08x (diff count %u)",
+                          buf_idx, t40_payload_status, again, late_bytes_diff);
+            }
+            if ((__sync_add_and_fetch(&checked_count, 1u) % 100u) == 0u)
+                IMP_LOG_WARN("Codec", "T40 DRAIN_CHECK %u pictures, %u mismatches, %u late",
+                             checked_count, late_bytes_diff, late_count);
+        }
+    }
+    /* what the AVPU wrote is what the next submit has to clear */
+    ctx->stream_dirty_by_buf[buf_idx] =
+        have_t40_layout ? t40_layout.payload_end : 0u;
+#endif
 
     /* Non-T31 generations may expose a live end position in the command list.
      * T31 instead uses its exact +0x104 completion payload count. */
@@ -10684,6 +10765,7 @@ static void avpu_t31_start_companion_stage(ALAvpuContext *ctx, int fd,
 static int al_codec_encode_process_impl(void *codec, void *frame,
                                         void *user_data) {
     OpenIMPProfileStamp submit_profile;
+    OpenIMPProfileStamp mid_profile;
     if (codec == NULL) {
         LOG_CODEC("Process: NULL codec pointer");
         return -1;
@@ -10707,6 +10789,7 @@ static int al_codec_encode_process_impl(void *codec, void *frame,
     }
 
     submit_profile = openimp_profile_begin();
+    mid_profile = submit_profile;
 
     /* The direct AVPU path publishes a descriptor from its completion
      * callback, so it does not need a speculative per-submit allocation.
@@ -12223,6 +12306,7 @@ static int al_codec_encode_process_impl(void *codec, void *frame,
             ctx->busy_skip_count = 0;
 
             buf_idx = avpu_acquire_stream_buffer(ctx);
+            openimp_profile_end(OPENIMP_PROFILE_SUBMIT_PRE, submit_profile);
             if (buf_idx < 0) {
                 LOG_CODEC("Process: no free AVPU stream buffer (enc=%d cons=%d pending=%d used=%d)",
                           ctx->frames_encoded, ctx->frames_consumed,
@@ -12267,10 +12351,35 @@ static int al_codec_encode_process_impl(void *codec, void *frame,
                 memset(ctx->stream_bufs[buf_idx].map, 0,
                        AVPU_T31_STREAM_PREFIX_BYTES);
 #else
-                memset(ctx->stream_bufs[buf_idx].map, 0,
-                       (size_t)ctx->stream_buf_size);
+                {
+                    OpenIMPProfileStamp clear_profile = openimp_profile_begin();
+                    size_t clear_bytes = (size_t)ctx->stream_buf_size;
+
+#if defined(PLATFORM_T40) && !defined(PLATFORM_T41)
+                    /* Only what the previous picture left in this buffer
+                     * (plus the 0x220-byte prefix) is not zero already. */
+                    if (buf_idx < 16 &&
+                        ctx->stream_dirty_by_buf[buf_idx] != 0u &&
+                        AVPU_T40_STREAM_KNOB("OPENIMP_T40_STREAM_CLEAR_EXTENT")) {
+                        clear_bytes = (size_t)ctx->stream_dirty_by_buf[buf_idx];
+                        if (clear_bytes < 0x400u)
+                            clear_bytes = 0x400u;
+                        clear_bytes = (clear_bytes + 63u) & ~(size_t)63u;
+                        if (clear_bytes > (size_t)ctx->stream_buf_size)
+                            clear_bytes = (size_t)ctx->stream_buf_size;
+                    }
+                    /* unknown again until this picture completes */
+                    if (buf_idx < 16)
+                        ctx->stream_dirty_by_buf[buf_idx] = 0u;
+                    ctx->t40_clear_bytes = (uint32_t)clear_bytes;
+#endif
+                    memset(ctx->stream_bufs[buf_idx].map, 0, clear_bytes);
+                    openimp_profile_end(OPENIMP_PROFILE_STREAM_CLEAR,
+                                        clear_profile);
+                }
 #endif
             }
+            mid_profile = openimp_profile_begin();
 
 #if defined(PLATFORM_T41)
             {
@@ -12349,6 +12458,12 @@ static int al_codec_encode_process_impl(void *codec, void *frame,
                     fd, ctx->stream_bufs[buf_idx].map,
                     AVPU_T31_STREAM_PREFIX_BYTES, 1 /* WBACK */,
                     OPENIMP_PROFILE_CACHE_STREAM_PREPARE);
+#elif defined(PLATFORM_T40)
+                avpu_flush_cache(fd, ctx->stream_bufs[buf_idx].map,
+                                 ctx->t40_clear_bytes
+                                     ? ctx->t40_clear_bytes
+                                     : (unsigned int)ctx->stream_buf_size,
+                                 1 /* WBACK */);
 #else
                 avpu_flush_cache(fd, ctx->stream_bufs[buf_idx].map,
                                  (unsigned int)ctx->stream_buf_size,
@@ -12522,10 +12637,12 @@ static int al_codec_encode_process_impl(void *codec, void *frame,
              * 4. Callback +0x430
              * 5. AL_EncCore_Encode1 → Rtos_FlushCacheMemory + CL_PUSH */
 #if defined(PLATFORM_T41)
+            openimp_profile_end(OPENIMP_PROFILE_SUBMIT_MID, mid_profile);
             OpenIMPProfileStamp submit_io_profile = openimp_profile_begin();
             avpu_t41_reset_core(fd, 0);
             avpu_turn_on_gc(fd, 0);
 #else
+            openimp_profile_end(OPENIMP_PROFILE_SUBMIT_MID, mid_profile);
             OpenIMPProfileStamp submit_io_profile = openimp_profile_begin();
             avpu_turn_on_gc(fd, 0);
 #if defined(PLATFORM_T40) || defined(PLATFORM_T31)

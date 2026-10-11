@@ -176,8 +176,8 @@ gate, see the list above): CBR delivered only about 20 % of the target bit rate;
 H.265 was not supported by OpenIMP T40 yet; `GetBrightness` returned -1; the
 pixel-format enum was reported as 10 (vendor 0); the frame size is 16-line aligned
 (353280 B vs 345600 B, kept on purpose); `P1_INNER` traces always went to stderr;
-JPEG at 4K not tested (out of memory in the
-test process, 60 MB RAM).
+JPEG at 4K was not tested (the test process
+was out of memory); tested since, see "JPEG at 4K" below.
 
 Vendor note: `GetAeExpList` hung the vendor kernel driver. The magenta cast seen with
 the streaming application stopped was the IR cut left open, not the library.
@@ -206,6 +206,23 @@ checked by `tests/t40/vendor_cmd_test.c`:
 
 `OPENIMP_T40_{FIXQP_NOHWRC,FIXQP_LDA,CMD12,POC,HWRC_TARGET}=0` restore the old
 words one by one for comparisons.
+
+### JPEG at 4K (device-tested 2026-10-11)
+
+The software baseline encoder (`src/hw_encoder.c`) works one 16x16 MCU row
+at a time and has no full-frame temporary: the capture buffer is read in
+place, the output grows from a `width*height/4` byte reserve (2 MB at 4K).
+Measured on the T40XP (20 MB free RAM, streaming application stopped): a 3840x2160 JPEG channel
+alone peaks at 2.5 MB process memory (VmHWM) and about 0.6 s per picture;
+a 4K H.264 channel with a JPEG channel in the same group takes 2.2 MB and
+costs 1.3 MB of free memory, snapshots of 130-560 KB in 0.7-0.9 s.  The
+pictures decode clean and match the vendor hardware JPEG of the same scene
+(SSIM 0.9996, 131589 against 131590 bytes).  The earlier out-of-memory
+kill is not reproduced; a stripe-wise encode would not save anything, so
+the shared encoder was left unchanged.  The vendor library delivers 4K
+JPEGs at the sensor rate (19.7 fps) from its hardware core; the software
+path is limited to about 1.7 fps and a single-threaded caller that polls the
+JPEG channel between video pictures stalls the video for that time.
 
 ### Frame delay cache costs memory bandwidth
 
