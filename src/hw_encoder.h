@@ -103,7 +103,12 @@ typedef struct {
     /* 0x64: T20/T21 IMP_Encoder_SetH264TransCfg chroma_qp_index_offset
      * (-12..12): PPS and the EFE chroma QP offset from the next IDR on */
     int32_t chroma_qp_offset;
-    uint32_t reserved[2];       /* 0x68-0x6f: Reserved */
+    /* 0x68: T20/T10 IMP_Encoder_SetChnRcTrigLevel (OEM
+     * i264e_reconfig_rc_trig_set): the float trigger level (bits of it) and
+     * the new max QP of the OEM controller; rc_new_max_qp 0 = not set (the
+     * OEM defaults 3.0 / 51) */
+    uint32_t rc_trig_bits;
+    uint32_t rc_new_max_qp;     /* 0x6c */
 } HWEncoderParams;
 
 #define HW_MBRC_DEFAULT 0u

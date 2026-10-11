@@ -1200,6 +1200,7 @@ extern int AL_Codec_Encode_SetChromaQpOffset(void *codec, int offset);
 #define P2_HW_SUPERFRM_REENCODE 2u
 extern int AL_Codec_Encode_SetSuperFrame(void *codec, uint32_t mode,
                                          uint32_t i_bits, uint32_t p_bits);
+extern int AL_Codec_Encode_SetRcTrig(void *codec, float level, int new_max_qp);
 #endif
 #if defined(PLATFORM_T31)
 extern int AL_Codec_Encode_SetRcQualityCap(void *codec, int rc_mode,
@@ -4815,6 +4816,33 @@ int IMP_Encoder_SetChnHSkipBlackEnhance(int channel, const int enable)
     pthread_mutex_unlock(&p2_channels[channel].lock);
     return 0;
 }
+
+#if defined(PLATFORM_T20)
+/* T20 3.12.0 (and its T10 branch) IMP_Encoder_SetChnRcTrigLevel (0x48528 ->
+ * i264e_reconfig_rc_trig_set): channel >= 6 is -1; a created H.264 channel
+ * hands {float level, int mode} to its i264e, which stores the raw pair in
+ * the controller parameters [260] (trigger level) and [264] (new max QP) and
+ * restarts the controller at the next IDR; an idle or H.265 channel
+ * returns 0.  The OEM controller lifts the QP cap from the application's
+ * max QP to the new max QP (default 51) while a GOP uses more than level
+ * (default 3.0) times its budget, so IMP_Encoder_SetChnAttrRcMode's maxQp
+ * alone does not cap a starved stream; mode = maxQp does.  OpenIMP
+ * clamps mode to 1..51 and not below the max QP. */
+int IMP_Encoder_SetChnRcTrigLevel(int channel, float level, int mode)
+{
+    P2EncoderChannel *ch;
+
+    if (channel < 0 || channel >= 6 || channel >= P2_MAX_CHANNELS)
+        return -1;
+    EncoderInit();
+    ch = &p2_channels[channel];
+    pthread_mutex_lock(&ch->lock);
+    if (ch->created && ch->codec && ch->codec_type == IMP_ENC_TYPE_AVC)
+        (void)AL_Codec_Encode_SetRcTrig(ch->codec, level, mode);
+    pthread_mutex_unlock(&ch->lock);
+    return 0;
+}
+#endif
 
 #if !defined(PLATFORM_T21)
 /* ---- T30 1.0.5 only (gap work 2026-10-10) --------------------------------

@@ -280,6 +280,10 @@ typedef struct ALAvpuContext {
     uint32_t t41_rate_control_qp_by_buf[16];
     OpenIMPT41RateController t41_rate_controller;
     OpenIMPT41HWRCLevelState t41_hwrc_level;
+    /* Bit rate the EP3 row thresholds were generated for (0 = no ring);
+     * a run-time SetChnBitRate regenerates them (OEM PreprocessHwRateCtrl
+     * via AL_ApplyNewGOPAndRCParams). */
+    uint32_t t41_hwrc_bitrate;
     /* Completion watchdog: CLOCK_MONOTONIC ms of the last submit, and the
      * number of consecutive commands that never completed. */
     uint64_t t41_submit_ms;

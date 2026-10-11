@@ -22,6 +22,12 @@ typedef struct OpenIMPT41HWRCLevelState {
 size_t openimp_t41_hwrc_ring_init(void *ring, size_t ring_size,
                                   uint32_t bitrate);
 
+/* Rewrite the row thresholds for a new target bit rate at run time (OEM
+ * AL_ApplyNewGOPAndRCParams); the history is kept, the level cleared.
+ * Returns 0, or -1 for a bad ring. */
+int openimp_t41_hwrc_ring_retarget(void *ring, size_t ring_size,
+                                   uint32_t bitrate);
+
 /* These helpers reproduce the OEM manager's scalar transition. The caller
  * must provide a cache-coherent or explicitly synchronized EP3 mapping. */
 void openimp_t41_hwrc_level_init(OpenIMPT41HWRCLevelState *state);

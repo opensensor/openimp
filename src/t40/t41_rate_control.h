@@ -227,6 +227,13 @@ int openimp_t41_rate_control_complete_idr_picture(
     int rotate_modes,
     OpenIMPT41RateControlSelection *selection);
 
+/* Like _init, but a running controller keeps its current QP (clamped into
+ * the new range); default_qp is used for a controller not initialized. */
+int openimp_t41_rate_controller_reconfigure(
+    OpenIMPT41RateController *controller, uint32_t bitrate, uint32_t fps_num,
+    uint32_t fps_den, uint32_t gop_length, uint32_t min_qp, uint32_t max_qp,
+    uint32_t default_qp);
+
 int openimp_t41_rate_controller_init(OpenIMPT41RateController *controller,
                                      uint32_t bitrate, uint32_t fps_num,
                                      uint32_t fps_den, uint32_t gop_length,

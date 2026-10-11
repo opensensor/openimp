@@ -3834,8 +3834,10 @@ static int avpu_t41_prepare_picture(ALAvpuContext *ctx, int is_idr)
             controller->gop_length != gop_length ||
             controller->min_qp != min_qp ||
             controller->max_qp != max_qp) {
-            /* Both live T41 controller objects observed in OEM start at 38. */
-            if (openimp_t41_rate_controller_init(
+            /* Both live T41 controller objects observed in OEM start at 38;
+             * a run-time change (SetChnBitRate, SetChnQpBounds) carries the
+             * running QP on. */
+            if (openimp_t41_rate_controller_reconfigure(
                     controller, bitrate, fps_num, fps_den, gop_length,
                     min_qp, max_qp, 38u) != 0)
                 return -1;
@@ -3850,6 +3852,21 @@ static int avpu_t41_prepare_picture(ALAvpuContext *ctx, int is_idr)
         ctx->t41_rate_controller.initialized = 0;
     }
     ctx->t41_rate_control_qp = selected_qp;
+
+    /* Run-time SetChnBitRate: the row thresholds of the three EP3 tables
+     * came from the bit rate at channel start; the OEM regenerates them
+     * (PreprocessHwRateCtrl) when a new rate is applied, and clears the
+     * level.  The command words (cmd[177]/[178]) follow ctx->bitrate on
+     * every picture already. */
+    if (ctx->t41_hwrc_bitrate && ctx->t41_hwrc_bitrate != bitrate) {
+        if (openimp_t41_hwrc_ring_retarget(ep3_cpu, ctx->rec_trace_buf.size,
+                                           bitrate) != 0)
+            return -1;
+        openimp_t41_hwrc_level_init(&ctx->t41_hwrc_level);
+        LOG_CODEC("AVPU: T41 hwrc ring retargeted %u -> %u bit/s",
+                  ctx->t41_hwrc_bitrate, bitrate);
+    }
+    ctx->t41_hwrc_bitrate = bitrate;
 
     if (openimp_t41_update_ep1_lambda_codec(
             ctx->interm_buf.map, ctx->interm_buf.size,
@@ -8984,6 +9001,24 @@ int AL_Codec_Encode_SetChromaQpOffset(void *codec, int offset)
     return 0;
 }
 
+#if defined(PLATFORM_T20)
+/* IMP_Encoder_SetChnRcTrigLevel: the OEM controller raises the QP cap from
+ * the application's max QP to new_max_qp while the bit rate of a GOP is
+ * above level x its budget; new_max_qp = max QP makes max QP a hard cap */
+int AL_Codec_Encode_SetRcTrig(void *codec, float level, int new_max_qp)
+{
+    HWEncoderParams *hp;
+
+    if (codec == NULL)
+        return -1;
+    hp = &((AL_CodecEncode *)codec)->hw_params;
+    memcpy(&hp->rc_trig_bits, &level, sizeof(level));
+    hp->rc_new_max_qp = new_max_qp < 1 ? 1u : new_max_qp > 51 ? 51u
+                                                               : (uint32_t)new_max_qp;
+    return 0;
+}
+#endif
+
 int AL_Codec_Encode_SetSuperFrame(void *codec, uint32_t mode,
                                   uint32_t i_bits, uint32_t p_bits)
 {
@@ -11860,6 +11895,9 @@ static int al_codec_encode_process_impl(void *codec, void *frame,
                                             enc->avpu.rec_trace_buf.size);
                                 openimp_t41_hwrc_level_init(
                                     &enc->avpu.t41_hwrc_level);
+                                enc->avpu.t41_hwrc_bitrate =
+                                    enc->avpu.bitrate ? enc->avpu.bitrate
+                                                      : 2000000u;
                                 LOG_CODEC("AVPU: T41 ep3_ring phys=0x%08x size=%zu initialized=%zu flush=%d uncached=%p",
                                           enc->avpu.rec_trace_buf.phy_addr,
                                           enc->avpu.rec_trace_buf.size,
