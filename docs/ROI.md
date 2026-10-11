@@ -5,7 +5,7 @@
 | T10/T20 | `IMP_Encoder_SetChnROI` (8 regions, pixel corners) | works, see `T1X_ROI_CHROMA.md` |
 | T21 | the same | works by default since this branch (beyond vendor), device-tested |
 | T23 | the same; native Helix encoder (default backend) programs it like T21, the OEM worker gets it through the bridge | works by default, device-tested (below) |
-| T40/T41 | `IMP_Encoder_Set/GetChnRoiAttr` (10 windows, delta QP) | implemented, **experimental, off by default** (T41: `OPENIMP_T41_ROI=1`, T40: `OPENIMP_T40_ROI=1`); the missing enable bit is now set (below), not yet device-tested |
+| T40/T41 | `IMP_Encoder_Set/GetChnRoiAttr` (10 windows, delta QP) | implemented, **experimental, off by default** (T41: `OPENIMP_T41_ROI=1`, T40: `OPENIMP_T40_ROI=1`); T41: the AVPU ignored the table on the device run (no effect, below), the missing enable bit is now set but not yet device-tested; T40 not device-tested |
 | T31 | none in the vendor library; OpenIMP: `IMP_Encoder_Set/GetChnRoiAttr` (T41 API) | works by default (beyond vendor), device-tested; QP clamped to valid H.264 (below) |
 
 ## T40 (cross-built, not device-tested)

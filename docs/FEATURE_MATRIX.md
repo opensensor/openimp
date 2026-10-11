@@ -10,6 +10,7 @@ Open stack = open-tx-isp (kernel driver) + OpenIMP (libimp) + timps. Vendor = tx
 
 ## Summary
 
+- **Update 2026-10-11 (agg-37, build and host tests, no soak):** OpenIMP `claude/agg-37` = agg-36 + size work, T10/T20 `SetAntiFogAttr`/`SetMeshShadingScale`, T40 HEVC FixQP and 4K drain, the function-finder branches (T40 ISP controls, T40 `Fisheye`, T40 ROI and `MapRoi` opt-in, T41 `ISPBypass`, `make export-check`/`release-check`). Corrections: T41 `Encoder_Get/SetChnRoiAttr` and `SetChnMapRoi` are cache, not host (the table is written behind `OPENIMP_T41_ROI=1`, but the T41 AVPU ignores it); T23 `Decoder_*` is err (the decoder ran in the OEM Helix worker, which is off by default since agg-37). **Gap counts (progress table):** T23 22 (was 14), T41 161 (was 158).
 - **Update 2026-10-11 (function finder, `make export-check`):** the T41 cells of `FrameSource_Get/SetDelay`, `Get/SetMaxDelay`, `Get/SetI2dAttr`, `GetTimedFrame`, `Get/SetChnFifoAttr` and of `ISP_Tuning_Get/SetModuleControl`, `Get/SetAutoZoom`, `Get/SetMaskBlock`, `SetScalerLv` were stale (error/cache): the T41 build exports real code (vendor 1.2.6 semantics; the kernel side of AutoZoom/MaskBlock/ScalerLv needs the open driver handlers). Corrected to host (implemented, not run on a camera). `Encoder_Get/SetChnCrop` is exported by the vendor libimp of T10/T20/T21 but not by OpenIMP: cells corrected from n.a. to missing (T10/T20/T21 function count +2). T40: 11 OSD rows (`OSD_AttachToGroup`, `RgnCreate_Query`, `RgnRegister_Query`, `SetMosaic`, and the `*_ISP` calls behind the device-tested ISP-OSD) were missing in the cell but are exported by the T40 build: corrected to host (T40 progress-table gaps 85 -> 74). New check: `make export-check` compares the exports of each built `libimp.so` with the vendor export lists (`tools/export-check/`) and with the `IMP_` names used by streamer sources.
 - **Update 2026-10-11 (agg-36, after RC1; build and host tests of the aggregate, no soak):** T40 rate control, AVPU command lists and H.265 (device-tested on their branch), T40 ISP-drawn OSD, `Get/SetMask` and `SwitchBin` (device-tested), T40 BCSH getters from the vendor cache (host), T41 `SwitchBin`, `AutoZoom`, `SetMaskBlock`, `SetScalerLv` (host and module build), `SetbufshareChn` as the vendor (T31/T40/T41), log level `OPENIMP_LOG_LEVEL`, IVS post order, T30 gap work (317 of 334 exports), T10/T20/T21 and T23 vendor return codes. The T23 driver rows of the second T23/T31 gap pass stay as before (that driver branch is held back). The T40 open items below about CBR, H.265, `GetBrightness`, the pixel format and `P1_INNER` are fixed in agg-36. **Gap counts after this update (progress table):** T23 14 (was 15), T30 19 (was 54), T40 109 (was 120), T41 177 (was 179); T10 32, T20 30, T21 14, T31 8 unchanged.
 - **Update 2026-10-10 evening (agg-35: OpenIMP 687a68e4, open-tx-isp 6e464ac7, built 2026-10-10; soaked 2026-10-10 18:04 to 2026-10-11 08:00 on 10 cameras: clean (0 oopses, 0 unexplained reboots, 0 streamer restarts, VA-API 54/54). RC1 = this code plus docs; features that exist only in later branches (agg-36) are not in this matrix.**
@@ -724,7 +725,7 @@ Per feature: the vendor-stack behaviour and the full per-SoC cell text (chronolo
 - **T30:** ? ROI calls (4 vendor names) exported, no test result for T30
 - **T31:** ✅+ beyond vendor: `IMP_Encoder_Set/GetChnRoiAttr` through the AVPU macroblock QP table (H.264 only), device-tested: delta -10 gives 2.7x the bit rate, a relative -20 is clamped to -19, absolute 51 blurs the region, 0 decoder errors in 20 VA-API checks; 2026-10-10: 20 phases valid in VA-API and strict ffmpeg (`-err_detect`); known deviation: under FixQP 42 an absolute 5 or relative -25 window drives the P-frames to QP about 14 almost frame-wide (bit rate about x4, stream valid); `OPENIMP_T31_ROI=0` refuses the call
 - **T40:** 🔧 `Encoder_Get/SetChnRoiAttr` (10 windows, AVC only) through the same AVPU macroblock QP table as the T31 (one byte per 16x16 block in EP2, cmd[9] bits 25/24; the vendor 1.3.1 library builds the same one-byte table and sets the same bits), cross-built, not run on a camera: off unless `OPENIMP_T40_ROI=1`; `SetChnMapRoi` is still not exported on T40
-- **T41:** 🔧 code only (enable bits derived from the vendor library), off unless `OPENIMP_T41_ROI=1`, not device-tested
+- **T41:** 🔧 no effect: the table is written (off unless `OPENIMP_T41_ROI=1`; enable bits derived from the vendor library, not yet device-tested), but on the T41 run the AVPU ignored the table (bit rate and picture unchanged); `SetChnRoiAttr`/`SetChnMapRoi` count as cache
 - **Rules (all SoCs with ROI):** window deltas -25..+25; spread of all deltas at most 25; picture QP plus delta inside 0..51 and the rate control's min/max QP; requests beyond that are clamped with a one-time warning (`SetChnRoiAttr` returns -1 for a delta outside -26..25 or an absolute QP outside 0..51)
 
 ## Missing / incomplete functions (vendor IMP/SU API, per SoC)
@@ -780,11 +781,11 @@ Counts are per vendor function of that SoC (T23 folded: base function = one; Get
 | T10 | 327 | 17 | 54 | 219 | 0 | 3 | 13 | 0 | 1 | 20 | **34** | 100 | 88.7 % |
 | T20 | 327 | 196 | 16 | 82 | 0 | 1 | 11 | 0 | 1 | 20 | **32** | 100 | 89.9 % |
 | T21 | 327 | 209 | 11 | 83 | 0 | 8 | 5 | 0 | 1 | 10 | **16** | 77 | 92.7 % |
-| T23 | 436 | 283 | 16 | 111 | 0 | 12 | 5 | 0 | 9 | 0 | **14** | 212 | 94.0 % |
+| T23 | 436 | 283 | 16 | 103 | 0 | 12 | 5 | 0 | 17 | 0 | **22** | 212 | 92.2 % |
 | T30 | 347 | 0 | 13 | 22 | 293 | 0 | 8 | 0 | 0 | 11 | **19** | – | 10.1 % |
 | T31 | 387 | 225 | 16 | 133 | 0 | 5 | 2 | 0 | 1 | 5 | **8** | 65 | 96.6 % |
 | T40 | 398 | 57 | 91 | 0 | 177 | 0 | 2 | 0 | 21 | 50 | **73** | – | 37.2 % |
-| T41 | 445 | 8 | 63 | 214 | 0 | 2 | 5 | 1 | 27 | 125 | **158** | 227 | 64.0 % |
+| T41 | 445 | 8 | 60 | 214 | 0 | 2 | 8 | 1 | 27 | 125 | **161** | 227 | 63.4 % |
 
 Columns: fns = vendor functions of that SoC; dev/host/aud/?/no-op/cache/stub/err/miss = counts per cell code (codes as in the legend); gaps = cache + stub + err + miss; audit gaps = the same sum in the audit before the work of 2026-10-05; done % = (dev + host + aud) / fns.
 
@@ -792,11 +793,11 @@ Columns: fns = vendor functions of that SoC; dev/host/aud/?/no-op/cache/stub/err
 T10  ██▓▓▓▓▓▓▓▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒░░░░
 T20  ████████████████████████▓▓▒▒▒▒▒▒▒▒▒▒░░░░
 T21  ██████████████████████████▓▒▒▒▒▒▒▒▒▒▒○░░
-T23  ██████████████████████████▓▓▒▒▒▒▒▒▒▒▒▒○░
+T23  ██████████████████████████▓▓▒▒▒▒▒▒▒▒▒○░░
 T30  ▓▓▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒░░
 T31  ███████████████████████▓▒▒▒▒▒▒▒▒▒▒▒▒▒▒○░
 T40  ██████▓▓▓▓▓▓▓▓▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒░░░░░░░░░
-T41  █▓▓▓▓▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒░░░░░░░░░░░░░░░░
+T41  █▓▓▓▓▓▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒░░░░░░░░░░░░░░░
 ```
 
 ### Streamer-relevant gaps per SoC (priority)
@@ -1245,7 +1246,7 @@ Notes:
 
 | Vendor function | T10 | T20 | T21 | T23 | T30 | T31 | T40 | T41 | Used by |
 |---|---|---|---|---|---|---|---|---|---|
-| `Decoder_*` (8 functions) [1] | miss | miss | miss | aud | miss | n.a. | miss | miss | – |
+| `Decoder_*` (8 functions) [1] | miss | miss | miss | err | miss | n.a. | miss | miss | – |
 | `Encoder_Get/SetChangeRef` [65] | cache | cache | cache | dev | cache | n.a. | n.a. | n.a. | – |
 | `Encoder_Get/SetChnCrop` [20] | miss | miss | miss | dev | miss | n.a. | n.a. | n.a. | – |
 | `Encoder_Get/SetChnDemask` [66] | cache | cache | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | – |
@@ -1255,7 +1256,7 @@ Notes:
 | `Encoder_Get/SetChnH264FrmUsedMode` [69] | miss | miss | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | – |
 | `Encoder_Get/SetChnHSkip` [70] | cache | cache | dev | dev | cache | n.a. | n.a. | n.a. | – |
 | `Encoder_Get/SetChnRcAttr` [71] | miss | miss | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | – |
-| `Encoder_Get/SetChnRoiAttr` [63] | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | ? | host | – |
+| `Encoder_Get/SetChnRoiAttr` [63] | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | ? | cache | – |
 | `Encoder_Get/SetChnSeiAttr` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | miss | miss | – |
 | `Encoder_Get/SetFisheyeEnableStatus` [4] | cache | cache | cache | cache | cache | cache | cache | miss | – |
 | `Encoder_Get/SetH264TransCfg` [5] | cache | dev | dev | dev | ? | n.a. | n.a. | n.a. | T21: r† |
@@ -1267,7 +1268,7 @@ Notes:
 | `Encoder_SetAvpuBsSize` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | miss | – |
 | `Encoder_SetAvpuJpegQp` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | miss | – |
 | `Encoder_SetChnHSkipBlackEnhance` [73] | cache | cache | cache | dev | cache | n.a. | n.a. | n.a. | – |
-| `Encoder_SetChnMapRoi` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | host | host | – |
+| `Encoder_SetChnMapRoi` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | host | cache [63] | – |
 | ► `Encoder_SetChnMaxPictureSize` [9] | n.a. | n.a. | n.a. | dev | n.a. | n.a. | n.a. | cache | T41: r† |
 | `Encoder_SetFrameRelease` [10] | n.a. | n.a. | n.a. | n.a. | n.a. | no-op | miss | miss | – |
 | `Encoder_SetIvpuBsSize` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | miss | – |
@@ -1288,7 +1289,7 @@ Notes:
 
 Notes:
 
-1. `Decoder_*` (8 functions): functions: CreateChn, DestroyChn, GetFrame, PollingFrame, ReleaseFrame, SendStreamTimeout, StartRecvPic, StopRecvPic; T31: none of the 28 vendor libimp builds exports any IMP_Decoder_* (only the ADEC register calls), the headers of 1.1.5+ declare them; T10/T20/T21 (class d, 2026-10-10): the vendor libimp exports all 8 calls (T21 1.0.33, T10/T20 3.12.0; a decoder channel thread around DecoderInit/DecoderExit); the open stack has no decoder (the Helix wrapper of these SoCs is encode-only), and no streamer uses them: not worth building
+1. `Decoder_*` (8 functions): functions: CreateChn, DestroyChn, GetFrame, PollingFrame, ReleaseFrame, SendStreamTimeout, StartRecvPic, StopRecvPic; T31: none of the 28 vendor libimp builds exports any IMP_Decoder_* (only the ADEC register calls), the headers of 1.1.5+ declare them; T10/T20/T21 (class d, 2026-10-10): the vendor libimp exports all 8 calls (T21 1.0.33, T10/T20 3.12.0; a decoder channel thread around DecoderInit/DecoderExit); the open stack has no decoder (the Helix wrapper of these SoCs is encode-only), and no streamer uses them: not worth building T23 (agg-37): the decoder ran in the OEM Helix worker; that bridge is off by default since agg-37 (`OPENIMP_T23_HELIX_BRIDGE=0`, docs/SIZE.md), so `IMP_Decoder_CreateChn` fails (err); `OPENIMP_T23_HELIX_BRIDGE=1` builds it again.
 2. `Encoder_Get/SetChnDenoise`: T21: done as the vendor: libimp 1.0.33 clears the denoise type at init (channel_i264e_encoder_init picks encoder mode 4 from get_cpu_id() 11..14, i264e_validate_parameters keeps denoise only for mode 1), so on the vendor T21 dnType reads back 0 and the encoder runs one Helix job per picture; dnType >= 3 with enable set at CreateChn is -1; IQp/PQp are kept. OpenIMP T21 does the same (2026-10-10: PC420 vendor stack vs open stack, readback equal, size and fps equal, ffmpeg decode clean). T10/T20 (vendor 3.12.0 has no such gate): type, IQp and PQp stored and read back as the vendor (2026-10-10: the T20 build also defines PLATFORM_T21 and read dnType back as 0 like T21; fixed, host test `p2_t1x_test_t20`; apitest roundtrip PASS on T20), not applied; the vendor encodes every frame twice with attrDenoise.enable set at CreateChn and dnType 1/2, a first pass at slice QP dnIQp (I) / dnPQp (P; type 2 forces slice type I) before the normal pass (i264e_reconfig_dn_set, i264e_slice_write). Not built: the pass-1 job needs a trace on a T20 camera, stability first
 4. `Encoder_Get/SetFisheyeEnableStatus`: T23+T31: kept for getter only (documented in source); class d: the flag only has an effect in the vendor's closed fisheye/i264e path, which OpenIMP does not contain (T31: closed IVS fisheye module; T23: i264e creation option of the OEM session); T10/T20/T21: a flag in the channel record, settable only on an idle channel (-1 once created), exactly as the vendor (disassembly T21 0x45454, T20 0x4776c); apitest PASS on T10, T20, T21; class d like T23/T31; T30 1.0.5: flag kept, settable before CreateChn only, as T21 (the closed fisheye motion search of the vendor encoder is not in the Helix path); host test; vendor check 2026-10-10 (libimp T23 1.3.0 and T31 1.1.6 disassembly): T31 1.1.6 sets the flag in the channel record only while the channel does not exist (channel below 9, else -1), as OpenIMP does; T23 1.3.0 likewise; the flag is read later by the closed encoder code
 5. `Encoder_Get/SetH264TransCfg`: T10: no chroma-offset register, stays 0; T20: chroma QP offset via PPS + reg 0x40120 (claude/t1x-roi), verified on a camera, no colour shift; T21: chroma QP offset, PPS rewrite; not device-tested
@@ -1313,7 +1314,7 @@ Notes:
 
 | Vendor function | T10 | T20 | T21 | T23 | T30 | T31 | T40 | T41 | Used by |
 |---|---|---|---|---|---|---|---|---|---|
-| `Decoder_*` (8 functions) [1] | miss | miss | miss | aud | miss | n.a. | miss | miss | – |
+| `Decoder_*` (8 functions) [1] | miss | miss | miss | err | miss | n.a. | miss | miss | – |
 | `Encoder_CreateChn` [13] | aud | dev | dev | dev | ? | dev | dev | aud | p† r† t |
 | `Encoder_CreateGroup` [14] | aud | dev | dev | dev | ? | dev | dev | aud | p† r† t |
 | `Encoder_DestroyChn` [15] | aud | dev | dev | dev | ? | dev | dev | aud | p† r† t |
@@ -1334,7 +1335,7 @@ Notes:
 | `Encoder_Get/SetChnHSkip` [70] | cache | cache | dev | dev | cache | n.a. | n.a. | n.a. | – |
 | `Encoder_Get/SetChnROI` [23] | dev | dev | dev | dev | ? | n.a. | n.a. | n.a. | T21: r† |
 | `Encoder_Get/SetChnRcAttr` [71] | miss | miss | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | – |
-| `Encoder_Get/SetChnRoiAttr` [63] | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | ? | host | – |
+| `Encoder_Get/SetChnRoiAttr` [63] | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | ? | cache | – |
 | `Encoder_Get/SetChnSeiAttr` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | miss | miss | – |
 | `Encoder_Get/SetFisheyeEnableStatus` [4] | cache | cache | cache | cache | cache | cache | cache | miss | – |
 | `Encoder_Get/SetGDRCfg` [24] | n.a. | n.a. | n.a. | dev | n.a. | n.a. | n.a. | n.a. | – |
@@ -1374,7 +1375,7 @@ Notes:
 | `Encoder_SetChnGopLength` [48] | n.a. | n.a. | n.a. | n.a. | n.a. | dev | ? | aud | – |
 | `Encoder_SetChnHSkipBlackEnhance` [73] | cache | cache | cache | dev | cache | n.a. | n.a. | n.a. | – |
 | `Encoder_SetChnInitQP` [49] | n.a. | n.a. | n.a. | dev | n.a. | n.a. | n.a. | n.a. | – |
-| `Encoder_SetChnMapRoi` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | host | host | – |
+| `Encoder_SetChnMapRoi` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | host | cache [63] | – |
 | ► `Encoder_SetChnMaxPictureSize` [9] | n.a. | n.a. | n.a. | dev | n.a. | n.a. | n.a. | cache | T41: r† |
 | `Encoder_SetChnQp` [50] | n.a. | n.a. | n.a. | n.a. | n.a. | dev | n.a. | n.a. | – |
 | `Encoder_SetChnQpBounds` [51] | n.a. | n.a. | n.a. | n.a. | n.a. | dev | ? | aud | t |
@@ -1408,7 +1409,7 @@ Notes:
 
 Notes:
 
-1. `Decoder_*` (8 functions): functions: CreateChn, DestroyChn, GetFrame, PollingFrame, ReleaseFrame, SendStreamTimeout, StartRecvPic, StopRecvPic; T31: none of the 28 vendor libimp builds exports any IMP_Decoder_* (only the ADEC register calls), the headers of 1.1.5+ declare them; T10/T20/T21 (class d, 2026-10-10): the vendor libimp exports all 8 calls (T21 1.0.33, T10/T20 3.12.0; a decoder channel thread around DecoderInit/DecoderExit); the open stack has no decoder (the Helix wrapper of these SoCs is encode-only), and no streamer uses them: not worth building
+1. `Decoder_*` (8 functions): functions: CreateChn, DestroyChn, GetFrame, PollingFrame, ReleaseFrame, SendStreamTimeout, StartRecvPic, StopRecvPic; T31: none of the 28 vendor libimp builds exports any IMP_Decoder_* (only the ADEC register calls), the headers of 1.1.5+ declare them; T10/T20/T21 (class d, 2026-10-10): the vendor libimp exports all 8 calls (T21 1.0.33, T10/T20 3.12.0; a decoder channel thread around DecoderInit/DecoderExit); the open stack has no decoder (the Helix wrapper of these SoCs is encode-only), and no streamer uses them: not worth building T23 (agg-37): the decoder ran in the OEM Helix worker; that bridge is off by default since agg-37 (`OPENIMP_T23_HELIX_BRIDGE=0`, docs/SIZE.md), so `IMP_Decoder_CreateChn` fails (err); `OPENIMP_T23_HELIX_BRIDGE=1` builds it again.
 13. `Encoder_CreateChn`: audit: reaches the driver/kernel
 14. `Encoder_CreateGroup`: audit: userspace implementation
 15. `Encoder_DestroyChn`: audit: reaches the driver/kernel
@@ -1470,7 +1471,7 @@ Notes:
 60. `Encoder_YuvGetCrop`: audit: reaches the driver/kernel
 61. `Encoder_YuvRequestIDR`: audit: reaches the driver/kernel
 62. `Encoder_YuvSetCrop`: audit: reaches the driver/kernel
-63. `Encoder_Get/SetChnRoiAttr`: not in the T31 vendor API (T31 column stays n.a.): OpenIMP exports it on T31 as a beyond-vendor ROI through the AVPU QP table, device-tested (dev), default on, `OPENIMP_T31_ROI=0` refuses the call; T40/T41: experimental, off unless `OPENIMP_T41_ROI=1`, code only (host), not device-tested; same valid-H.264 clamp as the Helix paths (docs/ROI.md)
+63. `Encoder_Get/SetChnRoiAttr`: not in the T31 vendor API (T31 column stays n.a.): OpenIMP exports it on T31 as a beyond-vendor ROI through the AVPU QP table, device-tested (dev), default on, `OPENIMP_T31_ROI=0` refuses the call; T40: experimental, off unless `OPENIMP_T40_ROI=1`, code only, not device-tested; T41 (also `SetChnMapRoi`): cache, the windows/map are stored and the EP2 QP table is written (off unless `OPENIMP_T41_ROI=1`), but the T41 AVPU ignores the table (no effect on bit rate or picture in FixQP/CBR, docs/ROI.md); same valid-H.264 clamp as the Helix paths (docs/ROI.md)
 64. `Log_Set_Option` (`IMP_Log_Set_Option`): exported since agg-34 on T10/T20/T21/T23/T31 (the option is the OEM field mask of the log line); host test `tests/core/imp_log_test.c`, no device test; T41 cell not re-audited
 65. `Encoder_Get/SetChangeRef`: T10/T20: stored and read back with the vendor return codes (SetChangeRef -1 on an idle channel, GetChangeRef -1 on an idle channel; apitest PASS on T10, T20); T21 (2026-10-10, host test): SetChangeRef -1 on an idle channel; GetChangeRef answers 0 on an idle channel and, as the vendor (T21 1.0.33 and T30 1.0.5, same code), logs "unsupport to change ref channel" and returns -1 on every created channel without writing the value (it used to return the stored value); the vendor passes it to the i264e reference code (param 12), which only the HSkip reference modes read; the Helix path codes no HSkip structure (class c). Disassembly: T21 1.0.33 0x48bd4/0x48d90, T20 3.12.0 0x4b05c/0x4b220; T30 1.0.5 (same vendor code as T21): SetChangeRef stores the flag of a created channel (-1 for an idle one); GetChangeRef is 0 for an idle channel and -1 for a created one (the vendor logs "unsupport to change ref channel"); host test; T30 1.0.5 (same vendor code as T21): SetChangeRef stores the flag of a created channel (-1 for an idle one); GetChangeRef is 0 for an idle channel and -1 for a created one (the vendor logs "unsupport to change ref channel"); host test
 66. `Encoder_Get/SetChnDemask`: T10/T20 3.12.0 (0x49160/0x492d8): three words stored in rcAttr.attrDemask without a created check, as the vendor (apitest PASS on T10, T20); the vendor also pokes an i264e flag word, the Helix path has no demask stage (class c)
