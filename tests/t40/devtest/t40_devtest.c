@@ -922,9 +922,11 @@ int main(int argc, char **argv)
             sa.SeiMode = IMP_ENC_SEI_MODE_ALL; sa.uuid = NULL;
             rbad = IMP_Encoder_SetChnSeiAttr(CH, &sa);
             R("Encoder_Get/SetChnSeiAttr", OK(!rs1 && !rs2 && !rs3 && !rg && rbad && sg.SeiMode == IMP_ENC_SEI_MODE_ALL && sg.userDataSize == 100 &&
-                                               zall.frames > 20 && zall.sei == zall.frames && !zall.sei_bad &&
-                                               zintra.idr >= 1 && zintra.sei == zintra.sei_idr && zintra.sei_idr == zintra.idr &&
-                                               znone.frames > 10 && znone.sei == 0),
+                                               /* up to 3 pictures encoded before a change may still
+                                                * come out (the vendor library queues pictures) */
+                                               zall.frames > 20 && zall.sei + 3 >= zall.frames && !zall.sei_bad &&
+                                               zintra.idr >= 1 && zintra.sei - zintra.sei_idr <= 3 && zintra.sei_idr == zintra.idr &&
+                                               znone.frames > 10 && znone.sei <= 3),
               "set rc=%d/%d/%d get rc=%d mode=%d size=%u; ALL: SEI in %u of %u frames (bad %u); INTRA: SEI in %u frames, %u IDR, %u on IDR; NONE: %u of %u; uuid NULL rc=%d",
               rs1, rs2, rs3, rg, sg.SeiMode, sg.userDataSize, zall.sei, zall.frames, zall.sei_bad, zintra.sei, zintra.idr, zintra.sei_idr, znone.sei, znone.frames, rbad);
         }
