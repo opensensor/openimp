@@ -15,7 +15,7 @@
 |---|---|
 | OpenIMP | `v2026.10.11-rc1` = `fe9307c` (soaked agg-35 code `687a68e4` + documentation only) |
 | open-tx-isp | `v2026.10.11-rc1` = `191be6c5` (soaked agg-35 code `6e464ac7` + documentation only) |
-| Recommended streamer | [timps](https://github.com/Lu-Fi/timps) **v1.10.0** |
+| Recommended streamer | [timps](https://github.com/Lu-Fi/timps) **v1.10.0** (tag `4432fa8`); the soaked images used `f1565f7`, whose source is identical to v1.10.0 (later commits are docs/QA only) |
 | thingino | `aperto` branch, packages `openimp` / `open-tx-isp` pinned to `v2026.10.11-rc1` |
 
 Scope: all OpenIMP changes since the start of the device-test campaign (base `9c6b0ba`, 2026-09-29), 795 commits; about 195 of them are new since the previous `aperto` state (2026-10-06).
@@ -27,7 +27,7 @@ Scope: all OpenIMP changes since the start of the device-test campaign (base `9c
 | T10, T20, T21 | **release** | H.264 + HW JPEG on Helix/NVPU (T10 userspace = T20 build) |
 | T23 | **release** | native Helix H.264 (no vendor code at all) + HW JPEG; no HEVC hardware |
 | T31 (reference) | **release** | H.264, H.265, HW JPEG on the AVPU |
-| T30 | experimental | H.264; no device in our lab (host/build evidence, test kit below) |
+| T30 | experimental | H.264; no T30 device in our lab; an external contributor reported a live gate on a T30X (`docs/T30_STATUS.md`); test kit in `tools/testkit/t30` |
 | T40 | experimental | H.264; first device run only |
 | T41 | experimental | H.264, H.265; sub-stream geometry and night colour open |
 
@@ -44,7 +44,7 @@ Scope: all OpenIMP changes since the start of the device-test campaign (base `9c
 | T40 | 398 | 25.4 % (177 not audited/run yet) | 120 | 7 (raptor) | experimental |
 | T41 | 445 | 59.3 % | 179 | 22 (prudynt 6, raptor 19) | experimental |
 
-Work after RC1 (agg-36) raises T30/T40/T41 further.
+Streamer-used gaps: T30 2 (raptor: `DMIC_*`), T40 7 (raptor: ISP mask, ISP-OSD regions, DMIC), T41 22 (prudynt 6, raptor 19: ISP bypass, module control, autozoom, mask block, scaler level, `SwitchBin`, bufshare, ...). Work after RC1 (agg-36) raises T30/T40/T41 further and closes most of these (T40 OSD/ISP-OSD/`SwitchBin`/bufshare, T41 zoom/mask/scaler level).
 
 **Streamers.** timps v1.10.0 is recommended and ran the soak; some fixes need its matching changes (e.g. T20/T10 day/night). prudynt and raptor link unchanged (0 of 149 imports missing for prudynt, none for raptor) and were run on a T23 camera over the network; a T23 camera ran raptor through the soak. A stack overflow in raptor-hal's `IMP_IVS_Get/SetParam` buffer (0x420 bytes, libimp writes up to 0x458) was reported upstream.
 
@@ -60,10 +60,10 @@ Work after RC1 (agg-36) raises T30/T40/T41 further.
 | T21 (2 cams) | 228 / 0 | – (33 FAILs before the frame-source fixes) |
 | T23 | 304 / 4 | the 4 AF getters; pass since AF statistics are on by default |
 | T31 | 274 / 1 | H.264 stall after JPEG teardown; fixed (per-channel `PollingStream` serialisation), FAIL 0 |
-| T10 / T20 / T21, gap run 2026-10-10 | 147 / 148 / 155 PASS | T10 1: known `SetSuperFrameCfg` read-back |
+| T10 / T20 / T21, gap run 2026-10-10 | 147 / 148 / 155 PASS | T10 1: `SetSuperFrameCfg` read-back differs, the setting is applied (known minor issue) |
 | T41 (experimental) | 260 / 9 | driver work and a tool; audio mute since done in software |
 
-imgfx: no open FAIL; the release-candidate colour run was taken at night, so colour functions are only counted where a batch had light (daylight re-run pending, section 5). The 2026-10-10 additions (T23 ROI, T40 run, T41 controls, audio/AEC on five SoCs) were device-tested before the soak; agg-34 passed a streamer smoke test on 9 cameras (50/50).
+imgfx: no open FAIL. Colour functions verified in daylight on T20/T23/T31 by the streamer QA of 2026-10-10 (colour effects B/W, negative, sepia, vivid, AE compensation, crop and ROI: PASS 35/27/36 checks; the only FAIL was a QA threshold artefact, B/W saturation 25.02 % against a 25 % limit, fixed in the QA). T10/T21 colour functions were checked under lamp light or at night only. The 2026-10-10 additions (T23 ROI, T40 run, T41 controls, audio/AEC on five SoCs) were device-tested before the soak; agg-34 passed a streamer smoke test on 9 cameras (50/50).
 
 **Host tests:** `make check` (about 100 test programs) green on all SoCs, cross-builds pass; rate-control oracles (eprc 0 deviations against the vendor; T31 Allegro core state-identical against 20 vendor traces and 72 x 400 random frames); ROI validity over 20 000 random window sets; motion v2 bit-identical to the vendor with `OPENIMP_MOTION_V2=0`.
 
@@ -80,7 +80,7 @@ Below, **[host]** marks items without a device test; everything else was device-
 - T41: gamma, CCM, CSC presets/user tables, manual exposure, module control/ratios, frame drop, sensor register, AF weight, WDR enable. T40: tuning Get calls device-tested, Set calls [host].
 
 **AE, AWB, day/night**
-- T20/T10 day/night fixed with the driver: `isp-m0` reports the analog gain cap the AE really reaches (T20 128 instead of 158; T10 the stepped plateau); needs timps v1.10.0.
+- T20/T10 day/night fixed with the driver: `isp-m0` reports the analog gain cap the AE really reaches (T20 128 instead of 158; T10 the stepped plateau); needs timps v1.10.0. Confirmed on a T20 camera: correct switch to Night at dusk and back to Day in the morning (ISP confirmed) in the agg-34 soak; both T20 cameras stayed correct through the RC1 soak.
 - T20/T21 re-send image controls on day/night like the vendor; T23 keeps white balance across stream restarts (no green snapshots); T21 AWB hysteresis at dusk.
 - `SetAeComp`: T20 monotonic; T31 OEM formula but slow AE (allow about 30 s to settle).
 
@@ -148,8 +148,8 @@ Also: `OPENIMP_LOG_SYSLOG=1` logs to syslog. Debug-only switches (profiling, tra
 **Other limitations**
 - T40: CBR delivers only about 20 % of the target rate; no H.265; `GetBrightness` returns -1.
 - T41: no audio hardware on the test board (API level only); sub-stream above 768x432 can hang with the opt-in geometry latch; heap overwrite across driver reloads.
-- T30: no device in our lab. T10: occasional Day switch with a black frame in the dark was seen in the earlier soak (3 in 44 h).
-- T20/T10: release of the crop window at session close not verified on a device. Colour imgfx re-run in daylight pending (T10/T20/T21/T31); T21 imgfx flip/`SetWB` auto gave a magenta picture (the streamer's flip path is fine).
+- T30: no T30 device in our lab; an external contributor reported a live gate on a T30X (`docs/T30_STATUS.md`); test kit in `tools/testkit/t30`. T10: `SetSuperFrameCfg` read-back differs (the setting is applied). T10: occasional Day switch with a black frame in the dark was seen in the earlier soak (3 in 44 h).
+- T20/T10: release of the crop window at session close not verified on a device. T10/T21 colour functions checked under lamp light or at night only (T20/T23/T31 verified in daylight); T21 imgfx flip/`SetWB` auto gave a magenta picture (the streamer's flip path is fine).
 - T21: OSD blend about 2 s late after a wake (handled for snapshots); mic gain above 0 raises the noise floor (hardware).
 - Remaining vendor-function gaps: see the completeness table in section 1 (no gap in a function a known streamer imports on the release SoCs).
 
