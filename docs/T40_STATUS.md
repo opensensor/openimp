@@ -178,7 +178,7 @@ recovered vendor kernel routines.
   register of the vendor `SetDigitalGain`.  Vendor parity would mean a software volume; open for a
   decision.
 - **Device test for the next run:** `t40dev/night/run-night.sh` (outside the repository: builds this
-  branch, takes the cam-184 lock, runs `t40dev/night/t7-night.tests` with OpenIMP and the vendor
+  branch, takes the camera lock, runs `t40dev/night/t7-night.tests` with OpenIMP and the vendor
   library side by side through `sess-night.sh`, hard timeout 120 s per run, stops on a hang, decodes
   the SEI dumps with ffmpeg).  devtest phases: 4 (tuning with fresh frames), 0x100 (Query fields,
   FrameRelease, SEI, DrawAttr), 0x200 (StartNightMode), 0x400 (OSD group callback in the pipeline),
