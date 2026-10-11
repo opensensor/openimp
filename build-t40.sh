@@ -58,7 +58,7 @@ repo_includes="-I$project_dir/include -I$project_dir/src"
 
 for source in \
     openimp_p0 openimp_p1 openimp_p2_dma openimp_p2_encoder openimp_avc \
-    t40_ep1 t40_stream_layout
+    t40_ep1 t40_stream_layout t31_rate_control t31_al_rc t31_hevc_headers
 do
     "$compiler" $strict_flags $repo_includes \
         -c "$project_dir/src/t40/$source.c" \
@@ -135,6 +135,9 @@ done
     "$output_dir/t40_openimp_ivs_move_v2.o" \
     "$output_dir/t40_ep1.o" \
     "$output_dir/t40_stream_layout.o" \
+    "$output_dir/t31_rate_control.o" \
+    "$output_dir/t31_al_rc.o" \
+    "$output_dir/t31_hevc_headers.o" \
     "$output_dir/backend-enc-hw-scaling-list.o" \
     "$output_dir/backend-codec.o" \
     "$output_dir/backend-al_avpu.o" \

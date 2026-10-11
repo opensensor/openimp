@@ -12,7 +12,7 @@ CAMERA_INPUT_TEST_BIN := $(PROJECT_DIR)/build/tests/t40-camera-input-test
 IVS_SRC := $(PROJECT_DIR)/src/t31
 IVS_FRAMEWORK_TEST_BIN := $(PROJECT_DIR)/build/tests/t40-ivs-framework-test
 
-check: $(STREAM_LAYOUT_TEST_BIN) $(DENOISE_TEST_BIN) $(CAMERA_INPUT_TEST_BIN) $(IVS_FRAMEWORK_TEST_BIN) p3-controls abi-layout frame-ts
+check: $(STREAM_LAYOUT_TEST_BIN) $(DENOISE_TEST_BIN) $(CAMERA_INPUT_TEST_BIN) $(IVS_FRAMEWORK_TEST_BIN) p3-controls abi-layout frame-ts frame-rc vendor-cmd
 	$(STREAM_LAYOUT_TEST_BIN)
 	$(DENOISE_TEST_BIN)
 	$(CAMERA_INPUT_TEST_BIN)
@@ -94,3 +94,23 @@ frame-ts:
 	$(CC) -std=gnu99 -O2 -Wall -Wextra -Werror -DPLATFORM_T40 -I$(PROJECT_DIR)/src \
 		codec_frame_ts_test.c -o $(PROJECT_DIR)/build/tests/t40-frame-ts-test
 	$(PROJECT_DIR)/build/tests/t40-frame-ts-test
+
+# Frame-level rate control: the T31 Allegro core driven as codec-t40.c
+# drives it (AU size feedback, no status registers); the T40 build must
+# link it, or the library silently ships with unresolved RC symbols.
+.PHONY: vendor-cmd
+vendor-cmd:
+	mkdir -p $(PROJECT_DIR)/build/tests
+	$(CC) -std=gnu99 -O2 -Wall -Wextra -Werror -DPLATFORM_T40 -I$(PROJECT_DIR)/src \
+		vendor_cmd_test.c $(PROJECT_DIR)/src/t40/t40_ep1.c \
+		-o $(PROJECT_DIR)/build/tests/t40-vendor-cmd-test
+	$(PROJECT_DIR)/build/tests/t40-vendor-cmd-test
+
+.PHONY: frame-rc
+frame-rc:
+	mkdir -p $(PROJECT_DIR)/build/tests
+	$(CC) -std=gnu99 -O2 -Wall -Wextra -Werror -DPLATFORM_T40 -I$(PROJECT_DIR)/src \
+		frame_rc_test.c $(PROJECT_DIR)/src/t40/t31_al_rc.c -lm \
+		-o $(PROJECT_DIR)/build/tests/t40-frame-rc-test
+	$(PROJECT_DIR)/build/tests/t40-frame-rc-test
+	grep -q 't31_rate_control t31_al_rc' $(PROJECT_DIR)/build-t40.sh

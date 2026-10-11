@@ -75,6 +75,9 @@
 #elif defined(PLATFORM_T41) || defined(PLATFORM_T40)
 #include "t23/openimp_t23_osd.h"
 #endif
+#if defined(PLATFORM_T40)
+#include "t40/t40_vendor_cmd.h"
+#endif
 #if defined(PLATFORM_T30)
 /* T20/T21/T30 keep the T31 OSD state and blend PIC/COVER regions with the
  * same jz_ipu_v13 /dev/ipu request as the OEM T20 osd_update/ipu_osd. */
@@ -1377,6 +1380,9 @@ static uint32_t p2_attr_gop_length(const IMPEncoderCHNAttr *attr)
 {
 #if defined(PLATFORM_T23) || defined(PLATFORM_T30)
     return attr->rcAttr.maxGop;
+#elif defined(PLATFORM_T40)
+    return t40_vendor_gop_length(attr->gopAttr.uGopLength,
+                                 attr->gopAttr.uMaxSameSenceCnt);
 #else
     return attr->gopAttr.uGopLength;
 #endif
@@ -1510,6 +1516,19 @@ static const char *p2_rc_mode_name(unsigned int mode)
     }
 }
 
+#if defined(PLATFORM_T40)
+static int p2_t40_auto_initial_qp(const IMPEncoderCHNAttr *attr,
+                                  uint32_t codec_type, uint32_t bitrate,
+                                  uint32_t fps_num, uint32_t fps_den,
+                                  int min_qp, int max_qp)
+{
+    return t40_vendor_initial_qp(
+        bitrate, fps_num && fps_den ? fps_num / fps_den : 25u,
+        (uint64_t)p2_attr_width(attr) * p2_attr_height(attr),
+        codec_type == IMP_ENC_TYPE_HEVC, min_qp, max_qp);
+}
+#endif
+
 static void p2_codec_params(unsigned char *params, const IMPEncoderCHNAttr *attr,
                             int hw_rc_mode, int channel)
 {
@@ -1599,6 +1618,12 @@ static void p2_codec_params(unsigned char *params, const IMPEncoderCHNAttr *attr
             (void)p2_rc_clamp(channel, "minQp", &min_qp, 1, 51);
             (void)p2_rc_clamp(channel, "maxQp", &max_qp, 1, 51);
             /* the initial QP is derived (or given) inside the range */
+#if defined(PLATFORM_T40)
+            if (qp < 0)
+                qp = p2_t40_auto_initial_qp(attr, codec_type, bitrate,
+                                            fps_num, fps_den,
+                                            min_qp, max_qp);
+#endif
             if (qp < 1 || qp > 51)
                 qp = 26;
             if (min_qp > max_qp)
@@ -1854,9 +1879,10 @@ int IMP_Encoder_CreateChn(int channel, IMPEncoderCHNAttr *attr)
     P2_STARTUP_MARKER("openimp/P2 marker C0 CreateChn entry\n");
     if (!p2_valid_channel(channel) || p2_null_arg(__func__, attr))
         return -1;
-#if !defined(PLATFORM_T31) && !defined(PLATFORM_T41)
+#if !defined(PLATFORM_T31) && !defined(PLATFORM_T40) && \
+    !defined(PLATFORM_T41)
     if (p2_attr_codec_type(attr) == IMP_ENC_TYPE_HEVC) {
-        /* Only the T31 and T41 AVPU backends encode HEVC
+        /* Only the T31, T40 and T41 AVPU backends encode HEVC
          * (docs/T31_HEVC.md, t41_command_builder.c); the
          * other backends (native and OEM Helix, software) are H.264/JPEG
          * only and used to create an HEVC channel that produced no stream
@@ -2978,7 +3004,7 @@ int IMP_Encoder_GetStream(int channel, IMPEncoderStream *stream, int block)
 #endif
     ch->packs[0].frameEnd = true;
     ch->packs[0].sliceType = is_idr ? IMP_ENC_SLICE_I : IMP_ENC_SLICE_P;
-#if defined(PLATFORM_T41)
+#if defined(PLATFORM_T41) || defined(PLATFORM_T40)
     if (ch->codec_type == IMP_ENC_TYPE_HEVC)
         ch->packs[0].nalType.h265NalType = is_idr
             ? IMP_H265_NAL_SLICE_IDR_W_RADL : IMP_H265_NAL_SLICE_TRAIL_R;
@@ -3208,8 +3234,10 @@ int IMP_Encoder_SetDefaultParam(IMPEncoderChnAttr *attr, IMPEncoderProfile profi
     if (codec_type == IMP_ENC_TYPE_JPEG || rc_mode == IMP_ENC_RC_MODE_FIXQP) {
         attr->rcAttr.attrRcMode.attrFixQp.iInitialQP =
             (int16_t)((quality >= 1 && quality <= 99) ? quality : 25);
-#if defined(PLATFORM_T31)
-    /* OEM T31 1.1.6 IMP_Encoder_SetDefaultParam (0x831a0, jump table
+#if defined(PLATFORM_T31) || defined(PLATFORM_T40)
+    /* T40 1.3.1 returns the same CBR fields (read back on the Eufy T40XP:
+     * iInitialQP -1, 15..48, iIPDelta -1, eRcOptions 1, 2 * bitrate).
+     * OEM T31 1.1.6 IMP_Encoder_SetDefaultParam (0x831a0, jump table
      * 0xe9e34 on the rc mode): iInitialQP = the caller's value, iMinQP 15,
      * iMaxQP 48, iIPDelta/iPBDelta -1, eRcOptions 1, uMaxPictureSize =
      * 2 * bitrate; VBR and the capped modes uMaxBitRate = 4/3 * bitrate

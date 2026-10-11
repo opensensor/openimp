@@ -111,7 +111,8 @@ ModuleControl get, `AeScenceAttr` get/set; `GetCameraInputMode`.
 Fixed during the run: the stream timestamp was 0 (a5d9b03); the JPEG was a grey
 placeholder (257ba9d).
 
-Open: CBR delivers only about 20 % of the target bit rate (rate control); H.265 is
+Open at the time (CBR rate control and H.265 were fixed afterwards, see below and
+`T40_HEVC.md`): CBR delivered only about 20 % of the target bit rate; H.265 was
 not supported by OpenIMP T40 yet; `GetBrightness` returns -1; the pixel-format enum is
 reported as 10 (vendor 0); the frame size is 16-line aligned (353280 B vs 345600 B);
 `P1_INNER` traces always go to stderr; JPEG at 4K not tested (out of memory in the
@@ -122,6 +123,28 @@ timps stopped was the IR cut left open, not the library.
 
 Only the functions listed under PASS are marked device-tested in
 `FEATURE_MATRIX.md`; everything else on T40 stays host or unknown.
+
+## Encoder command list versus the vendor (H.264)
+
+The AVC command words, EP1 (lambda table and scaling list, 8 KB) and EP2 now
+match the vendor libimp 1.3.1 word by word on the Eufy T40XP for CBR, VBR and
+FixQP at 3840x2160 and 640x360 (addresses aside; only cmd[0x1b] bit 16 still
+differs on some P pictures).  Values are in `src/t40/t40_vendor_cmd.h`,
+checked by `tests/t40/vendor_cmd_test.c`:
+
+- IDR period `uGopLength * uMaxSameSenceCnt` (the vendor header formula; GOP
+  40 x 2 gives an IDR every 80 pictures, not every 40);
+- iInitialQP -1: the vendor's bits-per-pixel table (4K 6 Mbit/s: QP 39, not 26);
+- FixQP: no hardware RC (cmd[9] bit 16, cmd[0x14..0x18], EP3 off), EP2 QP range
+  0..51 and the fixed-QP lambda table per picture type (IDR: intra lane only);
+- hardware RC targets cmd[0x15] = 1.9 x bit/s per group (I), 5/7 of it (P),
+  cmd[0x16] = per-frame maximum per group, cmd[0x17] min max(min, max - 32) and
+  the IDR QP in bits 23:16; cmd[0x12] bits 27:24 from 512 / 64-pixel columns;
+  picture numbers in cmd[0x0c..0x11]; no picture size in cmd[0x64/0x65];
+- SetDefaultParam CBR/VBR: QP 15..48, eRcOptions 1 (as vendor and T31).
+
+`OPENIMP_T40_{FIXQP_NOHWRC,FIXQP_LDA,CMD12,POC,HWRC_TARGET}=0` restore the old
+words one by one for comparisons.
 
 ## Build
 

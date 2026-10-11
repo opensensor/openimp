@@ -9,7 +9,8 @@
  * an empty channel that never delivers a frame; OpenIMP fails CreateChn with
  * -1 instead, so a streamer falls back to H.264 at once (documented
  * beyond-vendor deviation).  T10 shares the T20 libimp, hence PLATFORM_T20.
- * Other SoCs keep their existing handling (only the T31 AVPU encodes HEVC).
+ * Other SoCs keep their existing handling (the T31, T40 and T41 AVPU
+ * encode HEVC).
  */
 #if defined(PLATFORM_T20) || defined(PLATFORM_T21) || defined(PLATFORM_T23)
 #define P2_HEVC_NO_HARDWARE 1
