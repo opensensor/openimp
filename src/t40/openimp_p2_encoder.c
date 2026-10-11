@@ -328,6 +328,8 @@ typedef struct {
 #endif
 #if defined(PLATFORM_T40)
     int fisheye;                    /* IMP_Encoder_Set/GetFisheyeEnableStatus */
+    int release_num;                /* IMP_Encoder_SetFrameRelease */
+    int release_den;
 #endif
     uint64_t next_frame_due_us;
     uint64_t output_timestamp_us;
@@ -3255,6 +3257,32 @@ int IMP_Encoder_Query(int channel, IMPEncoderCHNStat *stat)
 #endif
     return 0;
 }
+
+#if defined(PLATFORM_T40)
+/* Vendor T40 1.3.1 IMP_Encoder_SetFrameRelease (0x6d728): channel < 13 and
+ * created (-1 otherwise), num/den stored in the channel record under the
+ * channel mutex, 0.  The vendor's release helper hands the source frame
+ * back num/den of a frame interval after queueing; OpenIMP returns every
+ * capture frame as soon as the AVPU has consumed it (see T40_STATUS.md), so
+ * the ratio is kept but changes nothing (same as the T31 build). */
+int IMP_Encoder_SetFrameRelease(int channel, int num, int den)
+{
+    P2EncoderChannel *ch;
+
+    if (!p2_valid_channel(channel))
+        return -1;
+    ch = &p2_channels[channel];
+    pthread_mutex_lock(&ch->lock);
+    if (!ch->created) {
+        pthread_mutex_unlock(&ch->lock);
+        return -1;
+    }
+    ch->release_num = num;
+    ch->release_den = den;
+    pthread_mutex_unlock(&ch->lock);
+    return 0;
+}
+#endif
 
 int IMP_Encoder_GetChnAttr(int channel, IMPEncoderChnAttr *attr)
 {

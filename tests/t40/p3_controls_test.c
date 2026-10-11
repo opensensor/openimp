@@ -72,6 +72,7 @@ static struct {
 } last;
 
 static uint32_t rm_kernel;  /* running mode the "kernel" holds */
+static unsigned char draw_kernel[896];  /* draw attr the "kernel" holds */
 
 int OpenIMP_P1_TuningIOCtl(uint32_t command, void *argument)
 {
@@ -104,6 +105,12 @@ int OpenIMP_P1_TuningIOCtl(uint32_t command, void *argument)
     }
     if (request->control == 0x08000071 && !request->direction)
         rm_kernel = *(const uint32_t *)request->payload;
+    if (request->control == 0x080000a0) {
+        if (request->direction)
+            memcpy((void *)request->payload, draw_kernel, sizeof(draw_kernel));
+        else
+            memcpy(draw_kernel, (const void *)request->payload, sizeof(draw_kernel));
+    }
     if (request->control == 0x08000073 || request->control == 0x08000081)
         memcpy(last.copy, (const void *)request->payload,
                request->control == 0x08000073 ? 4 : 1);
@@ -573,6 +580,54 @@ int main(void)
         assert(IMP_ISP_Tuning_SetISPRunningMode(IMPVI_MAIN, NULL) == -9);
         assert(IMP_ISP_Tuning_GetISPRunningMode(IMPVI_MAIN, NULL) == -9);
         assert(last.calls == before);
+        sb_enabled = 0;
+    }
+
+    /* Get/SetDrawAttr (vendor 0x83478/0x82f34): RGB -> YUV for enabled
+     * RGB units, pointer to the kernel, Get restores type and RGB */
+    {
+        static IMPISPDrawAttr d, g;
+        IMPISPDrawUnitAttr *u = &d.draw_chx[1][3];
+
+        memset(&d, 0, sizeof(d));
+        u->type = IMP_ISP_DRAW_WIND;
+        u->color_type = 0;              /* RGB */
+        u->draw_cfg.wind.wind_enable = 1;
+        u->draw_cfg.wind.wind_left = 64;
+        u->draw_cfg.wind.wind_width = 128;
+        u->draw_cfg.wind.wind_color.mask_argb.r_value = 255;
+        u->draw_cfg.wind.wind_color.mask_argb.g_value = 0;
+        u->draw_cfg.wind.wind_color.mask_argb.b_value = 0;
+        d.draw_chx[0][0].type = IMP_ISP_DRAW_LINE;      /* disabled: untouched */
+        d.draw_chx[0][0].draw_cfg.line.line_color.mask_argb.r_value = 9;
+        sb_enabled = 0;
+        before = last.calls;
+        assert(IMP_ISP_SetDrawAttr(IMPVI_MAIN, &d) == -5);
+        assert(IMP_ISP_GetDrawAttr(IMPVI_MAIN, &g) == -5);
+        sb_enabled = 1;
+        assert(IMP_ISP_SetDrawAttr(IMPVI_MAIN, NULL) == -9);
+        assert(IMP_ISP_SetDrawAttr((IMPVI_NUM)4, &d) == -4);
+        assert(last.calls == before);
+        EXPECT(IMP_ISP_SetDrawAttr(IMPVI_MAIN, &d), 0, 0x080000a0, &d);
+        /* red in BT.601 full range: Y about 76, V high, U low */
+        assert(u->draw_cfg.wind.wind_color.mask_ayuv.y_value > 60 &&
+               u->draw_cfg.wind.wind_color.mask_ayuv.y_value < 90);
+        assert(u->draw_cfg.wind.wind_color.mask_ayuv.v_value > 200);
+        assert(u->draw_cfg.wind.wind_color.mask_ayuv.u_value < 110);
+        assert(draw_kernel[(16 + 3) * 28 + 21] == u->draw_cfg.wind.wind_color.mask_ayuv.y_value);
+        assert(d.draw_chx[0][0].draw_cfg.line.line_color.mask_ayuv.y_value == 0);
+        /* the kernel hands back YUV only and type 1 (YUV) */
+        memset(draw_kernel + (16 + 3) * 28 + 18, 0, 3);
+        draw_kernel[(16 + 3) * 28 + 4] = 1;
+        memset(&g, 0x55, sizeof(g));
+        EXPECT(IMP_ISP_GetDrawAttr(IMPVI_MAIN, &g), 1, 0x080000a0, &g);
+        assert(g.draw_chx[1][3].color_type == 0);
+        assert(g.draw_chx[1][3].draw_cfg.wind.wind_color.mask_argb.r_value == 255);
+        assert(g.draw_chx[1][3].draw_cfg.wind.wind_left == 64);
+        last.result = -1;
+        assert(IMP_ISP_SetDrawAttr(IMPVI_MAIN, &d) == -6);
+        assert(IMP_ISP_GetDrawAttr(IMPVI_MAIN, &g) == -6);
+        last.result = 0;
         sb_enabled = 0;
     }
 

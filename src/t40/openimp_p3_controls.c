@@ -677,6 +677,81 @@ int32_t IMP_ISP_Tuning_GetMask(IMPVI_NUM num, IMPISPMASKAttr *mask)
 }
 #endif
 
+#if !defined(PLATFORM_T41)
+/* T40 IMP_ISP_SetDrawAttr / GetDrawAttr (vendor 1.3.1 libimp 0x83478 /
+ * 0x82f34): IMPISPDrawAttr is 2 ISP output channels x 16 units of 28 bytes
+ * (type at +0, color_type at +4, enable at +8, colour at +18: r g b, then
+ * y u v at +21).  Set: num < 4 (-4), attr (-9), tuning device running (-5);
+ * for every unit of type line/range/window that is enabled with an RGB
+ * colour the YUV bytes are computed in the caller's struct
+ * (IMP_ISP_Tuning_DumpMask), the 896 bytes are kept per input and the
+ * pointer goes to the kernel (control 0x080000a0, -6 on failure).  Get:
+ * state check, ioctl get into the caller's struct (-6), then color_type and
+ * the RGB bytes of every unit come back from the Set copy (the driver hands
+ * back its own YUV form).  Same pattern as SetMask above. */
+#define P3_DRAW_SIZE 896
+#define P3_DRAW_UNIT 28
+#define TISP_CID_DRAW 0x080000a0
+_Static_assert(sizeof(IMPISPDrawAttr) == P3_DRAW_SIZE, "draw attr is 896 bytes");
+_Static_assert(sizeof(IMPISPDrawUnitAttr) == P3_DRAW_UNIT, "draw unit is 28 bytes");
+_Static_assert(offsetof(IMPISPDrawUnitAttr, draw_cfg) + offsetof(IMPISPDrawWindAttr, wind_color) == 18,
+               "draw colour at 18");
+static unsigned char p3_draw_cache[4][P3_DRAW_SIZE];
+
+int32_t IMP_ISP_SetDrawAttr(IMPVI_NUM num, IMPISPDrawAttr *attr)
+{
+    unsigned char *bytes = (unsigned char *)attr;
+    unsigned unit;
+
+    if ((unsigned)num >= 4U)
+        return -4;
+    if (!attr)
+        return -9;
+    if (!OpenIMP_P1_TuningEnabled())
+        return -5;
+    for (unit = 0; unit < 32; unit++) {
+        unsigned char *u = bytes + unit * P3_DRAW_UNIT;
+        uint32_t type, color_type;
+
+        memcpy(&type, u, sizeof(type));
+        memcpy(&color_type, u + 4, sizeof(color_type));
+        if (type <= IMP_ISP_DRAW_WIND && u[8] && color_type == 0) {
+            unsigned char c[3] = { u[18], u[19], u[20] };
+
+            isp_mask_rgb_to_yuv(c);
+            memcpy(u + 21, c, 3);
+        }
+    }
+    memcpy(p3_draw_cache[num], bytes, P3_DRAW_SIZE);
+    if (p3_tuning_pointer(num, 0, TISP_CID_DRAW, attr) != 0)
+        return -6;
+    return 0;
+}
+
+int32_t IMP_ISP_GetDrawAttr(IMPVI_NUM num, IMPISPDrawAttr *attr)
+{
+    unsigned char *bytes = (unsigned char *)attr;
+    unsigned unit;
+
+    if ((unsigned)num >= 4U)
+        return -4;
+    if (!attr)
+        return -9;
+    if (!OpenIMP_P1_TuningEnabled())
+        return -5;
+    if (p3_tuning_pointer(num, 1, TISP_CID_DRAW, attr) != 0)
+        return -6;
+    for (unit = 0; unit < 32; unit++) {
+        unsigned char *u = bytes + unit * P3_DRAW_UNIT;
+        const unsigned char *c = p3_draw_cache[num] + unit * P3_DRAW_UNIT;
+
+        memcpy(u + 4, c + 4, 4);
+        memcpy(u + 18, c + 18, 3);
+    }
+    return 0;
+}
+#endif
+
 #if defined(PLATFORM_T41)
 int32_t IMP_ISP_Tuning_SetSensorFPS(IMPVI_NUM num, IMPISPSensorFps *fps)
 #else
