@@ -21,7 +21,7 @@ ifdef OPENIMP_T23_HELIX_BRIDGE
 export OPENIMP_T23_HELIX_BRIDGE
 endif
 
-.PHONY: all t20 t21 t23 t30 t31 t40 t41 check export-check clean install
+.PHONY: all t20 t21 t23 t30 t31 t40 t41 check export-check release-check clean install
 
 all:
 	./build-for-device.sh $(PLATFORM)
@@ -62,6 +62,10 @@ check:
 # Built libimp.so exports vs vendor export lists vs streamer-used IMP_ names (tools/export-check/README.md)
 export-check:
 	./tools/export-check.sh
+
+# Release gate (slow): make check, build every SoC, export-check in strict mode (tools/release-check.sh)
+release-check:
+	./tools/release-check.sh
 
 clean:
 	$(RM) -r build/t20 build/t21 build/t23 build/t30 build/t31 build/t40 build/t41
