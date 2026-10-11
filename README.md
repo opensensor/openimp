@@ -23,9 +23,9 @@
 OpenIMP is an open replacement for Ingenic's closed `libimp.so` (the IMP video,
 encoder, OSD, IVS and audio API). Together with
 [open-tx-isp](https://github.com/opensensor/open-tx-isp) (the open ISP kernel driver) and a
-streamer such as [timps](https://github.com/Lu-Fi/timps) it forms an open camera stack
+a camera application it forms an open camera stack
 for Ingenic T10, T20, T21, T23, T30, T31, T40 and T41 SoCs. The public API is the
-vendor IMP API, so existing streamers (prudynt, raptor, timps) link against it unchanged.
+vendor IMP API, so existing camera applications link against it unchanged.
 
 The `aperto` branch carries the released open stack (device-test campaign work for
 T10/T20/T21/T23/T31/T41) on top of the original `main` line; see [Branches and releases](#branches-and-releases).
@@ -69,13 +69,13 @@ Only device-tested behaviour is listed as working; everything else is marked as 
 
 ## Where it is better than the vendor stack
 
-Measured on a T20 at night, same scene, same streamer, only libimp and the ISP driver differ:
+Measured on a T20 at night, same scene, same application, only libimp and the ISP driver differ:
 
 | Metric | Vendor | Open |
 |---|---|---|
-| streamer CPU (all threads) | 25.2 % | 10.5 % |
+| application CPU (all threads) | 25.2 % | 10.5 % |
 | snapshot latency (mean of 10) | 0.45 s | 0.20 s |
-| streamer RSS | 6.8 MB | 3.7 MB |
+| application RSS | 6.8 MB | 3.7 MB |
 
 Other points, all device-tested:
 
@@ -87,7 +87,7 @@ Other points, all device-tested:
 - Motion detection v2 (per-cell background model, suppression after IR/gain jumps, bounding boxes and strength through the versioned `OpenIMP_IVS_MoveGetResultEx` API) is on by default; `OPENIMP_MOTION_V2=0` restores the vendor algorithm. Device-tested on T20 and T23 over one night.
 - Memory diagnostics: rmem peak logging and a shortfall message with a concrete `rmem=<n>M` suggestion instead of silent degradation (see the wiki page Memory).
 
-Integration notes for streamer authors, env switches and defaults:
+Integration notes for application authors, env switches and defaults:
 [OPENIMP_BEYOND_VENDOR](docs/OPENIMP_BEYOND_VENDOR.md).
 
 ## Build
@@ -121,7 +121,7 @@ kernel VPU/rmem stability patches
 ([#1748](https://github.com/themactep/thingino-firmware/pull/1748),
 [#1752](https://github.com/themactep/thingino-firmware/pull/1752)) and the optional boot guard
 `BR2_PACKAGE_THINGINO_ISP_GUARD` ([#1749](https://github.com/themactep/thingino-firmware/pull/1749),
-default off) are merged there as well. The streamer is built with `USE_OPENIMP=1` to enable
+default off) are merged there as well. The camera application is built with `USE_OPENIMP=1` to enable
 features that exist only in OpenIMP. Once the first date tag exists on `aperto`, thingino's `aperto` branch will pin that tag instead of a SHA.
 
 ## Branches and releases
@@ -159,7 +159,7 @@ loaded at runtime from `libaudioProcess-neo`. Acoustic echo cancellation uses th
 - [Wiki](https://github.com/opensensor/openimp/wiki): build and install, module parameters, `OPENIMP_*` variables, memory sizing, troubleshooting, release scheme (one wiki for OpenIMP and open-tx-isp).
 - [`docs/FEATURE_MATRIX.md`](docs/FEATURE_MATRIX.md) (also as [`feature-matrix.html`](docs/feature-matrix.html), [rendered](https://htmlpreview.github.io/?https://github.com/opensensor/openimp/blob/aperto/docs/feature-matrix.html)): what works on which SoC.
 - [`docs/OPEN_STACK_CHANGELOG.md`](docs/OPEN_STACK_CHANGELOG.md) and [`CHANGELOG.md`](CHANGELOG.md): history of the open stack.
-- [`docs/OPENIMP_BEYOND_VENDOR.md`](docs/OPENIMP_BEYOND_VENDOR.md) and [`docs/OPENIMP_SOC_DIFFS.md`](docs/OPENIMP_SOC_DIFFS.md): differences to the vendor stack, for streamer authors.
+- [`docs/OPENIMP_BEYOND_VENDOR.md`](docs/OPENIMP_BEYOND_VENDOR.md) and [`docs/OPENIMP_SOC_DIFFS.md`](docs/OPENIMP_SOC_DIFFS.md): differences to the vendor stack, for application authors.
 - [`docs/PERFORMANCE.md`](docs/PERFORMANCE.md): performance and resources, open stack versus vendor stack, per SoC, with sources and caveats.
 - [`docs/test-reports/`](docs/test-reports): raw device test reports.
 - [`docs/re/`](docs/re): reverse-engineering dumps (vendor `libimp.so` HLIL, register traces) used by the RE notes.
@@ -167,7 +167,7 @@ loaded at runtime from `libaudioProcess-neo`. Acoustic echo cancellation uses th
 
 ## Reporting problems
 
-Open an issue at [opensensor/openimp](https://github.com/opensensor/openimp/issues) (library, encoder, streamer integration) or [opensensor/open-tx-isp](https://github.com/opensensor/open-tx-isp/issues) (kernel driver, ISP, memory). Please include the SoC and sensor, the revisions of open-tx-isp, OpenIMP and the streamer, `dmesg`, the streamer log (including the `rmem peak` and "effective rate control" lines), the stream set and the `rmem`/`ispmem` values. Do not post addresses, credentials or location names. Details: [Troubleshooting](https://github.com/opensensor/openimp/wiki/Troubleshooting#reporting-a-problem).
+Open an issue at [opensensor/openimp](https://github.com/opensensor/openimp/issues) (library, encoder, application integration) or [opensensor/open-tx-isp](https://github.com/opensensor/open-tx-isp/issues) (kernel driver, ISP, memory). Please include the SoC and sensor, the revisions of open-tx-isp, OpenIMP and the camera application, `dmesg`, the application log (including the `rmem peak` and "effective rate control" lines), the stream set and the `rmem`/`ispmem` values. Do not post addresses, credentials or location names. Details: [Troubleshooting](https://github.com/opensensor/openimp/wiki/Troubleshooting#reporting-a-problem).
 
 ## Credits
 
