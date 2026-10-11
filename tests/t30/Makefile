@@ -246,7 +246,7 @@ ref_ring_test_t23: ref_ring_test.c $(ROOT)/src/t21/t21_h264_descriptor.c \
 # ISP tuning calls of T20 (T10) and T21 against a fake tuning ioctl.
 ISP_T1X_FLAGS = -Wno-format-security -Wno-unused-result '-D_Static_assert(c,m)=' \
 	-I$(ROOT)/include -I$(ROOT)/src -Wl,--wrap=ioctl
-ISP_T1X_SOURCES := isp_t1x_test.c $(ROOT)/src/isp/isp_tseries.c
+ISP_T1X_SOURCES := isp_t1x_test.c $(ROOT)/src/isp/isp_tseries.c $(ROOT)/src/core/imp_log_emit.c
 
 isp_t1x_test_t20: $(ISP_T1X_SOURCES)
 	$(CC) $(CFLAGS) $(ISP_T1X_FLAGS) -DPLATFORM_T20 -DPLATFORM_T21 -o $@ $(ISP_T1X_SOURCES)
@@ -256,7 +256,7 @@ isp_t1x_test_t21: $(ISP_T1X_SOURCES)
 
 # T31 Enable/DisableMovestate (vendor libimp logic) against a fake tuning ioctl.
 isp_t31_movestate_test: isp_t31_movestate_test.c $(ROOT)/src/isp/isp_tseries.c
-	$(CC) $(CFLAGS) $(ISP_T1X_FLAGS) -DPLATFORM_T31 -o $@ isp_t31_movestate_test.c $(ROOT)/src/isp/isp_tseries.c -lpthread
+	$(CC) $(CFLAGS) $(ISP_T1X_FLAGS) -DPLATFORM_T31 -o $@ isp_t31_movestate_test.c $(ROOT)/src/isp/isp_tseries.c $(ROOT)/src/core/imp_log_emit.c -lpthread
 
 # Encoder channel extras of T20 (T10) and T21 through the P2 API, stub codec.
 P2_T1X_SOURCES := p2_t1x_test.c $(ROOT)/src/t40/openimp_p2_encoder.c \
@@ -366,17 +366,17 @@ osd_attach_test: osd_attach_test.c $(ROOT)/src/t31/openimp_t31_services.c
 isp_gap_test_t21: isp_gap_test.c $(ROOT)/src/isp/isp_tseries.c
 	$(CC) $(CFLAGS) -Wno-format-security -Wno-unused-result '-D_Static_assert(c,m)=' \
 		-I$(ROOT)/include -I$(ROOT)/src -Wl,--wrap=ioctl -DPLATFORM_T21 -o $@ \
-		isp_gap_test.c $(ROOT)/src/isp/isp_tseries.c -lpthread
+		isp_gap_test.c $(ROOT)/src/isp/isp_tseries.c $(ROOT)/src/core/imp_log_emit.c -lpthread
 
 isp_gap_test_t20: isp_gap_test.c $(ROOT)/src/isp/isp_tseries.c
 	$(CC) $(CFLAGS) -Wno-format-security -Wno-unused-result '-D_Static_assert(c,m)=' \
 		-I$(ROOT)/include -I$(ROOT)/src -Wl,--wrap=ioctl -DPLATFORM_T20 -DPLATFORM_T21 -o $@ \
-		isp_gap_test.c $(ROOT)/src/isp/isp_tseries.c -lpthread
+		isp_gap_test.c $(ROOT)/src/isp/isp_tseries.c $(ROOT)/src/core/imp_log_emit.c -lpthread
 
 isp_gap_test_t30: isp_gap_test.c $(ROOT)/src/isp/isp_tseries.c
 	$(CC) $(CFLAGS) -Wno-format-security -Wno-unused-result '-D_Static_assert(c,m)=' \
 		-I$(ROOT)/include -I$(ROOT)/src -Wl,--wrap=ioctl -DPLATFORM_T30 -o $@ \
-		isp_gap_test.c $(ROOT)/src/isp/isp_tseries.c -lpthread
+		isp_gap_test.c $(ROOT)/src/isp/isp_tseries.c $(ROOT)/src/core/imp_log_emit.c -lpthread
 
 # T30 DMIC (the T31 implementation) against a fake /dev/dsp.
 dmic_t30_test: dmic_t30_test.c $(ROOT)/src/t31/openimp_t31_dmic.c

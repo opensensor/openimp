@@ -36,6 +36,9 @@ base_flags="-std=gnu99 -O2 -mabi=32 -march=mips32r2 -mabicalls"
 base_flags="$base_flags -fPIC -G0 -fno-stack-protector -DPLATFORM_T23"
 # Rootfs size: per-function/-datum sections so the link can drop what is unreferenced.
 base_flags="$base_flags -ffunction-sections -fdata-sections"
+# OPENIMP_DEBUG=1 keeps LOG_DEBUG and the developer traces (default 0: compiled out).
+case "${OPENIMP_DEBUG:-0}" in 0|1) ;; *) echo "OPENIMP_DEBUG must be 0 or 1" >&2; exit 1 ;; esac
+base_flags="$base_flags -DOPENIMP_DEBUG=${OPENIMP_DEBUG:-0}"
 # JPEG runs on the Helix VPU (src/t30/helix_jpeg.c).  OPENIMP_SW_JPEG=1 also
 # builds the software baseline encoder in, as a fallback for pictures the VPU
 # cannot take and for OPENIMP_HELIX_HW_JPEG=0 at run time; the default leaves
@@ -92,6 +95,7 @@ compile core_device src/core/device.c
 compile core_group src/core/group.c
 compile core_module src/core/module.c
 compile core_imp_log src/core/imp_log.c -Werror
+compile core_imp_log_emit src/core/imp_log_emit.c -Werror
 compile core_video_drop src/core/video_drop.c -Werror
 compile framesource src/framesource/framesource_tseries.c
 compile isp src/isp/isp_tseries.c
@@ -151,6 +155,7 @@ compile t23_helix_jpeg src/t30/helix_jpeg.c -Werror
     "$output_dir/core_group.o" \
     "$output_dir/core_module.o" \
     "$output_dir/core_imp_log.o" \
+    "$output_dir/core_imp_log_emit.o" \
     "$output_dir/core_video_drop.o" \
     "$output_dir/framesource.o" \
     "$output_dir/isp.o" \
@@ -202,7 +207,7 @@ compile t23_helix_jpeg src/t30/helix_jpeg.c -Werror
     "$output_dir/t23_h264_set.o" "$output_dir/t23_h264_slice.o" \
     "$output_dir/t23_rate_control.o" "$output_dir/t23_eprc.o" \
     "$output_dir/t23_eprc_mbrc.o" \
-    "$output_dir/dma_alloc.o" \
+    "$output_dir/dma_alloc.o" "$output_dir/core_imp_log_emit.o" \
     -lpthread -lm -o "$output_dir/openimp-t23-helix-selftest"
 "$stripper" --strip-unneeded "$output_dir/openimp-t23-helix-selftest"
 

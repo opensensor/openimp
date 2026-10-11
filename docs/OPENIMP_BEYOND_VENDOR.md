@@ -272,7 +272,7 @@ set in production.
 | `OPENIMP_EPRC_QP_DOWN1` | `1` / `2` enables the eprc QP-down limit; built, device test pending | off | user-facing (opt-in) |
 | `OPENIMP_MOTION_V2` (+ `_BG`, `_SUPPRESS`, `_BLOBS`, `_OVERRIDE`, parameters) | motion v2, section 4.1; `0`/`off`/`vendor` = vendor algorithm; `shadow` = analysis without changing `retRoi` | on | user-facing |
 | `OPENIMP_MOTION_V2_LOG` | `1` logs every vendor / v2 decision change (A/B) | off | debug-only |
-| `OPENIMP_LOG_LEVEL` | `0`..`7` (syslog numbering, `3` error, `4` warning, `5` notice, `6` info, `7` debug): `IMP_LOG` lines above the level are dropped from syslog and stderr. Default `5` = notice: errors, warnings and the one-shot status lines (encoder ready, rate-control core, HWJPEG on/off, ISP driver) are visible, per-frame INFO (per-IDR rate-control line, HWJPEG counter, rmem peak) is silent. `6`/`7` or `OPENIMP_DEBUG_TRACE=1` for verbose. Cached once per process (no `getenv` per call); `imp_log_fun` is unchanged | `5` | user-facing |
+| `OPENIMP_LOG_LEVEL` | `0`..`7` (syslog numbering, `3` error, `4` warning, `5` notice, `6` info, `7` debug): `IMP_LOG` lines above the level are dropped from syslog and stderr. Default `5` = notice: errors, warnings and the one-shot status lines (encoder ready, rate-control core, HWJPEG on/off, ISP driver) are visible, per-frame INFO (per-IDR rate-control line, HWJPEG counter, rmem peak) is silent. `6`/`7` or `OPENIMP_DEBUG_TRACE=1` for verbose. Read once into a global int by a constructor (the call site is one compare; formatting, syslog and stderr are one out-of-line function, no `getenv` or `openlog` per call site); `imp_log_fun` is unchanged | `5` | user-facing |
 | `OPENIMP_LOG_SYSLOG` | `1` also logs to syslog | off | user-facing |
 | `OPENIMP_PROFILE`, `OPENIMP_PROFILE_INTERVAL` | `1` enables a periodic profile report; interval in completed frames (docs/PROFILING.md) | off | debug-only |
 | `OPENIMP_T31_VBR_LOOP` | `0` forces open-loop VBR on T31 | on (closed loop) | debug-only |
@@ -280,7 +280,7 @@ set in production.
 | `OPENIMP_T31_COMPANION_STAGE` | `0` skips the AVPU JPEG companion core per H.264 frame (only relevant with software JPEG) | on | debug-only |
 | `OPENIMP_T31_HW_JPEG_SRC_COHERENT` | `1` puts the JPEG source in coherent memory (A/B) | off | debug-only |
 | `OPENIMP_RMEM_NO_REUSE` | `1` restores the old rmem behaviour (no reuse) | off | debug-only |
-| `OPENIMP_DEBUG_TRACE` | per-frame detail trace (very verbose) | off | debug-only |
+| `OPENIMP_DEBUG_TRACE` | per-frame detail trace (very verbose); the traces exist only in a build with `OPENIMP_DEBUG=1` (see below), in a release build it only raises the log level to 7 | off | debug-only |
 | `OPENIMP_T31_IVS_STATS`, `OPENIMP_AEC_STATS`, `OPENIMP_SOURCE_STATS`, `OPENIMP_T31_FULL_FRAME_STATS`, `OPENIMP_T23_RC_STATS` | periodic statistics output | off | debug-only |
 | `OPENIMP_T31_DUMP_SOURCE_DIR` | dump source frames to a directory | off | debug-only |
 | `OPENIMP_T23_HELIX_BSF` | `1` hard bitstream limit; needs a patched kernel, device test open | off | debug-only |
@@ -289,6 +289,19 @@ set in production.
 Further `OPENIMP_*` knobs exist in the source. The rmem, reference-sharing tuning, startup-trace, Helix SoC/timeout
 and per-SoC statistics variables are listed in the wiki page "Environment variables"; the remaining bring-up/trace
 switches (`P1_*`, `P2_*`, ...) are not described anywhere; treat them as internal.
+
+### 7.1 Build-time switch `OPENIMP_DEBUG`
+
+`OPENIMP_DEBUG=0` (default) builds a release `libimp.so`: `LOG_DEBUG` lines and the pure developer traces (the
+`OPENIMP_DEBUG_TRACE` bench and `/dev/kmsg` probes, `OPENIMP_STARTUP_TRACE`, the per-frame stderr helpers, the
+`LOG_CODEC`/`LOG_HW`/`LOG_DMA` codec traces, the ISP `kmsg_trace`) are compiled to nothing, code and strings.
+`INFO`, `NOTICE`, `WARN` and `ERR` stay in every build; INFO is silent by default through `OPENIMP_LOG_LEVEL`.
+`OPENIMP_DEBUG=1` builds everything, switched at run time by the variables above.
+
+    make t31 OPENIMP_DEBUG=1          # or: OPENIMP_DEBUG=1 ./build-t31.sh   (T20..T41, same for all)
+
+A firmware package passes the same variable to the build (`OPENIMP_DEBUG=1` in the package's make environment),
+for a debug image; the default image carries the release build.
 
 ## 8. Unverified or not yet in this list
 

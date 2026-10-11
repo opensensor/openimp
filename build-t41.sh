@@ -76,6 +76,9 @@ base_flags="-std=gnu99 -O2 -mabi=32 -march=mips32r2 -mabicalls"
 base_flags="$base_flags -fPIC -G0 -fno-stack-protector -DPLATFORM_T41"
 # Rootfs size: per-function/-datum sections so the link can drop what is unreferenced.
 base_flags="$base_flags -ffunction-sections -fdata-sections"
+# OPENIMP_DEBUG=1 keeps LOG_DEBUG and the developer traces (default 0: compiled out).
+case "${OPENIMP_DEBUG:-0}" in 0|1) ;; *) echo "OPENIMP_DEBUG must be 0 or 1" >&2; exit 1 ;; esac
+base_flags="$base_flags -DOPENIMP_DEBUG=${OPENIMP_DEBUG:-0}"
 strict_flags="$base_flags -Wall -Wextra -Werror"
 repo_includes="-I$project_dir/include -I$project_dir/src"
 
@@ -96,6 +99,11 @@ do
         -c "$project_dir/src/t40/$source.c" \
         -o "$output_dir/$source.o"
 done
+
+# IMP_LOG back end
+"$compiler" $strict_flags $repo_includes \
+    -c "$project_dir/src/core/imp_log_emit.c" \
+    -o "$output_dir/core_imp_log_emit.o"
 
 # IMP_ISP_Tuning_SetVideoDrop monitor
 "$compiler" $strict_flags $repo_includes \
@@ -149,6 +157,7 @@ done
     -Wl,--version-script="$project_dir/src/t40/libimp.map" \
     -o "$output_dir/libimp.so" \
     "$output_dir/openimp_p0.o" \
+    "$output_dir/core_imp_log_emit.o" \
     "$output_dir/core_video_drop.o" \
     "$output_dir/openimp_profile.o" \
     "$output_dir/openimp_tuning.o" \

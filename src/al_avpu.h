@@ -31,12 +31,17 @@
 /* Frame-level rate control (the OEM Allegro core and the OpenIMP
  * controller): T31, and T40 whose OEM libimp drives the same AVPU with the
  * same Allegro lib_rate_ctrl.  Without it T40 ran one open-loop QP. */
-#if defined(PLATFORM_T31) || defined(PLATFORM_T40)
+/* Never on T41: its ALAvpuContext layout (HWRC) differs, so a TU that saw
+ * OPENIMP_AL_FRAME_RC and one that did not would disagree on the struct. */
+#if (defined(PLATFORM_T31) || defined(PLATFORM_T40)) && !defined(PLATFORM_T41)
 #define OPENIMP_AL_FRAME_RC 1
 #include "t40/t31_rate_control.h"
 #include "t40/t31_al_rc.h"
 #endif
 #if defined(PLATFORM_T41)
+#if defined(OPENIMP_AL_FRAME_RC)
+#error "OPENIMP_AL_FRAME_RC must not be defined on T41 (ALAvpuContext layout)"
+#endif
 #include "t40/t41_hw_rate_control.h"
 #include "t40/t41_rate_control.h"
 #endif

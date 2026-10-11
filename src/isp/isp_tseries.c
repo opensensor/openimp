@@ -113,8 +113,13 @@ static IMPISPTemperDenoiseAttr tseries_temper_dns = {
 int IMP_ISP_Tuning_SetContrast_internal(uint32_t arg1, int32_t arg2);
 int IMP_ISP_Tuning_SetSharpness_internal(uint32_t arg1, int32_t arg2);
 
-/* Early forward decl for the kmsg trace helper (defined later in file). */
-static void kmsg_trace(const char *fmt, ...);
+/* Early forward decl for the kmsg trace helper (defined later in file).
+ * A developer trace: compiled out of a release build (OPENIMP_DEBUG=0). */
+static void kmsg_trace_impl(const char *fmt, ...);
+#define kmsg_trace(...) do {                                      \
+    if (OPENIMP_DEBUG)                                            \
+        kmsg_trace_impl(__VA_ARGS__);                             \
+} while (0)
 
 int IMP_ISP_Open(void)
 {
@@ -5068,7 +5073,7 @@ int IMP_ISP_DelSensor(IMPSensorInfo *pinfo)
 /* Diagnostic trace — writes to /dev/kmsg which ALWAYS appears in `dmesg`.
  * Stock libsysutils' imp_log_fun routes to a sink we can't see, and rvd
  * doesn't capture stderr, so /dev/kmsg is the only reliable debug path. */
-static void kmsg_trace(const char *fmt, ...)
+static void kmsg_trace_impl(const char *fmt, ...)
 {
     static int kfd = -2;
     char buf[256];
@@ -5085,7 +5090,7 @@ static void kmsg_trace(const char *fmt, ...)
 #if defined(PLATFORM_T23)
     openimp_t23_persist_write(buf, (size_t)n);
 #endif
-    if (getenv("OPENIMP_STARTUP_TRACE")) {
+    if (openimp_startup_trace_enabled()) {
         write(STDERR_FILENO, buf, (size_t)n);
         fsync(STDERR_FILENO);
     }

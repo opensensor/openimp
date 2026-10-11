@@ -1,6 +1,7 @@
 /* IMP_LOG level gate (imp_log_int.h): default LOG_WARNING, OPENIMP_LOG_LEVEL
- * override, OPENIMP_DEBUG_TRACE = everything.  The level is cached per
- * process, so each case runs in a forked child with its own environment. */
+ * override, OPENIMP_DEBUG_TRACE = everything.  The level is set once per
+ * process, so each case runs in a forked child with its own environment. Built
+ * twice: release (LOG_DEBUG compiled out) and -DOPENIMP_DEBUG=1. */
 #include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -9,6 +10,9 @@
 #include <unistd.h>
 
 #include "imp_log_int.h"
+
+/* lines of emit_all() at level 7: the LOG_DEBUG one exists only with OPENIMP_DEBUG=1 */
+#define ALL (5 + (OPENIMP_DEBUG ? 1 : 0))
 
 static void emit_all(void)
 {
@@ -37,6 +41,7 @@ static int run_case(const char *level, const char *trace)
         else unsetenv("OPENIMP_LOG_LEVEL");
         if (trace) setenv("OPENIMP_DEBUG_TRACE", trace, 1);
         else unsetenv("OPENIMP_DEBUG_TRACE");
+        imp_log_level_reload();
         dup2(fd, 2);
         emit_all();
         fflush(stderr);
@@ -77,10 +82,10 @@ int main(void)
     assert(run_case("4", NULL) == 2);
     assert(run_case("5", NULL) == 3);
     assert(run_case("6", NULL) == 5);          /* + INFO, also IMP_LOG_INFO */
-    assert(run_case("7", NULL) == 6);
+    assert(run_case("7", NULL) == ALL);
     /* OPENIMP_DEBUG_TRACE wins over a lower level, like before the knob */
-    assert(run_case(NULL, "1") == 6);
-    assert(run_case("3", "1") == 6);
+    assert(run_case(NULL, "1") == ALL);
+    assert(run_case("3", "1") == ALL);
 
     printf("log_level_test: ok\n");
     return 0;

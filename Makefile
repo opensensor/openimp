@@ -5,6 +5,11 @@ PLATFORM ?= T31
 ifdef OPENIMP_SW_JPEG
 export OPENIMP_SW_JPEG
 endif
+# OPENIMP_DEBUG=1 (make t31 OPENIMP_DEBUG=1) keeps LOG_DEBUG and the developer
+# traces in the build; default 0 compiles them out (smaller libimp.so).
+ifdef OPENIMP_DEBUG
+export OPENIMP_DEBUG
+endif
 
 .PHONY: all t20 t21 t23 t30 t31 t40 t41 check clean install
 

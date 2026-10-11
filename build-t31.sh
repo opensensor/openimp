@@ -33,6 +33,9 @@ base_flags="-std=gnu99 -O2 -mabi=32 -march=mips32r2 -mabicalls"
 base_flags="$base_flags -fPIC -G0 -fno-stack-protector -DPLATFORM_T31"
 # Rootfs size: per-function/-datum sections so the link can drop what is unreferenced.
 base_flags="$base_flags -ffunction-sections -fdata-sections"
+# OPENIMP_DEBUG=1 keeps LOG_DEBUG and the developer traces (default 0: compiled out).
+case "${OPENIMP_DEBUG:-0}" in 0|1) ;; *) echo "OPENIMP_DEBUG must be 0 or 1" >&2; exit 1 ;; esac
+base_flags="$base_flags -DOPENIMP_DEBUG=${OPENIMP_DEBUG:-0}"
 repo_includes="-I$project_dir/include -I$project_dir/src"
 
 compile()
@@ -71,6 +74,7 @@ compile core_device src/core/device.c
 compile core_group src/core/group.c
 compile core_module src/core/module.c
 compile core_imp_log src/core/imp_log.c -Werror
+compile core_imp_log_emit src/core/imp_log_emit.c -Werror
 compile core_video_drop src/core/video_drop.c -Werror
 compile framesource src/framesource/framesource_tseries.c
 compile nv12_rotate src/framesource/nv12_rotate.c -Werror
@@ -115,6 +119,7 @@ compile t31_extras src/t31/openimp_t31_extras.c -Werror
     "$output_dir/core_group.o" \
     "$output_dir/core_module.o" \
     "$output_dir/core_imp_log.o" \
+    "$output_dir/core_imp_log_emit.o" \
     "$output_dir/core_video_drop.o" \
     "$output_dir/framesource.o" \
     "$output_dir/nv12_rotate.o" \

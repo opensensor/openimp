@@ -28,6 +28,12 @@
 #include "hw_encoder.h"
 
 #include "al_avpu.h"
+
+/* T41 uses the HWRC context layout: OPENIMP_AL_FRAME_RC (set only by
+ * al_avpu.h for T31/T40) must not exist here, whatever the include order. */
+#if defined(PLATFORM_T41) && defined(OPENIMP_AL_FRAME_RC)
+#error "OPENIMP_AL_FRAME_RC on T41: ALAvpuContext layout mismatch between TUs"
+#endif
 #include "device_pool.h"
 #include "dma_alloc.h"
 #include "imp_log_int.h"
