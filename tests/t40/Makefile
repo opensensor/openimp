@@ -124,6 +124,14 @@ vendor-cmd:
 		-o $(PROJECT_DIR)/build/tests/t40-vendor-cmd-test
 	$(PROJECT_DIR)/build/tests/t40-vendor-cmd-test
 
+.PHONY: fs-hold
+fs-hold:
+	mkdir -p $(PROJECT_DIR)/build/tests
+	$(CC) -std=gnu99 -O2 -w -DPLATFORM_T40 -I$(PROJECT_DIR)/include -I$(PROJECT_DIR)/src \
+		framesource_hold_test.c $(PROJECT_DIR)/src/openimp_profile.c -pthread \
+		-o $(PROJECT_DIR)/build/tests/t40-fs-hold-test
+	$(PROJECT_DIR)/build/tests/t40-fs-hold-test
+
 .PHONY: frame-rc
 frame-rc:
 	mkdir -p $(PROJECT_DIR)/build/tests

@@ -1767,6 +1767,30 @@ int IMP_FrameSource_GetFrame(int channel, IMPFrameInfo **frame)
          * edge and hold a 30 fps channel near 15 fps.  A short bounded DQBUF
          * retry keeps buffer ownership tied to the actual frame channel.
          */
+        /* All buffers held by callers (none queued to the driver): a DQBUF
+         * on the blocking channel fd would sleep in the kernel until a
+         * buffer returns -- forever if the holder is this very thread,
+         * and unkillable.  Wait here, bounded by the attempt limit, and
+         * let the caller see -1 instead. */
+        {
+            uint32_t qi, any = 0;
+
+            lock_p1();
+            if (!chn->enabled) {
+                unlock_p1();
+                openimp_profile_end(OPENIMP_PROFILE_FRAME_SOURCE_WAIT,
+                                    wait_profile);
+                return -1;
+            }
+            for (qi = 0; qi < chn->buffer_count; qi++)
+                if (chn->buffers[qi].queued)
+                    any = 1;
+            unlock_p1();
+            if (!any) {
+                usleep(1000);
+                continue;
+            }
+        }
         memset(words, 0, sizeof(words));
         words[1] = TISP_BUF_TYPE_VIDEO_CAPTURE;
         words[12] = TISP_MEMORY_USERPTR;

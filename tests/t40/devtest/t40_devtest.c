@@ -297,16 +297,6 @@ int main(int argc, char **argv)
         if (rgf0 == 0 && f) IMP_FrameSource_ReleaseFrame(CH, f);
         IMP_FrameSource_SetFrameDepth(CH, 2);
         R("FrameSource_Get/SetFrameDepth(GetFrame)", OK(rgf2 == 0), "depth2 GetFrame rc=%d; depth0 GetFrame rc=%d after %.2f s", rgf2, rgf0, t1);
-        /* depth N holds at most N frames */
-        {
-            IMPFrameInfo *h[6]; int got = 0, rr;
-            IMP_FrameSource_SetFrameDepth(CH, 3);
-            usleep(500000);
-            for (i = 0; i < 3; i++) { rr = IMP_FrameSource_GetFrame(CH, &h[got]); if (rr == 0) got++; else break; }
-            printf("  depth3: got %d frames without release \n", got); /* a 4th GetFrame blocks forever in OpenIMP: not exercised */
-            for (i = 0; i < got; i++) IMP_FrameSource_ReleaseFrame(CH, h[i]);
-            IMP_FrameSource_SetFrameDepth(CH, 2);
-        }
     }
 
     if (mask & 2) {
