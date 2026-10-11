@@ -55,6 +55,79 @@ static int superfrm_check(void)
     return !(again[0] >= 90 && again[1] == 1 && big[1] == 1);
 }
 
+/* Application max QP.  The OEM controller lifts the QP cap from max QP to
+ * new max QP (default 51) while a GOP uses more than trig x its budget, so a
+ * starved stream reaches 51 whatever the max QP is (the stock libimp
+ * does the same); IMP_Encoder_SetChnRcTrigLevel(chn, trig, maxQp) makes max
+ * QP a hard cap.  method: i264e 1 CBR, 2 VBR, 3 SMART. */
+static int maxqp_run(uint32_t method, uint32_t maxq, uint32_t newmax,
+                     uint32_t kbps, unsigned *qmax)
+{
+    RcT10Params p;
+    RcT10 rc;
+    RcT10Picture pic;
+    RcT10Stats st;
+    int i;
+
+    RCT10_DefaultParams(&p);
+    p.method = method;
+    p.width = 640;
+    p.height = 360;
+    p.gop = 50;
+    p.fps_num = 25;
+    p.fps_den = 1;
+    p.min_qp = 20;
+    p.max_qp = maxq;
+    p.new_max_qp = newmax;
+    p.bitrate = kbps;
+    p.max_bitrate = kbps < 128 ? 128 : kbps;
+    if (RCT10_Init(&rc, &p) != 0)
+        return -1;
+    *qmax = 0;
+    for (i = 0; i < 400; i++) {
+        RCT10_Start(&rc, i % 50 == 0, &pic);
+        st.cmpx = 100000u;
+        /* a picture needs more bits at a lower QP: 1.12^(QP0 - QP) */
+        {
+            double scale = 1.0;
+            int q;
+
+            for (q = pic.qp; q < 40; q++)
+                scale *= 1.12;
+            for (q = 40; q < pic.qp; q++)
+                scale /= 1.12;
+            st.bits = (uint32_t)((i % 50 == 0 ? 60000.0 : 9000.0) * scale);
+        }
+        if (pic.qp > *qmax)
+            *qmax = pic.qp;
+        if (RCT10_End(&rc, &st, &pic) == 1) {
+            if (pic.qp > *qmax)
+                *qmax = pic.qp;
+            RCT10_End(&rc, &st, &pic);
+        }
+    }
+    return 0;
+}
+
+static int maxqp_check(void)
+{
+    unsigned lift, hard, ok;
+    uint32_t m;
+
+    for (m = 1; m <= 3; m++) {
+        /* 16 kbit/s on 640x360: far below what max QP 28 can code */
+        if (maxqp_run(m, 28, 51, 16, &lift) || maxqp_run(m, 28, 28, 16, &hard)
+            || maxqp_run(m, 28, 51, 1500, &ok))
+            return 1;
+        printf("rc_t10 maxqp method %u: starved max 28 -> QP %u, "
+               "new max 28 -> QP %u, reachable target -> QP %u\n", m, lift,
+               hard, ok);
+        if (lift <= 28 || hard > 28 || ok > 28)
+            return 1;
+    }
+    return 0;
+}
+
 int main(int argc, char **argv)
 {
     const char *path = argc > 1 ? argv[1] : "rc_t10_vectors.txt";
@@ -133,6 +206,10 @@ int main(int argc, char **argv)
     fclose(f);
     printf("rc_t10: %ld decisions of %d scenarios checked, %ld differ\n",
            checked, scenario + 1, failed);
+    if (maxqp_check()) {
+        fprintf(stderr, "rc_t10 max QP check failed\n");
+        return 1;
+    }
     if (superfrm_check()) {
         fprintf(stderr, "rc_t10 superfrm check failed\n");
         return 1;

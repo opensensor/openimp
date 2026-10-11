@@ -608,6 +608,67 @@ static void test_hwrc_ring_initialization(void)
                ring, sizeof(ring) - 1u, 3000000u) == 0u);
 }
 
+/* Run-time SetChnBitRate / SetChnQpBounds: the next picture's command words
+ * carry the new target and range, and the EP3 row thresholds are rebuilt
+ * for the new rate (OEM AL_ApplyNewGOPAndRCParams), history kept. */
+static void test_runtime_rate_change(void)
+{
+    uint32_t a[OPENIMP_T41_CL_SLOT_SIZE / 4u];
+    uint32_t b[OPENIMP_T41_CL_SLOT_SIZE / 4u];
+    OpenIMPT41CommandParams params = {
+        .width = 640, .height = 360, .bitrate = 512000,
+        .fps_num = 25, .fps_den = 1,
+        .min_qp = 20, .picture_qp = 30, .max_qp = 51, .rate_control_qp = 30,
+        .picture_number = 1, .is_idr = 0,
+        .source_y = 0x06b0ad00, .source_uv = 0x06d08d00,
+        .reconstruction_y = 0x0634b200, .reconstruction_uv = 0x0655fa00,
+        .reconstruction_map_luma = 0x06669e00,
+        .reconstruction_map_chroma = 0x0666c000,
+        .reference_y = 0x0634b200, .reference_uv = 0x0655fa00,
+        .reference_map_luma = 0x06669e00, .reference_map_chroma = 0x0666c000,
+        .stream_buffer = 0x066fe700, .stream_part_offset = 0x000e7a80,
+        .ep2 = 0x066f6680, .ep1 = 0x066f0000, .mv_previous = 0x06670700,
+        .mv_current = 0x06670800, .ep3 = 0x06335d00,
+    };
+    uint32_t ring[OPENIMP_T41_EP3_RING_SIZE / 4u];
+    uint32_t fresh[OPENIMP_T41_EP3_RING_SIZE / 4u];
+    size_t slot;
+    size_t hist = OPENIMP_T41_EP3_HISTORY_OFFSET / 4u;
+    size_t level = OPENIMP_T41_EP3_LEVEL_OFFSET / 4u;
+
+    assert(openimp_t41_build_command(a, sizeof(a), &params) == 0);
+    params.bitrate = 143000;        /* SetChnBitRate */
+    params.min_qp = 40;             /* SetChnQpBounds */
+    params.picture_qp = 40;
+    params.rate_control_qp = 40;
+    assert(openimp_t41_build_command(b, sizeof(b), &params) == 0);
+    assert(a[177] != b[177] && a[178] != b[178]);
+    assert(b[177] < a[177] && b[178] < a[178]);
+    assert((a[179] >> 24) == 20u && (b[179] >> 24) == 40u);
+    assert(((b[179] >> 16) & 0xffu) == 40u && ((b[179] >> 8) & 0xffu) == 51u);
+    assert((b[179] & 0xffu) == 40u && (b[24] >> 16 & 0xffu) == 40u);
+
+    assert(openimp_t41_hwrc_ring_init(ring, sizeof(ring), 512000u) != 0u);
+    for (slot = 0; slot < OPENIMP_T41_EP3_SLOT_COUNT; ++slot) {
+        size_t base = slot * OPENIMP_T41_EP3_SLOT_STRIDE / 4u;
+
+        ring[base + hist] = 0xabcd0000u + (uint32_t)slot;   /* hardware */
+        ring[base + level] = 7u;
+    }
+    assert(openimp_t41_hwrc_ring_retarget(ring, sizeof(ring), 143000u) == 0);
+    assert(openimp_t41_hwrc_ring_init(fresh, sizeof(fresh), 143000u) != 0u);
+    for (slot = 0; slot < OPENIMP_T41_EP3_SLOT_COUNT; ++slot) {
+        size_t base = slot * OPENIMP_T41_EP3_SLOT_STRIDE / 4u;
+
+        assert(memcmp(ring + base, fresh + base, 0x400u) == 0);
+        assert(ring[base] != 0u);
+        assert(ring[base + hist] == 0xabcd0000u + (uint32_t)slot);
+        assert(ring[base + level] == 0u);
+    }
+    assert(openimp_t41_hwrc_ring_retarget(NULL, sizeof(ring), 1u) == -1);
+    assert(openimp_t41_hwrc_ring_retarget(ring, 16u, 1u) == -1);
+}
+
 static void test_sparse_command_publish(void)
 {
     uint8_t source[OPENIMP_T41_CL_SLOT_SIZE];
@@ -695,6 +756,7 @@ int main(void)
     test_combined_rate_control_status_oracle();
     test_sparse_command_publish();
     test_hwrc_ring_initialization();
+    test_runtime_rate_change();
     test_hwrc_level_lifecycle();
 
     puts("T41 command layout and builder: OK");

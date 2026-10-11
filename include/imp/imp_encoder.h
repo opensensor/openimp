@@ -1445,6 +1445,11 @@ int IMP_Encoder_SetChnHSkip(int encChn, const IMPEncoderAttrHSkip *attr);
 int IMP_Encoder_GetChnHSkip(int encChn, IMPEncoderAttrHSkip *attr);
 #endif
 
+#if defined(PLATFORM_T20)
+/* T20 3.12.0 (T10 too): trigger level and new max QP of the rate control */
+int IMP_Encoder_SetChnRcTrigLevel(int encChn, float level, int mode);
+#endif
+
 #if defined(PLATFORM_T30) && !defined(PLATFORM_T21) && !defined(PLATFORM_T23)
 /* T30 1.0.5 channel bookkeeping calls (same code as T21 1.0.33) */
 int IMP_Encoder_SetChnHSkipBlackEnhance(int encChn, const int bBlackEnhance);

@@ -1115,6 +1115,23 @@ int openimp_t41_rate_controller_init(OpenIMPT41RateController *controller,
     return 0;
 }
 
+/* A run-time bit rate, frame rate, GOP or QP range change: the OEM applies it
+ * to the running channel (setNewParams) instead of constructing the
+ * controller again, so the picture QP carries on from where it was.  The
+ * models restart on the new target; the QP is clamped into the new range. */
+int openimp_t41_rate_controller_reconfigure(
+    OpenIMPT41RateController *controller, uint32_t bitrate, uint32_t fps_num,
+    uint32_t fps_den, uint32_t gop_length, uint32_t min_qp, uint32_t max_qp,
+    uint32_t default_qp)
+{
+    uint32_t qp = controller && controller->initialized
+        ? controller->current_qp : default_qp;
+
+    return openimp_t41_rate_controller_init(controller, bitrate, fps_num,
+                                            fps_den, gop_length, min_qp,
+                                            max_qp, qp);
+}
+
 int openimp_t41_rate_controller_complete(
     OpenIMPT41RateController *controller, uint32_t completed_bits,
     int is_idr, const OpenIMPT41RateControlFeedback *feedback)

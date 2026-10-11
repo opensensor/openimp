@@ -30,6 +30,9 @@ int IMP_Encoder_SetChnDenoise(int, const IMPEncoderAttrDenoise *);
 int IMP_Encoder_GetChnDenoise(int, IMPEncoderAttrDenoise *);
 int IMP_Encoder_SetMbRC(int, int);
 int IMP_Encoder_SetSuperFrameCfg(int, const IMPEncoderSuperFrmCfg *);
+#if defined(PLATFORM_T20)
+int IMP_Encoder_SetChnRcTrigLevel(int, float, int);
+#endif
 int IMP_Encoder_GetSuperFrameCfg(int, IMPEncoderSuperFrmCfg *);
 int IMP_Encoder_SetH264TransCfg(int, const IMPEncoderH264TransCfg *);
 int IMP_Encoder_SetQpgMode(int, const IMPEncoderQpgMode *);
@@ -105,6 +108,10 @@ int AL_Codec_Encode_SetRoi(void *c, uint32_t i, const uint8_t e[7])
 { (void)c; if (i >= 8u) return -1; roi_calls++; memcpy(roi_entry[i], e, 7); return 0; }
 int AL_Codec_Encode_SetChromaQpOffset(void *c, int o)
 { (void)c; chroma_calls++; chroma_value = o; return 0; }
+static int trig_calls, trig_mode;
+static float trig_level;
+int AL_Codec_Encode_SetRcTrig(void *c, float l, int m)
+{ (void)c; trig_calls++; trig_level = l; trig_mode = m; return 0; }
 int AL_Codec_Encode_SetSuperFrame(void *c, uint32_t m, uint32_t i, uint32_t p)
 { (void)c; sf_calls++; sf_mode = m; sf_i = i; sf_p = p; return 0; }
 
@@ -225,6 +232,16 @@ int main(void)
     sf.superFrmMode = IMP_RC_SUPERFRM_NONE;
     CHECK(IMP_Encoder_SetSuperFrameCfg(0, &sf) == 0);
     CHECK(sf_calls == 0);
+#endif
+
+#if defined(PLATFORM_T20)
+    /* RcTrigLevel: channel >= 6 is -1, a created H.264 channel hands the pair
+     * to the controller (max QP as new max QP = a hard cap) */
+    CHECK(IMP_Encoder_SetChnRcTrigLevel(6, 3.0f, 28) == -1);
+    CHECK(IMP_Encoder_SetChnRcTrigLevel(-1, 3.0f, 28) == -1);
+    CHECK(IMP_Encoder_SetChnRcTrigLevel(0, 2.5f, 28) == 0 && trig_calls == 1 &&
+          trig_level == 2.5f && trig_mode == 28);
+    CHECK(IMP_Encoder_SetChnRcTrigLevel(5, 2.5f, 28) == 0 && trig_calls == 1);
 #endif
 
     /* ROI: the OEM table entry {en, rel, (s8) qp, x0, x1, y0, y1} with the

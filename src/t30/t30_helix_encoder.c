@@ -1972,6 +1972,17 @@ static void t20_rc_start(T30HelixEncoder *encoder)
     if ((int32_t)p.max_bitrate < 128)
         p.max_bitrate = 128u;
     p.qp = hp->qp;
+    if (hp->rc_new_max_qp) {
+        float trig;
+
+        memcpy(&trig, &hp->rc_trig_bits, sizeof(trig));
+        p.new_max_qp_trig = trig;
+        /* the OEM stores the raw pair at run time; a value below the max QP
+         * would wrap the controller's byte difference, so it is raised to
+         * the max QP (no lift) */
+        p.new_max_qp = hp->rc_new_max_qp < p.max_qp ? p.max_qp
+                                                    : hp->rc_new_max_qp;
+    }
     if (app) {
         p.i_bias = (int32_t)t20_rc_clip((uint32_t)hp->bias_level, -3, 3);
         if (runtime) {
@@ -3665,6 +3676,12 @@ int OpenIMP_T30_HelixUpdateParams(T30HelixEncoder *encoder,
      * i264e_ratecontrol_init on a parameter change) */
     if (requested->mb_rc == HW_MBRC_ON || requested->mb_rc == HW_MBRC_OFF)
         next.mb_rc = requested->mb_rc;
+    /* IMP_Encoder_SetChnRcTrigLevel: the trigger and the new max QP of the
+     * OEM controller (restarts it like the other parameters) */
+    if (requested->rc_new_max_qp) {
+        next.rc_trig_bits = requested->rc_trig_bits;
+        next.rc_new_max_qp = requested->rc_new_max_qp;
+    }
     /* IMP_Encoder_SetSuperFrameCfg: new thresholds restart the controller */
     if (requested->super_mode != HW_SUPERFRM_DEFAULT) {
         next.super_mode = requested->super_mode;
