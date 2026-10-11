@@ -928,6 +928,9 @@ static inline uint8_t *avpu_cl_submit_status_ptr(ALAvpuContext *ctx,
 
 static void avpu_log_dma_range(const char *name, const AvpuDMABuf *buf)
 {
+    /* developer diagnostic: compiled out unless OPENIMP_DEBUG=1 */
+    if (!OPENIMP_DEBUG)
+        return;
     uint64_t start;
     uint64_t end;
 
@@ -961,6 +964,9 @@ static int avpu_dma_ranges_overlap(const AvpuDMABuf *a, const AvpuDMABuf *b)
 static void avpu_log_dma_overlap(const char *name_a, const AvpuDMABuf *a,
                                  const char *name_b, const AvpuDMABuf *b)
 {
+    /* developer diagnostic: compiled out unless OPENIMP_DEBUG=1 */
+    if (!OPENIMP_DEBUG)
+        return;
     if (!name_a || !name_b || !a || !b)
         return;
 
@@ -976,6 +982,9 @@ static void avpu_log_dma_overlap(const char *name_a, const AvpuDMABuf *a,
 
 static void avpu_log_dma_layout(ALAvpuContext *ctx)
 {
+    /* developer diagnostic: compiled out unless OPENIMP_DEBUG=1 */
+    if (!OPENIMP_DEBUG)
+        return;
     struct NamedBuf {
         const char *name;
         const AvpuDMABuf *buf;
@@ -4992,6 +5001,9 @@ static void fill_cmd_regs_enc2(const ALAvpuContext *ctx, uint32_t *cmd,
 
 static void log_first_enc2_cmd_window(ALAvpuContext* ctx, uint32_t idx, const uint32_t* cmd)
 {
+    /* developer diagnostic: compiled out unless OPENIMP_DEBUG=1 */
+    if (!OPENIMP_DEBUG)
+        return;
     if (!ctx || !cmd) return;
     if (__sync_lock_test_and_set(&ctx->first_enc2_submit_logged, 1) != 0) return;
 
@@ -5003,6 +5015,9 @@ static void log_first_enc2_cmd_window(ALAvpuContext* ctx, uint32_t idx, const ui
 
 static void log_first_enc1_cmd_window(ALAvpuContext* ctx, uint32_t idx, const uint32_t* cmd)
 {
+    /* developer diagnostic: compiled out unless OPENIMP_DEBUG=1 */
+    if (!OPENIMP_DEBUG)
+        return;
     if (!ctx || !cmd) return;
     if (__sync_lock_test_and_set(&ctx->first_submit_logged, 1) != 0) return;
 
@@ -5059,6 +5074,9 @@ static void log_first_enc1_cmd_window(ALAvpuContext* ctx, uint32_t idx, const ui
 
 static void log_busy_enc1_cmd_window(ALAvpuContext* ctx, uint32_t active_idx, unsigned int skip_count)
 {
+    /* developer diagnostic: compiled out unless OPENIMP_DEBUG=1 */
+    if (!OPENIMP_DEBUG)
+        return;
     if (!ctx || !avpu_cl_ring_base(ctx) || ctx->cl_entry_size == 0 || ctx->cl_count == 0)
         return;
 
@@ -6312,6 +6330,9 @@ static void avpu_end_avc_entropy_callback(void *user_data)
 
 static void avpu_log_gate_regs(ALAvpuContext *ctx, const char *tag)
 {
+    /* developer diagnostic: compiled out unless OPENIMP_DEBUG=1 */
+    if (!OPENIMP_DEBUG)
+        return;
     unsigned int misc_ctrl = 0;
     unsigned int top_ctrl = 0;
     unsigned int axi_off = 0;
@@ -6379,6 +6400,9 @@ static void avpu_probe_reg_write(int fd, const char *tag, unsigned int off, unsi
 
 static void avpu_log_busy_snapshot(ALAvpuContext *ctx, uint32_t idx, unsigned int core_status)
 {
+    /* developer diagnostic: compiled out unless OPENIMP_DEBUG=1 */
+    if (!OPENIMP_DEBUG)
+        return;
     /* Emit every requested stuck-path snapshot. The earlier one-shot guard caused
      * the most useful snapshot to age out of the device ring buffer before the
      * retained logs were collected, leaving only the CL replay lines. */
@@ -6457,6 +6481,9 @@ static void avpu_log_busy_snapshot(ALAvpuContext *ctx, uint32_t idx, unsigned in
 
 static void avpu_log_submit_snapshot(ALAvpuContext *ctx, uint32_t idx, const char *tag)
 {
+    /* developer diagnostic: compiled out unless OPENIMP_DEBUG=1 */
+    if (!OPENIMP_DEBUG)
+        return;
     unsigned int core_status = 0;
     unsigned int irq_mask = 0;
     unsigned int irq_pending = 0;
