@@ -110,6 +110,11 @@ done
     -c "$project_dir/src/core/video_drop.c" \
     -o "$output_dir/core_video_drop.o"
 
+# SU_Base_Shutdown (sync, then the signal busybox init acts on)
+"$compiler" $strict_flags $repo_includes \
+    -c "$project_dir/src/core/su_base_shutdown.c" \
+    -o "$output_dir/core_su_base_shutdown.o"
+
 "$compiler" $base_flags $repo_includes \
     -c "$project_dir/src/alcodec/EncHwScalingList.c" \
     -o "$output_dir/backend-enc-hw-scaling-list.o"
@@ -159,6 +164,7 @@ done
     "$output_dir/openimp_p0.o" \
     "$output_dir/core_imp_log_emit.o" \
     "$output_dir/core_video_drop.o" \
+    "$output_dir/core_su_base_shutdown.o" \
     "$output_dir/openimp_profile.o" \
     "$output_dir/openimp_tuning.o" \
     "$output_dir/openimp_p1.o" \
