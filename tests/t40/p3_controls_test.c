@@ -29,13 +29,15 @@ int OpenIMP_P1_IspIOCtl(uint32_t command, void *argument)
     return ispnode.result;
 }
 
-static struct { uint32_t command; int32_t value; int result; int calls; } opened;
+static struct { uint32_t command; int32_t value; int result; int calls; uint8_t bytes[12]; } opened;
 
 int OpenIMP_P1_IspIOCtlOpened(uint32_t command, void *argument);
 int OpenIMP_P1_IspIOCtlOpened(uint32_t command, void *argument)
 {
     opened.command = command;
     memcpy(&opened.value, argument, 4);
+    if (command == 0xc0045431U)
+        memcpy(opened.bytes, argument, 12);
     opened.calls++;
     if (opened.result)
         errno = opened.result;
@@ -709,6 +711,26 @@ int main(void)
         assert(IMP_ISP_WDR_OPEN(IMPVI_MAIN, &w) == -8);
         opened.result = EIO;
         assert(IMP_ISP_WDR_OPEN(IMPVI_MAIN, &w) == -1);
+        opened.result = 0;
+    }
+
+    /* Bypass_Bind: 12 bytes {num*3+i, enable, vc, dma} x 3, ioctl 0xc0045431 */
+    {
+        IMPISPBypassAttr b;
+        static const uint8_t want[12] = { 3, 1, 2, 1, 4, 0, 0, 0, 5, 1, 3, 0 };
+        int c0 = opened.calls;
+
+        memset(&b, 0, sizeof(b));
+        b.bypass[0].enable = 1; b.bypass[0].vc_index = 2; b.bypass[0].dma_index = 1;
+        b.bypass[2].enable = 1; b.bypass[2].vc_index = 3;
+        assert(IMP_ISP_Bypass_Bind(IMPVI_SEC, &b) == 0);
+        assert(opened.calls == c0 + 1 && opened.command == 0xc0045431U);
+        assert(!memcmp(opened.bytes, want, 12));
+        assert(IMP_ISP_Bypass_Bind((IMPVI_NUM)4, &b) == -4);
+        assert(IMP_ISP_Bypass_Bind(IMPVI_MAIN, NULL) == -9);
+        assert(opened.calls == c0 + 1);
+        opened.result = EIO;
+        assert(IMP_ISP_Bypass_Bind(IMPVI_MAIN, &b) == -1);
         opened.result = 0;
     }
 

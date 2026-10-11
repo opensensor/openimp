@@ -409,6 +409,35 @@ int32_t IMP_ISP_WDR_OPEN(IMPVI_NUM num, IMPISPWdrOpenAttr *attr)
 }
 #endif
 
+#if !defined(PLATFORM_T41)
+/* T40 IMP_ISP_Bypass_Bind (vendor 1.3.1 0x8bacc): num < 4 (-4), ISP
+ * device open (-8), attr (-9); a 12-byte request, per bypass entry i
+ * {num * 3 + i, enable, vc_index, dma_index}, goes to the ISP-device ioctl
+ * 0xc0045431 (-1 if it fails).  Header: after IMP_ISP_Open; not together
+ * with IMP_ISP_Tuning_SetISPBypass. */
+#define TISP_IOCTL_BYPASS_BIND 0xc0045431U
+
+int32_t IMP_ISP_Bypass_Bind(IMPVI_NUM num, IMPISPBypassAttr *attr)
+{
+    uint8_t req[12];
+    unsigned i;
+
+    if ((unsigned)num >= 4U)
+        return -4;
+    if (!attr)
+        return -9;
+    for (i = 0; i < 3U; i++) {
+        req[i * 4U] = (uint8_t)((unsigned)num * 3U + i);
+        req[i * 4U + 1U] = attr->bypass[i].enable;
+        req[i * 4U + 2U] = attr->bypass[i].vc_index;
+        req[i * 4U + 3U] = attr->bypass[i].dma_index;
+    }
+    if (OpenIMP_P1_IspIOCtlOpened(TISP_IOCTL_BYPASS_BIND, req) != 0)
+        return errno == ENODEV ? -8 : -1;
+    return 0;
+}
+#endif
+
 int32_t IMP_ISP_WDR_ENABLE_GET(IMPVI_NUM num, IMPISPTuningOpsMode *mode)
 {
     if (num != IMPVI_MAIN || !mode)
