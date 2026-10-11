@@ -323,6 +323,32 @@ int main(void)
     CHECK(IMP_Encoder_DestroyChn(3) == 0 && IMP_Encoder_DestroyChn(1) == 0 &&
           IMP_Encoder_DestroyChn(2) == 0, "cleanup");
 
+#if defined(PLATFORM_T40)
+    /* T40 1.3.1 Set/GetFisheyeEnableStatus: a flag, settable only while the
+     * channel is not created */
+    {
+        int v = 7;
+
+        CHECK(IMP_Encoder_GetFisheyeEnableStatus(0, &v) == 0 && v == 0,
+              "fisheye default");
+        CHECK(IMP_Encoder_SetFisheyeEnableStatus(0, 5) == 0 &&
+              IMP_Encoder_GetFisheyeEnableStatus(0, &v) == 0 && v == 1,
+              "fisheye on");
+        CHECK(IMP_Encoder_CreateChn(0, &video) == 0, "video CreateChn again");
+        CHECK(IMP_Encoder_SetFisheyeEnableStatus(0, 0) == -1 &&
+              IMP_Encoder_GetFisheyeEnableStatus(0, &v) == 0 && v == 1,
+              "fisheye refused once created");
+        CHECK(IMP_Encoder_DestroyChn(0) == 0, "video DestroyChn again");
+        CHECK(IMP_Encoder_SetFisheyeEnableStatus(0, 0) == 0 &&
+              IMP_Encoder_GetFisheyeEnableStatus(0, &v) == 0 && v == 0,
+              "fisheye off");
+        CHECK(IMP_Encoder_SetFisheyeEnableStatus(-1, 1) == -1 &&
+              IMP_Encoder_SetFisheyeEnableStatus(P2_MAX_CHANNELS, 1) == -1 &&
+              IMP_Encoder_GetFisheyeEnableStatus(0, NULL) == -1,
+              "fisheye argument checks");
+    }
+#endif
+
     if (failures) {
         fprintf(stderr, "p2_bufshare_test: %d FAILED\n", failures);
         return 1;

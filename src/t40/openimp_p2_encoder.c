@@ -326,6 +326,9 @@ typedef struct {
      * shows the run-time clamps (p2_rc_readback.h) */
     int rc_runtime;
 #endif
+#if defined(PLATFORM_T40)
+    int fisheye;                    /* IMP_Encoder_Set/GetFisheyeEnableStatus */
+#endif
     uint64_t next_frame_due_us;
     uint64_t output_timestamp_us;
     /* IMP_Encoder_GetChnAveBitrate window, as the vendor keeps per channel */
@@ -5111,6 +5114,38 @@ int IMP_Encoder_GetQpgMode(int channel, IMPEncoderQpgMode *mode)
     pthread_mutex_unlock(&ch->lock);
     return 0;
 #endif
+}
+#endif
+
+#if defined(PLATFORM_T40)
+/* Vendor T40 1.3.1 (0x6bd44 / 0x6be40): a flag in the channel record, settable
+ * only while the channel is not created (-1 afterwards); valid channels are
+ * 0..12.  Its only reader is the vendor's fisheye motion search. */
+int IMP_Encoder_SetFisheyeEnableStatus(int channel, int enable)
+{
+    int ret = -1;
+
+    if (!p2_valid_channel(channel))
+        return -1;
+    EncoderInit();
+    pthread_mutex_lock(&p2_channels[channel].lock);
+    if (!p2_channels[channel].created) {
+        p2_channels[channel].fisheye = enable != 0;
+        ret = 0;
+    }
+    pthread_mutex_unlock(&p2_channels[channel].lock);
+    return ret;
+}
+
+int IMP_Encoder_GetFisheyeEnableStatus(int channel, int *enable)
+{
+    if (!p2_valid_channel(channel) || !enable)
+        return -1;
+    EncoderInit();
+    pthread_mutex_lock(&p2_channels[channel].lock);
+    *enable = p2_channels[channel].fisheye != 0;
+    pthread_mutex_unlock(&p2_channels[channel].lock);
+    return 0;
 }
 #endif
 
