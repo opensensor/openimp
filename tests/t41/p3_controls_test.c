@@ -78,8 +78,10 @@ int OpenIMP_P1_TuningIOCtl(uint32_t command, void *argument)
     last.calls++;
     if (request->control == 0x080000a5)
         memcpy(&sb_seen, (const void *)request->payload, sizeof(sb_seen) > 132 ? 132 : sizeof(sb_seen));
-    if (request->control == 0x08000080 || request->control == 0x08000096) {
-        size_t n = request->control == 0x08000080 ? 40 : 92;
+    if (request->control == 0x08000080 || request->control == 0x08000096 ||
+        request->control == 0x08000074) {
+        size_t n = request->control == 0x08000080 ? 40 :
+                   request->control == 0x08000074 ? 24 : 92;
 
         if (request->direction)
             memcpy((void *)request->payload, last.reply, n);
@@ -222,9 +224,69 @@ int main(void)
     EXPECT(IMP_ISP_Tuning_GetAeWeight(IMPVI_MAIN, &weight), 1, 0x08000021, &weight);
     EXPECT(IMP_ISP_Tuning_Awb_SetRgbCoefft(IMPVI_MAIN, &coefft), 0, 0x08000098, &coefft);
     EXPECT(IMP_ISP_Tuning_Awb_GetRgbCoefft(IMPVI_MAIN, &coefft), 1, 0x08000098, &coefft);
-    /* The driver refuses these (MSCA, no open path): -EOPNOTSUPP. */
+    /* MSCA controls (open-tx-isp claude/t41-zoom-mask): pointer pass-through
+     * of the 24-byte mask block and the 12-byte scaler level. */
+    assert(sizeof(IMPISPMaskBlockAttr) == 24);
+    assert(sizeof(IMPISPScalerLvAttr) == 12);
+    assert(sizeof(IMPISPAutoZoom) == 60);
+    memset(&mask, 0, sizeof(mask));
+    memset(&scaler, 0, sizeof(scaler));
+    memset(&zoom, 0, sizeof(zoom));
     EXPECT(IMP_ISP_Tuning_SetMaskBlock(IMPVI_MAIN, &mask), 0, 0x08000074, &mask);
     EXPECT(IMP_ISP_Tuning_SetScalerLv(IMPVI_MAIN, &scaler), 0, 0x080000a6, &scaler);
+    EXPECT(IMP_ISP_Tuning_GetAutoZoom(IMPVI_MAIN, &zoom), 1, 0x08000077, &zoom);
+    {
+        /* vendor 1.2.6: enabled RGB block -> YUV in place (BT.601 full,
+         * IMP_ISP_Tuning_DumpMask), argb kept; the kernel gets ayuv. */
+        mask.chx = 1;
+        mask.pinum = 2;
+        mask.mask_en = 1;
+        mask.mask_pos_top = 100;
+        mask.mask_pos_left = 200;
+        mask.mask_width = 64;
+        mask.mask_height = 32;
+        mask.mask_type = IMPISP_MASK_TYPE_RGB;
+        mask.mask_value.argb.r_value = 255;
+        mask.mask_value.argb.g_value = 0;
+        mask.mask_value.argb.b_value = 0;
+        EXPECT(IMP_ISP_Tuning_SetMaskBlock(IMPVI_MAIN, &mask), 0, 0x08000074, &mask);
+        assert(mask.mask_value.ayuv.y_value == 76);
+        assert(mask.mask_value.ayuv.u_value == 84);
+        assert(mask.mask_value.ayuv.v_value == 255);
+        assert(mask.mask_value.argb.r_value == 255 && mask.mask_value.argb.g_value == 0);
+        /* kernel wire: chx, pinum, en, pad, top, left, w, h, type, rgb, yuv */
+        assert(last.data[0] == 1 && last.data[1] == 2 && last.data[2] == 1);
+        assert(last.data[4] == 100 && last.data[6] == 200 && last.data[8] == 64 && last.data[10] == 32);
+        assert(last.data[16] == 255 && last.data[19] == 76 && last.data[20] == 84 && last.data[21] == 255);
+        /* a YUV block and a disabled RGB block are passed unchanged */
+        mask.mask_type = IMPISP_MASK_TYPE_YUV;
+        mask.mask_value.ayuv.y_value = 16;
+        assert(IMP_ISP_Tuning_SetMaskBlock(IMPVI_MAIN, &mask) == 0);
+        assert(mask.mask_value.ayuv.y_value == 16 && last.data[19] == 16);
+        mask.mask_type = IMPISP_MASK_TYPE_RGB;
+        mask.mask_en = 0;
+        mask.mask_value.ayuv.y_value = 17;
+        assert(IMP_ISP_Tuning_SetMaskBlock(IMPVI_MAIN, &mask) == 0);
+        assert(mask.mask_value.ayuv.y_value == 17);
+        /* Get: kernel answer, then type and argb from the library cache
+         * (slot chx * pinum = 2, last set: RGB, 255/0/0) */
+        memset(last.reply, 0, sizeof(last.reply));
+        last.reply[0] = 1; last.reply[1] = 2;
+        last.reply[4] = 100; last.reply[19] = 76;
+        last.reply[12] = 9; last.reply[16] = 9;
+        memset(&mask, 0xee, sizeof(mask));
+        mask.chx = 1;
+        mask.pinum = 2;
+        EXPECT(IMP_ISP_Tuning_GetMaskBlock(IMPVI_MAIN, &mask), 1, 0x08000074, &mask);
+        assert(mask.mask_en == 0 && mask.mask_pos_top == 100 && mask.mask_value.ayuv.y_value == 76);
+        assert(mask.mask_type == IMPISP_MASK_TYPE_RGB);
+        assert(mask.mask_value.argb.r_value == 255 && mask.mask_value.argb.g_value == 0 &&
+               mask.mask_value.argb.b_value == 0);
+        before = last.calls;
+        assert(IMP_ISP_Tuning_SetMaskBlock(IMPVI_BUTT, &mask) == -1);
+        assert(IMP_ISP_Tuning_GetMaskBlock(IMPVI_MAIN, NULL) == -1);
+        assert(last.calls == before);
+    }
 
     /* SetSensorFPS: stock s_ctrl 0x08000070 takes num<<16|den inline. */
     fps.num = 15;

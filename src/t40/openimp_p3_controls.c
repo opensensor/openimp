@@ -728,10 +728,62 @@ int32_t IMP_ISP_Tuning_GetHVFlip(IMPVI_NUM num, IMPISPHVFLIP *flip)
 }
 
 #if defined(PLATFORM_T41)
+/*
+ * Vendor T41 libimp 1.2.6 IMP_ISP_Tuning_Set/GetMaskBlock (0x5dc78 /
+ * 0x5e294): for an enabled block with mask_type RGB the colour is turned
+ * into YUV in the caller's struct (IMP_ISP_Tuning_DumpMask: BT.601 full
+ * range, same doubles as the T31 SetMask, written to mask_value.ayuv,
+ * argb untouched); the 24-byte struct is copied into a per-sensor cache
+ * and passed to the kernel (0x08000074), which only uses window and
+ * ayuv.  GetMaskBlock asks the kernel (window, ayuv; the stock kernel
+ * always reports mask_en 0) and then restores mask_type and argb from
+ * the cache, also when the ioctl failed.  The cache index is chx * pinum,
+ * as in the vendor library (blocks with the same product share a slot).
+ */
+#include "../isp/isp_mask_rgb2yuv.h"
+
+#define P3_MASK_CACHE_SLOTS 12
+static IMPISPMaskBlockAttr p3_mask_cache[IMPVI_BUTT][P3_MASK_CACHE_SLOTS];
+
 int32_t IMP_ISP_Tuning_SetMaskBlock(IMPVI_NUM num,
                                     IMPISPMaskBlockAttr *mask)
 {
+    unsigned int slot;
+
+    if (num < IMPVI_MAIN || num >= IMPVI_BUTT || !mask)
+        return -1;
+    if (mask->mask_en && mask->mask_type == IMPISP_MASK_TYPE_RGB) {
+        uint8_t c[3];
+
+        c[0] = mask->mask_value.argb.r_value;
+        c[1] = mask->mask_value.argb.g_value;
+        c[2] = mask->mask_value.argb.b_value;
+        isp_mask_rgb_to_yuv(c);
+        mask->mask_value.ayuv.y_value = c[0];
+        mask->mask_value.ayuv.u_value = c[1];
+        mask->mask_value.ayuv.v_value = c[2];
+    }
+    slot = (unsigned int)mask->chx * mask->pinum;
+    if (slot < P3_MASK_CACHE_SLOTS)
+        p3_mask_cache[num][slot] = *mask;
     return p3_tuning_pointer(num, 0, TISP_CID_MASK_BLOCK, mask);
+}
+
+int32_t IMP_ISP_Tuning_GetMaskBlock(IMPVI_NUM num,
+                                    IMPISPMaskBlockAttr *mask)
+{
+    unsigned int slot;
+    int result;
+
+    if (num < IMPVI_MAIN || num >= IMPVI_BUTT || !mask)
+        return -1;
+    result = p3_tuning_pointer(num, 1, TISP_CID_MASK_BLOCK, mask);
+    slot = (unsigned int)mask->chx * mask->pinum;
+    if (slot < P3_MASK_CACHE_SLOTS) {
+        mask->mask_type = p3_mask_cache[num][slot].mask_type;
+        mask->mask_value.argb = p3_mask_cache[num][slot].mask_value.argb;
+    }
+    return result;
 }
 
 int32_t IMP_ISP_Tuning_SetScalerLv(IMPVI_NUM num, IMPISPScalerLvAttr *attr)
@@ -757,8 +809,12 @@ int IMP_ISP_Tuning_Awb_GetRgbCoefft(IMPVI_NUM num, IMPISPCoefftWb *attr)
  *   AeExprInfo    - AeMaxIntegrationTime / AeMaxAGain caps (SET),
  *   Module_Ratio  - SINTER (2D NR) and TEMPER (3D NR) strength;
  * and answers -EOPNOTSUPP for HLC/BLC, manual exposure, DRC/DPC/defog
- * ratios, CCM, gamma, CSC, module bypass, auto zoom and WDR output mode,
- * so callers see the failure instead of an acknowledged no-op.
+ * ratios, CCM, gamma, CSC, module bypass and WDR output mode, so callers
+ * see the failure instead of an acknowledged no-op.  AutoZoom (60 bytes,
+ * en/left/top/width/height[3]) goes 1:1 to the kernel as in the vendor
+ * library; open-tx-isp claude/t41-zoom-mask stores it and applies it at
+ * the next output start unless the output may be reprogrammed live
+ * (open-tx-isp driver/t41/README.md "MSCA zoom, mask and scaler level").
  */
 #define TISP_CID_CSC 0x08000096
 
