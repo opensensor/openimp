@@ -644,6 +644,46 @@ int main(void)
         sb_enabled = 0;
     }
 
+    /* OSD_Set/GetRgnAttr_ISP: IMPOSDIspDraw parts at +48/+944/+1352 */
+    {
+        static unsigned char rgn[1772];
+        uint32_t t;
+        int show = -1;
+        int IMP_OSD_SetRgnAttr_ISP(int, void *, int);
+        int IMP_OSD_GetRgnAttr_ISP(int, void *, int *);
+
+        sb_enabled = 1;
+        memset(rgn, 0, sizeof(rgn));
+        t = 11;                                   /* OSD_REG_ISP_LINE_RECT */
+        memcpy(rgn, &t, 4);
+        EXPECT(IMP_OSD_SetRgnAttr_ISP(0, rgn, 1), 0, 0x080000a0, rgn + 48);
+        t = 12;                                   /* OSD_REG_ISP_COVER */
+        memcpy(rgn, &t, 4);
+        EXPECT(IMP_OSD_SetRgnAttr_ISP(0, rgn, 0), 0, 0x08000074, rgn + 1352);
+        before = last.calls;
+        t = 10;                                   /* ISP_PIC: other API */
+        memcpy(rgn, &t, 4);
+        assert(IMP_OSD_SetRgnAttr_ISP(0, rgn, 1) == -1);
+        t = 7;
+        memcpy(rgn, &t, 4);
+        assert(IMP_OSD_SetRgnAttr_ISP(0, rgn, 1) == -1);
+        assert(IMP_OSD_SetRgnAttr_ISP(2, rgn, 1) == -1);
+        assert(IMP_OSD_SetRgnAttr_ISP(0, NULL, 1) == -1);
+        assert(IMP_OSD_GetRgnAttr_ISP(0, rgn, NULL) == -1);
+        assert(last.calls == before);
+        assert(IMP_OSD_GetRgnAttr_ISP(0, rgn, &show) == 0);
+        assert(show == 1);   /* vendor order: the ISP_PIC call stored its flag before refusing */
+        assert(last.calls == before + 3 && last.control == 0x08000074 &&
+               last.direction == 1 && last.payload == (uintptr_t)(rgn + 1352));
+        last.result = -1;
+        assert(IMP_OSD_GetRgnAttr_ISP(0, rgn, &show) == -1);
+        t = 11;
+        memcpy(rgn, &t, 4);
+        assert(IMP_OSD_SetRgnAttr_ISP(0, rgn, 1) == -1);
+        last.result = 0;
+        sb_enabled = 0;
+    }
+
     /* StartNightMode: ISP-device ioctl 0xc004542e with &num */
     assert(IMP_ISP_StartNightMode(IMPVI_MAIN) == 0);
     assert(opened.calls == 1 && opened.command == 0xc004542eU && opened.value == 0);

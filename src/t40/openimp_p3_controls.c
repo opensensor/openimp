@@ -1287,6 +1287,76 @@ int32_t IMP_ISP_GetOSDAttr(IMPVI_NUM num, IMPISPOSDAttr *attr)
     return p3_tuning_pointer(num, 1, TISP_CID_OSD_ATTR, attr);
 }
 
+#if !defined(PLATFORM_T41)
+/* T40 IMP_OSD_SetRgnAttr_ISP / GetRgnAttr_ISP (vendor 1.3.1 0xbe6e4 /
+ * 0xbea24): the IMPOSDRgnAttr of an ISP-drawn region carries an
+ * IMPOSDIspDraw at +48: IMPISPDrawAttr (+48), IMPISPOSDAttr (+944) and
+ * IMPISPMASKAttr (+1352).  Set: sensornum < 2, attr, type
+ * OSD_REG_ISP_PIC/LINE_RECT/COVER (10..12) else -1; bosdshow (0: ISP OSD
+ * only, 1: also IPU OSD) is kept for GetRgnAttr_ISP; LINE_RECT goes to
+ * IMP_ISP_SetDrawAttr, COVER to IMP_ISP_Tuning_SetMask, PIC is refused
+ * with -1 (vendor: pictures go through IMP_OSD_SetRgnAttr_PicISP); any
+ * failure is -1.  Get: sensornum < 2, attr and pbosdshow, then
+ * GetDrawAttr, GetOSDAttr and GetMask into the three parts (-1 if one
+ * fails).  The vendor also refuses the calls before the OSD module exists
+ * (IMP_System_Init); OpenIMP has no such module state. */
+#define P3_OSD_ISP_DRAW 48
+#define P3_OSD_ISP_PIC 944
+#define P3_OSD_ISP_COVER 1352
+_Static_assert(P3_OSD_ISP_DRAW + sizeof(IMPISPDrawAttr) == P3_OSD_ISP_PIC,
+               "IMPISPOSDAttr follows the draw attr");
+/* IMPISPOSDAttr holds picture pointers: 408 bytes on the 32-bit target */
+_Static_assert(sizeof(void *) != 4 ||
+               P3_OSD_ISP_PIC + sizeof(IMPISPOSDAttr) == P3_OSD_ISP_COVER,
+               "IMPISPMASKAttr follows the OSD attr");
+static int p3_osd_isp_show;
+static pthread_mutex_t p3_osd_isp_lock = PTHREAD_MUTEX_INITIALIZER;
+
+int IMP_OSD_SetRgnAttr_ISP(int sensornum, void *prAttr, int bosdshow)
+{
+    unsigned char *attr = prAttr;
+    uint32_t type;
+    int result = -1;
+
+    if ((unsigned)sensornum >= 2U || !attr)
+        return -1;
+    memcpy(&type, attr, sizeof(type));
+    if (type < 10U || type > 12U)
+        return -1;
+    pthread_mutex_lock(&p3_osd_isp_lock);
+    p3_osd_isp_show = bosdshow != 0;
+    if (type == 11U)
+        result = IMP_ISP_SetDrawAttr((IMPVI_NUM)sensornum,
+                                     (IMPISPDrawAttr *)(attr + P3_OSD_ISP_DRAW)) < 0 ? -1 : 0;
+    else if (type == 12U)
+        result = IMP_ISP_Tuning_SetMask((IMPVI_NUM)sensornum,
+                                        (IMPISPMASKAttr *)(attr + P3_OSD_ISP_COVER)) < 0 ? -1 : 0;
+    pthread_mutex_unlock(&p3_osd_isp_lock);
+    return result;
+}
+
+int IMP_OSD_GetRgnAttr_ISP(int sensornum, void *prAttr, int *pbosdshow)
+{
+    unsigned char *attr = prAttr;
+
+    if ((unsigned)sensornum >= 2U || !attr || !pbosdshow)
+        return -1;
+    pthread_mutex_lock(&p3_osd_isp_lock);
+    *pbosdshow = p3_osd_isp_show;
+    pthread_mutex_unlock(&p3_osd_isp_lock);
+    if (IMP_ISP_GetDrawAttr((IMPVI_NUM)sensornum,
+                            (IMPISPDrawAttr *)(attr + P3_OSD_ISP_DRAW)) < 0)
+        return -1;
+    if (IMP_ISP_GetOSDAttr((IMPVI_NUM)sensornum,
+                           (IMPISPOSDAttr *)(attr + P3_OSD_ISP_PIC)) < 0)
+        return -1;
+    if (IMP_ISP_Tuning_GetMask((IMPVI_NUM)sensornum,
+                               (IMPISPMASKAttr *)(attr + P3_OSD_ISP_COVER)) < 0)
+        return -1;
+    return 0;
+}
+#endif
+
 /* Vendor IMP_ISP_SetPreDqtime (T40 1.3.1 0x8aa04): the caller's pointer goes
  * to the ISP node as ioctl 0xc0045430 (TISP_VIDIOC_SET_PREDQTIME); sensor
  * number >= 4 is -4, no ISP device -8, NULL -9, a failing ioctl -6. */
