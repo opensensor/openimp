@@ -59,6 +59,18 @@
 #include "t23/openimp_t23_helix_bridge.h"
 #include "t23/openimp_t23_persist.h"
 #endif
+/* T10/T20/T21/T23/T30 encode on the Helix VPU and have no AVPU
+ * (/dev/avpu never opens there): CODEC_HAS_AVPU 0 lets the compiler drop
+ * the AVPU session code (open, IRQ thread, command lists, stream queue)
+ * those builds can never run.  The public AL_Codec_* graph stays. */
+#if defined(PLATFORM_T30) || defined(PLATFORM_T23)
+#define CODEC_HAS_AVPU 0
+#else
+#define CODEC_HAS_AVPU 1
+#endif
+/* use_hardware 2 = AVPU session open */
+#define codec_avpu_active(enc) (CODEC_HAS_AVPU && (enc)->use_hardware == 2)
+
 #if defined(PLATFORM_T30) || defined(PLATFORM_T23)
 #include "t30/t30_helix_encoder.h"
 #include "t30/helix_jpeg.h"
@@ -9667,7 +9679,7 @@ static int al_codec_encode_destroy_impl(void *codec) {
 #endif
 
     /* Deinitialize hardware encoder(s) - OEM parity: no separate deinit function */
-    if (enc->use_hardware == 2 && enc->avpu.fd >= 0) {
+    if (codec_avpu_active(enc) && enc->avpu.fd >= 0) {
 #if defined(PLATFORM_T40) || defined(PLATFORM_T31)
         /* The channel has already been stopped before codec destruction, so
          * no further CL can be submitted here.  Quiesce the T-series core before
@@ -11198,7 +11210,7 @@ static int al_codec_encode_process_impl(void *codec, void *frame,
 #endif
 
             if (try_avpu) {
-                if (enc->avpu.fd > 2) {
+                if (CODEC_HAS_AVPU && enc->avpu.fd > 2) {
                     /* Already open for this channel; do not re-open */
                     enc->use_hardware = 2; /* 2 = AL/AVPU path */
                     /* OEM parity: no ALAvpu_SetEvent - event_fd stored directly */
@@ -11218,7 +11230,10 @@ static int al_codec_encode_process_impl(void *codec, void *frame,
                      * still serializes Process/Destroy for this instance. */
                     openimp_core_release(&g_t41_core, &enc->avpu);
 #endif
-                    int fd = AL_DevicePool_Open("/dev/avpu");
+                    /* Helix SoCs: no /dev/avpu, the open fails as it
+                     * always did there (without the syscall). */
+                    int fd = CODEC_HAS_AVPU ? AL_DevicePool_Open("/dev/avpu")
+                                            : (errno = ENOENT, -1);
                     codec_startup_trace(
                         "openimp/codec startup: device pool open fd=%d\n", fd);
                     if (fd >= 0) {
@@ -11979,7 +11994,7 @@ static int al_codec_encode_process_impl(void *codec, void *frame,
             free(hw_stream);
             return 0; /* no stream yet */
         }
-    } else if (enc->use_hardware == 2 && enc->avpu.fd >= 0) {
+    } else if (codec_avpu_active(enc) && enc->avpu.fd >= 0) {
         /* OEM parity: Direct ioctl calls (AL_Common_Encoder_Process) - no ALAvpu_QueueFrame wrapper */
         ALAvpuContext *ctx = &enc->avpu;
         int fd = ctx->fd;
@@ -12973,7 +12988,7 @@ static void t41_check_completion_timeout(AL_CodecEncode *enc)
     pthread_mutex_unlock(&g_t41_core.lock);
     /* Only the channel whose command is stuck recovers it: another
      * channel's context may be in teardown. */
-    if (!owned || enc->use_hardware != 2 || ctx->fd < 0 ||
+    if (!owned || !codec_avpu_active(enc) || ctx->fd < 0 ||
         t41_monotonic_ms() - ctx->t41_submit_ms < T41_COMPLETION_TIMEOUT_MS)
         return;
 
@@ -13024,11 +13039,11 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data)
     }
     submitted_before = enc->avpu.frame_number;
     ret = al_codec_encode_process_impl(codec, frame, user_data);
-    if (enc->use_hardware != 2 || enc->avpu.frame_number == submitted_before)
+    if (!codec_avpu_active(enc) || enc->avpu.frame_number == submitted_before)
         openimp_core_release(&g_t41_core, &enc->avpu);
     else
         enc->avpu.t41_submit_ms = t41_monotonic_ms();
-    if (enc->use_hardware == 2 && enc->avpu.frame_number != submitted_before &&
+    if (codec_avpu_active(enc) && enc->avpu.frame_number != submitted_before &&
         ret)
         /* Once submitted, the source is still DMA-owned even if a later
          * bookkeeping step failed. Keep it submitted for Dequeue/recovery. */
@@ -13044,7 +13059,7 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data)
     /* JPEG runs on the CPU (its hardware job takes the core lock itself in
      * t31_hwjpeg_encode_locked): a snapshot must not stall both H.264
      * channels for a whole software encode. */
-    if (enc != NULL && enc->use_hardware != 2 &&
+    if (enc != NULL && !codec_avpu_active(enc) &&
         codec_param_read_codec_type(enc->codec_param) == IMP_ENC_TYPE_JPEG)
         return al_codec_encode_process_impl(codec, frame, user_data);
 
@@ -13064,7 +13079,7 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data)
     /* Raptor has one thread per encoded stream, but T31 has one physical
      * encoder channel.  Keep that channel assigned to this context until the
      * shared IRQ waiter consumes its command list. */
-    if (ret == 0 && enc != NULL && enc->use_hardware == 2 &&
+    if (ret == 0 && enc != NULL && codec_avpu_active(enc) &&
         enc->avpu.fd >= 0 && enc->avpu.frame_number != submitted_before) {
         int completed = 0;
         /* Same budget as the former 2000 x 1 ms poll: give up after 2 s;
@@ -13145,7 +13160,7 @@ int AL_Codec_Encode_GetStream(void *codec, void **stream, void **user_data) {
 
     *user_data = NULL;
 
-    if (enc->use_hardware == 2 && enc->avpu.fd >= 0) {
+    if (codec_avpu_active(enc) && enc->avpu.fd >= 0) {
         ALAvpuContext *ctx = &enc->avpu;
 
         if (ctx->frames_consumed % 50 == 0)
@@ -13249,7 +13264,7 @@ int AL_Codec_Encode_ReleaseStream(void *codec, void *stream, void *user_data) {
 
     AL_CodecEncode *enc = (AL_CodecEncode*)codec;
 
-    if (enc->use_hardware == 2 && enc->avpu.fd >= 0) {
+    if (codec_avpu_active(enc) && enc->avpu.fd >= 0) {
         /* OEM parity: stock AL_Codec_Encode_ReleaseStream does not poke AVPU
          * registers directly here; it returns the stream buffer through the
          * encoder-side stream manager path. In our direct-AVPU scaffolding,
@@ -13832,6 +13847,9 @@ int AL_Codec_Encode_RequestIDR(void *codec) {
  * src/t23/openimp_t23_encoder.c. */
 T23HelixBridge *OpenIMP_T23_CodecBridge(void *codec)
 {
+    /* no OEM worker built: encoder parameters stay local */
+    if (!OPENIMP_T23_HELIX_BRIDGE)
+        return NULL;
     return codec ? &((AL_CodecEncode *)codec)->t23_helix : NULL;
 }
 #endif

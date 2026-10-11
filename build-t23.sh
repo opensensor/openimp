@@ -69,6 +69,17 @@ case "${T23_DEFAULT_ENCODER:-native}" in
         exit 1
         ;;
 esac
+# OPENIMP_T23_HELIX_BRIDGE=0 leaves the OEM Helix worker bridge out of
+# libimp: no worker fallback when the native encoder cannot be created, no
+# IMP_Decoder_* (it runs in the worker), encoder parameters stay local.
+# Default 1: the bridge is built (thingino installs openimp-t23-helixd and
+# the worker is the automatic fallback of the native encoder).
+case "${OPENIMP_T23_HELIX_BRIDGE:-1}" in
+    0|1) ;;
+    *) echo "OPENIMP_T23_HELIX_BRIDGE must be 0 or 1" >&2; exit 1 ;;
+esac
+base_flags="$base_flags -DOPENIMP_T23_HELIX_BRIDGE=${OPENIMP_T23_HELIX_BRIDGE:-1}"
+helix_bridge_objects=
 repo_includes="-I$project_dir/include -I$project_dir/src"
 
 compile()
@@ -116,7 +127,10 @@ compile t23_ivs src/t31/openimp_t31_ivs.c -Werror
 compile t23_ivs_move src/t31/openimp_t31_ivs_move.c $hot_flags -Werror
 compile t23_ivs_move_v2 src/t31/openimp_ivs_move_v2.c $hot_flags -Werror
 compile t23_platform_services src/t23/openimp_t23_services.c -Werror
-compile t23_helix_bridge src/t23/openimp_t23_helix_bridge.c -Werror
+if [ "${OPENIMP_T23_HELIX_BRIDGE:-1}" = 1 ]; then
+    compile t23_helix_bridge src/t23/openimp_t23_helix_bridge.c -Werror
+    helix_bridge_objects="$output_dir/t23_helix_bridge.o"
+fi
 compile t23_persist src/t23/openimp_t23_persist.c -Werror
 compile t23_audio src/t31/openimp_t31_audio.c -Werror
 compile openimp_aec src/audio/openimp_aec.c $hot_flags -Werror -I"$project_dir/src/audio"
@@ -176,7 +190,7 @@ compile t23_helix_jpeg src/t30/helix_jpeg.c -Werror
     "$output_dir/t23_ivs_move.o" \
     "$output_dir/t23_ivs_move_v2.o" \
     "$output_dir/t23_platform_services.o" \
-    "$output_dir/t23_helix_bridge.o" \
+    $helix_bridge_objects \
     "$output_dir/t23_persist.o" \
     "$output_dir/t23_audio.o" \
     "$output_dir/openimp_aec.o" \

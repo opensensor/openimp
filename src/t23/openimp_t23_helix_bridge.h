@@ -67,6 +67,12 @@ typedef struct {
 
 /* Path of the OEM helper (OPENIMP_T23_HELIX_HELPER or the default) and
  * whether it is executable; images without it run native-only. */
+/* OPENIMP_T23_HELIX_BRIDGE (build-t23.sh, default 1): the OEM Helix worker
+ * openimp-t23-helixd (fallback H.264 backend, IMP_Decoder_*). */
+#ifndef OPENIMP_T23_HELIX_BRIDGE
+#define OPENIMP_T23_HELIX_BRIDGE 1
+#endif
+#if OPENIMP_T23_HELIX_BRIDGE
 const char *OpenIMP_T23_HelixHelperPath(void);
 int OpenIMP_T23_HelixHelperAvailable(void);
 int OpenIMP_T23_HelixInit(T23HelixBridge *bridge,
@@ -112,5 +118,112 @@ int OpenIMP_T23_HelixDecoderRelease(T23HelixBridge *bridge, uint32_t handle);
 int OpenIMP_T23_HelixDecoderCopy(T23HelixBridge *bridge, uint32_t handle,
                                  void *out, uint32_t size);
 void OpenIMP_T23_HelixExit(T23HelixBridge *bridge);
+#else
+/* OPENIMP_T23_HELIX_BRIDGE=0 (build-t23.sh): no OEM worker.  The stubs make
+ * the worker unavailable: the native Helix encoder is the only H.264
+ * backend, encoder parameters stay local (as OPENIMP_T23_ENC_PARAMS=0) and
+ * IMP_Decoder_CreateChn fails. */
+static inline const char *OpenIMP_T23_HelixHelperPath(void)
+{
+    return "(OEM Helix worker not built)";
+}
+static inline int OpenIMP_T23_HelixHelperAvailable(void) { return 0; }
+static inline int OpenIMP_T23_HelixInit(T23HelixBridge *bridge,
+                                        const HWEncoderParams *params)
+{
+    (void)bridge; (void)params;
+    return -1;
+}
+static inline int OpenIMP_T23_HelixEncode(T23HelixBridge *bridge,
+                                          const IMPFrameInfo *frame,
+                                          HWStreamBuffer **stream)
+{
+    (void)bridge; (void)frame; (void)stream;
+    return -1;
+}
+static inline int OpenIMP_T23_HelixInitYuv(T23HelixBridge *bridge,
+                                           uint32_t width, uint32_t height,
+                                           const T23EncoderYuvIn *input)
+{
+    (void)bridge; (void)width; (void)height; (void)input;
+    return -1;
+}
+static inline int OpenIMP_T23_HelixEncodeInto(T23HelixBridge *bridge,
+                                              const IMPFrameInfo *frame,
+                                              void *output, uint32_t *length)
+{
+    (void)bridge; (void)frame; (void)output; (void)length;
+    return -1;
+}
+static inline int OpenIMP_T23_HelixRequestIDR(T23HelixBridge *bridge)
+{
+    (void)bridge;
+    return -1;
+}
+static inline int OpenIMP_T23_HelixSetParam(T23HelixBridge *bridge,
+                                            uint32_t id, uint32_t key,
+                                            const void *data, uint32_t size)
+{
+    (void)bridge; (void)id; (void)key; (void)data; (void)size;
+    return -1;
+}
+static inline int OpenIMP_T23_HelixGetParam(T23HelixBridge *bridge,
+                                            uint32_t id, uint32_t key,
+                                            void *data, uint32_t size)
+{
+    (void)bridge; (void)id; (void)key; (void)data; (void)size;
+    return -1;
+}
+static inline int OpenIMP_T23_HelixSetFrameCtl(T23HelixBridge *bridge,
+                                               const T23HelixFrameCtl *ctl)
+{
+    (void)bridge; (void)ctl;
+    return -1;
+}
+static inline int OpenIMP_T23_HelixGetFrameCtl(T23HelixBridge *bridge,
+                                               T23HelixFrameCtl *ctl)
+{
+    (void)bridge; (void)ctl;
+    return -1;
+}
+static inline int OpenIMP_T23_HelixDecoderOpen(T23HelixBridge *bridge,
+                                               const void *attr,
+                                               uint32_t attr_size,
+                                               uint32_t max_width,
+                                               uint32_t max_height)
+{
+    (void)bridge; (void)attr; (void)attr_size; (void)max_width;
+    (void)max_height;
+    return -1;
+}
+static inline int OpenIMP_T23_HelixDecode(T23HelixBridge *bridge,
+                                          const void *data, uint32_t length,
+                                          int64_t timestamp,
+                                          uint32_t timeout_ms,
+                                          IMPFrameInfo *frame,
+                                          uint32_t *handle)
+{
+    (void)bridge; (void)data; (void)length; (void)timestamp;
+    (void)timeout_ms; (void)frame; (void)handle;
+    return -1;
+}
+static inline int OpenIMP_T23_HelixDecoderRelease(T23HelixBridge *bridge,
+                                                  uint32_t handle)
+{
+    (void)bridge; (void)handle;
+    return -1;
+}
+static inline int OpenIMP_T23_HelixDecoderCopy(T23HelixBridge *bridge,
+                                               uint32_t handle, void *out,
+                                               uint32_t size)
+{
+    (void)bridge; (void)handle; (void)out; (void)size;
+    return -1;
+}
+static inline void OpenIMP_T23_HelixExit(T23HelixBridge *bridge)
+{
+    (void)bridge;
+}
+#endif
 
 #endif

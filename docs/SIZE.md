@@ -45,3 +45,40 @@ Checks done for the switch (host only):
 The `.so` file size moves in 64 KiB steps: the MIPS linker aligns the data
 segment to a 64 KiB page, so the zero padding before it absorbs smaller
 savings. The `.text` column below shows the real change.
+
+## libimp: AVPU diagnostics only with OPENIMP_DEBUG=1
+
+The Enc1/Enc2 command-list dumps, the busy command-list replay, the busy and
+submit register snapshots and the DMA layout dump in `src/t40/codec-t40.c`
+return at once unless `OPENIMP_DEBUG=1`. Their log lines were already
+compiled out; now their register reads, name buffers and strings go too.
+
+## libimp: no AVPU session code on the Helix SoCs
+
+T10, T20, T21, T23 and T30 encode on the Helix VPU and have no AVPU;
+`/dev/avpu` never opens there. With `CODEC_HAS_AVPU 0` (set for these
+builds in `codec-t40.c`) the AVPU open returns "no such device" without the
+system call, as the open did before, so the compiler drops the AVPU session
+code (open, IRQ thread, command lists, stream queue): about 25 KB of `.text`
+per Helix build. The public `AL_Codec_*` and `IMP_*` graph is unchanged
+(identical exported symbols); T31, T40 and T41 build bit for bit as before.
+
+## T23: OEM Helix worker bridge (OPENIMP_T23_HELIX_BRIDGE)
+
+`OPENIMP_T23_HELIX_BRIDGE=0` leaves the bridge to the OEM worker
+`openimp-t23-helixd` out of the T23 `libimp.so` (a further 15 KB of `.text`).
+Default 1 (built), because the worker is not only an opt-in backend:
+
+- The native Helix encoder is the build default (`T23_DEFAULT_ENCODER=native`,
+  `OPENIMP_T23_ENCODER` unset).
+- When the native encoder cannot be created, `codec-t40.c` falls back to the
+  worker automatically if the helper is installed
+  (`OPENIMP_T23_NATIVE_FALLBACK=0` disables that). The thingino package
+  installs the helper and the OEM `libimp.so` under `/opt/openimp-t23/`.
+- `IMP_Decoder_*` on T23 runs in the worker.
+- Encoder parameters are cached in the bridge for the worker.
+
+With 0 the native encoder is the only H.264 backend, a channel whose native
+encoder cannot be created stays without output, `IMP_Decoder_CreateChn`
+fails, and encoder parameters stay local (as `OPENIMP_T23_ENC_PARAMS=0`).
+The exported symbols do not change.
