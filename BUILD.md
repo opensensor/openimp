@@ -94,6 +94,23 @@ Example:
 make CROSS_COMPILE=mipsel-linux- PLATFORM=T40
 ```
 
+### Release check
+
+`make check` is the fast host test gate and builds no SoC. Before tagging a release run
+
+```bash
+make release-check            # tools/release-check.sh
+```
+
+It runs `make check`, builds every SoC (T20, T21, T23, T30, T31, T40, T41; T10 uses the T20 build) with
+`build-for-device.sh`, then runs `make export-check` in strict mode (`EXPORT_CHECK_STRICT=1`: a SoC without a built
+library fails instead of being skipped). The cross toolchain variables of the `build-<soc>.sh` scripts must be set
+(`THINGINO_DIR`, for example `T20_TARGET_DIR`, `T31_TARGET_DIR`, `T40_HEADERS`; see the head of each script). `SOCS="T31 T41"`
+limits the SoCs, `SKIP_CHECK=1` skips the host tests. `make export-check` compares the exported `IMP_*` names of each
+`build/<soc>/libimp.so` with the vendor export lists and the names used by streamer sources
+(`tools/export-check/README.md`); the release is blocked if it reports a streamer-used, vendor-exported name as
+missing.
+
 ## Build Outputs
 
 After a successful build, you'll find the following in the `lib/` directory:

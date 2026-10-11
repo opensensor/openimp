@@ -290,7 +290,7 @@ typedef struct {
     uint32_t jpeg_reused;           /* pictures stood in for */
     uint64_t jpeg_reuse_log_us;
     IMPEncoderCHNAttr attr;
-#if defined(PLATFORM_T31) || defined(PLATFORM_T41)
+#if defined(PLATFORM_T31) || defined(PLATFORM_T41) || defined(PLATFORM_T40)
     IMPEncoderRoiAttr roi_attr;     /* IMP_Encoder_SetChnRoiAttr */
 #endif
     IMPEncoderPack packs[P2_MAX_PUBLIC_PACKS];
@@ -325,6 +325,9 @@ typedef struct {
     /* rc attribute last set by SetChnAttrRcMode: the OEM read-back then
      * shows the run-time clamps (p2_rc_readback.h) */
     int rc_runtime;
+#endif
+#if defined(PLATFORM_T40)
+    int fisheye;                    /* IMP_Encoder_Set/GetFisheyeEnableStatus */
 #endif
     uint64_t next_frame_due_us;
     uint64_t output_timestamp_us;
@@ -3971,8 +3974,9 @@ int IMP_Encoder_SetChnQp(int channel, int qp_value)
     return AL_Codec_Encode_SetQp(p2_channels[channel].codec, &qp);
 }
 
-#if defined(PLATFORM_T31) || defined(PLATFORM_T41)
-/* Vendor T41 1.2.6 IMP_Encoder_SetChnRoiAttr / GetChnRoiAttr: the windows
+#if defined(PLATFORM_T31) || defined(PLATFORM_T41) || defined(PLATFORM_T40)
+/* Vendor T41 1.2.6 IMP_Encoder_SetChnRoiAttr / GetChnRoiAttr (T40 1.3.1: the same
+ * windows; opt-in OPENIMP_T40_ROI=1, see codec-t40.c): the windows
  * go into the macroblock QP table of the AVC encoder from the next picture
  * on (src/t40/codec-t40.c avpu_t41_roi_apply).  H.265, absolute QP and
  * windows outside the picture are refused. */
@@ -3998,11 +4002,12 @@ int IMP_Encoder_SetChnRoiAttr(int channel, IMPEncoderRoiAttr *attr)
     return ret == 0 ? 0 : -1;
 }
 
-/* Vendor T41 1.2.6 IMP_Encoder_SetChnMapRoi (docs/ROI.md): AVC only, the
- * map is copied.  The same switch as SetChnRoiAttr guards it. */
+/* Vendor T41 1.2.6 / T40 1.3.1 IMP_Encoder_SetChnMapRoi (docs/ROI.md): AVC
+ * only, the map is copied.  The same switch as SetChnRoiAttr guards it
+ * (T40: OPENIMP_T40_ROI=1). */
 extern int AL_Codec_Encode_SetMapRoi(void *codec, const void *roi_attr);
 
-#if defined(PLATFORM_T41)
+#if defined(PLATFORM_T41) || defined(PLATFORM_T40)
 int IMP_Encoder_SetChnMapRoi(int channel, IMPEncoderMapRoiAttr *attr)
 {
     P2EncoderChannel *ch;
@@ -5111,6 +5116,38 @@ int IMP_Encoder_GetQpgMode(int channel, IMPEncoderQpgMode *mode)
     pthread_mutex_unlock(&ch->lock);
     return 0;
 #endif
+}
+#endif
+
+#if defined(PLATFORM_T40)
+/* Vendor T40 1.3.1 (0x6bd44 / 0x6be40): a flag in the channel record, settable
+ * only while the channel is not created (-1 afterwards); valid channels are
+ * 0..12.  Its only reader is the vendor's fisheye motion search. */
+int IMP_Encoder_SetFisheyeEnableStatus(int channel, int enable)
+{
+    int ret = -1;
+
+    if (!p2_valid_channel(channel))
+        return -1;
+    EncoderInit();
+    pthread_mutex_lock(&p2_channels[channel].lock);
+    if (!p2_channels[channel].created) {
+        p2_channels[channel].fisheye = enable != 0;
+        ret = 0;
+    }
+    pthread_mutex_unlock(&p2_channels[channel].lock);
+    return ret;
+}
+
+int IMP_Encoder_GetFisheyeEnableStatus(int channel, int *enable)
+{
+    if (!p2_valid_channel(channel) || !enable)
+        return -1;
+    EncoderInit();
+    pthread_mutex_lock(&p2_channels[channel].lock);
+    *enable = p2_channels[channel].fisheye != 0;
+    pthread_mutex_unlock(&p2_channels[channel].lock);
+    return 0;
 }
 #endif
 

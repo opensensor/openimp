@@ -3520,7 +3520,7 @@ static uint32_t avpu_get_enc1_stream_part_offset(const ALAvpuContext *ctx)
     return (uint32_t)ctx->stream_buf_size - stream_part_size;
 }
 
-#if defined(PLATFORM_T31) || defined(PLATFORM_T41)
+#if defined(PLATFORM_T31) || defined(PLATFORM_T41) || defined(AVPU_T40_NATIVE)
 /* ROI (IMP_Encoder_SetChnRoiAttr).  The T41 AVC EP2 buffer holds, after a
  * 0x40-byte header, one 32-bit entry per macroblock in raster order:
  * byte 0 = the relative QP (int8), byte 3 = 0x20.  Measured on a T41 running
@@ -3551,7 +3551,7 @@ static void avpu_roi_warn_clamped(const char *soc, unsigned int c,
 }
 #endif
 
-#if defined(PLATFORM_T31)
+#if defined(PLATFORM_T31) || defined(AVPU_T40_NATIVE)
 /* T31 ROI (beyond vendor: the T31 libimp 1.1.6 has no ROI API).  The
  * Allegro core in the vendor library shows the mechanism (HLIL of
  * AL_Common_Encoder_Process, encode1, SliceParamToCmdRegsEnc1,
@@ -3584,6 +3584,25 @@ static void avpu_roi_warn_clamped(const char *soc, unsigned int c,
  * requests are clamped and logged once (a decoder that checks the range,
  * VA-API/VLC/browsers, shows broken blocks otherwise, ffmpeg hides it).
  * The API refuses delta windows outside -26..25 like the vendor T41. */
+#if defined(AVPU_T40_NATIVE)
+/* T40: the vendor libimp 1.3.1 implements the windows (a per-macroblock QP
+ * table, one byte per 16x16 block for AVC, the same table format as the T31
+ * Allegro core; cmd[9] carries the same two bits), but the OpenIMP port is
+ * not device-tested yet: off unless OPENIMP_T40_ROI=1. */
+#define AVPU_ROI_SOC "T40"
+static int avpu_t31_roi_disabled(void)
+{
+    static int off = -1;
+
+    if (off < 0) {
+        const char *e = getenv("OPENIMP_T40_ROI");
+
+        off = !(e && e[0] == '1');
+    }
+    return off;
+}
+#else
+#define AVPU_ROI_SOC "T31"
 static int avpu_t31_roi_disabled(void)
 {
     static int off = -1;
@@ -3595,6 +3614,7 @@ static int avpu_t31_roi_disabled(void)
     }
     return off;
 }
+#endif
 
 /* FixQP pins min_qp = max_qp to the picture QP, but the hardware takes the
  * table entry as it is (measured: QP 10 / 51 windows under FixQP 30), so the
@@ -3642,14 +3662,38 @@ static void avpu_t31_roi_apply(ALAvpuContext *ctx)
     avpu_t31_roi_qp_range(ctx, &rmin, &rmax);
     avpu_roi_fill(table, 1u, 6u, cols, rows, ctx->roi_win, 10u,
                   ctx->roi_base_qp, rmin, rmax, 0, &res);
+    /* SetChnMapRoi (T40): the per-block deltas replace the window value,
+     * cut to the same limits */
+    if (ctx->roi_map && ctx->roi_map_n == mb) {
+        int lo, hi;
+
+        avpu_roi_limits(ctx->roi_base_qp, rmin, rmax, &lo, &hi);
+        any = 1;
+        for (i = 0; i < mb; i++) {
+            int d = ctx->roi_map[i];
+
+            if (!d)
+                continue;
+            if (d < res.req_min)
+                res.req_min = d;
+            if (d > res.req_max)
+                res.req_max = d;
+            if (d < lo || d > hi) {
+                d = d < lo ? lo : hi;
+                res.clamped |= AVPU_ROI_CLAMP_RANGE;
+            }
+            table[i] = (uint8_t)((uint32_t)d & 0x3fu);
+        }
+        avpu_roi_spread_clamp(table, 1u, 6u, mb, &res);
+    }
     ctx->roi_table_on = any;
     ctx->roi_absolute = absolute;
     ctx->roi_req_min = res.req_min;
     ctx->roi_req_max = res.req_max;
     ctx->roi_range_clamped = (res.clamped & AVPU_ROI_CLAMP_RANGE) != 0;
     pthread_mutex_unlock(&avpu_roi_lock);
-    avpu_roi_warn_clamped("T31", res.clamped, &res, ctx->roi_base_qp);
-    LOG_CODEC("AVPU: T31 ROI QP table %s %ux%u macroblocks base QP %u",
+    avpu_roi_warn_clamped(AVPU_ROI_SOC, res.clamped, &res, ctx->roi_base_qp);
+    LOG_CODEC("AVPU: " AVPU_ROI_SOC " ROI QP table %s %ux%u macroblocks base QP %u",
               any ? "set" : "cleared", cols, rows, ctx->roi_base_qp);
     (void)avpu_flush_dma_buf(ctx->fd, "roi_table", &ctx->interm_buf,
                              ctx->interm_ep1_size + ctx->interm_wpp_size +
@@ -4778,6 +4822,11 @@ static void fill_cmd_regs_enc1(const ALAvpuContext* ctx, uint32_t* cmd,
 
 #if defined(AVPU_T40_NATIVE)
         avpu_t40_native_cmd(ctx, cmd, is_idr, lcu_count, hwrc_group_count);
+        /* ROI: QP table in EP2 (avpu_t31_roi_apply), the same two bits as
+         * the T31 command (vendor SliceParamToCmdRegsEnc1: SliceParam+0x6c
+         * -> cmd[9] bit 25 use the table, +0x6b -> bit 24 relative) */
+        if (!ctx->codec_hevc && ctx->roi_table_on)
+            cmd[0x09] |= 0x03000000u;
 #endif
 #if defined(PLATFORM_T31)
         /*
@@ -8632,7 +8681,7 @@ static void codec_sync_rc_cache(AL_CodecEncode *enc);
 
 int AL_Codec_Encode_SetRoiAttr(void *codec, const void *roi_attr)
 {
-#if defined(PLATFORM_T31)
+#if defined(PLATFORM_T31) || defined(AVPU_T40_NATIVE)
     AL_CodecEncode *enc = (AL_CodecEncode *)codec;
     const IMPEncoderRoiAttr *attr = (const IMPEncoderRoiAttr *)roi_attr;
     uint32_t i;
@@ -8733,14 +8782,18 @@ typedef struct {
 
 int AL_Codec_Encode_SetMapRoi(void *codec, const void *roi_attr)
 {
-#if defined(PLATFORM_T41)
+#if defined(PLATFORM_T41) || defined(AVPU_T40_NATIVE)
     AL_CodecEncode *enc = (AL_CodecEncode *)codec;
     const CodecMapRoiAttr *attr = (const CodecMapRoiAttr *)roi_attr;
     uint32_t cols, rows, mb, i;
     int8_t *table = NULL;
 
     if (enc == NULL || attr == NULL || enc->avpu.codec_hevc ||
+#if defined(PLATFORM_T41)
         !avpu_t41_roi_experimental())
+#else
+        avpu_t31_roi_disabled())
+#endif
         return -1;
     cols = (enc->avpu.enc_w + 15u) >> 4;
     rows = (enc->avpu.enc_h + 15u) >> 4;
@@ -12537,12 +12590,12 @@ static int al_codec_encode_process_impl(void *codec, void *frame,
                 OpenIMPProfileStamp command_profile =
                     openimp_profile_begin();
 
-#if defined(PLATFORM_T31)
+#if defined(PLATFORM_T31) || defined(AVPU_T40_NATIVE)
                 avpu_t31_roi_apply(ctx);
 #endif
                 fill_cmd_regs_enc1(ctx, cmd, buf_idx, phys_addr, hdr_offset,
                                    is_idr, ref_phys);
-#if defined(PLATFORM_T31)
+#if defined(PLATFORM_T31) || defined(AVPU_T40_NATIVE)
                 avpu_t31_roi_track_qp(ctx, cmd);
 #endif
                 openimp_profile_end(OPENIMP_PROFILE_COMMAND_BUILD,

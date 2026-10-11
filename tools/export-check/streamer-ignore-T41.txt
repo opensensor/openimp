@@ -1,0 +1,9 @@
+# streamer mentions that are not a call on this SoC (name  # reason)
+IMP_Encoder_VbmAlloc  # software rotate path only (timps ROT_HAS_SW_90, T23)
+IMP_Encoder_VbmFree  # same
+IMP_Encoder_VbmV2P  # same
+IMP_Encoder_YuvEncode  # same
+IMP_Encoder_YuvExit  # same
+IMP_Encoder_YuvInit  # same
+IMP_System_MemPoolRequest  # mentioned in a comment only
+IMP_Encoder_InputJpege  # software rotate path only (timps ROT_HAS_SW_90, T23)

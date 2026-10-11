@@ -8,6 +8,16 @@
 
 Release plan: `next` goes to `aperto` (fast-forward only) after the long soak of the release candidate and is tagged `vYYYY.MM.DD`; until then dates are the reference. The first release covers T10, T20, T21, T23 and T31; T10 has not been re-tested on the open stack today ("not re-tested"); T41 is not part of the first release. Branch names (`claude/...`) are historic: the topic branches were merged into `next` and deleted. Cameras are anonymised: cam-A (T31), cam-B (T23), cam-C (T20), cam-D (T21), cam-E (T10), cam-F (T41); cam-G and cam-H are further T23 cameras, cam-I a second T20, cam-J a second T21.
 
+## Function finder (branches `claude/funcsearch-*`, host-tested, not released)
+
+- **T40 `IMP_Encoder_SetChnMapRoi`:** per-16x16-block QP deltas (vendor 1.3.1 argument checks, same as T41) on the T31-style AVPU QP table, behind `OPENIMP_T40_ROI=1` like `SetChnRoiAttr`; host and cross-build only, device test pending (T41 cell corrected to host: code existed, opt-in `OPENIMP_T41_ROI=1`).
+- **`make release-check`:** release gate (`tools/release-check.sh`, BUILD.md "Release check"): `make check`, a build of every SoC, then `export-check` in strict mode. Plain `make check` stays host-only and fast.
+- **`make export-check`:** compares the `IMP_` exports of each built `build/<soc>/libimp.so` with the vendor export lists (`tools/export-check/vendor-<SoC>.txt`) and with the `IMP_` names used by streamer sources (`STREAMER_DIRS`); fails when a name that is both vendor-exported and streamer-used is missing (documented exceptions in `streamer-ignore-<SoC>.txt`). Used to correct the matrix: T41 cells of FrameSource delay/max delay/I2D/timed frame/FIFO attr and ISP module control/auto zoom/mask block/scaler level are host (code exists), `Encoder_Get/SetChnCrop` is missing on T10/T20/T21 (was n.a.); 11 T40 OSD rows (`AttachToGroup`, `SetMosaic`, `*_ISP`) were missing but exported: host.
+- **T40 `Encoder_Set/GetFisheyeEnableStatus`:** the vendor flag (settable before CreateChn only, channels 0..12); was not exported (a streamer that links it needs the symbol). Host test.
+- **T40 `IMP_Encoder_Set/GetChnRoiAttr`:** the T31 macroblock QP-table path with the T40 command bits read from the vendor 1.3.1 library (AVC only); off unless `OPENIMP_T40_ROI=1`, cross-built, not run on a camera.
+- **T41 `IMP_ISP_Set/GetISPBypass`:** the vendor pair (8-byte block on the ISP node, ioctl 0x80085418, vendor error codes, remembered value). The open-tx-isp T41 driver does not serve that ioctl yet, so Set answers -4095 there. Host test only.
+- **T40 ISP controls:** `IMP_ISP_Tuning_Get/SetISPCSCAttr` (vendor T40 wire format: 10-bit coefficients, not the T41 one), `Get/SetHLDCAttr`, `Get/SetAeSpeed`, `Get/SetAeExpList`, `Get/SetFaceAe`, `Get/SetFaceAwb`, `Get/SetStatisConfig`, `SetFixedContraster`, `GetAfStatistics`, `GetAFMetricesInfo`, `WaitFrameDone`, `GetISPBypass` (stored flag), `IMP_ISP_Get/SetOSDAttr` and `IMP_ISP_SetPreDqtime` from the vendor 1.3.1 disassembly; 22 functions, control numbers and conversions as the vendor library. Host test only; the vendor kernel driver of the T40 board owns the semantics (device test pending).
+
 ## After RC1: aggregate agg-36 (state of 2026-10-11, not released)
 
 Work merged after RC1 (`claude/agg-36`, on RC1 + docs). Build and host tests only for the aggregate; no soak yet. Not part of RC1.
