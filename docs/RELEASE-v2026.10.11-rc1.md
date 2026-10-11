@@ -16,7 +16,7 @@
 | OpenIMP | `v2026.10.11-rc1` = `fe9307c` (soaked agg-35 code `687a68e4` + documentation only) |
 | open-tx-isp | `v2026.10.11-rc1` = `191be6c5` (soaked agg-35 code `6e464ac7` + documentation only) |
 | Recommended streamer | [timps](https://github.com/Lu-Fi/timps) **v1.10.0** (tag `4432fa8`); the soaked images used `f1565f7`, whose source is identical to v1.10.0 (later commits are docs/QA only) |
-| thingino | `aperto` branch, packages `openimp` / `open-tx-isp` pinned to `v2026.10.11-rc1` |
+| thingino | `aperto` branch; the pin of packages `openimp` / `open-tx-isp` to `v2026.10.11-rc1` is pending as a pull request |
 
 Scope: all OpenIMP changes since the start of the device-test campaign (base `9c6b0ba`, 2026-09-29), 795 commits; about 195 of them are new since the previous `aperto` state (2026-10-06).
 
@@ -46,11 +46,11 @@ Scope: all OpenIMP changes since the start of the device-test campaign (base `9c
 
 Streamer-used gaps: T30 2 (raptor: `DMIC_*`), T40 7 (raptor: ISP mask, ISP-OSD regions, DMIC), T41 22 (prudynt 6, raptor 19: ISP bypass, module control, autozoom, mask block, scaler level, `SwitchBin`, bufshare, ...). Work after RC1 (agg-36) raises T30/T40/T41 further and closes most of these (T40 OSD/ISP-OSD/`SwitchBin`/bufshare, T41 zoom/mask/scaler level).
 
-**Streamers.** timps v1.10.0 is recommended and ran the soak; some fixes need its matching changes (e.g. T20/T10 day/night). prudynt and raptor link unchanged (0 of 149 imports missing for prudynt, none for raptor) and were run on a T23 camera over the network; a T23 camera ran raptor through the soak. A stack overflow in raptor-hal's `IMP_IVS_Get/SetParam` buffer (0x420 bytes, libimp writes up to 0x458) was reported upstream.
+**Streamers.** timps v1.10.0 is recommended and ran the soak; some fixes need its matching changes (e.g. T20/T10 day/night). prudynt and raptor link unchanged (0 of 149 imports missing for prudynt, none for raptor) and were run on a T23 camera over the network; a T23 camera ran raptor through the soak. A stack overflow in raptor-hal's `IMP_IVS_Get/SetParam` buffer (0x420 bytes, libimp writes up to 0x458) was found during the tests; see the docs.
 
 ## 2. Release evidence
 
-**Overnight soak of the RC1 code** (2026-10-10 18:04 to 2026-10-11 08:00, about 14 h, 10 cameras: T10, T20 x2, T21 x2, T23 x2, T31, T41 and one more; full OTA images with timps v1.10.0 source on thingino `aperto`): **0 kernel oopses, 0 unexplained reboots, 0 streamer restarts, VA-API decode check 54/54.** The previous soak of this line (agg-32, 43.4 h) had 0 unplanned reboots and 0 oopses on the cameras without user interaction; the problems it found (T31 front-crop crash, T20 day/night) are fixed here.
+**Overnight soak of the RC1 code** (2026-10-10 18:04 to 2026-10-11 08:00, about 14 h, 10 cameras: T10, T20 x2, T21 x2 (one running the vendor stack as reference), T23 x3 (one with raptor), T31, T41; full OTA images with timps v1.10.0 source on thingino `aperto`): **0 kernel oopses, 0 unexplained reboots, 0 streamer restarts, VA-API decode check 54/54.** The previous soak of this line (agg-32, 43.4 h) had 0 unplanned reboots and 0 oopses on the cameras without user interaction; the problems it found (T31 front-crop crash, T20 day/night) are fixed here.
 
 **Release gate (apitest = one call per vendor function, imgfx = one picture per image function): every FAIL fixed or explained.**
 
@@ -157,7 +157,7 @@ Also: `OPENIMP_LOG_SYSLOG=1` logs to syslog. Debug-only switches (profiling, tra
 
 ## 6. Upgrade and compatibility
 
-- thingino `aperto`: select the open ISP stack (`BR2_PACKAGE_THINGINO_ISP_OPEN`); packages pin `v2026.10.11-rc1`. Flash a **full image** so library, kernel module and kernel VPU/rmem patches match. SDK sensor, audio and AVPU modules stay.
+- thingino `aperto`: select the open ISP stack (`BR2_PACKAGE_THINGINO_ISP_OPEN`); packages pin `v2026.10.11-rc1` once the pin pull request is merged. Flash a **full image** so library, kernel module and kernel VPU/rmem patches match. SDK sensor, audio and AVPU modules stay.
 - Use OpenIMP and open-tx-isp of the same tag; front crop, gain cap, T21 brightness/sepia, T23 AF/scratch and T41 controls need both.
 - Build timps with `USE_OPENIMP=1` for the OpenIMP-only features; prudynt/raptor need no change.
 - **Changed since the previous `aperto` state:** T31 `SetFrontCrop` refused when a running stream is larger than the window; crop windows released at session close (T31/T23/T20/T10); T20/T10 `isp-m0` gain cap is the reachable value; ROI on by default on T21/T23/T31 and clamped; T20/T21 encoder denoise with vendor semantics; encoder group bound 6 (8 on T23/T40), `OSD_SetPoolSize(0)` refused, `PollingStream` on an uncreated channel returns -1; T40/T41 struct layouts follow the vendor ABI (rebuild T40/T41 apps against the vendor headers).
