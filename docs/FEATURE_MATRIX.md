@@ -782,8 +782,8 @@ Counts are per vendor function of that SoC (T23 folded: base function = one; Get
 | T23 | 436 | 283 | 16 | 111 | 0 | 12 | 5 | 0 | 9 | 0 | **14** | 212 | 94.0 % |
 | T30 | 347 | 0 | 13 | 22 | 293 | 0 | 8 | 0 | 0 | 11 | **19** | – | 10.1 % |
 | T31 | 387 | 225 | 16 | 133 | 0 | 5 | 2 | 0 | 1 | 5 | **8** | 65 | 96.6 % |
-| T40 | 398 | 57 | 57 | 0 | 175 | 0 | 0 | 0 | 21 | 88 | **109** | – | 28.6 % |
-| T41 | 445 | 8 | 44 | 214 | 0 | 2 | 7 | 1 | 40 | 129 | **177** | 227 | 59.8 % |
+| T40 | 398 | 57 | 76 | 0 | 175 | 0 | 0 | 0 | 21 | 69 | **90** | – | 33.4 % |
+| T41 | 445 | 8 | 46 | 214 | 0 | 2 | 7 | 1 | 40 | 127 | **175** | 227 | 60.2 % |
 
 Columns: fns = vendor functions of that SoC; dev/host/aud/?/no-op/cache/stub/err/miss = counts per cell code (codes as in the legend); gaps = cache + stub + err + miss; audit gaps = the same sum in the audit before the work of 2026-10-05; done % = (dev + host + aud) / fns.
 
@@ -794,7 +794,7 @@ T21  █████████████████████████
 T23  ██████████████████████████▓▓▒▒▒▒▒▒▒▒▒▒○░
 T30  ▓▓▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒░░
 T31  ███████████████████████▓▒▒▒▒▒▒▒▒▒▒▒▒▒▒○░
-T40  ████▓▓▓▓▓▓▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒░░░░░░░░░░░░
+T40  ██████▓▓▓▓▓▓▓▓▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒░░░░░░░░░
 T41  █▓▓▓▓▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒░░░░░░░░░░░░░░░░
 ```
 
@@ -809,7 +809,7 @@ Gaps (cache-only, stub, error, missing, ?) of functions that at least one of tim
 - **T30**: 0 (no gap in a function that a streamer imports)
 - **T31**: 0 (no gap in a function that a streamer imports)
 - **T40**: 2 (timps 0, prudynt 0, raptor 2): `DMIC_*` (error; raptor), `DMIC_DisableAecRefFrame` (error; raptor)
-- **T41**: 20 (timps 0, prudynt 4, raptor 18): `ISP_Get/SetISPBypass` (missing; prudynt), `ISP_Tuning_Get/SetModuleControl` (error; raptor), `ISP_Tuning_SetAutoZoom` (error; prudynt), `ISP_Tuning_SetMaskBlock` (error; raptor), `ISP_Tuning_SetScalerLv` (error; raptor), `Encoder_SetChnMaxPictureSize` (cache-only; raptor), `FrameSource_Get/SetChnFifoAttr` (cache-only; prudynt+raptor), `FrameSource_Get/SetDelay` (error; raptor), `FrameSource_Get/SetFrameDepth` (cache-only; prudynt+raptor), `FrameSource_Get/SetI2dAttr` (error; raptor), `FrameSource_Get/SetMaxDelay` (error; raptor), `FrameSource_Get/SetPool` (cache-only; raptor), `FrameSource_GetTimedFrame` (error; raptor), `ISP_Tuning_CreateOsdRgn` (error; raptor), `ISP_Tuning_DestroyOsdRgn` (error; raptor), `ISP_Tuning_SetOsdPoolSize` (stub; raptor), `ISP_Tuning_SetOsdRgnAttr` (error; raptor), `ISP_Tuning_ShowOsdRgn` (error; raptor), `DMIC_*` (error; raptor), `DMIC_DisableAecRefFrame` (error; raptor)
+- **T41**: 19 (timps 0, prudynt 3, raptor 18): `ISP_Tuning_Get/SetModuleControl` (error; raptor), `ISP_Tuning_SetAutoZoom` (error; prudynt), `ISP_Tuning_SetMaskBlock` (error; raptor), `ISP_Tuning_SetScalerLv` (error; raptor), `Encoder_SetChnMaxPictureSize` (cache-only; raptor), `FrameSource_Get/SetChnFifoAttr` (cache-only; prudynt+raptor), `FrameSource_Get/SetDelay` (error; raptor), `FrameSource_Get/SetFrameDepth` (cache-only; prudynt+raptor), `FrameSource_Get/SetI2dAttr` (error; raptor), `FrameSource_Get/SetMaxDelay` (error; raptor), `FrameSource_Get/SetPool` (cache-only; raptor), `FrameSource_GetTimedFrame` (error; raptor), `ISP_Tuning_CreateOsdRgn` (error; raptor), `ISP_Tuning_DestroyOsdRgn` (error; raptor), `ISP_Tuning_SetOsdPoolSize` (stub; raptor), `ISP_Tuning_SetOsdRgnAttr` (error; raptor), `ISP_Tuning_ShowOsdRgn` (error; raptor), `DMIC_*` (error; raptor), `DMIC_DisableAecRefFrame` (error; raptor)
 
 ### ISP tuning
 
@@ -819,7 +819,7 @@ Gaps (cache-only, stub, error, missing, ?) of functions that at least one of tim
 |---|---|---|---|---|---|---|---|---|---|
 | `ISP_Bypass_Bind` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | miss | n.a. | – |
 | `ISP_Get/SetCsccrMode` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | miss | – |
-| ► `ISP_Get/SetISPBypass` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | miss | p† |
+| `ISP_Get/SetISPBypass` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | host | p† |
 | `ISP_Get/SetInternalChnAttr` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | miss | – |
 | `ISP_GetRaw` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | miss | n.a. | – |
 | `ISP_LDC_Get/SetAttr` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | miss | – |
@@ -831,20 +831,20 @@ Gaps (cache-only, stub, error, missing, ?) of functions that at least one of tim
 | `ISP_SetVicDoneCbFunc` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | miss | – |
 | `ISP_StartNightMode` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | miss | miss | – |
 | `ISP_Tuning_Get/SetDrawBlock` [3] | n.a. | n.a. | n.a. | err | n.a. | n.a. | n.a. | miss | – |
-| `ISP_Tuning_Get/SetHLDCAttr` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | miss | n.a. | – |
-| `ISP_Tuning_Get/SetISPCSCAttr` [49] | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | miss | host | – |
+| `ISP_Tuning_Get/SetHLDCAttr` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | host | n.a. | – |
+| `ISP_Tuning_Get/SetISPCSCAttr` [49] | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | host | host | – |
 | `ISP_Tuning_Get/SetMask` [55] | n.a. | n.a. | n.a. | no-op | n.a. | aud | dev | n.a. | r† |
 | ► `ISP_Tuning_Get/SetModuleControl` [4] | n.a. | n.a. | host | aud | n.a. | aud | host | err | T31/T41: r† |
-| `ISP_Tuning_Get/SetStatisConfig` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | miss | miss | – |
+| `ISP_Tuning_Get/SetStatisConfig` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | host | miss | – |
 | `ISP_Tuning_Get/SetTmoCurve` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | miss | – |
 | `ISP_Tuning_GetAutoZoom` [6] | n.a. | n.a. | n.a. | host | n.a. | n.a. | host | err | – |
 | `ISP_Tuning_GetBrightness` [66] | aud | aud | aud | aud | ? | aud | host | aud | p† r† |
 | `ISP_Tuning_GetHVFlip` | n.a. | n.a. | n.a. | aud | n.a. | aud | ? | miss | T23/T31: r† |
-| `ISP_Tuning_GetISPBypass` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | miss | n.a. | – |
+| `ISP_Tuning_GetISPBypass` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | host | n.a. | – |
 | `ISP_Tuning_GetMaskBlock` [7] | n.a. | n.a. | n.a. | host | n.a. | n.a. | n.a. | miss | – |
 | `ISP_Tuning_SetAntiFogAttr` [8] | miss | miss | no-op | n.a. | host | n.a. | n.a. | n.a. | – |
 | ► `ISP_Tuning_SetAutoZoom` [9] | n.a. | n.a. | n.a. | host | n.a. | host | host | err | see note |
-| `ISP_Tuning_SetFixedContraster` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | miss | n.a. | – |
+| `ISP_Tuning_SetFixedContraster` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | host | n.a. | – |
 | `ISP_Tuning_SetISPLDC` | n.a. | n.a. | n.a. | n.a. | miss | n.a. | n.a. | n.a. | – |
 | ► `ISP_Tuning_SetMaskBlock` [11] | n.a. | n.a. | n.a. | host | n.a. | n.a. | n.a. | err | T41: r† |
 | `ISP_Tuning_SetMeshShadingScale` [91] | miss | miss | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | – |
@@ -852,7 +852,7 @@ Gaps (cache-only, stub, error, missing, ?) of functions that at least one of tim
 | `ISP_Tuning_SetTemperDnsCtl` [83] | host | host | aud | n.a. | cache | n.a. | n.a. | n.a. | – |
 | `ISP_Tuning_SetTmoFaceae` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | miss | – |
 | ► `ISP_Tuning_SwitchBin` [13] | n.a. | n.a. | n.a. | err | n.a. | n.a. | dev | host | T41: p† |
-| `ISP_Tuning_WaitFrameDone` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | miss | miss | – |
+| `ISP_Tuning_WaitFrameDone` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | host | miss | – |
 | `ISP_WDR_OPEN` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | miss | miss | – |
 
 Notes:
@@ -890,7 +890,7 @@ Notes:
 | `ISP_Get/SetCsccrMode` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | miss | – |
 | `ISP_Get/SetDefaultBinPath` [23] | n.a. | n.a. | n.a. | dev | n.a. | dev | host | aud | r† |
 | ► `ISP_Get/SetFrameDrop` [1] | n.a. | n.a. | n.a. | dev | n.a. | dev | host | dev | T41: r† |
-| ► `ISP_Get/SetISPBypass` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | miss | p† |
+| `ISP_Get/SetISPBypass` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | host | p† |
 | `ISP_Get/SetInternalChnAttr` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | miss | – |
 | `ISP_Get/SetSensorRegister` [24] | aud | aud | aud | aud | ? | aud | host | dev | r† |
 | `ISP_GetCameraInputMode` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | dev | n.a. | T40: r† |
@@ -929,10 +929,10 @@ Notes:
 | `ISP_Tuning_Get/SetFrontCrop` [44] | n.a. | n.a. | n.a. | dev | n.a. | dev | n.a. | n.a. | r† |
 | `ISP_Tuning_Get/SetGamma` [45] | aud | aud | aud | dev | ? | aud | n.a. | n.a. | p† r† |
 | ► `ISP_Tuning_Get/SetGammaAttr` [46] | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | host | host | p† r† |
-| `ISP_Tuning_Get/SetHLDCAttr` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | miss | n.a. | – |
+| `ISP_Tuning_Get/SetHLDCAttr` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | host | n.a. | – |
 | `ISP_Tuning_Get/SetHVFLIP` [47] | n.a. | n.a. | n.a. | aud | n.a. | aud | ? | aud | see note |
 | `ISP_Tuning_Get/SetHiLightDepress` [48] | aud | aud | aud | aud | ? | aud | n.a. | n.a. | p† r† t |
-| `ISP_Tuning_Get/SetISPCSCAttr` [49] | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | miss | host | – |
+| `ISP_Tuning_Get/SetISPCSCAttr` [49] | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | host | host | – |
 | `ISP_Tuning_Get/SetISPCustomMode` [50] | n.a. | n.a. | n.a. | aud | n.a. | host | n.a. | n.a. | r† |
 | `ISP_Tuning_Get/SetISPHVflip` [89] | dev | dev | n.a. | n.a. | host | n.a. | n.a. | n.a. | – |
 | `ISP_Tuning_Get/SetISPHflip` [51] | aud | aud | aud | aud | ? | aud | n.a. | n.a. | p† t |
@@ -948,7 +948,7 @@ Notes:
 | `ISP_Tuning_Get/SetSensorHflip` [60] | n.a. | n.a. | n.a. | aud | n.a. | n.a. | n.a. | n.a. | – |
 | `ISP_Tuning_Get/SetSensorVflip` [61] | n.a. | n.a. | n.a. | aud | n.a. | n.a. | n.a. | n.a. | – |
 | `ISP_Tuning_Get/SetSinterDnsAttr` [62] | host | host | aud | n.a. | ? | n.a. | n.a. | n.a. | p† |
-| `ISP_Tuning_Get/SetStatisConfig` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | miss | miss | – |
+| `ISP_Tuning_Get/SetStatisConfig` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | host | miss | – |
 | `ISP_Tuning_Get/SetTemperDnsAttr` [63] | host | host | aud | n.a. | ? | n.a. | n.a. | n.a. | p† |
 | `ISP_Tuning_Get/SetTmoCurve` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | miss | – |
 | `ISP_Tuning_Get/SetWDRAttr` [90] | dev | dev | n.a. | n.a. | host | n.a. | n.a. | n.a. | – |
@@ -959,7 +959,7 @@ Notes:
 | `ISP_Tuning_GetBrightness` [66] | aud | aud | aud | aud | ? | aud | host | aud | p† r† |
 | `ISP_Tuning_GetEVAttr` [67] | aud | dev | dev | dev | ? | dev | n.a. | n.a. | p† r† t |
 | `ISP_Tuning_GetHVFlip` | n.a. | n.a. | n.a. | aud | n.a. | aud | ? | miss | T23/T31: r† |
-| `ISP_Tuning_GetISPBypass` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | miss | n.a. | – |
+| `ISP_Tuning_GetISPBypass` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | host | n.a. | – |
 | `ISP_Tuning_GetMaskBlock` [7] | n.a. | n.a. | n.a. | host | n.a. | n.a. | n.a. | miss | – |
 | `ISP_Tuning_GetRawDRC` [68] | host | host | aud | n.a. | ? | n.a. | n.a. | n.a. | p† |
 | `ISP_Tuning_GetSceneMode` [69] | aud | aud | aud | n.a. | ? | n.a. | n.a. | n.a. | – |
@@ -973,7 +973,7 @@ Notes:
 | `ISP_Tuning_SetBrightness` [74] | aud | aud | dev | aud | ? | aud | ? | aud | p† r† t |
 | `ISP_Tuning_SetDPStrength` [10] | dev | dev | dev | n.a. | host | n.a. | n.a. | n.a. | – |
 | `ISP_Tuning_SetFWFreeze` [75] | aud | aud | aud | n.a. | ? | n.a. | n.a. | n.a. | – |
-| `ISP_Tuning_SetFixedContraster` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | miss | n.a. | – |
+| `ISP_Tuning_SetFixedContraster` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | host | n.a. | – |
 | `ISP_Tuning_SetISPBypass` [76] | aud | aud | aud | aud | ? | aud | ? | n.a. | p† r† |
 | `ISP_Tuning_SetISPLDC` | n.a. | n.a. | n.a. | n.a. | miss | n.a. | n.a. | n.a. | – |
 | `ISP_Tuning_SetISPProcess` [77] | aud | aud | aud | n.a. | ? | n.a. | n.a. | n.a. | – |
@@ -991,7 +991,7 @@ Notes:
 | `ISP_Tuning_SetVideoDrop` [85] | host | host | host | host | ? | host | ? | host | r† |
 | ► `ISP_Tuning_SwitchBin` [13] | n.a. | n.a. | n.a. | err | n.a. | n.a. | dev | host | T41: p† |
 | `ISP_Tuning_WaitFrame` [86] | host | host | host | host | ? | aud | n.a. | n.a. | r† |
-| `ISP_Tuning_WaitFrameDone` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | miss | miss | – |
+| `ISP_Tuning_WaitFrameDone` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | host | miss | – |
 | ► `ISP_WDR_ENABLE` [14] | n.a. | n.a. | n.a. | n.a. | n.a. | aud | host | dev | r† |
 | ► `ISP_WDR_ENABLE_GET` [15] | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | host | dev | r† |
 | `ISP_WDR_ENABLE_Get` [87] | n.a. | n.a. | n.a. | n.a. | n.a. | aud | n.a. | n.a. | – |
@@ -1102,20 +1102,20 @@ Notes:
 | `ISP_SetAeAlgoFunc` | n.a. | n.a. | n.a. | aud | n.a. | aud | miss | miss | – |
 | `ISP_SetAwbAlgoFunc` | n.a. | n.a. | n.a. | aud | n.a. | aud | miss | miss | – |
 | `ISP_Tuning_Get/SetAeConvergeStep` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | miss | – |
-| `ISP_Tuning_Get/SetAeExpList` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | miss | miss | – |
-| `ISP_Tuning_Get/SetAeSpeed` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | miss | n.a. | – |
+| `ISP_Tuning_Get/SetAeExpList` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | host | miss | – |
+| `ISP_Tuning_Get/SetAeSpeed` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | host | n.a. | – |
 | `ISP_Tuning_Get/SetAwbConvergeStep` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | miss | – |
 | `ISP_Tuning_Get/SetAwbCtTrendOffset` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | miss | – |
-| `ISP_Tuning_Get/SetFaceAe` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | miss | miss | – |
+| `ISP_Tuning_Get/SetFaceAe` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | host | miss | – |
 | `ISP_Tuning_Get/SetFaceAeWeiget` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | miss | – |
-| `ISP_Tuning_Get/SetFaceAwb` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | miss | n.a. | – |
+| `ISP_Tuning_Get/SetFaceAwb` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | host | n.a. | – |
 | `ISP_Tuning_GetAEEvList` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | miss | – |
 | `ISP_Tuning_GetAEFlickerFlag` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | miss | – |
-| `ISP_Tuning_GetAFMetricesInfo` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | miss | miss | – |
+| `ISP_Tuning_GetAFMetricesInfo` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | host | miss | – |
 | `ISP_Tuning_GetAeAtList` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | miss | – |
 | `ISP_Tuning_GetAeBv` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | miss | – |
 | `ISP_Tuning_GetAeEvList` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | miss | – |
-| `ISP_Tuning_GetAfStatistics` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | miss | miss | – |
+| `ISP_Tuning_GetAfStatistics` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | host | miss | – |
 | `ISP_Tuning_GetFaceAeLuma` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | miss | – |
 | `ISP_Tuning_SetWB_ALGO` [3] | n.a. | n.a. | n.a. | err | n.a. | aud | n.a. | n.a. | – |
 
@@ -1139,12 +1139,12 @@ Notes:
 | `ISP_Tuning_Get/SetAeAttr` [7] | n.a. | n.a. | n.a. | dev | n.a. | dev | n.a. | n.a. | p† r† |
 | `ISP_Tuning_Get/SetAeComp` [8] | aud | aud | n.a. | aud | ? | aud | n.a. | n.a. | p† r† t |
 | `ISP_Tuning_Get/SetAeConvergeStep` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | miss | – |
-| `ISP_Tuning_Get/SetAeExpList` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | miss | miss | – |
+| `ISP_Tuning_Get/SetAeExpList` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | host | miss | – |
 | `ISP_Tuning_Get/SetAeExprInfo` [9] | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | host | aud | – |
 | `ISP_Tuning_Get/SetAeHist` [10] | aud | dev | dev | dev | ? | dev | n.a. | n.a. | p† r† |
 | `ISP_Tuning_Get/SetAeMin` [11] | n.a. | n.a. | dev | dev | n.a. | dev | n.a. | n.a. | see note |
 | `ISP_Tuning_Get/SetAeScenceAttr` [12] | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | dev | aud | – |
-| `ISP_Tuning_Get/SetAeSpeed` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | miss | n.a. | – |
+| `ISP_Tuning_Get/SetAeSpeed` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | host | n.a. | – |
 | `ISP_Tuning_Get/SetAeStrategy` [13] | host | dev | dev | n.a. | host | n.a. | n.a. | n.a. | – |
 | `ISP_Tuning_Get/SetAeTargetList` [14] | n.a. | n.a. | n.a. | dev | n.a. | dev | n.a. | n.a. | r† |
 | `ISP_Tuning_Get/SetAeWeight` [15] | aud | dev | dev | dev | ? | dev | host | host | p† r† |
@@ -1158,15 +1158,15 @@ Notes:
 | `ISP_Tuning_Get/SetAwbHist` [20] | aud | dev | dev | no-op | ? | no-op | n.a. | n.a. | p† r† |
 | `ISP_Tuning_Get/SetAwbWeight` [21] | aud | dev | dev | no-op | ? | no-op | ? | aud | p† r† |
 | `ISP_Tuning_Get/SetAwbZoneWeight` [22] | n.a. | n.a. | n.a. | host | n.a. | n.a. | n.a. | n.a. | – |
-| `ISP_Tuning_Get/SetFaceAe` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | miss | miss | – |
+| `ISP_Tuning_Get/SetFaceAe` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | host | miss | – |
 | `ISP_Tuning_Get/SetFaceAeWeiget` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | miss | – |
-| `ISP_Tuning_Get/SetFaceAwb` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | miss | n.a. | – |
+| `ISP_Tuning_Get/SetFaceAwb` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | host | n.a. | – |
 | `ISP_Tuning_Get/SetWB` [23] | aud | dev | dev | dev | ? | dev | n.a. | n.a. | p† r† t |
 | `ISP_Tuning_GetAEEvList` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | miss | – |
 | `ISP_Tuning_GetAEFlickerFlag` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | miss | – |
 | `ISP_Tuning_GetAE_IT_MAX` [24] | n.a. | n.a. | n.a. | dev | n.a. | dev | n.a. | n.a. | p† |
 | `ISP_Tuning_GetAFMetrices` [25] | n.a. | n.a. | dev | dev | ? | dev | n.a. | n.a. | r† |
-| `ISP_Tuning_GetAFMetricesInfo` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | miss | miss | – |
+| `ISP_Tuning_GetAFMetricesInfo` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | host | miss | – |
 | `ISP_Tuning_GetAWBCt` [26] | n.a. | n.a. | n.a. | dev | n.a. | dev | n.a. | n.a. | see note |
 | `ISP_Tuning_GetAeAtList` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | miss | – |
 | `ISP_Tuning_GetAeBv` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | miss | – |
@@ -1176,7 +1176,7 @@ Notes:
 | `ISP_Tuning_GetAeState` [29] | n.a. | n.a. | n.a. | dev | n.a. | dev | n.a. | n.a. | r† |
 | `ISP_Tuning_GetAeStatistics` [30] | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | ? | aud | – |
 | `ISP_Tuning_GetAeZone` [31] | no-op | no-op | dev | dev | n.a. | dev | n.a. | n.a. | p† r† |
-| `ISP_Tuning_GetAfStatistics` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | miss | miss | – |
+| `ISP_Tuning_GetAfStatistics` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | host | miss | – |
 | `ISP_Tuning_GetAfZone` [32] | n.a. | n.a. | n.a. | dev | n.a. | dev | n.a. | n.a. | r† |
 | `ISP_Tuning_GetAwbGlobalStatistics` [33] | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | ? | aud | – |
 | `ISP_Tuning_GetAwbStatistics` [34] | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | ? | aud | – |

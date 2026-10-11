@@ -80,6 +80,14 @@ int OpenIMP_P1_TuningIOCtl(uint32_t command, void *argument)
     last.calls++;
     if (request->control == 0x080000a5)
         memcpy(&sb_seen, (const void *)request->payload, sizeof(sb_seen) > 68 ? 68 : sizeof(sb_seen));
+    if (request->control == 0x08000096 || request->control == 0x08000091) {
+        /* CSC / WaitFrameDone: the library hands a 64 / 24 byte block */
+        memcpy(last.copy, (void *)request->payload,
+               request->control == 0x08000096 ? 64 : 24);
+        if (request->direction)
+            memcpy((void *)request->payload, last.reply,
+                   request->control == 0x08000096 ? 64 : 24);
+    }
     if (request->control == 0x08000080) {       /* CCM: 40-byte payload */
         if (request->direction) {
             memcpy((void *)request->payload, last.reply, 40);
@@ -349,6 +357,114 @@ int main(void)
         last.result = -1;                               /* driver refuses */
         assert(IMP_ISP_Tuning_SwitchBin(IMPVI_MAIN, &bin) == -6);
         last.result = 0;
+    }
+
+    /* More pass-throughs (control numbers from the vendor 1.3.1 libimp). */
+    {
+        IMPISPStatisConfig statis;
+        IMPISPFaceAttr face;
+        IMPISPHLDCAttr hldc;
+        IMPISPAeExpListAttr explist;
+        IMPISPAeSpeedAttr speed;
+        IMPISPAFStatisInfo af;
+        IMPISPAFMetricsInfo metric;
+        IMPISPFixedContrastAttr fixed;
+        IMPISPTuningOpsMode bypass;
+        IMPISPCSCAttr csc;
+        IMPISPWaitFrameAttr wait;
+
+        EXPECT(IMP_ISP_Tuning_SetStatisConfig(IMPVI_MAIN, &statis), 0, 0x08000000, &statis);
+        EXPECT(IMP_ISP_Tuning_GetStatisConfig(IMPVI_MAIN, &statis), 1, 0x08000000, &statis);
+        EXPECT(IMP_ISP_Tuning_SetFaceAe(IMPVI_MAIN, &face), 0, 0x08000035, &face);
+        EXPECT(IMP_ISP_Tuning_GetFaceAe(IMPVI_MAIN, &face), 1, 0x08000035, &face);
+        EXPECT(IMP_ISP_Tuning_SetFaceAwb(IMPVI_MAIN, &face), 0, 0x08000014, &face);
+        EXPECT(IMP_ISP_Tuning_GetFaceAwb(IMPVI_MAIN, &face), 1, 0x08000014, &face);
+        EXPECT(IMP_ISP_Tuning_SetHLDCAttr(IMPVI_MAIN, &hldc), 0, 0x08000097, &hldc);
+        EXPECT(IMP_ISP_Tuning_GetHLDCAttr(IMPVI_MAIN, &hldc), 1, 0x08000097, &hldc);
+        EXPECT(IMP_ISP_Tuning_SetAeExpList(IMPVI_MAIN, &explist), 0, 0x08000099, &explist);
+        EXPECT(IMP_ISP_Tuning_GetAeExpList(IMPVI_MAIN, &explist), 1, 0x08000099, &explist);
+        EXPECT(IMP_ISP_Tuning_SetAeSpeed(IMPVI_MAIN, &speed), 0, 0x0800009a, &speed);
+        EXPECT(IMP_ISP_Tuning_GetAeSpeed(IMPVI_MAIN, &speed), 1, 0x0800009a, &speed);
+        EXPECT(IMP_ISP_Tuning_GetAfStatistics(IMPVI_MAIN, &af), 1, 0x08000031, &af);
+        EXPECT(IMP_ISP_Tuning_GetAFMetricesInfo(IMPVI_MAIN, &metric), 1, 0x08000034, &metric);
+        EXPECT(IMP_ISP_Tuning_SetFixedContraster(IMPVI_MAIN, &fixed), 0, 0x08000098, &fixed);
+
+        /* ISP bypass is a library-held flag (0 before any set), no ioctl */
+        before = last.calls;
+        bypass = (IMPISPTuningOpsMode)7;
+        assert(IMP_ISP_Tuning_GetISPBypass(IMPVI_MAIN, &bypass) == 0);
+        assert(bypass == 0);
+        bypass = IMPISP_TUNING_OPS_MODE_ENABLE;
+        assert(IMP_ISP_Tuning_SetISPBypass(IMPVI_MAIN, &bypass) == 0);
+        bypass = (IMPISPTuningOpsMode)7;
+        assert(IMP_ISP_Tuning_GetISPBypass(IMPVI_MAIN, &bypass) == 0);
+        assert(bypass == IMPISP_TUNING_OPS_MODE_ENABLE);
+        assert(IMP_ISP_Tuning_GetISPBypass(IMPVI_MAIN, NULL) != 0);
+        assert(last.calls == before);
+
+        /* WaitFrameDone: 24-byte block, timeout out, counter/IRQ type back */
+        assert(sizeof(IMPISPWaitFrameAttr) == 24);
+        memset(&wait, 0xa5, sizeof(wait));
+        wait.timeout = 250;
+        memset(last.reply, 0, sizeof(last.reply));
+        { uint64_t cnt = 0x1122334455667788ULL; uint32_t irq = 3;
+          memcpy(last.reply + 8, &cnt, 8); memcpy(last.reply + 16, &irq, 4); }
+        before = last.calls;
+        assert(IMP_ISP_Tuning_WaitFrameDone(IMPVI_MAIN, &wait) == 0);
+        assert(last.calls == before + 1 && last.control == 0x08000091 &&
+               last.direction == 1);
+        { uint32_t t; memcpy(&t, last.copy, 4); assert(t == 250); }
+        assert(wait.timeout == 250 && wait.cnt == 0x1122334455667788ULL &&
+               (uint32_t)wait.irqtype == 3);
+        assert(((unsigned char *)&wait)[4] == 0xa5);   /* padding untouched */
+        assert(IMP_ISP_Tuning_WaitFrameDone(IMPVI_MAIN, NULL) != 0);
+
+        /* CSC (T40 wire: gamut word, 9 x 10-bit, 6 bytes) */
+        before = last.calls;
+        memset(&csc, 0, sizeof(csc));
+        csc.ColorGamut = IMP_ISP_CG_BUTT;               /* 5: refused */
+        assert(IMP_ISP_Tuning_SetISPCSCAttr(IMPVI_MAIN, &csc) != 0);
+        assert(last.calls == before);
+        csc.ColorGamut = IMP_ISP_CG_BT709_FULL;
+        EXPECT(IMP_ISP_Tuning_SetISPCSCAttr(IMPVI_MAIN, &csc), 0, 0x08000096, last.payload);
+        { uint32_t g; memcpy(&g, last.copy, 4); assert(g == 2); }
+        csc.ColorGamut = IMP_ISP_CG_USER;
+        csc.Matrix.CscCoef[0] = 0.299f;     /* 306.18 + .5 -> 306 */
+        csc.Matrix.CscCoef[1] = -0.5f;      /* -511.5 -> -511 & 0x3ff = 0x201 */
+        csc.Matrix.CscCoef[8] = 0.5f;      /* 1.0 would wrap to 0 (10-bit mask) */
+        csc.Matrix.CscOffset[0] = 0x80;
+        csc.Matrix.CscOffset[1] = 0x10;
+        csc.Matrix.CscClip[0] = 1; csc.Matrix.CscClip[1] = 2;
+        csc.Matrix.CscClip[2] = 3; csc.Matrix.CscClip[3] = 4;
+        EXPECT(IMP_ISP_Tuning_SetISPCSCAttr(IMPVI_MAIN, &csc), 0, 0x08000096, last.payload);
+        { uint32_t w;
+          memcpy(&w, last.copy, 4); assert(w == 4);
+          memcpy(&w, last.copy + 4, 4); assert(w == 306);
+          memcpy(&w, last.copy + 8, 4); assert(w == 0x201);
+          memcpy(&w, last.copy + 36, 4); assert(w == 512);
+          assert(last.copy[40] == 0x80 && last.copy[41] == 0x10);
+          assert(last.copy[42] == 1 && last.copy[45] == 4); }
+        /* get, user gamut: signed words / 1024, entries 3,4,7,8 negated */
+        memset(last.reply, 0, sizeof(last.reply));
+        { int32_t v[9] = {307, 100, 0, 512, -256, 0, 0, 64, 1024}; uint32_t g = 4;
+          memcpy(last.reply, &g, 4); memcpy(last.reply + 4, v, 36);
+          last.reply[40] = 9; last.reply[41] = 8; last.reply[42] = 7;
+          last.reply[45] = 6; }
+        memset(&csc, 0x55, sizeof(csc));
+        assert(IMP_ISP_Tuning_GetISPCSCAttr(IMPVI_MAIN, &csc) == 0);
+        assert(csc.ColorGamut == IMP_ISP_CG_USER);
+        assert(csc.Matrix.CscCoef[0] == 307.0f / 1024.0f);
+        assert(csc.Matrix.CscCoef[3] == -0.5f && csc.Matrix.CscCoef[4] == 0.25f);
+        assert(csc.Matrix.CscCoef[7] == -64.0f / 1024.0f && csc.Matrix.CscCoef[8] == -1.0f);
+        assert(csc.Matrix.CscCoef[1] == 100.0f / 1024.0f);
+        assert(csc.Matrix.CscOffset[0] == 9 && csc.Matrix.CscClip[3] == 6);
+        /* get, other gamut: structure zeroed behind the gamut word */
+        memset(last.reply, 0, sizeof(last.reply));
+        { uint32_t g = 1; memcpy(last.reply, &g, 4); }
+        memset(&csc, 0x55, sizeof(csc));
+        assert(IMP_ISP_Tuning_GetISPCSCAttr(IMPVI_MAIN, &csc) == 0);
+        assert(csc.ColorGamut == IMP_ISP_CG_BT601_LIMITED);
+        assert(csc.Matrix.CscCoef[0] == 0.0f && csc.Matrix.CscClip[3] == 0);
     }
 
     puts("T40 P3 controls: all checks passed");

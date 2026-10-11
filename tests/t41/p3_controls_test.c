@@ -2,6 +2,7 @@
  * pass-through of the public structures (host test, needs the T41 1.2.0
  * vendor headers via T41_HEADERS). */
 #include <assert.h>
+#include <errno.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
@@ -30,6 +31,7 @@ static struct {
     unsigned char arg[64];
     int calls;
     int result;
+    int err;                                /* errno the mock reports on failure */
     int32_t bus;
 } isp;
 
@@ -41,6 +43,8 @@ int OpenIMP_P1_IspIOCtl(uint32_t command, void *argument)
     isp.calls++;
     if (command == 0x8040540eU)             /* the driver returns the value */
         *(uint32_t *)((char *)argument + 56) = 0x5a;
+    if (isp.result)
+        errno = isp.err ? isp.err : EIO;
     return isp.result;
 }
 
@@ -460,6 +464,41 @@ int main(void)
         last.result = -1;                               /* driver refuses */
         assert(IMP_ISP_Tuning_SwitchBin(IMPVI_MAIN, &bin) == -4090);
         last.result = 0;
+    }
+
+    /* IMP_ISP_Set/GetISPBypass (vendor 1.2.6): 8-byte block on the ISP node */
+    {
+        IMPISPTuningOpsMode en = IMPISP_TUNING_OPS_MODE_ENABLE;
+        IMPISPTuningOpsMode got = (IMPISPTuningOpsMode)7;
+        int calls;
+
+        isp.result = 0;
+        calls = isp.calls;
+        assert(IMP_ISP_GetISPBypass(IMPVI_MAIN, &got) == 0 && got == 0);
+        assert(IMP_ISP_SetISPBypass(IMPVI_MAIN, NULL) == -4087);
+        assert(IMP_ISP_SetISPBypass((IMPVI_NUM)2, &en) == -4084);
+        assert(IMP_ISP_GetISPBypass((IMPVI_NUM)2, &got) == -4084);
+        assert(IMP_ISP_GetISPBypass(IMPVI_MAIN, NULL) == -4087);
+        assert(isp.calls == calls);
+        assert(IMP_ISP_SetISPBypass(IMPVI_MAIN, &en) == 0);
+        assert(isp.calls == calls + 1 && isp.command == 0x80085418U);
+        { uint32_t blk[2]; memcpy(blk, isp.arg, 8);
+          assert(blk[0] == 1 && blk[1] == 0); }
+        got = (IMPISPTuningOpsMode)7;
+        assert(IMP_ISP_GetISPBypass(IMPVI_MAIN, &got) == 0 && got == en);
+        /* a refusing kernel: vendor -4095, value kept */
+        en = IMPISP_TUNING_OPS_MODE_DISABLE;
+        isp.result = -1;
+        isp.err = ENOTTY;
+        assert(IMP_ISP_SetISPBypass(IMPVI_MAIN, &en) == -4095);
+        assert(IMP_ISP_GetISPBypass(IMPVI_MAIN, &got) == 0 &&
+               got == IMPISP_TUNING_OPS_MODE_ENABLE);
+        /* ISP not up (ENODEV): remembered like the vendor without an ISP device */
+        isp.err = ENODEV;
+        assert(IMP_ISP_SetISPBypass(IMPVI_MAIN, &en) == 0);
+        assert(IMP_ISP_GetISPBypass(IMPVI_MAIN, &got) == 0 && got == en);
+        isp.result = 0;
+        isp.err = 0;
     }
 
     puts("t41 p3 controls tests passed");

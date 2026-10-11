@@ -451,6 +451,7 @@ static struct {
     IMPISPHVFLIP flip;
 #endif
     IMPISPRunningMode running_mode;
+    IMPISPTuningOpsMode isp_bypass;
     IMPISPAntiflickerAttr antiflicker;
     char bin_path[128];
 } p3_controls = {
@@ -1049,6 +1050,139 @@ P3_T40_POINTER_PAIR(AutoZoom, IMPISPAutoZoom, TISP_CID_AUTOZOOM)
 P3_T40_POINTER_PAIR(WdrOutputMode, IMPISPWdrOutputMode,
                     TISP_CID_WDR_OUTPUT_MODE)
 
+/*
+ * More T40 1.3.1 pointer pass-throughs (vendor libimp disassembly, the same
+ * ioctl request as above; each vendor function checks the sensor number,
+ * the ISP device, the pointer and "tuning running" and then hands the public
+ * structure to the kernel unchanged):
+ *   StatisConfig 0x8000000, WaitFrameDone 0x8000091, AfStatistics 0x8000031,
+ *   AFMetricesInfo 0x8000034, FaceAe 0x8000035, FaceAwb 0x8000014,
+ *   HLDCAttr 0x8000097, FixedContraster 0x8000098 (set only), AeExpList
+ *   0x8000099, AeSpeed 0x800009a.
+ */
+#define TISP_CID_STATIS_CONFIG_T40  0x08000000
+#define TISP_CID_WAIT_FRAME_DONE    0x08000091
+#define TISP_CID_AF_STATIS          0x08000031
+#define TISP_CID_AF_METRICS         0x08000034
+#define TISP_CID_FACE_AE            0x08000035
+#define TISP_CID_FACE_AWB           0x08000014
+#define TISP_CID_HLDC               0x08000097
+#define TISP_CID_FIXED_CONTRAST     0x08000098
+#define TISP_CID_AE_EXP_LIST        0x08000099
+#define TISP_CID_AE_SPEED           0x0800009a
+
+P3_T40_POINTER_PAIR(StatisConfig, IMPISPStatisConfig, TISP_CID_STATIS_CONFIG_T40)
+P3_T40_POINTER_PAIR(FaceAe, IMPISPFaceAttr, TISP_CID_FACE_AE)
+P3_T40_POINTER_PAIR(FaceAwb, IMPISPFaceAttr, TISP_CID_FACE_AWB)
+P3_T40_POINTER_PAIR(HLDCAttr, IMPISPHLDCAttr, TISP_CID_HLDC)
+P3_T40_POINTER_PAIR(AeExpList, IMPISPAeExpListAttr, TISP_CID_AE_EXP_LIST)
+P3_T40_POINTER_PAIR(AeSpeed, IMPISPAeSpeedAttr, TISP_CID_AE_SPEED)
+
+int32_t IMP_ISP_Tuning_GetAfStatistics(IMPVI_NUM num, IMPISPAFStatisInfo *info)
+{
+    return p3_tuning_pointer(num, 1, TISP_CID_AF_STATIS, info);
+}
+
+int32_t IMP_ISP_Tuning_GetAFMetricesInfo(IMPVI_NUM num,
+                                         IMPISPAFMetricsInfo *metric)
+{
+    return p3_tuning_pointer(num, 1, TISP_CID_AF_METRICS, metric);
+}
+
+int32_t IMP_ISP_Tuning_SetFixedContraster(IMPVI_NUM num,
+                                          IMPISPFixedContrastAttr *attr)
+{
+    return p3_tuning_pointer(num, 0, TISP_CID_FIXED_CONTRAST, attr);
+}
+
+/* Vendor WaitFrameDone: a 24-byte scratch block whose first word is the
+ * caller's timeout goes out as a get; on success the kernel's frame counter
+ * (offset 8, 8 bytes) and IRQ type (offset 16) are copied back to the
+ * caller's structure (offset 4 stays untouched). */
+int32_t IMP_ISP_Tuning_WaitFrameDone(IMPVI_NUM num, IMPISPWaitFrameAttr *attr)
+{
+    unsigned char scratch[24];
+    int32_t result;
+
+    if (!attr)
+        return -1;
+    memset(scratch, 0, sizeof(scratch));
+    memcpy(scratch, attr, 4);
+    result = p3_tuning_pointer(num, 1, TISP_CID_WAIT_FRAME_DONE, scratch);
+    if (result == 0)
+        memcpy((unsigned char *)attr + 8, scratch + 8, 12);
+    return result;
+}
+
+/*
+ * CSC: the T40 wire block differs from the T41 one above (vendor T40 1.3.1
+ * Set/GetISPCSCAttr).  Control 0x8000096, the block is
+ *   u32 gamut (0..4, 4 = user), 9 x u32 matrix, 6 bytes {offset[2], clip[4]}.
+ * Set: gamut >= 5 fails before the ioctl; for the user gamut every
+ * coefficient is (int)(c * 1024 + 0.5) & 0x3ff, otherwise only the gamut
+ * word is defined.  Get: for the user gamut the words are read as signed
+ * ints times 1/1024 and the coefficients 3, 4, 7 and 8 are negated (as the
+ * vendor library does), the six bytes are copied; any other gamut zeroes
+ * bytes 4..47 of the structure.
+ */
+#define TISP_CID_CSC_T40 0x08000096
+
+int32_t IMP_ISP_Tuning_SetISPCSCAttr(IMPVI_NUM num, IMPISPCSCAttr *csc)
+{
+    unsigned char wire[64];
+    unsigned int i;
+
+    if (!csc || (uint32_t)csc->ColorGamut >= 5U)
+        return -1;
+    memset(wire, 0, sizeof(wire));
+    memcpy(wire, &csc->ColorGamut, 4);
+    if (csc->ColorGamut == IMP_ISP_CG_USER) {
+        for (i = 0; i < 9U; i++) {
+            uint32_t w = (uint32_t)(int32_t)((double)(csc->Matrix.CscCoef[i] *
+                                                      1024.0f) + 0.5) & 0x3ffU;
+
+            memcpy(wire + 4 + 4 * i, &w, 4);
+        }
+        memcpy(wire + 40, csc->Matrix.CscOffset, 2);
+        memcpy(wire + 42, csc->Matrix.CscClip, 4);
+    }
+    return p3_tuning_pointer(num, 0, TISP_CID_CSC_T40, wire);
+}
+
+int32_t IMP_ISP_Tuning_GetISPCSCAttr(IMPVI_NUM num, IMPISPCSCAttr *csc)
+{
+    unsigned char wire[64];
+    unsigned int i;
+    int32_t gamut;
+    int32_t result;
+
+    if (!csc)
+        return -1;
+    memset(wire, 0, sizeof(wire));
+    result = p3_tuning_pointer(num, 1, TISP_CID_CSC_T40, wire);
+    if (result != 0)
+        return result;
+    memcpy(&gamut, wire, 4);
+    if (gamut == IMP_ISP_CG_USER) {
+        for (i = 0; i < 9U; i++) {
+            int32_t w;
+
+            memcpy(&w, wire + 4 + 4 * i, 4);
+            csc->Matrix.CscCoef[i] = (float)w * (1.0f / 1024.0f);
+        }
+        memcpy(csc->Matrix.CscOffset, wire + 40, 2);
+        memcpy(csc->Matrix.CscClip, wire + 42, 4);
+        csc->Matrix.CscCoef[3] = -csc->Matrix.CscCoef[3];
+        csc->Matrix.CscCoef[4] = -csc->Matrix.CscCoef[4];
+        csc->Matrix.CscCoef[7] = -csc->Matrix.CscCoef[7];
+        csc->Matrix.CscCoef[8] = -csc->Matrix.CscCoef[8];
+    } else {
+        memset((unsigned char *)csc + 4, 0, 44);
+    }
+    memcpy(&csc->ColorGamut, &gamut, 4);
+    return 0;
+}
+
 int IMP_ISP_Tuning_Awb_SetRgbCoefft(IMPVI_NUM num, IMPISPCoefftWb *attr)
 {
     return p3_tuning_pointer(num, 0, TISP_CID_AWB_RGB_COEFFT_T40, attr);
@@ -1183,10 +1317,68 @@ int32_t IMP_ISP_Tuning_SetISPBypass(IMPVI_NUM num,
         return -1;
     /*
      * OEM T40 stores this policy flag in libimp; it does not issue a tuning
-     * ioctl until a separate custom-ISP configuration is supplied.
+     * ioctl until a separate custom-ISP configuration is supplied.  The
+     * vendor GetISPBypass reads the stored word back (0 before any Set).
      */
+    p3_controls.isp_bypass = *enable;
     return 0;
 }
+
+#if !defined(PLATFORM_T41)   /* the T41 vendor name is IMP_ISP_GetISPBypass */
+int32_t IMP_ISP_Tuning_GetISPBypass(IMPVI_NUM num,
+                                    IMPISPTuningOpsMode *enable)
+{
+    if (num != IMPVI_MAIN || !enable)
+        return -1;
+    *enable = p3_controls.isp_bypass;
+    return 0;
+}
+#endif
+
+#if defined(PLATFORM_T41)
+/*
+ * Vendor T41 1.2.6 IMP_ISP_SetISPBypass (0x47084) / IMP_ISP_GetISPBypass
+ * (0x46c48), the T41 names of the bypass pair (the T40 pair above has
+ * "Tuning" in the name).  Set: pointer NULL -4087, sensor number >= 2
+ * -4084; with the ISP device open the 8-byte block {value, sensor} goes to
+ * the ISP node as ioctl 0x80085418 (TISP_VIDIOC_BYPASS_SENSOR), a failing
+ * ioctl is -4095 and the value is remembered; without an open ISP device the
+ * vendor only remembers it.  Get returns the remembered value (0 before any
+ * Set).  The open-tx-isp T41 driver does not serve the ioctl yet (it answers
+ * -ENOTTY), so Set fails with -4095 there, as on a vendor library with an
+ * unsupporting kernel.  OpenIMP does not reproduce the vendor's "ISP device
+ * not open" error for Get.
+ */
+#define TISP_IOCTL_BYPASS_SENSOR 0x80085418U
+static IMPISPTuningOpsMode p3_t41_bypass[2];
+
+int32_t IMP_ISP_SetISPBypass(IMPVI_NUM num, IMPISPTuningOpsMode *enable)
+{
+    uint32_t request[2];
+
+    if (!enable)
+        return -4087;
+    if ((uint32_t)num >= 2U)
+        return -4084;
+    request[0] = (uint32_t)*enable;
+    request[1] = (uint32_t)num;
+    if (OpenIMP_P1_IspIOCtl(TISP_IOCTL_BYPASS_SENSOR, request) != 0 &&
+        errno != ENODEV)
+        return -4095;
+    p3_t41_bypass[num] = *enable;
+    return 0;
+}
+
+int32_t IMP_ISP_GetISPBypass(IMPVI_NUM num, IMPISPTuningOpsMode *enable)
+{
+    if (!enable)
+        return -4087;
+    if ((uint32_t)num >= 2U)
+        return -4084;
+    *enable = p3_t41_bypass[num];
+    return 0;
+}
+#endif
 
 int32_t IMP_ISP_Tuning_SetAntiFlickerAttr(IMPVI_NUM num,
                                           IMPISPAntiflickerAttr *attribute)
