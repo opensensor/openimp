@@ -163,7 +163,9 @@ recovered vendor kernel routines.
   it becomes the default is a user decision.
 - **New:** `Encoder_Set/GetChnSeiAttr` (`src/t40/t40_sei.h`: user_data_unregistered SEI between the
   parameter sets and the slice header, H.264 nal 6 / H.265 PREFIX_SEI 39, EPB; INTRA = IDR pictures,
-  ALL = every picture; left out and counted if the 0x220-byte header area would overflow; the AU gate
+  ALL = every picture; the header area holds the prefix twice (hardware copy and published copy, no
+  separate shadow on T40), so headers + SEI stay within 0x110 bytes: about 130 bytes of user data fit
+  on H.264 IDR pictures, about 90 on H.265 IDR pictures, else the SEI of that picture is left out and counted; the AU gate
   accepts one SEI in front of the VCL NAL only while SEI is on), `Encoder_SetFrameRelease` (stored,
   no effect, as on T31), `ISP_Get/SetDrawAttr` (control 0x080000a0, 2 x 16 units of 28 bytes, RGB ->
   YUV in the caller's struct, Get restores type and RGB), `ISP_StartNightMode` (ISP-device ioctl

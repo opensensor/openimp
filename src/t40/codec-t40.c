@@ -107,16 +107,20 @@
 static pthread_mutex_t codec_sei_lock = PTHREAD_MUTEX_INITIALIZER;
 
 /* Header prewrite: the user_data_unregistered SEI in front of the slice
- * when the mode asks for it.  `used` is the prefix written so far: the
- * whole prefix (headers, SEI, slice header) must stay inside the 0x220
- * bytes in front of the entropy payload (avpu_stage_stream_prefix), so the
- * SEI is left out (and counted) when it would not fit with a 64-byte
- * slice-header margin. */
+ * when the mode asks for it.  `used` is the prefix written so far.  The
+ * prefix (headers, SEI, slice header) is kept twice in the 0x220 bytes in
+ * front of the entropy payload: at stream[0] for the published access unit
+ * and right-aligned before 0x220 for the hardware (avpu_stage_stream_prefix;
+ * the T40 build has no separate header shadow).  The two copies must not
+ * overlap, so the whole prefix stays within 0x110 bytes: the SEI is left
+ * out (and counted in sei_skipped) when it would not fit with a 64-byte
+ * slice-header margin.  H.264 IDR pictures leave room for about 130 bytes
+ * of user data, H.265 IDR pictures (VPS/SPS/PPS) for about 90. */
 static uint32_t avpu_t40_write_sei(ALAvpuContext *ctx, uint8_t *dst,
                                    uint32_t used, int hevc, int is_idr)
 {
     OpenIMPT40Sei sei;
-    uint32_t limit = 0x220u;
+    uint32_t limit = 0x110u;
     uint32_t written;
 
     pthread_mutex_lock(&codec_sei_lock);

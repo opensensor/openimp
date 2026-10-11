@@ -30,8 +30,26 @@ static inline int openimp_t40_sei_wanted(const OpenIMPT40Sei *sei, int is_intra)
     return sei && (sei->mode == 2u || (sei->mode == 1u && is_intra));
 }
 
+/* Escaped length of an RBSP (0x03 in front of 00/01/02/03 after two
+ * zero bytes). */
+static inline uint32_t openimp_t40_sei_escaped_len(const uint8_t *rbsp, uint32_t len)
+{
+    uint32_t i, n = 0u;
+    int zeros = 0;
+
+    for (i = 0u; i < len; i++) {
+        if (zeros >= 2 && rbsp[i] <= 3u) {
+            n++;
+            zeros = 0;
+        }
+        n++;
+        zeros = rbsp[i] == 0u ? zeros + 1 : 0;
+    }
+    return n;
+}
+
 /* Writes the whole NAL (00 00 00 01, header, RBSP with 0x03 escapes);
- * returns its length, 0 when cap is too small. */
+ * returns its length, 0 when it does not fit into cap bytes. */
 static inline uint32_t openimp_t40_sei_nal(uint8_t *dst, uint32_t cap, int hevc,
                                            const OpenIMPT40Sei *sei)
 {
@@ -41,7 +59,7 @@ static inline uint32_t openimp_t40_sei_nal(uint8_t *dst, uint32_t cap, int hevc,
     uint32_t len = 0u, pos = 0u, i;
     int zeros = 0;
 
-    if (!dst || cap < OPENIMP_T40_SEI_MAX_NAL)
+    if (!dst)
         return 0u;
     rbsp[len++] = 5u;                   /* user_data_unregistered */
     rbsp[len++] = (uint8_t)(OPENIMP_T40_SEI_UUID + n);  /* < 255: one byte */
@@ -50,6 +68,8 @@ static inline uint32_t openimp_t40_sei_nal(uint8_t *dst, uint32_t cap, int hevc,
     memcpy(rbsp + len, sei->data, n);
     len += n;
     rbsp[len++] = 0x80u;                /* rbsp_trailing_bits */
+    if (cap < 4u + (hevc ? 2u : 1u) + openimp_t40_sei_escaped_len(rbsp, len))
+        return 0u;
 
     dst[pos++] = 0u;
     dst[pos++] = 0u;

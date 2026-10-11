@@ -60,9 +60,10 @@ int main(void)
     sei.size = 128;
     for (i = 0; i < 128; i++)
         sei.data[i] = (uint8_t)(i % 3 == 2 ? 1 : 0);
-    assert(openimp_t40_sei_nal(nal, OPENIMP_T40_SEI_MAX_NAL - 1u, 0, &sei) == 0u);
     len = openimp_t40_sei_nal(nal, sizeof(nal), 0, &sei);
     assert(len > 0 && len <= OPENIMP_T40_SEI_MAX_NAL);
+    assert(openimp_t40_sei_nal(nal, len, 0, &sei) == len);      /* exact fit */
+    assert(openimp_t40_sei_nal(nal, len - 1u, 0, &sei) == 0u);  /* one short */
     assert(nal[0] == 0 && nal[1] == 0 && nal[2] == 0 && nal[3] == 1 && nal[4] == 6);
     for (i = 5; i + 2 < len; i++)            /* no start code inside */
         assert(!(nal[i] == 0 && nal[i + 1] == 0 && nal[i + 2] <= 2));
