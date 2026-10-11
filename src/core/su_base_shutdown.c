@@ -6,8 +6,8 @@
  * camera keeps running.  OpenIMP keeps the same entry point and, after the
  * sync, sends the signal busybox init actually acts on:
  *
- *   OPENIMP_SU_SHUTDOWN unset / "poweroff"  SIGUSR2 (busybox: power off)
- *   OPENIMP_SU_SHUTDOWN=reboot              SIGTERM (busybox: reboot)
+ *   OPENIMP_SU_SHUTDOWN unset / "reboot"    SIGTERM (busybox: reboot)
+ *   OPENIMP_SU_SHUTDOWN=poweroff            SIGUSR2 (busybox: power off)
  *   OPENIMP_SU_SHUTDOWN=vendor              sync() + SIGCHLD, as the vendor
  *
  * Returns 0 when the signal was delivered to init, -1 (errno set) when
@@ -30,12 +30,12 @@
 int SU_Base_Shutdown(void)
 {
     const char *mode = getenv("OPENIMP_SU_SHUTDOWN");
-    int sig = SIGUSR2;
+    int sig = SIGTERM;
 
     if (mode && !strcmp(mode, "vendor"))
         sig = SIGCHLD;
-    else if (mode && !strcmp(mode, "reboot"))
-        sig = SIGTERM;
+    else if (mode && !strcmp(mode, "poweroff"))
+        sig = SIGUSR2;
 
     OPENIMP_SU_SYNC();
     return OPENIMP_SU_KILL(1, sig) ? -1 : 0;
