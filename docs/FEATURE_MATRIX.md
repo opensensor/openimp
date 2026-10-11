@@ -10,7 +10,7 @@ Open stack = open-tx-isp (kernel driver) + OpenIMP (libimp) + timps. Vendor = tx
 
 ## Summary
 
-- **Update 2026-10-11 (function finder, `make export-check`):** the T41 cells of `FrameSource_Get/SetDelay`, `Get/SetMaxDelay`, `Get/SetI2dAttr`, `GetTimedFrame`, `Get/SetChnFifoAttr` and of `ISP_Tuning_Get/SetModuleControl`, `Get/SetAutoZoom`, `Get/SetMaskBlock`, `SetScalerLv` were stale (error/cache): the T41 build exports real code (vendor 1.2.6 semantics; the kernel side of AutoZoom/MaskBlock/ScalerLv needs the open driver handlers). Corrected to host (implemented, not run on a camera). `Encoder_Get/SetChnCrop` is exported by the vendor libimp of T10/T20/T21 but not by OpenIMP: cells corrected from n.a. to missing (T10/T20/T21 function count +2). New check: `make export-check` compares the exports of each built `libimp.so` with the vendor export lists (`tools/export-check/`) and with the `IMP_` names used by streamer sources.
+- **Update 2026-10-11 (function finder, `make export-check`):** the T41 cells of `FrameSource_Get/SetDelay`, `Get/SetMaxDelay`, `Get/SetI2dAttr`, `GetTimedFrame`, `Get/SetChnFifoAttr` and of `ISP_Tuning_Get/SetModuleControl`, `Get/SetAutoZoom`, `Get/SetMaskBlock`, `SetScalerLv` were stale (error/cache): the T41 build exports real code (vendor 1.2.6 semantics; the kernel side of AutoZoom/MaskBlock/ScalerLv needs the open driver handlers). Corrected to host (implemented, not run on a camera). `Encoder_Get/SetChnCrop` is exported by the vendor libimp of T10/T20/T21 but not by OpenIMP: cells corrected from n.a. to missing (T10/T20/T21 function count +2). T40: 11 OSD rows (`OSD_AttachToGroup`, `RgnCreate_Query`, `RgnRegister_Query`, `SetMosaic`, and the `*_ISP` calls behind the device-tested ISP-OSD) were missing in the cell but are exported by the T40 build: corrected to host (T40 function gaps 109 -> 98). New check: `make export-check` compares the exports of each built `libimp.so` with the vendor export lists (`tools/export-check/`) and with the `IMP_` names used by streamer sources.
 - **Update 2026-10-11 (agg-36, after RC1; build and host tests of the aggregate, no soak):** T40 rate control, AVPU command lists and H.265 (device-tested on their branch), T40 ISP-drawn OSD, `Get/SetMask` and `SwitchBin` (device-tested), T40 BCSH getters from the vendor cache (host), T41 `SwitchBin`, `AutoZoom`, `SetMaskBlock`, `SetScalerLv` (host and module build), `SetbufshareChn` as the vendor (T31/T40/T41), log level `OPENIMP_LOG_LEVEL`, IVS post order, T30 gap work (317 of 334 exports), T10/T20/T21 and T23 vendor return codes. The T23 driver rows of the second T23/T31 gap pass stay as before (that driver branch is held back). The T40 open items below about CBR, H.265, `GetBrightness`, the pixel format and `P1_INNER` are fixed in agg-36. **Gap counts after this update (progress table):** T23 14 (was 15), T30 19 (was 54), T40 109 (was 120), T41 177 (was 179); T10 32, T20 30, T21 14, T31 8 unchanged.
 - **Update 2026-10-10 evening (agg-35: OpenIMP 687a68e4, open-tx-isp 6e464ac7, built 2026-10-10; soaked 2026-10-10 18:04 to 2026-10-11 08:00 on 10 cameras: clean (0 oopses, 0 unexplained reboots, 0 streamer restarts, VA-API 54/54). RC1 = this code plus docs; features that exist only in later branches (agg-36) are not in this matrix.**
 - **T40, first OpenIMP device run (cam-K, T40XP, vendor kernel driver `tx_isp_t40`, vendor libimp 1.3.0, OpenIMP via `LD_LIBRARY_PATH`, 2026-10-10; every result is OpenIMP vs vendor):** PASS/dev: `AddSensor`/`EnableSensor`; FrameSource ch0 3840x2160 and ch1 640x360 with `GetFrame` (timestamps monotonic, non-zero); H.264 on ch0 and ch1 (10 s, clean strict decode); OSD PIC and COVER (OpenIMP draws COVER on NV12, the vendor library fails with "COVER cannot support this format"); IVS move (20 s); `FrameSource_SnapFrame`; JPEG on ch1 (software JPEG since 257ba9d); ISP `GetSensorAttr`, Gamma get, CCM get, ModuleControl get, `AeScenceAttr` get/set; `GetCameraInputMode`. Fixed during the run: the stream timestamp was 0 (a5d9b03); JPEG was a grey placeholder (257ba9d).
@@ -783,7 +783,7 @@ Counts are per vendor function of that SoC (T23 folded: base function = one; Get
 | T23 | 436 | 283 | 16 | 111 | 0 | 12 | 5 | 0 | 9 | 0 | **14** | 212 | 94.0 % |
 | T30 | 347 | 0 | 13 | 22 | 293 | 0 | 8 | 0 | 0 | 11 | **19** | – | 10.1 % |
 | T31 | 387 | 225 | 16 | 133 | 0 | 5 | 2 | 0 | 1 | 5 | **8** | 65 | 96.6 % |
-| T40 | 398 | 57 | 79 | 0 | 177 | 0 | 2 | 0 | 21 | 62 | **85** | – | 34.2 % |
+| T40 | 398 | 57 | 90 | 0 | 177 | 0 | 2 | 0 | 21 | 51 | **74** | – | 36.9 % |
 | T41 | 445 | 8 | 62 | 214 | 0 | 2 | 5 | 1 | 27 | 126 | **159** | 227 | 63.8 % |
 
 Columns: fns = vendor functions of that SoC; dev/host/aud/?/no-op/cache/stub/err/miss = counts per cell code (codes as in the legend); gaps = cache + stub + err + miss; audit gaps = the same sum in the audit before the work of 2026-10-05; done % = (dev + host + aud) / fns.
@@ -1603,20 +1603,20 @@ All regular OSD functions (`OSD_CreateGroup`, `CreateRgn`, `RegisterRgn`, `Set/G
 | ► `ISP_Tuning_SetOsdPoolSize` [5] | n.a. | n.a. | n.a. | aud | n.a. | n.a. | dev | stub | r† |
 | ► `ISP_Tuning_SetOsdRgnAttr` [6] | n.a. | n.a. | n.a. | aud | n.a. | n.a. | dev | err | r† |
 | ► `ISP_Tuning_ShowOsdRgn` [7] | n.a. | n.a. | n.a. | aud | n.a. | n.a. | dev | err | r† |
-| `OSD_AttachToGroup` [27] | host | host | host | aud | aud | aud | miss | aud | – |
-| `OSD_CreateRgn_ISP` | n.a. | n.a. | n.a. | aud | n.a. | n.a. | miss | miss | – |
-| `OSD_DestroyRgn_ISP` | n.a. | n.a. | n.a. | aud | n.a. | n.a. | miss | miss | – |
-| `OSD_Exit_ISP` | n.a. | n.a. | n.a. | aud | n.a. | n.a. | miss | miss | – |
+| `OSD_AttachToGroup` [27] | host | host | host | aud | aud | aud | host | aud | – |
+| `OSD_CreateRgn_ISP` | n.a. | n.a. | n.a. | aud | n.a. | n.a. | host | miss | – |
+| `OSD_DestroyRgn_ISP` | n.a. | n.a. | n.a. | aud | n.a. | n.a. | host | miss | – |
+| `OSD_Exit_ISP` | n.a. | n.a. | n.a. | aud | n.a. | n.a. | host | miss | – |
 | `OSD_Get/SetRgnAttr_ISP` | n.a. | n.a. | n.a. | aud | n.a. | n.a. | miss | miss | – |
 | `OSD_GetRegionLuma` [26] | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | miss | – |
-| `OSD_GetRgnAttr_ISPPic` | n.a. | n.a. | n.a. | aud | n.a. | n.a. | miss | miss | – |
-| `OSD_RgnCreate_Query` [16] | n.a. | n.a. | n.a. | dev | n.a. | n.a. | miss | aud | – |
-| `OSD_RgnRegister_Query` [17] | n.a. | n.a. | n.a. | dev | n.a. | n.a. | miss | aud | – |
+| `OSD_GetRgnAttr_ISPPic` | n.a. | n.a. | n.a. | aud | n.a. | n.a. | host | miss | – |
+| `OSD_RgnCreate_Query` [16] | n.a. | n.a. | n.a. | dev | n.a. | n.a. | host | aud | – |
+| `OSD_RgnRegister_Query` [17] | n.a. | n.a. | n.a. | dev | n.a. | n.a. | host | aud | – |
 | `OSD_SetGroupCallback` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | miss | miss | – |
-| `OSD_SetMosaic` [18] | n.a. | n.a. | n.a. | dev | n.a. | n.a. | miss | aud | – |
-| `OSD_SetPoolSize_ISP` [8] | n.a. | n.a. | n.a. | host | n.a. | n.a. | miss | miss | – |
-| `OSD_SetRgnAttr_PicISP` | n.a. | n.a. | n.a. | aud | n.a. | n.a. | miss | miss | – |
-| `OSD_ShowRgn_ISP` | n.a. | n.a. | n.a. | aud | n.a. | n.a. | miss | miss | – |
+| `OSD_SetMosaic` [18] | n.a. | n.a. | n.a. | dev | n.a. | n.a. | host | aud | – |
+| `OSD_SetPoolSize_ISP` [8] | n.a. | n.a. | n.a. | host | n.a. | n.a. | host | miss | – |
+| `OSD_SetRgnAttr_PicISP` | n.a. | n.a. | n.a. | aud | n.a. | n.a. | host | miss | – |
+| `OSD_ShowRgn_ISP` | n.a. | n.a. | n.a. | aud | n.a. | n.a. | host | miss | – |
 
 Notes:
 
@@ -1648,30 +1648,30 @@ Notes:
 | ► `ISP_Tuning_SetOsdPoolSize` [5] | n.a. | n.a. | n.a. | aud | n.a. | n.a. | dev | stub | r† |
 | ► `ISP_Tuning_SetOsdRgnAttr` [6] | n.a. | n.a. | n.a. | aud | n.a. | n.a. | dev | err | r† |
 | ► `ISP_Tuning_ShowOsdRgn` [7] | n.a. | n.a. | n.a. | aud | n.a. | n.a. | dev | err | r† |
-| `OSD_AttachToGroup` [27] | host | host | host | aud | aud | aud | miss | aud | – |
+| `OSD_AttachToGroup` [27] | host | host | host | aud | aud | aud | host | aud | – |
 | ► `OSD_CreateGroup` [9] | aud | dev | dev | dev | ? | dev | dev | aud | p† r† t |
 | ► `OSD_CreateRgn` [10] | aud | dev | dev | dev | ? | dev | dev | aud | p† r† t |
-| `OSD_CreateRgn_ISP` | n.a. | n.a. | n.a. | aud | n.a. | n.a. | miss | miss | – |
+| `OSD_CreateRgn_ISP` | n.a. | n.a. | n.a. | aud | n.a. | n.a. | host | miss | – |
 | ► `OSD_DestroyGroup` [11] | aud | dev | dev | dev | ? | dev | dev | aud | p† r† t |
 | ► `OSD_DestroyRgn` [12] | aud | dev | dev | dev | ? | dev | dev | aud | p† r† t |
-| `OSD_DestroyRgn_ISP` | n.a. | n.a. | n.a. | aud | n.a. | n.a. | miss | miss | – |
-| `OSD_Exit_ISP` | n.a. | n.a. | n.a. | aud | n.a. | n.a. | miss | miss | – |
+| `OSD_DestroyRgn_ISP` | n.a. | n.a. | n.a. | aud | n.a. | n.a. | host | miss | – |
+| `OSD_Exit_ISP` | n.a. | n.a. | n.a. | aud | n.a. | n.a. | host | miss | – |
 | ► `OSD_Get/SetGrpRgnAttr` [13] | aud | dev | dev | dev | ? | dev | host | aud | p† r† t |
 | ► `OSD_Get/SetRgnAttr` [14] | aud | dev | dev | dev | ? | dev | host | aud | p† r† t |
 | `OSD_Get/SetRgnAttr_ISP` | n.a. | n.a. | n.a. | aud | n.a. | n.a. | miss | miss | – |
 | `OSD_GetRegionLuma` [26] | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | miss | – |
-| `OSD_GetRgnAttr_ISPPic` | n.a. | n.a. | n.a. | aud | n.a. | n.a. | miss | miss | – |
+| `OSD_GetRgnAttr_ISPPic` | n.a. | n.a. | n.a. | aud | n.a. | n.a. | host | miss | – |
 | ► `OSD_RegisterRgn` [15] | aud | dev | dev | dev | ? | dev | dev | aud | p† r† t |
-| `OSD_RgnCreate_Query` [16] | n.a. | n.a. | n.a. | dev | n.a. | n.a. | miss | aud | – |
-| `OSD_RgnRegister_Query` [17] | n.a. | n.a. | n.a. | dev | n.a. | n.a. | miss | aud | – |
+| `OSD_RgnCreate_Query` [16] | n.a. | n.a. | n.a. | dev | n.a. | n.a. | host | aud | – |
+| `OSD_RgnRegister_Query` [17] | n.a. | n.a. | n.a. | dev | n.a. | n.a. | host | aud | – |
 | `OSD_SetGroupCallback` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | miss | miss | – |
-| `OSD_SetMosaic` [18] | n.a. | n.a. | n.a. | dev | n.a. | n.a. | miss | aud | – |
+| `OSD_SetMosaic` [18] | n.a. | n.a. | n.a. | dev | n.a. | n.a. | host | aud | – |
 | `OSD_SetPoolSize` [19] | aud | dev | dev | dev | ? | dev | ? | aud | p† r† t |
-| `OSD_SetPoolSize_ISP` [8] | n.a. | n.a. | n.a. | host | n.a. | n.a. | miss | miss | – |
+| `OSD_SetPoolSize_ISP` [8] | n.a. | n.a. | n.a. | host | n.a. | n.a. | host | miss | – |
 | ► `OSD_SetRgnAttrWithTimestamp` [20] | aud | dev | dev | dev | ? | dev | host | aud | r† |
-| `OSD_SetRgnAttr_PicISP` | n.a. | n.a. | n.a. | aud | n.a. | n.a. | miss | miss | – |
+| `OSD_SetRgnAttr_PicISP` | n.a. | n.a. | n.a. | aud | n.a. | n.a. | host | miss | – |
 | ► `OSD_ShowRgn` [21] | aud | dev | dev | dev | ? | dev | dev | aud | p† r† t |
-| `OSD_ShowRgn_ISP` | n.a. | n.a. | n.a. | aud | n.a. | n.a. | miss | miss | – |
+| `OSD_ShowRgn_ISP` | n.a. | n.a. | n.a. | aud | n.a. | n.a. | host | miss | – |
 | ► `OSD_Start` [22] | aud | dev | dev | dev | ? | dev | dev | aud | p† r† t |
 | ► `OSD_Stop` [23] | aud | dev | dev | dev | ? | dev | host | aud | r† |
 | ► `OSD_UnRegisterRgn` [24] | aud | dev | dev | dev | ? | dev | dev | aud | p† r† t |
