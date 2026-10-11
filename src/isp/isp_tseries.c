@@ -2227,6 +2227,26 @@ int IMP_ISP_Tuning_GetWDRAttr(IMPISPTuningOpsMode *pmode)
     *pmode = (IMPISPTuningOpsMode)tseries_wdr_cached;
     return result;
 }
+
+/* T20/T10 3.12.0 SetAntiFogAttr (0x60220): with tuning running, the attribute
+ * (0 disable, 1 strong, 2 medium, 3 weak) goes as the value of the V4L2
+ * control 0x98e903 (CUSTOM_ANTI_FOG); -1 without tuning, otherwise the
+ * driver's result (the vendor passes the value on unchecked).  The open
+ * T10/T20 driver validates the level (-EINVAL above 3) and applies it
+ * between frames instead of running the stock preset path. */
+int IMP_ISP_Tuning_SetAntiFogAttr(int attr)
+{
+    return tseries_v4l2_set(0x98e903, attr);
+}
+
+/* T20/T10 3.12.0 SetMeshShadingScale (0x62930): the vendor masks the scale
+ * into bits 2..4 of the mesh-shading register 0x380 through its register
+ * mapping, 0 on success, -1 without tuning.  The open driver has a control
+ * for it (0x80000a3): value 0..7, written at the frame-end interrupt. */
+int IMP_ISP_Tuning_SetMeshShadingScale(IMPISPMeshShadingScale scale)
+{
+    return tseries_tuning_set_val(0x80000a3, (int32_t)scale);
+}
 #endif /* PLATFORM_T20 */
 
 #if defined(PLATFORM_T30)

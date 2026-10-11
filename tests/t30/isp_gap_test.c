@@ -115,6 +115,21 @@ int main(void)
     CHECK(IMP_ISP_Tuning_SetDPStrength(100) == -1);      /* tuning not running */
     isp.tuning_state = 2;
 
+#if defined(PLATFORM_T20)
+    /* T10/T20 SetAntiFogAttr: V4L2 control 0x98e903 (CUSTOM_ANTI_FOG), the
+     * driver judges the level; without tuning -1 */
+    CHECK(IMP_ISP_Tuning_SetAntiFogAttr(3) == 0);
+    CHECK(last_id == 0x98e903 && last_val == 3);
+    isp.tuning_state = 1;
+    CHECK(IMP_ISP_Tuning_SetAntiFogAttr(1) == -1);
+    isp.tuning_state = 2;
+    /* SetMeshShadingScale: the open driver's lens-shading scale control */
+    CHECK(IMP_ISP_Tuning_SetMeshShadingScale(IMPISP_SHAD_SCALE_U) == 0);
+    CHECK(last_tuning_sub == 0x80000a3 && last_tuning_val == 3);
+    isp.tuning_state = 1;
+    CHECK(IMP_ISP_Tuning_SetMeshShadingScale(IMPISP_SHAD_SCALE_L) == -1);
+    isp.tuning_state = 2;
+#endif
 #if !defined(PLATFORM_T20)
     /* T21/T30 SetAntiFogAttr: the enum travels as control 0x8000163 */
     CHECK(IMP_ISP_Tuning_SetAntiFogAttr(2) == 0);
