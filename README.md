@@ -32,7 +32,7 @@ T10/T20/T21/T23/T31/T41) on top of the original `main` line; see [Branches and r
 
 ## Status
 
-Open stack = open-tx-isp + OpenIMP + timps. **State: RC1 v2026.10.11-rc1: openimp claude/rc1 (agg-35 687a68e4 + docs), open-tx-isp 6e464ac7.** Release SoCs: T10, T20, T21, T23, T31; T30, T40 and T41 are experimental. The agg-35 soak of 2026-10-10/11 on 10 cameras was clean (0 oopses, 0 unexplained reboots, 0 streamer restarts); recommended streamer: timps v1.10.0. Release notes and known issues: [CHANGELOG.md](CHANGELOG.md). The per-SoC table below dates from 2026-10-04; the matrix is newer.
+Open stack = open-tx-isp + OpenIMP + timps. **State: RC1 v2026.10.11-rc1: openimp fe9307c (agg-35 687a68e4 + docs), open-tx-isp 191be6c5 (agg-35 6e464ac7 + docs).** Release SoCs: T10, T20, T21, T23, T31; T30, T40 and T41 are experimental. The agg-35 soak of 2026-10-10/11 on 10 cameras was clean (0 oopses, 0 unexplained reboots, 0 streamer restarts); recommended streamer: timps v1.10.0. Release notes and known issues: [CHANGELOG.md](CHANGELOG.md). The per-SoC table below dates from 2026-10-04; the matrix is newer.
 
 | SoC | Status |
 |---|---|
@@ -44,6 +44,23 @@ Open stack = open-tx-isp + OpenIMP + timps. **State: RC1 v2026.10.11-rc1: openim
 | T31 | Reference SoC. H.264, HEVC, hardware JPEG, OSD, rotation, AEC; 2 h 53 min soak without errors. |
 | T40 | Builds; AVPU H.264 path from upstream work. Not part of the device campaign. |
 | T41 | Runs from a flashed image with H.264 and H.265. Open: live flip, night column noise, short IVS gaps, OOM with three parallel streams at 30 MB rmem (26 MB in the test image works); day/night and AE/AWB quality untested. |
+
+### Completeness
+
+Vendor IMP/SU functions per SoC at RC1 (from the progress table of [FEATURE_MATRIX](docs/FEATURE_MATRIX.md#progress-per-soc)). "Done" = device-tested + host-tested + audited; "gaps" = cache-only, stub, error or missing; "streamer-used gaps" = gaps in functions that timps, prudynt or raptor import.
+
+| SoC | Vendor functions | Done | Gaps | Streamer-used gaps | Status |
+|---|--:|--:|--:|--:|---|
+| T10 | 325 | 89.2 % | 32 | 0 | release |
+| T20 | 325 | 90.5 % | 30 | 0 | release |
+| T21 | 325 | 93.2 % | 14 | 0 | release |
+| T23 | 437 | 93.8 % | 15 | 0 | release |
+| T31 | 387 | 96.4 % | 8 | 0 | release |
+| T30 | 347 | n/a (no device; 293 not audited) | 54 | 2 | experimental |
+| T40 | 398 | 25.4 % (177 not audited/run yet) | 120 | 7 | experimental |
+| T41 | 445 | 59.3 % | 179 | 22 | experimental |
+
+Work after RC1 (agg-36) raises T30/T40/T41 further. Release notes: [docs/RELEASE-v2026.10.11-rc1.md](docs/RELEASE-v2026.10.11-rc1.md).
 
 Details per feature and SoC: [FEATURE_MATRIX](docs/FEATURE_MATRIX.md).
 History: [CHANGELOG.md](CHANGELOG.md) and the full

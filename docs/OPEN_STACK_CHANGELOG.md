@@ -3,13 +3,13 @@
 Everything changed, extended or fixed in OpenIMP, open-tx-isp, timps and the thingino
 integration since the test campaign started on 2026-09-30. Kept up to date during the campaign.
 
-Last update: 2026-10-11 (RC1 v2026.10.11-rc1: openimp claude/rc1 (agg-35 687a68e4 + docs), open-tx-isp 6e464ac7; agg-35 soak clean). Before that 2026-10-10 evening (cam-K first T40 device run, T41 audio/driver controls, audio on T10..T31, agg-35 build; before that docs-1010b: front crop vs flip, AeComp, agg-34.1, T41 notes; docs-1010: results of 2026-10-10 collected; items marked "in branch" are not yet in an aggregate). Branch names (`claude/...`) in the tables and sections below are historic: the branches were merged into `next` and deleted.
+Last update: 2026-10-11 (RC1 v2026.10.11-rc1: openimp fe9307c (agg-35 687a68e4 + docs), open-tx-isp 191be6c5 (agg-35 6e464ac7 + docs); agg-35 soak clean). Before that 2026-10-10 evening (cam-K first T40 device run, T41 audio/driver controls, audio on T10..T31, agg-35 build; before that docs-1010b: front crop vs flip, AeComp, agg-34.1, T41 notes; docs-1010: results of 2026-10-10 collected; items marked "in branch" are not yet in an aggregate). Branch names (`claude/...`) in the tables and sections below are historic: the branches were merged into `next` and deleted.
 
 Cameras are anonymised: cam-A (T31), cam-B (T23), cam-C (T20), cam-D (T21), cam-E (T10), cam-F (T41); cam-G and cam-H are further T23 cameras, cam-I a second T20 and cam-J a second T21.
 
 ## RC1 (v2026.10.11-rc1)
 
-RC1 v2026.10.11-rc1: openimp claude/rc1 (agg-35 687a68e4 + docs), open-tx-isp 6e464ac7.
+RC1 v2026.10.11-rc1: openimp fe9307c (agg-35 687a68e4 + docs), open-tx-isp 191be6c5 (agg-35 6e464ac7 + docs).
 
 **Soak evidence:** agg-35 ran on 10 cameras from 2026-10-10 18:04 to 2026-10-11 08:00 (about 14 h): 0 kernel oopses, 0 unexplained reboots, 0 streamer (`timpsd`) restarts, VA-API decode check 54/54. The soaked images carry timps f1565f7 (the source of the timps tag v1.10.0) plus the timps firmware package patches, on thingino `aperto` base a4bcc1c86.
 
