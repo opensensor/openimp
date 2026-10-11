@@ -12,7 +12,8 @@
  *           200 StartNightMode before AddSensor (run it on its own)
  *           400 OSD group with SetGroupCallback in the pipeline
  *           800 AI digital gain (microphone only, no playback)
- *           1000 WDR_OPEN LINEAR before AddSensor (run it on its own) */
+ *           1000 WDR_OPEN LINEAR before AddSensor (run it on its own)
+ *           2000 GetRaw, one 8-bit sensor frame (about 8 MB rmem; on its own, last) */
 #include <errno.h>
 #include <poll.h>
 #include <signal.h>
@@ -996,6 +997,24 @@ int main(int argc, char **argv)
         R("AI_Get/SetDigitalGain", OK(!re && !rc && !r1 && !r2 && !rg && g == 220 && f1 > 10 && f2 > 10 && hi > lo * 4),
           "enable rc=%d/%d; dgain 100: RMS %.1f (%u frames); dgain 220: RMS %.1f (%u frames); get rc=%d %d (60 steps = 30 dB, expect x30)",
           re, rc, lo, f1, hi, f2, rg, g);
+    }
+
+    if (mask & 0x2000) {
+        /* one 8-bit raw frame of the sensor size (rmem: about 8 MB at 4K) */
+        IMPISPSENSORAttr sa; IMPISPGETRawiConfig rc; int rs, rr; double mean = 0; unsigned nz = 0, k;
+        memset(&sa, 0, sizeof sa); memset(&rc, 0, sizeof rc);
+        rs = IMP_ISP_Tuning_GetSensorAttr(IMPVI_MAIN, &sa);
+        rc.raw_width = sa.width; rc.raw_height = sa.height; rc.raw_bit = 8;
+        rr = (!rs && sa.width && sa.height && sa.width * sa.height <= 3840u * 2160u) ? IMP_ISP_GetRaw(IMPVI_MAIN, &rc) : -99;
+        if (!rr && rc.buf.vaddr) {
+            const uint8_t *p8 = (const uint8_t *)(uintptr_t)rc.buf.vaddr;
+            for (k = 0; k < rc.buf.buf_size; k += 64) { mean += p8[k]; if (p8[k]) nz++; }
+            mean /= rc.buf.buf_size / 64;
+        }
+        stream_for(1.0, &e);
+        R("ISP_GetRaw", OK(!rr && rc.buf.paddr && nz > rc.buf.buf_size / 64 / 2 && mean > 3 && mean < 252 && e.frames > 10),
+          "sensor %ux%u (rc %d); GetRaw 8 bit rc=%d buf phys=0x%x size=%u; sampled mean %.1f, non-zero %u of %u; stream after %u frames/1 s",
+          sa.width, sa.height, rs, rr, rc.buf.paddr, rc.buf.buf_size, mean, nz, rc.buf.buf_size / 64, e.frames);
     }
 
     if (mask & 0x1000) {
