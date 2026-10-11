@@ -1,0 +1,3 @@
+# hidden vendor export (not in the vendor headers); raptor calls it only under HAL_HYBRID_SDK. A link shim is an open question.
+IMP_Encoder_GetChnCrop
+IMP_Encoder_SetChnCrop
