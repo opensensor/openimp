@@ -102,6 +102,12 @@ do
         -o "$output_dir/$source.o"
 done
 
+# ISP-drawn OSD (IMP_ISP_Tuning_*OsdRgn, IMP_ISP_Set/GetSingleOSDAttr): vendor
+# T40 structures, the rmem allocator from src/dma_alloc.h.
+"$compiler" $strict_flags -I"$T40_HEADERS" -I"$project_dir/src" \
+    -c "$project_dir/src/t40/openimp_t40_isp_osd.c" \
+    -o "$output_dir/openimp_t40_isp_osd.o"
+
 for source in codec al_avpu device_pool fifo hw_encoder
 do
     source_path="$project_dir/src/$source.c"
@@ -129,6 +135,7 @@ done
     "$output_dir/openimp_audio_codec.o" \
     "$output_dir/openimp_audio_enc_dec.o" \
     "$output_dir/openimp_p3_compat.o" \
+    "$output_dir/openimp_t40_isp_osd.o" \
     "$output_dir/t40_osd.o" \
     "$output_dir/t40_ivs.o" \
     "$output_dir/t40_ivs_move.o" \

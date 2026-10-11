@@ -69,11 +69,66 @@ maintained `libaudioProcess-neo`; logging uses the target's
 - AE/AWB and image-quality processing run in the stock ISP firmware using the
   selected sensor tuning blob. OpenIMP forwards tuning requests without
   duplicating sensor policy.
-- Still `ENOTSUP`: DMIC (21 calls), the ISP-drawn OSD (`IMP_ISP_Tuning_CreateOsdRgn`,
-  `DestroyOsdRgn`, `SetOsdRgnAttr`, `ShowOsdRgn`) and `IMP_ISP_Tuning_Get/SetMask`
-  (the vendor library keeps a 288-byte copy per input and converts the colour with
-  `IMP_ISP_Tuning_DumpMask`; the payload the T40 kernel expects is not settled).
-  `OSD_REG_ISP_*` regions are accepted and not drawn.
+- Still `ENOTSUP`: DMIC (21 calls).  Findings from the vendor 1.3.1
+  disassembly (host work, 2026-10-10):
+  - **DMIC**: no DMIC hardware on the test boards (the Eufy T8416 and the Wyze
+    Cam v3 Pro dts only carry the generic `dmic-pc` pinmux group, no audio/mic
+    node).  The vendor T40 DMIC (`__dmic_dev_deinit`, ioctl 0x4004506b, ...) is
+    not the T31 oss2 interface of `src/t31/openimp_t31_dmic.c`; a port cannot be
+    tested here, so the 21 calls stay `ENOTSUP` until a board with a DMIC exists.
+- **ISP-drawn OSD** (`src/t40/openimp_t40_isp_osd.c`, 2026-10-10, device-tested
+  on the Eufy T40XP with the vendor tx-isp-t40 driver): `IMP_ISP_Tuning_
+  {SetOsdPoolSize,CreateOsdRgn,SetOsdRgnAttr,GetOsdRgnAttr,ShowOsdRgn,
+  DestroyOsdRgn}`, the `IMP_OSD_*_ISP` calls behind them (vendor `isp_osd.c`)
+  and `IMP_ISP_Set/GetSingleOSDAttr`, rebuilt from the vendor libimp 1.3.0
+  (camera) disassembly, which matches 1.3.1 address for address here:
+  - `chn` is the frame-source channel 0..5 (sensor `chn/3`), 8 handles per
+    channel handed out from a FIFO free list; `CreateOsdRgn` needs `NULL`
+    attributes.  The handle must equal `pic_num`; `chx` is the ISP (msca)
+    output channel.
+  - `SetOsdRgnAttr` checks the region against the frame-source size, copies
+    `stride*height` bytes into rmem (a size change needs destroy+create),
+    stores the copy address in `osd_image` (`GetOsdRgnAttr` returns it, vendor:
+    channels 0/1 only) and clears `osd_enable`; nothing reaches the driver.
+  - `ShowOsdRgn` sets `osd_enable`, switches off a later region that overlaps
+    an earlier shown one (`IspOsdAdjust_Pic`) and sends every created region of
+    the channel: tuning ioctl 0xc0105436, control 0x080000a2
+    (`IMAGE_TUNING_CID_SINGLE_OSD_ATTR`), the 44-byte `IMPISPSingleOSDAttr`
+    with the physical picture address.  The kernel (`tisp_s_osd_single_pic`)
+    writes it into the msca shadow registers of `chx`: the picture is drawn
+    after the scaler, in that output only.  `DestroyOsdRgn` hides a shown
+    region first.
+  - Differences: one rmem block per region instead of the vendor pool (the
+    pool size still limits the total; vendor default 128 bytes, set it with
+    `IMP_ISP_Tuning_SetOsdPoolSize`), cache write-back after the copy, and a
+    region without picture is not sent (the vendor sends a meaningless
+    address).  `IMP_ISP_Set/GetOSDAttr` (0x080000a1) are not implemented.
+  - Device test (`osdtest`, both libraries, same calls; IR-cut day): a
+    128x64 BGRA picture per channel (chn0/chx0 at 64,64 in 3840x2160,
+    chn1/chx1 at 32,32 in 640x360) and a green `SetMask` cover per channel,
+    shown at 1.3 s and hidden at 3.3 s of a 5 s encode.  OpenIMP: the
+    shown-minus-hidden difference is exactly the requested rectangles in both
+    streams (no stray pixels; the chx0 picture does not appear in the sub
+    stream), colours as written, nothing left after hiding.  Crops vendor vs
+    OpenIMP: SSIM picture 0.985 / 0.981, cover 0.9998 / 0.9998.  Decode clean
+    (ffmpeg `-err_detect aggressive` and VA-API, 99 + 99 frames each).
+    Host test: `tests/t40/isp_osd_test.c`.
+- `IMP_ISP_Tuning_Get/SetMask` are implemented from the vendor disassembly
+  (288-byte `IMPISPMASKAttr`, control 0x08000074, per-input copy, RGB->YUV for
+  enabled RGB blocks, Get restores type and RGB from the copy).  Device-tested
+  2026-10-10 with the ISP-OSD test above (cover at the right place in both
+  streams, same as the vendor library).  The DumpMask constants are not
+  readable in the disassembly, the T31 BT.601 values are used; the green
+  cover came out as (0,229,0) with both libraries.
+- FrameSource `frame->size` stays the driver `sizeimage`
+  (640x360: 353280): the vendor reports `w*h*3/2` (345600), but the buffer
+  holds the chroma plane after the 16-aligned luma rows and the encoder
+  (cache invalidation, HW JPEG `src_need`) relies on the real size, so only
+  the field differs and is left as is.
+- `IMP_Encoder_SetbufshareChn`: the vendor T40 stores the share channel in the
+  channel record (+984) and returns 0; nothing reads it back.  OpenIMP accepts
+  and drops it (vendor bound is channel < 13, OpenIMP has 8 channels).
+- The `P1_INNER` phase markers on stderr need `OPENIMP_DEBUG_TRACE=1`.
 
 ## T40 on the T41 code paths (host tests; device run on cam-K 2026-10-10 below)
 

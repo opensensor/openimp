@@ -50,13 +50,12 @@ P3_UNSUPPORTED(IMP_DMIC_SetUserInfo)
 P3_UNSUPPORTED(IMP_DMIC_SetVol)
 
 
+/* T40 IMP_ISP_Tuning_Get/SetMask: openimp_p3_controls.c (no T41 export,
+ * the vendor T41 has SetMaskBlock instead).  T40 ISP-drawn OSD:
+ * src/t40/openimp_t40_isp_osd.c. */
+#if !defined(PLATFORM_T40)
 P3_UNSUPPORTED(IMP_ISP_Tuning_CreateOsdRgn)
 P3_UNSUPPORTED(IMP_ISP_Tuning_DestroyOsdRgn)
-#if !defined(PLATFORM_T41)   /* no T41 export (vendor T41 has SetMaskBlock) */
-P3_UNSUPPORTED(IMP_ISP_Tuning_GetMask)
-#endif
-#if !defined(PLATFORM_T41)
-P3_UNSUPPORTED(IMP_ISP_Tuning_SetMask)
-#endif
 P3_UNSUPPORTED(IMP_ISP_Tuning_SetOsdRgnAttr)
 P3_UNSUPPORTED(IMP_ISP_Tuning_ShowOsdRgn)
+#endif
