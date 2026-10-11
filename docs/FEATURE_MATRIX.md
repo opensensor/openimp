@@ -782,7 +782,7 @@ Counts are per vendor function of that SoC (T23 folded: base function = one; Get
 | T23 | 436 | 283 | 16 | 111 | 0 | 12 | 5 | 0 | 9 | 0 | **14** | 212 | 94.0 % |
 | T30 | 347 | 0 | 13 | 22 | 293 | 0 | 8 | 0 | 0 | 11 | **19** | – | 10.1 % |
 | T31 | 387 | 225 | 16 | 133 | 0 | 5 | 2 | 0 | 1 | 5 | **8** | 65 | 96.6 % |
-| T40 | 398 | 57 | 76 | 0 | 175 | 0 | 0 | 0 | 21 | 69 | **90** | – | 33.4 % |
+| T40 | 398 | 57 | 79 | 0 | 175 | 0 | 0 | 0 | 21 | 66 | **87** | – | 34.2 % |
 | T41 | 445 | 8 | 46 | 214 | 0 | 2 | 7 | 1 | 40 | 127 | **175** | 227 | 60.2 % |
 
 Columns: fns = vendor functions of that SoC; dev/host/aud/?/no-op/cache/stub/err/miss = counts per cell code (codes as in the legend); gaps = cache + stub + err + miss; audit gaps = the same sum in the audit before the work of 2026-10-05; done % = (dev + host + aud) / fns.
@@ -827,7 +827,7 @@ Gaps (cache-only, stub, error, missing, ?) of functions that at least one of tim
 | `ISP_RAW_RwControl` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | miss | – |
 | `ISP_SET_GPIO_INIT_OR_FREE` | n.a. | n.a. | n.a. | aud | n.a. | aud | n.a. | miss | – |
 | `ISP_SET_GPIO_STA` | n.a. | n.a. | n.a. | aud | n.a. | aud | n.a. | miss | – |
-| `ISP_SetPreDqtime` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | miss | n.a. | – |
+| `ISP_SetPreDqtime` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | host | n.a. | – |
 | `ISP_SetVicDoneCbFunc` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | miss | – |
 | `ISP_StartNightMode` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | miss | miss | – |
 | `ISP_Tuning_Get/SetDrawBlock` [3] | n.a. | n.a. | n.a. | err | n.a. | n.a. | n.a. | miss | – |
@@ -904,7 +904,7 @@ Notes:
 | `ISP_SetCameraInputMode` [26] | n.a. | n.a. | n.a. | aud | n.a. | n.a. | host | n.a. | – |
 | `ISP_SetCameraInputSelect` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | host | n.a. | T40: r† |
 | `ISP_SetFixedContraster` [2] | n.a. | n.a. | n.a. | dev | n.a. | dev | n.a. | n.a. | – |
-| `ISP_SetPreDqtime` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | miss | n.a. | – |
+| `ISP_SetPreDqtime` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | host | n.a. | – |
 | `ISP_SetScalerLv` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | host | n.a. | – |
 | `ISP_SetStreamOut` [27] | n.a. | n.a. | n.a. | aud | n.a. | n.a. | n.a. | n.a. | – |
 | `ISP_SetSwitchgpio` [28] | n.a. | n.a. | n.a. | host | n.a. | n.a. | n.a. | n.a. | – |
@@ -1592,7 +1592,7 @@ All regular OSD functions (`OSD_CreateGroup`, `CreateRgn`, `RegisterRgn`, `Set/G
 | Vendor function | T10 | T20 | T21 | T23 | T30 | T31 | T40 | T41 | Used by |
 |---|---|---|---|---|---|---|---|---|---|
 | `ISP_Get/SetDrawAttr` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | miss | n.a. | – |
-| `ISP_Get/SetOSDAttr` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | miss | n.a. | – |
+| `ISP_Get/SetOSDAttr` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | host | n.a. | – |
 | `ISP_Get/SetSingleOSDAttr` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | dev | n.a. | – |
 | ► `ISP_Tuning_CreateOsdRgn` [1] | n.a. | n.a. | n.a. | aud | n.a. | n.a. | dev | err | r† |
 | ► `ISP_Tuning_DestroyOsdRgn` [2] | n.a. | n.a. | n.a. | aud | n.a. | n.a. | dev | err | r† |
@@ -1637,7 +1637,7 @@ Notes:
 | Vendor function | T10 | T20 | T21 | T23 | T30 | T31 | T40 | T41 | Used by |
 |---|---|---|---|---|---|---|---|---|---|
 | `ISP_Get/SetDrawAttr` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | miss | n.a. | – |
-| `ISP_Get/SetOSDAttr` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | miss | n.a. | – |
+| `ISP_Get/SetOSDAttr` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | host | n.a. | – |
 | `ISP_Get/SetSingleOSDAttr` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | dev | n.a. | – |
 | ► `ISP_Tuning_CreateOsdRgn` [1] | n.a. | n.a. | n.a. | aud | n.a. | n.a. | dev | err | r† |
 | ► `ISP_Tuning_DestroyOsdRgn` [2] | n.a. | n.a. | n.a. | aud | n.a. | n.a. | dev | err | r† |

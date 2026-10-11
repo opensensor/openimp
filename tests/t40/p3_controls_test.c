@@ -3,6 +3,7 @@
  * pass-through of the public structures and the CCM conversion.
  * Host test, needs the T40 1.3.1 vendor headers via T40_HEADERS; no camera. */
 #include <assert.h>
+#include <errno.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
@@ -15,11 +16,17 @@ int OpenIMP_P1_GetDefaultBinPath(IMPVI_NUM num, char *path, size_t size);
 int OpenIMP_P1_IspIOCtl(uint32_t command, void *argument);
 int OpenIMP_P1_GetSensorName(char name[32], int32_t *cbus_type);
 
+static struct { uint32_t command; uint32_t value; int result; int err; int calls; } ispnode;
+
 int OpenIMP_P1_IspIOCtl(uint32_t command, void *argument)
 {
-    (void)command;
-    (void)argument;
-    return 0;
+    ispnode.command = command;
+    if (command == 0xc0045430U)
+        memcpy(&ispnode.value, argument, 4);
+    ispnode.calls++;
+    if (ispnode.result)
+        errno = ispnode.err;
+    return ispnode.result;
 }
 
 int OpenIMP_P1_GetSensorName(char name[32], int32_t *cbus_type)
@@ -388,6 +395,23 @@ int main(void)
         EXPECT(IMP_ISP_Tuning_GetAfStatistics(IMPVI_MAIN, &af), 1, 0x08000031, &af);
         EXPECT(IMP_ISP_Tuning_GetAFMetricesInfo(IMPVI_MAIN, &metric), 1, 0x08000034, &metric);
         EXPECT(IMP_ISP_Tuning_SetFixedContraster(IMPVI_MAIN, &fixed), 0, 0x08000098, &fixed);
+        {
+            IMPISPOSDAttr osd;
+            uint32_t dq = 33333;
+
+            EXPECT(IMP_ISP_SetOSDAttr(IMPVI_MAIN, &osd), 0, 0x080000a1, &osd);
+            EXPECT(IMP_ISP_GetOSDAttr(IMPVI_MAIN, &osd), 1, 0x080000a1, &osd);
+            /* SetPreDqtime: the pointer goes to the ISP node, vendor codes */
+            assert(IMP_ISP_SetPreDqtime(IMPVI_MAIN, &dq) == 0);
+            assert(ispnode.command == 0xc0045430U && ispnode.value == 33333U);
+            assert(IMP_ISP_SetPreDqtime((IMPVI_NUM)4, &dq) == -4);
+            assert(IMP_ISP_SetPreDqtime(IMPVI_MAIN, NULL) == -9);
+            ispnode.result = -1; ispnode.err = EIO;
+            assert(IMP_ISP_SetPreDqtime(IMPVI_MAIN, &dq) == -6);
+            ispnode.err = ENODEV;
+            assert(IMP_ISP_SetPreDqtime(IMPVI_MAIN, &dq) == -8);
+            ispnode.result = 0;
+        }
 
         /* ISP bypass is a library-held flag (0 before any set), no ioctl */
         before = last.calls;

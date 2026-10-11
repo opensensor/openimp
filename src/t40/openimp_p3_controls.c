@@ -1114,6 +1114,36 @@ int32_t IMP_ISP_Tuning_WaitFrameDone(IMPVI_NUM num, IMPISPWaitFrameAttr *attr)
     return result;
 }
 
+/* Vendor IMP_ISP_SetOSDAttr / GetOSDAttr (T40 name without "Tuning"):
+ * pointer pass-through of the public structure, control 0x80000a1. */
+#define TISP_CID_OSD_ATTR 0x080000a1
+
+int32_t IMP_ISP_SetOSDAttr(IMPVI_NUM num, IMPISPOSDAttr *attr)
+{
+    return p3_tuning_pointer(num, 0, TISP_CID_OSD_ATTR, attr);
+}
+
+int32_t IMP_ISP_GetOSDAttr(IMPVI_NUM num, IMPISPOSDAttr *attr)
+{
+    return p3_tuning_pointer(num, 1, TISP_CID_OSD_ATTR, attr);
+}
+
+/* Vendor IMP_ISP_SetPreDqtime (T40 1.3.1 0x8aa04): the caller's pointer goes
+ * to the ISP node as ioctl 0xc0045430 (TISP_VIDIOC_SET_PREDQTIME); sensor
+ * number >= 4 is -4, no ISP device -8, NULL -9, a failing ioctl -6. */
+#define TISP_IOCTL_SET_PREDQTIME 0xc0045430U
+
+int32_t IMP_ISP_SetPreDqtime(IMPVI_NUM num, uint32_t *dqtime)
+{
+    if ((uint32_t)num >= 4U)
+        return -4;
+    if (!dqtime)
+        return -9;           /* vendor: ISP device check (-8) comes first */
+    if (OpenIMP_P1_IspIOCtl(TISP_IOCTL_SET_PREDQTIME, dqtime) != 0)
+        return errno == ENODEV ? -8 : -6;
+    return 0;
+}
+
 /*
  * CSC: the T40 wire block differs from the T41 one above (vendor T40 1.3.1
  * Set/GetISPCSCAttr).  Control 0x8000096, the block is
