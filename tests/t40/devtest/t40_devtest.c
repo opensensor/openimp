@@ -11,7 +11,8 @@
  *               DrawAttr; T40D_DUMP=<file> writes the SEI test stream)
  *           200 StartNightMode before AddSensor (run it on its own)
  *           400 OSD group with SetGroupCallback in the pipeline
- *           800 AI digital gain (microphone only, no playback) */
+ *           800 AI digital gain (microphone only, no playback)
+ *           1000 WDR_OPEN LINEAR before AddSensor (run it on its own) */
 #include <errno.h>
 #include <poll.h>
 #include <signal.h>
@@ -299,6 +300,12 @@ int main(int argc, char **argv)
     static int night_rc = -99;
     if (mask & 0x200)       /* header: after ISP_Open, before AddSensor */
         night_rc = IMP_ISP_StartNightMode(IMPVI_MAIN);
+    static int wdr_open_rc = -99;
+    if (mask & 0x1000) {    /* linear boot, WDR mode prepared (no WDR switch) */
+        IMPISPWdrOpenAttr wo;
+        wo.rmode = IMPISP_TYPE_RUN_LINEAR; wo.imode = IMPISP_TYPE_WDR_DOL;
+        wdr_open_rc = IMP_ISP_WDR_OPEN(IMPVI_MAIN, &wo);
+    }
     r = IMP_ISP_AddSensor(IMPVI_MAIN, &sinfo);    R("ISP_AddSensor", OK(!r), "rc=%d", r);
     r = IMP_ISP_EnableSensor(IMPVI_MAIN, &sinfo); R("ISP_EnableSensor", OK(!r), "rc=%d", r);
     if (r) goto down;
@@ -989,6 +996,16 @@ int main(int argc, char **argv)
         R("AI_Get/SetDigitalGain", OK(!re && !rc && !r1 && !r2 && !rg && g == 220 && f1 > 10 && f2 > 10 && hi > lo * 4),
           "enable rc=%d/%d; dgain 100: RMS %.1f (%u frames); dgain 220: RMS %.1f (%u frames); get rc=%d %d (60 steps = 30 dB, expect x30)",
           re, rc, lo, f1, hi, f2, rg, g);
+    }
+
+    if (mask & 0x1000) {
+        IMPISPTuningOpsMode wg = (IMPISPTuningOpsMode)9;
+        int rg = IMP_ISP_WDR_ENABLE_GET(IMPVI_MAIN, &wg);
+        a = grab(500);
+        stream_for(1.0, &e);
+        R("ISP_WDR_OPEN", (!wdr_open_rc && a.ok && e.frames > 10) ? "PART" : "FAIL",
+          "LINEAR/DOL before AddSensor rc=%d; sensor up, Y=%.1f, %u frames/1 s; WDR_ENABLE_GET rc=%d mode=%d (WDR itself not switched)",
+          wdr_open_rc, a.y, e.frames, rg, wg);
     }
 
     if (mask & 0x400) {

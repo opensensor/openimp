@@ -364,6 +364,51 @@ int32_t IMP_ISP_WDR_ENABLE(IMPVI_NUM num, IMPISPTuningOpsMode *mode)
     return result;
 }
 
+#if !defined(PLATFORM_T41)
+/* T40 IMP_ISP_WDR_OPEN (vendor 1.3.1 0x8be48), before the first
+ * AddSensor: the ISP device must be open and attr set (-8 for either);
+ * rmode LINEAR sends {sensor number (byte), imode} with the ISP-device
+ * ioctl 0xc0045432 (-1 if it fails; the vendor then keeps imode in its
+ * sensor record, which OpenIMP has no use for); rmode WDR switches WDR on
+ * like IMP_ISP_WDR_ENABLE, whose result the vendor ignores (0); any other
+ * rmode -9.  OpenIMP sends the WDR switch on the open device directly,
+ * because its WDR_ENABLE needs a running sensor. */
+extern int OpenIMP_P1_IspIOCtlOpened(uint32_t command, void *argument);
+#define TISP_IOCTL_WDR_OPEN_LINEAR 0xc0045432U
+struct p3_wdr_open_req {
+    uint8_t sensor;
+    uint8_t pad[3];
+    int32_t imode;
+};
+_Static_assert(sizeof(struct p3_wdr_open_req) == 8, "WDR_OPEN request is 8 bytes");
+
+int32_t IMP_ISP_WDR_OPEN(IMPVI_NUM num, IMPISPWdrOpenAttr *attr)
+{
+    if (!attr)
+        return -8;
+    if (attr->rmode == IMPISP_TYPE_RUN_LINEAR) {
+        struct p3_wdr_open_req req;
+
+        memset(&req, 0, sizeof(req));
+        req.sensor = (uint8_t)num;
+        req.imode = (int32_t)attr->imode;
+        if (OpenIMP_P1_IspIOCtlOpened(TISP_IOCTL_WDR_OPEN_LINEAR, &req) != 0)
+            return errno == ENODEV ? -8 : -1;
+        return 0;
+    }
+    if (attr->rmode == IMPISP_TYPE_RUN_WDR) {
+        int32_t zero = 0;
+
+        pthread_mutex_lock(&p3_wdr_lock);
+        if (OpenIMP_P1_IspIOCtlOpened(TISP_IOCTL_SET_WDR_ENABLE, &zero) == 0)
+            p3_wdr_mode = IMPISP_TUNING_OPS_MODE_ENABLE;
+        pthread_mutex_unlock(&p3_wdr_lock);
+        return 0;
+    }
+    return -9;
+}
+#endif
+
 int32_t IMP_ISP_WDR_ENABLE_GET(IMPVI_NUM num, IMPISPTuningOpsMode *mode)
 {
     if (num != IMPVI_MAIN || !mode)

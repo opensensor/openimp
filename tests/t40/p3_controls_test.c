@@ -684,10 +684,41 @@ int main(void)
         sb_enabled = 0;
     }
 
+    /* WDR_OPEN: LINEAR = ioctl 0xc0045432 {sensor byte, imode}; WDR = the
+     * WDR enable ioctl on the open device; NULL -8, other rmode -9 */
+    {
+        IMPISPWdrOpenAttr w;
+        int c0 = opened.calls;
+
+        w.rmode = IMPISP_TYPE_RUN_LINEAR;
+        w.imode = IMPISP_TYPE_WDR_DOL;
+        assert(IMP_ISP_WDR_OPEN(IMPVI_MAIN, &w) == 0);
+        assert(opened.calls == c0 + 1 && opened.command == 0xc0045432U && opened.value == 0);
+        w.rmode = IMPISP_TYPE_RUN_WDR;
+        assert(IMP_ISP_WDR_OPEN(IMPVI_MAIN, &w) == 0);
+        assert(opened.calls == c0 + 2 && opened.command == 0x80045413U);
+        {
+            IMPISPTuningOpsMode g = IMPISP_TUNING_OPS_MODE_DISABLE;
+            assert(IMP_ISP_WDR_ENABLE_GET(IMPVI_MAIN, &g) == 0 && g == IMPISP_TUNING_OPS_MODE_ENABLE);
+        }
+        assert(IMP_ISP_WDR_OPEN(IMPVI_MAIN, NULL) == -8);
+        w.rmode = (IMPISPWdrRunMode)5;
+        assert(IMP_ISP_WDR_OPEN(IMPVI_MAIN, &w) == -9);
+        opened.result = ENODEV;
+        w.rmode = IMPISP_TYPE_RUN_LINEAR;
+        assert(IMP_ISP_WDR_OPEN(IMPVI_MAIN, &w) == -8);
+        opened.result = EIO;
+        assert(IMP_ISP_WDR_OPEN(IMPVI_MAIN, &w) == -1);
+        opened.result = 0;
+    }
+
     /* StartNightMode: ISP-device ioctl 0xc004542e with &num */
-    assert(IMP_ISP_StartNightMode(IMPVI_MAIN) == 0);
-    assert(opened.calls == 1 && opened.command == 0xc004542eU && opened.value == 0);
-    assert(IMP_ISP_StartNightMode((IMPVI_NUM)4) == -4 && opened.calls == 1);
+    {
+        int c0 = opened.calls;
+        assert(IMP_ISP_StartNightMode(IMPVI_MAIN) == 0);
+        assert(opened.calls == c0 + 1 && opened.command == 0xc004542eU && opened.value == 0);
+        assert(IMP_ISP_StartNightMode((IMPVI_NUM)4) == -4 && opened.calls == c0 + 1);
+    }
     opened.result = ENODEV;
     assert(IMP_ISP_StartNightMode(IMPVI_MAIN) == -8);
     opened.result = EINVAL;
