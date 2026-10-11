@@ -15,10 +15,12 @@ IVS_FRAMEWORK_TEST_BIN := $(PROJECT_DIR)/build/tests/t40-ivs-framework-test
 
 QUERY_TEST_BIN := $(PROJECT_DIR)/build/tests/t40-query-test
 SEI_TEST_BIN := $(PROJECT_DIR)/build/tests/t40-sei-test
+OSD_CB_TEST_BIN := $(PROJECT_DIR)/build/tests/t40-osd-callback-test
 
-check: $(QUERY_TEST_BIN) $(SEI_TEST_BIN) $(P2_BUFSHARE_TEST_BIN) $(STREAM_LAYOUT_TEST_BIN) $(DENOISE_TEST_BIN) $(CAMERA_INPUT_TEST_BIN) $(IVS_FRAMEWORK_TEST_BIN) p3-controls isp-osd abi-layout frame-ts frame-rc vendor-cmd
+check: $(QUERY_TEST_BIN) $(SEI_TEST_BIN) $(OSD_CB_TEST_BIN) $(P2_BUFSHARE_TEST_BIN) $(STREAM_LAYOUT_TEST_BIN) $(DENOISE_TEST_BIN) $(CAMERA_INPUT_TEST_BIN) $(IVS_FRAMEWORK_TEST_BIN) p3-controls isp-osd abi-layout frame-ts frame-rc vendor-cmd
 	$(QUERY_TEST_BIN)
 	$(SEI_TEST_BIN)
+	$(OSD_CB_TEST_BIN)
 	$(P2_BUFSHARE_TEST_BIN)
 	$(STREAM_LAYOUT_TEST_BIN)
 	$(DENOISE_TEST_BIN)
@@ -80,6 +82,16 @@ $(SEI_TEST_BIN): sei_test.c $(PROJECT_DIR)/src/t40/t40_sei.h \
 	mkdir -p "$(dir $@)"
 	$(CC) -std=gnu99 -O2 -Wall -Wextra -Werror -I$(PROJECT_DIR)/src \
 		sei_test.c $(PROJECT_DIR)/src/t40/t31_stream_layout.c -o "$@"
+
+# OSD_SetGroupCallback on the shared OSD module (no IPU paths run; the
+# rmem/bind helpers stay unresolved on purpose)
+$(OSD_CB_TEST_BIN): osd_callback_test.c $(PROJECT_DIR)/src/t23/openimp_t23_osd.c
+	mkdir -p "$(dir $@)"
+	$(CC) -std=gnu99 -O2 -Wall -Wextra -Werror -DPLATFORM_T40 \
+		'-D_Static_assert(c,m)=' -Wno-unused-result -fno-pie -no-pie \
+		-I$(PROJECT_DIR)/include -I$(PROJECT_DIR)/src osd_callback_test.c \
+		$(PROJECT_DIR)/src/t23/openimp_t23_osd.c $(PROJECT_DIR)/src/core/imp_log_emit.c \
+		-pthread -Wl,--unresolved-symbols=ignore-all -o "$@"
 
 # host-only: private ioctl fixture, no camera
 $(CAMERA_INPUT_TEST_BIN): camera_input_test.c $(PROJECT_DIR)/src/t40/openimp_p1.c

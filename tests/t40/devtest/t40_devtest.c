@@ -9,7 +9,8 @@
  *           10 system  20 osd  40 sysutils (vendor libsysutils)  80 resize
  *           100 night 2026-10-12 fixes (Query fields, FrameRelease, SEI,
  *               DrawAttr; T40D_DUMP=<file> writes the SEI test stream)
- *           200 StartNightMode before AddSensor (run it on its own) */
+ *           200 StartNightMode before AddSensor (run it on its own)
+ *           400 OSD group with SetGroupCallback in the pipeline */
 #include <errno.h>
 #include <poll.h>
 #include <signal.h>
@@ -232,6 +233,16 @@ static int rect_mean(unsigned x0, unsigned y0, unsigned w, unsigned h, double *y
     return 0;
 }
 
+static volatile int osd_cb_calls, osd_cb_group = -1;
+static volatile unsigned osd_cb_w;
+static int osd_cb(int group, IMPFrameInfo *frame)
+{
+    osd_cb_calls++; osd_cb_group = group; osd_cb_w = frame ? frame->width : 0;
+    return 0;
+}
+static IMPCell osd_cell;
+static int osd_made, osd_att, osd_cb_rc = -99;
+
 static IMPSensorInfo sinfo;
 static IMPEncoderChnAttr eattr;
 static int fs_made, grp_made, chn_made, bound, fs_on, recv_on;
@@ -357,6 +368,16 @@ int main(int argc, char **argv)
     cdst.deviceID = DEV_ID_ENC; cdst.groupID = CH; cdst.outputID = 0;
     r = IMP_System_Bind(&csrc, &cdst);        R("System_Bind", OK(!r), "rc=%d", r);
     bound = !r;
+    if ((mask & 0x400) && bound) {
+        /* OSD group in the pipeline (FS -> OSD -> ENC) with a callback;
+         * header: SetGroupCallback after CreateGroup, before EnableChn */
+        osd_cell.deviceID = DEV_ID_OSD; osd_cell.groupID = CH; osd_cell.outputID = 0;
+        osd_made = !IMP_OSD_CreateGroup(CH);
+        osd_cb_rc = IMP_OSD_SetGroupCallback(CH, osd_cb);
+        osd_att = !IMP_OSD_AttachToGroup(&osd_cell, &cdst);
+        IMP_OSD_Start(CH);
+        printf("  osd group %d made=%d callback rc=%d attached=%d\n", CH, osd_made, osd_cb_rc, osd_att);
+    }
     {
         IMPCell got; memset(&got, 0xff, sizeof got);
         r = IMP_System_GetBindbyDest(&cdst, &got);
@@ -924,10 +945,26 @@ int main(int argc, char **argv)
           night_rc, a.chroma, a.y, rg, m, b.chroma);
     }
 
+    if (mask & 0x400) {
+        int c0 = osd_cb_calls;
+        stream_for(2.0, &e);
+        R("OSD_SetGroupCallback", OK(osd_made && !osd_cb_rc && osd_att && osd_cb_calls - c0 >= e.frames / 2 && osd_cb_group == CH && osd_cb_w == FW),
+          "group %d rc=%d attached=%d; %d callbacks during %u encoded frames (2 s), group=%d width=%u",
+          CH, osd_cb_rc, osd_att, osd_cb_calls - c0, e.frames, osd_cb_group, osd_cb_w);
+    }
+
 down:
     /* ===== teardown (also lifecycle evidence) ===== */
     if (recv_on) { r = IMP_Encoder_StopRecvPic(CH); R("Encoder_StopRecvPic", OK(!r), "rc=%d", r); }
     if (fs_on) { r = IMP_FrameSource_DisableChn(CH); R("FrameSource_DisableChn", OK(!r), "rc=%d", r); }
+    if (osd_att) {
+        /* FS -> OSD -> ENC: undo both binds, then the plain one is gone */
+        IMP_OSD_Stop(CH);
+        r = IMP_System_UnBind(&osd_cell, &cdst) | IMP_System_UnBind(&csrc, &osd_cell);
+        R("System_UnBind(osd)", OK(!r), "rc=%d", r);
+        bound = 0;
+    }
+    if (osd_made) IMP_OSD_DestroyGroup(CH);
     if (bound) { r = IMP_System_UnBind(&csrc, &cdst); R("System_UnBind", OK(!r), "rc=%d", r); }
     if (chn_made) { IMP_Encoder_UnRegisterChn(CH); r = IMP_Encoder_DestroyChn(CH); R("Encoder_DestroyChn", OK(!r), "rc=%d", r); }
     if (grp_made) IMP_Encoder_DestroyGroup(CH);
