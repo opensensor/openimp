@@ -65,6 +65,7 @@ typedef struct {
 } P3TuningRequest;
 
 extern int OpenIMP_P1_TuningIOCtl(uint32_t command, void *argument);
+extern int OpenIMP_P1_TuningEnabled(void);
 extern int OpenIMP_P1_SetDefaultBinPath(IMPVI_NUM num, const char *path);
 extern int OpenIMP_P1_GetDefaultBinPath(IMPVI_NUM num, char *path, size_t size);
 
@@ -265,6 +266,76 @@ int32_t IMP_ISP_Tuning_SetAfWeight(IMPVI_NUM num, IMPISPWeight *af_weight)
 int32_t IMP_ISP_Tuning_GetAfWeight(IMPVI_NUM num, IMPISPWeight *af_weight)
 {
     return p3_tuning_pointer(num, 1, TISP_CID_AF_WEIGHT, af_weight);
+}
+
+/* IMP_ISP_Tuning_SwitchBin, from the vendor T40 1.3.1 and T41 1.2.6 libimp
+ * disassembly: pointer tuning ioctl, set, control 0x80000a5, payload =
+ * IMPISPBinAttr { u32 enable; char bname[64 (T40) / 128 (T41)]; } (68 / 132
+ * bytes, copied by the kernel).  enable 1 loads bname, 0 returns to the
+ * sensor's configured default bin.  Check order and return codes are the
+ * vendor's (T40 small negatives; T41 the same numbers as -4096 + n, with a
+ * sensor limit of 2 instead of 4).  The T41 library additionally keeps a
+ * copy of the attribute for a replay after an ISP restart; that bookkeeping
+ * is not reproduced.  Beyond the vendor: the name goes to the kernel in a
+ * copy that is always NUL terminated. */
+#define TISP_CID_SWITCH_BIN 0x080000a5
+#if defined(PLATFORM_T41)
+#define SB_MAX_NUM  2
+#define SB_E(n)     (-4096 + (n))
+#define SB_E_NUM    SB_E(12)
+#else
+#define SB_MAX_NUM  4
+#define SB_E(n)     (-(n))
+#define SB_E_NUM    SB_E(4)
+#endif
+#define SB_E_NULL   SB_E(9)
+#define SB_E_STATE  SB_E(5)
+#define SB_E_ENABLE SB_E(10)
+#define SB_E_IOCTL  SB_E(6)
+
+/* Pure request builder (host-tested): the vendor checks, the NUL-terminated
+ * copy and the 16-byte envelope.  Returns 0 or the vendor error code. */
+int32_t openimp_switch_bin_request(IMPVI_NUM num, const IMPISPBinAttr *attr,
+                                   int isp_enabled, IMPISPBinAttr *copy,
+                                   P3TuningRequest *request)
+{
+#if defined(PLATFORM_T41)
+    if (!attr)
+        return SB_E_NULL;
+    if ((uint32_t)num >= SB_MAX_NUM)
+        return SB_E_NUM;
+#else
+    if ((uint32_t)num >= SB_MAX_NUM)
+        return SB_E_NUM;
+    if (!attr)
+        return SB_E_NULL;
+#endif
+    if (!isp_enabled)
+        return SB_E_STATE;
+    if ((uint32_t)attr->enable >= 2U)
+        return SB_E_ENABLE;
+    memcpy(copy, attr, sizeof(*copy));
+    copy->bname[sizeof(copy->bname) - 1] = '\0';
+    request->vinum = (int32_t)num;
+    request->direction = 0;
+    request->control = TISP_CID_SWITCH_BIN;
+    request->payload = (uintptr_t)copy;
+    return 0;
+}
+
+int32_t IMP_ISP_Tuning_SwitchBin(IMPVI_NUM num, IMPISPBinAttr *attr)
+{
+    IMPISPBinAttr copy;
+    P3TuningRequest request;
+    int32_t result;
+
+    result = openimp_switch_bin_request(num, attr, OpenIMP_P1_TuningEnabled(),
+                                        &copy, &request);
+    if (result)
+        return result;
+    if (OpenIMP_P1_TuningIOCtl(TISP_VIDIOC_DEFAULT_TUNING, &request) != 0)
+        return SB_E_IOCTL;
+    return 0;
 }
 
 /* Vendor WDR_ENABLE: 1 / 0 switch the ISP's WDR mode by ioctl and the
