@@ -258,7 +258,7 @@ int main(void)
     /* Denoise (vendor semantics, src/t40/p2_denoise.h): no effect on a
      * channel created without it; on a channel created with it dnType
      * 0..2 is accepted, dnType >= 3 is refused; the T21 library reads the
-     * type back as 0 (both builds of this test define PLATFORM_T21) */
+     * type back as 0, T20/T10 keep it */
     memset(&dn, 0, sizeof(dn));
     dn.enable = 1;
     dn.dnType = 1;
@@ -271,6 +271,21 @@ int main(void)
     CHECK(IMP_Encoder_SetChnDenoise(1, &dn) == 0);
     memset(&dn, 0, sizeof(dn));
     CHECK(IMP_Encoder_GetChnDenoise(1, &dn) == 0 && dn.dnType == 0);
+    /* a type on a channel created with denoise: T21 reads 0 back, T20/T10
+     * (3.12.0 runs the two-pass denoise) keep it */
+    memset(&dn, 0, sizeof(dn));
+    dn.dnType = 2;
+    dn.dnIQp = 31;
+    dn.dnPQp = 33;
+    CHECK(IMP_Encoder_SetChnDenoise(1, &dn) == 0);
+    memset(&dn, 0, sizeof(dn));
+    CHECK(IMP_Encoder_GetChnDenoise(1, &dn) == 0 && dn.dnIQp == 31 &&
+          dn.dnPQp == 33);
+#if defined(PLATFORM_T20)
+    CHECK(dn.dnType == 2);
+#else
+    CHECK(dn.dnType == 0);
+#endif
 
     /* H264TransCfg: the chroma QP offset (-12..12) reaches the codec */
     memset(&tr, 0, sizeof(tr));

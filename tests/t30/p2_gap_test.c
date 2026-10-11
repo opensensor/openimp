@@ -63,17 +63,20 @@ int main(void)
     CHECK(IMP_Encoder_SetFisheyeEnableStatus(2, 1) == -1);    /* too late */
     CHECK(IMP_Encoder_GetFisheyeEnableStatus(2, &v) == 0 && v == 0);
     CHECK(IMP_Encoder_SetChangeRef(2, 3) == 0);
-#if defined(PLATFORM_T21)
+#if defined(PLATFORM_T20)
     CHECK(IMP_Encoder_GetChangeRef(2, &v) == 0 && v == 1);
     CHECK(IMP_Encoder_SetChangeRef(2, 0) == 0);
     CHECK(IMP_Encoder_GetChangeRef(2, &v) == 0 && v == 0);
 #else
-    /* T30 1.0.5: "unsupport to change ref channel" for a created channel */
+    /* T21 1.0.33 (0x48d90) and T30 1.0.5: a created channel logs
+     * "unsupport to change ref channel" and fails, the value is not
+     * returned (SetChangeRef still stores it) */
     v = 99;
     CHECK(IMP_Encoder_GetChangeRef(2, &v) == -1 && v == 99);
     CHECK(p2_channels[2].change_ref == 1);
     CHECK(IMP_Encoder_SetChangeRef(2, 0) == 0);
     CHECK(p2_channels[2].change_ref == 0);
+    CHECK(IMP_Encoder_GetChangeRef(2, &v) == -1 && v == 99);
 #endif
     CHECK(IMP_Encoder_GetChangeRef(2, NULL) == -1);
     CHECK(IMP_Encoder_GetGOPSize(2, &gop) == 0 && gop.gopsize == 50);
@@ -87,9 +90,19 @@ int main(void)
     {
         IMPEncoderAttrHSkip hs = { IMP_Encoder_STYPE_N2X, 4, 5, 6, 1, 1 }, gh;
 
-#if defined(PLATFORM_T21)
+#if defined(PLATFORM_T20)
         CHECK(IMP_Encoder_SetChnHSkip(1, &hs) == -1);        /* idle */
         CHECK(IMP_Encoder_GetChnHSkip(1, &gh) == -1);
+#elif defined(PLATFORM_T21)
+        /* T21: an idle channel accepts the Set (no maxHSkipType check,
+         * nothing reaches the encoder) and the Get answers all zero */
+        memset(&gh, 0xff, sizeof(gh));
+        CHECK(IMP_Encoder_SetChnHSkip(1, &hs) == 0);
+        CHECK(IMP_Encoder_GetChnHSkip(1, &gh) == 0 && gh.skipType == 0 &&
+              gh.m == 0 && gh.n == 0 && gh.maxSameSceneCnt == 0 &&
+              gh.bEnableScenecut == 0 && gh.bBlackEnhance == 0);
+        CHECK(IMP_Encoder_GetChnHSkip(1, NULL) == -1);
+        CHECK(IMP_Encoder_SetChnHSkip(P2_MAX_CHANNELS, &hs) == -1);
 #else
         /* T30 1.0.5: an idle channel reads as zeros and takes the value
          * (within its maxHSkipType, 0 until CreateChn) */

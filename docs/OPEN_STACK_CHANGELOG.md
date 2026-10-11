@@ -273,8 +273,15 @@ Host and build only (no T30 camera). Vendor libimp 1.0.5 disassembled and compar
 - Done (host): `Encoder_Get/SetChnFrmUsedMode`, `GetGOPSize`, `ISP_Tuning_SetDPStrength`, `SetAntiFogAttr`, `Get/SetAeStrategy`, `Awb_Get/SetCwfShift`, `Get/SetWDRAttr`, `Get/SetISPHVflip`, `OSD_AttachToGroup`; `DMIC_*` (21) by compiling the T31 implementation into the T30 build (one microphone per device).
 - Stored only: `Encoder_Get/SetChangeRef`, `Get/SetFisheyeEnableStatus`, `SetChnHSkipBlackEnhance`, `Get/SetChnHSkip`, `SetPoolSize`, `SetChnRcTrigLevel`, `ISP_Tuning_SetTemperDnsCtl`, `SetAFThreshold`.
 - Not done: `Decoder_*`, `Encoder_Get/SetChnCrop`, `ISP_Tuning_SetISPLDC` (wishlist, need a T30 device/driver); NCU denoise, `PadFrame`/`SetPadFrameAttr`, `Get/SetRencFirstFrameMult` (not worth it).
-- Found, not changed for T21: `GetChangeRef` of a created channel returns the stored value on T21 but fails with "unsupport to change ref channel" in the same vendor code; T21 `Get/SetChnHSkip` refuse idle channels, the vendor accepts them.
+- Found for T21 (fixed by the T10/T20/T21 gap work below): `GetChangeRef` of a created channel returned the stored value on T21 although the same vendor code fails with "unsupport to change ref channel"; T21 `Get/SetChnHSkip` refused idle channels, the vendor accepts them.
 - Matrix: T30 gaps 54 to 19 (11 missing, 8 cache-only), host 13, aud 22; the html matrix had the T30 and T40 cells of 20 rows swapped (shown as T30 dev), fixed.
+
+### Vendor deviations T10/T20/T21 (2026-10-10, branch claude/gaps-t1x-c, host tests only)
+
+- T21 `IMP_Encoder_GetChangeRef` on a created channel logs "unsupport to change ref channel" and returns -1 like the vendor (T21 1.0.33 / T30 1.0.5); it used to return the stored value. T10/T20 (3.12.0) read the value, unchanged.
+- T21 `Get/SetChnHSkip` accept an idle channel like the vendor (Set stores without the maxHSkipType check, Get answers all zero); T10/T20 stay -1.
+- T10/T20 `Get/SetChnDenoise` keep type and QPs like the vendor 3.12.0 (the T20 build also defines PLATFORM_T21 and read the type back as 0); still no two-pass encode, cell stays cache.
+- Other gap rows re-checked: all class c/d; T10 `SetMbRC` is a matched no-op (vendor T10 rate controller has no macroblock part).
 
 ## 2026-10-06 afternoon/evening: release candidate agg-27/agg-28
 
