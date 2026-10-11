@@ -9041,57 +9041,6 @@ int AL_Codec_Encode_SetRoi(void *codec, uint32_t index,
 #endif
 }
 
-/* IMP_Encoder_SetChnSeiAttr / GetChnSeiAttr (vendor AL_Codec_Encode_SetSei
- * / GetSei).  mode 0 off, 1 intra pictures, 2 every picture; the uuid and
- * up to 128 bytes of user data are copied.  T40 build only. */
-int AL_Codec_Encode_SetSei(void *codec, int mode, const uint8_t *uuid,
-                           const uint8_t *data, uint32_t size)
-{
-#if defined(AVPU_T40_NATIVE)
-    AL_CodecEncode *enc = (AL_CodecEncode *)codec;
-    OpenIMPT40Sei sei;
-
-    if (!enc || mode < 0 || mode > 2)
-        return -1;
-    memset(&sei, 0, sizeof(sei));
-    if (mode) {
-        if (!uuid || (size && !data))
-            return -1;
-        if (size > OPENIMP_T40_SEI_MAX_DATA)
-            size = OPENIMP_T40_SEI_MAX_DATA;
-        sei.mode = (uint8_t)mode;
-        sei.size = (uint8_t)size;
-        memcpy(sei.uuid, uuid, OPENIMP_T40_SEI_UUID);
-        if (size)
-            memcpy(sei.data, data, size);
-    }
-    pthread_mutex_lock(&codec_sei_lock);
-    enc->avpu.sei = sei;
-    pthread_mutex_unlock(&codec_sei_lock);
-    return 0;
-#else
-    (void)codec; (void)mode; (void)uuid; (void)data; (void)size;
-    return -1;
-#endif
-}
-
-int AL_Codec_Encode_GetSei(void *codec, void *out)
-{
-#if defined(AVPU_T40_NATIVE)
-    AL_CodecEncode *enc = (AL_CodecEncode *)codec;
-
-    if (!enc || !out)
-        return -1;
-    pthread_mutex_lock(&codec_sei_lock);
-    memcpy(out, &enc->avpu.sei, sizeof(enc->avpu.sei));
-    pthread_mutex_unlock(&codec_sei_lock);
-    return 0;
-#else
-    (void)codec; (void)out;
-    return -1;
-#endif
-}
-
 int AL_Codec_Encode_SetChromaQpOffset(void *codec, int offset)
 {
     if (codec == NULL || offset < -12 || offset > 12)
@@ -14160,3 +14109,54 @@ T23HelixBridge *OpenIMP_T23_CodecBridge(void *codec)
     return codec ? &((AL_CodecEncode *)codec)->t23_helix : NULL;
 }
 #endif
+
+/* IMP_Encoder_SetChnSeiAttr / GetChnSeiAttr (vendor AL_Codec_Encode_SetSei
+ * / GetSei).  mode 0 off, 1 intra pictures, 2 every picture; the uuid and
+ * up to 128 bytes of user data are copied.  T40 build only. */
+int AL_Codec_Encode_SetSei(void *codec, int mode, const uint8_t *uuid,
+                           const uint8_t *data, uint32_t size)
+{
+#if defined(AVPU_T40_NATIVE)
+    AL_CodecEncode *enc = (AL_CodecEncode *)codec;
+    OpenIMPT40Sei sei;
+
+    if (!enc || mode < 0 || mode > 2)
+        return -1;
+    memset(&sei, 0, sizeof(sei));
+    if (mode) {
+        if (!uuid || (size && !data))
+            return -1;
+        if (size > OPENIMP_T40_SEI_MAX_DATA)
+            size = OPENIMP_T40_SEI_MAX_DATA;
+        sei.mode = (uint8_t)mode;
+        sei.size = (uint8_t)size;
+        memcpy(sei.uuid, uuid, OPENIMP_T40_SEI_UUID);
+        if (size)
+            memcpy(sei.data, data, size);
+    }
+    pthread_mutex_lock(&codec_sei_lock);
+    enc->avpu.sei = sei;
+    pthread_mutex_unlock(&codec_sei_lock);
+    return 0;
+#else
+    (void)codec; (void)mode; (void)uuid; (void)data; (void)size;
+    return -1;
+#endif
+}
+
+int AL_Codec_Encode_GetSei(void *codec, void *out)
+{
+#if defined(AVPU_T40_NATIVE)
+    AL_CodecEncode *enc = (AL_CodecEncode *)codec;
+
+    if (!enc || !out)
+        return -1;
+    pthread_mutex_lock(&codec_sei_lock);
+    memcpy(out, &enc->avpu.sei, sizeof(enc->avpu.sei));
+    pthread_mutex_unlock(&codec_sei_lock);
+    return 0;
+#else
+    (void)codec; (void)out;
+    return -1;
+#endif
+}

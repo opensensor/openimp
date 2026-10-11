@@ -6,7 +6,9 @@
  * Never calls IMP_ISP_Tuning_GetAeExpList (hangs the vendor kernel).
  * usage: t40_devtest [phase-mask-hex]   (default: all phases)
  *   phases: 1 lifecycle+framesource  2 encoder  4 isp tuning  8 stats/awb
- *           10 system  20 osd  40 sysutils (vendor libsysutils)  */
+ *           10 system  20 osd  40 sysutils (vendor libsysutils)  80 resize
+ *           100 night 2026-10-12 fixes (Query fields, FrameRelease, SEI,
+ *               DrawAttr; T40D_DUMP=<file> writes the SEI test stream) */
 #include <errno.h>
 #include <poll.h>
 #include <signal.h>
@@ -159,6 +161,75 @@ static int med_gap(const struct es *e)
 static void on_drop(void) { }
 extern int IMP_System_MemPoolRequest(int, size_t, const char *) __attribute__((weak));
 static double fabs_d(double x) { return x < 0 ? -x : x; }
+
+
+/* ---------- phase 0x100 helpers (night 2026-10-12 fixes) ---------- */
+static const uint8_t sei_uuid[16] = { 0x6f, 0x70, 0x65, 0x6e, 0x69, 0x6d, 0x70, 0x2d,
+                                      0x74, 0x34, 0x30, 0x2d, 0x73, 0x65, 0x69, 0x21 };
+struct seiscan { unsigned frames, idr, sei, sei_idr, sei_bad, bytes; };
+
+/* copy pack bytes out of the (possibly wrapping) stream ring */
+static unsigned pack_bytes(const IMPEncoderStream *st, const IMPEncoderPack *pk, uint8_t *out, unsigned cap)
+{
+    unsigned n = pk->length < cap ? pk->length : cap, i;
+    const uint8_t *base = (const uint8_t *)(uintptr_t)st->virAddr;
+    for (i = 0; i < n; i++)
+        out[i] = base[(pk->offset + i) % (st->streamSize ? st->streamSize : 0xffffffffu)];
+    return n;
+}
+
+/* stream for secs; count SEI packs (H.264 type 6) that carry sei_uuid;
+ * optionally append the raw stream to dump (host decode check) */
+static void stream_sei(double secs, struct seiscan *z, FILE *dump)
+{
+    double t0 = now_s();
+    static uint8_t buf[512 * 1024];
+    memset(z, 0, sizeof *z);
+    while (now_s() - t0 < secs) {
+        IMPEncoderStream st;
+        unsigned i, isidr = 0, hassei = 0;
+        if (IMP_Encoder_PollingStream(CH, 500) != 0) continue;
+        if (IMP_Encoder_GetStream(CH, &st, 1) != 0) break;
+        for (i = 0; i < st.packCount; i++) {
+            IMPEncoderPack *pk = &st.pack[i];
+            unsigned n = pack_bytes(&st, pk, buf, sizeof buf), h = 0;
+            z->bytes += pk->length;
+            if (dump && n) fwrite(buf, 1, n, dump);
+            if (pk->nalType.h264NalType == 5) isidr = 1;
+            while (h + 3 < n && !(buf[h] == 0 && buf[h + 1] == 0 && buf[h + 2] == 1)) h++;
+            h += 3;
+            if (h < n && (buf[h] & 0x1f) == 6) {
+                /* nal 6, payload 5, size, uuid */
+                if (h + 3 + 16 <= n && buf[h + 1] == 5 && !memcmp(buf + h + 3, sei_uuid, 16)) hassei = 1;
+                else z->sei_bad++;
+            }
+        }
+        z->frames++;
+        if (isidr) z->idr++;
+        if (hassei) { z->sei++; if (isidr) z->sei_idr++; }
+        IMP_Encoder_ReleaseStream(CH, &st);
+    }
+}
+
+/* mean Y/U/V of a rectangle of the current (fresh) frame */
+static int rect_mean(unsigned x0, unsigned y0, unsigned w, unsigned h, double *y, double *u, double *v)
+{
+    IMPFrameInfo *f = NULL;
+    unsigned x, yy, st, n = 0, nc = 0;
+    const uint8_t *Y, *C;
+    double sy = 0, su = 0, sv = 0;
+    drain_stale();
+    if (IMP_FrameSource_GetFrame(CH, &f) != 0 || !f) return -1;
+    st = f->width; Y = (const uint8_t *)(uintptr_t)f->virAddr; C = Y + st * ((f->height + 15) & ~15u);
+    for (yy = y0; yy < y0 + h && yy < f->height; yy++)
+        for (x = x0; x < x0 + w && x < f->width; x++) { sy += Y[yy * st + x]; n++; }
+    for (yy = y0 / 2; yy < (y0 + h) / 2 && yy < f->height / 2; yy++)
+        for (x = x0 & ~1u; x + 1 < x0 + w && x + 1 < f->width; x += 2) { su += C[yy * st + x]; sv += C[yy * st + x + 1]; nc++; }
+    IMP_FrameSource_ReleaseFrame(CH, f);
+    if (!n || !nc) return -1;
+    *y = sy / n; *u = su / nc; *v = sv / nc;
+    return 0;
+}
 
 static IMPSensorInfo sinfo;
 static IMPEncoderChnAttr eattr;
@@ -747,6 +818,93 @@ int main(int argc, char **argv)
             }
             IMP_OSD_DestroyGroup(0);
             R("OSD_SetPoolSize", OK(!rp && h != INVHANDLE && !rr && !rs), "SetPoolSize(512 KiB) rc=%d, then group %d, region create handle=%d register rc=%d show rc=%d", rp, g, h, rr, rs);
+        }
+    }
+
+    /* ===== phase 0x100: fixes of the night 2026-10-12 (SEI, FrameRelease,
+     * DrawAttr, Query fields); run with OpenIMP and with the vendor library ===== */
+    if (mask & 0x100) {
+        FILE *dump = NULL;
+        const char *dp = getenv("T40D_DUMP");
+        if (dp && *dp) dump = fopen(dp, "wb");
+        /* Encoder_Query fields (vendor: leftStreamBytes and curPacks always 0) */
+        {
+            IMPEncoderChnStat q; int rq;
+            stream_for(1.0, &e);
+            memset(&q, 0xff, sizeof q);
+            rq = IMP_Encoder_PollingStream(CH, 1000);
+            r = IMP_Encoder_Query(CH, &q);
+            R("Encoder_Query(fields)", OK(!rq && !r && q.registered && q.leftStreamFrames >= 1 && q.curPacks == 0 && q.leftStreamBytes == 0),
+              "after PollingStream, before GetStream: rc=%d registered=%d leftPics=%u leftBytes=%u leftFrames=%u packs=%u done=%u",
+              r, q.registered, q.leftPics, q.leftStreamBytes, q.leftStreamFrames, q.curPacks, q.work_done);
+            stream_for(0.5, &e);
+        }
+        /* SetFrameRelease: rc only, stream must go on */
+        {
+            int r1 = IMP_Encoder_SetFrameRelease(CH, 1, 2), r2 = IMP_Encoder_SetFrameRelease(31, 1, 2);
+            stream_for(1.0, &e);
+            R("Encoder_SetFrameRelease", (!r1 && r2 && e.frames > 10) ? "PART" : "FAIL",
+              "set 1/2 rc=%d, invalid channel rc=%d, stream continues %u frames/1 s; no visible effect by design", r1, r2, e.frames);
+        }
+        /* SEI: ALL, then INTRA (with IDR requests), then NONE */
+        {
+            IMPEncoderSeiAttr sa, sg; struct seiscan zall, zintra, znone;
+            static uint8_t ud[200];
+            int rs1, rs2, rs3, rg, rbad;
+            for (i = 0; i < 200; i++) ud[i] = (uint8_t)(i % 7 == 0 ? 0 : i);   /* zeros: EPB path */
+            memset(&sa, 0, sizeof sa);
+            sa.SeiMode = IMP_ENC_SEI_MODE_ALL; sa.uuid = (uint8_t *)sei_uuid; sa.userData = ud; sa.userDataSize = 100;
+            rs1 = IMP_Encoder_SetChnSeiAttr(CH, &sa);
+            memset(&sg, 0, sizeof sg);
+            rg = IMP_Encoder_GetChnSeiAttr(CH, &sg);
+            stream_sei(3.0, &zall, dump);
+            sa.SeiMode = IMP_ENC_SEI_MODE_INTRA;
+            rs2 = IMP_Encoder_SetChnSeiAttr(CH, &sa);
+            IMP_Encoder_RequestIDR(CH);
+            stream_sei(2.0, &zintra, dump);
+            sa.SeiMode = IMP_ENC_SEI_MODE_NONE;
+            rs3 = IMP_Encoder_SetChnSeiAttr(CH, &sa);
+            stream_sei(1.5, &znone, dump);
+            sa.SeiMode = IMP_ENC_SEI_MODE_ALL; sa.uuid = NULL;
+            rbad = IMP_Encoder_SetChnSeiAttr(CH, &sa);
+            R("Encoder_Get/SetChnSeiAttr", OK(!rs1 && !rs2 && !rs3 && !rg && rbad && sg.SeiMode == IMP_ENC_SEI_MODE_ALL && sg.userDataSize == 100 &&
+                                               zall.frames > 20 && zall.sei == zall.frames && !zall.sei_bad &&
+                                               zintra.idr >= 1 && zintra.sei == zintra.sei_idr && zintra.sei_idr == zintra.idr &&
+                                               znone.frames > 10 && znone.sei == 0),
+              "set rc=%d/%d/%d get rc=%d mode=%d size=%u; ALL: SEI in %u of %u frames (bad %u); INTRA: SEI in %u frames, %u IDR, %u on IDR; NONE: %u of %u; uuid NULL rc=%d",
+              rs1, rs2, rs3, rg, sg.SeiMode, sg.userDataSize, zall.sei, zall.frames, zall.sei_bad, zintra.sei, zintra.idr, zintra.sei_idr, znone.sei, znone.frames, rbad);
+        }
+        if (dump) { fclose(dump); printf("  stream dumped to %s (H.264 Annex B, decode-check on the host)\n", dp); }
+        /* ISP DrawAttr: a green window (RGB) in ISP output channel 1 (this
+         * 1280x720 channel), 4-pixel line; compare the top edge rows */
+        {
+            static IMPISPDrawAttr da, dg;
+            IMPISPDrawUnitAttr *u = &da.draw_chx[1][0];
+            double y0, u0, v0, y1, u1, v1, y2, u2, v2;
+            int rs, rgd, rs0, m0, m1, m2;
+            m0 = rect_mean(200, 100, 400, 4, &y0, &u0, &v0);
+            memset(&da, 0, sizeof da);
+            u->type = IMP_ISP_DRAW_WIND; u->color_type = IMPISP_MASK_TYPE_RGB;
+            u->draw_cfg.wind.wind_enable = 1;
+            u->draw_cfg.wind.wind_left = 200; u->draw_cfg.wind.wind_top = 100;
+            u->draw_cfg.wind.wind_width = 400; u->draw_cfg.wind.wind_height = 200;
+            u->draw_cfg.wind.wind_color.mask_argb.g_value = 255;
+            u->draw_cfg.wind.wind_line_width = 4; u->draw_cfg.wind.wind_alpha = 7;
+            rs = IMP_ISP_SetDrawAttr(IMPVI_MAIN, &da);
+            usleep(500000);
+            m1 = rect_mean(200, 100, 400, 4, &y1, &u1, &v1);
+            memset(&dg, 0, sizeof dg);
+            rgd = IMP_ISP_GetDrawAttr(IMPVI_MAIN, &dg);
+            u->draw_cfg.wind.wind_enable = 0;
+            rs0 = IMP_ISP_SetDrawAttr(IMPVI_MAIN, &da);
+            usleep(500000);
+            m2 = rect_mean(200, 100, 400, 4, &y2, &u2, &v2);
+            printf("  draw: yuv written by the library for green: %u/%u/%u\n", da.draw_chx[1][0].draw_cfg.wind.wind_color.mask_ayuv.y_value,
+                   da.draw_chx[1][0].draw_cfg.wind.wind_color.mask_ayuv.u_value, da.draw_chx[1][0].draw_cfg.wind.wind_color.mask_ayuv.v_value);
+            R("ISP_Get/SetDrawAttr", OK(!rs && !rgd && !rs0 && !m0 && !m1 && !m2 && dg.draw_chx[1][0].draw_cfg.wind.wind_color.mask_argb.g_value == 255 &&
+                                         (fabs_d(u1 - u0) + fabs_d(v1 - v0) > 20) && (fabs_d(u2 - u0) + fabs_d(v2 - v0) < 10)),
+              "set rc=%d get rc=%d (G=%u type=%d) off rc=%d; top edge Y/U/V before %.1f/%.1f/%.1f, drawn %.1f/%.1f/%.1f, off %.1f/%.1f/%.1f",
+              rs, rgd, dg.draw_chx[1][0].draw_cfg.wind.wind_color.mask_argb.g_value, dg.draw_chx[1][0].color_type, rs0, y0, u0, v0, y1, u1, v1, y2, u2, v2);
         }
     }
 
