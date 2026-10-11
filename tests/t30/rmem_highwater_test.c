@@ -13,6 +13,7 @@
 #define syslog test_syslog
 static int test_syslog(int prio, const char *fmt, ...);
 #include "../../src/dma_alloc.c"
+#include "../../src/core/imp_log_emit.c"
 #undef syslog
 
 static char lines[16][256];
@@ -50,6 +51,7 @@ int main(void)
 
     /* the lines under test are INFO: above the default log level */
     setenv("OPENIMP_LOG_LEVEL", "7", 1);
+    imp_log_level_reload();
     g_dma_initialized = 1;
     g_rmem_supported = 1;
     g_mem_fd = open("/dev/null", O_RDWR);

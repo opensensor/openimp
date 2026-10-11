@@ -137,6 +137,7 @@ $(IVS_FRAMEWORK): ivs_framework_test.c $(IVS_SRC)/openimp_t31_ivs.c \
 		-I$(PROJECT_DIR)/src -I$(IVS_SRC) ivs_framework_test.c \
 		$(IVS_SRC)/openimp_t31_ivs.c $(IVS_SRC)/openimp_t31_ivs_move.c \
 		$(IVS_SRC)/openimp_ivs_move_v2.c \
+		$(PROJECT_DIR)/src/core/imp_log_emit.c \
 		-pthread -o "$@"
 
 # IMP_Encoder_SetJpegeQl tables in the software JPEG encoder. hw_encoder.c
@@ -166,7 +167,7 @@ $(HELIX_STREAM): helix_stream_test.c $(HELIX_NATIVE_SOURCES) \
 	$(CC) $(CFLAGS) $(HELIX_INCLUDES) -U_FORTIFY_SOURCE \
 		-D_FORTIFY_SOURCE=0 -Wno-missing-field-initializers \
 		helix_stream_test.c $(HELIX_NATIVE_SOURCES) -no-pie \
-		-Wl,--wrap=open,--wrap=close,--wrap=ioctl -lm -o "$@"
+		-Wl,--wrap=open,--wrap=close,--wrap=ioctl -lm $(PROJECT_DIR)/src/core/imp_log_emit.c -o "$@"
 
 # Reserved-memory layout with the native encoder: OpenIMP's arena and the
 # real encoder buffer sizes through timps' idle/re-enable cycles.
@@ -185,7 +186,7 @@ $(RMEM_LAYOUT): rmem_layout_test.c $(HELIX_NATIVE_SOURCES) \
 	$(CC) $(CFLAGS) $(HELIX_INCLUDES) -U_FORTIFY_SOURCE \
 		-D_FORTIFY_SOURCE=0 -Wno-missing-field-initializers \
 		rmem_layout_test.c $(HELIX_NATIVE_SOURCES) -no-pie \
-		-Wl,--wrap=open,--wrap=close,--wrap=ioctl -lm -o "$@"
+		-Wl,--wrap=open,--wrap=close,--wrap=ioctl -lm $(PROJECT_DIR)/src/core/imp_log_emit.c -o "$@"
 
 # H.265 CreateChn policy: T20/T21/T23 reject, T31/T41-style builds do not.
 hevc-policy: hevc_policy_test.c $(PROJECT_DIR)/src/t40/p2_hevc_policy.h
@@ -245,7 +246,7 @@ $(IVS_MOVE_V2): ivs_move_v2_test.c $(IVS_SRC)/openimp_t31_ivs.c \
 	$(CC) $(CFLAGS) -DPLATFORM_T23 -fno-pie -no-pie -I$(PROJECT_DIR)/include \
 		-I$(PROJECT_DIR)/src -I$(IVS_SRC) ivs_move_v2_test.c \
 		$(IVS_SRC)/openimp_t31_ivs.c $(IVS_SRC)/openimp_t31_ivs_move.c \
-		$(IVS_SRC)/openimp_ivs_move_v2.c -pthread -o "$@"
+		$(IVS_SRC)/openimp_ivs_move_v2.c -pthread $(PROJECT_DIR)/src/core/imp_log_emit.c -o "$@"
 
 ivs-move-v2: $(IVS_MOVE_V2)
 	$(IVS_MOVE_V2)
@@ -258,4 +259,4 @@ $(P2_ROI): p2_roi_test.c $(PROJECT_DIR)/src/t40/openimp_p2_encoder.c \
 		$(HELIX_INCLUDES) -I$(PROJECT_DIR)/src/t40 -no-pie \
 		p2_roi_test.c $(PROJECT_DIR)/src/t40/openimp_p2_encoder.c \
 		$(PROJECT_DIR)/src/openimp_profile.c $(PROJECT_DIR)/src/t40/t31_stream_layout.c \
-		-lpthread -o "$@"
+		-lpthread $(PROJECT_DIR)/src/core/imp_log_emit.c -o "$@"

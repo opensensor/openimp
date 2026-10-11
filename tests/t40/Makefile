@@ -28,7 +28,7 @@ $(IVS_FRAMEWORK_TEST_BIN): ../t23/ivs_framework_test.c $(IVS_SRC)/openimp_t31_iv
 	$(CC) -std=gnu99 -O2 -Wall -Wextra -Werror -Wno-unused-function -DPLATFORM_T40 \
 		-I$(PROJECT_DIR)/include -I$(PROJECT_DIR)/src -I$(IVS_SRC) \
 		../t23/ivs_framework_test.c $(IVS_SRC)/openimp_t31_ivs.c \
-		$(IVS_SRC)/openimp_t31_ivs_move.c $(IVS_SRC)/openimp_ivs_move_v2.c -pthread -o "$@"
+		$(IVS_SRC)/openimp_t31_ivs_move.c $(IVS_SRC)/openimp_ivs_move_v2.c -pthread $(PROJECT_DIR)/src/core/imp_log_emit.c -o "$@"
 
 .PHONY: p3-controls
 P3_CONTROLS_TEST_BIN := $(PROJECT_DIR)/build/tests/t40-p3-controls-test
@@ -144,4 +144,4 @@ $(P2_BUFSHARE_TEST_BIN): ../t31/p2_bufshare_test.c \
 		-I$(PROJECT_DIR)/src/t40 ../t31/p2_bufshare_test.c \
 		$(PROJECT_DIR)/src/openimp_profile.c \
 		$(PROJECT_DIR)/src/t40/t31_stream_layout.c \
-		-no-pie -lpthread -o $@
+		-no-pie -lpthread $(PROJECT_DIR)/src/core/imp_log_emit.c -o $@
