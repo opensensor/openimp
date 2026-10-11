@@ -1620,13 +1620,13 @@ All regular OSD functions (`OSD_CreateGroup`, `CreateRgn`, `RegisterRgn`, `Set/G
 
 Notes:
 
-1. `ISP_Tuning_CreateOsdRgn`: T41: host (vendor 1.2.6 semantics in src/t40/openimp_p1.c, delay cache; host test only, `export-check` 2026-10-11)
-2. `ISP_Tuning_DestroyOsdRgn`: T41: host (vendor 1.2.6 semantics in src/t40/openimp_p1.c, delay cache; host test only, `export-check` 2026-10-11)
+1. `ISP_Tuning_CreateOsdRgn`: T41: ENOTSUP stub (returns -1)
+2. `ISP_Tuning_DestroyOsdRgn`: T41: ENOTSUP stub (returns -1)
 3. `ISP_Tuning_Get/SetOSDAttr`: T23: 0x8000181 on the stock mscaler OSD attribute bytes (open-tx-isp claude/gaps-t23-t31-drv, class c; emulator-identical to the stock handlers); host build only, device test pending; no image effect yet (the MSCA update that programs the OSD blocks is not run); Not in agg-36: the open-tx-isp branch claude/gaps-t23-t31-drv is held back until its T23 SwitchBin is reworked (review: memcpy over live banks), so the agg-36 driver still behaves as before (cell unchanged).
 4. `ISP_Tuning_Get/SetOSDBlock`: T23: 0x8000182 on the stock mscaler OSD block table (open-tx-isp claude/gaps-t23-t31-drv, class c; emulator-identical to the stock Set including its stale-size quirk; the Get reports the requested block, stock always reports block 0 because it clears its local first; a block above 7 is refused, beyond stock; a block beyond the channel limits is logged and ignored, the call still returns 0, as stock); host build only, device test pending; no image effect yet (the MSCA update that programs the OSD blocks is not run); Not in agg-36: the open-tx-isp branch claude/gaps-t23-t31-drv is held back until its T23 SwitchBin is reworked (review: memcpy over live banks), so the agg-36 driver still behaves as before (cell unchanged).
 5. `ISP_Tuning_SetOsdPoolSize`: T41: 2 insns, returns ?
-6. `ISP_Tuning_SetOsdRgnAttr`: T41: host (vendor 1.2.6 semantics in src/t40/openimp_p1.c, delay cache; host test only, `export-check` 2026-10-11)
-7. `ISP_Tuning_ShowOsdRgn`: T41: host (vendor 1.2.6 semantics in src/t40/openimp_p1.c, delay cache; host test only, `export-check` 2026-10-11)
+6. `ISP_Tuning_SetOsdRgnAttr`: T41: ENOTSUP stub (returns -1)
+7. `ISP_Tuning_ShowOsdRgn`: T41: ENOTSUP stub (returns -1)
 8. `OSD_SetPoolSize_ISP`: T23: ISP OSD pictures from the pool (claude/t23t31-cacheonly, not in agg-25)
 26. `OSD_GetRegionLuma`: T23: declared in the 1.1.x/1.3.0 headers but exported by none of the 8 vendor libimp builds (nm); a vendor-stack application cannot link it either
 27. `OSD_AttachToGroup`: T10/T20/T21: system_attach() as the vendor wrapper (src->to becomes src->from->to, rolled back on error, -1); host test with a fake bind table; the apitest skips it (deprecated, the chain is built with IMP_System_Bind); T30 1.0.5: the same system_attach() wrapper as T21 (disassembly compared); the T21 host test with a fake bind table also runs against the T30 build
@@ -1679,13 +1679,13 @@ Notes:
 
 Notes:
 
-1. `ISP_Tuning_CreateOsdRgn`: T41: host (vendor 1.2.6 semantics in src/t40/openimp_p1.c, delay cache; host test only, `export-check` 2026-10-11)
-2. `ISP_Tuning_DestroyOsdRgn`: T41: host (vendor 1.2.6 semantics in src/t40/openimp_p1.c, delay cache; host test only, `export-check` 2026-10-11)
+1. `ISP_Tuning_CreateOsdRgn`: T41: ENOTSUP stub (returns -1)
+2. `ISP_Tuning_DestroyOsdRgn`: T41: ENOTSUP stub (returns -1)
 3. `ISP_Tuning_Get/SetOSDAttr`: T23: 0x8000181 on the stock mscaler OSD attribute bytes (open-tx-isp claude/gaps-t23-t31-drv, class c; emulator-identical to the stock handlers); host build only, device test pending; no image effect yet (the MSCA update that programs the OSD blocks is not run); Not in agg-36: the open-tx-isp branch claude/gaps-t23-t31-drv is held back until its T23 SwitchBin is reworked (review: memcpy over live banks), so the agg-36 driver still behaves as before (cell unchanged).
 4. `ISP_Tuning_Get/SetOSDBlock`: T23: 0x8000182 on the stock mscaler OSD block table (open-tx-isp claude/gaps-t23-t31-drv, class c; emulator-identical to the stock Set including its stale-size quirk; the Get reports the requested block, stock always reports block 0 because it clears its local first; a block above 7 is refused, beyond stock; a block beyond the channel limits is logged and ignored, the call still returns 0, as stock); host build only, device test pending; no image effect yet (the MSCA update that programs the OSD blocks is not run); Not in agg-36: the open-tx-isp branch claude/gaps-t23-t31-drv is held back until its T23 SwitchBin is reworked (review: memcpy over live banks), so the agg-36 driver still behaves as before (cell unchanged).
 5. `ISP_Tuning_SetOsdPoolSize`: T41: 2 insns, returns ?
-6. `ISP_Tuning_SetOsdRgnAttr`: T41: host (vendor 1.2.6 semantics in src/t40/openimp_p1.c, delay cache; host test only, `export-check` 2026-10-11)
-7. `ISP_Tuning_ShowOsdRgn`: T41: host (vendor 1.2.6 semantics in src/t40/openimp_p1.c, delay cache; host test only, `export-check` 2026-10-11)
+6. `ISP_Tuning_SetOsdRgnAttr`: T41: ENOTSUP stub (returns -1)
+7. `ISP_Tuning_ShowOsdRgn`: T41: ENOTSUP stub (returns -1)
 9. `OSD_CreateGroup`: audit: userspace implementation
 10. `OSD_CreateRgn`: audit: reaches the driver/kernel
 11. `OSD_DestroyGroup`: audit: userspace implementation
@@ -1787,8 +1787,8 @@ Notes:
 
 Notes:
 
-1. `DMIC_*` (20 functions): functions: Disable, DisableAec, DisableChn, Enable, EnableAec, EnableAecRefFrame, EnableChn, Get/SetChnParam, GetFrame, GetFrameAndRef, Get/SetGain, Get/SetPubAttr, Get/SetVol, PollingFrame, ReleaseFrame, SetUserInfo. T41: host (vendor 1.2.6 semantics in src/t40/openimp_p1.c, delay cache; host test only, `export-check` 2026-10-11); T30 1.0.5: the T31 DMIC implementation is compiled into the T30 build. The 21 DMIC functions of libimp 1.0.5 disassemble like those of T31 1.1.6 (buffer sizing aside) and the T30 oss2 /dev/dsp driver has the same DMIC ioctls (SNDCTL_EXT_ENABLE_DMIC_STREAM, DMIC_GET_AI_STREAM 0x300, DMIC_SET_DMIC_GAIN 0x200); difference: one microphone per device on T30 (SetPubAttr chnCnt 1). Host test with a fake /dev/dsp (attribute rules, ioctl sequence, frames, gain, volume); the AEC calls are only compared, not run; no T30 device, and the audio driver needs its DMIC option
-2. `DMIC_DisableAecRefFrame`: T41: host (vendor 1.2.6 semantics in src/t40/openimp_p1.c, delay cache; host test only, `export-check` 2026-10-11); T30 1.0.5: as DMIC_*; disassembly identical to T31 apart from offsets, not run on the host
+1. `DMIC_*` (20 functions): functions: Disable, DisableAec, DisableChn, Enable, EnableAec, EnableAecRefFrame, EnableChn, Get/SetChnParam, GetFrame, GetFrameAndRef, Get/SetGain, Get/SetPubAttr, Get/SetVol, PollingFrame, ReleaseFrame, SetUserInfo. T41: ENOTSUP stub (returns -1); T30 1.0.5: the T31 DMIC implementation is compiled into the T30 build. The 21 DMIC functions of libimp 1.0.5 disassemble like those of T31 1.1.6 (buffer sizing aside) and the T30 oss2 /dev/dsp driver has the same DMIC ioctls (SNDCTL_EXT_ENABLE_DMIC_STREAM, DMIC_GET_AI_STREAM 0x300, DMIC_SET_DMIC_GAIN 0x200); difference: one microphone per device on T30 (SetPubAttr chnCnt 1). Host test with a fake /dev/dsp (attribute rules, ioctl sequence, frames, gain, volume); the AEC calls are only compared, not run; no T30 device, and the audio driver needs its DMIC option
+2. `DMIC_DisableAecRefFrame`: T41: ENOTSUP stub (returns -1); T30 1.0.5: as DMIC_*; disassembly identical to T31 apart from offsets, not run on the host
 
 <details><summary>All 66 rows of this area (14 with a gap)</summary>
 
@@ -1917,8 +1917,8 @@ Notes:
 50. `AO_SetVolMute`: audit: reaches the driver/kernel; userspace implementation; T41: software mute as in the vendor library (no ioctl); API-level test only 2026-10-10 (rc 0, invalid argument -1), the T41 test board has no audio hardware
 51. `AO_Soft_Mute`: audit: reaches the driver/kernel; userspace implementation; T41: software mute as in the vendor library (no ioctl); API-level test only 2026-10-10 (rc 0, invalid argument -1), the T41 test board has no audio hardware
 52. `AO_Soft_UNMute`: audit: reaches the driver/kernel; userspace implementation; T41: software mute as in the vendor library (no ioctl); API-level test only 2026-10-10 (rc 0, invalid argument -1), the T41 test board has no audio hardware
-1. `DMIC_*` (20 functions): functions: Disable, DisableAec, DisableChn, Enable, EnableAec, EnableAecRefFrame, EnableChn, Get/SetChnParam, GetFrame, GetFrameAndRef, Get/SetGain, Get/SetPubAttr, Get/SetVol, PollingFrame, ReleaseFrame, SetUserInfo. T41: host (vendor 1.2.6 semantics in src/t40/openimp_p1.c, delay cache; host test only, `export-check` 2026-10-11); T30 1.0.5: the T31 DMIC implementation is compiled into the T30 build. The 21 DMIC functions of libimp 1.0.5 disassemble like those of T31 1.1.6 (buffer sizing aside) and the T30 oss2 /dev/dsp driver has the same DMIC ioctls (SNDCTL_EXT_ENABLE_DMIC_STREAM, DMIC_GET_AI_STREAM 0x300, DMIC_SET_DMIC_GAIN 0x200); difference: one microphone per device on T30 (SetPubAttr chnCnt 1). Host test with a fake /dev/dsp (attribute rules, ioctl sequence, frames, gain, volume); the AEC calls are only compared, not run; no T30 device, and the audio driver needs its DMIC option
-2. `DMIC_DisableAecRefFrame`: T41: host (vendor 1.2.6 semantics in src/t40/openimp_p1.c, delay cache; host test only, `export-check` 2026-10-11); T30 1.0.5: as DMIC_*; disassembly identical to T31 apart from offsets, not run on the host
+1. `DMIC_*` (20 functions): functions: Disable, DisableAec, DisableChn, Enable, EnableAec, EnableAecRefFrame, EnableChn, Get/SetChnParam, GetFrame, GetFrameAndRef, Get/SetGain, Get/SetPubAttr, Get/SetVol, PollingFrame, ReleaseFrame, SetUserInfo. T41: ENOTSUP stub (returns -1); T30 1.0.5: the T31 DMIC implementation is compiled into the T30 build. The 21 DMIC functions of libimp 1.0.5 disassemble like those of T31 1.1.6 (buffer sizing aside) and the T30 oss2 /dev/dsp driver has the same DMIC ioctls (SNDCTL_EXT_ENABLE_DMIC_STREAM, DMIC_GET_AI_STREAM 0x300, DMIC_SET_DMIC_GAIN 0x200); difference: one microphone per device on T30 (SetPubAttr chnCnt 1). Host test with a fake /dev/dsp (attribute rules, ioctl sequence, frames, gain, volume); the AEC calls are only compared, not run; no T30 device, and the audio driver needs its DMIC option
+2. `DMIC_DisableAecRefFrame`: T41: ENOTSUP stub (returns -1); T30 1.0.5: as DMIC_*; disassembly identical to T31 apart from offsets, not run on the host
 
 </details>
 
