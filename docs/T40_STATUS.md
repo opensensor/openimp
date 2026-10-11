@@ -134,6 +134,65 @@ maintained `libaudioProcess-neo`; logging uses the target's
   and drops it (vendor bound is channel < 13, OpenIMP has 8 channels).
 - The `P1_INNER` phase markers on stderr need `OPENIMP_DEBUG_TRACE=1`.
 
+## Night 2026-10-12: device FAILs of 2026-10-11, new calls (host only)
+
+Branch `claude/t40-night` (on `claude/t40-devtest`); host tests and cross builds only, no camera.
+All semantics from the vendor libimp 1.3.0 of the camera (address-identical to 1.3.1) and the
+recovered vendor kernel routines.
+
+- **HVFLIP:** the vendor `SetHVFLIP` sends the pointer to the mode (control 0x08000073) exactly
+  as OpenIMP did; `GetHVFlip` never asks the driver (the stock kernel has no getter, hence rc -1)
+  and answers the mode cached by `SetHVFLIP`.  The "not mirrored" result of 2026-10-11 compared two
+  frames that were captured before the call: the channel has two buffers, both were full while the
+  test slept, so the first two `GetFrame` calls returned old pictures.  `tests/t40/devtest` now drops
+  them (`drain_stale()`), also for brightness/contrast/saturation/sharpness/hue/running mode.
+- **ISPRunningMode:** set = pointer (as before); get = request without payload, the kernel answers
+  with the mode in the payload word.  OpenIMP passed a pointer, the kernel overwrote it and the
+  caller's variable stayed at its old value (the test pre-set 9).  The odd chroma values (day 59.5,
+  night 29.5, day again 29.0) are averages of two stale and two new frames.  The vendor also re-arms
+  its frame-source "change wait" counter after a switch (drops the first frames); not reproduced.
+- **BcshHue:** set = byte pointer, control 0x08000081 (unchanged); get = cached byte (no ioctl).  The
+  kernel maps 0..255 to 0..120 degrees (`tisp_bcsh_s_hue`, 128 = 60 degrees); the U/V values of
+  2026-10-11 were half stale frames.  Device re-test with both libraries (the devtest prints the U/V
+  of the default, 20 and 230).
+- **Encoder_Query:** the vendor copies a 24-byte block of the channel record: `leftStreamBytes` and
+  `curPacks` are never written (0), `leftStreamFrames` is sampled in `GetStream`, `leftPics` after
+  every picture, `work_done` 1 when idle.  OpenIMP encodes on demand, so `leftPics` is 0 and
+  `leftStreamFrames` is 1 while a finished stream waits (`src/t40/p2_query.h`).
+- **ROI (`OPENIMP_T40_ROI=1`):** works on the device (FixQP 34, delta -10, 81 -> 155 kbps); whether
+  it becomes the default is a user decision.
+- **New:** `Encoder_Set/GetChnSeiAttr` (`src/t40/t40_sei.h`: user_data_unregistered SEI between the
+  parameter sets and the slice header, H.264 nal 6 / H.265 PREFIX_SEI 39, EPB; INTRA = IDR pictures,
+  ALL = every picture; left out and counted if the 0x220-byte header area would overflow; the AU gate
+  accepts one SEI in front of the VCL NAL only while SEI is on), `Encoder_SetFrameRelease` (stored,
+  no effect, as on T31), `ISP_Get/SetDrawAttr` (control 0x080000a0, 2 x 16 units of 28 bytes, RGB ->
+  YUV in the caller's struct, Get restores type and RGB), `ISP_StartNightMode` (ISP-device ioctl
+  0xc004542e, before `AddSensor`), `OSD_SetGroupCallback` (called after the group is drawn, return
+  value ignored), `OSD_Get/SetRgnAttr_ISP` (LINE_RECT -> `SetDrawAttr`, COVER -> `SetMask`, PIC -1),
+  `AI/AO_Get/SetDigitalGain` (raw codec register through the volume ioctls; a failing ioctl is only
+  logged, as the vendor), `ISP_WDR_OPEN` (LINEAR: ioctl 0xc0045432 {sensor byte, imode}; WDR: WDR
+  enable), `ISP_Bypass_Bind` (ioctl 0xc0045431, 12 bytes), `ISP_GetRaw` (ioctl 0xc004542f into an
+  rmem buffer per sensor; grows the buffer and invalidates the cache, unlike the vendor).
+- **Finding, not changed:** the vendor `IMP_AI_SetVol` scales the samples in software (`pow`), it
+  does not touch the codec; OpenIMP's `AI/AO_SetVol` program the codec volume register, which is the
+  register of the vendor `SetDigitalGain`.  Vendor parity would mean a software volume; open for a
+  decision.
+- **Device test for the next run:** `t40dev/night/run-night.sh` (outside the repository: builds this
+  branch, takes the cam-184 lock, runs `t40dev/night/t7-night.tests` with OpenIMP and the vendor
+  library side by side through `sess-night.sh`, hard timeout 120 s per run, stops on a hang, decodes
+  the SEI dumps with ffmpeg).  devtest phases: 4 (tuning with fresh frames), 0x100 (Query fields,
+  FrameRelease, SEI, DrawAttr), 0x200 (StartNightMode), 0x400 (OSD group callback in the pipeline),
+  0x800 (AI digital gain, microphone only), 0x1000 (WDR_OPEN LINEAR), 0x2000 (GetRaw, 8 MB rmem, last).
+
+Still missing on T40 (not done tonight): `AI_Enable/DisableHs` (howling suppression in
+`libaudioProcess`, the `audio_process_hs_*` signatures are not decoded and a test needs playback),
+`ISP_SetAeAlgoFunc`/`SetAwbAlgoFunc` (custom AE/AWB callbacks; storing them alone would be a cache),
+`FrameSource_GetFrameEx`/`ReleaseFrameEx` (own device path in the vendor library),
+`FrameSource_ExternInject_*` with `Queue/DequeueBuffer`, `Encoder_Vbm*`/`Yuv*`, `Decoder_*`,
+`EmuFrameSource_*`.  `IMP_Log_Get/Set_Option` come from the system log library on T40 (the vendor
+libimp imports them), and the `*ISPHLDCAttr` names of the export list are only doc-comment names
+(the real exports are `Get/SetHLDCAttr`).
+
 ## T40 on the T41 code paths (host tests; device run on cam-K 2026-10-10 below)
 
 Compared with the vendor libimp 1.3.1 disassembly (the camera runs 1.3.0, which
