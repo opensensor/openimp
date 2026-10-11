@@ -330,6 +330,7 @@ typedef struct {
     int fisheye;                    /* IMP_Encoder_Set/GetFisheyeEnableStatus */
     int release_num;                /* IMP_Encoder_SetFrameRelease */
     int release_den;
+    IMPEncoderSeiAttr sei_attr;     /* IMP_Encoder_GetChnSeiAttr answer */
 #endif
     uint64_t next_frame_due_us;
     uint64_t output_timestamp_us;
@@ -461,9 +462,16 @@ static void p2_t31_check_au(const P2EncoderChannel *channel,
 
     if (!data || !raw->length)
         return;
+#if defined(PLATFORM_T40)
+    /* T40: SetChnSeiAttr may put an SEI in front of the slice */
+    if (!openimp_t31_au_check_sei(data, raw->length,
+                                  raw->frame_type == 0u, &au, 0))
+        return;
+#else
     if (!openimp_t31_avc_au_check(data, raw->length,
                                   raw->frame_type == 0u, &au))
         return;
+#endif
 
     now = p2_monotonic_us();
     pthread_mutex_lock(&p2_au_check_lock);
@@ -3257,6 +3265,74 @@ int IMP_Encoder_Query(int channel, IMPEncoderCHNStat *stat)
 #endif
     return 0;
 }
+
+#if defined(PLATFORM_T40)
+extern int AL_Codec_Encode_SetSei(void *codec, int mode, const uint8_t *uuid,
+                                  const uint8_t *data, uint32_t size);
+
+/* Vendor T40 1.3.1 IMP_Encoder_SetChnSeiAttr (0x6d0a8): channel < 13 and
+ * created (-1); with a mode other than NONE the uuid and userData pointers
+ * must be set (-1) and a userDataSize above 128 is cut to 128 in the
+ * caller's struct (warning); the codec gets the mode (INTRA: SEI in front of
+ * intra pictures, ALL: every picture; other values count as INTRA as in the
+ * vendor flag arithmetic), the uuid and the data (-1 if it refuses).
+ * OpenIMP copies uuid and data (src/t40/t40_sei.h writes the
+ * user_data_unregistered SEI in front of the slice, H.264 and H.265).
+ * GetChnSeiAttr (0x6d3b0) answers what was set (the caller's pointers). */
+int IMP_Encoder_SetChnSeiAttr(int channel, IMPEncoderSeiAttr *attr)
+{
+    P2EncoderChannel *ch;
+    int mode, ret;
+
+    if (!p2_valid_channel(channel) || !attr)
+        return -1;
+    ch = &p2_channels[channel];
+    mode = attr->SeiMode == IMP_ENC_SEI_MODE_NONE ? 0
+         : attr->SeiMode == IMP_ENC_SEI_MODE_ALL ? 2 : 1;
+    if (mode && (!attr->uuid || !attr->userData)) {
+        IMP_LOG_LIMITED(LOG_ERR, "Encoder",
+                        "IMP_Encoder_SetChnSeiAttr: chn%d uuid or userData is NULL",
+                        channel);
+        return -1;
+    }
+    if (attr->userDataSize > 128u) {
+        IMP_LOG_LIMITED(LOG_WARNING, "Encoder",
+                        "IMP_Encoder_SetChnSeiAttr: chn%d userDataSize %u > 128, cut to 128",
+                        channel, (unsigned int)attr->userDataSize);
+        attr->userDataSize = 128u;
+    }
+    pthread_mutex_lock(&ch->lock);
+    if (!ch->created || !ch->codec || ch->codec_type == IMP_ENC_TYPE_JPEG) {
+        pthread_mutex_unlock(&ch->lock);
+        return -1;
+    }
+    ret = AL_Codec_Encode_SetSei(ch->codec, mode, attr->uuid, attr->userData,
+                                 attr->userDataSize);
+    if (ret == 0) {
+        ch->sei_attr = *attr;
+        ch->sei_attr.SeiMode = (IMPEncoderSEIMode)mode;
+    }
+    pthread_mutex_unlock(&ch->lock);
+    return ret < 0 ? -1 : 0;
+}
+
+int IMP_Encoder_GetChnSeiAttr(int channel, IMPEncoderSeiAttr *attr)
+{
+    P2EncoderChannel *ch;
+
+    if (!p2_valid_channel(channel) || !attr)
+        return -1;
+    ch = &p2_channels[channel];
+    pthread_mutex_lock(&ch->lock);
+    if (!ch->created || !ch->codec || ch->codec_type == IMP_ENC_TYPE_JPEG) {
+        pthread_mutex_unlock(&ch->lock);
+        return -1;
+    }
+    *attr = ch->sei_attr;
+    pthread_mutex_unlock(&ch->lock);
+    return 0;
+}
+#endif
 
 #if defined(PLATFORM_T40)
 /* Vendor T40 1.3.1 IMP_Encoder_SetFrameRelease (0x6d728): channel < 13 and

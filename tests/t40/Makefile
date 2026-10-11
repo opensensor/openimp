@@ -14,9 +14,11 @@ IVS_SRC := $(PROJECT_DIR)/src/t31
 IVS_FRAMEWORK_TEST_BIN := $(PROJECT_DIR)/build/tests/t40-ivs-framework-test
 
 QUERY_TEST_BIN := $(PROJECT_DIR)/build/tests/t40-query-test
+SEI_TEST_BIN := $(PROJECT_DIR)/build/tests/t40-sei-test
 
-check: $(QUERY_TEST_BIN) $(P2_BUFSHARE_TEST_BIN) $(STREAM_LAYOUT_TEST_BIN) $(DENOISE_TEST_BIN) $(CAMERA_INPUT_TEST_BIN) $(IVS_FRAMEWORK_TEST_BIN) p3-controls isp-osd abi-layout frame-ts frame-rc vendor-cmd
+check: $(QUERY_TEST_BIN) $(SEI_TEST_BIN) $(P2_BUFSHARE_TEST_BIN) $(STREAM_LAYOUT_TEST_BIN) $(DENOISE_TEST_BIN) $(CAMERA_INPUT_TEST_BIN) $(IVS_FRAMEWORK_TEST_BIN) p3-controls isp-osd abi-layout frame-ts frame-rc vendor-cmd
 	$(QUERY_TEST_BIN)
+	$(SEI_TEST_BIN)
 	$(P2_BUFSHARE_TEST_BIN)
 	$(STREAM_LAYOUT_TEST_BIN)
 	$(DENOISE_TEST_BIN)
@@ -71,6 +73,13 @@ $(QUERY_TEST_BIN): query_test.c $(PROJECT_DIR)/src/t40/p2_query.h
 	mkdir -p "$(dir $@)"
 	$(CC) -std=gnu99 -O2 -Wall -Wextra -Werror \
 		-I$(PROJECT_DIR)/include -I$(PROJECT_DIR)/src query_test.c -o "$@"
+
+# SetChnSeiAttr SEI NAL and the AU check that accepts it, host only
+$(SEI_TEST_BIN): sei_test.c $(PROJECT_DIR)/src/t40/t40_sei.h \
+	$(PROJECT_DIR)/src/t40/t31_stream_layout.c $(PROJECT_DIR)/src/t40/t31_stream_layout.h
+	mkdir -p "$(dir $@)"
+	$(CC) -std=gnu99 -O2 -Wall -Wextra -Werror -I$(PROJECT_DIR)/src \
+		sei_test.c $(PROJECT_DIR)/src/t40/t31_stream_layout.c -o "$@"
 
 # host-only: private ioctl fixture, no camera
 $(CAMERA_INPUT_TEST_BIN): camera_input_test.c $(PROJECT_DIR)/src/t40/openimp_p1.c

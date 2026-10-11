@@ -215,6 +215,10 @@ int AL_Codec_Encode_SetRcParam(void *c, void *p) { (void)c; (void)p; return 0; }
 int AL_Codec_Encode_SetRcQualityCap(void *c, int m, unsigned int p) { (void)c; (void)m; (void)p; return 0; }
 
 int AL_Codec_Encode_SetRoiAttr(void *c, const void *a) { (void)c; (void)a; return 0; }
+#if defined(PLATFORM_T40)
+int AL_Codec_Encode_SetSei(void *c, int m, const uint8_t *u, const uint8_t *d, uint32_t n);
+int AL_Codec_Encode_SetSei(void *c, int m, const uint8_t *u, const uint8_t *d, uint32_t n) { (void)c; (void)m; (void)u; (void)d; (void)n; return 0; }
+#endif
 int AL_Codec_Encode_SetMapRoi(void *c, const void *a) { (void)c; (void)a; return 0; }
 int AL_Codec_Encode_SetJpegQl(void *c, int e, const uint8_t t[128])
 { (void)c; (void)e; (void)t; return 0; }
