@@ -118,7 +118,7 @@ compile core_imp_log src/core/imp_log.c -Werror
 compile core_imp_log_emit src/core/imp_log_emit.c -Werror
 compile core_video_drop src/core/video_drop.c -Werror
 compile core_su_base_shutdown src/core/su_base_shutdown.c -Werror
-compile framesource src/framesource/framesource_tseries.c
+compile framesource src/framesource/framesource_tseries.c $hot_flags
 compile isp src/isp/isp_tseries.c
 compile isp_t23_tuning src/isp/isp_t23_tuning.c -Werror
 compile t23_compat src/t31/openimp_t31_compat.c
@@ -145,16 +145,16 @@ compile t23_encoder src/t23/openimp_t23_encoder.c -Werror
 compile t23_decoder src/t23/openimp_t23_decoder.c -Werror
 compile t23_misc src/t23/openimp_t23_misc.c -Werror
 # Native Helix H.264: the T30/T21 encoder with the T21-family command list.
-compile t23_helix_native src/t30/t30_helix_encoder.c -Werror
+compile t23_helix_native src/t30/t30_helix_encoder.c $hot_flags -Werror
 compile t23_h264_descriptor src/t21/t21_h264_descriptor.c -Werror
-compile t23_h264_common src/t30/h264enc/common.c -Werror
-compile t23_h264_cabac src/t30/h264enc/cabac.c -Werror
-compile t23_h264_set src/t30/h264enc/set.c -Werror
-compile t23_h264_slice src/t30/h264enc/slice.c -Werror
-compile t23_rate_control src/t40/t31_rate_control.c -Werror
+compile t23_h264_common src/t30/h264enc/common.c $hot_flags -Werror
+compile t23_h264_cabac src/t30/h264enc/cabac.c $hot_flags -Werror
+compile t23_h264_set src/t30/h264enc/set.c $hot_flags -Werror
+compile t23_h264_slice src/t30/h264enc/slice.c $hot_flags -Werror
+compile t23_rate_control src/t40/t31_rate_control.c $hot_flags -Werror
 compile t23_eprc src/eprc/eprc.c $hot_flags -Werror -ffp-contract=off
 compile t23_eprc_mbrc src/eprc/eprc_mbrc.c $hot_flags -Werror -ffp-contract=off
-compile t23_helix_jpeg src/t30/helix_jpeg.c -Werror
+compile t23_helix_jpeg src/t30/helix_jpeg.c $hot_flags -Werror
 
 "$compiler" -shared -nostartfiles \
     -Wl,-soname,libimp.so -Wl,--gc-sections \

@@ -106,7 +106,7 @@ compile core_imp_log src/core/imp_log.c -Werror
 compile core_imp_log_emit src/core/imp_log_emit.c -Werror
 compile core_video_drop src/core/video_drop.c -Werror
 compile core_su_base_shutdown src/core/su_base_shutdown.c -Werror
-compile framesource src/framesource/framesource_tseries.c
+compile framesource src/framesource/framesource_tseries.c $hot_flags
 compile nv12_rotate src/framesource/nv12_rotate.c $hot_flags -Werror
 compile isp src/isp/isp_tseries.c
 compile t21_compat src/t31/openimp_t31_compat.c
@@ -122,16 +122,16 @@ compile openimp_aec src/audio/openimp_aec.c $hot_flags -Werror -I"$project_dir/s
 # AENC/ADEC (shared src/audio; T10/T20/T21 vendor behaviour: G.726 16 kbit/s)
 compile audio_codec src/audio/openimp_audio_codec.c -Werror
 compile audio_enc_dec src/audio/openimp_audio_enc_dec.c -Werror
-compile t21_helix src/t30/t30_helix_encoder.c -Werror
+compile t21_helix src/t30/t30_helix_encoder.c $hot_flags -Werror
 compile t21_h264_descriptor src/t21/t21_h264_descriptor.c -Werror
 compile t30_h264_descriptor src/t30/t30_h264_descriptor.c -Werror
-compile t21_h264_common src/t30/h264enc/common.c -Werror
-compile t21_h264_cabac src/t30/h264enc/cabac.c -Werror
-compile t21_h264_set src/t30/h264enc/set.c -Werror
-compile t21_h264_slice src/t30/h264enc/slice.c -Werror
-compile t21_rate_control src/t40/t31_rate_control.c -Werror
-compile t21_helix_jpeg src/t30/helix_jpeg.c -Werror
-compile t21_helix_bitstream src/t30/helix_bitstream.c -Werror
+compile t21_h264_common src/t30/h264enc/common.c $hot_flags -Werror
+compile t21_h264_cabac src/t30/h264enc/cabac.c $hot_flags -Werror
+compile t21_h264_set src/t30/h264enc/set.c $hot_flags -Werror
+compile t21_h264_slice src/t30/h264enc/slice.c $hot_flags -Werror
+compile t21_rate_control src/t40/t31_rate_control.c $hot_flags -Werror
+compile t21_helix_jpeg src/t30/helix_jpeg.c $hot_flags -Werror
+compile t21_helix_bitstream src/t30/helix_bitstream.c $hot_flags -Werror
 # T20 only: the OEM T20 rate controller (src/rc_t20, docs/T20_RC.md),
 # without floating-point contraction like the OEM code
 rc_t20_objects=
