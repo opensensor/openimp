@@ -29,6 +29,19 @@ int OpenIMP_P1_IspIOCtl(uint32_t command, void *argument)
     return ispnode.result;
 }
 
+static struct { uint32_t command; int32_t value; int result; int calls; } opened;
+
+int OpenIMP_P1_IspIOCtlOpened(uint32_t command, void *argument);
+int OpenIMP_P1_IspIOCtlOpened(uint32_t command, void *argument)
+{
+    opened.command = command;
+    memcpy(&opened.value, argument, 4);
+    opened.calls++;
+    if (opened.result)
+        errno = opened.result;
+    return opened.result ? -1 : 0;
+}
+
 int OpenIMP_P1_GetSensorName(char name[32], int32_t *cbus_type)
 {
     memset(name, 0, 32);
@@ -630,6 +643,16 @@ int main(void)
         last.result = 0;
         sb_enabled = 0;
     }
+
+    /* StartNightMode: ISP-device ioctl 0xc004542e with &num */
+    assert(IMP_ISP_StartNightMode(IMPVI_MAIN) == 0);
+    assert(opened.calls == 1 && opened.command == 0xc004542eU && opened.value == 0);
+    assert(IMP_ISP_StartNightMode((IMPVI_NUM)4) == -4 && opened.calls == 1);
+    opened.result = ENODEV;
+    assert(IMP_ISP_StartNightMode(IMPVI_MAIN) == -8);
+    opened.result = EINVAL;
+    assert(IMP_ISP_StartNightMode(IMPVI_MAIN) == -1);
+    opened.result = 0;
 
     puts("T40 P3 controls: all checks passed");
     return 0;

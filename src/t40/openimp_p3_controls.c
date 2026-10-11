@@ -678,6 +678,27 @@ int32_t IMP_ISP_Tuning_GetMask(IMPVI_NUM num, IMPISPMASKAttr *mask)
 #endif
 
 #if !defined(PLATFORM_T41)
+/* T40 IMP_ISP_StartNightMode (vendor 1.3.1 0x89834): num < 4 (-4), the ISP
+ * device must be open (-8), then the ISP-device ioctl 0xc004542e with a
+ * pointer to the sensor number (-1 if it fails).  The header: call it after
+ * IMP_ISP_Open and before IMP_ISP_AddSensor, so the sensor starts in night
+ * mode; the stock kernel keeps the flag. */
+extern int OpenIMP_P1_IspIOCtlOpened(uint32_t command, void *argument);
+#define TISP_IOCTL_START_NIGHT_MODE 0xc004542eU
+
+int32_t IMP_ISP_StartNightMode(IMPVI_NUM num)
+{
+    int32_t sensor = (int32_t)num;
+
+    if ((unsigned)num >= 4U)
+        return -4;
+    if (OpenIMP_P1_IspIOCtlOpened(TISP_IOCTL_START_NIGHT_MODE, &sensor) != 0)
+        return errno == ENODEV ? -8 : -1;
+    return 0;
+}
+#endif
+
+#if !defined(PLATFORM_T41)
 /* T40 IMP_ISP_SetDrawAttr / GetDrawAttr (vendor 1.3.1 libimp 0x83478 /
  * 0x82f34): IMPISPDrawAttr is 2 ISP output channels x 16 units of 28 bytes
  * (type at +0, color_type at +4, enable at +8, colour at +18: r g b, then

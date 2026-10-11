@@ -8,7 +8,8 @@
  *   phases: 1 lifecycle+framesource  2 encoder  4 isp tuning  8 stats/awb
  *           10 system  20 osd  40 sysutils (vendor libsysutils)  80 resize
  *           100 night 2026-10-12 fixes (Query fields, FrameRelease, SEI,
- *               DrawAttr; T40D_DUMP=<file> writes the SEI test stream) */
+ *               DrawAttr; T40D_DUMP=<file> writes the SEI test stream)
+ *           200 StartNightMode before AddSensor (run it on its own) */
 #include <errno.h>
 #include <poll.h>
 #include <signal.h>
@@ -263,6 +264,9 @@ int main(int argc, char **argv)
 
     r = IMP_ISP_Open();                       R("ISP_Open", OK(!r), "rc=%d", r);
     if (r) return 3;
+    static int night_rc = -99;
+    if (mask & 0x200)       /* header: after ISP_Open, before AddSensor */
+        night_rc = IMP_ISP_StartNightMode(IMPVI_MAIN);
     r = IMP_ISP_AddSensor(IMPVI_MAIN, &sinfo);    R("ISP_AddSensor", OK(!r), "rc=%d", r);
     r = IMP_ISP_EnableSensor(IMPVI_MAIN, &sinfo); R("ISP_EnableSensor", OK(!r), "rc=%d", r);
     if (r) goto down;
@@ -906,6 +910,18 @@ int main(int argc, char **argv)
               "set rc=%d get rc=%d (G=%u type=%d) off rc=%d; top edge Y/U/V before %.1f/%.1f/%.1f, drawn %.1f/%.1f/%.1f, off %.1f/%.1f/%.1f",
               rs, rgd, dg.draw_chx[1][0].draw_cfg.wind.wind_color.mask_argb.g_value, dg.draw_chx[1][0].color_type, rs0, y0, u0, v0, y1, u1, v1, y2, u2, v2);
         }
+    }
+
+    if (mask & 0x200) {
+        IMPISPRunningMode m = (IMPISPRunningMode)9, d = IMPISP_RUNNING_MODE_DAY;
+        int rg;
+        a = grab(1500);
+        rg = IMP_ISP_Tuning_GetISPRunningMode(IMPVI_MAIN, &m);
+        IMP_ISP_Tuning_SetISPRunningMode(IMPVI_MAIN, &d);
+        b = grab(2500);
+        R("ISP_StartNightMode", (!night_rc && a.ok) ? "PART" : "FAIL",
+          "rc=%d before AddSensor; first pictures: chroma=%.1f Y=%.1f, running mode get rc=%d mode=%d; after set DAY chroma=%.1f (night = low chroma)",
+          night_rc, a.chroma, a.y, rg, m, b.chroma);
     }
 
 down:

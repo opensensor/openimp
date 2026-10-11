@@ -2180,6 +2180,24 @@ int OpenIMP_P1_IspIOCtl(uint32_t command, void *argument)
     return result;
 }
 
+/* ISP device ioctl that the vendor allows between IMP_ISP_Open and
+ * AddSensor (IMP_ISP_StartNightMode): only the device must be open. */
+int OpenIMP_P1_IspIOCtlOpened(uint32_t command, void *argument)
+{
+    int result;
+
+    lock_p1();
+    prepare_p1();
+    if (!p1.isp_open || p1.isp_fd < 0) {
+        unlock_p1();
+        errno = ENODEV;
+        return -1;
+    }
+    result = record_ioctl(p1.isp_fd, command, argument);
+    unlock_p1();
+    return result;
+}
+
 /* The sensor the ISP runs: name (32 bytes) and control bus type. */
 int OpenIMP_P1_GetSensorName(char name[32], int32_t *cbus_type)
 {
