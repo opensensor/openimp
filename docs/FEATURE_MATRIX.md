@@ -519,7 +519,7 @@ Per feature: the vendor-stack behaviour and the full per-SoC cell text (chronolo
 - **T30:** ? IVS calls exported (T31 IVS code), no test result for T30
 - **T31:** ✅+ sub-stream default: ~85 % less IVS CPU (compared with vendor libimp)
 - **T40:** ✅ move detection device-tested for 20 s on cam-K 2026-10-10 (OpenIMP vs vendor library); T31/T41 IVS framework, base move and `Get/SetParam` host tests only
-- **T41:** ✅ works on cam-F with a feeder thread (claude/t41-libimp), no more 10-s stalls; short ~1.2-s gaps still being looked at
+- **T41:** ✅ device-tested earlier on cam-F with a feeder thread (no more 10-s stalls); since then the `GetFrame` re-check after `DQBUF` (914b96b, a `DisableChn` race delivered a null frame address) and a deterministic framework test (3b849dc, 500/500 under load) are host-tested only, not re-run on the camera; short ~1.2-s gaps still open; the IVS function rows stay `aud` for T41 (no function-level device test)
 
 ##### 30. Frame source / VBM pool
 
