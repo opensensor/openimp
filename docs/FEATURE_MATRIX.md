@@ -784,7 +784,7 @@ Counts are per vendor function of that SoC (T23 folded: base function = one; Get
 | T23 | 436 | 283 | 17 | 103 | 0 | 12 | 5 | 0 | 16 | 0 | **21** | 212 | 92.4 % |
 | T30 | 347 | 0 | 14 | 22 | 292 | 0 | 8 | 0 | 0 | 11 | **19** | – | 10.4 % |
 | T31 | 387 | 225 | 17 | 133 | 0 | 5 | 2 | 0 | 0 | 5 | **7** | 65 | 96.9 % |
-| T40 | 398 | 57 | 92 | 0 | 176 | 0 | 2 | 0 | 21 | 50 | **73** | – | 37.4 % |
+| T40 | 398 | 63 | 92 | 0 | 170 | 0 | 2 | 0 | 21 | 50 | **73** | – | 38.9 % |
 | T41 | 445 | 8 | 61 | 214 | 0 | 2 | 8 | 1 | 26 | 125 | **160** | 227 | 63.6 % |
 
 Columns: fns = vendor functions of that SoC; dev/host/aud/?/no-op/cache/stub/err/miss = counts per cell code (codes as in the legend); gaps = cache + stub + err + miss; audit gaps = the same sum in the audit before the work of 2026-10-05; done % = (dev + host + aud) / fns.
@@ -888,7 +888,7 @@ Notes:
 | `ISP_DisableSensor` [19] | aud | dev | dev | dev | ? | dev | ? | aud | p† r† t |
 | `ISP_DisableTuning` [20] | aud | dev | dev | dev | ? | dev | ? | aud | p† r† t |
 | `ISP_EnableSensor` [21] | aud | dev | dev | dev | ? | dev | dev | aud | p† r† t |
-| `ISP_EnableTuning` [22] | aud | dev | dev | dev | ? | dev | ? | aud | p† r† t |
+| `ISP_EnableTuning` [22] | aud | dev | dev | dev | ? | dev | dev | aud | p† r† t |
 | `ISP_Get/SetCsccrMode` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | miss | – |
 | `ISP_Get/SetDefaultBinPath` [23] | n.a. | n.a. | n.a. | dev | n.a. | dev | host | aud | r† |
 | ► `ISP_Get/SetFrameDrop` [1] | n.a. | n.a. | n.a. | dev | n.a. | dev | host | dev | T41: r† |
@@ -899,7 +899,7 @@ Notes:
 | `ISP_GetRaw` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | miss | n.a. | – |
 | `ISP_LDC_Get/SetAttr` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | miss | – |
 | `ISP_LDC_INIT` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | miss | – |
-| `ISP_Open` [25] | aud | dev | dev | dev | ? | dev | ? | aud | p† r† t |
+| `ISP_Open` [25] | aud | dev | dev | dev | ? | dev | dev | aud | p† r† t |
 | `ISP_RAW_RwControl` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | miss | – |
 | `ISP_SET_GPIO_INIT_OR_FREE` | n.a. | n.a. | n.a. | aud | n.a. | aud | n.a. | miss | – |
 | `ISP_SET_GPIO_STA` | n.a. | n.a. | n.a. | aud | n.a. | aud | n.a. | miss | – |
@@ -1382,7 +1382,7 @@ Notes:
 | `Encoder_SetChnQpBoundsPerFrame` [52] | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | aud | – |
 | `Encoder_SetChnQpIPDelta` [53] | n.a. | n.a. | n.a. | n.a. | n.a. | dev | n.a. | n.a. | t |
 | `Encoder_SetChnResizeMode` [54] | n.a. | n.a. | n.a. | n.a. | ? | dev | ? | aud | – |
-| `Encoder_SetDefaultParam` [55] | n.a. | n.a. | n.a. | n.a. | n.a. | dev | ? | aud | t |
+| `Encoder_SetDefaultParam` [55] | n.a. | n.a. | n.a. | n.a. | n.a. | dev | dev | aud | t |
 | `Encoder_SetFrameRelease` [10] | n.a. | n.a. | n.a. | n.a. | n.a. | no-op | miss | miss | – |
 | `Encoder_SetGOPSize` [56] | aud | aud | aud | dev | ? | n.a. | n.a. | n.a. | r† |
 | `Encoder_SetIvpuBsSize` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | miss | – |
@@ -1994,13 +1994,13 @@ Notes:
 | `SU_Key_OpenEvent` [33] | aud | dev | dev | dev | ? | dev | ? | aud | – |
 | `SU_Key_ReadEvent` [34] | aud | aud | aud | aud | ? | aud | ? | aud | – |
 | `SU_LED_Command` [35] | aud | aud | aud | aud | ? | aud | ? | aud | – |
-| `System_Bind` [36] | aud | dev | dev | dev | ? | dev | ? | aud | p† r† t |
+| `System_Bind` [36] | aud | dev | dev | dev | ? | dev | dev | aud | p† r† t |
 | `System_Exit` [37] | aud | dev | dev | dev | ? | dev | ? | aud | p† r† t |
-| `System_GetBindbyDest` [38] | aud | dev | dev | dev | ? | dev | ? | aud | r† |
+| `System_GetBindbyDest` [38] | aud | dev | dev | dev | ? | dev | dev | aud | r† |
 | `System_GetCPUInfo` [39] | aud | dev | dev | dev | ? | dev | ? | aud | p† r† |
 | `System_GetTimeStamp` [40] | aud | dev | dev | dev | ? | dev | ? | aud | r† t |
 | `System_GetVersion` [41] | aud | dev | dev | dev | ? | dev | ? | aud | p† r† t |
-| `System_Init` [42] | aud | dev | dev | dev | ? | dev | ? | aud | p† r† t |
+| `System_Init` [42] | aud | dev | dev | dev | ? | dev | dev | aud | p† r† t |
 | `System_MemPoolFree` [43] | n.a. | n.a. | n.a. | n.a. | n.a. | dev | n.a. | n.a. | – |
 | `System_MemPoolRequest` [3] | n.a. | n.a. | n.a. | dev | n.a. | dev | miss | miss | – |
 | `System_ReadReg32` [44] | aud | dev | dev | dev | ? | dev | ? | aud | r† |
