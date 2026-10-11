@@ -722,7 +722,7 @@ Per feature: the vendor-stack behaviour and the full per-SoC cell text (chronolo
 - **T23:** ✅ on the native Helix encoder (default backend), the same registers the vendor 1.3.0 encoder programs; device-tested 2026-10-10: QP map shows the window (relative QP acts inside -12/+13 of the slice QP, like T21), bit rate +10 % at delta -15 and -4 % at +20/absolute 51, 9 streams valid in VA-API and strict ffmpeg; OPENIMP_T23_ROI=0 switches it off
 - **T30:** ? ROI calls (4 vendor names) exported, no test result for T30
 - **T31:** ✅+ beyond vendor: `IMP_Encoder_Set/GetChnRoiAttr` through the AVPU macroblock QP table (H.264 only), device-tested: delta -10 gives 2.7x the bit rate, a relative -20 is clamped to -19, absolute 51 blurs the region, 0 decoder errors in 20 VA-API checks; 2026-10-10: 20 phases valid in VA-API and strict ffmpeg (`-err_detect`); known deviation: under FixQP 42 an absolute 5 or relative -25 window drives the P-frames to QP about 14 almost frame-wide (bit rate about x4, stream valid); `OPENIMP_T31_ROI=0` refuses the call
-- **T40:** ❌ `Encoder_Get/SetChnRoiAttr` and `SetChnMapRoi` are not exported on T40 (T41 only, off by default)
+- **T40:** 🔧 `Encoder_Get/SetChnRoiAttr` (10 windows, AVC only) through the same AVPU macroblock QP table as the T31 (one byte per 16x16 block in EP2, cmd[9] bits 25/24; the vendor 1.3.1 library builds the same one-byte table and sets the same bits), cross-built, not run on a camera: off unless `OPENIMP_T40_ROI=1`; `SetChnMapRoi` is still not exported on T40
 - **T41:** 🔧 code only (enable bits derived from the vendor library), off unless `OPENIMP_T41_ROI=1`, not device-tested
 - **Rules (all SoCs with ROI):** window deltas -25..+25; spread of all deltas at most 25; picture QP plus delta inside 0..51 and the rate control's min/max QP; requests beyond that are clamped with a one-time warning (`SetChnRoiAttr` returns -1 for a delta outside -26..25 or an absolute QP outside 0..51)
 
@@ -782,7 +782,7 @@ Counts are per vendor function of that SoC (T23 folded: base function = one; Get
 | T23 | 436 | 283 | 16 | 111 | 0 | 12 | 5 | 0 | 9 | 0 | **14** | 212 | 94.0 % |
 | T30 | 347 | 0 | 13 | 22 | 293 | 0 | 8 | 0 | 0 | 11 | **19** | – | 10.1 % |
 | T31 | 387 | 225 | 16 | 133 | 0 | 5 | 2 | 0 | 1 | 5 | **8** | 65 | 96.6 % |
-| T40 | 398 | 57 | 79 | 0 | 175 | 0 | 2 | 0 | 21 | 64 | **87** | – | 34.2 % |
+| T40 | 398 | 57 | 79 | 0 | 177 | 0 | 2 | 0 | 21 | 62 | **85** | – | 34.2 % |
 | T41 | 445 | 8 | 46 | 214 | 0 | 2 | 7 | 1 | 40 | 127 | **175** | 227 | 60.2 % |
 
 Columns: fns = vendor functions of that SoC; dev/host/aud/?/no-op/cache/stub/err/miss = counts per cell code (codes as in the legend); gaps = cache + stub + err + miss; audit gaps = the same sum in the audit before the work of 2026-10-05; done % = (dev + host + aud) / fns.
@@ -1254,7 +1254,7 @@ Notes:
 | `Encoder_Get/SetChnH264FrmUsedMode` [69] | miss | miss | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | – |
 | `Encoder_Get/SetChnHSkip` [70] | cache | cache | dev | dev | cache | n.a. | n.a. | n.a. | – |
 | `Encoder_Get/SetChnRcAttr` [71] | miss | miss | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | – |
-| `Encoder_Get/SetChnRoiAttr` [63] | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | miss | host | – |
+| `Encoder_Get/SetChnRoiAttr` [63] | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | ? | host | – |
 | `Encoder_Get/SetChnSeiAttr` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | miss | miss | – |
 | `Encoder_Get/SetFisheyeEnableStatus` [4] | cache | cache | cache | cache | cache | cache | cache | miss | – |
 | `Encoder_Get/SetH264TransCfg` [5] | cache | dev | dev | dev | ? | n.a. | n.a. | n.a. | T21: r† |
@@ -1333,7 +1333,7 @@ Notes:
 | `Encoder_Get/SetChnHSkip` [70] | cache | cache | dev | dev | cache | n.a. | n.a. | n.a. | – |
 | `Encoder_Get/SetChnROI` [23] | dev | dev | dev | dev | ? | n.a. | n.a. | n.a. | T21: r† |
 | `Encoder_Get/SetChnRcAttr` [71] | miss | miss | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | – |
-| `Encoder_Get/SetChnRoiAttr` [63] | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | miss | host | – |
+| `Encoder_Get/SetChnRoiAttr` [63] | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | ? | host | – |
 | `Encoder_Get/SetChnSeiAttr` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | miss | miss | – |
 | `Encoder_Get/SetFisheyeEnableStatus` [4] | cache | cache | cache | cache | cache | cache | cache | miss | – |
 | `Encoder_Get/SetGDRCfg` [24] | n.a. | n.a. | n.a. | dev | n.a. | n.a. | n.a. | n.a. | – |

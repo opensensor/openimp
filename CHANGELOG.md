@@ -11,6 +11,7 @@ Release plan: `next` goes to `aperto` (fast-forward only) after the long soak of
 ## Function finder (branches `claude/funcsearch-*`, host-tested, not released)
 
 - **T40 `Encoder_Set/GetFisheyeEnableStatus`:** the vendor flag (settable before CreateChn only, channels 0..12); was not exported (a streamer that links it needs the symbol). Host test.
+- **T40 `IMP_Encoder_Set/GetChnRoiAttr`:** the T31 macroblock QP-table path with the T40 command bits read from the vendor 1.3.1 library (AVC only); off unless `OPENIMP_T40_ROI=1`, cross-built, not run on a camera.
 - **T41 `IMP_ISP_Set/GetISPBypass`:** the vendor pair (8-byte block on the ISP node, ioctl 0x80085418, vendor error codes, remembered value). The open-tx-isp T41 driver does not serve that ioctl yet, so Set answers -4095 there. Host test only.
 - **T40 ISP controls:** `IMP_ISP_Tuning_Get/SetISPCSCAttr` (vendor T40 wire format: 10-bit coefficients, not the T41 one), `Get/SetHLDCAttr`, `Get/SetAeSpeed`, `Get/SetAeExpList`, `Get/SetFaceAe`, `Get/SetFaceAwb`, `Get/SetStatisConfig`, `SetFixedContraster`, `GetAfStatistics`, `GetAFMetricesInfo`, `WaitFrameDone`, `GetISPBypass` (stored flag), `IMP_ISP_Get/SetOSDAttr` and `IMP_ISP_SetPreDqtime` from the vendor 1.3.1 disassembly; 22 functions, control numbers and conversions as the vendor library. Host test only; the vendor kernel driver of the T40 board owns the semantics (device test pending).
 

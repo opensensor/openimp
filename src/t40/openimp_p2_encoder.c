@@ -290,7 +290,7 @@ typedef struct {
     uint32_t jpeg_reused;           /* pictures stood in for */
     uint64_t jpeg_reuse_log_us;
     IMPEncoderCHNAttr attr;
-#if defined(PLATFORM_T31) || defined(PLATFORM_T41)
+#if defined(PLATFORM_T31) || defined(PLATFORM_T41) || defined(PLATFORM_T40)
     IMPEncoderRoiAttr roi_attr;     /* IMP_Encoder_SetChnRoiAttr */
 #endif
     IMPEncoderPack packs[P2_MAX_PUBLIC_PACKS];
@@ -3974,8 +3974,9 @@ int IMP_Encoder_SetChnQp(int channel, int qp_value)
     return AL_Codec_Encode_SetQp(p2_channels[channel].codec, &qp);
 }
 
-#if defined(PLATFORM_T31) || defined(PLATFORM_T41)
-/* Vendor T41 1.2.6 IMP_Encoder_SetChnRoiAttr / GetChnRoiAttr: the windows
+#if defined(PLATFORM_T31) || defined(PLATFORM_T41) || defined(PLATFORM_T40)
+/* Vendor T41 1.2.6 IMP_Encoder_SetChnRoiAttr / GetChnRoiAttr (T40 1.3.1: the same
+ * windows; opt-in OPENIMP_T40_ROI=1, see codec-t40.c): the windows
  * go into the macroblock QP table of the AVC encoder from the next picture
  * on (src/t40/codec-t40.c avpu_t41_roi_apply).  H.265, absolute QP and
  * windows outside the picture are refused. */

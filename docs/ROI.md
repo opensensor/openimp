@@ -5,8 +5,12 @@
 | T10/T20 | `IMP_Encoder_SetChnROI` (8 regions, pixel corners) | works, see `T1X_ROI_CHROMA.md` |
 | T21 | the same | works by default since this branch (beyond vendor), device-tested |
 | T23 | the same; native Helix encoder (default backend) programs it like T21, the OEM worker gets it through the bridge | works by default, device-tested (below) |
-| T40/T41 | `IMP_Encoder_Set/GetChnRoiAttr` (10 windows, delta QP) | implemented, **experimental, off by default**; the missing enable bit is now set (below), not yet device-tested |
+| T40/T41 | `IMP_Encoder_Set/GetChnRoiAttr` (10 windows, delta QP) | implemented, **experimental, off by default** (T41: `OPENIMP_T41_ROI=1`, T40: `OPENIMP_T40_ROI=1`); the missing enable bit is now set (below), not yet device-tested |
 | T31 | none in the vendor library; OpenIMP: `IMP_Encoder_Set/GetChnRoiAttr` (T41 API) | works by default (beyond vendor), device-tested; QP clamped to valid H.264 (below) |
+
+## T40 (cross-built, not device-tested)
+
+The vendor T40 libimp 1.3.1 keeps the ten windows of `IMP_Encoder_SetChnRoiAttr` in the channel record and builds, per picture, a QP table whose entry is one byte per 16x16 block for AVC (eight bytes per 32x32 block for HEVC); its `SliceParamToCmdRegsEnc1` sets cmd[9] bits 25 and 24 from the same two slice-parameter bytes as on the T31. OpenIMP therefore reuses the T31 path on T40: the windows fill the EP2 table (`avpu_t31_roi_apply`, the shared `avpu_roi_fill`) and the T40 command ORs `0x03000000` into cmd[9]. AVC only (H.265 and `SetChnMapRoi` stay unsupported on T40). Off unless `OPENIMP_T40_ROI=1` because no T40 camera has run it; with the switch off `SetChnRoiAttr` returns -1 and the command is as before. Device test: enable a window on an idle scene, compare the bit rate and the QP of the window with and without it, 20 phases in VA-API / strict ffmpeg as for the T31.
 
 ## T21 (device-tested)
 
