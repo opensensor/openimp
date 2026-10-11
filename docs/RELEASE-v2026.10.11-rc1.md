@@ -1,6 +1,6 @@
 # OpenIMP v2026.10.11-rc1: first release candidate
 
-**OpenIMP** is an open replacement for Ingenic's closed `libimp.so` / `libsysutils.so` (video, ISP tuning, encoder, OSD, IVS, audio and system API). With its companion **open-tx-isp** (the open ISP kernel driver replacing `tx-isp-<soc>.ko`) it forms a fully open camera stack for Ingenic T-series SoCs. The public API is the vendor IMP API, so streamers link against it unchanged. Release together with [open-tx-isp v2026.10.11-rc1](https://github.com/Lu-Fi/open-tx-isp/blob/v2026.10.11-rc1/docs/RELEASE-v2026.10.11-rc1.md); always use matching tags.
+**OpenIMP** is an open replacement for Ingenic's closed `libimp.so` / `libsysutils.so` (video, ISP tuning, encoder, OSD, IVS, audio and system API). With its companion **open-tx-isp** (the open ISP kernel driver replacing `tx-isp-<soc>.ko`) it forms a fully open camera stack for Ingenic T-series SoCs. The public API is the vendor IMP API, so streamers link against it unchanged. Release together with [open-tx-isp v2026.10.11-rc1](https://github.com/Lu-Fi/open-tx-isp/releases/tag/v2026.10.11-rc1); always use matching tags.
 
 | Read more (pinned to this tag) | |
 |---|---|
@@ -110,7 +110,7 @@ Below, **[host]** marks items without a device test; everything else was device-
 - rmem high-water logging and shortfall messages with a concrete `rmem=` suggestion.
 - 10 stop/start (incl. `kill -9`) and 10 reload cycles without an oops per SoC; hardening from audits and reviewed automated patches (overflows, NULL crashes, vendor ABI struct sizes, `O_CLOEXEC`, EINTR, rate-limited logs) [partly host].
 
-**Kernel driver** (details in the [open-tx-isp notes](https://github.com/Lu-Fi/open-tx-isp/blob/v2026.10.11-rc1/docs/RELEASE-v2026.10.11-rc1.md)): front-crop guards on T31/T23/T20/T10, T20/T10 gain cap, T23 stock-like start/stop with MSCA scratch buffer, T21 stock AE/AWB lifted, T31 lifecycle hardening, T41 driver controls, reload safety on all SoCs.
+**Kernel driver** (details in the [open-tx-isp notes](https://github.com/Lu-Fi/open-tx-isp/releases/tag/v2026.10.11-rc1)): front-crop guards on T31/T23/T20/T10, T20/T10 gain cap, T23 stock-like start/stop with MSCA scratch buffer, T21 stock AE/AWB lifted, T31 lifecycle hardening, T41 driver controls, reload safety on all SoCs.
 
 **Streamer integration**
 - Check return codes: H.265 without HEVC, unknown controls, impossible crop windows and out-of-range ROI now fail.
