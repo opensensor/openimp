@@ -149,6 +149,23 @@ int main(void)
     io.result = -1;
     CHECK(IMP_ISP_SetCameraInputSelect(0) == -1);
 
+    /* P1_INNER phase markers: silent unless OPENIMP_DEBUG_TRACE is set */
+    {
+        int pfd[2], saved = dup(2);
+        char buf[16];
+        ssize_t n;
+
+        unsetenv("OPENIMP_DEBUG_TRACE");
+        CHECK(pipe(pfd) == 0 && saved >= 0);
+        CHECK(fcntl(pfd[0], F_SETFL, O_NONBLOCK) == 0);
+        dup2(pfd[1], 2);
+        trace_p1("P1_INNER TEST\n");
+        dup2(saved, 2);
+        n = read(pfd[0], buf, sizeof buf);
+        CHECK(n < 0);                   /* nothing was written */
+        close(pfd[0]); close(pfd[1]); close(saved);
+    }
+
     printf("t40 camera input: %d checks passed\n", ok);
     return 0;
 }

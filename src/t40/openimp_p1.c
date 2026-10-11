@@ -19,6 +19,7 @@
 #include <pthread.h>
 
 #include "openimp_profile.h"
+#include "trace_control.h"
 #include "dma_alloc.h"
 /* T41 and T40 share the frame-channel front end: no capture thread, frames
  * leave the driver when a consumer dequeues them.  The IVS frame feeder and
@@ -340,8 +341,12 @@ extern int64_t IMP_System_GetTimeStamp(void);
 extern int64_t OpenIMP_P0_NormalizeMonotonicTimeStamp(uint64_t timestamp);
 #endif
 
+/* Bench-only phase markers: behind OPENIMP_DEBUG_TRACE like the other
+ * OpenIMP debug traces (they used to go to stderr unconditionally). */
 static void trace_p1(const char *text)
 {
+    if (!openimp_debug_trace_enabled())
+        return;
     (void)write(2, text, strlen(text));
 }
 
@@ -1804,7 +1809,14 @@ int IMP_FrameSource_GetFrame(int channel, IMPFrameInfo **frame)
     buffer->frame.pool_idx = channel;
     buffer->frame.width = (uint32_t)chn->attr.picWidth;
     buffer->frame.height = (uint32_t)chn->attr.picHeight;
+#if defined(PLATFORM_T41)
     buffer->frame.pixfmt = (uint32_t)chn->attr.pixFmt;
+#else
+    /* Vendor T40 1.3.x: the frame record's pixfmt word reads 0 for an NV12
+     * channel (first device run); the encoder takes everything but NV21 as
+     * NV12, so 0 is safe. */
+    buffer->frame.pixfmt = 0;
+#endif
     buffer->frame.size = buffer->size;
     buffer->frame.phyAddr = buffer->physical;
     buffer->frame.virAddr = (uint32_t)(uintptr_t)buffer->virtual_address;

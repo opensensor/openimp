@@ -402,6 +402,7 @@ static int p3_tuning_get(int32_t id, int32_t *value)
     return p3_tuning_scalar(IMPVI_MAIN, 1, id, value);
 }
 
+#if defined(PLATFORM_T41)
 #define P3_BCSH_ACCESSORS(Name, field, id)                                    \
     int32_t IMP_ISP_Tuning_Set##Name(IMPVI_NUM num, unsigned char *value)     \
     {                                                                         \
@@ -424,6 +425,52 @@ static int p3_tuning_get(int32_t id, int32_t *value)
         *value = p3_controls.field;                                           \
         return result;                                                        \
     }
+
+#else
+/* Vendor T40 1.3.1 (libimp disassembly): Set<Name> checks num < 4 (-4), the
+ * value pointer (-9), sends the pointer tuning ioctl (-6 on failure) and, on
+ * success, stores the byte in the tuning-device cache at <field offset> + num;
+ * Get<Name> never talks to the driver, it returns that cached byte and 0
+ * (a driver get of these controls fails, which made the OpenIMP getter -1).
+ * Field offsets in the vendor tuning device: brightness 4, contrast 8,
+ * sharpness 12, saturation 16.  The cache starts at the neutral 128. */
+enum { p3_bcsh_brightness, p3_bcsh_contrast, p3_bcsh_sharpness,
+       p3_bcsh_saturation };
+static unsigned char p3_bcsh_cache[4][4] = {
+    {128, 128, 128, 128}, {128, 128, 128, 128},
+    {128, 128, 128, 128}, {128, 128, 128, 128},
+};
+
+static int p3_bcsh_set(IMPVI_NUM num, int field, int32_t id, unsigned char *value)
+{
+    if ((unsigned)num >= 4U)
+        return -4;
+    if (!value)
+        return -9;
+    if (p3_tuning_pointer(num, 0, id, value) != 0)
+        return -6;
+    p3_bcsh_cache[num][field] = *value;
+    return 0;
+}
+
+static int p3_bcsh_get(IMPVI_NUM num, int field, unsigned char *value)
+{
+    if ((unsigned)num >= 4U || !value)
+        return -1;     /* the vendor would fault; stay safe */
+    *value = p3_bcsh_cache[num][field];
+    return 0;
+}
+
+#define P3_BCSH_ACCESSORS(Name, field, id)                                   \
+    int32_t IMP_ISP_Tuning_Set##Name(IMPVI_NUM num, unsigned char *value)    \
+    {                                                                        \
+        return p3_bcsh_set(num, p3_bcsh_##field, (id), value);               \
+    }                                                                        \
+    int32_t IMP_ISP_Tuning_Get##Name(IMPVI_NUM num, unsigned char *value)    \
+    {                                                                        \
+        return p3_bcsh_get(num, p3_bcsh_##field, value);                     \
+    }
+#endif
 
 P3_BCSH_ACCESSORS(Brightness, brightness, TISP_CID_BRIGHTNESS)
 P3_BCSH_ACCESSORS(Contrast, contrast, TISP_CID_CONTRAST)

@@ -225,6 +225,37 @@ int main(void)
         assert(ccm.ColorMatrix[0] == c);
     }
 
+    /* BCSH accessors (vendor T40 1.3.1): the get reads a per-vinum cache and
+     * never reaches the driver (0 even when the driver would fail), the set
+     * sends the pointer ioctl and caches on success; -4 num>=4, -9 NULL,
+     * -6 driver failure. */
+    {
+        unsigned char v = 77, g = 0;
+        int calls;
+
+        last.result = -1;                  /* a driver get would fail */
+        calls = last.calls;
+        assert(IMP_ISP_Tuning_GetBrightness(IMPVI_MAIN, &g) == 0 && g == 128);
+        assert(IMP_ISP_Tuning_GetContrast(IMPVI_MAIN, &g) == 0 && g == 128);
+        assert(IMP_ISP_Tuning_GetSharpness(IMPVI_MAIN, &g) == 0 && g == 128);
+        assert(IMP_ISP_Tuning_GetSaturation(IMPVI_MAIN, &g) == 0 && g == 128);
+        assert(last.calls == calls);
+        assert(IMP_ISP_Tuning_SetBrightness(IMPVI_MAIN, &v) == -6);
+        assert(IMP_ISP_Tuning_GetBrightness(IMPVI_MAIN, &g) == 0 && g == 128);
+        last.result = 0;
+        EXPECT(IMP_ISP_Tuning_SetBrightness(IMPVI_MAIN, &v), 0, 0x08000092, &v);
+        EXPECT(IMP_ISP_Tuning_SetSharpness(IMPVI_MAIN, &v), 0, 0x08000093, &v);
+        EXPECT(IMP_ISP_Tuning_SetSaturation(IMPVI_MAIN, &v), 0, 0x08000094, &v);
+        EXPECT(IMP_ISP_Tuning_SetContrast(IMPVI_MAIN, &v), 0, 0x08000095, &v);
+        assert(IMP_ISP_Tuning_GetBrightness(IMPVI_MAIN, &g) == 0 && g == 77);
+        assert(IMP_ISP_Tuning_SetBrightness(IMPVI_MAIN, NULL) == -9);
+        assert(IMP_ISP_Tuning_SetBrightness((IMPVI_NUM)4, &v) == -4);
+        v = 5;
+        assert(IMP_ISP_Tuning_SetContrast(IMPVI_MAIN, &v) == 0);
+        assert(IMP_ISP_Tuning_GetContrast(IMPVI_MAIN, &g) == 0 && g == 5);
+        assert(IMP_ISP_Tuning_GetBrightness(IMPVI_MAIN, &g) == 0 && g == 77);
+    }
+
     /* Get/SetMask (vendor T40 1.3.1): 288-byte payload, control 0x08000074,
      * YUV bytes computed for enabled RGB blocks, Get restores type + RGB. */
     {

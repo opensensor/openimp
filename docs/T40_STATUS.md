@@ -120,7 +120,11 @@ maintained `libaudioProcess-neo`; logging uses the target's
   streams, same as the vendor library).  The DumpMask constants are not
   readable in the disassembly, the T31 BT.601 values are used; the green
   cover came out as (0,229,0) with both libraries.
-- FrameSource `frame->size` stays the driver `sizeimage`
+- `IMP_ISP_Tuning_Get{Brightness,Contrast,Sharpness,Saturation}` return the
+  per-input byte cache written by the Set call and 0, never asking the driver
+  (vendor; a driver get of these controls failed, the old getter returned -1).
+- FrameSource `frame->pixfmt` is 0 on T40 (vendor value, NV12 and 0 are treated
+  alike by the encoder).  `frame->size` stays the driver `sizeimage`
   (640x360: 353280): the vendor reports `w*h*3/2` (345600), but the buffer
   holds the chroma plane after the 16-aligned luma rows and the encoder
   (cache invalidation, HW JPEG `src_need`) relies on the real size, so only
@@ -166,15 +170,17 @@ ModuleControl get, `AeScenceAttr` get/set; `GetCameraInputMode`.
 Fixed during the run: the stream timestamp was 0 (a5d9b03); the JPEG was a grey
 placeholder (257ba9d).
 
-Open at the time (CBR rate control and H.265 were fixed afterwards, see below and
-`T40_HEVC.md`): CBR delivered only about 20 % of the target bit rate; H.265 was
-not supported by OpenIMP T40 yet; `GetBrightness` returns -1; the pixel-format enum is
-reported as 10 (vendor 0); the frame size is 16-line aligned (353280 B vs 345600 B);
-`P1_INNER` traces always go to stderr; JPEG at 4K not tested (out of memory in the
+Open at the time (fixed afterwards: CBR rate control and H.265, see below and
+`T40_HEVC.md`; the `GetBrightness` cache, pixel format 0 and the `P1_INNER` trace
+gate, see the list above): CBR delivered only about 20 % of the target bit rate;
+H.265 was not supported by OpenIMP T40 yet; `GetBrightness` returned -1; the
+pixel-format enum was reported as 10 (vendor 0); the frame size is 16-line aligned
+(353280 B vs 345600 B, kept on purpose); `P1_INNER` traces always went to stderr;
+JPEG at 4K not tested (out of memory in the
 test process, 60 MB RAM).
 
 Vendor note: `GetAeExpList` hung the vendor kernel driver. The magenta cast seen with
-timps stopped was the IR cut left open, not the library.
+the streaming application stopped was the IR cut left open, not the library.
 
 Only the functions listed under PASS are marked device-tested in
 `FEATURE_MATRIX.md`; everything else on T40 stays host or unknown.
