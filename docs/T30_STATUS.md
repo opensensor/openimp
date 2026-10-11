@@ -75,7 +75,7 @@ library (`tests/t30/fixtures/t30_vendor_1.0.5_imp_exports.txt`, 334 names).
 Gap work of 2026-10-10 (no T30 camera, vendor libimp 1.0.5 disassembled and
 compared with T21 1.0.33 and T31 1.1.6): 317 of 334 names are exported (was
 271), audio 68 of 68. None of the 63 names that were missing is imported by
-timps, prudynt or the raptor RVD.
+any of the applications using the IMP API that were checked.
 
 - Host-tested, same code as T20/T21 in the vendor library:
   `Encoder_Get/SetChnFrmUsedMode`, `Encoder_GetGOPSize`,

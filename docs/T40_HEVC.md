@@ -94,7 +94,7 @@ vendor HEVC FixQP 22 reference taken in the same session.
 Two channels in one process (4K CBR 4000 + 720p CBR 1000, 20 s):
 OpenIMP 337 + 349 pictures (17.0 / 17.5 fps), vendor 375 + 359
 (about 18.8 / 18.0 fps), all clean.  The vendor tool process hung at
-teardown after this run (killed; device and timps fine), so the
+teardown after this run (killed; device and streaming application fine), so the
 throughput gap is not profiled yet.
 
 Open points:

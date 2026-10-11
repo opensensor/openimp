@@ -1,6 +1,6 @@
 # Open stack vs vendor stack: feature matrix
 
-As of: RC1 v2026.10.11-rc1: openimp fe9307c (agg-35 687a68e4 + docs), open-tx-isp 191be6c5 (agg-35 6e464ac7 + docs); overnight soak clean. Detail: 2026-10-10 evening (release candidate agg-35, see the update paragraph in the summary; before that agg-34: OpenIMP `agg-34` 2a1b1cd and open-tx-isp `agg-34` b15ef235 on top of `next`, mandatory device tests of the night 2026-10-09/10 included; the per-cell details below are a chronological test log, newest results win). Camera mapping of the older sections: cam-A = T31, cam-B = T23, cam-C = T20, cam-D = T21, cam-E = T10, cam-F = T41; cam-G and cam-H are further T23 cameras (other sensors) that run the same stack. The agg-32 soak has its own letters (see the changelog). Addendum 2026-10-10 afternoon: front crop vs flip, AeComp T20/T31, agg-34.1 (T31 WDR statistics ring, regression fix, T21/T23/T20/T10 not affected), T41 experimental notes; T20/T21 encoder ROI QA flake is timing only (ROI applies at the next IDR).
+As of: 2026-10-11, aggregate agg-36 after RC1 (OpenIMP and open-tx-isp `claude/agg-36`; build and host tests, no soak yet; device results only where a cell says so). Before that: RC1 v2026.10.11-rc1: openimp fe9307c (agg-35 687a68e4 + docs), open-tx-isp 191be6c5 (agg-35 6e464ac7 + docs); overnight soak clean. Detail: 2026-10-10 evening (release candidate agg-35, see the update paragraph in the summary; before that agg-34: OpenIMP `agg-34` 2a1b1cd and open-tx-isp `agg-34` b15ef235 on top of `next`, mandatory device tests of the night 2026-10-09/10 included; the per-cell details below are a chronological test log, newest results win). Camera mapping of the older sections: cam-A = T31, cam-B = T23, cam-C = T20, cam-D = T21, cam-E = T10, cam-F = T41; cam-G and cam-H are further T23 cameras (other sensors) that run the same stack. The agg-32 soak has its own letters (see the changelog). Addendum 2026-10-10 afternoon: front crop vs flip, AeComp T20/T31, agg-34.1 (T31 WDR statistics ring, regression fix, T21/T23/T20/T10 not affected), T41 experimental notes; T20/T21 encoder ROI QA flake is timing only (ROI applies at the next IDR).
 
 Branch names in brackets (`claude/...`) and the tags `[-all-N]` are historic: those branches were merged into `next` and deleted. Where a cell says "not yet in an aggregate", "device test pending" or "opt-in", check the summary below and the defaults table in [OPENIMP_BEYOND_VENDOR.md](OPENIMP_BEYOND_VENDOR.md) first.
 
@@ -10,6 +10,7 @@ Open stack = open-tx-isp (kernel driver) + OpenIMP (libimp) + timps. Vendor = tx
 
 ## Summary
 
+- **Update 2026-10-11 (agg-36, after RC1; build and host tests of the aggregate, no soak):** T40 rate control, AVPU command lists and H.265 (device-tested on their branch), T40 ISP-drawn OSD, `Get/SetMask` and `SwitchBin` (device-tested), T40 BCSH getters from the vendor cache (host), T41 `SwitchBin`, `AutoZoom`, `SetMaskBlock`, `SetScalerLv` (host and module build), `SetbufshareChn` as the vendor (T31/T40/T41), log level `OPENIMP_LOG_LEVEL`, IVS post order, T30 gap work (317 of 334 exports), T10/T20/T21 and T23 vendor return codes. The T23 driver rows of the second T23/T31 gap pass stay as before (that driver branch is held back). The T40 open items below about CBR, H.265, `GetBrightness`, the pixel format and `P1_INNER` are fixed in agg-36. **Gap counts after this update (progress table):** T23 14 (was 15), T30 19 (was 54), T40 109 (was 120), T41 177 (was 179); T10 32, T20 30, T21 14, T31 8 unchanged.
 - **Update 2026-10-10 evening (agg-35: OpenIMP 687a68e4, open-tx-isp 6e464ac7, built 2026-10-10; soaked 2026-10-10 18:04 to 2026-10-11 08:00 on 10 cameras: clean (0 oopses, 0 unexplained reboots, 0 streamer restarts, VA-API 54/54). RC1 = this code plus docs; features that exist only in later branches (agg-36) are not in this matrix.**
 - **T40, first OpenIMP device run (cam-K, T40XP, vendor kernel driver `tx_isp_t40`, vendor libimp 1.3.0, OpenIMP via `LD_LIBRARY_PATH`, 2026-10-10; every result is OpenIMP vs vendor):** PASS/dev: `AddSensor`/`EnableSensor`; FrameSource ch0 3840x2160 and ch1 640x360 with `GetFrame` (timestamps monotonic, non-zero); H.264 on ch0 and ch1 (10 s, clean strict decode); OSD PIC and COVER (OpenIMP draws COVER on NV12, the vendor library fails with "COVER cannot support this format"); IVS move (20 s); `FrameSource_SnapFrame`; JPEG on ch1 (software JPEG since 257ba9d); ISP `GetSensorAttr`, Gamma get, CCM get, ModuleControl get, `AeScenceAttr` get/set; `GetCameraInputMode`. Fixed during the run: the stream timestamp was 0 (a5d9b03); JPEG was a grey placeholder (257ba9d).
 - **T40 open:** CBR delivers only about 20 % of the target bit rate (rate control); H.265 is not supported by OpenIMP T40 yet; `GetBrightness` returns -1; the pixel-format enum is reported as 10 (vendor 0); frame size is 16-line aligned (353280 B vs 345600 B); `P1_INNER` traces always go to stderr; JPEG at 4K not tested (out of memory in the test process, 60 MB RAM). Vendor note: `GetAeExpList` hung the vendor kernel driver; the magenta cast seen with timps stopped was the IR cut left open, not the library. Only the functions above are dev; the rest of T40 stays host or `?`. The combined Get/Set rows of Gamma, CCM and ModuleControl are host (Get dev, Set host), since only the Get is device-tested.
@@ -769,7 +770,7 @@ What every cell code means (the same short legend is repeated above each table b
 
 ### Progress per SoC
 
-The counts below were recomputed on 2026-10-10 from the full-list tables of this file (all cell changes up to agg-34 are included; script a local helper script that parses the full lists, not in the repo). Method: rows of the full lists, a Get/Set row = 2 functions, a wildcard row counts its listed functions; the totals match the audit counts within one function (T10/T20 332 vs 331, T21 330, T23 442 vs 441, T31 406 vs 405). The T41 row is the unchanged figure of 2026-10-06 (T41 is being reworked by other agents; its cells were not touched). T30 and T40 were counted the same way on 2026-10-10; their done % is low because most of their cells are `?` (exported, not audited, not run on a camera), not because they are missing.
+The counts below were recomputed on 2026-10-11 for agg-36 from the full-list tables of this file (first count 2026-10-10, all cell changes up to agg-34 included then; script a local helper script that parses the full lists, not in the repo). Method: rows of the full lists, a Get/Set row = 2 functions, a wildcard row counts its listed functions; the totals match the audit counts within one function (T10/T20 332 vs 331, T21 330, T23 442 vs 441, T31 406 vs 405). The T41 row is the unchanged figure of 2026-10-06 (T41 is being reworked by other agents; its cells were not touched). T30 and T40 were counted the same way on 2026-10-10; their done % is low because most of their cells are `?` (exported, not audited, not run on a camera), not because they are missing.
 
 Counts are per vendor function of that SoC (T23 folded: base function = one; Get and Set count separately). "gaps" = cache-only + stub + error + missing; "vendor no-op" is not a gap; "audit gaps" = the same sum in the audit before the work of 2026-10-05 (T23 unfolded, about 3x per base function). "done %" = dev + host + aud / vendor fns. Bar: █ dev, ▓ host, ▒ aud / ?, ○ no-op, ░ gaps (40 characters per SoC).
 
@@ -778,11 +779,11 @@ Counts are per vendor function of that SoC (T23 folded: base function = one; Get
 | T10 | 325 | 17 | 54 | 219 | 0 | 3 | 13 | 0 | 1 | 18 | **32** | 100 | 89.2 % |
 | T20 | 325 | 196 | 16 | 82 | 0 | 1 | 11 | 0 | 1 | 18 | **30** | 100 | 90.5 % |
 | T21 | 325 | 209 | 11 | 83 | 0 | 8 | 5 | 0 | 1 | 8 | **14** | 77 | 93.2 % |
-| T23 | 436 | 283 | 23 | 111 | 0 | 12 | 5 | 1 | 1 | 0 | **7** | 212 | 95.6 % |
+| T23 | 436 | 283 | 16 | 111 | 0 | 12 | 5 | 0 | 9 | 0 | **14** | 212 | 94.0 % |
 | T30 | 347 | 0 | 13 | 22 | 293 | 0 | 8 | 0 | 0 | 11 | **19** | – | 10.1 % |
-| T31 | 387 | 225 | 15 | 133 | 0 | 5 | 2 | 0 | 1 | 5 | **8** | 65 | 96.6 % |
-| T40 | 398 | 45 | 56 | 0 | 177 | 0 | 0 | 0 | 28 | 92 | **120** | – | 25.4 % |
-| T41 | 445 | 8 | 42 | 214 | 0 | 2 | 7 | 1 | 40 | 130 | **179** | 227 | 59.3 % |
+| T31 | 387 | 225 | 16 | 133 | 0 | 5 | 2 | 0 | 1 | 5 | **8** | 65 | 96.6 % |
+| T40 | 398 | 57 | 57 | 0 | 175 | 0 | 0 | 0 | 21 | 88 | **109** | – | 28.6 % |
+| T41 | 445 | 8 | 44 | 214 | 0 | 2 | 7 | 1 | 40 | 129 | **177** | 227 | 59.8 % |
 
 Columns: fns = vendor functions of that SoC; dev/host/aud/?/no-op/cache/stub/err/miss = counts per cell code (codes as in the legend); gaps = cache + stub + err + miss; audit gaps = the same sum in the audit before the work of 2026-10-05; done % = (dev + host + aud) / fns.
 
@@ -808,7 +809,7 @@ Gaps (cache-only, stub, error, missing, ?) of functions that at least one of tim
 - **T30**: 0 (no gap in a function that a streamer imports)
 - **T31**: 0 (no gap in a function that a streamer imports)
 - **T40**: 2 (timps 0, prudynt 0, raptor 2): `DMIC_*` (error; raptor), `DMIC_DisableAecRefFrame` (error; raptor)
-- **T41**: 22 (timps 0, prudynt 6, raptor 19): `ISP_Get/SetISPBypass` (missing; prudynt), `ISP_Tuning_Get/SetModuleControl` (error; raptor), `ISP_Tuning_SetAutoZoom` (error; prudynt), `ISP_Tuning_SetMaskBlock` (error; raptor), `ISP_Tuning_SetScalerLv` (error; raptor), `ISP_Tuning_SwitchBin` (missing; prudynt), `Encoder_SetChnMaxPictureSize` (cache-only; raptor), `Encoder_SetbufshareChn` (stub; prudynt+raptor), `FrameSource_Get/SetChnFifoAttr` (cache-only; prudynt+raptor), `FrameSource_Get/SetDelay` (error; raptor), `FrameSource_Get/SetFrameDepth` (cache-only; prudynt+raptor), `FrameSource_Get/SetI2dAttr` (error; raptor), `FrameSource_Get/SetMaxDelay` (error; raptor), `FrameSource_Get/SetPool` (cache-only; raptor), `FrameSource_GetTimedFrame` (error; raptor), `ISP_Tuning_CreateOsdRgn` (error; raptor), `ISP_Tuning_DestroyOsdRgn` (error; raptor), `ISP_Tuning_SetOsdPoolSize` (stub; raptor), `ISP_Tuning_SetOsdRgnAttr` (error; raptor), `ISP_Tuning_ShowOsdRgn` (error; raptor), `DMIC_*` (error; raptor), `DMIC_DisableAecRefFrame` (error; raptor)
+- **T41**: 20 (timps 0, prudynt 4, raptor 18): `ISP_Get/SetISPBypass` (missing; prudynt), `ISP_Tuning_Get/SetModuleControl` (error; raptor), `ISP_Tuning_SetAutoZoom` (error; prudynt), `ISP_Tuning_SetMaskBlock` (error; raptor), `ISP_Tuning_SetScalerLv` (error; raptor), `Encoder_SetChnMaxPictureSize` (cache-only; raptor), `FrameSource_Get/SetChnFifoAttr` (cache-only; prudynt+raptor), `FrameSource_Get/SetDelay` (error; raptor), `FrameSource_Get/SetFrameDepth` (cache-only; prudynt+raptor), `FrameSource_Get/SetI2dAttr` (error; raptor), `FrameSource_Get/SetMaxDelay` (error; raptor), `FrameSource_Get/SetPool` (cache-only; raptor), `FrameSource_GetTimedFrame` (error; raptor), `ISP_Tuning_CreateOsdRgn` (error; raptor), `ISP_Tuning_DestroyOsdRgn` (error; raptor), `ISP_Tuning_SetOsdPoolSize` (stub; raptor), `ISP_Tuning_SetOsdRgnAttr` (error; raptor), `ISP_Tuning_ShowOsdRgn` (error; raptor), `DMIC_*` (error; raptor), `DMIC_DisableAecRefFrame` (error; raptor)
 
 ### ISP tuning
 
@@ -837,7 +838,7 @@ Gaps (cache-only, stub, error, missing, ?) of functions that at least one of tim
 | `ISP_Tuning_Get/SetStatisConfig` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | miss | miss | – |
 | `ISP_Tuning_Get/SetTmoCurve` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | miss | – |
 | `ISP_Tuning_GetAutoZoom` [6] | n.a. | n.a. | n.a. | host | n.a. | n.a. | host | err | – |
-| `ISP_Tuning_GetBrightness` [66] | aud | aud | aud | aud | ? | aud | err | aud | p† r† |
+| `ISP_Tuning_GetBrightness` [66] | aud | aud | aud | aud | ? | aud | host | aud | p† r† |
 | `ISP_Tuning_GetHVFlip` | n.a. | n.a. | n.a. | aud | n.a. | aud | ? | miss | T23/T31: r† |
 | `ISP_Tuning_GetISPBypass` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | miss | n.a. | – |
 | `ISP_Tuning_GetMaskBlock` [7] | n.a. | n.a. | n.a. | host | n.a. | n.a. | n.a. | miss | – |
@@ -872,7 +873,7 @@ Notes:
 66. `ISP_Tuning_GetBrightness`: audit: reaches the driver/kernel; T40: returned -1 on cam-K 2026-10-10 (vendor library returns the value); fixed after RC1: the getters return the vendor per-input cache (host-tested)
 91. `ISP_Tuning_SetMeshShadingScale`: T10/T20 (class c): the vendor writes bits 2..4 of an ISP lens-shading register through a userspace mapping (3.12.0 0x62930); there is no driver control for it, wishlist: a tuning control in the T10/T20 driver
 
-<details><summary>All 117 rows of this area (37 with a gap)</summary>
+<details><summary>All 117 rows of this area (35 with a gap)</summary>
 
 *Codes: **dev** device-tested · **host** host tests only · **aud** connected per static audit, no device test · **no-op** vendor does nothing · **cache** value only stored · **stub** returns 0, no effect · **err** fails or known defect · **miss** not exported by OpenIMP · **n.a.** not in that SoC's vendor API · **?** unknown · **►** streamer uses it, gap · **†** streamer use from source only · **[n]** note below the table · Used by: **p** prudynt, **r** raptor, **t** timps (a long list is given in the note).*
 
@@ -955,7 +956,7 @@ Notes:
 | `ISP_Tuning_Get/SetWdr_OutputMode` [64] | n.a. | n.a. | n.a. | n.a. | n.a. | host | n.a. | n.a. | r† |
 | `ISP_Tuning_GetAutoZoom` [6] | n.a. | n.a. | n.a. | host | n.a. | n.a. | host | err | – |
 | `ISP_Tuning_GetBlcAttr` [65] | n.a. | n.a. | n.a. | no-op | n.a. | dev | n.a. | n.a. | r† |
-| `ISP_Tuning_GetBrightness` [66] | aud | aud | aud | aud | ? | aud | err | aud | p† r† |
+| `ISP_Tuning_GetBrightness` [66] | aud | aud | aud | aud | ? | aud | host | aud | p† r† |
 | `ISP_Tuning_GetEVAttr` [67] | aud | dev | dev | dev | ? | dev | n.a. | n.a. | p† r† t |
 | `ISP_Tuning_GetHVFlip` | n.a. | n.a. | n.a. | aud | n.a. | aud | ? | miss | T23/T31: r† |
 | `ISP_Tuning_GetISPBypass` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | miss | n.a. | – |
@@ -1054,7 +1055,7 @@ Notes:
 64. `ISP_Tuning_Get/SetWdr_OutputMode`: T31: reaches the WDR tool block (agg-25)
 6. `ISP_Tuning_GetAutoZoom`: T23: stock autozoom control 0x80000e8 (open-tx-isp agg-28), host/build-tested only; T41: driver has no stock handler, refuses; T41 (2026-10-10): deferred, live MSCA reprogramming carries a hang risk
 65. `ISP_Tuning_GetBlcAttr`: T23: the stock T23 module has no BLC attr control (-1 as stock; apitest N/A); T31: apitest PASS
-66. `ISP_Tuning_GetBrightness`: audit: reaches the driver/kernel; T40: returns -1 on cam-K 2026-10-10 (vendor library returns the value); open
+66. `ISP_Tuning_GetBrightness`: audit: reaches the driver/kernel; T40: returned -1 on cam-K 2026-10-10 (vendor library returns the value); fixed after RC1: the getters return the vendor per-input cache (host-tested)
 67. `ISP_Tuning_GetEVAttr`: audit: reaches the driver/kernel
 7. `ISP_Tuning_GetMaskBlock`: T23: 0x8000183 in claude/t23-awb-runtime only (not in agg-25); T23: 0x8000183 on the stock mscaler mask table (open-tx-isp agg-28, emulator-identical); the stored masks have no image effect yet (the mscaler update that consumes them is not run)
 68. `ISP_Tuning_GetRawDRC`: T10+T20: reach the driver (agg-25, T20 vendor layout); T10 shares the build
@@ -1123,7 +1124,7 @@ Notes:
 2. `ISP_Tuning_Get/SetAfWeight`: T23: AF statistics chain from the stock module, off by default (source_af=0); no device test; T31: reconstructed AF chain; metrics/zone/weight/hist verified on cam-A 2026-10-05, Get->Set roundtrip 0; T41: driver control, device-tested (claude/t41-driver-gaps, in agg-35); T23: AF statistics on by default since open-tx-isp agg-28 (source_af=1 as stock); apitest PASS on a T23 camera, no measurable CPU cost
 3. `ISP_Tuning_SetWB_ALGO`: T23: 0x800000c accepted like stock (open-tx-isp claude/gaps-t23-t31-drv): mode 0..2 stored in the AWB light-source flag, other modes logged, always returns 0; the four AWB threshold registers are not rewritten, because the AWB of the open driver runs on the wide thresholds that stock mode 1 writes and has no IQ-threshold window to switch to, so the call has no effect (class d); host build only, device test pending; T31: the driver has tisp_s_awb_algo (connected per static audit); Not in agg-36: the open-tx-isp branch claude/gaps-t23-t31-drv is held back until its T23 SwitchBin is reworked (review: memcpy over live banks), so the agg-36 driver still behaves as before (cell unchanged).
 
-<details><summary>All 60 rows of this area (20 with a gap)</summary>
+<details><summary>All 60 rows of this area (19 with a gap)</summary>
 
 *Codes: **dev** device-tested · **host** host tests only · **aud** connected per static audit, no device test · **no-op** vendor does nothing · **cache** value only stored · **stub** returns 0, no effect · **err** fails or known defect · **miss** not exported by OpenIMP · **n.a.** not in that SoC's vendor API · **?** unknown · **►** streamer uses it, gap · **†** streamer use from source only · **[n]** note below the table · Used by: **p** prudynt, **r** raptor, **t** timps (a long list is given in the note).*
 
@@ -1305,7 +1306,7 @@ Notes:
 71. `Encoder_Get/SetChnRcAttr`: T10/T20 (class d): 3.9.0-only call (IMPEncoderRcAttr of that SDK generation), see Encoder_Get/SetChnH264Demask
 73. `Encoder_SetChnHSkipBlackEnhance`: T10/T20/T21: returns 0, stores the flag of a created channel (the vendor pushes it to i264e param 10, read only by the HSkip code; class c); apitest PASS on T10, T20, T21; T30 1.0.5: the flag is kept for a created channel, 0 for an idle one (as T21); host test
 
-<details><summary>All 92 rows of this area (40 with a gap)</summary>
+<details><summary>All 92 rows of this area (38 with a gap)</summary>
 
 *Codes: **dev** device-tested · **host** host tests only · **aud** connected per static audit, no device test · **no-op** vendor does nothing · **cache** value only stored · **stub** returns 0, no effect · **err** fails or known defect · **miss** not exported by OpenIMP · **n.a.** not in that SoC's vendor API · **?** unknown · **►** streamer uses it, gap · **†** streamer use from source only · **[n]** note below the table · Used by: **p** prudynt, **r** raptor, **t** timps (a long list is given in the note).*
 
@@ -1629,7 +1630,7 @@ Notes:
 26. `OSD_GetRegionLuma`: T23: declared in the 1.1.x/1.3.0 headers but exported by none of the 8 vendor libimp builds (nm); a vendor-stack application cannot link it either
 27. `OSD_AttachToGroup`: T10/T20/T21: system_attach() as the vendor wrapper (src->to becomes src->from->to, rolled back on error, -1); host test with a fake bind table; the apitest skips it (deprecated, the chain is built with IMP_System_Bind); T30 1.0.5: the same system_attach() wrapper as T21 (disassembly compared); the T21 host test with a fake bind table also runs against the T30 build
 
-<details><summary>All 39 rows of this area (25 with a gap)</summary>
+<details><summary>All 39 rows of this area (24 with a gap)</summary>
 
 *Codes: **dev** device-tested · **host** host tests only · **aud** connected per static audit, no device test · **no-op** vendor does nothing · **cache** value only stored · **stub** returns 0, no effect · **err** fails or known defect · **miss** not exported by OpenIMP · **n.a.** not in that SoC's vendor API · **?** unknown · **►** streamer uses it, gap · **†** streamer use from source only · **[n]** note below the table · Used by: **p** prudynt, **r** raptor, **t** timps (a long list is given in the note).*
 

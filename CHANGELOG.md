@@ -8,9 +8,18 @@
 
 Release plan: `next` goes to `aperto` (fast-forward only) after the long soak of the release candidate and is tagged `vYYYY.MM.DD`; until then dates are the reference. The first release covers T10, T20, T21, T23 and T31; T10 has not been re-tested on the open stack today ("not re-tested"); T41 is not part of the first release. Branch names (`claude/...`) are historic: the topic branches were merged into `next` and deleted. Cameras are anonymised: cam-A (T31), cam-B (T23), cam-C (T20), cam-D (T21), cam-E (T10), cam-F (T41); cam-G and cam-H are further T23 cameras, cam-I a second T20, cam-J a second T21.
 
-## Log level (branch claude/log-level, 2026-10-10, host-tested only)
+## After RC1: aggregate agg-36 (state of 2026-10-11, not released)
 
-- `OPENIMP_LOG_LEVEL` (0..7, syslog numbering) gates `IMP_LOG` for syslog and stderr; default 5 = notice (one-shot status lines visible, per-frame INFO silent; 6/7 or `OPENIMP_DEBUG_TRACE=1` for verbose), `OPENIMP_DEBUG_TRACE` forces 7. INFO lines (allegro rc per IDR, HWJPEG counter, rmem peak, ...) are silent by default; OSD and HWJPEG/AVC faults are WARNING, one-shot status lines are NOTICE. Details: [docs/OPEN_STACK_CHANGELOG.md](docs/OPEN_STACK_CHANGELOG.md), env table in [docs/OPENIMP_BEYOND_VENDOR.md](docs/OPENIMP_BEYOND_VENDOR.md).
+Work merged after RC1 (`claude/agg-36`, on RC1 + docs). Build and host tests only for the aggregate; no soak yet. Not part of RC1.
+
+- **T40 encoder:** frame-level rate control (CBR/VBR follow the target), AVPU command lists as the vendor libimp 1.3.1, H.265 with correct PPS and hardware rate control (device-tested on the T40 board).
+- **T40 ISP:** ISP-drawn OSD regions, `Get/SetMask`, `SwitchBin` (device-tested); BCSH getters from the vendor cache, frame pixel format 0 (host-tested).
+- **T41:** `SwitchBin`, `AutoZoom`, `SetMaskBlock`/`GetMaskBlock`, `SetScalerLv` in OpenIMP and open-tx-isp (host tests and module builds; not run on a camera).
+- **Encoder:** `SetbufshareChn` keeps and checks the value like the vendor (T31/T40/T41); vendor return codes for T10/T20/T21 (`GetChangeRef`, `Get/SetChnHSkip`, `Get/SetChnDenoise`) and T23 `SetChnROI`/`GetChnROI`.
+- **T30:** 317 of 334 vendor exports (was 271), host tests only (no T30 camera).
+- **Log level:** `OPENIMP_LOG_LEVEL` (0..7, syslog numbering) gates `IMP_LOG`; default 5 = notice, per-frame information lines silent; `OPENIMP_DEBUG_TRACE=1` forces 7. Env table in [docs/OPENIMP_BEYOND_VENDOR.md](docs/OPENIMP_BEYOND_VENDOR.md).
+- **IVS:** a frame fed right after a result is no longer dropped (channel marked free before the result is posted; `OPENIMP_IVS_VENDOR_ORDER=1` for the vendor order).
+- Details and checks: [docs/OPEN_STACK_CHANGELOG.md](docs/OPEN_STACK_CHANGELOG.md), per-function state: [docs/FEATURE_MATRIX.md](docs/FEATURE_MATRIX.md).
 
 ## Release candidate RC1 (v2026.10.11-rc1, state of 2026-10-11)
 
