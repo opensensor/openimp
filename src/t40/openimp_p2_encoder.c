@@ -3230,14 +3230,29 @@ int IMP_Encoder_RequestIDR(int channel)
     return ret;
 }
 
+/* T40: vendor Query semantics, see p2_query.h */
+#if defined(PLATFORM_T40)
+#include "p2_query.h"
+#endif
+
 int IMP_Encoder_Query(int channel, IMPEncoderCHNStat *stat)
 {
+    P2EncoderChannel *ch;
+
     if (!p2_valid_channel(channel) || !stat || !p2_channels[channel].created)
         return -1;
+    ch = &p2_channels[channel];
+#if defined(PLATFORM_T40)
+    pthread_mutex_lock(&ch->lock);
+    openimp_t40_query_fill(stat, ch->registered, ch->raw_stream != NULL,
+                           ch->raw_stream_out, ch->in_poll);
+    pthread_mutex_unlock(&ch->lock);
+#else
     memset(stat, 0, sizeof(*stat));
-    stat->registered = p2_channels[channel].registered != 0;
-    stat->leftPics = p2_channels[channel].raw_stream ? 1u : 0u;
-    stat->curPacks = p2_channels[channel].raw_stream ? 1u : 0u;
+    stat->registered = ch->registered != 0;
+    stat->leftPics = ch->raw_stream ? 1u : 0u;
+    stat->curPacks = ch->raw_stream ? 1u : 0u;
+#endif
     return 0;
 }
 

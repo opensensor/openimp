@@ -549,6 +549,7 @@ P3_BCSH_ACCESSORS(Contrast, contrast, TISP_CID_CONTRAST)
 P3_BCSH_ACCESSORS(Saturation, saturation, TISP_CID_SATURATION)
 P3_BCSH_ACCESSORS(Sharpness, sharpness, TISP_CID_SHARPNESS)
 
+#if defined(PLATFORM_T41)
 int32_t IMP_ISP_Tuning_SetBcshHue(IMPVI_NUM num, unsigned char *value)
 {
     int result;
@@ -573,6 +574,38 @@ int32_t IMP_ISP_Tuning_GetBcshHue(IMPVI_NUM num, unsigned char *value)
     *value = p3_controls.hue;
     return result;
 }
+#else
+/* Vendor T40 1.3.1 IMP_ISP_Tuning_SetBcshHue (0x75b7c) / GetBcshHue
+ * (0x7603c): Set checks num < 4 (-4), the pointer (-9) and that the ISP
+ * tuning device is running (-5), sends the byte pointer with control
+ * 0x08000081 (-6 on failure) and caches the byte at tuning device +20+num;
+ * Get only returns that cached byte and 0 (no ioctl; the old OpenIMP getter
+ * asked the driver, which only echoed the pointer target).  The kernel maps
+ * 0..255 onto a 0..120 degree hue angle (tisp_bcsh_s_hue). */
+static unsigned char p3_hue_cache[4] = {128, 128, 128, 128};
+
+int32_t IMP_ISP_Tuning_SetBcshHue(IMPVI_NUM num, unsigned char *value)
+{
+    if ((unsigned)num >= 4U)
+        return -4;
+    if (!value)
+        return -9;
+    if (!OpenIMP_P1_TuningEnabled())
+        return -5;
+    if (p3_tuning_pointer(num, 0, TISP_CID_BCSH_HUE, value) != 0)
+        return -6;
+    p3_hue_cache[num] = *value;
+    return 0;
+}
+
+int32_t IMP_ISP_Tuning_GetBcshHue(IMPVI_NUM num, unsigned char *value)
+{
+    if ((unsigned)num >= 4U || !value)
+        return -1;     /* the vendor would fault; stay safe */
+    *value = p3_hue_cache[num];
+    return 0;
+}
+#endif
 
 #if !defined(PLATFORM_T41)
 /* T40 IMP_ISP_Tuning_SetMask / GetMask (vendor 1.3.1 libimp disassembly).
@@ -697,9 +730,6 @@ int32_t IMP_ISP_Tuning_GetSensorFPS(IMPVI_NUM num, uint32_t *numerator,
 
 #if defined(PLATFORM_T41)
 int32_t IMP_ISP_Tuning_SetHVFLIP(IMPVI_NUM num, IMPISPHVFLIPAttr *flip)
-#else
-int32_t IMP_ISP_Tuning_SetHVFLIP(IMPVI_NUM num, IMPISPHVFLIP *flip)
-#endif
 {
     int result;
 
@@ -711,11 +741,7 @@ int32_t IMP_ISP_Tuning_SetHVFLIP(IMPVI_NUM num, IMPISPHVFLIP *flip)
     return result;
 }
 
-#if defined(PLATFORM_T41)
 int32_t IMP_ISP_Tuning_GetHVFLIP(IMPVI_NUM num, IMPISPHVFLIPAttr *flip)
-#else
-int32_t IMP_ISP_Tuning_GetHVFlip(IMPVI_NUM num, IMPISPHVFLIP *flip)
-#endif
 {
     int result;
 
@@ -727,6 +753,43 @@ int32_t IMP_ISP_Tuning_GetHVFlip(IMPVI_NUM num, IMPISPHVFLIP *flip)
     *flip = p3_controls.flip;
     return result;
 }
+#else
+/* Vendor T40 1.3.1 IMP_ISP_Tuning_SetHVFLIP (0x76080): num < 4 (-4), the
+ * pointer (-9), tuning device running (-5), mode < IMPISP_FLIP_MODE_BUTT
+ * (9, else -4); the request carries the pointer to the mode (control
+ * 0x08000073, -6 on failure) and the mode is cached per input.  The kernel
+ * (tx_isp_hvflip_s_attr) applies modes 1..3 in the MSCA and 4..8 through
+ * the sensor.  GetHVFlip (0x765d8) never asks the driver: the stock kernel
+ * has no getter for this control (the old OpenIMP getter returned -1); it
+ * returns the cached mode (0 before any Set) and 0. */
+static IMPISPHVFLIP p3_flip_cache[4];
+
+int32_t IMP_ISP_Tuning_SetHVFLIP(IMPVI_NUM num, IMPISPHVFLIP *flip)
+{
+    if ((unsigned)num >= 4U)
+        return -4;
+    if (!flip)
+        return -9;
+    if (!OpenIMP_P1_TuningEnabled())
+        return -5;
+    if ((uint32_t)*flip >= (uint32_t)IMPISP_FLIP_MODE_BUTT)
+        return -4;
+    if (p3_tuning_pointer(num, 0, TISP_CID_HVFLIP, flip) != 0)
+        return -6;
+    p3_flip_cache[num] = *flip;
+    return 0;
+}
+
+int32_t IMP_ISP_Tuning_GetHVFlip(IMPVI_NUM num, IMPISPHVFLIP *flip)
+{
+    if ((unsigned)num >= 4U)
+        return -4;
+    if (!flip)
+        return -9;
+    *flip = p3_flip_cache[num];
+    return 0;
+}
+#endif
 
 #if defined(PLATFORM_T41)
 /*
@@ -1313,6 +1376,7 @@ int32_t IMP_ISP_Tuning_GetCCMAttr(IMPVI_NUM num, IMPISPCCMAttr *attr)
 }
 #endif
 
+#if defined(PLATFORM_T41)
 int32_t IMP_ISP_Tuning_SetISPRunningMode(IMPVI_NUM num,
                                          IMPISPRunningMode *mode)
 {
@@ -1339,6 +1403,52 @@ int32_t IMP_ISP_Tuning_GetISPRunningMode(IMPVI_NUM num,
     *mode = p3_controls.running_mode;
     return result;
 }
+#else
+/* Vendor T40 1.3.1 IMP_ISP_Tuning_SetISPRunningMode (0x7686c): num < 4
+ * (-4), the pointer (-9), mode < IMPISP_RUNNING_MODE_BUTT (3, else -4); the
+ * set request carries the POINTER to the mode (control 0x08000071) and the
+ * ioctl result is returned as is.  GetISPRunningMode (0x76cbc) sends the
+ * get request without a payload and the kernel answers with the mode IN the
+ * payload word (the old OpenIMP getter passed a pointer, the kernel
+ * overwrote it with the mode and the caller's variable stayed untouched,
+ * so it read back garbage).  The vendor additionally re-arms its
+ * frame-source "change wait" counter after a set, which only drops the
+ * first frames after a switch; not reproduced. */
+int32_t IMP_ISP_Tuning_SetISPRunningMode(IMPVI_NUM num,
+                                         IMPISPRunningMode *mode)
+{
+    int result;
+
+    if ((unsigned)num >= 4U)
+        return -4;
+    if (!mode)
+        return -9;
+    if ((uint32_t)*mode >= (uint32_t)IMPISP_RUNNING_MODE_BUTT)
+        return -4;
+    result = p3_tuning_pointer(num, 0, TISP_CID_RUNNING_MODE, mode);
+    if (result == 0)
+        p3_controls.running_mode = *mode;
+    return result;
+}
+
+int32_t IMP_ISP_Tuning_GetISPRunningMode(IMPVI_NUM num,
+                                         IMPISPRunningMode *mode)
+{
+    int32_t value = 0;
+
+    if ((unsigned)num >= 4U)
+        return -4;
+    if (!mode)
+        return -9;
+    if (!OpenIMP_P1_TuningEnabled())
+        return -5;
+    if (p3_tuning_scalar(num, 1, TISP_CID_RUNNING_MODE, &value) != 0)
+        return -6;
+    *mode = (IMPISPRunningMode)value;
+    p3_controls.running_mode = *mode;
+    return 0;
+}
+#endif
 
 int32_t IMP_ISP_Tuning_SetISPBypass(IMPVI_NUM num,
                                     IMPISPTuningOpsMode *enable)

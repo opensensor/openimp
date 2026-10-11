@@ -13,7 +13,10 @@ CAMERA_INPUT_TEST_BIN := $(PROJECT_DIR)/build/tests/t40-camera-input-test
 IVS_SRC := $(PROJECT_DIR)/src/t31
 IVS_FRAMEWORK_TEST_BIN := $(PROJECT_DIR)/build/tests/t40-ivs-framework-test
 
-check: $(P2_BUFSHARE_TEST_BIN) $(STREAM_LAYOUT_TEST_BIN) $(DENOISE_TEST_BIN) $(CAMERA_INPUT_TEST_BIN) $(IVS_FRAMEWORK_TEST_BIN) p3-controls isp-osd abi-layout frame-ts frame-rc vendor-cmd
+QUERY_TEST_BIN := $(PROJECT_DIR)/build/tests/t40-query-test
+
+check: $(QUERY_TEST_BIN) $(P2_BUFSHARE_TEST_BIN) $(STREAM_LAYOUT_TEST_BIN) $(DENOISE_TEST_BIN) $(CAMERA_INPUT_TEST_BIN) $(IVS_FRAMEWORK_TEST_BIN) p3-controls isp-osd abi-layout frame-ts frame-rc vendor-cmd
+	$(QUERY_TEST_BIN)
 	$(P2_BUFSHARE_TEST_BIN)
 	$(STREAM_LAYOUT_TEST_BIN)
 	$(DENOISE_TEST_BIN)
@@ -62,6 +65,12 @@ ifneq ($(T40_HEADERS),)
 else
 	@echo "t40 isp osd test skipped (set T40_HEADERS)"
 endif
+
+# Encoder_Query status block (vendor T40 1.3.1 semantics), host only
+$(QUERY_TEST_BIN): query_test.c $(PROJECT_DIR)/src/t40/p2_query.h
+	mkdir -p "$(dir $@)"
+	$(CC) -std=gnu99 -O2 -Wall -Wextra -Werror \
+		-I$(PROJECT_DIR)/include -I$(PROJECT_DIR)/src query_test.c -o "$@"
 
 # host-only: private ioctl fixture, no camera
 $(CAMERA_INPUT_TEST_BIN): camera_input_test.c $(PROJECT_DIR)/src/t40/openimp_p1.c

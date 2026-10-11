@@ -86,12 +86,29 @@ static struct pm grab_one(void)
     return m;
 }
 
+/* The channel has nrVBs = 2 capture buffers.  While nobody reads, both
+ * are filled and then held by the driver, so the first two GetFrame calls
+ * after a pause return pictures taken BEFORE the pause (before the control
+ * under test was set).  The 2026-10-11 run measured those: HVFLIP looked
+ * unmirrored and running mode / hue looked half-applied.  Drop them. */
+#define STALE_FRAMES 3
+static void drain_stale(void)
+{
+    int i;
+    for (i = 0; i < STALE_FRAMES; i++) {
+        IMPFrameInfo *f = NULL;
+        if (IMP_FrameSource_GetFrame(CH, &f) == 0 && f)
+            IMP_FrameSource_ReleaseFrame(CH, f);
+    }
+}
+
 static struct pm grab(int settle_ms)
 {
     struct pm a, s;
     int i, k = 0;
     memset(&s, 0, sizeof s);
     usleep(settle_ms * 1000);
+    drain_stale();
     for (i = 0; i < 4; i++) {
         a = grab_one();
         if (!a.ok) continue;
@@ -521,6 +538,7 @@ int main(int argc, char **argv)
         /* Hue */
         { int rgo, rsl, rsh, gl = -1, gh = -1; struct pm pl, ph; unsigned char o = 0, g = 0;
           rgo = IMP_ISP_Tuning_GetBcshHue(IMPVI_MAIN, &o);
+          { struct pm p0 = grab(300); printf("  hue default %u: U=%.1f V=%.1f chroma=%.1f\n", o, p0.u, p0.v, p0.chroma); }
           u8 = 20; rsl = IMP_ISP_Tuning_SetBcshHue(IMPVI_MAIN, &u8); pl = grab(1500); IMP_ISP_Tuning_GetBcshHue(IMPVI_MAIN, &g); gl = g;
           u8 = 230; rsh = IMP_ISP_Tuning_SetBcshHue(IMPVI_MAIN, &u8); ph = grab(1500); IMP_ISP_Tuning_GetBcshHue(IMPVI_MAIN, &g); gh = g;
           u8 = o; IMP_ISP_Tuning_SetBcshHue(IMPVI_MAIN, &u8);
@@ -541,7 +559,8 @@ int main(int argc, char **argv)
             /* mirror check: compare left/right half luma before/after */
             {
                 IMPFrameInfo *f1 = NULL; double lb = 0, rb = 0, la = 0, ra = 0; unsigned x, y, w, h, n = 0; const uint8_t *Y;
-                /* current = mirrored */
+                /* current = mirrored (fresh frame, see drain_stale) */
+                drain_stale();
                 if (IMP_FrameSource_GetFrame(CH, &f1) == 0 && f1) {
                     w = f1->width; h = f1->height; Y = (const uint8_t *)(uintptr_t)f1->virAddr;
                     for (y = 0; y < h; y += 8) for (x = 0; x < w / 2; x += 8) { la += Y[y * w + x]; ra += Y[y * w + w - 1 - x]; n++; }
@@ -551,6 +570,7 @@ int main(int argc, char **argv)
                 }
                 fl2 = IMPISP_FLIP_NORMAL_MODE; IMP_ISP_Tuning_SetHVFLIP(IMPVI_MAIN, &fl2);
                 usleep(1500000);
+                drain_stale();
                 n = 0;
                 if (IMP_FrameSource_GetFrame(CH, &f1) == 0 && f1) {
                     w = f1->width; h = f1->height; Y = (const uint8_t *)(uintptr_t)f1->virAddr;

@@ -71,6 +71,8 @@ static struct {
     int result;
 } last;
 
+static uint32_t rm_kernel;  /* running mode the "kernel" holds */
+
 int OpenIMP_P1_TuningIOCtl(uint32_t command, void *argument)
 {
     /* Same layout as the P3 envelope: 16 bytes on the 32-bit target. */
@@ -95,6 +97,16 @@ int OpenIMP_P1_TuningIOCtl(uint32_t command, void *argument)
             memcpy((void *)request->payload, last.reply,
                    request->control == 0x08000096 ? 64 : 24);
     }
+    if (request->control == 0x08000071 && request->direction) {
+        /* running mode get: the stock kernel answers in the payload word */
+        ((struct { int32_t a, b, c; uintptr_t payload; } *)argument)->payload =
+            (uintptr_t)rm_kernel;
+    }
+    if (request->control == 0x08000071 && !request->direction)
+        rm_kernel = *(const uint32_t *)request->payload;
+    if (request->control == 0x08000073 || request->control == 0x08000081)
+        memcpy(last.copy, (const void *)request->payload,
+               request->control == 0x08000073 ? 4 : 1);
     if (request->control == 0x08000080) {       /* CCM: 40-byte payload */
         if (request->direction) {
             memcpy((void *)request->payload, last.reply, 40);
@@ -489,6 +501,79 @@ int main(void)
         assert(IMP_ISP_Tuning_GetISPCSCAttr(IMPVI_MAIN, &csc) == 0);
         assert(csc.ColorGamut == IMP_ISP_CG_BT601_LIMITED);
         assert(csc.Matrix.CscCoef[0] == 0.0f && csc.Matrix.CscClip[3] == 0);
+    }
+
+    /* HVFLIP / hue / running mode (vendor T40 1.3.1, device FAILs of
+     * 2026-10-11: GetHVFlip -1, running-mode get read back garbage). */
+    {
+        IMPISPHVFLIP f = IMPISP_FLIP_H_MODE, g = (IMPISPHVFLIP)99;
+        IMPISPRunningMode m, r;
+        unsigned char h = 20, hg = 0;
+
+        sb_enabled = 1;
+        /* GetHVFlip: cache only, 0 before any Set, never the driver */
+        before = last.calls;
+        assert(IMP_ISP_Tuning_GetHVFlip(IMPVI_MAIN, &g) == 0 && g == IMPISP_FLIP_NORMAL_MODE);
+        assert(last.calls == before);
+        /* SetHVFLIP: pointer to the mode, control 0x08000073 */
+        EXPECT(IMP_ISP_Tuning_SetHVFLIP(IMPVI_MAIN, &f), 0, 0x08000073, &f);
+        { uint32_t w; memcpy(&w, last.copy, 4); assert(w == IMPISP_FLIP_H_MODE); }
+        before = last.calls;
+        assert(IMP_ISP_Tuning_GetHVFlip(IMPVI_MAIN, &g) == 0 && g == IMPISP_FLIP_H_MODE);
+        assert(last.calls == before);
+        /* vendor checks: no ioctl */
+        f = IMPISP_FLIP_MODE_BUTT;
+        assert(IMP_ISP_Tuning_SetHVFLIP(IMPVI_MAIN, &f) == -4);
+        assert(IMP_ISP_Tuning_SetHVFLIP(IMPVI_MAIN, NULL) == -9);
+        assert(IMP_ISP_Tuning_SetHVFLIP((IMPVI_NUM)4, &f) == -4);
+        assert(IMP_ISP_Tuning_GetHVFlip(IMPVI_MAIN, NULL) == -9);
+        sb_enabled = 0;
+        f = IMPISP_FLIP_V_MODE;
+        assert(IMP_ISP_Tuning_SetHVFLIP(IMPVI_MAIN, &f) == -5);
+        sb_enabled = 1;
+        assert(last.calls == before);
+        /* a failing driver: -6, cache unchanged */
+        last.result = -1;
+        assert(IMP_ISP_Tuning_SetHVFLIP(IMPVI_MAIN, &f) == -6);
+        last.result = 0;
+        assert(IMP_ISP_Tuning_GetHVFlip(IMPVI_MAIN, &g) == 0 && g == IMPISP_FLIP_H_MODE);
+
+        /* hue: byte pointer, control 0x08000081; Get from the cache */
+        before = last.calls;
+        assert(IMP_ISP_Tuning_GetBcshHue(IMPVI_MAIN, &hg) == 0 && hg == 128);
+        assert(last.calls == before);
+        EXPECT(IMP_ISP_Tuning_SetBcshHue(IMPVI_MAIN, &h), 0, 0x08000081, &h);
+        assert(last.copy[0] == 20);
+        before = last.calls;
+        assert(IMP_ISP_Tuning_GetBcshHue(IMPVI_MAIN, &hg) == 0 && hg == 20);
+        assert(last.calls == before);
+        last.result = -1;
+        h = 230;
+        assert(IMP_ISP_Tuning_SetBcshHue(IMPVI_MAIN, &h) == -6);
+        last.result = 0;
+        assert(IMP_ISP_Tuning_GetBcshHue(IMPVI_MAIN, &hg) == 0 && hg == 20);
+        assert(IMP_ISP_Tuning_SetBcshHue(IMPVI_MAIN, NULL) == -9);
+        assert(IMP_ISP_Tuning_SetBcshHue((IMPVI_NUM)4, &h) == -4);
+
+        /* running mode: set by pointer, get answered in the payload word */
+        m = IMPISP_RUNNING_MODE_NIGHT;
+        EXPECT(IMP_ISP_Tuning_SetISPRunningMode(IMPVI_MAIN, &m), 0, 0x08000071, &m);
+        r = (IMPISPRunningMode)9;
+        before = last.calls;
+        assert(IMP_ISP_Tuning_GetISPRunningMode(IMPVI_MAIN, &r) == 0);
+        assert(last.calls == before + 1 && last.direction == 1 && last.control == 0x08000071);
+        assert(r == IMPISP_RUNNING_MODE_NIGHT);
+        m = IMPISP_RUNNING_MODE_DAY;
+        assert(IMP_ISP_Tuning_SetISPRunningMode(IMPVI_MAIN, &m) == 0);
+        r = (IMPISPRunningMode)9;
+        assert(IMP_ISP_Tuning_GetISPRunningMode(IMPVI_MAIN, &r) == 0 && r == IMPISP_RUNNING_MODE_DAY);
+        m = IMPISP_RUNNING_MODE_BUTT;
+        before = last.calls;
+        assert(IMP_ISP_Tuning_SetISPRunningMode(IMPVI_MAIN, &m) == -4);
+        assert(IMP_ISP_Tuning_SetISPRunningMode(IMPVI_MAIN, NULL) == -9);
+        assert(IMP_ISP_Tuning_GetISPRunningMode(IMPVI_MAIN, NULL) == -9);
+        assert(last.calls == before);
+        sb_enabled = 0;
     }
 
     puts("T40 P3 controls: all checks passed");
