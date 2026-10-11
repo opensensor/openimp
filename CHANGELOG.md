@@ -8,6 +8,10 @@
 
 Release plan: `next` goes to `aperto` (fast-forward only) after the long soak of the release candidate and is tagged `vYYYY.MM.DD`; until then dates are the reference. The first release covers T10, T20, T21, T23 and T31; T10 has not been re-tested on the open stack today ("not re-tested"); T41 is not part of the first release. Branch names (`claude/...`) are historic: the topic branches were merged into `next` and deleted. Cameras are anonymised: cam-A (T31), cam-B (T23), cam-C (T20), cam-D (T21), cam-E (T10), cam-F (T41); cam-G and cam-H are further T23 cameras, cam-I a second T20, cam-J a second T21.
 
+## Log level (branch claude/log-level, 2026-10-10, host-tested only)
+
+- `OPENIMP_LOG_LEVEL` (0..7, syslog numbering) gates `IMP_LOG` for syslog and stderr; default 5 = notice (one-shot status lines visible, per-frame INFO silent; 6/7 or `OPENIMP_DEBUG_TRACE=1` for verbose), `OPENIMP_DEBUG_TRACE` forces 7. INFO lines (allegro rc per IDR, HWJPEG counter, rmem peak, ...) are silent by default; OSD and HWJPEG/AVC faults are WARNING, one-shot status lines are NOTICE. Details: [docs/OPEN_STACK_CHANGELOG.md](docs/OPEN_STACK_CHANGELOG.md), env table in [docs/OPENIMP_BEYOND_VENDOR.md](docs/OPENIMP_BEYOND_VENDOR.md).
+
 ## Release candidate RC1 (v2026.10.11-rc1, state of 2026-10-11)
 
 RC1 v2026.10.11-rc1: openimp fe9307c (agg-35 687a68e4 + docs), open-tx-isp 191be6c5 (agg-35 6e464ac7 + docs). RC1 is exactly the soaked agg-35 code; the tag adds documentation only.

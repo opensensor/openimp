@@ -2616,7 +2616,7 @@ static int avpu_t31_rc_core_allegro(void)
         const char *value = getenv("OPENIMP_T31_RC_CORE");
 
         core = value && strcmp(value, "legacy") == 0 ? 0 : 1;
-        IMP_LOG_INFO("Codec", "T31 rate control core: %s%s",
+        IMP_LOG(LOG_NOTICE, "Codec", "T31 rate control core: %s%s",
                      core ? "allegro (OEM libimp 1.1.6 port)" : "legacy",
                      value ? " (OPENIMP_T31_RC_CORE)" : "");
     }
@@ -6190,7 +6190,7 @@ static void avpu_end_encoding_callback(void *user_data)
             &ctx->t31_rate_controller, t31_overflow_bytes * 8u,
             ctx->t31_rate_control_qp_by_buf[buf_idx],
             ctx->stream_is_idr[buf_idx]);
-        IMP_LOG_INFO("Codec", "AVC: picture larger than the stream buffer (%u bytes), dropped, QP %u -> %u",
+        IMP_LOG_LIMITED(LOG_WARNING, "Codec", "AVC: picture larger than the stream buffer (%u bytes), dropped, QP %u -> %u",
                      t31_overflow_bytes,
                      ctx->t31_rate_control_qp_by_buf[buf_idx],
                      ctx->t31_rate_controller.current_qp);
@@ -8039,7 +8039,7 @@ static int t23_native_wanted(void)
         wanted = 1;
         value = NULL;
     }
-    IMP_LOG_INFO("Encoder", "T23 H.264 backend: %s%s",
+    IMP_LOG(LOG_NOTICE, "Encoder", "T23 H.264 backend: %s%s",
                  wanted ? "native Helix" : "OEM worker",
                  value ? " (OPENIMP_T23_ENCODER)" : " (build default)");
     return wanted;
@@ -10141,9 +10141,9 @@ static int t31_hwjpeg_requested(void)
         /* Same rule as p2_jpeg_copy_in_rmem(): on unless exactly "0". */
         requested = !(value && value[0] == '0' && value[1] == '\0');
         if (requested)
-            IMP_LOG_INFO("Codec", "HWJPEG: T31 hardware JPEG enabled (OPENIMP_T31_HW_JPEG=0 selects the software encoder)");
+            IMP_LOG(LOG_NOTICE, "Codec", "HWJPEG: T31 hardware JPEG enabled (OPENIMP_T31_HW_JPEG=0 selects the software encoder)");
         else
-            IMP_LOG_INFO("Codec", "HWJPEG: T31 hardware JPEG off (OPENIMP_T31_HW_JPEG=0), software encoder");
+            IMP_LOG(LOG_NOTICE, "Codec", "HWJPEG: T31 hardware JPEG off (OPENIMP_T31_HW_JPEG=0), software encoder");
     }
     return requested;
 }
@@ -10430,7 +10430,7 @@ static int t31_hwjpeg_encode(const HWFrameBuffer *frame, HWStreamBuffer *stream,
     if (!completed) {
         avpu_read_reg_quiet(fd, T31_HWJPEG_REG_BUSY, &busy);
         avpu_write_reg(fd, T31_HWJPEG_REG_RESET, 1u);
-        IMP_LOG_INFO("Codec", "HWJPEG: no IRQ %u within %d ms (status %08x %08x %08x, 0x85f8 %08x) [%d/%d]",
+        IMP_LOG(LOG_WARNING, "Codec", "HWJPEG: no IRQ %u within %d ms (status %08x %08x %08x, 0x85f8 %08x) [%d/%d]",
                      T31_HWJPEG_IRQ_SLOT, T31_HWJPEG_TIMEOUT_MS, status[0],
                      status[1], status[2], busy, g_t31_hwjpeg.timeouts + 1,
                      T31_HWJPEG_MAX_TIMEOUTS);
@@ -10449,7 +10449,7 @@ static int t31_hwjpeg_encode(const HWFrameBuffer *frame, HWStreamBuffer *stream,
         return -1;
     }
     if (length < 4u || length > cmd[10]) {
-        IMP_LOG_INFO("Codec", "HWJPEG: implausible length %u", length);
+        IMP_LOG(LOG_WARNING, "Codec", "HWJPEG: implausible length %u", length);
         t31_hwjpeg_disable("implausible length");
         return -1;
     }
@@ -10461,12 +10461,12 @@ static int t31_hwjpeg_encode(const HWFrameBuffer *frame, HWStreamBuffer *stream,
         avpu_flush_cache(fd, g_t31_hwjpeg.stream.map,
                          T31_HWJPEG_STREAM_OFF + length,
                          0 /* BIDIRECTIONAL */) != 0) {
-        IMP_LOG_INFO("Codec", "HWJPEG: stream cache invalidate failed, software this frame");
+        IMP_LOG(LOG_WARNING, "Codec", "HWJPEG: stream cache invalidate failed, software this frame");
         return -1;
     }
     jpeg = (const uint8_t *)g_t31_hwjpeg.stream.map + T31_HWJPEG_STREAM_OFF;
     if (jpeg[0] != 0xffu || jpeg[1] != 0xd8u) {
-        IMP_LOG_INFO("Codec", "HWJPEG: output lacks SOI (%02x %02x .., %u bytes)",
+        IMP_LOG(LOG_WARNING, "Codec", "HWJPEG: output lacks SOI (%02x %02x .., %u bytes)",
                      jpeg[0], jpeg[1], length);
         t31_hwjpeg_disable("hardware did not emit a JFIF stream");
         return -1;
@@ -10478,7 +10478,7 @@ static int t31_hwjpeg_encode(const HWFrameBuffer *frame, HWStreamBuffer *stream,
             break;
     }
     if (i == 64 || length - (uint32_t)i < 4u) {
-        IMP_LOG_INFO("Codec", "HWJPEG: no EOI in the last 64 bytes (%u bytes)", length);
+        IMP_LOG(LOG_WARNING, "Codec", "HWJPEG: no EOI in the last 64 bytes (%u bytes)", length);
         t31_hwjpeg_disable("hardware did not emit a JFIF stream");
         return -1;
     }

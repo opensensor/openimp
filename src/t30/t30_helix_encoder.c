@@ -2587,7 +2587,7 @@ int OpenIMP_T30_HelixCreate(T30HelixEncoder **encoder_out,
               encoder->channel.channel_id, params->width, params->height,
               encoder->descriptor.phys_addr);
 #if defined(HELIX_T21_SYNTAX) && !defined(PLATFORM_T23)
-    IMP_LOG_INFO("Encoder", "T21 Helix: encoder ready channel=%u %ux%u "
+    IMP_LOG(LOG_NOTICE, "Encoder", "T21 Helix: encoder ready channel=%u %ux%u "
                  "rmem desc=0x%08x emc=0x%08x/%uK ref=0x%08x/0x%08x %uK "
                  "each, bitstream window %uK in the shared %uK buffer",
                  encoder->channel.channel_id, params->width, params->height,
@@ -2603,7 +2603,7 @@ int OpenIMP_T30_HelixCreate(T30HelixEncoder **encoder_out,
                      "(padded references)", params->width, params->height);
 #endif
 #if defined(PLATFORM_T23)
-    IMP_LOG_INFO("Encoder", "T23 Helix: native encoder ready channel=%u "
+    IMP_LOG(LOG_NOTICE, "Encoder", "T23 Helix: native encoder ready channel=%u "
                  "%ux%u rc=%u bitrate=%u fps=%u/%u gop=%u qp=%u [%u,%u] "
                  "desc=0x%08x emc=0x%08x/%uK bs=0x%08x/%uK "
                  "ref=0x%08x/0x%08x timeout=%ums bsf-stop=%s",
