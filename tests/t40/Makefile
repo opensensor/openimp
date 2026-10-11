@@ -5,6 +5,7 @@ STREAM_LAYOUT_TEST_BIN := $(PROJECT_DIR)/build/tests/t40-stream-layout-test
 
 DENOISE_TEST_BIN := $(PROJECT_DIR)/build/tests/t40-denoise-test
 
+P2_BUFSHARE_TEST_BIN := $(PROJECT_DIR)/build/tests/t40-p2-bufshare-test
 .PHONY: check clean abi-layout
 
 CAMERA_INPUT_TEST_BIN := $(PROJECT_DIR)/build/tests/t40-camera-input-test
@@ -12,7 +13,8 @@ CAMERA_INPUT_TEST_BIN := $(PROJECT_DIR)/build/tests/t40-camera-input-test
 IVS_SRC := $(PROJECT_DIR)/src/t31
 IVS_FRAMEWORK_TEST_BIN := $(PROJECT_DIR)/build/tests/t40-ivs-framework-test
 
-check: $(STREAM_LAYOUT_TEST_BIN) $(DENOISE_TEST_BIN) $(CAMERA_INPUT_TEST_BIN) $(IVS_FRAMEWORK_TEST_BIN) p3-controls isp-osd abi-layout frame-ts frame-rc vendor-cmd
+check: $(P2_BUFSHARE_TEST_BIN) $(STREAM_LAYOUT_TEST_BIN) $(DENOISE_TEST_BIN) $(CAMERA_INPUT_TEST_BIN) $(IVS_FRAMEWORK_TEST_BIN) p3-controls isp-osd abi-layout frame-ts frame-rc vendor-cmd
+	$(P2_BUFSHARE_TEST_BIN)
 	$(STREAM_LAYOUT_TEST_BIN)
 	$(DENOISE_TEST_BIN)
 	$(CAMERA_INPUT_TEST_BIN)
@@ -130,3 +132,16 @@ frame-rc:
 		-o $(PROJECT_DIR)/build/tests/t40-frame-rc-test
 	$(PROJECT_DIR)/build/tests/t40-frame-rc-test
 	grep -q 't31_rate_control t31_al_rc' $(PROJECT_DIR)/build-t40.sh
+
+# IMP_Encoder_SetbufshareChn (vendor argument checks, return codes, stored
+# value over CreateChn / DestroyChn); the test source is shared with tests/t31.
+$(P2_BUFSHARE_TEST_BIN): ../t31/p2_bufshare_test.c \
+	$(PROJECT_DIR)/src/t40/openimp_p2_encoder.c
+	mkdir -p "$(dir $@)"
+	$(CC) -std=gnu99 -O1 -g -Wall -Wextra -Werror -DPLATFORM_T40 \
+		'-D_Static_assert(c,m)=' -Wno-unused-result \
+		-I$(PROJECT_DIR)/include -I$(PROJECT_DIR)/src \
+		-I$(PROJECT_DIR)/src/t40 ../t31/p2_bufshare_test.c \
+		$(PROJECT_DIR)/src/openimp_profile.c \
+		$(PROJECT_DIR)/src/t40/t31_stream_layout.c \
+		-no-pie -lpthread -o $@
