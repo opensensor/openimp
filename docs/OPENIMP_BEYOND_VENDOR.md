@@ -255,6 +255,7 @@ set in production.
 | Variable | Purpose | Default | Class |
 |---|---|---|---|
 | `OPENIMP_IVS_VENDOR_ORDER` | `1` posts the IVS result before the channel-free semaphore as the vendor does (a frame fed right after the result is dropped as busy) | off | user-facing (opt-in) |
+| `OPENIMP_SU_SHUTDOWN` | `SU_Base_Shutdown`: unset or `poweroff` = sync, then SIGUSR2 to init (busybox powers off); `reboot` = SIGTERM (busybox reboots); `vendor` = vendor behaviour (sync, SIGCHLD, which busybox init ignores) | `poweroff` | user-facing |
 | `OPENIMP_REF_SHARE` | `0` disables the T21/T23 reference ring | on | user-facing |
 | `OPENIMP_T31_HW_JPEG` | `0` selects the software JPEG encoder on T31 | on | user-facing |
 | `OPENIMP_T31_OSD` | `0` disables the IPU OSD backend on T31 | on | user-facing |
@@ -307,6 +308,7 @@ for a debug image; the default image carries the release build.
 
 ## 8. Unverified or not yet in this list
 
+- `SU_Base_Shutdown` (host-tested only, fake `kill`/`sync`, not run on a camera): the vendor libsysutils call does `sync()` and `kill(1, SIGCHLD)`, which busybox init ignores, so the call returns and the device keeps running. OpenIMP now exports `SU_Base_Shutdown` itself: after the `sync()` it sends init the signal busybox acts on (`SIGUSR2` = power off by default, `SIGTERM` = reboot with `OPENIMP_SU_SHUTDOWN=reboot`; `OPENIMP_SU_SHUTDOWN=vendor` restores the vendor behaviour). Returns 0 once init was signalled (the call returns before init is done), -1 with errno if `kill` fails. Test: `make -f tests/core/su_base_shutdown.mk check`. Caveats: the symbol is now part of `libimp.so`, so a separately installed libsysutils that loads later does not override it; before relying on it, check the init system of the image (a non-busybox init may treat the signals differently) and run it once on a camera.
 - T31 `OPENIMP_T31_COMPANION` (mentioned only as a proposal in T31_HW_JPEG_RE.md; the implemented knob is `..._COMPANION_STAGE`).
 - SMART / vendor-equal eprc on T23, T21: done (`claude/eprc-complete`, 0 oracle deviations); SMART is still mapped to VBR on T10/T20; MB-level RC ported (opt-in, `claude/eprc-mbrc`, a8b483a, device test running).
 - T23 live RC readback and which RC writes take effect on T10/T20/T21: partly stated in the matrix, per-field test not documented.

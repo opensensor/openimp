@@ -117,6 +117,7 @@ compile core_module src/core/module.c
 compile core_imp_log src/core/imp_log.c -Werror
 compile core_imp_log_emit src/core/imp_log_emit.c -Werror
 compile core_video_drop src/core/video_drop.c -Werror
+compile core_su_base_shutdown src/core/su_base_shutdown.c -Werror
 compile framesource src/framesource/framesource_tseries.c
 compile isp src/isp/isp_tseries.c
 compile isp_t23_tuning src/isp/isp_t23_tuning.c -Werror
@@ -180,6 +181,7 @@ compile t23_helix_jpeg src/t30/helix_jpeg.c -Werror
     "$output_dir/core_imp_log.o" \
     "$output_dir/core_imp_log_emit.o" \
     "$output_dir/core_video_drop.o" \
+    "$output_dir/core_su_base_shutdown.o" \
     "$output_dir/framesource.o" \
     "$output_dir/isp.o" \
     "$output_dir/isp_t23_tuning.o" \

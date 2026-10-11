@@ -85,6 +85,7 @@ compile core_module src/core/module.c
 compile core_imp_log src/core/imp_log.c -Werror
 compile core_imp_log_emit src/core/imp_log_emit.c -Werror
 compile core_video_drop src/core/video_drop.c -Werror
+compile core_su_base_shutdown src/core/su_base_shutdown.c -Werror
 compile framesource src/framesource/framesource_tseries.c
 compile nv12_rotate src/framesource/nv12_rotate.c $hot_flags -Werror
 compile isp src/isp/isp_tseries.c
@@ -130,6 +131,7 @@ compile t31_extras src/t31/openimp_t31_extras.c -Werror
     "$output_dir/core_imp_log.o" \
     "$output_dir/core_imp_log_emit.o" \
     "$output_dir/core_video_drop.o" \
+    "$output_dir/core_su_base_shutdown.o" \
     "$output_dir/framesource.o" \
     "$output_dir/nv12_rotate.o" \
     "$output_dir/isp.o" \
