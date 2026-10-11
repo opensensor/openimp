@@ -5,6 +5,7 @@
  */
 
 #include <stdio.h>
+#include "../core/thread_name.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
@@ -6665,6 +6666,7 @@ static void* avpu_irq_thread(void* arg)
         __attribute__((aligned(16)));
 
     unsigned int eintr_streak = 0;
+    openimp_thread_setname("oimp-avpu-irq");
 
     ctx->irq_thread_started = 1;
     ctx->irq_thread_exited = 0;

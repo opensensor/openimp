@@ -7,6 +7,7 @@
  */
 
 #include <dlfcn.h>
+#include "../core/thread_name.h"
 #include <errno.h>
 #include <fcntl.h>
 #include <pthread.h>
@@ -201,6 +202,8 @@ static void *p3_capture_main(void *argument)
     const size_t bytes = p3_audio.cap_frame_bytes;
     unsigned char *chunk = argument;
     const int fd = p3_audio.fd;
+
+    openimp_thread_setname("ai-_ai_record_t");
 
     pthread_mutex_lock(&p3_cap_lock);
     while (!p3_audio.cap_stop) {

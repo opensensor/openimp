@@ -5,6 +5,7 @@
  */
 
 #include <errno.h>
+#include "../core/thread_name.h"
 #include <fcntl.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -1514,6 +1515,7 @@ static uint64_t p1_ivs_idle_us(const struct openimp_fs_channel *chn)
 static void *p1_ivs_feeder(void *arg)
 {
     (void)arg;
+    openimp_thread_setname("oimp-ivs-feed");
     p1_in_ivs_feeder = 1;
     for (;;) {
         int channel;

@@ -1,6 +1,7 @@
 /* Standalone ISP tuning-policy controller for private Ingenic tuning nodes. */
 
 #include <errno.h>
+#include "core/thread_name.h"
 #include <fcntl.h>
 #include <pthread.h>
 #include <stdint.h>
@@ -705,6 +706,8 @@ static int tuning_feedback(OpenIMPTuningController *controller)
 static void *tuning_worker(void *opaque)
 {
     OpenIMPTuningController *controller = opaque;
+
+    openimp_thread_setname("oimp-tuning");
 
     for (;;) {
         uint16_t interval;
