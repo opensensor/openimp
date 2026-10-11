@@ -67,10 +67,10 @@ typedef struct {
 
 /* Path of the OEM helper (OPENIMP_T23_HELIX_HELPER or the default) and
  * whether it is executable; images without it run native-only. */
-/* OPENIMP_T23_HELIX_BRIDGE (build-t23.sh, default 1): the OEM Helix worker
+/* OPENIMP_T23_HELIX_BRIDGE (build-t23.sh, default 0): the OEM Helix worker
  * openimp-t23-helixd (fallback H.264 backend, IMP_Decoder_*). */
 #ifndef OPENIMP_T23_HELIX_BRIDGE
-#define OPENIMP_T23_HELIX_BRIDGE 1
+#define OPENIMP_T23_HELIX_BRIDGE 0
 #endif
 #if OPENIMP_T23_HELIX_BRIDGE
 const char *OpenIMP_T23_HelixHelperPath(void);

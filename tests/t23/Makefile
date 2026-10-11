@@ -109,7 +109,7 @@ $(ZERO_COPY_TEST_BIN): helix_zero_copy_test.c \
 	$(PROJECT_DIR)/src/t23/openimp_t23_helix_bridge.h \
 	$(PROJECT_DIR)/src/t23/openimp_t23_helix_ipc.h
 	mkdir -p "$(dir $@)"
-	$(CC) $(CFLAGS) $(HELIX_INCLUDES) helix_zero_copy_test.c \
+	$(CC) $(CFLAGS) -DOPENIMP_T23_HELIX_BRIDGE=1 $(HELIX_INCLUDES) helix_zero_copy_test.c \
 		$(PROJECT_DIR)/src/t23/openimp_t23_helix_bridge.c -o "$@" -lpthread
 
 $(FAKE_HELIXD_BIN): fake_helixd.c $(PROJECT_DIR)/src/t23/openimp_t23_helix_ipc.h

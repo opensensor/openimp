@@ -65,23 +65,18 @@ per Helix build. The public `AL_Codec_*` and `IMP_*` graph is unchanged
 
 ## T23: OEM Helix worker bridge (OPENIMP_T23_HELIX_BRIDGE)
 
-`OPENIMP_T23_HELIX_BRIDGE=0` leaves the bridge to the OEM worker
-`openimp-t23-helixd` out of the T23 `libimp.so` (a further 15 KB of `.text`).
-Default 1 (built), because the worker is not only an opt-in backend:
+Default 0 (since 2026-10-11): the bridge to the OEM worker
+`openimp-t23-helixd` is not built into the T23 `libimp.so` (15 KB of
+`.text` less). The native Helix encoder is the only H.264 backend:
 
-- The native Helix encoder is the build default (`T23_DEFAULT_ENCODER=native`,
-  `OPENIMP_T23_ENCODER` unset).
-- When the native encoder cannot be created, `codec-t40.c` falls back to the
-  worker automatically if the helper is installed
-  (`OPENIMP_T23_NATIVE_FALLBACK=0` disables that). The thingino package
-  installs the helper and the OEM `libimp.so` under `/opt/openimp-t23/`.
-- `IMP_Decoder_*` on T23 runs in the worker.
-- Encoder parameters are cached in the bridge for the worker.
+- a channel whose native encoder cannot be created stays without output
+  (no automatic fallback to the OEM worker);
+- `IMP_Decoder_CreateChn` fails (the decoder ran in the worker);
+- encoder parameters stay local (as `OPENIMP_T23_ENC_PARAMS=0`).
 
-With 0 the native encoder is the only H.264 backend, a channel whose native
-encoder cannot be created stays without output, `IMP_Decoder_CreateChn`
-fails, and encoder parameters stay local (as `OPENIMP_T23_ENC_PARAMS=0`).
-The exported symbols do not change.
+The exported symbols do not change. `OPENIMP_T23_HELIX_BRIDGE=1` builds the
+bridge again. Without it, an image no longer needs `openimp-t23-helixd` or the
+OEM `libimp.so` under `/opt/openimp-t23/`.
 
 ## Size table (2026-10-11)
 

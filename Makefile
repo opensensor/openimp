@@ -15,8 +15,8 @@ endif
 ifdef OPENIMP_SIZE_OPT
 export OPENIMP_SIZE_OPT
 endif
-# OPENIMP_T23_HELIX_BRIDGE=0 (make t23 OPENIMP_T23_HELIX_BRIDGE=0) leaves the
-# OEM Helix worker bridge out of the T23 libimp (default 1, docs/SIZE.md).
+# OPENIMP_T23_HELIX_BRIDGE=1 (make t23 OPENIMP_T23_HELIX_BRIDGE=1) builds the
+# OEM Helix worker bridge into the T23 libimp (default 0, docs/SIZE.md).
 ifdef OPENIMP_T23_HELIX_BRIDGE
 export OPENIMP_T23_HELIX_BRIDGE
 endif
