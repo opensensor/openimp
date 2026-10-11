@@ -86,7 +86,7 @@ $(VIDEO_DROP_TEST_BIN): video_drop_test.c $(PROJECT_DIR)/src/core/video_drop.c \
 	mkdir -p "$(dir $@)"
 	$(CC) $(CFLAGS) -D_GNU_SOURCE -DOPENIMP_VIDEO_DROP_TICK_MS=50 \
 		-I$(PROJECT_DIR)/src video_drop_test.c \
-		$(PROJECT_DIR)/src/core/video_drop.c -pthread -o "$@"
+		$(PROJECT_DIR)/src/core/video_drop.c -pthread $(PROJECT_DIR)/src/core/imp_log_emit.c -o "$@"
 
 # isp_tseries.c with the 32-bit ABI asserts off (host build), a fake ioctl and
 # unresolved symbols tolerated (none is reached by the test)
@@ -330,7 +330,7 @@ $(P2_JPEG_SOURCE_TEST_BIN): p2_jpeg_source_test.c \
 		$(PROJECT_DIR)/src/t40/openimp_p2_encoder.c \
 		$(PROJECT_DIR)/src/openimp_profile.c \
 		$(PROJECT_DIR)/src/t40/t31_stream_layout.c \
-		-no-pie -lpthread -o $@
+		-no-pie -lpthread $(PROJECT_DIR)/src/core/imp_log_emit.c -o $@
 
 p2-jpeg-source: $(P2_JPEG_SOURCE_TEST_BIN)
 	$(P2_JPEG_SOURCE_TEST_BIN)
@@ -346,7 +346,7 @@ $(P2_RC_MODE_TEST_BIN): p2_rc_mode_test.c \
 		$(PROJECT_DIR)/src/t40/openimp_p2_encoder.c \
 		$(PROJECT_DIR)/src/openimp_profile.c \
 		$(PROJECT_DIR)/src/t40/t31_stream_layout.c \
-		-no-pie -lpthread -o $@
+		-no-pie -lpthread $(PROJECT_DIR)/src/core/imp_log_emit.c -o $@
 
 # IMP_Encoder_SetbufshareChn: the vendor's argument checks and return codes,
 # the stored value over CreateChn / DestroyChn (the same source is built for
@@ -360,4 +360,4 @@ $(P2_BUFSHARE_TEST_BIN): p2_bufshare_test.c \
 		-I$(PROJECT_DIR)/src/t40 p2_bufshare_test.c \
 		$(PROJECT_DIR)/src/openimp_profile.c \
 		$(PROJECT_DIR)/src/t40/t31_stream_layout.c \
-		-no-pie -lpthread -o $@
+		-no-pie -lpthread $(PROJECT_DIR)/src/core/imp_log_emit.c -o $@

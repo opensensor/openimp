@@ -10,6 +10,16 @@ endif
 ifdef OPENIMP_DEBUG
 export OPENIMP_DEBUG
 endif
+# OPENIMP_SIZE_OPT=0 (make t31 OPENIMP_SIZE_OPT=0) builds everything at -O2;
+# default 1 builds at -Os and keeps -O2 for the hot paths (docs/SIZE.md).
+ifdef OPENIMP_SIZE_OPT
+export OPENIMP_SIZE_OPT
+endif
+# OPENIMP_T23_HELIX_BRIDGE=1 (make t23 OPENIMP_T23_HELIX_BRIDGE=1) builds the
+# OEM Helix worker bridge into the T23 libimp (default 0, docs/SIZE.md).
+ifdef OPENIMP_T23_HELIX_BRIDGE
+export OPENIMP_T23_HELIX_BRIDGE
+endif
 
 .PHONY: all t20 t21 t23 t30 t31 t40 t41 check clean install
 

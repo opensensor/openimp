@@ -32,7 +32,16 @@ stripper="${toolchain_prefix}-strip"
 test -x "$compiler"
 mkdir -p "$output_dir"
 
-base_flags="-std=gnu99 -O2 -mabi=32 -march=mips32r2 -mabicalls"
+# Rootfs size: -Os, except the per-pixel, per-macroblock and audio-DSP hot
+# paths, which keep -O2 through $hot_flags (list: docs/SIZE.md).
+# OPENIMP_SIZE_OPT=0 builds everything at -O2 as before.
+case "${OPENIMP_SIZE_OPT:-1}" in
+    1) opt_flags=-Os ;;
+    0) opt_flags=-O2 ;;
+    *) echo "OPENIMP_SIZE_OPT must be 0 or 1" >&2; exit 1 ;;
+esac
+hot_flags=-O2
+base_flags="-std=gnu99 $opt_flags -mabi=32 -march=mips32r2 -mabicalls"
 base_flags="$base_flags -fPIC -G0 -fno-stack-protector -DPLATFORM_T23"
 # Rootfs size: per-function/-datum sections so the link can drop what is unreferenced.
 base_flags="$base_flags -ffunction-sections -fdata-sections"
@@ -60,6 +69,17 @@ case "${T23_DEFAULT_ENCODER:-native}" in
         exit 1
         ;;
 esac
+# OPENIMP_T23_HELIX_BRIDGE=0 leaves the OEM Helix worker bridge out of
+# libimp: no worker fallback when the native encoder cannot be created, no
+# IMP_Decoder_* (it runs in the worker), encoder parameters stay local.
+# Default 0: no bridge; OPENIMP_T23_HELIX_BRIDGE=1 builds it (fallback to
+# the OEM worker openimp-t23-helixd and IMP_Decoder_* through it).
+case "${OPENIMP_T23_HELIX_BRIDGE:-0}" in
+    0|1) ;;
+    *) echo "OPENIMP_T23_HELIX_BRIDGE must be 0 or 1" >&2; exit 1 ;;
+esac
+base_flags="$base_flags -DOPENIMP_T23_HELIX_BRIDGE=${OPENIMP_T23_HELIX_BRIDGE:-0}"
+helix_bridge_objects=
 repo_includes="-I$project_dir/include -I$project_dir/src"
 
 compile()
@@ -86,7 +106,7 @@ compile codec src/t40/codec-t40.c -Wno-stringop-overflow \
 compile al_avpu src/al_avpu.c -Wno-stringop-overflow
 compile device_pool src/device_pool.c -Wno-stringop-overflow
 compile fifo src/fifo.c -Wno-stringop-overflow
-compile hw_encoder src/hw_encoder.c -Wno-stringop-overflow
+compile hw_encoder src/hw_encoder.c $hot_flags -Wno-stringop-overflow
 
 compile time64_shim src/time64_shim.c
 compile kernel_interface src/kernel_interface.c
@@ -102,17 +122,20 @@ compile isp src/isp/isp_tseries.c
 compile isp_t23_tuning src/isp/isp_t23_tuning.c -Werror
 compile t23_compat src/t31/openimp_t31_compat.c
 compile t23_state src/t31/openimp_t31_state.c -Werror
-compile t23_services src/t31/openimp_t31_services.c -Werror
+compile t23_services src/t31/openimp_t31_services.c $hot_flags -Werror
 compile t23_ivs src/t31/openimp_t31_ivs.c -Werror
-compile t23_ivs_move src/t31/openimp_t31_ivs_move.c -Werror
-compile t23_ivs_move_v2 src/t31/openimp_ivs_move_v2.c -Werror
+compile t23_ivs_move src/t31/openimp_t31_ivs_move.c $hot_flags -Werror
+compile t23_ivs_move_v2 src/t31/openimp_ivs_move_v2.c $hot_flags -Werror
 compile t23_platform_services src/t23/openimp_t23_services.c -Werror
-compile t23_helix_bridge src/t23/openimp_t23_helix_bridge.c -Werror
+if [ "${OPENIMP_T23_HELIX_BRIDGE:-0}" = 1 ]; then
+    compile t23_helix_bridge src/t23/openimp_t23_helix_bridge.c -Werror
+    helix_bridge_objects="$output_dir/t23_helix_bridge.o"
+fi
 compile t23_persist src/t23/openimp_t23_persist.c -Werror
 compile t23_audio src/t31/openimp_t31_audio.c -Werror
-compile openimp_aec src/audio/openimp_aec.c -Werror -I"$project_dir/src/audio"
+compile openimp_aec src/audio/openimp_aec.c $hot_flags -Werror -I"$project_dir/src/audio"
 compile t23_yuv src/t23/openimp_t23_yuv.c -Werror
-compile t23_osd src/t23/openimp_t23_osd.c -Werror
+compile t23_osd src/t23/openimp_t23_osd.c $hot_flags -Werror
 compile t23_isp_osd src/t23/openimp_t23_isp_osd.c -Werror
 compile audio_codec src/audio/openimp_audio_codec.c -Werror
 compile audio_enc_dec src/audio/openimp_audio_enc_dec.c -Werror
@@ -128,8 +151,8 @@ compile t23_h264_cabac src/t30/h264enc/cabac.c -Werror
 compile t23_h264_set src/t30/h264enc/set.c -Werror
 compile t23_h264_slice src/t30/h264enc/slice.c -Werror
 compile t23_rate_control src/t40/t31_rate_control.c -Werror
-compile t23_eprc src/eprc/eprc.c -Werror -ffp-contract=off
-compile t23_eprc_mbrc src/eprc/eprc_mbrc.c -Werror -ffp-contract=off
+compile t23_eprc src/eprc/eprc.c $hot_flags -Werror -ffp-contract=off
+compile t23_eprc_mbrc src/eprc/eprc_mbrc.c $hot_flags -Werror -ffp-contract=off
 compile t23_helix_jpeg src/t30/helix_jpeg.c -Werror
 
 "$compiler" -shared -nostartfiles \
@@ -167,7 +190,7 @@ compile t23_helix_jpeg src/t30/helix_jpeg.c -Werror
     "$output_dir/t23_ivs_move.o" \
     "$output_dir/t23_ivs_move_v2.o" \
     "$output_dir/t23_platform_services.o" \
-    "$output_dir/t23_helix_bridge.o" \
+    $helix_bridge_objects \
     "$output_dir/t23_persist.o" \
     "$output_dir/t23_audio.o" \
     "$output_dir/openimp_aec.o" \
