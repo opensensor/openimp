@@ -1,1 +1,24 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100" height="100" role="img" aria-label="Open Ingenic Stack"><title>Open Ingenic Stack</title><g fill="#3fd8e6"><path transform="translate(5.22 2.16) scale(0.93)" d="M50.00 27.00L96.83 54.04A47 47 0 0 0 76.91 11.46Z"/><path transform="translate(3.80 5.66) scale(0.93)" d="M69.92 61.50L23.09 88.54A47 47 0 0 0 69.92 92.57Z"/><path transform="translate(1.78 4.84) scale(0.93)" d="M50.00 73.00L3.17 45.96A47 47 0 0 0 23.09 88.54Z"/><path transform="translate(1.48 2.68) scale(0.93)" d="M30.08 61.50L30.08 7.43A47 47 0 0 0 3.17 45.96Z"/><path transform="translate(3.20 1.34) scale(0.93)" d="M30.08 38.50L76.91 11.46A47 47 0 0 0 30.08 7.43Z"/></g><path d="M50.00 27.00L69.92 38.50L69.92 61.50L50.00 73.00L30.08 61.50L30.08 38.50Z" fill="#ffb629"/></svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="100" height="100" role="img" aria-label="Open Ingenic Stack"><title>Open Ingenic Stack</title><defs><clipPath id="cdark"><circle cx="100" cy="100" r="94"/></clipPath><clipPath id="bdark"><path d="M134.64 80.00L193.00 113.69A94 94 0 0 1 134.64 187.38Z"/><path d="M134.64 120.00L134.64 187.38A94 94 0 0 1 41.64 173.69Z"/><path d="M100.00 140.00L41.64 173.69A94 94 0 0 1 7.00 86.31Z"/><path d="M65.36 120.00L7.00 86.31A94 94 0 0 1 65.36 12.62Z"/><path d="M65.36 80.00L65.36 12.62A94 94 0 0 1 158.36 26.31Z"/><path d="M100.00 60.00L158.36 26.31A94 94 0 0 1 193.00 113.69Z"/></clipPath></defs>
+<g fill="#3fd8e6" stroke="#1f2933" stroke-width="3" stroke-linejoin="round"><path d="M134.64 80.00L193.00 113.69A94 94 0 0 1 134.64 187.38Z"/><path d="M134.64 120.00L134.64 187.38A94 94 0 0 1 41.64 173.69Z"/><path d="M100.00 140.00L41.64 173.69A94 94 0 0 1 7.00 86.31Z"/><path d="M65.36 120.00L7.00 86.31A94 94 0 0 1 65.36 12.62Z"/><path d="M65.36 80.00L65.36 12.62A94 94 0 0 1 158.36 26.31Z"/><path d="M100.00 60.00L158.36 26.31A94 94 0 0 1 193.00 113.69Z"/></g>
+<g clip-path="url(#bdark)" stroke="#0b2e33" stroke-width="1.1" fill="none" opacity="0.28"><path d="M132.01 59.02Q152.86 41.29 180.89 60.55"/><path d="M146.04 59.98Q166.69 49.75 186.93 76.71"/><path d="M160.62 65.00Q179.09 61.42 189.78 93.72"/><path d="M174.70 74.28Q189.35 76.06 189.33 110.97"/><path d="M151.49 107.24Q177.27 116.43 174.61 150.33"/><path d="M157.68 119.86Q176.86 132.63 163.64 163.64"/><path d="M160.62 135.00Q172.96 149.21 150.33 174.61"/><path d="M159.62 151.83Q165.41 165.41 135.17 182.85"/><path d="M119.48 148.21Q124.41 175.13 93.72 189.78"/><path d="M111.64 159.88Q110.18 182.88 76.71 186.93"/><path d="M100.00 170.00Q93.86 187.79 60.55 180.89"/><path d="M84.93 177.55Q76.06 189.35 45.84 171.88"/><path d="M67.99 140.98Q47.14 158.71 19.11 139.45"/><path d="M53.96 140.02Q33.31 150.25 13.07 123.29"/><path d="M39.38 135.00Q20.91 138.58 10.22 106.28"/><path d="M25.30 125.72Q10.65 123.94 10.67 89.03"/><path d="M48.51 92.76Q22.73 83.57 25.39 49.67"/><path d="M42.32 80.14Q23.14 67.37 36.36 36.36"/><path d="M39.38 65.00Q27.04 50.79 49.67 25.39"/><path d="M40.38 48.17Q34.59 34.59 64.83 17.15"/><path d="M80.52 51.79Q75.59 24.87 106.28 10.22"/><path d="M88.36 40.12Q89.82 17.12 123.29 13.07"/><path d="M100.00 30.00Q106.14 12.21 139.45 19.11"/><path d="M115.07 22.45Q123.94 10.65 154.16 28.12"/></g>
+<path d="M100.00 60.00L134.64 80.00L134.64 120.00L100.00 140.00L65.36 120.00L65.36 80.00Z" fill="#ffb629" stroke="#1f2933" stroke-width="3" stroke-linejoin="round"/>
+
+<g transform="translate(100 104)">
+ <ellipse cx="0" cy="4" rx="17" ry="21" fill="#111418"/>
+ <ellipse cx="0" cy="9" rx="11" ry="15" fill="#ffffff"/>
+ <circle cx="0" cy="-15" r="12" fill="#111418"/>
+ <ellipse cx="-4.2" cy="-17" rx="3.2" ry="4" fill="#fff"/><ellipse cx="4.2" cy="-17" rx="3.2" ry="4" fill="#fff"/>
+ <circle cx="-3.6" cy="-16.2" r="1.6" fill="#111418"/><circle cx="3.6" cy="-16.2" r="1.6" fill="#111418"/>
+ <path d="M-5 -10.5 Q0 -6 5 -10.5 Q0 -12.5 -5 -10.5Z" fill="#ffc53d"/>
+ <ellipse cx="-8" cy="25" rx="7" ry="3.2" fill="#ffc53d"/><ellipse cx="8" cy="25" rx="7" ry="3.2" fill="#ffc53d"/>
+ <!-- camera held in front -->
+ <rect x="-12" y="0" width="24" height="15" rx="3" fill="#2b3440" stroke="#fff" stroke-width="1"/>
+ <rect x="-8" y="-3" width="7" height="4" rx="1" fill="#2b3440"/>
+ <circle cx="1" cy="7.5" r="5.6" fill="#0b5d66" stroke="#fff" stroke-width="1.2"/>
+ <circle cx="1" cy="7.5" r="2.6" fill="#3fd8e6"/>
+ <circle cx="-0.2" cy="6.3" r="0.9" fill="#fff"/>
+ <!-- flippers around the camera -->
+ <path d="M-15 2 Q-19 8 -12 12" stroke="#111418" stroke-width="4" fill="none" stroke-linecap="round"/>
+ <path d="M15 2 Q19 8 12 12" stroke="#111418" stroke-width="4" fill="none" stroke-linecap="round"/>
+</g>
+</svg>
