@@ -10,6 +10,7 @@ Release plan: `next` goes to `aperto` (fast-forward only) after the long soak of
 
 ## Function finder (branches `claude/funcsearch-*`, host-tested, not released)
 
+- **T40 `IMP_Encoder_SetChnMapRoi`:** per-16x16-block QP deltas (vendor 1.3.1 argument checks, same as T41) on the T31-style AVPU QP table, behind `OPENIMP_T40_ROI=1` like `SetChnRoiAttr`; host and cross-build only, device test pending (T41 cell corrected to host: code existed, opt-in `OPENIMP_T41_ROI=1`).
 - **`make release-check`:** release gate (`tools/release-check.sh`, BUILD.md "Release check"): `make check`, a build of every SoC, then `export-check` in strict mode. Plain `make check` stays host-only and fast.
 - **`make export-check`:** compares the `IMP_` exports of each built `build/<soc>/libimp.so` with the vendor export lists (`tools/export-check/vendor-<SoC>.txt`) and with the `IMP_` names used by streamer sources (`STREAMER_DIRS`); fails when a name that is both vendor-exported and streamer-used is missing (documented exceptions in `streamer-ignore-<SoC>.txt`). Used to correct the matrix: T41 cells of FrameSource delay/max delay/I2D/timed frame/FIFO attr and ISP module control/auto zoom/mask block/scaler level are host (code exists), `Encoder_Get/SetChnCrop` is missing on T10/T20/T21 (was n.a.); 11 T40 OSD rows (`AttachToGroup`, `SetMosaic`, `*_ISP`) were missing but exported: host.
 - **T40 `Encoder_Set/GetFisheyeEnableStatus`:** the vendor flag (settable before CreateChn only, channels 0..12); was not exported (a streamer that links it needs the symbol). Host test.

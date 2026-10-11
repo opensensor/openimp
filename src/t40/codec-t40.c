@@ -3662,6 +3662,30 @@ static void avpu_t31_roi_apply(ALAvpuContext *ctx)
     avpu_t31_roi_qp_range(ctx, &rmin, &rmax);
     avpu_roi_fill(table, 1u, 6u, cols, rows, ctx->roi_win, 10u,
                   ctx->roi_base_qp, rmin, rmax, 0, &res);
+    /* SetChnMapRoi (T40): the per-block deltas replace the window value,
+     * cut to the same limits */
+    if (ctx->roi_map && ctx->roi_map_n == mb) {
+        int lo, hi;
+
+        avpu_roi_limits(ctx->roi_base_qp, rmin, rmax, &lo, &hi);
+        any = 1;
+        for (i = 0; i < mb; i++) {
+            int d = ctx->roi_map[i];
+
+            if (!d)
+                continue;
+            if (d < res.req_min)
+                res.req_min = d;
+            if (d > res.req_max)
+                res.req_max = d;
+            if (d < lo || d > hi) {
+                d = d < lo ? lo : hi;
+                res.clamped |= AVPU_ROI_CLAMP_RANGE;
+            }
+            table[i] = (uint8_t)((uint32_t)d & 0x3fu);
+        }
+        avpu_roi_spread_clamp(table, 1u, 6u, mb, &res);
+    }
     ctx->roi_table_on = any;
     ctx->roi_absolute = absolute;
     ctx->roi_req_min = res.req_min;
@@ -8677,14 +8701,18 @@ typedef struct {
 
 int AL_Codec_Encode_SetMapRoi(void *codec, const void *roi_attr)
 {
-#if defined(PLATFORM_T41)
+#if defined(PLATFORM_T41) || defined(AVPU_T40_NATIVE)
     AL_CodecEncode *enc = (AL_CodecEncode *)codec;
     const CodecMapRoiAttr *attr = (const CodecMapRoiAttr *)roi_attr;
     uint32_t cols, rows, mb, i;
     int8_t *table = NULL;
 
     if (enc == NULL || attr == NULL || enc->avpu.codec_hevc ||
+#if defined(PLATFORM_T41)
         !avpu_t41_roi_experimental())
+#else
+        avpu_t31_roi_disabled())
+#endif
         return -1;
     cols = (enc->avpu.enc_w + 15u) >> 4;
     rows = (enc->avpu.enc_h + 15u) >> 4;

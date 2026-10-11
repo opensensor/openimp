@@ -1496,10 +1496,10 @@ int IMP_Encoder_SetChnRoiAttr(int encChn, IMPEncoderRoiAttr *roiAttr);
 int IMP_Encoder_GetChnRoiAttr(int encChn, IMPEncoderRoiAttr *roiAttr);
 #endif
 
-#if defined(PLATFORM_T41)
-/* T41 1.2.6 map ROI: one byte per 16x16 block (AVC), low 2 bits the mode
+#if defined(PLATFORM_T41) || defined(PLATFORM_T40)
+/* T41 1.2.6 / T40 1.3.1 map ROI: one byte per 16x16 block (AVC), low 2 bits the mode
  * (0 none, 1 `Quality`, 2 relative with a 6-bit two's complement delta in
- * the high bits).  Like SetChnRoiAttr it needs OPENIMP_T41_ROI=1. */
+ * the high bits).  Like SetChnRoiAttr it needs OPENIMP_T41_ROI=1 (T41) or OPENIMP_T40_ROI=1 (T40). */
 typedef struct {
     uint8_t *map;
     int mapSize;
