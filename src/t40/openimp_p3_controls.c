@@ -414,10 +414,52 @@ int32_t IMP_ISP_Tuning_GetAwbAttr(IMPVI_NUM num, IMPISPWBAttr *attr)
     return p3_tuning_pointer(num, 1, TISP_CID_AWB_ATTR, attr);
 }
 
+/* IMP_ISP_Tuning_GetAwbStatistics: vendor T40 1.3.1 (libimp 0x7e2c0) and T41
+ * 1.2.6 (0x55e78) build {num, 1, 0x8000011, awb_statis} on the stack and send
+ * it with the pointer tuning ioctl (0xc0105436 / 0xc0105435); the stock
+ * driver's tisp_g_awb_statis_attr -> tisp_awb_get_zone copies three 900-byte
+ * planes (15x15 u32 each: zone means sum / count of the raw, pre-white-balance
+ * R, G and B AWB statistics; T41 1.2.x state +60096/+60996/+61896, T40 the
+ * same copy) to the 2700-byte block.  The open tx-isp-t41 fills the planes
+ * the same way (t41_awb_long_frame) and answers -EAGAIN unless they come
+ * from a frame of the running stream within the last second; the vendor T40
+ * driver copies its state regardless (all zero before the first statistics
+ * frame).  Contract of this call: 0 only with a block that holds statistics
+ * (the driver's error, or an all-zero block, is -1 with errno EAGAIN), so a
+ * consumer (timps night colour trigger) never takes zeros or a stale copy for
+ * a measurement. */
+_Static_assert(sizeof(IMPISPStatisZone) == 900, "IMPISPStatisZone is 15x15 u32");
+_Static_assert(sizeof(IMPISPAWBStatisInfo) == 2700, "IMPISPAWBStatisInfo is 3 planes");
+_Static_assert(offsetof(IMPISPAWBStatisInfo, awb_g) == 900 &&
+               offsetof(IMPISPAWBStatisInfo, awb_b) == 1800, "plane order R, G, B");
+
+/* Runtime capability marker for streamers (weak extern or dlsym): present and 1
+ * only in a libimp whose GetAwbStatistics was verified against the vendor
+ * semantics above and returns 0 only with real statistics (T40 on the vendor
+ * kernel driver, T41 with the open tx-isp-t41 of claude/awbstats or later). */
+__attribute__((visibility("default"))) const int OpenIMP_Cap_AwbStatistics = 1;
+
+static int p3_block_is_zero(const void *block, size_t size)
+{
+    const unsigned char *p = block;
+    size_t i;
+
+    for (i = 0; i < size; i++)
+        if (p[i])
+            return 0;
+    return 1;
+}
+
 int32_t IMP_ISP_Tuning_GetAwbStatistics(IMPVI_NUM num,
                                          IMPISPAWBStatisInfo *awb_statis)
 {
-    return p3_tuning_pointer(num, 1, TISP_CID_AWB_STATISTICS, awb_statis);
+    int result = p3_tuning_pointer(num, 1, TISP_CID_AWB_STATISTICS, awb_statis);
+
+    if (result == 0 && p3_block_is_zero(awb_statis, sizeof(*awb_statis))) {
+        errno = EAGAIN;
+        return -1;
+    }
+    return result;
 }
 
 int32_t IMP_ISP_Tuning_SetAwbWeight(IMPVI_NUM num, IMPISPWeight *awb_weight)
