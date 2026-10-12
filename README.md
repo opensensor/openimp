@@ -1,7 +1,7 @@
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/assets/banner-dark.svg">
-    <img src="docs/assets/banner.svg" alt="Open Ingenic - open source ISP driver &amp; libimp for Ingenic SoCs" width="560">
+    <img src="docs/assets/banner.svg" alt="OpenIMP - open source vision stack for Ingenic-based SoCs" width="560">
   </picture>
 </p>
 
