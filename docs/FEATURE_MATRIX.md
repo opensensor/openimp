@@ -782,8 +782,8 @@ Counts are per vendor function of that SoC (T23 folded: base function = one; Get
 
 | SoC | fns | dev | host | aud | ? | no-op | cache | stub | err | miss | **gaps** | audit gaps | done % |
 |---|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|
-| T10 | 327 | 17 | 55 | 219 | 0 | 3 | 13 | 0 | 0 | 20 | **33** | 100 | 89.0 % |
-| T20 | 327 | 196 | 17 | 82 | 0 | 1 | 11 | 0 | 0 | 20 | **31** | 100 | 90.2 % |
+| T10 | 327 | 17 | 57 | 219 | 0 | 3 | 13 | 0 | 0 | 18 | **31** | 100 | 89.6 % |
+| T20 | 327 | 196 | 19 | 82 | 0 | 1 | 11 | 0 | 0 | 18 | **29** | 100 | 90.8 % |
 | T21 | 327 | 209 | 12 | 83 | 0 | 8 | 5 | 0 | 0 | 10 | **15** | 77 | 93.0 % |
 | T23 | 436 | 283 | 17 | 103 | 0 | 12 | 5 | 0 | 16 | 0 | **21** | 212 | 92.4 % |
 | T30 | 347 | 0 | 14 | 22 | 292 | 0 | 8 | 0 | 0 | 11 | **19** | – | 10.4 % |
@@ -843,12 +843,12 @@ Gaps (cache-only, stub, error, missing, ?) of functions that at least one of tim
 | `ISP_Tuning_GetBrightness` [66] | aud | aud | aud | aud | ? | aud | dev | aud | p† r† |
 | `ISP_Tuning_GetISPBypass` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | host | n.a. | – |
 | `ISP_Tuning_GetMaskBlock` [7] | n.a. | n.a. | n.a. | host | n.a. | n.a. | n.a. | host | – |
-| `ISP_Tuning_SetAntiFogAttr` [8] | miss | miss | no-op | n.a. | host | n.a. | n.a. | n.a. | – |
+| `ISP_Tuning_SetAntiFogAttr` [8] | host | host | no-op | n.a. | host | n.a. | n.a. | n.a. | – |
 | ► `ISP_Tuning_SetAutoZoom` [9] | n.a. | n.a. | n.a. | host | n.a. | host | host | host | see note |
 | `ISP_Tuning_SetFixedContraster` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | host | n.a. | – |
 | `ISP_Tuning_SetISPLDC` | n.a. | n.a. | n.a. | n.a. | miss | n.a. | n.a. | n.a. | – |
 | ► `ISP_Tuning_SetMaskBlock` [11] | n.a. | n.a. | n.a. | host | n.a. | n.a. | n.a. | host | T41: r† |
-| `ISP_Tuning_SetMeshShadingScale` [91] | miss | miss | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | – |
+| `ISP_Tuning_SetMeshShadingScale` [91] | host | host | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | – |
 | ► `ISP_Tuning_SetScalerLv` [12] | n.a. | n.a. | n.a. | no-op | n.a. | aud | n.a. | host | r† |
 | `ISP_Tuning_SetTemperDnsCtl` [83] | host | host | aud | n.a. | cache | n.a. | n.a. | n.a. | – |
 | `ISP_Tuning_SetTmoFaceae` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | miss | – |
@@ -863,7 +863,7 @@ Notes:
 5. `ISP_Tuning_Get/SetWdrOutputMode`: T41: the stock driver has no handler and refuses (claude/t41-isp-round2); explained, counted as vendor no-op
 6. `ISP_Tuning_GetAutoZoom`: T23: stock autozoom control 0x80000e8 (open-tx-isp agg-28), host/build-tested only; T41: driver has no stock handler, refuses; T41 (2026-10-10): deferred, live MSCA reprogramming carries a hang risk
 7. `ISP_Tuning_GetMaskBlock`: T23: 0x8000183 in claude/t23-awb-runtime only (not in agg-25); T23: 0x8000183 on the stock mscaler mask table (open-tx-isp agg-28, emulator-identical); the stored masks have no image effect yet (the mscaler update that consumes them is not run)
-8. `ISP_Tuning_SetAntiFogAttr`: T21: exported like the vendor libimp; control 0x8000163 is accepted by the OEM kernel without effect; T10/T20 (class c, 2026-10-10): the vendor sends control 0x98e903 (CUSTOM_ANTI_FOG); the open T10/T20 driver serves it through the antifog Iridix preset path that hung cameras (comment in tx-isp-core-tuning.c), so it is not exported; DefogStrength is the safe equivalent; wishlist: a driver preset that does not touch Iridix state. T21: apitest PASS (ret 0); T30 1.0.5: the enum goes out as control 0x8000163, the same code as T21; host test with a fake ioctl, driver behaviour on T30 not checked
+8. `ISP_Tuning_SetAntiFogAttr`: T21: exported like the vendor libimp; control 0x8000163 is accepted by the OEM kernel without effect; T10/T20 (class c, 2026-10-10): the vendor sends control 0x98e903 (CUSTOM_ANTI_FOG); agg-37: exported; the open driver (`claude/agg37-drv`) serves the control with a safe preset that does not touch the Iridix state that hung cameras earlier (DefogStrength remains the alternative); host test only, device test pending. T21: apitest PASS (ret 0); T30 1.0.5: the enum goes out as control 0x8000163, the same code as T21; host test with a fake ioctl, driver behaviour on T30 not checked
 9. `ISP_Tuning_SetAutoZoom`: T23: stock autozoom control 0x80000e8: crop window and scaler output into the channel MSCA record (agg-28; windows outside the picture, below 64x64 or odd are refused, beyond stock), host/build-tested only; T31: programs scaler/crop, refuses size change; T41: driver has no stock handler, refuses; used by: T23: raptor; T31: prudynt†, raptor†; T41: prudynt†; T41 (2026-10-10): deferred, live MSCA reprogramming carries a hang risk
 11. `ISP_Tuning_SetMaskBlock`: T23: 0x8000183 in claude/t23-awb-runtime only (not in agg-25); T41: driver has no handler, fails with -EPERM since agg-25 (was silent 0); vendor behaviour unverified; T23: 0x8000183 on the stock mscaler mask table (open-tx-isp agg-28, emulator-identical); the stored masks have no image effect yet (the mscaler update that consumes them is not run); T41 (2026-10-10): deferred, live MSCA reprogramming carries a hang risk
 12. `ISP_Tuning_SetScalerLv`: T23: the stock module has no handler for 0x80000e9 either (-EINVAL as stock); T41: driver has no handler, fails with -EPERM (was silent 0); vendor behaviour unverified; T41 (2026-10-10): deferred, live MSCA reprogramming carries a hang risk
@@ -871,7 +871,7 @@ Notes:
 14. `ISP_WDR_ENABLE`: T41: driver control, device-tested (claude/t41-driver-gaps, in agg-35)
 15. `ISP_WDR_ENABLE_GET`: T41: driver control, device-tested (claude/t41-driver-gaps, in agg-35)
 66. `ISP_Tuning_GetBrightness`: audit: reaches the driver/kernel; T40: returned -1 on cam-K 2026-10-10 (vendor library returns the value); fixed after RC1: the getters return the vendor per-input cache (host-tested)
-91. `ISP_Tuning_SetMeshShadingScale`: T10/T20 (class c): the vendor writes bits 2..4 of an ISP lens-shading register through a userspace mapping (3.12.0 0x62930); there is no driver control for it, wishlist: a tuning control in the T10/T20 driver
+91. `ISP_Tuning_SetMeshShadingScale`: T10/T20 (class c): the vendor writes bits 2..4 of an ISP lens-shading register through a userspace mapping (3.12.0 0x62930); agg-37: exported, driver control 0x80000a3 (mesh-scale field of register 0x380) in `claude/agg37-drv`; host test only, device test pending
 
 <details><summary>All 117 rows of this area (29 with a gap)</summary>
 
@@ -968,7 +968,7 @@ Notes:
 | `ISP_Tuning_GetSharpness` [72] | aud | aud | aud | aud | ? | aud | dev | aud | p† r† |
 | `ISP_Tuning_GetTotalGain` [73] | aud | dev | dev | dev | ? | dev | n.a. | n.a. | p† r† t |
 | `ISP_Tuning_SaveAllParam` [88] | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | – |
-| `ISP_Tuning_SetAntiFogAttr` [8] | miss | miss | no-op | n.a. | host | n.a. | n.a. | n.a. | – |
+| `ISP_Tuning_SetAntiFogAttr` [8] | host | host | no-op | n.a. | host | n.a. | n.a. | n.a. | – |
 | ► `ISP_Tuning_SetAutoZoom` [9] | n.a. | n.a. | n.a. | host | n.a. | host | host | host | see note |
 | `ISP_Tuning_SetBrightness` [74] | aud | aud | dev | aud | ? | aud | dev | aud | p† r† t |
 | `ISP_Tuning_SetDPStrength` [10] | dev | dev | dev | n.a. | host | n.a. | n.a. | n.a. | – |
@@ -978,7 +978,7 @@ Notes:
 | `ISP_Tuning_SetISPLDC` | n.a. | n.a. | n.a. | n.a. | miss | n.a. | n.a. | n.a. | – |
 | `ISP_Tuning_SetISPProcess` [77] | aud | aud | aud | n.a. | ? | n.a. | n.a. | n.a. | – |
 | ► `ISP_Tuning_SetMaskBlock` [11] | n.a. | n.a. | n.a. | host | n.a. | n.a. | n.a. | host | T41: r† |
-| `ISP_Tuning_SetMeshShadingScale` [91] | miss | miss | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | – |
+| `ISP_Tuning_SetMeshShadingScale` [91] | host | host | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | – |
 | `ISP_Tuning_SetRawDRC` [78] | host | host | no-op | n.a. | ? | n.a. | n.a. | n.a. | p† |
 | ► `ISP_Tuning_SetScalerLv` [12] | n.a. | n.a. | n.a. | no-op | n.a. | aud | n.a. | host | r† |
 | `ISP_Tuning_SetSceneMode` [79] | aud | aud | no-op | n.a. | ? | n.a. | n.a. | n.a. | t |
@@ -1065,7 +1065,7 @@ Notes:
 72. `ISP_Tuning_GetSharpness`: audit: reaches the driver/kernel
 73. `ISP_Tuning_GetTotalGain`: audit: reaches the driver/kernel
 88. `ISP_Tuning_SaveAllParam`: T10/T20/T21 (4 builds each) and T23/T31: declared in the SDK header, exported by none of the vendor libimp builds (nm); a vendor-stack application cannot link it either
-8. `ISP_Tuning_SetAntiFogAttr`: T21: exported like the vendor libimp; control 0x8000163 is accepted by the OEM kernel without effect; T10/T20 (class c, 2026-10-10): the vendor sends control 0x98e903 (CUSTOM_ANTI_FOG); the open T10/T20 driver serves it through the antifog Iridix preset path that hung cameras (comment in tx-isp-core-tuning.c), so it is not exported; DefogStrength is the safe equivalent; wishlist: a driver preset that does not touch Iridix state. T21: apitest PASS (ret 0); T30 1.0.5: the enum goes out as control 0x8000163, the same code as T21; host test with a fake ioctl, driver behaviour on T30 not checked
+8. `ISP_Tuning_SetAntiFogAttr`: T21: exported like the vendor libimp; control 0x8000163 is accepted by the OEM kernel without effect; T10/T20 (class c, 2026-10-10): the vendor sends control 0x98e903 (CUSTOM_ANTI_FOG); agg-37: exported; the open driver (`claude/agg37-drv`) serves the control with a safe preset that does not touch the Iridix state that hung cameras earlier (DefogStrength remains the alternative); host test only, device test pending. T21: apitest PASS (ret 0); T30 1.0.5: the enum goes out as control 0x8000163, the same code as T21; host test with a fake ioctl, driver behaviour on T30 not checked
 9. `ISP_Tuning_SetAutoZoom`: T23: stock autozoom control 0x80000e8: crop window and scaler output into the channel MSCA record (agg-28; windows outside the picture, below 64x64 or odd are refused, beyond stock), host/build-tested only; T31: programs scaler/crop, refuses size change; T41: driver has no stock handler, refuses; used by: T23: raptor; T31: prudynt†, raptor†; T41: prudynt†; T41 (2026-10-10): deferred, live MSCA reprogramming carries a hang risk
 74. `ISP_Tuning_SetBrightness`: T21: acts (beyond vendor: AE target scaled by value/128, open-tx-isp claude/release-t21-brightness); imgfx Y 28.8/117.7/193.0 for 30/128/225; the vendor kernel only stores the value
 10. `ISP_Tuning_SetDPStrength`: T21: exported like the vendor (cap 200 %); reaches the open driver DPC ratio (control 0x8000062); not individually device-tested; T31: none of the 28 vendor libimp builds (1.1.1-1.1.6) exports it, the header set does not declare it either; T10/T20 3.12.0 (0x60138): the same call as T21, capped at 200 %, here mapped onto the open driver DPC ratio (0x8000062); apitest PASS (return code) on T10, T20, T21; the picture effect was not measured; T30 1.0.5: capped at 200 %, mapped onto the DPC ratio control (0x8000062) like T21; host test with a fake tuning ioctl
@@ -1089,7 +1089,7 @@ Notes:
 87. `ISP_WDR_ENABLE_Get`: audit: userspace implementation
 89. `ISP_Tuning_Get/SetISPHVflip`: T10/T20 3.12.0: apitest PASS on T10 and T20 (set both flips, read back, restore). The vendor sends one module-control word (0x80000e2 through the 0xc00c56c6 ioctl), which the open T20 driver does not serve; OpenIMP uses the ISPHflip/ISPVflip pair (V4L2 flip controls) instead; T30 1.0.5 (2026-10-10): the same pair of flip controls as T20 (the vendor sends the module-control word 0x80000e2, which the open drivers do not serve); host test with a fake tuning ioctl, no T30 device
 90. `ISP_Tuning_Get/SetWDRAttr`: T10/T20 3.12.0: V4L2 control 0x98e912 with the vendor's mode cache (an unchanged mode returns 0 without the driver). apitest PASS on T10 and T20 for Get and Set of the current mode; switching WDR on was not run: the driver refuses (-EPERM) without a WDR frame buffer, as the stock module; T30 1.0.5: V4L2 control 0x8000169 with the vendor's mode cache (an unchanged mode returns 0 without the driver; a failed Get returns the cached mode with the error); host test with a fake ioctl; whether the open T30 driver serves the control is not checked
-91. `ISP_Tuning_SetMeshShadingScale`: T10/T20 (class c): the vendor writes bits 2..4 of an ISP lens-shading register through a userspace mapping (3.12.0 0x62930); there is no driver control for it, wishlist: a tuning control in the T10/T20 driver
+91. `ISP_Tuning_SetMeshShadingScale`: T10/T20 (class c): the vendor writes bits 2..4 of an ISP lens-shading register through a userspace mapping (3.12.0 0x62930); agg-37: exported, driver control 0x80000a3 (mesh-scale field of register 0x380) in `claude/agg37-drv`; host test only, device test pending
 
 </details>
 
