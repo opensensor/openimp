@@ -1516,6 +1516,26 @@ typedef struct {
 int IMP_Encoder_SetChnMapRoi(int encChn, IMPEncoderMapRoiAttr *pstMapRoi);
 #endif
 
+#if defined(PLATFORM_T40)
+/* T40 1.3.1: user_data_unregistered SEI per channel (src/t40/t40_sei.h) */
+typedef enum {
+    IMP_ENC_SEI_MODE_NONE = 0x00,   /* no SEI */
+    IMP_ENC_SEI_MODE_INTRA = 0x01,  /* SEI in front of intra pictures */
+    IMP_ENC_SEI_MODE_ALL = 0x02,    /* SEI in front of every picture */
+} IMPEncoderSEIMode;
+
+typedef struct {
+    IMPEncoderSEIMode SeiMode;
+    uint8_t *uuid;                  /* 16 bytes */
+    uint8_t *userData;
+    uint8_t userDataSize;           /* at most 128 */
+} IMPEncoderSeiAttr;
+
+int IMP_Encoder_SetChnSeiAttr(int encChn, IMPEncoderSeiAttr *SeiAttr);
+int IMP_Encoder_GetChnSeiAttr(int encChn, IMPEncoderSeiAttr *SeiAttr);
+int IMP_Encoder_SetFrameRelease(int encChn, int num, int den);
+#endif
+
 #ifdef __cplusplus
 }
 #endif

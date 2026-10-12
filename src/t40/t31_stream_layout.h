@@ -76,6 +76,11 @@ uint32_t openimp_t31_avc_au_check(const uint8_t *data, uint32_t length,
  * Any other type, a layer id or a temporal id is BAD_TYPE. */
 uint32_t openimp_t31_hevc_au_check(const uint8_t *data, uint32_t length,
                                    int is_idr, OpenIMPT31AvcAuCheck *report);
+/* Same check, but one SEI NAL (H.264 6 / H.265 39) right in front of the
+ * VCL NAL is accepted: the T40 SetChnSeiAttr access units. */
+uint32_t openimp_t31_au_check_sei(const uint8_t *data, uint32_t length,
+                                  int is_idr, OpenIMPT31AvcAuCheck *report,
+                                  int hevc);
 /* One-line summary of a check result for logs: flag names, NAL list
  * (type@offset+length) and the bytes around the first unexpected NAL. */
 void openimp_t31_avc_au_describe(const uint8_t *data, uint32_t length,

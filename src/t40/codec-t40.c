@@ -102,6 +102,44 @@
 #define AVPU_T40_NATIVE 1
 #endif
 
+#if defined(AVPU_T40_NATIVE)
+/* IMP_Encoder_SetChnSeiAttr (t40_sei.h): the SEI configuration of every
+ * channel is set on the caller's thread and read by the encoding thread. */
+static pthread_mutex_t codec_sei_lock = PTHREAD_MUTEX_INITIALIZER;
+
+/* Header prewrite: the user_data_unregistered SEI in front of the slice
+ * when the mode asks for it.  `used` is the prefix written so far.  The
+ * prefix (headers, SEI, slice header) is kept twice in the 0x220 bytes in
+ * front of the entropy payload: at stream[0] for the published access unit
+ * and right-aligned before 0x220 for the hardware (avpu_stage_stream_prefix;
+ * the T40 build has no separate header shadow).  The two copies must not
+ * overlap, so the whole prefix stays within 0x110 bytes: the SEI is left
+ * out (and counted in sei_skipped) when it would not fit with a 64-byte
+ * slice-header margin.  H.264 IDR pictures leave room for about 130 bytes
+ * of user data, H.265 IDR pictures (VPS/SPS/PPS) for about 90. */
+static uint32_t avpu_t40_write_sei(ALAvpuContext *ctx, uint8_t *dst,
+                                   uint32_t used, int hevc, int is_idr)
+{
+    OpenIMPT40Sei sei;
+    uint32_t limit = 0x110u;
+    uint32_t written;
+
+    pthread_mutex_lock(&codec_sei_lock);
+    sei = ctx->sei;
+    pthread_mutex_unlock(&codec_sei_lock);
+    if (!openimp_t40_sei_wanted(&sei, is_idr))
+        return 0u;
+    if (used + 64u >= limit) {
+        ctx->sei_skipped++;
+        return 0u;
+    }
+    written = openimp_t40_sei_nal(dst, limit - used - 64u, hevc, &sei);
+    if (!written)
+        ctx->sei_skipped++;
+    return written;
+}
+#endif
+
 enum {
     AVPU_STREAM_BUF_FREE = 0,
     AVPU_STREAM_BUF_IN_FLIGHT = 1,
@@ -3043,6 +3081,9 @@ static uint32_t avpu_t31_hevc_write_headers(ALAvpuContext *ctx,
          * hardware RC state no longer matches it. */
         ctx->hevc_pps_cu_qp_delta = config.cu_qp_delta_enabled;
     }
+#if defined(AVPU_T40_NATIVE)
+    pos += avpu_t40_write_sei(ctx, buf + pos, pos, 1, is_idr);
+#endif
     memset(&slice, 0, sizeof(slice));
     slice.is_idr = is_idr ? 1u : 0u;
     slice.poc = is_idr ? 0u : ctx->frame_number - ctx->idr_frame_number;
@@ -3406,6 +3447,9 @@ static uint32_t avpu_prewrite_stream_headers(ALAvpuContext *ctx, int buf_idx, in
             pos += (uint32_t)avpu_write_nal_epb(buf + pos, 0x28u,
                                                 rbsp, rbsp_len);
         }
+#if defined(AVPU_T40_NATIVE)
+        pos += avpu_t40_write_sei(ctx, buf + pos, pos, 0, is_idr);
+#endif
         rbsp_len = avpu_generate_slice_header_rbsp(rbsp, &header_ctx, is_idr,
                                                     &slice_bits);
         if (rbsp_len <= 0 || pos + (uint32_t)rbsp_len + 16u >= budget)
@@ -7634,7 +7678,15 @@ static uint32_t avpu_stream_buffer_effective_size(ALAvpuContext *ctx, int buf_id
              * ffmpeg report "(0+2) exceeds max"; dropping the picture costs
              * one frame and an IDR instead.
              */
-            if ((ctx->codec_hevc
+            if ((
+#if defined(AVPU_T40_NATIVE)
+                 ctx->sei.mode
+                     ? openimp_t31_au_check_sei(
+                           public_stream, raw_end,
+                           ctx->stream_is_idr[buf_idx] ? 1 : 0, &au,
+                           ctx->codec_hevc ? 1 : 0) :
+#endif
+                 ctx->codec_hevc
                      ? openimp_t31_hevc_au_check(
                            public_stream, raw_end,
                            ctx->stream_is_idr[buf_idx] ? 1 : 0, &au)
@@ -14063,3 +14115,54 @@ T23HelixBridge *OpenIMP_T23_CodecBridge(void *codec)
     return codec ? &((AL_CodecEncode *)codec)->t23_helix : NULL;
 }
 #endif
+
+/* IMP_Encoder_SetChnSeiAttr / GetChnSeiAttr (vendor AL_Codec_Encode_SetSei
+ * / GetSei).  mode 0 off, 1 intra pictures, 2 every picture; the uuid and
+ * up to 128 bytes of user data are copied.  T40 build only. */
+int AL_Codec_Encode_SetSei(void *codec, int mode, const uint8_t *uuid,
+                           const uint8_t *data, uint32_t size)
+{
+#if defined(AVPU_T40_NATIVE)
+    AL_CodecEncode *enc = (AL_CodecEncode *)codec;
+    OpenIMPT40Sei sei;
+
+    if (!enc || mode < 0 || mode > 2)
+        return -1;
+    memset(&sei, 0, sizeof(sei));
+    if (mode) {
+        if (!uuid || (size && !data))
+            return -1;
+        if (size > OPENIMP_T40_SEI_MAX_DATA)
+            size = OPENIMP_T40_SEI_MAX_DATA;
+        sei.mode = (uint8_t)mode;
+        sei.size = (uint8_t)size;
+        memcpy(sei.uuid, uuid, OPENIMP_T40_SEI_UUID);
+        if (size)
+            memcpy(sei.data, data, size);
+    }
+    pthread_mutex_lock(&codec_sei_lock);
+    enc->avpu.sei = sei;
+    pthread_mutex_unlock(&codec_sei_lock);
+    return 0;
+#else
+    (void)codec; (void)mode; (void)uuid; (void)data; (void)size;
+    return -1;
+#endif
+}
+
+int AL_Codec_Encode_GetSei(void *codec, void *out)
+{
+#if defined(AVPU_T40_NATIVE)
+    AL_CodecEncode *enc = (AL_CodecEncode *)codec;
+
+    if (!enc || !out)
+        return -1;
+    pthread_mutex_lock(&codec_sei_lock);
+    memcpy(out, &enc->avpu.sei, sizeof(enc->avpu.sei));
+    pthread_mutex_unlock(&codec_sei_lock);
+    return 0;
+#else
+    (void)codec; (void)out;
+    return -1;
+#endif
+}

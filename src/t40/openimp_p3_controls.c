@@ -364,6 +364,80 @@ int32_t IMP_ISP_WDR_ENABLE(IMPVI_NUM num, IMPISPTuningOpsMode *mode)
     return result;
 }
 
+#if !defined(PLATFORM_T41)
+/* T40 IMP_ISP_WDR_OPEN (vendor 1.3.1 0x8be48), before the first
+ * AddSensor: the ISP device must be open and attr set (-8 for either);
+ * rmode LINEAR sends {sensor number (byte), imode} with the ISP-device
+ * ioctl 0xc0045432 (-1 if it fails; the vendor then keeps imode in its
+ * sensor record, which OpenIMP has no use for); rmode WDR switches WDR on
+ * like IMP_ISP_WDR_ENABLE, whose result the vendor ignores (0); any other
+ * rmode -9.  OpenIMP sends the WDR switch on the open device directly,
+ * because its WDR_ENABLE needs a running sensor. */
+extern int OpenIMP_P1_IspIOCtlOpened(uint32_t command, void *argument);
+#define TISP_IOCTL_WDR_OPEN_LINEAR 0xc0045432U
+struct p3_wdr_open_req {
+    uint8_t sensor;
+    uint8_t pad[3];
+    int32_t imode;
+};
+_Static_assert(sizeof(struct p3_wdr_open_req) == 8, "WDR_OPEN request is 8 bytes");
+
+int32_t IMP_ISP_WDR_OPEN(IMPVI_NUM num, IMPISPWdrOpenAttr *attr)
+{
+    if (!attr)
+        return -8;
+    if (attr->rmode == IMPISP_TYPE_RUN_LINEAR) {
+        struct p3_wdr_open_req req;
+
+        memset(&req, 0, sizeof(req));
+        req.sensor = (uint8_t)num;
+        req.imode = (int32_t)attr->imode;
+        if (OpenIMP_P1_IspIOCtlOpened(TISP_IOCTL_WDR_OPEN_LINEAR, &req) != 0)
+            return errno == ENODEV ? -8 : -1;
+        return 0;
+    }
+    if (attr->rmode == IMPISP_TYPE_RUN_WDR) {
+        int32_t zero = 0;
+
+        pthread_mutex_lock(&p3_wdr_lock);
+        if (OpenIMP_P1_IspIOCtlOpened(TISP_IOCTL_SET_WDR_ENABLE, &zero) == 0)
+            p3_wdr_mode = IMPISP_TUNING_OPS_MODE_ENABLE;
+        pthread_mutex_unlock(&p3_wdr_lock);
+        return 0;
+    }
+    return -9;
+}
+#endif
+
+#if !defined(PLATFORM_T41)
+/* T40 IMP_ISP_Bypass_Bind (vendor 1.3.1 0x8bacc): num < 4 (-4), ISP
+ * device open (-8), attr (-9); a 12-byte request, per bypass entry i
+ * {num * 3 + i, enable, vc_index, dma_index}, goes to the ISP-device ioctl
+ * 0xc0045431 (-1 if it fails).  Header: after IMP_ISP_Open; not together
+ * with IMP_ISP_Tuning_SetISPBypass. */
+#define TISP_IOCTL_BYPASS_BIND 0xc0045431U
+
+int32_t IMP_ISP_Bypass_Bind(IMPVI_NUM num, IMPISPBypassAttr *attr)
+{
+    uint8_t req[12];
+    unsigned i;
+
+    if ((unsigned)num >= 4U)
+        return -4;
+    if (!attr)
+        return -9;
+    for (i = 0; i < 3U; i++) {
+        req[i * 4U] = (uint8_t)((unsigned)num * 3U + i);
+        req[i * 4U + 1U] = attr->bypass[i].enable;
+        req[i * 4U + 2U] = attr->bypass[i].vc_index;
+        req[i * 4U + 3U] = attr->bypass[i].dma_index;
+    }
+    if (OpenIMP_P1_IspIOCtlOpened(TISP_IOCTL_BYPASS_BIND, req) != 0)
+        return errno == ENODEV ? -8 : -1;
+    return 0;
+}
+#endif
+
 int32_t IMP_ISP_WDR_ENABLE_GET(IMPVI_NUM num, IMPISPTuningOpsMode *mode)
 {
     if (num != IMPVI_MAIN || !mode)
@@ -591,6 +665,7 @@ P3_BCSH_ACCESSORS(Contrast, contrast, TISP_CID_CONTRAST)
 P3_BCSH_ACCESSORS(Saturation, saturation, TISP_CID_SATURATION)
 P3_BCSH_ACCESSORS(Sharpness, sharpness, TISP_CID_SHARPNESS)
 
+#if defined(PLATFORM_T41)
 int32_t IMP_ISP_Tuning_SetBcshHue(IMPVI_NUM num, unsigned char *value)
 {
     int result;
@@ -615,6 +690,38 @@ int32_t IMP_ISP_Tuning_GetBcshHue(IMPVI_NUM num, unsigned char *value)
     *value = p3_controls.hue;
     return result;
 }
+#else
+/* Vendor T40 1.3.1 IMP_ISP_Tuning_SetBcshHue (0x75b7c) / GetBcshHue
+ * (0x7603c): Set checks num < 4 (-4), the pointer (-9) and that the ISP
+ * tuning device is running (-5), sends the byte pointer with control
+ * 0x08000081 (-6 on failure) and caches the byte at tuning device +20+num;
+ * Get only returns that cached byte and 0 (no ioctl; the old OpenIMP getter
+ * asked the driver, which only echoed the pointer target).  The kernel maps
+ * 0..255 onto a 0..120 degree hue angle (tisp_bcsh_s_hue). */
+static unsigned char p3_hue_cache[4] = {128, 128, 128, 128};
+
+int32_t IMP_ISP_Tuning_SetBcshHue(IMPVI_NUM num, unsigned char *value)
+{
+    if ((unsigned)num >= 4U)
+        return -4;
+    if (!value)
+        return -9;
+    if (!OpenIMP_P1_TuningEnabled())
+        return -5;
+    if (p3_tuning_pointer(num, 0, TISP_CID_BCSH_HUE, value) != 0)
+        return -6;
+    p3_hue_cache[num] = *value;
+    return 0;
+}
+
+int32_t IMP_ISP_Tuning_GetBcshHue(IMPVI_NUM num, unsigned char *value)
+{
+    if ((unsigned)num >= 4U || !value)
+        return -1;     /* the vendor would fault; stay safe */
+    *value = p3_hue_cache[num];
+    return 0;
+}
+#endif
 
 #if !defined(PLATFORM_T41)
 /* T40 IMP_ISP_Tuning_SetMask / GetMask (vendor 1.3.1 libimp disassembly).
@@ -686,6 +793,102 @@ int32_t IMP_ISP_Tuning_GetMask(IMPVI_NUM num, IMPISPMASKAttr *mask)
 }
 #endif
 
+#if !defined(PLATFORM_T41)
+/* T40 IMP_ISP_StartNightMode (vendor 1.3.1 0x89834): num < 4 (-4), the ISP
+ * device must be open (-8), then the ISP-device ioctl 0xc004542e with a
+ * pointer to the sensor number (-1 if it fails).  The header: call it after
+ * IMP_ISP_Open and before IMP_ISP_AddSensor, so the sensor starts in night
+ * mode; the stock kernel keeps the flag. */
+extern int OpenIMP_P1_IspIOCtlOpened(uint32_t command, void *argument);
+#define TISP_IOCTL_START_NIGHT_MODE 0xc004542eU
+
+int32_t IMP_ISP_StartNightMode(IMPVI_NUM num)
+{
+    int32_t sensor = (int32_t)num;
+
+    if ((unsigned)num >= 4U)
+        return -4;
+    if (OpenIMP_P1_IspIOCtlOpened(TISP_IOCTL_START_NIGHT_MODE, &sensor) != 0)
+        return errno == ENODEV ? -8 : -1;
+    return 0;
+}
+#endif
+
+#if !defined(PLATFORM_T41)
+/* T40 IMP_ISP_SetDrawAttr / GetDrawAttr (vendor 1.3.1 libimp 0x83478 /
+ * 0x82f34): IMPISPDrawAttr is 2 ISP output channels x 16 units of 28 bytes
+ * (type at +0, color_type at +4, enable at +8, colour at +18: r g b, then
+ * y u v at +21).  Set: num < 4 (-4), attr (-9), tuning device running (-5);
+ * for every unit of type line/range/window that is enabled with an RGB
+ * colour the YUV bytes are computed in the caller's struct
+ * (IMP_ISP_Tuning_DumpMask), the 896 bytes are kept per input and the
+ * pointer goes to the kernel (control 0x080000a0, -6 on failure).  Get:
+ * state check, ioctl get into the caller's struct (-6), then color_type and
+ * the RGB bytes of every unit come back from the Set copy (the driver hands
+ * back its own YUV form).  Same pattern as SetMask above. */
+#define P3_DRAW_SIZE 896
+#define P3_DRAW_UNIT 28
+#define TISP_CID_DRAW 0x080000a0
+_Static_assert(sizeof(IMPISPDrawAttr) == P3_DRAW_SIZE, "draw attr is 896 bytes");
+_Static_assert(sizeof(IMPISPDrawUnitAttr) == P3_DRAW_UNIT, "draw unit is 28 bytes");
+_Static_assert(offsetof(IMPISPDrawUnitAttr, draw_cfg) + offsetof(IMPISPDrawWindAttr, wind_color) == 18,
+               "draw colour at 18");
+static unsigned char p3_draw_cache[4][P3_DRAW_SIZE];
+
+int32_t IMP_ISP_SetDrawAttr(IMPVI_NUM num, IMPISPDrawAttr *attr)
+{
+    unsigned char *bytes = (unsigned char *)attr;
+    unsigned unit;
+
+    if ((unsigned)num >= 4U)
+        return -4;
+    if (!attr)
+        return -9;
+    if (!OpenIMP_P1_TuningEnabled())
+        return -5;
+    for (unit = 0; unit < 32; unit++) {
+        unsigned char *u = bytes + unit * P3_DRAW_UNIT;
+        uint32_t type, color_type;
+
+        memcpy(&type, u, sizeof(type));
+        memcpy(&color_type, u + 4, sizeof(color_type));
+        if (type <= IMP_ISP_DRAW_WIND && u[8] && color_type == 0) {
+            unsigned char c[3] = { u[18], u[19], u[20] };
+
+            isp_mask_rgb_to_yuv(c);
+            memcpy(u + 21, c, 3);
+        }
+    }
+    memcpy(p3_draw_cache[num], bytes, P3_DRAW_SIZE);
+    if (p3_tuning_pointer(num, 0, TISP_CID_DRAW, attr) != 0)
+        return -6;
+    return 0;
+}
+
+int32_t IMP_ISP_GetDrawAttr(IMPVI_NUM num, IMPISPDrawAttr *attr)
+{
+    unsigned char *bytes = (unsigned char *)attr;
+    unsigned unit;
+
+    if ((unsigned)num >= 4U)
+        return -4;
+    if (!attr)
+        return -9;
+    if (!OpenIMP_P1_TuningEnabled())
+        return -5;
+    if (p3_tuning_pointer(num, 1, TISP_CID_DRAW, attr) != 0)
+        return -6;
+    for (unit = 0; unit < 32; unit++) {
+        unsigned char *u = bytes + unit * P3_DRAW_UNIT;
+        const unsigned char *c = p3_draw_cache[num] + unit * P3_DRAW_UNIT;
+
+        memcpy(u + 4, c + 4, 4);
+        memcpy(u + 18, c + 18, 3);
+    }
+    return 0;
+}
+#endif
+
 #if defined(PLATFORM_T41)
 int32_t IMP_ISP_Tuning_SetSensorFPS(IMPVI_NUM num, IMPISPSensorFps *fps)
 #else
@@ -739,9 +942,6 @@ int32_t IMP_ISP_Tuning_GetSensorFPS(IMPVI_NUM num, uint32_t *numerator,
 
 #if defined(PLATFORM_T41)
 int32_t IMP_ISP_Tuning_SetHVFLIP(IMPVI_NUM num, IMPISPHVFLIPAttr *flip)
-#else
-int32_t IMP_ISP_Tuning_SetHVFLIP(IMPVI_NUM num, IMPISPHVFLIP *flip)
-#endif
 {
     int result;
 
@@ -753,11 +953,7 @@ int32_t IMP_ISP_Tuning_SetHVFLIP(IMPVI_NUM num, IMPISPHVFLIP *flip)
     return result;
 }
 
-#if defined(PLATFORM_T41)
 int32_t IMP_ISP_Tuning_GetHVFLIP(IMPVI_NUM num, IMPISPHVFLIPAttr *flip)
-#else
-int32_t IMP_ISP_Tuning_GetHVFlip(IMPVI_NUM num, IMPISPHVFLIP *flip)
-#endif
 {
     int result;
 
@@ -769,6 +965,43 @@ int32_t IMP_ISP_Tuning_GetHVFlip(IMPVI_NUM num, IMPISPHVFLIP *flip)
     *flip = p3_controls.flip;
     return result;
 }
+#else
+/* Vendor T40 1.3.1 IMP_ISP_Tuning_SetHVFLIP (0x76080): num < 4 (-4), the
+ * pointer (-9), tuning device running (-5), mode < IMPISP_FLIP_MODE_BUTT
+ * (9, else -4); the request carries the pointer to the mode (control
+ * 0x08000073, -6 on failure) and the mode is cached per input.  The kernel
+ * (tx_isp_hvflip_s_attr) applies modes 1..3 in the MSCA and 4..8 through
+ * the sensor.  GetHVFlip (0x765d8) never asks the driver: the stock kernel
+ * has no getter for this control (the old OpenIMP getter returned -1); it
+ * returns the cached mode (0 before any Set) and 0. */
+static IMPISPHVFLIP p3_flip_cache[4];
+
+int32_t IMP_ISP_Tuning_SetHVFLIP(IMPVI_NUM num, IMPISPHVFLIP *flip)
+{
+    if ((unsigned)num >= 4U)
+        return -4;
+    if (!flip)
+        return -9;
+    if (!OpenIMP_P1_TuningEnabled())
+        return -5;
+    if ((uint32_t)*flip >= (uint32_t)IMPISP_FLIP_MODE_BUTT)
+        return -4;
+    if (p3_tuning_pointer(num, 0, TISP_CID_HVFLIP, flip) != 0)
+        return -6;
+    p3_flip_cache[num] = *flip;
+    return 0;
+}
+
+int32_t IMP_ISP_Tuning_GetHVFlip(IMPVI_NUM num, IMPISPHVFLIP *flip)
+{
+    if ((unsigned)num >= 4U)
+        return -4;
+    if (!flip)
+        return -9;
+    *flip = p3_flip_cache[num];
+    return 0;
+}
+#endif
 
 #if defined(PLATFORM_T41)
 /*
@@ -1170,6 +1403,76 @@ int32_t IMP_ISP_GetOSDAttr(IMPVI_NUM num, IMPISPOSDAttr *attr)
     return p3_tuning_pointer(num, 1, TISP_CID_OSD_ATTR, attr);
 }
 
+#if !defined(PLATFORM_T41)
+/* T40 IMP_OSD_SetRgnAttr_ISP / GetRgnAttr_ISP (vendor 1.3.1 0xbe6e4 /
+ * 0xbea24): the IMPOSDRgnAttr of an ISP-drawn region carries an
+ * IMPOSDIspDraw at +48: IMPISPDrawAttr (+48), IMPISPOSDAttr (+944) and
+ * IMPISPMASKAttr (+1352).  Set: sensornum < 2, attr, type
+ * OSD_REG_ISP_PIC/LINE_RECT/COVER (10..12) else -1; bosdshow (0: ISP OSD
+ * only, 1: also IPU OSD) is kept for GetRgnAttr_ISP; LINE_RECT goes to
+ * IMP_ISP_SetDrawAttr, COVER to IMP_ISP_Tuning_SetMask, PIC is refused
+ * with -1 (vendor: pictures go through IMP_OSD_SetRgnAttr_PicISP); any
+ * failure is -1.  Get: sensornum < 2, attr and pbosdshow, then
+ * GetDrawAttr, GetOSDAttr and GetMask into the three parts (-1 if one
+ * fails).  The vendor also refuses the calls before the OSD module exists
+ * (IMP_System_Init); OpenIMP has no such module state. */
+#define P3_OSD_ISP_DRAW 48
+#define P3_OSD_ISP_PIC 944
+#define P3_OSD_ISP_COVER 1352
+_Static_assert(P3_OSD_ISP_DRAW + sizeof(IMPISPDrawAttr) == P3_OSD_ISP_PIC,
+               "IMPISPOSDAttr follows the draw attr");
+/* IMPISPOSDAttr holds picture pointers: 408 bytes on the 32-bit target */
+_Static_assert(sizeof(void *) != 4 ||
+               P3_OSD_ISP_PIC + sizeof(IMPISPOSDAttr) == P3_OSD_ISP_COVER,
+               "IMPISPMASKAttr follows the OSD attr");
+static int p3_osd_isp_show;
+static pthread_mutex_t p3_osd_isp_lock = PTHREAD_MUTEX_INITIALIZER;
+
+int IMP_OSD_SetRgnAttr_ISP(int sensornum, void *prAttr, int bosdshow)
+{
+    unsigned char *attr = prAttr;
+    uint32_t type;
+    int result = -1;
+
+    if ((unsigned)sensornum >= 2U || !attr)
+        return -1;
+    memcpy(&type, attr, sizeof(type));
+    if (type < 10U || type > 12U)
+        return -1;
+    pthread_mutex_lock(&p3_osd_isp_lock);
+    p3_osd_isp_show = bosdshow != 0;
+    if (type == 11U)
+        result = IMP_ISP_SetDrawAttr((IMPVI_NUM)sensornum,
+                                     (IMPISPDrawAttr *)(attr + P3_OSD_ISP_DRAW)) < 0 ? -1 : 0;
+    else if (type == 12U)
+        result = IMP_ISP_Tuning_SetMask((IMPVI_NUM)sensornum,
+                                        (IMPISPMASKAttr *)(attr + P3_OSD_ISP_COVER)) < 0 ? -1 : 0;
+    pthread_mutex_unlock(&p3_osd_isp_lock);
+    return result;
+}
+
+int IMP_OSD_GetRgnAttr_ISP(int sensornum, void *prAttr, int *pbosdshow)
+{
+    unsigned char *attr = prAttr;
+
+    if ((unsigned)sensornum >= 2U || !attr || !pbosdshow)
+        return -1;
+    pthread_mutex_lock(&p3_osd_isp_lock);
+    *pbosdshow = p3_osd_isp_show;
+    pthread_mutex_unlock(&p3_osd_isp_lock);
+    if (IMP_ISP_GetDrawAttr((IMPVI_NUM)sensornum,
+                            (IMPISPDrawAttr *)(attr + P3_OSD_ISP_DRAW)) < 0)
+        return -1;
+    if (IMP_ISP_GetOSDAttr((IMPVI_NUM)sensornum,
+                           (IMPISPOSDAttr *)(attr + P3_OSD_ISP_PIC)) < 0)
+        return -1;
+    if (IMP_ISP_Tuning_GetMask((IMPVI_NUM)sensornum,
+                               (IMPISPMASKAttr *)(attr + P3_OSD_ISP_COVER)) < 0)
+        return -1;
+    return 0;
+}
+#endif
+
 /* Vendor IMP_ISP_SetPreDqtime (T40 1.3.1 0x8aa04): the caller's pointer goes
  * to the ISP node as ioctl 0xc0045430 (TISP_VIDIOC_SET_PREDQTIME); sensor
  * number >= 4 is -4, no ISP device -8, NULL -9, a failing ioctl -6. */
@@ -1355,6 +1658,7 @@ int32_t IMP_ISP_Tuning_GetCCMAttr(IMPVI_NUM num, IMPISPCCMAttr *attr)
 }
 #endif
 
+#if defined(PLATFORM_T41)
 int32_t IMP_ISP_Tuning_SetISPRunningMode(IMPVI_NUM num,
                                          IMPISPRunningMode *mode)
 {
@@ -1381,6 +1685,52 @@ int32_t IMP_ISP_Tuning_GetISPRunningMode(IMPVI_NUM num,
     *mode = p3_controls.running_mode;
     return result;
 }
+#else
+/* Vendor T40 1.3.1 IMP_ISP_Tuning_SetISPRunningMode (0x7686c): num < 4
+ * (-4), the pointer (-9), mode < IMPISP_RUNNING_MODE_BUTT (3, else -4); the
+ * set request carries the POINTER to the mode (control 0x08000071) and the
+ * ioctl result is returned as is.  GetISPRunningMode (0x76cbc) sends the
+ * get request without a payload and the kernel answers with the mode IN the
+ * payload word (the old OpenIMP getter passed a pointer, the kernel
+ * overwrote it with the mode and the caller's variable stayed untouched,
+ * so it read back garbage).  The vendor additionally re-arms its
+ * frame-source "change wait" counter after a set, which only drops the
+ * first frames after a switch; not reproduced. */
+int32_t IMP_ISP_Tuning_SetISPRunningMode(IMPVI_NUM num,
+                                         IMPISPRunningMode *mode)
+{
+    int result;
+
+    if ((unsigned)num >= 4U)
+        return -4;
+    if (!mode)
+        return -9;
+    if ((uint32_t)*mode >= (uint32_t)IMPISP_RUNNING_MODE_BUTT)
+        return -4;
+    result = p3_tuning_pointer(num, 0, TISP_CID_RUNNING_MODE, mode);
+    if (result == 0)
+        p3_controls.running_mode = *mode;
+    return result;
+}
+
+int32_t IMP_ISP_Tuning_GetISPRunningMode(IMPVI_NUM num,
+                                         IMPISPRunningMode *mode)
+{
+    int32_t value = 0;
+
+    if ((unsigned)num >= 4U)
+        return -4;
+    if (!mode)
+        return -9;
+    if (!OpenIMP_P1_TuningEnabled())
+        return -5;
+    if (p3_tuning_scalar(num, 1, TISP_CID_RUNNING_MODE, &value) != 0)
+        return -6;
+    *mode = (IMPISPRunningMode)value;
+    p3_controls.running_mode = *mode;
+    return 0;
+}
+#endif
 
 int32_t IMP_ISP_Tuning_SetISPBypass(IMPVI_NUM num,
                                     IMPISPTuningOpsMode *enable)

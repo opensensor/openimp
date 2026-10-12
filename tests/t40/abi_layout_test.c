@@ -7,6 +7,7 @@
 #include <stdint.h>
 
 #include <imp/imp_common.h>
+#include <imp/imp_encoder.h>
 #include <imp/imp_framesource.h>
 #include <imp/imp_isp.h>
 #include <imp/imp_ivs.h>
@@ -61,5 +62,14 @@ SIZE_IS(IMPISPAEScenceAttr, 52);
 SIZE_IS(IMPISPCoefftWb, 6);
 SIZE_IS(IMPISPWdrOutputMode, 4);
 SIZE_IS(IMPISPFrameDropAttr, 36);
+
+/* IMP_Encoder_Set/GetChnSeiAttr (the vendor reads mode, uuid, userData at
+ * 0/4/8 and the size byte at 12) and IMP_ISP_Get/SetDrawAttr */
+SIZE_IS(IMPEncoderSeiAttr, 16);
+OFF_IS(IMPEncoderSeiAttr, uuid, 4);
+OFF_IS(IMPEncoderSeiAttr, userData, 8);
+OFF_IS(IMPEncoderSeiAttr, userDataSize, 12);
+SIZE_IS(IMPISPDrawAttr, 896);
+SIZE_IS(IMPISPDrawUnitAttr, 28);
 
 int t40_abi_layout_checked;

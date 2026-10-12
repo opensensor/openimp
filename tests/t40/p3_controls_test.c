@@ -29,6 +29,21 @@ int OpenIMP_P1_IspIOCtl(uint32_t command, void *argument)
     return ispnode.result;
 }
 
+static struct { uint32_t command; int32_t value; int result; int calls; uint8_t bytes[12]; } opened;
+
+int OpenIMP_P1_IspIOCtlOpened(uint32_t command, void *argument);
+int OpenIMP_P1_IspIOCtlOpened(uint32_t command, void *argument)
+{
+    opened.command = command;
+    memcpy(&opened.value, argument, 4);
+    if (command == 0xc0045431U)
+        memcpy(opened.bytes, argument, 12);
+    opened.calls++;
+    if (opened.result)
+        errno = opened.result;
+    return opened.result ? -1 : 0;
+}
+
 int OpenIMP_P1_GetSensorName(char name[32], int32_t *cbus_type)
 {
     memset(name, 0, 32);
@@ -73,6 +88,8 @@ static struct {
 
 /* GetAwbStatistics: the "driver" reply, 2700 bytes */
 static unsigned char awb_reply[2700];
+static uint32_t rm_kernel;  /* running mode the "kernel" holds */
+static unsigned char draw_kernel[896];  /* draw attr the "kernel" holds */
 
 int OpenIMP_P1_TuningIOCtl(uint32_t command, void *argument)
 {
@@ -100,6 +117,22 @@ int OpenIMP_P1_TuningIOCtl(uint32_t command, void *argument)
             memcpy((void *)request->payload, last.reply,
                    request->control == 0x08000096 ? 64 : 24);
     }
+    if (request->control == 0x08000071 && request->direction) {
+        /* running mode get: the stock kernel answers in the payload word */
+        ((struct { int32_t a, b, c; uintptr_t payload; } *)argument)->payload =
+            (uintptr_t)rm_kernel;
+    }
+    if (request->control == 0x08000071 && !request->direction)
+        rm_kernel = *(const uint32_t *)request->payload;
+    if (request->control == 0x080000a0) {
+        if (request->direction)
+            memcpy((void *)request->payload, draw_kernel, sizeof(draw_kernel));
+        else
+            memcpy(draw_kernel, (const void *)request->payload, sizeof(draw_kernel));
+    }
+    if (request->control == 0x08000073 || request->control == 0x08000081)
+        memcpy(last.copy, (const void *)request->payload,
+               request->control == 0x08000073 ? 4 : 1);
     if (request->control == 0x08000080) {       /* CCM: 40-byte payload */
         if (request->direction) {
             memcpy((void *)request->payload, last.reply, 40);
@@ -529,6 +562,228 @@ int main(void)
         assert(csc.ColorGamut == IMP_ISP_CG_BT601_LIMITED);
         assert(csc.Matrix.CscCoef[0] == 0.0f && csc.Matrix.CscClip[3] == 0);
     }
+
+    /* HVFLIP / hue / running mode (vendor T40 1.3.1, device FAILs of
+     * 2026-10-11: GetHVFlip -1, running-mode get read back garbage). */
+    {
+        IMPISPHVFLIP f = IMPISP_FLIP_H_MODE, g = (IMPISPHVFLIP)99;
+        IMPISPRunningMode m, r;
+        unsigned char h = 20, hg = 0;
+
+        sb_enabled = 1;
+        /* GetHVFlip: cache only, 0 before any Set, never the driver */
+        before = last.calls;
+        assert(IMP_ISP_Tuning_GetHVFlip(IMPVI_MAIN, &g) == 0 && g == IMPISP_FLIP_NORMAL_MODE);
+        assert(last.calls == before);
+        /* SetHVFLIP: pointer to the mode, control 0x08000073 */
+        EXPECT(IMP_ISP_Tuning_SetHVFLIP(IMPVI_MAIN, &f), 0, 0x08000073, &f);
+        { uint32_t w; memcpy(&w, last.copy, 4); assert(w == IMPISP_FLIP_H_MODE); }
+        before = last.calls;
+        assert(IMP_ISP_Tuning_GetHVFlip(IMPVI_MAIN, &g) == 0 && g == IMPISP_FLIP_H_MODE);
+        assert(last.calls == before);
+        /* vendor checks: no ioctl */
+        f = IMPISP_FLIP_MODE_BUTT;
+        assert(IMP_ISP_Tuning_SetHVFLIP(IMPVI_MAIN, &f) == -4);
+        assert(IMP_ISP_Tuning_SetHVFLIP(IMPVI_MAIN, NULL) == -9);
+        assert(IMP_ISP_Tuning_SetHVFLIP((IMPVI_NUM)4, &f) == -4);
+        assert(IMP_ISP_Tuning_GetHVFlip(IMPVI_MAIN, NULL) == -9);
+        sb_enabled = 0;
+        f = IMPISP_FLIP_V_MODE;
+        assert(IMP_ISP_Tuning_SetHVFLIP(IMPVI_MAIN, &f) == -5);
+        sb_enabled = 1;
+        assert(last.calls == before);
+        /* a failing driver: -6, cache unchanged */
+        last.result = -1;
+        assert(IMP_ISP_Tuning_SetHVFLIP(IMPVI_MAIN, &f) == -6);
+        last.result = 0;
+        assert(IMP_ISP_Tuning_GetHVFlip(IMPVI_MAIN, &g) == 0 && g == IMPISP_FLIP_H_MODE);
+
+        /* hue: byte pointer, control 0x08000081; Get from the cache */
+        before = last.calls;
+        assert(IMP_ISP_Tuning_GetBcshHue(IMPVI_MAIN, &hg) == 0 && hg == 128);
+        assert(last.calls == before);
+        EXPECT(IMP_ISP_Tuning_SetBcshHue(IMPVI_MAIN, &h), 0, 0x08000081, &h);
+        assert(last.copy[0] == 20);
+        before = last.calls;
+        assert(IMP_ISP_Tuning_GetBcshHue(IMPVI_MAIN, &hg) == 0 && hg == 20);
+        assert(last.calls == before);
+        last.result = -1;
+        h = 230;
+        assert(IMP_ISP_Tuning_SetBcshHue(IMPVI_MAIN, &h) == -6);
+        last.result = 0;
+        assert(IMP_ISP_Tuning_GetBcshHue(IMPVI_MAIN, &hg) == 0 && hg == 20);
+        assert(IMP_ISP_Tuning_SetBcshHue(IMPVI_MAIN, NULL) == -9);
+        assert(IMP_ISP_Tuning_SetBcshHue((IMPVI_NUM)4, &h) == -4);
+
+        /* running mode: set by pointer, get answered in the payload word */
+        m = IMPISP_RUNNING_MODE_NIGHT;
+        EXPECT(IMP_ISP_Tuning_SetISPRunningMode(IMPVI_MAIN, &m), 0, 0x08000071, &m);
+        r = (IMPISPRunningMode)9;
+        before = last.calls;
+        assert(IMP_ISP_Tuning_GetISPRunningMode(IMPVI_MAIN, &r) == 0);
+        assert(last.calls == before + 1 && last.direction == 1 && last.control == 0x08000071);
+        assert(r == IMPISP_RUNNING_MODE_NIGHT);
+        m = IMPISP_RUNNING_MODE_DAY;
+        assert(IMP_ISP_Tuning_SetISPRunningMode(IMPVI_MAIN, &m) == 0);
+        r = (IMPISPRunningMode)9;
+        assert(IMP_ISP_Tuning_GetISPRunningMode(IMPVI_MAIN, &r) == 0 && r == IMPISP_RUNNING_MODE_DAY);
+        m = IMPISP_RUNNING_MODE_BUTT;
+        before = last.calls;
+        assert(IMP_ISP_Tuning_SetISPRunningMode(IMPVI_MAIN, &m) == -4);
+        assert(IMP_ISP_Tuning_SetISPRunningMode(IMPVI_MAIN, NULL) == -9);
+        assert(IMP_ISP_Tuning_GetISPRunningMode(IMPVI_MAIN, NULL) == -9);
+        assert(last.calls == before);
+        sb_enabled = 0;
+    }
+
+    /* Get/SetDrawAttr (vendor 0x83478/0x82f34): RGB -> YUV for enabled
+     * RGB units, pointer to the kernel, Get restores type and RGB */
+    {
+        static IMPISPDrawAttr d, g;
+        IMPISPDrawUnitAttr *u = &d.draw_chx[1][3];
+
+        memset(&d, 0, sizeof(d));
+        u->type = IMP_ISP_DRAW_WIND;
+        u->color_type = 0;              /* RGB */
+        u->draw_cfg.wind.wind_enable = 1;
+        u->draw_cfg.wind.wind_left = 64;
+        u->draw_cfg.wind.wind_width = 128;
+        u->draw_cfg.wind.wind_color.mask_argb.r_value = 255;
+        u->draw_cfg.wind.wind_color.mask_argb.g_value = 0;
+        u->draw_cfg.wind.wind_color.mask_argb.b_value = 0;
+        d.draw_chx[0][0].type = IMP_ISP_DRAW_LINE;      /* disabled: untouched */
+        d.draw_chx[0][0].draw_cfg.line.line_color.mask_argb.r_value = 9;
+        sb_enabled = 0;
+        before = last.calls;
+        assert(IMP_ISP_SetDrawAttr(IMPVI_MAIN, &d) == -5);
+        assert(IMP_ISP_GetDrawAttr(IMPVI_MAIN, &g) == -5);
+        sb_enabled = 1;
+        assert(IMP_ISP_SetDrawAttr(IMPVI_MAIN, NULL) == -9);
+        assert(IMP_ISP_SetDrawAttr((IMPVI_NUM)4, &d) == -4);
+        assert(last.calls == before);
+        EXPECT(IMP_ISP_SetDrawAttr(IMPVI_MAIN, &d), 0, 0x080000a0, &d);
+        /* red in BT.601 full range: Y about 76, V high, U low */
+        assert(u->draw_cfg.wind.wind_color.mask_ayuv.y_value > 60 &&
+               u->draw_cfg.wind.wind_color.mask_ayuv.y_value < 90);
+        assert(u->draw_cfg.wind.wind_color.mask_ayuv.v_value > 200);
+        assert(u->draw_cfg.wind.wind_color.mask_ayuv.u_value < 110);
+        assert(draw_kernel[(16 + 3) * 28 + 21] == u->draw_cfg.wind.wind_color.mask_ayuv.y_value);
+        assert(d.draw_chx[0][0].draw_cfg.line.line_color.mask_ayuv.y_value == 0);
+        /* the kernel hands back YUV only and type 1 (YUV) */
+        memset(draw_kernel + (16 + 3) * 28 + 18, 0, 3);
+        draw_kernel[(16 + 3) * 28 + 4] = 1;
+        memset(&g, 0x55, sizeof(g));
+        EXPECT(IMP_ISP_GetDrawAttr(IMPVI_MAIN, &g), 1, 0x080000a0, &g);
+        assert(g.draw_chx[1][3].color_type == 0);
+        assert(g.draw_chx[1][3].draw_cfg.wind.wind_color.mask_argb.r_value == 255);
+        assert(g.draw_chx[1][3].draw_cfg.wind.wind_left == 64);
+        last.result = -1;
+        assert(IMP_ISP_SetDrawAttr(IMPVI_MAIN, &d) == -6);
+        assert(IMP_ISP_GetDrawAttr(IMPVI_MAIN, &g) == -6);
+        last.result = 0;
+        sb_enabled = 0;
+    }
+
+    /* OSD_Set/GetRgnAttr_ISP: IMPOSDIspDraw parts at +48/+944/+1352 */
+    {
+        static unsigned char rgn[1772];
+        uint32_t t;
+        int show = -1;
+        int IMP_OSD_SetRgnAttr_ISP(int, void *, int);
+        int IMP_OSD_GetRgnAttr_ISP(int, void *, int *);
+
+        sb_enabled = 1;
+        memset(rgn, 0, sizeof(rgn));
+        t = 11;                                   /* OSD_REG_ISP_LINE_RECT */
+        memcpy(rgn, &t, 4);
+        EXPECT(IMP_OSD_SetRgnAttr_ISP(0, rgn, 1), 0, 0x080000a0, rgn + 48);
+        t = 12;                                   /* OSD_REG_ISP_COVER */
+        memcpy(rgn, &t, 4);
+        EXPECT(IMP_OSD_SetRgnAttr_ISP(0, rgn, 0), 0, 0x08000074, rgn + 1352);
+        before = last.calls;
+        t = 10;                                   /* ISP_PIC: other API */
+        memcpy(rgn, &t, 4);
+        assert(IMP_OSD_SetRgnAttr_ISP(0, rgn, 1) == -1);
+        t = 7;
+        memcpy(rgn, &t, 4);
+        assert(IMP_OSD_SetRgnAttr_ISP(0, rgn, 1) == -1);
+        assert(IMP_OSD_SetRgnAttr_ISP(2, rgn, 1) == -1);
+        assert(IMP_OSD_SetRgnAttr_ISP(0, NULL, 1) == -1);
+        assert(IMP_OSD_GetRgnAttr_ISP(0, rgn, NULL) == -1);
+        assert(last.calls == before);
+        assert(IMP_OSD_GetRgnAttr_ISP(0, rgn, &show) == 0);
+        assert(show == 1);   /* vendor order: the ISP_PIC call stored its flag before refusing */
+        assert(last.calls == before + 3 && last.control == 0x08000074 &&
+               last.direction == 1 && last.payload == (uintptr_t)(rgn + 1352));
+        last.result = -1;
+        assert(IMP_OSD_GetRgnAttr_ISP(0, rgn, &show) == -1);
+        t = 11;
+        memcpy(rgn, &t, 4);
+        assert(IMP_OSD_SetRgnAttr_ISP(0, rgn, 1) == -1);
+        last.result = 0;
+        sb_enabled = 0;
+    }
+
+    /* WDR_OPEN: LINEAR = ioctl 0xc0045432 {sensor byte, imode}; WDR = the
+     * WDR enable ioctl on the open device; NULL -8, other rmode -9 */
+    {
+        IMPISPWdrOpenAttr w;
+        int c0 = opened.calls;
+
+        w.rmode = IMPISP_TYPE_RUN_LINEAR;
+        w.imode = IMPISP_TYPE_WDR_DOL;
+        assert(IMP_ISP_WDR_OPEN(IMPVI_MAIN, &w) == 0);
+        assert(opened.calls == c0 + 1 && opened.command == 0xc0045432U && opened.value == 0);
+        w.rmode = IMPISP_TYPE_RUN_WDR;
+        assert(IMP_ISP_WDR_OPEN(IMPVI_MAIN, &w) == 0);
+        assert(opened.calls == c0 + 2 && opened.command == 0x80045413U);
+        {
+            IMPISPTuningOpsMode g = IMPISP_TUNING_OPS_MODE_DISABLE;
+            assert(IMP_ISP_WDR_ENABLE_GET(IMPVI_MAIN, &g) == 0 && g == IMPISP_TUNING_OPS_MODE_ENABLE);
+        }
+        assert(IMP_ISP_WDR_OPEN(IMPVI_MAIN, NULL) == -8);
+        w.rmode = (IMPISPWdrRunMode)5;
+        assert(IMP_ISP_WDR_OPEN(IMPVI_MAIN, &w) == -9);
+        opened.result = ENODEV;
+        w.rmode = IMPISP_TYPE_RUN_LINEAR;
+        assert(IMP_ISP_WDR_OPEN(IMPVI_MAIN, &w) == -8);
+        opened.result = EIO;
+        assert(IMP_ISP_WDR_OPEN(IMPVI_MAIN, &w) == -1);
+        opened.result = 0;
+    }
+
+    /* Bypass_Bind: 12 bytes {num*3+i, enable, vc, dma} x 3, ioctl 0xc0045431 */
+    {
+        IMPISPBypassAttr b;
+        static const uint8_t want[12] = { 3, 1, 2, 1, 4, 0, 0, 0, 5, 1, 3, 0 };
+        int c0 = opened.calls;
+
+        memset(&b, 0, sizeof(b));
+        b.bypass[0].enable = 1; b.bypass[0].vc_index = 2; b.bypass[0].dma_index = 1;
+        b.bypass[2].enable = 1; b.bypass[2].vc_index = 3;
+        assert(IMP_ISP_Bypass_Bind(IMPVI_SEC, &b) == 0);
+        assert(opened.calls == c0 + 1 && opened.command == 0xc0045431U);
+        assert(!memcmp(opened.bytes, want, 12));
+        assert(IMP_ISP_Bypass_Bind((IMPVI_NUM)4, &b) == -4);
+        assert(IMP_ISP_Bypass_Bind(IMPVI_MAIN, NULL) == -9);
+        assert(opened.calls == c0 + 1);
+        opened.result = EIO;
+        assert(IMP_ISP_Bypass_Bind(IMPVI_MAIN, &b) == -1);
+        opened.result = 0;
+    }
+
+    /* StartNightMode: ISP-device ioctl 0xc004542e with &num */
+    {
+        int c0 = opened.calls;
+        assert(IMP_ISP_StartNightMode(IMPVI_MAIN) == 0);
+        assert(opened.calls == c0 + 1 && opened.command == 0xc004542eU && opened.value == 0);
+        assert(IMP_ISP_StartNightMode((IMPVI_NUM)4) == -4 && opened.calls == c0 + 1);
+    }
+    opened.result = ENODEV;
+    assert(IMP_ISP_StartNightMode(IMPVI_MAIN) == -8);
+    opened.result = EINVAL;
+    assert(IMP_ISP_StartNightMode(IMPVI_MAIN) == -1);
+    opened.result = 0;
 
     puts("T40 P3 controls: all checks passed");
     return 0;
