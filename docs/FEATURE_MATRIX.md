@@ -292,7 +292,7 @@ Per feature: the vendor-stack behaviour and the full per-SoC cell text (chronolo
 - **T23:** ✅+ oops (wait queue) fixed, night mono, bank error → block bypass, user bypass persists
 - **T30:** ? not documented
 - **T31:** ✅ 13 switches in the 4.5 h soak
-- **T40:** 🔧 host (night 2026-10-12): `GetISPRunningMode` reads the mode from the request payload word like vendor 1.3.1 (it returned garbage 9 on the Eufy T40XP on 2026-10-11); `StartNightMode` exported (ISP-device ioctl 0xc004542e before `AddSensor`); the "odd chroma" of 2026-10-11 was the test measuring two stale frames; device re-test pending (devtest phases 4, 0x200)
+- **T40:** 🔧 host (night 2026-10-12): `GetISPRunningMode` reads the mode from the request payload word like vendor 1.3.1 (it returned garbage 9 on the Eufy T40XP on 2026-10-11); `StartNightMode` exported (ISP-device ioctl 0xc004542e, callable between `ISP_Open` and `AddSensor`); the "odd chroma" of 2026-10-11 was the test measuring two stale frames. ✅ dev `StartNightMode`: Eufy T40 2026-10-12 (`claude/funcsearch-run5`, same ioctl and argument for sensor 0), rc 0 as the vendor, first pictures black and white (chroma 0.0, Y 82), colour back after `SetISPRunningMode(DAY)` (chroma 96); `GetISPRunningMode` re-test pending (devtest phase 4)
 - **T41:** ✅ isp-m0 shows the run mode; forced switch test pending
 
 ##### 11. IR cut / IR LED
@@ -340,7 +340,7 @@ Per feature: the vendor-stack behaviour and the full per-SoC cell text (chronolo
 - **T23:** ✅+ dynamic ADR lifted from the vendor module (44/44 emulator-identical, claude/t23-adr-defog); DRC strength 0/255 visibly effective on cam-B; sc2336 has no WDR mode
 - **T30:** ? `Get/SetRawDRC` exported; `Get/SetWDRAttr` exported since 2026-10-10 (V4L2 control 0x8000169, host test), no device result
 - **T31:** ✅ WDR buffer lazy; AE1 (short frame) stub = vendor no-op without WDR sensor
-- **T40:** 🔧 host: `ISP_WDR_ENABLE`/`_GET` ioctl layout test; `ISP_WDR_OPEN` (vendor 1.3.1: LINEAR boot ioctl 0xc0045432, WDR boot = WDR enable; night 2026-10-12, device test of the LINEAR path pending, devtest phase 0x1000); `Get/SetWdrOutputMode` not exported
+- **T40:** 🔧 host: `ISP_WDR_ENABLE`/`_GET` ioctl layout test; `ISP_WDR_OPEN` (vendor 1.3.1: LINEAR boot ioctl 0xc0045432, WDR boot = WDR enable; night 2026-10-12; Eufy T40 2026-10-12 (`claude/funcsearch-run5`) with rmode 0 / imode 1 before `AddSensor`: rc 0 as the vendor, but the linear-only sc830ai then delivers no frames with either library, the vendor returns from its stream poll, OpenIMP blocked until killed; stays host); `Get/SetWdrOutputMode` not exported
 - **T41:** ❌ WDR and DRC are not supported on T41 (the driver returns "not supported" instead of a silent success)
 
 ##### 15. Defog
@@ -833,7 +833,7 @@ Gaps (cache-only, stub, error, missing, ?) of functions that at least one of tim
 | `ISP_SET_GPIO_STA` | n.a. | n.a. | n.a. | aud | n.a. | aud | n.a. | miss | – |
 | `ISP_SetPreDqtime` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | host | n.a. | – |
 | `ISP_SetVicDoneCbFunc` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | miss | – |
-| `ISP_StartNightMode` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | host | miss | – |
+| `ISP_StartNightMode` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | dev | miss | – |
 | `ISP_Tuning_Get/SetDrawBlock` [3] | n.a. | n.a. | n.a. | err | n.a. | n.a. | n.a. | miss | – |
 | `ISP_Tuning_Get/SetHLDCAttr` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | host | n.a. | – |
 | `ISP_Tuning_Get/SetISPCSCAttr` [49] | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | host | host | – |
@@ -880,7 +880,7 @@ Notes:
 | Vendor function | T10 | T20 | T21 | T23 | T30 | T31 | T40 | T41 | Used by |
 |---|---|---|---|---|---|---|---|---|---|
 | `ISP_AddSensor` [16] | aud | dev | dev | dev | ? | dev | dev | aud | p† r† t |
-| `ISP_Bypass_Bind` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | host | n.a. | – |
+| `ISP_Bypass_Bind` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | dev | n.a. | – |
 | `ISP_Close` [17] | aud | dev | dev | dev | ? | dev | dev | aud | p† r† t |
 | `ISP_DelSensor` [18] | aud | dev | dev | dev | ? | dev | dev | aud | p† r† t |
 | `ISP_DisableSensor` [19] | aud | dev | dev | dev | ? | dev | dev | aud | p† r† t |
@@ -909,7 +909,7 @@ Notes:
 | `ISP_SetStreamOut` [27] | n.a. | n.a. | n.a. | aud | n.a. | n.a. | n.a. | n.a. | – |
 | `ISP_SetSwitchgpio` [28] | n.a. | n.a. | n.a. | host | n.a. | n.a. | n.a. | n.a. | – |
 | `ISP_SetVicDoneCbFunc` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | miss | – |
-| `ISP_StartNightMode` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | host | miss | – |
+| `ISP_StartNightMode` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | dev | miss | – |
 | `ISP_StreamCheck` [29] | n.a. | n.a. | n.a. | aud | n.a. | n.a. | n.a. | n.a. | – |
 | `ISP_Tuning_DisableMovestate` [30] | aud | aud | aud | no-op | ? | host | n.a. | n.a. | r† |
 | `ISP_Tuning_EnableDRC` [31] | n.a. | n.a. | n.a. | aud | n.a. | host | n.a. | n.a. | r† |
