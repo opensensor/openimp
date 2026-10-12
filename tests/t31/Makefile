@@ -28,6 +28,7 @@ P2_RC_MODE_TEST_BIN := $(PROJECT_DIR)/build/tests/t31-p2-rc-mode-test
 P2_BUFSHARE_TEST_BIN := $(PROJECT_DIR)/build/tests/t31-p2-bufshare-test
 MASK_RGB2YUV_TEST_BIN := $(PROJECT_DIR)/build/tests/t31-mask-rgb2yuv-test
 AL_RC_TRACE_TEST_BIN := $(PROJECT_DIR)/build/tests/t31-al-rc-trace-test
+AL_RC_OVERLOAD_TEST_BIN := $(PROJECT_DIR)/build/tests/t31-al-rc-overload-test
 LOG_LIMIT_TEST_BIN := $(PROJECT_DIR)/build/tests/t31-log-limit-test
 LOG_LEVEL_TEST_BIN := $(PROJECT_DIR)/build/tests/t31-log-level-test
 LOG_LEVEL_DBG_TEST_BIN := $(PROJECT_DIR)/build/tests/t31-log-level-dbg-test
@@ -44,11 +45,12 @@ check: $(STREAM_LAYOUT_TEST_BIN) $(RATE_CONTROL_TEST_BIN) \
 	$(FRAME_PIN_TEST_BIN) \
 	$(AO_SENDFRAME_TEST_BIN) $(AO_CACHE_TEST_BIN) $(HEVC_HEADERS_TEST_BIN) $(AEC_TEST_BIN) $(NV12_ROTATE_TEST_BIN) \
 	$(LAMBDA_TEST_BIN) $(AI_LIFECYCLE_TEST_BIN) $(FAKE_AUDIO_PROCESS) $(OSD_DRAW_TEST_BIN) $(P2_JPEG_SOURCE_TEST_BIN) \
-	$(P2_RC_MODE_TEST_BIN) $(P2_BUFSHARE_TEST_BIN) $(MASK_RGB2YUV_TEST_BIN) $(AL_RC_TRACE_TEST_BIN) \
+	$(P2_RC_MODE_TEST_BIN) $(P2_BUFSHARE_TEST_BIN) $(MASK_RGB2YUV_TEST_BIN) $(AL_RC_TRACE_TEST_BIN) $(AL_RC_OVERLOAD_TEST_BIN) \
 	$(LOG_LIMIT_TEST_BIN) $(LOG_LEVEL_TEST_BIN) $(LOG_LEVEL_DBG_TEST_BIN) $(ISP_AE_ATTR_TEST_BIN) $(VIDEO_DROP_TEST_BIN) $(VBM_DELAY_TEST_BIN) $(ROI_CLAMP_TEST_BIN) \
 	$(FIXED_CONTRAST_TEST_BIN)
 	$(STREAM_LAYOUT_TEST_BIN)
 	$(AL_RC_TRACE_TEST_BIN) traces
+	$(AL_RC_OVERLOAD_TEST_BIN)
 	$(RATE_CONTROL_TEST_BIN)
 	$(READY_EVENT_TEST_BIN)
 	$(ACODEC_TEST_BIN)
@@ -180,6 +182,15 @@ $(AL_RC_TRACE_TEST_BIN): al_rc_trace_test.c \
 	mkdir -p "$(dir $@)"
 	$(CC) $(CFLAGS) -I$(PROJECT_DIR)/src \
 		al_rc_trace_test.c \
+		$(PROJECT_DIR)/src/t40/t31_al_rc.c \
+		-o "$@" -lm
+
+$(AL_RC_OVERLOAD_TEST_BIN): al_rc_overload_test.c \
+	$(PROJECT_DIR)/src/t40/t31_al_rc.c \
+	$(PROJECT_DIR)/src/t40/t31_al_rc.h
+	mkdir -p "$(dir $@)"
+	$(CC) $(CFLAGS) -I$(PROJECT_DIR)/src \
+		al_rc_overload_test.c \
 		$(PROJECT_DIR)/src/t40/t31_al_rc.c \
 		-o "$@" -lm
 
