@@ -67,6 +67,7 @@ Further items (night 2026-10-03):
 | **Streams stay valid H.264 with every ROI** (new in agg-34): window deltas are limited to -25..+25, the spread of all deltas to 25, picture QP plus delta to 0..51 and to the rate control's min/max QP; absolute QPs are turned into deltas against the picture QP first | T10, T20, T21, T31 (T41 experimental) | same calls | on | Requests beyond that are clamped, one warning `ROI: requested QP delta ... clamped` is logged. **Do not offer -26 as the lowest relative QP:** -26 produces `mb_qp_delta` +26 on the way out of the window, which is outside H.264; software decoders hide it, Intel VA-API, VLC, Firefox and Edge show broken blocks from the ROI row on. -25 is the lowest valid value | The warning in the log; host test `tests/t31/roi_clamp_test.c` (20000 random window sets walked like the encoder) | Device-tested on T31 (VA-API, 20 checks); T10/T20/T21 measured before and after the clamp |
 | **T23 `SetChnROI` is effective** (the vendor T23 library accepts regions but they had no visible effect): the native Helix encoder programs them like T21 (the vendor 1.3.0 encoder writes the same registers); relative QP acts within -12/+13 of the slice QP | T23 | `IMP_Encoder_SetChnROI` | on (`OPENIMP_T23_ROI=0` switches it off) | Use ROI like on T21; **probe `OpenIMP_Cap_T23HelixRoi`** (const symbol, weak extern or `dlsym`) before relying on it, older libimps drop the regions silently | QP map shows the window; bit rate +10 % at delta -15, -4 % at +20 / absolute 51; streams valid in VA-API and strict ffmpeg | device-tested on cam-B 2026-10-10, **in branch `claude/t23-roi`, not yet in an aggregate** |
 | Runtime capability marker `OpenIMP_Cap_T23HelixRoi` (exported const int, new `OpenIMP_Cap_*` glob in the symbol map) | T23 | symbol lookup | on | `extern const int OpenIMP_Cap_T23HelixRoi __attribute__((weak));` and test the address; absent = old libimp or vendor libimp | n/a | **in branch `claude/t23-roi`, not yet in an aggregate** |
+| T40 `SetChnRoiAttr`: code only | T40 | `IMP_Encoder_SetChnRoiAttr` | **off** (`OPENIMP_T40_ROI=1`) | Cross-built only: the T31 QP-table path with the T40 command bits found in the vendor library; not run on a camera | `SetChnRoiAttr` returns -1 while off | Experimental, not in the release |
 | T41 `SetChnRoiAttr`: code only | T41 | `IMP_Encoder_SetChnRoiAttr` | **off** (`OPENIMP_T41_ROI=1`) | Not usable yet: the encoder did not react in earlier runs; the enable bits found in the vendor library are not device-tested | `SetChnRoiAttr` returns -1 while off | Experimental, not in the release |
 
 Rules, tables and numbers: `docs/ROI.md`.
@@ -94,6 +95,7 @@ Rules, tables and numbers: `docs/ROI.md`.
 | **Brightness acts on T21** (the vendor T21 kernel only stores the value and the OEM AE never reads it, so `SetBrightness` is a no-op there): the value works as an exposure compensation, it scales the AE luma target by value/128 (target clamped to 1..255, values below 16 treated as 16); colours are not clipped because the ISP colour path is untouched, only the exposure the AE settles on moves. 128 is the vendor picture (code path bit-identical) | T21 | `IMP_ISP_Tuning_SetBrightness`, timps `image.brightness` | on (128 = vendor picture) | Offer a brightness slider on T21; allow a few seconds for the AE to converge after a change (2 to 7 s) | `IMP_ISP_Tuning_GetBrightness` reads back the value; compare images at 30/128/225 (imgfx mean Y 28.8 / 117.7 / 193.0, timps snapshots 44.5 / 130.8 / 223.9) | cam-D, open-tx-isp `claude/release-t21-brightness`, in the release candidate (2026-10-06) |
 | **Sepia works on T21** (`SetColorfxMode(SEPIA)` returned -1 before; the vendor kernel ignores colour effects): the CCM saturation list goes to 0 like B/W and the CSC U/V row sums get a tint (U below, V above neutral for a grey input, luma unchanged); a CSC attribute set during sepia keeps the tint, leaving sepia restores the stored matrix | T21 | `IMP_ISP_Tuning_SetColorfxMode(IMPISP_COLORFX_SEPIA)`, `GetColorfxMode` | off until set | Offer sepia next to B/W/negative on T21 | imgfx: dU/dV +10/+9 and +17/+19 against the plain picture in two runs; the getter returns the mode | cam-D, open-tx-isp `claude/release-t21-image`, in the release candidate (2026-10-06) |
 | **Autofocus statistics and focus getters on T23 are on by default** (as the stock module, which always runs the AF init): `GetAfHist`, `GetAFMetrices`, `GetAfWeight`, `GetAfZone` return live values; no measurable CPU or interrupt cost (47.8 % vs 48.1 % CPU busy, 88.7 IRQ/s in both cases) | T23 | `IMP_ISP_Tuning_GetAfHist/GetAFMetrices/Get/SetAfWeight/GetAfZone`; module parameter `source_af` (0 = off) | on (`source_af=1`) | Use the AF getters as on T31; the zone grid is 8x8 on the tested sensor | apitest PASS with live values | a T23 camera, open-tx-isp `claude/release-t23-af-scratch`, in the release candidate (2026-10-06); same as the stock module, listed because earlier open builds had it off |
+| T23 ISP controls `SetOSDBlock`/`GetOSDBlock` (0x8000182), `SetDrawBlock`/`GetDrawBlock` (0x8000180) refuse a block index outside the 8 OSD / 6 draw entries the hardware update walks (-EINVAL; stock indexes its table unchecked), the Get calls return the block you ask for (stock Get has no input and reports block 0 / stack garbage), and `SwitchBin` takes only an IQ file of the standard size and leaves the banks untouched when a file is rejected. **Host build only, device test pending; the stored OSD and draw blocks have no image effect yet. Not in agg-36: the driver branch is held back until its SwitchBin bank swap is reworked** | T23 | `IMP_ISP_Tuning_SetOSDBlock`, `GetOSDBlock`, `SetDrawBlock`, `GetDrawBlock`, `SwitchBin` | on | Check return codes; do not rely on OSD/draw blocks to change the picture yet | `isp-m0` / kernel log line "SwitchBin ... rejected" | open-tx-isp `claude/gaps-t23-t31-drv` |
 
 ## 3. JPEG / snapshot
 
@@ -116,6 +118,7 @@ Rules, tables and numbers: `docs/ROI.md`.
 | Motion keeps working after the sub-stream goes idle; frames recycled for callback-backed pools | T23 | internal | on | Nothing | web grid not empty | cam-B |
 | Sub-stream default for IVS: about 85 % less IVS CPU than the vendor libimp | T31 | internal | on | Prefer the sub-stream as IVS source | n/a | cam-A |
 | Motion works without a viewer (feeder thread), CPU about 10-12 % vs 27 % with vendor libimp | T41 | internal | on | Nothing | n/a | cam-F, `claude/t41-libimp` |
+| Fewer dropped IVS frames: the channel is marked free **before** the result is announced, so a frame fed right after `IMP_IVS_PollingResult`/`GetResult`/`ReleaseResult` is accepted (the vendor posts the result first and drops such a frame as busy) | T23, T30, T31, T40, T41 | `IMP_IVS_*` (any interface) | on | Nothing; applications that feed frames themselves keep every frame. Result slots stay valid until `ReleaseResult` (ring of 6, unchanged). For the vendor order set `OPENIMP_IVS_VENDOR_ORDER=1` | host test: 500 back-to-back frames under CPU load, 0 dropped (not device-tested) | `claude/ivs-order` |
 
 ### 4.1 Motion v2 (on by default, beyond vendor)
 
@@ -251,12 +254,15 @@ set in production.
 
 | Variable | Purpose | Default | Class |
 |---|---|---|---|
+| `OPENIMP_IVS_VENDOR_ORDER` | `1` posts the IVS result before the channel-free semaphore as the vendor does (a frame fed right after the result is dropped as busy) | off | user-facing (opt-in) |
+| `OPENIMP_SU_SHUTDOWN` | `SU_Base_Shutdown`: unset or `reboot` = sync, then SIGTERM to init (busybox reboots); `poweroff` = SIGUSR2 (busybox powers off, opt-in); `vendor` = vendor behaviour (sync, SIGCHLD, which busybox init ignores, opt-in) | `reboot` | user-facing |
 | `OPENIMP_REF_SHARE` | `0` disables the T21/T23 reference ring | on | user-facing |
 | `OPENIMP_T31_HW_JPEG` | `0` selects the software JPEG encoder on T31 | on | user-facing |
 | `OPENIMP_T31_OSD` | `0` disables the IPU OSD backend on T31 | on | user-facing |
 | `OPENIMP_T31_ROI` | `0` refuses `IMP_Encoder_SetChnRoiAttr` on T31 | on | user-facing |
 | `OPENIMP_T21_ROI` | `0` switches the T21 encoder ROI programming off | on | user-facing |
 | `OPENIMP_T41_ROI` | `1` enables the experimental T41 ROI table (not device-tested) | off | debug-only |
+| `OPENIMP_T40_ROI` | `1` enables the experimental T40 ROI table (cross-built, not device-tested) | off | debug-only |
 | `OPENIMP_T20_RC` | `0` disables the T20 OEM rate controller (needs kernel patch 0101) and falls back to the GOP controller | on (as vendor) | user-facing |
 | `OPENIMP_EPRC_MBRC` | `1` enables the eprc macroblock RC on T21/T23 (device test pending) | off | user-facing (opt-in) |
 | `OPENIMP_T10_RC` | `0` disables the T10 OEM-style rate controller | on | user-facing |
@@ -269,6 +275,7 @@ set in production.
 | `OPENIMP_EPRC_QP_DOWN1` | `1` / `2` enables the eprc QP-down limit; built, device test pending | off | user-facing (opt-in) |
 | `OPENIMP_MOTION_V2` (+ `_BG`, `_SUPPRESS`, `_BLOBS`, `_OVERRIDE`, parameters) | motion v2, section 4.1; `0`/`off`/`vendor` = vendor algorithm; `shadow` = analysis without changing `retRoi` | on | user-facing |
 | `OPENIMP_MOTION_V2_LOG` | `1` logs every vendor / v2 decision change (A/B) | off | debug-only |
+| `OPENIMP_LOG_LEVEL` | `0`..`7` (syslog numbering, `3` error, `4` warning, `5` notice, `6` info, `7` debug): `IMP_LOG` lines above the level are dropped from syslog and stderr. Default `5` = notice: errors, warnings and the one-shot status lines (encoder ready, rate-control core, HWJPEG on/off, ISP driver) are visible, per-frame INFO (per-IDR rate-control line, HWJPEG counter, rmem peak) is silent. `6`/`7` or `OPENIMP_DEBUG_TRACE=1` for verbose. Read once into a global int by a constructor (the call site is one compare; formatting, syslog and stderr are one out-of-line function, no `getenv` or `openlog` per call site); `imp_log_fun` is unchanged | `5` | user-facing |
 | `OPENIMP_LOG_SYSLOG` | `1` also logs to syslog | off | user-facing |
 | `OPENIMP_PROFILE`, `OPENIMP_PROFILE_INTERVAL` | `1` enables a periodic profile report; interval in completed frames (docs/PROFILING.md) | off | debug-only |
 | `OPENIMP_T31_VBR_LOOP` | `0` forces open-loop VBR on T31 | on (closed loop) | debug-only |
@@ -276,7 +283,7 @@ set in production.
 | `OPENIMP_T31_COMPANION_STAGE` | `0` skips the AVPU JPEG companion core per H.264 frame (only relevant with software JPEG) | on | debug-only |
 | `OPENIMP_T31_HW_JPEG_SRC_COHERENT` | `1` puts the JPEG source in coherent memory (A/B) | off | debug-only |
 | `OPENIMP_RMEM_NO_REUSE` | `1` restores the old rmem behaviour (no reuse) | off | debug-only |
-| `OPENIMP_DEBUG_TRACE` | per-frame detail trace (very verbose) | off | debug-only |
+| `OPENIMP_DEBUG_TRACE` | per-frame detail trace (very verbose); the traces exist only in a build with `OPENIMP_DEBUG=1` (see below), in a release build it only raises the log level to 7 | off | debug-only |
 | `OPENIMP_T31_IVS_STATS`, `OPENIMP_AEC_STATS`, `OPENIMP_SOURCE_STATS`, `OPENIMP_T31_FULL_FRAME_STATS`, `OPENIMP_T23_RC_STATS` | periodic statistics output | off | debug-only |
 | `OPENIMP_T31_DUMP_SOURCE_DIR` | dump source frames to a directory | off | debug-only |
 | `OPENIMP_T23_HELIX_BSF` | `1` hard bitstream limit; needs a patched kernel, device test open | off | debug-only |
@@ -286,8 +293,22 @@ Further `OPENIMP_*` knobs exist in the source. The rmem, reference-sharing tunin
 and per-SoC statistics variables are listed in the wiki page "Environment variables"; the remaining bring-up/trace
 switches (`P1_*`, `P2_*`, ...) are not described anywhere; treat them as internal.
 
+### 7.1 Build-time switch `OPENIMP_DEBUG`
+
+`OPENIMP_DEBUG=0` (default) builds a release `libimp.so`: `LOG_DEBUG` lines and the pure developer traces (the
+`OPENIMP_DEBUG_TRACE` bench and `/dev/kmsg` probes, `OPENIMP_STARTUP_TRACE`, the per-frame stderr helpers, the
+`LOG_CODEC`/`LOG_HW`/`LOG_DMA` codec traces, the ISP `kmsg_trace`) are compiled to nothing, code and strings.
+`INFO`, `NOTICE`, `WARN` and `ERR` stay in every build; INFO is silent by default through `OPENIMP_LOG_LEVEL`.
+`OPENIMP_DEBUG=1` builds everything, switched at run time by the variables above.
+
+    make t31 OPENIMP_DEBUG=1          # or: OPENIMP_DEBUG=1 ./build-t31.sh   (T20..T41, same for all)
+
+A firmware package passes the same variable to the build (`OPENIMP_DEBUG=1` in the package's make environment),
+for a debug image; the default image carries the release build.
+
 ## 8. Unverified or not yet in this list
 
+- `SU_Base_Shutdown` (host-tested only, fake `kill`/`sync`, not run on a camera): the vendor libsysutils call does `sync()` and `kill(1, SIGCHLD)`, which busybox init ignores, so the call returns and the device keeps running. OpenIMP now exports `SU_Base_Shutdown` itself: after the `sync()` it sends init the signal busybox acts on (`SIGTERM` = reboot by default, so a camera that calls it comes back; `SIGUSR2` = power off only with `OPENIMP_SU_SHUTDOWN=poweroff`; `OPENIMP_SU_SHUTDOWN=vendor` restores the vendor behaviour). Returns 0 once init was signalled (the call returns before init is done), -1 with errno if `kill` fails. Test: `make -f tests/core/su_base_shutdown.mk check`. Caveats: the symbol is now part of `libimp.so`, so a separately installed libsysutils that loads later does not override it; before relying on it, check the init system of the image (a non-busybox init may treat the signals differently) and run it once on a camera.
 - T31 `OPENIMP_T31_COMPANION` (mentioned only as a proposal in T31_HW_JPEG_RE.md; the implemented knob is `..._COMPANION_STAGE`).
 - SMART / vendor-equal eprc on T23, T21: done (`claude/eprc-complete`, 0 oracle deviations); SMART is still mapped to VBR on T10/T20; MB-level RC ported (opt-in, `claude/eprc-mbrc`, a8b483a, device test running).
 - T23 live RC readback and which RC writes take effect on T10/T20/T21: partly stated in the matrix, per-field test not documented.
@@ -301,3 +322,4 @@ switches (`P1_*`, `P2_*`, ...) are not described anywhere; treat them as interna
 - T23/T31 `IMP_AI_SetHpfCoFrequency` (and `IMP_AO_EnableHpf`) take effect since the release candidate (the filter is designed for the cut-off like the vendor library and handed to libaudioProcess-neo as a float biquad at the stream's rate; beyond the original library): apitest round trip only, no audio test on the shared test cameras yet.
 - Encoder ROI: the vendor semantics of an absolute ROI QP under CBR are not verified (T20, T10); T23 passes regions to the vendor encoder with no measured effect; T41 is code only (section 1.1). The T21 ROI/QPG/SuperFrame calls are applied since the release candidate (section 1.1).
 - T23 AWB cluster/trend objects and mask block (open-tx-isp `claude/release-t23-driver`, merged in the release candidate): identical to the stock module in the MIPS emulator, no device run of the runtime effect.
+- T40/T41 FrameSource delay cache (`SetMaxDelay`/`SetDelay`/`GetTimedFrame`, host-tested only): costs one full-frame copy per `GetFrame` while the delay is above 0 (about 12 MB per frame at 4K NV12, about 3 MB at 1080p) plus `delay` frames of RAM; off by default. Details in `docs/T40_STATUS.md`.

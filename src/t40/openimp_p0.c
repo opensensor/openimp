@@ -9,6 +9,8 @@
 #include <time.h>
 #include <unistd.h>
 
+#include "trace_control.h"
+
 #if defined(PLATFORM_T21) && !defined(PLATFORM_T20)
 /* T21: the stock EncoderInit allocates the shared Helix bitstream buffer
  * ("vpuBs") */
@@ -333,7 +335,7 @@ int IMP_System_Init(void)
     int result;
     uint64_t now;
 
-    if (getenv("OPENIMP_STARTUP_TRACE")) {
+    if (openimp_startup_trace_enabled()) {
         static const char message[] = "libimp/System: Init entry\n";
 
         write(STDERR_FILENO, message, sizeof(message) - 1u);
@@ -352,7 +354,7 @@ int IMP_System_Init(void)
     }
     state.timestamp_base_us = now;
     for (root = 0; root < OPENIMP_ROOT_COUNT; root++) {
-        if (getenv("OPENIMP_STARTUP_TRACE")) {
+        if (openimp_startup_trace_enabled()) {
             char message[64];
             int length = snprintf(message, sizeof(message),
                                   "libimp/System: root %d begin\n", root);
@@ -363,7 +365,7 @@ int IMP_System_Init(void)
             }
         }
         result = root_init((enum openimp_root_id)root);
-        if (getenv("OPENIMP_STARTUP_TRACE")) {
+        if (openimp_startup_trace_enabled()) {
             char message[64];
             int length = snprintf(message, sizeof(message),
                                   "libimp/System: root %d ret=%d\n", root,

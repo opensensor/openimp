@@ -28,6 +28,12 @@
 #include "hw_encoder.h"
 
 #include "al_avpu.h"
+
+/* T41 uses the HWRC context layout: OPENIMP_AL_FRAME_RC (set only by
+ * al_avpu.h for T31/T40) must not exist here, whatever the include order. */
+#if defined(PLATFORM_T41) && defined(OPENIMP_AL_FRAME_RC)
+#error "OPENIMP_AL_FRAME_RC on T41: ALAvpuContext layout mismatch between TUs"
+#endif
 #include "device_pool.h"
 #include "dma_alloc.h"
 #include "imp_log_int.h"
@@ -35,6 +41,10 @@
 #include "openimp_profile.h"
 #if defined(PLATFORM_T40)
 #include "t40_stream_layout.h"
+#include "t31_hevc_headers.h"
+#endif
+#if defined(PLATFORM_T40) && !defined(PLATFORM_T41)
+#include "t40_vendor_cmd.h"
 #endif
 #if defined(PLATFORM_T31)
 #include "t31_rate_control.h"
@@ -49,6 +59,18 @@
 #include "t23/openimp_t23_helix_bridge.h"
 #include "t23/openimp_t23_persist.h"
 #endif
+/* T10/T20/T21/T23/T30 encode on the Helix VPU and have no AVPU
+ * (/dev/avpu never opens there): CODEC_HAS_AVPU 0 lets the compiler drop
+ * the AVPU session code (open, IRQ thread, command lists, stream queue)
+ * those builds can never run.  The public AL_Codec_* graph stays. */
+#if defined(PLATFORM_T30) || defined(PLATFORM_T23)
+#define CODEC_HAS_AVPU 0
+#else
+#define CODEC_HAS_AVPU 1
+#endif
+/* use_hardware 2 = AVPU session open */
+#define codec_avpu_active(enc) (CODEC_HAS_AVPU && (enc)->use_hardware == 2)
+
 #if defined(PLATFORM_T30) || defined(PLATFORM_T23)
 #include "t30/t30_helix_encoder.h"
 #include "t30/helix_jpeg.h"
@@ -73,6 +95,10 @@
  */
 #if defined(PLATFORM_T41)
 #define PLATFORM_T40 1
+#endif
+/* The T40 build itself (T41 shares this file with PLATFORM_T40 defined). */
+#if defined(PLATFORM_T40) && !defined(PLATFORM_T41)
+#define AVPU_T40_NATIVE 1
 #endif
 
 enum {
@@ -238,6 +264,12 @@ static uint64_t t31_monotonic_ms(void)
     return (uint64_t)now.tv_sec * 1000u + (uint64_t)now.tv_nsec / 1000000u;
 }
 #endif
+#endif
+
+#if defined(OPENIMP_AL_FRAME_RC) && !defined(PLATFORM_T31)
+/* See the T31 definition: the Allegro rate-control state is advanced by the
+ * submit thread and updated by the IRQ thread. */
+static pthread_mutex_t g_t31_al_rc_lock = PTHREAD_MUTEX_INITIALIZER;
 #endif
 
 #define CODEC_READ_U8(base, off)  (*(uint8_t *)((uint8_t *)(base) + (off)))
@@ -908,6 +940,9 @@ static inline uint8_t *avpu_cl_submit_status_ptr(ALAvpuContext *ctx,
 
 static void avpu_log_dma_range(const char *name, const AvpuDMABuf *buf)
 {
+    /* developer diagnostic: compiled out unless OPENIMP_DEBUG=1 */
+    if (!OPENIMP_DEBUG)
+        return;
     uint64_t start;
     uint64_t end;
 
@@ -941,6 +976,9 @@ static int avpu_dma_ranges_overlap(const AvpuDMABuf *a, const AvpuDMABuf *b)
 static void avpu_log_dma_overlap(const char *name_a, const AvpuDMABuf *a,
                                  const char *name_b, const AvpuDMABuf *b)
 {
+    /* developer diagnostic: compiled out unless OPENIMP_DEBUG=1 */
+    if (!OPENIMP_DEBUG)
+        return;
     if (!name_a || !name_b || !a || !b)
         return;
 
@@ -956,6 +994,9 @@ static void avpu_log_dma_overlap(const char *name_a, const AvpuDMABuf *a,
 
 static void avpu_log_dma_layout(ALAvpuContext *ctx)
 {
+    /* developer diagnostic: compiled out unless OPENIMP_DEBUG=1 */
+    if (!OPENIMP_DEBUG)
+        return;
     struct NamedBuf {
         const char *name;
         const AvpuDMABuf *buf;
@@ -1470,10 +1511,10 @@ static int avpu_t40_init_ep2(ALAvpuContext *ctx)
 
     destination = (uint8_t *)ctx->interm_buf.map + offset;
     memcpy(destination, seed_words, sizeof(seed_words));
-#if defined(PLATFORM_T31)
+#if defined(PLATFORM_T31) || defined(AVPU_T40_NATIVE)
     if (ctx->rc_mode == HW_RC_MODE_FIXQP) {
         /*
-         * T31 disables HWRC for FixQP and leaves EP2's legal QP range at the
+         * T31 (and T40, vendor capture) disables HWRC for FixQP and leaves EP2's legal QP range at the
          * OEM defaults (0..51).  Pinning both fields to the configured QP is
          * a T40-shaped interpretation that changes the IDR transform state.
          */
@@ -2398,7 +2439,7 @@ static uint32_t avpu_t40_picture_qp(const ALAvpuContext *ctx, int is_idr)
         return openimp_t41_rate_controller_qp(
             &ctx->t41_rate_controller);
 #endif
-#if defined(PLATFORM_T31)
+#if defined(OPENIMP_AL_FRAME_RC)
     if (ctx->t31_al_rc.valid) {
         /* Il1i: the OEM slice QP for the next picture (I = 2, P = 1) */
         T31AlRcPicture pic;
@@ -2492,7 +2533,7 @@ static uint32_t avpu_t40_picture_qp(const ALAvpuContext *ctx, int is_idr)
     return qp;
 }
 
-#if defined(PLATFORM_T31)
+#if defined(OPENIMP_AL_FRAME_RC)
 /* The picture's sum of squared errors, as the OEM EncodingStatusRegsTo-
  * SliceStatus reads it (status +0x158 high word, +0x15c low word; cmd[9]
  * bit 27, set in every T31 template, has the core compute it), turned into
@@ -2602,7 +2643,7 @@ static int avpu_t31_rc_core_allegro(void)
         const char *value = getenv("OPENIMP_T31_RC_CORE");
 
         core = value && strcmp(value, "legacy") == 0 ? 0 : 1;
-        IMP_LOG_INFO("Codec", "T31 rate control core: %s%s",
+        IMP_LOG(LOG_NOTICE, "Codec", "T31 rate control core: %s%s",
                      core ? "allegro (OEM libimp 1.1.6 port)" : "legacy",
                      value ? " (OPENIMP_T31_RC_CORE)" : "");
     }
@@ -2850,10 +2891,11 @@ static uint32_t avpu_t40_pack_hwrc_grid(uint32_t width, uint32_t height)
 }
 #endif
 
-#if defined(PLATFORM_T31) || defined(PLATFORM_T41)
+#if defined(PLATFORM_T31) || defined(PLATFORM_T40)
 /*
  * T31 HEVC (docs/T31_HEVC.md); the header writer and knobs are shared with
- * T41 (notes in t41_command_builder.c).  The AVC command words above stay
+ * T40 (same Enc1 command layout, docs/T40_HEVC.md) and T41 (notes in
+ * t41_command_builder.c).  The AVC command words above stay
  * untouched; an HEVC channel rewrites only the fields the vendor's encode1()
  * derives differently for codec 1.  Three diagnostic knobs select the
  * uncertain bits on the device without a rebuild; each is read once
@@ -2862,6 +2904,8 @@ static uint32_t avpu_t40_pack_hwrc_grid(uint32_t width, uint32_t height)
 #define AVPU_T31_HEVC_LOG2_CTB 5u
 #if defined(PLATFORM_T41)
 #define AVPU_HEVC_ENV(name) "OPENIMP_T41_HEVC_" name
+#elif defined(PLATFORM_T40)
+#define AVPU_HEVC_ENV(name) "OPENIMP_T40_HEVC_" name
 #else
 #define AVPU_HEVC_ENV(name) "OPENIMP_T31_HEVC_" name
 #endif
@@ -2882,7 +2926,15 @@ static int avpu_t31_hevc_hwrc_enabled(const ALAvpuContext *ctx)
     static int enabled = -1;
 
     if (enabled < 0)
+#if defined(PLATFORM_T40) && !defined(PLATFORM_T41)
+        /* T40: on by default like H.264 (vendor parity).  The earlier
+         * cu_qp_delta errors came from PPS flags the T40 core ignores
+         * (avpu_t40_hevc_tools()), not from HWRC; OPENIMP_T40_HEVC_HWRC=0
+         * falls back to picture-level QP. */
         enabled = avpu_t31_env_flag(AVPU_HEVC_ENV("HWRC"), 1);
+#else
+        enabled = avpu_t31_env_flag(AVPU_HEVC_ENV("HWRC"), 1);
+#endif
     return enabled && ctx && ctx->rc_mode != HW_RC_MODE_FIXQP;
 }
 
@@ -2914,6 +2966,29 @@ static int avpu_t31_hevc_tmvp_enabled(void)
     return enabled;
 }
 
+#if defined(PLATFORM_T40) && !defined(PLATFORM_T41)
+/* The T40 HEVC core always codes transform_skip_flag and cu_qp_delta_abs,
+ * whatever cmd[9] says: with either PPS flag clear every picture breaks
+ * after the first CTBs (ffmpeg decodes garbage, mostly without an error;
+ * VA-API fails).  The vendor T40 PPS sets both, also for FixQP, and its VUI
+ * signals full range.  OPENIMP_T40_HEVC_TOOLS (bit mask, default 13):
+ * 1 transform skip (PPS + cmd[9] bit 15), 2 scaling lists (SPS default
+ * lists + cmd[9] bits 31/30; breaks the picture, test only), 4 PPS
+ * cu_qp_delta always on, 8 VUI full range. */
+static uint32_t avpu_t40_hevc_tools(void)
+{
+    static int tools = -1;
+
+    if (tools < 0) {
+        const char *value = getenv("OPENIMP_T40_HEVC_TOOLS");
+
+        tools = value && value[0] ? (int)(strtoul(value, NULL, 0) & 0xfu)
+                                  : 13;
+    }
+    return (uint32_t)tools;
+}
+#endif
+
 static void avpu_t31_hevc_config(const ALAvpuContext *ctx,
                                  OpenIMPT31HevcConfig *config)
 {
@@ -2931,6 +3006,17 @@ static void avpu_t31_hevc_config(const ALAvpuContext *ctx,
     /* Always present, so either uCabacInitIdc can be signalled. */
     config->cabac_init_present = 1u;
     config->tmvp_enabled = avpu_t31_hevc_tmvp_enabled() ? 1u : 0u;
+#if defined(PLATFORM_T40) && !defined(PLATFORM_T41)
+    {
+        uint32_t tools = avpu_t40_hevc_tools();
+
+        config->transform_skip_enabled = (tools & 1u) ? 1u : 0u;
+        config->scaling_list_enabled = (tools & 2u) ? 1u : 0u;
+        if (tools & 4u)
+            config->cu_qp_delta_enabled = 1u;
+        config->video_full_range = (tools & 8u) ? 1u : 0u;
+    }
+#endif
 }
 
 /* VPS/SPS/PPS (IDR) and the slice segment header; returns the byte count
@@ -2971,7 +3057,8 @@ static uint32_t avpu_t31_hevc_write_headers(ALAvpuContext *ctx,
 
 #endif
 
-#if defined(PLATFORM_T31)
+#if defined(PLATFORM_T31) || \
+    (defined(PLATFORM_T40) && !defined(PLATFORM_T41))
 /*
  * Rewrite the AVC Enc1 words that differ for an HEVC picture.  Addresses,
  * QP, slice type, deblocking and the picture-class EP3 slot are shared with
@@ -3094,6 +3181,153 @@ static void avpu_t31_hevc_fill_cmd(const ALAvpuContext *ctx, uint32_t *cmd,
         space = (uint32_t)pcm_cap;
     cmd[0x33] = space & ~0x1fu;
 }
+
+#if defined(PLATFORM_T40) && !defined(PLATFORM_T41)
+/*
+ * T40 HEVC (docs/T40_HEVC.md).  The T40 Enc1 packer is the T31 one (vendor
+ * libimp 1.3.1 SliceParamToCmdRegsEnc1); the words below follow the vendor
+ * T40 HEVC command lists captured on a T40XP (3840x2160 and 1280x720,
+ * CBR).  Addresses, source/reconstruction geometry, QP words and cmd[0x13]
+ * are the AVC ones already in cmd[].  Like T31, OpenIMP runs HEVC without
+ * scaling lists and transform skip (cmd[9] bits 31/30/15 clear) and signals
+ * that in its SPS/PPS; the vendor sets them together with its own headers.
+ */
+static void avpu_t40_hevc_fill_cmd(const ALAvpuContext *ctx, uint32_t *cmd,
+                                   int is_idr)
+{
+    const uint32_t ctb = 1u << AVPU_T31_HEVC_LOG2_CTB;
+    uint32_t width = ctx->enc_w;
+    uint32_t height = ctx->enc_h;
+    uint32_t ctb_w = (width + ctb - 1u) >> AVPU_T31_HEVC_LOG2_CTB;
+    uint32_t ctb_h = (height + ctb - 1u) >> AVPU_T31_HEVC_LOG2_CTB;
+    uint32_t ctb_count = ctb_w * ctb_h;
+    uint32_t picture_number =
+        is_idr ? 0u : ctx->frame_number - ctx->idr_frame_number;
+    int hwrc = ctx->hevc_pps_cu_qp_delta != 0u &&
+               avpu_t31_hevc_hwrc_enabled(ctx);
+    uint32_t tools = avpu_t40_hevc_tools();
+    uint32_t l2_rows;
+
+    if (!ctb_w || !ctb_h)
+        return;
+
+    cmd[0x00] = 0x91700c11u;
+    /* bit 31 with the L2 cache rows in cmd[0x12]; bit 23 on P pictures
+     * (vendor T40 HEVC); TMVP and uCabacInitIdc as on T31. */
+    cmd[0x02] = 0xc010ad50u | (is_idr ? 0u : 0x00800000u);
+    if (!avpu_t31_hevc_tmvp_enabled())
+        cmd[0x02] &= ~0x40000000u;
+    if (!avpu_t31_hevc_cabac_init_flag())
+        cmd[0x02] &= ~0x00000300u;
+
+    cmd[0x06] = avpu_pack_enc1_lcu_pos(ctb_count - 1u, ctb_w);
+    if (!is_idr)
+        cmd[0x06] |= 0x00000400u;
+    cmd[0x07] = (((ctb_h - 1u) & 0x3ffu) << 12) | ((ctb_w - 1u) & 0x3ffu) |
+                0x80000000u;
+    cmd[0x08] = is_idr ? 0x77000000u : 0x33000000u;
+
+    /* No scaling list (bits 30/31), collocated_from_l0 (bit 18), HWRC
+     * enable (bit 16) only together with PPS cu_qp_delta. */
+    cmd[0x09] = (cmd[0x09] & 0x3fff7fffu) | 0x00040000u;
+    if (!hwrc)
+        cmd[0x09] &= ~0x00010000u;
+    if (tools & 1u)
+        cmd[0x09] |= 0x00008000u;
+    if (tools & 2u)
+        cmd[0x09] |= 0xc0000000u;
+
+    /* high half: picture area in 1 KiB units (AVC template); low half:
+     * PCM bytes of one 32x32 CTB. */
+    cmd[0x0a] = (cmd[0x0a] & 0xffff0000u) |
+                (((ctb * ctb * 8u + ((ctb * ctb) >> 1) * 8u) * 5u / 3u) &
+                 0xffffu);
+    cmd[0x0b] = ((ctb_w - 1u) & 0x3ffu) << 12;
+
+    /* T40 numbers HEVC pictures like AVC, 2n (vendor capture); the
+     * collocated picture is the single reference. */
+    memset(&cmd[0x0c], 0, 4u * sizeof(uint32_t));
+    cmd[0x10] = 0xffffffffu;
+    cmd[0x11] = 0xffffffffu;
+    if (is_idr) {
+        cmd[0x12] = 0x803ff3ffu;
+    } else {
+        uint32_t h_range = width >= 64u ? width : 64u;
+        uint32_t v_range = height < 0xe0u ? height : 0xe0u;
+
+        if (v_range < 8u)
+            v_range = 8u;
+        cmd[0x0c] = picture_number * 2u;
+        cmd[0x0d] = (picture_number - 1u) * 2u;
+        cmd[0x0f] = cmd[0x0d];
+        if (picture_number > 1u)
+            cmd[0x10] = (picture_number - 2u) * 2u;
+        cmd[0x12] = 0x80000000u |
+                    (((h_range >> 6) - 1u) & 0x3ffu) |
+                    ((((v_range >> 3) - 1u) & 0x3ffu) << 12);
+    }
+    /* UpdateCommand L2 cache rows (4:2:0: 512 / 64-pixel columns, at most
+     * 128), packed as (rows - 1) & 0xf in bits 27:24 like the vendor. */
+    l2_rows = 512u / ((width + 63u) >> 6);
+    if (l2_rows > 128u)
+        l2_rows = 128u;
+    if (l2_rows < 1u)
+        l2_rows = 1u;
+    cmd[0x12] = (cmd[0x12] & ~0x0f000000u) | (((l2_rows - 1u) & 0xfu) << 24);
+
+    if (hwrc) {
+        uint32_t group_count;
+        uint32_t columns_per_group;
+        uint64_t bitrate = ctx->bitrate ? ctx->bitrate : 2000000u;
+        uint32_t fps_num = ctx->fps_num ? ctx->fps_num : 25u;
+        uint32_t fps_den = ctx->fps_den ? ctx->fps_den : 1u;
+        uint64_t target = bitrate;
+        uint32_t word15;
+        uint32_t word16;
+
+        avpu_t40_get_hwrc_grid_lcu(ctb_w, ctb_h, &group_count,
+                                   &columns_per_group);
+        cmd[0x14] = 0xf4000000u |
+                    (((group_count - 1u) & 0x3ffu) << 6) |
+                    ((columns_per_group - 1u) & 0x3fu);
+        /* The T40 AVC targets on the CTB grid, twice the per-group value:
+         * reproduces the captured 0x1d1a/0x14ca (4K, 4 Mbit/s) and
+         * 0x2856/0x1ccf (720p, 1 Mbit/s) exactly. */
+        if (!is_idr)
+            target = target * 5u / 7u;
+        target = target * 95u / 100u;
+        word15 = (uint32_t)(target * group_count * 2u / ctb_count);
+        word16 = (uint32_t)(bitrate * fps_den * group_count /
+                            ((uint64_t)ctb_count * fps_num));
+        cmd[0x15] = word15 & 0x00ffffffu;
+        cmd[0x16] = 0x3f000000u | (word16 & 0x00ffffffu);
+        cmd[0x18] = ((is_idr || picture_number == 1u)
+                       ? 0xc0000000u : 0x40000000u) |
+                    (((columns_per_group * 4u + 1u) & 0xffu) << 20) |
+                    ((word15 >> 7) & 0xffffu);
+        /* EP3: the IDR and the P picture class slots (vendor: one slot
+         * apart, IDR above P), as on T31. */
+        if (ctx->rec_trace_buf.phy_addr)
+            cmd[0x2d] = ctx->rec_trace_buf.phy_addr +
+                        (is_idr ? 2u : 1u) * AVPU_T40_EP3_SLOT_SIZE;
+    } else {
+        memset(&cmd[0x14], 0, 5u * sizeof(uint32_t));
+        cmd[0x2d] = 0u;
+    }
+
+    /* EP2 behind the CTB-row WPP table (vendor: 4K EP1 + 0x6580, 720p
+     * EP1 + 0x6480); avpu_t40_init_ep2() seeds the same place. */
+    if (ctx->interm_buf.phy_addr)
+        cmd[0x23] = ctx->interm_buf.phy_addr + ctx->interm_ep1_size +
+                    ctx->interm_wpp_size;
+
+    /* The HEVC core writes the final CABAC bitstream: no inline Enc2. */
+    memset(&cmd[0x19], 0, 7u * sizeof(uint32_t));
+    /* The vendor T40 HEVC lists keep the AVC picture-size scratch clear. */
+    cmd[0x64] = 0u;
+    cmd[0x65] = 0u;
+}
+#endif
 #endif
 
 #if defined(PLATFORM_T41)
@@ -3144,7 +3378,7 @@ static uint32_t avpu_prewrite_stream_headers(ALAvpuContext *ctx, int buf_idx, in
      * all follow the configured stream instead of a resolution template.
      */
     slice_bits = 0u;
-#if defined(PLATFORM_T31) || defined(PLATFORM_T41)
+#if defined(PLATFORM_T31) || defined(PLATFORM_T40)
     if (ctx->codec_hevc) {
         /* HEVC: VPS/SPS/PPS on IDR plus a byte-aligned slice segment
          * header; the AVPU HEVC core continues with slice_segment_data(). */
@@ -3286,7 +3520,7 @@ static uint32_t avpu_get_enc1_stream_part_offset(const ALAvpuContext *ctx)
     return (uint32_t)ctx->stream_buf_size - stream_part_size;
 }
 
-#if defined(PLATFORM_T31) || defined(PLATFORM_T41)
+#if defined(PLATFORM_T31) || defined(PLATFORM_T41) || defined(AVPU_T40_NATIVE)
 /* ROI (IMP_Encoder_SetChnRoiAttr).  The T41 AVC EP2 buffer holds, after a
  * 0x40-byte header, one 32-bit entry per macroblock in raster order:
  * byte 0 = the relative QP (int8), byte 3 = 0x20.  Measured on a T41 running
@@ -3317,7 +3551,7 @@ static void avpu_roi_warn_clamped(const char *soc, unsigned int c,
 }
 #endif
 
-#if defined(PLATFORM_T31)
+#if defined(PLATFORM_T31) || defined(AVPU_T40_NATIVE)
 /* T31 ROI (beyond vendor: the T31 libimp 1.1.6 has no ROI API).  The
  * Allegro core in the vendor library shows the mechanism (HLIL of
  * AL_Common_Encoder_Process, encode1, SliceParamToCmdRegsEnc1,
@@ -3350,6 +3584,25 @@ static void avpu_roi_warn_clamped(const char *soc, unsigned int c,
  * requests are clamped and logged once (a decoder that checks the range,
  * VA-API/VLC/browsers, shows broken blocks otherwise, ffmpeg hides it).
  * The API refuses delta windows outside -26..25 like the vendor T41. */
+#if defined(AVPU_T40_NATIVE)
+/* T40: the vendor libimp 1.3.1 implements the windows (a per-macroblock QP
+ * table, one byte per 16x16 block for AVC, the same table format as the T31
+ * Allegro core; cmd[9] carries the same two bits), but the OpenIMP port is
+ * not device-tested yet: off unless OPENIMP_T40_ROI=1. */
+#define AVPU_ROI_SOC "T40"
+static int avpu_t31_roi_disabled(void)
+{
+    static int off = -1;
+
+    if (off < 0) {
+        const char *e = getenv("OPENIMP_T40_ROI");
+
+        off = !(e && e[0] == '1');
+    }
+    return off;
+}
+#else
+#define AVPU_ROI_SOC "T31"
 static int avpu_t31_roi_disabled(void)
 {
     static int off = -1;
@@ -3361,6 +3614,7 @@ static int avpu_t31_roi_disabled(void)
     }
     return off;
 }
+#endif
 
 /* FixQP pins min_qp = max_qp to the picture QP, but the hardware takes the
  * table entry as it is (measured: QP 10 / 51 windows under FixQP 30), so the
@@ -3408,14 +3662,38 @@ static void avpu_t31_roi_apply(ALAvpuContext *ctx)
     avpu_t31_roi_qp_range(ctx, &rmin, &rmax);
     avpu_roi_fill(table, 1u, 6u, cols, rows, ctx->roi_win, 10u,
                   ctx->roi_base_qp, rmin, rmax, 0, &res);
+    /* SetChnMapRoi (T40): the per-block deltas replace the window value,
+     * cut to the same limits */
+    if (ctx->roi_map && ctx->roi_map_n == mb) {
+        int lo, hi;
+
+        avpu_roi_limits(ctx->roi_base_qp, rmin, rmax, &lo, &hi);
+        any = 1;
+        for (i = 0; i < mb; i++) {
+            int d = ctx->roi_map[i];
+
+            if (!d)
+                continue;
+            if (d < res.req_min)
+                res.req_min = d;
+            if (d > res.req_max)
+                res.req_max = d;
+            if (d < lo || d > hi) {
+                d = d < lo ? lo : hi;
+                res.clamped |= AVPU_ROI_CLAMP_RANGE;
+            }
+            table[i] = (uint8_t)((uint32_t)d & 0x3fu);
+        }
+        avpu_roi_spread_clamp(table, 1u, 6u, mb, &res);
+    }
     ctx->roi_table_on = any;
     ctx->roi_absolute = absolute;
     ctx->roi_req_min = res.req_min;
     ctx->roi_req_max = res.req_max;
     ctx->roi_range_clamped = (res.clamped & AVPU_ROI_CLAMP_RANGE) != 0;
     pthread_mutex_unlock(&avpu_roi_lock);
-    avpu_roi_warn_clamped("T31", res.clamped, &res, ctx->roi_base_qp);
-    LOG_CODEC("AVPU: T31 ROI QP table %s %ux%u macroblocks base QP %u",
+    avpu_roi_warn_clamped(AVPU_ROI_SOC, res.clamped, &res, ctx->roi_base_qp);
+    LOG_CODEC("AVPU: " AVPU_ROI_SOC " ROI QP table %s %ux%u macroblocks base QP %u",
               any ? "set" : "cleared", cols, rows, ctx->roi_base_qp);
     (void)avpu_flush_dma_buf(ctx->fd, "roi_table", &ctx->interm_buf,
                              ctx->interm_ep1_size + ctx->interm_wpp_size +
@@ -3556,8 +3834,10 @@ static int avpu_t41_prepare_picture(ALAvpuContext *ctx, int is_idr)
             controller->gop_length != gop_length ||
             controller->min_qp != min_qp ||
             controller->max_qp != max_qp) {
-            /* Both live T41 controller objects observed in OEM start at 38. */
-            if (openimp_t41_rate_controller_init(
+            /* Both live T41 controller objects observed in OEM start at 38;
+             * a run-time change (SetChnBitRate, SetChnQpBounds) carries the
+             * running QP on. */
+            if (openimp_t41_rate_controller_reconfigure(
                     controller, bitrate, fps_num, fps_den, gop_length,
                     min_qp, max_qp, 38u) != 0)
                 return -1;
@@ -3572,6 +3852,21 @@ static int avpu_t41_prepare_picture(ALAvpuContext *ctx, int is_idr)
         ctx->t41_rate_controller.initialized = 0;
     }
     ctx->t41_rate_control_qp = selected_qp;
+
+    /* Run-time SetChnBitRate: the row thresholds of the three EP3 tables
+     * came from the bit rate at channel start; the OEM regenerates them
+     * (PreprocessHwRateCtrl) when a new rate is applied, and clears the
+     * level.  The command words (cmd[177]/[178]) follow ctx->bitrate on
+     * every picture already. */
+    if (ctx->t41_hwrc_bitrate && ctx->t41_hwrc_bitrate != bitrate) {
+        if (openimp_t41_hwrc_ring_retarget(ep3_cpu, ctx->rec_trace_buf.size,
+                                           bitrate) != 0)
+            return -1;
+        openimp_t41_hwrc_level_init(&ctx->t41_hwrc_level);
+        LOG_CODEC("AVPU: T41 hwrc ring retargeted %u -> %u bit/s",
+                  ctx->t41_hwrc_bitrate, bitrate);
+    }
+    ctx->t41_hwrc_bitrate = bitrate;
 
     if (openimp_t41_update_ep1_lambda_codec(
             ctx->interm_buf.map, ctx->interm_buf.size,
@@ -3873,6 +4168,133 @@ static int avpu_t41_fill_command(ALAvpuContext *ctx, void *slot,
  * RecBuffer context. Leaving the required DMA words at zero causes the AVPU to
  * DMA to physical address 0x0 → AXI bus hang → hard SoC crash.
  */
+#if defined(AVPU_T40_NATIVE)
+/*
+ * T40 command words that follow the vendor libimp 1.3.1 command lists
+ * (Eufy T40XP, SC830AI; H.264 High, CBR/VBR/FixQP at 3840x2160, 1920x1080,
+ * 1280x720 and 640x360, captured word by word at the AVPU push).  Each item
+ * can be switched back to the previous OpenIMP value for comparisons:
+ * OPENIMP_T40_<NAME>=0.
+ */
+static int avpu_t40_knob(int index, const char *name)
+{
+    static int cache[8] = { -1, -1, -1, -1, -1, -1, -1, -1 };
+
+    if (index < 0 || index >= 8)
+        return 1;
+    if (cache[index] < 0) {
+        const char *value = getenv(name);
+
+        cache[index] = value && value[0] == '0' ? 0 : 1;
+        if (!cache[index])
+            IMP_LOG_INFO("Codec", "T40 encoder: %s=0 (pre-vendor value)", name);
+    }
+    return cache[index];
+}
+
+#define AVPU_T40_KNOB_FIXQP_NOHWRC 0  /* OPENIMP_T40_FIXQP_NOHWRC */
+#define AVPU_T40_KNOB_CMD12 1         /* OPENIMP_T40_CMD12 */
+#define AVPU_T40_KNOB_POC 2           /* OPENIMP_T40_POC */
+#define AVPU_T40_KNOB_HWRC_TARGET 3   /* OPENIMP_T40_HWRC_TARGET */
+#define AVPU_T40_KNOB_FIXQP_LDA 4     /* OPENIMP_T40_FIXQP_LDA */
+
+static uint32_t avpu_t40_cmd12_hi(uint32_t width)
+{
+    return t40_vendor_cmd12_hi(width);
+}
+
+static void avpu_t40_hwrc_targets(const ALAvpuContext *ctx, int is_idr,
+                                  uint32_t lcu_count, uint32_t groups,
+                                  uint32_t *word15, uint32_t *word16)
+{
+    uint64_t bitrate = ctx->bitrate ? ctx->bitrate : 2000000u;
+
+    t40_vendor_hwrc_targets(bitrate,
+                            ctx->rc_mode == HW_RC_MODE_VBR
+                                ? ctx->t31_max_bitrate : bitrate,
+                            ctx->fps_num, ctx->fps_den, lcu_count, groups,
+                            is_idr, word15, word16);
+}
+
+/* FixQP lambdas per picture type, as the vendor rewrites EP1 before each
+ * picture (only when the type changes; EP1 is at the start of interm_buf).
+ * The vendor HEVC command lists carry the same 52-entry tables as AVC
+ * (captured at QP 22 and 30, 4K and 720p). */
+static void avpu_t40_fixqp_lambdas(ALAvpuContext *ctx, int is_idr)
+{
+    uint32_t type = is_idr ? 2u : 1u;
+
+    if (ctx->rc_mode != HW_RC_MODE_FIXQP ||
+        !ctx->interm_buf.map || ctx->t40_ep1_lambda_type == type ||
+        !avpu_t40_knob(AVPU_T40_KNOB_FIXQP_LDA, "OPENIMP_T40_FIXQP_LDA"))
+        return;
+    if (openimp_t40_update_fixqp_ep1(ctx->interm_buf.map,
+                                     ctx->interm_ep1_size, is_idr) != 0)
+        return;
+    (void)avpu_flush_cache(ctx->fd, ctx->interm_buf.map, 0x100u, 1 /* WBACK */);
+    ctx->t40_ep1_lambda_type = type;
+}
+
+static void avpu_t40_native_cmd(const ALAvpuContext *ctx, uint32_t *cmd,
+                                int is_idr, uint32_t lcu_count,
+                                uint32_t groups)
+{
+    uint32_t n = is_idr ? 0u : ctx->frame_number - ctx->idr_frame_number;
+
+    /* The vendor never writes the picture size into the late window. */
+    cmd[0x64] = 0u;
+    cmd[0x65] = 0u;
+
+    if (avpu_t40_knob(AVPU_T40_KNOB_CMD12, "OPENIMP_T40_CMD12"))
+        cmd[0x12] = (cmd[0x12] & 0xf0ffffffu) |
+                    ((avpu_t40_cmd12_hi(ctx->enc_w) & 0xfu) << 24);
+
+    /* Picture numbers of the current picture and its references (in units
+     * of two, as the AVC frame POC), reset at every IDR. */
+    if (!is_idr && avpu_t40_knob(AVPU_T40_KNOB_POC, "OPENIMP_T40_POC")) {
+        uint32_t current = n * 2u;
+        uint32_t previous = n > 1u ? current - 2u : 0u;
+
+        cmd[0x0c] = current;
+        cmd[0x0d] = previous;
+        cmd[0x0e] = 0u;
+        cmd[0x0f] = previous;
+        cmd[0x10] = n > 1u ? current - 4u : 0xffffffffu;
+        cmd[0x11] = 0xffffffffu;
+    }
+
+    if (ctx->rc_mode == HW_RC_MODE_FIXQP) {
+        /* FixQP runs without the hardware rate controller: no enable bit,
+         * no targets, no QP window and no EP3 table. */
+        if (avpu_t40_knob(AVPU_T40_KNOB_FIXQP_NOHWRC,
+                          "OPENIMP_T40_FIXQP_NOHWRC")) {
+            cmd[0x09] &= ~0x00010000u;
+            memset(&cmd[0x14], 0, 5u * sizeof(uint32_t));
+            cmd[0x2d] = 0u;
+        }
+    } else if (avpu_t40_knob(AVPU_T40_KNOB_HWRC_TARGET,
+                             "OPENIMP_T40_HWRC_TARGET")) {
+        uint32_t word15;
+        uint32_t word16;
+
+        avpu_t40_hwrc_targets(ctx, is_idr, lcu_count, groups,
+                              &word15, &word16);
+        cmd[0x15] = word15 & 0x00ffffffu;
+        cmd[0x16] = (cmd[0x16] & 0xff000000u) | (word16 & 0x00ffffffu);
+        /* bits 31:24 the HW minimum QP; bits 23:16 hold the QP of the
+         * GOP's IDR on every picture */
+        cmd[0x17] = (cmd[0x17] & 0x00ffffffu) |
+                    ((t40_vendor_hwrc_min_qp(cmd[0x17] >> 24,
+                                             (cmd[0x17] >> 8) & 0xffu)
+                      & 0xffu) << 24);
+        cmd[0x17] = (cmd[0x17] & 0xff00ffffu) |
+                    ((is_idr ? cmd[0x17] & 0x3fu : ctx->t40_idr_qp & 0x3fu)
+                     << 16);
+        cmd[0x18] = (cmd[0x18] & 0xffff0000u) | ((word15 >> 7) & 0xffffu);
+    }
+}
+#endif
+
 static void fill_cmd_regs_enc1(const ALAvpuContext* ctx, uint32_t* cmd,
                                int stream_buf_idx, uint32_t src_phys, uint32_t hdr_offset,
                                int is_idr, uint32_t ref_phys)
@@ -4415,6 +4837,14 @@ static void fill_cmd_regs_enc1(const ALAvpuContext* ctx, uint32_t* cmd,
         cmd[0x6e] = 0u;
         cmd[0x6f] = 0u;
 
+#if defined(AVPU_T40_NATIVE)
+        avpu_t40_native_cmd(ctx, cmd, is_idr, lcu_count, hwrc_group_count);
+        /* ROI: QP table in EP2 (avpu_t31_roi_apply), the same two bits as
+         * the T31 command (vendor SliceParamToCmdRegsEnc1: SliceParam+0x6c
+         * -> cmd[9] bit 25 use the table, +0x6b -> bit 24 relative) */
+        if (!ctx->codec_hevc && ctx->roi_table_on)
+            cmd[0x09] |= 0x03000000u;
+#endif
 #if defined(PLATFORM_T31)
         /*
          * The T31 and T40 command engines use the same inline AVC layout,
@@ -4562,6 +4992,9 @@ static void fill_cmd_regs_enc1(const ALAvpuContext* ctx, uint32_t* cmd,
             cmd[0x09] |= 0x03000000u;
         if (ctx->codec_hevc)
             avpu_t31_hevc_fill_cmd(ctx, cmd, is_idr);
+#elif !defined(PLATFORM_T41)
+        if (ctx->codec_hevc)
+            avpu_t40_hevc_fill_cmd(ctx, cmd, is_idr);
 #endif
     }
 #endif
@@ -4648,6 +5081,9 @@ static void fill_cmd_regs_enc2(const ALAvpuContext *ctx, uint32_t *cmd,
 
 static void log_first_enc2_cmd_window(ALAvpuContext* ctx, uint32_t idx, const uint32_t* cmd)
 {
+    /* developer diagnostic: compiled out unless OPENIMP_DEBUG=1 */
+    if (!OPENIMP_DEBUG)
+        return;
     if (!ctx || !cmd) return;
     if (__sync_lock_test_and_set(&ctx->first_enc2_submit_logged, 1) != 0) return;
 
@@ -4659,6 +5095,9 @@ static void log_first_enc2_cmd_window(ALAvpuContext* ctx, uint32_t idx, const ui
 
 static void log_first_enc1_cmd_window(ALAvpuContext* ctx, uint32_t idx, const uint32_t* cmd)
 {
+    /* developer diagnostic: compiled out unless OPENIMP_DEBUG=1 */
+    if (!OPENIMP_DEBUG)
+        return;
     if (!ctx || !cmd) return;
     if (__sync_lock_test_and_set(&ctx->first_submit_logged, 1) != 0) return;
 
@@ -4715,6 +5154,9 @@ static void log_first_enc1_cmd_window(ALAvpuContext* ctx, uint32_t idx, const ui
 
 static void log_busy_enc1_cmd_window(ALAvpuContext* ctx, uint32_t active_idx, unsigned int skip_count)
 {
+    /* developer diagnostic: compiled out unless OPENIMP_DEBUG=1 */
+    if (!OPENIMP_DEBUG)
+        return;
     if (!ctx || !avpu_cl_ring_base(ctx) || ctx->cl_entry_size == 0 || ctx->cl_count == 0)
         return;
 
@@ -4969,6 +5411,41 @@ static void avpu_mark_stream_buffer_released(ALAvpuContext *ctx, int buf_idx)
     pthread_mutex_unlock(mutex);
 }
 
+#if defined(OPENIMP_AL_FRAME_RC) && !defined(PLATFORM_T31)
+/*
+ * T40 frame-level rate control feedback.  T40 used to code every picture
+ * with the open-loop bits-per-LCU QP of avpu_t40_picture_qp(), so the
+ * bitrate followed the scene instead of the target (Eufy T40XP, 4K@20:
+ * 132 kbit/s for a 6 Mbit/s CBR target).  The OEM T40 libimp runs the same
+ * Allegro lib_rate_ctrl as T31 on the same AVPU, so the T31 port is reused:
+ * the published access-unit size (what the stream consumer receives) is
+ * the coded size.  No status registers are passed: their T40 offsets are
+ * not verified, and without them the core only skips its intra-share
+ * heuristics (all percentages read as 0).
+ */
+static void avpu_t40_rc_complete(ALAvpuContext *ctx, int buf_idx,
+                                 uint32_t frame_size)
+{
+    if (!ctx || buf_idx < 0 || buf_idx >= 16 || frame_size == 0u ||
+        frame_size > UINT32_MAX / 8u)
+        return;
+    if (ctx->t31_al_rc.valid) {
+        avpu_t31_allegro_complete(ctx, buf_idx, frame_size * 8u, NULL, 0u);
+    } else if (ctx->t31_rate_controller.initialized) {
+        int ret = openimp_t31_rate_controller_complete(
+            &ctx->t31_rate_controller, frame_size * 8u,
+            ctx->t31_rate_control_qp_by_buf[buf_idx],
+            ctx->stream_is_idr[buf_idx]);
+
+        if (ctx->frames_encoded < 16 || ctx->frames_encoded % 50 == 0)
+            LOG_CODEC("T40 rate controller: buf=%d idr=%u used=%u next=%u ret=%d",
+                      buf_idx, ctx->stream_is_idr[buf_idx],
+                      ctx->t31_rate_control_qp_by_buf[buf_idx],
+                      ctx->t31_rate_controller.current_qp, ret);
+    }
+}
+#endif
+
 static void avpu_complete_frame(ALAvpuContext *ctx, const char *source)
 {
     int buf_idx = -1;
@@ -5034,6 +5511,9 @@ static void avpu_complete_frame(ALAvpuContext *ctx, const char *source)
     }
 
     openimp_profile_frame_completed(frame_size);
+#if defined(OPENIMP_AL_FRAME_RC) && !defined(PLATFORM_T31)
+    avpu_t40_rc_complete(ctx, buf_idx, frame_size);
+#endif
 
     /* frames_encoded is intentionally advanced before stream publication so
      * DPB ownership is visible to consumers, but it is too early to release
@@ -5814,7 +6294,7 @@ static void avpu_end_encoding_callback(void *user_data)
             &ctx->t31_rate_controller, t31_overflow_bytes * 8u,
             ctx->t31_rate_control_qp_by_buf[buf_idx],
             ctx->stream_is_idr[buf_idx]);
-        IMP_LOG_INFO("Codec", "AVC: picture larger than the stream buffer (%u bytes), dropped, QP %u -> %u",
+        IMP_LOG_LIMITED(LOG_WARNING, "Codec", "AVC: picture larger than the stream buffer (%u bytes), dropped, QP %u -> %u",
                      t31_overflow_bytes,
                      ctx->t31_rate_control_qp_by_buf[buf_idx],
                      ctx->t31_rate_controller.current_qp);
@@ -5930,6 +6410,9 @@ static void avpu_end_avc_entropy_callback(void *user_data)
 
 static void avpu_log_gate_regs(ALAvpuContext *ctx, const char *tag)
 {
+    /* developer diagnostic: compiled out unless OPENIMP_DEBUG=1 */
+    if (!OPENIMP_DEBUG)
+        return;
     unsigned int misc_ctrl = 0;
     unsigned int top_ctrl = 0;
     unsigned int axi_off = 0;
@@ -5997,6 +6480,9 @@ static void avpu_probe_reg_write(int fd, const char *tag, unsigned int off, unsi
 
 static void avpu_log_busy_snapshot(ALAvpuContext *ctx, uint32_t idx, unsigned int core_status)
 {
+    /* developer diagnostic: compiled out unless OPENIMP_DEBUG=1 */
+    if (!OPENIMP_DEBUG)
+        return;
     /* Emit every requested stuck-path snapshot. The earlier one-shot guard caused
      * the most useful snapshot to age out of the device ring buffer before the
      * retained logs were collected, leaving only the CL replay lines. */
@@ -6075,6 +6561,9 @@ static void avpu_log_busy_snapshot(ALAvpuContext *ctx, uint32_t idx, unsigned in
 
 static void avpu_log_submit_snapshot(ALAvpuContext *ctx, uint32_t idx, const char *tag)
 {
+    /* developer diagnostic: compiled out unless OPENIMP_DEBUG=1 */
+    if (!OPENIMP_DEBUG)
+        return;
     unsigned int core_status = 0;
     unsigned int irq_mask = 0;
     unsigned int irq_pending = 0;
@@ -6675,6 +7164,21 @@ static int avpu_t31_au_gate_enabled(void)
 }
 #endif
 
+#if defined(PLATFORM_T40) && !defined(PLATFORM_T41)
+/* OPENIMP_T40_<name>=0 restores the previous behaviour (cached). */
+static int avpu_t40_stream_knob(int *cache, const char *name)
+{
+    if (*cache < 0) {
+        const char *value = getenv(name);
+
+        *cache = value && value[0] == '0' ? 0 : 1;
+    }
+    return *cache;
+}
+#define AVPU_T40_STREAM_KNOB(name) \
+    ({ static int knob_cache_ = -1; avpu_t40_stream_knob(&knob_cache_, name); })
+#endif
+
 static uint32_t avpu_stream_buffer_effective_size(ALAvpuContext *ctx, int buf_idx,
                                                   int *flush_ret_out)
 {
@@ -6769,6 +7273,11 @@ static uint32_t avpu_stream_buffer_effective_size(ALAvpuContext *ctx, int buf_id
         if (drain_us)
             usleep(drain_us);
     }
+#elif defined(PLATFORM_T40) && !defined(PLATFORM_T41)
+    /* T40: the payload count and the last payload byte are verified below
+     * instead of sleeping 2 ms for every picture. */
+    if (!AVPU_T40_STREAM_KNOB("OPENIMP_T40_DRAIN_VERIFY"))
+        usleep(2000);
 #else
     usleep(2000);
 #endif
@@ -6825,6 +7334,65 @@ static uint32_t avpu_stream_buffer_effective_size(ALAvpuContext *ctx, int buf_id
         if (flush_ret_out)
             *flush_ret_out = inv_ret;
     }
+
+#if defined(PLATFORM_T40) && !defined(PLATFORM_T41)
+    /* The cleared buffer is zero beyond what the AVPU has written, and the
+     * last byte of a coded slice is never zero (rbsp stop bit, or the 0x03
+     * of cabac_zero_words).  A zero last byte means the final DMA burst is
+     * not visible yet: wait in 100 us steps (the old fixed drain was 2 ms). */
+    if (have_t40_layout && AVPU_T40_STREAM_KNOB("OPENIMP_T40_DRAIN_VERIFY")) {
+        static unsigned int late_count, late_bytes_diff, checked_count;
+        const volatile uint8_t *tail =
+            (const volatile uint8_t *)ctx->stream_bufs[buf_idx].map;
+        unsigned int tries = 0u;
+
+        while (tail[t40_layout.payload_end - 1u] == 0u && tries < 40u) {
+            usleep(100);
+            (void)avpu_flush_cache_profiled(
+                ctx->fd, ctx->stream_bufs[buf_idx].map,
+                t40_layout.payload_end, 0 /* BIDIRECTIONAL */,
+                OPENIMP_PROFILE_CACHE_STREAM_COMPLETE);
+            ++tries;
+        }
+        if (tries) {
+            unsigned int n = __sync_add_and_fetch(&late_count, 1u);
+
+            if (n <= 8u || (n % 256u) == 0u)
+                IMP_LOG_WARN("Codec", "T40 stream tail late buf[%d] tries=%u total=%u%s",
+                          buf_idx, tries, n,
+                          tries >= 40u ? " (gave up)" : "");
+        }
+        if (getenv("OPENIMP_T40_DRAIN_CHECK")) {
+            /* debug: compare with the state after the old fixed drain */
+            unsigned int again = 0u;
+            uint32_t pe = t40_layout.payload_end;
+            uint8_t *before = malloc(pe);
+            int differs;
+
+            if (before)
+                memcpy(before, (const void *)tail, pe);
+            usleep(2000);
+            (void)avpu_flush_cache_profiled(
+                ctx->fd, ctx->stream_bufs[buf_idx].map, pe,
+                0 /* BIDIRECTIONAL */, OPENIMP_PROFILE_CACHE_STREAM_COMPLETE);
+            differs = avpu_read_reg_quiet(ctx->fd, 0x8304u, &again) != 0 ||
+                ((again ^ t40_payload_status) & OPENIMP_T40_PAYLOAD_SIZE_MASK) ||
+                (before && memcmp(before, (const void *)tail, pe));
+            free(before);
+            if (differs) {
+                (void)__sync_add_and_fetch(&late_bytes_diff, 1u);
+                IMP_LOG_WARN("Codec", "T40 DRAIN_CHECK MISMATCH buf[%d] status %08x -> %08x (diff count %u)",
+                          buf_idx, t40_payload_status, again, late_bytes_diff);
+            }
+            if ((__sync_add_and_fetch(&checked_count, 1u) % 100u) == 0u)
+                IMP_LOG_WARN("Codec", "T40 DRAIN_CHECK %u pictures, %u mismatches, %u late",
+                             checked_count, late_bytes_diff, late_count);
+        }
+    }
+    /* what the AVPU wrote is what the next submit has to clear */
+    ctx->stream_dirty_by_buf[buf_idx] =
+        have_t40_layout ? t40_layout.payload_end : 0u;
+#endif
 
     /* Non-T31 generations may expose a live end position in the command list.
      * T31 instead uses its exact +0x104 completion payload count. */
@@ -7372,7 +7940,7 @@ struct AL_CodecEncode {
     int force_next_idr;             /* Per-codec RequestIDR latch */
     int last_error;                 /* Best-effort OEM-like sticky error */
     IMPEncoderRcAttr rc_attr_cache; /* Control-plane cache for wrapper APIs */
-#if defined(PLATFORM_T31)
+#if defined(OPENIMP_AL_FRAME_RC)
     uint32_t rc_quality_cap_x100;   /* CappedVBR/CappedQuality PSNR cap */
 #endif
     IMPEncoderFrmRate fps_cache;
@@ -7663,7 +8231,7 @@ static int t23_native_wanted(void)
         wanted = 1;
         value = NULL;
     }
-    IMP_LOG_INFO("Encoder", "T23 H.264 backend: %s%s",
+    IMP_LOG(LOG_NOTICE, "Encoder", "T23 H.264 backend: %s%s",
                  wanted ? "native Helix" : "OEM worker",
                  value ? " (OPENIMP_T23_ENCODER)" : " (build default)");
     return wanted;
@@ -8027,7 +8595,7 @@ static void avpu_sync_runtime_encode_state(AL_CodecEncode *enc)
     enc->avpu.min_qp = enc->hw_params.min_qp;
     enc->avpu.max_qp = enc->hw_params.max_qp;
     enc->avpu.entropy_mode = enc->entropy_mode;
-#if defined(PLATFORM_T31)
+#if defined(OPENIMP_AL_FRAME_RC)
     enc->avpu.t31_quality_cap_x100 = enc->rc_quality_cap_x100;
 #endif
     enc->avpu.gop_length = enc->gop_cache.gopLength ? enc->gop_cache.gopLength : enc->hw_params.gop_length;
@@ -8071,12 +8639,11 @@ static void avpu_sync_runtime_encode_state(AL_CodecEncode *enc)
     }
 
 #if defined(PLATFORM_T40)
-#if defined(PLATFORM_T41)
-    /* T41 HEVC (notes in t41_command_builder.c): same core and command
-     * image, codec 1 on the 32x32 CTB grid. */
+    /* T41 HEVC (notes in t41_command_builder.c) and T40 HEVC
+     * (docs/T40_HEVC.md): same core and command image, codec 1 on the
+     * 32x32 CTB grid. */
     enc->avpu.codec_hevc =
         codec_param_read_codec_type(enc->codec_param) == IMP_ENC_TYPE_HEVC;
-#endif
     /* The T40 oracle uses the High/CABAC command template for both the
      * 1920x1080 and 640x360 Raptor AVC channels. */
     enc->avpu.profile = HW_PROFILE_HIGH;
@@ -8131,7 +8698,7 @@ static void codec_sync_rc_cache(AL_CodecEncode *enc);
 
 int AL_Codec_Encode_SetRoiAttr(void *codec, const void *roi_attr)
 {
-#if defined(PLATFORM_T31)
+#if defined(PLATFORM_T31) || defined(AVPU_T40_NATIVE)
     AL_CodecEncode *enc = (AL_CodecEncode *)codec;
     const IMPEncoderRoiAttr *attr = (const IMPEncoderRoiAttr *)roi_attr;
     uint32_t i;
@@ -8232,14 +8799,18 @@ typedef struct {
 
 int AL_Codec_Encode_SetMapRoi(void *codec, const void *roi_attr)
 {
-#if defined(PLATFORM_T41)
+#if defined(PLATFORM_T41) || defined(AVPU_T40_NATIVE)
     AL_CodecEncode *enc = (AL_CodecEncode *)codec;
     const CodecMapRoiAttr *attr = (const CodecMapRoiAttr *)roi_attr;
     uint32_t cols, rows, mb, i;
     int8_t *table = NULL;
 
     if (enc == NULL || attr == NULL || enc->avpu.codec_hevc ||
+#if defined(PLATFORM_T41)
         !avpu_t41_roi_experimental())
+#else
+        avpu_t31_roi_disabled())
+#endif
         return -1;
     cols = (enc->avpu.enc_w + 15u) >> 4;
     rows = (enc->avpu.enc_h + 15u) >> 4;
@@ -8429,6 +9000,24 @@ int AL_Codec_Encode_SetChromaQpOffset(void *codec, int offset)
     ((AL_CodecEncode *)codec)->hw_params.chroma_qp_offset = offset;
     return 0;
 }
+
+#if defined(PLATFORM_T20)
+/* IMP_Encoder_SetChnRcTrigLevel: the OEM controller raises the QP cap from
+ * the application's max QP to new_max_qp while the bit rate of a GOP is
+ * above level x its budget; new_max_qp = max QP makes max QP a hard cap */
+int AL_Codec_Encode_SetRcTrig(void *codec, float level, int new_max_qp)
+{
+    HWEncoderParams *hp;
+
+    if (codec == NULL)
+        return -1;
+    hp = &((AL_CodecEncode *)codec)->hw_params;
+    memcpy(&hp->rc_trig_bits, &level, sizeof(level));
+    hp->rc_new_max_qp = new_max_qp < 1 ? 1u : new_max_qp > 51 ? 51u
+                                                               : (uint32_t)new_max_qp;
+    return 0;
+}
+#endif
 
 int AL_Codec_Encode_SetSuperFrame(void *codec, uint32_t mode,
                                   uint32_t i_bits, uint32_t p_bits)
@@ -9259,7 +9848,7 @@ static int al_codec_encode_destroy_impl(void *codec) {
 #endif
 
     /* Deinitialize hardware encoder(s) - OEM parity: no separate deinit function */
-    if (enc->use_hardware == 2 && enc->avpu.fd >= 0) {
+    if (codec_avpu_active(enc) && enc->avpu.fd >= 0) {
 #if defined(PLATFORM_T40) || defined(PLATFORM_T31)
         /* The channel has already been stopped before codec destruction, so
          * no further CL can be submitted here.  Quiesce the T-series core before
@@ -9766,9 +10355,9 @@ static int t31_hwjpeg_requested(void)
         /* Same rule as p2_jpeg_copy_in_rmem(): on unless exactly "0". */
         requested = !(value && value[0] == '0' && value[1] == '\0');
         if (requested)
-            IMP_LOG_INFO("Codec", "HWJPEG: T31 hardware JPEG enabled (OPENIMP_T31_HW_JPEG=0 selects the software encoder)");
+            IMP_LOG(LOG_NOTICE, "Codec", "HWJPEG: T31 hardware JPEG enabled (OPENIMP_T31_HW_JPEG=0 selects the software encoder)");
         else
-            IMP_LOG_INFO("Codec", "HWJPEG: T31 hardware JPEG off (OPENIMP_T31_HW_JPEG=0), software encoder");
+            IMP_LOG(LOG_NOTICE, "Codec", "HWJPEG: T31 hardware JPEG off (OPENIMP_T31_HW_JPEG=0), software encoder");
     }
     return requested;
 }
@@ -10055,7 +10644,7 @@ static int t31_hwjpeg_encode(const HWFrameBuffer *frame, HWStreamBuffer *stream,
     if (!completed) {
         avpu_read_reg_quiet(fd, T31_HWJPEG_REG_BUSY, &busy);
         avpu_write_reg(fd, T31_HWJPEG_REG_RESET, 1u);
-        IMP_LOG_INFO("Codec", "HWJPEG: no IRQ %u within %d ms (status %08x %08x %08x, 0x85f8 %08x) [%d/%d]",
+        IMP_LOG(LOG_WARNING, "Codec", "HWJPEG: no IRQ %u within %d ms (status %08x %08x %08x, 0x85f8 %08x) [%d/%d]",
                      T31_HWJPEG_IRQ_SLOT, T31_HWJPEG_TIMEOUT_MS, status[0],
                      status[1], status[2], busy, g_t31_hwjpeg.timeouts + 1,
                      T31_HWJPEG_MAX_TIMEOUTS);
@@ -10074,7 +10663,7 @@ static int t31_hwjpeg_encode(const HWFrameBuffer *frame, HWStreamBuffer *stream,
         return -1;
     }
     if (length < 4u || length > cmd[10]) {
-        IMP_LOG_INFO("Codec", "HWJPEG: implausible length %u", length);
+        IMP_LOG(LOG_WARNING, "Codec", "HWJPEG: implausible length %u", length);
         t31_hwjpeg_disable("implausible length");
         return -1;
     }
@@ -10086,12 +10675,12 @@ static int t31_hwjpeg_encode(const HWFrameBuffer *frame, HWStreamBuffer *stream,
         avpu_flush_cache(fd, g_t31_hwjpeg.stream.map,
                          T31_HWJPEG_STREAM_OFF + length,
                          0 /* BIDIRECTIONAL */) != 0) {
-        IMP_LOG_INFO("Codec", "HWJPEG: stream cache invalidate failed, software this frame");
+        IMP_LOG(LOG_WARNING, "Codec", "HWJPEG: stream cache invalidate failed, software this frame");
         return -1;
     }
     jpeg = (const uint8_t *)g_t31_hwjpeg.stream.map + T31_HWJPEG_STREAM_OFF;
     if (jpeg[0] != 0xffu || jpeg[1] != 0xd8u) {
-        IMP_LOG_INFO("Codec", "HWJPEG: output lacks SOI (%02x %02x .., %u bytes)",
+        IMP_LOG(LOG_WARNING, "Codec", "HWJPEG: output lacks SOI (%02x %02x .., %u bytes)",
                      jpeg[0], jpeg[1], length);
         t31_hwjpeg_disable("hardware did not emit a JFIF stream");
         return -1;
@@ -10103,7 +10692,7 @@ static int t31_hwjpeg_encode(const HWFrameBuffer *frame, HWStreamBuffer *stream,
             break;
     }
     if (i == 64 || length - (uint32_t)i < 4u) {
-        IMP_LOG_INFO("Codec", "HWJPEG: no EOI in the last 64 bytes (%u bytes)", length);
+        IMP_LOG(LOG_WARNING, "Codec", "HWJPEG: no EOI in the last 64 bytes (%u bytes)", length);
         t31_hwjpeg_disable("hardware did not emit a JFIF stream");
         return -1;
     }
@@ -10303,6 +10892,7 @@ static void avpu_t31_start_companion_stage(ALAvpuContext *ctx, int fd,
 static int al_codec_encode_process_impl(void *codec, void *frame,
                                         void *user_data) {
     OpenIMPProfileStamp submit_profile;
+    OpenIMPProfileStamp mid_profile;
     if (codec == NULL) {
         LOG_CODEC("Process: NULL codec pointer");
         return -1;
@@ -10326,6 +10916,7 @@ static int al_codec_encode_process_impl(void *codec, void *frame,
     }
 
     submit_profile = openimp_profile_begin();
+    mid_profile = submit_profile;
 
     /* The direct AVPU path publishes a descriptor from its completion
      * callback, so it does not need a speculative per-submit allocation.
@@ -10781,15 +11372,16 @@ static int al_codec_encode_process_impl(void *codec, void *frame,
              * as soon as chn1 opened /dev/avpu, which matches the "no stream
              * on chn0" failure seen on target. */
             int try_avpu = (codec_type == IMP_ENC_TYPE_AVC);
-#if defined(PLATFORM_T31) || defined(PLATFORM_T41)
-            /* The T31 and T41 AVPU encode HEVC as well (docs/T31_HEVC.md,
-             * notes in t41_command_builder.c). */
+#if defined(PLATFORM_T31) || defined(PLATFORM_T40)
+            /* The T31, T40 and T41 AVPU encode HEVC as well
+             * (docs/T31_HEVC.md, docs/T40_HEVC.md, notes in
+             * t41_command_builder.c). */
             if (codec_type == IMP_ENC_TYPE_HEVC)
                 try_avpu = 1;
 #endif
 
             if (try_avpu) {
-                if (enc->avpu.fd > 2) {
+                if (CODEC_HAS_AVPU && enc->avpu.fd > 2) {
                     /* Already open for this channel; do not re-open */
                     enc->use_hardware = 2; /* 2 = AL/AVPU path */
                     /* OEM parity: no ALAvpu_SetEvent - event_fd stored directly */
@@ -10809,7 +11401,10 @@ static int al_codec_encode_process_impl(void *codec, void *frame,
                      * still serializes Process/Destroy for this instance. */
                     openimp_core_release(&g_t41_core, &enc->avpu);
 #endif
-                    int fd = AL_DevicePool_Open("/dev/avpu");
+                    /* Helix SoCs: no /dev/avpu, the open fails as it
+                     * always did there (without the syscall). */
+                    int fd = CODEC_HAS_AVPU ? AL_DevicePool_Open("/dev/avpu")
+                                            : (errno = ENOENT, -1);
                     codec_startup_trace(
                         "openimp/codec startup: device pool open fd=%d\n", fd);
                     if (fd >= 0) {
@@ -11114,6 +11709,14 @@ static int al_codec_encode_process_impl(void *codec, void *frame,
                             enc->avpu.interm_buf.dmabuf_fd = -1;
                             enc->avpu.interm_ep1_size = avpu_get_enc1_ep1_size();
                             enc->avpu.interm_wpp_size = avpu_get_enc1_wpp_size(width, height);
+#if defined(PLATFORM_T40) && !defined(PLATFORM_T41)
+                            /* T40 HEVC: one WPP entry per 32-line CTB row;
+                             * the vendor places EP2 right behind it
+                             * (cmd[0x23] = EP1 + 0x6400 + align128(4 * rows)). */
+                            if (enc->avpu.codec_hevc)
+                                enc->avpu.interm_wpp_size = avpu_align_up_u32(
+                                    ((height + 31u) >> 5) * 4u, 128u);
+#endif
                             enc->avpu.interm_ep2_size = avpu_get_enc1_ep2_size(width, height);
 #if defined(PLATFORM_T41)
                             if (!enc->avpu.codec_hevc &&
@@ -11128,7 +11731,7 @@ static int al_codec_encode_process_impl(void *codec, void *frame,
                                     enc->avpu.interm_ep2_size = avc_ep2;
                             }
 #endif
-#if defined(PLATFORM_T31) || defined(PLATFORM_T41)
+#if defined(PLATFORM_T31) || defined(PLATFORM_T40)
                             if (enc->avpu.codec_hevc) {
                                 /* AL_GetAllocSizeEP2(HEVC) =
                                  * align128(8 * blk32x32) + 0x40, about twice
@@ -11192,10 +11795,15 @@ static int al_codec_encode_process_impl(void *codec, void *frame,
                                                   interm_total_sz,
                                                   use_fixqp_lda))
 #else
-                                        openimp_t40_init_ep1(
-                                            enc->avpu.interm_buf.map,
-                                            interm_total_sz,
-                                            use_fixqp_lda)
+                                        /* T40: the T31 EP1 layout */
+                                        (enc->avpu.codec_hevc
+                                            ? openimp_t31_init_hevc_ep1(
+                                                  enc->avpu.interm_buf.map,
+                                                  interm_total_sz)
+                                            : openimp_t40_init_ep1(
+                                                  enc->avpu.interm_buf.map,
+                                                  interm_total_sz,
+                                                  use_fixqp_lda))
 #endif
                                         != 0) {
                                         memset(enc->avpu.interm_buf.map, 0,
@@ -11206,6 +11814,9 @@ static int al_codec_encode_process_impl(void *codec, void *frame,
                                                   enc->avpu.codec_hevc ? "HEVC" : "AVC",
                                                   enc->avpu.interm_ep1_size);
                                     }
+#if defined(AVPU_T40_NATIVE)
+                                    enc->avpu.t40_ep1_lambda_type = 0u;
+#endif
 #if defined(PLATFORM_T40) || defined(PLATFORM_T31)
                                     if (avpu_t40_init_ep2(&enc->avpu) != 0)
                                         LOG_CODEC("AVPU: ERROR - default EP2 initialization failed");
@@ -11284,6 +11895,9 @@ static int al_codec_encode_process_impl(void *codec, void *frame,
                                             enc->avpu.rec_trace_buf.size);
                                 openimp_t41_hwrc_level_init(
                                     &enc->avpu.t41_hwrc_level);
+                                enc->avpu.t41_hwrc_bitrate =
+                                    enc->avpu.bitrate ? enc->avpu.bitrate
+                                                      : 2000000u;
                                 LOG_CODEC("AVPU: T41 ep3_ring phys=0x%08x size=%zu initialized=%zu flush=%d uncached=%p",
                                           enc->avpu.rec_trace_buf.phy_addr,
                                           enc->avpu.rec_trace_buf.size,
@@ -11554,7 +12168,7 @@ static int al_codec_encode_process_impl(void *codec, void *frame,
             free(hw_stream);
             return 0; /* no stream yet */
         }
-    } else if (enc->use_hardware == 2 && enc->avpu.fd >= 0) {
+    } else if (codec_avpu_active(enc) && enc->avpu.fd >= 0) {
         /* OEM parity: Direct ioctl calls (AL_Common_Encoder_Process) - no ALAvpu_QueueFrame wrapper */
         ALAvpuContext *ctx = &enc->avpu;
         int fd = ctx->fd;
@@ -11566,11 +12180,14 @@ static int al_codec_encode_process_impl(void *codec, void *frame,
         /* Keep the AVPU shadow aligned with live control-plane state before
          * each OEM-shaped encode1 submit. */
         avpu_sync_runtime_encode_state(enc);
-#if defined(PLATFORM_T31) || defined(PLATFORM_T41)
+#if defined(PLATFORM_T31) || defined(PLATFORM_T40)
         /* HEVC: the PPS of the last IDR fixes cu_qp_delta_enabled_flag.  A
          * rate-control change that switches the hardware RC on or off
          * needs a new IDR with a matching PPS. */
         if (ctx->codec_hevc && ctx->reference_valid &&
+#if defined(PLATFORM_T40) && !defined(PLATFORM_T41)
+            !(avpu_t40_hevc_tools() & 4u) &&
+#endif
             (uint32_t)avpu_t31_hevc_hwrc_enabled(ctx) !=
                 ctx->hevc_pps_cu_qp_delta)
             force_idr = 1;
@@ -11822,6 +12439,7 @@ static int al_codec_encode_process_impl(void *codec, void *frame,
             ctx->busy_skip_count = 0;
 
             buf_idx = avpu_acquire_stream_buffer(ctx);
+            openimp_profile_end(OPENIMP_PROFILE_SUBMIT_PRE, submit_profile);
             if (buf_idx < 0) {
                 LOG_CODEC("Process: no free AVPU stream buffer (enc=%d cons=%d pending=%d used=%d)",
                           ctx->frames_encoded, ctx->frames_consumed,
@@ -11866,10 +12484,35 @@ static int al_codec_encode_process_impl(void *codec, void *frame,
                 memset(ctx->stream_bufs[buf_idx].map, 0,
                        AVPU_T31_STREAM_PREFIX_BYTES);
 #else
-                memset(ctx->stream_bufs[buf_idx].map, 0,
-                       (size_t)ctx->stream_buf_size);
+                {
+                    OpenIMPProfileStamp clear_profile = openimp_profile_begin();
+                    size_t clear_bytes = (size_t)ctx->stream_buf_size;
+
+#if defined(PLATFORM_T40) && !defined(PLATFORM_T41)
+                    /* Only what the previous picture left in this buffer
+                     * (plus the 0x220-byte prefix) is not zero already. */
+                    if (buf_idx < 16 &&
+                        ctx->stream_dirty_by_buf[buf_idx] != 0u &&
+                        AVPU_T40_STREAM_KNOB("OPENIMP_T40_STREAM_CLEAR_EXTENT")) {
+                        clear_bytes = (size_t)ctx->stream_dirty_by_buf[buf_idx];
+                        if (clear_bytes < 0x400u)
+                            clear_bytes = 0x400u;
+                        clear_bytes = (clear_bytes + 63u) & ~(size_t)63u;
+                        if (clear_bytes > (size_t)ctx->stream_buf_size)
+                            clear_bytes = (size_t)ctx->stream_buf_size;
+                    }
+                    /* unknown again until this picture completes */
+                    if (buf_idx < 16)
+                        ctx->stream_dirty_by_buf[buf_idx] = 0u;
+                    ctx->t40_clear_bytes = (uint32_t)clear_bytes;
+#endif
+                    memset(ctx->stream_bufs[buf_idx].map, 0, clear_bytes);
+                    openimp_profile_end(OPENIMP_PROFILE_STREAM_CLEAR,
+                                        clear_profile);
+                }
 #endif
             }
+            mid_profile = openimp_profile_begin();
 
 #if defined(PLATFORM_T41)
             {
@@ -11891,7 +12534,10 @@ static int al_codec_encode_process_impl(void *codec, void *frame,
                 }
             }
 #endif
-#if defined(PLATFORM_T31)
+#if defined(AVPU_T40_NATIVE)
+            avpu_t40_fixqp_lambdas(ctx, is_idr);
+#endif
+#if defined(OPENIMP_AL_FRAME_RC)
             if (avpu_t31_prepare_picture(ctx) != 0) {
                 LOG_CODEC("Process: failed to prepare T31 rate-control state frame=%u buf=%d",
                           ctx->frame_number, buf_idx);
@@ -11902,6 +12548,10 @@ static int al_codec_encode_process_impl(void *codec, void *frame,
             }
             ctx->t31_rate_control_qp_by_buf[buf_idx] =
                 avpu_t40_picture_qp(ctx, is_idr);
+#if defined(AVPU_T40_NATIVE)
+            if (is_idr)
+                ctx->t40_idr_qp = ctx->t31_rate_control_qp_by_buf[buf_idx];
+#endif
 #endif
             OpenIMPProfileStamp header_profile = openimp_profile_begin();
             uint32_t hdr_offset = avpu_prewrite_stream_headers(
@@ -11941,6 +12591,12 @@ static int al_codec_encode_process_impl(void *codec, void *frame,
                     fd, ctx->stream_bufs[buf_idx].map,
                     AVPU_T31_STREAM_PREFIX_BYTES, 1 /* WBACK */,
                     OPENIMP_PROFILE_CACHE_STREAM_PREPARE);
+#elif defined(PLATFORM_T40)
+                avpu_flush_cache(fd, ctx->stream_bufs[buf_idx].map,
+                                 ctx->t40_clear_bytes
+                                     ? ctx->t40_clear_bytes
+                                     : (unsigned int)ctx->stream_buf_size,
+                                 1 /* WBACK */);
 #else
                 avpu_flush_cache(fd, ctx->stream_bufs[buf_idx].map,
                                  (unsigned int)ctx->stream_buf_size,
@@ -11972,12 +12628,12 @@ static int al_codec_encode_process_impl(void *codec, void *frame,
                 OpenIMPProfileStamp command_profile =
                     openimp_profile_begin();
 
-#if defined(PLATFORM_T31)
+#if defined(PLATFORM_T31) || defined(AVPU_T40_NATIVE)
                 avpu_t31_roi_apply(ctx);
 #endif
                 fill_cmd_regs_enc1(ctx, cmd, buf_idx, phys_addr, hdr_offset,
                                    is_idr, ref_phys);
-#if defined(PLATFORM_T31)
+#if defined(PLATFORM_T31) || defined(AVPU_T40_NATIVE)
                 avpu_t31_roi_track_qp(ctx, cmd);
 #endif
                 openimp_profile_end(OPENIMP_PROFILE_COMMAND_BUILD,
@@ -12114,10 +12770,12 @@ static int al_codec_encode_process_impl(void *codec, void *frame,
              * 4. Callback +0x430
              * 5. AL_EncCore_Encode1 → Rtos_FlushCacheMemory + CL_PUSH */
 #if defined(PLATFORM_T41)
+            openimp_profile_end(OPENIMP_PROFILE_SUBMIT_MID, mid_profile);
             OpenIMPProfileStamp submit_io_profile = openimp_profile_begin();
             avpu_t41_reset_core(fd, 0);
             avpu_turn_on_gc(fd, 0);
 #else
+            openimp_profile_end(OPENIMP_PROFILE_SUBMIT_MID, mid_profile);
             OpenIMPProfileStamp submit_io_profile = openimp_profile_begin();
             avpu_turn_on_gc(fd, 0);
 #if defined(PLATFORM_T40) || defined(PLATFORM_T31)
@@ -12538,7 +13196,7 @@ static void t41_check_completion_timeout(AL_CodecEncode *enc)
     pthread_mutex_unlock(&g_t41_core.lock);
     /* Only the channel whose command is stuck recovers it: another
      * channel's context may be in teardown. */
-    if (!owned || enc->use_hardware != 2 || ctx->fd < 0 ||
+    if (!owned || !codec_avpu_active(enc) || ctx->fd < 0 ||
         t41_monotonic_ms() - ctx->t41_submit_ms < T41_COMPLETION_TIMEOUT_MS)
         return;
 
@@ -12589,11 +13247,11 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data)
     }
     submitted_before = enc->avpu.frame_number;
     ret = al_codec_encode_process_impl(codec, frame, user_data);
-    if (enc->use_hardware != 2 || enc->avpu.frame_number == submitted_before)
+    if (!codec_avpu_active(enc) || enc->avpu.frame_number == submitted_before)
         openimp_core_release(&g_t41_core, &enc->avpu);
     else
         enc->avpu.t41_submit_ms = t41_monotonic_ms();
-    if (enc->use_hardware == 2 && enc->avpu.frame_number != submitted_before &&
+    if (codec_avpu_active(enc) && enc->avpu.frame_number != submitted_before &&
         ret)
         /* Once submitted, the source is still DMA-owned even if a later
          * bookkeeping step failed. Keep it submitted for Dequeue/recovery. */
@@ -12609,7 +13267,7 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data)
     /* JPEG runs on the CPU (its hardware job takes the core lock itself in
      * t31_hwjpeg_encode_locked): a snapshot must not stall both H.264
      * channels for a whole software encode. */
-    if (enc != NULL && enc->use_hardware != 2 &&
+    if (enc != NULL && !codec_avpu_active(enc) &&
         codec_param_read_codec_type(enc->codec_param) == IMP_ENC_TYPE_JPEG)
         return al_codec_encode_process_impl(codec, frame, user_data);
 
@@ -12629,7 +13287,7 @@ int AL_Codec_Encode_Process(void *codec, void *frame, void *user_data)
     /* Raptor has one thread per encoded stream, but T31 has one physical
      * encoder channel.  Keep that channel assigned to this context until the
      * shared IRQ waiter consumes its command list. */
-    if (ret == 0 && enc != NULL && enc->use_hardware == 2 &&
+    if (ret == 0 && enc != NULL && codec_avpu_active(enc) &&
         enc->avpu.fd >= 0 && enc->avpu.frame_number != submitted_before) {
         int completed = 0;
         /* Same budget as the former 2000 x 1 ms poll: give up after 2 s;
@@ -12710,7 +13368,7 @@ int AL_Codec_Encode_GetStream(void *codec, void **stream, void **user_data) {
 
     *user_data = NULL;
 
-    if (enc->use_hardware == 2 && enc->avpu.fd >= 0) {
+    if (codec_avpu_active(enc) && enc->avpu.fd >= 0) {
         ALAvpuContext *ctx = &enc->avpu;
 
         if (ctx->frames_consumed % 50 == 0)
@@ -12814,7 +13472,7 @@ int AL_Codec_Encode_ReleaseStream(void *codec, void *stream, void *user_data) {
 
     AL_CodecEncode *enc = (AL_CodecEncode*)codec;
 
-    if (enc->use_hardware == 2 && enc->avpu.fd >= 0) {
+    if (codec_avpu_active(enc) && enc->avpu.fd >= 0) {
         /* OEM parity: stock AL_Codec_Encode_ReleaseStream does not poke AVPU
          * registers directly here; it returns the stream buffer through the
          * encoder-side stream manager path. In our direct-AVPU scaffolding,
@@ -12998,7 +13656,7 @@ int AL_Codec_Encode_SetRcParam(void *codec, void *rcAttr)
         enc->hw_params.min_qp = clamp_qp_u32(src->attrRcMode.attrH264Cbr.iMinQP);
         enc->hw_params.max_qp = clamp_qp_u32(src->attrRcMode.attrH264Cbr.iMaxQP);
         enc->avpu.qp_ip_delta = src->attrRcMode.attrH264Cbr.iIPDelta;
-#if defined(PLATFORM_T31)
+#if defined(OPENIMP_AL_FRAME_RC)
         enc->avpu.t31_max_bitrate = src->attrRcMode.attrH264Cbr.uTargetBitRate;
         enc->avpu.t31_rc_options = (uint32_t)src->attrRcMode.attrH264Cbr.eRcOptions;
         enc->avpu.t31_qp_pb_delta = src->attrRcMode.attrH264Cbr.iPBDelta;
@@ -13036,7 +13694,7 @@ int AL_Codec_Encode_SetRcParam(void *codec, void *rcAttr)
         enc->hw_params.min_qp = clamp_qp_u32(src->attrRcMode.attrH264Vbr.iMinQP);
         enc->hw_params.max_qp = clamp_qp_u32(src->attrRcMode.attrH264Vbr.iMaxQP);
         enc->avpu.qp_ip_delta = src->attrRcMode.attrH264Vbr.iIPDelta;
-#if defined(PLATFORM_T31)
+#if defined(OPENIMP_AL_FRAME_RC)
         enc->avpu.t31_max_bitrate = src->attrRcMode.attrH264Vbr.uMaxBitRate;
         enc->avpu.t31_rc_options = (uint32_t)src->attrRcMode.attrH264Vbr.eRcOptions;
         enc->avpu.t31_qp_pb_delta = src->attrRcMode.attrH264Vbr.iPBDelta;
@@ -13397,6 +14055,9 @@ int AL_Codec_Encode_RequestIDR(void *codec) {
  * src/t23/openimp_t23_encoder.c. */
 T23HelixBridge *OpenIMP_T23_CodecBridge(void *codec)
 {
+    /* no OEM worker built: encoder parameters stay local */
+    if (!OPENIMP_T23_HELIX_BRIDGE)
+        return NULL;
     return codec ? &((AL_CodecEncode *)codec)->t23_helix : NULL;
 }
 #endif

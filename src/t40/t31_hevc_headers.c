@@ -293,7 +293,13 @@ int openimp_t31_hevc_write_sps(uint8_t *dst, size_t capacity,
     put_ue(&bits, config->log2_max_tb_size - config->log2_min_tb_size);
     put_ue(&bits, config->max_transform_depth_inter);
     put_ue(&bits, config->max_transform_depth_intra);
+#if defined(PLATFORM_T40) && !defined(PLATFORM_T41)
+    put_bit(&bits, config->scaling_list_enabled ? 1u : 0u);
+    if (config->scaling_list_enabled)
+        put_bit(&bits, 0u);         /* sps_scaling_list_data_present_flag */
+#else
     put_bit(&bits, 0u);             /* scaling_list_enabled_flag */
+#endif
     put_bit(&bits, 0u);             /* amp_enabled_flag */
     put_bit(&bits, 0u);             /* sample_adaptive_offset_enabled_flag */
     put_bit(&bits, 0u);             /* pcm_enabled_flag */
@@ -307,7 +313,11 @@ int openimp_t31_hevc_write_sps(uint8_t *dst, size_t capacity,
     put_bit(&bits, 0u);             /* overscan_info_present_flag */
     put_bit(&bits, 1u);             /* video_signal_type_present_flag */
     put_bits(&bits, 5u, 3);         /* video_format: unspecified */
+#if defined(PLATFORM_T40) && !defined(PLATFORM_T41)
+    put_bit(&bits, config->video_full_range ? 1u : 0u);
+#else
     put_bit(&bits, 0u);             /* video_full_range_flag */
+#endif
     put_bit(&bits, 1u);             /* colour_description_present_flag */
     put_bits(&bits, 1u, 8);         /* BT.709 primaries */
     put_bits(&bits, 1u, 8);         /* BT.709 transfer */
@@ -351,7 +361,11 @@ int openimp_t31_hevc_write_pps(uint8_t *dst, size_t capacity,
     put_ue(&bits, 0u);              /* num_ref_idx_l1_default_active_minus1 */
     put_se(&bits, 0);               /* init_qp_minus26 */
     put_bit(&bits, 0u);             /* constrained_intra_pred_flag */
+#if defined(PLATFORM_T40) && !defined(PLATFORM_T41)
+    put_bit(&bits, config->transform_skip_enabled ? 1u : 0u);
+#else
     put_bit(&bits, 0u);             /* transform_skip_enabled_flag */
+#endif
     put_bit(&bits, config->cu_qp_delta_enabled ? 1u : 0u);
     if (config->cu_qp_delta_enabled)
         put_ue(&bits, config->diff_cu_qp_delta_depth);

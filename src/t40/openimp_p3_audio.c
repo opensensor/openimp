@@ -141,6 +141,9 @@ static struct {
     int ao_gain;
     int ai_mute;        /* software mute, like the vendor T41 libimp (no driver ioctl) */
     int ao_mute;
+    pthread_mutex_t ao_mute_lock;   /* guards ao_silence and the cache in the mute path */
+    unsigned char *ao_silence;
+    size_t ao_silence_size;
     openimp_ao_cache ao_cache;
     unsigned char *frame_buffer;
     size_t frame_capacity;
@@ -178,7 +181,7 @@ static struct {
     unsigned int cap_head;
     unsigned char *cap_data;
     int64_t cap_time[P3_CAPTURE_FRAMES];
-} p3_audio = { .fd = -1 };
+} p3_audio = { .fd = -1, .ao_mute_lock = PTHREAD_MUTEX_INITIALIZER };
 
 static pthread_mutex_t p3_cap_lock = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t p3_cap_cond = PTHREAD_COND_INITIALIZER;
@@ -990,21 +993,29 @@ int IMP_AO_SendFrame(int device, int channel, IMPAudioFrame *frame,
         !p3_audio.ao_channel_enabled || p3_audio.ao_paused)
         return -1;
     if (p3_audio.ao_mute) {
-        static unsigned char *silence;
-        static size_t silence_size;
+        int result;
 
-        if ((size_t)frame->len > silence_size) {
-            unsigned char *grown = realloc(silence, (size_t)frame->len);
-            if (!grown)
+        /* the silence buffer lives in p3_audio under its mutex: two threads
+         * in SendFrame must not realloc/free it under each other */
+        pthread_mutex_lock(&p3_audio.ao_mute_lock);
+        if ((size_t)frame->len > p3_audio.ao_silence_size) {
+            unsigned char *grown =
+                realloc(p3_audio.ao_silence, (size_t)frame->len);
+            if (!grown) {
+                pthread_mutex_unlock(&p3_audio.ao_mute_lock);
                 return -1;
-            silence = grown;
-            silence_size = (size_t)frame->len;
+            }
+            p3_audio.ao_silence = grown;
+            p3_audio.ao_silence_size = (size_t)frame->len;
         }
-        memset(silence, 0, (size_t)frame->len);
-        return openimp_ao_cache_submit(&p3_audio.ao_cache, silence,
-                                       (size_t)frame->len, p3_ao_now_ns(),
-                                       p3_ao_bytes_per_sec(), p3_ao_driver_write,
-                                       NULL);
+        memset(p3_audio.ao_silence, 0, (size_t)frame->len);
+        result = openimp_ao_cache_submit(&p3_audio.ao_cache,
+                                         p3_audio.ao_silence,
+                                         (size_t)frame->len, p3_ao_now_ns(),
+                                         p3_ao_bytes_per_sec(),
+                                         p3_ao_driver_write, NULL);
+        pthread_mutex_unlock(&p3_audio.ao_mute_lock);
+        return result;
     }
     /* cache off (default): straight to the driver as before */
     return openimp_ao_cache_submit(&p3_audio.ao_cache, frame->virAddr,

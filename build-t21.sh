@@ -41,11 +41,23 @@ stripper="${toolchain_prefix}-strip"
 test -x "$compiler"
 mkdir -p "$output_dir"
 
-base_flags="-std=gnu99 -O2 -mabi=32 -march=mips32r2 -mabicalls"
+# Rootfs size: -Os, except the per-pixel, per-macroblock and audio-DSP hot
+# paths, which keep -O2 through $hot_flags (list: docs/SIZE.md).
+# OPENIMP_SIZE_OPT=0 builds everything at -O2 as before.
+case "${OPENIMP_SIZE_OPT:-1}" in
+    1) opt_flags=-Os ;;
+    0) opt_flags=-O2 ;;
+    *) echo "OPENIMP_SIZE_OPT must be 0 or 1" >&2; exit 1 ;;
+esac
+hot_flags=-O2
+base_flags="-std=gnu99 $opt_flags -mabi=32 -march=mips32r2 -mabicalls"
 platform_cppflags=${T21_PLATFORM_CPPFLAGS:--DPLATFORM_T21}
 base_flags="$base_flags -fPIC -G0 -fno-stack-protector $platform_cppflags -DVPU_BASE=0x13200000"
 # Rootfs size: per-function/-datum sections so the link can drop what is unreferenced.
 base_flags="$base_flags -ffunction-sections -fdata-sections"
+# OPENIMP_DEBUG=1 keeps LOG_DEBUG and the developer traces (default 0: compiled out).
+case "${OPENIMP_DEBUG:-0}" in 0|1) ;; *) echo "OPENIMP_DEBUG must be 0 or 1" >&2; exit 1 ;; esac
+base_flags="$base_flags -DOPENIMP_DEBUG=${OPENIMP_DEBUG:-0}"
 # OPENIMP_T21_EPRC_AB=1 also builds in the T23 eprc revision for the
 # OPENIMP_T21_EPRC=23 A/B run; without it the link drops that controller.
 base_flags="$base_flags -DOPENIMP_T21_EPRC_AB=${OPENIMP_T21_EPRC_AB:-0}"
@@ -82,7 +94,7 @@ compile codec src/t40/codec-t40.c -Wno-stringop-overflow
 compile al_avpu src/al_avpu.c -Wno-stringop-overflow
 compile device_pool src/device_pool.c -Wno-stringop-overflow
 compile fifo src/fifo.c -Wno-stringop-overflow
-compile hw_encoder src/hw_encoder.c -Wno-stringop-overflow
+compile hw_encoder src/hw_encoder.c $hot_flags -Wno-stringop-overflow
 
 compile time64_shim src/time64_shim.c
 compile kernel_interface src/kernel_interface.c
@@ -91,20 +103,22 @@ compile core_device src/core/device.c
 compile core_group src/core/group.c
 compile core_module src/core/module.c
 compile core_imp_log src/core/imp_log.c -Werror
+compile core_imp_log_emit src/core/imp_log_emit.c -Werror
 compile core_video_drop src/core/video_drop.c -Werror
+compile core_su_base_shutdown src/core/su_base_shutdown.c -Werror
 compile framesource src/framesource/framesource_tseries.c
-compile nv12_rotate src/framesource/nv12_rotate.c -Werror
+compile nv12_rotate src/framesource/nv12_rotate.c $hot_flags -Werror
 compile isp src/isp/isp_tseries.c
 compile t21_compat src/t31/openimp_t31_compat.c
 compile t21_state src/t31/openimp_t31_state.c -Werror
-compile t21_services src/t31/openimp_t31_services.c -Werror
+compile t21_services src/t31/openimp_t31_services.c $hot_flags -Werror
 compile t21_ivs src/t31/openimp_t31_ivs.c -Werror
-compile t21_ivs_move src/t31/openimp_t31_ivs_move.c -Werror
-compile t21_ivs_move_v2 src/t31/openimp_ivs_move_v2.c -Werror
+compile t21_ivs_move src/t31/openimp_t31_ivs_move.c $hot_flags -Werror
+compile t21_ivs_move_v2 src/t31/openimp_ivs_move_v2.c $hot_flags -Werror
 compile t21_platform_services src/t23/openimp_t23_services.c -Werror
 compile t21_persist src/t23/openimp_t23_persist.c -Werror
 compile t21_audio src/t31/openimp_t31_audio.c -Werror
-compile openimp_aec src/audio/openimp_aec.c -Werror -I"$project_dir/src/audio"
+compile openimp_aec src/audio/openimp_aec.c $hot_flags -Werror -I"$project_dir/src/audio"
 # AENC/ADEC (shared src/audio; T10/T20/T21 vendor behaviour: G.726 16 kbit/s)
 compile audio_codec src/audio/openimp_audio_codec.c -Werror
 compile audio_enc_dec src/audio/openimp_audio_enc_dec.c -Werror
@@ -123,9 +137,9 @@ compile t21_helix_bitstream src/t30/helix_bitstream.c -Werror
 rc_t20_objects=
 case " $platform_cppflags " in
     *" -DPLATFORM_T20 "*)
-        compile rc_t20 src/rc_t20/rc_t20.c -Werror -ffp-contract=off
-        compile rc_t20_mb src/rc_t20/rc_t20_mb.c -Werror -ffp-contract=off
-        compile rc_t10 src/rc_t10/rc_t10.c -Werror -ffp-contract=off
+        compile rc_t20 src/rc_t20/rc_t20.c $hot_flags -Werror -ffp-contract=off
+        compile rc_t20_mb src/rc_t20/rc_t20_mb.c $hot_flags -Werror -ffp-contract=off
+        compile rc_t10 src/rc_t10/rc_t10.c $hot_flags -Werror -ffp-contract=off
         rc_t20_objects="$output_dir/rc_t20.o $output_dir/rc_t20_mb.o $output_dir/rc_t10.o"
         ;;
 esac
@@ -136,9 +150,9 @@ eprc_objects=
 case " $platform_cppflags " in
     *" -DPLATFORM_T20 "*) ;;
     *)
-        compile t21_eprc src/eprc/eprc.c -Werror -ffp-contract=off
-        compile t21_eprc_t21 src/eprc/eprc_t21.c -Werror -ffp-contract=off
-        compile t21_eprc_mbrc src/eprc/eprc_mbrc.c -Werror -ffp-contract=off
+        compile t21_eprc src/eprc/eprc.c $hot_flags -Werror -ffp-contract=off
+        compile t21_eprc_t21 src/eprc/eprc_t21.c $hot_flags -Werror -ffp-contract=off
+        compile t21_eprc_mbrc src/eprc/eprc_mbrc.c $hot_flags -Werror -ffp-contract=off
         eprc_objects="$output_dir/t21_eprc.o $output_dir/t21_eprc_t21.o $output_dir/t21_eprc_mbrc.o"
         ;;
 esac
@@ -166,7 +180,9 @@ esac
     "$output_dir/core_group.o" \
     "$output_dir/core_module.o" \
     "$output_dir/core_imp_log.o" \
+    "$output_dir/core_imp_log_emit.o" \
     "$output_dir/core_video_drop.o" \
+    "$output_dir/core_su_base_shutdown.o" \
     "$output_dir/framesource.o" \
     "$output_dir/nv12_rotate.o" \
     "$output_dir/isp.o" \

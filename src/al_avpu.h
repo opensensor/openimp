@@ -28,11 +28,20 @@
 
 #include "avpu_roi.h"
 
-#if defined(PLATFORM_T31)
+/* Frame-level rate control (the OEM Allegro core and the OpenIMP
+ * controller): T31, and T40 whose OEM libimp drives the same AVPU with the
+ * same Allegro lib_rate_ctrl.  Without it T40 ran one open-loop QP. */
+/* Never on T41: its ALAvpuContext layout (HWRC) differs, so a TU that saw
+ * OPENIMP_AL_FRAME_RC and one that did not would disagree on the struct. */
+#if (defined(PLATFORM_T31) || defined(PLATFORM_T40)) && !defined(PLATFORM_T41)
+#define OPENIMP_AL_FRAME_RC 1
 #include "t40/t31_rate_control.h"
 #include "t40/t31_al_rc.h"
 #endif
 #if defined(PLATFORM_T41)
+#if defined(OPENIMP_AL_FRAME_RC)
+#error "OPENIMP_AL_FRAME_RC must not be defined on T41 (ALAvpuContext layout)"
+#endif
 #include "t40/t41_hw_rate_control.h"
 #include "t40/t41_rate_control.h"
 #endif
@@ -271,14 +280,26 @@ typedef struct ALAvpuContext {
     uint32_t t41_rate_control_qp_by_buf[16];
     OpenIMPT41RateController t41_rate_controller;
     OpenIMPT41HWRCLevelState t41_hwrc_level;
+    /* Bit rate the EP3 row thresholds were generated for (0 = no ring);
+     * a run-time SetChnBitRate regenerates them (OEM PreprocessHwRateCtrl
+     * via AL_ApplyNewGOPAndRCParams). */
+    uint32_t t41_hwrc_bitrate;
     /* Completion watchdog: CLOCK_MONOTONIC ms of the last submit, and the
      * number of consecutive commands that never completed. */
     uint64_t t41_submit_ms;
     uint32_t t41_timeouts;
 #endif
+#if defined(PLATFORM_T40) && !defined(PLATFORM_T41)
+    /* FixQP: picture type whose lambda words EP1 holds (0 = not yet). */
+    uint32_t t40_ep1_lambda_type;
+    /* Slice QP of the last IDR (HWRC cmd[0x17] bits 23:16). */
+    uint32_t t40_idr_qp;
+#endif
 #if defined(PLATFORM_T31)
     /* Exact entropy bytes reported at completion status +0x104. */
     uint32_t t31_payload_size_by_buf[16];
+#endif
+#if defined(OPENIMP_AL_FRAME_RC)
     uint32_t t31_rate_control_qp_by_buf[16];
     OpenIMPT31RateController t31_rate_controller;
     /* CappedVBR/CappedQuality: PSNR cap in dB * 100 (0 = none), copied from
@@ -297,6 +318,8 @@ typedef struct ALAvpuContext {
     uint32_t t31_al_filler_bits;    /* filler of the last picture (OEM request +2848) * 8 */
     uint32_t t31_al_filler_pictures; /* pictures the CBR HRD wanted stuffed */
     uint32_t t31_al_pictures;
+#endif
+#if defined(PLATFORM_T31)
     /* Published access-unit layout, handed to P2 for its AU check. */
     uint32_t t31_au_header_by_buf[16];
     uint32_t t31_ebsp_inserted_by_buf[16];
@@ -306,6 +329,8 @@ typedef struct ALAvpuContext {
 #endif
     uint32_t stream_header_offset;  /* bytes of header pre-written into current stream buf */
     uint32_t stream_header_offset_by_buf[16]; /* per-stream-buffer header bytes */
+    uint32_t t40_clear_bytes;       /* T40: bytes cleared/flushed at the last submit */
+    uint32_t stream_dirty_by_buf[16]; /* T40: bytes the last picture left in the buffer, 0 = unknown (clear all) */
     uint32_t slice_header_nal_bytes;/* slice header NAL byte count (OEM sp+0x78 → cmd[0x1b] bits[25:16]) */
     uint32_t slice_header_prefix_bits; /* OEM SliceParam+0xf8 → Enc2 cmd[0x1e] bits[28:24] */
     uint32_t slice_header_splice_word; /* OEM SliceParam+0x100 → Enc2 cmd[0x1f] */

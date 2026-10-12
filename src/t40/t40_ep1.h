@@ -5,6 +5,8 @@
 
 int openimp_t40_init_ep1(void *ep1, size_t size, int use_fixqp_lda);
 int openimp_t41_init_ep1(void *ep1, size_t size);
+/* T40 FixQP: lambda words for the next IDR (is_idr) or P picture. */
+int openimp_t40_update_fixqp_ep1(void *ep1, size_t size, int is_idr);
 /* T31 HEVC: HEVC default lambda table, no scaling list. */
 int openimp_t31_init_hevc_ep1(void *ep1, size_t size);
 

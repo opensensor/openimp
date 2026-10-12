@@ -15,27 +15,54 @@
 #include <syslog.h>
 #include <unistd.h>
 #include <string.h>
+#include <stdlib.h>
 
 #include "trace_control.h"
 
-/* One-time syslog init (safe to call multiple times) */
-static inline void imp_log_ensure_init(void) {
-    static int inited = 0;
-    if (!inited) {
-        openlog("libimp", LOG_PID | LOG_NDELAY, LOG_USER);
-        inited = 1;
-    }
+/*
+ * Runtime log level (syslog numbering 0..7, 5 = LOG_NOTICE).  A line is
+ * written only when its priority is <= openimp_log_level, a plain global int
+ * (core/imp_log_emit.c) set once from the environment by a constructor:
+ *   OPENIMP_LOG_LEVEL=n  0..7; unset or invalid = LOG_NOTICE, so production
+ *                        cameras log errors, warnings and one-shot status lines
+ *   OPENIMP_DEBUG_TRACE  set (not "0"): LOG_DEBUG, everything as before
+ * imp_log_level_parse() is the pure rule (host-tested).  The call site is one
+ * load, one compare and, when it fires, one call: formatting, syslog and
+ * stderr live out of line in imp_log_emit().
+ *
+ * Compile-time switch OPENIMP_DEBUG (default 0, see trace_control.h): a
+ * release build has no LOG_DEBUG lines and no developer traces at all (no
+ * code, no strings).  INFO, NOTICE, WARN and ERR are in every build.
+ */
+#define IMP_LOG_LEVEL_DEFAULT LOG_NOTICE
+
+static inline int imp_log_level_parse(const char *env, int trace)
+{
+    if (trace)
+        return LOG_DEBUG;
+    if (env && env[0] >= '0' && env[0] <= '7' && env[1] == '\0')
+        return env[0] - '0';
+    return IMP_LOG_LEVEL_DEFAULT;
 }
+
+extern int openimp_log_level;
+void imp_log_level_reload(void);    /* re-read the environment (constructor, tests) */
+void imp_log_emit(int prio, const char *tag, const char *fmt, ...)
+    __attribute__((format(printf, 3, 4)));
+
+/* LOG_DEBUG is compiled out of a release build; the arguments stay
+ * type-checked but are never evaluated (no side effects inside them). */
+#define IMP_LOG_COMPILED(prio) (OPENIMP_DEBUG || (prio) < LOG_DEBUG)
 
 /*
  * IMP_LOG(priority, tag, fmt, ...)
- *   priority: LOG_ERR, LOG_WARNING, LOG_INFO, LOG_DEBUG
+ *   priority: LOG_ERR, LOG_WARNING, LOG_NOTICE, LOG_INFO, LOG_DEBUG
  *   tag:      short module name, e.g. "ISP", "System", "Encoder"
+ * Dropped silently (no syslog, no stderr) above the runtime level.
  */
 #define IMP_LOG(prio, tag, fmt, ...) do {                         \
-    imp_log_ensure_init();                                        \
-    syslog((prio), "[%s] " fmt, (tag), ##__VA_ARGS__);            \
-    fprintf(stderr, "[%s] " fmt "\n", (tag), ##__VA_ARGS__);      \
+    if (IMP_LOG_COMPILED(prio) && (prio) <= openimp_log_level)    \
+        imp_log_emit((prio), (tag), fmt, ##__VA_ARGS__);          \
 } while (0)
 
 /*
@@ -62,11 +89,11 @@ static inline void imp_log_ensure_init(void) {
  * Codec, hardware, and DMA messages are reverse-engineering traces.  Some of
  * them run once or more per encoded frame, so sending them to syslog and
  * stderr by default can steal meaningful encode time on the single-core T31.
+ * Compiled out unless OPENIMP_DEBUG=1; then OPENIMP_DEBUG_TRACE enables them.
  */
 #define IMP_TRACE_LOG(tag, fmt, ...) do {                         \
-    if (openimp_debug_trace_enabled()) {                          \
+    if (OPENIMP_DEBUG && openimp_debug_trace_enabled())           \
         IMP_LOG(LOG_INFO, tag, fmt, ##__VA_ARGS__);               \
-    }                                                             \
 } while (0)
 
 /* Convenience per-module macros -- drop-in replacements */

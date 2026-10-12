@@ -114,6 +114,81 @@ static int iaware_check(void)
              von < 0.8 * voff);
 }
 
+/* Application max QP.  The OEM controller lifts the QP cap from max QP to
+ * new max QP (default 51) while a GOP uses more than trig x its budget, so
+ * a starved stream reaches 51 whatever the max QP (the stock libimp does
+ * the same); IMP_Encoder_SetChnRcTrigLevel(chn, trig, maxQp) makes max QP
+ * a hard cap. */
+static int maxqp_run(uint32_t method, uint32_t newmax, uint32_t kbps,
+                     unsigned *qmax)
+{
+    RcT20Params p;
+    RcT20 rc;
+    RcT20Picture pic;
+    RcT20Stats st;
+    uint32_t n;
+
+    RCT20_DefaultParams(&p);
+    p.method = method;
+    p.width = 640;
+    p.height = 360;
+    p.gop = 50;
+    p.fps_num = 25;
+    p.fps_den = 1;
+    p.min_qp = 20;
+    p.max_qp = 28;
+    p.new_max_qp = newmax;
+    p.bitrate = kbps;
+    p.max_bitrate = kbps < 128 ? 128 : kbps;
+    p.mb_rc = 0;
+    memset(&rc, 0, sizeof(rc));
+    if (RCT20_Init(&rc, &p) != 0)
+        return -1;
+    *qmax = 0;
+    for (n = 0; n < 400; n++) {
+        int idr = n % 50u == 0;
+        double b = idr ? 60000.0 : 9000.0;
+        int q;
+
+        RCT20_Start(&rc, idr, NULL, 0, &pic);
+        if (pic.qp > *qmax)
+            *qmax = pic.qp;
+        for (q = 40; q < pic.qp; q++)
+            b /= 1.12;
+        for (q = pic.qp; q < 40; q++)
+            b *= 1.12;
+        memset(&st, 0, sizeof(st));
+        st.cmpx = 230400u;
+        st.bits = (uint32_t)b;
+        st.reg[0] = 80u | 80u << 16;
+        st.reg[1] = 240u;
+        st.reg[2] = 240u;
+        for (q = 0; q < 4 && RCT20_End(&rc, &st, &pic) == 1; q++)
+            if (pic.qp > *qmax)
+                *qmax = pic.qp;
+    }
+    RCT20_Free(&rc);
+    return 0;
+}
+
+static int maxqp_check(void)
+{
+    unsigned lift, hard, ok;
+    uint32_t m;
+
+    for (m = 1; m <= 2; m++) {
+        if (maxqp_run(m, 51, 16, &lift) || maxqp_run(m, 28, 16, &hard) ||
+            maxqp_run(m, 51, 1500, &ok))
+            return 1;
+        printf("rc_t20 maxqp method %u: starved max 28 -> QP %u, "
+               "new max 28 -> QP %u, reachable target -> QP %u\n", m, lift,
+               hard, ok);
+        if (lift <= 28 || hard > 28 || ok > 28)
+            return 1;
+    }
+    return 0;
+}
+
 int main(int argc, char **argv)
 {
     const char *path = argc > 1 ? argv[1] : "rc_t20_vectors.txt";
@@ -209,6 +284,10 @@ int main(int argc, char **argv)
     RCT20_Free(&rc);
     printf("rc_t20: %ld decisions of %d scenarios checked, %ld differ\n",
            checked, scenario + 1, failed);
+    if (maxqp_check()) {
+        fprintf(stderr, "rc_t20 max QP check failed\n");
+        return 1;
+    }
     if (iaware_check()) {
         fprintf(stderr, "rc_t20 iaware check failed\n");
         return 1;

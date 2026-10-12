@@ -53,6 +53,14 @@ typedef struct {
     uint8_t loop_filter_across_slices;
     int8_t beta_offset_div2;
     int8_t tc_offset_div2;
+#if defined(PLATFORM_T40) && !defined(PLATFORM_T41)
+    /* T40: the HEVC core codes transform_skip_flag and cu_qp_delta whatever
+     * the command list says, so the headers must enable both (vendor T40
+     * headers); scaling lists and the VUI range follow the vendor too. */
+    uint8_t scaling_list_enabled;   /* SPS, default lists (no data) */
+    uint8_t transform_skip_enabled; /* PPS */
+    uint8_t video_full_range;       /* VUI */
+#endif
 } OpenIMPT31HevcConfig;
 
 typedef struct {

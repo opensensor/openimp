@@ -788,7 +788,7 @@ static int helix_jpeg_open_locked(void)
         memset(&helix_jpeg.channel, 0, sizeof(helix_jpeg.channel));
         return -1;
     }
-    IMP_LOG_INFO("Encoder", "Helix JPEG: hardware encoder ready channel=%u "
+    IMP_LOG(LOG_NOTICE, "Encoder", "Helix JPEG: hardware encoder ready channel=%u "
                  "timeout=%ums max_bs=%d rmem_reserve=%uK stats=%d",
                  helix_jpeg.channel.channel_id, mdelay, helix_jpeg.max_bs,
                  helix_jpeg.rmem_reserve >> 10, helix_jpeg.stats);

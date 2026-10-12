@@ -38,7 +38,7 @@ helix_encoder_test: $(HELIX_SOURCES) $(ROOT)/src/t30/t30_annexb.h $(ROOT)/src/t3
 	$(CC) $(CFLAGS) -DPLATFORM_T30 -fno-pie -no-pie \
 		-I$(ROOT)/include -I$(ROOT)/src $(INCLUDES) \
 		-Wl,--wrap=open,--wrap=close,--wrap=ioctl \
-		-o $@ $(HELIX_SOURCES)
+	 $(ROOT)/src/core/imp_log_emit.c	-o $@ $(HELIX_SOURCES)
 
 HELIX_T21_SOURCES := $(filter-out %/t30_h264_descriptor.c,$(HELIX_SOURCES)) \
 	$(ROOT)/src/t21/t21_h264_descriptor.c $(ROOT)/src/t30/helix_bitstream.c \
@@ -48,7 +48,7 @@ helix_encoder_test_t21: $(HELIX_T21_SOURCES) $(ROOT)/src/t30/t30_annexb.h $(ROOT
 	$(CC) $(CFLAGS) -DPLATFORM_T21 -fno-pie -no-pie \
 		-I$(ROOT)/include -I$(ROOT)/src $(INCLUDES) \
 		-Wl,--wrap=open,--wrap=close,--wrap=ioctl \
-		-o $@ $(HELIX_T21_SOURCES) -lm
+	 $(ROOT)/src/core/imp_log_emit.c	-o $@ $(HELIX_T21_SOURCES) -lm
 
 # T21 reserved-memory layout: OpenIMP's arena, the real encoder and shared
 # bitstream buffer through timps' idle/re-enable cycles (cam-D numbers).
@@ -60,7 +60,7 @@ t21_rmem_layout_test: $(T21_RMEM_SOURCES) $(ROOT)/src/rmem_arena.h \
 	$(CC) $(CFLAGS) -DPLATFORM_T21 -fno-pie -no-pie \
 		-I$(ROOT)/include -I$(ROOT)/src $(INCLUDES) \
 		-Wl,--wrap=open,--wrap=close,--wrap=ioctl \
-		-o $@ $(T21_RMEM_SOURCES) -pthread -lm
+	 $(ROOT)/src/core/imp_log_emit.c	-o $@ $(T21_RMEM_SOURCES) -pthread -lm
 
 rmem_highwater_test: rmem_highwater_test.c $(ROOT)/src/dma_alloc.c \
 	$(ROOT)/src/dma_alloc.h $(ROOT)/src/rmem_arena.h
@@ -73,7 +73,7 @@ t23_ring_layout_test: $(T21_RMEM_SOURCES) $(ROOT)/src/rmem_arena.h \
 	$(CC) $(CFLAGS) -DPLATFORM_T23 -fno-pie -no-pie \
 		-I$(ROOT)/include -I$(ROOT)/src $(INCLUDES) \
 		-Wl,--wrap=open,--wrap=close,--wrap=ioctl \
-		-o $@ $(T21_RMEM_SOURCES) -pthread -lm
+	 $(ROOT)/src/core/imp_log_emit.c	-o $@ $(T21_RMEM_SOURCES) -pthread -lm
 
 t21_sinter_map_test: t21_sinter_map_test.c $(ROOT)/src/isp/isp_t21_sinter.h
 	$(CC) $(CFLAGS) -I$(ROOT)/src -o $@ t21_sinter_map_test.c
@@ -90,7 +90,7 @@ helix_encoder_test_t20: $(HELIX_T20_SOURCES) $(ROOT)/src/t30/t30_annexb.h $(ROOT
 	$(CC) $(CFLAGS) -ffp-contract=off -DPLATFORM_T20 -DPLATFORM_T21 -fno-pie -no-pie \
 		-I$(ROOT)/include -I$(ROOT)/src $(INCLUDES) \
 		-Wl,--wrap=open,--wrap=close,--wrap=ioctl \
-		-o $@ $(HELIX_T20_SOURCES) -lm
+	 $(ROOT)/src/core/imp_log_emit.c	-o $@ $(HELIX_T20_SOURCES) -lm
 
 # Helix hardware JPEG against a fake /dev/soc_vpu that executes the command
 # list (no PIE: 32-bit addresses).  Built per command-list generation and
@@ -101,16 +101,16 @@ HJPEG_FLAGS = $(CFLAGS) -DHELIX_JPEG_TEST_REFERENCE -fno-pie -no-pie -I$(ROOT)/i
 	-Wl,--wrap=open,--wrap=close,--wrap=ioctl
 
 helix_jpeg_test_t21: $(HJPEG_DEPS) $(ROOT)/src/t30/helix_bitstream.c
-	$(CC) $(HJPEG_FLAGS) -DPLATFORM_T21 -o $@ helix_jpeg_test.c \
+	$(CC) $(HJPEG_FLAGS) -DPLATFORM_T21 $(ROOT)/src/core/imp_log_emit.c -o $@ helix_jpeg_test.c \
 		$(ROOT)/src/t30/helix_jpeg.c $(ROOT)/src/t30/helix_bitstream.c \
 		-lm -pthread
 
 helix_jpeg_test_t20: $(HJPEG_DEPS)
 	$(CC) $(HJPEG_FLAGS) -DPLATFORM_T20 -DPLATFORM_T21 -DOPENIMP_SW_JPEG=0 \
-		-o $@ helix_jpeg_test.c $(ROOT)/src/t30/helix_jpeg.c -lm -pthread
+	 $(ROOT)/src/core/imp_log_emit.c	-o $@ helix_jpeg_test.c $(ROOT)/src/t30/helix_jpeg.c -lm -pthread
 
 helix_jpeg_test_t23: $(HJPEG_DEPS)
-	$(CC) $(HJPEG_FLAGS) -DPLATFORM_T23 -DOPENIMP_SW_JPEG=0 -o $@ \
+	$(CC) $(HJPEG_FLAGS) -DPLATFORM_T23 -DOPENIMP_SW_JPEG=0 $(ROOT)/src/core/imp_log_emit.c -o $@ \
 		helix_jpeg_test.c $(ROOT)/src/t30/helix_jpeg.c -lm -pthread
 
 # IVS framework and move algorithm with the legacy T20/T21/T30 ABI; the test
@@ -126,12 +126,12 @@ IVS_DEPS := $(IVS_SOURCES) $(IVS_SRC)/openimp_t31_ivs.h \
 ivs_framework_test_t21: $(IVS_DEPS)
 	$(CC) $(CFLAGS) -Wno-unused-function -DPLATFORM_T21 -fno-pie -no-pie \
 		-I$(ROOT)/include -I$(ROOT)/src -I$(IVS_SRC) \
-		-o $@ $(IVS_SOURCES) -pthread
+	 $(ROOT)/src/core/imp_log_emit.c	-o $@ $(IVS_SOURCES) -pthread
 
 ivs_framework_test_t20: $(IVS_DEPS)
 	$(CC) $(CFLAGS) -Wno-unused-function -DPLATFORM_T20 -DPLATFORM_T21 \
 		-fno-pie -no-pie -I$(ROOT)/include -I$(ROOT)/src -I$(IVS_SRC) \
-		-o $@ $(IVS_SOURCES) -pthread
+	 $(ROOT)/src/core/imp_log_emit.c	-o $@ $(IVS_SOURCES) -pthread
 
 # Move algorithm: bit-identity against the frozen reference copy
 # (tests/t23/ivs_move_ref.c), legacy T20/T21/T30 parameter layout. The bench
@@ -166,14 +166,14 @@ FS_SANITIZE_ASAN := -O1 -g -fno-omit-frame-pointer \
 FS_SANITIZE_TSAN := -O1 -g -fsanitize=thread
 
 fs_lifecycle_test_t21: $(FS_DEPS)
-	$(CC) $(CFLAGS) $(FS_FLAGS) -DPLATFORM_T21 -o $@ $(FS_SOURCES) -pthread
+	$(CC) $(CFLAGS) $(FS_FLAGS) -DPLATFORM_T21 $(ROOT)/src/core/imp_log_emit.c -o $@ $(FS_SOURCES) -pthread
 
 fs_lifecycle_test_t20: $(FS_DEPS)
 	$(CC) $(CFLAGS) $(FS_FLAGS) -DPLATFORM_T20 -DPLATFORM_T21 \
-		-o $@ $(FS_SOURCES) -pthread
+	 $(ROOT)/src/core/imp_log_emit.c	-o $@ $(FS_SOURCES) -pthread
 
 fs_lifecycle_test_t23: $(FS_DEPS)
-	$(CC) $(CFLAGS) $(FS_FLAGS) -DPLATFORM_T23 -o $@ $(FS_SOURCES) -pthread
+	$(CC) $(CFLAGS) $(FS_FLAGS) -DPLATFORM_T23 $(ROOT)/src/core/imp_log_emit.c -o $@ $(FS_SOURCES) -pthread
 
 # IMP_System_Init/Exit and the timestamp base, as built for T21.
 SYSTEM_SOURCES := system_test.c $(ROOT)/src/t40/openimp_p0.c
@@ -246,7 +246,7 @@ ref_ring_test_t23: ref_ring_test.c $(ROOT)/src/t21/t21_h264_descriptor.c \
 # ISP tuning calls of T20 (T10) and T21 against a fake tuning ioctl.
 ISP_T1X_FLAGS = -Wno-format-security -Wno-unused-result '-D_Static_assert(c,m)=' \
 	-I$(ROOT)/include -I$(ROOT)/src -Wl,--wrap=ioctl
-ISP_T1X_SOURCES := isp_t1x_test.c $(ROOT)/src/isp/isp_tseries.c
+ISP_T1X_SOURCES := isp_t1x_test.c $(ROOT)/src/isp/isp_tseries.c $(ROOT)/src/core/imp_log_emit.c
 
 isp_t1x_test_t20: $(ISP_T1X_SOURCES)
 	$(CC) $(CFLAGS) $(ISP_T1X_FLAGS) -DPLATFORM_T20 -DPLATFORM_T21 -o $@ $(ISP_T1X_SOURCES)
@@ -256,7 +256,7 @@ isp_t1x_test_t21: $(ISP_T1X_SOURCES)
 
 # T31 Enable/DisableMovestate (vendor libimp logic) against a fake tuning ioctl.
 isp_t31_movestate_test: isp_t31_movestate_test.c $(ROOT)/src/isp/isp_tseries.c
-	$(CC) $(CFLAGS) $(ISP_T1X_FLAGS) -DPLATFORM_T31 -o $@ isp_t31_movestate_test.c $(ROOT)/src/isp/isp_tseries.c -lpthread
+	$(CC) $(CFLAGS) $(ISP_T1X_FLAGS) -DPLATFORM_T31 -o $@ isp_t31_movestate_test.c $(ROOT)/src/isp/isp_tseries.c $(ROOT)/src/core/imp_log_emit.c -lpthread
 
 # Encoder channel extras of T20 (T10) and T21 through the P2 API, stub codec.
 P2_T1X_SOURCES := p2_t1x_test.c $(ROOT)/src/t40/openimp_p2_encoder.c \
@@ -265,10 +265,10 @@ P2_T1X_FLAGS = -std=gnu99 -Wno-unused-result '-D_Static_assert(c,m)=' \
 	-I$(ROOT)/include -I$(ROOT)/src -I$(ROOT)/src/t40 -no-pie
 
 p2_t1x_test_t20: $(P2_T1X_SOURCES)
-	$(CC) $(CFLAGS) $(P2_T1X_FLAGS) -DPLATFORM_T20 -DPLATFORM_T21 -o $@ $(P2_T1X_SOURCES) -lpthread
+	$(CC) $(CFLAGS) $(P2_T1X_FLAGS) -DPLATFORM_T20 -DPLATFORM_T21 $(ROOT)/src/core/imp_log_emit.c -o $@ $(P2_T1X_SOURCES) -lpthread
 
 p2_t1x_test_t21: $(P2_T1X_SOURCES)
-	$(CC) $(CFLAGS) $(P2_T1X_FLAGS) -DPLATFORM_T21 -o $@ $(P2_T1X_SOURCES) -lpthread
+	$(CC) $(CFLAGS) $(P2_T1X_FLAGS) -DPLATFORM_T21 $(ROOT)/src/core/imp_log_emit.c -o $@ $(P2_T1X_SOURCES) -lpthread
 
 check: isp_t1x_test_t20 isp_t1x_test_t21 isp_t31_movestate_test p2_t1x_test_t20 p2_t1x_test_t21 rmem_highwater_test ref_ring_test ref_ring_test_t23 descriptor_test annexb_test level_test helix_encoder_test \
 	helix_encoder_test_t21 helix_encoder_test_t20 t21_rmem_layout_test t23_ring_layout_test \
@@ -276,7 +276,8 @@ check: isp_t1x_test_t20 isp_t1x_test_t21 isp_t31_movestate_test p2_t1x_test_t20 
 	ivs_framework_test_t21 ivs_framework_test_t20 ivs_move_bench_t20 \
 	fs_lifecycle_test_t21 fs_lifecycle_test_t20 fs_lifecycle_test_t23 \
 	system_test rc_readback_test_t21 rc_readback_test_t20 rc_readback_test_t23 \
-	p2_gap_test_t21 p2_gap_test_t20 osd_attach_test isp_gap_test_t21 isp_gap_test_t20
+	p2_gap_test_t21 p2_gap_test_t20 osd_attach_test isp_gap_test_t21 isp_gap_test_t20 \
+	p2_gap_test_t30 osd_attach_test_t30 isp_gap_test_t30 dmic_t30_test
 	./isp_t1x_test_t20
 	./isp_t1x_test_t21
 	./isp_t31_movestate_test
@@ -313,6 +314,10 @@ check: isp_t1x_test_t20 isp_t1x_test_t21 isp_t31_movestate_test p2_t1x_test_t20 
 	./osd_attach_test
 	./isp_gap_test_t21
 	./isp_gap_test_t20
+	./p2_gap_test_t30
+	./osd_attach_test_t30
+	./isp_gap_test_t30
+	./dmic_t30_test
 	./check_exports.sh
 
 # GetChnAttrRcMode read-back of T21, T20 and T23 (src/t40/p2_rc_readback.h).
@@ -338,11 +343,19 @@ P2_GAP_FLAGS = -O1 -Wno-unused-result '-D_Static_assert(c,m)=' -I$(ROOT)/include
 	-Wl,--unresolved-symbols=ignore-all
 p2_gap_test_t21: p2_gap_test.c p2_gap_stubs.c $(ROOT)/src/t40/openimp_p2_encoder.c
 	$(CC) $(CFLAGS) -DPLATFORM_T21 $(P2_GAP_FLAGS) -o $@ p2_gap_test.c \
-		p2_gap_stubs.c $(ROOT)/src/openimp_profile.c -pthread
+		p2_gap_stubs.c $(ROOT)/src/openimp_profile.c $(ROOT)/src/core/imp_log_emit.c -pthread
 
 p2_gap_test_t20: p2_gap_test.c p2_gap_stubs.c $(ROOT)/src/t40/openimp_p2_encoder.c
 	$(CC) $(CFLAGS) -DPLATFORM_T20 -DPLATFORM_T21 $(P2_GAP_FLAGS) -o $@ \
-		p2_gap_test.c p2_gap_stubs.c $(ROOT)/src/openimp_profile.c -pthread
+		p2_gap_test.c p2_gap_stubs.c $(ROOT)/src/openimp_profile.c $(ROOT)/src/core/imp_log_emit.c -pthread
+
+p2_gap_test_t30: p2_gap_test.c p2_gap_stubs.c $(ROOT)/src/t40/openimp_p2_encoder.c
+	$(CC) $(CFLAGS) -DPLATFORM_T30 $(P2_GAP_FLAGS) -o $@ p2_gap_test.c \
+		p2_gap_stubs.c $(ROOT)/src/openimp_profile.c $(ROOT)/src/core/imp_log_emit.c -pthread
+
+osd_attach_test_t30: osd_attach_test.c $(ROOT)/src/t31/openimp_t31_services.c
+	$(CC) $(CFLAGS) -DPLATFORM_T30 $(P2_GAP_FLAGS) -o $@ osd_attach_test.c \
+		-pthread
 
 osd_attach_test: osd_attach_test.c $(ROOT)/src/t31/openimp_t31_services.c
 	$(CC) $(CFLAGS) -DPLATFORM_T21 $(P2_GAP_FLAGS) -o $@ osd_attach_test.c \
@@ -353,14 +366,26 @@ osd_attach_test: osd_attach_test.c $(ROOT)/src/t31/openimp_t31_services.c
 isp_gap_test_t21: isp_gap_test.c $(ROOT)/src/isp/isp_tseries.c
 	$(CC) $(CFLAGS) -Wno-format-security -Wno-unused-result '-D_Static_assert(c,m)=' \
 		-I$(ROOT)/include -I$(ROOT)/src -Wl,--wrap=ioctl -DPLATFORM_T21 -o $@ \
-		isp_gap_test.c $(ROOT)/src/isp/isp_tseries.c -lpthread
+		isp_gap_test.c $(ROOT)/src/isp/isp_tseries.c $(ROOT)/src/core/imp_log_emit.c -lpthread
 
 isp_gap_test_t20: isp_gap_test.c $(ROOT)/src/isp/isp_tseries.c
 	$(CC) $(CFLAGS) -Wno-format-security -Wno-unused-result '-D_Static_assert(c,m)=' \
 		-I$(ROOT)/include -I$(ROOT)/src -Wl,--wrap=ioctl -DPLATFORM_T20 -DPLATFORM_T21 -o $@ \
-		isp_gap_test.c $(ROOT)/src/isp/isp_tseries.c -lpthread
+		isp_gap_test.c $(ROOT)/src/isp/isp_tseries.c $(ROOT)/src/core/imp_log_emit.c -lpthread
+
+isp_gap_test_t30: isp_gap_test.c $(ROOT)/src/isp/isp_tseries.c
+	$(CC) $(CFLAGS) -Wno-format-security -Wno-unused-result '-D_Static_assert(c,m)=' \
+		-I$(ROOT)/include -I$(ROOT)/src -Wl,--wrap=ioctl -DPLATFORM_T30 -o $@ \
+		isp_gap_test.c $(ROOT)/src/isp/isp_tseries.c $(ROOT)/src/core/imp_log_emit.c -lpthread
+
+# T30 DMIC (the T31 implementation) against a fake /dev/dsp.
+dmic_t30_test: dmic_t30_test.c $(ROOT)/src/t31/openimp_t31_dmic.c
+	$(CC) $(CFLAGS) -D_GNU_SOURCE -DPLATFORM_T30 -no-pie -I$(ROOT)/include \
+		-I$(ROOT)/src -Wl,--wrap=open,--wrap=close,--wrap=ioctl \
+		-o $@ dmic_t30_test.c -pthread -ldl
 
 clean:
+	$(RM) p2_gap_test_t30 osd_attach_test_t30 isp_gap_test_t30 dmic_t30_test
 	$(RM) isp_t31_movestate_test isp_t1x_test_t20 isp_t1x_test_t21 p2_t1x_test_t20 p2_t1x_test_t21
 	$(RM) descriptor_test annexb_test level_test helix_encoder_test \
 		rc_readback_test_t21 rc_readback_test_t20 rc_readback_test_t23 \

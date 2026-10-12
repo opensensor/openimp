@@ -21,6 +21,7 @@ HELIX_STREAM := $(BUILD)/t23-helix-stream-test
 RMEM_LAYOUT := $(BUILD)/t23-rmem-layout-test
 OSD_PACK := $(BUILD)/t23-osd-pack-test
 AUDIO_ABI := $(BUILD)/t23-audio-abi-test
+P2_ROI := $(BUILD)/t23-p2-roi-test
 HEVC_POLICY := $(BUILD)/t23-hevc-policy-test
 HELIX_NATIVE_SOURCES := $(PROJECT_DIR)/src/t30/t30_helix_encoder.c \
 	$(PROJECT_DIR)/src/t21/t21_h264_descriptor.c \
@@ -44,7 +45,8 @@ HELIX_INCLUDES := -DPLATFORM_T23 '-D_Static_assert(c,m)=' -Wno-unused-result \
 check: $(ISP_TUNING_TEST_BIN) $(ACODEC_TEST_BIN) $(ZERO_COPY_TEST_BIN) \
 	$(FAKE_HELIXD_BIN) $(IVS_DIGEST_T31) $(IVS_DIGEST_T23) \
 	$(IVS_FRAMEWORK) $(IVS_MOVE_V2) $(JPEG_QL) $(HELIX_DESCRIPTOR) $(HELIX_STREAM) \
-	$(RMEM_LAYOUT) $(OSD_PACK) $(AUDIO_ABI)
+	$(RMEM_LAYOUT) $(OSD_PACK) $(AUDIO_ABI) $(P2_ROI)
+	$(P2_ROI)
 	$(HELIX_DESCRIPTOR)
 	$(RMEM_LAYOUT)
 	$(OSD_PACK)
@@ -107,7 +109,7 @@ $(ZERO_COPY_TEST_BIN): helix_zero_copy_test.c \
 	$(PROJECT_DIR)/src/t23/openimp_t23_helix_bridge.h \
 	$(PROJECT_DIR)/src/t23/openimp_t23_helix_ipc.h
 	mkdir -p "$(dir $@)"
-	$(CC) $(CFLAGS) $(HELIX_INCLUDES) helix_zero_copy_test.c \
+	$(CC) $(CFLAGS) -DOPENIMP_T23_HELIX_BRIDGE=1 $(HELIX_INCLUDES) helix_zero_copy_test.c \
 		$(PROJECT_DIR)/src/t23/openimp_t23_helix_bridge.c -o "$@" -lpthread
 
 $(FAKE_HELIXD_BIN): fake_helixd.c $(PROJECT_DIR)/src/t23/openimp_t23_helix_ipc.h
@@ -135,6 +137,7 @@ $(IVS_FRAMEWORK): ivs_framework_test.c $(IVS_SRC)/openimp_t31_ivs.c \
 		-I$(PROJECT_DIR)/src -I$(IVS_SRC) ivs_framework_test.c \
 		$(IVS_SRC)/openimp_t31_ivs.c $(IVS_SRC)/openimp_t31_ivs_move.c \
 		$(IVS_SRC)/openimp_ivs_move_v2.c \
+		$(PROJECT_DIR)/src/core/imp_log_emit.c \
 		-pthread -o "$@"
 
 # IMP_Encoder_SetJpegeQl tables in the software JPEG encoder. hw_encoder.c
@@ -164,7 +167,7 @@ $(HELIX_STREAM): helix_stream_test.c $(HELIX_NATIVE_SOURCES) \
 	$(CC) $(CFLAGS) $(HELIX_INCLUDES) -U_FORTIFY_SOURCE \
 		-D_FORTIFY_SOURCE=0 -Wno-missing-field-initializers \
 		helix_stream_test.c $(HELIX_NATIVE_SOURCES) -no-pie \
-		-Wl,--wrap=open,--wrap=close,--wrap=ioctl -lm -o "$@"
+		-Wl,--wrap=open,--wrap=close,--wrap=ioctl -lm $(PROJECT_DIR)/src/core/imp_log_emit.c -o "$@"
 
 # Reserved-memory layout with the native encoder: OpenIMP's arena and the
 # real encoder buffer sizes through timps' idle/re-enable cycles.
@@ -183,7 +186,7 @@ $(RMEM_LAYOUT): rmem_layout_test.c $(HELIX_NATIVE_SOURCES) \
 	$(CC) $(CFLAGS) $(HELIX_INCLUDES) -U_FORTIFY_SOURCE \
 		-D_FORTIFY_SOURCE=0 -Wno-missing-field-initializers \
 		rmem_layout_test.c $(HELIX_NATIVE_SOURCES) -no-pie \
-		-Wl,--wrap=open,--wrap=close,--wrap=ioctl -lm -o "$@"
+		-Wl,--wrap=open,--wrap=close,--wrap=ioctl -lm $(PROJECT_DIR)/src/core/imp_log_emit.c -o "$@"
 
 # H.265 CreateChn policy: T20/T21/T23 reject, T31/T41-style builds do not.
 hevc-policy: hevc_policy_test.c $(PROJECT_DIR)/src/t40/p2_hevc_policy.h
@@ -243,7 +246,17 @@ $(IVS_MOVE_V2): ivs_move_v2_test.c $(IVS_SRC)/openimp_t31_ivs.c \
 	$(CC) $(CFLAGS) -DPLATFORM_T23 -fno-pie -no-pie -I$(PROJECT_DIR)/include \
 		-I$(PROJECT_DIR)/src -I$(IVS_SRC) ivs_move_v2_test.c \
 		$(IVS_SRC)/openimp_t31_ivs.c $(IVS_SRC)/openimp_t31_ivs_move.c \
-		$(IVS_SRC)/openimp_ivs_move_v2.c -pthread -o "$@"
+		$(IVS_SRC)/openimp_ivs_move_v2.c -pthread $(PROJECT_DIR)/src/core/imp_log_emit.c -o "$@"
 
 ivs-move-v2: $(IVS_MOVE_V2)
 	$(IVS_MOVE_V2)
+
+# SetChnROI / GetChnROI of the T23 encoder against a stub codec (vendor 1.3.0)
+$(P2_ROI): p2_roi_test.c $(PROJECT_DIR)/src/t40/openimp_p2_encoder.c \
+		$(PROJECT_DIR)/src/openimp_profile.c $(PROJECT_DIR)/src/t40/t31_stream_layout.c
+	mkdir -p "$(dir $@)"
+	$(CC) -std=gnu99 -O2 -Wall -Wextra -Wno-unused-function -Wno-unused-parameter \
+		$(HELIX_INCLUDES) -I$(PROJECT_DIR)/src/t40 -no-pie \
+		p2_roi_test.c $(PROJECT_DIR)/src/t40/openimp_p2_encoder.c \
+		$(PROJECT_DIR)/src/openimp_profile.c $(PROJECT_DIR)/src/t40/t31_stream_layout.c \
+		-lpthread $(PROJECT_DIR)/src/core/imp_log_emit.c -o "$@"

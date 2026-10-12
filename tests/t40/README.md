@@ -18,6 +18,8 @@ The source probes under `probes/` correspond to the P0-P2 bring-up gates:
 - `p1_first_frame_probe.c`: ISP/FrameSource first-frame capture
 - `p2_public_probe.c`: public encoder lifecycle
 - `p2_backend_probe.c`: lower-level recovered codec backend
+- `isp_osd_probe.c`: ISP-drawn OSD and mask on both streams, same calls
+  with the vendor library and OpenIMP (`docs/T40_STATUS.md`)
 
 Device runs require the target firmware's stock TX-ISP and sensor modules plus
 the matching AVPU module.

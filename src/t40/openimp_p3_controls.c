@@ -13,6 +13,8 @@
 
 #include <imp/imp_isp.h>
 
+#include "../isp/isp_mask_rgb2yuv.h"
+
 #if defined(PLATFORM_T41)
 #define TISP_VIDIOC_DEFAULT_TUNING 0xc0105435U
 #else
@@ -48,6 +50,7 @@
 #define TISP_CID_CCM 0x08000080
 #define TISP_CID_SCALER_LV 0x080000a6
 #define TISP_CID_MODULE_RATIO 0x080000a4
+#define TISP_CID_MASK 0x08000074      /* T40 SetMask/GetMask, 288 bytes */
 #if defined(PLATFORM_T41)
 #define TISP_CID_MASK_BLOCK 0x08000074
 #define TISP_CID_AWB_RGB_COEFFT 0x08000098
@@ -62,6 +65,7 @@ typedef struct {
 } P3TuningRequest;
 
 extern int OpenIMP_P1_TuningIOCtl(uint32_t command, void *argument);
+extern int OpenIMP_P1_TuningEnabled(void);
 extern int OpenIMP_P1_SetDefaultBinPath(IMPVI_NUM num, const char *path);
 extern int OpenIMP_P1_GetDefaultBinPath(IMPVI_NUM num, char *path, size_t size);
 
@@ -264,6 +268,76 @@ int32_t IMP_ISP_Tuning_GetAfWeight(IMPVI_NUM num, IMPISPWeight *af_weight)
     return p3_tuning_pointer(num, 1, TISP_CID_AF_WEIGHT, af_weight);
 }
 
+/* IMP_ISP_Tuning_SwitchBin, from the vendor T40 1.3.1 and T41 1.2.6 libimp
+ * disassembly: pointer tuning ioctl, set, control 0x80000a5, payload =
+ * IMPISPBinAttr { u32 enable; char bname[64 (T40) / 128 (T41)]; } (68 / 132
+ * bytes, copied by the kernel).  enable 1 loads bname, 0 returns to the
+ * sensor's configured default bin.  Check order and return codes are the
+ * vendor's (T40 small negatives; T41 the same numbers as -4096 + n, with a
+ * sensor limit of 2 instead of 4).  The T41 library additionally keeps a
+ * copy of the attribute for a replay after an ISP restart; that bookkeeping
+ * is not reproduced.  Beyond the vendor: the name goes to the kernel in a
+ * copy that is always NUL terminated. */
+#define TISP_CID_SWITCH_BIN 0x080000a5
+#if defined(PLATFORM_T41)
+#define SB_MAX_NUM  2
+#define SB_E(n)     (-4096 + (n))
+#define SB_E_NUM    SB_E(12)
+#else
+#define SB_MAX_NUM  4
+#define SB_E(n)     (-(n))
+#define SB_E_NUM    SB_E(4)
+#endif
+#define SB_E_NULL   SB_E(9)
+#define SB_E_STATE  SB_E(5)
+#define SB_E_ENABLE SB_E(10)
+#define SB_E_IOCTL  SB_E(6)
+
+/* Pure request builder (host-tested): the vendor checks, the NUL-terminated
+ * copy and the 16-byte envelope.  Returns 0 or the vendor error code. */
+int32_t openimp_switch_bin_request(IMPVI_NUM num, const IMPISPBinAttr *attr,
+                                   int isp_enabled, IMPISPBinAttr *copy,
+                                   P3TuningRequest *request)
+{
+#if defined(PLATFORM_T41)
+    if (!attr)
+        return SB_E_NULL;
+    if ((uint32_t)num >= SB_MAX_NUM)
+        return SB_E_NUM;
+#else
+    if ((uint32_t)num >= SB_MAX_NUM)
+        return SB_E_NUM;
+    if (!attr)
+        return SB_E_NULL;
+#endif
+    if (!isp_enabled)
+        return SB_E_STATE;
+    if ((uint32_t)attr->enable >= 2U)
+        return SB_E_ENABLE;
+    memcpy(copy, attr, sizeof(*copy));
+    copy->bname[sizeof(copy->bname) - 1] = '\0';
+    request->vinum = (int32_t)num;
+    request->direction = 0;
+    request->control = TISP_CID_SWITCH_BIN;
+    request->payload = (uintptr_t)copy;
+    return 0;
+}
+
+int32_t IMP_ISP_Tuning_SwitchBin(IMPVI_NUM num, IMPISPBinAttr *attr)
+{
+    IMPISPBinAttr copy;
+    P3TuningRequest request;
+    int32_t result;
+
+    result = openimp_switch_bin_request(num, attr, OpenIMP_P1_TuningEnabled(),
+                                        &copy, &request);
+    if (result)
+        return result;
+    if (OpenIMP_P1_TuningIOCtl(TISP_VIDIOC_DEFAULT_TUNING, &request) != 0)
+        return SB_E_IOCTL;
+    return 0;
+}
+
 /* Vendor WDR_ENABLE: 1 / 0 switch the ISP's WDR mode by ioctl and the
  * library remembers the last mode; _GET answers from that memory (no
  * ioctl).  Any other value is accepted without effect. */
@@ -377,6 +451,7 @@ static struct {
     IMPISPHVFLIP flip;
 #endif
     IMPISPRunningMode running_mode;
+    IMPISPTuningOpsMode isp_bypass;
     IMPISPAntiflickerAttr antiflicker;
     char bin_path[128];
 } p3_controls = {
@@ -399,6 +474,7 @@ static int p3_tuning_get(int32_t id, int32_t *value)
     return p3_tuning_scalar(IMPVI_MAIN, 1, id, value);
 }
 
+#if defined(PLATFORM_T41)
 #define P3_BCSH_ACCESSORS(Name, field, id)                                    \
     int32_t IMP_ISP_Tuning_Set##Name(IMPVI_NUM num, unsigned char *value)     \
     {                                                                         \
@@ -421,6 +497,52 @@ static int p3_tuning_get(int32_t id, int32_t *value)
         *value = p3_controls.field;                                           \
         return result;                                                        \
     }
+
+#else
+/* Vendor T40 1.3.1 (libimp disassembly): Set<Name> checks num < 4 (-4), the
+ * value pointer (-9), sends the pointer tuning ioctl (-6 on failure) and, on
+ * success, stores the byte in the tuning-device cache at <field offset> + num;
+ * Get<Name> never talks to the driver, it returns that cached byte and 0
+ * (a driver get of these controls fails, which made the OpenIMP getter -1).
+ * Field offsets in the vendor tuning device: brightness 4, contrast 8,
+ * sharpness 12, saturation 16.  The cache starts at the neutral 128. */
+enum { p3_bcsh_brightness, p3_bcsh_contrast, p3_bcsh_sharpness,
+       p3_bcsh_saturation };
+static unsigned char p3_bcsh_cache[4][4] = {
+    {128, 128, 128, 128}, {128, 128, 128, 128},
+    {128, 128, 128, 128}, {128, 128, 128, 128},
+};
+
+static int p3_bcsh_set(IMPVI_NUM num, int field, int32_t id, unsigned char *value)
+{
+    if ((unsigned)num >= 4U)
+        return -4;
+    if (!value)
+        return -9;
+    if (p3_tuning_pointer(num, 0, id, value) != 0)
+        return -6;
+    p3_bcsh_cache[num][field] = *value;
+    return 0;
+}
+
+static int p3_bcsh_get(IMPVI_NUM num, int field, unsigned char *value)
+{
+    if ((unsigned)num >= 4U || !value)
+        return -1;     /* the vendor would fault; stay safe */
+    *value = p3_bcsh_cache[num][field];
+    return 0;
+}
+
+#define P3_BCSH_ACCESSORS(Name, field, id)                                   \
+    int32_t IMP_ISP_Tuning_Set##Name(IMPVI_NUM num, unsigned char *value)    \
+    {                                                                        \
+        return p3_bcsh_set(num, p3_bcsh_##field, (id), value);               \
+    }                                                                        \
+    int32_t IMP_ISP_Tuning_Get##Name(IMPVI_NUM num, unsigned char *value)    \
+    {                                                                        \
+        return p3_bcsh_get(num, p3_bcsh_##field, value);                     \
+    }
+#endif
 
 P3_BCSH_ACCESSORS(Brightness, brightness, TISP_CID_BRIGHTNESS)
 P3_BCSH_ACCESSORS(Contrast, contrast, TISP_CID_CONTRAST)
@@ -451,6 +573,76 @@ int32_t IMP_ISP_Tuning_GetBcshHue(IMPVI_NUM num, unsigned char *value)
     *value = p3_controls.hue;
     return result;
 }
+
+#if !defined(PLATFORM_T41)
+/* T40 IMP_ISP_Tuning_SetMask / GetMask (vendor 1.3.1 libimp disassembly).
+ * IMPISPMASKAttr is 3 channels x 4 blocks of 24 bytes = 288 bytes: mask_en at
+ * +0, mask_type at +12 (0 RGB, 1 YUV), the colour at +16 (r g b) and +19
+ * (y u v).  Set: num < 4 (-4), mask (-9); for every enabled RGB block it
+ * computes the YUV bytes from the RGB ones (IMP_ISP_Tuning_DumpMask, BT.601
+ * full range, written to +19..+21, the RGB bytes stay), keeps a 288-byte copy
+ * per input and sends the pointer tuning ioctl (control 0x08000074, payload =
+ * the caller's struct; -6 if it fails).  Get: ioctl get into the caller's
+ * struct, then mask_type and the RGB bytes of every block are restored from
+ * the Set copy (the driver hands back its own YUV form).  The DumpMask
+ * constants are not readable in the disassembly; the operation order is the
+ * T31 one (isp_mask_rgb2yuv.h).  Device-untested. */
+#define P3_MASK_SIZE 288
+#define P3_MASK_BLOCK 24
+_Static_assert(sizeof(IMPISPMASKAttr) == P3_MASK_SIZE, "mask attr is 288 bytes");
+_Static_assert(sizeof(IMPISPMASKAttr) == 12 * P3_MASK_BLOCK, "12 blocks of 24");
+_Static_assert(offsetof(IMPISP_MASK_BLOCK_PAR, mask_type) == 12, "type at 12");
+_Static_assert(offsetof(IMPISP_MASK_BLOCK_PAR, mask_value) == 16, "colour at 16");
+static unsigned char p3_mask_cache[4][P3_MASK_SIZE];
+
+int32_t IMP_ISP_Tuning_SetMask(IMPVI_NUM num, IMPISPMASKAttr *mask)
+{
+    unsigned char *bytes = (unsigned char *)mask;
+    unsigned block;
+
+    if ((unsigned)num >= 4U)
+        return -4;
+    if (!mask)
+        return -9;
+    for (block = 0; block < 12; block++) {
+        unsigned char *b = bytes + block * P3_MASK_BLOCK;
+        uint32_t type;
+
+        memcpy(&type, b + 12, sizeof(type));
+        if (b[0] && type == 0) {
+            unsigned char c[3] = { b[16], b[17], b[18] };
+
+            isp_mask_rgb_to_yuv(c);
+            memcpy(b + 19, c, 3);
+        }
+    }
+    memcpy(p3_mask_cache[num], bytes, P3_MASK_SIZE);
+    if (p3_tuning_pointer(num, 0, TISP_CID_MASK, mask) != 0)
+        return -6;
+    return 0;
+}
+
+int32_t IMP_ISP_Tuning_GetMask(IMPVI_NUM num, IMPISPMASKAttr *mask)
+{
+    unsigned char *bytes = (unsigned char *)mask;
+    unsigned block;
+
+    if ((unsigned)num >= 4U)
+        return -4;
+    if (!mask)
+        return -9;
+    if (p3_tuning_pointer(num, 1, TISP_CID_MASK, mask) != 0)
+        return -6;
+    for (block = 0; block < 12; block++) {
+        unsigned char *b = bytes + block * P3_MASK_BLOCK;
+        const unsigned char *c = p3_mask_cache[num] + block * P3_MASK_BLOCK;
+
+        memcpy(b + 12, c + 12, 4);
+        memcpy(b + 16, c + 16, 3);
+    }
+    return 0;
+}
+#endif
 
 #if defined(PLATFORM_T41)
 int32_t IMP_ISP_Tuning_SetSensorFPS(IMPVI_NUM num, IMPISPSensorFps *fps)
@@ -537,10 +729,62 @@ int32_t IMP_ISP_Tuning_GetHVFlip(IMPVI_NUM num, IMPISPHVFLIP *flip)
 }
 
 #if defined(PLATFORM_T41)
+/*
+ * Vendor T41 libimp 1.2.6 IMP_ISP_Tuning_Set/GetMaskBlock (0x5dc78 /
+ * 0x5e294): for an enabled block with mask_type RGB the colour is turned
+ * into YUV in the caller's struct (IMP_ISP_Tuning_DumpMask: BT.601 full
+ * range, same doubles as the T31 SetMask, written to mask_value.ayuv,
+ * argb untouched); the 24-byte struct is copied into a per-sensor cache
+ * and passed to the kernel (0x08000074), which only uses window and
+ * ayuv.  GetMaskBlock asks the kernel (window, ayuv; the stock kernel
+ * always reports mask_en 0) and then restores mask_type and argb from
+ * the cache, also when the ioctl failed.  The cache index is chx * pinum,
+ * as in the vendor library (blocks with the same product share a slot).
+ */
+#include "../isp/isp_mask_rgb2yuv.h"
+
+#define P3_MASK_CACHE_SLOTS 12
+static IMPISPMaskBlockAttr p3_mask_cache[IMPVI_BUTT][P3_MASK_CACHE_SLOTS];
+
 int32_t IMP_ISP_Tuning_SetMaskBlock(IMPVI_NUM num,
                                     IMPISPMaskBlockAttr *mask)
 {
+    unsigned int slot;
+
+    if (num < IMPVI_MAIN || num >= IMPVI_BUTT || !mask)
+        return -1;
+    if (mask->mask_en && mask->mask_type == IMPISP_MASK_TYPE_RGB) {
+        uint8_t c[3];
+
+        c[0] = mask->mask_value.argb.r_value;
+        c[1] = mask->mask_value.argb.g_value;
+        c[2] = mask->mask_value.argb.b_value;
+        isp_mask_rgb_to_yuv(c);
+        mask->mask_value.ayuv.y_value = c[0];
+        mask->mask_value.ayuv.u_value = c[1];
+        mask->mask_value.ayuv.v_value = c[2];
+    }
+    slot = (unsigned int)mask->chx * mask->pinum;
+    if (slot < P3_MASK_CACHE_SLOTS)
+        p3_mask_cache[num][slot] = *mask;
     return p3_tuning_pointer(num, 0, TISP_CID_MASK_BLOCK, mask);
+}
+
+int32_t IMP_ISP_Tuning_GetMaskBlock(IMPVI_NUM num,
+                                    IMPISPMaskBlockAttr *mask)
+{
+    unsigned int slot;
+    int result;
+
+    if (num < IMPVI_MAIN || num >= IMPVI_BUTT || !mask)
+        return -1;
+    result = p3_tuning_pointer(num, 1, TISP_CID_MASK_BLOCK, mask);
+    slot = (unsigned int)mask->chx * mask->pinum;
+    if (slot < P3_MASK_CACHE_SLOTS) {
+        mask->mask_type = p3_mask_cache[num][slot].mask_type;
+        mask->mask_value.argb = p3_mask_cache[num][slot].mask_value.argb;
+    }
+    return result;
 }
 
 int32_t IMP_ISP_Tuning_SetScalerLv(IMPVI_NUM num, IMPISPScalerLvAttr *attr)
@@ -566,8 +810,12 @@ int IMP_ISP_Tuning_Awb_GetRgbCoefft(IMPVI_NUM num, IMPISPCoefftWb *attr)
  *   AeExprInfo    - AeMaxIntegrationTime / AeMaxAGain caps (SET),
  *   Module_Ratio  - SINTER (2D NR) and TEMPER (3D NR) strength;
  * and answers -EOPNOTSUPP for HLC/BLC, manual exposure, DRC/DPC/defog
- * ratios, CCM, gamma, CSC, module bypass, auto zoom and WDR output mode,
- * so callers see the failure instead of an acknowledged no-op.
+ * ratios, CCM, gamma, CSC, module bypass and WDR output mode, so callers
+ * see the failure instead of an acknowledged no-op.  AutoZoom (60 bytes,
+ * en/left/top/width/height[3]) goes 1:1 to the kernel as in the vendor
+ * library; open-tx-isp claude/t41-zoom-mask stores it and applies it at
+ * the next output start unless the output may be reprogrammed live
+ * (open-tx-isp driver/t41/README.md "MSCA zoom, mask and scaler level").
  */
 #define TISP_CID_CSC 0x08000096
 
@@ -802,6 +1050,169 @@ P3_T40_POINTER_PAIR(AutoZoom, IMPISPAutoZoom, TISP_CID_AUTOZOOM)
 P3_T40_POINTER_PAIR(WdrOutputMode, IMPISPWdrOutputMode,
                     TISP_CID_WDR_OUTPUT_MODE)
 
+/*
+ * More T40 1.3.1 pointer pass-throughs (vendor libimp disassembly, the same
+ * ioctl request as above; each vendor function checks the sensor number,
+ * the ISP device, the pointer and "tuning running" and then hands the public
+ * structure to the kernel unchanged):
+ *   StatisConfig 0x8000000, WaitFrameDone 0x8000091, AfStatistics 0x8000031,
+ *   AFMetricesInfo 0x8000034, FaceAe 0x8000035, FaceAwb 0x8000014,
+ *   HLDCAttr 0x8000097, FixedContraster 0x8000098 (set only), AeExpList
+ *   0x8000099, AeSpeed 0x800009a.
+ */
+#define TISP_CID_STATIS_CONFIG_T40  0x08000000
+#define TISP_CID_WAIT_FRAME_DONE    0x08000091
+#define TISP_CID_AF_STATIS          0x08000031
+#define TISP_CID_AF_METRICS         0x08000034
+#define TISP_CID_FACE_AE            0x08000035
+#define TISP_CID_FACE_AWB           0x08000014
+#define TISP_CID_HLDC               0x08000097
+#define TISP_CID_FIXED_CONTRAST     0x08000098
+#define TISP_CID_AE_EXP_LIST        0x08000099
+#define TISP_CID_AE_SPEED           0x0800009a
+
+P3_T40_POINTER_PAIR(StatisConfig, IMPISPStatisConfig, TISP_CID_STATIS_CONFIG_T40)
+P3_T40_POINTER_PAIR(FaceAe, IMPISPFaceAttr, TISP_CID_FACE_AE)
+P3_T40_POINTER_PAIR(FaceAwb, IMPISPFaceAttr, TISP_CID_FACE_AWB)
+P3_T40_POINTER_PAIR(HLDCAttr, IMPISPHLDCAttr, TISP_CID_HLDC)
+P3_T40_POINTER_PAIR(AeExpList, IMPISPAeExpListAttr, TISP_CID_AE_EXP_LIST)
+P3_T40_POINTER_PAIR(AeSpeed, IMPISPAeSpeedAttr, TISP_CID_AE_SPEED)
+
+int32_t IMP_ISP_Tuning_GetAfStatistics(IMPVI_NUM num, IMPISPAFStatisInfo *info)
+{
+    return p3_tuning_pointer(num, 1, TISP_CID_AF_STATIS, info);
+}
+
+int32_t IMP_ISP_Tuning_GetAFMetricesInfo(IMPVI_NUM num,
+                                         IMPISPAFMetricsInfo *metric)
+{
+    return p3_tuning_pointer(num, 1, TISP_CID_AF_METRICS, metric);
+}
+
+int32_t IMP_ISP_Tuning_SetFixedContraster(IMPVI_NUM num,
+                                          IMPISPFixedContrastAttr *attr)
+{
+    return p3_tuning_pointer(num, 0, TISP_CID_FIXED_CONTRAST, attr);
+}
+
+/* Vendor WaitFrameDone: a 24-byte scratch block whose first word is the
+ * caller's timeout goes out as a get; on success the kernel's frame counter
+ * (offset 8, 8 bytes) and IRQ type (offset 16) are copied back to the
+ * caller's structure (offset 4 stays untouched). */
+int32_t IMP_ISP_Tuning_WaitFrameDone(IMPVI_NUM num, IMPISPWaitFrameAttr *attr)
+{
+    unsigned char scratch[24];
+    int32_t result;
+
+    if (!attr)
+        return -1;
+    memset(scratch, 0, sizeof(scratch));
+    memcpy(scratch, attr, 4);
+    result = p3_tuning_pointer(num, 1, TISP_CID_WAIT_FRAME_DONE, scratch);
+    if (result == 0)
+        memcpy((unsigned char *)attr + 8, scratch + 8, 12);
+    return result;
+}
+
+/* Vendor IMP_ISP_SetOSDAttr / GetOSDAttr (T40 name without "Tuning"):
+ * pointer pass-through of the public structure, control 0x80000a1. */
+#define TISP_CID_OSD_ATTR 0x080000a1
+
+int32_t IMP_ISP_SetOSDAttr(IMPVI_NUM num, IMPISPOSDAttr *attr)
+{
+    return p3_tuning_pointer(num, 0, TISP_CID_OSD_ATTR, attr);
+}
+
+int32_t IMP_ISP_GetOSDAttr(IMPVI_NUM num, IMPISPOSDAttr *attr)
+{
+    return p3_tuning_pointer(num, 1, TISP_CID_OSD_ATTR, attr);
+}
+
+/* Vendor IMP_ISP_SetPreDqtime (T40 1.3.1 0x8aa04): the caller's pointer goes
+ * to the ISP node as ioctl 0xc0045430 (TISP_VIDIOC_SET_PREDQTIME); sensor
+ * number >= 4 is -4, no ISP device -8, NULL -9, a failing ioctl -6. */
+#define TISP_IOCTL_SET_PREDQTIME 0xc0045430U
+
+int32_t IMP_ISP_SetPreDqtime(IMPVI_NUM num, uint32_t *dqtime)
+{
+    if ((uint32_t)num >= 4U)
+        return -4;
+    if (!dqtime)
+        return -9;           /* vendor: ISP device check (-8) comes first */
+    if (OpenIMP_P1_IspIOCtl(TISP_IOCTL_SET_PREDQTIME, dqtime) != 0)
+        return errno == ENODEV ? -8 : -6;
+    return 0;
+}
+
+/*
+ * CSC: the T40 wire block differs from the T41 one above (vendor T40 1.3.1
+ * Set/GetISPCSCAttr).  Control 0x8000096, the block is
+ *   u32 gamut (0..4, 4 = user), 9 x u32 matrix, 6 bytes {offset[2], clip[4]}.
+ * Set: gamut >= 5 fails before the ioctl; for the user gamut every
+ * coefficient is (int)(c * 1024 + 0.5) & 0x3ff, otherwise only the gamut
+ * word is defined.  Get: for the user gamut the words are read as signed
+ * ints times 1/1024 and the coefficients 3, 4, 7 and 8 are negated (as the
+ * vendor library does), the six bytes are copied; any other gamut zeroes
+ * bytes 4..47 of the structure.
+ */
+#define TISP_CID_CSC_T40 0x08000096
+
+int32_t IMP_ISP_Tuning_SetISPCSCAttr(IMPVI_NUM num, IMPISPCSCAttr *csc)
+{
+    unsigned char wire[64];
+    unsigned int i;
+
+    if (!csc || (uint32_t)csc->ColorGamut >= 5U)
+        return -1;
+    memset(wire, 0, sizeof(wire));
+    memcpy(wire, &csc->ColorGamut, 4);
+    if (csc->ColorGamut == IMP_ISP_CG_USER) {
+        for (i = 0; i < 9U; i++) {
+            uint32_t w = (uint32_t)(int32_t)((double)(csc->Matrix.CscCoef[i] *
+                                                      1024.0f) + 0.5) & 0x3ffU;
+
+            memcpy(wire + 4 + 4 * i, &w, 4);
+        }
+        memcpy(wire + 40, csc->Matrix.CscOffset, 2);
+        memcpy(wire + 42, csc->Matrix.CscClip, 4);
+    }
+    return p3_tuning_pointer(num, 0, TISP_CID_CSC_T40, wire);
+}
+
+int32_t IMP_ISP_Tuning_GetISPCSCAttr(IMPVI_NUM num, IMPISPCSCAttr *csc)
+{
+    unsigned char wire[64];
+    unsigned int i;
+    int32_t gamut;
+    int32_t result;
+
+    if (!csc)
+        return -1;
+    memset(wire, 0, sizeof(wire));
+    result = p3_tuning_pointer(num, 1, TISP_CID_CSC_T40, wire);
+    if (result != 0)
+        return result;
+    memcpy(&gamut, wire, 4);
+    if (gamut == IMP_ISP_CG_USER) {
+        for (i = 0; i < 9U; i++) {
+            int32_t w;
+
+            memcpy(&w, wire + 4 + 4 * i, 4);
+            csc->Matrix.CscCoef[i] = (float)w * (1.0f / 1024.0f);
+        }
+        memcpy(csc->Matrix.CscOffset, wire + 40, 2);
+        memcpy(csc->Matrix.CscClip, wire + 42, 4);
+        csc->Matrix.CscCoef[3] = -csc->Matrix.CscCoef[3];
+        csc->Matrix.CscCoef[4] = -csc->Matrix.CscCoef[4];
+        csc->Matrix.CscCoef[7] = -csc->Matrix.CscCoef[7];
+        csc->Matrix.CscCoef[8] = -csc->Matrix.CscCoef[8];
+    } else {
+        memset((unsigned char *)csc + 4, 0, 44);
+    }
+    memcpy(&csc->ColorGamut, &gamut, 4);
+    return 0;
+}
+
 int IMP_ISP_Tuning_Awb_SetRgbCoefft(IMPVI_NUM num, IMPISPCoefftWb *attr)
 {
     return p3_tuning_pointer(num, 0, TISP_CID_AWB_RGB_COEFFT_T40, attr);
@@ -936,10 +1347,68 @@ int32_t IMP_ISP_Tuning_SetISPBypass(IMPVI_NUM num,
         return -1;
     /*
      * OEM T40 stores this policy flag in libimp; it does not issue a tuning
-     * ioctl until a separate custom-ISP configuration is supplied.
+     * ioctl until a separate custom-ISP configuration is supplied.  The
+     * vendor GetISPBypass reads the stored word back (0 before any Set).
      */
+    p3_controls.isp_bypass = *enable;
     return 0;
 }
+
+#if !defined(PLATFORM_T41)   /* the T41 vendor name is IMP_ISP_GetISPBypass */
+int32_t IMP_ISP_Tuning_GetISPBypass(IMPVI_NUM num,
+                                    IMPISPTuningOpsMode *enable)
+{
+    if (num != IMPVI_MAIN || !enable)
+        return -1;
+    *enable = p3_controls.isp_bypass;
+    return 0;
+}
+#endif
+
+#if defined(PLATFORM_T41)
+/*
+ * Vendor T41 1.2.6 IMP_ISP_SetISPBypass (0x47084) / IMP_ISP_GetISPBypass
+ * (0x46c48), the T41 names of the bypass pair (the T40 pair above has
+ * "Tuning" in the name).  Set: pointer NULL -4087, sensor number >= 2
+ * -4084; with the ISP device open the 8-byte block {value, sensor} goes to
+ * the ISP node as ioctl 0x80085418 (TISP_VIDIOC_BYPASS_SENSOR), a failing
+ * ioctl is -4095 and the value is remembered; without an open ISP device the
+ * vendor only remembers it.  Get returns the remembered value (0 before any
+ * Set).  The open-tx-isp T41 driver does not serve the ioctl yet (it answers
+ * -ENOTTY), so Set fails with -4095 there, as on a vendor library with an
+ * unsupporting kernel.  OpenIMP does not reproduce the vendor's "ISP device
+ * not open" error for Get.
+ */
+#define TISP_IOCTL_BYPASS_SENSOR 0x80085418U
+static IMPISPTuningOpsMode p3_t41_bypass[2];
+
+int32_t IMP_ISP_SetISPBypass(IMPVI_NUM num, IMPISPTuningOpsMode *enable)
+{
+    uint32_t request[2];
+
+    if (!enable)
+        return -4087;
+    if ((uint32_t)num >= 2U)
+        return -4084;
+    request[0] = (uint32_t)*enable;
+    request[1] = (uint32_t)num;
+    if (OpenIMP_P1_IspIOCtl(TISP_IOCTL_BYPASS_SENSOR, request) != 0 &&
+        errno != ENODEV)
+        return -4095;
+    p3_t41_bypass[num] = *enable;
+    return 0;
+}
+
+int32_t IMP_ISP_GetISPBypass(IMPVI_NUM num, IMPISPTuningOpsMode *enable)
+{
+    if (!enable)
+        return -4087;
+    if ((uint32_t)num >= 2U)
+        return -4084;
+    *enable = p3_t41_bypass[num];
+    return 0;
+}
+#endif
 
 int32_t IMP_ISP_Tuning_SetAntiFlickerAttr(IMPVI_NUM num,
                                           IMPISPAntiflickerAttr *attribute)
@@ -1017,10 +1486,12 @@ int32_t IMP_ISP_GetDefaultBinPath(IMPVI_NUM num, char *path)
     return -1;
 }
 
+#if !defined(PLATFORM_T40)   /* T40: src/t40/openimp_t40_isp_osd.c */
 int IMP_ISP_Tuning_SetOsdPoolSize(int size)
 {
     return size >= 0 ? 0 : -1;
 }
+#endif
 
 #if !defined(PLATFORM_T41) && !defined(PLATFORM_T40)   /* src/t23/openimp_t23_osd.c */
 int IMP_OSD_SetPoolSize(int size)

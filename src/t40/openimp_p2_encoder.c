@@ -17,14 +17,19 @@
 #if defined(PLATFORM_T21)
 #define PLATFORM_T30 1
 #endif
+/* Note for all "PLATFORM_T30" blocks below (and the T30 gap code at the end
+ * of this file): because of the define above, PLATFORM_T30 is also set in the
+ * T21 build, so these functions are compiled for T21 as well and are not
+ * lost there.  Code that must differ uses PLATFORM_T21 explicitly. */
 
 #include "openimp_profile.h"
 #include "imp_log_int.h"
 #include "trace_control.h"
 #include "p2_rc_readback.h"
 #include "p2_denoise.h"
-#if defined(PLATFORM_T21)
-/* vendor T21 libimp clears the denoise type in i264e_validate_parameters */
+#if defined(PLATFORM_T21) && !defined(PLATFORM_T20)
+/* vendor T21 libimp clears the denoise type in i264e_validate_parameters;
+ * the T20/T10 3.12.0 libimp keeps it (the T20 build defines PLATFORM_T21 too) */
 #define P2_DENOISE_HW_ACTIVE false
 #else
 #define P2_DENOISE_HW_ACTIVE true
@@ -74,6 +79,9 @@
 #include "t23/openimp_t23_encoder.h"
 #elif defined(PLATFORM_T41) || defined(PLATFORM_T40)
 #include "t23/openimp_t23_osd.h"
+#endif
+#if defined(PLATFORM_T40)
+#include "t40/t40_vendor_cmd.h"
 #endif
 #if defined(PLATFORM_T30)
 /* T20/T21/T30 keep the T31 OSD state and blend PIC/COVER regions with the
@@ -282,7 +290,7 @@ typedef struct {
     uint32_t jpeg_reused;           /* pictures stood in for */
     uint64_t jpeg_reuse_log_us;
     IMPEncoderCHNAttr attr;
-#if defined(PLATFORM_T31) || defined(PLATFORM_T41)
+#if defined(PLATFORM_T31) || defined(PLATFORM_T41) || defined(PLATFORM_T40)
     IMPEncoderRoiAttr roi_attr;     /* IMP_Encoder_SetChnRoiAttr */
 #endif
     IMPEncoderPack packs[P2_MAX_PUBLIC_PACKS];
@@ -290,6 +298,10 @@ typedef struct {
     uint32_t sequence;
     uint32_t stream_buf_size;
     int max_stream_count;
+    /* IMP_Encoder_SetbufshareChn: channel whose stream buffers a JPEG
+     * channel would share, -1 none (the vendor's default and its value
+     * after DestroyChn).  Bookkeeping only, see the function. */
+    int bufshare_chn;
     int pool_id;
     int entropy_mode;
     int entropy_mode_set;
@@ -303,7 +315,7 @@ typedef struct {
     IMPEncoderH265TransCfg h265_transform;
     IMPEncoderQpgMode qpg_mode;
     int macroblock_rate_control;
-#if defined(PLATFORM_T21) && !defined(PLATFORM_T23)
+#if defined(PLATFORM_T30) && !defined(PLATFORM_T23)
     /* stored like the OEM T20/T21 channel record (see the block after
      * IMP_Encoder_GetChnHSkip) */
     IMPEncoderAttrFrmUsed frm_used;
@@ -313,6 +325,9 @@ typedef struct {
     /* rc attribute last set by SetChnAttrRcMode: the OEM read-back then
      * shows the run-time clamps (p2_rc_readback.h) */
     int rc_runtime;
+#endif
+#if defined(PLATFORM_T40)
+    int fisheye;                    /* IMP_Encoder_Set/GetFisheyeEnableStatus */
 #endif
     uint64_t next_frame_due_us;
     uint64_t output_timestamp_us;
@@ -1185,6 +1200,7 @@ extern int AL_Codec_Encode_SetChromaQpOffset(void *codec, int offset);
 #define P2_HW_SUPERFRM_REENCODE 2u
 extern int AL_Codec_Encode_SetSuperFrame(void *codec, uint32_t mode,
                                          uint32_t i_bits, uint32_t p_bits);
+extern int AL_Codec_Encode_SetRcTrig(void *codec, float level, int new_max_qp);
 #endif
 #if defined(PLATFORM_T31)
 extern int AL_Codec_Encode_SetRcQualityCap(void *codec, int rc_mode,
@@ -1377,6 +1393,9 @@ static uint32_t p2_attr_gop_length(const IMPEncoderCHNAttr *attr)
 {
 #if defined(PLATFORM_T23) || defined(PLATFORM_T30)
     return attr->rcAttr.maxGop;
+#elif defined(PLATFORM_T40)
+    return t40_vendor_gop_length(attr->gopAttr.uGopLength,
+                                 attr->gopAttr.uMaxSameSenceCnt);
 #else
     return attr->gopAttr.uGopLength;
 #endif
@@ -1510,6 +1529,19 @@ static const char *p2_rc_mode_name(unsigned int mode)
     }
 }
 
+#if defined(PLATFORM_T40)
+static int p2_t40_auto_initial_qp(const IMPEncoderCHNAttr *attr,
+                                  uint32_t codec_type, uint32_t bitrate,
+                                  uint32_t fps_num, uint32_t fps_den,
+                                  int min_qp, int max_qp)
+{
+    return t40_vendor_initial_qp(
+        bitrate, fps_num && fps_den ? fps_num / fps_den : 25u,
+        (uint64_t)p2_attr_width(attr) * p2_attr_height(attr),
+        codec_type == IMP_ENC_TYPE_HEVC, min_qp, max_qp);
+}
+#endif
+
 static void p2_codec_params(unsigned char *params, const IMPEncoderCHNAttr *attr,
                             int hw_rc_mode, int channel)
 {
@@ -1599,6 +1631,12 @@ static void p2_codec_params(unsigned char *params, const IMPEncoderCHNAttr *attr
             (void)p2_rc_clamp(channel, "minQp", &min_qp, 1, 51);
             (void)p2_rc_clamp(channel, "maxQp", &max_qp, 1, 51);
             /* the initial QP is derived (or given) inside the range */
+#if defined(PLATFORM_T40)
+            if (qp < 0)
+                qp = p2_t40_auto_initial_qp(attr, codec_type, bitrate,
+                                            fps_num, fps_den,
+                                            min_qp, max_qp);
+#endif
             if (qp < 1 || qp > 51)
                 qp = 26;
             if (min_qp > max_qp)
@@ -1663,6 +1701,7 @@ int EncoderInit(void)
             p2_channels[i].group = -1;
             p2_channels[i].source_channel = -1;
             p2_channels[i].max_stream_count = P2_DEFAULT_STREAM_COUNT;
+            p2_channels[i].bufshare_chn = -1;
             p2_channels[i].pool_id = -1;
             pthread_mutex_init(&p2_channels[i].lock, NULL);
             pthread_cond_init(&p2_channels[i].jpeg_frame_ready, NULL);
@@ -1845,6 +1884,41 @@ static void p2_debug_roi_chroma(int channel)
 }
 #endif
 
+#if defined(PLATFORM_T31) || defined(PLATFORM_T40) || defined(PLATFORM_T41)
+/* CreateChn of a JPEG channel with IMP_Encoder_SetbufshareChn set: where
+ * the vendor would fail because the share channel holds no video encoder
+ * yet (created later, or itself a JPEG channel), say so.  Nothing is shared
+ * either way (see IMP_Encoder_SetbufshareChn), so the creation goes on.
+ * The two channel locks are taken one after the other, never nested. */
+static void p2_bufshare_check(int channel, const IMPEncoderCHNAttr *attr)
+{
+    P2EncoderChannel *ch = &p2_channels[channel];
+    P2EncoderChannel *other;
+    int share, ready;
+
+    if (p2_attr_codec_type(attr) != IMP_ENC_TYPE_JPEG)
+        return;
+    pthread_mutex_lock(&ch->lock);
+    share = ch->bufshare_chn;
+    pthread_mutex_unlock(&ch->lock);
+    if (share < 0 || share >= P2_MAX_CHANNELS)
+        return;
+    other = &p2_channels[share];
+    pthread_mutex_lock(&other->lock);
+    ready = other->created && other->codec_type != (int)IMP_ENC_TYPE_JPEG &&
+            share != channel;
+    pthread_mutex_unlock(&other->lock);
+    if (!ready)
+        IMP_LOG_WARN("Encoder", "CreateChn(%d): JPEG channel shares the "
+                     "buffers of channel %d, which holds no video encoder "
+                     "(the stock libimp fails here: create the video channel "
+                     "first); OpenIMP gives the JPEG channel its own and "
+                     "goes on", channel, share);
+}
+#else
+#define p2_bufshare_check(channel, attr) ((void)0)
+#endif
+
 int IMP_Encoder_CreateChn(int channel, IMPEncoderCHNAttr *attr)
 {
     P2EncoderChannel *ch;
@@ -1854,9 +1928,10 @@ int IMP_Encoder_CreateChn(int channel, IMPEncoderCHNAttr *attr)
     P2_STARTUP_MARKER("openimp/P2 marker C0 CreateChn entry\n");
     if (!p2_valid_channel(channel) || p2_null_arg(__func__, attr))
         return -1;
-#if !defined(PLATFORM_T31) && !defined(PLATFORM_T41)
+#if !defined(PLATFORM_T31) && !defined(PLATFORM_T40) && \
+    !defined(PLATFORM_T41)
     if (p2_attr_codec_type(attr) == IMP_ENC_TYPE_HEVC) {
-        /* Only the T31 and T41 AVPU backends encode HEVC
+        /* Only the T31, T40 and T41 AVPU backends encode HEVC
          * (docs/T31_HEVC.md, t41_command_builder.c); the
          * other backends (native and OEM Helix, software) are H.264/JPEG
          * only and used to create an HEVC channel that produced no stream
@@ -1872,11 +1947,25 @@ int IMP_Encoder_CreateChn(int channel, IMPEncoderCHNAttr *attr)
         return -1;
     }
 #endif
+#if defined(PLATFORM_T21) && !defined(PLATFORM_T20)
+    /* Vendor T21 1.0.33: channel_i264e_encoder_init hands the created dnType
+     * to i264e_validate_parameters (0x2a988), which fails for a type >= 3
+     * (0x2aa5c) while the denoise is enabled; a disabled denoise forces the
+     * type to 0 first (0x3e5c0).  Disassembly only, no device run. */
+    if (attr->rcAttr.attrDenoise.enable &&
+        (attr->rcAttr.attrDenoise.dnType < 0 ||
+         attr->rcAttr.attrDenoise.dnType >= 3)) {
+        IMP_LOG_ERR("Encoder", "CreateChn(%d): invalid denoise type %d\n",
+                    channel, attr->rcAttr.attrDenoise.dnType);
+        return -1;
+    }
+#endif
     hw_rc_mode = p2_codec_rc_mode(attr, channel);
     if (hw_rc_mode < 0)
         return -1;
     P2_STARTUP_MARKER("openimp/P2 marker C1 args valid\n");
     EncoderInit();
+    p2_bufshare_check(channel, attr);
     P2_STARTUP_MARKER("openimp/P2 marker C2 EncoderInit returned\n");
     p2_startup_trace("openimp/P2 startup: CreateChn after EncoderInit\n");
     p2_trace("openimp/P2: CreateChn begin ch=%d profile=0x%x size=%ux%u\n",
@@ -1983,6 +2072,15 @@ int IMP_Encoder_CreateChn(int channel, IMPEncoderCHNAttr *attr)
     ch->attr = *attr;
 #if defined(PLATFORM_T20) || defined(PLATFORM_T21)
     ch->denoise = attr->rcAttr.attrDenoise;
+#if defined(PLATFORM_T21) && !defined(PLATFORM_T20)
+    /* GetChnAttr returns the created attribute as is (vendor 0x43a7c copies
+     * the channel's copy), except that a disabled denoise has its type
+     * cleared at create (0x3e5c0).  With the denoise enabled GetChnAttr keeps
+     * the caller's dnType while GetChnDenoise reads the encoder's 0
+     * (P2_DENOISE_HW_ACTIVE false): vendor behaviour, not a mismatch. */
+    if (!attr->rcAttr.attrDenoise.enable)
+        ch->attr.rcAttr.attrDenoise.dnType = 0;
+#endif
     {
         P2DenoiseCache c = {0, 0, 0};
 
@@ -2157,6 +2255,8 @@ int IMP_Encoder_DestroyChn(int channel)
     ch->jpeg_frame_generation = 0;
     ch->codec = NULL;
     ch->created = 0;
+    ch->bufshare_chn = -1;          /* the vendor clears the record and
+                                     * sets the share channel to -1 again */
     ch->receiving = 0;
     ch->jpeg_frame_requested = 0;
     pthread_cond_broadcast(&ch->jpeg_frame_ready);
@@ -2978,7 +3078,7 @@ int IMP_Encoder_GetStream(int channel, IMPEncoderStream *stream, int block)
 #endif
     ch->packs[0].frameEnd = true;
     ch->packs[0].sliceType = is_idr ? IMP_ENC_SLICE_I : IMP_ENC_SLICE_P;
-#if defined(PLATFORM_T41)
+#if defined(PLATFORM_T41) || defined(PLATFORM_T40)
     if (ch->codec_type == IMP_ENC_TYPE_HEVC)
         ch->packs[0].nalType.h265NalType = is_idr
             ? IMP_H265_NAL_SLICE_IDR_W_RADL : IMP_H265_NAL_SLICE_TRAIL_R;
@@ -3208,8 +3308,10 @@ int IMP_Encoder_SetDefaultParam(IMPEncoderChnAttr *attr, IMPEncoderProfile profi
     if (codec_type == IMP_ENC_TYPE_JPEG || rc_mode == IMP_ENC_RC_MODE_FIXQP) {
         attr->rcAttr.attrRcMode.attrFixQp.iInitialQP =
             (int16_t)((quality >= 1 && quality <= 99) ? quality : 25);
-#if defined(PLATFORM_T31)
-    /* OEM T31 1.1.6 IMP_Encoder_SetDefaultParam (0x831a0, jump table
+#if defined(PLATFORM_T31) || defined(PLATFORM_T40)
+    /* T40 1.3.1 returns the same CBR fields (read back on the Eufy T40XP:
+     * iInitialQP -1, 15..48, iIPDelta -1, eRcOptions 1, 2 * bitrate).
+     * OEM T31 1.1.6 IMP_Encoder_SetDefaultParam (0x831a0, jump table
      * 0xe9e34 on the rc mode): iInitialQP = the caller's value, iMinQP 15,
      * iMaxQP 48, iIPDelta/iPBDelta -1, eRcOptions 1, uMaxPictureSize =
      * 2 * bitrate; VBR and the capped modes uMaxBitRate = 4/3 * bitrate
@@ -3316,14 +3418,62 @@ static void p2_drop_unread_stream(P2EncoderChannel *ch)
     }
 }
 
-/* Vendor T31 libimp (1.1.1..1.1.6, disassembled): checks both numbers,
- * stores share_channel in the channel record (offset 640/672, kept over
- * CreateChn's memset) and logs it; nothing in libimp ever reads it back, so
- * there is nothing to apply.  Returning 0 after the checks is the vendor
- * behaviour (T23 libimp has no such function). */
+/* IMP_Encoder_SetbufshareChn(encChn, shareChn).
+ *
+ * Vendor (T31 1.1.6 0x83570, T40 1.3.1 0x692d4, T41 1.2.6 0x38414,
+ * disassembled): encChn must be below the channel limit and so must shareChn
+ * - a negative shareChn passes and means "no sharing", the default and the
+ * value after DestroyChn.  The value is stored in the channel record (T31
+ * +512, T40 +984, T41 +1304) and logged.  IMP_Encoder_CreateChn keeps it
+ * over its memset and reads it for a JPEG channel only: with shareChn >= 0
+ * the video channel's record must already hold its encoder (else "Jpeg
+ * channel need create after channel 0" and CreateChn fails), and the JPEG
+ * channel then borrows that channel's stream manager and stream contexts
+ * (AL_Set_StreamMngrCtx / AL_Set_StreampCtx) and skips building its own pool
+ * of stream buffers (the PutStreamBuffer loop of AL_Codec_Encode_Create);
+ * T41 also rejects IMP_ENC_OPT_MMA then.  Nothing else reads it.  A bad
+ * number fails with -1 on T31/T40 and 0x80040001 on T41.
+ *
+ * OpenIMP has no per-JPEG-channel stream buffer pool to skip: JPEG is
+ * software on T40/T41 (heap output, no AVPU stream buffer) and the T31
+ * hardware JPEG core uses one process-wide stream buffer for all JPEG
+ * channels.  Sharing the video channel's buffers would save no rmem and only
+ * tie the JPEG channel to the video encoder's lifetime, so the value is kept
+ * as the vendor keeps it, the argument checks and return codes are the
+ * vendor's, and CreateChn only warns (instead of failing) where the vendor
+ * would fail. */
+#if defined(PLATFORM_T41)
+#define P2_BUFSHARE_ERROR ((int)0x80040001u)
+#else
+#define P2_BUFSHARE_ERROR (-1)
+#endif
+
 int IMP_Encoder_SetbufshareChn(int channel, int share_channel)
 {
+#if defined(PLATFORM_T31) || defined(PLATFORM_T40) || defined(PLATFORM_T41)
+    P2EncoderChannel *ch;
+
+    if (channel < 0 || channel >= P2_MAX_CHANNELS) {
+        IMP_LOG_LIMITED(LOG_ERR, "Encoder", "encChn Channel Num: %d", channel);
+        return P2_BUFSHARE_ERROR;
+    }
+    if (share_channel >= P2_MAX_CHANNELS) {
+        IMP_LOG_LIMITED(LOG_ERR, "Encoder", "Invalid share Channel Num: %d",
+                        share_channel);
+        return P2_BUFSHARE_ERROR;
+    }
+    EncoderInit();
+    ch = &p2_channels[channel];
+    pthread_mutex_lock(&ch->lock);
+    ch->bufshare_chn = share_channel;
+    pthread_mutex_unlock(&ch->lock);
+    p2_trace("openimp/P2: SetbufshareChn ch=%d share=%d\n", channel,
+             share_channel);
+    return 0;
+#else
+    /* no such function in the vendor libimp of these SoCs */
     return p2_valid_channel(channel) && p2_valid_channel(share_channel) ? 0 : -1;
+#endif
 }
 
 int IMP_Encoder_SetJpegeQl(int channel, IMPEncoderJpegeQl *quality)
@@ -3825,8 +3975,9 @@ int IMP_Encoder_SetChnQp(int channel, int qp_value)
     return AL_Codec_Encode_SetQp(p2_channels[channel].codec, &qp);
 }
 
-#if defined(PLATFORM_T31) || defined(PLATFORM_T41)
-/* Vendor T41 1.2.6 IMP_Encoder_SetChnRoiAttr / GetChnRoiAttr: the windows
+#if defined(PLATFORM_T31) || defined(PLATFORM_T41) || defined(PLATFORM_T40)
+/* Vendor T41 1.2.6 IMP_Encoder_SetChnRoiAttr / GetChnRoiAttr (T40 1.3.1: the same
+ * windows; opt-in OPENIMP_T40_ROI=1, see codec-t40.c): the windows
  * go into the macroblock QP table of the AVC encoder from the next picture
  * on (src/t40/codec-t40.c avpu_t41_roi_apply).  H.265, absolute QP and
  * windows outside the picture are refused. */
@@ -3852,11 +4003,12 @@ int IMP_Encoder_SetChnRoiAttr(int channel, IMPEncoderRoiAttr *attr)
     return ret == 0 ? 0 : -1;
 }
 
-/* Vendor T41 1.2.6 IMP_Encoder_SetChnMapRoi (docs/ROI.md): AVC only, the
- * map is copied.  The same switch as SetChnRoiAttr guards it. */
+/* Vendor T41 1.2.6 / T40 1.3.1 IMP_Encoder_SetChnMapRoi (docs/ROI.md): AVC
+ * only, the map is copied.  The same switch as SetChnRoiAttr guards it
+ * (T40: OPENIMP_T40_ROI=1). */
 extern int AL_Codec_Encode_SetMapRoi(void *codec, const void *roi_attr);
 
-#if defined(PLATFORM_T41)
+#if defined(PLATFORM_T41) || defined(PLATFORM_T40)
 int IMP_Encoder_SetChnMapRoi(int channel, IMPEncoderMapRoiAttr *attr)
 {
     P2EncoderChannel *ch;
@@ -4113,10 +4265,53 @@ int IMP_Encoder_GetChnColor2Grey(int channel,
     return 0;
 }
 
+/* One-time warning for an ROI QP outside the range the H.264 slice header
+ * can carry (the value is clamped by Helix_H264_RoiEntry). */
+static void p2_roi_warn_range(const IMPEncoderROICfg *config)
+{
+    static int warned;
+
+    if (!config->bEnable || warned)
+        return;
+    if (config->bRelatedQp ? (config->s32Qp < AVPU_ROI_DELTA_MIN ||
+                              config->s32Qp > AVPU_ROI_DELTA_MAX)
+                           : (config->s32Qp < 0 || config->s32Qp > 51)) {
+        warned = 1;
+        IMP_LOG_WARN("Encoder", "ROI QP %d out of range: relative "
+                     "-25..25, absolute 0..51 (clamped; H.264 "
+                     "mb_qp_delta is -26..25)", config->s32Qp);
+    }
+}
+
+/* What GetChnROI returns for an H.264 channel: the table entry, x16 (OEM
+ * T21 1.0.33 and T23 1.3.0 read the entry back from the encoder). */
+static void p2_roi_stored(const IMPEncoderROICfg *config, const uint8_t entry[7],
+                          IMPEncoderROICfg *stored)
+{
+    memset(stored, 0, sizeof(*stored));
+    stored->u32Index = config->u32Index;
+    stored->bEnable = entry[0] != 0;
+    stored->bRelatedQp = entry[1] != 0;
+    stored->s32Qp = (int8_t)entry[2];
+    stored->rect.x = entry[3] * 16;
+    stored->rect.y = entry[5] * 16;
+    stored->rect.width = entry[4] * 16;     /* p1.x */
+    stored->rect.height = entry[6] * 16;    /* p1.y */
+}
+
 int IMP_Encoder_SetChnROI(int channel, const IMPEncoderROICfg *config)
 {
     P2EncoderChannel *ch = p2_legacy_config_channel(channel);
 
+#if defined(PLATFORM_T23)
+    /* OEM T23 1.3.0 (0x53ea0): channel >= 9 or no config: -1; a channel
+     * that is not created (its slot is zeroed) or not H.264: nothing, 0.
+     * Only then the table entry goes to the encoder handle. */
+    if (!p2_valid_channel(channel) || !config)
+        return -1;
+    if (!ch)
+        return 0;
+#endif
     if (!ch || !config || config->u32Index >= 8u)
         return -1;
 #if !defined(PLATFORM_T23)
@@ -4139,34 +4334,11 @@ int IMP_Encoder_SetChnROI(int channel, const IMPEncoderROICfg *config)
         uint8_t entry[7];
         IMPEncoderROICfg stored;
 
-        if (config->bEnable) {
-            static int warned;
-
-            if (config->bRelatedQp ? (config->s32Qp < AVPU_ROI_DELTA_MIN ||
-                                      config->s32Qp > AVPU_ROI_DELTA_MAX)
-                                   : (config->s32Qp < 0 ||
-                                      config->s32Qp > 51)) {
-                if (!warned) {
-                    warned = 1;
-                    IMP_LOG_WARN("Encoder", "ROI QP %d out of range: relative "
-                                 "-25..25, absolute 0..51 (clamped; H.264 "
-                                 "mb_qp_delta is -26..25)", config->s32Qp);
-                }
-            }
-        }
+        p2_roi_warn_range(config);
         Helix_H264_RoiEntry(config->bEnable, config->bRelatedQp,
                             config->s32Qp, config->rect.x, config->rect.y,
                             config->rect.width, config->rect.height, entry);
-        /* what GetChnROI returns: the table entry, x16 */
-        memset(&stored, 0, sizeof(stored));
-        stored.u32Index = config->u32Index;
-        stored.bEnable = entry[0] != 0;
-        stored.bRelatedQp = entry[1] != 0;
-        stored.s32Qp = (int8_t)entry[2];
-        stored.rect.x = entry[3] * 16;
-        stored.rect.y = entry[5] * 16;
-        stored.rect.width = entry[4] * 16;      /* p1.x */
-        stored.rect.height = entry[6] * 16;     /* p1.y */
+        p2_roi_stored(config, entry, &stored);
         pthread_mutex_lock(&ch->lock);
         if (AL_Codec_Encode_SetRoi(ch->codec, config->u32Index,
                                    entry) != 0) {
@@ -4184,22 +4356,37 @@ int IMP_Encoder_SetChnROI(int channel, const IMPEncoderROICfg *config)
      * table into every picture's slice (+752) and H264E_T21_SliceInit
      * programs 0x40044..0x40068.  The native Helix encoder takes the entry
      * here (Helix_H264_RoiSanitize clamps it per picture, as on T21); the
-     * OEM worker gets it through the bridge (no-op when native). */
-    if (ch->codec_type == IMP_ENC_TYPE_AVC && ch->codec) {
-        uint8_t entry[7];
+     * OEM worker gets it through the bridge (no-op when native).  Like T21
+     * and the OEM GetChnROI the stored value is the entry, x16. */
+    {
+        IMPEncoderROICfg stored = *config;
 
-        Helix_H264_RoiEntry(config->bEnable, config->bRelatedQp,
-                            config->s32Qp, config->rect.x, config->rect.y,
-                            config->rect.width, config->rect.height, entry);
-        if (AL_Codec_Encode_SetRoi(ch->codec, config->u32Index,
-                                   entry) != 0) {
+        if (ch->codec_type == IMP_ENC_TYPE_AVC) {
+            uint8_t entry[7];
+
+            if (!ch->codec) {               /* as T21: nothing to take it */
+                pthread_mutex_unlock(&ch->lock);
+                return -1;
+            }
+            p2_roi_warn_range(config);
+            Helix_H264_RoiEntry(config->bEnable, config->bRelatedQp,
+                                config->s32Qp, config->rect.x, config->rect.y,
+                                config->rect.width, config->rect.height,
+                                entry);
+            if (AL_Codec_Encode_SetRoi(ch->codec, config->u32Index,
+                                       entry) != 0) {
+                pthread_mutex_unlock(&ch->lock);
+                return -1;
+            }
+            p2_roi_stored(config, entry, &stored);
+        }
+        if (openimp_t23_enc_push_roi(ch->codec, ch->codec_type, config) != 0) {
             pthread_mutex_unlock(&ch->lock);
             return -1;
         }
-    }
-    if (openimp_t23_enc_push_roi(ch->codec, ch->codec_type, config) != 0) {
+        ch->roi[config->u32Index] = stored;
         pthread_mutex_unlock(&ch->lock);
-        return -1;
+        return 0;
     }
 #endif
     ch->roi[config->u32Index] = *config;
@@ -4324,6 +4511,9 @@ int IMP_Encoder_GetChnDenoise(int channel, IMPEncoderAttrDenoise *config)
     return 0;
 }
 
+/* The T30 gap code below: PLATFORM_T30 is also defined for the T21 build
+ * (line 18 above), so the T21 functions are not lost; T21 is still listed
+ * explicitly where it matters for readers. */
 #if defined(PLATFORM_T20) || defined(PLATFORM_T21) || defined(PLATFORM_T23) || defined(PLATFORM_T30)
 extern int AL_Codec_Encode_InsertUserData(void *codec, const void *data,
                                           uint32_t size, uint32_t max_cnt,
@@ -4357,7 +4547,7 @@ int IMP_Encoder_InsertUserData(int channel, void *data, uint32_t size)
 #endif
 }
 
-#if defined(PLATFORM_T21) && !defined(PLATFORM_T23)
+#if defined(PLATFORM_T30) && !defined(PLATFORM_T23)
 /* OEM T20 3.12.0 (0x49dc8) behaves alike: created channel, skipType up to
  * maxHSkipType, the six words stored; the T20 Helix path does not take the
  * IDR period (no same-scene call).
@@ -4370,17 +4560,42 @@ int IMP_Encoder_InsertUserData(int channel, void *data, uint32_t size)
  * reference structure itself is not coded (no HSkip on the native path). */
 int IMP_Encoder_SetChnHSkip(int channel, const IMPEncoderAttrHSkip *attr)
 {
-    P2EncoderChannel *ch = p2_legacy_config_channel(channel);
+    P2EncoderChannel *ch;
 
-    if (!ch || !attr)
+    if (!p2_valid_channel(channel) || !attr)
         return -1;
+    EncoderInit();
+    ch = &p2_channels[channel];
     pthread_mutex_lock(&ch->lock);
+#if defined(PLATFORM_T21)
+    if (!ch->created) {
+#if defined(PLATFORM_T20)
+        /* T20/T10 3.12.0 (0x49dc8): a channel that was never created is -1 */
+        pthread_mutex_unlock(&ch->lock);
+        return -1;
+#else
+        /* T21 1.0.33 (0x478f0): an idle channel stores the six words in its
+         * record without the maxHSkipType check and without reaching the
+         * encoder; CreateChn then takes rcAttr.attrHSkip.hSkipAttr over */
+        ch->attr.rcAttr.attrHSkip.hSkipAttr = *attr;
+        pthread_mutex_unlock(&ch->lock);
+        return 0;
+#endif
+    }
+#endif
+    /* OEM T30 1.0.5 (0xb3330): an idle channel takes the value too, within
+     * its maxHSkipType (the six words go into the channel attribute, 0 is
+     * returned); a created channel goes the same way on every SoC. */
     if (attr->skipType > ch->attr.rcAttr.attrHSkip.maxHSkipType) {
         pthread_mutex_unlock(&ch->lock);
         return -1;
     }
     ch->attr.rcAttr.attrHSkip.hSkipAttr = *attr;
-#if !defined(PLATFORM_T20)
+#if !defined(PLATFORM_T20) && defined(PLATFORM_T21)
+    /* T30 build: the value is only stored.  Its CreateChn does not hand the
+     * IDR period to the Helix encoder (T21 does), so changing it here would
+     * make the encoder behave differently after the call than after create;
+     * enabling it needs a T30 device run. */
     {
         int ok = attr->skipType == IMP_Encoder_STYPE_N1X ||
                  attr->skipType == IMP_Encoder_STYPE_H1M_FALSE ||
@@ -4398,18 +4613,31 @@ int IMP_Encoder_SetChnHSkip(int channel, const IMPEncoderAttrHSkip *attr)
 
 int IMP_Encoder_GetChnHSkip(int channel, IMPEncoderAttrHSkip *attr)
 {
-    P2EncoderChannel *ch = p2_legacy_config_channel(channel);
+    P2EncoderChannel *ch;
 
-    if (!ch || !attr)
+    if (!p2_valid_channel(channel) || !attr)
         return -1;
+    EncoderInit();
+    ch = &p2_channels[channel];
     pthread_mutex_lock(&ch->lock);
-    *attr = ch->attr.rcAttr.attrHSkip.hSkipAttr;
+    if (ch->created) {
+        *attr = ch->attr.rcAttr.attrHSkip.hSkipAttr;
+    } else {
+#if defined(PLATFORM_T20)
+        pthread_mutex_unlock(&ch->lock);
+        return -1;
+#else
+        /* T21 1.0.33 (0x47ba0) and T30 1.0.5 (0xb36fc): an idle channel
+         * answers all zero, 0 */
+        memset(attr, 0, sizeof(*attr));
+#endif
+    }
     pthread_mutex_unlock(&ch->lock);
     return 0;
 }
 #endif
 
-#if defined(PLATFORM_T21) && !defined(PLATFORM_T23)
+#if defined(PLATFORM_T30) && !defined(PLATFORM_T23)
 /* ---- vendor channel bookkeeping, T20/T21 (gap work 2026-10-10) -----------
  * Disassembly of libimp T21 1.0.33 and T20/T10 3.12.0 (identical build for
  * both): every function below reads or writes the 0x908 (T21) / 0x810 (T20)
@@ -4525,14 +4753,23 @@ int IMP_Encoder_GetChangeRef(int channel, int *enable)
         return -1;
     EncoderInit();
     pthread_mutex_lock(&p2_channels[channel].lock);
+#if defined(PLATFORM_T20)
+    /* T20/T10 3.12.0 (0x4b220): created channel reads the i264e value */
     if (p2_channels[channel].created)
         *enable = p2_channels[channel].change_ref;
-#if defined(PLATFORM_T20)
     else
         ret = -1;
 #else
-    else
+    /* T21 1.0.33 (0x48d90): idle channel answers 0; any other state logs
+     * "unsupport to change ref channel" and fails, the stored value is
+     * never returned (T30 1.0.5 has the same code) */
+    if (p2_channels[channel].created) {
+        IMP_LOG_ERR("Encoder", "%s:unsupport to change ref channel:%d",
+                    __func__, channel);
+        ret = -1;
+    } else {
         *enable = 0;
+    }
 #endif
     pthread_mutex_unlock(&p2_channels[channel].lock);
     return ret;
@@ -4579,6 +4816,71 @@ int IMP_Encoder_SetChnHSkipBlackEnhance(int channel, const int enable)
     pthread_mutex_unlock(&p2_channels[channel].lock);
     return 0;
 }
+
+#if defined(PLATFORM_T20)
+/* T20 3.12.0 (and its T10 branch) IMP_Encoder_SetChnRcTrigLevel (0x48528 ->
+ * i264e_reconfig_rc_trig_set): channel >= 6 is -1; a created H.264 channel
+ * hands {float level, int mode} to its i264e, which stores the raw pair in
+ * the controller parameters [260] (trigger level) and [264] (new max QP) and
+ * restarts the controller at the next IDR; an idle or H.265 channel
+ * returns 0.  The OEM controller lifts the QP cap from the application's
+ * max QP to the new max QP (default 51) while a GOP uses more than level
+ * (default 3.0) times its budget, so IMP_Encoder_SetChnAttrRcMode's maxQp
+ * alone does not cap a starved stream; mode = maxQp does.  OpenIMP
+ * clamps mode to 1..51 and not below the max QP. */
+int IMP_Encoder_SetChnRcTrigLevel(int channel, float level, int mode)
+{
+    P2EncoderChannel *ch;
+
+    if (channel < 0 || channel >= 6 || channel >= P2_MAX_CHANNELS)
+        return -1;
+    EncoderInit();
+    ch = &p2_channels[channel];
+    pthread_mutex_lock(&ch->lock);
+    if (ch->created && ch->codec && ch->codec_type == IMP_ENC_TYPE_AVC)
+        (void)AL_Codec_Encode_SetRcTrig(ch->codec, level, mode);
+    pthread_mutex_unlock(&ch->lock);
+    return 0;
+}
+#endif
+
+#if !defined(PLATFORM_T21)
+/* ---- T30 1.0.5 only (gap work 2026-10-10) --------------------------------
+ * OEM IMP_Encoder_SetPoolSize (0xb45b0): logs, stores a size > 0 in a global
+ * for the next EncoderInit and returns 0, otherwise -1.  The T30 Helix path
+ * sizes its stream buffers from the picture (src/t30/t30_helix_encoder.c),
+ * so the value is only kept. */
+static int p2_pool_size;
+
+int IMP_Encoder_SetPoolSize(int size)
+{
+    if (size <= 0)
+        return -1;
+    p2_pool_size = size;
+    return 0;
+}
+
+/* OEM IMP_Encoder_SetChnRcTrigLevel (0xb1994): a created H.264 channel
+ * hands {float level, int mode} to its i264e (parameter 4: the trigger of
+ * the OEM re-encode rate control); an idle channel or an H.265 one returns
+ * 0 without doing anything; channel >= 6 is -1.  The Helix rate control has
+ * no such trigger, so the pair is only kept (the OEM has no getter). */
+static struct { float level; int mode; } p2_rc_trig[P2_MAX_CHANNELS];
+
+int IMP_Encoder_SetChnRcTrigLevel(int channel, float level, int mode)
+{
+    if (!p2_valid_channel(channel))
+        return -1;
+    EncoderInit();
+    pthread_mutex_lock(&p2_channels[channel].lock);
+    if (p2_channels[channel].created) {
+        p2_rc_trig[channel].level = level;
+        p2_rc_trig[channel].mode = mode;
+    }
+    pthread_mutex_unlock(&p2_channels[channel].lock);
+    return 0;
+}
+#endif /* !PLATFORM_T21 */
 #endif
 
 int IMP_Encoder_SetMbRC(int channel, int enabled)
@@ -4842,6 +5144,38 @@ int IMP_Encoder_GetQpgMode(int channel, IMPEncoderQpgMode *mode)
     pthread_mutex_unlock(&ch->lock);
     return 0;
 #endif
+}
+#endif
+
+#if defined(PLATFORM_T40)
+/* Vendor T40 1.3.1 (0x6bd44 / 0x6be40): a flag in the channel record, settable
+ * only while the channel is not created (-1 afterwards); valid channels are
+ * 0..12.  Its only reader is the vendor's fisheye motion search. */
+int IMP_Encoder_SetFisheyeEnableStatus(int channel, int enable)
+{
+    int ret = -1;
+
+    if (!p2_valid_channel(channel))
+        return -1;
+    EncoderInit();
+    pthread_mutex_lock(&p2_channels[channel].lock);
+    if (!p2_channels[channel].created) {
+        p2_channels[channel].fisheye = enable != 0;
+        ret = 0;
+    }
+    pthread_mutex_unlock(&p2_channels[channel].lock);
+    return ret;
+}
+
+int IMP_Encoder_GetFisheyeEnableStatus(int channel, int *enable)
+{
+    if (!p2_valid_channel(channel) || !enable)
+        return -1;
+    EncoderInit();
+    pthread_mutex_lock(&p2_channels[channel].lock);
+    *enable = p2_channels[channel].fisheye != 0;
+    pthread_mutex_unlock(&p2_channels[channel].lock);
+    return 0;
 }
 #endif
 

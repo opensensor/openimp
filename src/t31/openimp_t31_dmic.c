@@ -1,5 +1,10 @@
 /* T31 digital microphone array (IMP_DMIC_*).
  *
+ * The T30 build compiles this file too: libimp 1.0.5 has the same dmic.c
+ * (the 21 functions disassemble alike, buffer sizing aside) and the T30
+ * oss2 /dev/dsp driver has the same DMIC ioctls; the visible difference is
+ * one microphone per device (DMIC_MAX_CHN).
+ *
  * Follows libimp 1.1.6 dmic.c. The DMIC shares the oss2 /dev/dsp driver
  * (ingenic-sdk common/audio/t31/oss2) with the analog microphone, through a
  * second descriptor:
@@ -50,6 +55,14 @@
 #define DMIC_SET_GAIN             0x200UL      /* DMIC_SET_DMIC_GAIN */
 #define DMIC_GET_STREAM           0x300UL      /* DMIC_GET_AI_STREAM */
 #define DMIC_MAX_MICS             4
+/* Microphones per device that SetPubAttr accepts: T31 libimp 1.1.6 takes up
+ * to 4; T30 libimp 1.0.5 (same code, 0xf5274) refuses chnCnt >= 2.  The
+ * AEC reference id of SetUserInfo stays below 4 on both. */
+#if defined(PLATFORM_T30)
+#define DMIC_MAX_CHN              1
+#else
+#define DMIC_MAX_CHN              DMIC_MAX_MICS
+#endif
 #define DMIC_DEFAULT_VOLUME       60
 #define DMIC_READ_RETRY_US        20000
 
@@ -321,7 +334,7 @@ int IMP_DMIC_SetUserInfo(int dmicDevId, int aecDmicId, int need_aec)
 int IMP_DMIC_SetPubAttr(int dmicDevId, IMPDmicAttr *attr)
 {
     if (dmicDevId != 0 || !attr || attr->chnCnt <= 0 ||
-        attr->chnCnt > DMIC_MAX_MICS || attr->samplerate <= 0 ||
+        attr->chnCnt > DMIC_MAX_CHN || attr->samplerate <= 0 ||
         attr->numPerFrm <= 0)
         return -1;
     /* frames must be a whole number of 10 ms */

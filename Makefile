@@ -5,8 +5,23 @@ PLATFORM ?= T31
 ifdef OPENIMP_SW_JPEG
 export OPENIMP_SW_JPEG
 endif
+# OPENIMP_DEBUG=1 (make t31 OPENIMP_DEBUG=1) keeps LOG_DEBUG and the developer
+# traces in the build; default 0 compiles them out (smaller libimp.so).
+ifdef OPENIMP_DEBUG
+export OPENIMP_DEBUG
+endif
+# OPENIMP_SIZE_OPT=0 (make t31 OPENIMP_SIZE_OPT=0) builds everything at -O2;
+# default 1 builds at -Os and keeps -O2 for the hot paths (docs/SIZE.md).
+ifdef OPENIMP_SIZE_OPT
+export OPENIMP_SIZE_OPT
+endif
+# OPENIMP_T23_HELIX_BRIDGE=1 (make t23 OPENIMP_T23_HELIX_BRIDGE=1) builds the
+# OEM Helix worker bridge into the T23 libimp (default 0, docs/SIZE.md).
+ifdef OPENIMP_T23_HELIX_BRIDGE
+export OPENIMP_T23_HELIX_BRIDGE
+endif
 
-.PHONY: all t20 t21 t23 t30 t31 t40 t41 check clean install
+.PHONY: all t20 t21 t23 t30 t31 t40 t41 check export-check release-check clean install
 
 all:
 	./build-for-device.sh $(PLATFORM)
@@ -33,6 +48,7 @@ t41:
 	./build-t41.sh
 
 check:
+	$(MAKE) -f tests/core/su_base_shutdown.mk check
 	$(MAKE) -C tests/eprc check
 	$(MAKE) -C tests/rc_t20 check
 	$(MAKE) -C tests/rc_t10 check
@@ -43,6 +59,14 @@ check:
 	$(MAKE) -C tests/t40 check
 	$(MAKE) -C tests/t41 check
 	$(MAKE) -C tests/device check
+
+# Built libimp.so exports vs vendor export lists vs streamer-used IMP_ names (tools/export-check/README.md)
+export-check:
+	./tools/export-check.sh
+
+# Release gate (slow): make check, build every SoC, export-check in strict mode (tools/release-check.sh)
+release-check:
+	./tools/release-check.sh
 
 clean:
 	$(RM) -r build/t20 build/t21 build/t23 build/t30 build/t31 build/t40 build/t41

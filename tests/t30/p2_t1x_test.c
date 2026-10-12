@@ -25,10 +25,14 @@
 int IMP_Encoder_SetChnColor2Grey(int, const IMPEncoderColor2GreyCfg *);
 int IMP_Encoder_GetChnColor2Grey(int, IMPEncoderColor2GreyCfg *);
 int IMP_Encoder_SetChnROI(int, const IMPEncoderROICfg *);
+int IMP_Encoder_GetChnAttr(int, IMPEncoderCHNAttr *);
 int IMP_Encoder_SetChnDenoise(int, const IMPEncoderAttrDenoise *);
 int IMP_Encoder_GetChnDenoise(int, IMPEncoderAttrDenoise *);
 int IMP_Encoder_SetMbRC(int, int);
 int IMP_Encoder_SetSuperFrameCfg(int, const IMPEncoderSuperFrmCfg *);
+#if defined(PLATFORM_T20)
+int IMP_Encoder_SetChnRcTrigLevel(int, float, int);
+#endif
 int IMP_Encoder_GetSuperFrameCfg(int, IMPEncoderSuperFrmCfg *);
 int IMP_Encoder_SetH264TransCfg(int, const IMPEncoderH264TransCfg *);
 int IMP_Encoder_SetQpgMode(int, const IMPEncoderQpgMode *);
@@ -104,6 +108,10 @@ int AL_Codec_Encode_SetRoi(void *c, uint32_t i, const uint8_t e[7])
 { (void)c; if (i >= 8u) return -1; roi_calls++; memcpy(roi_entry[i], e, 7); return 0; }
 int AL_Codec_Encode_SetChromaQpOffset(void *c, int o)
 { (void)c; chroma_calls++; chroma_value = o; return 0; }
+static int trig_calls, trig_mode;
+static float trig_level;
+int AL_Codec_Encode_SetRcTrig(void *c, float l, int m)
+{ (void)c; trig_calls++; trig_level = l; trig_mode = m; return 0; }
 int AL_Codec_Encode_SetSuperFrame(void *c, uint32_t m, uint32_t i, uint32_t p)
 { (void)c; sf_calls++; sf_mode = m; sf_i = i; sf_p = p; return 0; }
 
@@ -141,6 +149,50 @@ int main(void)
     CHECK(IMP_Encoder_CreateChn(0, &attr) == 0);
     make_attr(&attr, 1);
     CHECK(IMP_Encoder_CreateChn(1, &attr) == 0);
+
+    /* CreateChn denoise (vendor T21 1.0.33): a disabled denoise has its type
+     * cleared in the channel attribute; an enabled one keeps the caller's
+     * dnType in GetChnAttr while GetChnDenoise reads the encoder's 0; an
+     * enabled type >= 3 fails validation, so the create fails */
+#if defined(PLATFORM_T21) && !defined(PLATFORM_T20)
+    {
+        IMPEncoderCHNAttr got;
+        IMPEncoderAttrDenoise gdn;
+
+        make_attr(&attr, 0);
+        attr.rcAttr.attrDenoise.dnType = 2;
+        attr.rcAttr.attrDenoise.dnIQp = 21;
+        CHECK(IMP_Encoder_CreateChn(2, &attr) == 0);
+        memset(&got, 0x5a, sizeof(got));
+        CHECK(IMP_Encoder_GetChnAttr(2, &got) == 0);
+        CHECK(!got.rcAttr.attrDenoise.enable && got.rcAttr.attrDenoise.dnType == 0 &&
+              got.rcAttr.attrDenoise.dnIQp == 21);
+        CHECK(IMP_Encoder_DestroyChn(2) == 0);
+
+        make_attr(&attr, 1);
+        attr.rcAttr.attrDenoise.dnType = 1;
+        attr.rcAttr.attrDenoise.dnIQp = 22;
+        CHECK(IMP_Encoder_CreateChn(2, &attr) == 0);
+        CHECK(IMP_Encoder_GetChnAttr(2, &got) == 0);
+        CHECK(got.rcAttr.attrDenoise.enable && got.rcAttr.attrDenoise.dnType == 1 &&
+              got.rcAttr.attrDenoise.dnIQp == 22);
+        memset(&gdn, 0x5a, sizeof(gdn));
+        CHECK(IMP_Encoder_GetChnDenoise(2, &gdn) == 0 && gdn.dnType == 0 &&
+              gdn.dnIQp == 0);        /* T21 validation clears type and QPs */
+        CHECK(IMP_Encoder_DestroyChn(2) == 0);
+
+        attr.rcAttr.attrDenoise.dnType = 3;
+        CHECK(IMP_Encoder_CreateChn(2, &attr) == -1);
+        attr.rcAttr.attrDenoise.dnType = -1;
+        CHECK(IMP_Encoder_CreateChn(2, &attr) == -1);
+        attr.rcAttr.attrDenoise.enable = 0;     /* disabled: type forced to 0 */
+        attr.rcAttr.attrDenoise.dnType = 7;
+        CHECK(IMP_Encoder_CreateChn(2, &attr) == 0);
+        CHECK(IMP_Encoder_GetChnAttr(2, &got) == 0 &&
+              got.rcAttr.attrDenoise.dnType == 0);
+        CHECK(IMP_Encoder_DestroyChn(2) == 0);
+    }
+#endif
 
     /* Color2Grey */
     c2g.enable = 1;
@@ -182,6 +234,16 @@ int main(void)
     CHECK(sf_calls == 0);
 #endif
 
+#if defined(PLATFORM_T20)
+    /* RcTrigLevel: channel >= 6 is -1, a created H.264 channel hands the pair
+     * to the controller (max QP as new max QP = a hard cap) */
+    CHECK(IMP_Encoder_SetChnRcTrigLevel(6, 3.0f, 28) == -1);
+    CHECK(IMP_Encoder_SetChnRcTrigLevel(-1, 3.0f, 28) == -1);
+    CHECK(IMP_Encoder_SetChnRcTrigLevel(0, 2.5f, 28) == 0 && trig_calls == 1 &&
+          trig_level == 2.5f && trig_mode == 28);
+    CHECK(IMP_Encoder_SetChnRcTrigLevel(5, 2.5f, 28) == 0 && trig_calls == 1);
+#endif
+
     /* ROI: the OEM table entry {en, rel, (s8) qp, x0, x1, y0, y1} with the
      * corners (+12/+20 x, +16/+24 y: the OEM IMPRect p0/p1) sorted and
      * divided by 16 */
@@ -213,7 +275,7 @@ int main(void)
     /* Denoise (vendor semantics, src/t40/p2_denoise.h): no effect on a
      * channel created without it; on a channel created with it dnType
      * 0..2 is accepted, dnType >= 3 is refused; the T21 library reads the
-     * type back as 0 (both builds of this test define PLATFORM_T21) */
+     * type back as 0, T20/T10 keep it */
     memset(&dn, 0, sizeof(dn));
     dn.enable = 1;
     dn.dnType = 1;
@@ -226,6 +288,21 @@ int main(void)
     CHECK(IMP_Encoder_SetChnDenoise(1, &dn) == 0);
     memset(&dn, 0, sizeof(dn));
     CHECK(IMP_Encoder_GetChnDenoise(1, &dn) == 0 && dn.dnType == 0);
+    /* a type on a channel created with denoise: T21 reads 0 back, T20/T10
+     * (3.12.0 runs the two-pass denoise) keep it */
+    memset(&dn, 0, sizeof(dn));
+    dn.dnType = 2;
+    dn.dnIQp = 31;
+    dn.dnPQp = 33;
+    CHECK(IMP_Encoder_SetChnDenoise(1, &dn) == 0);
+    memset(&dn, 0, sizeof(dn));
+    CHECK(IMP_Encoder_GetChnDenoise(1, &dn) == 0 && dn.dnIQp == 31 &&
+          dn.dnPQp == 33);
+#if defined(PLATFORM_T20)
+    CHECK(dn.dnType == 2);
+#else
+    CHECK(dn.dnType == 0);
+#endif
 
     /* H264TransCfg: the chroma QP offset (-12..12) reaches the codec */
     memset(&tr, 0, sizeof(tr));

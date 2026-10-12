@@ -1044,6 +1044,36 @@ static void test_controller_bounds_and_errors(void)
     assert(openimp_t41_rate_controller_qp(NULL) == 0u);
 }
 
+/* Run-time SetChnBitRate / SetChnQpBounds keep the running QP instead of
+ * restarting the controller at the OEM constructor value. */
+static void test_controller_runtime_reconfigure(void)
+{
+    OpenIMPT41RateController controller;
+    uint32_t i;
+
+    assert(openimp_t41_rate_controller_reconfigure(
+               &controller, 512000u, 25u, 1u, 50u, 20u, 51u, 38u) == 0);
+    assert(openimp_t41_rate_controller_qp(&controller) == 38u);
+    controller.current_qp = 45u;    /* converged */
+    assert(openimp_t41_rate_controller_reconfigure(
+               &controller, 143000u, 25u, 1u, 50u, 20u, 51u, 38u) == 0);
+    assert(controller.bitrate == 143000u && controller.target_bits == 5720u);
+    assert(openimp_t41_rate_controller_qp(&controller) == 45u);
+    /* a new QP floor above the running QP pulls it up, a cap below pulls it
+     * down */
+    assert(openimp_t41_rate_controller_reconfigure(
+               &controller, 143000u, 25u, 1u, 50u, 48u, 51u, 38u) == 0);
+    assert(openimp_t41_rate_controller_qp(&controller) == 48u);
+    assert(openimp_t41_rate_controller_reconfigure(
+               &controller, 143000u, 25u, 1u, 50u, 20u, 30u, 38u) == 0);
+    assert(openimp_t41_rate_controller_qp(&controller) == 30u);
+    for (i = 0; i < 40u; ++i) {
+        assert(openimp_t41_rate_controller_complete(
+                   &controller, 9000u, i % 50u == 0u, NULL) == 0);
+        assert(openimp_t41_rate_controller_qp(&controller) <= 30u);
+    }
+}
+
 int main(void)
 {
     test_oem_main_idr_oracle();
@@ -1062,6 +1092,7 @@ int main(void)
     test_oem_full_trace_controller();
     test_controller_configuration_matrix();
     test_controller_bounds_and_errors();
+    test_controller_runtime_reconfigure();
     puts("T41 software rate-control coupling: OK");
     return 0;
 }

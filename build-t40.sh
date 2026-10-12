@@ -41,10 +41,22 @@ test -x "$compiler"
 test -f "$T40_HEADERS/imp/imp_audio.h"
 mkdir -p "$output_dir"
 
-base_flags="-std=gnu99 -O2 -mabi=32 -march=mips32r2 -mabicalls"
+# Rootfs size: -Os, except the per-pixel, per-macroblock and audio-DSP hot
+# paths, which keep -O2 through $hot_flags (list: docs/SIZE.md).
+# OPENIMP_SIZE_OPT=0 builds everything at -O2 as before.
+case "${OPENIMP_SIZE_OPT:-1}" in
+    1) opt_flags=-Os ;;
+    0) opt_flags=-O2 ;;
+    *) echo "OPENIMP_SIZE_OPT must be 0 or 1" >&2; exit 1 ;;
+esac
+hot_flags=-O2
+base_flags="-std=gnu99 $opt_flags -mabi=32 -march=mips32r2 -mabicalls"
 base_flags="$base_flags -fPIC -G0 -fno-stack-protector -DPLATFORM_T40"
 # Rootfs size: per-function/-datum sections so the link can drop what is unreferenced.
 base_flags="$base_flags -ffunction-sections -fdata-sections"
+# OPENIMP_DEBUG=1 keeps LOG_DEBUG and the developer traces (default 0: compiled out).
+case "${OPENIMP_DEBUG:-0}" in 0|1) ;; *) echo "OPENIMP_DEBUG must be 0 or 1" >&2; exit 1 ;; esac
+base_flags="$base_flags -DOPENIMP_DEBUG=${OPENIMP_DEBUG:-0}"
 strict_flags="$base_flags -Wall -Wextra -Werror"
 repo_includes="-I$project_dir/include -I$project_dir/src"
 
@@ -58,7 +70,7 @@ repo_includes="-I$project_dir/include -I$project_dir/src"
 
 for source in \
     openimp_p0 openimp_p1 openimp_p2_dma openimp_p2_encoder openimp_avc \
-    t40_ep1 t40_stream_layout
+    t40_ep1 t40_stream_layout t31_rate_control t31_al_rc t31_hevc_headers
 do
     "$compiler" $strict_flags $repo_includes \
         -c "$project_dir/src/t40/$source.c" \
@@ -67,20 +79,31 @@ done
 
 # OSD: the T23-family IPU OSD (T40 1.3.1 /dev/ipu = the T41 jz_ipu_v13 path);
 # IVS: the shared framework and move algorithm (T40 IMPFrameInfo ABI).
-"$compiler" $strict_flags $repo_includes \
+"$compiler" $strict_flags $hot_flags $repo_includes \
     -c "$project_dir/src/t23/openimp_t23_osd.c" \
     -o "$output_dir/t40_osd.o"
 for source in openimp_t31_ivs openimp_t31_ivs_move openimp_ivs_move_v2
 do
-    "$compiler" $strict_flags $repo_includes -I"$project_dir/src/t31" \
+    case $source in *_move*) opt=$hot_flags ;; *) opt= ;; esac
+    "$compiler" $strict_flags $opt $repo_includes -I"$project_dir/src/t31" \
         -c "$project_dir/src/t31/$source.c" \
         -o "$output_dir/t40_${source#openimp_t31_}.o"
 done
+
+# IMP_LOG back end
+"$compiler" $strict_flags $repo_includes \
+    -c "$project_dir/src/core/imp_log_emit.c" \
+    -o "$output_dir/core_imp_log_emit.o"
 
 # IMP_ISP_Tuning_SetVideoDrop monitor
 "$compiler" $strict_flags $repo_includes \
     -c "$project_dir/src/core/video_drop.c" \
     -o "$output_dir/core_video_drop.o"
+
+# SU_Base_Shutdown (sync, then the signal busybox init acts on)
+"$compiler" $strict_flags $repo_includes \
+    -c "$project_dir/src/core/su_base_shutdown.c" \
+    -o "$output_dir/core_su_base_shutdown.o"
 
 "$compiler" $base_flags $repo_includes \
     -c "$project_dir/src/alcodec/EncHwScalingList.c" \
@@ -102,13 +125,20 @@ do
         -o "$output_dir/$source.o"
 done
 
+# ISP-drawn OSD (IMP_ISP_Tuning_*OsdRgn, IMP_ISP_Set/GetSingleOSDAttr): vendor
+# T40 structures, the rmem allocator from src/dma_alloc.h.
+"$compiler" $strict_flags -I"$T40_HEADERS" -I"$project_dir/src" \
+    -c "$project_dir/src/t40/openimp_t40_isp_osd.c" \
+    -o "$output_dir/openimp_t40_isp_osd.o"
+
 for source in codec al_avpu device_pool fifo hw_encoder
 do
     source_path="$project_dir/src/$source.c"
     if [ "$source" = codec ]; then
         source_path="$project_dir/src/t40/codec-t40.c"
     fi
-    "$compiler" $base_flags $repo_includes -Wno-stringop-overflow \
+    case $source in hw_encoder) opt=$hot_flags ;; *) opt= ;; esac
+    "$compiler" $base_flags $opt $repo_includes -Wno-stringop-overflow \
         -c "$source_path" -o "$output_dir/backend-$source.o"
 done
 
@@ -117,7 +147,9 @@ done
     -Wl,--version-script="$project_dir/src/t40/libimp.map" \
     -o "$output_dir/libimp.so" \
     "$output_dir/openimp_p0.o" \
+    "$output_dir/core_imp_log_emit.o" \
     "$output_dir/core_video_drop.o" \
+    "$output_dir/core_su_base_shutdown.o" \
     "$output_dir/openimp_profile.o" \
     "$output_dir/openimp_tuning.o" \
     "$output_dir/openimp_p1.o" \
@@ -129,12 +161,16 @@ done
     "$output_dir/openimp_audio_codec.o" \
     "$output_dir/openimp_audio_enc_dec.o" \
     "$output_dir/openimp_p3_compat.o" \
+    "$output_dir/openimp_t40_isp_osd.o" \
     "$output_dir/t40_osd.o" \
     "$output_dir/t40_ivs.o" \
     "$output_dir/t40_ivs_move.o" \
     "$output_dir/t40_openimp_ivs_move_v2.o" \
     "$output_dir/t40_ep1.o" \
     "$output_dir/t40_stream_layout.o" \
+    "$output_dir/t31_rate_control.o" \
+    "$output_dir/t31_al_rc.o" \
+    "$output_dir/t31_hevc_headers.o" \
     "$output_dir/backend-enc-hw-scaling-list.o" \
     "$output_dir/backend-codec.o" \
     "$output_dir/backend-al_avpu.o" \

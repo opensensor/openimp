@@ -182,3 +182,27 @@ int openimp_t41_init_hevc_ep1(void *ep1, size_t size)
     memset(ep1, 0, size);
     return openimp_t41_update_ep1_lambda_codec(ep1, size, 2u, 1u);
 }
+
+/*
+ * T40 FixQP: the vendor rewrites the 52 AVC lambda words for every picture.
+ * P pictures carry the fixed-QP table above; IDR pictures keep only its
+ * byte 2 (the intra lambda) and clear the inter lanes.  The scaling list
+ * at EP1+0x100 stays as initialised.
+ */
+int openimp_t40_update_fixqp_ep1(void *ep1, size_t size, int is_idr)
+{
+    uint8_t *output = (uint8_t *)ep1;
+    unsigned int qp;
+
+    if (!output || size < sizeof(avc_fixqp_lda))
+        return -1;
+    memcpy(output, avc_fixqp_lda, sizeof(avc_fixqp_lda));
+    if (is_idr) {
+        for (qp = 0u; qp < 52u; ++qp) {
+            output[qp * 4u] = 0u;
+            output[qp * 4u + 1u] = 0u;
+            output[qp * 4u + 3u] = 0u;
+        }
+    }
+    return 0;
+}

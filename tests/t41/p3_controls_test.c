@@ -2,6 +2,7 @@
  * pass-through of the public structures (host test, needs the T41 1.2.0
  * vendor headers via T41_HEADERS). */
 #include <assert.h>
+#include <errno.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
@@ -15,11 +16,22 @@ int OpenIMP_P1_IspIOCtl(uint32_t command, void *argument);
 int OpenIMP_P1_GetSensorName(char name[32], int32_t *cbus_type);
 
 /* ISPDevice-fd entries: what the library asked the main ISP node for */
+/* IMP_ISP_Tuning_SwitchBin: ISP-enabled flag and the kernel's view */
+static int sb_enabled;
+static struct { uint32_t enable; char bname[128]; } sb_seen;
+
+int OpenIMP_P1_TuningEnabled(void);
+int OpenIMP_P1_TuningEnabled(void)
+{
+    return sb_enabled;
+}
+
 static struct {
     uint32_t command;
     unsigned char arg[64];
     int calls;
     int result;
+    int err;                                /* errno the mock reports on failure */
     int32_t bus;
 } isp;
 
@@ -31,6 +43,8 @@ int OpenIMP_P1_IspIOCtl(uint32_t command, void *argument)
     isp.calls++;
     if (command == 0x8040540eU)             /* the driver returns the value */
         *(uint32_t *)((char *)argument + 56) = 0x5a;
+    if (isp.result)
+        errno = isp.err ? isp.err : EIO;
     return isp.result;
 }
 
@@ -66,8 +80,12 @@ int OpenIMP_P1_TuningIOCtl(uint32_t command, void *argument)
     last.control = request->control;
     last.payload = request->payload;
     last.calls++;
-    if (request->control == 0x08000080 || request->control == 0x08000096) {
-        size_t n = request->control == 0x08000080 ? 40 : 92;
+    if (request->control == 0x080000a5)
+        memcpy(&sb_seen, (const void *)request->payload, sizeof(sb_seen) > 132 ? 132 : sizeof(sb_seen));
+    if (request->control == 0x08000080 || request->control == 0x08000096 ||
+        request->control == 0x08000074) {
+        size_t n = request->control == 0x08000080 ? 40 :
+                   request->control == 0x08000074 ? 24 : 92;
 
         if (request->direction)
             memcpy((void *)request->payload, last.reply, n);
@@ -210,9 +228,69 @@ int main(void)
     EXPECT(IMP_ISP_Tuning_GetAeWeight(IMPVI_MAIN, &weight), 1, 0x08000021, &weight);
     EXPECT(IMP_ISP_Tuning_Awb_SetRgbCoefft(IMPVI_MAIN, &coefft), 0, 0x08000098, &coefft);
     EXPECT(IMP_ISP_Tuning_Awb_GetRgbCoefft(IMPVI_MAIN, &coefft), 1, 0x08000098, &coefft);
-    /* The driver refuses these (MSCA, no open path): -EOPNOTSUPP. */
+    /* MSCA controls (open-tx-isp claude/t41-zoom-mask): pointer pass-through
+     * of the 24-byte mask block and the 12-byte scaler level. */
+    assert(sizeof(IMPISPMaskBlockAttr) == 24);
+    assert(sizeof(IMPISPScalerLvAttr) == 12);
+    assert(sizeof(IMPISPAutoZoom) == 60);
+    memset(&mask, 0, sizeof(mask));
+    memset(&scaler, 0, sizeof(scaler));
+    memset(&zoom, 0, sizeof(zoom));
     EXPECT(IMP_ISP_Tuning_SetMaskBlock(IMPVI_MAIN, &mask), 0, 0x08000074, &mask);
     EXPECT(IMP_ISP_Tuning_SetScalerLv(IMPVI_MAIN, &scaler), 0, 0x080000a6, &scaler);
+    EXPECT(IMP_ISP_Tuning_GetAutoZoom(IMPVI_MAIN, &zoom), 1, 0x08000077, &zoom);
+    {
+        /* vendor 1.2.6: enabled RGB block -> YUV in place (BT.601 full,
+         * IMP_ISP_Tuning_DumpMask), argb kept; the kernel gets ayuv. */
+        mask.chx = 1;
+        mask.pinum = 2;
+        mask.mask_en = 1;
+        mask.mask_pos_top = 100;
+        mask.mask_pos_left = 200;
+        mask.mask_width = 64;
+        mask.mask_height = 32;
+        mask.mask_type = IMPISP_MASK_TYPE_RGB;
+        mask.mask_value.argb.r_value = 255;
+        mask.mask_value.argb.g_value = 0;
+        mask.mask_value.argb.b_value = 0;
+        EXPECT(IMP_ISP_Tuning_SetMaskBlock(IMPVI_MAIN, &mask), 0, 0x08000074, &mask);
+        assert(mask.mask_value.ayuv.y_value == 76);
+        assert(mask.mask_value.ayuv.u_value == 84);
+        assert(mask.mask_value.ayuv.v_value == 255);
+        assert(mask.mask_value.argb.r_value == 255 && mask.mask_value.argb.g_value == 0);
+        /* kernel wire: chx, pinum, en, pad, top, left, w, h, type, rgb, yuv */
+        assert(last.data[0] == 1 && last.data[1] == 2 && last.data[2] == 1);
+        assert(last.data[4] == 100 && last.data[6] == 200 && last.data[8] == 64 && last.data[10] == 32);
+        assert(last.data[16] == 255 && last.data[19] == 76 && last.data[20] == 84 && last.data[21] == 255);
+        /* a YUV block and a disabled RGB block are passed unchanged */
+        mask.mask_type = IMPISP_MASK_TYPE_YUV;
+        mask.mask_value.ayuv.y_value = 16;
+        assert(IMP_ISP_Tuning_SetMaskBlock(IMPVI_MAIN, &mask) == 0);
+        assert(mask.mask_value.ayuv.y_value == 16 && last.data[19] == 16);
+        mask.mask_type = IMPISP_MASK_TYPE_RGB;
+        mask.mask_en = 0;
+        mask.mask_value.ayuv.y_value = 17;
+        assert(IMP_ISP_Tuning_SetMaskBlock(IMPVI_MAIN, &mask) == 0);
+        assert(mask.mask_value.ayuv.y_value == 17);
+        /* Get: kernel answer, then type and argb from the library cache
+         * (slot chx * pinum = 2, last set: RGB, 255/0/0) */
+        memset(last.reply, 0, sizeof(last.reply));
+        last.reply[0] = 1; last.reply[1] = 2;
+        last.reply[4] = 100; last.reply[19] = 76;
+        last.reply[12] = 9; last.reply[16] = 9;
+        memset(&mask, 0xee, sizeof(mask));
+        mask.chx = 1;
+        mask.pinum = 2;
+        EXPECT(IMP_ISP_Tuning_GetMaskBlock(IMPVI_MAIN, &mask), 1, 0x08000074, &mask);
+        assert(mask.mask_en == 0 && mask.mask_pos_top == 100 && mask.mask_value.ayuv.y_value == 76);
+        assert(mask.mask_type == IMPISP_MASK_TYPE_RGB);
+        assert(mask.mask_value.argb.r_value == 255 && mask.mask_value.argb.g_value == 0 &&
+               mask.mask_value.argb.b_value == 0);
+        before = last.calls;
+        assert(IMP_ISP_Tuning_SetMaskBlock(IMPVI_BUTT, &mask) == -1);
+        assert(IMP_ISP_Tuning_GetMaskBlock(IMPVI_MAIN, NULL) == -1);
+        assert(last.calls == before);
+    }
 
     /* SetSensorFPS: stock s_ctrl 0x08000070 takes num<<16|den inline. */
     fps.num = 15;
@@ -337,6 +415,92 @@ int main(void)
         assert(IMP_ISP_WDR_ENABLE_GET(IMPVI_MAIN, &g) == 0 && g == IMPISP_TUNING_OPS_MODE_DISABLE);
         isp.result = 0;
     }
+
+    /* IMP_ISP_Tuning_SwitchBin (vendor T41 1.2.6 libimp disassembly): control
+     * 0x80000a5 set, payload = IMPISPBinAttr (132 bytes), vendor check
+     * order and return codes, NUL-terminated copy to the kernel. */
+    {
+        IMPISPBinAttr bin;
+        int n;
+
+        assert(sizeof(IMPISPBinAttr) == 132);
+        memset(&bin, 0, sizeof(bin));
+        bin.enable = IMPISP_TUNING_OPS_MODE_ENABLE;
+        strcpy(bin.bname, "/tmp/night-bin");
+        n = last.calls;
+        sb_enabled = 1;
+        assert(IMP_ISP_Tuning_SwitchBin(IMPVI_MAIN, &bin) == 0);
+        assert(last.calls == n + 1);
+        assert(last.command == 0xc0105435U);
+        assert(last.vinum == IMPVI_MAIN && last.direction == 0);
+        assert(last.control == 0x080000a5);
+        assert(last.payload != 0 && last.payload != (uintptr_t)&bin);
+        assert(sb_seen.enable == 1 && !strcmp(sb_seen.bname, "/tmp/night-bin"));
+        /* enable 0 = back to the default bin; reaches the kernel too */
+        bin.enable = IMPISP_TUNING_OPS_MODE_DISABLE;
+        assert(IMP_ISP_Tuning_SwitchBin(IMPVI_MAIN, &bin) == 0);
+        assert(sb_seen.enable == 0 && last.calls == n + 2);
+        /* an unterminated name is cut before the kernel sees it */
+        memset(bin.bname, 'x', sizeof(bin.bname));
+        bin.enable = IMPISP_TUNING_OPS_MODE_ENABLE;
+        assert(IMP_ISP_Tuning_SwitchBin(IMPVI_MAIN, &bin) == 0);
+        assert(sb_seen.bname[sizeof(bin.bname) - 1] == '\0');
+        assert(sb_seen.bname[sizeof(bin.bname) - 2] == 'x');
+        assert(bin.bname[sizeof(bin.bname) - 1] == 'x');    /* caller intact */
+        n = last.calls;
+        /* vendor refusals: no ioctl, vendor codes */
+        assert(IMP_ISP_Tuning_SwitchBin(IMPVI_MAIN, NULL) == -4087);
+        assert(IMP_ISP_Tuning_SwitchBin((IMPVI_NUM)2, &bin) == -4084);
+        bin.enable = (IMPISPTuningOpsMode)2;
+        assert(IMP_ISP_Tuning_SwitchBin(IMPVI_MAIN, &bin) == -4086);
+        bin.enable = IMPISP_TUNING_OPS_MODE_ENABLE;
+        sb_enabled = 0;                                 /* ISP not running */
+        assert(IMP_ISP_Tuning_SwitchBin(IMPVI_MAIN, &bin) == -4091);
+        sb_enabled = 1;
+        assert(last.calls == n);
+        /* T41 order: the NULL test comes before the sensor number */
+        assert(IMP_ISP_Tuning_SwitchBin((IMPVI_NUM)2, NULL) == -4087);
+
+        last.result = -1;                               /* driver refuses */
+        assert(IMP_ISP_Tuning_SwitchBin(IMPVI_MAIN, &bin) == -4090);
+        last.result = 0;
+    }
+
+    /* IMP_ISP_Set/GetISPBypass (vendor 1.2.6): 8-byte block on the ISP node */
+    {
+        IMPISPTuningOpsMode en = IMPISP_TUNING_OPS_MODE_ENABLE;
+        IMPISPTuningOpsMode got = (IMPISPTuningOpsMode)7;
+        int calls;
+
+        isp.result = 0;
+        calls = isp.calls;
+        assert(IMP_ISP_GetISPBypass(IMPVI_MAIN, &got) == 0 && got == 0);
+        assert(IMP_ISP_SetISPBypass(IMPVI_MAIN, NULL) == -4087);
+        assert(IMP_ISP_SetISPBypass((IMPVI_NUM)2, &en) == -4084);
+        assert(IMP_ISP_GetISPBypass((IMPVI_NUM)2, &got) == -4084);
+        assert(IMP_ISP_GetISPBypass(IMPVI_MAIN, NULL) == -4087);
+        assert(isp.calls == calls);
+        assert(IMP_ISP_SetISPBypass(IMPVI_MAIN, &en) == 0);
+        assert(isp.calls == calls + 1 && isp.command == 0x80085418U);
+        { uint32_t blk[2]; memcpy(blk, isp.arg, 8);
+          assert(blk[0] == 1 && blk[1] == 0); }
+        got = (IMPISPTuningOpsMode)7;
+        assert(IMP_ISP_GetISPBypass(IMPVI_MAIN, &got) == 0 && got == en);
+        /* a refusing kernel: vendor -4095, value kept */
+        en = IMPISP_TUNING_OPS_MODE_DISABLE;
+        isp.result = -1;
+        isp.err = ENOTTY;
+        assert(IMP_ISP_SetISPBypass(IMPVI_MAIN, &en) == -4095);
+        assert(IMP_ISP_GetISPBypass(IMPVI_MAIN, &got) == 0 &&
+               got == IMPISP_TUNING_OPS_MODE_ENABLE);
+        /* ISP not up (ENODEV): remembered like the vendor without an ISP device */
+        isp.err = ENODEV;
+        assert(IMP_ISP_SetISPBypass(IMPVI_MAIN, &en) == 0);
+        assert(IMP_ISP_GetISPBypass(IMPVI_MAIN, &got) == 0 && got == en);
+        isp.result = 0;
+        isp.err = 0;
+    }
+
     puts("t41 p3 controls tests passed");
     return 0;
 }

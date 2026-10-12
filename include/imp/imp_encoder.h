@@ -1439,10 +1439,29 @@ int IMP_Encoder_EnableAllNCUDenoise(void);
 int IMP_Encoder_DisableAllNCUDenoise(void);
 #endif
 
-#if defined(PLATFORM_T21) && !defined(PLATFORM_T23)
-/* T20 3.12.0 / T21 1.0.33: run-time HSkip attribute (T21: IDR period maxSameSceneCnt) */
+#if (defined(PLATFORM_T21) || defined(PLATFORM_T30)) && !defined(PLATFORM_T23)
+/* T20 3.12.0 / T21 1.0.33 / T30 1.0.5: run-time HSkip attribute (T21: IDR period maxSameSceneCnt) */
 int IMP_Encoder_SetChnHSkip(int encChn, const IMPEncoderAttrHSkip *attr);
 int IMP_Encoder_GetChnHSkip(int encChn, IMPEncoderAttrHSkip *attr);
+#endif
+
+#if defined(PLATFORM_T20)
+/* T20 3.12.0 (T10 too): trigger level and new max QP of the rate control */
+int IMP_Encoder_SetChnRcTrigLevel(int encChn, float level, int mode);
+#endif
+
+#if defined(PLATFORM_T30) && !defined(PLATFORM_T21) && !defined(PLATFORM_T23)
+/* T30 1.0.5 channel bookkeeping calls (same code as T21 1.0.33) */
+int IMP_Encoder_SetChnHSkipBlackEnhance(int encChn, const int bBlackEnhance);
+int IMP_Encoder_SetChnFrmUsedMode(int encChn, const IMPEncoderAttrFrmUsed *attr);
+int IMP_Encoder_GetChnFrmUsedMode(int encChn, IMPEncoderAttrFrmUsed *attr);
+int IMP_Encoder_GetGOPSize(int encChn, IMPEncoderGOPSizeCfg *cfg);
+int IMP_Encoder_SetChangeRef(int encChn, int bEnable);
+int IMP_Encoder_GetChangeRef(int encChn, int *bEnable);
+int IMP_Encoder_SetFisheyeEnableStatus(int encChn, int enable);
+int IMP_Encoder_GetFisheyeEnableStatus(int encChn, int *enable);
+int IMP_Encoder_SetPoolSize(int size);
+int IMP_Encoder_SetChnRcTrigLevel(int encChn, float level, int mode);
 #endif
 
 #if defined(PLATFORM_T31) || defined(PLATFORM_T40) || defined(PLATFORM_T41)
@@ -1482,10 +1501,10 @@ int IMP_Encoder_SetChnRoiAttr(int encChn, IMPEncoderRoiAttr *roiAttr);
 int IMP_Encoder_GetChnRoiAttr(int encChn, IMPEncoderRoiAttr *roiAttr);
 #endif
 
-#if defined(PLATFORM_T41)
-/* T41 1.2.6 map ROI: one byte per 16x16 block (AVC), low 2 bits the mode
+#if defined(PLATFORM_T41) || defined(PLATFORM_T40)
+/* T41 1.2.6 / T40 1.3.1 map ROI: one byte per 16x16 block (AVC), low 2 bits the mode
  * (0 none, 1 `Quality`, 2 relative with a 6-bit two's complement delta in
- * the high bits).  Like SetChnRoiAttr it needs OPENIMP_T41_ROI=1. */
+ * the high bits).  Like SetChnRoiAttr it needs OPENIMP_T41_ROI=1 (T41) or OPENIMP_T40_ROI=1 (T40). */
 typedef struct {
     uint8_t *map;
     int mapSize;

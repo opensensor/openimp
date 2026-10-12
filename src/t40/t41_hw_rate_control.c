@@ -46,12 +46,38 @@ static uint32_t openimp_t41_hwrc_target(uint32_t bitrate,
     return (uint32_t)target;
 }
 
-size_t openimp_t41_hwrc_ring_init(void *ring, size_t ring_size,
-                                  uint32_t bitrate)
+/* One picture-class table (OEM PreprocessHwRateCtrl): the 11 row records,
+ * the trailer record and the lambda table.  Everything the OEM rewrites
+ * is in [0, 0x39c); the history at HISTORY_OFFSET is hardware state. */
+static void openimp_t41_hwrc_slot_fill(uint32_t *words, uint32_t bitrate,
+                                       unsigned int slot)
 {
     static const uint8_t row_percent[11] = {
         150u, 130u, 120u, 110u, 105u, 100u, 95u, 90u, 80u, 70u, 50u,
     };
+    uint32_t target = openimp_t41_hwrc_target(bitrate, slot);
+    uint32_t base_target = (uint32_t)((uint64_t)target * 95u / 100u);
+    unsigned int row;
+
+    memset(words, 0, 0x400u);
+    for (row = 0u; row < 11u; ++row) {
+        uint32_t *record = words + row * 8u;
+
+        record[0] = (uint32_t)((uint64_t)base_target *
+                                row_percent[row] / 100u);
+        record[1] = openimp_t41_hwrc_qp_words[row][0];
+        record[3] = openimp_t41_hwrc_qp_words[row][1];
+        record[5] = openimp_t41_hwrc_qp_words[row][2];
+    }
+    words[11u * 8u] = 1u;
+    words[11u * 8u + 1u] = openimp_t41_hwrc_qp_words[11][0];
+    memcpy(words + 16u * 8u, openimp_t41_hwrc_lambda_words,
+           sizeof(openimp_t41_hwrc_lambda_words));
+}
+
+size_t openimp_t41_hwrc_ring_init(void *ring, size_t ring_size,
+                                  uint32_t bitrate)
+{
     uint8_t *base = (uint8_t *)ring;
     unsigned int slot;
 
@@ -59,31 +85,35 @@ size_t openimp_t41_hwrc_ring_init(void *ring, size_t ring_size,
         return 0u;
 
     memset(base, 0, OPENIMP_T41_EP3_RING_SIZE);
-    for (slot = 0u; slot < OPENIMP_T41_EP3_SLOT_COUNT; ++slot) {
-        uint32_t *words = (uint32_t *)(base +
-            (size_t)slot * OPENIMP_T41_EP3_SLOT_STRIDE);
-        uint32_t target = openimp_t41_hwrc_target(bitrate, slot);
-        uint32_t base_target =
-            (uint32_t)((uint64_t)target * 95u / 100u);
-        unsigned int row;
-
-        for (row = 0u; row < 11u; ++row) {
-            uint32_t *record = words + row * 8u;
-
-            record[0] = (uint32_t)((uint64_t)base_target *
-                                    row_percent[row] / 100u);
-            record[1] = openimp_t41_hwrc_qp_words[row][0];
-            record[3] = openimp_t41_hwrc_qp_words[row][1];
-            record[5] = openimp_t41_hwrc_qp_words[row][2];
-        }
-        words[11u * 8u] = 1u;
-        words[11u * 8u + 1u] = openimp_t41_hwrc_qp_words[11][0];
-        memcpy(words + 16u * 8u, openimp_t41_hwrc_lambda_words,
-               sizeof(openimp_t41_hwrc_lambda_words));
-    }
+    for (slot = 0u; slot < OPENIMP_T41_EP3_SLOT_COUNT; ++slot)
+        openimp_t41_hwrc_slot_fill(
+            (uint32_t *)(base + (size_t)slot * OPENIMP_T41_EP3_SLOT_STRIDE),
+            bitrate, slot);
 
     return OPENIMP_T41_EP3_PER_CORE_SIZE *
            OPENIMP_T41_EP3_SLOT_COUNT;
+}
+
+/* Run-time rate change: the OEM AL_ApplyNewGOPAndRCParams runs
+ * PreprocessHwRateCtrl again for the three picture classes, which
+ * regenerates the row thresholds from the new target and clears the
+ * 0x20 bytes at the level offset; the hardware history is kept. */
+int openimp_t41_hwrc_ring_retarget(void *ring, size_t ring_size,
+                                   uint32_t bitrate)
+{
+    uint8_t *base = (uint8_t *)ring;
+    unsigned int slot;
+
+    if (!base || ring_size < OPENIMP_T41_EP3_RING_SIZE)
+        return -1;
+
+    for (slot = 0u; slot < OPENIMP_T41_EP3_SLOT_COUNT; ++slot) {
+        uint8_t *slot_base = base + (size_t)slot * OPENIMP_T41_EP3_SLOT_STRIDE;
+
+        openimp_t41_hwrc_slot_fill((uint32_t *)slot_base, bitrate, slot);
+        memset(slot_base + OPENIMP_T41_EP3_LEVEL_OFFSET, 0, 0x20u);
+    }
+    return 0;
 }
 
 static int openimp_t41_hwrc_level_offset(const void *ring, size_t ring_size,
