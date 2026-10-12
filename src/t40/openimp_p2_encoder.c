@@ -1,6 +1,7 @@
 /* Standalone T40 public encoder lifecycle built on the recovered AL backend. */
 
 #include <errno.h>
+#include "../core/thread_name.h"
 #include <fcntl.h>
 #include <pthread.h>
 #include <stdarg.h>
@@ -2162,6 +2163,7 @@ static void *p2_fd_pump(void *arg)
 {
     P2EncoderChannel *ch = (P2EncoderChannel *)arg;
     int channel = (int)(ch - p2_channels);
+    openimp_thread_setnamef("oimp-fdpump-%d", channel);
 
     while (__atomic_load_n(&ch->pump_run, __ATOMIC_ACQUIRE)) {
         uint64_t start;

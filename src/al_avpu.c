@@ -9,6 +9,7 @@
  */
 
 #include "al_avpu.h"
+#include "core/thread_name.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -151,6 +152,7 @@ static const AL_IpCtrlVtable g_LinuxIpControlVtable = {
 static void *WaitInterruptThread(void *arg)
 {
     AL_IpCtrl *self = (AL_IpCtrl *)arg;
+    openimp_thread_setname("oimp-avpu-irq");
 
     while (1) {
         int irq_idx = -1;

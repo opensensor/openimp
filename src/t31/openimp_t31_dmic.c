@@ -34,6 +34,7 @@
  */
 
 #include <dlfcn.h>
+#include "core/thread_name.h"
 #include <errno.h>
 #include <fcntl.h>
 #include <pthread.h>
@@ -235,6 +236,7 @@ static int64_t dmic_timestamp(void)
 static void *dmic_record_main(void *argument)
 {
     (void)argument;
+    openimp_thread_setname("oimp-dmic-rec");
     pthread_mutex_lock(&dmic.lock);
     while (!dmic.stop) {
         DmicNode *node = list_pop(&dmic.free_list);

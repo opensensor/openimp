@@ -1,4 +1,5 @@
 #include <stdint.h>
+#include "core/thread_name.h"
 #include <stdarg.h>
 #include <stddef.h>
 #include <stdlib.h>
@@ -1713,6 +1714,7 @@ static void tseries_tuning_wait_period(void)
 static void *tseries_tuning_worker(void *unused)
 {
     (void)unused;
+    openimp_thread_setname("oimp-isptune");
 
     while (!tseries_tuning_thread_stop) {
         int32_t total_gain = 0;

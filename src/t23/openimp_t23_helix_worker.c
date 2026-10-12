@@ -12,6 +12,7 @@
 #include <syslog.h>
 #include <time.h>
 #include <unistd.h>
+#include "core/thread_name.h"
 
 #include <imp/imp_common.h>
 #include <imp/imp_encoder.h>
@@ -692,6 +693,7 @@ int main(int argc, char **argv)
 
     if (argc != 4)
         return 2;
+    openimp_thread_setname("oimp-helix-wrk");
     memset(&worker, 0, sizeof(worker));
     worker.socket_fd = parse_fd(argv[1]);
     shared_fd = parse_fd(argv[2]);

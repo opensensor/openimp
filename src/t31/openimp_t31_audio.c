@@ -14,6 +14,7 @@
  */
 
 #include <dlfcn.h>
+#include "core/thread_name.h"
 #include <errno.h>
 #include <fcntl.h>
 #include <pthread.h>
@@ -779,6 +780,7 @@ static void *t31_capture_main(void *argument)
     size_t align;
 
     (void)argument;
+    openimp_thread_setname("ai-_ai_record_t");
     align = t31_audio.ai_attr.soundmode == AUDIO_SOUND_MODE_STEREO ? 4U : 2U;
     pthread_mutex_lock(&t31_capture_lock);
     while (!t31_audio.capture_stop) {
