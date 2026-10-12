@@ -32,6 +32,11 @@
  *                       ret, the zone sums of R, G, B, the global R/G and
  *                       B/G, zones with a G mean > 0, and the call time
  *   awbzone-cost N      N back-to-back calls: min/mean/max microseconds
+ *   awbstats [N [MS]]   N reads of IMP_ISP_Tuning_GetAwbStatistics(IMPVI_MAIN,
+ *                       2700-byte block, T40/T41) MS apart: ret, the plane
+ *                       sums of R, G, B, the global R/G and B/G, zones with
+ *                       a G mean > 0, the largest mean, and the call time
+ *   awbstats-cost N     N back-to-back calls: min/mean/max microseconds
  *
  * Build (any Thingino mipsel toolchain; nothing is linked but libc):
  *   $CC -std=gnu99 -O2 -Wall -fPIC -shared -o ispprobe.so \
@@ -442,6 +447,77 @@ static void probe_awbzone(char **arg, int n, int cost)
     }
 }
 
+/* GetAwbStatistics (T40/T41 vendor ABI): three 15x15 u32 planes, 2700 bytes. */
+typedef struct {
+    uint32_t r[225];
+    uint32_t g[225];
+    uint32_t b[225];
+} ProbeAwbStatis;
+
+static void probe_awbstats(char **arg, int n, int cost)
+{
+    int (*fn)(int, ProbeAwbStatis *) = (int (*)(int, ProbeAwbStatis *))probe_sym("IMP_ISP_Tuning_GetAwbStatistics");
+    const int *cap = (const int *)probe_sym("OpenIMP_Cap_AwbStatistics");
+    long reads = 1, ms = 1000, k;
+
+    if (!fn) {
+        probe_log("awbstats: IMP_ISP_Tuning_GetAwbStatistics not available");
+        return;
+    }
+    if ((n >= 1 && probe_number(arg[0], &reads)) || reads < 1 || reads > 100000 ||
+        (n >= 2 && probe_number(arg[1], &ms)) || ms < 0 || ms > 60000) {
+        probe_log("awbstats: bad arguments (try \"help\")");
+        return;
+    }
+    probe_log("awbstats: OpenIMP_Cap_AwbStatistics %s", cap ? (*cap == 1 ? "1" : "present, not 1") : "absent");
+    if (cost) {
+        long t0, t, min = -1, max = 0, sum = 0, ok = 0;
+        static ProbeAwbStatis z;
+
+        for (k = 0; k < reads; k++) {
+            t0 = probe_now_us();
+            ok += fn(0, &z) == 0;
+            t = probe_now_us() - t0;
+            if (min < 0 || t < min)
+                min = t;
+            if (t > max)
+                max = t;
+            sum += t;
+        }
+        probe_log("awbstats-cost: calls=%ld ok=%ld min=%ldus mean=%ldus max=%ldus",
+                  reads, ok, min, sum / reads, max);
+        return;
+    }
+    for (k = 0; k < reads; k++) {
+        static ProbeAwbStatis z;
+        unsigned long long sr = 0, sg = 0, sb = 0;
+        unsigned long zones = 0, maxv = 0;
+        long t0 = probe_now_us(), t;
+        int ret, i;
+
+        memset(&z, 0, sizeof(z));
+        ret = fn(0, &z);
+        t = probe_now_us() - t0;
+        for (i = 0; i < 225; i++) {
+            sr += z.r[i];
+            sg += z.g[i];
+            sb += z.b[i];
+            zones += z.g[i] > 0;
+            if (z.r[i] > maxv) maxv = z.r[i];
+            if (z.g[i] > maxv) maxv = z.g[i];
+            if (z.b[i] > maxv) maxv = z.b[i];
+        }
+        if (ret == 0)
+            probe_log("awbstats %ld: ret=0 sumR=%llu sumG=%llu sumB=%llu rg=%.4f bg=%.4f zones=%lu max=%lu us=%ld",
+                      k + 1, sr, sg, sb, sg ? (double)sr / (double)sg : 0.0,
+                      sg ? (double)sb / (double)sg : 0.0, zones, maxv, t);
+        else
+            probe_log("awbstats %ld: ret=%d errno=%d us=%ld", k + 1, ret, errno, t);
+        if (k + 1 < reads && ms > 0)
+            usleep((useconds_t)ms * 1000u);
+    }
+}
+
 /* One command line; exported for the host test. */
 void ispprobe_run_line(char *line);
 void ispprobe_run_line(char *line)
@@ -472,6 +548,10 @@ void ispprobe_run_line(char *line)
         probe_awbzone(arg + 1, n - 1, 0);
     } else if (!strcasecmp(arg[0], "awbzone-cost")) {
         probe_awbzone(arg + 1, n - 1, 1);
+    } else if (!strcasecmp(arg[0], "awbstats")) {
+        probe_awbstats(arg + 1, n - 1, 0);
+    } else if (!strcasecmp(arg[0], "awbstats-cost")) {
+        probe_awbstats(arg + 1, n - 1, 1);
     } else if (probe_find(arg[0])) {
         probe_set(probe_find(arg[0]), arg + 1, n - 1);
     } else {

@@ -66,6 +66,9 @@ static struct {
     unsigned char reply[92];		/* what a GET returns */
 } last;
 
+/* GetAwbStatistics: the "driver" reply, 2700 bytes */
+static unsigned char awb_reply[2700];
+
 int OpenIMP_P1_TuningIOCtl(uint32_t command, void *argument)
 {
     /* Same layout as the P3 envelope: 16 bytes on the 32-bit target. */
@@ -80,6 +83,8 @@ int OpenIMP_P1_TuningIOCtl(uint32_t command, void *argument)
     last.control = request->control;
     last.payload = request->payload;
     last.calls++;
+    if (request->control == 0x08000011 && request->direction)
+        memcpy((void *)request->payload, awb_reply, sizeof(awb_reply));
     if (request->control == 0x080000a5)
         memcpy(&sb_seen, (const void *)request->payload, sizeof(sb_seen) > 132 ? 132 : sizeof(sb_seen));
     if (request->control == 0x08000080 || request->control == 0x08000096 ||
@@ -224,6 +229,40 @@ int main(void)
     assert(sizeof(IMPISPAEWeightAttr) == 460);
     assert(sizeof(IMPISPCoefftWb) == 6);
     EXPECT(IMP_ISP_Tuning_GetSensorAttr(IMPVI_MAIN, &sensor), 1, 0x08000033, &sensor);
+
+    /* GetAwbStatistics (vendor: {num, 1, 0x8000011, block}, the driver copies
+     * 2700 bytes = 3 x 15x15 u32 zone means): 0 only with a block that holds
+     * statistics; an all-zero block (vendor T40 driver before the first
+     * frame) and a driver error are -1; capability symbol present and 1. */
+    {
+        static IMPISPAWBStatisInfo aw;
+        extern const int OpenIMP_Cap_AwbStatistics;
+        uint32_t *w = (uint32_t *)(void *)awb_reply;
+        int i;
+
+        assert(sizeof(aw) == 2700 && sizeof(IMPISPStatisZone) == 900);
+        assert(OpenIMP_Cap_AwbStatistics == 1);
+        memset(awb_reply, 0, sizeof(awb_reply));
+        before = last.calls;
+        errno = 0;
+        assert(IMP_ISP_Tuning_GetAwbStatistics(IMPVI_MAIN, &aw) == -1 && errno == EAGAIN);
+        assert(last.calls == before + 1 && last.direction == 1 &&
+               last.control == 0x08000011 && last.payload == (uintptr_t)&aw);
+        for (i = 0; i < 225; i++) {
+            w[i] = 100; w[225 + i] = 200; w[450 + i] = 50;
+        }
+        w[674] = 51;                                 /* last word of the block */
+        EXPECT(IMP_ISP_Tuning_GetAwbStatistics(IMPVI_MAIN, &aw), 1, 0x08000011, &aw);
+        assert(aw.awb_r.statis[7][7] == 100 && aw.awb_g.statis[7][7] == 200 &&
+               aw.awb_b.statis[7][7] == 50 && aw.awb_b.statis[14][14] == 51);
+        last.result = -1;
+        assert(IMP_ISP_Tuning_GetAwbStatistics(IMPVI_MAIN, &aw) != 0);
+        last.result = 0;
+        before = last.calls;
+        assert(IMP_ISP_Tuning_GetAwbStatistics(IMPVI_MAIN, NULL) != 0);
+        assert(IMP_ISP_Tuning_GetAwbStatistics(IMPVI_BUTT, &aw) != 0);
+        assert(last.calls == before);
+    }
     EXPECT(IMP_ISP_Tuning_SetAeWeight(IMPVI_MAIN, &weight), 0, 0x08000021, &weight);
     EXPECT(IMP_ISP_Tuning_GetAeWeight(IMPVI_MAIN, &weight), 1, 0x08000021, &weight);
     EXPECT(IMP_ISP_Tuning_Awb_SetRgbCoefft(IMPVI_MAIN, &coefft), 0, 0x08000098, &coefft);

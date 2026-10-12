@@ -54,6 +54,23 @@ int IMP_ISP_Tuning_GetAwbZone(unsigned char *z)
     return 0;
 }
 int IMP_ISP_Tuning_GetRawDRC(void *p) { memcpy(p, &drc, 12); return 0; }
+static int awbstats_calls;
+/* T40/T41 block: r 300, g 600, b 150 in every zone but the last (empty) */
+int IMP_ISP_Tuning_GetAwbStatistics(int num, unsigned int *z)
+{
+    int i;
+
+    awbstats_calls++;
+    if (num != 0)
+        return -1;
+    if (awbstats_calls == 1)
+        return -1;                       /* no fresh statistics yet */
+    for (i = 0; i < 224; i++) {
+        z[i] = 300; z[225 + i] = 600; z[450 + i] = 150;
+    }
+    z[224] = z[449] = z[674] = 0;
+    return 0;
+}
 
 static int log_has(const char *path, const char *text)
 {
@@ -77,7 +94,8 @@ int main(void)
     const char *commands =
         "brightness 200\ncolorfx 2\nscene 99\nrunningmode night\n"
         "wb 4\ntemperattr manual 255\nsinterattr manual 7\nrawdrc 0 33\n"
-        "temperctl auto\nbrightness 300\nget all\nawbzone 2 0\nawbzone-cost 3\nbogus 1\n";
+        "temperctl auto\nbrightness 300\nget all\nawbzone 2 0\nawbzone-cost 3\n"
+        "awbstats 2 0\nawbstats-cost 3\nbogus 1\n";
     FILE *out;
     int i;
 
@@ -113,6 +131,11 @@ int main(void)
           "awbzone: sums / ratios");
     CHECK(log_has(log, "awbzone-cost: calls=3 ok=3"), "awbzone-cost");
     CHECK(awbzone_calls == 5, "awbzone calls %d", awbzone_calls);
+    CHECK(log_has(log, "awbstats 1: ret=-1"), "awbstats: failed read not logged");
+    CHECK(log_has(log, "awbstats 2: ret=0 sumR=67200 sumG=134400 sumB=33600 rg=0.5000 bg=0.2500 zones=224 max=600"),
+          "awbstats: sums / ratios");
+    CHECK(log_has(log, "awbstats-cost: calls=3 ok=3"), "awbstats-cost");
+    CHECK(awbstats_calls == 5, "awbstats calls %d", awbstats_calls);
     if (failures) {
         fprintf(stderr, "isp probe: %d check(s) failed\n", failures);
         return 1;
