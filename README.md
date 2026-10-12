@@ -1,7 +1,7 @@
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/assets/banner-dark.svg">
-    <img src="docs/assets/banner.svg" alt="OpenIMP - IMP library for Ingenic SoCs" width="560">
+    <img src="docs/assets/banner.svg" alt="OpenIMP - FOSS stack for Ingenic SoCs" width="560">
   </picture>
 </p>
 
