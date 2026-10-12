@@ -16,7 +16,6 @@
 #include "isp/isp_tseries_dev.h"
 
 int IMP_ISP_Tuning_GetAeZone(void *zone);
-int IMP_ISP_Tuning_GetAwbZone(void *zone_r, void *zone_g, void *zone_b);
 
 ISPDevice *gISP;
 
@@ -202,8 +201,9 @@ static void test_zones(void)
     CHECK(IMP_ISP_Tuning_GetAeZone(ae) == 0);
 #if defined(PLATFORM_T20)
     CHECK(calls == 1 && last_subcmd == 0x800002f);
-    /* one IMPISPAWBZone pointer, the other arguments are not looked at */
-    CHECK(IMP_ISP_Tuning_GetAwbZone(awb, (void *)1, (void *)2) == 0);
+    /* one IMPISPAWBZone pointer (15x15 {u16, u16, u32} = 1800 bytes) */
+    CHECK(sizeof(IMPISPAWBZone) == 1800);
+    CHECK(IMP_ISP_Tuning_GetAwbZone((IMPISPAWBZone *)awb) == 0);
     CHECK(calls == 2 && last_subcmd == 0x8000009);
 #else
     CHECK(calls == 1 && last_subcmd == 0x8000030);

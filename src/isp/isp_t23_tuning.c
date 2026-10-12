@@ -34,6 +34,18 @@
 
 #include "isp_tseries_dev.h"
 
+/* IMPISPAWBZone of the vendor 1.1.x header (include/imp/imp_isp.h carries
+ * the same definition; this file keeps the int-typed wrappers of the
+ * vendor's enum arguments, so it does not include that header) */
+#ifndef IMPISPAWBZONE_DEFINED
+#define IMPISPAWBZONE_DEFINED
+typedef struct {
+    unsigned char zone_r[225];
+    unsigned char zone_g[225];
+    unsigned char zone_b[225];
+} IMPISPAWBZone;
+#endif
+
 #include "imp_log_fun.h"
 #include "video_drop.h"
 int IMP_Encoder_RequestIDR(int encChn);
@@ -2024,7 +2036,11 @@ T23_WRAP1(AE_GetROI, void *)
 T23_WRAP1(AE_SetROI, void *)
 T23_WRAP1(SetAwbWeight, void *)
 T23_WRAP1(GetAwbWeight, void *)
-T23_WRAP1(GetAwbZone, void *)
+/* Runtime capability marker (see isp_tseries.c for T31): GetAwbZone returns
+ * the vendor 675-byte block and 0 only with a fresh AWB statistics snapshot
+ * (open tx-isp-t23: -EAGAIN otherwise). */
+__attribute__((visibility("default"))) const int OpenIMP_Cap_AwbZone = 1;
+T23_WRAP1(GetAwbZone, IMPISPAWBZone *)
 T23_WRAP1(SetWB_ALGO, int)
 T23_WRAP1(SetAeHist, void *)
 T23_WRAP1(GetAeHist, void *)
