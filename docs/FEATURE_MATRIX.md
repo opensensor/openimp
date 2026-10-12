@@ -10,6 +10,7 @@ Open stack = open-tx-isp (kernel driver) + OpenIMP (libimp) + timps. Vendor = tx
 
 ## Summary
 
+- **Update 2026-10-12 (agg-38, build and host tests, no soak):** OpenIMP `claude/agg-38` = agg-37 + `claude/awbstats`/`awbzone`, `claude/t31-rc-collapse`, `claude/oimp-thread-names`, `claude/t21-cpu-fix`, `claude/t40-night`, `claude/t41-isp-handlers`, `claude/funcsearch-run4`; T40 `ISP_StartNightMode` and `ISP_Bypass_Bind` dev from the Eufy T40 run of `claude/funcsearch-run5` (same requests as the merged code). The cells of the branch updates below are merged; progress table recounted.
 - **Update 2026-10-12 (`claude/awbstats`, device-tested on the Eufy T40 and the T41, not in an aggregate):** `ISP_Tuning_GetAwbStatistics` is dev on T40 and T41: vendor ABI and semantics verified (2700-byte block of three 15x15 u32 planes, zone means of the raw pre-WB R, G, B statistics), 0 only with a block that holds statistics (T41 open driver `-EAGAIN` unless fresh; all-zero block -1), new symbol `OpenIMP_Cap_AwbStatistics`; T40 gives the same numbers as the vendor libimp on the same scene. Needs the open-tx-isp `claude/awbstats` driver on T41. Used by timps 1.10.2 (night colour trigger).
 - **Update 2026-10-12 (`claude/awbzone`, device-tested on T31 and T23, not in an aggregate):** `ISP_Tuning_GetAwbZone` is dev on T23 and T31 with the vendor block and scaling (truncated zone means of the AWB statistics, stock `Tiziano_awb_fpga`), returns 0 only with fresh statistics (open driver `-EAGAIN` otherwise) and exports `OpenIMP_Cap_AwbZone`; T40/T41 stay n.a. (no vendor `GetAwbZone`, per-zone AWB statistics are `GetAwbStatistics`). Needs the open-tx-isp `claude/awbzone` driver. Used by timps 1.10.2 (night colour trigger).
 - **Update 2026-10-12 (T40 night, `claude/t40-night`, host only, no camera):** fixes of the Eufy T40XP FAILs of 2026-10-11 from the vendor 1.3.1 disassembly: `GetHVFlip` and `GetBcshHue` answer the vendor cache, `GetISPRunningMode` reads the payload word, `Encoder_Query` vendor fields; the HVFLIP/hue/running-mode picture checks of 2026-10-11 measured stale frames (devtest fixed). New on T40 (host): `Encoder_Get/SetChnSeiAttr` (SEI in front of the slice), `ISP_Get/SetDrawAttr`, `ISP_StartNightMode`, `OSD_SetGroupCallback`, `OSD_Get/SetRgnAttr_ISP`, `AI/AO_Get/SetDigitalGain`; `Encoder_SetFrameRelease` stores the ratio (no-op as on T31). Also `ISP_WDR_OPEN`, `ISP_Bypass_Bind`, `ISP_GetRaw` (host). Device test script for the next run: `tests/t40/devtest` phases 4, 0x100, 0x200, 0x400, 0x800, 0x1000, 0x2000. **T40 gaps 72 -> 56.**
@@ -788,8 +789,8 @@ Counts are per vendor function of that SoC (T23 folded: base function = one; Get
 | T23 | 436 | 283 | 17 | 103 | 0 | 12 | 5 | 0 | 16 | 0 | **21** | 212 | 92.4 % |
 | T30 | 347 | 0 | 14 | 22 | 292 | 0 | 8 | 0 | 0 | 11 | **19** | – | 10.4 % |
 | T31 | 387 | 225 | 17 | 133 | 0 | 5 | 2 | 0 | 0 | 5 | **7** | 65 | 96.9 % |
-| T40 | 398 | 116 | 114 | 0 | 111 | 1 | 2 | 0 | 21 | 33 | **56** | – | 57.8 % |
-| T41 | 445 | 18 | 64 | 214 | 0 | 2 | 10 | 1 | 26 | 110 | **147** | 227 | 66.5 % |
+| T40 | 398 | 118 | 112 | 0 | 111 | 1 | 2 | 0 | 21 | 33 | **56** | – | 57.8 % |
+| T41 | 445 | 19 | 64 | 213 | 0 | 2 | 10 | 1 | 26 | 110 | **147** | 227 | 66.5 % |
 
 Columns: fns = vendor functions of that SoC; dev/host/aud/?/no-op/cache/stub/err/miss = counts per cell code (codes as in the legend); gaps = cache + stub + err + miss; audit gaps = the same sum in the audit before the work of 2026-10-05; done % = (dev + host + aud) / fns.
 

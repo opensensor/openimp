@@ -3,11 +3,27 @@
 Everything changed, extended or fixed in OpenIMP, open-tx-isp, timps and the thingino
 integration since the test campaign started on 2026-09-30. Kept up to date during the campaign.
 
-Last update: 2026-10-12 (T40 night branch, host only); before that 2026-10-11 (aggregate agg-36 after RC1, build and host tests only; before that RC1 v2026.10.11-rc1: openimp fe9307c (agg-35 687a68e4 + docs), open-tx-isp 191be6c5 (agg-35 6e464ac7 + docs); agg-35 soak clean). Before that 2026-10-10 evening (cam-K first T40 device run, T41 audio/driver controls, audio on T10..T31, agg-35 build; before that docs-1010b: front crop vs flip, AeComp, agg-34.1, T41 notes; docs-1010: results of 2026-10-10 collected; items marked "in branch" are not yet in an aggregate). Branch names (`claude/...`) in the tables and sections below are historic: the branches were merged into `next` and deleted.
+Last update: 2026-10-12 (aggregate agg-38, build and host tests only; before that the T40 night branch, host only); before that 2026-10-11 (aggregate agg-36 after RC1, build and host tests only; before that RC1 v2026.10.11-rc1: openimp fe9307c (agg-35 687a68e4 + docs), open-tx-isp 191be6c5 (agg-35 6e464ac7 + docs); agg-35 soak clean). Before that 2026-10-10 evening (cam-K first T40 device run, T41 audio/driver controls, audio on T10..T31, agg-35 build; before that docs-1010b: front crop vs flip, AeComp, agg-34.1, T41 notes; docs-1010: results of 2026-10-10 collected; items marked "in branch" are not yet in an aggregate). Branch names (`claude/...`) in the tables and sections below are historic: the branches were merged into `next` and deleted.
 
 Cameras are anonymised: cam-A (T31), cam-B (T23), cam-C (T20), cam-D (T21), cam-E (T10), cam-F (T41); cam-G and cam-H are further T23 cameras, cam-I a second T20 and cam-J a second T21.
 
-## T40 night branch `claude/t40-night` (2026-10-12, host only, not merged)
+## Aggregate agg-38 (2026-10-12, build and host tests only)
+
+Branches `claude/agg-38` in OpenIMP (on agg-37 dc20d0e) and open-tx-isp (on agg-37 e40d7313); timps 1.10.2 development state (v1.10.1-16) with its WebUI in the firmware. No soak and no device run of the aggregate yet; the device results below come from the topic branches.
+
+OpenIMP, merged in this order: `claude/awbstats` (with `claude/awbzone`), `claude/t31-rc-collapse`, `claude/oimp-thread-names`, `claude/t21-cpu-fix`, `claude/t40-night` (with `claude/t40-devtest`), `claude/t41-isp-handlers`, `claude/funcsearch-run4` (documentation); from `claude/funcsearch-run5` only the device results (its code duplicates `claude/t40-night`, which already has the same ISP-node requests).
+
+open-tx-isp, merged in this order: `claude/awbstats` (with `claude/awbzone`), `claude/fcrop-upscale-cap`, `claude/t31-sharpness-fix`, `claude/t41-isp-handlers`, `claude/t41-reload-fix`, `claude/sensor-proc-compat`, plus one build fix.
+
+- **AWB statistics with a freshness contract:** T23/T31 `IMP_ISP_Tuning_GetAwbZone` (vendor 675-byte block and scaling) and T40/T41 `GetAwbStatistics` (2700-byte planes) return 0 only with statistics of a current frame (driver `-EAGAIN` otherwise); capability symbols `OpenIMP_Cap_AwbZone` / `OpenIMP_Cap_AwbStatistics`. Device-tested on cam-A, cam-B, the Eufy T40 and cam-F.
+- **T31 CBR under an impossible scene:** the buffer debt of the rate controller is bounded, so the QP no longer collapses after ~700 pictures; host test, device test pending.
+- **Thread names** for every OpenIMP thread (`top -H`).
+- **Helix per-frame encode path at -O2** on T10/T20/T21/T23/T30 (CPU A/B pending).
+- **T40 night work:** getter fixes from the 2026-10-11 device run, SEI user data, draw attributes, OSD group callback and ISP-drawn regions, digital gain, `WDR_OPEN`, `Bypass_Bind`, `StartNightMode`, `GetRaw`; `StartNightMode` and `Bypass_Bind` device-tested on the Eufy T40 (2026-10-12).
+- **T41 ISP tuning calls of libimp 1.2.6** (AE/AWB converge step, CT trend, EV/AT list, TMO curve, statistics configuration, `WaitFrameDone`) with the driver handlers; seven of them device-tested on cam-F; `WaitFrameDone` still returns a constant counter.
+- **open-tx-isp:** T31/T23 `fcrop_upscale_pct` capped at 100 (2.5x hard-hung a T31); T31 sharpness mapping re-applied on a bank refresh like stock; T41 reload fixes (VIN index bound, module pinned by open frame-channel files, IRQs freed with their dev_id; 50 reload cycles clean on cam-F); `/proc/jz/sensor` in the vendor file layout; T23 build fix (the `fcrop_upscale_pct` cap used `READ_ONCE`, which the 3.10 kernel does not have).
+
+## T40 night branch `claude/t40-night` (2026-10-12, host only, in agg-38)
 
 On `claude/t40-devtest` (cc50954). Host tests, `make check`, `export-check` T40 and T31/T40/T41 cross builds; no camera was used. Device test script for the next run: `tests/t40/devtest` (phases 4, 0x100, 0x200, 0x400, 0x800, 0x1000, 0x2000; [docs/T40_STATUS.md](T40_STATUS.md)).
 
