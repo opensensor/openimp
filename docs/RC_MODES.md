@@ -176,7 +176,12 @@ test of 2026-10-03, `legacy` restores the former controller):
   data the OEM appends in CBR when the HRD says so (`WriteFillerData`
   0x47e60; the count is fed back into the model, which therefore matches
   the OEM, but no filler NAL is written: on a static scene the CBR stream
-  is smaller than the target where the OEM pads it).  Read-back: the attribute as given.  The log
+  is smaller than the target where the OEM pads it).  Deviation from the OEM (2026-10-12): the
+  CBR buffer debt (arrival time ahead of the removal clock) is bounded to
+  4 CPBs and 256 Mbit (`hrd_bound_debt`); unbounded, as in the OEM without
+  `IMP_ENC_RC_ENABLE_SKIP`, the 32-bit level arithmetic wraps after
+  ~715 Mbit of debt and the QP drops from the maximum to the minimum
+  (`tests/t31/al_rc_overload_test.c`).  Read-back: the attribute as given.  The log
   shows `T31 allegro rc: pic=.. size=.. used_qp=.. next_qp=.. psnr=..
   idle=..` for the first pictures and then every 250.
 
