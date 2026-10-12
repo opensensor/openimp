@@ -13,6 +13,7 @@ Open stack = open-tx-isp (kernel driver) + OpenIMP (libimp) + timps. Vendor = tx
 - **Update 2026-10-12 (`claude/awbstats`, device-tested on the Eufy T40 and the T41, not in an aggregate):** `ISP_Tuning_GetAwbStatistics` is dev on T40 and T41: vendor ABI and semantics verified (2700-byte block of three 15x15 u32 planes, zone means of the raw pre-WB R, G, B statistics), 0 only with a block that holds statistics (T41 open driver `-EAGAIN` unless fresh; all-zero block -1), new symbol `OpenIMP_Cap_AwbStatistics`; T40 gives the same numbers as the vendor libimp on the same scene. Needs the open-tx-isp `claude/awbstats` driver on T41. Used by timps 1.10.2 (night colour trigger).
 - **Update 2026-10-12 (`claude/awbzone`, device-tested on T31 and T23, not in an aggregate):** `ISP_Tuning_GetAwbZone` is dev on T23 and T31 with the vendor block and scaling (truncated zone means of the AWB statistics, stock `Tiziano_awb_fpga`), returns 0 only with fresh statistics (open driver `-EAGAIN` otherwise) and exports `OpenIMP_Cap_AwbZone`; T40/T41 stay n.a. (no vendor `GetAwbZone`, per-zone AWB statistics are `GetAwbStatistics`). Needs the open-tx-isp `claude/awbzone` driver. Used by timps 1.10.2 (night colour trigger).
 - **Update 2026-10-12 (T40 night, `claude/t40-night`, host only, no camera):** fixes of the Eufy T40XP FAILs of 2026-10-11 from the vendor 1.3.1 disassembly: `GetHVFlip` and `GetBcshHue` answer the vendor cache, `GetISPRunningMode` reads the payload word, `Encoder_Query` vendor fields; the HVFLIP/hue/running-mode picture checks of 2026-10-11 measured stale frames (devtest fixed). New on T40 (host): `Encoder_Get/SetChnSeiAttr` (SEI in front of the slice), `ISP_Get/SetDrawAttr`, `ISP_StartNightMode`, `OSD_SetGroupCallback`, `OSD_Get/SetRgnAttr_ISP`, `AI/AO_Get/SetDigitalGain`; `Encoder_SetFrameRelease` stores the ratio (no-op as on T31). Also `ISP_WDR_OPEN`, `ISP_Bypass_Bind`, `ISP_GetRaw` (host). Device test script for the next run: `tests/t40/devtest` phases 4, 0x100, 0x200, 0x400, 0x800, 0x1000, 0x2000. **T40 gaps 72 -> 56.**
+- **Update 2026-10-11 (T41 ISP handlers, branch `claude/t41-isp-handlers` in OpenIMP and open-tx-isp, host tests and module build only, not in an aggregate):** T41 `ISP_Tuning_Get/SetAwbConvergeStep`, `Get/SetAwbCtTrendOffset`, `GetAeEvList`/`GetAEEvList`, `GetAeAtList`, `Get/SetTmoCurve`, `Get/SetStatisConfig`, `WaitFrameDone` and `GetHVFlip` (the 1.0.1 name of `GetHVFLIP`) are host (exported with the vendor 1.2.6 control numbers, routed in the open driver). `Get/SetAeConvergeStep` is cache: stored in the AE parameters like the vendor, but only the recovered vendor AE reads it; the default open AE keeps its own step. Still miss: `GetAeBv` and `GetAEFlickerFlag` (vendor-AE internal state the open AE does not keep). `StatisConfig` stores the AE histogram thresholds and the AF part only (no AF on the test board), the AWB part moves the AWB zone grid. **T41 gaps 147 (was 160).** **Device run 2026-10-12 (cam-F, T41/gc5603, vendor-free open stack with the branch module and libimp, streamer running; the gaps number is unchanged):** dev for `Get/SetAwbConvergeStep`, `Get/SetAwbCtTrendOffset`, `GetAeEvList`/`GetAEEvList`, `GetAeAtList`, `Get/SetStatisConfig` (a geometry change of the AWB grid while streaming gives -EBUSY, an unchanged geometry 0, the stored record stays unchanged after a refused set) and `GetHVFlip`: libimp calls (imptest) and raw `/dev/isp-m0` requests (isptest/t41c) read back what was set, bad arguments give -EINVAL/-EFAULT, 0 kernel errors. `Get/SetAeConvergeStep` stays cache (set value read back; only the recovered vendor AE uses it). Still host, NOT proven: `Get/SetTmoCurve` get/set/bad-argument paths pass, but the mean luma did not change with a curve scaled to 60 % (the TMO map is not running in this configuration, `t41_tmo_frames=0`), so no visible effect; `WaitFrameDone` returns 0 but its frame counter does not advance while streaming (it moves only for the first frames after a stream start), so every wait runs into its timeout; to be fixed in the driver. `Set AwbCtTrendOffset` changed the mean U by less than 1 level in a dim scene (inconclusive for the colour effect, to be repeated in daylight).
 - **Update 2026-10-11 (agg-37, build and host tests, no soak):** OpenIMP `claude/agg-37` = agg-36 + size work, T10/T20 `SetAntiFogAttr`/`SetMeshShadingScale`, T40 HEVC FixQP and 4K drain, the function-finder branches (T40 ISP controls, T40 `Fisheye`, T40 ROI and `MapRoi` opt-in, T41 `ISPBypass`, `make export-check`/`release-check`). Corrections: T41 `Encoder_Get/SetChnRoiAttr` and `SetChnMapRoi` are cache, not host (the table is written behind `OPENIMP_T41_ROI=1`, but the T41 AVPU ignores it); T23 `Decoder_*` is err (the decoder ran in the OEM Helix worker, which is off by default since agg-37). Also in agg-37: T10/T20 `SetChnRcTrigLevel` and the T41 run-time bit-rate retarget (`claude/agg37-rc-live`), `SU_Base_Shutdown` exported by OpenIMP on every SoC (reboot by default, host). **Gap counts (progress table):** T10 33 (was 34), T20 31 (was 32), T21 15 (was 16), T23 21 (was 14), T31 7 (was 8), T41 160 (was 158).
 - **Update 2026-10-11 (function finder, `make export-check`):** the T41 cells of `FrameSource_Get/SetDelay`, `Get/SetMaxDelay`, `Get/SetI2dAttr`, `GetTimedFrame`, `Get/SetChnFifoAttr` and of `ISP_Tuning_Get/SetModuleControl`, `Get/SetAutoZoom`, `Get/SetMaskBlock`, `SetScalerLv` were stale (error/cache): the T41 build exports real code (vendor 1.2.6 semantics; the kernel side of AutoZoom/MaskBlock/ScalerLv needs the open driver handlers). Corrected to host (implemented, not run on a camera). `Encoder_Get/SetChnCrop` is exported by the vendor libimp of T10/T20/T21 but not by OpenIMP: cells corrected from n.a. to missing (T10/T20/T21 function count +2). T40: 11 OSD rows (`OSD_AttachToGroup`, `RgnCreate_Query`, `RgnRegister_Query`, `SetMosaic`, and the `*_ISP` calls behind the device-tested ISP-OSD) were missing in the cell but are exported by the T40 build: corrected to host (T40 progress-table gaps 85 -> 74). New check: `make export-check` compares the exports of each built `libimp.so` with the vendor export lists (`tools/export-check/`) and with the `IMP_` names used by streamer sources.
 - **Update 2026-10-11 (agg-36, after RC1; build and host tests of the aggregate, no soak):** T40 rate control, AVPU command lists and H.265 (device-tested on their branch), T40 ISP-drawn OSD, `Get/SetMask` and `SwitchBin` (device-tested), T40 BCSH getters from the vendor cache (host), T41 `SwitchBin`, `AutoZoom`, `SetMaskBlock`, `SetScalerLv` (host and module build), `SetbufshareChn` as the vendor (T31/T40/T41), log level `OPENIMP_LOG_LEVEL`, IVS post order, T30 gap work (317 of 334 exports), T10/T20/T21 and T23 vendor return codes. The T23 driver rows of the second T23/T31 gap pass stay as before (that driver branch is held back). The T40 open items below about CBR, H.265, `GetBrightness`, the pixel format and `P1_INNER` are fixed in agg-36. **Gap counts after this update (progress table):** T23 14 (was 15), T30 19 (was 54), T40 109 (was 120), T41 177 (was 179); T10 32, T20 30, T21 14, T31 8 unchanged.
@@ -788,7 +789,7 @@ Counts are per vendor function of that SoC (T23 folded: base function = one; Get
 | T30 | 347 | 0 | 14 | 22 | 292 | 0 | 8 | 0 | 0 | 11 | **19** | – | 10.4 % |
 | T31 | 387 | 225 | 17 | 133 | 0 | 5 | 2 | 0 | 0 | 5 | **7** | 65 | 96.9 % |
 | T40 | 398 | 116 | 114 | 0 | 111 | 1 | 2 | 0 | 21 | 33 | **56** | – | 57.8 % |
-| T41 | 445 | 8 | 61 | 214 | 0 | 2 | 8 | 1 | 26 | 125 | **160** | 227 | 63.6 % |
+| T41 | 445 | 18 | 64 | 214 | 0 | 2 | 10 | 1 | 26 | 110 | **147** | 227 | 66.5 % |
 
 Columns: fns = vendor functions of that SoC; dev/host/aud/?/no-op/cache/stub/err/miss = counts per cell code (codes as in the legend); gaps = cache + stub + err + miss; audit gaps = the same sum in the audit before the work of 2026-10-05; done % = (dev + host + aud) / fns.
 
@@ -800,7 +801,7 @@ T23  █████████████████████████
 T30  ▓▓▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒░░
 T31  ███████████████████████▓▓▒▒▒▒▒▒▒▒▒▒▒▒▒▒░
 T40  ████████████▓▓▓▓▓▓▓▓▓▓▓▒▒▒▒▒▒▒▒▒▒▒░░░░░░
-T41  █▓▓▓▓▓▓▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒░░░░░░░░░░░░░░
+T41  ██▓▓▓▓▓▓▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒░░░░░░░░░░░░░
 ```
 
 ### Streamer-relevant gaps per SoC (priority)
@@ -838,11 +839,8 @@ Gaps (cache-only, stub, error, missing, ?) of functions that at least one of tim
 | `ISP_Tuning_Get/SetISPCSCAttr` [49] | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | host | host | – |
 | `ISP_Tuning_Get/SetMask` [55] | n.a. | n.a. | n.a. | no-op | n.a. | aud | dev | n.a. | r† |
 | ► `ISP_Tuning_Get/SetModuleControl` [4] | n.a. | n.a. | host | aud | n.a. | aud | host | host | T31/T41: r† |
-| `ISP_Tuning_Get/SetStatisConfig` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | host | miss | – |
-| `ISP_Tuning_Get/SetTmoCurve` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | miss | – |
 | `ISP_Tuning_GetAutoZoom` [6] | n.a. | n.a. | n.a. | host | n.a. | n.a. | host | host | – |
 | `ISP_Tuning_GetBrightness` [66] | aud | aud | aud | aud | ? | aud | dev | aud | p† r† |
-| `ISP_Tuning_GetHVFlip` | n.a. | n.a. | n.a. | aud | n.a. | aud | host | miss | T23/T31: r† |
 | `ISP_Tuning_GetISPBypass` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | host | n.a. | – |
 | `ISP_Tuning_GetMaskBlock` [7] | n.a. | n.a. | n.a. | host | n.a. | n.a. | n.a. | host | – |
 | `ISP_Tuning_SetAntiFogAttr` [8] | miss | miss | no-op | n.a. | host | n.a. | n.a. | n.a. | – |
@@ -855,7 +853,6 @@ Gaps (cache-only, stub, error, missing, ?) of functions that at least one of tim
 | `ISP_Tuning_SetTemperDnsCtl` [83] | host | host | aud | n.a. | cache | n.a. | n.a. | n.a. | – |
 | `ISP_Tuning_SetTmoFaceae` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | miss | – |
 | ► `ISP_Tuning_SwitchBin` [13] | n.a. | n.a. | n.a. | err | n.a. | n.a. | dev | host | T41: p† |
-| `ISP_Tuning_WaitFrameDone` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | host | miss | – |
 | `ISP_WDR_OPEN` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | host | miss | – |
 
 Notes:
@@ -876,7 +873,7 @@ Notes:
 66. `ISP_Tuning_GetBrightness`: audit: reaches the driver/kernel; T40: returned -1 on cam-K 2026-10-10 (vendor library returns the value); fixed after RC1: the getters return the vendor per-input cache (host-tested)
 91. `ISP_Tuning_SetMeshShadingScale`: T10/T20 (class c): the vendor writes bits 2..4 of an ISP lens-shading register through a userspace mapping (3.12.0 0x62930); there is no driver control for it, wishlist: a tuning control in the T10/T20 driver
 
-<details><summary>All 117 rows of this area (33 with a gap)</summary>
+<details><summary>All 117 rows of this area (29 with a gap)</summary>
 
 *Codes: **dev** device-tested · **host** host tests only · **aud** connected per static audit, no device test · **no-op** vendor does nothing · **cache** value only stored · **stub** returns 0, no effect · **err** fails or known defect · **miss** not exported by OpenIMP · **n.a.** not in that SoC's vendor API · **?** unknown · **►** streamer uses it, gap · **†** streamer use from source only · **[n]** note below the table · Used by: **p** prudynt, **r** raptor, **t** timps (a long list is given in the note).*
 
@@ -951,9 +948,9 @@ Notes:
 | `ISP_Tuning_Get/SetSensorHflip` [60] | n.a. | n.a. | n.a. | aud | n.a. | n.a. | n.a. | n.a. | – |
 | `ISP_Tuning_Get/SetSensorVflip` [61] | n.a. | n.a. | n.a. | aud | n.a. | n.a. | n.a. | n.a. | – |
 | `ISP_Tuning_Get/SetSinterDnsAttr` [62] | host | host | aud | n.a. | ? | n.a. | n.a. | n.a. | p† |
-| `ISP_Tuning_Get/SetStatisConfig` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | host | miss | – |
+| `ISP_Tuning_Get/SetStatisConfig` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | host | dev | – |
 | `ISP_Tuning_Get/SetTemperDnsAttr` [63] | host | host | aud | n.a. | ? | n.a. | n.a. | n.a. | p† |
-| `ISP_Tuning_Get/SetTmoCurve` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | miss | – |
+| `ISP_Tuning_Get/SetTmoCurve` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | host | – |
 | `ISP_Tuning_Get/SetWDRAttr` [90] | dev | dev | n.a. | n.a. | host | n.a. | n.a. | n.a. | – |
 | `ISP_Tuning_Get/SetWdrOutputMode` [5] | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | host | no-op | – |
 | `ISP_Tuning_Get/SetWdr_OutputMode` [64] | n.a. | n.a. | n.a. | n.a. | n.a. | host | n.a. | n.a. | r† |
@@ -961,7 +958,7 @@ Notes:
 | `ISP_Tuning_GetBlcAttr` [65] | n.a. | n.a. | n.a. | no-op | n.a. | dev | n.a. | n.a. | r† |
 | `ISP_Tuning_GetBrightness` [66] | aud | aud | aud | aud | ? | aud | dev | aud | p† r† |
 | `ISP_Tuning_GetEVAttr` [67] | aud | dev | dev | dev | ? | dev | n.a. | n.a. | p† r† t |
-| `ISP_Tuning_GetHVFlip` | n.a. | n.a. | n.a. | aud | n.a. | aud | host | miss | T23/T31: r† |
+| `ISP_Tuning_GetHVFlip` | n.a. | n.a. | n.a. | aud | n.a. | aud | host | dev | T23/T31: r† |
 | `ISP_Tuning_GetISPBypass` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | host | n.a. | – |
 | `ISP_Tuning_GetMaskBlock` [7] | n.a. | n.a. | n.a. | host | n.a. | n.a. | n.a. | host | – |
 | `ISP_Tuning_GetRawDRC` [68] | host | host | aud | n.a. | ? | n.a. | n.a. | n.a. | p† |
@@ -994,7 +991,7 @@ Notes:
 | `ISP_Tuning_SetVideoDrop` [85] | host | host | host | host | ? | host | ? | host | r† |
 | ► `ISP_Tuning_SwitchBin` [13] | n.a. | n.a. | n.a. | err | n.a. | n.a. | dev | host | T41: p† |
 | `ISP_Tuning_WaitFrame` [86] | host | host | host | host | ? | aud | n.a. | n.a. | r† |
-| `ISP_Tuning_WaitFrameDone` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | host | miss | – |
+| `ISP_Tuning_WaitFrameDone` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | host | host | – |
 | ► `ISP_WDR_ENABLE` [14] | n.a. | n.a. | n.a. | n.a. | n.a. | aud | host | dev | r† |
 | ► `ISP_WDR_ENABLE_GET` [15] | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | host | dev | r† |
 | `ISP_WDR_ENABLE_Get` [87] | n.a. | n.a. | n.a. | n.a. | n.a. | aud | n.a. | n.a. | – |
@@ -1104,20 +1101,15 @@ Notes:
 |---|---|---|---|---|---|---|---|---|---|
 | `ISP_SetAeAlgoFunc` | n.a. | n.a. | n.a. | aud | n.a. | aud | miss | miss | – |
 | `ISP_SetAwbAlgoFunc` | n.a. | n.a. | n.a. | aud | n.a. | aud | miss | miss | – |
-| `ISP_Tuning_Get/SetAeConvergeStep` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | miss | – |
+| `ISP_Tuning_Get/SetAeConvergeStep` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | cache | – |
 | `ISP_Tuning_Get/SetAeExpList` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | host | miss | – |
 | `ISP_Tuning_Get/SetAeSpeed` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | host | n.a. | – |
-| `ISP_Tuning_Get/SetAwbConvergeStep` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | miss | – |
-| `ISP_Tuning_Get/SetAwbCtTrendOffset` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | miss | – |
 | `ISP_Tuning_Get/SetFaceAe` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | host | miss | – |
 | `ISP_Tuning_Get/SetFaceAeWeiget` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | miss | – |
 | `ISP_Tuning_Get/SetFaceAwb` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | host | n.a. | – |
-| `ISP_Tuning_GetAEEvList` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | miss | – |
 | `ISP_Tuning_GetAEFlickerFlag` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | miss | – |
 | `ISP_Tuning_GetAFMetricesInfo` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | host | miss | – |
-| `ISP_Tuning_GetAeAtList` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | miss | – |
 | `ISP_Tuning_GetAeBv` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | miss | – |
-| `ISP_Tuning_GetAeEvList` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | miss | – |
 | `ISP_Tuning_GetAfStatistics` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | host | miss | – |
 | `ISP_Tuning_GetFaceAeLuma` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | miss | – |
 | `ISP_Tuning_SetWB_ALGO` [3] | n.a. | n.a. | n.a. | err | n.a. | aud | n.a. | n.a. | – |
@@ -1127,7 +1119,7 @@ Notes:
 2. `ISP_Tuning_Get/SetAfWeight`: T23: AF statistics chain from the stock module, off by default (source_af=0); no device test; T31: reconstructed AF chain; metrics/zone/weight/hist verified on cam-A 2026-10-05, Get->Set roundtrip 0; T41: driver control, device-tested (claude/t41-driver-gaps, in agg-35); T23: AF statistics on by default since open-tx-isp agg-28 (source_af=1 as stock); apitest PASS on a T23 camera, no measurable CPU cost
 3. `ISP_Tuning_SetWB_ALGO`: T23: 0x800000c accepted like stock (open-tx-isp claude/gaps-t23-t31-drv): mode 0..2 stored in the AWB light-source flag, other modes logged, always returns 0; the four AWB threshold registers are not rewritten, because the AWB of the open driver runs on the wide thresholds that stock mode 1 writes and has no IQ-threshold window to switch to, so the call has no effect (class d); host build only, device test pending; T31: the driver has tisp_s_awb_algo (connected per static audit); Not in agg-36: the open-tx-isp branch claude/gaps-t23-t31-drv is held back until its T23 SwitchBin is reworked (review: memcpy over live banks), so the agg-36 driver still behaves as before (cell unchanged).
 
-<details><summary>All 60 rows of this area (19 with a gap)</summary>
+<details><summary>All 60 rows of this area (14 with a gap)</summary>
 
 *Codes: **dev** device-tested · **host** host tests only · **aud** connected per static audit, no device test · **no-op** vendor does nothing · **cache** value only stored · **stub** returns 0, no effect · **err** fails or known defect · **miss** not exported by OpenIMP · **n.a.** not in that SoC's vendor API · **?** unknown · **►** streamer uses it, gap · **†** streamer use from source only · **[n]** note below the table · Used by: **p** prudynt, **r** raptor, **t** timps (a long list is given in the note).*
 
@@ -1141,7 +1133,7 @@ Notes:
 | ► `ISP_Tuning_Awb_Get/SetRgbCoefft` [6] | aud | dev | dev | dev | ? | dev | host | host | r† |
 | `ISP_Tuning_Get/SetAeAttr` [7] | n.a. | n.a. | n.a. | dev | n.a. | dev | n.a. | n.a. | p† r† |
 | `ISP_Tuning_Get/SetAeComp` [8] | aud | aud | n.a. | aud | ? | aud | n.a. | n.a. | p† r† t |
-| `ISP_Tuning_Get/SetAeConvergeStep` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | miss | – |
+| `ISP_Tuning_Get/SetAeConvergeStep` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | cache | – |
 | `ISP_Tuning_Get/SetAeExpList` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | host | miss | – |
 | `ISP_Tuning_Get/SetAeExprInfo` [9] | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | host | aud | – |
 | `ISP_Tuning_Get/SetAeHist` [10] | aud | dev | dev | dev | ? | dev | n.a. | n.a. | p† r† |
@@ -1155,9 +1147,9 @@ Notes:
 | ► `ISP_Tuning_Get/SetAfWeight` [2] | n.a. | n.a. | dev | dev | n.a. | dev | host | dev | r† |
 | `ISP_Tuning_Get/SetAwbAttr` [17] | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | dev | aud | – |
 | `ISP_Tuning_Get/SetAwbClust` [18] | n.a. | n.a. | n.a. | dev | n.a. | dev | n.a. | n.a. | r† |
-| `ISP_Tuning_Get/SetAwbConvergeStep` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | miss | – |
+| `ISP_Tuning_Get/SetAwbConvergeStep` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | dev | – |
 | `ISP_Tuning_Get/SetAwbCtTrend` [19] | n.a. | n.a. | n.a. | dev | n.a. | dev | n.a. | n.a. | r† |
-| `ISP_Tuning_Get/SetAwbCtTrendOffset` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | miss | – |
+| `ISP_Tuning_Get/SetAwbCtTrendOffset` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | dev | – |
 | `ISP_Tuning_Get/SetAwbHist` [20] | aud | dev | dev | no-op | ? | no-op | n.a. | n.a. | p† r† |
 | `ISP_Tuning_Get/SetAwbWeight` [21] | aud | dev | dev | no-op | ? | no-op | dev | aud | p† r† |
 | `ISP_Tuning_Get/SetAwbZoneWeight` [22] | n.a. | n.a. | n.a. | host | n.a. | n.a. | n.a. | n.a. | – |
@@ -1165,15 +1157,15 @@ Notes:
 | `ISP_Tuning_Get/SetFaceAeWeiget` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | miss | – |
 | `ISP_Tuning_Get/SetFaceAwb` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | host | n.a. | – |
 | `ISP_Tuning_Get/SetWB` [23] | aud | dev | dev | dev | ? | dev | n.a. | n.a. | p† r† t |
-| `ISP_Tuning_GetAEEvList` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | miss | – |
+| `ISP_Tuning_GetAEEvList` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | dev | – |
 | `ISP_Tuning_GetAEFlickerFlag` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | miss | – |
 | `ISP_Tuning_GetAE_IT_MAX` [24] | n.a. | n.a. | n.a. | dev | n.a. | dev | n.a. | n.a. | p† |
 | `ISP_Tuning_GetAFMetrices` [25] | n.a. | n.a. | dev | dev | ? | dev | n.a. | n.a. | r† |
 | `ISP_Tuning_GetAFMetricesInfo` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | host | miss | – |
 | `ISP_Tuning_GetAWBCt` [26] | n.a. | n.a. | n.a. | dev | n.a. | dev | n.a. | n.a. | see note |
-| `ISP_Tuning_GetAeAtList` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | miss | – |
+| `ISP_Tuning_GetAeAtList` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | dev | – |
 | `ISP_Tuning_GetAeBv` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | miss | – |
-| `ISP_Tuning_GetAeEvList` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | miss | – |
+| `ISP_Tuning_GetAeEvList` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | dev | – |
 | `ISP_Tuning_GetAeHist_Origin` [27] | n.a. | n.a. | n.a. | host | n.a. | aud | n.a. | n.a. | see note |
 | `ISP_Tuning_GetAeLuma` [28] | n.a. | n.a. | dev | dev | n.a. | dev | n.a. | n.a. | p† r† t |
 | `ISP_Tuning_GetAeState` [29] | n.a. | n.a. | n.a. | dev | n.a. | dev | n.a. | n.a. | r† |

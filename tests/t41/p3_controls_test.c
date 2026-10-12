@@ -14,6 +14,19 @@ int OpenIMP_P1_SetDefaultBinPath(IMPVI_NUM num, const char *path);
 int OpenIMP_P1_GetDefaultBinPath(IMPVI_NUM num, char *path, size_t size);
 int OpenIMP_P1_IspIOCtl(uint32_t command, void *argument);
 int OpenIMP_P1_GetSensorName(char name[32], int32_t *cbus_type);
+/* T41 1.2.6 functions the 1.2.0 headers do not declare (1.2.6 types) */
+int32_t IMP_ISP_Tuning_SetAeConvergeStep(IMPVI_NUM num, void *attr);
+int32_t IMP_ISP_Tuning_GetAeConvergeStep(IMPVI_NUM num, void *attr);
+int32_t IMP_ISP_Tuning_SetAwbConvergeStep(IMPVI_NUM num, void *attr);
+int32_t IMP_ISP_Tuning_GetAwbConvergeStep(IMPVI_NUM num, void *attr);
+int32_t IMP_ISP_Tuning_SetAwbCtTrendOffset(IMPVI_NUM num, void *attr);
+int32_t IMP_ISP_Tuning_GetAwbCtTrendOffset(IMPVI_NUM num, void *attr);
+int32_t IMP_ISP_Tuning_GetAeEvList(IMPVI_NUM num, void *attr);
+int32_t IMP_ISP_Tuning_GetAEEvList(IMPVI_NUM num, void *attr);
+int32_t IMP_ISP_Tuning_GetAeAtList(IMPVI_NUM num, void *attr);
+int32_t IMP_ISP_Tuning_SetTmoCurve(IMPVI_NUM num, void *attr);
+int32_t IMP_ISP_Tuning_GetTmoCurve(IMPVI_NUM num, void *attr);
+int32_t IMP_ISP_Tuning_GetHVFlip(IMPVI_NUM num, IMPISPHVFLIPAttr *flip);
 
 /* ISPDevice-fd entries: what the library asked the main ISP node for */
 /* IMP_ISP_Tuning_SwitchBin: ISP-enabled flag and the kernel's view */
@@ -85,6 +98,17 @@ int OpenIMP_P1_TuningIOCtl(uint32_t command, void *argument)
     last.calls++;
     if (request->control == 0x08000011 && request->direction)
         memcpy((void *)request->payload, awb_reply, sizeof(awb_reply));
+    if (request->control == 0x08000091 && request->direction == 1) {
+        /* WaitFrameDone scratch: timeout in, counter and irq type out */
+        unsigned char *b = (unsigned char *)request->payload;
+        uint64_t cnt = 0x100000002ULL;
+        uint32_t irq = 1, timeout;
+
+        memcpy(&timeout, b, 4);
+        assert(timeout == 25);
+        memcpy(b + 8, &cnt, 8);
+        memcpy(b + 16, &irq, 4);
+    }
     if (request->control == 0x080000a5)
         memcpy(&sb_seen, (const void *)request->payload, sizeof(sb_seen) > 132 ? 132 : sizeof(sb_seen));
     if (request->control == 0x08000080 || request->control == 0x08000096 ||
@@ -538,6 +562,56 @@ int main(void)
         assert(IMP_ISP_GetISPBypass(IMPVI_MAIN, &got) == 0 && got == en);
         isp.result = 0;
         isp.err = 0;
+    }
+
+    /* T41 1.2.6 controls: pointer pass-through, vendor control numbers. */
+    {
+        struct { uint16_t s[4]; } ae_step;
+        struct { uint32_t s[5]; } awb_step;
+        struct { uint16_t hm, lm; uint32_t g[6]; } trend;
+        struct { uint32_t en; uint32_t pad; uint64_t v[15]; } list;
+        struct { uint8_t flag, id; uint16_t v[201]; } tmo;
+        IMPISPStatisConfig statis;
+        IMPISPHVFLIPAttr flip;
+        IMPISPWaitFrameAttr wait;
+
+        assert(sizeof(IMPISPStatisConfig) == 72 || sizeof(void *) != 4);
+        assert(sizeof(IMPISPWaitFrameAttr) == 24);
+        last.result = 0;
+        EXPECT(IMP_ISP_Tuning_SetAeConvergeStep(IMPVI_MAIN, (void *)&ae_step), 0, 0x08000028, &ae_step);
+        EXPECT(IMP_ISP_Tuning_GetAeConvergeStep(IMPVI_MAIN, (void *)&ae_step), 1, 0x08000028, &ae_step);
+        EXPECT(IMP_ISP_Tuning_SetAwbConvergeStep(IMPVI_MAIN, (void *)&awb_step), 0, 0x08000016, &awb_step);
+        EXPECT(IMP_ISP_Tuning_GetAwbConvergeStep(IMPVI_MAIN, (void *)&awb_step), 1, 0x08000016, &awb_step);
+        EXPECT(IMP_ISP_Tuning_SetAwbCtTrendOffset(IMPVI_MAIN, (void *)&trend), 0, 0x08000015, &trend);
+        EXPECT(IMP_ISP_Tuning_GetAwbCtTrendOffset(IMPVI_MAIN, (void *)&trend), 1, 0x08000015, &trend);
+        EXPECT(IMP_ISP_Tuning_GetAeEvList(IMPVI_MAIN, (void *)&list), 1, 0x08000038, &list);
+        EXPECT(IMP_ISP_Tuning_GetAEEvList(IMPVI_MAIN, (void *)&list), 1, 0x08000038, &list);
+        EXPECT(IMP_ISP_Tuning_GetAeAtList(IMPVI_MAIN, (void *)&list), 1, 0x08000039, &list);
+        EXPECT(IMP_ISP_Tuning_SetTmoCurve(IMPVI_MAIN, (void *)&tmo), 0, 0x08000063, &tmo);
+        EXPECT(IMP_ISP_Tuning_GetTmoCurve(IMPVI_MAIN, (void *)&tmo), 1, 0x08000063, &tmo);
+        EXPECT(IMP_ISP_Tuning_SetStatisConfig(IMPVI_MAIN, &statis), 0, 0x08000000, &statis);
+        EXPECT(IMP_ISP_Tuning_GetStatisConfig(IMPVI_MAIN, &statis), 1, 0x08000000, &statis);
+        before = last.calls;
+        assert(IMP_ISP_Tuning_GetHVFlip(IMPVI_MAIN, &flip) == 0);
+        assert(last.calls == before + 1 && last.direction == 1 && last.control == 0x08000073);
+        /* NULL and a bad sensor number never reach the kernel */
+        before = last.calls;
+        assert(IMP_ISP_Tuning_GetAeConvergeStep(IMPVI_MAIN, NULL) != 0);
+        assert(IMP_ISP_Tuning_GetTmoCurve((IMPVI_NUM)IMPVI_BUTT, (void *)&tmo) != 0);
+        assert(IMP_ISP_Tuning_WaitFrameDone(IMPVI_MAIN, NULL) != 0);
+        assert(last.calls == before);
+        /* WaitFrameDone: timeout goes out, counter and irq type come back */
+        memset(&wait, 0, sizeof(wait));
+        wait.timeout = 25;
+        assert(IMP_ISP_Tuning_WaitFrameDone(IMPVI_MAIN, &wait) == 0);
+        assert(last.control == 0x08000091 && last.direction == 1);
+        assert(wait.timeout == 25 && wait.cnt == 0x100000002ULL && wait.irqtype == 1);
+        /* a failing kernel leaves the caller's structure alone */
+        last.result = -1;
+        wait.cnt = 7;
+        assert(IMP_ISP_Tuning_WaitFrameDone(IMPVI_MAIN, &wait) == -1);
+        assert(wait.cnt == 7);
+        last.result = 0;
     }
 
     puts("t41 p3 controls tests passed");
