@@ -446,3 +446,61 @@ int IMP_ISP_Tuning_DestroyOsdRgn(int chn, int handle)
 {
     return IMP_OSD_DestroyRgn_ISP(chn, handle);
 }
+
+/* T40 IMP_ISP_GetRaw (vendor 1.3.1 0x8a410): writes the sensor number into
+ * attr->sensor_id, num < 4 (-4), ISP device open (-8), raw_bit 8 (w*h bytes)
+ * or 16 (w*h*2) else -1; one rmem buffer per sensor (the 148-byte IMP_Alloc
+ * descriptor, -2 if it cannot be allocated), its paddr/vaddr/size go into
+ * attr->buf, then attr goes to the ISP-device ioctl 0xc004542f, which has
+ * the kernel write one raw frame there (-1 if it fails).  Differences: the
+ * vendor keeps the first buffer even when a later call needs more (the
+ * kernel would write past it); OpenIMP allocates a larger one then.  After
+ * the ioctl the CPU cache of the buffer is invalidated so attr->buf.vaddr
+ * shows what the DMA wrote.  NULL attr is -1 (the vendor would fault). */
+extern int OpenIMP_P1_IspIOCtlOpened(uint32_t command, void *argument);
+#define TISP_IOCTL_GET_RAW 0xc004542fU
+static IMPDMABufferInfo isp_raw_buf[4];
+static pthread_mutex_t isp_raw_lock = PTHREAD_MUTEX_INITIALIZER;
+
+int32_t IMP_ISP_GetRaw(IMPVI_NUM num, IMPISPGETRawiConfig *attr)
+{
+    IMPDMABufferInfo *b;
+    uint32_t size;
+
+    if (!attr)
+        return -1;
+    attr->sensor_id = (unsigned short)num;
+    if ((unsigned)num >= 4U)
+        return -4;
+    if (attr->raw_bit == 8)
+        size = attr->raw_width * attr->raw_height;
+    else if (attr->raw_bit == 16)
+        size = attr->raw_width * attr->raw_height * 2U;
+    else
+        return -1;
+    if (!size)
+        return -1;
+    pthread_mutex_lock(&isp_raw_lock);
+    b = &isp_raw_buf[num];
+    if (b->phys_addr && b->size < size) {
+        DMA_FreePhys(b->phys_addr);
+        memset(b, 0, sizeof(*b));
+    }
+    if (!b->phys_addr &&
+        (DMA_AllocDescriptor(b, (int)size, "isp-raw") != 0 ||
+         !b->phys_addr || !b->virt_addr)) {
+        memset(b, 0, sizeof(*b));
+        pthread_mutex_unlock(&isp_raw_lock);
+        return -2;
+    }
+    attr->buf.paddr = b->phys_addr;
+    attr->buf.vaddr = b->virt_addr;
+    attr->buf.buf_size = b->size;
+    if (OpenIMP_P1_IspIOCtlOpened(TISP_IOCTL_GET_RAW, attr) != 0) {
+        pthread_mutex_unlock(&isp_raw_lock);
+        return errno == ENODEV ? -8 : -1;
+    }
+    DMA_RmemFlushCache((void *)(uintptr_t)b->virt_addr, size, 2);
+    pthread_mutex_unlock(&isp_raw_lock);
+    return 0;
+}

@@ -141,6 +141,44 @@ static int32_t hrd_level(const T31AlRcHrd *h)
     return q - (int32_t)LO32(udiv64(U64(s3 - s2) * U64(s4), 90000u));
 }
 
+/* OpenIMP addition (not in the OEM code): bound the buffer debt.
+ * In CBR (strict removal clock) a scene the encoder cannot bring down to
+ * the target even at the maximum QP (pictures many times the target, e.g.
+ * sensor noise with full sharpening) lets the arrival time run ahead of
+ * the removal clock without limit.  The OEM only stops that with
+ * IMP_ENC_RC_ENABLE_SKIP (UpdateRateCtrl 0x665f4 replaces the picture by a
+ * skipped one on underflow), which the IMP defaults do not set.  Past
+ * ~715 Mbit of debt the 32-bit level arithmetic of the controller wraps
+ * (IIii 0x53ee8 and Il1i: level * 3; the budget sums): the level reads as
+ * a nearly full buffer and the QP falls from the maximum to the minimum
+ * within a picture or two (device log 2026-10-12: QP 45 -> 15, P pictures
+ * 16x the target).  The debt also took minutes to repay once the scene was
+ * easy again.  Bounding it to T31_AL_RC_DEBT_CPBS buffers (12 s at the
+ * target rate with the T31 defaults) and at most T31_AL_RC_DEBT_BITS keeps
+ * level * 3 and the budget terms inside 32 bits and still tells the
+ * controller that the buffer is empty, so it stays at the maximum QP.
+ * The OEM traces (the deepest: 3 buffers of debt) are unchanged. */
+#define T31_AL_RC_DEBT_CPBS 4u
+#define T31_AL_RC_DEBT_BITS (1u << 28)
+
+static void hrd_bound_debt(T31AlRcHrd *h)
+{
+    uint64_t bits;
+    uint32_t limit, debt;
+
+    if (!h->max_bitrate || h->arrival <= h->removal)
+        return;
+    bits = U64(h->cpb_bits) * T31_AL_RC_DEBT_CPBS;
+    if (bits > T31_AL_RC_DEBT_BITS)
+        bits = T31_AL_RC_DEBT_BITS;
+    limit = LO32(udiv64(bits * 90000u, h->max_bitrate));
+    debt = h->arrival - h->removal;
+    if (debt > limit) {
+        h->arrival = h->removal + limit;
+        h->arrival_rem = 0;
+    }
+}
+
 /* i0Io 0x565b4: account one picture */
 static void hrd_add_picture(T31AlRcHrd *h, uint32_t bits)
 {
@@ -188,6 +226,7 @@ static void hrd_add_picture(T31AlRcHrd *h, uint32_t bits)
     h->pictures += 1;
     h->total_bits_lo = s6;
     h->total_bits_hi += carry;
+    hrd_bound_debt(h);
     if (h->strict)
         return;
     v0 -= a3;

@@ -733,6 +733,48 @@ int IMP_ISP_Tuning_GetWB_Statis(IMPISPWB *wb);
  * @return 0 on success, negative on error
  */
 int IMP_ISP_Tuning_GetWB_GOL_Statis(IMPISPWB *wb);
+
+/**
+ * Per-zone AWB statistics (IMP_ISP_Tuning_GetAwbZone).
+ *
+ * T23/T31 (vendor 1.1.x header): 15x15 zone means of the R, G and B channel,
+ * one byte each, 675 bytes.  The driver fills the block from the AWB
+ * statistics of the current frame; OpenIMP returns 0 only with fresh data
+ * (a statistics frame of the running stream within the last second),
+ * otherwise -1 and the caller's block is left as it was.  The libimp builds
+ * with a correct GetAwbZone export the constant `OpenIMP_Cap_AwbZone` (1).
+ *
+ * T20 (vendor 3.12.0 header): 15x15 {u16 red_green, u16 blue_green, u32 sum}.
+ */
+#ifndef IMPISPAWBZONE_DEFINED
+#define IMPISPAWBZONE_DEFINED
+#if defined(PLATFORM_T20)
+struct isp_core_wb_zone_info {
+    uint16_t red_green;                 /**< R/G ratio (Q8) */
+    uint16_t blue_green;                /**< B/G ratio (Q8) */
+    uint32_t sum;                       /**< pixels counted in the zone */
+};
+
+typedef struct {
+    struct isp_core_wb_zone_info awb_sta_zone[15][15];
+} IMPISPAWBZone;
+#else
+typedef struct {
+    unsigned char zone_r[225];          /**< 15x15 zone means, R channel */
+    unsigned char zone_g[225];          /**< 15x15 zone means, G channel */
+    unsigned char zone_b[225];          /**< 15x15 zone means, B channel */
+} IMPISPAWBZone;
+#endif
+#endif /* IMPISPAWBZONE_DEFINED */
+
+/**
+ * Get the per-zone AWB statistics of the current frame
+ *
+ * @param awb_zone Pointer to the caller's IMPISPAWBZone
+ * @return 0 with fresh statistics in *awb_zone, -1 otherwise (no tuning,
+ *         NULL, no statistics frame of the running stream yet or for a second)
+ */
+int IMP_ISP_Tuning_GetAwbZone(IMPISPAWBZone *awb_zone);
 int IMP_ISP_Tuning_GetAeAttr(void *ae_attr);
 int IMP_ISP_Tuning_SetAeAttr(void *ae_attr);
 int IMP_ISP_Tuning_SetHVFLIP(IMPISPHVFLIP hvflip);

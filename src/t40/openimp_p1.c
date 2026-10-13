@@ -5,6 +5,7 @@
  */
 
 #include <errno.h>
+#include "../core/thread_name.h"
 #include <fcntl.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -1514,6 +1515,7 @@ static uint64_t p1_ivs_idle_us(const struct openimp_fs_channel *chn)
 static void *p1_ivs_feeder(void *arg)
 {
     (void)arg;
+    openimp_thread_setname("oimp-ivs-feed");
     p1_in_ivs_feeder = 1;
     for (;;) {
         int channel;
@@ -1767,6 +1769,30 @@ int IMP_FrameSource_GetFrame(int channel, IMPFrameInfo **frame)
          * edge and hold a 30 fps channel near 15 fps.  A short bounded DQBUF
          * retry keeps buffer ownership tied to the actual frame channel.
          */
+        /* All buffers held by callers (none queued to the driver): a DQBUF
+         * on the blocking channel fd would sleep in the kernel until a
+         * buffer returns -- forever if the holder is this very thread,
+         * and unkillable.  Wait here, bounded by the attempt limit, and
+         * let the caller see -1 instead. */
+        {
+            uint32_t qi, any = 0;
+
+            lock_p1();
+            if (!chn->enabled) {
+                unlock_p1();
+                openimp_profile_end(OPENIMP_PROFILE_FRAME_SOURCE_WAIT,
+                                    wait_profile);
+                return -1;
+            }
+            for (qi = 0; qi < chn->buffer_count; qi++)
+                if (chn->buffers[qi].queued)
+                    any = 1;
+            unlock_p1();
+            if (!any) {
+                usleep(1000);
+                continue;
+            }
+        }
         memset(words, 0, sizeof(words));
         words[1] = TISP_BUF_TYPE_VIDEO_CAPTURE;
         words[12] = TISP_MEMORY_USERPTR;
@@ -2147,6 +2173,24 @@ int OpenIMP_P1_IspIOCtl(uint32_t command, void *argument)
     lock_p1();
     prepare_p1();
     if (!p1.sensor_enabled || p1.isp_fd < 0) {
+        unlock_p1();
+        errno = ENODEV;
+        return -1;
+    }
+    result = record_ioctl(p1.isp_fd, command, argument);
+    unlock_p1();
+    return result;
+}
+
+/* ISP device ioctl that the vendor allows between IMP_ISP_Open and
+ * AddSensor (IMP_ISP_StartNightMode): only the device must be open. */
+int OpenIMP_P1_IspIOCtlOpened(uint32_t command, void *argument)
+{
+    int result;
+
+    lock_p1();
+    prepare_p1();
+    if (!p1.isp_open || p1.isp_fd < 0) {
         unlock_p1();
         errno = ENODEV;
         return -1;

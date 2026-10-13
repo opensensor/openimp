@@ -7,6 +7,8 @@
 #include <errno.h>
 #include <stddef.h>
 #include <stdio.h>
+#include <string.h>
+#include <pthread.h>
 
 #define P3_REPORT_UNSUPPORTED(name)                                           \
     fprintf(stderr, "openimp-p3: unsupported call: %s\n", #name)
@@ -59,3 +61,32 @@ P3_UNSUPPORTED(IMP_ISP_Tuning_DestroyOsdRgn)
 P3_UNSUPPORTED(IMP_ISP_Tuning_SetOsdRgnAttr)
 P3_UNSUPPORTED(IMP_ISP_Tuning_ShowOsdRgn)
 #endif
+
+/* IMP_System_MemPoolRequest (T40 1.3.x imp_system.h): libimp reserves
+ * "size" bytes of rmem per pool id and channels bound with
+ * IMP_FrameSource_SetPool / IMP_Encoder_SetPool draw from it.  OpenIMP
+ * allocates every channel from the one rmem arena, so a pool is a name only
+ * (reserving memory nothing draws from would just shrink the arena).  Same
+ * argument rules as the stock call: bad id or zero size fail, a second
+ * request for the same id fails ("already request"). */
+#define P3_MEMPOOLS 32
+static struct { int requested; size_t size; char name[32]; } p3_pools[P3_MEMPOOLS];
+static pthread_mutex_t p3_pool_lock = PTHREAD_MUTEX_INITIALIZER;
+
+int IMP_System_MemPoolRequest(int poolId, size_t size, const char *name)
+{
+    if (poolId < 0 || poolId >= P3_MEMPOOLS || size == 0)
+        return -1;
+    pthread_mutex_lock(&p3_pool_lock);
+    if (p3_pools[poolId].requested) {
+        pthread_mutex_unlock(&p3_pool_lock);
+        return -1;
+    }
+    p3_pools[poolId].requested = 1;
+    p3_pools[poolId].size = size;
+    memset(p3_pools[poolId].name, 0, sizeof(p3_pools[poolId].name));
+    if (name)
+        strncpy(p3_pools[poolId].name, name, sizeof(p3_pools[poolId].name) - 1);
+    pthread_mutex_unlock(&p3_pool_lock);
+    return 0;
+}

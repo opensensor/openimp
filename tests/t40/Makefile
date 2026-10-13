@@ -13,7 +13,16 @@ CAMERA_INPUT_TEST_BIN := $(PROJECT_DIR)/build/tests/t40-camera-input-test
 IVS_SRC := $(PROJECT_DIR)/src/t31
 IVS_FRAMEWORK_TEST_BIN := $(PROJECT_DIR)/build/tests/t40-ivs-framework-test
 
-check: $(P2_BUFSHARE_TEST_BIN) $(STREAM_LAYOUT_TEST_BIN) $(DENOISE_TEST_BIN) $(CAMERA_INPUT_TEST_BIN) $(IVS_FRAMEWORK_TEST_BIN) p3-controls isp-osd abi-layout frame-ts frame-rc vendor-cmd
+QUERY_TEST_BIN := $(PROJECT_DIR)/build/tests/t40-query-test
+SEI_TEST_BIN := $(PROJECT_DIR)/build/tests/t40-sei-test
+OSD_CB_TEST_BIN := $(PROJECT_DIR)/build/tests/t40-osd-callback-test
+DGAIN_TEST_BIN := $(PROJECT_DIR)/build/tests/t40-audio-dgain-test
+
+check: $(QUERY_TEST_BIN) $(SEI_TEST_BIN) $(OSD_CB_TEST_BIN) $(DGAIN_TEST_BIN) $(P2_BUFSHARE_TEST_BIN) $(STREAM_LAYOUT_TEST_BIN) $(DENOISE_TEST_BIN) $(CAMERA_INPUT_TEST_BIN) $(IVS_FRAMEWORK_TEST_BIN) p3-controls isp-osd abi-layout frame-ts frame-rc vendor-cmd
+	$(QUERY_TEST_BIN)
+	$(SEI_TEST_BIN)
+	$(OSD_CB_TEST_BIN)
+	$(DGAIN_TEST_BIN)
 	$(P2_BUFSHARE_TEST_BIN)
 	$(STREAM_LAYOUT_TEST_BIN)
 	$(DENOISE_TEST_BIN)
@@ -62,6 +71,36 @@ ifneq ($(T40_HEADERS),)
 else
 	@echo "t40 isp osd test skipped (set T40_HEADERS)"
 endif
+
+# Encoder_Query status block (vendor T40 1.3.1 semantics), host only
+$(QUERY_TEST_BIN): query_test.c $(PROJECT_DIR)/src/t40/p2_query.h
+	mkdir -p "$(dir $@)"
+	$(CC) -std=gnu99 -O2 -Wall -Wextra -Werror \
+		-I$(PROJECT_DIR)/include -I$(PROJECT_DIR)/src query_test.c -o "$@"
+
+# SetChnSeiAttr SEI NAL and the AU check that accepts it, host only
+$(SEI_TEST_BIN): sei_test.c $(PROJECT_DIR)/src/t40/t40_sei.h \
+	$(PROJECT_DIR)/src/t40/t31_stream_layout.c $(PROJECT_DIR)/src/t40/t31_stream_layout.h
+	mkdir -p "$(dir $@)"
+	$(CC) -std=gnu99 -O2 -Wall -Wextra -Werror -I$(PROJECT_DIR)/src \
+		sei_test.c $(PROJECT_DIR)/src/t40/t31_stream_layout.c -o "$@"
+
+# OSD_SetGroupCallback on the shared OSD module (no IPU paths run; the
+# rmem/bind helpers stay unresolved on purpose)
+$(OSD_CB_TEST_BIN): osd_callback_test.c $(PROJECT_DIR)/src/t23/openimp_t23_osd.c
+	mkdir -p "$(dir $@)"
+	$(CC) -std=gnu99 -O2 -Wall -Wextra -Werror -DPLATFORM_T40 \
+		'-D_Static_assert(c,m)=' -Wno-unused-result -fno-pie -no-pie \
+		-I$(PROJECT_DIR)/include -I$(PROJECT_DIR)/src osd_callback_test.c \
+		$(PROJECT_DIR)/src/t23/openimp_t23_osd.c $(PROJECT_DIR)/src/core/imp_log_emit.c \
+		-pthread -Wl,--unresolved-symbols=ignore-all -o "$@"
+
+# AI/AO digital gain, the driver ioctl faked (no audio device)
+$(DGAIN_TEST_BIN): audio_dgain_test.c $(PROJECT_DIR)/src/t40/openimp_p3_audio.c
+	mkdir -p "$(dir $@)"
+	$(CC) -std=gnu99 -O1 -g -Wall -Wextra -Wno-unused-function -DPLATFORM_T40 \
+		-I$(PROJECT_DIR)/include -I$(PROJECT_DIR)/src \
+		audio_dgain_test.c $(PROJECT_DIR)/src/core/imp_log_emit.c -pthread -ldl -o "$@"
 
 # host-only: private ioctl fixture, no camera
 $(CAMERA_INPUT_TEST_BIN): camera_input_test.c $(PROJECT_DIR)/src/t40/openimp_p1.c
@@ -123,6 +162,21 @@ vendor-cmd:
 		vendor_cmd_test.c $(PROJECT_DIR)/src/t40/t40_ep1.c \
 		-o $(PROJECT_DIR)/build/tests/t40-vendor-cmd-test
 	$(PROJECT_DIR)/build/tests/t40-vendor-cmd-test
+
+.PHONY: fs-hold
+fs-hold:
+	mkdir -p $(PROJECT_DIR)/build/tests
+	$(CC) -std=gnu99 -O2 -w -DPLATFORM_T40 -I$(PROJECT_DIR)/include -I$(PROJECT_DIR)/src \
+		framesource_hold_test.c $(PROJECT_DIR)/src/openimp_profile.c -pthread \
+		-o $(PROJECT_DIR)/build/tests/t40-fs-hold-test
+	$(PROJECT_DIR)/build/tests/t40-fs-hold-test
+
+.PHONY: mempool
+mempool:
+	mkdir -p $(PROJECT_DIR)/build/tests
+	$(CC) -std=gnu99 -Wall -Wextra -Werror -I$(PROJECT_DIR)/src mempool_test.c -pthread \
+		-o $(PROJECT_DIR)/build/tests/t40-mempool-test
+	$(PROJECT_DIR)/build/tests/t40-mempool-test
 
 .PHONY: frame-rc
 frame-rc:

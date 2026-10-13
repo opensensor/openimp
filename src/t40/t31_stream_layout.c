@@ -218,14 +218,26 @@ static uint32_t find_annexb_start3(const uint8_t *data, uint32_t offset,
     return length;
 }
 
+/* One SEI is accepted right in front of the VCL NAL: after the parameter
+ * sets of an IDR (expected position idr_count - 1), first in a P AU. */
+static int known_sei_slot(uint32_t position, int is_idr, uint32_t idr_count)
+{
+    if (is_idr > 0)
+        return position == idr_count - 1u;
+    return position == 0u;
+}
+
 static uint32_t au_check(const uint8_t *data, uint32_t length, int is_idr,
-                         OpenIMPT31AvcAuCheck *report, int hevc)
+                         OpenIMPT31AvcAuCheck *report, int hevc, int allow_sei)
 {
     static const uint8_t avc_idr_sequence[3] = { 7u, 8u, 5u };
     static const uint8_t hevc_idr_sequence[4] = { 32u, 33u, 34u, 19u };
     const uint8_t *idr_sequence = hevc ? hevc_idr_sequence : avc_idr_sequence;
     const uint32_t idr_count = hevc ? 4u : 3u;
     const uint8_t idr_type = hevc ? 19u : 5u;
+    /* 0xff: no NAL type matches, SEI is refused like any other type */
+    const uint8_t sei_type = allow_sei ? (hevc ? 39u : 6u) : 0xffu;
+    uint32_t sei_count = 0u;
     uint32_t start;
     uint32_t index = 0u;
     uint32_t order_bad = 0u;
@@ -266,13 +278,13 @@ static uint32_t au_check(const uint8_t *data, uint32_t length, int is_idr,
                 type = (data[header] >> 1) & 0x3fu;
                 /* nuh_layer_id 0 and nuh_temporal_id_plus1 1 */
                 known = (type == 1u || type == 19u || type == 32u ||
-                         type == 33u || type == 34u) &&
+                         type == 33u || type == 34u || type == sei_type) &&
                         (data[header] & 1u) == 0u &&
                         data[header + 1u] == 1u;
             } else {
                 type = data[header] & 0x1fu;
                 known = type == 1u || type == 5u || type == 7u ||
-                        type == 8u;
+                        type == 8u || type == sei_type;
             }
             if (data[header] & 0x80u) {
                 report->flags |= OPENIMP_T31_AU_FORBIDDEN_BIT;
@@ -288,9 +300,15 @@ static uint32_t au_check(const uint8_t *data, uint32_t length, int is_idr,
                     is_idr = type == idr_type;
             }
         }
-        if (is_idr > 0 && (index >= idr_count || type != idr_sequence[index]))
+        /* An SEI (T40 SetChnSeiAttr) sits right in front of the VCL NAL:
+         * it does not take a place in the expected sequence. */
+        if (type == sei_type && known_sei_slot(index - sei_count, is_idr,
+                                               idr_count)) {
+            sei_count++;
+        } else if (is_idr > 0 && (index - sei_count >= idr_count ||
+                    type != idr_sequence[index - sei_count]))
             order_bad = unexpected = 1u;
-        else if (is_idr == 0 && (index != 0u || type != 1u))
+        else if (is_idr == 0 && (index - sei_count != 0u || type != 1u))
             order_bad = unexpected = 1u;
         if (unexpected && report->first_bad_offset == UINT32_MAX)
             report->first_bad_offset = begin;
@@ -313,8 +331,8 @@ static uint32_t au_check(const uint8_t *data, uint32_t length, int is_idr,
         report->flags |= OPENIMP_T31_AU_MULTI_VCL;
     if (!report->vcl_count)
         report->flags |= OPENIMP_T31_AU_NO_VCL;
-    if (order_bad || (is_idr > 0 && index != idr_count) ||
-        (is_idr == 0 && index != 1u))
+    if (order_bad || (is_idr > 0 && index - sei_count != idr_count) ||
+        (is_idr == 0 && index - sei_count != 1u))
         report->flags |= OPENIMP_T31_AU_BAD_ORDER;
     return report->flags;
 }
@@ -322,13 +340,20 @@ static uint32_t au_check(const uint8_t *data, uint32_t length, int is_idr,
 uint32_t openimp_t31_avc_au_check(const uint8_t *data, uint32_t length,
                                   int is_idr, OpenIMPT31AvcAuCheck *report)
 {
-    return au_check(data, length, is_idr, report, 0);
+    return au_check(data, length, is_idr, report, 0, 0);
 }
 
 uint32_t openimp_t31_hevc_au_check(const uint8_t *data, uint32_t length,
                                    int is_idr, OpenIMPT31AvcAuCheck *report)
 {
-    return au_check(data, length, is_idr, report, 1);
+    return au_check(data, length, is_idr, report, 1, 0);
+}
+
+uint32_t openimp_t31_au_check_sei(const uint8_t *data, uint32_t length,
+                                  int is_idr, OpenIMPT31AvcAuCheck *report,
+                                  int hevc)
+{
+    return au_check(data, length, is_idr, report, hevc ? 1 : 0, 1);
 }
 
 static size_t append_text(char *out, size_t out_size, size_t used,

@@ -27,6 +27,7 @@
 #include <pthread.h>
 
 #include "avpu_roi.h"
+#include "t40/t40_sei.h"
 
 /* Frame-level rate control (the OEM Allegro core and the OpenIMP
  * controller): T31, and T40 whose OEM libimp drives the same AVPU with the
@@ -382,6 +383,10 @@ typedef struct ALAvpuContext {
     int roi_req_min, roi_req_max; /* T31: requested deltas before clamping */
     int roi_range_clamped; /* T31: the last table was cut by min/max QP */
     uint8_t *stream_header_shadow; /* optional 16 x 0x220 host-prefix shadow */
+    /* T40 IMP_Encoder_SetChnSeiAttr: set by the caller under the codec SEI
+     * lock, written in front of the slice by the header prewrite. */
+    OpenIMPT40Sei sei;
+    uint32_t sei_skipped;   /* SEI left out: no room in the 0x220 prefix */
     volatile unsigned int dropped_completions;
     volatile unsigned int reported_dropped_completions;
 } ALAvpuContext;

@@ -1,4 +1,5 @@
 #include <stdint.h>
+#include "core/thread_name.h"
 #include <stdarg.h>
 #include <stddef.h>
 #include <stdlib.h>
@@ -1713,6 +1714,7 @@ static void tseries_tuning_wait_period(void)
 static void *tseries_tuning_worker(void *unused)
 {
     (void)unused;
+    openimp_thread_setname("oimp-isptune");
 
     while (!tseries_tuning_thread_stop) {
         int32_t total_gain = 0;
@@ -3834,15 +3836,26 @@ int IMP_ISP_Tuning_GetAeState(void *state)
     return tseries_tuning_get_ptr(TISP_CID_AE_STATE, state);
 }
 
-int IMP_ISP_Tuning_GetAwbZone(void *awb_zone)
+#if defined(PLATFORM_T31)
+/* Runtime capability marker for streamers: present (and 1) only in a libimp
+ * whose GetAwbZone returns the vendor block (675 bytes, truncated zone
+ * means of the AWB statistics) and 0 only with fresh statistics; the open
+ * tx-isp-t31 answers -EAGAIN without them.  Older libimps took three
+ * pointers and returned stale or zero data as a success. */
+__attribute__((visibility("default"))) const int OpenIMP_Cap_AwbZone = 1;
+#endif
+
+int IMP_ISP_Tuning_GetAwbZone(IMPISPAWBZone *awb_zone)
 {
-    /* Stock: int IMP_ISP_Tuning_GetAwbZone(IMPISPAWBZone *awb_zone).
-     * T20 3.12.0: 15x15 {u16 r/g, u16 b/g, u32 pixel count}; T31 (and the
-     * other SoCs with the three-plane header): zone_r/zone_g/zone_b[225].
-     * Either way the request carries the caller's buffer and the driver
-     * copies the whole statistic to it.  (This took three pointers and
+    /* Stock 1.1.6 (0x9428c): int IMP_ISP_Tuning_GetAwbZone(IMPISPAWBZone *),
+     * the request {1, 0x800000b, awb_zone} carries the caller's block and
+     * the driver copies the 675 bytes (T20 3.12.0: 0x8000009 and 15x15
+     * {u16 r/g, u16 b/g, u32 pixel count}).  (This took three pointers and
      * passed a stack struct of them: the driver's 675-byte copy then
-     * overwrote the stack of the caller - a bus error on the T31.) */
+     * overwrote the stack of the caller - a bus error on the T31.)
+     * The ioctl return is passed on: -1 when the driver has no statistics
+     * frame of the running stream (open tx-isp: -EAGAIN), so the caller
+     * never takes a zero-filled or stale block for a measurement. */
 #if defined(PLATFORM_T20)
     return tseries_tuning_get_ptr(TISP_CID_T20_AWB_ZONE, awb_zone);
 #else

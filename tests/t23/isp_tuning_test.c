@@ -790,6 +790,8 @@ static void *run(void *unused)
     return NULL;
 }
 
+extern const int OpenIMP_Cap_AwbZone;
+
 int main(void)
 {
     const size_t stack_size = 1u << 20;
@@ -801,6 +803,9 @@ int main(void)
         fprintf(stderr, "needs a non-PIE x86-64 build\n");
         return 2;
     }
+    /* GetAwbZone: the vendor 1.1.x block and the capability marker */
+    CHECK(sizeof(IMPISPAWBZone) == 675, "IMPISPAWBZone is %zu bytes", sizeof(IMPISPAWBZone));
+    CHECK(OpenIMP_Cap_AwbZone == 1, "OpenIMP_Cap_AwbZone");
     pthread_attr_init(&attr);
     pthread_attr_setstack(&attr, stack, stack_size);
     if (pthread_create(&thread, &attr, run, NULL) != 0)

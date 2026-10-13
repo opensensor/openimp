@@ -26,6 +26,7 @@ the vendor:
 | `src/eprc/eprc_mbrc.c` | Helix macroblock rate control | T21, T23 |
 | `src/rc_t20/rc_t20.c`, `src/rc_t10/rc_t10.c` | floating-point rate controllers, `-Os` changes the fused multiply-add choice | T10, T20 |
 | `src/eprc/eprc.c`, `src/eprc/eprc_t21.c` | floating-point rate controllers (kept for bit-identity) | T21, T23 |
+| `src/t30/t30_helix_encoder.c`, `src/t30/helix_bitstream.c`, `src/t30/helix_jpeg.c`, `src/t30/h264enc/{common,cabac,set,slice}.c`, `src/t40/t31_rate_control.c`, `src/framesource/framesource_tseries.c` | Helix per-frame path: frame submit, bitstream read-out, slice/CABAC header writer, frame-level rate control, hardware JPEG, frame dequeue and group dispatch. On T10/T20/T21/T23/T30 this runs synchronously in the streamer's threads per frame; added after the T21 CPU comparison of 2026-10-11 (A/B against -Os pending) | T10, T20, T21, T23, T30 |
 
 Everything else (encoder setup, ISP and FrameSource control, ioctl
 plumbing, logging, audio codecs at 8/16 kHz) runs per frame or per API call

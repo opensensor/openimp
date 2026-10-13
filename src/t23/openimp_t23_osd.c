@@ -69,6 +69,11 @@ struct t23_osd_region {
 struct t23_osd_group {
     int created;
     int started;
+#if defined(PLATFORM_T40)
+    /* T40 IMP_OSD_SetGroupCallback: called with every frame after the
+     * group was drawn into it (vendor osd_update) */
+    int (*callback)(int group, IMPFrameInfo *frame);
+#endif
 };
 
 static pthread_mutex_t osd_lock = PTHREAD_MUTEX_INITIALIZER;
@@ -489,7 +494,7 @@ static int region_draws_ipu(const struct t23_osd_region *r)
             r->attr.type == OSD_REG_BITMAP) && r->active >= 0 && r->pic_phys;
 }
 
-void openimp_t23_osd_apply(int group, void *frame)
+static void osd_apply_draw(int group, void *frame)
 {
     const uint8_t *fi = frame;
     uint32_t width, height, phys, virt, bg_h;
@@ -679,6 +684,48 @@ int IMP_OSD_SetPoolSize(int size)
     pthread_mutex_unlock(&osd_lock);
     return 0;
 }
+
+/* The OSD cell's work on a frame: draw the group, then the T40 group
+ * callback (vendor osd_update: osd_process, then callback(group, frame) if
+ * one is set; its return value is ignored).  The callback runs without the
+ * OSD lock, so it may call OSD functions. */
+void openimp_t23_osd_apply(int group, void *frame)
+{
+#if defined(PLATFORM_T40)
+    int (*callback)(int, IMPFrameInfo *) = NULL;
+#endif
+
+    osd_apply_draw(group, frame);
+#if defined(PLATFORM_T40)
+    if (!frame || !valid_group(group))
+        return;
+    pthread_mutex_lock(&osd_lock);
+    if (osd_groups[group].created)
+        callback = osd_groups[group].callback;
+    pthread_mutex_unlock(&osd_lock);
+    if (callback)
+        (void)callback(group, (IMPFrameInfo *)frame);
+#endif
+}
+
+#if defined(PLATFORM_T40)
+/* Vendor T40 1.3.1 IMP_OSD_SetGroupCallback (0xbda40): group < 6 and
+ * created (-1 otherwise), the callback (NULL clears it) is stored in the
+ * group, 0.  Header: after CreateGroup, before FrameSource_EnableChn. */
+int IMP_OSD_SetGroupCallback(int grpNum, int (*callback)(int group_index, IMPFrameInfo *frame))
+{
+    if (grpNum < 0 || grpNum >= 6)
+        return -1;
+    pthread_mutex_lock(&osd_lock);
+    if (!osd_groups[grpNum].created) {
+        pthread_mutex_unlock(&osd_lock);
+        return -1;
+    }
+    osd_groups[grpNum].callback = callback;
+    pthread_mutex_unlock(&osd_lock);
+    return 0;
+}
+#endif
 
 int IMP_OSD_CreateGroup(int group)
 {

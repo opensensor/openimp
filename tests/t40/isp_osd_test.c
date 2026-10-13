@@ -3,6 +3,7 @@
  * as the vendor libimp 1.3.0/1.3.1 does them.  Host test with fake rmem,
  * frame source and tuning ioctl; needs the T40 1.3.1 vendor headers. */
 #include <assert.h>
+#include <errno.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -23,7 +24,7 @@ static struct {
     IMPISPSingleOSDAttr attr;
 } sent[64];
 static int nsent;
-static int nalloc, nfree, nflush;
+static int nalloc, nfree, nflush, ninval;
 static unsigned char (*rmem)[4096];   /* below 4 GiB: virt_addr is 32-bit */
 
 int OpenIMP_P1_TuningIOCtl(uint32_t command, void *argument)
@@ -66,9 +67,25 @@ int DMA_RmemFlushCache(void *address, uint32_t length, int direction)
 {
     (void)address;
     (void)length;
-    assert(direction == 1);
-    nflush++;
+    assert(direction == 1 || direction == 2);
+    if (direction == 2)
+        ninval++;
+    else
+        nflush++;
     return 0;
+}
+
+/* IMP_ISP_GetRaw: the ISP-device ioctl */
+static struct { uint32_t command; IMPISPGETRawiConfig attr; int calls, result; } rawio;
+int OpenIMP_P1_IspIOCtlOpened(uint32_t command, void *argument);
+int OpenIMP_P1_IspIOCtlOpened(uint32_t command, void *argument)
+{
+    rawio.command = command;
+    memcpy(&rawio.attr, argument, sizeof(rawio.attr));
+    rawio.calls++;
+    if (rawio.result)
+        errno = rawio.result;
+    return rawio.result ? -1 : 0;
 }
 
 int IMP_FrameSource_GetChnAttr(int chn, IMPFSChnAttr *attr)
@@ -230,6 +247,35 @@ int main(void)
     nsent = 0;
     assert(IMP_ISP_GetSingleOSDAttr(IMPVI_MAIN, &single) == 0);
     assert(nsent == 1 && sent[0].direction == 1 && sent[0].control == 0x080000a2);
+
+    /* GetRaw: sensor id written, w*h (8 bit) / w*h*2 (16 bit) rmem buffer,
+     * kept per sensor and grown when needed, ioctl 0xc004542f, invalidate */
+    {
+        IMPISPGETRawiConfig r;
+        int a0 = nalloc, f0 = nfree;
+
+        memset(&r, 0, sizeof(r));
+        r.raw_width = 32; r.raw_height = 16; r.raw_bit = 8;
+        assert(IMP_ISP_GetRaw(IMPVI_MAIN, &r) == 0);
+        assert(r.sensor_id == 0 && nalloc == a0 + 1 && r.buf.buf_size == 512);
+        assert(r.buf.paddr >= 0x04000000U && r.buf.vaddr);
+        assert(rawio.calls == 1 && rawio.command == 0xc004542fU && rawio.attr.buf.paddr == r.buf.paddr);
+        assert(ninval == 1);
+        assert(IMP_ISP_GetRaw(IMPVI_MAIN, &r) == 0 && nalloc == a0 + 1);   /* reused */
+        r.raw_bit = 16;
+        assert(IMP_ISP_GetRaw(IMPVI_MAIN, &r) == 0);                        /* grown */
+        assert(nalloc == a0 + 2 && nfree == f0 + 1 && r.buf.buf_size == 1024);
+        r.raw_bit = 12;
+        assert(IMP_ISP_GetRaw(IMPVI_MAIN, &r) == -1);
+        assert(IMP_ISP_GetRaw((IMPVI_NUM)4, &r) == -4 && r.sensor_id == 4);
+        assert(IMP_ISP_GetRaw(IMPVI_MAIN, NULL) == -1);
+        r.raw_bit = 8;
+        rawio.result = ENODEV;
+        assert(IMP_ISP_GetRaw(IMPVI_MAIN, &r) == -8);
+        rawio.result = EIO;
+        assert(IMP_ISP_GetRaw(IMPVI_MAIN, &r) == -1);
+        rawio.result = 0;
+    }
 
     printf("t40 isp osd: ok\n");
     return 0;

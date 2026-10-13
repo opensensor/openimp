@@ -839,9 +839,9 @@ static int ivs_group_source(int group)
 static void *ivs_thread(void *arg)
 {
     struct t31_ivs_channel *c = arg;
-    char name[16];
+    char name[32];
 
-    snprintf(name, sizeof(name), "ivs_chn%d", c->number);
+    snprintf(name, sizeof(name), "IVS(%d)-ivs_processing", c->number);
     prctl(PR_SET_NAME, name);
     for (;;) {
         IMPIVSInterface *inf = c->inf;
