@@ -124,6 +124,14 @@ int OpenIMP_P1_TuningIOCtl(uint32_t command, void *argument)
     return last.result;
 }
 
+/* WaitFrameDone's unlocked path: same "driver", counted separately */
+static int wait_calls;
+int OpenIMP_P1_TuningWaitIOCtl(uint32_t command, void *argument)
+{
+    wait_calls++;
+    return OpenIMP_P1_TuningIOCtl(command, argument);
+}
+
 int OpenIMP_P1_SetDefaultBinPath(IMPVI_NUM num, const char *path)
 {
     (void)num;
@@ -603,7 +611,9 @@ int main(void)
         /* WaitFrameDone: timeout goes out, counter and irq type come back */
         memset(&wait, 0, sizeof(wait));
         wait.timeout = 25;
+        wait_calls = 0;
         assert(IMP_ISP_Tuning_WaitFrameDone(IMPVI_MAIN, &wait) == 0);
+        assert(wait_calls == 1);
         assert(last.control == 0x08000091 && last.direction == 1);
         assert(wait.timeout == 25 && wait.cnt == 0x100000002ULL && wait.irqtype == 1);
         /* a failing kernel leaves the caller's structure alone */

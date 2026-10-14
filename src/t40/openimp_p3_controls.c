@@ -65,6 +65,7 @@ typedef struct {
 } P3TuningRequest;
 
 extern int OpenIMP_P1_TuningIOCtl(uint32_t command, void *argument);
+extern int OpenIMP_P1_TuningWaitIOCtl(uint32_t command, void *argument);
 extern int OpenIMP_P1_TuningEnabled(void);
 extern int OpenIMP_P1_SetDefaultBinPath(IMPVI_NUM num, const char *path);
 extern int OpenIMP_P1_GetDefaultBinPath(IMPVI_NUM num, char *path, size_t size);
@@ -1946,17 +1947,24 @@ int32_t IMP_ISP_Tuning_GetStatisConfig(IMPVI_NUM num,
 /* Vendor WaitFrameDone: a 24-byte scratch block whose first word is the
  * caller's timeout goes out as a get; on success the kernel's frame counter
  * (offset 8, 8 bytes) and IRQ type (offset 16) are copied back to the
- * caller's structure (offset 4 stays untouched). */
+ * caller's structure (offset 4 stays untouched).  The wait runs outside the
+ * P1 lock; a timeout returns -1 with errno ETIMEDOUT (open T41 driver; the
+ * vendor driver returns 0 and the caller compares cnt). */
 int32_t IMP_ISP_Tuning_WaitFrameDone(IMPVI_NUM num, IMPISPWaitFrameAttr *attr)
 {
     unsigned char scratch[24];
+    P3TuningRequest request;
     int32_t result;
 
-    if (!attr)
+    if (!attr || num < IMPVI_MAIN || num >= IMPVI_BUTT)
         return -1;
     memset(scratch, 0, sizeof(scratch));
     memcpy(scratch, attr, 4);
-    result = p3_tuning_pointer(num, 1, TISP_CID_WAIT_FRAME_DONE, scratch);
+    request.vinum = num;
+    request.direction = 1;
+    request.control = TISP_CID_WAIT_FRAME_DONE;
+    request.payload = (uintptr_t)scratch;
+    result = OpenIMP_P1_TuningWaitIOCtl(TISP_VIDIOC_DEFAULT_TUNING, &request);
     if (result == 0)
         memcpy((unsigned char *)attr + 8, scratch + 8, 12);
     return result;
