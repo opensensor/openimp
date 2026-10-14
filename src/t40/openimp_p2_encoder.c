@@ -1245,6 +1245,9 @@ extern int IMP_FrameSource_ReleaseFrame(int channel, void *frame);
 #if defined(PLATFORM_T20) || defined(PLATFORM_T21) || defined(PLATFORM_T23)
 extern int VBMGetFrame(int chn, void **frame);
 #define P2_FS_TRY_FRAME(chn, frame) VBMGetFrame((chn), (frame))
+#elif defined(PLATFORM_T40)
+extern int OpenIMP_T40_FrameSource_TryGetFrame(int channel, void **frame);
+#define P2_FS_TRY_FRAME(chn, frame) OpenIMP_T40_FrameSource_TryGetFrame((chn), (frame))
 #else
 #define P2_FS_TRY_FRAME(chn, frame) IMP_FrameSource_GetFrame((chn), (frame))
 #endif
@@ -2588,6 +2591,9 @@ static int p2_polling_stream(int channel, uint32_t timeout_ms)
     uint64_t interval_us;
     uint64_t now_us;
     uint64_t frame_deadline_us;
+#if defined(PLATFORM_T40)
+    uint64_t poll_deadline_us;
+#endif
     uint64_t stream_deadline_us;
     uint64_t wait_us;
     uint64_t timeout_us;
@@ -2611,6 +2617,9 @@ static int p2_polling_stream(int channel, uint32_t timeout_ms)
     if (!p2_valid_channel(channel))
         return -1;
     poll_profile = openimp_profile_begin();
+#if defined(PLATFORM_T40)
+    poll_deadline_us = p2_monotonic_us() + (uint64_t)timeout_ms * 1000u;
+#endif
 #if defined(PLATFORM_T23)
     pace_start_us = p2_monotonic_us();
 #endif
@@ -2707,7 +2716,11 @@ static int p2_polling_stream(int channel, uint32_t timeout_ms)
         /* FrameSource exposes a non-blocking userspace-ready queue, while
          * PollingStream is a blocking ABI.  Wait outside the shared AVPU lock
          * so an empty queue neither spins the caller nor starves capture. */
+#if defined(PLATFORM_T40)
+        frame_deadline_us = poll_deadline_us;
+#else
         frame_deadline_us = p2_monotonic_us() + timeout_us;
+#endif
 #if defined(PLATFORM_T31)
         /* Sleep until the capture worker publishes a frame instead of
          * polling every millisecond. The sequence is read before each

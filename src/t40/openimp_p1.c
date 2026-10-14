@@ -1724,7 +1724,7 @@ done:
     return result;
 }
 
-int IMP_FrameSource_GetFrame(int channel, IMPFrameInfo **frame)
+static int p1_get_frame_attempts(int channel, IMPFrameInfo **frame, int max_attempts)
 {
     struct openimp_fs_channel *chn;
     struct openimp_fs_buffer *buffer;
@@ -1758,7 +1758,7 @@ int IMP_FrameSource_GetFrame(int channel, IMPFrameInfo **frame)
 
     wait_profile = openimp_profile_begin();
 
-    for (attempts = 0; attempts < 1000; attempts++) {
+    for (attempts = 0; attempts < max_attempts; attempts++) {
         OpenIMPProfileStamp dqbuf_profile;
 
         /*
@@ -1789,7 +1789,8 @@ int IMP_FrameSource_GetFrame(int channel, IMPFrameInfo **frame)
                     any = 1;
             unlock_p1();
             if (!any) {
-                usleep(1000);
+                if (attempts + 1 < max_attempts)
+                    usleep(1000);
                 continue;
             }
         }
@@ -1809,11 +1810,12 @@ int IMP_FrameSource_GetFrame(int channel, IMPFrameInfo **frame)
                                 wait_profile);
             return -1;
         }
-        usleep(1000);
+        if (attempts + 1 < max_attempts)
+            usleep(1000);
     }
     openimp_profile_count(OPENIMP_PROFILE_DQBUF_RETRIES,
                           (uint64_t)attempts);
-    if (attempts == 1000) {
+    if (attempts == max_attempts) {
         openimp_profile_end(OPENIMP_PROFILE_FRAME_SOURCE_WAIT, wait_profile);
         return -1;
     }
@@ -1893,6 +1895,26 @@ int IMP_FrameSource_GetFrame(int channel, IMPFrameInfo **frame)
     openimp_profile_end(OPENIMP_PROFILE_FRAME_SOURCE_WAIT, wait_profile);
     return 0;
 }
+
+int IMP_FrameSource_GetFrame(int channel, IMPFrameInfo **frame)
+{
+    return p1_get_frame_attempts(channel, frame, 1000);
+}
+
+#if defined(PLATFORM_T40)
+/* One queue probe; the encoder owns retry timing. */
+int OpenIMP_T40_FrameSource_TryGetFrame(int channel, void **frame)
+{
+    IMPFrameInfo *ready = NULL;
+    int ret;
+
+    if (!frame)
+        return -1;
+    ret = p1_get_frame_attempts(channel, &ready, 1);
+    *frame = ready;
+    return ret;
+}
+#endif
 
 int IMP_FrameSource_ReleaseFrame(int channel, IMPFrameInfo *frame)
 {
