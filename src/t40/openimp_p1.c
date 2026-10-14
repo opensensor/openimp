@@ -2246,3 +2246,38 @@ int OpenIMP_P1_TuningIOCtl(uint32_t command, void *argument)
     unlock_p1();
     return result;
 }
+
+/* Blocking tuning get (WaitFrameDone): the ioctl sleeps up to the caller's
+ * timeout, so it runs on a duplicate of the tuning descriptor outside the
+ * P1 lock (a spinlock); other tuning calls are not held up meanwhile and a
+ * concurrent close cannot hand the number to another file.  The open
+ * drivers return ETIMEDOUT when no frame arrived: no syslog line for that
+ * or for a signal. */
+int OpenIMP_P1_TuningWaitIOCtl(uint32_t command, void *argument)
+{
+    int fd;
+    int result;
+    int err;
+
+    lock_p1();
+    prepare_p1();
+    fd = p1.tuning_enabled && p1.tuning_fd >= 0 ?
+         fcntl(p1.tuning_fd, F_DUPFD_CLOEXEC, 0) : -1;
+    unlock_p1();
+    if (fd < 0) {
+        errno = ENODEV;
+        return -1;
+    }
+    result = ioctl(fd, command, argument);
+    err = result < 0 ? errno : 0;
+    close(fd);
+    lock_p1();
+    p1.last_ioctl = command;
+    p1.last_errno = err;
+    unlock_p1();
+    if (result < 0 && err != ETIMEDOUT && err != EINTR)
+        syslog(LOG_ERR, "openimp-p1: ioctl cmd=0x%08x failed: %d",
+               command, err);
+    errno = err;
+    return result;
+}
