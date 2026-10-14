@@ -44,6 +44,8 @@ Further items (evening 2026-10-03):
 
 - **T41 AddSensor reclaim (pending):** after an OOM kill the T41 sensor stays registered and `AddSensor` returns EBUSY until reboot (vendor behaviour). A driver fix that re-registers the sensor (`claude/t41-sensor-rereg`) crashed on the first device load and is being analysed; not usable yet.
 - **T21 AWB faster than vendor:** the lifted AWB needs 0.95x of the vendor instructions (was 1.41x), output bit-identical, cam-D isp_fw_process -10 % (`claude/t21-size-awb-opt`); the kernel module is also smaller (760 to 452 KB). No switch, nothing to integrate.
+- **T40 encoder poll honours its deadline (agg-39 candidate, `claude/t40-poll-timeout` 78ca5d0):** when the ISP delivers no frames, `IMP_Encoder_PollingStream` on T40 returns within its timeout instead of retrying 1000 x 1 ms inside the poll; public `GetFrame` is unchanged. Host tests: no-frame 0/20/100 ms, pacing and budget; Eufy T40 (open driver 3534ee96, t40_devtest mask 5): 35 results with the known BcshHue failure, identical to the unpatched build.
+- **T21/T23/T30 libimp Helix per-frame path at `-Os` again (agg-39 candidate, `claude/t21-os-revert` 06bb826):** the `-O2` exception of 256f50c bought no measurable CPU on cam-D (streamer 9.3–10.1 % with `-Os` against 9.5–10.1 % with `-O2`, 2026-10-14) and cost about 18 KB per SoC; nothing to integrate.
 - **Smaller binaries (2026-10-03 evening):** gc-sections in OpenIMP (`claude/openimp-size`, 2040a03): T23 libimp 774 to 726 KB, T20 694 to 594 KB; stripped local symbols in open-tx-isp (`claude/open-tx-isp-size`, 15232deb): T23 module 1,211 to 1,047 KB, T20 819 to 775 KB. No API change; rootfs back to 0x4DE000 (T23) / 0x4DD000 (T20).
 
 Further items (night 2026-10-03):
