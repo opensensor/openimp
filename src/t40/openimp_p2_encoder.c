@@ -2105,6 +2105,27 @@ int IMP_Encoder_CreateChn(int channel, IMPEncoderCHNAttr *attr)
         default:
             break;      /* FIXQP and JPEG channels have no Allegro rate control */
         }
+        if (has_rc) {
+            /* AL_Codec_Encode_SetRcParam only caps the QPs at 51, so the
+             * usual iInitialQP -1 ("derive") would become 51 and the frame
+             * RC would start at maxQP.  Keep what p2_codec_params gave the
+             * codec: min/max QP in 1..51, an initial QP outside it -> 26. */
+            int16_t *init_qp, *min_qp, *max_qp;
+
+            if (codec_rc.attrRcMode.rcMode == IMP_ENC_RC_MODE_CBR) {
+                init_qp = &codec_rc.attrRcMode.attrCbr.iInitialQP;
+                min_qp = &codec_rc.attrRcMode.attrCbr.iMinQP;
+                max_qp = &codec_rc.attrRcMode.attrCbr.iMaxQP;
+            } else {
+                init_qp = &codec_rc.attrRcMode.attrVbr.iInitialQP;
+                min_qp = &codec_rc.attrRcMode.attrVbr.iMinQP;
+                max_qp = &codec_rc.attrRcMode.attrVbr.iMaxQP;
+            }
+            *min_qp = *min_qp < 1 ? 1 : *min_qp > 51 ? 51 : *min_qp;
+            *max_qp = *max_qp < 1 ? 1 : *max_qp > 51 ? 51 : *max_qp;
+            if (*init_qp < 1 || *init_qp > 51)
+                *init_qp = 26;
+        }
         if (has_rc && AL_Codec_Encode_SetRcParam(ch->codec, &codec_rc) != 0) {
             AL_Codec_Encode_Destroy(ch->codec);
             ch->codec = NULL;
