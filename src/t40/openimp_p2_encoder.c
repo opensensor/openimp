@@ -2065,6 +2065,53 @@ int IMP_Encoder_CreateChn(int channel, IMPEncoderCHNAttr *attr)
     (void)AL_Codec_Encode_SetRcQualityCap(
         ch->codec, (int)attr->rcAttr.attrRcMode.rcMode,
         attr->rcAttr.attrRcMode.attrCappedVbr.uMaxPSNR);
+    /* channel_encoder_init (0x8098c) hands the rate-control attribute to
+     * channel_encoder_set_rc_param (0x7e430) while the channel is created;
+     * OpenIMP only did that from IMP_Encoder_SetChnAttrRcMode, so a channel
+     * that is created and never re-set kept avpu.t31_rc_options at 0 (the codec
+     * struct is memset in AL_Codec_Encode_Create) where the OEM uses 1.  Not
+     * IMP_Encoder_SetChnAttrRcMode here: it takes ch->lock, which CreateChn
+     * already holds, and it requires ch->created.  The attribute carries the
+     * rates in kbit/s and the codec wants bit/s, the same conversion the
+     * runtime path applies. */
+    {
+        IMPEncoderRcAttr codec_rc = attr->rcAttr;
+        uint32_t target_kbps;
+        uint32_t maximum_kbps;
+        int has_rc = 0;
+
+        switch (codec_rc.attrRcMode.rcMode) {
+        case IMP_ENC_RC_MODE_CBR:
+            target_kbps = codec_rc.attrRcMode.attrCbr.uTargetBitRate;
+            codec_rc.attrRcMode.attrCbr.uTargetBitRate =
+                target_kbps > UINT32_MAX / 1000u ? UINT32_MAX :
+                target_kbps * 1000u;
+            has_rc = 1;
+            break;
+        case IMP_ENC_RC_MODE_VBR:
+        case IMP_ENC_RC_MODE_CAPPED_VBR:
+        case IMP_ENC_RC_MODE_CAPPED_QUALITY:
+            /* the capped attributes share the VBR layout up to uMaxPSNR */
+            target_kbps = codec_rc.attrRcMode.attrVbr.uTargetBitRate;
+            maximum_kbps = codec_rc.attrRcMode.attrVbr.uMaxBitRate;
+            codec_rc.attrRcMode.attrVbr.uTargetBitRate =
+                target_kbps > UINT32_MAX / 1000u ? UINT32_MAX :
+                target_kbps * 1000u;
+            codec_rc.attrRcMode.attrVbr.uMaxBitRate =
+                maximum_kbps > UINT32_MAX / 1000u ? UINT32_MAX :
+                maximum_kbps * 1000u;
+            has_rc = 1;
+            break;
+        default:
+            break;      /* FIXQP and JPEG channels have no Allegro rate control */
+        }
+        if (has_rc && AL_Codec_Encode_SetRcParam(ch->codec, &codec_rc) != 0) {
+            AL_Codec_Encode_Destroy(ch->codec);
+            ch->codec = NULL;
+            pthread_mutex_unlock(&ch->lock);
+            return -1;
+        }
+    }
 #endif
     if (AL_Codec_Encode_SetStreamBufferCount(ch->codec,
                                              ch->max_stream_count) != 0) {
