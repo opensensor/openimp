@@ -2213,7 +2213,7 @@ int IMP_Encoder_CreateChn(int channel, IMPEncoderCHNAttr *attr)
     if (ch->codec_type == IMP_ENC_TYPE_JPEG)
         (void)AL_Codec_Encode_SetJpegQuality(
             ch->codec, attr->rcAttr.attrRcMode.attrFixQp.iInitialQP);
-#if defined(PLATFORM_T41)
+#if defined(PLATFORM_T41) || defined(PLATFORM_T21)
     if (ch->jpeg_quality.user_ql_en)
         (void)AL_Codec_Encode_SetJpegQl(ch->codec, 1,
                                         ch->jpeg_quality.qmem_table);
@@ -3713,7 +3713,8 @@ int IMP_Encoder_SetJpegeQl(int channel, IMPEncoderJpegeQl *quality)
 {
     if (!p2_valid_channel(channel) || !quality)
         return -1;
-#if defined(PLATFORM_T23) || defined(PLATFORM_T30) || defined(PLATFORM_T41)
+#if defined(PLATFORM_T23) || defined(PLATFORM_T30) || defined(PLATFORM_T41) || \
+    defined(PLATFORM_T21)
     {
         P2EncoderChannel *ch = &p2_channels[channel];
         int result = 0;

@@ -8022,7 +8022,7 @@ struct AL_CodecEncode {
 #else
     /* JPEG quality 1..100 from iInitialQP at CreateChn (0: default 75) */
     uint32_t jpeg_quality;
-#if defined(PLATFORM_T41)
+#if defined(PLATFORM_T41) || defined(PLATFORM_T21)
     /* IMP_Encoder_SetJpegeQl (software JPEG), under jpeg_ql_lock */
     int jpeg_user_tables;
     uint8_t jpeg_tables[128];
@@ -8173,10 +8173,10 @@ static inline uint32_t codec_jpeg_quality(const AL_CodecEncode *enc)
     return enc->jpeg_quality ? enc->jpeg_quality : 75u;
 }
 
-#if defined(PLATFORM_T41)
+#if defined(PLATFORM_T41) || defined(PLATFORM_T21)
 static pthread_mutex_t jpeg_ql_lock = PTHREAD_MUTEX_INITIALIZER;
 
-/* IMP_Encoder_SetJpegeQl on T41: enable != 0 replaces the quantizers the
+/* IMP_Encoder_SetJpegeQl on T41 and T10/T20/T21: enable != 0 replaces the quantizers the
  * software JPEG encoder derives from the channel quality with the caller's
  * (luma then chroma, 64 bytes each, the same order as on T20/T21/T23);
  * enable == 0 goes back to the channel quality.  Takes effect with the
@@ -13115,7 +13115,7 @@ static int al_codec_encode_process_impl(void *codec, void *frame,
             (codec_type == IMP_ENC_TYPE_JPEG
                 ? codec_encode_jpeg_ql(enc, &hw_frame, hw_stream)
                 : HW_Encoder_Encode_Software(&hw_frame, hw_stream, codec_type)) < 0
-#elif defined(PLATFORM_T41)
+#elif defined(PLATFORM_T41) || defined(PLATFORM_T21)
             (codec_type == IMP_ENC_TYPE_JPEG
                 ? codec_encode_jpeg_t41(enc, &hw_frame, hw_stream)
                 : HW_Encoder_Encode_Software(&hw_frame, hw_stream, codec_type)) < 0
