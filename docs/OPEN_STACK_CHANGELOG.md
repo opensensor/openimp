@@ -3,9 +3,31 @@
 Everything changed, extended or fixed in OpenIMP, open-tx-isp, timps and the thingino
 integration since the test campaign started on 2026-09-30. Kept up to date during the campaign.
 
-Last update: 2026-10-12 (aggregate agg-38, build and host tests only; before that the T40 night branch, host only); before that 2026-10-11 (aggregate agg-36 after RC1, build and host tests only; before that RC1 v2026.10.11-rc1: openimp fe9307c (agg-35 687a68e4 + docs), open-tx-isp 191be6c5 (agg-35 6e464ac7 + docs); agg-35 soak clean). Before that 2026-10-10 evening (cam-K first T40 device run, T41 audio/driver controls, audio on T10..T31, agg-35 build; before that docs-1010b: front crop vs flip, AeComp, agg-34.1, T41 notes; docs-1010: results of 2026-10-10 collected; items marked "in branch" are not yet in an aggregate). Branch names (`claude/...`) in the tables and sections below are historic: the branches were merged into `next` and deleted.
+Last update: 2026-10-16 (aggregate agg-39, flashed on the test cameras, soak pending); before that 2026-10-12 (aggregate agg-38, build and host tests only; before that the T40 night branch, host only); before that 2026-10-11 (aggregate agg-36 after RC1, build and host tests only; before that RC1 v2026.10.11-rc1: openimp fe9307c (agg-35 687a68e4 + docs), open-tx-isp 191be6c5 (agg-35 6e464ac7 + docs); agg-35 soak clean). Before that 2026-10-10 evening (cam-K first T40 device run, T41 audio/driver controls, audio on T10..T31, agg-35 build; before that docs-1010b: front crop vs flip, AeComp, agg-34.1, T41 notes; docs-1010: results of 2026-10-10 collected; items marked "in branch" are not yet in an aggregate). Branch names (`claude/...`) in the tables and sections below are historic: the branches were merged into `next` and deleted.
 
 Cameras are anonymised: cam-A (T31), cam-B (T23), cam-C (T20), cam-D (T21), cam-E (T10), cam-F (T41); cam-G and cam-H are further T23 cameras, cam-I a second T20 and cam-J a second T21.
+
+## Aggregate agg-39 (2026-10-14 to 2026-10-16, flashed on the test cameras, soak pending)
+
+Branches `claude/agg39` in OpenIMP (45314f3, on agg-38) and open-tx-isp (a6157440), plus the thingino firmware branch `claude/agg39-fw`. Full OTA images were flashed on six test cameras on 2026-10-16 (T31, T10, T21, T41 and two T20 boards): all boot, stream, snapshot works and there were 0 oopses. The soak and the device test plan (`docs/AGG39_TESTPLAN.md` in open-tx-isp) are not done yet; production cameras still run agg-38. The per-feature device results of the branches are in the agg-39 section of the driver CHANGELOG and in the FEATURE_MATRIX update note.
+
+Device-tested on the branches before the aggregate (works):
+
+- **T41:** MSCA output geometry takes effect (ch1 up to 1280x720), WaitFrameDone returns a timeout outside the library lock, AWB/EV fix (colour temperature follows the light in daylight), audit of the three T40 recovery bug classes (30 min stream clean). The optional per-frame tone worker stays off by default (noise x3 with it).
+- **T40 (Eufy board, sc830ai):** Bayer phase from the sensor format, fast AWB seed, 4K 3A window, gamma from the bin, best-known settings as driver defaults, encoder poll returns within its deadline; devtest 24/35 results, 0 oopses.
+- **T21:** sensor exposure/gain written only on change (I2C interrupts 50-51/s down to 0-2/s), Helix path back at -Os (no measurable CPU gain from -O2).
+- **Reproducible modules** (build id from git, not from the build date) for T10/T20/T21/T41.
+
+New since the branches, in the aggregate, device verification running:
+
+- **T31 rate control:** the rc attribute (eRcOptions) is handed to the codec at CreateChn like the vendor library does, and an initial QP of -1 is normalised to 26 at CreateChn and in `IMP_Encoder_SetChnAttrRcMode` (before, the frame RC could restart at max QP). The images boot and stream; the bit-rate/QP measurement on the T31 camera is still running.
+
+T40, 2026-10-15/16 (device-tested on the Eufy board, normal mode, devtest 24 results, 0 failures, no oops):
+
+- The AE/AWB algorithm-open ioctl sequence is reachable now (ladder fix), the OEM stack-frame and pointer-scaling fixes of the ioctl group are in, the config loader (`Tzn_Msca_cfg_load`) rewrite runs without errors, and an opt-in flight recorder exists for hang forensics.
+- **In progress, not working yet:** the per-frame vendor core path (`enable_core_ops_cb`). The MSCA configuration and interrupt state match the vendor, but frames are not delivered in that mode (the first two buffers are dropped and never re-queued), so there is no per-frame vendor 3A on T40 yet. The default (non-core) path is unaffected. Work is on `claude/t40-core-diff` (open-tx-isp), not part of agg-39.
+
+Under investigation (no conclusion): the night bars on the T23 image turned out to be a T31-specific ISP effect after the IR look; the T23 CBR rate control behaviour at night is being compared with the vendor.
 
 ## Aggregate agg-38 (2026-10-12, build and host tests only)
 
