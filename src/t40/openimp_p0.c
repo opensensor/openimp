@@ -437,7 +437,9 @@ extern int32_t get_cpu_id(void);
 #endif
 
 #if (defined(PLATFORM_T21) && !defined(PLATFORM_T20)) || defined(PLATFORM_T23) || \
-    defined(PLATFORM_T31)
+    defined(PLATFORM_T31) || \
+    (!defined(PLATFORM_T20) && !defined(PLATFORM_T21) && !defined(PLATFORM_T23) && \
+     !defined(PLATFORM_T30) && !defined(PLATFORM_T31) && !defined(PLATFORM_T41))
 #include <fcntl.h>
 #include <sys/mman.h>
 
@@ -480,6 +482,26 @@ static const char *p0_soc_variant(void)
     if (done)
         return cached;
     done = 1;
+#if !defined(PLATFORM_T21) && !defined(PLATFORM_T23) && !defined(PLATFORM_T31)
+    /* T40, vendor get_cpu_id (T40 1.x libimp 0x1bf70): soc id 0x1300002c
+     * (family nibble 1, chip id 0x40), the upper half of 0x13540250 selects
+     * the variant: 0x1111 T40-N, 0x7777 T40-XP, 0x8888 T40-NN, 0x4444 T40-A;
+     * 0 is T40-N; any other value is "Unknown" in the vendor library. */
+    (void)cppsr; (void)d; (void)c; (void)flag; (void)sub; (void)chip;
+    if (p0_read_soc_reg(0x1300002cu, &soc) || (soc >> 28) != 1u ||
+        ((soc >> 12) & 0xffffu) != 0x40u ||
+        p0_read_soc_reg(0x13540250u, &c))
+        return NULL;
+    switch ((c >> 16) & 0xffffu) {
+    case 0x0000u:
+    case 0x1111u: cached = "T40-N"; break;
+    case 0x7777u: cached = "T40-XP"; break;
+    case 0x8888u: cached = "T40-NN"; break;
+    case 0x4444u: cached = "T40-A"; break;
+    default:      cached = "Unknown"; break;
+    }
+    return cached;
+#endif
     if (p0_read_soc_reg(0x1300002cu, &soc) || (soc >> 28) != 1u ||
         p0_read_soc_reg(0x10000034u, &cppsr) ||
         p0_read_soc_reg(0x13540230u, &d) ||
@@ -570,7 +592,11 @@ const char *IMP_System_GetCPUInfo(void)
 #elif defined(PLATFORM_T41)
     return "T41NQ";
 #else
-    return "T40-XP";
+    {
+        const char *variant = p0_soc_variant();
+
+        return variant ? variant : "T40-XP";
+    }
 #endif
 }
 
