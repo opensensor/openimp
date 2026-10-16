@@ -1782,20 +1782,19 @@ int32_t IMP_ISP_GetISPBypass(IMPVI_NUM num, IMPISPTuningOpsMode *enable)
 }
 #endif
 
+/* Vendor T40 libimp 0x77170 (Set) / 0x776e4 (Get): mode >= 3 is rejected,
+ * otherwise tuning ioctl 0xc0105636 {vinum, dir, 0x08000026, pointer}.  Both
+ * SoCs send it; the T40 open driver routes it (tx_isp_t40_recovered.c). */
 int32_t IMP_ISP_Tuning_SetAntiFlickerAttr(IMPVI_NUM num,
                                           IMPISPAntiflickerAttr *attribute)
 {
-#if defined(PLATFORM_T41)
     int result;
-#endif
 
     if (num != IMPVI_MAIN || !attribute)
         return -1;
-#if defined(PLATFORM_T41)
     result = p3_tuning_pointer(num, 0, TISP_CID_ANTIFLICKER, attribute);
     if (result != 0)
         return result;
-#endif
     p3_controls.antiflicker = *attribute;
     return 0;
 }
@@ -1803,18 +1802,14 @@ int32_t IMP_ISP_Tuning_SetAntiFlickerAttr(IMPVI_NUM num,
 int32_t IMP_ISP_Tuning_GetAntiFlickerAttr(IMPVI_NUM num,
                                           IMPISPAntiflickerAttr *attribute)
 {
-#if defined(PLATFORM_T41)
     int result;
-#endif
 
     if (num != IMPVI_MAIN || !attribute)
         return -1;
-#if defined(PLATFORM_T41)
     result = p3_tuning_pointer(num, 1, TISP_CID_ANTIFLICKER, attribute);
     if (result != 0)
         return result;
     p3_controls.antiflicker = *attribute;
-#endif
     *attribute = p3_controls.antiflicker;
     return 0;
 }
