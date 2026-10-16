@@ -10168,102 +10168,20 @@ int AL_Codec_Encode_Destroy(void *codec)
 #endif
 }
 
-/* Emit a standards-compliant baseline grayscale JPEG for the T40 snapshot
- * channels.  The P2 JPEG path is intentionally metadata-only for now, but it
- * must still produce an image that rvd and ordinary decoders can consume.
- * A one-symbol DC table (category 0) plus a one-symbol AC table (EOB) encodes
- * every 8x8 block as constant grey in two bits. */
 #if defined(PLATFORM_T40) && !defined(PLATFORM_T41)
-static int t40_encode_gray_jpeg(uint32_t width, uint32_t height,
-                                uint64_t timestamp, HWStreamBuffer *stream)
-{
-    uint32_t blocks_x;
-    uint32_t blocks_y;
-    uint32_t blocks;
-    uint32_t scan_bytes;
-    uint32_t used_bits;
-    uint32_t padding_bits;
-    size_t capacity;
-    uint8_t *buf;
-    size_t pos = 0;
-    unsigned int i;
-
-    if (!stream || width == 0u || height == 0u ||
-        width > 65535u || height > 65535u)
-        return -1;
-    blocks_x = (width + 7u) >> 3;
-    blocks_y = (height + 7u) >> 3;
-    if (blocks_x != 0u && blocks_y > UINT32_MAX / blocks_x)
-        return -1;
-    blocks = blocks_x * blocks_y;
-    scan_bytes = (blocks + 3u) >> 2; /* two zero Huffman bits per block */
-    capacity = (size_t)scan_bytes + 256u;
-    buf = (uint8_t *)malloc(capacity);
-    if (!buf)
-        return -1;
-
-#define JPEG_BYTE(value) do { buf[pos++] = (uint8_t)(value); } while (0)
-    JPEG_BYTE(0xff); JPEG_BYTE(0xd8);             /* SOI */
-    JPEG_BYTE(0xff); JPEG_BYTE(0xe0);             /* APP0 JFIF */
-    JPEG_BYTE(0x00); JPEG_BYTE(0x10);
-    JPEG_BYTE('J'); JPEG_BYTE('F'); JPEG_BYTE('I'); JPEG_BYTE('F'); JPEG_BYTE(0);
-    JPEG_BYTE(1); JPEG_BYTE(1); JPEG_BYTE(0);
-    JPEG_BYTE(0); JPEG_BYTE(1); JPEG_BYTE(0); JPEG_BYTE(1); JPEG_BYTE(0); JPEG_BYTE(0);
-
-    JPEG_BYTE(0xff); JPEG_BYTE(0xdb);             /* one 8-bit DQT */
-    JPEG_BYTE(0x00); JPEG_BYTE(0x43); JPEG_BYTE(0);
-    for (i = 0; i < 64u; i++) JPEG_BYTE(16);
-
-    JPEG_BYTE(0xff); JPEG_BYTE(0xc0);             /* baseline SOF */
-    JPEG_BYTE(0x00); JPEG_BYTE(0x0b); JPEG_BYTE(8);
-    JPEG_BYTE(height >> 8); JPEG_BYTE(height);
-    JPEG_BYTE(width >> 8); JPEG_BYTE(width);
-    JPEG_BYTE(1); JPEG_BYTE(1); JPEG_BYTE(0x11); JPEG_BYTE(0);
-
-    JPEG_BYTE(0xff); JPEG_BYTE(0xc4);             /* DC0: code 0 -> category 0 */
-    JPEG_BYTE(0x00); JPEG_BYTE(0x14); JPEG_BYTE(0x00);
-    JPEG_BYTE(1); for (i = 1; i < 16u; i++) JPEG_BYTE(0); JPEG_BYTE(0);
-    JPEG_BYTE(0xff); JPEG_BYTE(0xc4);             /* AC0: code 0 -> EOB */
-    JPEG_BYTE(0x00); JPEG_BYTE(0x14); JPEG_BYTE(0x10);
-    JPEG_BYTE(1); for (i = 1; i < 16u; i++) JPEG_BYTE(0); JPEG_BYTE(0);
-
-    JPEG_BYTE(0xff); JPEG_BYTE(0xda);             /* grayscale scan */
-    JPEG_BYTE(0x00); JPEG_BYTE(0x08); JPEG_BYTE(1);
-    JPEG_BYTE(1); JPEG_BYTE(0); JPEG_BYTE(0); JPEG_BYTE(63); JPEG_BYTE(0);
-    memset(buf + pos, 0, scan_bytes);
-    pos += scan_bytes;
-    used_bits = (blocks & 3u) * 2u;
-    if (used_bits != 0u) {
-        padding_bits = 8u - used_bits;
-        buf[pos - 1u] |= (uint8_t)((1u << padding_bits) - 1u);
-    }
-    JPEG_BYTE(0xff); JPEG_BYTE(0xd9);             /* EOI */
-#undef JPEG_BYTE
-
-    stream->virt_addr = (uint32_t)(uintptr_t)buf;
-    stream->phys_addr = 0u;
-    stream->length = (uint32_t)pos;
-    stream->timestamp = timestamp;
-    stream->frame_type = HW_FRAME_TYPE_I;
-    stream->slice_type = 0u;
-    return 0;
-}
-
 /* T40 snapshot channels: the AVPU JPEG path is not recovered, so encode the
  * captured NV12 frame with the software baseline encoder (the CPU reads what
- * ISP DMA wrote, so drop stale cache lines first).  The grey image remains the
- * fallback when the software encoder cannot take the frame. */
+ * ISP DMA wrote, so drop stale cache lines first).  When the software encoder
+ * cannot take the frame the error is reported (like T41); the former flat grey
+ * JPEG looked like a valid snapshot and hid the failure. */
 static int t40_encode_jpeg(AL_CodecEncode *enc, HWFrameBuffer *frame,
                            HWStreamBuffer *stream)
 {
     if (frame->phys_addr && frame->virt_addr && frame->size)
         (void)DMA_RmemFlushCache((void *)(uintptr_t)frame->virt_addr,
                                  frame->size, 2 /* invalidate */);
-    if (HW_Encoder_Encode_NV12_JPEG(frame, stream,
-                                    codec_jpeg_quality(enc)) == 0)
-        return 0;
-    return t40_encode_gray_jpeg(frame->width, frame->height,
-                                frame->timestamp, stream);
+    return HW_Encoder_Encode_NV12_JPEG(frame, stream,
+                                       codec_jpeg_quality(enc));
 }
 #endif
 
@@ -13054,11 +12972,11 @@ static int al_codec_encode_process_impl(void *codec, void *frame,
         int force_idr;
         HWFrameBuffer hw_frame;
 
-#if defined(PLATFORM_T41)
+#if defined(PLATFORM_T41) || defined(PLATFORM_T40)
         /* The software H.264 stub writes a grey Baseline 3.1 picture whose
          * P slices are non-reference yet advance frame_num, so decoders
-         * report "reference frames (0+2) exceeds max (1)".  On T41 it can
-         * only be reached after the AVPU setup failed (e.g. rmem
+         * report "reference frames (0+2) exceeds max (1)".  On T40/T41 it
+         * can only be reached after the AVPU setup failed (e.g. rmem
          * exhausted); report that failure instead of a corrupt stream. */
         if (codec_type != IMP_ENC_TYPE_JPEG) {
             static unsigned int t41_sw_refusals;
@@ -13066,7 +12984,7 @@ static int al_codec_encode_process_impl(void *codec, void *frame,
 
             if (n == 1u || (n % 250u) == 0u)
                 IMP_LOG_ERR("Codec",
-                            "chn%d %ux%u: AVPU unavailable (err=%d), no software video fallback on T41 [#%u]\n",
+                            "chn%d %ux%u: AVPU unavailable (err=%d), no software video fallback on T40/T41 [#%u]\n",
                             enc->channel_id - 1, width, height,
                             enc->last_error, n);
             if (enc->last_error == 0)

@@ -1459,6 +1459,12 @@ static uint32_t p2_attr_bitrate_kbps(const IMPEncoderCHNAttr *attr)
  * RcQualityCap); OpenIMP does the same with its closed-loop controller.
  * The mode itself is kept (GetChnAttrRcMode returns it, as the OEM
  * library returns the stored attribute). */
+#if defined(PLATFORM_T40) || defined(PLATFORM_T41)
+/* Runtime marker: CappedVBR / CappedQuality are accepted but emulated by the
+ * plain VBR controller (value 1).  Not exported where the mode is native. */
+__attribute__((visibility("default"))) const int OpenIMP_Cap_CappedRcAsVbr = 1;
+#endif
+
 enum { /* HW_RC_MODE_* in hw_encoder.h, as codec_param_read_rc_mode reads */
     HW_RC_MODE_FIXQP = 0,
     HW_RC_MODE_CBR = 1,
@@ -1505,9 +1511,10 @@ static int p2_codec_rc_mode(const IMPEncoderCHNAttr *attr, int channel)
         return HW_RC_MODE_VBR;
     }
 #endif
-    IMP_LOG_INFO("Encoder",
-                 "CreateChn(%d): rate-control mode %s runs as VBR "
-                 "(no native %s rate control)\n", channel, name, name);
+    IMP_LOG_WARN("Encoder",
+                 "CreateChn(%d): rate-control mode %s is emulated by VBR "
+                 "(no native %s rate control, no PSNR/quality cap; probe "
+                 "OpenIMP_Cap_CappedRcAsVbr)\n", channel, name, name);
     return HW_RC_MODE_VBR;
 }
 

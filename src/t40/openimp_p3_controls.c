@@ -54,8 +54,8 @@
 #if defined(PLATFORM_T41)
 #define TISP_CID_MASK_BLOCK 0x08000074
 #define TISP_CID_AWB_RGB_COEFFT 0x08000098
-#define TISP_CID_ANTIFLICKER 0x08000026
 #endif
+#define TISP_CID_ANTIFLICKER 0x08000026
 
 typedef struct {
     int32_t vinum;
