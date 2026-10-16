@@ -1212,12 +1212,38 @@ int IMP_FrameSource_GetI2dAttr(int channel, IMPFSI2DAttr *attr)
     return 0;
 }
 
+/* The I2D block (rotate / flip / mirror) is stored but no path applies it:
+ * fill_frame_format sends none of these words to the driver, and the T40/T41
+ * drivers have no I2D unit (the T41 FrameSource mirror is the separate
+ * IMPFSChnAttr.mirr_enable).  So an active request is refused instead of
+ * being accepted and ignored.  Only SetI2dAttr fails: CreateChn / SetChnAttr
+ * keep accepting the attribute (streamers treat their failure as fatal),
+ * and log once.  The runtime marker OpenIMP_Cap_I2dRotate is deliberately
+ * NOT defined here; define it only where a real rotation path exists. */
+static int i2d_requests_effect(const IMPFSI2DAttr *a)
+{
+    return a->i2d_enable || a->flip_enable || a->mirr_enable ||
+           a->rotate_enable;
+}
+
+static void i2d_warn_ignored(int channel, const IMPFSI2DAttr *a)
+{
+    static int warned;
+
+    if (i2d_requests_effect(a) && !__sync_lock_test_and_set(&warned, 1))
+        syslog(LOG_WARNING, "libimp: FrameSource chn%d I2D attribute "
+               "(rotate/flip/mirror) is not applied on this SoC; "
+               "SetI2dAttr refuses it", channel);
+}
+
 int IMP_FrameSource_SetI2dAttr(int channel, IMPFSI2DAttr *attr)
 {
     if (channel < 0 || channel >= 7)
         return FS_ERR_CHN;
     if (!attr)
         return FS_ERR_PARAM;
+    if (i2d_requests_effect(attr))
+        return -1;
     if ((attr->flip_enable & attr->mirr_enable) ||
         ((attr->flip_enable | attr->mirr_enable) & attr->rotate_enable))
         return FS_ERR_STATE;
@@ -1273,6 +1299,7 @@ int IMP_FrameSource_CreateChn(int channel, IMPFSChnAttr *attr)
     chn->pool_id = pool_id;
     chn->created = 1;
     chn->attr = *attr;
+    i2d_warn_ignored(channel, &attr->i2dattr);
     unlock_p1();
     return 0;
 }

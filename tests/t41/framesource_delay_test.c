@@ -154,21 +154,19 @@ int main(void)
     assert(IMP_FrameSource_GetTimedFrame(1, &t, 0, buf, &info) ==
            FS_ERR_STATE);
 
-    /* I2D: stored, the flip/mirror/rotate combinations are refused */
+    /* I2D: no real path, an active request is refused (-1) and not stored;
+     * the all-zero attribute (identity) is accepted */
     assert(IMP_FrameSource_GetI2dAttr(1, &i2d) == 0 && !i2d.i2d_enable);
     i2d.i2d_enable = 1;
     i2d.flip_enable = 1;
-    i2d.mirr_enable = 0;
-    i2d.rotate_enable = 0;
-    i2d.rotate_angle = 0;
-    assert(IMP_FrameSource_SetI2dAttr(1, &i2d) == 0);
+    assert(IMP_FrameSource_SetI2dAttr(1, &i2d) == -1);
     memset(&i2d, 0, sizeof(i2d));
-    assert(IMP_FrameSource_GetI2dAttr(1, &i2d) == 0 && i2d.flip_enable == 1);
-    i2d.mirr_enable = 1;
-    assert(IMP_FrameSource_SetI2dAttr(1, &i2d) == FS_ERR_STATE);
-    i2d.flip_enable = 0;
+    assert(IMP_FrameSource_GetI2dAttr(1, &i2d) == 0 && i2d.flip_enable == 0);
     i2d.rotate_enable = 1;
-    assert(IMP_FrameSource_SetI2dAttr(1, &i2d) == FS_ERR_STATE);
+    i2d.rotate_angle = 90;
+    assert(IMP_FrameSource_SetI2dAttr(1, &i2d) == -1);
+    memset(&i2d, 0, sizeof(i2d));
+    assert(IMP_FrameSource_SetI2dAttr(1, &i2d) == 0);
     assert(IMP_FrameSource_SetI2dAttr(9, &i2d) == FS_ERR_CHN);
 
     /* SetChnAttr on a running channel: unchanged accepted, resize refused */
