@@ -3360,10 +3360,22 @@ int IMP_Encoder_Query(int channel, IMPEncoderCHNStat *stat)
                            ch->raw_stream_out, ch->in_poll);
     pthread_mutex_unlock(&ch->lock);
 #else
+    /* No input queue (encode on demand in PollingStream/GetStream, at most
+     * one finished stream): leftPics = the picture being encoded right now,
+     * leftStreamFrames/leftStreamBytes/curPacks = the finished stream that
+     * waits for GetStream (its real byte length), work_done 0 while a
+     * PollingStream encodes (vendor: 1 = idle). */
+    pthread_mutex_lock(&ch->lock);
     memset(stat, 0, sizeof(*stat));
     stat->registered = ch->registered != 0;
-    stat->leftPics = ch->raw_stream ? 1u : 0u;
-    stat->curPacks = ch->raw_stream ? 1u : 0u;
+    stat->leftPics = ch->in_poll > 0 ? 1u : 0u;
+    if (ch->raw_stream && !ch->raw_stream_out) {
+        stat->leftStreamFrames = 1u;
+        stat->leftStreamBytes = ((const P2HWStream *)ch->raw_stream)->length;
+        stat->curPacks = 1u;
+    }
+    stat->work_done = ch->in_poll > 0 ? 0u : 1u;
+    pthread_mutex_unlock(&ch->lock);
 #endif
     return 0;
 }
