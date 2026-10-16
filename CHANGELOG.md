@@ -8,6 +8,15 @@
 
 Release plan: `next` goes to `aperto` (fast-forward only) after the long soak of the release candidate and is tagged `vYYYY.MM.DD`; until then dates are the reference. The first release covers T10, T20, T21, T23 and T31; T10 has not been re-tested on the open stack today ("not re-tested"); T41 is not part of the first release. Branch names (`claude/...`) are historic: the topic branches were merged into `next` and deleted. Cameras are anonymised: cam-A (T31), cam-B (T23), cam-C (T20), cam-D (T21), cam-E (T10), cam-F (T41); cam-G and cam-H are further T23 cameras, cam-I a second T20, cam-J a second T21.
 
+## Branch `claude/streamer-real-funcs` (2026-10-16, on agg-39, not released)
+
+From the streamer function audit; the first three items are device-tested on T10 .31, T20 .163, T21 .24, T31 .21.
+
+- **`IMP_Encoder_Query` on T10/T20/T21/T23/T31** reports the real channel state (picture in the encoder, finished stream waiting with its byte length, `work_done`) instead of a constant block.
+- **`IMP_Encoder_SetJpegeQl` on T10/T20/T21** applies the quantisation tables to the JPEG encoder (apitest "JPEG size follows SetJpegeQl live": table 2 gives 86-118 kB, table 90 gives 4-8 kB per picture).
+- **`IMP_System_GetCPUInfo` on T21/T23/T31** reads the variant from the SoC registers (soc id, CPPSR, sub-type word) with the vendor decoding, falling back to the old constant when /dev/mem is not readable.
+- **T10/T20/T21 `SetAe_IT_MAX`, `SetBacklightComp`, T10/T20 `SetBcshHue`, `GetAeLuma`** now act (beyond vendor, needs open-tx-isp `claude/streamer-real-funcs`; see docs/OPENIMP_BEYOND_VENDOR.md). Device test pending (module change).
+
 ## After RC1: aggregate agg-38 (state of 2026-10-12, not released)
 
 `claude/agg-38` = agg-37 (dc20d0e) + `claude/awbstats` (with `claude/awbzone`), `claude/t31-rc-collapse`, `claude/oimp-thread-names`, `claude/t21-cpu-fix`, `claude/t40-night` (with `claude/t40-devtest`), `claude/t41-isp-handlers`, `claude/funcsearch-run4` (documentation) and the device results of `claude/funcsearch-run5`. `claude/gaps-t1x-impl` is recorded as merged without changes: all of its commits were already in agg-35/agg-36 under other SHAs. The open-tx-isp side is open-tx-isp `claude/agg-38`. Build and host tests only (`make check`, `make release-check`, strict export check of T10 to T41); no soak. Device results only where an item says so.
