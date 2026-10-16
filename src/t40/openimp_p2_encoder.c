@@ -1933,6 +1933,44 @@ static void p2_bufshare_check(int channel, const IMPEncoderCHNAttr *attr)
 #define p2_bufshare_check(channel, attr) ((void)0)
 #endif
 
+#if defined(PLATFORM_T31) || defined(PLATFORM_T40) || defined(PLATFORM_T41)
+/* AL_Codec_Encode_SetRcParam caps the QPs only at the top (clamp_qp_u32,
+ * codec-t40.c), so the usual iInitialQP -1 ("derive") arrives as 0xffffffff
+ * and becomes 51 - the frame RC then starts at maxQP.  The OEM copies the
+ * attribute verbatim (channel_encoder_set_rc_param 0x7e430, arg1[6].w =
+ * arg2[N].w at 0x7e548 / 0x7e584 / 0x7e624) and leaves the clamping to
+ * AL_RateCtrl_Init, so -1 never turns into maxQP there.  Same QPs as
+ * p2_codec_params gives a new channel: min/max QP into 1..51, an initial QP
+ * outside it becomes 26.  Applies to the copy handed to the codec, not to the cached
+ * attribute, so GetChnAttrRcMode still returns what the caller set. */
+static void p2_normalise_rc_qps(IMPEncoderRcAttr *rc)
+{
+    int16_t *init_qp, *min_qp, *max_qp;
+
+    switch (rc->attrRcMode.rcMode) {
+    case IMP_ENC_RC_MODE_CBR:
+        init_qp = &rc->attrRcMode.attrCbr.iInitialQP;
+        min_qp = &rc->attrRcMode.attrCbr.iMinQP;
+        max_qp = &rc->attrRcMode.attrCbr.iMaxQP;
+        break;
+    case IMP_ENC_RC_MODE_VBR:
+    case IMP_ENC_RC_MODE_CAPPED_VBR:
+    case IMP_ENC_RC_MODE_CAPPED_QUALITY:
+        /* the capped attributes share the VBR layout up to uMaxPSNR */
+        init_qp = &rc->attrRcMode.attrVbr.iInitialQP;
+        min_qp = &rc->attrRcMode.attrVbr.iMinQP;
+        max_qp = &rc->attrRcMode.attrVbr.iMaxQP;
+        break;
+    default:
+        return;         /* FIXQP and the rest keep their QPs untouched */
+    }
+    *min_qp = *min_qp < 1 ? 1 : *min_qp > 51 ? 51 : *min_qp;
+    *max_qp = *max_qp < 1 ? 1 : *max_qp > 51 ? 51 : *max_qp;
+    if (*init_qp < 1 || *init_qp > 51)
+        *init_qp = 26;
+}
+#endif
+
 int IMP_Encoder_CreateChn(int channel, IMPEncoderCHNAttr *attr)
 {
     P2EncoderChannel *ch;
@@ -2105,27 +2143,8 @@ int IMP_Encoder_CreateChn(int channel, IMPEncoderCHNAttr *attr)
         default:
             break;      /* FIXQP and JPEG channels have no Allegro rate control */
         }
-        if (has_rc) {
-            /* AL_Codec_Encode_SetRcParam only caps the QPs at 51, so the
-             * usual iInitialQP -1 ("derive") would become 51 and the frame
-             * RC would start at maxQP.  Keep what p2_codec_params gave the
-             * codec: min/max QP in 1..51, an initial QP outside it -> 26. */
-            int16_t *init_qp, *min_qp, *max_qp;
-
-            if (codec_rc.attrRcMode.rcMode == IMP_ENC_RC_MODE_CBR) {
-                init_qp = &codec_rc.attrRcMode.attrCbr.iInitialQP;
-                min_qp = &codec_rc.attrRcMode.attrCbr.iMinQP;
-                max_qp = &codec_rc.attrRcMode.attrCbr.iMaxQP;
-            } else {
-                init_qp = &codec_rc.attrRcMode.attrVbr.iInitialQP;
-                min_qp = &codec_rc.attrRcMode.attrVbr.iMinQP;
-                max_qp = &codec_rc.attrRcMode.attrVbr.iMaxQP;
-            }
-            *min_qp = *min_qp < 1 ? 1 : *min_qp > 51 ? 51 : *min_qp;
-            *max_qp = *max_qp < 1 ? 1 : *max_qp > 51 ? 51 : *max_qp;
-            if (*init_qp < 1 || *init_qp > 51)
-                *init_qp = 26;
-        }
+        if (has_rc)
+            p2_normalise_rc_qps(&codec_rc);
         if (has_rc && AL_Codec_Encode_SetRcParam(ch->codec, &codec_rc) != 0) {
             AL_Codec_Encode_Destroy(ch->codec);
             ch->codec = NULL;
@@ -3912,6 +3931,9 @@ int IMP_Encoder_SetChnAttrRcMode(int channel, IMPEncoderAttrRcMode *mode)
     }
 #endif
 
+#if defined(PLATFORM_T31) || defined(PLATFORM_T40) || defined(PLATFORM_T41)
+    p2_normalise_rc_qps(&codec_rc);
+#endif
     if (AL_Codec_Encode_SetRcParam(ch->codec, &codec_rc) != 0) {
         pthread_mutex_unlock(&ch->lock);
         return -1;
