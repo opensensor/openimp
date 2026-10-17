@@ -2287,6 +2287,13 @@ int OpenIMP_P1_TuningIOCtl(uint32_t command, void *argument)
     lock_p1();
     prepare_p1();
     if (!p1.tuning_enabled || p1.tuning_fd < 0) {
+        /* A tuning call before IMP_ISP_EnableTuning (or after DisableTuning) never reaches the driver: say so once
+         * per control, like the vendor's "tuning not enabled" trace, instead of failing silently. */
+        static unsigned int warned;
+        const uint32_t *req = (const uint32_t *)argument;
+        if (warned++ < 8)
+            syslog(LOG_WARNING, "libimp: tuning ioctl 0x%08x control 0x%08x dropped: tuning not enabled (fd=%d)",
+                   command, req ? req[2] : 0U, p1.tuning_fd);
         unlock_p1();
         errno = ENODEV;
         return -1;

@@ -8,6 +8,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <syslog.h>
 #include <sys/mman.h>
 #include <unistd.h>
 
@@ -1836,9 +1837,12 @@ int32_t IMP_ISP_Tuning_SetAntiFlickerAttr(IMPVI_NUM num,
 {
     int result;
 
-    if (num != IMPVI_MAIN || !attribute)
+    if (num != IMPVI_MAIN || !attribute) {
+        syslog(LOG_WARNING, "libimp: SetAntiFlickerAttr rejected num=%d attr=%p", (int)num, (void *)attribute);
         return -1;
+    }
     result = p3_tuning_pointer(num, 0, TISP_CID_ANTIFLICKER, attribute);
+    syslog(LOG_INFO, "libimp: SetAntiFlickerAttr mode=%u freq=%u -> %d", (unsigned)attribute->mode, (unsigned)attribute->freq, result);
     if (result != 0)
         return result;
     p3_controls.antiflicker = *attribute;
