@@ -67,6 +67,7 @@ typedef struct {
 extern int OpenIMP_P1_TuningIOCtl(uint32_t command, void *argument);
 extern int OpenIMP_P1_TuningWaitIOCtl(uint32_t command, void *argument);
 extern int OpenIMP_P1_TuningEnabled(void);
+extern int OpenIMP_P1_GetSensorName(char name[32], int32_t *cbus_type);
 extern int OpenIMP_P1_SetDefaultBinPath(IMPVI_NUM num, const char *path);
 extern int OpenIMP_P1_GetDefaultBinPath(IMPVI_NUM num, char *path, size_t size);
 
@@ -1110,7 +1111,52 @@ P3_T41_POINTER_PAIR(Module_Ratio, IMPISPModuleRatioAttr, TISP_CID_MODULE_RATIO)
 P3_T41_POINTER_PAIR(GammaAttr, IMPISPGammaAttr, TISP_CID_GAMMA)
 P3_T41_POINTER_PAIR(ModuleControl, IMPISPModuleCtl, TISP_CID_MODULE_CONTROL)
 P3_T41_POINTER_PAIR(AutoZoom, IMPISPAutoZoom, TISP_CID_AUTOZOOM)
-P3_T41_POINTER_PAIR(WdrOutputMode, IMPISPWdrOutputMode, TISP_CID_WDR_OUTPUT_MODE)
+
+/*
+ * WdrOutputMode (0x08000054).  The stock T41 driver's tisp_set/get_wdr_output_mode
+ * are empty (2 instructions, binary audit) and the T31 OEM handler answers
+ * Set = accepted, Get = mode 0, so the vendor call succeeds without an effect.
+ * The open T41 driver refuses the control (-EOPNOTSUPP) rather than answering
+ * from nothing; that made the call fail here where the vendor succeeds.  Ask the
+ * driver first (a driver that implements it wins) and, while it refuses, behave
+ * like the vendor but better: accept the value and read it back (default 0).
+ */
+static IMPISPWdrOutputMode p3_wdr_output_shadow;
+static pthread_mutex_t p3_wdr_output_lock = PTHREAD_MUTEX_INITIALIZER;
+
+int32_t IMP_ISP_Tuning_SetWdrOutputMode(IMPVI_NUM num, IMPISPWdrOutputMode *attr)
+{
+    int result;
+
+    if (!attr)
+        return -1;
+    result = p3_tuning_pointer(num, 0, TISP_CID_WDR_OUTPUT_MODE, attr);
+    if (result != 0) {
+        if (errno != EOPNOTSUPP || num < IMPVI_MAIN || num >= IMPVI_BUTT)
+            return result;
+        pthread_mutex_lock(&p3_wdr_output_lock);
+        p3_wdr_output_shadow = *attr;
+        pthread_mutex_unlock(&p3_wdr_output_lock);
+    }
+    return 0;
+}
+
+int32_t IMP_ISP_Tuning_GetWdrOutputMode(IMPVI_NUM num, IMPISPWdrOutputMode *attr)
+{
+    int result;
+
+    if (!attr)
+        return -1;
+    result = p3_tuning_pointer(num, 1, TISP_CID_WDR_OUTPUT_MODE, attr);
+    if (result != 0) {
+        if (errno != EOPNOTSUPP || num < IMPVI_MAIN || num >= IMPVI_BUTT)
+            return result;
+        pthread_mutex_lock(&p3_wdr_output_lock);
+        *attr = p3_wdr_output_shadow;
+        pthread_mutex_unlock(&p3_wdr_output_lock);
+    }
+    return 0;
+}
 
 /*
  * CCM and CSC do not travel as the public structures: the kernel (stock
@@ -1849,6 +1895,28 @@ int32_t IMP_ISP_GetDefaultBinPath(IMPVI_NUM num, char *path)
      * kernel then uses is a driver property (T40 module parameter
      * t40_tuning_bin_path, T41 "/etc/sensor/<sensor>-t41.bin") and unknown to
      * libimp, so an empty string must not be reported as success. */
+#if defined(PLATFORM_T41)
+    {
+        /* T41 driver (tx_isp_t41_recovered.c:54266, same as the stock one):
+         * without a user path the bin it loads is /etc/sensor/<sensor>-t41.bin,
+         * and the vendor getter reports the loaded path.  Report that path when
+         * the file is there instead of failing. */
+        char sensor[32];
+        int32_t bus;
+        char candidate[64];
+
+        if (OpenIMP_P1_GetSensorName(sensor, &bus) == 0) {
+            sensor[31] = '\0';
+            if (sensor[0] != '\0' &&
+                snprintf(candidate, sizeof(candidate), "/etc/sensor/%s-t41.bin",
+                         sensor) < (int)sizeof(candidate) &&
+                access(candidate, R_OK) == 0) {
+                memcpy(path, candidate, strlen(candidate) + 1U);
+                return 0;
+            }
+        }
+    }
+#endif
     path[0] = '\0';
     return -1;
 }
