@@ -4023,6 +4023,10 @@ static void avpu_t41_roi_apply(ALAvpuContext *ctx)
     }
     ctx->roi_table_on = any;
     pthread_mutex_unlock(&avpu_roi_lock);
+    if (getenv("OPENIMP_T41_DUMP_CMD"))
+        fprintf(stderr, "openimp T41 roi table %s %ux%u ep2_size=0x%x e0=%08x e%u=%08x\n",
+                any ? "on" : "off", cols, rows, ctx->interm_ep2_size,
+                ((uint32_t *)table)[0], mb / 2u, ((uint32_t *)table)[mb / 2u]);
     LOG_CODEC("AVPU: ROI QP table rewritten (%s) %ux%u macroblocks ep2=0x%08x",
               any ? "windows" : "cleared", cols, rows,
               ctx->interm_buf.phy_addr + ctx->interm_ep1_size +
@@ -4156,9 +4160,14 @@ static int avpu_t41_fill_command(ALAvpuContext *ctx, void *slot,
      * to SliceParam+0x62; SliceParamToCmdRegsEnc1 (0xe9d68) packs them into
      * cmd[152] bit 0 and bit 3.  The builder's 0xf6 has both clear, so the
      * AVPU never read the table.  Same mechanism as the device-tested T31
-     * (cmd[9] bits 25/24); not yet tested on a T41. */
-    if (!ctx->codec_hevc && ctx->roi_table_on)
+     * (cmd[9] bits 25/24). */
+    if (!ctx->codec_hevc && ctx->roi_table_on) {
         ((uint32_t *)slot)[152] |= 0x00000009u;
+        /* Device 10-18 (.32/.34): works under CBR (whole frame -20 =
+         * twice the bit rate, window +20 = SSIM 0.73 vs 0.97); under FixQP
+         * no effect, also with the cmd[179] QP range opened to 0..51 (not
+         * kept).  The vendor writes 0xff for every P picture. */
+    }
     {
         /* OPENIMP_T41_DUMP_CMD=1: the non-zero words of the first two
          * commands on stderr, for a diff against a vendor capture. */
@@ -4169,8 +4178,14 @@ static int avpu_t41_fill_command(ALAvpuContext *ctx, void *slot,
 
             dump = value && value[0] == '1';
         }
-        if (dump && picture_number < 2u) {
+        static int dump_roi;   /* also the first command that uses the ROI table */
+
+        if (dump && (picture_number < 2u ||
+                     (ctx->roi_table_on && dump_roi < 2))) {
             const uint32_t *word = (const uint32_t *)slot;
+
+            if (ctx->roi_table_on)
+                dump_roi++;
             unsigned int i;
 
             fprintf(stderr, "openimp T41 cmd %s %ux%u picture=%u:",
