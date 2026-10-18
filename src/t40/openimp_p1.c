@@ -35,6 +35,7 @@
 #include "video_drop.h"
 #if defined(P1_CAPTURE_FEEDER)
 #include "t40/t41_snap.h"
+#include "t40/p1_i2d.h"
 #endif
 
 #define OPENIMP_P1_MAGIC        0x50315434U /* "P1T4" */
@@ -289,6 +290,8 @@ struct openimp_fs_buffer {
     uint32_t size;
     uint32_t queued;
     IMPFrameInfo frame;
+    uint32_t i2d_physical;          /* I2D output paired with this buffer */
+    void *i2d_virtual;
 };
 
 struct openimp_fs_channel {
@@ -309,6 +312,10 @@ struct openimp_fs_channel {
     struct t41_snap_state snap;     /* SnapFrame frame lend */
 #endif
     IMPFSChnAttr attr;
+    uint32_t i2d_on;                /* EnableChn armed the I2D pass */
+    uint32_t i2d_errors;
+    IMPFSI2DAttr i2d_attr;          /* the attribute EnableChn applied */
+    struct p1_i2d_geometry i2d_geom;
     struct openimp_fs_buffer buffers[OPENIMP_FS_BUFFERS];
 };
 
@@ -331,6 +338,7 @@ struct openimp_p1_state {
     uint32_t camera_input[6];       /* last SetCameraInputMode (vendor +612) */
 #endif
     struct openimp_dma_state dma;
+    int i2d_fd;                     /* /dev/i2d, opened on first use */
     struct openimp_fs_channel channels[OPENIMP_FS_CHANNELS];
 };
 
@@ -376,6 +384,7 @@ static void prepare_p1(void)
     p1.isp_fd = -1;
     p1.tuning_fd = -1;
     p1.dma.fd = -1;
+    p1.i2d_fd = -1;
     for (i = 0; i < OPENIMP_FS_CHANNELS; i++) {
         p1.channels[i].fd = -1;
         p1.channels[i].pool_id = -1;
@@ -434,6 +443,14 @@ static int free_capture_buffers(struct openimp_fs_channel *chn)
     int result = 0;
 
     for (i = 0; i < OPENIMP_FS_BUFFERS; ++i) {
+        if (chn->buffers[i].i2d_physical) {
+            if (DMA_FreePhys(chn->buffers[i].i2d_physical) < 0) {
+                result = -1;
+                continue;
+            }
+            chn->buffers[i].i2d_physical = 0;
+            chn->buffers[i].i2d_virtual = NULL;
+        }
         if (chn->buffers[i].physical && DMA_FreePhys(chn->buffers[i].physical) < 0) {
             result = -1;
             continue;
@@ -444,6 +461,7 @@ static int free_capture_buffers(struct openimp_fs_channel *chn)
         return result;
     chn->buffer_count = 0;
     chn->sizeimage = 0;
+    chn->i2d_on = 0;
     return 0;
 }
 
@@ -1212,28 +1230,79 @@ int IMP_FrameSource_GetI2dAttr(int channel, IMPFSI2DAttr *attr)
     return 0;
 }
 
-/* The I2D block (rotate / flip / mirror) is stored but no path applies it:
- * fill_frame_format sends none of these words to the driver, and the T40/T41
- * drivers have no I2D unit (the T41 FrameSource mirror is the separate
- * IMPFSChnAttr.mirr_enable).  So an active request is refused instead of
- * being accepted and ignored.  Only SetI2dAttr fails: CreateChn / SetChnAttr
- * keep accepting the attribute (streamers treat their failure as fatal),
- * and log once.  The runtime marker OpenIMP_Cap_I2dRotate is deliberately
- * NOT defined here; define it only where a real rotation path exists. */
-static int i2d_requests_effect(const IMPFSI2DAttr *a)
+/* Vendor SetI2dAttr refuses flip together with mirror, and flip/mirror
+ * together with rotate (bitwise on the raw words), and only stores the
+ * attribute: EnableChn applies it (p1_i2d_arm), so a running channel
+ * takes a new attribute at its next enable, as on the vendor stack.
+ * OpenIMP_Cap_I2dRotate marks a libimp whose I2D path is real. */
+const int OpenIMP_Cap_I2dRotate = 1;
+
+/* Arm the I2D pass of a channel that EnableChn is starting (P1 lock held,
+ * capture buffers allocated): one output buffer per capture buffer (the
+ * vendor I2D pool has nrVBs buffers too).  Returns 0 (also when the
+ * attribute asks for nothing) or -1. */
+static int p1_i2d_arm(struct openimp_fs_channel *chn, int channel,
+                      const char *tag)
 {
-    return a->i2d_enable || a->flip_enable || a->mirr_enable ||
-           a->rotate_enable;
+    const IMPFSI2DAttr *a = &chn->attr.i2dattr;
+    uint32_t i;
+
+    chn->i2d_on = 0;
+    chn->i2d_errors = 0;
+    if (!p1_i2d_active(a->i2d_enable, a->flip_enable, a->mirr_enable,
+                       a->rotate_enable, a->rotate_angle))
+        return 0;
+    if (p1_i2d_geometry((uint32_t)chn->attr.picWidth,
+                        (uint32_t)chn->attr.picHeight, a->rotate_enable,
+                        a->rotate_angle, &chn->i2d_geom) < 0) {
+        syslog(LOG_ERR, "openimp-p1: chn%d I2D %dx%d rotate %d/%d: frame "
+               "w/h must be 8 aligned (16 for 90/270 width), angle "
+               "0/90/180/270", channel, chn->attr.picWidth,
+               chn->attr.picHeight, a->rotate_enable, a->rotate_angle);
+        return -1;
+    }
+    if (p1.i2d_fd < 0) {
+        p1.i2d_fd = open("/dev/i2d", O_RDWR | O_CLOEXEC);
+        if (p1.i2d_fd < 0) {
+            syslog(LOG_ERR, "openimp-p1: Failed to open i2d /dev/i2d: %s",
+                   strerror(errno));
+            return -1;
+        }
+    }
+    for (i = 0; i < chn->buffer_count; i++) {
+        struct openimp_fs_buffer *buffer = &chn->buffers[i];
+
+        if (dma_alloc(chn->i2d_geom.dst_size, tag, &buffer->i2d_physical,
+                      &buffer->i2d_virtual) < 0) {
+            syslog(LOG_ERR, "openimp-p1: chn%d I2D buffer %u size %u: no "
+                   "memory", channel, i, chn->i2d_geom.dst_size);
+            return -1;
+        }
+    }
+    chn->i2d_attr = *a;
+    chn->i2d_on = 1;
+    syslog(LOG_INFO, "openimp-p1: chn%d I2D %dx%d -> %ux%u flip %d mirror %d "
+           "rotate %d (hardware)", channel, chn->attr.picWidth,
+           chn->attr.picHeight, chn->i2d_geom.out_w, chn->i2d_geom.out_h,
+           a->flip_enable == 1, a->mirr_enable == 1,
+           a->rotate_enable == 1 ? a->rotate_angle : 0);
+    return 0;
 }
 
-static void i2d_warn_ignored(int channel, const IMPFSI2DAttr *a)
+/* One I2D pass from a dequeued capture buffer into its paired output
+ * buffer (no P1 lock: the caller owns the dequeued buffer; the driver
+ * serialises the block and waits for its frame-done IRQ). */
+static int p1_i2d_run(const struct openimp_fs_channel *chn,
+                      const struct openimp_fs_buffer *buffer)
 {
-    static int warned;
+    const IMPFSI2DAttr *a = &chn->i2d_attr;
+    struct p1_i2d_param param;
 
-    if (i2d_requests_effect(a) && !__sync_lock_test_and_set(&warned, 1))
-        syslog(LOG_WARNING, "libimp: FrameSource chn%d I2D attribute "
-               "(rotate/flip/mirror) is not applied on this SoC; "
-               "SetI2dAttr refuses it", channel);
+    p1_i2d_fill(&param, (uint32_t)chn->attr.picWidth,
+                (uint32_t)chn->attr.picHeight, a->flip_enable, a->mirr_enable,
+                a->rotate_enable, a->rotate_angle, &chn->i2d_geom,
+                buffer->physical, buffer->i2d_physical);
+    return ioctl(p1.i2d_fd, P1_I2D_IOC_START, &param) < 0 ? -1 : 0;
 }
 
 int IMP_FrameSource_SetI2dAttr(int channel, IMPFSI2DAttr *attr)
@@ -1242,8 +1311,6 @@ int IMP_FrameSource_SetI2dAttr(int channel, IMPFSI2DAttr *attr)
         return FS_ERR_CHN;
     if (!attr)
         return FS_ERR_PARAM;
-    if (i2d_requests_effect(attr))
-        return -1;
     if ((attr->flip_enable & attr->mirr_enable) ||
         ((attr->flip_enable | attr->mirr_enable) & attr->rotate_enable))
         return FS_ERR_STATE;
@@ -1299,7 +1366,6 @@ int IMP_FrameSource_CreateChn(int channel, IMPFSChnAttr *attr)
     chn->pool_id = pool_id;
     chn->created = 1;
     chn->attr = *attr;
-    i2d_warn_ignored(channel, &attr->i2dattr);
     unlock_p1();
     return 0;
 }
@@ -1728,6 +1794,8 @@ int IMP_FrameSource_EnableChn(int channel)
         trace_p1("P1_INNER QBUF_END\n");
         buffer->queued = 1;
     }
+    if (p1_i2d_arm(chn, channel, capture_tag) < 0)
+        goto done;
     type = TISP_BUF_TYPE_VIDEO_CAPTURE;
     trace_p1("P1_INNER STREAMON_BEGIN\n");
     if (record_ioctl(chn->fd, TISP_VIDIOC_STREAMON, &type) < 0)
@@ -1861,6 +1929,32 @@ static int p1_get_frame_attempts(int channel, IMPFrameInfo **frame, int max_atte
     }
     buffer = &chn->buffers[index];
     buffer->queued = 0;
+    if (chn->i2d_on) {
+        /* vendor: the consumers get the I2D output, not the capture */
+        int ok;
+
+        unlock_p1();
+        ok = p1_i2d_run(chn, buffer) == 0;
+        lock_p1();
+        if (!chn->enabled || !chn->i2d_on || !buffer->i2d_physical) {
+            unlock_p1();
+            openimp_profile_end(OPENIMP_PROFILE_FRAME_SOURCE_WAIT,
+                                wait_profile);
+            return -1;
+        }
+        if (!ok) {
+            if (chn->i2d_errors++ < 5U || !(chn->i2d_errors & 1023U))
+                syslog(LOG_ERR, "openimp-p1: chn%d i2d_start err (%u): %s",
+                       channel, chn->i2d_errors, strerror(errno));
+            fill_qbuf(words, index, buffer->physical, buffer->size);
+            if (record_ioctl(chn->fd, TISP_VIDIOC_QBUF, words) >= 0)
+                buffer->queued = 1;
+            unlock_p1();
+            openimp_profile_end(OPENIMP_PROFILE_FRAME_SOURCE_WAIT,
+                                wait_profile);
+            return -1;
+        }
+    }
     memset(&buffer->frame, 0, sizeof(buffer->frame));
     buffer->frame.index = (int32_t)index;
     buffer->frame.pool_idx = channel;
@@ -1881,6 +1975,16 @@ static int p1_get_frame_attempts(int channel, IMPFrameInfo **frame, int max_atte
     buffer->frame.direct_phyAddr = buffer->physical;
 #endif
     buffer->frame.pool = chn;
+    if (chn->i2d_on) {
+        buffer->frame.width = chn->i2d_geom.out_w;
+        buffer->frame.height = chn->i2d_geom.out_h;
+        buffer->frame.size = chn->i2d_geom.dst_size;
+        buffer->frame.phyAddr = buffer->i2d_physical;
+        buffer->frame.virAddr = (uint32_t)(uintptr_t)buffer->i2d_virtual;
+#if defined(PLATFORM_T41)
+        buffer->frame.direct_phyAddr = buffer->i2d_physical;
+#endif
+    }
 #if defined(PLATFORM_T41)
     /* The T41 frame-channel wire timeval is CLOCK_MONOTONIC_RAW, at
      * words 5/6 (seconds/microseconds). Preserve the completion instant,
@@ -2020,8 +2124,10 @@ int IMP_FrameSource_SnapFrame(int channel, int fmt, int width, int height,
     lock_p1();
     prepare_p1();
     chn = &p1.channels[channel];
-    if (!chn->enabled || chn->attr.picWidth != width ||
-        chn->attr.picHeight != height ||
+    /* an I2D channel delivers (and snaps) the rotated size */
+    if (!chn->enabled ||
+        (chn->i2d_on ? (int)chn->i2d_geom.out_w : chn->attr.picWidth) != width ||
+        (chn->i2d_on ? (int)chn->i2d_geom.out_h : chn->attr.picHeight) != height ||
         chn->attr.pixFmt != (int32_t)TISP_PIX_FMT_NV12_ENUM) {
         unlock_p1();
         syslog(LOG_ERR, "openimp-p1: SnapFrame chn=%d %dx%d fmt %d does "
@@ -2075,8 +2181,8 @@ int IMP_FrameSource_SnapFrame(int channel, int fmt, int width, int height,
     }
     buffer = &chn->buffers[chn->snap.index];
     record = buffer->frame;
-    source = buffer->virtual_address;
-    source_size = buffer->size;
+    source = (const void *)(uintptr_t)record.virAddr;  /* capture or I2D */
+    source_size = record.size;
     unlock_p1();
 
     /* ISP DMA wrote the pixels: drop stale cache lines of this buffer
