@@ -3,11 +3,20 @@
 Everything changed, extended or fixed in OpenIMP, open-tx-isp, timps and the thingino
 integration since the test campaign started on 2026-09-30. Kept up to date during the campaign.
 
-Last update: 2026-10-16 (aggregate agg-39, flashed on the test cameras, soak pending); before that 2026-10-12 (aggregate agg-38, build and host tests only; before that the T40 night branch, host only); before that 2026-10-11 (aggregate agg-36 after RC1, build and host tests only; before that RC1 v2026.10.11-rc1: openimp fe9307c (agg-35 687a68e4 + docs), open-tx-isp 191be6c5 (agg-35 6e464ac7 + docs); agg-35 soak clean). Before that 2026-10-10 evening (cam-K first T40 device run, T41 audio/driver controls, audio on T10..T31, agg-35 build; before that docs-1010b: front crop vs flip, AeComp, agg-34.1, T41 notes; docs-1010: results of 2026-10-10 collected; items marked "in branch" are not yet in an aggregate). Branch names (`claude/...`) in the tables and sections below are historic: the branches were merged into `next` and deleted.
+Last update: 2026-10-18 (T40/T41 merges into next, see the first section); before that 2026-10-16 (aggregate agg-39, flashed on the test cameras, soak pending); before that 2026-10-12 (aggregate agg-38, build and host tests only; before that the T40 night branch, host only); before that 2026-10-11 (aggregate agg-36 after RC1, build and host tests only; before that RC1 v2026.10.11-rc1: openimp fe9307c (agg-35 687a68e4 + docs), open-tx-isp 191be6c5 (agg-35 6e464ac7 + docs); agg-35 soak clean). Before that 2026-10-10 evening (cam-K first T40 device run, T41 audio/driver controls, audio on T10..T31, agg-35 build; before that docs-1010b: front crop vs flip, AeComp, agg-34.1, T41 notes; docs-1010: results of 2026-10-10 collected; items marked "in branch" are not yet in an aggregate). Branch names (`claude/...`) in the tables and sections below are historic: the branches were merged into `next` and deleted.
 
 Cameras are anonymised: cam-A (T31), cam-B (T23), cam-C (T20), cam-D (T21), cam-E (T10), cam-F (T41); cam-G and cam-H are further T23 cameras, cam-I a second T20 and cam-J a second T21.
 
-## CappedVBR / CappedQuality on T40/T41 (2026-10-18, branch `claude/capped-rc-t4x`, not in an aggregate)
+## T40/T41 merges into next (2026-10-18)
+
+- **T40 sub-stream (ch1) on the open driver:** root cause of 0 frames was a missing MSCA output-1 pop in the interrupt handler (open-tx-isp `claude/t40-ch1`); fixed and device-tested on the Eufy T40XP (226/226 frames ch0/ch1, 10 min timps run at 20 fps each, 0 oops). NV12 chroma offset now uses the 16-line aligned height like the vendor (green strip and colour fringes gone). Details in FEATURE_MATRIX #25.
+- **T40 AutoZoom** (CID 0x08000077) real in the open driver (`claude/t40-autozoom`) and `OpenIMP_Cap_AutoZoom = 1`; device-tested live on the Eufy, see FEATURE_MATRIX #20. **T41 AutoZoom/ScalerLv** device-tested on Cinnado .34 (ch1 live up to 768x432, ch0 deferred to restart).
+- **Encoder ROI on by default:** T40 always, T41 for CBR/VBR (T41 FixQP: table ignored by the AVPU, cause open); `OPENIMP_T4x_ROI=0` off. Device-tested on both (FEATURE_MATRIX #45); `OpenIMP_Cap_EncRoi` exported.
+- **Real CappedVBR/CappedQuality on T40/T41** merged (section below); T40 host-tested only. `OpenIMP_Cap_CappedRc` replaces `OpenIMP_Cap_CappedRcAsVbr`.
+- **Motion on T41 with the open stack:** 8/8 moves, 0 false alarms, CPU 1 % (FEATURE_MATRIX #29); T40 not tested yet.
+- **Open:** T40 GIB AE dgain returns -1 per frame (not applied); T40 stop path (`Tzn_Msca_Work_en`) mask not OEM-exact; a stop/GIB fix is still pending and not merged. The T31 lazy-init loss of AL mode/max bitrate (see CappedVBR section) needs a T31 device test.
+
+## CappedVBR / CappedQuality on T40/T41 (2026-10-18, branch `claude/capped-rc-t4x`, merged into next)
 
 - **T40/T41:** CappedVBR and CappedQuality are no longer emulated by VBR: they run the vendor Allegro rate-control core (same algorithm as the vendor T40 1.3.1 / T41 1.2.6 libraries) with the uMaxPSNR quality cap. T41 device test (static scene, 3000/4000 kbit/s): cap 38 dB needs 1665 kbit/s instead of 3111; 300/400 kbit/s stays at 300. T40: host test only. Marker `OpenIMP_Cap_CappedRc` replaces `OpenIMP_Cap_CappedRcAsVbr`. Details in `docs/RC_MODES.md`.
 
@@ -304,7 +313,7 @@ Device results: T23 passed an 18-case matrix (crop off with a 1080p main stream,
 |---|---|---|---|
 | T10/T20/T21 | T20: ROI and chroma QP offset only in the release candidate; T21 stored ROI like the vendor and applied nothing | `SetChnROI` and the H.264 chroma QP offset act on the Helix/NVPU (T21 by default, beyond vendor, `OPENIMP_T21_ROI=0` switches off); device-tested on all three | 8ba6fdd, 0a9389d |
 | T31 | No ROI in the vendor library | `IMP_Encoder_Set/GetChnRoiAttr` through the AVPU macroblock QP table (beyond vendor, H.264 only, `OPENIMP_T31_ROI=0` refuses the call); end to end with the streamer: relative -10 gave 2.7x the bit rate | d03ca24 |
-| T41 | None | Experimental table path, off unless `OPENIMP_T41_ROI=1`, code only | f2fd9a5 |
+| T41 | None | AVPU QP table, on by default for CBR/VBR since 2026-10-18 (cmd[152] bits 0 and 3 as the vendor); device-tested; no effect under FixQP | f2fd9a5 |
 | All ROI paths | A relative QP of -26 (and an absolute QP far from the macroblock QP) gave `mb_qp_delta` outside -26..+25: invalid H.264 that software decoders hide and hardware decoders (Intel VA-API, VLC, Firefox, Edge) show broken from the ROI row on | Window deltas -25..+25, spread of all deltas at most 25, picture QP plus delta in 0..51 and in the rate control's min/max QP, requests clamped with a one-time warning; under FixQP the T31 table is not clamped to the rate control's min/max QP (8545fb9). T31 measured: relative -20 became -19, absolute 51 +21.7, 0 decoder errors in 20 VA-API checks | fec3e69, 8545fb9 |
 | T23 | n/a | Regions go to the vendor encoder; no visible effect was measured (no-op) | none |
 
