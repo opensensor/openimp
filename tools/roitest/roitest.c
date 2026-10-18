@@ -18,6 +18,10 @@
  *      (stream OUTDIR/label_ch1.h264), ROITEST_ZPRE=ch,l,t,w,h AutoZoom before the first start.
  * T31/T40/T41: ROITEST_RC=vbr|cvbr|cq (VBR, CappedVBR, CappedQuality) with ROITEST_MAXKBPS
  *      (uMaxBitRate, default SetDefaultParam) and ROITEST_PSNR (uMaxPSNR dB).
+ * T40/T41: ROITEST_I2D=flip,mirror,rotate_enable,angle sets the ch0 I2D attribute (CreateChn
+ *      attr + SetI2dAttr, vendor semantics: picture size stays the capture size, the encoder
+ *      gets the rotated size for 90/270).  Output 1 gets no I2D unless ROITEST_CH1_I2D (same
+ *      format, ch1 encoder takes the rotated size for 90/270).
  * OUTDIR "-": the ch0 stream of all phases goes to stdout (pipe it to the host, the camera's
  *      /tmp is small); every other output goes to stderr.
  * Stop the streamer first; the camera's /tmp is RAM, use short phases.
@@ -459,13 +463,54 @@ int main(int argc, char **argv)
             W = ow; H = oh;
         }
     }
+#ifdef PLATFORM_T41
+    if (getenv("ROITEST_I2D")) {
+        int v[4] = {0, 0, 0, 0};
+        sscanf(getenv("ROITEST_I2D"), "%d,%d,%d,%d", &v[0], &v[1], &v[2], &v[3]);
+        fa.i2dattr.i2d_enable = 1; fa.i2dattr.flip_enable = v[0]; fa.i2dattr.mirr_enable = v[1];
+        fa.i2dattr.rotate_enable = v[2]; fa.i2dattr.rotate_angle = v[3];
+    }
+#endif
     CK(IMP_FrameSource_CreateChn(0, &fa), "FS_CreateChn");
+#ifdef PLATFORM_T41
+    if (getenv("ROITEST_I2D")) {
+        int r = IMP_FrameSource_SetI2dAttr(0, &fa.i2dattr);
+        fprintf(stderr, "[I2D] SetI2dAttr flip %d mirror %d rotate %d/%d -> %d\n",
+                fa.i2dattr.flip_enable, fa.i2dattr.mirr_enable, fa.i2dattr.rotate_enable,
+                fa.i2dattr.rotate_angle, r);
+        if (fa.i2dattr.rotate_enable == 1 && (fa.i2dattr.rotate_angle == 90 || fa.i2dattr.rotate_angle == 270)) {
+            int t = W; W = H; H = t;   /* the encoder takes the rotated picture */
+        }
+    }
+#endif
     if (getenv("ROITEST_CH1") && sscanf(getenv("ROITEST_CH1"), "%dx%d", &ch1_w, &ch1_h) == 2) {
         IMPFSChnAttr f1 = fa;
         f1.picWidth = ch1_w; f1.picHeight = ch1_h;
         f1.scaler.enable = 1; f1.scaler.outwidth = ch1_w; f1.scaler.outheight = ch1_h;
         f1.crop.enable = 0;
+#ifdef PLATFORM_T41
+        /* the I2D attribute is per channel: f1 = fa must not rotate ch1 too
+         * (a 90/270 ch1 frame does not fit its landscape encoder) */
+        memset(&f1.i2dattr, 0, sizeof(f1.i2dattr));
+        if (getenv("ROITEST_CH1_I2D")) {
+            int v[4] = {0, 0, 0, 0};
+            sscanf(getenv("ROITEST_CH1_I2D"), "%d,%d,%d,%d", &v[0], &v[1], &v[2], &v[3]);
+            f1.i2dattr.i2d_enable = 1; f1.i2dattr.flip_enable = v[0]; f1.i2dattr.mirr_enable = v[1];
+            f1.i2dattr.rotate_enable = v[2]; f1.i2dattr.rotate_angle = v[3];
+        }
+#endif
         CK(IMP_FrameSource_CreateChn(1, &f1), "FS_CreateChn1");
+#ifdef PLATFORM_T41
+        if (f1.i2dattr.i2d_enable) {
+            int r = IMP_FrameSource_SetI2dAttr(1, &f1.i2dattr);
+            fprintf(stderr, "[I2D] ch1 SetI2dAttr rotate %d/%d -> %d\n",
+                    f1.i2dattr.rotate_enable, f1.i2dattr.rotate_angle, r);
+            if (f1.i2dattr.rotate_enable == 1 &&
+                (f1.i2dattr.rotate_angle == 90 || f1.i2dattr.rotate_angle == 270)) {
+                int t = ch1_w; ch1_w = ch1_h; ch1_h = t;
+            }
+        }
+#endif
         ch1_on = 1;
     }
 #ifdef PLATFORM_T41

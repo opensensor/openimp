@@ -17,8 +17,9 @@ QUERY_TEST_BIN := $(PROJECT_DIR)/build/tests/t40-query-test
 SEI_TEST_BIN := $(PROJECT_DIR)/build/tests/t40-sei-test
 OSD_CB_TEST_BIN := $(PROJECT_DIR)/build/tests/t40-osd-callback-test
 DGAIN_TEST_BIN := $(PROJECT_DIR)/build/tests/t40-audio-dgain-test
+I2D_TEST_BIN := $(PROJECT_DIR)/build/tests/t40-i2d-test
 
-check: $(QUERY_TEST_BIN) $(SEI_TEST_BIN) $(OSD_CB_TEST_BIN) $(DGAIN_TEST_BIN) $(P2_BUFSHARE_TEST_BIN) $(STREAM_LAYOUT_TEST_BIN) $(DENOISE_TEST_BIN) $(CAMERA_INPUT_TEST_BIN) $(IVS_FRAMEWORK_TEST_BIN) p3-controls isp-osd abi-layout frame-ts frame-rc vendor-cmd
+check: $(QUERY_TEST_BIN) $(SEI_TEST_BIN) $(OSD_CB_TEST_BIN) $(DGAIN_TEST_BIN) $(P2_BUFSHARE_TEST_BIN) $(STREAM_LAYOUT_TEST_BIN) $(DENOISE_TEST_BIN) $(CAMERA_INPUT_TEST_BIN) $(IVS_FRAMEWORK_TEST_BIN) $(I2D_TEST_BIN) p3-controls isp-osd abi-layout frame-ts frame-rc vendor-cmd
 	$(QUERY_TEST_BIN)
 	$(SEI_TEST_BIN)
 	$(OSD_CB_TEST_BIN)
@@ -28,6 +29,7 @@ check: $(QUERY_TEST_BIN) $(SEI_TEST_BIN) $(OSD_CB_TEST_BIN) $(DGAIN_TEST_BIN) $(
 	$(DENOISE_TEST_BIN)
 	$(CAMERA_INPUT_TEST_BIN)
 	$(IVS_FRAMEWORK_TEST_BIN)
+	$(I2D_TEST_BIN)
 
 # IVS framework and move algorithm with the T40 1.3.1 ABI (IMPFrameInfo 0x30,
 # pool at 0x20, timestamp at 0x28); the test source is shared with tests/t23.
@@ -199,3 +201,8 @@ $(P2_BUFSHARE_TEST_BIN): ../t31/p2_bufshare_test.c \
 		$(PROJECT_DIR)/src/openimp_profile.c \
 		$(PROJECT_DIR)/src/t40/t31_stream_layout.c \
 		-no-pie -lpthread $(PROJECT_DIR)/src/core/imp_log_emit.c -o $@
+
+# FrameSource I2D (hardware rotate/flip/mirror), source shared with tests/t41.
+$(I2D_TEST_BIN): ../t41/i2d_test.c $(PROJECT_DIR)/src/t40/p1_i2d.h
+	mkdir -p "$(dir $@)"
+	$(CC) $(CFLAGS) -I$(PROJECT_DIR)/src $< -o "$@"

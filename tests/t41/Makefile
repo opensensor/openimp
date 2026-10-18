@@ -16,9 +16,10 @@ RMEM_FIT_TEST_BIN := $(PROJECT_DIR)/build/tests/t41-rmem-fit-test
 RMEM_FIT_T40_TEST_BIN := $(PROJECT_DIR)/build/tests/t40-rmem-first-fit-test
 JPEG_QL_TEST_BIN := $(PROJECT_DIR)/build/tests/t41-jpeg-ql-test
 SNAP_TEST_BIN := $(PROJECT_DIR)/build/tests/t41-snap-test
+I2D_TEST_BIN := $(PROJECT_DIR)/build/tests/t41-i2d-test
 TEST_BINS := $(IVS_FRAMEWORK_TEST_BIN) $(CORE_LEASE_TEST_BIN) $(COMMAND_TEST_BIN) $(RATE_CONTROL_TEST_BIN) $(EP1_TEST_BIN) \
 	$(STREAM_LAYOUT_TEST_BIN) $(TUNING_AWB_TEST_BIN) $(TUNING_STARTUP_TEST_BIN) $(TUNING_POLICY_TEST_BIN) $(JPEG_DCT_TEST_BIN) \
-	$(RMEM_FIT_TEST_BIN) $(RMEM_FIT_T40_TEST_BIN) $(JPEG_QL_TEST_BIN) $(SNAP_TEST_BIN)
+	$(RMEM_FIT_TEST_BIN) $(RMEM_FIT_T40_TEST_BIN) $(JPEG_QL_TEST_BIN) $(SNAP_TEST_BIN) $(I2D_TEST_BIN)
 
 P3_CONTROLS_TEST_BIN := $(PROJECT_DIR)/build/tests/t41-p3-controls-test
 
@@ -44,6 +45,7 @@ check: $(TEST_BINS) $(P2_BUFSHARE_TEST_BIN)
 	$(JPEG_DCT_TEST_BIN)
 	$(JPEG_QL_TEST_BIN)
 	$(SNAP_TEST_BIN)
+	$(I2D_TEST_BIN)
 	$(P2_BUFSHARE_TEST_BIN)
 
 # IMP_Encoder_SetJpegeQl tables in the T41 software JPEG (the test source is
@@ -129,6 +131,12 @@ $(STREAM_LAYOUT_TEST_BIN): stream_layout_test.c \
 		-o "$@"
 
 $(SNAP_TEST_BIN): snap_test.c $(PROJECT_DIR)/src/t40/t41_snap.h
+	mkdir -p "$(dir $@)"
+	$(CC) $(CFLAGS) -I$(PROJECT_DIR)/src $< -o "$@"
+
+# FrameSource I2D (hardware rotate/flip/mirror): geometry, ioctl block,
+# NV12 layout (shared with tests/t40).
+$(I2D_TEST_BIN): i2d_test.c $(PROJECT_DIR)/src/t40/p1_i2d.h
 	mkdir -p "$(dir $@)"
 	$(CC) $(CFLAGS) -I$(PROJECT_DIR)/src $< -o "$@"
 

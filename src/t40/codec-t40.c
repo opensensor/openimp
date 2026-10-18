@@ -1291,6 +1291,17 @@ static uint32_t avpu_get_enc1_src_pitch(uint32_t width, uint32_t format_word)
     return avpu_align_up_u32(pitch, 16u);
 }
 
+/* An I2D (rotate/flip/mirror) output has its own pitch (p1_i2d.h, ALIGN32);
+ * FrameSource reports it by physical address, 0 for the capture layout.
+ * Weak: builds and host tests without P1 keep the ALIGN16 default. */
+extern uint32_t OpenIMP_FS_FramePitch(uint32_t physical) __attribute__((weak));
+
+static uint32_t avpu_src_pitch_hint(uint32_t src_phys)
+{
+    return OpenIMP_FS_FramePitch && src_phys ?
+        OpenIMP_FS_FramePitch(src_phys) : 0u;
+}
+
 static uint32_t avpu_get_enc1_rec_pitch(uint32_t width, uint32_t format_word)
 {
     uint32_t max_bitdepth = avpu_get_enc1_max_bitdepth(format_word);
@@ -4255,8 +4266,10 @@ static int avpu_t41_fill_command(ALAvpuContext *ctx, void *slot,
     params.is_idr = is_idr;
 
     params.source_y = src_phys;
-    params.source_uv = src_phys +
-        avpu_get_nv12_src_uv_offset(ctx->enc_w, ctx->enc_h);
+    params.source_pitch = avpu_src_pitch_hint(src_phys);
+    params.source_uv = src_phys + (params.source_pitch ?
+        params.source_pitch * avpu_get_nv12_luma_lines(ctx->enc_h) :
+        avpu_get_nv12_src_uv_offset(ctx->enc_w, ctx->enc_h));
 
     params.reference_y = ctx->rec_buf.phy_addr;
     params.reference_uv = ctx->rec_buf.phy_addr + luma_size;
@@ -4690,7 +4703,9 @@ static void fill_cmd_regs_enc1(const ALAvpuContext* ctx, uint32_t* cmd,
         uint32_t y_plane_sz = avpu_get_nv12_luma_plane_size(ctx->enc_w, ctx->enc_h);
         uint32_t rec_pitch = avpu_get_enc1_rec_pitch(ctx->enc_w, ctx->format_word);
         uint32_t rec_map_pitch = avpu_get_enc1_fbc_map_pitch(ctx->enc_w);
-        uint32_t src_pitch = avpu_get_enc1_src_pitch(ctx->enc_w, ctx->format_word);
+        uint32_t src_hint = avpu_src_pitch_hint(src_phys);
+        uint32_t src_pitch = src_hint ? src_hint :
+            avpu_get_enc1_src_pitch(ctx->enc_w, ctx->format_word);
         uint32_t rec_ref_sz = (uint32_t)avpu_get_enc1_ref_region_size(ctx->enc_w, ctx->enc_h);
         uint32_t rec_map_sz = (uint32_t)avpu_get_enc1_map_region_size(ctx->enc_w, ctx->enc_h);
         uint32_t rec_map_addr = ctx->rec_buf.phy_addr + rec_ref_sz;
@@ -4699,8 +4714,9 @@ static void fill_cmd_regs_enc1(const ALAvpuContext* ctx, uint32_t* cmd,
         /* Source frame */
         if (src_phys) {
             cmd[0x20] = src_phys;                     /* src Y */
-            cmd[0x21] = src_phys +                    /* src UV */
-                avpu_get_nv12_src_uv_offset(ctx->enc_w, ctx->enc_h);
+            cmd[0x21] = src_phys + (src_hint ?        /* src UV */
+                src_hint * avpu_get_nv12_luma_lines(ctx->enc_h) :
+                avpu_get_nv12_src_uv_offset(ctx->enc_w, ctx->enc_h));
             cmd[0x22] = src_pitch & 0x3ffffu;         /* src pitch */
         }
 
@@ -4983,9 +4999,16 @@ static void fill_cmd_regs_enc1(const ALAvpuContext* ctx, uint32_t* cmd,
         cmd[0x1e] = lcu_count ? lcu_count - 1u : 0u;
         cmd[0x1f] = 0u;
 
-        cmd[0x20] = src_phys;
-        cmd[0x21] = src_phys + avpu_get_nv12_src_uv_offset(width, height);
-        cmd[0x22] = avpu_get_enc1_src_pitch(width, ctx->format_word);
+        {
+            uint32_t src_hint = avpu_src_pitch_hint(src_phys);
+
+            cmd[0x20] = src_phys;
+            cmd[0x21] = src_phys + (src_hint ?
+                src_hint * avpu_get_nv12_luma_lines(height) :
+                avpu_get_nv12_src_uv_offset(width, height));
+            cmd[0x22] = src_hint ? src_hint :
+                avpu_get_enc1_src_pitch(width, ctx->format_word);
+        }
         cmd[0x23] = ctx->interm_buf.phy_addr
                   + ctx->interm_ep1_size + ep1_row_table_size;
         cmd[0x24] = rec_y;

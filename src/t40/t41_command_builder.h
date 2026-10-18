@@ -27,6 +27,7 @@ typedef struct OpenIMPT41CommandParams {
 
     uint32_t source_y;
     uint32_t source_uv;
+    uint32_t source_pitch;          /* 0: ALIGN16(width) */
 
     uint32_t reference_y;
     uint32_t reference_uv;
