@@ -439,7 +439,7 @@ extern int32_t get_cpu_id(void);
 #if (defined(PLATFORM_T21) && !defined(PLATFORM_T20)) || defined(PLATFORM_T23) || \
     defined(PLATFORM_T31) || \
     (!defined(PLATFORM_T20) && !defined(PLATFORM_T21) && !defined(PLATFORM_T23) && \
-     !defined(PLATFORM_T30) && !defined(PLATFORM_T31) && !defined(PLATFORM_T41))
+     !defined(PLATFORM_T30) && !defined(PLATFORM_T31))
 #include <fcntl.h>
 #include <sys/mman.h>
 
@@ -482,7 +482,31 @@ static const char *p0_soc_variant(void)
     if (done)
         return cached;
     done = 1;
-#if !defined(PLATFORM_T21) && !defined(PLATFORM_T23) && !defined(PLATFORM_T31)
+#if defined(PLATFORM_T41)
+    /* T41, vendor get_cpu_id (Cinnado T41 libCoreAv, built-in libimp): soc id
+     * 0x1300002c family nibble 1, the upper half of 0x13540250 selects the
+     * variant; anything else is an error and the vendor falls back to T41-L. */
+    (void)cppsr; (void)d; (void)c; (void)flag; (void)sub; (void)chip;
+    if (p0_read_soc_reg(0x1300002cu, &soc) || (soc >> 28) != 1u ||
+        p0_read_soc_reg(0x13540250u, &c))
+        return NULL;
+    switch ((c >> 16) & 0xffffu) {
+    case 0x3333u: cached = "T41-L"; break;
+    case 0x1111u: cached = "T41-N"; break;
+    case 0x5555u: cached = "T41-ZL"; break;
+    case 0x7777u: cached = "T41-ZN"; break;
+    case 0x6666u: cached = "T41-ZX"; break;
+    case 0x4444u: cached = "T41-A"; break;
+    case 0x8888u: cached = "T41-LC"; break;
+    case 0x9999u: cached = "T41-LQ"; break;
+    case 0xaaaau: cached = "T41-NQ"; break;
+    case 0x2222u: cached = "T41-XQ"; break;
+    case 0xbbbbu: cached = "T41-ZM"; break;
+    case 0xccccu: cached = "T41-ZG"; break;
+    default:      cached = "T41-L"; break;
+    }
+    return cached;
+#elif !defined(PLATFORM_T21) && !defined(PLATFORM_T23) && !defined(PLATFORM_T31)
     /* T40, vendor get_cpu_id (T40 1.x libimp 0x1bf70): soc id 0x1300002c
      * (family nibble 1, chip id 0x40), the upper half of 0x13540250 selects
      * the variant: 0x1111 T40-N, 0x7777 T40-XP, 0x8888 T40-NN, 0x4444 T40-A;
@@ -590,7 +614,11 @@ const char *IMP_System_GetCPUInfo(void)
         return variant ? variant : "T31X";
     }
 #elif defined(PLATFORM_T41)
-    return "T41NQ";
+    {
+        const char *variant = p0_soc_variant();
+
+        return variant ? variant : "T41NQ";
+    }
 #else
     {
         const char *variant = p0_soc_variant();
