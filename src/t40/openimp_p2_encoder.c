@@ -1213,7 +1213,7 @@ extern int AL_Codec_Encode_SetSuperFrame(void *codec, uint32_t mode,
                                          uint32_t i_bits, uint32_t p_bits);
 extern int AL_Codec_Encode_SetRcTrig(void *codec, float level, int new_max_qp);
 #endif
-#if defined(PLATFORM_T31)
+#if defined(PLATFORM_T31) || defined(PLATFORM_T40) || defined(PLATFORM_T41)
 extern int AL_Codec_Encode_SetRcQualityCap(void *codec, int rc_mode,
                                            unsigned int max_psnr);
 #endif
@@ -1454,15 +1454,18 @@ static uint32_t p2_attr_bitrate_kbps(const IMPEncoderCHNAttr *attr)
  * share the VBR layout) and is what SetChnAttrRcMode already does at run
  * time.  Returns the HW mode, or -1 for a mode with no counterpart.
  *
- * T31: the OEM library runs CappedVBR and CappedQuality on its VBR rate
- * controller plus a PSNR cap (libimp 1.1.6, see AL_Codec_Encode_Set-
- * RcQualityCap); OpenIMP does the same with its closed-loop controller.
+ * T31/T40/T41: the OEM library runs CappedVBR and CappedQuality on its VBR
+ * rate controller plus a PSNR cap (libimp 1.1.6 / 1.3.1 / 1.2.6, see
+ * AL_Codec_Encode_SetRcQualityCap); OpenIMP runs the ported Allegro core in
+ * the same modes.
  * The mode itself is kept (GetChnAttrRcMode returns it, as the OEM
  * library returns the stored attribute). */
 #if defined(PLATFORM_T40) || defined(PLATFORM_T41)
-/* Runtime marker: CappedVBR / CappedQuality are accepted but emulated by the
- * plain VBR controller (value 1).  Not exported where the mode is native. */
-__attribute__((visibility("default"))) const int OpenIMP_Cap_CappedRcAsVbr = 1;
+/* Runtime marker: CappedVBR / CappedQuality run their own OEM rate control
+ * (the Allegro core in CappedVBR/CappedQuality mode with the uMaxPSNR cap,
+ * as T40 libimp 1.3.1 / T41 1.2.6), not the plain VBR controller.  Replaces
+ * OpenIMP_Cap_CappedRcAsVbr (emulation) of earlier builds. */
+__attribute__((visibility("default"))) const int OpenIMP_Cap_CappedRc = 1;
 #endif
 
 /* Runtime markers for streamers (gate features on the symbol, not on the SoC):
@@ -1516,7 +1519,7 @@ static int p2_codec_rc_mode(const IMPEncoderCHNAttr *attr, int channel)
                     channel, mode);
         return -1;
     }
-#if defined(PLATFORM_T31)
+#if defined(PLATFORM_T31) || defined(PLATFORM_T40) || defined(PLATFORM_T41)
     if (mode == IMP_ENC_RC_MODE_CAPPED_VBR ||
         mode == IMP_ENC_RC_MODE_CAPPED_QUALITY) {
         IMP_LOG_INFO("Encoder",
@@ -1528,8 +1531,8 @@ static int p2_codec_rc_mode(const IMPEncoderCHNAttr *attr, int channel)
 #endif
     IMP_LOG_WARN("Encoder",
                  "CreateChn(%d): rate-control mode %s is emulated by VBR "
-                 "(no native %s rate control, no PSNR/quality cap; probe "
-                 "OpenIMP_Cap_CappedRcAsVbr)\n", channel, name, name);
+                 "(no native %s rate control, no PSNR/quality cap)\n",
+                 channel, name, name);
     return HW_RC_MODE_VBR;
 }
 
@@ -2121,6 +2124,12 @@ int IMP_Encoder_CreateChn(int channel, IMPEncoderCHNAttr *attr)
         AL_Codec_Encode_SetQpIPDelta(
             ch->codec, attr->rcAttr.attrRcMode.attrVbr.iIPDelta);
 #endif
+#if defined(PLATFORM_T40) || defined(PLATFORM_T41)
+    /* T40/T41: the capped modes run the OEM core with their PSNR cap. */
+    (void)AL_Codec_Encode_SetRcQualityCap(
+        ch->codec, (int)attr->rcAttr.attrRcMode.rcMode,
+        attr->rcAttr.attrRcMode.attrCappedVbr.uMaxPSNR);
+#endif
 #if defined(PLATFORM_T31)
     (void)AL_Codec_Encode_SetRcQualityCap(
         ch->codec, (int)attr->rcAttr.attrRcMode.rcMode,
@@ -2134,6 +2143,11 @@ int IMP_Encoder_CreateChn(int channel, IMPEncoderCHNAttr *attr)
      * already holds, and it requires ch->created.  The attribute carries the
      * rates in kbit/s and the codec wants bit/s, the same conversion the
      * runtime path applies. */
+#endif
+#if defined(PLATFORM_T31) || defined(PLATFORM_T40) || defined(PLATFORM_T41)
+    /* T40/T41: only for the capped modes, whose OEM core needs uMaxBitRate,
+     * eRcOptions and iPBDelta from the start (vendor channel_encoder_init
+     * does this for every mode; CBR/VBR keep their former T40/T41 path). */
     {
         IMPEncoderRcAttr codec_rc = attr->rcAttr;
         uint32_t target_kbps;
@@ -2165,6 +2179,11 @@ int IMP_Encoder_CreateChn(int channel, IMPEncoderCHNAttr *attr)
         default:
             break;      /* FIXQP and JPEG channels have no Allegro rate control */
         }
+#if !defined(PLATFORM_T31)
+        if (codec_rc.attrRcMode.rcMode != IMP_ENC_RC_MODE_CAPPED_VBR &&
+            codec_rc.attrRcMode.rcMode != IMP_ENC_RC_MODE_CAPPED_QUALITY)
+            has_rc = 0;
+#endif
         if (has_rc)
             p2_normalise_rc_qps(&codec_rc);
         if (has_rc && AL_Codec_Encode_SetRcParam(ch->codec, &codec_rc) != 0) {
@@ -3973,7 +3992,7 @@ int IMP_Encoder_SetChnAttrRcMode(int channel, IMPEncoderAttrRcMode *mode)
         pthread_mutex_unlock(&ch->lock);
         return -1;
     }
-#if defined(PLATFORM_T31)
+#if defined(PLATFORM_T31) || defined(PLATFORM_T40) || defined(PLATFORM_T41)
     (void)AL_Codec_Encode_SetRcQualityCap(ch->codec, (int)mode->rcMode,
                                           mode->attrCappedVbr.uMaxPSNR);
 #endif

@@ -7,6 +7,10 @@ Last update: 2026-10-16 (aggregate agg-39, flashed on the test cameras, soak pen
 
 Cameras are anonymised: cam-A (T31), cam-B (T23), cam-C (T20), cam-D (T21), cam-E (T10), cam-F (T41); cam-G and cam-H are further T23 cameras, cam-I a second T20 and cam-J a second T21.
 
+## CappedVBR / CappedQuality on T40/T41 (2026-10-18, branch `claude/capped-rc-t4x`, not in an aggregate)
+
+- **T40/T41:** CappedVBR and CappedQuality are no longer emulated by VBR: they run the vendor Allegro rate-control core (same algorithm as the vendor T40 1.3.1 / T41 1.2.6 libraries) with the uMaxPSNR quality cap. T41 device test (static scene, 3000/4000 kbit/s): cap 38 dB needs 1665 kbit/s instead of 3111; 300/400 kbit/s stays at 300. T40: host test only. Marker `OpenIMP_Cap_CappedRc` replaces `OpenIMP_Cap_CappedRcAsVbr`. Details in `docs/RC_MODES.md`.
+
 ## Aggregate agg-39 (2026-10-14 to 2026-10-16, flashed on the test cameras, soak pending)
 
 Branches `claude/agg39` in OpenIMP (45314f3, on agg-38) and open-tx-isp (a6157440), plus the thingino firmware branch `claude/agg39-fw`. Full OTA images were flashed on six test cameras on 2026-10-16 (T31, T10, T21, T41 and two T20 boards): all boot, stream, snapshot works and there were 0 oopses. The soak and the device test plan (`docs/AGG39_TESTPLAN.md` in open-tx-isp) are not done yet; production cameras still run agg-38. The per-feature device results of the branches are in the agg-39 section of the driver CHANGELOG and in the FEATURE_MATRIX update note.

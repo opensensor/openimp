@@ -491,7 +491,7 @@ Per feature: the vendor-stack behaviour and the full per-SoC cell text (chronolo
 - **T30:** 🔧 CBR/VBR/FixQP with the T31 GOP-level controller (`docs/T30_STATUS.md`), host test `rc_readback_test`; no device result by us
 - **T31:** ✅ all modes via the vendor Allegro core (default): CBR 1210 kbit/s at 1200 target and 2973 at 3000 (legacy controller 1511 / 3786, +26 % with large peaks); VBR 1163, CappedVBR 1177, CappedQuality 1174 at 1200; decode clean, 0 oops [claude/t31-allegro-cbr]. No filler NAL is written (filler=0 in the logs also at 3000), so in practice there was no difference.
 - **T40:** ⚠️ CBR delivers only about 20 % of the target bit rate on cam-K (2026-10-10); VBR 2560x1440 run reported by the T40 contributor; rate control shared with T31/T41, host `rate_control_test`
-- **T41:** ✅ bitrate 400/1200/3000 → 518/1195/2777 kbit/s (30 s each) [claude/t41-cbr-overshoot]
+- **T41:** ✅ bitrate 400/1200/3000 → 518/1195/2777 kbit/s (30 s each) [claude/t41-cbr-overshoot]; CappedVBR/CappedQuality real (vendor Allegro core with the PSNR cap, marker `OpenIMP_Cap_CappedRc`): 3000/4000 kbit/s static scene → 3111 (cap 50 dB) / 1665 (cap 38 dB), CappedQuality 38 dB 1745; 300/400 → 300 [claude/capped-rc-t4x]. T40 same code, host test only
 
 ##### 27. RC parameters (QP steps, staticTime, changePos, qualityLvl, I bias)
 
