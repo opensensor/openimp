@@ -14,6 +14,7 @@
  * T40/T41 extras (spec part after ';'): z<ch>=l,t,w,h | z<ch>=off  SetAutoZoom on output ch
  *      (sensor px), zr<ch>=... same with stop/set/restart of output ch (vendor way), zc<ch>=N,ms cycle
  *      N calls over 3 windows, s<ch>=mode,level SetScalerLv.  ROITEST_CH1=WxH adds output 1 + encoder 1
+ *      (ROITEST_CH1_QP=n: FixQP n reference on ch1, ROITEST_CH1_OUT=path: ch1 stream for all phases)
  *      (stream OUTDIR/label_ch1.h264), ROITEST_ZPRE=ch,l,t,w,h AutoZoom before the first start.
  * T31/T40/T41: ROITEST_RC=vbr|cvbr|cq (VBR, CappedVBR, CappedQuality) with ROITEST_MAXKBPS
  *      (uMaxBitRate, default SetDefaultParam) and ROITEST_PSNR (uMaxPSNR dB).
@@ -327,7 +328,7 @@ static void mk_enc(int chn, int W, int H, int fps, int fixqp, int qp, int kbps, 
 #ifdef ENC_NEW
     {
         IMPEncoderChnAttr a;
-        const char *rcs = getenv("ROITEST_RC");
+        const char *rcs = fixqp ? NULL : getenv("ROITEST_RC");
         IMPEncoderRcMode m = fixqp ? IMP_ENC_RC_MODE_FIXQP : IMP_ENC_RC_MODE_CBR;
 
         if (rcs && !strcmp(rcs, "vbr")) m = IMP_ENC_RC_MODE_VBR;
@@ -452,8 +453,8 @@ int main(int argc, char **argv)
         sscanf(getenv("ROITEST_OUT"), "%dx%d", &ow, &oh);
         if (ow > 0 && oh > 0) {
             fa.scaler.enable = 1; fa.scaler.outwidth = ow; fa.scaler.outheight = oh;
-#ifdef PLATFORM_T41
-            fa.picWidth = ow; fa.picHeight = oh;   /* T40/T41: picture = output size */
+#if defined(PLATFORM_T41) || defined(PLATFORM_T31)
+            fa.picWidth = ow; fa.picHeight = oh;   /* T31/T40/T41: picture = output size */
 #endif
             W = ow; H = oh;
         }
@@ -486,7 +487,12 @@ int main(int argc, char **argv)
     CK(IMP_System_Bind(&fs, &enc), "Bind");
     if (ch1_on) {
         IMPCell fs1 = { DEV_ID_FS, 1, 0 }, enc1 = { DEV_ID_ENC, 1, 0 };
-        mk_enc(1, ch1_w, ch1_h, fps, fixqp, qp, kbps, minqp, maxqp);
+        /* ROITEST_CH1_QP=n: encoder 1 is a FixQP reference of the same
+         * pictures (picture checks of a rate-control mode on ch0) */
+        if (getenv("ROITEST_CH1_QP"))
+            mk_enc(1, ch1_w, ch1_h, fps, 1, atoi(getenv("ROITEST_CH1_QP")), kbps, minqp, maxqp);
+        else
+            mk_enc(1, ch1_w, ch1_h, fps, fixqp, qp, kbps, minqp, maxqp);
         CK(IMP_Encoder_CreateGroup(1), "CreateGroup1");
         CK(IMP_Encoder_RegisterChn(1, 1), "RegisterChn1");
         CK(IMP_System_Bind(&fs1, &enc1), "Bind1");
@@ -526,8 +532,16 @@ int main(int argc, char **argv)
         snprintf(path, sizeof(path), "%s/%s.h264", outdir, lab);
         f = stream_out ? stream_out : fopen(path, "wb");
         if (ch1_on) {
-            snprintf(path, sizeof(path), "%s/%s_ch1.h264", outdir, lab);
-            f1 = fopen(path, "wb");
+            /* ROITEST_CH1_OUT=path (e.g. a FIFO read by the host): one
+             * stream for all phases, like OUTDIR "-" for ch0 */
+            static FILE *ch1_out;
+            if (getenv("ROITEST_CH1_OUT")) {
+                if (!ch1_out) ch1_out = fopen(getenv("ROITEST_CH1_OUT"), "wb");
+                f1 = ch1_out;
+            } else {
+                snprintf(path, sizeof(path), "%s/%s_ch1.h264", outdir, lab);
+                f1 = fopen(path, "wb");
+            }
             if (idr_req) IMP_Encoder_RequestIDR(1);
         }
         t0 = tlast = now_ms();
@@ -560,7 +574,8 @@ int main(int argc, char **argv)
         }
         if (f && f != stream_out) fclose(f);
         else if (f) fflush(f);
-        if (f1) fclose(f1);
+        if (f1 && !getenv("ROITEST_CH1_OUT")) fclose(f1);
+        else if (f1) fflush(f1);
         printf("[R] %s frames=%d bytes=%ld kbps=%.0f idrs=%d idr_avg=%ld p_avg=%ld\n", lab, frames, bytes,
                bytes * 8.0 / (double)(now_ms() - t0), idrs, idrs ? idr_b / idrs : 0,
                frames > idrs ? p_b / (frames - idrs) : 0);

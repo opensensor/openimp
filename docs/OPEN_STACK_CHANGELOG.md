@@ -16,6 +16,13 @@ Cameras are anonymised: cam-A (T31), cam-B (T23), cam-C (T20), cam-D (T21), cam-
 - **Motion on T41 with the open stack:** 8/8 moves, 0 false alarms, CPU 1 % (FEATURE_MATRIX #29); T40 not tested yet.
 - **Open:** T40 GIB AE dgain returns -1 per frame (not applied); T40 stop path (`Tzn_Msca_Work_en`) mask not OEM-exact; a stop/GIB fix is still pending and not merged. The T31 lazy-init loss of AL mode/max bitrate (see CappedVBR section) needs a T31 device test.
 
+## Rate control follow-up T31/T41 (2026-10-18, branch `claude/capped-rc-followup`, merged into next)
+
+- **T41:** VBR and capped AVC streams decode again: the slice header carried another QP than the encoder command (CABAC context mismatch, grey smear; affected every VBR stream, also before the capped work). CBR and FixQP were not affected.
+- **T41:** plain VBR runs the vendor Allegro core like the vendor library and meets small targets: 300/400 kbit/s gives 291 (before 389-585), 800/1600 gives 829.
+- **T31:** CappedVBR/CappedQuality set at channel creation keep their mode, uMaxBitRate and options (before they ran as VBR with max = target): cap 38 dB at 3000/4000 kbit/s needs 507 kbit/s instead of 3108 at the capped picture quality.
+- Picture check: SSIM against a FixQP 12 encode of the same pictures (second channel), collage kept locally. Details in `docs/RC_MODES.md`.
+
 ## CappedVBR / CappedQuality on T40/T41 (2026-10-18, branch `claude/capped-rc-t4x`, merged into next)
 
 - **T40/T41:** CappedVBR and CappedQuality are no longer emulated by VBR: they run the vendor Allegro rate-control core (same algorithm as the vendor T40 1.3.1 / T41 1.2.6 libraries) with the uMaxPSNR quality cap. T41 device test (static scene, 3000/4000 kbit/s): cap 38 dB needs 1665 kbit/s instead of 3111; 300/400 kbit/s stays at 300. T40: host test only. Marker `OpenIMP_Cap_CappedRc` replaces `OpenIMP_Cap_CappedRcAsVbr`. Details in `docs/RC_MODES.md`.
