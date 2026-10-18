@@ -386,6 +386,18 @@ int main(int argc, char **argv)
     strncpy(sn.i2c.type, argv[1], sizeof(sn.i2c.type) - 1);
     sn.i2c.addr = (int)strtol(argv[2], NULL, 0);
     sn.rst_gpio = sn.pwdn_gpio = sn.power_gpio = -1;
+#ifdef SOC_T40
+    {   /* ROITEST_SENSOR_EXT=bus,rst,vi,mclk,boot (Eufy sc830ai: 1,91,0,1,4) */
+        int bus = 1, rst = 91, vi = 0, mclk = 1, boot = 4;
+        if (getenv("ROITEST_SENSOR_EXT"))
+            sscanf(getenv("ROITEST_SENSOR_EXT"), "%i,%i,%i,%i,%i", &bus, &rst, &vi, &mclk, &boot);
+        sn.i2c.i2c_adapter_id = bus;
+        sn.rst_gpio = rst;
+        sn.video_interface = vi ? IMPISP_SENSOR_VI_MIPI_CSI1 : IMPISP_SENSOR_VI_MIPI_CSI0;
+        sn.mclk = mclk == 2 ? IMPISP_SENSOR_MCLK2 : IMPISP_SENSOR_MCLK1;
+        sn.default_boot = boot;
+    }
+#endif
 #ifdef PLATFORM_T41
     CK(IMP_ISP_Open(), "ISP_Open");
     CK(IMP_ISP_AddSensor(IMPVI_MAIN, &sn), "AddSensor");
