@@ -1289,6 +1289,35 @@ static int p1_i2d_arm(struct openimp_fs_channel *chn, int channel,
     return 0;
 }
 
+/* Pitch of a frame handed out by FrameSource, by its physical address:
+ * the I2D output pitch for an I2D buffer, 0 otherwise (= the default
+ * ALIGN16(width) capture layout).  The encoder (codec-t40.c), the IVS and
+ * SnapFrame read the picture through it; weak in those users, so builds
+ * without P1 keep the default. */
+uint32_t OpenIMP_FS_FramePitch(uint32_t physical)
+{
+    uint32_t pitch = 0, i;
+    int c;
+
+    if (!physical)
+        return 0;
+    lock_p1();
+    prepare_p1();
+    for (c = 0; c < OPENIMP_FS_CHANNELS && !pitch; c++) {
+        const struct openimp_fs_channel *chn = &p1.channels[c];
+
+        if (!chn->i2d_on)
+            continue;
+        for (i = 0; i < chn->buffer_count; i++)
+            if (chn->buffers[i].i2d_physical == physical) {
+                pitch = chn->i2d_geom.dst_pitch;
+                break;
+            }
+    }
+    unlock_p1();
+    return pitch;
+}
+
 /* One I2D pass from a dequeued capture buffer into its paired output
  * buffer (no P1 lock: the caller owns the dequeued buffer; the driver
  * serialises the block and waits for its frame-done IRQ). */
@@ -2188,8 +2217,10 @@ int IMP_FrameSource_SnapFrame(int channel, int fmt, int width, int height,
     /* ISP DMA wrote the pixels: drop stale cache lines of this buffer
      * (page aligned rmem, so no neighbour shares a line). */
     if (DMA_RmemFlushCache((void *)source, source_size, 2) == 0 &&
-        t41_snap_copy_nv12(framedata, source, source_size,
-                           (uint32_t)width, (uint32_t)height) == 0)
+        t41_snap_copy_nv12_pitch(framedata, source, source_size,
+                                 (uint32_t)width, (uint32_t)height,
+                                 record.index >= 0 && chn->i2d_on ?
+                                 chn->i2d_geom.dst_pitch : 0u) == 0)
         result = 0;
 
     lock_p1();

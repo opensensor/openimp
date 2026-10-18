@@ -73,18 +73,19 @@ static inline uint32_t t41_snap_nv12_bytes(uint32_t width, uint32_t height)
  * the snapshot is packed (pitch = width, UV right after width * height).
  * Returns 0, or -1 when the source buffer is too small for that layout.
  */
-static inline int t41_snap_copy_nv12(void *dst, const void *src,
-                                     uint32_t src_size, uint32_t width,
-                                     uint32_t height)
+static inline int t41_snap_copy_nv12_pitch(void *dst, const void *src,
+                                           uint32_t src_size, uint32_t width,
+                                           uint32_t height, uint32_t src_pitch)
 {
     const uint8_t *in = src;
     uint8_t *out = dst;
-    uint32_t pitch = t41_snap_align16(width);
+    uint32_t pitch = src_pitch ? src_pitch : t41_snap_align16(width);
     uint32_t lines = t41_snap_align16(height);
     uint32_t uv = pitch * lines;
     uint32_t y;
 
     if (!dst || !src || !width || !height || (width & 1u) || (height & 1u) ||
+        (src_pitch && src_pitch < width) ||
         width > 8192u || height > 8192u ||
         src_size < uv + pitch * (height / 2u))
         return -1;
@@ -94,6 +95,15 @@ static inline int t41_snap_copy_nv12(void *dst, const void *src,
     for (y = 0; y < height / 2u; ++y)
         memcpy(out + y * width, in + uv + y * pitch, width);
     return 0;
+}
+
+/* src_pitch 0: the capture layout (ALIGN16(width)); an I2D output passes
+ * its own pitch (p1_i2d.h). */
+static inline int t41_snap_copy_nv12(void *dst, const void *src,
+                                     uint32_t src_size, uint32_t width,
+                                     uint32_t height)
+{
+    return t41_snap_copy_nv12_pitch(dst, src, src_size, width, height, 0u);
 }
 
 #endif

@@ -48,7 +48,7 @@ _Static_assert(sizeof(struct p1_i2d_param) == 64, "i2d_param ABI");
 struct p1_i2d_geometry {
     uint32_t out_w, out_h;       /* frame size handed to consumers */
     uint32_t src_pitch;          /* capture buffer pitch */
-    uint32_t dst_pitch;          /* I2D output pitch (encoder source pitch) */
+    uint32_t dst_pitch;          /* I2D output pitch, ALIGN32 (see below) */
     uint32_t dst_size;           /* bytes of one I2D output buffer */
     uint32_t transpose;          /* 90 / 270 */
 };
@@ -97,7 +97,11 @@ static inline int p1_i2d_geometry(uint32_t w, uint32_t h, int rotate_enable,
     g->out_w = g->transpose ? h : w;
     g->out_h = g->transpose ? w : h;
     g->src_pitch = p1_i2d_align16(w);
-    g->dst_pitch = p1_i2d_align16(g->out_w);
+    /* The block corrupts a 90/270 output whose pitch is not a multiple of
+     * 32 (device test 2026-10-18: 360 and 720 wide outputs striped, 352
+     * and 1080 (pitch 1088) clean); vendor T41 uses ALIGN32 by default.
+     * Consumers learn the pitch from OpenIMP_FS_FramePitch(). */
+    g->dst_pitch = (g->out_w + 31u) & ~31u;
     lines = p1_i2d_align16(g->out_h);
     g->dst_size = g->dst_pitch * lines + g->dst_pitch * (lines / 2u);
     return 0;

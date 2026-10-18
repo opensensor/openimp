@@ -91,8 +91,21 @@ int IMP_IVS_SetParam(int channel, void *param);
  * (stride == width, the UV plane follows at width * ALIGN16(height)); the
  * frame record carries no separate stride. Every copy below goes row by
  * row through this value, so a different stride only needs changing here. */
+#if defined(PLATFORM_T40) || defined(PLATFORM_T41)
+/* T40/T41: an I2D (rotate/flip/mirror) output has its own pitch
+ * (src/t40/p1_i2d.h); FrameSource reports it, 0 for other frames. */
+extern uint32_t OpenIMP_FS_FramePitch(uint32_t physical) __attribute__((weak));
+#endif
+
 static uint32_t ivs_frame_stride(const T31IVSFrameInfo *frame)
 {
+#if defined(PLATFORM_T40) || defined(PLATFORM_T41)
+    uint32_t pitch = OpenIMP_FS_FramePitch ?
+        OpenIMP_FS_FramePitch(frame->phyAddr) : 0u;
+
+    if (pitch >= frame->width)
+        return pitch;
+#endif
     return frame->width;
 }
 

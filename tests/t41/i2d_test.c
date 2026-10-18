@@ -18,11 +18,11 @@ static void geometry(void)
     assert(g.dst_size == 640 * 368 + 640 * 184);
     assert(!p1_i2d_geometry(1920, 1080, 1, 180, &g));
     assert(g.out_w == 1920 && g.out_h == 1080 && !g.transpose);
-    /* 90 / 270: swapped, pitch ALIGN16(src_h) (vendor T40 ALIGN16(h)) */
+    /* 90 / 270: swapped, pitch ALIGN32 (the block needs it; vendor T41) */
     assert(!p1_i2d_geometry(640, 360, 1, 90, &g));
     assert(g.transpose && g.out_w == 360 && g.out_h == 640);
-    assert(g.src_pitch == 640 && g.dst_pitch == 368);
-    assert(g.dst_size == 368 * 640 + 368 * 320);
+    assert(g.src_pitch == 640 && g.dst_pitch == 384);
+    assert(g.dst_size == 384 * 640 + 384 * 320);
     assert(p1_i2d_geometry(2880, 1620, 1, 270, &g) < 0);   /* 1620 % 8 */
     assert(!p1_i2d_geometry(1920, 1080, 1, 270, &g));
     assert(g.out_w == 1080 && g.out_h == 1920 && g.dst_pitch == 1088);
@@ -66,7 +66,7 @@ static void param(void)
     assert(p.src_addr_y == 0x1000000 && !p.src_addr_uv);
     assert(p.dst_addr_y == 0x2000000 && !p.dst_addr_uv);
     assert(p.src_y_strid == 640 && p.src_uv_strid == 640);
-    assert(p.dst_y_strid == 368 && p.dst_uv_strid == 368);
+    assert(p.dst_y_strid == 384 && p.dst_uv_strid == 384);
     assert(p.h_align == 16);
     /* the angle word is sent only with rotate_enable (vendor) */
     assert(!p1_i2d_geometry(640, 360, 0, 270, &g));
@@ -91,7 +91,8 @@ static void pattern(uint8_t *b, uint32_t w, uint32_t h, uint32_t pitch)
 }
 
 static uint8_t *run(const uint8_t *src, uint32_t w, uint32_t h, int flip,
-                    int mirr, int rot, int angle, struct p1_i2d_geometry *g)
+                    int mirr, int rot, int angle, struct p1_i2d_geometry *g,
+                    uint32_t src_pitch)
 {
     struct p1_i2d_param p;
     uint8_t *dst;
@@ -100,6 +101,8 @@ static uint8_t *run(const uint8_t *src, uint32_t w, uint32_t h, int flip,
     dst = calloc(1, g->dst_size);
     assert(dst);
     p1_i2d_fill(&p, w, h, flip, mirr, rot, angle, g, 0, 0);
+    if (src_pitch)      /* an I2D output as source */
+        p.src_y_strid = p.src_uv_strid = src_pitch;
     p1_i2d_model(src, dst, &p, g);
     return dst;
 }
@@ -116,8 +119,8 @@ static void layout(void)
     pattern(src, w, h, sp);
     /* 90 clockwise: output (h - 1 - y, x); chroma after ALIGN16(out_h) =
      * src_w lines, where the encoder (avpu_get_nv12_src_uv_offset) reads */
-    r90 = run(src, w, h, 0, 0, 1, 90, &g);
-    assert(g.out_w == 48 && g.out_h == 64 && g.dst_pitch == 48);
+    r90 = run(src, w, h, 0, 0, 1, 90, &g, 0);
+    assert(g.out_w == 48 && g.out_h == 64 && g.dst_pitch == 64);
     for (y = 0; y < h; y++)
         for (x = 0; x < w; x++)
             assert(r90[x * g.dst_pitch + (h - 1u - y)] == src[y * sp + x]);
@@ -130,13 +133,13 @@ static void layout(void)
                100u + 3u);
     }
     /* 270 undoes 90 */
-    back = run(r90, g.out_w, g.out_h, 0, 0, 1, 270, &g2);
+    back = run(r90, g.out_w, g.out_h, 0, 0, 1, 270, &g2, g.dst_pitch);
     assert(g2.out_w == w && g2.out_h == h && g2.dst_pitch == sp);
     assert(!memcmp(back, src, sp * h));                       /* luma */
     assert(!memcmp(back + sp * h, src + sp * h, sp * h / 2u)); /* chroma */
     /* 180 == flip + mirror (the timps CreateChn attribute) */
-    r180 = run(src, w, h, 0, 0, 1, 180, &g);
-    fm = run(src, w, h, 1, 1, 0, 0, &g2);
+    r180 = run(src, w, h, 0, 0, 1, 180, &g, 0);
+    fm = run(src, w, h, 1, 1, 0, 0, &g2, 0);
     assert(g.dst_size == g2.dst_size);
     assert(!memcmp(r180, fm, g.dst_size));
     for (y = 0; y < h; y++)

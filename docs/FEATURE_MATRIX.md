@@ -75,7 +75,7 @@ Open stack = open-tx-isp (kernel driver) + OpenIMP (libimp) + timps. Vendor = tx
 **Open items from 2026-10-04** (still valid unless the release-candidate section above says otherwise)
 
 - T23: the frequent Helix frame drops had a fixed cause (a residual interrupt treated as an error by the bounded-wait kernel patch; 60 min with 0 errors after the fix); the sporadic single encode error (errno 5): 0 errors in 6 days on cam-B since the 0102 fix (syslog: 342, 32, 37 and 419 errors on 10-01..10-04, then 0 from 10-05 to 10-10); provisionally closed, still observed. The root cause of the cold-start snapshot 503 on a second channel (stale MSCA FIFOs) is fixed in the driver (`msca_fifo_rearm`, 260 cold-start cycles without a failure) and awaits its soak before it enters `next`. Real WDR is missing (dynamic ADR is lifted, no WDR sensor mode).
-- T41 (cam-F): runs the fully open stack with H.264 (main stream High 1080p ok) and H.265; AE compensation, gain/exposure caps and 2D noise reduction work through OpenIMP; DRC, DPC, defog, WDR, CCM, gamma, HLC and BLC are not supported on T41 (the driver says so). Open: crop/rotation (I2D), temper effect, ioctl hardening awaits its device test, live flip (timps does not call `SetHVFLIP` live), night column noise of the gc5603 (ISP), short IVS gaps (~1.2 s), OOM with three parallel streams and 30 MB rmem (26 MB works in the current image; the kernel command line needs an environment-partition image), `AddSensor` EBUSY after an OOM kill; day/night, AE/AWB quality, audio untested.
+- T41 (cam-F): runs the fully open stack with H.264 (main stream High 1080p ok) and H.265; AE compensation, gain/exposure caps and 2D noise reduction work through OpenIMP; DRC, DPC, defog, WDR, CCM, gamma, HLC and BLC are not supported on T41 (the driver says so). Open: crop, temper effect, ioctl hardening awaits its device test, live flip (timps does not call `SetHVFLIP` live), night column noise of the gc5603 (ISP), short IVS gaps (~1.2 s), OOM with three parallel streams and 30 MB rmem (26 MB works in the current image; the kernel command line needs an environment-partition image), `AddSensor` EBUSY after an OOM kill; day/night, AE/AWB quality, audio untested.
 - T10 (cam-E): AE/AWB quality and image controls only partly documented.
 - T21: a 4th module reload in one boot crashed once (under investigation); `ae_it_max_us` acts, which is beyond the vendor and kept by decision.
 - Rate control: T10/T20 run the OEM-style controller for CBR/VBR (SMART is mapped to VBR); T10/T20/T21 accept QP steps, staticTime/changePos/qualityLvl without all of them acting on every path; T31 CBR writes no filler NAL.
@@ -129,7 +129,7 @@ Not adopted: OSD edge flush, reference sharing on T10/T20/T31 (not in that SoC's
 | 18 | [Scene mode / colour effects (B/W, negative, sepia, vivid)](#18-scene-mode--colour-effects-bw-negative-sepia-vivid) | ✅+ | ✅ | ✅+ | ✅ | ? | ✅ | — | ❌ |
 | 19 | [Privacy mask (ISP hardware block)](#19-privacy-mask-isp-hardware-block) | ✅ | ✅ | ✅ | ✅ | ? | ✅ | ❌ | ✅ |
 | 20 | [Front crop / scaler level / CSC presets](#20-front-crop--scaler-level--csc-presets) | ✅ | ✅ | ✅ | ✅ | ? | ⚠️ | ❌ | ❌ |
-| 21 | [Rotation 90°/270°](#21-rotation-90270) | — | — | — | ✅ | ? | ✅ | ? | ❌ |
+| 21 | [Rotation 90°/270°](#21-rotation-90270) | — | — | — | ✅ | ? | ✅ | host | ✅ |
 | | **Video encoder and streams** | | | | | | | | |
 | 22 | [H.264](#22-h264) | ✅ | ✅ | ✅ | ✅+ | 🔧 | ✅ | ✅ | ✅ |
 | 23 | [H.265 / HEVC](#23-h265--hevc) | — | — | — | — | ❌ | ✅ | ❌ | ✅ |
@@ -426,8 +426,8 @@ Per feature: the vendor-stack behaviour and the full per-SoC cell text (chronolo
 - **T23:** ✅ sub-stream rotation 90/270 works via the native encoder; main stream above 704x576 refused (software rotation); IMP_Encoder_YuvSetCrop implemented (host-tested only, timps does not call it)
 - **T30:** ? no rotation call in the T30 vendor export list
 - **T31:** ✅ 704×1280 correct, 9 ms/frame @15 fps, before OSD/IVS/encoder
-- **T40:** ? no rotation call in the T40 1.3.1 header set; not checked in the FrameSource attributes
-- **T41:** ❌ open: hardware I2D path not enabled (timps build coerces 90/180/270 to 0)
+- **T40:** host: same hardware I2D path as T41 (`IMPFSChnAttr.i2dattr` / `SetI2dAttr`, vendor 1.3.1 `i2d_resourcedeal`); Eufy not reachable on 2026-10-18, not run on a camera [claude/i2d-t4x]
+- **T41:** ✅ hardware I2D (`/dev/i2d`, built-in kernel driver, vendor 1.2.6 semantics: `i2d_enable` + rotate 90/180/270 or flip/mirror, applied at `EnableChn`, `picWidth/picHeight` stay the capture size, 90/270 delivers picHeight x picWidth, the encoder is created with that size). Device test 2026-10-18 on Cinnado .34 (sc5336): 1920x1080, 1280x720 and 640x360 at 90/270, 180, flip, mirror, flip+mirror via the CreateChn attribute: all correctly oriented, streams decode without errors, 90° vs transposed unrotated picture SSIM 0.97; 25 fps with and without I2D (501/501 frames in 20 s), system CPU 1-7 % with and without (no measurable cost). Frame w/h must be 8 aligned (vendor rule), 90/270 width 16 aligned: the sc5336 full 2880x1620 is refused (1620 % 8). The block needs a 32-aligned output pitch (360/720 wide outputs use pitch 384/736; encoder, IVS and SnapFrame read it). SnapFrame on an I2D channel: host only [claude/i2d-t4x]
 
 
 #### Video encoder and streams
@@ -1496,7 +1496,7 @@ Notes:
 | ► `FrameSource_Get/SetChnFifoAttr` [3] | host | dev | dev | dev | ? | dev | host | host | p† r† |
 | ► `FrameSource_Get/SetDelay` [4] | host | dev | dev | dev | ? | dev | host | host | T31/T41: r† |
 | ► `FrameSource_Get/SetFrameDepth` [5] | aud | dev | dev | dev | ? | dev | dev | cache | see note |
-| ► `FrameSource_Get/SetI2dAttr` [6] | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | host | host | r† |
+| ► `FrameSource_Get/SetI2dAttr` [6] | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | host || dev | r† |
 | ► `FrameSource_Get/SetMaxDelay` [7] | host | dev | dev | dev | ? | dev | host | host | T31/T41: r† |
 | ► `FrameSource_Get/SetPool` [8] | n.a. | n.a. | n.a. | dev | n.a. | dev | n.a. | cache | T31/T41: r† |
 | `FrameSource_GetFrameEx` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | miss | miss | – |
@@ -1512,7 +1512,7 @@ Notes:
 3. `FrameSource_Get/SetChnFifoAttr`: T10+T20+T21+T23+T31: = SetMaxDelay(maxdepth) (agg-25); FIFO_DATA_PRIORITY refused for maxdepth>0; T41: FIFO attr stored, no FIFO behind it
 4. `FrameSource_Get/SetDelay`: T10+T20+T21+T23+T31: real delay FIFO (agg-25); T10 shares the T20 build; FIFO_DATA_PRIORITY refused for maxdepth>0; T41: host (vendor 1.2.6 semantics in src/t40/openimp_p1.c, delay cache; host test only, `export-check` 2026-10-11)
 5. `FrameSource_Get/SetFrameDepth`: T41: depth stored, GetFrame ignores it (T41 p1); used by: T10/T20/T21/T31/T41: prudynt†, raptor†; T23: prudynt, raptor, timps
-6. `FrameSource_Get/SetI2dAttr`: T41: host (vendor 1.2.6 semantics in src/t40/openimp_p1.c, delay cache; host test only, `export-check` 2026-10-11)
+6. `FrameSource_Get/SetI2dAttr`: T40/T41: real hardware I2D rotate/flip/mirror since 2026-10-18 (`claude/i2d-t4x`, src/t40/p1_i2d.h + openimp_p1.c, marker `OpenIMP_Cap_I2dRotate`); T41 device-tested on .34, T40 host only (see row 21). Before: SetI2dAttr returned -1
 7. `FrameSource_Get/SetMaxDelay`: T10+T20+T21+T23+T31: real delay FIFO (agg-25); T10 shares the T20 build; FIFO_DATA_PRIORITY refused for maxdepth>0; T41: host (vendor 1.2.6 semantics in src/t40/openimp_p1.c, delay cache; host test only, `export-check` 2026-10-11)
 8. `FrameSource_Get/SetPool`: T23+T31: real memory pools (claude/t23t31-cacheonly, not in agg-25); T41: pool id recorded only
 9. `FrameSource_GetTimedFrame`: T10+T20+T21+T23+T31: agg-25; T41: host (vendor 1.2.6 semantics in src/t40/openimp_p1.c, delay cache; host test only, `export-check` 2026-10-11)
@@ -1540,7 +1540,7 @@ Notes:
 | ► `FrameSource_Get/SetDelay` [4] | host | dev | dev | dev | ? | dev | host | host | T31/T41: r† |
 | `FrameSource_Get/SetDirectModeAttr` [16] | n.a. | n.a. | n.a. | dev | n.a. | n.a. | n.a. | n.a. | – |
 | ► `FrameSource_Get/SetFrameDepth` [5] | aud | dev | dev | dev | ? | dev | dev | cache | see note |
-| ► `FrameSource_Get/SetI2dAttr` [6] | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | host | host | r† |
+| ► `FrameSource_Get/SetI2dAttr` [6] | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | host || dev | r† |
 | ► `FrameSource_Get/SetMaxDelay` [7] | host | dev | dev | dev | ? | dev | host | host | T31/T41: r† |
 | ► `FrameSource_Get/SetPool` [8] | n.a. | n.a. | n.a. | dev | n.a. | dev | n.a. | cache | T31/T41: r† |
 | `FrameSource_GetFrame` [17] | aud | dev | dev | dev | ? | dev | dev | aud | see note |
@@ -1568,7 +1568,7 @@ Notes:
 4. `FrameSource_Get/SetDelay`: T10+T20+T21+T23+T31: real delay FIFO (agg-25); T10 shares the T20 build; FIFO_DATA_PRIORITY refused for maxdepth>0; T41: host (vendor 1.2.6 semantics in src/t40/openimp_p1.c, delay cache; host test only, `export-check` 2026-10-11)
 16. `FrameSource_Get/SetDirectModeAttr`: audit: userspace implementation
 5. `FrameSource_Get/SetFrameDepth`: T41: depth stored, GetFrame ignores it (T41 p1); used by: T10/T20/T21/T31/T41: prudynt†, raptor†; T23: prudynt, raptor, timps
-6. `FrameSource_Get/SetI2dAttr`: T41: host (vendor 1.2.6 semantics in src/t40/openimp_p1.c, delay cache; host test only, `export-check` 2026-10-11)
+6. `FrameSource_Get/SetI2dAttr`: T40/T41: real hardware I2D rotate/flip/mirror since 2026-10-18 (`claude/i2d-t4x`, src/t40/p1_i2d.h + openimp_p1.c, marker `OpenIMP_Cap_I2dRotate`); T41 device-tested on .34, T40 host only (see row 21). Before: SetI2dAttr returned -1
 7. `FrameSource_Get/SetMaxDelay`: T10+T20+T21+T23+T31: real delay FIFO (agg-25); T10 shares the T20 build; FIFO_DATA_PRIORITY refused for maxdepth>0; T41: host (vendor 1.2.6 semantics in src/t40/openimp_p1.c, delay cache; host test only, `export-check` 2026-10-11)
 8. `FrameSource_Get/SetPool`: T23+T31: real memory pools (claude/t23t31-cacheonly, not in agg-25); T41: pool id recorded only
 17. `FrameSource_GetFrame`: audit: reaches the driver/kernel; userspace implementation; used by: T10/T20/T21/T31/T41: raptor†; T23: raptor, timps; all: GetFrame/SnapFrame wait up to 2 s like the vendor libimp (T20 REQBUFS/SET_BANKS fix, T21/T23/T31 wait), apitest PASS
