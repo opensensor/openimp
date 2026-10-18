@@ -304,7 +304,9 @@ static long drain(int chn, unsigned char *buf, FILE *f, int *frames, int *idrs, 
         static long cap = -1;
         long fsz = f ? ftell(f) : 0;
         if (cap < 0) cap = 1024L * (getenv("ROITEST_MAXKB") ? atol(getenv("ROITEST_MAXKB")) : 1024L);
-        if (f && fsz + (long)len <= cap && total + (long)len <= 4 * cap) {
+        static long tcap = -1;
+        if (tcap < 0) tcap = getenv("ROITEST_TOTALKB") ? 1024L * atol(getenv("ROITEST_TOTALKB")) : 4 * cap;
+        if (f && fsz + (long)len <= cap && total + (long)len <= tcap) {
             fwrite(buf, 1, len, f);
             total += (long)len;
         }

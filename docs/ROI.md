@@ -5,7 +5,7 @@
 | T10/T20 | `IMP_Encoder_SetChnROI` (8 regions, pixel corners) | works, see `T1X_ROI_CHROMA.md` |
 | T21 | the same | works by default since this branch (beyond vendor), device-tested |
 | T23 | the same; native Helix encoder (default backend) programs it like T21, the OEM worker gets it through the bridge | works by default, device-tested (below) |
-| T40/T41 | `IMP_Encoder_Set/GetChnRoiAttr` (10 windows, delta QP) | implemented, **experimental, off by default** (T41: `OPENIMP_T41_ROI=1`, T40: `OPENIMP_T40_ROI=1`); T41: the AVPU ignored the table on the device run (no effect, below), the missing enable bit is now set but not yet device-tested; T40 not device-tested |
+| T40/T41 | `IMP_Encoder_Set/GetChnRoiAttr` (10 windows, delta QP) | implemented, **experimental, off by default** (T41: `OPENIMP_T41_ROI=1`, T40: `OPENIMP_T40_ROI=1`); device-tested 2026-10-18: T41 works under CBR (not under FixQP, below), T40 works under FixQP and CBR |
 | T31 | none in the vendor library; OpenIMP: `IMP_Encoder_Set/GetChnRoiAttr` (T41 API) | works by default (beyond vendor), device-tested; QP clamped to valid H.264 (below) |
 
 ## T40 (cross-built, not device-tested)
@@ -62,8 +62,20 @@ pic+0x248, matched against the neighbouring fields), and
 `SliceParamToCmdRegsEnc1` (0xe9d68) packs them into **cmd[152] bit 0 and
 bit 3**. OpenIMP's T41 builder writes cmd[152] = 0xf6 (both clear). With
 `OPENIMP_T41_ROI=1` and a window set, OpenIMP now ORs 0x9 into cmd[152].
-Not tested on a T41 yet; the header-word hang above is unrelated (do not
-write the EP2 header). On the vendor side the 32-bit entries with byte 3 =
+Device test 2026-10-18 (Cinnado .34 and Vanhua .32, roitest, 1280x720
+15 fps, window 384x240 at 448,240): **under CBR the table works** - the
+whole frame at -20 doubles the bit rate against the 800 kbit/s target, a
++20 window drops the SSIM of the window from 0.97 to 0.73 while the rest
+stays at 0.97, a -20 window moves bits into the window (the rest drops to
+0.91-0.93). cmd[152] is then 0xff, as in the vendor capture. **Under FixQP
+the AVPU ignores the table** (bit rate and pictures unchanged), also with
+the cmd[179] QP range (min bits 31..24, max bits 15..8) opened from QP..QP
+to 0..51 or 15..45; the cause is open. The header-word hang above is
+unrelated (do not write the EP2 header).
+
+T40 (Eufy, open driver, `OPENIMP_T40_ROI=1`, same test): FixQP 32 window
+-20 100 -> 1194 kbit/s, whole frame -20 12.2 Mbit/s, window +20 93 kbit/s;
+CBR window +20 drops the window SSIM 0.96 -> 0.89. On the vendor side the 32-bit entries with byte 3 =
 0x20 suggest that the vendor sets the bit for every picture.
 
 ## T31 (device-tested, beyond vendor)
