@@ -3444,6 +3444,15 @@ static uint32_t avpu_prewrite_stream_headers(ALAvpuContext *ctx, int buf_idx, in
     ALAvpuContext header_ctx = *ctx;
 
     header_ctx.qp = avpu_t40_picture_qp(ctx, is_idr);
+#if defined(PLATFORM_T41)
+    /* AVC and HEVC: slice_qp_delta must match the QP of the T41 command
+     * (cmd[24]) exactly, or CABAC starts with another context than the
+     * encoded macroblocks.  avpu_t40_picture_qp() follows the T41 CBR
+     * controller only; VBR (HWRC and the Allegro core) and the capped modes
+     * got its open-loop bits-per-LCU QP (34 at 800 kbit/s 720p15) while the
+     * command carried another one: the AVC streams did not decode. */
+    header_ctx.qp = avpu_t41_command_picture_qp(ctx);
+#endif
 #if defined(PLATFORM_T31)
     /* avpu_t40_picture_qp() already applied the T31 I/P delta. */
     if (header_ctx.qp < header_ctx.min_qp)
@@ -3461,10 +3470,6 @@ static uint32_t avpu_prewrite_stream_headers(ALAvpuContext *ctx, int buf_idx, in
     if (ctx->codec_hevc) {
         /* HEVC: VPS/SPS/PPS on IDR plus a byte-aligned slice segment
          * header; the AVPU HEVC core continues with slice_segment_data(). */
-#if defined(PLATFORM_T41)
-        /* slice_qp_delta must match the QP of the T41 command exactly. */
-        header_ctx.qp = avpu_t41_command_picture_qp(ctx);
-#endif
         pos = avpu_t31_hevc_write_headers(ctx, buf, budget, header_ctx.qp,
                                           is_idr);
         if (pos == 0u)
@@ -3828,11 +3833,15 @@ static int avpu_t41_exact_rate_control_enabled(const ALAvpuContext *ctx)
  * llio 0xee5f0 with the CappedVBR flag at +410, analysis io0o 0xf0fc0, update
  * OooI 0xeec20 = analysis + the PSNR cap), the same algorithm as the T31
  * core (t31_al_rc.c, modes 8/9: idle-share test on the flag, PSNR rule).
- * Plain VBR keeps the HWRC-only path. */
+ * Plain VBR (AL eRCMode 2) runs on the same core too: AL_RateCtrl_Init mode 1
+ * -> update o1l 0xf3880 = analysis io0o + qp += delta + Io0o, the T31 VBR
+ * controller (mode 1).  HWRC alone overshot small targets (300 kbit/s at
+ * 720p15 gave 585).  CBR keeps its own T41 controller. */
 static int avpu_t41_capped_rc_active(const ALAvpuContext *ctx)
 {
     return ctx && ctx->rc_mode == HW_RC_MODE_VBR &&
-           (ctx->t31_al_mode == 4u || ctx->t31_al_mode == 8u);
+           (ctx->t31_al_mode == 2u || ctx->t31_al_mode == 4u ||
+            ctx->t31_al_mode == 8u);
 }
 
 static uint32_t avpu_t41_capped_rc_qp(ALAvpuContext *ctx, int is_idr,
@@ -8180,7 +8189,7 @@ struct AL_CodecEncode {
     /* The AL rc fields of the last SetRcParam / SetRcQualityCap: the lazy
      * AVPU initialisation at the first picture clears enc->avpu, so a
      * channel configured only at CreateChn lost its AL mode, uMaxBitRate,
-     * eRcOptions and iPBDelta (T40/T41 restore them, see
+     * eRcOptions and iPBDelta (T31/T40/T41 restore them, see
      * avpu_sync_runtime_encode_state). */
     uint32_t rc_al_mode;
     uint32_t rc_max_bitrate;
@@ -8841,12 +8850,13 @@ static void avpu_sync_runtime_encode_state(AL_CodecEncode *enc)
     enc->avpu.entropy_mode = enc->entropy_mode;
 #if defined(OPENIMP_AL_ALLEGRO_RC)
     enc->avpu.t31_quality_cap_x100 = enc->rc_quality_cap_x100;
-#if !defined(PLATFORM_T31)
+    /* The lazy AVPU init memsets enc->avpu at the first picture; keep the
+     * AL mode, uMaxBitRate, eRcOptions and iPBDelta of CreateChn (T31 too:
+     * else CappedVBR/CappedQuality ran as VBR with max = target). */
     enc->avpu.t31_al_mode = enc->rc_al_mode;
     enc->avpu.t31_max_bitrate = enc->rc_max_bitrate;
     enc->avpu.t31_rc_options = enc->rc_options;
     enc->avpu.t31_qp_pb_delta = enc->rc_pb_delta;
-#endif
 #endif
     enc->avpu.gop_length = enc->gop_cache.gopLength ? enc->gop_cache.gopLength : enc->hw_params.gop_length;
     enc->avpu.format_word = *(uint32_t *)(enc->codec_param + 0x10);

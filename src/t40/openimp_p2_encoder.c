@@ -2145,9 +2145,10 @@ int IMP_Encoder_CreateChn(int channel, IMPEncoderCHNAttr *attr)
      * runtime path applies. */
 #endif
 #if defined(PLATFORM_T31) || defined(PLATFORM_T40) || defined(PLATFORM_T41)
-    /* T40/T41: only for the capped modes, whose OEM core needs uMaxBitRate,
-     * eRcOptions and iPBDelta from the start (vendor channel_encoder_init
-     * does this for every mode; CBR/VBR keep their former T40/T41 path). */
+    /* T40: only for the capped modes, T41: VBR and the capped modes, whose
+     * OEM core needs uMaxBitRate, eRcOptions and iPBDelta from the start
+     * (vendor channel_encoder_init does this for every mode; the other modes
+     * keep their former T40/T41 path). */
     {
         IMPEncoderRcAttr codec_rc = attr->rcAttr;
         uint32_t target_kbps;
@@ -2179,9 +2180,14 @@ int IMP_Encoder_CreateChn(int channel, IMPEncoderCHNAttr *attr)
         default:
             break;      /* FIXQP and JPEG channels have no Allegro rate control */
         }
-#if !defined(PLATFORM_T31)
+#if defined(PLATFORM_T40)
         if (codec_rc.attrRcMode.rcMode != IMP_ENC_RC_MODE_CAPPED_VBR &&
             codec_rc.attrRcMode.rcMode != IMP_ENC_RC_MODE_CAPPED_QUALITY)
+            has_rc = 0;
+#elif defined(PLATFORM_T41)
+        /* T41 plain VBR runs the Allegro core as well and needs uMaxBitRate
+         * and eRcOptions; CBR keeps its own controller. */
+        if (codec_rc.attrRcMode.rcMode == IMP_ENC_RC_MODE_CBR)
             has_rc = 0;
 #endif
         if (has_rc)
