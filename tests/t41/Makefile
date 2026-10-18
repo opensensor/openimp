@@ -27,6 +27,8 @@ P2_BUFSHARE_TEST_BIN := $(PROJECT_DIR)/build/tests/t41-p2-bufshare-test
 
 check: $(TEST_BINS) $(P2_BUFSHARE_TEST_BIN)
 	$(MAKE) p3-controls
+	# CappedVBR/CappedQuality run the Allegro core (tests/t40 frame-rc)
+	grep -q 't31_hevc_headers t31_al_rc' $(PROJECT_DIR)/build-t41.sh
 	$(MAKE) p3-ao-mute
 	$(RMEM_FIT_TEST_BIN)
 	$(RMEM_FIT_T40_TEST_BIN)

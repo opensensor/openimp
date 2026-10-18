@@ -15,6 +15,10 @@
  *      (sensor px), zr<ch>=... same with stop/set/restart of output ch (vendor way), zc<ch>=N,ms cycle
  *      N calls over 3 windows, s<ch>=mode,level SetScalerLv.  ROITEST_CH1=WxH adds output 1 + encoder 1
  *      (stream OUTDIR/label_ch1.h264), ROITEST_ZPRE=ch,l,t,w,h AutoZoom before the first start.
+ * T31/T40/T41: ROITEST_RC=vbr|cvbr|cq (VBR, CappedVBR, CappedQuality) with ROITEST_MAXKBPS
+ *      (uMaxBitRate, default SetDefaultParam) and ROITEST_PSNR (uMaxPSNR dB).
+ * OUTDIR "-": the ch0 stream of all phases goes to stdout (pipe it to the host, the camera's
+ *      /tmp is small); every other output goes to stderr.
  * Stop the streamer first; the camera's /tmp is RAM, use short phases.
  */
 #define _GNU_SOURCE
@@ -316,15 +320,33 @@ static long drain(int chn, unsigned char *buf, FILE *f, int *frames, int *idrs, 
     return (long)len;
 }
 
+static FILE *stream_out;
+
 static void mk_enc(int chn, int W, int H, int fps, int fixqp, int qp, int kbps, int minqp, int maxqp)
 {
 #ifdef ENC_NEW
     {
         IMPEncoderChnAttr a;
+        const char *rcs = getenv("ROITEST_RC");
+        IMPEncoderRcMode m = fixqp ? IMP_ENC_RC_MODE_FIXQP : IMP_ENC_RC_MODE_CBR;
+
+        if (rcs && !strcmp(rcs, "vbr")) m = IMP_ENC_RC_MODE_VBR;
+        if (rcs && !strcmp(rcs, "cvbr")) m = IMP_ENC_RC_MODE_CAPPED_VBR;
+        if (rcs && !strcmp(rcs, "cq")) m = IMP_ENC_RC_MODE_CAPPED_QUALITY;
         memset(&a, 0, sizeof(a));
-        CK(IMP_Encoder_SetDefaultParam(&a, IMP_ENC_PROFILE_AVC_HIGH, fixqp ? IMP_ENC_RC_MODE_FIXQP : IMP_ENC_RC_MODE_CBR,
+        CK(IMP_Encoder_SetDefaultParam(&a, IMP_ENC_PROFILE_AVC_HIGH, m,
                                        W, H, fps, 1, fps * 2, 2, fixqp ? qp : -1, fixqp ? 0 : kbps), "SetDefaultParam");
-        if (fixqp) {
+        if (m == IMP_ENC_RC_MODE_VBR || m == IMP_ENC_RC_MODE_CAPPED_VBR || m == IMP_ENC_RC_MODE_CAPPED_QUALITY) {
+            a.rcAttr.attrRcMode.attrCappedVbr.iMinQP = minqp;
+            a.rcAttr.attrRcMode.attrCappedVbr.iMaxQP = maxqp;
+            if (getenv("ROITEST_MAXKBPS"))
+                a.rcAttr.attrRcMode.attrCappedVbr.uMaxBitRate = atoi(getenv("ROITEST_MAXKBPS"));
+            if (m != IMP_ENC_RC_MODE_VBR && getenv("ROITEST_PSNR"))
+                a.rcAttr.attrRcMode.attrCappedVbr.uMaxPSNR = atoi(getenv("ROITEST_PSNR"));
+            fprintf(stderr, "[R] rc mode %d target %u max %u psnr %u qp %d..%d\n", (int)m,
+                    a.rcAttr.attrRcMode.attrCappedVbr.uTargetBitRate, a.rcAttr.attrRcMode.attrCappedVbr.uMaxBitRate,
+                    m == IMP_ENC_RC_MODE_VBR ? 0u : a.rcAttr.attrRcMode.attrCappedVbr.uMaxPSNR, minqp, maxqp);
+        } else if (fixqp) {
             a.rcAttr.attrRcMode.attrFixQp.iInitialQP = qp;
 #if defined(PLATFORM_T41) && !defined(SOC_T40)
             /* ROITEST_FQRANGE=1: keep MINQP..MAXQP so the AVPU clamp
@@ -374,6 +396,12 @@ int main(int argc, char **argv)
 
     if (argc < 7) { fprintf(stderr, "usage: %s SENSOR ADDR W H OUTDIR label:secs:spec...\n", argv[0]); return 2; }
     W = atoi(argv[3]); H = atoi(argv[4]); outdir = argv[5];
+    if (!strcmp(outdir, "-")) {
+        /* stream on stdout, everything else on stderr */
+        stream_out = fdopen(dup(1), "wb");
+        dup2(2, 1);
+        setvbuf(stdout, NULL, _IOLBF, 0);
+    }
     fps = getenv("ROITEST_FPS") ? atoi(getenv("ROITEST_FPS")) : 15;
     kbps = getenv("ROITEST_KBPS") ? atoi(getenv("ROITEST_KBPS")) : 2000;
     qp = getenv("ROITEST_QP") ? atoi(getenv("ROITEST_QP")) : 30;
@@ -496,7 +524,7 @@ int main(int argc, char **argv)
         }
         if (idr_req) IMP_Encoder_RequestIDR(chn);
         snprintf(path, sizeof(path), "%s/%s.h264", outdir, lab);
-        f = fopen(path, "wb");
+        f = stream_out ? stream_out : fopen(path, "wb");
         if (ch1_on) {
             snprintf(path, sizeof(path), "%s/%s_ch1.h264", outdir, lab);
             f1 = fopen(path, "wb");
@@ -530,7 +558,8 @@ int main(int argc, char **argv)
                 }
             }
         }
-        if (f) fclose(f);
+        if (f && f != stream_out) fclose(f);
+        else if (f) fflush(f);
         if (f1) fclose(f1);
         printf("[R] %s frames=%d bytes=%ld kbps=%.0f idrs=%d idr_avg=%ld p_avg=%ld\n", lab, frames, bytes,
                bytes * 8.0 / (double)(now_ms() - t0), idrs, idrs ? idr_b / idrs : 0,

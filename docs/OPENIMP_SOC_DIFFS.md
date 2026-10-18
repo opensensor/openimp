@@ -156,7 +156,7 @@ flip, anti-flicker, running mode.
 | `hue` / `ISP_HAS_HUE` | on | implemented (`SetBcshHue`), effect not measured | not device-tested | `SetBcshHue` |
 | flip | on (at start) | **[−]** driver writes the sensor flip synchronously, but live flip is not effective in the timps flow (timps does not call `SetHVFLIP` live on T41) | open | `IMP_ISP_Tuning_SetHVFLIP` |
 | anti-flicker, AE, AWB, WDR, defog, NR, DPC, CCM | partly on | **[−]** unverified ("?" in the matrix); a manual-WB POST once left a black picture until restart (not isolated) | not device-tested | – |
-| rate control | vendor | [=] bitrate 400/1200/3000 gives 518/1195/2777 kbit/s | device-tested | unchanged |
+| rate control | vendor | [=] bitrate 400/1200/3000 gives 518/1195/2777 kbit/s; CappedVBR/CappedQuality run the vendor Allegro core with the PSNR cap (`claude/capped-rc-t4x`, cap 38 dB: -46 % bit rate in a static scene) | device-tested | unchanged |
 | sensor re-registration after OOM kill | vendor needs reboot | [=] same (fix crashed, under analysis) | not supported | `IMP_ISP_AddSensor` |
 | module reload, kill -9 recovery | vendor | [+] 10/10 reload cycles, 0 oops; kill -9 recovers 3/3 | device-tested (rev2 image) | – |
 

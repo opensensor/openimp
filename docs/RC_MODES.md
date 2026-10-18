@@ -300,7 +300,36 @@ effect at the next IDR, the controller restarting from the last QP (OEM
 `i264e_idr_reconfig`); with maxSameSceneCnt > 0 a scene change (picture
 class 5) codes an IDR early at a GOP boundary.
 
-## T10 / T40 / T41
+## T40 (libimp 1.3.1) / T41 (1.2.6)
 
-T10 (NVPU) and T40/T41 were not changed: CappedVBR/CappedQuality still run
-as VBR there (one log line).
+Both vendor libraries run CappedVBR and CappedQuality like the T31:
+`AL_Codec_Encode_ValidateRcParam` (T40 0x5ef68) / `AL_Codec_Encode_Create`
+(T41 0x324c4) clamp uMaxPSNR * 100 to 3000..5000, `AL_Common_Encoder_Compute-
+RCParam` sets pixels and peak (255) for AL modes 4 and 8, and
+`AL_RateCtrl_Init` modes 6/7 (T31: 8/9) build the shared core with the
+CappedVBR flag 1/0 (T40 `liOi`, T41 `l1Oi` -> core `llio` 0xee5f0, flag at
+state +410).  The update (T40 `lIii` 0x3e990, T41 `OooI` 0xeec20) is the VBR
+analysis (T41 `io0o` 0xf0fc0, same idle-share test on the flag at 0xf13b8)
+followed by the T31 PSNR rule (`mse1000 = sse * 1000 / pixels`,
+`psnr = 1000 * log10(peak^2 * 1000 / mse1000)`, a negative delta becomes 0
+while psnr > cap).  SSE: T40 status +0x158 high / +0x15c low (slice +108/
++104), T41 slice status +0x60 low / +0x64 high (status image +0x50/+0x54).
+
+OpenIMP (`claude/capped-rc-t4x`): both SoCs run the ported Allegro core
+(`t31_al_rc.c`) in modes 8/9 with the uMaxPSNR cap
+(`AL_Codec_Encode_SetRcQualityCap`, 30..50 dB).  T40 feeds it the published
+AU size and the picture SSE (other statistics 0, as for its CBR/VBR).  T41
+runs it for the capped modes only (plain VBR keeps the HWRC-only path) with
+the slice statistics and SSE; the core's QP is the picture QP of the command
+and the slice header.  The AL mode, uMaxBitRate, eRcOptions and iPBDelta now
+survive the lazy AVPU initialisation (T40/T41; T31 still loses them when the
+mode is set only at CreateChn).  The runtime marker is `OpenIMP_Cap_CappedRc`
+= 1 (replaces `OpenIMP_Cap_CappedRcAsVbr`).
+
+Device (T41 Cinnado, sc5336, 1280x720@15, static scene, 2026-10-18):
+target/max 3000/4000 kbit/s: CappedVBR cap 50 dB 3111, cap 38 dB 1665
+(-46 %), CappedQuality cap 38 dB 1745; target/max 300/400: CappedVBR 300
+(plain T41 VBR 585); target/max 800/1600: CappedVBR 774 (below max),
+encoder PSNR 37.4..38.9 dB at cap 38.  0 oops.  T40: host test only.
+
+T10 (NVPU) was not changed: CappedVBR/CappedQuality run as VBR there.
