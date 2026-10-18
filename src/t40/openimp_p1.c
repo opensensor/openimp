@@ -1212,12 +1212,38 @@ int IMP_FrameSource_GetI2dAttr(int channel, IMPFSI2DAttr *attr)
     return 0;
 }
 
+/* The I2D block (rotate / flip / mirror) is stored but no path applies it:
+ * fill_frame_format sends none of these words to the driver, and the T40/T41
+ * drivers have no I2D unit (the T41 FrameSource mirror is the separate
+ * IMPFSChnAttr.mirr_enable).  So an active request is refused instead of
+ * being accepted and ignored.  Only SetI2dAttr fails: CreateChn / SetChnAttr
+ * keep accepting the attribute (streamers treat their failure as fatal),
+ * and log once.  The runtime marker OpenIMP_Cap_I2dRotate is deliberately
+ * NOT defined here; define it only where a real rotation path exists. */
+static int i2d_requests_effect(const IMPFSI2DAttr *a)
+{
+    return a->i2d_enable || a->flip_enable || a->mirr_enable ||
+           a->rotate_enable;
+}
+
+static void i2d_warn_ignored(int channel, const IMPFSI2DAttr *a)
+{
+    static int warned;
+
+    if (i2d_requests_effect(a) && !__sync_lock_test_and_set(&warned, 1))
+        syslog(LOG_WARNING, "libimp: FrameSource chn%d I2D attribute "
+               "(rotate/flip/mirror) is not applied on this SoC; "
+               "SetI2dAttr refuses it", channel);
+}
+
 int IMP_FrameSource_SetI2dAttr(int channel, IMPFSI2DAttr *attr)
 {
     if (channel < 0 || channel >= 7)
         return FS_ERR_CHN;
     if (!attr)
         return FS_ERR_PARAM;
+    if (i2d_requests_effect(attr))
+        return -1;
     if ((attr->flip_enable & attr->mirr_enable) ||
         ((attr->flip_enable | attr->mirr_enable) & attr->rotate_enable))
         return FS_ERR_STATE;
@@ -1273,6 +1299,7 @@ int IMP_FrameSource_CreateChn(int channel, IMPFSChnAttr *attr)
     chn->pool_id = pool_id;
     chn->created = 1;
     chn->attr = *attr;
+    i2d_warn_ignored(channel, &attr->i2dattr);
     unlock_p1();
     return 0;
 }
@@ -1724,7 +1751,7 @@ done:
     return result;
 }
 
-int IMP_FrameSource_GetFrame(int channel, IMPFrameInfo **frame)
+static int p1_get_frame_attempts(int channel, IMPFrameInfo **frame, int max_attempts)
 {
     struct openimp_fs_channel *chn;
     struct openimp_fs_buffer *buffer;
@@ -1758,7 +1785,7 @@ int IMP_FrameSource_GetFrame(int channel, IMPFrameInfo **frame)
 
     wait_profile = openimp_profile_begin();
 
-    for (attempts = 0; attempts < 1000; attempts++) {
+    for (attempts = 0; attempts < max_attempts; attempts++) {
         OpenIMPProfileStamp dqbuf_profile;
 
         /*
@@ -1789,7 +1816,8 @@ int IMP_FrameSource_GetFrame(int channel, IMPFrameInfo **frame)
                     any = 1;
             unlock_p1();
             if (!any) {
-                usleep(1000);
+                if (attempts + 1 < max_attempts)
+                    usleep(1000);
                 continue;
             }
         }
@@ -1809,11 +1837,12 @@ int IMP_FrameSource_GetFrame(int channel, IMPFrameInfo **frame)
                                 wait_profile);
             return -1;
         }
-        usleep(1000);
+        if (attempts + 1 < max_attempts)
+            usleep(1000);
     }
     openimp_profile_count(OPENIMP_PROFILE_DQBUF_RETRIES,
                           (uint64_t)attempts);
-    if (attempts == 1000) {
+    if (attempts == max_attempts) {
         openimp_profile_end(OPENIMP_PROFILE_FRAME_SOURCE_WAIT, wait_profile);
         return -1;
     }
@@ -1893,6 +1922,26 @@ int IMP_FrameSource_GetFrame(int channel, IMPFrameInfo **frame)
     openimp_profile_end(OPENIMP_PROFILE_FRAME_SOURCE_WAIT, wait_profile);
     return 0;
 }
+
+int IMP_FrameSource_GetFrame(int channel, IMPFrameInfo **frame)
+{
+    return p1_get_frame_attempts(channel, frame, 1000);
+}
+
+#if defined(PLATFORM_T40)
+/* One queue probe; the encoder owns retry timing. */
+int OpenIMP_T40_FrameSource_TryGetFrame(int channel, void **frame)
+{
+    IMPFrameInfo *ready = NULL;
+    int ret;
+
+    if (!frame)
+        return -1;
+    ret = p1_get_frame_attempts(channel, &ready, 1);
+    *frame = ready;
+    return ret;
+}
+#endif
 
 int IMP_FrameSource_ReleaseFrame(int channel, IMPFrameInfo *frame)
 {
@@ -2238,11 +2287,53 @@ int OpenIMP_P1_TuningIOCtl(uint32_t command, void *argument)
     lock_p1();
     prepare_p1();
     if (!p1.tuning_enabled || p1.tuning_fd < 0) {
+        /* A tuning call before IMP_ISP_EnableTuning (or after DisableTuning) never reaches the driver: say so once
+         * per control, like the vendor's "tuning not enabled" trace, instead of failing silently. */
+        static unsigned int warned;
+        const uint32_t *req = (const uint32_t *)argument;
+        if (warned++ < 8)
+            syslog(LOG_WARNING, "libimp: tuning ioctl 0x%08x control 0x%08x dropped: tuning not enabled (fd=%d)",
+                   command, req ? req[2] : 0U, p1.tuning_fd);
         unlock_p1();
         errno = ENODEV;
         return -1;
     }
     result = record_ioctl(p1.tuning_fd, command, argument);
     unlock_p1();
+    return result;
+}
+
+/* Blocking tuning get (WaitFrameDone): the ioctl sleeps up to the caller's
+ * timeout, so it runs on a duplicate of the tuning descriptor outside the
+ * P1 lock (a spinlock); other tuning calls are not held up meanwhile and a
+ * concurrent close cannot hand the number to another file.  The open
+ * drivers return ETIMEDOUT when no frame arrived: no syslog line for that
+ * or for a signal. */
+int OpenIMP_P1_TuningWaitIOCtl(uint32_t command, void *argument)
+{
+    int fd;
+    int result;
+    int err;
+
+    lock_p1();
+    prepare_p1();
+    fd = p1.tuning_enabled && p1.tuning_fd >= 0 ?
+         fcntl(p1.tuning_fd, F_DUPFD_CLOEXEC, 0) : -1;
+    unlock_p1();
+    if (fd < 0) {
+        errno = ENODEV;
+        return -1;
+    }
+    result = ioctl(fd, command, argument);
+    err = result < 0 ? errno : 0;
+    close(fd);
+    lock_p1();
+    p1.last_ioctl = command;
+    p1.last_errno = err;
+    unlock_p1();
+    if (result < 0 && err != ETIMEDOUT && err != EINTR)
+        syslog(LOG_ERR, "openimp-p1: ioctl cmd=0x%08x failed: %d",
+               command, err);
+    errno = err;
     return result;
 }

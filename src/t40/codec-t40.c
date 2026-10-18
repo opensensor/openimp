@@ -12,6 +12,7 @@
 #include <limits.h>
 #include <pthread.h>
 #include <stdarg.h>
+#include <syslog.h>
 #include <unistd.h>
 #include <fcntl.h>
 
@@ -3633,7 +3634,7 @@ static void avpu_roi_warn_clamped(const char *soc, unsigned int c,
 /* T40: the vendor libimp 1.3.1 implements the windows (a per-macroblock QP
  * table, one byte per 16x16 block for AVC, the same table format as the T31
  * Allegro core; cmd[9] carries the same two bits), but the OpenIMP port is
- * not device-tested yet: off unless OPENIMP_T40_ROI=1. */
+ * device-tested (FixQP and CBR): on by default, OPENIMP_T40_ROI=0 refuses it. */
 #define AVPU_ROI_SOC "T40"
 static int avpu_t31_roi_disabled(void)
 {
@@ -3642,7 +3643,7 @@ static int avpu_t31_roi_disabled(void)
     if (off < 0) {
         const char *e = getenv("OPENIMP_T40_ROI");
 
-        off = !(e && e[0] == '1');
+        off = e && e[0] == '0';
     }
     return off;
 }
@@ -3962,10 +3963,10 @@ static uint32_t avpu_t41_advance_luma_offset(uint32_t current,
 
 
 #if defined(PLATFORM_T41)
-/* EXPERIMENTAL, off by default: on the T41 test camera the AVPU did not
- * react to this table in any rate-control mode (docs/ROI.md).  Without
- * OPENIMP_T41_ROI=1 nothing here runs, the EP2 buffer keeps its size and
- * IMP_Encoder_SetChnRoiAttr is refused. */
+/* T41 ROI: on by default (OPENIMP_T41_ROI=0 refuses it).  Device-tested
+ * under CBR; under FixQP the AVPU ignores the table (cause open, docs/ROI.md),
+ * so there the windows are only cached and the table is not written, unless
+ * OPENIMP_T41_ROI=1 forces it. */
 static int avpu_t41_roi_experimental(void)
 {
     static int on = -1;
@@ -3973,9 +3974,16 @@ static int avpu_t41_roi_experimental(void)
     if (on < 0) {
         const char *e = getenv("OPENIMP_T41_ROI");
 
-        on = e && e[0] == '1';
+        on = !(e && e[0] == '0');
     }
     return on;
+}
+
+static int avpu_t41_roi_forced(void)
+{
+    const char *e = getenv("OPENIMP_T41_ROI");
+
+    return e && e[0] == '1';
 }
 
 static void avpu_t41_roi_apply(ALAvpuContext *ctx)
@@ -3986,6 +3994,15 @@ static void avpu_t41_roi_apply(ALAvpuContext *ctx)
 
     if (!ctx->roi_pending || ctx->codec_hevc || !ctx->interm_buf.map)
         return;
+    if (ctx->rc_mode == HW_RC_MODE_FIXQP && !avpu_t41_roi_forced()) {
+        static int warned;
+
+        if (!warned) {
+            warned = 1;
+            syslog(LOG_WARNING, "openimp: ROI has no effect under FixQP on T41");
+        }
+        return;
+    }
     cols = (ctx->enc_w + 15u) >> 4;
     rows = (ctx->enc_h + 15u) >> 4;
     mb = cols * rows;
@@ -4023,6 +4040,10 @@ static void avpu_t41_roi_apply(ALAvpuContext *ctx)
     }
     ctx->roi_table_on = any;
     pthread_mutex_unlock(&avpu_roi_lock);
+    if (getenv("OPENIMP_T41_DUMP_CMD"))
+        fprintf(stderr, "openimp T41 roi table %s %ux%u ep2_size=0x%x e0=%08x e%u=%08x\n",
+                any ? "on" : "off", cols, rows, ctx->interm_ep2_size,
+                ((uint32_t *)table)[0], mb / 2u, ((uint32_t *)table)[mb / 2u]);
     LOG_CODEC("AVPU: ROI QP table rewritten (%s) %ux%u macroblocks ep2=0x%08x",
               any ? "windows" : "cleared", cols, rows,
               ctx->interm_buf.phy_addr + ctx->interm_ep1_size +
@@ -4156,9 +4177,14 @@ static int avpu_t41_fill_command(ALAvpuContext *ctx, void *slot,
      * to SliceParam+0x62; SliceParamToCmdRegsEnc1 (0xe9d68) packs them into
      * cmd[152] bit 0 and bit 3.  The builder's 0xf6 has both clear, so the
      * AVPU never read the table.  Same mechanism as the device-tested T31
-     * (cmd[9] bits 25/24); not yet tested on a T41. */
-    if (!ctx->codec_hevc && ctx->roi_table_on)
+     * (cmd[9] bits 25/24). */
+    if (!ctx->codec_hevc && ctx->roi_table_on) {
         ((uint32_t *)slot)[152] |= 0x00000009u;
+        /* Device 10-18 (.32/.34): works under CBR (whole frame -20 =
+         * twice the bit rate, window +20 = SSIM 0.73 vs 0.97); under FixQP
+         * no effect, also with the cmd[179] QP range opened to 0..51 (not
+         * kept).  The vendor writes 0xff for every P picture. */
+    }
     {
         /* OPENIMP_T41_DUMP_CMD=1: the non-zero words of the first two
          * commands on stderr, for a diff against a vendor capture. */
@@ -4169,8 +4195,14 @@ static int avpu_t41_fill_command(ALAvpuContext *ctx, void *slot,
 
             dump = value && value[0] == '1';
         }
-        if (dump && picture_number < 2u) {
+        static int dump_roi;   /* also the first command that uses the ROI table */
+
+        if (dump && (picture_number < 2u ||
+                     (ctx->roi_table_on && dump_roi < 2))) {
             const uint32_t *word = (const uint32_t *)slot;
+
+            if (ctx->roi_table_on)
+                dump_roi++;
             unsigned int i;
 
             fprintf(stderr, "openimp T41 cmd %s %ux%u picture=%u:",
@@ -8022,7 +8054,7 @@ struct AL_CodecEncode {
 #else
     /* JPEG quality 1..100 from iInitialQP at CreateChn (0: default 75) */
     uint32_t jpeg_quality;
-#if defined(PLATFORM_T41)
+#if defined(PLATFORM_T41) || defined(PLATFORM_T21)
     /* IMP_Encoder_SetJpegeQl (software JPEG), under jpeg_ql_lock */
     int jpeg_user_tables;
     uint8_t jpeg_tables[128];
@@ -8173,10 +8205,10 @@ static inline uint32_t codec_jpeg_quality(const AL_CodecEncode *enc)
     return enc->jpeg_quality ? enc->jpeg_quality : 75u;
 }
 
-#if defined(PLATFORM_T41)
+#if defined(PLATFORM_T41) || defined(PLATFORM_T21)
 static pthread_mutex_t jpeg_ql_lock = PTHREAD_MUTEX_INITIALIZER;
 
-/* IMP_Encoder_SetJpegeQl on T41: enable != 0 replaces the quantizers the
+/* IMP_Encoder_SetJpegeQl on T41 and T10/T20/T21: enable != 0 replaces the quantizers the
  * software JPEG encoder derives from the channel quality with the caller's
  * (luma then chroma, 64 bytes each, the same order as on T20/T21/T23);
  * enable == 0 goes back to the channel quality.  Takes effect with the
@@ -8842,7 +8874,7 @@ int AL_Codec_Encode_SetRoiAttr(void *codec, const void *roi_attr)
  * 2 relative: the high 6 bits are a two's complement delta), the deltas
  * -26..25 ("Absolute_QP" is unsupported in the vendor header).  A NULL map
  * or size 0 removes the map.  Rides on the experimental T41 ROI table
- * (OPENIMP_T41_ROI=1, docs/ROI.md): refused without it. */
+ * (docs/ROI.md): refused with OPENIMP_T41_ROI=0. */
 typedef struct {
     uint8_t *map;
     int mapSize;
@@ -10168,102 +10200,20 @@ int AL_Codec_Encode_Destroy(void *codec)
 #endif
 }
 
-/* Emit a standards-compliant baseline grayscale JPEG for the T40 snapshot
- * channels.  The P2 JPEG path is intentionally metadata-only for now, but it
- * must still produce an image that rvd and ordinary decoders can consume.
- * A one-symbol DC table (category 0) plus a one-symbol AC table (EOB) encodes
- * every 8x8 block as constant grey in two bits. */
 #if defined(PLATFORM_T40) && !defined(PLATFORM_T41)
-static int t40_encode_gray_jpeg(uint32_t width, uint32_t height,
-                                uint64_t timestamp, HWStreamBuffer *stream)
-{
-    uint32_t blocks_x;
-    uint32_t blocks_y;
-    uint32_t blocks;
-    uint32_t scan_bytes;
-    uint32_t used_bits;
-    uint32_t padding_bits;
-    size_t capacity;
-    uint8_t *buf;
-    size_t pos = 0;
-    unsigned int i;
-
-    if (!stream || width == 0u || height == 0u ||
-        width > 65535u || height > 65535u)
-        return -1;
-    blocks_x = (width + 7u) >> 3;
-    blocks_y = (height + 7u) >> 3;
-    if (blocks_x != 0u && blocks_y > UINT32_MAX / blocks_x)
-        return -1;
-    blocks = blocks_x * blocks_y;
-    scan_bytes = (blocks + 3u) >> 2; /* two zero Huffman bits per block */
-    capacity = (size_t)scan_bytes + 256u;
-    buf = (uint8_t *)malloc(capacity);
-    if (!buf)
-        return -1;
-
-#define JPEG_BYTE(value) do { buf[pos++] = (uint8_t)(value); } while (0)
-    JPEG_BYTE(0xff); JPEG_BYTE(0xd8);             /* SOI */
-    JPEG_BYTE(0xff); JPEG_BYTE(0xe0);             /* APP0 JFIF */
-    JPEG_BYTE(0x00); JPEG_BYTE(0x10);
-    JPEG_BYTE('J'); JPEG_BYTE('F'); JPEG_BYTE('I'); JPEG_BYTE('F'); JPEG_BYTE(0);
-    JPEG_BYTE(1); JPEG_BYTE(1); JPEG_BYTE(0);
-    JPEG_BYTE(0); JPEG_BYTE(1); JPEG_BYTE(0); JPEG_BYTE(1); JPEG_BYTE(0); JPEG_BYTE(0);
-
-    JPEG_BYTE(0xff); JPEG_BYTE(0xdb);             /* one 8-bit DQT */
-    JPEG_BYTE(0x00); JPEG_BYTE(0x43); JPEG_BYTE(0);
-    for (i = 0; i < 64u; i++) JPEG_BYTE(16);
-
-    JPEG_BYTE(0xff); JPEG_BYTE(0xc0);             /* baseline SOF */
-    JPEG_BYTE(0x00); JPEG_BYTE(0x0b); JPEG_BYTE(8);
-    JPEG_BYTE(height >> 8); JPEG_BYTE(height);
-    JPEG_BYTE(width >> 8); JPEG_BYTE(width);
-    JPEG_BYTE(1); JPEG_BYTE(1); JPEG_BYTE(0x11); JPEG_BYTE(0);
-
-    JPEG_BYTE(0xff); JPEG_BYTE(0xc4);             /* DC0: code 0 -> category 0 */
-    JPEG_BYTE(0x00); JPEG_BYTE(0x14); JPEG_BYTE(0x00);
-    JPEG_BYTE(1); for (i = 1; i < 16u; i++) JPEG_BYTE(0); JPEG_BYTE(0);
-    JPEG_BYTE(0xff); JPEG_BYTE(0xc4);             /* AC0: code 0 -> EOB */
-    JPEG_BYTE(0x00); JPEG_BYTE(0x14); JPEG_BYTE(0x10);
-    JPEG_BYTE(1); for (i = 1; i < 16u; i++) JPEG_BYTE(0); JPEG_BYTE(0);
-
-    JPEG_BYTE(0xff); JPEG_BYTE(0xda);             /* grayscale scan */
-    JPEG_BYTE(0x00); JPEG_BYTE(0x08); JPEG_BYTE(1);
-    JPEG_BYTE(1); JPEG_BYTE(0); JPEG_BYTE(0); JPEG_BYTE(63); JPEG_BYTE(0);
-    memset(buf + pos, 0, scan_bytes);
-    pos += scan_bytes;
-    used_bits = (blocks & 3u) * 2u;
-    if (used_bits != 0u) {
-        padding_bits = 8u - used_bits;
-        buf[pos - 1u] |= (uint8_t)((1u << padding_bits) - 1u);
-    }
-    JPEG_BYTE(0xff); JPEG_BYTE(0xd9);             /* EOI */
-#undef JPEG_BYTE
-
-    stream->virt_addr = (uint32_t)(uintptr_t)buf;
-    stream->phys_addr = 0u;
-    stream->length = (uint32_t)pos;
-    stream->timestamp = timestamp;
-    stream->frame_type = HW_FRAME_TYPE_I;
-    stream->slice_type = 0u;
-    return 0;
-}
-
 /* T40 snapshot channels: the AVPU JPEG path is not recovered, so encode the
  * captured NV12 frame with the software baseline encoder (the CPU reads what
- * ISP DMA wrote, so drop stale cache lines first).  The grey image remains the
- * fallback when the software encoder cannot take the frame. */
+ * ISP DMA wrote, so drop stale cache lines first).  When the software encoder
+ * cannot take the frame the error is reported (like T41); the former flat grey
+ * JPEG looked like a valid snapshot and hid the failure. */
 static int t40_encode_jpeg(AL_CodecEncode *enc, HWFrameBuffer *frame,
                            HWStreamBuffer *stream)
 {
     if (frame->phys_addr && frame->virt_addr && frame->size)
         (void)DMA_RmemFlushCache((void *)(uintptr_t)frame->virt_addr,
                                  frame->size, 2 /* invalidate */);
-    if (HW_Encoder_Encode_NV12_JPEG(frame, stream,
-                                    codec_jpeg_quality(enc)) == 0)
-        return 0;
-    return t40_encode_gray_jpeg(frame->width, frame->height,
-                                frame->timestamp, stream);
+    return HW_Encoder_Encode_NV12_JPEG(frame, stream,
+                                       codec_jpeg_quality(enc));
 }
 #endif
 
@@ -13054,11 +13004,11 @@ static int al_codec_encode_process_impl(void *codec, void *frame,
         int force_idr;
         HWFrameBuffer hw_frame;
 
-#if defined(PLATFORM_T41)
+#if defined(PLATFORM_T41) || defined(PLATFORM_T40)
         /* The software H.264 stub writes a grey Baseline 3.1 picture whose
          * P slices are non-reference yet advance frame_num, so decoders
-         * report "reference frames (0+2) exceeds max (1)".  On T41 it can
-         * only be reached after the AVPU setup failed (e.g. rmem
+         * report "reference frames (0+2) exceeds max (1)".  On T40/T41 it
+         * can only be reached after the AVPU setup failed (e.g. rmem
          * exhausted); report that failure instead of a corrupt stream. */
         if (codec_type != IMP_ENC_TYPE_JPEG) {
             static unsigned int t41_sw_refusals;
@@ -13066,7 +13016,7 @@ static int al_codec_encode_process_impl(void *codec, void *frame,
 
             if (n == 1u || (n % 250u) == 0u)
                 IMP_LOG_ERR("Codec",
-                            "chn%d %ux%u: AVPU unavailable (err=%d), no software video fallback on T41 [#%u]\n",
+                            "chn%d %ux%u: AVPU unavailable (err=%d), no software video fallback on T40/T41 [#%u]\n",
                             enc->channel_id - 1, width, height,
                             enc->last_error, n);
             if (enc->last_error == 0)
@@ -13115,7 +13065,7 @@ static int al_codec_encode_process_impl(void *codec, void *frame,
             (codec_type == IMP_ENC_TYPE_JPEG
                 ? codec_encode_jpeg_ql(enc, &hw_frame, hw_stream)
                 : HW_Encoder_Encode_Software(&hw_frame, hw_stream, codec_type)) < 0
-#elif defined(PLATFORM_T41)
+#elif defined(PLATFORM_T41) || defined(PLATFORM_T21)
             (codec_type == IMP_ENC_TYPE_JPEG
                 ? codec_encode_jpeg_t41(enc, &hw_frame, hw_stream)
                 : HW_Encoder_Encode_Software(&hw_frame, hw_stream, codec_type)) < 0

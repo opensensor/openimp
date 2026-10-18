@@ -53,6 +53,7 @@ static int fs_outstanding[4];
 
 int IMP_FrameSource_GetFrame(int chn, void **frame);
 int VBMGetFrame(int chn, void **frame) { return IMP_FrameSource_GetFrame(chn, frame); }
+int OpenIMP_T40_FrameSource_TryGetFrame(int chn, void **frame) { return IMP_FrameSource_GetFrame(chn, frame); }
 
 int IMP_FrameSource_GetFrame(int chn, void **frame)
 {

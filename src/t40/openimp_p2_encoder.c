@@ -1245,6 +1245,9 @@ extern int IMP_FrameSource_ReleaseFrame(int channel, void *frame);
 #if defined(PLATFORM_T20) || defined(PLATFORM_T21) || defined(PLATFORM_T23)
 extern int VBMGetFrame(int chn, void **frame);
 #define P2_FS_TRY_FRAME(chn, frame) VBMGetFrame((chn), (frame))
+#elif defined(PLATFORM_T40)
+extern int OpenIMP_T40_FrameSource_TryGetFrame(int channel, void **frame);
+#define P2_FS_TRY_FRAME(chn, frame) OpenIMP_T40_FrameSource_TryGetFrame((chn), (frame))
 #else
 #define P2_FS_TRY_FRAME(chn, frame) IMP_FrameSource_GetFrame((chn), (frame))
 #endif
@@ -1456,6 +1459,25 @@ static uint32_t p2_attr_bitrate_kbps(const IMPEncoderCHNAttr *attr)
  * RcQualityCap); OpenIMP does the same with its closed-loop controller.
  * The mode itself is kept (GetChnAttrRcMode returns it, as the OEM
  * library returns the stored attribute). */
+#if defined(PLATFORM_T40) || defined(PLATFORM_T41)
+/* Runtime marker: CappedVBR / CappedQuality are accepted but emulated by the
+ * plain VBR controller (value 1).  Not exported where the mode is native. */
+__attribute__((visibility("default"))) const int OpenIMP_Cap_CappedRcAsVbr = 1;
+#endif
+
+/* Runtime markers for streamers (gate features on the symbol, not on the SoC):
+ * OpenIMP_Cap_EncRoi   bit 0 = SetChnRoiAttr really changes the encoded QP,
+ *                      bit 1 = only under CBR/VBR (T41: no effect under FixQP).
+ * OpenIMP_Cap_AutoZoom 1 = IMP_ISP_Tuning_SetAutoZoom works (T41: at start and
+ *                      live on ch1 up to 768x432, larger via channel restart;
+ *                      the T40 driver refuses it, so no symbol there). */
+#if defined(PLATFORM_T40)
+__attribute__((visibility("default"))) const int OpenIMP_Cap_EncRoi = 1;
+#elif defined(PLATFORM_T41)
+__attribute__((visibility("default"))) const int OpenIMP_Cap_EncRoi = 3;
+__attribute__((visibility("default"))) const int OpenIMP_Cap_AutoZoom = 1;
+#endif
+
 enum { /* HW_RC_MODE_* in hw_encoder.h, as codec_param_read_rc_mode reads */
     HW_RC_MODE_FIXQP = 0,
     HW_RC_MODE_CBR = 1,
@@ -1502,9 +1524,10 @@ static int p2_codec_rc_mode(const IMPEncoderCHNAttr *attr, int channel)
         return HW_RC_MODE_VBR;
     }
 #endif
-    IMP_LOG_INFO("Encoder",
-                 "CreateChn(%d): rate-control mode %s runs as VBR "
-                 "(no native %s rate control)\n", channel, name, name);
+    IMP_LOG_WARN("Encoder",
+                 "CreateChn(%d): rate-control mode %s is emulated by VBR "
+                 "(no native %s rate control, no PSNR/quality cap; probe "
+                 "OpenIMP_Cap_CappedRcAsVbr)\n", channel, name, name);
     return HW_RC_MODE_VBR;
 }
 
@@ -1930,6 +1953,44 @@ static void p2_bufshare_check(int channel, const IMPEncoderCHNAttr *attr)
 #define p2_bufshare_check(channel, attr) ((void)0)
 #endif
 
+#if defined(PLATFORM_T31) || defined(PLATFORM_T40) || defined(PLATFORM_T41)
+/* AL_Codec_Encode_SetRcParam caps the QPs only at the top (clamp_qp_u32,
+ * codec-t40.c), so the usual iInitialQP -1 ("derive") arrives as 0xffffffff
+ * and becomes 51 - the frame RC then starts at maxQP.  The OEM copies the
+ * attribute verbatim (channel_encoder_set_rc_param 0x7e430, arg1[6].w =
+ * arg2[N].w at 0x7e548 / 0x7e584 / 0x7e624) and leaves the clamping to
+ * AL_RateCtrl_Init, so -1 never turns into maxQP there.  Same QPs as
+ * p2_codec_params gives a new channel: min/max QP into 1..51, an initial QP
+ * outside it becomes 26.  Applies to the copy handed to the codec, not to the cached
+ * attribute, so GetChnAttrRcMode still returns what the caller set. */
+static void p2_normalise_rc_qps(IMPEncoderRcAttr *rc)
+{
+    int16_t *init_qp, *min_qp, *max_qp;
+
+    switch (rc->attrRcMode.rcMode) {
+    case IMP_ENC_RC_MODE_CBR:
+        init_qp = &rc->attrRcMode.attrCbr.iInitialQP;
+        min_qp = &rc->attrRcMode.attrCbr.iMinQP;
+        max_qp = &rc->attrRcMode.attrCbr.iMaxQP;
+        break;
+    case IMP_ENC_RC_MODE_VBR:
+    case IMP_ENC_RC_MODE_CAPPED_VBR:
+    case IMP_ENC_RC_MODE_CAPPED_QUALITY:
+        /* the capped attributes share the VBR layout up to uMaxPSNR */
+        init_qp = &rc->attrRcMode.attrVbr.iInitialQP;
+        min_qp = &rc->attrRcMode.attrVbr.iMinQP;
+        max_qp = &rc->attrRcMode.attrVbr.iMaxQP;
+        break;
+    default:
+        return;         /* FIXQP and the rest keep their QPs untouched */
+    }
+    *min_qp = *min_qp < 1 ? 1 : *min_qp > 51 ? 51 : *min_qp;
+    *max_qp = *max_qp < 1 ? 1 : *max_qp > 51 ? 51 : *max_qp;
+    if (*init_qp < 1 || *init_qp > 51)
+        *init_qp = 26;
+}
+#endif
+
 int IMP_Encoder_CreateChn(int channel, IMPEncoderCHNAttr *attr)
 {
     P2EncoderChannel *ch;
@@ -2062,6 +2123,55 @@ int IMP_Encoder_CreateChn(int channel, IMPEncoderCHNAttr *attr)
     (void)AL_Codec_Encode_SetRcQualityCap(
         ch->codec, (int)attr->rcAttr.attrRcMode.rcMode,
         attr->rcAttr.attrRcMode.attrCappedVbr.uMaxPSNR);
+    /* channel_encoder_init (0x8098c) hands the rate-control attribute to
+     * channel_encoder_set_rc_param (0x7e430) while the channel is created;
+     * OpenIMP only did that from IMP_Encoder_SetChnAttrRcMode, so a channel
+     * that is created and never re-set kept avpu.t31_rc_options at 0 (the codec
+     * struct is memset in AL_Codec_Encode_Create) where the OEM uses 1.  Not
+     * IMP_Encoder_SetChnAttrRcMode here: it takes ch->lock, which CreateChn
+     * already holds, and it requires ch->created.  The attribute carries the
+     * rates in kbit/s and the codec wants bit/s, the same conversion the
+     * runtime path applies. */
+    {
+        IMPEncoderRcAttr codec_rc = attr->rcAttr;
+        uint32_t target_kbps;
+        uint32_t maximum_kbps;
+        int has_rc = 0;
+
+        switch (codec_rc.attrRcMode.rcMode) {
+        case IMP_ENC_RC_MODE_CBR:
+            target_kbps = codec_rc.attrRcMode.attrCbr.uTargetBitRate;
+            codec_rc.attrRcMode.attrCbr.uTargetBitRate =
+                target_kbps > UINT32_MAX / 1000u ? UINT32_MAX :
+                target_kbps * 1000u;
+            has_rc = 1;
+            break;
+        case IMP_ENC_RC_MODE_VBR:
+        case IMP_ENC_RC_MODE_CAPPED_VBR:
+        case IMP_ENC_RC_MODE_CAPPED_QUALITY:
+            /* the capped attributes share the VBR layout up to uMaxPSNR */
+            target_kbps = codec_rc.attrRcMode.attrVbr.uTargetBitRate;
+            maximum_kbps = codec_rc.attrRcMode.attrVbr.uMaxBitRate;
+            codec_rc.attrRcMode.attrVbr.uTargetBitRate =
+                target_kbps > UINT32_MAX / 1000u ? UINT32_MAX :
+                target_kbps * 1000u;
+            codec_rc.attrRcMode.attrVbr.uMaxBitRate =
+                maximum_kbps > UINT32_MAX / 1000u ? UINT32_MAX :
+                maximum_kbps * 1000u;
+            has_rc = 1;
+            break;
+        default:
+            break;      /* FIXQP and JPEG channels have no Allegro rate control */
+        }
+        if (has_rc)
+            p2_normalise_rc_qps(&codec_rc);
+        if (has_rc && AL_Codec_Encode_SetRcParam(ch->codec, &codec_rc) != 0) {
+            AL_Codec_Encode_Destroy(ch->codec);
+            ch->codec = NULL;
+            pthread_mutex_unlock(&ch->lock);
+            return -1;
+        }
+    }
 #endif
     if (AL_Codec_Encode_SetStreamBufferCount(ch->codec,
                                              ch->max_stream_count) != 0) {
@@ -2123,7 +2233,7 @@ int IMP_Encoder_CreateChn(int channel, IMPEncoderCHNAttr *attr)
     if (ch->codec_type == IMP_ENC_TYPE_JPEG)
         (void)AL_Codec_Encode_SetJpegQuality(
             ch->codec, attr->rcAttr.attrRcMode.attrFixQp.iInitialQP);
-#if defined(PLATFORM_T41)
+#if defined(PLATFORM_T41) || defined(PLATFORM_T21)
     if (ch->jpeg_quality.user_ql_en)
         (void)AL_Codec_Encode_SetJpegQl(ch->codec, 1,
                                         ch->jpeg_quality.qmem_table);
@@ -2588,6 +2698,9 @@ static int p2_polling_stream(int channel, uint32_t timeout_ms)
     uint64_t interval_us;
     uint64_t now_us;
     uint64_t frame_deadline_us;
+#if defined(PLATFORM_T40)
+    uint64_t poll_deadline_us;
+#endif
     uint64_t stream_deadline_us;
     uint64_t wait_us;
     uint64_t timeout_us;
@@ -2611,6 +2724,9 @@ static int p2_polling_stream(int channel, uint32_t timeout_ms)
     if (!p2_valid_channel(channel))
         return -1;
     poll_profile = openimp_profile_begin();
+#if defined(PLATFORM_T40)
+    poll_deadline_us = p2_monotonic_us() + (uint64_t)timeout_ms * 1000u;
+#endif
 #if defined(PLATFORM_T23)
     pace_start_us = p2_monotonic_us();
 #endif
@@ -2707,7 +2823,11 @@ static int p2_polling_stream(int channel, uint32_t timeout_ms)
         /* FrameSource exposes a non-blocking userspace-ready queue, while
          * PollingStream is a blocking ABI.  Wait outside the shared AVPU lock
          * so an empty queue neither spins the caller nor starves capture. */
+#if defined(PLATFORM_T40)
+        frame_deadline_us = poll_deadline_us;
+#else
         frame_deadline_us = p2_monotonic_us() + timeout_us;
+#endif
 #if defined(PLATFORM_T31)
         /* Sleep until the capture worker publishes a frame instead of
          * polling every millisecond. The sequence is read before each
@@ -3260,10 +3380,22 @@ int IMP_Encoder_Query(int channel, IMPEncoderCHNStat *stat)
                            ch->raw_stream_out, ch->in_poll);
     pthread_mutex_unlock(&ch->lock);
 #else
+    /* No input queue (encode on demand in PollingStream/GetStream, at most
+     * one finished stream): leftPics = the picture being encoded right now,
+     * leftStreamFrames/leftStreamBytes/curPacks = the finished stream that
+     * waits for GetStream (its real byte length), work_done 0 while a
+     * PollingStream encodes (vendor: 1 = idle). */
+    pthread_mutex_lock(&ch->lock);
     memset(stat, 0, sizeof(*stat));
     stat->registered = ch->registered != 0;
-    stat->leftPics = ch->raw_stream ? 1u : 0u;
-    stat->curPacks = ch->raw_stream ? 1u : 0u;
+    stat->leftPics = ch->in_poll > 0 ? 1u : 0u;
+    if (ch->raw_stream && !ch->raw_stream_out) {
+        stat->leftStreamFrames = 1u;
+        stat->leftStreamBytes = ((const P2HWStream *)ch->raw_stream)->length;
+        stat->curPacks = 1u;
+    }
+    stat->work_done = ch->in_poll > 0 ? 0u : 1u;
+    pthread_mutex_unlock(&ch->lock);
 #endif
     return 0;
 }
@@ -3601,7 +3733,8 @@ int IMP_Encoder_SetJpegeQl(int channel, IMPEncoderJpegeQl *quality)
 {
     if (!p2_valid_channel(channel) || !quality)
         return -1;
-#if defined(PLATFORM_T23) || defined(PLATFORM_T30) || defined(PLATFORM_T41)
+#if defined(PLATFORM_T23) || defined(PLATFORM_T30) || defined(PLATFORM_T41) || \
+    defined(PLATFORM_T21)
     {
         P2EncoderChannel *ch = &p2_channels[channel];
         int result = 0;
@@ -3831,6 +3964,9 @@ int IMP_Encoder_SetChnAttrRcMode(int channel, IMPEncoderAttrRcMode *mode)
     }
 #endif
 
+#if defined(PLATFORM_T31) || defined(PLATFORM_T40) || defined(PLATFORM_T41)
+    p2_normalise_rc_qps(&codec_rc);
+#endif
     if (AL_Codec_Encode_SetRcParam(ch->codec, &codec_rc) != 0) {
         pthread_mutex_unlock(&ch->lock);
         return -1;
@@ -4098,7 +4234,7 @@ int IMP_Encoder_SetChnQp(int channel, int qp_value)
 
 #if defined(PLATFORM_T31) || defined(PLATFORM_T41) || defined(PLATFORM_T40)
 /* Vendor T41 1.2.6 IMP_Encoder_SetChnRoiAttr / GetChnRoiAttr (T40 1.3.1: the same
- * windows; opt-in OPENIMP_T40_ROI=1, see codec-t40.c): the windows
+ * windows; on by default, OPENIMP_T40_ROI=0 off, see codec-t40.c): the windows
  * go into the macroblock QP table of the AVC encoder from the next picture
  * on (src/t40/codec-t40.c avpu_t41_roi_apply).  H.265, absolute QP and
  * windows outside the picture are refused. */
@@ -4126,7 +4262,7 @@ int IMP_Encoder_SetChnRoiAttr(int channel, IMPEncoderRoiAttr *attr)
 
 /* Vendor T41 1.2.6 / T40 1.3.1 IMP_Encoder_SetChnMapRoi (docs/ROI.md): AVC
  * only, the map is copied.  The same switch as SetChnRoiAttr guards it
- * (T40: OPENIMP_T40_ROI=1). */
+ * (T40: OPENIMP_T40_ROI=0 turns it off). */
 extern int AL_Codec_Encode_SetMapRoi(void *codec, const void *roi_attr);
 
 #if defined(PLATFORM_T41) || defined(PLATFORM_T40)

@@ -143,6 +143,12 @@ int OpenIMP_P1_TuningIOCtl(uint32_t command, void *argument)
     return last.result;
 }
 
+/* WaitFrameDone's unlocked path: same "driver" */
+int OpenIMP_P1_TuningWaitIOCtl(uint32_t command, void *argument)
+{
+    return OpenIMP_P1_TuningIOCtl(command, argument);
+}
+
 #define EXPECT(call, dir, id, ptr)                                            \
     do {                                                                      \
         int before = last.calls;                                              \

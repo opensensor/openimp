@@ -52,6 +52,9 @@ Raw measurement logs (campaign shell output, not published as files; one line pe
 | `L5` | cam-I, T20, vendor, 2026-10-05, **older streamer build, not a same-version A/B** |
 | `L6` | cam-J, T21, vendor, day, 2026-10-05, **older streamer build, not a same-version A/B** |
 | `L7` | cam-J, T21, open stack after flashing, 2026-10-05 |
+| `L8` | cam-D (T21 open) and cam-J (T21 vendor), night, 2026-10-12: same streamer build and configuration (1080p25 CBR 3000 + 360p25 CBR 512), 20 s substream recordings and 40 s CPU/IRQ samples; recordings analysed numerically 2026-10-14 (video track only, slice/macroblock QP) |
+| `L9` | cam-D, T21 open, night, 2026-10-14: runtime-loaded module with the i2c write cache and libimp `-Os` vs `-O2` per bind mount, 60 s windows with one client on ch0 |
+| `L10` | cam-D, T21 open, night, 2026-10-15: streamer restarted with `OPENIMP_EPRC_MBRC=1` vs off, 21 s substream pulls analysed in memory |
 
 The L1/L2 pair is also published as a table in `C:Late morning (2026-10-04, 09:50)`;
 the L3 day figures are summarised in `C:Early morning (2026-10-05, 02:30)`.
@@ -164,6 +167,12 @@ Notes on the T20 rows:
 | Snapshot latency avg / min / max (cam-J) | not measured (open) | 0.46 / 0.17 / 1.13 s | day, 2026-10-05, older streamer build | `L6` |
 | Bitrate ch0 / ch1 (cam-J) | not measured (open) | 2792 / 441 kbit/s | day, 2026-10-05, older streamer build | `L6` |
 | Snapshots (cam-J) | 30/30 | not measured | after flashing the open stack, 2026-10-05 | `L7` |
+| Sensor i2c interrupts (converged AE, night) | **0–2 /s** with the write cache (`claude/t21-i2c-cache`); 50–51 /s before (2–3 sensor writes per frame) | 0.1 /s | 2026-10-14 (open), 2026-10-12 (vendor: 2,670 vs 789,606 IRQs since boot) | `L9`, `L8` |
+| Streamer CPU, one client on ch0 (same build) | 9.5–10.1 % (libimp `-O2` hot path), 9.3–10.1 % (`-Os`); about 13 % on 2026-10-11 | about 8 % | night, 2026-10-14 (open) / 2026-10-11 (both) | `L9`, `L8` |
+| libimp Helix per-frame path `-O2` vs `-Os` | no CPU difference within ±0.4 %; `-O2` costs 18,272 B of `.text` (T23 18,688 B, T30 17,936 B) | — | 2026-10-14 | `L9` |
+| Substream CBR 512 kbit/s, night (video track only) | **528 kbit/s** (P-frames 1959 B, I 35.9 KB) | 238 kbit/s (P-frames 570 B, I 31.4 KB) | 2026-10-12 recordings | `L8` |
+| Slice QP / macroblock QP of that substream | slice QP 20 (P 20–21), macroblocks 20–21 | slice QP 20, macroblocks spread 14–23 (vendor macroblock RC) | 2026-10-12 recordings | `L8` |
+| Macroblock RC on (`OPENIMP_EPRC_MBRC=1`), substream night | macroblock QP 14–24 like the vendor; P-frames 1621–1722 B vs 2005–2016 B off, within scene drift (an off run afterwards gave 1747 B); about 3x the vendor P-frame size remains | — | 2026-10-15 | `L10` |
 | Open-stack RSS, threads, time to first image, snapshot latency, CPU, system CPU | not measured | — | — | — |
 
 ### 3.4 T23 (cam-B; cam-G and cam-H run the same stack)
@@ -257,6 +266,15 @@ Notes on the T20 rows:
     `L5` give an average with min/max over the same short sample, so a single outlier
     moves the average. `L1`, `L2` and `L4` record `oops=0`; only `L4` records the
     snapshot count (30/30).
+
+12. **CBR bitrate is measured on the video track only.** A byte count of the whole HTTP/MP4
+   pull includes the audio track (32 kbit/s here) and the fragment overhead: the T21 substream
+   read 592 kbit/s that way ("590 instead of 512") while its video track is 528 kbit/s; the
+   vendor read 302 against 238. Compare per-track sample sizes (`moof`/`trun`) instead.
+13. **T21 night P-frames are about 3x the vendor's at the same QP.** Both stacks sit at the QP
+   floor (20); the vendor's macroblock RC is not the main cause (`L10`). The decoded
+   frame-to-frame luma change is 0.15–0.16 (open) against 0.05 (vendor), which points at
+   input noise behind the ISP; open, being investigated.
 
 ## 5. Open measurements (what is missing and what it would take)
 
