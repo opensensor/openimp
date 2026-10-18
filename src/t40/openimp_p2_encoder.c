@@ -1470,9 +1470,11 @@ __attribute__((visibility("default"))) const int OpenIMP_Cap_CappedRcAsVbr = 1;
  *                      bit 1 = only under CBR/VBR (T41: no effect under FixQP).
  * OpenIMP_Cap_AutoZoom 1 = IMP_ISP_Tuning_SetAutoZoom works (T41: at start and
  *                      live on ch1 up to 768x432, larger via channel restart;
- *                      the T40 driver refuses it, so no symbol there). */
+ *                      T40 (open-tx-isp claude/t40-autozoom and later): at
+ *                      start and live on every output, window >= output). */
 #if defined(PLATFORM_T40)
 __attribute__((visibility("default"))) const int OpenIMP_Cap_EncRoi = 1;
+__attribute__((visibility("default"))) const int OpenIMP_Cap_AutoZoom = 1;
 #elif defined(PLATFORM_T41)
 __attribute__((visibility("default"))) const int OpenIMP_Cap_EncRoi = 3;
 __attribute__((visibility("default"))) const int OpenIMP_Cap_AutoZoom = 1;
