@@ -5,12 +5,12 @@
 | T10/T20 | `IMP_Encoder_SetChnROI` (8 regions, pixel corners) | works, see `T1X_ROI_CHROMA.md` |
 | T21 | the same | works by default since this branch (beyond vendor), device-tested |
 | T23 | the same; native Helix encoder (default backend) programs it like T21, the OEM worker gets it through the bridge | works by default, device-tested (below) |
-| T40/T41 | `IMP_Encoder_Set/GetChnRoiAttr` (10 windows, delta QP) | implemented, **experimental, off by default** (T41: `OPENIMP_T41_ROI=1`, T40: `OPENIMP_T40_ROI=1`); device-tested 2026-10-18: T41 works under CBR (not under FixQP, below), T40 works under FixQP and CBR |
+| T40/T41 | `IMP_Encoder_Set/GetChnRoiAttr` (10 windows, delta QP) | implemented, **on by default** since 2026-10-18 (`OPENIMP_T40_ROI=0` / `OPENIMP_T41_ROI=0` refuse it); device-tested: T40 works under FixQP and CBR, T41 works under CBR/VBR only - under FixQP the call is accepted (cache), the table is not written and syslog says "ROI has no effect under FixQP on T41"; `OPENIMP_T41_ROI=1` forces the table even under FixQP |
 | T31 | none in the vendor library; OpenIMP: `IMP_Encoder_Set/GetChnRoiAttr` (T41 API) | works by default (beyond vendor), device-tested; QP clamped to valid H.264 (below) |
 
 ## T40 (cross-built, not device-tested)
 
-The vendor T40 libimp 1.3.1 keeps the ten windows of `IMP_Encoder_SetChnRoiAttr` in the channel record and builds, per picture, a QP table whose entry is one byte per 16x16 block for AVC (eight bytes per 32x32 block for HEVC); its `SliceParamToCmdRegsEnc1` sets cmd[9] bits 25 and 24 from the same two slice-parameter bytes as on the T31. OpenIMP therefore reuses the T31 path on T40: the windows fill the EP2 table (`avpu_t31_roi_apply`, the shared `avpu_roi_fill`) and the T40 command ORs `0x03000000` into cmd[9]. AVC only (H.265 stays unsupported on T40). `IMP_Encoder_SetChnMapRoi` (vendor 1.3.1 checks as on the T41: map size = number of 16x16 blocks, mode delta, quality -26..25) writes its per-block deltas over the window values in the same table (cut to the QP range and the neighbour spread), behind the same switch. Off unless `OPENIMP_T40_ROI=1` because no T40 camera has run it; with the switch off `SetChnRoiAttr` returns -1 and the command is as before. Device test: enable a window on an idle scene, compare the bit rate and the QP of the window with and without it, 20 phases in VA-API / strict ffmpeg as for the T31.
+The vendor T40 libimp 1.3.1 keeps the ten windows of `IMP_Encoder_SetChnRoiAttr` in the channel record and builds, per picture, a QP table whose entry is one byte per 16x16 block for AVC (eight bytes per 32x32 block for HEVC); its `SliceParamToCmdRegsEnc1` sets cmd[9] bits 25 and 24 from the same two slice-parameter bytes as on the T31. OpenIMP therefore reuses the T31 path on T40: the windows fill the EP2 table (`avpu_t31_roi_apply`, the shared `avpu_roi_fill`) and the T40 command ORs `0x03000000` into cmd[9]. AVC only (H.265 stays unsupported on T40). `IMP_Encoder_SetChnMapRoi` (vendor 1.3.1 checks as on the T41: map size = number of 16x16 blocks, mode delta, quality -26..25) writes its per-block deltas over the window values in the same table (cut to the QP range and the neighbour spread), behind the same switch. On by default (device-tested on the Eufy T40XP, FixQP and CBR); with `OPENIMP_T40_ROI=0` `SetChnRoiAttr` returns -1 and the command is as before. Device test: enable a window on an idle scene, compare the bit rate and the QP of the window with and without it, 20 phases in VA-API / strict ffmpeg as for the T31.
 
 ## T21 (device-tested)
 
@@ -45,8 +45,7 @@ OpenIMP writes that table (`avpu_t41_roi_apply`, EP2 enlarged) and exports
 FixQP or CBR (whole-frame -20/-25/+20/+25, regions up to a quarter of the
 frame; bit rate and decoded pictures unchanged). Writing the EP2 header words
 the vendor library has (QP limits) was tried and hung the camera. Therefore
-all of it is off unless `OPENIMP_T41_ROI=1`; without it the EP2 size, the
-commands and `SetChnRoiAttr` (returns -1) are as before. What is missing is a
+(historical, first attempt; superseded by the cmd[152] result below). What is missing is a
 vendor reference that works: the vendor libimp on this open-tx-isp camera
 gives corrupt pictures and twice hung the kernel, so an A/B against the vendor
 could not be made.
@@ -61,7 +60,7 @@ the "relative" flag to SliceParam+0x62 (offsets from the SliceParam base
 pic+0x248, matched against the neighbouring fields), and
 `SliceParamToCmdRegsEnc1` (0xe9d68) packs them into **cmd[152] bit 0 and
 bit 3**. OpenIMP's T41 builder writes cmd[152] = 0xf6 (both clear). With
-`OPENIMP_T41_ROI=1` and a window set, OpenIMP now ORs 0x9 into cmd[152].
+a window set, OpenIMP ORs 0x9 into cmd[152]. Since 2026-10-18 this is the default for CBR/VBR; under FixQP the table is not written (effect-less) and one syslog line is logged; `OPENIMP_T41_ROI=0` turns the feature off, `=1` forces it under FixQP too.
 Device test 2026-10-18 (Cinnado .34 and Vanhua .32, roitest, 1280x720
 15 fps, window 384x240 at 448,240): **under CBR the table works** - the
 whole frame at -20 doubles the bit rate against the 800 kbit/s target, a
@@ -73,7 +72,7 @@ the cmd[179] QP range (min bits 31..24, max bits 15..8) opened from QP..QP
 to 0..51 or 15..45; the cause is open. The header-word hang above is
 unrelated (do not write the EP2 header).
 
-T40 (Eufy, open driver, `OPENIMP_T40_ROI=1`, same test): FixQP 32 window
+T40 (Eufy, open driver, same test, now default): FixQP 32 window
 -20 100 -> 1194 kbit/s, whole frame -20 12.2 Mbit/s, window +20 93 kbit/s;
 CBR window +20 drops the window SSIM 0.96 -> 0.89. On the vendor side the 32-bit entries with byte 3 =
 0x20 suggest that the vendor sets the bit for every picture.

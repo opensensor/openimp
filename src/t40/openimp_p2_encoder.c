@@ -4221,7 +4221,7 @@ int IMP_Encoder_SetChnQp(int channel, int qp_value)
 
 #if defined(PLATFORM_T31) || defined(PLATFORM_T41) || defined(PLATFORM_T40)
 /* Vendor T41 1.2.6 IMP_Encoder_SetChnRoiAttr / GetChnRoiAttr (T40 1.3.1: the same
- * windows; opt-in OPENIMP_T40_ROI=1, see codec-t40.c): the windows
+ * windows; on by default, OPENIMP_T40_ROI=0 off, see codec-t40.c): the windows
  * go into the macroblock QP table of the AVC encoder from the next picture
  * on (src/t40/codec-t40.c avpu_t41_roi_apply).  H.265, absolute QP and
  * windows outside the picture are refused. */
@@ -4249,7 +4249,7 @@ int IMP_Encoder_SetChnRoiAttr(int channel, IMPEncoderRoiAttr *attr)
 
 /* Vendor T41 1.2.6 / T40 1.3.1 IMP_Encoder_SetChnMapRoi (docs/ROI.md): AVC
  * only, the map is copied.  The same switch as SetChnRoiAttr guards it
- * (T40: OPENIMP_T40_ROI=1). */
+ * (T40: OPENIMP_T40_ROI=0 turns it off). */
 extern int AL_Codec_Encode_SetMapRoi(void *codec, const void *roi_attr);
 
 #if defined(PLATFORM_T41) || defined(PLATFORM_T40)

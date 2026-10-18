@@ -12,6 +12,7 @@
 #include <limits.h>
 #include <pthread.h>
 #include <stdarg.h>
+#include <syslog.h>
 #include <unistd.h>
 #include <fcntl.h>
 
@@ -3633,7 +3634,7 @@ static void avpu_roi_warn_clamped(const char *soc, unsigned int c,
 /* T40: the vendor libimp 1.3.1 implements the windows (a per-macroblock QP
  * table, one byte per 16x16 block for AVC, the same table format as the T31
  * Allegro core; cmd[9] carries the same two bits), but the OpenIMP port is
- * not device-tested yet: off unless OPENIMP_T40_ROI=1. */
+ * device-tested (FixQP and CBR): on by default, OPENIMP_T40_ROI=0 refuses it. */
 #define AVPU_ROI_SOC "T40"
 static int avpu_t31_roi_disabled(void)
 {
@@ -3642,7 +3643,7 @@ static int avpu_t31_roi_disabled(void)
     if (off < 0) {
         const char *e = getenv("OPENIMP_T40_ROI");
 
-        off = !(e && e[0] == '1');
+        off = e && e[0] == '0';
     }
     return off;
 }
@@ -3962,10 +3963,10 @@ static uint32_t avpu_t41_advance_luma_offset(uint32_t current,
 
 
 #if defined(PLATFORM_T41)
-/* EXPERIMENTAL, off by default: on the T41 test camera the AVPU did not
- * react to this table in any rate-control mode (docs/ROI.md).  Without
- * OPENIMP_T41_ROI=1 nothing here runs, the EP2 buffer keeps its size and
- * IMP_Encoder_SetChnRoiAttr is refused. */
+/* T41 ROI: on by default (OPENIMP_T41_ROI=0 refuses it).  Device-tested
+ * under CBR; under FixQP the AVPU ignores the table (cause open, docs/ROI.md),
+ * so there the windows are only cached and the table is not written, unless
+ * OPENIMP_T41_ROI=1 forces it. */
 static int avpu_t41_roi_experimental(void)
 {
     static int on = -1;
@@ -3973,9 +3974,16 @@ static int avpu_t41_roi_experimental(void)
     if (on < 0) {
         const char *e = getenv("OPENIMP_T41_ROI");
 
-        on = e && e[0] == '1';
+        on = !(e && e[0] == '0');
     }
     return on;
+}
+
+static int avpu_t41_roi_forced(void)
+{
+    const char *e = getenv("OPENIMP_T41_ROI");
+
+    return e && e[0] == '1';
 }
 
 static void avpu_t41_roi_apply(ALAvpuContext *ctx)
@@ -3986,6 +3994,15 @@ static void avpu_t41_roi_apply(ALAvpuContext *ctx)
 
     if (!ctx->roi_pending || ctx->codec_hevc || !ctx->interm_buf.map)
         return;
+    if (ctx->rc_mode == HW_RC_MODE_FIXQP && !avpu_t41_roi_forced()) {
+        static int warned;
+
+        if (!warned) {
+            warned = 1;
+            syslog(LOG_WARNING, "openimp: ROI has no effect under FixQP on T41");
+        }
+        return;
+    }
     cols = (ctx->enc_w + 15u) >> 4;
     rows = (ctx->enc_h + 15u) >> 4;
     mb = cols * rows;
@@ -8857,7 +8874,7 @@ int AL_Codec_Encode_SetRoiAttr(void *codec, const void *roi_attr)
  * 2 relative: the high 6 bits are a two's complement delta), the deltas
  * -26..25 ("Absolute_QP" is unsupported in the vendor header).  A NULL map
  * or size 0 removes the map.  Rides on the experimental T41 ROI table
- * (OPENIMP_T41_ROI=1, docs/ROI.md): refused without it. */
+ * (docs/ROI.md): refused with OPENIMP_T41_ROI=0. */
 typedef struct {
     uint8_t *map;
     int mapSize;
