@@ -1465,6 +1465,19 @@ static uint32_t p2_attr_bitrate_kbps(const IMPEncoderCHNAttr *attr)
 __attribute__((visibility("default"))) const int OpenIMP_Cap_CappedRcAsVbr = 1;
 #endif
 
+/* Runtime markers for streamers (gate features on the symbol, not on the SoC):
+ * OpenIMP_Cap_EncRoi   bit 0 = SetChnRoiAttr really changes the encoded QP,
+ *                      bit 1 = only under CBR/VBR (T41: no effect under FixQP).
+ * OpenIMP_Cap_AutoZoom 1 = IMP_ISP_Tuning_SetAutoZoom works (T41: at start and
+ *                      live on ch1 up to 768x432, larger via channel restart;
+ *                      the T40 driver refuses it, so no symbol there). */
+#if defined(PLATFORM_T40)
+__attribute__((visibility("default"))) const int OpenIMP_Cap_EncRoi = 1;
+#elif defined(PLATFORM_T41)
+__attribute__((visibility("default"))) const int OpenIMP_Cap_EncRoi = 3;
+__attribute__((visibility("default"))) const int OpenIMP_Cap_AutoZoom = 1;
+#endif
+
 enum { /* HW_RC_MODE_* in hw_encoder.h, as codec_param_read_rc_mode reads */
     HW_RC_MODE_FIXQP = 0,
     HW_RC_MODE_CBR = 1,
